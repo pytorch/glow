@@ -204,10 +204,8 @@ public:
   llvm::Error execute(ExecutionContext *context) override;
   ///@}
 
-  /// \returns the Kind of Backend used to compile this function.
-  BackendKind getCompileBackendKind() const override {
-    return BackendKind::Habana;
-  }
+  /// \returns the backend used to compile this function.
+  std::string getCompileBackendName() const override { return "Habana"; }
 
   const PlaceholderList &getInputs() const { return inputs_; }
 
@@ -231,8 +229,6 @@ public:
   /// This is the implementation of the Backend interface.
   ///@{
   ~HabanaBackend() override = default;
-
-  BackendKind getBackendKind() const override { return BackendKind::Habana; }
 
   std::string getBackendName() const override { return getName(); }
   static std::string getName() { return "Habana"; }

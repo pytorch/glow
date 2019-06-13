@@ -31,18 +31,18 @@
 using namespace glow;
 using namespace glow::runtime;
 
-class DeviceManagerTest : public ::testing::TestWithParam<BackendKind> {
+class DeviceManagerTest : public ::testing::TestWithParam<std::string> {
 public:
   void SetUp() override {
-    backendKind = GetParam();
-    device.reset(DeviceManager::createDeviceManager(DeviceConfig(backendKind)));
+    backendName = GetParam();
+    device.reset(DeviceManager::createDeviceManager(DeviceConfig(backendName)));
     ASSERT_TRUE(device.get());
     ASSERT_FALSE(errToBool(device->init()));
   }
 
   void TearDown() override { EXPECT_FALSE(errToBool(device->stop())); }
 
-  BackendKind backendKind;
+  std::string backendName;
   std::unique_ptr<DeviceManager> device{nullptr};
 };
 
@@ -61,10 +61,10 @@ std::unique_ptr<Module> makeBasicModule(std::string functionName = "main") {
 }
 
 FunctionMapTy
-compileFunctions(BackendKind backendKind, Module *module,
+compileFunctions(llvm::StringRef backendName, Module *module,
                  std::vector<std::unique_ptr<CompiledFunction>> &backing) {
   FunctionMapTy results;
-  auto *backend = createBackend(backendKind);
+  auto *backend = createBackend(backendName);
   CompilationContext cctx;
   cctx.compMode = CompilationMode::Infer;
   for (auto *F : module->getFunctions()) {
@@ -95,7 +95,7 @@ TEST_P(DeviceManagerTest, Basic) {
   auto module = makeBasicModule();
   std::vector<std::unique_ptr<CompiledFunction>> backing;
   FunctionMapTy functions =
-      compileFunctions(backendKind, module.get(), backing);
+      compileFunctions(backendName, module.get(), backing);
 
   std::promise<const Module *> promise;
   std::future<const Module *> future;
@@ -146,7 +146,7 @@ TEST_P(DeviceManagerTest, Basic) {
 // Test that the DeviceManager correctly supports virtual padding.
 TEST_P(DeviceManagerTest, PartialTensorCopy) {
   // Temporarily disable this test for Habana.
-  if (backendKind == BackendKind::Habana) {
+  if (backendName == "Habana") {
     return;
   }
   std::unique_ptr<Module> module = llvm::make_unique<Module>();
@@ -162,7 +162,7 @@ TEST_P(DeviceManagerTest, PartialTensorCopy) {
 
   std::vector<std::unique_ptr<CompiledFunction>> backing;
   FunctionMapTy functions =
-      compileFunctions(backendKind, module.get(), backing);
+      compileFunctions(backendName, module.get(), backing);
 
   std::promise<const Module *> promise;
   std::future<const Module *> future;
@@ -215,7 +215,7 @@ TEST_P(DeviceManagerTest, MultiRun) {
   auto module = makeBasicModule();
   std::vector<std::unique_ptr<CompiledFunction>> backing;
   FunctionMapTy functions =
-      compileFunctions(backendKind, module.get(), backing);
+      compileFunctions(backendName, module.get(), backing);
 
   std::promise<const Module *> promise;
   std::future<const Module *> future;
@@ -307,7 +307,7 @@ TEST_P(DeviceManagerTest, MultiFunction) {
 
   std::vector<std::unique_ptr<CompiledFunction>> backing;
   FunctionMapTy functions =
-      compileFunctions(backendKind, module.get(), backing);
+      compileFunctions(backendName, module.get(), backing);
   EXPECT_EQ(functions.size(), 2);
 
   std::promise<const Module *> promise;
@@ -375,9 +375,9 @@ TEST_P(DeviceManagerTest, MultiModule) {
 
   std::vector<std::unique_ptr<CompiledFunction>> backing;
   FunctionMapTy functions1 =
-      compileFunctions(backendKind, module1.get(), backing);
+      compileFunctions(backendName, module1.get(), backing);
   FunctionMapTy functions2 =
-      compileFunctions(backendKind, module2.get(), backing);
+      compileFunctions(backendName, module2.get(), backing);
 
   std::promise<const Module *> promise;
   std::future<const Module *> future;
@@ -473,7 +473,7 @@ TEST_P(DeviceManagerTest, ReuseModule) {
 
   std::vector<std::unique_ptr<CompiledFunction>> backing;
   FunctionMapTy functions =
-      compileFunctions(backendKind, module.get(), backing);
+      compileFunctions(backendName, module.get(), backing);
   EXPECT_EQ(functions.size(), 2);
 
   // Split the function map into two parts.
@@ -553,8 +553,8 @@ TEST_P(DeviceManagerTest, ReuseModule) {
 
 TEST(DeviceManagerTest, SetDeviceMemory) {
   // Test Interpreter.
-  auto interpreterConfigEmpty = DeviceConfig(BackendKind::Interpreter);
-  auto interpreterConfigFull = DeviceConfig(BackendKind::Interpreter);
+  auto interpreterConfigEmpty = DeviceConfig("Interpreter");
+  auto interpreterConfigFull = DeviceConfig("Interpreter");
   interpreterConfigFull.setDeviceMemory(32768);
   // Only deviceConfig setting.
   InterpreterDeviceManager interpreterDeviceSetByDeviceConfig(
@@ -572,7 +572,7 @@ TEST(DeviceManagerTest, AvailableMemory) {
   std::promise<const Module *> promise;
   std::future<const Module *> future;
 
-  auto config = DeviceConfig(BackendKind::CPU);
+  auto config = DeviceConfig("CPU");
   config.setDeviceMemory(1);
   CPUDeviceManager cpuCoreDevice(config);
   ASSERT_FALSE(errToBool(cpuCoreDevice.init()));
@@ -585,11 +585,11 @@ TEST(DeviceManagerTest, AvailableMemory) {
 
   auto module = makeBasicModule();
   std::tie(promise, future) = getFutureHelper<const Module *>();
-  cpuCoreDevice.addNetwork(
-      module.get(), compileFunctions(BackendKind::CPU, module.get(), backing),
-      [&promise](const Module *module, llvm::Error err) {
-        callbackHelper(promise, module, std::move(err));
-      });
+  cpuCoreDevice.addNetwork(module.get(),
+                           compileFunctions("CPU", module.get(), backing),
+                           [&promise](const Module *module, llvm::Error err) {
+                             callbackHelper(promise, module, std::move(err));
+                           });
 
   future.wait_for(std::chrono::seconds(2));
   EXPECT_EQ(future.get(), module.get());
@@ -602,11 +602,11 @@ TEST(DeviceManagerTest, AvailableMemory) {
   // Let's try again.
   auto module2 = makeBasicModule();
   std::tie(promise, future) = getFutureHelper<const Module *>();
-  cpuCoreDevice.addNetwork(
-      module2.get(), compileFunctions(BackendKind::CPU, module2.get(), backing),
-      [&promise](const Module *module, llvm::Error err) {
-        callbackHelper(promise, module, std::move(err));
-      });
+  cpuCoreDevice.addNetwork(module2.get(),
+                           compileFunctions("CPU", module2.get(), backing),
+                           [&promise](const Module *module, llvm::Error err) {
+                             callbackHelper(promise, module, std::move(err));
+                           });
 
   future.wait_for(std::chrono::seconds(2));
   auto *resultModule = future.get();
@@ -630,11 +630,11 @@ TEST(DeviceManagerTest, AvailableMemory) {
 
   // And try again, this time with available space.
   std::tie(promise, future) = getFutureHelper<const Module *>();
-  cpuCoreDevice.addNetwork(
-      module2.get(), compileFunctions(BackendKind::CPU, module2.get(), backing),
-      [&promise](const Module *module, llvm::Error err) {
-        callbackHelper(promise, module, std::move(err));
-      });
+  cpuCoreDevice.addNetwork(module2.get(),
+                           compileFunctions("CPU", module2.get(), backing),
+                           [&promise](const Module *module, llvm::Error err) {
+                             callbackHelper(promise, module, std::move(err));
+                           });
 
   future.wait_for(std::chrono::seconds(2));
   EXPECT_EQ(future.get(), module2.get());
@@ -645,8 +645,8 @@ TEST(DeviceManagerTest, AvailableMemory) {
   EXPECT_FALSE(errToBool(cpuCoreDevice.stop()));
 
   // Test CPU DeviceConfig.
-  auto cpuConfigEmpty = DeviceConfig(BackendKind::CPU);
-  auto cpuConfigFull = DeviceConfig(BackendKind::CPU);
+  auto cpuConfigEmpty = DeviceConfig("CPU");
+  auto cpuConfigFull = DeviceConfig("CPU");
   cpuConfigFull.setDeviceMemory(32768);
   // Only deviceConfig setting.
   CPUDeviceManager cpuDeviceSetByDeviceConfig(cpuConfigFull);
@@ -657,13 +657,13 @@ TEST(DeviceManagerTest, AvailableMemory) {
 }
 
 TEST(DeviceManagerTest, DummyDeviceManager) {
-  DummyDeviceManager deviceManager{DeviceConfig(BackendKind::Interpreter)};
+  DummyDeviceManager deviceManager{DeviceConfig("Interpreter")};
   ASSERT_FALSE(errToBool(deviceManager.init()));
 
   auto module = makeBasicModule();
   std::vector<std::unique_ptr<CompiledFunction>> backing;
   FunctionMapTy functions =
-      compileFunctions(BackendKind::Interpreter, module.get(), backing);
+      compileFunctions("Interpreter", module.get(), backing);
 
   std::promise<const Module *> promise;
   std::future<const Module *> future;
@@ -716,19 +716,16 @@ TEST(DeviceManagerTest, DummyDeviceManager) {
 #endif // GLOW_WITH_CPU
 
 INSTANTIATE_TEST_CASE_P(Interpreter, DeviceManagerTest,
-                        ::testing::Values(BackendKind::Interpreter));
+                        ::testing::Values("Interpreter"));
 
 #ifdef GLOW_WITH_CPU
-INSTANTIATE_TEST_CASE_P(CPU, DeviceManagerTest,
-                        ::testing::Values(BackendKind::CPU));
+INSTANTIATE_TEST_CASE_P(CPU, DeviceManagerTest, ::testing::Values("CPU"));
 #endif // GLOW_WITH_CPU
 
 #ifdef GLOW_WITH_OPENCL
-INSTANTIATE_TEST_CASE_P(OpenCL, DeviceManagerTest,
-                        ::testing::Values(BackendKind::OpenCL));
+INSTANTIATE_TEST_CASE_P(OpenCL, DeviceManagerTest, ::testing::Values("OpenCL"));
 #endif // GLOW_WITH_OPENCL
 
 #ifdef GLOW_WITH_HABANA
-INSTANTIATE_TEST_CASE_P(Habana, DeviceManagerTest,
-                        ::testing::Values(BackendKind::Habana));
+INSTANTIATE_TEST_CASE_P(Habana, DeviceManagerTest, ::testing::Values("Habana"));
 #endif // GLOW_WITH_HABANA

@@ -35,7 +35,7 @@ enum class PlaceholderType {
   NonePlaceholder = 3
 };
 
-class BackendTest : public ::testing::TestWithParam<BackendKind> {
+class BackendTest : public ::testing::TestWithParam<std::string> {
 public:
   ExecutionEngine EE_{GetParam()};
 };
@@ -574,15 +574,14 @@ TEST(PlaceholderBindings, basicPlaceholderBindingsTest) {
 }
 
 INSTANTIATE_TEST_CASE_P(Interpreter, BackendTest,
-                        ::testing::Values(BackendKind::Interpreter));
+                        ::testing::Values("Interpreter"));
 
 #ifdef GLOW_WITH_CPU
-INSTANTIATE_TEST_CASE_P(JIT, BackendTest, ::testing::Values(BackendKind::CPU));
+INSTANTIATE_TEST_CASE_P(JIT, BackendTest, ::testing::Values("CPU"));
 #endif // GLOW_WITH_CPU
 
 #ifdef GLOW_WITH_OPENCL
-INSTANTIATE_TEST_CASE_P(OpenCL, BackendTest,
-                        ::testing::Values(BackendKind::OpenCL));
+INSTANTIATE_TEST_CASE_P(OpenCL, BackendTest, ::testing::Values("OpenCL"));
 #endif // GLOW_WITH_OPENCL
 
 /// Check if the dump function works for Type.

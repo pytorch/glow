@@ -27,7 +27,7 @@
 using namespace glow;
 using llvm::cast;
 
-class GradCheckBase : public ::testing::TestWithParam<BackendKind> {
+class GradCheckBase : public ::testing::TestWithParam<std::string> {
 public:
   ExecutionEngine EE_{GetParam()};
 };
@@ -778,11 +778,11 @@ TEST_P(InterpreterGrad, gradientCheckCrossEntropyLoss) {
 }
 
 INSTANTIATE_TEST_CASE_P(Interpreter, InterpreterGrad,
-                        ::testing::Values(BackendKind::Interpreter));
+                        ::testing::Values("Interpreter"));
 
 INSTANTIATE_TEST_CASE_P(Interpreter, GradCheck,
-                        ::testing::Values(BackendKind::Interpreter));
+                        ::testing::Values("Interpreter"));
 
 #ifdef GLOW_WITH_CPU
-INSTANTIATE_TEST_CASE_P(JIT, GradCheck, ::testing::Values(BackendKind::CPU));
+INSTANTIATE_TEST_CASE_P(JIT, GradCheck, ::testing::Values("CPU"));
 #endif // GLOW_WITH_CPU

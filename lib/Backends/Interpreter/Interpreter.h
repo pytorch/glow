@@ -34,10 +34,6 @@ public:
   ///@{
   ~Interpreter() override = default;
 
-  BackendKind getBackendKind() const override {
-    return BackendKind::Interpreter;
-  }
-
   std::string getBackendName() const override { return getName(); }
   static std::string getName() { return "Interpreter"; }
 

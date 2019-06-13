@@ -24,7 +24,6 @@
 namespace glow {
 
 class PlaceholderBindings;
-enum class BackendKind;
 /// Interface for executing a compiled function.
 class CompiledFunction {
 public:
@@ -57,8 +56,8 @@ public:
   /// Read trace events out of this func and write them into /p bindings
   virtual void translateTraceEvents(ExecutionContext *bindings) const {}
 
-  /// \returns the Kind of Backend used to compile this function.
-  virtual BackendKind getCompileBackendKind() const = 0;
+  /// \returns the backend name used to compile this function.
+  virtual std::string getCompileBackendName() const = 0;
 
 protected:
   /// Contains symbol offsets and allocation sizes.

@@ -41,12 +41,12 @@ public:
   GlowOnnxifiManager &operator=(const GlowOnnxifiManager &) = delete;
   GlowOnnxifiManager &operator=(GlowOnnxifiManager &&) = delete;
 
-  /// Create a new glow BackendId for BackendKind \p kind using onnx graphs if
-  /// \p useOnnx and caffe2 graphs otherwise. If \p forQuantization is true then
-  /// a BackendId will be created otherwise a HostManagerBackendId will be
+  /// Create a new glow BackendId for backend \p backendName using onnx graphs
+  /// if \p useOnnx and caffe2 graphs otherwise. If \p forQuantization is true
+  /// then a BackendId will be created otherwise a HostManagerBackendId will be
   /// be created.
   /// Can be called safely by multiple threads concurrently.
-  BackendIdPtr createBackendId(glow::BackendKind kind, bool useOnnx,
+  BackendIdPtr createBackendId(llvm::StringRef backendName, bool useOnnx,
                                bool forQuantization = false);
 
   /// Create a new glow Backend associated with \p backendId.
@@ -103,7 +103,7 @@ private:
   /// NOTE: This method is not thread safe, the caller should be holding the
   /// mutex m_ when calling it!
   std::shared_ptr<runtime::HostManager>
-  getOrCreateHostManager(BackendKind backendKind);
+  getOrCreateHostManager(llvm::StringRef backendName);
 
   /// The set of all valid glow BackendIds.
   std::unordered_set<BackendIdPtr> backendIds_;
@@ -117,11 +117,11 @@ private:
   /// The set of all valid glow Graphs.
   std::unordered_set<GraphPtr> graphs_;
 
-  /// Map from BackendKind to HostManager managing devices of that kind that is
-  /// shared by all BackendIds using that HostManager. HostManager is stored as
-  /// weak_ptr here so that it will be destructed when the last BackendId using
-  /// it is destroyed not when this singleton is destroyed.
-  std::map<BackendKind, std::weak_ptr<runtime::HostManager>> hostManagers_;
+  /// Map from backend name to HostManager managing devices of that backend that
+  /// is shared by all BackendIds using that HostManager. HostManager is stored
+  /// as weak_ptr here so that it will be destructed when the last BackendId
+  /// using it is destroyed not when this singleton is destroyed.
+  std::map<std::string, std::weak_ptr<runtime::HostManager>> hostManagers_;
 
   /// Mutex that protects all members of GlowOnnxifiManager.
   /// TODO: can use one mutex per set if performance becomes an issue.

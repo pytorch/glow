@@ -77,20 +77,17 @@ GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxGetBackendIDs)(
       return ONNXIFI_STATUS_FALLBACK;
     }
 
-    auto *quantizationBackendOnnx =
-        manager.createBackendId(glow::BackendKind::Interpreter,
-                                /*useOnnx*/ true, /*forQuantization*/ true);
-    auto *quantizationBackendC2 =
-        manager.createBackendId(glow::BackendKind::Interpreter,
-                                /*useOnnx*/ false, /*forQuantization*/ true);
+    auto *quantizationBackendOnnx = manager.createBackendId(
+        "Interpreter", /*useOnnx*/ true, /*forQuantization*/ true);
+    auto *quantizationBackendC2 = manager.createBackendId(
+        "Interpreter", /*useOnnx*/ false, /*forQuantization*/ true);
 
     backendIDs[0] = quantizationBackendOnnx;
     backendIDs[1] = quantizationBackendC2;
   } else if (withCPU || withHabana) {
     *numBackends = 4;
 
-    auto backendKind =
-        withHabana ? glow::BackendKind::Habana : glow::BackendKind::CPU;
+    auto backendName = withHabana ? "Habana" : "CPU";
 
     // In case backendIDs is nullptr or does not have enough capacity just
     // return the total number of supported backends.
@@ -98,16 +95,14 @@ GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxGetBackendIDs)(
       return ONNXIFI_STATUS_FALLBACK;
     }
 
-    auto *cpuBackendOnnx = manager.createBackendId(backendKind,
+    auto *cpuBackendOnnx = manager.createBackendId(backendName,
                                                    /*useOnnx*/ true);
     auto *interpreterBackendOnnx =
-        manager.createBackendId(glow::BackendKind::Interpreter,
-                                /*useOnnx*/ true);
-    auto *cpuBackendC2 = manager.createBackendId(backendKind,
+        manager.createBackendId("Interpreter", /*useOnnx*/ true);
+    auto *cpuBackendC2 = manager.createBackendId(backendName,
                                                  /*useOnnx*/ false);
     auto *interpreterBackendC2 =
-        manager.createBackendId(glow::BackendKind::Interpreter,
-                                /*useOnnx*/ false);
+        manager.createBackendId("Interpreter", /*useOnnx*/ false);
 
     backendIDs[0] = cpuBackendOnnx;
     backendIDs[1] = interpreterBackendOnnx;
@@ -124,11 +119,9 @@ GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxGetBackendIDs)(
     }
 
     auto *interpreterBackendOnnx =
-        manager.createBackendId(glow::BackendKind::Interpreter,
-                                /*useOnnx*/ true);
+        manager.createBackendId("Interpreter", /*useOnnx*/ true);
     auto *interpreterBackendC2 =
-        manager.createBackendId(glow::BackendKind::Interpreter,
-                                /*useOnnx*/ false);
+        manager.createBackendId("Interpreter", /*useOnnx*/ false);
 
     backendIDs[0] = interpreterBackendOnnx;
     backendIDs[1] = interpreterBackendC2;

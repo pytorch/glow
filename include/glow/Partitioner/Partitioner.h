@@ -35,9 +35,9 @@ using PartitionCostMapTy = llvm::DenseMap<Function *, GraphMemInfo>;
 struct BackendInfo {
   /// Num of the devices which has the same type of backend.
   size_t num = 0;
-  /// The memory constraints for this backend kind.
+  /// The memory constraints for this backend.
   uint64_t memSize;
-  /// Backend Kind name.
+  /// Backend name.
   std::string name;
   /// Backend pointer.
   Backend *backend = nullptr;
@@ -61,7 +61,7 @@ using FunctionToNodesMapTy =
     std::map<Function *, NodesSetTy, FunctionNameComparator>;
 
 using FunctionToBackendKindMapTy =
-    std::map<Function *, BackendKind, FunctionNameComparator>;
+    std::map<Function *, std::string, FunctionNameComparator>;
 
 class NodeToFunctionMap {
 
@@ -71,9 +71,9 @@ class NodeToFunctionMap {
   /// Map of nodes in the original function to their target partition.
   NodeToFunctionMapTy nodeToFunction_;
 
-  /// Map of the partitions to the backendKind which will be used for compiling
+  /// Map of the partitions to the backend which will be used for compiling
   /// this partition.
-  FunctionToBackendKindMapTy functionToBackendKind_;
+  FunctionToBackendKindMapTy functionToBackendName_;
 
   /// Map of sub-functions to their memory consumption.
   PartitionCostMapTy partitionCost_;
@@ -83,16 +83,16 @@ class NodeToFunctionMap {
   std::map<Function *, std::vector<DeviceIDTy>> logicalDeviceIDMap_;
 
 public:
-  /// Create a new partition \p F, and map it with \p backendKind.
-  void createPartition(Function *F, BackendKind backendKind) {
+  /// Create a new partition \p F, and map it with \p backendName.
+  void createPartition(Function *F, llvm::StringRef backendName) {
     functions_.emplace_back(F);
-    functionToBackendKind_[F] = backendKind;
+    functionToBackendName_[F] = backendName;
   }
 
-  BackendKind getPartitionBackendKind(Function *F) {
-    DCHECK(functionToBackendKind_.find(F) != functionToBackendKind_.end())
+  std::string getPartitionBackendName(Function *F) {
+    DCHECK(functionToBackendName_.find(F) != functionToBackendName_.end())
         << "Unknown partition in Function: " << F->getName().str();
-    return functionToBackendKind_.find(F)->second;
+    return functionToBackendName_.find(F)->second;
   }
 
   /// Add a new Node->Function mapping.
@@ -119,8 +119,8 @@ public:
     FunctionList flist = map.getPartitions();
     for (auto it = flist.begin(); it != flist.end(); ++it) {
       Function *func = *it;
-      auto backendKind = map.getPartitionBackendKind(func);
-      createPartition(func, backendKind);
+      auto backendName = map.getPartitionBackendName(func);
+      createPartition(func, backendName);
       GraphMemInfo cost = map.getGraphMemInfo(func);
       setGraphMemInfo(func, cost);
     }
@@ -166,8 +166,8 @@ class Partitioner {
   /// The backend pointers.
   std::vector<Backend *> backends_;
 
-  /// The map between BackendKind and BackendInfo.
-  std::map<BackendKind, BackendInfo> backendMap_;
+  /// The map between backend name and BackendInfo.
+  std::map<std::string, BackendInfo> backendMap_;
 
   /// The map between partitions and the logicalDeviceID. The partitions with
   /// the same logicalDeviceID will be assigned into the same physical device.
@@ -221,9 +221,10 @@ class Partitioner {
   void partitionsAdjust(NodeToFunctionMap &partitions,
                         uint64_t availableMemory);
 
-  /// Assign nodes to partitions with \p backendKind and return the mapping.
+  /// Assign nodes to partitions grouped by \p backendName and return the
+  /// mapping.
   NodeToFunctionMap selectPartitions(Function *F, uint64_t availableMemory,
-                                     BackendKind backendKind);
+                                     llvm::StringRef backendName);
 
   /// Assign a logicalDeviceID to each partition. It is possible that two
   /// partitions need to be assigned into 1 device due to the number of physical
@@ -264,21 +265,21 @@ public:
               const std::vector<Backend *> &backends, bool saturateHost = false,
               bool optimized = false);
 
-  /// Get the map between the backendKind and the concrete backend info (e.g.
+  /// Get the map between the backend name and the concrete backend info (e.g.
   /// backend pointer, mem, number) used in this partiton. If there are backends
   /// need to be created, we use \p backendsHolder to hold them for memory
   /// purpose.
-  void getBackendMap(std::map<BackendKind, BackendInfo> &backendMap,
+  void getBackendMap(std::map<std::string, BackendInfo> &backendMap,
                      std::vector<std::unique_ptr<Backend>> &backendsHolder,
                      std::vector<Backend *> &backends);
 
   /// If there is no need to do any partition, just generate the DAGNode based
-  /// on current functions in this module for backend \p backendKind found in \p
+  /// on current functions in this module for backend \p backendName found in \p
   /// backendMap. \p cctx is used during optimization of the Function. \returns
   /// whether there was an error encountered.
   llvm::Error
-  createDAGWithoutPartition(BackendKind backendKind,
-                            std::map<BackendKind, BackendInfo> &backendMap,
+  createDAGWithoutPartition(llvm::StringRef backendName,
+                            std::map<std::string, BackendInfo> &backendMap,
                             CompilationContext &cctx);
 
   /// Decompose each function in a module. Now we support partitioning a module

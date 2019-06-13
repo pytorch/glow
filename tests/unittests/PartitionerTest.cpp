@@ -148,9 +148,8 @@ TEST_F(PartitionerTest, Basic1) {
   EE.run(bindings_);
   Tensor ref = res.clone();
 
-  std::vector<DeviceInfo> devices = {{3072, BackendKind::Interpreter},
-                                     {3072, BackendKind::Interpreter},
-                                     {3072, BackendKind::Interpreter}};
+  std::vector<DeviceInfo> devices = {
+      {3072, "Interpreter"}, {3072, "Interpreter"}, {3072, "Interpreter"}};
   Partitioner myPartitioner(&mod_, devices, false, true);
   CompilationContext cctx;
   auto err = myPartitioner.Partition(cctx);
@@ -222,10 +221,10 @@ TEST_F(PartitionerTest, Basic2) {
   EE.run(bindings_);
   Tensor ref = res.clone();
 
-  std::vector<DeviceInfo> devices = {{2048, BackendKind::Interpreter},
-                                     {2048, BackendKind::Interpreter},
-                                     {2048, BackendKind::Interpreter},
-                                     {2048, BackendKind::Interpreter}};
+  std::vector<DeviceInfo> devices = {{2048, "Interpreter"},
+                                     {2048, "Interpreter"},
+                                     {2048, "Interpreter"},
+                                     {2048, "Interpreter"}};
   Partitioner myPartitioner(&mod_, devices, /* saturateHost */ true);
   CompilationContext cctx;
   auto err = myPartitioner.Partition(cctx);
@@ -297,14 +296,14 @@ TEST_F(PartitionerTest, Error1) {
 
   // Infer using the un-partitioned graph.
   Tensor in(ElemKind::FloatTy, {1, 16});
-  ExecutionEngine EE;
+  ExecutionEngine EE{};
 
   EE.compile(CompilationMode::Infer, F_);
   updateInputPlaceholders(bindings_, {input, input1}, {&in, &in});
   EE.run(bindings_);
   Tensor ref = res.clone();
 
-  std::vector<DeviceInfo> devices = {{2048}};
+  std::vector<DeviceInfo> devices = {{2048, "Interpreter"}};
   Partitioner myPartitioner(&mod_, devices);
   CompilationContext cctx;
   auto err = myPartitioner.Partition(cctx);
@@ -374,9 +373,9 @@ TEST_F(PartitionerTest, Basic1Roofline) {
   }
 
   std::vector<DeviceInfo> devices = {
-      {3072, BackendKind::Interpreter, 100, 10, 0.1, 1, 0.05},
-      {3072, BackendKind::Interpreter, 100, 10, 0.1, 1, 0.05},
-      {3072, BackendKind::Interpreter, 100, 10, 0.1, 1, 0.05}};
+      {3072, "Interpreter", 100, 10, 0.1, 1, 0.05},
+      {3072, "Interpreter", 100, 10, 0.1, 1, 0.05},
+      {3072, "Interpreter", 100, 10, 0.1, 1, 0.05}};
   Partitioner myPartitioner(&mod_, devices);
   CompilationContext cctx;
   auto err = myPartitioner.Partition(cctx);
@@ -453,38 +452,43 @@ TEST_F(PartitionerTest, SelectRepFunc) {
   auto *plus = F_->createAdd("AplusB", inA, inB);
   F_->createSave("save", plus);
 
-  Partitioner myPartitioner(&mod_, {{1000000}, {1000000}, {1000000}});
+  Partitioner myPartitioner(&mod_, {{1000000, "Interpreter"},
+                                    {1000000, "Interpreter"},
+                                    {1000000, "Interpreter"}});
 
   CompilationContext cctx;
   auto err = myPartitioner.Partition(cctx);
   EXPECT_FALSE(errToBool(std::move(err)));
 }
 
-/// Create a mock backend with \p kind, and rewrite the isOpSupported function
+/// Create a mock backend and rewrite the isOpSupported function
 /// to un-support the op \p unsupportedOpKind.
-template <BackendKind kind, glow::Kinded::Kind unsupportedOpKind>
+template <glow::Kinded::Kind unsupportedOpKind>
 class MockBackend : public Backend {
+public:
+  std::string backendName;
+
   class MockFunction : public CompiledFunction {
   public:
-    MockFunction(const runtime::RuntimeBundle &bundle)
-        : CompiledFunction(bundle) {}
+    MockFunction(llvm::StringRef backendName,
+                 const runtime::RuntimeBundle &bundle)
+        : CompiledFunction(bundle), backendName(backendName) {}
 
     llvm::Error execute(ExecutionContext *) override {
       return llvm::Error::success();
     }
 
-    BackendKind getCompileBackendKind() const override {
-      return BackendKind::Interpreter;
-    }
+    std::string getCompileBackendName() const override { return backendName; }
+
+    std::string backendName;
   };
 
-  BackendKind getBackendKind() const override { return kind; }
-
-  std::string getBackendName() const override { return "MockBackend"; }
+  std::string getBackendName() const override { return backendName; }
 
   llvm::Expected<std::unique_ptr<CompiledFunction>>
   compile(Function *F, const BackendOptions &opts) const override {
-    return llvm::make_unique<MockFunction>(runtime::RuntimeBundle::create(*F));
+    return llvm::make_unique<MockFunction>(backendName,
+                                           runtime::RuntimeBundle::create(*F));
   }
 
   bool isOpSupported(const NodeInfo &NI) const override {
@@ -501,10 +505,13 @@ class MockBackend : public Backend {
   }
 };
 
-class BackendWithoutSub
-    : public MockBackend<BackendKind::CPU, Kinded::Kind::SubNodeKind> {};
-class BackendWithoutMul
-    : public MockBackend<BackendKind::Interpreter, Kinded::Kind::MulNodeKind> {
+class BackendWithoutSub : public MockBackend<Kinded::Kind::SubNodeKind> {
+public:
+  BackendWithoutSub() { backendName = "CPU"; }
+};
+class BackendWithoutMul : public MockBackend<Kinded::Kind::MulNodeKind> {
+public:
+  BackendWithoutMul() { backendName = "Interpreter"; }
 };
 
 static void createSimpleModule(Module &mod) {
@@ -536,10 +543,10 @@ TEST_F(PartitionerTest, SimpleHeterogeneousPartitioning) {
     backends.emplace_back(&backendWithoutMul2);
     backends.emplace_back(&backendWithoutSub1);
     backends.emplace_back(&backendWithoutSub2);
-    std::vector<DeviceInfo> devices = {{3072, BackendKind::Interpreter},
-                                       {3072, BackendKind::Interpreter},
-                                       {3072, BackendKind::CPU},
-                                       {3072, BackendKind::CPU}};
+    std::vector<DeviceInfo> devices = {{3072, "Interpreter"},
+                                       {3072, "Interpreter"},
+                                       {3072, "CPU"},
+                                       {3072, "CPU"}};
     auto partitioner =
         Partitioner(&mod_, devices, backends, /* saturateHost */ true);
     CompilationContext cctx;
@@ -580,8 +587,8 @@ TEST_F(PartitionerTest, logicalIDTest0) {
   auto *mul3 = F_->createMatMul("mul3", mul2, input5);
   auto *save = F_->createSave("ret", mul3);
   (void)save;
-  std::vector<DeviceInfo> devices = {{1500, BackendKind::Interpreter},
-                                     {1500, BackendKind::Interpreter}};
+  std::vector<DeviceInfo> devices = {{1500, "Interpreter"},
+                                     {1500, "Interpreter"}};
   // Create two backends which support different ops, then do the partition by
   // assigning the ops to the corresponding abackends.
   auto partitioner = Partitioner(&mod_, devices, /* saturateHost */ true);
@@ -618,8 +625,7 @@ TEST_F(PartitionerTest, logicalIDTest1) {
   std::vector<Backend *> backends;
   backends.emplace_back(&backendWithoutMul1);
   backends.emplace_back(&backendWithoutSub1);
-  std::vector<DeviceInfo> devices = {{3072, BackendKind::Interpreter},
-                                     {3072, BackendKind::CPU}};
+  std::vector<DeviceInfo> devices = {{3072, "Interpreter"}, {3072, "CPU"}};
   auto partitioner =
       Partitioner(&mod_, devices, backends, /* saturateHost */ true);
   CompilationContext cctx;

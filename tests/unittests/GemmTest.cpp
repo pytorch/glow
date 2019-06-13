@@ -39,7 +39,7 @@ extern void libjit_matmul_f(float *c, const float *a, const float *b,
 }
 
 void infer(Tensor *out, Tensor *lhs, Tensor *rhs) {
-  ExecutionEngine EE(BackendKind::Interpreter);
+  ExecutionEngine EE;
   PlaceholderBindings bindings;
 
   auto &mod = EE.getModule();

@@ -31,7 +31,7 @@
 
 using namespace glow;
 
-class TraceEventsTest : public ::testing::TestWithParam<BackendKind> {
+class TraceEventsTest : public ::testing::TestWithParam<std::string> {
 public:
   ExecutionEngine EE_{GetParam()};
   Tensor inputs{ElemKind::FloatTy, {1, 32, 32, 3}};
@@ -702,14 +702,12 @@ TEST(TraceEventsTest, nestedScopedEventsTerm) {
 }
 
 INSTANTIATE_TEST_CASE_P(Interpreter, TraceEventsTest,
-                        ::testing::Values(BackendKind::Interpreter));
+                        ::testing::Values("Interpreter"));
 
 #ifdef GLOW_WITH_CPU
-INSTANTIATE_TEST_CASE_P(JIT, TraceEventsTest,
-                        ::testing::Values(BackendKind::CPU));
+INSTANTIATE_TEST_CASE_P(JIT, TraceEventsTest, ::testing::Values("CPU"));
 #endif // GLOW_WITH_CPU
 
 #ifdef GLOW_WITH_OPENCL
-INSTANTIATE_TEST_CASE_P(OpenCL, TraceEventsTest,
-                        ::testing::Values(BackendKind::OpenCL));
+INSTANTIATE_TEST_CASE_P(OpenCL, TraceEventsTest, ::testing::Values("OpenCL"));
 #endif // GLOW_WITH_OPENCL

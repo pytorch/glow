@@ -28,7 +28,7 @@
 using namespace glow;
 using llvm::isa;
 
-class TestRunnerBase : public ::testing::TestWithParam<BackendKind> {
+class TestRunnerBase : public ::testing::TestWithParam<std::string> {
 public:
   ExecutionEngine EE_{GetParam()};
 };
@@ -1010,7 +1010,7 @@ static void generateImageData(Tensor &images, Tensor &labels, PseudoRNG &PRNG) {
 /// Use a simple convnet to learn two classes of images: Line and Cross.
 /// This test checks the results of the quantized network.
 TEST_P(InterpreterAndCPU, convNetForImageRecognition) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{"Interpreter"};
   const unsigned numSamples = 500;
   const unsigned batchSize = 7;
   PlaceholderBindings bindings;
@@ -1117,7 +1117,7 @@ static void generateRegressionTestData(Tensor &images, Tensor &labels,
 /// This is the "Where's Waldo" test. We place a pixel in a tensor and the
 /// network reports the coordinate of the pixel.
 TEST_P(InterpreterAndCPU, testFindPixelRegression) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{"Interpreter"};
   PlaceholderBindings bindings;
 
   const unsigned numSamples = 1000;
@@ -1533,19 +1533,17 @@ TEST_P(MLTest, learnSparseLengthsWeightedSumWeights) {
   }
 }
 
-INSTANTIATE_TEST_CASE_P(Interpreter, MLTest,
-                        ::testing::Values(BackendKind::Interpreter));
+INSTANTIATE_TEST_CASE_P(Interpreter, MLTest, ::testing::Values("Interpreter"));
 #ifdef GLOW_WITH_CPU
-INSTANTIATE_TEST_CASE_P(JIT, MLTest, ::testing::Values(BackendKind::CPU));
+INSTANTIATE_TEST_CASE_P(JIT, MLTest, ::testing::Values("CPU"));
 #endif // GLOW_WITH_CPU
 
 #ifdef GLOW_WITH_OPENCL
-INSTANTIATE_TEST_CASE_P(OpenCL, MLTest, ::testing::Values(BackendKind::OpenCL));
+INSTANTIATE_TEST_CASE_P(OpenCL, MLTest, ::testing::Values("OpenCL"));
 #endif // GLOW_WITH_OPENCL
 
 INSTANTIATE_TEST_CASE_P(Interpreter, InterpreterAndCPU,
-                        ::testing::Values(BackendKind::Interpreter));
+                        ::testing::Values("Interpreter"));
 #ifdef GLOW_WITH_CPU
-INSTANTIATE_TEST_CASE_P(JIT, InterpreterAndCPU,
-                        ::testing::Values(BackendKind::CPU));
+INSTANTIATE_TEST_CASE_P(JIT, InterpreterAndCPU, ::testing::Values("CPU"));
 #endif // GLOW_WITH_CPU

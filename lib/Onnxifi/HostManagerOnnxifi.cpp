@@ -36,10 +36,10 @@ static llvm::cl::opt<bool, true>
                            llvm::cl::location(GlowDumpDebugTraces));
 
 std::unique_ptr<runtime::HostManager>
-HostManagerBackendId::createHostManager(glow::BackendKind kind) {
+HostManagerBackendId::createHostManager(llvm::StringRef backendName) {
   std::vector<std::unique_ptr<runtime::DeviceConfig>> configs;
   for (int i = 0; i < GlowNumDevices; i++) {
-    configs.push_back(llvm::make_unique<runtime::DeviceConfig>(kind));
+    configs.push_back(llvm::make_unique<runtime::DeviceConfig>(backendName));
   }
   return llvm::make_unique<runtime::HostManager>(std::move(configs));
 }

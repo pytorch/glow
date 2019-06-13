@@ -110,7 +110,7 @@ void setUpDeviceManagerCommon(
   // Create and initialize the DeviceManager instance.
   deviceManager =
       std::unique_ptr<DeviceManager>(DeviceManager::createDeviceManager(
-          DeviceConfig(backend->getBackendKind())));
+          DeviceConfig(backend->getBackendName())));
   bool error = errToBool(deviceManager->init());
 
   if (error) {
@@ -292,7 +292,7 @@ protected:
     std::vector<std::unique_ptr<DeviceConfig>> configs;
     for (unsigned i = 0; i < numDeviceManagers_; ++i) {
       configs.emplace_back(
-          llvm::make_unique<DeviceConfig>(backend->getBackendKind()));
+          llvm::make_unique<DeviceConfig>(backend->getBackendName()));
     }
 
     // Create and initialize the HostManager instance.

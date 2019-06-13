@@ -17,4 +17,4 @@
 set -euxo pipefail
 
 # CHECK: ich liebe Musik \.$
-$BIN/text-translator -m "${MODELS_DIR}/en2gr" -cpu <<< "I love music ."
+$BIN/text-translator -m "${MODELS_DIR}/en2gr" -backend=CPU <<< "I love music ."

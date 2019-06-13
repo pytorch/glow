@@ -589,7 +589,7 @@ protected:
       DAGNode *dag = exeList.at(curPt);
       // The root in a G is always a dummy function.
       if (curPt > 0) {
-        ExecutionEngine EE{EE_.getBackend()->getBackendKind()};
+        ExecutionEngine EE{EE_.getBackend()->getBackendName()};
         Function *func = name2func[dag->name];
         EE.compile(CompilationMode::Infer, func);
         updateInputPlaceholders(bindings, vars, inputs);
@@ -610,9 +610,9 @@ protected:
 
     assert(memSize > 0 && "Must set partitionerPerDeviceMemCapacity > 0.");
     assert(numDevices > 0 && "Must set partitionerNumDevices > 0.");
-    auto backendKind = EE_.getBackend()->getBackendKind();
+    auto backendName = EE_.getBackend()->getBackendName();
     std::cout << numDevices << " devices of size " << memSize << "\n";
-    std::vector<DeviceInfo> devices(numDevices, {memSize, backendKind});
+    std::vector<DeviceInfo> devices(numDevices, {memSize, backendName});
     Partitioner myPartitioner(&mod_, devices);
     CompilationContext cctx;
     EXIT_ON_ERR(myPartitioner.Partition(cctx));

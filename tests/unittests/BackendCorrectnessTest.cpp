@@ -31,9 +31,9 @@
 using namespace glow;
 using llvm::cast;
 
-class BackendCorrectnessTest : public ::testing::TestWithParam<BackendKind> {
+class BackendCorrectnessTest : public ::testing::TestWithParam<std::string> {
 protected:
-  BackendKind backendKind_{GetParam()};
+  std::string backendName_{GetParam()};
 };
 
 class CPUOnly : public BackendCorrectnessTest {};
@@ -51,8 +51,8 @@ TEST_P(BackendCorrectnessTest, convTest) {
   Tensor out1(ElemKind::FloatTy, shape);
   Tensor out2(ElemKind::FloatTy, shape);
 
-  inferConvNet(&inputs, &kernel, &bias, &out1, backendKind_);
-  inferConvNet(&inputs, &kernel, &bias, &out2, BackendKind::Interpreter);
+  inferConvNet(&inputs, &kernel, &bias, &out1, backendName_);
+  inferConvNet(&inputs, &kernel, &bias, &out2, "Interpreter");
 
   EXPECT_TRUE(out1.isEqual(out2));
 }
@@ -64,8 +64,8 @@ TEST_P(CPUOnly, extract3Dtest) {
   Tensor out1;
   Tensor out2;
 
-  inferExtract3D(&inputs, &out1, BackendKind::CPU);
-  inferExtract3D(&inputs, &out2, BackendKind::Interpreter);
+  inferExtract3D(&inputs, &out1, "CPU");
+  inferExtract3D(&inputs, &out2, "Interpreter");
 
   EXPECT_TRUE(out1.isEqual(out2));
 }
@@ -83,8 +83,8 @@ TEST_P(CPUOnly, quantizedConvTest) {
   Tensor out1(ElemKind::Int8QTy, shape, 0.05, -17);
   Tensor out2(ElemKind::Int8QTy, shape, 0.05, -17);
 
-  inferConvNet(&inputs, &kernel, &bias, &out1, backendKind_);
-  inferConvNet(&inputs, &kernel, &bias, &out2, BackendKind::Interpreter);
+  inferConvNet(&inputs, &kernel, &bias, &out1, backendName_);
+  inferConvNet(&inputs, &kernel, &bias, &out2, "Interpreter");
 
   EXPECT_TRUE(out1.isEqual(out2, 1.0));
 }
@@ -114,9 +114,9 @@ TEST_P(BackendCorrectnessTest, convGradTest) {
   Tensor out2;
 
   trainConvNet(&inputs, &kernel1, &bias1, &kernel2, &bias2, &selected, shape1,
-               shape2, &out1, backendKind_);
+               shape2, &out1, backendName_);
   trainConvNet(&inputs, &kernel1, &bias1, &kernel2, &bias2, &selected, shape1,
-               shape2, &out2, BackendKind::Interpreter);
+               shape2, &out2, "Interpreter");
 
   EXPECT_TRUE(out1.isEqual(out2));
 }
@@ -128,8 +128,8 @@ TEST_P(CPUOnly, localResponseNormalizationTest) {
   Tensor out1;
   Tensor out2;
 
-  inferLocalResponseNormalizationNet(&inputs, &out1, backendKind_);
-  inferLocalResponseNormalizationNet(&inputs, &out2, BackendKind::Interpreter);
+  inferLocalResponseNormalizationNet(&inputs, &out1, backendName_);
+  inferLocalResponseNormalizationNet(&inputs, &out2, "Interpreter");
 
   EXPECT_TRUE(out1.isEqual(out2));
 }
@@ -155,10 +155,9 @@ TEST_P(CPUOnly, localResponseNormalizationGradTest) {
   Tensor out2(ElemKind::FloatTy, shape1);
 
   trainLocalResponseNormalizationNet(&inputs, &weights, &bias, &selected,
-                                     shape1, shape2, &out1, backendKind_);
+                                     shape1, shape2, &out1, backendName_);
   trainLocalResponseNormalizationNet(&inputs, &weights, &bias, &selected,
-                                     shape1, shape2, &out2,
-                                     BackendKind::Interpreter);
+                                     shape1, shape2, &out2, "Interpreter");
 
   EXPECT_TRUE(out1.isEqual(out2));
 }
@@ -171,12 +170,10 @@ class MockCPUBackend : public BackendUsingGlowIR {
 
 public:
   MockCPUBackend() {
-    backend_.reset(
-        static_cast<BackendUsingGlowIR *>(createBackend(BackendKind::CPU)));
+    backend_.reset(static_cast<BackendUsingGlowIR *>(createBackend("CPU")));
   }
 
-  BackendKind getBackendKind() const override { return BackendKind::CPU; }
-  std::string getBackendName() const override { return "MockCPUBackend"; }
+  std::string getBackendName() const override { return "CPU"; }
 
   llvm::Expected<std::unique_ptr<CompiledFunction>>
   compile(Function *F, const BackendOptions &opts) const override {
@@ -278,9 +275,9 @@ TEST_P(CPUOnly, AvgPoolGradTest) {
   Tensor out2;
 
   trainAvgPoolNet(&inputs, &weights, &bias, &selected, shape1, shape2, &out1,
-                  backendKind_);
+                  backendName_);
   trainAvgPoolNet(&inputs, &weights, &bias, &selected, shape1, shape2, &out2,
-                  BackendKind::Interpreter);
+                  "Interpreter");
 
   EXPECT_TRUE(out1.isEqual(out2));
 }
@@ -306,9 +303,9 @@ TEST_P(BackendCorrectnessTest, MaxPoolGradTest) {
   Tensor out2;
 
   trainMaxPoolNet(&inputs, &weights, &bias, &selected, shape1, shape2, &out1,
-                  backendKind_);
+                  backendName_);
   trainMaxPoolNet(&inputs, &weights, &bias, &selected, shape1, shape2, &out2,
-                  BackendKind::Interpreter);
+                  "Interpreter");
 
   EXPECT_TRUE(out1.isEqual(out2));
 }
@@ -326,8 +323,8 @@ TEST_P(CPUOnly, intLookupTable) {
     initValues[i] = i - 128;
   }
 
-  inferIntLookupTableNet(&inputs, &out1, initValues, backendKind_);
-  inferIntLookupTableNet(&inputs, &out2, initValues, BackendKind::Interpreter);
+  inferIntLookupTableNet(&inputs, &out1, initValues, backendName_);
+  inferIntLookupTableNet(&inputs, &out2, initValues, "Interpreter");
 
   EXPECT_TRUE(out1.isEqual(out2));
 }
@@ -338,8 +335,8 @@ TEST_P(BackendCorrectnessTest, smallConv) {
   Tensor out1;
   Tensor out2;
 
-  inferSmallConv(&input, &out1, backendKind_);
-  inferSmallConv(&input, &out2, BackendKind::Interpreter);
+  inferSmallConv(&input, &out1, backendName_);
+  inferSmallConv(&input, &out2, "Interpreter");
 
   EXPECT_TRUE(out1.isEqual(out2));
 }
@@ -350,8 +347,8 @@ TEST_P(CPUOnly, groupConvTest) {
   llvm::ArrayRef<size_t> shape(S);
   Tensor out1(ElemKind::FloatTy, shape);
   Tensor out2(ElemKind::FloatTy, shape);
-  inferGroupConv(&out1, backendKind_);
-  inferGroupConv(&out2, BackendKind::Interpreter);
+  inferGroupConv(&out1, backendName_);
+  inferGroupConv(&out2, "Interpreter");
 
   EXPECT_TRUE(out1.isEqual(out2));
 }
@@ -360,8 +357,8 @@ TEST_P(CPUOnly, groupConvTest) {
 TEST_P(CPUOnly, nonSquarePaddingConvTest) {
   Tensor out1;
   Tensor out2;
-  inferNonSquarePaddingConv(&out1, BackendKind::CPU);
-  inferNonSquarePaddingConv(&out2, BackendKind::Interpreter);
+  inferNonSquarePaddingConv(&out1, "CPU");
+  inferNonSquarePaddingConv(&out2, "Interpreter");
 
   EXPECT_TRUE(out1.isEqual(out2));
 }
@@ -370,8 +367,8 @@ TEST_P(CPUOnly, nonSquarePaddingConvTest) {
 TEST_P(CPUOnly, nonSquareKernelConvTest) {
   Tensor out1;
   Tensor out2;
-  inferNonSquareKernelConv(&out1, BackendKind::CPU);
-  inferNonSquareKernelConv(&out2, BackendKind::Interpreter);
+  inferNonSquareKernelConv(&out1, "CPU");
+  inferNonSquareKernelConv(&out2, "Interpreter");
 
   EXPECT_TRUE(out1.isEqual(out2));
 }
@@ -380,8 +377,8 @@ TEST_P(CPUOnly, nonSquareKernelConvTest) {
 TEST_P(CPUOnly, nonSquareStrideConvTest) {
   Tensor out1;
   Tensor out2;
-  inferNonSquareStrideConv(&out1, BackendKind::CPU);
-  inferNonSquareStrideConv(&out2, BackendKind::Interpreter);
+  inferNonSquareStrideConv(&out1, "CPU");
+  inferNonSquareStrideConv(&out2, "Interpreter");
 
   EXPECT_TRUE(out1.isEqual(out2));
 }
@@ -390,8 +387,8 @@ TEST_P(CPUOnly, nonSquareStrideConvTest) {
 TEST_P(CPUOnly, convDKKC8Test) {
   Tensor out1;
   Tensor out2;
-  inferConvDKKC8(&out1, BackendKind::CPU);
-  inferConvDKKC8(&out2, BackendKind::Interpreter);
+  inferConvDKKC8(&out1, "CPU");
+  inferConvDKKC8(&out2, "Interpreter");
   EXPECT_TRUE(out1.isEqual(out2));
 }
 
@@ -413,9 +410,8 @@ TEST_P(BackendCorrectnessTest, softmaxGradTest) {
   Tensor out1;
   Tensor out2;
 
-  trainSoftMaxNet(&inputs, &weights, &bias, &selected, &out1, backendKind_);
-  trainSoftMaxNet(&inputs, &weights, &bias, &selected, &out2,
-                  BackendKind::Interpreter);
+  trainSoftMaxNet(&inputs, &weights, &bias, &selected, &out1, backendName_);
+  trainSoftMaxNet(&inputs, &weights, &bias, &selected, &out2, "Interpreter");
 
   EXPECT_TRUE(out1.isEqual(out2));
 }
@@ -429,8 +425,8 @@ TEST_P(BackendCorrectnessTest, convOps) {
     Tensor out1;
     Tensor out2;
 
-    inferBasicConvNet(&inputs, &out1, backendKind_, depth);
-    inferBasicConvNet(&inputs, &out2, BackendKind::Interpreter, depth);
+    inferBasicConvNet(&inputs, &out1, backendName_, depth);
+    inferBasicConvNet(&inputs, &out2, "Interpreter", depth);
 
     EXPECT_TRUE(out1.isEqual(out2));
   }
@@ -463,9 +459,9 @@ TEST_P(CPUOnly, complexNet1) {
   Tensor out1;
   Tensor out2;
 
-  inferComplexNet1(&inputs1, &inputs2, &inputs3, &inputs4, &out1, backendKind_);
+  inferComplexNet1(&inputs1, &inputs2, &inputs3, &inputs4, &out1, backendName_);
   inferComplexNet1(&inputs1, &inputs2, &inputs3, &inputs4, &out2,
-                   BackendKind::Interpreter);
+                   "Interpreter");
 
   EXPECT_TRUE(out1.isEqual(out2));
 }
@@ -491,8 +487,8 @@ TEST_P(BackendCorrectnessTest, tinyResnet) {
 
   Tensor out1;
   Tensor out2;
-  inferTinyResnet(&input, &out1, weights, BackendKind::Interpreter);
-  inferTinyResnet(&input, &out2, weights, backendKind_);
+  inferTinyResnet(&input, &out1, weights, "Interpreter");
+  inferTinyResnet(&input, &out2, weights, backendName_);
 
   EXPECT_TRUE(out1.isEqual(out2, 0.001));
 }
@@ -504,19 +500,18 @@ TEST_P(CPUOnly, maxSplatTest) {
   input.getHandle<int8_t>().randomize(-128, 127, PRNG);
   Tensor out1, out2;
 
-  inferMaxSplat(&input, &out1, backendKind_);
-  inferMaxSplat(&input, &out2, BackendKind::Interpreter);
+  inferMaxSplat(&input, &out1, backendName_);
+  inferMaxSplat(&input, &out2, "Interpreter");
 
   EXPECT_TRUE(out1.isEqual(out2));
 }
 
 #ifdef GLOW_WITH_CPU
-INSTANTIATE_TEST_CASE_P(CPU, BackendCorrectnessTest,
-                        ::testing::Values(BackendKind::CPU));
-INSTANTIATE_TEST_CASE_P(CPU, CPUOnly, ::testing::Values(BackendKind::CPU));
+INSTANTIATE_TEST_CASE_P(CPU, BackendCorrectnessTest, ::testing::Values("CPU"));
+INSTANTIATE_TEST_CASE_P(CPU, CPUOnly, ::testing::Values("CPU"));
 #endif // GLOW_WITH_CPU
 
 #ifdef GLOW_WITH_OPENCL
 INSTANTIATE_TEST_CASE_P(OpenCL, BackendCorrectnessTest,
-                        ::testing::Values(BackendKind::OpenCL));
+                        ::testing::Values("OpenCL"));
 #endif // GLOW_WITH_OPENCL

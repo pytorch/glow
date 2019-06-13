@@ -46,13 +46,13 @@ auto sortMostMemory = [](const std::pair<DeviceIDTy, uint64_t> &a,
 } // namespace
 
 Provisioner::Provisioner(DeviceManagerMapTy &devices) {
-  llvm::SmallSet<BackendKind, 10> used;
+  llvm::SmallSet<std::string, 10> used;
   for (auto &device : devices) {
     devices_.push_back(device.second.get());
-    auto backendKind = device.second->getBackendKind();
-    if (used.count(backendKind) == 0) {
-      backends_.emplace_back(createBackend(backendKind));
-      used.insert(backendKind);
+    auto backendName = device.second->getBackendName();
+    if (used.count(backendName) == 0) {
+      backends_.emplace_back(createBackend(backendName));
+      used.insert(backendName);
     }
   }
 }
@@ -89,12 +89,12 @@ llvm::Error Provisioner::provision(DAGListTy &networks, Module &module,
   cctx.backendOpts.collectConstants = false;
 
   std::vector<std::pair<DeviceIDTy, uint64_t>> logicalDeviceSize;
-  std::map<DeviceIDTy, BackendKind> logicalDeviceBackendKind;
+  std::map<DeviceIDTy, std::string> logicalDeviceBackendName;
   std::map<DeviceIDTy, FunctionMapTy> functionMaps;
   // Compile functions and calculate required memory for each logical device.
   for (auto &device : logicalDevices) {
     uint64_t totalMemory = 0;
-    auto nodeBackendKind = (device.second[0])->backendKind;
+    auto nodeBackendName = (device.second[0])->backendName;
     FunctionMapTy functionMap;
     for (auto &node : device.second) {
       // Only compile if we haven't compiled before. If we have previously
@@ -103,7 +103,7 @@ llvm::Error Provisioner::provision(DAGListTy &networks, Module &module,
       if (it == functions_.end()) {
         Function *function = module.getFunction(node->name);
         for (size_t i = 0, e = backends_.size(); i < e; i++) {
-          if (backends_[i]->getBackendKind() == nodeBackendKind) {
+          if (backends_[i]->getBackendName() == nodeBackendName) {
             auto compiledOrErr =
                 backends_[i]->compile(function, cctx.backendOpts);
             if (!compiledOrErr) {
@@ -121,7 +121,7 @@ llvm::Error Provisioner::provision(DAGListTy &networks, Module &module,
       totalMemory += node->runtimeBundle->getConstantWeightSize();
     }
     logicalDeviceSize.push_back(std::make_pair(device.first, totalMemory));
-    logicalDeviceBackendKind[device.first] = nodeBackendKind;
+    logicalDeviceBackendName[device.first] = nodeBackendName;
     functionMaps.emplace(device.first, functionMap);
   }
   // Sort by total size in descending order.
@@ -137,18 +137,18 @@ llvm::Error Provisioner::provision(DAGListTy &networks, Module &module,
   std::sort(deviceMemory.begin(), deviceMemory.end(), sortMostMemory);
 
   // Try to add functions to devices in order from largest to smallest.
-  std::map<BackendKind, size_t> startPos;
+  std::map<std::string, size_t> startPos;
   for (unsigned i = 0; i < logicalDeviceSize.size(); i++) {
-    BackendKind backendKind =
-        logicalDeviceBackendKind[logicalDeviceSize[i].first];
+    std::string backendName =
+        logicalDeviceBackendName[logicalDeviceSize[i].first];
     // Find the start point of each backendKind device.
-    if (startPos.find(backendKind) == startPos.end()) {
-      startPos[backendKind] = 0;
+    if (startPos.find(backendName) == startPos.end()) {
+      startPos[backendName] = 0;
     }
-    for (size_t j = startPos[backendKind]; j < deviceMemory.size(); j++) {
+    for (size_t j = startPos[backendName]; j < deviceMemory.size(); j++) {
       DeviceIDTy deviceID = deviceMemory[j].first;
-      if (devices_[deviceID]->getBackendKind() == backendKind) {
-        startPos[backendKind] = j + 1;
+      if (devices_[deviceID]->getBackendName() == backendName) {
+        startPos[backendName] = j + 1;
         RETURN_ERR_IF_NOT(
             logicalDeviceSize[i].second < deviceMemory[j].second,
             llvm::formatv("Not enough memory to provision functions "

@@ -41,9 +41,10 @@ std::unique_ptr<Module> setupModule(unsigned functionCount) {
 }
 
 std::unique_ptr<HostManager>
-createHostManager(BackendKind kind, HostConfig hostConfig = HostConfig()) {
+createHostManager(llvm::StringRef backendName,
+                  HostConfig hostConfig = HostConfig()) {
   std::vector<std::unique_ptr<DeviceConfig>> configs;
-  auto deviceConfig = llvm::make_unique<DeviceConfig>(kind);
+  auto deviceConfig = llvm::make_unique<DeviceConfig>(backendName);
   configs.push_back(std::move(deviceConfig));
   std::unique_ptr<HostManager> hostManager =
       llvm::make_unique<HostManager>(std::move(configs), hostConfig);
@@ -70,11 +71,11 @@ void addAndRemoveNetwork(HostManager *manager, unsigned int functionNumber) {
   EXPECT_FALSE(errToBool(manager->removeNetwork(name)));
 }
 
-TEST_F(HostManagerTest, newHostManager) { createHostManager(BackendKind::CPU); }
+TEST_F(HostManagerTest, newHostManager) { createHostManager("CPU"); }
 
 TEST_F(HostManagerTest, addNetwork) {
   auto module = setupModule(6);
-  auto hostManager = createHostManager(BackendKind::CPU);
+  auto hostManager = createHostManager("CPU");
   CompilationContext cctx;
   ASSERT_FALSE(errToBool(hostManager->addNetwork(std::move(module), cctx)));
 }
@@ -93,7 +94,7 @@ TEST_F(HostManagerTest, runNetwork) {
   auto *saveTensor =
       context->getPlaceholderBindings()->allocate(save->getPlaceholder());
 
-  auto hostManager = createHostManager(BackendKind::CPU);
+  auto hostManager = createHostManager("CPU");
   CompilationContext cctx;
   ASSERT_FALSE(errToBool(hostManager->addNetwork(std::move(module), cctx)));
 
@@ -144,7 +145,7 @@ TEST_F(HostManagerTest, runNetwork) {
 TEST_F(HostManagerTest, ConcurrentAddRemoveUnique) {
   constexpr auto numThreads = 6;
   constexpr auto numItersPerThread = 20;
-  auto hostManager = createHostManager(BackendKind::CPU);
+  auto hostManager = createHostManager("CPU");
   std::atomic<unsigned> counter{0};
   std::vector<std::thread> threads;
   for (auto i = 0; i < numThreads; ++i) {
@@ -165,7 +166,7 @@ TEST_F(HostManagerTest, ConcurrentAddRemoveUnique) {
 TEST_F(HostManagerTest, ConcurrentAddRemoveDuplicate) {
   constexpr auto numThreads = 6;
   constexpr auto numItersPerThread = 20;
-  auto hostManager = createHostManager(BackendKind::CPU);
+  auto hostManager = createHostManager("CPU");
   std::vector<std::thread> threads;
   for (auto i = 0; i < numThreads; ++i) {
     threads.emplace_back([&]() {
@@ -184,8 +185,7 @@ TEST_F(HostManagerTest, ConcurrentAddRemoveDuplicate) {
 TEST_F(HostManagerTest, ConfigureHostManager) {
   HostConfig config;
   config.maxActiveRequests = 1;
-  auto hostManager =
-      createHostManager(BackendKind::Interpreter, std::move(config));
+  auto hostManager = createHostManager("Interpreter", std::move(config));
 
   EXPECT_FALSE(errToBool(addNetwork(hostManager.get(), "main")));
 

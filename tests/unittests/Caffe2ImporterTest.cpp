@@ -29,7 +29,7 @@ using namespace glow;
 /// The input is N*C*H*W (1*1*3*3), the kernel is 2,
 /// stride is 1, pad is 1, group is 1.
 TEST(caffe2, importConv) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -71,7 +71,7 @@ TEST(caffe2, importConv) {
 /// The input is N*C*H*W (1*1*3*3), the kernel is 2,
 /// stride is 1, pad is 1, group is 1.
 TEST(caffe2, importConvRelu) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -130,7 +130,7 @@ TEST(caffe2, importConvRelu) {
 /// The input is N*H*W*C (1*3*3*1), the kernel is 2,
 /// stride is 1, pad is 1, group is 1.
 TEST(caffe2, convNHWC) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -169,7 +169,7 @@ TEST(caffe2, convNHWC) {
 /// The input is N*H*W*C (1*1*1*4), the kernel is 1,
 /// stride is 1, pad is 1, group is 2.
 TEST(caffe2, convGroupQuantized) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -257,7 +257,7 @@ TEST(caffe2, convGroupQuantized) {
 
 /// Test loading MaxPool with NHWC order input.
 TEST(caffe2, maxPoolNHWC) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -295,7 +295,7 @@ TEST(caffe2, maxPoolNHWC) {
 
 /// Test that loading MaxPool with legacy padding terminates early.
 TEST(caffe2, maxPoolLegacyPadding) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -320,7 +320,7 @@ TEST(caffe2, maxPoolLegacyPadding) {
 
 /// Test loading MaxPool with default NCHW order input.
 TEST(caffe2, maxPool) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -364,7 +364,7 @@ TEST(caffe2, maxPool) {
 
 /// Test loading AvgPool with NHWC order input.
 TEST(caffe2, avgPoolNHWC) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -402,7 +402,7 @@ TEST(caffe2, avgPoolNHWC) {
 
 /// Test loading AveragePool with default NCHW order input.
 TEST(caffe2, avgPool) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -455,7 +455,7 @@ TEST(caffe2, avgPool) {
 /// To fill the gap between the two, glow issues a reshape
 /// right after its concat.
 TEST(caffe2, concatAddAxis) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -533,7 +533,7 @@ TEST(caffe2, concatAddAxis) {
 
 /// Test loading a regular concat node.
 TEST(caffe2, concat) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -611,7 +611,7 @@ TEST(caffe2, concat) {
 
 /// Test loading a batched matmul with transpose on RHS.
 TEST(caffe2, batchedMatmulRHS) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
   std::string NetDescFilename(
@@ -666,7 +666,7 @@ TEST(caffe2, batchedMatmulRHS) {
 
 /// Test loading a parallel batched matmul.
 TEST(caffe2, parallelBatchedMatmulRHS) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
   std::string NetDescFilename(
@@ -715,7 +715,7 @@ TEST(caffe2, parallelBatchedMatmulRHS) {
 
 /// Test loading a FC node : I * transpose(W) + B.
 TEST(caffe2, FC) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -789,7 +789,7 @@ TEST(caffe2, FC) {
 /// Test loading a FC node : I * transpose(W) + B, where I is need to be
 /// flatten.
 TEST(caffe2, FCWithFlatten) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -836,7 +836,7 @@ TEST(caffe2, FCWithFlatten) {
 
 /// Test loading a FCTransposed node: I * W + B
 TEST(caffe2, FCTransposed) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -910,7 +910,7 @@ TEST(caffe2, FCTransposed) {
 
 /// Test loading a FCTransposed node: I * W + B, where I is need to be flatten.
 TEST(caffe2, FCTransposedWithFlatten) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -960,7 +960,7 @@ TEST(caffe2, FCTransposedWithFlatten) {
 /// Test loading clip op from a Caffe2 model.
 /// Test with arg min = 20.0 max = 60.0
 TEST(caffe2, importClip) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -1004,7 +1004,7 @@ TEST(caffe2, importClip) {
 /// min = std::numeric_limits<float>::lowest()
 /// max = std::numeric_limits<float>::max()
 TEST(caffe2, importClipDefault) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -1046,7 +1046,7 @@ TEST(caffe2, importClipDefault) {
 
 /// Test loading a ReplaceNaN operator.
 TEST(caffe2, replaceNaN) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -1090,7 +1090,7 @@ TEST(caffe2, replaceNaN) {
 
 /// Test loading a DotProduct operator with 1D inputs.
 TEST(caffe2, dotProduct1D) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -1132,7 +1132,7 @@ TEST(caffe2, dotProduct1D) {
 
 // Test loading a DotProduct operator with 2D inputs.
 TEST(caffe2, dotProduct2D) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -1179,7 +1179,7 @@ TEST(caffe2, dotProduct2D) {
 
 // Test loading a BatchBoxCox operator.
 TEST(caffe2, batchBoxCox) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -1300,7 +1300,7 @@ TEST(caffe2, batchBoxCox) {
 
 // Test loading a EQ operator with 1D inputs.
 TEST(caffe2, EQ1D) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -1340,7 +1340,7 @@ TEST(caffe2, EQ1D) {
 
 // Test loading a LengthsToRanges operator.
 TEST(caffe2, LengthsToRanges) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -1374,7 +1374,7 @@ TEST(caffe2, LengthsToRanges) {
 
 // Test loading Logit operator from a Caffe2 model.
 TEST(caffe2, Logit) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -1411,7 +1411,7 @@ TEST(caffe2, Logit) {
 
 // Test loading a SparseToDense operator.
 TEST(caffe2, sparseToDense) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -1463,7 +1463,7 @@ TEST(caffe2, sparseToDense) {
 }
 
 TEST(caffe2, SparseToDenseMask) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -1516,7 +1516,7 @@ TEST(caffe2, SparseToDenseMask) {
 
 /// Test loading NCHW2NHWC op.
 TEST(caffe2, testNCHW2NHWC) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -1560,7 +1560,7 @@ TEST(caffe2, testNCHW2NHWC) {
 
 /// Test loading a LengthsSum operator.
 TEST(caffe2, lengthsSum) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -1671,7 +1671,7 @@ TEST(caffe2, LengthsRangeFill) {
 
 /// Verify that different fill types are loaded with the correct types.
 TEST(caffe2, tensorFillsTest) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -1735,7 +1735,7 @@ TEST(caffe2, tensorFillsTest) {
 }
 
 TEST(caffe2, Alias) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -1771,7 +1771,7 @@ TEST(caffe2, Alias) {
 }
 
 TEST(caffe2, Modulo) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -1812,7 +1812,7 @@ TEST(caffe2, Modulo) {
 
 /// Test loading an ElementwiseLinear operator.
 TEST(caffe2, elementwiseLinear) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -1888,7 +1888,7 @@ TEST(caffe2, elementwiseLinear) {
 
 /// Test loading an ElementwiseLinear operator with no axis specified.
 TEST(caffe2, elementwiseLinearUnspecifiedAxis) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -1978,7 +1978,7 @@ TEST(caffe2, elementwiseLinearUnspecifiedAxis) {
 ///    LENGTHS = [3, 0, 3, 2]
 ///    OUTPUT =  [[0.5, 0, 0, 25]]
 TEST(caffe2, SparseLengthsWeightedSum8BitsRowwise) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -2084,7 +2084,7 @@ TEST(caffe2, SparseLengthsWeightedSum8BitsRowwise) {
 ///        [3.0, 3.6],
 ///    ]
 TEST(caffe2, SparseLengthsSum8BitsRowwise) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -2172,7 +2172,7 @@ TEST(caffe2, SparseLengthsSum8BitsRowwise) {
 ///    LENGTHS = [3, 0, 3, 2]
 ///    OUTPUT =  [[0.5, 0, 0, 25]]
 TEST(caffe2, SparseLengthsWeightedSumFused8BitRowwise) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -2276,7 +2276,7 @@ TEST(caffe2, SparseLengthsWeightedSumFused8BitRowwise) {
 ///        [3.0, 3.6],
 ///    ]
 TEST(caffe2, SparseLengthsSumFused8BitRowwise) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -2357,7 +2357,7 @@ TEST(caffe2, SparseLengthsSumFused8BitRowwise) {
 
 /// Load big enough model and validate node order.
 TEST(caffe2, validateNodeOrder) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
   std::string NetDescFilename(

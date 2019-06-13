@@ -34,7 +34,6 @@ public:
   /// @name Backend methods.
   /// This is the implementation of the Backend interface.
   ///@{
-  BackendKind getBackendKind() const override { return BackendKind::CPU; }
   virtual ~CPUBackend() override = default;
 
   std::string getBackendName() const override { return getName(); }

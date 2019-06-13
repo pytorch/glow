@@ -67,7 +67,7 @@ void InterpreterDeviceManager::addNetworkImpl(const Module *module,
       return;
     }
 
-    if (func.second->getCompileBackendKind() != BackendKind::Interpreter) {
+    if (func.second->getCompileBackendName() != Interpreter::getName()) {
       readyCB(module, MAKE_ERR(llvm::formatv("Failed to add network: function "
                                              "{0} is not a InterpreterFunction",
                                              func.first)

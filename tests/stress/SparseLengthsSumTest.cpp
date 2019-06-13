@@ -112,7 +112,7 @@ TEST_P(SparseLengthsSum, Big) {
   // backend might mutate the graph such that it is invalid for the
   // interpreter.  Sadly, cloning the graph currently creates problems for some
   // backends (e.g., Habana).
-  ExecutionEngine interp{BackendKind::Interpreter};
+  ExecutionEngine interp{};
   interp.compile(CompilationMode::Infer, F_);
   interp.run(bindings);
   std::vector<Tensor *> base;
