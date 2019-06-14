@@ -1649,8 +1649,8 @@ TEST_F(HabanaBackendTest, FCPerf) {
   printf("Tflops: %lf\n", (flops) / elapsedSecs * 1e-12);
 }
 
-// Test performance of Gather.  Disabled due to unspecified bugs in Gather op.
-TEST_F(HabanaBackendTest, DISABLED_GatherPerf) {
+// Test performance of Gather.
+TEST_F(HabanaBackendTest, GatherPerf) {
   // Create function.
   auto *data = mod_.createPlaceholder(ElemKind::FloatTy, {50}, "data", false);
   auto *indices =
@@ -1676,7 +1676,7 @@ TEST_F(HabanaBackendTest, DISABLED_GatherPerf) {
   EE_.run(ctx_);
   struct timespec begin;
   clock_gettime(CLOCK_MONOTONIC_RAW, &begin);
-  for (int i = 0; i < 10; i++)
+  for (int i = 0; i < 1000; i++)
     EE_.run(ctx_);
   struct timespec end;
   clock_gettime(CLOCK_MONOTONIC_RAW, &end);
