@@ -23,6 +23,7 @@
 #include "glow/Graph/UseDef.h"
 
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSet.h"
@@ -243,7 +244,7 @@ class Node;
 /// A function that represents the compilation unit.
 class IRFunction final : public Named {
 public:
-  using VariableMap = std::unordered_map<const Storage *, Value *>;
+  using VariableMap = llvm::MapVector<const Storage *, Value *>;
   using InstListTy = TaggedList<Instruction, InstructionTraits>;
   using InstrIterator = InstListTy::iterator;
   using InstrConstIterator = InstListTy::const_iterator;

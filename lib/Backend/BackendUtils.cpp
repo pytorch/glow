@@ -234,7 +234,7 @@ ContiguousPlaceholders getContiguousPlaceHolder(const ARR &holders,
 } // namespace glow
 
 runtime::RuntimeBundle runtime::RuntimeBundle::create(const Function &F) {
-  std::unordered_map<std::string, runtime::RuntimeSymbolInfo> symbolTable;
+  std::map<std::string, runtime::RuntimeSymbolInfo> symbolTable;
 
   MemoryAllocator constants("constants", 0);
   MemoryAllocator placeholders("placeholders", 0);
@@ -286,7 +286,7 @@ runtime::RuntimeBundle::create(const IRFunction &F,
                                MemoryAllocator &activationsAllocator) {
   // Handle Constants, Placeholders, and Activations, in that order.
   // Symbol table mapping symbol name to offset for runtime.
-  std::unordered_map<std::string, runtime::RuntimeSymbolInfo> symbolTable;
+  std::map<std::string, runtime::RuntimeSymbolInfo> symbolTable;
   // Compute the offsets for Constants.
   for (auto &v : F.findConstants()) {
     assert(isa<WeightVar>(F.getWeightForNode(v)) && "Expected WeightVar");

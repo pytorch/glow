@@ -19,6 +19,8 @@
 #include "glow/CodeGen/MemoryAllocator.h"
 #include "glow/IR/IR.h"
 
+#include <map>
+
 namespace glow {
 namespace runtime {
 
@@ -47,7 +49,7 @@ struct RuntimeSymbolInfo {
   SymbolCategory symbolCategory;
 };
 
-using SymbolTableTy = std::unordered_map<std::string, RuntimeSymbolInfo>;
+using SymbolTableTy = std::map<std::string, RuntimeSymbolInfo>;
 
 /// Contains the information needed to be passed forward from compile time to
 /// runtime. In order to allocate and initialize memory.
