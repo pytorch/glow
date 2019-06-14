@@ -1085,6 +1085,37 @@ ONNXModelLoader::loadConstantOfShape(const ONNX_NAMESPACE::NodeProto &op,
   return llvm::Error::success();
 }
 
+llvm::Error ONNXModelLoader::loadTile(const ONNX_NAMESPACE::NodeProto &op,
+                                      const ArgumentDictionaryTy &dict) {
+  const std::string &opName = loadOperatorName(op);
+  NodeValue in, repeats;
+  ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
+  ASSIGN_VALUE_OR_RETURN_ERR(repeats, getNodeValueByName(op.input(1)));
+  if (!llvm::isa<Constant>(repeats)) {
+    RETURN_ERR("Only constant Repeats is supported!");
+  }
+
+  if (repeats.dims().size() != 1) {
+    RETURN_ERR("Repeats must be a single-dimensional tensor!");
+  }
+
+  if (repeats.dims()[0] != in.dims().size()) {
+    RETURN_ERR("Repeats should have one value for each dimension of input!");
+  }
+  auto rh = llvm::cast<Constant>(repeats)->getPayload().getHandle<int64_t>();
+  Node *N = in;
+  for (size_t i = 0; i < in.dims().size(); i++) {
+    auto tiles = rh.raw(i);
+    if (tiles != 1) {
+      std::string name = opName + "." + std::to_string(i);
+      N = G_.createTile(name, N, tiles, /*axis*/ i);
+    }
+  }
+
+  RETURN_IF_ERR(addNodeAsOutput(op, N));
+  return llvm::Error::success();
+}
+
 llvm::Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
   ArgumentDictionaryTy dict = loadArgumentMap(op);
   const std::string &typeName = op.op_type();
@@ -1150,6 +1181,9 @@ llvm::Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
   }
   if (typeName == "ConstantOfShape") {
     return loadConstantOfShape(op, dict);
+  }
+  if (typeName == "Tile") {
+    return loadTile(op, dict);
   }
 
   RETURN_ERR("Failed to load operator.",
