@@ -98,8 +98,8 @@ public:
 private:
   GlowOnnxifiManager() = default;
 
-  /// Create a new HostManager managing backends of kind \p backendKind or get
-  /// an existing HostManager for the backendKind if one exists.
+  /// Create a new HostManager managing backends of kind \p backendName or get
+  /// an existing HostManager for the backendName if one exists.
   /// NOTE: This method is not thread safe, the caller should be holding the
   /// mutex m_ when calling it!
   std::shared_ptr<runtime::HostManager>

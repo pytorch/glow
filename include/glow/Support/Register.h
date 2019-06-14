@@ -23,9 +23,8 @@ namespace glow {
 
 /// Base factory interface which needs to be implemented
 /// for static registration of arbitrary classes.
-/// For example, CPUFactory : BaseFactory<BackendKind, Backend>
-/// would be responsible for creating CPU backends registred
-/// with BackendKind::CPU key.
+/// For example, CPUFactory would be responsible for creating CPU backends
+/// registred with "CPU" key.
 template <class Key, class Base> class BaseFactory {
 public:
   virtual ~BaseFactory() = default;

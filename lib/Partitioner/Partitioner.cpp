@@ -554,7 +554,8 @@ DeviceIDTy Partitioner::assignLogicalDeviceID(NodeToFunctionMap &mapping) {
 
   std::map<std::string, std::vector<Function *>> backendFuncMap;
   for (auto &func : mapping.getPartitions()) {
-    // Traverse the paritions, and get list of partitions with each backendKind.
+    // Traverse the partitions, and get list of partitions with each
+    // backendName.
     auto backendName = mapping.getPartitionBackendName(func);
     if (backendFuncMap.find(backendName) == backendFuncMap.end()) {
       backendFuncMap.emplace(backendName, std::vector<Function *>{func});
@@ -566,14 +567,14 @@ DeviceIDTy Partitioner::assignLogicalDeviceID(NodeToFunctionMap &mapping) {
   // For each type of the backend, assign the logicalDevice ID.
   for (const auto &p : backendFuncMap) {
     if (mapping.getPartitions().size() <= backendMap_[p.first].num) {
-      // There is enough device with this backendKind, no need to adjust the
+      // There is enough device with this backendName, no need to adjust the
       // logical ID.
       for (auto &func : p.second) {
         mapping.appendLogicalDeviceID(func, logicalDeviceID++);
       }
       continue;
     }
-    // Get the list of functions with current BackendKind, and sort it based on
+    // Get the list of functions with current BackendName, and sort it based on
     // used memory from min to max.
     std::vector<std::pair<Function *, uint64_t>> nodeSize;
     for (size_t i = 0, e = p.second.size(); i < e; i++) {
@@ -800,10 +801,10 @@ void Partitioner::doPartitioning(llvm::StringRef funcName,
   }
 }
 
-FunctionToBackendKindMapTy
+FunctionToBackendNameMapTy
 Partitioner::backendBasedPartition(Function *F,
                                    std::vector<Backend *> &backends) {
-  FunctionToBackendKindMapTy ret;
+  FunctionToBackendNameMapTy ret;
   NodeToFunctionMap mapping;
   llvm::DenseMap<Node *, std::string> nodeToBackendName;
 
@@ -925,7 +926,7 @@ llvm::Error Partitioner::createDAGWithoutPartition(
 }
 
 llvm::Error Partitioner::Partition(CompilationContext &cctx) {
-  // Prepare the mapping between BackendKind and BackendInfo.
+  // Prepare the mapping between BackendName and BackendInfo.
   std::vector<Backend *> backends;
   std::vector<std::unique_ptr<Backend>> backendHolder;
   getBackendMap(backendMap_, backendHolder, backends);
@@ -935,10 +936,10 @@ llvm::Error Partitioner::Partition(CompilationContext &cctx) {
   F_ = selectRepFunc(module_, memSize_);
 
   // Step 1 : do the partition based on backends type.
-  FunctionToBackendKindMapTy funcToBackend;
+  FunctionToBackendNameMapTy funcToBackend;
   std::string origName(F_->getName().data());
   if (backends.size() == 1) {
-    // Only one type of backends, no need to backendKind based partition.
+    // Only one type of backends, no need to backendName based partition.
     auto backendName = backends[0]->getBackendName();
     funcToBackend[F_] = backendName;
 

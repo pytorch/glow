@@ -569,7 +569,7 @@ TEST_F(PartitionerTest, SimpleHeterogeneousPartitioning) {
 }
 
 /// Test assigning more than one partitions in to one device for single
-/// backendKind.
+/// backendName.
 TEST_F(PartitionerTest, logicalIDTest0) {
   auto *input1 =
       mod_.createPlaceholder(ElemKind::FloatTy, {2, 10}, "input1", false);

@@ -141,7 +141,7 @@ llvm::Error Provisioner::provision(DAGListTy &networks, Module &module,
   for (unsigned i = 0; i < logicalDeviceSize.size(); i++) {
     std::string backendName =
         logicalDeviceBackendName[logicalDeviceSize[i].first];
-    // Find the start point of each backendKind device.
+    // Find the start point of each backendName device.
     if (startPos.find(backendName) == startPos.end()) {
       startPos[backendName] = 0;
     }

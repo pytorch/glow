@@ -23,8 +23,6 @@
 
 namespace glow {
 
-enum class BackendKind;
-
 /// Sub-classed per backend, this holds Device specific per-function information
 /// if that is necessary on that particular backend.
 class DeviceBindings {
@@ -37,8 +35,6 @@ public:
   virtual std::unique_ptr<DeviceBindings> clone() {
     return llvm::make_unique<DeviceBindings>(backend_);
   }
-
-  llvm::StringRef getBackendKind() { return backend_; }
 };
 
 /// The runtime context for a single execution (Inferance or Training) in the
