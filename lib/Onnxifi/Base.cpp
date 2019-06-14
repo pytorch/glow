@@ -219,15 +219,28 @@ void Graph::setTraceEvents(onnxTraceEventList *traceEvents,
     return;
   }
 
+  /// Internally we use steady_clock, but our interface is system_clock
+  /// timestamps. Do a simple conversion.
+  auto steadyTS = TraceEvent::now();
+  auto systemTS = std::chrono::duration_cast<std::chrono::microseconds>(
+                      std::chrono::system_clock::now().time_since_epoch())
+                      .count();
+
+  // Timestamps are uint64_t so branch rather than use abs(), we want to make
+  // sure we always subtract the smaller from the larger value to avoid
+  // underflowing the uint64_t. Then if the timestamp should be moved backwards
+  // negate the result.
+  int64_t offset =
+      steadyTS > systemTS ? -(steadyTS - systemTS) : (systemTS - steadyTS);
   TRACE_EVENT_SCOPE(traceContext, "Onnxifi::setTraceEvents");
 
   std::vector<onnxTraceEvent *> traceEventsVec;
   for (const auto &glowTraceEvent : traceContext->getTraceEvents()) {
     auto *traceEvent = new onnxTraceEvent();
     traceEvent->eventType = glowTraceEvent.type;
-    traceEvent->timestamp = glowTraceEvent.timestamp;
+    traceEvent->timestamp = glowTraceEvent.timestamp + offset;
     traceEvent->tid = glowTraceEvent.tid;
-    traceEvent->duration = 0;
+    traceEvent->duration = glowTraceEvent.duration;
     size_t nameSize = std::min(glowTraceEvent.name.size(),
                                (size_t)ONNXIFI_TRACE_EVENT_NAME_SIZE);
     strncpy(traceEvent->eventName, glowTraceEvent.name.c_str(), nameSize);
