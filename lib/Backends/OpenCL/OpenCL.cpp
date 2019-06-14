@@ -1586,8 +1586,9 @@ void OpenCLFunction::translateTraceEvents(ExecutionContext *context) const {
   // system_clock domain.
   // TODO: synchronize clocks better, this can be off the thread was yielded
   // since getting the timestamp in updatePlaceholders.
-  int64_t tsOffset =
-      std::chrono::system_clock().now().time_since_epoch().count();
+  int64_t tsOffset = std::chrono::duration_cast<std::chrono::microseconds>(
+                         std::chrono::system_clock().now().time_since_epoch())
+                         .count();
 
   if (!kernelLaunches_.empty()) {
     auto &event = kernelLaunches_.back().event_;
