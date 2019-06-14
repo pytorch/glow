@@ -301,9 +301,19 @@ TEST_P(DeviceManagerTest, MultiFunction) {
       module->createPlaceholder(ElemKind::FloatTy, {1}, "func2_output", false);
   auto *p = F->createTanh("tanh2", inP);
   F->createSave("ret2", p, outP);
+  // Add extra tanh and fcs to the second function, we do not care about it's
+  // output but this makes the two functions have different memory requirements.
+  auto *c = module->createConstant(ElemKind::FloatTy, {1}, "add_constant");
+  auto *sideTan = F->createTanh("tanh_extra", c);
+  auto *fc = F->createFullyConnected(*context2->getPlaceholderBindings(), "fc",
+                                     sideTan, 1000);
+  auto *fc2 = F->createFullyConnected(*context2->getPlaceholderBindings(),
+                                      "fc2", fc, 1);
+  auto res = F->createSave("side_save", fc2);
 
   context2->getPlaceholderBindings()->allocate(inP);
   context2->getPlaceholderBindings()->allocate(outP);
+  context2->getPlaceholderBindings()->allocate(res->getPlaceholder());
 
   std::vector<std::unique_ptr<CompiledFunction>> backing;
   FunctionMapTy functions =
