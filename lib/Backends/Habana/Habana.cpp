@@ -701,7 +701,7 @@ HabanaBackend::compile(Function *F, const BackendOptions &opts) const {
   std::vector<std::unique_ptr<ns_ConstantKernel::Params>> constantParams;
   std::vector<std::unique_ptr<ns_TileKernel::Params>> tileParams;
   std::vector<std::unique_ptr<unsigned>> concatParams;
-  std::vector<std::unique_ptr<ns_TakeKernel::Params>> takeParams;
+  std::vector<std::unique_ptr<ns_GatherKernel::Params>> gatherParams;
   std::vector<std::unique_ptr<ns_LrnKernel::Params>> lrnParams;
   std::vector<std::unique_ptr<synGEMMParams>> gemmParams;
 
@@ -1190,18 +1190,17 @@ HabanaBackend::compile(Function *F, const BackendOptions &opts) const {
       std::vector<synTensor> inputs = {tensors[gather->getData()].get(),
                                        tensors[gather->getIndices()].get()};
 
-      auto params = llvm::make_unique<ns_TakeKernel::Params>();
+      auto params = llvm::make_unique<ns_GatherKernel::Params>();
       params->axis =
           gather->getData().dims().size() - gather->getBatchDims() - 1;
-      params->mode = 0;
 
       chk(synCreateGenericNode(
           inputs.data(), &tensors[gather].get(), inputs.size(), 1, params.get(),
-          getKernelName("take", gather->getResult().getElementType()).c_str(),
+          getKernelName("gather", gather->getResult().getElementType()).c_str(),
           gather->getName().data(), nullptr, nullptr));
 
       multiInputs.emplace_back(std::move(inputs));
-      takeParams.emplace_back(std::move(params));
+      gatherParams.emplace_back(std::move(params));
       break;
     }
     default: {
