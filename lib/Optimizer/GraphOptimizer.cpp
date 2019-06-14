@@ -1847,7 +1847,9 @@ static void optimizeReshape(Function *F) {
 /// Splat and Max can be eliminated if Splat value cannot impact the result.
 /// For example, Max and Splat can be removed if splat value is smaller
 /// than quantization range [min, max].
-static void optimizeQuantizedMaxSplat(Function *F) {
+/// \returns if anything was changed in the given function.
+static bool optimizeQuantizedMaxSplat(Function *F) {
+  bool changed = false;
   // The following optimizations need to be performed after all
   // quantize/dequantize/rescale optimizations are done.
   for (auto &node : F->getNodes()) {
@@ -1872,14 +1874,16 @@ static void optimizeQuantizedMaxSplat(Function *F) {
           isa<SplatNode>(MN->getLHS()) ? MN->getRHS() : MN->getLHS();
 
       // If splat value is smaller than values that can be covered by
-      // quantition [min,max] range then just remove MaxNode operation.
+      // quantization [min,max] range then just remove MaxNode operation.
       float splatValue = (dyn_cast<SplatNode>(splatNode))->getValue();
       float min = MN->getResult().getType()->getQuantizedValueRange().first;
       if (splatValue <= min) {
+        changed = true;
         MN->getResult().replaceAllUsesOfWith(otherInput);
       }
     }
   }
+  return changed;
 }
 
 /// \returns A value representing the given \p constant converted
@@ -2036,7 +2040,9 @@ static Node *cloneNodeWithNewTypes(Function *F, Node *N,
 }
 
 /// Eliminate node sequences that are related to quantization.
-static void optimizeQuantization(Function *F) {
+/// \returns if anything was changed in the given function.
+static bool optimizeQuantization(Function *F) {
+  bool changed = false;
   // A worklist that contains the nodes to process.
   std::vector<Node *> worklist;
 
@@ -2059,6 +2065,7 @@ static void optimizeQuantization(Function *F) {
         // If the quantization-dequantization sequence does not change the
         // type then we can simply drop them without adding a requantization
         // node.
+        changed = true;
         if (DQ->getInput().getType() == Q->getResult().getType()) {
           Q->getResult().replaceAllUsesOfWith(DQ->getInput());
           continue;
@@ -2084,12 +2091,14 @@ static void optimizeQuantization(Function *F) {
         if (NC == NodeValue()) {
           continue;
         }
+        changed = true;
         Q->getResult().replaceAllUsesOfWith(NC);
         continue;
       }
 
       if (auto *SN = dyn_cast<SplatNode>(Q->getInput())) {
         // Quantize(Splat) -> Splat'
+        changed = true;
         SplatNode *newSN = F->createSplat(
             SN->getName(), Q->getResult().getType(), SN->getValue());
         Q->getResult().replaceAllUsesOfWith(newSN);
@@ -2100,12 +2109,14 @@ static void optimizeQuantization(Function *F) {
     if (auto *DQ = dyn_cast<DequantizeNode>(node)) {
       if (auto *Q = dyn_cast<QuantizeNode>(DQ->getInput())) {
         // Dequantize(Quantize(X)) -> X
+        changed = true;
         DQ->getResult().replaceAllUsesOfWith(Q->getInput());
         continue;
       }
       // Fold the rescale into the following Dequantize.
       // Dequantize(rescale) -> Dequantize()
       if (auto *RS = dyn_cast<RescaleQuantizedNode>(DQ->getInput())) {
+        changed = true;
         auto *newRS = F->createDequantize(DQ->getName(), RS->getInput());
         DQ->getResult().replaceAllUsesOfWith(newRS);
 
@@ -2116,6 +2127,7 @@ static void optimizeQuantization(Function *F) {
       }
       if (auto *SN = dyn_cast<SplatNode>(DQ->getInput())) {
         // Dequantize(Splat) -> Splat'
+        changed = true;
         SplatNode *newSN = F->createSplat(
             SN->getName(), DQ->getResult().getType(), SN->getValue());
         DQ->getResult().replaceAllUsesOfWith(newSN);
@@ -2126,6 +2138,7 @@ static void optimizeQuantization(Function *F) {
     if (auto *RS = dyn_cast<RescaleQuantizedNode>(node)) {
       if (RS->getInput().getType() == RS->getResult().getType()) {
         // If rescale does not change the type, then simply drop it.
+        changed = true;
         RS->getResult().replaceAllUsesOfWith(RS->getInput());
         continue;
       }
@@ -2155,6 +2168,7 @@ static void optimizeQuantization(Function *F) {
       case Kinded::Kind::MatMulNodeKind:
       case Kinded::Kind::ConvolutionNodeKind:
       case Kinded::Kind::SparseLengthsWeightedSumNodeKind: {
+        changed = true;
         Node *newNode =
             cloneNodeWithNewTypes(F, RS->getInput(), RS->getResult().getType());
         RS->getResult().replaceAllUsesOfWith(newNode);
@@ -2172,6 +2186,7 @@ static void optimizeQuantization(Function *F) {
         // is smaller then truncation would have happened during the rescale.
         // On values that are outside of the range we just moved the
         // truncation to a different location.
+        changed = true;
         auto name = RS->getName();
         auto *L = F->createRescaleQuantized(name, MN->getLHS(),
                                             RS->getResult().getType());
@@ -2186,7 +2201,8 @@ static void optimizeQuantization(Function *F) {
     } // Handle RescaleQuantizedNode
   }   // For each item in the worklist.
 
-  optimizeQuantizedMaxSplat(F);
+  changed |= optimizeQuantizedMaxSplat(F);
+  return changed;
 }
 
 template <class T, class U>
@@ -2264,6 +2280,7 @@ static bool combineDownRescaleToArithmeticNode(Function &F, T *AN) {
 }
 
 /// Sink Rescale nodes down when possible.
+/// \returns if anything was changed in the given function.
 static bool sinkRescaleQuantizedNode(Function *F) {
   bool changed = false;
   for (auto &node : F->getNodes()) {
@@ -2627,6 +2644,9 @@ void glow::optimize(Function *F, CompilationContext &cctx) {
   while (sinkCode(F)) {
     // Perform Dead Code Elimination between rounds of code sinking.
     DCE(F);
+    VLOG_IF_EVERY_N(0, google::COUNTER > 1, 100)
+        << "Warning: sinkCode optimization applied another 100 iterations "
+           "without reaching fixed point";
   }
 
   // Transposes that don't move data are optimized into Reshapes, which enables
@@ -2694,11 +2714,11 @@ void glow::optimize(Function *F, CompilationContext &cctx) {
   optimizeConversions(F);
 
   // Optimize quantization related operators.
-  optimizeQuantization(F);
-
-  while (sinkRescaleQuantizedNode(F)) {
+  while (optimizeQuantization(F) || sinkRescaleQuantizedNode(F)) {
     DCE(F);
-    optimizeQuantization(F);
+    VLOG_IF_EVERY_N(0, google::COUNTER > 1, 100)
+        << "Warning: Quantization optimization applied another 100 iterations "
+           "without reaching fixed point";
   }
 
   // Optimize reshapes introduced during above optimizations.
