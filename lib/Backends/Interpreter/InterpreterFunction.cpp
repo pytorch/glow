@@ -53,7 +53,7 @@ llvm::Error InterpreterFunction::execute(ExecutionContext *context) {
   BoundInterpreterFunction boundFunc(constants_);
   auto res = boundFunc.execute(F_.get(), context);
   {
-    auto ev = context->scopedEvent("processInstrumentation");
+    TRACE_EVENT_SCOPE(context, TraceLevel::RUNTIME, "processInstrumentation");
     translateTraceEvents(context);
   }
   return res;
@@ -68,8 +68,7 @@ void InterpreterFunction::translateTraceEvents(
 
   TraceContext *traceContext = context->getTraceContext();
 
-  if (!traceContext || traceContext->getTraceLevel() == TraceLevel::NONE ||
-      traceContext->getTraceLevel() == TraceLevel::RUNTIME) {
+  if (!traceContext || !traceContext->shouldLog(TraceLevel::OPERATOR)) {
     return;
   }
 
@@ -181,7 +180,7 @@ void BoundInterpreterFunction::deleteTensor(const Value *v) {
 llvm::Error BoundInterpreterFunction::execute(IRFunction *F,
                                               ExecutionContext *context) {
   {
-    auto ev = context->scopedEvent("registerTensors");
+    TRACE_EVENT_SCOPE(context, TraceLevel::RUNTIME, "registerTensors");
 
     // Find all virtually padded tensors so they can be replaced.
     std::vector<Placeholder *> virtualPadded;
@@ -230,7 +229,8 @@ llvm::Error BoundInterpreterFunction::execute(IRFunction *F,
   }
 
   {
-    auto ev = context->scopedEvent("eraseTensors");
+
+    TRACE_EVENT_SCOPE(context, TraceLevel::RUNTIME, "eraseTensors");
     // Remove the concrete tensors that back the placeholder tensors.
     for (auto &ph : context->getPlaceholderBindings()->pairs()) {
       auto *w = F->getWeightForNode(ph.first);

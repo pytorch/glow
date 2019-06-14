@@ -111,8 +111,9 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
     ctx->setTraceContext(llvm::make_unique<TraceContext>(TraceLevel::STANDARD));
     traceContext = ctx->getTraceContext();
   }
-  TRACE_EVENT_SCOPE(traceContext, "Onnxifi::setIOAndRun");
-  TRACE_EVENT_SCOPE_NAMED(traceContext, "adjustInputs", aiEvent);
+  TRACE_EVENT_SCOPE(traceContext, TraceLevel::RUNTIME, "Onnxifi::setIOAndRun");
+  TRACE_EVENT_SCOPE_NAMED(traceContext, TraceLevel::RUNTIME, "adjustInputs",
+                          aiEvent);
 
   // Create tensors for input placeholders
   for (unsigned i = 0; i < inputsCount; ++i) {
@@ -168,7 +169,8 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
   }
 
   TRACE_EVENT_SCOPE_END_NAMED(aiEvent);
-  TRACE_EVENT_SCOPE_NAMED(traceContext, "setOnnxifiOutputs", soEvent);
+  TRACE_EVENT_SCOPE_NAMED(traceContext, TraceLevel::RUNTIME,
+                          "setOnnxifiOutputs", soEvent);
 
   // Create tensors for output placeholders
   for (unsigned i = 0; i < outputsCount; ++i) {
@@ -227,7 +229,8 @@ void Graph::setTraceEvents(onnxTraceEventList *traceEvents,
   // negate the result.
   int64_t offset =
       steadyTS > systemTS ? -(steadyTS - systemTS) : (systemTS - steadyTS);
-  TRACE_EVENT_SCOPE(traceContext, "Onnxifi::setTraceEvents");
+  TRACE_EVENT_SCOPE(traceContext, TraceLevel::RUNTIME,
+                    "Onnxifi::setTraceEvents");
 
   std::vector<onnxTraceEvent *> traceEventsVec;
   for (const auto &glowTraceEvent : traceContext->getTraceEvents()) {

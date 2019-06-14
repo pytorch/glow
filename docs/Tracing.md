@@ -40,10 +40,14 @@ Instrumenting or tracing execution can have overheads that may not be tolerated 
 * At the compile stage the **autoInstrument** flag in the CompilationOptions structure enables instrumenting the compile of a network so that it is able to produce per operator Trace Events. If this flag is not enabled, there is no expectation of events at that level of detail (coarser grained events may still be produced).
 * At the execution stage the **ExecutionContext** may contain a **TraceContext** member describing what level of Trace Event verbosity is requested for this run. At the time of writing there are five verbosity levels defined:
     * `NONE` - no Trace Events are required and none should be emitted.
+    * `REQUEST`- only high level events relating to requests should be emitted (e.g. request beginning and end).
     * `RUNTIME` - only Glow Runtime events from on the host side should be emitted.
     * `OPERATOR` - Backend operator events should be emitted only, i.e. the time taken for each operator in the graph on the accelerator device. This may depend on compiling the network with operator level events (ie. autoInstrumenting).
-    * `STANDARD` - The default setting for instrumented runs: currently equivalent to `RUNTIME | OPERATOR`. 
     * `DEBUG` - Additional events for in depth debugging. This is intended for engineers familiar with the device and with Glow to triage performance issues in particular models. Many more events are permitted here, but included events should focus on what is high value for diagnosis issues.
+
+TraceLevel is a bitmask and levels can be combined. The common default is:
+
+    * `STANDARD` - currently equivalent to `RUNTIME | OPERATOR`. 
 
 Often the device specific runtime components are capable of emitting a large amount of hardware events. Please keep Trace Event memory size reasonable: a good guideline is about 1-2 Kb per millisecond of execution time on the device.
 
@@ -163,7 +167,7 @@ This does not have any thread synchronization over the TraceContext, however, so
 They can be created via the TraceContext:
 
 ```
-ctx.getTraceContext()->logTraceEvent("operator", "B", TraceEvent::now());
+ctx.getTraceContext()->logTraceEvent("operator", TraceLevel::RUNTIME, "B", TraceEvent::now());
 ```
 
 The timestamp is not required here, it will default to the current time.
@@ -172,7 +176,7 @@ This method is thread safe via a lock around the TraceContext.
 If you prefer to use RAII to determine the beginning and end timestamps we provide the **ScopedTraceBlock**:
 
 ```
-ScopedTraceBlock ev(ctx.getTraceContext(), "operator");
+ScopedTraceBlock ev(ctx.getTraceContext(), TraceLevel::RUNTIME, "operator");
 // do work
 return;
 ```
@@ -183,11 +187,11 @@ This form handles when the TraceContext is not set and does nothing.
 Lastly we provide macros which may make using these primitives easier:
 
 ```
-TRACE_EVENT_BEGIN(ctx.getTraceContext(), "stage1");
+TRACE_EVENT_BEGIN(ctx.getTraceContext(), TraceLevel::REQUEST, "stage1");
 // do work
-TRACE_EVENT_END(ctx.getTraceContext(), "stage1");
+TRACE_EVENT_END(ctx.getTraceContext(), TraceLevel::REQUEST, "stage1");
 
-TRACE_EVENT_SCOPE(ctx.getTraceContext(), "stage2");
+TRACE_EVENT_SCOPE(ctx.getTraceContext(), TraceLevel::REQUEST, "stage2");
 // do different work
 return;
 ```

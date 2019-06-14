@@ -272,7 +272,8 @@ void HabanaDeviceManager::runFunctionImpl(RunIdentifierTy runId,
                                           std::string functionName,
                                           std::unique_ptr<ExecutionContext> ctx,
                                           runtime::ResultCBTy resultCB) {
-  TRACE_EVENT_SCOPE(ctx->getTraceContext(), "HabanaDM::runnerThread");
+  TRACE_EVENT_SCOPE(ctx->getTraceContext(), TraceLevel::RUNTIME,
+                    "HabanaDM::runnerThread");
   // Try to find the function with the given name in functions_.
   uint64_t topologyId;
   HabanaFunction *function;
@@ -330,14 +331,15 @@ void HabanaDeviceManager::runFunctionImpl(RunIdentifierTy runId,
                      functionName = std::move(functionName),
                      ctx = std::move(ctx),
                      resultCB = std::move(resultCB)]() mutable {
-    TRACE_EVENT_SCOPE(ctx->getTraceContext(), "HabanaDM::waiterThread");
-    TRACE_EVENT_BEGIN(ctx->getTraceContext(), "wait");
+    TRACE_EVENT_SCOPE(ctx->getTraceContext(), TraceLevel::RUNTIME,
+                      "HabanaDM::waiterThread");
+    TRACE_EVENT_BEGIN(ctx->getTraceContext(), TraceLevel::RUNTIME, "wait");
     auto &habanaHandle =
         static_cast<HabanaBindings *>(ctx->getDeviceBindings())->getHandle();
     bool ok = habanaHandle.wait();
     std::unique_ptr<HabanaIOBuffer> ioBuffer =
         static_cast<HabanaBindings *>(ctx->getDeviceBindings())->getIOBuffer();
-    TRACE_EVENT_END(ctx->getTraceContext(), "wait");
+    TRACE_EVENT_END(ctx->getTraceContext(), TraceLevel::RUNTIME, "wait");
 
     // Notify anything waiting for a topo switch.
     {
@@ -357,7 +359,8 @@ void HabanaDeviceManager::runFunctionImpl(RunIdentifierTy runId,
     } else {
       // Copy the execution outputs from the designated IO buffer back to the
       // PlaceholderBindings inside ctx.
-      TRACE_EVENT_BEGIN(ctx->getTraceContext(), "copyOutputs");
+      TRACE_EVENT_BEGIN(ctx->getTraceContext(), TraceLevel::RUNTIME,
+                        "copyOutputs");
       auto bindings = ctx->getPlaceholderBindings();
       for (const auto &ph : function->getOutputs()) {
         auto *tensor = bindings->get(ph);
@@ -371,12 +374,14 @@ void HabanaDeviceManager::runFunctionImpl(RunIdentifierTy runId,
         } else {
           // Return the IO buffer to the IO buffer pool.
           ioBufferPool->put(std::move(ioBuffer));
-          TRACE_EVENT_END(ctx->getTraceContext(), "copyOutputs");
+          TRACE_EVENT_END(ctx->getTraceContext(), TraceLevel::RUNTIME,
+                          "copyOutputs");
           resultCB(runId, ioBufferDataOrErr.takeError(), std::move(ctx));
           return;
         }
       }
-      TRACE_EVENT_END(ctx->getTraceContext(), "copyOutputs");
+      TRACE_EVENT_END(ctx->getTraceContext(), TraceLevel::RUNTIME,
+                      "copyOutputs");
 
       // Return the IO buffer to the IO buffer pool.
       ioBufferPool->put(std::move(ioBuffer));

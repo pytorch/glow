@@ -15,6 +15,7 @@
  */
 
 #include "glow/ExecutionContext/TraceEvents.h"
+#include "glow/ExecutionContext/ExecutionContext.h"
 
 #include "llvm/Support/raw_ostream.h"
 
@@ -104,17 +105,19 @@ size_t TraceEvent::getThreadId() {
 }
 
 void TraceContext::logTraceEvent(
-    llvm::StringRef name, char type,
+    llvm::StringRef name, TraceLevel level, char type,
     std::map<std::string, std::string> additionalAttributes) {
-  logTraceEvent(name, type, TraceEvent::now(), std::move(additionalAttributes));
+  logTraceEvent(name, level, type, TraceEvent::now(),
+                std::move(additionalAttributes));
 }
 
 void TraceContext::logTraceEvent(
-    llvm::StringRef name, char type, uint64_t timestamp,
+    llvm::StringRef name, TraceLevel level, char type, uint64_t timestamp,
     std::map<std::string, std::string> additionalAttributes) {
-  if (traceLevel_ == TraceLevel::NONE || traceLevel_ == TraceLevel::OPERATOR) {
+  if (!shouldLog(level)) {
     return;
   }
+
   TraceEvent ev(name, timestamp, type, TraceEvent::getThreadId(),
                 std::move(additionalAttributes));
   {
@@ -124,9 +127,9 @@ void TraceContext::logTraceEvent(
 }
 
 void TraceContext::logCompleteTraceEvent(
-    llvm::StringRef name, uint64_t startTimestamp,
+    llvm::StringRef name, TraceLevel level, uint64_t startTimestamp,
     std::map<std::string, std::string> additionalAttributes) {
-  if (traceLevel_ == TraceLevel::NONE || traceLevel_ == TraceLevel::OPERATOR) {
+  if (!shouldLog(level)) {
     return;
   }
 
@@ -158,14 +161,20 @@ void TraceContext::merge(TraceContext *other) {
   names.clear();
 }
 
-ScopedTraceBlock::ScopedTraceBlock(TraceContext *context, llvm::StringRef name)
-    : context_(context), name_(name) {
+ScopedTraceBlock::ScopedTraceBlock(TraceContext *context, TraceLevel level,
+                                   llvm::StringRef name)
+    : context_(context), level_(level), name_(name) {
   startTimestamp_ = TraceEvent::now();
 
   // A local memory fence to prevent the compiler reordering instructions to
   // before taking the start timestamp.
   std::atomic_signal_fence(std::memory_order_seq_cst);
 }
+
+ScopedTraceBlock::ScopedTraceBlock(ExecutionContext *context, TraceLevel level,
+                                   llvm::StringRef name)
+    : ScopedTraceBlock(context ? context->getTraceContext() : nullptr, level,
+                       name) {}
 
 ScopedTraceBlock::~ScopedTraceBlock() { end(); }
 
@@ -181,7 +190,8 @@ void ScopedTraceBlock::end() {
   std::atomic_signal_fence(std::memory_order_seq_cst);
 
   if (!end_ && context_) {
-    context_->logCompleteTraceEvent(name_, startTimestamp_, std::move(args_));
+    context_->logCompleteTraceEvent(name_, level_, startTimestamp_,
+                                    std::move(args_));
   }
   end_ = true;
 }

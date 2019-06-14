@@ -110,7 +110,8 @@ onnxStatus HostManagerGraph::run(std::unique_ptr<ExecutionContext> ctx,
       [outputEvent, traceEvents](runtime::RunIdentifierTy runId,
                                  llvm::Error err,
                                  std::unique_ptr<ExecutionContext> ctx) {
-        TRACE_EVENT_SCOPE(ctx->getTraceContext(), "Onnxifi::callback");
+        TRACE_EVENT_SCOPE(ctx->getTraceContext(), TraceLevel::RUNTIME,
+                          "Onnxifi::callback");
         // If an Error occurred then log it in errToBool and signal the output
         // event.
         if (errToBool(std::move(err))) {
