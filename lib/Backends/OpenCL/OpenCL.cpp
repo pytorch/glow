@@ -1583,11 +1583,11 @@ void OpenCLFunction::translateTraceEvents(ExecutionContext *context) const {
   // The device uses a different clock domain, so we'll assume that the last
   // timestamp and now are close and get the difference between the two
   // timestamps, which we can use to pull event timestamps in to the
-  // system_clock domain.
+  // steady_clock domain.
   // TODO: synchronize clocks better, this can be off the thread was yielded
   // since getting the timestamp in updatePlaceholders.
   int64_t tsOffset = std::chrono::duration_cast<std::chrono::microseconds>(
-                         std::chrono::system_clock().now().time_since_epoch())
+                         std::chrono::steady_clock().now().time_since_epoch())
                          .count();
 
   if (!kernelLaunches_.empty()) {
@@ -1635,7 +1635,7 @@ void OpenCLFunction::translateTraceEvents(ExecutionContext *context) const {
                           ->getHandle<int64_t>();
         const TraceInfo::Event *ev = it->second.second;
 
-        // Convert into usec and move into system_clock domain.
+        // Convert into usec and move into steady_clock domain.
         auto timestamp = (timeEnd / 1000) + tsOffset;
 
         handle.at({ev->startIndex, 0}) = timestamp;
@@ -1644,7 +1644,7 @@ void OpenCLFunction::translateTraceEvents(ExecutionContext *context) const {
     } else {
       // Duration should be usec.
       auto duration = (timeEnd - timeStart) / 1000;
-      // Convert into usec and move into system_clock domain.
+      // Convert into usec and move into steady_clock domain.
       auto startUs = (timeStart / 1000) + tsOffset;
 
       traceEvents.push_back({name, startUs, duration, tid, {{"type", type}}});

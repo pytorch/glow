@@ -1748,7 +1748,7 @@ void libjit_write_timestamp(uint64_t *tensor, size_t offset) {
   // Issue #2397 covers migrating this to a libc approach but if you have issues
   // with a lack of C++ symbols at runtime check there first.
   uint64_t ts = std::chrono::duration_cast<std::chrono::microseconds>(
-                    std::chrono::system_clock::now().time_since_epoch())
+                    std::chrono::steady_clock::now().time_since_epoch())
                     .count();
   memcpy(tensor + offset, &ts, sizeof(uint64_t));
 }
