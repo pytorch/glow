@@ -1142,6 +1142,19 @@ HabanaBackend::compile(Function *F, const BackendOptions &opts) const {
       }
       break;
     }
+    case Kinded::Kind::SparseLengthsSumNodeKind: {
+      auto *RI = llvm::cast<SparseLengthsSumNode>(&I);
+      std::vector<synTensor> inputs = {
+          tensors[RI->getData()].get(),
+          tensors[RI->getIndices()].get(),
+          tensors[RI->getLengths()].get(),
+      };
+      chk(synCreateGenericNode(inputs.data(), &tensors[RI].get(), inputs.size(),
+                               1, nullptr, "sparse_lengths_sum_f32_f32",
+                               RI->getName().data(), nullptr, nullptr));
+      multiInputs.emplace_back(std::move(inputs));
+      break;
+    }
     case Kinded::Kind::SparseLengthsWeightedSumNodeKind: {
       auto *RI = llvm::cast<SparseLengthsWeightedSumNode>(&I);
       std::vector<synTensor> inputs = {
@@ -1283,6 +1296,7 @@ bool HabanaBackend::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::TanhNodeKind:
   case Kinded::Kind::TileNodeKind:
   case Kinded::Kind::TransposeNodeKind:
+  case Kinded::Kind::SparseLengthsSumNodeKind:
   case Kinded::Kind::SparseLengthsWeightedSumNodeKind:
   case Kinded::Kind::FusedRowwiseQuantizedSparseLengthsWeightedSumNodeKind:
   case Kinded::Kind::LocalResponseNormalizationNodeKind:
@@ -1300,6 +1314,7 @@ bool HabanaBackend::shouldLower(const Node *N) const {
   case Kinded::Kind::ReluNodeKind:
   case Kinded::Kind::FullyConnectedNodeKind:
   case Kinded::Kind::ConvolutionNodeKind:
+  case Kinded::Kind::SparseLengthsSumNodeKind:
     return false;
   default:
     return true;
