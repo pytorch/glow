@@ -44,10 +44,11 @@ llvm::cl::opt<std::string>
                               "a png with standard imagenet normalization"),
                llvm::cl::init("../tests/images/imagenet/dog_207.png"),
                llvm::cl::Positional, llvm::cl::cat(category));
-llvm::cl::opt<std::string>
-    outputJson(llvm::cl::desc("path to write output json trace events"),
-               llvm::cl::init("./glow-trace.json"), llvm::cl::Positional,
-               llvm::cl::cat(category));
+
+llvm::cl::opt<std::string> tracePath("trace-path",
+                                     llvm::cl::desc("Write trace logs to disk"),
+                                     llvm::cl::init("./glow-trace.json"),
+                                     llvm::cl::cat(category));
 
 } // namespace
 
@@ -76,7 +77,7 @@ std::unique_ptr<CompiledFunction> compileModel(Module &module,
   Function *F = module.getFunction("resnet50");
   Function *F_ = F->clone("resnet50." + backendName.str());
 
-  llvm::outs() << "Starting compile on " << backendName << ".\n";
+  llvm::outs() << "Starting compile on " << backendName << " device.\n";
   CompilationContext cctx;
   cctx.compMode = CompilationMode::Infer;
   cctx.backendOpts.autoInstrument = true;
@@ -163,25 +164,21 @@ int main(int argc, char **argv) {
         });
   }
 
-  std::vector<TraceEvent> allEvents;
-
-  allEvents.push_back({"thread_name", 0, 'M', 0, {{"name", "CPU"}}});
-  allEvents.push_back({"thread_name", 0, 'M', 1, {{"name", "Interpreter"}}});
-#if (GLOW_WITH_OPENCL)
-  allEvents.push_back({"thread_name", 0, 'M', 2, {{"name", "OpenCL"}}});
-#endif
+  TraceContext allEvents(TraceLevel::STANDARD);
+  size_t index = 0;
+  for (auto backend : supportedBackends) {
+    allEvents.setThreadName(index++, backend);
+  }
 
   for (unsigned i = 0, e = supportedBackends.size(); i < e; ++i) {
     auto f = promises[i].get_future();
     f.wait_for(/* timeout_duration */ std::chrono::seconds(30));
     auto runbindings = f.get();
-    assert(runbindings->getTraceContext());
-    auto &events = runbindings->getTraceContext()->getTraceEvents();
-    std::move(events.begin(), events.end(), std::back_inserter(allEvents));
+    allEvents.merge(runbindings->getTraceContext());
   }
 
-  llvm::outs() << "Dumping json to " << outputJson << ".\n";
-  TraceEvent::dumpTraceEvents(allEvents, outputJson);
+  llvm::outs() << "Dumping json to " << tracePath << ".\n";
+  allEvents.dump(tracePath, "tracing-compare");
 
   return 0;
 }

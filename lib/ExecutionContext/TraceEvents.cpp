@@ -23,6 +23,14 @@
 
 namespace glow {
 
+void writeMetadataHelper(std::ofstream &file, llvm::StringRef type, int id,
+                         llvm::StringRef name) {
+  file << "{\"cat\": \"__metadata\", \"ph\":\"" << TraceEvent::MetadataType
+       << "\", \"ts\":0, \"pid\":0, \"tid\":" << id << ", \"name\":\""
+       << type.str() << "\", \"args\": {\"name\":\"" << name.str()
+       << "\"} },\n";
+}
+
 void TraceEvent::dumpTraceEvents(
     std::vector<TraceEvent> &events, llvm::StringRef filename,
     const std::string &processName,
@@ -45,19 +53,22 @@ void TraceEvent::dumpTraceEvents(
 
   std::ofstream file(filename);
   file << "[\n";
+  /// Set up process name metadata.
+  writeMetadataHelper(file, "process_name", 0,
+                      processName.empty() ? "glow" : processName);
+
+  /// And thread name metadata.
+  for (const auto &nameMap : threadNames) {
+    writeMetadataHelper(file, "thread_name", nameMap.first, nameMap.second);
+  }
+
   for (const auto &event : events) {
     file << "{\"name\": \"" << event.name;
     file << "\", \"cat\": \"glow\",";
     file << "\"ph\": \"" << event.type;
     file << "\", \"ts\": " << event.timestamp;
-    file << ", \"pid\": \"" << process << "\"";
-
-    auto nameIt = threadNames.find(event.tid);
-    if (nameIt != threadNames.end()) {
-      file << ", \"tid\": \"" << nameIt->second << "\"";
-    } else {
-      file << ", \"tid\": " << event.tid;
-    }
+    file << ", \"pid\": 0";
+    file << ", \"tid\": " << event.tid;
 
     if (event.type == CompleteType) {
       file << ", \"dur\": " << event.duration;
