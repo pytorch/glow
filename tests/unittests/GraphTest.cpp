@@ -1253,6 +1253,19 @@ TEST(Graph, verifyConstantNoWriters) {
   EXPECT_FALSE(M.verify());
 }
 
+TEST(Graph, typeUnsafeReplaceAllUsesOfWith) {
+  Module M;
+  auto *F = M.createFunction("main");
+
+  auto *LHS = M.createPlaceholder(ElemKind::FloatTy, {3, 4}, "A", false);
+  auto *RHS = M.createPlaceholder(ElemKind::FloatTy, {4, 5}, "B", false);
+  auto *FC = F->createMatMul("fc", LHS, RHS);
+  F->createSave("save", FC);
+
+  auto newLHS = M.createPlaceholder(ElemKind::FloatTy, {10, 10}, "A", false);
+  LHS->getOutput().typeUnsafeReplaceAllUsesOfWith(newLHS);
+}
+
 /// Check that the verifier will complain if a constant and its
 /// underlying tensor have mismatching types.
 /// Here the constant is updated but not the tensor.
