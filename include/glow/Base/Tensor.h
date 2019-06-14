@@ -1028,7 +1028,7 @@ private:
         // Construct the coordinates for the slice and for the joint shape.
         // Add the 'offset' to the dimension that we concat the shapes on.
         sliceCoor[d] = i;
-        // If this is the correct axis to insert multiple times then calcuate
+        // If this is the correct axis to insert multiple times then calculate
         // the additional offset to use.
         const size_t countAxisOffset = (axis == d) ? c * slice.dims()[d] : 0;
         fusedCoor[d] = i + offset[d] + countAxisOffset;

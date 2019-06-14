@@ -654,7 +654,7 @@ void Partitioner::saturateHost(unsigned logicalDeviceCount) {
       for (auto logical : node->logicalDevices) {
         // To ensure we do not have a logicalID collision we use the following
         // scheme. We have an iterator starting at 1 for each duplication pass.
-        // The new ID we add is calcuated as follows:
+        // The new ID we add is calculated as follows:
         // (iterator * logicalDeviceCount) + initialLogicalID
         for (unsigned i = 1; i < duplications; i++) {
           newDevices.push_back(logical + (i * logicalDeviceCount));
