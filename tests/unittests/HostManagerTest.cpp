@@ -101,8 +101,7 @@ TEST_F(HostManagerTest, runNetwork) {
   std::promise<void> runNetwork;
   auto ready = runNetwork.get_future();
 
-  llvm::Error runErr = llvm::Error::success();
-
+  std::unique_ptr<llvm::Error> runErr;
   hostManager->runNetwork("main", std::move(context),
                           [&runNetwork, &saveTensor, &context, &runErr](
                               RunIdentifierTy runID, llvm::Error err,
@@ -112,15 +111,16 @@ TEST_F(HostManagerTest, runNetwork) {
                             EXPECT_NEAR(HX.at({1}), 4, 1E-5);
                             EXPECT_NEAR(HX.at({2}), 9, 1E-5);
                             context = std::move(context_);
-                            runErr = std::move(err);
+                            runErr =
+                                llvm::make_unique<llvm::Error>(std::move(err));
                             runNetwork.set_value();
                           });
 
   ready.wait();
-  EXPECT_FALSE(errToBool(std::move(runErr)));
+  EXPECT_FALSE(errToBool(std::move(*DCHECK_NOTNULL(runErr.get()))));
 
   // reset runErr
-  runErr = llvm::Error::success();
+  runErr = nullptr;
 
   std::promise<void> newRun;
   ready = newRun.get_future();
@@ -132,12 +132,13 @@ TEST_F(HostManagerTest, runNetwork) {
                             EXPECT_NEAR(HX.at({0}), 1, 1E-5);
                             EXPECT_NEAR(HX.at({1}), 4, 1E-5);
                             EXPECT_NEAR(HX.at({2}), 9, 1E-5);
-                            runErr = std::move(err);
+                            runErr =
+                                llvm::make_unique<llvm::Error>(std::move(err));
                             newRun.set_value();
                           });
 
   ready.wait();
-  EXPECT_FALSE(errToBool(std::move(runErr)));
+  EXPECT_FALSE(errToBool(std::move(*DCHECK_NOTNULL(runErr.get()))));
 }
 
 /// Test that HostManager properly handles concurrent add/remove requests with
@@ -192,7 +193,7 @@ TEST_F(HostManagerTest, ConfigureHostManager) {
   auto context = llvm::make_unique<ExecutionContext>();
   auto context2 = llvm::make_unique<ExecutionContext>();
 
-  llvm::Error runErr = llvm::Error::success();
+  std::unique_ptr<llvm::Error> runErr;
 
   std::shared_ptr<std::mutex> lock = std::make_shared<std::mutex>();
   std::unique_lock<std::mutex> guard(*lock);
@@ -201,6 +202,7 @@ TEST_F(HostManagerTest, ConfigureHostManager) {
   hostManager->runNetwork("main", std::move(context),
                           [lock](RunIdentifierTy runID, llvm::Error err,
                                  std::unique_ptr<ExecutionContext> context_) {
+                            errToBool(std::move(err));
                             std::unique_lock<std::mutex> guard(*lock);
                           });
 
@@ -208,10 +210,10 @@ TEST_F(HostManagerTest, ConfigureHostManager) {
       "main", std::move(context2),
       [&runErr](RunIdentifierTy runID, llvm::Error err,
                 std::unique_ptr<ExecutionContext> context_) {
-        runErr = std::move(err);
+        runErr = llvm::make_unique<llvm::Error>(std::move(err));
       });
 
   // Don't need a future, error CB called inline.
-  EXPECT_TRUE(errToBool(std::move(runErr)));
+  EXPECT_TRUE(errToBool(std::move(*DCHECK_NOTNULL(runErr.get()))));
   guard.unlock();
 }

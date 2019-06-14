@@ -146,16 +146,16 @@ llvm::Error HostManager::removeNetwork(llvm::StringRef networkName) {
   for (auto &node : nodes) {
     for (auto device : node->deviceIDs) {
       std::promise<void> removeNetwork;
-      llvm::Error removeErr = llvm::Error::success();
       auto done = removeNetwork.get_future();
+      std::unique_ptr<llvm::Error> removeErr;
       devices_[device]->evictNetwork(
           node->name,
           [&removeNetwork, &removeErr](std::string name, llvm::Error err) {
-            removeErr = std::move(err);
+            removeErr = llvm::make_unique<llvm::Error>(std::move(err));
             removeNetwork.set_value();
           });
       done.get();
-      err.set(std::move(removeErr));
+      err.set(std::move(*DCHECK_NOTNULL(removeErr.get())));
     }
     // Also remove compiledFunction from Provisioner.
     provisioner_->removeFunction(node->name);
@@ -202,7 +202,7 @@ llvm::Error HostManager::runNetworkBlocking(llvm::StringRef networkName,
       llvm::make_unique<ExecutionContext>(std::move(phBindings));
   std::promise<void> runPromise;
   auto fut = runPromise.get_future();
-  llvm::Error runErr = llvm::Error::success();
+  std::unique_ptr<llvm::Error> runErr;
   runNetwork(
       networkName, std::move(context),
       [&runPromise, &runErr](runtime::RunIdentifierTy, llvm::Error err,
@@ -213,12 +213,12 @@ llvm::Error HostManager::runNetworkBlocking(llvm::StringRef networkName,
             contextPtr->movePlaceholderBindings();
         phBind.release();
 
-        runErr = std::move(err);
+        runErr = llvm::make_unique<llvm::Error>(std::move(err));
         runPromise.set_value();
       });
 
   fut.wait();
-  return runErr;
+  return std::move(*DCHECK_NOTNULL(runErr.get()));
 }
 
 RunIdentifierTy

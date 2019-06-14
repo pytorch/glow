@@ -116,10 +116,12 @@ TEST(OpenCLCorrectnessTest, SetDeviceMemory) {
   // No setting at all, default memory size from OpenCL device info.
   OpenCLDeviceManager openCLDeviceDefault(openCLConfigEmpty);
   llvm::Error err1 = openCLDeviceDefault.init();
+  ASSERT_FALSE(errToBool(std::move(err1)));
   uint64_t memSize = openCLDeviceDefault.getMaximumMemory();
   // If limited by deviceConfig.
   OpenCLDeviceManager openCLDeviceSetByDeviceConfig(openCLConfigFull);
   llvm::Error err2 = openCLDeviceSetByDeviceConfig.init();
+  ASSERT_FALSE(errToBool(std::move(err2)));
   EXPECT_EQ(openCLDeviceSetByDeviceConfig.getMaximumMemory(), 32768);
   // If devicConfig defines larger memory size than the OpenCL device info,
   // then fall back to default.
@@ -127,5 +129,6 @@ TEST(OpenCLCorrectnessTest, SetDeviceMemory) {
   openCLConfigLarger.setDeviceMemory(memSize + 10000);
   OpenCLDeviceManager openCLDeviceLarger(openCLConfigLarger);
   llvm::Error err3 = openCLDeviceLarger.init();
+  ASSERT_FALSE(errToBool(std::move(err3)));
   EXPECT_EQ(openCLDeviceLarger.getMaximumMemory(), memSize);
 }
