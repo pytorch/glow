@@ -26,6 +26,8 @@ namespace glow {
 
 class Node;
 
+struct NodeValue;
+
 /// A class for logging all compilation related activities.
 class LogContext {
 private:
@@ -60,10 +62,18 @@ public:
   void logNodeCreation(const Node *newNode);
 
   /// Logs the node replacement.
-  void logNodeReplacement(const Node *oldNode, const Node *newNode);
+  void logNodeValueReplacement(const NodeValue &oldNodeVal,
+                               const NodeValue &newNodeVal);
 
   /// Logs the node deletion.
   void logNodeDeletion(const Node &deletedNode);
+
+  /// Logs node's input changes.
+  /// \p user is the user node of the operands
+  /// \p prevOpr previous operand
+  /// \p newOpr new operand
+  void logNodeInputChange(const Node *user, const NodeValue &prevOprVal,
+                          const NodeValue &newOprVal);
 
 private:
   /// Add log metadata which includes version number and latest commit's info

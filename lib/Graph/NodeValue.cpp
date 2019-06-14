@@ -50,13 +50,18 @@ void NodeValue::replaceAllUsesOfWith(NodeValue v, const Function *F) const {
       continue;
     assert(site->getNode() == node_ && "Invalid user");
     assert(site->getResNo() == getResNo() && "Invalid list of uses");
+
+    // Log the change of node input(operand).
+    if (Function *F = getNode()->getParent()) {
+      F->getLogContext().logNodeInputChange(U.getUser(), *(U.get()), v);
+    }
+
     site->setOperand(v.getNode(), v.getResNo());
   }
 
   // Log all nodes replacement.
-  if (getNode()->getParent()) {
-    getNode()->getParent()->getLogContext().logNodeReplacement(getNode(),
-                                                               v.getNode());
+  if (Function *F = getNode()->getParent()) {
+    F->getLogContext().logNodeValueReplacement(*this, v);
   }
 }
 
