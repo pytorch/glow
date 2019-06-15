@@ -5162,17 +5162,25 @@ TEST_P(OperatorTest, SparseLengthsSumI8) {
   EXPECT_TRUE(expected.isEqual(result));
 }
 
-TEST_P(OperatorTest, SparseLengthsWeightedSum) {
-  ENABLED_BACKENDS(Interpreter, CPU, OpenCL, Habana);
+/// Test SparseLengthsWeightedSum with an N-dimension embedding table.
+void sparseLengthsWeightedSumTest(size_t ndims, ExecutionEngine &EE) {
+  auto &mod_ = EE.getModule();
+  auto *F_ = mod_.createFunction("slws");
+  PlaceholderBindings bindings_;
 
   /*
-    DATA  =   [2.0, -0.5, 13]
+    DATA  =   [[2.0, -0.5, 13]]
     WEIGHTS = [3, 1, 0, 0, 0, 0, 2, -0.5]
     INDICES = [1, 0, 2, 0, 1, 2, 2, 0]
     LENGTHS = [3, 0, 3, 2]
     OUTPUT =  [0.5, 0, 0, 25]
   */
-  auto *data = mod_.createPlaceholder(ElemKind::FloatTy, {3}, "data", false);
+  ShapeVector idims(ndims, 1);
+  ShapeVector odims(ndims, 1);
+  idims[0] = 3;
+  odims[0] = 4;
+
+  auto *data = mod_.createPlaceholder(ElemKind::FloatTy, idims, "data", false);
   auto *weights =
       mod_.createPlaceholder(ElemKind::FloatTy, {8}, "weights", false);
   auto *indices =
@@ -5203,11 +5211,11 @@ TEST_P(OperatorTest, SparseLengthsWeightedSum) {
   auto *S = F_->createSave("save", R);
   bindings_.allocate(S->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(bindings_);
+  EE.compile(CompilationMode::Infer, F_);
+  EE.run(bindings_);
 
   Tensor &result = *bindings_.get(S->getPlaceholder());
-  Tensor expected(ElemKind::FloatTy, {4});
+  Tensor expected(ElemKind::FloatTy, odims);
   expected.getHandle() = {
       0.5,
       0,
@@ -5216,6 +5224,16 @@ TEST_P(OperatorTest, SparseLengthsWeightedSum) {
   };
 
   EXPECT_TRUE(expected.isEqual(result));
+}
+
+TEST_P(OperatorTest, SparseLengthsWeightedSum_1D) {
+  ENABLED_BACKENDS(Interpreter, CPU, OpenCL);
+  sparseLengthsWeightedSumTest(1, EE_);
+}
+
+TEST_P(OperatorTest, SparseLengthsWeightedSum_2D) {
+  ENABLED_BACKENDS(Interpreter, CPU, OpenCL, Habana);
+  sparseLengthsWeightedSumTest(2, EE_);
 }
 
 TEST_P(OperatorTest, SparseLengthsWeightedSumI8) {
