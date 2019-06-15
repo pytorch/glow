@@ -30,6 +30,9 @@ bool OCLBackend::transformPostLowering(Function *F,
                                        CompilationContext &cctx) const {
   // NCHW transformation is not supported in training mode yet, because of some
   // issues with gradient nodes.
+
+  LOG_SCOPE(F->getLogContext(), "OCLBackend::transformPostLowering")
+
   if (cctx.compMode == CompilationMode::Train)
     return false;
 
