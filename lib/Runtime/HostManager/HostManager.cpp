@@ -92,6 +92,11 @@ llvm::Error HostManager::addNetwork(std::unique_ptr<Module> module,
     info.backendName = device.second->getBackendName();
     deviceInfo.push_back(info);
   }
+  // Perform a round of target-independent graph optimizations. This helps the
+  // partitioner to do its job more efficiently.
+  for (Function *F : module->getFunctions()) {
+    RETURN_IF_ERR(optimizeFunctionBeforeLowering(F, cctx));
+  }
   auto partitioner = Partitioner(module.get(), deviceInfo, saturateHost);
   RETURN_IF_ERR(partitioner.Partition(cctx));
   auto nodeList = std::move(partitioner.getPartitionResult());
