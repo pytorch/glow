@@ -87,9 +87,9 @@ void LogContext::logNodeCreation(const Node *newNode) {
   if (!dumpCompilationLogOpt) {
     return;
   }
-  std::vector<Node *> inputs;
+  std::vector<NodeValue> inputs;
   for (size_t idx = 0; idx < newNode->getNumInputs(); idx++) {
-    inputs.push_back(newNode->getNthInput(idx).getNode());
+    inputs.push_back(newNode->getNthInput(idx));
   }
   addLogContent(
       llvm::formatv(
@@ -97,8 +97,9 @@ void LogContext::logNodeCreation(const Node *newNode) {
           getFullScopeName(), newNode->getKindName(), newNode->getName())
           .str());
   for (auto n : inputs) {
-    addLogContent(llvm::formatv(" (Kind: {0}, Name: {1}) ", n->getKindName(),
-                                n->getName())
+    addLogContent(llvm::formatv(" (Kind: {0}, Name: {1}, ResNo: {2}) ",
+                                n.getNode()->getKindName(),
+                                n.getNode()->getName(), n.getResNo())
                       .str());
   }
   addLogContent(" }\n");
