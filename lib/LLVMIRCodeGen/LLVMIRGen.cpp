@@ -786,8 +786,10 @@ void LLVMIRGen::generateLLVMIRForModule(llvm::IRBuilder<> &builder) {
       // Ignore memory management instructions as they are handled by the
       // MemoryManager and are NOPs for a JIT.
       if (isa<AllocActivationInst>(&I) || isa<DeallocActivationInst>(&I) ||
-          isa<TensorViewInst>(&I))
+          isa<TensorViewInst>(&I)) {
+        generateLLVMIRForInstr(builder, &I);
         continue;
+      }
       emitDataParallelKernel(builder, bundle);
       bundle.clear();
       generateLLVMIRForInstr(builder, &I);
