@@ -58,11 +58,6 @@ void NodeValue::replaceAllUsesOfWith(NodeValue v, const Function *F) const {
 
     site->setOperand(v.getNode(), v.getResNo());
   }
-
-  // Log all nodes replacement.
-  if (Function *F = getNode()->getParent()) {
-    F->getLogContext().logNodeValueReplacement(*this, v);
-  }
 }
 
 unsigned NodeValue::getNumUsers() const {

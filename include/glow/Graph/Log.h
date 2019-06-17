@@ -61,10 +61,6 @@ public:
   /// Logs the node creation with a list of input nodes.
   void logNodeCreation(const Node *newNode);
 
-  /// Logs the node replacement.
-  void logNodeValueReplacement(const NodeValue &oldNodeVal,
-                               const NodeValue &newNodeVal);
-
   /// Logs the node deletion.
   void logNodeDeletion(const Node &deletedNode);
 
