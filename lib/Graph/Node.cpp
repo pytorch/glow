@@ -167,6 +167,8 @@ void Node::setNthInput(unsigned idx, NodeValue val) {
   switch (getKind()) {
 #define DEF_NODE(CLASS, NAME)                                                  \
   case glow::Kinded::Kind::CLASS##Kind:                                        \
+    getParent()->getLogContext().logNodeInputChange(                           \
+        this, this->getNthInput(idx), val);                                    \
     return static_cast<CLASS *>(this)->setNthInput(idx, val);
 #include "glow/AutoGenNodes.def"
   default:

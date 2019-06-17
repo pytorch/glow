@@ -16,8 +16,10 @@
 
 #include "glow/Graph/Log.h"
 #include "glow/Graph/Node.h"
+#include "glow/Graph/NodeValue.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FileSystem.h"
+#include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/raw_ostream.h"
 
 namespace glow {
@@ -65,82 +67,97 @@ void LogContext::popLogScope() {
 }
 
 void LogContext::dumpLog(llvm::StringRef funcName) {
-  if (dumpCompilationLogOpt) {
-    std::string compileLogFilename = funcName;
-    compileLogFilename.append("_compile.log");
+  if (!dumpCompilationLogOpt) {
+    return;
+  }
+  std::string compileLogFilename = funcName;
+  compileLogFilename.append("_compile.log");
 
-    llvm::outs() << "Writing compilation log file for Module to: "
-                 << compileLogFilename << '\n';
-    std::error_code EC;
-    llvm::raw_fd_ostream myfile(compileLogFilename, EC);
-    for (const auto &s : logContents_) {
-      myfile << s;
-    }
+  llvm::outs() << "Writing compilation log file for Module to: "
+               << compileLogFilename << '\n';
+  std::error_code EC;
+  llvm::raw_fd_ostream myfile(compileLogFilename, EC);
+  for (const auto &s : logContents_) {
+    myfile << s;
   }
 }
 
 /// Logs the node creation with a list of input nodes.
 void LogContext::logNodeCreation(const Node *newNode) {
-  if (dumpCompilationLogOpt) {
-    std::vector<Node *> inputs;
-    for (size_t idx = 0; idx < newNode->getNumInputs(); idx++) {
-      inputs.push_back(newNode->getNthInput(idx).getNode());
-    }
-    std::string logStr;
-    logStr.append("[FULL SCOPE: ");
-    logStr.append(getFullScopeName());
-    logStr.append("]");
-    logStr.append(" --- CREATE { (Kind: ");
-    logStr.append(newNode->getKindName());
-    logStr.append(", Name: ");
-    logStr.append(newNode->getName());
-    logStr.append(") <== ");
-    for (auto n : inputs) {
-      logStr.append(" (Kind: ");
-      logStr.append(n->getKindName());
-      logStr.append(", Name: ");
-      logStr.append(n->getName());
-      logStr.append(") ");
-    }
-    logStr.append(" }\n");
-    addLogContent(logStr);
+  if (!dumpCompilationLogOpt) {
+    return;
   }
+  std::vector<Node *> inputs;
+  for (size_t idx = 0; idx < newNode->getNumInputs(); idx++) {
+    inputs.push_back(newNode->getNthInput(idx).getNode());
+  }
+  addLogContent(
+      llvm::formatv(
+          "[FULL SCOPE: {0}] --- CREATE { (Kind: {1}, Name: {2}) <== ",
+          getFullScopeName(), newNode->getKindName(), newNode->getName())
+          .str());
+  for (auto n : inputs) {
+    addLogContent(llvm::formatv(" (Kind: {0}, Name: {1}) ", n->getKindName(),
+                                n->getName())
+                      .str());
+  }
+  addLogContent(" }\n");
 }
 
 /// Logs the node replacement.
-void LogContext::logNodeReplacement(const Node *oldNode, const Node *newNode) {
-  if (dumpCompilationLogOpt) {
-    std::string logStr;
-    logStr.append("[FULL SCOPE: ");
-    logStr.append(getFullScopeName());
-    logStr.append(" ]");
-    logStr.append(" --- REPLACE { (Kind: ");
-    logStr.append(oldNode->getKindName());
-    logStr.append(", Name: ");
-    logStr.append(oldNode->getName());
-    logStr.append(") <== (Kind: ");
-    logStr.append(newNode->getKindName());
-    logStr.append(", Name: ");
-    logStr.append(newNode->getName());
-    logStr.append(") }\n");
-    addLogContent(logStr);
+void LogContext::logNodeValueReplacement(const NodeValue &oldNodeVal,
+                                         const NodeValue &newNodeVal) {
+  if (!dumpCompilationLogOpt) {
+    return;
   }
+  addLogContent(
+      llvm::formatv("[FULL SCOPE: {0} ] --- REPLACE ( OldNodeVal(Kind: {1}, "
+                    "Name: {2}, ResNo: {3}) ==>  NewNodeVal(Kind: {4}, Name: "
+                    "{5}, ResNo: {6}) }\n",
+                    getFullScopeName(), oldNodeVal.getNode()->getKindName(),
+                    oldNodeVal.getNode()->getName(), oldNodeVal.getResNo(),
+                    newNodeVal.getNode()->getKindName(),
+                    newNodeVal.getNode()->getName(), newNodeVal.getResNo())
+          .str());
 }
 
 /// Logs the node deletion.
 void LogContext::logNodeDeletion(const Node &deletedNode) {
-  if (dumpCompilationLogOpt) {
-    std::string logStr;
-    logStr.append("[FULL SCOPE: ");
-    logStr.append(getFullScopeName());
-    logStr.append(" ]");
-    logStr.append(" --- DELETE { (Kind: ");
-    logStr.append(deletedNode.getKindName());
-    logStr.append(", Name: ");
-    logStr.append(deletedNode.getName());
-    logStr.append(") }\n");
-    addLogContent(logStr);
+  if (!dumpCompilationLogOpt) {
+    return;
   }
+  addLogContent(llvm::formatv("[FULL SCOPE: {0} ] --- DELETE ( (Kind: {1}, "
+                              "Name: {2}) }\n",
+                              getFullScopeName(), deletedNode.getKindName(),
+                              deletedNode.getName())
+                    .str());
+}
+
+/// Logs node's input changes.
+void LogContext::logNodeInputChange(const Node *user,
+                                    const NodeValue &prevOprVal,
+                                    const NodeValue &newOprVal) {
+  if (!dumpCompilationLogOpt) {
+    return;
+  }
+  addLogContent(
+      llvm::formatv(
+          "[FULL SCOPE: {0} ] --- NODE_INPUT_CHANGE { User(Kind: {1}, "
+          "Name: {2}) :: ",
+          getFullScopeName(), user->getKindName(), user->getName())
+          .str());
+  // prevOpr and newOpr should never be null for the places we intercept.
+  addLogContent(
+      llvm::formatv("PrevOprValue(Kind: {0}, Name: {1}, ResNo: {2}) -> ",
+                    prevOprVal.getNode()->getKindName(),
+                    prevOprVal.getNode()->getName(), prevOprVal.getResNo())
+          .str());
+
+  addLogContent(
+      llvm::formatv("NewOprValue(Kind: {0}, Name: {1}, ResNo: {2}) }\n",
+                    newOprVal.getNode()->getKindName(),
+                    newOprVal.getNode()->getName(), newOprVal.getResNo())
+          .str());
 }
 
 ScopedLogBlock::ScopedLogBlock(LogContext &ctx, llvm::StringRef name)
