@@ -277,6 +277,8 @@ public:
     unownedTensor.data_ = firstElemPtr;
     unownedTensor.isUnowned_ = true;
     unownedTensor.type_ = Type::newShape(getType(), dims);
+    unownedTensor.unpaddedSize_ = unpaddedSize_;
+
     if (offsets.size() == 0) {
       assert(size() == unownedTensor.size() && "The size of the unowned tensor "
                                                "should the same as the size of "

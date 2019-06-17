@@ -944,10 +944,22 @@ max: 1515.200  min: 1.200
 /// Test unpadded size.
 TEST(Tensor, unpaddedSize) {
   Tensor partial(ElemKind::FloatTy, {11});
-  auto paddedType = Type::newShape(partial.getType(), {256});
   auto bytes = partial.getSizeInBytes();
+
+  // Get an unowned padded tensor sharing storage with partial.
+  auto paddedType = Type::newShape(partial.getType(), {256});
+  auto paddedBytes = paddedType.getSizeInBytes();
   Tensor T(partial.getUnsafePtr(), &paddedType, bytes);
   EXPECT_EQ(T.getUnpaddedSizeInBytes(), bytes);
+  EXPECT_EQ(T.getSizeInBytes(), paddedBytes);
+
+  // Test that moving the padded tensor preserves properties.
   auto moved = std::move(T);
   EXPECT_EQ(moved.getUnpaddedSizeInBytes(), bytes);
+  EXPECT_EQ(moved.getSizeInBytes(), paddedBytes);
+
+  // Test getting an unowned tensor from a padded tensor.
+  auto copy = moved.getUnowned(moved.dims());
+  EXPECT_EQ(copy.getUnpaddedSizeInBytes(), bytes);
+  EXPECT_EQ(copy.getSizeInBytes(), paddedBytes);
 }
