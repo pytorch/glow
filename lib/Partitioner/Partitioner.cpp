@@ -17,11 +17,14 @@
 #include "glow/Partitioner/Partitioner.h"
 #include "glow/Support/Support.h"
 
+#include "glow/Support/Debug.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Format.h"
 #include "llvm/Support/raw_ostream.h"
 
 #include <fstream>
+
+#define DEBUG_TYPE "partitioner"
 
 using namespace glow;
 using llvm::isa;
@@ -979,7 +982,7 @@ llvm::Error Partitioner::Partition(CompilationContext &cctx) {
     mapping.insert(partitionMap);
   }
 
-  // Step 4 : assign each partition with a logical device id. The partitions
+  // Step 3 : assign each partition with a logical device id. The partitions
   // with the same logical device id will be assigned into the same physical
   // device.
   logicalDeviceID_ = assignLogicalDeviceID(mapping);
@@ -988,10 +991,10 @@ llvm::Error Partitioner::Partition(CompilationContext &cctx) {
   // devices.
   RETURN_IF_ERR(logicalDevicesValidation(mapping));
 
-  // Step 5 : do the real partitioning for the function list.
+  // Step 4 : do the real partitioning for the function list.
   doPartitioning(origName, funcs, mapping, true);
 
-  // Step 6 : Post-partition optimization - Adjust the logicalDevice for each
+  // Step 5 : Post-partition optimization - Adjust the logicalDevice for each
   // DAGNode.
   if (saturateHost_ && backends.size() == 1 &&
       mapping.getPartitions().size() < deviceInfo_.size()) {
@@ -1001,7 +1004,7 @@ llvm::Error Partitioner::Partition(CompilationContext &cctx) {
     saturateHost(logicalDeviceID_);
   }
 
-  // Step 5: clean up and verify the generate new functions.
+  // Step 6 : clean up and verify the generate new functions.
   for (auto i = funcToBackend.begin(); i != funcToBackend.end(); ++i) {
     module_->eraseFunction(i->first);
   }
@@ -1010,5 +1013,13 @@ llvm::Error Partitioner::Partition(CompilationContext &cctx) {
     (void)subF;
     assert(subF->verify() && "Conversion led to invalid function");
   }
+  DEBUG_GLOW(
+    dumpDAG("partitions.dot");
+    int idx = 0;
+    for (auto &childF : funcList) {
+      std::string fileName = "partition" + std::to_string(++idx) + ".dot";
+      childF->dumpDAG(fileName.c_str());
+    }
+  );
   return llvm::Error::success();
 }
