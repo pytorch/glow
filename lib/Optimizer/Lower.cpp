@@ -49,6 +49,9 @@ static void lowerAddGradNode(Function *F, CompilationContext &cctx,
   /// The chain rule for addition:
   /// delta(LHS) = dF/dLHS * delta(OUT) = 1 * delta(OUT)
   /// delta(RHS) = dF/dRHS * delta(OUT) = 1 * delta(OUT)
+
+  LOG_SCOPE(F->getLogContext(), "lowerAddGradNode")
+
   auto outG = node.getGradOfOriginalOutputNamedResult();
   replaceAllUsesOfWith(cctx.loweredInfoMap, node.getGradOfInputNamedLHS(),
                        outG);
@@ -61,6 +64,9 @@ static void lowerMulGradNode(Function *F, CompilationContext &cctx,
   /// The chain rule for multiplication:
   /// delta(LHS) = dF/dLHS * delta(OUT) = RHS * delta(OUT)
   /// delta(RHS) = dF/dRHS * delta(OUT) = LHS * delta(OUT)
+
+  LOG_SCOPE(F->getLogContext(), "lowerMulGradNode")
+
   auto outG = node.getGradOfOriginalOutputNamedResult();
   NodeValue LHS = node.getLHS();
   NodeValue RHS = node.getRHS();
@@ -78,6 +84,9 @@ static void lowerSubGradNode(Function *F, CompilationContext &cctx,
   /// The chain rule for subtraction:
   /// delta(LHS) = dF/dLHS * delta(OUT) = 1 * delta(OUT)
   /// delta(RHS) = dF/dRHS * delta(OUT) = -1 * delta(OUT)
+
+  LOG_SCOPE(F->getLogContext(), "lowerSubGradNode")
+
   auto outG = node.getGradOfOriginalOutputNamedResult();
   auto *zero = F->createSplat("zero", outG.getType(), 0);
   auto *sub = F->createSub("sub.grad", zero, outG);
@@ -90,6 +99,9 @@ static void lowerDivGradNode(Function *F, CompilationContext &cctx,
   /// The chain rule for division:
   /// delta(LHS) = dF/dLHS * delta(OUT) = (1 / RHS) * delta(OUT)
   /// delta(RHS) = dF/dRHS * delta(OUT) = (-LHS / (RHS ^ 2)) * delta(OUT)
+
+  LOG_SCOPE(F->getLogContext(), "lowerDivGradNode")
+
   auto outG = node.getGradOfOriginalOutputNamedResult();
   NodeValue LHS = node.getLHS();
   NodeValue RHS = node.getRHS();
@@ -117,6 +129,8 @@ static void lowerRegressionNode(CompilationContext &cctx,
 
 static void lowerRegressionGradNode(Function *F, CompilationContext &cctx,
                                     const RegressionGradNode &node) {
+  LOG_SCOPE(F->getLogContext(), "lowerRegressionGradNode")
+
   auto outG = node.getInput();
 
   auto *inputG = F->createSub("rgn.grad", node.getInput(), node.getExpected());
@@ -130,6 +144,8 @@ static void lowerRegressionGradNode(Function *F, CompilationContext &cctx,
 
 static void lowerFullyConnectedNode(Function *F, CompilationContext &cctx,
                                     const FullyConnectedNode &FC) {
+  LOG_SCOPE(F->getLogContext(), "lowerFullyConnectedNode")
+
   auto W = FC.getWeights();
   TypeRef OT = FC.getResult().getType();
   auto *mul = F->createMatMul("fc.dot", OT, FC.getInput(), W);
@@ -146,6 +162,9 @@ static void lowerFullyConnectedGradNode(Function *F, CompilationContext &cctx,
                                         const FullyConnectedGradNode &FCG) {
   // Follow the lowering from here:
   // https://github.com/huyouare/CS231n/blob/master/assignment2/cs231n/layers.py#L53
+
+  LOG_SCOPE(F->getLogContext(), "lowerFullyConnectedGradNode")
+
   auto dout = FCG.getGradOfOriginalOutputNamedResult();
 
   // dx = dout * w.T
@@ -170,6 +189,9 @@ static void lowerReluGradNode(Function *F, CompilationContext &cctx,
                               const ReluGradNode &RG) {
   // ReluGrad: if the input value is greater than zero then let the gradient
   // pass.
+
+  LOG_SCOPE(F->getLogContext(), "lowerReluGradNode")
+
   auto *zero = F->createSplat("zero", RG.getInput().getType(), 0.0);
   auto *cond =
       F->createCmpLTE("relugrad", RG.getOriginalOutputForResult(), zero);
@@ -182,6 +204,8 @@ static void lowerTanhGradNode(Function *F, CompilationContext &cctx,
                               const TanhGradNode &THG) {
   // Tanh grad is calculated as:
   // inG = (1 - outW * outW) * outG
+
+  LOG_SCOPE(F->getLogContext(), "lowerTanhGradNode")
 
   // (W * W)
   auto outW = THG.getOriginalOutputForResult();
@@ -202,6 +226,8 @@ static void lowerSigmoidGradNode(Function *F, CompilationContext &cctx,
   // Sigmoid grad is calculated as:
   // inG = outW * (1 - outW) * outG;
 
+  LOG_SCOPE(F->getLogContext(), "lowerSigmoidGradNode")
+
   auto outW = THG.getOriginalOutputForResult();
   auto *one = F->createSplat("one", THG.getInput().getType(), 1.0);
 
@@ -219,6 +245,8 @@ static void lowerSigmoidGradNode(Function *F, CompilationContext &cctx,
 
 static void lowerReluNode(Function *F, CompilationContext &cctx,
                           const ReluNode &R) {
+  LOG_SCOPE(F->getLogContext(), "lowerReluNode")
+
   // Relu is a max between zero and the input value.
   SplatNode *zero = F->createSplat("zero", R.getResult().getType(), 0.0);
   auto *relu =
@@ -232,6 +260,9 @@ static void lowerPReluNode(Function *F, CompilationContext &cctx,
   // slope * x    if x < 0
   // x            if x >= 0
   // where slope is an input from a different node.
+
+  LOG_SCOPE(F->getLogContext(), "lowerPReluNode")
+
   auto *zeroSplat = F->createSplat("zeroSplat", R.getResult().getType(), 0.0);
   auto *cmplgt = F->createCmpLTE("cmplgt", zeroSplat, R.getInput());
   auto *mul = F->createMul("mul", R.getSlope(), R.getInput());
@@ -242,6 +273,8 @@ static void lowerPReluNode(Function *F, CompilationContext &cctx,
 
 static void lowerPadNode(Function *F, CompilationContext &cctx,
                          const PadNode &P) {
+  LOG_SCOPE(F->getLogContext(), "lowerPadNode")
+
   auto *outputType = P.getResult().getType();
   auto dims = outputType->dims();
   auto numDims = dims.size();
@@ -270,6 +303,8 @@ static void lowerPadNode(Function *F, CompilationContext &cctx,
 
 static void lowerSGDNode(Function *F, CompilationContext &cctx,
                          const SGDNode &SGD) {
+  LOG_SCOPE(F->getLogContext(), "lowerSGDNode")
+
   NodeValue W = SGD.getWeight();
   NodeValue G = SGD.getGradient();
 
@@ -337,6 +372,8 @@ static void lowerSGDNode(Function *F, CompilationContext &cctx,
 
 static void lowerBatchNormalizationNode(Function *F, CompilationContext &cctx,
                                         const BatchNormalizationNode &BN) {
+  LOG_SCOPE(F->getLogContext(), "lowerBatchNormalizationNode")
+
   auto in = BN.getInput();
   auto out = BN.getResult();
 
@@ -381,6 +418,8 @@ static void lowerBatchNormalizationNode(Function *F, CompilationContext &cctx,
 
 static void lowerMeanVarNormalizationNode(Function *F, CompilationContext &cctx,
                                           const MeanVarNormalizationNode &MVN) {
+  LOG_SCOPE(F->getLogContext(), "lowerMeanVarNormalizationNode")
+
   auto in = MVN.getInput();
 
   auto inMean = MVN.getMean();
@@ -460,6 +499,8 @@ static void lowerMeanVarNormalizationNode(Function *F, CompilationContext &cctx,
 static void lowerBatchNormalizationGradNode(Function *F,
                                             CompilationContext &cctx,
                                             BatchNormalizationGradNode &BNG) {
+  LOG_SCOPE(F->getLogContext(), "lowerBatchNormalizationGradNode")
+
   auto inW = BNG.getInput();
   auto outG = BNG.getGradOfOriginalOutputNamedResult();
 
@@ -567,6 +608,9 @@ static void lowerGroupConvolutionNode(Function *F, CompilationContext &cctx,
   // divided into equal groups of consecutive channels. These will be separately
   // convolved each with its own filter (and bias), and then concatenated.
   // This will result in 4 * Group + 1 nodes.
+
+  LOG_SCOPE(F->getLogContext(), "lowerGroupConvolutionNode")
+
   llvm::ArrayRef<unsigned_t> kernels = BNG.getKernels();
   llvm::ArrayRef<unsigned_t> pads = BNG.getPads();
   llvm::ArrayRef<unsigned_t> strides = BNG.getStrides();
@@ -609,6 +653,8 @@ static void lowerSigmoidCrossEntropyWithLogitsNode(
   // Following Caffe2 implementation closely to lower this Node.
   // https://github.com/caffe2/caffe2/blob/master/caffe2/operators/cross_entropy_op.cc
 
+  LOG_SCOPE(F->getLogContext(), "lowerSigmoidCrossEntropyWithLogitsNode")
+
   auto lgt = SCEL.getLogits();
   auto tgt = SCEL.getTargets();
 
@@ -648,6 +694,8 @@ static void lowerSigmoidCrossEntropyWithLogitsNode(
 /// Lower Tile nodes to InsertTensor nodes with correct axis and count.
 static void lowerTileNode(Function *F, CompilationContext &cctx,
                           const TileNode &TN) {
+  LOG_SCOPE(F->getLogContext(), "lowerTileNode")
+
   auto input = TN.getInput();
 
   // Use a zero splat as the Big node input for InsertTensor.
@@ -662,6 +710,8 @@ static void lowerTileNode(Function *F, CompilationContext &cctx,
 
 static void lowerChannelShuffleNode(Function *F, CompilationContext &cctx,
                                     const ChannelShuffleNode &CSN) {
+  LOG_SCOPE(F->getLogContext(), "lowerChannelShuffleNode")
+
   auto input = CSN.getInput();
   auto group = CSN.getGroup();
   auto kernel = CSN.getKernel();
@@ -693,6 +743,8 @@ static void lowerChannelShuffleNode(Function *F, CompilationContext &cctx,
 
 static void lowerBatchReduceMeanNode(Function *F, CompilationContext &cctx,
                                      const BatchedReduceMeanNode &BRM) {
+  LOG_SCOPE(F->getLogContext(), "lowerBatchReduceMeanNode")
+
   auto input = BRM.getBatch();
 
   assert((BRM.getAxes().size() == 1) && "Only supporting single reduction.");
@@ -736,6 +788,8 @@ static void lowerBatchReduceMeanNode(Function *F, CompilationContext &cctx,
 /// an IsNaN node as the comparator input.
 static void lowerReplaceNaNNode(Function *F, CompilationContext &cctx,
                                 const ReplaceNaNNode &RN) {
+  LOG_SCOPE(F->getLogContext(), "lowerReplaceNaNNode")
+
   // Create IsNaN node.
   auto *INN = F->createIsNaN(RN.getName().str() + ".isNaN", RN.getInput());
 
@@ -754,6 +808,8 @@ static void lowerReplaceNaNNode(Function *F, CompilationContext &cctx,
 /// final Concat.
 static void lowerBatchMatMulNode(Function *F, CompilationContext &cctx,
                                  const BatchMatMulNode &BMMN) {
+  LOG_SCOPE(F->getLogContext(), "lowerBatchMatMulNode")
+
   auto name = BMMN.getName();
   NodeValue lhs = BMMN.getLHS();
   NodeValue rhs = BMMN.getRHS();
@@ -796,6 +852,8 @@ static void lowerBatchMatMulNode(Function *F, CompilationContext &cctx,
 
 static void lowerSparseLengthsSumNode(Function *F, CompilationContext &cctx,
                                       const SparseLengthsSumNode &SLSN) {
+  LOG_SCOPE(F->getLogContext(), "lowerSparseLengthsSumNode")
+
   auto ty = F->getParent()->uniqueTypeWithNewShape(
       SLSN.getData().getType(), {SLSN.getIndices().dims()[0]});
   auto *ones = F->createSplat(SLSN.getName().str() + ".ones", ty, 1.0);
@@ -868,7 +926,6 @@ static void lowerNode(Function *F, Node *node, CompilationContext &cctx) {
 
 void glow::lower(Function *F, CompilationContext &cctx, const Backend *B,
                  const KindSet &doNotLowerKinds) {
-  // Log the start of current log scope.
   LOG_SCOPE(F->getLogContext(), "glow::lower")
 
   auto &nodes = F->getNodes();

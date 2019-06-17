@@ -61,6 +61,8 @@ static bool shouldDeleteNode(Node *N) {
 }
 
 void glow::DCE(Function *F) {
+  LOG_SCOPE(F->getLogContext(), "DCE")
+
   auto &nodes = F->getNodes();
   auto &consts = F->getParent()->getConstants();
 
@@ -215,6 +217,8 @@ static bool sinkTranposeBelowChannelShuffle(Function *F,
 /// Code Sinking.
 /// \returns true if code sinking was successful.
 static bool sinkCode(Function *F) {
+  LOG_SCOPE(F->getLogContext(), "sinkCode")
+
   auto &nodes = F->getNodes();
   bool changed = false;
   // For each node:
@@ -607,6 +611,8 @@ static bool mayDependOnAny(llvm::ArrayRef<NodeValue> list, Node *N) {
 //    K       ----      ---------        ---------
 //             K            R                R
 static void mergeMatMul(Function *F) {
+  LOG_SCOPE(F->getLogContext(), "mergeMatMul")
+
   auto &nodes = F->getNodes();
 
   // These two maps record the list of matrix multipliers that use each node
@@ -669,6 +675,8 @@ static void mergeMatMul(Function *F) {
 }
 
 static bool mergePadIntoConvolution(Function *F) {
+  LOG_SCOPE(F->getLogContext(), "mergePadIntoConvolution")
+
   bool changed = false;
   for (auto &node : F->getNodes()) {
     auto *CN = dyn_cast<ConvolutionNode>(&node);
@@ -751,6 +759,8 @@ static bool mergePadIntoConvolution(Function *F) {
 /// Reshape([N, C, H, W]) -> [N, C * H * W]
 /// MatMul/FC([N, C * H * W], [C * H * W, K]) -> [N, K]
 static bool mergeTransposeIntoMatMulOrFC(Function *F) {
+  LOG_SCOPE(F->getLogContext(), "mergeTransposeIntoMatMulOrFC")
+
   bool changed = false;
   for (auto &node : F->getNodes()) {
     auto *MMN = dyn_cast<MatMulNode>(&node);
@@ -887,6 +897,8 @@ static bool areSlicesConsecutive(SliceNode *A, SliceNode *B, unsigned_t dim) {
 }
 
 static void convertBroadcastedBatchMatMul(Function *F) {
+  LOG_SCOPE(F->getLogContext(), "convertBroadcastedBatchMatMul")
+
   for (auto &node : F->getNodes()) {
     BatchMatMulNode *BMMN = dyn_cast<BatchMatMulNode>(&node);
     if (!BMMN) {
@@ -1013,6 +1025,8 @@ static bool findSlicesThatSpanInput(llvm::ArrayRef<SliceNode *> input,
 
 /// Merge multiple batched add nodes into a large batched-add node.
 static void mergeBatchedAdd(Function *F) {
+  LOG_SCOPE(F->getLogContext(), "mergeBatchedAdd")
+
   auto &nodes = F->getNodes();
 
   // We index the batched add nodes by the slice operand.
@@ -1078,6 +1092,8 @@ static void mergeBatchedAdd(Function *F) {
 /// Optimize ReduceMean configuration with AvgPool if possible: last two axes
 /// in a 4D input must be reduced.
 static void optimizeReduceMean(Function *F) {
+  LOG_SCOPE(F->getLogContext(), "optimizeReduceMean")
+
   auto &nodes = F->getNodes();
 
   // For each node:
@@ -1255,6 +1271,8 @@ bool normalizeWeights(Module *M, ConvolutionNode &CV,
 }
 
 static void optimizeBatchNorm(Function *F) {
+  LOG_SCOPE(F->getLogContext(), "optimizeBatchNorm")
+
   auto &nodes = F->getNodes();
   auto *M = F->getParent();
 
@@ -1443,6 +1461,9 @@ static NodeValue tryToOptimizeConcatOfRehapes(Function *F, ConcatNode *CN) {
 static NodeValue simplifyConcatNode(Function *F, ConcatNode *CN) {
   /// concat(dim1, concat(dim2, X, Y), Z) -> concat(dim1, X, Y, Z),
   /// but only if dim1 == dim2
+
+  LOG_SCOPE(F->getLogContext(), "simplifyConcatNode")
+
   {
     auto inputs = CN->getInputs();
     // Check if any of the inputs are ConcatNode.
@@ -1507,6 +1528,8 @@ static NodeValue simplifyConcatNode(Function *F, ConcatNode *CN) {
 
 /// Optimize Concat nodes.
 static void optimizeConcatNodes(Function *F) {
+  LOG_SCOPE(F->getLogContext(), "optimizeConcatNodes")
+
   auto &nodes = F->getNodes();
 
   // For each node:
@@ -1523,6 +1546,8 @@ static void optimizeConcatNodes(Function *F) {
 /// Simplify and canonicalize arithmetic nodes by detecting simple arithmetic
 /// identities.
 static void optimizeArithmeticNodes(Function *F) {
+  LOG_SCOPE(F->getLogContext(), "optimizeArithmeticNodes")
+
   // A worklist that contains the nodes to process.
   std::vector<Node *> worklist;
 
@@ -1565,6 +1590,8 @@ static void optimizeArithmeticNodes(Function *F) {
 
 /// Statically transpose Constants.
 static void transposeConstants(Function *F) {
+  LOG_SCOPE(F->getLogContext(), "transposeConstants")
+
   auto &nodes = F->getNodes();
 
   for (auto &node : nodes) {
@@ -1733,6 +1760,8 @@ static void deduplicateConstants(Module *M) {
 
 /// Common Subexpression Elimination.
 static void CSE(Function *F) {
+  LOG_SCOPE(F->getLogContext(), "CSE")
+
   CSEVisitor visitor;
 
   deduplicateConstants(F->getParent());
@@ -1746,6 +1775,8 @@ static void CSE(Function *F) {
 /// Eliminate SliceNode when the input is SplatNode.
 /// Slice(Splat(args)) -> Splat(args')
 static void optimizeSliceOfSplat(Function *F) {
+  LOG_SCOPE(F->getLogContext(), "optimizeSliceOfSplat")
+
   for (auto &node : F->getNodes()) {
     auto *sliceNode = dyn_cast<SliceNode>(&node);
     if (!sliceNode)
@@ -1762,6 +1793,8 @@ static void optimizeSliceOfSplat(Function *F) {
 
 /// Optimize TransposeNode into ReshapeNode when it actually moves no data.
 static void optimizeTransposeIntoReshape(Function *F) {
+  LOG_SCOPE(F->getLogContext(), "optimizeTransposeIntoReshape")
+
   for (auto &node : F->getNodes()) {
     auto *TR = dyn_cast<TransposeNode>(&node);
     if (!TR)
@@ -1793,6 +1826,8 @@ static void optimizeTransposeIntoReshape(Function *F) {
 
 /// Optimize reshape nodes.
 static void optimizeReshape(Function *F) {
+  LOG_SCOPE(F->getLogContext(), "optimizeReshape")
+
   for (auto &node : F->getNodes()) {
     auto *reshapeNode = dyn_cast<ReshapeNode>(&node);
     if (!reshapeNode)
@@ -1849,6 +1884,8 @@ static void optimizeReshape(Function *F) {
 /// than quantization range [min, max].
 /// \returns if anything was changed in the given function.
 static bool optimizeQuantizedMaxSplat(Function *F) {
+  LOG_SCOPE(F->getLogContext(), "optimizeQuantizedMaxSplat")
+
   bool changed = false;
   // The following optimizations need to be performed after all
   // quantize/dequantize/rescale optimizations are done.
@@ -1959,6 +1996,7 @@ static NodeValue convertConstant(Module &mod, Constant &constant,
 /// because it eliminates some precision loss steps.
 /// However, this actually improves accuracy so we can always do it.
 static void optimizeConversions(Function *F) {
+  LOG_SCOPE(F->getLogContext(), "optimizeConversions")
 
   llvm::SmallVector<Node *, 8> conversions;
 
@@ -2042,6 +2080,8 @@ static Node *cloneNodeWithNewTypes(Function *F, Node *N,
 /// Eliminate node sequences that are related to quantization.
 /// \returns if anything was changed in the given function.
 static bool optimizeQuantization(Function *F) {
+  LOG_SCOPE(F->getLogContext(), "optimizeQuantization")
+
   bool changed = false;
   // A worklist that contains the nodes to process.
   std::vector<Node *> worklist;
@@ -2237,6 +2277,8 @@ FUNCTION_ENABLE_IF_TEMPLATE(MatMul)
 /// Apply this transformation for AvgPool and MaxPool.
 template <typename T>
 static bool sinkDownRescaleToPoolingNode(Function &F, T *PN) {
+  LOG_SCOPE(F.getLogContext(), "sinkDownRescaleToPoolingNode")
+
   bool changed = false;
 
   if (auto *rescale = dyn_cast<RescaleQuantizedNode>(PN->getInput())) {
@@ -2260,6 +2302,8 @@ static bool sinkDownRescaleToPoolingNode(Function &F, T *PN) {
 /// Apply this optimization for Add, Sub, Mul, Div, Min, Max.
 template <typename T>
 static bool combineDownRescaleToArithmeticNode(Function &F, T *AN) {
+  LOG_SCOPE(F.getLogContext(), "combineDownRescaleToArithmeticNode")
+
   bool changed = false;
 
   if (auto *rescale = dyn_cast<RescaleQuantizedNode>(AN->getLHS())) {
@@ -2282,6 +2326,8 @@ static bool combineDownRescaleToArithmeticNode(Function &F, T *AN) {
 /// Sink Rescale nodes down when possible.
 /// \returns if anything was changed in the given function.
 static bool sinkRescaleQuantizedNode(Function *F) {
+  LOG_SCOPE(F->getLogContext(), "sinkRescaleQuantizedNode")
+
   bool changed = false;
   for (auto &node : F->getNodes()) {
     // Sink Rescale below Reshape node.
@@ -2441,6 +2487,8 @@ static bool sinkRescaleQuantizedNode(Function *F) {
 void glow::convertPlaceholdersToConstants(Function *F,
                                           const PlaceholderBindings &bindings,
                                           llvm::ArrayRef<Placeholder *> phs) {
+  LOG_SCOPE(F->getLogContext(), "convertPlaceholdersToConstants")
+
   auto *M = F->getParent();
   auto &placeholders = M->getPlaceholders();
   for (auto &PH : placeholders) {
@@ -2488,6 +2536,8 @@ static bool getFloatScalar(Node *node, float *retFloat) {
 /// Fold leakyRelu operations expressed as a sub-graph Max(A, Mul(A, scalar))
 /// and replace it by PRelu(Splat).
 static void foldLeakyRelu(Function *F) {
+  LOG_SCOPE(F->getLogContext(), "foldLeakyRelu")
+
   auto &nodes = F->getNodes();
   for (auto &node : nodes) {
     if (auto *maxNode = dyn_cast<MaxNode>(&node)) {
@@ -2605,7 +2655,6 @@ static void foldChannelShuffle(Function *F) {
 }
 
 void glow::fold(Function *F, CompilationContext &cctx) {
-  // Log the start of current log scope.
   LOG_SCOPE(F->getLogContext(), "glow::fold")
 
   (void)cctx;
@@ -2629,7 +2678,6 @@ void glow::fold(Function *F, CompilationMode mode) {
 }
 
 void glow::optimize(Function *F, CompilationContext &cctx) {
-  // Log the start of current log scope.
   LOG_SCOPE(F->getLogContext(), "glow::optimize")
 
   // Optimize may be called after backend specific transformations and some
@@ -2760,16 +2808,22 @@ static llvm::Error checkAllNodesSupported(const Function &F, const Backend &B) {
 /// profiling, and FP16 conversion.
 static void transformForPrecisionMode(const Backend &B, Function *F,
                                       CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), "transformForPrecisionMode")
   const PrecisionConfiguration &precConfig = cctx.precisionConfig;
 
   switch (precConfig.quantMode) {
   case QuantizationMode::Profile: {
     assert(cctx.bindings);
+
+    LOG_SCOPE(F->getLogContext(), "glow::profileQuantization")
+
     glow::profileQuantization(*cctx.bindings, F);
     break;
   }
 
   case QuantizationMode::Quantize: {
+    LOG_SCOPE(F->getLogContext(), "quantization::quantizeFunction")
+
     quantization::quantizeFunction(F, precConfig.quantConfig, B,
                                    *cctx.loweredInfoMap,
                                    precConfig.precisionModeKindSet);
@@ -2782,6 +2836,8 @@ static void transformForPrecisionMode(const Backend &B, Function *F,
   }
 
   if (precConfig.convertToFP16) {
+    LOG_SCOPE(F->getLogContext(), "TypeAToTypeBFunctionConverter::convert()")
+
     TypeAToTypeBFunctionConverter converter(*F, ElemKind::FloatTy,
                                             ElemKind::Float16Ty,
                                             &precConfig.precisionModeKindSet);
@@ -2793,7 +2849,6 @@ static void transformForPrecisionMode(const Backend &B, Function *F,
 // docs/GraphOptimizationPipeline.md
 llvm::Error glow::optimizeFunction(Function *F, const Backend &B,
                                    CompilationContext &cctx) {
-  // Log the start of current log scope.
   LOG_SCOPE(F->getLogContext(), "glow::optimizeFunction")
 
   // Verify the function pre-optimization/lowering.
