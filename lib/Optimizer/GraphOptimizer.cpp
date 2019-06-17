@@ -2845,11 +2845,9 @@ static void transformForPrecisionMode(const Backend &B, Function *F,
   }
 }
 
-// NOTE: When updating this function, please also update the documentation in
-// docs/GraphOptimizationPipeline.md
-llvm::Error glow::optimizeFunction(Function *F, const Backend &B,
-                                   CompilationContext &cctx) {
-  LOG_SCOPE(F->getLogContext(), "glow::optimizeFunction")
+llvm::Error glow::optimizeFunctionBeforeLowering(Function *F,
+                                                 CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), "glow::optimizeFunctionBeforeLowering")
 
   // Verify the function pre-optimization/lowering.
   assert(F->verify() && "Function must be valid");
@@ -2867,7 +2865,16 @@ llvm::Error glow::optimizeFunction(Function *F, const Backend &B,
 
   // Optimize the graph.
   ::glow::optimize(F, cctx);
+  return llvm::Error::success();
+}
 
+// NOTE: When updating this function, please also update the documentation in
+// docs/GraphOptimizationPipeline.md
+llvm::Error glow::optimizeFunction(Function *F, const Backend &B,
+                                   CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), "glow::optimizeFunction")
+
+  RETURN_IF_ERR(optimizeFunctionBeforeLowering(F, cctx));
   // Lower the graph into a sequence of low-level linear algebra operations.
   const PrecisionConfiguration &precConfig = cctx.precisionConfig;
   if (precConfig.quantMode == QuantizationMode::Profile) {

@@ -77,6 +77,12 @@ std::unique_ptr<IRFunction> generateAndOptimizeIR(Function *F, const Backend &B,
 llvm::Error optimizeFunction(Function *F, const Backend &B,
                              CompilationContext &cctx);
 
+/// Optimize the Function \p F given compilation options \p cctx performing
+/// backend-independent optimizations that can be done before lowering.
+/// \returns success if there were no compiler errors; if not, this represents a
+/// compiler error.
+llvm::Error optimizeFunctionBeforeLowering(Function *F,
+                                           CompilationContext &cctx);
 } // namespace glow
 
 #endif // GLOW_OPTIMIZER_OPTIMIZER_H
