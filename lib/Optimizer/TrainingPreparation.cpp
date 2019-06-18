@@ -38,13 +38,13 @@ void defaultTensorInitializer(Function *F, Node *node, unsigned inputIdx,
   }
   case Kinded::Kind::BatchNormalizationNodeKind: {
     if (BatchNormalizationNode::ScaleIdx == inputIdx) {
-      tensor->init(glow::Tensor::InitKind::Zero, 0, F->getPRNG());
+      tensor->init(Tensor::InitKind::Zero, 0, F->getPRNG());
     } else if (BatchNormalizationNode::BiasIdx == inputIdx) {
-      tensor->init(glow::Tensor::InitKind::Broadcast, 0.1, F->getPRNG());
+      tensor->init(Tensor::InitKind::Broadcast, 0.1, F->getPRNG());
     } else if (BatchNormalizationNode::MeanIdx == inputIdx) {
-      tensor->zero();
+      tensor->init(Tensor::InitKind::Zero, 0, F->getPRNG());
     } else if (BatchNormalizationNode::VarIdx == inputIdx) {
-      tensor->init(glow::Tensor::InitKind::Broadcast, 1.0, F->getPRNG());
+      tensor->init(Tensor::InitKind::Broadcast, 1.0, F->getPRNG());
     }
     break;
   }
@@ -54,7 +54,7 @@ void defaultTensorInitializer(Function *F, Node *node, unsigned inputIdx,
       auto in = FCN->getInput();
       tensor->init(Tensor::InitKind::Xavier, in.dims()[1], F->getPRNG());
     } else if (FullyConnectedNode::BiasIdx == inputIdx) {
-      tensor->init(glow::Tensor::InitKind::Broadcast, 0.1, F->getPRNG());
+      tensor->init(Tensor::InitKind::Broadcast, 0.1, F->getPRNG());
     }
     break;
   }

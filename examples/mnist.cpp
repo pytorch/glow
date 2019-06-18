@@ -230,7 +230,6 @@ void testMNIST() {
 void testMNISTLoadAndTraining() {
   Tensor imageInputs;
   Tensor labelInputs;
-  loadMNIST(imageInputs, labelInputs);
   Tensor imageInputsTransposed;
   loadMNIST(imageInputsTransposed, labelInputs);
   imageInputsTransposed.transpose(&imageInputs, NHWC2NCHW);
