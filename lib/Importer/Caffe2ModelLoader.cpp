@@ -48,6 +48,18 @@ using ArgumentDictionaryTy =
 /// Therefore, we can make scale_1 == scale_2, and offset_1 = offset2 - 128
 const int32_t OFFSETSHIFT = 128;
 
+namespace glow {
+/// Template specialization of loadOperatorName for caffe2.
+template <>
+std::string
+loadOperatorName<caffe2::OperatorDef>(const caffe2::OperatorDef &op) {
+  if (op.name().length()) {
+    return op.name();
+  }
+  return op.type();
+}
+}; // namespace glow
+
 /// Legacy padding modes supported in caffe2.  These are used by MaxPool
 /// operators, and are defined in caffe2_legacy.proto in the caffe2 source
 /// tree.
