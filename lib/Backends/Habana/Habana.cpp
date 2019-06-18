@@ -29,6 +29,7 @@
 
 #include "perf_lib_layer_params.h"
 
+#include <chrono>
 #include <glog/logging.h>
 #include <mutex>
 #include <unordered_map>
@@ -1215,8 +1216,13 @@ HabanaBackend::compile(Function *F, const BackendOptions &opts) const {
   CompilationAttribute compileParams[1];
   compileParams[0].type = VISUALIZATION;
   compileParams[0].u32 = 1;
-  chk(synCompileGraph(compileParams, 1, recipeName.c_str()));
+  LOG(INFO) << "Compiling " << F->getName().str() << " to " << recipeName;
+  auto start = TraceEvent::now();
 
+  // TODO: add a TRACE_EVENT entry
+  chk(synCompileGraph(compileParams, 1, recipeName.c_str()));
+  auto duration = TraceEvent::now() - start;
+  LOG(INFO) << "Compilation took " << duration << " [us]";
   chk(synDestroyGraph());
 
   return llvm::Expected<std::unique_ptr<CompiledFunction>>(
