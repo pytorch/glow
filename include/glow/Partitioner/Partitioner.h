@@ -37,8 +37,6 @@ struct BackendInfo {
   size_t num = 0;
   /// The memory constraints for this backend.
   uint64_t memSize;
-  /// Backend name.
-  std::string name;
   /// Backend pointer.
   Backend *backend = nullptr;
 };
