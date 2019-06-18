@@ -583,7 +583,7 @@ void inferNonSquarePaddingConv(Tensor *out, llvm::StringRef kind) {
   auto *filterTensor = bindings.allocate(filter);
   auto FH = filterTensor->getHandle();
   for (size_t i = 0; i < 128; i++)
-    for (size_t j = 0; j < 16; j++) {
+    for (size_t j = 0; j < 32; j++) {
       FH.at({i, 0, 0, j}) = (i + j) / 100.0;
     }
   auto *zeroBias =
@@ -700,6 +700,7 @@ void inferConvDKKC8(Tensor *out, llvm::StringRef kind) {
   auto *filter = mod.createPlaceholder(ElemKind::FloatTy, {192, 3, 3, 32},
                                        "filter", false);
   auto *filterTensor = bindings.allocate(filter);
+  filterTensor->zero();
   auto FH = filterTensor->getHandle();
   for (size_t i = 0; i < 192; i++)
     for (size_t j = 0; j < 3; j++)

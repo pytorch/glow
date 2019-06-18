@@ -131,6 +131,9 @@ class Placeholder : public Storage {
   /// Specifies if the placeholder is trainable.
   bool isTrainable_;
 
+  /// Specifies if associated Tensors should be zeroed when allocated.
+  bool allocZero_{false};
+
 public:
   /// Create a new placeholder.
   Placeholder(llvm::StringRef name, TypeRef Ty, bool isTrainable)
@@ -142,6 +145,12 @@ public:
   /// \returns True if the placeholder are trainable during
   /// differentiation.
   bool isTraining() const { return isTrainable_; }
+
+  /// \returns True if associated Tensors should be zeroed when allocated.
+  bool allocZero() const { return allocZero_; }
+
+  /// Sets whether or not associated Tensors should be zeroed.
+  void setAllocZero(bool on = true) { allocZero_ = on; }
 
   static bool classof(const Kinded *k) {
     return k->getKind() == Kinded::Kind::PlaceholderKind;

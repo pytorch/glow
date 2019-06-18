@@ -534,9 +534,9 @@ TEST_P(InterpreterGrad, gradientCheckArithmetic) {
   auto *C = mod.createPlaceholder(ElemKind::FloatTy, {1, numDim}, "C", false);
   auto *D = mod.createPlaceholder(ElemKind::FloatTy, {1, numDim}, "D", false);
   auto *E = mod.createPlaceholder(ElemKind::FloatTy, {1, numDim}, "E", false);
-  bindings.allocate(B);
-  bindings.allocate(C);
-  bindings.allocate(D);
+  bindings.allocate(B)->zero();
+  bindings.allocate(C)->zero();
+  bindings.allocate(D)->zero();
 
   // Randomize E to avoid div by zero.
   auto *ETensor = bindings.allocate(E);
@@ -724,16 +724,18 @@ TEST_P(InterpreterGrad, gradientCheckCrossEntropyLoss) {
   Function *F = mod.createFunction("main");
   auto *P =
       mod.createPlaceholder(ElemKind::FloatTy, {batchSize, 4}, "P", false);
-  bindings.allocate(P);
+  bindings.allocate(P)->zero();
   auto *Y =
       mod.createPlaceholder(ElemKind::Int64ITy, {batchSize}, "Labels", false);
-  bindings.allocate(Y);
+  bindings.allocate(Y)->zero();
   Node *CE = F->createCrossEntropyLoss("celoss", P, Y);
   auto *result = F->createSave("ret", CE);
   auto *LTensor = bindings.allocate(result->getPlaceholder());
 
   Tensor inputs(ElemKind::FloatTy, {batchSize, 4});
+  inputs.zero();
   Tensor outputs(ElemKind::Int64ITy, {batchSize});
+  outputs.zero();
 
   auto inputsH = inputs.getHandle();
   auto outputsH = outputs.getHandle<int64_t>();

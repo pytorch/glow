@@ -150,6 +150,12 @@ Tensor *PlaceholderBindings::allocate(Placeholder *P) {
   DCHECK(!map_.count(P)) << "Placeholder with name \"" << P->getName().str()
                          << "\" already registered";
   Tensor *T = new Tensor(P->getType());
+
+  // If this Tensor needs to start zeroed, then zero it.
+  if (P->allocZero()) {
+    T->zero();
+  }
+
   map_[P] = T;
   nameMap_[P->getName()] = P;
   return T;

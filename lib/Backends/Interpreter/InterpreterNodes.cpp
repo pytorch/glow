@@ -1055,6 +1055,7 @@ void BoundInterpreterFunction::fwdCrossEntropyLossInstFloatImpl(
   auto labels = getWeightHandle<int64_t>(I->getLabels());
   auto CE = getWeightHandle<ElemTy>(I->getCE());
   auto dims = P.dims();
+  CE.clear();
   for (size_t n = 0; n < dims[0]; ++n) {
     assert(labels.raw(n) >= 0 && "Cannot use negative index.");
     size_t y = labels.raw(n);

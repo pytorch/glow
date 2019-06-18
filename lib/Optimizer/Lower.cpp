@@ -358,6 +358,7 @@ static void lowerSGDNode(Function *F, CompilationContext &cctx,
   if (momentum > 0.0) {
     Placeholder *Gsum =
         F->getParent()->createPlaceholder(W.getType(), "gsum", false);
+    Gsum->setAllocZero();
 
     auto *momentumSplat = F->createSplat("learningRateSplat", type, momentum);
     auto *GsumMult = F->createMul("GsumMult", momentumSplat, Gsum);
