@@ -34,6 +34,8 @@
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/raw_ostream.h"
 
+#include <glog/logging.h>
+
 #define DEBUG_TYPE "jit"
 
 using namespace glow;
@@ -66,7 +68,9 @@ void BundleSaver::saveWeights(llvm::StringRef weightsFileName) {
       continue;
     }
     weightsFile.seek(addr);
+    CHECK(!weightsFile.has_error()) << "Could not set file write position";
     weightsFile.write(payload, numBytes);
+    CHECK(!weightsFile.has_error()) << "Could not write bytes";
     pos = addr + numBytes;
     maxPos = std::max(pos, maxPos);
   }
