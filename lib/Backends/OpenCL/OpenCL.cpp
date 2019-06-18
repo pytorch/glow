@@ -155,7 +155,8 @@ cl_kernel OpenCLFunction::createKernel(const std::string &name,
   cl_kernel kernel = nullptr;
   if (program) {
     cl_kernel kernel = clCreateKernel(program, name.c_str(), &err);
-    GLOW_ASSERT((kernel && err == CL_SUCCESS) && "clCreateKernel Failed.");
+    CHECK(kernel) << "clCreateKernel Failed.";
+    CHECK_EQ(err, CL_SUCCESS) << "clCreateKernel Failed.";
     return kernel;
   }
   // Inspect all programs.
@@ -166,7 +167,7 @@ cl_kernel OpenCLFunction::createKernel(const std::string &name,
       return kernel;
     }
   }
-  GLOW_ASSERT(kernel && "clCreateKernel Failed.");
+  CHECK(kernel) << "clCreateKernel Failed.";
   return kernel;
 }
 
@@ -178,11 +179,11 @@ OpenCLFunction::createProgram(const std::string &source,
   cl_context ctx;
   cl_int err = clGetCommandQueueInfo(queue, CL_QUEUE_CONTEXT, sizeof(ctx), &ctx,
                                      nullptr);
-  GLOW_ASSERT(err == CL_SUCCESS && "clGetCommandQueueInfo Failed.");
+  CHECK_EQ(err, CL_SUCCESS) << "clGetCommandQueueInfo Failed.";
   cl_device_id deviceId;
   err = clGetCommandQueueInfo(queue, CL_QUEUE_DEVICE, sizeof(deviceId),
                               &deviceId, nullptr);
-  GLOW_ASSERT(err == CL_SUCCESS && "clGetCommandQueueInfo Failed.");
+  CHECK_EQ(err, CL_SUCCESS) << "clGetCommandQueueInfo Failed.";
 
   // Check if this program was compiled with the same parameters for the
   // provided context and device.
@@ -198,13 +199,13 @@ OpenCLFunction::createProgram(const std::string &source,
   }
   // Create a new compiled program.
   program = clCreateProgramWithSource(ctx, 1, &src, nullptr, &err);
-  GLOW_ASSERT(program && "clCreateProgramWithSource Failed.");
+  CHECK(program) << "clCreateProgramWithSource Failed.";
   err = clBuildProgram(program, 0, nullptr, combinedOptions.c_str(), nullptr,
                        nullptr);
   if (err) {
     dumpCompileLog(deviceId, program);
   }
-  GLOW_ASSERT(err == CL_SUCCESS && "clBuildProgram Failed.");
+  CHECK_EQ(err, CL_SUCCESS) << "clBuildProgram Failed.";
   // Add this program to the program cache.
   return program;
 }
@@ -212,7 +213,7 @@ OpenCLFunction::createProgram(const std::string &source,
 template <class T>
 static void setKernelArg(cl_kernel kernel, unsigned argIdx, T value) {
   cl_int err = clSetKernelArg(kernel, argIdx, sizeof(T), &value);
-  GLOW_ASSERT(err == CL_SUCCESS && "Unable to set parameter");
+  CHECK_EQ(err, CL_SUCCESS) << "Unable to set parameter";
 }
 
 /// Set OpenCL \p kernel arguments using the buffer operands of the
@@ -273,7 +274,7 @@ static void getMaxLocalWorkgroupSize(cl_kernel kernel, cl_device_id device,
   clGetDeviceInfo(device, CL_DEVICE_MAX_WORK_GROUP_SIZE, sizeof(WGS), &WGS,
                   nullptr);
 
-  GLOW_ASSERT(err == CL_SUCCESS && "Error in clGetKernelWorkGroupInfo.");
+  CHECK_EQ(err, CL_SUCCESS) << "Error in clGetKernelWorkGroupInfo.";
   // The global workgroup size must be a multiple of the local workgroup size,
   // and less than the max size for the specific dimension. Also, the
   // multiplication of all dimensions (size of total local work) needs to be
@@ -306,14 +307,14 @@ void OpenCLFunction::enqueueKernel(llvm::StringRef name,
   size_t retSize;
   cl_int err = clGetKernelInfo(kernel, CL_KERNEL_FUNCTION_NAME,
                                sizeof(kernelType), &kernelType, &retSize);
-  GLOW_ASSERT(err == CL_SUCCESS && "Error in clGetKernelInfo.");
+  CHECK_EQ(err, CL_SUCCESS) << "Error in clGetKernelInfo.";
 
   cl_event event{nullptr};
   bool profile = kernelProfiling_;
   err = clEnqueueNDRangeKernel(commands, kernel, global.size(), nullptr,
                                &global[0], &local[0], 0, nullptr,
                                profile ? &event : nullptr);
-  GLOW_ASSERT(err == CL_SUCCESS && "Error in clEnqueueNDRangeKernel.");
+  CHECK_EQ(err, CL_SUCCESS) << "Error in clEnqueueNDRangeKernel.";
   kernelLaunches.push_back(KernelLaunch(kernel, name, kernelType, event));
 }
 
@@ -331,14 +332,14 @@ void OpenCLFunction::enqueueKernel(llvm::StringRef name,
   size_t retSize;
   cl_int err = clGetKernelInfo(kernel, CL_KERNEL_FUNCTION_NAME,
                                sizeof(kernelType), &kernelType, &retSize);
-  GLOW_ASSERT(err == CL_SUCCESS && "Error in clGetKernelInfo.");
+  CHECK_EQ(err, CL_SUCCESS) << "Error in clGetKernelInfo.";
 
   cl_event event{nullptr};
   bool profile = kernelProfiling_;
   err = clEnqueueNDRangeKernel(commands, kernel, global.size(), nullptr,
                                &global[0], &local[0], 0, nullptr,
                                profile ? &event : nullptr);
-  GLOW_ASSERT(err == CL_SUCCESS && "Error in clEnqueueNDRangeKernel.");
+  CHECK_EQ(err, CL_SUCCESS) << "Error in clEnqueueNDRangeKernel.";
   kernelLaunches.push_back(KernelLaunch(kernel, name, kernelType, event));
 }
 
@@ -357,10 +358,11 @@ void OpenCLFunction::executeConvolution(const OCLConvolutionInst *CC) {
   unsigned group = CC->getGroup();
   // So far, we don't support fast convolution kernel if group > 1.
   // For group convolution, the slow convolution kernel should be invoked.
-  // The following assertion should be removed once the group > 1 is supported
-  // in fast convolution kernel.
-  assert(group == 1 && "Group Convolution is not supported by OpenCL backend's "
-                       "fast convolution kernel.");
+  // The following debug checks should be removed once the group > 1 is
+  // supported in fast convolution kernel.
+  DCHECK_EQ(group, 1)
+      << "Group Convolution is not supported by OpenCL backend's "
+         "fast convolution kernel.";
 
   // Create options for compiling the program.
   // Don't use names M, N, K as they are defined in precompiled headers.
@@ -405,12 +407,12 @@ void OpenCLFunction::executeConvolution(const OCLConvolutionInst *CC) {
   size_t WIS[3];
   cl_int err = clGetDeviceInfo(deviceId_, CL_DEVICE_MAX_WORK_ITEM_SIZES,
                                sizeof(WIS), &WIS, nullptr);
-  GLOW_ASSERT(err == CL_SUCCESS && "Could not execute clGetDeviceInfo");
+  CHECK_EQ(err, CL_SUCCESS) << "Could not execute clGetDeviceInfo";
 
   size_t dev_max_wg_size;
   err = clGetDeviceInfo(deviceId_, CL_DEVICE_MAX_WORK_GROUP_SIZE,
                         sizeof(dev_max_wg_size), &dev_max_wg_size, nullptr);
-  GLOW_ASSERT(err == CL_SUCCESS && "Could not execute clGetDeviceInfo");
+  CHECK_EQ(err, CL_SUCCESS) << "Could not execute clGetDeviceInfo";
 
   size_t wg_size[3];
 
@@ -493,7 +495,7 @@ void OpenCLFunction::executeConvolution(const OCLConvolutionInst *CC) {
   clGetKernelWorkGroupInfo(kernel, deviceId_, CL_KERNEL_WORK_GROUP_SIZE,
                            sizeof(max_kern_wg_size), &max_kern_wg_size,
                            nullptr);
-  GLOW_ASSERT(fw_wgs0 * fw_wgs1 <= max_kern_wg_size && "Bad workgroup size");
+  CHECK_LE(fw_wgs0 * fw_wgs1, max_kern_wg_size) << "Bad workgroup size";
 
   // Set the size of a workgroup.
   std::vector<size_t> local = {fw_wgs0, fw_wgs1, 1};
@@ -696,8 +698,9 @@ llvm::Error OpenCLFunction::execute(ExecutionContext *context) {
         }
       }
 
-      assert((!isQuantized) ||
-             numArgs > numMandatoryArgs && "Not enough kernel arguments");
+      if (isQuantized) {
+        DCHECK_GT(numArgs, numMandatoryArgs) << "Not enough kernel arguments";
+      }
       enqueueKernel(I.getName(), commands_, kernel, deviceId_, {global},
                     kernelLaunches_);
       continue;
@@ -831,7 +834,7 @@ llvm::Error OpenCLFunction::execute(ExecutionContext *context) {
       size_t WIS[3];
       cl_int err = clGetDeviceInfo(deviceId_, CL_DEVICE_MAX_WORK_ITEM_SIZES,
                                    sizeof(WIS), &WIS, nullptr);
-      GLOW_ASSERT(err == CL_SUCCESS && "Could not execute clGetDeviceInfo");
+      CHECK_EQ(err, CL_SUCCESS) << "Could not execute clGetDeviceInfo";
       // True if the tiled matrix multiplication kernel can be used. This is
       // only possible if the device allows workgroups with sizes which are at
       // least as big as a tile.
@@ -976,7 +979,7 @@ llvm::Error OpenCLFunction::execute(ExecutionContext *context) {
           /* num_events_in_wait_list */ 0,
           /* event_list */ nullptr,
           /* event */ kernelProfiling_ ? &writeBatchSlicesEvent : nullptr);
-      GLOW_ASSERT(err == CL_SUCCESS && "Unable to copy BRA data to the device");
+      CHECK_EQ(err, CL_SUCCESS) << "Unable to copy BRA data to the device";
       if (kernelProfiling_) {
         kernelLaunches_.emplace_back(KernelLaunch("batchedReduceAddSliceData",
                                                   "batchedReduceAddSliceData",
@@ -989,7 +992,7 @@ llvm::Error OpenCLFunction::execute(ExecutionContext *context) {
           /* num_events_in_wait_list */ 0,
           /* event_list */ nullptr,
           /* event */ kernelProfiling_ ? &writeDestSlicesEvent : nullptr);
-      GLOW_ASSERT(err == CL_SUCCESS && "Unable to copy BRA data to the device");
+      CHECK_EQ(err, CL_SUCCESS) << "Unable to copy BRA data to the device";
       if (kernelProfiling_) {
         kernelLaunches_.emplace_back(KernelLaunch("batchedReduceAddSliceData",
                                                   "batchedReduceAddSliceData",
@@ -1094,8 +1097,8 @@ llvm::Error OpenCLFunction::execute(ExecutionContext *context) {
                  biasGrad->size(), 0, biasGrad->getElementType());
 
       (void)filter;
-      assert(filter->dims() == filterGrad->dims() && "Dims should be the same");
-      assert(src->dims() == srcGrad->dims() && "Dims should be the same");
+      DCHECK(filter->dims() == filterGrad->dims()) << "Dims should be the same";
+      DCHECK(src->dims() == srcGrad->dims()) << "Dims should be the same";
 
       enqueueKernel(I.getName(), commands_, kernel, deviceId_,
                     {destGradDim.h, destGradDim.w, destGradDim.c},
@@ -1114,9 +1117,9 @@ llvm::Error OpenCLFunction::execute(ExecutionContext *context) {
       auto idim = ShapeNHWC(PM->getSrc()->getType()->dims());
       auto pads = PaddingTLBR(PM->getPads());
       ShapeHW kdim(PM->getKernels());
-      assert(kdim.isSquare() && "Only square kernel is supported");
+      DCHECK(kdim.isSquare()) << "Only square kernel is supported";
       ShapeHW sdim(PM->getStrides());
-      assert(sdim.isSquare() && "Only square stride is supported");
+      DCHECK(sdim.isSquare()) << "Only square stride is supported";
       setKernelArg<cl_uint>(kernel, numArgs + 1, kdim.height);
       setKernelArg<cl_uint>(kernel, numArgs + 2, sdim.height);
       setKernelArg(kernel, numArgs + 3, pads);
@@ -1139,9 +1142,9 @@ llvm::Error OpenCLFunction::execute(ExecutionContext *context) {
       auto idim = ShapeNHWC(PM->getSrc()->getType()->dims());
       auto pads = PaddingTLBR(PM->getPads());
       ShapeHW kdim(PM->getKernels());
-      assert(kdim.isSquare() && "Only square kernel is supported");
+      DCHECK(kdim.isSquare()) << "Only square kernel is supported";
       ShapeHW sdim(PM->getStrides());
-      assert(sdim.isSquare() && "Only square stride is supported");
+      DCHECK(sdim.isSquare()) << "Only square stride is supported";
       setKernelArg<cl_uint>(kernel, numArgs + 1, kdim.height);
       setKernelArg<cl_uint>(kernel, numArgs + 2, sdim.height);
       setKernelArg(kernel, numArgs + 3, pads);
@@ -1162,17 +1165,17 @@ llvm::Error OpenCLFunction::execute(ExecutionContext *context) {
       auto srcGradDim = ShapeNHWC(PMG->getSrcGrad()->dims());
       auto pads = PaddingTLBR(PMG->getPads());
       ShapeHW kdim(PMG->getKernels());
-      assert(kdim.isSquare() && "Only square kernel is supported");
+      DCHECK(kdim.isSquare()) << "Only square kernel is supported";
       ShapeHW sdim(PMG->getStrides());
-      assert(sdim.isSquare() && "Only square stride is supported");
+      DCHECK(sdim.isSquare()) << "Only square stride is supported";
       setKernelArg<cl_uint>(kernel, numArgs + 1, kdim.height);
       setKernelArg<cl_uint>(kernel, numArgs + 2, sdim.height);
       setKernelArg(kernel, numArgs + 3, pads);
       setKernelArg(kernel, numArgs + 4, srcGradDim);
       setKernelArg(kernel, numArgs + 5, destGradDim);
 
-      assert(srcGradDim.n == destGradDim.n && "batch size is wrong");
-      assert(srcGradDim.c == destGradDim.c && "depth size is wrong");
+      DCHECK_EQ(srcGradDim.n, destGradDim.n) << "batch size is wrong";
+      DCHECK_EQ(srcGradDim.c, destGradDim.c) << "depth size is wrong";
 
       enqueueKernel(I.getName(), commands_, kernel, deviceId_, {srcGradDim.n},
                     kernelLaunches_);
@@ -1190,9 +1193,9 @@ llvm::Error OpenCLFunction::execute(ExecutionContext *context) {
       auto idim = ShapeNHWC(PA->getSrc()->getType()->dims());
       auto pads = PaddingTLBR(PA->getPads());
       ShapeHW kdim(PA->getKernels());
-      assert(kdim.isSquare() && "Only square kernel is supported");
+      DCHECK(kdim.isSquare()) << "Only square kernel is supported";
       ShapeHW sdim(PA->getStrides());
-      assert(sdim.isSquare() && "Only square stride is supported");
+      DCHECK(sdim.isSquare()) << "Only square stride is supported";
       setKernelArg<cl_uint>(kernel, numArgs + 1, kdim.height);
       setKernelArg<cl_uint>(kernel, numArgs + 2, sdim.height);
       setKernelArg(kernel, numArgs + 3, pads);
@@ -1207,8 +1210,8 @@ llvm::Error OpenCLFunction::execute(ExecutionContext *context) {
     if (auto *TR = dyn_cast<TransposeInst>(&I)) {
       // This is a naive implementation that parallelizes using one dimension,
       // the N (batch size).
-      GLOW_ASSERT(TR->getShuffle().size() <= 4 &&
-                  "This code supports only 4 and lower dimensional transposes");
+      CHECK_LE(TR->getShuffle().size(), 4)
+          << "This code supports only 4 and lower dimensional transposes";
 
       cl_kernel kernel = createKernel(kernelName);
       setKernelArg(kernel, 0, deviceBuffer_);
@@ -1256,7 +1259,7 @@ llvm::Error OpenCLFunction::execute(ExecutionContext *context) {
       if (kernelProfiling_) {
         kernelLaunches_.emplace_back(KernelLaunch(I.getName(), "copy", event));
       }
-      GLOW_ASSERT(err == CL_SUCCESS && "Error in clEnqueueCopyBuffer.");
+      CHECK_EQ(err, CL_SUCCESS) << "Error in clEnqueueCopyBuffer.";
       continue;
     }
 
@@ -1268,8 +1271,9 @@ llvm::Error OpenCLFunction::execute(ExecutionContext *context) {
 
       auto *data = GI->getData();
 
-      assert(data->getElementType() == ElemKind::FloatTy &&
-             "At the moment only floats are supported");
+      DCHECK(data->getElementType() == ElemKind::FloatTy)
+          << "At the moment only floats are supported, unsupported type: "
+          << Type::getElementName(data->getElementType()).str();
 
       TypeRef dataType = data->getType();
       size_t numIndices = GI->getIndices()->size();
@@ -1404,7 +1408,7 @@ llvm::Error OpenCLFunction::execute(ExecutionContext *context) {
       cl_int err =
           clEnqueueNDRangeKernel(commands_, kernel, global.size(), nullptr,
                                  &global[0], &local[0], 0, nullptr, &event);
-      GLOW_ASSERT(err == CL_SUCCESS && "Error in clEnqueueNDRangeKernel.");
+      CHECK_EQ(err, CL_SUCCESS) << "Error in clEnqueueNDRangeKernel.";
       kernelLaunches_.push_back(
           KernelLaunch(kernel, TE->getName(), "checkpoint", event));
       continue;
@@ -1530,7 +1534,7 @@ uint64_t OpenCLFunction::copyValueToDevice(const Value *v, void *buf) {
         sizeInBytes, buf, /* num_events_in_wait_list */ 0,
         /* event_list */ nullptr,
         /* event */ kernelProfiling_ ? &event : nullptr);
-    GLOW_ASSERT(err == CL_SUCCESS && "Unable to copy data to the device");
+    CHECK_EQ(err, CL_SUCCESS) << "Unable to copy data to the device";
     if (kernelProfiling_) {
       kernelLaunches_.emplace_back(
           KernelLaunch("copyValueToDevice", "copyValueToDevice", event));
@@ -1553,7 +1557,7 @@ uint64_t OpenCLFunction::copyValueFromDevice(const Value *v, void *buf) {
         sizeInBytes, buf, /* num_events_in_wait_list */ 0,
         /* event_list */ nullptr,
         /* event */ kernelProfiling_ ? &event : nullptr);
-    GLOW_ASSERT(err == CL_SUCCESS && "Unable to copy from the device");
+    CHECK_EQ(err, CL_SUCCESS) << "Unable to copy from the device";
     DEBUG_GLOW(llvm::dbgs()
                << "Copied the value from device: " << v->getName() << "\n");
     if (kernelProfiling_) {
@@ -1577,7 +1581,7 @@ void OpenCLFunction::loadPlaceholders(PlaceholderBindings *bindings) {
         sizeInBytes, buf, /* num_events_in_wait_list */ 0,
         /* event_list */ nullptr,
         /* event */ kernelProfiling_ ? &event : nullptr);
-    GLOW_ASSERT(err == CL_SUCCESS && "Unable to copy data to the device");
+    CHECK_EQ(err, CL_SUCCESS) << "Unable to copy data to the device";
     if (kernelProfiling_) {
       kernelLaunches_.emplace_back(KernelLaunch(
           "copyConstantsToDevice", "copyConstantsToDevice", event));
@@ -1604,7 +1608,7 @@ void OpenCLFunction::loadPlaceholders(PlaceholderBindings *bindings) {
         buf, /* num_events_in_wait_list */ 0,
         /* event_list */ nullptr,
         /* event */ kernelProfiling_ ? &event : nullptr);
-    GLOW_ASSERT(err == CL_SUCCESS && "Unable to copy data to the device");
+    CHECK_EQ(err, CL_SUCCESS) << "Unable to copy data to the device";
     if (kernelProfiling_) {
       kernelLaunches_.emplace_back(
           KernelLaunch("copyInputsToDevice", "copyInputsToDevice", event));
@@ -1633,7 +1637,7 @@ void OpenCLFunction::updatePlaceholders(PlaceholderBindings *bindings) {
         buf, /* num_events_in_wait_list */ 0,
         /* event_list */ nullptr,
         /* event */ kernelProfiling_ ? &event : nullptr);
-    GLOW_ASSERT(err == CL_SUCCESS && "Unable to copy data from the device");
+    CHECK_EQ(err, CL_SUCCESS) << "Unable to copy data from the device";
     if (kernelProfiling_) {
       kernelLaunches_.emplace_back(KernelLaunch(
           "copyOutputsFromDevice", "copyOutputsFromDevice", event));
@@ -1649,7 +1653,7 @@ cl_mem OpenCLFunction::allocDeviceBuffer(uint64_t size) {
   size = alignedSize(size, alignment);
   auto buf =
       clCreateBuffer(context_, CL_MEM_READ_WRITE, size, nullptr, nullptr);
-  GLOW_ASSERT(buf && "Allocation failed!");
+  CHECK(buf) << "Allocation failed!";
   return buf;
 }
 
@@ -1701,7 +1705,7 @@ void OpenCLFunction::translateTraceEvents(ExecutionContext *context) const {
 
     auto &name = kl.name_;
     auto &type = kl.type_;
-    assert(!name.empty() && "Kernel name cannot be empty");
+    DCHECK(!name.empty()) << "Kernel name cannot be empty";
     cl_ulong timeStart;
     cl_ulong timeEnd;
 
@@ -1741,8 +1745,8 @@ void OpenCLFunction::translateTraceEvents(ExecutionContext *context) const {
       double duration = timeEnd - timeStart;
       kernelToDuration[type] += duration;
       total += duration;
-      llvm::outs() << "OpenCl execution time for a launch of kernel " << type
-                   << format(" is: %0.3f milliseconds\n", duration / 1000000.0);
+      LOG(INFO) << "OpenCl execution time for a launch of kernel " << type
+                << strFormat(" is: %0.3f milliseconds\n", duration / 1000000.0);
     }
   }
 
