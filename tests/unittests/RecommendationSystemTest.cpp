@@ -20,9 +20,73 @@
 #include "glow/Graph/Graph.h"
 #include "glow/Partitioner/Partitioner.h"
 
+#include <algorithm>
+#include <random>
+
 #include "gtest/gtest.h"
 
+#include "llvm/Support/CommandLine.h"
+
 using namespace glow;
+
+namespace {
+llvm::cl::OptionCategory recSysTestCat("RecSys Category");
+
+llvm::cl::opt<unsigned> bottomMLPIntermediateDimOpt(
+    "bottom-mlp-intermediate-dim",
+    llvm::cl::desc("Intermediate dim for the bottom MLP."), llvm::cl::Optional,
+    llvm::cl::init(1024), llvm::cl::cat(recSysTestCat));
+
+llvm::cl::opt<unsigned> topMLPIntermediateDimOpt(
+    "top-mlp-intermediate-dim",
+    llvm::cl::desc("Intermediate dim for the top MLP."), llvm::cl::Optional,
+    llvm::cl::init(1024), llvm::cl::cat(recSysTestCat));
+
+llvm::cl::opt<unsigned> miniBatchOpt("mini-batch", llvm::cl::desc("Minibatch."),
+                                     llvm::cl::Optional, llvm::cl::init(16),
+                                     llvm::cl::cat(recSysTestCat));
+
+llvm::cl::opt<unsigned> embeddingDimOpt("embedding-dim",
+                                        llvm::cl::desc("Embedding dim."),
+                                        llvm::cl::Optional, llvm::cl::init(64),
+                                        llvm::cl::cat(recSysTestCat));
+
+llvm::cl::opt<unsigned> denseDimOpt("dense-dim", llvm::cl::desc("Dense dim."),
+                                    llvm::cl::Optional, llvm::cl::init(800),
+                                    llvm::cl::cat(recSysTestCat));
+
+llvm::cl::opt<unsigned> numBottomMLPLayersOpt(
+    "num-bottom-mlp-layers", llvm::cl::desc("Number of bottom MLP layers."),
+    llvm::cl::Optional, llvm::cl::init(3), llvm::cl::cat(recSysTestCat));
+
+llvm::cl::opt<unsigned> numTopMLPLayersOpt(
+    "num-top-mlp-layers", llvm::cl::desc("Number of top MLP layers."),
+    llvm::cl::Optional, llvm::cl::init(3), llvm::cl::cat(recSysTestCat));
+
+llvm::cl::list<unsigned> tableSizesOpt(
+    "embedding-table-sizes",
+    llvm::cl::desc("Comma-separated list of embedding table sizes."),
+    llvm::cl::ZeroOrMore, llvm::cl::CommaSeparated,
+    llvm::cl::cat(recSysTestCat));
+
+llvm::cl::list<unsigned> tableCountsOpt(
+    "embedding-table-counts",
+    llvm::cl::desc("Comma-separated list of embedding table counts, "
+                   "corresponding to a count for each size listed in "
+                   "embedding-table-sizes."),
+    llvm::cl::ZeroOrMore, llvm::cl::CommaSeparated,
+    llvm::cl::cat(recSysTestCat));
+
+llvm::cl::opt<unsigned> deviceMemCapacityOpt(
+    "device-mem-capacity",
+    llvm::cl::desc("Device memory capacity. Default is 6 MB."),
+    llvm::cl::Optional, llvm::cl::init(1024 * 1024 * 6),
+    llvm::cl::cat(recSysTestCat));
+
+llvm::cl::opt<unsigned> numDevicesOpt(
+    "num-devices", llvm::cl::desc("Number of devices to use for partitioning."),
+    llvm::cl::Optional, llvm::cl::init(6), llvm::cl::cat(recSysTestCat));
+} // namespace
 
 /// Fills the tensor \p H with some stable random data with the seed \p seed
 /// and the range [-scale .. scale].
@@ -104,7 +168,6 @@ protected:
   size_t miniBatch;
   size_t embeddingDim;
   size_t denseDim;
-  size_t numberOfSparseTables;
   std::vector<size_t> tableSizes;
 
   // Partitioner config:
@@ -116,15 +179,33 @@ protected:
 
   void SetUp() override {
     /// Test configuration, tweak here:
-    miniBatch = 16;
-    embeddingDim = 64;
-    denseDim = 800;
+    miniBatch = miniBatchOpt;
+    embeddingDim = embeddingDimOpt;
+    denseDim = denseDimOpt;
 
-    numberOfSparseTables = 10;
-    tableSizes = {8000, 6000, 7000, 9000, 12000, 8000, 6000, 7000, 9000, 12000};
-    deviceMemCapacity = 1024 * 1024 * 6; // 6 MB.
+    if (!tableSizesOpt.empty()) {
+      if (!tableCountsOpt.empty()) {
+        CHECK_EQ(tableSizesOpt.size(), tableCountsOpt.size())
+            << "Embedding table sizes and counts must be same length.";
+        for (size_t i = 0, e = tableSizesOpt.size(); i < e; i++) {
+          for (size_t j = 0, f = tableCountsOpt[i]; j < f; j++) {
+            tableSizes.push_back(tableSizesOpt[i]);
+          }
+        }
+      } else {
+        tableSizes =
+            std::vector<size_t>(tableSizesOpt.begin(), tableSizesOpt.end());
+      }
+      // Stable randomization of the order of the tables.
+      std::shuffle(tableSizes.begin(), tableSizes.end(), std::mt19937());
+    } else {
+      tableSizes = {8000, 6000, 7000, 9000, 12000,
+                    8000, 6000, 7000, 9000, 12000};
+    }
 
-    numDevices = 6;
+    deviceMemCapacity = deviceMemCapacityOpt;
+
+    numDevices = numDevicesOpt;
   }
 
   void TearDown() override {
@@ -446,11 +527,13 @@ protected:
                          0.001);
     NodeValue bottom_MLP;
     if (quantizeFC) {
-      bottom_MLP = createQuantizedMLP(mod_, F_, dense_data,
-                                      dense_data->dims()[1], 1024, emb_dim, 3);
+      bottom_MLP = createQuantizedMLP(
+          mod_, F_, dense_data, dense_data->dims()[1],
+          bottomMLPIntermediateDimOpt, emb_dim, numBottomMLPLayersOpt);
     } else {
-      bottom_MLP = createMLP(mod_, F_, dense_data, dense_data->dims()[1], 1024,
-                             emb_dim, 3);
+      bottom_MLP = createMLP(mod_, F_, dense_data, dense_data->dims()[1],
+                             bottomMLPIntermediateDimOpt, emb_dim,
+                             numBottomMLPLayersOpt);
     }
 
     // Sparse Embeddings
@@ -487,10 +570,13 @@ protected:
     // MLP at the top
     Node *top_MLP;
     if (quantizeFC) {
-      top_MLP = createQuantizedMLP(mod_, F_, interact, interact.dims()[1], 1024,
-                                   1, 3);
+      top_MLP = createQuantizedMLP(mod_, F_, interact, interact.dims()[1],
+                                   topMLPIntermediateDimOpt, /* output_dim */ 1,
+                                   numTopMLPLayersOpt);
     } else {
-      top_MLP = createMLP(mod_, F_, interact, interact.dims()[1], 1024, 1, 3);
+      top_MLP = createMLP(mod_, F_, interact, interact.dims()[1],
+                          topMLPIntermediateDimOpt, /* output_dim */ 1,
+                          numTopMLPLayersOpt);
     }
 
     // Output
@@ -503,7 +589,7 @@ protected:
   void testRecSys(bool quantizeSLWS, bool quantizeFC, bool convertToFP16,
                   bool gatherWeights, bool checkConcat = false) {
     // Create the tables.
-    std::vector<Placeholder *> sparseLengths(numberOfSparseTables);
+    std::vector<Placeholder *> sparseLengths(tableSizes.size());
     for (unsigned int i = 0; i < sparseLengths.size(); i++) {
       sparseLengths[i] = mod_.createPlaceholder(
           ElemKind::Int32ITy, {miniBatch}, "SL" + std::to_string(i), false);
@@ -809,7 +895,8 @@ TEST_P(RecommendationSystemTest, RecSys_FP32_Gather_Weights) {
 TEST_P(RecommendationSystemTest, RecSys_FP32_Medium_Gather_Weights) {
   ENABLED_BACKENDS(CPU, Habana);
 
-  numberOfSparseTables = 15;
+  // Note that this overrides the parameters provided by command line options if
+  // provided, as this comes after SetUp().
   tableSizes = {800000, 600000, 700000, 900000, 1200000,
                 800000, 600000, 700000, 900000, 1200000,
                 800000, 600000, 700000, 900000, 1200000};
