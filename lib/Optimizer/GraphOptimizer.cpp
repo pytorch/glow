@@ -1918,6 +1918,25 @@ static bool optimizeQuantizedMaxSplat(Function *F) {
         changed = true;
         MN->getResult().replaceAllUsesOfWith(otherInput);
       }
+      continue;
+    }
+    // Potentially nop quantized ReLU can be eliminated.
+    if (auto *RN = dyn_cast<ReluNode>(&node)) {
+      if (!RN->getResult().getType()->isQuantizedType() ||
+          RN->getResult().getType() != RN->getInput().getType()) {
+        continue;
+      }
+
+      Node *input = RN->getInput();
+
+      // If zero is smaller or equal than values that can be covered by
+      // quantization [min,max] range then just remove ReluNode operation.
+      float min = RN->getResult().getType()->getQuantizedValueRange().first;
+      if (0.0f <= min) {
+        changed = true;
+        RN->getResult().replaceAllUsesOfWith(input);
+      }
+      continue;
     }
   }
   return changed;

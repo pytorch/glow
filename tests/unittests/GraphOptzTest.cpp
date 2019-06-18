@@ -2870,3 +2870,15 @@ TEST_F(GraphOptz, dceQuantization) {
 
   EXPECT_EQ(F_->getNodes().size(), 2);
 }
+
+TEST_F(GraphOptz, nopRelu) {
+  auto *in = mod_.createPlaceholder(ElemKind::Int8QTy, {3, 5}, 0.3, -128, "lhs",
+                                    false);
+
+  auto *relu = F_->createRELU("relu", in);
+  F_->createSave("save", relu);
+
+  ::glow::optimize(F_, CompilationMode::Infer);
+
+  EXPECT_EQ(F_->getNodes().size(), 1);
+}
