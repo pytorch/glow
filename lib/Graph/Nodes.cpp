@@ -636,6 +636,18 @@ bool TanhGradNode::verify() const {
   return isValid;
 }
 
+bool ExpNode::verify() const {
+  const Node *parent = getResult().getNode();
+  bool isValid =
+      checkSameIsQuantized(getInput().getType(), getResult().getType(), parent);
+  if (getInput().getType()->isQuantizedType()) {
+    return false;
+  }
+  isValid &= checkSameType(getInput(), getResult(), parent);
+  isValid &= checkSameShape(getInput(), getResult(), parent);
+  return isValid;
+}
+
 bool SoftMaxNode::verify() const {
   return verifySoftMax(getInput(), getResult());
 }

@@ -1225,6 +1225,10 @@ LogNode *Function::createLog(llvm::StringRef name, NodeValue input,
   return addNode(new LogNode(name, outTy ? outTy : input.getType(), input));
 }
 
+ExpNode *Function::createExp(llvm::StringRef name, NodeValue input) {
+  return addNode(new ExpNode(name, input.getType(), input));
+}
+
 Node *Function::createLogit(llvm::StringRef name, NodeValue input, float eps) {
   assert(eps > 0.0f && "Clamping parameter eps must be strictly positive.");
   assert(eps < 0.5f && "Clamping parameter eps must be less than 0.5.");

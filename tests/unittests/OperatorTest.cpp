@@ -4404,20 +4404,25 @@ TEST_P(OperatorTest, Int8MaxPool) {
   }
 }
 
-static FunctionTensorPair
-createAndInitBasicTanhTest(glow::PlaceholderBindings &bindings,
-                           glow::ExecutionEngine &EE) {
-  auto &mod = EE.getModule();
-  Function *F = mod.createFunction("main");
-
-  auto *input = mod.createPlaceholder(ElemKind::FloatTy, {10}, "input", false);
-  bindings.allocate(input)->getHandle().randomize(-10.0, 10.0, mod.getPRNG());
-  auto *tanh = F->createTanh("Tanh", input);
-  auto *save = F->createSave("Save", tanh);
-  auto *resultTensor = bindings.allocate(save->getPlaceholder());
-
-  return std::make_pair(F, resultTensor);
-}
+#define COMPARE_UNARY_OP_FUN(_OP_NAME_, LEN, LOW, HIGH)                        \
+  static FunctionTensorPair createAndInitBasic##_OP_NAME_##Test(               \
+      glow::PlaceholderBindings &bindings, glow::ExecutionEngine &EE) {        \
+    auto &mod = EE.getModule();                                                \
+    Function *F = mod.createFunction("main");                                  \
+                                                                               \
+    auto *input =                                                              \
+        mod.createPlaceholder(ElemKind::FloatTy, {LEN}, "input", false);       \
+    bindings.allocate(input)->getHandle().randomize(LOW, HIGH, mod.getPRNG()); \
+    auto *tanh = F->create##_OP_NAME_(#_OP_NAME_, input);                      \
+    auto *save = F->createSave("Save", tanh);                                  \
+    auto *resultTensor = bindings.allocate(save->getPlaceholder());            \
+    return std::make_pair(F, resultTensor);                                    \
+  }
+COMPARE_UNARY_OP_FUN(Exp, 10, -1.0F, 1.0F)
+COMPARE_UNARY_OP_FUN(Tanh, 10, -10.0F, 10.0F)
+COMPARE_UNARY_OP_FUN(Log, 1000, 1.0F, 100.0F)
+COMPARE_UNARY_OP_FUN(Sigmoid, 10, -10.0F, 10.0F)
+#undef COMPARE_UNARY_OP_FUN
 
 TEST_P(OperatorStatelessTest, Int8Tanh) {
   ENABLED_BACKENDS(Interpreter, CPU);
@@ -4455,28 +4460,34 @@ TEST_P(OperatorTest, Tanh) {
   }
 }
 
-static FunctionTensorPair
-createAndInitBasicLogTest(glow::PlaceholderBindings &bindings,
-                          glow::ExecutionEngine &EE) {
-  auto &mod = EE.getModule();
-  Function *F = mod.createFunction("main");
+TEST_P(OperatorStatelessTest, Exp_Float16) {
+  ENABLED_BACKENDS(Interpreter);
+  compareAgainstInterpreter(getBackendName(), createAndInitBasicExpTest,
+                            ElemKind::FloatTy, ElemKind::Float16Ty, 0.005f,
+                            parCloneCountOpt);
+}
 
-  constexpr size_t size = 1000;
+/// Verify that the Exp operator works correctly.
+TEST_P(OperatorTest, Exp) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  constexpr size_t size = 10;
   auto *input =
-      mod.createPlaceholder(ElemKind::FloatTy, {size}, "input", false);
+      mod_.createPlaceholder(ElemKind::FloatTy, {size}, "input", false);
+  bindings_.allocate(input)->getHandle().randomize(-10.0, 10.0, mod_.getPRNG());
 
-  const float min = 1.0;
-  const float max = 100.0;
-  bindings.allocate(input)->getHandle().randomize(min, max, mod.getPRNG());
+  auto *expn = F_->createExp("Exp", input);
+  auto *save = F_->createSave("Save", expn);
+  bindings_.allocate(save->getPlaceholder());
 
-  // Input some random data into a log.
-  auto *log = F->createLog("log", input);
-  auto *res = F->createSave("save", log);
-  ::glow::convertPlaceholdersToConstants(F, bindings,
-                                         {input, res->getPlaceholder()});
-  auto *resultTensor = bindings.allocate(res->getPlaceholder());
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run(bindings_);
 
-  return std::make_pair(F, resultTensor);
+  auto resultH = bindings_.get(save->getPlaceholder())->getHandle();
+  auto inputH = bindings_.get(input)->getHandle();
+
+  for (size_t i = 0; i < size; i++) {
+    EXPECT_NEAR(resultH.at({i}), std::exp(inputH.at({i})), 0.001);
+  }
 }
 
 /// Verify that a quantized Log works correctly.
@@ -4854,21 +4865,6 @@ TEST_P(OperatorTest, SigmoidOverflow) {
   for (size_t i = 0; i < 2; i++) {
     EXPECT_EQ(result.getHandle().raw(i), ref[i]);
   }
-}
-
-static FunctionTensorPair
-createAndInitBasicSigmoidTest(glow::PlaceholderBindings &bindings,
-                              glow::ExecutionEngine &EE) {
-  auto &mod = EE.getModule();
-  Function *F = mod.createFunction("main");
-
-  auto *input = mod.createPlaceholder(ElemKind::FloatTy, {10}, "input", false);
-  bindings.allocate(input)->getHandle().randomize(-10.0, 10.0, mod.getPRNG());
-  auto *sigmoid = F->createSigmoid("Sigmoid", input);
-  auto *save = F->createSave("Save", sigmoid);
-  auto *resultTensor = bindings.allocate(save->getPlaceholder());
-
-  return std::make_pair(F, resultTensor);
 }
 
 TEST_P(OperatorStatelessTest, Int8Sigmoid) {

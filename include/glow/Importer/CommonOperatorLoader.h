@@ -265,6 +265,15 @@ protected:
     return llvm::Error::success();
   }
 
+  llvm::Error loadExp(const OpType &op, ArgumentDictionaryTy &dict) {
+    const std::string &opName = loadOperatorName(op);
+    NodeValue in;
+    ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
+    auto *E = G_.createExp(opName, in);
+    RETURN_IF_ERR(addNodeAsOutput(op, E));
+    return llvm::Error::success();
+  }
+
   llvm::Error loadShape(const OpType &op, ArgumentDictionaryTy &dict) {
     NodeValue in;
     ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
@@ -1003,6 +1012,10 @@ protected:
     }
     if (typeName == "Tanh") {
       RETURN_IF_ERR(loadTanh(op, dict));
+      return true;
+    }
+    if (typeName == "Exp") {
+      RETURN_IF_ERR(loadExp(op, dict));
       return true;
     }
     if (typeName == "Shape") {

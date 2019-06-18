@@ -987,6 +987,8 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
     ARITHMETIC_UNARY_OP_CASE(Sigmoid, "sigmoid");
     ARITHMETIC_UNARY_OP_CASE(Tanh, "tanh");
     ARITHMETIC_UNARY_OP_CASE(ElementLog, "element_log");
+    ARITHMETIC_UNARY_OP_CASE(ElementExp, "element_exp");
+
 #undef ARITHMETIC_UNARY_OP_CASE
 
   case Kinded::Kind::ElementIsNaNInstKind: {
