@@ -105,23 +105,6 @@ void LogContext::logNodeCreation(const Node *newNode) {
   addLogContent(" }\n");
 }
 
-/// Logs the node replacement.
-void LogContext::logNodeValueReplacement(const NodeValue &oldNodeVal,
-                                         const NodeValue &newNodeVal) {
-  if (!dumpCompilationLogOpt) {
-    return;
-  }
-  addLogContent(
-      llvm::formatv("[FULL SCOPE: {0} ] --- REPLACE ( OldNodeVal(Kind: {1}, "
-                    "Name: {2}, ResNo: {3}) ==>  NewNodeVal(Kind: {4}, Name: "
-                    "{5}, ResNo: {6}) }\n",
-                    getFullScopeName(), oldNodeVal.getNode()->getKindName(),
-                    oldNodeVal.getNode()->getName(), oldNodeVal.getResNo(),
-                    newNodeVal.getNode()->getKindName(),
-                    newNodeVal.getNode()->getName(), newNodeVal.getResNo())
-          .str());
-}
-
 /// Logs the node deletion.
 void LogContext::logNodeDeletion(const Node &deletedNode) {
   if (!dumpCompilationLogOpt) {
