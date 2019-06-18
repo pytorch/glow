@@ -4,7 +4,7 @@ op {
   input: "conv_w"
   input: "conv_b"
   output: "conv_out"
-  type: "ConvRelu"
+  type: "Int8ConvRelu"
   arg {
     name: "kernel"
     i: 2
@@ -24,6 +24,14 @@ op {
   arg {
     name: "dilation"
     i: 1
+  }
+  arg {
+    name: "Y_scale"
+    f: 1
+  }
+  arg {
+    name: "Y_zero_point"
+    i: 0
   }
 }
 external_output: "conv_out"

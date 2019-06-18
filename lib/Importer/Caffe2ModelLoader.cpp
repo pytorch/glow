@@ -500,6 +500,10 @@ llvm::Error Caffe2ModelLoader::loadConvQuantized(const caffe2::OperatorDef &op,
                          pads, group, dilation);
   }
 
+  if (op.type() == "Int8ConvRelu") {
+    node = G_.createRELU(opName + ".relu", node);
+  }
+
   if (order == "NCHW") {
     // Transpose the output back.
     node = G_.createTranspose(opName, node, NHWC2NCHW);
@@ -547,8 +551,9 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     ASSIGN_VALUE_OR_RETURN_ERR(yZeroPoint, loadInt(dict["Y_zero_point"]));
     auto outTy = G_.getParent()->uniqueType(ElemKind::Int8QTy, outDims, yScale,
                                             yZeroPoint - OFFSETSHIFT);
-    auto *node = G_.createAdd(opName, outTy, in0, in1);
-    RETURN_IF_ERR(addNodeAsOutput(op, node));
+    auto *add = G_.createAdd(opName + ".sum", outTy, in0, in1);
+    auto *relu = G_.createRELU(opName + ".relu", add);
+    RETURN_IF_ERR(addNodeAsOutput(op, relu));
     return llvm::Error::success();
   }
 
