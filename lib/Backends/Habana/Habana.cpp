@@ -451,12 +451,12 @@ llvm::Error HabanaFunction::execute(ExecutionContext *context) {
     EnqueueTensorInfo eti;
     llvm::StringRef name = P->getName();
     eti.tensorName = name.data();
-    eti.tensorSize = T->getSizeInBytes();
+    eti.tensorSize = T->getUnpaddedSizeInBytes();
     eti.pTensorData = (char *)ioBuffer->get(P);
 
     inputInfo.push_back(eti);
     // Copy from the tensor into the designated IO buffer.
-    memcpy(eti.pTensorData, T->getUnsafePtr(), T->getUnpaddedSizeInBytes());
+    memcpy(eti.pTensorData, T->getUnsafePtr(), eti.tensorSize);
   }
   TRACE_EVENT_END(tc, "copyInputs");
 
