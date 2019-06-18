@@ -37,6 +37,11 @@ void NodeValue::replaceAllUsesOfWith(NodeValue v, const Function *F) const {
   if (v.getNode()) {
     assert(getType() == v.getType() && "Replacing value with the wrong type");
   }
+  typeUnsafeReplaceAllUsesOfWith(v, F);
+}
+
+void NodeValue::typeUnsafeReplaceAllUsesOfWith(NodeValue v,
+                                               const Function *F) const {
   // Copy the list of users in a temporary vector since that list (and the
   // underlying iterators) are going to be invalidated by the next loop.
   auto nodeValueUsers = getUsers();

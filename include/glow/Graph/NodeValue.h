@@ -73,8 +73,14 @@ public:
   /// \returns the underlying pointer when casting.
   operator Node *() const { return node_; }
 
-  /// Replace all of the uses in \p F of this value with \p v.
+  /// Replace all of the uses in \p F of this value with \p v. Types of the node
+  /// value and \p v should be exactly the same.
   void replaceAllUsesOfWith(NodeValue v, const Function *F = nullptr) const;
+
+  /// Replace all of the uses in \p F of this value with \p v. Types of the node
+  /// value and \p v can be different.
+  void typeUnsafeReplaceAllUsesOfWith(NodeValue v,
+                                      const Function *F = nullptr) const;
 
   /// Return the TypeRef of the referenced return value.
   TypeRef getType() const;
