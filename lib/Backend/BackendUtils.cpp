@@ -16,8 +16,13 @@
 #include "glow/Backend/BackendUtils.h"
 #include "glow/IR/IRUtils.h"
 #include "glow/IR/Instrs.h"
+#include "glow/Support/Debug.h"
 
 #include "llvm/Support/CommandLine.h"
+
+#include <glog/logging.h>
+
+#define DEBUG_TYPE "backend-utils"
 
 using namespace glow;
 
@@ -87,6 +92,9 @@ runtime::RuntimeBundle::getSymbolInfo(const Named *v) const {
 
 namespace glow {
 
+/// If \p PH is an output placeholder, \returns true.
+/// This is determined by checking if the PH has a user which uses the PH as an
+/// overwritten input.
 bool isOutput(const Placeholder *PH, const Function &F) {
   for (const auto &use : PH->getUsers()) {
     // Look through the inputs of the PH's users. If an input is overwritten
@@ -110,6 +118,7 @@ bool isOutput(const Placeholder *PH, const Function &F) {
   return false;
 }
 
+/// If \p PH is an input placeholder, \returns true.
 bool isInput(const Placeholder *PH, const Function &F) {
   // Check that the PH is the input to a saveNode or is used by a non saveNode.
   for (const auto &use : PH->getUsers()) {
@@ -130,6 +139,9 @@ bool isInput(const Placeholder *PH, const Function &F) {
   return false;
 }
 
+/// If \p PH is an output placeholder in the function \p F, \returns true.
+/// This is determined by checking if the PH has a user which uses the PH as an
+/// overwritten input.
 bool isOutput(const Placeholder *PH, const IRFunction &F) {
   auto *weight = F.getWeightForNode(PH);
   assert(weight && "Weight for a node was not found");
@@ -147,6 +159,7 @@ bool isOutput(const Placeholder *PH, const IRFunction &F) {
   return false;
 }
 
+/// If \p PH is an input placeholder in the function \p F, \returns true.
 bool isInput(const Placeholder *PH, const IRFunction &F) {
   // Check that the PH is always used as an @in parameter by the current
   // function.
@@ -301,6 +314,9 @@ runtime::RuntimeBundle::create(const IRFunction &F,
     symbol.output = false;
     symbol.symbolCategory = SymbolCategory::Constant;
     symbolTable.emplace(std::string(v->getName()), symbol);
+    DEBUG_GLOW(LOG(INFO) << strFormat(
+                   "Assigned address to constant %s: %zx (%zd bytes)\n",
+                   v->getName().data(), symbol.offset, symbol.size));
   }
   auto constantMaxSize = constantAllocator.getMaxMemoryUsage();
 
@@ -324,6 +340,9 @@ runtime::RuntimeBundle::create(const IRFunction &F,
     symbol.input = it->isInput;
     symbol.symbolCategory = SymbolCategory::Placeholder;
     symbolTable.emplace(std::string(v->getName()), symbol);
+    DEBUG_GLOW(LOG(INFO) << strFormat(
+                   "Assigned address to mutable weight %s: %zx (%zd bytes)\n",
+                   w->getName().data(), symbol.offset, symbol.size));
   }
   auto placeholderMaxSize = placeholderAllocator.getMaxMemoryUsage();
 
@@ -342,6 +361,9 @@ runtime::RuntimeBundle::create(const IRFunction &F,
       symbol.output = false;
       symbol.symbolCategory = SymbolCategory::Activation;
       symbolTable.emplace(std::string(A->getName()), symbol);
+      DEBUG_GLOW(LOG(INFO) << strFormat(
+                     "Assigned address to activation %s: %zx (%zd bytes)\n",
+                     A->getName().data(), symbol.offset, symbol.size));
       continue;
     }
 
@@ -374,6 +396,9 @@ runtime::RuntimeBundle::create(const IRFunction &F,
         symbol.symbolCategory = SymbolCategory::ConstantTensorView;
       }
       symbolTable.emplace(std::string(TV->getName()), symbol);
+      DEBUG_GLOW(LOG(INFO) << strFormat(
+                     "Assigned address to activation %s: %zx (%zd bytes)\n",
+                     TV->getName().data(), symbol.offset, symbol.size));
       continue;
     }
 
