@@ -69,7 +69,7 @@ void Partitioner::dumpDAG(llvm::StringRef dotFilename) const {
     for (size_t i = 0; i < node->children.size(); i++) {
       auto child = node->children[i];
       DescriptionBuilder db(child->name.c_str());
-      const std::string &backendName = backendMap_.at(child->backendName).name;
+      const std::string &backendName = child->backendName;
       db.addParam("BackendName", backendName);
       myfile << "\"" << escapeDottyString(child->name) << "\""
              << " [ label = \"" << escapeDottyString(db) << "\"";
@@ -120,8 +120,7 @@ Partitioner::logicalDevicesValidation(NodeToFunctionMap &partitions) {
         partitionsNum[backendName].size() <= backendMap_[backendName].num,
         llvm::formatv("Partition failed: the number of given({0}) devices({1}) "
                       "is fewer than the required minimal partitions({2}).",
-                      backendMap_[backendName].name,
-                      backendMap_[backendName].num,
+                      backendName, backendMap_[backendName].num,
                       partitionsNum[backendName].size())
             .str());
   }
@@ -887,7 +886,6 @@ void Partitioner::getBackendMap(
         backendsHolder.emplace_back(createBackend(backendName));
         backendInfo.backend = backendsHolder[n++].get();
       }
-      backendInfo.name = (backendInfo.backend)->getBackendName();
       backendMap[backendName] = backendInfo;
       backends.push_back(backendMap[backendName].backend);
     } else {
