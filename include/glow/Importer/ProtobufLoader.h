@@ -80,9 +80,12 @@ std::vector<ElemTy> getShape(const AttrType *arg) {
 }
 
 /// Returns canonical name for a given operator: either \p name() from proto,
-/// or its first output's name.
+/// or its type name.
 template <typename T> std::string loadOperatorName(const T &op) {
-  return op.name().length() ? op.name() : op.output(0);
+  if (op.name().length()) {
+    return op.name();
+  }
+  return op.op_type();
 }
 
 /// Loads model: graph and weights.
