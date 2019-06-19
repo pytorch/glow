@@ -114,8 +114,6 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
   TRACE_EVENT_SCOPE(traceContext, "Onnxifi::setIOAndRun");
   TRACE_EVENT_SCOPE_NAMED(traceContext, "adjustInputs", aiEvent);
 
-  size_t totalInputOnnxTensorSize = 0;
-  size_t totalInputGlowTensorSize = 0;
   // Create tensors for input placeholders
   for (unsigned i = 0; i < inputsCount; ++i) {
     const auto &inOnnxTensor = inputDescriptors[i];
@@ -141,36 +139,35 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
       return ONNXIFI_STATUS_INVALID_SHAPE;
     }
 
-    // Only re-allocate a tensor in case padding is required.
-    // Otherwise just back the tensor by memory provided by the caller.
+    // Only allocate a tensor if insufficient backing storage is provided.
+    unsigned elementSize = inPhPtr->getType()->getElementSize();
+    size_t onnxBytes = inOnnxTensorSize * elementSize;
     if (inPhPtr->dims().equals(inOnnxTensorDims)) {
       ctx->getPlaceholderBindings()->insert(
-          inPhPtr, new Tensor(inOnnxBuffer, inPhPtr->getType()));
+          inPhPtr, Tensor(inOnnxBuffer, inPhPtr->getType()));
+    } else if (backendPtr_->getBackendId()
+                   ->getBackend()
+                   .supportsPartialTensors() &&
+               inOnnxBuffer && inOnnxTensorSize > 0) {
+      // We have a partial input buffer.  Create a padded unowned tensor that
+      // remembers the actual size of the input.
+      ctx->getPlaceholderBindings()->insert(
+          inPhPtr, Tensor(inOnnxBuffer, inPhPtr->getType(), onnxBytes));
     } else {
       Tensor *inputTensor = tensorPool_.get(inPhPtr->getType());
-      DCHECK(inputTensor) << "Tensorpool tensor not found for input "
-                          << inOnnxTensor.name;
-      // If input onnxTensorDescriptor has a NULL buffer pointer, which is a
-      // valid case for empty tensor, skip copying
-      if (inOnnxBuffer) {
-        unsigned elementSize = inPhPtr->getType()->getElementSize();
-        char *onnxBuffer = static_cast<char *>(inOnnxBuffer);
-        std::copy(onnxBuffer, onnxBuffer + inOnnxTensorSize * elementSize,
-                  inputTensor->getUnsafePtr());
+      if (!inputTensor) {
+        DLOG(FATAL) << "Tensorpool tensor not found for input "
+                    << inOnnxTensor.name;
+        return ONNXIFI_STATUS_INTERNAL_ERROR;
       }
-
+      // Copy the input from onnxTensorDescriptor unless it has a NULL buffer
+      // pointer (which is a valid case if the tensor is empty).
+      if (inOnnxBuffer) {
+        memcpy(inputTensor->getUnsafePtr(), inOnnxBuffer, onnxBytes);
+      }
       ctx->getPlaceholderBindings()->insert(inPhPtr, inputTensor);
     }
-    unsigned elementSize = inPhPtr->getType()->getElementSize();
-    totalInputOnnxTensorSize += inOnnxTensorSize * elementSize;
-    totalInputGlowTensorSize += inPhPtr->getType()->size() * elementSize;
   }
-  VLOG_EVERY_N(1, 100) << "Tensor size blow up from static sizing : "
-                       << totalInputOnnxTensorSize << " bytes to "
-                       << totalInputGlowTensorSize << " bytes ("
-                       << float(totalInputGlowTensorSize) /
-                              float(totalInputOnnxTensorSize)
-                       << " X)";
 
   TRACE_EVENT_SCOPE_END_NAMED(aiEvent);
   TRACE_EVENT_SCOPE_NAMED(traceContext, "setOnnxifiOutputs", soEvent);
