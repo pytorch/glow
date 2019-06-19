@@ -280,16 +280,16 @@ protected:
   }
 
   /// Creates a Multi-layer perceptron network consisting of start & end FCs
-  /// with \p intermediate_layers hidden layers.
+  /// with \p intermediateLayers hidden layers.
   ///   * All weights and biases are random.
   ///   * All internal activations are RELU.
-  ///   * Parent node \p N_ has output dimension \p input_dim.
-  ///   * Hidden layers have dimension of \p int_dim * int_dim.
-  ///   * Output layer has output dimension \p output_dim.
+  ///   * Parent node \p N_ has output dimension \p inputDim.
+  ///   * Hidden layers have dimension of \p intDim * intDim.
+  ///   * Output layer has output dimension \p outputDim.
   static NodeValue createMLP(Module &mod_, Function *F_, Node *N_,
-                             size_t input_dim, size_t int_dim,
-                             size_t output_dim, size_t intermediate_layers) {
-    assert(intermediate_layers > 0);
+                             size_t inputDim, size_t intDim, size_t outputDim,
+                             size_t intermediateLayers) {
+    assert(intermediateLayers > 0);
 
     // Type object for the internal layers.
     // Note: dimension argument is a placeholder and will get filled out by each
@@ -297,11 +297,10 @@ protected:
     auto internalType = mod_.uniqueType(ElemKind::FloatTy, {1});
 
     /// Initial
-    auto *initial_bias = createRandomizedConstant(mod_, internalType, {int_dim},
+    auto *initial_bias = createRandomizedConstant(mod_, internalType, {intDim},
                                                   "initial_bias", 0, 0.00001);
-    auto *initial_weight =
-        createRandomizedConstant(mod_, internalType, {input_dim, int_dim},
-                                 "initial_weight", -0.03, 0.03);
+    auto *initial_weight = createRandomizedConstant(
+        mod_, internalType, {inputDim, intDim}, "initial_weight", -0.03, 0.03);
 
     FullyConnectedNode *initial_layer = F_->createFullyConnected(
         "dense", N_, initial_weight,
@@ -311,28 +310,28 @@ protected:
     auto *last = initial_relu;
 
     /// Intermediate
-    for (unsigned i = 0; i < intermediate_layers; ++i) {
+    for (unsigned i = 0; i < intermediateLayers; ++i) {
 
       auto *intermediate_bias = createRandomizedConstant(
-          mod_, internalType, {int_dim}, "intermediate_bias", 0, 0.00001);
+          mod_, internalType, {intDim}, "intermediate_bias", 0, 0.00001);
       auto *intermediate_weight =
-          createRandomizedConstant(mod_, internalType, {int_dim, int_dim},
+          createRandomizedConstant(mod_, internalType, {intDim, intDim},
                                    "intermediate_weight", -0.03, 0.03);
 
       FullyConnectedNode *intermediate_layer = F_->createFullyConnected(
           "dense", last, intermediate_weight,
-          intermediate_bias); // Output is size {MB, int_dim}
+          intermediate_bias); // Output is size {MB, intDim}
       last = F_->createRELU("relu2", intermediate_layer);
     }
 
     /// End
-    auto *end_bias = createRandomizedConstant(mod_, internalType, {output_dim},
+    auto *end_bias = createRandomizedConstant(mod_, internalType, {outputDim},
                                               "end_bias", 0, 0.00001);
     auto *end_weight = createRandomizedConstant(
-        mod_, internalType, {int_dim, output_dim}, "end_weight", -0.001, 0.003);
+        mod_, internalType, {intDim, outputDim}, "end_weight", -0.001, 0.003);
 
     FullyConnectedNode *end_layer = F_->createFullyConnected(
-        "dense", last, end_weight, end_bias); // Output is size {MB, emb_dim}
+        "dense", last, end_weight, end_bias); // Output is size {MB, embDim}
 
     auto *RN = F_->createRELU("relu3", end_layer);
 
@@ -340,26 +339,26 @@ protected:
   }
 
   /// Creates a rowwise quantized Multi-layer perceptron network consisting of
-  /// start & end FCs with \p intermediate_layers hidden layers.
+  /// start & end FCs with \p intermediateLayers hidden layers.
   ///   * All weights and biases are random. Weights are Int8Q (rowwise), biases
   ///     are Int32.
   ///   * All internal activations are RELU, however the final layer has no
   ///     activation attached.
-  ///   * Parent node \p N_ has output dimension \p input_dim int float.
-  ///   * Hidden layers have dimension of \p int_dim * int_dim int Int8Q
+  ///   * Parent node \p N_ has output dimension \p inputDim int float.
+  ///   * Hidden layers have dimension of \p intDim * intDim int Int8Q
   ///     (rowwise).
-  ///   * Output layer has output dimension \p output_dim in float.
+  ///   * Output layer has output dimension \p outputDim in float.
   ///
   /// Quantized MLPs use RowwiseQuantizedFullyConnected Nodes, which expect:
   ///   * weights to be Float32 and convert to Int8 fused rowwise quantized
   ///     Tensors internally
   ///   * Biases are Int32 quantized.
   static NodeValue createQuantizedMLP(Module &mod_, Function *F_, NodeValue N_,
-                                      size_t input_dim, size_t int_dim,
-                                      size_t output_dim,
-                                      size_t intermediate_layers) {
+                                      size_t inputDim, size_t intDim,
+                                      size_t outputDim,
+                                      size_t intermediateLayers) {
     // Must have intermediate layers.
-    assert(intermediate_layers > 0);
+    assert(intermediateLayers > 0);
 
     const size_t minibatchSize = N_.dims()[0];
 
@@ -375,15 +374,14 @@ protected:
 
     /// Initial.
     auto *initial_bias = createRandomizedConstant(mod_, internalBiasType,
-                                                  {int_dim}, "initial_bias");
-    auto *initial_weight =
-        createRandomizedConstant(mod_, internalTypeF, {input_dim, int_dim},
-                                 "initial_weight", -0.03, 0.03);
+                                                  {intDim}, "initial_bias");
+    auto *initial_weight = createRandomizedConstant(
+        mod_, internalTypeF, {inputDim, intDim}, "initial_weight", -0.03, 0.03);
 
     // Output is size {MB, intermediatDim}
     Node *initial_layer = F_->createRowwiseQuantizedFullyConnected(
         "dense", start, initial_weight, initial_bias,
-        mod_.uniqueTypeWithNewShape(internalTypeQ, {minibatchSize, int_dim}),
+        mod_.uniqueTypeWithNewShape(internalTypeQ, {minibatchSize, intDim}),
         quantization::Asymmetric,
         /* transposeWeight */ true);
 
@@ -391,31 +389,31 @@ protected:
 
     /// Intermediate
     auto *last = initial_relu;
-    for (unsigned i = 0; i < intermediate_layers; ++i) {
+    for (unsigned i = 0; i < intermediateLayers; ++i) {
       auto *intermediate_bias = createRandomizedConstant(
-          mod_, internalBiasType, {int_dim}, "intermediate_bias");
+          mod_, internalBiasType, {intDim}, "intermediate_bias");
       auto *intermediate_weight =
-          createRandomizedConstant(mod_, internalTypeF, {int_dim, int_dim},
+          createRandomizedConstant(mod_, internalTypeF, {intDim, intDim},
                                    "intermediate_weight", -0.03, 0.03);
 
       Node *intermediate_layer = F_->createRowwiseQuantizedFullyConnected(
           "dense", last, intermediate_weight, intermediate_bias,
-          mod_.uniqueType(ElemKind::Int8QTy, {minibatchSize, int_dim}, 1.0, 0),
+          mod_.uniqueType(ElemKind::Int8QTy, {minibatchSize, intDim}, 1.0, 0),
           quantization::Asymmetric,
-          /* transposeWeight */ true); // Output is size {MB, int_dim}
+          /* transposeWeight */ true); // Output is size {MB, intDim}
       last = F_->createRELU("intermediate_relu", intermediate_layer);
     }
 
     /// End
     auto *end_bias = createRandomizedConstant(mod_, internalBiasType,
-                                              {output_dim}, "end_bias");
+                                              {outputDim}, "end_bias");
     auto *end_weight = createRandomizedConstant(
-        mod_, internalTypeF, {int_dim, output_dim}, "end_weight", -0.03, 0.03);
+        mod_, internalTypeF, {intDim, outputDim}, "end_weight", -0.03, 0.03);
 
-    // Output is size {MB, emb_dim}
+    // Output is size {MB, embDim}
     auto *end_layer = F_->createRowwiseQuantizedFullyConnected(
         "dense", last, end_weight, end_bias,
-        mod_.uniqueTypeWithNewShape(internalTypeQ, {minibatchSize, output_dim}),
+        mod_.uniqueTypeWithNewShape(internalTypeQ, {minibatchSize, outputDim}),
         quantization::Asymmetric,
         /* transposeWeight */ true);
 
@@ -429,8 +427,8 @@ protected:
   /// the SpareLengthsSum Node tying it together.
   static void createSparseEmbeddings(
       Module &mod_, PlaceholderBindings &bindings_, Function *F_,
-      llvm::ArrayRef<Placeholder *> lengths, llvm::ArrayRef<size_t> emb_sizes,
-      size_t emb_dim, std::vector<NodeValue> &embeddings, bool quantizeSLWS) {
+      llvm::ArrayRef<Placeholder *> lengths, llvm::ArrayRef<size_t> embSizes,
+      size_t embDim, std::vector<NodeValue> &embeddings, bool quantizeSLWS) {
     auto internalTypeF = mod_.uniqueType(ElemKind::FloatTy, {1});
 
     for (unsigned int i = 0; i < lengths.size(); i++) {
@@ -442,18 +440,18 @@ protected:
       auto *indices = mod_.createPlaceholder(
           ElemKind::Int64ITy, {sum}, "indices" + std::to_string(i), false);
       fillStableRandomIndex(bindings_.allocate(indices)->getHandle<int64_t>(),
-                            2001, 0, emb_sizes[i]);
+                            2001, 0, embSizes[i]);
 
-      // output is size {MB, emb_dim}
+      // output is size {MB, embDim}
       if (quantizeSLWS) {
         Constant *data = createRandomFusedRowwiseQuantizedConstant(
-            mod_, {emb_sizes[i], emb_dim}, "data" + std::to_string(i));
+            mod_, {embSizes[i], embDim}, "data" + std::to_string(i));
         embeddings[i] = F_->createFusedRowwiseQuantizedSparseLengthsSum(
             "RQSLWS" + std::to_string(i), data, indices, lengths[i]);
       } else {
-        Constant *data = createRandomizedConstant(mod_, internalTypeF,
-                                                  {emb_sizes[i], emb_dim},
-                                                  "data" + std::to_string(i));
+        Constant *data =
+            createRandomizedConstant(mod_, internalTypeF, {embSizes[i], embDim},
+                                     "data" + std::to_string(i));
         embeddings[i] = F_->createSparseLengthsSum("sls" + std::to_string(i),
                                                    data, indices, lengths[i]);
       }
@@ -466,7 +464,7 @@ protected:
       Module &mod_, PlaceholderBindings &bindings_, Function *F_,
       llvm::ArrayRef<Placeholder *> lengths, llvm::ArrayRef<size_t> tableSizes,
       size_t embeddingDim, std::vector<NodeValue> &embeddings,
-      bool quantizeSLWS, uint32_t weights_size = 1000) {
+      bool quantizeSLWS, uint32_t weightsSize = 1000) {
     for (size_t i = 0; i < lengths.size(); i++) {
       fillStableRandomIndex(
           bindings_.allocate(lengths[i])->getHandle<int32_t>(), 2011, 90, 111);
@@ -481,15 +479,15 @@ protected:
       // Should be able to pass weights - fix later. Currently, just a
       // randomized constant.
       Constant *weightsConst = createRandomizedConstant(
-          mod_, mod_.uniqueType(ElemKind::FloatTy, {weights_size}),
-          {weights_size}, "weights" + std::to_string(i), 1.0f, 1.0000001f);
+          mod_, mod_.uniqueType(ElemKind::FloatTy, {weightsSize}),
+          {weightsSize}, "weights" + std::to_string(i), 1.0f, 1.0000001f);
 
       auto *weightIndices =
           mod_.createPlaceholder(ElemKind::Int32ITy, {sum},
                                  "weight_indices" + std::to_string(i), false);
       fillStableRandomIndex(
           bindings_.allocate(weightIndices)->getHandle<int32_t>(), 2001, 0,
-          weights_size - 1);
+          weightsSize - 1);
 
       auto *weights = F_->createGather("weight_gather" + std::to_string(i),
                                        weightsConst, weightIndices, 0);
@@ -513,74 +511,72 @@ protected:
   }
 
   /// Builds a simple graph, returns back input var and save node through refs.
-  static void
-  createSimpleRecSysGraph(Module &mod_, PlaceholderBindings &bindings_,
-                          Function *F_, llvm::ArrayRef<Placeholder *> lengths,
-                          Placeholder *dense_data,
-                          llvm::ArrayRef<size_t> emb_sizes, size_t emb_dim,
-                          llvm::StringRef funcName, bool quantizeSLWS,
-                          bool quantizeFC, bool gatherWeights) {
-    EXPECT_EQ(lengths.size(), emb_sizes.size());
+  static void createSimpleRecSysGraph(
+      Module &mod_, PlaceholderBindings &bindings_, Function *F_,
+      llvm::ArrayRef<Placeholder *> lengths, Placeholder *denseData,
+      llvm::ArrayRef<size_t> embSizes, size_t embDim, llvm::StringRef funcName,
+      bool quantizeSLWS, bool quantizeFC, bool gatherWeights) {
+    EXPECT_EQ(lengths.size(), embSizes.size());
 
     // First Dense embedding
-    fillStableRandomData(bindings_.allocate(dense_data)->getHandle(), 2001,
+    fillStableRandomData(bindings_.allocate(denseData)->getHandle(), 2001,
                          0.001);
-    NodeValue bottom_MLP;
+    NodeValue bottomMLP;
     if (quantizeFC) {
-      bottom_MLP = createQuantizedMLP(
-          mod_, F_, dense_data, dense_data->dims()[1],
-          bottomMLPIntermediateDimOpt, emb_dim, numBottomMLPLayersOpt);
+      bottomMLP = createQuantizedMLP(mod_, F_, denseData, denseData->dims()[1],
+                                     bottomMLPIntermediateDimOpt, embDim,
+                                     numBottomMLPLayersOpt);
     } else {
-      bottom_MLP = createMLP(mod_, F_, dense_data, dense_data->dims()[1],
-                             bottomMLPIntermediateDimOpt, emb_dim,
-                             numBottomMLPLayersOpt);
+      bottomMLP =
+          createMLP(mod_, F_, denseData, denseData->dims()[1],
+                    bottomMLPIntermediateDimOpt, embDim, numBottomMLPLayersOpt);
     }
 
     // Sparse Embeddings
     std::vector<NodeValue> embeddings(lengths.size());
     if (gatherWeights) {
       createSparseWeightedGatherEmbeddings(mod_, bindings_, F_, lengths,
-                                           emb_sizes, emb_dim, embeddings,
+                                           embSizes, embDim, embeddings,
                                            quantizeSLWS);
     } else {
-      createSparseEmbeddings(mod_, bindings_, F_, lengths, emb_sizes, emb_dim,
+      createSparseEmbeddings(mod_, bindings_, F_, lengths, embSizes, embDim,
                              embeddings, quantizeSLWS);
     }
 
     // Interacting sparse and dense
-    embeddings.push_back(bottom_MLP);
+    embeddings.push_back(bottomMLP);
     std::cout << "Number of embeddings concatenated: " << embeddings.size()
               << std::endl;
     auto *CN = F_->createConcat("concat", embeddings,
-                                1); // Output is size {MB, emb_dim*n}
+                                1); // Output is size {MB, embDim*n}
     auto *reshaped = F_->createReshape(
         "reshape", CN,
-        {bottom_MLP.dims()[0], embeddings.size(), emb_dim}); // {MB, n, emb_dim}
+        {bottomMLP.dims()[0], embeddings.size(), embDim}); // {MB, n, embDim}
     auto *transposed = F_->createTranspose("transpose", reshaped,
-                                           {0, 2, 1}); // {MB, emb_dim, n}
+                                           {0, 2, 1}); // {MB, embDim, n}
     auto *dot = F_->createBatchMatMul("dot_products", reshaped,
                                       transposed); // {MB, n, n}
     auto *reshapeDot =
         F_->createReshape("reshapeDot", dot,
-                          {bottom_MLP.dims()[0],
+                          {bottomMLP.dims()[0],
                            embeddings.size() * embeddings.size()}); // {MB, n^2}
-    NodeValue interact = F_->createConcat("interact", {reshapeDot, bottom_MLP},
-                                          1); // {MB, n^2 + emb_dim}
+    NodeValue interact = F_->createConcat("interact", {reshapeDot, bottomMLP},
+                                          1); // {MB, n^2 + embDim}
 
     // MLP at the top
-    Node *top_MLP;
+    Node *topMLP;
     if (quantizeFC) {
-      top_MLP = createQuantizedMLP(mod_, F_, interact, interact.dims()[1],
-                                   topMLPIntermediateDimOpt, /* output_dim */ 1,
-                                   numTopMLPLayersOpt);
+      topMLP = createQuantizedMLP(mod_, F_, interact, interact.dims()[1],
+                                  topMLPIntermediateDimOpt, /* outputDim */ 1,
+                                  numTopMLPLayersOpt);
     } else {
-      top_MLP = createMLP(mod_, F_, interact, interact.dims()[1],
-                          topMLPIntermediateDimOpt, /* output_dim */ 1,
-                          numTopMLPLayersOpt);
+      topMLP = createMLP(mod_, F_, interact, interact.dims()[1],
+                         topMLPIntermediateDimOpt, /* outputDim */ 1,
+                         numTopMLPLayersOpt);
     }
 
     // Output
-    auto *save = F_->createSave("save", top_MLP);
+    auto *save = F_->createSave("save", topMLP);
     bindings_.allocate(save->getPlaceholder());
 
     return;
