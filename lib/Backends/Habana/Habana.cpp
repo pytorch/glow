@@ -482,16 +482,18 @@ llvm::Error HabanaFunction::execute(ExecutionContext *context) {
     }
     GLOW_ASSERT(T);
 
+    bool isPartial = partialInputs_.count(P);
     EnqueueTensorInfo eti;
     llvm::StringRef name = P->getName();
     eti.tensorName = name.data();
-    eti.tensorSize = T->getSizeInBytes();
+    eti.tensorSize =
+        isPartial ? T->getUnpaddedSizeInBytes() : T->getSizeInBytes();
     eti.pTensorData = (char *)ioBuffer->get(P);
 
     inputInfo.push_back(eti);
     // Copy from the tensor into the designated IO buffer.
     memcpy(eti.pTensorData, T->getUnsafePtr(), T->getUnpaddedSizeInBytes());
-    if (!partialInputs_.count(P)) {
+    if (!isPartial) {
       memset(eti.pTensorData + T->getUnpaddedSizeInBytes(), 0,
              T->getSizeInBytes() - T->getUnpaddedSizeInBytes());
     }
