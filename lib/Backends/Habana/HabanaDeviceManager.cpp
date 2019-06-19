@@ -86,6 +86,10 @@ llvm::Error HabanaDeviceManager::init() {
   // Synapse API.
   if (numActiveDevices_ == 0) {
     LOG(INFO) << "Using version " << synGetVersion();
+    // This environment variable tells Synapse to allow enqueueing tensors that
+    // are smaller than the declared size, which offers a significant savings
+    // in PCI traffic for embedding lookups.
+    setenv("IGNORE_ENQUEUE_SIZE_VALIDATION", "1", /*overwrite*/ 1);
     chk(synInitialize());
   }
 
