@@ -423,19 +423,21 @@ void Partitioner::partitionsAdjust(NodeToFunctionMap &partitions,
     gain = false;
     for (FunctionToNodesMapTy::iterator it = nodesSet.begin();
          it != nodesSet.end(); ++it) {
-      NodesSetTy nSet = (*it).second;
-      std::vector<Node *> outUsers = getOutUsersWithOnePredecessor(nSet);
+      NodesSetTy &curSet = (*it).second;
+      std::vector<Node *> outUsers = getOutUsersWithOnePredecessor(curSet);
       if (outUsers.empty()) {
         continue;
       }
       Function *cur = (*it).first;
-      uint64_t memSize = partitions.getGraphMemInfo(cur).constMemSize +
-                         partitions.getGraphMemInfo(cur).inMemSize;
-      uint64_t communicationCost = partitions.getGraphMemInfo(cur).outMemSize;
-      // Check if a node can be moved to current node set (i.e nSet).
+      GraphMemInfo curCost = partitions.getGraphMemInfo(cur);
+      // Check if a node can be moved to current node set (i.e curSet).
       for (int i = 0, e = outUsers.size(); i < e; i++) {
+        // Get the new cost if outUsers[i] is added.
+        GraphMemInfo newCurCost =
+            updateGraphMemInfoByAddingNode(curSet, curCost, outUsers[i]);
+
         // Rule 1: this move won't break memory constraint.
-        if (memUsage_[outUsers[i]] + memSize > availableMemory) {
+        if (newCurCost.getTotalMemSize() > availableMemory) {
           continue;
         }
         // Rule 2: this move won't cause constant duplication.
@@ -455,18 +457,17 @@ void Partitioner::partitionsAdjust(NodeToFunctionMap &partitions,
         // the memory consumption of the partition where this node (i.e
         // outUsers[i]) belongs can be reduced. Therefore, it may trigger later
         // node movement or partitionsCombine.
-        nSet.insert(outUsers[i]);
-        GraphMemInfo cost = getGraphMemInfo(nSet);
         Function *suc = partitions[outUsers[i]];
         uint64_t outMem = getOutMemPerNode(nodesSet[suc], outUsers[i]);
-        if (cost.outMemSize - outMem <= communicationCost) {
+        if (newCurCost.outMemSize - outMem <= curCost.outMemSize) {
           // Move this node to current node set.
-          nodesSet[cur].insert(outUsers[i]);
+          curSet.insert(outUsers[i]);
           Function *suc = partitions[outUsers[i]];
           nodesSet[suc].erase(outUsers[i]);
+          curCost = newCurCost;
           // Update the partitions.
           partitions.add(outUsers[i], cur);
-          partitions.setGraphMemInfo(cur, cost);
+          partitions.setGraphMemInfo(cur, newCurCost);
           if (nodesSet[suc].empty()) {
             // It is possible that after moving a node from Partition2 to
             // Partition1, Partition2 become empty. Remove the empty partition.
@@ -478,10 +479,6 @@ void Partitioner::partitionsAdjust(NodeToFunctionMap &partitions,
             partitions.setGraphMemInfo(suc, newCost);
           }
           gain = true;
-          communicationCost = cost.outMemSize - outMem;
-          memSize += memUsage_[outUsers[i]];
-        } else {
-          nSet.erase(outUsers[i]);
         }
       }
     }
