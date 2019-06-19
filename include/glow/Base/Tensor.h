@@ -292,6 +292,16 @@ public:
     return unownedTensor;
   }
 
+  /// This is the same as \ref getUnowned() but it produces an owned tensor
+  /// instead. \returns owned tensor copied from the data buffer of the current
+  /// tensor but having different dimensions \p dims. \p offsets represents an
+  /// optional offset into the tensor representing the location of the first
+  /// element to start a subview from.
+  Tensor getOwnedSlice(llvm::ArrayRef<size_t> dims,
+                       llvm::ArrayRef<size_t> offsets = {}) const {
+    return getUnowned(dims, offsets).clone();
+  }
+
   /// Reset the shape and type of this tensor to match the shape and type of
   /// \p other.
   void reset(const Tensor *other) { reset(other->getType()); }

@@ -90,6 +90,22 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Src", "Filter"})
       .addGradientInstr({"Src", "Filter"}, {"Dest", "Src", "Filter", "Bias"});
 
+  BB.newInstr("ChannelwiseQuantizedConvolution")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .addOperand("Filter", OperandKind::In)
+      .addOperand("Bias", OperandKind::In)
+      .addOperand("Scales", OperandKind::In)
+      .addOperand("Offsets", OperandKind::In)
+      .addMember(MemberType::VectorUnsigned, "Kernels")
+      .addMember(MemberType::VectorUnsigned, "Strides")
+      .addMember(MemberType::VectorUnsigned, "Pads")
+      .addMember(MemberType::Unsigned, "Group")
+      .addMember(MemberType::Boolean, "Groupwise")
+      .autoIRGen()
+      .autoVerify(VerifyKind::SameElementType,
+                  {"Dest", "Src", "Filter", "ElemKind::Int8QTy"});
+
   BB.newInstr("Convolution3D")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Src", OperandKind::In)

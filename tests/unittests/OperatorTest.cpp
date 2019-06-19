@@ -3853,6 +3853,81 @@ TEST_P(OperatorTest, GroupConvolution) {
   EXPECT_FLOAT_EQ(result.at({0, 1, 0, 5}), (13 + 14 + 15 + 16) * 100000);
 }
 
+/// Test the functionality of groupwise quantized convolution expressed using
+/// ChannelwiseQuantizedConvNode.
+TEST_P(OperatorTest, GroupwiseQuantizedConvolution) {
+  ENABLED_BACKENDS(Interpreter, CPU, OpenCL);
+
+  constexpr size_t groups = 2;
+
+  auto *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 2, 1, 8}, "input", false);
+  auto IH = bindings_.allocate(input)->getHandle<float>();
+  for (size_t i = 0; i < 2 * 8; i++) {
+    IH.raw(i) = i + 1;
+  }
+
+  auto *qInTy = mod_.uniqueType(ElemKind::Int8QTy, {1, 2, 1, 8}, 1.0, 0);
+  auto *qInput = F_->createQuantize("qInput", input, qInTy);
+
+  auto filterT = Tensor(ElemKind::Int8QTy, {6, 1, 1, 4}, 1.0, 0);
+  for (size_t i = 0; i < 6; i++) {
+    for (size_t j = 0; j < 4; j++) {
+      filterT.getHandle<int8_t>().at({i, 0, 0, j}) = (i % 2) + 1;
+    }
+  }
+  auto *filter = mod_.createConstant("filter", std::move(filterT));
+
+  auto biasT = Tensor(ElemKind::FloatTy, {6});
+  biasT.zero();
+  auto *bias = mod_.createConstant("bias", std::move(biasT));
+
+  auto scalesT = Tensor(ElemKind::FloatTy, {groups});
+  for (size_t i = 0; i < scalesT.size(); i++) {
+    scalesT.getHandle<float>().raw(i) = 1;
+  }
+  auto *scales = mod_.createConstant("scales", std::move(scalesT));
+
+  auto offsetsT = Tensor(ElemKind::Int32ITy, {groups});
+  offsetsT.zero();
+  auto *offsets = mod_.createConstant("offsets", std::move(offsetsT));
+
+  auto *outTy = mod_.uniqueType(ElemKind::Int8QTy, {1, 2, 1, 6}, 1.0, 0);
+
+  ChannelwiseQuantizedConvolutionNode *CQC = F_->createChannelwiseQuantizedConv(
+      "groupwiseQuantizedConv", qInput, filter, bias, scales, offsets, outTy,
+      {1, 1}, {1, 1}, {0, 0, 0, 0}, groups);
+
+  DequantizeNode *dq = F_->createDequantize("dequantize", CQC);
+  SaveNode *S = F_->createSave("save", dq);
+  bindings_.allocate(S->getPlaceholder());
+
+  ::glow::convertPlaceholdersToConstants(F_, bindings_,
+                                         {input, S->getPlaceholder()});
+
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run(bindings_);
+
+  auto result = bindings_.get(S->getPlaceholder())->getHandle();
+
+  std::vector<size_t> expectedDims = {1, 2, 1, 6};
+  ASSERT_TRUE(result.dims().vec() == expectedDims);
+
+  EXPECT_FLOAT_EQ(result.at({0, 0, 0, 0}), (1 + 2 + 3 + 4) * 1);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 0, 1}), (1 + 2 + 3 + 4) * 2);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 0, 2}), (1 + 2 + 3 + 4) * 1);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 0, 3}), (5 + 6 + 7 + 8) * 2);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 0, 4}), (5 + 6 + 7 + 8) * 1);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 0, 5}), (5 + 6 + 7 + 8) * 2);
+
+  EXPECT_FLOAT_EQ(result.at({0, 1, 0, 0}), (9 + 10 + 11 + 12) * 1);
+  EXPECT_FLOAT_EQ(result.at({0, 1, 0, 1}), (9 + 10 + 11 + 12) * 2);
+  EXPECT_FLOAT_EQ(result.at({0, 1, 0, 2}), (9 + 10 + 11 + 12) * 1);
+  EXPECT_FLOAT_EQ(result.at({0, 1, 0, 3}), (13 + 14 + 15 + 16) * 2);
+  EXPECT_FLOAT_EQ(result.at({0, 1, 0, 4}), (13 + 14 + 15 + 16) * 1);
+  EXPECT_FLOAT_EQ(result.at({0, 1, 0, 5}), (13 + 14 + 15 + 16) * 2);
+}
+
 TEST_P(OperatorTest, DilatedConvolution) {
   ENABLED_BACKENDS(Interpreter, CPU);
 
