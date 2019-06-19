@@ -560,6 +560,104 @@ void BoundInterpreterFunction::fwdConvolution3DGradInst(
   llvm_unreachable("not yet implemented");
 }
 
+void BoundInterpreterFunction::fwdChannelwiseQuantizedConvolutionInst(
+    const ChannelwiseQuantizedConvolutionInst *I) {
+  assert(I->getGroupwise() && "Non-groupwise not supported");
+
+  using AccumulatorTy = int32_t;
+
+  auto inW = getWeightHandle<int8_t>(I->getSrc());
+  auto outW = getWeightHandle<int8_t>(I->getDest());
+  auto filterW = getWeightHandle<int8_t>(I->getFilter());
+  auto biasW = getWeightHandle<float>(I->getBias());
+  auto scalesW = getWeightHandle<float>(I->getScales());
+  auto offsetsW = getWeightHandle<int32_t>(I->getOffsets());
+
+  llvm::ArrayRef<unsigned_t> kernelSizes = I->getKernels();
+  llvm::ArrayRef<unsigned_t> pads = I->getPads();
+  llvm::ArrayRef<unsigned_t> strides = I->getStrides();
+  size_t group = I->getGroup();
+
+  ShapeNHWC odim(outW.dims());
+  ShapeNHWC idim(inW.dims());
+  ShapeHW kdim(kernelSizes);
+  ShapeHW sdim(strides);
+
+  assert(idim.c % group == 0 && "Input channels must be divisible by group.");
+  assert(odim.c % group == 0 && "Output channels must be divisible by group.");
+  size_t inCperG = idim.c / group;
+  size_t outCperG = odim.c / group;
+
+  PaddingTLBR pdim(pads);
+
+  auto &inTy = inW.getType();
+  auto &outTy = outW.getType();
+
+  float inScale = inTy.getScale();
+  float outScale = outTy.getScale();
+
+  int32_t inOffset = inTy.getOffset();
+  int32_t outOffset = outTy.getOffset();
+
+  // For each input in the batch:
+  for (size_t n = 0; n < idim.n; n++) {
+    // For each group of input channels:
+    for (size_t g = 0; g < group; g++) {
+
+      // get groupwise qparams params
+      int32_t filterOffset = offsetsW.at(g);
+      float filterScale = scalesW.at(g);
+      float matMulScale = inScale * filterScale;
+
+      // For each output channel in the group:
+      for (size_t d = g * outCperG; d < (g + 1) * outCperG; d++) {
+
+        // For each convolution 'jump' in the input tensor:
+        ssize_t x = -ssize_t(pdim.top);
+        for (size_t ax = 0; ax < odim.h; x += sdim.height, ax++) {
+          ssize_t y = -ssize_t(pdim.left);
+          for (size_t ay = 0; ay < odim.w; y += sdim.width, ay++) {
+
+            // For each element in the convolution-filter:
+            AccumulatorTy sum = 0;
+            for (size_t fx = 0; fx < kdim.height; fx++) {
+              for (size_t fy = 0; fy < kdim.width; fy++) {
+                ssize_t ox = x + fx;
+                ssize_t oy = y + fy;
+
+                // Ignore index access below zero (this is due to padding).
+                if (ox < 0 || oy < 0 || ox >= ssize_t(idim.h) ||
+                    oy >= ssize_t(idim.w)) {
+                  continue;
+                }
+                for (size_t fd = 0; fd < inCperG; fd++) {
+
+                  AccumulatorTy F = filterW.at({d, fx, fy, fd});
+                  AccumulatorTy I =
+                      inW.at({n, (size_t)ox, (size_t)oy, g * inCperG + fd});
+                  // We represent the element multiplication with offset as
+                  // (value - offset).
+                  sum += (F - filterOffset) * (I - inOffset);
+                }
+              }
+            }
+
+            // Scale the bias to match the scale of the matrix multiplication.
+            AccumulatorTy B = std::round(biasW.at({d}) / matMulScale);
+
+            // Add the bias:
+            sum += B;
+
+            // Scale the result back to the expected destination scale.
+            outW.at({n, ax, ay, d}) = quantization::clip<AccumulatorTy, int8_t>(
+                std::round(float(sum) * (matMulScale / outScale) + outOffset));
+          } // W
+        }   // H
+      }     // C
+    }       // G
+  }         // N
+}
+
 //===----------------------------------------------------------------------===//
 //                       Pooling
 //===----------------------------------------------------------------------===//

@@ -136,6 +136,20 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
                {ConvolutionNode::BiasIdx}) &&
            (NI.getInElemTy(ConvolutionNode::BiasIdx) == ElemKind::Int32QTy);
 
+  case Kinded::Kind::ChannelwiseQuantizedConvolutionNodeKind:
+    return (NI.getInElemTy(ChannelwiseQuantizedConvolutionNode::InputIdx) ==
+            ElemKind::Int8QTy) &&
+           (NI.getInElemTy(ChannelwiseQuantizedConvolutionNode::FilterIdx) ==
+            ElemKind::Int8QTy) &&
+           (NI.getInElemTy(ChannelwiseQuantizedConvolutionNode::BiasIdx) ==
+            ElemKind::FloatTy) &&
+           (NI.getInElemTy(ChannelwiseQuantizedConvolutionNode::ScalesIdx) ==
+            ElemKind::FloatTy) &&
+           (NI.getInElemTy(ChannelwiseQuantizedConvolutionNode::OffsetsIdx) ==
+            ElemKind::Int32ITy) &&
+           (NI.getOutElemTy(ChannelwiseQuantizedConvolutionNode::ResultIdx) ==
+            ElemKind::Int8QTy);
+
   case Kinded::Kind::Convolution3DNodeKind:
     if (!NI.getInTy(Convolution3DNode::InputIdx)->isQuantizedType()) {
       return NI.allInputsAndOutputsHaveSameElemKind(
@@ -395,6 +409,7 @@ bool Interpreter::shouldLower(const Node *N) const {
   switch (N->getKind()) {
   case Kinded::Kind::ConvolutionNodeKind:
   case Kinded::Kind::SparseLengthsSumNodeKind:
+  case Kinded::Kind::ChannelwiseQuantizedConvolutionNodeKind:
     return false;
   default:
     return true;
