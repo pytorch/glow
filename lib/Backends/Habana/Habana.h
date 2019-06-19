@@ -179,6 +179,8 @@ public:
                              CompilationContext &cctx) const override;
 
   bool shouldShareBuffers() const override { return false; }
+
+  bool supportsPartialTensors() const override { return true; }
   /// @}
 
   static bool isVersionBiggerEqualTo(std::string versionToCompare);
@@ -247,6 +249,7 @@ private:
   std::string recipeName_;
   PlaceholderList inputs_;
   PlaceholderList outputs_;
+  std::unordered_set<const Placeholder *> partialInputs_;
 };
 
 } // namespace glow
