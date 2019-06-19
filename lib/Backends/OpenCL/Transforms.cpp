@@ -31,13 +31,13 @@ bool OCLBackend::transformPostLowering(Function *F,
   // NCHW transformation is not supported in training mode yet, because of some
   // issues with gradient nodes.
 
-  LOG_SCOPE(F->getLogContext(), "OCLBackend::transformPostLowering")
-
   if (cctx.compMode == CompilationMode::Train)
     return false;
 
   bool changed = false;
   for (auto &node : F->getNodes()) {
+    LOG_SCOPE(F->getLogContext(), "OCLBackend::transformPostLowering")
+
     if (auto *CN = dyn_cast<ConvolutionNode>(&node)) {
       // TODO: OpenCL fast convolution kernel itself has some issue with group >
       // 1, which will be investigated later. So far, if the group > 1, we just

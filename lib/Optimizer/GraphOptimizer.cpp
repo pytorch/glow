@@ -199,6 +199,8 @@ static bool sinkTranposeBelowChannelShuffle(Function *F,
     return false;
   }
 
+  LOG_SCOPE(F->getLogContext(), "sinkTranposeBelowChannelShuffle")
+
   // Create a new ChannelShuffle with kernel parameter transposed by the
   // sinking TR's shuffle because that Transpose will now be moved below this
   // ChannelShuffle operator.
@@ -217,13 +219,14 @@ static bool sinkTranposeBelowChannelShuffle(Function *F,
 /// Code Sinking.
 /// \returns true if code sinking was successful.
 static bool sinkCode(Function *F) {
-  LOG_SCOPE(F->getLogContext(), "sinkCode")
-
   auto &nodes = F->getNodes();
   bool changed = false;
   // For each node:
   for (auto &N : nodes) {
     auto *node = &N;
+
+    LOG_SCOPE(F->getLogContext(), "sinkCode")
+
     // Sink Transpose below batch normalization nodes:
     if (auto *BN = dyn_cast<BatchNormalizationNode>(node)) {
       auto *TR = dyn_cast<TransposeNode>(BN->getInput());
@@ -611,7 +614,6 @@ static bool mayDependOnAny(llvm::ArrayRef<NodeValue> list, Node *N) {
 //    K       ----      ---------        ---------
 //             K            R                R
 static void mergeMatMul(Function *F) {
-  LOG_SCOPE(F->getLogContext(), "mergeMatMul")
 
   auto &nodes = F->getNodes();
 
@@ -659,6 +661,8 @@ static void mergeMatMul(Function *F) {
       continue;
     }
 
+    LOG_SCOPE(F->getLogContext(), "mergeMatMul")
+
     // Merge the matmul:
     auto *CC = F->createConcat("mergeLHS", LHS, 0);
     auto *MM = F->createMatMul("bigMatMul", CC, it.first);
@@ -675,8 +679,6 @@ static void mergeMatMul(Function *F) {
 }
 
 static bool mergePadIntoConvolution(Function *F) {
-  LOG_SCOPE(F->getLogContext(), "mergePadIntoConvolution")
-
   bool changed = false;
   for (auto &node : F->getNodes()) {
     auto *CN = dyn_cast<ConvolutionNode>(&node);
@@ -738,6 +740,8 @@ static bool mergePadIntoConvolution(Function *F) {
       continue;
     }
 
+    LOG_SCOPE(F->getLogContext(), "mergePadIntoConvolution")
+
     // New Convolution
     auto *newCN = F->createConv(CN->getName(), PN->getInput(), CN->getFilter(),
                                 CN->getBias(), CN->getResult().getType(),
@@ -759,7 +763,6 @@ static bool mergePadIntoConvolution(Function *F) {
 /// Reshape([N, C, H, W]) -> [N, C * H * W]
 /// MatMul/FC([N, C * H * W], [C * H * W, K]) -> [N, K]
 static bool mergeTransposeIntoMatMulOrFC(Function *F) {
-  LOG_SCOPE(F->getLogContext(), "mergeTransposeIntoMatMulOrFC")
 
   bool changed = false;
   for (auto &node : F->getNodes()) {
@@ -798,6 +801,8 @@ static bool mergeTransposeIntoMatMulOrFC(Function *F) {
     if (!TN || !TN->hasOneUse() || TN->getShuffle()[0] != 0) {
       continue;
     }
+
+    LOG_SCOPE(F->getLogContext(), "mergeTransposeIntoMatMulOrFC")
 
     // MatMul/FC weights tensor is 2D. De-linearize the first dimension
     // according to Transpose output layout (original shape) and input layout
@@ -897,8 +902,6 @@ static bool areSlicesConsecutive(SliceNode *A, SliceNode *B, unsigned_t dim) {
 }
 
 static void convertBroadcastedBatchMatMul(Function *F) {
-  LOG_SCOPE(F->getLogContext(), "convertBroadcastedBatchMatMul")
-
   for (auto &node : F->getNodes()) {
     BatchMatMulNode *BMMN = dyn_cast<BatchMatMulNode>(&node);
     if (!BMMN) {
@@ -914,6 +917,8 @@ static void convertBroadcastedBatchMatMul(Function *F) {
     if (!TN || TN->getAxis() != 0 || TN->getInput().dims()[0] != 1) {
       continue;
     }
+
+    LOG_SCOPE(F->getLogContext(), "convertBroadcastedBatchMatMul")
 
     // Can now convert the broadcasted BatchMatMul to a MatMul.
     // LHS = {numBatches, N, M}
@@ -1025,7 +1030,6 @@ static bool findSlicesThatSpanInput(llvm::ArrayRef<SliceNode *> input,
 
 /// Merge multiple batched add nodes into a large batched-add node.
 static void mergeBatchedAdd(Function *F) {
-  LOG_SCOPE(F->getLogContext(), "mergeBatchedAdd")
 
   auto &nodes = F->getNodes();
 
@@ -1062,6 +1066,8 @@ static void mergeBatchedAdd(Function *F) {
       continue;
     }
 
+    LOG_SCOPE(F->getLogContext(), "mergeBatchedAdd")
+
     // We found a sequence of batched-add-slice that cover the input tensor.
     // We can transform the graph and create one big batched-add.
     std::vector<Node *> newSlices;
@@ -1092,7 +1098,6 @@ static void mergeBatchedAdd(Function *F) {
 /// Optimize ReduceMean configuration with AvgPool if possible: last two axes
 /// in a 4D input must be reduced.
 static void optimizeReduceMean(Function *F) {
-  LOG_SCOPE(F->getLogContext(), "optimizeReduceMean")
 
   auto &nodes = F->getNodes();
 
@@ -1111,6 +1116,8 @@ static void optimizeReduceMean(Function *F) {
           std::count(axes.begin(), axes.end(), 3) != 1) {
         continue;
       }
+
+      LOG_SCOPE(F->getLogContext(), "optimizeReduceMean")
 
       // RM is already shaped to have the required output shape.
       NodeValue in = RM->getBatch();
@@ -1271,8 +1278,6 @@ bool normalizeWeights(Module *M, ConvolutionNode &CV,
 }
 
 static void optimizeBatchNorm(Function *F) {
-  LOG_SCOPE(F->getLogContext(), "optimizeBatchNorm")
-
   auto &nodes = F->getNodes();
   auto *M = F->getParent();
 
@@ -1290,6 +1295,8 @@ static void optimizeBatchNorm(Function *F) {
       if (!CV->hasOneUse()) {
         continue;
       }
+
+      LOG_SCOPE(F->getLogContext(), "optimizeBatchNorm")
 
       bool normalizationHappened = false;
       switch (CV->getElementType(ConvolutionNode::ResultIdx)) {
@@ -1461,9 +1468,6 @@ static NodeValue tryToOptimizeConcatOfRehapes(Function *F, ConcatNode *CN) {
 static NodeValue simplifyConcatNode(Function *F, ConcatNode *CN) {
   /// concat(dim1, concat(dim2, X, Y), Z) -> concat(dim1, X, Y, Z),
   /// but only if dim1 == dim2
-
-  LOG_SCOPE(F->getLogContext(), "simplifyConcatNode")
-
   {
     auto inputs = CN->getInputs();
     // Check if any of the inputs are ConcatNode.
@@ -1528,13 +1532,13 @@ static NodeValue simplifyConcatNode(Function *F, ConcatNode *CN) {
 
 /// Optimize Concat nodes.
 static void optimizeConcatNodes(Function *F) {
-  LOG_SCOPE(F->getLogContext(), "optimizeConcatNodes")
 
   auto &nodes = F->getNodes();
 
   // For each node:
   for (auto &node : nodes) {
     if (auto *CN = dyn_cast<ConcatNode>(&node)) {
+      LOG_SCOPE(F->getLogContext(), "optimizeConcatNodes")
       NodeValue newCN = simplifyConcatNode(F, CN);
       if (newCN.getNode()) {
         CN->getResult().replaceAllUsesOfWith(newCN);
@@ -1546,8 +1550,6 @@ static void optimizeConcatNodes(Function *F) {
 /// Simplify and canonicalize arithmetic nodes by detecting simple arithmetic
 /// identities.
 static void optimizeArithmeticNodes(Function *F) {
-  LOG_SCOPE(F->getLogContext(), "optimizeArithmeticNodes")
-
   // A worklist that contains the nodes to process.
   std::vector<Node *> worklist;
 
@@ -1561,6 +1563,7 @@ static void optimizeArithmeticNodes(Function *F) {
     }
   }
   while (!worklist.empty()) {
+    LOG_SCOPE(F->getLogContext(), "optimizeArithmeticNodes")
     Node *N = worklist.back();
     assert(N->isArithmetic() && "Must be an Arithmetic node.");
     worklist.pop_back();
@@ -1590,7 +1593,6 @@ static void optimizeArithmeticNodes(Function *F) {
 
 /// Statically transpose Constants.
 static void transposeConstants(Function *F) {
-  LOG_SCOPE(F->getLogContext(), "transposeConstants")
 
   auto &nodes = F->getNodes();
 
@@ -1604,6 +1606,7 @@ static void transposeConstants(Function *F) {
     if (!C || !C->hasOneUse()) {
       continue;
     }
+    LOG_SCOPE(F->getLogContext(), "transposeConstants")
     // Create a new Constant NC to hold the transposed result.
     auto *NC =
         F->getParent()->createConstant(TN->getResult().getType(), C->getName());
@@ -1760,14 +1763,13 @@ static void deduplicateConstants(Module *M) {
 
 /// Common Subexpression Elimination.
 static void CSE(Function *F) {
-  LOG_SCOPE(F->getLogContext(), "CSE")
-
   CSEVisitor visitor;
 
   deduplicateConstants(F->getParent());
 
   // Perform CSE on all nodes.
   for (auto &N : F->getNodes()) {
+    LOG_SCOPE(F->getLogContext(), "CSE")
     N.visit(nullptr, &visitor);
   }
 }
@@ -1775,7 +1777,6 @@ static void CSE(Function *F) {
 /// Eliminate SliceNode when the input is SplatNode.
 /// Slice(Splat(args)) -> Splat(args')
 static void optimizeSliceOfSplat(Function *F) {
-  LOG_SCOPE(F->getLogContext(), "optimizeSliceOfSplat")
 
   for (auto &node : F->getNodes()) {
     auto *sliceNode = dyn_cast<SliceNode>(&node);
@@ -1784,6 +1785,8 @@ static void optimizeSliceOfSplat(Function *F) {
     auto *splatNode = dyn_cast<SplatNode>(sliceNode->getInput());
     if (!splatNode)
       continue;
+    LOG_SCOPE(F->getLogContext(), "optimizeSliceOfSplat")
+
     auto *newSplatNode =
         F->createSplat(sliceNode->getName(), sliceNode->getResult().getType(),
                        splatNode->getValue());
@@ -1793,12 +1796,11 @@ static void optimizeSliceOfSplat(Function *F) {
 
 /// Optimize TransposeNode into ReshapeNode when it actually moves no data.
 static void optimizeTransposeIntoReshape(Function *F) {
-  LOG_SCOPE(F->getLogContext(), "optimizeTransposeIntoReshape")
-
   for (auto &node : F->getNodes()) {
     auto *TR = dyn_cast<TransposeNode>(&node);
     if (!TR)
       continue;
+    LOG_SCOPE(F->getLogContext(), "optimizeTransposeIntoReshape")
     auto inputNode = TR->getInput();
     auto inputDims = inputNode.dims();
     auto outputDims = TR->getResult().dims();
@@ -1826,12 +1828,13 @@ static void optimizeTransposeIntoReshape(Function *F) {
 
 /// Optimize reshape nodes.
 static void optimizeReshape(Function *F) {
-  LOG_SCOPE(F->getLogContext(), "optimizeReshape")
-
   for (auto &node : F->getNodes()) {
     auto *reshapeNode = dyn_cast<ReshapeNode>(&node);
     if (!reshapeNode)
       continue;
+
+    LOG_SCOPE(F->getLogContext(), "optimizeReshape")
+
     auto inputNode = reshapeNode->getNthInput(ReshapeNode::InputIdx);
     // Eliminate ReshapeNode when the input is already the correct shape.
     if (inputNode.dims() == reshapeNode->getResult().dims()) {
@@ -1884,7 +1887,6 @@ static void optimizeReshape(Function *F) {
 /// than quantization range [min, max].
 /// \returns if anything was changed in the given function.
 static bool optimizeQuantizedMaxSplat(Function *F) {
-  LOG_SCOPE(F->getLogContext(), "optimizeQuantizedMaxSplat")
 
   bool changed = false;
   // The following optimizations need to be performed after all
@@ -1904,6 +1906,8 @@ static bool optimizeQuantizedMaxSplat(Function *F) {
       if (!isa<SplatNode>(MN->getLHS()) && !isa<SplatNode>(MN->getRHS())) {
         continue;
       }
+
+      LOG_SCOPE(F->getLogContext(), "optimizeQuantizedMaxSplat")
 
       Node *splatNode =
           isa<SplatNode>(MN->getLHS()) ? MN->getLHS() : MN->getRHS();
@@ -2015,7 +2019,6 @@ static NodeValue convertConstant(Module &mod, Constant &constant,
 /// because it eliminates some precision loss steps.
 /// However, this actually improves accuracy so we can always do it.
 static void optimizeConversions(Function *F) {
-  LOG_SCOPE(F->getLogContext(), "optimizeConversions")
 
   llvm::SmallVector<Node *, 8> conversions;
 
@@ -2031,6 +2034,9 @@ static void optimizeConversions(Function *F) {
     if (deadConversions.count(node)) {
       continue;
     }
+
+    LOG_SCOPE(F->getLogContext(), "optimizeConversions")
+
     ConvertToNode &conversion = *cast<ConvertToNode>(node);
     NodeValue conversionInput = conversion.getInput();
     NodeValue dstVal = conversion.getResult();
@@ -2099,7 +2105,6 @@ static Node *cloneNodeWithNewTypes(Function *F, Node *N,
 /// Eliminate node sequences that are related to quantization.
 /// \returns if anything was changed in the given function.
 static bool optimizeQuantization(Function *F) {
-  LOG_SCOPE(F->getLogContext(), "optimizeQuantization")
 
   bool changed = false;
   // A worklist that contains the nodes to process.
@@ -2117,6 +2122,8 @@ static bool optimizeQuantization(Function *F) {
     // Take a node from the worklist.
     Node *node = worklist.back();
     worklist.pop_back();
+
+    LOG_SCOPE(F->getLogContext(), "optimizeQuantization")
 
     if (auto *Q = dyn_cast<QuantizeNode>(node)) {
       if (auto *DQ = dyn_cast<DequantizeNode>(Q->getInput())) {
@@ -2345,10 +2352,11 @@ static bool combineDownRescaleToArithmeticNode(Function &F, T *AN) {
 /// Sink Rescale nodes down when possible.
 /// \returns if anything was changed in the given function.
 static bool sinkRescaleQuantizedNode(Function *F) {
-  LOG_SCOPE(F->getLogContext(), "sinkRescaleQuantizedNode")
 
   bool changed = false;
   for (auto &node : F->getNodes()) {
+    LOG_SCOPE(F->getLogContext(), "sinkRescaleQuantizedNode")
+
     // Sink Rescale below Reshape node.
     // Reshape(Rescale(X)) -> Rescale(Reshape(X)).
     if (auto *reshape = dyn_cast<ReshapeNode>(&node)) {
@@ -2506,7 +2514,6 @@ static bool sinkRescaleQuantizedNode(Function *F) {
 void glow::convertPlaceholdersToConstants(Function *F,
                                           const PlaceholderBindings &bindings,
                                           llvm::ArrayRef<Placeholder *> phs) {
-  LOG_SCOPE(F->getLogContext(), "convertPlaceholdersToConstants")
 
   auto *M = F->getParent();
   auto &placeholders = M->getPlaceholders();
@@ -2518,6 +2525,9 @@ void glow::convertPlaceholdersToConstants(Function *F,
     if (!tensor) {
       continue;
     }
+
+    LOG_SCOPE(F->getLogContext(), "convertPlaceholdersToConstants")
+
     auto *constant = M->createConstant(PH->getName(), *tensor);
     PH->getOutput().replaceAllUsesOfWith(constant, F);
   }
@@ -2555,11 +2565,12 @@ static bool getFloatScalar(Node *node, float *retFloat) {
 /// Fold leakyRelu operations expressed as a sub-graph Max(A, Mul(A, scalar))
 /// and replace it by PRelu(Splat).
 static void foldLeakyRelu(Function *F) {
-  LOG_SCOPE(F->getLogContext(), "foldLeakyRelu")
 
   auto &nodes = F->getNodes();
   for (auto &node : nodes) {
     if (auto *maxNode = dyn_cast<MaxNode>(&node)) {
+      LOG_SCOPE(F->getLogContext(), "foldLeakyRelu")
+
       NodeValue otherMaxOperand;
       MulNode *mulNode;
       if ((mulNode = dyn_cast<MulNode>(maxNode->getRHS()))) {
