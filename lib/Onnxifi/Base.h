@@ -58,6 +58,9 @@ public:
   /// \returns the whether use onnx or not.
   bool getUseOnnx() const { return useOnnx_; }
 
+  /// \returns a reference to the backend.
+  const glow::Backend &getBackend() const { return *glowBackend_; }
+
   virtual void runNetwork(const Graph *graph,
                           std::unique_ptr<ExecutionContext> context,
                           runtime::ResultCBTy callback) {}

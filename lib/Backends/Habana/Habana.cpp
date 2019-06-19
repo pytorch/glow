@@ -404,6 +404,36 @@ static bool usedInFunction(const Placeholder *V, const Function *F) {
   return false;
 }
 
+/// \returns true if \p dst is capable of handling a partial tensor as input
+/// from \p src.
+static bool allowsPartialInput(const Node *src, const Node *dst) {
+  // If N is used as the indices or weights of a sparse lookup, it is safe to
+  // access a partial tensor.
+  if (auto *SLS =
+          llvm::dyn_cast<FusedRowwiseQuantizedSparseLengthsWeightedSumNode>(
+              dst)) {
+    return src == SLS->getIndices() || src == SLS->getWeights();
+  } else if (auto *SLS = llvm::dyn_cast<SparseLengthsWeightedSumNode>(dst)) {
+    return src == SLS->getIndices() || src == SLS->getWeights();
+  } else if (auto *SLS = llvm::dyn_cast<SparseLengthsSumNode>(dst)) {
+    return src == SLS->getIndices();
+  }
+  return false;
+}
+
+/// \returns true if \p V is capable of handling a partial tensor as input.
+static bool allowsPartialInput(const Placeholder *V, const Function *F) {
+  for (auto const &U : V->getUsers()) {
+    if (U.getUser()->getParent() != F) {
+      continue;
+    }
+    if (!allowsPartialInput(*U.get(), U.getUser())) {
+      return false;
+    }
+  }
+  return true;
+}
+
 void HabanaFunction::findIOPlaceholders(Function *F) {
   for (auto const &V : F->getParent()->getPlaceholders()) {
     if (!usedInFunction(V, F)) {
@@ -413,6 +443,9 @@ void HabanaFunction::findIOPlaceholders(Function *F) {
       outputs_.push_back(V);
     } else {
       inputs_.push_back(V);
+      if (allowsPartialInput(V, F)) {
+        partialInputs_.insert(V);
+      }
     }
   }
 }
@@ -452,12 +485,16 @@ llvm::Error HabanaFunction::execute(ExecutionContext *context) {
     EnqueueTensorInfo eti;
     llvm::StringRef name = P->getName();
     eti.tensorName = name.data();
-    eti.tensorSize = T->getUnpaddedSizeInBytes();
+    eti.tensorSize = T->getSizeInBytes();
     eti.pTensorData = (char *)ioBuffer->get(P);
 
     inputInfo.push_back(eti);
     // Copy from the tensor into the designated IO buffer.
-    memcpy(eti.pTensorData, T->getUnsafePtr(), eti.tensorSize);
+    memcpy(eti.pTensorData, T->getUnsafePtr(), T->getUnpaddedSizeInBytes());
+    if (!partialInputs_.count(P)) {
+      memset(eti.pTensorData + T->getUnpaddedSizeInBytes(), 0,
+             T->getSizeInBytes() - T->getUnpaddedSizeInBytes());
+    }
   }
   TRACE_EVENT_END(tc, "copyInputs");
 

@@ -98,6 +98,10 @@ public:
   /// performed.
   virtual bool shouldShareBuffers() const { return true; }
 
+  /// \returns true if the Backend supports partial, unpadded tensors for
+  /// inputs that can have variable size (e.g., embedding indices).
+  virtual bool supportsPartialTensors() const { return false; }
+
   /// \returns true if Backend generated Instruction for Node \p N,
   /// using IRGenVisitor \p irgen.
   virtual bool generateInst(Node *N, IRGenVisitor &irgen) const {
