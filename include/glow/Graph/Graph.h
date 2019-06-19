@@ -46,6 +46,15 @@ using PlaceholderList = std::list<Placeholder *>;
 using UnsignedArrayRef = llvm::ArrayRef<size_t>;
 /// Map from original Nodes to cloned Nodes.
 using NodeMap = llvm::DenseMap<Node *, Node *>;
+/// State of a function. This can be used to control optimizations which depend
+/// on the state of the Function. This is a temporary workaround until GH Issue
+/// #3213 is complete.
+enum class FunctionState {
+  /// Indicates that the function has been created but not completely loaded.
+  FuncCreated,
+  /// Indicates that the function has been completely loaded.
+  FuncLoaded,
+};
 
 class Module final {
   /// Stores the functions in the module.
@@ -239,15 +248,24 @@ class Function final : public Named {
   /// The log context associated with this function.
   std::shared_ptr<LogContext> logCtx_;
 
+  /// The state of this function.
+  FunctionState state_;
+
 public:
   Function(Module *parent, llvm::StringRef Name = {})
-      : Named(Name), parent_(parent) {
+      : Named(Name), parent_(parent), state_(FunctionState::FuncCreated) {
     logCtx_ = std::make_shared<LogContext>();
     logCtx_->setParent(this);
     logCtx_->loadModuleLogContext();
   }
 
   ~Function();
+
+  /// Sets the state of the function.
+  void setState(FunctionState state) { state_ = state; }
+
+  /// Gets the state of the function.
+  FunctionState getState() { return state_; }
 
   std::string getFilename() { return getName().rsplit('/').second.str(); }
 

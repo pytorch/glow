@@ -204,6 +204,20 @@ private:
     }                                                                          \
   } while (0)
 
+/// Takes an llvm::Expected<T> \p lhsOrErr and if it is an Error then returns
+/// false, otherwise takes the value from lhsOrErr and assigns it to \p rhs.
+#define ASSIGN_VALUE_OR_RETURN_FALSE(rhs, lhsOrErr)                            \
+  do {                                                                         \
+    auto lhsOrErrV = (lhsOrErr);                                               \
+    static_assert(IsLLVMExpected<decltype(lhsOrErrV)>(),                       \
+                  "Expected value to be a llvm::Expected");                    \
+    if (lhsOrErrV) {                                                           \
+      rhs = std::move(lhsOrErrV.get());                                        \
+    } else {                                                                   \
+      return false;                                                            \
+    }                                                                          \
+  } while (0)
+
 /// Takes an llvm::Error and returns it if it's not success.
 // TODO: extend this to work with llvm::Expected as well.
 #define RETURN_IF_ERR(err)                                                     \

@@ -56,6 +56,9 @@ class ONNXModelLoader
   /// in the network. \returns Error if operator \p op cannot be loaded.
   llvm::Error loadOperator(const ONNX_NAMESPACE::NodeProto &op);
 
+  /// \returns True if the operator\ op is successfully folded.
+  llvm::Expected<bool> foldOperator(const ONNX_NAMESPACE::NodeProto &op);
+
   /// ONNX model ir_version;
   size_t irVersion_;
 
@@ -194,6 +197,13 @@ protected:
                   bool loadInputsAsPlaceholders, llvm::Error *errPtr = nullptr);
 
   friend class ONNXIFIModelLoader;
+
+  /// \returns success if the folding of operator \p op in the loader
+  /// \p loader is successful. The folding utility uses temporary
+  /// loader \p tmpLoader, and associated temporary function \p F.
+  template <class LoaderType, class OpType>
+  friend llvm::Error constantFoldInLoader(Function *F, LoaderType &tmpLoader,
+                                          LoaderType *loader, const OpType &op);
 
 public:
   /// Creates a ONNX model loader to build \p F.

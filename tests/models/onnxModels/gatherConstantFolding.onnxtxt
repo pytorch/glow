@@ -1,0 +1,92 @@
+ir_version: 5
+producer_name: "onnx-example"
+graph {
+  node {
+    input: "input"
+    output: "shape_x"
+    op_type: "Shape"
+  }
+  node {
+    output: "indices"
+    op_type: "Constant"
+    attribute {
+      name: "value"
+      t {
+        dims: 4
+        data_type: 7
+        int64_data: 0
+        int64_data: 2
+        int64_data: 3
+        int64_data: 1
+        name: "const_tensor"
+      }
+      type: TENSOR
+    }
+  }
+  node {
+    input: "shape_x"
+    input: "indices"
+    output: "gather"
+    op_type: "Gather"
+    attribute {
+      name: "axis"
+      i: 0
+      type: INT
+    }
+  }
+  node {
+    input: "input"
+    input: "gather"
+    output: "result"
+    op_type: "Reshape"
+  }
+  name: "test-model"
+  input {
+    name: "input"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 1
+          }
+          dim {
+            dim_value: 2
+          }
+          dim {
+            dim_value: 4
+          }
+          dim {
+            dim_value: 3
+          }
+        }
+      }
+    }
+  }
+  output {
+    name: "result"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 1
+          }
+          dim {
+            dim_value: 4
+          }
+          dim {
+            dim_value: 3
+          }
+          dim {
+            dim_value: 2
+          }
+        }
+      }
+    }
+  }
+}
+opset_import {
+  version: 10
+}
+

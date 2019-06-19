@@ -1672,6 +1672,36 @@ TEST(caffe2, gatherRanges) {
   EXPECT_TRUE(gatherRanges->getLengths().dims().equals({2}));
 }
 
+/// Test loading Gather ops with constant folding from an Caffe2 model.
+TEST(caffe2, gatherConstantFoldingAndReshape) {
+  // This test verifies that Gather gets constant-folded, so that the argument
+  // of the reshape becomes constant.
+  ExecutionEngine EE;
+  auto &mod = EE.getModule();
+
+  std::string netDescFilename(
+      GLOW_DATA_PATH "tests/models/caffe2Models/gather_const_fold.pbtxt");
+  std::string netWeightFilename(
+      GLOW_DATA_PATH "tests/models/caffe2Models/gather_const_fold_init.pbtxt");
+  PlaceholderBindings bindings;
+  auto *F = mod.createFunction("main");
+  Placeholder *output;
+  Tensor data(ElemKind::FloatTy, {1, 2, 4, 3});
+  setConstantFoldLoaderOpsFlag(true);
+  {
+    Caffe2ModelLoader caffe2LD(netDescFilename, netWeightFilename, {"data"},
+                               {&data.getType()}, *F);
+    output = EXIT_ON_ERR(caffe2LD.getOutputByName("result"));
+    bindings.allocate(mod.getPlaceholders());
+  }
+  setConstantFoldLoaderOpsFlag(false);
+  EE.compile(CompilationMode::Infer, F);
+  EE.run(bindings);
+
+  auto result = bindings.get(output)->getHandle();
+  std::vector<size_t> expectedDims = {1, 4, 3, 2};
+  EXPECT_TRUE(result.dims().vec() == expectedDims);
+}
 /// Test loading a LengthsRangeFill op.
 TEST(caffe2, LengthsRangeFill) {
   ExecutionEngine EE;
