@@ -125,10 +125,13 @@ int main(int argc, char **argv) {
       .addMember(MemberType::VectorUnsigned, "Kernels")
       .addMember(MemberType::VectorUnsigned, "Strides")
       .addMember(MemberType::VectorUnsigned, "Pads")
-      .addResultFromCtorArg()
+      .addResultFromCtorArg("Result")
+      .addResultFromCtorArg("Argmax")
       .addGradient()
-      .setDocstring("Performs a Max Pool operation on the Input given provided "
-                    "Kernels, Strides, and Pads.");
+      .setDocstring(
+          "Performs a Max Pool with Argmax operation on the Input "
+          "given provided Kernels, Strides, and Pads. Argmax is a flattened "
+          "NCHW index corresponding to respective max element.");
 
   BB.newNode("AvgPool")
       .addInput("Input")

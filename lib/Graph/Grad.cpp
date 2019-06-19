@@ -92,7 +92,6 @@ Function *glow::differentiate(Function *F, const TrainingConfig &conf,
   }
 
     CONVERT_TO_GRAD_NODE(ConvolutionNode)
-    CONVERT_TO_GRAD_NODE(MaxPoolNode)
     CONVERT_TO_GRAD_NODE(AvgPoolNode)
     CONVERT_TO_GRAD_NODE(FullyConnectedNode)
     CONVERT_TO_GRAD_NODE(LocalResponseNormalizationNode)
@@ -115,6 +114,19 @@ Function *glow::differentiate(Function *F, const TrainingConfig &conf,
       toAppend.push_back(X);
       map.addGradient(cast<SaveNode>(N)->getInput(), X);
       map.addGradient(cast<SaveNode>(N)->getOutput(), X);
+      continue;
+    }
+
+    if (N->getKind() == Kind::MaxPoolNodeKind) {
+      auto *MPN = llvm::cast<MaxPoolNode>(N);
+      // Argmax cannot be differentiated. Assert it has no users, and use a zero
+      // Splat for its grad input so it doesn't have a null input.
+      assert(MPN->getArgmax().getNumUsers() == 0 &&
+             "Argmax cannot be differentiated; must go unused.");
+      auto *ZSN = new SplatNode(N->getName(), MPN->getArgmax().getType(), 0);
+      toAppend.push_back(ZSN);
+      map.addGradient(MPN->getArgmax(), ZSN);
+      toAppend.push_back(MPN->getGrad(map));
       continue;
     }
 

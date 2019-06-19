@@ -1766,7 +1766,6 @@ bool OCLBackend::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::BatchedReduceAddNodeKind:
   case Kinded::Kind::TanhNodeKind:
   case Kinded::Kind::SigmoidNodeKind:
-  case Kinded::Kind::MaxPoolGradNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind({ElemKind::FloatTy});
 
   case Kinded::Kind::AddNodeKind:
@@ -1784,9 +1783,14 @@ bool OCLBackend::isOpSupported(const NodeInfo &NI) const {
     // Note: Pools/Conv support Int8QTy because they're always transformed via
     // the backend to be an OCLPool/OCLConv.
   case Kinded::Kind::AvgPoolNodeKind:
-  case Kinded::Kind::MaxPoolNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Int8QTy});
+
+  case Kinded::Kind::MaxPoolNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind(
+               {ElemKind::FloatTy, ElemKind::Int8QTy}, {},
+               {MaxPoolNode::ArgmaxIdx}) &&
+           (NI.getOutElemTy(MaxPoolNode::ArgmaxIdx) == ElemKind::Int64ITy);
 
   case Kinded::Kind::ConvolutionNodeKind:
     if (!NI.getInTy(ConvolutionNode::InputIdx)->isQuantizedType()) {
@@ -1839,6 +1843,17 @@ bool OCLBackend::isOpSupported(const NodeInfo &NI) const {
             ElemKind::Int64ITy) &&
            (NI.getInElemTy(SparseLengthsWeightedSumNode::LengthsIdx) ==
             ElemKind::Int32ITy);
+
+  case Kinded::Kind::MaxPoolGradNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind(
+               {ElemKind::FloatTy},
+               {MaxPoolGradNode::OriginalOutputForArgmaxIdx,
+                MaxPoolGradNode::GradOfOriginalOutputNamedArgmaxIdx}) &&
+           (NI.getInElemTy(MaxPoolGradNode::OriginalOutputForArgmaxIdx) ==
+            ElemKind::Int64ITy) &&
+           (NI.getInElemTy(
+                MaxPoolGradNode::GradOfOriginalOutputNamedArgmaxIdx) ==
+            ElemKind::Int64ITy);
 
   case Kinded::Kind::SparseLengthsWeightedSumGradNodeKind:
     // GradOfInputNamedIndicesIdx and GradOfInputNamedLengthsIdx do not need to
