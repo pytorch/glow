@@ -27,7 +27,6 @@ using namespace runtime;
 
 using MemUsageMapTy = std::unordered_map<Node *, uint64_t>;
 using ComputeTimeMapTy = std::unordered_map<Node *, float>;
-using NodesSetTy = std::set<Node *>;
 using PartitionCostMapTy = llvm::DenseMap<Function *, GraphMemInfo>;
 
 /// Data structure that contains the info for each type of backend used for

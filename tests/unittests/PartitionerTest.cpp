@@ -170,7 +170,7 @@ TEST_F(PartitionerTest, Basic1) {
 }
 
 /// This one tests the model with this feature: after BFS, there is one level,
-/// the  memory comsumption of all the nodes in which exceeds the device memory
+/// the memory consumption of all the nodes in which exceeds the device memory
 /// constraints.
 TEST_F(PartitionerTest, Basic2) {
   auto *input =
@@ -650,9 +650,9 @@ TEST_F(PartitionerTest, logicalIDTest1) {
   mod_.clear();
 }
 
-/// Check the function getGraphMemInfo to handle more than one outputs of a
-/// single Node in PartitionerUtils.cpp
-TEST_F(PartitionerTest, getGraphMemInfo) {
+/// Check the function getGraphMemInfo and updateGraphMemInfo to handle more
+/// than one outputs of a single Node in PartitionerUtils.cpp
+TEST_F(PartitionerTest, graphMemInfoCalculation1) {
   auto *inp1 =
       mod_.createPlaceholder(ElemKind::FloatTy, {2, 1, 3}, "input", false);
   auto *inp2 =
@@ -673,17 +673,120 @@ TEST_F(PartitionerTest, getGraphMemInfo) {
   auto *saveValues = F_->createSave("Save.Values", CV);
   auto *saveIndices = F_->createSave("Save.Indices", CI, indices);
 
-  std::set<Node *> nodes1, nodes2;
+  std::set<Node *> nodes1;
+  GraphMemInfo res;
+  res = updateGraphMemInfoByAddingNode(nodes1, res, R1);
+  EXPECT_EQ(res, GraphMemInfo(24, 48, 0));
   nodes1.insert(R1);
+
+  res = updateGraphMemInfoByAddingNode(nodes1, res, R2);
+  EXPECT_EQ(res, GraphMemInfo(48, 96, 0));
   nodes1.insert(R2);
-  nodes2.insert(CV);
-  nodes2.insert(CI);
-  nodes2.insert(saveValues);
-  nodes2.insert(saveIndices);
-  GraphMemInfo res1 = getGraphMemInfo(nodes1);
-  GraphMemInfo res2 = getGraphMemInfo(nodes2);
+
+  res = updateGraphMemInfoByAddingNode(nodes1, res, CV);
+  EXPECT_EQ(res, GraphMemInfo(48, 96, 0));
+  nodes1.insert(CV);
+
+  res = updateGraphMemInfoByAddingNode(nodes1, res, CI);
+  EXPECT_EQ(res, GraphMemInfo(48, 96, 0));
+  nodes1.insert(CI);
+
+  res = updateGraphMemInfoByAddingNode(nodes1, res, saveValues);
+  EXPECT_EQ(res, GraphMemInfo(48, 96, 0));
+  nodes1.insert(saveValues);
+
+  res = updateGraphMemInfoByAddingNode(nodes1, res, saveIndices);
+  EXPECT_EQ(res, GraphMemInfo(48, 96, 0));
+  nodes1.insert(saveIndices);
+
+  std::set<Node *> nodes2, nodes3;
+  nodes2.insert(R1);
+  nodes2.insert(R2);
+  nodes3.insert(CV);
+  nodes3.insert(CI);
+  nodes3.insert(saveValues);
+  nodes3.insert(saveIndices);
+  GraphMemInfo res1 = getGraphMemInfo(nodes2);
+  GraphMemInfo res2 = getGraphMemInfo(nodes3);
   GraphMemInfo ref1(48, 96, 0);
   GraphMemInfo ref2(96, 96, 0);
   EXPECT_EQ(res1, ref1);
   EXPECT_EQ(res2, ref2);
+}
+
+/// Check the function updateGraphMemInfoByAddingNode and getGraphMemInfo to
+/// handle shared Storage node in PartitionerUtils.cpp
+TEST_F(PartitionerTest, graphMemInfoCalculation2) {
+  auto *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 16}, "input", false);
+
+  // Left branch.
+  auto *w2 = mod_.createConstant(ElemKind::FloatTy, {16, 16}, "w2");
+  auto *b2 = mod_.createConstant(ElemKind::FloatTy, {16}, "b2");
+  auto *L = F_->createFullyConnected("left_fc1", input, w2, b2);
+  auto *L1 = F_->createSigmoid("left_sigmoid1", L);
+  auto *w3 = mod_.createConstant(ElemKind::FloatTy, {16, 8}, "w3");
+  auto *b3 = mod_.createConstant(ElemKind::FloatTy, {8}, "b3");
+  auto *L2 = F_->createFullyConnected("left_fc2", L1, w3, b3);
+  auto *L3 = F_->createSigmoid("left_sigmoid2", L2);
+
+  // Right branch.
+  auto *R = F_->createFullyConnected("right_fc1", input, w2, b2);
+  auto *R1 = F_->createSigmoid("right_sigmoid1", R);
+  auto *w5 = mod_.createConstant(ElemKind::FloatTy, {16, 8}, "w5");
+  auto *b5 = mod_.createConstant(ElemKind::FloatTy, {8}, "b5");
+  auto *R2 = F_->createFullyConnected("right_fc2", R1, w5, b5);
+  auto *R3 = F_->createSigmoid("right_sigmoid2", R2);
+
+  // Join branches.
+  auto *mul = F_->createMul("mul", L3, R3);
+  auto *save = F_->createSave("ret", mul);
+
+  std::set<Node *> nodes1, nodes2;
+  GraphMemInfo res1, res2;
+  res1 = updateGraphMemInfoByAddingNode(nodes1, res1, L);
+  EXPECT_EQ(res1, GraphMemInfo(64, 64, 1088));
+  nodes1.insert(L);
+
+  res1 = updateGraphMemInfoByAddingNode(nodes1, res1, R);
+  EXPECT_EQ(res1, GraphMemInfo(64, 128, 1088));
+  nodes1.insert(R);
+
+  res1 = updateGraphMemInfoByAddingNode(nodes1, res1, R1);
+  EXPECT_EQ(res1, GraphMemInfo(64, 128, 1088));
+  nodes1.insert(R1);
+
+  res1 = updateGraphMemInfoByAddingNode(nodes1, res1, R2);
+  EXPECT_EQ(res1, GraphMemInfo(64, 96, 1632));
+  nodes1.insert(R2);
+
+  res1 = getGraphMemInfo(nodes1);
+  EXPECT_EQ(res1, GraphMemInfo(64, 96, 1632));
+
+  res2 = updateGraphMemInfoByAddingNode(nodes2, res2, L1);
+  EXPECT_EQ(res2, GraphMemInfo(64, 64, 0));
+  nodes2.insert(L1);
+
+  res2 = updateGraphMemInfoByAddingNode(nodes2, res2, L2);
+  EXPECT_EQ(res2, GraphMemInfo(64, 32, 544));
+  nodes2.insert(L2);
+
+  res2 = updateGraphMemInfoByAddingNode(nodes2, res2, L3);
+  EXPECT_EQ(res2, GraphMemInfo(64, 32, 544));
+  nodes2.insert(L3);
+
+  res2 = updateGraphMemInfoByAddingNode(nodes2, res2, mul);
+  EXPECT_EQ(res2, GraphMemInfo(96, 32, 544));
+  nodes2.insert(mul);
+
+  res2 = updateGraphMemInfoByAddingNode(nodes2, res2, R3);
+  EXPECT_EQ(res2, GraphMemInfo(96, 32, 544));
+  nodes2.insert(R3);
+
+  res2 = updateGraphMemInfoByAddingNode(nodes2, res2, save);
+  EXPECT_EQ(res2, GraphMemInfo(96, 32, 544));
+  nodes2.insert(save);
+
+  res2 = getGraphMemInfo(nodes2);
+  EXPECT_EQ(res2, GraphMemInfo(96, 32, 544));
 }

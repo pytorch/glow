@@ -50,22 +50,6 @@ bool sortMinMemory(const std::pair<Function *, uint64_t> &a,
   return a.second < b.second;
 }
 
-/// Check if the memory of \p node inputs is calculated already. \returns the
-/// total used memory after \p node is considered.
-static uint64_t updateUsedMem(const std::set<Storage *> &usedStorage,
-                              std::set<Storage *> &newStorage, Node *node,
-                              uint64_t mem) {
-  uint64_t ret = mem;
-  for (size_t i = 0, e = node->getNumInputs(); i < e; i++) {
-    Storage *in = llvm::dyn_cast<Storage>(node->getNthInput(i).getNode());
-    if (in && usedStorage.find(in) == usedStorage.end()) {
-      ret += in->getType()->getSizeInBytes();
-      newStorage.insert(in);
-    }
-  }
-  return ret;
-}
-
 void Partitioner::dumpDAG(llvm::StringRef dotFilename) const {
   if (partitions_.size() == 0)
     return;
@@ -408,14 +392,6 @@ void Partitioner::partitionsAdjust(NodeToFunctionMap &partitions,
     nodesSet[(*it).second].insert((*it).first);
   }
 
-  // Initial the memory cost for each partition. Now we use the output size to
-  // represent the communication cost.
-  for (FunctionToNodesMapTy::iterator it = nodesSet.begin();
-       it != nodesSet.end(); ++it) {
-    GraphMemInfo cost = getGraphMemInfo((*it).second);
-    partitions.setGraphMemInfo((*it).first, cost);
-  }
-
   // Move/Exchange nodes between any two connected partitions, until no gain is
   // get.
   // Step1 Move: Assume Partition1 -> Partition2, try to move nodes from
@@ -509,29 +485,32 @@ NodeToFunctionMap Partitioner::selectPartitions(Function *F,
   size_t level = bfs.size();
 
   // Step 1 : get the initial cut based on BFS levels and availableMemory.
-  uint64_t mem = 0;
   int color = 0;
   Function *newF;
   newF = F->getParent()->createFunction(std::string(F->getName()) + "_part" +
                                         std::to_string(++color));
   mapping.createPartition(newF, backendName);
-  std::set<Storage *> usedStorage;
+  NodesSetTy currentPartition;
+  GraphMemInfo graphMem;
+
   for (int i = level - 1; i >= 0; i--) {
     for (size_t j = 0, e = bfs[i].size(); j < e; j++) {
       Node *N = bfs[i][j];
-      std::set<Storage *> newStorage;
-      uint64_t newMem = updateUsedMem(usedStorage, newStorage, N, mem);
-      if (newMem > availableMemory) {
+      graphMem = updateGraphMemInfoByAddingNode(currentPartition, graphMem, N);
+      // If after adding node N, the memory usage of this partition exceeds the
+      // device memory limitations, N can't be added into the current partition
+      // and a new partition is created.
+      if (graphMem.getTotalMemSize() > availableMemory) {
         newF = F->getParent()->createFunction(
             std::string(F->getName()) + "_part" + std::to_string(++color));
         mapping.createPartition(newF, backendName);
-        mem = memUsage_[N];
-        usedStorage = newStorage;
-      } else {
-        usedStorage.insert(newStorage.begin(), newStorage.end());
-        mem = newMem;
+        currentPartition.clear();
+        graphMem =
+            updateGraphMemInfoByAddingNode(currentPartition, GraphMemInfo{}, N);
       }
+      currentPartition.insert(N);
       mapping.add(N, newF);
+      mapping.setGraphMemInfo(newF, graphMem);
     }
   }
 
