@@ -228,10 +228,14 @@ class Partitioner {
   /// devices.
   DeviceIDTy assignLogicalDeviceID(NodeToFunctionMap &partitions);
 
-  /// Check if this partition way \p partitions satisfies number of physical
-  /// devices restriction. I.e. check if the number of logical devices is less
-  /// than the given physical devices.
+  /// Check if \p partitions satisfies number of physical devices restriction.
+  /// I.e. check if the number of logical devices is less than the given
+  /// physical devices.
   llvm::Error logicalDevicesValidation(NodeToFunctionMap &partitions);
+
+  /// Check if the memory usage of each partition meets the physical device
+  /// memory restriction.
+  llvm::Error memoryUsageValidation(NodeToFunctionMap &partitions);
 
   /// Duplicates all networks in the module order to saturate the Host.
   void saturateHost(unsigned logicalDeviceCount);
