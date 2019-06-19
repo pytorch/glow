@@ -1708,3 +1708,42 @@ TEST(onnx, shape) {
     EXPECT_EQ(result.raw(i), expectedValues[i]);
   }
 }
+
+TEST(onnx, tile) {
+  ExecutionEngine EE;
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/tile.onnxtxt");
+
+  PlaceholderBindings bindings;
+  Placeholder *output;
+  {
+    Tensor x(ElemKind::FloatTy, {1, 2, 2, 1});
+    x.getHandle() = {1., 2., 3., 4.};
+
+    ONNXModelLoader onnxLD(netFilename, {"input"}, {&x.getType()}, *F);
+    output = EXIT_ON_ERR(onnxLD.getSingleOutput());
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod, {"input"}, {&x});
+  }
+
+  auto *res = bindings.get(output);
+  EE.compile(CompilationMode::Infer, F);
+  EE.run(bindings);
+
+  auto result = res->getHandle();
+  std::vector<size_t> expectedDims = {1, 4, 4, 3};
+  std::vector<float> expectedValues = {
+      1.0, 1.0, 1.0, 2.0, 2.0, 2.0, 1.0, 1.0, 1.0, 2.0, 2.0, 2.0,
+      3.0, 3.0, 3.0, 4.0, 4.0, 4.0, 3.0, 3.0, 3.0, 4.0, 4.0, 4.0,
+      1.0, 1.0, 1.0, 2.0, 2.0, 2.0, 1.0, 1.0, 1.0, 2.0, 2.0, 2.0,
+      3.0, 3.0, 3.0, 4.0, 4.0, 4.0, 3.0, 3.0, 3.0, 4.0, 4.0, 4.0,
+  };
+
+  EXPECT_TRUE(result.dims().vec() == expectedDims);
+  for (size_t i = 0; i < expectedValues.size(); i++) {
+    EXPECT_EQ(result.raw(i), expectedValues[i]);
+  }
+}
