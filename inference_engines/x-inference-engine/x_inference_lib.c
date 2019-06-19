@@ -11,7 +11,15 @@
 #include <fcntl.h>
 #include <stdbool.h>
 
+#ifdef ENABLE_PERF_MONITORING
+#include <x_perf_monitor.h>
+#endif
+
 #include "x_inference_lib.h"
+
+#ifdef ENABLE_PERF_MONITORING
+static struct PerfData global_pd;
+#endif
 
 static uint8_t *init_constant_weights(const char *wfname, const struct BundleConfig *bundle_config);
 static uint8_t *init_mutable_weights(const struct BundleConfig *bundle_config);
@@ -25,6 +33,15 @@ init_runtime_data(const struct NetworkData *network_data, struct RuntimeData *ru
 {
     uint8_t *result = NULL;
     int retval = X_FAILURE;
+
+#ifdef ENABLE_PERF_MONITORING
+    (void) memset(&(runtime_data->ps), 0x0, sizeof(struct PerfStatistics));
+    (void) memset(&global_pd, 0x0, sizeof(struct PerfData));
+
+    retval = init_perf_monitoring(&global_pd);
+    if (retval)
+        return X_FAILURE;
+#endif
 
     result = init_constant_weights(network_data->weights_file_name, network_data->bundle_config);
     if (result != NULL) {
@@ -86,6 +103,10 @@ cleanup_runtime_data(struct RuntimeData *runtime_data)
     runtime_data->activations = NULL;
     runtime_data->const_weights = NULL;
     runtime_data->mut_weights = NULL;
+
+#ifdef ENABLE_PERF_MONITORING
+    (void) stop_perf_monitoring(&global_pd);
+#endif
 }
 
 void 
@@ -101,7 +122,7 @@ cleanup_io(struct InferenceIO *iio)
 }
 
 void 
-run_inference(const struct InferenceIO *iio, const struct RuntimeData *runtime_data)
+run_inference(const struct InferenceIO *iio, struct RuntimeData *runtime_data)
 {
     size_t batch_counter;
     size_t current_input_offset;
@@ -113,14 +134,26 @@ run_inference(const struct InferenceIO *iio, const struct RuntimeData *runtime_d
     current_input_offset = 0;
     current_output_offset = 0;
 
+#ifdef ENABLE_PERF_MONITORING
+    runtime_data->ps.num_cases = iio->batch_size;
+#endif
+
     for (batch_counter = 0; batch_counter < iio->batch_size; ++batch_counter) {
         (void) memcpy(runtime_data->mut_weights + runtime_data->input_offset,
                     iio->input + current_input_offset,
                     iio->in_len);
 
+#ifdef ENABLE_PERF_MONITORING
+        (void) resume_perf_monitoring(&global_pd);
+#endif
         (runtime_data->inference_func)(runtime_data->const_weights,
                                     runtime_data->mut_weights,
                                     runtime_data->activations);
+#ifdef ENABLE_PERF_MONITORING
+        (void) pause_perf_monitoring(&global_pd);
+        (void) read_perf_statistics(&global_pd);
+        (void) memcpy(&(runtime_data->ps), &(global_pd.ps), sizeof(struct PerfStatistics));
+#endif
 
         (void) memcpy(iio->output + current_output_offset,
                     runtime_data->mut_weights + runtime_data->output_offset,
@@ -174,7 +207,7 @@ uint8_t
         buffer = retval;
         if (retval != NULL) {
             while (bytes_total < size) {
-                bytes_read = read(fd, buffer++, size - bytes_total);
+                bytes_read = read(fd, buffer, size - bytes_total);
                 bytes_total += bytes_read;
 
                 if (bytes_read <= 0) {
@@ -187,6 +220,8 @@ uint8_t
                     retval = NULL;
                     break;
                 }
+
+                buffer += bytes_read;
             }
         }
         else
@@ -220,7 +255,7 @@ void
         fprintf(stderr, "Error allocating memory (%d): %s\n", result, strerror(result));
         retval = NULL;
     } else {
-        memset(retval, 0x0, size);
+        (void) memset(retval, 0x0, size);
     }
 
     return retval;

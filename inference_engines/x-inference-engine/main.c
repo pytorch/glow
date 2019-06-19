@@ -24,17 +24,28 @@ extern void X_MODEL_NAME(uint8_t *, uint8_t *, uint8_t *);
 
 const char *argp_program_version = "x-infer v0.01";
 const char *argp_program_bug_address = "<william.yessen@xperi.com>";
-const char doc[] = "x-infer runs inference against the x-bundle. Weights file must be "
+const char doc[] = 
+                   "\n                    Generic Inference Engine                         \n"
+                   "-----------------------------------------------------------------------\n"
+#ifdef X_USE_DYNAMIC
+                   "Dynamic bundle loading: SUPPORTED\n\n"
+#else
+                   "Dynamic bundle loading: NOT SUPPORTED (bundle has been statically linked)\n\n"
+#endif
+                   "x-infer runs inference against the provided Glow bundle. Weights file must be "
                    "specified as the first argument. The input file must be specified with "
                    "[-i FILE] (binary file). Input tensor type [-t], output tensor type [-T], "
                    "input dimensions [-d], output dimensions [-D], input tensor name [-n], "
-                   "and output tensor name [-N] must be specified. ";
+                   "and output tensor name [-N] must be specified. "
+                   "\n\n"
+                   "When built with dynamic bundle loading support, bundle must be specified as the "
+                   "first positional argument, and the weights file as the second. When built with "
+                   "a bundle statically linked in, dynamic loading is not supported ";
 const char args_doc[] =
 #ifdef X_USE_DYNAMIC
 "[BUNDLE FILENAME] "
 #endif
-"[WEIGHTS FILENAME] [-i FILE] [-t TYPE] [-T TYPE] [-l LEN] [-L LEN] "
-                        "[-n <INPUT TENSOR NAME>] [-N <OUTPUT TENSOR NAME>]...";
+"[WEIGHTS FILENAME]";
 
 const struct argp_option options[] = {
   {"output",   'o', "FILE",   0,  "Output to binary FILE instead of standard output" },
@@ -47,6 +58,11 @@ const struct argp_option options[] = {
                                   "length is 2 * 3 * 4 = 24)"},
   {"inname",   'n', "NAME",   0,  "Input tensor name NAME" },
   {"outname",  'N', "NAME",   0,  "Output tensor name NAME" },
+
+#ifdef ENABLE_PERF_METRICS
+  {"perf",     'p', "NAME",   0,  "Output file name for performance metrics (metrics not collected "
+                                  "if this option is omitted."},
+#endif
   
   #ifdef X_USE_DYNAMIC
   {"model",    'm', "NAME",   0,  "Model name (maximum 128 chars)" },

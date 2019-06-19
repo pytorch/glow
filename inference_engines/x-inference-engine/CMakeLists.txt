@@ -3,18 +3,27 @@ project(x-infer)
 
 option(LIB_ONLY "Only build the library" OFF)
 option(BUILD_FOR_DYNAMIC_LINKAGE "Whether to build for dynamic or static bundle linkage" ON)
+option(LINK_LIBS_STATICALLY "Whether to link in all the required libraries statically" ON)
+option(ENABLE_PERF_MONITORING "Whether to enable performance monitoring" OFF)
 
 set(CMAKE_BINARY_DIR ./bin)
 set(EXECUTABLE_OUTPUT_PATH ${CMAKE_BINARY_DIR})
 set(LIBRARY_OUTPUT_PATH ${CMAKE_BINARY_DIR})
 
-# TARGET SPECIFIC SETUP
-set(TARGET_COMPILE_FLAGS # "-static"
-)
-set(TARGET_LINKER_FLAGS # "-static"
-)
-# set(CMAKE_C_COMPILER /usr/bin/arm-linux-gnueabihf-gcc)
-# set(CMAKE_CXX_COMPILER /usr/bin/arm-linux-gnueabihf-g++)
+if(LINK_LIBS_STATICALLY)
+    message(WARNING "Static linking may cause issues with dlopen on target")
+    message("Will statically link executable")
+    set(TARGET_COMPILE_FLAGS "-static"
+    )
+    set(TARGET_LINKER_FLAGS "-static"
+    )
+else()
+    set(TARGET_COMPILE_FLAGS )
+endif()
+
+if (DEFINED TARGET_OPTIONS)
+    set(TARGET_COMPILE_FLAGS "${TARGET_COMPILE_FLAGS} ${TARGET_OPTIONS}")
+endif()
 
 include_directories(${PROJECT_SOURCE_DIR})
 
@@ -22,8 +31,14 @@ set(CMAKE_C_FLAGS ${CMAKE_C_FLAGS} ${TARGET_COMPILE_FLAGS})
 set(CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS} ${TARGET_COMPILE_FLAGS})
 set(CMAKE_EXE_LINKER_FLAGS ${CMAKE_EXE_LINKER_FLAGS} ${TARGET_LINKER_FLAGS})
 
-add_library(xinfer STATIC x_inference_lib.c)
-if (LIB_ONLY)
+if(ENABLE_PERF_MONITORING)
+    message("Will enable performance monitoring")
+    add_definitions(-DENABLE_PERF_MONITORING)
+endif()
+
+add_library(xinfer STATIC x_inference_lib.c x_perf_monitor.c)
+
+if(LIB_ONLY)
     message("Will only build the library")
 else()
     message("Will build the library and the executable")

@@ -4,10 +4,14 @@
 #include <stdlib.h>
 #include <stdint.h>
 
+#ifdef ENABLE_PERF_MONITORING
+#include "x_perf_monitor.h"
+#endif
+
 #define X_SUCCESS (0)
 #define X_FAILURE (-1)
 
-typedef void (*InferenceFunctionPtr_t)(uint8_t *, uint8_t *, uint8_t*);
+typedef void (*InferenceFunctionPtr_t)(uint8_t *, uint8_t *, uint8_t *);
 
 struct SymbolTableEntry
 {
@@ -35,6 +39,10 @@ struct RuntimeData
     InferenceFunctionPtr_t inference_func;
     size_t input_offset;
     size_t output_offset;
+
+#ifdef ENABLE_PERF_MONITORING
+    struct PerfStatistics ps;
+#endif
 };
 
 struct InferenceIO
@@ -61,6 +69,6 @@ int init_runtime_data(const struct NetworkData *network_data, struct RuntimeData
 int init_io(struct InferenceIO *iio, void *in_mmap, void *out_mmap);
 void cleanup_runtime_data(struct RuntimeData *runtime_data);
 void cleanup_io(struct InferenceIO *io);
-void run_inference(const struct InferenceIO *iio, const struct RuntimeData *runtime_data);
+void run_inference(const struct InferenceIO *iio, struct RuntimeData *runtime_data);
 
 #endif
