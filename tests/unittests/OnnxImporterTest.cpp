@@ -1824,3 +1824,85 @@ TEST(onnx, tile) {
     EXPECT_EQ(result.raw(i), expectedValues[i]);
   }
 }
+
+TEST(onnx, importMaxPoolWithArgmax) {
+  ExecutionEngine EE;
+  auto &mod = EE.getModule();
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/maxPoolWithArgmax.onnxtxt");
+  auto *F = mod.createFunction("main");
+  PlaceholderBindings bindings;
+  Placeholder *resultPH, *indicesPH;
+  Tensor inputTensor(ElemKind::FloatTy, {1, 3, 4, 4});
+
+  // Execute the following scenario for MaxPool with Argmax output:
+  // Input:
+  // [[[[ 0. 47. 35. 23.]
+  //    [11. 58. 46. 34.]
+  //    [22. 10. 57. 45.]
+  //    [33. 21.  9. 56.]]
+  //
+  //   [[44. 32. 20.  8.]
+  //    [55. 43. 31. 19.]
+  //    [ 7. 54. 42. 30.]
+  //    [18.  6. 53. 41.]]
+  //
+  //   [[29. 17.  5. 52.]
+  //    [40. 28. 16.  4.]
+  //    [51. 39. 27. 15.]
+  //    [ 3. 50. 38. 26.]]]]
+  //
+  // Result:
+  // [[[[58. 46.]
+  //    [33. 57.]]
+  //
+  //   [[55. 31.]
+  //    [54. 53.]]
+  //
+  //   [[40. 52.]
+  //    [51. 38.]]]]
+  //
+  // Argmax:
+  // [[[[15 18]
+  //    [36 30]]
+  //
+  //   [[13 19]
+  //    [28 43]]
+  //
+  //   [[14 11]
+  //    [26 44]]]]
+  inputTensor.getHandle() = {
+      0.0,  47.0, 35.0, 23.0, 11.0, 58.0, 46.0, 34.0, 22.0, 10.0, 57.0, 45.0,
+      33.0, 21.0, 9.0,  56.0, 44.0, 32.0, 20.0, 8.0,  55.0, 43.0, 31.0, 19.0,
+      7.0,  54.0, 42.0, 30.0, 18.0, 6.0,  53.0, 41.0, 29.0, 17.0, 5.0,  52.0,
+      40.0, 28.0, 16.0, 4.0,  51.0, 39.0, 27.0, 15.0, 3.0,  50.0, 38.0, 26.0};
+
+  {
+    ONNXModelLoader onnxLD(netFilename, {"input"}, {&inputTensor.getType()},
+                           *F);
+    resultPH = EXIT_ON_ERR(onnxLD.getOutputByName("result"));
+    indicesPH = EXIT_ON_ERR(onnxLD.getOutputByName("indices"));
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod, {"input"}, {&inputTensor});
+  }
+
+  EE.compile(CompilationMode::Infer, F);
+  EE.run(bindings);
+
+  auto result = bindings.get(resultPH)->getHandle();
+  auto indices = bindings.get(indicesPH)->getHandle<int64_t>();
+  std::vector<size_t> expectedDims = {1, 3, 2, 2};
+
+  EXPECT_TRUE(result.dims().vec() == expectedDims);
+  EXPECT_TRUE(indices.dims().vec() == expectedDims);
+
+  std::vector<float> expectedResult = {58.0, 46.0, 33.0, 57.0, 55.0, 31.0,
+                                       54.0, 53.0, 40.0, 52.0, 51.0, 38.0};
+  std::vector<int64_t> expectedIndices = {15, 18, 36, 30, 13, 19,
+                                          28, 43, 14, 11, 26, 44};
+
+  for (size_t i = 0; i < expectedResult.size(); i++) {
+    EXPECT_EQ(result.raw(i), expectedResult[i]);
+    EXPECT_EQ(indices.raw(i), expectedIndices[i]);
+  }
+}

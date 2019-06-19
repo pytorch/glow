@@ -687,7 +687,7 @@ void BoundInterpreterFunction::fwdChannelwiseQuantizedConvolutionInst(
 //                       Pooling
 //===----------------------------------------------------------------------===//
 template <class T>
-static void fwdMaxPool(Tensor *inW, Tensor *outW, Handle<int64_t> *SXY,
+static void fwdMaxPool(Tensor *inW, Tensor *outW, Tensor *argmaxW,
                        llvm::ArrayRef<unsigned_t> kernelSizes,
                        llvm::ArrayRef<unsigned_t> strides,
                        llvm::ArrayRef<unsigned_t> pads) {
@@ -699,6 +699,10 @@ static void fwdMaxPool(Tensor *inW, Tensor *outW, Handle<int64_t> *SXY,
   ShapeHW kdim(kernelSizes);
   ShapeHW sdim(strides);
 
+  llvm::Optional<Handle<int64_t>> argmaxH;
+  if (argmaxW) {
+    argmaxH = argmaxW->getHandle<int64_t>();
+  }
   // For each input in the batch:
   for (size_t n = 0; n < odim.n; n++) {
 
@@ -709,11 +713,10 @@ static void fwdMaxPool(Tensor *inW, Tensor *outW, Handle<int64_t> *SXY,
       for (size_t ax = 0; ax < odim.h; x += sdim.height, ax++) {
         ssize_t y = -ssize_t(pdim.left);
         for (size_t ay = 0; ay < odim.w; y += sdim.width, ay++) {
-          size_t maxX = x;
-          size_t maxY = y;
 
           bool first = true;
           T max_value = 0;
+          int64_t argmaxNHWC = 0;
 
           for (size_t fx = 0; fx < kdim.height; fx++) {
             for (size_t fy = 0; fy < kdim.width; fy++) {
@@ -730,17 +733,18 @@ static void fwdMaxPool(Tensor *inW, Tensor *outW, Handle<int64_t> *SXY,
               if (first || (val >= max_value)) {
                 first = false;
                 max_value = val;
-                maxX = ox;
-                maxY = oy;
+                if (argmaxW) {
+                  argmaxNHWC = &inHandle.at({n, (size_t)ox, (size_t)oy, z}) -
+                               &inHandle.raw(0);
+                }
               }
             }
           }
 
           outHandle.at({n, ax, ay, z}) = max_value;
 
-          if (SXY) {
-            SXY->at({n, ax, ay, z, 0}) = maxX;
-            SXY->at({n, ax, ay, z, 1}) = maxY;
+          if (argmaxW) {
+            (*argmaxH).at({n, ax, ay, z}) = argmaxNHWC;
           }
         } // W
       }   // H
@@ -764,20 +768,20 @@ void BoundInterpreterFunction::fwdMaxPoolInst(const MaxPoolInst *I) {
                             I->getPads());
 }
 
-void BoundInterpreterFunction::fwdMaxPoolWithXYInst(
-    const MaxPoolWithXYInst *I) {
+void BoundInterpreterFunction::fwdMaxPoolWithArgmaxInst(
+    const MaxPoolWithArgmaxInst *I) {
   auto inW = getTensor(I->getSrc());
   auto outW = getTensor(I->getDest());
-  auto SXY = getWeightHandle<int64_t>(I->getSrcXY());
+  auto argmaxW = getTensor(I->getArgmax());
 
   if (inW->getType().isQuantizedType()) {
     dispatchQuantizedImpl(fwdMaxPool, inW->getType().getElementType(), inW,
-                          outW, nullptr, I->getKernels(), I->getStrides(),
+                          outW, argmaxW, I->getKernels(), I->getStrides(),
                           I->getPads());
     return;
   }
   dispatchFloatingPointImpl(fwdMaxPool, inW->getType().getElementType(), inW,
-                            outW, &SXY, I->getKernels(), I->getStrides(),
+                            outW, argmaxW, I->getKernels(), I->getStrides(),
                             I->getPads());
 }
 
@@ -893,17 +897,18 @@ void BoundInterpreterFunction::fwdAvgPoolInst(const AvgPoolInst *I) {
                             I->getSrc()->getElementType(), I);
 }
 
-void BoundInterpreterFunction::fwdMaxPoolWithXYGradInst(
-    const MaxPoolWithXYGradInst *I) {
+void BoundInterpreterFunction::fwdMaxPoolWithArgmaxGradInst(
+    const MaxPoolWithArgmaxGradInst *I) {
   auto inG = getWeightHandle(I->getSrcGrad());
   auto outW = getWeightHandle(I->getDest());
   auto outG = getWeightHandle(I->getDestGrad());
 
   inG.clear();
 
+  ShapeNHWC idim(inG.dims());
   ShapeNHWC odim(outW.dims());
 
-  auto SXY = getWeightHandle<int64_t>(I->getSrcXY());
+  auto argmax = getWeightHandle<int64_t>(I->getArgmax());
 
   // For each input in the batch:
   for (size_t n = 0; n < odim.n; n++) {
@@ -914,13 +919,9 @@ void BoundInterpreterFunction::fwdMaxPoolWithXYGradInst(
       // For each convolution 'jump' in the input tensor:
       for (size_t ax = 0; ax < odim.h; ax++) {
         for (size_t ay = 0; ay < odim.w; ay++) {
-
+          // Reuse precomputed linear index of max element from argmax.
           float chainGrad = outG.at({n, ax, ay, z});
-
-          size_t maxX = SXY.at({n, ax, ay, z, 0});
-          size_t maxY = SXY.at({n, ax, ay, z, 1});
-
-          inG.at({n, maxX, maxY, z}) += chainGrad;
+          inG.raw(argmax.at({n, ax, ay, z})) += chainGrad;
         } // W
       }   // H
     }     // C

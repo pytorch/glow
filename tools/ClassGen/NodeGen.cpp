@@ -131,7 +131,7 @@ int main(int argc, char **argv) {
       .setDocstring(
           "Performs a Max Pool with Argmax operation on the Input "
           "given provided Kernels, Strides, and Pads. Argmax is a flattened "
-          "NCHW index corresponding to respective max element.");
+          "NHWC index corresponding to respective max element.");
 
   BB.newNode("AvgPool")
       .addInput("Input")

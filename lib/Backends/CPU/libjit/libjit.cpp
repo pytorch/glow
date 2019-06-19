@@ -571,10 +571,10 @@ static void libjit_max_pool_generic(const T *inW, T *outW,
 }
 
 template <typename T>
-static void libjit_max_pool_xy_generic(const T *inW, T *outW, size_t *inXY,
-                                       const size_t *inWdims,
-                                       const size_t *outWdims, size_t *kernels,
-                                       size_t *strides, size_t *pads) {
+static void
+libjit_max_pool_argmax_generic(const T *inW, T *outW, int64_t *argmax,
+                               const size_t *inWdims, const size_t *outWdims,
+                               size_t *kernels, size_t *strides, size_t *pads) {
   size_t pad_t = pads[0];
   size_t pad_l = pads[1];
   size_t stride_h = strides[0];
@@ -592,8 +592,7 @@ static void libjit_max_pool_xy_generic(const T *inW, T *outW, size_t *inXY,
 
         // For each channel in the output tensor:
         for (size_t z = 0; z < outWdims[3]; z++) {
-          size_t maxX = x;
-          size_t maxY = y;
+          int64_t argmaxNHWC = 0;
           int first = 1;
           T max = 0;
 
@@ -606,24 +605,20 @@ static void libjit_max_pool_xy_generic(const T *inW, T *outW, size_t *inXY,
                   oy >= (ssize_t)inWdims[2]) {
                 continue;
               }
-
-              T val =
-                  inW[libjit_getXYZW(inWdims, n, (size_t)ox, (size_t)oy, z)];
+              const size_t flatIndex =
+                  libjit_getXYZW(inWdims, n, (size_t)ox, (size_t)oy, z);
+              T val = inW[flatIndex];
               if (first || (val >= max)) {
                 first = 0;
                 max = val;
-                maxX = ox;
-                maxY = oy;
+                argmaxNHWC = flatIndex;
               }
             }
           }
 
-          outW[libjit_getXYZW(outWdims, n, ax, ay, z)] = max;
-          // For the x and y argmax's, we use a 5-dimensional
-          // tensor whose fifth dimension has size 2:
-          size_t ix = 2 * libjit_getXYZW(outWdims, n, ax, ay, z);
-          inXY[ix] = maxX;
-          inXY[ix + 1] = maxY;
+          const size_t flatIndex = libjit_getXYZW(outWdims, n, ax, ay, z);
+          outW[flatIndex] = max;
+          argmax[flatIndex] = argmaxNHWC;
         } // C
       }   // W
     }     // H
@@ -1365,23 +1360,23 @@ void libjit_max_pool_f(const float *inW, float *outW, const size_t *inWdims,
                           pads);
 }
 
-void libjit_max_pool_xy_i8(const int8_t *inW, int8_t *outW, size_t *inXY,
-                           const size_t *inWdims, const size_t *outWdims,
-                           size_t *kernels, size_t *strides, size_t *pads) {
-  libjit_max_pool_xy_generic(inW, outW, inXY, inWdims, outWdims, kernels,
-                             strides, pads);
+void libjit_max_pool_argmax_i8(const int8_t *inW, int8_t *outW, int64_t *argmax,
+                               const size_t *inWdims, const size_t *outWdims,
+                               size_t *kernels, size_t *strides, size_t *pads) {
+  libjit_max_pool_argmax_generic(inW, outW, argmax, inWdims, outWdims, kernels,
+                                 strides, pads);
 }
 
-void libjit_max_pool_xy_f(const float *inW, float *outW, size_t *inXY,
-                          const size_t *inWdims, const size_t *outWdims,
-                          size_t *kernels, size_t *strides, size_t *pads) {
-  libjit_max_pool_xy_generic(inW, outW, inXY, inWdims, outWdims, kernels,
-                             strides, pads);
+void libjit_max_pool_argmax_f(const float *inW, float *outW, int64_t *argmax,
+                              const size_t *inWdims, const size_t *outWdims,
+                              size_t *kernels, size_t *strides, size_t *pads) {
+  libjit_max_pool_argmax_generic(inW, outW, argmax, inWdims, outWdims, kernels,
+                                 strides, pads);
 }
 
-void libjit_max_pool_xy_grad_f(float *inG, const float *outG,
-                               const size_t *inXY, const size_t *inGdims,
-                               const size_t *outWdims) {
+void libjit_max_pool_argmax_grad_f(float *inG, const float *outG,
+                                   const int64_t *argmax, const size_t *inGdims,
+                                   const size_t *outWdims) {
   // NHWC format is assumed
   for (size_t n = 0; n < outWdims[0]; n++) {
     for (size_t z = 0; z < outWdims[3]; z++) {
@@ -1394,14 +1389,10 @@ void libjit_max_pool_xy_grad_f(float *inG, const float *outG,
 
       for (size_t ax = 0; ax < outWdims[1]; ax++) {
         for (size_t ay = 0; ay < outWdims[2]; ay++) {
-          // For the x and y argmax's, we use a 5-dimensional
-          // tensor whose fifth dimension has size 2:
-          size_t ix = 2 * libjit_getXYZW(outWdims, n, ax, ay, z);
-          size_t maxX = inXY[ix];
-          size_t maxY = inXY[ix + 1];
-
-          float df = outG[libjit_getXYZW(outWdims, n, ax, ay, z)];
-          inG[libjit_getXYZW(inGdims, n, maxX, maxY, z)] += df;
+          // Reuse precomputed linear index of max element from argmax.
+          const size_t flatIndex = libjit_getXYZW(outWdims, n, ax, ay, z);
+          float df = outG[flatIndex];
+          inG[argmax[flatIndex]] += df;
         } // W
       }   // H
     }     // C

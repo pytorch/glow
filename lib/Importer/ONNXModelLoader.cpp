@@ -648,11 +648,6 @@ llvm::Error ONNXModelLoader::loadPool(const ONNX_NAMESPACE::NodeProto &op,
                                       llvm::StringRef typeName) {
   const std::string &opName = loadOperatorName(op);
 
-  // Glow doesn't support argmax output yet.
-  if (op.output_size() > 1) {
-    RETURN_ERR("Glow doesn't support argmax output yet.",
-               GlowErr::ErrorCode::MODEL_LOADER_UNSUPPORTED_OPERATOR);
-  }
   // Load the inputs:
   NodeValue in;
   ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
@@ -688,13 +683,28 @@ llvm::Error ONNXModelLoader::loadPool(const ONNX_NAMESPACE::NodeProto &op,
   ASSIGN_VALUE_OR_RETURN_ERR(pads, getPads(dict, kernels, strides, idimHW));
 
   Node *node = nullptr;
-  if (typeName == "MaxPool") {
+  if (op.output_size() > 1) {
+    if (typeName != "MaxPool") {
+      RETURN_ERR("Argmax output is only supported for MaxPool!",
+                 GlowErr::ErrorCode::MODEL_LOADER_UNSUPPORTED_OPERATOR);
+    }
+
     node = G_.createMaxPool(opName, tr, kernels, strides, pads);
+    auto *res = G_.createTranspose(opName, NodeValue(node, 0), NHWC2NCHW);
+    auto *argmax = G_.createTranspose(opName, NodeValue(node, 1), NHWC2NCHW);
+    RETURN_IF_ERR(assignNodeOutputs(op, {res, argmax}));
   } else {
-    node = G_.createAvgPool(opName, tr, kernels, strides, pads);
+    size_t idx = 0;
+    if (typeName == "MaxPool") {
+      node = G_.createMaxPool(opName, tr, kernels, strides, pads);
+      idx = MaxPoolNode::ResultIdx;
+    } else {
+      node = G_.createAvgPool(opName, tr, kernels, strides, pads);
+      idx = AvgPoolNode::ResultIdx;
+    }
+    auto *N = G_.createTranspose(opName, NodeValue(node, idx), NHWC2NCHW);
+    RETURN_IF_ERR(addNodeAsOutput(op, N));
   }
-  auto *N = G_.createTranspose(opName, node, NHWC2NCHW);
-  RETURN_IF_ERR(addNodeAsOutput(op, N));
   return llvm::Error::success();
 }
 

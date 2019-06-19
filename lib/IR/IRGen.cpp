@@ -147,11 +147,13 @@ void IRGenVisitor::post(Node *parent, Node *N) {
   case glow::Kinded::Kind::MaxPoolNodeKind: {
     auto *P = cast<MaxPoolNode>(N);
     auto *in = valueForNode(P->getInput());
-    auto *V = builder_.createMaxPoolWithXYOp(N->getName(), in, P->getKernels(),
-                                             P->getStrides(), P->getPads());
+    auto *V = builder_.createMaxPoolWithArgmaxOp(
+        N->getName(), in, P->getKernels(), P->getStrides(), P->getPads());
     Value *dest = V->getDest();
+    Value *argmax = V->getArgmax();
     nodeToInstr_[N] = V;
     registerIR(P->getResult(), dest);
+    registerIR(P->getArgmax(), argmax);
     break;
   }
   case glow::Kinded::Kind::MaxPoolGradNodeKind: {
@@ -166,11 +168,11 @@ void IRGenVisitor::post(Node *parent, Node *N) {
 
     // Find the original pool instruction.
     assert(nodeToInstr_.count(poolOut) && "Pool IRgen did not register itself");
-    auto *PI = cast<MaxPoolWithXYInst>(nodeToInstr_[poolOut.getNode()]);
+    auto *PI = cast<MaxPoolWithArgmaxInst>(nodeToInstr_[poolOut.getNode()]);
 
-    builder_.createMaxPoolWithXYGradInst(N->getName(), outW, PI->getSrcXY(),
-                                         outG, inG, PG->getKernels(),
-                                         PG->getStrides(), PG->getPads());
+    builder_.createMaxPoolWithArgmaxGradInst(
+        N->getName(), outW, PI->getArgmax(), outG, inG, PG->getKernels(),
+        PG->getStrides(), PG->getPads());
     registerIR(PG->getGradOfInputNamedInput(), inG);
     break;
   }

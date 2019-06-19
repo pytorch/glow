@@ -1071,7 +1071,7 @@ llvm::Error OpenCLFunction::execute(ExecutionContext *context) {
       continue;
     }
 
-    if (auto *PM = dyn_cast<MaxPoolWithXYInst>(&I)) {
+    if (auto *PM = dyn_cast<MaxPoolWithArgmaxInst>(&I)) {
       // This is a naive implementation that parallelizes using three dims:
       // the X and the Y in the output filter.
       cl_kernel kernel = createKernel(kernelName);
@@ -1096,7 +1096,7 @@ llvm::Error OpenCLFunction::execute(ExecutionContext *context) {
       continue;
     }
 
-    if (auto *PMG = dyn_cast<MaxPoolWithXYGradInst>(&I)) {
+    if (auto *PMG = dyn_cast<MaxPoolWithArgmaxGradInst>(&I)) {
       cl_kernel kernel = createKernel(kernelName);
       setKernelArg(kernel, 0, deviceBuffer_);
       auto numArgs = setKernelArgsForBuffers(kernel, I, 1, runtimeBundle_);

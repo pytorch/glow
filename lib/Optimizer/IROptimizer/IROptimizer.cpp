@@ -1547,13 +1547,13 @@ void performPeepholeOptimizations(IRFunction &M) {
     auto cur = it;
     auto *I = &*cur;
     it = std::next(it);
-    // MaxPoolWithXYInst -> MaxPoolInst.
-    if (auto *PMI = dyn_cast<MaxPoolWithXYInst>(I)) {
-      auto *SrcXY = PMI->getSrcXY();
+    // MaxPoolWithArgmaxInst -> MaxPoolInst.
+    if (auto *PMI = dyn_cast<MaxPoolWithArgmaxInst>(I)) {
+      auto *argmax = PMI->getArgmax();
       // Optimize only if the cache is an allocation and
       // it has exactly 2 users: the current instruction and
       // a deallocation.
-      if (!isa<AllocActivationInst>(SrcXY) || SrcXY->getNumUsers() != 2) {
+      if (!isa<AllocActivationInst>(argmax) || argmax->getNumUsers() != 2) {
         continue;
       }
 
