@@ -679,8 +679,16 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
       node = G_.createAvgPool(opName, finalIn, kernels, strides, pads);
     }
     if (order == "NCHW") {
+      unsigned resIdx = 0;
+      if (llvm::isa<MaxPoolNode>(node)) {
+        resIdx = MaxPoolNode::ResultIdx;
+      } else if (llvm::isa<AvgPoolNode>(node)) {
+        resIdx = AvgPoolNode::ResultIdx;
+      } else {
+        RETURN_ERR("Expected either Max or Avg Pool.");
+      }
       // Transpose the output back.
-      node = G_.createTranspose(opName, node, NHWC2NCHW);
+      node = G_.createTranspose(opName, node->getNthResult(resIdx), NHWC2NCHW);
     }
     RETURN_IF_ERR(addNodeAsOutput(op, node));
     return llvm::Error::success();

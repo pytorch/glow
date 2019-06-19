@@ -2226,7 +2226,7 @@ TEST_F(GraphOptz, sinkRescaledQuantizedNode) {
   auto *transpose = F_->createTranspose("transpose", rescale2, {0, 2, 3, 1});
   auto *maxpool =
       F_->createMaxPool("maxpool", transpose, {2, 2}, {1, 1}, {0, 0, 0, 0});
-  auto *save = F_->createSave("ret", maxpool);
+  auto *save = F_->createSave("ret", maxpool->getResult());
 
   EXPECT_EQ(F_->getNodes().size(), 7);
   ::glow::optimize(F_, CompilationMode::Infer);

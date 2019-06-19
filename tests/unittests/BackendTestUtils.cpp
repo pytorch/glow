@@ -489,7 +489,7 @@ void trainMaxPoolNet(Tensor *inputs, Tensor *weights, Tensor *bias,
   bindings.get(cast<Placeholder>(fc->getBias()))->assign(bias);
   auto *reshape1 = F->createReshape("reshape1", fc, shape1);
   auto *pool = F->createMaxPool("pool", reshape1, 5, 3, 4);
-  auto *reshape2 = F->createReshape("reshape2", pool, shape2);
+  auto *reshape2 = F->createReshape("reshape2", pool->getResult(), shape2);
   auto *softmax = F->createSoftMax("softmax", reshape2, var2);
   auto *result = F->createSave("ret", softmax);
   auto *resultTensor = bindings.allocate(result->getPlaceholder());
@@ -800,7 +800,7 @@ void inferBasicConvNet(Tensor *inputs, Tensor *out, llvm::StringRef kind,
   bindings.get(cast<Placeholder>(conv->getFilter()))->getHandle().clear(0.1);
   bindings.get(cast<Placeholder>(conv->getBias()))->getHandle().clear(0.2);
   auto *pool = F->createMaxPool("pool", conv, 2, 2, 0);
-  auto *result = F->createSave("ret", pool);
+  auto *result = F->createSave("ret", pool->getResult());
   auto *resultTensor = bindings.allocate(result->getPlaceholder());
   convertPlaceholdersToConstants(F, bindings, {var, result->getPlaceholder()});
 
@@ -884,7 +884,7 @@ void inferComplexNet1(Tensor *inputs1, Tensor *inputs2, Tensor *inputs3,
   auto *reshape1 = F->createReshape("reshape1", fc1, {8, 14, 28, 6});
   auto *relu1 = F->createRELU("relu1", reshape1);
   auto *pool1 = F->createMaxPool("pool1", relu1, 2, 2, 1);
-  auto *add = F->createAdd("add", sigmoid1, pool1);
+  auto *add = F->createAdd("add", sigmoid1, pool1->getResult());
   auto *tanh = F->createTanh("tanh", add);
   auto *fc2 = F->createFullyConnected(bindings, "fc2", var3, 720);
   bindings.get(cast<Placeholder>(fc2->getWeights()))->getHandle().clear(1.1);

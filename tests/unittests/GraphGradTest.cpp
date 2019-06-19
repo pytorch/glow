@@ -48,11 +48,12 @@ TEST(GraphAutoGrad, autoGrad) {
   auto *RL0 = F->createRELU("relu1", CV0);
   auto *MP0 = F->createMaxPool("pool1", RL0, 3, 3, 0);
 
-  auto *CV1 = F->createConv(bindings, "conv2", MP0, 16, 5, 1, 2, 1);
+  auto *CV1 =
+      F->createConv(bindings, "conv2", MP0->getResult(), 16, 5, 1, 2, 1);
   auto *RL1 = F->createRELU("conv23", CV1);
   auto *MP1 = F->createMaxPool("pool2", RL1, 3, 3, 0);
 
-  auto *FCL1 = F->createFullyConnected(bindings, "fc3", MP1, 10);
+  auto *FCL1 = F->createFullyConnected(bindings, "fc3", MP1->getResult(), 10);
   auto *RL2 = F->createRELU("relu3", FCL1);
   auto *selected =
       mod.createPlaceholder(ElemKind::Int64ITy, {10, 1}, "selected", false);

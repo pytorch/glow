@@ -48,31 +48,31 @@ public:
 
   // Split a sample network into four parts to make it easy to insert
   // TraceEventNodes.
-  Node *part_one(Function *F, ExecutionContext &context) {
+  NodeValue part_one(Function *F, ExecutionContext &context) {
     auto *CV0 = F->createConv(*context.getPlaceholderBindings(), "conv1",
                               inputPH, 16, 5, 1, 2, 1);
     auto *RL0 = F->createRELU("relu1", CV0);
     auto *MP0 = F->createMaxPool("pool1", RL0, 2, 2, 0);
-    return MP0;
+    return MP0->getResult();
   }
 
-  Node *part_two(Function *F, ExecutionContext &context, Node *last) {
+  NodeValue part_two(Function *F, ExecutionContext &context, NodeValue last) {
     auto *CV1 = F->createConv(*context.getPlaceholderBindings(), "conv2", last,
                               20, 5, 1, 2, 1);
     auto *RL1 = F->createRELU("relu2", CV1);
     auto *MP1 = F->createMaxPool("pool2", RL1, 2, 2, 0);
-    return MP1;
+    return MP1->getResult();
   }
 
-  Node *part_three(Function *F, ExecutionContext &context, Node *last) {
+  NodeValue part_three(Function *F, ExecutionContext &context, NodeValue last) {
     auto *CV2 = F->createConv(*context.getPlaceholderBindings(), "conv3", last,
                               20, 5, 1, 2, 1);
     auto *RL2 = F->createRELU("relu3", CV2);
     auto *MP2 = F->createMaxPool("pool3", RL2, 2, 2, 0);
-    return MP2;
+    return MP2->getResult();
   }
 
-  Node *part_four(Function *F, ExecutionContext &context, Node *last) {
+  Node *part_four(Function *F, ExecutionContext &context, NodeValue last) {
     auto *ex = F->getParent()->createPlaceholder(ElemKind::Int64ITy, {1, 1},
                                                  "exp", false);
     auto *FCL1 = F->createFullyConnected(*context.getPlaceholderBindings(),
@@ -125,14 +125,14 @@ TEST_P(TraceEventsTest, manualEvents) {
   unsigned eventId = 0;
 
   F->createTraceEvent("first half", "B", eventData, eventId++);
-  auto *n = part_one(F, context);
+  auto n = part_one(F, context);
   n = part_two(F, context, n);
 
   F->createTraceEvent("first half", "E", eventData, eventId++);
   F->createTraceEvent("second half", "B", eventData, eventId++);
 
   n = part_three(F, context, n);
-  n = part_four(F, context, n);
+  part_four(F, context, n);
 
   F->createTraceEvent("second half", "E", eventData, eventId++);
 
@@ -173,13 +173,13 @@ TEST_P(TraceEventsTest, incompleteCoverage) {
   auto *eventData = createEventPlaceholder(numEvents);
   unsigned eventId = 0;
 
-  auto *n = part_one(F, context);
+  auto n = part_one(F, context);
   n = part_two(F, context, n);
 
   F->createTraceEvent("second half", "B", eventData, eventId++);
 
   n = part_three(F, context, n);
-  n = part_four(F, context, n);
+  part_four(F, context, n);
 
   F->createTraceEvent("second half", "E", eventData, eventId++);
 
@@ -217,14 +217,14 @@ TEST_P(TraceEventsTest, internalGap) {
   auto *eventData = createEventPlaceholder(numEvents);
   unsigned eventId = 0;
 
-  auto *n = part_one(F, context);
+  auto n = part_one(F, context);
 
   F->createTraceEvent("middle section", "B", eventData, eventId++);
   n = part_two(F, context, n);
   n = part_three(F, context, n);
   F->createTraceEvent("middle section", "E", eventData, eventId++);
 
-  n = part_four(F, context, n);
+  part_four(F, context, n);
 
   context.getPlaceholderBindings()->allocate(EE_.getModule().getPlaceholders());
   CompilationContext cctx;
@@ -257,10 +257,10 @@ TEST_P(TraceEventsTest, automaticInstrumentation) {
   context.setTraceContext(
       llvm::make_unique<TraceContext>(TraceLevel::OPERATOR));
 
-  auto *n = part_one(F, context);
+  auto n = part_one(F, context);
   n = part_two(F, context, n);
   n = part_three(F, context, n);
-  n = part_four(F, context, n);
+  part_four(F, context, n);
 
   context.getPlaceholderBindings()->allocate(EE_.getModule().getPlaceholders());
   auto *backend = EE_.getBackend();
@@ -291,14 +291,14 @@ TEST_P(TraceEventsTest, manualAndAutomatic) {
   unsigned eventId = 0;
 
   F->createTraceEvent("first half", "B", eventData, eventId++);
-  auto *n = part_one(F, context);
+  auto n = part_one(F, context);
   n = part_two(F, context, n);
 
   F->createTraceEvent("first half", "E", eventData, eventId++);
   F->createTraceEvent("second half", "B", eventData, eventId++);
 
   n = part_three(F, context, n);
-  n = part_four(F, context, n);
+  part_four(F, context, n);
 
   F->createTraceEvent("second half", "E", eventData, eventId++);
 
@@ -341,10 +341,10 @@ TEST_P(TraceEventsTest, twoCompiles) {
   unsigned eventId = 0;
 
   F->createTraceEvent("first half", "B", eventData, eventId++);
-  auto *n = part_one(F, context);
+  auto n = part_one(F, context);
   F->createTraceEvent("first half", "E", eventData, eventId++);
   F->createTraceEvent("second half", "B", eventData, eventId++);
-  n = part_four(F, context, n);
+  part_four(F, context, n);
   F->createTraceEvent("second half", "E", eventData, eventId++);
 
   ExecutionContext context2{context.clone()};
@@ -445,7 +445,7 @@ TEST_P(TraceEventsTest, multipleBackingTensors) {
   auto *eventData2 = createEventPlaceholder(3);
 
   F->createTraceEvent("event1", "B", eventData1, 0);
-  auto *n = part_one(F, context);
+  auto n = part_one(F, context);
   F->createTraceEvent("event1", "E", eventData1, 1);
 
   F->createTraceEvent("event2", "B", eventData2, 0);
@@ -459,7 +459,7 @@ TEST_P(TraceEventsTest, multipleBackingTensors) {
 
   F->createTraceEvent("event3", "B", eventData3, 0);
   n = part_three(F, context, n);
-  n = part_four(F, context, n);
+  part_four(F, context, n);
   F->createTraceEvent("event3", "E", eventData4, 0);
 
   context.getPlaceholderBindings()->allocate(EE_.getModule().getPlaceholders());
@@ -504,14 +504,14 @@ TEST_P(TraceEventsTest, multipleRunsAreDistinct) {
   unsigned eventId = 0;
 
   F->createTraceEvent("first half", "B", eventData, eventId++);
-  auto *n = part_one(F, context);
+  auto n = part_one(F, context);
   n = part_two(F, context, n);
 
   F->createTraceEvent("first half", "E", eventData, eventId++);
   F->createTraceEvent("second half", "B", eventData, eventId++);
 
   n = part_three(F, context, n);
-  n = part_four(F, context, n);
+  part_four(F, context, n);
 
   F->createTraceEvent("second half", "E", eventData, eventId++);
 
@@ -550,10 +550,10 @@ TEST_P(TraceEventsTest, deviceManagerEvents) {
   context.setTraceContext(
       llvm::make_unique<TraceContext>(TraceLevel::STANDARD));
 
-  auto *n = part_one(F, context);
+  auto n = part_one(F, context);
   n = part_two(F, context, n);
   n = part_three(F, context, n);
-  n = part_four(F, context, n);
+  part_four(F, context, n);
 
   context.getPlaceholderBindings()->allocate(EE_.getModule().getPlaceholders());
 

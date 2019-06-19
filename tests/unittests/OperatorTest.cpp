@@ -4317,7 +4317,7 @@ TEST_P(OperatorTest, NonSquarePaddingMaxPool) {
     IH.raw(i) = i + 1;
   }
   auto *Pool = F_->createMaxPool("pool", input, {2, 2}, {1, 1}, {0, 2, 1, 3});
-  auto *S = F_->createSave("save", Pool);
+  auto *S = F_->createSave("save", Pool->getResult());
   bindings_.allocate(S->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
@@ -4336,7 +4336,7 @@ TEST_P(OperatorTest, NonSquarePaddingMaxPool) {
 
   Function *refF = mod_.createFunction("mainRef");
   Pool = refF->createMaxPool("pool1", input1, 2, 1, 0);
-  S = refF->createSave("save1", Pool);
+  S = refF->createSave("save1", Pool->getResult());
   bindings_.allocate(S->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, refF);
@@ -4409,7 +4409,7 @@ TEST_P(OperatorTest, MaxPool) {
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 3, 3, 1}, "input", false);
   bindings_.allocate(input)->getHandle() = {0., 1., 2., 3., 4., 5., 6., 7., 8.};
   auto *pool = F_->createMaxPool("pool", input, {2, 2}, {1, 1}, {0, 0, 0, 0});
-  auto *S = F_->createSave("save", pool);
+  auto *S = F_->createSave("save", pool->getResult());
   bindings_.allocate(S->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
@@ -4429,7 +4429,7 @@ TEST_P(OperatorTest, FP16MaxPool) {
   bindings_.allocate(input)->getHandle<float16_t>() = {0., 1., 2., 3., 4.,
                                                        5., 6., 7., 8.};
   auto *pool = F_->createMaxPool("pool", input, {2, 2}, {1, 1}, {0, 0, 0, 0});
-  auto *S = F_->createSave("save", pool);
+  auto *S = F_->createSave("save", pool->getResult());
   bindings_.allocate(S->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
@@ -4446,7 +4446,7 @@ TEST_P(OperatorTest, Int8MaxPool) {
                                        "input", false);
   bindings_.allocate(input)->getHandle<int8_t>() = {0, 1, 2, 3, 4, 5, 6, 7, 8};
   auto *Pool = F_->createMaxPool("pool", input, {2, 2}, {1, 1}, {0, 0, 0, 0});
-  auto *S = F_->createSave("save", Pool);
+  auto *S = F_->createSave("save", Pool->getResult());
   bindings_.allocate(S->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
@@ -4754,7 +4754,7 @@ TEST_P(OperatorTest, NonSquareKernelMaxPool) {
     IH.raw(i) = i + 1;
   }
   auto *Pool = F_->createMaxPool("pool", input, {2, 3}, {1, 1}, {0, 0, 0, 0});
-  auto *S = F_->createSave("save", Pool);
+  auto *S = F_->createSave("save", Pool->getResult());
   bindings_.allocate(S->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
@@ -4891,7 +4891,7 @@ TEST_P(OperatorTest, NonSquareStrideMaxPool) {
     IH.raw(i) = i + 1;
   }
   auto *Pool = F_->createMaxPool("pool", input, {2, 2}, {3, 2}, {0, 0, 1, 1});
-  auto *S = F_->createSave("save", Pool);
+  auto *S = F_->createSave("save", Pool->getResult());
   bindings_.allocate(S->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);

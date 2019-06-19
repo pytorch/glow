@@ -151,7 +151,7 @@ void IRGenVisitor::post(Node *parent, Node *N) {
                                              P->getStrides(), P->getPads());
     Value *dest = V->getDest();
     nodeToInstr_[N] = V;
-    registerIR(N, dest);
+    registerIR(P->getResult(), dest);
     break;
   }
   case glow::Kinded::Kind::MaxPoolGradNodeKind: {
