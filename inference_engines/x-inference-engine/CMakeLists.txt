@@ -33,6 +33,9 @@ set(CMAKE_EXE_LINKER_FLAGS ${CMAKE_EXE_LINKER_FLAGS} ${TARGET_LINKER_FLAGS})
 
 if(ENABLE_PERF_MONITORING)
     message("Will enable performance monitoring")
+    message(WARNING "Performance monitoring is support only on Linux")
+    message(WARNING "If you're running in a VM, performance monitoring will be broken, "
+                    "and will likely break inference.")
     add_definitions(-DENABLE_PERF_MONITORING)
 endif()
 

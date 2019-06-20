@@ -34,18 +34,27 @@ init_runtime_data(const struct NetworkData *network_data, struct RuntimeData *ru
     uint8_t *result = NULL;
     int retval = X_FAILURE;
 
+    (void) memset(runtime_data, 0x0, sizeof(struct RuntimeData));
+
 #ifdef ENABLE_PERF_MONITORING
     (void) memset(&(runtime_data->ps), 0x0, sizeof(struct PerfStatistics));
     (void) memset(&global_pd, 0x0, sizeof(struct PerfData));
 
     retval = init_perf_monitoring(&global_pd);
-    if (retval)
+    if (retval == -1) {
+        perror("ERROR: unable to initialize perf event");
         return X_FAILURE;
+    }
 #endif
 
     result = init_constant_weights(network_data->weights_file_name, network_data->bundle_config);
     if (result != NULL) {
         runtime_data->const_weights = result;
+
+#ifdef ENABLE_PERF_MONITORING
+        global_pd.ps.const_weights_size = network_data->bundle_config->const_weight_vars_memsize;
+#endif
+
         result = init_mutable_weights(network_data->bundle_config);
         if (result != NULL) {
             runtime_data->mut_weights = result;
@@ -104,6 +113,7 @@ cleanup_runtime_data(struct RuntimeData *runtime_data)
     runtime_data->const_weights = NULL;
     runtime_data->mut_weights = NULL;
 
+
 #ifdef ENABLE_PERF_MONITORING
     (void) stop_perf_monitoring(&global_pd);
 #endif
@@ -135,7 +145,7 @@ run_inference(const struct InferenceIO *iio, struct RuntimeData *runtime_data)
     current_output_offset = 0;
 
 #ifdef ENABLE_PERF_MONITORING
-    runtime_data->ps.num_cases = iio->batch_size;
+    global_pd.ps.num_cases = iio->batch_size;
 #endif
 
     for (batch_counter = 0; batch_counter < iio->batch_size; ++batch_counter) {
@@ -188,7 +198,7 @@ uint8_t
         size = (size_t)(file_offset);
         if (size != bundle_config->const_weight_vars_memsize) {
             fprintf(stderr,
-                  "Unexpected file size (%zu) does not match expected (%lu)\n",
+                  "Unexpected file size (%zd) does not match expected (%llu)\n",
                   size, bundle_config->const_weight_vars_memsize);
 
             (void) close(fd);

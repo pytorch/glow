@@ -16,7 +16,6 @@ init_perf_monitoring(struct PerfData *pd)
     pd->pe.disabled = 1;
     pd->pe.exclude_kernel = 1;
     pd->pe.exclude_hv = 1;
-    pd->pe.exclude_idle = 1;
 
     ret = syscall(__NR_perf_event_open, &(pd->pe), 0, -1, -1, 0);
     pd->fd = ret;

@@ -10,7 +10,8 @@
 struct PerfStatistics
 {
     long long num_cpu_cycles;
-    long long num_cases;
+    size_t num_cases;
+    size_t const_weights_size;
 };
 
 struct PerfData
