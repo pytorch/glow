@@ -49,10 +49,6 @@ public:
   BackendIdPtr createBackendId(llvm::StringRef backendName, bool useOnnx,
                                bool forQuantization = false);
 
-  /// Create a new glow Backend associated with \p backendId.
-  /// Can be called safely by multiple threads concurrently.
-  BackendPtr createBackend(BackendIdPtr backendId);
-
   /// Create a new glow Event.
   /// Can be called safely by multiple threads concurrently.
   EventPtr createEvent();
@@ -60,16 +56,12 @@ public:
   /// Create a new glow Graph associated with \p backend.
   /// Can be called safely by multiple threads concurrently.
   GraphPtr
-  createGraph(BackendPtr backend,
+  createGraph(BackendIdPtr backend,
               QuantizationMode quantizationMode = QuantizationMode::None);
 
   /// Check if \p backendId is a BackendId created and managed by glow.
   /// Can be called safely by multiple threads concurrently.
   bool isValid(BackendIdPtr backendId) const;
-
-  /// Check if \p backend is a Backend created and managed by glow.
-  /// Can be called safely by multiple threads concurrently.
-  bool isValid(BackendPtr backend) const;
 
   /// Check if \p event is a Event created and managed by glow.
   /// Can be called safely by multiple threads concurrently.
@@ -82,10 +74,6 @@ public:
   /// Free \p backendId.
   /// Can be called safely by multiple threads concurrently.
   void release(BackendIdPtr backendId);
-
-  /// Free \p backend.
-  /// Can be called safely by multiple threads concurrently.
-  void release(BackendPtr backend);
 
   /// Free \p event.
   /// Can be called safely by multiple threads concurrently.
@@ -107,9 +95,6 @@ private:
 
   /// The set of all valid glow BackendIds.
   std::unordered_set<BackendIdPtr> backendIds_;
-
-  /// The set of all valid glow Backends.
-  std::unordered_set<BackendPtr> backends_;
 
   /// The set of all valid glow Events.
   std::unordered_set<EventPtr> events_;
