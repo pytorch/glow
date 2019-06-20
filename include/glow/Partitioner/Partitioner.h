@@ -86,7 +86,7 @@ public:
     functionToBackendName_[F] = backendName;
   }
 
-  std::string getPartitionBackendName(Function *F) {
+  std::string getPartitionBackendName(Function *F) const {
     DCHECK(functionToBackendName_.find(F) != functionToBackendName_.end())
         << "Unknown partition in Function: " << F->getName().str();
     return functionToBackendName_.find(F)->second;
@@ -99,8 +99,11 @@ public:
   const FunctionList &getPartitions() const { return functions_; }
 
   /// Get the list of logical device ID related to this function \p F.
-  std::vector<DeviceIDTy> getLogicalDeviceIDList(Function *F) {
-    return logicalDeviceIDMap_[F];
+  const std::vector<DeviceIDTy> getLogicalDeviceIDList(Function *F) const {
+    if (logicalDeviceIDMap_.find(F) == logicalDeviceIDMap_.end()) {
+      return {};
+    }
+    return logicalDeviceIDMap_.at(F);
   }
 
   void appendLogicalDeviceID(Function *F, DeviceIDTy id) {
@@ -144,7 +147,12 @@ public:
   }
 
   /// Get the memory consumption for a partition \p func.
-  GraphMemInfo getGraphMemInfo(Function *func) { return partitionCost_[func]; }
+  GraphMemInfo getGraphMemInfo(Function *func) const {
+    if (partitionCost_.find(func) == partitionCost_.end()) {
+      return GraphMemInfo{};
+    }
+    return partitionCost_.find(func)->second;
+  }
 };
 
 /// Given a module, partitions each of the its functions into multiple ones
@@ -231,11 +239,12 @@ class Partitioner {
   /// Check if \p partitions satisfies number of physical devices restriction.
   /// I.e. check if the number of logical devices is less than the given
   /// physical devices.
-  llvm::Error logicalDevicesValidation(NodeToFunctionMap &partitions);
+  llvm::Error
+  logicalDevicesValidation(const NodeToFunctionMap &partitions) const;
 
   /// Check if the memory usage of each partition meets the physical device
   /// memory restriction.
-  llvm::Error memoryUsageValidation(NodeToFunctionMap &partitions);
+  llvm::Error memoryUsageValidation(const NodeToFunctionMap &partitions) const;
 
   /// Duplicates all networks in the module order to saturate the Host.
   void saturateHost(unsigned logicalDeviceCount);

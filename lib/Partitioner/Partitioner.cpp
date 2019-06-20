@@ -105,8 +105,8 @@ void Partitioner::dumpDAG(llvm::StringRef dotFilename) const {
   return;
 }
 
-llvm::Error
-Partitioner::logicalDevicesValidation(NodeToFunctionMap &partitions) {
+llvm::Error Partitioner::logicalDevicesValidation(
+    const NodeToFunctionMap &partitions) const {
   std::map<std::string, std::set<DeviceIDTy>> partitionsNum;
   for (auto &func : partitions.getPartitions()) {
     auto backendName = partitions.getPartitionBackendName(func);
@@ -117,27 +117,30 @@ Partitioner::logicalDevicesValidation(NodeToFunctionMap &partitions) {
     for (size_t i = 0, e = logicalIDList.size(); i < e; i++) {
       partitionsNum[backendName].insert(logicalIDList[i]);
     }
+    auto backendNum = backendMap_.at(backendName).num;
     RETURN_ERR_IF_NOT(
-        partitionsNum[backendName].size() <= backendMap_[backendName].num,
+        partitionsNum[backendName].size() <= backendNum,
         llvm::formatv("Partition failed: the number of given({0}) devices({1}) "
                       "is fewer than the required minimal partitions({2}).",
-                      backendName, backendMap_[backendName].num,
+                      backendName, backendNum,
                       partitionsNum[backendName].size())
             .str());
   }
   return llvm::Error::success();
 }
 
-llvm::Error Partitioner::memoryUsageValidation(NodeToFunctionMap &partitions) {
+llvm::Error
+Partitioner::memoryUsageValidation(const NodeToFunctionMap &partitions) const {
   for (auto &func : partitions.getPartitions()) {
     auto backendName = partitions.getPartitionBackendName(func);
     auto usedMemSize = partitions.getGraphMemInfo(func).getTotalMemSize();
+    auto availableMemSize = backendMap_.at(backendName).memSize;
     RETURN_ERR_IF_NOT(
-        usedMemSize <= backendMap_[backendName].memSize,
+        usedMemSize <= availableMemSize,
         llvm::formatv(
             "Partition failed: the memory usage({0}) of one partition exceeds "
             "the available memory({1}) of given devices({2}).",
-            usedMemSize, backendMap_[backendName].memSize, backendName)
+            usedMemSize, availableMemSize, backendName)
             .str());
   }
   return llvm::Error::success();
