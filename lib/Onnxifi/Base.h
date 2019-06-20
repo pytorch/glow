@@ -76,21 +76,6 @@ protected:
 
 typedef BackendId *BackendIdPtr;
 
-class Backend {
-public:
-  explicit Backend(BackendIdPtr backendId) : backendIdPtr_(backendId) {}
-
-  /// Whether this backend uses ONNX proto or Caffe2 proto.
-  bool getUseOnnx() const { return backendIdPtr_->getUseOnnx(); }
-
-  BackendId *getBackendId() { return backendIdPtr_; }
-
-private:
-  BackendIdPtr backendIdPtr_;
-};
-
-typedef Backend *BackendPtr;
-
 class Event {
 public:
   Event() : fired_{false} {}
@@ -113,10 +98,10 @@ typedef Event *EventPtr;
 
 class Graph {
 public:
-  explicit Graph(BackendPtr backendPtr);
+  explicit Graph(BackendIdPtr backendIdPtr);
   virtual ~Graph() = default;
 
-  BackendPtr backend() { return backendPtr_; }
+  BackendIdPtr backend() { return backendIdPtr_; }
 
   /// Setup Glow graph in preparation for the inference and run.
   /// Set input memory addresses for inputs based on the \p inputDescriptors.
@@ -151,7 +136,7 @@ public:
   static void releaseTraceEvents(onnxTraceEventList *traceEvents);
 
 protected:
-  BackendPtr backendPtr_;
+  BackendIdPtr backendIdPtr_;
 
   /// Mapping between ONNX name for the input variable and Glow
   /// placeholder for input.

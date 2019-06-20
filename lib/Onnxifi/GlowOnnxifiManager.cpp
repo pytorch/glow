@@ -46,20 +46,6 @@ BackendIdPtr GlowOnnxifiManager::createBackendId(llvm::StringRef backendName,
   return backendId;
 }
 
-BackendPtr GlowOnnxifiManager::createBackend(BackendIdPtr backendId) {
-  assert(isValid(backendId));
-
-  BackendPtr backend = new onnxifi::Backend(backendId);
-
-  std::lock_guard<std::mutex> lock(m_);
-
-  auto res = backends_.insert(backend);
-
-  (void)res;
-  assert((res.second && *res.first) && "Failed to create new Backend");
-  return backend;
-}
-
 EventPtr GlowOnnxifiManager::createEvent() {
   EventPtr event = new onnxifi::Event();
 
@@ -72,7 +58,7 @@ EventPtr GlowOnnxifiManager::createEvent() {
   return event;
 }
 
-GraphPtr GlowOnnxifiManager::createGraph(BackendPtr backend,
+GraphPtr GlowOnnxifiManager::createGraph(BackendIdPtr backend,
                                          QuantizationMode quantizationMode) {
   assert(isValid(backend));
 
@@ -117,11 +103,6 @@ bool GlowOnnxifiManager::isValid(BackendIdPtr backendId) const {
   return backendId && backendIds_.count(backendId) == 1;
 }
 
-bool GlowOnnxifiManager::isValid(BackendPtr backend) const {
-  std::lock_guard<std::mutex> lock(m_);
-  return backend && backends_.count(backend) == 1;
-}
-
 bool GlowOnnxifiManager::isValid(EventPtr event) const {
   std::lock_guard<std::mutex> lock(m_);
   return event && events_.count(event) == 1;
@@ -144,17 +125,6 @@ void GlowOnnxifiManager::release(BackendIdPtr backendId) {
 
   if (backendIds_.empty()) {
     hostManagers_.clear();
-  }
-}
-
-void GlowOnnxifiManager::release(BackendPtr backend) {
-  size_t erased;
-  {
-    std::lock_guard<std::mutex> lock(m_);
-    erased = backends_.erase(backend);
-  }
-  if (erased) {
-    delete backend;
   }
 }
 

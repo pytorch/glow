@@ -259,7 +259,7 @@ GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxInitBackend)(
     return ONNXIFI_STATUS_INVALID_ID;
   }
 
-  *backend = manager.createBackend(glowBackendId);
+  *backend = glowBackendId;
 
   return ONNXIFI_STATUS_SUCCESS;
 }
@@ -269,12 +269,10 @@ EXTERNC ONNXIFI_PUBLIC ONNXIFI_CHECK_RESULT onnxStatus ONNXIFI_ABI
 GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxReleaseBackend)(onnxBackend backend) {
   auto &manager = glow::onnxifi::GlowOnnxifiManager::get();
 
-  auto *glowBackend = static_cast<glow::onnxifi::BackendPtr>(backend);
+  auto *glowBackend = static_cast<glow::onnxifi::BackendIdPtr>(backend);
   if (!manager.isValid(glowBackend)) {
     return ONNXIFI_STATUS_INVALID_BACKEND;
   }
-
-  manager.release(glowBackend);
 
   return ONNXIFI_STATUS_SUCCESS;
 }
@@ -289,7 +287,7 @@ GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxInitEvent)(onnxBackend backend,
 
   auto &manager = glow::onnxifi::GlowOnnxifiManager::get();
 
-  auto *glowBackend = static_cast<glow::onnxifi::BackendPtr>(backend);
+  auto *glowBackend = static_cast<glow::onnxifi::BackendIdPtr>(backend);
   if (!manager.isValid(glowBackend)) {
     return ONNXIFI_STATUS_INVALID_BACKEND;
   }
@@ -382,7 +380,7 @@ GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxInitGraph)(
 
   auto &manager = glow::onnxifi::GlowOnnxifiManager::get();
 
-  auto *glowBackend = static_cast<glow::onnxifi::BackendPtr>(backend);
+  auto *glowBackend = static_cast<glow::onnxifi::BackendIdPtr>(backend);
   if (!manager.isValid(glowBackend)) {
     return ONNXIFI_STATUS_INVALID_BACKEND;
   }

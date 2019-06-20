@@ -27,8 +27,8 @@ namespace onnxifi {
 /// same thread that calls its setIOAndRun function.
 class InlineGraph : public Graph {
 public:
-  InlineGraph(BackendPtr backendPtr, QuantizationMode quantizationMode)
-      : Graph(backendPtr), quantizationMode_(quantizationMode) {}
+  InlineGraph(BackendIdPtr backendIdPtr, QuantizationMode quantizationMode)
+      : Graph(backendIdPtr), quantizationMode_(quantizationMode) {}
 
   /// Init Glow graph based on the ONNX model \p onnxModel and
   /// static trained weights \p weightDescriptors.
