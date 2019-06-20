@@ -790,3 +790,21 @@ TEST_F(PartitionerTest, graphMemInfoCalculation2) {
   res2 = getGraphMemInfo(nodes2);
   EXPECT_EQ(res2, GraphMemInfo(96, 32, 544));
 }
+
+/// This one test the memoryUsageValidation in Partitioner : the memory usage of
+/// one single node is larger than the given device memory.
+TEST_F(PartitionerTest, memoryUsageValidation1) {
+  auto *input1 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {2, 10}, "input1", false);
+  auto *input2 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {10, 16}, "input2", false);
+  auto *mul0 = F_->createMatMul("mul0", input1, input2);
+  F_->createSave("ret", mul0);
+
+  std::vector<DeviceInfo> devices = {{500, "Interpreter"},
+                                     {500, "Interpreter"}};
+  Partitioner myPartitioner(&mod_, devices);
+  CompilationContext cctx;
+  auto err = myPartitioner.Partition(cctx);
+  EXPECT_TRUE(errToBool(std::move(err)));
+}

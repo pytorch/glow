@@ -128,6 +128,21 @@ Partitioner::logicalDevicesValidation(NodeToFunctionMap &partitions) {
   return llvm::Error::success();
 }
 
+llvm::Error Partitioner::memoryUsageValidation(NodeToFunctionMap &partitions) {
+  for (auto &func : partitions.getPartitions()) {
+    auto backendName = partitions.getPartitionBackendName(func);
+    auto usedMemSize = partitions.getGraphMemInfo(func).getTotalMemSize();
+    RETURN_ERR_IF_NOT(
+        usedMemSize <= backendMap_[backendName].memSize,
+        llvm::formatv(
+            "Partition failed: the memory usage({0}) of one partition exceeds "
+            "the available memory({1}) of given devices({2}).",
+            usedMemSize, backendMap_[backendName].memSize, backendName)
+            .str());
+  }
+  return llvm::Error::success();
+}
+
 Partitioner::Partitioner(Module *parent, const std::vector<DeviceInfo> &devices,
                          const std::vector<Backend *> &backends,
                          bool saturateHost, bool optimized)
@@ -978,6 +993,9 @@ llvm::Error Partitioner::Partition(CompilationContext &cctx) {
         selectPartitions(func, availMem, i->second);
     mapping.insert(partitionMap);
   }
+
+  // Check if the memory usage meets the device memory limitation.
+  RETURN_IF_ERR(memoryUsageValidation(mapping));
 
   // Step 4 : assign each partition with a logical device id. The partitions
   // with the same logical device id will be assigned into the same physical
