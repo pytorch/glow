@@ -491,6 +491,8 @@ int retreive_and_store_output(struct InferenceIO *inference_io, const struct arg
             else if (bytes_written == 0)
                 fprintf(stderr, "WARNING: Wrote 0 bytes (is device busy? will retry).\n");
         }
+        
+        buffer += bytes_written;
     }
     (void) close(fd);
 
