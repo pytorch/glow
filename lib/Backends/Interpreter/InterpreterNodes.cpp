@@ -1120,6 +1120,10 @@ void BoundInterpreterFunction::fwdSplatInst(const glow::SplatInst *I) {
     return T->getHandle<int64_t>().clear(I->getValue());
   }
 
+  if (k == ElemKind::Int32ITy) {
+    return T->getHandle<int32_t>().clear(I->getValue());
+  }
+
   if (k == ElemKind::FloatTy) {
     return T->getHandle<float>().clear(I->getValue());
   }
@@ -1135,6 +1139,10 @@ void BoundInterpreterFunction::fwdSplatInst(const glow::SplatInst *I) {
     TensorQuantizationParams destQ{destTy->getScale(), destTy->getOffset()};
     float val = I->getValue();
     return T->getHandle<int8_t>().clear(quantization::quantize(val, destQ));
+  }
+
+  if (k == ElemKind::BoolTy) {
+    return T->getHandle<bool>().clear(static_cast<bool>(I->getValue()));
   }
 
   llvm_unreachable("Unsupported tensor type");
@@ -1153,9 +1161,11 @@ void BoundInterpreterFunction::fwdInsertTensorInst(
   }
 
   TYPED_INSERT(int64_t, ElemKind::Int64ITy);
+  TYPED_INSERT(int32_t, ElemKind::Int32ITy);
   TYPED_INSERT(float, ElemKind::FloatTy);
   TYPED_INSERT(float16_t, ElemKind::Float16Ty);
   TYPED_INSERT(int8_t, ElemKind::Int8QTy);
+  TYPED_INSERT(bool, ElemKind::BoolTy);
 #undef TYPED_INSERT
 
   llvm_unreachable("Unsupported tensor type");
