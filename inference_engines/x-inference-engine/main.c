@@ -24,17 +24,40 @@ extern void X_MODEL_NAME(uint8_t *, uint8_t *, uint8_t *);
 
 const char *argp_program_version = "x-infer v0.01";
 const char *argp_program_bug_address = "<william.yessen@xperi.com>";
-const char doc[] = "x-infer runs inference against the x-bundle. Weights file must be "
+const char doc[] = 
+                   "\n                    Generic Inference Engine                         \n"
+                   "-----------------------------------------------------------------------\n"
+#ifdef X_USE_DYNAMIC
+                   "Dynamic bundle loading: SUPPORTED\n"
+#else
+                   "Dynamic bundle loading: NOT SUPPORTED (bundle has been statically linked)\n"
+#endif
+#ifdef ENABLE_PERF_MONITORING
+                   "Performance monitoring: SUPPORTED\n"
+#else
+                   "Performance monitoring: NOT SUPPORTED\n"
+#endif
+                   "\nx-infer runs inference against the provided Glow bundle. Weights file must be "
                    "specified as the first argument. The input file must be specified with "
-                   "[-i FILE] (binary file). Input tensor type [-t], output tensor type [-T], "
-                   "input dimensions [-d], output dimensions [-D], input tensor name [-n], "
-                   "and output tensor name [-N] must be specified. ";
+                   "[--infile] (binary file). Input tensor type [-intype], output tensor type [-outtype], "
+                   "input length [--inlen], output length [--outlen], input tensor name [-inname], "
+                   "and output tensor name [--outname] must be specified. "
+                   "\n\n"
+                   "When built with dynamic bundle loading support, bundle must be specified as the "
+                   "first positional argument, and the weights file as the second. When built with "
+                   "a bundle statically linked in, dynamic loading is not supported "
+#ifdef ENABLE_PERF_MONITORING
+                   "\n\nAdditionally, performance monitoring is available with [--perf] option. In this case, "
+                   "[--perflog] can be used to specify the performance log filename. Otherwise, performance log "
+                   "is written to stdout "
+#endif
+
+                   "\n\nShort and long form options are: ";
 const char args_doc[] =
 #ifdef X_USE_DYNAMIC
 "[BUNDLE FILENAME] "
 #endif
-"[WEIGHTS FILENAME] [-i FILE] [-t TYPE] [-T TYPE] [-l LEN] [-L LEN] "
-                        "[-n <INPUT TENSOR NAME>] [-N <OUTPUT TENSOR NAME>]...";
+"[WEIGHTS FILENAME]";
 
 const struct argp_option options[] = {
   {"output",   'o', "FILE",   0,  "Output to binary FILE instead of standard output" },
@@ -42,11 +65,16 @@ const struct argp_option options[] = {
   {"intype",   't', "TYPE",   0,  "Input TYPE (one of F32, F16, I16, I8)" },
   {"outtype",  'T', "TYPE",   0,  "Output TYPE (one of F32, F16, I16, I8)" },
   {"inlen",    'l', "LEN",    0,  "Input tensor length (e.g. if the tensor is of shape 2x3x4, its "
-                                  "length is 2 * 3 * 4 = 24)"},
+                               "length is 2 * 3 * 4 = 24)"},
   {"outlen",   'L', "LEN",    0,  "Output tensor length (e.g. if the tensor is of shape 2x3x4, its "
-                                  "length is 2 * 3 * 4 = 24)"},
+                               "length is 2 * 3 * 4 = 24)"},
   {"inname",   'n', "NAME",   0,  "Input tensor name NAME" },
   {"outname",  'N', "NAME",   0,  "Output tensor name NAME" },
+
+#ifdef ENABLE_PERF_MONITORING
+  {"perf",     'p', 0,        0,  "Whether to output performance logs" },
+  {"perflog",   'P', "NAME",   0,  "Performance log output filename (stdout if omitted)" },
+#endif
   
   #ifdef X_USE_DYNAMIC
   {"model",    'm', "NAME",   0,  "Model name (maximum 128 chars)" },
@@ -58,22 +86,26 @@ const struct argp_option options[] = {
 struct arguments
 {
 #ifdef X_USE_DYNAMIC
-  char *bundle_file;
-  char bundle_config_name[135];
-  char *model_name;
+    char *bundle_file;
+    char bundle_config_name[135];
+    char *model_name;
 #endif
-  char *weights_file;
-  char *out_file;
-  char *in_file;
-  char *in_type;
-  char *out_type;
-  char *in_len;
-  char *out_len;
-  char *in_name;
-  char *out_name;
-  size_t in_tensor_size;
-  size_t out_tensor_size;
-  size_t batch;
+#ifdef ENABLE_PERF_MONITORING
+    int perf_monitor;
+    char *perf_log_file;
+#endif
+    char *weights_file;
+    char *out_file;
+    char *in_file;
+    char *in_type;
+    char *out_type;
+    char *in_len;
+    char *out_len;
+    char *in_name;
+    char *out_name;
+    size_t in_tensor_size;
+    size_t out_tensor_size;
+    size_t batch;
 };
 
 static error_t parse_opt(int key, char *arg, struct argp_state *state);
@@ -82,6 +114,10 @@ static int compute_arguments(struct arguments *arguments);
 static void cleanup_arguments(struct arguments *arguments);
 static int retreive_and_load_input(struct InferenceIO *inference_io, const struct arguments *arguments);
 static int retreive_and_store_output(struct InferenceIO *inference_io, const struct arguments *arguments);
+
+#ifdef ENABLE_PERF_MONITORING
+static void report_performance(const struct PerfStatistics *ps, const char *filename);
+#endif
 
 static struct argp argp = { options, parse_opt, args_doc, doc };
 
@@ -193,6 +229,10 @@ int main(int argc, char **argv)
         exit (retval);
     }
 
+#ifdef ENABLE_PERF_MONITORING
+    report_performance(&(runtime_data.ps), arguments.perf_log_file);
+#endif
+
     /* Finally, don't forget to clean up... */
     cleanup_runtime_data(&runtime_data);
     cleanup_io(&inference_io);
@@ -231,6 +271,14 @@ parse_opt (int key, char *arg, struct argp_state *state)
         case 'N':
             arguments->out_name = arg;
             break;
+#ifdef ENABLE_PERF_MONITORING
+        case 'p':
+            arguments->perf_monitor = 1;
+            break;
+        case 'P':
+            arguments->perf_log_file = arg;
+            break;
+#endif
 #ifdef X_USE_DYNAMIC
         case 'm':
             arguments->model_name = arg;
@@ -443,8 +491,57 @@ int retreive_and_store_output(struct InferenceIO *inference_io, const struct arg
             else if (bytes_written == 0)
                 fprintf(stderr, "WARNING: Wrote 0 bytes (is device busy? will retry).\n");
         }
+        
+        buffer += bytes_written;
     }
     (void) close(fd);
 
     return retval;
 }
+
+#ifdef ENABLE_PERF_MONITORING
+void report_performance(const struct PerfStatistics *ps, const char *filename)
+{
+    int fd;
+    const size_t output_buffer_size = 512;
+    char buffer[output_buffer_size] = { 0 };
+    int bytes_written;
+    size_t bytes_total;
+
+    snprintf(buffer, output_buffer_size, "\nConstant weights size       : %zd bytes\n"
+                                         "Number of cases             : %zd\n"
+                                         "Number of CPU cycles (x1-e6): %f\n\n",
+                                         ps->const_weights_size,
+                                         ps->num_cases,
+                                         ps->num_cpu_cycles/1.0e6);
+
+    if (filename != NULL) {
+        fd = open(filename, O_CREAT | O_WRONLY, S_IRUSR | S_IWUSR);
+        if (fd == -1) {
+            perror("ERROR: Could not open perf log file for writing");
+            return;
+        }
+    } else {
+        fd = STDOUT_FILENO;
+    }
+
+    bytes_total = 0;
+    while(bytes_total < output_buffer_size) {
+        bytes_written = write(fd, buffer, output_buffer_size - bytes_total);
+        bytes_total += bytes_written;
+
+        if (bytes_written <= 0) {
+            if (bytes_written == -1) {
+                perror("ERROR: Could not write to perf log file");
+                break;
+            } else if (bytes_written == 0) {
+                fprintf(stderr, "WARNING: Wrote 0 bytes (is device busy? will retry).\n");
+            }
+        }
+
+    }
+    
+    if (fd != STDOUT_FILENO)
+        (void) close(fd);
+}
+#endif
