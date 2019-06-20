@@ -21,7 +21,8 @@
 namespace glow {
 
 #define FUN_PASS(PASS_NAME)                                                    \
-  struct PASS_NAME : public FunctionPass {                                     \
+  class PASS_NAME : public FunctionPass {                                      \
+  public:                                                                      \
     bool run(Function *F) override;                                            \
     llvm::StringRef getName() const override { return #PASS_NAME; }            \
   };
