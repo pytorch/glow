@@ -40,23 +40,6 @@ public:
   ExecutionEngine EE_{GetParam()};
 };
 
-TEST(Interpreter, NotImplementedSave) {
-  // Interpreter backend does not support a save method.
-  // Exercise it and make sure that it fails.
-  ExecutionEngine EE;
-  PlaceholderBindings bindings;
-  auto &mod = EE.getModule();
-
-  // Create a few nodes to make sure IR can be normally generated.
-  Function *F = mod.createFunction("main");
-  F->createSave("save",
-                mod.createPlaceholder(ElemKind::FloatTy, {2}, "A", false));
-
-  CompilationContext cctx;
-  cctx.compMode = CompilationMode::Infer;
-  EXPECT_DEATH(EE.save(F, cctx, "output", "network"), "");
-}
-
 TEST(Interpreter, profileQuantizationForANetwork) {
   ExecutionEngine EE;
   PlaceholderBindings bindings;

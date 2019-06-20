@@ -88,12 +88,13 @@ Additionally, there are virtual functions that backends can override:
     preferred by backends which would like to do their own memory
     optimizations. Returns true by default.
 
-- `virtual void save(Function *F, llvm::StringRef outputDir, llvm::StringRef networkName) const;`
+- `virtual void save(Function *F, llvm::StringRef outputDir,
+                     llvm::StringRef bundleName, llvm::StringRef mainEntryName) const;`
 
   - Save a [standalone executable
     bundle](https://github.com/pytorch/glow/blob/master/docs/AOT.md), where the
-    provided `Function *F` is compiled and then saved to `outputDir` with main
-    entry name `networkName`.
+    provided `Function *F` is compiled and then saved to `outputDir` with bundle
+    name `bundleName` and main entry name `mainEntryName`.
 
 - `virtual bool generateInst(Node *N, IRGenVisitor &irgen) const;`
 

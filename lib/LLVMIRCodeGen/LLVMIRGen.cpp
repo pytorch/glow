@@ -128,6 +128,10 @@ void LLVMIRGen::initTargetMachine(
   assert(TM_ && "Could not initialize the target machine");
 }
 
+llvm::StringRef LLVMIRGen::getBundleName() const { return bundleName_; }
+
+void LLVMIRGen::setBundleName(const std::string &name) { bundleName_ = name; }
+
 std::string LLVMIRGen::getMainEntryName() const {
   return mainEntryName_.empty() ? "main" : mainEntryName_;
 }

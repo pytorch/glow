@@ -105,6 +105,8 @@ protected:
   std::unique_ptr<llvm::TargetMachine> TM_;
   /// Information about allocations.
   AllocationsInfo &allocationsInfo_;
+  /// Name of the bundle.
+  std::string bundleName_;
   /// Name of the main entry.
   std::string mainEntryName_;
   /// Instruction number for the module.
@@ -282,6 +284,10 @@ public:
   virtual void performSpecialization();
   /// \returns allocations info.
   virtual AllocationsInfo &getAllocationsInfo() { return allocationsInfo_; }
+  /// \returns the name of the bundle, to be used for filename when saving.
+  llvm::StringRef getBundleName() const;
+  /// Set the name of the bundle.
+  void setBundleName(const std::string &name);
   /// \returns the name of the main entry point.
   /// When JITting, it will be "main". In case of bundling it will be the name
   /// of the bundle.

@@ -152,11 +152,12 @@ LLVMBackend::compile(Function *F, const BackendOptions &opts) const {
 }
 
 void LLVMBackend::save(Function *F, llvm::StringRef outputDir,
-                       llvm::StringRef networkName) const {
+                       llvm::StringRef bundleName,
+                       llvm::StringRef mainEntryName) const {
   llvm::SmallVector<std::string, 8> targetFeatures(llvmTargetFeatures.begin(),
                                                    llvmTargetFeatures.end());
   auto IR = generateAndOptimizeIR(F, *this, shouldShareBuffers());
   BundleSaver(IR.get(), *this)
       .save(getTarget(), getArch(), getCPU(), targetFeatures, outputDir,
-            networkName);
+            bundleName, mainEntryName);
 }

@@ -266,10 +266,3 @@ void ExecutionEngine::compile(Function *F, CompilationContext &cctx,
     EXIT_ON_ERR(funcOrErr.takeError());
   }
 }
-
-void ExecutionEngine::save(Function *F, CompilationContext &cctx,
-                           llvm::StringRef outputDir,
-                           llvm::StringRef networkName) {
-  EXIT_ON_ERR(::glow::optimizeFunction(F, *backend_, cctx));
-  backend_->save(F, outputDir, networkName);
-}

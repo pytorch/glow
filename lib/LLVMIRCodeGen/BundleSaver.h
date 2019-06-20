@@ -49,12 +49,13 @@ public:
   /// Ctor.
   explicit BundleSaver(const IRFunction *F, const LLVMBackend &llvmBackend);
   /// Save code bundle built for \p target, \p arch, \p cpu and \p
-  /// targetFeatures to \p outputDir. Make \p networkName the function name for
-  /// the entry point of the network and prepend all generated
-  /// files with this name.
+  /// targetFeatures to \p outputDir under name \p bundleName. Make
+  /// \p mainEntryName the function name for the entry point of the network and
+  /// prepend all generated files with this name.
   void save(llvm::StringRef target, llvm::StringRef arch, llvm::StringRef cpu,
             const llvm::SmallVectorImpl<std::string> &targetFeatures,
-            llvm::StringRef outputDir, llvm::StringRef networkName);
+            llvm::StringRef outputDir, llvm::StringRef bundleName,
+            llvm::StringRef mainEntryName);
 };
 
 } // namespace glow
