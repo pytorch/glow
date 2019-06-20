@@ -22,6 +22,7 @@
 #include "glow/Graph/Nodes.h"
 #include "glow/Graph/PlaceholderBindings.h"
 #include "glow/Graph/Utils.h"
+#include "glow/Optimizer/FunctionPasses.h"
 #include "glow/Optimizer/Optimizer.h"
 #include "glow/Quantization/Base/Base.h"
 #include "glow/Quantization/Quantization.h"

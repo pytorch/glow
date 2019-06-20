@@ -17,7 +17,6 @@
 #define GLOW_OPTIMIZER_OPTIMIZER_H
 
 #include "glow/Optimizer/CompilationContext.h"
-#include "glow/Optimizer/FunctionPass.h"
 #include "glow/Support/Error.h"
 
 #include "llvm/ADT/ArrayRef.h"
@@ -50,14 +49,6 @@ void fold(Function *F, CompilationMode mode);
 /// a set of NodeKinds which represents all Nodes that should not be lowered.
 void lower(Function *F, CompilationContext &cctx, const Backend *B = nullptr,
            const KindSet &doNotLowerKinds = {});
-
-/// Dead code elimination.
-struct DCE : public FunctionPass {
-  // Run DCE on \p F. \returns whether the pass modifies \p F.
-  bool run(Function *F) override;
-
-  llvm::StringRef getName() const override { return "DCE"; }
-};
 
 /// Convert placeholders in Module \p M to constants based on the values in \p
 /// bindings.  Do not convert any placeholders explicitly listed in \p vars.
