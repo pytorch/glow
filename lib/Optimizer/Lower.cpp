@@ -952,6 +952,19 @@ static void lowerSparseLengthsSumNode(Function *F, CompilationContext &cctx,
   replaceAllUsesOfWith(cctx.loweredInfoMap, SLSN.getResult(), SLWSN);
 }
 
+static void lowerFusedRowwiseQuantizedSparseLengthsSumNode(
+    Function *F, CompilationContext &cctx,
+    const FusedRowwiseQuantizedSparseLengthsSumNode &FRQSLSN) {
+  auto ty = F->getParent()->uniqueType(ElemKind::FloatTy,
+                                       {FRQSLSN.getIndices().dims()[0]});
+  auto *ones = F->createSplat(FRQSLSN.getName().str() + ".ones", ty, 1.0);
+  auto *FRQSLWSN = F->createFusedRowwiseQuantizedSparseLengthsWeightedSum(
+      FRQSLSN.getName().str(), FRQSLSN.getData(), ones, FRQSLSN.getIndices(),
+      FRQSLSN.getLengths());
+
+  replaceAllUsesOfWith(cctx.loweredInfoMap, FRQSLSN.getResult(), FRQSLWSN);
+}
+
 /// Lowers \p node given Function \p. \p cctx contains a mapping of loweredMap
 /// that will log the lowering info of what was replaced by what via output
 /// names.
@@ -1011,6 +1024,9 @@ static void lowerNode(Function *F, Node *node, CompilationContext &cctx) {
     lowerBatchMatMulNode(F, cctx, *BMMN);
   } else if (auto *SLSN = dyn_cast<SparseLengthsSumNode>(node)) {
     lowerSparseLengthsSumNode(F, cctx, *SLSN);
+  } else if (auto *FQSLSN =
+                 dyn_cast<FusedRowwiseQuantizedSparseLengthsSumNode>(node)) {
+    lowerFusedRowwiseQuantizedSparseLengthsSumNode(F, cctx, *FQSLSN);
   }
 }
 

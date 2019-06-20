@@ -1209,6 +1209,19 @@ HabanaBackend::compile(Function *F, const BackendOptions &opts) const {
       multiInputs.emplace_back(std::move(inputs));
       break;
     }
+    case Kinded::Kind::FusedRowwiseQuantizedSparseLengthsSumNodeKind: {
+      auto *RI = llvm::cast<FusedRowwiseQuantizedSparseLengthsSumNode>(&I);
+      std::vector<synTensor> inputs = {
+          tensors[RI->getData()].get(),
+          tensors[RI->getIndices()].get(),
+          tensors[RI->getLengths()].get(),
+      };
+      chk(synCreateGenericNode(inputs.data(), &tensors[RI].get(), inputs.size(),
+                               1, nullptr, "sparse_lengths_sum_u8_2D_f32_embed",
+                               RI->getName().data(), nullptr, nullptr));
+      multiInputs.emplace_back(std::move(inputs));
+      break;
+    }
     case Kinded::Kind::FusedRowwiseQuantizedSparseLengthsWeightedSumNodeKind: {
       auto *RI =
           llvm::cast<FusedRowwiseQuantizedSparseLengthsWeightedSumNode>(&I);
@@ -1342,6 +1355,7 @@ bool HabanaBackend::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::TransposeNodeKind:
   case Kinded::Kind::SparseLengthsSumNodeKind:
   case Kinded::Kind::SparseLengthsWeightedSumNodeKind:
+  case Kinded::Kind::FusedRowwiseQuantizedSparseLengthsSumNodeKind:
   case Kinded::Kind::FusedRowwiseQuantizedSparseLengthsWeightedSumNodeKind:
   case Kinded::Kind::LocalResponseNormalizationNodeKind:
     return true;
@@ -1359,6 +1373,7 @@ bool HabanaBackend::shouldLower(const Node *N) const {
   case Kinded::Kind::FullyConnectedNodeKind:
   case Kinded::Kind::ConvolutionNodeKind:
   case Kinded::Kind::SparseLengthsSumNodeKind:
+  case Kinded::Kind::FusedRowwiseQuantizedSparseLengthsSumNodeKind:
     return false;
   default:
     return true;

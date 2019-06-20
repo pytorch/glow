@@ -2320,17 +2320,13 @@ TEST(caffe2, SparseLengthsSumFused8BitRowwise) {
   };
 
   // High level check on the content of the graph. We have 1 rowwise-quantized
-  // SLWS (which implements SLS), 1 Splat for the weights, and 1 save.
-  EXPECT_EQ(F->getNodes().size(), 3);
+  // SLS and 1 save.
+  EXPECT_EQ(F->getNodes().size(), 2);
   SaveNode *saveNode = getSaveNodeFromDest(output);
-  FusedRowwiseQuantizedSparseLengthsWeightedSumNode *FRWQSLS =
-      llvm::dyn_cast<FusedRowwiseQuantizedSparseLengthsWeightedSumNode>(
+  FusedRowwiseQuantizedSparseLengthsSumNode *FRWQSLS =
+      llvm::dyn_cast<FusedRowwiseQuantizedSparseLengthsSumNode>(
           saveNode->getInput().getNode());
   ASSERT_TRUE(FRWQSLS);
-  SplatNode *splatNode =
-      llvm::dyn_cast<SplatNode>(FRWQSLS->getWeights().getNode());
-  ASSERT_TRUE(splatNode);
-  EXPECT_EQ(splatNode->getValue(), 1.0f);
   // Check that the data input is a Constant node with expected ElemKind.
   Constant *data = llvm::dyn_cast<Constant>(FRWQSLS->getData().getNode());
   ASSERT_TRUE(data);

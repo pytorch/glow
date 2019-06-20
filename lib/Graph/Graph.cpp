@@ -1476,42 +1476,52 @@ Function::createRowwiseQuantizedSparseLengthsSum(llvm::StringRef name,
       this, name, data, ones, indices, lengths, schema);
 }
 
-FusedRowwiseQuantizedSparseLengthsWeightedSumNode *
-Function::createFusedRowwiseQuantizedSparseLengthsWeightedSum(
-    llvm::StringRef name, Constant *data, NodeValue weights, NodeValue indices,
-    NodeValue lengths) {
-  auto inDims = data->dims();
+/// Helper used to get specific output type required for
+/// createRowwiseQuantizedSparseLengthsSum and
+/// createRowwiseQuantizedSparseLengthsWeightedSum.
+/// Function \p F is used to get the speficific type, using inputs \p inDims and
+/// \p lenghtsDims to compute output dimensions.
+static TypeRef getOutputTypeOfFusedRowwiseQuantizedSLS(
+    Function *F, const llvm::ArrayRef<size_t> &inDims,
+    const llvm::ArrayRef<size_t> &lengthsDims) {
   ShapeVector outDims(inDims.begin(), inDims.end());
-  outDims[0] = lengths.dims()[0];
+  outDims[0] = lengthsDims[0];
   // The output column count is the same as the input column count, but without
   // the extra 8 bytes for the fused scale/offset, as the output is not
   // UInt8FusedQTy.
   outDims[1] -= 8;
-  auto outTy = getParent()->uniqueType(ElemKind::FloatTy, outDims);
+  return F->getParent()->uniqueType(ElemKind::FloatTy, outDims);
+}
+
+FusedRowwiseQuantizedSparseLengthsWeightedSumNode *
+Function::createFusedRowwiseQuantizedSparseLengthsWeightedSum(
+    llvm::StringRef name, NodeValue data, NodeValue weights, NodeValue indices,
+    NodeValue lengths) {
+  auto outTy = getOutputTypeOfFusedRowwiseQuantizedSLS(this, data.dims(),
+                                                       lengths.dims());
   return addNode(new FusedRowwiseQuantizedSparseLengthsWeightedSumNode(
       name, outTy, data, weights, indices, lengths));
 }
 
-FusedRowwiseQuantizedSparseLengthsWeightedSumNode *
+FusedRowwiseQuantizedSparseLengthsSumNode *
 Function::createFusedRowwiseQuantizedSparseLengthsSum(llvm::StringRef name,
                                                       Constant *data,
                                                       NodeValue indices,
                                                       NodeValue lengths) {
-  auto ty = getParent()->uniqueType(ElemKind::FloatTy, {indices.dims()[0]});
-  auto ones = createSplat(name.str() + ".ones", ty, 1.0);
-  return createFusedRowwiseQuantizedSparseLengthsWeightedSum(name, data, ones,
-                                                             indices, lengths);
+  auto outTy = getOutputTypeOfFusedRowwiseQuantizedSLS(this, data->dims(),
+                                                       lengths.dims());
+  return addNode(new FusedRowwiseQuantizedSparseLengthsSumNode(
+      name, outTy, data, indices, lengths));
 }
 
-/// Helper to create a RowwiseQuantizedSparseLengthsWeightedSumNode in the
-/// Function \p F with \p name, using \ data, \p weights, \p indices, and \p
-/// lengths as inputs. The provided float data in \p Tensor is rowwise
-/// quantized, creating Constants for the rowwise quantized data as well as
-/// Scales and Offsets, in the Module containing \p F.
-static FusedRowwiseQuantizedSparseLengthsWeightedSumNode *
-quantizeDataAndCreateFusedRowwiseQuantizedSparseLengthsWeightedSum(
-    Function *F, llvm::StringRef name, Tensor &data, NodeValue weights,
-    NodeValue indices, NodeValue lengths) {
+/// Helper to get quantized data required for
+/// RowwiseQuantizedSparseLengthsWeightedSumNode and
+/// RowwiseQuantizedSparseLengthsSumNode. Function \p F uses float Tensor \p
+/// data to create a rowwise qunatized Constant \p rwqData, which contains fused
+/// scales and offsets.
+static Constant *
+quantizeDataForFusedRowwiseQuantizedSparseLengthsWeightedSum(Function *F,
+                                                             Tensor &data) {
   // For fused rowwise quantization, we must have a two-dimensional input. If
   // passed in a single dimensional data Tensor then add an extra dimension.
   const auto fDims = flattenCdr(data.dims());
@@ -1527,27 +1537,28 @@ quantizeDataAndCreateFusedRowwiseQuantizedSparseLengthsWeightedSum(
 
   quantization::tensorFusedRowwiseQuantization(fData,
                                                rwqData->getPayloadMutable());
-  return F->createFusedRowwiseQuantizedSparseLengthsWeightedSum(
-      name, rwqData, weights, indices, lengths);
+  return rwqData;
 }
 
 FusedRowwiseQuantizedSparseLengthsWeightedSumNode *
 Function::createFusedRowwiseQuantizedSparseLengthsWeightedSum(
     llvm::StringRef name, Tensor &data, NodeValue weights, NodeValue indices,
     NodeValue lengths) {
-  return quantizeDataAndCreateFusedRowwiseQuantizedSparseLengthsWeightedSum(
-      this, name, data, weights, indices, lengths);
+  Constant *rwqData =
+      quantizeDataForFusedRowwiseQuantizedSparseLengthsWeightedSum(this, data);
+  return createFusedRowwiseQuantizedSparseLengthsWeightedSum(
+      name, rwqData, weights, indices, lengths);
 }
 
-FusedRowwiseQuantizedSparseLengthsWeightedSumNode *
+FusedRowwiseQuantizedSparseLengthsSumNode *
 Function::createFusedRowwiseQuantizedSparseLengthsSum(llvm::StringRef name,
                                                       Tensor &data,
                                                       NodeValue indices,
                                                       NodeValue lengths) {
-  auto ty = getParent()->uniqueType(ElemKind::FloatTy, {indices.dims()[0]});
-  auto ones = createSplat(name.str() + ".ones", ty, 1.0);
-  return quantizeDataAndCreateFusedRowwiseQuantizedSparseLengthsWeightedSum(
-      this, name, data, ones, indices, lengths);
+  Constant *rwqData =
+      quantizeDataForFusedRowwiseQuantizedSparseLengthsWeightedSum(this, data);
+  return this->createFusedRowwiseQuantizedSparseLengthsSum(name, rwqData,
+                                                           indices, lengths);
 }
 
 LengthsToRangesNode *Function::createLengthsToRanges(llvm::StringRef name,
