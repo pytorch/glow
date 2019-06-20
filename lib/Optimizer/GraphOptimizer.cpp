@@ -60,14 +60,16 @@ static bool shouldDeleteNode(Node *N) {
   return true;
 }
 
-void glow::DCE(Function *F) {
-  LOG_SCOPE(F->getLogContext(), "DCE")
+bool DCE::run(Function *F) {
+  LOG_SCOPE(F->getLogContext(), getName());
 
   auto &nodes = F->getNodes();
   auto &consts = F->getParent()->getConstants();
 
   std::vector<ConstList::iterator> erasedConsts{};
   std::vector<NodesList::iterator> erasedNodes{};
+
+  bool changed = false;
 
   // Remove unused nodes.
   while (true) {
@@ -81,6 +83,7 @@ void glow::DCE(Function *F) {
       erasedNodes.push_back(it);
       ++it;
       changedLocally = true;
+      changed = true;
     }
 
     while (!erasedNodes.empty()) {
@@ -109,6 +112,8 @@ void glow::DCE(Function *F) {
     F->getParent()->eraseConstant(it);
     erasedConsts.pop_back();
   }
+
+  return changed;
 }
 
 /// \returns true if the \p shuffle corresponds to an identity operation, false
@@ -2687,7 +2692,7 @@ void glow::fold(Function *F, CompilationContext &cctx) {
   foldChannelShuffle(F);
 
   // Perform Dead Code Elimination.
-  DCE(F);
+  DCE().run(F);
 }
 
 void glow::fold(Function *F, CompilationMode mode) {
@@ -2702,7 +2707,7 @@ void glow::optimize(Function *F, CompilationContext &cctx) {
   // Optimize may be called after backend specific transformations and some
   // nodes may have become unused. It is a good idea to remove them, before
   // proceeding with any further optimizations.
-  DCE(F);
+  DCE().run(F);
 
   // Sink transpose operations in an attempt to cancel them out.
   // Perform code sinking until a fixed-point is reached.
@@ -2710,7 +2715,7 @@ void glow::optimize(Function *F, CompilationContext &cctx) {
   // is usually at most 2 or 3 iterations.
   while (sinkCode(F)) {
     // Perform Dead Code Elimination between rounds of code sinking.
-    DCE(F);
+    DCE().run(F);
     VLOG_IF_EVERY_N(0, google::COUNTER > 1, 100)
         << "Warning: sinkCode optimization applied another 100 iterations "
            "without reaching fixed point";
@@ -2720,7 +2725,7 @@ void glow::optimize(Function *F, CompilationContext &cctx) {
   // further optimizations.
   optimizeTransposeIntoReshape(F);
   // Need to remove old uses that would prohibit Reshape(Constant) optimization.
-  DCE(F);
+  DCE().run(F);
 
   // Reshapes and transposes can prevent other optimizations from triggering,
   // so try to optimize them out first.
@@ -2736,7 +2741,7 @@ void glow::optimize(Function *F, CompilationContext &cctx) {
   mergePadIntoConvolution(F);
 
   // Perform Dead Code Elimination.
-  DCE(F);
+  DCE().run(F);
 
   // Merge multiple matmul nodes into a single large matmul.
   mergeMatMul(F);
@@ -2751,7 +2756,7 @@ void glow::optimize(Function *F, CompilationContext &cctx) {
   convertBroadcastedBatchMatMul(F);
 
   // Perform Dead Code Elimination.
-  DCE(F);
+  DCE().run(F);
 
   if (cctx.compMode == CompilationMode::Infer) {
     // Merge batch normalization operations.
@@ -2774,7 +2779,7 @@ void glow::optimize(Function *F, CompilationContext &cctx) {
 
   // Merge Transpose into MatMul/FC.
   // Run DCE to ensure correct number of node users.
-  DCE(F);
+  DCE().run(F);
   mergeTransposeIntoMatMulOrFC(F);
 
   // Optimize away intermediate type conversions.
@@ -2782,7 +2787,7 @@ void glow::optimize(Function *F, CompilationContext &cctx) {
 
   // Optimize quantization related operators.
   while (optimizeQuantization(F) || sinkRescaleQuantizedNode(F)) {
-    DCE(F);
+    DCE().run(F);
     VLOG_IF_EVERY_N(0, google::COUNTER > 1, 100)
         << "Warning: Quantization optimization applied another 100 iterations "
            "without reaching fixed point";
@@ -2792,7 +2797,7 @@ void glow::optimize(Function *F, CompilationContext &cctx) {
   optimizeReshape(F);
 
   // Perform Dead Code Elimination.
-  DCE(F);
+  DCE().run(F);
 }
 
 void glow::optimize(Function *F, CompilationMode mode) {
