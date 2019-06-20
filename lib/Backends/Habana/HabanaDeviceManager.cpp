@@ -37,10 +37,6 @@ static llvm::cl::opt<unsigned, /* ExternalStorage */ true> GlowHabanaMemoryOpt(
     llvm::cl::desc("Amount of DRAM to allocate per Habana device in kilobytes"),
     llvm::cl::location(GlowHabanaMemory));
 
-// TODO: A failed status probably shouldn't be an assert. We should
-// fail gracefully.
-#define chk(X) GLOW_ASSERT((X) == synSuccess)
-
 /// Factory function for creating a HabanaDeviceManager.
 DeviceManager *createHabanaDeviceManager(const DeviceConfig &config) {
   return new HabanaDeviceManager(config);
@@ -70,12 +66,12 @@ HabanaDeviceManager::~HabanaDeviceManager() {
   // happen now, before we synReleaseDevice.  Otherwise synReleaseDevice will
   // free the buffers, and then the destructor will try to do it again.
   functions_.clear();
-  chk(synReleaseDevice(deviceId_));
+  chk_kill(synReleaseDevice(deviceId_));
 
   // If this is the last HabanaDeviceManager to be destroyed, destroy the
   // Synapse API.
   if (numActiveDevices_ == 0) {
-    chk(synDestroy());
+    chk_kill(synDestroy());
   }
 }
 
@@ -146,10 +142,11 @@ void HabanaDeviceManager::addNetwork(const Module *module,
   for (const auto &func : functions) {
     // Check if a function with the same name has already been added.
     if (functions_.count(func.first) != 0) {
-      llvm::errs() << "Failed to add network: already have a function called "
-                   << func.first << ".\n";
       lk.unlock();
-      readyCB(module, MAKE_ERR("Failed to add network"));
+      readyCB(module,
+              MAKE_ERR(strFormat(
+                  "Failed to add network: already have a function called %s",
+                  func.first.c_str())));
       return;
     }
 
@@ -167,13 +164,12 @@ void HabanaDeviceManager::addNetwork(const Module *module,
                              &topologyId);
     }
 
-    if (status != synSuccess) {
-      llvm::errs() << "Unable to load recipe "
-                   << habanaFunction->getRecipeName() << " for function "
-                   << func.first << ".\n";
+    if (auto err = chk_make_err(status)) {
+      LOG(ERROR) << "Unable to load recipe " << habanaFunction->getRecipeName()
+                 << " for function " << func.first << ".";
       // TODO: Unload functions that were loaded successfully.
       lk.unlock();
-      readyCB(module, MAKE_ERR("Unable to load recipe"));
+      readyCB(module, std::move(err));
       return;
     }
 
@@ -187,17 +183,21 @@ void HabanaDeviceManager::addNetwork(const Module *module,
                                habanaFunction->getOutputs())}));
 
     if (!inserted) {
-      llvm::errs() << "Unable to add function " << func.first
-                   << "to HabanaDeviceManager.\n";
       // TODO: Unload functions that were loaded successfully.
       lk.unlock();
-      readyCB(module, MAKE_ERR("Unable to add function"));
+      readyCB(module, MAKE_ERR(strFormat(
+                          "Unable to add function %s to HabanaDeviceManager",
+                          func.first.c_str())));
       return;
     }
 
     // Optimistically activate the topology if nothing else is loaded.
     cv_.wait(lk, [this] { return inflightRequests_ == 0; });
-    chk(synActivateTopology(deviceId_, topologyId));
+    if (auto err = chk_make_err(synActivateTopology(deviceId_, topologyId))) {
+      lk.unlock();
+      readyCB(module, std::move(err));
+      return;
+    }
     activeTopo_ = topologyId;
   }
 
@@ -218,10 +218,11 @@ void HabanaDeviceManager::evictNetwork(std::string functionName,
 
   // Check if a network with the given name exists on the device.
   if (functions_.count(functionName) == 0) {
-    llvm::errs() << "Failed to evict network: function called " << functionName
-                 << " was not added.\n";
     lk.unlock();
-    evictCB(functionName, MAKE_ERR("Failed to evict network"));
+    evictCB(functionName,
+            MAKE_ERR(strFormat(
+                "Failed to evict network: function called %s was not added",
+                functionName.c_str())));
     return;
   }
 
@@ -237,10 +238,10 @@ void HabanaDeviceManager::evictNetwork(std::string functionName,
     }
   }
 
-  if (status != synSuccess) {
-    llvm::errs() << "Unable to unload function " << functionName << ".\n";
+  if (auto err = chk_make_err(status)) {
+    LOG(ERROR) << "Unable to unload function " << functionName;
     lk.unlock();
-    evictCB(functionName, MAKE_ERR("Unable to unload function"));
+    evictCB(functionName, std::move(err));
     return;
   }
 
@@ -248,10 +249,11 @@ void HabanaDeviceManager::evictNetwork(std::string functionName,
   auto numErased = functions_.erase(functionName);
 
   if (numErased == 0) {
-    llvm::errs() << "Unable to evict function " << functionName
-                 << "from HabanaDeviceManager.\n";
     lk.unlock();
-    evictCB(functionName, MAKE_ERR("Unable to evict function"));
+    evictCB(functionName,
+            MAKE_ERR(strFormat(
+                "Unable to evict function %s from HabanaDeviceManager",
+                functionName.c_str())));
     return;
   }
 
@@ -279,9 +281,11 @@ void HabanaDeviceManager::runFunctionImpl(RunIdentifierTy runId,
     std::lock_guard<std::mutex> lock(instanceMtx_);
     auto it = functions_.find(functionName);
     if (it == functions_.end()) {
-      llvm::errs() << "Failed to run function: function called " << functionName
-                   << " was not added.\n";
-      resultCB(runId, MAKE_ERR("Function not added"), std::move(ctx));
+      resultCB(runId,
+               MAKE_ERR(strFormat(
+                   "Failed to run function: function called %s was not added",
+                   functionName.c_str())),
+               std::move(ctx));
       return;
     }
 
@@ -296,7 +300,13 @@ void HabanaDeviceManager::runFunctionImpl(RunIdentifierTy runId,
     if (topologyId != activeTopo_) {
       // FIXME: This can starve inactive topos.
       cv_.wait(lock, [this] { return inflightRequests_ == 0; });
-      chk(synActivateTopology(deviceId_, topologyId));
+      const auto activateTopoRes = synActivateTopology(deviceId_, topologyId);
+      if (auto err = chk_make_err(activateTopoRes)) {
+        LOG(ERROR) << "synActivateTopology failed with status "
+                   << activateTopoRes;
+        resultCB(runId, std::move(err), std::move(ctx));
+        return;
+      }
       activeTopo_ = topologyId;
     }
     inflightRequests_++;
@@ -340,8 +350,10 @@ void HabanaDeviceManager::runFunctionImpl(RunIdentifierTy runId,
       // Return the IO buffer to the IO buffer pool.
       ioBufferPool->put(std::move(ioBuffer));
 
-      llvm::errs() << "Failed to execute function " << functionName << ".\n";
-      resultCB(runId, MAKE_ERR("Failed to execute function"), std::move(ctx));
+      resultCB(runId,
+               MAKE_ERR(strFormat("Failed to execute function %s",
+                                  functionName.c_str())),
+               std::move(ctx));
     } else {
       // Copy the execution outputs from the designated IO buffer back to the
       // PlaceholderBindings inside ctx.
@@ -352,8 +364,17 @@ void HabanaDeviceManager::runFunctionImpl(RunIdentifierTy runId,
         if (!tensor) {
           tensor = bindings->get(bindings->getPlaceholderByName(ph->getName()));
         }
-        memcpy(tensor->getUnsafePtr(), ioBuffer->get(ph),
-               ph->getType()->getSizeInBytes());
+
+        if (auto ioBufferDataOrErr = ioBuffer->get(ph)) {
+          memcpy(tensor->getUnsafePtr(), *ioBufferDataOrErr,
+                 ph->getType()->getSizeInBytes());
+        } else {
+          // Return the IO buffer to the IO buffer pool.
+          ioBufferPool->put(std::move(ioBuffer));
+          TRACE_EVENT_END(ctx->getTraceContext(), "copyOutputs");
+          resultCB(runId, ioBufferDataOrErr.takeError(), std::move(ctx));
+          return;
+        }
       }
       TRACE_EVENT_END(ctx->getTraceContext(), "copyOutputs");
 
