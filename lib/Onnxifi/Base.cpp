@@ -28,8 +28,8 @@ namespace {
 const char *compatibilityFunctionName = "check";
 } // namespace
 
-onnxStatus BackendId::checkGraphCompatibility(const void *onnxModel,
-                                              size_t onnxModelSize) {
+onnxStatus Backend::checkGraphCompatibility(const void *onnxModel,
+                                            size_t onnxModelSize) {
   Module module;
 
   auto function = module.createFunction(compatibilityFunctionName);
@@ -145,7 +145,7 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
     if (inPhPtr->dims().equals(inOnnxTensorDims)) {
       ctx->getPlaceholderBindings()->insert(
           inPhPtr, Tensor(inOnnxBuffer, inPhPtr->getType()));
-    } else if (backendIdPtr_->getBackend().supportsPartialTensors() &&
+    } else if (backendPtr_->getBackend().supportsPartialTensors() &&
                inOnnxBuffer && inOnnxTensorSize > 0) {
       // We have a partial input buffer.  Create a padded unowned tensor that
       // remembers the actual size of the input.
@@ -260,7 +260,7 @@ void Graph::releaseTraceEvents(onnxTraceEventList *traceEvents) {
   delete[] traceEvents->traceEvents;
 }
 
-Graph::Graph(BackendIdPtr backendIdPtr) : backendIdPtr_(backendIdPtr) {}
+Graph::Graph(BackendPtr backendPtr) : backendPtr_(backendPtr) {}
 
 } // namespace onnxifi
 } // namespace glow
