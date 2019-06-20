@@ -1274,7 +1274,7 @@ HabanaBackend::compile(Function *F, const BackendOptions &opts) const {
   // TODO: add a TRACE_EVENT entry
   chk(synCompileGraph(compileParams, 1, recipeName.c_str()));
   auto duration = TraceEvent::now() - start;
-  LOG(INFO) << "Compilation took " << duration << " [us]";
+  LOG(INFO) << "Compilation took " << duration / 1000.0 << " [ms]";
   chk(synDestroyGraph());
 
   return llvm::Expected<std::unique_ptr<CompiledFunction>>(
