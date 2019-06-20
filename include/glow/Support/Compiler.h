@@ -22,12 +22,6 @@
 #define __has_builtin(builtin) 0
 #endif
 
-#define GLOW_ASSERT(e)                                                         \
-  ((void)((e) ? ((void)0) : GLOW_ASSERT_IMPL(#e, __FILE__, __LINE__)))
-#define GLOW_ASSERT_IMPL(e, file, line)                                        \
-  ((void)fprintf(stderr, "%s:%u: failed assertion `%s'\n", file, line, e),     \
-   abort())
-
 #ifdef _WIN32
 #define glow_aligned_malloc(p, a, s)                                           \
   (((*(p)) = _aligned_malloc((s), (a))), *(p) ? 0 : errno)

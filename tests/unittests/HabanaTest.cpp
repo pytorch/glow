@@ -31,7 +31,7 @@
 #include <thread>
 #include <vector>
 
-#define chk(STATUS) GLOW_ASSERT(STATUS == synSuccess)
+#define chk(X) CHECK_EQ((X), synSuccess) << "Expected synStatus be synSuccess";
 
 class Habana : public ::testing::Test {
 protected:

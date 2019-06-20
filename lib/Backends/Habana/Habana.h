@@ -28,6 +28,30 @@
 #include <queue>
 #include <string>
 
+/// Given a synStatus \p status, evaluates to llvm::Error::success() if status
+/// is synSuccess and evaluates to an llvm::Error otherwise.
+#define chk_make_err(status)                                                   \
+  status == synSuccess                                                         \
+      ? llvm::Error::success()                                                 \
+      : MAKE_ERR(                                                              \
+            strFormat("Expected synStatus be synSuccess (%d), instead got %d", \
+                      synSuccess, status))
+
+/// Given a synStatus \p status, returns an llvm::Error::success() if status is
+/// synSuccess and returns an llvm::Error otherwise.
+#define chk(status)                                                            \
+  do {                                                                         \
+    auto res = (status);                                                       \
+    if (res != synSuccess) {                                                   \
+      return chk_make_err(res);                                                \
+    }                                                                          \
+  } while (0)
+
+/// Given a synStatus \p status, checks that status == synSuccess and kills the
+/// the program if not.
+#define chk_kill(status)                                                       \
+  CHECK_EQ((status), synSuccess) << "Expected synStatus be synSuccess"
+
 namespace glow {
 
 /// Buffer used for storing input/output tensors for a
@@ -47,7 +71,8 @@ public:
   HabanaIOBuffer &operator=(HabanaIOBuffer &&src) = delete;
 
   /// Get a pointer to the buffer at which to read/store Placeholder \p p.
-  uint8_t *get(const Placeholder *p) const;
+  /// \returns a GlowErr if an error occurred.
+  llvm::Expected<uint8_t *> get(const Placeholder *p) const;
 
 private:
   /// The device that this buffer is located on.

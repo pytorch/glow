@@ -36,14 +36,12 @@
 
 using namespace glow;
 
-// TODO: A failed status probably shouldn't be an assert. We should
-// fail gracefully.
-#define chk(X) GLOW_ASSERT((X) == synSuccess)
-
 /// Get a path to a temporary file for the compiled recipe.
-static std::string getRecipeFile() {
+static llvm::Expected<std::string> getRecipeFile() {
   llvm::SmallString<64> path;
-  GLOW_ASSERT(!llvm::sys::fs::createTemporaryFile("glow", "recipe", path));
+  auto err = llvm::sys::fs::createTemporaryFile("glow", "recipe", path);
+  RETURN_ERR_IF_NOT(
+      !err, strFormat("Unable to create recipe file at %s", path.str().data()));
   return path.str();
 }
 
@@ -131,11 +129,11 @@ public:
                IOType ioType = IOType::Intermediate)
       : buffer_(buffer), name_(name) {
     if (!buffer_) {
-      assert(V->getSizeInBytes());
-      assert(ioType != IOType::Static);
+      DCHECK_GT(V->getSizeInBytes(), 0);
+      DCHECK(ioType != IOType::Static);
       buffer_ = malloc(ioType == IOType::Intermediate ? sizeof(float)
                                                       : V->getSizeInBytes());
-      assert(buffer_);
+      DCHECK_NOTNULL(buffer_);
       allocated_ = true;
     }
 
@@ -143,7 +141,7 @@ public:
     auto dims = V->dims();
     dims_.append(dims.begin(), dims.end());
 
-    assert(dims.size() <= SYN_MAX_TENSOR_DIM);
+    DCHECK_LE(dims.size(), SYN_MAX_TENSOR_DIM);
     llvm::SmallVector<unsigned, SYN_MAX_TENSOR_DIM> rdims(dims.rbegin(),
                                                           dims.rend());
 
@@ -195,8 +193,8 @@ public:
       }
     }
 
-    chk(synCreateTensor(&desc, &tensor_, ioType == IOType::Output, false,
-                        ioType == IOType::Static));
+    chk_kill(synCreateTensor(&desc, &tensor_, ioType == IOType::Output, false,
+                             ioType == IOType::Static));
     valid_ = true;
   }
 
@@ -223,7 +221,7 @@ public:
   /// Destroy the managed tensor.
   ~TensorHandle() {
     if (valid_) {
-      chk(synDestroyTensor(tensor_));
+      chk_kill(synDestroyTensor(tensor_));
 
       if (allocated_) {
         free(buffer_);
@@ -253,8 +251,8 @@ HabanaIOBuffer::HabanaIOBuffer(
     const std::unordered_map<const Placeholder *, off_t> &offsets)
     : deviceId_(deviceId), buffer_(buffer), offsets_(offsets) {}
 
-uint8_t *HabanaIOBuffer::get(const Placeholder *p) const {
-  GLOW_ASSERT(offsets_.count(p) > 0 && "Placeholder not in IO buffer!");
+llvm::Expected<uint8_t *> HabanaIOBuffer::get(const Placeholder *p) const {
+  RETURN_ERR_IF_NOT(offsets_.count(p) > 0, "Placeholder not in IO buffer!");
   return buffer_ + offsets_.find(p)->second;
 }
 
@@ -281,8 +279,8 @@ HabanaIOBufferPool::HabanaIOBufferPool(uint32_t deviceId,
   // for the whole pool.
   perBufferSize_ = currentOffset;
   allBuffersSize_ = perBufferSize_ * numBuffers_;
-  chk(synMalloc(deviceId_, allBuffersSize_, synMemFlags::synMemHost,
-                (void **)&buffer_));
+  chk_kill(synMalloc(deviceId_, allBuffersSize_, synMemFlags::synMemHost,
+                     (void **)&buffer_));
 
   // Create HabanaIOBuffer instances for the pool with offsets into buffer_ that
   // are perBufferSize_ apart.
@@ -295,9 +293,9 @@ HabanaIOBufferPool::HabanaIOBufferPool(uint32_t deviceId,
 }
 
 HabanaIOBufferPool::~HabanaIOBufferPool() {
-  GLOW_ASSERT(ioBuffers_.size() == numBuffers_ &&
-              "IO buffer pool destroyed while some buffers still in use!");
-  chk(synFree(deviceId_, buffer_, synMemFlags::synMemHost));
+  CHECK_EQ(ioBuffers_.size(), numBuffers_)
+      << "IO buffer pool destroyed while some buffers still in use!";
+  chk_kill(synFree(deviceId_, buffer_, synMemFlags::synMemHost));
 }
 
 std::unique_ptr<HabanaIOBuffer> HabanaIOBufferPool::get() {
@@ -360,7 +358,7 @@ bool HabanaWaitHandle::wait() {
 }
 
 /// Retrieve and dump debug info about a topology.
-static void dumpTopologyInfo(uint32_t deviceId, uint64_t topologyId) {
+static llvm::Error dumpTopologyInfo(uint32_t deviceId, uint64_t topologyId) {
   uint32_t numOfInputs;
   uint32_t numOfOutputs;
   uint32_t numOfIntermediates;
@@ -386,6 +384,8 @@ static void dumpTopologyInfo(uint32_t deviceId, uint64_t topologyId) {
   for (uint32_t i = 0; i < numOfIntermediates; i++) {
     VLOG(1) << "Topology intermediates: " << intermediateTensorNames[i];
   }
+
+  return llvm::Error::success();
 }
 
 HabanaFunction::HabanaFunction(const runtime::RuntimeBundle &bundle,
@@ -451,8 +451,10 @@ void HabanaFunction::findIOPlaceholders(Function *F) {
 }
 
 HabanaFunction::~HabanaFunction() {
-  GLOW_ASSERT(!llvm::sys::fs::remove(recipeName_));
-  GLOW_ASSERT(!llvm::sys::fs::remove(recipeName_ + ".bin"));
+  CHECK(!llvm::sys::fs::remove(recipeName_))
+      << "Failed to remove file at " << recipeName_;
+  CHECK(!llvm::sys::fs::remove(recipeName_ + ".bin"))
+      << "Failed to remove file at " << recipeName_ << ".bin";
 }
 
 llvm::Error HabanaFunction::execute(ExecutionContext *context) {
@@ -480,15 +482,16 @@ llvm::Error HabanaFunction::execute(ExecutionContext *context) {
     if (!T) {
       T = bindings->get(bindings->getPlaceholderByName(P->getName()));
     }
-    GLOW_ASSERT(T);
+    RETURN_ERR_IF_NOT(T, "Failed to get input tensor.");
 
     bool isPartial = partialInputs_.count(P);
     EnqueueTensorInfo eti;
     llvm::StringRef name = P->getName();
     eti.tensorName = name.data();
-    eti.tensorSize =
-        isPartial ? T->getUnpaddedSizeInBytes() : T->getSizeInBytes();
-    eti.pTensorData = (char *)ioBuffer->get(P);
+    eti.tensorSize = T->getUnpaddedSizeInBytes();
+    uint8_t *ioBufferData;
+    ASSIGN_VALUE_OR_RETURN_ERR(ioBufferData, ioBuffer->get(P));
+    eti.pTensorData = (char *)ioBufferData;
 
     inputInfo.push_back(eti);
     // Copy from the tensor into the designated IO buffer.
@@ -507,13 +510,15 @@ llvm::Error HabanaFunction::execute(ExecutionContext *context) {
     if (!T) {
       T = bindings->get(bindings->getPlaceholderByName(P->getName()));
     }
-    GLOW_ASSERT(T);
+    RETURN_ERR_IF_NOT(T, "Failed to get output tensor.");
 
     EnqueueTensorInfo eti;
     llvm::StringRef name = P->getName();
     eti.tensorName = name.data();
     eti.tensorSize = T->getUnpaddedSizeInBytes();
-    eti.pTensorData = (char *)ioBuffer->get(P);
+    uint8_t *ioBufferData;
+    ASSIGN_VALUE_OR_RETURN_ERR(ioBufferData, ioBuffer->get(P));
+    eti.pTensorData = (char *)ioBufferData;
 
     outputInfo.push_back(eti);
   }
@@ -524,7 +529,7 @@ llvm::Error HabanaFunction::execute(ExecutionContext *context) {
   // Enqueue the run and wait for it to come back.
   synWaitHandle handle;
   if (VLOG_IS_ON(1)) {
-    dumpTopologyInfo(deviceId, topologyId);
+    RETURN_IF_ERR(dumpTopologyInfo(deviceId, topologyId));
   }
   TRACE_EVENT_BEGIN(tc, "synEnqueue");
   chk(synEnqueueByName(
@@ -1264,7 +1269,8 @@ HabanaBackend::compile(Function *F, const BackendOptions &opts) const {
   }
 
   // Compile the graph.
-  auto recipeName = getRecipeFile();
+  std::string recipeName;
+  ASSIGN_VALUE_OR_RETURN_ERR(recipeName, getRecipeFile());
   CompilationAttribute compileParams[1];
   compileParams[0].type = VISUALIZATION;
   compileParams[0].u32 = 1;
