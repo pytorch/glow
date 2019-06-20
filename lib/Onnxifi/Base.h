@@ -36,17 +36,17 @@ namespace onnxifi {
 
 class Graph;
 
-/// BackendId associated with the Glow backend.
-class BackendId {
+/// Backend associated with the Glow backend.
+class Backend {
 public:
   /// Create Glow ONNXIFI backend identifier with the
   /// given Glow backend \p backendName, whether to use onnx or caffe2 for
   /// models
   /// (\p useOnnx)
-  BackendId(llvm::StringRef backendName, bool useOnnx)
+  Backend(llvm::StringRef backendName, bool useOnnx)
       : useOnnx_(useOnnx), glowBackend_(createBackend(backendName)) {}
 
-  virtual ~BackendId() = default;
+  virtual ~Backend() = default;
 
   /// Verify that a given onnx graph is supported by the backend by importing
   /// the onnx graph to a glow function, lowering this function, and checking
@@ -74,7 +74,7 @@ protected:
   std::unique_ptr<glow::Backend> glowBackend_;
 };
 
-typedef BackendId *BackendIdPtr;
+typedef Backend *BackendPtr;
 
 class Event {
 public:
@@ -98,10 +98,10 @@ typedef Event *EventPtr;
 
 class Graph {
 public:
-  explicit Graph(BackendIdPtr backendIdPtr);
+  explicit Graph(BackendPtr backendPtr);
   virtual ~Graph() = default;
 
-  BackendIdPtr backend() { return backendIdPtr_; }
+  BackendPtr backend() { return backendPtr_; }
 
   /// Setup Glow graph in preparation for the inference and run.
   /// Set input memory addresses for inputs based on the \p inputDescriptors.
@@ -136,7 +136,7 @@ public:
   static void releaseTraceEvents(onnxTraceEventList *traceEvents);
 
 protected:
-  BackendIdPtr backendIdPtr_;
+  BackendPtr backendPtr_;
 
   /// Mapping between ONNX name for the input variable and Glow
   /// placeholder for input.

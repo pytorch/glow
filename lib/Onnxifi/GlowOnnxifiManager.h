@@ -41,13 +41,13 @@ public:
   GlowOnnxifiManager &operator=(const GlowOnnxifiManager &) = delete;
   GlowOnnxifiManager &operator=(GlowOnnxifiManager &&) = delete;
 
-  /// Create a new glow BackendId for backend \p backendName using onnx graphs
+  /// Create a new glow Backend for backend \p backendName using onnx graphs
   /// if \p useOnnx and caffe2 graphs otherwise. If \p forQuantization is true
-  /// then a BackendId will be created otherwise a HostManagerBackendId will be
+  /// then a Backend will be created otherwise a HostManagerBackend will be
   /// be created.
   /// Can be called safely by multiple threads concurrently.
-  BackendIdPtr createBackendId(llvm::StringRef backendName, bool useOnnx,
-                               bool forQuantization = false);
+  BackendPtr createBackend(llvm::StringRef backendName, bool useOnnx,
+                           bool forQuantization = false);
 
   /// Create a new glow Event.
   /// Can be called safely by multiple threads concurrently.
@@ -56,12 +56,12 @@ public:
   /// Create a new glow Graph associated with \p backend.
   /// Can be called safely by multiple threads concurrently.
   GraphPtr
-  createGraph(BackendIdPtr backend,
+  createGraph(BackendPtr backend,
               QuantizationMode quantizationMode = QuantizationMode::None);
 
-  /// Check if \p backendId is a BackendId created and managed by glow.
+  /// Check if \p backend is a Backend created and managed by glow.
   /// Can be called safely by multiple threads concurrently.
-  bool isValid(BackendIdPtr backendId) const;
+  bool isValid(BackendPtr backend) const;
 
   /// Check if \p event is a Event created and managed by glow.
   /// Can be called safely by multiple threads concurrently.
@@ -71,9 +71,9 @@ public:
   /// Can be called safely by multiple threads concurrently.
   bool isValid(GraphPtr graph) const;
 
-  /// Free \p backendId.
+  /// Free \p backend.
   /// Can be called safely by multiple threads concurrently.
-  void release(BackendIdPtr backendId);
+  void release(BackendPtr backend);
 
   /// Free \p event.
   /// Can be called safely by multiple threads concurrently.
@@ -93,8 +93,8 @@ private:
   std::shared_ptr<runtime::HostManager>
   getOrCreateHostManager(llvm::StringRef backendName);
 
-  /// The set of all valid glow BackendIds.
-  std::unordered_set<BackendIdPtr> backendIds_;
+  /// The set of all valid glow Backends.
+  std::unordered_set<BackendPtr> backends_;
 
   /// The set of all valid glow Events.
   std::unordered_set<EventPtr> events_;
@@ -103,8 +103,8 @@ private:
   std::unordered_set<GraphPtr> graphs_;
 
   /// Map from backend name to HostManager managing devices of that backend that
-  /// is shared by all BackendIds using that HostManager. HostManager is stored
-  /// as weak_ptr here so that it will be destructed when the last BackendId
+  /// is shared by all Backends using that HostManager. HostManager is stored
+  /// as weak_ptr here so that it will be destructed when the last Backend
   /// using it is destroyed not when this singleton is destroyed.
   std::map<std::string, std::weak_ptr<runtime::HostManager>> hostManagers_;
 

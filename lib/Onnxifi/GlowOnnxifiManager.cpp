@@ -24,26 +24,26 @@ GlowOnnxifiManager &GlowOnnxifiManager::get() {
   return manager;
 }
 
-BackendIdPtr GlowOnnxifiManager::createBackendId(llvm::StringRef backendName,
-                                                 bool useOnnx,
-                                                 bool forQuantization) {
+BackendPtr GlowOnnxifiManager::createBackend(llvm::StringRef backendName,
+                                             bool useOnnx,
+                                             bool forQuantization) {
   std::lock_guard<std::mutex> lock(m_);
 
-  BackendIdPtr backendId;
+  BackendPtr backend;
   if (forQuantization) {
-    backendId = new onnxifi::BackendId(backendName, useOnnx);
+    backend = new onnxifi::Backend(backendName, useOnnx);
   } else {
     auto hostManager = getOrCreateHostManager(backendName);
-    backendId =
-        new onnxifi::HostManagerBackendId(hostManager, backendName, useOnnx);
+    backend =
+        new onnxifi::HostManagerBackend(hostManager, backendName, useOnnx);
   }
 
-  auto res = backendIds_.insert(backendId);
+  auto res = backends_.insert(backend);
 
   (void)res;
-  assert((res.second && *res.first) && "Failed to add new BackendId");
+  assert((res.second && *res.first) && "Failed to add new Backend");
 
-  return backendId;
+  return backend;
 }
 
 EventPtr GlowOnnxifiManager::createEvent() {
@@ -58,7 +58,7 @@ EventPtr GlowOnnxifiManager::createEvent() {
   return event;
 }
 
-GraphPtr GlowOnnxifiManager::createGraph(BackendIdPtr backend,
+GraphPtr GlowOnnxifiManager::createGraph(BackendPtr backend,
                                          QuantizationMode quantizationMode) {
   assert(isValid(backend));
 
@@ -90,7 +90,7 @@ GlowOnnxifiManager::getOrCreateHostManager(llvm::StringRef backendName) {
   }
 
   if (!hostManager) {
-    hostManager = onnxifi::HostManagerBackendId::createHostManager(backendName);
+    hostManager = onnxifi::HostManagerBackend::createHostManager(backendName);
     assert(hostManager);
     hostManagers_[backendName] = hostManager;
   }
@@ -98,9 +98,9 @@ GlowOnnxifiManager::getOrCreateHostManager(llvm::StringRef backendName) {
   return hostManager;
 }
 
-bool GlowOnnxifiManager::isValid(BackendIdPtr backendId) const {
+bool GlowOnnxifiManager::isValid(BackendPtr backend) const {
   std::lock_guard<std::mutex> lock(m_);
-  return backendId && backendIds_.count(backendId) == 1;
+  return backend && backends_.count(backend) == 1;
 }
 
 bool GlowOnnxifiManager::isValid(EventPtr event) const {
@@ -113,17 +113,17 @@ bool GlowOnnxifiManager::isValid(GraphPtr graph) const {
   return graph && graphs_.count(graph) == 1;
 }
 
-void GlowOnnxifiManager::release(BackendIdPtr backendId) {
-  // TODO: fix this so that a HostManager is deleted when all backendIds
+void GlowOnnxifiManager::release(BackendPtr backend) {
+  // TODO: fix this so that a HostManager is deleted when all backends
   // holding pointers to that HostManager are deleted.
   std::lock_guard<std::mutex> lock(m_);
-  size_t erased = backendIds_.erase(backendId);
+  size_t erased = backends_.erase(backend);
 
   if (erased) {
-    delete backendId;
+    delete backend;
   }
 
-  if (backendIds_.empty()) {
+  if (backends_.empty()) {
     hostManagers_.clear();
   }
 }

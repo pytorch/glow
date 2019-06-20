@@ -36,7 +36,7 @@ static llvm::cl::opt<bool, true>
                            llvm::cl::location(GlowDumpDebugTraces));
 
 std::unique_ptr<runtime::HostManager>
-HostManagerBackendId::createHostManager(llvm::StringRef backendName) {
+HostManagerBackend::createHostManager(llvm::StringRef backendName) {
   std::vector<std::unique_ptr<runtime::DeviceConfig>> configs;
   for (int i = 0; i < GlowNumDevices; i++) {
     configs.push_back(llvm::make_unique<runtime::DeviceConfig>(backendName));
@@ -44,15 +44,15 @@ HostManagerBackendId::createHostManager(llvm::StringRef backendName) {
   return llvm::make_unique<runtime::HostManager>(std::move(configs));
 }
 
-void HostManagerBackendId::runNetwork(const Graph *graph,
-                                      std::unique_ptr<ExecutionContext> context,
-                                      runtime::ResultCBTy callback) {
+void HostManagerBackend::runNetwork(const Graph *graph,
+                                    std::unique_ptr<ExecutionContext> context,
+                                    runtime::ResultCBTy callback) {
   auto hostManagerGraph = static_cast<const HostManagerGraph *>(graph);
   hostManager_->runNetwork(hostManagerGraph->getName(), std::move(context),
                            std::move(callback));
 }
 
-onnxStatus HostManagerBackendId::addNetwork(std::unique_ptr<Module> module) {
+onnxStatus HostManagerBackend::addNetwork(std::unique_ptr<Module> module) {
   CompilationContext cctx;
   auto err = hostManager_->addNetwork(std::move(module), cctx);
 
@@ -63,7 +63,7 @@ onnxStatus HostManagerBackendId::addNetwork(std::unique_ptr<Module> module) {
   return ONNXIFI_STATUS_SUCCESS;
 }
 
-onnxStatus HostManagerBackendId::removeNetwork(const Graph *graph) {
+onnxStatus HostManagerBackend::removeNetwork(const Graph *graph) {
   auto hostManagerGraph = static_cast<const HostManagerGraph *>(graph);
   auto error = hostManager_->removeNetwork(hostManagerGraph->getName());
 
@@ -88,7 +88,7 @@ HostManagerGraph::initGraph(const void *onnxModel, size_t onnxModelSize,
   std::unique_ptr<ONNXIFIModelLoader> loader =
       TEMP_EXIT_ON_ERR(ONNXIFIModelLoader::parse(
           onnxModel, onnxModelSize, weightCount, weightDescriptors, *function,
-          true /*loadInputsAsPlaceholders*/, backendIdPtr_->getUseOnnx()));
+          true /*loadInputsAsPlaceholders*/, backendPtr_->getUseOnnx()));
 
   onnxInputToPlaceholder_ = loader->getInputVarsMapping();
   onnxOutputToPlaceholder_ = loader->getOutputVarsMapping();
@@ -98,14 +98,14 @@ HostManagerGraph::initGraph(const void *onnxModel, size_t onnxModelSize,
     tensorPool_.reserve(obj.second->getType(), 10);
   }
 
-  return static_cast<HostManagerBackendId *>(backendIdPtr_)
+  return static_cast<HostManagerBackend *>(backendPtr_)
       ->addNetwork(std::move(module));
 }
 
 onnxStatus HostManagerGraph::run(std::unique_ptr<ExecutionContext> ctx,
                                  EventPtr outputEvent,
                                  onnxTraceEventList *traceEvents) {
-  backendIdPtr_->runNetwork(
+  backendPtr_->runNetwork(
       this, std::move(ctx),
       [outputEvent, traceEvents](runtime::RunIdentifierTy runId,
                                  llvm::Error err,
@@ -145,8 +145,8 @@ onnxStatus HostManagerGraph::run(std::unique_ptr<ExecutionContext> ctx,
 }
 
 HostManagerGraph::~HostManagerGraph() {
-  // Remove network from the BackendId
-  backendIdPtr_->removeNetwork(this);
+  // Remove network from the Backend
+  backendPtr_->removeNetwork(this);
 }
 
 size_t HostManagerGraph::makeUniqueGraphId() {
