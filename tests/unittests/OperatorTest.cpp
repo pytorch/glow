@@ -3032,7 +3032,7 @@ static void testConcatVectors(glow::PlaceholderBindings &bindings,
   (void)RNWH;
 
   for (size_t i = 0; i < 60; i++) {
-    EXPECT_NEAR(RNWH.at({i}), i, 0.001);
+    EXPECT_NEAR(RNWH.at({i}), static_cast<DataType>(i), 0.001);
   }
 }
 
