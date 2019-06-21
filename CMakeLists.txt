@@ -10,6 +10,7 @@ option(GLOW_WITH_LLVMIRCODEGEN "Build the LLVM-based code generation library" ON
 option(GLOW_WITH_OPENCL "Build the OpenCL backend" OFF)
 option(GLOW_WITH_HABANA "Build the Habana backend" OFF)
 option(GLOW_BUILD_EXAMPLES "Build the examples" ON)
+option(GLOW_BUILD_PYTORCH_INTEGRATION "Build integration for PyTorch" OFF)
 option(GLOW_BUILD_TESTS "Build the tests" ON)
 option(GLOW_WITH_BUNDLES "Build bundles" OFF)
 option(LINK_PROTOBUF_AS_DLL "Link against protobuf build as dynamic libray." OFF)
@@ -174,6 +175,15 @@ add_subdirectory(tools)
 
 if (GLOW_BUILD_EXAMPLES)
   add_subdirectory(examples)
+endif()
+
+if (GLOW_BUILD_PYTORCH_INTEGRATION)
+  if(NOT EXISTS "${GLOW_THIRDPARTY_DIR}/pybind11")
+    message(FATAL_ERROR "No pybind11 git submodule. Run: git submodule update --init --recursive")
+  endif()
+
+  add_subdirectory(${GLOW_THIRDPARTY_DIR}/pybind11)
+  add_subdirectory(torch_glow/src)
 endif()
 
 if (GLOW_WITH_BUNDLES AND NOT GLOW_WITH_CPU)

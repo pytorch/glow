@@ -16,3 +16,6 @@
 [submodule "googlebenchmark"]
 	path = tests/googlebenchmark
 	url = https://github.com/google/benchmark
+[submodule "thirdparty/pybind11"]
+	path = thirdparty/pybind11
+	url = https://github.com/pybind/pybind11.git
