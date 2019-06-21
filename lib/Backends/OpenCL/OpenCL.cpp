@@ -197,7 +197,8 @@ OpenCLFunction::createProgram(const std::string &source,
   if (program) {
     return program;
   }
-  // Create a new compiled program.
+  // Create a new compiled program. This will also add the program to the cache
+  // because 'program' is a reference to an existing cache item.
   program = clCreateProgramWithSource(ctx, 1, &src, nullptr, &err);
   CHECK(program) << "clCreateProgramWithSource Failed.";
   err = clBuildProgram(program, 0, nullptr, combinedOptions.c_str(), nullptr,
@@ -206,7 +207,7 @@ OpenCLFunction::createProgram(const std::string &source,
     dumpCompileLog(deviceId, program);
   }
   CHECK_EQ(err, CL_SUCCESS) << "clBuildProgram Failed.";
-  // Add this program to the program cache.
+
   return program;
 }
 
@@ -343,7 +344,8 @@ void OpenCLFunction::enqueueKernel(llvm::StringRef name,
   kernelLaunches.push_back(KernelLaunch(kernel, name, kernelType, event));
 }
 
-void OpenCLFunction::executeConvolution(const OCLConvolutionInst *CC) {
+void OpenCLFunction::executeConvolution(const OCLConvolutionInst *CC,
+                                        ExecutionContext *executionContext) {
   auto input = CC->getSrc();
   auto output = CC->getDest();
   auto bias = CC->getBias();
@@ -457,7 +459,10 @@ void OpenCLFunction::executeConvolution(const OCLConvolutionInst *CC) {
     src.append(reinterpret_cast<const char *>(kernels_fwd_conv_cl_src),
                kernels_fwd_conv_cl_src_size);
   }
+  TRACE_EVENT_BEGIN(executionContext, "convCreateProgram");
   auto prog = createProgram(src, options, commands_);
+  TRACE_EVENT_END(executionContext, "convCreateProgram");
+
   auto kernelName = isQuantized ? "conv_forward_mem_i8" : "conv_forward_mem";
   auto kernel = createKernel(kernelName, prog);
   setKernelArg(kernel, 0, deviceBuffer_);
@@ -543,8 +548,6 @@ static void topK(Tensor &outW, Tensor &indW, Tensor &inW, size_t k) {
 }
 
 llvm::Error OpenCLFunction::execute(ExecutionContext *context) {
-  (void)context;
-
   auto clBindings = static_cast<runtime::OpenCLDeviceBindings *>(
       context->getDeviceBindings());
 
@@ -1020,7 +1023,7 @@ llvm::Error OpenCLFunction::execute(ExecutionContext *context) {
     }
 
     if (auto *CC = dyn_cast<OCLConvolutionInst>(&I)) {
-      executeConvolution(CC);
+      executeConvolution(CC, context);
       continue;
     }
 

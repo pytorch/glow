@@ -146,7 +146,8 @@ private:
                   ElemKind elemKind);
 
   /// Execution a convolution instruction which uses NCHW format.
-  void executeConvolution(const OCLConvolutionInst *CC);
+  void executeConvolution(const OCLConvolutionInst *CC,
+                          ExecutionContext *executionContext);
   /// Allocate a device buffer of required \p size.
   cl_mem allocDeviceBuffer(uint64_t size);
   /// Frees a device buffer.
