@@ -36,6 +36,20 @@ using llvm::cast;
 using llvm::dyn_cast;
 using llvm::isa;
 
+namespace {
+/// A helper function to log the deletion of constant/placeholder \p s of a
+/// module.
+void loggingStorageDeletionInUserFunc(Storage *s) {
+  std::unordered_set<Function *> userFuncs;
+  for (auto &use : s->getUsers()) {
+    userFuncs.insert(use.getUser()->getParent());
+  }
+  for (auto *F : userFuncs) {
+    F->getLogContext().logNodeDeletion(*s);
+  }
+}
+} // namespace
+
 bool Module::hasFunction(llvm::StringRef name) { return getFunction(name); }
 
 Function *Module::getFunction(llvm::StringRef name) {
@@ -62,10 +76,9 @@ void Module::strip() {
 }
 
 void Module::clear() {
-  eraseFunctions();
-
   for (auto it = constants_.begin(), e = constants_.end(); it != e; it++) {
     Constant *v = *it;
+    loggingStorageDeletionInUserFunc(v);
     delete v;
   }
 
@@ -74,8 +87,11 @@ void Module::clear() {
   for (auto it = placeholders_.begin(), e = placeholders_.end(); it != e;
        it++) {
     Placeholder *p = *it;
+    loggingStorageDeletionInUserFunc(p);
     delete p;
   }
+
+  eraseFunctions();
 
   placeholders_.clear();
 }
@@ -2698,6 +2714,7 @@ Node *Function::getNodeByName(llvm::StringRef name) {
 void Module::eraseConstant(ConstList::iterator I) {
   if (I == constants_.end())
     return;
+  loggingStorageDeletionInUserFunc(*I);
   delete *I;
   constants_.erase(I);
 }
