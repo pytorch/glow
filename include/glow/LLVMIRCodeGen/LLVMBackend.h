@@ -67,7 +67,8 @@ public:
   compile(Function *F, const BackendOptions &opts) const override;
 
   virtual void save(Function *F, llvm::StringRef outputDir,
-                    llvm::StringRef networkName) const override;
+                    llvm::StringRef bundleName,
+                    llvm::StringRef mainEntryName) const override;
   /// @}
 
   /// \returns the size of metrics collected for a single TraceEvent.

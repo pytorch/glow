@@ -182,11 +182,17 @@ llvm::cl::opt<std::string> loadDeviceConfigsFileOpt(
 /// Name of the network being bundled.
 llvm::cl::opt<std::string> networkName(
     "network-name",
-    llvm::cl::desc("Name of the network being bundled. "
-                   "This name is used as both the function name "
-                   "of the entry point to the network "
-                   "and as a prefix for all the files that are generated."),
+    llvm::cl::desc("Name of the network being bundled. This name is used as a "
+                   "prefix for all the files that are generated."),
     llvm::cl::cat(loaderCat));
+
+/// Name of the main entry of the bundle.
+llvm::cl::opt<std::string>
+    mainEntryName("main-entry-name",
+                  llvm::cl::desc("Name of the main entry in the bundle. "
+                                 "This name is used as the function name "
+                                 "of the entry point to the network."),
+                  llvm::cl::cat(loaderCat));
 
 llvm::cl::opt<unsigned> numDevices("num-devices",
                                    llvm::cl::desc("Number of Devices to use"),
@@ -404,7 +410,8 @@ void Loader::compile(PlaceholderBindings &bindings) {
     // Emit IR for the graph, compile it and save as a bundle.
     auto error = ::glow::optimizeFunction(F_, *backend_, cctx);
     EXIT_ON_ERR(std::move(error));
-    backend_->save(F_, emitBundle, networkName);
+    backend_->save(F_, emitBundle, networkName,
+                   mainEntryName.empty() ? networkName : mainEntryName);
   } else {
     // Emit IR for the graph and compile it.
     auto error = hostManager_->addNetwork(std::move(M_), cctx);

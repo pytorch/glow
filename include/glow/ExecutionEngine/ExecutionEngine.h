@@ -112,15 +112,6 @@ public:
   void compile(CompilationMode mode, Function *F,
                bool clearOtherFunctions = true);
 
-  /// Save a bundle for a standalone execution given \p cctx. This method takes
-  /// care of everything when preparing the bundle for saving. There is no need
-  /// to invoke the compile method before it.
-  /// Make \p networkName the function name for
-  /// the entry point of the network and prepend all generated
-  /// files with this name.
-  void save(Function *F, CompilationContext &cctx, llvm::StringRef outputDir,
-            llvm::StringRef networkName);
-
   /// Context aware single execution of a function. If more than one
   /// function has been compiled by this ExecutionEngine then a name must be
   /// supplied to specify which function to run.

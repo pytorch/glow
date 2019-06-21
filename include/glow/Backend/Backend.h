@@ -68,12 +68,12 @@ public:
   virtual llvm::Expected<std::unique_ptr<CompiledFunction>>
   compile(Function *F, const BackendOptions &opts) const = 0;
 
-  /// Save the bundle for \p F for a later standalone execution
-  /// in \p outputDir. Make \p networkName the function name for
-  /// the entry point of the network and prepend all generated
-  /// files with this name.
+  /// Save the bundle for \p F for a later standalone execution in \p outputDir
+  /// under name \p bundleName. Make \p mainEntryName the function name for the
+  /// entry point of the network and prepend all generated files with this name.
   virtual void save(Function *F, llvm::StringRef outputDir,
-                    llvm::StringRef networkName) const {
+                    llvm::StringRef bundleName,
+                    llvm::StringRef mainEntryName) const {
     LOG(FATAL) << "Saving a bundle is not supported by the backend";
   }
 
