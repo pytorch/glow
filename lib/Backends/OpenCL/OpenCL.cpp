@@ -459,9 +459,9 @@ void OpenCLFunction::executeConvolution(const OCLConvolutionInst *CC,
     src.append(reinterpret_cast<const char *>(kernels_fwd_conv_cl_src),
                kernels_fwd_conv_cl_src_size);
   }
-  TRACE_EVENT_BEGIN(executionContext, "convCreateProgram");
+  TRACE_EVENT_BEGIN(executionContext, TraceLevel::RUNTIME, "convCreateProgram");
   auto prog = createProgram(src, options, commands_);
-  TRACE_EVENT_END(executionContext, "convCreateProgram");
+  TRACE_EVENT_END(executionContext, TraceLevel::RUNTIME, "convCreateProgram");
 
   auto kernelName = isQuantized ? "conv_forward_mem_i8" : "conv_forward_mem";
   auto kernel = createKernel(kernelName, prog);
