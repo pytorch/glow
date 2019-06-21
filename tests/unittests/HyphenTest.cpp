@@ -350,6 +350,7 @@ TEST(HyphenTest, network) {
   // Convert words and hyphens to a tensor representation.
   Tensor inputs(ElemKind::FloatTy, {numSamples, 6, 27});
   Tensor expected(ElemKind::Int64ITy, {numSamples, 1});
+  inputs.zero();
   auto inputHandle = inputs.getHandle<float>();
   auto expectedHandle = expected.getHandle<int64_t>();
   for (size_t i = 0; i != numSamples; i++) {

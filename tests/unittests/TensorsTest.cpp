@@ -244,6 +244,10 @@ TEST(Tensor, concatTensors2D) {
   auto yH = Y.getHandle<>();
   auto zH = Z.getHandle<>();
 
+  // Zero Y and Z but not X.
+  Y.zero();
+  Z.zero();
+
   // Create a nice picture:
   for (size_t i = 0, e = xH.size(); i < e; i++) {
     xH.raw(i) = (float(i) - 30) / 50;
@@ -388,7 +392,9 @@ TEST(Tensor, reset) {
   QH = {5, 9, -2, 4, 3, -10, 21, -9, 0, -51, 73, 2};
 
   A.reset(ElemKind::FloatTy, {5, 2, 6});
+  A.zero();
   QA.reset(ElemKind::Int8QTy, {4, 7, 3, 8}, 1.4, -13);
+  QA.zero();
 
   H = A.getHandle();
   QH = QA.getHandle<int8_t>();
@@ -505,6 +511,7 @@ TEST(Tensor, nonOwnedTensorFollowedByReset) {
   // tensor was unowned and we used to not reset that state
   // as well and were leaking memory.
   T1.reset(F32x2Ty);
+  T1.zero();
   H1 = T1.getHandle<>();
   EXPECT_EQ(int(H1.at({0})), 0);
   EXPECT_EQ(int(H1.at({1})), 0);
@@ -678,15 +685,19 @@ TEST(Tensor, insertWithCountAndAxis) {
 TEST(Tensor, zeroQuantizedTensor) {
   const int32_t offsetQ8 = 0;
   Tensor Q8T(ElemKind::Int8QTy, {3, 4, 5, 6}, 127, offsetQ8);
+  Q8T.zero();
 
   const int32_t offsetUQ8 = 3;
   Tensor UQ8T(ElemKind::UInt8QTy, {3, 4, 5, 6}, 2, offsetUQ8);
+  UQ8T.zero();
 
   const int32_t offsetQ16 = 223;
   Tensor Q16T(ElemKind::Int16QTy, {3, 4, 5}, 1234.7, offsetQ16);
+  Q16T.zero();
 
   const int32_t offsetQ32 = 53452;
   Tensor Q32T(ElemKind::Int32QTy, {3, 4}, 500.4, offsetQ32);
+  Q32T.zero();
 
   auto Q8H = Q8T.getHandle<int8_t>();
   EXPECT_TRUE(Q8H.isZero());
@@ -731,6 +742,7 @@ TEST(Tensor, zeroQuantizedTensor) {
 TEST(Tensor, manuallySetToOffset) {
   const int8_t offsetQ8 = 6;
   Tensor Q8T(ElemKind::Int8QTy, {3, 2}, 10.1, offsetQ8);
+  Q8T.zero();
 
   auto Q8H = Q8T.getHandle<int8_t>();
   EXPECT_TRUE(Q8H.isZero());
@@ -766,7 +778,9 @@ TEST(ZeroDimensionalTensor, handleAssign) {
 
 TEST(ZeroDimensionalTensor, compareAndDumpTwo) {
   Tensor T1(ElemKind::FloatTy, {});
+  T1.zero();
   Tensor T2(ElemKind::FloatTy, {});
+  T2.zero();
 
   EXPECT_TRUE(T1.isEqual(T2));
 

@@ -82,9 +82,17 @@ public:
       std::unique_ptr<ExecutionContext> inputContext =
           std::move(registeredResult->inputContext);
 
-      if (PlaceholderBindings::compare(
-              context->getPlaceholderBindings(),
-              inputContext->getPlaceholderBindings())) {
+      bool equalInputs = true;
+      for (auto &p : inputContext->getPlaceholderBindings()->pairs()) {
+        Tensor *CT = context->getPlaceholderBindings()->get(p.first);
+        if (!CT) {
+          equalInputs = false;
+          break;
+        }
+        equalInputs &= p.second->isEqual(*CT, 0.0001, true);
+      }
+
+      if (equalInputs) {
         // If bindings contains all expected mappings, overwrite the default
         // runId, result and resultContext with the registered
         // ones.
@@ -388,11 +396,6 @@ public:
     }
 
     for (const auto &output : outputs) {
-      // Both input and output bindings should contain bindings for the outputs,
-      // but the bound Tensors should be zero-filled in the input bindings.
-      insertSymbolIntoPlaceholderBindings(output, nodeInputBindings);
-      nodeInputBindings->get(nodeInputBindings->getPlaceholderByName(output))
-          ->zero();
       insertSymbolIntoPlaceholderBindings(output, nodeOutputBindings);
 
       RuntimeSymbolInfo runtimeSymbolInfo;
@@ -467,7 +470,8 @@ public:
       if (!placeholder) {
         assert(!"Placeholder for DAG output not found!");
       }
-      inputContext->getPlaceholderBindings()->allocate(placeholder)->zero();
+      insertSymbolIntoPlaceholderBindings(
+          symbol, inputContext->getPlaceholderBindings());
       insertSymbolIntoPlaceholderBindings(
           symbol, outputContext->getPlaceholderBindings());
     }

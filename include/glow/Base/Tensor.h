@@ -322,7 +322,10 @@ public:
     // If the new size is identical to the allocated size then there is no need
     // to re-allocate the buffer.
     if (type_ == T && getData()) {
-      zero();
+#ifdef GLOW_DEBUG_TENSOR_INIT
+      PseudoRNG rng;
+      init(InitKind::Broadcast, GLOW_DEBUG_TENSOR_INIT, rng);
+#endif
       return;
     }
 
@@ -338,7 +341,11 @@ public:
     assert(size() > 0 && "Tensors must always have positive size.");
     size_t count = size() * type_.getElementSize();
     data_ = reinterpret_cast<char *>(alignedAlloc(count, TensorAlignment));
-    zero(getElementType() == ElemKind::UInt8FusedQTy);
+
+#ifdef GLOW_DEBUG_TENSOR_INIT
+    PseudoRNG rng;
+    init(InitKind::Broadcast, GLOW_DEBUG_TENSOR_INIT, rng);
+#endif
   }
   /// Releases the data buffer and sets the unOwned flag to true. This is useful
   /// for keeping metadata around but not the actual contents.

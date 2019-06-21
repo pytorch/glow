@@ -163,6 +163,11 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
       // pointer (which is a valid case if the tensor is empty).
       if (inOnnxBuffer) {
         memcpy(inputTensor->getUnsafePtr(), inOnnxBuffer, onnxBytes);
+        // Pad remaining space with zeroes.
+        memset(inputTensor->getUnsafePtr() + onnxBytes, 0,
+               inputTensor->getSizeInBytes() - onnxBytes);
+      } else {
+        inputTensor->zero();
       }
       ctx->getPlaceholderBindings()->insert(inPhPtr, inputTensor);
     }

@@ -51,6 +51,14 @@ void glow::profileQuantization(PlaceholderBindings &bindings, Function *F) {
     if (PH->getOutput().getElementType() != ElemKind::FloatTy) {
       continue;
     }
+
+    /// Don't profile output nodes.
+    if (!PH->getUsers().empty()) {
+      auto *SN = llvm::dyn_cast<SaveNode>(PH->getUsers().begin()->getUser());
+      if (SN) {
+        continue;
+      }
+    }
     nodesToInstrument.insert(PH->getOutput());
   }
 

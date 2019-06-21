@@ -508,8 +508,7 @@ TEST(Graph, QuantizationProfileNodes) {
   // 1 from A
   // 8 from two lowered FCs: MM, BA, weight PH, bias PH
   // 2 from RELU (lowered to Max+Splat)
-  // 2 from float saves (just profile their output PH)
-  EXPECT_EQ(13, numberOfProfileNodes);
+  EXPECT_EQ(11, numberOfProfileNodes);
 }
 
 TEST(Graph, simpleQuant) {
