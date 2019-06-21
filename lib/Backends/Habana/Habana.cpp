@@ -459,7 +459,7 @@ HabanaFunction::~HabanaFunction() {
 
 llvm::Error HabanaFunction::execute(ExecutionContext *context) {
   auto *tc = context->getTraceContext();
-  TRACE_EVENT_BEGIN(tc, "execute");
+  TRACE_EVENT_SCOPE(tc, TraceLevel::RUNTIME, "execute");
 
   uint32_t deviceId =
       static_cast<HabanaBindings *>(context->getDeviceBindings())
@@ -475,7 +475,7 @@ llvm::Error HabanaFunction::execute(ExecutionContext *context) {
   std::vector<EnqueueTensorInfo> outputInfo;
 
   // Set up input buffers and record bindings for enqueuing.
-  TRACE_EVENT_BEGIN(tc, "copyInputs");
+  TRACE_EVENT_SCOPE_NAMED(tc, TraceLevel::RUNTIME, "copyInputs", ciEvent);
   auto *bindings = context->getPlaceholderBindings();
   for (auto *P : getInputs()) {
     Tensor *T = bindings->get(P);
@@ -501,9 +501,9 @@ llvm::Error HabanaFunction::execute(ExecutionContext *context) {
              T->getSizeInBytes() - T->getUnpaddedSizeInBytes());
     }
   }
-  TRACE_EVENT_END(tc, "copyInputs");
+  TRACE_EVENT_SCOPE_END_NAMED(ciEvent);
 
-  TRACE_EVENT_BEGIN(tc, "registerOutputs");
+  TRACE_EVENT_SCOPE_NAMED(tc, TraceLevel::RUNTIME, "registerOutputs", roEvent);
   // Set up output buffers and record bindings for enqueuing.
   for (auto *P : getOutputs()) {
     Tensor *T = bindings->get(P);
@@ -524,23 +524,22 @@ llvm::Error HabanaFunction::execute(ExecutionContext *context) {
   }
 
   EnqueueTensorInfo noInputEti = {"unused", (char *)nullptr, 0};
-  TRACE_EVENT_END(tc, "registerOutputs");
+  TRACE_EVENT_SCOPE_END_NAMED(roEvent);
 
   // Enqueue the run and wait for it to come back.
   synWaitHandle handle;
   if (VLOG_IS_ON(1)) {
     RETURN_IF_ERR(dumpTopologyInfo(deviceId, topologyId));
   }
-  TRACE_EVENT_BEGIN(tc, "synEnqueue");
+  TRACE_EVENT_SCOPE_NAMED(tc, TraceLevel::RUNTIME, "synEnqueue", seEvent);
   chk(synEnqueueByName(
       deviceId, inputInfo.empty() ? &noInputEti : inputInfo.data(),
       inputInfo.size(), outputInfo.data(), outputInfo.size(), &handle));
-  TRACE_EVENT_END(tc, "synEnqueue");
+  TRACE_EVENT_SCOPE_END_NAMED(seEvent);
 
   static_cast<HabanaBindings *>(context->getDeviceBindings())
       ->setHandle(HabanaWaitHandle(deviceId, handle, std::move(inputInfo),
                                    std::move(outputInfo)));
-  TRACE_EVENT_END(tc, "execute");
   return llvm::Error::success();
 }
 

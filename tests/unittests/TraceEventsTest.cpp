@@ -580,19 +580,19 @@ TEST(TraceEventsTest, nestedScopedEvents) {
 
   TraceContext *tc = context.getTraceContext();
 
-  ScopedTraceBlock block_one(tc, "one");
+  ScopedTraceBlock block_one(tc, TraceLevel::RUNTIME, "one");
   {
-    ScopedTraceBlock block_two(tc, "two");
+    ScopedTraceBlock block_two(tc, TraceLevel::RUNTIME, "two");
     /* sleep_override */ std::this_thread::sleep_for(
         std::chrono::milliseconds(1));
   }
 
   {
-    ScopedTraceBlock block_three(tc, "three");
+    ScopedTraceBlock block_three(tc, TraceLevel::RUNTIME, "three");
     /* sleep_override */ std::this_thread::sleep_for(
         std::chrono::milliseconds(1));
     {
-      ScopedTraceBlock block_four(tc, "four");
+      ScopedTraceBlock block_four(tc, TraceLevel::RUNTIME, "four");
       /* sleep_override */ std::this_thread::sleep_for(
           std::chrono::milliseconds(1));
     }
@@ -619,19 +619,19 @@ TEST(TraceEventsTest, nestedScopedEventsMacro) {
 
   TraceContext *tc = context.getTraceContext();
 
-  TRACE_EVENT_SCOPE(tc, "one");
+  TRACE_EVENT_SCOPE(tc, TraceLevel::RUNTIME, "one");
   {
-    TRACE_EVENT_SCOPE(tc, "two");
+    TRACE_EVENT_SCOPE(tc, TraceLevel::RUNTIME, "two");
     /* sleep_override */ std::this_thread::sleep_for(
         std::chrono::milliseconds(1));
   }
 
   {
-    TRACE_EVENT_SCOPE(tc, "three");
+    TRACE_EVENT_SCOPE(tc, TraceLevel::RUNTIME, "three");
     /* sleep_override */ std::this_thread::sleep_for(
         std::chrono::milliseconds(1));
     {
-      TRACE_EVENT_SCOPE(tc, "four");
+      TRACE_EVENT_SCOPE(tc, TraceLevel::RUNTIME, "four");
       /* sleep_override */ std::this_thread::sleep_for(
           std::chrono::milliseconds(1));
     }
@@ -660,8 +660,8 @@ TEST(TraceEventsTest, nestedScopedEventsTerm) {
   TraceContext *tc = context.getTraceContext();
 
   {
-    TRACE_EVENT_SCOPE_NAMED(tc, "one", one);
-    TRACE_EVENT_SCOPE_NAMED(tc, "two", two);
+    TRACE_EVENT_SCOPE_NAMED(tc, TraceLevel::RUNTIME, "one", one);
+    TRACE_EVENT_SCOPE_NAMED(tc, TraceLevel::RUNTIME, "two", two);
     /* sleep_override */ std::this_thread::sleep_for(
         std::chrono::milliseconds(1));
     TRACE_EVENT_SCOPE_END_NAMED(one);
@@ -670,10 +670,10 @@ TEST(TraceEventsTest, nestedScopedEventsTerm) {
   }
 
   {
-    TRACE_EVENT_SCOPE_NAMED(tc, "three", three);
-    TRACE_EVENT_SCOPE_NAMED(tc, "four", four);
+    TRACE_EVENT_SCOPE_NAMED(tc, TraceLevel::RUNTIME, "three", three);
+    TRACE_EVENT_SCOPE_NAMED(tc, TraceLevel::RUNTIME, "four", four);
     {
-      TRACE_EVENT_SCOPE_NAMED(tc, "five", five);
+      TRACE_EVENT_SCOPE_NAMED(tc, TraceLevel::RUNTIME, "five", five);
       /* sleep_override */ std::this_thread::sleep_for(
           std::chrono::milliseconds(1));
       TRACE_EVENT_SCOPE_END_NAMED(four);
@@ -699,6 +699,31 @@ TEST(TraceEventsTest, nestedScopedEventsTerm) {
   ASSERT_GT(durations["three"], durations["four"]);
   ASSERT_GT(durations["three"], durations["five"]);
   ASSERT_GT(durations["five"], durations["four"]);
+}
+
+TEST(TraceEventsTest, TraceLevels) {
+  std::array<TraceLevel, 4> levels = {TraceLevel::NONE, TraceLevel::REQUEST,
+                                      TraceLevel::RUNTIME,
+                                      TraceLevel::OPERATOR};
+  for (auto L : levels) {
+    TraceContext context(L);
+    for (auto evl : levels) {
+      context.logTraceEvent("event", evl);
+    }
+
+    if (L == TraceLevel::NONE) {
+      EXPECT_EQ(context.getTraceEvents().size(), 0);
+    } else {
+      ASSERT_EQ(context.getTraceEvents().size(), 1);
+      ASSERT_EQ(context.getTraceEvents()[0].name, "event");
+    }
+  }
+
+  TraceContext context(TraceLevel::STANDARD);
+  for (auto evl : levels) {
+    context.logTraceEvent("event", evl);
+  }
+  ASSERT_EQ(context.getTraceEvents().size(), 2);
 }
 
 INSTANTIATE_TEST_CASE_P(Interpreter, TraceEventsTest,

@@ -119,17 +119,18 @@ public:
   /// A helper function to create a scoped TraceEvent builder.
   /// If there is no TraceContext, this will still create an object, but it will
   /// do nothing.
-  ScopedTraceBlock scopedEvent(llvm::StringRef name) {
-    return ScopedTraceBlock(getTraceContext(), name);
+  ScopedTraceBlock scopedEvent(llvm::StringRef name, TraceLevel level) {
+    return ScopedTraceBlock(getTraceContext(), level, name);
   }
 
   /// A helper function to log a TraceEvent at the current time, if there is a
   /// TraceContext available.
-  void logTraceEvent(llvm::StringRef name, char type = TraceEvent::InstantType,
+  void logTraceEvent(llvm::StringRef name, TraceLevel level,
+                     char type = TraceEvent::InstantType,
                      std::map<std::string, std::string> args = {}) {
     TraceContext *traceContext = getTraceContext();
     if (traceContext) {
-      traceContext->logTraceEvent(name, type, std::move(args));
+      traceContext->logTraceEvent(name, level, type, std::move(args));
     }
   }
 };

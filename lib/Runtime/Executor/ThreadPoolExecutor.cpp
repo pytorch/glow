@@ -239,7 +239,8 @@ void ThreadPoolExecutor::shutdown() {
 void ThreadPoolExecutor::run(const DAGNode *root,
                              std::unique_ptr<ExecutionContext> context,
                              RunIdentifierTy runId, ResultCBTy cb) {
-  TRACE_EVENT_SCOPE(context->getTraceContext(), "ThreadPoolExecutor::run");
+  TRACE_EVENT_SCOPE(context->getTraceContext(), TraceLevel::RUNTIME,
+                    "ThreadPoolExecutor::run");
 
   // Don't process new requests if the executor is shutting down.
   if (shuttingDown_) {
@@ -281,7 +282,7 @@ void ThreadPoolExecutor::run(const DAGNode *root,
 void ThreadPoolExecutor::executeDAGNode(
     std::shared_ptr<ExecutionState> executionState, DAGNode *node) {
   TRACE_EVENT_SCOPE(executionState->getRawResultContextPtr()->getTraceContext(),
-                    "ThreadPoolExecutor::executeDAGNode");
+                    TraceLevel::RUNTIME, "ThreadPoolExecutor::executeDAGNode");
   DCHECK(executionState->initialized_) << "Run state must be initialized";
   // If execution has already failed due to another node, don't bother running
   // this one.
@@ -338,8 +339,8 @@ void ThreadPoolExecutor::handleDeviceManagerResult(
   DCHECK_NOTNULL(executionState.get());
 
   TraceContext *traceContext = ctx->getTraceContext();
-  TRACE_EVENT_SCOPE_NAMED(traceContext, "ThreadPoolExecutor::handleResult",
-                          traceEvent);
+  TRACE_EVENT_SCOPE_NAMED(traceContext, TraceLevel::RUNTIME,
+                          "ThreadPoolExecutor::handleResult", traceEvent);
 
   auto runWasSuccess = !err;
 
@@ -367,7 +368,8 @@ void ThreadPoolExecutor::handleDeviceManagerResult(
   bool noNodesInflight = executionState->decrementInflightNodes();
 
   if (traceContext) {
-    TRACE_EVENT_END(traceContext, "ThreadPoolExecutor::handleResult");
+    TRACE_EVENT_END(traceContext, TraceLevel::RUNTIME,
+                    "ThreadPoolExecutor::handleResult");
     // Lock is not necessary as we only access on this runs executor.
     executionState->insertIntoTraceContext(traceContext->getTraceEvents());
   }

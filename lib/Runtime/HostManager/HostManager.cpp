@@ -230,7 +230,8 @@ RunIdentifierTy
 HostManager::runNetwork(llvm::StringRef networkName,
                         std::unique_ptr<ExecutionContext> context,
                         ResultCBTy callback) {
-  TRACE_EVENT_SCOPE(context->getTraceContext(), "HostManager::runNetwork");
+  TRACE_EVENT_SCOPE(context->getTraceContext(), TraceLevel::RUNTIME,
+                    "HostManager::runNetwork");
   auto currentRun = totalRequestCount_++;
 
   NetworkData *network = nullptr;
@@ -266,21 +267,22 @@ HostManager::runNetwork(llvm::StringRef networkName,
     return currentRun;
   }
 
-  executor_->run(
-      networks_[networkName].dag.root.get(), std::move(context), currentRun,
-      [this, callback,
-       name = networkName.str()](RunIdentifierTy runID, llvm::Error err,
-                                 std::unique_ptr<ExecutionContext> context) {
-        {
-          std::lock_guard<std::mutex> networkLock(networkLock_);
-          auto it = networks_.find(name);
-          if (it != networks_.end()) {
-            it->second.refcount--;
-          }
-        }
-        TRACE_EVENT_INSTANT(context->getTraceContext(), "finish_" + name);
-        callback(runID, std::move(err), std::move(context));
-        --activeRequestCount_;
-      });
+  executor_->run(networks_[networkName].dag.root.get(), std::move(context),
+                 currentRun,
+                 [this, callback, name = networkName.str()](
+                     RunIdentifierTy runID, llvm::Error err,
+                     std::unique_ptr<ExecutionContext> context) {
+                   {
+                     std::lock_guard<std::mutex> networkLock(networkLock_);
+                     auto it = networks_.find(name);
+                     if (it != networks_.end()) {
+                       it->second.refcount--;
+                     }
+                   }
+                   TRACE_EVENT_INSTANT(context->getTraceContext(),
+                                       TraceLevel::RUNTIME, "finish_" + name);
+                   callback(runID, std::move(err), std::move(context));
+                   --activeRequestCount_;
+                 });
   return currentRun;
 }

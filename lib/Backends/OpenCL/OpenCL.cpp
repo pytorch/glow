@@ -556,11 +556,12 @@ llvm::Error OpenCLFunction::execute(ExecutionContext *context) {
   kernelProfiling_ = clDoProfile || getTraceInfo().autoInstrumented;
 
   {
-    auto ev = context->scopedEvent("loadPlaceholders");
+    TRACE_EVENT_SCOPE(context, TraceLevel::RUNTIME, "loadPlaceholders");
     loadPlaceholders(context->getPlaceholderBindings());
   }
 
-  auto enqueueEvent = context->scopedEvent("enqueueKernels");
+  TRACE_EVENT_SCOPE_NAMED(context, TraceLevel::RUNTIME, "enqueueKernels",
+                          enqueueEvent);
   for (const auto &I : F_->getInstrs()) {
     // Skip memory allocation instructions as they are NOPs.
     if (isa<AllocActivationInst>(I) || isa<DeallocActivationInst>(I) ||
@@ -1500,18 +1501,18 @@ llvm::Error OpenCLFunction::execute(ExecutionContext *context) {
   clFinish(commands_);
 
   {
-    auto ev = context->scopedEvent("updatePlaceholders");
+    TRACE_EVENT_SCOPE(context, TraceLevel::RUNTIME, "updatePlaceholders");
     updatePlaceholders(context->getPlaceholderBindings());
   }
 
   {
-    auto ev = context->scopedEvent("processInstrumentation");
+    TRACE_EVENT_SCOPE(context, TraceLevel::RUNTIME, "processInstrumentation");
     // Output profiling information.
     translateTraceEvents(context);
   }
 
   {
-    auto ev = context->scopedEvent("releaseKernels");
+    TRACE_EVENT_SCOPE(context, TraceLevel::RUNTIME, "releaseKernels");
     for (auto &kl : kernelLaunches_) {
       clReleaseKernel(kl.kernel_);
     }
