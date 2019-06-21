@@ -41,4 +41,8 @@ FUN_PASS(FoldLeakyRelu)
 FUN_PASS(FoldChannelShuffle)
 FUN_PASS(ConstantFold)
 
+
+// NOTE: This pass must be last; it's used to count the total number of passes.
+FUN_PASS(EmptyPass)
+
 #undef FUN_PASS

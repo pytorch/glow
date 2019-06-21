@@ -25,6 +25,7 @@
 #include "glow/Graph/PlaceholderBindings.h"
 #include "glow/Graph/Utils.h"
 #include "glow/Optimizer/GraphOptimizer/FunctionPasses.h"
+#include "glow/Optimizer/GraphOptimizer/PassManager.h"
 #include "glow/Quantization/Base/Base.h"
 #include "glow/Quantization/Quantization.h"
 
@@ -73,6 +74,8 @@ static bool shouldDeleteConstants(Function *F) {
   }
   return true;
 }
+
+bool EmptyPass::run(Function *F) { return false; }
 
 bool DCE::run(Function *F) {
   LOG_SCOPE(F->getLogContext(), getName());
@@ -2342,6 +2345,12 @@ bool OptimizeQuantization::run(Function *F) {
   }   // For each item in the worklist.
 
   changed |= optimizeQuantizedMaxSplat(F);
+
+  // If nothing has changed then run DCE and sink rescale quantization nodes.
+  if (!changed) {
+    DCE().run(F);
+    changed = SinkRescaleQuantizedNode().run(F);
+  }
   return changed;
 }
 
@@ -2767,18 +2776,9 @@ bool FoldChannelShuffle::run(Function *F) {
 void glow::fold(Function *F, CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), "glow::fold")
 
-  (void)cctx;
-  // Get Reshape nodes merged into constants to simplify folding.
-  OptimizeReshape().run(F);
-
-  // Fold sub-graphs corresponding to leakyRelu.
-  FoldLeakyRelu().run(F);
-
-  // Fold Reshape->Transpose->Reshape into ChannelShuffle when applicable.
-  FoldChannelShuffle().run(F);
-
-  // Perform Dead Code Elimination.
-  DCE().run(F);
+  FunctionPassManager FPM("FoldFPM");
+  addDefaultFoldPasses(FPM);
+  FPM.run(F, cctx);
 }
 
 void glow::fold(Function *F, CompilationMode mode) {
@@ -2789,108 +2789,14 @@ void glow::fold(Function *F, CompilationMode mode) {
 
 void glow::optimize(Function *F, CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), "glow::optimize")
+
   // Indicates if the given function is completely loaded. A temporary
   // workaround until #3213 is complete.
   F->setState(FunctionState::FuncLoaded);
-  // Optimize may be called after backend specific transformations and some
-  // nodes may have become unused. It is a good idea to remove them, before
-  // proceeding with any further optimizations.
-  DCE().run(F);
 
-  // Sink transpose operations in an attempt to cancel them out.
-  // Perform code sinking until a fixed-point is reached.
-  // On big functions, the number of iterations until the fixpoint
-  // is usually at most 2 or 3 iterations.
-  while (SinkCode().run(F)) {
-    // Perform Dead Code Elimination between rounds of code sinking.
-    DCE().run(F);
-    VLOG_IF_EVERY_N(0, google::COUNTER > 1, 100)
-        << "Warning: sinkCode optimization applied another 100 iterations "
-           "without reaching fixed point";
-  }
-
-  // Transposes that don't move data are optimized into Reshapes, which enables
-  // further optimizations.
-  OptimizeTransposeIntoReshape().run(F);
-  // Need to remove old uses that would prohibit Reshape(Constant) optimization.
-  DCE().run(F);
-
-  // Reshapes and transposes can prevent other optimizations from triggering,
-  // so try to optimize them out first.
-  OptimizeReshape().run(F);
-  if (cctx.compMode == CompilationMode::Infer) {
-    TransposeConstants().run(F);
-  }
-
-  // Perform Common Subexpression Elimination.
-  CSE().run(F);
-
-  // Optimize Pad nodes
-  MergePadIntoConvolution().run(F);
-
-  // Perform Dead Code Elimination.
-  DCE().run(F);
-
-  // Merge multiple matmul nodes into a single large matmul.
-  MergeMatMul().run(F);
-
-  // Merge multiple batched adds into a larger batched add.
-  MergeBatchedAdd().run(F);
-
-  // Merge ReduceMean into AveragePool if possible.
-  OptimizeReduceMean().run(F);
-
-  // Convert BatchMatMuls with a broadcasted RHS to a single MatMul.
-  ConvertBroadcastedBatchMatMul().run(F);
-
-  // Perform Dead Code Elimination.
-  DCE().run(F);
-
-  if (cctx.compMode == CompilationMode::Infer) {
-    // Merge batch normalization operations.
-    // Do after transpose constant folding, as weight transposes can prevent
-    // the optimization from triggering.
-    OptimizeBatchNorm().run(F);
-  }
-
-  // Perform Common Subexpression Elimination.
-  CSE().run(F);
-
-  // Optimize Concat nodes.
-  OptimizeConcatNodes().run(F);
-
-  // Optimize arithmetic nodes based on algebraic identities.
-  OptimizeArithmeticNodes().run(F);
-
-  // Optimize Tensor shape transformations.
-  OptimizeSliceOfSplat().run(F);
-
-  // Merge Transpose into MatMul/FC.
-  // Run DCE to ensure correct number of node users.
-  DCE().run(F);
-  MergeTransposeIntoMatMulOrFC().run(F);
-
-  // Optimize away intermediate type conversions.
-  OptimizeConversions().run(F);
-
-  // Optimize quantization related operators.
-  while (OptimizeQuantization().run(F) || SinkRescaleQuantizedNode().run(F)) {
-    DCE().run(F);
-    VLOG_IF_EVERY_N(0, google::COUNTER > 1, 100)
-        << "Warning: Quantization optimization applied another 100 iterations "
-           "without reaching fixed point";
-  }
-
-  // Optimize reshapes introduced during above optimizations.
-  OptimizeReshape().run(F);
-
-  // Run a round of constant folding.
-  if (cctx.optimizationOpts.enableConstantFolding) {
-    ConstantFold().run(F);
-  }
-
-  // Perform Dead Code Elimination.
-  DCE().run(F);
+  FunctionPassManager FPM("GraphOptFPM");
+  addDefaultGraphOptimizationPasses(FPM);
+  FPM.run(F, cctx);
 }
 
 void glow::optimize(Function *F, CompilationMode mode) {
@@ -2980,8 +2886,12 @@ llvm::Error glow::optimizeFunctionBeforeLowering(Function *F,
   // the performance backends that support natively such high-level operators.
   ::glow::fold(F, cctx);
 
-  // Optimize the graph.
+  // Optimize the graph. Skip optimizations that are target-dependent. Save the
+  // old skip set from cctx and restore it after optimizations.
+  FunctionPassSet origSkipSet = cctx.optimizationOpts.funPassesToSkip;
+  cctx.optimizationOpts.funPassesToSkip = getTargetDependentPassSet();
   ::glow::optimize(F, cctx);
+  cctx.optimizationOpts.funPassesToSkip = origSkipSet;
   return llvm::Error::success();
 }
 
@@ -2990,6 +2900,9 @@ llvm::Error glow::optimizeFunctionBeforeLowering(Function *F,
 llvm::Error glow::optimizeFunction(Function *F, const Backend &B,
                                    CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), "glow::optimizeFunction")
+
+  // Allow the backend to modify the optimization options to its preferences.
+  B.setOptimizationOptions(cctx.optimizationOpts);
 
   RETURN_IF_ERR(optimizeFunctionBeforeLowering(F, cctx));
   // Lower the graph into a sequence of low-level linear algebra operations.

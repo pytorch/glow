@@ -17,6 +17,7 @@
 #define GLOW_OPTIMIZER_GRAPHOPTIMIZER_GRAPHOPTIMIZER_H
 
 #include "glow/Optimizer/GraphOptimizer/CompilationContext.h"
+#include "glow/Optimizer/GraphOptimizer/PassManager.h"
 #include "glow/Support/Error.h"
 
 #include "llvm/ADT/ArrayRef.h"
@@ -29,9 +30,19 @@ class Module;
 class PlaceholderBindings;
 class Placeholder;
 
+/// Adds the default graph optimization pipeline to \p PM.
+void addDefaultGraphOptimizationPasses(FunctionPassManager &PM);
+
+/// Adds the default fold pipeline to \p PM.
+void addDefaultFoldPasses(FunctionPassManager &PM);
+
+/// \returns a set containing all target-dependent FunctionPasses.
+FunctionPassSet getTargetDependentPassSet();
+
 /// Perform optimizations on the graph representation.
 void optimize(Function *F, CompilationContext &cctx);
 void optimize(Function *F, CompilationMode mode);
+
 /// Fold nodes that were expressed lowered in the input model.
 void fold(Function *F, CompilationContext &cctx);
 void fold(Function *F, CompilationMode mode);

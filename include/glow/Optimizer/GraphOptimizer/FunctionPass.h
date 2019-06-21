@@ -16,9 +16,12 @@
 #ifndef GLOW_OPTIMIZER_GRAPHOPTIMIZER_FUNCTIONPASS_H
 #define GLOW_OPTIMIZER_GRAPHOPTIMIZER_FUNCTIONPASS_H
 
+#include "llvm/ADT/StringRef.h"
+
 namespace glow {
 
 class Function;
+enum class FunctionPassID;
 
 /// Class used for all passes over Functions. All passes over Functions should
 /// derive from this class, implementing the pass logic and additionally can add
@@ -33,6 +36,9 @@ public:
 
   /// \returns the name of the pass.
   virtual llvm::StringRef getName() const = 0;
+
+  /// \returns the name of the pass.
+  virtual FunctionPassID getID() const = 0;
 };
 
 } // namespace glow

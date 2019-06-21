@@ -98,6 +98,10 @@ public:
   /// performed.
   virtual bool shouldShareBuffers() const { return true; }
 
+  /// Modify the \p optimizationOpts however desired.
+  virtual void
+  setOptimizationOptions(OptimizationOptions &optimizationOpts) const {};
+
   /// \returns true if the Backend supports partial, unpadded tensors for
   /// inputs that can have variable size (e.g., embedding indices).
   virtual bool supportsPartialTensors() const { return false; }
