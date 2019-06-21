@@ -273,6 +273,7 @@ void OpenCLDeviceManager::addNetworkImpl(const Module *module,
                        kernels_cl_src_size);
     OpenCLFunction *function = static_cast<OpenCLFunction *>(func.second);
     function->createProgram(source, options, commands);
+    function->createKernels(commands, deviceId_, buffer->getBuffer());
     functions_.emplace(func.first, func.second);
     buffers_.emplace(func.first, buffer);
     buffer->incrementUsers();
@@ -309,12 +310,13 @@ cl_command_queue
 OpenCLDeviceManager::requestRunCommandQueue(CompiledFunction *function) {
   cl_int err;
   auto traceInfo = function->getTraceInfo();
-  cl_command_queue_properties profiling = 0;
+  cl_command_queue_properties queueProperties =
+      CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE;
   if (clDoProfile || traceInfo.enabled) {
-    profiling = CL_QUEUE_PROFILING_ENABLE;
+    queueProperties = CL_QUEUE_PROFILING_ENABLE;
   }
   cl_command_queue commands =
-      clCreateCommandQueue(context_, deviceId_, profiling, &err);
+      clCreateCommandQueue(context_, deviceId_, queueProperties, &err);
   return commands;
 }
 

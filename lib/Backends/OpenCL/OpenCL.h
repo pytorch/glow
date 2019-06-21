@@ -42,19 +42,44 @@ class Value;
 
 /// A helper struct with information about kernels launches.
 struct KernelLaunch {
-  /// Kernel that was launched.
-  cl_kernel kernel_;
-  /// The name of the kernel that was launched.
+  /// Kernel that should be launched.
+  cl_kernel kernel_{nullptr};
+  /// The name of the kernel that should be launched.
   std::string name_;
-  /// The type of the kernel that was launched.
+  /// The type of the kernel that should be launched.
   std::string type_;
   /// Event associated with the start of the kernel.
-  /// Used only when profiling is enabled.
-  cl_event event_;
-  /// Constructor to be used by launching Glow's CL kernels.
+  cl_event event_{nullptr};
+  /// Global size for the kernel launch.
+  std::vector<size_t> globalSize_;
+  /// Local size for the kernel launch.
+  std::vector<size_t> localSize_;
+  /// Events for prerequisite kernels.
+  std::vector<size_t> prerequisites_;
+  /// Buffers used by the kernel.
+  std::vector<cl_mem> buffers_;
+  /// If true, use the maximum local size at runtime.
+  bool useMaxLocalSize_{false};
+  /// If true, represents copy instruction.
+  bool isCopy_{false};
+  /// Parameters for copy instructions.
+  struct CopyParams {
+    size_t srcOff;
+    size_t destOff;
+    size_t sizeInBytes;
+  } copyParams_;
+  /// Constructors to be used by launching Glow's CL kernels.
+  KernelLaunch(cl_kernel kernel, std::string name, std::string type)
+      : kernel_(kernel), name_(name), type_(type) {}
   KernelLaunch(cl_kernel kernel, std::string name, std::string type,
-               cl_event event)
-      : kernel_(kernel), name_(name), type_(type), event_(event) {}
+               std::vector<size_t> globalSize)
+      : kernel_(kernel), name_(name), type_(type),
+        globalSize_(std::move(globalSize)), useMaxLocalSize_(true) {}
+  KernelLaunch(cl_kernel kernel, std::string name, std::string type,
+               std::vector<size_t> globalSize, std::vector<size_t> localSize)
+      : kernel_(kernel), name_(name), type_(type),
+        globalSize_(std::move(globalSize)), localSize_(std::move(localSize)),
+        useMaxLocalSize_(false) {}
   /// Constructor to be used when launching an "external" CL kernel, e.g.
   /// provided by such libraries like CLBlast, etc.
   KernelLaunch(const std::string &name, std::string type, cl_event event)
@@ -99,7 +124,9 @@ class OpenCLFunction final : public CompiledFunction {
   std::vector<KernelLaunch> kernelLaunches_;
   /// is kernel level profiling (autoInstrumentation) enabled.
   bool kernelProfiling_{false};
-  /// Manual trace events:
+  /// If true, the function will converted to a list of kernels at runtime
+  bool interpret_{false};
+  /// instead of compile time. Manual trace events:
   std::map<std::string, std::pair<Placeholder *, const TraceInfo::Event *>>
       manualTraceEvents_;
 
@@ -132,6 +159,11 @@ public:
                            const std::vector<std::string> &options,
                            cl_command_queue queue);
 
+  /// Create all kernels needed to execute the program ahead of time. Use \p
+  /// queue to JIT compile any specialized kernels.
+  llvm::Error createKernels(cl_command_queue queue, cl_device_id deviceId,
+                            cl_mem deviceBuffer);
+
 private:
   /// Copy the value from a device to a provided buffer.
   /// \returns number of copied bytes.
@@ -159,16 +191,16 @@ private:
 
   /// Enqueue a \p kernel on a provided \p commands queue.
   void enqueueKernel(llvm::StringRef name, cl_command_queue commands,
-                     cl_kernel kernel, cl_device_id device,
+                     cl_kernel kernel, cl_device_id device, cl_event *event,
                      llvm::ArrayRef<size_t> global,
-                     std::vector<KernelLaunch> &kernelLaunches);
+                     const std::vector<cl_event> &deps);
   /// Enqueue a \p kernel on a provided \p commands queue using specified \p
   /// global and \p local work sizes.
   void enqueueKernel(llvm::StringRef name, cl_command_queue commands,
-                     cl_kernel kernel, cl_device_id device,
+                     cl_kernel kernel, cl_device_id device, cl_event *event,
                      llvm::ArrayRef<size_t> global,
                      llvm::ArrayRef<size_t> local,
-                     std::vector<KernelLaunch> &kernelLaunches);
+                     const std::vector<cl_event> &);
 
   /// Load inputs from \p bindings onto the device.
   void loadPlaceholders(PlaceholderBindings *bindings);
