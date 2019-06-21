@@ -16,6 +16,7 @@
 #include "Base.h"
 
 #include "glow/Importer/ONNXIFIModelLoader.h"
+#include "glow/Optimizer/FunctionPasses.h"
 
 #include "llvm/Support/Format.h"
 #include <glog/logging.h>
@@ -60,7 +61,7 @@ onnxStatus Backend::checkGraphCompatibility(const void *onnxModel,
   // Call the backend's transformPostLowering to match the normal compilation
   // pipeline then DCE any nodes that are no longer needed.
   if (glowBackend_->transformPostLowering(function, cctx)) {
-    glow::DCE(function);
+    glow::DCE().run(function);
   }
 
   if (!function->verify()) {

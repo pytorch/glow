@@ -50,9 +50,6 @@ void fold(Function *F, CompilationMode mode);
 void lower(Function *F, CompilationContext &cctx, const Backend *B = nullptr,
            const KindSet &doNotLowerKinds = {});
 
-/// Dead code elimination.
-void DCE(Function *F);
-
 /// Convert placeholders in Module \p M to constants based on the values in \p
 /// bindings.  Do not convert any placeholders explicitly listed in \p vars.
 void convertPlaceholdersToConstants(Function *F,
