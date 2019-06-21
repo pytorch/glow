@@ -488,7 +488,8 @@ llvm::Error HabanaFunction::execute(ExecutionContext *context) {
     EnqueueTensorInfo eti;
     llvm::StringRef name = P->getName();
     eti.tensorName = name.data();
-    eti.tensorSize = T->getUnpaddedSizeInBytes();
+    eti.tensorSize =
+        isPartial ? T->getUnpaddedSizeInBytes() : T->getSizeInBytes();
     uint8_t *ioBufferData;
     ASSIGN_VALUE_OR_RETURN_ERR(ioBufferData, ioBuffer->get(P));
     eti.pTensorData = (char *)ioBufferData;
