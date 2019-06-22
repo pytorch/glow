@@ -164,6 +164,7 @@ add_executable(GraphOptzTest
                GraphOptzTest.cpp)
 target_link_libraries(GraphOptzTest
                       PRIVATE
+                        ExecutionEngine
                         Graph
                         IR
                         GraphOptimizer
@@ -228,6 +229,7 @@ if(GLOW_WITH_CPU)
           PRIVATE
           Backends
           HostManager
+          ExecutionEngine
           Executor
           Graph
           IR
@@ -409,6 +411,7 @@ if(GLOW_WITH_CPU)
   target_link_libraries(ProvisionerTest
                         PRIVATE
                           Backends
+                          ExecutionEngine
                           Graph
                           IR
                           Provisioner
