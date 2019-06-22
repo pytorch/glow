@@ -50,6 +50,80 @@ void loggingStorageDeletionInUserFunc(Storage *s) {
 }
 } // namespace
 
+/// Merge shape \p shape into \p mergeShape, following multidirectional
+/// broadcasting rules.
+static void
+mergeMultidirectionalBroadcastHelper(std::vector<size_t> &mergeShape,
+                                     llvm::ArrayRef<size_t> shape) {
+  size_t shift = mergeShape.size() - shape.size();
+  for (size_t i = 0, e = shape.size(); i < e; i++) {
+    if (shape[i] == 1) {
+      // Just leave mergeShape[i] as it is.
+      continue;
+    }
+
+    assert(
+        ((shape[i] == mergeShape[shift + i]) || (mergeShape[shift + i] == 1)) &&
+        "Incompatible dimension for the broadcast");
+    mergeShape[shift + i] = shape[i];
+  }
+}
+
+/// Utility function which computes the resulting shape in case of
+/// multidirectional broadcasting.
+static std::vector<size_t>
+computeMultidirectionalBroadcastHelper(llvm::ArrayRef<size_t> shape0,
+                                       llvm::ArrayRef<size_t> shape1) {
+  size_t numDims0 = shape0.size();
+  size_t numDims1 = shape1.size();
+  size_t newNumDims = std::max(numDims0, numDims1);
+  std::vector<size_t> reshapeDims(newNumDims, 1);
+
+  mergeMultidirectionalBroadcastHelper(reshapeDims, shape0);
+  mergeMultidirectionalBroadcastHelper(reshapeDims, shape1);
+
+  return reshapeDims;
+}
+
+std::vector<NodeValue>
+Function::broadcastInputs(int axis, const llvm::ArrayRef<NodeValue> inputs) {
+  size_t numInputs = inputs.size();
+
+  if (axis > -1) {
+    assert(
+        numInputs == 2 &&
+        "If axis is specified, not -1, unidirectional broadcast will be used, "
+        "input size must be 2.");
+    return {inputs[0],
+            createBroadcast("broadcast_" + inputs[1].getNode()->getName().str(),
+                            inputs[1], inputs[0].dims(), axis)};
+  }
+
+  assert(numInputs >= 2 && "Invalid input passed in to commonCreateBroadcast.");
+
+  std::vector<size_t> targetDim = computeMultidirectionalBroadcastHelper(
+      inputs[0].dims(), inputs[1].dims());
+
+  for (size_t i = 2; i < numInputs; ++i) {
+    targetDim =
+        computeMultidirectionalBroadcastHelper(targetDim, inputs[i].dims());
+  }
+
+  std::vector<NodeValue> out(numInputs);
+  for (size_t i = 0; i < numInputs; ++i) {
+    NodeValue n = inputs[i];
+    auto dims = n.dims();
+    if (dims != llvm::ArrayRef<size_t>(targetDim)) {
+      unsigned axis = targetDim.size() - dims.size();
+      out[i] = createBroadcast("broadcast_" + n.getNode()->getName().str(), n,
+                               targetDim, axis);
+    } else {
+      out[i] = inputs[i];
+    }
+  }
+  return out;
+}
+
 bool Module::hasFunction(llvm::StringRef name) { return getFunction(name); }
 
 Function *Module::getFunction(llvm::StringRef name) {

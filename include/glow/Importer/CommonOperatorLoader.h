@@ -475,58 +475,57 @@ protected:
     bool broadcast;
     ASSIGN_VALUE_OR_RETURN_ERR(broadcast, getBroadcast(dict));
 
-    NodeValue finalIn0 = in0;
-    NodeValue finalIn1 = in1;
+    int axis = -1;
 
-    if (broadcast) {
-      // Broadcasting can be:
-      // - multidirectional (ONNX opset 7+), or
-      // - unidirectional (ONNX opset 1->6,  Caffe2).
-      if (hasMultidirectionalBroadcast(typeName)) {
-        // Compute the target shape that is a combination of the operand shapes.
-        std::vector<size_t> targetDim;
-        ASSIGN_VALUE_OR_RETURN_ERR(targetDim, computeMultidirectionalBroadcast(
-                                                  in0.dims(), in1.dims()));
-        // Sets the axis of each inputs so that the trailing-most dimensions of
-        // input tensors and the target shape are aligned.
-        int axis0 = targetDim.size() - in0.dims().size();
-        int axis1 = targetDim.size() - in1.dims().size();
-        finalIn0 = G_.createBroadcast(opName, in0, targetDim, axis0);
-        finalIn1 = G_.createBroadcast(opName, in1, targetDim, axis1);
+    // Broadcasting can be:
+    // - multidirectional (ONNX opset 7+), or
+    // - unidirectional (ONNX opset 1->6,  Caffe2).
+
+    // Unidirectional broadcasting consists of broadcasting the right operand
+    // (in1) so that it matches the shape of the left operand (in0).
+    if (broadcast && !hasMultidirectionalBroadcast(typeName)) {
+      // With unidirectional broadcasting, the 'axis' attribute specifies
+      // from how much the right operand shape must be 'shifted' right.
+      // - In Caffe2, the 'axis' attribute is optional. If not specified, axis
+      // must be automatically computed so that the trailing-most dimensions
+      // of in1 is aligned to the trailing-most dimension of in0.
+      // - In ONNX, the 'axis' attribute is mandatory. axis == -1 is
+      // equivalent to no axis specified in Caffe2.
+
+      if (dict.count("axis")) {
+        ASSIGN_VALUE_OR_RETURN_ERR(axis, loadInt(dict["axis"]));
       }
-      // Unidirectional broadcasting consists of broadcasting the right operand
-      // (in1) so that it matches the shape of the left operand (in0).
-      else {
-        // With unidirectional broadcasting, the 'axis' attribute specifies
-        // from how much the right operand shape must be 'shifted' right.
-        // - In Caffe2, the 'axis' attribute is optional. If not specified, axis
-        // must be automatically computed so that the trailing-most dimensions
-        // of in1 is aligned to the trailing-most dimension of in0.
-        // - In ONNX, the 'axis' attribute is mandatory. axis == -1 is
-        // equivalent to no axis specified in Caffe2.
-        int axis = -1;
-        if (dict.count("axis")) {
-          ASSIGN_VALUE_OR_RETURN_ERR(axis, loadInt(dict["axis"]));
-        }
-        if (axis == -1) {
-          // Align trailing most dimensions.
-          axis = in0.dims().size() - in1.dims().size();
-        }
-        finalIn1 = G_.createBroadcast(opName, in1, in0.dims(), axis);
+      if (axis == -1) {
+        // Align trailing most dimensions.
+        axis = in0.dims().size() - in1.dims().size();
       }
     }
 
     Node *node = nullptr;
-    if (typeName == "Mul") {
-      node = G_.createMul(opName, finalIn0, finalIn1);
-    } else if (typeName == "Add") {
-      node = G_.createAdd(opName, finalIn0, finalIn1);
-    } else if (typeName == "Sub") {
-      node = G_.createSub(opName, finalIn0, finalIn1);
-    } else if (typeName == "Div") {
-      node = G_.createDiv(opName, finalIn0, finalIn1);
+    if (broadcast) {
+      if (typeName == "Mul") {
+        node = G_.createNodeWithBroadcast<MulNode>(opName, axis, in0, in1);
+      } else if (typeName == "Add") {
+        node = G_.createNodeWithBroadcast<AddNode>(opName, axis, in0, in1);
+      } else if (typeName == "Sub") {
+        node = G_.createNodeWithBroadcast<SubNode>(opName, axis, in0, in1);
+      } else if (typeName == "Div") {
+        node = G_.createNodeWithBroadcast<DivNode>(opName, axis, in0, in1);
+      } else {
+        RETURN_ERR("Unsupported arithmetic typeName");
+      }
     } else {
-      RETURN_ERR("Unsupported arithmetic typeName");
+      if (typeName == "Mul") {
+        node = G_.createMul(opName, in0, in1);
+      } else if (typeName == "Add") {
+        node = G_.createAdd(opName, in0, in1);
+      } else if (typeName == "Sub") {
+        node = G_.createSub(opName, in0, in1);
+      } else if (typeName == "Div") {
+        node = G_.createDiv(opName, in0, in1);
+      } else {
+        RETURN_ERR("Unsupported arithmetic typeName");
+      }
     }
 
     RETURN_IF_ERR(addNodeAsOutput(op, node));
@@ -1131,25 +1130,6 @@ protected:
     }
 
     return false;
-  }
-
-  /// Utility function which computes the resulting shape in case of
-  /// multidirectional broadcasting.
-  llvm::Expected<std::vector<size_t>>
-  computeMultidirectionalBroadcast(llvm::ArrayRef<size_t> shape0,
-                                   llvm::ArrayRef<size_t> shape1) {
-    size_t numDims0 = shape0.size();
-    size_t numDims1 = shape1.size();
-    size_t newNumDims = numDims0 > numDims1 ? numDims0 : numDims1;
-    std::vector<size_t> reshapeDims(newNumDims);
-
-    for (size_t i = 0; i < newNumDims; i++) {
-      reshapeDims[i] = 1;
-    }
-    RETURN_IF_ERR(mergeMultidirectionalBroadcast(reshapeDims, shape0));
-    RETURN_IF_ERR(mergeMultidirectionalBroadcast(reshapeDims, shape1));
-
-    return reshapeDims;
   }
 
   /// Load pre-trained weights from \p weightDescriptors.
