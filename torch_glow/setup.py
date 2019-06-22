@@ -48,11 +48,20 @@ extras_require = {}
 # # Flags
 # ################################################################################
 
+# store first argument
+assert len(sys.argv) > 0
+first_arg = sys.argv[0]
 
+# parse known arguments
 parser = argparse.ArgumentParser()
-parser.add_argument("--debug", type=bool, default=False, help="Compile with debug on")
+parser.add_argument("--run_cmake", action='store_true', default=False, help="Run cmake")
+parser.add_argument("--release", action='store_true', default=False, help="Compile with debug on")
 parser.add_argument("--cmake_prefix_path", type=str, help="Populates -DCMAKE_PREFIX_PATH")
-args = parser.parse_known_args()[0]
+
+# restore first and remaining arguments to argv
+arg_parse_res = parser.parse_known_args()
+args = arg_parse_res[0]
+sys.argv =  [first_arg] + arg_parse_res[1]
 
 
 # ################################################################################
@@ -97,7 +106,7 @@ class cmake_build(setuptools.Command):
                 '-DGLOW_BUILD_PYTORCH_INTEGRATION=ON',
                 '-DBUILD_SHARED_LIBS=OFF',
                 '-DCMAKE_EXPORT_COMPILE_COMMANDS=ON',
-                '-DCMAKE_BUILD_TYPE={}'.format('Debug' if args.debug else 'Release'),
+                '-DCMAKE_BUILD_TYPE={}'.format('Release' if args.release else 'Debug'),
                 '-DPYTHON_EXECUTABLE={}'.format(sys.executable),
                 # PyTorch cmake args
                 '-DPYTORCH_DIR={}'.format(
@@ -127,7 +136,8 @@ class cmake_build(setuptools.Command):
         is_initial_build = not os.path.exists(CMAKE_BUILD_DIR)
         if is_initial_build:
             os.makedirs(CMAKE_BUILD_DIR)
-        self._run_cmake()
+        if is_initial_build or args.run_cmake:
+            self._run_cmake()
         self._run_build()
 
 
