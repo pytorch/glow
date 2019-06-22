@@ -44,6 +44,8 @@ using FunctionList = std::list<Function *>;
 using ConstList = std::list<Constant *>;
 using PlaceholderList = std::list<Placeholder *>;
 using UnsignedArrayRef = llvm::ArrayRef<size_t>;
+/// Map from original Nodes to cloned Nodes.
+using NodeMap = llvm::DenseMap<Node *, Node *>;
 
 class Module final {
   /// Stores the functions in the module.
@@ -1166,6 +1168,10 @@ Function *differentiate(Function *F, const TrainingConfig &config,
 /// \returns the first SaveNode user of the placeholder \p PH or
 /// nullptr if none are found.
 SaveNode *getOutputSave(Function *F, Placeholder *PH);
+
+/// Clone \p node and its sources into \p newF using old-to-new mapping \p
+/// currToNew.
+Node *recursiveClone(Function *newF, Node *node, NodeMap &currToNew);
 
 /// Helper vectors for common transpose shuffles.
 #define NCHW2NHWC                                                              \
