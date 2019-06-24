@@ -23,7 +23,7 @@ target_link_libraries(onnxifi-glow-lib
                         Graph
                         HostManager
                         Importer
-                        Optimizer
+                        GraphOptimizer
                         Quantization)
 
 target_link_libraries(onnxifi-glow
@@ -34,7 +34,7 @@ target_link_libraries(onnxifi-glow
                         Graph
                         HostManager
                         Importer
-                        Optimizer
+                        GraphOptimizer
                         Quantization)
 
 target_compile_definitions(onnxifi-glow

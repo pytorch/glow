@@ -1,15 +1,3 @@
-add_library(Optimizer
-              IROptimizer.cpp
-              GraphOptimizer.cpp
-              Lower.cpp
-              Quantization.cpp
-              TrainingPreparation.cpp)
+add_subdirectory(GraphOptimizer)
 
-target_link_libraries(Optimizer
-                      PRIVATE
-                        Backend
-                        Converter
-                        Graph
-                        IR
-                        Quantization
-                        QuantizationBase)
+add_subdirectory(IROptimizer)

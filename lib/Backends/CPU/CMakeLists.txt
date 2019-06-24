@@ -88,7 +88,7 @@ target_link_libraries(CPUBackend
                         CodeGen
                         Graph
                         IR
-                        Optimizer
+                        IROptimizer
                         QuantizationBase
                         LLVMIRCodeGen)
 add_dependencies(CPUBackend CPURuntime)

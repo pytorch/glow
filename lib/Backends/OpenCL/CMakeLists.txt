@@ -46,7 +46,7 @@ target_link_libraries(OpenCLBackend
                       CodeGen
                       IR
                       LLVMCore
-                      Optimizer
+                      IROptimizer
                       QuantizationBase)
 
 target_link_libraries(OpenCLBackend

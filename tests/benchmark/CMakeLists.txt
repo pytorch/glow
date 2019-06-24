@@ -25,6 +25,6 @@ target_link_libraries(RuntimeBench
                         Executor
                         HostManager
                         Graph
-                        Optimizer
+                        GraphOptimizer
                         benchmark)
 endif()

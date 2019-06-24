@@ -17,7 +17,6 @@ target_link_libraries(Habana
                         CodeGen
                         IR
                         LLVMCore
-                        Optimizer
                         QuantizationBase
                         Support)
 

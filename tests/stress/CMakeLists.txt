@@ -18,5 +18,5 @@ target_link_libraries(ParameterSweepTest
                         glog::glog
                         gtest
                         Graph
-                        Optimizer
+                        GraphOptimizer
                         Support)
