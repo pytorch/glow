@@ -272,8 +272,12 @@ void HabanaDeviceManager::runFunctionImpl(RunIdentifierTy runId,
                                           std::string functionName,
                                           std::unique_ptr<ExecutionContext> ctx,
                                           runtime::ResultCBTy resultCB) {
-  TRACE_EVENT_SCOPE(ctx->getTraceContext(), TraceLevel::RUNTIME,
-                    "HabanaDM::runnerThread");
+  TRACE_EVENT_SCOPE_NAMED(ctx->getTraceContext(), TraceLevel::RUNTIME,
+                          "HabanaDM::runnerThread", trEvent);
+  if (ctx->getTraceContext()) {
+    ctx->getTraceContext()->setThreadName(
+        llvm::formatv("Habana {0} (enqueue)", deviceId_).str());
+  }
   // Try to find the function with the given name in functions_.
   uint64_t topologyId;
   HabanaFunction *function;
@@ -305,6 +309,11 @@ void HabanaDeviceManager::runFunctionImpl(RunIdentifierTy runId,
       if (auto err = chk_make_err(activateTopoRes)) {
         LOG(ERROR) << "synActivateTopology failed with status "
                    << activateTopoRes;
+        trEvent.addArg(
+            "error", llvm::formatv("synActivateTopology failed with status {0}",
+                                   activateTopoRes)
+                         .str());
+        TRACE_EVENT_SCOPE_END_NAMED(trEvent);
         resultCB(runId, std::move(err), std::move(ctx));
         return;
       }
@@ -321,6 +330,8 @@ void HabanaDeviceManager::runFunctionImpl(RunIdentifierTy runId,
 
   auto executeErr = function->execute(ctx.get());
   if (executeErr) {
+    trEvent.addArg("error", "execute() failed");
+    TRACE_EVENT_SCOPE_END_NAMED(trEvent);
     resultCB(runId, std::move(executeErr), std::move(ctx));
     return;
   }
@@ -333,6 +344,11 @@ void HabanaDeviceManager::runFunctionImpl(RunIdentifierTy runId,
                      resultCB = std::move(resultCB)]() mutable {
     TRACE_EVENT_SCOPE(ctx->getTraceContext(), TraceLevel::RUNTIME,
                       "HabanaDM::waiterThread");
+    if (ctx->getTraceContext()) {
+      ctx->getTraceContext()->setThreadName(
+          llvm::formatv("Habana {0} (waiter)", deviceId_).str());
+    }
+
     TRACE_EVENT_BEGIN(ctx->getTraceContext(), TraceLevel::RUNTIME, "wait");
     auto &habanaHandle =
         static_cast<HabanaBindings *>(ctx->getDeviceBindings())->getHandle();
@@ -359,29 +375,35 @@ void HabanaDeviceManager::runFunctionImpl(RunIdentifierTy runId,
     } else {
       // Copy the execution outputs from the designated IO buffer back to the
       // PlaceholderBindings inside ctx.
-      TRACE_EVENT_BEGIN(ctx->getTraceContext(), TraceLevel::RUNTIME,
-                        "copyOutputs");
+      TRACE_EVENT_SCOPE_NAMED(ctx->getTraceContext(), TraceLevel::RUNTIME,
+                              "copyOutputs", coEvent);
       auto bindings = ctx->getPlaceholderBindings();
+      size_t tensors{0}, bytes{0};
       for (const auto &ph : function->getOutputs()) {
         auto *tensor = bindings->get(ph);
         if (!tensor) {
           tensor = bindings->get(bindings->getPlaceholderByName(ph->getName()));
         }
+        tensors++;
 
         if (auto ioBufferDataOrErr = ioBuffer->get(ph)) {
           memcpy(tensor->getUnsafePtr(), *ioBufferDataOrErr,
                  ph->getType()->getSizeInBytes());
+          bytes += ph->getType()->getSizeInBytes();
         } else {
           // Return the IO buffer to the IO buffer pool.
           ioBufferPool->put(std::move(ioBuffer));
-          TRACE_EVENT_END(ctx->getTraceContext(), TraceLevel::RUNTIME,
-                          "copyOutputs");
+          coEvent.addArg("tensors", std::to_string(tensors));
+          coEvent.addArg("bytes", std::to_string(bytes));
+          coEvent.addArg("missingTensor", ph->getName().str());
+          TRACE_EVENT_SCOPE_END_NAMED(coEvent);
           resultCB(runId, ioBufferDataOrErr.takeError(), std::move(ctx));
           return;
         }
       }
-      TRACE_EVENT_END(ctx->getTraceContext(), TraceLevel::RUNTIME,
-                      "copyOutputs");
+      coEvent.addArg("tensors", std::to_string(tensors));
+      coEvent.addArg("bytes", std::to_string(bytes));
+      TRACE_EVENT_SCOPE_END_NAMED(coEvent);
 
       // Return the IO buffer to the IO buffer pool.
       ioBufferPool->put(std::move(ioBuffer));

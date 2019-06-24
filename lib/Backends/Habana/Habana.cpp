@@ -459,7 +459,8 @@ HabanaFunction::~HabanaFunction() {
 
 llvm::Error HabanaFunction::execute(ExecutionContext *context) {
   auto *tc = context->getTraceContext();
-  TRACE_EVENT_SCOPE(tc, TraceLevel::RUNTIME, "execute");
+  TRACE_EVENT_SCOPE_NAMED(tc, TraceLevel::RUNTIME, "execute", exEvent);
+  exEvent.addArg("recipe", recipeName_);
 
   uint32_t deviceId =
       static_cast<HabanaBindings *>(context->getDeviceBindings())
@@ -476,12 +477,14 @@ llvm::Error HabanaFunction::execute(ExecutionContext *context) {
 
   // Set up input buffers and record bindings for enqueuing.
   TRACE_EVENT_SCOPE_NAMED(tc, TraceLevel::RUNTIME, "copyInputs", ciEvent);
+  size_t tensors{0}, bytes{0};
   auto *bindings = context->getPlaceholderBindings();
   for (auto *P : getInputs()) {
     Tensor *T = bindings->get(P);
     if (!T) {
       T = bindings->get(bindings->getPlaceholderByName(P->getName()));
     }
+    tensors++;
     RETURN_ERR_IF_NOT(T, "Failed to get input tensor.");
 
     bool isPartial = partialInputs_.count(P);
@@ -494,6 +497,8 @@ llvm::Error HabanaFunction::execute(ExecutionContext *context) {
     ASSIGN_VALUE_OR_RETURN_ERR(ioBufferData, ioBuffer->get(P));
     eti.pTensorData = (char *)ioBufferData;
 
+    bytes += eti.tensorSize;
+
     inputInfo.push_back(eti);
     // Copy from the tensor into the designated IO buffer.
     memcpy(eti.pTensorData, T->getUnsafePtr(), T->getUnpaddedSizeInBytes());
@@ -502,6 +507,8 @@ llvm::Error HabanaFunction::execute(ExecutionContext *context) {
              T->getSizeInBytes() - T->getUnpaddedSizeInBytes());
     }
   }
+  ciEvent.addArg("tensors", std::to_string(tensors));
+  ciEvent.addArg("bytes", std::to_string(bytes));
   TRACE_EVENT_SCOPE_END_NAMED(ciEvent);
 
   TRACE_EVENT_SCOPE_NAMED(tc, TraceLevel::RUNTIME, "registerOutputs", roEvent);
@@ -533,9 +540,13 @@ llvm::Error HabanaFunction::execute(ExecutionContext *context) {
     RETURN_IF_ERR(dumpTopologyInfo(deviceId, topologyId));
   }
   TRACE_EVENT_SCOPE_NAMED(tc, TraceLevel::RUNTIME, "synEnqueue", seEvent);
-  chk(synEnqueueByName(
+  auto res = synEnqueueByName(
       deviceId, inputInfo.empty() ? &noInputEti : inputInfo.data(),
-      inputInfo.size(), outputInfo.data(), outputInfo.size(), &handle));
+      inputInfo.size(), outputInfo.data(), outputInfo.size(), &handle);
+  seEvent.addArg("result", std::to_string(res));
+  if (res != synSuccess) {
+    return chk_make_err(res);
+  }
   TRACE_EVENT_SCOPE_END_NAMED(seEvent);
 
   static_cast<HabanaBindings *>(context->getDeviceBindings())
