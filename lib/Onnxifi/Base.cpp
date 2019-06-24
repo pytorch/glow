@@ -111,6 +111,7 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
   if (traceEvents || GlowDumpDebugTraces) {
     ctx->setTraceContext(llvm::make_unique<TraceContext>(TraceLevel::STANDARD));
     traceContext = ctx->getTraceContext();
+    traceContext->setThreadName("Onnxifi");
   }
   TRACE_EVENT_SCOPE(traceContext, TraceLevel::RUNTIME, "Onnxifi::setIOAndRun");
   TRACE_EVENT_SCOPE_NAMED(traceContext, TraceLevel::RUNTIME, "adjustInputs",

@@ -145,6 +145,10 @@ void TraceContext::setThreadName(int tid, llvm::StringRef name) {
   threadNames_[tid] = name;
 }
 
+void TraceContext::setThreadName(llvm::StringRef name) {
+  setThreadName(TraceEvent::getThreadId(), name);
+}
+
 void TraceContext::dump(llvm::StringRef filename,
                         const std::string &processName) {
   TraceEvent::dumpTraceEvents(getTraceEvents(), filename,

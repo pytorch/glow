@@ -198,6 +198,11 @@ public:
 
   /// Sets the human readable \p name for thread \tid.
   void setThreadName(int tid, llvm::StringRef name);
+
+  /// Sets the human readable \p name for the current thread (by
+  /// TraceEvent::getThreadId()).
+  void setThreadName(llvm::StringRef name);
+
   /// \returns the list of human readable thread names.
   std::map<int, std::string> &getThreadNames() { return threadNames_; }
 

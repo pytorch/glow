@@ -193,15 +193,12 @@ bool ExecutionState::incrementNodeParentsDone(const DAGNode *node,
   return (newValue == numParents);
 }
 
-void ExecutionState::insertIntoTraceContext(std::vector<TraceEvent> &events) {
+void ExecutionState::insertIntoTraceContext(TraceContext *runCtx) {
   if (!resultCtx_->getTraceContext()) {
-    events.clear();
     return;
   }
 
-  std::move(
-      events.begin(), events.end(),
-      std::back_inserter(resultCtx_->getTraceContext()->getTraceEvents()));
+  resultCtx_->getTraceContext()->merge(runCtx);
 }
 
 void ExecutionState::removeIntermediatePlaceholders() {
@@ -371,7 +368,7 @@ void ThreadPoolExecutor::handleDeviceManagerResult(
     TRACE_EVENT_END(traceContext, TraceLevel::RUNTIME,
                     "ThreadPoolExecutor::handleResult");
     // Lock is not necessary as we only access on this runs executor.
-    executionState->insertIntoTraceContext(traceContext->getTraceEvents());
+    executionState->insertIntoTraceContext(traceContext);
   }
 
   if (noNodesInflight) {

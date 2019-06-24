@@ -85,7 +85,7 @@ public:
   bool incrementNodeParentsDone(const DAGNode *node, unsigned increment = 1);
 
   /// Move all events from the provided vector into the top level resultContxt.
-  void insertIntoTraceContext(std::vector<TraceEvent> &events);
+  void insertIntoTraceContext(TraceContext *runCtx);
 
   /// Remove intermediate placeholders not required in the final output.
   void removeIntermediatePlaceholders();
