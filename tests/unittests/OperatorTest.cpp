@@ -3032,7 +3032,7 @@ static void testConcatVectors(glow::PlaceholderBindings &bindings,
   (void)RNWH;
 
   for (size_t i = 0; i < 60; i++) {
-    EXPECT_NEAR(RNWH.at({i}), i, 0.001);
+    EXPECT_NEAR(RNWH.at({i}), static_cast<DataType>(i), 0.001);
   }
 }
 
@@ -3042,10 +3042,22 @@ TEST_P(OperatorTest, concatVectors_Int64) {
   testConcatVectors<int64_t>(bindings_, mod_, F_, EE_, ElemKind::Int64ITy);
 }
 
+/// Test concatenating vectors that are Int32ITy.
+TEST_P(OperatorTest, concatVectors_Int32) {
+  ENABLED_BACKENDS(Interpreter);
+  testConcatVectors<int32_t>(bindings_, mod_, F_, EE_, ElemKind::Int32ITy);
+}
+
 /// Test concatenating vectors that are Int8Qty.
 TEST_P(OperatorTest, concatVectors_Int8) {
   ENABLED_BACKENDS(Interpreter, CPU);
   testConcatVectors<int8_t>(bindings_, mod_, F_, EE_, ElemKind::Int8QTy);
+}
+
+/// Test concatenating vectors that are BoolTy.
+TEST_P(OperatorTest, concatVectors_Bool) {
+  ENABLED_BACKENDS(Interpreter);
+  testConcatVectors<bool>(bindings_, mod_, F_, EE_, ElemKind::BoolTy);
 }
 
 /// Test concatenating vectors that are FloatTy.
@@ -3121,11 +3133,28 @@ TEST_P(OperatorTest, concatVectorsRepeated_Int64) {
 
 /// Check that concatenating two tensors repeatedly is correct. This is
 /// intended to verify that IRGen to InsertTensor instructions with axis/count
+/// works correctly. Testing Int32ITy data.
+TEST_P(OperatorTest, concatVectorsRepeated_Int32) {
+  ENABLED_BACKENDS(Interpreter);
+  testConcatVectorsRepeated<int32_t>(bindings_, mod_, F_, EE_,
+                                     ElemKind::Int32ITy);
+}
+
+/// Check that concatenating two tensors repeatedly is correct. This is
+/// intended to verify that IRGen to InsertTensor instructions with axis/count
 /// works correctly. Testing Int8QTy data.
 TEST_P(OperatorTest, concatVectorsRepeated_Int8) {
   ENABLED_BACKENDS(Interpreter, CPU);
   testConcatVectorsRepeated<int8_t>(bindings_, mod_, F_, EE_,
                                     ElemKind::Int8QTy);
+}
+
+/// Check that concatenating two tensors repeatedly is correct. This is
+/// intended to verify that IRGen to InsertTensor instructions with axis/count
+/// works correctly. Testing BoolTy data.
+TEST_P(OperatorTest, concatVectorsRepeated_Bool) {
+  ENABLED_BACKENDS(Interpreter);
+  testConcatVectorsRepeated<bool>(bindings_, mod_, F_, EE_, ElemKind::BoolTy);
 }
 
 /// Check that concatenating two tensors repeatedly is correct. This is
