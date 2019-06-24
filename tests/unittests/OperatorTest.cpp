@@ -5481,6 +5481,61 @@ TEST_P(OperatorTest, RowwiseQuantizedSparseLengthsSum) {
   EXPECT_TRUE(expected.isEqual(result, 0.03));
 }
 
+TEST_P(OperatorTest, RepeatedSLSWithPartialTensors) {
+  ENABLED_BACKENDS(Habana);
+
+  constexpr size_t embeddingRows = 1275;
+  constexpr size_t numLengths = 20;
+  constexpr size_t maxIndices = 20000;
+  constexpr size_t numIndices = 20; // Must be less than sum(lengths).
+  constexpr size_t iterations = 33;
+
+  auto *data =
+      mod_.createConstant(ElemKind::FloatTy, {embeddingRows, 1}, "data");
+  data->getPayloadMutable().getHandle<float>().randomize(-1.0, 1.0,
+                                                         mod_.getPRNG());
+  auto *indices = mod_.createPlaceholder(ElemKind::Int64ITy, {maxIndices},
+                                         "indices", false);
+  auto *lengths = mod_.createPlaceholder(ElemKind::Int32ITy, {numLengths},
+                                         "lengths", false);
+  auto *SLS = F_->createSparseLengthsSum("SLS", data, indices, lengths);
+  auto *save = F_->createSave("save", SLS);
+  auto *outPH = save->getPlaceholder();
+  EE_.compile(CompilationMode::Infer, F_);
+
+  Tensor indicesReal(ElemKind::Int64ITy, {numIndices});
+  indicesReal.getHandle<int64_t>().randomize(0, embeddingRows - 1,
+                                             mod_.getPRNG());
+  Tensor indicesPartial(indicesReal.getUnsafePtr(), indices->getType(),
+                        indicesReal.getSizeInBytes());
+  Tensor indicesPadded(indices->getType());
+  indicesPadded.zero();
+  memcpy(indicesPadded.getUnsafePtr(), indicesReal.getUnsafePtr(),
+         numIndices * sizeof(int64_t));
+
+  Tensor lengthsReal(ElemKind::Int32ITy, {numLengths});
+  lengthsReal.getHandle<int32_t>().clear(1);
+  Tensor lengthsPartial(lengthsReal.getUnsafePtr(), lengths->getType(),
+                        lengthsReal.getSizeInBytes());
+  Tensor lengthsPadded(ElemKind::Int32ITy, {numLengths});
+  lengthsPadded.assign(&lengthsReal);
+
+  bindings_.insert(indices, std::move(indicesPartial));
+  bindings_.insert(lengths, std::move(lengthsPartial));
+  bindings_.allocate(outPH);
+
+  PlaceholderBindings paddedBindings;
+  paddedBindings.insert(indices, std::move(indicesPadded));
+  paddedBindings.insert(lengths, std::move(lengthsPadded));
+  paddedBindings.allocate(outPH);
+
+  for (size_t i = 0; i < iterations; i++) {
+    EE_.run(bindings_);
+    EE_.run(paddedBindings);
+    ASSERT_TRUE(bindings_.get(outPH)->isEqual(*paddedBindings.get(outPH)));
+  }
+}
+
 TEST_P(OperatorTest, FusedRowwiseQuantizedSparseLengthsWeightedSum) {
   ENABLED_BACKENDS(Interpreter, CPU, Habana);
 
