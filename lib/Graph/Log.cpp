@@ -130,18 +130,23 @@ void LogContext::logNodeInputChange(const Node *user,
           "Name: {2}) :: ",
           getFullScopeName(), user->getKindName(), user->getName())
           .str());
-  // prevOpr and newOpr should never be null for the places we intercept.
+
+  // prevOpr.getNode()should never be null.
   addLogContent(
       llvm::formatv("PrevOprValue(Kind: {0}, Name: {1}, ResNo: {2}) -> ",
                     prevOprVal.getNode()->getKindName(),
                     prevOprVal.getNode()->getName(), prevOprVal.getResNo())
           .str());
 
-  addLogContent(
-      llvm::formatv("NewOprValue(Kind: {0}, Name: {1}, ResNo: {2}) }\n",
-                    newOprVal.getNode()->getKindName(),
-                    newOprVal.getNode()->getName(), newOprVal.getResNo())
-          .str());
+  if (newOprVal.getNode()) {
+    addLogContent(
+        llvm::formatv("NewOprValue(Kind: {0}, Name: {1}, ResNo: {2}) }\n",
+                      newOprVal.getNode()->getKindName(),
+                      newOprVal.getNode()->getName(), newOprVal.getResNo())
+            .str());
+  } else {
+    addLogContent("NewOprValue(null) }\n");
+  }
 }
 
 ScopedLogBlock::ScopedLogBlock(LogContext &ctx, llvm::StringRef name)
