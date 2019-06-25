@@ -33,9 +33,9 @@ set(CPURunttimeCompilationOptions
       # string.
       #
 
-      --sysroot=/usr/arm-linux-gnueabihf/
-      -target armv7-neon-linux-gnueabihf 
-      -I/usr/arm-linux-gnueabihf/include/c++/7.4.0/arm-linux-gnueabihf/
+      # --sysroot=/usr/arm-linux-gnueabihf/
+      # -target armv7-neon-linux-gnueabihf 
+      # -I/usr/arm-linux-gnueabihf/include/c++/7.4.0/arm-linux-gnueabihf/
       )
 
 set(libjit_files "libjit;libjit_conv;libjit_matmul")
