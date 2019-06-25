@@ -187,6 +187,7 @@ int main(int argc, char **argv)
     network_data.input_tensor_name = arguments.in_name;
     network_data.output_tensor_name = arguments.out_name;
     network_data.weights_file_name = arguments.weights_file;
+    network_data.do_perf_monitoring = arguments.perf_monitor;
 
     /* Initialize the runtime data... */
     retval = init_runtime_data(&network_data, &runtime_data);
@@ -230,7 +231,8 @@ int main(int argc, char **argv)
     }
 
 #ifdef ENABLE_PERF_MONITORING
-    report_performance(&(runtime_data.ps), arguments.perf_log_file);
+    if (runtime_data.do_perf_monitoring)
+        report_performance(&(runtime_data.ps), arguments.perf_log_file);
 #endif
 
     /* Finally, don't forget to clean up... */
@@ -468,6 +470,7 @@ int retreive_and_store_output(struct InferenceIO *inference_io, const struct arg
     const size_t size = arguments->batch * arguments->out_tensor_size;
     size_t bytes_total;
     int bytes_written;
+    uint8_t *buffer;
     int fd;
     int retval = X_SUCCESS;
 
@@ -478,8 +481,9 @@ int retreive_and_store_output(struct InferenceIO *inference_io, const struct arg
     }
 
     bytes_total = 0;
+    buffer = inference_io->output;
     while (bytes_total < size) {
-        bytes_written = write(fd, inference_io->output, size - bytes_total);
+        bytes_written = write(fd, buffer, size - bytes_total);
         bytes_total += bytes_written;
 
         if (bytes_written <= 0) {

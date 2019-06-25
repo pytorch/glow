@@ -37,13 +37,16 @@ init_runtime_data(const struct NetworkData *network_data, struct RuntimeData *ru
     (void) memset(runtime_data, 0x0, sizeof(struct RuntimeData));
 
 #ifdef ENABLE_PERF_MONITORING
-    (void) memset(&(runtime_data->ps), 0x0, sizeof(struct PerfStatistics));
-    (void) memset(&global_pd, 0x0, sizeof(struct PerfData));
+    runtime_data->do_perf_monitoring = network_data->do_perf_monitoring;
+    if (runtime_data->do_perf_monitoring) {
+        (void) memset(&(runtime_data->ps), 0x0, sizeof(struct PerfStatistics));
+        (void) memset(&global_pd, 0x0, sizeof(struct PerfData));
 
-    retval = init_perf_monitoring(&global_pd);
-    if (retval == -1) {
-        perror("ERROR: unable to initialize perf event");
-        return X_FAILURE;
+        retval = init_perf_monitoring(&global_pd);
+        if (retval == -1) {
+            perror("ERROR: unable to initialize perf event");
+            return X_FAILURE;
+        }
     }
 #endif
 
@@ -52,7 +55,8 @@ init_runtime_data(const struct NetworkData *network_data, struct RuntimeData *ru
         runtime_data->const_weights = result;
 
 #ifdef ENABLE_PERF_MONITORING
-        global_pd.ps.const_weights_size = network_data->bundle_config->const_weight_vars_memsize;
+        if (runtime_data->do_perf_monitoring)
+            global_pd.ps.const_weights_size = network_data->bundle_config->const_weight_vars_memsize;
 #endif
 
         result = init_mutable_weights(network_data->bundle_config);
@@ -115,7 +119,8 @@ cleanup_runtime_data(struct RuntimeData *runtime_data)
 
 
 #ifdef ENABLE_PERF_MONITORING
-    (void) stop_perf_monitoring(&global_pd);
+    if (runtime_data->do_perf_monitoring)
+        (void) stop_perf_monitoring(&global_pd);
 #endif
 }
 
@@ -145,7 +150,8 @@ run_inference(const struct InferenceIO *iio, struct RuntimeData *runtime_data)
     current_output_offset = 0;
 
 #ifdef ENABLE_PERF_MONITORING
-    global_pd.ps.num_cases = iio->batch_size;
+    if (runtime_data->do_perf_monitoring)
+        global_pd.ps.num_cases = iio->batch_size;
 #endif
 
     for (batch_counter = 0; batch_counter < iio->batch_size; ++batch_counter) {
@@ -154,15 +160,18 @@ run_inference(const struct InferenceIO *iio, struct RuntimeData *runtime_data)
                     iio->in_len);
 
 #ifdef ENABLE_PERF_MONITORING
-        (void) resume_perf_monitoring(&global_pd);
+        if (runtime_data->do_perf_monitoring)
+            (void) resume_perf_monitoring(&global_pd);
 #endif
         (runtime_data->inference_func)(runtime_data->const_weights,
                                     runtime_data->mut_weights,
                                     runtime_data->activations);
 #ifdef ENABLE_PERF_MONITORING
-        (void) pause_perf_monitoring(&global_pd);
-        (void) read_perf_statistics(&global_pd);
-        (void) memcpy(&(runtime_data->ps), &(global_pd.ps), sizeof(struct PerfStatistics));
+        if (runtime_data->do_perf_monitoring) {
+            (void) pause_perf_monitoring(&global_pd);
+            (void) read_perf_statistics(&global_pd);
+            (void) memcpy(&(runtime_data->ps), &(global_pd.ps), sizeof(struct PerfStatistics));
+        }
 #endif
 
         (void) memcpy(iio->output + current_output_offset,

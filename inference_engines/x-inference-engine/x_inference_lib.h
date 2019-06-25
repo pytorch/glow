@@ -42,6 +42,7 @@ struct RuntimeData
 
 #ifdef ENABLE_PERF_MONITORING
     struct PerfStatistics ps;
+    int do_perf_monitoring;
 #endif
 };
 
@@ -63,6 +64,7 @@ struct NetworkData
     char *output_tensor_name;
     char *weights_file_name;
     InferenceFunctionPtr_t inference_function;
+    int do_perf_monitoring;
 };
 
 int init_runtime_data(const struct NetworkData *network_data, struct RuntimeData *runtime_data);
