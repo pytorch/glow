@@ -978,17 +978,17 @@ llvm::Error Partitioner::Partition(CompilationContext &cctx) {
     auto availMem = backendMap_[i->second].memSize;
     funcs.push_back(func);
     assert(func->verify() && "Conversion led to invalid function");
-    // Step 2.1 : Optimize a function if it has not been optimized yet.
+    // Step 2.1 : optimize a function if it has not been optimized yet.
     if (!optimized_) {
       RETURN_IF_ERR(::glow::optimizeFunction(func, *backend, cctx));
     }
 
-    // Step 2.2 : Get the min memory usage and the roofline memory bandwidth
+    // Step 2.2 : get the min memory usage and the roofline memory bandwidth
     // estimate for each op.
     initOpMemUsage(func);
     initOpComputeTime(func);
 
-    // Step 2.3 : Apply graph partitioning algrithm to find out the partition.
+    // Step 2.3 : apply graph partitioning algrithm to find out the partition.
     NodeToFunctionMap partitionMap =
         selectPartitions(func, availMem, i->second);
     mapping.insert(partitionMap);
@@ -997,7 +997,7 @@ llvm::Error Partitioner::Partition(CompilationContext &cctx) {
   // Check if the memory usage meets the device memory limitation.
   RETURN_IF_ERR(memoryUsageValidation(mapping));
 
-  // Step 4 : assign each partition with a logical device id. The partitions
+  // Step 3 : assign each partition with a logical device id. The partitions
   // with the same logical device id will be assigned into the same physical
   // device.
   logicalDeviceID_ = assignLogicalDeviceID(mapping);
@@ -1006,10 +1006,10 @@ llvm::Error Partitioner::Partition(CompilationContext &cctx) {
   // devices.
   RETURN_IF_ERR(logicalDevicesValidation(mapping));
 
-  // Step 5 : do the real partitioning for the function list.
+  // Step 4 : do the real partitioning for the function list.
   doPartitioning(origName, funcs, mapping, true);
 
-  // Step 6 : Post-partition optimization - Adjust the logicalDevice for each
+  // Step 5 : post-partition optimization - Adjust the logicalDevice for each
   // DAGNode.
   if (saturateHost_ && backends.size() == 1 &&
       mapping.getPartitions().size() < deviceInfo_.size()) {
@@ -1019,7 +1019,7 @@ llvm::Error Partitioner::Partition(CompilationContext &cctx) {
     saturateHost(logicalDeviceID_);
   }
 
-  // Step 5: clean up and verify the generate new functions.
+  // Step 6 : clean up and verify the generate new functions.
   for (auto i = funcToBackend.begin(); i != funcToBackend.end(); ++i) {
     module_->eraseFunction(i->first);
   }
