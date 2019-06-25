@@ -15,9 +15,11 @@
  */
 
 #include "glow/Backend/Backend.h"
+
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/PlaceholderBindings.h"
 #include "glow/IR/Instrs.h"
+#include "glow/Optimizer/GraphOptimizer/CompilationContext.h"
 
 using namespace glow;
 

@@ -16,6 +16,7 @@
 
 #include "InlineOnnxifi.h"
 
+#include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
 #include "glow/Quantization/Quantization.h"
 #include "glow/Quantization/Serialization.h"
 #include "glow/Support/Support.h"

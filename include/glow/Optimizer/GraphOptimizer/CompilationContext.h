@@ -13,8 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#ifndef GLOW_OPTIMIZER_COMPILATIONCONTEXT_H
-#define GLOW_OPTIMIZER_COMPILATIONCONTEXT_H
+#ifndef GLOW_OPTIMIZER_GRAPHOPTIMIZER_COMPILATIONCONTEXT_H
+#define GLOW_OPTIMIZER_GRAPHOPTIMIZER_COMPILATIONCONTEXT_H
 
 #include "glow/Backends/BackendOptions.h"
 #include "glow/Graph/PlaceholderBindings.h"
@@ -109,4 +109,4 @@ using CompilationMode = CompilationContext::CompilationMode;
 
 }; // namespace glow
 
-#endif // GLOW_OPTIMIZER_COMPILATIONCONTEXT_H
+#endif // GLOW_OPTIMIZER_GRAPHOPTIMIZER_COMPILATIONCONTEXT_H

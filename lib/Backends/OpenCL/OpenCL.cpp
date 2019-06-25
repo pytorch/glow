@@ -28,6 +28,7 @@
 #include "glow/Graph/Nodes.h"
 #include "glow/IR/IRUtils.h"
 #include "glow/IR/Instrs.h"
+#include "glow/Optimizer/IROptimizer/IROptimizer.h"
 #include "glow/Quantization/Base/Base.h"
 #include "glow/Support/Debug.h"
 

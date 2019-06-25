@@ -23,6 +23,7 @@
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/PlaceholderBindings.h"
 #include "glow/IR/Instrs.h"
+#include "glow/Optimizer/IROptimizer/IROptimizer.h"
 #include "glow/Support/Debug.h"
 
 #include "llvm/ADT/STLExtras.h"

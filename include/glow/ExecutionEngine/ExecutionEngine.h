@@ -23,7 +23,6 @@
 #include "glow/Base/Traits.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/PlaceholderBindings.h"
-#include "glow/Optimizer/Optimizer.h"
 
 #include "llvm/ADT/ArrayRef.h"
 

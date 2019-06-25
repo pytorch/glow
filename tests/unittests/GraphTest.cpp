@@ -23,6 +23,7 @@
 #include "glow/Graph/Utils.h"
 #include "glow/IR/IR.h"
 #include "glow/IR/Instrs.h"
+#include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
 
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/Support/FileSystem.h"

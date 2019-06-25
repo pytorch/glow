@@ -14,13 +14,14 @@
  * limitations under the License.
  */
 
+#include "glow/Optimizer/IROptimizer/IROptimizer.h"
+
 #include "glow/Backend/Backend.h"
 #include "glow/Graph/Graph.h"
 #include "glow/IR/IR.h"
 #include "glow/IR/IRBuilder.h"
 #include "glow/IR/IRUtils.h"
 #include "glow/IR/Instrs.h"
-#include "glow/Optimizer/Optimizer.h"
 #include "glow/Support/Debug.h"
 
 #include "llvm/ADT/SetVector.h"

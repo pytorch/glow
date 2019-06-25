@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#ifndef GLOW_OPTIMIZER_TRAININGPREPARATION_H
-#define GLOW_OPTIMIZER_TRAININGPREPARATION_H
+#ifndef GLOW_OPTIMIZER_GRAPHOPTIMIZER_TRAININGPREPARATION_H
+#define GLOW_OPTIMIZER_GRAPHOPTIMIZER_TRAININGPREPARATION_H
 
 #include "glow/Graph/Graph.h"
 #include "glow/Support/Error.h"
@@ -43,4 +43,4 @@ llvm::Error prepareFunctionForTraining(
     TensorInitializer &&initializer = getDefaultTensorInitializer());
 } // namespace glow
 
-#endif // GLOW_OPTIMIZER_TRAININGPREPARATION_H
+#endif // GLOW_OPTIMIZER_GRAPHOPTIMIZER_TRAININGPREPARATION_H

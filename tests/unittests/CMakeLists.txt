@@ -204,6 +204,7 @@ if(GLOW_WITH_HABANA)
                           Backends
                           ExecutionEngine
                           Graph
+                          GraphOptimizer
                           gtest
                           TestMain)
   target_include_directories(HabanaBackendTest PRIVATE "${SYNAPSE_INCLUDE_DIR}")

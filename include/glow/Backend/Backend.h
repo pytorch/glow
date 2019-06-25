@@ -19,7 +19,7 @@
 #include "glow/Backend/CompiledFunction.h"
 #include "glow/Backends/BackendOptions.h"
 #include "glow/Base/Traits.h"
-#include "glow/Optimizer/Optimizer.h"
+#include "glow/Optimizer/GraphOptimizer/CompilationContext.h"
 #include "glow/Support/Register.h"
 
 #include "llvm/ADT/StringRef.h"

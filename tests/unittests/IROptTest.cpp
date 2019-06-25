@@ -20,7 +20,7 @@
 #include "glow/IR/IRBuilder.h"
 #include "glow/IR/IRUtils.h"
 #include "glow/IR/Instrs.h"
-#include "glow/Optimizer/Optimizer.h"
+#include "glow/Optimizer/IROptimizer/IROptimizer.h"
 
 #include "llvm/Support/Casting.h"
 

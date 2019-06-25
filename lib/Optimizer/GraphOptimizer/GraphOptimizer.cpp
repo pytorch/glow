@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+#include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
+
 #include "glow/Backend/Backend.h"
 #include "glow/Converter/TypeAToTypeBFunctionConverter.h"
 #include "glow/Graph/Graph.h"
@@ -22,8 +24,7 @@
 #include "glow/Graph/Nodes.h"
 #include "glow/Graph/PlaceholderBindings.h"
 #include "glow/Graph/Utils.h"
-#include "glow/Optimizer/FunctionPasses.h"
-#include "glow/Optimizer/Optimizer.h"
+#include "glow/Optimizer/GraphOptimizer/FunctionPasses.h"
 #include "glow/Quantization/Base/Base.h"
 #include "glow/Quantization/Quantization.h"
 

@@ -16,7 +16,8 @@
 #include "Base.h"
 
 #include "glow/Importer/ONNXIFIModelLoader.h"
-#include "glow/Optimizer/FunctionPasses.h"
+#include "glow/Optimizer/GraphOptimizer/FunctionPasses.h"
+#include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
 
 #include "llvm/Support/Format.h"
 #include <glog/logging.h>
