@@ -1271,13 +1271,16 @@ TEST(onnx, constant) {
   ASSERT_EQ(F->getNodes().size(), 1);
 }
 
-/// Test loading ConstantOfShape from an ONNX model.
-TEST(onnx, constantOfShape) {
+/// Test loading of testConstantOfShape.
+template <class ElemType>
+static void testConstantOfShape(std::string fileName, ElemType ref) {
   ExecutionEngine EE;
   auto &mod = EE.getModule();
   auto *F = mod.createFunction("main");
-  std::string netFilename(GLOW_DATA_PATH
-                          "tests/models/onnxModels/constantOfShape.onnxtxt");
+  PlaceholderBindings bindings;
+
+  std::string netFilename =
+      std::string(GLOW_DATA_PATH "tests/models/onnxModels/") + fileName;
   Placeholder *output;
   {
     ONNXModelLoader onnxLD(netFilename, {}, {}, *F);
@@ -1287,6 +1290,46 @@ TEST(onnx, constantOfShape) {
   // ConstantOfShape -> Save -> PH
   ASSERT_EQ(mod.getPlaceholders().size(), 1);
   ASSERT_EQ(F->getNodes().size(), 2);
+
+  EE.compile(CompilationMode::Infer, F);
+  EE.run(bindings);
+
+  auto result = bindings.get(output)->getHandle<ElemType>();
+  for (size_t i = 0; i < result.getType().size(); i++) {
+    ElemType val = result.raw(i);
+    EXPECT_EQ(val, ref);
+  }
+}
+
+/// Test loading of testConstantOfShape.
+template <class ElemType>
+static void testConstantOfShapeFailure(std::string fileName) {
+  ExecutionEngine EE;
+  auto &mod = EE.getModule();
+  auto *F = mod.createFunction("main");
+  std::string netFilename =
+      std::string(GLOW_DATA_PATH "tests/models/onnxModels/") + fileName;
+  ASSERT_DEATH(ONNXModelLoader(netFilename, {}, {}, *F), "losses");
+}
+
+TEST(onnx, importConstantOfShapeFloat) {
+  testConstantOfShape<float>("constantOfShape.onnxtxt", 1.0F);
+}
+
+TEST(onnx, importConstantOfShapeInt32) {
+  testConstantOfShape<int32_t>("constantOfShapeInt32.onnxtxt", 65535);
+}
+
+TEST(onnx, importConstantOfShapeInt64) {
+  testConstantOfShape<int64_t>("constantOfShapeInt64.onnxtxt", 16777216LL);
+}
+
+TEST(onnx, importConstantOfShapeInt64LossFailure) {
+  testConstantOfShapeFailure<int64_t>("constantOfShapeInt64Fail.onnxtxt");
+}
+
+TEST(onnx, importConstantOfShapeInt32LossFailure) {
+  testConstantOfShapeFailure<int32_t>("constantOfShapeInt32Fail.onnxtxt");
 }
 
 /// Test loading ExpandDims from an ONNX model.

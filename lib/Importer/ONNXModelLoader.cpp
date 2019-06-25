@@ -1059,11 +1059,15 @@ ONNXModelLoader::loadConstantOfShape(const ONNX_NAMESPACE::NodeProto &op,
   if (dict.count("value")) {
     RETURN_IF_ERR(loadTensor(dict.at("value")->t(), &T));
     RETURN_ERR_IF_NOT(T.dims().size() == 1, "Value must be a 1D vector.");
-    RETURN_ERR_IF_NOT(T.getType().getElementType() == ElemKind::FloatTy,
-                      "Value must have float type");
+    RETURN_ERR_IF_NOT(T.getType().getElementType() == ElemKind::FloatTy ||
+                          T.getType().getElementType() == ElemKind::Int64ITy ||
+                          T.getType().getElementType() == ElemKind::Int32ITy,
+                      T.getType().getElementName().str() +
+                          " type Value is not supported.");
   }
 
   TypeRef ty;
+  Node *SN = nullptr;
   if (op.input_size() > 0) {
     Constant *in;
     ASSIGN_VALUE_OR_RETURN_ERR(in, getConstantByName(op.input(0)));
@@ -1075,12 +1079,34 @@ ONNXModelLoader::loadConstantOfShape(const ONNX_NAMESPACE::NodeProto &op,
     auto TH = in->getPayload().getHandle<int64_t>();
     llvm::ArrayRef<size_t> outputDims = {(const size_t *)TH.begin(),
                                          (const size_t *)TH.end()};
-    ty = G_.getParent()->uniqueType(ElemKind::FloatTy, outputDims);
+
+    ty = G_.getParent()->uniqueType(T.getType().getElementType(), outputDims);
+    switch (T.getType().getElementType()) {
+    case ElemKind::Int64ITy: {
+      int64_t v = T.getHandle<int64_t>().raw(0);
+      RETURN_ERR_IF_NOT(
+          v == static_cast<int64_t>(static_cast<float>(v)),
+          "This ConstantOfShape implementation may cause losses for value " +
+              std::to_string(v) + " .");
+      SN = G_.createSplat(loadOperatorName(op), ty, v);
+      break;
+    }
+    case ElemKind::Int32ITy: {
+      int32_t v = T.getHandle<int32_t>().raw(0);
+      RETURN_ERR_IF_NOT(
+          v == static_cast<int32_t>(static_cast<float>(v)),
+          "This ConstantOfShape implementation may cause losses for value " +
+              std::to_string(v) + " .");
+      SN = G_.createSplat(loadOperatorName(op), ty, v);
+      break;
+    }
+    default:
+      SN = G_.createSplat(loadOperatorName(op), ty, T.getHandle().raw(0));
+    }
   } else {
     ty = G_.getParent()->uniqueType(ElemKind::FloatTy, {1});
+    SN = G_.createSplat(loadOperatorName(op), ty, T.getHandle().raw(0));
   }
-
-  Node *SN = G_.createSplat(loadOperatorName(op), ty, T.getHandle().raw(0));
   RETURN_IF_ERR(addNodeAsOutput(op, SN));
   return llvm::Error::success();
 }
@@ -1186,7 +1212,7 @@ llvm::Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
     return loadTile(op, dict);
   }
 
-  RETURN_ERR("Failed to load operator.",
+  RETURN_ERR("Failed to load operator " + typeName + " .",
              GlowErr::ErrorCode::MODEL_LOADER_UNSUPPORTED_OPERATOR);
 }
 

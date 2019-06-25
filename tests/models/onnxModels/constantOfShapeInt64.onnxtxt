@@ -1,0 +1,58 @@
+ir_version: 3
+producer_name: "backend-test"
+graph {
+  node {
+    input: "input"
+    output: "output"
+    op_type: "ConstantOfShape"
+    attribute {
+      name: "value"
+      t {
+        dims: 1
+        data_type: 7
+        name: "value_init"
+        int64_data: 16777216
+      }
+      type: TENSOR
+    }
+  }
+  initializer {
+    dims: 2
+    data_type: 7
+    int64_data: 3
+    int64_data: 3
+    name: "input"
+  }
+  input {
+    name: "input"
+    type {
+      tensor_type {
+        elem_type: 7
+        shape {
+          dim {
+            dim_value: 2
+          }
+        }
+      }
+    }
+  }
+  output {
+    name: "output"
+    type {
+      tensor_type {
+        elem_type: 7
+        shape {
+          dim {
+            dim_value: 3
+          }
+          dim {
+            dim_value: 3
+          }
+        }
+      }
+    }
+  }
+}
+opset_import {
+  version: 9
+}

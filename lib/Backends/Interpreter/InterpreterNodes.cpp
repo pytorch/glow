@@ -1116,6 +1116,10 @@ void BoundInterpreterFunction::fwdSplatInst(const glow::SplatInst *I) {
   auto *T = getTensor(I->getDest());
   ElemKind k = T->getElementType();
 
+  if (k == ElemKind::Int32ITy) {
+    return T->getHandle<int32_t>().clear(I->getValue());
+  }
+
   if (k == ElemKind::Int64ITy) {
     return T->getHandle<int64_t>().clear(I->getValue());
   }
