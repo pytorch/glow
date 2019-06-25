@@ -139,7 +139,11 @@ public:
   NodeToFunctionMapTy::iterator end() { return nodeToFunction_.end(); }
 
   Function *operator[](Node *n) { return nodeToFunction_[n]; }
-  void deletePartition(Function *func) { functions_.remove(func); }
+  void deletePartition(Function *func) {
+    functions_.remove(func);
+    functionToBackendName_.erase(func);
+    partitionCost_.erase(func);
+  }
 
   /// Set the memory consumption \p cost for a partition \p func.
   void setGraphMemInfo(Function *func, GraphMemInfo cost) {
