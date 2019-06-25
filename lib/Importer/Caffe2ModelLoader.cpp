@@ -56,6 +56,9 @@ loadOperatorName<caffe2::OperatorDef>(const caffe2::OperatorDef &op) {
   if (op.name().length()) {
     return op.name();
   }
+  if (op.output_size() > 0) {
+    return op.output(0);
+  }
   return op.type();
 }
 }; // namespace glow

@@ -2480,3 +2480,17 @@ TEST(caffe2, importInt8SumRelu) {
 
   EE.compile(CompilationMode::Infer, F);
 }
+
+TEST(caffe2, importNames) {
+  std::string NetDescFilename(GLOW_DATA_PATH
+                              "tests/models/caffe2Models/sigmoid.pbtxt");
+  std::string NetWeightFilename(
+      GLOW_DATA_PATH "tests/models/caffe2Models/empty_init_net.pbtxt");
+  ExecutionEngine EE;
+  auto &mod = EE.getModule();
+  auto *F = mod.createFunction("main");
+  Tensor input(ElemKind::FloatTy, {6});
+  Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename,
+                             {"sigmoid_test_input"}, {&input.getType()}, *F);
+  EXPECT_TRUE(F->getNodeByName("sigmoid_test_output"));
+}
