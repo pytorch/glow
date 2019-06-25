@@ -18,6 +18,7 @@ struct PerfData
 {
     struct PerfStatistics ps;
     struct perf_event_attr pe;
+    int do_perf_monitoring;
     int fd;
 };
 
