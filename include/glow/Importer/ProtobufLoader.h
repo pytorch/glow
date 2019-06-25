@@ -85,6 +85,9 @@ template <typename T> std::string loadOperatorName(const T &op) {
   if (op.name().length()) {
     return op.name();
   }
+  if (op.output_size() > 0) {
+    return op.output(0);
+  }
   return op.op_type();
 }
 
