@@ -28,9 +28,10 @@ using namespace glow;
 
 int main(int argc, char **argv) {
   PlaceholderBindings bindings;
-  // The loader verifies/initializes command line parameters, and initializes
+  // Verify/initialize command line parameters, and then loader initializes
   // the ExecutionEngine and Function.
-  Loader loader(argc, argv);
+  parseCommandLine(argc, argv);
+  Loader loader;
 
   // Create the model based on the input net, and get SaveNode for the output.
   std::unique_ptr<ProtobufLoader> LD;
@@ -66,7 +67,7 @@ int main(int argc, char **argv) {
       outputT->getHandle<int8_t>().dump();
       break;
     default:
-      GLOW_UNREACHABLE("Unexpected output type");
+      LOG(FATAL) << "Unexpected output type";
     }
 
     // If profiling, generate and serialize the quantization infos now that we

@@ -31,7 +31,7 @@
 
 using namespace glow;
 
-class TraceEventsTest : public ::testing::TestWithParam<BackendKind> {
+class TraceEventsTest : public ::testing::TestWithParam<std::string> {
 public:
   ExecutionEngine EE_{GetParam()};
   Tensor inputs{ElemKind::FloatTy, {1, 32, 32, 3}};
@@ -92,9 +92,8 @@ public:
   }
 
   // Compares generated TraceEvents with their expected names and types.
-  void checkEventMetadata(
-      const std::vector<TraceEvent> &traceEvents,
-      std::vector<std::pair<std::string, std::string>> expected) {
+  void checkEventMetadata(const std::vector<TraceEvent> &traceEvents,
+                          std::vector<std::pair<std::string, char>> expected) {
 
     ASSERT_EQ(traceEvents.size(), expected.size());
     unsigned index = 0;
@@ -149,10 +148,10 @@ TEST_P(TraceEventsTest, manualEvents) {
   auto &traceEvents = context.getTraceContext()->getTraceEvents();
 
   ASSERT_EQ(traceEvents.size(), numEvents);
-  checkEventMetadata(traceEvents, {{"first half", "B"},
-                                   {"first half", "E"},
-                                   {"second half", "B"},
-                                   {"second half", "E"}});
+  checkEventMetadata(traceEvents, {{"first half", 'B'},
+                                   {"first half", 'E'},
+                                   {"second half", 'B'},
+                                   {"second half", 'E'}});
 
   checkEventTimestamps(traceEvents);
 
@@ -196,7 +195,7 @@ TEST_P(TraceEventsTest, incompleteCoverage) {
   auto &traceEvents = context.getTraceContext()->getTraceEvents();
 
   ASSERT_GE(traceEvents.size(), numEvents);
-  checkEventMetadata(traceEvents, {{"second half", "B"}, {"second half", "E"}});
+  checkEventMetadata(traceEvents, {{"second half", 'B'}, {"second half", 'E'}});
 
   checkEventTimestamps(traceEvents);
 
@@ -240,7 +239,7 @@ TEST_P(TraceEventsTest, internalGap) {
 
   ASSERT_GE(traceEvents.size(), numEvents);
   checkEventMetadata(traceEvents,
-                     {{"middle section", "B"}, {"middle section", "E"}});
+                     {{"middle section", 'B'}, {"middle section", 'E'}});
 
   checkEventTimestamps(traceEvents);
 
@@ -269,8 +268,8 @@ TEST_P(TraceEventsTest, automaticInstrumentation) {
   cctx.compMode = CompilationMode::Infer;
   cctx.backendOpts.autoInstrument = true;
   EXIT_ON_ERR(::glow::optimizeFunction(F, *backend, cctx));
-  EE_.insertCompiledFunction(F->getName(),
-                             backend->compile(F, cctx.backendOpts));
+  EE_.insertCompiledFunction(
+      F->getName(), EXIT_ON_ERR(backend->compile(F, cctx.backendOpts)));
 
   updateInputPlaceholders(*context.getPlaceholderBindings(), {inputPH},
                           {&inputs});
@@ -309,8 +308,8 @@ TEST_P(TraceEventsTest, manualAndAutomatic) {
   cctx.compMode = CompilationMode::Infer;
   cctx.backendOpts.autoInstrument = true;
   EXIT_ON_ERR(::glow::optimizeFunction(F, *backend, cctx));
-  EE_.insertCompiledFunction(F->getName(),
-                             backend->compile(F, cctx.backendOpts));
+  EE_.insertCompiledFunction(
+      F->getName(), EXIT_ON_ERR(backend->compile(F, cctx.backendOpts)));
 
   updateInputPlaceholders(*context.getPlaceholderBindings(), {inputPH},
                           {&inputs});
@@ -361,10 +360,12 @@ TEST_P(TraceEventsTest, twoCompiles) {
   EXIT_ON_ERR(::glow::optimizeFunction(F, *backend, cctx));
 
   std::string name = F->getName();
-  EE_.insertCompiledFunction(name, backend->compile(F, cctx.backendOpts));
+  EE_.insertCompiledFunction(
+      name, EXIT_ON_ERR(backend->compile(F, cctx.backendOpts)));
 
   std::string name2 = name + "2";
-  EE_.insertCompiledFunction(name2, backend->compile(F, cctx.backendOpts));
+  EE_.insertCompiledFunction(
+      name2, EXIT_ON_ERR(backend->compile(F, cctx.backendOpts)));
 
   updateInputPlaceholders(*context.getPlaceholderBindings(), {inputPH},
                           {&inputs});
@@ -403,11 +404,11 @@ TEST_P(TraceEventsTest, onlyTraceEvents) {
   auto *eventData = createEventPlaceholder(numEvents);
   unsigned eventId = 0;
 
-  std::vector<std::pair<std::string, std::string>> expected;
+  std::vector<std::pair<std::string, char>> expected;
   for (unsigned eventId = 0; eventId < numEvents; ++eventId) {
     std::string name = "event_" + std::to_string(eventId);
     F->createTraceEvent(name, "X", eventData, eventId);
-    expected.push_back({name, "X"});
+    expected.push_back({name, 'X'});
   }
 
   context.getPlaceholderBindings()->allocate(EE_.getModule().getPlaceholders());
@@ -579,19 +580,19 @@ TEST(TraceEventsTest, nestedScopedEvents) {
 
   TraceContext *tc = context.getTraceContext();
 
-  ScopedTraceBlock block_one(tc, "one");
+  ScopedTraceBlock block_one(tc, TraceLevel::RUNTIME, "one");
   {
-    ScopedTraceBlock block_two(tc, "two");
+    ScopedTraceBlock block_two(tc, TraceLevel::RUNTIME, "two");
     /* sleep_override */ std::this_thread::sleep_for(
         std::chrono::milliseconds(1));
   }
 
   {
-    ScopedTraceBlock block_three(tc, "three");
+    ScopedTraceBlock block_three(tc, TraceLevel::RUNTIME, "three");
     /* sleep_override */ std::this_thread::sleep_for(
         std::chrono::milliseconds(1));
     {
-      ScopedTraceBlock block_four(tc, "four");
+      ScopedTraceBlock block_four(tc, TraceLevel::RUNTIME, "four");
       /* sleep_override */ std::this_thread::sleep_for(
           std::chrono::milliseconds(1));
     }
@@ -618,19 +619,19 @@ TEST(TraceEventsTest, nestedScopedEventsMacro) {
 
   TraceContext *tc = context.getTraceContext();
 
-  TRACE_EVENT_SCOPE(tc, "one");
+  TRACE_EVENT_SCOPE(tc, TraceLevel::RUNTIME, "one");
   {
-    TRACE_EVENT_SCOPE(tc, "two");
+    TRACE_EVENT_SCOPE(tc, TraceLevel::RUNTIME, "two");
     /* sleep_override */ std::this_thread::sleep_for(
         std::chrono::milliseconds(1));
   }
 
   {
-    TRACE_EVENT_SCOPE(tc, "three");
+    TRACE_EVENT_SCOPE(tc, TraceLevel::RUNTIME, "three");
     /* sleep_override */ std::this_thread::sleep_for(
         std::chrono::milliseconds(1));
     {
-      TRACE_EVENT_SCOPE(tc, "four");
+      TRACE_EVENT_SCOPE(tc, TraceLevel::RUNTIME, "four");
       /* sleep_override */ std::this_thread::sleep_for(
           std::chrono::milliseconds(1));
     }
@@ -659,8 +660,8 @@ TEST(TraceEventsTest, nestedScopedEventsTerm) {
   TraceContext *tc = context.getTraceContext();
 
   {
-    TRACE_EVENT_SCOPE_NAMED(tc, "one", one);
-    TRACE_EVENT_SCOPE_NAMED(tc, "two", two);
+    TRACE_EVENT_SCOPE_NAMED(tc, TraceLevel::RUNTIME, "one", one);
+    TRACE_EVENT_SCOPE_NAMED(tc, TraceLevel::RUNTIME, "two", two);
     /* sleep_override */ std::this_thread::sleep_for(
         std::chrono::milliseconds(1));
     TRACE_EVENT_SCOPE_END_NAMED(one);
@@ -669,10 +670,10 @@ TEST(TraceEventsTest, nestedScopedEventsTerm) {
   }
 
   {
-    TRACE_EVENT_SCOPE_NAMED(tc, "three", three);
-    TRACE_EVENT_SCOPE_NAMED(tc, "four", four);
+    TRACE_EVENT_SCOPE_NAMED(tc, TraceLevel::RUNTIME, "three", three);
+    TRACE_EVENT_SCOPE_NAMED(tc, TraceLevel::RUNTIME, "four", four);
     {
-      TRACE_EVENT_SCOPE_NAMED(tc, "five", five);
+      TRACE_EVENT_SCOPE_NAMED(tc, TraceLevel::RUNTIME, "five", five);
       /* sleep_override */ std::this_thread::sleep_for(
           std::chrono::milliseconds(1));
       TRACE_EVENT_SCOPE_END_NAMED(four);
@@ -700,15 +701,38 @@ TEST(TraceEventsTest, nestedScopedEventsTerm) {
   ASSERT_GT(durations["five"], durations["four"]);
 }
 
+TEST(TraceEventsTest, TraceLevels) {
+  std::array<TraceLevel, 4> levels = {TraceLevel::NONE, TraceLevel::REQUEST,
+                                      TraceLevel::RUNTIME,
+                                      TraceLevel::OPERATOR};
+  for (auto L : levels) {
+    TraceContext context(L);
+    for (auto evl : levels) {
+      context.logTraceEvent("event", evl);
+    }
+
+    if (L == TraceLevel::NONE) {
+      EXPECT_EQ(context.getTraceEvents().size(), 0);
+    } else {
+      ASSERT_EQ(context.getTraceEvents().size(), 1);
+      ASSERT_EQ(context.getTraceEvents()[0].name, "event");
+    }
+  }
+
+  TraceContext context(TraceLevel::STANDARD);
+  for (auto evl : levels) {
+    context.logTraceEvent("event", evl);
+  }
+  ASSERT_EQ(context.getTraceEvents().size(), 2);
+}
+
 INSTANTIATE_TEST_CASE_P(Interpreter, TraceEventsTest,
-                        ::testing::Values(BackendKind::Interpreter));
+                        ::testing::Values("Interpreter"));
 
 #ifdef GLOW_WITH_CPU
-INSTANTIATE_TEST_CASE_P(JIT, TraceEventsTest,
-                        ::testing::Values(BackendKind::CPU));
+INSTANTIATE_TEST_CASE_P(JIT, TraceEventsTest, ::testing::Values("CPU"));
 #endif // GLOW_WITH_CPU
 
 #ifdef GLOW_WITH_OPENCL
-INSTANTIATE_TEST_CASE_P(OpenCL, TraceEventsTest,
-                        ::testing::Values(BackendKind::OpenCL));
+INSTANTIATE_TEST_CASE_P(OpenCL, TraceEventsTest, ::testing::Values("OpenCL"));
 #endif // GLOW_WITH_OPENCL

@@ -18,6 +18,6 @@
 
 namespace glow {
 
-REGISTER_GLOW_BACKEND_FACTORY(InterpreterFactory, Interpreter, Interpreter);
+REGISTER_GLOW_BACKEND_FACTORY(InterpreterFactory, Interpreter);
 
 } // namespace glow

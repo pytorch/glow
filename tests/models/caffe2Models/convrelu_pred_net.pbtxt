@@ -24,6 +24,6 @@ op {
   arg {
     name: "dilation"
     i: 1
-  }  
+  }
 }
 external_output: "conv_out"

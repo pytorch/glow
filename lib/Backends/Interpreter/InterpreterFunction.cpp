@@ -53,7 +53,7 @@ llvm::Error InterpreterFunction::execute(ExecutionContext *context) {
   BoundInterpreterFunction boundFunc(constants_);
   auto res = boundFunc.execute(F_.get(), context);
   {
-    auto ev = context->scopedEvent("processInstrumentation");
+    TRACE_EVENT_SCOPE(context, TraceLevel::RUNTIME, "processInstrumentation");
     translateTraceEvents(context);
   }
   return res;
@@ -68,8 +68,7 @@ void InterpreterFunction::translateTraceEvents(
 
   TraceContext *traceContext = context->getTraceContext();
 
-  if (!traceContext || traceContext->getTraceLevel() == TraceLevel::NONE ||
-      traceContext->getTraceLevel() == TraceLevel::RUNTIME) {
+  if (!traceContext || !traceContext->shouldLog(TraceLevel::OPERATOR)) {
     return;
   }
 
@@ -181,7 +180,24 @@ void BoundInterpreterFunction::deleteTensor(const Value *v) {
 llvm::Error BoundInterpreterFunction::execute(IRFunction *F,
                                               ExecutionContext *context) {
   {
-    auto ev = context->scopedEvent("registerTensors");
+    TRACE_EVENT_SCOPE(context, TraceLevel::RUNTIME, "registerTensors");
+
+    // Find all virtually padded tensors so they can be replaced.
+    std::vector<Placeholder *> virtualPadded;
+    for (auto &ph : context->getPlaceholderBindings()->pairs()) {
+      if (ph.second->getUnpaddedSizeInBytes() < ph.second->getSizeInBytes()) {
+        virtualPadded.push_back(ph.first);
+      }
+    }
+    // Replace all virtually padded tensors with real padding tensors.
+    for (auto &ph : virtualPadded) {
+      auto oldTensor = context->getPlaceholderBindings()->get(ph);
+      Tensor paddedTensor(oldTensor->getType());
+      memcpy(paddedTensor.getUnsafePtr(), oldTensor->getUnsafePtr(),
+             oldTensor->getUnpaddedSizeInBytes());
+      context->getPlaceholderBindings()->erase(ph);
+      context->getPlaceholderBindings()->insert(ph, std::move(paddedTensor));
+    }
     // Register the concrete tensors that back the placeholder tensors.
     for (auto &ph : context->getPlaceholderBindings()->pairs()) {
       auto *w = F->getWeightForNode(ph.first);
@@ -213,7 +229,8 @@ llvm::Error BoundInterpreterFunction::execute(IRFunction *F,
   }
 
   {
-    auto ev = context->scopedEvent("eraseTensors");
+
+    TRACE_EVENT_SCOPE(context, TraceLevel::RUNTIME, "eraseTensors");
     // Remove the concrete tensors that back the placeholder tensors.
     for (auto &ph : context->getPlaceholderBindings()->pairs()) {
       auto *w = F->getWeightForNode(ph.first);

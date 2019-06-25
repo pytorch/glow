@@ -1,0 +1,67 @@
+name: "init"
+op {
+  output: "conv_b"
+  type: "GivenTensorFill"
+  arg {
+    name: "shape"
+    ints: 4
+  }
+  arg {
+    name: "values"
+    floats: 7.0
+    floats: 7.0
+    floats: 7.0
+    floats: 7.0
+  }
+}
+op {
+  output: "conv_w"
+  type: "Int8GivenTensorFill"
+  arg {
+    name: "shape"
+    ints: 4
+    ints: 1
+    ints: 1
+    ints: 2
+  }
+  arg {
+    name: "values"
+    s: "\x80\x81\x80\x81\x80\x81\x80\x81"
+  }
+  arg {
+    name: "Y_scale"
+    f: 1.0
+  }
+  arg {
+    name: "Y_zero_point"
+    i: 0
+  }
+}
+op {
+  output: "conv_w_loaded_scales"
+  type: "GivenTensorFill"
+  arg {
+    name: "shape"
+    ints: 2
+  }
+  arg {
+    name: "values"
+    floats: 6.0
+    floats: 6.0
+  }
+}
+op {
+  output: "conv_w_loaded_offsets"
+  type: "GivenTensorIntFill"
+  arg {
+    name: "shape"
+    ints: 2
+  }
+  arg {
+    name: "values"
+    ints: 5
+    ints: 5
+  }
+}
+
+

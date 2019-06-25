@@ -61,6 +61,9 @@ void TensorViewInst::verify() const {
          "TensorView view size should be no larger than Src size");
   assert(getSrc()->getElementType() == getType()->getElementType() &&
          "TensorView view element type should be the same as Src type");
+  assert(getSrc()->getType()->dims().size() == getOffsets().size() &&
+         "TensorView offsets should have the same number of dims as Src type "
+         "shape");
 }
 
 void AllocActivationInst::verify() const {
@@ -84,4 +87,17 @@ void InsertTensorInst::verify() const {
   assert(getCount() > 0 && "Count must be non-zero.");
   assert(getAxis() >= 0 && getAxis() < getDest()->dims().size() &&
          "Axis must fit inside Dest dims.");
+  assert(
+      getDest()->getType()->dims().size() == getOffsets().size() &&
+      "InsertTensor offsets should have the same number of dims as Dest type "
+      "shape");
+}
+
+void ExtractTensorInst::verify() const {
+  assert(getSrc()->getElementType() == getDest()->getElementType() &&
+         "ExtractTensor dest element type should be the same as Src type.");
+  assert(
+      getSrc()->getType()->dims().size() == getOffsets().size() &&
+      "ExtractTensor offsets should have the same number of dims as Src type "
+      "shape");
 }

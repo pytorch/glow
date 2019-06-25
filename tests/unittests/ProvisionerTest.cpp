@@ -32,7 +32,8 @@ std::unique_ptr<Module> setupModule(unsigned functionCount) {
     auto *B = mod->createConstant(ElemKind::FloatTy, {1024}, "B");
     auto *FC = F->createFullyConnected("FC", X, W, B);
     F->createSave("save", FC);
-    lower(F, nullptr);
+    CompilationContext cctx;
+    lower(F, cctx);
   }
   return mod;
 }
@@ -48,13 +49,13 @@ DAGListTy setupDAG(unsigned rootCount, unsigned childCount) {
     rootNode->children.push_back(firstNode.get());
     firstNode->name = "function" + std::to_string(currentFunction);
     firstNode->logicalDevices = {0, 1};
-    firstNode->backendKind = BackendKind::CPU;
+    firstNode->backendName = "CPU";
     currentFunction++;
     for (unsigned int child = 0; child < childCount; child++) {
       auto newChild = llvm::make_unique<DAGNode>();
       newChild->name = "function" + std::to_string(currentFunction);
       newChild->logicalDevices = {0};
-      newChild->backendKind = BackendKind::CPU;
+      newChild->backendName = "CPU";
       currentFunction++;
       firstNode->children.push_back(newChild.get());
       nodes.push_back(std::move(newChild));
@@ -71,11 +72,14 @@ TEST_F(ProvisionerTest, provisionDag) {
 
   DeviceManagerMapTy devices;
   for (int i = 0; i < 6; i++) {
-    std::unique_ptr<DeviceManager> device(new CPUDeviceManager);
+    std::unique_ptr<DeviceManager> device(
+        new CPUDeviceManager(DeviceConfig("CPU")));
     devices.emplace(i, std::move(device));
   }
+
+  CompilationContext cctx;
   auto provisioner = Provisioner(devices);
-  auto err = provisioner.provision(networks, *mod.get());
+  auto err = provisioner.provision(networks, *mod.get(), cctx);
   // Expect that there was no Error when provisioning
   EXPECT_FALSE(errToBool(std::move(err)));
 }
@@ -86,11 +90,15 @@ TEST_F(ProvisionerTest, provisionDagFail) {
 
   DeviceManagerMapTy devices;
   for (int i = 0; i < 6; i++) {
-    std::unique_ptr<DeviceManager> device(new CPUDeviceManager(nullptr, 1000));
+    auto config = DeviceConfig("CPU");
+    config.setDeviceMemory(1000);
+    std::unique_ptr<DeviceManager> device(new CPUDeviceManager(config));
     devices.emplace(i, std::move(device));
   }
+
+  CompilationContext cctx;
   auto provisioner = Provisioner(devices);
-  auto err = provisioner.provision(networks, *mod.get());
+  auto err = provisioner.provision(networks, *mod.get(), cctx);
   // Expect that there was no Error when provisioning
   EXPECT_TRUE(errToBool(std::move(err)));
 }

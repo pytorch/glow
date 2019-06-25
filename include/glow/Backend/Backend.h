@@ -31,53 +31,50 @@ class Node;
 class PlaceholderBindings;
 class IRGenVisitor;
 
-enum class BackendKind {
-  Interpreter, // Execute the network with the built-in interpreter.
-  OpenCL,      // Run the code on an OpenCL device.
-  CPU,         // Compile and run the code on the host.
-  Habana,      // Compile and run the code on a Habana accelerator.
-};
-
 // This is the interface that glow backends need to implement.
 class Backend {
 public:
   /// Dtor.
   virtual ~Backend() = default;
 
-  /// \returns the kind of Backend this is.
-  virtual BackendKind getBackendKind() const = 0;
-
+  // \returns backend name.
   virtual std::string getBackendName() const = 0;
 
   /// Generate code for a vector of functions, \p functions. All compilations
   /// use the same settings provided by \p opts. This allows the compiler to
   /// support shared constants between functions.
-  virtual std::vector<std::unique_ptr<CompiledFunction>>
+  virtual llvm::Expected<std::vector<std::unique_ptr<CompiledFunction>>>
   compileFunctions(llvm::ArrayRef<Function *> functions,
                    BackendOptions &opts) const {
     std::vector<std::unique_ptr<CompiledFunction>> compiledFunctions;
     for (auto &function : functions) {
-      compiledFunctions.push_back(compile(function, opts));
+      if (auto resOrErr = compile(function, opts)) {
+        compiledFunctions.push_back(std::move(*resOrErr));
+      } else {
+        return resOrErr.takeError();
+      }
     }
-    return compiledFunctions;
+    return llvm::Expected<std::vector<std::unique_ptr<CompiledFunction>>>(
+        std::move(compiledFunctions));
   }
 
-  virtual std::unique_ptr<CompiledFunction> compile(Function *F) const {
+  virtual llvm::Expected<std::unique_ptr<CompiledFunction>>
+  compile(Function *F) const {
     BackendOptions opts;
     return compile(F, opts);
   }
 
   /// Generate code for input function \param F given settings in \p opts.
-  virtual std::unique_ptr<CompiledFunction>
+  virtual llvm::Expected<std::unique_ptr<CompiledFunction>>
   compile(Function *F, const BackendOptions &opts) const = 0;
 
-  /// Save the bundle for \p F for a later standalone execution
-  /// in \p outputDir. Make \p networkName the function name for
-  /// the entry point of the network and prepend all generated
-  /// files with this name.
+  /// Save the bundle for \p F for a later standalone execution in \p outputDir
+  /// under name \p bundleName. Make \p mainEntryName the function name for the
+  /// entry point of the network and prepend all generated files with this name.
   virtual void save(Function *F, llvm::StringRef outputDir,
-                    llvm::StringRef networkName) const {
-    GLOW_UNREACHABLE("Saving a bundle is not supported by the backend");
+                    llvm::StringRef bundleName,
+                    llvm::StringRef mainEntryName) const {
+    LOG(FATAL) << "Saving a bundle is not supported by the backend";
   }
 
   /// Used by the compiler during graph optimization and before code generation,
@@ -86,7 +83,7 @@ public:
   /// cleaning up after itself.
   /// \returns True if the graph was modified.
   virtual bool transformPostLowering(Function *F,
-                                     const CompilationContext &cctx) const {
+                                     CompilationContext &cctx) const {
     return false;
   }
 
@@ -100,6 +97,10 @@ public:
   /// \returns true if the Backend wants the buffer sharing optimization
   /// performed.
   virtual bool shouldShareBuffers() const { return true; }
+
+  /// \returns true if the Backend supports partial, unpadded tensors for
+  /// inputs that can have variable size (e.g., embedding indices).
+  virtual bool supportsPartialTensors() const { return false; }
 
   /// \returns true if Backend generated Instruction for Node \p N,
   /// using IRGenVisitor \p irgen.
@@ -121,8 +122,8 @@ protected:
   void autoInstrument(TraceInfo &traceInfo, IRFunction *IR) const;
 };
 
-/// Create a backend of kind \p kind.
-Backend *createBackend(BackendKind backendKind);
+/// Create a backend based on the registered backend name \p backendName.
+Backend *createBackend(llvm::StringRef backendName);
 
 // Backends that use Glow low-level IR should inherit from this class. It allows
 // for unit tests to create low-level IR to compile and run.
@@ -135,16 +136,15 @@ public:
 };
 
 /// Perform Backend Factory registration.
-#define REGISTER_GLOW_BACKEND_FACTORY(FactoryName, BackendClass,               \
-                                      SpecificBackendKind)                     \
-  class FactoryName : public BaseFactory<BackendKind, Backend> {               \
+#define REGISTER_GLOW_BACKEND_FACTORY(FactoryName, BackendClass)               \
+  class FactoryName : public BaseFactory<std::string, Backend> {               \
   public:                                                                      \
     Backend *create() override { return new BackendClass(); }                  \
-    BackendKind getRegistrationKey() const override {                          \
-      return BackendKind::SpecificBackendKind;                                 \
+    std::string getRegistrationKey() const override {                          \
+      return BackendClass::getName();                                          \
     }                                                                          \
   };                                                                           \
-  static RegisterFactory<BackendKind, FactoryName, Backend>                    \
+  static RegisterFactory<std::string, FactoryName, Backend>                    \
       FactoryName##_REGISTERED;
 
 } // namespace glow

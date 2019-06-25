@@ -24,32 +24,13 @@ using namespace glow::onnxifi;
 
 TEST(GlowOnnxifiManagerTest, BackendIdTest) {
   auto &manager = GlowOnnxifiManager::get();
-  auto *backendId = manager.createBackendId(glow::BackendKind::Interpreter,
-                                            /*use_onnx*/ true);
-  // BackendId is valid after it has been added to the manager.
-  EXPECT_TRUE(manager.isValid(backendId));
-  manager.release(backendId);
-  // BackendId isn't valid after it has been released by the manager.
-  EXPECT_FALSE(manager.isValid(backendId));
-
-  // Nullptr is not a valid BackendId.
-  backendId = nullptr;
-  EXPECT_FALSE(manager.isValid(backendId));
-}
-
-TEST(GlowOnnxifiManagerTest, BackendTest) {
-  auto &manager = GlowOnnxifiManager::get();
-  auto *backendId = manager.createBackendId(glow::BackendKind::Interpreter,
-                                            /*use_onnx*/ true);
-
-  auto *backend = manager.createBackend(backendId);
-  // Backend is valid after it has been created by the manager.
+  auto *backend = manager.createBackend("Interpreter",
+                                        /*use_onnx*/ true);
+  // Backend is valid after it has been added to the manager.
   EXPECT_TRUE(manager.isValid(backend));
   manager.release(backend);
   // Backend isn't valid after it has been released by the manager.
   EXPECT_FALSE(manager.isValid(backend));
-
-  manager.release(backendId);
 
   // Nullptr is not a valid Backend.
   backend = nullptr;
@@ -72,10 +53,8 @@ TEST(GlowOnnxifiManagerTest, EventTest) {
 
 TEST(GlowOnnxifiManagerTest, GraphTest) {
   auto &manager = GlowOnnxifiManager::get();
-  auto *backendId = manager.createBackendId(glow::BackendKind::Interpreter,
-                                            /*use_onnx*/ true);
-
-  auto *backend = manager.createBackend(backendId);
+  auto *backend = manager.createBackend("Interpreter",
+                                        /*use_onnx*/ true);
 
   auto *graph = manager.createGraph(backend);
   // Graph is valid after it has been created by the manager.
@@ -86,7 +65,6 @@ TEST(GlowOnnxifiManagerTest, GraphTest) {
   EXPECT_FALSE(manager.isValid(graph));
 
   manager.release(backend);
-  manager.release(backendId);
 
   // Nullptr is not a valid Graph.
   graph = nullptr;
@@ -95,14 +73,12 @@ TEST(GlowOnnxifiManagerTest, GraphTest) {
 
 void createAndDestroyManagerObjects() {
   auto &manager = GlowOnnxifiManager::get();
-  auto *backendId = manager.createBackendId(glow::BackendKind::Interpreter,
-                                            /*use_onnx*/ true);
+  auto *backend = manager.createBackend("Interpreter",
+                                        /*use_onnx*/ true);
 
-  auto *backend = manager.createBackend(backendId);
   auto *event = manager.createEvent();
   auto *graph = manager.createGraph(backend);
 
-  EXPECT_TRUE(manager.isValid(backendId));
   EXPECT_TRUE(manager.isValid(backend));
   EXPECT_TRUE(manager.isValid(event));
   EXPECT_TRUE(manager.isValid(graph));
@@ -110,7 +86,6 @@ void createAndDestroyManagerObjects() {
   manager.release(graph);
   manager.release(event);
   manager.release(backend);
-  manager.release(backendId);
 }
 
 TEST(GlowOnnxifiManagerTest, Concurrency) {

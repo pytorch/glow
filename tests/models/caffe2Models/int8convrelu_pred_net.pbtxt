@@ -1,0 +1,37 @@
+name: "conv_test"
+op {
+  input: "gpu_0/data_0"
+  input: "conv_w"
+  input: "conv_b"
+  output: "conv_out"
+  type: "Int8ConvRelu"
+  arg {
+    name: "kernel"
+    i: 2
+  }
+  arg {
+    name: "stride"
+    i: 1
+  }
+  arg {
+    name: "group"
+    i: 1
+  }
+  arg {
+    name: "pad"
+    i: 1
+  }
+  arg {
+    name: "dilation"
+    i: 1
+  }
+  arg {
+    name: "Y_scale"
+    f: 1
+  }
+  arg {
+    name: "Y_zero_point"
+    i: 0
+  }
+}
+external_output: "conv_out"

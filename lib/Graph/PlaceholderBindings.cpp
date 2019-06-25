@@ -50,7 +50,9 @@ bool PlaceholderBindings::compare(const PlaceholderBindings *A,
     const auto *tensorB =
         B->get(B->getPlaceholderByName(placeholder->getName()));
 
-    if (!tensorA || !tensorB || !tensorA->isEqual(*tensorB)) {
+    if (!tensorA || !tensorB ||
+        !tensorA->isEqual(*tensorB, /* allowedError */ 0.0001,
+                          /* verbose */ false)) {
       return false;
     }
   }
@@ -78,6 +80,10 @@ PlaceholderBindings::getPlaceholderByName(llvm::StringRef name) const {
 }
 
 void PlaceholderBindings::insert(Placeholder *P, Tensor &&T) {
+  DCHECK(T.getType().isEqual(*P->getType()))
+      << "Placeholder " << P->getName().str() << " has type "
+      << P->getType()->toString() << " but Tensor has type "
+      << T.getType().toString() << "\n";
   DCHECK(!map_.count(P)) << "Placeholder with name \"" << P->getName().str()
                          << "\" already registered";
   // Take ownership over the tensor.
@@ -144,6 +150,12 @@ Tensor *PlaceholderBindings::allocate(Placeholder *P) {
   DCHECK(!map_.count(P)) << "Placeholder with name \"" << P->getName().str()
                          << "\" already registered";
   Tensor *T = new Tensor(P->getType());
+
+  // If this Tensor needs to start zeroed, then zero it.
+  if (P->allocZero()) {
+    T->zero();
+  }
+
   map_[P] = T;
   nameMap_[P->getName()] = P;
   return T;

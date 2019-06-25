@@ -17,10 +17,12 @@
 #include "glow/Backend/Backend.h"
 #include "glow/Converter/TypeAToTypeBFunctionConverter.h"
 #include "glow/Graph/Graph.h"
+#include "glow/Graph/Log.h"
 #include "glow/Graph/Node.h"
 #include "glow/Graph/Nodes.h"
 #include "glow/Graph/PlaceholderBindings.h"
 #include "glow/Graph/Utils.h"
+#include "glow/Optimizer/FunctionPasses.h"
 #include "glow/Optimizer/Optimizer.h"
 #include "glow/Quantization/Base/Base.h"
 #include "glow/Quantization/Quantization.h"
@@ -59,12 +61,16 @@ static bool shouldDeleteNode(Node *N) {
   return true;
 }
 
-void glow::DCE(Function *F) {
+bool DCE::run(Function *F) {
+  LOG_SCOPE(F->getLogContext(), getName());
+
   auto &nodes = F->getNodes();
   auto &consts = F->getParent()->getConstants();
 
   std::vector<ConstList::iterator> erasedConsts{};
   std::vector<NodesList::iterator> erasedNodes{};
+
+  bool changed = false;
 
   // Remove unused nodes.
   while (true) {
@@ -78,6 +84,7 @@ void glow::DCE(Function *F) {
       erasedNodes.push_back(it);
       ++it;
       changedLocally = true;
+      changed = true;
     }
 
     while (!erasedNodes.empty()) {
@@ -106,6 +113,8 @@ void glow::DCE(Function *F) {
     F->getParent()->eraseConstant(it);
     erasedConsts.pop_back();
   }
+
+  return changed;
 }
 
 /// \returns true if the \p shuffle corresponds to an identity operation, false
@@ -212,10 +221,10 @@ static bool sinkTranposeBelowChannelShuffle(Function *F,
 }
 
 /// Code Sinking.
-/// \returns true if code sinking was successful.
-static bool sinkCode(Function *F) {
-  auto &nodes = F->getNodes();
+bool SinkCode::run(Function *F) {
+  LOG_SCOPE(F->getLogContext(), getName());
   bool changed = false;
+  auto &nodes = F->getNodes();
   // For each node:
   for (auto &N : nodes) {
     auto *node = &N;
@@ -605,7 +614,9 @@ static bool mayDependOnAny(llvm::ArrayRef<NodeValue> list, Node *N) {
 //   ---- ,  |    |    |         |     T|  B * C  |
 //    K       ----      ---------        ---------
 //             K            R                R
-static void mergeMatMul(Function *F) {
+bool MergeMatMul::run(Function *F) {
+  LOG_SCOPE(F->getLogContext(), getName());
+  bool changed = false;
   auto &nodes = F->getNodes();
 
   // These two maps record the list of matrix multipliers that use each node
@@ -663,11 +674,14 @@ static void mergeMatMul(Function *F) {
       auto *ex = F->createSlice("extract", MM, {start, 0}, {start + H, R});
       start += H;
       origMM->getResult().replaceAllUsesOfWith(ex);
+      changed = true;
     }
   }
+  return changed;
 }
 
-static bool mergePadIntoConvolution(Function *F) {
+bool MergePadIntoConvolution::run(Function *F) {
+  LOG_SCOPE(F->getLogContext(), getName());
   bool changed = false;
   for (auto &node : F->getNodes()) {
     auto *CN = dyn_cast<ConvolutionNode>(&node);
@@ -749,7 +763,8 @@ static bool mergePadIntoConvolution(Function *F) {
 /// Transpose([N, H, W, C]) -> [N, C, H, W]
 /// Reshape([N, C, H, W]) -> [N, C * H * W]
 /// MatMul/FC([N, C * H * W], [C * H * W, K]) -> [N, K]
-static bool mergeTransposeIntoMatMulOrFC(Function *F) {
+bool MergeTransposeIntoMatMulOrFC::run(Function *F) {
+  LOG_SCOPE(F->getLogContext(), getName());
   bool changed = false;
   for (auto &node : F->getNodes()) {
     auto *MMN = dyn_cast<MatMulNode>(&node);
@@ -885,7 +900,9 @@ static bool areSlicesConsecutive(SliceNode *A, SliceNode *B, unsigned_t dim) {
   return true;
 }
 
-static void convertBroadcastedBatchMatMul(Function *F) {
+bool ConvertBroadcastedBatchMatMul::run(Function *F) {
+  LOG_SCOPE(F->getLogContext(), getName());
+  bool changed = false;
   for (auto &node : F->getNodes()) {
     BatchMatMulNode *BMMN = dyn_cast<BatchMatMulNode>(&node);
     if (!BMMN) {
@@ -934,7 +951,9 @@ static void convertBroadcastedBatchMatMul(Function *F) {
     ReshapeNode *finalReshape = F->createReshape(name.str() + ".reshapeResult",
                                                  MMN, {numBatches, N, P});
     BMMN->getResult().replaceAllUsesOfWith(finalReshape);
+    changed = true;
   }
+  return changed;
 }
 
 /// Find a sequence of slices in \p input that span the whole input.
@@ -1011,7 +1030,9 @@ static bool findSlicesThatSpanInput(llvm::ArrayRef<SliceNode *> input,
 }
 
 /// Merge multiple batched add nodes into a large batched-add node.
-static void mergeBatchedAdd(Function *F) {
+bool MergeBatchedAdd::run(Function *F) {
+  LOG_SCOPE(F->getLogContext(), getName());
+  bool changed = false;
   auto &nodes = F->getNodes();
 
   // We index the batched add nodes by the slice operand.
@@ -1066,17 +1087,21 @@ static void mergeBatchedAdd(Function *F) {
       for (int i = 0, e = order.size(); i < e; i++) {
         if (BA->getBatch().getNode() == order[i]) {
           BA->getResult().replaceAllUsesOfWith(newSlices[i]);
+          changed = true;
           break;
         }
       }
     }
 
   } // for each batched-add group.
+  return changed;
 }
 
 /// Optimize ReduceMean configuration with AvgPool if possible: last two axes
 /// in a 4D input must be reduced.
-static void optimizeReduceMean(Function *F) {
+bool OptimizeReduceMean::run(Function *F) {
+  LOG_SCOPE(F->getLogContext(), getName());
+  bool changed = false;
   auto &nodes = F->getNodes();
 
   // For each node:
@@ -1125,9 +1150,12 @@ static void optimizeReduceMean(Function *F) {
       auto *RN = F->createReshape(RM->getName().str() + ".reshape", TR2, shape);
 
       RM->getResult().replaceAllUsesOfWith(RN);
+      changed = true;
       continue;
     }
   } // For all nodes in the graph.
+
+  return changed;
 }
 
 /// \returns a uniquely used Constant with the same contents as \p node. If \p
@@ -1253,7 +1281,9 @@ bool normalizeWeights(Module *M, ConvolutionNode &CV,
   return true;
 }
 
-static void optimizeBatchNorm(Function *F) {
+bool OptimizeBatchNorm::run(Function *F) {
+  LOG_SCOPE(F->getLogContext(), getName());
+  bool changed = false;
   auto &nodes = F->getNodes();
   auto *M = F->getParent();
 
@@ -1291,8 +1321,11 @@ static void optimizeBatchNorm(Function *F) {
       // Take the predicate of what was expected for the output.
       CV->setPredicate(BN->getPredicate());
       BN->getResult().replaceAllUsesOfWith(CV);
+      changed = true;
+      continue;
     }
   } // For all nodes in the graph.
+  return changed;
 }
 
 /// \returns true if all dimensions of the \p input tensors are the same
@@ -1442,6 +1475,9 @@ static NodeValue tryToOptimizeConcatOfRehapes(Function *F, ConcatNode *CN) {
 static NodeValue simplifyConcatNode(Function *F, ConcatNode *CN) {
   /// concat(dim1, concat(dim2, X, Y), Z) -> concat(dim1, X, Y, Z),
   /// but only if dim1 == dim2
+
+  LOG_SCOPE(F->getLogContext(), "simplifyConcatNode")
+
   {
     auto inputs = CN->getInputs();
     // Check if any of the inputs are ConcatNode.
@@ -1505,23 +1541,32 @@ static NodeValue simplifyConcatNode(Function *F, ConcatNode *CN) {
 }
 
 /// Optimize Concat nodes.
-static void optimizeConcatNodes(Function *F) {
+bool OptimizeConcatNodes::run(Function *F) {
+  LOG_SCOPE(F->getLogContext(), getName());
+  bool changed = false;
   auto &nodes = F->getNodes();
 
   // For each node:
   for (auto &node : nodes) {
-    if (auto *CN = dyn_cast<ConcatNode>(&node)) {
-      NodeValue newCN = simplifyConcatNode(F, CN);
-      if (newCN.getNode()) {
-        CN->getResult().replaceAllUsesOfWith(newCN);
-      }
+    auto *CN = dyn_cast<ConcatNode>(&node);
+    if (!CN) {
+      continue;
     }
+    NodeValue newCN = simplifyConcatNode(F, CN);
+    if (!newCN.getNode()) {
+      continue;
+    }
+    CN->getResult().replaceAllUsesOfWith(newCN);
+    changed = true;
   }
+  return changed;
 }
 
 /// Simplify and canonicalize arithmetic nodes by detecting simple arithmetic
 /// identities.
-static void optimizeArithmeticNodes(Function *F) {
+bool OptimizeArithmeticNodes::run(Function *F) {
+  LOG_SCOPE(F->getLogContext(), getName());
+  bool changed = false;
   // A worklist that contains the nodes to process.
   std::vector<Node *> worklist;
 
@@ -1542,6 +1587,7 @@ static void optimizeArithmeticNodes(Function *F) {
     auto *SN = simplifyNode(N, F);
     if (SN != N) {
       N->getNthResult(ArithmeticNode::ResultIdx).replaceAllUsesOfWith(SN);
+      changed = true;
 
       // The simplified node could be further simplified. Note that the
       // simplified node might not be arithmetic; it could be a splat.
@@ -1560,12 +1606,14 @@ static void optimizeArithmeticNodes(Function *F) {
       continue;
     }
   }
+  return changed;
 }
 
 /// Statically transpose Constants.
-static void transposeConstants(Function *F) {
+bool TransposeConstants::run(Function *F) {
+  LOG_SCOPE(F->getLogContext(), getName());
   auto &nodes = F->getNodes();
-
+  bool changed = false;
   for (auto &node : nodes) {
     auto *TN = dyn_cast<TransposeNode>(&node);
     if (!TN) {
@@ -1584,7 +1632,9 @@ static void transposeConstants(Function *F) {
                      TN->getShuffle());
     // Rewrite uses of TN to reference NC.
     TN->getResult().replaceAllUsesOfWith(NC);
+    changed = true;
   }
+  return changed;
 }
 
 namespace {
@@ -1686,20 +1736,23 @@ struct ConstsEqDedup {
     // Only dedup Constants if their data matches exactly, so allowed error is
     // 0.0.
     return lhs->getPayload().isEqual(rhs->getPayload(),
-                                     /* allowedError */ 0.0);
+                                     /* allowedError */ 0.0,
+                                     /* verbose */ false);
   }
 };
 
 } // namespace
 
 /// Deduplicates Constants in the Module \p M. Applicable Constants for
-/// deduplication must have the same data.
-static void deduplicateConstants(Module *M) {
+/// deduplication must have the same data. \returns whether any Constants were
+/// deduplicated.
+static bool deduplicateConstants(Module *M) {
   // Map from Constants to other Constants that are equivalent for purposes of
   // deduplication.
   std::unordered_map<Constant *, Constant *, ConstsHasherDedup, ConstsEqDedup>
       duplicateConstants;
 
+  bool changed = false;
   for (auto &C : M->getConstants()) {
     // Only perform deduplication on consts of small enough size. Otherwise
     // just skip them. constDedupSizeOpt defaults to 256 as a heuristic, to
@@ -1726,24 +1779,33 @@ static void deduplicateConstants(Module *M) {
     // Replace current Constant by a found Constant, which is equivalent to
     // it.
     C->getOutput().replaceAllUsesOfWith(foundC);
+    changed = true;
   }
+  return changed;
 }
 
 /// Common Subexpression Elimination.
-static void CSE(Function *F) {
+bool CSE::run(Function *F) {
+  LOG_SCOPE(F->getLogContext(), getName());
   CSEVisitor visitor;
 
-  deduplicateConstants(F->getParent());
+  bool changed = deduplicateConstants(F->getParent());
 
   // Perform CSE on all nodes.
   for (auto &N : F->getNodes()) {
     N.visit(nullptr, &visitor);
   }
+  // TODO: Change Visitors to return whether they modified the Function they
+  // are contained in. For now conservatively set changed to true;
+  changed = true;
+  return changed;
 }
 
 /// Eliminate SliceNode when the input is SplatNode.
 /// Slice(Splat(args)) -> Splat(args')
-static void optimizeSliceOfSplat(Function *F) {
+bool OptimizeSliceOfSplat::run(Function *F) {
+  LOG_SCOPE(F->getLogContext(), getName());
+  bool changed = false;
   for (auto &node : F->getNodes()) {
     auto *sliceNode = dyn_cast<SliceNode>(&node);
     if (!sliceNode)
@@ -1755,11 +1817,16 @@ static void optimizeSliceOfSplat(Function *F) {
         F->createSplat(sliceNode->getName(), sliceNode->getResult().getType(),
                        splatNode->getValue());
     sliceNode->getResult().replaceAllUsesOfWith(newSplatNode);
+    changed = true;
   }
+  return changed;
 }
 
 /// Optimize TransposeNode into ReshapeNode when it actually moves no data.
-static void optimizeTransposeIntoReshape(Function *F) {
+bool OptimizeTransposeIntoReshape::run(Function *F) {
+  LOG_SCOPE(F->getLogContext(), getName());
+  bool changed = false;
+
   for (auto &node : F->getNodes()) {
     auto *TR = dyn_cast<TransposeNode>(&node);
     if (!TR)
@@ -1786,11 +1853,16 @@ static void optimizeTransposeIntoReshape(Function *F) {
     }
     auto *RS = F->createReshape(TR->getName(), inputNode, outputDims);
     TR->getResult().replaceAllUsesOfWith(RS);
+    changed = true;
   }
+
+  return changed;
 }
 
 /// Optimize reshape nodes.
-static void optimizeReshape(Function *F) {
+bool OptimizeReshape::run(Function *F) {
+  LOG_SCOPE(F->getLogContext(), getName());
+  bool changed = false;
   for (auto &node : F->getNodes()) {
     auto *reshapeNode = dyn_cast<ReshapeNode>(&node);
     if (!reshapeNode)
@@ -1811,6 +1883,7 @@ static void optimizeReshape(Function *F) {
                                           reshapeNode->getResult().getType(),
                                           splatNode->getValue());
       reshapeNode->getResult().replaceAllUsesOfWith(newSplatNode);
+      changed = true;
       continue;
     }
     // Reshape(Reshape(x)) -> Reshape(x).
@@ -1820,6 +1893,7 @@ static void optimizeReshape(Function *F) {
           F->createReshape(reshapeNode->getName(), reshapeNodeInput->getInput(),
                            reshapeNode->getResult().dims());
       reshapeNode->getResult().replaceAllUsesOfWith(newReshape);
+      changed = true;
       continue;
     }
     // Reshape(Constant) -> Constant'.
@@ -1835,9 +1909,11 @@ static void optimizeReshape(Function *F) {
       Tensor reshapedT = C->getPayload().getUnowned(reshapeNode->getDims());
       newC->assign(&reshapedT);
       reshapeNode->getResult().replaceAllUsesOfWith(newC);
+      changed = true;
       continue;
     }
   }
+  return changed;
 }
 
 /// Optimize: Max(Splat(), otherInput) or Max(otherInput, Splat()) for
@@ -1845,7 +1921,11 @@ static void optimizeReshape(Function *F) {
 /// Splat and Max can be eliminated if Splat value cannot impact the result.
 /// For example, Max and Splat can be removed if splat value is smaller
 /// than quantization range [min, max].
-static void optimizeQuantizedMaxSplat(Function *F) {
+/// \returns if anything was changed in the given function.
+static bool optimizeQuantizedMaxSplat(Function *F) {
+  LOG_SCOPE(F->getLogContext(), "optimizeQuantizedMaxSplat")
+
+  bool changed = false;
   // The following optimizations need to be performed after all
   // quantize/dequantize/rescale optimizations are done.
   for (auto &node : F->getNodes()) {
@@ -1870,14 +1950,35 @@ static void optimizeQuantizedMaxSplat(Function *F) {
           isa<SplatNode>(MN->getLHS()) ? MN->getRHS() : MN->getLHS();
 
       // If splat value is smaller than values that can be covered by
-      // quantition [min,max] range then just remove MaxNode operation.
+      // quantization [min,max] range then just remove MaxNode operation.
       float splatValue = (dyn_cast<SplatNode>(splatNode))->getValue();
       float min = MN->getResult().getType()->getQuantizedValueRange().first;
       if (splatValue <= min) {
+        changed = true;
         MN->getResult().replaceAllUsesOfWith(otherInput);
       }
+      continue;
+    }
+    // Potentially nop quantized ReLU can be eliminated.
+    if (auto *RN = dyn_cast<ReluNode>(&node)) {
+      if (!RN->getResult().getType()->isQuantizedType() ||
+          RN->getResult().getType() != RN->getInput().getType()) {
+        continue;
+      }
+
+      Node *input = RN->getInput();
+
+      // If zero is smaller or equal than values that can be covered by
+      // quantization [min,max] range then just remove ReluNode operation.
+      float min = RN->getResult().getType()->getQuantizedValueRange().first;
+      if (0.0f <= min) {
+        changed = true;
+        RN->getResult().replaceAllUsesOfWith(input);
+      }
+      continue;
     }
   }
+  return changed;
 }
 
 /// \returns A value representing the given \p constant converted
@@ -1952,8 +2053,9 @@ static NodeValue convertConstant(Module &mod, Constant &constant,
 /// This method potentially changes the semantic of the program
 /// because it eliminates some precision loss steps.
 /// However, this actually improves accuracy so we can always do it.
-static void optimizeConversions(Function *F) {
-
+bool OptimizeConversions::run(Function *F) {
+  LOG_SCOPE(F->getLogContext(), getName());
+  bool changed = false;
   llvm::SmallVector<Node *, 8> conversions;
 
   for (auto &node : F->getNodes()) {
@@ -2000,6 +2102,7 @@ static void optimizeConversions(Function *F) {
     }
     // Use srcVal instead of dstVal.
     dstVal.replaceAllUsesOfWith(srcVal, F);
+    changed = true;
     bool inserted = deadConversions.insert(dstVal.getNode()).second;
     (void)inserted;
     assert(inserted && "Conversion was already dead");
@@ -2014,6 +2117,7 @@ static void optimizeConversions(Function *F) {
   for (Node *conversion : deadConversions) {
     F->eraseNode(conversion);
   }
+  return changed;
 }
 
 /// \returns a cloned version of node \p N, but with each of the cloned node's
@@ -2034,7 +2138,10 @@ static Node *cloneNodeWithNewTypes(Function *F, Node *N,
 }
 
 /// Eliminate node sequences that are related to quantization.
-static void optimizeQuantization(Function *F) {
+/// \returns if anything was changed in the given function.
+bool OptimizeQuantization::run(Function *F) {
+  LOG_SCOPE(F->getLogContext(), getName());
+  bool changed = false;
   // A worklist that contains the nodes to process.
   std::vector<Node *> worklist;
 
@@ -2057,6 +2164,7 @@ static void optimizeQuantization(Function *F) {
         // If the quantization-dequantization sequence does not change the
         // type then we can simply drop them without adding a requantization
         // node.
+        changed = true;
         if (DQ->getInput().getType() == Q->getResult().getType()) {
           Q->getResult().replaceAllUsesOfWith(DQ->getInput());
           continue;
@@ -2082,12 +2190,14 @@ static void optimizeQuantization(Function *F) {
         if (NC == NodeValue()) {
           continue;
         }
+        changed = true;
         Q->getResult().replaceAllUsesOfWith(NC);
         continue;
       }
 
       if (auto *SN = dyn_cast<SplatNode>(Q->getInput())) {
         // Quantize(Splat) -> Splat'
+        changed = true;
         SplatNode *newSN = F->createSplat(
             SN->getName(), Q->getResult().getType(), SN->getValue());
         Q->getResult().replaceAllUsesOfWith(newSN);
@@ -2098,12 +2208,14 @@ static void optimizeQuantization(Function *F) {
     if (auto *DQ = dyn_cast<DequantizeNode>(node)) {
       if (auto *Q = dyn_cast<QuantizeNode>(DQ->getInput())) {
         // Dequantize(Quantize(X)) -> X
+        changed = true;
         DQ->getResult().replaceAllUsesOfWith(Q->getInput());
         continue;
       }
       // Fold the rescale into the following Dequantize.
       // Dequantize(rescale) -> Dequantize()
       if (auto *RS = dyn_cast<RescaleQuantizedNode>(DQ->getInput())) {
+        changed = true;
         auto *newRS = F->createDequantize(DQ->getName(), RS->getInput());
         DQ->getResult().replaceAllUsesOfWith(newRS);
 
@@ -2114,6 +2226,7 @@ static void optimizeQuantization(Function *F) {
       }
       if (auto *SN = dyn_cast<SplatNode>(DQ->getInput())) {
         // Dequantize(Splat) -> Splat'
+        changed = true;
         SplatNode *newSN = F->createSplat(
             SN->getName(), DQ->getResult().getType(), SN->getValue());
         DQ->getResult().replaceAllUsesOfWith(newSN);
@@ -2124,6 +2237,7 @@ static void optimizeQuantization(Function *F) {
     if (auto *RS = dyn_cast<RescaleQuantizedNode>(node)) {
       if (RS->getInput().getType() == RS->getResult().getType()) {
         // If rescale does not change the type, then simply drop it.
+        changed = true;
         RS->getResult().replaceAllUsesOfWith(RS->getInput());
         continue;
       }
@@ -2153,6 +2267,7 @@ static void optimizeQuantization(Function *F) {
       case Kinded::Kind::MatMulNodeKind:
       case Kinded::Kind::ConvolutionNodeKind:
       case Kinded::Kind::SparseLengthsWeightedSumNodeKind: {
+        changed = true;
         Node *newNode =
             cloneNodeWithNewTypes(F, RS->getInput(), RS->getResult().getType());
         RS->getResult().replaceAllUsesOfWith(newNode);
@@ -2170,6 +2285,7 @@ static void optimizeQuantization(Function *F) {
         // is smaller then truncation would have happened during the rescale.
         // On values that are outside of the range we just moved the
         // truncation to a different location.
+        changed = true;
         auto name = RS->getName();
         auto *L = F->createRescaleQuantized(name, MN->getLHS(),
                                             RS->getResult().getType());
@@ -2184,7 +2300,8 @@ static void optimizeQuantization(Function *F) {
     } // Handle RescaleQuantizedNode
   }   // For each item in the worklist.
 
-  optimizeQuantizedMaxSplat(F);
+  changed |= optimizeQuantizedMaxSplat(F);
+  return changed;
 }
 
 template <class T, class U>
@@ -2219,6 +2336,8 @@ FUNCTION_ENABLE_IF_TEMPLATE(MatMul)
 /// Apply this transformation for AvgPool and MaxPool.
 template <typename T>
 static bool sinkDownRescaleToPoolingNode(Function &F, T *PN) {
+  LOG_SCOPE(F.getLogContext(), "sinkDownRescaleToPoolingNode")
+
   bool changed = false;
 
   if (auto *rescale = dyn_cast<RescaleQuantizedNode>(PN->getInput())) {
@@ -2242,6 +2361,8 @@ static bool sinkDownRescaleToPoolingNode(Function &F, T *PN) {
 /// Apply this optimization for Add, Sub, Mul, Div, Min, Max.
 template <typename T>
 static bool combineDownRescaleToArithmeticNode(Function &F, T *AN) {
+  LOG_SCOPE(F.getLogContext(), "combineDownRescaleToArithmeticNode")
+
   bool changed = false;
 
   if (auto *rescale = dyn_cast<RescaleQuantizedNode>(AN->getLHS())) {
@@ -2262,7 +2383,9 @@ static bool combineDownRescaleToArithmeticNode(Function &F, T *AN) {
 }
 
 /// Sink Rescale nodes down when possible.
-static bool sinkRescaleQuantizedNode(Function *F) {
+/// \returns if anything was changed in the given function.
+bool SinkRescaleQuantizedNode::run(Function *F) {
+  LOG_SCOPE(F->getLogContext(), getName());
   bool changed = false;
   for (auto &node : F->getNodes()) {
     // Sink Rescale below Reshape node.
@@ -2422,6 +2545,8 @@ static bool sinkRescaleQuantizedNode(Function *F) {
 void glow::convertPlaceholdersToConstants(Function *F,
                                           const PlaceholderBindings &bindings,
                                           llvm::ArrayRef<Placeholder *> phs) {
+  LOG_SCOPE(F->getLogContext(), "convertPlaceholdersToConstants")
+
   auto *M = F->getParent();
   auto &placeholders = M->getPlaceholders();
   for (auto &PH : placeholders) {
@@ -2468,38 +2593,44 @@ static bool getFloatScalar(Node *node, float *retFloat) {
 
 /// Fold leakyRelu operations expressed as a sub-graph Max(A, Mul(A, scalar))
 /// and replace it by PRelu(Splat).
-static void foldLeakyRelu(Function *F) {
+bool FoldLeakyRelu::run(Function *F) {
+  LOG_SCOPE(F->getLogContext(), getName());
+  bool changed = false;
   auto &nodes = F->getNodes();
   for (auto &node : nodes) {
-    if (auto *maxNode = dyn_cast<MaxNode>(&node)) {
-      NodeValue otherMaxOperand;
-      MulNode *mulNode;
-      if ((mulNode = dyn_cast<MulNode>(maxNode->getRHS()))) {
-        otherMaxOperand = maxNode->getLHS();
-      } else if ((mulNode = dyn_cast<MulNode>(maxNode->getLHS()))) {
-        otherMaxOperand = maxNode->getRHS();
-      } else {
-        continue;
-      }
-      NodeValue otherMulOperand;
-      float value;
-      if (getFloatScalar(mulNode->getRHS(), &value)) {
-        otherMulOperand = maxNode->getLHS();
-      } else if (getFloatScalar(mulNode->getLHS(), &value)) {
-        otherMulOperand = maxNode->getRHS();
-      } else {
-        continue;
-      }
-      if ((value <= 1.0f) && (otherMulOperand == otherMaxOperand)) {
-        // The sub-tree is a Leaky-Relu, express it as a PRelu.
-        auto *splat = F->createSplat(maxNode->getName(),
-                                     mulNode->getResult().getType(), value);
-        auto *PRelu =
-            F->createPRELU(maxNode->getName(), otherMaxOperand, splat);
-        maxNode->getResult().replaceAllUsesOfWith(PRelu);
-      }
+    auto *maxNode = dyn_cast<MaxNode>(&node);
+    if (!maxNode) {
+      continue;
+    }
+    NodeValue otherMaxOperand;
+    MulNode *mulNode;
+    if ((mulNode = dyn_cast<MulNode>(maxNode->getRHS()))) {
+      otherMaxOperand = maxNode->getLHS();
+    } else if ((mulNode = dyn_cast<MulNode>(maxNode->getLHS()))) {
+      otherMaxOperand = maxNode->getRHS();
+    } else {
+      continue;
+    }
+    NodeValue otherMulOperand;
+    float value;
+    if (getFloatScalar(mulNode->getRHS(), &value)) {
+      otherMulOperand = maxNode->getLHS();
+    } else if (getFloatScalar(mulNode->getLHS(), &value)) {
+      otherMulOperand = maxNode->getRHS();
+    } else {
+      continue;
+    }
+    if ((value <= 1.0f) && (otherMulOperand == otherMaxOperand)) {
+      // The sub-tree is a Leaky-Relu, express it as a PRelu.
+      auto *splat = F->createSplat(maxNode->getName(),
+                                   mulNode->getResult().getType(), value);
+      auto *PRelu = F->createPRELU(maxNode->getName(), otherMaxOperand, splat);
+      maxNode->getResult().replaceAllUsesOfWith(PRelu);
+      changed = true;
+      continue;
     }
   }
+  return changed;
 }
 
 /// Parameters that are used to define ChannelShuffle operators.
@@ -2549,11 +2680,13 @@ getChannelShuffleParams(const ReshapeNode &node) {
 }
 
 // Fold Reshape->Transpose->Reshape into ChannelShuffle when applicable.
-static void foldChannelShuffle(Function *F) {
+bool FoldChannelShuffle::run(Function *F) {
+  LOG_SCOPE(F->getLogContext(), getName());
   // FIXME: This optimization doesn't check its applicability carefully enough
   // and kicks in when it shouldn't.  See GraphOptzTest.NoFoldChannelShuffle.
-  return;
+  return false;
 
+  bool changed = false;
   auto &nodes = F->getNodes();
   for (auto &node : nodes) {
     auto *RN2 = dyn_cast<ReshapeNode>(&node);
@@ -2582,22 +2715,26 @@ static void foldChannelShuffle(Function *F) {
     auto *newCS = F->createChannelShuffle("channel_shuffle", RN1->getInput(),
                                           paramsM->group, paramsM->kernel);
     RN2->getResult().replaceAllUsesOfWith(newCS);
+    changed = true;
   }
+  return changed;
 }
 
-void glow::fold(Function *F, const CompilationContext &cctx) {
+void glow::fold(Function *F, CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), "glow::fold")
+
   (void)cctx;
   // Get Reshape nodes merged into constants to simplify folding.
-  optimizeReshape(F);
+  OptimizeReshape().run(F);
 
   // Fold sub-graphs corresponding to leakyRelu.
-  foldLeakyRelu(F);
+  FoldLeakyRelu().run(F);
 
   // Fold Reshape->Transpose->Reshape into ChannelShuffle when applicable.
-  foldChannelShuffle(F);
+  FoldChannelShuffle().run(F);
 
   // Perform Dead Code Elimination.
-  DCE(F);
+  DCE().run(F);
 }
 
 void glow::fold(Function *F, CompilationMode mode) {
@@ -2606,98 +2743,103 @@ void glow::fold(Function *F, CompilationMode mode) {
   fold(F, cctx);
 }
 
-void glow::optimize(Function *F, const CompilationContext &cctx) {
+void glow::optimize(Function *F, CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), "glow::optimize")
+
   // Optimize may be called after backend specific transformations and some
   // nodes may have become unused. It is a good idea to remove them, before
   // proceeding with any further optimizations.
-  DCE(F);
+  DCE().run(F);
 
   // Sink transpose operations in an attempt to cancel them out.
   // Perform code sinking until a fixed-point is reached.
   // On big functions, the number of iterations until the fixpoint
   // is usually at most 2 or 3 iterations.
-  while (sinkCode(F)) {
+  while (SinkCode().run(F)) {
     // Perform Dead Code Elimination between rounds of code sinking.
-    DCE(F);
+    DCE().run(F);
+    VLOG_IF_EVERY_N(0, google::COUNTER > 1, 100)
+        << "Warning: sinkCode optimization applied another 100 iterations "
+           "without reaching fixed point";
   }
 
   // Transposes that don't move data are optimized into Reshapes, which enables
   // further optimizations.
-  optimizeTransposeIntoReshape(F);
+  OptimizeTransposeIntoReshape().run(F);
   // Need to remove old uses that would prohibit Reshape(Constant) optimization.
-  DCE(F);
+  DCE().run(F);
 
   // Reshapes and transposes can prevent other optimizations from triggering,
   // so try to optimize them out first.
-  optimizeReshape(F);
+  OptimizeReshape().run(F);
   if (cctx.compMode == CompilationMode::Infer) {
-    transposeConstants(F);
+    TransposeConstants().run(F);
   }
 
   // Perform Common Subexpression Elimination.
-  CSE(F);
+  CSE().run(F);
 
   // Optimize Pad nodes
-  mergePadIntoConvolution(F);
+  MergePadIntoConvolution().run(F);
 
   // Perform Dead Code Elimination.
-  DCE(F);
+  DCE().run(F);
 
   // Merge multiple matmul nodes into a single large matmul.
-  mergeMatMul(F);
+  MergeMatMul().run(F);
 
   // Merge multiple batched adds into a larger batched add.
-  mergeBatchedAdd(F);
+  MergeBatchedAdd().run(F);
 
   // Merge ReduceMean into AveragePool if possible.
-  optimizeReduceMean(F);
+  OptimizeReduceMean().run(F);
 
   // Convert BatchMatMuls with a broadcasted RHS to a single MatMul.
-  convertBroadcastedBatchMatMul(F);
+  ConvertBroadcastedBatchMatMul().run(F);
 
   // Perform Dead Code Elimination.
-  DCE(F);
+  DCE().run(F);
 
   if (cctx.compMode == CompilationMode::Infer) {
     // Merge batch normalization operations.
     // Do after transpose constant folding, as weight transposes can prevent
     // the optimization from triggering.
-    optimizeBatchNorm(F);
+    OptimizeBatchNorm().run(F);
   }
 
   // Perform Common Subexpression Elimination.
-  CSE(F);
+  CSE().run(F);
 
   // Optimize Concat nodes.
-  optimizeConcatNodes(F);
+  OptimizeConcatNodes().run(F);
 
   // Optimize arithmetic nodes based on algebraic identities.
-  optimizeArithmeticNodes(F);
+  OptimizeArithmeticNodes().run(F);
 
   // Optimize Tensor shape transformations.
-  optimizeSliceOfSplat(F);
+  OptimizeSliceOfSplat().run(F);
 
   // Merge Transpose into MatMul/FC.
   // Run DCE to ensure correct number of node users.
-  DCE(F);
-  mergeTransposeIntoMatMulOrFC(F);
+  DCE().run(F);
+  MergeTransposeIntoMatMulOrFC().run(F);
 
   // Optimize away intermediate type conversions.
-  optimizeConversions(F);
+  OptimizeConversions().run(F);
 
   // Optimize quantization related operators.
-  optimizeQuantization(F);
-
-  while (sinkRescaleQuantizedNode(F)) {
-    DCE(F);
-    optimizeQuantization(F);
+  while (OptimizeQuantization().run(F) || SinkRescaleQuantizedNode().run(F)) {
+    DCE().run(F);
+    VLOG_IF_EVERY_N(0, google::COUNTER > 1, 100)
+        << "Warning: Quantization optimization applied another 100 iterations "
+           "without reaching fixed point";
   }
 
   // Optimize reshapes introduced during above optimizations.
-  optimizeReshape(F);
+  OptimizeReshape().run(F);
 
   // Perform Dead Code Elimination.
-  DCE(F);
+  DCE().run(F);
 }
 
 void glow::optimize(Function *F, CompilationMode mode) {
@@ -2731,17 +2873,23 @@ static llvm::Error checkAllNodesSupported(const Function &F, const Backend &B) {
 /// PrecisionConfiguration found in \p cctx. This could include quantization,
 /// profiling, and FP16 conversion.
 static void transformForPrecisionMode(const Backend &B, Function *F,
-                                      const CompilationContext &cctx) {
+                                      CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), "transformForPrecisionMode")
   const PrecisionConfiguration &precConfig = cctx.precisionConfig;
 
   switch (precConfig.quantMode) {
   case QuantizationMode::Profile: {
     assert(cctx.bindings);
+
+    LOG_SCOPE(F->getLogContext(), "glow::profileQuantization")
+
     glow::profileQuantization(*cctx.bindings, F);
     break;
   }
 
   case QuantizationMode::Quantize: {
+    LOG_SCOPE(F->getLogContext(), "quantization::quantizeFunction")
+
     quantization::quantizeFunction(F, precConfig.quantConfig, B,
                                    *cctx.loweredInfoMap,
                                    precConfig.precisionModeKindSet);
@@ -2754,6 +2902,8 @@ static void transformForPrecisionMode(const Backend &B, Function *F,
   }
 
   if (precConfig.convertToFP16) {
+    LOG_SCOPE(F->getLogContext(), "TypeAToTypeBFunctionConverter::convert()")
+
     TypeAToTypeBFunctionConverter converter(*F, ElemKind::FloatTy,
                                             ElemKind::Float16Ty,
                                             &precConfig.precisionModeKindSet);
@@ -2761,10 +2911,10 @@ static void transformForPrecisionMode(const Backend &B, Function *F,
   }
 }
 
-// NOTE: When updating this function, please also update the documentation in
-// docs/GraphOptimizationPipeline.md
-llvm::Error glow::optimizeFunction(Function *F, const Backend &B,
-                                   const CompilationContext &cctx) {
+llvm::Error glow::optimizeFunctionBeforeLowering(Function *F,
+                                                 CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), "glow::optimizeFunctionBeforeLowering")
+
   // Verify the function pre-optimization/lowering.
   assert(F->verify() && "Function must be valid");
 
@@ -2777,11 +2927,20 @@ llvm::Error glow::optimizeFunction(Function *F, const Backend &B,
   // model converters, like converters from Tensorflow to ONNX). In this
   // situation, such folding can then enable more optimizations and also improve
   // the performance backends that support natively such high-level operators.
-  ::glow::fold(F, cctx.compMode);
+  ::glow::fold(F, cctx);
 
   // Optimize the graph.
   ::glow::optimize(F, cctx);
+  return llvm::Error::success();
+}
 
+// NOTE: When updating this function, please also update the documentation in
+// docs/GraphOptimizationPipeline.md
+llvm::Error glow::optimizeFunction(Function *F, const Backend &B,
+                                   CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), "glow::optimizeFunction")
+
+  RETURN_IF_ERR(optimizeFunctionBeforeLowering(F, cctx));
   // Lower the graph into a sequence of low-level linear algebra operations.
   const PrecisionConfiguration &precConfig = cctx.precisionConfig;
   if (precConfig.quantMode == QuantizationMode::Profile) {
@@ -2789,11 +2948,11 @@ llvm::Error glow::optimizeFunction(Function *F, const Backend &B,
     // should be lowered. loweredInfoMap logs what is lowered from what for
     // later use when creating quantization infos. Also pass the precision mode
     // kind set as nodes to not lower, specified higher up in the stack.
-    ::glow::lower(F, cctx.loweredInfoMap, /* backend */ nullptr,
+    ::glow::lower(F, cctx, /* backend */ nullptr,
                   precConfig.precisionModeKindSet);
   } else {
     // Lower based on the backend's preferences.
-    ::glow::lower(F, cctx.loweredInfoMap, &B);
+    ::glow::lower(F, cctx, &B);
   }
 
   // Transform given precision mode; may quantize, convert to fp16, or

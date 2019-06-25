@@ -2852,3 +2852,33 @@ TEST_F(GraphOptz, convertBroadcastedBatchMatMulToMatMul) {
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::MatMulNodeKind), 1);
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::BatchMatMulNodeKind), 0);
 }
+
+TEST_F(GraphOptz, dceQuantization) {
+  auto *lhs =
+      mod_.createPlaceholder(ElemKind::Int8QTy, {3, 5}, 0.3, 15, "lhs", false);
+  auto *weights =
+      mod_.createConstant(ElemKind::Int8QTy, {3, 5}, 0.3, 15, "weights");
+
+  auto *add = F_->createAdd("add", lhs, weights);
+  auto *t1 = mod_.uniqueType(ElemKind::Int8QTy, {3, 5}, 0.2, 0);
+  auto *rs1 = F_->createRescaleQuantized("rs1", add, t1);
+  auto *t2 = mod_.uniqueType(ElemKind::Int8QTy, {3, 5}, 0.1, 1);
+  auto *rs2 = F_->createRescaleQuantized("rs2", rs1, t2);
+  F_->createSave("save", rs2);
+
+  ::glow::optimize(F_, CompilationMode::Infer);
+
+  EXPECT_EQ(F_->getNodes().size(), 2);
+}
+
+TEST_F(GraphOptz, nopRelu) {
+  auto *in = mod_.createPlaceholder(ElemKind::Int8QTy, {3, 5}, 0.3, -128, "lhs",
+                                    false);
+
+  auto *relu = F_->createRELU("relu", in);
+  F_->createSave("save", relu);
+
+  ::glow::optimize(F_, CompilationMode::Infer);
+
+  EXPECT_EQ(F_->getNodes().size(), 1);
+}

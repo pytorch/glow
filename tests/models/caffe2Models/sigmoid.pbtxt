@@ -1,0 +1,8 @@
+name: "sigmoid"
+op {
+  type: "Sigmoid"
+  input: "sigmoid_test_input"
+  output: "sigmoid_test_output"
+}
+external_input: "sigmoid_test_input"
+external_output: "sigmoid_test_output"

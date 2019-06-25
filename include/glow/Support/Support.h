@@ -127,16 +127,16 @@ struct MultiLineStr {
 struct DeviceConfigHelper {
   /// Device Name.
   std::string name_;
-  /// BackendKind name.
-  std::string kindName_;
+  /// Backend name.
+  std::string backendName_;
   /// A string with multi lines. Each line represents a param.
   MultiLineStr parameters_;
   DeviceConfigHelper() = default;
-  DeviceConfigHelper(std::string &name, std::string &kindName)
-      : name_(name), kindName_(kindName) {}
-  DeviceConfigHelper(std::string &kindName, std::string &name,
+  DeviceConfigHelper(std::string &name, std::string &backendName)
+      : name_(name), backendName_(backendName) {}
+  DeviceConfigHelper(std::string &backendName, std::string &name,
                      MultiLineStr &parameters)
-      : name_(name), kindName_(kindName), parameters_(parameters) {}
+      : name_(name), backendName_(backendName), parameters_(parameters) {}
 };
 
 /// Deserialize quantization infos from the file \p fileName.

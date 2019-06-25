@@ -10,7 +10,7 @@ install_pocl() {
    sudo apt-get install -y ocl-icd-opencl-dev clinfo libhwloc-dev opencl-headers
 
    git clone https://github.com/pocl/pocl.git
-   cd pocl && git checkout 368539f1b34ec84f94edd255961a39925b92066d && cd ../
+   cd pocl && git checkout 4efafa82c087b5e846a9f8083d46b3cdac2f698b && cd ../
    mkdir build_pocl
    cd build_pocl
    cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=/usr/bin/clang++-8 -DCMAKE_C_COMPILER=/usr/bin/clang-8 -DENABLE_ICD=ON ../pocl
@@ -92,9 +92,10 @@ elif [[ "$CIRCLE_JOB" == "CHECK_CLANG_FORMAT" ]]; then
 else
     install_pocl
     CMAKE_ARGS+=("-DCMAKE_BUILD_TYPE=Debug")
-    CMAKE_ARGS+=("-DGLOW_WITH_OPENCL=OFF")
     if [[ "${CIRCLE_JOB}" == "SHARED" ]]; then
         CMAKE_ARGS+=("-DBUILD_SHARED_LIBS=ON")
+    else
+        CMAKE_ARGS+=("-DGLOW_WITH_OPENCL=ON")
     fi
 fi
 

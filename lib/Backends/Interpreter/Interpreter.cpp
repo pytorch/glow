@@ -25,7 +25,7 @@
 
 using namespace glow;
 
-std::unique_ptr<CompiledFunction>
+llvm::Expected<std::unique_ptr<CompiledFunction>>
 Interpreter::compile(Function *F, const BackendOptions &opts) const {
   TraceInfo traceInfo = buildManualTraceInfo(F);
   auto IR = generateAndOptimizeIR(F, *this, shouldShareBuffers());
@@ -42,7 +42,8 @@ Interpreter::compile(Function *F, const BackendOptions &opts) const {
   }
 
   compiledFunc->setTraceInfo(std::move(traceInfo));
-  return compiledFunc;
+  return llvm::Expected<std::unique_ptr<CompiledFunction>>(
+      std::move(compiledFunc));
 }
 
 std::unique_ptr<CompiledFunction>
@@ -87,15 +88,19 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
     return NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Float16Ty});
 
-  case Kinded::Kind::SplatNodeKind:
-  case Kinded::Kind::InsertTensorNodeKind:
   case Kinded::Kind::DivNodeKind:
-  case Kinded::Kind::ConcatNodeKind:
   case Kinded::Kind::SliceNodeKind:
   case Kinded::Kind::SpaceToDepthNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy,
          ElemKind::Int64ITy});
+
+  case Kinded::Kind::SplatNodeKind:
+  case Kinded::Kind::InsertTensorNodeKind:
+  case Kinded::Kind::ConcatNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind(
+        {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy,
+         ElemKind::Int32ITy, ElemKind::Int64ITy, ElemKind::BoolTy});
 
   case Kinded::Kind::SelectNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
@@ -135,6 +140,20 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
                {ConvolutionNode::BiasIdx}) &&
            (NI.getInElemTy(ConvolutionNode::BiasIdx) == ElemKind::Int32QTy);
 
+  case Kinded::Kind::ChannelwiseQuantizedConvolutionNodeKind:
+    return (NI.getInElemTy(ChannelwiseQuantizedConvolutionNode::InputIdx) ==
+            ElemKind::Int8QTy) &&
+           (NI.getInElemTy(ChannelwiseQuantizedConvolutionNode::FilterIdx) ==
+            ElemKind::Int8QTy) &&
+           (NI.getInElemTy(ChannelwiseQuantizedConvolutionNode::BiasIdx) ==
+            ElemKind::FloatTy) &&
+           (NI.getInElemTy(ChannelwiseQuantizedConvolutionNode::ScalesIdx) ==
+            ElemKind::FloatTy) &&
+           (NI.getInElemTy(ChannelwiseQuantizedConvolutionNode::OffsetsIdx) ==
+            ElemKind::Int32ITy) &&
+           (NI.getOutElemTy(ChannelwiseQuantizedConvolutionNode::ResultIdx) ==
+            ElemKind::Int8QTy);
+
   case Kinded::Kind::Convolution3DNodeKind:
     if (!NI.getInTy(Convolution3DNode::InputIdx)->isQuantizedType()) {
       return NI.allInputsAndOutputsHaveSameElemKind(
@@ -168,6 +187,16 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
             ElemKind::Int32QTy) &&
            (NI.getOutElemTy(RowwiseQuantizedFullyConnectedNode::ResultIdx) ==
             ElemKind::Int8QTy);
+
+  case Kinded::Kind::SparseLengthsSumNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind(
+               {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy},
+               {SparseLengthsSumNode::IndicesIdx,
+                SparseLengthsSumNode::LengthsIdx}) &&
+           (NI.getInElemTy(SparseLengthsSumNode::IndicesIdx) ==
+            ElemKind::Int64ITy) &&
+           (NI.getInElemTy(SparseLengthsSumNode::LengthsIdx) ==
+            ElemKind::Int32ITy);
 
   case Kinded::Kind::SparseLengthsWeightedSumNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
@@ -381,7 +410,12 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
 }
 
 bool Interpreter::shouldLower(const Node *N) const {
-  if (N->getKind() == Kinded::Kind::ConvolutionNodeKind)
+  switch (N->getKind()) {
+  case Kinded::Kind::ConvolutionNodeKind:
+  case Kinded::Kind::SparseLengthsSumNodeKind:
+  case Kinded::Kind::ChannelwiseQuantizedConvolutionNodeKind:
     return false;
-  return true;
+  default:
+    return true;
+  }
 }

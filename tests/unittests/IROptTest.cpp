@@ -84,7 +84,7 @@ TEST(Optimizer, dseDoNotRemloveLastWriteIntoWeightVar) {
   bb.createElementAddInst("elem_add", output, input1, input2);
   bb.createTensorViewInst(
       "cast", output, mod.uniqueType(Type(glow::ElemKind::FloatTy, {1, 1, 1})),
-      {0, 0, 0});
+      {0});
 
   optimize(M, MockBackend().shouldShareBuffers());
 
@@ -141,11 +141,11 @@ TEST(Optimizer, deleteDeadViews) {
 
   auto *tensorView1 = bb.createTensorViewInst(
       "tensor_view1", input,
-      mod.uniqueType(Type{glow::ElemKind::FloatTy, {1, 1}}), {0, 0});
+      mod.uniqueType(Type{glow::ElemKind::FloatTy, {1, 1}}), {0});
 
   bb.createTensorViewInst("tensor_view2", tensorView1,
                           mod.uniqueType(Type{glow::ElemKind::FloatTy, {1}}),
-                          {0});
+                          {0, 0});
   bb.createCopyInst("copy", output, input);
 
   optimize(M, MockBackend().shouldShareBuffers());
@@ -673,10 +673,10 @@ TEST(Optimizer, bufferReuseWithoutDefsPlusCasts) {
   auto *useA = bb.createElementAddInst("useA", tmp3, tmp2, input);
   auto *inputView = bb.createTensorViewInst(
       "inputView", input, mod.uniqueType(Type(glow::ElemKind::FloatTy, {64})),
-      {0});
+      {0, 0});
   auto *tmp3View = bb.createTensorViewInst(
       "tmp3View", tmp3, mod.uniqueType(Type(glow::ElemKind::FloatTy, {64})),
-      {0});
+      {0, 0});
 
   bb.createElementAddInst("useB", tmp1, inputView, tmp3View);
   bb.createCopyInst("redef", input, tmp3);
@@ -714,4 +714,217 @@ TEST(Optimizer, bufferReuseWithoutDefsPlusCasts) {
           : nullptr;
   EXPECT_EQ(inputCast ? getOrigin(inputCast) : nullptr, input);
   EXPECT_EQ(inputCast ? inputCast->getOperand(0).first : nullptr, input);
+}
+
+/// Check that a copy from a buffer to itself is
+/// detected when both src and dest are hidden under TensorView
+/// instructions and eliminated if the linearized offsets of the src and dest
+/// are equal.
+TEST(Optimizer, copyEliminationTensorViewToTensorView) {
+  Module mod;
+  Function *F = mod.createFunction("copyEliminationTensorViewToTensorView");
+  IRFunction M(F);
+  IRBuilder bb(&M);
+
+  // Test that a copy between tensorviews with identical offsets which have
+  // different src operands with different offsets into the same underlying
+  // buffer is not optimised away.
+
+  // Create a WeightVar for TensorViews to use as their source operand.
+  auto *A = bb.createWeightVar(glow::ElemKind::FloatTy, {4, 2}, "A",
+                               WeightVar::MutabilityKind::Mutable);
+
+  // Create a view into A.
+  auto *view1 = bb.createTensorViewInst(
+      "view1", A, mod.uniqueType(Type(glow::ElemKind::FloatTy, {1, 2, 1})),
+      {0, 0});
+
+  // Create another view into A with the same shape as view1 but different
+  // offsets.
+  auto *view2 = bb.createTensorViewInst(
+      "view2", A, mod.uniqueType(Type(glow::ElemKind::FloatTy, {1, 2, 1})),
+      {1, 1});
+
+  // Create views into view1 and view2 with identical offsets.
+  auto *view3 = bb.createTensorViewInst(
+      "view3", view1, mod.uniqueType(Type(glow::ElemKind::FloatTy, {2, 1})),
+      {0, 0, 0});
+
+  auto *view4 = bb.createTensorViewInst(
+      "view4", view2, mod.uniqueType(Type(glow::ElemKind::FloatTy, {2, 1})),
+      {0, 0, 0});
+
+  // Create a copy from view3 to view4. These views both point to 2 elements in
+  // A starting at offset {0, 0}, so this should be optimized out.
+  bb.createCopyInst("copyViewToView", view3, view4);
+
+  auto &instrs = M.getInstrs();
+  optimize(M, MockBackend().shouldShareBuffers());
+
+  // All instructions should remain because the linearized offsets of the final
+  // tensorview are not the same.
+  EXPECT_EQ(instrs.size(), 5);
+  EXPECT_FALSE(std::none_of(
+      instrs.begin(), instrs.end(),
+      [](const Instruction &I) -> bool { return isa<CopyInst>(&I); }));
+  EXPECT_FALSE(std::none_of(
+      instrs.begin(), instrs.end(),
+      [](const Instruction &I) -> bool { return isa<TensorViewInst>(&I); }));
+
+  // Reset state for next test.
+  M.clear();
+  M.setGraph(F);
+
+  // Test that a copy between tensorviews with different offsets which have
+  // different src operands with different offsets but have the same linearized
+  // offset into the same underlying buffer is optimized away.
+
+  // Create a WeightVar for TensorViews to use as their source operand.
+  auto *D = bb.createWeightVar(glow::ElemKind::FloatTy, {4, 2}, "B",
+                               WeightVar::MutabilityKind::Mutable);
+
+  // Create another WeightVar. E will be copied into this to avoid
+  // optimizing all instructions away.
+  auto *E = bb.createWeightVar(glow::ElemKind::FloatTy, {4, 2}, "C",
+                               WeightVar::MutabilityKind::Mutable);
+
+  // Create a view into D. The linearized offset of this TensorView is 0 and the
+  // size is 8.
+  auto *view7 = bb.createTensorViewInst(
+      "view7", D, mod.uniqueType(Type(glow::ElemKind::FloatTy, {4, 2, 1})),
+      {0, 0});
+
+  // Create a view into view7. The linearized offset of this TensorView is
+  // 4 and the size is 2.
+  auto *view8 = bb.createTensorViewInst(
+      "view8", view7, mod.uniqueType(Type(glow::ElemKind::FloatTy, {2})),
+      {2, 0, 0});
+
+  // Create a view into D. The linearized offset of this TensorView is 4 and the
+  // size is 4.
+  auto *view9 = bb.createTensorViewInst(
+      "view9", D, mod.uniqueType(Type(glow::ElemKind::FloatTy, {4})), {2, 0});
+
+  // Create a view into view9. The linearized offset of this TensorView is 4 and
+  // the size is 2.
+  auto *view10 = bb.createTensorViewInst(
+      "view10", view9, mod.uniqueType(Type(glow::ElemKind::FloatTy, {2})), {0});
+
+  // Create a copy from view8 to view 10. Since the linearized offsets and types
+  // of the two views are identical, this copy should be optimized out.
+  bb.createCopyInst("copyViewToView", view8, view10);
+
+  // Insert D into E just to make sure the IR isn't empty after optimisation.
+  bb.createInsertTensorInst("copyOutput", E, D, /*Offsets=*/{0, 0},
+                            /*Count=*/1, /*Axis=*/0);
+
+  optimize(M, MockBackend().shouldShareBuffers());
+
+  // Only one instruction (the InsertTensor) should remain.
+  EXPECT_EQ(instrs.size(), 1);
+  EXPECT_TRUE(std::none_of(
+      instrs.begin(), instrs.end(),
+      [](const Instruction &I) -> bool { return isa<CopyInst>(&I); }));
+  EXPECT_TRUE(std::none_of(
+      instrs.begin(), instrs.end(),
+      [](const Instruction &I) -> bool { return isa<TensorViewInst>(&I); }));
+}
+
+/// Check that a copy from a buffer to itself is
+/// detected when the src is hidden under a layer of TensorView instructions and
+/// eliminated if the linearized offsets of the src and dest are equal.
+TEST(Optimizer, copyEliminationTensorViewBuffer) {
+  Module mod;
+  Function *F = mod.createFunction("copyEliminationTensorViewToBuffer");
+  IRFunction M(F);
+  IRBuilder bb(&M);
+
+  // Create a WeightVar for TensorViews to use as their source operand.
+  auto *B = bb.createWeightVar(glow::ElemKind::FloatTy, {4, 2}, "B",
+                               WeightVar::MutabilityKind::Mutable);
+
+  // Create another WeightVar. B will be copied into this to avoid
+  // optimizing all instructions away.
+  auto *C = bb.createWeightVar(glow::ElemKind::FloatTy, {4, 2}, "C",
+                               WeightVar::MutabilityKind::Mutable);
+
+  // Create two stacked views into A. Two are required because a tensorview
+  // that has the same type as its src is eliminated before copy elimination is
+  // applied.
+  auto *view1 = bb.createTensorViewInst(
+      "view1", B, mod.uniqueType(Type(glow::ElemKind::FloatTy, {1, 4, 2})),
+      {0, 0});
+
+  auto *view2 = bb.createTensorViewInst(
+      "view2", view1, mod.uniqueType(Type(glow::ElemKind::FloatTy, {4, 2})),
+      {0, 0, 0});
+
+  // Create a copy from view2 to B. This view points to the start of A and has
+  // the same type, so this should be optimized out.
+  bb.createCopyInst("copyViewToBuf", view2, B);
+
+  // Create a copy from B to view2. This should also be optimized out for the
+  // same reason.
+  bb.createCopyInst("copyBufToView", B, view2);
+
+  // Insert B into C. This exists just to make sure the optimised IR isn't
+  // empty.
+  bb.createInsertTensorInst("copyOutput", C, B, /*Offsets=*/{0, 0},
+                            /*Count=*/1, /*Axis=*/0);
+
+  auto &instrs = M.getInstrs();
+  optimize(M, MockBackend().shouldShareBuffers());
+
+  // Only one instruction (the InsertTensor) should remain.
+  EXPECT_EQ(instrs.size(), 1);
+  EXPECT_TRUE(std::none_of(
+      instrs.begin(), instrs.end(),
+      [](const Instruction &I) -> bool { return isa<CopyInst>(&I); }));
+  EXPECT_TRUE(std::none_of(
+      instrs.begin(), instrs.end(),
+      [](const Instruction &I) -> bool { return isa<TensorViewInst>(&I); }));
+}
+
+/// Check if dump functions work for Value and IRFunction.
+TEST(Optimizer, dumpDataStructure) {
+  Module mod;
+  Function *F = mod.createFunction("inoutCopy");
+  IRFunction M(F);
+  IRBuilder bb(&M);
+
+  Value *input = bb.createWeightVar(glow::ElemKind::FloatTy, {2, 64}, "input",
+                                    WeightVar::MutabilityKind::Mutable);
+  // Dump Value.
+  std::string storageV1;
+  llvm::raw_string_ostream osV1(storageV1);
+  input->dump(osV1);
+  std::string mesV = input->toString();
+  std::string expectMesV = R"(%input = WeightVar float<2 x 64> mutable)";
+  EXPECT_EQ(mesV, expectMesV);
+  EXPECT_EQ(mesV, osV1.str());
+  std::string storageV2;
+  llvm::raw_string_ostream osV2(storageV2);
+  osV2 << input;
+  EXPECT_EQ(mesV, osV2.str());
+  // Dump IRFunction.
+  std::string storageIRF1;
+  llvm::raw_string_ostream osIRF1(storageIRF1);
+  M.dump(osIRF1);
+  std::string mesI = M.toString();
+  std::string expectMesI = R"(function inoutCopy
+declare {
+  %input = WeightVar float<2 x 64> mutable // size: 512
+
+  ; size = 512 bytes
+}
+
+code {
+}
+)";
+  EXPECT_EQ(mesI, expectMesI);
+  EXPECT_EQ(mesI, osIRF1.str());
+  std::string storageIRF2;
+  llvm::raw_string_ostream osIRF2(storageIRF2);
+  osIRF2 << M;
+  EXPECT_EQ(mesI, osIRF2.str());
 }

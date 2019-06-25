@@ -42,7 +42,7 @@ void LLVMCompiledFunction::loadPlaceholders(
     auto symbolInfo = it->second;
     auto payload = PH.second->getUnsafePtr();
     auto addr = symbolInfo.offset;
-    auto numBytes = symbolInfo.size;
+    auto numBytes = PH.second->getUnpaddedSizeInBytes();
     // copy PH to allocated memory.
     memcpy(baseMutableWeightVarsAddress + addr, payload, numBytes);
   }
@@ -59,7 +59,7 @@ void LLVMCompiledFunction::updatePlaceholders(
     }
     auto symbolInfo = it->second;
     auto payload = baseMutableWeightVarsAddress + symbolInfo.offset;
-    auto numBytes = symbolInfo.size;
+    auto numBytes = PH.second->getUnpaddedSizeInBytes();
     auto addr = PH.second->getUnsafePtr();
     // copy PH from allocated memory.
     memcpy(addr, payload, numBytes);
@@ -73,7 +73,7 @@ llvm::Error LLVMCompiledFunction::execute(ExecutionContext *context) {
   uint8_t *baseMutableWeightVarsAddress{nullptr};
 
   {
-    auto ev = context->scopedEvent("allocBuffers");
+    TRACE_EVENT_SCOPE(context, TraceLevel::RUNTIME, "allocBuffers");
     if (runtimeBundle_.getActivationsSize() != 0) {
       baseActivationsAddress = (uint8_t *)alignedAlloc(
           runtimeBundle_.getActivationsSize(), TensorAlignment);
@@ -86,15 +86,16 @@ llvm::Error LLVMCompiledFunction::execute(ExecutionContext *context) {
   }
 
   {
-    auto ev = context->scopedEvent("loadPlaceholders");
+    TRACE_EVENT_SCOPE(context, TraceLevel::RUNTIME, "loadPlaceholders");
     loadPlaceholders(context->getPlaceholderBindings(),
                      baseMutableWeightVarsAddress);
   }
 
   auto *traceContext = context->getTraceContext();
-  TRACE_EVENT_SCOPE_NAMED(traceContext, "findJitmainSymbol", fjEvent);
+  TRACE_EVENT_SCOPE_NAMED(traceContext, TraceLevel::RUNTIME,
+                          "findJitmainSymbol", fjEvent);
   auto sym = JIT_->findSymbol("jitmain");
-  assert(sym && "Unable to JIT the code!");
+  DCHECK(sym) << "Unable to JIT the code!";
   using JitFuncType =
       void (*)(uint8_t * constantWeightVars, uint8_t * mutableWeightVars,
                uint8_t * activations);
@@ -102,27 +103,27 @@ llvm::Error LLVMCompiledFunction::execute(ExecutionContext *context) {
   if (address) {
     JitFuncType funcPtr = reinterpret_cast<JitFuncType>(address.get());
     TRACE_EVENT_SCOPE_END_NAMED(fjEvent);
-    TRACE_EVENT_SCOPE(traceContext, "execute");
+    TRACE_EVENT_SCOPE(traceContext, TraceLevel::RUNTIME, "execute");
     funcPtr(runtimeBundle_.getConstants(), baseMutableWeightVarsAddress,
             baseActivationsAddress);
   } else {
-    GLOW_UNREACHABLE("Error getting address");
+    RETURN_ERR("Error getting address");
   }
 
   {
-    auto ev = context->scopedEvent("updatePlaceholders");
+    TRACE_EVENT_SCOPE(context, TraceLevel::RUNTIME, "updatePlaceholders");
     updatePlaceholders(context->getPlaceholderBindings(),
                        baseMutableWeightVarsAddress);
   }
 
   {
-    auto ev = context->scopedEvent("freeBuffers");
+    TRACE_EVENT_SCOPE(context, TraceLevel::RUNTIME, "freeBuffers");
     alignedFree(baseMutableWeightVarsAddress);
     alignedFree(baseActivationsAddress);
   }
 
   {
-    auto ev = context->scopedEvent("processInstrumentation");
+    TRACE_EVENT_SCOPE(context, TraceLevel::RUNTIME, "processInstrumentation");
     translateTraceEvents(context);
   }
 
@@ -138,8 +139,7 @@ void LLVMCompiledFunction::translateTraceEvents(
 
   TraceContext *traceContext = context->getTraceContext();
 
-  if (traceContext->getTraceLevel() == TraceLevel::NONE ||
-      traceContext->getTraceLevel() == TraceLevel::RUNTIME) {
+  if (!traceContext->shouldLog(TraceLevel::OPERATOR)) {
     return;
   }
 
@@ -148,7 +148,8 @@ void LLVMCompiledFunction::translateTraceEvents(
   int tid = TraceEvent::getThreadId();
   for (auto &backing : traceInfo.events) {
     Tensor *backingTensor = bindings->get(backing.first);
-    assert(backingTensor);
+    DCHECK(backingTensor) << "Could not get backing tensor for Placeholder: "
+                          << backing.first->getName().str();
 
     auto &traceEvents = traceContext->getTraceEvents();
     for (const TraceInfo::Event &event : backing.second) {

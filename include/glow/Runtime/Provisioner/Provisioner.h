@@ -33,11 +33,13 @@ class Provisioner final {
 public:
   Provisioner(DeviceManagerMapTy &devices);
 
-  /// Walks \p networks and assigns each function to a DeviceManager in \p
-  /// devices. The Provisioner calls the addNetwork method for each
-  /// DeviceManager. Returns a GlowErr indicating if the operation was a
-  /// success.
-  llvm::Error provision(DAGListTy &networks, Module &module);
+  /// Traverses the DAG \p networks and:
+  ///   1. Retrieves each node's Function from the provided \p module.
+  ///   2. Compiles it using the provided CompilationContext \p cctx.
+  ///   3. Assigns a device and calls addNetwork on the chosen device(s).
+  /// \returns a GlowErr indicating if the operation was a success.
+  llvm::Error provision(DAGListTy &networks, Module &module,
+                        CompilationContext &cctx);
 
   /// Remove stored compiledFunction.
   void removeFunction(llvm::StringRef name);

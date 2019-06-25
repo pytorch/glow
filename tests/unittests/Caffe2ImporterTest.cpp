@@ -29,7 +29,7 @@ using namespace glow;
 /// The input is N*C*H*W (1*1*3*3), the kernel is 2,
 /// stride is 1, pad is 1, group is 1.
 TEST(caffe2, importConv) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -71,7 +71,7 @@ TEST(caffe2, importConv) {
 /// The input is N*C*H*W (1*1*3*3), the kernel is 2,
 /// stride is 1, pad is 1, group is 1.
 TEST(caffe2, importConvRelu) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -130,7 +130,7 @@ TEST(caffe2, importConvRelu) {
 /// The input is N*H*W*C (1*3*3*1), the kernel is 2,
 /// stride is 1, pad is 1, group is 1.
 TEST(caffe2, convNHWC) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -165,9 +165,99 @@ TEST(caffe2, convNHWC) {
   EXPECT_EQ(mod.getConstants().size(), 2);
 }
 
+/// Test loading ChannelwiseQuantizedConvolutionNode op from a Caffe2 model.
+/// The input is N*H*W*C (1*1*1*4), the kernel is 1,
+/// stride is 1, pad is 1, group is 2.
+TEST(caffe2, convGroupQuantized) {
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string NetDescFilename(
+      GLOW_DATA_PATH
+      "tests/models/caffe2Models/conv_group_quantized_pred_net.pbtxt");
+  std::string NetWeightFilename(
+      GLOW_DATA_PATH
+      "tests/models/caffe2Models/conv_group_quantized_init_net.pbtxt");
+
+  Placeholder *output;
+  PlaceholderBindings bindings;
+
+  Tensor input(ElemKind::Int8QTy, {1, 1, 1, 4}, 1.0, 0);
+
+  // Destroy the loader after the graph is loaded since the following execution
+  // will not depend on anything from the loader.
+  {
+    Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"input"},
+                               {&input.getType()}, *F);
+    output = EXIT_ON_ERR(caffe2LD.getSingleOutput());
+  }
+
+  // High level check on the content of the graph. We have 1
+  // ChannelwiseQuantizedConvolutionNode and 1 save.
+  EXPECT_EQ(F->getNodes().size(), 2);
+  auto *saveNode = getSaveNodeFromDest(output);
+  auto *groupwiseConv = llvm::dyn_cast<ChannelwiseQuantizedConvolutionNode>(
+      saveNode->getInput().getNode());
+  ASSERT_TRUE(groupwiseConv);
+
+  // Check params.
+  std::vector<unsigned> expectedKernelsAndStrides = {1, 1};
+  std::vector<unsigned> expectedPads = {1, 1, 1, 1};
+  EXPECT_EQ(groupwiseConv->getKernels(),
+            llvm::makeArrayRef(expectedKernelsAndStrides));
+  EXPECT_EQ(groupwiseConv->getStrides(),
+            llvm::makeArrayRef(expectedKernelsAndStrides));
+  EXPECT_EQ(groupwiseConv->getPads(), llvm::makeArrayRef(expectedPads));
+  EXPECT_EQ(groupwiseConv->getGroup(), 2);
+  EXPECT_EQ(groupwiseConv->getGroupwise(), true);
+
+  // Check constant inputs.
+  Constant *filterConstant =
+      llvm::dyn_cast<Constant>(groupwiseConv->getFilter().getNode());
+  Constant *biasConstant =
+      llvm::dyn_cast<Constant>(groupwiseConv->getBias().getNode());
+  Constant *scalesConstant =
+      llvm::dyn_cast<Constant>(groupwiseConv->getScales().getNode());
+  Constant *offsetsConstant =
+      llvm::dyn_cast<Constant>(groupwiseConv->getOffsets().getNode());
+
+  ASSERT_TRUE(filterConstant);
+  ASSERT_TRUE(biasConstant);
+  ASSERT_TRUE(scalesConstant);
+  ASSERT_TRUE(offsetsConstant);
+
+  const auto filterH = filterConstant->getPayload().getHandle<int8_t>();
+  const auto biasH = biasConstant->getPayload().getHandle<float>();
+  const auto scalesH = scalesConstant->getPayload().getHandle<float>();
+  const auto offsetsH = offsetsConstant->getPayload().getHandle<int32_t>();
+
+  for (size_t i = 0; i < filterH.size(); ++i) {
+    EXPECT_EQ(filterH.raw(i), i % 2);
+  }
+
+  for (size_t i = 0; i < biasH.size(); ++i) {
+    EXPECT_EQ(biasH.raw(i), 7);
+  }
+
+  for (size_t i = 0; i < scalesH.size(); ++i) {
+    EXPECT_EQ(scalesH.raw(i), 6);
+  }
+
+  for (size_t i = 0; i < offsetsH.size(); ++i) {
+    EXPECT_EQ(offsetsH.raw(i), 5);
+  }
+
+  // We have 2 placeholders: 1 input and 1 output.
+  EXPECT_EQ(mod.getPlaceholders().size(), 2);
+  // We have 4 constants: Bias, Weights, and Weights' separate scales and
+  // offsets.
+  EXPECT_EQ(mod.getConstants().size(), 4);
+}
+
 /// Test loading MaxPool with NHWC order input.
 TEST(caffe2, maxPoolNHWC) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -205,7 +295,7 @@ TEST(caffe2, maxPoolNHWC) {
 
 /// Test that loading MaxPool with legacy padding terminates early.
 TEST(caffe2, maxPoolLegacyPadding) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -230,7 +320,7 @@ TEST(caffe2, maxPoolLegacyPadding) {
 
 /// Test loading MaxPool with default NCHW order input.
 TEST(caffe2, maxPool) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -274,7 +364,7 @@ TEST(caffe2, maxPool) {
 
 /// Test loading AvgPool with NHWC order input.
 TEST(caffe2, avgPoolNHWC) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -312,7 +402,7 @@ TEST(caffe2, avgPoolNHWC) {
 
 /// Test loading AveragePool with default NCHW order input.
 TEST(caffe2, avgPool) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -365,7 +455,7 @@ TEST(caffe2, avgPool) {
 /// To fill the gap between the two, glow issues a reshape
 /// right after its concat.
 TEST(caffe2, concatAddAxis) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -443,7 +533,7 @@ TEST(caffe2, concatAddAxis) {
 
 /// Test loading a regular concat node.
 TEST(caffe2, concat) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -521,7 +611,7 @@ TEST(caffe2, concat) {
 
 /// Test loading a batched matmul with transpose on RHS.
 TEST(caffe2, batchedMatmulRHS) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
   std::string NetDescFilename(
@@ -576,7 +666,7 @@ TEST(caffe2, batchedMatmulRHS) {
 
 /// Test loading a parallel batched matmul.
 TEST(caffe2, parallelBatchedMatmulRHS) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
   std::string NetDescFilename(
@@ -625,7 +715,7 @@ TEST(caffe2, parallelBatchedMatmulRHS) {
 
 /// Test loading a FC node : I * transpose(W) + B.
 TEST(caffe2, FC) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -699,7 +789,7 @@ TEST(caffe2, FC) {
 /// Test loading a FC node : I * transpose(W) + B, where I is need to be
 /// flatten.
 TEST(caffe2, FCWithFlatten) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -746,7 +836,7 @@ TEST(caffe2, FCWithFlatten) {
 
 /// Test loading a FCTransposed node: I * W + B
 TEST(caffe2, FCTransposed) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -820,7 +910,7 @@ TEST(caffe2, FCTransposed) {
 
 /// Test loading a FCTransposed node: I * W + B, where I is need to be flatten.
 TEST(caffe2, FCTransposedWithFlatten) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -870,7 +960,7 @@ TEST(caffe2, FCTransposedWithFlatten) {
 /// Test loading clip op from a Caffe2 model.
 /// Test with arg min = 20.0 max = 60.0
 TEST(caffe2, importClip) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -914,7 +1004,7 @@ TEST(caffe2, importClip) {
 /// min = std::numeric_limits<float>::lowest()
 /// max = std::numeric_limits<float>::max()
 TEST(caffe2, importClipDefault) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -956,7 +1046,7 @@ TEST(caffe2, importClipDefault) {
 
 /// Test loading a ReplaceNaN operator.
 TEST(caffe2, replaceNaN) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -1000,7 +1090,7 @@ TEST(caffe2, replaceNaN) {
 
 /// Test loading a DotProduct operator with 1D inputs.
 TEST(caffe2, dotProduct1D) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -1042,7 +1132,7 @@ TEST(caffe2, dotProduct1D) {
 
 // Test loading a DotProduct operator with 2D inputs.
 TEST(caffe2, dotProduct2D) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -1089,7 +1179,7 @@ TEST(caffe2, dotProduct2D) {
 
 // Test loading a BatchBoxCox operator.
 TEST(caffe2, batchBoxCox) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -1210,7 +1300,7 @@ TEST(caffe2, batchBoxCox) {
 
 // Test loading a EQ operator with 1D inputs.
 TEST(caffe2, EQ1D) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -1250,7 +1340,7 @@ TEST(caffe2, EQ1D) {
 
 // Test loading a LengthsToRanges operator.
 TEST(caffe2, LengthsToRanges) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -1284,7 +1374,7 @@ TEST(caffe2, LengthsToRanges) {
 
 // Test loading Logit operator from a Caffe2 model.
 TEST(caffe2, Logit) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -1321,7 +1411,7 @@ TEST(caffe2, Logit) {
 
 // Test loading a SparseToDense operator.
 TEST(caffe2, sparseToDense) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -1373,7 +1463,7 @@ TEST(caffe2, sparseToDense) {
 }
 
 TEST(caffe2, SparseToDenseMask) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -1426,7 +1516,7 @@ TEST(caffe2, SparseToDenseMask) {
 
 /// Test loading NCHW2NHWC op.
 TEST(caffe2, testNCHW2NHWC) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -1470,7 +1560,7 @@ TEST(caffe2, testNCHW2NHWC) {
 
 /// Test loading a LengthsSum operator.
 TEST(caffe2, lengthsSum) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -1581,7 +1671,7 @@ TEST(caffe2, LengthsRangeFill) {
 
 /// Verify that different fill types are loaded with the correct types.
 TEST(caffe2, tensorFillsTest) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -1645,7 +1735,7 @@ TEST(caffe2, tensorFillsTest) {
 }
 
 TEST(caffe2, Alias) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -1681,7 +1771,7 @@ TEST(caffe2, Alias) {
 }
 
 TEST(caffe2, Modulo) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -1722,7 +1812,7 @@ TEST(caffe2, Modulo) {
 
 /// Test loading an ElementwiseLinear operator.
 TEST(caffe2, elementwiseLinear) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -1798,7 +1888,7 @@ TEST(caffe2, elementwiseLinear) {
 
 /// Test loading an ElementwiseLinear operator with no axis specified.
 TEST(caffe2, elementwiseLinearUnspecifiedAxis) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -1888,7 +1978,7 @@ TEST(caffe2, elementwiseLinearUnspecifiedAxis) {
 ///    LENGTHS = [3, 0, 3, 2]
 ///    OUTPUT =  [[0.5, 0, 0, 25]]
 TEST(caffe2, SparseLengthsWeightedSum8BitsRowwise) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -1994,7 +2084,7 @@ TEST(caffe2, SparseLengthsWeightedSum8BitsRowwise) {
 ///        [3.0, 3.6],
 ///    ]
 TEST(caffe2, SparseLengthsSum8BitsRowwise) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -2082,7 +2172,7 @@ TEST(caffe2, SparseLengthsSum8BitsRowwise) {
 ///    LENGTHS = [3, 0, 3, 2]
 ///    OUTPUT =  [[0.5, 0, 0, 25]]
 TEST(caffe2, SparseLengthsWeightedSumFused8BitRowwise) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -2186,7 +2276,7 @@ TEST(caffe2, SparseLengthsWeightedSumFused8BitRowwise) {
 ///        [3.0, 3.6],
 ///    ]
 TEST(caffe2, SparseLengthsSumFused8BitRowwise) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -2230,17 +2320,13 @@ TEST(caffe2, SparseLengthsSumFused8BitRowwise) {
   };
 
   // High level check on the content of the graph. We have 1 rowwise-quantized
-  // SLWS (which implements SLS), 1 Splat for the weights, and 1 save.
-  EXPECT_EQ(F->getNodes().size(), 3);
+  // SLS and 1 save.
+  EXPECT_EQ(F->getNodes().size(), 2);
   SaveNode *saveNode = getSaveNodeFromDest(output);
-  FusedRowwiseQuantizedSparseLengthsWeightedSumNode *FRWQSLS =
-      llvm::dyn_cast<FusedRowwiseQuantizedSparseLengthsWeightedSumNode>(
+  FusedRowwiseQuantizedSparseLengthsSumNode *FRWQSLS =
+      llvm::dyn_cast<FusedRowwiseQuantizedSparseLengthsSumNode>(
           saveNode->getInput().getNode());
   ASSERT_TRUE(FRWQSLS);
-  SplatNode *splatNode =
-      llvm::dyn_cast<SplatNode>(FRWQSLS->getWeights().getNode());
-  ASSERT_TRUE(splatNode);
-  EXPECT_EQ(splatNode->getValue(), 1.0f);
   // Check that the data input is a Constant node with expected ElemKind.
   Constant *data = llvm::dyn_cast<Constant>(FRWQSLS->getData().getNode());
   ASSERT_TRUE(data);
@@ -2267,7 +2353,7 @@ TEST(caffe2, SparseLengthsSumFused8BitRowwise) {
 
 /// Load big enough model and validate node order.
 TEST(caffe2, validateNodeOrder) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
   std::string NetDescFilename(
@@ -2305,4 +2391,106 @@ TEST(caffe2, validateNodeOrder) {
   EXPECT_TRUE(std::is_sorted(
       F->getNodes().begin(), F->getNodes().end(),
       [](const Node &a, const Node &b) { return a.getName() < b.getName(); }));
+}
+
+TEST(caffe2, importInt8ConvRelu) {
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string NetDescFilename(
+      GLOW_DATA_PATH "tests/models/caffe2Models/int8convrelu_pred_net.pbtxt");
+  std::string NetWeightFilename(
+      GLOW_DATA_PATH "tests/models/caffe2Models/int8convrelu_init_net.pbtxt");
+
+  Placeholder *output;
+  PlaceholderBindings bindings;
+
+  // Destroy the loader after the graph is loaded since the following execution
+  // will not depend on anything from the loader.
+  {
+    Tensor data(ElemKind::Int8QTy, {1, 1, 3, 3}, 1, 0);
+    Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename,
+                               {"gpu_0/data_0"}, {&data.getType()}, *F);
+    output = EXIT_ON_ERR(caffe2LD.getSingleOutput());
+
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod, {"gpu_0/data_0"}, {&data});
+  }
+
+  // High level check on the content of the graph. We should have
+  // transpose => conv => relu => transpose => save
+  EXPECT_EQ(F->getNodes().size(), 5);
+  auto *saveNode = getSaveNodeFromDest(output);
+
+  auto *transNode1 =
+      llvm::dyn_cast<TransposeNode>(saveNode->getInput().getNode());
+  ASSERT_TRUE(transNode1);
+  auto *reluNode = llvm::dyn_cast<ReluNode>(transNode1->getInput().getNode());
+  ASSERT_TRUE(reluNode);
+  auto *convNode =
+      llvm::dyn_cast<ConvolutionNode>(reluNode->getInput().getNode());
+  ASSERT_TRUE(convNode);
+  auto *transNode2 =
+      llvm::dyn_cast<TransposeNode>(convNode->getInput().getNode());
+  ASSERT_TRUE(transNode2);
+
+  EE.compile(CompilationMode::Infer, F);
+}
+
+TEST(caffe2, importInt8SumRelu) {
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string NetDescFilename(
+      GLOW_DATA_PATH "tests/models/caffe2Models/int8sumrelu_pred_net.pbtxt");
+  std::string NetWeightFilename(
+      GLOW_DATA_PATH "tests/models/caffe2Models/int8sumrelu_init_net.pbtxt");
+
+  Placeholder *output;
+  PlaceholderBindings bindings;
+
+  // Destroy the loader after the graph is loaded since the following execution
+  // will not depend on anything from the loader.
+  {
+    Tensor data(ElemKind::Int8QTy, {4, 2}, 1, 0);
+    Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename,
+                               {"gpu_0/data_0"}, {&data.getType()}, *F);
+    output = EXIT_ON_ERR(caffe2LD.getSingleOutput());
+
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod, {"gpu_0/data_0"}, {&data});
+  }
+
+  // High level check on the content of the graph. We should have
+  // input-=> add => relu => save
+  // const/
+  EXPECT_EQ(F->getNodes().size(), 3);
+  auto *save = getSaveNodeFromDest(output);
+
+  auto *relu = llvm::dyn_cast<ReluNode>(save->getInput().getNode());
+  ASSERT_TRUE(relu);
+  auto *add = llvm::dyn_cast<AddNode>(relu->getInput().getNode());
+  ASSERT_TRUE(add);
+  auto *input = llvm::dyn_cast<Placeholder>(add->getLHS().getNode());
+  ASSERT_TRUE(input);
+  auto *val = llvm::dyn_cast<Constant>(add->getRHS().getNode());
+  ASSERT_TRUE(val);
+
+  EE.compile(CompilationMode::Infer, F);
+}
+
+TEST(caffe2, importNames) {
+  std::string NetDescFilename(GLOW_DATA_PATH
+                              "tests/models/caffe2Models/sigmoid.pbtxt");
+  std::string NetWeightFilename(
+      GLOW_DATA_PATH "tests/models/caffe2Models/empty_init_net.pbtxt");
+  ExecutionEngine EE;
+  auto &mod = EE.getModule();
+  auto *F = mod.createFunction("main");
+  Tensor input(ElemKind::FloatTy, {6});
+  Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename,
+                             {"sigmoid_test_input"}, {&input.getType()}, *F);
+  EXPECT_TRUE(F->getNodeByName("sigmoid_test_output"));
 }

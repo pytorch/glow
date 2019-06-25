@@ -90,6 +90,22 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Src", "Filter"})
       .addGradientInstr({"Src", "Filter"}, {"Dest", "Src", "Filter", "Bias"});
 
+  BB.newInstr("ChannelwiseQuantizedConvolution")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .addOperand("Filter", OperandKind::In)
+      .addOperand("Bias", OperandKind::In)
+      .addOperand("Scales", OperandKind::In)
+      .addOperand("Offsets", OperandKind::In)
+      .addMember(MemberType::VectorUnsigned, "Kernels")
+      .addMember(MemberType::VectorUnsigned, "Strides")
+      .addMember(MemberType::VectorUnsigned, "Pads")
+      .addMember(MemberType::Unsigned, "Group")
+      .addMember(MemberType::Boolean, "Groupwise")
+      .autoIRGen()
+      .autoVerify(VerifyKind::SameElementType,
+                  {"Dest", "Src", "Filter", "ElemKind::Int8QTy"});
+
   BB.newInstr("Convolution3D")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Src", OperandKind::In)
@@ -222,6 +238,18 @@ int main(int argc, char **argv) {
       .addOperand("Lengths", OperandKind::In)
       .autoIRGen()
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Data"})
+      .autoVerify(VerifyKind::SameElementType,
+                  {"Lengths", "ElemKind::Int32ITy"});
+
+  BB.newInstr("SparseLengthsSum")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Data", OperandKind::In)
+      .addOperand("Indices", OperandKind::In)
+      .addOperand("Lengths", OperandKind::In)
+      .autoIRGen()
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "Data"})
+      .autoVerify(VerifyKind::SameElementType,
+                  {"Indices", "ElemKind::Int64ITy"})
       .autoVerify(VerifyKind::SameElementType,
                   {"Lengths", "ElemKind::Int32ITy"});
 
@@ -509,7 +537,6 @@ int main(int argc, char **argv) {
   BB.newInstr("ExtractTensor")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Src", OperandKind::In)
-      .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
       .addMember(MemberType::VectorSizeT, "Offsets");
 
   BB.newInstr("Gather")

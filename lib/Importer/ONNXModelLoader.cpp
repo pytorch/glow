@@ -573,7 +573,7 @@ llvm::Error ONNXModelLoader::loadConv(const ONNX_NAMESPACE::NodeProto &op,
   TransposeNode *filterTransposeNode =
       G_.createTranspose(opName, filterValue, NCHW2NHWC);
 
-  // The structure of the conv weigts is: NHWC. We take the C, which is the
+  // The structure of the conv weights is: CRSK. We take the C, which is the
   // number of filters. We use this value to calculate the size of the bias
   // if it is not specified.
   const NodeValue filterTransposedValue = filterTransposeNode->getResult();
@@ -1050,6 +1050,72 @@ ONNXModelLoader::loadSpaceToDepth(const ONNX_NAMESPACE::NodeProto &op,
   return llvm::Error::success();
 }
 
+llvm::Error
+ONNXModelLoader::loadConstantOfShape(const ONNX_NAMESPACE::NodeProto &op,
+                                     const ArgumentDictionaryTy &dict) {
+  Tensor T(ElemKind::FloatTy, {1});
+  T.getHandle().raw(0) = 0.0;
+
+  if (dict.count("value")) {
+    RETURN_IF_ERR(loadTensor(dict.at("value")->t(), &T));
+    RETURN_ERR_IF_NOT(T.dims().size() == 1, "Value must be a 1D vector.");
+    RETURN_ERR_IF_NOT(T.getType().getElementType() == ElemKind::FloatTy,
+                      "Value must have float type");
+  }
+
+  TypeRef ty;
+  if (op.input_size() > 0) {
+    Constant *in;
+    ASSIGN_VALUE_OR_RETURN_ERR(in, getConstantByName(op.input(0)));
+    // Must be 1D tensor of int64_t.
+    RETURN_ERR_IF_NOT(in->dims().size() == 1, "Input must be a 1D vector.");
+    RETURN_ERR_IF_NOT(in->getType()->getElementType() == ElemKind::Int64ITy,
+                      "Input element type must be Int64ITy.");
+    // Convert 1D tensor of int64_t into llvm::ArrayRef<size_t>.
+    auto TH = in->getPayload().getHandle<int64_t>();
+    llvm::ArrayRef<size_t> outputDims = {(const size_t *)TH.begin(),
+                                         (const size_t *)TH.end()};
+    ty = G_.getParent()->uniqueType(ElemKind::FloatTy, outputDims);
+  } else {
+    ty = G_.getParent()->uniqueType(ElemKind::FloatTy, {1});
+  }
+
+  Node *SN = G_.createSplat(loadOperatorName(op), ty, T.getHandle().raw(0));
+  RETURN_IF_ERR(addNodeAsOutput(op, SN));
+  return llvm::Error::success();
+}
+
+llvm::Error ONNXModelLoader::loadTile(const ONNX_NAMESPACE::NodeProto &op,
+                                      const ArgumentDictionaryTy &dict) {
+  const std::string &opName = loadOperatorName(op);
+  NodeValue in, repeats;
+  ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
+  ASSIGN_VALUE_OR_RETURN_ERR(repeats, getNodeValueByName(op.input(1)));
+  if (!llvm::isa<Constant>(repeats)) {
+    RETURN_ERR("Only constant Repeats is supported!");
+  }
+
+  if (repeats.dims().size() != 1) {
+    RETURN_ERR("Repeats must be a single-dimensional tensor!");
+  }
+
+  if (repeats.dims()[0] != in.dims().size()) {
+    RETURN_ERR("Repeats should have one value for each dimension of input!");
+  }
+  auto rh = llvm::cast<Constant>(repeats)->getPayload().getHandle<int64_t>();
+  Node *N = in;
+  for (size_t i = 0; i < in.dims().size(); i++) {
+    auto tiles = rh.raw(i);
+    if (tiles != 1) {
+      std::string name = opName + "." + std::to_string(i);
+      N = G_.createTile(name, N, tiles, /*axis*/ i);
+    }
+  }
+
+  RETURN_IF_ERR(addNodeAsOutput(op, N));
+  return llvm::Error::success();
+}
+
 llvm::Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
   ArgumentDictionaryTy dict = loadArgumentMap(op);
   const std::string &typeName = op.op_type();
@@ -1112,6 +1178,12 @@ llvm::Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
   }
   if (typeName == "SpaceToDepth") {
     return loadSpaceToDepth(op, dict);
+  }
+  if (typeName == "ConstantOfShape") {
+    return loadConstantOfShape(op, dict);
+  }
+  if (typeName == "Tile") {
+    return loadTile(op, dict);
   }
 
   RETURN_ERR("Failed to load operator.",
@@ -1225,6 +1297,48 @@ ONNXModelLoader::ONNXModelLoader(const std::string &modelDescFilename,
     RETURN_IF_ERR(setOutputNodes(graphDef));
 
     RETURN_ERR_IF_NOT(F.verify(), "Function verification failed.");
+
+    deleteUnusedConstants();
+
+    return llvm::Error::success();
+  };
+
+  if (errPtr) {
+    *errPtr = setup();
+  } else {
+    EXIT_ON_ERR(setup());
+  }
+}
+
+ONNXModelLoader::ONNXModelLoader(
+    const void *model, uint32_t modelSize, uint32_t weightsCount,
+    const onnxTensorDescriptorV1 *weightDescriptors, Function &F,
+    bool loadInputsAsPlaceholders, llvm::Error *errPtr)
+    : CommonOperatorLoader({}, {}, F, errPtr) {
+  // if errPtr already contains an error then don't continue with constructor
+  if (errPtr && *errPtr) {
+    return;
+  }
+
+  // Lambda to setup the ONNXModelLoader and return any llvm::Errors that were
+  // raised.
+  auto setup = [&]() -> llvm::Error {
+    ONNX_NAMESPACE::ModelProto modelDef;
+    ASSIGN_VALUE_OR_RETURN_ERR(modelDef, loadProto(model, modelSize));
+
+    RETURN_IF_ERR(setVersion(modelDef));
+
+    RETURN_IF_ERR(loadWeights(weightsCount, weightDescriptors));
+
+    ONNX_NAMESPACE::GraphProto graphDef = modelDef.graph();
+
+    RETURN_IF_ERR(loadInputs(graphDef, loadInputsAsPlaceholders));
+
+    RETURN_IF_ERR(loadInitializers(graphDef));
+
+    RETURN_IF_ERR(loadNetwork(graphDef));
+
+    RETURN_IF_ERR(setOutputNodes(graphDef));
 
     deleteUnusedConstants();
 

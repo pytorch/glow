@@ -34,25 +34,21 @@ class Placeholder;
 /// Perform optimizations on the IR representation.
 void optimize(IRFunction &M, bool shouldShareBuffers);
 /// Perform optimizations on the graph representation.
-void optimize(Function *F, const CompilationContext &cctx);
+void optimize(Function *F, CompilationContext &cctx);
 void optimize(Function *F, CompilationMode mode);
 /// Fold nodes that were expressed lowered in the input model.
-void fold(Function *F, const CompilationContext &cctx);
+void fold(Function *F, CompilationContext &cctx);
 void fold(Function *F, CompilationMode mode);
 
 /// Lower the high-level neural network nodes found in \p F into low-level
 /// linear algebra operators. If \p B is not a nullptr then it can prevent
 /// lowering of a node via \ref Backend::shouldLower(); otherwise everything
-/// will be lowered. If \p loweredMap is not a nullptr, then \p loweredMap will
-/// contain a mapping from output names of the nodes found and lowered in \p F
-/// to the output names of the nodes they were lowered from along with the
-/// NodeKind. \p doNotLowerKinds is a set of NodeKinds which represents all
-/// Nodes that should not be lowered.
-void lower(Function *F, LoweredInfoMap *loweredMap, const Backend *B = nullptr,
+/// will be lowered. \p cctx will contain a mapping of loweredMap from output
+/// names of the nodes found and lowered in \p F to the output names of the
+/// nodes they were lowered from along with the NodeKind. \p doNotLowerKinds is
+/// a set of NodeKinds which represents all Nodes that should not be lowered.
+void lower(Function *F, CompilationContext &cctx, const Backend *B = nullptr,
            const KindSet &doNotLowerKinds = {});
-
-/// Dead code elimination.
-void DCE(Function *F);
 
 /// Convert placeholders in Module \p M to constants based on the values in \p
 /// bindings.  Do not convert any placeholders explicitly listed in \p vars.
@@ -76,8 +72,14 @@ std::unique_ptr<IRFunction> generateAndOptimizeIR(Function *F, const Backend &B,
 /// \returns success if all nodes in the final resulting optimized Function are
 /// supported by \p B; if not, this represents a compiler error.
 llvm::Error optimizeFunction(Function *F, const Backend &B,
-                             const CompilationContext &cctx);
+                             CompilationContext &cctx);
 
+/// Optimize the Function \p F given compilation options \p cctx performing
+/// backend-independent optimizations that can be done before lowering.
+/// \returns success if there were no compiler errors; if not, this represents a
+/// compiler error.
+llvm::Error optimizeFunctionBeforeLowering(Function *F,
+                                           CompilationContext &cctx);
 } // namespace glow
 
 #endif // GLOW_OPTIMIZER_OPTIMIZER_H

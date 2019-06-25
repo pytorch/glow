@@ -18,7 +18,7 @@
 
 #include "glow/Backends/DeviceManager.h"
 #include "glow/Optimizer/Optimizer.h"
-#include "glow/Runtime/Executor/Executor.h"
+#include "glow/Runtime/Executor/ThreadPoolExecutor.h"
 #include "glow/Runtime/HostManager/HostManager.h"
 
 #include "CPUBackend.h"
@@ -108,8 +108,9 @@ void setUpDeviceManagerCommon(
   }
 
   // Create and initialize the DeviceManager instance.
-  deviceManager = std::unique_ptr<DeviceManager>(
-      DeviceManager::createDeviceManager(backend->getBackendKind()));
+  deviceManager =
+      std::unique_ptr<DeviceManager>(DeviceManager::createDeviceManager(
+          DeviceConfig(backend->getBackendName())));
   bool error = errToBool(deviceManager->init());
 
   if (error) {
@@ -125,7 +126,7 @@ void setUpDeviceManagerCommon(
   for (auto *function : mod->getFunctions()) {
     EXIT_ON_ERR(::glow::optimizeFunction(function, *backend, cctx));
     std::unique_ptr<CompiledFunction> compiledFunction =
-        backend->compile(function);
+        EXIT_ON_ERR(backend->compile(function));
     funcs.insert(std::make_pair(function->getName(), compiledFunction.get()));
     deviceManagerFunctions.insert(
         std::make_pair(function->getName(), std::move(compiledFunction)));
@@ -291,7 +292,7 @@ protected:
     std::vector<std::unique_ptr<DeviceConfig>> configs;
     for (unsigned i = 0; i < numDeviceManagers_; ++i) {
       configs.emplace_back(
-          llvm::make_unique<DeviceConfig>(backend->getBackendKind()));
+          llvm::make_unique<DeviceConfig>(backend->getBackendName()));
     }
 
     // Create and initialize the HostManager instance.
@@ -304,7 +305,8 @@ protected:
     }
 
     // Add the module to the HostManager instance.
-    bool error = errToBool(hostManager_->addNetwork(std::move(mod)));
+    CompilationContext cctx;
+    bool error = errToBool(hostManager_->addNetwork(std::move(mod), cctx));
     if (error) {
       state.SkipWithError("Unable to set up host manager - failed to add "
                           "module!");
@@ -410,7 +412,8 @@ protected:
 
   virtual void setUpExecutor(benchmark::State &state) {
     setUpDeviceManagers(state);
-    executor_ = std::unique_ptr<Executor>(createExecutor(deviceManagers_));
+    executor_ =
+        std::unique_ptr<Executor>(new ThreadPoolExecutor(deviceManagers_));
     setUpDAG(state);
   }
 

@@ -34,11 +34,8 @@ public:
   ///@{
   ~Interpreter() override = default;
 
-  BackendKind getBackendKind() const override {
-    return BackendKind::Interpreter;
-  }
-
-  std::string getBackendName() const override { return "Interpreter"; }
+  std::string getBackendName() const override { return getName(); }
+  static std::string getName() { return "Interpreter"; }
 
   std::unique_ptr<CompiledFunction>
   compileIR(std::unique_ptr<IRFunction> IR) const override;
@@ -46,7 +43,7 @@ public:
   std::unique_ptr<CompiledFunction>
   compileIRWithoutConstants(std::unique_ptr<IRFunction> IR) const;
 
-  std::unique_ptr<CompiledFunction>
+  llvm::Expected<std::unique_ptr<CompiledFunction>>
   compile(Function *F, const BackendOptions &opts) const override;
 
   bool isOpSupported(const NodeInfo &NI) const override;

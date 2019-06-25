@@ -44,7 +44,7 @@ class OpenCLBuffer {
   const size_t size_{0};
 
 public:
-  ~OpenCLBuffer() { clReleaseMemObject(buffer_); }
+  ~OpenCLBuffer();
 
   OpenCLBuffer(cl_mem buffer, size_t size) : buffer_(buffer), size_(size) {}
 
@@ -85,13 +85,13 @@ class OpenCLDeviceManager : public QueueBackedDeviceManager {
   std::map<std::string, std::shared_ptr<OpenCLBuffer>> buffers_;
 
   /// Allocate a device buffer of required \p size.
-  cl_mem allocDeviceBuffer(uint64_t size);
+  llvm::Expected<cl_mem> allocDeviceBuffer(uint64_t size);
 
   /// Device name.
   std::string name_;
 
 public:
-  OpenCLDeviceManager(std::unique_ptr<DeviceConfig> config = nullptr);
+  OpenCLDeviceManager(const DeviceConfig &config);
 
   ~OpenCLDeviceManager();
 

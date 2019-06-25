@@ -68,9 +68,9 @@ public:
   /// Read trace events out of this func and write them into /p context
   void translateTraceEvents(ExecutionContext *context) const override;
 
-  /// \returns the Kind of Backend used to compile this function.
-  virtual BackendKind getCompileBackendKind() const override {
-    return BackendKind::Interpreter;
+  /// \returns the backend used to compile this function.
+  virtual std::string getCompileBackendName() const override {
+    return "Interpreter";
   }
   ///@}
 };
@@ -237,6 +237,10 @@ private:
   template <typename ElemTy> void fwdGatherInstImpl(const GatherInst *I);
   template <typename ElemTy>
   void fwdGatherRangesInstImpl(const GatherRangesInst *I);
+
+  void fwdSparseLengthsSumInstI8Impl(const SparseLengthsSumInst *I);
+  template <typename ElemTy>
+  void fwdSparseLengthsSumInstFloatImpl(const SparseLengthsSumInst *I);
 
   void
   fwdSparseLengthsWeightedSumInstI8Impl(const SparseLengthsWeightedSumInst *I);

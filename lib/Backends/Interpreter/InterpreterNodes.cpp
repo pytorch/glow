@@ -560,6 +560,104 @@ void BoundInterpreterFunction::fwdConvolution3DGradInst(
   llvm_unreachable("not yet implemented");
 }
 
+void BoundInterpreterFunction::fwdChannelwiseQuantizedConvolutionInst(
+    const ChannelwiseQuantizedConvolutionInst *I) {
+  assert(I->getGroupwise() && "Non-groupwise not supported");
+
+  using AccumulatorTy = int32_t;
+
+  auto inW = getWeightHandle<int8_t>(I->getSrc());
+  auto outW = getWeightHandle<int8_t>(I->getDest());
+  auto filterW = getWeightHandle<int8_t>(I->getFilter());
+  auto biasW = getWeightHandle<float>(I->getBias());
+  auto scalesW = getWeightHandle<float>(I->getScales());
+  auto offsetsW = getWeightHandle<int32_t>(I->getOffsets());
+
+  llvm::ArrayRef<unsigned_t> kernelSizes = I->getKernels();
+  llvm::ArrayRef<unsigned_t> pads = I->getPads();
+  llvm::ArrayRef<unsigned_t> strides = I->getStrides();
+  size_t group = I->getGroup();
+
+  ShapeNHWC odim(outW.dims());
+  ShapeNHWC idim(inW.dims());
+  ShapeHW kdim(kernelSizes);
+  ShapeHW sdim(strides);
+
+  assert(idim.c % group == 0 && "Input channels must be divisible by group.");
+  assert(odim.c % group == 0 && "Output channels must be divisible by group.");
+  size_t inCperG = idim.c / group;
+  size_t outCperG = odim.c / group;
+
+  PaddingTLBR pdim(pads);
+
+  auto &inTy = inW.getType();
+  auto &outTy = outW.getType();
+
+  float inScale = inTy.getScale();
+  float outScale = outTy.getScale();
+
+  int32_t inOffset = inTy.getOffset();
+  int32_t outOffset = outTy.getOffset();
+
+  // For each input in the batch:
+  for (size_t n = 0; n < idim.n; n++) {
+    // For each group of input channels:
+    for (size_t g = 0; g < group; g++) {
+
+      // get groupwise qparams params
+      int32_t filterOffset = offsetsW.at(g);
+      float filterScale = scalesW.at(g);
+      float matMulScale = inScale * filterScale;
+
+      // For each output channel in the group:
+      for (size_t d = g * outCperG; d < (g + 1) * outCperG; d++) {
+
+        // For each convolution 'jump' in the input tensor:
+        ssize_t x = -ssize_t(pdim.top);
+        for (size_t ax = 0; ax < odim.h; x += sdim.height, ax++) {
+          ssize_t y = -ssize_t(pdim.left);
+          for (size_t ay = 0; ay < odim.w; y += sdim.width, ay++) {
+
+            // For each element in the convolution-filter:
+            AccumulatorTy sum = 0;
+            for (size_t fx = 0; fx < kdim.height; fx++) {
+              for (size_t fy = 0; fy < kdim.width; fy++) {
+                ssize_t ox = x + fx;
+                ssize_t oy = y + fy;
+
+                // Ignore index access below zero (this is due to padding).
+                if (ox < 0 || oy < 0 || ox >= ssize_t(idim.h) ||
+                    oy >= ssize_t(idim.w)) {
+                  continue;
+                }
+                for (size_t fd = 0; fd < inCperG; fd++) {
+
+                  AccumulatorTy F = filterW.at({d, fx, fy, fd});
+                  AccumulatorTy I =
+                      inW.at({n, (size_t)ox, (size_t)oy, g * inCperG + fd});
+                  // We represent the element multiplication with offset as
+                  // (value - offset).
+                  sum += (F - filterOffset) * (I - inOffset);
+                }
+              }
+            }
+
+            // Scale the bias to match the scale of the matrix multiplication.
+            AccumulatorTy B = std::round(biasW.at({d}) / matMulScale);
+
+            // Add the bias:
+            sum += B;
+
+            // Scale the result back to the expected destination scale.
+            outW.at({n, ax, ay, d}) = quantization::clip<AccumulatorTy, int8_t>(
+                std::round(float(sum) * (matMulScale / outScale) + outOffset));
+          } // W
+        }   // H
+      }     // C
+    }       // G
+  }         // N
+}
+
 //===----------------------------------------------------------------------===//
 //                       Pooling
 //===----------------------------------------------------------------------===//
@@ -957,6 +1055,7 @@ void BoundInterpreterFunction::fwdCrossEntropyLossInstFloatImpl(
   auto labels = getWeightHandle<int64_t>(I->getLabels());
   auto CE = getWeightHandle<ElemTy>(I->getCE());
   auto dims = P.dims();
+  CE.clear();
   for (size_t n = 0; n < dims[0]; ++n) {
     assert(labels.raw(n) >= 0 && "Cannot use negative index.");
     size_t y = labels.raw(n);
@@ -1021,6 +1120,10 @@ void BoundInterpreterFunction::fwdSplatInst(const glow::SplatInst *I) {
     return T->getHandle<int64_t>().clear(I->getValue());
   }
 
+  if (k == ElemKind::Int32ITy) {
+    return T->getHandle<int32_t>().clear(I->getValue());
+  }
+
   if (k == ElemKind::FloatTy) {
     return T->getHandle<float>().clear(I->getValue());
   }
@@ -1036,6 +1139,10 @@ void BoundInterpreterFunction::fwdSplatInst(const glow::SplatInst *I) {
     TensorQuantizationParams destQ{destTy->getScale(), destTy->getOffset()};
     float val = I->getValue();
     return T->getHandle<int8_t>().clear(quantization::quantize(val, destQ));
+  }
+
+  if (k == ElemKind::BoolTy) {
+    return T->getHandle<bool>().clear(static_cast<bool>(I->getValue()));
   }
 
   llvm_unreachable("Unsupported tensor type");
@@ -1054,9 +1161,11 @@ void BoundInterpreterFunction::fwdInsertTensorInst(
   }
 
   TYPED_INSERT(int64_t, ElemKind::Int64ITy);
+  TYPED_INSERT(int32_t, ElemKind::Int32ITy);
   TYPED_INSERT(float, ElemKind::FloatTy);
   TYPED_INSERT(float16_t, ElemKind::Float16Ty);
   TYPED_INSERT(int8_t, ElemKind::Int8QTy);
+  TYPED_INSERT(bool, ElemKind::BoolTy);
 #undef TYPED_INSERT
 
   llvm_unreachable("Unsupported tensor type");
@@ -2312,6 +2421,102 @@ void BoundInterpreterFunction::fwdLengthsSumInst(const LengthsSumInst *I) {
                             I->getData()->getElementType(), I)
 }
 
+void BoundInterpreterFunction::fwdSparseLengthsSumInstI8Impl(
+    const SparseLengthsSumInst *I) {
+
+  auto out = getTensor(I->getDest());
+  auto data = getTensor(I->getData());
+  auto indices = getTensor(I->getIndices());
+  auto lengths = getTensor(I->getLengths());
+
+  out->zero();
+
+  auto IH = indices->getHandle<int64_t>();
+  auto LH = lengths->getHandle<int32_t>();
+
+  size_t segments = lengths->dims()[0];
+  size_t totalLength = 0;
+  for (size_t i = 0; i < segments; i++) {
+    totalLength += LH.raw(i);
+  }
+  assert(totalLength <= indices->dims()[0] &&
+         "sum(Lengths) must be equal to len(Indices)");
+
+  size_t lineSize = data->size() / data->dims()[0];
+
+  auto DH = data->getHandle<int8_t>();
+  auto OH = out->getHandle<int8_t>();
+
+  auto TQP = [](Tensor *T) {
+    return TensorQuantizationParams{T->getType().getScale(),
+                                    T->getType().getOffset()};
+  };
+
+  size_t curIdx = 0;
+  for (size_t i = 0; i < segments; i++) {
+    std::vector<float> accum(lineSize, 0.0f);
+    for (int32_t j = 0; j < LH.raw(i); j++) {
+      size_t offsetIn = IH.raw(curIdx) * lineSize;
+      for (size_t k = 0; k < lineSize; k++) {
+        accum[k] += quantization::dequantize(DH.raw(offsetIn++), TQP(data));
+      }
+      curIdx++;
+    }
+    size_t offsetOut = i * lineSize;
+    for (size_t k = 0; k < lineSize; k++) {
+      OH.raw(offsetOut++) = quantization::quantize(accum[k], TQP(out));
+    }
+  }
+}
+
+template <typename ElemTy>
+void BoundInterpreterFunction::fwdSparseLengthsSumInstFloatImpl(
+    const SparseLengthsSumInst *I) {
+  staticAssertFloatingPointType(ElemTy);
+
+  auto out = getTensor(I->getDest());
+  auto data = getTensor(I->getData());
+  auto indices = getTensor(I->getIndices());
+  auto lengths = getTensor(I->getLengths());
+
+  out->zero();
+
+  auto IH = indices->getHandle<int64_t>();
+  auto LH = lengths->getHandle<int32_t>();
+
+  size_t segments = lengths->dims()[0];
+  size_t totalLength = 0;
+  for (size_t i = 0; i < segments; i++) {
+    totalLength += LH.raw(i);
+  }
+  assert(totalLength <= indices->dims()[0] &&
+         "sum(Lengths) must be equal to len(Indices)");
+
+  size_t lineSize = data->size() / data->dims()[0];
+
+  auto DH = data->getHandle<ElemTy>();
+  auto OH = out->getHandle<ElemTy>();
+
+  size_t curIdx = 0;
+  for (size_t i = 0; i < segments; i++) {
+    for (size_t j = 0, e = LH.raw(i); j < e; j++) {
+      size_t offsetIn = IH.raw(curIdx++) * lineSize;
+      size_t offsetOut = i * lineSize;
+      for (size_t k = 0; k < lineSize; k++)
+        OH.raw(offsetOut++) += DH.raw(offsetIn++);
+    }
+  }
+}
+
+void BoundInterpreterFunction::fwdSparseLengthsSumInst(
+    const SparseLengthsSumInst *I) {
+  if (I->getDest()->getType()->isQuantizedType()) {
+    return fwdSparseLengthsSumInstI8Impl(I);
+  }
+  dispatchFloatingPointImpl(fwdSparseLengthsSumInstFloatImpl,
+                            I->getData()->getElementType(), I);
+}
+
 template <typename ElemTy>
 void BoundInterpreterFunction::fwdSparseLengthsWeightedSumInstFloatImpl(
     const SparseLengthsWeightedSumInst *I) {
@@ -2803,7 +3008,7 @@ void BoundInterpreterFunction::fwdTraceEventInst(const TraceEventInst *I) {
   auto IH = T->getHandle<int64_t>();
   size_t index = I->getIndex();
   IH.raw(index) = std::chrono::duration_cast<std::chrono::microseconds>(
-                      std::chrono::system_clock::now().time_since_epoch())
+                      std::chrono::steady_clock::now().time_since_epoch())
                       .count();
 }
 

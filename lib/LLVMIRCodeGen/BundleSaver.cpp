@@ -34,6 +34,8 @@
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/raw_ostream.h"
 
+#include <glog/logging.h>
+
 #define DEBUG_TYPE "jit"
 
 using namespace glow;
@@ -66,7 +68,9 @@ void BundleSaver::saveWeights(llvm::StringRef weightsFileName) {
       continue;
     }
     weightsFile.seek(addr);
+    CHECK(!weightsFile.has_error()) << "Could not set file write position";
     weightsFile.write(payload, numBytes);
+    CHECK(!weightsFile.has_error()) << "Could not write bytes";
     pos = addr + numBytes;
     maxPos = std::max(pos, maxPos);
   }
@@ -134,7 +138,7 @@ void BundleSaver::produceBundle(llvm::StringRef outputDir) {
   emitBundleConfig();
 
   auto &M = irgen_->getModule();
-  auto bundleName = irgen_->getMainEntryName();
+  auto bundleName = irgen_->getBundleName();
   std::string extension = (llvmCompiler.empty()) ? ".o" : ".bc";
   auto bundleCodeOutput = (outputDir + "/" + bundleName + extension).str();
   auto bundleWeightsOutput = (outputDir + "/" + bundleName + ".weights").str();
@@ -282,12 +286,14 @@ void BundleSaver::performBundleMemoryAllocation() {
 void BundleSaver::save(llvm::StringRef target, llvm::StringRef arch,
                        llvm::StringRef cpu,
                        const llvm::SmallVectorImpl<std::string> &targetFeatures,
-                       llvm::StringRef outputDir, llvm::StringRef networkName) {
+                       llvm::StringRef outputDir, llvm::StringRef bundleName,
+                       llvm::StringRef mainEnryName) {
   // Object files generation works properly only in small mode.
   irgen_->initTargetMachine(target, arch, cpu, targetFeatures,
                             llvm::CodeModel::Model::Small);
-  irgen_->setMainEntryName(networkName);
   irgen_->setOutputDir(outputDir);
+  irgen_->setBundleName(bundleName);
+  irgen_->setMainEntryName(mainEnryName);
   irgen_->initCodeGen();
   // Perform the address assignment for activations and WeightVars.
   performBundleMemoryAllocation();

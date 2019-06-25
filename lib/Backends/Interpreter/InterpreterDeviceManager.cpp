@@ -29,14 +29,14 @@ llvm::cl::opt<unsigned> interpreterMaxMem(
 namespace glow {
 namespace runtime {
 
-DeviceManager *
-createInterpreterDeviceManager(std::unique_ptr<DeviceConfig> config) {
+DeviceManager *createInterpreterDeviceManager(const DeviceConfig &config) {
   if (interpreterMaxMem) {
     // Convert command line interpreterMaxMem to bytes from kilobytes.
-    return new InterpreterDeviceManager(std::move(config),
-                                        uint64_t{interpreterMaxMem} * 1024);
+    auto configNew = config;
+    configNew.setDeviceMemory(uint64_t{interpreterMaxMem} * 1024);
+    return new InterpreterDeviceManager(configNew);
   }
-  return new InterpreterDeviceManager(std::move(config));
+  return new InterpreterDeviceManager(config);
 }
 
 uint64_t InterpreterDeviceManager::getMaximumMemory() const {
@@ -67,7 +67,7 @@ void InterpreterDeviceManager::addNetworkImpl(const Module *module,
       return;
     }
 
-    if (func.second->getCompileBackendKind() != BackendKind::Interpreter) {
+    if (func.second->getCompileBackendName() != Interpreter::getName()) {
       readyCB(module, MAKE_ERR(llvm::formatv("Failed to add network: function "
                                              "{0} is not a InterpreterFunction",
                                              func.first)
@@ -99,30 +99,23 @@ void InterpreterDeviceManager::addNetworkImpl(const Module *module,
 
 void InterpreterDeviceManager::evictNetworkImpl(std::string functionName,
                                                 EvictFunctionCBTy evictCB) {
-  llvm::Error err = llvm::Error::success();
-
   if (functions_.erase(functionName)) {
     usedMemoryBytes_ -= functionCost_; // TODO: static moduleSize
   } else {
-    err =
-        MAKE_ERR(GlowErr::ErrorCode::RUNTIME_NET_NOT_FOUND,
-                 llvm::formatv("Could not find function with name {0} to evict",
-                               functionName)
-                     .str());
+    evictCB(functionName,
+            MAKE_ERR(GlowErr::ErrorCode::RUNTIME_NET_NOT_FOUND,
+                     strFormat("Could not find function with name %s to evict",
+                               functionName.c_str())));
+    return;
   }
-
-  if (evictCB) {
-    evictCB(functionName, std::move(err));
-  } else {
-    llvm::errs() << llvm::toString(std::move(err));
-  }
+  evictCB(functionName, llvm::Error::success());
 }
 
 void InterpreterDeviceManager::runFunctionImpl(
     RunIdentifierTy id, std::string function,
     std::unique_ptr<ExecutionContext> context, ResultCBTy resultCB) {
-  TRACE_EVENT_SCOPE_NAMED(context->getTraceContext(), "DeviceManager::run",
-                          dmRun);
+  TRACE_EVENT_SCOPE_NAMED(context->getTraceContext(), TraceLevel::RUNTIME,
+                          "DeviceManager::run", dmRun);
   auto funcIt = functions_.find(function);
   if (funcIt == functions_.end()) {
     dmRun.addArg("reason", "function not found");

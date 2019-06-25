@@ -128,6 +128,10 @@ void LLVMIRGen::initTargetMachine(
   assert(TM_ && "Could not initialize the target machine");
 }
 
+llvm::StringRef LLVMIRGen::getBundleName() const { return bundleName_; }
+
+void LLVMIRGen::setBundleName(const std::string &name) { bundleName_ = name; }
+
 std::string LLVMIRGen::getMainEntryName() const {
   return mainEntryName_.empty() ? "main" : mainEntryName_;
 }
@@ -533,7 +537,8 @@ llvm::Function *LLVMIRGen::getFunction(const std::string &name,
   case ElemKind::BoolTy:
     return get("libjit_" + name + "_b");
   default:
-    GLOW_UNREACHABLE("Unsupported element type");
+    LOG(FATAL) << "Unsupported element type: "
+               << Type::getElementName(elemTy).str();
   }
 }
 
@@ -785,8 +790,10 @@ void LLVMIRGen::generateLLVMIRForModule(llvm::IRBuilder<> &builder) {
       // Ignore memory management instructions as they are handled by the
       // MemoryManager and are NOPs for a JIT.
       if (isa<AllocActivationInst>(&I) || isa<DeallocActivationInst>(&I) ||
-          isa<TensorViewInst>(&I))
+          isa<TensorViewInst>(&I)) {
+        generateLLVMIRForInstr(builder, &I);
         continue;
+      }
       emitDataParallelKernel(builder, bundle);
       bundle.clear();
       generateLLVMIRForInstr(builder, &I);
@@ -1018,7 +1025,7 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
       destAddr = builder.CreateGEP(builder.getInt32Ty(), destPtr, loopCount,
                                    "buffer.element.addr");
     } else {
-      GLOW_UNREACHABLE("Type is not supported.");
+      LOG(FATAL) << "Type is not supported";
     }
 
     builder.CreateStore(stackedOpCall, destAddr);
@@ -1325,12 +1332,10 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
   }
 
   default:
-#ifndef NDEBUG
-    llvm::errs() << "Cannot select the instruction:\n";
-    I->dump(llvm::errs());
-    llvm::errs() << "\n";
-#endif
-    GLOW_UNREACHABLE("ERROR: Cannot select the instruction.");
+    std::string sBuf;
+    llvm::raw_string_ostream s(sBuf);
+    I->dump(s);
+    LOG(FATAL) << "Cannot select the instruction: " << s.str();
   }
 }
 
@@ -1550,7 +1555,8 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
       } else if (sliceTy->getElementType() == ElemKind::Int32QTy) {
         F = getFunction("batchedadd_i32", dest->getElementType());
       } else {
-        GLOW_UNREACHABLE("Type is not supported.");
+        LOG(FATAL) << "Type is not supported: "
+                   << Type::getElementName(sliceTy->getElementType()).str();
       }
       createCall(builder, F,
                  {destPtr, batchPtr, slicePtr, numSlice, sliceSize, destOffset,
@@ -2231,6 +2237,24 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     break;
   }
 
+  case Kinded::Kind::SparseLengthsSumInstKind: {
+    auto *SI = cast<SparseLengthsSumInst>(I);
+    auto *dest = SI->getDest();
+    auto *data = SI->getData();
+    auto *indices = SI->getIndices();
+    auto *lengths = SI->getLengths();
+    auto *destPtr = emitValueAddress(builder, dest);
+    auto *dataPtr = emitValueAddress(builder, data);
+    auto *indicesPtr = emitValueAddress(builder, indices);
+    auto *lengthsPtr = emitValueAddress(builder, lengths);
+    auto *segments = emitConstSizeT(builder, lengths->dims()[0]);
+    auto *lineSize = emitConstSizeT(builder, data->size() / data->dims()[0]);
+    auto *F = getFunction("sparse_lengths_sum", dest->getElementType());
+    createCall(builder, F,
+               {destPtr, dataPtr, indicesPtr, lengthsPtr, segments, lineSize});
+    break;
+  }
+
   case Kinded::Kind::SparseLengthsWeightedSumInstKind: {
     auto *SI = cast<SparseLengthsWeightedSumInst>(I);
     auto *dest = SI->getDest();
@@ -2382,12 +2406,10 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
   }
 
   default:
-#ifndef NDEBUG
-    llvm::errs() << "Cannot select the instruction:\n";
-    I->dump(llvm::errs());
-    llvm::errs() << "\n";
-#endif
-    GLOW_UNREACHABLE("ERROR: Cannot select the instruction.");
+    std::string sBuf;
+    llvm::raw_string_ostream s(sBuf);
+    I->dump(s);
+    LOG(FATAL) << "Cannot select the instruction: " << s.str();
   }
 }
 

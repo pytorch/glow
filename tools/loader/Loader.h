@@ -37,6 +37,9 @@ bool emittingBundle();
 /// \return true if profiling the graph.
 bool profilingGraph();
 
+/// Parse/verify command line parameters.
+void parseCommandLine(int argc, char **argv);
+
 /// Driver class for loading, compiling, and running inference for ONNX and
 /// Caffe2 models.
 class Loader {
@@ -84,7 +87,10 @@ public:
   llvm::StringRef getOnnxModelFilename() { return onnxModelFilename_; }
   /// Getter for the model path.
   /// \pre (modelPathOpt.size() == 1)
-  llvm::StringRef getModelOptPath();
+  static llvm::StringRef getModelOptPath();
+  /// Getter for the model path, expected to be a directory.
+  /// \pre (modelPathOpt.size() == 1)
+  static llvm::StringRef getModelOptDir();
 
   /// Compiles the Function F_. Handles quantization, emitting bundles, and
   /// dumping debug information. \p bindings bind specific
@@ -103,9 +109,8 @@ public:
   /// include quantization profile guided information.
   void generateAndSerializeQuantizationInfos(PlaceholderBindings &bindings);
 
-  /// Create the Loader driver object, and parse/verify the command line
-  /// parameters.
-  Loader(int argc, char **argv);
+  /// Create the Loader driver object.
+  Loader();
 };
 
 } // namespace glow

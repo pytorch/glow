@@ -44,23 +44,15 @@ using FunctionMapTy = std::map<std::string, CompiledFunction *>;
 /// Interface managing a specific instance of a device.
 class DeviceManager {
 protected:
-  /// Type of Backend for this Device.
-  BackendKind backend_;
-
   /// Configuration object for the device.
-  std::unique_ptr<DeviceConfig> config_;
+  DeviceConfig config_;
 
 public:
-  DeviceManager(BackendKind backend,
-                std::unique_ptr<DeviceConfig> config = nullptr)
-      : backend_(backend), config_(std::move(config)) {}
+  DeviceManager(const DeviceConfig &config) : config_(config) {}
   virtual ~DeviceManager() {}
 
-  /// Create a device of the type /p backend, with the backend specific
-  /// name/addres /p name.
-  static DeviceManager *
-  createDeviceManager(BackendKind backend,
-                      std::unique_ptr<DeviceConfig> config = nullptr);
+  /// Create a device manager based on the device config \p config.
+  static DeviceManager *createDeviceManager(const DeviceConfig &config);
 
   /// Initialize the device.
   virtual llvm::Error init() { return llvm::Error::success(); }
@@ -94,8 +86,8 @@ public:
     return llvm::Error::success();
   };
 
-  /// \returns the type of Backend that powers this Device.
-  BackendKind getBackendKind() { return backend_; }
+  /// \returns the name of backend that powers this Device.
+  llvm::StringRef getBackendName() { return config_.backendName; }
 
   /// \returns the maximum memory (in bytes) available on the device.
   virtual uint64_t getMaximumMemory() const = 0;
@@ -109,7 +101,7 @@ public:
   virtual bool isMemoryAvailable(uint64_t estimate) const = 0;
 
   /// \returns the DeviceConfig which initialized this device.
-  const DeviceConfig *getDeviceConfig() { return config_.get(); }
+  const DeviceConfig &getDeviceConfig() { return config_; }
 };
 
 } // namespace runtime

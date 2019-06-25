@@ -60,8 +60,16 @@ class Caffe2ModelLoader
   /// in the network.
   llvm::Error loadOperator(const caffe2::OperatorDef &op);
 
-  /// Reads a network (weights or structure) from the serialized protocol buffer
-  /// file.
+  /// Load the Conv or ConvRelu operators.
+  llvm::Error loadConv(const caffe2::OperatorDef &op,
+                       ArgumentDictionaryTy &dict);
+
+  /// Load the Int8Conv or Int8ConvRelu operators.
+  llvm::Error loadConvQuantized(const caffe2::OperatorDef &op,
+                                ArgumentDictionaryTy &dict);
+
+  /// Reads a network (weights or structure) from the serialized protocol
+  /// buffer file.
   llvm::Expected<caffe2::NetDef> loadProtoFile(const std::string &filename);
 
   /// loadInputs calls this function for each member in its target arguments.
@@ -77,6 +85,25 @@ class Caffe2ModelLoader
   /// will create an empty tensor for each input.
   llvm::Error loadInputs(const caffe2::NetDef &net,
                          bool loadInputsAsPlaceholders);
+
+  /// \returns Expected<NetDef> if a NetDef can be constructed from the
+  /// in-memory serialized protobuf.
+  /// Loads ModelProto from the in-memory serialized protobuf \p
+  /// c2Model with the model size \p c2ModelSize.
+  static llvm::Expected<caffe2::NetDef> loadProto(const void *c2Model,
+                                                  size_t c2ModelSize);
+
+  /// Creates a Caffe2 model loader to build \p F.
+  /// Loads the ONNIXFI \p model from memory of \p modelSize size,
+  /// and \p weightsCount, and \p onnxTensorDescriptorV1 correspondent
+  /// descriptors. Converts inputs into placeholder if requested \p
+  /// loadInputsAsPlaceholders. Reports success/failure through optional
+  /// parameter \p errPtr.
+  Caffe2ModelLoader(const void *model, uint32_t modelSize,
+                    uint32_t weightsCount,
+                    const onnxTensorDescriptorV1 *weightDescriptors,
+                    Function &F, bool loadInputsAsPlaceholders,
+                    llvm::Error *errPtr = nullptr);
 
   friend class ONNXIFIModelLoader;
 
@@ -98,13 +125,6 @@ public:
   /// If \p errPtr is not null then if an error occurs it will get assigned
   /// there otherwise if an error occurs it will abort.
   Caffe2ModelLoader(Function &F, llvm::Error *errPtr);
-
-  /// \returns Expected<NetDef> if a NetDef can be constructed from the
-  /// in-memory serialized protobuf.
-  /// Loads ModelProto from the in-memory serialized protobuf \p
-  /// c2Model with the model size \p c2ModelSize.
-  static llvm::Expected<caffe2::NetDef> loadProto(const void *c2Model,
-                                                  size_t c2ModelSize);
 };
 
 } // namespace glow

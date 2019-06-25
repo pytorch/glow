@@ -17,6 +17,7 @@
 #define GLOW_GRAPH_GRAPH_H
 
 #include "glow/Base/Type.h"
+#include "glow/Graph/Log.h"
 #include "glow/Graph/Nodes.h"
 #include "glow/Quantization/Base/Base.h"
 
@@ -163,8 +164,14 @@ public:
   /// Get the pseudo-random number generator used by this module.
   PseudoRNG &getPRNG() { return PRNG_; }
 
-  /// Dumps the textual representation of the network.
+  /// Dump a textual representation of the Module into default output stream.
   void dump() const;
+
+  /// Dump a textual representation of the Module to std::string.
+  std::string toString() const;
+
+  /// Dump a textual representation of the Module into provided output stream.
+  void dump(llvm::raw_ostream &os) const;
 
   /// Dump a dotty graph that depicts the Module.
   void dumpDAG();
@@ -216,11 +223,17 @@ class Function final : public Named {
   /// A reference to the owner of the function.
   Module *parent_;
 
+  /// The log context associated with this function.
+  LogContext logCtx_;
+
 public:
   Function(Module *parent, llvm::StringRef Name = {})
       : Named(Name), parent_(parent) {}
 
   ~Function();
+
+  /// Return the log context.
+  LogContext &getLogContext() { return logCtx_; }
 
   /// Add placeholder for metadata such as profiling.
   void addMetadataPlaceholder(Placeholder *PH) {
@@ -259,6 +272,10 @@ public:
   template <class NodeTy> NodeTy *addNode(NodeTy *N) {
     N->setName(Module::uniqueName(N->getName(), uniqueNodeNames_));
     nodes_.push_back(N);
+
+    // Log the node creation.
+    logCtx_.logNodeCreation(N);
+
     return N;
   }
 
@@ -341,6 +358,23 @@ public:
                                   TypeRef outTy, unsigned_t kernel,
                                   unsigned_t stride, unsigned_t pad,
                                   unsigned_t group);
+
+  /// Creates a ChannelwiseQuantizedConvolutionNode with the given \p name which
+  /// convolves the 4D \p input with \p filter and \bias. \p scales and \p
+  /// offsets provide individual quantization parameters for each filter group
+  /// in \p filter. \p kernels defines the size of the height and width
+  /// dimensions of the filters. \p strides defines the number of steps to take
+  /// in the input for each output cell. \p pads defines how many zero padding
+  /// cells should be added to the input during convolution. \p group defines
+  /// the number of groups the input and output channels should be divided into
+  /// and convolved separately.
+  /// NOTE: ChannelwiseQuantizedConvolutionNode does not yet have an
+  /// implementation so attempting to run a graph containing this node fails.
+  ChannelwiseQuantizedConvolutionNode *createChannelwiseQuantizedConv(
+      llvm::StringRef name, NodeValue input, Constant *filter, Constant *bias,
+      Constant *scales, Constant *offsets, TypeRef outTy,
+      llvm::ArrayRef<unsigned_t> kernels, llvm::ArrayRef<unsigned_t> strides,
+      llvm::ArrayRef<unsigned_t> pads, unsigned_t group);
 
   ConvertToNode *createConvertTo(llvm::StringRef name, NodeValue input,
                                  TypeRef outTy);
@@ -670,10 +704,10 @@ public:
   /// first Lengths[0] slices are aggregated to Result[0], next Lengths[1]
   /// slices are aggregated to Result[1], etc. I.e. sum(Lengths) must be equal
   /// to len(Indices).
-  SparseLengthsWeightedSumNode *createSparseLengthsSum(llvm::StringRef name,
-                                                       NodeValue data,
-                                                       NodeValue indices,
-                                                       NodeValue lengths);
+  SparseLengthsSumNode *createSparseLengthsSum(llvm::StringRef name,
+                                               NodeValue data,
+                                               NodeValue indices,
+                                               NodeValue lengths);
 
   /// Same as SparseLengthsSum, but i-th slice is multiplied by weights[i].
   /// len(weights) must be equal to len(indices).
@@ -730,14 +764,14 @@ public:
   /// them into len(\p lengths) entries: first Lengths[0] slices are aggregated
   /// to Result[0], next Lengths[1] slices are aggregated to Result[1], etc.
   /// I.e. sum(Lengths) must be equal to len(Indices).
-  FusedRowwiseQuantizedSparseLengthsWeightedSumNode *
+  FusedRowwiseQuantizedSparseLengthsSumNode *
   createFusedRowwiseQuantizedSparseLengthsSum(llvm::StringRef name,
                                               Constant *data, NodeValue indices,
                                               NodeValue lengths);
 
   /// Same as \ref createFusedRowwiseQuantizedSparseLengthsSum(), but expects
   /// float input \p data, which is rowwise-quantized and fused internally.
-  FusedRowwiseQuantizedSparseLengthsWeightedSumNode *
+  FusedRowwiseQuantizedSparseLengthsSumNode *
   createFusedRowwiseQuantizedSparseLengthsSum(llvm::StringRef name,
                                               Tensor &data, NodeValue indices,
                                               NodeValue lengths);
@@ -746,7 +780,7 @@ public:
   /// is multiplied by weights[i]. len(weights) must be equal to len(indices).
   FusedRowwiseQuantizedSparseLengthsWeightedSumNode *
   createFusedRowwiseQuantizedSparseLengthsWeightedSum(llvm::StringRef name,
-                                                      Tensor &data,
+                                                      NodeValue data,
                                                       NodeValue weights,
                                                       NodeValue indices,
                                                       NodeValue lengths);
@@ -756,7 +790,7 @@ public:
   /// internally.
   FusedRowwiseQuantizedSparseLengthsWeightedSumNode *
   createFusedRowwiseQuantizedSparseLengthsWeightedSum(llvm::StringRef name,
-                                                      Constant *data,
+                                                      Tensor &data,
                                                       NodeValue weights,
                                                       NodeValue indices,
                                                       NodeValue lengths);
@@ -1077,8 +1111,14 @@ public:
   /// \returns true when the function is valid. False otherwise.
   bool verify() const;
 
-  /// Dumps the textual representation of the network.
+  /// Dump a textual representation of the Function into provided output stream.
   void dump() const;
+
+  /// Dump a textual representation of the Function to std::string.
+  std::string toString() const;
+
+  /// Dump a textual representation of the Function into default output stream.
+  void dump(llvm::raw_ostream &os) const;
 
   /// Dump a dotty graph that depicts the function into a file.
   /// \returns full path to the file.
@@ -1128,6 +1168,14 @@ SaveNode *getOutputSave(Function *F, Placeholder *PH);
   { 0u, 2u, 3u, 1u }
 #define NHWC2NCHW                                                              \
   { 0u, 3u, 1u, 2u }
+
+llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const Module &mod);
+
+llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const Module *mod);
+
+llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const Function &F);
+
+llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const Function *F);
 
 } // namespace glow
 

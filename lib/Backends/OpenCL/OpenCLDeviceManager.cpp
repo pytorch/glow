@@ -44,9 +44,11 @@ extern llvm::cl::opt<bool> clDoProfile;
 
 namespace glow {
 namespace runtime {
-DeviceManager *createOCLDeviceManager(std::unique_ptr<DeviceConfig> config) {
-  return new OpenCLDeviceManager(std::move(config));
+DeviceManager *createOCLDeviceManager(const DeviceConfig &config) {
+  return new OpenCLDeviceManager(config);
 }
+
+OpenCLBuffer::~OpenCLBuffer() { clReleaseMemObject(buffer_); }
 } // namespace runtime
 } // namespace glow
 
@@ -62,32 +64,32 @@ static llvm::Expected<unsigned> parseInputAsUnsigned(std::string input) {
   return parsed;
 }
 
-cl_mem OpenCLDeviceManager::allocDeviceBuffer(uint64_t size) {
+llvm::Expected<cl_mem> OpenCLDeviceManager::allocDeviceBuffer(uint64_t size) {
   const uint64_t alignment = 128;
   // Always allocate buffers properly aligned to hold values of any type.
   size = alignedSize(size, alignment);
   auto buf =
       clCreateBuffer(context_, CL_MEM_READ_WRITE, size, nullptr, nullptr);
-  GLOW_ASSERT(buf && "Allocation failed!");
+  RETURN_ERR_IF_NOT(buf, "Allocation failed!");
   return buf;
 }
-OpenCLDeviceManager::OpenCLDeviceManager(std::unique_ptr<DeviceConfig> config)
-    : QueueBackedDeviceManager(BackendKind::OpenCL, std::move(config)) {}
+OpenCLDeviceManager::OpenCLDeviceManager(const DeviceConfig &config)
+    : QueueBackedDeviceManager(config) {}
 
 llvm::Error OpenCLDeviceManager::parseConfig() {
-  auto it = config_->parameters.find("deviceId");
+  auto it = config_.parameters.find("deviceId");
   unsigned value;
-  if (it != config_->parameters.end()) {
+  if (it != config_.parameters.end()) {
     ASSIGN_VALUE_OR_RETURN_ERR(value, parseInputAsUnsigned(it->second));
     clDeviceId = value;
   }
-  it = config_->parameters.find("platformId");
-  if (it != config_->parameters.end()) {
+  it = config_.parameters.find("platformId");
+  if (it != config_.parameters.end()) {
     ASSIGN_VALUE_OR_RETURN_ERR(value, parseInputAsUnsigned(it->second));
     clPlatformId = value;
   }
-  it = config_->parameters.find("doProfile");
-  if (it != config_->parameters.end()) {
+  it = config_.parameters.find("doProfile");
+  if (it != config_.parameters.end()) {
     if (it->second == "true") {
       clDoProfile = true;
     } else if (it->second == "false") {
@@ -107,9 +109,7 @@ llvm::Error OpenCLDeviceManager::init() {
   // options from the OpenCl Backend.
 
   // Check if parameters are in map.
-  if (config_) {
-    RETURN_IF_ERR(parseConfig());
-  }
+  RETURN_IF_ERR(parseConfig());
 
   cl_uint numPlatforms{0};
   cl_int err = clGetPlatformIDs(0, NULL, &numPlatforms);
@@ -151,7 +151,13 @@ llvm::Error OpenCLDeviceManager::init() {
   if (err != CL_SUCCESS) {
     RETURN_ERR("Error getting device memory limit");
   }
-  maxMemoryBytes_ = mem_size;
+
+  // If limited by deviceConfig, should allow less deviceMemory
+  if (config_.getDeviceMemory() != 0 && config_.getDeviceMemory() < mem_size) {
+    maxMemoryBytes_ = config_.getDeviceMemory();
+  } else {
+    maxMemoryBytes_ = mem_size;
+  }
 
   return llvm::Error::success();
 }
@@ -188,7 +194,7 @@ void OpenCLDeviceManager::addNetworkImpl(const Module *module,
       return;
     }
 
-    if (func.second->getCompileBackendKind() != BackendKind::OpenCL) {
+    if (func.second->getCompileBackendName() != "OpenCL") {
       readyCB(
           module,
           MAKE_ERR(
@@ -197,57 +203,64 @@ void OpenCLDeviceManager::addNetworkImpl(const Module *module,
                   func.first)
                   .str()));
     }
-  }
-  // Collect constants once, since currently the bundle grabs everything in the
-  // module.
-  auto &bundle = functions.begin()->second->getRuntimeBundle();
-  if (bundle.getConstants() == nullptr) {
-    bundle.collectConstants(module);
-  }
-  size_t sizeInBytes = bundle.getConstantWeightSize();
-  if (usedMemoryBytes_ + sizeInBytes > maxMemoryBytes_) {
-    // Free the constants.
-    bundle.freeConstants();
-    readyCB(module, MAKE_ERR(GlowErr::ErrorCode::RUNTIME_OUT_OF_DEVICE_MEMORY,
-                             "Failed to add network: not enough memory"));
-    return;
-  }
 
-  // Create a command queue to copy constants to the device and compile the
-  // function.
-  cl_int err;
-  auto traceInfo = functions.begin()->second->getTraceInfo();
-  cl_command_queue commands =
-      clCreateCommandQueue(context_, deviceId_, 0, &err);
-  if (!commands) {
-    readyCB(
-        module,
-        MAKE_ERR(GlowErr::ErrorCode::RUNTIME_OUT_OF_DEVICE_MEMORY,
-                 "Failed to add network: could not create CL command queue."));
-  }
+    auto &bundle = func.second->getRuntimeBundle();
+    if (bundle.getConstants() == nullptr) {
+      bundle.collectConstants(module);
+    }
+    size_t sizeInBytes = bundle.getConstantWeightSize();
+    if (usedMemoryBytes_ + sizeInBytes > maxMemoryBytes_) {
+      // Free the constants.
+      bundle.freeConstants();
+      readyCB(module, MAKE_ERR(GlowErr::ErrorCode::RUNTIME_OUT_OF_DEVICE_MEMORY,
+                               "Failed to add network: not enough memory"));
+      return;
+    }
 
-  // Copy constants to device.
-  auto size = bundle.getConstantWeightSize() + bundle.getMutableWeightSize() +
-              bundle.getActivationsSize();
-  auto deviceBuffer = allocDeviceBuffer(size);
-  auto buffer = std::make_shared<OpenCLBuffer>(deviceBuffer, size);
-  if (bundle.getConstants()) {
-    auto buf = bundle.getConstants();
-    size_t valueOffset = 0;
-    cl_event event{nullptr};
-    cl_int err = clEnqueueWriteBuffer(
-        commands, buffer->getBuffer(), /* blocking_write */ CL_FALSE,
-        valueOffset, sizeInBytes, buf, /* num_events_in_wait_list */ 0,
-        /* event_list */ nullptr, /* event */ doProfile_ ? &event : nullptr);
-    GLOW_ASSERT(err == CL_SUCCESS && "Unable to copy data to the device");
-    clFinish(commands);
-  }
-  usedMemoryBytes_ += sizeInBytes;
-  // Compile the CL program.
-  // Add to the function name lookup map.
-  // Add shared pointer to the buffer to buffers. This way the buffer will be
-  // freed after the last reference is removed.
-  for (const auto &func : functions) {
+    // Create a command queue to copy constants to the device and compile the
+    // function.
+    cl_int err;
+    cl_command_queue commands =
+        clCreateCommandQueue(context_, deviceId_, 0, &err);
+    if (!commands) {
+      readyCB(module,
+              MAKE_ERR(
+                  GlowErr::ErrorCode::RUNTIME_OUT_OF_DEVICE_MEMORY,
+                  "Failed to add network: could not create CL command queue."));
+      return;
+    }
+
+    // Copy constants to device.
+    auto size = bundle.getConstantWeightSize() + bundle.getMutableWeightSize() +
+                bundle.getActivationsSize();
+    cl_mem deviceBuffer;
+    if (auto autoDeviceBufferOrErr = allocDeviceBuffer(size)) {
+      deviceBuffer = *autoDeviceBufferOrErr;
+    } else {
+      readyCB(module, autoDeviceBufferOrErr.takeError());
+      return;
+    }
+    auto buffer = std::make_shared<OpenCLBuffer>(deviceBuffer, size);
+    if (bundle.getConstants()) {
+      auto buf = bundle.getConstants();
+      size_t valueOffset = 0;
+      cl_event event{nullptr};
+      err = clEnqueueWriteBuffer(
+          commands, buffer->getBuffer(), /* blocking_write */ CL_FALSE,
+          valueOffset, sizeInBytes, buf, /* num_events_in_wait_list */ 0,
+          /* event_list */ nullptr, /* event */ doProfile_ ? &event : nullptr);
+      if (err != CL_SUCCESS) {
+        readyCB(module, MAKE_ERR("Unable to copy data to the device"));
+        return;
+      }
+      clFinish(commands);
+    }
+    usedMemoryBytes_ += sizeInBytes;
+    // Compile the CL program.
+    // Add to the function name lookup map.
+    // Add shared pointer to the buffer to buffers. This way the buffer will be
+    // freed after the last reference is removed.
+
     // Configure the kernels by providing the size of size_t on the host size.
     // This is required to e.g. properly pass struct parameters of types like
     // ShapeNHWC, ShapeNCHW, etc. The definitions of these types on the host
@@ -263,40 +276,33 @@ void OpenCLDeviceManager::addNetworkImpl(const Module *module,
     functions_.emplace(func.first, func.second);
     buffers_.emplace(func.first, buffer);
     buffer->incrementUsers();
-  }
 
-  assert(usedMemoryBytes_ <= maxMemoryBytes_);
-  clReleaseCommandQueue(commands);
+    DCHECK_LE(usedMemoryBytes_, maxMemoryBytes_);
+    clReleaseCommandQueue(commands);
+  }
   // Fire the ready CB.
   readyCB(module, llvm::Error::success());
 }
 
 void OpenCLDeviceManager::evictNetworkImpl(std::string functionName,
                                            EvictFunctionCBTy evictCB) {
-  llvm::Error err = llvm::Error::success();
-
   if (functions_.erase(functionName)) {
     auto buffer = buffers_[functionName];
     auto users = buffer->decrementUsers();
     auto size = buffer->getSize();
     buffers_.erase(functionName);
     if (users == 0) {
-      assert(usedMemoryBytes_ >= size);
+      DCHECK_GE(usedMemoryBytes_, size);
       usedMemoryBytes_ -= size;
     }
   } else {
-    err =
-        MAKE_ERR(GlowErr::ErrorCode::RUNTIME_NET_NOT_FOUND,
-                 llvm::formatv("Could not find function with name {} to evict",
-                               functionName)
-                     .str());
+    evictCB(functionName,
+            MAKE_ERR(GlowErr::ErrorCode::RUNTIME_NET_NOT_FOUND,
+                     strFormat("Could not find function with name %s to evict",
+                               functionName.c_str())));
+    return;
   }
-
-  if (evictCB) {
-    evictCB(functionName, std::move(err));
-  } else {
-    llvm::errs() << llvm::toString(std::move(err));
-  }
+  evictCB(functionName, llvm::Error::success());
 }
 
 cl_command_queue
@@ -319,8 +325,8 @@ void OpenCLDeviceManager::returnRunCommandQueue(cl_command_queue commands) {
 void OpenCLDeviceManager::runFunctionImpl(
     RunIdentifierTy id, std::string function,
     std::unique_ptr<ExecutionContext> context, ResultCBTy resultCB) {
-  TRACE_EVENT_SCOPE_NAMED(context->getTraceContext(), "DeviceManager::run",
-                          dmRun);
+  TRACE_EVENT_SCOPE_NAMED(context->getTraceContext(), TraceLevel::RUNTIME,
+                          "DeviceManager::run", dmRun);
   auto funcIt = functions_.find(function);
   if (funcIt == functions_.end()) {
     dmRun.addArg("reason", "function not found");

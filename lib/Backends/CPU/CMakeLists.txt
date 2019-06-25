@@ -14,7 +14,7 @@ if(NOT LLVM_LINK_BIN)
     set(LLVM_LINK_BIN ${LLVM_BINARY_DIR}/bin/llvm-link)
   endif()
 endif()
-if(NOT EXISTS ${LLVM_LINK_BIN})
+if(NOT EXISTS ${LLVM_LINK_BIN} AND NOT MSVC)
   message(SEND_ERROR "unable to find llvm-link, cannot build the CPU runtime")
 endif()
 

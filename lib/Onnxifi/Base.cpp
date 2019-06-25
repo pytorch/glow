@@ -16,6 +16,7 @@
 #include "Base.h"
 
 #include "glow/Importer/ONNXIFIModelLoader.h"
+#include "glow/Optimizer/FunctionPasses.h"
 
 #include "llvm/Support/Format.h"
 #include <glog/logging.h>
@@ -28,8 +29,8 @@ namespace {
 const char *compatibilityFunctionName = "check";
 } // namespace
 
-onnxStatus BackendId::checkGraphCompatibility(const void *onnxModel,
-                                              size_t onnxModelSize) {
+onnxStatus Backend::checkGraphCompatibility(const void *onnxModel,
+                                            size_t onnxModelSize) {
   Module module;
 
   auto function = module.createFunction(compatibilityFunctionName);
@@ -53,14 +54,14 @@ onnxStatus BackendId::checkGraphCompatibility(const void *onnxModel,
     return ONNXIFI_STATUS_INTERNAL_ERROR;
   }
 
-  glow::lower(function, /* loweredMap */ nullptr, glowBackend_.get());
+  CompilationContext cctx;
+  cctx.compMode = CompilationMode::Infer;
+  glow::lower(function, cctx, glowBackend_.get());
 
   // Call the backend's transformPostLowering to match the normal compilation
   // pipeline then DCE any nodes that are no longer needed.
-  CompilationContext cctx;
-  cctx.compMode = CompilationMode::Infer;
   if (glowBackend_->transformPostLowering(function, cctx)) {
-    glow::DCE(function);
+    glow::DCE().run(function);
   }
 
   if (!function->verify()) {
@@ -110,12 +111,12 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
   if (traceEvents || GlowDumpDebugTraces) {
     ctx->setTraceContext(llvm::make_unique<TraceContext>(TraceLevel::STANDARD));
     traceContext = ctx->getTraceContext();
+    traceContext->setThreadName("Onnxifi");
   }
-  TRACE_EVENT_SCOPE(traceContext, "Onnxifi::setIOAndRun");
-  TRACE_EVENT_SCOPE_NAMED(traceContext, "adjustInputs", aiEvent);
+  TRACE_EVENT_SCOPE(traceContext, TraceLevel::RUNTIME, "Onnxifi::setIOAndRun");
+  TRACE_EVENT_SCOPE_NAMED(traceContext, TraceLevel::RUNTIME, "adjustInputs",
+                          aiEvent);
 
-  size_t totalInputOnnxTensorSize = 0;
-  size_t totalInputGlowTensorSize = 0;
   // Create tensors for input placeholders
   for (unsigned i = 0; i < inputsCount; ++i) {
     const auto &inOnnxTensor = inputDescriptors[i];
@@ -141,39 +142,42 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
       return ONNXIFI_STATUS_INVALID_SHAPE;
     }
 
-    // Only re-allocate a tensor in case padding is required.
-    // Otherwise just back the tensor by memory provided by the caller.
+    // Only allocate a tensor if insufficient backing storage is provided.
+    unsigned elementSize = inPhPtr->getType()->getElementSize();
+    size_t onnxBytes = inOnnxTensorSize * elementSize;
     if (inPhPtr->dims().equals(inOnnxTensorDims)) {
       ctx->getPlaceholderBindings()->insert(
-          inPhPtr, new Tensor(inOnnxBuffer, inPhPtr->getType()));
+          inPhPtr, Tensor(inOnnxBuffer, inPhPtr->getType()));
+    } else if (backendPtr_->getBackend().supportsPartialTensors() &&
+               inOnnxBuffer && inOnnxTensorSize > 0) {
+      // We have a partial input buffer.  Create a padded unowned tensor that
+      // remembers the actual size of the input.
+      ctx->getPlaceholderBindings()->insert(
+          inPhPtr, Tensor(inOnnxBuffer, inPhPtr->getType(), onnxBytes));
     } else {
       Tensor *inputTensor = tensorPool_.get(inPhPtr->getType());
-      DCHECK(inputTensor) << "Tensorpool tensor not found for input "
-                          << inOnnxTensor.name;
-      // If input onnxTensorDescriptor has a NULL buffer pointer, which is a
-      // valid case for empty tensor, skip copying
-      if (inOnnxBuffer) {
-        unsigned elementSize = inPhPtr->getType()->getElementSize();
-        char *onnxBuffer = static_cast<char *>(inOnnxBuffer);
-        std::copy(onnxBuffer, onnxBuffer + inOnnxTensorSize * elementSize,
-                  inputTensor->getUnsafePtr());
+      if (!inputTensor) {
+        DLOG(FATAL) << "Tensorpool tensor not found for input "
+                    << inOnnxTensor.name;
+        return ONNXIFI_STATUS_INTERNAL_ERROR;
       }
-
+      // Copy the input from onnxTensorDescriptor unless it has a NULL buffer
+      // pointer (which is a valid case if the tensor is empty).
+      if (inOnnxBuffer) {
+        memcpy(inputTensor->getUnsafePtr(), inOnnxBuffer, onnxBytes);
+        // Pad remaining space with zeroes.
+        memset(inputTensor->getUnsafePtr() + onnxBytes, 0,
+               inputTensor->getSizeInBytes() - onnxBytes);
+      } else {
+        inputTensor->zero();
+      }
       ctx->getPlaceholderBindings()->insert(inPhPtr, inputTensor);
     }
-    unsigned elementSize = inPhPtr->getType()->getElementSize();
-    totalInputOnnxTensorSize += inOnnxTensorSize * elementSize;
-    totalInputGlowTensorSize += inPhPtr->getType()->size() * elementSize;
   }
-  VLOG_EVERY_N(1, 100) << "Tensor size blow up from static sizing : "
-                       << totalInputOnnxTensorSize << " bytes to "
-                       << totalInputGlowTensorSize << " bytes ("
-                       << float(totalInputGlowTensorSize) /
-                              float(totalInputOnnxTensorSize)
-                       << " X)";
 
   TRACE_EVENT_SCOPE_END_NAMED(aiEvent);
-  TRACE_EVENT_SCOPE_NAMED(traceContext, "setOnnxifiOutputs", soEvent);
+  TRACE_EVENT_SCOPE_NAMED(traceContext, TraceLevel::RUNTIME,
+                          "setOnnxifiOutputs", soEvent);
 
   // Create tensors for output placeholders
   for (unsigned i = 0; i < outputsCount; ++i) {
@@ -219,18 +223,29 @@ void Graph::setTraceEvents(onnxTraceEventList *traceEvents,
     return;
   }
 
-  TRACE_EVENT_SCOPE(traceContext, "Onnxifi::setTraceEvents");
+  /// Internally we use steady_clock, but our interface is system_clock
+  /// timestamps. Do a simple conversion.
+  auto steadyTS = TraceEvent::now();
+  auto systemTS = std::chrono::duration_cast<std::chrono::microseconds>(
+                      std::chrono::system_clock::now().time_since_epoch())
+                      .count();
+
+  // Timestamps are uint64_t so branch rather than use abs(), we want to make
+  // sure we always subtract the smaller from the larger value to avoid
+  // underflowing the uint64_t. Then if the timestamp should be moved backwards
+  // negate the result.
+  int64_t offset =
+      steadyTS > systemTS ? -(steadyTS - systemTS) : (systemTS - steadyTS);
+  TRACE_EVENT_SCOPE(traceContext, TraceLevel::RUNTIME,
+                    "Onnxifi::setTraceEvents");
 
   std::vector<onnxTraceEvent *> traceEventsVec;
   for (const auto &glowTraceEvent : traceContext->getTraceEvents()) {
     auto *traceEvent = new onnxTraceEvent();
-    DCHECK_EQ(glowTraceEvent.type.size(), 1)
-        << "Events with types longer than a single char not supported by "
-           "onnxifi";
-    traceEvent->eventType = glowTraceEvent.type[0];
-    traceEvent->timestamp = glowTraceEvent.timestamp;
+    traceEvent->eventType = glowTraceEvent.type;
+    traceEvent->timestamp = glowTraceEvent.timestamp + offset;
     traceEvent->tid = glowTraceEvent.tid;
-    traceEvent->duration = 0;
+    traceEvent->duration = glowTraceEvent.duration;
     size_t nameSize = std::min(glowTraceEvent.name.size(),
                                (size_t)ONNXIFI_TRACE_EVENT_NAME_SIZE);
     strncpy(traceEvent->eventName, glowTraceEvent.name.c_str(), nameSize);

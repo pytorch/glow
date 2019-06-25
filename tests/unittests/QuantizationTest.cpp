@@ -33,17 +33,17 @@ namespace glow {
 
 using llvm::cast;
 
-class Quantization : public ::testing::TestWithParam<BackendKind> {};
+class Quantization : public ::testing::TestWithParam<std::string> {};
 
 class Operator
-    : public ::testing::TestWithParam<::std::tuple<BackendKind, BackendKind>> {
+    : public ::testing::TestWithParam<::std::tuple<std::string, std::string>> {
 protected:
-  ExecutionEngine profileEE{BackendKind::Interpreter};
-  ExecutionEngine backendSpecificEE{BackendKind::Interpreter};
+  ExecutionEngine profileEE{};
+  ExecutionEngine backendSpecificEE{};
 
   void SetUp() override {
-    BackendKind backend1;
-    BackendKind backend2;
+    std::string backend1;
+    std::string backend2;
     std::tie(backend1, backend2) = GetParam();
     profileEE.setBackend(backend1);
     backendSpecificEE.setBackend(backend2);
@@ -64,17 +64,11 @@ class MockQuantBackend : public Backend {
   std::unique_ptr<Backend> backend_;
 
 public:
-  MockQuantBackend() {
-    backend_.reset(createBackend(BackendKind::Interpreter));
-  }
+  MockQuantBackend() { backend_.reset(createBackend("Interpreter")); }
 
-  BackendKind getBackendKind() const override {
-    return BackendKind::Interpreter;
-  }
+  std::string getBackendName() const override { return "Interpreter"; }
 
-  std::string getBackendName() const override { return "MockQuantBackend"; }
-
-  std::unique_ptr<CompiledFunction>
+  llvm::Expected<std::unique_ptr<CompiledFunction>>
   compile(Function *F, const BackendOptions &opts) const override {
     return backend_->compile(F, opts);
   }
@@ -241,7 +235,7 @@ TEST(Quantization, quantizeTensorSymmetricUInt32) {
 
 /// Helper for quantizing a simple Conv with precision \p quantizationPrecision.
 static void quantizeSimpleConvGraph(ElemKind quantizationPrecision) {
-  ExecutionEngine EE;
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -291,7 +285,7 @@ TEST(Quantization, int16QuantizeGraph) {
 /// users correctly find the quantization parameters. This tests that updating
 /// the nodeToTQP_ map in FunctionQuantizer::postProcessing() works correctly.
 TEST(Quantization, TestQuantizedInputBeforeQuantizedNode) {
-  ExecutionEngine EE;
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -351,7 +345,7 @@ TEST(Quantization, TestQuantizedInputBeforeQuantizedNode) {
 /// 2. Use -enable-rowwise option or set enableRowwise param in
 /// quantization::quantizeFunction to true. In unittest, the later one is used.
 TEST(Quantization, enableRowwiseQuantizedFullyConnected) {
-  ExecutionEngine EE;
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -369,7 +363,8 @@ TEST(Quantization, enableRowwiseQuantizedFullyConnected) {
   bindings.allocate(S->getPlaceholder());
 
   LoweredInfoMap loweredMapForQuant;
-  ::glow::lower(F, &loweredMapForQuant, EE.getBackend());
+  CompilationContext cctx(/* bindings */ nullptr, &loweredMapForQuant);
+  ::glow::lower(F, cctx, EE.getBackend());
 
   // Get the MatMul node and the Batched_Add node.
   Node *matMul, *batchedAdd;
@@ -429,7 +424,7 @@ TEST(Quantization, enableRowwiseQuantizedFullyConnected) {
 
 /// Test enabling RowwiseQuantizedFullyConnected with Symmetric quantization.
 TEST(Quantization, enableRowwiseQuantizedFullyConnectedSymmetric) {
-  ExecutionEngine EE;
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   PlaceholderBindings bindings;
   Function *F = mod.createFunction("main");
@@ -463,7 +458,8 @@ TEST(Quantization, enableRowwiseQuantizedFullyConnectedSymmetric) {
   EXPECT_EQ(biasTQP.offset, 0);
 
   LoweredInfoMap loweredMapForQuant;
-  ::glow::lower(F, &loweredMapForQuant, EE.getBackend());
+  CompilationContext cctx(/* bindings */ nullptr, &loweredMapForQuant);
+  ::glow::lower(F, cctx, EE.getBackend());
 
   // Get the MatMul node and the Batched_Add node.
   Node *matMul, *batchedAdd;
@@ -530,7 +526,7 @@ TEST(Quantization, enableRowwiseQuantizedFullyConnectedSymmetric) {
 
 /// Check that SLWS is correctly fused rowwise-quantized by the quantizer.
 TEST(Quantization, enableRowwiseQuantizedSLWS) {
-  ExecutionEngine EE;
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
   PlaceholderBindings bindings;
@@ -586,7 +582,7 @@ TEST(Quantization, enableRowwiseQuantizedSLWS) {
 /// has quantization parameters mapping to non-negative floating
 /// point range.
 TEST(Quantization, quantizeReLU) {
-  ExecutionEngine EE;
+  ExecutionEngine EE{};
   EE.setBackend(new MockQuantBackend());
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
@@ -620,7 +616,7 @@ TEST(Quantization, quantizeReLU) {
 /// are implemented as IntLookupTables, because the Interpreter only supports
 /// them as such.
 TEST(Quantization, quantizeLookupTables) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
   auto *input = mod.createPlaceholder(ElemKind::FloatTy, {1, 3}, "input", true);
@@ -683,7 +679,7 @@ TEST(Quantization, quantizeLookupTables) {
 /// Quantize Log, Sigmoid, and Tanh nodes and make sure that they are not
 /// replaced by LookupTables because the backend supports them directly.
 TEST(Quantization, quantizeWithoutLookupTables) {
-  ExecutionEngine EE;
+  ExecutionEngine EE{};
   EE.setBackend(new MockQuantBackend());
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
@@ -864,7 +860,7 @@ TEST_P(Operator, end2endInt8) {
   // explicitly whitelist them here as staying in float, so that the quantizer
   // does not complain.
   KindSet keepOriginalPrecisionForNodes;
-  if (backendSpecificEE.getBackend()->getBackendKind() == BackendKind::OpenCL) {
+  if (backendSpecificEE.getBackend()->getBackendName() == "OpenCL") {
     keepOriginalPrecisionForNodes.insert(Kinded::Kind::SelectNodeKind);
     keepOriginalPrecisionForNodes.insert(Kinded::Kind::CmpLTENodeKind);
     keepOriginalPrecisionForNodes.insert(
@@ -1001,7 +997,7 @@ TEST_P(Operator, end2endGRU) {
   // explicitly whitelist them here as staying in float, so that the quantizer
   // does not complain.
   KindSet doNotQuantizeKinds;
-  if (backendSpecificEE.getBackend()->getBackendKind() == BackendKind::OpenCL) {
+  if (backendSpecificEE.getBackend()->getBackendName() == "OpenCL") {
     precConfig.precisionModeKindSet.insert(Kinded::Kind::TanhNodeKind);
     precConfig.precisionModeKindSet.insert(Kinded::Kind::SigmoidNodeKind);
     precConfig.precisionModeKindSet.insert(Kinded::Kind::GatherNodeKind);
@@ -1029,7 +1025,7 @@ TEST_P(Operator, end2endGRU) {
 }
 
 TEST(Quantization, rescaleSameType) {
-  ExecutionEngine EE;
+  ExecutionEngine EE{};
   PlaceholderBindings bindings;
   auto &mod = EE.getModule();
   auto *F = mod.createFunction("foo");
@@ -1055,7 +1051,7 @@ TEST(Quantization, rescaleSameType) {
 }
 
 TEST(Quantization, optimizeRescaleQuantize) {
-  ExecutionEngine EE;
+  ExecutionEngine EE{};
   PlaceholderBindings bindings;
   auto &mod = EE.getModule();
   auto *F = mod.createFunction("foo");
@@ -1204,7 +1200,7 @@ TEST(Quantization, chooseQuantizationSymmetricInf) {
 /// Check that Relu can use our symmetric quantization schema.
 TEST(Quantization, reluCanUseSymmetricSchema) {
   PlaceholderBindings bindings;
-  ExecutionEngine EE;
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -1300,7 +1296,7 @@ TEST(Quantization, chooseQuantizationSymmetricWithUInt8) {
 
 /// Check that LRN and Softmax are quantized.
 TEST(Quantization, quantizeSoftmaxAndLRN) {
-  ExecutionEngine EE;
+  ExecutionEngine EE{};
   PlaceholderBindings bindings;
   EE.setBackend(new MockQuantBackend());
 
@@ -1355,7 +1351,7 @@ TEST(Quantization, quantizeSoftmaxAndLRN) {
 
 /// Check that Select is quantized.
 TEST(Quantization, quantizeSelect) {
-  ExecutionEngine EE;
+  ExecutionEngine EE{};
   PlaceholderBindings bindings;
   EE.setBackend(new MockQuantBackend());
 
@@ -1403,7 +1399,7 @@ TEST(Quantization, quantizeSelect) {
 /// Check that AvgPool is quantized, and its input and output have different
 /// scale and offset.
 TEST(Quantization, quantizeAvgPool) {
-  ExecutionEngine EE;
+  ExecutionEngine EE{};
   PlaceholderBindings bindings;
   EE.setBackend(new MockQuantBackend());
 
@@ -1443,7 +1439,7 @@ TEST(Quantization, quantizeAvgPool) {
 
 /// Test option to disable quantization of specific node kinds in the graph.
 TEST(Quantization, quantizeGraphPartially) {
-  ExecutionEngine EE;
+  ExecutionEngine EE{};
   PlaceholderBindings bindings;
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
@@ -1520,7 +1516,7 @@ TEST(Quantization, quantizeGraphPartially) {
 /// Test option to disable quantization of specific node kinds in the graph,
 /// where there are multiple of that node kind.
 TEST(Quantization, quantizeGraphPartiallyMultipleNodes) {
-  ExecutionEngine EE;
+  ExecutionEngine EE{};
   PlaceholderBindings bindings;
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
@@ -1610,7 +1606,7 @@ TEST(Quantization, quantizeGraphPartiallyMultipleNodes) {
 /// Test option to disable quantization of multiple specific node kinds in the
 /// graph.
 TEST(Quantization, quantizeGraphPartiallyMultipleKinds) {
-  ExecutionEngine EE;
+  ExecutionEngine EE{};
   PlaceholderBindings bindings;
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
@@ -1700,7 +1696,7 @@ TEST(Quantization, quantizeGraphPartiallyMultipleKinds) {
 /// Check that quantizeFunction directly converts the constants
 /// instead of leaving quantize node around.
 TEST(Quantization, quantizeFunctionConvertConstant) {
-  ExecutionEngine EE;
+  ExecutionEngine EE{};
   PlaceholderBindings bindings;
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
@@ -1766,7 +1762,7 @@ TEST(Quantization, quantizeFunctionConvertConstant) {
 /// Check that the slice node doesn't change the quantization parameters between
 /// its input and output.
 TEST(Quantization, quantizeSlice) {
-  ExecutionEngine EE;
+  ExecutionEngine EE{};
   PlaceholderBindings bindings;
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
@@ -1834,7 +1830,7 @@ TEST(Quantization, quantizeSlice) {
 /// Check that the reshape node doesn't change the quantization parameters
 /// between its input and output.
 TEST(Quantization, quantizeReshape) {
-  ExecutionEngine EE;
+  ExecutionEngine EE{};
   PlaceholderBindings bindings;
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
@@ -1960,7 +1956,7 @@ static NodeClass *findNodeKindOrReturnNull(Function *F) {
 template <class BackendClass>
 static void testProfileQuantizationOfFC(bool expectLoweredFC,
                                         bool rowwiseQuantizeFC) {
-  ExecutionEngine profileEE(BackendKind::Interpreter);
+  ExecutionEngine profileEE{};
   Function *profileF = profileEE.getModule().createFunction("profile");
   PlaceholderBindings profilebindings;
   FullyConnectedNode *FC =
@@ -1977,7 +1973,8 @@ static void testProfileQuantizationOfFC(bool expectLoweredFC,
   // Lower everything and keep track of the lowered components source nodes via
   // the loweredMap.
   LoweredInfoMap loweredMapForProf;
-  lower(profileF, &loweredMapForProf);
+  CompilationContext cctx(/* bindings */ nullptr, &loweredMapForProf);
+  lower(profileF, cctx);
 
   // Check that the lowered graph only contains the lowered components of the
   // FC (MM and BA) and not the FC itself.
@@ -2041,7 +2038,8 @@ static void testProfileQuantizationOfFC(bool expectLoweredFC,
 
   // Lower the function given the backend's preferences for lowering.
   LoweredInfoMap loweredMapForQuant;
-  lower(backendF, &loweredMapForQuant, backendEE.getBackend());
+  CompilationContext cctx2(/* bindings */ nullptr, &loweredMapForQuant);
+  lower(backendF, cctx2, backendEE.getBackend());
 
   // Check that the backend lowered the function as expected.
   auto *floatFC = findNodeKindOrReturnNull<FullyConnectedNode>(backendF);
@@ -2154,7 +2152,7 @@ TEST(Quantization, TestProfileQuantizationOfLoweredFCRowwise) {
 
 /// Check that asserting quantization for the quantizer works as expected.
 TEST(Quantization, CheckAssertQuantization) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
   auto *input = mod.createPlaceholder(ElemKind::FloatTy, {1, 3}, "input", true);
@@ -2217,7 +2215,7 @@ TEST(Quantization, CheckAssertQuantization) {
 /// Check that we can quantize nodes that have some quantized outputs as unused,
 /// e.g. a TopK node where values is unused but indices is.
 TEST(Quantization, QuantizationZeroUsersResult) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   PlaceholderBindings bindings;
   Function *F = mod.createFunction("main");
@@ -2251,40 +2249,35 @@ TEST(Quantization, QuantizationZeroUsersResult) {
 }
 
 INSTANTIATE_TEST_CASE_P(Interpreter, Quantization,
-                        ::testing::Values(BackendKind::Interpreter));
+                        ::testing::Values("Interpreter"));
 
 #ifdef GLOW_WITH_CPU
-INSTANTIATE_TEST_CASE_P(CPU, Quantization, ::testing::Values(BackendKind::CPU));
+INSTANTIATE_TEST_CASE_P(CPU, Quantization, ::testing::Values("CPU"));
 
 INSTANTIATE_TEST_CASE_P(
     InterpAndCPUProfAndQuant, Operator,
-    ::testing::Combine(
-        ::testing::Values(BackendKind::Interpreter, BackendKind::CPU),
-        ::testing::Values(BackendKind::Interpreter, BackendKind::CPU)));
+    ::testing::Combine(::testing::Values("Interpreter", "CPU"),
+                       ::testing::Values("Interpreter", "CPU")));
 
 INSTANTIATE_TEST_CASE_P(
     InterpAndCPUProfAndQuant, InterpAndCPU,
-    ::testing::Combine(
-        ::testing::Values(BackendKind::Interpreter, BackendKind::CPU),
-        ::testing::Values(BackendKind::Interpreter, BackendKind::CPU)));
+    ::testing::Combine(::testing::Values("Interpreter", "CPU"),
+                       ::testing::Values("Interpreter", "CPU")));
 
 #else
-INSTANTIATE_TEST_CASE_P(
-    InterpreterProfAndQuant, Operator,
-    ::testing::Combine(::testing::Values(BackendKind::Interpreter),
-                       ::testing::Values(BackendKind::Interpreter)));
+INSTANTIATE_TEST_CASE_P(InterpreterProfAndQuant, Operator,
+                        ::testing::Combine(::testing::Values("Interpreter"),
+                                           ::testing::Values("Interpreter")));
 
-INSTANTIATE_TEST_CASE_P(
-    Interpreter, InterpAndCPU,
-    ::testing::Combine(::testing::Values(BackendKind::Interpreter),
-                       ::testing::Values(BackendKind::Interpreter)));
+INSTANTIATE_TEST_CASE_P(Interpreter, InterpAndCPU,
+                        ::testing::Combine(::testing::Values("Interpreter"),
+                                           ::testing::Values("Interpreter")));
 #endif // GLOW_WITH_CPU
 
 #ifdef GLOW_WITH_OPENCL
-INSTANTIATE_TEST_CASE_P(
-    InterpProfOpenCLQuant, Operator,
-    ::testing::Combine(::testing::Values(BackendKind::Interpreter),
-                       ::testing::Values(BackendKind::OpenCL)));
+INSTANTIATE_TEST_CASE_P(InterpProfOpenCLQuant, Operator,
+                        ::testing::Combine(::testing::Values("Interpreter"),
+                                           ::testing::Values("OpenCL")));
 #endif // GLOW_WITH_OPENCL
 
 } // namespace glow

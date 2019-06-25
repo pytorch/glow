@@ -36,16 +36,17 @@ namespace onnxifi {
 
 class Graph;
 
-/// BackendId associated with the Glow backend.
-class BackendId {
+/// Backend associated with the Glow backend.
+class Backend {
 public:
   /// Create Glow ONNXIFI backend identifier with the
-  /// given Glow backend \p kind, whether to use onnx or caffe2 for models
+  /// given Glow backend \p backendName, whether to use onnx or caffe2 for
+  /// models
   /// (\p useOnnx)
-  BackendId(glow::BackendKind kind, bool useOnnx)
-      : useOnnx_(useOnnx), glowBackend_(createBackend(kind)) {}
+  Backend(llvm::StringRef backendName, bool useOnnx)
+      : useOnnx_(useOnnx), glowBackend_(createBackend(backendName)) {}
 
-  virtual ~BackendId() = default;
+  virtual ~Backend() = default;
 
   /// Verify that a given onnx graph is supported by the backend by importing
   /// the onnx graph to a glow function, lowering this function, and checking
@@ -56,6 +57,9 @@ public:
 
   /// \returns the whether use onnx or not.
   bool getUseOnnx() const { return useOnnx_; }
+
+  /// \returns a reference to the backend.
+  const glow::Backend &getBackend() const { return *glowBackend_; }
 
   virtual void runNetwork(const Graph *graph,
                           std::unique_ptr<ExecutionContext> context,
@@ -68,21 +72,6 @@ public:
 protected:
   bool useOnnx_;
   std::unique_ptr<glow::Backend> glowBackend_;
-};
-
-typedef BackendId *BackendIdPtr;
-
-class Backend {
-public:
-  explicit Backend(BackendIdPtr backendId) : backendIdPtr_(backendId) {}
-
-  /// Whether this backend uses ONNX proto or Caffe2 proto.
-  bool getUseOnnx() const { return backendIdPtr_->getUseOnnx(); }
-
-  BackendId *getBackendId() { return backendIdPtr_; }
-
-private:
-  BackendIdPtr backendIdPtr_;
 };
 
 typedef Backend *BackendPtr;

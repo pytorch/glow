@@ -26,19 +26,19 @@
 
 using namespace glow;
 
-ExecutionEngine::ExecutionEngine(BackendKind backendKind) {
-  setBackend(backendKind);
+ExecutionEngine::ExecutionEngine(llvm::StringRef backend) {
+  setBackend(backend);
 }
 
-/// Set the code generator kind to \p backendKind.
-void ExecutionEngine::setBackend(BackendKind backendKind) {
-  setBackend(createBackend(backendKind));
+/// Set the code generator kind to \p backend.
+void ExecutionEngine::setBackend(llvm::StringRef backend) {
+  setBackend(createBackend(backend));
 }
 
 /// Set the code generator to the given \p backend.
 void ExecutionEngine::setBackend(Backend *backend, bool ownsBackend) {
   bool differentKinds = (backend_ == nullptr || backend == nullptr) ||
-                        backend->getBackendKind() != backend_->getBackendKind();
+                        backend->getBackendName() != backend_->getBackendName();
   if (ownsBackend_) {
     delete backend_;
   }
@@ -55,7 +55,7 @@ void ExecutionEngine::setBackend(Backend *backend, bool ownsBackend) {
     if (backend) {
       device_ = std::unique_ptr<runtime::DeviceManager>(
           runtime::DeviceManager::createDeviceManager(
-              backend->getBackendKind()));
+              runtime::DeviceConfig(backend->getBackendName())));
       EXIT_ON_ERR(device_->init());
     }
   }
@@ -120,19 +120,19 @@ void ExecutionEngine::runInternal(ExecutionContext &context,
   std::unique_ptr<ExecutionContext> contextPtr(&context);
   std::promise<void> runPromise;
   auto fut = runPromise.get_future();
-  llvm::Error runErr = llvm::Error::success();
+  std::unique_ptr<llvm::Error> runErr;
   device_->runFunction(
       name, std::move(contextPtr),
       [&runPromise, &runErr](runtime::RunIdentifierTy, llvm::Error err,
                              std::unique_ptr<ExecutionContext> contextPtr) {
         // Don't delete context.
         contextPtr.release();
-        runErr = std::move(err);
+        runErr = llvm::make_unique<llvm::Error>(std::move(err));
         runPromise.set_value();
       });
 
   fut.wait();
-  EXIT_ON_ERR(std::move(runErr));
+  EXIT_ON_ERR(std::move(*DCHECK_NOTNULL(runErr.get())));
 }
 
 void ExecutionEngine::run(ExecutionContext &context) {
@@ -188,14 +188,14 @@ void ExecutionEngine::insertCompiledFunction(
 
   std::promise<void> addPromise;
   auto fut = addPromise.get_future();
-  llvm::Error addErr = llvm::Error::success();
+  std::unique_ptr<llvm::Error> addErr;
   device_->addNetwork(&M_, std::move(functionMap),
                       [&addPromise, &addErr](const Module *, llvm::Error err) {
-                        addErr = std::move(err);
+                        addErr = llvm::make_unique<llvm::Error>(std::move(err));
                         addPromise.set_value();
                       });
   fut.wait();
-  EXIT_ON_ERR(std::move(addErr));
+  EXIT_ON_ERR(std::move(*DCHECK_NOTNULL(addErr.get())));
 }
 
 void glow::runBatch(ExecutionEngine &EE, PlaceholderBindings &bindings,
@@ -241,7 +241,7 @@ void ExecutionEngine::compile(CompilationMode mode, Function *F,
   compile(F, cctx, clearOtherFunctions);
 }
 
-void ExecutionEngine::compile(Function *F, const CompilationContext &cctx,
+void ExecutionEngine::compile(Function *F, CompilationContext &cctx,
                               bool clearOtherFunctions) {
   llvm::StringRef name = F->getName();
 
@@ -253,22 +253,16 @@ void ExecutionEngine::compile(Function *F, const CompilationContext &cctx,
          "A function with this name has already been compiled.");
 
   EXIT_ON_ERR(::glow::optimizeFunction(F, *backend_, cctx));
-
   for (const Node &N : F->getNodes()) {
-    if (!backend_->isOpSupported(N)) {
-      llvm::errs() << "Unsupported operator: " << N.getDebugDesc() << "\n";
-      GLOW_UNREACHABLE(
-          "Backend must support all nodes after high-level optimizations.");
-    }
+    CHECK(backend_->isOpSupported(N))
+        << "Backend must support all nodes after high-level optimizations but "
+           "encountered unsupported operator: "
+        << N.getDebugDesc();
   }
 
-  auto func = backend_->compile(F, cctx.backendOpts);
-  insertCompiledFunction(name, std::move(func));
-}
-
-void ExecutionEngine::save(Function *F, const CompilationContext &cctx,
-                           llvm::StringRef outputDir,
-                           llvm::StringRef networkName) {
-  EXIT_ON_ERR(::glow::optimizeFunction(F, *backend_, cctx));
-  backend_->save(F, outputDir, networkName);
+  if (auto funcOrErr = backend_->compile(F, cctx.backendOpts)) {
+    insertCompiledFunction(name, std::move(*funcOrErr));
+  } else {
+    EXIT_ON_ERR(funcOrErr.takeError());
+  }
 }

@@ -148,11 +148,11 @@ TEST_F(PartitionerTest, Basic1) {
   EE.run(bindings_);
   Tensor ref = res.clone();
 
-  std::vector<DeviceInfo> devices = {{3072, BackendKind::Interpreter},
-                                     {3072, BackendKind::Interpreter},
-                                     {3072, BackendKind::Interpreter}};
+  std::vector<DeviceInfo> devices = {
+      {3072, "Interpreter"}, {3072, "Interpreter"}, {3072, "Interpreter"}};
   Partitioner myPartitioner(&mod_, devices, false, true);
-  auto err = myPartitioner.Partition();
+  CompilationContext cctx;
+  auto err = myPartitioner.Partition(cctx);
   EXPECT_FALSE(errToBool(std::move(err)));
   DAGListTy myList = std::move(myPartitioner.getPartitionResult());
   ASSERT_EQ(mod_.getFunctions().size(), 3);
@@ -170,7 +170,7 @@ TEST_F(PartitionerTest, Basic1) {
 }
 
 /// This one tests the model with this feature: after BFS, there is one level,
-/// the  memory comsumption of all the nodes in which exceeds the device memory
+/// the memory consumption of all the nodes in which exceeds the device memory
 /// constraints.
 TEST_F(PartitionerTest, Basic2) {
   auto *input =
@@ -221,12 +221,13 @@ TEST_F(PartitionerTest, Basic2) {
   EE.run(bindings_);
   Tensor ref = res.clone();
 
-  std::vector<DeviceInfo> devices = {{2048, BackendKind::Interpreter},
-                                     {2048, BackendKind::Interpreter},
-                                     {2048, BackendKind::Interpreter},
-                                     {2048, BackendKind::Interpreter}};
+  std::vector<DeviceInfo> devices = {{2048, "Interpreter"},
+                                     {2048, "Interpreter"},
+                                     {2048, "Interpreter"},
+                                     {2048, "Interpreter"}};
   Partitioner myPartitioner(&mod_, devices, /* saturateHost */ true);
-  auto err = myPartitioner.Partition();
+  CompilationContext cctx;
+  auto err = myPartitioner.Partition(cctx);
   EXPECT_FALSE(errToBool(std::move(err)));
   DAGListTy myList = std::move(myPartitioner.getPartitionResult());
   ASSERT_EQ(mod_.getFunctions().size(), 2);
@@ -295,16 +296,17 @@ TEST_F(PartitionerTest, Error1) {
 
   // Infer using the un-partitioned graph.
   Tensor in(ElemKind::FloatTy, {1, 16});
-  ExecutionEngine EE;
+  ExecutionEngine EE{};
 
   EE.compile(CompilationMode::Infer, F_);
   updateInputPlaceholders(bindings_, {input, input1}, {&in, &in});
   EE.run(bindings_);
   Tensor ref = res.clone();
 
-  std::vector<DeviceInfo> devices = {{2048}};
+  std::vector<DeviceInfo> devices = {{2048, "Interpreter"}};
   Partitioner myPartitioner(&mod_, devices);
-  auto err = myPartitioner.Partition();
+  CompilationContext cctx;
+  auto err = myPartitioner.Partition(cctx);
   EXPECT_TRUE(errToBool(std::move(err)));
 }
 
@@ -371,11 +373,12 @@ TEST_F(PartitionerTest, Basic1Roofline) {
   }
 
   std::vector<DeviceInfo> devices = {
-      {3072, BackendKind::Interpreter, 100, 10, 0.1, 1, 0.05},
-      {3072, BackendKind::Interpreter, 100, 10, 0.1, 1, 0.05},
-      {3072, BackendKind::Interpreter, 100, 10, 0.1, 1, 0.05}};
+      {3072, "Interpreter", 100, 10, 0.1, 1, 0.05},
+      {3072, "Interpreter", 100, 10, 0.1, 1, 0.05},
+      {3072, "Interpreter", 100, 10, 0.1, 1, 0.05}};
   Partitioner myPartitioner(&mod_, devices);
-  auto err = myPartitioner.Partition();
+  CompilationContext cctx;
+  auto err = myPartitioner.Partition(cctx);
   EXPECT_FALSE(errToBool(std::move(err)));
 
   DAGListTy myList = std::move(myPartitioner.getPartitionResult());
@@ -408,6 +411,34 @@ TEST_F(PartitionerTest, Basic1Roofline) {
     ASSERT_EQ(expected, res);
   }
 
+  // check memUsage
+  std::unordered_map<std::string, uint64_t> expectedMemUsage{
+      {"initial_sigmoid", 0},
+      {"left_sigmoid2", 0},
+      {"fc_add_bias3", 64},
+      {"right_sigmoid1", 0},
+      {"mul", 0},
+      {"fc_add_bias2", 32},
+      {"ret", 0},
+      {"fc_dot", 2176},
+      {"left_sigmoid1", 0},
+      {"fc_add_bias", 64},
+      {"fc_dot1", 1024},
+      {"right_sigmoid2", 0},
+      {"fc_add_bias1", 64},
+      {"fc_dot2", 512},
+      {"fc_dot3", 1024},
+      {"fc_dot4", 512},
+      {"fc_add_bias4", 32},
+  };
+  ASSERT_EQ(myPartitioner.getMemUsage().size(), expectedMemUsage.size());
+  for (auto &el : myPartitioner.getMemUsage()) {
+    Node *n = el.first;
+    uint64_t expected = expectedMemUsage[nodeNamesMap[n].c_str()];
+    uint64_t res = el.second;
+    ASSERT_EQ(expected, res);
+  }
+
   ASSERT_EQ(mod_.getFunctions().size(), 3);
   ASSERT_EQ(myList.size(), 1);
 }
@@ -421,37 +452,43 @@ TEST_F(PartitionerTest, SelectRepFunc) {
   auto *plus = F_->createAdd("AplusB", inA, inB);
   F_->createSave("save", plus);
 
-  Partitioner myPartitioner(&mod_, {{1000000}, {1000000}, {1000000}});
+  Partitioner myPartitioner(&mod_, {{1000000, "Interpreter"},
+                                    {1000000, "Interpreter"},
+                                    {1000000, "Interpreter"}});
 
-  auto err = myPartitioner.Partition();
+  CompilationContext cctx;
+  auto err = myPartitioner.Partition(cctx);
   EXPECT_FALSE(errToBool(std::move(err)));
 }
 
-/// Create a mock backend with \p kind, and rewrite the isOpSupported function
+/// Create a mock backend and rewrite the isOpSupported function
 /// to un-support the op \p unsupportedOpKind.
-template <BackendKind kind, glow::Kinded::Kind unsupportedOpKind>
+template <glow::Kinded::Kind unsupportedOpKind>
 class MockBackend : public Backend {
+public:
+  std::string backendName;
+
   class MockFunction : public CompiledFunction {
   public:
-    MockFunction(const runtime::RuntimeBundle &bundle)
-        : CompiledFunction(bundle) {}
+    MockFunction(llvm::StringRef backendName,
+                 const runtime::RuntimeBundle &bundle)
+        : CompiledFunction(bundle), backendName(backendName) {}
 
     llvm::Error execute(ExecutionContext *) override {
       return llvm::Error::success();
     }
 
-    BackendKind getCompileBackendKind() const override {
-      return BackendKind::Interpreter;
-    }
+    std::string getCompileBackendName() const override { return backendName; }
+
+    std::string backendName;
   };
 
-  BackendKind getBackendKind() const override { return kind; }
+  std::string getBackendName() const override { return backendName; }
 
-  std::string getBackendName() const override { return "MockBackend"; }
-
-  std::unique_ptr<CompiledFunction>
+  llvm::Expected<std::unique_ptr<CompiledFunction>>
   compile(Function *F, const BackendOptions &opts) const override {
-    return llvm::make_unique<MockFunction>(runtime::RuntimeBundle::create(*F));
+    return llvm::make_unique<MockFunction>(backendName,
+                                           runtime::RuntimeBundle::create(*F));
   }
 
   bool isOpSupported(const NodeInfo &NI) const override {
@@ -468,10 +505,13 @@ class MockBackend : public Backend {
   }
 };
 
-class BackendWithoutSub
-    : public MockBackend<BackendKind::CPU, Kinded::Kind::SubNodeKind> {};
-class BackendWithoutMul
-    : public MockBackend<BackendKind::Interpreter, Kinded::Kind::MulNodeKind> {
+class BackendWithoutSub : public MockBackend<Kinded::Kind::SubNodeKind> {
+public:
+  BackendWithoutSub() { backendName = "CPU"; }
+};
+class BackendWithoutMul : public MockBackend<Kinded::Kind::MulNodeKind> {
+public:
+  BackendWithoutMul() { backendName = "Interpreter"; }
 };
 
 static void createSimpleModule(Module &mod) {
@@ -481,10 +521,13 @@ static void createSimpleModule(Module &mod) {
       mod.createPlaceholder(ElemKind::FloatTy, {16}, "input1", false);
   auto *input2 =
       mod.createPlaceholder(ElemKind::FloatTy, {16}, "input2", false);
+  auto *input3 =
+      mod.createPlaceholder(ElemKind::FloatTy, {16}, "input3", false);
   auto *sub = F->createSub("sub", input1, input2);
   auto *mul = F->createMul("mul", input1, input2);
-  auto *sum = F->createMul("add", sub, mul);
-  auto *save = F->createSave("ret", sum);
+  auto *sum = F->createAdd("add", sub, mul);
+  auto *sub2 = F->createSub("sub1", sum, input3);
+  auto *save = F->createSave("ret", sub2);
   (void)save;
 }
 
@@ -496,20 +539,21 @@ TEST_F(PartitionerTest, SimpleHeterogeneousPartitioning) {
     // Create two backends which support different ops, then do the partition by
     // assigning the ops to the corresponding abackends.
     std::vector<Backend *> backends;
-    backends.emplace_back(&backendWithoutSub1);
-    backends.emplace_back(&backendWithoutSub2);
     backends.emplace_back(&backendWithoutMul1);
     backends.emplace_back(&backendWithoutMul2);
-    std::vector<DeviceInfo> devices = {{3072, BackendKind::CPU},
-                                       {3072, BackendKind::CPU},
-                                       {3072, BackendKind::Interpreter},
-                                       {3072, BackendKind::Interpreter}};
+    backends.emplace_back(&backendWithoutSub1);
+    backends.emplace_back(&backendWithoutSub2);
+    std::vector<DeviceInfo> devices = {{3072, "Interpreter"},
+                                       {3072, "Interpreter"},
+                                       {3072, "CPU"},
+                                       {3072, "CPU"}};
     auto partitioner =
         Partitioner(&mod_, devices, backends, /* saturateHost */ true);
-    auto err = partitioner.Partition();
+    CompilationContext cctx;
+    auto err = partitioner.Partition(cctx);
     EXPECT_FALSE(errToBool(std::move(err)));
     DAGListTy myList = std::move(partitioner.getPartitionResult());
-    ASSERT_EQ(mod_.getFunctions().size(), 2);
+    ASSERT_EQ(mod_.getFunctions().size(), 3);
     ASSERT_EQ(myList.size(), 1);
     ASSERT_TRUE(checkSaveNode(mod_));
 
@@ -522,4 +566,245 @@ TEST_F(PartitionerTest, SimpleHeterogeneousPartitioning) {
     }
     mod_.clear();
   }
+}
+
+/// Test assigning more than one partitions in to one device for single
+/// backendName.
+TEST_F(PartitionerTest, logicalIDTest0) {
+  auto *input1 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {2, 10}, "input1", false);
+  auto *input2 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {10, 16}, "input2", false);
+  auto *input3 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {16, 20}, "input3", false);
+  auto *input4 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {20, 1}, "input4", false);
+  auto *input5 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 50}, "input5", false);
+  auto *mul0 = F_->createMatMul("mul0", input1, input2);
+  auto *mul1 = F_->createMatMul("mul1", mul0, input3);
+  auto *mul2 = F_->createMatMul("mul2", mul1, input4);
+  auto *mul3 = F_->createMatMul("mul3", mul2, input5);
+  auto *save = F_->createSave("ret", mul3);
+  (void)save;
+  std::vector<DeviceInfo> devices = {{1500, "Interpreter"},
+                                     {1500, "Interpreter"}};
+  // Create two backends which support different ops, then do the partition by
+  // assigning the ops to the corresponding abackends.
+  auto partitioner = Partitioner(&mod_, devices, /* saturateHost */ true);
+  CompilationContext cctx;
+  auto err = partitioner.Partition(cctx);
+  EXPECT_FALSE(errToBool(std::move(err)));
+  DAGListTy myList = std::move(partitioner.getPartitionResult());
+  // Check there are 3 partitions.
+  ASSERT_EQ(mod_.getFunctions().size(), 3);
+  ASSERT_EQ(myList.size(), 1);
+  ASSERT_TRUE(checkSaveNode(mod_));
+
+  for (auto &dag : myList) {
+    // Check number of logical devices;
+    llvm::SmallSet<DeviceIDTy, 4> usedID;
+    for (auto &node : dag.nodes) {
+      ASSERT_EQ(node->logicalDevices.size(), 1);
+      usedID.insert(node->logicalDevices[0]);
+    }
+    // Check there are 2 logical devices.
+    ASSERT_EQ(usedID.size(), 2);
+  }
+  mod_.clear();
+}
+
+/// Test assigning more than one partitions in to one device in Heterogeneous
+/// partition.
+TEST_F(PartitionerTest, logicalIDTest1) {
+  createSimpleModule(mod_);
+  BackendWithoutSub backendWithoutSub1, backendWithoutSub2;
+  BackendWithoutMul backendWithoutMul1, backendWithoutMul2;
+  // Create two backends which support different ops, then do the partition by
+  // assigning the ops to the corresponding abackends.
+  std::vector<Backend *> backends;
+  backends.emplace_back(&backendWithoutMul1);
+  backends.emplace_back(&backendWithoutSub1);
+  std::vector<DeviceInfo> devices = {{3072, "Interpreter"}, {3072, "CPU"}};
+  auto partitioner =
+      Partitioner(&mod_, devices, backends, /* saturateHost */ true);
+  CompilationContext cctx;
+  auto err = partitioner.Partition(cctx);
+  EXPECT_FALSE(errToBool(std::move(err)));
+  DAGListTy myList = std::move(partitioner.getPartitionResult());
+  ASSERT_EQ(mod_.getFunctions().size(), 3);
+  ASSERT_EQ(myList.size(), 1);
+  ASSERT_TRUE(checkSaveNode(mod_));
+
+  for (auto &dag : myList) {
+    // Check number of logical devices;
+    llvm::SmallSet<DeviceIDTy, 4> usedID;
+    for (auto &node : dag.nodes) {
+      // Although the saturateHost is set true, no saturating the host in
+      // heterogeneous partiton.
+      ASSERT_EQ(node->logicalDevices.size(), 1);
+      usedID.insert(node->logicalDevices[0]);
+    }
+    ASSERT_EQ(usedID.size(), 2);
+  }
+  mod_.clear();
+}
+
+/// Check the function getGraphMemInfo and updateGraphMemInfo to handle more
+/// than one outputs of a single Node in PartitionerUtils.cpp
+TEST_F(PartitionerTest, graphMemInfoCalculation1) {
+  auto *inp1 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {2, 1, 3}, "input", false);
+  auto *inp2 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {2, 1, 3}, "input", false);
+  auto *indices =
+      mod_.createPlaceholder(ElemKind::Int64ITy, {4, 1, 2}, "indices", false);
+
+  auto *R1 = F_->createTopK("TopK1", inp1, 2);
+  auto *R2 = F_->createTopK("TopK2", inp2, 2);
+
+  // Concat the values and indices separately, both on the 0th dimension,
+  // matching the shapes of the values and indices variables above.
+  auto *CV =
+      F_->createConcat("Concat.Values", {R1->getValues(), R2->getValues()}, 0);
+  auto *CI = F_->createConcat("Concat.Indices",
+                              {R1->getIndices(), R2->getIndices()}, 0);
+
+  auto *saveValues = F_->createSave("Save.Values", CV);
+  auto *saveIndices = F_->createSave("Save.Indices", CI, indices);
+
+  std::set<Node *> nodes1;
+  GraphMemInfo res;
+  res = updateGraphMemInfoByAddingNode(nodes1, res, R1);
+  EXPECT_EQ(res, GraphMemInfo(24, 48, 0));
+  nodes1.insert(R1);
+
+  res = updateGraphMemInfoByAddingNode(nodes1, res, R2);
+  EXPECT_EQ(res, GraphMemInfo(48, 96, 0));
+  nodes1.insert(R2);
+
+  res = updateGraphMemInfoByAddingNode(nodes1, res, CV);
+  EXPECT_EQ(res, GraphMemInfo(48, 96, 0));
+  nodes1.insert(CV);
+
+  res = updateGraphMemInfoByAddingNode(nodes1, res, CI);
+  EXPECT_EQ(res, GraphMemInfo(48, 96, 0));
+  nodes1.insert(CI);
+
+  res = updateGraphMemInfoByAddingNode(nodes1, res, saveValues);
+  EXPECT_EQ(res, GraphMemInfo(48, 96, 0));
+  nodes1.insert(saveValues);
+
+  res = updateGraphMemInfoByAddingNode(nodes1, res, saveIndices);
+  EXPECT_EQ(res, GraphMemInfo(48, 96, 0));
+  nodes1.insert(saveIndices);
+
+  std::set<Node *> nodes2, nodes3;
+  nodes2.insert(R1);
+  nodes2.insert(R2);
+  nodes3.insert(CV);
+  nodes3.insert(CI);
+  nodes3.insert(saveValues);
+  nodes3.insert(saveIndices);
+  GraphMemInfo res1 = getGraphMemInfo(nodes2);
+  GraphMemInfo res2 = getGraphMemInfo(nodes3);
+  GraphMemInfo ref1(48, 96, 0);
+  GraphMemInfo ref2(96, 96, 0);
+  EXPECT_EQ(res1, ref1);
+  EXPECT_EQ(res2, ref2);
+}
+
+/// Check the function updateGraphMemInfoByAddingNode and getGraphMemInfo to
+/// handle shared Storage node in PartitionerUtils.cpp
+TEST_F(PartitionerTest, graphMemInfoCalculation2) {
+  auto *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 16}, "input", false);
+
+  // Left branch.
+  auto *w2 = mod_.createConstant(ElemKind::FloatTy, {16, 16}, "w2");
+  auto *b2 = mod_.createConstant(ElemKind::FloatTy, {16}, "b2");
+  auto *L = F_->createFullyConnected("left_fc1", input, w2, b2);
+  auto *L1 = F_->createSigmoid("left_sigmoid1", L);
+  auto *w3 = mod_.createConstant(ElemKind::FloatTy, {16, 8}, "w3");
+  auto *b3 = mod_.createConstant(ElemKind::FloatTy, {8}, "b3");
+  auto *L2 = F_->createFullyConnected("left_fc2", L1, w3, b3);
+  auto *L3 = F_->createSigmoid("left_sigmoid2", L2);
+
+  // Right branch.
+  auto *R = F_->createFullyConnected("right_fc1", input, w2, b2);
+  auto *R1 = F_->createSigmoid("right_sigmoid1", R);
+  auto *w5 = mod_.createConstant(ElemKind::FloatTy, {16, 8}, "w5");
+  auto *b5 = mod_.createConstant(ElemKind::FloatTy, {8}, "b5");
+  auto *R2 = F_->createFullyConnected("right_fc2", R1, w5, b5);
+  auto *R3 = F_->createSigmoid("right_sigmoid2", R2);
+
+  // Join branches.
+  auto *mul = F_->createMul("mul", L3, R3);
+  auto *save = F_->createSave("ret", mul);
+
+  std::set<Node *> nodes1, nodes2;
+  GraphMemInfo res1, res2;
+  res1 = updateGraphMemInfoByAddingNode(nodes1, res1, L);
+  EXPECT_EQ(res1, GraphMemInfo(64, 64, 1088));
+  nodes1.insert(L);
+
+  res1 = updateGraphMemInfoByAddingNode(nodes1, res1, R);
+  EXPECT_EQ(res1, GraphMemInfo(64, 128, 1088));
+  nodes1.insert(R);
+
+  res1 = updateGraphMemInfoByAddingNode(nodes1, res1, R1);
+  EXPECT_EQ(res1, GraphMemInfo(64, 128, 1088));
+  nodes1.insert(R1);
+
+  res1 = updateGraphMemInfoByAddingNode(nodes1, res1, R2);
+  EXPECT_EQ(res1, GraphMemInfo(64, 96, 1632));
+  nodes1.insert(R2);
+
+  res1 = getGraphMemInfo(nodes1);
+  EXPECT_EQ(res1, GraphMemInfo(64, 96, 1632));
+
+  res2 = updateGraphMemInfoByAddingNode(nodes2, res2, L1);
+  EXPECT_EQ(res2, GraphMemInfo(64, 64, 0));
+  nodes2.insert(L1);
+
+  res2 = updateGraphMemInfoByAddingNode(nodes2, res2, L2);
+  EXPECT_EQ(res2, GraphMemInfo(64, 32, 544));
+  nodes2.insert(L2);
+
+  res2 = updateGraphMemInfoByAddingNode(nodes2, res2, L3);
+  EXPECT_EQ(res2, GraphMemInfo(64, 32, 544));
+  nodes2.insert(L3);
+
+  res2 = updateGraphMemInfoByAddingNode(nodes2, res2, mul);
+  EXPECT_EQ(res2, GraphMemInfo(96, 32, 544));
+  nodes2.insert(mul);
+
+  res2 = updateGraphMemInfoByAddingNode(nodes2, res2, R3);
+  EXPECT_EQ(res2, GraphMemInfo(96, 32, 544));
+  nodes2.insert(R3);
+
+  res2 = updateGraphMemInfoByAddingNode(nodes2, res2, save);
+  EXPECT_EQ(res2, GraphMemInfo(96, 32, 544));
+  nodes2.insert(save);
+
+  res2 = getGraphMemInfo(nodes2);
+  EXPECT_EQ(res2, GraphMemInfo(96, 32, 544));
+}
+
+/// This one test the memoryUsageValidation in Partitioner : the memory usage of
+/// one single node is larger than the given device memory.
+TEST_F(PartitionerTest, memoryUsageValidation1) {
+  auto *input1 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {2, 10}, "input1", false);
+  auto *input2 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {10, 16}, "input2", false);
+  auto *mul0 = F_->createMatMul("mul0", input1, input2);
+  F_->createSave("ret", mul0);
+
+  std::vector<DeviceInfo> devices = {{500, "Interpreter"},
+                                     {500, "Interpreter"}};
+  Partitioner myPartitioner(&mod_, devices);
+  CompilationContext cctx;
+  auto err = myPartitioner.Partition(cctx);
+  EXPECT_TRUE(errToBool(std::move(err)));
 }

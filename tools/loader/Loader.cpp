@@ -124,14 +124,10 @@ llvm::cl::list<std::string> doNotLowerNodesForProfilingOpt(
     llvm::cl::value_desc("NodeNames (e.g. Convolution,FullyConnected)"),
     llvm::cl::ZeroOrMore, llvm::cl::CommaSeparated, llvm::cl::cat(loaderCat));
 
-llvm::cl::opt<BackendKind> ExecutionBackend(
-    llvm::cl::desc("Backend to use:"),
-    llvm::cl::values(clEnumValN(BackendKind::Interpreter, "interpreter",
-                                "Use interpreter"),
-                     clEnumValN(BackendKind::CPU, "cpu", "Use CPU"),
-                     clEnumValN(BackendKind::OpenCL, "opencl", "Use OpenCL"),
-                     clEnumValN(BackendKind::Habana, "habana", "Use Habana")),
-    llvm::cl::init(BackendKind::Interpreter), llvm::cl::cat(loaderCat));
+llvm::cl::opt<std::string> ExecutionBackend(
+    "backend",
+    llvm::cl::desc("Backend to use, e.g., Interpreter, CPU, OpenCL:"),
+    llvm::cl::init("Interpreter"), llvm::cl::cat(loaderCat));
 
 /// Debugging options.
 llvm::cl::OptionCategory
@@ -186,11 +182,17 @@ llvm::cl::opt<std::string> loadDeviceConfigsFileOpt(
 /// Name of the network being bundled.
 llvm::cl::opt<std::string> networkName(
     "network-name",
-    llvm::cl::desc("Name of the network being bundled. "
-                   "This name is used as both the function name "
-                   "of the entry point to the network "
-                   "and as a prefix for all the files that are generated."),
+    llvm::cl::desc("Name of the network being bundled. This name is used as a "
+                   "prefix for all the files that are generated."),
     llvm::cl::cat(loaderCat));
+
+/// Name of the main entry of the bundle.
+llvm::cl::opt<std::string>
+    mainEntryName("main-entry-name",
+                  llvm::cl::desc("Name of the main entry in the bundle. "
+                                 "This name is used as the function name "
+                                 "of the entry point to the network."),
+                  llvm::cl::cat(loaderCat));
 
 llvm::cl::opt<unsigned> numDevices("num-devices",
                                    llvm::cl::desc("Number of Devices to use"),
@@ -211,6 +213,11 @@ llvm::cl::opt<unsigned> iterationsOpt(
     llvm::cl::Optional, llvm::cl::init(0), llvm::cl::cat(loaderCat));
 
 llvm::StringRef Loader::getModelOptPath() {
+  assert(modelPathOpt.size() == 1 && "Model path must be a single path.");
+  return modelPathOpt[0];
+}
+
+llvm::StringRef Loader::getModelOptDir() {
   assert(modelPathOpt.size() == 1 &&
          llvm::sys::fs::is_directory(*modelPathOpt.begin()) &&
          "Model path must be a single directory.");
@@ -269,6 +276,24 @@ static bool commandLineIsInvalid() {
   return false;
 }
 
+void glow::parseCommandLine(int argc, char **argv) {
+  llvm::sys::PrintStackTraceOnErrorSignal(argv[0]);
+  llvm::cl::ParseCommandLineOptions(
+      argc, argv,
+      " The Glow compiler\n\n"
+      "Glow is a compiler for neural network accelerators.\n");
+
+  if (commandLineIsInvalid()) {
+    std::exit(1);
+  }
+
+  if (modelPathOpt.size() > 2) {
+    llvm::errs() << "-model flag should have either 1 or 2 paths assigned. "
+                    "Please see flag's description.\n";
+    std::exit(1);
+  }
+}
+
 /// Helper to get the Kind of a Node (e.g. Kinded::Kind::AddNodeKind) given its
 /// \p nodeName (e.g. Add).
 static Kinded::Kind getKindFromNodeName(llvm::StringRef nodeName) {
@@ -277,21 +302,7 @@ static Kinded::Kind getKindFromNodeName(llvm::StringRef nodeName) {
     return Kinded::Kind::CLASS##Kind;                                          \
   }
 #include "glow/AutoGenNodes.def"
-  GLOW_UNREACHABLE("Unknown node name.");
-}
-
-/// Helper to get the BackendKind type from a backend's \p name. Need to be
-/// updated if a new backend comes.
-static BackendKind getBackendKindFromName(std::string &name) {
-  const llvm::StringMap<BackendKind> mapping(
-      {{"CPU", BackendKind::CPU},
-       {"Interpreter", BackendKind::Interpreter},
-       {"OpenCL", BackendKind::OpenCL},
-       {"Habana", BackendKind::Habana}});
-  if (mapping.find(name) == mapping.end()) {
-    GLOW_UNREACHABLE("Unknown backendKind name.");
-  }
-  return mapping.lookup(name);
+  LOG(FATAL) << "Unknown node name: " << nodeName.str();
 }
 
 /// Helper to get the parameters in DeviceConfig from \p str. The \p str has
@@ -320,16 +331,16 @@ static llvm::StringMap<std::string> getBackendParams(std::string &str) {
 
 /// If the device config file \p loadDeviceDoncfigsFile available, load \p
 /// configs from the file. Otherwise, create \p numDevices number of devices
-/// based on \p backendKind.
+/// based on \p backendName.
 static std::vector<std::unique_ptr<runtime::DeviceConfig>>
 generateDeviceConfigs(std::string &loadDeviceConfigsFile,
-                      unsigned int numDevices, BackendKind backendKind) {
+                      unsigned int numDevices, llvm::StringRef backendName) {
   std::vector<std::unique_ptr<runtime::DeviceConfig>> configs;
   if (loadDeviceConfigsFile.empty()) {
     // If there is no device config file, use numDevices to generate the
     // configs.
     for (unsigned int i = 0; i < numDevices; ++i) {
-      auto config = llvm::make_unique<runtime::DeviceConfig>(backendKind);
+      auto config = llvm::make_unique<runtime::DeviceConfig>(backendName);
       configs.push_back(std::move(config));
     }
   } else {
@@ -337,10 +348,10 @@ generateDeviceConfigs(std::string &loadDeviceConfigsFile,
     std::vector<DeviceConfigHelper> lists;
     lists = deserializeDeviceConfigFromYaml(loadDeviceConfigsFile);
     for (unsigned int i = 0; i < lists.size(); ++i) {
-      auto backendKind = getBackendKindFromName(lists[i].kindName_);
+      auto backendName = lists[i].backendName_;
       auto name = lists[i].name_;
       auto parameters = getBackendParams(lists[i].parameters_.str);
-      auto config = llvm::make_unique<runtime::DeviceConfig>(backendKind, name,
+      auto config = llvm::make_unique<runtime::DeviceConfig>(backendName, name,
                                                              parameters);
       configs.push_back(std::move(config));
     }
@@ -399,7 +410,8 @@ void Loader::compile(PlaceholderBindings &bindings) {
     // Emit IR for the graph, compile it and save as a bundle.
     auto error = ::glow::optimizeFunction(F_, *backend_, cctx);
     EXIT_ON_ERR(std::move(error));
-    backend_->save(F_, emitBundle, networkName);
+    backend_->save(F_, emitBundle, networkName,
+                   mainEntryName.empty() ? networkName : mainEntryName);
   } else {
     // Emit IR for the graph and compile it.
     auto error = hostManager_->addNetwork(std::move(M_), cctx);
@@ -449,23 +461,7 @@ void Loader::generateAndSerializeQuantizationInfos(
   serializeToYaml(dumpProfileFileOpt, QI);
 }
 
-Loader::Loader(int argc, char **argv) {
-  llvm::sys::PrintStackTraceOnErrorSignal(argv[0]);
-  llvm::cl::ParseCommandLineOptions(
-      argc, argv,
-      " The Glow compiler\n\n"
-      "Glow is a compiler for neural network accelerators.\n");
-
-  if (commandLineIsInvalid()) {
-    std::exit(1);
-  }
-
-  if (modelPathOpt.size() > 2) {
-    llvm::errs() << "-model flag should have either 1 or 2 paths assigned. "
-                    "Please see flag's description.\n";
-    std::exit(1);
-  }
-
+Loader::Loader() {
   if (modelPathOpt.size() == 1) {
     if (llvm::sys::fs::is_directory(*modelPathOpt.begin())) {
       caffe2NetDescFilename_ = modelPathOpt[0] + "/predict_net.pb";

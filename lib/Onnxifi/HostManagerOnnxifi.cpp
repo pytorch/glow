@@ -36,24 +36,25 @@ static llvm::cl::opt<bool, true>
                            llvm::cl::location(GlowDumpDebugTraces));
 
 std::unique_ptr<runtime::HostManager>
-HostManagerBackendId::createHostManager(glow::BackendKind kind) {
+HostManagerBackend::createHostManager(llvm::StringRef backendName) {
   std::vector<std::unique_ptr<runtime::DeviceConfig>> configs;
   for (int i = 0; i < GlowNumDevices; i++) {
-    configs.push_back(llvm::make_unique<runtime::DeviceConfig>(kind));
+    configs.push_back(llvm::make_unique<runtime::DeviceConfig>(backendName));
   }
   return llvm::make_unique<runtime::HostManager>(std::move(configs));
 }
 
-void HostManagerBackendId::runNetwork(const Graph *graph,
-                                      std::unique_ptr<ExecutionContext> context,
-                                      runtime::ResultCBTy callback) {
+void HostManagerBackend::runNetwork(const Graph *graph,
+                                    std::unique_ptr<ExecutionContext> context,
+                                    runtime::ResultCBTy callback) {
   auto hostManagerGraph = static_cast<const HostManagerGraph *>(graph);
   hostManager_->runNetwork(hostManagerGraph->getName(), std::move(context),
                            std::move(callback));
 }
 
-onnxStatus HostManagerBackendId::addNetwork(std::unique_ptr<Module> module) {
-  auto err = hostManager_->addNetwork(std::move(module));
+onnxStatus HostManagerBackend::addNetwork(std::unique_ptr<Module> module) {
+  CompilationContext cctx;
+  auto err = hostManager_->addNetwork(std::move(module), cctx);
 
   if (errToBool(std::move(err))) {
     return ONNXIFI_STATUS_INTERNAL_ERROR;
@@ -62,7 +63,7 @@ onnxStatus HostManagerBackendId::addNetwork(std::unique_ptr<Module> module) {
   return ONNXIFI_STATUS_SUCCESS;
 }
 
-onnxStatus HostManagerBackendId::removeNetwork(const Graph *graph) {
+onnxStatus HostManagerBackend::removeNetwork(const Graph *graph) {
   auto hostManagerGraph = static_cast<const HostManagerGraph *>(graph);
   auto error = hostManager_->removeNetwork(hostManagerGraph->getName());
 
@@ -97,19 +98,20 @@ HostManagerGraph::initGraph(const void *onnxModel, size_t onnxModelSize,
     tensorPool_.reserve(obj.second->getType(), 10);
   }
 
-  return static_cast<HostManagerBackendId *>(backendPtr_->getBackendId())
+  return static_cast<HostManagerBackend *>(backendPtr_)
       ->addNetwork(std::move(module));
 }
 
 onnxStatus HostManagerGraph::run(std::unique_ptr<ExecutionContext> ctx,
                                  EventPtr outputEvent,
                                  onnxTraceEventList *traceEvents) {
-  backendPtr_->getBackendId()->runNetwork(
+  backendPtr_->runNetwork(
       this, std::move(ctx),
       [outputEvent, traceEvents](runtime::RunIdentifierTy runId,
                                  llvm::Error err,
                                  std::unique_ptr<ExecutionContext> ctx) {
-        TRACE_EVENT_SCOPE(ctx->getTraceContext(), "Onnxifi::callback");
+        TRACE_EVENT_SCOPE(ctx->getTraceContext(), TraceLevel::RUNTIME,
+                          "Onnxifi::callback");
         // If an Error occurred then log it in errToBool and signal the output
         // event.
         if (errToBool(std::move(err))) {
@@ -128,8 +130,9 @@ onnxStatus HostManagerGraph::run(std::unique_ptr<ExecutionContext> ctx,
             llvm::SmallString<64> path;
             auto tempFileRes =
                 llvm::sys::fs::createTemporaryFile("glow-trace", "json", path);
-            if (!tempFileRes) {
-              LOG(ERROR) << "Failed to create temp file for Glow trace events";
+            if (tempFileRes.value() != 0) {
+              LOG(ERROR) << "Failed to create temp file for Glow trace events: "
+                         << tempFileRes;
             } else {
               traceContext->dump(path);
             }
@@ -143,8 +146,8 @@ onnxStatus HostManagerGraph::run(std::unique_ptr<ExecutionContext> ctx,
 }
 
 HostManagerGraph::~HostManagerGraph() {
-  // Remove network from the BackendId
-  backendPtr_->getBackendId()->removeNetwork(this);
+  // Remove network from the Backend
+  backendPtr_->removeNetwork(this);
 }
 
 size_t HostManagerGraph::makeUniqueGraphId() {

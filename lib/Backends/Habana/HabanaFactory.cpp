@@ -18,6 +18,6 @@
 
 namespace glow {
 
-REGISTER_GLOW_BACKEND_FACTORY(HabanaFactory, HabanaBackend, Habana);
+REGISTER_GLOW_BACKEND_FACTORY(HabanaFactory, HabanaBackend);
 
 } // namespace glow

@@ -36,6 +36,20 @@ using llvm::cast;
 using llvm::dyn_cast;
 using llvm::isa;
 
+namespace {
+/// A helper function to log the deletion of constant/placeholder \p s of a
+/// module.
+void loggingStorageDeletionInUserFunc(Storage *s) {
+  std::unordered_set<Function *> userFuncs;
+  for (auto &use : s->getUsers()) {
+    userFuncs.insert(use.getUser()->getParent());
+  }
+  for (auto *F : userFuncs) {
+    F->getLogContext().logNodeDeletion(*s);
+  }
+}
+} // namespace
+
 bool Module::hasFunction(llvm::StringRef name) { return getFunction(name); }
 
 Function *Module::getFunction(llvm::StringRef name) {
@@ -62,10 +76,9 @@ void Module::strip() {
 }
 
 void Module::clear() {
-  eraseFunctions();
-
   for (auto it = constants_.begin(), e = constants_.end(); it != e; it++) {
     Constant *v = *it;
+    loggingStorageDeletionInUserFunc(v);
     delete v;
   }
 
@@ -74,8 +87,11 @@ void Module::clear() {
   for (auto it = placeholders_.begin(), e = placeholders_.end(); it != e;
        it++) {
     Placeholder *p = *it;
+    loggingStorageDeletionInUserFunc(p);
     delete p;
   }
+
+  eraseFunctions();
 
   placeholders_.clear();
 }
@@ -97,6 +113,24 @@ void Module::dump() const {
 
   for (auto f : functions_) {
     llvm::outs() << "Function:" << f->getName() << "\n";
+  }
+}
+
+std::string Module::toString() const {
+  std::string storage;
+  llvm::raw_string_ostream os(storage);
+  dump(os);
+  return os.str();
+}
+
+void Module::dump(llvm::raw_ostream &os) const {
+  os << "Module structure:\n";
+  for (auto v : getConstants()) {
+    os << v->getDebugDesc() << "\n";
+  }
+
+  for (auto f : functions_) {
+    os << "Function:" << f->getName() << "\n";
   }
 }
 
@@ -309,6 +343,7 @@ Function::~Function() {
     auto cur = it++;
     eraseNode(&*cur);
   }
+  logCtx_.dumpLog(getName());
 }
 
 TypeRef Module::uniqueType(ElemKind elemTy, llvm::ArrayRef<size_t> dims) {
@@ -1355,13 +1390,15 @@ LengthsSumNode *Function::createLengthsSum(llvm::StringRef name, NodeValue data,
   return addNode(new LengthsSumNode(name, outTy, data, lengths));
 }
 
-SparseLengthsWeightedSumNode *
-Function::createSparseLengthsSum(llvm::StringRef name, NodeValue data,
-                                 NodeValue indices, NodeValue lengths) {
-  auto ty =
-      getParent()->uniqueTypeWithNewShape(data.getType(), {indices.dims()[0]});
-  auto ones = createSplat(name.str() + ".ones", ty, 1.0);
-  return createSparseLengthsWeightedSum(name, data, ones, indices, lengths);
+SparseLengthsSumNode *Function::createSparseLengthsSum(llvm::StringRef name,
+                                                       NodeValue data,
+                                                       NodeValue indices,
+                                                       NodeValue lengths) {
+  auto inDims = data.dims();
+  ShapeVector outDims(inDims.begin(), inDims.end());
+  outDims[0] = lengths.dims()[0];
+  auto outTy = getParent()->uniqueTypeWithNewShape(data.getType(), outDims);
+  return addNode(new SparseLengthsSumNode(name, outTy, data, indices, lengths));
 }
 
 SparseLengthsWeightedSumNode *
@@ -1455,42 +1492,52 @@ Function::createRowwiseQuantizedSparseLengthsSum(llvm::StringRef name,
       this, name, data, ones, indices, lengths, schema);
 }
 
-FusedRowwiseQuantizedSparseLengthsWeightedSumNode *
-Function::createFusedRowwiseQuantizedSparseLengthsWeightedSum(
-    llvm::StringRef name, Constant *data, NodeValue weights, NodeValue indices,
-    NodeValue lengths) {
-  auto inDims = data->dims();
+/// Helper used to get specific output type required for
+/// createRowwiseQuantizedSparseLengthsSum and
+/// createRowwiseQuantizedSparseLengthsWeightedSum.
+/// Function \p F is used to get the speficific type, using inputs \p inDims and
+/// \p lenghtsDims to compute output dimensions.
+static TypeRef getOutputTypeOfFusedRowwiseQuantizedSLS(
+    Function *F, const llvm::ArrayRef<size_t> &inDims,
+    const llvm::ArrayRef<size_t> &lengthsDims) {
   ShapeVector outDims(inDims.begin(), inDims.end());
-  outDims[0] = lengths.dims()[0];
+  outDims[0] = lengthsDims[0];
   // The output column count is the same as the input column count, but without
   // the extra 8 bytes for the fused scale/offset, as the output is not
   // UInt8FusedQTy.
   outDims[1] -= 8;
-  auto outTy = getParent()->uniqueType(ElemKind::FloatTy, outDims);
+  return F->getParent()->uniqueType(ElemKind::FloatTy, outDims);
+}
+
+FusedRowwiseQuantizedSparseLengthsWeightedSumNode *
+Function::createFusedRowwiseQuantizedSparseLengthsWeightedSum(
+    llvm::StringRef name, NodeValue data, NodeValue weights, NodeValue indices,
+    NodeValue lengths) {
+  auto outTy = getOutputTypeOfFusedRowwiseQuantizedSLS(this, data.dims(),
+                                                       lengths.dims());
   return addNode(new FusedRowwiseQuantizedSparseLengthsWeightedSumNode(
       name, outTy, data, weights, indices, lengths));
 }
 
-FusedRowwiseQuantizedSparseLengthsWeightedSumNode *
+FusedRowwiseQuantizedSparseLengthsSumNode *
 Function::createFusedRowwiseQuantizedSparseLengthsSum(llvm::StringRef name,
                                                       Constant *data,
                                                       NodeValue indices,
                                                       NodeValue lengths) {
-  auto ty = getParent()->uniqueType(ElemKind::FloatTy, {indices.dims()[0]});
-  auto ones = createSplat(name.str() + ".ones", ty, 1.0);
-  return createFusedRowwiseQuantizedSparseLengthsWeightedSum(name, data, ones,
-                                                             indices, lengths);
+  auto outTy = getOutputTypeOfFusedRowwiseQuantizedSLS(this, data->dims(),
+                                                       lengths.dims());
+  return addNode(new FusedRowwiseQuantizedSparseLengthsSumNode(
+      name, outTy, data, indices, lengths));
 }
 
-/// Helper to create a RowwiseQuantizedSparseLengthsWeightedSumNode in the
-/// Function \p F with \p name, using \ data, \p weights, \p indices, and \p
-/// lengths as inputs. The provided float data in \p Tensor is rowwise
-/// quantized, creating Constants for the rowwise quantized data as well as
-/// Scales and Offsets, in the Module containing \p F.
-static FusedRowwiseQuantizedSparseLengthsWeightedSumNode *
-quantizeDataAndCreateFusedRowwiseQuantizedSparseLengthsWeightedSum(
-    Function *F, llvm::StringRef name, Tensor &data, NodeValue weights,
-    NodeValue indices, NodeValue lengths) {
+/// Helper to get quantized data required for
+/// RowwiseQuantizedSparseLengthsWeightedSumNode and
+/// RowwiseQuantizedSparseLengthsSumNode. Function \p F uses float Tensor \p
+/// data to create a rowwise qunatized Constant \p rwqData, which contains fused
+/// scales and offsets.
+static Constant *
+quantizeDataForFusedRowwiseQuantizedSparseLengthsWeightedSum(Function *F,
+                                                             Tensor &data) {
   // For fused rowwise quantization, we must have a two-dimensional input. If
   // passed in a single dimensional data Tensor then add an extra dimension.
   const auto fDims = flattenCdr(data.dims());
@@ -1506,27 +1553,28 @@ quantizeDataAndCreateFusedRowwiseQuantizedSparseLengthsWeightedSum(
 
   quantization::tensorFusedRowwiseQuantization(fData,
                                                rwqData->getPayloadMutable());
-  return F->createFusedRowwiseQuantizedSparseLengthsWeightedSum(
-      name, rwqData, weights, indices, lengths);
+  return rwqData;
 }
 
 FusedRowwiseQuantizedSparseLengthsWeightedSumNode *
 Function::createFusedRowwiseQuantizedSparseLengthsWeightedSum(
     llvm::StringRef name, Tensor &data, NodeValue weights, NodeValue indices,
     NodeValue lengths) {
-  return quantizeDataAndCreateFusedRowwiseQuantizedSparseLengthsWeightedSum(
-      this, name, data, weights, indices, lengths);
+  Constant *rwqData =
+      quantizeDataForFusedRowwiseQuantizedSparseLengthsWeightedSum(this, data);
+  return createFusedRowwiseQuantizedSparseLengthsWeightedSum(
+      name, rwqData, weights, indices, lengths);
 }
 
-FusedRowwiseQuantizedSparseLengthsWeightedSumNode *
+FusedRowwiseQuantizedSparseLengthsSumNode *
 Function::createFusedRowwiseQuantizedSparseLengthsSum(llvm::StringRef name,
                                                       Tensor &data,
                                                       NodeValue indices,
                                                       NodeValue lengths) {
-  auto ty = getParent()->uniqueType(ElemKind::FloatTy, {indices.dims()[0]});
-  auto ones = createSplat(name.str() + ".ones", ty, 1.0);
-  return quantizeDataAndCreateFusedRowwiseQuantizedSparseLengthsWeightedSum(
-      this, name, data, ones, indices, lengths);
+  Constant *rwqData =
+      quantizeDataForFusedRowwiseQuantizedSparseLengthsWeightedSum(this, data);
+  return this->createFusedRowwiseQuantizedSparseLengthsSum(name, rwqData,
+                                                           indices, lengths);
 }
 
 LengthsToRangesNode *Function::createLengthsToRanges(llvm::StringRef name,
@@ -1590,7 +1638,7 @@ Function::createQuantizationProfile(PlaceholderBindings &bindings,
   const size_t numberOfBuckets = 2000U;
   auto *histogram = getParent()->createPlaceholder(
       ElemKind::FloatTy, {numberOfBuckets}, "histogram_" + name.str(), false);
-  bindings.allocate(histogram);
+  bindings.allocate(histogram)->zero();
   // Intermediate data used for histogram calculations.
   // Min tensor value seen so far is kept on the first position.
   // Max tensor value seen so far is kept on the second position.
@@ -2057,6 +2105,18 @@ Convolution3DNode *Function::createConv3D(PlaceholderBindings &bindings,
   llvm::SmallVector<unsigned_t, 3> kernels = {kernel, kernel, kernel};
   return createConv3D(bindings, name, input, outChannels, kernels, strides,
                       pads, group);
+}
+
+ChannelwiseQuantizedConvolutionNode *Function::createChannelwiseQuantizedConv(
+    llvm::StringRef name, NodeValue input, Constant *filter, Constant *bias,
+    Constant *scales, Constant *offsets, TypeRef outTy,
+    llvm::ArrayRef<unsigned_t> kernels, llvm::ArrayRef<unsigned_t> strides,
+    llvm::ArrayRef<unsigned_t> pads, unsigned_t group) {
+  assertConvDims(input, filter, bias, kernels, strides, pads, group);
+  auto OT = getParent()->uniqueType(*outTy);
+  return addNode(new ChannelwiseQuantizedConvolutionNode(
+      name, OT, input, filter, bias, scales, offsets, kernels, strides, pads,
+      group, /*Groupwise*/ true));
 }
 
 ConvertToNode *Function::createConvertTo(llvm::StringRef name, NodeValue input,
@@ -2547,7 +2607,21 @@ TraceEventNode *Function::createTraceEvent(llvm::StringRef eventName,
 void Function::dump() const {
   llvm::outs() << "Graph structure " << getName() << ":\n";
   for (auto &n : nodes_) {
-    llvm::outs() << n.getDebugDesc() << "\n";
+    llvm::outs() << n.getDebugDesc();
+  }
+}
+
+std::string Function::toString() const {
+  std::string storage;
+  llvm::raw_string_ostream os(storage);
+  dump(os);
+  return os.str();
+}
+
+void Function::dump(llvm::raw_ostream &os) const {
+  os << "Graph structure " << getName() << ":\n";
+  for (auto &n : nodes_) {
+    os << n.getDebugDesc();
   }
 }
 
@@ -2640,11 +2714,17 @@ Node *Function::getNodeByName(llvm::StringRef name) {
 void Module::eraseConstant(ConstList::iterator I) {
   if (I == constants_.end())
     return;
+  loggingStorageDeletionInUserFunc(*I);
   delete *I;
   constants_.erase(I);
 }
 
-void Function::eraseNode(NodesList::iterator I) { nodes_.erase(I); }
+void Function::eraseNode(NodesList::iterator I) {
+  // Log node deletion.
+  logCtx_.logNodeDeletion(*I);
+
+  nodes_.erase(I);
+}
 
 Constant *Module::getConstantByName(llvm::StringRef name) const {
   for (auto *V : getConstants()) {
@@ -2973,3 +3053,28 @@ SaveNode *glow::getOutputSave(Function *F, Placeholder *PH) {
   }
   return nullptr;
 }
+
+namespace glow {
+
+llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const Module &mod) {
+  mod.dump(os);
+  return os;
+}
+
+llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const Module *mod) {
+  assert(mod != nullptr && "Null Pointer.");
+  mod->dump(os);
+  return os;
+}
+
+llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const Function &F) {
+  F.dump(os);
+  return os;
+}
+
+llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const Function *F) {
+  assert(F != nullptr && "Null Pointer.");
+  F->dump(os);
+  return os;
+}
+} // namespace glow

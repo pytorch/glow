@@ -110,6 +110,15 @@ public:
   /// \returns a textual description of the node.
   std::string getDebugDesc() const;
 
+  /// Dump a textual representation of the Node into provided output stream.
+  void dump(llvm::raw_ostream &out) const;
+
+  /// Dump a textual representation of the Node into default output stream.
+  void dump() const;
+
+  /// Dump a textual representation of the Node to std::string.
+  std::string toString() const;
+
   /// \returns copy of the current node. Notice that the new node is not
   /// inserted into any DAG. The caller of this method should add it to some
   /// node-list.
@@ -234,10 +243,10 @@ public:
   }
 
   /// \returns the input types.
-  llvm::ArrayRef<TypeRef> getInTypes() { return inTypes_; }
+  llvm::ArrayRef<TypeRef> getInTypes() const { return inTypes_; }
 
   /// \returns the output types.
-  llvm::ArrayRef<TypeRef> getOutTypes() { return outTypes_; }
+  llvm::ArrayRef<TypeRef> getOutTypes() const { return outTypes_; }
 
   /// \returns the input type located at \p idx.
   const TypeRef getInTy(size_t idx) const {
@@ -380,6 +389,10 @@ constexpr unsigned LHSIdx = 0;
 constexpr unsigned RHSIdx = 1;
 constexpr unsigned ResultIdx = 0;
 } // namespace ArithmeticNode
+
+llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const Node &node);
+
+llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const Node *node);
 
 } // namespace glow
 

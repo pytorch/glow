@@ -291,22 +291,23 @@ static void processAndPrintDecodedTranslation(Tensor *outputTokenBeamList,
 int main(int argc, char **argv) {
   PlaceholderBindings bindings;
 
-  // The loader verifies/initializes command line parameters, and initializes
+  // Verify/initialize command line parameters, and then loader initializes
   // the ExecutionEngine and Function.
-  Loader loader(argc, argv);
+  parseCommandLine(argc, argv);
+  Loader loader;
 
   // Load the source and dest dictionaries.
-  auto modelDir = loader.getModelOptPath();
+  auto modelDir = loader.getModelOptDir();
   srcVocab.loadDictionaryFromFile(modelDir.str() + "/src_dictionary.txt");
   dstVocab.loadDictionaryFromFile(modelDir.str() + "/dst_dictionary.txt");
 
   // Encoded input sentence. Note that the batch size is 1 for inference models.
   Tensor encoderInputs(ElemKind::Int64ITy, {maxInputLenOpt, /* batchSize */ 1});
 
-  // Inputs other than tokenized input. These should all be initialized to zero
-  // (which they are by default). Note, the init_net already defines these
-  // tensors solely as placeholders (with incorrect shapes/elementtypes/data).
-  // Glow uses these tensors in their place.
+  // Inputs other than tokenized input. These should all be initialized to zero.
+  // Note, the init_net already defines these tensors solely as placeholders
+  // (with incorrect shapes/elementtypes/data). Glow uses these tensors in their
+  // place.
   Tensor attnWeights(ElemKind::FloatTy, {maxInputLenOpt});
   Tensor prevHyposIndices(ElemKind::Int64ITy, {beamSizeOpt});
   Tensor prevScores(ElemKind::FloatTy, {1});
@@ -328,6 +329,13 @@ int main(int argc, char **argv) {
 
   // Allocate tensors to back all inputs and outputs.
   bindings.allocate(loader.getModule()->getPlaceholders());
+
+  // Get all input tensors and zero them.
+  for (const auto *name : inputNames) {
+    Tensor *T = bindings.get(loader.getModule()->getPlaceholderByName(name));
+    DCHECK(T && "input tensor missing!");
+    T->zero();
+  }
 
   Placeholder *encoderInputsVar = llvm::cast<Placeholder>(
       EXIT_ON_ERR(LD.getNodeValueByName("encoder_inputs")));

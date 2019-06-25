@@ -23,6 +23,7 @@
 #include "glow/Graph/UseDef.h"
 
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSet.h"
@@ -93,11 +94,14 @@ public:
   /// Verify the correctness of the instruction parameters.
   void verify(const IRFunction &M) const;
 
-  /// Print value.
+  /// Dump a textual representation of the Value into provided output stream.
   void dump(llvm::raw_ostream &out) const;
 
-  /// Print value using a default output stream.
+  /// Dump a textual representation of the Value into default output stream.
   void dump() const;
+
+  /// Dump a textual representation of the Value to std::string.
+  std::string toString() const;
 
   /// Print value in context.
   void dumpInContext(llvm::raw_ostream &out) const;
@@ -240,7 +244,7 @@ class Node;
 /// A function that represents the compilation unit.
 class IRFunction final : public Named {
 public:
-  using VariableMap = std::unordered_map<const Storage *, Value *>;
+  using VariableMap = llvm::MapVector<const Storage *, Value *>;
   using InstListTy = TaggedList<Instruction, InstructionTraits>;
   using InstrIterator = InstListTy::iterator;
   using InstrConstIterator = InstListTy::const_iterator;
@@ -302,10 +306,15 @@ public:
   /// Verify the correctness of the function.
   void verify() const;
 
-  /// Dump a textual representation of the function.
+  /// Dump a textual representation of the IRFunction into default output
+  /// stream.
   void dump() const;
 
-  /// Dump a textual representation of the function into provided output stream.
+  /// Dump a textual representation of the IRFunction to std::string.
+  std::string toString() const;
+
+  /// Dump a textual representation of the IRFunction into provided output
+  /// stream.
   void dump(llvm::raw_ostream &OS) const;
 
   /// Dump a dotty graph that depicts the function.
@@ -388,6 +397,14 @@ public:
   /// was assigned to this instruction.
   int64_t getInstrNumber(const Instruction *I) const;
 };
+
+llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const Value &V);
+
+llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const Value *V);
+
+llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const IRFunction &irf);
+
+llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const IRFunction *irf);
 
 } // namespace glow
 

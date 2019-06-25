@@ -32,8 +32,7 @@ using namespace glow;
 class HabanaBackendTest : public ::testing::Test {
 protected:
   HabanaBackendTest()
-      : EE_(BackendKind::Habana), mod_(EE_.getModule()),
-        F_(mod_.createFunction("main")) {}
+      : EE_("Habana"), mod_(EE_.getModule()), F_(mod_.createFunction("main")) {}
   ~HabanaBackendTest() = default;
 
   template <ElemKind kind, typename ElemTy> void testFCHelper();
@@ -61,7 +60,8 @@ TEST_F(HabanaBackendTest, SurroundTile) {
   SaveNode *SN = F_->createSave("save", TN);
 
   // Invoke Habana backend specific graph optimisations.
-  bool changed = backend.transformPostLowering(F_, CompilationContext());
+  CompilationContext cctx;
+  bool changed = backend.transformPostLowering(F_, cctx);
   EXPECT_TRUE(changed);
 
   // Invoke dead code elimination.
@@ -112,7 +112,8 @@ TEST_F(HabanaBackendTest, DoNotSurroundTile) {
   F_->createSave("save", TN);
 
   // Invoke Habana backend specific graph optimisations.
-  bool changed = backend.transformPostLowering(F_, CompilationContext());
+  CompilationContext cctx;
+  bool changed = backend.transformPostLowering(F_, cctx);
 
   // Graph should not change since input to Tile is already 4D.
   EXPECT_FALSE(changed);
@@ -140,7 +141,8 @@ TEST_F(HabanaBackendTest, FuseConvRelu) {
   SaveNode *SN = F_->createSave("save", RN);
 
   // Invoke Habana backend specific graph optimisations.
-  bool changed = backend.transformPostLowering(F_, CompilationContext());
+  CompilationContext cctx;
+  bool changed = backend.transformPostLowering(F_, cctx);
   EXPECT_TRUE(changed);
 
   // Now, the graph should look like this:
@@ -213,7 +215,8 @@ TEST_F(HabanaBackendTest, FuseConvAdd) {
   SaveNode *SN = F_->createSave("save", AN);
 
   // Invoke Habana backend specific graph optimisations.
-  bool changed = backend.transformPostLowering(F_, CompilationContext());
+  CompilationContext cctx;
+  bool changed = backend.transformPostLowering(F_, cctx);
   EXPECT_TRUE(changed);
 
   // Now, the graph should look like this:
@@ -303,7 +306,8 @@ TEST_F(HabanaBackendTest, FuseConvAddRelu) {
   SaveNode *SN = F_->createSave("save", RN);
 
   // Invoke Habana backend specific graph optimisations.
-  bool changed = backend.transformPostLowering(F_, CompilationContext());
+  CompilationContext cctx;
+  bool changed = backend.transformPostLowering(F_, cctx);
   EXPECT_TRUE(changed);
 
   // Now, the graph should look like this:
@@ -370,6 +374,21 @@ TEST_F(HabanaBackendTest, FuseConvAddRelu) {
   EXPECT_EQ(F_->getNodes().size(), 4);
 }
 
+TEST_F(HabanaBackendTest, SetDeviceMemory) {
+  uint64_t defaultMemory = (7 << 20);
+  auto configEmpty = glow::runtime::DeviceConfig("Habana");
+  auto configFull = glow::runtime::DeviceConfig("Habana");
+  configFull.setDeviceMemory(32768);
+  // With no commandline or deviceConfig, the memory should be default 7 <<20.
+  glow::runtime::HabanaDeviceManager device1(configEmpty, 1, 1);
+  llvm::Error err1 = device1.init();
+  EXPECT_EQ(defaultMemory * 1024, device1.getMaximumMemory());
+  // With only deviceConfig, the memory should be set by deviceConfig.
+  glow::runtime::HabanaDeviceManager device2(configFull, 1, 1);
+  llvm::Error err2 = device2.init();
+  EXPECT_EQ(32768, device2.getMaximumMemory());
+}
+
 TEST_F(HabanaBackendTest, ConvertFC) {
   HabanaBackend backend;
   auto *input =
@@ -378,7 +397,8 @@ TEST_F(HabanaBackendTest, ConvertFC) {
   auto *bias = mod_.createConstant(ElemKind::FloatTy, {16}, "bias");
   auto *FC = F_->createFullyConnected("fc", input, weight, bias);
   auto *save = F_->createSave("save", FC);
-  backend.transformPostLowering(F_, CompilationContext());
+  CompilationContext cctx;
+  backend.transformPostLowering(F_, cctx);
   ASSERT_TRUE(save);
   ASSERT_TRUE(llvm::isa<HabanaFullyConnectedNode>(save->getInput()));
 }
@@ -391,7 +411,8 @@ TEST_F(HabanaBackendTest, ConvertConv) {
   ConvolutionNode *conv = F_->createConv(ctx_, "conv", input, 3, 5, 1, 2, 1);
   SaveNode *save = F_->createSave("save", conv);
 
-  bool changed = backend.transformPostLowering(F_, CompilationContext());
+  CompilationContext cctx;
+  bool changed = backend.transformPostLowering(F_, cctx);
   EXPECT_TRUE(changed);
   ASSERT_TRUE(save);
   ASSERT_TRUE(llvm::isa<HabanaConvolutionNode>(save->getInput()));
@@ -1455,7 +1476,8 @@ TEST_F(HabanaBackendTest, SingleFunctionMultiThreadMultiDevice) {
   std::vector<std::unique_ptr<DeviceManager>> deviceManagers;
 
   for (unsigned i = 0; i < maxDeviceManagers; ++i) {
-    DeviceManager *deviceManager = new glow::runtime::HabanaDeviceManager();
+    DeviceManager *deviceManager =
+        new glow::runtime::HabanaDeviceManager(runtime::DeviceConfig("Habana"));
 
     if (deviceManager->init()) {
       delete deviceManager;
@@ -1492,11 +1514,11 @@ TEST_F(HabanaBackendTest, SingleFunctionMultiThreadMultiDevice) {
 
   // Compile function.
   glow::runtime::FunctionMapTy functions;
-  auto backend = std::unique_ptr<Backend>(createBackend(BackendKind::Habana));
+  auto backend = std::unique_ptr<Backend>(createBackend("Habana"));
   CompilationContext cctx;
   cctx.compMode = CompilationMode::Infer;
   EXIT_ON_ERR(::glow::optimizeFunction(F_, *backend, cctx));
-  auto compiledFunction = backend->compile(F_, cctx.backendOpts);
+  auto compiledFunction = EXIT_ON_ERR(backend->compile(F_, cctx.backendOpts));
   functions.emplace(F_->getName(), compiledFunction.get());
 
   // Add the function to each device.
@@ -1627,8 +1649,8 @@ TEST_F(HabanaBackendTest, FCPerf) {
   printf("Tflops: %lf\n", (flops) / elapsedSecs * 1e-12);
 }
 
-// Test performance of Gather.  Disabled due to unspecified bugs in Gather op.
-TEST_F(HabanaBackendTest, DISABLED_GatherPerf) {
+// Test performance of Gather.
+TEST_F(HabanaBackendTest, GatherPerf) {
   // Create function.
   auto *data = mod_.createPlaceholder(ElemKind::FloatTy, {50}, "data", false);
   auto *indices =
@@ -1654,7 +1676,7 @@ TEST_F(HabanaBackendTest, DISABLED_GatherPerf) {
   EE_.run(ctx_);
   struct timespec begin;
   clock_gettime(CLOCK_MONOTONIC_RAW, &begin);
-  for (int i = 0; i < 10; i++)
+  for (int i = 0; i < 1000; i++)
     EE_.run(ctx_);
   struct timespec end;
   clock_gettime(CLOCK_MONOTONIC_RAW, &end);

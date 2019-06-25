@@ -19,6 +19,8 @@
 #include "glow/CodeGen/MemoryAllocator.h"
 #include "glow/IR/IR.h"
 
+#include <map>
+
 namespace glow {
 namespace runtime {
 
@@ -47,7 +49,7 @@ struct RuntimeSymbolInfo {
   SymbolCategory symbolCategory;
 };
 
-using SymbolTableTy = std::unordered_map<std::string, RuntimeSymbolInfo>;
+using SymbolTableTy = std::map<std::string, RuntimeSymbolInfo>;
 
 /// Contains the information needed to be passed forward from compile time to
 /// runtime. In order to allocate and initialize memory.
@@ -119,6 +121,50 @@ public:
         activationsMemSize_(activations) {}
 };
 } // namespace runtime
+
+/// If \p PH is an output placeholder in the Function \p F,
+/// \returns true.
+/// This is determined by checking if the PH has a user which uses the PH as an
+/// overwritten input.
+bool isOutput(const Placeholder *PH, const Function &F);
+
+/// If \p PH is an input placeholderin the Function \p F,
+/// \returns true.
+/// This is determined by checking if the PH is the input to a saveNode or is
+/// used by a non saveNode.
+bool isInput(const Placeholder *PH, const Function &F);
+
+/// If \p PH is an output placeholder in the IRFunction \p F,
+/// \returns true.
+/// This is determined by checking if the PH has weights which are referenced by
+/// other Instructions as OperandKind::InOut or OperandKind::Out.
+bool isOutput(const Placeholder *PH, const IRFunction &F);
+
+/// If \p PH is an input placeholder in the IRFunction \p F,
+/// \returns true.
+/// This is determined by checking if the PH is always used as an @in parameter
+/// by the current function.
+bool isInput(const Placeholder *PH, const IRFunction &F);
+
+/// Contains information for placeholder during allocation.
+struct PlaceholderInputOutputInfo {
+  /// The placeholder address.
+  const Placeholder *addr;
+  /// Is the placeholder an input for the function.
+  bool isInput;
+  /// Is the placeholder an onput for the function.
+  bool isOutput;
+};
+
+using ContiguousPlaceholders = std::vector<PlaceholderInputOutputInfo>;
+
+/// Convert placeholders to be ordered as input|inputOutput|output|neither.
+/// Packed into {Placeholder *, isInput, isOutput} as
+/// PlaceholderInputOutputInfo. FUN could be Function or IRFunction. ARR could
+/// be std::list<Placeholder *> or std::vector<const Placeholder *>
+template <typename FUN, typename ARR>
+ContiguousPlaceholders getContiguousPlaceHolder(const ARR &holders,
+                                                const FUN &F);
 
 } // end namespace glow
 #endif // GLOW_BACKENDS_BACKENDUTILS_H

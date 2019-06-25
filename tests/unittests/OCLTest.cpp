@@ -16,12 +16,13 @@
 
 #include "BackendTestUtils.h"
 
+#include "../../lib/Backends/OpenCL/OpenCLDeviceManager.h"
+#include "glow/Backends/DeviceManager.h"
 #include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Graph/Graph.h"
 #include "glow/IR/IR.h"
 #include "glow/IR/IRBuilder.h"
 #include "glow/IR/Instrs.h"
-
 #include "gtest/gtest.h"
 
 using namespace glow;
@@ -34,8 +35,8 @@ TEST(OpenCLCorrectnessTest, convOps) {
   Tensor out1;
   Tensor out2;
 
-  inferBasicConvNet(&inputs, &out1, BackendKind::OpenCL, 8);
-  inferBasicConvNet(&inputs, &out2, BackendKind::Interpreter, 8);
+  inferBasicConvNet(&inputs, &out1, "OpenCL", 8);
+  inferBasicConvNet(&inputs, &out2, "Interpreter", 8);
 
   EXPECT_TRUE(out1.isEqual(out2));
 }
@@ -47,8 +48,8 @@ TEST(OpenCLCorrectnessTest, inferMixedNet) {
   Tensor out1;
   Tensor out2;
 
-  inferMixedNet(&inputs, &out1, BackendKind::OpenCL);
-  inferMixedNet(&inputs, &out2, BackendKind::Interpreter);
+  inferMixedNet(&inputs, &out1, "OpenCL");
+  inferMixedNet(&inputs, &out2, "Interpreter");
 
   EXPECT_TRUE(out1.isEqual(out2));
 }
@@ -71,10 +72,8 @@ TEST(OpenCLCorrectnessTest, softmaxGradTest) {
   Tensor out1(ElemKind::FloatTy, shape);
   Tensor out2(ElemKind::FloatTy, shape);
 
-  trainSoftMaxNet(&inputs, &weights, &bias, &selected, &out1,
-                  BackendKind::OpenCL);
-  trainSoftMaxNet(&inputs, &weights, &bias, &selected, &out2,
-                  BackendKind::Interpreter);
+  trainSoftMaxNet(&inputs, &weights, &bias, &selected, &out1, "OpenCL");
+  trainSoftMaxNet(&inputs, &weights, &bias, &selected, &out2, "Interpreter");
 
   EXPECT_TRUE(out1.isEqual(out2));
 }
@@ -100,8 +99,36 @@ TEST(OpenCLCorrectnessTest, tanhConcatTest) {
   Tensor out1(ElemKind::FloatTy, {100, 5});
   Tensor out2(ElemKind::FloatTy, {100, 5});
 
-  inferTanhConcatNet(&I1, &I2, &I3, &out1, BackendKind::OpenCL);
-  inferTanhConcatNet(&I1, &I2, &I3, &out2, BackendKind::Interpreter);
+  inferTanhConcatNet(&I1, &I2, &I3, &out1, "OpenCL");
+  inferTanhConcatNet(&I1, &I2, &I3, &out2, "Interpreter");
 
   EXPECT_TRUE(out1.isEqual(out2));
+}
+
+TEST(OpenCLCorrectnessTest, SetDeviceMemory) {
+  using namespace glow;
+  using namespace runtime;
+  auto openCLConfigEmpty = DeviceConfig("OpenCL");
+  auto openCLConfigFull = DeviceConfig("OpenCL");
+  openCLConfigFull.setDeviceMemory(32768);
+  // Default device memory size is from OpenCL device info.
+  // This memory size can be limited by deviceConfig.
+  // No setting at all, default memory size from OpenCL device info.
+  OpenCLDeviceManager openCLDeviceDefault(openCLConfigEmpty);
+  llvm::Error err1 = openCLDeviceDefault.init();
+  ASSERT_FALSE(errToBool(std::move(err1)));
+  uint64_t memSize = openCLDeviceDefault.getMaximumMemory();
+  // If limited by deviceConfig.
+  OpenCLDeviceManager openCLDeviceSetByDeviceConfig(openCLConfigFull);
+  llvm::Error err2 = openCLDeviceSetByDeviceConfig.init();
+  ASSERT_FALSE(errToBool(std::move(err2)));
+  EXPECT_EQ(openCLDeviceSetByDeviceConfig.getMaximumMemory(), 32768);
+  // If devicConfig defines larger memory size than the OpenCL device info,
+  // then fall back to default.
+  auto openCLConfigLarger = DeviceConfig("OpenCL");
+  openCLConfigLarger.setDeviceMemory(memSize + 10000);
+  OpenCLDeviceManager openCLDeviceLarger(openCLConfigLarger);
+  llvm::Error err3 = openCLDeviceLarger.init();
+  ASSERT_FALSE(errToBool(std::move(err3)));
+  EXPECT_EQ(openCLDeviceLarger.getMaximumMemory(), memSize);
 }

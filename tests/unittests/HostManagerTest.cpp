@@ -40,37 +40,44 @@ std::unique_ptr<Module> setupModule(unsigned functionCount) {
   return module;
 }
 
-std::unique_ptr<HostManager> createHostManager(BackendKind kind) {
+std::unique_ptr<HostManager>
+createHostManager(llvm::StringRef backendName,
+                  HostConfig hostConfig = HostConfig()) {
   std::vector<std::unique_ptr<DeviceConfig>> configs;
-  auto config = llvm::make_unique<DeviceConfig>(kind);
-  configs.push_back(std::move(config));
+  auto deviceConfig = llvm::make_unique<DeviceConfig>(backendName);
+  configs.push_back(std::move(deviceConfig));
   std::unique_ptr<HostManager> hostManager =
-      llvm::make_unique<HostManager>(std::move(configs));
+      llvm::make_unique<HostManager>(std::move(configs), hostConfig);
   return hostManager;
 }
 
-void addAndRemoveNetwork(HostManager *manager, unsigned int functionNumber) {
+llvm::Error addNetwork(HostManager *manager, std::string name) {
   std::unique_ptr<Module> module = llvm::make_unique<Module>();
-  Function *F =
-      module->createFunction("function" + std::to_string(functionNumber));
-  auto *X = module->createPlaceholder(
-      ElemKind::FloatTy, {3}, "X" + std::to_string(functionNumber), false);
-  auto *pow = F->createPow("Pow" + std::to_string(functionNumber), X, 2.0);
-  F->createSave("save" + std::to_string(functionNumber), pow);
+  Function *F = module->createFunction(name);
+  auto *X =
+      module->createPlaceholder(ElemKind::FloatTy, {3}, "X_" + name, false);
+  auto *pow = F->createPow("Pow_" + name, X, 2.0);
+  F->createSave("save" + name, pow);
 
   // Expect this to be an Error because multiple networks with the same name
   // have been added to HostManager
-  errToBool(manager->addNetwork(std::move(module)));
-  EXPECT_FALSE(errToBool(
-      manager->removeNetwork("function" + std::to_string(functionNumber))));
+  CompilationContext cctx;
+  return manager->addNetwork(std::move(module), cctx);
 }
 
-TEST_F(HostManagerTest, newHostManager) { createHostManager(BackendKind::CPU); }
+void addAndRemoveNetwork(HostManager *manager, unsigned int functionNumber) {
+  std::string name = "function" + std::to_string(functionNumber);
+  errToBool(addNetwork(manager, name));
+  EXPECT_FALSE(errToBool(manager->removeNetwork(name)));
+}
+
+TEST_F(HostManagerTest, newHostManager) { createHostManager("CPU"); }
 
 TEST_F(HostManagerTest, addNetwork) {
   auto module = setupModule(6);
-  auto hostManager = createHostManager(BackendKind::CPU);
-  ASSERT_FALSE(errToBool(hostManager->addNetwork(std::move(module))));
+  auto hostManager = createHostManager("CPU");
+  CompilationContext cctx;
+  ASSERT_FALSE(errToBool(hostManager->addNetwork(std::move(module), cctx)));
 }
 
 TEST_F(HostManagerTest, runNetwork) {
@@ -87,14 +94,14 @@ TEST_F(HostManagerTest, runNetwork) {
   auto *saveTensor =
       context->getPlaceholderBindings()->allocate(save->getPlaceholder());
 
-  auto hostManager = createHostManager(BackendKind::CPU);
-  ASSERT_FALSE(errToBool(hostManager->addNetwork(std::move(module))));
+  auto hostManager = createHostManager("CPU");
+  CompilationContext cctx;
+  ASSERT_FALSE(errToBool(hostManager->addNetwork(std::move(module), cctx)));
 
   std::promise<void> runNetwork;
   auto ready = runNetwork.get_future();
 
-  llvm::Error runErr = llvm::Error::success();
-
+  std::unique_ptr<llvm::Error> runErr;
   hostManager->runNetwork("main", std::move(context),
                           [&runNetwork, &saveTensor, &context, &runErr](
                               RunIdentifierTy runID, llvm::Error err,
@@ -104,15 +111,16 @@ TEST_F(HostManagerTest, runNetwork) {
                             EXPECT_NEAR(HX.at({1}), 4, 1E-5);
                             EXPECT_NEAR(HX.at({2}), 9, 1E-5);
                             context = std::move(context_);
-                            runErr = std::move(err);
+                            runErr =
+                                llvm::make_unique<llvm::Error>(std::move(err));
                             runNetwork.set_value();
                           });
 
   ready.wait();
-  EXPECT_FALSE(errToBool(std::move(runErr)));
+  EXPECT_FALSE(errToBool(std::move(*DCHECK_NOTNULL(runErr.get()))));
 
   // reset runErr
-  runErr = llvm::Error::success();
+  runErr = nullptr;
 
   std::promise<void> newRun;
   ready = newRun.get_future();
@@ -124,12 +132,13 @@ TEST_F(HostManagerTest, runNetwork) {
                             EXPECT_NEAR(HX.at({0}), 1, 1E-5);
                             EXPECT_NEAR(HX.at({1}), 4, 1E-5);
                             EXPECT_NEAR(HX.at({2}), 9, 1E-5);
-                            runErr = std::move(err);
+                            runErr =
+                                llvm::make_unique<llvm::Error>(std::move(err));
                             newRun.set_value();
                           });
 
   ready.wait();
-  EXPECT_FALSE(errToBool(std::move(runErr)));
+  EXPECT_FALSE(errToBool(std::move(*DCHECK_NOTNULL(runErr.get()))));
 }
 
 /// Test that HostManager properly handles concurrent add/remove requests with
@@ -137,7 +146,7 @@ TEST_F(HostManagerTest, runNetwork) {
 TEST_F(HostManagerTest, ConcurrentAddRemoveUnique) {
   constexpr auto numThreads = 6;
   constexpr auto numItersPerThread = 20;
-  auto hostManager = createHostManager(BackendKind::CPU);
+  auto hostManager = createHostManager("CPU");
   std::atomic<unsigned> counter{0};
   std::vector<std::thread> threads;
   for (auto i = 0; i < numThreads; ++i) {
@@ -158,7 +167,7 @@ TEST_F(HostManagerTest, ConcurrentAddRemoveUnique) {
 TEST_F(HostManagerTest, ConcurrentAddRemoveDuplicate) {
   constexpr auto numThreads = 6;
   constexpr auto numItersPerThread = 20;
-  auto hostManager = createHostManager(BackendKind::CPU);
+  auto hostManager = createHostManager("CPU");
   std::vector<std::thread> threads;
   for (auto i = 0; i < numThreads; ++i) {
     threads.emplace_back([&]() {
@@ -171,4 +180,40 @@ TEST_F(HostManagerTest, ConcurrentAddRemoveDuplicate) {
   for (auto &t : threads) {
     t.join();
   }
+}
+
+/// Test that the HostManager respects it's configuration parameters.
+TEST_F(HostManagerTest, ConfigureHostManager) {
+  HostConfig config;
+  config.maxActiveRequests = 1;
+  auto hostManager = createHostManager("Interpreter", std::move(config));
+
+  EXPECT_FALSE(errToBool(addNetwork(hostManager.get(), "main")));
+
+  auto context = llvm::make_unique<ExecutionContext>();
+  auto context2 = llvm::make_unique<ExecutionContext>();
+
+  std::unique_ptr<llvm::Error> runErr;
+
+  std::shared_ptr<std::mutex> lock = std::make_shared<std::mutex>();
+  std::unique_lock<std::mutex> guard(*lock);
+
+  /// Don't care a about the first one.
+  hostManager->runNetwork("main", std::move(context),
+                          [lock](RunIdentifierTy runID, llvm::Error err,
+                                 std::unique_ptr<ExecutionContext> context_) {
+                            errToBool(std::move(err));
+                            std::unique_lock<std::mutex> guard(*lock);
+                          });
+
+  hostManager->runNetwork(
+      "main", std::move(context2),
+      [&runErr](RunIdentifierTy runID, llvm::Error err,
+                std::unique_ptr<ExecutionContext> context_) {
+        runErr = llvm::make_unique<llvm::Error>(std::move(err));
+      });
+
+  // Don't need a future, error CB called inline.
+  EXPECT_TRUE(errToBool(std::move(*DCHECK_NOTNULL(runErr.get()))));
+  guard.unlock();
 }

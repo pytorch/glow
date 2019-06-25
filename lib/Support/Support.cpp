@@ -45,7 +45,7 @@ template <> struct BlockScalarTraits<glow::MultiLineStr> {
 template <> struct MappingTraits<glow::DeviceConfigHelper> {
   static void mapping(IO &io, glow::DeviceConfigHelper &info) {
     io.mapRequired("name", info.name_);
-    io.mapRequired("kindName", info.kindName_);
+    io.mapRequired("backendName", info.backendName_);
     io.mapRequired("parameters", info.parameters_);
   }
 };

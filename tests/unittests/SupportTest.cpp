@@ -61,20 +61,20 @@ TEST(Support, loadYamlFile) {
   // The config file is:
   //---
   //- name:     Device1
-  //  kindName: CPU
+  //  backendName: CPU
   //  parameters: |
   //  "platformID":"1"
   //    "deviceID" : "0"
   //    - name:     Device2
-  //  kindName: CPU
+  //  backendName: CPU
   //  parameters: |
   //  "platformID":"1"
   //...
-  EXPECT_EQ(lists[0].kindName_, "CPU");
+  EXPECT_EQ(lists[0].backendName_, "CPU");
   EXPECT_EQ(lists[0].name_, "Device1");
   EXPECT_EQ(lists[0].parameters_.str,
             "\"platformID\":\"1\"\n\"deviceID\" : \"0\"\n");
-  EXPECT_EQ(lists[1].kindName_, "CPU");
+  EXPECT_EQ(lists[1].backendName_, "CPU");
   EXPECT_EQ(lists[1].name_, "Device2");
   EXPECT_EQ(lists[1].parameters_.str, "\"platformID\":\"1\"\n");
 }

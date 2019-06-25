@@ -16,7 +16,6 @@
 
 #include "glow/Backends/DeviceManager.h"
 #include "glow/Backends/DummyDeviceManager.h"
-
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -29,68 +28,54 @@ namespace runtime {
 /// when you define a new DeviceManager.
 
 /// Create a new instance of the interpreter Device.
-DeviceManager *
-createInterpreterDeviceManager(std::unique_ptr<DeviceConfig> config = nullptr);
+DeviceManager *createInterpreterDeviceManager(const DeviceConfig &config);
 
 #if defined(GLOW_WITH_CPU)
 /// Create a new instance of the CPUBackend DeviceManager.
-DeviceManager *
-createCPUDeviceManager(std::unique_ptr<DeviceConfig> config = nullptr);
+DeviceManager *createCPUDeviceManager(const DeviceConfig &config);
 #else
-DeviceManager *
-createCPUDeviceManager(std::unique_ptr<DeviceConfig> config = nullptr) {
+DeviceManager *createCPUDeviceManager(const DeviceConfig &config) {
   (void)config;
-  GLOW_UNREACHABLE("Must compile with CPU support");
+  LOG(FATAL) << "Must compile with CPU support";
 }
 #endif
 
 #if defined(GLOW_WITH_OPENCL)
 /// Create a new instance of the OpenCL backend.
-DeviceManager *
-createOCLDeviceManager(std::unique_ptr<DeviceConfig> config = nullptr);
+DeviceManager *createOCLDeviceManager(const DeviceConfig &config);
 #else
-DeviceManager *
-createOCLDeviceManager(std::unique_ptr<DeviceConfig> config = nullptr) {
+DeviceManager *createOCLDeviceManager(const DeviceConfig &config) {
   (void)config;
-  GLOW_UNREACHABLE("Must compile with OpenCL support");
+  LOG(FATAL) << "Must compile with OpenCL support";
 }
 #endif
 
 #if defined(GLOW_WITH_HABANA)
-DeviceManager *
-createHabanaDeviceManager(std::unique_ptr<DeviceConfig> config = nullptr);
+DeviceManager *createHabanaDeviceManager(const DeviceConfig &config);
 #else
-DeviceManager *
-createHabanaDeviceManager(std::unique_ptr<DeviceConfig> config = nullptr) {
+DeviceManager *createHabanaDeviceManager(const DeviceConfig &config) {
   (void)config;
-  GLOW_UNREACHABLE("Must compile with Habana support");
+  LOG(FATAL) << "Must compile with Habana support";
 }
 #endif
 } // namespace runtime
 } // namespace glow
 
-DeviceManager *
-DeviceManager::createDeviceManager(BackendKind backendKind,
-                                   std::unique_ptr<DeviceConfig> config) {
-  switch (backendKind) {
-  case BackendKind::Interpreter:
-    return createInterpreterDeviceManager(std::move(config));
-  case BackendKind::OpenCL:
-    return createOCLDeviceManager(std::move(config));
-  case BackendKind::CPU:
-    return createCPUDeviceManager(std::move(config));
-  case BackendKind::Habana:
-    return createHabanaDeviceManager(std::move(config));
-  default:
+DeviceManager *DeviceManager::createDeviceManager(const DeviceConfig &config) {
+  if (config.backendName == "Interpreter") {
+    return createInterpreterDeviceManager(config);
+  } else if (config.backendName == "OpenCL") {
+    return createOCLDeviceManager(config);
+  } else if (config.backendName == "CPU") {
+    return createCPUDeviceManager(config);
+  } else if (config.backendName == "Habana") {
+    return createHabanaDeviceManager(config);
+  } else {
     // As a fallback to make developing new Backends easier we'll create a
     // DummyDeviceManager here, but this is not threadsafe and very simplistic.
     // Strongly recommended that you create a DeviceManager customized for your
     // device.
-    llvm::errs() << "Warning: Creating a DummyDeviceManager.\n";
-    return new DummyDeviceManager(backendKind, std::move(config));
+    LOG(ERROR) << "Warning: Creating a DummyDeviceManager.\n";
+    return new DummyDeviceManager(config);
   }
-
-  // This is to make compiler happy. It can never reach this point as switch
-  // always covers all possible values.
-  llvm_unreachable("unreachable");
 }

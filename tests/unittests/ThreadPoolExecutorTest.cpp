@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#include "glow/Runtime/Executor/Executor.h"
+#include "glow/Runtime/Executor/ThreadPoolExecutor.h"
 #include "glow/Backends/DeviceManager.h"
 #include "glow/Support/Support.h"
 #include "glow/Support/ThreadPool.h"
@@ -37,8 +37,8 @@ using namespace glow::runtime;
 /// to satisfy the compiler.
 class TestDeviceManager final : public runtime::DeviceManager {
 public:
-  TestDeviceManager(unsigned numWorkers)
-      : DeviceManager(BackendKind::Interpreter), threadPool_(numWorkers) {}
+  TestDeviceManager(unsigned numWorkers, const DeviceConfig &deviceConfig)
+      : DeviceManager(deviceConfig), threadPool_(numWorkers) {}
 
   /// The functions below are the interface for DeviceManager. See
   /// glow::DeviceManager for descriptions of what they do. Since this
@@ -51,21 +51,16 @@ public:
                     EvictFunctionCBTy evictCB) override {
     // Erase the entry so that the same function name can be used to register
     // another result.
-    llvm::Error err = llvm::Error::success();
 
     if (!resultMap_.erase(functionName)) {
-      err = MAKE_ERR(
-          GlowErr::ErrorCode::RUNTIME_NET_NOT_FOUND,
-          llvm::formatv("Could not find function with name {0} to evict",
-                        functionName)
-              .str());
+      evictCB(
+          functionName,
+          MAKE_ERR(GlowErr::ErrorCode::RUNTIME_NET_NOT_FOUND,
+                   strFormat("Could not find function with name %s to evict",
+                             functionName.c_str())));
+      return;
     }
-
-    if (evictCB) {
-      evictCB(functionName, std::move(err));
-    } else {
-      llvm::errs() << llvm::toString(std::move(err));
-    }
+    evictCB(functionName, llvm::Error::success());
   }
 
   /// Look up the previously registered response for \p functionName and
@@ -87,9 +82,17 @@ public:
       std::unique_ptr<ExecutionContext> inputContext =
           std::move(registeredResult->inputContext);
 
-      if (PlaceholderBindings::compare(
-              context->getPlaceholderBindings(),
-              inputContext->getPlaceholderBindings())) {
+      bool equalInputs = true;
+      for (auto &p : inputContext->getPlaceholderBindings()->pairs()) {
+        Tensor *CT = context->getPlaceholderBindings()->get(p.first);
+        if (!CT) {
+          equalInputs = false;
+          break;
+        }
+        equalInputs &= p.second->isEqual(*CT, 0.0001, true);
+      }
+
+      if (equalInputs) {
         // If bindings contains all expected mappings, overwrite the default
         // runId, result and resultContext with the registered
         // ones.
@@ -393,11 +396,6 @@ public:
     }
 
     for (const auto &output : outputs) {
-      // Both input and output bindings should contain bindings for the outputs,
-      // but the bound Tensors should be zero-filled in the input bindings.
-      insertSymbolIntoPlaceholderBindings(output, nodeInputBindings);
-      nodeInputBindings->get(nodeInputBindings->getPlaceholderByName(output))
-          ->zero();
       insertSymbolIntoPlaceholderBindings(output, nodeOutputBindings);
 
       RuntimeSymbolInfo runtimeSymbolInfo;
@@ -472,7 +470,8 @@ public:
       if (!placeholder) {
         assert(!"Placeholder for DAG output not found!");
       }
-      inputContext->getPlaceholderBindings()->allocate(placeholder)->zero();
+      insertSymbolIntoPlaceholderBindings(
+          symbol, inputContext->getPlaceholderBindings());
       insertSymbolIntoPlaceholderBindings(
           symbol, outputContext->getPlaceholderBindings());
     }
@@ -601,13 +600,12 @@ private:
 class ThreadPoolExecutorTest : public ::testing::Test {
 protected:
   ThreadPoolExecutorTest()
-      : executor_(std::shared_ptr<Executor>(
-            createExecutor(deviceManagerMap_, ExecutorKind::ThreadPool))),
+      : executor_(std::make_shared<ThreadPoolExecutor>((deviceManagerMap_))),
         testBuilder_(executor_, deviceManagerMap_) {}
   ~ThreadPoolExecutorTest() = default;
 
   /// The Executor being tested.
-  std::shared_ptr<Executor> executor_;
+  std::shared_ptr<ThreadPoolExecutor> executor_;
   /// An ExecutorTestBuilder instance for creating tests.
   ExecutorTestBuilder testBuilder_;
   /// DeviceManager map for initializing executor_.
@@ -642,20 +640,20 @@ TEST_F(ThreadPoolExecutorTest, EmptyDAG) {
   std::unique_ptr<ExecutionContext> executorOutputContext;
 
   // Call Executor::run().
-  llvm::Error runErr = llvm::Error::success();
   std::promise<void> promise;
   std::future<void> future = promise.get_future();
+  std::unique_ptr<llvm::Error> runErr;
   executor_->run(nullptr, std::move(testContext), testRunId,
                  [&runErr, &promise, &executorRunId, &executorOutputContext](
                      RunIdentifierTy runId, llvm::Error err,
                      std::unique_ptr<ExecutionContext> context) {
                    executorRunId = runId;
                    executorOutputContext = std::move(context);
-                   runErr = std::move(err);
+                   runErr = llvm::make_unique<llvm::Error>(std::move(err));
                    promise.set_value();
                  });
 
-  EXPECT_FALSE(errToBool(std::move(runErr)));
+  EXPECT_FALSE(errToBool(std::move(*DCHECK_NOTNULL(runErr.get()))));
 
   EXPECT_EQ(executorRunId, testRunId);
 
@@ -673,8 +671,8 @@ TEST_F(ThreadPoolExecutorTest, SingleNode) {
   // Make a TestDeviceManager and insert into the DeviceManagerMap map (which
   // the ThreadPoolExecutor has a reference to) and the TestDeviceManager map
   // (which the ExecutorTestBuilder has a reference to).
-  auto deviceManager =
-      llvm::make_unique<TestDeviceManager>(deviceManagerThreads);
+  auto deviceManager = llvm::make_unique<TestDeviceManager>(
+      deviceManagerThreads, DeviceConfig("Interpreter"));
   deviceManagerMap_.emplace(testDeviceId, std::move(deviceManager));
 
   // Build the DAG. The DAG created below looks like this:
@@ -703,8 +701,8 @@ TEST_F(ThreadPoolExecutorTest, ConcurrentSingleNode) {
   // Make a TestDeviceManager and insert into the DeviceManagerMap map (which
   // the ThreadPoolExecutor has a reference to) and the TestDeviceManager map
   // (which the ExecutorTestBuilder has a reference to).
-  auto deviceManager =
-      llvm::make_unique<TestDeviceManager>(deviceManagerThreads);
+  auto deviceManager = llvm::make_unique<TestDeviceManager>(
+      deviceManagerThreads, DeviceConfig("Interpreter"));
   deviceManagerMap_.emplace(testDeviceId, std::move(deviceManager));
 
   // Mutex for accessing threadsReady and testsPassed.
@@ -792,8 +790,8 @@ TEST_F(ThreadPoolExecutorTest, ConcurrentSingleNodeDuplicateRunId) {
   // Make a TestDeviceManager and insert into the DeviceManagerMap map (which
   // the ThreadPoolExecutor has a reference to) and the TestDeviceManager map
   // (which the ExecutorTestBuilder has a reference to).
-  auto deviceManager =
-      llvm::make_unique<TestDeviceManager>(deviceManagerThreads);
+  auto deviceManager = llvm::make_unique<TestDeviceManager>(
+      deviceManagerThreads, DeviceConfig("Interpreter"));
   deviceManagerMap_.emplace(testDeviceId, std::move(deviceManager));
 
   std::atomic<unsigned> testsPassed{0};
@@ -846,8 +844,8 @@ TEST_F(ThreadPoolExecutorTest, MultiNode) {
   // Make a TestDeviceManager and insert into the DeviceManagerMap map (which
   // the ThreadPoolExecutor has a reference to) and the TestDeviceManager map
   // (which the ExecutorTestBuilder has a reference to).
-  auto deviceManager =
-      llvm::make_unique<TestDeviceManager>(deviceManagerThreads);
+  auto deviceManager = llvm::make_unique<TestDeviceManager>(
+      deviceManagerThreads, DeviceConfig("Interpreter"));
   deviceManagerMap_.emplace(testDeviceId, std::move(deviceManager));
 
   // Build the DAG. The DAG created below looks like this:
@@ -894,8 +892,8 @@ TEST_F(ThreadPoolExecutorTest, MultiNodeWithFailure) {
   // Make a TestDeviceManager and insert into the DeviceManagerMap map (which
   // the ThreadPoolExecutor has a reference to) and the TestDeviceManager map
   // (which the ExecutorTestBuilder has a reference to).
-  auto deviceManager =
-      llvm::make_unique<TestDeviceManager>(deviceManagerThreads);
+  auto deviceManager = llvm::make_unique<TestDeviceManager>(
+      deviceManagerThreads, DeviceConfig("Interpreter"));
   deviceManagerMap_.emplace(testDeviceId, std::move(deviceManager));
 
   // Build the DAG. The DAG created below looks like this:
@@ -949,8 +947,8 @@ TEST_F(ThreadPoolExecutorTest, MultiNodeMultiDevice) {
   // (which the ThreadPoolExecutor has a reference to) and the TestDeviceManager
   // map (which the ExecutorTestBuilder has a reference to).
   for (DeviceIDTy deviceId : {testDeviceIdA, testDeviceIdB, testDeviceIdC}) {
-    auto deviceManager =
-        llvm::make_unique<TestDeviceManager>(deviceManagerThreads);
+    auto deviceManager = llvm::make_unique<TestDeviceManager>(
+        deviceManagerThreads, DeviceConfig("Interpreter"));
     deviceManagerMap_.emplace(deviceId, std::move(deviceManager));
   }
 
@@ -1000,8 +998,8 @@ TEST_F(ThreadPoolExecutorTest, ConcurrentMultiNode) {
   // Make a TestDeviceManager and insert it into the DeviceManagerMap map
   // (which the ThreadPoolExecutor has a reference to) and the TestDeviceManager
   // map (which the ExecutorTestBuilder has a reference to).
-  auto deviceManager =
-      llvm::make_unique<TestDeviceManager>(deviceManagerThreads);
+  auto deviceManager = llvm::make_unique<TestDeviceManager>(
+      deviceManagerThreads, DeviceConfig("Interpreter"));
   deviceManagerMap_.emplace(testDeviceId, std::move(deviceManager));
 
   // Mutex for accessing threadsReady and testsPassed.

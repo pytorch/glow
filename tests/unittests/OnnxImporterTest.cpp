@@ -33,7 +33,7 @@ importArithMultiBroadcastTest(std::string fileName,
                               llvm::ArrayRef<size_t> inputShape, bool multi,
                               int numLeftTile, int numRightTile,
                               const std::function<float(float, float)> &op) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -116,7 +116,7 @@ importArithMultiBroadcastTest(std::string fileName,
 
 /// Test loading LeakyRelu op from an ONNX model.
 TEST(onnx, leakyRelu) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -144,7 +144,7 @@ TEST(onnx, leakyRelu) {
 
 /// Test Loading LeakyRelu op from an ONNX model with default alpha.
 TEST(onnx, leakyReluDefault) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -244,7 +244,7 @@ TEST(onnx, importDivUniBroadcastOp6Axis) {
 
 /// This tests reproduces issue #2135.
 TEST(onnx, importUniBroadcastMultiOutput) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -258,7 +258,7 @@ TEST(onnx, importUniBroadcastMultiOutput) {
 static void testImportPRelu(std::string filename,
                             llvm::ArrayRef<size_t> inputShape,
                             std::vector<float> expectedSlope) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -313,7 +313,7 @@ TEST(onnx, importPReluBroadcastSlope) {
 
 /// Expects failure to load PRelu in case of invalid slope shape.
 TEST(onnx, importPReluInvalidBroadcastSlope) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -340,7 +340,7 @@ static void convTestHelper(std::string &filename,
                            const llvm::ArrayRef<size_t> expectedDims,
                            const llvm::ArrayRef<float> expectedValues) {
 
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -447,7 +447,7 @@ static void averagePoolTestHelper(std::string &filename,
                                   const llvm::ArrayRef<size_t> expectedDims,
                                   const llvm::ArrayRef<float> expectedValues) {
 
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -523,7 +523,7 @@ TEST(onnx, importAveragePool2DAutoPadSameLower) {
 }
 
 TEST(onnx, importAveragePool3D) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -542,7 +542,7 @@ TEST(onnx, importAveragePool3D) {
 /// Test loading ReduceMean op from a ONNX model.
 /// Input shape is 4D, one dimension is reduced, and output shape is 3D.
 TEST(onnx, reduceMean4Dto3D) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -581,7 +581,7 @@ TEST(onnx, reduceMean4Dto3D) {
 /// Test loading ReduceMean op from a ONNX model.
 /// Input shape is 4D, one dimension is reduced, and output shape stays 4D.
 TEST(onnx, reduceMean4Dto4D) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -620,7 +620,7 @@ TEST(onnx, reduceMean4Dto4D) {
 /// Test loading ReduceSum op from a ONNX model.
 /// Input shape is 4D, one dimension is reduced, and output shape is 4D.
 TEST(onnx, reduceSum4D) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -657,7 +657,7 @@ TEST(onnx, reduceSum4D) {
 /// Input shape is 4D, two dimensions are reduced, targeting ReduceMean
 /// optimization using AvgPool. Output shape is 4D.
 TEST(onnx, reduceMean2AvgPoolKeepDims) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -700,7 +700,7 @@ TEST(onnx, reduceMean2AvgPoolKeepDims) {
 /// Input shape is 4D, two dimensions are reduced, targeting ReduceMean
 /// optimization using AvgPool. Output shape is 2D.
 TEST(onnx, reduceMean2AvgPoolNoKeepDims) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -742,7 +742,7 @@ TEST(onnx, reduceMean2AvgPoolNoKeepDims) {
 
 /// Test loading SpaceToDepth op from an ONNX model.
 TEST(onnx, spaceToDepth) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -773,7 +773,7 @@ TEST(onnx, spaceToDepth) {
 /// Test loading clip op from an ONNX model.
 /// Test with arg min = 20.0 max = 60.0
 TEST(onnx, importClip) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -808,7 +808,7 @@ TEST(onnx, importClip) {
 
 /// Test loading BatchMatMul op from an ONNX model.
 TEST(onnx, importBatchMatMul) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
   std::string netFilename(GLOW_DATA_PATH
@@ -817,7 +817,7 @@ TEST(onnx, importBatchMatMul) {
   PlaceholderBindings bindings;
   Placeholder *output;
   {
-    Tensor inputs_0(ElemKind::FloatTy, {20, 7, 40});
+    Tensor inputs_0(ElemKind::FloatTy, {20, 40, 7});
     Tensor inputs_1(ElemKind::FloatTy, {20, 7, 40});
     ONNXModelLoader onnxLD(netFilename, {"inputs_0", "inputs_1"},
                            {&inputs_0.getType(), &inputs_1.getType()}, *F);
@@ -834,9 +834,9 @@ TEST(onnx, importBatchMatMul) {
   EXPECT_EQ(result.dims().vec(), expectedDims);
 
   // High level check on the content of the graph.
-  // We have 1 transpose, 20 * (matmul, 2 slices, 2 reshapes), 1 concat, 1
+  // We have 2 transpose, 20 * (matmul, 2 slices, 2 reshapes), 1 concat, 1
   // reshape, 1 save.
-  EXPECT_EQ(F->getNodes().size(), 1 + 20 * 5 + 3);
+  EXPECT_EQ(F->getNodes().size(), 2 + 20 * 5 + 3);
   // With have 2 inputs and one outputs.
   EXPECT_EQ(mod.getPlaceholders().size(), 3);
   // Check that the graph has the expected shape,
@@ -867,7 +867,7 @@ TEST(onnx, importBatchMatMul) {
 
 /// Test loading BatchBoxCox op from an ONNX model.
 TEST(onnx, importBatchBoxCox) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -943,7 +943,7 @@ TEST(onnx, importBatchBoxCox) {
 
 /// Test loading DotProduct op from an ONNX model.
 TEST(onnx, importDotProduct) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -973,7 +973,7 @@ TEST(onnx, importDotProduct) {
 
 /// Test loading Sum with more than 2 inputs
 TEST(onnx, importSumN) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
   std::string netFilename(GLOW_DATA_PATH
@@ -1030,7 +1030,7 @@ TEST(onnx, importSumN) {
 
 /// Test loading Sum with one input and one output
 TEST(onnx, importSum1) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
   std::string netFilename(GLOW_DATA_PATH
@@ -1093,7 +1093,7 @@ TEST(onnx, importLengthsToRanges) {
 /// Test loading ReplaceNaN op from an ONNX model.
 /// Test with arg value = 1.0.
 TEST(onnx, importReplaceNaN) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -1127,7 +1127,7 @@ TEST(onnx, importReplaceNaN) {
 
 /// Test loading SparseToDense op from an ONNX model.
 TEST(onnx, importSparseToDense) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -1190,15 +1190,13 @@ TEST(onnx, importSparseLengthsSum) {
   // Verify structure: PH, PH ->  SparseLengthsSum -> Save -> PH.
   //                  PH -> Splat /
   ASSERT_EQ(mod.getPlaceholders().size(), 4);
-  ASSERT_EQ(F->getNodes().size(), 3);
+  ASSERT_EQ(F->getNodes().size(), 2);
   auto *save = getSaveNodeFromDest(output);
-  auto *LS =
-      llvm::dyn_cast<SparseLengthsWeightedSumNode>(save->getInput().getNode());
+  auto *LS = llvm::dyn_cast<SparseLengthsSumNode>(save->getInput().getNode());
   ASSERT_TRUE(LS);
   ASSERT_TRUE(llvm::isa<Placeholder>(LS->getData()));
   ASSERT_TRUE(llvm::isa<Placeholder>(LS->getIndices()));
   ASSERT_TRUE(llvm::isa<Placeholder>(LS->getLengths()));
-  ASSERT_TRUE(llvm::isa<SplatNode>(LS->getWeights()));
 }
 
 /// Test loading LengthsSum from an ONNX model.
@@ -1228,7 +1226,7 @@ TEST(onnx, importLengthsSum) {
 
 /// Test loading a FCTransposed node: I * W + B, where I is need to be flatten.
 TEST(onnx, FCTransposedWithFlatten) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -1271,6 +1269,24 @@ TEST(onnx, constant) {
   // Constant -> Save -> PH
   ASSERT_EQ(mod.getPlaceholders().size(), 1);
   ASSERT_EQ(F->getNodes().size(), 1);
+}
+
+/// Test loading ConstantOfShape from an ONNX model.
+TEST(onnx, constantOfShape) {
+  ExecutionEngine EE;
+  auto &mod = EE.getModule();
+  auto *F = mod.createFunction("main");
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/constantOfShape.onnxtxt");
+  Placeholder *output;
+  {
+    ONNXModelLoader onnxLD(netFilename, {}, {}, *F);
+    output = EXIT_ON_ERR(onnxLD.getSingleOutput());
+    EXPECT_NE(output, nullptr);
+  }
+  // ConstantOfShape -> Save -> PH
+  ASSERT_EQ(mod.getPlaceholders().size(), 1);
+  ASSERT_EQ(F->getNodes().size(), 2);
 }
 
 /// Test loading ExpandDims from an ONNX model.
@@ -1354,7 +1370,7 @@ static void importSliceTest(std::string fileName, const char *inputName,
                             const llvm::ArrayRef<size_t> inputShape,
                             const llvm::ArrayRef<size_t> starts,
                             const llvm::ArrayRef<size_t> outputShape) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -1446,7 +1462,7 @@ TEST(onnx, importSliceNoAxes) {
 static void importCast(llvm::StringRef fileName, llvm::StringRef inputName,
                        const llvm::ArrayRef<size_t> inputShape,
                        ElemKind outputKind) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -1498,7 +1514,7 @@ static void importPad(std::string fileName, const char *inputName,
                       const llvm::ArrayRef<ssize_t> ends, PaddingMode mode,
                       float value, bool testOutput,
                       bool expectLoadError = false) {
-  ExecutionEngine EE{BackendKind::Interpreter};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -1514,6 +1530,7 @@ static void importPad(std::string fileName, const char *inputName,
                 inputShape[3]);
     if (expectLoadError) {
       llvm::Error err = llvm::Error::success();
+      MARK_ERR_CHECKED(err);
       ONNXModelLoader(NetFilename, {inputName}, {&data.getType()}, *F, &err);
       EXPECT_TRUE(errToBool(std::move(err)));
       return;
@@ -1656,4 +1673,77 @@ TEST(onnx, autoLoadInputs) {
   auto inputs = onnxLD.getInputVarsMapping();
   EXPECT_EQ(inputs.size(), 1);
   EXPECT_TRUE(inputTensor.getType().isEqual(inputs[inputName]->getType()));
+}
+
+TEST(onnx, shape) {
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/shape.onnxtxt");
+
+  PlaceholderBindings bindings;
+  Placeholder *output;
+  {
+    Tensor x(ElemKind::FloatTy, {2, 2, 2, 2});
+    x.getHandle() = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16};
+
+    ONNXModelLoader onnxLD(netFilename, {"input"}, {&x.getType()}, *F);
+    output = EXIT_ON_ERR(onnxLD.getSingleOutput());
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod, {"input"}, {&x});
+  }
+
+  auto *res = bindings.get(output);
+  EE.compile(CompilationMode::Infer, F);
+  EE.run(bindings);
+
+  auto result = res->getHandle<int64_t>();
+  std::vector<size_t> expectedDims = {1};
+  std::vector<int64_t> expectedValues = {4};
+
+  EXPECT_TRUE(result.dims().vec() == expectedDims);
+  for (size_t i = 0; i < expectedValues.size(); i++) {
+    EXPECT_EQ(result.raw(i), expectedValues[i]);
+  }
+}
+
+TEST(onnx, tile) {
+  ExecutionEngine EE;
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/tile.onnxtxt");
+
+  PlaceholderBindings bindings;
+  Placeholder *output;
+  {
+    Tensor x(ElemKind::FloatTy, {1, 2, 2, 1});
+    x.getHandle() = {1., 2., 3., 4.};
+
+    ONNXModelLoader onnxLD(netFilename, {"input"}, {&x.getType()}, *F);
+    output = EXIT_ON_ERR(onnxLD.getSingleOutput());
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod, {"input"}, {&x});
+  }
+
+  auto *res = bindings.get(output);
+  EE.compile(CompilationMode::Infer, F);
+  EE.run(bindings);
+
+  auto result = res->getHandle();
+  std::vector<size_t> expectedDims = {1, 4, 4, 3};
+  std::vector<float> expectedValues = {
+      1.0, 1.0, 1.0, 2.0, 2.0, 2.0, 1.0, 1.0, 1.0, 2.0, 2.0, 2.0,
+      3.0, 3.0, 3.0, 4.0, 4.0, 4.0, 3.0, 3.0, 3.0, 4.0, 4.0, 4.0,
+      1.0, 1.0, 1.0, 2.0, 2.0, 2.0, 1.0, 1.0, 1.0, 2.0, 2.0, 2.0,
+      3.0, 3.0, 3.0, 4.0, 4.0, 4.0, 3.0, 3.0, 3.0, 4.0, 4.0, 4.0,
+  };
+
+  EXPECT_TRUE(result.dims().vec() == expectedDims);
+  for (size_t i = 0; i < expectedValues.size(); i++) {
+    EXPECT_EQ(result.raw(i), expectedValues[i]);
+  }
 }

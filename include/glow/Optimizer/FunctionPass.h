@@ -13,25 +13,28 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-#include "glow/Runtime/Executor/Executor.h"
-#include "ThreadPoolExecutor.h"
-#include "llvm/Support/Casting.h"
+#ifndef GLOW_OPTIMIZER_FUNCTIONPASS_H
+#define GLOW_OPTIMIZER_FUNCTIONPASS_H
 
 namespace glow {
-namespace runtime {
 
-Executor *createExecutor(const DeviceManagerMapTy &deviceManagers,
-                         ExecutorKind executorKind) {
-  switch (executorKind) {
-  case ExecutorKind::ThreadPool:
-    return new ThreadPoolExecutor(deviceManagers);
-  }
+class Function;
 
-  // This is to make compiler happy. It can never reach this point as the switch
-  // statement above always covers all possible values.
-  llvm_unreachable("unreachable");
-}
+/// Class used for all passes over Functions. All passes over Functions should
+/// derive from this class, implementing the pass logic and additionally can add
+/// logic for running before and after the pass runs.
+class FunctionPass {
+public:
+  FunctionPass() = default;
+  virtual ~FunctionPass() = default;
 
-} // namespace runtime
+  /// Run the pass on \p F. \returns whether the pass modifies \p F.
+  virtual bool run(Function *F) = 0;
+
+  /// \returns the name of the pass.
+  virtual llvm::StringRef getName() const = 0;
+};
+
 } // namespace glow
+
+#endif // GLOW_OPTIMIZER_FUNCTIONPASS_H

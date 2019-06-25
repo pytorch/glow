@@ -12,6 +12,11 @@ graph {
       i: 1
       type: INT
     }
+    attribute {
+      name: "trans_a"
+      i: 1
+      type: INT
+    }
   }
   input {
     name: "inputs_0"
@@ -23,10 +28,10 @@ graph {
             dim_value: 20
           }
           dim {
-            dim_value: 7
+            dim_value: 40
           }
           dim {
-            dim_value: 40
+            dim_value: 7
           }
         }
       }

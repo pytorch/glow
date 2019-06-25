@@ -20,6 +20,8 @@
 #include "llvm/Support/FileSystem.h"
 #include "gtest/gtest.h"
 
+#include <glog/logging.h>
+
 #include "synapse.h"
 
 #include "perf_lib_layer_params.h"
@@ -29,7 +31,7 @@
 #include <thread>
 #include <vector>
 
-#define chk(STATUS) GLOW_ASSERT(STATUS == synSuccess)
+#define chk(X) CHECK_EQ((X), synSuccess) << "Expected synStatus be synSuccess";
 
 class Habana : public ::testing::Test {
 protected:

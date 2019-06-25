@@ -15,6 +15,7 @@
  */
 
 #include "glow/Graph/NodeValue.h"
+#include "glow/Graph/Graph.h"
 #include "glow/Graph/Node.h"
 
 using namespace glow;
@@ -36,6 +37,11 @@ void NodeValue::replaceAllUsesOfWith(NodeValue v, const Function *F) const {
   if (v.getNode()) {
     assert(getType() == v.getType() && "Replacing value with the wrong type");
   }
+  typeUnsafeReplaceAllUsesOfWith(v, F);
+}
+
+void NodeValue::typeUnsafeReplaceAllUsesOfWith(NodeValue v,
+                                               const Function *F) const {
   // Copy the list of users in a temporary vector since that list (and the
   // underlying iterators) are going to be invalidated by the next loop.
   auto nodeValueUsers = getUsers();
@@ -49,6 +55,18 @@ void NodeValue::replaceAllUsesOfWith(NodeValue v, const Function *F) const {
       continue;
     assert(site->getNode() == node_ && "Invalid user");
     assert(site->getResNo() == getResNo() && "Invalid list of uses");
+
+    // Log the change of node input(operand).
+    if (Function *F = getNode()->getParent()) {
+      F->getLogContext().logNodeInputChange(U.getUser(), *this, v);
+    }
+    // Constant or Placeholder has no associated Function, we need to log the
+    // input changes inside its user's Function.
+    else if (getNode()->getKind() == Kinded::Kind::ConstantKind ||
+             getNode()->getKind() == Kinded::Kind::PlaceholderKind) {
+      userF->getLogContext().logNodeInputChange(U.getUser(), *this, v);
+    }
+
     site->setOperand(v.getNode(), v.getResNo());
   }
 }

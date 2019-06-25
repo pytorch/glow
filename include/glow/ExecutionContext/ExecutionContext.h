@@ -23,22 +23,18 @@
 
 namespace glow {
 
-enum class BackendKind;
-
 /// Sub-classed per backend, this holds Device specific per-function information
 /// if that is necessary on that particular backend.
 class DeviceBindings {
-  const glow::BackendKind backend_;
+  const std::string backend_;
 
 public:
-  DeviceBindings(BackendKind kind) : backend_{kind} {}
+  DeviceBindings(llvm::StringRef backend) : backend_{backend} {}
   virtual ~DeviceBindings() {}
 
   virtual std::unique_ptr<DeviceBindings> clone() {
     return llvm::make_unique<DeviceBindings>(backend_);
   }
-
-  BackendKind getBackendKind() { return backend_; }
 };
 
 /// The runtime context for a single execution (Inferance or Training) in the
@@ -123,17 +119,18 @@ public:
   /// A helper function to create a scoped TraceEvent builder.
   /// If there is no TraceContext, this will still create an object, but it will
   /// do nothing.
-  ScopedTraceBlock scopedEvent(llvm::StringRef name) {
-    return ScopedTraceBlock(getTraceContext(), name);
+  ScopedTraceBlock scopedEvent(llvm::StringRef name, TraceLevel level) {
+    return ScopedTraceBlock(getTraceContext(), level, name);
   }
 
   /// A helper function to log a TraceEvent at the current time, if there is a
   /// TraceContext available.
-  void logTraceEvent(llvm::StringRef name, llvm::StringRef type = "i",
+  void logTraceEvent(llvm::StringRef name, TraceLevel level,
+                     char type = TraceEvent::InstantType,
                      std::map<std::string, std::string> args = {}) {
     TraceContext *traceContext = getTraceContext();
     if (traceContext) {
-      traceContext->logTraceEvent(name, type, std::move(args));
+      traceContext->logTraceEvent(name, level, type, std::move(args));
     }
   }
 };

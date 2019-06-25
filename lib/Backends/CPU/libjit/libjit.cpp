@@ -1126,6 +1126,22 @@ void libjit_lengths_to_ranges_i32(int32_t *ranges, const int32_t *lengths,
   }
 }
 
+void libjit_sparse_lengths_sum_f(float *dest, float *data, size_t *indices,
+                                 int32_t *lengths, size_t segments,
+                                 size_t lineSize) {
+  memset(dest, 0, segments * lineSize * sizeof(float));
+  size_t curIndex = 0;
+  for (size_t i = 0; i < segments; i++) {
+    for (int32_t j = 0; j < lengths[i]; j++) {
+      size_t line = indices[curIndex];
+      for (size_t k = 0; k < lineSize; k++) {
+        dest[i * lineSize + k] += data[line * lineSize + k];
+      }
+      curIndex++;
+    }
+  }
+}
+
 void libjit_sparse_lengths_weighted_sum_f(float *dest, float *data,
                                           float *weights, size_t *indices,
                                           int32_t *lengths, size_t segments,
@@ -1732,7 +1748,7 @@ void libjit_write_timestamp(uint64_t *tensor, size_t offset) {
   // Issue #2397 covers migrating this to a libc approach but if you have issues
   // with a lack of C++ symbols at runtime check there first.
   uint64_t ts = std::chrono::duration_cast<std::chrono::microseconds>(
-                    std::chrono::system_clock::now().time_since_epoch())
+                    std::chrono::steady_clock::now().time_since_epoch())
                     .count();
   memcpy(tensor + offset, &ts, sizeof(uint64_t));
 }

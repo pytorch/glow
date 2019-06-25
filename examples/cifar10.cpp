@@ -35,13 +35,10 @@ enum class ModelKind {
 
 namespace {
 llvm::cl::OptionCategory cifarCat("CIFAR10 Options");
-llvm::cl::opt<BackendKind> executionBackend(
-    llvm::cl::desc("Backend to use:"), llvm::cl::Optional,
-    llvm::cl::values(clEnumValN(BackendKind::Interpreter, "interpreter",
-                                "Use interpreter (default option)"),
-                     clEnumValN(BackendKind::CPU, "cpu", "Use CPU"),
-                     clEnumValN(BackendKind::OpenCL, "opencl", "Use OpenCL")),
-    llvm::cl::init(BackendKind::Interpreter), llvm::cl::cat(cifarCat));
+llvm::cl::opt<std::string> executionBackend(
+    "backend",
+    llvm::cl::desc("Backend to use, e.g., Interpreter, CPU, OpenCL:"),
+    llvm::cl::Optional, llvm::cl::init("Interpreter"), llvm::cl::cat(cifarCat));
 llvm::cl::opt<ModelKind>
     model(llvm::cl::desc("Model to use:"), llvm::cl::Optional,
           llvm::cl::values(clEnumValN(ModelKind::MODEL_SIMPLE, "model-simple",

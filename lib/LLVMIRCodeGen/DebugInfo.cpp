@@ -213,7 +213,7 @@ static void initBaseAddressesOfMemoryAreas(DebugInfo &dbgInfo,
     // make sure it is not removed by optimizations.
     auto baseAddressVar = new llvm::GlobalVariable(
         M, builder.getInt8PtrTy(), /* isConst */ false,
-        llvm::GlobalValue::CommonLinkage, nullptr, name);
+        llvm::GlobalValue::ExternalLinkage, nullptr, name);
     baseAddressVar->setInitializer(
         llvm::ConstantPointerNull::get(builder.getInt8PtrTy()));
     // Initialize the variable by the corresponding base address passed to
@@ -355,7 +355,7 @@ void LLVMIRGen::emitDebugGlobalVariableForValue(const Value *val) {
     memoryAreaKind = MemoryAreaKind::MutableWeightsMemoryArea;
     break;
   default:
-    GLOW_UNREACHABLE("Unknown memory area kind");
+    LOG(FATAL) << "Unknown memory area kind";
   }
   }
 
@@ -423,7 +423,7 @@ void LLVMIRGen::generateDebugInfo() {
 
   // Emit the debug info for weight variables and activations variables used by
   // the Glow IR. Represent those variables as global variables.
-  for (auto &v : F_->getGraph()->getParent()->getConstants()) {
+  for (auto &v : F_->findConstants()) {
     auto *w = cast<WeightVar>(F_->getWeightForNode(v));
     emitDebugGlobalVariableForValue(w);
   }

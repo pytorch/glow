@@ -324,7 +324,7 @@ struct HyphenNetwork {
 } // namespace
 
 TEST(HyphenTest, network) {
-  ExecutionEngine EE(BackendKind::CPU);
+  ExecutionEngine EE("CPU");
 
   // Convert the training data to word windows and labels.
   vector<string> words;
@@ -350,6 +350,7 @@ TEST(HyphenTest, network) {
   // Convert words and hyphens to a tensor representation.
   Tensor inputs(ElemKind::FloatTy, {numSamples, 6, 27});
   Tensor expected(ElemKind::Int64ITy, {numSamples, 1});
+  inputs.zero();
   auto inputHandle = inputs.getHandle<float>();
   auto expectedHandle = expected.getHandle<int64_t>();
   for (size_t i = 0; i != numSamples; i++) {
@@ -377,6 +378,6 @@ TEST(HyphenTest, network) {
   EXPECT_EQ(net.inferenceErrors(EE, "cpu", inputs, hyphens, TC), 0);
 
   // See of the interpreter gets the same result.
-  EE.setBackend(BackendKind::Interpreter);
+  EE.setBackend("Interpreter");
   EXPECT_EQ(net.inferenceErrors(EE, "interpreter", inputs, hyphens, TC), 0);
 }

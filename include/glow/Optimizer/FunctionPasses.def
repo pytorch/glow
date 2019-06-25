@@ -1,0 +1,43 @@
+/**
+ * Copyright (c) 2017-present, Facebook, Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+#ifndef FUN_PASS
+#error "FUN_PASS must be defined by includer."
+#endif
+
+FUN_PASS(DCE)
+FUN_PASS(SinkCode)
+FUN_PASS(MergeMatMul)
+FUN_PASS(MergePadIntoConvolution)
+FUN_PASS(MergeTransposeIntoMatMulOrFC)
+FUN_PASS(ConvertBroadcastedBatchMatMul)
+FUN_PASS(MergeBatchedAdd)
+FUN_PASS(OptimizeReduceMean)
+FUN_PASS(OptimizeBatchNorm)
+FUN_PASS(OptimizeConcatNodes)
+FUN_PASS(OptimizeArithmeticNodes)
+FUN_PASS(TransposeConstants)
+FUN_PASS(CSE)
+FUN_PASS(OptimizeSliceOfSplat)
+FUN_PASS(OptimizeTransposeIntoReshape)
+FUN_PASS(OptimizeReshape)
+FUN_PASS(OptimizeConversions)
+FUN_PASS(OptimizeQuantization)
+FUN_PASS(SinkRescaleQuantizedNode)
+FUN_PASS(FoldLeakyRelu)
+FUN_PASS(FoldChannelShuffle)
+
+#undef FUN_PASS

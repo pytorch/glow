@@ -126,6 +126,12 @@ void FunctionConverter::convertOutputs(Node &node) {
       if (user == conversionVal.getNode()) {
         continue;
       }
+      // Log the change of node input(operand).
+      if (Function *F = node.getParent()) {
+        F->getLogContext().logNodeInputChange(user, *(use.get()),
+                                              conversionVal);
+      }
+
       use.get()->setOperand(conversionVal.getNode(), conversionVal.getResNo());
     }
   }

@@ -25,6 +25,8 @@
 
 #include "llvm/Support/raw_ostream.h"
 
+#include <numeric>
+
 using namespace glow;
 
 class OperatorStatelessTest : public BackendStatelessTest {};
@@ -792,22 +794,33 @@ static void testBatchedReduceAddWithAxis(glow::PlaceholderBindings &bindings,
   bindings.allocate(batch)->getHandle<DataType>() = {0, 1, 2, 3, 4,  5,
                                                      6, 7, 8, 9, 10, 11};
 
-  auto OT = uniqueTypeConditionallyQuantized(mod, DTy, {2, 2});
-  auto *R = F->createBatchedReduceAdd("reduce.add", OT, batch, /* axis */ 1);
-  auto *save = F->createSave("save", R);
-  auto *result = bindings.allocate(save->getPlaceholder());
+  auto OT1 = uniqueTypeConditionallyQuantized(mod, DTy, {2, 2});
+  auto *R1 =
+      F->createBatchedReduceAdd("reduce.add.axis.1", OT1, batch, /* axis */ 1);
+  auto OT2 = uniqueTypeConditionallyQuantized(mod, DTy, {2, 3});
+  auto *R2 =
+      F->createBatchedReduceAdd("reduce.add.axis.2", OT2, batch, /* axis */ 2);
+  auto *save1 = F->createSave("save1", R1);
+  auto *save2 = F->createSave("save2", R2);
+
+  auto *result1 = bindings.allocate(save1->getPlaceholder());
+  auto *result2 = bindings.allocate(save2->getPlaceholder());
 
   EE.compile(CompilationMode::Infer, F);
   EE.run(bindings);
 
-  auto expected = createTensorConditionallyQuantized(DTy, {2, 2});
-  expected.getHandle<DataType>() = {6, 9, 24, 27};
-  EXPECT_TRUE(result->isEqual(expected));
+  auto expected1 = createTensorConditionallyQuantized(DTy, {2, 2});
+  expected1.getHandle<DataType>() = {6, 9, 24, 27};
+  EXPECT_TRUE(result1->isEqual(expected1));
+
+  auto expected2 = createTensorConditionallyQuantized(DTy, {2, 3});
+  expected2.getHandle<DataType>() = {1, 5, 9, 13, 17, 21};
+  EXPECT_TRUE(result2->isEqual(expected2));
 }
 
 /// Test that batchedReduceAddWithAxis is correctly supported in FloatTy.
 TEST_P(OperatorTest, batchedReduceAddWithAxis_Float) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  ENABLED_BACKENDS(Interpreter, CPU, OpenCL);
   testBatchedReduceAddWithAxis<float>(bindings_, mod_, F_, EE_,
                                       ElemKind::FloatTy);
 }
@@ -2241,9 +2254,9 @@ COMPARE_ARITH_FUN(Min)
 #define COMPARE_ARITH_FLOAT_VS_INT8(_OP_NAME_, ...)                            \
   TEST_P(OperatorStatelessTest, Basic##_OP_NAME_##NetFloatVsInt8) {            \
     ENABLED_BACKENDS(__VA_ARGS__);                                             \
-    compareAgainstInterpreter(GetParam(), createAndInitBasic##_OP_NAME_##Test, \
-                              ElemKind::FloatTy, ElemKind::Int8QTy, 0.025f,    \
-                              parCloneCountOpt);                               \
+    compareAgainstInterpreter(                                                 \
+        getBackendName(), createAndInitBasic##_OP_NAME_##Test,                 \
+        ElemKind::FloatTy, ElemKind::Int8QTy, 0.025f, parCloneCountOpt);       \
   }
 COMPARE_ARITH_FLOAT_VS_INT8(Add, Interpreter, CPU, OpenCL)
 COMPARE_ARITH_FLOAT_VS_INT8(Sub, Interpreter, CPU, OpenCL)
@@ -2256,9 +2269,9 @@ COMPARE_ARITH_FLOAT_VS_INT8(Min, Interpreter, CPU, OpenCL)
 #define COMPARE_ARITH_FLOAT_VS_FLOAT16(_OP_NAME_, ...)                         \
   TEST_P(OperatorStatelessTest, Basic##_OP_NAME_##NetFloatVsFloat16) {         \
     ENABLED_BACKENDS(__VA_ARGS__);                                             \
-    compareAgainstInterpreter(GetParam(), createAndInitBasic##_OP_NAME_##Test, \
-                              ElemKind::FloatTy, ElemKind::Float16Ty, 0.01f,   \
-                              parCloneCountOpt);                               \
+    compareAgainstInterpreter(                                                 \
+        getBackendName(), createAndInitBasic##_OP_NAME_##Test,                 \
+        ElemKind::FloatTy, ElemKind::Float16Ty, 0.01f, parCloneCountOpt);      \
   }
 COMPARE_ARITH_FLOAT_VS_FLOAT16(Add, Interpreter)
 COMPARE_ARITH_FLOAT_VS_FLOAT16(Sub, Interpreter)
@@ -2394,40 +2407,40 @@ createAndInitConvDepthTest(glow::PlaceholderBindings &bindings,
 }
 
 TEST_P(OperatorStatelessTest, Int8ConvolutionDepth10) {
-  compareAgainstInterpreter(GetParam(), createAndInitConvDepthTest<10>,
+  compareAgainstInterpreter(getBackendName(), createAndInitConvDepthTest<10>,
                             ElemKind::FloatTy, ElemKind::Int8QTy, 0.045f,
                             parCloneCountOpt);
 }
 
 TEST_P(OperatorStatelessTest, Int16ConvolutionDepth10) {
   ENABLED_BACKENDS(Interpreter);
-  compareAgainstInterpreter(GetParam(), createAndInitConvDepthTest<10>,
+  compareAgainstInterpreter(getBackendName(), createAndInitConvDepthTest<10>,
                             ElemKind::FloatTy, ElemKind::Int16QTy, 0.03f,
                             parCloneCountOpt);
 }
 
 TEST_P(OperatorStatelessTest, Int8ConvolutionDepth8) {
-  compareAgainstInterpreter(GetParam(), createAndInitConvDepthTest<8>,
+  compareAgainstInterpreter(getBackendName(), createAndInitConvDepthTest<8>,
                             ElemKind::FloatTy, ElemKind::Int8QTy, 0.03f,
                             parCloneCountOpt);
 }
 TEST_P(OperatorStatelessTest, Int16ConvolutionDepth8) {
   ENABLED_BACKENDS(Interpreter);
-  compareAgainstInterpreter(GetParam(), createAndInitConvDepthTest<8>,
+  compareAgainstInterpreter(getBackendName(), createAndInitConvDepthTest<8>,
                             ElemKind::FloatTy, ElemKind::Int16QTy, 0.03f,
                             parCloneCountOpt);
 }
 
 TEST_P(OperatorStatelessTest, FP16ConvolutionDepth10) {
   ENABLED_BACKENDS(Interpreter);
-  compareAgainstInterpreter(GetParam(), createAndInitConvDepthTest<10>,
+  compareAgainstInterpreter(getBackendName(), createAndInitConvDepthTest<10>,
                             ElemKind::FloatTy, ElemKind::Float16Ty, 0.015f,
                             parCloneCountOpt);
 }
 
 TEST_P(OperatorStatelessTest, FP16ConvolutionDepth8) {
   ENABLED_BACKENDS(Interpreter);
-  compareAgainstInterpreter(GetParam(), createAndInitConvDepthTest<8>,
+  compareAgainstInterpreter(getBackendName(), createAndInitConvDepthTest<8>,
                             ElemKind::FloatTy, ElemKind::Float16Ty, 0.015f,
                             parCloneCountOpt);
 }
@@ -2455,7 +2468,7 @@ createAndInitBasicConcatTest(glow::PlaceholderBindings &bindings,
 
 TEST_P(OperatorStatelessTest, IntConcat) {
   ENABLED_BACKENDS(Interpreter, CPU);
-  compareAgainstInterpreter(GetParam(), createAndInitBasicConcatTest,
+  compareAgainstInterpreter(getBackendName(), createAndInitBasicConcatTest,
                             ElemKind::FloatTy, ElemKind::Int8QTy, 0.05f,
                             parCloneCountOpt);
 }
@@ -2515,7 +2528,7 @@ createAndInitBasicFCTest(glow::PlaceholderBindings &bindings,
 }
 
 TEST_P(OperatorStatelessTest, IntFC) {
-  compareAgainstInterpreter(GetParam(), createAndInitBasicFCTest,
+  compareAgainstInterpreter(getBackendName(), createAndInitBasicFCTest,
                             ElemKind::FloatTy, ElemKind::Int8QTy, 0.05f,
                             parCloneCountOpt);
 }
@@ -2523,7 +2536,7 @@ TEST_P(OperatorStatelessTest, IntFC) {
 /// Test FC with Float16.
 TEST_P(OperatorStatelessTest, FC_Float16) {
   ENABLED_BACKENDS(Interpreter);
-  compareAgainstInterpreter(GetParam(), createAndInitBasicFCTest,
+  compareAgainstInterpreter(getBackendName(), createAndInitBasicFCTest,
                             ElemKind::FloatTy, ElemKind::Float16Ty, 0.02f,
                             parCloneCountOpt);
 }
@@ -2732,7 +2745,7 @@ createAndInitTransposeNet(glow::PlaceholderBindings &bindings,
 
 TEST_P(OperatorStatelessTest, QuantizedTranspose) {
   ENABLED_BACKENDS(Interpreter, CPU, OpenCL);
-  compareAgainstInterpreter(GetParam(), createAndInitTransposeNet,
+  compareAgainstInterpreter(getBackendName(), createAndInitTransposeNet,
                             ElemKind::FloatTy, ElemKind::Int8QTy, 0.0045f,
                             parCloneCountOpt);
 }
@@ -3019,7 +3032,7 @@ static void testConcatVectors(glow::PlaceholderBindings &bindings,
   (void)RNWH;
 
   for (size_t i = 0; i < 60; i++) {
-    EXPECT_NEAR(RNWH.at({i}), i, 0.001);
+    EXPECT_NEAR(RNWH.at({i}), static_cast<DataType>(i), 0.001);
   }
 }
 
@@ -3029,10 +3042,22 @@ TEST_P(OperatorTest, concatVectors_Int64) {
   testConcatVectors<int64_t>(bindings_, mod_, F_, EE_, ElemKind::Int64ITy);
 }
 
+/// Test concatenating vectors that are Int32ITy.
+TEST_P(OperatorTest, concatVectors_Int32) {
+  ENABLED_BACKENDS(Interpreter);
+  testConcatVectors<int32_t>(bindings_, mod_, F_, EE_, ElemKind::Int32ITy);
+}
+
 /// Test concatenating vectors that are Int8Qty.
 TEST_P(OperatorTest, concatVectors_Int8) {
   ENABLED_BACKENDS(Interpreter, CPU);
   testConcatVectors<int8_t>(bindings_, mod_, F_, EE_, ElemKind::Int8QTy);
+}
+
+/// Test concatenating vectors that are BoolTy.
+TEST_P(OperatorTest, concatVectors_Bool) {
+  ENABLED_BACKENDS(Interpreter);
+  testConcatVectors<bool>(bindings_, mod_, F_, EE_, ElemKind::BoolTy);
 }
 
 /// Test concatenating vectors that are FloatTy.
@@ -3108,11 +3133,28 @@ TEST_P(OperatorTest, concatVectorsRepeated_Int64) {
 
 /// Check that concatenating two tensors repeatedly is correct. This is
 /// intended to verify that IRGen to InsertTensor instructions with axis/count
+/// works correctly. Testing Int32ITy data.
+TEST_P(OperatorTest, concatVectorsRepeated_Int32) {
+  ENABLED_BACKENDS(Interpreter);
+  testConcatVectorsRepeated<int32_t>(bindings_, mod_, F_, EE_,
+                                     ElemKind::Int32ITy);
+}
+
+/// Check that concatenating two tensors repeatedly is correct. This is
+/// intended to verify that IRGen to InsertTensor instructions with axis/count
 /// works correctly. Testing Int8QTy data.
 TEST_P(OperatorTest, concatVectorsRepeated_Int8) {
   ENABLED_BACKENDS(Interpreter, CPU);
   testConcatVectorsRepeated<int8_t>(bindings_, mod_, F_, EE_,
                                     ElemKind::Int8QTy);
+}
+
+/// Check that concatenating two tensors repeatedly is correct. This is
+/// intended to verify that IRGen to InsertTensor instructions with axis/count
+/// works correctly. Testing BoolTy data.
+TEST_P(OperatorTest, concatVectorsRepeated_Bool) {
+  ENABLED_BACKENDS(Interpreter);
+  testConcatVectorsRepeated<bool>(bindings_, mod_, F_, EE_, ElemKind::BoolTy);
 }
 
 /// Check that concatenating two tensors repeatedly is correct. This is
@@ -3840,6 +3882,81 @@ TEST_P(OperatorTest, GroupConvolution) {
   EXPECT_FLOAT_EQ(result.at({0, 1, 0, 5}), (13 + 14 + 15 + 16) * 100000);
 }
 
+/// Test the functionality of groupwise quantized convolution expressed using
+/// ChannelwiseQuantizedConvNode.
+TEST_P(OperatorTest, GroupwiseQuantizedConvolution) {
+  ENABLED_BACKENDS(Interpreter, CPU, OpenCL);
+
+  constexpr size_t groups = 2;
+
+  auto *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 2, 1, 8}, "input", false);
+  auto IH = bindings_.allocate(input)->getHandle<float>();
+  for (size_t i = 0; i < 2 * 8; i++) {
+    IH.raw(i) = i + 1;
+  }
+
+  auto *qInTy = mod_.uniqueType(ElemKind::Int8QTy, {1, 2, 1, 8}, 1.0, 0);
+  auto *qInput = F_->createQuantize("qInput", input, qInTy);
+
+  auto filterT = Tensor(ElemKind::Int8QTy, {6, 1, 1, 4}, 1.0, 0);
+  for (size_t i = 0; i < 6; i++) {
+    for (size_t j = 0; j < 4; j++) {
+      filterT.getHandle<int8_t>().at({i, 0, 0, j}) = (i % 2) + 1;
+    }
+  }
+  auto *filter = mod_.createConstant("filter", std::move(filterT));
+
+  auto biasT = Tensor(ElemKind::FloatTy, {6});
+  biasT.zero();
+  auto *bias = mod_.createConstant("bias", std::move(biasT));
+
+  auto scalesT = Tensor(ElemKind::FloatTy, {groups});
+  for (size_t i = 0; i < scalesT.size(); i++) {
+    scalesT.getHandle<float>().raw(i) = 1;
+  }
+  auto *scales = mod_.createConstant("scales", std::move(scalesT));
+
+  auto offsetsT = Tensor(ElemKind::Int32ITy, {groups});
+  offsetsT.zero();
+  auto *offsets = mod_.createConstant("offsets", std::move(offsetsT));
+
+  auto *outTy = mod_.uniqueType(ElemKind::Int8QTy, {1, 2, 1, 6}, 1.0, 0);
+
+  ChannelwiseQuantizedConvolutionNode *CQC = F_->createChannelwiseQuantizedConv(
+      "groupwiseQuantizedConv", qInput, filter, bias, scales, offsets, outTy,
+      {1, 1}, {1, 1}, {0, 0, 0, 0}, groups);
+
+  DequantizeNode *dq = F_->createDequantize("dequantize", CQC);
+  SaveNode *S = F_->createSave("save", dq);
+  bindings_.allocate(S->getPlaceholder());
+
+  ::glow::convertPlaceholdersToConstants(F_, bindings_,
+                                         {input, S->getPlaceholder()});
+
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run(bindings_);
+
+  auto result = bindings_.get(S->getPlaceholder())->getHandle();
+
+  std::vector<size_t> expectedDims = {1, 2, 1, 6};
+  ASSERT_TRUE(result.dims().vec() == expectedDims);
+
+  EXPECT_FLOAT_EQ(result.at({0, 0, 0, 0}), (1 + 2 + 3 + 4) * 1);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 0, 1}), (1 + 2 + 3 + 4) * 2);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 0, 2}), (1 + 2 + 3 + 4) * 1);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 0, 3}), (5 + 6 + 7 + 8) * 2);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 0, 4}), (5 + 6 + 7 + 8) * 1);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 0, 5}), (5 + 6 + 7 + 8) * 2);
+
+  EXPECT_FLOAT_EQ(result.at({0, 1, 0, 0}), (9 + 10 + 11 + 12) * 1);
+  EXPECT_FLOAT_EQ(result.at({0, 1, 0, 1}), (9 + 10 + 11 + 12) * 2);
+  EXPECT_FLOAT_EQ(result.at({0, 1, 0, 2}), (9 + 10 + 11 + 12) * 1);
+  EXPECT_FLOAT_EQ(result.at({0, 1, 0, 3}), (13 + 14 + 15 + 16) * 2);
+  EXPECT_FLOAT_EQ(result.at({0, 1, 0, 4}), (13 + 14 + 15 + 16) * 1);
+  EXPECT_FLOAT_EQ(result.at({0, 1, 0, 5}), (13 + 14 + 15 + 16) * 2);
+}
+
 TEST_P(OperatorTest, DilatedConvolution) {
   ENABLED_BACKENDS(Interpreter, CPU);
 
@@ -4304,14 +4421,14 @@ createAndInitBasicTanhTest(glow::PlaceholderBindings &bindings,
 
 TEST_P(OperatorStatelessTest, Int8Tanh) {
   ENABLED_BACKENDS(Interpreter, CPU);
-  compareAgainstInterpreter(GetParam(), createAndInitBasicTanhTest,
+  compareAgainstInterpreter(getBackendName(), createAndInitBasicTanhTest,
                             ElemKind::FloatTy, ElemKind::Int8QTy, 0.005f,
                             parCloneCountOpt);
 }
 
 TEST_P(OperatorStatelessTest, Tanh_Float16) {
   ENABLED_BACKENDS(Interpreter);
-  compareAgainstInterpreter(GetParam(), createAndInitBasicTanhTest,
+  compareAgainstInterpreter(getBackendName(), createAndInitBasicTanhTest,
                             ElemKind::FloatTy, ElemKind::Float16Ty, 0.001f,
                             parCloneCountOpt);
 }
@@ -4365,7 +4482,7 @@ createAndInitBasicLogTest(glow::PlaceholderBindings &bindings,
 /// Verify that a quantized Log works correctly.
 TEST_P(OperatorStatelessTest, Int8Log) {
   ENABLED_BACKENDS(Interpreter, CPU);
-  compareAgainstInterpreter(GetParam(), createAndInitBasicLogTest,
+  compareAgainstInterpreter(getBackendName(), createAndInitBasicLogTest,
                             ElemKind::FloatTy, ElemKind::Int8QTy, 0.1f,
                             parCloneCountOpt);
 }
@@ -4756,7 +4873,7 @@ createAndInitBasicSigmoidTest(glow::PlaceholderBindings &bindings,
 
 TEST_P(OperatorStatelessTest, Int8Sigmoid) {
   ENABLED_BACKENDS(Interpreter, CPU);
-  compareAgainstInterpreter(GetParam(), createAndInitBasicSigmoidTest,
+  compareAgainstInterpreter(getBackendName(), createAndInitBasicSigmoidTest,
                             ElemKind::FloatTy, ElemKind::Int8QTy, 0.005f,
                             parCloneCountOpt);
 }
@@ -5047,7 +5164,7 @@ TEST_P(OperatorTest, LengthsSum) {
 }
 
 TEST_P(OperatorTest, SparseLengthsSum) {
-  ENABLED_BACKENDS(Interpreter, CPU, OpenCL);
+  ENABLED_BACKENDS(Interpreter, CPU, OpenCL, Habana);
 
   /*
     DATA  = [
@@ -5082,6 +5199,7 @@ TEST_P(OperatorTest, SparseLengthsSum) {
   };
 
   auto *R = F_->createSparseLengthsSum("SLS", data, indices, lengths);
+
   auto *S = F_->createSave("save", R);
   bindings_.allocate(S->getPlaceholder());
 
@@ -5148,17 +5266,25 @@ TEST_P(OperatorTest, SparseLengthsSumI8) {
   EXPECT_TRUE(expected.isEqual(result));
 }
 
-TEST_P(OperatorTest, SparseLengthsWeightedSum) {
-  ENABLED_BACKENDS(Interpreter, CPU, OpenCL);
+/// Test SparseLengthsWeightedSum with an N-dimension embedding table.
+void sparseLengthsWeightedSumTest(size_t ndims, ExecutionEngine &EE) {
+  auto &mod_ = EE.getModule();
+  auto *F_ = mod_.createFunction("slws");
+  PlaceholderBindings bindings_;
 
   /*
-    DATA  =   [2.0, -0.5, 13]
+    DATA  =   [[2.0, -0.5, 13]]
     WEIGHTS = [3, 1, 0, 0, 0, 0, 2, -0.5]
     INDICES = [1, 0, 2, 0, 1, 2, 2, 0]
     LENGTHS = [3, 0, 3, 2]
     OUTPUT =  [0.5, 0, 0, 25]
   */
-  auto *data = mod_.createPlaceholder(ElemKind::FloatTy, {3}, "data", false);
+  ShapeVector idims(ndims, 1);
+  ShapeVector odims(ndims, 1);
+  idims[0] = 3;
+  odims[0] = 4;
+
+  auto *data = mod_.createPlaceholder(ElemKind::FloatTy, idims, "data", false);
   auto *weights =
       mod_.createPlaceholder(ElemKind::FloatTy, {8}, "weights", false);
   auto *indices =
@@ -5189,11 +5315,11 @@ TEST_P(OperatorTest, SparseLengthsWeightedSum) {
   auto *S = F_->createSave("save", R);
   bindings_.allocate(S->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(bindings_);
+  EE.compile(CompilationMode::Infer, F_);
+  EE.run(bindings_);
 
   Tensor &result = *bindings_.get(S->getPlaceholder());
-  Tensor expected(ElemKind::FloatTy, {4});
+  Tensor expected(ElemKind::FloatTy, odims);
   expected.getHandle() = {
       0.5,
       0,
@@ -5202,6 +5328,16 @@ TEST_P(OperatorTest, SparseLengthsWeightedSum) {
   };
 
   EXPECT_TRUE(expected.isEqual(result));
+}
+
+TEST_P(OperatorTest, SparseLengthsWeightedSum_1D) {
+  ENABLED_BACKENDS(Interpreter, CPU, OpenCL);
+  sparseLengthsWeightedSumTest(1, EE_);
+}
+
+TEST_P(OperatorTest, SparseLengthsWeightedSum_2D) {
+  ENABLED_BACKENDS(Interpreter, CPU, OpenCL, Habana);
+  sparseLengthsWeightedSumTest(2, EE_);
 }
 
 TEST_P(OperatorTest, SparseLengthsWeightedSumI8) {
@@ -5374,8 +5510,63 @@ TEST_P(OperatorTest, RowwiseQuantizedSparseLengthsSum) {
   EXPECT_TRUE(expected.isEqual(result, 0.03));
 }
 
+TEST_P(OperatorTest, RepeatedSLSWithPartialTensors) {
+  ENABLED_BACKENDS(Habana);
+
+  constexpr size_t embeddingRows = 1275;
+  constexpr size_t numLengths = 20;
+  constexpr size_t maxIndices = 20000;
+  constexpr size_t numIndices = 20; // Must be less than sum(lengths).
+  constexpr size_t iterations = 33;
+
+  auto *data =
+      mod_.createConstant(ElemKind::FloatTy, {embeddingRows, 1}, "data");
+  data->getPayloadMutable().getHandle<float>().randomize(-1.0, 1.0,
+                                                         mod_.getPRNG());
+  auto *indices = mod_.createPlaceholder(ElemKind::Int64ITy, {maxIndices},
+                                         "indices", false);
+  auto *lengths = mod_.createPlaceholder(ElemKind::Int32ITy, {numLengths},
+                                         "lengths", false);
+  auto *SLS = F_->createSparseLengthsSum("SLS", data, indices, lengths);
+  auto *save = F_->createSave("save", SLS);
+  auto *outPH = save->getPlaceholder();
+  EE_.compile(CompilationMode::Infer, F_);
+
+  Tensor indicesReal(ElemKind::Int64ITy, {numIndices});
+  indicesReal.getHandle<int64_t>().randomize(0, embeddingRows - 1,
+                                             mod_.getPRNG());
+  Tensor indicesPartial(indicesReal.getUnsafePtr(), indices->getType(),
+                        indicesReal.getSizeInBytes());
+  Tensor indicesPadded(indices->getType());
+  indicesPadded.zero();
+  memcpy(indicesPadded.getUnsafePtr(), indicesReal.getUnsafePtr(),
+         numIndices * sizeof(int64_t));
+
+  Tensor lengthsReal(ElemKind::Int32ITy, {numLengths});
+  lengthsReal.getHandle<int32_t>().clear(1);
+  Tensor lengthsPartial(lengthsReal.getUnsafePtr(), lengths->getType(),
+                        lengthsReal.getSizeInBytes());
+  Tensor lengthsPadded(ElemKind::Int32ITy, {numLengths});
+  lengthsPadded.assign(&lengthsReal);
+
+  bindings_.insert(indices, std::move(indicesPartial));
+  bindings_.insert(lengths, std::move(lengthsPartial));
+  bindings_.allocate(outPH);
+
+  PlaceholderBindings paddedBindings;
+  paddedBindings.insert(indices, std::move(indicesPadded));
+  paddedBindings.insert(lengths, std::move(lengthsPadded));
+  paddedBindings.allocate(outPH);
+
+  for (size_t i = 0; i < iterations; i++) {
+    EE_.run(bindings_);
+    EE_.run(paddedBindings);
+    ASSERT_TRUE(bindings_.get(outPH)->isEqual(*paddedBindings.get(outPH)));
+  }
+}
+
 TEST_P(OperatorTest, FusedRowwiseQuantizedSparseLengthsWeightedSum) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  ENABLED_BACKENDS(Interpreter, CPU, Habana);
 
   /*
     DATA  =   [[2.0, -0.5, 13]]
@@ -5434,7 +5625,7 @@ TEST_P(OperatorTest, FusedRowwiseQuantizedSparseLengthsWeightedSum) {
 }
 
 TEST_P(OperatorTest, FusedRowwiseQuantizedSparseLengthsSum) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  ENABLED_BACKENDS(Interpreter, CPU, Habana);
 
   /*
     DATA  = [
@@ -5484,6 +5675,83 @@ TEST_P(OperatorTest, FusedRowwiseQuantizedSparseLengthsSum) {
   };
 
   EXPECT_TRUE(expected.isEqual(result, 0.03));
+}
+
+/// Test SLS when some input tensors are constants.
+TEST_P(OperatorTest, ConstantSLS) {
+  auto *data = mod_.createConstant(ElemKind::FloatTy, {1024, 32}, "data");
+  auto *indices = mod_.createConstant(ElemKind::Int64ITy, {314}, "indices");
+  auto *lengths = mod_.createConstant(ElemKind::Int32ITy, {20}, "lengths");
+
+  // data
+  auto DH = data->getPayload().getHandle();
+  for (size_t i = 0; i < 1024; i++) {
+    for (size_t j = 0; j < 32; j++) {
+      DH.at({i, j}) = (float)i;
+    }
+  }
+
+  // indices
+  auto IH = indices->getHandle<int64_t>();
+  std::iota(IH.begin(), IH.end(), 0);
+
+  // lengths
+  auto LH = lengths->getHandle<int32_t>();
+  LH.clear(16);
+  for (size_t ldx : {1, 2, 6, 13, 14, 19}) {
+    LH.at({ldx}) = 15;
+  }
+
+  auto *R = F_->createSparseLengthsSum("SLS", data, indices, lengths);
+  auto *S = F_->createSave("save", R);
+  auto *out = bindings_.allocate(S->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run(bindings_);
+
+  std::vector<float> expected = {120,  345,  570,  856,  1112, 1368, 1515,
+                                 1864, 2120, 2376, 2632, 2888, 3144, 3180,
+                                 3405, 3880, 4136, 4392, 4648, 4590};
+  auto OH = out->getHandle();
+  for (size_t i = 0; i < 20; i++) {
+    for (size_t j = 0; j < 32; j++) {
+      EXPECT_EQ(OH.at({i, j}), expected[i]);
+    }
+  }
+}
+
+/// Test SLS when some "lengths" inputs are zero.
+TEST_P(OperatorTest, SLSWithZeroLengths) {
+  ENABLED_BACKENDS(CPU, Habana);
+
+  compareAgainstInterpreter(
+      getBackendName(),
+      [](PlaceholderBindings &bindings, ExecutionEngine &EE) {
+        auto &mod = EE.getModule();
+        auto *F = mod.createFunction("main");
+        constexpr size_t embedWidth = 1000;
+        Tensor data(ElemKind::FloatTy, {embedWidth, 8});
+        data.getHandle().randomize(-1, 1, mod.getPRNG());
+        Constant *weights =
+            mod.createConstant(ElemKind::FloatTy, {3000}, "weights");
+        weights->getPayloadMutable().getHandle().clear(1.0f);
+        auto *indices =
+            mod.createPlaceholder(ElemKind::Int64ITy, {3000}, "indices", false);
+        auto *lengths =
+            mod.createPlaceholder(ElemKind::Int32ITy, {1000}, "lengths", false);
+        bindings.allocate(indices)->getHandle<int64_t>().randomize(
+            0, embedWidth - 1, mod.getPRNG());
+        auto LH = bindings.allocate(lengths)->getHandle<int32_t>();
+        LH.clear(0);
+        std::fill(LH.begin(), LH.begin() + 13, 20);
+
+        auto *R = F->createFusedRowwiseQuantizedSparseLengthsWeightedSum(
+            "RQSLWS", data, weights, indices, lengths);
+        auto *S = F->createSave("save", R);
+        auto *res = bindings.allocate(S->getPlaceholder());
+        return std::make_pair(F, res);
+      },
+      ElemKind::FloatTy, ElemKind::FloatTy);
 }
 
 TEST_P(OperatorTest, SparseToDense) {
@@ -6104,7 +6372,7 @@ createAndInitBasicRowwiseFCTest(glow::PlaceholderBindings &bindings,
 /// Test RowwiseQuantizedFullyConnected Node.
 TEST_P(OperatorStatelessTest, rowwiseQuantizedFCTest) {
   ENABLED_BACKENDS(Interpreter, CPU);
-  compareAgainstInterpreter(GetParam(), createAndInitBasicRowwiseFCTest,
+  compareAgainstInterpreter(getBackendName(), createAndInitBasicRowwiseFCTest,
                             ElemKind::FloatTy, ElemKind::Int8QTy, 0.06f,
                             parCloneCountOpt,
                             /* enableRowwiseQuantization */ true);
@@ -6114,7 +6382,7 @@ TEST_P(OperatorStatelessTest, rowwiseQuantizedFCTest) {
 TEST_P(OperatorStatelessTest, rowwiseQuantizedFCTestSymmetric) {
   ENABLED_BACKENDS(Interpreter, CPU);
   compareAgainstInterpreter(
-      GetParam(), createAndInitBasicRowwiseFCTest, ElemKind::FloatTy,
+      getBackendName(), createAndInitBasicRowwiseFCTest, ElemKind::FloatTy,
       ElemKind::Int8QTy, 0.06f, parCloneCountOpt,
       /* enableRowwiseQuantization */ true, quantization::Schema::Symmetric);
 }
@@ -6171,7 +6439,7 @@ createAndInitBasicSLWSTest(glow::PlaceholderBindings &bindings,
 /// Test RowwiseQuantizedSLWS Node.
 TEST_P(OperatorStatelessTest, rowwiseQuantizedSLWSTest) {
   ENABLED_BACKENDS(Interpreter);
-  compareAgainstInterpreter(GetParam(), createAndInitBasicSLWSTest,
+  compareAgainstInterpreter(getBackendName(), createAndInitBasicSLWSTest,
                             ElemKind::FloatTy, ElemKind::Int8QTy, 0.01f,
                             parCloneCountOpt,
                             /* enableRowwiseQuantization */ true);

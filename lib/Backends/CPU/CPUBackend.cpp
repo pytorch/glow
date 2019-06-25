@@ -81,6 +81,15 @@ bool CPUBackend::isOpSupported(const NodeInfo &NI) const {
         {ElemKind::FloatTy, ElemKind::Int8QTy, ElemKind::Int64ITy,
          ElemKind::BoolTy});
 
+  case Kinded::Kind::SparseLengthsSumNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind(
+               {ElemKind::FloatTy}, {SparseLengthsSumNode::IndicesIdx,
+                                     SparseLengthsSumNode::LengthsIdx}) &&
+           (NI.getInElemTy(SparseLengthsSumNode::IndicesIdx) ==
+            ElemKind::Int64ITy) &&
+           (NI.getInElemTy(SparseLengthsSumNode::LengthsIdx) ==
+            ElemKind::Int32ITy);
+
   case Kinded::Kind::SparseLengthsWeightedSumNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
                {ElemKind::FloatTy},
@@ -312,9 +321,13 @@ bool CPUBackend::isOpSupported(const NodeInfo &NI) const {
 }
 
 bool CPUBackend::shouldLower(const Node *N) const {
-  if (N->getKind() == Kinded::Kind::ConvolutionNodeKind)
+  switch (N->getKind()) {
+  case Kinded::Kind::ConvolutionNodeKind:
+  case Kinded::Kind::SparseLengthsSumNodeKind:
     return false;
-  return true;
+  default:
+    return true;
+  }
 }
 
 std::unique_ptr<CompiledFunction> CPUBackend::createCompiledFunction(

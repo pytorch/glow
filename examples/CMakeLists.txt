@@ -16,6 +16,7 @@ target_link_libraries(mnist
                         Backends
                         ExecutionEngine
                         Graph
+                        Importer
                         IR
                         Optimizer
                         Support
@@ -103,3 +104,5 @@ endif()
 if(GLOW_WITH_BUNDLES)
   add_subdirectory(bundles)
 endif()
+
+add_subdirectory(training)

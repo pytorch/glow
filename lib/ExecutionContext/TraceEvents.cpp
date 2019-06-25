@@ -15,6 +15,7 @@
  */
 
 #include "glow/ExecutionContext/TraceEvents.h"
+#include "glow/ExecutionContext/ExecutionContext.h"
 
 #include "llvm/Support/raw_ostream.h"
 
@@ -23,6 +24,14 @@
 
 namespace glow {
 
+void writeMetadataHelper(std::ofstream &file, llvm::StringRef type, int id,
+                         llvm::StringRef name) {
+  file << "{\"cat\": \"__metadata\", \"ph\":\"" << TraceEvent::MetadataType
+       << "\", \"ts\":0, \"pid\":0, \"tid\":" << id << ", \"name\":\""
+       << type.str() << "\", \"args\": {\"name\":\"" << name.str()
+       << "\"} },\n";
+}
+
 void TraceEvent::dumpTraceEvents(
     std::vector<TraceEvent> &events, llvm::StringRef filename,
     const std::string &processName,
@@ -30,23 +39,37 @@ void TraceEvent::dumpTraceEvents(
   llvm::errs() << "dumping " << events.size() << " trace events to "
                << filename.str() << ".\n";
 
+  // Chrome trace UI has a bug with complete events which are ordered later in
+  // the json than an event they completely enclose, so sort the list of events
+  // by start time and duration.
+  std::sort(events.begin(), events.end(),
+            [](const TraceEvent &a, const TraceEvent &b) {
+              if (a.timestamp == b.timestamp) {
+                return a.duration > b.duration;
+              }
+              return a.timestamp < b.timestamp;
+            });
+
   auto process = processName.empty() ? "glow" : processName;
 
   std::ofstream file(filename);
   file << "[\n";
+  /// Set up process name metadata.
+  writeMetadataHelper(file, "process_name", 0,
+                      processName.empty() ? "glow" : processName);
+
+  /// And thread name metadata.
+  for (const auto &nameMap : threadNames) {
+    writeMetadataHelper(file, "thread_name", nameMap.first, nameMap.second);
+  }
+
   for (const auto &event : events) {
     file << "{\"name\": \"" << event.name;
     file << "\", \"cat\": \"glow\",";
     file << "\"ph\": \"" << event.type;
     file << "\", \"ts\": " << event.timestamp;
-    file << ", \"pid\": \"" << process << "\"";
-
-    auto nameIt = threadNames.find(event.tid);
-    if (nameIt != threadNames.end()) {
-      file << ", \"tid\": \"" << nameIt->second << "\"";
-    } else {
-      file << ", \"tid\": " << event.tid;
-    }
+    file << ", \"pid\": 0";
+    file << ", \"tid\": " << event.tid;
 
     if (event.type == CompleteType) {
       file << ", \"dur\": " << event.duration;
@@ -71,7 +94,7 @@ void TraceEvent::dumpTraceEvents(
 
 uint64_t TraceEvent::now() {
   return std::chrono::duration_cast<std::chrono::microseconds>(
-             std::chrono::system_clock::now().time_since_epoch())
+             std::chrono::steady_clock::now().time_since_epoch())
       .count();
 }
 
@@ -82,17 +105,19 @@ size_t TraceEvent::getThreadId() {
 }
 
 void TraceContext::logTraceEvent(
-    llvm::StringRef name, llvm::StringRef type,
+    llvm::StringRef name, TraceLevel level, char type,
     std::map<std::string, std::string> additionalAttributes) {
-  logTraceEvent(name, type, TraceEvent::now(), std::move(additionalAttributes));
+  logTraceEvent(name, level, type, TraceEvent::now(),
+                std::move(additionalAttributes));
 }
 
 void TraceContext::logTraceEvent(
-    llvm::StringRef name, llvm::StringRef type, uint64_t timestamp,
+    llvm::StringRef name, TraceLevel level, char type, uint64_t timestamp,
     std::map<std::string, std::string> additionalAttributes) {
-  if (traceLevel_ == TraceLevel::NONE || traceLevel_ == TraceLevel::OPERATOR) {
+  if (!shouldLog(level)) {
     return;
   }
+
   TraceEvent ev(name, timestamp, type, TraceEvent::getThreadId(),
                 std::move(additionalAttributes));
   {
@@ -102,9 +127,9 @@ void TraceContext::logTraceEvent(
 }
 
 void TraceContext::logCompleteTraceEvent(
-    llvm::StringRef name, uint64_t startTimestamp,
+    llvm::StringRef name, TraceLevel level, uint64_t startTimestamp,
     std::map<std::string, std::string> additionalAttributes) {
-  if (traceLevel_ == TraceLevel::NONE || traceLevel_ == TraceLevel::OPERATOR) {
+  if (!shouldLog(level)) {
     return;
   }
 
@@ -118,6 +143,10 @@ void TraceContext::logCompleteTraceEvent(
 
 void TraceContext::setThreadName(int tid, llvm::StringRef name) {
   threadNames_[tid] = name;
+}
+
+void TraceContext::setThreadName(llvm::StringRef name) {
+  setThreadName(TraceEvent::getThreadId(), name);
 }
 
 void TraceContext::dump(llvm::StringRef filename,
@@ -136,14 +165,20 @@ void TraceContext::merge(TraceContext *other) {
   names.clear();
 }
 
-ScopedTraceBlock::ScopedTraceBlock(TraceContext *context, llvm::StringRef name)
-    : context_(context), name_(name) {
+ScopedTraceBlock::ScopedTraceBlock(TraceContext *context, TraceLevel level,
+                                   llvm::StringRef name)
+    : context_(context), level_(level), name_(name) {
   startTimestamp_ = TraceEvent::now();
 
   // A local memory fence to prevent the compiler reordering instructions to
   // before taking the start timestamp.
   std::atomic_signal_fence(std::memory_order_seq_cst);
 }
+
+ScopedTraceBlock::ScopedTraceBlock(ExecutionContext *context, TraceLevel level,
+                                   llvm::StringRef name)
+    : ScopedTraceBlock(context ? context->getTraceContext() : nullptr, level,
+                       name) {}
 
 ScopedTraceBlock::~ScopedTraceBlock() { end(); }
 
@@ -159,7 +194,8 @@ void ScopedTraceBlock::end() {
   std::atomic_signal_fence(std::memory_order_seq_cst);
 
   if (!end_ && context_) {
-    context_->logCompleteTraceEvent(name_, startTimestamp_, std::move(args_));
+    context_->logCompleteTraceEvent(name_, level_, startTimestamp_,
+                                    std::move(args_));
   }
   end_ = true;
 }

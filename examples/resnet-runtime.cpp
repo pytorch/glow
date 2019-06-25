@@ -53,14 +53,16 @@ llvm::cl::opt<std::string> tracePath("trace-path",
                                      llvm::cl::desc("Write trace logs to disk"),
                                      llvm::cl::init(""),
                                      llvm::cl::cat(category));
-llvm::cl::opt<BackendKind> backend(
-    llvm::cl::desc("Backend to use:"), llvm::cl::Optional,
-    llvm::cl::values(clEnumValN(BackendKind::Interpreter, "interpreter",
-                                "Use interpreter (default option)"),
-                     clEnumValN(BackendKind::CPU, "cpu", "Use CPU"),
-                     clEnumValN(BackendKind::OpenCL, "opencl", "Use OpenCL"),
-                     clEnumValN(BackendKind::Habana, "habana", "Use Habana")),
-    llvm::cl::init(BackendKind::CPU), llvm::cl::cat(category));
+llvm::cl::opt<std::string>
+    backend("backend",
+            llvm::cl::desc("Backend to use, e.g., Interpreter, CPU, OpenCL:"),
+            llvm::cl::Optional, llvm::cl::init("CPU"), llvm::cl::cat(category));
+
+llvm::cl::opt<bool>
+    autoInstrument("auto-instrument",
+                   llvm::cl::desc("Add instrumentation for operator tracing"),
+                   llvm::cl::Optional, llvm::cl::init(false),
+                   llvm::cl::cat(category));
 
 std::mutex eventLock;
 std::unique_ptr<TraceContext> traceContext;
@@ -154,7 +156,9 @@ int main(int argc, char **argv) {
   TypeRef inputType = module->uniqueType(ElemKind::FloatTy, inputShape);
   input = loadResnet50Model(inputType, module.get(), 0);
   phList = module->getPlaceholders();
-  EXIT_ON_ERR(hostManager->addNetwork(std::move(module), CompilationContext(),
+  CompilationContext cctx;
+  cctx.backendOpts.autoInstrument = autoInstrument;
+  EXIT_ON_ERR(hostManager->addNetwork(std::move(module), cctx,
                                       /*saturateHost*/ true));
 
   LOG(INFO) << "Loading files from " << inputDirectory;

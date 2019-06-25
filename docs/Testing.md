@@ -45,7 +45,7 @@ can be used to calculate Top-1 and Top-5 accuracy. It can be run via a command
 like the following:
 
 ```
-python utils/imagenet_topk_accuracy_driver.py --batch-size=10 --validation-images-dir=${PATH_TO_IMAGES} --image-classifier-cmd="${PATH_TO_IMAGE_CLASSIFIER_BINARY} -image-mode=0to1 -m=${PATH_TO_RESNET50_PROTOS_DIR} -model-input-name=gpu_0/data -cpu -topk=5 -"
+python utils/imagenet_topk_accuracy_driver.py --batch-size=10 --validation-images-dir=${PATH_TO_IMAGES} --image-classifier-cmd="${PATH_TO_IMAGE_CLASSIFIER_BINARY} -image-mode=0to1 -m=${PATH_TO_RESNET50_PROTOS_DIR} -model-input-name=gpu_0/data -backend=CPU -topk=5 -"
 ```
 
 Note that the `--image-classifier-cmd` must include `-topk=5` for printing the
@@ -74,7 +74,7 @@ for the model. A backend can be optionally specified, just like for the
 `image-classifier`.
 
 ```
-$ ./bin/text-translator -m en2gr -cpu
+$ ./bin/text-translator -m en2gr -backend=CPU
 
 Enter a sentence in English to translate to German: My favorite sport is basketball .
 mein Lieblingssport ist Basketball .

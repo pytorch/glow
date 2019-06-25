@@ -120,7 +120,9 @@ static Node *optimizeCPUMaxSplat(MaxNode *MN, Function *F) {
 }
 
 bool CPUBackend::transformPostLowering(Function *F,
-                                       const CompilationContext &) const {
+                                       CompilationContext &) const {
+  LOG_SCOPE(F->getLogContext(), "CPUBackend::transformPostLowering")
+
   bool changed = false;
   for (auto &node : F->getNodes()) {
     // Try to replace generic convolution with cpu-optimized version.

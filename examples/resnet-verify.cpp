@@ -35,8 +35,8 @@ class Tester {
   Placeholder *output;
 
 public:
-  Tester(BackendKind kind)
-      : EE(kind), mod(EE.getModule()), F(mod.createFunction("resnet50")),
+  Tester(llvm::StringRef backendName)
+      : EE(backendName), mod(EE.getModule()), F(mod.createFunction("resnet50")),
         inputType(mod.uniqueType(ElemKind::FloatTy, {1, 3, 224, 224})) {
     // Load and compile ResNet-50.
     Caffe2ModelLoader loader("resnet50/predict_net.pb", "resnet50/init_net.pb",
@@ -68,8 +68,8 @@ public:
 
 /// Compare layer-by-layer execution of ResNet on two backends.
 int main() {
-  Tester interp{BackendKind::Interpreter};
-  Tester cpu{BackendKind::CPU};
+  Tester interp{"Interpreter"};
+  Tester cpu{"CPU"};
 
   // Read an example PNG and add it to an input batch.
   auto image = readPngImageAndPreprocess(

@@ -88,6 +88,24 @@ int main(int argc, char **argv) {
                     "Bias tensors, as well as provided Kernels, Strides, Pads, "
                     "Group and Dilation.");
 
+  BB.newNode("ChannelwiseQuantizedConvolution")
+      .addInput("Input")
+      .addInput("Filter")
+      .addInput("Bias")
+      .addInput("Scales")
+      .addInput("Offsets")
+      .addMember(MemberType::VectorUnsigned, "Kernels")
+      .addMember(MemberType::VectorUnsigned, "Strides")
+      .addMember(MemberType::VectorUnsigned, "Pads")
+      .addMember(MemberType::Unsigned, "Group")
+      .addMember(MemberType::Boolean, "Groupwise")
+      .addResultFromCtorArg()
+      .setDocstring("Performs 2D Convolution using a given Input, Filter, and "
+                    "Bias tensors, as well as provided Kernels, Strides, Pads, "
+                    "and Group. Quantization parameters are provided by Scales "
+                    "and Offsets. If Groupwise is true then the quantization "
+                    "is per-group otherwise it is per-channel.");
+
   BB.newNode("Convolution3D")
       .addInput("Input")
       .addInput("Filter")
@@ -356,6 +374,18 @@ int main(int argc, char **argv) {
                     "Lengths[1] slices are added together and stored in "
                     "Result[1], etc.");
 
+  BB.newNode("SparseLengthsSum")
+      .addInput("Data")
+      .addInput("Indices")
+      .addInput("Lengths")
+      .addResultFromCtorArg()
+      .setDocstring("Gathers slices of the outer-most dimension of Data "
+                    "indexed by Indices vector, and then accumulates them into "
+                    "len(Lengths) entries: first Lengths[0] slices are "
+                    "aggregated to Result[0], next Lengths[1] slices are "
+                    "aggregated to Result[1], etc. I.e. sum(Lengths) must be "
+                    "equal to len(Indices).");
+
   BB.newNode("SparseLengthsWeightedSum")
       .addInput("Data")
       .addInput("Weights")
@@ -408,6 +438,21 @@ int main(int argc, char **argv) {
                     "individual slice is scaled by its weight: Result[0] = "
                     "Weights[0] * Slice(0) + Weights[1] * Slice(1) + ... "
                     "It implies that len(Weights) == len(Indices). The input "
+                    "data is fused rowwise-quantized, where the Scales and "
+                    "Offsets are appended to the end of each row. Thus, Data "
+                    "must be a two-dimensional tensor.");
+
+  BB.newNode("FusedRowwiseQuantizedSparseLengthsSum")
+      .addInput("Data")
+      .addInput("Indices")
+      .addInput("Lengths")
+      .addResultFromCtorArg()
+      .setDocstring("Gathers slices of the outer-most dimension of Data "
+                    "indexed by Indices vector, and then accumulates them into "
+                    "len(Lengths) entries: first Lengths[0] slices are "
+                    "aggregated to Result[0], next Lengths[1] slices are "
+                    "aggregated to Result[1], etc. I.e. sum(Lengths) must be "
+                    "equal to len(Indices). The input "
                     "data is fused rowwise-quantized, where the Scales and "
                     "Offsets are appended to the end of each row. Thus, Data "
                     "must be a two-dimensional tensor.");

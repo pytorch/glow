@@ -16,6 +16,7 @@
 
 #include "glow/Base/Tensor.h"
 #include "glow/Quantization/Base/Base.h"
+#include "llvm/Support/raw_ostream.h"
 
 #include "gtest/gtest.h"
 
@@ -243,6 +244,10 @@ TEST(Tensor, concatTensors2D) {
   auto yH = Y.getHandle<>();
   auto zH = Z.getHandle<>();
 
+  // Zero Y and Z but not X.
+  Y.zero();
+  Z.zero();
+
   // Create a nice picture:
   for (size_t i = 0, e = xH.size(); i < e; i++) {
     xH.raw(i) = (float(i) - 30) / 50;
@@ -387,7 +392,9 @@ TEST(Tensor, reset) {
   QH = {5, 9, -2, 4, 3, -10, 21, -9, 0, -51, 73, 2};
 
   A.reset(ElemKind::FloatTy, {5, 2, 6});
+  A.zero();
   QA.reset(ElemKind::Int8QTy, {4, 7, 3, 8}, 1.4, -13);
+  QA.zero();
 
   H = A.getHandle();
   QH = QA.getHandle<int8_t>();
@@ -504,6 +511,7 @@ TEST(Tensor, nonOwnedTensorFollowedByReset) {
   // tensor was unowned and we used to not reset that state
   // as well and were leaking memory.
   T1.reset(F32x2Ty);
+  T1.zero();
   H1 = T1.getHandle<>();
   EXPECT_EQ(int(H1.at({0})), 0);
   EXPECT_EQ(int(H1.at({1})), 0);
@@ -677,15 +685,19 @@ TEST(Tensor, insertWithCountAndAxis) {
 TEST(Tensor, zeroQuantizedTensor) {
   const int32_t offsetQ8 = 0;
   Tensor Q8T(ElemKind::Int8QTy, {3, 4, 5, 6}, 127, offsetQ8);
+  Q8T.zero();
 
   const int32_t offsetUQ8 = 3;
   Tensor UQ8T(ElemKind::UInt8QTy, {3, 4, 5, 6}, 2, offsetUQ8);
+  UQ8T.zero();
 
   const int32_t offsetQ16 = 223;
   Tensor Q16T(ElemKind::Int16QTy, {3, 4, 5}, 1234.7, offsetQ16);
+  Q16T.zero();
 
   const int32_t offsetQ32 = 53452;
   Tensor Q32T(ElemKind::Int32QTy, {3, 4}, 500.4, offsetQ32);
+  Q32T.zero();
 
   auto Q8H = Q8T.getHandle<int8_t>();
   EXPECT_TRUE(Q8H.isZero());
@@ -730,6 +742,7 @@ TEST(Tensor, zeroQuantizedTensor) {
 TEST(Tensor, manuallySetToOffset) {
   const int8_t offsetQ8 = 6;
   Tensor Q8T(ElemKind::Int8QTy, {3, 2}, 10.1, offsetQ8);
+  Q8T.zero();
 
   auto Q8H = Q8T.getHandle<int8_t>();
   EXPECT_TRUE(Q8H.isZero());
@@ -765,7 +778,9 @@ TEST(ZeroDimensionalTensor, handleAssign) {
 
 TEST(ZeroDimensionalTensor, compareAndDumpTwo) {
   Tensor T1(ElemKind::FloatTy, {});
+  T1.zero();
   Tensor T2(ElemKind::FloatTy, {});
+  T2.zero();
 
   EXPECT_TRUE(T1.isEqual(T2));
 
@@ -907,4 +922,58 @@ TEST(Tensor, randomizeFused) {
       EXPECT_EQ(TH.at({i, j}), i * 10 + j);
     }
   }
+}
+
+/// Check if dump functions work for Tensor
+TEST(Tensor, dump) {
+  Tensor T = {1.2f, 12.1f, 51.0f, 1515.2f};
+  std::string mes = T.toString();
+  std::string storageT1;
+  llvm::raw_string_ostream osT1(storageT1);
+  T.dump(osT1);
+  std::string expectMes = R"(shape: ( 4 )
+max: 1515.200  min: 1.200
+[1.200, 12.100, 51.000, 1515.200, ]
+)";
+  EXPECT_EQ(mes, expectMes);
+  EXPECT_EQ(mes, osT1.str());
+  std::string storageT2;
+  llvm::raw_string_ostream osT2(storageT2);
+  osT2 << T;
+  EXPECT_EQ(mes, osT2.str());
+  T.dump(2);
+  std::string expectMes2 = R"(shape: ( 4 )
+max: 1515.200  min: 1.200
+[1.200, 12.100, ...]
+)";
+  std::string storageT3;
+  llvm::raw_string_ostream osT3(storageT3);
+  // Only dump 2 elements.
+  T.dump(osT3, 2);
+  std::string mes2 = T.toString(2);
+  EXPECT_EQ(mes2, expectMes2);
+  EXPECT_EQ(mes2, osT3.str());
+}
+
+/// Test unpadded size.
+TEST(Tensor, unpaddedSize) {
+  Tensor partial(ElemKind::FloatTy, {11});
+  auto bytes = partial.getSizeInBytes();
+
+  // Get an unowned padded tensor sharing storage with partial.
+  auto paddedType = Type::newShape(partial.getType(), {256});
+  auto paddedBytes = paddedType.getSizeInBytes();
+  Tensor T(partial.getUnsafePtr(), &paddedType, bytes);
+  EXPECT_EQ(T.getUnpaddedSizeInBytes(), bytes);
+  EXPECT_EQ(T.getSizeInBytes(), paddedBytes);
+
+  // Test that moving the padded tensor preserves properties.
+  auto moved = std::move(T);
+  EXPECT_EQ(moved.getUnpaddedSizeInBytes(), bytes);
+  EXPECT_EQ(moved.getSizeInBytes(), paddedBytes);
+
+  // Test getting an unowned tensor from a padded tensor.
+  auto copy = moved.getUnowned(moved.dims());
+  EXPECT_EQ(copy.getUnpaddedSizeInBytes(), bytes);
+  EXPECT_EQ(copy.getSizeInBytes(), paddedBytes);
 }

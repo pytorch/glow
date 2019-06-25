@@ -91,9 +91,9 @@ BFSLevel getBFSLevel(Function *F) {
 
 /// Given \p nodes, return a list of nodes who are not in this set but use any
 /// node in this set.
-std::vector<Node *> getOutUsers(const std::set<Node *> &nodes) {
-  std::set<Node *> used;
-  for (std::set<Node *>::iterator it = nodes.begin(); it != nodes.end(); ++it) {
+std::vector<Node *> getOutUsers(const NodesSetTy &nodes) {
+  NodesSetTy used;
+  for (NodesSetTy::iterator it = nodes.begin(); it != nodes.end(); ++it) {
     Node *cur = *it;
     for (auto &U : cur->getUsers()) {
       if (nodes.count(U.getUser())) {
@@ -110,10 +110,9 @@ std::vector<Node *> getOutUsers(const std::set<Node *> &nodes) {
 
 /// Given \p nodes, return a list of nodes who are not in this set but use only
 /// the nodes in this set or constant.
-std::vector<Node *>
-getOutUsersWithOnePredecessor(const std::set<Node *> &nodes) {
-  std::set<Node *> used;
-  for (std::set<Node *>::iterator it = nodes.begin(); it != nodes.end(); ++it) {
+std::vector<Node *> getOutUsersWithOnePredecessor(const NodesSetTy &nodes) {
+  NodesSetTy used;
+  for (NodesSetTy::iterator it = nodes.begin(); it != nodes.end(); ++it) {
     Node *cur = *it;
     for (auto &U : cur->getUsers()) {
       Node *user = U.getUser();
@@ -140,68 +139,135 @@ getOutUsersWithOnePredecessor(const std::set<Node *> &nodes) {
   return ret;
 }
 
-uint64_t getOutMemPerNode(const std::set<Node *> &nodes, const Node *node) {
+/// \returns the memory usage of the output caused by \p node who has users not
+/// in the set \p nodes.
+uint64_t getOutMemPerNode(const NodesSetTy &nodes, const Node *node) {
+  uint64_t ret = 0;
   for (size_t i = 0, e = node->getNumResults(); i < e; i++) {
-    for (auto &U : node->getNthResult(i).getNode()->getUsers()) {
+    NodeValue nodeVal = node->getNthResult(i);
+    for (auto &U : nodeVal.getUsers()) {
       Node *user = U.getUser();
-      if (nodes.count(user) == 0) {
-        // Find the user that doesn't belong to this subgraph.
-        // If a node has several users, the memory usage is only counted once.
-        return node->getType(i)->getSizeInBytes();
+      if (nodes.find(const_cast<Node *>(user)) == nodes.end()) {
+        ret += node->getType(i)->getSizeInBytes();
+        break;
       }
     }
   }
-  return 0;
+  return ret;
 }
 
-GraphMemInfo getGraphMemInfo(const std::set<Node *> &nodes) {
-  GraphMemInfo ret;
-  std::set<Node *> nSet;
-  for (std::set<Node *>::iterator it = nodes.begin(); it != nodes.end(); ++it) {
-    Node *cur = *it;
-    // For Save onde, the only required memory is for output.
-    if (auto *SN = llvm::dyn_cast<SaveNode>(cur)) {
-      Storage *out = llvm::dyn_cast<Storage>(SN->getOutput().getNode());
-      ret.outMemSize += out->getType()->getSizeInBytes();
+/// Given nodes set \p currNodes and its memory usage info \p info, \returns the
+/// new memory usage if \p newNode is added into \p currNodes.
+GraphMemInfo updateGraphMemInfoByAddingNode(const NodesSetTy &currNodes,
+                                            const GraphMemInfo &info,
+                                            Node *newNode) {
+  GraphMemInfo ret = info;
+
+  // Collect the used NodeValues (Storage nodes and outputs from the nodes
+  // outside of currNodes).
+  std::set<NodeValue> usedNodeValue;
+  for (auto N : currNodes) {
+    for (size_t i = 0, e = N->getNumInputs(); i < e; i++) {
+      NodeValue nodeVal = N->getNthInput(i);
+      if (currNodes.count(nodeVal.getNode()) == 0) {
+        usedNodeValue.insert(nodeVal);
+      }
+    }
+  }
+
+  // The memory usage changes due to newNode's inputs:
+  for (size_t i = 0, e = newNode->getNumInputs(); i < e; i++) {
+    if (llvm::isa<SaveNode>(newNode) && i == SaveNode::OutputIdx) {
       continue;
     }
-    // Check the inputs of each node in this subgraph and decide if it
-    // contributes to the memory usage:
-    for (size_t i = 0, e = cur->getNumInputs(); i < e; i++) {
-      Node *node = cur->getNthInput(i).getNode();
-      if (nodes.count(node) || nSet.count(node)) {
-        // This input belongs to this subgraph or it has been considered
-        // already, nothing to do.
+    NodeValue nodeVal = newNode->getNthInput(i);
+    Node *N = nodeVal.getNode();
+
+    if (usedNodeValue.count(nodeVal)) {
+      // This input has been considered already, nothing to do.
+      continue;
+    }
+
+    Storage *in = llvm::dyn_cast<Storage>(N);
+    if (in) {
+      // Node uses placeholders or constants which are not used in this set
+      // before, need to add the memory.
+      uint64_t size = in->getType()->getSizeInBytes();
+      if (in->getKind() == Kinded::Kind::ConstantKind) {
+        ret.constMemSize += size;
+      } else {
+        // PlaceHolder for Input.
+        ret.inMemSize += size;
+      }
+      usedNodeValue.insert(nodeVal);
+      continue;
+    }
+
+    if (currNodes.count(N)) {
+      // This input is inside of currNodes. Let node1 belongs to currNodes and
+      // only newNode uses nodes1's output(i.e. node1 -> newNode, and if node1
+      // -> node2, node2 belongs to currNodes). Before newNode is added, the
+      // size of node1's output is added into outMemSize. But if newNode is
+      // added, node1's output size should be removed from outMemSize.
+      bool removable = true;
+      for (auto &U : nodeVal.getUsers()) {
+        if (U.getUser() != newNode && currNodes.find(const_cast<Node *>(
+                                          U.getUser())) == currNodes.end()) {
+          // This means nodeVal is used by some other node not in currNodes, so
+          // even newNode is added, the output size still need to be counted.
+          removable = false;
+          break;
+        }
+      }
+      if (removable) {
+        ret.outMemSize -= nodeVal.getType()->getSizeInBytes();
+      }
+    } else {
+      // In this case, this input is not a storage type node nor belongs
+      // to this subgraph. Therefore, when creating paritions, we need to add
+      // a PlaceHolder for the data from outside.
+      ret.inMemSize += nodeVal.getType()->getSizeInBytes();
+      usedNodeValue.insert(nodeVal);
+    }
+  }
+
+  // The memory usage changes due to newNode's outputs.
+  if (auto *SN = llvm::dyn_cast<SaveNode>(newNode)) {
+    // For SaveNode, add the output size.
+    Storage *out = llvm::dyn_cast<Storage>(SN->getPlaceholder());
+    ret.outMemSize += out->getType()->getSizeInBytes();
+    return ret;
+  }
+
+  for (size_t i = 0, e = newNode->getNumResults(); i < e; i++) {
+    auto nodeVal = newNode->getNthResult(i);
+    for (auto &U : nodeVal.getUsers()) {
+      if (currNodes.count(U.getUser()) == 0) {
+        // The nodeVal (i.e. the ith output of newNode) is not used in
+        // currNodes:
         continue;
       }
-      nSet.insert(node);
-      Storage *in = llvm::dyn_cast<Storage>(node);
-      if (in) {
-        uint64_t size = in->getType()->getSizeInBytes();
-        if (node->getKind() == Kinded::Kind::ConstantKind) {
-          // Constant.
-          ret.constMemSize += size;
-        } else {
-          // PlaceHolder for Input.
-          ret.inMemSize += size;
-        }
-      } else {
-        // In this case, this input is neither a storage type node nor belongs
-        // to this subgraph. Therefore, when creating paritions, we need to add
-        // a PlaceHolder for the data from outside.
-        for (auto &U : node->getUsers()) {
-          if (U.getUser() == cur) {
-            ret.inMemSize += node->getType(0)->getSizeInBytes();
-            break;
-          }
-        }
-      }
+      // Assume newNode -> node1, where node1 belongs to currNodes set. Before
+      // newNode is added, node1's input size (from newNode) should be added
+      // into inMemSize. But afater newNode is added, the input size should be
+      // removed.
+      ret.inMemSize -= nodeVal.getType()->getSizeInBytes();
+      break;
     }
-    // Check the outputs of each node in this subgraph and decide if it
-    // contributes to the memory usage. Although at the stage, the output may
-    // not be a storage node, after real partitioning, a Save node will be added
-    // to hold the output:
-    ret.outMemSize += getOutMemPerNode(nodes, cur);
+  }
+
+  // Add the memory usage caused by newNode.
+  ret.outMemSize += getOutMemPerNode(currNodes, newNode);
+  return ret;
+}
+
+GraphMemInfo getGraphMemInfo(const NodesSetTy &nodes) {
+  GraphMemInfo ret;
+  NodesSetTy nodeSet;
+  for (NodesSetTy::iterator it = nodes.begin(); it != nodes.end(); ++it) {
+    Node *cur = *it;
+    ret = updateGraphMemInfoByAddingNode(nodeSet, ret, cur);
+    nodeSet.insert(cur);
   }
   return ret;
 }
