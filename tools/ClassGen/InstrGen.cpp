@@ -456,6 +456,17 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::SameType, {"Dest", "Src"})
       .autoIRGen("Log");
 
+  BB.newInstr("ElementExp")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .inplaceOperand({
+          "Dest",
+          "Src",
+      })
+      .dataParallel()
+      .autoVerify(VerifyKind::SameType, {"Dest", "Src"})
+      .autoIRGen("Exp");
+
   BB.newInstr("ElementSelect")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Cond", OperandKind::In)

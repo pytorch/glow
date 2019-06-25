@@ -1996,6 +1996,24 @@ void BoundInterpreterFunction::fwdElementLogInst(const ElementLogInst *I) {
 }
 
 template <typename ElemTy>
+void BoundInterpreterFunction::fwdElementExpInstFloatImpl(
+    const ElementExpInst *I) {
+  staticAssertFloatingPointType(ElemTy);
+
+  auto inW = getWeightHandle<ElemTy>(I->getSrc());
+  auto outW = getWeightHandle<ElemTy>(I->getDest());
+  for (size_t i = 0, e = inW.size(); i < e; i++) {
+    float val = inW.raw(i);
+    outW.raw(i) = ElemTy(exp(val));
+  }
+}
+
+void BoundInterpreterFunction::fwdElementExpInst(const ElementExpInst *I) {
+  dispatchFloatingPointImpl(fwdElementExpInstFloatImpl,
+                            I->getSrc()->getElementType(), I);
+}
+
+template <typename ElemTy>
 void BoundInterpreterFunction::fwdElementSelectInstFloatImpl(
     const glow::ElementSelectInst *I) {
   staticAssertFloatingPointType(ElemTy);

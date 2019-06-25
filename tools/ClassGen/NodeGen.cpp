@@ -309,6 +309,11 @@ int main(int argc, char **argv) {
       .addInput("Input")
       .addResultFromCtorArg()
       .setDocstring("Performs element-wise natural log to the Input.");
+
+  BB.newNode("Exp")
+      .addInput("Input")
+      .addResultFromCtorArg()
+      .setDocstring("Performs element-wise exponential to the Input.");
   // clang-format on
 
   BB.newNode("Select")

@@ -84,6 +84,7 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::LocalResponseNormalizationNodeKind:
   case Kinded::Kind::LogNodeKind:
   case Kinded::Kind::TanhNodeKind:
+  case Kinded::Kind::ExpNodeKind:
   case Kinded::Kind::SigmoidNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Float16Ty});

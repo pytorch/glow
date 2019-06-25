@@ -255,6 +255,40 @@ TEST(onnx, importUniBroadcastMultiOutput) {
   (void)onnxLD;
 }
 
+/// Test loading of Elementwise Unary Ops floating point.
+static void testEltwiseUnaryOpFloat(std::string fileName,
+                                    llvm::ArrayRef<size_t> inputShape,
+                                    std::string input_name, float delta,
+                                    const std::function<float(float)> &op) {
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+  std::string NetFilename =
+      std::string(GLOW_DATA_PATH "tests/models/onnxModels/") + fileName;
+  PlaceholderBindings bindings;
+  Placeholder *graphOutputVar;
+  Type input_type(ElemKind::FloatTy, inputShape);
+  ONNXModelLoader onnxLD(NetFilename, {input_name.c_str()}, {&input_type}, *F);
+  graphOutputVar = EXIT_ON_ERR(onnxLD.getSingleOutput());
+  auto PH = mod.getPlaceholderByName(input_name);
+  auto *inTensor = bindings.allocate(PH);
+  inTensor->getHandle().randomize(-10.0, 10.0, mod.getPRNG());
+  // Compile&run the graph, and check the output
+  EE.compile(CompilationMode::Infer, F);
+  EE.run(bindings);
+  auto result = bindings.get(graphOutputVar)->getHandle();
+  auto inHandle = inTensor->getHandle();
+  ASSERT_TRUE(result.dims() == inputShape);
+  for (size_t i = 0; i < result.getType().size(); i++) {
+    EXPECT_NEAR(result.raw(i), op(inHandle.raw(i)), delta);
+  }
+}
+
+TEST(onnx, importExp) {
+  testEltwiseUnaryOpFloat("exp.onnxtxt", {1, 2, 4, 3}, "data", 0.002,
+                          [](float a) { return std::exp(a); });
+}
+
 static void testImportPRelu(std::string filename,
                             llvm::ArrayRef<size_t> inputShape,
                             std::vector<float> expectedSlope) {

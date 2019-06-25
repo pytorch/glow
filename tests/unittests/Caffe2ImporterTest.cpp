@@ -24,6 +24,42 @@
 #endif
 
 using namespace glow;
+/// Test loading of Elementwise Unary Ops floating point.
+static void testEltwiseUnaryOpFloat(std::string fileName,
+                                    llvm::ArrayRef<size_t> inputShape,
+                                    std::string input_name, float delta,
+                                    const std::function<float(float)> &op) {
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+  std::string NetDescFilename =
+      std::string(GLOW_DATA_PATH "tests/models/caffe2Models/") + fileName;
+  std::string NetWeightFilename(
+      GLOW_DATA_PATH "tests/models/caffe2Models/empty_init_net.pbtxt");
+
+  PlaceholderBindings bindings;
+  Placeholder *graphOutputVar;
+  Type input_type(ElemKind::FloatTy, inputShape);
+  Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename,
+                             {input_name.c_str()}, {&input_type}, *F);
+  graphOutputVar = EXIT_ON_ERR(caffe2LD.getSingleOutput());
+  auto PH = mod.getPlaceholderByName(input_name);
+  auto *inTensor = bindings.allocate(PH);
+  inTensor->getHandle().randomize(-10.0, 10.0, mod.getPRNG());
+  EE.compile(CompilationMode::Infer, F);
+  EE.run(bindings);
+  auto result = bindings.get(graphOutputVar)->getHandle();
+  auto inHandle = inTensor->getHandle();
+  ASSERT_TRUE(result.dims() == inputShape);
+  for (size_t i = 0; i < result.getType().size(); i++) {
+    EXPECT_NEAR(result.raw(i), op(inHandle.raw(i)), delta);
+  }
+}
+
+TEST(caffe2, importExp) {
+  testEltwiseUnaryOpFloat("exp_op_net.pbtxt", {1, 2, 4, 3}, "data", 0.002,
+                          [](float a) { return std::exp(a); });
+}
 
 /// Test loading conv op from a Caffe2 model.
 /// The input is N*C*H*W (1*1*3*3), the kernel is 2,
