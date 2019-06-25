@@ -30,7 +30,6 @@
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
 
-#include <iostream>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -62,6 +61,7 @@ using llvm::cast;
 using llvm::dyn_cast;
 using llvm::isa;
 
+namespace {
 /// Live interval of a memory buffer.
 /// It represents a sequence of instructions [begin, end) where this buffer
 /// holds a value.
@@ -164,8 +164,9 @@ public:
   /// numbered.
   int64_t getInstrNumber(const Instruction *I) const {
     auto result = instrToNum_.find(I);
-    if (result == instrToNum_.end())
+    if (result == instrToNum_.end()) {
       return -1;
+    }
     return (int64_t)result->second;
   }
 
@@ -175,6 +176,7 @@ public:
     return numToInstr_[instrNumber / MAX_SLOT];
   }
 };
+} // namespace
 
 #ifndef NDEBUG
 llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const Interval &I) {
@@ -283,8 +285,9 @@ static void sinkAllocas(IRFunction &M) {
       }
       allocs.erase(A);
       M.insertInstruction(&I, aa);
-      if (allocs.empty())
+      if (allocs.empty()) {
         return;
+      }
     }
   }
 
@@ -320,7 +323,7 @@ static void sinkTensorViews(IRFunction &M) {
     // Holds the next value for the iterator.
     auto nextIt = instrs.end();
     auto *I = &*it;
-    for (int i = 0, e = I->getNumOperands(); i < e; i++) {
+    for (int i = 0, f = I->getNumOperands(); i < f; i++) {
       auto op = I->getOperand(i).first;
       auto tv = dyn_cast<TensorViewInst>(op);
       if (!tv) {
@@ -332,8 +335,9 @@ static void sinkTensorViews(IRFunction &M) {
       }
       auto inserted = M.insertInstruction(I, tv);
       tensorviews.erase(TV);
-      if (tensorviews.empty())
+      if (tensorviews.empty()) {
         return;
+      }
       if (nextIt == instrs.end()) {
         // Remember and re-scan the first inserted instruction as it may use
         // another tensor_view.
@@ -422,8 +426,9 @@ static bool hasMultipleWriters(const Value *V,
     Instruction *user = U.get();
 
     // Ignore deallocs.
-    if (isa<DeallocActivationInst>(user))
+    if (isa<DeallocActivationInst>(user)) {
       continue;
+    }
 
     // Ignore readers.
     if (U.getOperand().second == OperandKind::In) {
@@ -452,8 +457,9 @@ static Instruction *getSingleWriter(const Value *V) {
     Instruction *user = U.get();
 
     // Ignore deallocs.
-    if (isa<DeallocActivationInst>(user))
+    if (isa<DeallocActivationInst>(user)) {
       continue;
+    }
 
     auto op = U.getOperand();
 
@@ -544,8 +550,9 @@ static void calculateLiveIntervals(const IRFunction &M,
     // Ignore tensorview instructions, because they are just aliases
     // and do not represent a read or write, even though formally they
     // are reads due to the @in src parameter.
-    if (isa<TensorViewInst>(I))
+    if (isa<TensorViewInst>(I)) {
       continue;
+    }
 
     auto instOperands = I->getOperands();
     llvm::SmallVector<Instruction::Operand, 8> sortedOperands(
@@ -559,7 +566,7 @@ static void calculateLiveIntervals(const IRFunction &M,
     // This ordering ensures that we process reads before writes.
     std::sort(sortedOperands.begin(), sortedOperands.end());
 
-    for (int i = 0, e = sortedOperands.size(); i < e; i++) {
+    for (int i = 0, f = sortedOperands.size(); i < f; i++) {
       auto op = sortedOperands[i].first;
       auto opKind = sortedOperands[i].second;
       // Look through tensorviews. As a result, all operations
@@ -609,8 +616,9 @@ static void calculateLiveIntervals(const IRFunction &M,
       auto &intervals = found->second;
       // Extend the interval but only if current use is not a write or
       // if it is a write, but we have seen a read before.
-      if (opKind != OperandKind::Out)
+      if (opKind != OperandKind::Out) {
         intervals.back().end_ = opIdx + 1;
+      }
 
       // How @inout operands should be handled?
       // They cannot be treated as an end of an interval and a beginning of a
@@ -623,8 +631,9 @@ static void calculateLiveIntervals(const IRFunction &M,
       // flag is set to false to indicate that the value is not guaranteed to be
       // the same inside the interval. Note: partial writes have similar
       // properties and so are treated in the same way.
-      if (opKind == OperandKind::InOut || isPartialWrite)
+      if (opKind == OperandKind::InOut || isPartialWrite) {
         intervals.back().sameValue_ = false;
+      }
 
       // No need to create a new interval if it is not a write, or if it is a
       // partial write.
@@ -656,8 +665,9 @@ static void calculateLiveIntervals(const IRFunction &M,
 static Intervals::iterator getEnclosingInterval(Intervals &liveIntervals,
                                                 size_t instIdx) {
   for (auto I = liveIntervals.begin(), E = liveIntervals.end(); I != E; ++I) {
-    if (I->begin_ <= instIdx && instIdx < I->end_)
+    if (I->begin_ <= instIdx && instIdx < I->end_) {
       return I;
+    }
   }
   return liveIntervals.end();
 }
@@ -670,8 +680,9 @@ static bool isEnclosedInside(Interval &lhs, Interval &rhs) {
 /// \returns true of any intervals from \p Ints overlap with interval \p I.
 static bool hasOverlappingIntervals(Intervals &intervals, Interval I) {
   for (const auto &curI : intervals) {
-    if (std::max(curI.begin_, I.begin_) < std::min(curI.end_, I.end_))
+    if (std::max(curI.begin_, I.begin_) < std::min(curI.end_, I.end_)) {
       return true;
+    }
   }
   return false;
 }
@@ -753,26 +764,30 @@ static void replaceAllUsesInsideIntervalWith(
             e = instrs.end();
        it != e && instIdx <= liveInterval.end_; ++it) {
     auto *I = &*it;
-    if (isa<DeallocActivationInst>(I))
+    if (isa<DeallocActivationInst>(I)) {
       continue;
+    }
     // Ignore any new instructions which were not present as the instruction
     // numbering was performed.
     auto instNum = instrNumbering.getInstrNumber(I);
-    if (instNum >= 0)
+    if (instNum >= 0) {
       instIdx = instNum;
-    if (instNum < 0)
+    }
+    if (instNum < 0) {
       continue;
+    }
 
     bool sawDefinition = false;
     // This is an instruction inside the interval.
     // Iterate over all operands and perform replacements.
-    for (int i = 0, e = I->getNumOperands(); i < e; i++) {
+    for (int i = 0, f = I->getNumOperands(); i < f; i++) {
       auto op = I->getOperand(i).first;
       auto opOrigin = getOrigin(op);
       auto opKind = I->getOperand(i).second;
       // Is the operand the value we are looking for?
-      if (opOrigin != valOrigin)
+      if (opOrigin != valOrigin) {
         continue;
+      }
       size_t opIdx = static_cast<size_t>(
           (opKind == OperandKind::In)
               ? LiveIntervalsInstructionNumbering::getInstrReadSlotNumber(
@@ -780,8 +795,9 @@ static void replaceAllUsesInsideIntervalWith(
               : LiveIntervalsInstructionNumbering::getInstrWriteSlotNumber(
                     instIdx));
       // Skip operands outside of the interval.
-      if (opIdx < liveInterval.begin_ || opIdx >= liveInterval.end_)
+      if (opIdx < liveInterval.begin_ || opIdx >= liveInterval.end_) {
         continue;
+      }
 
       std::pair<Value *, bool> replacementAndHasCreated =
           getCompatibleValueForReplacement(B, I, *op, *with);
@@ -843,6 +859,7 @@ static void eraseInstructions(IRFunction &M,
 /// outside.
 static bool isObservable(Value *V) { return isa<WeightVar>(getOrigin(V)); }
 
+namespace {
 /// A helper class for performing a sharing of buffers used by a given
 /// instruction.
 class BufferSharingOptimizer {
@@ -894,8 +911,9 @@ class BufferSharingOptimizer {
   /// reused, or nullptr if none of the buffers can be reused.
   Value *getBufferToBeReused() {
     // Do not try to combine observables.
-    if (isObservable(destOrigin_) && isObservable(srcOrigin_))
+    if (isObservable(destOrigin_) && isObservable(srcOrigin_)) {
       return nullptr;
+    }
 
     // Check if dest or src live interval is the last live interval of
     // an observable memory location.
@@ -971,8 +989,9 @@ class BufferSharingOptimizer {
       // Bail, because src cannot be replaced by dest because dest is being
       // mutated while src is alive or because src contains the last write
       // into an observable memory location.
-      if (isSrcLastIntervalOfObservable || srcIntervalCannotBeReplaced)
+      if (isSrcLastIntervalOfObservable || srcIntervalCannotBeReplaced) {
         return nullptr;
+      }
       return destOrigin_;
     }
 
@@ -1022,8 +1041,9 @@ public:
     // buffer.
     auto *bufferToReuse = getBufferToBeReused();
     // Bail if none of the buffers can be reused.
-    if (!bufferToReuse)
+    if (!bufferToReuse) {
       return false;
+    }
 
     // TODO: May be disallow usage of dest interval for src?
     // This would avoid extending dest lifetime to start earlier.
@@ -1081,6 +1101,7 @@ public:
     moveInterval(oldIntervals, newIntervals, oldInterval);
   }
 };
+} // namespace
 
 /// Tries to share a buffer for two operands of the same instruction.
 /// An operand X cannot reuse the buffer of another operand Y,
@@ -1098,13 +1119,15 @@ static void tryToShareBuffersForInstr(
   for (unsigned first = 0, e = I->getNumOperands(); first < e; first++) {
     auto destOp = I->getOperand(first);
     Value *dest = getAllocationOrigin(destOp.first);
-    if (!dest)
+    if (!dest) {
       dest = destOp.first;
+    }
     for (unsigned second = first + 1; second < e; second++) {
       auto srcOp = I->getOperand(second);
       Value *src = getAllocationOrigin(srcOp.first);
-      if (!src)
+      if (!src) {
         src = srcOp.first;
+      }
       // Operands must be different, but of the same type.
       if (destOp.first->getType() != srcOp.first->getType()) {
         continue;
@@ -1112,8 +1135,9 @@ static void tryToShareBuffersForInstr(
 
       if (dest == src) {
         // Bail if operands are the same and are combined already.
-        if (Instruction::isInplaceOp(I, first, second))
+        if (Instruction::isInplaceOp(I, first, second)) {
           return;
+        }
         continue;
       }
 
@@ -1130,8 +1154,9 @@ static void tryToShareBuffersForInstr(
       // The buffers can be reused in principle, thus try to share the buffers.
       BufferSharingOptimizer opt(M, intervalsMap, instrNumbering, I, instIdx,
                                  dest, src);
-      if (opt.tryToShareBuffers())
+      if (opt.tryToShareBuffers()) {
         return;
+      }
     }
   }
 }
@@ -1163,8 +1188,9 @@ static void shareBuffers(IRFunction &M) {
   for (auto it = instrs.rbegin(), e = instrs.rend(); it != e; ++it) {
     Instruction *I = &*it;
     auto instIdx = instrNumbering.getInstrNumber(I);
-    if (instIdx < 0)
+    if (instIdx < 0) {
       continue;
+    }
     // Try to reuse the operand memory buffers.
     tryToShareBuffersForInstr(intervalsMap, instrNumbering, I, instIdx);
   }
@@ -1214,8 +1240,9 @@ static void eliminateDeadStores(IRFunction &M) {
   for (auto it = instrs.rbegin(), e = instrs.rend(); it != e; ++it) {
     auto *I = &*it;
     if (isa<DeallocActivationInst>(I) || isa<AllocActivationInst>(I) ||
-        isa<TensorViewInst>(I))
+        isa<TensorViewInst>(I)) {
       continue;
+    }
     size_t numMutatedOperands = 0;
     size_t numNonReadMutatedOperands = 0;
     // Process all operand writes.
@@ -1459,8 +1486,9 @@ void optimizeExtracts(IRFunction &M) {
 /// dumping of outputs after each instruction.
 /// For each input/output tensor its name and its value are dumped.
 static void performDebugInstrumentation(IRFunction &M) {
-  if (!instrumentDebug && instrumentDebugOnly.empty())
+  if (!instrumentDebug && instrumentDebugOnly.empty()) {
     return;
+  }
 
   auto &instrs = M.getInstrs();
   for (auto it = instrs.begin(), e = instrs.end(); it != e;) {
@@ -1525,8 +1553,9 @@ void performPeepholeOptimizations(IRFunction &M) {
       // Optimize only if the cache is an allocation and
       // it has exactly 2 users: the current instruction and
       // a deallocation.
-      if (!isa<AllocActivationInst>(SrcXY) || SrcXY->getNumUsers() != 2)
+      if (!isa<AllocActivationInst>(SrcXY) || SrcXY->getNumUsers() != 2) {
         continue;
+      }
 
       auto *newI = B.createMaxPoolInst(PMI->getName(), PMI->getDest(),
                                        PMI->getSrc(), PMI->getKernels(),
@@ -1565,14 +1594,17 @@ void performPeepholeOptimizations(IRFunction &M) {
       auto *lhs = EM->getLHS();
       auto *rhs = EM->getRHS();
       auto *wlhs = getSingleWriter(lhs);
-      if (!wlhs)
+      if (!wlhs) {
         continue;
-      if (!isa<SplatInst>(wlhs))
+      }
+      if (!isa<SplatInst>(wlhs)) {
         continue;
+      }
       // If RHS is a splat already, there is nothing to do.
       auto *wrhs = getSingleWriter(rhs);
-      if (wrhs && isa<SplatInst>(wrhs))
+      if (wrhs && isa<SplatInst>(wrhs)) {
         continue;
+      }
       auto *newI =
           B.createElementMaxInst(EM->getName(), EM->getDest(), rhs, lhs);
       it = M.moveInstruction(I, newI);
@@ -1621,8 +1653,9 @@ glow::generateAndOptimizeIR(Function *F, const Backend &B,
 /// Perform optimizations on the IR representation.
 void glow::optimize(IRFunction &M, bool shouldShareBuffers) {
   M.verify();
-  if (!optimizeIR)
+  if (!optimizeIR) {
     return;
+  }
 
   performPeepholeOptimizations(M);
 
@@ -1633,8 +1666,9 @@ void glow::optimize(IRFunction &M, bool shouldShareBuffers) {
   optimizeExtracts(M);
 
   // Reuse buffers from previous operations.
-  if (shouldShareBuffers)
+  if (shouldShareBuffers) {
     shareBuffers(M);
+  }
 
   performPeepholeOptimizations(M);
 
