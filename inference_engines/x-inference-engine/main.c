@@ -468,6 +468,7 @@ int retreive_and_store_output(struct InferenceIO *inference_io, const struct arg
     const size_t size = arguments->batch * arguments->out_tensor_size;
     size_t bytes_total;
     int bytes_written;
+    uint8_t *buffer;
     int fd;
     int retval = X_SUCCESS;
 
@@ -478,8 +479,9 @@ int retreive_and_store_output(struct InferenceIO *inference_io, const struct arg
     }
 
     bytes_total = 0;
+    buffer = inference_io->output;
     while (bytes_total < size) {
-        bytes_written = write(fd, inference_io->output, size - bytes_total);
+        bytes_written = write(fd, buffer, size - bytes_total);
         bytes_total += bytes_written;
 
         if (bytes_written <= 0) {
