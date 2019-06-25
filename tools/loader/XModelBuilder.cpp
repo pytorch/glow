@@ -236,13 +236,18 @@ main(int argc, char **argv)
 {
     glow::PlaceholderBindings ioBindings{};
     std::pair<glow::Placeholder *, glow::Tensor *> ioPlaceholders{};
-    glow::Loader loader(argc, argv);
+
+    // This must be called before a loader instance is created.
+    glow::parseCommandLine(argc, argv);
+    glow::Loader loader{};
+
     std::vector<std::size_t> dims{};
     std::vector<std::float_t> inputData{};
     std::vector<std::float_t> outputData{};
     std::vector<std::string> files{};
     glow::Tensor inputT{};
     std::size_t inputSize{};
+
 
     for (auto dim : inputTensorDimensions)
         dims.push_back(dim);
