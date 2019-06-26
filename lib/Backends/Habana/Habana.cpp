@@ -1349,7 +1349,6 @@ bool HabanaBackend::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::ConcatNodeKind:
   case Kinded::Kind::DequantizeNodeKind:
   case Kinded::Kind::DivNodeKind:
-  case Kinded::Kind::GatherNodeKind:
   case Kinded::Kind::FullyConnectedNodeKind:
   case Kinded::Kind::HabanaFullyConnectedNodeKind:
   case Kinded::Kind::HabanaReshapeNodeKind:
@@ -1376,6 +1375,9 @@ bool HabanaBackend::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::FusedRowwiseQuantizedSparseLengthsWeightedSumNodeKind:
   case Kinded::Kind::LocalResponseNormalizationNodeKind:
     return true;
+  case Kinded::Kind::GatherNodeKind:
+    // Gather is technically supported but currently appears to trigger bugs in
+    // large models.
   default:
     return false;
   }
