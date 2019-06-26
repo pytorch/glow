@@ -89,13 +89,13 @@ elif [[ "$CIRCLE_JOB" == "COVERAGE" ]]; then
           ../
 elif [[ "$CIRCLE_JOB" == "CHECK_CLANG_FORMAT" ]]; then
     sudo apt-get install -y clang-format-7
-else
+elif [[ "$CIRCLE_JOB" == "OPENCL" ]]; then
     install_pocl
+    CMAKE_ARGS+=("-DGLOW_WITH_OPENCL=ON")
+else
     CMAKE_ARGS+=("-DCMAKE_BUILD_TYPE=Debug")
     if [[ "${CIRCLE_JOB}" == "SHARED" ]]; then
         CMAKE_ARGS+=("-DBUILD_SHARED_LIBS=ON")
-    else
-        CMAKE_ARGS+=("-DGLOW_WITH_OPENCL=ON")
     fi
 fi
 
