@@ -172,11 +172,11 @@ private:
 
   void fwdElementAddInstI8Impl(const ElementAddInst *I);
   template <typename ElemTy>
-  void fwdElementAddInstFloatImpl(const ElementAddInst *I);
+  void fwdElementAddInstArithmeticImpl(const ElementAddInst *I);
 
   void fwdElementMaxInstI8Impl(const ElementMaxInst *I);
   template <typename ElemTy>
-  void fwdElementMaxInstFloatImpl(const ElementMaxInst *I);
+  void fwdElementMaxInstArithmeticImpl(const ElementMaxInst *I);
 
   template <typename ElemTy>
   void fwdBatchedAddInstFloatImpl(const BatchedAddInst *I);
@@ -202,13 +202,13 @@ private:
       const glow::LocalResponseNormalizationInst *I);
 
   template <typename ElemTy>
-  void fwdElementSubInstFloatImpl(const ElementSubInst *I);
+  void fwdElementSubInstArithmeticImpl(const ElementSubInst *I);
 
   template <typename ElemTy>
-  void fwdElementMulInstFloatImpl(const ElementMulInst *I);
+  void fwdElementMulInstArithmeticImpl(const ElementMulInst *I);
 
   template <typename ElemTy>
-  void fwdElementMinInstFloatImpl(const ElementMinInst *I);
+  void fwdElementMinInstArithmeticImpl(const ElementMinInst *I);
 
   template <typename ElemTy>
   void fwdElementCmpLTEInstFloatImpl(const ElementCmpLTEInst *I);
