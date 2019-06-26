@@ -50,8 +50,9 @@ run_and_check_resnet50_bundle() {
 cd "${GLOW_BUILD_DIR}"
 case ${CIRCLE_JOB} in
     ASAN)
-        # ASAN is not enabled in onnx, therefore we should skip it for now.
-        # TODO: Enable ASAN test.
+        run_unit_tests check
+        ;;
+    OPENCL)
         run_unit_tests check
         ;;
     TSAN)
@@ -62,11 +63,9 @@ case ${CIRCLE_JOB} in
         run_unit_tests check
         run_unit_tests test_unopt
         ;;
-
     SHARED)
         # No tests with shared libs; it's similar to DEBUG.
         ;;
-
     RELEASE_WITH_EXPENSIVE_TESTS)
         run_unit_tests check_expensive
         run_and_check_lenet_mnist_bundle
@@ -83,7 +82,7 @@ case ${CIRCLE_JOB} in
         ./utils/format.sh check
         ;;
     *)
-        echo "Error, '${CIRCLE_JOB}' not valid mode; Must be one of {ASAN, TSAN, DEBUG, SHARED, RELEASE_WITH_EXPENSIVE_TESTS}."
+        echo "Error, '${CIRCLE_JOB}' not valid mode; Please, check .circleci/test.sh for list of supported tests."
         exit 1
         ;;
 esac
