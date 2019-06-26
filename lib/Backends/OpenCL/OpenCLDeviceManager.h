@@ -28,6 +28,64 @@ namespace glow {
 class OpenCLFunction;
 namespace runtime {
 
+/// A simple wrapper struct around cl_command_queue. This exists mainly to
+/// remember queue settings.
+struct OpenCLCommandQueue {
+  cl_command_queue backingQueue{nullptr};
+  cl_command_queue_properties props{0};
+};
+
+/// A class that contains a pool of reusable OpenCL
+/// command queues
+class OpenCLCommandQueuePool {
+  // OpenCL context for the queues managed by this pool.
+  cl_context context_{nullptr};
+  // OpenCL device that the queues in the pool correspond to.
+  cl_device_id device_{0};
+  // Map from queue properties to vector queues that have those properties.
+  std::unordered_map<cl_command_queue_properties,
+                     std::vector<OpenCLCommandQueue>>
+      queues_;
+  // Number of queues in the pool, both out on loan and within the pool.
+  unsigned queuesAllocated_{0};
+  // Number of *available* queues.
+  unsigned queuesAvailable_{0};
+  // Number of allocated queues split by properties.
+  std::unordered_map<cl_command_queue_properties, unsigned>
+      queuesAllocatedByProps_;
+  // Number of available queues split by properties.
+  std::unordered_map<cl_command_queue_properties, unsigned>
+      queuesAvailableByProps_;
+
+public:
+  /// Default constructor.
+  OpenCLCommandQueuePool() = default;
+  /// Destructor.
+  ~OpenCLCommandQueuePool();
+  /// Set the OpenCL context for the pool to \p context.
+  void setContext(const cl_context context) { context_ = context; }
+  /// Set the OpenCL device for the pool to \p device.
+  void setDevice(const cl_device_id device) { device_ = device; }
+  /// Request a command queue from the pool that has the properties specified
+  /// in \p properties.
+  llvm::Expected<OpenCLCommandQueue>
+  requestCommandQueue(cl_command_queue_properties properties = 0);
+  /// Return the command queue \p queue to the pool.
+  void returnCommandQueue(OpenCLCommandQueue &queue);
+  /// Return the total number of queues allocated by the pool.
+  unsigned getNumAllocatedQueues() const { return queuesAllocated_; }
+  /// Return the total number of queues available to request.
+  unsigned getNumQueuesAvailable() const { return queuesAvailable_; }
+  /// Return the total number of queues allocated by the pool with the
+  /// properties \p props.
+  unsigned
+  getNumAllocatedQueuesForProperties(cl_command_queue_properties props) const;
+  /// Return the total number of queues available to request with the properties
+  /// \p props.
+  unsigned
+  getNumQueuesAvailableForProperties(cl_command_queue_properties props) const;
+};
+
 /// A class that contains an openCL device buffer. It frees the buffer when it
 /// is destroyed. Can be extended to store multiple buffers and rotate through
 /// them. Also tracks number of functions using this buffer. Since adds/evicts
@@ -90,6 +148,16 @@ class OpenCLDeviceManager : public QueueBackedDeviceManager {
   /// Device name.
   std::string name_;
 
+  /// Command queue pool.
+  OpenCLCommandQueuePool commandQueuePool_;
+
+  /// Requests a command queue for the current run.
+  llvm::Expected<OpenCLCommandQueue>
+  requestRunCommandQueue(CompiledFunction *function);
+
+  /// Returns a command queue.
+  void returnRunCommandQueue(OpenCLCommandQueue &queue);
+
 public:
   OpenCLDeviceManager(const DeviceConfig &config);
 
@@ -111,14 +179,6 @@ public:
   /// device. This is not a promise as memory cost could vary due to alignment,
   /// etc.
   bool isMemoryAvailable(uint64_t estimate) const override;
-
-  /// Requests a command queue for the current run. Currently this creates a new
-  /// queue for each run. It could be extended to use a pool of pre-allocated
-  /// queues.
-  cl_command_queue requestRunCommandQueue(CompiledFunction *function);
-
-  /// Returns a command queue. Currently this frees the queue.
-  void returnRunCommandQueue(cl_command_queue commands);
 
 protected:
   /// Adds functions to the device. Calls to this are serialized so concurrency
