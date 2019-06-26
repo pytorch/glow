@@ -325,7 +325,7 @@ static void lowerSGDNode(Function *F, CompilationContext &cctx,
   auto type = G.getType();
 
   NodeValue gij = G;
-  if (L1Decay) {
+  if (L1Decay != 0.0f) {
     auto *L1DecaySplat = F->createSplat("L1DecaySplat", type, L1Decay);
     auto *zeroSplat = F->createSplat("zeroSplat", type, 0);
     auto *oneSplat = F->createSplat("oneSplat", type, 1);
@@ -337,7 +337,7 @@ static void lowerSGDNode(Function *F, CompilationContext &cctx,
 
     gij = F->createAdd("gij_with_l1", gij, L1Grad);
   }
-  if (L2Decay) {
+  if (L2Decay != 0.0f) {
     auto *L2DecaySplat = F->createSplat("L2DecaySplat", type, L2Decay);
 
     auto *L2Grad = F->createMul("L2Grad", L2DecaySplat, W);
@@ -445,8 +445,9 @@ static void lowerMeanVarNormalizationNode(Function *F, CompilationContext &cctx,
     // If channelIdx is not the last, transform input tensor to shape:
     // {d_1, d_2, ... d_n, numChannels}
     std::vector<unsigned_t> perm(in.dims().size());
-    for (size_t i = 0; i < perm.size(); i++)
+    for (size_t i = 0; i < perm.size(); i++) {
       perm[i] = i;
+    }
     std::swap(perm[channelIdx], perm[perm.size() - 1]);
     inPrep = F->createTranspose("in.transpose", in, perm);
   }
@@ -531,8 +532,9 @@ static void lowerBatchNormalizationGradNode(Function *F,
   // TODO: consider adding this functionality to the main operator set.
   if (channelIdx + 1 != inW.dims().size()) {
     std::vector<unsigned_t> perm(inW.dims().size());
-    for (size_t i = 0; i < perm.size(); i++)
+    for (size_t i = 0; i < perm.size(); i++) {
       perm[i] = i;
+    }
     std::swap(perm[channelIdx], perm[perm.size() - 1]);
 
     sumDyhmu = F->createTranspose("sumDyhmu.transpose", sumDyhmu, perm);
@@ -1012,8 +1014,9 @@ static void lowerNode(Function *F, Node *node, CompilationContext &cctx) {
   } else if (auto *RMN = dyn_cast<BatchedReduceMeanNode>(node)) {
     lowerBatchReduceMeanNode(F, cctx, *RMN);
   } else if (auto *CN = dyn_cast<ConvolutionNode>(node)) {
-    if (CN->getGroup() > 1)
+    if (CN->getGroup() > 1) {
       lowerGroupConvolutionNode(F, cctx, *CN);
+    }
   } else if (auto *CQC = dyn_cast<ChannelwiseQuantizedConvolutionNode>(node)) {
     lowerChannelwiseQuantizedConvolutionNode(F, cctx, *CQC);
   } else if (auto *TN = dyn_cast<TileNode>(node)) {
