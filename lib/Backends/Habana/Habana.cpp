@@ -15,6 +15,7 @@
  */
 
 #include "Habana.h"
+#include "HabanaUtils.h"
 
 #include "glow/Graph/PlaceholderBindings.h"
 #include "glow/IR/IR.h"
@@ -542,9 +543,9 @@ llvm::Error HabanaFunction::execute(ExecutionContext *context) {
   auto res = synEnqueueByName(
       deviceId, inputInfo.empty() ? &noInputEti : inputInfo.data(),
       inputInfo.size(), outputInfo.data(), outputInfo.size(), &handle);
-  seEvent.addArg("result", std::to_string(res));
+  seEvent.addArg("result", statusStr(res));
   if (res != synSuccess) {
-    return chk_make_err(res);
+    return MAKE_ERR(strFormat("synEnqueueByName failed: %s", statusStr(res)));
   }
   TRACE_EVENT_SCOPE_END_NAMED(seEvent);
 
