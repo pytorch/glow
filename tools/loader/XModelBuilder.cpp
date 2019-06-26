@@ -120,6 +120,12 @@ buildNetwork(glow::Loader &loader, const glow::TypeRef inputType, glow::Placehol
 
     loader.compile(ioBindings);
     inputPH = llvm::cast<glow::Placeholder>(EXIT_ON_ERR(LD->getNodeValueByName(inputName)));
+
+    // TODO: Modify to support multi-dimensional output.
+    //       This only supports scalar outputs for now. Modify this to support
+    //       multi-dimensional outputs. This can probably be accomplished with 
+    //       a call to getOutputByName("output_tensor_name"), where
+    //       "output_tensor_name" must be specified (perhaps as a cmd line arg?).
     outputPH = EXIT_ON_ERR(LD->getSingleOutput());
     outputTensor = ioBindings.get(outputPH);
     ret.first = inputPH;
@@ -206,6 +212,7 @@ runInference(glow::Loader &loader,
 
         glow::updateInputPlaceholders(ioBindings, {inputPH}, {&inputT});
         loader.runInference(ioBindings, 1);
+        // TODO: Modify this to accommodate multi-dimensional output.
         outputData.push_back(*outputIterTensor);
     }
 }
