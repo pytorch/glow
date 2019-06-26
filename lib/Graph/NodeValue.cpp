@@ -58,13 +58,13 @@ void NodeValue::typeUnsafeReplaceAllUsesOfWith(NodeValue v,
 
     // Log the change of node input(operand).
     if (Function *F = getNode()->getParent()) {
-      F->getLogContext().logNodeInputChange(U.getUser(), *this, v);
+      F->getLogContext()->logNodeInputChange(*(U.getUser()), *this, v);
     }
     // Constant or Placeholder has no associated Function, we need to log the
     // input changes inside its user's Function.
     else if (getNode()->getKind() == Kinded::Kind::ConstantKind ||
              getNode()->getKind() == Kinded::Kind::PlaceholderKind) {
-      userF->getLogContext().logNodeInputChange(U.getUser(), *this, v);
+      userF->getLogContext()->logNodeInputChange(*(U.getUser()), *this, v);
     }
 
     site->setOperand(v.getNode(), v.getResNo());
