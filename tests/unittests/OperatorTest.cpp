@@ -7066,40 +7066,29 @@ static void testConvertTo(glow::PlaceholderBindings &bindings_,
   }
 }
 
-/// Test that ConvertTo operator casts correctly from Int64 to Float.
-TEST_P(OperatorTest, ConvertFromInt64ToFloat) {
-  ENABLED_BACKENDS(Interpreter);
-  testConvertTo<int64_t, float>(bindings_, mod_, F_, EE_, ElemKind::Int64ITy,
-                                ElemKind::FloatTy);
-}
+/// Test that ConvertTo operator casts correctly from one type to another.
+#define TEST_CONVERT_TO(T_FROM, T_TO, DTY_FROM, DTY_TO)                        \
+  TEST_P(OperatorTest, ConvertFrom_##T_FROM##_To_##T_TO) {                     \
+    ENABLED_BACKENDS(Interpreter);                                             \
+    testConvertTo<T_FROM, T_TO>(bindings_, mod_, F_, EE_, DTY_FROM, DTY_TO);   \
+  }
+TEST_CONVERT_TO(float, float, ElemKind::FloatTy, ElemKind::FloatTy)
+TEST_CONVERT_TO(float, float16_t, ElemKind::FloatTy, ElemKind::Float16Ty)
+TEST_CONVERT_TO(float, int32_t, ElemKind::FloatTy, ElemKind::Int32ITy)
+TEST_CONVERT_TO(float, int64_t, ElemKind::FloatTy, ElemKind::Int64ITy)
+TEST_CONVERT_TO(float16_t, float, ElemKind::Float16Ty, ElemKind::FloatTy)
+TEST_CONVERT_TO(float16_t, float16_t, ElemKind::Float16Ty, ElemKind::Float16Ty)
+TEST_CONVERT_TO(float16_t, int32_t, ElemKind::Float16Ty, ElemKind::Int32ITy)
+TEST_CONVERT_TO(float16_t, int64_t, ElemKind::Float16Ty, ElemKind::Int64ITy)
+TEST_CONVERT_TO(int32_t, float, ElemKind::Int32ITy, ElemKind::FloatTy)
+TEST_CONVERT_TO(int32_t, float16_t, ElemKind::Int32ITy, ElemKind::Float16Ty)
+TEST_CONVERT_TO(int32_t, int32_t, ElemKind::Int32ITy, ElemKind::Int32ITy)
+TEST_CONVERT_TO(int32_t, int64_t, ElemKind::Int32ITy, ElemKind::Int64ITy)
+TEST_CONVERT_TO(int64_t, float, ElemKind::Int64ITy, ElemKind::FloatTy)
+TEST_CONVERT_TO(int64_t, float16_t, ElemKind::Int64ITy, ElemKind::Float16Ty)
+TEST_CONVERT_TO(int64_t, int32_t, ElemKind::Int64ITy, ElemKind::Int32ITy)
+TEST_CONVERT_TO(int64_t, int64_t, ElemKind::Int64ITy, ElemKind::Int64ITy)
 
-/// Test that ConvertTo operator casts correctly from Float to Int64.
-TEST_P(OperatorTest, ConvertFromFloatToInt64) {
-  ENABLED_BACKENDS(Interpreter);
-  testConvertTo<float, int64_t>(bindings_, mod_, F_, EE_, ElemKind::FloatTy,
-                                ElemKind::Int64ITy);
-}
-
-/// Test that ConvertTo operator casts correctly from Float16 to Float.
-TEST_P(OperatorTest, ConvertFromFloat16ToFloat) {
-  ENABLED_BACKENDS(Interpreter);
-  testConvertTo<float16_t, float>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty,
-                                  ElemKind::FloatTy);
-}
-
-/// Test that ConvertTo operator casts correctly from Float to Float16.
-TEST_P(OperatorTest, ConvertFromFloatToFloat16) {
-  ENABLED_BACKENDS(Interpreter);
-  testConvertTo<float, float16_t>(bindings_, mod_, F_, EE_, ElemKind::FloatTy,
-                                  ElemKind::Float16Ty);
-}
-
-/// Test that ConvertTo operator casts correctly from Float to Float. This is a
-/// noop, but can happen on unoptimized graphs.
-TEST_P(OperatorTest, ConvertFromFloatToFloat) {
-  ENABLED_BACKENDS(Interpreter);
-  testConvertTo<float, float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy,
-                              ElemKind::FloatTy);
-}
+#undef TEST_CONVERT_TO
 
 #undef ENABLED_BACKENDS

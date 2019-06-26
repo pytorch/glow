@@ -3117,35 +3117,31 @@ void BoundInterpreterFunction::fwdIntLookupTableInst(
 void BoundInterpreterFunction::fwdConvertToInst(const glow::ConvertToInst *I) {
   Tensor *source = getTensor(I->getInput());
   Tensor *dest = getTensor(I->getResult());
-  if (source->getType() == dest->getType()) {
+  auto srcElType = source->getType().getElementType();
+  auto destElType = dest->getType().getElementType();
+  if (srcElType == destElType) {
     // This is a noop conversion.
     dest->copyRawFrom(source);
     return;
   }
-  switch (source->getElementType()) {
-  case ElemKind::FloatTy:
-    switch (dest->getElementType()) {
-    case ElemKind::Float16Ty:
-      dest->copyWithCast<float16_t, float>(source);
-      return;
-    case ElemKind::Int64ITy:
-      dest->copyWithCast<int64_t, float>(source);
-      return;
-    default:
-      llvm_unreachable("Conversion not supported");
-    }
-    return;
-  case ElemKind::Float16Ty:
-    assert(dest->getElementType() == ElemKind::FloatTy &&
-           "Conversion not supported");
-    dest->copyWithCast<float, float16_t>(source);
-    return;
-  case ElemKind::Int64ITy:
-    assert(dest->getElementType() == ElemKind::FloatTy &&
-           "Conversion not supported");
-    dest->copyWithCast<float, int64_t>(source);
-    return;
-  default:
-    llvm_unreachable("Type not supported");
+
+#define CONVERT(T_FROM, T_TO, DTY_FROM, DTY_TO)                                \
+  if (srcElType == DTY_FROM && destElType == DTY_TO) {                         \
+    dest->copyWithCast<T_TO, T_FROM>(source);                                  \
+    return;                                                                    \
   }
+  CONVERT(float, float16_t, ElemKind::FloatTy, ElemKind::Float16Ty)
+  CONVERT(float, int32_t, ElemKind::FloatTy, ElemKind::Int32ITy)
+  CONVERT(float, int64_t, ElemKind::FloatTy, ElemKind::Int64ITy)
+  CONVERT(float16_t, float, ElemKind::Float16Ty, ElemKind::FloatTy)
+  CONVERT(float16_t, int32_t, ElemKind::Float16Ty, ElemKind::Int32ITy)
+  CONVERT(float16_t, int64_t, ElemKind::Float16Ty, ElemKind::Int64ITy)
+  CONVERT(int32_t, float, ElemKind::Int32ITy, ElemKind::FloatTy)
+  CONVERT(int32_t, float16_t, ElemKind::Int32ITy, ElemKind::Float16Ty)
+  CONVERT(int32_t, int64_t, ElemKind::Int32ITy, ElemKind::Int64ITy)
+  CONVERT(int64_t, float, ElemKind::Int64ITy, ElemKind::FloatTy)
+  CONVERT(int64_t, float16_t, ElemKind::Int64ITy, ElemKind::Float16Ty)
+  CONVERT(int64_t, int32_t, ElemKind::Int64ITy, ElemKind::Int32ITy)
+#undef CONVERT
+  llvm_unreachable("Type not supported");
 }
