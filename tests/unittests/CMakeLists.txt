@@ -321,6 +321,8 @@ if(GLOW_WITH_OPENCL)
   add_executable(OCLTest
                  OCLTest.cpp)
   target_link_libraries(OCLTest
+                        PUBLIC
+                          OpenCL::OpenCL
                         PRIVATE
                           Backends
                           BackendTestUtils
