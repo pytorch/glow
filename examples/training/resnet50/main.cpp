@@ -18,7 +18,7 @@
 #include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Graph/Nodes.h"
 #include "glow/Importer/Caffe2ModelLoader.h"
-#include "glow/Optimizer/TrainingPreparation.h"
+#include "glow/Optimizer/GraphOptimizer/TrainingPreparation.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Timer.h"

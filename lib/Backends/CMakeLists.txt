@@ -29,9 +29,7 @@ target_link_libraries(Backends
                       PRIVATE
                         Backend
                         Base
-                        Graph
-                        Graph
-                        Optimizer)
+                        Graph)
 
 FOREACH(backend ${linked_backends})
   make_whole_archive(Backends ${backend})

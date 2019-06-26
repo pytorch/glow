@@ -19,6 +19,7 @@
 #include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Graph/Graph.h"
 #include "glow/IR/IR.h"
+#include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
 #include "glow/Quantization/Base/Base.h"
 #include "glow/Quantization/Quantization.h"
 #include "glow/Quantization/Serialization.h"

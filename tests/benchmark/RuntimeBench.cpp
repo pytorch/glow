@@ -17,7 +17,7 @@
 #include "benchmark/benchmark.h"
 
 #include "glow/Backends/DeviceManager.h"
-#include "glow/Optimizer/Optimizer.h"
+#include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
 #include "glow/Runtime/Executor/ThreadPoolExecutor.h"
 #include "glow/Runtime/HostManager/HostManager.h"
 

@@ -13,26 +13,22 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#ifndef GLOW_OPTIMIZER_OPTIMIZER_H
-#define GLOW_OPTIMIZER_OPTIMIZER_H
+#ifndef GLOW_OPTIMIZER_GRAPHOPTIMIZER_GRAPHOPTIMIZER_H
+#define GLOW_OPTIMIZER_GRAPHOPTIMIZER_GRAPHOPTIMIZER_H
 
-#include "glow/Optimizer/CompilationContext.h"
+#include "glow/Optimizer/GraphOptimizer/CompilationContext.h"
 #include "glow/Support/Error.h"
 
 #include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/StringRef.h"
 
 namespace glow {
 
-class IRFunction;
 class Function;
 class Backend;
 class Module;
 class PlaceholderBindings;
 class Placeholder;
 
-/// Perform optimizations on the IR representation.
-void optimize(IRFunction &M, bool shouldShareBuffers);
 /// Perform optimizations on the graph representation.
 void optimize(Function *F, CompilationContext &cctx);
 void optimize(Function *F, CompilationMode mode);
@@ -61,13 +57,6 @@ void convertPlaceholdersToConstants(Function *F,
 /// in context \p bindings.
 void profileQuantization(PlaceholderBindings &bindings, Function *F);
 
-/// Helper to generate and optimize IR from given Function \p F. \p
-/// shouldShareBuffers signifies whether to use the share buffers optimization.
-/// Backend /p B is used to allow for custom lowering from Node to
-/// Instruction IR.
-std::unique_ptr<IRFunction> generateAndOptimizeIR(Function *F, const Backend &B,
-                                                  bool shouldShareBuffers);
-
 /// Optimize the Function \p F given compilation options \p cctx for Backend \B.
 /// \returns success if all nodes in the final resulting optimized Function are
 /// supported by \p B; if not, this represents a compiler error.
@@ -82,4 +71,4 @@ llvm::Error optimizeFunctionBeforeLowering(Function *F,
                                            CompilationContext &cctx);
 } // namespace glow
 
-#endif // GLOW_OPTIMIZER_OPTIMIZER_H
+#endif // GLOW_OPTIMIZER_GRAPHOPTIMIZER_GRAPHOPTIMIZER_H

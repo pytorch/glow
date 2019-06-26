@@ -15,6 +15,7 @@
  */
 
 #include "glow/Partitioner/Partitioner.h"
+#include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
 #include "glow/Support/Support.h"
 
 #include "llvm/Support/FileSystem.h"
