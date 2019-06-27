@@ -661,15 +661,24 @@ int main(int argc, char **argv) {
                     "lengths of the ranges gathered by each list of pairs in "
                     "Ranges.");
 
-  BB.newNode("ScatterAssign")
+  BB.newNode("ScatterData")
       .addInput("Data")
       .addInput("Indices")
       .addInput("Slices")
+      .addMember(MemberType::Boolean, "Cumulative")
       .addResult("Data.getType()")
-      .setDocstring("Copies each slice from Slices into Data at the "
-                    "corresponding index in Indices. For example, given input "
-                    "Data {{1,2},{3,4},{5,6}}, Slices {{-3,-4}}, and Indices "
-                    "{1}, the result is {{1,2},{-3,-4},{5,6}}.");
+      .setDocstring(
+          "Copies each slice from Slices into Data at the "
+          "corresponding index in Indices. For example, given input "
+          "Data {{1,2},{3,4},{5,6}}, Slices {{-3,-4}}, and Indices "
+          "{{1}}, the result is {{1,2},{-3,-4},{5,6}}. It also supports "
+          "multi-dimensional indices. For example, given input Data "
+          "{{1,2},{3,4},{5,6}}, Slices {-3,-4}, and Indices {{1,0},{1,1}} also "
+          "produces {{1,2},{-3,-4},{5,6}}. If Cumulative is true, the node "
+          "adds values from Slices to Data instead of copying. For example, "
+          "given input Data {{1,2},{3,4},{5,6}}, Slices {{-3,-4}}, and Indices "
+          "{1}, the result is {{1,2},{0,0},{5,6}}. If an index is specified "
+          "several times, its updates will be added several times as well.");
 
   BB.newNode("Tile")
       .addInput("Input")

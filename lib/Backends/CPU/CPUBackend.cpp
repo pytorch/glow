@@ -219,15 +219,14 @@ bool CPUBackend::isOpSupported(const NodeInfo &NI) const {
              (NI.getOutElemTy(GatherRangesNode::LengthsIdx) ==
               ElemKind::Int64ITy)));
 
-  case Kinded::Kind::ScatterAssignNodeKind:
-    // ScatterAssign ==> Copy + ScatterAssign. Copy supports everything
-    // ReshapeNode above supports, however ScatterAssign only supports the
+  case Kinded::Kind::ScatterDataNodeKind:
+    // ScatterData ==> Copy + ScatterData. Copy supports everything
+    // ReshapeNode above supports, however ScatterData only supports the
     // following.
     return NI.allInputsAndOutputsHaveSameElemKind(
                {ElemKind::FloatTy, ElemKind::Int8QTy},
-               {ScatterAssignNode::IndicesIdx}) &&
-           (NI.getInElemTy(ScatterAssignNode::IndicesIdx) ==
-            ElemKind::Int64ITy);
+               {ScatterDataNode::IndicesIdx}) &&
+           (NI.getInElemTy(ScatterDataNode::IndicesIdx) == ElemKind::Int64ITy);
 
   case Kinded::Kind::SelectNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(

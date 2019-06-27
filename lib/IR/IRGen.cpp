@@ -298,16 +298,16 @@ void IRGenVisitor::post(Node *parent, Node *N) {
     registerIR(N, dest);
     break;
   }
-  case glow::Kinded::Kind::ScatterAssignNodeKind: {
-    auto *SAI = cast<ScatterAssignNode>(N);
-    auto *dataTensor = valueForNode(SAI->getData());
-    auto *indicesTensor = valueForNode(SAI->getIndices());
-    auto *slicesTensor = valueForNode(SAI->getSlices());
-    auto *dest = builder_.createAllocActivationInst(SAI->getName(),
-                                                    SAI->getResult().getType());
-    builder_.createCopyInst("copy.scatterassign", dest, dataTensor);
-    builder_.createScatterAssignInst("scatterassign", dest, indicesTensor,
-                                     slicesTensor);
+  case glow::Kinded::Kind::ScatterDataNodeKind: {
+    auto *SDI = cast<ScatterDataNode>(N);
+    auto *dataTensor = valueForNode(SDI->getData());
+    auto *indicesTensor = valueForNode(SDI->getIndices());
+    auto *slicesTensor = valueForNode(SDI->getSlices());
+    auto *dest = builder_.createAllocActivationInst(SDI->getName(),
+                                                    SDI->getResult().getType());
+    builder_.createCopyInst("copy.scatterdata", dest, dataTensor);
+    builder_.createScatterDataInst("scatterdata", dest, indicesTensor,
+                                   slicesTensor, SDI->getCumulative());
     registerIR(N, dest);
     break;
   }

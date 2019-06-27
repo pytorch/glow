@@ -1089,7 +1089,6 @@ DEF_ALL_WRITER_NODE(CmpLTE)
 DEF_ALL_WRITER_NODE(BatchedAdd)
 DEF_ALL_WRITER_NODE(Dequantize)
 DEF_ALL_WRITER_NODE(Regression)
-DEF_ALL_WRITER_NODE(ScatterAssign)
 DEF_ALL_WRITER_NODE(RowwiseQuantizedFullyConnected)
 DEF_ALL_WRITER_NODE(RowwiseQuantizedSparseLengthsWeightedSum)
 DEF_ALL_WRITER_NODE(FusedRowwiseQuantizedSparseLengthsSum)
@@ -1264,6 +1263,8 @@ DEF_UNSUPPORTED_STORAGE(Storage)
 DEF_UNSUPPORTED_NODE(SGD)
 // Artificial node.
 DEF_UNSUPPORTED_NODE(Save)
+// TODO: Turn to ScatterNd when it is supported in ONNX.
+DEF_UNSUPPORTED_NODE(ScatterData)
 // Gradient nodes.
 DEF_UNSUPPORTED_NODE(AddGrad)
 DEF_UNSUPPORTED_NODE(DivGrad)

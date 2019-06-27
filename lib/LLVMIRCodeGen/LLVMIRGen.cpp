@@ -472,6 +472,10 @@ llvm::Value *LLVMIRGen::emitConstI8(llvm::IRBuilder<> &builder, int8_t val) {
   return builder.getInt8(val);
 }
 
+llvm::Value *LLVMIRGen::emitConstI1(llvm::IRBuilder<> &builder, bool val) {
+  return builder.getInt1(val);
+}
+
 llvm::Value *LLVMIRGen::emitConstSizeT(llvm::IRBuilder<> &builder, size_t val) {
   return builder.getIntN(getLibjitSizeTWidth(), val);
 }
@@ -2258,25 +2262,38 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     break;
   }
 
-  case Kinded::Kind::ScatterAssignInstKind: {
-    auto *SAI = llvm::cast<ScatterAssignInst>(I);
-    auto *data = SAI->getData();
-    auto *indices = SAI->getIndices();
-    auto *slices = SAI->getSlices();
+  case Kinded::Kind::ScatterDataInstKind: {
+    auto *SDI = llvm::cast<ScatterDataInst>(I);
+    auto *data = SDI->getData();
+    auto *indices = SDI->getIndices();
+    auto *slices = SDI->getSlices();
 
     auto *dataPtr = emitValueAddress(builder, data);
     auto *indicesPtr = emitValueAddress(builder, indices);
     auto *slicesPtr = emitValueAddress(builder, slices);
+    auto *dataDims = emitValueDims(builder, data);
 
-    auto *indicesSize = emitConstSizeT(builder, indices->size());
-
-    auto *dataType = data->getType();
+    auto *indicesCnt = emitConstSizeT(builder, indices->getType()->dims()[0]);
+    auto *indicesSize = emitConstSizeT(builder, indices->getType()->dims()[1]);
+    auto *slicesType = slices->getType();
     auto *sliceSize =
-        emitConstSizeT(builder, dataType->size() / dataType->dims()[0]);
-
-    auto *F = getFunction("scatterassign", data->getElementType());
-    createCall(builder, F,
-               {dataPtr, indicesPtr, slicesPtr, indicesSize, sliceSize});
+        emitConstSizeT(builder, slicesType->size() / slicesType->dims()[0]);
+    auto *isCumulative = emitConstI1(builder, SDI->getCumulative());
+    auto *F = getFunction("scatterdata", data->getElementType());
+    if (data->getType()->isQuantizedType()) {
+      auto *dataScale = emitConstF32(builder, data->getType()->getScale());
+      auto *dataOffset = emitConstI32(builder, data->getType()->getOffset());
+      auto *sliceScale = emitConstF32(builder, slices->getType()->getScale());
+      auto *sliceOffset = emitConstI32(builder, slices->getType()->getOffset());
+      createCall(builder, F,
+                 {dataPtr, dataDims, indicesPtr, slicesPtr, indicesCnt,
+                  indicesSize, sliceSize, isCumulative, dataScale, dataOffset,
+                  sliceScale, sliceOffset});
+    } else {
+      createCall(builder, F,
+                 {dataPtr, dataDims, indicesPtr, slicesPtr, indicesCnt,
+                  indicesSize, sliceSize, isCumulative});
+    }
     break;
   }
 

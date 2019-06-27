@@ -1298,34 +1298,48 @@ bool GatherRangesNode::verify() const {
   return isValid;
 }
 
-bool ScatterAssignNode::verify() const {
+bool ScatterDataNode::verify() const {
   const auto &slicesDims = getSlices().dims();
   const auto &dataDims = getData().dims();
   const auto &indicesDims = getIndices().dims();
-
-  bool isValid =
-      expectCompareTrue("Indices should be a single dimensional vector",
-                        indicesDims.size(), size_t(1), this);
+  bool isValid = true;
+  isValid &= expectCompareTrue("Type mismatch",
+                               getSlices().getType()->getElementType(),
+                               getData().getType()->getElementType(), this);
+  if (!isValid) {
+    return false;
+  }
+  // TODO: Do we need support for different quant params of copy?
+  if (getSlices().getType()->isQuantizedType() && !getCumulative()) {
+    isValid &=
+        expectCompareTrue("Scale mismatch", getSlices().getType()->getScale(),
+                          getData().getType()->getScale(), this);
+    isValid &=
+        expectCompareTrue("Offset mismatch", getSlices().getType()->getOffset(),
+                          getData().getType()->getOffset(), this);
+  }
   isValid &= expectCompareTrue("There should be an index for each slice",
                                indicesDims[0], slicesDims[0], this);
-  isValid &=
-      expectCompareTrue("Slices and data should have same number of dimensions",
-                        slicesDims.size(), dataDims.size(), this);
-
+  isValid &= expectCompareTrue("Indices should be a 2D tensor",
+                               indicesDims.size(), size_t(2), this);
+  // The code below may crash if these conditions are not met.
+  if (!isValid) {
+    return false;
+  }
+  const size_t indexSize = indicesDims[1];
+  isValid &= expectCompareTrue("Dimensions of Data should be equal to "
+                               "dimensions of indices + dimensions of updates",
+                               slicesDims.size() - 1 + indexSize,
+                               dataDims.size(), this);
   if (dataDims.size() > 1) {
-    if (!isValid) {
-      // The following loop may be out-of-bound if the previous
-      // comparisons failed.
-      return false;
-    }
-
-    for (size_t i = 1; i < dataDims.size(); i++) {
+    for (size_t i = indexSize; i < dataDims.size(); i++) {
       std::string msg = std::to_string(i);
       msg = "Slice shape should equal data shape for dim " + msg;
-      isValid &=
-          expectCompareTrue(msg.c_str(), dataDims[i], slicesDims[i], this);
+      isValid &= expectCompareTrue(msg.c_str(), dataDims[i],
+                                   slicesDims[i - indexSize + 1], this);
     }
   }
+
   return isValid;
 }
 

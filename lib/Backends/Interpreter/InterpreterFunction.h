@@ -245,6 +245,12 @@ private:
   template <typename ElemTy> void fwdGatherInstImpl(const GatherInst *I);
   template <typename ElemTy>
   void fwdGatherRangesInstImpl(const GatherRangesInst *I);
+  template <typename ElemTy>
+  void fwdScatterDataInstCopyImpl(const ScatterDataInst *I);
+  template <typename ElemTy>
+  void fwdScatterDataInstAddFloatImpl(const ScatterDataInst *I);
+  template <typename ElemTy>
+  void fwdScatterDataInstAddQuantizedImpl(const ScatterDataInst *I);
 
   void fwdSparseLengthsSumInstI8Impl(const SparseLengthsSumInst *I);
   template <typename ElemTy>

@@ -299,8 +299,8 @@ Function *glow::differentiate(Function *F, const TrainingConfig &conf,
       NodeValue Data = GN->getData();
       NodeValue Indices = GN->getIndices();
 
-      // Reshape indices into a one-dimensional Tensor (Vector).
-      std::vector<size_t> IndicesDims{Indices.getType()->size()};
+      // Reshape indices into a two-dimensional Tensor (Vector).
+      std::vector<size_t> IndicesDims{Indices.getType()->size(), 1};
       auto *RI = G->createReshape("reshape.indices.grad", Indices, IndicesDims);
 
       // Reshape Gradient into N-k dimension, where k is Index dimensions,
@@ -319,9 +319,9 @@ Function *glow::differentiate(Function *F, const TrainingConfig &conf,
       // to the correspondent Data Tensors, where Vector value
       // points to Data Tensor.
       auto *SN = G->createSplat("splat.grad", Data.getType(), 0);
-      auto *SA = new ScatterAssignNode("scatter.assign.grad", SN->getResult(),
-                                       RI->getResult(),
-                                       RG ? RG->getResult() : OutputG);
+      auto *SA = new ScatterDataNode(
+          "scatter.assign.grad", SN->getResult(), RI->getResult(),
+          RG ? RG->getResult() : OutputG, /*cumulative*/ false);
       toAppend.push_back(SA);
       map.addGradient(Data, SA);
       continue;

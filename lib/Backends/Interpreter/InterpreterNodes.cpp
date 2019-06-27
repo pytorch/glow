@@ -1473,22 +1473,126 @@ void BoundInterpreterFunction::fwdGatherRangesInst(
   }
 }
 
-void BoundInterpreterFunction::fwdScatterAssignInst(
-    const glow::ScatterAssignInst *I) {
+template <typename ElemTy>
+void BoundInterpreterFunction::fwdScatterDataInstCopyImpl(
+    const glow::ScatterDataInst *I) {
   Tensor *dataT = getTensor(I->getData());
   Tensor *indicesT = getTensor(I->getIndices());
   Tensor *slicesT = getTensor(I->getSlices());
 
-  size_t dataSliceSize =
-      dataT->size() / dataT->dims()[0] * dataT->getType().getElementSize();
+  assert(indicesT->dims().size() == 2 &&
+         "Index should be stored in 2D tensor!");
+  const size_t dataSliceSize = slicesT->size() / slicesT->dims()[0] *
+                               slicesT->getType().getElementSize();
 
+  auto IH = indicesT->getHandle<int64_t>();
   // For each index, copy from the slice at that index into the location in data
   // given the offset from the indices tensor.
-  for (size_t i = 0, end = indicesT->size(); i < end; i++) {
-    size_t destDataIdx = indicesT->getHandle<int64_t>().raw(i);
+  for (size_t i = 0, end = indicesT->dims()[0]; i < end; i++) {
+    size_t destDataIdx = 0;
+    for (size_t j = 0, e = indicesT->dims()[1]; j < e; j++) {
+      destDataIdx *= dataT->dims()[j];
+      destDataIdx += IH.at({i, j});
+    }
     std::copy(&slicesT->getUnsafePtr()[i * dataSliceSize],
               &slicesT->getUnsafePtr()[(i + 1) * dataSliceSize],
               &dataT->getUnsafePtr()[dataSliceSize * destDataIdx]);
+  }
+}
+
+template <typename ElemTy>
+void BoundInterpreterFunction::fwdScatterDataInstAddFloatImpl(
+    const glow::ScatterDataInst *I) {
+  Tensor *dataT = getTensor(I->getData());
+  Tensor *indicesT = getTensor(I->getIndices());
+  Tensor *slicesT = getTensor(I->getSlices());
+
+  assert(!dataT->getType().isQuantizedType() && "Should be float type!");
+  assert(!slicesT->getType().isQuantizedType() && "Should be float type!");
+
+  const size_t numSlices = slicesT->size() / slicesT->dims()[0];
+
+  auto IH = indicesT->getHandle<int64_t>();
+  // For each index, copy from the slice at that index into the location in data
+  // given the offset from the indices tensor.
+  assert(indicesT->dims().size() == 2 &&
+         "Multi-dimensional index should be stored in 2D tensor!");
+  auto D = dataT->getHandle<ElemTy>(), S = slicesT->getHandle<ElemTy>();
+  for (size_t i = 0, end = indicesT->dims()[0]; i < end; i++) {
+    size_t destDataIdx = 0;
+    for (size_t j = 0, e = indicesT->dims()[1]; j < e; j++) {
+      destDataIdx *= dataT->dims()[j];
+      destDataIdx += IH.at({i, j});
+    }
+    for (size_t j = 0; j < numSlices; j++) {
+      D.raw(destDataIdx * numSlices + j) += S.raw(i * numSlices + j);
+    }
+  }
+}
+
+template <typename ElemTy>
+void BoundInterpreterFunction::fwdScatterDataInstAddQuantizedImpl(
+    const glow::ScatterDataInst *I) {
+  Tensor *dataT = getTensor(I->getData());
+  Tensor *indicesT = getTensor(I->getIndices());
+  Tensor *slicesT = getTensor(I->getSlices());
+
+  assert(dataT->getType().isQuantizedType() && "Should be quantized type!");
+  assert(slicesT->getType().isQuantizedType() && "Should be quantized type!");
+
+  const size_t numSlices = slicesT->size() / slicesT->dims()[0];
+
+  TensorQuantizationParams dataQ{dataT->getType().getScale(),
+                                 dataT->getType().getOffset()};
+  TensorQuantizationParams sliceQ{slicesT->getType().getScale(),
+                                  slicesT->getType().getOffset()};
+
+  auto IH = indicesT->getHandle<int64_t>();
+  // For each index, copy from the slice at that index into the location in data
+  // given the offset from the indices tensor.
+  assert(indicesT->dims().size() == 2 &&
+         "Multi-dimensional index should be stored in 2D tensor!");
+  auto D = dataT->getHandle<ElemTy>(), S = slicesT->getHandle<ElemTy>();
+  for (size_t i = 0, end = indicesT->dims()[0]; i < end; i++) {
+    size_t destDataIdx = 0;
+    for (size_t j = 0, e = indicesT->dims()[1]; j < e; j++) {
+      destDataIdx *= dataT->dims()[j];
+      destDataIdx += IH.at({i, j});
+    }
+    for (size_t j = 0; j < numSlices; j++) {
+      float lhs =
+          quantization::dequantize(D.raw(destDataIdx * numSlices + j), dataQ);
+      float rhs = quantization::dequantize(S.raw(i * numSlices + j), sliceQ);
+      ElemTy result = quantization::quantize(lhs + rhs, dataQ);
+      D.raw(destDataIdx * numSlices + j) = result;
+    }
+  }
+}
+
+void BoundInterpreterFunction::fwdScatterDataInst(
+    const glow::ScatterDataInst *I) {
+  if (I->getCumulative()) {
+    switch (I->getData()->getElementType()) {
+    case ElemKind::FloatTy:
+      fwdScatterDataInstAddFloatImpl<float>(I);
+      break;
+    case ElemKind::Int8QTy:
+      fwdScatterDataInstAddQuantizedImpl<int8_t>(I);
+      break;
+    default:
+      llvm_unreachable("Unsupported type for ScatterData.");
+    }
+  } else {
+    switch (I->getData()->getElementType()) {
+    case ElemKind::FloatTy:
+      fwdScatterDataInstCopyImpl<float>(I);
+      break;
+    case ElemKind::Int8QTy:
+      fwdScatterDataInstCopyImpl<int8_t>(I);
+      break;
+    default:
+      llvm_unreachable("Unsupported type for ScatterData.");
+    }
   }
 }
 
