@@ -1024,6 +1024,19 @@ HabanaBackend::compile(Function *F, const BackendOptions &opts) const {
       }
       break;
     }
+    case Kinded::Kind::BatchMatMulNodeKind: {
+      auto *MI = llvm::cast<BatchMatMulNode>(&I);
+      std::vector<synTensor> inputs;
+      inputs.push_back(tensors[MI->getLHS()].get());
+      inputs.push_back(tensors[MI->getRHS()].get());
+      chk(synCreateGenericNode(
+          inputs.data(), &tensors[MI].get(), 2, 1, nullptr,
+          getKernelName("matrix_multiply", MI->getResult().getElementType())
+              .c_str(),
+          MI->getName().data(), nullptr, nullptr));
+      multiInputs.emplace_back(std::move(inputs));
+      break;
+    }
     case Kinded::Kind::HabanaConvolutionNodeKind: {
       auto *NI = llvm::cast<HabanaConvolutionNode>(&I);
 
@@ -1344,6 +1357,7 @@ bool HabanaBackend::isOpSupported(const NodeInfo &NI) const {
   switch (NI.getKind()) {
   case Kinded::Kind::AddNodeKind:
   case Kinded::Kind::AvgPoolNodeKind:
+  case Kinded::Kind::BatchMatMulNodeKind:
   case Kinded::Kind::BatchedAddNodeKind:
   case Kinded::Kind::BatchedReduceAddNodeKind:
   case Kinded::Kind::ConcatNodeKind:
@@ -1387,12 +1401,13 @@ bool HabanaBackend::isOpSupported(const NodeInfo &NI) const {
 
 bool HabanaBackend::shouldLower(const Node *N) const {
   switch (N->getKind()) {
-  case Kinded::Kind::TileNodeKind:
-  case Kinded::Kind::ReluNodeKind:
-  case Kinded::Kind::FullyConnectedNodeKind:
+  case Kinded::Kind::BatchMatMulNodeKind:
   case Kinded::Kind::ConvolutionNodeKind:
-  case Kinded::Kind::SparseLengthsSumNodeKind:
+  case Kinded::Kind::FullyConnectedNodeKind:
   case Kinded::Kind::FusedRowwiseQuantizedSparseLengthsSumNodeKind:
+  case Kinded::Kind::ReluNodeKind:
+  case Kinded::Kind::SparseLengthsSumNodeKind:
+  case Kinded::Kind::TileNodeKind:
     return false;
   default:
     return true;
