@@ -52,6 +52,24 @@ using namespace glow;
     llvm_unreachable("Type is not supported");                                 \
   }
 
+#define dispatchArithmeticImpl(functionName, elemTy, ...)                      \
+  switch (elemTy) {                                                            \
+  case ElemKind::FloatTy:                                                      \
+    functionName<float>(__VA_ARGS__);                                          \
+    break;                                                                     \
+  case ElemKind::Float16Ty:                                                    \
+    functionName<float16_t>(__VA_ARGS__);                                      \
+    break;                                                                     \
+  case ElemKind::Int32ITy:                                                     \
+    functionName<int32_t>(__VA_ARGS__);                                        \
+    break;                                                                     \
+  case ElemKind::Int64ITy:                                                     \
+    functionName<int64_t>(__VA_ARGS__);                                        \
+    break;                                                                     \
+  default:                                                                     \
+    llvm_unreachable("Type is not supported");                                 \
+  }
+
 #define dispatchQuantizedImpl(functionName, elemTy, ...)                       \
   switch (elemTy) {                                                            \
   case ElemKind::Int8QTy:                                                      \
@@ -85,6 +103,13 @@ using namespace glow;
           std::is_same<float16_t,                                              \
                        typename std::remove_cv<ElemTy>::type>::value,          \
       "This implementation is for floating-point values only")
+
+#define staticAssertArithmeticType(ElemTy)                                     \
+  static_assert(                                                               \
+      std::is_arithmetic<ElemTy>::value ||                                     \
+          std::is_same<float16_t,                                              \
+                       typename std::remove_cv<ElemTy>::type>::value,          \
+      "This implementation is for arithmetic values only")
 
 //===----------------------------------------------------------------------===//
 //                       Convolution
@@ -1624,9 +1649,9 @@ void BoundInterpreterFunction::fwdElementAddInstI8Impl(
 }
 
 template <typename ElemTy>
-void BoundInterpreterFunction::fwdElementAddInstFloatImpl(
+void BoundInterpreterFunction::fwdElementAddInstArithmeticImpl(
     const ElementAddInst *I) {
-  staticAssertFloatingPointType(ElemTy);
+  staticAssertArithmeticType(ElemTy);
 
   auto outW = getWeightHandle<ElemTy>(I->getDest());
   auto lhsW = getWeightHandle<ElemTy>(I->getLHS());
@@ -1642,14 +1667,14 @@ void BoundInterpreterFunction::fwdElementAddInst(const ElementAddInst *I) {
     return;
   }
 
-  dispatchFloatingPointImpl(fwdElementAddInstFloatImpl,
-                            I->getLHS()->getType()->getElementType(), I);
+  dispatchArithmeticImpl(fwdElementAddInstArithmeticImpl,
+                         I->getLHS()->getType()->getElementType(), I);
 }
 
 template <typename ElemTy>
-void BoundInterpreterFunction::fwdElementSubInstFloatImpl(
+void BoundInterpreterFunction::fwdElementSubInstArithmeticImpl(
     const ElementSubInst *I) {
-  staticAssertFloatingPointType(ElemTy);
+  staticAssertArithmeticType(ElemTy);
 
   auto outW = getWeightHandle<ElemTy>(I->getDest());
   auto lhsW = getWeightHandle<ElemTy>(I->getLHS());
@@ -1687,14 +1712,14 @@ void BoundInterpreterFunction::fwdElementSubInst(const ElementSubInst *I) {
     return;
   }
 
-  dispatchFloatingPointImpl(fwdElementSubInstFloatImpl,
-                            I->getDest()->getElementType(), I);
+  dispatchArithmeticImpl(fwdElementSubInstArithmeticImpl,
+                         I->getDest()->getElementType(), I);
 }
 
 template <typename ElemTy>
-void BoundInterpreterFunction::fwdElementMulInstFloatImpl(
+void BoundInterpreterFunction::fwdElementMulInstArithmeticImpl(
     const ElementMulInst *I) {
-  staticAssertFloatingPointType(ElemTy);
+  staticAssertArithmeticType(ElemTy);
 
   auto outW = getWeightHandle<ElemTy>(I->getDest());
   auto lhsW = getWeightHandle<ElemTy>(I->getLHS());
@@ -1726,8 +1751,8 @@ void BoundInterpreterFunction::fwdElementMulInst(const ElementMulInst *I) {
     return;
   }
 
-  dispatchFloatingPointImpl(fwdElementMulInstFloatImpl,
-                            I->getDest()->getElementType(), I);
+  dispatchArithmeticImpl(fwdElementMulInstArithmeticImpl,
+                         I->getDest()->getElementType(), I);
 }
 
 void BoundInterpreterFunction::fwdElementDivInst(const ElementDivInst *I) {
@@ -1812,9 +1837,9 @@ void BoundInterpreterFunction::fwdElementMaxInstI8Impl(
 }
 
 template <typename ElemTy>
-void BoundInterpreterFunction::fwdElementMaxInstFloatImpl(
+void BoundInterpreterFunction::fwdElementMaxInstArithmeticImpl(
     const ElementMaxInst *I) {
-  staticAssertFloatingPointType(ElemTy);
+  staticAssertArithmeticType(ElemTy);
 
   auto outW = getWeightHandle<ElemTy>(I->getDest());
   auto lhsW = getWeightHandle<ElemTy>(I->getLHS());
@@ -1830,14 +1855,14 @@ void BoundInterpreterFunction::fwdElementMaxInst(const ElementMaxInst *I) {
     return;
   }
 
-  dispatchFloatingPointImpl(fwdElementMaxInstFloatImpl,
-                            I->getLHS()->getType()->getElementType(), I);
+  dispatchArithmeticImpl(fwdElementMaxInstArithmeticImpl,
+                         I->getLHS()->getType()->getElementType(), I);
 }
 
 template <typename ElemTy>
-void BoundInterpreterFunction::fwdElementMinInstFloatImpl(
+void BoundInterpreterFunction::fwdElementMinInstArithmeticImpl(
     const ElementMinInst *I) {
-  staticAssertFloatingPointType(ElemTy);
+  staticAssertArithmeticType(ElemTy);
 
   auto outW = getWeightHandle<ElemTy>(I->getDest());
   auto lhsW = getWeightHandle<ElemTy>(I->getLHS());
@@ -1872,8 +1897,8 @@ void BoundInterpreterFunction::fwdElementMinInst(const ElementMinInst *I) {
     return;
   }
 
-  dispatchFloatingPointImpl(fwdElementMinInstFloatImpl,
-                            I->getDest()->getElementType(), I);
+  dispatchArithmeticImpl(fwdElementMinInstArithmeticImpl,
+                         I->getDest()->getElementType(), I);
 }
 
 template <typename ElemTy>

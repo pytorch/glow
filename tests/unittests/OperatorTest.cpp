@@ -26,6 +26,7 @@
 
 #include "llvm/Support/raw_ostream.h"
 
+#include <functional>
 #include <numeric>
 
 using namespace glow;
@@ -2281,6 +2282,60 @@ COMPARE_ARITH_FLOAT_VS_FLOAT16(Div, Interpreter)
 COMPARE_ARITH_FLOAT_VS_FLOAT16(Max, Interpreter)
 COMPARE_ARITH_FLOAT_VS_FLOAT16(Min, Interpreter)
 #undef COMPARE_ARITH_FLOAT_VS_FLOAT16
+
+#define ARITH_FUN_IMPL(_OP_NAME_, _REFERENCE_FUNCTION_, _PARENTHESES_)         \
+  template <typename DataType>                                                 \
+  static void testArithmetic##_OP_NAME_##Impl(                                 \
+      glow::PlaceholderBindings &bindings, glow::Module &mod,                  \
+      glow::Function *F, glow::ExecutionEngine &EE, ElemKind DTy) {            \
+    std::vector<DataType> data1 = {3, 17, 7, 23};                              \
+    std::vector<DataType> data2 = {13, 5, 19, 11};                             \
+    auto *A = mod.createPlaceholder(DTy, {1, 4}, "A", false);                  \
+    auto *B = mod.createPlaceholder(DTy, {1, 4}, "B", false);                  \
+    bindings.allocate(A)->getHandle<DataType>() = data1;                       \
+    bindings.allocate(B)->getHandle<DataType>() = data2;                       \
+                                                                               \
+    auto *add = F->create##_OP_NAME_("arith", A, B);                           \
+    auto *result = F->createSave("save", add);                                 \
+    auto *resultTensor = bindings.allocate(result->getPlaceholder());          \
+                                                                               \
+    EE.compile(CompilationMode::Infer, F);                                     \
+    EE.run(bindings);                                                          \
+    std::vector<DataType> reference;                                           \
+    assert(data1.size() == data2.size() && "Size mismatch!");                  \
+    for (size_t i = 0; i < data1.size(); i++) {                                \
+      reference.push_back(                                                     \
+          _REFERENCE_FUNCTION_<DataType> _PARENTHESES_(data1[i], data2[i]));   \
+    }                                                                          \
+    auto RH = resultTensor->getHandle<DataType>();                             \
+    EXPECT_EQ(reference.size(), RH.size());                                    \
+    for (size_t i = 0; i < reference.size(); i++) {                            \
+      EXPECT_EQ(reference[i], RH.raw(i));                                      \
+    }                                                                          \
+  }
+
+#define ARITH_FUNC_TEST_TYPED(_OP_NAME_, _DATA_TYPE_, _ELEM_KIND_)             \
+  TEST_P(OperatorTest, Arith##_OP_NAME_##_##_DATA_TYPE_) {                     \
+    ENABLED_BACKENDS(Interpreter);                                             \
+    testArithmetic##_OP_NAME_##Impl<_DATA_TYPE_>(bindings_, mod_, F_, EE_,     \
+                                                 _ELEM_KIND_);                 \
+  }
+
+#define ARITH_FUNC_TEST(_OP_NAME_, _REFERENCE_FUNCTION_, _PARENTHESES_)        \
+  ARITH_FUN_IMPL(_OP_NAME_, _REFERENCE_FUNCTION_, _PARENTHESES_)               \
+  ARITH_FUNC_TEST_TYPED(_OP_NAME_, int32_t, ElemKind::Int32ITy)                \
+  ARITH_FUNC_TEST_TYPED(_OP_NAME_, int64_t, ElemKind::Int64ITy)                \
+  ARITH_FUNC_TEST_TYPED(_OP_NAME_, float, ElemKind::FloatTy)                   \
+  ARITH_FUNC_TEST_TYPED(_OP_NAME_, float16_t, ElemKind::Float16Ty)
+
+ARITH_FUNC_TEST(Add, std::plus, ())
+ARITH_FUNC_TEST(Sub, std::minus, ())
+ARITH_FUNC_TEST(Mul, std::multiplies, ())
+ARITH_FUNC_TEST(Max, std::max, )
+ARITH_FUNC_TEST(Min, std::min, )
+#undef ARITH_FUN_IMPL
+#undef ARITH_FUNC_TEST_TYPED
+#undef ARITH_FUNC_TEST
 
 TEST_P(OperatorTest, IntMatMul) {
   ENABLED_BACKENDS(Interpreter, CPU, OpenCL);
