@@ -63,6 +63,9 @@ private:
 public:
   LogContext();
 
+  /// Load module log context into this function's log context.
+  void loadModuleLogContext();
+
   /// Add content into the contents vector.
   void addLogContent(llvm::StringRef logContent);
 

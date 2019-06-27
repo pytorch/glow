@@ -53,10 +53,10 @@ void LogContext::addLogMetaData() {
   addLogContent("\n");
 }
 
-LogContext::LogContext() {
-  addLogMetaData();
+LogContext::LogContext() { addLogMetaData(); }
 
-  if (!parent_) {
+void LogContext::loadModuleLogContext() {
+  if (!parent_ || !dumpCompilationLogOpt) {
     return;
   }
 

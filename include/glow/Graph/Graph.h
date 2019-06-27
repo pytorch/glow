@@ -237,6 +237,7 @@ public:
       : Named(Name), parent_(parent) {
     logCtx_ = std::make_shared<LogContext>();
     logCtx_->setParent(this);
+    logCtx_->loadModuleLogContext();
   }
 
   ~Function();
