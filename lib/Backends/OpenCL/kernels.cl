@@ -618,11 +618,11 @@ __kernel void elementcmplteW(__global void *mem, cl_uint32_t dest,
   elementcmplteK(&mem[dest], &mem[LHS], &mem[RHS]);
 }
 
-__kernel void batchedreduceaddK(__global float *dest, __global float *batch,
-                                __global cl_host_size_t *batchSliceSizes,
-                                __global cl_host_size_t *destSliceSize,
-                                cl_uint32_t numSlices,
-                                cl_uint32_t axisSliceSize) {
+__kernel void oclbatchedreduceaddK(__global float *dest, __global float *batch,
+                                   __global cl_int32_t *destSliceSizes,
+                                   __global cl_int32_t *batchSliceSizes,
+                                   cl_uint32_t numSlices,
+                                   cl_uint32_t axisSliceSize) {
   size_t workDim = get_work_dim();
 
   // This is the component of the offset into batch that depends only on the
@@ -648,7 +648,7 @@ __kernel void batchedreduceaddK(__global float *dest, __global float *batch,
   for (size_t i = 0; i < workDim; ++i) {
     size_t id = get_global_id(i);
     batchOffset += id * batchSliceSizes[i];
-    destOffset += id * destSliceSize[i];
+    destOffset += id * destSliceSizes[i];
   }
 
   // Perform the actual reduce. Add the slice number * the slice size at the
@@ -660,11 +660,11 @@ __kernel void batchedreduceaddK(__global float *dest, __global float *batch,
 }
 
 __kernel void
-batchedreduceaddW(__global void *mem, cl_uint32_t dest, cl_uint32_t batch,
-                  __global void *batchSliceSizes, __global void *destSliceSizes,
-                  cl_uint32_t numSlices, cl_uint32_t axisSliceSize) {
-  batchedreduceaddK(&mem[dest], &mem[batch], batchSliceSizes, destSliceSizes,
-                    numSlices, axisSliceSize);
+oclbatchedreduceaddW(__global void *mem, cl_uint32_t dest, cl_uint32_t batch,
+                     cl_uint32_t destSliceSizes, cl_uint32_t batchSliceSizes,
+                     cl_uint32_t numSlices, cl_uint32_t axisSliceSize) {
+  oclbatchedreduceaddK(&mem[dest], &mem[batch], &mem[destSliceSizes],
+                       &mem[batchSliceSizes], numSlices, axisSliceSize);
 }
 
 __kernel void batchedaddK(__global float *dest, __global float *batch,

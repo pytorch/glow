@@ -51,6 +51,17 @@ BB.newNode("OCLMaxPool")
         "provided "
         "Kernel, Stride, and Pads. The input and output are in NCHW format");
 
+BB.newNode("OCLBatchedReduceAdd")
+    .addInput("Input")
+    .addInput("DestSliceSizes")
+    .addInput("SrcSliceSizes")
+    .addMember(MemberType::Unsigned, "Axis")
+    .addMember(MemberType::Unsigned, "AxisSrcSliceSize")
+    .addResultFromCtorArg()
+    .setDocstring(
+        "This is an OpenCL-specific BatchedReduceAdd operation which has the "
+        "slice sizes of the input and output as explicit inputs.");
+
 BB.includeBackendSpecificVerification("glow/OpenCLSpecificNodesVerification.h");
 
 #endif // GLOW_WITH_CPU
