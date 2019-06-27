@@ -61,6 +61,9 @@ class Module final {
   /// Deterministic PRNG used to initialize weights in this module.
   PseudoRNG PRNG_;
 
+  /// Module log context that stores all logs related to this module.
+  ModuleLogContext moduleLogCtx_;
+
 public:
   Module() = default;
 
@@ -199,6 +202,9 @@ public:
   /// \Returns the size in bytes of data used by constants.
   uint64_t getConstantsSize();
 
+  /// \Returns the module log context.
+  ModuleLogContext &getModuleLogContext() { return moduleLogCtx_; };
+
   // Don't copy or move this class around.
   // The destructor will wipe the functions leaving
   // the original Module only dangling pointers.
@@ -224,16 +230,19 @@ class Function final : public Named {
   Module *parent_;
 
   /// The log context associated with this function.
-  LogContext logCtx_;
+  std::shared_ptr<LogContext> logCtx_;
 
 public:
   Function(Module *parent, llvm::StringRef Name = {})
-      : Named(Name), parent_(parent) {}
+      : Named(Name), parent_(parent) {
+    logCtx_ = std::make_shared<LogContext>();
+    logCtx_->setParent(this);
+  }
 
   ~Function();
 
   /// Return the log context.
-  LogContext &getLogContext() { return logCtx_; }
+  std::shared_ptr<LogContext> getLogContext() { return logCtx_; }
 
   /// Add placeholder for metadata such as profiling.
   void addMetadataPlaceholder(Placeholder *PH) {
@@ -274,7 +283,7 @@ public:
     nodes_.push_back(N);
 
     // Log the node creation.
-    logCtx_.logNodeCreation(N);
+    logCtx_->logNodeCreation(*N);
 
     return N;
   }

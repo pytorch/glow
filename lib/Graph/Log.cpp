@@ -15,6 +15,7 @@
  */
 
 #include "glow/Graph/Log.h"
+#include "glow/Graph/Graph.h"
 #include "glow/Graph/Node.h"
 #include "glow/Graph/NodeValue.h"
 #include "llvm/Support/CommandLine.h"
@@ -31,6 +32,10 @@ static llvm::cl::opt<bool>
     dumpCompilationLogOpt("dump-compilation-log", llvm::cl::init(false),
                           llvm::cl::desc("Dump compilation log"));
 
+void ModuleLogContext::addModuleLogContent(llvm::StringRef logContent) {
+  moduleLogContents_.push_back(logContent);
+}
+
 void LogContext::addLogMetaData() {
   addLogContent("<!-- Log Version: ");
   addLogContent(logVersionNo_);
@@ -46,6 +51,25 @@ void LogContext::addLogMetaData() {
   addLogContent(" -->\n");
 #endif
   addLogContent("\n");
+}
+
+LogContext::LogContext() {
+  addLogMetaData();
+
+  if (!parent_) {
+    return;
+  }
+
+  // Add the logs of module constants/placeholders into the log context of this
+  // function. Such that the Log Context has the information of any
+  // constants/placeholders created in previous functions.
+  for (const auto &s :
+       parent_->getParent()->getModuleLogContext().getModuleLog()) {
+    addLogContent(s);
+  }
+  addLogContent(llvm::formatv("----------- Enter function: {0} ----------\n",
+                              parent_->getName())
+                    .str());
 }
 
 void LogContext::addLogContent(llvm::StringRef logContent) {
@@ -83,42 +107,71 @@ void LogContext::dumpLog(llvm::StringRef funcName) {
 }
 
 /// Logs the node creation with a list of input nodes.
-void LogContext::logNodeCreation(const Node *newNode) {
+void LogContext::logNodeCreation(const Node &newNode, bool logIntoModule) {
   if (!dumpCompilationLogOpt) {
     return;
   }
   std::vector<NodeValue> inputs;
-  for (size_t idx = 0; idx < newNode->getNumInputs(); idx++) {
-    inputs.push_back(newNode->getNthInput(idx));
+  for (size_t idx = 0; idx < newNode.getNumInputs(); idx++) {
+    inputs.push_back(newNode.getNthInput(idx));
   }
-  addLogContent(
-      llvm::formatv(
-          "[FULL SCOPE: {0}] --- CREATE { (Kind: {1}, Name: {2}) <== ",
-          getFullScopeName(), newNode->getKindName(), newNode->getName())
-          .str());
-  for (auto n : inputs) {
-    addLogContent(llvm::formatv(" (Kind: {0}, Name: {1}, ResNo: {2}) ",
+
+  std::string contentStr =
+      llvm::formatv(" --- CREATE { (Kind: {0}, Name: {1}) <== ",
+                    newNode.getKindName(), newNode.getName())
+          .str();
+  for (auto &n : inputs) {
+    contentStr += llvm::formatv(" (Kind: {0}, Name: {1}, ResNo: {2}) ",
                                 n.getNode()->getKindName(),
                                 n.getNode()->getName(), n.getResNo())
-                      .str());
+                      .str();
   }
-  addLogContent(" }\n");
+  contentStr += " }\n";
+
+  // Use scope as "Module" when writting into Module logs.
+  if (logIntoModule) {
+    if (parent_) {
+      std::string scopeName = "[FULL SCOPE: Module ]";
+      parent_->getParent()->getModuleLogContext().addModuleLogContent(
+          scopeName + contentStr);
+    }
+
+  } else {
+    std::string scopeName =
+        llvm::formatv("[FULL SCOPE: {0}]", getFullScopeName()).str();
+    addLogContent(scopeName + contentStr);
+  }
 }
 
 /// Logs the node deletion.
-void LogContext::logNodeDeletion(const Node &deletedNode) {
+void LogContext::logNodeDeletion(const Node &deletedNode, bool logIntoModule) {
   if (!dumpCompilationLogOpt) {
     return;
   }
-  addLogContent(llvm::formatv("[FULL SCOPE: {0} ] --- DELETE ( (Kind: {1}, "
-                              "Name: {2}) }\n",
-                              getFullScopeName(), deletedNode.getKindName(),
-                              deletedNode.getName())
-                    .str());
+
+  std::string contentStr =
+      llvm::formatv(" --- DELETE ( (Kind: {0}, "
+                    "Name: {1}) }\n",
+                    deletedNode.getKindName(), deletedNode.getName())
+          .str();
+
+  // Use scope as "Module" when writting into Module logs.
+  if (logIntoModule) {
+    if (parent_) {
+      std::string scopeName = "[FULL SCOPE: Module ]";
+      parent_->getParent()->getModuleLogContext().addModuleLogContent(
+          scopeName + contentStr);
+    }
+
+  } else {
+    std::string scopeName =
+        llvm::formatv("[FULL SCOPE: {0} ]", getFullScopeName()).str();
+    addLogContent(scopeName + contentStr);
+  }
 }
 
 /// Logs node's input changes.
-void LogContext::logNodeInputChange(const Node *user,
+void LogContext::logNodeInputChange(const Node &user,
                                     const NodeValue &prevOprVal,
                                     const NodeValue &newOprVal) {
   if (!dumpCompilationLogOpt) {
@@ -128,7 +181,7 @@ void LogContext::logNodeInputChange(const Node *user,
       llvm::formatv(
           "[FULL SCOPE: {0} ] --- NODE_INPUT_CHANGE { User(Kind: {1}, "
           "Name: {2}) :: ",
-          getFullScopeName(), user->getKindName(), user->getName())
+          getFullScopeName(), user.getKindName(), user.getName())
           .str());
 
   // prevOpr.getNode()should never be null.
@@ -149,24 +202,25 @@ void LogContext::logNodeInputChange(const Node *user,
   }
 }
 
-ScopedLogBlock::ScopedLogBlock(LogContext &ctx, llvm::StringRef name)
+ScopedLogBlock::ScopedLogBlock(std::shared_ptr<LogContext> ctx,
+                               llvm::StringRef name)
     : ctx_(ctx), name_(name) {
-  ctx_.pushLogScope(name_);
-  ctx_.addLogContent("============= ENTER SCOPE: ");
-  ctx_.addLogContent(ctx_.getFullScopeName());
-  ctx_.addLogContent(" ================================\n");
+  ctx_->pushLogScope(name_);
+  ctx_->addLogContent("============= ENTER SCOPE: ");
+  ctx_->addLogContent(ctx_->getFullScopeName());
+  ctx_->addLogContent(" ================================\n");
 };
 
 ScopedLogBlock::~ScopedLogBlock() {
-  ctx_.addLogContent("============= EXIT SCOPE: ");
-  ctx_.addLogContent(ctx_.getFullScopeName());
-  ctx_.addLogContent(" ================================\n");
+  ctx_->addLogContent("============= EXIT SCOPE: ");
+  ctx_->addLogContent(ctx_->getFullScopeName());
+  ctx_->addLogContent(" ================================\n");
   end();
 };
 
 void ScopedLogBlock::end() {
   if (!end_) {
-    ctx_.popLogScope();
+    ctx_->popLogScope();
   }
   end_ = true;
 }

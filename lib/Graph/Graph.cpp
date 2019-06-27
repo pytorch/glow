@@ -38,14 +38,32 @@ using llvm::isa;
 
 namespace {
 /// A helper function to log the deletion of constant/placeholder \p s of a
-/// module.
-void loggingStorageDeletionInUserFunc(Storage *s) {
-  std::unordered_set<Function *> userFuncs;
-  for (auto &use : s->getUsers()) {
-    userFuncs.insert(use.getUser()->getParent());
+/// module into the log context of given functions \p functions.
+/// Note: The reason we don't log the deletion of constants in the function that
+/// ueses or creates it, is that constants/placeholders do not have a function
+/// parent (we can't utilize its user's function also because its users might be
+/// removed) such that it's best to log the constants/placeholders in a Module
+/// level log context and copy over to its all functions.
+void logStorageDeletion(std::list<Function *> functions, Storage *s) {
+  for (auto *F : functions) {
+    F->getLogContext()->logNodeDeletion(*s);
   }
-  for (auto *F : userFuncs) {
-    F->getLogContext().logNodeDeletion(*s);
+  if (functions.size() > 0) {
+    auto *F = *(functions.begin());
+    F->getLogContext()->logNodeDeletion(*s, /* logIntoModule */ true);
+  }
+}
+
+/// A helper function to log the creation of constant/placeholder \p s of a
+/// module into the log context of given functions \p functions.
+/// Same note as for logStorageDeletion().
+void logStorageCreation(std::list<Function *> functions, Storage *s) {
+  for (auto *F : functions) {
+    F->getLogContext()->logNodeCreation(*s);
+  }
+  if (functions.size() > 0) {
+    auto *F = *(functions.begin());
+    F->getLogContext()->logNodeCreation(*s, /* logIntoModule */ true);
   }
 }
 } // namespace
@@ -78,7 +96,7 @@ void Module::strip() {
 void Module::clear() {
   for (auto it = constants_.begin(), e = constants_.end(); it != e; it++) {
     Constant *v = *it;
-    loggingStorageDeletionInUserFunc(v);
+    logStorageDeletion(functions_, v);
     delete v;
   }
 
@@ -87,7 +105,7 @@ void Module::clear() {
   for (auto it = placeholders_.begin(), e = placeholders_.end(); it != e;
        it++) {
     Placeholder *p = *it;
-    loggingStorageDeletionInUserFunc(p);
+    logStorageDeletion(functions_, p);
     delete p;
   }
 
@@ -343,7 +361,7 @@ Function::~Function() {
     auto cur = it++;
     eraseNode(&*cur);
   }
-  logCtx_.dumpLog(getName());
+  logCtx_->dumpLog(getName());
 }
 
 TypeRef Module::uniqueType(ElemKind elemTy, llvm::ArrayRef<size_t> dims) {
@@ -471,12 +489,14 @@ Constant *Module::addConstant(Constant *V) {
   // Module to maintain the invariant that each type in the Module is unique.
   V->setType(Constant::ResultIndices::OutputIdx, uniqueType(*V->getType()));
   constants_.push_back(V);
+  logStorageCreation(functions_, V);
   return V;
 }
 
 Placeholder *Module::addPlaceholder(Placeholder *ph) {
   ph->setName(uniqueName(ph->getName(), uniqueVariableNames_));
   placeholders_.push_back(ph);
+  logStorageCreation(functions_, ph);
   return ph;
 }
 
@@ -2718,14 +2738,14 @@ Node *Function::getNodeByName(llvm::StringRef name) {
 void Module::eraseConstant(ConstList::iterator I) {
   if (I == constants_.end())
     return;
-  loggingStorageDeletionInUserFunc(*I);
+  logStorageDeletion(functions_, *I);
   delete *I;
   constants_.erase(I);
 }
 
 void Function::eraseNode(NodesList::iterator I) {
   // Log node deletion.
-  logCtx_.logNodeDeletion(*I);
+  logCtx_->logNodeDeletion(*I);
 
   nodes_.erase(I);
 }
