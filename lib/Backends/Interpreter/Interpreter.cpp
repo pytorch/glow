@@ -308,16 +308,21 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::IntLookupTableNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind({ElemKind::Int8QTy});
 
-  case Kinded::Kind::ConvertToNodeKind:
-    return ((NI.getInElemTy(ConvertToNode::InputIdx) == ElemKind::FloatTy) &&
-            ((NI.getOutElemTy(ConvertToNode::ResultIdx) ==
-              ElemKind::Float16Ty) ||
-             (NI.getOutElemTy(ConvertToNode::ResultIdx) ==
-              ElemKind::Int64ITy))) ||
-           ((NI.getInElemTy(ConvertToNode::InputIdx) == ElemKind::Float16Ty) &&
-            (NI.getOutElemTy(ConvertToNode::ResultIdx) == ElemKind::FloatTy)) ||
-           ((NI.getInElemTy(ConvertToNode::InputIdx) == ElemKind::Int64ITy) &&
-            (NI.getOutElemTy(ConvertToNode::ResultIdx) == ElemKind::FloatTy));
+  case Kinded::Kind::ConvertToNodeKind: {
+    auto isConversionSupportedFor = [](ElemKind kind) {
+      switch (kind) {
+      case ElemKind::Float16Ty:
+      case ElemKind::FloatTy:
+      case ElemKind::Int32ITy:
+      case ElemKind::Int64ITy:
+        return true;
+      default:
+        return false;
+      }
+    };
+    return isConversionSupportedFor(NI.getInElemTy(ConvertToNode::InputIdx)) &&
+           isConversionSupportedFor(NI.getOutElemTy(ConvertToNode::ResultIdx));
+  }
 
   case Kinded::Kind::TopKNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
