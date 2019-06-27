@@ -974,7 +974,7 @@ bool SparseLengthsWeightedSumGradNode::verify() const {
 
 bool RowwiseQuantizedSparseLengthsWeightedSumNode::verify() const {
   bool isValid = checkType(getResult(), ElemKind::FloatTy, this);
-  isValid &= checkType(getData(), ElemKind::Int8QTy, this);
+  isValid &= checkType(getData(), ElemKind::UInt8QTy, this);
   isValid &= checkType(getScales(), ElemKind::FloatTy, this);
   isValid &= checkType(getOffsets(), ElemKind::FloatTy, this);
   isValid &= checkType(getWeights(), ElemKind::FloatTy, this);

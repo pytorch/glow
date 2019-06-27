@@ -1756,17 +1756,17 @@ TEST(caffe2, tensorFillsTest) {
   auto tensorFillFloatH = tensorFillFloat->getPayload().getHandle<float>();
   auto tensorIntFillH = tensorIntFill->getPayload().getHandle<int32_t>();
   auto tensorInt64FillH = tensorInt64Fill->getPayload().getHandle<int64_t>();
-  // We load GivenTensorByteStringToUInt8Fill as Int8QTy with dummy scale/offset
-  // for now, because it's only used for rowwise-quantized tensors.
+  // We load GivenTensorByteStringToUInt8Fill as UInt8QTy with dummy
+  // scale/offset for now, because it's only used for rowwise-quantized tensors.
   auto tensorStringToUInt8FillH =
-      tensorStringToUInt8Fill->getPayload().getHandle<int8_t>();
+      tensorStringToUInt8Fill->getPayload().getHandle<uint8_t>();
 
   // All fills in fill_test_init_net.pbtxt are set to 0 through 3.
   for (size_t i = 0; i < 4; i++) {
     EXPECT_FLOAT_EQ(tensorFillFloatH.raw(i), (float)i);
     EXPECT_EQ(tensorIntFillH.raw(i), (int32_t)i);
     EXPECT_EQ(tensorInt64FillH.raw(i), (int64_t)i);
-    EXPECT_EQ(tensorStringToUInt8FillH.raw(i), (int8_t)i);
+    EXPECT_EQ(tensorStringToUInt8FillH.raw(i), (uint8_t)(i + 128));
   }
 }
 

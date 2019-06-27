@@ -228,7 +228,7 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::RowwiseQuantizedSparseLengthsWeightedSumNodeKind:
     return (NI.getInElemTy(
                 RowwiseQuantizedSparseLengthsWeightedSumNode::DataIdx) ==
-            ElemKind::Int8QTy) &&
+            ElemKind::UInt8QTy) &&
            (NI.getInElemTy(
                 RowwiseQuantizedSparseLengthsWeightedSumNode::ScalesIdx) ==
             ElemKind::FloatTy) &&
