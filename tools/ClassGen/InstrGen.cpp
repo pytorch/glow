@@ -241,6 +241,16 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Batch"})
       .autoIRGen();
 
+  /// Calculates minimum of all of the layers in the batch along the axes
+  /// dimensions and produce a tensor that has the same dimensions as the input.
+  /// tensor without the Axes dimension.
+  BB.newInstr("BatchedReduceMin")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Batch", OperandKind::In)
+      .addMember(MemberType::VectorUnsigned, "Axes")
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "Batch"})
+      .autoIRGen();
+
   /// Sums together groups of consecutive slices of Data as per the group sizes
   /// specified by Lengths.
   BB.newInstr("LengthsSum")

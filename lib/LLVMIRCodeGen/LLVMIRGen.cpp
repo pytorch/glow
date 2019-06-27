@@ -1665,6 +1665,42 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     break;
   }
 
+  case Kinded::Kind::BatchedReduceMinInstKind: {
+    auto *BR = cast<BatchedReduceMinInst>(I);
+    auto *dest = BR->getDest();
+    auto *batch = BR->getBatch();
+    auto axes = BR->getAxes();
+    auto *destPtr = emitValueAddress(builder, dest);
+    auto *batchPtr = emitValueAddress(builder, batch);
+
+    ShapeVector eBatchDims = expandDimsToMax(batch->dims());
+    ShapeVector eDestDims = eBatchDims;
+    for (int i = 0; i < axes.size(); i++) {
+      eDestDims[axes[i]] = 1;
+    }
+
+    auto *batchDims =
+        emitConstSizeTArray(builder, llvm::makeArrayRef(eBatchDims));
+    auto *destDims =
+        emitConstSizeTArray(builder, llvm::makeArrayRef(eDestDims));
+
+    if (((batch->getElementType() != ElemKind::FloatTy) &&
+         (batch->getElementType() != ElemKind::Int32ITy) &&
+         (batch->getElementType() != ElemKind::Int64ITy)) ||
+        (batch->getElementType() != dest->getElementType())) {
+      llvm_unreachable("Cannot get function for ReduceMin. ");
+    }
+
+    llvm::Function *F = getFunction("reducemin", batch->getElementType());
+    if (!batch->getType()->isQuantizedType()) {
+      auto *destSize = emitConstSizeT(builder, dest->size());
+
+      createCall(builder, F,
+                 {destPtr, batchPtr, destSize, destDims, batchDims});
+    }
+    break;
+  }
+
   case Kinded::Kind::ConvolutionInstKind: {
     auto *CI = cast<ConvolutionInst>(I);
     assert(CI->getLayout() == NHWC &&

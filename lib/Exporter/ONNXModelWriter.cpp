@@ -591,6 +591,16 @@ ONNXModelWriter::writeBatchedReduceAdd(const BatchedReduceAddNode *node,
 }
 
 llvm::Error
+ONNXModelWriter::writeBatchedReduceMin(const BatchedReduceMinNode *node,
+                                       GraphType &graph) {
+  auto *proto = graph.add_node();
+  // Find dictionary entries.
+  addValueAttribute(proto, "axes", node->getAxes());
+
+  return writeAllWithNode("ReduceMin", node, proto);
+}
+
+llvm::Error
 ONNXModelWriter::writeBatchNormalization(const BatchNormalizationNode *node,
                                          GraphType &graph) {
   auto *proto = graph.add_node();

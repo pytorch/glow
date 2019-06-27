@@ -243,6 +243,11 @@ private:
                                         const ShapeVector &eDestDims);
 
   template <typename ElemTy>
+  void fwdBatchedReduceMinInstImpl(Value *batch, Value *dest,
+                                   const ShapeVector &eBatchDims,
+                                   const ShapeVector &eDestDims, ElemTy max);
+
+  template <typename ElemTy>
   void fwdLengthsSumInstFloatImpl(const LengthsSumInst *I);
 
   template <typename ElemTy> void fwdGatherInstImpl(const GatherInst *I);

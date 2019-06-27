@@ -397,6 +397,13 @@ int main(int argc, char **argv) {
       .setDocstring("Performs Average Mean operation on the Input given "
                     "Axes.");
 
+  BB.newNode("BatchedReduceMin")
+      .addInput("Batch")
+      .addMember(MemberType::VectorUnsigned, "Axes")
+      .addResultFromCtorArg()
+      .setDocstring("Performs Reduce Min operation on the Input given "
+                    "Axes.");
+
   BB.newNode("ChannelShuffle")
       .addInput("Input")
       .addMember(MemberType::Unsigned, "Group")
