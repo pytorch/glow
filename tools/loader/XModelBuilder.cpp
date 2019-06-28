@@ -46,8 +46,16 @@ llvm::cl::list<std::string> inputFilenames(
 
 llvm::cl::list<unsigned> inputTensorDimensions(
     "input-tensor-dims",
-    llvm::cl::desc("Comma-separated list of nput tensor dimensions"),
+    llvm::cl::desc("Comma-separated list of input tensor dimensions"),
     llvm::cl::value_desc("unsigned int"),
+    llvm::cl::OneOrMore,
+    llvm::cl::CommaSeparated,
+    llvm::cl::cat(inputLoaderCat));
+
+llvm::cl::list<std::string> outputTensorNames(
+    "output-tensor-names",
+    llvm::cl::desc("Comma-separated list of output tensor names"),
+    llvm::cl::value_desc("list of strings"),
     llvm::cl::OneOrMore,
     llvm::cl::CommaSeparated,
     llvm::cl::cat(inputLoaderCat));
@@ -73,14 +81,6 @@ llvm::cl::opt<bool> writeOutput(
         "Write output of the inference (only applicable when not building a bundle."),
     llvm::cl::cat(inputLoaderCat));
 
-llvm::cl::opt<std::string> logFile(
-    "log-file",
-    llvm::cl::desc(
-        "Name of the file where output will be written (if not given, output is written to stdout). "
-        "This option applies only if -write-output is supplied. "),
-    llvm::cl::value_desc("string"),
-    llvm::cl::cat(inputLoaderCat));
-
 static std::unique_ptr<glow::ProtobufLoader> 
 createProtobufLoader(glow::Loader &loader, const glow::TypeRef inputType)
 {
@@ -98,7 +98,7 @@ createProtobufLoader(glow::Loader &loader, const glow::TypeRef inputType)
     return ptbLoader;
 }
 
-static std::pair<glow::Placeholder *, glow::Tensor *> 
+static std::pair<glow::Placeholder *, std::unordered_map<std::string, glow::Tensor *>>
 buildNetwork(glow::Loader &loader, const glow::TypeRef inputType, glow::PlaceholderBindings &ioBindings)
 {
     std::unique_ptr<glow::ProtobufLoader> LD{};
@@ -106,7 +106,7 @@ buildNetwork(glow::Loader &loader, const glow::TypeRef inputType, glow::Placehol
     glow::Placeholder *inputPH{};
     glow::Placeholder *outputPH{};
     glow::Tensor *outputTensor{};
-    std::pair<glow::Placeholder *, glow::Tensor *> ret{};
+    std::pair<glow::Placeholder *, std::unordered_map<std::string, glow::Tensor *>> ret{};
 
     LD = createProtobufLoader(loader, inputType);
     (void) ioBindings.allocate(loader.getModule()->getPlaceholders());
@@ -119,22 +119,20 @@ buildNetwork(glow::Loader &loader, const glow::TypeRef inputType, glow::Placehol
     }
 
     loader.compile(ioBindings);
-    inputPH = llvm::cast<glow::Placeholder>(EXIT_ON_ERR(LD->getNodeValueByName(inputName)));
 
-    // TODO: Modify to support multi-dimensional output.
-    //       This only supports scalar outputs for now. Modify this to support
-    //       multi-dimensional outputs. This can probably be accomplished with 
-    //       a call to getOutputByName("output_tensor_name"), where
-    //       "output_tensor_name" must be specified (perhaps as a cmd line arg?).
-    outputPH = EXIT_ON_ERR(LD->getSingleOutput());
-    outputTensor = ioBindings.get(outputPH);
+    inputPH = llvm::cast<glow::Placeholder>(EXIT_ON_ERR(LD->getNodeValueByName(inputName)));
     ret.first = inputPH;
-    ret.second = outputTensor;
+
+    for (const std::string &name : outputTensorNames) {
+        outputPH = EXIT_ON_ERR(LD->getOutputByName(name));
+        outputTensor = ioBindings.get(outputPH);
+        ret.second.insert(std::make_pair(name, outputTensor));
+    }
 
     return ret;
 }
 
-static std::size_t
+static void
 gatherFiles(std::vector<std::string> &files)
 {
     for (auto file : inputFilenames)
@@ -146,95 +144,77 @@ gatherFiles(std::vector<std::string> &files)
             exit(1);
         }
 
-        std::string line{};
-        while (std::getline(fstrm, line))
-            files.push_back(line);
-    }
-
-    std::size_t fileSize{};
-    bool firstTime{true};
-    for (auto file : files) {
-        std::ifstream inputFile(file.c_str(), std::ios::binary|std::ios::ate);
-        if (inputFile) {
-            std::ifstream::pos_type size{inputFile.tellg()};
-            if (firstTime) {
-                firstTime = false;
-                fileSize = size;
-            } else {
-                if (fileSize != size) {
-                    llvm::errs() << "Some input filnes are of different sizes! Exiting.\n";
-                    exit(1);
-                }
+        std::string file{};
+        while (std::getline(fstrm, file)) {
+            files.push_back(file);
+            std::ifstream check{file};
+            if (!check) {
+                llvm::errs() << "Error processing input file " << file << "\n";
+                exit(1);
             }
-        } else {
-            llvm::errs() << "Error processing input file: " << file << "\n";
-            exit(1);
         }
     }
-
-    return fileSize / sizeof(float_t);
 }
 
 static void
-loadInputData(const std::vector<std::string> &files, std::size_t fileSize, std::vector<std::float_t> &inputData)
+loadInputData(const std::string &file, std::vector<char> &inputData, std::size_t size)
 {
-    inputData.push_back(0.0);
-    inputData.push_back(0.0);
+    std::ifstream inputFile(file.c_str(), std::ios::binary);
+    inputFile.seekg(0, std::ios::end);
 
-    inputData.reserve(fileSize * files.size());
-
-    for (std::size_t jj = 0; jj < files.size(); ++jj) {
-        std::ifstream inputFile(files[jj].c_str(), std::ios::binary);
-        inputFile.read(reinterpret_cast<char *>(&(inputData[jj * fileSize])), fileSize * sizeof(std::float_t));
+    if (inputFile.tellg() != size) {
+        llvm::errs() << "Size of " << file << " does not match expected size " << size << "\n";
+        exit(1);
     }
+
+    inputFile.seekg(0, std::ios::beg);
+    inputFile.read(inputData.data(), size);
 }
 
 static void
 runInference(glow::Loader &loader,
              glow::PlaceholderBindings &ioBindings, 
-             const std::pair<glow::Placeholder *, glow::Tensor *> ioPlaceholders,
-             glow::Tensor &inputT,
-             const std::vector<std::float_t> &inputData,
-             std::vector<std::float_t> &outputData,
-             std::size_t nFiles,
-             std::size_t fileSize)
+             std::pair<glow::Placeholder *, std::unordered_map<std::string, glow::Tensor *>> &ioPlaceholders,
+             const std::vector<char> &inputData,
+             std::unordered_map<std::string, std::vector<char>> &outputData)
 {
     glow::Placeholder *inputPH{ioPlaceholders.first};
-    glow::Tensor *outputT{ioPlaceholders.second};
+    glow::Tensor *inputT = ioBindings.get(ioPlaceholders.first);
 
-    auto inputIterData = inputData.cbegin();
-    for (std::size_t ii = 0; ii < nFiles; ++ii) {
-        auto inputIterTensor = inputT.getHandle().begin();
-        auto outputIterTensor = outputT->getHandle().begin();
+    std::memcpy(inputT->getUnsafePtr(), inputData.data(), inputData.size());
+    glow::updateInputPlaceholders(ioBindings, {inputPH}, {inputT});
+    loader.runInference(ioBindings, 1);
 
-        for (std::size_t jj = 0; jj < fileSize; ++jj)
-            *(inputIterTensor++) = *(inputIterData++);
-
-        glow::updateInputPlaceholders(ioBindings, {inputPH}, {&inputT});
-        loader.runInference(ioBindings, 1);
-        // TODO: Modify this to accommodate multi-dimensional output.
-        outputData.push_back(*outputIterTensor);
+    for (auto &keyval : ioPlaceholders.second) {
+        outputData.insert(std::make_pair(keyval.first, std::vector<char>{}));
+        outputData[keyval.first].reserve(ioPlaceholders.second[keyval.first]->getSizeInBytes());
+        std::memcpy(outputData[keyval.first].data(), ioPlaceholders.second[keyval.first]->getUnsafePtr(), 
+                    ioPlaceholders.second[keyval.first]->getSizeInBytes());
     }
 }
 
 static void
-writeOutputData(const std::vector<std::float_t> &outputData, const std::vector<std::string> files)
+writeOutputData(const std::unordered_map<std::string, std::vector<char>> &outputData, 
+                const std::string &file)
 {
     if (writeOutput) {
         std::ofstream outputFile{};
-        std::ostream *outputStream{};
-        if (logFile.size() > 0) {
-            outputFile.open(logFile.c_str());
+        std::string name{};
+
+        for (auto &keyval : outputData) {
+            name = file;
+            name += ".";
+            name += keyval.first;
+            name += ".out.dat";
+
+            outputFile.open(name.c_str(), std::ios::out | std::ios::binary);
             if (!outputFile) {
-                std::cerr << "Unable to open output file: " << logFile << std::endl;
+                std::cerr << "Unable to open output file: " << name << std::endl;
                 return;
             }
-            outputStream = &outputFile;
-        } else
-            outputStream = &std::cout;
-
-        for (std::size_t jj = 0; jj < files.size(); ++jj)
-            *outputStream << "[" << files[jj] << "] >>> " << outputData[jj] << std::endl;
+            outputFile.write(keyval.second.data(), keyval.second.size());
+            outputFile.close();
+        }
     }
 }
 
@@ -242,19 +222,16 @@ int
 main(int argc, char **argv)
 {
     glow::PlaceholderBindings ioBindings{};
-    std::pair<glow::Placeholder *, glow::Tensor *> ioPlaceholders{};
+    std::pair<glow::Placeholder *, std::unordered_map<std::string, glow::Tensor *>> ioPlaceholders{};
 
     // This must be called before a loader instance is created.
     glow::parseCommandLine(argc, argv);
     glow::Loader loader{};
 
     std::vector<std::size_t> dims{};
-    std::vector<std::float_t> inputData{};
-    std::vector<std::float_t> outputData{};
+    std::vector<char> inputData{};
     std::vector<std::string> files{};
     glow::Tensor inputT{};
-    std::size_t inputSize{};
-
 
     for (auto dim : inputTensorDimensions)
         dims.push_back(dim);
@@ -282,10 +259,15 @@ main(int argc, char **argv)
         std::exit(1);
     }
 
-    inputSize = gatherFiles(files);
-    loadInputData(files, inputSize, inputData);
-    runInference(loader, ioBindings, ioPlaceholders, inputT, inputData, outputData, files.size(), inputSize);
-    writeOutputData(outputData, files);
+    gatherFiles(files);
+    for (auto &file : files) {
+        inputData.clear();
+        std::unordered_map<std::string, std::vector<char>> outputData{};
+
+        loadInputData(file, inputData, inputT.getSizeInBytes());
+        runInference(loader, ioBindings, ioPlaceholders, inputData, outputData);
+        writeOutputData(outputData, file);
+    }
 
     if (glow::profilingGraph())
         loader.generateAndSerializeQuantizationInfos(ioBindings);
