@@ -71,22 +71,22 @@ TEST_F(HabanaBackendTest, SurroundTile) {
   //   Placeholder
   //       |
   //       v
-  //   HabanaReshape
+  //   Reshape
   //       |
   //       v
   //     Tile
   //       |
   //       v
-  //   HabanaReshape
+  //   Reshape
   //       |
   //       v
   //      Save
 
-  auto *RO = llvm::dyn_cast<HabanaReshapeNode>(SN->getInput());
+  auto *RO = llvm::dyn_cast<ReshapeNode>(SN->getInput());
   ASSERT_TRUE(RO);
   TN = llvm::dyn_cast<TileNode>(RO->getInput());
   ASSERT_TRUE(TN);
-  auto *RI = llvm::dyn_cast<HabanaReshapeNode>(TN->getInput());
+  auto *RI = llvm::dyn_cast<ReshapeNode>(TN->getInput());
   ASSERT_TRUE(RI);
   EXPECT_EQ(llvm::dyn_cast<Placeholder>(RI->getInput()), A);
 

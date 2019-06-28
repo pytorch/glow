@@ -56,14 +56,6 @@ BB.newNode("HabanaConvolutionAdd")
                   "extra addend input to allow for a tensor to be added "
                   "to the convolution output.");
 
-BB.newNode("HabanaReshape")
-    .addInput("Input")
-    .addMember(MemberType::VectorSizeT, "Dims")
-    .addResultFromCtorArg()
-    .setDocstring("This is a Habana-specific Reshape node that exists only to "
-                  "bypass generic IR generation of Reshape so that it can "
-                  "be implemented using a Habana kernel.");
-
 BB.includeBackendSpecificVerification("glow/HabanaSpecificNodesVerification.h");
 
 #endif // TOOLS_CLASSGEN_BACKENDS_HABANA_HABANASPECIFICNODES_H
