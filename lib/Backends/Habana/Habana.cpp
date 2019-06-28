@@ -710,7 +710,7 @@ allocateGraphTensors(Function *F) {
       // not generating a memcpy if the SaveNode itself has no associated
       // tensor.
       auto *N = save->getInput().getNode();
-      if (llvm::isa<Storage>(N) || llvm::isa<HabanaReshapeNode>(N) ||
+      if (llvm::isa<Storage>(N) || llvm::isa<ReshapeNode>(N) ||
           N->getNumUsers() > 1) {
         N = save;
       }
@@ -875,8 +875,8 @@ HabanaBackend::compile(Function *F, const BackendOptions &opts) const {
       tempTensors.emplace_back(std::move(tempResult));
       break;
     }
-    case Kinded::Kind::HabanaReshapeNodeKind: {
-      auto *RI = llvm::cast<HabanaReshapeNode>(&I);
+    case Kinded::Kind::ReshapeNodeKind: {
+      auto *RI = llvm::cast<ReshapeNode>(&I);
       chk(synCreateGenericNode(&tensors[RI->getInput()].get(),
                                &tensors[RI].get(), 1, 1, nullptr, "Reshape",
                                RI->getName().data(), nullptr, nullptr));
@@ -1332,7 +1332,6 @@ bool HabanaBackend::isOpSupported(const NodeInfo &NI) const {
     case Kinded::Kind::HabanaConvolutionNodeKind:
     case Kinded::Kind::HabanaConvolutionAddNodeKind:
     case Kinded::Kind::HabanaFullyConnectedNodeKind:
-    case Kinded::Kind::HabanaReshapeNodeKind:
     case Kinded::Kind::MatMulNodeKind:
     case Kinded::Kind::MaxPoolNodeKind:
     case Kinded::Kind::MulNodeKind:
@@ -1365,7 +1364,6 @@ bool HabanaBackend::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::DivNodeKind:
   case Kinded::Kind::FullyConnectedNodeKind:
   case Kinded::Kind::HabanaFullyConnectedNodeKind:
-  case Kinded::Kind::HabanaReshapeNodeKind:
   case Kinded::Kind::LogNodeKind:
   case Kinded::Kind::MatMulNodeKind:
   case Kinded::Kind::MaxNodeKind:
@@ -1375,8 +1373,8 @@ bool HabanaBackend::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::ReluNodeKind:
   case Kinded::Kind::ReshapeNodeKind:
   case Kinded::Kind::SaveNodeKind:
-  case Kinded::Kind::SliceNodeKind:
   case Kinded::Kind::SigmoidNodeKind:
+  case Kinded::Kind::SliceNodeKind:
   case Kinded::Kind::SoftMaxNodeKind:
   case Kinded::Kind::SplatNodeKind:
   case Kinded::Kind::SubNodeKind:
@@ -1719,17 +1717,6 @@ bool HabanaBackend::transformPostLowering(Function *F,
           conv->getBias(), conv->getKernels(), conv->getStrides(),
           conv->getPads(), conv->getGroup(), /*doRelu=*/false));
       conv->getResult().replaceAllUsesOfWith(NC);
-      changed = true;
-      continue;
-    }
-
-    // Replace Reshape with HabanaReshape for better control over code
-    // generation.
-    if (auto *reshape = llvm::dyn_cast<ReshapeNode>(&node)) {
-      auto *NR = F->addNode(new HabanaReshapeNode(
-          reshape->getName(), reshape->getResult().getType(),
-          reshape->getInput(), reshape->getDims()));
-      reshape->getResult().replaceAllUsesOfWith(NR);
       changed = true;
       continue;
     }
