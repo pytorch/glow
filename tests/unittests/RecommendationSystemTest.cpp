@@ -879,7 +879,7 @@ TEST_P(RecommendationSystemTest, RecSys_SLS_Only) {
 
 /// Test gathering weights for SLWS.
 TEST_P(RecommendationSystemTest, RecSys_FP32_Gather_Weights) {
-  ENABLED_BACKENDS(CPU, Habana);
+  ENABLED_BACKENDS(CPU);
 
   testRecSys(/* quantizeSLWS */ false,
              /* quantizeFC */ false,
@@ -889,7 +889,7 @@ TEST_P(RecommendationSystemTest, RecSys_FP32_Gather_Weights) {
 
 /// Test gathering weights for SLWS.
 TEST_P(RecommendationSystemTest, RecSys_FP32_Medium_Gather_Weights) {
-  ENABLED_BACKENDS(CPU, Habana);
+  ENABLED_BACKENDS(CPU);
 
   // Note that this overrides the parameters provided by command line options if
   // provided, as this comes after SetUp().
