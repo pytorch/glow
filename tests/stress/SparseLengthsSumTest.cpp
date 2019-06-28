@@ -29,8 +29,8 @@ TEST_P(SparseLengthsSum, Big) {
   ENABLED_BACKENDS(CPU, Habana);
 
   std::array<size_t, 13> dataRows = {
-      5000000, 5000000, 6000000, 8000000, 8000000, 8000000, 3000000,
-      3000000, 1000000, 5000000, 8000000, 5000000, 1000000,
+      5000, 5000, 6000, 8000, 8000, 8000, 3000,
+      3000, 1000, 5000, 8000, 5000, 1000,
   };
 
   std::vector<Constant *> data;
@@ -99,7 +99,8 @@ TEST_P(SparseLengthsSum, Big) {
     bindings.allocate(result);
   }
 
-  EE_.compile(CompilationMode::Infer, F_);
+  auto *G = F_->clone("clone");
+  EE_.compile(CompilationMode::Infer, G);
   EE_.run(bindings);
   std::vector<Tensor> test;
   for (auto *result : results) {
@@ -108,10 +109,6 @@ TEST_P(SparseLengthsSum, Big) {
     T->getHandle<float>().clear(0);
   }
 
-  // TODO: We should really clone the function, since compiling for the test
-  // backend might mutate the graph such that it is invalid for the
-  // interpreter.  Sadly, cloning the graph currently creates problems for some
-  // backends (e.g., Habana).
   ExecutionEngine interp{};
   interp.compile(CompilationMode::Infer, F_);
   interp.run(bindings);
