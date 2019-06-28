@@ -23,16 +23,15 @@
 GraphInfo::GraphInfo(const torch::jit::Node *node)
     : subgraph(node->g(at::attr::Subgraph)) {}
 
-void CachingGraphRunner::addGraph(const torch::jit::Node *node) {
-  // TODO: just use node* as key
-  GraphInfo graphInfo(node);
-  jitNodeToInfoMap_.insert({node, std::move(graphInfo)});
-}
-
 void CachingGraphRunner::runGraph(const torch::jit::Node *node,
                                   torch::jit::Stack &stack) {
-  // Make sure this is a valid id
-  assert(jitNodeToInfoMap_.count(node) > 0);
+  // If this is the first time this subgraph has been run then create a new
+  // GraphInfo object to store information about it.
+  if (!jitNodeToInfoMap_.count(node)) {
+    GraphInfo graphInfo(node);
+    jitNodeToInfoMap_.insert({node, std::move(graphInfo)});
+  }
+
   auto &graphInfo = jitNodeToInfoMap_.at(node);
 
   const at::ArrayRef<torch::jit::Value *> &graphInputs =

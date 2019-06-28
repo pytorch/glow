@@ -22,16 +22,28 @@
 
 #include "glow/Graph/Graph.h"
 
+/// Loads PyTorch JIT IR subgraphs as a Glow Function.
 class PyTorchModelLoader {
+  /// Glow module in which the loaded Glow Function will be created.
   glow::Module &mod_;
 
+  /// The PyTorch subgraph being loaded.
   torch::jit::Graph *subgraph_;
+
+  /// The reference PyTorch inputs used for loading. This is required for shape
+  /// information.
   at::ArrayRef<torch::jit::IValue> &inputs_;
 
+  /// The Glow function that will created.
   glow::Function *f_ = nullptr;
+
+  /// Glow Placeholders corresponding to stack inputs from PyTorch.
   std::vector<glow::Placeholder *> inputPlaceholders_;
+
+  /// Glow Placeholders corresponding to stack outputs to back PyTorch.
   std::vector<glow::Placeholder *> outputPlaceholders_;
 
+  /// Mapping from PyTorch Values to Glow NodeValues created during loading.
   std::unordered_map<const torch::jit::Value *, glow::NodeValue> valueMap_;
 
 public:
@@ -47,21 +59,74 @@ public:
   void load();
 
   /// Returns whether or not a PyTorch node is supported.
+  /// NOTE: For now this is just an enumeration of all type of PyTorch nodes
+  /// that the loader knows about but doesn't really guarantee that loading will
+  /// will succeed because determining this requires more informations such as
+  /// shape info that isn't yet available when this is run.
   static bool isNodeSupported(const torch::jit::Node *node);
 
+  /// Get the Glow function that this loader has created.
   glow::Function *getFunction() { return f_; }
 
+  /// \returns the Glow input placeholders for the loaded function in the order
+  /// that is expected by the stack of PyTorch inputs when running the function.
   const std::vector<glow::Placeholder *> &getInputPlaceholders() {
     return inputPlaceholders_;
   }
 
+  /// \returns the Glow output placeholders for the loaded function in the order
+  /// that is expected by the stack of PyTorch inputs when running the function.
   const std::vector<glow::Placeholder *> &getOutputPlaceholders() {
     return outputPlaceholders_;
   }
 
 private:
-  glow::Placeholder *loadValue(const torch::jit::Value *val);
+  /// Find the Glow NodeValue that maps to a given PyTorch value \p value.
+  glow::NodeValue getGlowNodeValue(const torch::jit::Value *value) const;
+
+  /// Returns true if a Glow NodeValue has been created for a given PyTorch
+  /// Value \p value.
+  bool hasGlowNodeValue(const torch::jit::Value *value) const;
+
+  /// Add a new mapping from the PyTorch Value \p value to the Glow NodeValue
+  /// \nodeValue.
+  void addGlowNodeValue(const torch::jit::Value *value,
+                        glow::NodeValue nodeValue);
+
+  /// Given a PyTorch Value \p value, returns a handle to the tensor backning
+  /// the glow Constant that is mapped to this PyTorch Value. This requires that
+  /// the a mapping from the given Value to a Glow NodeValue has already been
+  /// created and that the NodeValue is the output of a Glow ConstantNode.
+  template <typename T>
+  glow::Handle<T> getGlowConstantHandle(const torch::jit::Value *value) const;
+
+  /// Creates and \returns a new Glow Placeholder corresponding to the given
+  /// PyTorch Value \p value.
+  glow::Placeholder *loadValue(const torch::jit::Value *value);
+
+  /// Load a given PyTorch Node \p ptNode.
   void loadNode(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch Constant node as a Glow Constant.
+  void loadConstant(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch mul node.
+  void loadMul(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch div node.
+  void loadDiv(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch add node.
+  void loadAdd(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch sub node.
+  void loadSub(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch relu node.
+  void loadRelu(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch _convolution node.
+  void loadConvolution(const torch::jit::Node *ptNode);
 };
 
 #endif // GLOW_IMPORTER_PYTORCH_PYTORCHMODELLOADER_H
