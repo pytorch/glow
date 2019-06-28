@@ -2058,6 +2058,57 @@ TEST(onnx, tile) {
   }
 }
 
+TEST(onnx, topK) {
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/TopK.onnxtxt");
+
+  PlaceholderBindings bindings;
+  Placeholder *output;
+  Placeholder *index;
+  Tensor x(ElemKind::FloatTy, {1, 3, 4});
+  x.getHandle() = {1., 2., 3., 4., 8., 7., 7., 7., 11., 12., 11., 10.};
+
+  {
+    ONNXModelLoader onnxLD(netFilename, {"scores"}, {&x.getType()}, *F);
+    output = EXIT_ON_ERR(onnxLD.getOutputByName("topscores"));
+    index = EXIT_ON_ERR(onnxLD.getOutputByName("topindices"));
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod, {"scores"}, {&x});
+  }
+
+  auto *outputT = bindings.get(output);
+  auto *indexT = bindings.get(index);
+
+  EE.compile(CompilationMode::Infer, F);
+  EE.run(bindings);
+
+  auto outputH = outputT->getHandle();
+  auto indexH = indexT->getHandle<int64_t>();
+  std::vector<size_t> expectedDims = {1, 3, 2};
+  std::vector<float> expectedValues = {
+      4., 3., 8., 7., 12, 11.,
+  };
+  std::vector<int64_t> expectedIndices = {3, 2, 0, 1, 1, 0};
+
+  EXPECT_TRUE(outputH.dims().vec() == expectedDims);
+  for (size_t i = 0; i < expectedValues.size(); i++) {
+    EXPECT_EQ(outputH.raw(i), expectedValues[i]);
+  }
+
+  EXPECT_TRUE(indexH.dims().vec() == expectedDims);
+  for (size_t i = 0; i < expectedIndices.size(); i++) {
+    EXPECT_EQ(indexH.raw(i), expectedIndices[i]);
+  }
+
+  // Constant Folding Test.
+  EXPECT_TRUE(
+      checkConstFoldedOutput(netFilename, {"scores"}, {&x}, {outputT, indexT}));
+}
+
 TEST(onnx, importMaxPoolWithArgmax) {
   ExecutionEngine EE;
   auto &mod = EE.getModule();
