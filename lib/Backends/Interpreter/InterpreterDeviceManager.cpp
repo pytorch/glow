@@ -51,6 +51,17 @@ bool InterpreterDeviceManager::isMemoryAvailable(uint64_t estimate) const {
   return maxMemoryBytes_ >= (usedMemoryBytes_ + estimate);
 }
 
+DeviceInfo InterpreterDeviceManager::getDeviceInfo() const {
+  // TODO: these may need to be tweaked depending on interpreter overheads.
+  DeviceInfo info = DeviceInfo();
+  info.sramCapacity = 256 * 1024 * 1024;
+  info.peakCompute = 2.2 * 1024 * 1024 * 1024 * 1024;
+  info.peakDramBw = 110.0 * 1024 * 1024 * 1024;
+  info.peakSramBw = 1024.0 * 1024 * 1024 * 1024;
+  info.peakPCIeBw = 16.0 * 1024 * 1024 * 1024;
+  return info;
+}
+
 void InterpreterDeviceManager::addNetworkImpl(const Module *module,
                                               FunctionMapTy functions,
                                               ReadyCBTy readyCB) {
