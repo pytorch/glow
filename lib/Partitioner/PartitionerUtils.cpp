@@ -156,6 +156,20 @@ uint64_t getOutMemPerNode(const NodesSetTy &nodes, const Node *node) {
   return ret;
 }
 
+/// Given a node, \return the NodeSet of all nodes that create the results
+/// for any of the inputs of this node (i.e. input of inputs)
+NodesSetTy getInputs(const Node *node) {
+  NodesSetTy result;
+  for (size_t i = 0, e = node->getNumInputs(); i < e; i++) {
+    Node *input = node->getNthInput(i).getNode();
+    Storage *in = llvm::dyn_cast<Storage>(input);
+    if (!in) {
+      result.insert(input);
+    }
+  }
+  return result;
+}
+
 /// Given nodes set \p currNodes and its memory usage info \p info, \returns the
 /// new memory usage if \p newNode is added into \p currNodes.
 GraphMemInfo updateGraphMemInfoByAddingNode(const NodesSetTy &currNodes,
