@@ -1048,7 +1048,7 @@ llvm::Error Partitioner::Partition(CompilationContext &cctx) {
     if (dumpPartition) {
       subF->dumpDAG("partitionLogicalID" +
                     std::to_string(mapping.getLogicalDeviceIDList(subF)[0]) +
-                    "__" + subF->getName().str() + "__" +
+                    "__" + subF->getFilename() + "__" +
                     mapping.getPartitionBackendName(subF) + ".dot");
     }
     i++;

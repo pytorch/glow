@@ -248,6 +248,8 @@ protected:
 
 public:
   void dumpAll(std::ostream &os) {
+    CHECK(os) << "Failed to create file for to dump Graph";
+
     os << "digraph DAG {\n\trankdir=TB;\n";
 
     // Dump vertices:

@@ -241,6 +241,8 @@ public:
 
   ~Function();
 
+  std::string getFilename() { return getName().rsplit('/').second.str(); }
+
   /// Return the log context.
   std::shared_ptr<LogContext> getLogContext() { return logCtx_; }
 
