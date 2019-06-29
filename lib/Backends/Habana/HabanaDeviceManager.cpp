@@ -439,3 +439,13 @@ uint64_t HabanaDeviceManager::getAvailableMemory() const { return freeMemory_; }
 bool HabanaDeviceManager::isMemoryAvailable(uint64_t estimate) const {
   return estimate <= freeMemory_;
 }
+
+DeviceInfo HabanaDeviceManager::getDeviceInfo() const {
+  DeviceInfo info = DeviceInfo();
+  info.sramCapacity = 50 * 1024 * 1024;
+  info.peakCompute = 0.45 * 1024 * 1024 * 1024 * 1024;
+  info.peakDramBw = 30.0 * 1024 * 1024 * 1024;
+  info.peakSramBw = 1024.0 * 1024 * 1024 * 1024;
+  info.peakPCIeBw = 16.0 * 1024 * 1024 * 1024;
+  return info;
+}

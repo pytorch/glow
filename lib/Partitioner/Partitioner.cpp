@@ -235,8 +235,8 @@ void Partitioner::initOpComputeTime(Function *F) {
   float peakCompute = deviceInfo_[0].peakCompute;
 
   for (auto &node : F->getNodes()) {
-    /// compute memory side bytes for inputs from DRAM, SRAM.
-    /// TODO: think about whether this is better off computed inside a Node.
+    // compute memory side bytes for inputs from DRAM, SRAM.
+    // TODO: think about whether this is better off computed inside a Node.
 
     int n = node.getNumInputs();
     uint64_t sizeDram = 0;
@@ -246,32 +246,84 @@ void Partitioner::initOpComputeTime(Function *F) {
       continue;
     }
 
-    /// The memory bytes for embedding table lookups is data dependent,
-    /// so it needs to be calculated as per the number of indices accessed.
+    // The memory bytes for embedding table lookups is data dependent,
+    // so it needs to be calculated as per the number of indices accessed.
     if (node.getKind() == Kinded::Kind::SparseLengthsWeightedSumNodeKind) {
       auto *SLWSN = llvm::dyn_cast<SparseLengthsWeightedSumNode>(&node);
-      /// compute how many entries of the embedding table we look up
+      // compute how many entries of the embedding table we look up
       auto numLookups = SLWSN->getIndices().dims().front();
-      /// compute how many bytes we read per lookup
+      // compute how many bytes we read per lookup
       auto tableSize = SLWSN->getData().getType()->getSizeInBytes();
       auto numRows = SLWSN->getData().dims().front();
       auto sizePerLookup = tableSize / numRows;
-      /// compute total bytes read
+      // compute total bytes read
       uint64_t sizeInput = numLookups * sizePerLookup;
 
-      /// does the table fit in SRAM or DRAM
-      if (tableSize > sramCapacity) {
-        sizeDram += sizeInput;
-      } else {
-        sizeSram += sizeInput;
-      }
-
-      /// we also read the indices, weights and lengths arrays
+      // tables are usually large and fit in DRAM
+      sizeDram += sizeInput;
+      // we also read the indices, weights and lengths arrays
       sizeSram += SLWSN->getIndices().getType()->getSizeInBytes();
       sizeSram += SLWSN->getWeights().getType()->getSizeInBytes();
       sizeSram += SLWSN->getLengths().getType()->getSizeInBytes();
+    } else if (node.getKind() == Kinded::Kind::SparseLengthsSumNodeKind) {
+      auto *SLSN = llvm::dyn_cast<SparseLengthsSumNode>(&node);
+      // compute how many entries of the embedding table we look up
+      auto numLookups = SLSN->getIndices().dims().front();
+      // compute how many bytes we read per lookup
+      auto tableSize = SLSN->getData().getType()->getSizeInBytes();
+      auto numRows = SLSN->getData().dims().front();
+      auto sizePerLookup = tableSize / numRows;
+      // compute total bytes read
+      uint64_t sizeInput = numLookups * sizePerLookup;
+
+      // tables are usually large and fit in DRAM
+      sizeDram += sizeInput;
+      // we also read the indices and lengths arrays
+      sizeSram += SLSN->getIndices().getType()->getSizeInBytes();
+      sizeSram += SLSN->getLengths().getType()->getSizeInBytes();
+    } else if (node.getKind() ==
+               Kinded::Kind::
+                   FusedRowwiseQuantizedSparseLengthsWeightedSumNodeKind) {
+      auto *FRQSLWSN =
+          llvm::dyn_cast<FusedRowwiseQuantizedSparseLengthsWeightedSumNode>(
+              &node);
+      // compute how many entries of the embedding table we look up
+      auto numLookups = FRQSLWSN->getIndices().dims().front();
+      // compute how many bytes we read per lookup
+      auto tableSize = FRQSLWSN->getData().getType()->getSizeInBytes();
+      auto numRows = FRQSLWSN->getData().dims().front();
+      auto sizePerLookup = tableSize / numRows;
+      // compute total bytes read
+      uint64_t sizeInput = numLookups * sizePerLookup;
+
+      // tables are usually large and fit in DRAM
+      sizeDram += sizeInput;
+
+      // we also read the indices, weights and lengths arrays
+      sizeSram += FRQSLWSN->getIndices().getType()->getSizeInBytes();
+      sizeSram += FRQSLWSN->getWeights().getType()->getSizeInBytes();
+      sizeSram += FRQSLWSN->getLengths().getType()->getSizeInBytes();
+    } else if (node.getKind() ==
+               Kinded::Kind::FusedRowwiseQuantizedSparseLengthsSumNodeKind) {
+      auto *FRQSLSN =
+          llvm::dyn_cast<FusedRowwiseQuantizedSparseLengthsSumNode>(&node);
+      // compute how many entries of the embedding table we look up
+      auto numLookups = FRQSLSN->getIndices().dims().front();
+      // compute how many bytes we read per lookup
+      auto tableSize = FRQSLSN->getData().getType()->getSizeInBytes();
+      auto numRows = FRQSLSN->getData().dims().front();
+      auto sizePerLookup = tableSize / numRows;
+      // compute total bytes read
+      uint64_t sizeInput = numLookups * sizePerLookup;
+
+      // tables are usually large and fit in DRAM
+      sizeDram += sizeInput;
+
+      // we also read the indices and lengths arrays
+      sizeSram += FRQSLSN->getIndices().getType()->getSizeInBytes();
+      sizeSram += FRQSLSN->getLengths().getType()->getSizeInBytes();
     } else {
-      /// for all other ops, iterate through all inputs and get size in bytes
+      // for all other ops, iterate through all inputs and get size in bytes
       for (int i = 0; i < n; i++) {
         auto ty = node.getNthInput(i).getType();
         uint64_t sizeInput = ty->getSizeInBytes();
@@ -294,8 +346,8 @@ void Partitioner::initOpComputeTime(Function *F) {
       }
     }
 
-    /// Calculate compute ops. Currently only computed for Matmul, Conv, FC
-    /// TODO: think about whether this is better off computed inside a Node.
+    // Calculate compute ops. Currently only computed for Matmul, Conv, FC
+    // TODO: think about whether this is better off computed inside a Node.
     uint64_t totalOps = 0;
     switch (node.getKind()) {
     case Kinded::Kind::MatMulNodeKind: {
@@ -309,9 +361,18 @@ void Partitioner::initOpComputeTime(Function *F) {
       auto *FCN = llvm::dyn_cast<FullyConnectedNode>(&node);
       auto inputDims = FCN->getInput().dims();
       auto wtDims = FCN->getWeights().dims();
-      totalOps = 2 * inputDims[0] * inputDims[1] * wtDims[1];
+      totalOps = 2 * inputDims[0] * inputDims[1] * wtDims[0];
       break;
     }
+#ifdef GLOW_WITH_HABANA
+    case Kinded::Kind::HabanaFullyConnectedNodeKind: {
+      auto *FCN = llvm::dyn_cast<HabanaFullyConnectedNode>(&node);
+      auto inputDims = FCN->getInput().dims();
+      auto wtDims = FCN->getWeights().dims();
+      totalOps = 2 * inputDims[0] * inputDims[1] * wtDims[0];
+      break;
+    }
+#endif
     case Kinded::Kind::ConvolutionNodeKind: {
       auto *CN = llvm::dyn_cast<ConvolutionNode>(&node);
       auto resultDims = CN->getResult().dims();
@@ -329,13 +390,32 @@ void Partitioner::initOpComputeTime(Function *F) {
       totalOps *= (inputChannels * 1.0 / nGroups);
       break;
     }
+#ifdef GLOW_WITH_HABANA
+    case Kinded::Kind::HabanaConvolutionNodeKind: {
+      auto *CN = llvm::dyn_cast<HabanaConvolutionNode>(&node);
+      auto resultDims = CN->getResult().dims();
+      // Get the product of batch, output height, output dims, output channels
+      totalOps = resultDims[0];
+      for (size_t i = 1, e = resultDims.size(); i < e; i++) {
+        totalOps *= resultDims[i];
+      }
+      // Multiply in kernel height, kernel width
+      auto kernelDims = CN->getKernels();
+      totalOps *= kernelDims[0] * kernelDims[1];
+      // Multiply in input channels/groups
+      auto inputChannels = CN->getInput().dims()[1];
+      auto nGroups = CN->getGroup();
+      totalOps *= (inputChannels * 1.0 / nGroups);
+      break;
+    }
+#endif
     default:
       break;
     }
 
-    /// Compute compute roofline as max of flops, DRAM, SRAM BW
-    /// See https://bit.ly/2UdJ3mz
-    /// Add epsilons to prevent seg faults on uninitialized peak values.
+    // Compute compute roofline as max of flops, DRAM, SRAM BW
+    // See https://bit.ly/2UdJ3mz
+    // Add epsilons to prevent seg faults on uninitialized peak values.
     computeTime_[&node] =
         std::max(totalOps * 1.0f / std::max(peakCompute, 1e-6f),
                  std::max(sizeDram * 1.0f / std::max(peakDramBw, 1e-6f),

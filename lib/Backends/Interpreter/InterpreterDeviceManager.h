@@ -56,6 +56,10 @@ public:
   /// etc.
   bool isMemoryAvailable(uint64_t estimate) const override;
 
+  /// Returns the DeviceInfo for this device containing peak limits for
+  /// compute and bandwidths (used in partitioning).
+  DeviceInfo getDeviceInfo() const override;
+
 protected:
   void addNetworkImpl(const Module *module, FunctionMapTy functions,
                       ReadyCBTy cb) override;

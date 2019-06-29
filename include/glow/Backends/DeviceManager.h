@@ -102,6 +102,10 @@ public:
 
   /// \returns the DeviceConfig which initialized this device.
   const DeviceConfig &getDeviceConfig() { return config_; }
+
+  /// \returns the DeviceInfo for this device containing peak limits for
+  /// compute and bandwidths (used in partitioning).
+  virtual DeviceInfo getDeviceInfo() const { return DeviceInfo(); }
 };
 
 } // namespace runtime

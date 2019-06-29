@@ -87,9 +87,10 @@ llvm::Error HostManager::addNetwork(std::unique_ptr<Module> module,
   }
   std::vector<DeviceInfo> deviceInfo;
   for (auto &device : devices_) {
-    DeviceInfo info = DeviceInfo();
+    DeviceInfo info = device.second->getDeviceInfo();
     info.availableMemory = device.second->getAvailableMemory();
     info.backendName = device.second->getBackendName();
+    VLOG(1) << "AVAILABLE DEVICE MEMORY " << info.availableMemory << "\n";
     deviceInfo.push_back(info);
   }
   // Perform a round of target-independent graph optimizations. This helps the
