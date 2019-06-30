@@ -70,6 +70,9 @@ std::vector<Node *> getOutUsersWithOnePredecessor(const NodesSetTy &nodes);
 /// in the set \p nodes.
 uint64_t getOutMemPerNode(const NodesSetTy &nodes, const Node *node);
 
+/// Given a node, \return the NodeSet of inputs of this node.
+NodesSetTy getInputs(const Node *node);
+
 /// Given nodes set \p currNodes and its memory usage info \p info, \returns the
 /// new memory usage if \p newNode is added into \p currNodes.
 GraphMemInfo updateGraphMemInfoByAddingNode(const NodesSetTy &currNodes,

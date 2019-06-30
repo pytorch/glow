@@ -27,6 +27,17 @@
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/raw_ostream.h"
 
+namespace glow {
+bool GlowEnableLoadBalancedPartitioning = false;
+static llvm::cl::opt<bool, /* ExternalStorage */ true>
+    GlowEnableLoadBalancedPartitioningOpt(
+        "glow_partitioner_enable_load_balance",
+        llvm::cl::desc(
+            "Enable a partitioner pass to optimize for "
+            "load balance in addition to memory capacity constraints"),
+        llvm::cl::location(GlowEnableLoadBalancedPartitioning));
+} // namespace glow
+
 /// -log-partition - Command line option to dump Partitioner logs.
 static llvm::cl::OptionCategory PartitionerCat("Glow Partitioner Options");
 static llvm::cl::opt<bool>
@@ -1015,6 +1026,133 @@ llvm::Error Partitioner::createDAGWithoutPartition(
   return llvm::Error::success();
 }
 
+llvm::Error Partitioner::loadBalancedPartitioning(Function *F,
+                                                  DeviceIDTy numDevices,
+                                                  uint64_t availableMemory,
+                                                  llvm::StringRef backendName,
+                                                  NodeToFunctionMap &mapping) {
+  // Currently, the load balanced partitioner disregards the input mapping
+  // and only uses the numPartitions input from previous partitioning passes
+  // But we take this in to leave open the option of using the previous mapping
+  // at a later point.
+  // The main idea here is to use the roofline estimates to load balance
+  // partitions. At this point, we stick to one partition per device, so
+  // we ensure that we only have edges from nodes in smaller partition ids to
+  // nodes in larger partition ids to ensure an acyclic DAGNode graph.
+  //
+  // The overall algorithm is as follows:
+  // Iterate through all operators in breadth-first fashion.
+  // For each operator do:
+  // (a) Find the maximum partition id of each input node.
+  // (b) Assign the operator to this partition if memory
+  //     constraints are satisfied and the total sum of operator runtimes
+  //     assigned to the partition exceeds 1/numPartitions fraction of
+  //     overall roofline runtime
+  // (c) In case memory constraint isnt satisfied, then try to put operator
+  //     in successively higher partitions until the conditions get satisfied.
+  //     If we cannot find such a partition where this operator can be assigned,
+  //     throw an error.
+
+  // Initialize runtimes and memory availability per device
+  std::vector<float> deviceTime(numDevices, 0);
+  std::vector<size_t> memoryAvailable(numDevices, availableMemory);
+  std::vector<NodesSetTy> nodesInPartitions(numDevices);
+  std::vector<GraphMemInfo> graphMem(numDevices, GraphMemInfo{});
+  std::vector<Function *> partitions(numDevices);
+
+  // Compute total roofline time
+  float totalRooflineTime = 0;
+  for (auto &n : F->getNodes()) {
+    totalRooflineTime += getComputeTime()[&n];
+  }
+
+  float timePerPartition = totalRooflineTime / numDevices;
+
+  // Get the BFS levels
+  NodeToFunctionMap partitionMap;
+  Function *newF;
+  BFSLevel bfs = getBFSLevel(F);
+  size_t level = bfs.size();
+
+  // Create the functions and push them into the mapping
+  for (DeviceIDTy curPartition = 0; curPartition < numDevices; curPartition++) {
+    std::string funcName =
+        std::string(F->getName()) + "_part" + std::to_string(curPartition + 1);
+    if (F->getParent()->hasFunction(funcName)) {
+      newF = F->getParent()->getFunction(funcName);
+      F->getParent()->eraseFunction(newF);
+    }
+    newF = F->getParent()->createFunction(funcName);
+    partitionMap.createPartition(newF, backendName);
+    partitionMap.appendLogicalDeviceID(newF, curPartition);
+    partitions[curPartition] = newF;
+  }
+
+  // Go through operators level by level
+  for (int i = level - 1; i >= 0; i--) {
+    for (size_t j = 0, e = bfs[i].size(); j < e; j++) {
+      Node *N = bfs[i][j];
+
+      // Find the maximum partition id of the inputs to the node
+      DeviceIDTy maxLogicalDeviceId = 0;
+      for (auto &I : getInputs(N)) {
+        Function *inpF = partitionMap[I];
+        auto logicalDeviceIds = partitionMap.getLogicalDeviceIDList(inpF);
+        DCHECK(logicalDeviceIds.size() == 1);
+        auto logicalDeviceId = logicalDeviceIds[0];
+        if (logicalDeviceId > maxLogicalDeviceId) {
+          maxLogicalDeviceId = logicalDeviceId;
+        }
+      }
+
+      auto curOpTime = getComputeTime()[N];
+      auto curOpMemory = getMemUsage()[N];
+
+      // Find a partition to put this node into
+      int curPartition = maxLogicalDeviceId;
+      const float allowedLoadImbalanceFraction = 0.5f;
+      for (; curPartition < numDevices; curPartition++) {
+        // Put the op in current partition if
+        // (a) memory constaints and load balance constraints are not violated,
+        // or (b) this is the last partition and memory capacity isnt exceeded
+        // The allowedLoadImbalanceFraction in the load balance case is to avoid
+        // edge cases where load balance is only violated by a small amount and
+        // moving to the next partition would result in significant imbalance in
+        // runtime. Hence if the violation is by less than
+        // allowedLoadImbalanceFraction of the operator cost, then we prefer to
+        // keep it in the current partition.
+        bool loadBalanceValid = deviceTime[curPartition] +
+                                    curOpTime * allowedLoadImbalanceFraction <
+                                timePerPartition;
+        bool memValid = memoryAvailable[curPartition] >= curOpMemory;
+
+        if (memValid && (loadBalanceValid || curPartition == numDevices - 1)) {
+          // valid, put the node in the current partition
+          Function *curF = partitions[curPartition];
+          partitionMap.add(N, curF);
+          deviceTime[curPartition] += curOpTime;
+          memoryAvailable[curPartition] -= curOpMemory;
+          graphMem[curPartition] = updateGraphMemInfoByAddingNode(
+              nodesInPartitions[curPartition], graphMem[curPartition], N);
+          nodesInPartitions[curPartition].insert(N);
+          partitionMap.setGraphMemInfo(curF, graphMem[curPartition]);
+          break;
+        }
+      }
+
+      // Throw error if we were not able to put this node into any partition
+      RETURN_ERR_IF_NOT(curPartition < numDevices,
+                        "Load balance partition error");
+    }
+  }
+  for (int i = 0; i < numDevices; i++) {
+    VLOG(1) << "Partition #" << i << " has estimated runtime " << deviceTime[i];
+  }
+
+  mapping = partitionMap;
+  return llvm::Error::success();
+}
+
 llvm::Error Partitioner::Partition(CompilationContext &cctx) {
   // Prepare the mapping between BackendName and BackendInfo.
   std::vector<Backend *> backends;
@@ -1087,10 +1225,29 @@ llvm::Error Partitioner::Partition(CompilationContext &cctx) {
   // devices.
   RETURN_IF_ERR(logicalDevicesValidation(mapping));
 
-  // Step 4 : do the real partitioning for the function list.
+  // Step 4 : Optimization pass to modify results of default partitioner.
+  // If load balanced partitioner optimization is enabled, then modify
+  // the results of the default partitioner to optimize based on roofline
+  // performance.
+  if (backends.size() == 1 && glow::GlowEnableLoadBalancedPartitioning) {
+    auto backendName = backends[0]->getBackendName();
+    size_t numDevices = logicalDeviceID_;
+    RETURN_IF_ERR(loadBalancedPartitioning(F_, numDevices,
+                                           backendMap_[backendName].memSize,
+                                           backendName, mapping));
+    // Check if the memory usage meets the device memory limitation.
+    RETURN_IF_ERR(memoryUsageValidation(mapping));
+    // Check if the number of logical devices is less than the given physical
+    // devices.
+    RETURN_IF_ERR(logicalDevicesValidation(mapping));
+    funcs.clear();
+    funcs.push_back(F_);
+  }
+
+  // Step 5 : do the real partitioning for the function list.
   doPartitioning(origName, funcs, mapping, true);
 
-  // Step 5 : post-partition optimization - Adjust the logicalDevice for each
+  // Step 6 : Post-partition optimization - Adjust the logicalDevice for each
   // DAGNode.
   if (saturateHost_ && backends.size() == 1 &&
       mapping.getPartitions().size() < deviceInfo_.size()) {
@@ -1100,7 +1257,7 @@ llvm::Error Partitioner::Partition(CompilationContext &cctx) {
     saturateHost(logicalDeviceID_);
   }
 
-  // Step 6 : clean up and verify the generate new functions.
+  // Step 7 : clean up and verify the generate new functions.
   for (auto i = funcToBackend.begin(); i != funcToBackend.end(); ++i) {
     module_->eraseFunction(i->first);
   }

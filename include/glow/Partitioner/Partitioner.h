@@ -256,6 +256,13 @@ class Partitioner {
   FunctionToBackendNameMapTy
   backendBasedPartition(Function *F, std::vector<Backend *> &backends);
 
+  /// Performs a load balancing optimization pass to optimize for load
+  /// balance in addition to respecting memory constraints.
+  llvm::Error loadBalancedPartitioning(Function *F, DeviceIDTy numDevices,
+                                       uint64_t availableMemory,
+                                       llvm::StringRef backendName,
+                                       NodeToFunctionMap &mapping);
+
   /// Given the node-function mapping, do the actual partitioning. If \p saveDAG
   /// is true, the DAG will be saved into partitions_, which is the final
   /// partition result.
