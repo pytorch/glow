@@ -41,8 +41,8 @@ void CachingGraphRunner::runGraph(const torch::jit::Node *node,
   at::ArrayRef<torch::jit::IValue> inputs = torch::jit::last(stack, numInputs);
 
   // TODO: cache loaderResult so we don't have to recompile every run.
-  PyTorchModelLoader loader(executionEngine_.getModule(),
-                            graphInfo.subgraph.get(), inputs);
+  PyTorchModelLoader loader(&executionEngine_.getModule(),
+                            graphInfo.subgraph.get(), &inputs);
   loader.load();
 
   glow::Function *f = loader.getFunction();
