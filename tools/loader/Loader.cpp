@@ -426,7 +426,7 @@ void Loader::compile(PlaceholderBindings &bindings) {
   if (!dumpGraphDAGFileOpt.empty()) {
     for (auto function : module->getFunctions()) {
       std::string filename =
-          function->getName().str() + "_" + dumpGraphDAGFileOpt;
+          function->getFilename() + "_" + dumpGraphDAGFileOpt;
       function->dumpDAG(filename.c_str());
     }
   }
