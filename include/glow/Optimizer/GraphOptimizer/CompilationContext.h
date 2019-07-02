@@ -49,6 +49,12 @@ struct PrecisionConfiguration {
 
 using QuantizationMode = PrecisionConfiguration::QuantizationMode;
 
+/// Options relevant to optimizations during compilation.
+struct OptimizationOptions {
+  /// If true, perform compile-time computation of constant operations.
+  bool enableConstantFolding{true};
+};
+
 /// Context for compilation.
 struct CompilationContext {
   /// Used during Profiling.
@@ -66,6 +72,9 @@ struct CompilationContext {
 
   /// Options for the Backend to use.
   BackendOptions backendOpts;
+
+  /// Options for the optimizations to use.
+  OptimizationOptions optimizationOpts;
 
   /// Configuration for different precision modes.
   PrecisionConfiguration precisionConfig;

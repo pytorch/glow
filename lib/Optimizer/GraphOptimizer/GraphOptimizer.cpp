@@ -2847,6 +2847,11 @@ void glow::optimize(Function *F, CompilationContext &cctx) {
   // Optimize reshapes introduced during above optimizations.
   OptimizeReshape().run(F);
 
+  // Run a round of constant folding.
+  if (cctx.optimizationOpts.enableConstantFolding) {
+    ConstantFold().run(F);
+  }
+
   // Perform Dead Code Elimination.
   DCE().run(F);
 }

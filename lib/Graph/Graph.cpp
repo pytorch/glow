@@ -3080,6 +3080,26 @@ SaveNode *glow::getOutputSave(Function *F, Placeholder *PH) {
   return nullptr;
 }
 
+Node *glow::recursiveClone(Function *newF, Node *node, NodeMap &currToNew) {
+  Node *copy = node->clone();
+  currToNew[node] = copy;
+  newF->addNode(copy);
+  for (unsigned inp = 0, e = copy->getNumInputs(); inp < e; inp++) {
+    auto input = copy->getNthInput(inp);
+    auto it = currToNew.find(input.getNode());
+    Node *newInput;
+    if (it != currToNew.end()) {
+      newInput = it->second;
+    } else if (llvm::isa<Storage>(input.getNode())) {
+      continue;
+    } else {
+      newInput = recursiveClone(newF, input.getNode(), currToNew);
+    }
+    copy->setNthInput(inp, NodeValue(newInput, input.getResNo()));
+  }
+  return copy;
+}
+
 namespace glow {
 
 llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const Module &mod) {

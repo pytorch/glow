@@ -69,6 +69,19 @@ llvm::Error optimizeFunction(Function *F, const Backend &B,
 /// compiler error.
 llvm::Error optimizeFunctionBeforeLowering(Function *F,
                                            CompilationContext &cctx);
+
+/// Perform a compile-time constant folding of the node \p N.
+/// \returns list of constants which are the result of the constant-folding.
+/// These constants correspond to results of the node. If no constant folding
+/// was possible an empty vector will be returned.
+std::vector<Constant *> constantFold(Node *N);
+
+/// Execute function \p F by the \p backend using the provided \p bindings and
+/// the compilation context \p cctx.
+/// \returns error if function is not a constant function.
+llvm::Error executeConstantFunction(Backend &backend, Function &F,
+                                    PlaceholderBindings &bindings,
+                                    CompilationContext &cctx);
 } // namespace glow
 
 #endif // GLOW_OPTIMIZER_GRAPHOPTIMIZER_GRAPHOPTIMIZER_H

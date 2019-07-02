@@ -1476,7 +1476,12 @@ TEST(Quantization, quantizeGraphPartially) {
 
   // Make sure that graph can be compiled and run.
   ::glow::convertPlaceholdersToConstants(F, bindings, {result});
-  EE.compile(CompilationMode::Infer, F);
+
+  CompilationContext cctx;
+  cctx.compMode = CompilationMode::Infer;
+  // Do not perform any compile-time constant folding.
+  cctx.optimizationOpts.enableConstantFolding = false;
+  EE.compile(F, cctx);
 
   EE.run(bindings);
 
@@ -1556,7 +1561,12 @@ TEST(Quantization, quantizeGraphPartiallyMultipleNodes) {
 
   // Make sure that graph can be compiled and run.
   ::glow::convertPlaceholdersToConstants(F, bindings, {result});
-  EE.compile(CompilationMode::Infer, F);
+
+  CompilationContext cctx;
+  cctx.compMode = CompilationMode::Infer;
+  // Do not perform any compile-time constant folding.
+  cctx.optimizationOpts.enableConstantFolding = false;
+  EE.compile(F, cctx);
 
   EE.run(bindings);
 
@@ -1646,7 +1656,12 @@ TEST(Quantization, quantizeGraphPartiallyMultipleKinds) {
 
   // Make sure that graph can be compiled and run.
   ::glow::convertPlaceholdersToConstants(F, bindings, {result});
-  EE.compile(CompilationMode::Infer, F);
+
+  CompilationContext cctx;
+  cctx.compMode = CompilationMode::Infer;
+  // Do not perform any compile-time constant folding.
+  cctx.optimizationOpts.enableConstantFolding = false;
+  EE.compile(F, cctx);
 
   EE.run(bindings);
 

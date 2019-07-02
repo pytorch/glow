@@ -1,4 +1,5 @@
 add_library(GraphOptimizer
+              ConstantFolding.cpp
               GraphOptimizer.cpp
               Lower.cpp
               Quantization.cpp
@@ -7,6 +8,7 @@ add_library(GraphOptimizer
 target_link_libraries(GraphOptimizer
                       PRIVATE
                         Backend
+                        Backends
                         Converter
                         Graph
                         Quantization

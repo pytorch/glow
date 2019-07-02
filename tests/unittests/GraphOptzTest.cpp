@@ -1450,7 +1450,11 @@ TEST(GraphOptzTest, SliceOfSplatNodeChain) {
 
     EXPECT_EQ(F->getNodes().size(), 4);
 
-    ::glow::optimize(F, CompilationMode::Train);
+    CompilationContext cctx;
+    cctx.compMode = CompilationMode::Train;
+    // Do not perform any compile-time constant folding.
+    cctx.optimizationOpts.enableConstantFolding = false;
+    ::glow::optimize(F, cctx);
 
     // This test illustrates some inconsistency in the optimization.
     // Chain splats are not guaranteed to be optimized.
@@ -1507,7 +1511,11 @@ TEST_F(GraphOptz, ReshapeAfterSplat) {
   // Before optimization, we have 9 nodes in the graph.
   EXPECT_EQ(F_->getNodes().size(), 9);
 
-  ::glow::optimize(F_, CompilationMode::Infer);
+  CompilationContext cctx;
+  cctx.compMode = CompilationMode::Infer;
+  // Do not perform any compile-time constant folding.
+  cctx.optimizationOpts.enableConstantFolding = false;
+  ::glow::optimize(F_, cctx);
 
   // After optimization, we expect to see only 8 nodes, as Z2,R2 would be
   // replace by a new splat node.
@@ -2444,7 +2452,11 @@ TEST_F(GraphOptz, VarsCSE) {
   // placeholder).
   EXPECT_EQ(mod_.getConstants().size(), 3);
 
-  ::glow::optimize(F_, CompilationMode::Infer);
+  CompilationContext cctx;
+  cctx.compMode = CompilationMode::Infer;
+  // Do not perform any compile-time constant folding.
+  cctx.optimizationOpts.enableConstantFolding = false;
+  ::glow::optimize(F_, cctx);
 
   // Now only two variables are left; input1 and input2 have been combined,
   // but input3 has not.
@@ -2881,4 +2893,97 @@ TEST_F(GraphOptz, nopRelu) {
   ::glow::optimize(F_, CompilationMode::Infer);
 
   EXPECT_EQ(F_->getNodes().size(), 1);
+}
+
+template <typename ElemTy>
+static void setConstValue(Constant *C, ElemTy value) {
+  Handle<ElemTy> TH = C->getPayload().getHandle<ElemTy>();
+  TH.clear(value);
+}
+
+TEST_F(GraphOptz, constantFoldSingleNode) {
+  auto *const1 = mod_.createConstant(ElemKind::FloatTy, {2, 2}, "const1");
+  auto *const2 = mod_.createConstant(ElemKind::FloatTy, {2, 2}, "const2");
+  auto *ph1 = mod_.createPlaceholder(ElemKind::FloatTy, {2, 2}, "input1",
+                                     /* isTrainable */ false);
+  setConstValue(const1, 1.0f);
+  setConstValue(const2, 2.0f);
+  auto *splat2 = F_->createSplat(
+      "splat2", mod_.uniqueType(ElemKind::FloatTy, {2, 2}), 2.0f);
+  auto *splat3 = F_->createSplat(
+      "splat3", mod_.uniqueType(ElemKind::FloatTy, {2, 2}), 3.0f);
+
+  auto *add1 = F_->createAdd("add", const1, const2);
+  auto *mul1 = F_->createMul("mul1", add1, splat2);
+  auto *mul2 = F_->createMul("mul2", mul1, splat3);
+  auto *SN1 = F_->createSave("save", mul2);
+  auto *add3 = F_->createAdd("add", const1, ph1);
+  auto *SN2 = F_->createSave("save", add3);
+
+  // Perform constant folding for a specific node.
+  std::vector<Constant *> constResults =
+      constantFold(SN1->getInput().getNode());
+
+  EXPECT_EQ(constResults.size(), 1);
+  SN1->getInput().replaceAllUsesOfWith(constResults[0]);
+  // Second save should be unaffected.
+  EXPECT_FALSE(llvm::isa<Constant>(SN2->getInput()));
+  // First save should have been constant folded.
+  EXPECT_TRUE(llvm::isa<Constant>(SN1->getInput()));
+  Constant *C = llvm::dyn_cast<Constant>(SN1->getInput());
+  auto CH = C->getHandle();
+  // The expected result should be: (((1+2) * 2 * 3) = 18
+  EXPECT_EQ(CH.at({0, 0}), 18.0f);
+  EXPECT_EQ(CH.at({0, 1}), 18.0f);
+  EXPECT_EQ(CH.at({1, 0}), 18.0f);
+  EXPECT_EQ(CH.at({1, 1}), 18.0f);
+}
+
+TEST_F(GraphOptz, constantFoldWholeFunction) {
+  auto *const1 = mod_.createConstant(ElemKind::FloatTy, {2, 2}, "const1");
+  auto *const2 = mod_.createConstant(ElemKind::FloatTy, {2, 2}, "const2");
+  auto *const3 = mod_.createConstant(ElemKind::FloatTy, {2, 2}, "const3");
+  auto *const4 = mod_.createConstant(ElemKind::FloatTy, {2, 2}, "const4");
+  auto *ph1 = mod_.createPlaceholder(ElemKind::FloatTy, {2, 2}, "input1",
+                                     /* isTrainable */ false);
+  setConstValue(const1, 1.0f);
+  setConstValue(const2, 2.0f);
+  setConstValue(const3, 3.0f);
+  setConstValue(const4, 4.0f);
+  auto *splat2 = F_->createSplat(
+      "splat2", mod_.uniqueType(ElemKind::FloatTy, {2, 2}), 2.0f);
+  auto *splat3 = F_->createSplat(
+      "splat2", mod_.uniqueType(ElemKind::FloatTy, {2, 2}), 3.0f);
+  auto *splat4 = F_->createSplat(
+      "splat2", mod_.uniqueType(ElemKind::FloatTy, {2, 2}), 4.0f);
+
+  auto *add1 = F_->createAdd("add", const1, const2);
+  auto *mul1 = F_->createMul("mul1", add1, splat2);
+  auto *mul2 = F_->createMul("mul2", mul1, splat3);
+  auto *sub = F_->createSub("sub", mul2, const3);
+  auto *add2 = F_->createAdd("add2", sub, const4);
+  auto *mul3 = F_->createMul("mul3", add2, splat4);
+  // Check compile-time constant folding for nodes with multiple results.
+  auto *topK = F_->createTopK("topK", mul3, 2);
+  auto *SN1_0 = F_->createSave("save", topK->getValues());
+  auto *SN1_1 = F_->createSave("save", topK->getIndices());
+  auto *add3 = F_->createAdd("add", const1, ph1);
+  auto *SN2 = F_->createSave("save", add3);
+
+  // Perform constant folding for a whole function.
+  ::glow::optimize(F_, CompilationMode::Infer);
+
+  EXPECT_EQ(F_->getNodes().size(), 4);
+  // Second save should be unaffected, as its value is not a constant operation.
+  EXPECT_FALSE(llvm::isa<Constant>(SN2->getInput()));
+  // First save should have been constant folded.
+  EXPECT_TRUE(llvm::isa<Constant>(SN1_0->getInput()));
+  EXPECT_TRUE(llvm::isa<Constant>(SN1_1->getInput()));
+  Constant *C = llvm::dyn_cast<Constant>(SN1_0->getInput());
+  auto CH = C->getHandle();
+  // The expected result should be: (((1+2) * 2 * 3 - 3) + 4) * 4 = 76
+  EXPECT_EQ(CH.at({0, 0}), 76.0f);
+  EXPECT_EQ(CH.at({0, 1}), 76.0f);
+  EXPECT_EQ(CH.at({1, 0}), 76.0f);
+  EXPECT_EQ(CH.at({1, 1}), 76.0f);
 }
