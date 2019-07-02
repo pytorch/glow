@@ -496,8 +496,7 @@ void Partitioner::partitionsAdjust(NodeToFunctionMap &partitions,
                                    uint64_t availableMemory) {
   // For each partition, create a node set.
   FunctionToNodesMap nodesSet;
-  for (NodeToFunctionMapTy::iterator it = partitions.begin();
-       it != partitions.end(); ++it) {
+  for (auto it = partitions.begin(); it != partitions.end(); ++it) {
     nodesSet[(*it).second].insert((*it).first);
   }
 

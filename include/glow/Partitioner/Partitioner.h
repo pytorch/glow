@@ -40,11 +40,6 @@ struct BackendInfo {
   Backend *backend = nullptr;
 };
 
-/// Helper structure for building a partition. Records mapping of nodes in
-/// the original function to destination partitions, along with a list of the
-/// newly-created functions;
-using NodeToFunctionMapTy = llvm::DenseMap<Node *, Function *>;
-
 /// A mapping of newly-created functions along with a set of nodes sets. The
 /// overloaded compare function to make sure the map is sorted by the key's
 /// name(i.e. the function's name) which makes the optimization sequence is
@@ -61,12 +56,16 @@ using FunctionToBackendNameMap =
     std::map<Function *, std::string, FunctionNameComparator>;
 
 class NodeToFunctionMap {
+  /// Helper structure for building a partition. Records mapping of nodes in
+  /// the original function to destination partitions, along with a list of the
+  /// newly-created functions;
+  using Map = llvm::DenseMap<Node *, Function *>;
 
   /// Newly-created partitions.
   FunctionList functions_;
 
   /// Map of nodes in the original function to their target partition.
-  NodeToFunctionMapTy nodeToFunction_;
+  Map nodeToFunction_;
 
   /// Map of the partitions to the backend which will be used for compiling
   /// this partition.
@@ -132,13 +131,11 @@ public:
   }
 
   /// Map API.
-  NodeToFunctionMapTy::iterator find(Node *N) {
-    return nodeToFunction_.find(N);
-  }
-  NodeToFunctionMapTy::iterator begin() { return nodeToFunction_.begin(); }
-  NodeToFunctionMapTy::iterator end() { return nodeToFunction_.end(); }
-
+  Map::iterator find(Node *N) { return nodeToFunction_.find(N); }
+  Map::iterator begin() { return nodeToFunction_.begin(); }
+  Map::iterator end() { return nodeToFunction_.end(); }
   Function *operator[](Node *n) { return nodeToFunction_[n]; }
+
   void deletePartition(Function *func) {
     functions_.remove(func);
     functionToBackendName_.erase(func);
