@@ -17,16 +17,10 @@
 #define GLOW_OPTIMIZER_GRAPHOPTIMIZER_FUNCTIONPASSES_H
 
 #include "glow/Optimizer/GraphOptimizer/FunctionPass.h"
-
-#include <bitset>
+#include "glow/Optimizer/GraphOptimizer/Pipeline/Pipeline.h"
+#include "glow/Support/Support.h"
 
 namespace glow {
-
-/// Define an enum to identify all FunctionPasses.
-enum class FunctionPassID {
-#define FUN_PASS(PASS_NAME) PASS_NAME,
-#include "FunctionPasses.def"
-};
 
 /// Declare all FunctionPass classes.
 #define FUN_PASS(PASS_NAME)                                                    \
@@ -41,42 +35,7 @@ enum class FunctionPassID {
 #include "FunctionPasses.def"
 
 /// Helper that creates and \returns a FunctionPass given a provided \p passID.
-inline std::unique_ptr<FunctionPass> createFunctionPass(FunctionPassID passID) {
-  switch (passID) {
-#define FUN_PASS(PASS_NAME)                                                    \
-  case (FunctionPassID::PASS_NAME):                                            \
-    return llvm::make_unique<PASS_NAME>();
-#include "FunctionPasses.def"
-  }
-}
-
-/// Implement a set of FunctionPasses. Implemented internally with a bitset.
-class FunctionPassSet
-    : private std::bitset<convertEnumToUnsigned(FunctionPassID::EmptyPass)> {
-
-public:
-  FunctionPassSet() = default;
-
-  /// Construct a FunctionPassSet via an initializer_list \p IL.
-  FunctionPassSet(std::initializer_list<FunctionPassID> IL) {
-    for (const FunctionPassID &passID : IL) {
-      this->set(convertEnumToUnsigned(passID));
-    }
-  }
-
-  /// Inserts \p passID into the set.
-  void insert(FunctionPassID passID) {
-    this->set(convertEnumToUnsigned(passID));
-  }
-  /// Erases \p passID from the set.
-  void erase(FunctionPassID passID) {
-    this->reset(convertEnumToUnsigned(passID));
-  }
-  /// \returns whether \p passID is contained in the set.
-  bool contains(FunctionPassID passID) const {
-    return this->test(convertEnumToUnsigned(passID));
-  }
-};
+std::unique_ptr<FunctionPass> createFunctionPass(FunctionPassID passID);
 
 } // namespace glow
 

@@ -26,6 +26,7 @@
 #include "glow/Graph/Utils.h"
 #include "glow/Optimizer/GraphOptimizer/FunctionPasses.h"
 #include "glow/Optimizer/GraphOptimizer/PassManager.h"
+#include "glow/Optimizer/GraphOptimizer/Pipeline/Pipeline.h"
 #include "glow/Quantization/Base/Base.h"
 #include "glow/Quantization/Quantization.h"
 
@@ -2776,8 +2777,7 @@ bool FoldChannelShuffle::run(Function *F) {
 void glow::fold(Function *F, CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), "glow::fold")
 
-  FunctionPassManager FPM("FoldFPM");
-  addDefaultFoldPasses(FPM);
+  FunctionPassManager FPM("FoldFPM", createDefaultFoldPasses());
   FPM.run(F, cctx);
 }
 
@@ -2787,6 +2787,14 @@ void glow::fold(Function *F, CompilationMode mode) {
   fold(F, cctx);
 }
 
+void glow::optimize(Function *F, CompilationContext &cctx, const Backend &B) {
+  LOG_SCOPE(F->getLogContext(), "glow::optimize")
+
+  FunctionPassManager FPM("TargetDependentGraphOptzFPM",
+                          B.getOptimizationPipeline());
+  FPM.run(F, cctx);
+}
+
 void glow::optimize(Function *F, CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), "glow::optimize")
 
@@ -2794,8 +2802,8 @@ void glow::optimize(Function *F, CompilationContext &cctx) {
   // workaround until #3213 is complete.
   F->setState(FunctionState::FuncLoaded);
 
-  FunctionPassManager FPM("GraphOptFPM");
-  addDefaultGraphOptimizationPasses(FPM);
+  FunctionPassManager FPM("TargetIndependentGraphOptzFPM",
+                          createDefaultGraphOptimizationPasses());
   FPM.run(F, cctx);
 }
 
@@ -2886,12 +2894,8 @@ llvm::Error glow::optimizeFunctionBeforeLowering(Function *F,
   // the performance backends that support natively such high-level operators.
   ::glow::fold(F, cctx);
 
-  // Optimize the graph. Skip optimizations that are target-dependent. Save the
-  // old skip set from cctx and restore it after optimizations.
-  FunctionPassSet origSkipSet = cctx.optimizationOpts.funPassesToSkip;
-  cctx.optimizationOpts.funPassesToSkip = getTargetDependentPassSet();
+  // Optimize the graph. Only runs optimizations that are target-independent.
   ::glow::optimize(F, cctx);
-  cctx.optimizationOpts.funPassesToSkip = origSkipSet;
   return llvm::Error::success();
 }
 
@@ -2900,9 +2904,6 @@ llvm::Error glow::optimizeFunctionBeforeLowering(Function *F,
 llvm::Error glow::optimizeFunction(Function *F, const Backend &B,
                                    CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), "glow::optimizeFunction")
-
-  // Allow the backend to modify the optimization options to its preferences.
-  B.setOptimizationOptions(cctx.optimizationOpts);
 
   RETURN_IF_ERR(optimizeFunctionBeforeLowering(F, cctx));
   // Lower the graph into a sequence of low-level linear algebra operations.
@@ -2923,14 +2924,14 @@ llvm::Error glow::optimizeFunction(Function *F, const Backend &B,
   // instrument with profiling nodes. This must be done after lowering.
   transformForPrecisionMode(B, F, cctx);
 
-  // Optimize the graph again.
-  ::glow::optimize(F, cctx);
+  // Optimize the graph again, but given the backend's preferred pipeline.
+  ::glow::optimize(F, cctx, B);
 
   // Allow the backend to transform the graph after lowering.
   if (B.transformPostLowering(F, cctx)) {
     // Optimize the graph again after the backend transformation.
     // In particular, DCE is very likely to be useful.
-    ::glow::optimize(F, cctx);
+    ::glow::optimize(F, cctx, B);
   }
 
   return checkAllNodesSupported(*F, B);

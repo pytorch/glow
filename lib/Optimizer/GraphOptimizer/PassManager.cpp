@@ -163,11 +163,7 @@ bool FunctionPassManager::run(Function *F, const CompilationContext &cctx) {
       continue;
     }
 
-    // Skip the pass if requested in the optimization options.
     const FunctionPassID &passID = passConfig.getFunctionPassID();
-    if (cctx.optimizationOpts.funPassesToSkip.contains(passID)) {
-      continue;
-    }
 
     // Special case for ConstantFold; skip it if specified.
     if (passID == FunctionPassID::ConstantFold &&

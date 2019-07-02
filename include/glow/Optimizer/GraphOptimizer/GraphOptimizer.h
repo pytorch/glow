@@ -30,18 +30,10 @@ class Module;
 class PlaceholderBindings;
 class Placeholder;
 
-/// Adds the default graph optimization pipeline to \p PM.
-void addDefaultGraphOptimizationPasses(FunctionPassManager &PM);
-
-/// Adds the default fold pipeline to \p PM.
-void addDefaultFoldPasses(FunctionPassManager &PM);
-
-/// \returns a set containing all target-dependent FunctionPasses.
-FunctionPassSet getTargetDependentPassSet();
-
 /// Perform optimizations on the graph representation.
 void optimize(Function *F, CompilationContext &cctx);
 void optimize(Function *F, CompilationMode mode);
+void optimize(Function *F, CompilationContext &cctx, const Backend &B);
 
 /// Fold nodes that were expressed lowered in the input model.
 void fold(Function *F, CompilationContext &cctx);

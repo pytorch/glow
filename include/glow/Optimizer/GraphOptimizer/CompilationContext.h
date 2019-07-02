@@ -18,7 +18,6 @@
 
 #include "glow/Backends/BackendOptions.h"
 #include "glow/Graph/PlaceholderBindings.h"
-#include "glow/Optimizer/GraphOptimizer/FunctionPasses.h"
 #include "glow/Quantization/Base/Base.h"
 #include "glow/Support/Error.h"
 
@@ -54,8 +53,6 @@ using QuantizationMode = PrecisionConfiguration::QuantizationMode;
 struct OptimizationOptions {
   /// If true, perform compile-time computation of constant operations.
   bool enableConstantFolding{true};
-  /// Set of FunctionPassIDs to skip.
-  FunctionPassSet funPassesToSkip;
 };
 
 /// Context for compilation.
