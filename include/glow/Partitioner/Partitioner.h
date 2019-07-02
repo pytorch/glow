@@ -267,6 +267,23 @@ class Partitioner {
   void doPartitioning(llvm::StringRef funcName, std::vector<Function *>,
                       NodeToFunctionMap &mapping, bool saveDAG);
 
+  /// If there is no need to do any partition, just generate the DAGNode based
+  /// on current functions in this module for backend \p backendName found in \p
+  /// backendMap. \p cctx is used during optimization of the Function. \returns
+  /// whether there was an error encountered.
+  llvm::Error
+  createDAGWithoutPartition(llvm::StringRef backendName,
+                            std::map<std::string, BackendInfo> &backendMap,
+                            CompilationContext &cctx);
+
+  /// Get the map between the backend name and the concrete backend info (e.g.
+  /// backend pointer, mem, number) used in this partiton. If there are backends
+  /// need to be created, we use \p backendsHolder to hold them for memory
+  /// purpose.
+  void getBackendMap(std::map<std::string, BackendInfo> &backendMap,
+                     std::vector<std::unique_ptr<Backend>> &backendsHolder,
+                     std::vector<Backend *> &backends);
+
 public:
   /// \p parent is the module which contains the functions need to be divided.
   /// Here we assume that all the functions in one module belong to a same
@@ -283,23 +300,6 @@ public:
   Partitioner(Module *parent, const std::vector<DeviceInfo> &devices,
               const std::vector<Backend *> &backends, bool saturateHost = false,
               bool optimized = false);
-
-  /// Get the map between the backend name and the concrete backend info (e.g.
-  /// backend pointer, mem, number) used in this partiton. If there are backends
-  /// need to be created, we use \p backendsHolder to hold them for memory
-  /// purpose.
-  void getBackendMap(std::map<std::string, BackendInfo> &backendMap,
-                     std::vector<std::unique_ptr<Backend>> &backendsHolder,
-                     std::vector<Backend *> &backends);
-
-  /// If there is no need to do any partition, just generate the DAGNode based
-  /// on current functions in this module for backend \p backendName found in \p
-  /// backendMap. \p cctx is used during optimization of the Function. \returns
-  /// whether there was an error encountered.
-  llvm::Error
-  createDAGWithoutPartition(llvm::StringRef backendName,
-                            std::map<std::string, BackendInfo> &backendMap,
-                            CompilationContext &cctx);
 
   /// Decompose each function in a module. Now we support partitioning a module
   /// among different type of devices. \p cctx is used during optimization of
