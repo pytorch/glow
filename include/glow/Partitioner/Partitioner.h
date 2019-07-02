@@ -25,10 +25,6 @@ namespace glow {
 
 using namespace runtime;
 
-using MemUsageMap = std::unordered_map<Node *, uint64_t>;
-using ComputeTimeMap = std::unordered_map<Node *, float>;
-using PartitionCostMap = llvm::DenseMap<Function *, GraphMemInfo>;
-
 /// Data structure that contains the info for each type of backend used for
 /// partitioning.
 struct BackendInfo {
@@ -60,6 +56,8 @@ class NodeToFunctionMap {
   /// the original function to destination partitions, along with a list of the
   /// newly-created functions;
   using Map = llvm::DenseMap<Node *, Function *>;
+
+  using PartitionCostMap = llvm::DenseMap<Function *, GraphMemInfo>;
 
   /// Newly-created partitions.
   FunctionList functions_;
@@ -159,6 +157,9 @@ public:
 /// Given a module, partitions each of the its functions into multiple ones
 /// based on memory constraints and minimizes the communication cost.
 class Partitioner {
+  using MemUsageMap = std::unordered_map<Node *, uint64_t>;
+  using ComputeTimeMap = std::unordered_map<Node *, float>;
+
   /// The module that needs to be decomposed.
   Module *module_;
 
