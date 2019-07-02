@@ -90,7 +90,8 @@ llvm::Error HostManager::addNetwork(std::unique_ptr<Module> module,
     DeviceInfo info = device.second->getDeviceInfo();
     info.availableMemory = device.second->getAvailableMemory();
     info.backendName = device.second->getBackendName();
-    VLOG(1) << "AVAILABLE DEVICE MEMORY " << info.availableMemory << "\n";
+    info.nonSupportedNodes = device.second->getParamByName("nonSupportedNodes");
+    info.supportedNodes = device.second->getParamByName("supportedNodes");
     deviceInfo.push_back(info);
   }
   // Perform a round of target-independent graph optimizations. This helps the

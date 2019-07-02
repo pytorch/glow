@@ -394,6 +394,16 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const Node &node);
 
 llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const Node *node);
 
+/// Helper to get the Kind of a Node (e.g. Kinded::Kind::AddNodeKind) given its
+/// \p nodeName (e.g. Add).
+inline Kinded::Kind getKindFromNodeName(llvm::StringRef nodeName) {
+#define DEF_NODE(CLASS, NAME)                                                  \
+  if (nodeName == #NAME) {                                                     \
+    return Kinded::Kind::CLASS##Kind;                                          \
+  }
+#include "glow/AutoGenNodes.def"
+  LOG(FATAL) << "Unknown node name: " << nodeName.str();
+}
 } // namespace glow
 
 namespace llvm {

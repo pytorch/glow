@@ -286,4 +286,17 @@ GraphMemInfo getGraphMemInfo(const NodesSet &nodes) {
   return ret;
 }
 
+std::set<Kinded::Kind> generateNodeKindsSet(llvm::StringRef names) {
+  std::set<Kinded::Kind> nodeKindsSet;
+  llvm::StringRef::size_type pos = names.find(',');
+  while (pos != llvm::StringRef::npos) {
+    nodeKindsSet.insert(getKindFromNodeName(names.substr(0, pos)));
+    names = names.substr(pos + 1);
+    pos = names.find(',');
+  }
+  if (!names.empty()) {
+    nodeKindsSet.insert(getKindFromNodeName(names));
+  }
+  return nodeKindsSet;
+}
 } // namespace glow

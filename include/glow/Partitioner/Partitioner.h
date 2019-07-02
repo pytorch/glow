@@ -34,6 +34,10 @@ struct BackendInfo {
   uint64_t memSize;
   /// Backend pointer.
   Backend *backend = nullptr;
+  /// The non-supported nodes kind.
+  std::set<Kinded::Kind> nonSupportedNodesKinds;
+  /// The supported nodes kind.
+  std::set<Kinded::Kind> supportedNodesKinds;
 };
 
 /// A mapping of newly-created functions along with a set of nodes sets. The

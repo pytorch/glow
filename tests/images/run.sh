@@ -145,6 +145,10 @@ done
 ./bin/image-classifier tests/images/imagenet/*.png -expected-labels=${imagenetIdxValues} -image-mode=0to1 -m=quant_resnet50 -model-input-name=gpu_0/data_0 -use-imagenet-normalization "$@"
 num_errors=$(($num_errors + $?))
 
+# Heterogeneous partition Resnet50 Caffe2 model test
+./bin/image-classifier tests/images/imagenet/*.png -image-mode=0to1 -m=resnet50 -model-input-name=gpu_0/data -cpu-memory=100000 -load-device-configs="tests/runtime_test/heterogeneousConfigs.yaml" "$@"
+num_errors=$(($num_errors + $?))
+
 # Emotion_ferplus onnx model test
 i=0
 for png_filename in tests/images/EmotionSampleImages/*.png; do

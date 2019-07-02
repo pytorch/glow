@@ -295,17 +295,6 @@ void glow::parseCommandLine(int argc, char **argv) {
   }
 }
 
-/// Helper to get the Kind of a Node (e.g. Kinded::Kind::AddNodeKind) given its
-/// \p nodeName (e.g. Add).
-static Kinded::Kind getKindFromNodeName(llvm::StringRef nodeName) {
-#define DEF_NODE(CLASS, NAME)                                                  \
-  if (nodeName == #NAME) {                                                     \
-    return Kinded::Kind::CLASS##Kind;                                          \
-  }
-#include "glow/AutoGenNodes.def"
-  LOG(FATAL) << "Unknown node name: " << nodeName.str();
-}
-
 /// Helper to get the parameters in DeviceConfig from \p str. The \p str has
 /// multiple lines, and each line with this format : "str1" : "str2".
 static llvm::StringMap<std::string> getBackendParams(std::string &str) {
