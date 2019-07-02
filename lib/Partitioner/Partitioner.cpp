@@ -912,7 +912,29 @@ Partitioner::backendBasedPartition(Function *F,
   for (auto &N : F->getNodes()) {
     for (auto &backend : backends) {
       // Find the first backend that supports this node. The order of backends
-      // is important.
+      // is important. The check flow is :
+
+      // Step 1: If a node is in pre-defined non-supported nodes set, it can not
+      // be assigned to this backend. Continue.
+      const auto &nonSupportedNodesKinds =
+          backendMap_[backend->getBackendName()].nonSupportedNodesKinds;
+      if (nonSupportedNodesKinds.count(N.getKind())) {
+        // This op is on the pre-defined non-supported op list:
+        continue;
+      }
+      // Step 2: If the pre-defined supported nodes set is empty, it means all
+      // nodes could be assigned to this backend. If the pre-defined supported
+      // nodes set is not empty, we check that if the node from Step 1 is in
+      // this set or not. If not, continue.
+      const auto &supportedNodesKinds =
+          backendMap_[backend->getBackendName()].supportedNodesKinds;
+      if (!supportedNodesKinds.empty() &&
+          !supportedNodesKinds.count(N.getKind())) {
+        // This op is not on the pre-definded supported op list:
+        continue;
+      }
+      // Step 3: Check if the node is actually supported in this backend, if so,
+      // assign it to this backend and break. Otherwise continue.
       // TODO: the logic here need to be improved.
       if (backend->shouldLower(&N) || backend->isOpSupported(N)) {
         // Put this node into a partition for this backend.
@@ -981,6 +1003,10 @@ void Partitioner::getBackendMap(
       // is the same.
       // TODO : will improve the algorithm for different memory size.
       backendInfo.memSize = deviceInfo_[i].availableMemory;
+      backendInfo.nonSupportedNodesKinds =
+          generateNodeKindsSet(deviceInfo_[i].nonSupportedNodes);
+      backendInfo.supportedNodesKinds =
+          generateNodeKindsSet(deviceInfo_[i].supportedNodes);
       if (hasBackends) {
         backendInfo.backend = backends_[i];
       } else {

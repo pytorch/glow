@@ -89,6 +89,15 @@ public:
   /// \returns the name of backend that powers this Device.
   llvm::StringRef getBackendName() { return config_.backendName; }
 
+  /// \returns a string with \p name in parameters.
+  llvm::StringRef getParamByName(llvm::StringRef name) const {
+    auto it = config_.parameters.find(name);
+    if (it != config_.parameters.end()) {
+      return it->second;
+    }
+    return "";
+  }
+
   /// \returns the maximum memory (in bytes) available on the device.
   virtual uint64_t getMaximumMemory() const = 0;
 

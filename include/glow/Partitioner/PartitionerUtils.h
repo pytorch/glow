@@ -82,5 +82,8 @@ GraphMemInfo updateGraphMemInfoByAddingNode(const NodesSet &currNodes,
 /// Return the memory usage of a given nodes set.
 GraphMemInfo getGraphMemInfo(const NodesSet &nodes);
 
+/// Parse a node name string (e.g. "Div,Add") \p names, \returns a set of
+/// NodeKinds corresponding to the names in the string.
+std::set<Kinded::Kind> generateNodeKindsSet(llvm::StringRef names);
 } // namespace glow
 #endif // GLOW_PARTITIONER_PARTITIONUTILS_H

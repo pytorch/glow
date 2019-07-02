@@ -154,14 +154,14 @@ TEST_F(PartitionerTest, Basic1) {
   CompilationContext cctx;
   auto err = myPartitioner.Partition(cctx);
   EXPECT_FALSE(errToBool(std::move(err)));
-  DAGListTy myList = std::move(myPartitioner.getPartitionResult());
+  DAGListTy dagList = std::move(myPartitioner.getPartitionResult());
   ASSERT_EQ(mod_.getFunctions().size(), 3);
-  ASSERT_EQ(myList.size(), 1);
+  ASSERT_EQ(dagList.size(), 1);
   ASSERT_TRUE(checkSaveNode(mod_));
 
   // Run the paritioned graph and compare the results.
   bindings_.allocate(mod_.getPlaceholders());
-  for (auto it = myList.begin(); it != myList.end(); ++it) {
+  for (auto it = dagList.begin(); it != dagList.end(); ++it) {
     bindings_.allocate(mod_.getPlaceholders());
     executeDAG((*it).root.get(), mod_, bindings_, {input}, {&in});
     Tensor test = res.clone();
@@ -229,12 +229,12 @@ TEST_F(PartitionerTest, Basic2) {
   CompilationContext cctx;
   auto err = myPartitioner.Partition(cctx);
   EXPECT_FALSE(errToBool(std::move(err)));
-  DAGListTy myList = std::move(myPartitioner.getPartitionResult());
+  DAGListTy dagList = std::move(myPartitioner.getPartitionResult());
   ASSERT_EQ(mod_.getFunctions().size(), 2);
-  ASSERT_EQ(myList.size(), 1);
+  ASSERT_EQ(dagList.size(), 1);
   ASSERT_TRUE(checkSaveNode(mod_));
 
-  for (auto &dag : myList) {
+  for (auto &dag : dagList) {
     for (auto &node : dag.nodes) {
       // Since saturateHost is set true, in this case, there should be 2 copys
       // of the partitions.
@@ -244,7 +244,7 @@ TEST_F(PartitionerTest, Basic2) {
 
   // Run the paritioned graph and compare the results.
   bindings_.allocate(mod_.getPlaceholders());
-  for (auto it = myList.begin(); it != myList.end(); ++it) {
+  for (auto it = dagList.begin(); it != dagList.end(); ++it) {
     bindings_.allocate(mod_.getPlaceholders());
     executeDAG((*it).root.get(), mod_, bindings_, {input}, {&in});
     Tensor test = res.clone();
@@ -373,15 +373,15 @@ TEST_F(PartitionerTest, Basic1Roofline) {
   }
 
   std::vector<DeviceInfo> devices = {
-      {3072, "Interpreter", 100, 10, 0.1, 1, 0.05},
-      {3072, "Interpreter", 100, 10, 0.1, 1, 0.05},
-      {3072, "Interpreter", 100, 10, 0.1, 1, 0.05}};
+      {3072, "Interpreter", "", "", 100, 10, 0.1, 1, 0.05},
+      {3072, "Interpreter", "", "", 100, 10, 0.1, 1, 0.05},
+      {3072, "Interpreter", "", "", 100, 10, 0.1, 1, 0.05}};
   Partitioner myPartitioner(&mod_, devices);
   CompilationContext cctx;
   auto err = myPartitioner.Partition(cctx);
   EXPECT_FALSE(errToBool(std::move(err)));
 
-  DAGListTy myList = std::move(myPartitioner.getPartitionResult());
+  DAGListTy dagList = std::move(myPartitioner.getPartitionResult());
 
   // check compute costs
   std::unordered_map<std::string, float> expectedComputeTime{
@@ -434,7 +434,7 @@ TEST_F(PartitionerTest, Basic1Roofline) {
   }
 
   ASSERT_EQ(mod_.getFunctions().size(), 3);
-  ASSERT_EQ(myList.size(), 1);
+  ASSERT_EQ(dagList.size(), 1);
 }
 
 TEST_F(PartitionerTest, SelectRepFunc) {
@@ -525,41 +525,125 @@ static void createSimpleModule(Module &mod) {
   (void)save;
 }
 
-TEST_F(PartitionerTest, SimpleHeterogeneousPartitioning) {
-  {
-    createSimpleModule(mod_);
-    BackendWithoutSub backendWithoutSub1, backendWithoutSub2;
-    BackendWithoutMul backendWithoutMul1, backendWithoutMul2;
-    // Create two backends which support different ops, then do the partition by
-    // assigning the ops to the corresponding abackends.
-    std::vector<Backend *> backends;
-    backends.emplace_back(&backendWithoutMul1);
-    backends.emplace_back(&backendWithoutMul2);
-    backends.emplace_back(&backendWithoutSub1);
-    backends.emplace_back(&backendWithoutSub2);
-    std::vector<DeviceInfo> devices = {{3072, "Interpreter"},
-                                       {3072, "Interpreter"},
-                                       {3072, "CPU"},
-                                       {3072, "CPU"}};
-    auto partitioner =
-        Partitioner(&mod_, devices, backends, /* saturateHost */ true);
-    CompilationContext cctx;
-    auto err = partitioner.Partition(cctx);
-    EXPECT_FALSE(errToBool(std::move(err)));
-    DAGListTy myList = std::move(partitioner.getPartitionResult());
-    ASSERT_EQ(mod_.getFunctions().size(), 3);
-    ASSERT_EQ(myList.size(), 1);
-    ASSERT_TRUE(checkSaveNode(mod_));
+/// \returns true if there is \p nodeKind kind of nodes in \p func.
+static bool findNodeInFunction(const Function *func,
+                               const Kinded::Kind nodeKind) {
+  for (const Node &N : func->getNodes()) {
+    if (N.getKind() == nodeKind) {
+      return true;
+    }
+  }
+  return false;
+}
 
-    for (auto &dag : myList) {
-      for (auto &node : dag.nodes) {
-        // Although the saturateHost is set true, no saturating the host in
-        // heterogeneous partiton.
-        ASSERT_EQ(node->logicalDevices.size(), 1);
+/// To check if the generated DAG is correct for the Heterogeneous Partiton
+/// unnittests. The network used for check is generated from function static
+/// void createSimpleModule(Module &mod).
+static void heterogeneousPartitionValidation(const DAGListTy &dagList,
+                                             Module &mod) {
+  int numOfInterpreterBackends = 0;
+  int numOfCPUBackends = 0;
+  int numOfMulNodes = 0;
+  int numOfSubNodes = 0;
+  for (auto &dag : dagList) {
+    for (auto &node : dag.nodes) {
+      // Although the saturateHost is set true, no saturating the host in
+      // heterogeneous partiton.
+      ASSERT_EQ(node->logicalDevices.size(), 1);
+      if (node->backendName == "CPU") {
+        numOfCPUBackends++;
+        auto func = mod.getFunction(node->name);
+        // Sub Node should not be assigned to CPU backend.
+        EXPECT_FALSE(findNodeInFunction(func, Kinded::Kind::SubNodeKind));
+        numOfMulNodes +=
+            (findNodeInFunction(func, Kinded::Kind::MulNodeKind) == true);
+      }
+      if (node->backendName == "Interpreter") {
+        numOfInterpreterBackends++;
+        auto func = mod.getFunction(node->name);
+        // Mul Node should not be assigned to Interpreter backend.
+        EXPECT_FALSE(findNodeInFunction(func, Kinded::Kind::MulNodeKind));
+        numOfSubNodes +=
+            (findNodeInFunction(func, Kinded::Kind::SubNodeKind) == true);
       }
     }
-    mod_.clear();
   }
+  ASSERT_EQ(numOfInterpreterBackends, 2);
+  ASSERT_EQ(numOfCPUBackends, 1);
+  ASSERT_EQ(numOfSubNodes, 2);
+  ASSERT_EQ(numOfMulNodes, 1);
+}
+
+/// Test using user-defined backends for heterogeneous partition.
+TEST_F(PartitionerTest, SimpleHeterogeneousPartitioning) {
+  createSimpleModule(mod_);
+  BackendWithoutSub backendWithoutSub1;
+  BackendWithoutMul backendWithoutMul1, backendWithoutMul2;
+  // Create two backends which support different ops, then do the partition by
+  // assigning the ops to the corresponding abackends.
+  std::vector<Backend *> backends;
+  backends.emplace_back(&backendWithoutMul1);
+  backends.emplace_back(&backendWithoutMul2);
+  backends.emplace_back(&backendWithoutSub1);
+  std::vector<DeviceInfo> devices = {
+      {3072, "Interpreter"}, {3072, "Interpreter"}, {3072, "CPU"}};
+  auto partitioner =
+      Partitioner(&mod_, devices, backends, /* saturateHost */ true);
+  CompilationContext cctx;
+  auto err = partitioner.Partition(cctx);
+  EXPECT_FALSE(errToBool(std::move(err)));
+  DAGListTy dagList = std::move(partitioner.getPartitionResult());
+  ASSERT_EQ(mod_.getFunctions().size(), 3);
+  ASSERT_EQ(dagList.size(), 1);
+  ASSERT_TRUE(checkSaveNode(mod_));
+  heterogeneousPartitionValidation(dagList, mod_);
+
+  mod_.clear();
+}
+
+/// Test pre-defined non-supported ops used for choosing backend in
+/// Heterogeneous Partition. In this test, "Mul" is not supported in Interpreter
+/// backend, and "Sub" is not supported in CPU backend.
+TEST_F(PartitionerTest, heterogeneousPartitioningWithNonSupportedNodes) {
+  createSimpleModule(mod_);
+  std::vector<DeviceInfo> devices = {{3072, "Interpreter", "Mul"},
+                                     {3072, "Interpreter", "Mul"},
+                                     {3072, "CPU", "Sub"}};
+  auto partitioner = Partitioner(&mod_, devices);
+  CompilationContext cctx;
+  auto err = partitioner.Partition(cctx);
+  EXPECT_FALSE(errToBool(std::move(err)));
+  DAGListTy dagList = std::move(partitioner.getPartitionResult());
+  ASSERT_EQ(mod_.getFunctions().size(), 3);
+  ASSERT_EQ(dagList.size(), 1);
+  ASSERT_TRUE(checkSaveNode(mod_));
+  heterogeneousPartitionValidation(dagList, mod_);
+
+  mod_.clear();
+}
+
+/// Test pre-defined supported ops used for choosing backend in Heterogeneous
+/// Partition. In this test, "Mul" is not supported in Interpreter backend, and
+/// "Sub" is not supported in CPU backend. "Sub,Add,Save" can be supported in
+/// Interpreter backend and "Mul,Add,Save" can be supported in CPU backend.
+TEST_F(PartitionerTest, heterogeneousPartitioningWithSupportedNodes) {
+  createSimpleModule(mod_);
+  std::vector<DeviceInfo> devices = {
+      // {memory size, backend, non-supported nodes, supported nodes}
+      {3072, "Interpreter", "", "Sub,Add,Save"},
+      {3072, "Interpreter", "", "Sub,Add,Save"},
+      {3072, "CPU", "", "Mul,Add,Save"}};
+  auto partitioner = Partitioner(&mod_, devices);
+  CompilationContext cctx;
+  auto err = partitioner.Partition(cctx);
+  EXPECT_FALSE(errToBool(std::move(err)));
+  DAGListTy dagList = std::move(partitioner.getPartitionResult());
+  ASSERT_EQ(mod_.getFunctions().size(), 3);
+  ASSERT_EQ(dagList.size(), 1);
+  ASSERT_TRUE(checkSaveNode(mod_));
+  heterogeneousPartitionValidation(dagList, mod_);
+
+  mod_.clear();
 }
 
 /// Test assigning more than one partitions in to one device for single
@@ -589,13 +673,13 @@ TEST_F(PartitionerTest, logicalIDTest0) {
   CompilationContext cctx;
   auto err = partitioner.Partition(cctx);
   EXPECT_FALSE(errToBool(std::move(err)));
-  DAGListTy myList = std::move(partitioner.getPartitionResult());
+  DAGListTy dagList = std::move(partitioner.getPartitionResult());
   // Check there are 3 partitions.
   ASSERT_EQ(mod_.getFunctions().size(), 3);
-  ASSERT_EQ(myList.size(), 1);
+  ASSERT_EQ(dagList.size(), 1);
   ASSERT_TRUE(checkSaveNode(mod_));
 
-  for (auto &dag : myList) {
+  for (auto &dag : dagList) {
     // Check number of logical devices;
     llvm::SmallSet<DeviceIDTy, 4> usedID;
     for (auto &node : dag.nodes) {
@@ -625,12 +709,12 @@ TEST_F(PartitionerTest, logicalIDTest1) {
   CompilationContext cctx;
   auto err = partitioner.Partition(cctx);
   EXPECT_FALSE(errToBool(std::move(err)));
-  DAGListTy myList = std::move(partitioner.getPartitionResult());
+  DAGListTy dagList = std::move(partitioner.getPartitionResult());
   ASSERT_EQ(mod_.getFunctions().size(), 3);
-  ASSERT_EQ(myList.size(), 1);
+  ASSERT_EQ(dagList.size(), 1);
   ASSERT_TRUE(checkSaveNode(mod_));
 
-  for (auto &dag : myList) {
+  for (auto &dag : dagList) {
     // Check number of logical devices;
     llvm::SmallSet<DeviceIDTy, 4> usedID;
     for (auto &node : dag.nodes) {

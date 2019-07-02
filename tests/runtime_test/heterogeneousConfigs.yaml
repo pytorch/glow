@@ -1,0 +1,15 @@
+---
+- name:     Device1
+  backendName: CPU
+  parameters: |
+    "nonSupportedNodes":"AvgPool"
+    "deviceID" : "0"
+- name:     Device2
+  backendName: CPU
+  parameters: |
+    "nonSupportedNodes":"AvgPool"
+- name:     Device3
+  backendName: Interpreter
+  parameters: |
+    "supportedNodes":""
+...
