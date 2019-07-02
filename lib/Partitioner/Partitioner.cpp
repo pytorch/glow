@@ -1061,7 +1061,7 @@ llvm::Error Partitioner::loadBalancedPartitioning(Function *F,
   // Compute total roofline time
   float totalRooflineTime = 0;
   for (auto &n : F->getNodes()) {
-    totalRooflineTime += getComputeTime()[&n];
+    totalRooflineTime += getComputeTime(&n);
   }
 
   float timePerPartition = totalRooflineTime / numDevices;
@@ -1103,8 +1103,8 @@ llvm::Error Partitioner::loadBalancedPartitioning(Function *F,
         }
       }
 
-      auto curOpTime = getComputeTime()[N];
-      auto curOpMemory = getMemUsage()[N];
+      auto curOpTime = getComputeTime(N);
+      auto curOpMemory = getMemUsage(N);
 
       // Find a partition to put this node into
       int curPartition = maxLogicalDeviceId;

@@ -403,12 +403,9 @@ TEST_F(PartitionerTest, Basic1Roofline) {
       {"fc_dot4", 5120},
       {"fc_add_bias4", 96},
   };
-  ASSERT_EQ(myPartitioner.getComputeTime().size(), expectedComputeTime.size());
-  for (auto &el : myPartitioner.getComputeTime()) {
-    Node *n = el.first;
-    float expected = expectedComputeTime[nodeNamesMap[n].c_str()];
-    float res = el.second;
-    ASSERT_EQ(expected, res);
+  for (auto const &p : nodeNamesMap) {
+    auto *N = p.first;
+    EXPECT_EQ(myPartitioner.getComputeTime(N), expectedComputeTime[p.second]);
   }
 
   // check memUsage
@@ -431,12 +428,9 @@ TEST_F(PartitionerTest, Basic1Roofline) {
       {"fc_dot4", 512},
       {"fc_add_bias4", 32},
   };
-  ASSERT_EQ(myPartitioner.getMemUsage().size(), expectedMemUsage.size());
-  for (auto &el : myPartitioner.getMemUsage()) {
-    Node *n = el.first;
-    uint64_t expected = expectedMemUsage[nodeNamesMap[n].c_str()];
-    uint64_t res = el.second;
-    ASSERT_EQ(expected, res);
+  for (auto const &p : nodeNamesMap) {
+    auto *N = p.first;
+    EXPECT_EQ(myPartitioner.getMemUsage(N), expectedMemUsage[p.second]);
   }
 
   ASSERT_EQ(mod_.getFunctions().size(), 3);

@@ -315,10 +315,18 @@ public:
   void dumpDAG(llvm::StringRef dotFilename) const;
 
   /// Get function for computeTime_
-  ComputeTimeMap getComputeTime() const { return computeTime_; }
+  float getComputeTime(Node *N) const {
+    auto it = computeTime_.find(N);
+    assert(it != computeTime_.end());
+    return it == computeTime_.end() ? 0.0 : it->second;
+  }
 
   /// Get function for memUsage_
-  MemUsageMap getMemUsage() const { return memUsage_; }
+  uint64_t getMemUsage(Node *N) const {
+    auto it = memUsage_.find(N);
+    assert(it != memUsage_.end());
+    return it == memUsage_.end() ? 0 : it->second;
+  }
 };
 } // namespace glow
 #endif // GLOW_PARTITIONER_PARTITIONER_H
