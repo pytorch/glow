@@ -62,7 +62,9 @@ ExecutionState::ExecutionState(RunIdentifierTy id, const DAGNode *root,
                                ResultCBTy doneCb)
     : runId_(id), cb_(doneCb), resultCtx_(std::move(resultContext)),
       inflightNodes_(0), module_(root->module), root_(root),
-      executor_(executor) {}
+      executor_(executor) {
+  DCHECK(cb_ != nullptr);
+}
 
 void ExecutionState::init() {
   // Create a queue for the breadth-first traversal through the graph.
@@ -236,6 +238,8 @@ void ThreadPoolExecutor::shutdown() {
 void ThreadPoolExecutor::run(const DAGNode *root,
                              std::unique_ptr<ExecutionContext> context,
                              RunIdentifierTy runId, ResultCBTy cb) {
+  DCHECK(cb != nullptr);
+
   TRACE_EVENT_SCOPE(context->getTraceContext(), TraceLevel::RUNTIME,
                     "ThreadPoolExecutor::run");
 
@@ -378,6 +382,7 @@ void ThreadPoolExecutor::handleDeviceManagerResult(
     // If there are no nodes inflight, that means all nodes are done. Call
     // the callback and erase the state information.
     ResultCBTy cb = executionState->getCallback();
+    DCHECK(cb != nullptr);
     cb(executionState->getRunId(), executionState->getErrorContainer().get(),
        executionState->getUniqueResultContextPtr());
   }

@@ -53,6 +53,8 @@ HostManagerBackend::createHostManager(llvm::StringRef backendName) {
 void HostManagerBackend::runNetwork(const Graph *graph,
                                     std::unique_ptr<ExecutionContext> context,
                                     runtime::ResultCBTy callback) {
+  DCHECK(callback != nullptr);
+
   auto hostManagerGraph = static_cast<const HostManagerGraph *>(graph);
   hostManager_->runNetwork(hostManagerGraph->getName(), std::move(context),
                            std::move(callback));

@@ -64,6 +64,8 @@ DeviceInfo CPUDeviceManager::getDeviceInfo() const {
 void CPUDeviceManager::addNetworkImpl(const Module *module,
                                       FunctionMapTy functions,
                                       ReadyCBTy readyCB) {
+  DCHECK(readyCB != nullptr);
+
   // First check for uniqueness of the function name.
   for (const auto &func : functions) {
     if (functions_.count(func.first) != 0) {
@@ -112,6 +114,8 @@ void CPUDeviceManager::addNetworkImpl(const Module *module,
 
 void CPUDeviceManager::evictNetworkImpl(std::string functionName,
                                         EvictFunctionCBTy evictCB) {
+  DCHECK(evictCB != nullptr);
+
   if (functions_.erase(functionName)) {
     usedMemoryBytes_ -= functionCost_; // TODO: static moduleSize
   } else {
@@ -127,6 +131,8 @@ void CPUDeviceManager::evictNetworkImpl(std::string functionName,
 void CPUDeviceManager::runFunctionImpl(
     RunIdentifierTy id, std::string function,
     std::unique_ptr<ExecutionContext> context, ResultCBTy resultCB) {
+  DCHECK(resultCB != nullptr);
+
   TRACE_EVENT_SCOPE_NAMED(context->getTraceContext(), TraceLevel::RUNTIME,
                           "DeviceManager::run", dmRun);
   auto funcIt = functions_.find(function);
