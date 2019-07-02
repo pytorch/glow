@@ -91,8 +91,9 @@ createAndSetTensorType(const caffe2::TensorProto &in) {
     result.t->reset(ElemKind::Int32ITy, dim);
   } else if (in.data_type() == caffe2::TensorProto::INT64) {
     result.t->reset(ElemKind::Int64ITy, dim);
-  } else if (in.data_type() == caffe2::TensorProto::UINT8 ||
-             in.data_type() == caffe2::TensorProto::INT8) {
+  } else if (in.data_type() == caffe2::TensorProto::UINT8) {
+    result.t->reset(ElemKind::UInt8QTy, dim, 1.0, 0);
+  } else if (in.data_type() == caffe2::TensorProto::INT8) {
     result.t->reset(ElemKind::Int8QTy, dim, 1.0, 0);
   } else {
     RETURN_ERR("Only float and index tensors are supported");
@@ -1443,7 +1444,7 @@ llvm::Error Caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
 
       size_t pos;
       for (pos = 0; pos < str.size(); pos++) {
-        TH.raw(pos) = (uint8_t)str.c_str()[pos];
+        TH.raw(pos) = (uint8_t)str[pos];
       }
 
       RETURN_ERR_IF_NOT(
