@@ -439,7 +439,7 @@ void Partitioner::initOpComputeTime(Function *F) {
 // the sum of memory consumption of partition1 and partition2 is less than
 // availableMemory, combine partition1 and partition2.
 void Partitioner::partitionsCombine(NodeToFunctionMap &partitions,
-                                    FunctionToNodesMapTy &nodesSet,
+                                    FunctionToNodesMap &nodesSet,
                                     uint64_t availableMemory) {
 
   size_t origPartitions = 0;
@@ -448,7 +448,7 @@ void Partitioner::partitionsCombine(NodeToFunctionMap &partitions,
   while (partitions.getPartitions().size() != origPartitions) {
     origPartitions = partitions.getPartitions().size();
     // Rule 1:
-    for (FunctionToNodesMapTy::iterator it = nodesSet.begin();
+    for (FunctionToNodesMap::iterator it = nodesSet.begin();
          it != nodesSet.end(); ++it) {
       std::vector<Node *> outUsers = getOutUsers((*it).second);
       if (outUsers.empty()) {
@@ -466,15 +466,14 @@ void Partitioner::partitionsCombine(NodeToFunctionMap &partitions,
         // This partition only has one successor.
         Function *cur = (*it).first;
         Function *suc = partitions[outUsers[0]];
-        NodesSetTy tmp = (nodesSet.find(suc))->second;
+        NodesSet tmp = (nodesSet.find(suc))->second;
         GraphMemInfo cost1 = partitions.getGraphMemInfo(cur);
         GraphMemInfo cost2 = partitions.getGraphMemInfo(suc);
         if (cost1.getTotalMemSize() + cost2.getTotalMemSize() -
                 cost1.outMemSize <
             availableMemory) {
           // We can combine the two partitions to fit one device.
-          for (NodesSetTy::iterator it2 = tmp.begin(); it2 != tmp.end();
-               ++it2) {
+          for (NodesSet::iterator it2 = tmp.begin(); it2 != tmp.end(); ++it2) {
             partitions.add(*it2, cur);
           }
           GraphMemInfo newCost;
@@ -496,7 +495,7 @@ void Partitioner::partitionsCombine(NodeToFunctionMap &partitions,
 void Partitioner::partitionsAdjust(NodeToFunctionMap &partitions,
                                    uint64_t availableMemory) {
   // For each partition, create a node set.
-  FunctionToNodesMapTy nodesSet;
+  FunctionToNodesMap nodesSet;
   for (NodeToFunctionMapTy::iterator it = partitions.begin();
        it != partitions.end(); ++it) {
     nodesSet[(*it).second].insert((*it).first);
@@ -513,9 +512,9 @@ void Partitioner::partitionsAdjust(NodeToFunctionMap &partitions,
     // gain is initialized as false, it will be set to be true if there is at
     // least one node can be moved from one set to another set.
     gain = false;
-    for (FunctionToNodesMapTy::iterator it = nodesSet.begin();
+    for (FunctionToNodesMap::iterator it = nodesSet.begin();
          it != nodesSet.end(); ++it) {
-      NodesSetTy &curSet = (*it).second;
+      NodesSet &curSet = (*it).second;
       std::vector<Node *> outUsers = getOutUsersWithOnePredecessor(curSet);
       if (outUsers.empty()) {
         continue;
@@ -597,7 +596,7 @@ NodeToFunctionMap Partitioner::selectPartitions(Function *F,
   newF = F->getParent()->createFunction(std::string(F->getName()) + "_part" +
                                         std::to_string(++color));
   mapping.createPartition(newF, backendName);
-  NodesSetTy currentPartition;
+  NodesSet currentPartition;
   GraphMemInfo graphMem;
 
   for (int i = level - 1; i >= 0; i--) {
@@ -903,10 +902,10 @@ void Partitioner::doPartitioning(llvm::StringRef funcName,
   }
 }
 
-FunctionToBackendNameMapTy
+FunctionToBackendNameMap
 Partitioner::backendBasedPartition(Function *F,
                                    std::vector<Backend *> &backends) {
-  FunctionToBackendNameMapTy ret;
+  FunctionToBackendNameMap ret;
   NodeToFunctionMap mapping;
   llvm::DenseMap<Node *, std::string> nodeToBackendName;
 
@@ -1056,7 +1055,7 @@ llvm::Error Partitioner::loadBalancedPartitioning(Function *F,
   // Initialize runtimes and memory availability per device
   std::vector<float> deviceTime(numDevices, 0);
   std::vector<size_t> memoryAvailable(numDevices, availableMemory);
-  std::vector<NodesSetTy> nodesInPartitions(numDevices);
+  std::vector<NodesSet> nodesInPartitions(numDevices);
   std::vector<GraphMemInfo> graphMem(numDevices, GraphMemInfo{});
   std::vector<Function *> partitions(numDevices);
 
@@ -1164,7 +1163,7 @@ llvm::Error Partitioner::Partition(CompilationContext &cctx) {
   F_ = selectRepFunc(module_, memSize_);
 
   // Step 1 : do the partition based on backends type.
-  FunctionToBackendNameMapTy funcToBackend;
+  FunctionToBackendNameMap funcToBackend;
   std::string origName(F_->getName().data());
   if (backends.size() == 1) {
     // Only one type of backends, no need to backendName based partition.

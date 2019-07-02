@@ -20,7 +20,7 @@
 #include "llvm/ADT/DenseMap.h"
 
 namespace glow {
-using NodesSetTy = std::set<Node *>;
+using NodesSet = std::set<Node *>;
 
 /// The memory usage of a subgraph (i.e. a list of nodes of a function).
 struct GraphMemInfo {
@@ -60,27 +60,27 @@ using BFSLevel = std::vector<std::vector<Node *>>;
 BFSLevel getBFSLevel(Function *F);
 
 /// Given \p nodes, return a list of nodes who use any node in this set.
-std::vector<Node *> getOutUsers(const NodesSetTy &nodes);
+std::vector<Node *> getOutUsers(const NodesSet &nodes);
 
 /// Given \p nodes, return a list of nodes who use only the nodes in this set or
 /// constant.
-std::vector<Node *> getOutUsersWithOnePredecessor(const NodesSetTy &nodes);
+std::vector<Node *> getOutUsersWithOnePredecessor(const NodesSet &nodes);
 
 /// \returns the memory usage of the output caused by \p node who has users not
 /// in the set \p nodes.
-uint64_t getOutMemPerNode(const NodesSetTy &nodes, const Node *node);
+uint64_t getOutMemPerNode(const NodesSet &nodes, const Node *node);
 
 /// Given a node, \return the NodeSet of inputs of this node.
-NodesSetTy getInputs(const Node *node);
+NodesSet getInputs(const Node *node);
 
 /// Given nodes set \p currNodes and its memory usage info \p info, \returns the
 /// new memory usage if \p newNode is added into \p currNodes.
-GraphMemInfo updateGraphMemInfoByAddingNode(const NodesSetTy &currNodes,
+GraphMemInfo updateGraphMemInfoByAddingNode(const NodesSet &currNodes,
                                             const GraphMemInfo &info,
                                             Node *newNode);
 
 /// Return the memory usage of a given nodes set.
-GraphMemInfo getGraphMemInfo(const NodesSetTy &nodes);
+GraphMemInfo getGraphMemInfo(const NodesSet &nodes);
 
 } // namespace glow
 #endif // GLOW_PARTITIONER_PARTITIONUTILS_H

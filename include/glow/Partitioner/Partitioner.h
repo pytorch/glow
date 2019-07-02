@@ -25,9 +25,9 @@ namespace glow {
 
 using namespace runtime;
 
-using MemUsageMapTy = std::unordered_map<Node *, uint64_t>;
-using ComputeTimeMapTy = std::unordered_map<Node *, float>;
-using PartitionCostMapTy = llvm::DenseMap<Function *, GraphMemInfo>;
+using MemUsageMap = std::unordered_map<Node *, uint64_t>;
+using ComputeTimeMap = std::unordered_map<Node *, float>;
+using PartitionCostMap = llvm::DenseMap<Function *, GraphMemInfo>;
 
 /// Data structure that contains the info for each type of backend used for
 /// partitioning.
@@ -54,10 +54,10 @@ struct FunctionNameComparator {
     return strcmp(lhs->getName().data(), rhs->getName().data()) < 0;
   }
 };
-using FunctionToNodesMapTy =
-    std::map<Function *, NodesSetTy, FunctionNameComparator>;
+using FunctionToNodesMap =
+    std::map<Function *, NodesSet, FunctionNameComparator>;
 
-using FunctionToBackendNameMapTy =
+using FunctionToBackendNameMap =
     std::map<Function *, std::string, FunctionNameComparator>;
 
 class NodeToFunctionMap {
@@ -70,10 +70,10 @@ class NodeToFunctionMap {
 
   /// Map of the partitions to the backend which will be used for compiling
   /// this partition.
-  FunctionToBackendNameMapTy functionToBackendName_;
+  FunctionToBackendNameMap functionToBackendName_;
 
   /// Map of sub-functions to their memory consumption.
-  PartitionCostMapTy partitionCost_;
+  PartitionCostMap partitionCost_;
 
   /// Map of partitions and the logicalDeviceID. The partitions with the same
   /// logcialDeviceID will be assigned into the same physical device.
@@ -193,10 +193,10 @@ class Partitioner {
   uint64_t memSize_;
 
   /// The map of each operator and the corresponding memory size.
-  MemUsageMapTy memUsage_;
+  MemUsageMap memUsage_;
 
   /// The map of each operator and the compute runtime.
-  ComputeTimeMapTy computeTime_;
+  ComputeTimeMap computeTime_;
 
   /// Flag to set if the Partitioner should attempt to saturate the host, and
   /// use all available devices.
@@ -222,7 +222,7 @@ class Partitioner {
   /// partition1 and partition2 is less than availableMemory, combine partition1
   /// and partition2.
   void partitionsCombine(NodeToFunctionMap &partitions,
-                         FunctionToNodesMapTy &nodesSet,
+                         FunctionToNodesMap &nodesSet,
                          uint64_t availableMemory);
 
   /// After getting the initial partitions, adjust the partitions to minimize
@@ -253,7 +253,7 @@ class Partitioner {
   /// Duplicates all networks in the module order to saturate the Host.
   void saturateHost(unsigned logicalDeviceCount);
 
-  FunctionToBackendNameMapTy
+  FunctionToBackendNameMap
   backendBasedPartition(Function *F, std::vector<Backend *> &backends);
 
   /// Performs a load balancing optimization pass to optimize for load
@@ -317,10 +317,10 @@ public:
   void dumpDAG(llvm::StringRef dotFilename) const;
 
   /// Get function for computeTime_
-  ComputeTimeMapTy getComputeTime() const { return computeTime_; }
+  ComputeTimeMap getComputeTime() const { return computeTime_; }
 
   /// Get function for memUsage_
-  MemUsageMapTy getMemUsage() const { return memUsage_; }
+  MemUsageMap getMemUsage() const { return memUsage_; }
 };
 } // namespace glow
 #endif // GLOW_PARTITIONER_PARTITIONER_H
