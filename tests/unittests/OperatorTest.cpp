@@ -7726,4 +7726,72 @@ TEST_CONVERT_TO(int64_t, int64_t, ElemKind::Int64ITy, ElemKind::Int64ITy)
 
 #undef TEST_CONVERT_TO
 
+/// Helper to test ConvertTo casting from \p STy to \p DTy and back.
+template <typename SourceType, typename DestType>
+static void testConvertToAndBack(glow::PlaceholderBindings &bindings_,
+                                 glow::Module &mod_, glow::Function *F_,
+                                 glow::ExecutionEngine &EE_, ElemKind STy,
+                                 ElemKind DTy, bool castIsNoOp) {
+  // Input tensor in source type.
+  size_t shape[] = {5, 3, 20};
+  auto *data = mod_.createPlaceholder(STy, shape, "data",
+                                      /* isTrainable */ false);
+  auto dataH = bindings_.allocate(data)->getHandle<SourceType>();
+  dataH.randomize(-1000, 1000, mod_.getPRNG());
+
+  // Construct the graph for the backend to run, converting to dest type and
+  // back.
+  auto IT = mod_.uniqueType(STy, shape);
+  auto OT = mod_.uniqueType(DTy, shape);
+  auto *convert = F_->createConvertTo("convert_forth", data, OT);
+  auto *convertBack = F_->createConvertTo("convert_back", convert, IT);
+  auto *save = F_->createSave("save", convertBack);
+  auto resultH =
+      bindings_.allocate(save->getPlaceholder())->getHandle<SourceType>();
+
+  // Compile and run the model, setting results in tensor backed by resultH.
+  EXPECT_EQ(F_->getNodes().size(), 3);
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run(bindings_);
+  EXPECT_EQ(F_->getNodes().size(), size_t(castIsNoOp ? 1 : 3));
+
+  for (size_t i = 0, e = resultH.size(); i < e; i++) {
+    const SourceType res = resultH.raw(i);
+    const SourceType expected =
+        static_cast<SourceType>(static_cast<DestType>(dataH.raw(i)));
+    EXPECT_EQ(res, expected);
+  }
+}
+
+/// Test that ConvertTo operator casts correctly from one type to another.
+#define TEST_CAST_2WAYS(T_FROM, T_TO, DTY_FROM, DTY_TO, NOOP_CAST)             \
+  TEST_P(OperatorTest, ConvertFrom_##T_FROM##_To_##T_TO##_AndBack) {           \
+    ENABLED_BACKENDS(Interpreter);                                             \
+    testConvertToAndBack<T_FROM, T_TO>(bindings_, mod_, F_, EE_, DTY_FROM,     \
+                                       DTY_TO, NOOP_CAST);                     \
+  }
+TEST_CAST_2WAYS(float, float, ElemKind::FloatTy, ElemKind::FloatTy, true)
+TEST_CAST_2WAYS(float, float16_t, ElemKind::FloatTy, ElemKind::Float16Ty, false)
+TEST_CAST_2WAYS(float, int32_t, ElemKind::FloatTy, ElemKind::Int32ITy, false)
+TEST_CAST_2WAYS(float, int64_t, ElemKind::FloatTy, ElemKind::Int64ITy, false)
+TEST_CAST_2WAYS(float16_t, float, ElemKind::Float16Ty, ElemKind::FloatTy, true)
+TEST_CAST_2WAYS(float16_t, float16_t, ElemKind::Float16Ty, ElemKind::Float16Ty,
+                true)
+TEST_CAST_2WAYS(float16_t, int32_t, ElemKind::Float16Ty, ElemKind::Int32ITy,
+                false)
+TEST_CAST_2WAYS(float16_t, int64_t, ElemKind::Float16Ty, ElemKind::Int64ITy,
+                false)
+TEST_CAST_2WAYS(int32_t, float, ElemKind::Int32ITy, ElemKind::FloatTy, false)
+TEST_CAST_2WAYS(int32_t, float16_t, ElemKind::Int32ITy, ElemKind::Float16Ty,
+                false)
+TEST_CAST_2WAYS(int32_t, int32_t, ElemKind::Int32ITy, ElemKind::Int32ITy, true)
+TEST_CAST_2WAYS(int32_t, int64_t, ElemKind::Int32ITy, ElemKind::Int64ITy, true)
+TEST_CAST_2WAYS(int64_t, float, ElemKind::Int64ITy, ElemKind::FloatTy, false)
+TEST_CAST_2WAYS(int64_t, float16_t, ElemKind::Int64ITy, ElemKind::Float16Ty,
+                false)
+TEST_CAST_2WAYS(int64_t, int32_t, ElemKind::Int64ITy, ElemKind::Int32ITy, false)
+TEST_CAST_2WAYS(int64_t, int64_t, ElemKind::Int64ITy, ElemKind::Int64ITy, true)
+
+#undef TEST_CAST_2WAYS
+
 #undef ENABLED_BACKENDS

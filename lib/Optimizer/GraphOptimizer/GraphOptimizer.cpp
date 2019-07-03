@@ -2096,13 +2096,67 @@ static NodeValue convertConstant(Module &mod, Constant &constant,
   }
 }
 
+/// Compute number of significant bits that are used to represent data of type
+/// \p kind. For FP, it is the number of bits in mantissa, for integers it's the
+/// number of bits except sign bit.
+/// \p returns number of significant bits of \p kind.
+/// TODO: Currently, for all supported types wider mantissa also means wider
+/// exponent. If we add a type for which this is not true, we should check both
+/// mantissa and exponent.
+static size_t numSignificantBits(ElemKind kind) {
+  switch (kind) {
+  case ElemKind::BoolTy:
+    return std::numeric_limits<bool>::digits;
+  case ElemKind::Int8QTy:
+    return std::numeric_limits<int8_t>::digits;
+  case ElemKind::UInt8QTy:
+  case ElemKind::UInt8FusedQTy:
+    return std::numeric_limits<uint8_t>::digits;
+  case ElemKind::Float16Ty:
+    // Custom type with layout 0 00000 0000000000.
+    return 10;
+  case ElemKind::Int16QTy:
+    return std::numeric_limits<int16_t>::digits;
+  case ElemKind::FloatTy:
+    return std::numeric_limits<float>::digits;
+  case ElemKind::Int32QTy:
+  case ElemKind::Int32ITy:
+    return std::numeric_limits<int32_t>::digits;
+  case ElemKind::Int64ITy:
+    return std::numeric_limits<int64_t>::digits;
+  default:
+    // Avoid compiler warning.
+    break;
+  }
+  llvm_unreachable("Unknown type!");
+}
+
+/// Returns true if casting value from \p srcTy to \p destTy may change it. As
+/// implication of this, casting value from \p srcTy to \p destTy and back may
+/// produce different value than before cast.
+static bool isValueChangingCast(TypeRef srcTy, TypeRef destTy) {
+  // FP-to-Int conversion may lead to loss of fraction, so it's not NOOP.
+  if (srcTy->isFPType() && !destTy->isFPType()) {
+    return true;
+  }
+  // Narrowing transform (e.g. int64 to int32) may lead to loss of
+  // significant senior bits, so it's not NOOP.
+  ElemKind srcElKind = srcTy->getElementType();
+  ElemKind convElKind = destTy->getElementType();
+  if (numSignificantBits(srcElKind) > numSignificantBits(convElKind)) {
+    return true;
+  }
+  return false;
+}
+
 /// Optimize away ConvertToNode.
 /// This basically turns "conversion(conversion A to B) to C"
-/// into noop if the type of A and C are the same.
+/// into noop if all of the conditions below are met:
+///  - the type of A and C are the same;
+///  - A->B is not a FP-to-Int conversion;
+///  - A->B is not a narrowing conversion.
 ///
-/// This method potentially changes the semantic of the program
-/// because it eliminates some precision loss steps.
-/// However, this actually improves accuracy so we can always do it.
+/// TODO: We can also optimize int16 -> int64 -> int32 into int16 -> int32.
 bool OptimizeConversions::run(Function *F, const CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), getName());
   bool changed = false;
@@ -2150,6 +2204,13 @@ bool OptimizeConversions::run(Function *F, const CompilationContext &cctx) {
     if (srcVal == NodeValue() || srcVal.getType() != dstVal.getType()) {
       continue;
     }
+    // For non-constant conversions, make extra checks.
+    if (conversionInput != NodeValue()) {
+      if (isValueChangingCast(srcVal.getType(), conversionInput.getType())) {
+        continue;
+      }
+    }
+
     // Use srcVal instead of dstVal.
     dstVal.replaceAllUsesOfWith(srcVal, F);
     changed = true;
