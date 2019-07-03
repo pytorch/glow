@@ -13,6 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#ifndef GLOW_TESTS_BACKENDTESTUTILS_H
+#define GLOW_TESTS_BACKENDTESTUTILS_H
 
 #include "glow/Backend/Backend.h"
 #include "glow/ExecutionEngine/ExecutionEngine.h"
@@ -297,3 +299,5 @@ void inferExtract3D(Tensor *input, Tensor *out, llvm::StringRef kind);
 void inferMaxSplat(Tensor *input, Tensor *out, llvm::StringRef kind);
 
 } // namespace glow
+
+#endif // GLOW_TESTS_BACKENDTESTUTILS_H
