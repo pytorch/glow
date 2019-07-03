@@ -85,6 +85,7 @@ llvm::Error HostManager::addNetwork(std::unique_ptr<Module> module,
                           name);
     }
   }
+
   std::vector<DeviceInfo> deviceInfo;
   for (auto &device : devices_) {
     DeviceInfo info = device.second->getDeviceInfo();
@@ -102,17 +103,21 @@ llvm::Error HostManager::addNetwork(std::unique_ptr<Module> module,
   auto partitioner = Partitioner(module.get(), deviceInfo, saturateHost);
   RETURN_IF_ERR(partitioner.Partition(cctx));
   auto nodeList = std::move(partitioner.getPartitionResult());
+
   if (cctx.precisionConfig.quantMode == QuantizationMode::Profile) {
-    // Check that all functions were not partitioned.
-    for (auto &network : nodeList) {
-      if (network.nodes.size() > 1) {
-        return MAKE_ERR(
-            GlowErr::ErrorCode::RUNTIME_ERROR,
-            "Failed to add network for profiling: Network was "
-            "partitioned, this is likely because the network was "
-            "larger than the configured memory of a single device manager.");
-      }
+    // For profiling, we use CPU backend. Overwrite Provisioner and Executor to
+    // force the network is compiled and run in profilingBackend.
+    // backend.
+    size_t devicesNum = devices_.size();
+    for (size_t i = 0; i < devicesNum; i++) {
+      auto name = devices_[i]->getDeviceConfig().name;
+      auto config = llvm::make_unique<DeviceConfig>(profilingBackend, name);
+      devices_[i] = std::unique_ptr<DeviceManager>(
+          DeviceManager::createDeviceManager(*config));
+      RETURN_IF_ERR(devices_[i]->init());
     }
+    provisioner_.reset(new Provisioner(devices_));
+    executor_.reset(new ThreadPoolExecutor(devices_, config_.executorThreads));
   }
 
   RETURN_IF_ERR(provisioner_->provision(nodeList, *module, cctx));
