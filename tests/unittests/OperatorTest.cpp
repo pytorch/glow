@@ -6435,7 +6435,7 @@ TEST_P(OperatorStatelessTest, rowwiseQuantizedFCTestSymmetric) {
   ENABLED_BACKENDS(Interpreter, CPU);
   compareAgainstInterpreter(
       getBackendName(), createAndInitBasicRowwiseFCTest, ElemKind::FloatTy,
-      ElemKind::Int8QTy, 0.06f, parCloneCountOpt,
+      ElemKind::Int8QTy, 0.07f, parCloneCountOpt,
       /* enableRowwiseQuantization */ true, quantization::Schema::Symmetric);
 }
 
