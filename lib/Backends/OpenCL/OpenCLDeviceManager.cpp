@@ -255,6 +255,8 @@ bool OpenCLDeviceManager::isMemoryAvailable(uint64_t estimate) const {
 void OpenCLDeviceManager::addNetworkImpl(const Module *module,
                                          FunctionMapTy functions,
                                          ReadyCBTy readyCB) {
+  DCHECK(readyCB != nullptr);
+
   // First check for uniqueness of the function name.
   for (const auto &func : functions) {
     if (functions_.count(func.first) != 0) {
@@ -360,6 +362,8 @@ void OpenCLDeviceManager::addNetworkImpl(const Module *module,
 
 void OpenCLDeviceManager::evictNetworkImpl(std::string functionName,
                                            EvictFunctionCBTy evictCB) {
+  DCHECK(evictCB != nullptr);
+
   if (functions_.erase(functionName)) {
     auto buffer = buffers_[functionName];
     auto users = buffer->decrementUsers();
@@ -394,6 +398,8 @@ void OpenCLDeviceManager::returnRunCommandQueue(OpenCLCommandQueue &queue) {
 void OpenCLDeviceManager::runFunctionImpl(
     RunIdentifierTy id, std::string function,
     std::unique_ptr<ExecutionContext> context, ResultCBTy resultCB) {
+  DCHECK(resultCB != nullptr);
+
   TRACE_EVENT_SCOPE_NAMED(context->getTraceContext(), TraceLevel::RUNTIME,
                           "DeviceManager::run", dmRun);
   auto funcIt = functions_.find(function);

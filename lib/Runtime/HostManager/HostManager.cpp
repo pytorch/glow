@@ -232,6 +232,8 @@ RunIdentifierTy
 HostManager::runNetwork(llvm::StringRef networkName,
                         std::unique_ptr<ExecutionContext> context,
                         ResultCBTy callback) {
+  DCHECK(callback != nullptr);
+
   TRACE_EVENT_SCOPE(context->getTraceContext(), TraceLevel::RUNTIME,
                     "HostManager::runNetwork");
   auto currentRun = totalRequestCount_++;

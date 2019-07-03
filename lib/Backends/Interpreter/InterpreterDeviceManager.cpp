@@ -65,6 +65,8 @@ DeviceInfo InterpreterDeviceManager::getDeviceInfo() const {
 void InterpreterDeviceManager::addNetworkImpl(const Module *module,
                                               FunctionMapTy functions,
                                               ReadyCBTy readyCB) {
+  DCHECK(readyCB != nullptr);
+
   // First check for uniqueness of the function name.
   for (const auto &func : functions) {
     if (functions_.count(func.first) != 0) {
@@ -110,6 +112,8 @@ void InterpreterDeviceManager::addNetworkImpl(const Module *module,
 
 void InterpreterDeviceManager::evictNetworkImpl(std::string functionName,
                                                 EvictFunctionCBTy evictCB) {
+  DCHECK(evictCB != nullptr);
+
   if (functions_.erase(functionName)) {
     usedMemoryBytes_ -= functionCost_; // TODO: static moduleSize
   } else {
@@ -125,6 +129,8 @@ void InterpreterDeviceManager::evictNetworkImpl(std::string functionName,
 void InterpreterDeviceManager::runFunctionImpl(
     RunIdentifierTy id, std::string function,
     std::unique_ptr<ExecutionContext> context, ResultCBTy resultCB) {
+  DCHECK(resultCB != nullptr);
+
   TRACE_EVENT_SCOPE_NAMED(context->getTraceContext(), TraceLevel::RUNTIME,
                           "DeviceManager::run", dmRun);
   auto funcIt = functions_.find(function);
