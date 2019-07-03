@@ -47,6 +47,16 @@ BB.newBackendSpecificInstr("OCLMaxPool")
     .autoIRGen()
     .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"});
 
+BB.newBackendSpecificInstr("OCLBatchedReduceAdd")
+    .addOperand("Dest", OperandKind::Out)
+    .addOperand("Src", OperandKind::In)
+    .addOperand("DestSliceSizes", OperandKind::In)
+    .addOperand("SrcSliceSizes", OperandKind::In)
+    .addMember(MemberType::Unsigned, "Axis")
+    .addMember(MemberType::Unsigned, "AxisSrcSliceSize")
+    .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
+    .autoIRGen();
+
 BB.includeBackendSpecificVerification(
     "glow/OpenCLSpecificInstrsVerification.h");
 
