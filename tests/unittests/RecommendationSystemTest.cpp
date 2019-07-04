@@ -86,6 +86,12 @@ llvm::cl::opt<unsigned> deviceMemCapacityOpt(
 llvm::cl::opt<unsigned> numDevicesOpt(
     "num-devices", llvm::cl::desc("Number of devices to use for partitioning."),
     llvm::cl::Optional, llvm::cl::init(6), llvm::cl::cat(recSysTestCat));
+
+llvm::cl::opt<bool> useSymmetricRowwiseQuantFCOpt(
+    "use-symmetric-rowwise-quant-fc",
+    llvm::cl::desc(
+        "Whether to use Symmetric quantization with FCs. Default is false."),
+    llvm::cl::Optional, llvm::cl::init(false), llvm::cl::cat(recSysTestCat));
 } // namespace
 
 /// Fills the tensor \p H with some stable random data with the seed \p seed
@@ -379,10 +385,13 @@ protected:
         mod_, internalTypeF, {inputDim, intDim}, "initial_weight", -0.03, 0.03);
 
     // Output is size {MB, intermediatDim}
+    quantization::Schema rowwiseQuantSchema = useSymmetricRowwiseQuantFCOpt
+                                                  ? quantization::Symmetric
+                                                  : quantization::Asymmetric;
     Node *initial_layer = F_->createRowwiseQuantizedFullyConnected(
         "dense", start, initial_weight, initial_bias,
         mod_.uniqueTypeWithNewShape(internalTypeQ, {minibatchSize, intDim}),
-        quantization::Asymmetric,
+        rowwiseQuantSchema,
         /* transposeWeight */ true);
 
     Node *initial_relu = F_->createRELU("initial_relu", initial_layer);
@@ -399,7 +408,7 @@ protected:
       Node *intermediate_layer = F_->createRowwiseQuantizedFullyConnected(
           "dense", last, intermediate_weight, intermediate_bias,
           mod_.uniqueType(ElemKind::Int8QTy, {minibatchSize, intDim}, 1.0, 0),
-          quantization::Asymmetric,
+          rowwiseQuantSchema,
           /* transposeWeight */ true); // Output is size {MB, intDim}
       last = F_->createRELU("intermediate_relu", intermediate_layer);
     }
@@ -414,7 +423,7 @@ protected:
     auto *end_layer = F_->createRowwiseQuantizedFullyConnected(
         "dense", last, end_weight, end_bias,
         mod_.uniqueTypeWithNewShape(internalTypeQ, {minibatchSize, outputDim}),
-        quantization::Asymmetric,
+        rowwiseQuantSchema,
         /* transposeWeight */ true);
 
     auto *RN = F_->createRELU("relu", end_layer);
