@@ -279,7 +279,7 @@ int main(int argc, char **argv) {
       .addOperand("Lengths", OperandKind::In)
       .autoIRGen()
       .autoVerify(VerifyKind::SameElementType, {"Dest", "ElemKind::FloatTy"})
-      .autoVerify(VerifyKind::SameElementType, {"Data", "ElemKind::Int8QTy"})
+      .autoVerify(VerifyKind::SameElementType, {"Data", "ElemKind::UInt8QTy"})
       .autoVerify(VerifyKind::SameElementType, {"Scales", "ElemKind::FloatTy"})
       .autoVerify(VerifyKind::SameElementType, {"Offsets", "ElemKind::FloatTy"})
       .autoVerify(VerifyKind::SameElementType, {"Weights", "ElemKind::FloatTy"})

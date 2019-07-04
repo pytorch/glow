@@ -76,9 +76,6 @@ class CommonOperatorLoader : public ProtobufLoader {
           in.name, in.quantizationAxis));
     }
 
-    // This is a caffe2 offset shift.
-    constexpr int32_t OFFSETSHIFT = 128;
-
     LoadWeightResult result;
     result.t = llvm::make_unique<Tensor>();
 
@@ -99,14 +96,10 @@ class CommonOperatorLoader : public ProtobufLoader {
         Type ty(ElemKind::Int64ITy, dims);
         *result.t = Tensor((void *)in.buffer, &ty);
       } else if (in.dataType == ONNXIFI_DATATYPE_UINT8) {
-        // Must copy the weights here because we will need to modify them by
-        // adjusting for OFFSETSHIFT.
-        result.t->reset(ElemKind::Int8QTy, dims, 1.0, 0);
-        auto TH = result.t->template getHandle<int8_t>();
-        uint8_t *data = (uint8_t *)in.buffer;
-        for (size_t i = 0; i < TH.size(); ++i) {
-          TH.raw(i) = static_cast<int8_t>((((uint8_t)data[i]) - OFFSETSHIFT));
-        }
+        // UInt8 type is used for variety of rowwise quantized SLSs.
+        // Make dummy scale and offset for these cases.
+        Type ty(ElemKind::UInt8QTy, dims, 1.0, 0);
+        *result.t = Tensor((void *)in.buffer, &ty);
       } else if (in.dataType == ONNXIFI_DATATYPE_UINT64) {
         Type ty(ElemKind::Int64ITy, dims);
         *result.t = Tensor((void *)in.buffer, &ty);
@@ -124,6 +117,9 @@ class CommonOperatorLoader : public ProtobufLoader {
 
       return llvm::Expected<LoadWeightResult>(std::move(result));
     }
+
+    // This is a caffe2 offset shift.
+    constexpr int32_t OFFSETSHIFT = 128;
 
     // Load quantized tensor with either a single or multiple qparams.
     float scale = 1.0;

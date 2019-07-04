@@ -322,6 +322,9 @@ llvm::Value *LLVMIRGen::emitValueAddress(llvm::IRBuilder<> &builder,
   case ElemKind::Int8QTy:
     T = llvm::Type::getInt8PtrTy(ctx_);
     break;
+  case ElemKind::UInt8QTy:
+    T = llvm::Type::getInt8PtrTy(ctx_);
+    break;
   case ElemKind::Int16QTy:
     T = llvm::Type::getInt16PtrTy(ctx_);
     break;
@@ -341,8 +344,8 @@ llvm::Value *LLVMIRGen::emitValueAddress(llvm::IRBuilder<> &builder,
     T = llvm::Type::getInt8PtrTy(ctx_);
     break;
   default:
-    llvm_unreachable("Unimplemented");
-    break;
+    LOG(FATAL) << "Unsupported element type: "
+               << Type::getElementName(val->getElementType()).str();
   }
 
   assert(allocationsInfo_.valueNumbers_.count(val));

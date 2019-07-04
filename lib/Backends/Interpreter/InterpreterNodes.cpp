@@ -2753,7 +2753,7 @@ void BoundInterpreterFunction::fwdRowwiseQuantizedSparseLengthsWeightedSumInst(
 
   size_t lineSize = data->size() / data->dims()[0];
 
-  auto DH = data->getHandle<int8_t>();
+  auto DH = data->getHandle<uint8_t>();
   auto DSH = dataScales->getHandle<float>();
   auto DOH = dataOffsets->getHandle<float>();
   auto WH = weights->getHandle<float>();

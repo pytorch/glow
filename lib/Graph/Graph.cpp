@@ -772,7 +772,7 @@ Function::createRowwiseQuantizedFullyConnected(llvm::StringRef name,
   }
 
   // Note: Using int32_t offset here as that is what RWQ-FC expects.
-  quantization::tensorRowwiseQuantization<int32_t>(
+  quantization::tensorRowwiseQuantization<int32_t, int8_t>(
       wt, qWeights->getPayloadMutable(), scales->getPayloadMutable(),
       offsets->getPayloadMutable(), schema);
 
@@ -1483,15 +1483,15 @@ quantizeDataAndCreateRowwiseQuantizedSparseLengthsWeightedSum(
   // Note: In rwqData, we are using a quantized type, however the scale/offset
   // are set to dummy values 0.0/0. This is because the actually used
   // scale/offset come from dataScales and dataOffsets.
-  Constant *rwqData =
-      F->getParent()->createConstant(ElemKind::Int8QTy, inDims, 0.0, 0, "data");
+  Constant *rwqData = F->getParent()->createConstant(ElemKind::UInt8QTy, inDims,
+                                                     0.0, 0, "data");
   Constant *dataScales = F->getParent()->createConstant(
       ElemKind::FloatTy, {inDims[0]}, "dataScales");
   Constant *dataOffsets = F->getParent()->createConstant(
       ElemKind::FloatTy, {inDims[0]}, "dataOffsets");
 
   // Note: Using float offset here as that is what RWQ-SLWS expects.
-  quantization::tensorRowwiseQuantization<float>(
+  quantization::tensorRowwiseQuantization<float, uint8_t>(
       data, rwqData->getPayloadMutable(), dataScales->getPayloadMutable(),
       dataOffsets->getPayloadMutable(), schema);
   return F->createRowwiseQuantizedSparseLengthsWeightedSum(

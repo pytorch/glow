@@ -91,8 +91,9 @@ createAndSetTensorType(const caffe2::TensorProto &in) {
     result.t->reset(ElemKind::Int32ITy, dim);
   } else if (in.data_type() == caffe2::TensorProto::INT64) {
     result.t->reset(ElemKind::Int64ITy, dim);
-  } else if (in.data_type() == caffe2::TensorProto::UINT8 ||
-             in.data_type() == caffe2::TensorProto::INT8) {
+  } else if (in.data_type() == caffe2::TensorProto::UINT8) {
+    result.t->reset(ElemKind::UInt8QTy, dim, 1.0, 0);
+  } else if (in.data_type() == caffe2::TensorProto::INT8) {
     result.t->reset(ElemKind::Int8QTy, dim, 1.0, 0);
   } else {
     RETURN_ERR("Only float and index tensors are supported");
@@ -1149,23 +1150,17 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     Node *node;
     if (isFused) {
       // There is no specific fused quantized type in Caffe2, so we will load
-      // Int8QTy. We then change it from Int8QTy to UInt8FusedQTy here if
+      // UInt8QTy. We then change it from UInt8QTy to UInt8FusedQTy here if
       // necessary -- another user could have already changed it.
       if (dataC->getElementType() != ElemKind::UInt8FusedQTy) {
-        RETURN_ERR_IF_NOT(dataC->getElementType() == ElemKind::Int8QTy,
-                          "Data must be Int8QTy.");
+        RETURN_ERR_IF_NOT(dataC->getElementType() == ElemKind::UInt8QTy,
+                          "Data must be UInt8QTy.");
         // Use dummy 0.0/0 as scale/offset, since the actual scales/offsets
         // are fused inline with the data.
         TypeRef fusedTy = G_.getParent()->uniqueType(ElemKind::UInt8FusedQTy,
                                                      dataC->dims(), 0.0, 0);
         dataC->setType(Storage::OutputIdx, fusedTy);
-        dataC->getPayloadMutable().setType(fusedTy);
-
-        // We also need to update the data to be unsigned instead of signed.
-        auto dataCH = dataC->getHandle<uint8_t>();
-        for (size_t i = 0, e = dataCH.size(); i < e; i++) {
-          dataCH.raw(i) = dataCH.raw(i) + OFFSETSHIFT;
-        }
+        dataC->setPayloadType(fusedTy);
       }
 
       // No other work to do, since the data is already loaded fused, so just
@@ -1440,23 +1435,23 @@ llvm::Error Caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
         continue;
       }
       auto dim = getShape(dict["shape"]);
-
-      T.reset(ElemKind::Int8QTy, dim, 0.0, 0);
-      auto TH = T.getHandle<int8_t>();
+      T.reset(ElemKind::UInt8QTy, dim, 0.0, 0);
+      auto TH = T.getHandle<uint8_t>();
       RETURN_ERR_IF_NOT(
           dict["values"]->strings().size() == 1,
           "Expect single string input for GivenTensorByteStringToUInt8Fill");
-      const std::string str = dict["values"]->strings().Get(0);
+      const std::string &str = dict["values"]->strings().Get(0);
 
-      // We're loading unsigned data into Int8QTy, so we use OFFSETSHIFT to
-      // convert to signed.
-      size_t i;
-      for (i = 0; i < str.size(); i++) {
-        TH.raw(i) = (uint8_t)str.c_str()[i] - OFFSETSHIFT;
+      size_t pos;
+      for (pos = 0; pos < str.size(); pos++) {
+        TH.raw(pos) = (uint8_t)str[pos];
       }
-      RETURN_ERR_IF_NOT(i == T.size(),
-                        "The number of serialized values does not "
-                        "match the size of the tensor.");
+
+      RETURN_ERR_IF_NOT(
+          pos == T.size(),
+          strFormat("The number of serialized values (%li) does not "
+                    "match the size of the tensor (%li).",
+                    pos, T.size()));
       RETURN_IF_ERR(createAndRegisterConstant(o, std::move(T)));
     }
     return llvm::Error::success();
@@ -1696,7 +1691,6 @@ Caffe2ModelLoader::Caffe2ModelLoader(const std::string &netDescFilename,
     // This is to ensure that the same processing done with
     // the same network, even if order of operators is different.
     F.orderNodes();
-
     RETURN_ERR_IF_NOT(F.verify(), "Function verification failed.");
 
     deleteUnusedConstants();

@@ -234,8 +234,9 @@ std::vector<int8_t> createMapping(TypeRef inTy, TypeRef outTy,
 /// row. Note that the shape of input/output can be any non-zero number of
 /// dimensions; row refers to all data in the first dimension of the shape.
 /// \p T represents the type to use for the offsets for quantization. Currently
-/// this must either be int32_t or float.
-template <typename T>
+/// this must either be int32_t or float. Template parameter \p QP represents
+/// quantization precision, typically int8_t or uint8_t.
+template <typename T, typename QP>
 void tensorRowwiseQuantization(const Tensor &input, Tensor &output,
                                Tensor &scales, Tensor &offsets,
                                quantization::Schema schema) {
@@ -245,7 +246,7 @@ void tensorRowwiseQuantization(const Tensor &input, Tensor &output,
   ShapeHW idim(finalIn.dims());
 
   auto srcH = finalIn.getHandle<float>();
-  auto destH = finalOut.getHandle<int8_t>();
+  auto destH = finalOut.getHandle<QP>();
   auto scalesH = scales.getHandle<float>();
   auto offsetsH = offsets.getHandle<T>();
   for (size_t i = 0; i < idim.height; i++) {
@@ -258,6 +259,7 @@ void tensorRowwiseQuantization(const Tensor &input, Tensor &output,
     min = std::min(min, 0.0f);
     max = std::max(max, 0.0f);
 
+    // Handle rowwise quantization for FCs.
     if (std::is_same<int32_t, T>::value) {
       TensorQuantizationParams qParams =
           chooseQuantizationParams(min, max, schema);
@@ -267,11 +269,12 @@ void tensorRowwiseQuantization(const Tensor &input, Tensor &output,
       scalesH.raw(i) = qParams.scale;
       offsetsH.raw(i) = qParams.offset;
     } else if (std::is_same<float, T>::value) {
+      // Handle rowwise quantization for Rowwise quantized SLS.
       float scale = ((double)max - (double)min) / 255.0;
       float offset = min;
 
       for (size_t j = 0; j < idim.width; j++) {
-        destH.at({i, j}) = quantization::quantizeWithFloatOffset<int8_t>(
+        destH.at({i, j}) = quantization::quantizeWithFloatOffset<QP>(
             srcH.at({i, j}), scale, offset);
       }
       scalesH.raw(i) = scale;
