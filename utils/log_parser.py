@@ -21,6 +21,8 @@ from typing import (
     Tuple,
 )
 import typing
+import sqlite3
+import os
 
 # Maintaining all nodes
 NODES_MAP: Dict['NodeNameAndKind', 'Node'] = {}
@@ -138,7 +140,8 @@ class DottyPrinter:
         colors_: List[str]. A list for colors for nodes in the dotty graph.
     """
 
-    def __init__(self):
+    def __init__(self, nodesMap: Dict[NodeNameAndKind, Node]):
+        self.nodesMap_ = nodesMap
         self.vertices_: List[str] = []
         self.edges_: List[str] = []
         self.uniqueVertexMap_: Dict[Node, int] = {}
@@ -204,18 +207,18 @@ class DottyPrinter:
         self.vertices_.append(nodeStr)
 
     def visitNodes(self) -> None:
-        """Visits all nodes in NODES_MAP and dump the dotty information for each node. """
+        """Visits all nodes in nodesMap_ and dump the dotty information for each node. """
 
-        for node in NODES_MAP.values():
+        for node in self.nodesMap_.values():
             self.dump_node(node)
 
     def visitEdges(self) -> None:
         """Visits all edges and dump the dotty information for each edge. """
 
-        for node in NODES_MAP.values():
+        for node in self.nodesMap_.values():
             for nodeInput in node.get_inputs():
                 i = nodeInput[0]
-                if (i.get_kind_name(), i.get_name()) not in NODES_MAP:
+                if (i.get_kind_name(), i.get_name()) not in self.nodesMap_:
                     print(i.get_kind_name(), i.get_name())
                 edgeStr = self.get_unique_vertex_name(i) + ":Outputs -> "
                 edgeStr += self.get_unique_vertex_name(node) + ":Inputs"
@@ -235,11 +238,12 @@ class DottyPrinter:
             f.write("}")
 
 
-def parse_args() -> Tuple[str, List[str]]:
+def parse_args() -> Tuple[str, str, List[str]]:
     """Parse the arguments of this script. """
 
     parser = argparse.ArgumentParser(description="Parse compilation log")
     parser.add_argument("-f", "--log-file")
+    parser.add_argument("-d", "--db-file")
     parser.add_argument("--dump-phases", nargs="+")
     options = parser.parse_args()
 
@@ -248,15 +252,103 @@ def parse_args() -> Tuple[str, List[str]]:
     else:
         dumpPhases = []
 
-    return options.log_file, dumpPhases
+    if options.db_file:
+        dbFile = options.db_file
+    else:
+        dbFile = "compilation_log_db.sqlite"
+
+    return dbFile, options.log_file, dumpPhases
 
 
 def dump_dag(dagName: str) -> None:
-    dotty = DottyPrinter()
+    """A helper function to dump the DAG."""
+
+    dotty = DottyPrinter(NODES_MAP)
     dotty.dump_graph(dagName)
 
 
-def process(logLines: List[str], dumpPhases: List[str]) -> None:
+def store_transformation_into_DB(
+        transID: int,
+        addedNodes: List[Node],
+        replacedNodes: List[Node],
+        conn: sqlite3.Connection,
+        fullScopeName: str) -> None:
+    """A helper function to store nodes transformations into database.
+
+    Args:
+        transID: int. The ID for this stored transformation.
+        addedNodes: List[Node]. A list of added nodes in this transformation.
+        replacedNodes: List[Node]. A list of replaced nodes in this transformation.
+        conn: sqlite3.Connection. Connection to sqlite3 database
+        fullScopeName: str. The full scope name of this transformation.
+    """
+
+    cursor = conn.cursor()
+    for an in addedNodes:
+        cursor.execute("""INSERT INTO Log_Transformation VALUES (
+                        ?,
+                        'ADD',
+                        ?,
+                        ?,
+                        ?
+                        )""", (transID, an.get_name(), an.get_kind_name(), fullScopeName))
+
+    for rn in replacedNodes:
+        cursor.execute("""INSERT INTO Log_Transformation VALUES (
+                        ?,
+                        'REMOVE',
+                        ?,
+                        ?,
+                        ?
+                        )""", (transID, rn.get_name(), rn.get_kind_name(), fullScopeName))
+
+
+def find_all_replaced_nodes(replacedNode: Node) -> List[Node]:
+    """Find all nodes that will lose user after the given node is removed.
+
+    After one node lost all its uses (e.g. after replaceAllUsesOfWith()), we go through
+    all of its parents to collect all nodes that will consequently lose all their uses.
+
+    Args:
+        replacedNode: Node. The node that just lost all uses.
+    """
+
+    replacedNodeList = []
+    activeDCEList = [replacedNode]
+    while len(activeDCEList):
+        DCEnode = activeDCEList.pop()
+        replacedNodeList.append(DCEnode)
+        for nv in DCEnode.inputs_:
+            n = nv.node
+            if len(n.users_) <= 1:
+                activeDCEList.append(n)
+
+    return replacedNodeList
+
+
+def init_db(sqliteFile: str) -> sqlite3.Connection:
+    """Initialize a sqlite3 database connection."""
+
+    if os.path.isfile(sqliteFile):
+        os.remove(sqliteFile)
+
+    # Connect to database file.
+    conn = sqlite3.connect(sqliteFile)
+    cursor = conn.cursor()
+    cursor.execute("""CREATE TABLE Log_Transformation (
+                    trans_id INTEGER,
+                    operation_type VARCHAR(200),
+                    node_name VARCHAR(200),
+                    node_kind VARCHAR(200),
+                    full_scope VARCHAR(200)
+                    )""")
+    return conn
+
+
+def process(
+        logLines: List[str],
+        dumpPhases: List[str],
+        conn: sqlite3.Connection) -> None:
     """Process all the log lines.
 
     Extract their information and reconstruct the node graph. And dump DAGs at given compilation phases.
@@ -264,20 +356,33 @@ def process(logLines: List[str], dumpPhases: List[str]) -> None:
     Args:
         logLines: List[str]. All lines of compilation log.
         dumpPhases: List[str]. The phase at which to dump the DAG.
+        conn: sqlite3.Connection. The connection to a sqlite3 database that will store all the transformation in the compilation lop.
     """
 
-    phaseNo = 0
+    # Counter of scope phases
+    phaseCounter = 0
+
+    # Regular expression patterns
     pCreate = re.compile(
-        '^.*\[FULL.*SCOPE:(.*)\].*CREATE.*\{.*\(Kind:(.*),.*Name:(.*)\).*<==(.*)\}$')
+        r'^.*\[FULL.*SCOPE:(.*)\].*CREATE.*\{.*\(Kind:(.*),.*Name:(.*)\).*<==(.*)\}$')
     pInputs = re.compile(r'\([^\(\)]*\)')
     pOneInput = re.compile(r'^\(Kind:(.*),.*Name:(.*),.*ResNo:(.*)\)$')
     pChange = re.compile(
-        '^.*\[FULL.*SCOPE:(.*)\].*NODE_INPUT_CHANGE.*\{.*User\(Kind:(.*),.*Name:(.*)\).*::.*PrevOprValue(.*)->.*NewOprValue(.*)\}$')
+        r'^.*\[FULL.*SCOPE:(.*)\].*NODE_INPUT_CHANGE.*\{.*User\(Kind:(.*),.*Name:(.*)\).*::.*PrevOprValue(.*)->.*NewOprValue(.*)\}$')
     pOpr = re.compile(r'^\(.*Kind:(.*),.*Name:(.*),.*ResNo:(.*)\)$')
     pDelete = re.compile(
-        '^.*\[FULL.*SCOPE:(.*)\].*DELETE.*\(Kind:(.*),.*Name:(.*)\).*}$')
-    pEnter = re.compile('^ENTERSCOPE:(.*)$')
-    pExit = re.compile('^EXITSCOPE:(.*)$')
+        r'^.*\[FULL.*SCOPE:(.*)\].*DELETE.*\(Kind:(.*),.*Name:(.*)\).*}$')
+    pEnter = re.compile(r'^ENTERSCOPE:(.*)$')
+    pExit = re.compile(r'^EXITSCOPE:(.*)$')
+
+    # Record nodes transformation
+    replacedNodes: List[Node] = []
+    addedNodes: List[Node] = []
+    recordTransformation = False
+    stopRecordTranformationNames = {
+        "optimizeFunctionBeforeLowering",
+        "optimizeFunction"}
+    transID = 0
 
     for ln in logLines:
         # Process CREATE statement
@@ -313,6 +418,10 @@ def process(logLines: List[str], dumpPhases: List[str]) -> None:
                         createdNode.set_input(
                             NodeValue(inputNode, inputNodeResno))
                         inputNode.add_user(createdNode)
+
+                # Record nodes transformation
+                if recordTransformation:
+                    addedNodes.append(createdNode)
 
         # Process NODE_INPUT_CHANGE statement
         elif "NODE_INPUT_CHANGE" in ln:
@@ -354,6 +463,17 @@ def process(logLines: List[str], dumpPhases: List[str]) -> None:
                 prevNode.remove_user(changedNode)
                 newNode.add_user(changedNode)
 
+                # Record nodes transformation
+                if recordTransformation:
+                    if prevNode.has_no_uses():
+                        replacedNodes = find_all_replaced_nodes(prevNode)
+                        store_transformation_into_DB(
+                            transID, addedNodes, replacedNodes, conn, scopeName)
+
+                        transID += 1
+                        addedNodes = []
+                        replacedNodes = []
+
         # Process DELETE statement
         elif "DELETE" in ln:
             m = re.match(pDelete, ln)
@@ -377,14 +497,20 @@ def process(logLines: List[str], dumpPhases: List[str]) -> None:
             ln = ln.replace("=", '').replace(" ", "")
             m = re.match(pEnter, ln)
             if m:
-                phaseNo += 1
+                phaseCounter += 1
                 fullScopeName = m.groups()[0]
                 lastScopeName = fullScopeName.split("->")[-1]
                 if "::" in lastScopeName:
                     lastScopeName = lastScopeName.split("::")[-1]
                 if (lastScopeName in dumpPhases):
-                    dump_dag("before_" + lastScopeName + "_" + str(phaseNo))
+                    dump_dag(
+                        f"before_{lastScopeName}_{phaseCounter}")
                 SCOPE_STACK.append(lastScopeName)
+
+                # Start recording transformations.
+                if lastScopeName in stopRecordTranformationNames and len(
+                        SCOPE_STACK) == 1:
+                    recordTransformation = True
 
         # Process EXIT SCOPE statement
         elif "EXIT SCOPE:" in ln:
@@ -397,14 +523,23 @@ def process(logLines: List[str], dumpPhases: List[str]) -> None:
                     lastScopeName = lastScopeName.split("::")[-1]
                 assert lastScopeName == SCOPE_STACK[-1], "Exited scope must be same as the top of scope stack."
                 if (lastScopeName in dumpPhases):
-                    dump_dag("after_" + lastScopeName + "_" + str(phaseNo))
+                    dump_dag(
+                        f"after_{lastScopeName}_{phaseCounter}")
                 SCOPE_STACK.pop()
+
+                # Stop recording transformations.
+                if lastScopeName in stopRecordTranformationNames and len(
+                        SCOPE_STACK) == 0:
+                    recordTransformation = False
+
+    conn.commit()
 
 
 def main():
-    logFile, dumpPhases = parse_args()
+    dbFile, logFile, dumpPhases = parse_args()
     lines = filter(lambda x: len(x) > 0, open(logFile).readlines())
-    process(lines, dumpPhases)
+    with init_db(dbFile) as conn:
+        process(lines, dumpPhases, conn)
     return
 
 
