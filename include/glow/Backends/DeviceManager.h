@@ -54,6 +54,9 @@ public:
   /// Create a device manager based on the device config \p config.
   static DeviceManager *createDeviceManager(const DeviceConfig &config);
 
+  /// Query the system for the number of devices of a specified kind.
+  static unsigned numDevices(llvm::StringRef backendName);
+
   /// Initialize the device.
   virtual llvm::Error init() { return llvm::Error::success(); }
 

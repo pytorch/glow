@@ -56,16 +56,9 @@ GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxGetBackendIDs)(
 
   const size_t numBackendsCapacity = *numBackends;
 
-#ifdef GLOW_WITH_CPU
-  constexpr bool withCPU = true;
-#else
-  constexpr bool withCPU = false;
-#endif
-#ifdef GLOW_WITH_HABANA
-  constexpr bool withHabana = true;
-#else
-  constexpr bool withHabana = false;
-#endif
+  using namespace glow::runtime;
+  const bool withCPU = DeviceManager::numDevices("CPU") > 0;
+  const bool withHabana = DeviceManager::numDevices("Habana") > 0;
 
   // Only return quantization backend if GLOW_DUMP_PROFILE.
   if (getenv("GLOW_DUMP_PROFILE")) {
