@@ -53,9 +53,14 @@ bool CPUBackend::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::BatchedReduceAddNodeKind:
   case Kinded::Kind::MatMulNodeKind:
   case Kinded::Kind::AvgPoolNodeKind:
-  case Kinded::Kind::MaxPoolNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Int8QTy});
+
+  case Kinded::Kind::MaxPoolNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind(
+               {ElemKind::FloatTy, ElemKind::Int8QTy}, {},
+               {MaxPoolNode::ArgmaxIdx}) &&
+           (NI.getOutElemTy(MaxPoolNode::ArgmaxIdx) == ElemKind::Int64ITy);
 
   case Kinded::Kind::SaveNodeKind:
   case Kinded::Kind::ReshapeNodeKind:
@@ -148,7 +153,6 @@ bool CPUBackend::isOpSupported(const NodeInfo &NI) const {
 
   case Kinded::Kind::PowNodeKind:
   case Kinded::Kind::AvgPoolGradNodeKind:
-  case Kinded::Kind::MaxPoolGradNodeKind:
   case Kinded::Kind::QuantizationProfileNodeKind:
   case Kinded::Kind::CPUConvDKKC8NodeKind:
   case Kinded::Kind::LocalResponseNormalizationNodeKind:
@@ -158,6 +162,17 @@ bool CPUBackend::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::SigmoidNodeKind:
   case Kinded::Kind::ExpNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind({ElemKind::FloatTy});
+
+  case Kinded::Kind::MaxPoolGradNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind(
+               {ElemKind::FloatTy},
+               {MaxPoolGradNode::OriginalOutputForArgmaxIdx,
+                MaxPoolGradNode::GradOfOriginalOutputNamedArgmaxIdx}) &&
+           (NI.getInElemTy(MaxPoolGradNode::OriginalOutputForArgmaxIdx) ==
+            ElemKind::Int64ITy) &&
+           (NI.getInElemTy(
+                MaxPoolGradNode::GradOfOriginalOutputNamedArgmaxIdx) ==
+            ElemKind::Int64ITy);
 
   case Kinded::Kind::ConvolutionNodeKind:
     if (!NI.getInTy(ConvolutionNode::InputIdx)->isQuantizedType()) {

@@ -731,8 +731,10 @@ MaxPoolNode *Function::createMaxPool(llvm::StringRef name, NodeValue input,
       calculateConvPoolOutputDims(idim.h, idim.w, kernels, strides, pads);
   auto OT = getParent()->uniqueTypeWithNewShape(
       input.getType(), {idim.n, outSz.first, outSz.second, idim.c});
+  auto AMT = getParent()->uniqueType(
+      ElemKind::Int64ITy, {idim.n, outSz.first, outSz.second, idim.c});
 
-  return addNode(new MaxPoolNode(name, OT, input, kernels, strides, pads));
+  return addNode(new MaxPoolNode(name, OT, AMT, input, kernels, strides, pads));
 }
 
 MaxPoolNode *Function::createMaxPool(llvm::StringRef name, NodeValue input,

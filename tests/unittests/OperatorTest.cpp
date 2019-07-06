@@ -4317,7 +4317,7 @@ TEST_P(OperatorTest, NonSquarePaddingMaxPool) {
     IH.raw(i) = i + 1;
   }
   auto *Pool = F_->createMaxPool("pool", input, {2, 2}, {1, 1}, {0, 2, 1, 3});
-  auto *S = F_->createSave("save", Pool);
+  auto *S = F_->createSave("save", Pool->getResult());
   bindings_.allocate(S->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
@@ -4336,7 +4336,7 @@ TEST_P(OperatorTest, NonSquarePaddingMaxPool) {
 
   Function *refF = mod_.createFunction("mainRef");
   Pool = refF->createMaxPool("pool1", input1, 2, 1, 0);
-  S = refF->createSave("save1", Pool);
+  S = refF->createSave("save1", Pool->getResult());
   bindings_.allocate(S->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, refF);
@@ -4409,7 +4409,7 @@ TEST_P(OperatorTest, MaxPool) {
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 3, 3, 1}, "input", false);
   bindings_.allocate(input)->getHandle() = {0., 1., 2., 3., 4., 5., 6., 7., 8.};
   auto *pool = F_->createMaxPool("pool", input, {2, 2}, {1, 1}, {0, 0, 0, 0});
-  auto *S = F_->createSave("save", pool);
+  auto *S = F_->createSave("save", pool->getResult());
   bindings_.allocate(S->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
@@ -4429,7 +4429,7 @@ TEST_P(OperatorTest, FP16MaxPool) {
   bindings_.allocate(input)->getHandle<float16_t>() = {0., 1., 2., 3., 4.,
                                                        5., 6., 7., 8.};
   auto *pool = F_->createMaxPool("pool", input, {2, 2}, {1, 1}, {0, 0, 0, 0});
-  auto *S = F_->createSave("save", pool);
+  auto *S = F_->createSave("save", pool->getResult());
   bindings_.allocate(S->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
@@ -4446,7 +4446,7 @@ TEST_P(OperatorTest, Int8MaxPool) {
                                        "input", false);
   bindings_.allocate(input)->getHandle<int8_t>() = {0, 1, 2, 3, 4, 5, 6, 7, 8};
   auto *Pool = F_->createMaxPool("pool", input, {2, 2}, {1, 1}, {0, 0, 0, 0});
-  auto *S = F_->createSave("save", Pool);
+  auto *S = F_->createSave("save", Pool->getResult());
   bindings_.allocate(S->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
@@ -4479,6 +4479,102 @@ COMPARE_UNARY_OP_FUN(Tanh, 10, -10.0F, 10.0F)
 COMPARE_UNARY_OP_FUN(Log, 1000, 1.0F, 100.0F)
 COMPARE_UNARY_OP_FUN(Sigmoid, 10, -10.0F, 10.0F)
 #undef COMPARE_UNARY_OP_FUN
+
+template <typename DataType>
+static void testMaxPoolWithArgmax(glow::PlaceholderBindings &bindings,
+                                  glow::Module &mod, glow::Function *F,
+                                  glow::ExecutionEngine &EE, ElemKind DTy) {
+  auto *input = createPlaceholderConditionallyQuantized(mod, DTy, {1, 3, 3, 1},
+                                                        "input", false);
+  bindings.allocate(input)->getHandle<DataType>() = {0, 3, 7, 6, 5, 1, 2, 8, 4};
+  auto *pool = F->createMaxPool("pool", input, {2, 2}, {1, 1}, {0, 0, 0, 0});
+  auto *SResult = F->createSave("save_result", pool->getResult());
+  auto *SArgmax = F->createSave("save_argmax", pool->getArgmax());
+  bindings.allocate(SResult->getPlaceholder());
+  bindings.allocate(SArgmax->getPlaceholder());
+
+  EE.compile(CompilationMode::Infer, F);
+  EE.run(bindings);
+
+  auto result = bindings.get(SResult->getPlaceholder());
+  auto argmax = bindings.get(SArgmax->getPlaceholder());
+  Tensor out1 = createTensorConditionallyQuantized(DTy, {1, 2, 2, 1});
+  out1.getHandle<DataType>() = {6, 7, 8, 8};
+  EXPECT_TRUE(out1.isEqual(*result));
+
+  Tensor out2(ElemKind::Int64ITy, {1, 2, 2, 1});
+  out2.getHandle<int64_t>() = {3, 2, 7, 7};
+  EXPECT_TRUE(out2.isEqual(*argmax));
+}
+
+TEST_P(OperatorTest, FloatMaxPoolWithArgmax) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  testMaxPoolWithArgmax<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy);
+}
+
+TEST_P(OperatorTest, QuantizedMaxPoolWithArgmax) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  testMaxPoolWithArgmax<int8_t>(bindings_, mod_, F_, EE_, ElemKind::Int8QTy);
+}
+
+template <typename DataType>
+static void
+testMaxPoolWithArgmaxTransposed(glow::PlaceholderBindings &bindings,
+                                glow::Module &mod, glow::Function *F,
+                                glow::ExecutionEngine &EE, ElemKind DTy) {
+  // Show that sequence Tensor(NCHW) -> Transpose(NCHWtoNHWC) ->
+  // MaxPoolWithArgmax -> Transpose(NHWCtoNCHW) produces correct linearization.
+  auto *inputNCHW = createPlaceholderConditionallyQuantized(
+      mod, DTy, {1, 3, 4, 4}, "input", false);
+  auto inHandle = bindings.allocate(inputNCHW)->getHandle<DataType>();
+  inHandle.clear(0.);
+  inHandle.at({0, 0, 2, 2}) = 11;
+  inHandle.at({0, 1, 2, 2}) = 22;
+  inHandle.at({0, 2, 2, 2}) = 33;
+
+  // Input NCHW to NHWC conversion.
+  auto *inputNHWC =
+      F->createTranspose("transposeInput", inputNCHW, {0, 2, 3, 1});
+  auto *pool =
+      F->createMaxPool("pool", inputNHWC, {4, 4}, {4, 4}, {0, 0, 0, 0});
+
+  // NHWC to NCHW conversion.
+  auto *resultNCHW =
+      F->createTranspose("transposeRes", pool->getResult(), {0, 3, 1, 2});
+  auto *argmaxNCHW =
+      F->createTranspose("transposeArgmax", pool->getArgmax(), {0, 3, 1, 2});
+
+  auto *SResult = F->createSave("save_result", resultNCHW);
+  auto *SArgmax = F->createSave("save_argmax", argmaxNCHW);
+  bindings.allocate(SResult->getPlaceholder());
+  bindings.allocate(SArgmax->getPlaceholder());
+
+  EE.compile(CompilationMode::Infer, F);
+  EE.run(bindings);
+
+  auto result = bindings.get(SResult->getPlaceholder());
+  auto argmax = bindings.get(SArgmax->getPlaceholder());
+  Tensor out1 = createTensorConditionallyQuantized(DTy, {1, 3, 1, 1});
+  out1.getHandle<DataType>() = {11, 22, 33};
+  EXPECT_TRUE(out1.isEqual(*result));
+
+  Tensor out2(ElemKind::Int64ITy, {1, 3, 1, 1});
+  out2.getHandle<int64_t>() = {0 + 2 * 3 + 2 * 12, 1 + 2 * 3 + 2 * 12,
+                               2 + 2 * 3 + 2 * 12};
+  EXPECT_TRUE(out2.isEqual(*argmax));
+}
+
+TEST_P(OperatorTest, FloatMaxPoolWithArgmaxTransposed) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  testMaxPoolWithArgmaxTransposed<float>(bindings_, mod_, F_, EE_,
+                                         ElemKind::FloatTy);
+}
+
+TEST_P(OperatorTest, QuantizedMaxPoolWithArgmaxTransposed) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  testMaxPoolWithArgmaxTransposed<int8_t>(bindings_, mod_, F_, EE_,
+                                          ElemKind::Int8QTy);
+}
 
 TEST_P(OperatorStatelessTest, Int8Tanh) {
   ENABLED_BACKENDS(Interpreter, CPU);
@@ -4754,7 +4850,7 @@ TEST_P(OperatorTest, NonSquareKernelMaxPool) {
     IH.raw(i) = i + 1;
   }
   auto *Pool = F_->createMaxPool("pool", input, {2, 3}, {1, 1}, {0, 0, 0, 0});
-  auto *S = F_->createSave("save", Pool);
+  auto *S = F_->createSave("save", Pool->getResult());
   bindings_.allocate(S->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
@@ -4891,7 +4987,7 @@ TEST_P(OperatorTest, NonSquareStrideMaxPool) {
     IH.raw(i) = i + 1;
   }
   auto *Pool = F_->createMaxPool("pool", input, {2, 2}, {3, 2}, {0, 0, 1, 1});
-  auto *S = F_->createSave("save", Pool);
+  auto *S = F_->createSave("save", Pool->getResult());
   bindings_.allocate(S->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);

@@ -1141,6 +1141,37 @@ protected:
     return false;
   }
 
+  /// Utility function which computes the resulting shape in case of
+  /// multidirectional broadcasting.
+  llvm::Expected<std::vector<size_t>>
+  computeMultidirectionalBroadcast(llvm::ArrayRef<size_t> shape0,
+                                   llvm::ArrayRef<size_t> shape1) {
+    size_t numDims0 = shape0.size();
+    size_t numDims1 = shape1.size();
+    size_t newNumDims = numDims0 > numDims1 ? numDims0 : numDims1;
+    std::vector<size_t> reshapeDims(newNumDims);
+
+    for (size_t i = 0; i < newNumDims; i++) {
+      reshapeDims[i] = 1;
+    }
+    RETURN_IF_ERR(mergeMultidirectionalBroadcast(reshapeDims, shape0));
+    RETURN_IF_ERR(mergeMultidirectionalBroadcast(reshapeDims, shape1));
+
+    return reshapeDims;
+  }
+
+  /// Associate all outputs of \p op with nodes in \p NVs. Number of outputs of
+  /// \p op should match the number of elements of \p NVs.
+  /// \returns error code in case of error.
+  llvm::Error assignNodeOutputs(const OpType &op,
+                                llvm::ArrayRef<NodeValue> NVs) {
+    RETURN_ERR_IF_NOT(NVs.size() == op.output_size(), "Output size mismatch.");
+    for (size_t i = 0; i < NVs.size(); i++) {
+      nodeValueByName_[op.output(i)] = NVs[i];
+    }
+    return llvm::Error::success();
+  }
+
   /// Load pre-trained weights from \p weightDescriptors.
   llvm::Error loadWeights(uint32_t weightsCount,
                           const onnxTensorDescriptorV1 *weightDescriptors) {

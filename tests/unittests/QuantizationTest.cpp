@@ -758,7 +758,7 @@ static Function *createSimpleGraphForQuantization(Module *M,
   auto *RL = F->createRELU("relu", CV);
   auto *MP = F->createMaxPool("maxPool", RL, 2, 2, 1);
   // Just add noop transpose.
-  auto *T = F->createTranspose("transpose", MP, {0, 1, 2, 3});
+  auto *T = F->createTranspose("transpose", MP->getResult(), {0, 1, 2, 3});
   // Noop reshape, make sure conversion quantization procedure works well.
   auto *R = F->createReshape("reshape", T, T->getResult().dims());
   auto *AP = F->createAvgPool("avgPool", R, 2, 2, 1);

@@ -143,7 +143,7 @@ TEST(IR, allInstrs) {
     auto *ComputationInfo =
         builder.createWeightVar(ElemKind::FloatTy, {2}, "ComputationInfo");
 
-    auto *XY = builder.createWeightVar(ElemKind::Int64ITy, {1, 12, 12, 3, 2});
+    auto *argmax = builder.createWeightVar(ElemKind::Int64ITy, {1, 12, 12, 3});
     auto *B0 = builder.createWeightVar(T2, "B0");
     auto *B1 =
         builder.createWeightVar(ElemKind::FloatTy, {32}, "B1", MK::Mutable);
@@ -156,7 +156,7 @@ TEST(IR, allInstrs) {
     F0->setName("filter");
     F1->setName("FC_filter");
     E0->setName("expected");
-    XY->setName("srcXY");
+    argmax->setName("argmax");
 
     builder.createCopyInst("", I1, I0);
     builder.createConvolutionInst("", I3, I1, F0, B0, {7, 7}, {2, 2},
@@ -292,16 +292,16 @@ TEST(IR, InstUniqueNames) {
     it = nameSet.insert(V2->getName());
     EXPECT_TRUE(it.second);
 
-    MaxPoolWithXYInst *MP1 =
-        builder.createMaxPoolWithXYOp(name, V1, {2, 2}, {1, 1}, {0, 2, 1, 3});
+    MaxPoolWithArgmaxInst *MP1 = builder.createMaxPoolWithArgmaxOp(
+        name, V1, {2, 2}, {1, 1}, {0, 2, 1, 3});
     it = nameSet.insert(MP1->getName());
     EXPECT_TRUE(it.second);
 
-    // IRBuilder::createMaxPoolWithXYOp() creates alloc activation insts
+    // IRBuilder::createMaxPoolWithArgmaxOp() creates alloc activation insts
     // internally, so we dealloc them here to keep the instruction list
     // well-formed.
     DeallocActivationInst *DAI1 =
-        builder.createDeallocActivationInst(name, MP1->getSrcXY());
+        builder.createDeallocActivationInst(name, MP1->getArgmax());
     it = nameSet.insert(DAI1->getName());
     EXPECT_TRUE(it.second);
 

@@ -119,17 +119,18 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Src", "Filter"})
       .addGradientInstr({"Src", "Filter"}, {"Dest", "Src", "Filter", "Bias"});
 
-  // MaxPool version caching XY coordinates to speedup gradient-based
+  // MaxPool version caching Argmax flattened coordinates. It is both used by
+  // itself, and also to restore XY coordinates to speedup gradient-based
   // computations.
-  BB.newInstr("MaxPoolWithXY")
+  BB.newInstr("MaxPoolWithArgmax")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Src", OperandKind::In)
-      .addOperand("SrcXY", OperandKind::Out)
+      .addOperand("Argmax", OperandKind::Out)
       .addMember(MemberType::VectorUnsigned, "Kernels")
       .addMember(MemberType::VectorUnsigned, "Strides")
       .addMember(MemberType::VectorUnsigned, "Pads")
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
-      .addGradientInstr({"Dest", "SrcXY"}, {"Dest", "Src"});
+      .addGradientInstr({"Dest", "Argmax"}, {"Dest", "Src"});
 
   BB.newInstr("MaxPool")
       .addOperand("Dest", OperandKind::Out)

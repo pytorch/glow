@@ -1231,10 +1231,11 @@ DEFINE_OPENCL_MAXPOOL_KERNEL(oclmaxpool, float)
 DEFINE_OPENCL_MAXPOOL_KERNEL(oclmaxpool_i8, char)
 #undef DEFINE_OPENCL_BINARY_DATA_PARALLEL_KERNEL
 
-__kernel void maxpoolwithxyK(__global float *dest, __global float *src,
-                             __global cl_uint64_t *srcXY,
-                             cl_uint32_t kernelSize, cl_uint32_t stride,
-                             PaddingTLBR pads, ShapeNHWC odim, ShapeNHWC idim) {
+__kernel void maxpoolwithargmaxK(__global float *dest, __global float *src,
+                                 __global cl_uint64_t *argmax,
+                                 cl_uint32_t kernelSize, cl_uint32_t stride,
+                                 PaddingTLBR pads, ShapeNHWC odim,
+                                 ShapeNHWC idim) {
   size_t ax = get_global_id(0);
   size_t ay = get_global_id(1);
   size_t d = get_global_id(2);
@@ -1248,8 +1249,7 @@ __kernel void maxpoolwithxyK(__global float *dest, __global float *src,
   for (size_t n = 0; n < idim.n; n++) {
     float maxVal = 0;
     bool first = true;
-    size_t maxX = x;
-    size_t maxY = y;
+    cl_uint64_t argmaxNHWC = 0;
 
     // For each element in the convolution-filter:
     for (size_t fx = 0; fx < kernelSize; fx++) {
@@ -1263,37 +1263,38 @@ __kernel void maxpoolwithxyK(__global float *dest, __global float *src,
           continue;
         }
 
-        float val = src[getNHWC(idim, n, (size_t)ox, (size_t)oy, d)];
+        const size_t flatIndex = getNHWC(idim, n, (size_t)ox, (size_t)oy, d);
+        float val = src[flatIndex];
 
         if (first || (val >= maxVal)) {
           first = false;
           maxVal = val;
-          maxX = (size_t)ox;
-          maxY = (size_t)oy;
+          argmaxNHWC = flatIndex;
         }
       }
     }
-    dest[getNHWC(odim, n, ax, ay, d)] = maxVal;
-    if (srcXY) {
-      srcXY[getNHWC(odim, n, ax, ay, d) * 2] = maxX;
-      srcXY[getNHWC(odim, n, ax, ay, d) * 2 + 1] = maxY;
-    }
+    const size_t flatIndex = getNHWC(odim, n, ax, ay, d);
+    dest[flatIndex] = maxVal;
+    argmax[flatIndex] = argmaxNHWC;
   } // N
 }
 
-__kernel void maxpoolwithxyW(__global void *mem, cl_uint32_t dest,
-                             cl_uint32_t src, cl_uint32_t srcXY,
-                             cl_uint32_t kernelSize, cl_uint32_t stride,
-                             PaddingTLBR pads, ShapeNHWC odim, ShapeNHWC idim) {
-  maxpoolwithxyK(&mem[dest], &mem[src], &mem[srcXY], kernelSize, stride, pads,
-                 odim, idim);
+__kernel void maxpoolwithargmaxW(__global void *mem, cl_uint32_t dest,
+                                 cl_uint32_t src, cl_uint32_t argmax,
+                                 cl_uint32_t kernelSize, cl_uint32_t stride,
+                                 PaddingTLBR pads, ShapeNHWC odim,
+                                 ShapeNHWC idim) {
+  maxpoolwithargmaxK(&mem[dest], &mem[src], &mem[argmax], kernelSize, stride,
+                     pads, odim, idim);
 }
 
-__kernel void
-maxpoolwithxygradK(__global float *dest, __global cl_uint64_t *srcXY,
-                   __global float *destGrad, __global float *srcGrad,
-                   cl_uint32_t kernelSize, cl_uint32_t stride, PaddingTLBR pads,
-                   ShapeNHWC srcGradDim, ShapeNHWC destGradDim) {
+__kernel void maxpoolwithargmaxgradK(__global float *dest,
+                                     __global cl_uint64_t *argmax,
+                                     __global float *destGrad,
+                                     __global float *srcGrad,
+                                     cl_uint32_t kernelSize, cl_uint32_t stride,
+                                     PaddingTLBR pads, ShapeNHWC srcGradDim,
+                                     ShapeNHWC destGradDim) {
   size_t n = get_global_id(0);
 
   // NHWC format is assumed
@@ -1307,26 +1308,24 @@ maxpoolwithxygradK(__global float *dest, __global cl_uint64_t *srcXY,
 
     for (size_t ax = 0; ax < destGradDim.h; ax++) {
       for (size_t ay = 0; ay < destGradDim.w; ay++) {
-        // For the x and y argmax's, we use a 5-dimensional
-        // tensor whose fifth dimension has size 2:
-        size_t ix = 2 * getNHWC(destGradDim, n, ax, ay, z);
-        size_t maxX = srcXY[ix];
-        size_t maxY = srcXY[ix + 1];
-
-        float df = destGrad[getNHWC(destGradDim, n, ax, ay, z)];
-        srcGrad[getNHWC(srcGradDim, n, maxX, maxY, z)] += df;
+        // Reuse precomputed linear index of max element from argmax.
+        const size_t flatIndex = getNHWC(destGradDim, n, ax, ay, z);
+        float df = destGrad[flatIndex];
+        srcGrad[argmax[flatIndex]] += df;
       } // W
     }   // H
   }     // C
 }
 
-__kernel void maxpoolwithxygradW(__global void *mem, cl_uint32_t dest,
-                                 cl_uint32_t srcXY, cl_uint32_t destGrad,
-                                 cl_uint32_t srcGrad, cl_uint32_t kernelSize,
-                                 cl_uint32_t stride, PaddingTLBR pads,
-                                 ShapeNHWC srcGradDim, ShapeNHWC destDim) {
-  maxpoolwithxygradK(&mem[dest], &mem[srcXY], &mem[destGrad], &mem[srcGrad],
-                     kernelSize, stride, pads, srcGradDim, destDim);
+__kernel void maxpoolwithargmaxgradW(__global void *mem, cl_uint32_t dest,
+                                     cl_uint32_t argmax, cl_uint32_t destGrad,
+                                     cl_uint32_t srcGrad,
+                                     cl_uint32_t kernelSize, cl_uint32_t stride,
+                                     PaddingTLBR pads, ShapeNHWC srcGradDim,
+                                     ShapeNHWC destDim) {
+  maxpoolwithargmaxgradK(&mem[dest], &mem[argmax], &mem[destGrad],
+                         &mem[srcGrad], kernelSize, stride, pads, srcGradDim,
+                         destDim);
 }
 
 __kernel void avgpoolK(__global float *dest, __global float *src,

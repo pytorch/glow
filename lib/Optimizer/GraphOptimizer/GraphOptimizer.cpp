@@ -2354,9 +2354,12 @@ static bool sinkDownRescaleToPoolingNode(Function &F, T *PN) {
                              PN->getKernels(), PN->getStrides(), PN->getPads());
     auto rescaleOutTy = F.getParent()->uniqueTypeWithNewShape(
         rescale->getResult().getType(), PN->getResult().dims());
-    auto *newRescale =
-        F.createRescaleQuantized(rescale->getName(), newPN, rescaleOutTy);
+    auto *newRescale = F.createRescaleQuantized(
+        rescale->getName(), newPN->getResult(), rescaleOutTy);
     PN->getResult().replaceAllUsesOfWith(newRescale);
+    for (size_t i = 1; i < PN->getNumResults(); i++) {
+      PN->getNthResult(i).replaceAllUsesOfWith(newPN->getNthResult(i));
+    }
     changed = true;
   }
 
