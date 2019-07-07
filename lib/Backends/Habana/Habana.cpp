@@ -761,6 +761,12 @@ static std::unique_ptr<unsigned> makeConcatParams(unsigned axis,
   return llvm::make_unique<unsigned>(axes - axis - 1);
 }
 
+static std::unique_ptr<ns_Softmax::Params> makeSoftmaxParams() {
+  auto params = llvm::make_unique<ns_Softmax::Params>();
+  params->dim = 0;
+  return params;
+}
+
 /// Allocate synTensors for every tensor used in \p F.
 static std::unordered_map<const Node *, TensorHandle>
 allocateGraphTensors(Function *F) {
@@ -840,6 +846,7 @@ HabanaBackend::compile(Function *F, const BackendOptions &opts) const {
   std::vector<std::unique_ptr<ns_GatherKernel::Params>> gatherParams;
   std::vector<std::unique_ptr<ns_LrnKernel::Params>> lrnParams;
   std::vector<std::unique_ptr<synGEMMParams>> gemmParams;
+  std::vector<std::unique_ptr<ns_Softmax::Params>> softmaxParams;
 
   // Keep references to tensor pointer arrays passed into multi-input nodes
   // until the compilation is done.
@@ -1203,10 +1210,13 @@ HabanaBackend::compile(Function *F, const BackendOptions &opts) const {
     }
     case Kinded::Kind::SoftMaxNodeKind: {
       auto *SI = llvm::cast<SoftMaxNode>(&I);
+      std::unique_ptr<ns_Softmax::Params> params = makeSoftmaxParams();
       chk(synCreateGenericNode(
-          &tensors[SI->getInput()].get(), &tensors[SI].get(), 1, 1, nullptr,
+          &tensors[SI->getInput()].get(), &tensors[SI].get(), 1, 1,
+          (void *)params.get(),
           getKernelName("softmax", SI->getResult().getElementType()).c_str(),
           SI->getName().data(), nullptr, nullptr));
+      softmaxParams.emplace_back(std::move(params));
       break;
     }
     case Kinded::Kind::SliceNodeKind: {
