@@ -24,7 +24,23 @@ install_pocl() {
    cd ../
 }
 
-if [ "${CIRCLE_JOB}" != "CHECK_CLANG_FORMAT" ]; then
+if [ "${CIRCLE_JOB}" == "CHECK_CLANG_FORMAT" ]; then
+    sudo -E apt-add-repository -y "ppa:ubuntu-toolchain-r/test"
+    curl -sSL "https://build.travis-ci.org/files/gpg/llvm-toolchain-trusty-7.asc" | sudo -E apt-key add -
+    echo "deb http://apt.llvm.org/trusty/ llvm-toolchain-trusty-7 main" | sudo tee -a /etc/apt/sources.list >/dev/null
+    sudo apt-get update
+elif [ "${CIRCLE_JOB}" == "PYTORCH" ]; then
+    # Install Glow dependencies
+    sudo apt-get update
+    sudo apt-get install -y llvm-7
+    # Redirect clang
+    sudo ln -s /usr/bin/clang-7 /usr/bin/clang
+    sudo ln -s /usr/bin/clang++-7 /usr/bin/clang++
+    sudo ln -s /usr/bin/llvm-symbolizer-7 /usr/bin/llvm-symbolizer
+    sudo ln -s /usr/bin/llvm-config-7 /usr/bin/llvm-config-7.0
+
+    sudo apt-get install -y libpng-dev libgoogle-glog-dev
+else
     # Install Glow dependencies
     sudo apt-get update
 
@@ -35,11 +51,6 @@ if [ "${CIRCLE_JOB}" != "CHECK_CLANG_FORMAT" ]; then
     sudo ln -s /usr/bin/llvm-config-8 /usr/bin/llvm-config-8.0
 
     sudo apt-get install -y libpng-dev libgoogle-glog-dev
-else
-    sudo -E apt-add-repository -y "ppa:ubuntu-toolchain-r/test"
-    curl -sSL "https://build.travis-ci.org/files/gpg/llvm-toolchain-trusty-7.asc" | sudo -E apt-key add - 
-    echo "deb http://apt.llvm.org/trusty/ llvm-toolchain-trusty-7 main" | sudo tee -a /etc/apt/sources.list >/dev/null
-    sudo apt-get update
 fi
 
 # Install ninja and (newest version of) cmake through pip
@@ -50,8 +61,15 @@ hash cmake ninja
 GLOW_DIR=$PWD
 cd ${GLOW_DIR}
 mkdir build && cd build
-CMAKE_ARGS=("-DCMAKE_CXX_COMPILER=/usr/bin/clang++-8")
-CMAKE_ARGS+=("-DCMAKE_C_COMPILER=/usr/bin/clang-8")
+
+if [[ "${CIRCLE_JOB}" == "PYTORCH" ]]; then
+    CMAKE_ARGS=("-DCMAKE_CXX_COMPILER=/usr/bin/clang++-7")
+    CMAKE_ARGS+=("-DCMAKE_C_COMPILER=/usr/bin/clang-7")
+else
+    CMAKE_ARGS=("-DCMAKE_CXX_COMPILER=/usr/bin/clang++-8")
+    CMAKE_ARGS+=("-DCMAKE_C_COMPILER=/usr/bin/clang-8")
+fi
+
 CMAKE_ARGS+=("-DCMAKE_CXX_COMPILER_LAUNCHER=sccache")
 CMAKE_ARGS+=("-DCMAKE_C_COMPILER_LAUNCHER=sccache")
 CMAKE_ARGS+=("-DCMAKE_CXX_FLAGS=-Werror")
@@ -78,9 +96,9 @@ elif [[ "$CIRCLE_JOB" == "RELEASE_WITH_EXPENSIVE_TESTS" ]]; then
     CMAKE_ARGS+=("-DGLOW_WITH_BUNDLES=ON")
     CMAKE_ARGS+=("-DCMAKE_BUILD_TYPE=Release")
 elif [[ "$CIRCLE_JOB" == "COVERAGE" ]]; then
-    sudo apt-get install wget 
+    sudo apt-get install wget
     sudo apt-get install -y lcov
-    sudo pip install awscli --upgrade 
+    sudo pip install awscli --upgrade
     ../utils/install_protobuf.sh
     CC=gcc-5 CXX=g++-5 cmake -G Ninja \
           -DCMAKE_BUILD_TYPE=Debug -DGLOW_WITH_OPENCL=OFF -DGLOW_WITH_CPU=ON \
@@ -89,6 +107,17 @@ elif [[ "$CIRCLE_JOB" == "COVERAGE" ]]; then
           ../
 elif [[ "$CIRCLE_JOB" == "CHECK_CLANG_FORMAT" ]]; then
     sudo apt-get install -y clang-format-7
+elif [[ "$CIRCLE_JOB" == "PYTORCH" ]]; then
+    # Build PyTorch
+    sudo pip install numpy
+    cd ${GLOW_DIR}
+    cd ..
+    git clone https://github.com/pytorch/pytorch.git --recursive
+    cd pytorch
+    pip install -r requirements.txt
+    sudo /usr/bin/python3.6 setup.py install
+    cd ${GLOW_DIR}
+    cd build
 elif [[ "$CIRCLE_JOB" == "OPENCL" ]]; then
     install_pocl
     CMAKE_ARGS+=("-DGLOW_WITH_OPENCL=ON")

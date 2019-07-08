@@ -25,10 +25,9 @@ target_link_libraries(_torch_glow
                         ExecutionEngine
                         Graph
                         Importer
-                        Interpreter
                         Backends
                         pybind11)
-                     
+
 target_include_directories(_torch_glow PUBLIC
                             ${PYTORCH_DIR}/include
 )

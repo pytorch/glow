@@ -4,6 +4,7 @@ import torch_glow
 from collections import namedtuple
 
 from tests.utils import jitVsGlow
+import pytest
 
 # Basic test of the PyTorch conv2d Node on Glow.
 def test_conv2d_basic():
@@ -32,6 +33,7 @@ def test_conv2d_with_bias():
 
 # Test of the PyTorch conv2d Node sweeping through various parameters of the
 # Node to test that they work correctly.
+@pytest.mark.skip(reason="not ready")
 def test_conv2d_param_sweep():
   hwOpts = [3, 4]
   padOpts = [0, 1]
