@@ -527,9 +527,7 @@ public:
           "quantize", T,
           mod_.uniqueType(ElemKind::Int8QTy, T->dims(0), 0.03, 5));
     }
-    default: {
-      return nullptr;
-    }
+    default: { return nullptr; }
     }
   };
 };
