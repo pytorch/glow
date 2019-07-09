@@ -482,8 +482,7 @@ bool SinkCode::run(Function *F) {
 
       auto newQType = F->getParent()->uniqueTypeWithNewShape(
           Q->getResult().getType(), TR->getInput().dims());
-      auto *newQ =
-          F->createQuantize(Q->getName(), TR->getInput(), newQType);
+      auto *newQ = F->createQuantize(Q->getName(), TR->getInput(), newQType);
       auto *newTR = F->createTranspose(TR->getName(), newQ, TR->getShuffle());
       Q->getResult().replaceAllUsesOfWith(newTR);
       changed = true;

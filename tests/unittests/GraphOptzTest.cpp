@@ -496,113 +496,116 @@ TEST_F(GraphOptz, batchNormAfterConvNotOptimizeWhenMoreThanOneUseOfConv) {
 }
 
 enum class TestSinkTransposeNodesKind {
-    Batch,
-    Relu,
-    Sigmoid,
-    Tanh,
-    Quantize,
+  Batch,
+  Relu,
+  Sigmoid,
+  Tanh,
+  Quantize,
 };
 
-class GraphOptzSinkTransposeBelowParametrized :
-        public GraphOptz,
-        public ::testing::WithParamInterface<TestSinkTransposeNodesKind> {
+class GraphOptzSinkTransposeBelowParametrized
+    : public GraphOptz,
+      public ::testing::WithParamInterface<TestSinkTransposeNodesKind> {
 public:
-    Node* getNodeFromInput(TestSinkTransposeNodesKind testNode, Node *T) {
-        switch (testNode) {
-            case TestSinkTransposeNodesKind::Batch: {
-                return F_->createBatchNormalization(bindings_, "batch", T, 3, 0.0001, 0.9);
-            }
-            case TestSinkTransposeNodesKind::Relu: {
-                return F_->createRELU("relu", T);
-            }
-            case TestSinkTransposeNodesKind::Sigmoid: {
-                return F_->createSigmoid("sigmoid", T);
-            }
-            case TestSinkTransposeNodesKind::Tanh: {
-                return F_->createTanh("tanh", T);
-            }
-            case TestSinkTransposeNodesKind::Quantize: {
-                return F_->createQuantize("quantize", T, mod_.uniqueType(ElemKind::Int8QTy, T->dims(0), 0.03, 5));
-            }
-            default: {
-                return nullptr;
-            }
-        }
-    };
+  Node *getNodeFromInput(TestSinkTransposeNodesKind testNode, Node *T) {
+    switch (testNode) {
+    case TestSinkTransposeNodesKind::Batch: {
+      return F_->createBatchNormalization(bindings_, "batch", T, 3, 0.0001,
+                                          0.9);
+    }
+    case TestSinkTransposeNodesKind::Relu: {
+      return F_->createRELU("relu", T);
+    }
+    case TestSinkTransposeNodesKind::Sigmoid: {
+      return F_->createSigmoid("sigmoid", T);
+    }
+    case TestSinkTransposeNodesKind::Tanh: {
+      return F_->createTanh("tanh", T);
+    }
+    case TestSinkTransposeNodesKind::Quantize: {
+      return F_->createQuantize(
+          "quantize", T,
+          mod_.uniqueType(ElemKind::Int8QTy, T->dims(0), 0.03, 5));
+    }
+    default: {
+      return nullptr;
+    }
+    }
+  };
 };
 
-TEST_P(GraphOptzSinkTransposeBelowParametrized, TestSinkTransposeForDifferentCases) {
-    const size_t origDims[] = {1, 5, 10, 15};
-    const size_t transposedDims[] = {1, 15, 5, 10};
-    Node *A = mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input", false);
-    Node *T = F_->createTranspose("transpose", A, NHWC2NCHW);
-    Node *N = getNodeFromInput(GetParam(), T);
-    SaveNode *O = F_->createSave("ret", N);
+TEST_P(GraphOptzSinkTransposeBelowParametrized,
+       TestSinkTransposeForDifferentCases) {
+  const size_t origDims[] = {1, 5, 10, 15};
+  const size_t transposedDims[] = {1, 15, 5, 10};
+  Node *A = mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input", false);
+  Node *T = F_->createTranspose("transpose", A, NHWC2NCHW);
+  Node *N = getNodeFromInput(GetParam(), T);
+  SaveNode *O = F_->createSave("ret", N);
 
-    EXPECT_EQ(F_->getNodes().size(), 3);
-    EXPECT_EQ(N->getNthResult(0).dims(), llvm::makeArrayRef(transposedDims));
+  EXPECT_EQ(F_->getNodes().size(), 3);
+  EXPECT_EQ(N->getNthResult(0).dims(), llvm::makeArrayRef(transposedDims));
 
-    ::glow::optimize(F_, CompilationMode::Infer);
+  ::glow::optimize(F_, CompilationMode::Infer);
 
-    // Expecting Transpose->Output rather than N->Output.
-    auto *transpose = llvm::dyn_cast<TransposeNode>(O->getInput());
-    ASSERT_NE(transpose, nullptr);
-    auto *n = llvm::dyn_cast<Node>(transpose->getInput());
-    ASSERT_TRUE(n);
-    // Check that the dimensions of the input and output have been
-    // updated to compensate the absence of transpose.
-    EXPECT_EQ(n->getNthResult(0).dims(), llvm::makeArrayRef(origDims));
-    EXPECT_EQ(n->getNthInput(0).dims(), llvm::makeArrayRef(origDims));
-    EXPECT_EQ(F_->getNodes().size(), 3);
+  // Expecting Transpose->Output rather than N->Output.
+  auto *transpose = llvm::dyn_cast<TransposeNode>(O->getInput());
+  ASSERT_NE(transpose, nullptr);
+  auto *n = llvm::dyn_cast<Node>(transpose->getInput());
+  ASSERT_TRUE(n);
+  // Check that the dimensions of the input and output have been
+  // updated to compensate the absence of transpose.
+  EXPECT_EQ(n->getNthResult(0).dims(), llvm::makeArrayRef(origDims));
+  EXPECT_EQ(n->getNthInput(0).dims(), llvm::makeArrayRef(origDims));
+  EXPECT_EQ(F_->getNodes().size(), 3);
 }
 
-TEST_P(GraphOptzSinkTransposeBelowParametrized, TestSinkTransposeWithPredicateForDifferentCases) {
-    if (GetParam() == TestSinkTransposeNodesKind::Quantize) {
-        // Quantize does not work with generic test for predicates.
-        return;
-    }
-    const size_t origDims[] = {1, 5, 10, 15};
-    const size_t transposedDims[] = {1, 15, 5, 10};
-    Node *A = mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input", false);
-    Node *pred1 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred", false);
-    Node *pred2 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred", false);
-    Node *pred3 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred", false);
-    Node *T = F_->createTranspose("transpose", A, NHWC2NCHW);
-    T->setPredicate(pred1);
-    Node *N = getNodeFromInput(GetParam(), T);
-    N->setPredicate(pred2);
-    SaveNode *O = F_->createSave("ret", N);
-    O->setPredicate(pred3);
+TEST_P(GraphOptzSinkTransposeBelowParametrized,
+       TestSinkTransposeWithPredicateForDifferentCases) {
+  if (GetParam() == TestSinkTransposeNodesKind::Quantize) {
+    // Quantize does not work with generic test for predicates.
+    return;
+  }
+  const size_t origDims[] = {1, 5, 10, 15};
+  const size_t transposedDims[] = {1, 15, 5, 10};
+  Node *A = mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input", false);
+  Node *pred1 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred", false);
+  Node *pred2 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred", false);
+  Node *pred3 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred", false);
+  Node *T = F_->createTranspose("transpose", A, NHWC2NCHW);
+  T->setPredicate(pred1);
+  Node *N = getNodeFromInput(GetParam(), T);
+  N->setPredicate(pred2);
+  SaveNode *O = F_->createSave("ret", N);
+  O->setPredicate(pred3);
 
-    EXPECT_EQ(F_->getNodes().size(), 3);
-    EXPECT_EQ(N->getNthResult(0).dims(), llvm::makeArrayRef(transposedDims));
+  EXPECT_EQ(F_->getNodes().size(), 3);
+  EXPECT_EQ(N->getNthResult(0).dims(), llvm::makeArrayRef(transposedDims));
 
-    ::glow::optimize(F_, CompilationMode::Infer);
+  ::glow::optimize(F_, CompilationMode::Infer);
 
-    EXPECT_EQ(O->getPredicate().getNode(), pred3);
-    // Expecting Transpose->Output rather than N->Output.
-    auto *transpose = llvm::dyn_cast<TransposeNode>(O->getInput());
-    ASSERT_NE(transpose, nullptr);
-    EXPECT_EQ(transpose->getPredicate().getNode(), pred2);
-    auto *n = llvm::dyn_cast<Node>(transpose->getInput());
-    ASSERT_TRUE(n);
-    EXPECT_EQ(n->getPredicate().getNode(), pred2);
-    // Check that the dimensions of the input and output have been
-    // updated to compensate the absence of transpose.
-    EXPECT_EQ(n->getNthResult(0).dims(), llvm::makeArrayRef(origDims));
-    EXPECT_EQ(n->getNthInput(0).dims(), llvm::makeArrayRef(origDims));
-    EXPECT_EQ(F_->getNodes().size(), 3);
+  EXPECT_EQ(O->getPredicate().getNode(), pred3);
+  // Expecting Transpose->Output rather than N->Output.
+  auto *transpose = llvm::dyn_cast<TransposeNode>(O->getInput());
+  ASSERT_NE(transpose, nullptr);
+  EXPECT_EQ(transpose->getPredicate().getNode(), pred2);
+  auto *n = llvm::dyn_cast<Node>(transpose->getInput());
+  ASSERT_TRUE(n);
+  EXPECT_EQ(n->getPredicate().getNode(), pred2);
+  // Check that the dimensions of the input and output have been
+  // updated to compensate the absence of transpose.
+  EXPECT_EQ(n->getNthResult(0).dims(), llvm::makeArrayRef(origDims));
+  EXPECT_EQ(n->getNthInput(0).dims(), llvm::makeArrayRef(origDims));
+  EXPECT_EQ(F_->getNodes().size(), 3);
 }
 
 INSTANTIATE_TEST_CASE_P(
-        TestSinkTranspose,
-        GraphOptzSinkTransposeBelowParametrized,
-        ::testing::Values(
-            TestSinkTransposeNodesKind::Batch,
-            TestSinkTransposeNodesKind::Relu,
-            TestSinkTransposeNodesKind::Sigmoid,
-            TestSinkTransposeNodesKind::Tanh,
-            TestSinkTransposeNodesKind::Quantize));
+    TestSinkTranspose, GraphOptzSinkTransposeBelowParametrized,
+    ::testing::Values(TestSinkTransposeNodesKind::Batch,
+                      TestSinkTransposeNodesKind::Relu,
+                      TestSinkTransposeNodesKind::Sigmoid,
+                      TestSinkTransposeNodesKind::Tanh,
+                      TestSinkTransposeNodesKind::Quantize));
 
 /// For example folding Rescale in to Convolution.
 TEST_F(GraphOptz, sinkTransposeBelowRescale) {
