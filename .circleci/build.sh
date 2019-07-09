@@ -6,6 +6,19 @@ set -ex
 
 export MAX_JOBS=8
 
+if hash sccache 2>/dev/null; then
+    SCCACHE_BIN_DIR="/tmp/sccache"
+    mkdir -p "$SCCACHE_BIN_DIR"
+    for compiler in cc c++ gcc g++ x86_64-linux-gnu-gcc; do
+        (
+            echo "#!/bin/sh"
+            echo "exec $(which sccache) $(which $compiler) \"\$@\""
+        ) > "$SCCACHE_BIN_DIR/$compiler"
+        chmod +x "$SCCACHE_BIN_DIR/$compiler"
+    done
+    export PATH="$SCCACHE_BIN_DIR:$PATH"
+fi
+
 install_pocl() {
    sudo apt-get install -y ocl-icd-opencl-dev clinfo libhwloc-dev opencl-headers
 
