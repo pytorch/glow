@@ -117,6 +117,11 @@ public:
   /// Erase the constant \p I from the Module.
   void eraseConstant(ConstList::iterator I);
 
+  /// Erase the placeholder \p I from the Module.
+  /// Note: we only provide an iterator version of this, as erasing Placeholders
+  /// is often unsafe.
+  void erasePlaceholder(PlaceholderList::iterator I);
+
   /// \returns a pointer to the first variable with the name \p name or nullptr
   /// if no node has this name.
   Constant *getConstantByName(llvm::StringRef name) const;
