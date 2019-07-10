@@ -15,8 +15,8 @@ add_executable(RuntimeBench
                RuntimeBench.cpp)
 target_include_directories(RuntimeBench
                            PRIVATE
-                             ${CMAKE_SOURCE_DIR}/lib/Backends/CPU
-                             ${CMAKE_SOURCE_DIR}/lib/Backends/Interpreter)
+                             ${GLOW_SOURCE_DIR}/lib/Backends/CPU
+                             ${GLOW_SOURCE_DIR}/lib/Backends/Interpreter)
 target_link_libraries(RuntimeBench
                       PRIVATE
                         Backend
