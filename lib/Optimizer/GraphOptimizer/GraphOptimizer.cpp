@@ -62,6 +62,18 @@ static bool shouldDeleteNode(Node *N) {
   return true;
 }
 
+/// Helper that \returns whether all sibling Functions of \p F (other Functions
+/// inside its Module) are Loaded.
+static bool shouldDeleteConstants(Function *F) {
+  Module *mod = F->getParent();
+  for (auto *MF : mod->getFunctions()) {
+    if (MF->getState() < FunctionState::FuncLoaded) {
+      return false;
+    }
+  }
+  return true;
+}
+
 bool DCE::run(Function *F) {
   LOG_SCOPE(F->getLogContext(), getName());
 
@@ -97,6 +109,10 @@ bool DCE::run(Function *F) {
     if (!changedLocally) {
       break;
     }
+  }
+
+  if (!shouldDeleteConstants(F)) {
+    return changed;
   }
 
   // Delete unused Constants.
@@ -2757,7 +2773,9 @@ void glow::fold(Function *F, CompilationMode mode) {
 
 void glow::optimize(Function *F, CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), "glow::optimize")
-
+  // Indicates if the given function is completely loaded. A temporary
+  // workaround until #3213 is complete.
+  F->setState(FunctionState::FuncLoaded);
   // Optimize may be called after backend specific transformations and some
   // nodes may have become unused. It is a good idea to remove them, before
   // proceeding with any further optimizations.

@@ -1,0 +1,17 @@
+name: "init"
+op {
+  output: "index"
+  type: "GivenTensorIntFill"
+  arg {
+    name: "shape"
+    ints: 4
+  }
+  arg {
+    name: "values"
+    ints: 0
+    ints: 2
+    ints: 3
+    ints: 1
+  }
+}
+
