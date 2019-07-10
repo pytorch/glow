@@ -400,6 +400,7 @@ target_link_libraries(RecommendationSystemTest
                         Converter
                         Graph
                         IR
+                        ExecutionContext
                         ExecutionEngine
                         Quantization
                         Partitioner

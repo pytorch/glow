@@ -2821,6 +2821,16 @@ void Module::eraseConstant(ConstList::iterator I) {
   constants_.erase(I);
 }
 
+void Module::erasePlaceholder(PlaceholderList::iterator I) {
+  if (I == placeholders_.end()) {
+    return;
+  }
+
+  logStorageDeletion(functions_, *I);
+  delete *I;
+  placeholders_.erase(I);
+}
+
 void Function::eraseNode(NodesList::iterator I) {
   // Log node deletion.
   logCtx_->logNodeDeletion(*I);

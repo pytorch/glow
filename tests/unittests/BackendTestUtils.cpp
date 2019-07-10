@@ -252,6 +252,7 @@ std::unordered_set<Tensor *> cloneFunInsideFun(FunctionTensorPair FTP,
     for (auto &N : clonedNodes) {
       origF->takeOwnershipOfNode(N);
     }
+    mod->eraseFunction(tmpF);
   }
   // Now erase the clone we used to copy in, as it's no longer needed.
   mod->eraseFunction(cloneF);
