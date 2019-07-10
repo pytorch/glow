@@ -25,7 +25,7 @@ target_link_libraries(_torch_glow
                         ExecutionEngine
                         Graph
                         Importer
-                        Interpreter
+                        Support
                         Backends
                         pybind11)
                      
