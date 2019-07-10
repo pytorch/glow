@@ -48,7 +48,8 @@ run_and_check_resnet50_bundle() {
 
 run_pytorch_tests() {
     cd "${GLOW_SRC}/torch_glow"
-    python3.6 "${GLOW_SRC}/torch_glow/setup.py" test --run_cmake
+    source /tmp/venv/bin/activate
+	python "${GLOW_SRC}/torch_glow/setup.py" test --run_cmake
     cd -
 }
 
