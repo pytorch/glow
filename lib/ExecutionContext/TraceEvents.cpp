@@ -53,6 +53,13 @@ void TraceEvent::dumpTraceEvents(
   auto process = processName.empty() ? "glow" : processName;
 
   std::ofstream file(filename);
+
+  // Print an error message if the output stream can't be created.
+  if (!file.is_open()) {
+    llvm::errs() << "Unable to open file " << filename << "\n";
+    return;
+  }
+
   file << "[\n";
   /// Set up process name metadata.
   writeMetadataHelper(file, "process_name", 0,

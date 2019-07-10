@@ -92,6 +92,12 @@ llvm::cl::opt<bool> useSymmetricRowwiseQuantFCOpt(
     llvm::cl::desc(
         "Whether to use Symmetric quantization with FCs. Default is false."),
     llvm::cl::Optional, llvm::cl::init(false), llvm::cl::cat(recSysTestCat));
+
+llvm::cl::opt<std::string> traceDir(
+    "trace-dir",
+    llvm::cl::desc("Directory used to store Glow trace events files. If not "
+                   "used, tracing is not enabled."),
+    llvm::cl::Optional, llvm::cl::cat(recSysTestCat));
 } // namespace
 
 /// Fills the tensor \p H with some stable random data with the seed \p seed
@@ -168,7 +174,8 @@ static size_t sumOfElements(Handle<int32_t> H) {
 class RecommendationSystemTest : public BackendTest {
 public:
 protected:
-  PlaceholderBindings bindings_;
+  ExecutionContext context_;
+  PlaceholderBindings *bindings_;
 
   // Test Config:
   size_t miniBatch;
@@ -184,6 +191,8 @@ protected:
   Placeholder *result{nullptr};
 
   void SetUp() override {
+    bindings_ = context_.getPlaceholderBindings();
+
     /// Test configuration, tweak here:
     miniBatch = miniBatchOpt;
     embeddingDim = embeddingDimOpt;
@@ -209,6 +218,12 @@ protected:
                     8000, 6000, 7000, 9000, 12000};
     }
 
+    // Create TraceContext if trace file path is provided.
+    if (!traceDir.empty()) {
+      context_.setTraceContext(
+          llvm::make_unique<TraceContext>(TraceEvent::TraceLevel::STANDARD));
+    }
+
     deviceMemCapacity = deviceMemCapacityOpt;
 
     numDevices = numDevicesOpt;
@@ -218,7 +233,39 @@ protected:
     EE_.clear();
     mod_.clear();
     result = nullptr;
-    bindings_.clear();
+    bindings_->clear();
+
+    auto *traceContext = context_.getTraceContext();
+
+    if (traceContext) {
+      // If traceContext exists, that means trace data was collected and needs
+      // to be dumped to a file.
+
+      // Get the test case and test names. They will be used to name the file.
+      const ::testing::TestInfo *const testInfo =
+          ::testing::UnitTest::GetInstance()->current_test_info();
+      std::string testName(testInfo->name());
+      std::string testCaseName(testInfo->test_case_name());
+
+      // Replace all '/' in the test case and test names with '-' to preclude
+      // errors related to directories not existing.
+      for (auto &c : testName) {
+        if (c == '/') {
+          c = '-';
+        }
+      }
+
+      for (auto &c : testCaseName) {
+        if (c == '/') {
+          c = '-';
+        }
+      }
+
+      auto traceFileName =
+          strFormat("%s/%s-%s.json", traceDir.getValue().c_str(),
+                    testName.c_str(), testCaseName.c_str());
+      traceContext->dump(traceFileName);
+    }
   }
 
   /// Returns a new Constant, of the provided \p type and \p dims initialized
@@ -605,7 +652,7 @@ protected:
         false); // Dense dim can be anything
 
     // Generate the network.
-    createSimpleRecSysGraph(mod_, bindings_, F_, sparseLengths, denseData,
+    createSimpleRecSysGraph(mod_, *bindings_, F_, sparseLengths, denseData,
                             tableSizes, embeddingDim, "main", quantizeSLWS,
                             quantizeFC, gatherWeights);
     SaveNode *result1 = llvm::cast<SaveNode>(F_->getNodeByName("save"));
@@ -633,16 +680,16 @@ protected:
     EE_.compile(F_, cctx);
 
     // Run graph
-    EE_.run(bindings_);
+    EE_.run(context_);
 
     if (checkConcat) {
       // Get result and verify.
-      auto *resultTensor = bindings_.get(result);
+      auto *resultTensor = bindings_->get(result);
       auto resultHandle = resultTensor->getHandle();
 
       EXPECT_EQ(resultTensor->size(), miniBatch);
 
-      auto *concatT = bindings_.get(concatPH);
+      auto *concatT = bindings_->get(concatPH);
       auto concatH = concatT->getHandle();
       // Check that intermediate concat results didn't overflow.
       std::cout << "Intermediate concats" << std::endl;
@@ -661,7 +708,7 @@ protected:
   }
 
   /// Execute a graph of functions based on the given DAG.
-  void executeDAG(DAGNode *G, Module &mod, PlaceholderBindings &bindings,
+  void executeDAG(DAGNode *G, Module &mod, ExecutionContext &context,
                   llvm::ArrayRef<Placeholder *> vars,
                   llvm::ArrayRef<Tensor *> inputs) {
     std::unordered_map<std::string, Function *> name2func;
@@ -683,8 +730,9 @@ protected:
         ExecutionEngine EE{EE_.getBackend()->getBackendName()};
         Function *func = name2func[dag->name];
         EE.compile(CompilationMode::Infer, func);
-        updateInputPlaceholders(bindings, vars, inputs);
-        EE.run(bindings);
+        updateInputPlaceholders(*context.getPlaceholderBindings(), vars,
+                                inputs);
+        EE.run(context);
       }
       for (unsigned int i = 0, e = dag->children.size(); i < e; i++) {
         exeList.push_back(dag->children.at(i));
@@ -696,8 +744,7 @@ protected:
 
   /// Create partitions to run and compare results.
   void runPartitionedGraph(size_t numDevices, size_t memSize,
-                           Tensor referenceResult,
-                           PlaceholderBindings &bindings) {
+                           Tensor referenceResult, ExecutionContext &context) {
 
     assert(memSize > 0 && "Must set partitionerPerDeviceMemCapacity > 0.");
     assert(numDevices > 0 && "Must set partitionerNumDevices > 0.");
@@ -715,9 +762,10 @@ protected:
     DAG &dag = myList.front();
 
     // Run the paritioned graph and compare the results.
+    auto &bindings = *context.getPlaceholderBindings();
     bindings.allocate(mod_.getPlaceholders());
     bindings.allocate(mod_.getPlaceholders());
-    executeDAG(dag.root.get(), mod_, bindings, {}, {});
+    executeDAG(dag.root.get(), mod_, context, {}, {});
 
     Tensor *resultTensor = bindings.get(result);
     EXPECT_TRUE(referenceResult.isEqual(*resultTensor));
@@ -730,11 +778,11 @@ protected:
         mod_.createPlaceholder(ElemKind::Int32ITy, {miniBatch}, "SL0", false);
 
     std::vector<NodeValue> embeddings(sparseLengths.size());
-    createSparseEmbeddings(mod_, bindings_, F_, sparseLengths, tableSizes,
+    createSparseEmbeddings(mod_, *bindings_, F_, sparseLengths, tableSizes,
                            embeddingDim, embeddings, true);
 
     auto *save = F_->createSave("save", embeddings[0]);
-    bindings_.allocate(save->getPlaceholder());
+    bindings_->allocate(save->getPlaceholder());
 
     SaveNode *result1 = llvm::cast<SaveNode>(F_->getNodeByName("save"));
     result = result1->getPlaceholder();
@@ -742,8 +790,8 @@ protected:
     EE_.compile(CompilationMode::Infer, F_);
 
     // Run graph
-    EE_.run(bindings_);
-    auto *resultTensor = bindings_.get(result);
+    EE_.run(context_);
+    auto *resultTensor = bindings_->get(result);
 
     // TODO: for now we only check the output dimension, contents are ignored
     EXPECT_EQ(resultTensor->size(), miniBatch * embeddingDim);
@@ -826,7 +874,7 @@ TEST_P(RecommendationSystemTest, RecSys_FP32_Partitioned) {
   deviceMemCapacity *= 2; // Double memory for this test
 
   runPartitionedGraph(numDevices, deviceMemCapacity,
-                      bindings_.get(result)->clone(), bindings_);
+                      bindings_->get(result)->clone(), context_);
 }
 
 TEST_P(RecommendationSystemTest, RecSys_Partitioned_RWQuantized_SLWS) {
@@ -840,7 +888,7 @@ TEST_P(RecommendationSystemTest, RecSys_Partitioned_RWQuantized_SLWS) {
   deviceMemCapacity *= 2; // Double memory for this test
 
   runPartitionedGraph(numDevices, deviceMemCapacity,
-                      bindings_.get(result)->clone(), bindings_);
+                      bindings_->get(result)->clone(), context_);
 }
 
 TEST_P(RecommendationSystemTest, RecSys_Partitioned_RWQuantized_SLWS_FC) {
@@ -852,7 +900,7 @@ TEST_P(RecommendationSystemTest, RecSys_Partitioned_RWQuantized_SLWS_FC) {
              /* gatherWeights */ false);
 
   runPartitionedGraph(numDevices, deviceMemCapacity,
-                      bindings_.get(result)->clone(), bindings_);
+                      bindings_->get(result)->clone(), context_);
 }
 
 TEST_P(RecommendationSystemTest, RecSys_Partitioned_RWQuantized_SLWS_FP16) {
@@ -864,7 +912,7 @@ TEST_P(RecommendationSystemTest, RecSys_Partitioned_RWQuantized_SLWS_FP16) {
              /* gatherWeights */ false);
 
   runPartitionedGraph(numDevices, deviceMemCapacity,
-                      bindings_.get(result)->clone(), bindings_);
+                      bindings_->get(result)->clone(), context_);
 }
 
 TEST_P(RecommendationSystemTest, RecSys_Partitioned_RWQuantized_SLWS_FC_FP16) {
@@ -876,7 +924,7 @@ TEST_P(RecommendationSystemTest, RecSys_Partitioned_RWQuantized_SLWS_FC_FP16) {
              /* gatherWeights */ false);
 
   runPartitionedGraph(numDevices, deviceMemCapacity,
-                      bindings_.get(result)->clone(), bindings_);
+                      bindings_->get(result)->clone(), context_);
 }
 
 /// Test SLS independently, with no other layers being run.
