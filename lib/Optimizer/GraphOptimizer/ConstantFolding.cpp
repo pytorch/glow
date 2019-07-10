@@ -152,6 +152,11 @@ evaluateConstantOperation(Backend &backend, CompilationContext &cctx, Node *C) {
     auto *constResult =
         mod.createConstant(SN->getName(), std::move(*outputTensor));
     constResults.emplace_back(constResult);
+
+    // Now erase the Placeholder that we created for the SaveNode.
+    auto &vars = mod.getPlaceholders();
+    mod.erasePlaceholder(
+        std::find(vars.begin(), vars.end(), SN->getPlaceholder()));
   }
   // Remove the temporary function.
   mod.eraseFunction(constEvaluationF);
