@@ -49,7 +49,7 @@ run_and_check_resnet50_bundle() {
 run_pytorch_tests() {
     cd "${GLOW_SRC}/torch_glow"
     source /tmp/venv/bin/activate
-	python "${GLOW_SRC}/torch_glow/setup.py" test --run_cmake
+    python "${GLOW_SRC}/torch_glow/setup.py" test --run_cmake
     cd -
 }
 
