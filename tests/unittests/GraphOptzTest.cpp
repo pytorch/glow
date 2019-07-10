@@ -530,7 +530,7 @@ public:
           ->getResult();
     }
     }
-  };
+  }
 };
 
 TEST_P(GraphOptzSinkTransposeBelowParametrized,
