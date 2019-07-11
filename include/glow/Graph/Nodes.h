@@ -214,6 +214,11 @@ struct NodeValue;
 /// FIXME: This is a workaround, because defining the hash_code
 /// hash_value(float) does not work for some reason.
 size_t toBinary(float f);
+/// Convert a collection of floats into a vector of
+/// unsigned integer binary representation.
+/// FIXME: This is a workaround, because defining the hash_code
+/// hash_value(float) does not work for some reason.
+std::vector<size_t> toBinary(llvm::ArrayRef<float> vec);
 llvm::hash_code hash_value(const glow::Tensor &T);
 
 llvm::hash_code hash_value(const glow::Type *T);
