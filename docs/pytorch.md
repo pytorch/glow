@@ -10,7 +10,6 @@ See `glow/torch_glow/examples` for illustrative examples.
 ## Setup
 * Follow directions in Building.md to make sure Glow can be built
 * install [PyTorch](https://pytorch.org/) nightly 
-* install torchvision: `pip install torchvision`
 * cd to `glow/torch_glow`
 
 ## Usage

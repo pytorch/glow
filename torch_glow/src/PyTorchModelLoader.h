@@ -25,14 +25,14 @@
 /// Loads PyTorch JIT IR subgraphs as a Glow Function.
 class PyTorchModelLoader {
   /// Glow module in which the loaded Glow Function will be created.
-  glow::Module &mod_;
+  glow::Module *mod_ = nullptr;
 
   /// The PyTorch subgraph being loaded.
-  torch::jit::Graph *subgraph_;
+  torch::jit::Graph *subgraph_ = nullptr;
 
   /// The reference PyTorch inputs used for loading. This is required for shape
   /// information.
-  at::ArrayRef<torch::jit::IValue> &inputs_;
+  at::ArrayRef<torch::jit::IValue> *inputs_ = nullptr;
 
   /// The Glow function that will created.
   glow::Function *f_ = nullptr;
@@ -46,12 +46,20 @@ class PyTorchModelLoader {
   /// Mapping from PyTorch Values to Glow NodeValues created during loading.
   std::unordered_map<const torch::jit::Value *, glow::NodeValue> valueMap_;
 
+  /// A mapping from jit Symbols representing jit operators to the
+  /// PyTorchModelLoader method that is used to load that operator.
+  std::unordered_map<torch::jit::Symbol,
+                     std::function<void(const torch::jit::Node *)>>
+      nodeLoaderMapping_;
+
 public:
+  PyTorchModelLoader();
+
   /// Takes a glow::Module \p mod, a jit::Graph \p subgraph to load, and a stack
   /// of \p inputs for the subgraph to be loaded and retains references to those
   /// things to be used during loading.
-  PyTorchModelLoader(glow::Module &mod, torch::jit::Graph *subgraph,
-                     at::ArrayRef<torch::jit::IValue> &inputs);
+  PyTorchModelLoader(glow::Module *mod, torch::jit::Graph *subgraph,
+                     at::ArrayRef<torch::jit::IValue> *inputs);
 
   /// Creates a glow::Function that represents the loader's subgraph imported
   /// for the shapes seen in the given inputs stack.
@@ -81,6 +89,13 @@ public:
   }
 
 private:
+  /// Populates nodeLoaderMapping_ with a mapping from jit Symbols representing
+  /// jit operators to the PyTorchModelLoader method that is used to load that
+  /// operator.
+  /// NOTE: This must be called by all PyTorchModelLoader constructors so that
+  /// this mapping is available when loading begins.
+  void populateNodeLoaderMapping();
+
   /// Find the Glow NodeValue that maps to a given PyTorch value \p value.
   glow::NodeValue getGlowNodeValue(const torch::jit::Value *value) const;
 
@@ -127,6 +142,12 @@ private:
 
   /// Load a PyTorch _convolution node.
   void loadConvolution(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch batch_norm node.
+  void loadBatchNorm(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch max_pool2d node.
+  void loadMaxPool2d(const torch::jit::Node *ptNode);
 };
 
 #endif // GLOW_IMPORTER_PYTORCH_PYTORCHMODELLOADER_H

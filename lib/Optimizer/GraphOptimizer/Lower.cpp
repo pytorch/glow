@@ -1038,6 +1038,7 @@ static void lowerNode(Function *F, Node *node, CompilationContext &cctx) {
 void glow::lower(Function *F, CompilationContext &cctx, const Backend *B,
                  const KindSet &doNotLowerKinds) {
   LOG_SCOPE(F->getLogContext(), "glow::lower")
+  F->setState(FunctionState::FuncLoaded);
 
   auto &nodes = F->getNodes();
   for (auto &N : nodes) {

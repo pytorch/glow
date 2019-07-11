@@ -1,0 +1,24 @@
+name: "gatherConstantFolding"
+op {
+  input: "data"
+  output: "shape_x"
+  name: "shape_x"
+  type: "Shape"
+}
+op {
+  input: "shape_x"
+  input: "index"
+  output: "gather_x"
+  name: "gather_x"
+  type: "Gather"
+}
+op {
+  input: "data"
+  input: "gather_x"
+  output: "result"
+  name: "result"
+  type: "Reshape"
+}
+external_input: "data"
+external_input: "index"
+external_output: "result"
