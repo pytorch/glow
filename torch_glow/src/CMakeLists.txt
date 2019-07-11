@@ -28,7 +28,7 @@ target_link_libraries(_torch_glow
                         Support
                         Backends
                         pybind11)
-                     
+
 target_include_directories(_torch_glow PUBLIC
                             ${PYTORCH_DIR}/include
 )

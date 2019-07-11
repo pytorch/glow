@@ -76,7 +76,7 @@ jobs:
   OPENCL:
     environment:
       DOCKER_IMAGE: "308535385114.dkr.ecr.us-east-1.amazonaws.com/caffe2/py2-clang8-ubuntu16.04:283"
-    <<: *linux_default 
+    <<: *linux_default
   ASAN:
     environment:
       DOCKER_IMAGE: "308535385114.dkr.ecr.us-east-1.amazonaws.com/caffe2/py2-clang8-ubuntu16.04:283"
@@ -97,6 +97,11 @@ jobs:
     environment:
       DOCKER_IMAGE: "308535385114.dkr.ecr.us-east-1.amazonaws.com/caffe2/py2-clang8-ubuntu16.04:283"
     <<: *linux_default
+  PYTORCH:
+    resource_class: 2xlarge+
+    environment:
+      DOCKER_IMAGE: "308535385114.dkr.ecr.us-east-1.amazonaws.com/caffe2/py3.6-clang7-ubuntu16.04:287"
+    <<: *linux_default
   CHECK_CLANG_FORMAT:
     environment:
       DOCKER_IMAGE: "308535385114.dkr.ecr.us-east-1.amazonaws.com/caffe2/py2-clang6.0-ubuntu16.04:230"
@@ -112,4 +117,5 @@ workflows:
       - SHARED
       - RELEASE_WITH_EXPENSIVE_TESTS
       - COVERAGE
+      - PYTORCH
       - CHECK_CLANG_FORMAT

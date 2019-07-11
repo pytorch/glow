@@ -46,6 +46,13 @@ run_and_check_resnet50_bundle() {
     done
 }
 
+run_pytorch_tests() {
+    cd "${GLOW_SRC}/torch_glow"
+    source /tmp/venv/bin/activate
+    python "${GLOW_SRC}/torch_glow/setup.py" test --run_cmake
+    cd -
+}
+
 # Run unit tests and bundle tests.
 cd "${GLOW_BUILD_DIR}"
 case ${CIRCLE_JOB} in
@@ -75,6 +82,9 @@ case ${CIRCLE_JOB} in
         cd "${GLOW_SRC}"
         cd build
         ../.circleci/run_coverage.sh
+        ;;
+    PYTORCH)
+        run_pytorch_tests
         ;;
     CHECK_CLANG_FORMAT)
         cd "${GLOW_SRC}"
