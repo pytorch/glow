@@ -5,18 +5,19 @@
 set -ex
 
 export MAX_JOBS=8
-
-if hash sccache 2>/dev/null; then
-    SCCACHE_BIN_DIR="/tmp/sccache"
-    mkdir -p "$SCCACHE_BIN_DIR"
-    for compiler in cc c++ gcc g++ x86_64-linux-gnu-gcc; do
-        (
-            echo "#!/bin/sh"
-            echo "exec $(which sccache) $(which $compiler) \"\$@\""
-        ) > "$SCCACHE_BIN_DIR/$compiler"
-        chmod +x "$SCCACHE_BIN_DIR/$compiler"
-    done
-    export PATH="$SCCACHE_BIN_DIR:$PATH"
+if [ "${CIRCLE_JOB}" != "COVERAGE" ]; then
+    if hash sccache 2>/dev/null; then
+        SCCACHE_BIN_DIR="/tmp/sccache"
+        mkdir -p "$SCCACHE_BIN_DIR"
+        for compiler in cc c++ gcc g++ x86_64-linux-gnu-gcc; do
+            (
+                echo "#!/bin/sh"
+                echo "exec $(which sccache) $(which $compiler) \"\$@\""
+            ) > "$SCCACHE_BIN_DIR/$compiler"
+            chmod +x "$SCCACHE_BIN_DIR/$compiler"
+        done
+        export PATH="$SCCACHE_BIN_DIR:$PATH"
+    fi
 fi
 
 install_pocl() {
