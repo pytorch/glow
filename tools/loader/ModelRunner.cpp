@@ -46,6 +46,10 @@ int main(int argc, char **argv) {
   Placeholder *output = EXIT_ON_ERR(LD->getSingleOutput());
   auto *outputT = bindings.allocate(output);
 
+  CHECK_EQ(0, std::distance(LD->getInputVarsMapping().keys().begin(),
+                            LD->getInputVarsMapping().keys().end()))
+      << "ModelRunner only supports models with no external inputs.";
+
   std::string modelName = loader.getFunction()->getName().str();
 
   // Compile the model, and perform quantization/emit a bundle/dump debug info
