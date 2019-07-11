@@ -439,6 +439,12 @@ public:
                              unsigned_t kernel, unsigned_t stride,
                              unsigned_t pad);
 
+  /// Creates and \returns an AdaptiveAvgPool node with \p name, \p input, and
+  /// \p outTy. The AdaptiveAvgPoolNode will perform average pooling over the
+  /// input so that the result is of the shape specified by \p outTy.
+  AdaptiveAvgPoolNode *createAdaptiveAvgPool(llvm::StringRef name,
+                                             NodeValue input, TypeRef outTy);
+
   /// Creates and \returns a FullyConnectedNode with \p name, \p input, weights
   /// \p W, bias \p B. If \p input is not 2 dimensional then it is flattened
   /// along \p axis. Note, output type and outputDepth are inferred based on

@@ -79,6 +79,7 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
          ElemKind::Int32ITy, ElemKind::Int64ITy});
 
   case Kinded::Kind::AvgPoolNodeKind:
+  case Kinded::Kind::AdaptiveAvgPoolNodeKind:
   case Kinded::Kind::MatMulNodeKind:
   case Kinded::Kind::BatchedReduceAddNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(

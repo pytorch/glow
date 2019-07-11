@@ -782,6 +782,12 @@ AvgPoolNode *Function::createAvgPool(llvm::StringRef name, NodeValue input,
   return createAvgPool(name, input, kernels, strides, pads);
 }
 
+AdaptiveAvgPoolNode *Function::createAdaptiveAvgPool(llvm::StringRef name,
+                                                     NodeValue input,
+                                                     TypeRef outTy) {
+  return addNode(new AdaptiveAvgPoolNode(name, outTy, input));
+}
+
 FullyConnectedNode *Function::createFullyConnected(llvm::StringRef name,
                                                    NodeValue input, Storage *W,
                                                    Storage *B,

@@ -4670,6 +4670,93 @@ TEST_P(OperatorTest, Int8AvgPool) {
   }
 }
 
+/// Verify that the AdaptiveAvgPool operator works correctly.
+TEST_P(OperatorTest, AdaptiveAvgPool) {
+  ENABLED_BACKENDS(Interpreter);
+  auto *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 4, 4, 1}, "input", false);
+  bindings_.allocate(input)->getHandle() = {
+      0., 1., 2., 3., 4., 5., 6., 7., 8., 9., 10., 11., 12., 13., 14., 15.};
+
+  auto outTy = mod_.uniqueType(ElemKind::FloatTy, {1, 3, 3, 1});
+  auto *pool = F_->createAdaptiveAvgPool("pool", input, outTy);
+  auto *S = F_->createSave("save", pool);
+  bindings_.allocate(S->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run(bindings_);
+
+  auto *result = bindings_.get(S->getPlaceholder());
+  Tensor out(ElemKind::FloatTy, {1, 3, 3, 1});
+  out.getHandle() = {2.5, 3.5, 4.5, 6.5, 7.5, 8.5, 10.5, 11.5, 12.5};
+  EXPECT_TRUE(out.isEqual(*result));
+}
+
+/// Verify that the AdaptiveAvgPool operator works correctly with fp16.
+TEST_P(OperatorTest, FP16AdaptiveAvgPool) {
+  ENABLED_BACKENDS(Interpreter);
+  auto *input =
+      mod_.createPlaceholder(ElemKind::Float16Ty, {1, 4, 4, 1}, "input", false);
+  bindings_.allocate(input)->getHandle<float16_t>() = {
+      0., 1., 2., 3., 4., 5., 6., 7., 8., 9., 10., 11., 12., 13., 14., 15.};
+  auto outTy = mod_.uniqueType(ElemKind::Float16Ty, {1, 3, 3, 1});
+  auto *pool = F_->createAdaptiveAvgPool("pool", input, outTy);
+  auto *S = F_->createSave("save", pool);
+  bindings_.allocate(S->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run(bindings_);
+
+  auto *result = bindings_.get(S->getPlaceholder());
+  Tensor out(ElemKind::Float16Ty, {1, 3, 3, 1});
+  out.getHandle<float16_t>() = {2.5, 3.5, 4.5, 6.5, 7.5, 8.5, 10.5, 11.5, 12.5};
+  EXPECT_TRUE(out.isEqual(*result));
+}
+
+/// Verify that the AdaptiveAvgPool operator works correctly with int8.
+TEST_P(OperatorTest, Int8AdaptiveAvgPool) {
+  ENABLED_BACKENDS(Interpreter);
+  auto *input = mod_.createPlaceholder(ElemKind::Int8QTy, {1, 4, 4, 1}, 1, 0,
+                                       "input", false);
+  bindings_.allocate(input)->getHandle<int8_t>() = {
+      0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15};
+  auto outTy = mod_.uniqueType(ElemKind::Int8QTy, {1, 3, 3, 1}, 1, 0);
+  auto *pool = F_->createAdaptiveAvgPool("pool", input, outTy);
+  auto *S = F_->createSave("save", pool);
+  bindings_.allocate(S->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run(bindings_);
+
+  auto *result = bindings_.get(S->getPlaceholder());
+  Tensor out(ElemKind::Int8QTy, {1, 3, 3, 1}, 1, 0);
+  out.getHandle<int8_t>() = {3, 4, 5, 7, 8, 9, 11, 12, 13};
+  EXPECT_TRUE(out.isEqual(*result));
+}
+
+/// Verify that the AdaptiveAvgPool operator works correctly with non-square
+/// inputs and outputs.
+TEST_P(OperatorTest, AdaptiveAvgPoolNonSquare) {
+  ENABLED_BACKENDS(Interpreter);
+  auto *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 5, 3, 1}, "input", false);
+  bindings_.allocate(input)->getHandle() = {0., 1., 2.,  3.,  4.,  5.,  6., 7.,
+                                            8., 9., 10., 11., 12., 13., 14.};
+
+  auto outTy = mod_.uniqueType(ElemKind::FloatTy, {1, 3, 2, 1});
+  auto *pool = F_->createAdaptiveAvgPool("pool", input, outTy);
+  auto *S = F_->createSave("save", pool);
+  bindings_.allocate(S->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run(bindings_);
+
+  auto *result = bindings_.get(S->getPlaceholder());
+  Tensor out(ElemKind::FloatTy, {1, 3, 2, 1});
+  out.getHandle() = {2, 3, 6.5, 7.5, 11, 12};
+  EXPECT_TRUE(out.isEqual(*result));
+}
+
 TEST_P(OperatorTest, MaxPool) {
   auto *input =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 3, 3, 1}, "input", false);

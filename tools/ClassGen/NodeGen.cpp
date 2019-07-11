@@ -143,6 +143,12 @@ int main(int argc, char **argv) {
       .setDocstring("Performs an Average Pool operation on the Input given "
                     "provided Kernels, Strides, and Pads.");
 
+  BB.newNode("AdaptiveAvgPool")
+      .addInput("Input")
+      .addResultFromCtorArg()
+      .setDocstring(
+          "Performs an Adaptive Average Pool operation on the Input given");
+
   BB.newNode("FullyConnected")
       .addInput("Input")
       .addInput("Weights")

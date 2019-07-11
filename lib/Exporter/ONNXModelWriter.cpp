@@ -700,6 +700,18 @@ ONNXModelWriter::writeSparseToDenseMask(const SparseToDenseMaskNode *node,
   return writeAllWithNode(node->getName(), node, proto);
 }
 
+llvm::Error
+ONNXModelWriter::writeAdaptiveAvgPool(const AdaptiveAvgPoolNode *node,
+                                      GraphType &graph) {
+  auto *proto = graph.add_node();
+
+  const auto outShape = ShapeNHWC(node->getResult().dims());
+  std::vector<size_t> output_size{outShape.h, outShape.w};
+  addValueAttribute(proto, "output_size", llvm::makeArrayRef(output_size));
+
+  return writeAllWithNode(node->getName(), node, proto);
+}
+
 llvm::Error ONNXModelWriter::writeLocalResponseNormalization(
     const LocalResponseNormalizationNode *node, GraphType &graph) {
   auto *proto = graph.add_node();

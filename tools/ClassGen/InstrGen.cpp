@@ -150,6 +150,12 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
       .addGradientInstr({"Dest"}, {"Dest", "Src"});
 
+  BB.newInstr("AdaptiveAvgPool")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .autoIRGen()
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"});
+
   BB.newInstr("RowwiseQuantizedFullyConnected")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Src", OperandKind::In)

@@ -445,6 +445,42 @@ void PyTorchModelLoader::loadMaxPool2d(const torch::jit::Node *ptNode) {
   addGlowNodeValue(outputs[0], output);
 }
 
+void PyTorchModelLoader::loadAdaptiveAvgPool2d(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  assert(inputs.size() == 2);
+  assert(outputs.size() == 1);
+
+  // Indexes of aten::adaptive_avg_pool2d inputs.
+  struct Inputs {
+    enum {
+      input = 0, // NCHW
+      output_size = 1,
+    };
+  };
+
+  // Glow expects inputs to be in NHWC but PyTorch keeps them in NCHW so we
+  // tranpose them.
+  glow::NodeValue input = getGlowNodeValue(inputs[Inputs::input]);
+  input = f_->createTranspose("adaptive_avg_pool2d_input_transposed", input,
+                              NCHW2NHWC);
+
+  glow::Handle<int32_t> outputSizeHandle =
+      getGlowConstantHandle<int32_t>(inputs[Inputs::output_size]);
+  std::vector<uint32_t> outputSize =
+      expandParamIfNeeded<int32_t, uint32_t>(outputSizeHandle, 2);
+
+  auto idim = glow::ShapeNHWC(input.dims());
+  auto outTy = f_->getParent()->uniqueTypeWithNewShape(
+      input.getType(), {idim.n, outputSize[0], outputSize[1], idim.c});
+
+  glow::NodeValue output =
+      f_->createAdaptiveAvgPool("adaptive_avg_pool2d", input, outTy);
+  output = f_->createTranspose("adaptive_avg_pool2d_output_transposed", output,
+                               NHWC2NCHW);
+  addGlowNodeValue(outputs[0], output);
+}
+
 void PyTorchModelLoader::loadConstant(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
@@ -553,6 +589,11 @@ void PyTorchModelLoader::populateNodeLoaderMapping() {
 
   nodeLoaderMapping_[at::Symbol::fromQualString("aten::max_pool2d")] =
       [this](const torch::jit::Node *node) { return loadMaxPool2d(node); };
+
+  nodeLoaderMapping_[at::Symbol::fromQualString("aten::adaptive_avg_pool2d")] =
+      [this](const torch::jit::Node *node) {
+        return loadAdaptiveAvgPool2d(node);
+      };
 }
 
 void PyTorchModelLoader::loadNode(const torch::jit::Node *node) {
@@ -564,8 +605,7 @@ void PyTorchModelLoader::loadNode(const torch::jit::Node *node) {
 /// knownSymbols contains the list of jit Symbols that are known to
 /// PyTorchModelLoader. This is populated the first time \ref
 /// PyTorchModelLoader::isNodeSupported is called and referenced on subsequent
-/// calls. Note that for this to work properly, \ref
-/// PyTorchModelLoader::populateNodeLoaderMapping must be called by
+/// calls.
 static std::unordered_set<torch::jit::Symbol> knownSymbols;
 
 // static

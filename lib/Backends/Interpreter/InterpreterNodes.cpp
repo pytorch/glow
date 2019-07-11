@@ -897,6 +897,118 @@ void BoundInterpreterFunction::fwdAvgPoolInst(const AvgPoolInst *I) {
                             I->getSrc()->getElementType(), I);
 }
 
+template <typename ElemTy>
+void BoundInterpreterFunction::fwdAdaptiveAvgPoolInstFloatImpl(
+    const AdaptiveAvgPoolInst *I) {
+  staticAssertFloatingPointType(ElemTy);
+
+  ShapeNHWC odim(I->getDest()->dims());
+  ShapeNHWC idim(I->getSrc()->dims());
+
+  auto inW = getWeightHandle<ElemTy>(I->getSrc());
+  auto outW = getWeightHandle<ElemTy>(I->getDest());
+
+// https://github.com/pytorch/pytorch/blob/master/aten/src/ATen/native/AdaptiveAveragePooling.cpp
+#define START_IND(a, b, c) (size_t) std::floor((float)((a) * (c)) / (b))
+#define END_IND(a, b, c) (size_t) std::ceil((float)(((a) + 1) * (c)) / (b))
+
+  // For each input in the batch:
+  for (size_t n = 0; n < odim.n; n++) {
+    // For each layer in the output tensor:
+    for (size_t z = 0; z < idim.c; z++) {
+      // For each value in the output tensor:
+      for (size_t ax = 0; ax < odim.h; ax++) {
+
+        size_t x = START_IND(ax, odim.h, idim.h);
+        size_t kH = END_IND(ax, odim.h, idim.h) - x;
+
+        for (size_t ay = 0; ay < odim.w; ay++) {
+
+          size_t y = START_IND(ay, odim.w, idim.w);
+          size_t kW = END_IND(ay, odim.w, idim.w) - y;
+
+          float sum = 0;
+          for (size_t fx = 0; fx < kH; fx++) {
+            for (size_t fy = 0; fy < kW; fy++) {
+              size_t ox = x + fx;
+              size_t oy = y + fy;
+
+              sum += float(inW.at({n, ox, oy, z}));
+            }
+          }
+          outW.at({n, ax, ay, z}) = ElemTy(sum / kW / kH);
+        } // W
+      }   // H
+    }     // C
+  }       // N
+#undef START_IND
+#undef END_IND
+}
+
+void BoundInterpreterFunction::fwdAdaptiveAvgPoolInstI8Impl(
+    const AdaptiveAvgPoolInst *I) {
+  ShapeNHWC odim(I->getDest()->dims());
+  ShapeNHWC idim(I->getSrc()->dims());
+
+  auto inW = getWeightHandle<int8_t>(I->getSrc());
+  auto outW = getWeightHandle<int8_t>(I->getDest());
+
+  TensorQuantizationParams inQP{I->getSrc()->getType()->getScale(),
+                                I->getSrc()->getType()->getOffset()};
+  TensorQuantizationParams outQP{I->getDest()->getType()->getScale(),
+                                 I->getDest()->getType()->getOffset()};
+
+// https://github.com/pytorch/pytorch/blob/master/aten/src/ATen/native/AdaptiveAveragePooling.cpp
+#define START_IND(a, b, c) (size_t) std::floor((float)((a) * (c)) / (b))
+#define END_IND(a, b, c) (size_t) std::ceil((float)(((a) + 1) * (c)) / (b))
+
+  // For each input in the batch:
+  for (size_t n = 0; n < odim.n; n++) {
+    // For each layer in the output tensor:
+    for (size_t z = 0; z < idim.c; z++) {
+      // For each value in the output tensor:
+      for (size_t ax = 0; ax < odim.h; ax++) {
+
+        size_t x = START_IND(ax, odim.h, idim.h);
+        size_t kH = END_IND(ax, odim.h, idim.h) - x;
+
+        for (size_t ay = 0; ay < odim.w; ay++) {
+
+          size_t y = START_IND(ay, odim.w, idim.w);
+          size_t kW = END_IND(ay, odim.w, idim.w) - y;
+
+          int32_t sum = 0;
+          for (size_t fx = 0; fx < kH; fx++) {
+            for (size_t fy = 0; fy < kW; fy++) {
+              size_t ox = x + fx;
+              size_t oy = y + fy;
+
+              sum += inW.at({n, ox, oy, z}) - inQP.offset;
+            }
+          }
+
+          outW.at({n, ax, ay, z}) = quantization::clip<int32_t, int8_t>(
+              std::round(float(sum) * (inQP.scale / outQP.scale / kW / kH) +
+                         outQP.offset));
+        } // W
+      }   // H
+    }     // C
+  }       // N
+#undef START_IND
+#undef END_IND
+}
+
+void BoundInterpreterFunction::fwdAdaptiveAvgPoolInst(
+    const AdaptiveAvgPoolInst *I) {
+  if (I->getSrc()->getType()->isQuantizedType()) {
+    fwdAdaptiveAvgPoolInstI8Impl(I);
+    return;
+  }
+
+  dispatchFloatingPointImpl(fwdAdaptiveAvgPoolInstFloatImpl,
+                            I->getSrc()->getElementType(), I);
+}
+
 void BoundInterpreterFunction::fwdMaxPoolWithArgmaxGradInst(
     const MaxPoolWithArgmaxGradInst *I) {
   auto inG = getWeightHandle(I->getSrcGrad());
