@@ -1810,30 +1810,6 @@ bool HabanaBackend::transformPostLowering(Function *F,
       changed = true;
       continue;
     }
-
-    // Sink TransposeNode below QuantizedNode.
-    // Motivations:
-    // 1. This way, TransposeNode has to transpose fewer bytes.
-    // 2. In Habana GC's current version, QuantizeNode will have better
-    // performance when
-    //    FCD is large. In typical case, this sequence is encountered at the
-    //    beginning of vision topologies, where the FCD=W so it is large, and
-    //    after the transpose FCD=C=3 so it is small.
-    if (auto *quant = llvm::dyn_cast<QuantizeNode>(&node)) {
-      auto *transpose = llvm::dyn_cast<TransposeNode>(quant->getInput());
-      if (!transpose) {
-        continue;
-      }
-      auto transposeOutTy = F->getParent()->uniqueTypeWithNewShape(
-          quant->getResult().getType(), transpose->getInput().dims());
-      auto *newQuant = F->createQuantize(quant->getName(),
-                                         transpose->getInput(), transposeOutTy);
-      auto *newTranspose = F->createTranspose(transpose->getName(), newQuant,
-                                              transpose->getShuffle());
-      quant->getResult().replaceAllUsesOfWith(newTranspose);
-      changed = true;
-      continue;
-    }
   }
 
   return changed;

@@ -488,6 +488,22 @@ bool SinkCode::run(Function *F) {
       node->getNthResult(ArithmeticNode::ResultIdx).replaceAllUsesOfWith(newTR);
     }
 
+    // Sink TransposeNode below QuantizedNode.
+    // If it doesn't work out it will be re-sinked later.
+    if (auto *Q = dyn_cast<QuantizeNode>(node)) {
+      auto *TR = dyn_cast<TransposeNode>(Q->getInput());
+      if (!TR) {
+        continue;
+      }
+
+      auto newQType = F->getParent()->uniqueTypeWithNewShape(
+          Q->getResult().getType(), TR->getInput().dims());
+      auto *newQ = F->createQuantize(Q->getName(), TR->getInput(), newQType);
+      auto *newTR = F->createTranspose(TR->getName(), newQ, TR->getShuffle());
+      Q->getResult().replaceAllUsesOfWith(newTR);
+      changed = true;
+    }
+
     // Sink Transpose below RescaleQuantized.
     // Potentially exposes opportunity to be combined up with Convolution.
     // If it doesn't work out it will be re-sinked later.
