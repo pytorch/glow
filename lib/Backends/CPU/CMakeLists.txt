@@ -30,7 +30,9 @@ set(CPURunttimeCompilationOptions
       # When building for a custom target, use this as an example of how to 
       # set up cross-compilation correctly. Then, when building bundles,
       # do not forget to specify the -target= option with the same target
-      # string.
+      # string. Also, when building bundles, specify the -llvm-compiler option together
+      # with -llvm-compiler-opt to specify custom compilation flags for 
+      # cross-compilation.
       #
 
       # --sysroot=/usr/arm-linux-gnueabihf/
