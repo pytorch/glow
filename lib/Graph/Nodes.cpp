@@ -648,6 +648,13 @@ bool ExpNode::verify() const {
   return isValid;
 }
 
+bool BucketizeNode::verify() const {
+  bool isValid = checkSameShape(getInput(), getResult(), this);
+  isValid &= !getBoundaries().empty();
+  isValid &= std::is_sorted(getBoundaries().begin(), getBoundaries().end());
+  return isValid;
+}
+
 bool SoftMaxNode::verify() const {
   return verifySoftMax(getInput(), getResult());
 }

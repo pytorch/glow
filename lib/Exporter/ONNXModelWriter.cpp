@@ -650,6 +650,15 @@ llvm::Error ONNXModelWriter::writeReshape(const ReshapeNode *node,
   return writeAll("Reshape", node, graph);
 }
 
+llvm::Error ONNXModelWriter::writeBucketize(const BucketizeNode *node,
+                                            GraphType &graph) {
+  auto *proto = graph.add_node();
+  // Find dictionary entries.
+  addValueAttribute(proto, "boundaries", node->getBoundaries());
+
+  return writeAllWithNode(node->getName(), node, proto);
+}
+
 llvm::Error ONNXModelWriter::writeSoftMax(const SoftMaxNode *node,
                                           GraphType &graph) {
   auto *proto = graph.add_node();

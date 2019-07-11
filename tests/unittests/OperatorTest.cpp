@@ -6859,6 +6859,51 @@ TEST_P(OperatorStatelessTest, rowwiseQuantizedSLWSTest) {
                             /* enableRowwiseQuantization */ true);
 }
 
+static SaveNode *setupBucketNode(Function *F, PlaceholderBindings &bindings,
+                                 Placeholder *input,
+                                 const std::string &suffix) {
+  std::vector<float> boundaries = {0.1, 2.5};
+
+  auto *bucketize =
+      F->createBucketizeNode("bucketize" + suffix, input, boundaries);
+  auto *save = F->createSave("save" + suffix, bucketize);
+  bindings.allocate(save->getPlaceholder());
+  return save;
+}
+
+/// Check the correctness of the bucketize operator.
+TEST_P(OperatorTest, Bucketize) {
+  ENABLED_BACKENDS(Interpreter);
+
+  auto *input1 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {3}, "input1", false);
+  bindings_.allocate(input1)->getHandle<float>() = {2.0, 4.0, 1.0};
+  auto *save1 =
+      setupBucketNode(F_, bindings_, input1, /* suffix */ std::to_string(1));
+
+  auto *input2 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {3, 2}, "input2", false);
+  bindings_.allocate(input2)->getHandle<float>() = {2.0, 3.0, 4.0,
+                                                    1.0, 2.0, 5.0};
+  auto *save2 =
+      setupBucketNode(F_, bindings_, input2, /* suffix */ std::to_string(2));
+
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run(bindings_);
+
+  // Check the result of the first op:
+  Tensor *result1 = bindings_.get(save1->getPlaceholder());
+  Tensor expected1(ElemKind::Int32ITy, {3});
+  expected1.getHandle<int32_t>() = {1, 2, 1};
+  EXPECT_TRUE(expected1.isEqual(*result1));
+
+  // Check the result of the second op:
+  Tensor *result2 = bindings_.get(save2->getPlaceholder());
+  Tensor expected2(ElemKind::Int32ITy, {3, 2});
+  expected2.getHandle<int32_t>() = {1, 2, 2, 1, 1, 2};
+  EXPECT_TRUE(expected2.isEqual(*result2));
+}
+
 /// Check the correctness of the SoftMax operator.
 /// The semantic of SoftMax is
 /// res_i = exp(input_i) / (exp(input_0) + ... + exp(input_N)).

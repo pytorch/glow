@@ -1,0 +1,13 @@
+name: "bucketize"
+op {
+  type: "Bucketize"
+  input: "input_0"
+  output: "bucketize_test_output"
+  arg {
+    name: "boundaries"
+    floats: 0.1
+    floats: 2.5
+  }
+}
+external_input: "input_0"
+external_output: "bucketize_test_output"
