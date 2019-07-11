@@ -19,6 +19,7 @@
 #include "glow/Base/Tensor.h"
 #include "glow/Converter/TypeAToTypeBFunctionConverter.h"
 #include "glow/IR/IR.h"
+#include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
 #include "glow/Quantization/Quantization.h"
 #include "glow/Quantization/Serialization.h"
 #include "glow/Runtime/RuntimeTypes.h"
@@ -294,17 +295,6 @@ void glow::parseCommandLine(int argc, char **argv) {
   }
 }
 
-/// Helper to get the Kind of a Node (e.g. Kinded::Kind::AddNodeKind) given its
-/// \p nodeName (e.g. Add).
-static Kinded::Kind getKindFromNodeName(llvm::StringRef nodeName) {
-#define DEF_NODE(CLASS, NAME)                                                  \
-  if (nodeName == #NAME) {                                                     \
-    return Kinded::Kind::CLASS##Kind;                                          \
-  }
-#include "glow/AutoGenNodes.def"
-  LOG(FATAL) << "Unknown node name: " << nodeName.str();
-}
-
 /// Helper to get the parameters in DeviceConfig from \p str. The \p str has
 /// multiple lines, and each line with this format : "str1" : "str2".
 static llvm::StringMap<std::string> getBackendParams(std::string &str) {
@@ -425,7 +415,7 @@ void Loader::compile(PlaceholderBindings &bindings) {
   if (!dumpGraphDAGFileOpt.empty()) {
     for (auto function : module->getFunctions()) {
       std::string filename =
-          function->getName().str() + "_" + dumpGraphDAGFileOpt;
+          function->getFilename() + "_" + dumpGraphDAGFileOpt;
       function->dumpDAG(filename.c_str());
     }
   }

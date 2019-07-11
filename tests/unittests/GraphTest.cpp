@@ -23,6 +23,7 @@
 #include "glow/Graph/Utils.h"
 #include "glow/IR/IR.h"
 #include "glow/IR/Instrs.h"
+#include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
 
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/Support/FileSystem.h"
@@ -732,7 +733,7 @@ TEST(Graph, nodesWithPredicates) {
   RL0->setPredicate(pred);
   MP0->setPredicate(pred);
 
-  auto *FCL1 = F->createFullyConnected(bindings, "fc", MP0, 10);
+  auto *FCL1 = F->createFullyConnected(bindings, "fc", MP0->getResult(), 10);
   auto *RL3 = F->createRELU("relu4", FCL1);
   auto *SM = F->createSoftMax("sm", RL3, ex);
   auto *save = F->createSave("ret", SM);

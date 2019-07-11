@@ -13,7 +13,7 @@ target_link_libraries(BackendTestUtils
                         Converter
                         ExecutionEngine
                         Graph
-                        Optimizer
+                        GraphOptimizer
                         Quantization
                         QuantizationBase
                         LLVMSupport
@@ -30,7 +30,6 @@ target_link_libraries(BackendCorrectnessTest
                         Graph
                         IR
                         ExecutionEngine
-                        Optimizer
                         Quantization
                         Support
                         gtest
@@ -47,7 +46,6 @@ target_link_libraries(BackendTest
                         Graph
                         IR
                         ExecutionEngine
-                        Optimizer
                         gtest
                         TestMain)
 add_glow_test(BackendTest ${GLOW_BINARY_DIR}/tests/BackendTest --gtest_output=xml:BackendTest.xml)
@@ -85,7 +83,7 @@ target_link_libraries(DeviceManagerTest
                         Graph
                         IR
                         ExecutionEngine
-                        Optimizer
+                        GraphOptimizer
                         gtest
                         TestMain)
 add_glow_test(DeviceManagerTest ${GLOW_BINARY_DIR}/tests/DeviceManagerTest --gtest_output=xml:DeviceManagerTest.xml)
@@ -166,9 +164,10 @@ add_executable(GraphOptzTest
                GraphOptzTest.cpp)
 target_link_libraries(GraphOptzTest
                       PRIVATE
+                        ExecutionEngine
                         Graph
                         IR
-                        Optimizer
+                        GraphOptimizer
                         gtest
                         TestMain)
 add_glow_test(GraphOptzTest ${GLOW_BINARY_DIR}/tests/GraphOptzTest --gtest_output=xml:GraphOptzTest.xml)
@@ -192,7 +191,7 @@ target_link_libraries(GraphTest
                         ExecutionEngine
                         Graph
                         IR
-                        Optimizer
+                        GraphOptimizer
                         gtest
                         TestMain)
 add_glow_test(GraphTest ${GLOW_BINARY_DIR}/tests/GraphTest --gtest_output=xml:GraphTest.xml)
@@ -206,7 +205,7 @@ if(GLOW_WITH_HABANA)
                           Backends
                           ExecutionEngine
                           Graph
-                          Optimizer
+                          GraphOptimizer
                           gtest
                           TestMain)
   target_include_directories(HabanaBackendTest PRIVATE "${SYNAPSE_INCLUDE_DIR}")
@@ -230,6 +229,7 @@ if(GLOW_WITH_CPU)
           PRIVATE
           Backends
           HostManager
+          ExecutionEngine
           Executor
           Graph
           IR
@@ -248,7 +248,6 @@ if(GLOW_WITH_CPU)
                           Graph
                           IR
                           ExecutionEngine
-                          Optimizer
                           Quantization
                           Support
                           gtest
@@ -264,7 +263,7 @@ target_link_libraries(IROptTest
                         Backend
                         Graph
                         IR
-                        Optimizer
+                        IROptimizer
                         gtest
                         TestMain)
 add_glow_test(IROptTest ${GLOW_BINARY_DIR}/tests/IROptTest --gtest_output=xml:IROptTest.xml)
@@ -302,7 +301,6 @@ target_link_libraries(MLTest
         Graph
         IR
         ExecutionEngine
-        Optimizer
         Quantization
         gtest
         TestMain)
@@ -325,12 +323,14 @@ if(GLOW_WITH_OPENCL)
   add_executable(OCLTest
                  OCLTest.cpp)
   target_link_libraries(OCLTest
+                        PUBLIC
+                          OpenCL::OpenCL
                         PRIVATE
+                          Backends
                           BackendTestUtils
                           ExecutionEngine
                           Graph
                           IR
-                          Optimizer
                           gtest
                           TestMain)
   add_glow_test(OCLTest ${GLOW_BINARY_DIR}/tests/OCLTest --gtest_output=xml:OCLTest.xml)
@@ -372,7 +372,7 @@ target_link_libraries(OperatorTest
         IR
         ExecutionEngine
         Quantization
-        Optimizer
+        GraphOptimizer
         gtest
         TestMain)
 add_glow_test(OperatorTest ${GLOW_BINARY_DIR}/tests/OperatorTest --gtest_output=xml:OperatorTest.xml)
@@ -400,9 +400,9 @@ target_link_libraries(RecommendationSystemTest
                         Converter
                         Graph
                         IR
+                        ExecutionContext
                         ExecutionEngine
                         Quantization
-                        Optimizer
                         Partitioner
                         gtest
                         TestMain)
@@ -414,10 +414,11 @@ if(GLOW_WITH_CPU)
   target_link_libraries(ProvisionerTest
                         PRIVATE
                           Backends
+                          ExecutionEngine
                           Graph
                           IR
                           Provisioner
-                          Optimizer
+                          GraphOptimizer
                           gtest
                           TestMain)
   add_glow_test(ProvisionerTest ${GLOW_BINARY_DIR}/tests/ProvisionerTest --gtest_output=xml:ProvisionerTest.xml)
@@ -432,7 +433,7 @@ target_link_libraries(QuantizationTest
                         Backends
                         ExecutionEngine
                         Graph
-                        Optimizer
+                        GraphOptimizer
                         Quantization
                         gtest
                         TestMain)
@@ -476,7 +477,7 @@ target_link_libraries(TraceEventsTest
                         Graph
                         IR
                         ExecutionEngine
-                        Optimizer
+                        GraphOptimizer
                         gtest
                         TestMain)
 add_glow_test(TraceEventsTest ${GLOW_BINARY_DIR}/tests/TraceEventsTest --gtest_output=xml:TraceEventsTest.xml)
@@ -489,7 +490,7 @@ target_link_libraries(TypeAToTypeBFunctionConverterTest
                         Converter
                         ExecutionEngine
                         Graph
-                        Optimizer
+                        GraphOptimizer
                         gtest
                         TestMain)
 add_glow_test(TypeAToTypeBFunctionConverterTest

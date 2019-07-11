@@ -13,8 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#ifndef GLOW_OPTIMIZER_COMPILATIONCONTEXT_H
-#define GLOW_OPTIMIZER_COMPILATIONCONTEXT_H
+#ifndef GLOW_OPTIMIZER_GRAPHOPTIMIZER_COMPILATIONCONTEXT_H
+#define GLOW_OPTIMIZER_GRAPHOPTIMIZER_COMPILATIONCONTEXT_H
 
 #include "glow/Backends/BackendOptions.h"
 #include "glow/Graph/PlaceholderBindings.h"
@@ -49,6 +49,12 @@ struct PrecisionConfiguration {
 
 using QuantizationMode = PrecisionConfiguration::QuantizationMode;
 
+/// Options relevant to optimizations during compilation.
+struct OptimizationOptions {
+  /// If true, perform compile-time computation of constant operations.
+  bool enableConstantFolding{true};
+};
+
 /// Context for compilation.
 struct CompilationContext {
   /// Used during Profiling.
@@ -66,6 +72,9 @@ struct CompilationContext {
 
   /// Options for the Backend to use.
   BackendOptions backendOpts;
+
+  /// Options for the optimizations to use.
+  OptimizationOptions optimizationOpts;
 
   /// Configuration for different precision modes.
   PrecisionConfiguration precisionConfig;
@@ -109,4 +118,4 @@ using CompilationMode = CompilationContext::CompilationMode;
 
 }; // namespace glow
 
-#endif // GLOW_OPTIMIZER_COMPILATIONCONTEXT_H
+#endif // GLOW_OPTIMIZER_GRAPHOPTIMIZER_COMPILATIONCONTEXT_H

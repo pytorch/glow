@@ -5,4 +5,4 @@ target_link_libraries(resnet-training
                         ExecutionEngine
                         Graph
                         Importer
-                        Optimizer)
+                        GraphOptimizer)

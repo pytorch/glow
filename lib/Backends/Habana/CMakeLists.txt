@@ -1,7 +1,8 @@
 add_library(Habana
             Habana.cpp
             HabanaDeviceManager.cpp
-            HabanaFactory.cpp)
+            HabanaFactory.cpp
+            HabanaUtils.cpp)
 
 target_include_directories(Habana
                            PUBLIC
@@ -17,7 +18,6 @@ target_link_libraries(Habana
                         CodeGen
                         IR
                         LLVMCore
-                        Optimizer
                         QuantizationBase
                         Support)
 

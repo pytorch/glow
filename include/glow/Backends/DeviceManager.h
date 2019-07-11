@@ -54,6 +54,9 @@ public:
   /// Create a device manager based on the device config \p config.
   static DeviceManager *createDeviceManager(const DeviceConfig &config);
 
+  /// Query the system for the number of devices of a specified kind.
+  static unsigned numDevices(llvm::StringRef backendName);
+
   /// Initialize the device.
   virtual llvm::Error init() { return llvm::Error::success(); }
 
@@ -89,6 +92,15 @@ public:
   /// \returns the name of backend that powers this Device.
   llvm::StringRef getBackendName() { return config_.backendName; }
 
+  /// \returns a string with \p name in parameters.
+  llvm::StringRef getParamByName(llvm::StringRef name) const {
+    auto it = config_.parameters.find(name);
+    if (it != config_.parameters.end()) {
+      return it->second;
+    }
+    return "";
+  }
+
   /// \returns the maximum memory (in bytes) available on the device.
   virtual uint64_t getMaximumMemory() const = 0;
 
@@ -102,6 +114,10 @@ public:
 
   /// \returns the DeviceConfig which initialized this device.
   const DeviceConfig &getDeviceConfig() { return config_; }
+
+  /// \returns the DeviceInfo for this device containing peak limits for
+  /// compute and bandwidths (used in partitioning).
+  virtual DeviceInfo getDeviceInfo() const { return DeviceInfo(); }
 };
 
 } // namespace runtime

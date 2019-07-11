@@ -51,9 +51,22 @@ bool InterpreterDeviceManager::isMemoryAvailable(uint64_t estimate) const {
   return maxMemoryBytes_ >= (usedMemoryBytes_ + estimate);
 }
 
+DeviceInfo InterpreterDeviceManager::getDeviceInfo() const {
+  // TODO: these may need to be tweaked depending on interpreter overheads.
+  DeviceInfo info = DeviceInfo();
+  info.sramCapacity = 256 * 1024 * 1024;
+  info.peakCompute = 2.2 * 1024 * 1024 * 1024 * 1024;
+  info.peakDramBw = 110.0 * 1024 * 1024 * 1024;
+  info.peakSramBw = 1024.0 * 1024 * 1024 * 1024;
+  info.peakPCIeBw = 16.0 * 1024 * 1024 * 1024;
+  return info;
+}
+
 void InterpreterDeviceManager::addNetworkImpl(const Module *module,
                                               FunctionMapTy functions,
                                               ReadyCBTy readyCB) {
+  DCHECK(readyCB != nullptr);
+
   // First check for uniqueness of the function name.
   for (const auto &func : functions) {
     if (functions_.count(func.first) != 0) {
@@ -99,6 +112,8 @@ void InterpreterDeviceManager::addNetworkImpl(const Module *module,
 
 void InterpreterDeviceManager::evictNetworkImpl(std::string functionName,
                                                 EvictFunctionCBTy evictCB) {
+  DCHECK(evictCB != nullptr);
+
   if (functions_.erase(functionName)) {
     usedMemoryBytes_ -= functionCost_; // TODO: static moduleSize
   } else {
@@ -114,6 +129,8 @@ void InterpreterDeviceManager::evictNetworkImpl(std::string functionName,
 void InterpreterDeviceManager::runFunctionImpl(
     RunIdentifierTy id, std::string function,
     std::unique_ptr<ExecutionContext> context, ResultCBTy resultCB) {
+  DCHECK(resultCB != nullptr);
+
   TRACE_EVENT_SCOPE_NAMED(context->getTraceContext(), TraceLevel::RUNTIME,
                           "DeviceManager::run", dmRun);
   auto funcIt = functions_.find(function);

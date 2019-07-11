@@ -24,6 +24,7 @@ namespace onnxifi {
 
 int32_t GlowNumDevices = 1;
 bool GlowDumpDebugTraces = false;
+bool GlowSaturateHost = false;
 
 static llvm::cl::opt<int32_t, true>
     GlowNumDevicesOpt("glow-num-devices",
@@ -34,6 +35,11 @@ static llvm::cl::opt<bool, true>
     GlowDumpDebugTracesOpt("glow-dump-debug-traces",
                            llvm::cl::desc("Dump a trace of each run to /tmp"),
                            llvm::cl::location(GlowDumpDebugTraces));
+
+static llvm::cl::opt<bool, true> GlowSaturateHostOpt(
+    "glow-saturate-host",
+    llvm::cl::desc("Try to use all available devices on the host"),
+    llvm::cl::location(GlowSaturateHost));
 
 std::unique_ptr<runtime::HostManager>
 HostManagerBackend::createHostManager(llvm::StringRef backendName) {
@@ -47,6 +53,8 @@ HostManagerBackend::createHostManager(llvm::StringRef backendName) {
 void HostManagerBackend::runNetwork(const Graph *graph,
                                     std::unique_ptr<ExecutionContext> context,
                                     runtime::ResultCBTy callback) {
+  DCHECK(callback != nullptr);
+
   auto hostManagerGraph = static_cast<const HostManagerGraph *>(graph);
   hostManager_->runNetwork(hostManagerGraph->getName(), std::move(context),
                            std::move(callback));
@@ -54,7 +62,8 @@ void HostManagerBackend::runNetwork(const Graph *graph,
 
 onnxStatus HostManagerBackend::addNetwork(std::unique_ptr<Module> module) {
   CompilationContext cctx;
-  auto err = hostManager_->addNetwork(std::move(module), cctx);
+  auto err =
+      hostManager_->addNetwork(std::move(module), cctx, GlowSaturateHost);
 
   if (errToBool(std::move(err))) {
     return ONNXIFI_STATUS_INTERNAL_ERROR;

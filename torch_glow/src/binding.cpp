@@ -17,6 +17,7 @@
 #include <pybind11/pybind11.h>
 
 #include <torch/csrc/jit/custom_operator.h>
+#include <torch/csrc/jit/operator_options.h>
 #include <torch/csrc/jit/pass_manager.h>
 #include <torch/csrc/jit/passes/graph_fuser.h>
 
@@ -27,17 +28,24 @@
 
 namespace py = pybind11;
 
+/// The PyTorch symbol used to identify the Node that contains PyTorch subgraphs
+/// that are compiled for running on Glow.
 static auto glowSymbol = at::Symbol::fromQualString("glow::CompilationGroup");
+
 /// Whether or not run the custom pass that fuses jit nodes into a glow node.
 static bool fusionPassEnabled = false;
 
+/// Manages a CachingGraphRunner singleton.
 CachingGraphRunner *getGraphRunner() {
   static auto runner_ =
       std::unique_ptr<CachingGraphRunner>(new CachingGraphRunner());
   return runner_.get();
 }
 
+/// Enable compiling PyTorch subgraphs to Glow Functions.
 void enableFusionPass() { fusionPassEnabled = true; }
+
+/// Disable compiling PyTorch subgraphs to Glow Functions.
 void disableFusionPass() { fusionPassEnabled = false; }
 
 /// Register the glow::CompilationGroup operator.
@@ -48,7 +56,6 @@ void registerGlowOp() {
   torch::jit::RegisterOperators op(
       {torch::jit::Operator(glowSymbol,
                             [](const torch::jit::Node *node) {
-                              getGraphRunner()->addGraph(node);
                               return [node](torch::jit::Stack &stack) {
                                 getGraphRunner()->runGraph(node, stack);
                                 return 0;
@@ -62,11 +69,13 @@ void registerGlowOp() {
 void registerPass() {
   torch::jit::RegisterPass pass([](std::shared_ptr<torch::jit::Graph> &g) {
     if (fusionPassEnabled) {
-      CustomFuseGraph(g, PyTorchModelLoader::isNodeSupported, glowSymbol);
+      torch::jit::CustomFuseGraph(g, PyTorchModelLoader::isNodeSupported,
+                                  glowSymbol);
     }
   });
 }
 
+/// The torch_glow pybind11 module.
 PYBIND11_MODULE(_torch_glow, m) {
   registerGlowOp();
   registerPass();

@@ -119,17 +119,18 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Src", "Filter"})
       .addGradientInstr({"Src", "Filter"}, {"Dest", "Src", "Filter", "Bias"});
 
-  // MaxPool version caching XY coordinates to speedup gradient-based
+  // MaxPool version caching Argmax flattened coordinates. It is both used by
+  // itself, and also to restore XY coordinates to speedup gradient-based
   // computations.
-  BB.newInstr("MaxPoolWithXY")
+  BB.newInstr("MaxPoolWithArgmax")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Src", OperandKind::In)
-      .addOperand("SrcXY", OperandKind::Out)
+      .addOperand("Argmax", OperandKind::Out)
       .addMember(MemberType::VectorUnsigned, "Kernels")
       .addMember(MemberType::VectorUnsigned, "Strides")
       .addMember(MemberType::VectorUnsigned, "Pads")
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
-      .addGradientInstr({"Dest", "SrcXY"}, {"Dest", "Src"});
+      .addGradientInstr({"Dest", "Argmax"}, {"Dest", "Src"});
 
   BB.newInstr("MaxPool")
       .addOperand("Dest", OperandKind::Out)
@@ -279,7 +280,7 @@ int main(int argc, char **argv) {
       .addOperand("Lengths", OperandKind::In)
       .autoIRGen()
       .autoVerify(VerifyKind::SameElementType, {"Dest", "ElemKind::FloatTy"})
-      .autoVerify(VerifyKind::SameElementType, {"Data", "ElemKind::Int8QTy"})
+      .autoVerify(VerifyKind::SameElementType, {"Data", "ElemKind::UInt8QTy"})
       .autoVerify(VerifyKind::SameElementType, {"Scales", "ElemKind::FloatTy"})
       .autoVerify(VerifyKind::SameElementType, {"Offsets", "ElemKind::FloatTy"})
       .autoVerify(VerifyKind::SameElementType, {"Weights", "ElemKind::FloatTy"})
@@ -455,6 +456,17 @@ int main(int argc, char **argv) {
       .dataParallel()
       .autoVerify(VerifyKind::SameType, {"Dest", "Src"})
       .autoIRGen("Log");
+
+  BB.newInstr("ElementExp")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .inplaceOperand({
+          "Dest",
+          "Src",
+      })
+      .dataParallel()
+      .autoVerify(VerifyKind::SameType, {"Dest", "Src"})
+      .autoIRGen("Exp");
 
   BB.newInstr("ElementSelect")
       .addOperand("Dest", OperandKind::Out)

@@ -52,10 +52,9 @@ public:
   /// @name High-level, operation-level IRBuilder.
   ///@{
 
-  MaxPoolWithXYInst *createMaxPoolWithXYOp(llvm::StringRef name, Value *input,
-                                           llvm::ArrayRef<unsigned_t> kernels,
-                                           llvm::ArrayRef<unsigned_t> strides,
-                                           llvm::ArrayRef<unsigned_t> pads);
+  MaxPoolWithArgmaxInst *createMaxPoolWithArgmaxOp(
+      llvm::StringRef name, Value *input, llvm::ArrayRef<unsigned_t> kernels,
+      llvm::ArrayRef<unsigned_t> strides, llvm::ArrayRef<unsigned_t> pads);
 
   AvgPoolInst *createAvgPoolOp(Value *input, llvm::ArrayRef<unsigned_t> kernels,
                                llvm::ArrayRef<unsigned_t> strides,

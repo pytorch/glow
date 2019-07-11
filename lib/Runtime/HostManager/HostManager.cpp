@@ -17,7 +17,7 @@
 #include "glow/Runtime/HostManager/HostManager.h"
 #include "glow/Backends/DeviceManager.h"
 #include "glow/Graph/PlaceholderBindings.h"
-#include "glow/Optimizer/Optimizer.h"
+#include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
 #include "glow/Partitioner/Partitioner.h"
 #include "glow/Runtime/Executor/ThreadPoolExecutor.h"
 #include "glow/Runtime/Provisioner/Provisioner.h"
@@ -87,9 +87,11 @@ llvm::Error HostManager::addNetwork(std::unique_ptr<Module> module,
   }
   std::vector<DeviceInfo> deviceInfo;
   for (auto &device : devices_) {
-    DeviceInfo info = DeviceInfo();
+    DeviceInfo info = device.second->getDeviceInfo();
     info.availableMemory = device.second->getAvailableMemory();
     info.backendName = device.second->getBackendName();
+    info.nonSupportedNodes = device.second->getParamByName("nonSupportedNodes");
+    info.supportedNodes = device.second->getParamByName("supportedNodes");
     deviceInfo.push_back(info);
   }
   // Perform a round of target-independent graph optimizations. This helps the
@@ -230,6 +232,8 @@ RunIdentifierTy
 HostManager::runNetwork(llvm::StringRef networkName,
                         std::unique_ptr<ExecutionContext> context,
                         ResultCBTy callback) {
+  DCHECK(callback != nullptr);
+
   TRACE_EVENT_SCOPE(context->getTraceContext(), TraceLevel::RUNTIME,
                     "HostManager::runNetwork");
   auto currentRun = totalRequestCount_++;

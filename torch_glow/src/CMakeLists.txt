@@ -1,4 +1,3 @@
-# PYTORCH_DIR
 if(DEFINED ENV{PYTORCH_DIR})
   SET(PYTORCH_DIR $ENV{PYTORCH_DIR})
   message(STATUS "Using PYTORCH_DIR from env")
@@ -20,20 +19,16 @@ pybind11_add_module(_torch_glow
 target_compile_options(_torch_glow PRIVATE -frtti -fexceptions)
 target_link_libraries(_torch_glow
                       PRIVATE
-                        # pytorch
                         torch
-                        caffe2
                         c10
-                        # glow
                         Support
                         ExecutionEngine
                         Graph
                         Importer
-                        Interpreter
+                        Support
                         Backends
-                        # pybind
                         pybind11)
-                     
+
 target_include_directories(_torch_glow PUBLIC
                             ${PYTORCH_DIR}/include
 )

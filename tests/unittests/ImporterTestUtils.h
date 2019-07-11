@@ -13,6 +13,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#ifndef GLOW_TESTS_IMPORTERTESTUTILS_H
+#define GLOW_TESTS_IMPORTERTESTUTILS_H
+
 #include "glow/Base/Tensor.h"
 #include "glow/Graph/Graph.h"
 
@@ -59,3 +62,5 @@ SaveNode *getSaveNodeFromDest(Storage *var) {
 }
 
 } // namespace glow
+
+#endif // GLOW_TESTS_IMPORTERTESTUTILS_H

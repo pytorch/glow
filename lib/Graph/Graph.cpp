@@ -38,17 +38,109 @@ using llvm::isa;
 
 namespace {
 /// A helper function to log the deletion of constant/placeholder \p s of a
-/// module.
-void loggingStorageDeletionInUserFunc(Storage *s) {
-  std::unordered_set<Function *> userFuncs;
-  for (auto &use : s->getUsers()) {
-    userFuncs.insert(use.getUser()->getParent());
+/// module into the log context of given functions \p functions.
+/// Note: The reason we don't log the deletion of constants in the function that
+/// ueses or creates it, is that constants/placeholders do not have a function
+/// parent (we can't utilize its user's function also because its users might be
+/// removed) such that it's best to log the constants/placeholders in a Module
+/// level log context and copy over to its all functions.
+void logStorageDeletion(std::list<Function *> functions, Storage *s) {
+  for (auto *F : functions) {
+    F->getLogContext()->logNodeDeletion(*s);
   }
-  for (auto *F : userFuncs) {
-    F->getLogContext().logNodeDeletion(*s);
+  if (functions.size() > 0) {
+    auto *F = *(functions.begin());
+    F->getLogContext()->logNodeDeletion(*s, /* logIntoModule */ true);
+  }
+}
+
+/// A helper function to log the creation of constant/placeholder \p s of a
+/// module into the log context of given functions \p functions.
+/// Same note as for logStorageDeletion().
+void logStorageCreation(std::list<Function *> functions, Storage *s) {
+  for (auto *F : functions) {
+    F->getLogContext()->logNodeCreation(*s);
+  }
+  if (functions.size() > 0) {
+    auto *F = *(functions.begin());
+    F->getLogContext()->logNodeCreation(*s, /* logIntoModule */ true);
   }
 }
 } // namespace
+
+/// Merge shape \p shape into \p mergeShape, following multidirectional
+/// broadcasting rules.
+static void
+mergeMultidirectionalBroadcastHelper(std::vector<size_t> &mergeShape,
+                                     llvm::ArrayRef<size_t> shape) {
+  size_t shift = mergeShape.size() - shape.size();
+  for (size_t i = 0, e = shape.size(); i < e; i++) {
+    if (shape[i] == 1) {
+      // Just leave mergeShape[i] as it is.
+      continue;
+    }
+
+    assert(
+        ((shape[i] == mergeShape[shift + i]) || (mergeShape[shift + i] == 1)) &&
+        "Incompatible dimension for the broadcast");
+    mergeShape[shift + i] = shape[i];
+  }
+}
+
+/// Utility function which computes the resulting shape in case of
+/// multidirectional broadcasting.
+static std::vector<size_t>
+computeMultidirectionalBroadcastHelper(llvm::ArrayRef<size_t> shape0,
+                                       llvm::ArrayRef<size_t> shape1) {
+  size_t numDims0 = shape0.size();
+  size_t numDims1 = shape1.size();
+  size_t newNumDims = std::max(numDims0, numDims1);
+  std::vector<size_t> reshapeDims(newNumDims, 1);
+
+  mergeMultidirectionalBroadcastHelper(reshapeDims, shape0);
+  mergeMultidirectionalBroadcastHelper(reshapeDims, shape1);
+
+  return reshapeDims;
+}
+
+std::vector<NodeValue>
+Function::broadcastInputs(int axis, const llvm::ArrayRef<NodeValue> inputs) {
+  size_t numInputs = inputs.size();
+
+  if (axis > -1) {
+    assert(
+        numInputs == 2 &&
+        "If axis is specified, not -1, unidirectional broadcast will be used, "
+        "input size must be 2.");
+    return {inputs[0],
+            createBroadcast("broadcast_" + inputs[1].getNode()->getName().str(),
+                            inputs[1], inputs[0].dims(), axis)};
+  }
+
+  assert(numInputs >= 2 && "Invalid input passed in to commonCreateBroadcast.");
+
+  std::vector<size_t> targetDim = computeMultidirectionalBroadcastHelper(
+      inputs[0].dims(), inputs[1].dims());
+
+  for (size_t i = 2; i < numInputs; ++i) {
+    targetDim =
+        computeMultidirectionalBroadcastHelper(targetDim, inputs[i].dims());
+  }
+
+  std::vector<NodeValue> out(numInputs);
+  for (size_t i = 0; i < numInputs; ++i) {
+    NodeValue n = inputs[i];
+    auto dims = n.dims();
+    if (dims != llvm::ArrayRef<size_t>(targetDim)) {
+      unsigned axis = targetDim.size() - dims.size();
+      out[i] = createBroadcast("broadcast_" + n.getNode()->getName().str(), n,
+                               targetDim, axis);
+    } else {
+      out[i] = inputs[i];
+    }
+  }
+  return out;
+}
 
 bool Module::hasFunction(llvm::StringRef name) { return getFunction(name); }
 
@@ -78,7 +170,7 @@ void Module::strip() {
 void Module::clear() {
   for (auto it = constants_.begin(), e = constants_.end(); it != e; it++) {
     Constant *v = *it;
-    loggingStorageDeletionInUserFunc(v);
+    logStorageDeletion(functions_, v);
     delete v;
   }
 
@@ -87,7 +179,7 @@ void Module::clear() {
   for (auto it = placeholders_.begin(), e = placeholders_.end(); it != e;
        it++) {
     Placeholder *p = *it;
-    loggingStorageDeletionInUserFunc(p);
+    logStorageDeletion(functions_, p);
     delete p;
   }
 
@@ -230,6 +322,8 @@ protected:
 
 public:
   void dumpAll(std::ostream &os) {
+    CHECK(os) << "Failed to create file for to dump Graph";
+
     os << "digraph DAG {\n\trankdir=TB;\n";
 
     // Dump vertices:
@@ -343,7 +437,7 @@ Function::~Function() {
     auto cur = it++;
     eraseNode(&*cur);
   }
-  logCtx_.dumpLog(getName());
+  logCtx_->dumpLog(getName());
 }
 
 TypeRef Module::uniqueType(ElemKind elemTy, llvm::ArrayRef<size_t> dims) {
@@ -471,12 +565,14 @@ Constant *Module::addConstant(Constant *V) {
   // Module to maintain the invariant that each type in the Module is unique.
   V->setType(Constant::ResultIndices::OutputIdx, uniqueType(*V->getType()));
   constants_.push_back(V);
+  logStorageCreation(functions_, V);
   return V;
 }
 
 Placeholder *Module::addPlaceholder(Placeholder *ph) {
   ph->setName(uniqueName(ph->getName(), uniqueVariableNames_));
   placeholders_.push_back(ph);
+  logStorageCreation(functions_, ph);
   return ph;
 }
 
@@ -635,8 +731,10 @@ MaxPoolNode *Function::createMaxPool(llvm::StringRef name, NodeValue input,
       calculateConvPoolOutputDims(idim.h, idim.w, kernels, strides, pads);
   auto OT = getParent()->uniqueTypeWithNewShape(
       input.getType(), {idim.n, outSz.first, outSz.second, idim.c});
+  auto AMT = getParent()->uniqueType(
+      ElemKind::Int64ITy, {idim.n, outSz.first, outSz.second, idim.c});
 
-  return addNode(new MaxPoolNode(name, OT, input, kernels, strides, pads));
+  return addNode(new MaxPoolNode(name, OT, AMT, input, kernels, strides, pads));
 }
 
 MaxPoolNode *Function::createMaxPool(llvm::StringRef name, NodeValue input,
@@ -750,7 +848,7 @@ Function::createRowwiseQuantizedFullyConnected(llvm::StringRef name,
   }
 
   // Note: Using int32_t offset here as that is what RWQ-FC expects.
-  quantization::tensorRowwiseQuantization<int32_t>(
+  quantization::tensorRowwiseQuantization<int32_t, int8_t>(
       wt, qWeights->getPayloadMutable(), scales->getPayloadMutable(),
       offsets->getPayloadMutable(), schema);
 
@@ -1225,6 +1323,10 @@ LogNode *Function::createLog(llvm::StringRef name, NodeValue input,
   return addNode(new LogNode(name, outTy ? outTy : input.getType(), input));
 }
 
+ExpNode *Function::createExp(llvm::StringRef name, NodeValue input) {
+  return addNode(new ExpNode(name, input.getType(), input));
+}
+
 Node *Function::createLogit(llvm::StringRef name, NodeValue input, float eps) {
   assert(eps > 0.0f && "Clamping parameter eps must be strictly positive.");
   assert(eps < 0.5f && "Clamping parameter eps must be less than 0.5.");
@@ -1457,15 +1559,15 @@ quantizeDataAndCreateRowwiseQuantizedSparseLengthsWeightedSum(
   // Note: In rwqData, we are using a quantized type, however the scale/offset
   // are set to dummy values 0.0/0. This is because the actually used
   // scale/offset come from dataScales and dataOffsets.
-  Constant *rwqData =
-      F->getParent()->createConstant(ElemKind::Int8QTy, inDims, 0.0, 0, "data");
+  Constant *rwqData = F->getParent()->createConstant(ElemKind::UInt8QTy, inDims,
+                                                     0.0, 0, "data");
   Constant *dataScales = F->getParent()->createConstant(
       ElemKind::FloatTy, {inDims[0]}, "dataScales");
   Constant *dataOffsets = F->getParent()->createConstant(
       ElemKind::FloatTy, {inDims[0]}, "dataOffsets");
 
   // Note: Using float offset here as that is what RWQ-SLWS expects.
-  quantization::tensorRowwiseQuantization<float>(
+  quantization::tensorRowwiseQuantization<float, uint8_t>(
       data, rwqData->getPayloadMutable(), dataScales->getPayloadMutable(),
       dataOffsets->getPayloadMutable(), schema);
   return F->createRowwiseQuantizedSparseLengthsWeightedSum(
@@ -2714,14 +2816,24 @@ Node *Function::getNodeByName(llvm::StringRef name) {
 void Module::eraseConstant(ConstList::iterator I) {
   if (I == constants_.end())
     return;
-  loggingStorageDeletionInUserFunc(*I);
+  logStorageDeletion(functions_, *I);
   delete *I;
   constants_.erase(I);
 }
 
+void Module::erasePlaceholder(PlaceholderList::iterator I) {
+  if (I == placeholders_.end()) {
+    return;
+  }
+
+  logStorageDeletion(functions_, *I);
+  delete *I;
+  placeholders_.erase(I);
+}
+
 void Function::eraseNode(NodesList::iterator I) {
   // Log node deletion.
-  logCtx_.logNodeDeletion(*I);
+  logCtx_->logNodeDeletion(*I);
 
   nodes_.erase(I);
 }
@@ -3052,6 +3164,26 @@ SaveNode *glow::getOutputSave(Function *F, Placeholder *PH) {
     }
   }
   return nullptr;
+}
+
+Node *glow::recursiveClone(Function *newF, Node *node, NodeMap &currToNew) {
+  Node *copy = node->clone();
+  currToNew[node] = copy;
+  newF->addNode(copy);
+  for (unsigned inp = 0, e = copy->getNumInputs(); inp < e; inp++) {
+    auto input = copy->getNthInput(inp);
+    auto it = currToNew.find(input.getNode());
+    Node *newInput;
+    if (it != currToNew.end()) {
+      newInput = it->second;
+    } else if (llvm::isa<Storage>(input.getNode())) {
+      continue;
+    } else {
+      newInput = recursiveClone(newF, input.getNode(), currToNew);
+    }
+    copy->setNthInput(inp, NodeValue(newInput, input.getResNo()));
+  }
+  return copy;
 }
 
 namespace glow {

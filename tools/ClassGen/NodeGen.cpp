@@ -125,10 +125,13 @@ int main(int argc, char **argv) {
       .addMember(MemberType::VectorUnsigned, "Kernels")
       .addMember(MemberType::VectorUnsigned, "Strides")
       .addMember(MemberType::VectorUnsigned, "Pads")
-      .addResultFromCtorArg()
+      .addResultFromCtorArg("Result")
+      .addResultFromCtorArg("Argmax")
       .addGradient()
-      .setDocstring("Performs a Max Pool operation on the Input given provided "
-                    "Kernels, Strides, and Pads.");
+      .setDocstring(
+          "Performs a Max Pool with Argmax operation on the Input "
+          "given provided Kernels, Strides, and Pads. Argmax is a flattened "
+          "NHWC index corresponding to respective max element.");
 
   BB.newNode("AvgPool")
       .addInput("Input")
@@ -309,6 +312,11 @@ int main(int argc, char **argv) {
       .addInput("Input")
       .addResultFromCtorArg()
       .setDocstring("Performs element-wise natural log to the Input.");
+
+  BB.newNode("Exp")
+      .addInput("Input")
+      .addResultFromCtorArg()
+      .setDocstring("Performs element-wise exponential to the Input.");
   // clang-format on
 
   BB.newNode("Select")

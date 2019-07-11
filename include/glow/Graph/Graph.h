@@ -44,6 +44,17 @@ using FunctionList = std::list<Function *>;
 using ConstList = std::list<Constant *>;
 using PlaceholderList = std::list<Placeholder *>;
 using UnsignedArrayRef = llvm::ArrayRef<size_t>;
+/// Map from original Nodes to cloned Nodes.
+using NodeMap = llvm::DenseMap<Node *, Node *>;
+/// State of a function. This can be used to control optimizations which depend
+/// on the state of the Function. This is a temporary workaround until GH Issue
+/// #3213 is complete.
+enum class FunctionState {
+  /// Indicates that the function has been created but not completely loaded.
+  FuncCreated,
+  /// Indicates that the function has been completely loaded.
+  FuncLoaded,
+};
 
 class Module final {
   /// Stores the functions in the module.
@@ -60,6 +71,9 @@ class Module final {
   PlaceholderList placeholders_;
   /// Deterministic PRNG used to initialize weights in this module.
   PseudoRNG PRNG_;
+
+  /// Module log context that stores all logs related to this module.
+  ModuleLogContext moduleLogCtx_;
 
 public:
   Module() = default;
@@ -111,6 +125,11 @@ public:
 
   /// Erase the constant \p I from the Module.
   void eraseConstant(ConstList::iterator I);
+
+  /// Erase the placeholder \p I from the Module.
+  /// Note: we only provide an iterator version of this, as erasing Placeholders
+  /// is often unsafe.
+  void erasePlaceholder(PlaceholderList::iterator I);
 
   /// \returns a pointer to the first variable with the name \p name or nullptr
   /// if no node has this name.
@@ -199,6 +218,9 @@ public:
   /// \Returns the size in bytes of data used by constants.
   uint64_t getConstantsSize();
 
+  /// \Returns the module log context.
+  ModuleLogContext &getModuleLogContext() { return moduleLogCtx_; };
+
   // Don't copy or move this class around.
   // The destructor will wipe the functions leaving
   // the original Module only dangling pointers.
@@ -224,16 +246,31 @@ class Function final : public Named {
   Module *parent_;
 
   /// The log context associated with this function.
-  LogContext logCtx_;
+  std::shared_ptr<LogContext> logCtx_;
+
+  /// The state of this function.
+  FunctionState state_;
 
 public:
   Function(Module *parent, llvm::StringRef Name = {})
-      : Named(Name), parent_(parent) {}
+      : Named(Name), parent_(parent), state_(FunctionState::FuncCreated) {
+    logCtx_ = std::make_shared<LogContext>();
+    logCtx_->setParent(this);
+    logCtx_->loadModuleLogContext();
+  }
 
   ~Function();
 
+  /// Sets the state of the function.
+  void setState(FunctionState state) { state_ = state; }
+
+  /// Gets the state of the function.
+  FunctionState getState() { return state_; }
+
+  std::string getFilename() { return getName().rsplit('/').second.str(); }
+
   /// Return the log context.
-  LogContext &getLogContext() { return logCtx_; }
+  std::shared_ptr<LogContext> getLogContext() { return logCtx_; }
 
   /// Add placeholder for metadata such as profiling.
   void addMetadataPlaceholder(Placeholder *PH) {
@@ -274,7 +311,7 @@ public:
     nodes_.push_back(N);
 
     // Log the node creation.
-    logCtx_.logNodeCreation(N);
+    logCtx_->logNodeCreation(*N);
 
     return N;
   }
@@ -478,6 +515,10 @@ public:
   /// Result type will be implicitly set based on the \p input type.
   TanhNode *createTanh(llvm::StringRef name, NodeValue input);
 
+  /// Create an Exp  node with \p name, which calculates element-wise
+  /// exponential of \p input.
+  ExpNode *createExp(llvm::StringRef name, NodeValue input);
+
   /// Create a Log node with \p name, which calculates element-wise natural log
   /// of \p input, with output type \p outTy.
   LogNode *createLog(llvm::StringRef name, NodeValue input,
@@ -626,6 +667,35 @@ public:
   ARITHMETIC_FUN_DECL(CmpEQ);
   ARITHMETIC_FUN_DECL(Pow);
 #undef ARITHMETIC_FUN_DECL
+
+  std::vector<NodeValue>
+  broadcastInputs(int axis, const llvm::ArrayRef<NodeValue> inputs);
+
+  template <class T, class U>
+  using enable_if_same_t = std::enable_if<std::is_same<T, U>::value, U>;
+
+#define DECLARE_BROADCAST_NODE(NODE_NAME, NUM_INPUTS)                          \
+  template <class T, class... Args>                                            \
+  typename enable_if_same_t<T, NODE_NAME##Node>::type *                        \
+  createNodeWithBroadcast(const std::string &name, int axis,                   \
+                          Args &&... inputArgs) {                              \
+    constexpr size_t numInputs = sizeof...(Args);                              \
+    static_assert(numInputs == NUM_INPUTS,                                     \
+                  "Invalid input passed in to createNodeWithBroadcast.");      \
+    std::vector<NodeValue> inputs = broadcastInputs(axis, {inputArgs...});     \
+    return create##NODE_NAME(name, inputs[0].getType(), inputs[0], inputs[1]); \
+  }
+
+  /// Template function that creates a node and normalizes its input shapes
+  /// with the use of BroadCast nodes. If axis is -1, it calculates it
+  /// automatically.
+  DECLARE_BROADCAST_NODE(Mul, /* NUM_INPUTS */ 2)
+  DECLARE_BROADCAST_NODE(Div, /* NUM_INPUTS */ 2)
+  DECLARE_BROADCAST_NODE(Add, /* NUM_INPUTS */ 2)
+  DECLARE_BROADCAST_NODE(Sub, /* NUM_INPUTS */ 2)
+
+#undef DECLARE_BROADCAST_NODE
+#undef BROADCAST_FUNC_COMMON_CODE
 
   /// Create a node that produces an boolean output of the same shape as
   /// \p input in which each element indicates whether or not the corresponding
@@ -1162,6 +1232,10 @@ Function *differentiate(Function *F, const TrainingConfig &config,
 /// \returns the first SaveNode user of the placeholder \p PH or
 /// nullptr if none are found.
 SaveNode *getOutputSave(Function *F, Placeholder *PH);
+
+/// Clone \p node and its sources into \p newF using old-to-new mapping \p
+/// currToNew.
+Node *recursiveClone(Function *newF, Node *node, NodeMap &currToNew);
 
 /// Helper vectors for common transpose shuffles.
 #define NCHW2NHWC                                                              \

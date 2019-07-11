@@ -22,6 +22,7 @@
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/Nodes.h"
 #include "glow/IR/IR.h"
+#include "glow/Optimizer/IROptimizer/IROptimizer.h"
 
 using namespace glow;
 
@@ -73,17 +74,27 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::MulNodeKind:
   case Kinded::Kind::MaxNodeKind:
   case Kinded::Kind::MinNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind(
+        {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy,
+         ElemKind::Int32ITy, ElemKind::Int64ITy});
+
   case Kinded::Kind::AvgPoolNodeKind:
-  case Kinded::Kind::MaxPoolNodeKind:
   case Kinded::Kind::MatMulNodeKind:
   case Kinded::Kind::BatchedReduceAddNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy});
 
+  case Kinded::Kind::MaxPoolNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind(
+               {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy}, {},
+               {MaxPoolNode::ArgmaxIdx}) &&
+           (NI.getOutElemTy(MaxPoolNode::ArgmaxIdx) == ElemKind::Int64ITy);
+
   case Kinded::Kind::PowNodeKind:
   case Kinded::Kind::LocalResponseNormalizationNodeKind:
   case Kinded::Kind::LogNodeKind:
   case Kinded::Kind::TanhNodeKind:
+  case Kinded::Kind::ExpNodeKind:
   case Kinded::Kind::SigmoidNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Float16Ty});
@@ -226,7 +237,7 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::RowwiseQuantizedSparseLengthsWeightedSumNodeKind:
     return (NI.getInElemTy(
                 RowwiseQuantizedSparseLengthsWeightedSumNode::DataIdx) ==
-            ElemKind::Int8QTy) &&
+            ElemKind::UInt8QTy) &&
            (NI.getInElemTy(
                 RowwiseQuantizedSparseLengthsWeightedSumNode::ScalesIdx) ==
             ElemKind::FloatTy) &&
@@ -280,9 +291,19 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
 
   case Kinded::Kind::QuantizationProfileNodeKind:
   case Kinded::Kind::AvgPoolGradNodeKind:
-  case Kinded::Kind::MaxPoolGradNodeKind:
   case Kinded::Kind::LocalResponseNormalizationGradNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind({ElemKind::FloatTy});
+
+  case Kinded::Kind::MaxPoolGradNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind(
+               {ElemKind::FloatTy},
+               {MaxPoolGradNode::OriginalOutputForArgmaxIdx,
+                MaxPoolGradNode::GradOfOriginalOutputNamedArgmaxIdx}) &&
+           (NI.getInElemTy(MaxPoolGradNode::OriginalOutputForArgmaxIdx) ==
+            ElemKind::Int64ITy) &&
+           (NI.getInElemTy(
+                MaxPoolGradNode::GradOfOriginalOutputNamedArgmaxIdx) ==
+            ElemKind::Int64ITy);
 
   case Kinded::Kind::QuantizeNodeKind:
     return ((NI.getInElemTy(QuantizeNode::InputIdx) == ElemKind::FloatTy) ||
@@ -306,16 +327,21 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::IntLookupTableNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind({ElemKind::Int8QTy});
 
-  case Kinded::Kind::ConvertToNodeKind:
-    return ((NI.getInElemTy(ConvertToNode::InputIdx) == ElemKind::FloatTy) &&
-            ((NI.getOutElemTy(ConvertToNode::ResultIdx) ==
-              ElemKind::Float16Ty) ||
-             (NI.getOutElemTy(ConvertToNode::ResultIdx) ==
-              ElemKind::Int64ITy))) ||
-           ((NI.getInElemTy(ConvertToNode::InputIdx) == ElemKind::Float16Ty) &&
-            (NI.getOutElemTy(ConvertToNode::ResultIdx) == ElemKind::FloatTy)) ||
-           ((NI.getInElemTy(ConvertToNode::InputIdx) == ElemKind::Int64ITy) &&
-            (NI.getOutElemTy(ConvertToNode::ResultIdx) == ElemKind::FloatTy));
+  case Kinded::Kind::ConvertToNodeKind: {
+    auto isConversionSupportedFor = [](ElemKind kind) {
+      switch (kind) {
+      case ElemKind::Float16Ty:
+      case ElemKind::FloatTy:
+      case ElemKind::Int32ITy:
+      case ElemKind::Int64ITy:
+        return true;
+      default:
+        return false;
+      }
+    };
+    return isConversionSupportedFor(NI.getInElemTy(ConvertToNode::InputIdx)) &&
+           isConversionSupportedFor(NI.getOutElemTy(ConvertToNode::ResultIdx));
+  }
 
   case Kinded::Kind::TopKNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(

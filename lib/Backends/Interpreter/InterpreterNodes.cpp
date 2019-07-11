@@ -52,6 +52,24 @@ using namespace glow;
     llvm_unreachable("Type is not supported");                                 \
   }
 
+#define dispatchArithmeticImpl(functionName, elemTy, ...)                      \
+  switch (elemTy) {                                                            \
+  case ElemKind::FloatTy:                                                      \
+    functionName<float>(__VA_ARGS__);                                          \
+    break;                                                                     \
+  case ElemKind::Float16Ty:                                                    \
+    functionName<float16_t>(__VA_ARGS__);                                      \
+    break;                                                                     \
+  case ElemKind::Int32ITy:                                                     \
+    functionName<int32_t>(__VA_ARGS__);                                        \
+    break;                                                                     \
+  case ElemKind::Int64ITy:                                                     \
+    functionName<int64_t>(__VA_ARGS__);                                        \
+    break;                                                                     \
+  default:                                                                     \
+    llvm_unreachable("Type is not supported");                                 \
+  }
+
 #define dispatchQuantizedImpl(functionName, elemTy, ...)                       \
   switch (elemTy) {                                                            \
   case ElemKind::Int8QTy:                                                      \
@@ -85,6 +103,13 @@ using namespace glow;
           std::is_same<float16_t,                                              \
                        typename std::remove_cv<ElemTy>::type>::value,          \
       "This implementation is for floating-point values only")
+
+#define staticAssertArithmeticType(ElemTy)                                     \
+  static_assert(                                                               \
+      std::is_arithmetic<ElemTy>::value ||                                     \
+          std::is_same<float16_t,                                              \
+                       typename std::remove_cv<ElemTy>::type>::value,          \
+      "This implementation is for arithmetic values only")
 
 //===----------------------------------------------------------------------===//
 //                       Convolution
@@ -662,7 +687,7 @@ void BoundInterpreterFunction::fwdChannelwiseQuantizedConvolutionInst(
 //                       Pooling
 //===----------------------------------------------------------------------===//
 template <class T>
-static void fwdMaxPool(Tensor *inW, Tensor *outW, Handle<int64_t> *SXY,
+static void fwdMaxPool(Tensor *inW, Tensor *outW, Tensor *argmaxW,
                        llvm::ArrayRef<unsigned_t> kernelSizes,
                        llvm::ArrayRef<unsigned_t> strides,
                        llvm::ArrayRef<unsigned_t> pads) {
@@ -674,6 +699,10 @@ static void fwdMaxPool(Tensor *inW, Tensor *outW, Handle<int64_t> *SXY,
   ShapeHW kdim(kernelSizes);
   ShapeHW sdim(strides);
 
+  llvm::Optional<Handle<int64_t>> argmaxH;
+  if (argmaxW) {
+    argmaxH = argmaxW->getHandle<int64_t>();
+  }
   // For each input in the batch:
   for (size_t n = 0; n < odim.n; n++) {
 
@@ -684,11 +713,10 @@ static void fwdMaxPool(Tensor *inW, Tensor *outW, Handle<int64_t> *SXY,
       for (size_t ax = 0; ax < odim.h; x += sdim.height, ax++) {
         ssize_t y = -ssize_t(pdim.left);
         for (size_t ay = 0; ay < odim.w; y += sdim.width, ay++) {
-          size_t maxX = x;
-          size_t maxY = y;
 
           bool first = true;
           T max_value = 0;
+          int64_t argmaxNHWC = 0;
 
           for (size_t fx = 0; fx < kdim.height; fx++) {
             for (size_t fy = 0; fy < kdim.width; fy++) {
@@ -705,17 +733,18 @@ static void fwdMaxPool(Tensor *inW, Tensor *outW, Handle<int64_t> *SXY,
               if (first || (val >= max_value)) {
                 first = false;
                 max_value = val;
-                maxX = ox;
-                maxY = oy;
+                if (argmaxW) {
+                  argmaxNHWC = &inHandle.at({n, (size_t)ox, (size_t)oy, z}) -
+                               &inHandle.raw(0);
+                }
               }
             }
           }
 
           outHandle.at({n, ax, ay, z}) = max_value;
 
-          if (SXY) {
-            SXY->at({n, ax, ay, z, 0}) = maxX;
-            SXY->at({n, ax, ay, z, 1}) = maxY;
+          if (argmaxW) {
+            (*argmaxH).at({n, ax, ay, z}) = argmaxNHWC;
           }
         } // W
       }   // H
@@ -739,20 +768,20 @@ void BoundInterpreterFunction::fwdMaxPoolInst(const MaxPoolInst *I) {
                             I->getPads());
 }
 
-void BoundInterpreterFunction::fwdMaxPoolWithXYInst(
-    const MaxPoolWithXYInst *I) {
+void BoundInterpreterFunction::fwdMaxPoolWithArgmaxInst(
+    const MaxPoolWithArgmaxInst *I) {
   auto inW = getTensor(I->getSrc());
   auto outW = getTensor(I->getDest());
-  auto SXY = getWeightHandle<int64_t>(I->getSrcXY());
+  auto argmaxW = getTensor(I->getArgmax());
 
   if (inW->getType().isQuantizedType()) {
     dispatchQuantizedImpl(fwdMaxPool, inW->getType().getElementType(), inW,
-                          outW, nullptr, I->getKernels(), I->getStrides(),
+                          outW, argmaxW, I->getKernels(), I->getStrides(),
                           I->getPads());
     return;
   }
   dispatchFloatingPointImpl(fwdMaxPool, inW->getType().getElementType(), inW,
-                            outW, &SXY, I->getKernels(), I->getStrides(),
+                            outW, argmaxW, I->getKernels(), I->getStrides(),
                             I->getPads());
 }
 
@@ -868,17 +897,18 @@ void BoundInterpreterFunction::fwdAvgPoolInst(const AvgPoolInst *I) {
                             I->getSrc()->getElementType(), I);
 }
 
-void BoundInterpreterFunction::fwdMaxPoolWithXYGradInst(
-    const MaxPoolWithXYGradInst *I) {
+void BoundInterpreterFunction::fwdMaxPoolWithArgmaxGradInst(
+    const MaxPoolWithArgmaxGradInst *I) {
   auto inG = getWeightHandle(I->getSrcGrad());
   auto outW = getWeightHandle(I->getDest());
   auto outG = getWeightHandle(I->getDestGrad());
 
   inG.clear();
 
+  ShapeNHWC idim(inG.dims());
   ShapeNHWC odim(outW.dims());
 
-  auto SXY = getWeightHandle<int64_t>(I->getSrcXY());
+  auto argmax = getWeightHandle<int64_t>(I->getArgmax());
 
   // For each input in the batch:
   for (size_t n = 0; n < odim.n; n++) {
@@ -889,13 +919,9 @@ void BoundInterpreterFunction::fwdMaxPoolWithXYGradInst(
       // For each convolution 'jump' in the input tensor:
       for (size_t ax = 0; ax < odim.h; ax++) {
         for (size_t ay = 0; ay < odim.w; ay++) {
-
+          // Reuse precomputed linear index of max element from argmax.
           float chainGrad = outG.at({n, ax, ay, z});
-
-          size_t maxX = SXY.at({n, ax, ay, z, 0});
-          size_t maxY = SXY.at({n, ax, ay, z, 1});
-
-          inG.at({n, maxX, maxY, z}) += chainGrad;
+          inG.raw(argmax.at({n, ax, ay, z})) += chainGrad;
         } // W
       }   // H
     }     // C
@@ -1115,6 +1141,10 @@ void BoundInterpreterFunction::fwdTensorViewInst(const TensorViewInst *I) {
 void BoundInterpreterFunction::fwdSplatInst(const glow::SplatInst *I) {
   auto *T = getTensor(I->getDest());
   ElemKind k = T->getElementType();
+
+  if (k == ElemKind::Int32ITy) {
+    return T->getHandle<int32_t>().clear(I->getValue());
+  }
 
   if (k == ElemKind::Int64ITy) {
     return T->getHandle<int64_t>().clear(I->getValue());
@@ -1620,9 +1650,9 @@ void BoundInterpreterFunction::fwdElementAddInstI8Impl(
 }
 
 template <typename ElemTy>
-void BoundInterpreterFunction::fwdElementAddInstFloatImpl(
+void BoundInterpreterFunction::fwdElementAddInstArithmeticImpl(
     const ElementAddInst *I) {
-  staticAssertFloatingPointType(ElemTy);
+  staticAssertArithmeticType(ElemTy);
 
   auto outW = getWeightHandle<ElemTy>(I->getDest());
   auto lhsW = getWeightHandle<ElemTy>(I->getLHS());
@@ -1638,14 +1668,14 @@ void BoundInterpreterFunction::fwdElementAddInst(const ElementAddInst *I) {
     return;
   }
 
-  dispatchFloatingPointImpl(fwdElementAddInstFloatImpl,
-                            I->getLHS()->getType()->getElementType(), I);
+  dispatchArithmeticImpl(fwdElementAddInstArithmeticImpl,
+                         I->getLHS()->getType()->getElementType(), I);
 }
 
 template <typename ElemTy>
-void BoundInterpreterFunction::fwdElementSubInstFloatImpl(
+void BoundInterpreterFunction::fwdElementSubInstArithmeticImpl(
     const ElementSubInst *I) {
-  staticAssertFloatingPointType(ElemTy);
+  staticAssertArithmeticType(ElemTy);
 
   auto outW = getWeightHandle<ElemTy>(I->getDest());
   auto lhsW = getWeightHandle<ElemTy>(I->getLHS());
@@ -1683,14 +1713,14 @@ void BoundInterpreterFunction::fwdElementSubInst(const ElementSubInst *I) {
     return;
   }
 
-  dispatchFloatingPointImpl(fwdElementSubInstFloatImpl,
-                            I->getDest()->getElementType(), I);
+  dispatchArithmeticImpl(fwdElementSubInstArithmeticImpl,
+                         I->getDest()->getElementType(), I);
 }
 
 template <typename ElemTy>
-void BoundInterpreterFunction::fwdElementMulInstFloatImpl(
+void BoundInterpreterFunction::fwdElementMulInstArithmeticImpl(
     const ElementMulInst *I) {
-  staticAssertFloatingPointType(ElemTy);
+  staticAssertArithmeticType(ElemTy);
 
   auto outW = getWeightHandle<ElemTy>(I->getDest());
   auto lhsW = getWeightHandle<ElemTy>(I->getLHS());
@@ -1722,8 +1752,8 @@ void BoundInterpreterFunction::fwdElementMulInst(const ElementMulInst *I) {
     return;
   }
 
-  dispatchFloatingPointImpl(fwdElementMulInstFloatImpl,
-                            I->getDest()->getElementType(), I);
+  dispatchArithmeticImpl(fwdElementMulInstArithmeticImpl,
+                         I->getDest()->getElementType(), I);
 }
 
 void BoundInterpreterFunction::fwdElementDivInst(const ElementDivInst *I) {
@@ -1808,9 +1838,9 @@ void BoundInterpreterFunction::fwdElementMaxInstI8Impl(
 }
 
 template <typename ElemTy>
-void BoundInterpreterFunction::fwdElementMaxInstFloatImpl(
+void BoundInterpreterFunction::fwdElementMaxInstArithmeticImpl(
     const ElementMaxInst *I) {
-  staticAssertFloatingPointType(ElemTy);
+  staticAssertArithmeticType(ElemTy);
 
   auto outW = getWeightHandle<ElemTy>(I->getDest());
   auto lhsW = getWeightHandle<ElemTy>(I->getLHS());
@@ -1826,14 +1856,14 @@ void BoundInterpreterFunction::fwdElementMaxInst(const ElementMaxInst *I) {
     return;
   }
 
-  dispatchFloatingPointImpl(fwdElementMaxInstFloatImpl,
-                            I->getLHS()->getType()->getElementType(), I);
+  dispatchArithmeticImpl(fwdElementMaxInstArithmeticImpl,
+                         I->getLHS()->getType()->getElementType(), I);
 }
 
 template <typename ElemTy>
-void BoundInterpreterFunction::fwdElementMinInstFloatImpl(
+void BoundInterpreterFunction::fwdElementMinInstArithmeticImpl(
     const ElementMinInst *I) {
-  staticAssertFloatingPointType(ElemTy);
+  staticAssertArithmeticType(ElemTy);
 
   auto outW = getWeightHandle<ElemTy>(I->getDest());
   auto lhsW = getWeightHandle<ElemTy>(I->getLHS());
@@ -1868,8 +1898,8 @@ void BoundInterpreterFunction::fwdElementMinInst(const ElementMinInst *I) {
     return;
   }
 
-  dispatchFloatingPointImpl(fwdElementMinInstFloatImpl,
-                            I->getDest()->getElementType(), I);
+  dispatchArithmeticImpl(fwdElementMinInstArithmeticImpl,
+                         I->getDest()->getElementType(), I);
 }
 
 template <typename ElemTy>
@@ -1988,6 +2018,24 @@ void BoundInterpreterFunction::fwdElementLogInstFloatImpl(
 
 void BoundInterpreterFunction::fwdElementLogInst(const ElementLogInst *I) {
   dispatchFloatingPointImpl(fwdElementLogInstFloatImpl,
+                            I->getSrc()->getElementType(), I);
+}
+
+template <typename ElemTy>
+void BoundInterpreterFunction::fwdElementExpInstFloatImpl(
+    const ElementExpInst *I) {
+  staticAssertFloatingPointType(ElemTy);
+
+  auto inW = getWeightHandle<ElemTy>(I->getSrc());
+  auto outW = getWeightHandle<ElemTy>(I->getDest());
+  for (size_t i = 0, e = inW.size(); i < e; i++) {
+    float val = inW.raw(i);
+    outW.raw(i) = ElemTy(exp(val));
+  }
+}
+
+void BoundInterpreterFunction::fwdElementExpInst(const ElementExpInst *I) {
+  dispatchFloatingPointImpl(fwdElementExpInstFloatImpl,
                             I->getSrc()->getElementType(), I);
 }
 
@@ -2706,7 +2754,7 @@ void BoundInterpreterFunction::fwdRowwiseQuantizedSparseLengthsWeightedSumInst(
 
   size_t lineSize = data->size() / data->dims()[0];
 
-  auto DH = data->getHandle<int8_t>();
+  auto DH = data->getHandle<uint8_t>();
   auto DSH = dataScales->getHandle<float>();
   auto DOH = dataOffsets->getHandle<float>();
   auto WH = weights->getHandle<float>();
@@ -3095,35 +3143,31 @@ void BoundInterpreterFunction::fwdIntLookupTableInst(
 void BoundInterpreterFunction::fwdConvertToInst(const glow::ConvertToInst *I) {
   Tensor *source = getTensor(I->getInput());
   Tensor *dest = getTensor(I->getResult());
-  if (source->getType() == dest->getType()) {
+  auto srcElType = source->getType().getElementType();
+  auto destElType = dest->getType().getElementType();
+  if (srcElType == destElType) {
     // This is a noop conversion.
     dest->copyRawFrom(source);
     return;
   }
-  switch (source->getElementType()) {
-  case ElemKind::FloatTy:
-    switch (dest->getElementType()) {
-    case ElemKind::Float16Ty:
-      dest->copyWithCast<float16_t, float>(source);
-      return;
-    case ElemKind::Int64ITy:
-      dest->copyWithCast<int64_t, float>(source);
-      return;
-    default:
-      llvm_unreachable("Conversion not supported");
-    }
-    return;
-  case ElemKind::Float16Ty:
-    assert(dest->getElementType() == ElemKind::FloatTy &&
-           "Conversion not supported");
-    dest->copyWithCast<float, float16_t>(source);
-    return;
-  case ElemKind::Int64ITy:
-    assert(dest->getElementType() == ElemKind::FloatTy &&
-           "Conversion not supported");
-    dest->copyWithCast<float, int64_t>(source);
-    return;
-  default:
-    llvm_unreachable("Type not supported");
+
+#define CONVERT(T_FROM, T_TO, DTY_FROM, DTY_TO)                                \
+  if (srcElType == DTY_FROM && destElType == DTY_TO) {                         \
+    dest->copyWithCast<T_TO, T_FROM>(source);                                  \
+    return;                                                                    \
   }
+  CONVERT(float, float16_t, ElemKind::FloatTy, ElemKind::Float16Ty)
+  CONVERT(float, int32_t, ElemKind::FloatTy, ElemKind::Int32ITy)
+  CONVERT(float, int64_t, ElemKind::FloatTy, ElemKind::Int64ITy)
+  CONVERT(float16_t, float, ElemKind::Float16Ty, ElemKind::FloatTy)
+  CONVERT(float16_t, int32_t, ElemKind::Float16Ty, ElemKind::Int32ITy)
+  CONVERT(float16_t, int64_t, ElemKind::Float16Ty, ElemKind::Int64ITy)
+  CONVERT(int32_t, float, ElemKind::Int32ITy, ElemKind::FloatTy)
+  CONVERT(int32_t, float16_t, ElemKind::Int32ITy, ElemKind::Float16Ty)
+  CONVERT(int32_t, int64_t, ElemKind::Int32ITy, ElemKind::Int64ITy)
+  CONVERT(int64_t, float, ElemKind::Int64ITy, ElemKind::FloatTy)
+  CONVERT(int64_t, float16_t, ElemKind::Int64ITy, ElemKind::Float16Ty)
+  CONVERT(int64_t, int32_t, ElemKind::Int64ITy, ElemKind::Int32ITy)
+#undef CONVERT
+  llvm_unreachable("Type not supported");
 }

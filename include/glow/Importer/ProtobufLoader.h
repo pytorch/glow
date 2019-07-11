@@ -18,7 +18,9 @@
 #define GLOW_IMPORTER_PROTOBUFLOADER_H
 
 #include "glow/Base/Tensor.h"
+#include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Graph/Graph.h"
+#include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
 
 #include "glow/Support/Error.h"
 #include "llvm/ADT/ArrayRef.h"
@@ -37,6 +39,12 @@
 #define MAX_PROTO_SIZE 0x7FFFFFFF
 
 namespace glow {
+
+/// Enables or disables constant-folding of Loader Ops with \p flag.
+void setConstantFoldLoaderOpsFlag(bool flag);
+
+/// Returns true if constant-folding for loader Ops is enabled.
+bool getConstantFoldLoaderOpsFlag();
 
 /// Returns true iff all elements of \p a are the same.
 bool isArrayConstant(const llvm::ArrayRef<size_t> a);
@@ -181,7 +189,61 @@ public:
   /// \returns the Placeholder for the external output with \p name.
   /// \pre outputVarsByName_.find(name) != outputVarsByName_.end()
   llvm::Expected<Placeholder *> getOutputByName(llvm::StringRef name) const;
+
+  /// \returns True if the operator with name \p typeName having input node
+  /// list as \p inputs is constant foldable.
+  bool isConstantFoldable(llvm::ArrayRef<NodeValue> inputs,
+                          std::string typeName) const;
 };
+
+/// \returns success if the folding of operator \p op in the loader
+/// \p loader is successful. The folding utility uses temporary
+/// loader \p tmpLoader, and associated temporary function \p F.
+template <class LoaderType, class OpType>
+llvm::Error constantFoldInLoader(Function *F, LoaderType &tmpLoader,
+                                 LoaderType *loader, const OpType &op) {
+  PlaceholderBindings bindings;
+  std::vector<Tensor *> outTensors;
+  Module *mod = F->getParent();
+
+  // Register the constant inputs to the current op with the constant folding
+  // loader.
+  for (unsigned i = 0; i < op.input_size(); i++) {
+    Constant *tmpConst = mod->getConstantByName(op.input(i));
+    RETURN_ERR_IF_NOT(tmpConst, "No constant found");
+    tmpLoader.nodeValueByName_[op.input(i)] = tmpConst->getOutput();
+  }
+
+  // Using the loader to load the current operator.
+  RETURN_IF_ERR(tmpLoader.loadOperator(op));
+
+  // To collect the folded outputs allocate and add save nodes to the folding
+  // function.
+  for (int i = 0; i < op.output_size(); i++) {
+    const auto &outputName = op.output(i);
+    NodeValue r;
+    ASSIGN_VALUE_OR_RETURN_ERR(r, tmpLoader.getNodeValueByName(outputName));
+    SaveNode *SN = F->createSave("save_" + outputName, r);
+    auto *result = bindings.allocate(SN->getPlaceholder());
+    outTensors.push_back(result);
+  }
+
+  // Evaluate the constant outputs using interpreter backend.
+  std::unique_ptr<Backend> backend(createBackend("Interpreter"));
+  CompilationContext cctx;
+  cctx.compMode = CompilationMode::Infer;
+  cctx.optimizationOpts.enableConstantFolding = false;
+  cctx.backendOpts.collectConstants = true;
+  RETURN_IF_ERR(executeConstantFunction(*backend, *F, bindings, cctx));
+
+  // Using the graph output, place constant nodes in the original graph.
+  for (int i = 0; i < op.output_size(); i++) {
+    RETURN_IF_ERR(loader->createAndRegisterConstant(op.output(i),
+                                                    std::move(*outTensors[i])));
+  }
+
+  return llvm::Error::success();
+}
 
 } // namespace glow
 

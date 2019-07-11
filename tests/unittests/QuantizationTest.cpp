@@ -19,6 +19,7 @@
 #include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Graph/Graph.h"
 #include "glow/IR/IR.h"
+#include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
 #include "glow/Quantization/Base/Base.h"
 #include "glow/Quantization/Quantization.h"
 #include "glow/Quantization/Serialization.h"
@@ -757,7 +758,7 @@ static Function *createSimpleGraphForQuantization(Module *M,
   auto *RL = F->createRELU("relu", CV);
   auto *MP = F->createMaxPool("maxPool", RL, 2, 2, 1);
   // Just add noop transpose.
-  auto *T = F->createTranspose("transpose", MP, {0, 1, 2, 3});
+  auto *T = F->createTranspose("transpose", MP->getResult(), {0, 1, 2, 3});
   // Noop reshape, make sure conversion quantization procedure works well.
   auto *R = F->createReshape("reshape", T, T->getResult().dims());
   auto *AP = F->createAvgPool("avgPool", R, 2, 2, 1);
@@ -1475,7 +1476,12 @@ TEST(Quantization, quantizeGraphPartially) {
 
   // Make sure that graph can be compiled and run.
   ::glow::convertPlaceholdersToConstants(F, bindings, {result});
-  EE.compile(CompilationMode::Infer, F);
+
+  CompilationContext cctx;
+  cctx.compMode = CompilationMode::Infer;
+  // Do not perform any compile-time constant folding.
+  cctx.optimizationOpts.enableConstantFolding = false;
+  EE.compile(F, cctx);
 
   EE.run(bindings);
 
@@ -1555,7 +1561,12 @@ TEST(Quantization, quantizeGraphPartiallyMultipleNodes) {
 
   // Make sure that graph can be compiled and run.
   ::glow::convertPlaceholdersToConstants(F, bindings, {result});
-  EE.compile(CompilationMode::Infer, F);
+
+  CompilationContext cctx;
+  cctx.compMode = CompilationMode::Infer;
+  // Do not perform any compile-time constant folding.
+  cctx.optimizationOpts.enableConstantFolding = false;
+  EE.compile(F, cctx);
 
   EE.run(bindings);
 
@@ -1645,7 +1656,12 @@ TEST(Quantization, quantizeGraphPartiallyMultipleKinds) {
 
   // Make sure that graph can be compiled and run.
   ::glow::convertPlaceholdersToConstants(F, bindings, {result});
-  EE.compile(CompilationMode::Infer, F);
+
+  CompilationContext cctx;
+  cctx.compMode = CompilationMode::Infer;
+  // Do not perform any compile-time constant folding.
+  cctx.optimizationOpts.enableConstantFolding = false;
+  EE.compile(F, cctx);
 
   EE.run(bindings);
 

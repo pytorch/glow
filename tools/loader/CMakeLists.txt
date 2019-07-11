@@ -11,7 +11,7 @@ target_link_libraries(image-classifier
                         HostManager
                         Graph
                         Importer
-                        Optimizer
+                        GraphOptimizer
                         Quantization
                         LLVMSupport)
 
@@ -28,7 +28,7 @@ target_link_libraries(text-translator
                         HostManager
                         Importer
                         ExecutionEngine
-                        Optimizer
+                        GraphOptimizer
                         Quantization
                         LLVMSupport)
 
@@ -45,7 +45,7 @@ target_link_libraries(model-runner
                         HostManager
                         Importer
                         ExecutionEngine
-                        Optimizer
+                        GraphOptimizer
                         Quantization
                         LLVMSupport)
 

@@ -39,5 +39,6 @@ FUN_PASS(OptimizeQuantization)
 FUN_PASS(SinkRescaleQuantizedNode)
 FUN_PASS(FoldLeakyRelu)
 FUN_PASS(FoldChannelShuffle)
+FUN_PASS(ConstantFold)
 
 #undef FUN_PASS

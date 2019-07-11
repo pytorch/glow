@@ -19,6 +19,10 @@
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/raw_ostream.h"
 
+#include <fstream>
+#include <string>
+#include <thread>
+
 using namespace glow;
 using namespace glow::runtime;
 
@@ -78,4 +82,48 @@ DeviceManager *DeviceManager::createDeviceManager(const DeviceConfig &config) {
     LOG(ERROR) << "Warning: Creating a DummyDeviceManager.\n";
     return new DummyDeviceManager(config);
   }
+}
+
+#if defined(GLOW_WITH_CPU)
+unsigned numCPUDevices() { return std::thread::hardware_concurrency(); }
+#else
+unsigned numCPUDevices() { return 0; }
+#endif
+
+#if defined(GLOW_WITH_HABANA)
+unsigned numHabanaDevices() {
+  std::ifstream devices("/proc/bus/pci/devices");
+  std::string device;
+  unsigned count = 0;
+  while (std::getline(devices, device)) {
+    if (device.find("habanalabs") != std::string::npos) {
+      count++;
+    }
+  }
+  return count;
+}
+#else
+unsigned numHabanaDevices() { return 0; }
+#endif
+
+#if defined(GLOW_WITH_OPENCL)
+unsigned numOpenCLDevices() { return 1; }
+#else
+unsigned numOpenCLDevices() { return 0; }
+#endif
+
+unsigned DeviceManager::numDevices(llvm::StringRef backendName) {
+  if (backendName == "Interpreter") {
+    return std::thread::hardware_concurrency();
+  }
+  if (backendName == "CPU") {
+    return numCPUDevices();
+  }
+  if (backendName == "Habana") {
+    return numHabanaDevices();
+  }
+  if (backendName == "OpenCL") {
+    return numOpenCLDevices();
+  }
+  return 0;
 }

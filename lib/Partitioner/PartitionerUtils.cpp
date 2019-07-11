@@ -91,9 +91,9 @@ BFSLevel getBFSLevel(Function *F) {
 
 /// Given \p nodes, return a list of nodes who are not in this set but use any
 /// node in this set.
-std::vector<Node *> getOutUsers(const NodesSetTy &nodes) {
-  NodesSetTy used;
-  for (NodesSetTy::iterator it = nodes.begin(); it != nodes.end(); ++it) {
+std::vector<Node *> getOutUsers(const NodesSet &nodes) {
+  NodesSet used;
+  for (NodesSet::iterator it = nodes.begin(); it != nodes.end(); ++it) {
     Node *cur = *it;
     for (auto &U : cur->getUsers()) {
       if (nodes.count(U.getUser())) {
@@ -110,9 +110,9 @@ std::vector<Node *> getOutUsers(const NodesSetTy &nodes) {
 
 /// Given \p nodes, return a list of nodes who are not in this set but use only
 /// the nodes in this set or constant.
-std::vector<Node *> getOutUsersWithOnePredecessor(const NodesSetTy &nodes) {
-  NodesSetTy used;
-  for (NodesSetTy::iterator it = nodes.begin(); it != nodes.end(); ++it) {
+std::vector<Node *> getOutUsersWithOnePredecessor(const NodesSet &nodes) {
+  NodesSet used;
+  for (NodesSet::iterator it = nodes.begin(); it != nodes.end(); ++it) {
     Node *cur = *it;
     for (auto &U : cur->getUsers()) {
       Node *user = U.getUser();
@@ -141,7 +141,7 @@ std::vector<Node *> getOutUsersWithOnePredecessor(const NodesSetTy &nodes) {
 
 /// \returns the memory usage of the output caused by \p node who has users not
 /// in the set \p nodes.
-uint64_t getOutMemPerNode(const NodesSetTy &nodes, const Node *node) {
+uint64_t getOutMemPerNode(const NodesSet &nodes, const Node *node) {
   uint64_t ret = 0;
   for (size_t i = 0, e = node->getNumResults(); i < e; i++) {
     NodeValue nodeVal = node->getNthResult(i);
@@ -156,9 +156,23 @@ uint64_t getOutMemPerNode(const NodesSetTy &nodes, const Node *node) {
   return ret;
 }
 
+/// Given a node, \return the NodeSet of all nodes that create the results
+/// for any of the inputs of this node (i.e. input of inputs)
+NodesSet getInputs(const Node *node) {
+  NodesSet result;
+  for (size_t i = 0, e = node->getNumInputs(); i < e; i++) {
+    Node *input = node->getNthInput(i).getNode();
+    Storage *in = llvm::dyn_cast<Storage>(input);
+    if (!in) {
+      result.insert(input);
+    }
+  }
+  return result;
+}
+
 /// Given nodes set \p currNodes and its memory usage info \p info, \returns the
 /// new memory usage if \p newNode is added into \p currNodes.
-GraphMemInfo updateGraphMemInfoByAddingNode(const NodesSetTy &currNodes,
+GraphMemInfo updateGraphMemInfoByAddingNode(const NodesSet &currNodes,
                                             const GraphMemInfo &info,
                                             Node *newNode) {
   GraphMemInfo ret = info;
@@ -261,10 +275,10 @@ GraphMemInfo updateGraphMemInfoByAddingNode(const NodesSetTy &currNodes,
   return ret;
 }
 
-GraphMemInfo getGraphMemInfo(const NodesSetTy &nodes) {
+GraphMemInfo getGraphMemInfo(const NodesSet &nodes) {
   GraphMemInfo ret;
-  NodesSetTy nodeSet;
-  for (NodesSetTy::iterator it = nodes.begin(); it != nodes.end(); ++it) {
+  NodesSet nodeSet;
+  for (NodesSet::iterator it = nodes.begin(); it != nodes.end(); ++it) {
     Node *cur = *it;
     ret = updateGraphMemInfoByAddingNode(nodeSet, ret, cur);
     nodeSet.insert(cur);
@@ -272,4 +286,17 @@ GraphMemInfo getGraphMemInfo(const NodesSetTy &nodes) {
   return ret;
 }
 
+std::set<Kinded::Kind> generateNodeKindsSet(llvm::StringRef names) {
+  std::set<Kinded::Kind> nodeKindsSet;
+  llvm::StringRef::size_type pos = names.find(',');
+  while (pos != llvm::StringRef::npos) {
+    nodeKindsSet.insert(getKindFromNodeName(names.substr(0, pos)));
+    names = names.substr(pos + 1);
+    pos = names.find(',');
+  }
+  if (!names.empty()) {
+    nodeKindsSet.insert(getKindFromNodeName(names));
+  }
+  return nodeKindsSet;
+}
 } // namespace glow

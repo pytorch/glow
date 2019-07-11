@@ -322,6 +322,9 @@ llvm::Value *LLVMIRGen::emitValueAddress(llvm::IRBuilder<> &builder,
   case ElemKind::Int8QTy:
     T = llvm::Type::getInt8PtrTy(ctx_);
     break;
+  case ElemKind::UInt8QTy:
+    T = llvm::Type::getInt8PtrTy(ctx_);
+    break;
   case ElemKind::Int16QTy:
     T = llvm::Type::getInt16PtrTy(ctx_);
     break;
@@ -341,8 +344,8 @@ llvm::Value *LLVMIRGen::emitValueAddress(llvm::IRBuilder<> &builder,
     T = llvm::Type::getInt8PtrTy(ctx_);
     break;
   default:
-    llvm_unreachable("Unimplemented");
-    break;
+    LOG(FATAL) << "Unsupported element type: "
+               << Type::getElementName(val->getElementType()).str();
   }
 
   assert(allocationsInfo_.valueNumbers_.count(val));
@@ -987,6 +990,8 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
     ARITHMETIC_UNARY_OP_CASE(Sigmoid, "sigmoid");
     ARITHMETIC_UNARY_OP_CASE(Tanh, "tanh");
     ARITHMETIC_UNARY_OP_CASE(ElementLog, "element_log");
+    ARITHMETIC_UNARY_OP_CASE(ElementExp, "element_exp");
+
 #undef ARITHMETIC_UNARY_OP_CASE
 
   case Kinded::Kind::ElementIsNaNInstKind: {
@@ -1855,13 +1860,13 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     break;
   }
 
-  case Kinded::Kind::MaxPoolWithXYInstKind: {
-    auto *PMXY = cast<MaxPoolWithXYInst>(I);
+  case Kinded::Kind::MaxPoolWithArgmaxInstKind: {
+    auto *PMXY = cast<MaxPoolWithArgmaxInst>(I);
     auto *dest = PMXY->getDest();
     auto *src = PMXY->getSrc();
     auto *destPtr = emitValueAddress(builder, dest);
     auto *srcPtr = emitValueAddress(builder, src);
-    auto *srcXYPtr = emitValueAddress(builder, PMXY->getSrcXY());
+    auto *argmaxPtr = emitValueAddress(builder, PMXY->getArgmax());
 
     auto *destDims = emitValueDims(builder, dest);
     auto *srcDims = emitValueDims(builder, src);
@@ -1870,26 +1875,26 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *strides = emitConstSizeTArray(builder, PMXY->getStrides());
     auto *pads = emitConstSizeTArray(builder, PMXY->getPads());
 
-    auto *F = getFunction("max_pool_xy", dest->getElementType());
-    createCall(
-        builder, F,
-        {srcPtr, destPtr, srcXYPtr, srcDims, destDims, kernels, strides, pads});
+    auto *F = getFunction("max_pool_argmax", dest->getElementType());
+    createCall(builder, F,
+               {srcPtr, destPtr, argmaxPtr, srcDims, destDims, kernels, strides,
+                pads});
     break;
   }
 
-  case Kinded::Kind::MaxPoolWithXYGradInstKind: {
-    auto *PMG = cast<MaxPoolWithXYGradInst>(I);
+  case Kinded::Kind::MaxPoolWithArgmaxGradInstKind: {
+    auto *PMG = cast<MaxPoolWithArgmaxGradInst>(I);
     auto *srcGrad = PMG->getSrcGrad();
     auto *srcGradPtr = emitValueAddress(builder, srcGrad);
     auto *destGradPtr = emitValueAddress(builder, PMG->getDestGrad());
-    auto *srcXYPtr = emitValueAddress(builder, PMG->getSrcXY());
+    auto *argmaxPtr = emitValueAddress(builder, PMG->getArgmax());
 
     auto *srcGradDims = emitValueDims(builder, srcGrad);
     auto *destDims = emitValueDims(builder, PMG->getDest());
 
-    auto *F = getFunction("max_pool_xy_grad", srcGrad->getElementType());
+    auto *F = getFunction("max_pool_argmax_grad", srcGrad->getElementType());
     createCall(builder, F,
-               {srcGradPtr, destGradPtr, srcXYPtr, srcGradDims, destDims});
+               {srcGradPtr, destGradPtr, argmaxPtr, srcGradDims, destDims});
     break;
   }
 

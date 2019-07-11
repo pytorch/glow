@@ -25,10 +25,6 @@ namespace glow {
 
 using namespace runtime;
 
-using MemUsageMapTy = std::unordered_map<Node *, uint64_t>;
-using ComputeTimeMapTy = std::unordered_map<Node *, float>;
-using PartitionCostMapTy = llvm::DenseMap<Function *, GraphMemInfo>;
-
 /// Data structure that contains the info for each type of backend used for
 /// partitioning.
 struct BackendInfo {
@@ -38,12 +34,11 @@ struct BackendInfo {
   uint64_t memSize;
   /// Backend pointer.
   Backend *backend = nullptr;
+  /// The non-supported nodes kind.
+  std::set<Kinded::Kind> nonSupportedNodesKinds;
+  /// The supported nodes kind.
+  std::set<Kinded::Kind> supportedNodesKinds;
 };
-
-/// Helper structure for building a partition. Records mapping of nodes in
-/// the original function to destination partitions, along with a list of the
-/// newly-created functions;
-using NodeToFunctionMapTy = llvm::DenseMap<Node *, Function *>;
 
 /// A mapping of newly-created functions along with a set of nodes sets. The
 /// overloaded compare function to make sure the map is sorted by the key's
@@ -54,26 +49,32 @@ struct FunctionNameComparator {
     return strcmp(lhs->getName().data(), rhs->getName().data()) < 0;
   }
 };
-using FunctionToNodesMapTy =
-    std::map<Function *, NodesSetTy, FunctionNameComparator>;
+using FunctionToNodesMap =
+    std::map<Function *, NodesSet, FunctionNameComparator>;
 
-using FunctionToBackendNameMapTy =
+using FunctionToBackendNameMap =
     std::map<Function *, std::string, FunctionNameComparator>;
 
 class NodeToFunctionMap {
+  /// Helper structure for building a partition. Records mapping of nodes in
+  /// the original function to destination partitions, along with a list of the
+  /// newly-created functions;
+  using Map = llvm::DenseMap<Node *, Function *>;
+
+  using PartitionCostMap = llvm::DenseMap<Function *, GraphMemInfo>;
 
   /// Newly-created partitions.
   FunctionList functions_;
 
   /// Map of nodes in the original function to their target partition.
-  NodeToFunctionMapTy nodeToFunction_;
+  Map nodeToFunction_;
 
   /// Map of the partitions to the backend which will be used for compiling
   /// this partition.
-  FunctionToBackendNameMapTy functionToBackendName_;
+  FunctionToBackendNameMap functionToBackendName_;
 
   /// Map of sub-functions to their memory consumption.
-  PartitionCostMapTy partitionCost_;
+  PartitionCostMap partitionCost_;
 
   /// Map of partitions and the logicalDeviceID. The partitions with the same
   /// logcialDeviceID will be assigned into the same physical device.
@@ -132,13 +133,11 @@ public:
   }
 
   /// Map API.
-  NodeToFunctionMapTy::iterator find(Node *N) {
-    return nodeToFunction_.find(N);
-  }
-  NodeToFunctionMapTy::iterator begin() { return nodeToFunction_.begin(); }
-  NodeToFunctionMapTy::iterator end() { return nodeToFunction_.end(); }
-
+  Map::iterator find(Node *N) { return nodeToFunction_.find(N); }
+  Map::iterator begin() { return nodeToFunction_.begin(); }
+  Map::iterator end() { return nodeToFunction_.end(); }
   Function *operator[](Node *n) { return nodeToFunction_[n]; }
+
   void deletePartition(Function *func) {
     functions_.remove(func);
     functionToBackendName_.erase(func);
@@ -162,6 +161,9 @@ public:
 /// Given a module, partitions each of the its functions into multiple ones
 /// based on memory constraints and minimizes the communication cost.
 class Partitioner {
+  using MemUsageMap = std::unordered_map<Node *, uint64_t>;
+  using ComputeTimeMap = std::unordered_map<Node *, float>;
+
   /// The module that needs to be decomposed.
   Module *module_;
 
@@ -193,10 +195,10 @@ class Partitioner {
   uint64_t memSize_;
 
   /// The map of each operator and the corresponding memory size.
-  MemUsageMapTy memUsage_;
+  MemUsageMap memUsage_;
 
   /// The map of each operator and the compute runtime.
-  ComputeTimeMapTy computeTime_;
+  ComputeTimeMap computeTime_;
 
   /// Flag to set if the Partitioner should attempt to saturate the host, and
   /// use all available devices.
@@ -222,7 +224,7 @@ class Partitioner {
   /// partition1 and partition2 is less than availableMemory, combine partition1
   /// and partition2.
   void partitionsCombine(NodeToFunctionMap &partitions,
-                         FunctionToNodesMapTy &nodesSet,
+                         FunctionToNodesMap &nodesSet,
                          uint64_t availableMemory);
 
   /// After getting the initial partitions, adjust the partitions to minimize
@@ -253,14 +255,38 @@ class Partitioner {
   /// Duplicates all networks in the module order to saturate the Host.
   void saturateHost(unsigned logicalDeviceCount);
 
-  FunctionToBackendNameMapTy
+  FunctionToBackendNameMap
   backendBasedPartition(Function *F, std::vector<Backend *> &backends);
+
+  /// Performs a load balancing optimization pass to optimize for load
+  /// balance in addition to respecting memory constraints.
+  llvm::Error loadBalancedPartitioning(Function *F, DeviceIDTy numDevices,
+                                       uint64_t availableMemory,
+                                       llvm::StringRef backendName,
+                                       NodeToFunctionMap &mapping);
 
   /// Given the node-function mapping, do the actual partitioning. If \p saveDAG
   /// is true, the DAG will be saved into partitions_, which is the final
   /// partition result.
   void doPartitioning(llvm::StringRef funcName, std::vector<Function *>,
                       NodeToFunctionMap &mapping, bool saveDAG);
+
+  /// If there is no need to do any partition, just generate the DAGNode based
+  /// on current functions in this module for backend \p backendName found in \p
+  /// backendMap. \p cctx is used during optimization of the Function. \returns
+  /// whether there was an error encountered.
+  llvm::Error
+  createDAGWithoutPartition(llvm::StringRef backendName,
+                            std::map<std::string, BackendInfo> &backendMap,
+                            CompilationContext &cctx);
+
+  /// Get the map between the backend name and the concrete backend info (e.g.
+  /// backend pointer, mem, number) used in this partiton. If there are backends
+  /// need to be created, we use \p backendsHolder to hold them for memory
+  /// purpose.
+  void getBackendMap(std::map<std::string, BackendInfo> &backendMap,
+                     std::vector<std::unique_ptr<Backend>> &backendsHolder,
+                     std::vector<Backend *> &backends);
 
 public:
   /// \p parent is the module which contains the functions need to be divided.
@@ -279,23 +305,6 @@ public:
               const std::vector<Backend *> &backends, bool saturateHost = false,
               bool optimized = false);
 
-  /// Get the map between the backend name and the concrete backend info (e.g.
-  /// backend pointer, mem, number) used in this partiton. If there are backends
-  /// need to be created, we use \p backendsHolder to hold them for memory
-  /// purpose.
-  void getBackendMap(std::map<std::string, BackendInfo> &backendMap,
-                     std::vector<std::unique_ptr<Backend>> &backendsHolder,
-                     std::vector<Backend *> &backends);
-
-  /// If there is no need to do any partition, just generate the DAGNode based
-  /// on current functions in this module for backend \p backendName found in \p
-  /// backendMap. \p cctx is used during optimization of the Function. \returns
-  /// whether there was an error encountered.
-  llvm::Error
-  createDAGWithoutPartition(llvm::StringRef backendName,
-                            std::map<std::string, BackendInfo> &backendMap,
-                            CompilationContext &cctx);
-
   /// Decompose each function in a module. Now we support partitioning a module
   /// among different type of devices. \p cctx is used during optimization of
   /// the Function. \returns whether there was an error encountered.
@@ -310,10 +319,18 @@ public:
   void dumpDAG(llvm::StringRef dotFilename) const;
 
   /// Get function for computeTime_
-  ComputeTimeMapTy getComputeTime() const { return computeTime_; }
+  float getComputeTime(Node *N) const {
+    auto it = computeTime_.find(N);
+    assert(it != computeTime_.end());
+    return it == computeTime_.end() ? 0.0 : it->second;
+  }
 
   /// Get function for memUsage_
-  MemUsageMapTy getMemUsage() const { return memUsage_; }
+  uint64_t getMemUsage(Node *N) const {
+    auto it = memUsage_.find(N);
+    assert(it != memUsage_.end());
+    return it == memUsage_.end() ? 0 : it->second;
+  }
 };
 } // namespace glow
 #endif // GLOW_PARTITIONER_PARTITIONER_H

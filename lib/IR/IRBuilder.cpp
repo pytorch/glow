@@ -55,7 +55,7 @@ void IRBuilder::deallocateActiveInstrs() {
 //===----------------------------------------------------------------------===//
 //                        High level operators.
 //===----------------------------------------------------------------------===//
-MaxPoolWithXYInst *IRBuilder::createMaxPoolWithXYOp(
+MaxPoolWithArgmaxInst *IRBuilder::createMaxPoolWithArgmaxOp(
     llvm::StringRef name, Value *input, llvm::ArrayRef<unsigned_t> kernels,
     llvm::ArrayRef<unsigned_t> strides, llvm::ArrayRef<unsigned_t> pads) {
   ShapeNHWC idim = ShapeNHWC(input->dims());
@@ -63,18 +63,17 @@ MaxPoolWithXYInst *IRBuilder::createMaxPoolWithXYOp(
   auto outSz =
       calculateConvPoolOutputDims(idim.h, idim.w, kernels, strides, pads);
 
-  // Allocate cache arrays that store the x and y coordinates of the incoming
-  // gradient for each max element.
-  Value *srcXY =
-      createAllocActivationInst(name.str() + ".srcXY", ElemKind::Int64ITy,
-                                {idim.n, outSz.first, outSz.second, idim.c, 2});
+  // Allocate storage for flattened NCHW index of max element.
+  Value *argmax =
+      createAllocActivationInst(name.str() + ".argmax", ElemKind::Int64ITy,
+                                {idim.n, outSz.first, outSz.second, idim.c});
 
   auto outTy = F_->getGraph()->getParent()->uniqueTypeWithNewShape(
       input->getType(), {idim.n, outSz.first, outSz.second, idim.c});
   Value *dest = createAllocActivationInst(name.str() + ".res", outTy);
 
-  return createMaxPoolWithXYInst(name, dest, input, srcXY, kernels, strides,
-                                 pads);
+  return createMaxPoolWithArgmaxInst(name, dest, input, argmax, kernels,
+                                     strides, pads);
 }
 
 AvgPoolInst *IRBuilder::createAvgPoolOp(Value *input,

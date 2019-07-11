@@ -10,7 +10,7 @@ graph {
   }
   name: "test_batchBoxCox"
   input {
-    name: "x"
+    name: "data"
     type {
       tensor_type {
         elem_type: 1

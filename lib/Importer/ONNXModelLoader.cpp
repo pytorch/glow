@@ -648,11 +648,6 @@ llvm::Error ONNXModelLoader::loadPool(const ONNX_NAMESPACE::NodeProto &op,
                                       llvm::StringRef typeName) {
   const std::string &opName = loadOperatorName(op);
 
-  // Glow doesn't support argmax output yet.
-  if (op.output_size() > 1) {
-    RETURN_ERR("Glow doesn't support argmax output yet.",
-               GlowErr::ErrorCode::MODEL_LOADER_UNSUPPORTED_OPERATOR);
-  }
   // Load the inputs:
   NodeValue in;
   ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
@@ -688,13 +683,28 @@ llvm::Error ONNXModelLoader::loadPool(const ONNX_NAMESPACE::NodeProto &op,
   ASSIGN_VALUE_OR_RETURN_ERR(pads, getPads(dict, kernels, strides, idimHW));
 
   Node *node = nullptr;
-  if (typeName == "MaxPool") {
+  if (op.output_size() > 1) {
+    if (typeName != "MaxPool") {
+      RETURN_ERR("Argmax output is only supported for MaxPool!",
+                 GlowErr::ErrorCode::MODEL_LOADER_UNSUPPORTED_OPERATOR);
+    }
+
     node = G_.createMaxPool(opName, tr, kernels, strides, pads);
+    auto *res = G_.createTranspose(opName, NodeValue(node, 0), NHWC2NCHW);
+    auto *argmax = G_.createTranspose(opName, NodeValue(node, 1), NHWC2NCHW);
+    RETURN_IF_ERR(assignNodeOutputs(op, {res, argmax}));
   } else {
-    node = G_.createAvgPool(opName, tr, kernels, strides, pads);
+    size_t idx = 0;
+    if (typeName == "MaxPool") {
+      node = G_.createMaxPool(opName, tr, kernels, strides, pads);
+      idx = MaxPoolNode::ResultIdx;
+    } else {
+      node = G_.createAvgPool(opName, tr, kernels, strides, pads);
+      idx = AvgPoolNode::ResultIdx;
+    }
+    auto *N = G_.createTranspose(opName, NodeValue(node, idx), NHWC2NCHW);
+    RETURN_IF_ERR(addNodeAsOutput(op, N));
   }
-  auto *N = G_.createTranspose(opName, node, NHWC2NCHW);
-  RETURN_IF_ERR(addNodeAsOutput(op, N));
   return llvm::Error::success();
 }
 
@@ -1059,11 +1069,15 @@ ONNXModelLoader::loadConstantOfShape(const ONNX_NAMESPACE::NodeProto &op,
   if (dict.count("value")) {
     RETURN_IF_ERR(loadTensor(dict.at("value")->t(), &T));
     RETURN_ERR_IF_NOT(T.dims().size() == 1, "Value must be a 1D vector.");
-    RETURN_ERR_IF_NOT(T.getType().getElementType() == ElemKind::FloatTy,
-                      "Value must have float type");
+    RETURN_ERR_IF_NOT(T.getType().getElementType() == ElemKind::FloatTy ||
+                          T.getType().getElementType() == ElemKind::Int64ITy ||
+                          T.getType().getElementType() == ElemKind::Int32ITy,
+                      T.getType().getElementName().str() +
+                          " type Value is not supported.");
   }
 
   TypeRef ty;
+  Node *SN = nullptr;
   if (op.input_size() > 0) {
     Constant *in;
     ASSIGN_VALUE_OR_RETURN_ERR(in, getConstantByName(op.input(0)));
@@ -1075,12 +1089,34 @@ ONNXModelLoader::loadConstantOfShape(const ONNX_NAMESPACE::NodeProto &op,
     auto TH = in->getPayload().getHandle<int64_t>();
     llvm::ArrayRef<size_t> outputDims = {(const size_t *)TH.begin(),
                                          (const size_t *)TH.end()};
-    ty = G_.getParent()->uniqueType(ElemKind::FloatTy, outputDims);
+
+    ty = G_.getParent()->uniqueType(T.getType().getElementType(), outputDims);
+    switch (T.getType().getElementType()) {
+    case ElemKind::Int64ITy: {
+      int64_t v = T.getHandle<int64_t>().raw(0);
+      RETURN_ERR_IF_NOT(
+          v == static_cast<int64_t>(static_cast<float>(v)),
+          "This ConstantOfShape implementation may cause losses for value " +
+              std::to_string(v) + " .");
+      SN = G_.createSplat(loadOperatorName(op), ty, v);
+      break;
+    }
+    case ElemKind::Int32ITy: {
+      int32_t v = T.getHandle<int32_t>().raw(0);
+      RETURN_ERR_IF_NOT(
+          v == static_cast<int32_t>(static_cast<float>(v)),
+          "This ConstantOfShape implementation may cause losses for value " +
+              std::to_string(v) + " .");
+      SN = G_.createSplat(loadOperatorName(op), ty, v);
+      break;
+    }
+    default:
+      SN = G_.createSplat(loadOperatorName(op), ty, T.getHandle().raw(0));
+    }
   } else {
     ty = G_.getParent()->uniqueType(ElemKind::FloatTy, {1});
+    SN = G_.createSplat(loadOperatorName(op), ty, T.getHandle().raw(0));
   }
-
-  Node *SN = G_.createSplat(loadOperatorName(op), ty, T.getHandle().raw(0));
   RETURN_IF_ERR(addNodeAsOutput(op, SN));
   return llvm::Error::success();
 }
@@ -1114,6 +1150,34 @@ llvm::Error ONNXModelLoader::loadTile(const ONNX_NAMESPACE::NodeProto &op,
 
   RETURN_IF_ERR(addNodeAsOutput(op, N));
   return llvm::Error::success();
+}
+
+llvm::Expected<bool>
+ONNXModelLoader::foldOperator(const ONNX_NAMESPACE::NodeProto &op) {
+  const unsigned numInputs = op.input_size();
+  const std::string &typeName = op.op_type();
+  llvm::SmallVector<NodeValue, 4> inputs;
+  inputs.reserve(numInputs);
+  for (unsigned i = 0; i < numInputs; i++) {
+    NodeValue in;
+    ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(i)));
+    inputs.push_back(in);
+  }
+
+  if (!isConstantFoldable(inputs, typeName)) {
+    return false;
+  }
+
+  // Create a temporary lightweight loader to construct function representing
+  // current Op, and then constant fold the function using Interp backend.
+  Function *tmpF = G_.getParent()->createFunction("eval_const_fold__");
+  ONNXModelLoader tmpLoader(*tmpF);
+  tmpLoader.opsetVersion_ = opsetVersion_;
+  bool foldStatus = !errToBool(
+      constantFoldInLoader<ONNXModelLoader, ONNX_NAMESPACE::NodeProto>(
+          tmpF, tmpLoader, this, op));
+  G_.getParent()->eraseFunction(tmpF);
+  return foldStatus;
 }
 
 llvm::Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
@@ -1186,7 +1250,7 @@ llvm::Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
     return loadTile(op, dict);
   }
 
-  RETURN_ERR("Failed to load operator.",
+  RETURN_ERR("Failed to load operator " + typeName + " .",
              GlowErr::ErrorCode::MODEL_LOADER_UNSUPPORTED_OPERATOR);
 }
 
@@ -1220,6 +1284,13 @@ llvm::Error ONNXModelLoader::loadNetwork(ONNX_NAMESPACE::GraphProto &net) {
   /// Load the network operators:
   for (int i = 0; i < net.node_size(); i++) {
     auto &op = net.node(i);
+    if (getConstantFoldLoaderOpsFlag()) {
+      auto foldstatus = foldOperator(op);
+      if (foldstatus && foldstatus.get()) {
+        // Folded successfully.
+        continue;
+      }
+    }
     RETURN_IF_ERR(loadOperator(op));
   }
 

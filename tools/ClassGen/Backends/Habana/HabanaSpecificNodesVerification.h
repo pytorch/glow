@@ -90,7 +90,5 @@ bool HabanaConvolutionAddNode::verify() const {
   return isValid;
 }
 
-bool HabanaReshapeNode::verify() const { return true; }
-
 #endif // TOOLS_CLASSGEN_BACKENDS_HABANA_HABANASPECIFICNODESVERIFICATION_H
 #endif // GLOW_WITH_HABANA

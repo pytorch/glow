@@ -271,10 +271,20 @@ private:
   /// Build the list of input and output placeholders.
   void findIOPlaceholders(Function *F);
 
+  /// Path to the saved recipe file.
   std::string recipeName_;
+
+  /// List of model input placeholders.
   PlaceholderList inputs_;
+
+  /// List of model output placeholders.
   PlaceholderList outputs_;
+
+  /// Set of inputs that can be partial tensors.
   std::unordered_set<const Placeholder *> partialInputs_;
+
+  /// Set of inputs that are 64-bit ints.
+  std::unordered_set<const Placeholder *> downcastInt64Inputs_;
 };
 
 } // namespace glow

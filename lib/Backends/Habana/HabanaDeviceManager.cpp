@@ -138,6 +138,8 @@ llvm::Error HabanaDeviceManager::updateMemoryUsage() {
 void HabanaDeviceManager::addNetwork(const Module *module,
                                      FunctionMapTy functions,
                                      ReadyCBTy readyCB) {
+  DCHECK(readyCB != nullptr);
+
   std::unique_lock<std::mutex> lk(instanceMtx_);
   for (const auto &func : functions) {
     // Check if a function with the same name has already been added.
@@ -214,6 +216,8 @@ void HabanaDeviceManager::addNetwork(const Module *module,
 
 void HabanaDeviceManager::evictNetwork(std::string functionName,
                                        EvictFunctionCBTy evictCB) {
+  DCHECK(evictCB != nullptr);
+
   std::unique_lock<std::mutex> lk(instanceMtx_);
 
   // Check if a network with the given name exists on the device.
@@ -272,6 +276,8 @@ void HabanaDeviceManager::runFunctionImpl(RunIdentifierTy runId,
                                           std::string functionName,
                                           std::unique_ptr<ExecutionContext> ctx,
                                           runtime::ResultCBTy resultCB) {
+  DCHECK(resultCB != nullptr);
+
   TRACE_EVENT_SCOPE_NAMED(ctx->getTraceContext(), TraceLevel::RUNTIME,
                           "HabanaDM::runnerThread", trEvent);
   if (ctx->getTraceContext()) {
@@ -342,6 +348,8 @@ void HabanaDeviceManager::runFunctionImpl(RunIdentifierTy runId,
                      functionName = std::move(functionName),
                      ctx = std::move(ctx),
                      resultCB = std::move(resultCB)]() mutable {
+    DCHECK(resultCB != nullptr);
+
     TRACE_EVENT_SCOPE(ctx->getTraceContext(), TraceLevel::RUNTIME,
                       "HabanaDM::waiterThread");
     if (ctx->getTraceContext()) {
@@ -416,6 +424,8 @@ RunIdentifierTy
 HabanaDeviceManager::runFunction(std::string functionName,
                                  std::unique_ptr<ExecutionContext> ctx,
                                  runtime::ResultCBTy resultCB) {
+  DCHECK(resultCB != nullptr);
+
   RunIdentifierTy runId = runIdentifier_++;
   runPool_->submit([this, runId, functionName = std::move(functionName),
                     ctx = std::move(ctx),
@@ -438,4 +448,14 @@ uint64_t HabanaDeviceManager::getAvailableMemory() const { return freeMemory_; }
 
 bool HabanaDeviceManager::isMemoryAvailable(uint64_t estimate) const {
   return estimate <= freeMemory_;
+}
+
+DeviceInfo HabanaDeviceManager::getDeviceInfo() const {
+  DeviceInfo info = DeviceInfo();
+  info.sramCapacity = 50 * 1024 * 1024;
+  info.peakCompute = 0.45 * 1024 * 1024 * 1024 * 1024;
+  info.peakDramBw = 30.0 * 1024 * 1024 * 1024;
+  info.peakSramBw = 1024.0 * 1024 * 1024 * 1024;
+  info.peakPCIeBw = 16.0 * 1024 * 1024 * 1024;
+  return info;
 }

@@ -13,10 +13,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#ifndef GLOW_OPTIMIZER_FUNCTIONPASSES_H
-#define GLOW_OPTIMIZER_FUNCTIONPASSES_H
+#ifndef GLOW_OPTIMIZER_GRAPHOPTIMIZER_FUNCTIONPASSES_H
+#define GLOW_OPTIMIZER_GRAPHOPTIMIZER_FUNCTIONPASSES_H
 
-#include "glow/Optimizer/FunctionPass.h"
+#include "glow/Optimizer/GraphOptimizer/FunctionPass.h"
 
 namespace glow {
 
@@ -31,4 +31,4 @@ namespace glow {
 
 } // namespace glow
 
-#endif // GLOW_OPTIMIZER_FUNCTIONPASSES_H
+#endif // GLOW_OPTIMIZER_GRAPHOPTIMIZER_FUNCTIONPASSES_H

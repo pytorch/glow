@@ -24,14 +24,31 @@
 
 namespace glow {
 
+class Function;
+
 class Node;
 
 struct NodeValue;
 
-/// A class for logging all compilation related activities.
-class LogContext {
+/// A class for logging all module related logs.
+class ModuleLogContext {
 private:
-  /// A vector that keeps track of all log contents.
+  /// A vector that keeps track of all constant/placeholder changes of this
+  /// module.
+  std::vector<std::string> moduleLogContents_;
+
+public:
+  /// Add content into the contents vector.
+  void addModuleLogContent(llvm::StringRef logContent);
+
+  /// Getter that returns the module log contents.
+  std::vector<std::string> &getModuleLog() { return moduleLogContents_; }
+};
+
+/// A class for logging all compilation related activities.
+class LogContext final {
+private:
+  /// A vector that keeps track of all log contents of a function.
   std::vector<std::string> logContents_;
 
   /// A vector that keeps track of current compilation scopes.
@@ -40,8 +57,14 @@ private:
   /// A string that represents the current full scope name.
   std::string currentFullScope_;
 
+  /// A pointer to the function that has the LogContext.
+  Function *parent_ = nullptr;
+
 public:
-  LogContext() { addLogMetaData(); };
+  LogContext();
+
+  /// Load module log context into this function's log context.
+  void loadModuleLogContext();
 
   /// Add content into the contents vector.
   void addLogContent(llvm::StringRef logContent);
@@ -55,20 +78,24 @@ public:
   /// Pops out the most recently added scope.
   void popLogScope();
 
+  void setParent(Function *parent) { parent_ = parent; }
+
   /// Dumps the log into a file named after the given \p funcName.
   void dumpLog(llvm::StringRef funcName);
 
-  /// Logs the node creation with a list of input nodes.
-  void logNodeCreation(const Node *newNode);
+  /// Logs the node creation. Also logs into Module log context if \p
+  /// logIntoModule set as true.
+  void logNodeCreation(const Node &newNode, bool logIntoModule = false);
 
-  /// Logs the node deletion.
-  void logNodeDeletion(const Node &deletedNode);
+  /// Logs the node deletion. Also logs into Module log context if \p
+  /// logIntoModule set as true.
+  void logNodeDeletion(const Node &deletedNode, bool logIntoModule = false);
 
   /// Logs node's input changes.
   /// \p user is the user node of the operands
   /// \p prevOpr previous operand
   /// \p newOpr new operand
-  void logNodeInputChange(const Node *user, const NodeValue &prevOprVal,
+  void logNodeInputChange(const Node &user, const NodeValue &prevOprVal,
                           const NodeValue &newOprVal);
 
 private:
@@ -84,7 +111,7 @@ private:
 class ScopedLogBlock {
 
   /// Reference to the log context.
-  LogContext &ctx_;
+  std::shared_ptr<LogContext> ctx_;
 
   /// The name of the log scope.
   std::string name_;
@@ -94,7 +121,7 @@ class ScopedLogBlock {
   bool end_{false};
 
 public:
-  ScopedLogBlock(LogContext &ctx, llvm::StringRef name);
+  ScopedLogBlock(std::shared_ptr<LogContext> ctx, llvm::StringRef name);
   ~ScopedLogBlock();
 
 private:

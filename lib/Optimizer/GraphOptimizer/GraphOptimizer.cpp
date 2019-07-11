@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+#include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
+
 #include "glow/Backend/Backend.h"
 #include "glow/Converter/TypeAToTypeBFunctionConverter.h"
 #include "glow/Graph/Graph.h"
@@ -22,8 +24,7 @@
 #include "glow/Graph/Nodes.h"
 #include "glow/Graph/PlaceholderBindings.h"
 #include "glow/Graph/Utils.h"
-#include "glow/Optimizer/FunctionPasses.h"
-#include "glow/Optimizer/Optimizer.h"
+#include "glow/Optimizer/GraphOptimizer/FunctionPasses.h"
 #include "glow/Quantization/Base/Base.h"
 #include "glow/Quantization/Quantization.h"
 
@@ -58,6 +59,18 @@ static bool shouldDeleteNode(Node *N) {
     return false;
   }
 
+  return true;
+}
+
+/// Helper that \returns whether all sibling Functions of \p F (other Functions
+/// inside its Module) are Loaded.
+static bool shouldDeleteConstants(Function *F) {
+  Module *mod = F->getParent();
+  for (auto *MF : mod->getFunctions()) {
+    if (MF->getState() < FunctionState::FuncLoaded) {
+      return false;
+    }
+  }
   return true;
 }
 
@@ -98,6 +111,10 @@ bool DCE::run(Function *F) {
     }
   }
 
+  if (!shouldDeleteConstants(F)) {
+    return changed;
+  }
+
   // Delete unused Constants.
   for (auto it = consts.begin(), e = consts.end(); it != e;) {
     if (!shouldDeleteNode(*it)) {
@@ -131,9 +148,9 @@ static bool isIdentityShuffle(llvm::ArrayRef<unsigned> shuffle) {
 /// \returns True if the node \p N always evaluates to \p val.
 bool isSplatOfVal(Node *N, float val) {
   SplatNode *Z = dyn_cast<SplatNode>(N);
-  if (!Z)
+  if (!Z) {
     return false;
-
+  }
   return (Z->getValue() == val);
 }
 
@@ -492,7 +509,7 @@ bool SinkCode::run(Function *F) {
     // Sink RELU below batch concat nodes.
     if (auto *CN = dyn_cast<ConcatNode>(node)) {
       llvm::SmallVector<NodeValue, 6> CNInputs;
-      for (auto input : CN->getInputs()) {
+      for (auto &input : CN->getInputs()) {
         auto *inputRL = dyn_cast<ReluNode>(input);
         if (!inputRL) {
           break;
@@ -595,7 +612,7 @@ static bool mayDepend(Node *A, Node *B, unsigned depth = 6) {
 /// \returns True if the node \p N depends on any of the values in \p list, or
 /// if any of the values in list depend on \p N.
 static bool mayDependOnAny(llvm::ArrayRef<NodeValue> list, Node *N) {
-  for (auto ll : list) {
+  for (auto &ll : list) {
     if (mayDepend(ll.getNode(), N) || mayDepend(N, ll.getNode())) {
       return true;
     }
@@ -1020,8 +1037,9 @@ static bool findSlicesThatSpanInput(llvm::ArrayRef<SliceNode *> input,
   // Check if for all dimensions, the size of the result tensor plus the start
   // coordinate matches the size of the tensor.
   for (int i = 0, e = startCoor.size(); i < e; i++) {
-    if (startCoor[i] + resDim[i] != inDim[i])
+    if (startCoor[i] + resDim[i] != inDim[i]) {
       return false;
+    }
   }
 
   // Report success if we found at least two slices that extract from the
@@ -1071,13 +1089,15 @@ bool MergeBatchedAdd::run(Function *F) {
     // We found a sequence of batched-add-slice that cover the input tensor.
     // We can transform the graph and create one big batched-add.
     std::vector<Node *> newSlices;
+    assert(order.size() > 1 && "order must contain at least 2 SliceNodes.");
     SliceNode *S = llvm::cast<SliceNode>(order[0]);
-    auto *BA = F->createBatchedAdd("mergedBA", S->getInput(), it.first);
+    auto *mergedBA = F->createBatchedAdd("mergedBA", S->getInput(), it.first);
 
     // Create the new slices. These slices will replace the original scalar
     // batched-add nodes.
     for (auto *orig : order) {
-      newSlices.push_back(F->createSlice(orig->getName(), BA, orig->getStart(),
+      newSlices.push_back(F->createSlice(orig->getName(), mergedBA,
+                                         orig->getStart(),
                                          orig->getResult().getType()));
     }
 
@@ -1488,8 +1508,9 @@ static NodeValue simplifyConcatNode(Function *F, ConcatNode *CN) {
       auto *CNI = dyn_cast<ConcatNode>(input);
       // Bail if it is not a ConcatNode or it is a concat node with a diffrent
       // dimension.
-      if (!CNI || CNI->getDim() != CN->getDim())
+      if (!CNI || CNI->getDim() != CN->getDim()) {
         continue;
+      }
 
       merged = true;
       // Replace current input by its own inputs, i.e. merge them into the
@@ -1808,11 +1829,13 @@ bool OptimizeSliceOfSplat::run(Function *F) {
   bool changed = false;
   for (auto &node : F->getNodes()) {
     auto *sliceNode = dyn_cast<SliceNode>(&node);
-    if (!sliceNode)
+    if (!sliceNode) {
       continue;
+    }
     auto *splatNode = dyn_cast<SplatNode>(sliceNode->getInput());
-    if (!splatNode)
+    if (!splatNode) {
       continue;
+    }
     auto *newSplatNode =
         F->createSplat(sliceNode->getName(), sliceNode->getResult().getType(),
                        splatNode->getValue());
@@ -1829,8 +1852,9 @@ bool OptimizeTransposeIntoReshape::run(Function *F) {
 
   for (auto &node : F->getNodes()) {
     auto *TR = dyn_cast<TransposeNode>(&node);
-    if (!TR)
+    if (!TR) {
       continue;
+    }
     auto inputNode = TR->getInput();
     auto inputDims = inputNode.dims();
     auto outputDims = TR->getResult().dims();
@@ -1865,8 +1889,9 @@ bool OptimizeReshape::run(Function *F) {
   bool changed = false;
   for (auto &node : F->getNodes()) {
     auto *reshapeNode = dyn_cast<ReshapeNode>(&node);
-    if (!reshapeNode)
+    if (!reshapeNode) {
       continue;
+    }
     auto inputNode = reshapeNode->getNthInput(ReshapeNode::InputIdx);
     // Eliminate ReshapeNode when the input is already the correct shape.
     if (inputNode.dims() == reshapeNode->getResult().dims()) {
@@ -2345,9 +2370,12 @@ static bool sinkDownRescaleToPoolingNode(Function &F, T *PN) {
                              PN->getKernels(), PN->getStrides(), PN->getPads());
     auto rescaleOutTy = F.getParent()->uniqueTypeWithNewShape(
         rescale->getResult().getType(), PN->getResult().dims());
-    auto *newRescale =
-        F.createRescaleQuantized(rescale->getName(), newPN, rescaleOutTy);
+    auto *newRescale = F.createRescaleQuantized(
+        rescale->getName(), newPN->getResult(), rescaleOutTy);
     PN->getResult().replaceAllUsesOfWith(newRescale);
+    for (size_t i = 1; i < PN->getNumResults(); i++) {
+      PN->getNthResult(i).replaceAllUsesOfWith(newPN->getNthResult(i));
+    }
     changed = true;
   }
 
@@ -2745,7 +2773,9 @@ void glow::fold(Function *F, CompilationMode mode) {
 
 void glow::optimize(Function *F, CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), "glow::optimize")
-
+  // Indicates if the given function is completely loaded. A temporary
+  // workaround until #3213 is complete.
+  F->setState(FunctionState::FuncLoaded);
   // Optimize may be called after backend specific transformations and some
   // nodes may have become unused. It is a good idea to remove them, before
   // proceeding with any further optimizations.
@@ -2837,6 +2867,11 @@ void glow::optimize(Function *F, CompilationContext &cctx) {
 
   // Optimize reshapes introduced during above optimizations.
   OptimizeReshape().run(F);
+
+  // Run a round of constant folding.
+  if (cctx.optimizationOpts.enableConstantFolding) {
+    ConstantFold().run(F);
+  }
 
   // Perform Dead Code Elimination.
   DCE().run(F);

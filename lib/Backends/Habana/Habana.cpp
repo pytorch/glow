@@ -15,6 +15,7 @@
  */
 
 #include "Habana.h"
+#include "HabanaUtils.h"
 
 #include "glow/Graph/PlaceholderBindings.h"
 #include "glow/IR/IR.h"
@@ -124,9 +125,13 @@ public:
   /// Create an un-allocated handle.  Useful for moving objects.
   TensorHandle() = default;
 
-  /// Constructor. Create a tensor from Glow IR Value \p V.
-  TensorHandle(TypeRef V, llvm::StringRef name, void *buffer = nullptr,
-               IOType ioType = IOType::Intermediate)
+  /// Constructor. Create a Synapse tensor.
+  /// \param downcast64To32 If this tensor is a 64-bit type, forcible cast to
+  /// 32-bits. \param V Type of the tensor \param name a string identifying the
+  /// tensor \param buffer the static weights of the tensor \param ioType the
+  /// I/O class of the tensor
+  TensorHandle(bool downcast64To32, TypeRef V, llvm::StringRef name,
+               void *buffer = nullptr, IOType ioType = IOType::Intermediate)
       : buffer_(buffer), name_(name) {
     if (!buffer_) {
       DCHECK_GT(V->getSizeInBytes(), 0);
@@ -145,9 +150,10 @@ public:
     llvm::SmallVector<unsigned, SYN_MAX_TENSOR_DIM> rdims(dims.rbegin(),
                                                           dims.rend());
 
-    // We fake 64-bit indices by reading every other element of a 32-bit
-    // tensor, so we need to double the fastest moving (first) dimension.
-    if (V->getElementType() == ElemKind::Int64ITy) {
+    // Unless we can safely downcast, we fake 64-bit indices by reading every
+    // other element of a 32-bit tensor, so we need to double the fastest
+    // moving (first) dimension.
+    if (V->getElementType() == ElemKind::Int64ITy && !downcast64To32) {
       rdims[0] *= 2;
     }
 
@@ -164,11 +170,16 @@ public:
         allocated_ = true;
       }
 
-      // Int64ITy: Remember 64-bit indices are fakes as pairs of (0, int32).
+      // Int64ITy: Remember 64-bit indices are faked as pairs of (0, int32),
+      // unless we are able to safely downcast to int32.
       if (V->getElementType() == ElemKind::Int64ITy) {
-        float *floats_ = (float *)calloc(2 * V->size(), sizeof(float));
+        size_t size = downcast64To32 ? V->size() : 2 * V->size();
+        float *floats_ = (float *)calloc(size, sizeof(float));
         for (size_t i = 0; i < V->size(); i++) {
-          floats_[2 * i] = static_cast<int64_t *>(buffer_)[i];
+          floats_[i] = static_cast<int64_t *>(buffer_)[i];
+          if (!downcast64To32) {
+            i++;
+          }
         }
         buffer_ = floats_;
         allocated_ = true;
@@ -197,6 +208,11 @@ public:
                              ioType == IOType::Static));
     valid_ = true;
   }
+
+  /// Constructor. Create a tensor with Type \p V.
+  TensorHandle(TypeRef V, llvm::StringRef name, void *buffer = nullptr,
+               IOType ioType = IOType::Intermediate)
+      : TensorHandle(/* downcast64To32 */ false, V, name, buffer, ioType) {}
 
   /// Non-copyable.
   ///@{
@@ -413,8 +429,32 @@ static bool allowsPartialInput(const Node *src, const Node *dst) {
           llvm::dyn_cast<FusedRowwiseQuantizedSparseLengthsWeightedSumNode>(
               dst)) {
     return src == SLS->getIndices() || src == SLS->getWeights();
+  } else if (auto *SLS =
+                 llvm::dyn_cast<FusedRowwiseQuantizedSparseLengthsSumNode>(
+                     dst)) {
+    return src == SLS->getIndices();
   } else if (auto *SLS = llvm::dyn_cast<SparseLengthsWeightedSumNode>(dst)) {
     return src == SLS->getIndices() || src == SLS->getWeights();
+  } else if (auto *SLS = llvm::dyn_cast<SparseLengthsSumNode>(dst)) {
+    return src == SLS->getIndices();
+  }
+  return false;
+}
+
+/// \returns true if \p dst allows \p src to be converted from 64 to 32 bits.
+static bool allows64To32Downcast(const Node *src, const Node *dst) {
+  // If N is used as the indices or weights of a sparse lookup, it is safe to
+  // access a partial tensor.
+  if (auto *SLS =
+          llvm::dyn_cast<FusedRowwiseQuantizedSparseLengthsWeightedSumNode>(
+              dst)) {
+    return src == SLS->getIndices();
+  } else if (auto *SLS =
+                 llvm::dyn_cast<FusedRowwiseQuantizedSparseLengthsSumNode>(
+                     dst)) {
+    return src == SLS->getIndices();
+  } else if (auto *SLS = llvm::dyn_cast<SparseLengthsWeightedSumNode>(dst)) {
+    return src == SLS->getIndices();
   } else if (auto *SLS = llvm::dyn_cast<SparseLengthsSumNode>(dst)) {
     return src == SLS->getIndices();
   }
@@ -434,6 +474,22 @@ static bool allowsPartialInput(const Placeholder *V, const Function *F) {
   return true;
 }
 
+/// \returns true if \p V can be converted from a 64 to 32 bit value at runtime.
+static bool allows64To32Downcast(const Storage *V, const Function *F) {
+  if (V->getElementType() != ElemKind::Int64ITy) {
+    return false;
+  }
+  for (auto const &U : V->getUsers()) {
+    if (U.getUser()->getParent() != F) {
+      continue;
+    }
+    if (!allows64To32Downcast(*U.get(), U.getUser())) {
+      return false;
+    }
+  }
+  return true;
+}
+
 void HabanaFunction::findIOPlaceholders(Function *F) {
   for (auto const &V : F->getParent()->getPlaceholders()) {
     if (!usedInFunction(V, F)) {
@@ -445,6 +501,9 @@ void HabanaFunction::findIOPlaceholders(Function *F) {
       inputs_.push_back(V);
       if (allowsPartialInput(V, F)) {
         partialInputs_.insert(V);
+      }
+      if (allows64To32Downcast(V, F)) {
+        downcastInt64Inputs_.insert(V);
       }
     }
   }
@@ -488,10 +547,20 @@ llvm::Error HabanaFunction::execute(ExecutionContext *context) {
     RETURN_ERR_IF_NOT(T, "Failed to get input tensor.");
 
     bool isPartial = partialInputs_.count(P);
+    bool downcastInt64 = downcastInt64Inputs_.count(P);
+
+    size_t elemSize =
+        downcastInt64 ? sizeof(int32_t) : T->getType().getElementSize();
+    size_t paddedSize = T->size() * elemSize;
+    size_t unpaddedSize = T->getUnpaddedSizeInBytes();
+    if (downcastInt64) {
+      unpaddedSize /= 2;
+    }
+
     EnqueueTensorInfo eti;
     llvm::StringRef name = P->getName();
     eti.tensorName = name.data();
-    eti.tensorSize = T->getSizeInBytes();
+    eti.tensorSize = paddedSize;
     uint8_t *ioBufferData;
     ASSIGN_VALUE_OR_RETURN_ERR(ioBufferData, ioBuffer->get(P));
     eti.pTensorData = (char *)ioBufferData;
@@ -499,11 +568,21 @@ llvm::Error HabanaFunction::execute(ExecutionContext *context) {
     bytes += eti.tensorSize;
 
     inputInfo.push_back(eti);
+
     // Copy from the tensor into the designated IO buffer.
-    memcpy(eti.pTensorData, T->getUnsafePtr(), T->getUnpaddedSizeInBytes());
+    if (downcastInt64) {
+      // Copy int64 elements to int32.
+      auto *device = reinterpret_cast<int32_t *>(eti.pTensorData);
+      auto *host = reinterpret_cast<int64_t *>(T->getUnsafePtr());
+      auto hostElems = unpaddedSize / sizeof(int32_t);
+      for (size_t i = 0; i < hostElems; i++) {
+        device[i] = host[i];
+      }
+    } else {
+      memcpy(eti.pTensorData, T->getUnsafePtr(), unpaddedSize);
+    }
     if (!isPartial) {
-      memset(eti.pTensorData + T->getUnpaddedSizeInBytes(), 0,
-             T->getSizeInBytes() - T->getUnpaddedSizeInBytes());
+      memset(eti.pTensorData + unpaddedSize, 0, paddedSize - unpaddedSize);
     }
   }
   ciEvent.addArg("tensors", std::to_string(tensors));
@@ -542,9 +621,9 @@ llvm::Error HabanaFunction::execute(ExecutionContext *context) {
   auto res = synEnqueueByName(
       deviceId, inputInfo.empty() ? &noInputEti : inputInfo.data(),
       inputInfo.size(), outputInfo.data(), outputInfo.size(), &handle);
-  seEvent.addArg("result", std::to_string(res));
+  seEvent.addArg("result", statusStr(res));
   if (res != synSuccess) {
-    return chk_make_err(res);
+    return MAKE_ERR(strFormat("synEnqueueByName failed: %s", statusStr(res)));
   }
   TRACE_EVENT_SCOPE_END_NAMED(seEvent);
 
@@ -682,6 +761,12 @@ static std::unique_ptr<unsigned> makeConcatParams(unsigned axis,
   return llvm::make_unique<unsigned>(axes - axis - 1);
 }
 
+static std::unique_ptr<ns_Softmax::Params> makeSoftmaxParams() {
+  auto params = llvm::make_unique<ns_Softmax::Params>();
+  params->dim = 0;
+  return params;
+}
+
 /// Allocate synTensors for every tensor used in \p F.
 static std::unordered_map<const Node *, TensorHandle>
 allocateGraphTensors(Function *F) {
@@ -692,7 +777,8 @@ allocateGraphTensors(Function *F) {
     if (V->getNumUsers() == 0) {
       continue;
     }
-    tensors.emplace(V, TensorHandle(V->getType(), V->getName(),
+    bool downcast = allows64To32Downcast(V, F);
+    tensors.emplace(V, TensorHandle(downcast, V->getType(), V->getName(),
                                     V->getPayload().getUnsafePtr(),
                                     IOType::Static));
   }
@@ -709,15 +795,16 @@ allocateGraphTensors(Function *F) {
       // not generating a memcpy if the SaveNode itself has no associated
       // tensor.
       auto *N = save->getInput().getNode();
-      if (llvm::isa<Storage>(N) || llvm::isa<HabanaReshapeNode>(N) ||
+      if (llvm::isa<Storage>(N) || llvm::isa<ReshapeNode>(N) ||
           N->getNumUsers() > 1) {
         N = save;
       }
       tensors.emplace(
           N, TensorHandle(V->getType(), V->getName(), nullptr, IOType::Output));
     } else {
-      tensors.emplace(
-          V, TensorHandle(V->getType(), V->getName(), nullptr, IOType::Input));
+      bool downcast = allows64To32Downcast(V, F);
+      tensors.emplace(V, TensorHandle(downcast, V->getType(), V->getName(),
+                                      nullptr, IOType::Input));
     }
   }
 
@@ -759,6 +846,7 @@ HabanaBackend::compile(Function *F, const BackendOptions &opts) const {
   std::vector<std::unique_ptr<ns_GatherKernel::Params>> gatherParams;
   std::vector<std::unique_ptr<ns_LrnKernel::Params>> lrnParams;
   std::vector<std::unique_ptr<synGEMMParams>> gemmParams;
+  std::vector<std::unique_ptr<ns_Softmax::Params>> softmaxParams;
 
   // Keep references to tensor pointer arrays passed into multi-input nodes
   // until the compilation is done.
@@ -874,8 +962,8 @@ HabanaBackend::compile(Function *F, const BackendOptions &opts) const {
       tempTensors.emplace_back(std::move(tempResult));
       break;
     }
-    case Kinded::Kind::HabanaReshapeNodeKind: {
-      auto *RI = llvm::cast<HabanaReshapeNode>(&I);
+    case Kinded::Kind::ReshapeNodeKind: {
+      auto *RI = llvm::cast<ReshapeNode>(&I);
       chk(synCreateGenericNode(&tensors[RI->getInput()].get(),
                                &tensors[RI].get(), 1, 1, nullptr, "Reshape",
                                RI->getName().data(), nullptr, nullptr));
@@ -1023,6 +1111,19 @@ HabanaBackend::compile(Function *F, const BackendOptions &opts) const {
       }
       break;
     }
+    case Kinded::Kind::BatchMatMulNodeKind: {
+      auto *MI = llvm::cast<BatchMatMulNode>(&I);
+      std::vector<synTensor> inputs;
+      inputs.push_back(tensors[MI->getLHS()].get());
+      inputs.push_back(tensors[MI->getRHS()].get());
+      chk(synCreateGenericNode(
+          inputs.data(), &tensors[MI].get(), 2, 1, nullptr,
+          getKernelName("matrix_multiply", MI->getResult().getElementType())
+              .c_str(),
+          MI->getName().data(), nullptr, nullptr));
+      multiInputs.emplace_back(std::move(inputs));
+      break;
+    }
     case Kinded::Kind::HabanaConvolutionNodeKind: {
       auto *NI = llvm::cast<HabanaConvolutionNode>(&I);
 
@@ -1109,10 +1210,13 @@ HabanaBackend::compile(Function *F, const BackendOptions &opts) const {
     }
     case Kinded::Kind::SoftMaxNodeKind: {
       auto *SI = llvm::cast<SoftMaxNode>(&I);
+      std::unique_ptr<ns_Softmax::Params> params = makeSoftmaxParams();
       chk(synCreateGenericNode(
-          &tensors[SI->getInput()].get(), &tensors[SI].get(), 1, 1, nullptr,
+          &tensors[SI->getInput()].get(), &tensors[SI].get(), 1, 1,
+          (void *)params.get(),
           getKernelName("softmax", SI->getResult().getElementType()).c_str(),
           SI->getName().data(), nullptr, nullptr));
+      softmaxParams.emplace_back(std::move(params));
       break;
     }
     case Kinded::Kind::SliceNodeKind: {
@@ -1318,7 +1422,6 @@ bool HabanaBackend::isOpSupported(const NodeInfo &NI) const {
     case Kinded::Kind::HabanaConvolutionNodeKind:
     case Kinded::Kind::HabanaConvolutionAddNodeKind:
     case Kinded::Kind::HabanaFullyConnectedNodeKind:
-    case Kinded::Kind::HabanaReshapeNodeKind:
     case Kinded::Kind::MatMulNodeKind:
     case Kinded::Kind::MaxPoolNodeKind:
     case Kinded::Kind::MulNodeKind:
@@ -1343,15 +1446,14 @@ bool HabanaBackend::isOpSupported(const NodeInfo &NI) const {
   switch (NI.getKind()) {
   case Kinded::Kind::AddNodeKind:
   case Kinded::Kind::AvgPoolNodeKind:
+  case Kinded::Kind::BatchMatMulNodeKind:
   case Kinded::Kind::BatchedAddNodeKind:
   case Kinded::Kind::BatchedReduceAddNodeKind:
   case Kinded::Kind::ConcatNodeKind:
   case Kinded::Kind::DequantizeNodeKind:
   case Kinded::Kind::DivNodeKind:
-  case Kinded::Kind::GatherNodeKind:
   case Kinded::Kind::FullyConnectedNodeKind:
   case Kinded::Kind::HabanaFullyConnectedNodeKind:
-  case Kinded::Kind::HabanaReshapeNodeKind:
   case Kinded::Kind::LogNodeKind:
   case Kinded::Kind::MatMulNodeKind:
   case Kinded::Kind::MaxNodeKind:
@@ -1361,8 +1463,8 @@ bool HabanaBackend::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::ReluNodeKind:
   case Kinded::Kind::ReshapeNodeKind:
   case Kinded::Kind::SaveNodeKind:
-  case Kinded::Kind::SliceNodeKind:
   case Kinded::Kind::SigmoidNodeKind:
+  case Kinded::Kind::SliceNodeKind:
   case Kinded::Kind::SoftMaxNodeKind:
   case Kinded::Kind::SplatNodeKind:
   case Kinded::Kind::SubNodeKind:
@@ -1375,6 +1477,9 @@ bool HabanaBackend::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::FusedRowwiseQuantizedSparseLengthsWeightedSumNodeKind:
   case Kinded::Kind::LocalResponseNormalizationNodeKind:
     return true;
+  case Kinded::Kind::GatherNodeKind:
+    // Gather is technically supported but currently appears to trigger bugs in
+    // large models.
   default:
     return false;
   }
@@ -1384,12 +1489,13 @@ bool HabanaBackend::isOpSupported(const NodeInfo &NI) const {
 
 bool HabanaBackend::shouldLower(const Node *N) const {
   switch (N->getKind()) {
-  case Kinded::Kind::TileNodeKind:
-  case Kinded::Kind::ReluNodeKind:
-  case Kinded::Kind::FullyConnectedNodeKind:
+  case Kinded::Kind::BatchMatMulNodeKind:
   case Kinded::Kind::ConvolutionNodeKind:
-  case Kinded::Kind::SparseLengthsSumNodeKind:
+  case Kinded::Kind::FullyConnectedNodeKind:
   case Kinded::Kind::FusedRowwiseQuantizedSparseLengthsSumNodeKind:
+  case Kinded::Kind::ReluNodeKind:
+  case Kinded::Kind::SparseLengthsSumNodeKind:
+  case Kinded::Kind::TileNodeKind:
     return false;
   default:
     return true;
@@ -1701,17 +1807,6 @@ bool HabanaBackend::transformPostLowering(Function *F,
           conv->getBias(), conv->getKernels(), conv->getStrides(),
           conv->getPads(), conv->getGroup(), /*doRelu=*/false));
       conv->getResult().replaceAllUsesOfWith(NC);
-      changed = true;
-      continue;
-    }
-
-    // Replace Reshape with HabanaReshape for better control over code
-    // generation.
-    if (auto *reshape = llvm::dyn_cast<ReshapeNode>(&node)) {
-      auto *NR = F->addNode(new HabanaReshapeNode(
-          reshape->getName(), reshape->getResult().getType(),
-          reshape->getInput(), reshape->getDims()));
-      reshape->getResult().replaceAllUsesOfWith(NR);
       changed = true;
       continue;
     }

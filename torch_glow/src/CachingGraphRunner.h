@@ -28,6 +28,8 @@ struct GraphInfo {
   GraphInfo(const torch::jit::Node *node);
 };
 
+/// Responsible for maintaining a mapping from PyTorch subgraphs and their
+/// unique input types to compiled Glow Functions.
 class CachingGraphRunner {
   /// Map of from PyTorch JIT Node containing contracted JIT subgraph to
   /// to GraphInfo containing information relevent to Glow about that subgraph.
@@ -37,8 +39,10 @@ class CachingGraphRunner {
 public:
   CachingGraphRunner() = default;
 
-  void addGraph(const torch::jit::Node *node);
-
+  /// Given a PyTorch glow::CompilationGroup Node \p node that contains a
+  /// PyTorch subgraph and corresponding PyTorch Stack \p stack of inputs, run
+  /// that subgraph on those inputs. If this is the first time this node has
+  /// been seen then this first loads it as a Glow Function and compiles.
   void runGraph(const torch::jit::Node *node, torch::jit::Stack &stack);
 };
 

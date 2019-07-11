@@ -51,6 +51,14 @@ struct DeviceInfo {
   uint64_t availableMemory;
   /// Backend Type.
   std::string backendName;
+  /// A string contains the node names(e.g. Add, Div) which are separeted by
+  /// ",". E.g. "Div,Add". In Partitioner, those nodes won't be supported in
+  /// this backend.
+  std::string nonSupportedNodes;
+  /// A string contains the node names(e.g. Add, Div) which are separeted by
+  /// ",". E.g. "Div,Add". In Partitioner, the complementary set of those nodes
+  /// won't be supported in this backend.
+  std::string supportedNodes;
   /// Available SRAM capacity in bytes.
   uint64_t sramCapacity;
   /// Peak compute on device in ops/second. Assumes all ops are in int8.

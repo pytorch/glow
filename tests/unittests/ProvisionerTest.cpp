@@ -15,6 +15,7 @@
  */
 #include "glow/Runtime/Provisioner/Provisioner.h"
 #include "../../lib/Backends/CPU/CPUDeviceManager.h"
+#include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
 
 #include "gtest/gtest.h"
 

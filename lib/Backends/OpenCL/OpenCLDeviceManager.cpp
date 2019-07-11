@@ -64,6 +64,77 @@ static llvm::Expected<unsigned> parseInputAsUnsigned(std::string input) {
   return parsed;
 }
 
+OpenCLCommandQueuePool::~OpenCLCommandQueuePool() {
+  // Make sure all queues have been returned to the pool.
+  DCHECK_EQ(queuesAllocated_, queuesAvailable_)
+      << "OpenCLCommandQueue destroyed before all queues returned!";
+  // For each properties -> vector of queues pair:
+  for (auto &kv : queues_) {
+    // For each queue in each vector:
+    for (auto &q : kv.second) {
+      // Release the backing queue.
+      cl_int err = clReleaseCommandQueue(q.backingQueue);
+      DCHECK_EQ(err, CL_SUCCESS)
+          << "clReleaseCommandQueue failed with error code " << err;
+    }
+  }
+}
+
+llvm::Expected<OpenCLCommandQueue> OpenCLCommandQueuePool::requestCommandQueue(
+    cl_command_queue_properties properties) {
+  OpenCLCommandQueue ret;
+  // Get the vector that has queues with the desired properties.
+  std::vector<OpenCLCommandQueue> &srcVec = queues_[properties];
+
+  if (srcVec.empty()) {
+    // The vector is empty. This means a new queus must be created.
+    cl_int err;
+    ret.props = properties;
+    ret.backingQueue =
+        clCreateCommandQueue(context_, device_, properties, &err);
+    RETURN_ERR_IF_NOT(err == CL_SUCCESS,
+                      strFormat("Unable to create command queue: %d", err));
+
+    // If queue creation succeeds, increment the total number of queues. Do not
+    // increment the number of available queues since the newly created one is
+    // about to be given away.
+    ++queuesAllocated_;
+    ++queuesAllocatedByProps_[properties];
+  } else {
+    ret = srcVec.back();
+    srcVec.pop_back();
+    --queuesAvailable_;
+    --queuesAvailableByProps_[properties];
+  }
+
+  return ret;
+}
+
+void OpenCLCommandQueuePool::returnCommandQueue(OpenCLCommandQueue &queue) {
+  // Check that the number of available queues is less than the number of
+  // allocated queues.
+  DCHECK_LE(queuesAvailable_, queuesAllocated_)
+      << "Available queues must be less than allocated queues";
+
+  // Get the vector that has queues with the desired properties.
+  std::vector<OpenCLCommandQueue> &destVec = queues_[queue.props];
+  ++queuesAvailable_;
+  ++queuesAvailableByProps_[queue.props];
+  destVec.emplace_back(std::move(queue));
+}
+
+unsigned OpenCLCommandQueuePool::getNumAllocatedQueuesForProperties(
+    cl_command_queue_properties props) const {
+  auto it = queuesAllocatedByProps_.find(props);
+  return it != queuesAllocatedByProps_.end() ? it->second : 0;
+}
+
+unsigned OpenCLCommandQueuePool::getNumQueuesAvailableForProperties(
+    cl_command_queue_properties props) const {
+  auto it = queuesAvailableByProps_.find(props);
+  return it != queuesAvailableByProps_.end() ? it->second : 0;
+}
+
 llvm::Expected<cl_mem> OpenCLDeviceManager::allocDeviceBuffer(uint64_t size) {
   const uint64_t alignment = 128;
   // Always allocate buffers properly aligned to hold values of any type.
@@ -159,6 +230,9 @@ llvm::Error OpenCLDeviceManager::init() {
     maxMemoryBytes_ = mem_size;
   }
 
+  commandQueuePool_.setContext(context_);
+  commandQueuePool_.setDevice(deviceId_);
+
   return llvm::Error::success();
 }
 
@@ -181,6 +255,8 @@ bool OpenCLDeviceManager::isMemoryAvailable(uint64_t estimate) const {
 void OpenCLDeviceManager::addNetworkImpl(const Module *module,
                                          FunctionMapTy functions,
                                          ReadyCBTy readyCB) {
+  DCHECK(readyCB != nullptr);
+
   // First check for uniqueness of the function name.
   for (const auto &func : functions) {
     if (functions_.count(func.first) != 0) {
@@ -286,6 +362,8 @@ void OpenCLDeviceManager::addNetworkImpl(const Module *module,
 
 void OpenCLDeviceManager::evictNetworkImpl(std::string functionName,
                                            EvictFunctionCBTy evictCB) {
+  DCHECK(evictCB != nullptr);
+
   if (functions_.erase(functionName)) {
     auto buffer = buffers_[functionName];
     auto users = buffer->decrementUsers();
@@ -305,26 +383,23 @@ void OpenCLDeviceManager::evictNetworkImpl(std::string functionName,
   evictCB(functionName, llvm::Error::success());
 }
 
-cl_command_queue
+llvm::Expected<OpenCLCommandQueue>
 OpenCLDeviceManager::requestRunCommandQueue(CompiledFunction *function) {
-  cl_int err;
   auto traceInfo = function->getTraceInfo();
-  cl_command_queue_properties profiling = 0;
-  if (clDoProfile || traceInfo.enabled) {
-    profiling = CL_QUEUE_PROFILING_ENABLE;
-  }
-  cl_command_queue commands =
-      clCreateCommandQueue(context_, deviceId_, profiling, &err);
-  return commands;
+  cl_command_queue_properties props =
+      clDoProfile || traceInfo.enabled ? CL_QUEUE_PROFILING_ENABLE : 0;
+  return commandQueuePool_.requestCommandQueue(props);
 }
 
-void OpenCLDeviceManager::returnRunCommandQueue(cl_command_queue commands) {
-  clReleaseCommandQueue(commands);
+void OpenCLDeviceManager::returnRunCommandQueue(OpenCLCommandQueue &queue) {
+  commandQueuePool_.returnCommandQueue(queue);
 }
 
 void OpenCLDeviceManager::runFunctionImpl(
     RunIdentifierTy id, std::string function,
     std::unique_ptr<ExecutionContext> context, ResultCBTy resultCB) {
+  DCHECK(resultCB != nullptr);
+
   TRACE_EVENT_SCOPE_NAMED(context->getTraceContext(), TraceLevel::RUNTIME,
                           "DeviceManager::run", dmRun);
   auto funcIt = functions_.find(function);
@@ -340,20 +415,30 @@ void OpenCLDeviceManager::runFunctionImpl(
 
   CompiledFunction *func = funcIt->second;
 
+  TRACE_EVENT_SCOPE(context->getTraceContext(), TraceEvent::TraceLevel::RUNTIME,
+                    "requestRunCommandQueue");
   // Get a command queue for this run.
-  cl_command_queue commands = requestRunCommandQueue(func);
+  OpenCLCommandQueue queue;
+  auto queueOrError = requestRunCommandQueue(func);
 
+  if (queueOrError) {
+    queue = std::move(queueOrError.get());
+  } else {
+    resultCB(id, queueOrError.takeError(), std::move(context));
+  }
+
+  TRACE_EVENT_SCOPE_END();
   // Create and set deviceBindings for call. This contains all the state needed
   // for the function to run on a device.
   auto clBindings = llvm::make_unique<runtime::OpenCLDeviceBindings>(
-      buffers_[function]->getBuffer(), commands, deviceId_, context_);
+      buffers_[function]->getBuffer(), queue.backingQueue, deviceId_, context_);
   context->setDeviceBindings(std::move(clBindings));
 
   // Run that function.
   auto executeErr = func->execute(context.get());
 
   // Return the command queue.
-  returnRunCommandQueue(commands);
+  returnRunCommandQueue(queue);
 
   // End the TraceEvent early to avoid time in the CB.
   TRACE_EVENT_SCOPE_END_NAMED(dmRun);

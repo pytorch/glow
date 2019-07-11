@@ -1,0 +1,9 @@
+name: "expcaffe2Test"
+op {
+  input: "data"
+  output: "result"
+  name: "exp"
+  type: "Exp"
+}
+external_input: "data"
+external_output: "result"

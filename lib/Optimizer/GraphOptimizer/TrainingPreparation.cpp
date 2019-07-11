@@ -14,7 +14,8 @@
  * limitations under the License.
  */
 
-#include "glow/Optimizer/TrainingPreparation.h"
+#include "glow/Optimizer/GraphOptimizer/TrainingPreparation.h"
+
 #include "glow/Base/Tensor.h"
 #include "glow/Graph/PlaceholderBindings.h"
 

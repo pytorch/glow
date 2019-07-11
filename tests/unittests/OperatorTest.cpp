@@ -21,10 +21,12 @@
 #include "glow/IR/IR.h"
 #include "glow/IR/IRBuilder.h"
 #include "glow/IR/Instrs.h"
+#include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
 #include "glow/Quantization/Base/Base.h"
 
 #include "llvm/Support/raw_ostream.h"
 
+#include <functional>
 #include <numeric>
 
 using namespace glow;
@@ -2281,6 +2283,60 @@ COMPARE_ARITH_FLOAT_VS_FLOAT16(Max, Interpreter)
 COMPARE_ARITH_FLOAT_VS_FLOAT16(Min, Interpreter)
 #undef COMPARE_ARITH_FLOAT_VS_FLOAT16
 
+#define ARITH_FUN_IMPL(_OP_NAME_, _REFERENCE_FUNCTION_, _PARENTHESES_)         \
+  template <typename DataType>                                                 \
+  static void testArithmetic##_OP_NAME_##Impl(                                 \
+      glow::PlaceholderBindings &bindings, glow::Module &mod,                  \
+      glow::Function *F, glow::ExecutionEngine &EE, ElemKind DTy) {            \
+    std::vector<DataType> data1 = {3, 17, 7, 23};                              \
+    std::vector<DataType> data2 = {13, 5, 19, 11};                             \
+    auto *A = mod.createPlaceholder(DTy, {1, 4}, "A", false);                  \
+    auto *B = mod.createPlaceholder(DTy, {1, 4}, "B", false);                  \
+    bindings.allocate(A)->getHandle<DataType>() = data1;                       \
+    bindings.allocate(B)->getHandle<DataType>() = data2;                       \
+                                                                               \
+    auto *add = F->create##_OP_NAME_("arith", A, B);                           \
+    auto *result = F->createSave("save", add);                                 \
+    auto *resultTensor = bindings.allocate(result->getPlaceholder());          \
+                                                                               \
+    EE.compile(CompilationMode::Infer, F);                                     \
+    EE.run(bindings);                                                          \
+    std::vector<DataType> reference;                                           \
+    assert(data1.size() == data2.size() && "Size mismatch!");                  \
+    for (size_t i = 0; i < data1.size(); i++) {                                \
+      reference.push_back(                                                     \
+          _REFERENCE_FUNCTION_<DataType> _PARENTHESES_(data1[i], data2[i]));   \
+    }                                                                          \
+    auto RH = resultTensor->getHandle<DataType>();                             \
+    EXPECT_EQ(reference.size(), RH.size());                                    \
+    for (size_t i = 0; i < reference.size(); i++) {                            \
+      EXPECT_EQ(reference[i], RH.raw(i));                                      \
+    }                                                                          \
+  }
+
+#define ARITH_FUNC_TEST_TYPED(_OP_NAME_, _DATA_TYPE_, _ELEM_KIND_)             \
+  TEST_P(OperatorTest, Arith##_OP_NAME_##_##_DATA_TYPE_) {                     \
+    ENABLED_BACKENDS(Interpreter);                                             \
+    testArithmetic##_OP_NAME_##Impl<_DATA_TYPE_>(bindings_, mod_, F_, EE_,     \
+                                                 _ELEM_KIND_);                 \
+  }
+
+#define ARITH_FUNC_TEST(_OP_NAME_, _REFERENCE_FUNCTION_, _PARENTHESES_)        \
+  ARITH_FUN_IMPL(_OP_NAME_, _REFERENCE_FUNCTION_, _PARENTHESES_)               \
+  ARITH_FUNC_TEST_TYPED(_OP_NAME_, int32_t, ElemKind::Int32ITy)                \
+  ARITH_FUNC_TEST_TYPED(_OP_NAME_, int64_t, ElemKind::Int64ITy)                \
+  ARITH_FUNC_TEST_TYPED(_OP_NAME_, float, ElemKind::FloatTy)                   \
+  ARITH_FUNC_TEST_TYPED(_OP_NAME_, float16_t, ElemKind::Float16Ty)
+
+ARITH_FUNC_TEST(Add, std::plus, ())
+ARITH_FUNC_TEST(Sub, std::minus, ())
+ARITH_FUNC_TEST(Mul, std::multiplies, ())
+ARITH_FUNC_TEST(Max, std::max, )
+ARITH_FUNC_TEST(Min, std::min, )
+#undef ARITH_FUN_IMPL
+#undef ARITH_FUNC_TEST_TYPED
+#undef ARITH_FUNC_TEST
+
 TEST_P(OperatorTest, IntMatMul) {
   ENABLED_BACKENDS(Interpreter, CPU, OpenCL);
 
@@ -4261,7 +4317,7 @@ TEST_P(OperatorTest, NonSquarePaddingMaxPool) {
     IH.raw(i) = i + 1;
   }
   auto *Pool = F_->createMaxPool("pool", input, {2, 2}, {1, 1}, {0, 2, 1, 3});
-  auto *S = F_->createSave("save", Pool);
+  auto *S = F_->createSave("save", Pool->getResult());
   bindings_.allocate(S->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
@@ -4280,7 +4336,7 @@ TEST_P(OperatorTest, NonSquarePaddingMaxPool) {
 
   Function *refF = mod_.createFunction("mainRef");
   Pool = refF->createMaxPool("pool1", input1, 2, 1, 0);
-  S = refF->createSave("save1", Pool);
+  S = refF->createSave("save1", Pool->getResult());
   bindings_.allocate(S->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, refF);
@@ -4353,7 +4409,7 @@ TEST_P(OperatorTest, MaxPool) {
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 3, 3, 1}, "input", false);
   bindings_.allocate(input)->getHandle() = {0., 1., 2., 3., 4., 5., 6., 7., 8.};
   auto *pool = F_->createMaxPool("pool", input, {2, 2}, {1, 1}, {0, 0, 0, 0});
-  auto *S = F_->createSave("save", pool);
+  auto *S = F_->createSave("save", pool->getResult());
   bindings_.allocate(S->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
@@ -4373,7 +4429,7 @@ TEST_P(OperatorTest, FP16MaxPool) {
   bindings_.allocate(input)->getHandle<float16_t>() = {0., 1., 2., 3., 4.,
                                                        5., 6., 7., 8.};
   auto *pool = F_->createMaxPool("pool", input, {2, 2}, {1, 1}, {0, 0, 0, 0});
-  auto *S = F_->createSave("save", pool);
+  auto *S = F_->createSave("save", pool->getResult());
   bindings_.allocate(S->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
@@ -4390,7 +4446,7 @@ TEST_P(OperatorTest, Int8MaxPool) {
                                        "input", false);
   bindings_.allocate(input)->getHandle<int8_t>() = {0, 1, 2, 3, 4, 5, 6, 7, 8};
   auto *Pool = F_->createMaxPool("pool", input, {2, 2}, {1, 1}, {0, 0, 0, 0});
-  auto *S = F_->createSave("save", Pool);
+  auto *S = F_->createSave("save", Pool->getResult());
   bindings_.allocate(S->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
@@ -4404,19 +4460,120 @@ TEST_P(OperatorTest, Int8MaxPool) {
   }
 }
 
-static FunctionTensorPair
-createAndInitBasicTanhTest(glow::PlaceholderBindings &bindings,
-                           glow::ExecutionEngine &EE) {
-  auto &mod = EE.getModule();
-  Function *F = mod.createFunction("main");
+#define COMPARE_UNARY_OP_FUN(_OP_NAME_, LEN, LOW, HIGH)                        \
+  static FunctionTensorPair createAndInitBasic##_OP_NAME_##Test(               \
+      glow::PlaceholderBindings &bindings, glow::ExecutionEngine &EE) {        \
+    auto &mod = EE.getModule();                                                \
+    Function *F = mod.createFunction("main");                                  \
+                                                                               \
+    auto *input =                                                              \
+        mod.createPlaceholder(ElemKind::FloatTy, {LEN}, "input", false);       \
+    bindings.allocate(input)->getHandle().randomize(LOW, HIGH, mod.getPRNG()); \
+    auto *tanh = F->create##_OP_NAME_(#_OP_NAME_, input);                      \
+    auto *save = F->createSave("Save", tanh);                                  \
+    auto *resultTensor = bindings.allocate(save->getPlaceholder());            \
+    return std::make_pair(F, resultTensor);                                    \
+  }
+COMPARE_UNARY_OP_FUN(Exp, 10, -1.0F, 1.0F)
+COMPARE_UNARY_OP_FUN(Tanh, 10, -10.0F, 10.0F)
+COMPARE_UNARY_OP_FUN(Log, 1000, 1.0F, 100.0F)
+COMPARE_UNARY_OP_FUN(Sigmoid, 10, -10.0F, 10.0F)
+#undef COMPARE_UNARY_OP_FUN
 
-  auto *input = mod.createPlaceholder(ElemKind::FloatTy, {10}, "input", false);
-  bindings.allocate(input)->getHandle().randomize(-10.0, 10.0, mod.getPRNG());
-  auto *tanh = F->createTanh("Tanh", input);
-  auto *save = F->createSave("Save", tanh);
-  auto *resultTensor = bindings.allocate(save->getPlaceholder());
+template <typename DataType>
+static void testMaxPoolWithArgmax(glow::PlaceholderBindings &bindings,
+                                  glow::Module &mod, glow::Function *F,
+                                  glow::ExecutionEngine &EE, ElemKind DTy) {
+  auto *input = createPlaceholderConditionallyQuantized(mod, DTy, {1, 3, 3, 1},
+                                                        "input", false);
+  bindings.allocate(input)->getHandle<DataType>() = {0, 3, 7, 6, 5, 1, 2, 8, 4};
+  auto *pool = F->createMaxPool("pool", input, {2, 2}, {1, 1}, {0, 0, 0, 0});
+  auto *SResult = F->createSave("save_result", pool->getResult());
+  auto *SArgmax = F->createSave("save_argmax", pool->getArgmax());
+  bindings.allocate(SResult->getPlaceholder());
+  bindings.allocate(SArgmax->getPlaceholder());
 
-  return std::make_pair(F, resultTensor);
+  EE.compile(CompilationMode::Infer, F);
+  EE.run(bindings);
+
+  auto result = bindings.get(SResult->getPlaceholder());
+  auto argmax = bindings.get(SArgmax->getPlaceholder());
+  Tensor out1 = createTensorConditionallyQuantized(DTy, {1, 2, 2, 1});
+  out1.getHandle<DataType>() = {6, 7, 8, 8};
+  EXPECT_TRUE(out1.isEqual(*result));
+
+  Tensor out2(ElemKind::Int64ITy, {1, 2, 2, 1});
+  out2.getHandle<int64_t>() = {3, 2, 7, 7};
+  EXPECT_TRUE(out2.isEqual(*argmax));
+}
+
+TEST_P(OperatorTest, FloatMaxPoolWithArgmax) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  testMaxPoolWithArgmax<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy);
+}
+
+TEST_P(OperatorTest, QuantizedMaxPoolWithArgmax) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  testMaxPoolWithArgmax<int8_t>(bindings_, mod_, F_, EE_, ElemKind::Int8QTy);
+}
+
+template <typename DataType>
+static void
+testMaxPoolWithArgmaxTransposed(glow::PlaceholderBindings &bindings,
+                                glow::Module &mod, glow::Function *F,
+                                glow::ExecutionEngine &EE, ElemKind DTy) {
+  // Show that sequence Tensor(NCHW) -> Transpose(NCHWtoNHWC) ->
+  // MaxPoolWithArgmax -> Transpose(NHWCtoNCHW) produces correct linearization.
+  auto *inputNCHW = createPlaceholderConditionallyQuantized(
+      mod, DTy, {1, 3, 4, 4}, "input", false);
+  auto inHandle = bindings.allocate(inputNCHW)->getHandle<DataType>();
+  inHandle.clear(0.);
+  inHandle.at({0, 0, 2, 2}) = 11;
+  inHandle.at({0, 1, 2, 2}) = 22;
+  inHandle.at({0, 2, 2, 2}) = 33;
+
+  // Input NCHW to NHWC conversion.
+  auto *inputNHWC =
+      F->createTranspose("transposeInput", inputNCHW, {0, 2, 3, 1});
+  auto *pool =
+      F->createMaxPool("pool", inputNHWC, {4, 4}, {4, 4}, {0, 0, 0, 0});
+
+  // NHWC to NCHW conversion.
+  auto *resultNCHW =
+      F->createTranspose("transposeRes", pool->getResult(), {0, 3, 1, 2});
+  auto *argmaxNCHW =
+      F->createTranspose("transposeArgmax", pool->getArgmax(), {0, 3, 1, 2});
+
+  auto *SResult = F->createSave("save_result", resultNCHW);
+  auto *SArgmax = F->createSave("save_argmax", argmaxNCHW);
+  bindings.allocate(SResult->getPlaceholder());
+  bindings.allocate(SArgmax->getPlaceholder());
+
+  EE.compile(CompilationMode::Infer, F);
+  EE.run(bindings);
+
+  auto result = bindings.get(SResult->getPlaceholder());
+  auto argmax = bindings.get(SArgmax->getPlaceholder());
+  Tensor out1 = createTensorConditionallyQuantized(DTy, {1, 3, 1, 1});
+  out1.getHandle<DataType>() = {11, 22, 33};
+  EXPECT_TRUE(out1.isEqual(*result));
+
+  Tensor out2(ElemKind::Int64ITy, {1, 3, 1, 1});
+  out2.getHandle<int64_t>() = {0 + 2 * 3 + 2 * 12, 1 + 2 * 3 + 2 * 12,
+                               2 + 2 * 3 + 2 * 12};
+  EXPECT_TRUE(out2.isEqual(*argmax));
+}
+
+TEST_P(OperatorTest, FloatMaxPoolWithArgmaxTransposed) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  testMaxPoolWithArgmaxTransposed<float>(bindings_, mod_, F_, EE_,
+                                         ElemKind::FloatTy);
+}
+
+TEST_P(OperatorTest, QuantizedMaxPoolWithArgmaxTransposed) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  testMaxPoolWithArgmaxTransposed<int8_t>(bindings_, mod_, F_, EE_,
+                                          ElemKind::Int8QTy);
 }
 
 TEST_P(OperatorStatelessTest, Int8Tanh) {
@@ -4455,28 +4612,34 @@ TEST_P(OperatorTest, Tanh) {
   }
 }
 
-static FunctionTensorPair
-createAndInitBasicLogTest(glow::PlaceholderBindings &bindings,
-                          glow::ExecutionEngine &EE) {
-  auto &mod = EE.getModule();
-  Function *F = mod.createFunction("main");
+TEST_P(OperatorStatelessTest, Exp_Float16) {
+  ENABLED_BACKENDS(Interpreter);
+  compareAgainstInterpreter(getBackendName(), createAndInitBasicExpTest,
+                            ElemKind::FloatTy, ElemKind::Float16Ty, 0.005f,
+                            parCloneCountOpt);
+}
 
-  constexpr size_t size = 1000;
+/// Verify that the Exp operator works correctly.
+TEST_P(OperatorTest, Exp) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  constexpr size_t size = 10;
   auto *input =
-      mod.createPlaceholder(ElemKind::FloatTy, {size}, "input", false);
+      mod_.createPlaceholder(ElemKind::FloatTy, {size}, "input", false);
+  bindings_.allocate(input)->getHandle().randomize(-10.0, 10.0, mod_.getPRNG());
 
-  const float min = 1.0;
-  const float max = 100.0;
-  bindings.allocate(input)->getHandle().randomize(min, max, mod.getPRNG());
+  auto *expn = F_->createExp("Exp", input);
+  auto *save = F_->createSave("Save", expn);
+  bindings_.allocate(save->getPlaceholder());
 
-  // Input some random data into a log.
-  auto *log = F->createLog("log", input);
-  auto *res = F->createSave("save", log);
-  ::glow::convertPlaceholdersToConstants(F, bindings,
-                                         {input, res->getPlaceholder()});
-  auto *resultTensor = bindings.allocate(res->getPlaceholder());
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run(bindings_);
 
-  return std::make_pair(F, resultTensor);
+  auto resultH = bindings_.get(save->getPlaceholder())->getHandle();
+  auto inputH = bindings_.get(input)->getHandle();
+
+  for (size_t i = 0; i < size; i++) {
+    EXPECT_NEAR(resultH.at({i}), std::exp(inputH.at({i})), 0.001);
+  }
 }
 
 /// Verify that a quantized Log works correctly.
@@ -4687,7 +4850,7 @@ TEST_P(OperatorTest, NonSquareKernelMaxPool) {
     IH.raw(i) = i + 1;
   }
   auto *Pool = F_->createMaxPool("pool", input, {2, 3}, {1, 1}, {0, 0, 0, 0});
-  auto *S = F_->createSave("save", Pool);
+  auto *S = F_->createSave("save", Pool->getResult());
   bindings_.allocate(S->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
@@ -4824,7 +4987,7 @@ TEST_P(OperatorTest, NonSquareStrideMaxPool) {
     IH.raw(i) = i + 1;
   }
   auto *Pool = F_->createMaxPool("pool", input, {2, 2}, {3, 2}, {0, 0, 1, 1});
-  auto *S = F_->createSave("save", Pool);
+  auto *S = F_->createSave("save", Pool->getResult());
   bindings_.allocate(S->getPlaceholder());
 
   EE_.compile(CompilationMode::Infer, F_);
@@ -4854,21 +5017,6 @@ TEST_P(OperatorTest, SigmoidOverflow) {
   for (size_t i = 0; i < 2; i++) {
     EXPECT_EQ(result.getHandle().raw(i), ref[i]);
   }
-}
-
-static FunctionTensorPair
-createAndInitBasicSigmoidTest(glow::PlaceholderBindings &bindings,
-                              glow::ExecutionEngine &EE) {
-  auto &mod = EE.getModule();
-  Function *F = mod.createFunction("main");
-
-  auto *input = mod.createPlaceholder(ElemKind::FloatTy, {10}, "input", false);
-  bindings.allocate(input)->getHandle().randomize(-10.0, 10.0, mod.getPRNG());
-  auto *sigmoid = F->createSigmoid("Sigmoid", input);
-  auto *save = F->createSave("Save", sigmoid);
-  auto *resultTensor = bindings.allocate(save->getPlaceholder());
-
-  return std::make_pair(F, resultTensor);
 }
 
 TEST_P(OperatorStatelessTest, Int8Sigmoid) {
@@ -6383,7 +6531,7 @@ TEST_P(OperatorStatelessTest, rowwiseQuantizedFCTestSymmetric) {
   ENABLED_BACKENDS(Interpreter, CPU);
   compareAgainstInterpreter(
       getBackendName(), createAndInitBasicRowwiseFCTest, ElemKind::FloatTy,
-      ElemKind::Int8QTy, 0.06f, parCloneCountOpt,
+      ElemKind::Int8QTy, 0.07f, parCloneCountOpt,
       /* enableRowwiseQuantization */ true, quantization::Schema::Symmetric);
 }
 
@@ -7069,40 +7217,29 @@ static void testConvertTo(glow::PlaceholderBindings &bindings_,
   }
 }
 
-/// Test that ConvertTo operator casts correctly from Int64 to Float.
-TEST_P(OperatorTest, ConvertFromInt64ToFloat) {
-  ENABLED_BACKENDS(Interpreter);
-  testConvertTo<int64_t, float>(bindings_, mod_, F_, EE_, ElemKind::Int64ITy,
-                                ElemKind::FloatTy);
-}
+/// Test that ConvertTo operator casts correctly from one type to another.
+#define TEST_CONVERT_TO(T_FROM, T_TO, DTY_FROM, DTY_TO)                        \
+  TEST_P(OperatorTest, ConvertFrom_##T_FROM##_To_##T_TO) {                     \
+    ENABLED_BACKENDS(Interpreter);                                             \
+    testConvertTo<T_FROM, T_TO>(bindings_, mod_, F_, EE_, DTY_FROM, DTY_TO);   \
+  }
+TEST_CONVERT_TO(float, float, ElemKind::FloatTy, ElemKind::FloatTy)
+TEST_CONVERT_TO(float, float16_t, ElemKind::FloatTy, ElemKind::Float16Ty)
+TEST_CONVERT_TO(float, int32_t, ElemKind::FloatTy, ElemKind::Int32ITy)
+TEST_CONVERT_TO(float, int64_t, ElemKind::FloatTy, ElemKind::Int64ITy)
+TEST_CONVERT_TO(float16_t, float, ElemKind::Float16Ty, ElemKind::FloatTy)
+TEST_CONVERT_TO(float16_t, float16_t, ElemKind::Float16Ty, ElemKind::Float16Ty)
+TEST_CONVERT_TO(float16_t, int32_t, ElemKind::Float16Ty, ElemKind::Int32ITy)
+TEST_CONVERT_TO(float16_t, int64_t, ElemKind::Float16Ty, ElemKind::Int64ITy)
+TEST_CONVERT_TO(int32_t, float, ElemKind::Int32ITy, ElemKind::FloatTy)
+TEST_CONVERT_TO(int32_t, float16_t, ElemKind::Int32ITy, ElemKind::Float16Ty)
+TEST_CONVERT_TO(int32_t, int32_t, ElemKind::Int32ITy, ElemKind::Int32ITy)
+TEST_CONVERT_TO(int32_t, int64_t, ElemKind::Int32ITy, ElemKind::Int64ITy)
+TEST_CONVERT_TO(int64_t, float, ElemKind::Int64ITy, ElemKind::FloatTy)
+TEST_CONVERT_TO(int64_t, float16_t, ElemKind::Int64ITy, ElemKind::Float16Ty)
+TEST_CONVERT_TO(int64_t, int32_t, ElemKind::Int64ITy, ElemKind::Int32ITy)
+TEST_CONVERT_TO(int64_t, int64_t, ElemKind::Int64ITy, ElemKind::Int64ITy)
 
-/// Test that ConvertTo operator casts correctly from Float to Int64.
-TEST_P(OperatorTest, ConvertFromFloatToInt64) {
-  ENABLED_BACKENDS(Interpreter);
-  testConvertTo<float, int64_t>(bindings_, mod_, F_, EE_, ElemKind::FloatTy,
-                                ElemKind::Int64ITy);
-}
-
-/// Test that ConvertTo operator casts correctly from Float16 to Float.
-TEST_P(OperatorTest, ConvertFromFloat16ToFloat) {
-  ENABLED_BACKENDS(Interpreter);
-  testConvertTo<float16_t, float>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty,
-                                  ElemKind::FloatTy);
-}
-
-/// Test that ConvertTo operator casts correctly from Float to Float16.
-TEST_P(OperatorTest, ConvertFromFloatToFloat16) {
-  ENABLED_BACKENDS(Interpreter);
-  testConvertTo<float, float16_t>(bindings_, mod_, F_, EE_, ElemKind::FloatTy,
-                                  ElemKind::Float16Ty);
-}
-
-/// Test that ConvertTo operator casts correctly from Float to Float. This is a
-/// noop, but can happen on unoptimized graphs.
-TEST_P(OperatorTest, ConvertFromFloatToFloat) {
-  ENABLED_BACKENDS(Interpreter);
-  testConvertTo<float, float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy,
-                              ElemKind::FloatTy);
-}
+#undef TEST_CONVERT_TO
 
 #undef ENABLED_BACKENDS

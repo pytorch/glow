@@ -19,7 +19,7 @@
 #include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Importer/Caffe2ModelLoader.h"
-#include "glow/Optimizer/Optimizer.h"
+#include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
 #include "glow/Runtime/RuntimeTypes.h"
 
 #include "llvm/Support/CommandLine.h"

@@ -99,7 +99,8 @@ TEST_P(SparseLengthsSum, Big) {
     bindings.allocate(result);
   }
 
-  EE_.compile(CompilationMode::Infer, F_);
+  auto *G = F_->clone("clone");
+  EE_.compile(CompilationMode::Infer, G);
   EE_.run(bindings);
   std::vector<Tensor> test;
   for (auto *result : results) {
@@ -108,10 +109,6 @@ TEST_P(SparseLengthsSum, Big) {
     T->getHandle<float>().clear(0);
   }
 
-  // TODO: We should really clone the function, since compiling for the test
-  // backend might mutate the graph such that it is invalid for the
-  // interpreter.  Sadly, cloning the graph currently creates problems for some
-  // backends (e.g., Habana).
   ExecutionEngine interp{};
   interp.compile(CompilationMode::Infer, F_);
   interp.run(bindings);

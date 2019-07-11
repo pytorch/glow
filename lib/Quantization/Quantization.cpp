@@ -901,9 +901,10 @@ generateNodeQuantizationInfos(PlaceholderBindings &bindings, const Function *F,
 void quantizeFunction(Function *F, const QuantizationConfiguration &quantConfig,
                       const Backend &B, const LoweredInfoMap &loweredMap,
                       const KindSet &doNotQuantizeKinds) {
-  assert((quantConfig.precision == ElemKind::Int8QTy ||
-          quantConfig.precision == ElemKind::Int16QTy) &&
-         "Only Int8 and Int16 quantization supported");
+  DCHECK(quantConfig.precision == ElemKind::Int8QTy ||
+         quantConfig.precision == ElemKind::UInt8QTy ||
+         quantConfig.precision == ElemKind::Int16QTy)
+      << "Only Int8, UInt8, and Int16 quantization supported";
 
   FunctionQuantizer quantizer(*F, B, quantConfig.schema, quantConfig.infos,
                               quantConfig.precision, doNotQuantizeKinds,

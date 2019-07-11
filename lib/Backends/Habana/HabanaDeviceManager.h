@@ -138,6 +138,10 @@ public:
   uint64_t getMaximumMemory() const override;
   uint64_t getAvailableMemory() const override;
   bool isMemoryAvailable(uint64_t estimate) const override;
+
+  /// Returns the DeviceInfo for this device containing peak limits for
+  /// compute and bandwidths (used in partitioning).
+  DeviceInfo getDeviceInfo() const override;
 };
 
 } // namespace runtime

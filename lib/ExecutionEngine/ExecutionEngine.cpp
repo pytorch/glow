@@ -18,7 +18,7 @@
 #include "glow/Backend/Backend.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/PlaceholderBindings.h"
-#include "glow/Optimizer/Optimizer.h"
+#include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
 
 #include "llvm/ADT/STLExtras.h"
 
