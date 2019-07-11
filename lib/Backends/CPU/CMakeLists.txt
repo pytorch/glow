@@ -55,15 +55,15 @@ add_custom_command(
     DEPENDS  ${CPURuntime_OBJS} ${CPURuntime_SRCS}
     WORKING_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}")
 
-file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/glow/CPU)
+file(MAKE_DIRECTORY ${GLOW_BINARY_DIR}/glow/CPU)
 add_custom_command(
-    OUTPUT ${CMAKE_BINARY_DIR}/glow/CPU/libjit_bc.inc
-    COMMAND include-bin "${CMAKE_BINARY_DIR}/CPU/libjit.bc" "${CMAKE_BINARY_DIR}/glow/CPU/libjit_bc.inc"
+    OUTPUT ${GLOW_BINARY_DIR}/glow/CPU/libjit_bc.inc
+    COMMAND include-bin "${GLOW_BINARY_DIR}/CPU/libjit.bc" "${GLOW_BINARY_DIR}/glow/CPU/libjit_bc.inc"
     DEPENDS ${GLOW_BINARY_DIR}/CPU/libjit.bc
     WORKING_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}")
 
 add_custom_target(CPURuntime
-  DEPENDS ${CMAKE_BINARY_DIR}/glow/CPU/libjit_bc.inc
+  DEPENDS ${GLOW_BINARY_DIR}/glow/CPU/libjit_bc.inc
   WORKING_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}")
 
 if (NOT MSVC)
@@ -74,7 +74,7 @@ if (NOT MSVC)
 endif(NOT MSVC)
 
 add_library(CPUBackend
-            "${CMAKE_BINARY_DIR}/glow/CPU/libjit_bc.inc"
+            "${GLOW_BINARY_DIR}/glow/CPU/libjit_bc.inc"
             CPUBackend.cpp
             CPUDeviceManager.cpp
             CPUFactory.cpp
