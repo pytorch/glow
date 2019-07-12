@@ -1465,6 +1465,15 @@ size_t toBinary(float f) {
   memcpy(&ret, &f, sizeof(float));
   return ret;
 }
+/// Convert a collection of floats into a vector of
+/// unsigned integer binary representation.
+std::vector<size_t> toBinary(llvm::ArrayRef<float> vec) {
+  std::vector<size_t> sizeVec(vec.size());
+  std::for_each(vec.begin(), vec.end(), [&sizeVec](float f) -> void {
+    sizeVec.push_back(toBinary(f));
+  });
+  return sizeVec;
+}
 
 llvm::hash_code hash_value(const glow::Tensor &T) { return T.size(); }
 
