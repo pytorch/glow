@@ -71,9 +71,7 @@ public:
 };
 
 /// Helper to run a DCE pass on \p F given \p cctx. \returns if \p was modified.
-inline bool runDCEPass(Function *F, CompilationContext &cctx) {
-  return FunctionPassManager("DCE_FPM", {getDCEPassConfig()}).run(F, cctx);
-}
+bool runDCEPass(Function *F, CompilationContext &cctx);
 
 } // namespace glow
 

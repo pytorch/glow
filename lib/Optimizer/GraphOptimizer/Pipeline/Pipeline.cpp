@@ -114,6 +114,13 @@ FunctionPassPipeline glow::createDefaultFoldPassPipeline() {
   };
 }
 
+FunctionPassConfig glow::getDCEPassConfig() {
+  return {FunctionPassID::DCE,
+          ConvergenceMode::OnePass,
+          {CompilationMode::Infer, CompilationMode::Train},
+          DCERequiredMode::NoDCERequirement};
+}
+
 llvm::StringRef glow::getNameOfPass(FunctionPassID passID) {
   switch (passID) {
 #define FUN_PASS(PASS_NAME)                                                    \

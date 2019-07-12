@@ -132,12 +132,7 @@ FunctionPassPipeline createDefaultGraphOptimizationPassPipeline();
 FunctionPassPipeline createDefaultFoldPassPipeline();
 
 /// \returns a FunctionPassConfig for performing DCE.
-inline FunctionPassConfig getDCEPassConfig() {
-  return {FunctionPassID::DCE,
-          ConvergenceMode::OnePass,
-          {CompilationMode::Infer, CompilationMode::Train},
-          DCERequiredMode::NoDCERequirement};
-}
+FunctionPassConfig getDCEPassConfig();
 
 /// \returns the name of a FunctionPass given its \p passID.
 llvm::StringRef getNameOfPass(FunctionPassID passID);

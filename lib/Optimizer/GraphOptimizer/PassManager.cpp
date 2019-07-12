@@ -108,6 +108,10 @@ static unsigned globalPassCounter = 0;
 
 } // namespace
 
+bool glow::runDCEPass(Function *F, CompilationContext &cctx) {
+  return FunctionPassManager("DCE_FPM", {getDCEPassConfig()}).run(F, cctx);
+}
+
 void FunctionPassManager::dump(llvm::raw_ostream &os) const {
   os << "FunctionPassManager " << this->getName()
      << ": Current PassIdx: " << passIdx_
