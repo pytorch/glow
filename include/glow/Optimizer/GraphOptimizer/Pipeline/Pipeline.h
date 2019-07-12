@@ -86,6 +86,9 @@ public:
   bool isEnabledForCompilationMode(CompilationMode mode) const {
     return enabledCompModes_.test(convertEnumToUnsigned(mode));
   }
+
+  /// Dump a textual representation of this config to \p os.
+  void dump(llvm::raw_ostream &os = llvm::outs()) const;
 };
 
 /// Implementation of a pipeline for executing a series of FunctionPasses.
@@ -109,8 +112,17 @@ public:
   const_iterator end() const { return begin() + size(); }
   /// @}
 
+  /// Forward to parent size() method. \returns size of pipeline.
+  size_t size() const { return ParentImpl::size(); }
+
+  /// Helper to get the FunctionPassConfig at index \p i in the pipeline.
+  const FunctionPassConfig at(size_t i) const { return begin()[i]; }
+
   /// Push a new \p FPC to the end of the pipeline.
   void pushBack(FunctionPassConfig FPC) { push_back(FPC); }
+
+  /// Dump a textual representation of the pipeline to \p os.
+  void dump(llvm::raw_ostream &os = llvm::outs()) const;
 };
 
 /// \returns the default, target-independent graph optimization pipeline
@@ -126,6 +138,9 @@ inline FunctionPassConfig getDCEPassConfig() {
           {CompilationMode::Infer, CompilationMode::Train},
           DCERequiredMode::NoDCERequirement};
 }
+
+/// \returns the name of a FunctionPass given its \p passID.
+llvm::StringRef getNameOfPass(FunctionPassID passID);
 
 } // namespace glow
 

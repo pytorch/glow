@@ -34,6 +34,9 @@ private:
   /// The pipeline of passes to run.
   FunctionPassPipeline pipeline_;
 
+  /// The index of the current pass being executed in the pipeline.
+  size_t passIdx_ = 0;
+
   /// Creates and \returns a FunctionPass given a provided \p passID.
   std::unique_ptr<FunctionPass> createFunctionPass(FunctionPassID passID);
 
@@ -53,7 +56,7 @@ private:
 
 public:
   FunctionPassManager(llvm::StringRef name, FunctionPassPipeline pipeline)
-      : Named(name), pipeline_(pipeline) {}
+      : Named(name), pipeline_(pipeline), passIdx_(0) {}
   ~FunctionPassManager() = default;
 
   /// Run the FunctionPassPipeline given the \ref pipeline_ and
@@ -61,7 +64,10 @@ public:
   bool run(Function *F, const CompilationContext &cctx);
 
   /// Getter for a reference to the Pipeline used by this PassManager..
-  const FunctionPassPipeline &getPipeline() { return pipeline_; };
+  const FunctionPassPipeline &getPipeline() const { return pipeline_; };
+
+  /// Dump a textual representation of the FunctionPassManager to \p os.
+  void dump(llvm::raw_ostream &os = llvm::outs()) const;
 };
 
 /// Helper to run a DCE pass on \p F given \p cctx. \returns if \p was modified.

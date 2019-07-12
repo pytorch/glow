@@ -113,3 +113,59 @@ FunctionPassPipeline glow::createDefaultFoldPassPipeline() {
       getDCEPassConfig(),
   };
 }
+
+llvm::StringRef glow::getNameOfPass(FunctionPassID passID) {
+  switch (passID) {
+#define FUN_PASS(PASS_NAME)                                                    \
+  case FunctionPassID::PASS_NAME:                                              \
+    return #PASS_NAME;
+#include "glow/Optimizer/GraphOptimizer/FunctionPasses.def"
+  }
+}
+
+static constexpr char const *tab = "  ";
+
+void FunctionPassConfig::dump(llvm::raw_ostream &os) const {
+  os << tab << "PassName: " << getNameOfPass(getFunctionPassID()) << ",\n";
+
+  os << tab << "ConvergenceMode: ";
+  switch (getConvergenceMode()) {
+  case ConvergenceMode::OnePass:
+    os << "OnePass,";
+    break;
+  case ConvergenceMode::UntilFixedPoint:
+    os << "UntilFixedPoint,";
+    break;
+  }
+  os << "\n";
+
+  os << tab << "CompilationModes: {";
+  if (isEnabledForCompilationMode(CompilationMode::Infer)) {
+    os << "[Infer]";
+  }
+  if (isEnabledForCompilationMode(CompilationMode::Train)) {
+    os << "[Train]";
+  }
+  os << "},\n";
+
+  os << tab << "DCERequiredMode: ";
+  switch (getDCERequiredMode()) {
+  case DCERequiredMode::RequireDCEBefore:
+    os << "RequireDCEBefore,";
+    break;
+  case DCERequiredMode::NoDCERequirement:
+    os << "NoDCERequirement,";
+    break;
+  }
+  os << "\n";
+}
+
+void FunctionPassPipeline::dump(llvm::raw_ostream &os) const {
+  os << "Pipeline contains:\n";
+  for (size_t i = 0, e = this->size(); i < e; i++) {
+    const FunctionPassConfig &passConfig = (*this)[i];
+    os << "FunctionPassIdx " << i << ": {\n";
+    passConfig.dump(os);
+    os << "}\n";
+  }
+}

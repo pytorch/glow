@@ -106,17 +106,14 @@ static bool listContainsString(llvm::ArrayRef<std::string> strList,
 /// Global pass counter used to identify each pass.
 static unsigned globalPassCounter = 0;
 
-/// \returns the name of a FunctionPass given its \p passID.
-static llvm::StringRef getNameOfPass(FunctionPassID passID) {
-  switch (passID) {
-#define FUN_PASS(PASS_NAME)                                                    \
-  case FunctionPassID::PASS_NAME:                                              \
-    return #PASS_NAME;
-#include "glow/Optimizer/GraphOptimizer/FunctionPasses.def"
-  }
-}
-
 } // namespace
+
+void FunctionPassManager::dump(llvm::raw_ostream &os) const {
+  os << "FunctionPassManager " << this->getName()
+     << ": Current PassIdx: " << passIdx_
+     << "; Current globalPassCounter: " << globalPassCounter << "\n";
+  getPipeline().dump();
+}
 
 bool FunctionPassManager::runPrePass(Function *F,
                                      const CompilationContext &cctx,
@@ -191,7 +188,8 @@ bool FunctionPassManager::runPass(const FunctionPassConfig &passConfig,
 
 bool FunctionPassManager::run(Function *F, const CompilationContext &cctx) {
   bool changed = false;
-  for (const FunctionPassConfig &passConfig : pipeline_) {
+  for (passIdx_ = 0; passIdx_ < getPipeline().size(); passIdx_++) {
+    const FunctionPassConfig &passConfig = getPipeline().at(passIdx_);
     // If we've exceeded the number of passes to run then early exit.
     if (++globalPassCounter > stopAfterPassNumOpt) {
       return changed;
