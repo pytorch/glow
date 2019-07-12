@@ -32,7 +32,7 @@ class FunctionPass {
 
 private:
   /// Run the pass on \p F. \returns whether the pass modifies \p F.
-  virtual bool run(Function *F) = 0;
+  virtual bool run(Function *F, const CompilationContext &cctx) = 0;
 
   /// \returns the name of the pass.
   virtual llvm::StringRef getName() const = 0;

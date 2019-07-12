@@ -176,12 +176,6 @@ bool FunctionPassManager::runPass(const FunctionPassConfig &passConfig,
                FunctionPassConfig::DCERequiredMode::RequireDCEBefore) &&
          "Cannot specify DCE requires DCE before it.");
 
-  // Special case for ConstantFold; skip it if specified.
-  if (passID == FunctionPassID::ConstantFold &&
-      !cctx.optimizationOpts.enableConstantFolding) {
-    return false;
-  }
-
   // Run DCE before this pass if it requires it.
   if (passConfig.getDCERequiredMode() ==
       FunctionPassConfig::DCERequiredMode::RequireDCEBefore) {
@@ -190,7 +184,7 @@ bool FunctionPassManager::runPass(const FunctionPassConfig &passConfig,
 
   auto P = createFunctionPass(passID);
   bool changed = runPrePass(F, cctx, *P);
-  changed |= P->run(F);
+  changed |= P->run(F, cctx);
   changed |= runPostPass(F, cctx, *P);
 
   return changed;

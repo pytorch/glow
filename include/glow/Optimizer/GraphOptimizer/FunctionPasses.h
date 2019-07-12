@@ -26,7 +26,7 @@ namespace glow {
 #define FUN_PASS(PASS_NAME)                                                    \
   class PASS_NAME : public FunctionPass {                                      \
   private:                                                                     \
-    bool run(Function *F) override;                                            \
+    bool run(Function *F, const CompilationContext &cctx) override;            \
     llvm::StringRef getName() const override { return #PASS_NAME; }            \
     FunctionPassID getID() const override {                                    \
       return FunctionPassID::PASS_NAME;                                        \

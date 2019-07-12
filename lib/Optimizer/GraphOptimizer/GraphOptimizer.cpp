@@ -76,9 +76,11 @@ static bool shouldDeleteConstants(Function *F) {
   return true;
 }
 
-bool EmptyPass::run(Function *F) { return false; }
+bool EmptyPass::run(Function *F, const CompilationContext &cctx) {
+  return false;
+}
 
-bool DCE::run(Function *F) {
+bool DCE::run(Function *F, const CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), getName());
 
   auto &nodes = F->getNodes();
@@ -242,7 +244,7 @@ static bool sinkTranposeBelowChannelShuffle(Function *F,
 }
 
 /// Code Sinking.
-bool SinkCode::run(Function *F) {
+bool SinkCode::run(Function *F, const CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), getName());
   bool changed = false;
   auto &nodes = F->getNodes();
@@ -651,7 +653,7 @@ static bool mayDependOnAny(llvm::ArrayRef<NodeValue> list, Node *N) {
 //   ---- ,  |    |    |         |     T|  B * C  |
 //    K       ----      ---------        ---------
 //             K            R                R
-bool MergeMatMul::run(Function *F) {
+bool MergeMatMul::run(Function *F, const CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), getName());
   bool changed = false;
   auto &nodes = F->getNodes();
@@ -717,7 +719,7 @@ bool MergeMatMul::run(Function *F) {
   return changed;
 }
 
-bool MergePadIntoConvolution::run(Function *F) {
+bool MergePadIntoConvolution::run(Function *F, const CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), getName());
   bool changed = false;
   for (auto &node : F->getNodes()) {
@@ -800,7 +802,8 @@ bool MergePadIntoConvolution::run(Function *F) {
 /// Transpose([N, H, W, C]) -> [N, C, H, W]
 /// Reshape([N, C, H, W]) -> [N, C * H * W]
 /// MatMul/FC([N, C * H * W], [C * H * W, K]) -> [N, K]
-bool MergeTransposeIntoMatMulOrFC::run(Function *F) {
+bool MergeTransposeIntoMatMulOrFC::run(Function *F,
+                                       const CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), getName());
   bool changed = false;
   for (auto &node : F->getNodes()) {
@@ -937,7 +940,8 @@ static bool areSlicesConsecutive(SliceNode *A, SliceNode *B, unsigned_t dim) {
   return true;
 }
 
-bool ConvertBroadcastedBatchMatMul::run(Function *F) {
+bool ConvertBroadcastedBatchMatMul::run(Function *F,
+                                        const CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), getName());
   bool changed = false;
   for (auto &node : F->getNodes()) {
@@ -1068,7 +1072,7 @@ static bool findSlicesThatSpanInput(llvm::ArrayRef<SliceNode *> input,
 }
 
 /// Merge multiple batched add nodes into a large batched-add node.
-bool MergeBatchedAdd::run(Function *F) {
+bool MergeBatchedAdd::run(Function *F, const CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), getName());
   bool changed = false;
   auto &nodes = F->getNodes();
@@ -1139,7 +1143,7 @@ bool MergeBatchedAdd::run(Function *F) {
 
 /// Optimize ReduceMean configuration with AvgPool if possible: last two axes
 /// in a 4D input must be reduced.
-bool OptimizeReduceMean::run(Function *F) {
+bool OptimizeReduceMean::run(Function *F, const CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), getName());
   bool changed = false;
   auto &nodes = F->getNodes();
@@ -1321,7 +1325,7 @@ bool normalizeWeights(Module *M, ConvolutionNode &CV,
   return true;
 }
 
-bool OptimizeBatchNorm::run(Function *F) {
+bool OptimizeBatchNorm::run(Function *F, const CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), getName());
   bool changed = false;
   auto &nodes = F->getNodes();
@@ -1582,7 +1586,7 @@ static NodeValue simplifyConcatNode(Function *F, ConcatNode *CN) {
 }
 
 /// Optimize Concat nodes.
-bool OptimizeConcatNodes::run(Function *F) {
+bool OptimizeConcatNodes::run(Function *F, const CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), getName());
   bool changed = false;
   auto &nodes = F->getNodes();
@@ -1605,7 +1609,7 @@ bool OptimizeConcatNodes::run(Function *F) {
 
 /// Simplify and canonicalize arithmetic nodes by detecting simple arithmetic
 /// identities.
-bool OptimizeArithmeticNodes::run(Function *F) {
+bool OptimizeArithmeticNodes::run(Function *F, const CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), getName());
   bool changed = false;
   // A worklist that contains the nodes to process.
@@ -1651,7 +1655,7 @@ bool OptimizeArithmeticNodes::run(Function *F) {
 }
 
 /// Statically transpose Constants.
-bool TransposeConstants::run(Function *F) {
+bool TransposeConstants::run(Function *F, const CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), getName());
   auto &nodes = F->getNodes();
   bool changed = false;
@@ -1826,7 +1830,7 @@ static bool deduplicateConstants(Module *M) {
 }
 
 /// Common Subexpression Elimination.
-bool CSE::run(Function *F) {
+bool CSE::run(Function *F, const CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), getName());
   CSEVisitor visitor;
 
@@ -1844,7 +1848,7 @@ bool CSE::run(Function *F) {
 
 /// Eliminate SliceNode when the input is SplatNode.
 /// Slice(Splat(args)) -> Splat(args')
-bool OptimizeSliceOfSplat::run(Function *F) {
+bool OptimizeSliceOfSplat::run(Function *F, const CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), getName());
   bool changed = false;
   for (auto &node : F->getNodes()) {
@@ -1866,7 +1870,8 @@ bool OptimizeSliceOfSplat::run(Function *F) {
 }
 
 /// Optimize TransposeNode into ReshapeNode when it actually moves no data.
-bool OptimizeTransposeIntoReshape::run(Function *F) {
+bool OptimizeTransposeIntoReshape::run(Function *F,
+                                       const CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), getName());
   bool changed = false;
 
@@ -1904,7 +1909,7 @@ bool OptimizeTransposeIntoReshape::run(Function *F) {
 }
 
 /// Optimize reshape nodes.
-bool OptimizeReshape::run(Function *F) {
+bool OptimizeReshape::run(Function *F, const CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), getName());
   bool changed = false;
   for (auto &node : F->getNodes()) {
@@ -2098,7 +2103,7 @@ static NodeValue convertConstant(Module &mod, Constant &constant,
 /// This method potentially changes the semantic of the program
 /// because it eliminates some precision loss steps.
 /// However, this actually improves accuracy so we can always do it.
-bool OptimizeConversions::run(Function *F) {
+bool OptimizeConversions::run(Function *F, const CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), getName());
   bool changed = false;
   llvm::SmallVector<Node *, 8> conversions;
@@ -2425,7 +2430,7 @@ static bool sinkRescaleQuantizedNode(Function *F) {
 
 /// Eliminate node sequences that are related to quantization.
 /// \returns if anything was changed in the given function.
-bool OptimizeQuantization::run(Function *F) {
+bool OptimizeQuantization::run(Function *F, const CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), getName());
   bool changed = false;
   // A worklist that contains the nodes to process.
@@ -2646,7 +2651,7 @@ static bool getFloatScalar(Node *node, float *retFloat) {
 
 /// Fold leakyRelu operations expressed as a sub-graph Max(A, Mul(A, scalar))
 /// and replace it by PRelu(Splat).
-bool FoldLeakyRelu::run(Function *F) {
+bool FoldLeakyRelu::run(Function *F, const CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), getName());
   bool changed = false;
   auto &nodes = F->getNodes();
@@ -2733,7 +2738,7 @@ getChannelShuffleParams(const ReshapeNode &node) {
 }
 
 // Fold Reshape->Transpose->Reshape into ChannelShuffle when applicable.
-bool FoldChannelShuffle::run(Function *F) {
+bool FoldChannelShuffle::run(Function *F, const CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), getName());
   // FIXME: This optimization doesn't check its applicability carefully enough
   // and kicks in when it shouldn't.  See GraphOptzTest.NoFoldChannelShuffle.
