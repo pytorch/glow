@@ -1209,7 +1209,7 @@ llvm::Error Partitioner::QuantizationProfilingPartition(
   FunctionToBackendNameMap funcToBackend;
   funcToBackend = backendBasedPartition(F_, backends, cctx);
   module_->eraseFunction(F_);
-  auto backend = createBackend(profilingBackend);
+  std::unique_ptr<Backend> backend(createBackend(profilingBackend));
   for (Function *subF : module_->getFunctions()) {
     (void)subF;
     assert(subF->verify() && "Conversion led to invalid function");
