@@ -95,11 +95,11 @@ void createModel(ExecutionEngine &EE, Function *F,
   auto *RL0 = F->createRELU("relu", CV0);
   auto *MP0 = F->createMaxPool("pool", RL0, 3, 3, 0);
 
-  auto *CV1 = F->createConv(bindings, "conv", MP0, 16, 5, 1, 2, 1);
+  auto *CV1 = F->createConv(bindings, "conv", MP0->getResult(), 16, 5, 1, 2, 1);
   auto *RL1 = F->createRELU("relu", CV1);
   auto *MP1 = F->createMaxPool("pool", RL1, 3, 3, 0);
 
-  auto *FCL1 = F->createFullyConnected(bindings, "fc", MP1, 10);
+  auto *FCL1 = F->createFullyConnected(bindings, "fc", MP1->getResult(), 10);
   selectedPH = mod.createPlaceholder(ElemKind::Int64ITy, {minibatchSize, 1},
                                      "selected", false);
   auto *SM = F->createSoftMax("sm", FCL1, selectedPH);
