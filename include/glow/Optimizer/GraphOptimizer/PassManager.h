@@ -64,6 +64,11 @@ public:
   const FunctionPassPipeline &getPipeline() { return pipeline_; };
 };
 
+/// Helper to run a DCE pass on \p F given \p cctx. \returns if \p was modified.
+inline bool runDCEPass(Function *F, CompilationContext &cctx) {
+  return FunctionPassManager("DCE_FPM", {getDCEPassConfig()}).run(F, cctx);
+}
+
 } // namespace glow
 
 #endif // GLOW_OPTIMIZER_GRAPHOPTIMIZER_PASSMANAGER_H

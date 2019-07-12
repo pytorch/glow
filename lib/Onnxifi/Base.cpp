@@ -62,7 +62,7 @@ onnxStatus Backend::checkGraphCompatibility(const void *onnxModel,
   // Call the backend's transformPostLowering to match the normal compilation
   // pipeline then DCE any nodes that are no longer needed.
   if (glowBackend_->transformPostLowering(function, cctx)) {
-    FunctionPassManager("DCE_FPM", {getDCEPassConfig()}).run(function, cctx);
+    runDCEPass(function, cctx);
   }
 
   if (!function->verify()) {

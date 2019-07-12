@@ -37,16 +37,15 @@ enum class ConvergenceMode {
                    // reached.
 };
 
+/// Specifies whether the pass requires DCE.
+enum class DCERequiredMode {
+  RequireDCEBefore, // Require that DCE is run before the pass.
+  NoDCERequirement, // Signify the pass has no requirement/dependence on DCE.
+};
+
 /// Specifies a configuration for running a FunctionPass when used in a
 /// FunctionPassPipeline.
 class FunctionPassConfig {
-public:
-  /// Specifies whether the pass requires DCE.
-  enum class DCERequiredMode {
-    RequireDCEBefore, // Require that DCE is run before the pass.
-    NoDCERequirement, // Signify the pass has no requirement/dependence on DCE.
-  };
-
 private:
   /// ID of the FunctionPass to run.
   FunctionPassID passID_{FunctionPassID::EmptyPass};
@@ -125,7 +124,7 @@ inline FunctionPassConfig getDCEPassConfig() {
   return {FunctionPassID::DCE,
           ConvergenceMode::OnePass,
           {CompilationMode::Infer, CompilationMode::Train},
-          FunctionPassConfig::DCERequiredMode::NoDCERequirement};
+          DCERequiredMode::NoDCERequirement};
 }
 
 } // namespace glow
