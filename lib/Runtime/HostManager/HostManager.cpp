@@ -47,6 +47,14 @@ HostManager::HostManager(
   TEMP_EXIT_ON_ERR(init(std::move(deviceConfigs)));
 }
 
+llvm::Expected<DAG &> HostManager::getNetworkDAG(llvm::StringRef network) {
+  auto it = networks_.find(network);
+  if (it == networks_.end()) {
+    return MAKE_ERR(GlowErr::ErrorCode::RUNTIME_ERROR, "Network not found.");
+  }
+  return it->second.dag;
+}
+
 llvm::Error
 HostManager::init(std::vector<std::unique_ptr<DeviceConfig>> configs) {
   DeviceIDTy deviceCount = 0;

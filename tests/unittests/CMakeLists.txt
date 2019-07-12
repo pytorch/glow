@@ -43,9 +43,10 @@ add_executable(BackendTest
 target_link_libraries(BackendTest
                       PRIVATE
                         Backends
+                        HostManager
                         Graph
                         IR
-                        ExecutionEngine
+                        ExecutionEngine2
                         gtest
                         TestMain)
 add_glow_test(BackendTest ${GLOW_BINARY_DIR}/tests/BackendTest --gtest_output=xml:BackendTest.xml)
