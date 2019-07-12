@@ -1,6 +1,5 @@
 add_library(GraphOptimizer
               ConstantFolding.cpp
-              FunctionPasses.cpp
               GraphOptimizer.cpp
               Lower.cpp
               PassManager.cpp

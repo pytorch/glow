@@ -151,5 +151,5 @@ void Backend::autoInstrument(TraceInfo &traceInfo, IRFunction *IR) const {
 }
 
 FunctionPassPipeline Backend::getOptimizationPipeline() const {
-  return createDefaultGraphOptimizationPasses();
+  return createDefaultGraphOptimizationPassPipeline();
 };

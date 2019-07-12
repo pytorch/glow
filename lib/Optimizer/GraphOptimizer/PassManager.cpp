@@ -106,6 +106,16 @@ static bool listContainsString(llvm::ArrayRef<std::string> strList,
 /// Global pass counter used to identify each pass.
 static unsigned globalPassCounter = 0;
 
+/// \returns the name of a FunctionPass given its \p passID.
+static llvm::StringRef getNameOfPass(FunctionPassID passID) {
+  switch (passID) {
+#define FUN_PASS(PASS_NAME)                                                    \
+  case FunctionPassID::PASS_NAME:                                              \
+    return #PASS_NAME;
+#include "glow/Optimizer/GraphOptimizer/FunctionPasses.def"
+  }
+}
+
 } // namespace
 
 bool FunctionPassManager::runPrePass(Function *F,
@@ -148,9 +158,46 @@ bool FunctionPassManager::runPostPass(Function *F,
   return false;
 }
 
+std::unique_ptr<FunctionPass>
+FunctionPassManager::createFunctionPass(FunctionPassID passID) {
+  switch (passID) {
+#define FUN_PASS(PASS_NAME)                                                    \
+  case (FunctionPassID::PASS_NAME):                                            \
+    return llvm::make_unique<PASS_NAME>();
+#include "glow/Optimizer/GraphOptimizer/FunctionPasses.def"
+  }
+}
+
+bool FunctionPassManager::runPass(const FunctionPassConfig &passConfig,
+                                  Function *F, const CompilationContext &cctx) {
+  const FunctionPassID &passID = passConfig.getFunctionPassID();
+  assert(!(passID == FunctionPassID::DCE &&
+           passConfig.getDCERequiredMode() ==
+               FunctionPassConfig::DCERequiredMode::RequireDCEBefore) &&
+         "Cannot specify DCE requires DCE before it.");
+
+  // Special case for ConstantFold; skip it if specified.
+  if (passID == FunctionPassID::ConstantFold &&
+      !cctx.optimizationOpts.enableConstantFolding) {
+    return false;
+  }
+
+  // Run DCE before this pass if it requires it.
+  if (passConfig.getDCERequiredMode() ==
+      FunctionPassConfig::DCERequiredMode::RequireDCEBefore) {
+    runPass(getDCEPassConfig(), F, cctx);
+  }
+
+  auto P = createFunctionPass(passID);
+  bool changed = runPrePass(F, cctx, *P);
+  changed |= P->run(F);
+  changed |= runPostPass(F, cctx, *P);
+
+  return changed;
+}
+
 bool FunctionPassManager::run(Function *F, const CompilationContext &cctx) {
   bool changed = false;
-
   for (const FunctionPassConfig &passConfig : pipeline_) {
     // If we've exceeded the number of passes to run then early exit.
     if (++globalPassCounter > stopAfterPassNumOpt) {
@@ -163,36 +210,22 @@ bool FunctionPassManager::run(Function *F, const CompilationContext &cctx) {
       continue;
     }
 
-    const FunctionPassID &passID = passConfig.getFunctionPassID();
-
-    // Special case for ConstantFold; skip it if specified.
-    if (passID == FunctionPassID::ConstantFold &&
-        !cctx.optimizationOpts.enableConstantFolding) {
-      continue;
-    }
-
-    // Proceed with performing the pass.
-    auto P = createFunctionPass(passID);
-    changed |= runPrePass(F, cctx, *P);
-
     switch (passConfig.getConvergenceMode()) {
-    case FunctionPassConfig::ConvergenceMode::OnePass:
-      changed |= P->run(F);
+    case ConvergenceMode::OnePass:
+      changed |= runPass(passConfig, F, cctx);
       break;
 
-    case FunctionPassConfig::ConvergenceMode::UntilFixedPoint:
-      while (P->run(F)) {
+    case ConvergenceMode::UntilFixedPoint:
+      while (runPass(passConfig, F, cctx)) {
         changed = true;
-        DCE().run(F);
         VLOG_IF_EVERY_N(0, google::COUNTER > 1, 100)
-            << "Warning: " << P->getName().str() << " Pass "
-            << " applied another 100 iterations without reaching fixed point";
+            << "Warning: "
+            << getNameOfPass(passConfig.getFunctionPassID()).str()
+            << " Pass applied another 100 iterations without reaching fixed "
+               "point";
       }
       break;
     }
-
-    changed |= runPostPass(F, cctx, *P);
   }
-
   return changed;
 }

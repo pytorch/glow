@@ -21,16 +21,16 @@
 namespace glow {
 
 class Function;
+struct CompilationContext;
 enum class FunctionPassID;
 
 /// Class used for all passes over Functions. All passes over Functions should
 /// derive from this class, implementing the pass logic and additionally can add
 /// logic for running before and after the pass runs.
 class FunctionPass {
-public:
-  FunctionPass() = default;
-  virtual ~FunctionPass() = default;
+  friend class FunctionPassManager;
 
+private:
   /// Run the pass on \p F. \returns whether the pass modifies \p F.
   virtual bool run(Function *F) = 0;
 
@@ -39,6 +39,10 @@ public:
 
   /// \returns the name of the pass.
   virtual FunctionPassID getID() const = 0;
+
+public:
+  FunctionPass() = default;
+  virtual ~FunctionPass() = default;
 };
 
 } // namespace glow

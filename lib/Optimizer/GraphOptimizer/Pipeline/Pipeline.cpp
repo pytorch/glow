@@ -20,27 +20,17 @@
 
 using namespace glow;
 
-FunctionPassPipeline glow::createDefaultGraphOptimizationPasses() {
+FunctionPassPipeline glow::createDefaultGraphOptimizationPassPipeline() {
   return {
-      // Optimize may be called after backend specific transformations and
-      // some nodes may have become unused. It is a good idea to remove
-      // them, before proceeding with any further optimizations.
-      {FunctionPassID::DCE},
-
       // Sink transpose operations in an attempt to cancel them out.
       // Perform code sinking until a fixed-point is reached.
       // On big functions, the number of iterations until the fixpoint
       // is usually at most 2 or 3 iterations.
-      {FunctionPassID::SinkCode,
-       FunctionPassConfig::ConvergenceMode::UntilFixedPoint},
+      {FunctionPassID::SinkCode, ConvergenceMode::UntilFixedPoint},
 
       // Transposes that don't move data are optimized into Reshapes, which
       // enables further optimizations.
       {FunctionPassID::OptimizeTransposeIntoReshape},
-
-      // Need to remove old uses that would prohibit Reshape(Constant)
-      // optimization.
-      {FunctionPassID::DCE},
 
       // Reshapes and transposes can prevent other optimizations from
       // triggering,
@@ -48,7 +38,7 @@ FunctionPassPipeline glow::createDefaultGraphOptimizationPasses() {
       {FunctionPassID::OptimizeReshape},
 
       {FunctionPassID::TransposeConstants,
-       FunctionPassConfig::ConvergenceMode::OnePass,
+       ConvergenceMode::OnePass,
        {CompilationMode::Infer}},
 
       // Perform Common Subexpression Elimination.
@@ -56,9 +46,6 @@ FunctionPassPipeline glow::createDefaultGraphOptimizationPasses() {
 
       // Optimize Pad nodes
       {FunctionPassID::MergePadIntoConvolution},
-
-      // Perform Dead Code Elimination.
-      {FunctionPassID::DCE},
 
       // Merge multiple matmul nodes into a single large matmul.
       {FunctionPassID::MergeMatMul},
@@ -72,14 +59,11 @@ FunctionPassPipeline glow::createDefaultGraphOptimizationPasses() {
       // Convert BatchMatMuls with a broadcasted RHS to a single MatMul.
       {FunctionPassID::ConvertBroadcastedBatchMatMul},
 
-      // Perform Dead Code Elimination.
-      {FunctionPassID::DCE},
-
       // Merge batch normalization operations.
       // Do after transpose constant folding, as weight transposes can prevent
       // the optimization from triggering.
       {FunctionPassID::OptimizeBatchNorm,
-       FunctionPassConfig::ConvergenceMode::OnePass,
+       ConvergenceMode::OnePass,
        {CompilationMode::Infer}},
 
       // Perform Common Subexpression Elimination.
@@ -95,16 +79,13 @@ FunctionPassPipeline glow::createDefaultGraphOptimizationPasses() {
       {FunctionPassID::OptimizeSliceOfSplat},
 
       // Merge Transpose into MatMul/FC.
-      // Run DCE to ensure correct number of node users.
-      {FunctionPassID::DCE},
       {FunctionPassID::MergeTransposeIntoMatMulOrFC},
 
       // Optimize away intermediate type conversions.
       {FunctionPassID::OptimizeConversions},
 
       // Optimize quantization related operators.
-      {FunctionPassID::OptimizeQuantization,
-       FunctionPassConfig::ConvergenceMode::UntilFixedPoint},
+      {FunctionPassID::OptimizeQuantization, ConvergenceMode::UntilFixedPoint},
 
       // Optimize reshapes introduced during above optimizations.
       {FunctionPassID::OptimizeReshape},
@@ -112,12 +93,12 @@ FunctionPassPipeline glow::createDefaultGraphOptimizationPasses() {
       // Run a round of constant folding.
       {FunctionPassID::ConstantFold},
 
-      // Perform Dead Code Elimination.
-      {FunctionPassID::DCE},
+      // Perform a round of Dead Code Elimination to cleanup the final pass.
+      getDCEPassConfig(),
   };
 }
 
-FunctionPassPipeline glow::createDefaultFoldPasses() {
+FunctionPassPipeline glow::createDefaultFoldPassPipeline() {
   return {
       // Get Reshape nodes merged into constants to simplify folding.
       {FunctionPassID::OptimizeReshape},
@@ -129,6 +110,6 @@ FunctionPassPipeline glow::createDefaultFoldPasses() {
       {FunctionPassID::FoldChannelShuffle},
 
       // Perform Dead Code Elimination.
-      {FunctionPassID::DCE},
+      getDCEPassConfig(),
   };
 }

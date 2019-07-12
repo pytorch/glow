@@ -34,6 +34,9 @@ private:
   /// The pipeline of passes to run.
   FunctionPassPipeline pipeline_;
 
+  /// Creates and \returns a FunctionPass given a provided \p passID.
+  std::unique_ptr<FunctionPass> createFunctionPass(FunctionPassID passID);
+
   /// Logic to execute before pass \p P is run on \p F, given \p cctx. \returns
   /// if \p F was modified.
   bool runPrePass(Function *F, const CompilationContext &cctx,
@@ -43,6 +46,10 @@ private:
   /// if \p F was modified.
   bool runPostPass(Function *F, const CompilationContext &cctx,
                    const FunctionPass &P);
+
+  /// Runs a FunctionPass described by \p passConfig over \p F given \p cctx.
+  bool runPass(const FunctionPassConfig &passConfig, Function *F,
+               const CompilationContext &cctx);
 
 public:
   FunctionPassManager(llvm::StringRef name, FunctionPassPipeline pipeline)

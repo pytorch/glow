@@ -30,15 +30,21 @@ enum class FunctionPassID {
 #include "glow/Optimizer/GraphOptimizer/FunctionPasses.def"
 };
 
+/// Specifies convergence mode for a FunctionPass.
+enum class ConvergenceMode {
+  OnePass,         // Run a single pass over the Function.
+  UntilFixedPoint, // Run the pass over the Function until a fixed point is
+                   // reached.
+};
+
 /// Specifies a configuration for running a FunctionPass when used in a
 /// FunctionPassPipeline.
 class FunctionPassConfig {
 public:
-  /// Specifies convergence mode for a FunctionPass.
-  enum class ConvergenceMode {
-    OnePass,         // Run a single pass over the Function.
-    UntilFixedPoint, // Run the pass over the Function until a fixed point is
-                     // reached. Runs DCE between each pass.
+  /// Specifies whether the pass requires DCE.
+  enum class DCERequiredMode {
+    RequireDCEBefore, // Require that DCE is run before the pass.
+    NoDCERequirement, // Signify the pass has no requirement/dependence on DCE.
   };
 
 private:
@@ -52,12 +58,17 @@ private:
   std::bitset<convertEnumToUnsigned(CompilationMode::NumCompilationModes)>
       enabledCompModes_;
 
+  /// Represents whether DCE is required for this pass.
+  DCERequiredMode dceMode_{DCERequiredMode::RequireDCEBefore};
+
 public:
-  FunctionPassConfig(FunctionPassID ID,
-                     ConvergenceMode convergenceMode = ConvergenceMode::OnePass,
-                     const std::set<CompilationMode> &enabledCompModes =
-                         {CompilationMode::Infer, CompilationMode::Train})
-      : passID_(ID), convergenceMode_(convergenceMode) {
+  FunctionPassConfig(
+      FunctionPassID ID,
+      ConvergenceMode convergenceMode = ConvergenceMode::OnePass,
+      const std::set<CompilationMode> &enabledCompModes =
+          {CompilationMode::Infer, CompilationMode::Train},
+      DCERequiredMode dceMode = DCERequiredMode::RequireDCEBefore)
+      : passID_(ID), convergenceMode_(convergenceMode), dceMode_(dceMode) {
     for (const auto &mode : enabledCompModes) {
       enabledCompModes_.set(convertEnumToUnsigned(mode));
     }
@@ -68,6 +79,9 @@ public:
 
   /// \returns the ConvergenceMode of this config.
   ConvergenceMode getConvergenceMode() const { return convergenceMode_; }
+
+  /// \returns the DCERequiredMode of this config.
+  DCERequiredMode getDCERequiredMode() const { return dceMode_; }
 
   /// \returns whether \p mode is an enabled mode for this config.
   bool isEnabledForCompilationMode(CompilationMode mode) const {
@@ -101,10 +115,18 @@ public:
 };
 
 /// \returns the default, target-independent graph optimization pipeline
-FunctionPassPipeline createDefaultGraphOptimizationPasses();
+FunctionPassPipeline createDefaultGraphOptimizationPassPipeline();
 
 /// \returns the default fold pipeline.
-FunctionPassPipeline createDefaultFoldPasses();
+FunctionPassPipeline createDefaultFoldPassPipeline();
+
+/// \returns a FunctionPassConfig for performing DCE.
+inline FunctionPassConfig getDCEPassConfig() {
+  return {FunctionPassID::DCE,
+          ConvergenceMode::OnePass,
+          {CompilationMode::Infer, CompilationMode::Train},
+          FunctionPassConfig::DCERequiredMode::NoDCERequirement};
+}
 
 } // namespace glow
 
