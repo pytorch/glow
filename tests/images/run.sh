@@ -145,8 +145,15 @@ done
 ./bin/image-classifier tests/images/imagenet/*.png -expected-labels=${imagenetIdxValues} -image-mode=0to1 -m=quant_resnet50 -model-input-name=gpu_0/data_0 -use-imagenet-normalization "$@"
 num_errors=$(($num_errors + $?))
 
-# Heterogeneous partition Resnet50 Caffe2 model test
+# Heterogeneous partition Resnet50 Caffe2 model test.
 ./bin/image-classifier tests/images/imagenet/*.png -image-mode=0to1 -m=resnet50 -model-input-name=gpu_0/data -cpu-memory=100000 -load-device-configs="tests/runtime_test/heterogeneousConfigs.yaml" "$@"
+num_errors=$(($num_errors + $?))
+
+# Quantization with Heterogeneous partition Resnet50 Caffe2 model test. Dump and load profile.
+./bin/image-classifier tests/images/imagenet/*.png -image-mode=0to1 -m=resnet50 -model-input-name=gpu_0/data -load-device-configs="tests/runtime_test/heterogeneousConfigs.yaml" -dump-profile="quantiP.yaml" "$@"
+num_errors=$(($num_errors + $?))
+
+./bin/image-classifier tests/images/imagenet/*.png -image-mode=0to1 -m=resnet50 -model-input-name=gpu_0/data -load-device-configs="tests/runtime_test/heterogeneousConfigs.yaml" -load-profile="quantiP.yaml" "$@"
 num_errors=$(($num_errors + $?))
 
 # Emotion_ferplus onnx model test

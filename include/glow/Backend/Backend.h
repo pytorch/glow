@@ -147,6 +147,13 @@ public:
   static RegisterFactory<std::string, FactoryName, Backend>                    \
       FactoryName##_REGISTERED;
 
+/// The backend name used in Glow quantization profiling.
+#ifdef GLOW_WITH_CPU
+constexpr const char *profilingBackend = "CPU";
+#else
+constexpr const char *profilingBackend = "Interpreter";
+#endif
+
 } // namespace glow
 
 #endif // GLOW_BACKENDS_BACKEND_H
