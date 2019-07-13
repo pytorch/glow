@@ -269,25 +269,33 @@ def dump_dag(dagName: str) -> None:
 
 def store_transformation_into_DB(
         transID: int,
+        baseNode: Node,
         addedNodes: List[Node],
         replacedNodes: List[Node],
-        conn: sqlite3.Connection,
+        cursor: sqlite3.Cursor,
         fullScopeName: str) -> None:
     """A helper function to store nodes transformations into database.
 
     Args:
         transID: int. The ID for this stored transformation.
+        baseNode: Node. The base node that changes its operands.
         addedNodes: List[Node]. A list of added nodes in this transformation.
         replacedNodes: List[Node]. A list of replaced nodes in this transformation.
-        conn: sqlite3.Connection. Connection to sqlite3 database
+        cursor: sqlite3.Cursor. Cursor of the sqlite3 database.
         fullScopeName: str. The full scope name of this transformation.
     """
 
-    cursor = conn.cursor()
+    cursor.execute("""INSERT INTO Log_Transformation VALUES (
+                        ?,
+                        'OPERATOR_BASE',
+                        ?,
+                        ?,
+                        ?
+                        )""", (transID, baseNode.get_name(), baseNode.get_kind_name(), fullScopeName))
     for an in addedNodes:
         cursor.execute("""INSERT INTO Log_Transformation VALUES (
                         ?,
-                        'ADD',
+                        'ADD_OPERAND',
                         ?,
                         ?,
                         ?
@@ -296,7 +304,7 @@ def store_transformation_into_DB(
     for rn in replacedNodes:
         cursor.execute("""INSERT INTO Log_Transformation VALUES (
                         ?,
-                        'REMOVE',
+                        'REMOVE_OPERAND',
                         ?,
                         ?,
                         ?
@@ -342,6 +350,27 @@ def init_db(sqliteFile: str) -> sqlite3.Connection:
                     node_kind VARCHAR(200),
                     full_scope VARCHAR(200)
                     )""")
+
+    cursor.execute("""CREATE TABLE Log_Scope (
+                    scope_id INTEGER,
+                    scope_str VARCHAR(200),
+                    full_scope_str VARCHAR(200)
+                    )""")
+
+    cursor.execute("""CREATE TABLE Log_Node (
+                    node_name VARCHAR(200),
+                    node_kind VARCHAR(200),
+                    create_scope_id INTEGER,
+                    delete_scope_id INTEGER
+                    )""")
+
+    cursor.execute("""CREATE TABLE Log_Node_Operation (
+                    scope_id INTEGER,
+                    operation VARCHAR(200),
+                    node_name VARCHAR(200),
+                    node_kind VARCHAR(200)
+                    )""")
+
     return conn
 
 
@@ -359,9 +388,6 @@ def process(
         conn: sqlite3.Connection. The connection to a sqlite3 database that will store all the transformation in the compilation lop.
     """
 
-    # Counter of scope phases
-    phaseCounter = 0
-
     # Regular expression patterns
     pCreate = re.compile(
         r'^.*\[FULL.*SCOPE:(.*)\].*CREATE.*\{.*\(Kind:(.*),.*Name:(.*)\).*<==(.*)\}$')
@@ -375,6 +401,9 @@ def process(
     pEnter = re.compile(r'^ENTERSCOPE:(.*)$')
     pExit = re.compile(r'^EXITSCOPE:(.*)$')
 
+    # DB related vars
+    cursor = conn.cursor()
+
     # Record nodes transformation
     replacedNodes: List[Node] = []
     addedNodes: List[Node] = []
@@ -383,6 +412,9 @@ def process(
         "optimizeFunctionBeforeLowering",
         "optimizeFunction"}
     transID = 0
+
+    # Scope related information
+    scopeID = 0
 
     for ln in logLines:
         # Process CREATE statement
@@ -397,6 +429,20 @@ def process(
                 createdNode = Node(kindName, nodeName)
                 createdNode.set_scope_of_creation(scopeName)
                 NODES_MAP[NodeNameAndKind(kindName, nodeName)] = createdNode
+
+                # Update node creation in database
+                cursor.execute("""INSERT INTO Log_Node VALUES (
+                        ?,
+                        ?,
+                        ?,
+                        ?
+                        )""", (nodeName, kindName, scopeID, -1))
+                cursor.execute("""INSERT INTO Log_Node_Operation VALUES (
+                        ?,
+                        'CREATE',
+                        ?,
+                        ?
+                        )""", (scopeID, nodeName, kindName))
 
                 # Set the inputs of the created node
                 inputs = re.findall(pInputs, g[3])
@@ -468,7 +514,7 @@ def process(
                     if prevNode.has_no_uses():
                         replacedNodes = find_all_replaced_nodes(prevNode)
                         store_transformation_into_DB(
-                            transID, addedNodes, replacedNodes, conn, scopeName)
+                            transID, changedNode, addedNodes, replacedNodes, cursor, scopeName)
 
                         transID += 1
                         addedNodes = []
@@ -492,19 +538,33 @@ def process(
                     i.remove_user(deletedNode)
                 del NODES_MAP[NodeNameAndKind(kindName, nodeName)]
 
+                # Update node deletion in database
+                cursor.execute("""UPDATE Log_Node
+                        SET delete_scope_id=?
+                        WHERE node_name=?
+                        """, (scopeID, nodeName))
+                cursor.execute("""INSERT INTO Log_Node_Operation VALUES (
+                        ?,
+                        'DELETE',
+                        ?,
+                        ?
+                        )""", (scopeID, nodeName, kindName))
+
         # Process ENTER SCOPE statement
         elif "ENTER SCOPE:" in ln:
             ln = ln.replace("=", '').replace(" ", "")
             m = re.match(pEnter, ln)
             if m:
-                phaseCounter += 1
+                scopeID += 1
                 fullScopeName = m.groups()[0]
                 lastScopeName = fullScopeName.split("->")[-1]
                 if "::" in lastScopeName:
                     lastScopeName = lastScopeName.split("::")[-1]
                 if (lastScopeName in dumpPhases):
                     dump_dag(
-                        f"before_{lastScopeName}_{phaseCounter}")
+                        f"before_{lastScopeName}_{scopeID}")
+                if str(scopeID) in dumpPhases:
+                    dump_dag(f"phase_{scopeID}")
                 SCOPE_STACK.append(lastScopeName)
 
                 # Start recording transformations.
@@ -512,11 +572,19 @@ def process(
                         SCOPE_STACK) == 1:
                     recordTransformation = True
 
+                # Update scope entrance in database
+                cursor.execute("""INSERT INTO Log_Scope VALUES (
+                        ?,
+                        ?,
+                        ?
+                        )""", (scopeID, "ENTER " + lastScopeName, "ENTER " + fullScopeName))
+
         # Process EXIT SCOPE statement
         elif "EXIT SCOPE:" in ln:
             ln = ln.replace("=", '').replace(" ", "")
             m = re.match(pExit, ln)
             if m:
+                scopeID += 1
                 fullScopeName = m.groups()[0]
                 lastScopeName = fullScopeName.split("->")[-1]
                 if "::" in lastScopeName:
@@ -524,13 +592,29 @@ def process(
                 assert lastScopeName == SCOPE_STACK[-1], "Exited scope must be same as the top of scope stack."
                 if (lastScopeName in dumpPhases):
                     dump_dag(
-                        f"after_{lastScopeName}_{phaseCounter}")
+                        f"after_{lastScopeName}_{scopeID}")
+                if str(scopeID) in dumpPhases:
+                    dump_dag(f"phase_{scopeID}")
                 SCOPE_STACK.pop()
 
                 # Stop recording transformations.
                 if lastScopeName in stopRecordTranformationNames and len(
                         SCOPE_STACK) == 0:
                     recordTransformation = False
+
+                # Update scope exit in database
+                cursor.execute("""INSERT INTO Log_Scope VALUES (
+                        ?,
+                        ?,
+                        ?
+                        )""", (scopeID, "EXIT " + lastScopeName, "EXIT " + fullScopeName))
+
+    # Update scope db
+    cursor.execute("""INSERT INTO Log_Scope VALUES (
+                        0,
+                        'MODULE LOADER',
+                        'MODULE LOADER'
+                        )""")
 
     conn.commit()
 
