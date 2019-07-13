@@ -69,7 +69,7 @@ struct TraceEvent {
 * timestamp: The time reported in microseconds since epoch in the std::steady_clock domain. Trace events are aggregated from a variety of sources (multiple devices + the host) and it's important that all timestamps are in the same domain so they can be visualized in a single trace. For an example of timestamp conversion see the OpenCLDeviceManager.
 * type: A one character code for the kind of TraceEvent this represents. Glow supports four types of event:
     * “B” and “E”: where the timestamp represents the begin and end of the event respectively.
-    * “I”: an event which has no duration, only an instant in time at the the timestamp.
+    * “I”: an event which has no duration, only an instant in time at the timestamp.
     * “X”: an event where the timestamp represents the begin of the event, and the duration field encodes the length. Complete events with this type can encode both beginning and end in a single event.
     * More detail on each type of event can be found in Chrome's [Trace Event Format doc](https://docs.google.com/document/d/1CvAClvFfyA5R-PhYUmn5OOQtYMH4h6I0nSsKchNAySU).
 * tid: An identifier for the computation thread or flow that generated this event so that events produced in the same flow are associated in the result trace. This may or may not be equivalent to a system TID, but the Glow Runtime does not guarantee it will use the TID of the thread it logs the event in (and in fact does not use it). In the Chrome trace visualizer each distinct Thread ID will be represented as a different lane (row) in the trace.
