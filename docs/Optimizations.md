@@ -35,7 +35,7 @@ Below you can see the list of currently supported graph optimizations:
   * Optimization of transpose nodes
 
     This optimization combines multiple consecutive transpose nodes
-    into a single node, eliminates identity transpose nodes, and optimizes 
+    into a single node, eliminates identity transpose nodes, and optimizes
     transpose nodes into reshape nodes when they actually move no data.
 
   * Sinking of transpose operations below other operations
@@ -72,7 +72,7 @@ Below you can see the list of currently supported graph optimizations:
 
     This optimization performs substitions of ReduceMean with AvgPool node if
     the reduce parameters are suitable: input is 4D with last two dimensions
-    to be reduced. 
+    to be reduced.
 
 #### Quantization specific optimizations
 
@@ -148,6 +148,31 @@ But in addition to those there are quantization specific optimizations:
     value is smaller than the smallest possible value from the other operand. Smallest
     possible value from the operand can be calculated based on the quantization
     parameters which represent quantization range [min, max] in fp32.
+
+#### Configuring a graph optimization pipeline
+
+The graph optimizations listed above are each formulated as a FunctionPass,
+which is run on a Function (graph). A series of FunctionPasses along with how to
+configure each (via a `FunctionPassConfig`) is what constitutes a pipeline,
+which is passed into a PassManager, the driver of performing passes. A pipeline
+is simply a vector of `FunctionPassConfig`s. `FunctionPassConfig` is a class
+made up of:
+
+- `FunctionPassID`: An ID corresponding to a specific FunctionPass. For example,
+  `FuncionPassID::OptimizeArithmeticNodes`. Default: `EmptyPass` (no-op pass).
+
+- `ConvergenceMode`: An enum corresponding to whether this FunctionPass should
+  be run a single time (OnePass) or repeatedly until a fixed point is reached
+  (`UntilFixedPoint`). Default: `OnePass`.
+
+- `DCERequiredMode`: An enum representing whether DCE is required before a pass
+  is run (`RequireDCEBefore`), or not at all (`NoDCERequirement`). Running DCE
+  is often required in order to make sure the number of users for each Node is
+  up to date. Default: `DCERequiredMode`.
+
+- `EnabledCompilationModes`: A set of `CompilationMode`s representing which
+  mode(s) the pass should run under. Default: `{Infer, Train}`.
+
 
 ### Set of supported IR optimizations
 
