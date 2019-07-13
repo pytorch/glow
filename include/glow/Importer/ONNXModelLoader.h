@@ -139,6 +139,10 @@ class ONNXModelLoader
   llvm::Error loadTile(const ONNX_NAMESPACE::NodeProto &op,
                        const ArgumentDictionaryTy &dict);
 
+  /// Load Where ONNX operator.
+  llvm::Error loadWhere(const ONNX_NAMESPACE::NodeProto &op,
+                        const ArgumentDictionaryTy &dict);
+
 protected:
   /// Load the network operators from the GraphProto.
   /// \returns Error if network cannot be loaded.

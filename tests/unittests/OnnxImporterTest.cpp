@@ -2139,3 +2139,37 @@ TEST(onnx, importMaxPoolWithArgmax) {
     EXPECT_EQ(indices.raw(i), expectedIndices[i]);
   }
 }
+
+TEST(onnx, importWhere) {
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/Where.onnxtxt");
+
+  Placeholder *out = nullptr;
+  {
+    Tensor condition(ElemKind::BoolTy, {1, 1, 4});
+    Tensor X(ElemKind::FloatTy, {1, 4, 1});
+    Tensor Y(ElemKind::FloatTy, {4, 1, 1});
+
+    condition.zero();
+    X.zero();
+    Y.zero();
+
+    ONNXModelLoader onnxLD(netFilename, {"Condition", "X", "Y"},
+                           {&condition.getType(), &X.getType(), &Y.getType()},
+                           *F);
+    out = EXIT_ON_ERR(onnxLD.getOutputByName("Out"));
+  }
+
+  auto *save = getSaveNodeFromDest(out);
+
+  SelectNode *WHR = llvm::dyn_cast<SelectNode>(save->getInput().getNode());
+
+  ASSERT_TRUE(WHR);
+  EXPECT_EQ(WHR->getResult().dims()[0], 4);
+  EXPECT_EQ(WHR->getResult().dims()[1], 4);
+  EXPECT_EQ(WHR->getResult().dims()[2], 4);
+}
