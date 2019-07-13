@@ -172,13 +172,12 @@ FunctionPassManager::createFunctionPass(FunctionPassID passID) {
 bool FunctionPassManager::runPass(const FunctionPassConfig &passConfig,
                                   Function *F, const CompilationContext &cctx) {
   const FunctionPassID &passID = passConfig.getFunctionPassID();
-  assert(
-      !(passID == FunctionPassID::DCE &&
-        passConfig.getDCERequiredMode() == DCERequiredMode::RequireDCEBefore) &&
-      "Cannot specify DCE requires DCE before it.");
+  assert(!(passID == FunctionPassID::DCE &&
+           passConfig.getDCERequiredMode() == DCERequiredMode::BeforePass) &&
+         "Cannot specify DCE requires DCE before it.");
 
   // Run DCE before this pass if it requires it.
-  if (passConfig.getDCERequiredMode() == DCERequiredMode::RequireDCEBefore) {
+  if (passConfig.getDCERequiredMode() == DCERequiredMode::BeforePass) {
     runPass(getDCEPassConfig(), F, cctx);
   }
 

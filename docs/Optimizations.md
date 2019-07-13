@@ -166,9 +166,9 @@ made up of:
   (`UntilFixedPoint`). Default: `OnePass`.
 
 - `DCERequiredMode`: An enum representing whether DCE is required before a pass
-  is run (`RequireDCEBefore`), or not at all (`NoDCERequirement`). Running DCE
-  is often required in order to make sure the number of users for each Node is
-  up to date. Default: `DCERequiredMode`.
+  is run (`BeforePass`), or not at all (`None`). Running DCE is often required
+  in order to make sure the number of users for each Node is up to
+  date. Default: `BeforePass`.
 
 - `EnabledCompilationModes`: A set of `CompilationMode`s representing which
   mode(s) the pass should run under. Default: `{Infer, Train}`.

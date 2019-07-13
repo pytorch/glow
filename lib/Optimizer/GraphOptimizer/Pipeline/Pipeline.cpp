@@ -118,7 +118,7 @@ FunctionPassConfig glow::getDCEPassConfig() {
   return {FunctionPassID::DCE,
           ConvergenceMode::OnePass,
           {CompilationMode::Infer, CompilationMode::Train},
-          DCERequiredMode::NoDCERequirement};
+          DCERequiredMode::None};
 }
 
 llvm::StringRef glow::getNameOfPass(FunctionPassID passID) {
@@ -157,11 +157,11 @@ void FunctionPassConfig::dump(llvm::raw_ostream &os) const {
 
   os << tab << "DCERequiredMode: ";
   switch (getDCERequiredMode()) {
-  case DCERequiredMode::RequireDCEBefore:
-    os << "RequireDCEBefore,";
+  case DCERequiredMode::BeforePass:
+    os << "BeforePass,";
     break;
-  case DCERequiredMode::NoDCERequirement:
-    os << "NoDCERequirement,";
+  case DCERequiredMode::None:
+    os << "None,";
     break;
   }
   os << "\n";

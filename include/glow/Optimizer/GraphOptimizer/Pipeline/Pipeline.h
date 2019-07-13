@@ -32,15 +32,18 @@ enum class FunctionPassID {
 
 /// Specifies convergence mode for a FunctionPass.
 enum class ConvergenceMode {
-  OnePass,         // Run a single pass over the Function.
-  UntilFixedPoint, // Run the pass over the Function until a fixed point is
-                   // reached.
+  /// Run a single pass over the Function.
+  OnePass,
+  /// Run the pass over the Function until a fixed point is reached.
+  UntilFixedPoint,
 };
 
 /// Specifies whether the pass requires DCE.
 enum class DCERequiredMode {
-  RequireDCEBefore, // Require that DCE is run before the pass.
-  NoDCERequirement, // Signify the pass has no requirement/dependence on DCE.
+  /// Require that DCE is run before the pass.
+  BeforePass,
+  /// Signify the pass has no requirement/dependence on DCE.
+  None,
 };
 
 /// Specifies a configuration for running a FunctionPass when used in a
@@ -58,15 +61,14 @@ private:
       enabledCompModes_;
 
   /// Represents whether DCE is required for this pass.
-  DCERequiredMode dceMode_{DCERequiredMode::RequireDCEBefore};
+  DCERequiredMode dceMode_{DCERequiredMode::BeforePass};
 
 public:
-  FunctionPassConfig(
-      FunctionPassID ID,
-      ConvergenceMode convergenceMode = ConvergenceMode::OnePass,
-      const std::set<CompilationMode> &enabledCompModes =
-          {CompilationMode::Infer, CompilationMode::Train},
-      DCERequiredMode dceMode = DCERequiredMode::RequireDCEBefore)
+  FunctionPassConfig(FunctionPassID ID,
+                     ConvergenceMode convergenceMode = ConvergenceMode::OnePass,
+                     const std::set<CompilationMode> &enabledCompModes =
+                         {CompilationMode::Infer, CompilationMode::Train},
+                     DCERequiredMode dceMode = DCERequiredMode::BeforePass)
       : passID_(ID), convergenceMode_(convergenceMode), dceMode_(dceMode) {
     for (const auto &mode : enabledCompModes) {
       enabledCompModes_.set(convertEnumToUnsigned(mode));
