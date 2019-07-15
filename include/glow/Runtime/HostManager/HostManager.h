@@ -138,6 +138,9 @@ public:
   /// DeviceManager for each config listed.
   llvm::Error init(std::vector<std::unique_ptr<DeviceConfig>> configs);
 
+  /// Get the network DAG for \p network if it exists.
+  llvm::Expected<DAG &> getNetworkDAG(llvm::StringRef network);
+
   ~HostManager();
 };
 } // namespace runtime
