@@ -26,7 +26,7 @@
 #include "glow/Graph/Utils.h"
 #include "glow/Optimizer/GraphOptimizer/FunctionPasses.h"
 #include "glow/Optimizer/GraphOptimizer/PassManager.h"
-#include "glow/Optimizer/GraphOptimizer/Pipeline/Pipeline.h"
+#include "glow/Optimizer/GraphOptimizerPipeline/Pipeline.h"
 #include "glow/Quantization/Base/Base.h"
 #include "glow/Quantization/Quantization.h"
 

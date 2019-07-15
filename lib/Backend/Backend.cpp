@@ -20,7 +20,7 @@
 #include "glow/Graph/PlaceholderBindings.h"
 #include "glow/IR/Instrs.h"
 #include "glow/Optimizer/GraphOptimizer/CompilationContext.h"
-#include "glow/Optimizer/GraphOptimizer/Pipeline/Pipeline.h"
+#include "glow/Optimizer/GraphOptimizerPipeline/Pipeline.h"
 
 using namespace glow;
 

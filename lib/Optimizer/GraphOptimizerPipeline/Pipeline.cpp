@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "glow/Optimizer/GraphOptimizer/Pipeline/Pipeline.h"
+#include "glow/Optimizer/GraphOptimizerPipeline/Pipeline.h"
 
 #include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
 #include "glow/Optimizer/GraphOptimizer/PassManager.h"

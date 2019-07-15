@@ -15,5 +15,3 @@ target_link_libraries(GraphOptimizer
                         GraphOptimizerPipeline
                         Quantization
                         QuantizationBase)
-
-add_subdirectory(Pipeline)

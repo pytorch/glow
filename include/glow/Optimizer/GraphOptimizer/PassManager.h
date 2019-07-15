@@ -19,7 +19,7 @@
 #include "glow/Optimizer/GraphOptimizer/CompilationContext.h"
 #include "glow/Optimizer/GraphOptimizer/FunctionPass.h"
 #include "glow/Optimizer/GraphOptimizer/FunctionPasses.h"
-#include "glow/Optimizer/GraphOptimizer/Pipeline/Pipeline.h"
+#include "glow/Optimizer/GraphOptimizerPipeline/Pipeline.h"
 
 #include "llvm/ADT/SmallVector.h"
 
