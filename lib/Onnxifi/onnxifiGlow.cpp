@@ -16,6 +16,7 @@
 
 #include "Base.h"
 #include "GlowOnnxifiManager.h"
+#include "llvm/Support/CommandLine.h"
 
 #include "glow/Importer/ONNXIFIModelLoader.h"
 
@@ -27,6 +28,18 @@
 #endif
 
 #define EXTERNC extern "C"
+
+namespace glow {
+namespace onnxifi {
+
+std::string GlowOnnxifiBackend = "";
+static llvm::cl::opt<std::string, /*external storage*/ true>
+    GlowOnnxifiBackendOpt("glow-onnxifi-backend",
+                          llvm::cl::desc("Glow backend used for ONNXIFI"),
+                          llvm::cl::location(GlowOnnxifiBackend));
+
+} // namespace onnxifi
+} // namespace glow
 
 /**
  * This file contains implementation of the onnxifi interface.
@@ -57,12 +70,13 @@ GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxGetBackendIDs)(
   const size_t numBackendsCapacity = *numBackends;
 
   using namespace glow::runtime;
+  using namespace glow::onnxifi;
   const bool withCPU = DeviceManager::numDevices("CPU") > 0;
   const bool withHabana = DeviceManager::numDevices("Habana") > 0;
 
   // Only return quantization backend if GLOW_DUMP_PROFILE.
   if (getenv("GLOW_DUMP_PROFILE")) {
-    *numBackends = 2;
+    *numBackends = 1;
 
     // In case backendIDs is nullptr or does not have enough capacity just
     // return the total number of supported backends.
@@ -70,40 +84,25 @@ GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxGetBackendIDs)(
       return ONNXIFI_STATUS_FALLBACK;
     }
 
-    auto *quantizationBackendOnnx = manager.createBackend(
-        "Interpreter", /*useOnnx*/ true, /*forQuantization*/ true);
     auto *quantizationBackendC2 = manager.createBackend(
-        "Interpreter", /*useOnnx*/ false, /*forQuantization*/ true);
+        GlowOnnxifiBackend.empty() ? "Interpreter" : GlowOnnxifiBackend,
+        /*useOnnx*/ false, /*forQuantization*/ true);
 
-    backendIDs[0] = quantizationBackendOnnx;
-    backendIDs[1] = quantizationBackendC2;
-  } else if (withCPU || withHabana) {
-    *numBackends = 4;
-
-    auto backendName = withHabana ? "Habana" : "CPU";
-
-    // In case backendIDs is nullptr or does not have enough capacity just
-    // return the total number of supported backends.
-    if (numBackendsCapacity < *numBackends || !backendIDs) {
-      return ONNXIFI_STATUS_FALLBACK;
-    }
-
-    auto *cpuBackendOnnx = manager.createBackend(backendName,
-                                                 /*useOnnx*/ true);
-    auto *interpreterBackendOnnx =
-        manager.createBackend("Interpreter", /*useOnnx*/ true);
-    auto *cpuBackendC2 = manager.createBackend(backendName,
-                                               /*useOnnx*/ false);
-    auto *interpreterBackendC2 =
-        manager.createBackend("Interpreter", /*useOnnx*/ false);
-
-    backendIDs[0] = cpuBackendOnnx;
-    backendIDs[1] = interpreterBackendOnnx;
-    backendIDs[2] = cpuBackendC2;
-    backendIDs[3] = interpreterBackendC2;
+    backendIDs[0] = quantizationBackendC2;
   } else {
+    *numBackends = 1;
 
-    *numBackends = 2;
+    auto backendName = GlowOnnxifiBackend;
+
+    if (backendName.empty()) {
+      if (withHabana) {
+        backendName = "Habana";
+      } else if (withCPU) {
+        backendName = "CPU";
+      } else {
+        backendName = "Interpreter";
+      }
+    }
 
     // In case backendIDs is nullptr or does not have enough capacity just
     // return the total number of supported backends.
@@ -111,13 +110,10 @@ GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxGetBackendIDs)(
       return ONNXIFI_STATUS_FALLBACK;
     }
 
-    auto *interpreterBackendOnnx =
-        manager.createBackend("Interpreter", /*useOnnx*/ true);
-    auto *interpreterBackendC2 =
-        manager.createBackend("Interpreter", /*useOnnx*/ false);
+    auto *executionBackend = manager.createBackend(backendName,
+                                                   /*useOnnx*/ false);
 
-    backendIDs[0] = interpreterBackendOnnx;
-    backendIDs[1] = interpreterBackendC2;
+    backendIDs[0] = executionBackend;
   }
 
   return ONNXIFI_STATUS_SUCCESS;
