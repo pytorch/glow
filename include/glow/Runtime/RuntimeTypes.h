@@ -18,6 +18,7 @@
 
 #include "glow/Backend/Backend.h"
 #include "glow/Backend/BackendUtils.h"
+#include "glow/Backends/BackendOptions.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Support/Error.h"
 
@@ -98,6 +99,11 @@ struct DAGNode {
   /// Runtime bundle containing all the symbol information for this network at
   /// runtime.
   std::unique_ptr<RuntimeBundle> runtimeBundle;
+
+  /// Backend Hints object, this is populated by the Partitioner and is used
+  /// to communicated hints to the compiler, like SRAM pinning and resource
+  /// reservation.
+  BackendHints backendHints{};
 
   /// Pointer to module the function came from. This is so the executor can
   /// access the associated PHs for the function that are stored in the Module.
