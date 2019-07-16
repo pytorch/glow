@@ -352,30 +352,45 @@ add_glow_test(NAME OnnxImporterTest
               COMMAND ${GLOW_BINARY_DIR}/tests/OnnxImporterTest --gtest_output=xml:OnnxImporterTest.xml
               WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
+add_executable(OnnxExporterTest
+               OnnxExporterTest.cpp)
+target_link_libraries(OnnxExporterTest
+                      PRIVATE
+                        Backend
+                        Graph
+                        Importer
+                        Exporter
+                        ExecutionEngine
+                        gtest
+                        TestMain)
+add_glow_test(NAME OnnxExporterTest
+              COMMAND ${GLOW_BINARY_DIR}/tests/OnnxExporterTest --gtest_output=xml:OnnxExporterTest.xml
+              WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
 add_executable(OperatorGradTest
         OperatorGradTest.cpp)
 target_link_libraries(OperatorGradTest
-        PRIVATE
-        Base
-        ExecutionEngine
-        Graph
-        gtest
-        TestMain)
+                      PRIVATE
+                        Base
+                        ExecutionEngine
+                        Graph
+                        gtest
+                        TestMain)
 add_glow_test(OperatorGradTest ${GLOW_BINARY_DIR}/tests/OperatorGradTest --gtest_output=xml:OperatorGradTest.xml)
 LIST(APPEND UNOPT_TESTS ./tests/OperatorGradTest -optimize-ir=false &&)
 
 add_executable(OperatorTest
         OperatorTest.cpp)
 target_link_libraries(OperatorTest
-        PRIVATE
-        BackendTestUtils
-        Graph
-        IR
-        ExecutionEngine
-        Quantization
-        GraphOptimizer
-        gtest
-        TestMain)
+                      PRIVATE
+                        BackendTestUtils
+                        Graph
+                        IR
+                        ExecutionEngine
+                        Quantization
+                        GraphOptimizer
+                        gtest
+                        TestMain)
 add_glow_test(OperatorTest ${GLOW_BINARY_DIR}/tests/OperatorTest --gtest_output=xml:OperatorTest.xml)
 LIST(APPEND UNOPT_TESTS ./tests/OperatorTest -optimize-ir=false &&)
 

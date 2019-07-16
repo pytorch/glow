@@ -85,6 +85,10 @@ public:
     COMPILE_UNSUPPORTED_NODE_AFTER_OPTIMIZE,
     // Compilation error; Compilation context not correctly setup.
     COMPILE_CONTEXT_MALFORMED,
+    // Model writer encountered an invalid file name.
+    MODEL_WRITER_INVALID_FILENAME,
+    // Model writer cannot serialize graph to the file.
+    MODEL_WRITER_SERIALIZATION_ERROR,
   };
 
   /// GlowErr is not convertable to std::error_code. This is included for
@@ -156,6 +160,10 @@ private:
       return "COMPILE_UNSUPPORTED_NODE_AFTER_OPTIMIZE";
     case ErrorCode::COMPILE_CONTEXT_MALFORMED:
       return "COMPILE_CONTEXT_MALFORMED";
+    case ErrorCode::MODEL_WRITER_INVALID_FILENAME:
+      return "MODEL_WRITER_INVALID_FILENAME";
+    case ErrorCode::MODEL_WRITER_SERIALIZATION_ERROR:
+      return "MODEL_WRITER_SERIALIZATION_ERROR";
     };
 
     llvm_unreachable("unsupported ErrorCode");
