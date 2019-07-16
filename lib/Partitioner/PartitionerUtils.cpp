@@ -15,6 +15,7 @@
  */
 
 #include "glow/Partitioner/PartitionerUtils.h"
+#include "glow/Partitioner/PartitionerTypes.h"
 #include <unordered_set>
 
 using llvm::isa;
@@ -298,5 +299,19 @@ std::set<Kinded::Kind> generateNodeKindsSet(llvm::StringRef names) {
     nodeKindsSet.insert(getKindFromNodeName(names));
   }
   return nodeKindsSet;
+}
+
+void logPartitionInfo(const NodeToFunctionMap &partitions) {
+  int i = 0;
+  for (Function *subF : partitions.getPartitions()) {
+    LOG(INFO) << "\t Partition " << i++ << ":\n"
+              << "\t\t Name :\t" << subF->getName().str() << "\n"
+              << "\t\t BackendKind :\t"
+              << partitions.getPartitionBackendName(subF) << "\n"
+              << "\t\t Memory :\t"
+              << partitions.getGraphMemInfo(subF).getTotalMemSize() << "\n"
+              << "\t\t LogicalDeviceIDs :\t"
+              << partitions.getLogicalDeviceIDList(subF)[0] << "\n";
+  }
 }
 } // namespace glow

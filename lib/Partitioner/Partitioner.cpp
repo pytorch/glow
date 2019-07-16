@@ -16,6 +16,8 @@
 
 #include "glow/Partitioner/Partitioner.h"
 #include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
+#include "glow/Partitioner/PartitionerOptimizer.h"
+#include "glow/Partitioner/PartitionerValidation.h"
 #include "glow/Support/Support.h"
 
 #include "llvm/Support/FileSystem.h"
@@ -59,20 +61,6 @@ using llvm::isa;
 bool sortMinMemory(const std::pair<Function *, uint64_t> &a,
                    const std::pair<Function *, uint64_t> &b) {
   return a.second < b.second;
-}
-
-static void dumpPartitionInfo(const NodeToFunctionMap &partitions) {
-  int i = 0;
-  for (Function *subF : partitions.getPartitions()) {
-    LOG(INFO) << "\t Partition " << i++ << ":\n"
-              << "\t\t Name :\t" << subF->getName().str() << "\n"
-              << "\t\t BackendKind :\t"
-              << partitions.getPartitionBackendName(subF) << "\n"
-              << "\t\t Memory :\t"
-              << partitions.getGraphMemInfo(subF).getTotalMemSize() << "\n"
-              << "\t\t LogicalDeviceIDs :\t"
-              << partitions.getLogicalDeviceIDList(subF)[0] << "\n";
-  }
 }
 
 void Partitioner::dumpDAG(llvm::StringRef dotFilename) const {
@@ -128,47 +116,6 @@ void Partitioner::dumpDAG(llvm::StringRef dotFilename) const {
 
   myfile.close();
   return;
-}
-
-llvm::Error Partitioner::logicalDevicesValidation(
-    const NodeToFunctionMap &partitions) const {
-  std::map<std::string, std::set<DeviceIDTy>> partitionsNum;
-  for (auto &func : partitions.getPartitions()) {
-    auto backendName = partitions.getPartitionBackendName(func);
-    if (partitionsNum.find(backendName) == partitionsNum.end()) {
-      partitionsNum.emplace(backendName, std::set<DeviceIDTy>{});
-    }
-    auto logicalIDList = partitions.getLogicalDeviceIDList(func);
-    for (size_t i = 0, e = logicalIDList.size(); i < e; i++) {
-      partitionsNum[backendName].insert(logicalIDList[i]);
-    }
-    auto backendNum = backendMap_.at(backendName).num;
-    RETURN_ERR_IF_NOT(
-        partitionsNum[backendName].size() <= backendNum,
-        llvm::formatv("Partition failed: the number of given({0}) devices({1}) "
-                      "is fewer than the required minimal partitions({2}).",
-                      backendName, backendNum,
-                      partitionsNum[backendName].size())
-            .str());
-  }
-  return llvm::Error::success();
-}
-
-llvm::Error
-Partitioner::memoryUsageValidation(const NodeToFunctionMap &partitions) const {
-  for (auto &func : partitions.getPartitions()) {
-    auto backendName = partitions.getPartitionBackendName(func);
-    auto usedMemSize = partitions.getGraphMemInfo(func).getTotalMemSize();
-    auto availableMemSize = backendMap_.at(backendName).memSize;
-    RETURN_ERR_IF_NOT(
-        usedMemSize <= availableMemSize,
-        llvm::formatv(
-            "Partition failed: the memory usage({0}) of one partition exceeds "
-            "the available memory({1}) of given devices({2}).",
-            usedMemSize, availableMemSize, backendName)
-            .str());
-  }
-  return llvm::Error::success();
 }
 
 Partitioner::Partitioner(Module *parent, const std::vector<DeviceInfo> &devices,
@@ -448,64 +395,6 @@ void Partitioner::initOpComputeTime(Function *F) {
   }
 }
 
-// Combine the partitions according to the following rules:
-// Rule 1 :if all outside uses of the nodes in partition1 is in partition2, and
-// the sum of memory consumption of partition1 and partition2 is less than
-// availableMemory, combine partition1 and partition2.
-void Partitioner::partitionsCombine(NodeToFunctionMap &partitions,
-                                    FunctionToNodesMap &nodesSet,
-                                    uint64_t availableMemory) {
-
-  size_t origPartitions = 0;
-
-  // Do the combination until the size of partitions is stable.
-  while (partitions.getPartitions().size() != origPartitions) {
-    origPartitions = partitions.getPartitions().size();
-    // Rule 1:
-    for (FunctionToNodesMap::iterator it = nodesSet.begin();
-         it != nodesSet.end(); ++it) {
-      std::vector<Node *> outUsers = getOutUsers((*it).second);
-      if (outUsers.empty()) {
-        continue;
-      }
-
-      bool flag = true;
-      for (int i = 1, e = outUsers.size(); i < e; i++) {
-        if (partitions[outUsers[i]] != partitions[outUsers[i - 1]]) {
-          flag = false;
-          break;
-        }
-      }
-      if (flag) {
-        // This partition only has one successor.
-        Function *cur = (*it).first;
-        Function *suc = partitions[outUsers[0]];
-        NodesSet tmp = (nodesSet.find(suc))->second;
-        GraphMemInfo cost1 = partitions.getGraphMemInfo(cur);
-        GraphMemInfo cost2 = partitions.getGraphMemInfo(suc);
-        if (cost1.getTotalMemSize() + cost2.getTotalMemSize() -
-                cost1.outMemSize <
-            availableMemory) {
-          // We can combine the two partitions to fit one device.
-          for (NodesSet::iterator it2 = tmp.begin(); it2 != tmp.end(); ++it2) {
-            partitions.add(*it2, cur);
-          }
-          GraphMemInfo newCost;
-          newCost.constMemSize = cost1.constMemSize + cost2.constMemSize;
-          newCost.inMemSize =
-              cost1.inMemSize + cost2.inMemSize - cost1.outMemSize;
-          newCost.outMemSize = cost2.outMemSize;
-          partitions.setGraphMemInfo((*it).first, newCost);
-          (*it).second.insert(tmp.begin(), tmp.end());
-          partitions.deletePartition(suc);
-          nodesSet.erase(suc);
-          module_->eraseFunction(suc);
-        }
-      }
-    }
-  }
-}
-
 void Partitioner::partitionsAdjust(NodeToFunctionMap &partitions,
                                    uint64_t availableMemory) {
   // For each partition, create a node set.
@@ -514,85 +403,11 @@ void Partitioner::partitionsAdjust(NodeToFunctionMap &partitions,
     nodesSet[(*it).second].insert((*it).first);
   }
 
-  // Move/Exchange nodes between any two connected partitions, until no gain is
-  // get.
-  // Step1 Move: Assume Partition1 -> Partition2, try to move nodes from
-  // Partition2 to Partition1 if those nodes only use the nodes in
-  // Partition1(recursively) and the move won't make Partition1's memory exceeds
-  // the memory constraint, and the communication cost is minimized.
-  bool gain = true;
-  while (gain) {
-    // gain is initialized as false, it will be set to be true if there is at
-    // least one node can be moved from one set to another set.
-    gain = false;
-    for (FunctionToNodesMap::iterator it = nodesSet.begin();
-         it != nodesSet.end(); ++it) {
-      NodesSet &curSet = (*it).second;
-      std::vector<Node *> outUsers = getOutUsersWithOnePredecessor(curSet);
-      if (outUsers.empty()) {
-        continue;
-      }
-      Function *cur = (*it).first;
-      GraphMemInfo curCost = partitions.getGraphMemInfo(cur);
-      // Check if a node can be moved to current node set (i.e curSet).
-      for (int i = 0, e = outUsers.size(); i < e; i++) {
-        // Get the new cost if outUsers[i] is added.
-        GraphMemInfo newCurCost =
-            updateGraphMemInfoByAddingNode(curSet, curCost, outUsers[i]);
-
-        // Rule 1: this move won't break memory constraint.
-        if (newCurCost.getTotalMemSize() > availableMemory) {
-          continue;
-        }
-        // Rule 2: this move won't cause constant duplication.
-        bool cont = false;
-        for (int j = 0, e1 = outUsers[i]->getNumInputs(); j < e1; j++) {
-          auto in = outUsers[i]->getNthInput(j);
-          if (isa<Storage>(in.getNode()) && !in.hasOneUse()) {
-            cont = true;
-            break;
-          }
-        }
-        if (cont) {
-          continue;
-        }
-        // Rule 3: this move won't increase communication cost. Even if this
-        // move won't change communication cost, according to rule 1 and rule 2,
-        // the memory consumption of the partition where this node (i.e
-        // outUsers[i]) belongs can be reduced. Therefore, it may trigger later
-        // node movement or partitionsCombine.
-        Function *suc = partitions[outUsers[i]];
-        uint64_t outMem = getOutMemPerNode(nodesSet[suc], outUsers[i]);
-        if (newCurCost.outMemSize - outMem <= curCost.outMemSize) {
-          // Move this node to current node set.
-          curSet.insert(outUsers[i]);
-          Function *suc = partitions[outUsers[i]];
-          nodesSet[suc].erase(outUsers[i]);
-          curCost = newCurCost;
-          // Update the partitions.
-          partitions.add(outUsers[i], cur);
-          partitions.setGraphMemInfo(cur, newCurCost);
-          if (nodesSet[suc].empty()) {
-            // It is possible that after moving a node from Partition2 to
-            // Partition1, Partition2 become empty. Remove the empty partition.
-            partitions.deletePartition(suc);
-            nodesSet.erase(suc);
-            module_->eraseFunction(suc);
-          } else {
-            GraphMemInfo newCost = getGraphMemInfo(nodesSet[suc]);
-            partitions.setGraphMemInfo(suc, newCost);
-          }
-          gain = true;
-        }
-      }
-    }
-  }
-
-  // TODO... :Step 2: exchange two nodes from two partitions to minimize
-  // communication cost.
+  // Optimize the communication cost.
+  optimizeCommunicationCost(partitions, nodesSet, module_, availableMemory);
 
   // Combine the current partitions if necessary.
-  partitionsCombine(partitions, nodesSet, availableMemory);
+  partitionsCombine(partitions, nodesSet, module_, availableMemory);
 }
 
 /// Assign nodes to partitions and return the mapping.
@@ -637,119 +452,6 @@ NodeToFunctionMap Partitioner::selectPartitions(Function *F,
   partitionsAdjust(mapping, availableMemory);
 
   return mapping;
-}
-
-/// Assign the logicalDevice ID to each partition. The partitions with the same
-/// logicalDevice ID will be assigned on the same physical devices. E.g: there
-/// are 3 partitions node1(6GB) -> node2(14GB) -> node3(6GB). But we only have 2
-/// devices with 16GB memory. The logicalDevice ID assigning rules are:
-/// 1. For each type of backend, if the number of available physical devices is
-/// equal or larger than the number of partitions, different partitions are
-/// assigned with a different logicalDevice ID(i.e. each partition will be put
-/// on a different physical device for execution). E.g. we have 3 partitions
-/// node1->node2->node3, and 3 devices, the logicalDevice ID for each partition
-/// with be (node1, 0), (node2, 1), and (node3, 2).
-/// 2. For each type of backend, if the number of available physical devices is
-/// smaller than the number of partitions, and we can find a way to put all
-/// partitions on those pysical devices, this assignment will be applied and the
-/// partitions on the same physical devices will be assigned the same
-/// logicalDevice ID.  E.g: there are 3 partitions node1(6GB) -> node2(14GB) ->
-/// node3(6GB). But we only have 2 devices with 16GB memory. The assignment will
-/// be : (node1, 0), (node2, 1), (node3, 0).
-/// 3. For each type of backend, if the number of available physical devices is
-/// smaller than the number of partitions, and we can not find a way to put all
-/// partitions on those pysical devices, we assign defferent partitions with
-/// different logicalDevice ID.  E.g: there are 3 partitions node1(6GB) ->
-/// node2(14GB) -> node3(6GB). But we only have 1 device with 16GB memory. The
-/// assignment will be : (node1, 0), (node2, 1), (node3, 2). That is, even we
-/// can put node1 and node3 on the same device, we won't do it.
-DeviceIDTy Partitioner::assignLogicalDeviceID(NodeToFunctionMap &mapping) {
-  DeviceIDTy logicalDeviceID = 0;
-
-  std::map<std::string, std::vector<Function *>> backendFuncMap;
-  for (auto &func : mapping.getPartitions()) {
-    // Traverse the partitions, and get list of partitions with each
-    // backendName.
-    auto backendName = mapping.getPartitionBackendName(func);
-    if (backendFuncMap.find(backendName) == backendFuncMap.end()) {
-      backendFuncMap.emplace(backendName, std::vector<Function *>{func});
-    } else {
-      backendFuncMap[backendName].push_back(func);
-    }
-  }
-
-  // For each type of the backend, assign the logicalDevice ID.
-  for (const auto &p : backendFuncMap) {
-    if (mapping.getPartitions().size() <= backendMap_[p.first].num) {
-      // There is enough device with this backendName, no need to adjust the
-      // logical ID.
-      for (auto &func : p.second) {
-        mapping.appendLogicalDeviceID(func, logicalDeviceID++);
-      }
-      continue;
-    }
-    // Get the list of functions with current BackendName, and sort it based on
-    // used memory from min to max.
-    std::vector<std::pair<Function *, uint64_t>> nodeSize;
-    for (size_t i = 0, e = p.second.size(); i < e; i++) {
-      Function *function = p.second[i];
-      uint64_t totalMem = mapping.getGraphMemInfo(function).getTotalMemSize();
-      nodeSize.push_back(std::make_pair(p.second[i], totalMem));
-    }
-    std::sort(nodeSize.begin(), nodeSize.end(), sortMinMemory);
-
-    // Assume we have n devices(NOTE: here the n devices have the same avaiable
-    // memory size, and the following algorithm can find the accurate result. If
-    // the memory size are differnt, this assignment issue will be a NP problem
-    // -- multiple knapsack problem, and the following algorithm becomes greedy
-    // and the result may not be optimal), and m partitions, where m > n. If
-    // these m partitions can be assigned to n devices, there must be 1 device
-    // have at least (m - 1)/n + 1 partitions(Pigeonhole principle). Based on
-    // this theory, the algorithm is: Given N devices, and M partitions:
-    // Step 1 : sort the partitions from min to max based on their memory usage.
-    std::sort(nodeSize.begin(), nodeSize.end(), sortMinMemory);
-    // Step 2 : let n = N, m = M.
-    size_t m = p.second.size();
-    size_t n = backendMap_[p.first].num;
-    while (m > 0) {
-      // Step 3 : find the first k partitions whose total memory usage still
-      // under the memory limitation (k should be max).
-      uint64_t usedMem = 0;
-      size_t numOfPartitionsWithSameID = (m - 1) / n + 1;
-      size_t start = p.second.size() - m;
-      size_t i;
-      for (i = start; i < p.second.size(); i++) {
-        if (usedMem + nodeSize[i].second > backendMap_[p.first].memSize) {
-          break;
-        }
-        usedMem += nodeSize[i].second;
-      }
-      // Step 4 : if k = start - i found in step 3 is smaller than (m - 1) / n +
-      // 1, this means we can't find a proper assignment to fit the number of
-      // devices. Assign each partition with a unique logicalDevice ID and
-      // return.
-      if (i - start < numOfPartitionsWithSameID) {
-        // Can't find a proper assignment. Assign each partition a unique
-        // logicalDevice ID and return;
-        logicalDeviceID = 0;
-        for (auto &func : mapping.getPartitions()) {
-          mapping.appendLogicalDeviceID(func, logicalDeviceID++);
-        }
-        return logicalDeviceID;
-      }
-
-      // Step 5 : Assign these partitions which are assigned to one device with
-      // the same logical ID.
-      for (size_t j = start; j < i; j++) {
-        mapping.appendLogicalDeviceID(nodeSize[j].first, logicalDeviceID);
-      }
-      logicalDeviceID++;
-      // Step 6 : Update the left number of devices and partitions.
-      n--;
-      m = m - (i - start);
-    }
-  }
-  return logicalDeviceID;
 }
 
 /// Duplicate the network to saturate the number of devices. For example: If a
@@ -1311,16 +1013,16 @@ llvm::Error Partitioner::Partition(CompilationContext &cctx) {
   }
 
   // Check if the memory usage meets the device memory limitation.
-  RETURN_IF_ERR(memoryUsageValidation(mapping));
+  RETURN_IF_ERR(memoryUsageValidation(mapping, backendMap_));
 
   // Step 3 : assign each partition with a logical device id. The partitions
   // with the same logical device id will be assigned into the same physical
   // device.
-  logicalDeviceID_ = assignLogicalDeviceID(mapping);
+  logicalDeviceID_ = assignLogicalDeviceID(mapping, backendMap_);
 
   // Check if the number of logical devices is less than the given physical
   // devices.
-  RETURN_IF_ERR(logicalDevicesValidation(mapping));
+  RETURN_IF_ERR(logicalDevicesValidation(mapping, backendMap_));
 
   // Step 4 : Optimization pass to modify results of default partitioner.
   // If load balanced partitioner optimization is enabled, then modify
@@ -1333,10 +1035,10 @@ llvm::Error Partitioner::Partition(CompilationContext &cctx) {
                                            backendMap_[backendName].memSize,
                                            backendName, mapping));
     // Check if the memory usage meets the device memory limitation.
-    RETURN_IF_ERR(memoryUsageValidation(mapping));
+    RETURN_IF_ERR(memoryUsageValidation(mapping, backendMap_));
     // Check if the number of logical devices is less than the given physical
     // devices.
-    RETURN_IF_ERR(logicalDevicesValidation(mapping));
+    RETURN_IF_ERR(logicalDevicesValidation(mapping, backendMap_));
     funcs.clear();
     funcs.push_back(F_);
   }
@@ -1354,7 +1056,7 @@ llvm::Error Partitioner::Partition(CompilationContext &cctx) {
     saturateHost(logicalDeviceID_);
   }
 
-  // Step 7 : clean up and verify the generate new functions.
+  // Step 7 : clean up and verify the generated new functions.
   for (auto i = funcToBackend.begin(); i != funcToBackend.end(); ++i) {
     module_->eraseFunction(i->first);
   }
@@ -1376,7 +1078,7 @@ llvm::Error Partitioner::Partition(CompilationContext &cctx) {
     assert(subF->verify() && "Conversion led to invalid function");
   }
   if (logPartition) {
-    dumpPartitionInfo(mapping);
+    logPartitionInfo(mapping);
   }
   return llvm::Error::success();
 }
@@ -1439,11 +1141,11 @@ llvm::Error Partitioner::PartitionFromConfig() {
     GraphMemInfo cost = getGraphMemInfo(nodesSets[i]);
     partitionMap.setGraphMemInfo(funcList[i], cost);
   }
-  RETURN_IF_ERR(memoryUsageValidation(partitionMap));
+  RETURN_IF_ERR(memoryUsageValidation(partitionMap, backendMap_));
 
   // Logical device ID validation.
-  logicalDeviceID_ = assignLogicalDeviceID(partitionMap);
-  RETURN_IF_ERR(logicalDevicesValidation(partitionMap));
+  logicalDeviceID_ = assignLogicalDeviceID(partitionMap, backendMap_);
+  RETURN_IF_ERR(logicalDevicesValidation(partitionMap, backendMap_));
 
   // TODO : loop-free validation.
 
@@ -1463,7 +1165,7 @@ llvm::Error Partitioner::PartitionFromConfig() {
     }
   }
   if (logPartition) {
-    dumpPartitionInfo(partitionMap);
+    logPartitionInfo(partitionMap);
   }
   return llvm::Error::success();
 }
