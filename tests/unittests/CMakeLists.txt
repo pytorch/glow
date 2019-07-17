@@ -156,7 +156,7 @@ target_link_libraries(GraphGradTest
                       PRIVATE
                         Graph
                         IR
-                        ExecutionEngine
+                        ExecutionEngine2
                         gtest
                         TestMain)
 add_glow_test(GraphGradTest ${GLOW_BINARY_DIR}/tests/GraphGradTest --gtest_output=xml:GraphGradTest.xml)
