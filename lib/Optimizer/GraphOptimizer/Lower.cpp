@@ -1112,5 +1112,5 @@ void glow::lower(Function *F, CompilationContext &cctx, const Backend *B,
   }
 
   // Remove nodes that were lowered.
-  DCE().run(F);
+  runDCEPass(F, cctx);
 }

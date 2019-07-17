@@ -68,6 +68,7 @@ struct CompilationContext {
     Train, /// Compile the graph in preperation for training.
     Infer, /// Compile the graph for inference. Notice that this operation
            /// changes the graph in a way that is not reversible.
+    NumCompilationModes, /// Used to count the number of CompilationModes.
   } compMode{CompilationMode::Infer};
 
   /// Options for the Backend to use.

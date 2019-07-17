@@ -14,6 +14,7 @@ target_link_libraries(BackendTestUtils
                         ExecutionEngine
                         Graph
                         GraphOptimizer
+                        GraphOptimizerPipeline
                         Quantization
                         QuantizationBase
                         LLVMSupport
@@ -265,6 +266,7 @@ target_link_libraries(IROptTest
                         Graph
                         IR
                         IROptimizer
+                        GraphOptimizerPipeline
                         gtest
                         TestMain)
 add_glow_test(IROptTest ${GLOW_BINARY_DIR}/tests/IROptTest --gtest_output=xml:IROptTest.xml)

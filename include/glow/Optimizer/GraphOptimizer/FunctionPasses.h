@@ -17,17 +17,25 @@
 #define GLOW_OPTIMIZER_GRAPHOPTIMIZER_FUNCTIONPASSES_H
 
 #include "glow/Optimizer/GraphOptimizer/FunctionPass.h"
+#include "glow/Optimizer/GraphOptimizerPipeline/Pipeline.h"
+#include "glow/Support/Support.h"
 
 namespace glow {
 
+/// Declare all FunctionPass classes.
 #define FUN_PASS(PASS_NAME)                                                    \
   class PASS_NAME : public FunctionPass {                                      \
-  public:                                                                      \
-    bool run(Function *F) override;                                            \
+  private:                                                                     \
+    bool run(Function *F, const CompilationContext &cctx) override;            \
     llvm::StringRef getName() const override { return #PASS_NAME; }            \
+    FunctionPassID getID() const override {                                    \
+      return FunctionPassID::PASS_NAME;                                        \
+    }                                                                          \
   };
-
 #include "FunctionPasses.def"
+
+/// Helper that creates and \returns a FunctionPass given a provided \p passID.
+std::unique_ptr<FunctionPass> createFunctionPass(FunctionPassID passID);
 
 } // namespace glow
 

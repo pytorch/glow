@@ -20,6 +20,7 @@
 #include "glow/Graph/PlaceholderBindings.h"
 #include "glow/IR/Instrs.h"
 #include "glow/Optimizer/GraphOptimizer/CompilationContext.h"
+#include "glow/Optimizer/GraphOptimizerPipeline/Pipeline.h"
 
 using namespace glow;
 
@@ -148,3 +149,7 @@ void Backend::autoInstrument(TraceInfo &traceInfo, IRFunction *IR) const {
 
   IR->pushInstr(new TraceEventInst("end_trace", backingWeight, index));
 }
+
+FunctionPassPipeline Backend::getOptimizationPipeline() const {
+  return createDefaultGraphOptimizationPassPipeline();
+};
