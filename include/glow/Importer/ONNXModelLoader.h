@@ -133,7 +133,8 @@ class ONNXModelLoader
 
   /// Load ConstantOfShape ONNX operator.
   llvm::Error loadConstantOfShape(const ONNX_NAMESPACE::NodeProto &op,
-                                  const ArgumentDictionaryTy &dict);
+                                  const ArgumentDictionaryTy &dict,
+                                  bool isSplat);
 
   /// Load Tile ONNX operator.
   llvm::Error loadTile(const ONNX_NAMESPACE::NodeProto &op,
@@ -141,6 +142,76 @@ class ONNXModelLoader
 
   /// Load Where ONNX operator.
   llvm::Error loadWhere(const ONNX_NAMESPACE::NodeProto &op,
+                        const ArgumentDictionaryTy &dict);
+
+  /// Load Glow specific operators, not defined in ONNX format
+  /// Load Glow CmpEQ operator.
+  llvm::Error loadCmpEQ(const ONNX_NAMESPACE::NodeProto &op,
+                        const ArgumentDictionaryTy &dict);
+
+  /// Load Glow CmpLTE operator.
+  llvm::Error loadCmpLTE(const ONNX_NAMESPACE::NodeProto &op,
+                         const ArgumentDictionaryTy &dict);
+
+  /// Load Glow Select operator.
+  llvm::Error loadSelect(const ONNX_NAMESPACE::NodeProto &op,
+                         const ArgumentDictionaryTy &dict);
+
+  /// Load Glow Quantize operator.
+  llvm::Error loadQuantize(const ONNX_NAMESPACE::NodeProto &op,
+                           const ArgumentDictionaryTy &dict);
+
+  /// Load Glow ConvertTo operator.
+  llvm::Error loadConvertTo(const ONNX_NAMESPACE::NodeProto &op,
+                            const ArgumentDictionaryTy &dict);
+
+  /// Load Glow Dequantize operator.
+  llvm::Error loadDequantize(const ONNX_NAMESPACE::NodeProto &op,
+                             const ArgumentDictionaryTy &dict);
+
+  /// Load Glow Regression operator.
+  llvm::Error loadRegression(const ONNX_NAMESPACE::NodeProto &op,
+                             const ArgumentDictionaryTy &dict);
+
+  /// Load Glow BatchedAdd operator.
+  llvm::Error loadBatchedAdd(const ONNX_NAMESPACE::NodeProto &op,
+                             const ArgumentDictionaryTy &dict);
+
+  /// Load Glow ScatterAssign operator.
+  llvm::Error loadScatterAssign(const ONNX_NAMESPACE::NodeProto &op,
+                                const ArgumentDictionaryTy &dict);
+
+  /// Load Glow IntLookupTable operator.
+  llvm::Error loadIntLookupTable(const ONNX_NAMESPACE::NodeProto &op,
+                                 const ArgumentDictionaryTy &dict);
+
+  /// Load Glow LengthsRangeFill operator.
+  llvm::Error loadLengthsRangeFill(const ONNX_NAMESPACE::NodeProto &op,
+                                   const ArgumentDictionaryTy &dict);
+
+  /// Load Glow RescaleQuantized operator.
+  llvm::Error loadRescaleQuantized(const ONNX_NAMESPACE::NodeProto &op,
+                                   const ArgumentDictionaryTy &dict);
+
+  /// Load Glow RowwiseQuantizedSparseLengthsWeightedSum operator.
+  llvm::Error loadRowwiseQuantizedSparseLengthsWeightedSum(
+      const ONNX_NAMESPACE::NodeProto &op, const ArgumentDictionaryTy &dict);
+
+  /// Load Glow FusedRowwiseQuantizedSparseLengthsWeightedSum operator.
+  llvm::Error loadFusedRowwiseQuantizedSparseLengthsWeightedSum(
+      const ONNX_NAMESPACE::NodeProto &op, const ArgumentDictionaryTy &dict);
+
+  /// Load Glow RowwiseQuantizedFullyConnected operator.
+  llvm::Error
+  loadRowwiseQuantizedFullyConnected(const ONNX_NAMESPACE::NodeProto &op,
+                                     const ArgumentDictionaryTy &dict);
+
+  /// Load Glow FullyConnected operator.
+  llvm::Error loadFullyConnected(const ONNX_NAMESPACE::NodeProto &op,
+                                 const ArgumentDictionaryTy &dict);
+
+  /// Load Glow Splat operator.
+  llvm::Error loadSplat(const ONNX_NAMESPACE::NodeProto &op,
                         const ArgumentDictionaryTy &dict);
 
 protected:
@@ -210,6 +281,12 @@ protected:
                                           LoaderType *loader, const OpType &op);
 
 public:
+  /// \returns ONNX model ir_version;
+  size_t getIrVersion() const { return irVersion_; };
+
+  /// \returns ONNX model op_version;
+  size_t getOpSetVersion() const { return opsetVersion_; };
+
   /// Creates a ONNX model loader to build \p F.
   /// If \p errPtr is not null then if an error occurs it will get assigned
   /// there otherwise if an error occurs it will abort.
