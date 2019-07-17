@@ -640,6 +640,14 @@ public:
                            NodeValue var, unsigned_t channelIdx = 0,
                            float epsilon = 1e-5, float momentum = 0.9);
 
+  /// Bucketizes the input tensor based on monotonically increasing \p
+  /// boundaries for each value in \p input. For each value x in input, the
+  /// operator \returns index i given boundaries[i-1] < x <= boundaries[i]. If
+  /// the value x is beyond the bounds of boundaries, 0 or len(boundaries) is
+  /// returned as appropriate.
+  BucketizeNode *createBucketizeNode(llvm::StringRef name, NodeValue input,
+                                     llvm::ArrayRef<float> boundaries);
+
   LocalResponseNormalizationNode *createLocalResponseNormalization(
       llvm::StringRef name, NodeValue input, unsigned_t halfWindowSize = 2,
       float alpha = 1e-4, float beta = 0.75, float k = 2.0);

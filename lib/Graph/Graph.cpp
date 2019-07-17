@@ -1253,6 +1253,13 @@ BatchNormalizationNode *Function::createBatchNormalization(
                                             channelIdx, epsilon, momentum));
 }
 
+BucketizeNode *Function::createBucketizeNode(llvm::StringRef name,
+                                             NodeValue input,
+                                             llvm::ArrayRef<float> boundaries) {
+  auto OT = getParent()->uniqueType(ElemKind::Int32ITy, input.dims());
+  return addNode(new BucketizeNode(name, OT, input, boundaries));
+}
+
 LocalResponseNormalizationNode *Function::createLocalResponseNormalization(
     llvm::StringRef name, NodeValue input, unsigned_t halfWindowSize,
     float alpha, float beta, float k) {

@@ -211,6 +211,16 @@ int main(int argc, char **argv) {
                     "Epsilon, and Momentum. Similar to Caffe2 and ONNX LRN.");
 
   //===--------------------------------------------------------------------===//
+  //                     Bucketing
+  //===--------------------------------------------------------------------===//
+
+  BB.newNode("Bucketize")
+      .addInput("Input")
+      .addMember(MemberType::VectorFloat, "Boundaries")
+      .addResultFromCtorArg()
+      .setDocstring("Performs bucketization on the input given Boundaries");
+
+  //===--------------------------------------------------------------------===//
   //                      Loss operations
   //===--------------------------------------------------------------------===//
 

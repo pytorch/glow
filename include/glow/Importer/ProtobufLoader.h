@@ -87,6 +87,16 @@ std::vector<ElemTy> getShape(const AttrType *arg) {
   return dim;
 }
 
+/// Load a floating record vector from \p arg. \returns a standard vector of
+/// floats.
+template <typename AttrType> std::vector<float> getFloats(const AttrType *arg) {
+  std::vector<float> dim;
+  for (auto i : arg->floats()) {
+    dim.push_back(i);
+  }
+  return dim;
+}
+
 /// Returns canonical name for a given operator: either \p name() from proto,
 /// or its type name.
 template <typename T> std::string loadOperatorName(const T &op) {

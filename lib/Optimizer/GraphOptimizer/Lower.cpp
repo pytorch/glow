@@ -651,6 +651,57 @@ static void lowerGroupConvolutionNode(Function *F, CompilationContext &cctx,
   replaceAllUsesOfWith(cctx.loweredInfoMap, BNG.getResult(), result);
 }
 
+static void lowerBucketizeNode(Function *F, CompilationContext &cctx,
+                               const BucketizeNode &B) {
+  // Bucketize is:
+  // Boundaries[i-1] < x <= Boundaries[i]
+  // If 'x' is beyond the bounds of Boundaries,
+  // 0 or len(Boundaries) is returned as appropriate.
+  // The node is lowered as follows:
+  // 1. For each value node in the input, broadcast it #buckets
+  // 2. Compare the broadcasted value to the buckets
+  // 3. Count the number of buckets smaller than the current value:
+  // 3.1 If they are all bigger = output is zero
+  // 3.2 Else if they are all smaller = output is len(Boundaries)
+  // 3.2 Else output is Boundaries[i-1] < x <= Boundaries[i]
+  // 4. Gather the all 'x's and create a new tensor to replace the node with
+  auto numOfBuckets = B.getBoundaries().size();
+  const std::string &baseStr = B.getName().str();
+  auto *boundariesConst = F->getParent()->createConstant(
+      ElemKind::FloatTy, {numOfBuckets}, baseStr + ".const");
+  boundariesConst->getPayloadMutable().getHandle<float>() = B.getBoundaries();
+  auto *zeroSplat =
+      F->createSplat("zeroSplat", boundariesConst->getType(), 0.0);
+  auto *oneSplat = F->createSplat("oneSplat", boundariesConst->getType(), 1.0);
+  auto *reshapedInput =
+      F->createReshape(baseStr + ".reshape.input", B.getInput(),
+                       {B.getInput().getType()->size()});
+  std::vector<NodeValue> results;
+  for (size_t i = 0, e = reshapedInput->getResult().getType()->size(); i < e;
+       i++) {
+    std::string currBaseStr = baseStr + "." + std::to_string(i);
+    auto *slicedInput =
+        F->createSlice(currBaseStr + ".slice", reshapedInput, i, i + 1);
+    auto *broadcastedInput = F->createBroadcast(
+        currBaseStr + ".input", slicedInput, {numOfBuckets}, /* axis */ 0);
+    auto *cmpBoundaryLgt = F->createCmpLTE(currBaseStr + ".cmpLTE",
+                                           boundariesConst, broadcastedInput);
+    auto *selectBucket = F->createSelect(currBaseStr + ".select",
+                                         cmpBoundaryLgt, oneSplat, zeroSplat);
+    auto *reduceAdd = F->createBatchedReduceAdd(
+        currBaseStr + ".reduceAdd", slicedInput->getResult().getType(),
+        selectBucket, /* axis */ 0);
+    results.push_back(reduceAdd);
+  }
+  auto *resultConcat =
+      F->createConcat(baseStr + ".concat", results, /* axis */ 0);
+  auto *resultReshape = F->createReshape(baseStr + ".reshape.output",
+                                         resultConcat, B.getResult().dims());
+  auto *convertToIndex = F->createConvertTo(
+      baseStr + ".convertTo", resultReshape, B.getResult().getType());
+  replaceAllUsesOfWith(cctx.loweredInfoMap, B.getResult(), convertToIndex);
+}
+
 static void lowerChannelwiseQuantizedConvolutionNode(
     Function *F, CompilationContext &cctx,
     const ChannelwiseQuantizedConvolutionNode &CQC) {
@@ -1017,6 +1068,8 @@ static void lowerNode(Function *F, Node *node, CompilationContext &cctx) {
     if (CN->getGroup() > 1) {
       lowerGroupConvolutionNode(F, cctx, *CN);
     }
+  } else if (auto *B = dyn_cast<BucketizeNode>(node)) {
+    lowerBucketizeNode(F, cctx, *B);
   } else if (auto *CQC = dyn_cast<ChannelwiseQuantizedConvolutionNode>(node)) {
     lowerChannelwiseQuantizedConvolutionNode(F, cctx, *CQC);
   } else if (auto *TN = dyn_cast<TileNode>(node)) {
