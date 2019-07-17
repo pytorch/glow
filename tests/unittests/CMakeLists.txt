@@ -303,7 +303,7 @@ target_link_libraries(MLTest
         PRIVATE
         Graph
         IR
-        ExecutionEngine
+        ExecutionEngine2
         Quantization
         gtest
         TestMain)
