@@ -416,8 +416,9 @@ target_link_libraries(PartitionerTest
                       PRIVATE
                         Backend
                         Backends
-                        ExecutionEngine
+                        ExecutionEngine2
                         Graph
+                        GraphOptimizer
                         IR
                         Partitioner
                         gtest
