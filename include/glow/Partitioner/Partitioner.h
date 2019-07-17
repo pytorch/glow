@@ -256,7 +256,8 @@ class Partitioner {
   void saturateHost(unsigned logicalDeviceCount);
 
   FunctionToBackendNameMap
-  backendBasedPartition(Function *F, std::vector<Backend *> &backends);
+  backendBasedPartition(Function *F, std::vector<Backend *> &backends,
+                        CompilationContext &cctx);
 
   /// Performs a load balancing optimization pass to optimize for load
   /// balance in addition to respecting memory constraints.
@@ -309,6 +310,14 @@ public:
   /// among different type of devices. \p cctx is used during optimization of
   /// the Function. \returns whether there was an error encountered.
   llvm::Error Partition(CompilationContext &cctx);
+
+  /// This partition approach is used in Glow Quantization Profiling flow. The
+  /// backendBasedPartition is applied first in case there are heterogeneous
+  /// backends. Then each sub-function will be compiled and run in CPU backend
+  /// for profiling.
+  llvm::Error QuantizationProfilingPartition(CompilationContext &cctx,
+                                             Function *F,
+                                             std::vector<Backend *> backends);
 
   /// Get the partitions.
   DAGListTy &getPartitionResult() { return partitions_; }

@@ -220,7 +220,12 @@ llvm::Error glow::executeConstantFunction(Backend &backend, Function &F,
 /// Perform constant folding in the function \p F . Any non-trivial node (i.e.
 /// not a constant or a splat) that can be computed at compile-time is going to
 /// be computed at compile-time. \returns true if any foldings were performed.
-bool glow::ConstantFold::run(Function *F) {
+bool glow::ConstantFold::run(Function *F, const CompilationContext &cctx) {
+  // Skip if specified in the cctx.
+  if (!cctx.optimizationOpts.enableConstantFolding) {
+    return false;
+  }
+
   LOG_SCOPE(F->getLogContext(), "glow::constantFold")
   bool changed = false;
   // Backend to be used for compile-time computations.

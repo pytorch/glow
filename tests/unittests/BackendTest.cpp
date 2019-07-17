@@ -15,7 +15,7 @@
  */
 
 #include "glow/Backend/BackendUtils.h"
-#include "glow/ExecutionEngine/ExecutionEngine.h"
+#include "glow/ExecutionEngine/ExecutionEngine2.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/PlaceholderBindings.h"
 #include "glow/IR/IRBuilder.h"
@@ -24,6 +24,8 @@
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Casting.h"
+
+#include <future>
 
 using namespace glow;
 
@@ -37,11 +39,11 @@ enum class PlaceholderType {
 
 class BackendTest : public ::testing::TestWithParam<std::string> {
 public:
-  ExecutionEngine EE_{GetParam()};
+  ExecutionEngine2 EE_{GetParam()};
 };
 
 TEST(Interpreter, profileQuantizationForANetwork) {
-  ExecutionEngine EE;
+  ExecutionEngine2 EE;
   PlaceholderBindings bindings;
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
@@ -53,6 +55,7 @@ TEST(Interpreter, profileQuantizationForANetwork) {
   Node *O = F->createFullyConnected(bindings, "fc", A, 4);
   O = F->createRELU("relu", O);
   O = F->createRegression("reg", O, Ex);
+  F->createSave("ret", O);
 
   LoweredInfoMap loweredMap;
   CompilationContext cctx{&bindings, &loweredMap};
@@ -60,12 +63,16 @@ TEST(Interpreter, profileQuantizationForANetwork) {
 
   bindings.allocate(A);
   bindings.allocate(Ex);
-  EE.compile(F, cctx);
+  EE.compile(cctx);
+  bindings.allocate(mod.getPlaceholders());
 
   // TODO: Verify histogram itself, for now just verify min and max.
   // Run inference first time and capture tensor stats.
-  updateInputPlaceholders(bindings, {A}, {&inputs});
+  updateInputPlaceholders2(bindings, {A}, {&inputs});
   EE.run(bindings);
+  // Because we are quantizing the partitioner deleted the original function and
+  // created a new one, get the new function.
+  F = mod.getFunctions().front();
 
   QuantizationProfileNode *profile{nullptr};
   // Find QPN for node A.
@@ -91,7 +98,7 @@ TEST(Interpreter, profileQuantizationForANetwork) {
 
   // Run inference for the second time with new min and max.
   inputs.getHandle() = {0.2f, 1.6f, 0.5f, 1.3f};
-  updateInputPlaceholders(bindings, {A}, {&inputs});
+  updateInputPlaceholders2(bindings, {A}, {&inputs});
   EE.run(bindings);
   min = CI.raw(0);
   max = CI.raw(1);
@@ -101,8 +108,9 @@ TEST(Interpreter, profileQuantizationForANetwork) {
 
 /// Test that the symbol category for a symbol is properly set.
 TEST(RuntimeBundle, BundleSymbolInfo) {
-  Module mod;
-  ExecutionEngine EE;
+
+  ExecutionEngine2 EE;
+  auto &mod = EE.getModule();
   PlaceholderBindings bindings;
 
   Tensor inputs(ElemKind::FloatTy, {1, 10, 10, 3});
@@ -122,8 +130,10 @@ TEST(RuntimeBundle, BundleSymbolInfo) {
   auto *S = F->createSave("ret", SM);
   auto *qp = F->createQuantizationProfile(bindings, "qp", input);
 
-  EE.compile(CompilationMode::Infer, F);
-  auto table = EE.getCompiledFunction().getRuntimeBundle().getSymbolTable();
+  EE.compile(CompilationMode::Infer);
+  auto dag = EE.getDAG("main");
+  assert(dag->nodes.size() > 0 && "Empty DAG list");
+  auto table = dag->nodes[0]->runtimeBundle->getSymbolTable();
   // Check that placeholders and constants are correctly labelled.
   EXPECT_EQ(table.find(S->getName())->second.symbolCategory,
             glow::runtime::SymbolCategory::Placeholder);
@@ -159,7 +169,7 @@ TEST(RuntimeBundle, BundleSymbolInfo) {
 // Test if the placeholders are allocated contiguously as
 // Input|InputOutput|Output.
 TEST(RuntimeBundle, ContiguousPlaceholder) {
-  ExecutionEngine EE;
+  ExecutionEngine2 EE;
   PlaceholderBindings bindings;
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
@@ -179,9 +189,8 @@ TEST(RuntimeBundle, ContiguousPlaceholder) {
 
   bindings.allocate(A);
   bindings.allocate(Ex);
-  EE.compile(F, cctx);
-
-  auto &table = EE.getCompiledFunction().getRuntimeBundle().getSymbolTable();
+  EE.compile(cctx);
+  auto &table = EE.getDAG("main")->nodes[0]->runtimeBundle->getSymbolTable();
 
   std::vector<glow::runtime::RuntimeSymbolInfo> tableContainer;
   // Only check placeholders.
@@ -267,9 +276,9 @@ TEST_P(BackendTest, simpleInference) {
   bindings.allocate(input);
   bindings.allocate(ex);
   bindings.allocate(S->getPlaceholder());
-  EE_.compile(CompilationMode::Infer, F);
+  EE_.compile(CompilationMode::Infer);
 
-  updateInputPlaceholders(bindings, {input}, {&inputs});
+  updateInputPlaceholders2(bindings, {input}, {&inputs});
   EE_.run(bindings);
 }
 
@@ -278,7 +287,7 @@ TEST_P(BackendTest, simpleInference) {
 /// implement the compileIR() function for this test to work.
 TEST_P(BackendTest, debugPrint) {
   Tensor input{0.0, 1.0, 2.0, 3.0};
-  Module mod;
+  auto &mod = EE_.getModule();
   auto ctx = llvm::make_unique<ExecutionContext>();
   Function *F = mod.createFunction("main");
   auto *IV = mod.createPlaceholder(input.getElementType(), input.dims(),
@@ -295,8 +304,43 @@ TEST_P(BackendTest, debugPrint) {
   IRBuilder(IR.get()).createDebugPrintInst("print", *IR->getWeights().begin());
 
   auto function = backend->compileIR(std::move(IR));
-  EE_.insertCompiledFunction("main", std::move(function));
-  EE_.run(*ctx.get());
+
+  // Since we are compiling IR by hand we cannot go through the normal EE route.
+  // Create and initialize the device.
+  auto config =
+      llvm::make_unique<runtime::DeviceConfig>(backend->getBackendName());
+  std::unique_ptr<runtime::DeviceManager> device(
+      runtime::DeviceManager::createDeviceManager(*config));
+  EXIT_ON_ERR(device->init());
+  // Load the function on the device.
+  std::string name = "main";
+  runtime::FunctionMapTy functionMap;
+  functionMap[name] = function.get();
+
+  std::promise<void> addPromise;
+  auto fut = addPromise.get_future();
+  llvm::Error addErr = llvm::Error::success();
+  device->addNetwork(&EE_.getModule(), std::move(functionMap),
+                     [&addPromise, &addErr](const Module *, llvm::Error err) {
+                       addErr = std::move(err);
+                       addPromise.set_value();
+                     });
+  fut.wait();
+  EXIT_ON_ERR(std::move(addErr));
+  // Run the function.
+  std::promise<void> runPromise;
+  fut = runPromise.get_future();
+  llvm::Error runErr = llvm::Error::success();
+  device->runFunction(name, std::move(ctx),
+                      [&runPromise, &runErr,
+                       &ctx](runtime::RunIdentifierTy, llvm::Error err,
+                             std::unique_ptr<ExecutionContext> contextPtr) {
+                        ctx = std::move(contextPtr);
+                        runErr = std::move(err);
+                        runPromise.set_value();
+                      });
+  fut.wait();
+  EXIT_ON_ERR(std::move(runErr));
 }
 
 /// Test the compile method on the backend completes without error when
@@ -398,7 +442,7 @@ TEST_P(BackendTest, compileVectorOfFunctions) {
 /// graph representation. We compile some function and then delete the function.
 /// Later we execute the code and check that things work.
 TEST_P(BackendTest, decoupleCodegenFromGraph) {
-  Module mod;
+  auto &mod = EE_.getModule();
   PlaceholderBindings bindings;
 
   Function *F = mod.createFunction("main");
@@ -408,10 +452,7 @@ TEST_P(BackendTest, decoupleCodegenFromGraph) {
   auto *pow = F->createPow("Pow1", X, 2.0);
   auto *save = F->createSave("save", pow);
   auto *saveTensor = bindings.allocate(save->getPlaceholder());
-  EE_.compile(CompilationMode::Infer, F);
-
-  // Collect constants to fill out the RuntimeBundle.
-  EE_.getCompiledFunction().collectConstants(&mod);
+  EE_.compile(CompilationMode::Infer);
 
   // Erase all of the functions to ensure that the compiled code does not
   // depend on the graph.
@@ -438,7 +479,7 @@ TEST_P(BackendTest, simplePlaceholderValue) {
   SaveNode *S = F->createSave("ret", input);
   auto *STensor = bindings.allocate(S->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(bindings);
   EXPECT_TRUE(STensor->isEqual(data));
 }
@@ -467,8 +508,6 @@ TEST_P(BackendTest, compileThenAddNetwork) {
   Placeholder *FC_weights =
       llvm::dyn_cast<Placeholder>(FC->getWeights().getNode());
 
-  EE_.compile(CompilationMode::Infer, F);
-
   // Recreate that graph in a different Function.
   Function *F2 = mod.createFunction("other");
   auto *input2 =
@@ -487,13 +526,13 @@ TEST_P(BackendTest, compileThenAddNetwork) {
   auto *SM2 = F2->createSoftMax("sm", RL2, ex2);
   auto *S2 = F2->createSave("ret", SM2);
 
-  EE_.compile(CompilationMode::Infer, F2, /* clearOtherFunctions */ false);
+  EE_.compile(CompilationMode::Infer);
 
   // Allocate all placeholders.
   bindings1.allocate(mod.getPlaceholders());
   bindings2.allocate(mod.getPlaceholders());
-  updateInputPlaceholders(bindings1, {input}, {&inputs});
-  updateInputPlaceholders(bindings2, {input2}, {&inputs});
+  updateInputPlaceholders2(bindings1, {input}, {&inputs});
+  updateInputPlaceholders2(bindings2, {input2}, {&inputs});
 
   EE_.run(bindings1, "main");
   EE_.run(bindings2, "other");

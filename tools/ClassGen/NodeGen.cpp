@@ -143,6 +143,12 @@ int main(int argc, char **argv) {
       .setDocstring("Performs an Average Pool operation on the Input given "
                     "provided Kernels, Strides, and Pads.");
 
+  BB.newNode("AdaptiveAvgPool")
+      .addInput("Input")
+      .addResultFromCtorArg()
+      .setDocstring(
+          "Performs an Adaptive Average Pool operation on the Input given");
+
   BB.newNode("FullyConnected")
       .addInput("Input")
       .addInput("Weights")
@@ -209,6 +215,16 @@ int main(int argc, char **argv) {
       .setDocstring("Performs local response normalization on the Input tensor "
                     "with the provided Scale, Bias, Mean, Var, ChannelIdx, "
                     "Epsilon, and Momentum. Similar to Caffe2 and ONNX LRN.");
+
+  //===--------------------------------------------------------------------===//
+  //                     Bucketing
+  //===--------------------------------------------------------------------===//
+
+  BB.newNode("Bucketize")
+      .addInput("Input")
+      .addMember(MemberType::VectorFloat, "Boundaries")
+      .addResultFromCtorArg()
+      .setDocstring("Performs bucketization on the input given Boundaries");
 
   //===--------------------------------------------------------------------===//
   //                      Loss operations

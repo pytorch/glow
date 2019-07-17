@@ -163,6 +163,11 @@ private:
 
   void fwdAvgPoolInstI8Impl(const AvgPoolInst *I);
   template <typename ElemTy> void fwdAvgPoolInstFloatImpl(const AvgPoolInst *I);
+
+  void fwdAdaptiveAvgPoolInstI8Impl(const AdaptiveAvgPoolInst *I);
+  template <typename ElemTy>
+  void fwdAdaptiveAvgPoolInstFloatImpl(const AdaptiveAvgPoolInst *I);
+
   template <typename ElemTy> void fwdSoftMaxInstImpl(const SoftMaxInst *I);
 
   template <typename ElemTy, typename AccumulatorTy>

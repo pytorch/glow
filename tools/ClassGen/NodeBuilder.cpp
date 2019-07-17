@@ -524,6 +524,10 @@ static bool isVectorType(MemberType ty) {
          ty == MemberType::VectorInt64 || ty == MemberType::VectorSigned;
 }
 
+static bool isFloatVectorType(MemberType ty) {
+  return ty == MemberType::VectorFloat;
+}
+
 void NodeBuilder::emitHasher(std::ostream &os) const {
   os << "\nllvm::hash_code " << name_ << "Node::getHash() const {\n"
      << "  return llvm::hash_combine(";
@@ -538,11 +542,17 @@ void NodeBuilder::emitHasher(std::ostream &os) const {
     os << delim << "\n      getMode()";
     delim = ",";
   }
-
   for (const auto &mem : members_) {
     auto ty = (mem.first)->type;
     if (ty == MemberType::Float) {
       os << delim << "\n      toBinary(" << mem.second << "_)";
+    } else if (isFloatVectorType(ty)) {
+      os << delim
+         << "\n      [](const std::vector<float>& floatVec) -> llvm::hash_code "
+            "{\n        std::vector<size_t> sizeVec = toBinary(floatVec);\n    "
+            "    return llvm::hash_combine_range(sizeVec.begin(), "
+            "sizeVec.end());\n      }("
+         << mem.second << "_)";
     } else if (isVectorType(ty)) {
       os << delim << "\n      llvm::hash_combine_range(" << mem.second
          << "_.begin(), " << mem.second << "_.end())";

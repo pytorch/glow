@@ -889,6 +889,7 @@ DEFINE_DATA_PARALLEL_KERNEL_WITH_IMM_OPERAND(libjit_splat_kernel_f, float, val)
 DEFINE_DATA_PARALLEL_KERNEL_WITH_IMM_OPERAND(libjit_splat_kernel_u, size_t, val)
 DEFINE_DATA_PARALLEL_KERNEL_WITH_IMM_OPERAND(libjit_splat_kernel_i8, int8_t,
                                              val)
+DEFINE_DATA_PARALLEL_KERNEL_WITH_IMM_OPERAND(libjit_splat_kernel_b, int8_t, val)
 
 #undef DEFINE_DATA_PARALLEL_KERNEL
 #undef DEFINE_DATA_PARALLEL_KERNEL_FUNC
@@ -1679,6 +1680,14 @@ void libjit_insert_tensor_i8(int8_t *tensor, int8_t *slice, size_t *offset,
                              size_t *tensorDim, size_t *sliceDim,
                              size_t numDimsTensor, size_t numDimsSlice,
                              size_t offsetDim, size_t count, size_t axis) {
+  libjit_insert_tensor(tensor, slice, offset, tensorDim, sliceDim,
+                       numDimsTensor, numDimsSlice, offsetDim, count, axis);
+}
+
+void libjit_insert_tensor_b(int8_t *tensor, int8_t *slice, size_t *offset,
+                            size_t *tensorDim, size_t *sliceDim,
+                            size_t numDimsTensor, size_t numDimsSlice,
+                            size_t offsetDim, size_t count, size_t axis) {
   libjit_insert_tensor(tensor, slice, offset, tensorDim, sliceDim,
                        numDimsTensor, numDimsSlice, offsetDim, count, axis);
 }

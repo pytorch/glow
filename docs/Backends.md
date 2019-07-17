@@ -101,6 +101,17 @@ Additionally, there are virtual functions that backends can override:
   - Allow the backend to custom lower from Node to Instruction IR.
     Returns true if lowering is performed, false otherwise.
 
+- `virtual FunctionPassPipeline getOptimizationPipeline() const;`
+
+  - Allows the backend to customize the graph optimizations that are performed
+    when compiling a Function. Backend returns the
+    "DefaultGraphOptimizationPassPipeline", which contains nearly all of the
+    optimizations discussed
+    [here](Optimizations.md#set-of-supported-graph-optimizations). More
+    information on how to configure this pipeline can be found
+    [here](Optimizations.md#configuring-a-graph-optimization-pipeline).
+
+
 ### `CompiledFunction` Abstract Class
 
 `CompiledFunction` is an abstract class that represents the result of

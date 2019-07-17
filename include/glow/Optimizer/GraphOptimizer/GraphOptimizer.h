@@ -17,6 +17,7 @@
 #define GLOW_OPTIMIZER_GRAPHOPTIMIZER_GRAPHOPTIMIZER_H
 
 #include "glow/Optimizer/GraphOptimizer/CompilationContext.h"
+#include "glow/Optimizer/GraphOptimizer/PassManager.h"
 #include "glow/Support/Error.h"
 
 #include "llvm/ADT/ArrayRef.h"
@@ -32,6 +33,8 @@ class Placeholder;
 /// Perform optimizations on the graph representation.
 void optimize(Function *F, CompilationContext &cctx);
 void optimize(Function *F, CompilationMode mode);
+void optimize(Function *F, CompilationContext &cctx, const Backend &B);
+
 /// Fold nodes that were expressed lowered in the input model.
 void fold(Function *F, CompilationContext &cctx);
 void fold(Function *F, CompilationMode mode);

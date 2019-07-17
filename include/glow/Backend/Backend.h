@@ -30,6 +30,7 @@ class IRFunction;
 class Node;
 class PlaceholderBindings;
 class IRGenVisitor;
+class FunctionPassPipeline;
 
 // This is the interface that glow backends need to implement.
 class Backend {
@@ -98,6 +99,9 @@ public:
   /// performed.
   virtual bool shouldShareBuffers() const { return true; }
 
+  /// Modify the \p optimizationOpts however desired.
+  virtual FunctionPassPipeline getOptimizationPipeline() const;
+
   /// \returns true if the Backend supports partial, unpadded tensors for
   /// inputs that can have variable size (e.g., embedding indices).
   virtual bool supportsPartialTensors() const { return false; }
@@ -146,6 +150,13 @@ public:
   };                                                                           \
   static RegisterFactory<std::string, FactoryName, Backend>                    \
       FactoryName##_REGISTERED;
+
+/// The backend name used in Glow quantization profiling.
+#ifdef GLOW_WITH_CPU
+constexpr const char *profilingBackend = "CPU";
+#else
+constexpr const char *profilingBackend = "Interpreter";
+#endif
 
 } // namespace glow
 

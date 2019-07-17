@@ -439,6 +439,12 @@ public:
                              unsigned_t kernel, unsigned_t stride,
                              unsigned_t pad);
 
+  /// Creates and \returns an AdaptiveAvgPool node with \p name, \p input, and
+  /// \p outTy. The AdaptiveAvgPoolNode will perform average pooling over the
+  /// input so that the result is of the shape specified by \p outTy.
+  AdaptiveAvgPoolNode *createAdaptiveAvgPool(llvm::StringRef name,
+                                             NodeValue input, TypeRef outTy);
+
   /// Creates and \returns a FullyConnectedNode with \p name, \p input, weights
   /// \p W, bias \p B. If \p input is not 2 dimensional then it is flattened
   /// along \p axis. Note, output type and outputDepth are inferred based on
@@ -640,6 +646,14 @@ public:
                            NodeValue var, unsigned_t channelIdx = 0,
                            float epsilon = 1e-5, float momentum = 0.9);
 
+  /// Bucketizes the input tensor based on monotonically increasing \p
+  /// boundaries for each value in \p input. For each value x in input, the
+  /// operator \returns index i given boundaries[i-1] < x <= boundaries[i]. If
+  /// the value x is beyond the bounds of boundaries, 0 or len(boundaries) is
+  /// returned as appropriate.
+  BucketizeNode *createBucketizeNode(llvm::StringRef name, NodeValue input,
+                                     llvm::ArrayRef<float> boundaries);
+
   LocalResponseNormalizationNode *createLocalResponseNormalization(
       llvm::StringRef name, NodeValue input, unsigned_t halfWindowSize = 2,
       float alpha = 1e-4, float beta = 0.75, float k = 2.0);
@@ -674,26 +688,42 @@ public:
   template <class T, class U>
   using enable_if_same_t = std::enable_if<std::is_same<T, U>::value, U>;
 
+#define BROADCAST_FUNC_COMMON_CODE(NUM_INPUTS)                                 \
+  constexpr size_t numInputs = sizeof...(Args);                                \
+  static_assert(numInputs == NUM_INPUTS,                                       \
+                "Invalid input passed in to commonCreateBroadcast.");          \
+  std::vector<NodeValue> inputs = broadcastInputs(axis, {inputArgs...});
+
 #define DECLARE_BROADCAST_NODE(NODE_NAME, NUM_INPUTS)                          \
   template <class T, class... Args>                                            \
   typename enable_if_same_t<T, NODE_NAME##Node>::type *                        \
   createNodeWithBroadcast(const std::string &name, int axis,                   \
                           Args &&... inputArgs) {                              \
-    constexpr size_t numInputs = sizeof...(Args);                              \
-    static_assert(numInputs == NUM_INPUTS,                                     \
-                  "Invalid input passed in to createNodeWithBroadcast.");      \
-    std::vector<NodeValue> inputs = broadcastInputs(axis, {inputArgs...});     \
+    BROADCAST_FUNC_COMMON_CODE(NUM_INPUTS)                                     \
     return create##NODE_NAME(name, inputs[0].getType(), inputs[0], inputs[1]); \
   }
 
   /// Template function that creates a node and normalizes its input shapes
   /// with the use of BroadCast nodes. If axis is -1, it calculates it
-  /// automatically.
+  /// automatically for multi directional broadcast.
   DECLARE_BROADCAST_NODE(Mul, /* NUM_INPUTS */ 2)
   DECLARE_BROADCAST_NODE(Div, /* NUM_INPUTS */ 2)
   DECLARE_BROADCAST_NODE(Add, /* NUM_INPUTS */ 2)
   DECLARE_BROADCAST_NODE(Sub, /* NUM_INPUTS */ 2)
 
+  /// Template function that creates a node and normalizes its input shapes
+  /// with the use of BroadCast nodes. If axis is -1, it calculates it
+  /// automatically for multi directional broadcast.
+  template <class T, class... Args>
+  typename enable_if_same_t<T, SelectNode>::type *
+  createNodeWithBroadcast(const std::string &name, int axis,
+                          Args &&... inputArgs) {
+    BROADCAST_FUNC_COMMON_CODE(3)
+    return createSelect(name, inputs[1].getType(), inputs[0], inputs[1],
+                        inputs[2]);
+  }
+
+#undef BROADCAST_FUNC_COMMON_CODE
 #undef DECLARE_BROADCAST_NODE
 #undef BROADCAST_FUNC_COMMON_CODE
 

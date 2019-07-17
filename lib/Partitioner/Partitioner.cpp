@@ -901,9 +901,8 @@ void Partitioner::doPartitioning(llvm::StringRef funcName,
   }
 }
 
-FunctionToBackendNameMap
-Partitioner::backendBasedPartition(Function *F,
-                                   std::vector<Backend *> &backends) {
+FunctionToBackendNameMap Partitioner::backendBasedPartition(
+    Function *F, std::vector<Backend *> &backends, CompilationContext &cctx) {
   FunctionToBackendNameMap ret;
   NodeToFunctionMap mapping;
   llvm::DenseMap<Node *, std::string> nodeToBackendName;
@@ -953,8 +952,15 @@ Partitioner::backendBasedPartition(Function *F,
   newF = F->getParent()->createFunction(std::string(F->getName()) + "_part" +
                                         std::to_string(++color));
   auto backendName = nodeToBackendName[bfs[level - 1][0]];
-  mapping.createPartition(newF, backendName);
-  ret[newF] = backendName;
+  if (cctx.precisionConfig.quantMode == QuantizationMode::Profile) {
+    // When profiling, all the partition backend is assigned to
+    // profilingBackend.
+    mapping.createPartition(newF, profilingBackend);
+    ret[newF] = profilingBackend;
+  } else {
+    mapping.createPartition(newF, backendName);
+    ret[newF] = backendName;
+  }
   for (int i = level - 1; i >= 0; i--) {
     for (size_t j = 0, e = bfs[i].size(); j < e; j++) {
       Node *N = bfs[i][j];
@@ -963,17 +969,35 @@ Partitioner::backendBasedPartition(Function *F,
         backendName = bk;
         newF = F->getParent()->createFunction(
             std::string(F->getName()) + "_part" + std::to_string(++color));
-        mapping.createPartition(newF, backendName);
-        ret[newF] = backendName;
+        if (cctx.precisionConfig.quantMode == QuantizationMode::Profile) {
+          // When profiling, all the partition backend is assigned to be
+          // profilingBackend.
+          mapping.createPartition(newF, profilingBackend);
+          ret[newF] = profilingBackend;
+        } else {
+          mapping.createPartition(newF, backendName);
+          ret[newF] = backendName;
+        }
       }
       mapping.add(N, newF);
     }
   }
 
-  // Here we just need to split the function without generating DAG.
   std::vector<Function *> funcs;
   funcs.push_back(F);
-  doPartitioning(F->getName(), funcs, mapping, false);
+  // When profiling, the partition flow will be stopped after
+  // backendBasedPartition. Therefore, the DAG needs to be generated. Otherwise,
+  // no need to generate DAG.
+  bool genDAG = cctx.precisionConfig.quantMode == QuantizationMode::Profile
+                    ? true
+                    : false;
+  if (genDAG) {
+    DeviceIDTy logicalDeviceID = 0;
+    for (auto &func : mapping.getPartitions()) {
+      mapping.appendLogicalDeviceID(func, logicalDeviceID++);
+    }
+  }
+  doPartitioning(F->getName(), funcs, mapping, genDAG);
 
   return ret;
 }
@@ -1177,6 +1201,30 @@ llvm::Error Partitioner::loadBalancedPartitioning(Function *F,
   return llvm::Error::success();
 }
 
+llvm::Error Partitioner::QuantizationProfilingPartition(
+    CompilationContext &cctx, Function *F, std::vector<Backend *> backends) {
+  // Quantization profiling flow is run under CPU backend, so we don't really
+  // need the concrete partition. The backendBasedPartition is necessary since
+  // we need the mapping between quantized tensor and original tensor.
+  FunctionToBackendNameMap funcToBackend;
+  funcToBackend = backendBasedPartition(F_, backends, cctx);
+  module_->eraseFunction(F_);
+  std::unique_ptr<Backend> backend(createBackend(profilingBackend));
+  for (Function *subF : module_->getFunctions()) {
+    (void)subF;
+    assert(subF->verify() && "Conversion led to invalid function");
+    if (!optimized_) {
+      RETURN_IF_ERR(::glow::optimizeFunction(subF, *backend, cctx));
+    }
+  }
+  if (logPartition) {
+    LOG(INFO)
+        << "Profiling a model to be partitioned cross different backends. Each "
+           "sub-network will be optimized and run on cpu backend.\n";
+  }
+  return llvm::Error::success();
+}
+
 llvm::Error Partitioner::Partition(CompilationContext &cctx) {
   // Prepare the mapping between BackendName and BackendInfo.
   std::vector<Backend *> backends;
@@ -1186,6 +1234,12 @@ llvm::Error Partitioner::Partition(CompilationContext &cctx) {
   // Step 0: Find the representative function for running partitioning
   // algorithm.
   F_ = selectRepFunc(module_, memSize_);
+
+  if (cctx.precisionConfig.quantMode == QuantizationMode::Profile) {
+    // Jump into profiling flow, and leave without generating partitions for the
+    // backends with same type..
+    return QuantizationProfilingPartition(cctx, F_, backends);
+  }
 
   // Step 1 : do the partition based on backends type.
   FunctionToBackendNameMap funcToBackend;
@@ -1201,13 +1255,14 @@ llvm::Error Partitioner::Partition(CompilationContext &cctx) {
       if (logPartition) {
         LOG(INFO) << "The model is too small for applying partition.\n"
                   << "Model size : " << memSize_ << "\n"
+                  << "Backend Name : " << backendName << "\n"
                   << "Device memory: " << backendMap_[backendName].memSize
                   << "\n";
       }
       return createDAGWithoutPartition(backendName, backendMap_, cctx);
     }
   } else {
-    funcToBackend = backendBasedPartition(F_, backends);
+    funcToBackend = backendBasedPartition(F_, backends, cctx);
     module_->eraseFunction(F_);
   }
 

@@ -21,6 +21,8 @@
 
 #include "llvm/Support/CommandLine.h"
 
+#include <glog/logging.h>
+
 /// Timer option used to indicate if inferences should be timed -time.
 extern llvm::cl::opt<bool> timeOpt;
 /// Iterations used to indicate the number of iterations to run an inferece

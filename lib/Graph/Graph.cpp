@@ -782,6 +782,12 @@ AvgPoolNode *Function::createAvgPool(llvm::StringRef name, NodeValue input,
   return createAvgPool(name, input, kernels, strides, pads);
 }
 
+AdaptiveAvgPoolNode *Function::createAdaptiveAvgPool(llvm::StringRef name,
+                                                     NodeValue input,
+                                                     TypeRef outTy) {
+  return addNode(new AdaptiveAvgPoolNode(name, outTy, input));
+}
+
 FullyConnectedNode *Function::createFullyConnected(llvm::StringRef name,
                                                    NodeValue input, Storage *W,
                                                    Storage *B,
@@ -1251,6 +1257,13 @@ BatchNormalizationNode *Function::createBatchNormalization(
     float momentum) {
   return addNode(new BatchNormalizationNode(name, input, gamma, beta, mean, var,
                                             channelIdx, epsilon, momentum));
+}
+
+BucketizeNode *Function::createBucketizeNode(llvm::StringRef name,
+                                             NodeValue input,
+                                             llvm::ArrayRef<float> boundaries) {
+  auto OT = getParent()->uniqueType(ElemKind::Int32ITy, input.dims());
+  return addNode(new BucketizeNode(name, OT, input, boundaries));
 }
 
 LocalResponseNormalizationNode *Function::createLocalResponseNormalization(

@@ -406,6 +406,9 @@ void Loader::compile(PlaceholderBindings &bindings) {
     // Emit IR for the graph and compile it.
     auto error = hostManager_->addNetwork(std::move(M_), cctx);
     EXIT_ON_ERR(std::move(error));
+    // After partitioning, the original function may be removed. Need to update
+    // F_.
+    F_ = module->getFunctions().front();
   }
   if (dumpGraphOpt) {
     for (auto function : module->getFunctions()) {
@@ -445,9 +448,14 @@ void Loader::generateAndSerializeQuantizationInfos(
     PlaceholderBindings &bindings) {
   assert(!dumpProfileFileOpt.empty() &&
          "Filename to dump serialized profile to must not be empty.");
-  std::vector<NodeQuantizationInfo> QI =
-      quantization::generateNodeQuantizationInfos(
-          bindings, F_, loweredMap_, quantizationSchema, quantizationPrecision);
+  std::vector<NodeQuantizationInfo> QI;
+  for (auto F : getModule()->getFunctions()) {
+    std::vector<NodeQuantizationInfo> tmp =
+        quantization::generateNodeQuantizationInfos(bindings, F, loweredMap_,
+                                                    quantizationSchema,
+                                                    quantizationPrecision);
+    QI.insert(QI.end(), tmp.begin(), tmp.end());
+  }
   serializeToYaml(dumpProfileFileOpt, QI);
 }
 
