@@ -82,6 +82,12 @@ llvm::Error Provisioner::provision(DAGListTy &networks, Module &module,
         << "Warning: collectConstants is set in a Runtime compile, "
            "ignoring it.";
   }
+  if (cctx.backendOpts.backendHints.SRAMPrioritization.size() != 0 ||
+      cctx.backendOpts.backendHints.executionUnits) {
+    VLOG_EVERY_N(1, 1000)
+        << "Warning: backendHints is set in a Runtime compile, "
+           "ignoring it.";
+  }
 
   // Set collectConstants to false, this is because the DeviceManager will
   // handle moving constants to the device, this way we can eliminate one
@@ -101,11 +107,14 @@ llvm::Error Provisioner::provision(DAGListTy &networks, Module &module,
       // compiled the function reuse it.
       auto it = functions_.find(node->name);
       if (it == functions_.end()) {
+        // Copy BackendOptions and add the compiler hints for this function.
+        auto options = cctx.backendOpts;
+        options.backendHints = node->backendHints;
+
         Function *function = module.getFunction(node->name);
         for (size_t i = 0, e = backends_.size(); i < e; i++) {
           if (backends_[i]->getBackendName() == nodeBackendName) {
-            auto compiledOrErr =
-                backends_[i]->compile(function, cctx.backendOpts);
+            auto compiledOrErr = backends_[i]->compile(function, options);
             if (!compiledOrErr) {
               return compiledOrErr.takeError();
             }

@@ -102,7 +102,6 @@ void glow::updateInputPlaceholdersByName2(PlaceholderBindings &bindings,
 
 void ExecutionEngine2::runInternal(ExecutionContext &context,
                                    llvm::StringRef name) {
-  // Make sure that the bindings have backing tensors for all placeholders.
   std::unique_ptr<ExecutionContext> contextPtr(&context);
   std::promise<void> runPromise;
   auto fut = runPromise.get_future();

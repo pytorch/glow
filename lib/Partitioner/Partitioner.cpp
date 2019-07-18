@@ -22,11 +22,10 @@
 #include "llvm/Support/Format.h"
 #include "llvm/Support/raw_ostream.h"
 
-#include <fstream>
-
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/raw_ostream.h"
 
+#include <fstream>
 namespace glow {
 bool GlowEnableLoadBalancedPartitioning = false;
 static llvm::cl::opt<bool, /* ExternalStorage */ true>
@@ -60,6 +59,20 @@ using llvm::isa;
 bool sortMinMemory(const std::pair<Function *, uint64_t> &a,
                    const std::pair<Function *, uint64_t> &b) {
   return a.second < b.second;
+}
+
+static void dumpPartitionInfo(const NodeToFunctionMap &partitions) {
+  int i = 0;
+  for (Function *subF : partitions.getPartitions()) {
+    LOG(INFO) << "\t Partition " << i++ << ":\n"
+              << "\t\t Name :\t" << subF->getName().str() << "\n"
+              << "\t\t BackendKind :\t"
+              << partitions.getPartitionBackendName(subF) << "\n"
+              << "\t\t Memory :\t"
+              << partitions.getGraphMemInfo(subF).getTotalMemSize() << "\n"
+              << "\t\t LogicalDeviceIDs :\t"
+              << partitions.getLogicalDeviceIDList(subF)[0] << "\n";
+  }
 }
 
 void Partitioner::dumpDAG(llvm::StringRef dotFilename) const {
@@ -168,9 +181,10 @@ Partitioner::Partitioner(Module *parent, const std::vector<DeviceInfo> &devices,
 }
 
 Partitioner::Partitioner(Module *parent, const std::vector<DeviceInfo> &devices,
-                         bool saturateHost, bool optimized)
+                         bool saturateHost, bool optimized,
+                         PartitionConfig partitionConfig)
     : module_(parent), deviceInfo_(devices), saturateHost_(saturateHost),
-      optimized_(optimized) {
+      optimized_(optimized), partitionConfig_(partitionConfig) {
   memSize_ = module_->getConstantsSize();
   logicalDeviceID_ = 0;
 }
@@ -1211,7 +1225,6 @@ llvm::Error Partitioner::QuantizationProfilingPartition(
   module_->eraseFunction(F_);
   std::unique_ptr<Backend> backend(createBackend(profilingBackend));
   for (Function *subF : module_->getFunctions()) {
-    (void)subF;
     assert(subF->verify() && "Conversion led to invalid function");
     if (!optimized_) {
       RETURN_IF_ERR(::glow::optimizeFunction(subF, *backend, cctx));
@@ -1230,6 +1243,11 @@ llvm::Error Partitioner::Partition(CompilationContext &cctx) {
   std::vector<Backend *> backends;
   std::vector<std::unique_ptr<Backend>> backendHolder;
   getBackendMap(backendMap_, backendHolder, backends);
+
+  if (partitionConfig_.enabled()) {
+    // Jump into user-defined partition, and skip the following auto partition.
+    return PartitionFromConfig();
+  }
 
   // Step 0: Find the representative function for running partitioning
   // algorithm.
@@ -1348,27 +1366,104 @@ llvm::Error Partitioner::Partition(CompilationContext &cctx) {
     dumpDAG("DAG.dot");
   }
 
-  int i = 0;
   for (Function *subF : funcList) {
-    (void)subF;
-    if (logPartition) {
-      LOG(INFO) << "\t Partition " << i << ":\n"
-                << "\t\t Name :\t" << subF->getName().str() << "\n"
-                << "\t\t BackendKind :\t"
-                << mapping.getPartitionBackendName(subF) << "\n"
-                << "\t\t Memory :\t"
-                << mapping.getGraphMemInfo(subF).getTotalMemSize() << "\n"
-                << "\t\t LogicalDeviceIDs :\t"
-                << mapping.getLogicalDeviceIDList(subF)[0] << "\n";
-    }
     if (dumpPartition) {
       subF->dumpDAG("partitionLogicalID" +
                     std::to_string(mapping.getLogicalDeviceIDList(subF)[0]) +
                     "__" + subF->getFilename() + "__" +
                     mapping.getPartitionBackendName(subF) + ".dot");
     }
-    i++;
     assert(subF->verify() && "Conversion led to invalid function");
+  }
+  if (logPartition) {
+    dumpPartitionInfo(mapping);
+  }
+  return llvm::Error::success();
+}
+
+llvm::Error Partitioner::PartitionFromConfig() {
+  Function *F = module_->getFunction(partitionConfig_.funcName);
+  RETURN_ERR_IF_NOT(F, strFormat("Can't find function %s in current module.",
+                                 F->getName().str().data()));
+
+  DCHECK(partitionConfig_.numOfPartitions ==
+             partitionConfig_.backendNames.size() &&
+         partitionConfig_.numOfPartitions ==
+             partitionConfig_.partitionNames.size())
+      << "Invalid user-defined partition config.";
+
+  NodeToFunctionMap partitionMap;
+  std::vector<Function *> funcList;
+  std::unordered_set<size_t> unused;
+  std::vector<NodesSet> nodesSets(partitionConfig_.numOfPartitions);
+  // Create partitions based on the given number and names.
+  for (size_t i = 0; i < partitionConfig_.numOfPartitions; i++) {
+    Function *newF =
+        module_->createFunction(partitionConfig_.partitionNames[i]);
+    funcList.push_back(newF);
+    partitionMap.createPartition(newF, partitionConfig_.backendNames[i]);
+    unused.insert(i);
+  }
+
+  // Map the nodes the the partitions.
+  std::vector<Node *> unMapped;
+  for (auto &node : F->getNodes()) {
+    auto iter = partitionConfig_.nodeToPartition.find(node.getName());
+    if (iter == partitionConfig_.nodeToPartition.end()) {
+      // If a node in F is not in the node to partition mapping, put it into
+      // unMaped list.
+      unMapped.push_back(&node);
+    } else {
+      size_t partitionID = iter->second;
+      DCHECK(partitionID < partitionConfig_.numOfPartitions)
+          << "Invalid partition id :" << partitionID;
+      partitionMap.add(&node, funcList[partitionID]);
+      unused.erase(partitionID);
+      nodesSets[partitionID].insert(&node);
+    }
+  }
+
+  // If there is unused partition and unmapped nodes, map those nodes to the
+  // unused partition.
+  if (unMapped.size()) {
+    DCHECK(unused.size() == 1) << "There must be exactly 1 unused partition.";
+    auto partitionID = *(unused.begin());
+    for (auto &node : unMapped) {
+      partitionMap.add(node, funcList[partitionID]);
+      nodesSets[partitionID].insert(node);
+    }
+  }
+
+  // Validate memory usage.
+  for (size_t i = 0; i < partitionConfig_.numOfPartitions; i++) {
+    GraphMemInfo cost = getGraphMemInfo(nodesSets[i]);
+    partitionMap.setGraphMemInfo(funcList[i], cost);
+  }
+  RETURN_IF_ERR(memoryUsageValidation(partitionMap));
+
+  // Logical device ID validation.
+  logicalDeviceID_ = assignLogicalDeviceID(partitionMap);
+  RETURN_IF_ERR(logicalDevicesValidation(partitionMap));
+
+  // TODO : loop-free validation.
+
+  // Do partition.
+  doPartitioning(F->getName(), {F}, partitionMap, true);
+  module_->eraseFunction(F);
+
+  // Do optimization based on backendName.
+  for (size_t i = 0; i < partitionConfig_.numOfPartitions; i++) {
+    auto func = funcList[i];
+    assert(func->verify() && "Conversion led to invalid function");
+    std::unique_ptr<Backend> backend(
+        createBackend(partitionConfig_.backendNames[i]));
+    if (!optimized_) {
+      CompilationContext cctx;
+      RETURN_IF_ERR(::glow::optimizeFunction(func, *backend, cctx));
+    }
+  }
+  if (logPartition) {
+    dumpPartitionInfo(partitionMap);
   }
   return llvm::Error::success();
 }
