@@ -2908,8 +2908,9 @@ void BoundInterpreterFunction::fwdRowwiseQuantizedSparseLengthsWeightedSumInst(
                             I->getDest()->getElementType(), I);
 }
 
+template <typename T>
 void BoundInterpreterFunction::
-    fwdFusedRowwiseQuantizedSparseLengthsWeightedSumInst(
+    fwdFusedRowwiseQuantizedSparseLengthsWeightedSumImpl(
         const FusedRowwiseQuantizedSparseLengthsWeightedSumInst *I) {
   auto *out = getTensor(I->getDest());
   auto *data = getTensor(I->getData());
@@ -2934,32 +2935,47 @@ void BoundInterpreterFunction::
   const size_t outLineSize = out->size() / out->dims()[0];
 
   auto DH = data->getHandle<uint8_t>();
-  auto WH = weights->getHandle<float>();
-  auto OH = out->getHandle<float>();
+  auto WH = weights->getHandle<T>();
+  auto OH = out->getHandle<T>();
 
   size_t curIdx = 0;
   for (size_t i = 0; i < segments; i++) {
+    // Always accumulate in FP32.
+    std::vector<float> accum(outLineSize, 0.0f);
     for (size_t j = 0, e = LH.raw(i); j < e; j++) {
-      const float weight = WH.raw(curIdx);
+      const float weight = static_cast<float>(WH.raw(curIdx));
       const size_t rowIdx = IH.raw(curIdx++);
       size_t offsetIn = rowIdx * inLineSize;
-      size_t offsetOut = i * outLineSize;
       // Get the scale and offset from the row; go to the current row and offset
-      // into it up until the last 8 bytes. Use memcpy to get the values out to
-      // avoid alignment issues of accessing 4-byte values.
+      // into it up until the last 2*sizeof(T) bytes. Use memcpy to get the
+      // values out to avoid alignment issues.
       const char *currRowScaleOffsetPtr =
-          data->getUnsafePtr() + offsetIn + inLineSize - 8;
-      float scale;
-      float offset;
-      memcpy(&scale, currRowScaleOffsetPtr, sizeof(float));
-      memcpy(&offset, currRowScaleOffsetPtr + sizeof(float), sizeof(float));
+          data->getUnsafePtr() + offsetIn + inLineSize - 2 * sizeof(T);
+      T scale;
+      T offset;
+      memcpy(&scale, currRowScaleOffsetPtr, sizeof(T));
+      memcpy(&offset, currRowScaleOffsetPtr + sizeof(T), sizeof(T));
       for (size_t k = 0; k < outLineSize; k++) {
-        float d = quantization::dequantizeWithFloatOffset(DH.raw(offsetIn++),
-                                                          scale, offset);
-        OH.raw(offsetOut++) += d * weight;
+        float d = quantization::dequantizeWithFloatOffset(
+            DH.raw(offsetIn++), static_cast<float>(scale),
+            static_cast<float>(offset));
+        accum[k] += d * weight;
       }
     }
+    // Accumulation in FP32 complete, now copy back to output with cast to T.
+    size_t offsetOut = i * outLineSize;
+    for (size_t k = 0; k < outLineSize; k++) {
+      OH.raw(offsetOut++) = static_cast<T>(accum[k]);
+    }
   }
+}
+
+void BoundInterpreterFunction::
+    fwdFusedRowwiseQuantizedSparseLengthsWeightedSumInst(
+        const FusedRowwiseQuantizedSparseLengthsWeightedSumInst *I) {
+  dispatchFloatingPointImpl(
+      fwdFusedRowwiseQuantizedSparseLengthsWeightedSumImpl,
+      I->getDest()->getElementType(), I);
 }
 
 void BoundInterpreterFunction::fwdLengthsToRangesInst(

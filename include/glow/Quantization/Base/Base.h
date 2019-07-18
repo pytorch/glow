@@ -294,12 +294,58 @@ void tensorRowwiseQuantization(const Tensor &input, Tensor &output,
 
 /// Fused-rowwise quantize the tensor \p input. Scales and offsets are generated
 /// from each row of \p input. \p output is tensor of the same shape as input
-/// but with 8 extra columns for storing fused scales (4 bytes (columns) for
-/// float) and offset (4 bytes (columns) for int32_t).
+/// but with extra columns for storing fused scales. Template parameter \p T
+/// represents the datatype used for storing the scale and offset in the row.
 /// \pre input.dims().size() == 2
 /// \pre output.dims().size() == 2
-/// \pre input.dims()[1] + 8 == output.dims()[1]
-void tensorFusedRowwiseQuantization(const Tensor &input, Tensor &output);
+/// \pre input.dims()[1] + 2 * sizeof(T) == output.dims()[1]
+template <typename T>
+void tensorFusedRowwiseQuantization(const Tensor &input, Tensor &output) {
+  // We are fusing the scale and offset onto the end of each row. Thus input and
+  // output must both be 2 dimensional, with output having 2*sizeof(T) extra
+  // columns for the scale and offset.
+  assert(input.dims().size() == 2 && output.dims().size() == 2 &&
+         "Input and output must be 2 dimensional.");
+  assert(input.dims()[1] + 2 * sizeof(T) == output.dims()[1] &&
+         "Output must have 2*sizeof(T) more columns than input.");
+
+  const size_t outWidth = output.dims()[1];
+  char *dataBasePtr = output.getUnsafePtr();
+
+  auto srcH = input.getHandle<float>();
+  auto destH = output.getHandle<uint8_t>();
+  for (size_t i = 0, e = input.dims()[0]; i < e; i++) {
+    auto slice = srcH.extractSlice(i);
+    auto rSrc = slice.getHandle<float>();
+    auto res = rSrc.minMaxArg();
+    float min = rSrc.raw(res.first);
+    float max = rSrc.raw(res.second);
+
+    min = std::min(min, 0.0f);
+    max = std::max(max, 0.0f);
+
+    // This matches the Caffe2 implementation for FloatToRowwiseQuantized8BitsOp
+    // found in operators/lengths_reducer_rowwise_8bit_ops.h.
+    constexpr float kEqualityThreshold = 1e-10f;
+    const float scale = ((max - min) < kEqualityThreshold)
+                            ? 1.0
+                            : ((double)max - (double)min) / 255.0;
+    const float offset = min;
+
+    for (size_t j = 0, f = input.dims()[1]; j < f; j++) {
+      destH.at({i, j}) = quantization::quantizeWithFloatOffset<uint8_t>(
+          srcH.at({i, j}), scale, offset);
+    }
+
+    // Now set the scale/offset at the end of each row.
+    T finalScale = static_cast<T>(scale);
+    T finalOffset = static_cast<T>(offset);
+    char *currRowScaleOffsetPtr =
+        dataBasePtr + (i + 1) * outWidth - 2 * sizeof(T);
+    memcpy(currRowScaleOffsetPtr, &finalScale, sizeof(T));
+    memcpy(currRowScaleOffsetPtr + sizeof(T), &finalOffset, sizeof(T));
+  }
+}
 
 } // namespace quantization
 } // namespace glow

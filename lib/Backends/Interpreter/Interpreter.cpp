@@ -253,6 +253,19 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
             ElemKind::Int32ITy);
 
   case Kinded::Kind::FusedRowwiseQuantizedSparseLengthsWeightedSumNodeKind:
+    if (NI.getInElemTy(
+            FusedRowwiseQuantizedSparseLengthsWeightedSumNode::DataIdx) ==
+        ElemKind::UInt8FusedFP16QTy) {
+      return (NI.getInElemTy(FusedRowwiseQuantizedSparseLengthsWeightedSumNode::
+                                 WeightsIdx) == ElemKind::Float16Ty) &&
+             (NI.getInElemTy(FusedRowwiseQuantizedSparseLengthsWeightedSumNode::
+                                 IndicesIdx) == ElemKind::Int64ITy) &&
+             (NI.getInElemTy(FusedRowwiseQuantizedSparseLengthsWeightedSumNode::
+                                 LengthsIdx) == ElemKind::Int32ITy) &&
+             (NI.getOutElemTy(
+                  FusedRowwiseQuantizedSparseLengthsWeightedSumNode::
+                      ResultIdx) == ElemKind::Float16Ty);
+    }
     return (NI.getInElemTy(
                 FusedRowwiseQuantizedSparseLengthsWeightedSumNode::DataIdx) ==
             ElemKind::UInt8FusedQTy) &&
