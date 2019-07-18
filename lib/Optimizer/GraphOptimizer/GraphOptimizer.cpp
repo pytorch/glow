@@ -2740,9 +2740,6 @@ getChannelShuffleParams(const ReshapeNode &node) {
 // Fold Reshape->Transpose->Reshape into ChannelShuffle when applicable.
 bool FoldChannelShuffle::run(Function *F, const CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), getName());
-  // FIXME: This optimization doesn't check its applicability carefully enough
-  // and kicks in when it shouldn't.  See GraphOptzTest.NoFoldChannelShuffle.
-  return false;
 
   bool changed = false;
   auto &nodes = F->getNodes();
@@ -2759,6 +2756,11 @@ bool FoldChannelShuffle::run(Function *F, const CompilationContext &cctx) {
 
     auto *RN1 = dyn_cast<ReshapeNode>(TR->getInput());
     if (!RN1) {
+      continue;
+    }
+
+    // Check that the input and output shapes match:
+    if (RN1->getInput().getType() != RN2->getResult().getType()) {
       continue;
     }
 
