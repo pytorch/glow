@@ -176,25 +176,24 @@ runInference(glow::Loader &loader,
              glow::PlaceholderBindings &ioBindings, 
              std::pair<glow::Placeholder *, std::unordered_map<std::string, glow::Tensor *>> &ioPlaceholders,
              const std::vector<char> &inputData,
-             std::unordered_map<std::string, std::vector<char>> &outputData)
+             std::unordered_map<std::string, std::pair<std::vector<char>, std::size_t>> &outputData)
 {
-    glow::Placeholder *inputPH{ioPlaceholders.first};
     glow::Tensor *inputT = ioBindings.get(ioPlaceholders.first);
 
     std::memcpy(inputT->getUnsafePtr(), inputData.data(), inputData.size());
-    glow::updateInputPlaceholders(ioBindings, {inputPH}, {inputT});
     loader.runInference(ioBindings, 1);
 
     for (auto &keyval : ioPlaceholders.second) {
-        outputData.insert(std::make_pair(keyval.first, std::vector<char>{}));
-        outputData[keyval.first].reserve(ioPlaceholders.second[keyval.first]->getSizeInBytes());
-        std::memcpy(outputData[keyval.first].data(), ioPlaceholders.second[keyval.first]->getUnsafePtr(), 
+        outputData.insert(std::make_pair(keyval.first, std::make_pair(std::vector<char>{}, 0)));
+        outputData[keyval.first].first.reserve(ioPlaceholders.second[keyval.first]->getSizeInBytes());
+        outputData[keyval.first].second = ioPlaceholders.second[keyval.first]->getSizeInBytes();
+        std::memcpy(outputData[keyval.first].first.data(), ioPlaceholders.second[keyval.first]->getUnsafePtr(), 
                     ioPlaceholders.second[keyval.first]->getSizeInBytes());
     }
 }
 
 static void
-writeOutputData(const std::unordered_map<std::string, std::vector<char>> &outputData, 
+writeOutputData(const std::unordered_map<std::string, std::pair<std::vector<char>, std::size_t>> &outputData, 
                 const std::string &file)
 {
     if (writeOutput) {
@@ -212,7 +211,7 @@ writeOutputData(const std::unordered_map<std::string, std::vector<char>> &output
                 std::cerr << "Unable to open output file: " << name << std::endl;
                 return;
             }
-            outputFile.write(keyval.second.data(), keyval.second.size());
+            outputFile.write(keyval.second.first.data(), keyval.second.second);
             outputFile.close();
         }
     }
@@ -263,7 +262,7 @@ main(int argc, char **argv)
     for (auto &file : files) {
         inputData.clear();
         inputData.reserve(inputT.getSizeInBytes());
-        std::unordered_map<std::string, std::vector<char>> outputData{};
+        std::unordered_map<std::string, std::pair<std::vector<char>, std::size_t>> outputData{};
 
         loadInputData(file, inputData, inputT.getSizeInBytes());
         runInference(loader, ioBindings, ioPlaceholders, inputData, outputData);
