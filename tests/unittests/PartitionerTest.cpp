@@ -73,7 +73,7 @@ static bool checkSaveNode(Module &mod) {
       if (N.getKind() != Kinded::Kind::SaveNodeKind) {
         continue;
       }
-      Placeholder *ph = llvm::dyn_cast<Placeholder>(N.getNthInput(0).getNode());
+      auto *ph = llvm::dyn_cast<Placeholder>(N.getNthInput(0).getNode());
       if (!ph) {
         continue;
       }
@@ -94,13 +94,14 @@ static bool checkSaveNode(Module &mod) {
 /// consumption of all the nodes in each level won't exceed the device memory
 /// constraints.
 TEST_F(PartitionerTest, Basic1) {
+  constexpr float range = 2.0;
   auto *input =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 32}, "input", false);
   auto *w1 = mod_.createConstant(ElemKind::FloatTy, {32, 16}, "w1");
   auto *b1 = mod_.createConstant(ElemKind::FloatTy, {16}, "b1");
   bindings_.allocate(input);
-  w1->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
-  b1->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
+  w1->getHandle<>().randomize(-range, range, mod_.getPRNG());
+  b1->getHandle<>().randomize(-range, range, mod_.getPRNG());
 
   // Initial FC.
   Node *I = F_->createFullyConnected("initial_fc", input, w1, b1);
@@ -109,28 +110,28 @@ TEST_F(PartitionerTest, Basic1) {
   // Left branch.
   auto *w2 = mod_.createConstant(ElemKind::FloatTy, {16, 16}, "w2");
   auto *b2 = mod_.createConstant(ElemKind::FloatTy, {16}, "b2");
-  w2->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
-  b2->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
+  w2->getHandle<>().randomize(-range, range, mod_.getPRNG());
+  b2->getHandle<>().randomize(-range, range, mod_.getPRNG());
   Node *L = F_->createFullyConnected("left_fc1", I, w2, b2);
   L = F_->createSigmoid("left_sigmoid1", L);
   auto *w3 = mod_.createConstant(ElemKind::FloatTy, {16, 8}, "w3");
   auto *b3 = mod_.createConstant(ElemKind::FloatTy, {8}, "b3");
-  w3->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
-  b3->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
+  w3->getHandle<>().randomize(-range, range, mod_.getPRNG());
+  b3->getHandle<>().randomize(-range, range, mod_.getPRNG());
   L = F_->createFullyConnected("left_fc2", L, w3, b3);
   L = F_->createSigmoid("left_sigmoid2", L);
 
   // Right branch.
   auto *w4 = mod_.createConstant(ElemKind::FloatTy, {16, 16}, "w4");
   auto *b4 = mod_.createConstant(ElemKind::FloatTy, {16}, "b4");
-  w4->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
-  b4->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
+  w4->getHandle<>().randomize(-range, range, mod_.getPRNG());
+  b4->getHandle<>().randomize(-range, range, mod_.getPRNG());
   Node *R = F_->createFullyConnected("right_fc1", I, w4, b4);
   R = F_->createSigmoid("right_sigmoid1", R);
   auto *w5 = mod_.createConstant(ElemKind::FloatTy, {16, 8}, "w5");
   auto *b5 = mod_.createConstant(ElemKind::FloatTy, {8}, "b5");
-  w5->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
-  b5->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
+  w5->getHandle<>().randomize(-range, range, mod_.getPRNG());
+  b5->getHandle<>().randomize(-range, range, mod_.getPRNG());
   R = F_->createFullyConnected("right_fc2", R, w5, b5);
   R = F_->createSigmoid("right_sigmoid2", R);
 
@@ -141,6 +142,7 @@ TEST_F(PartitionerTest, Basic1) {
 
   // Infer using the un-partitioned graph.
   Tensor in(ElemKind::FloatTy, {1, 32});
+  in.getHandle<>().randomize(-range, range, mod_.getPRNG());
   ExecutionEngine EE;
 
   EE.compile(CompilationMode::Infer, F_);
@@ -173,6 +175,7 @@ TEST_F(PartitionerTest, Basic1) {
 /// the memory consumption of all the nodes in which exceeds the device memory
 /// constraints.
 TEST_F(PartitionerTest, Basic2) {
+  constexpr float range = 2.0;
   auto *input =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 16}, "input", false);
   auto *input1 =
@@ -182,28 +185,28 @@ TEST_F(PartitionerTest, Basic2) {
   // Left branch.
   auto *w2 = mod_.createConstant(ElemKind::FloatTy, {16, 16}, "w2");
   auto *b2 = mod_.createConstant(ElemKind::FloatTy, {16}, "b2");
-  w2->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
-  b2->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
+  w2->getHandle<>().randomize(-range, range, mod_.getPRNG());
+  b2->getHandle<>().randomize(-range, range, mod_.getPRNG());
   Node *L = F_->createFullyConnected("left_fc1", input, w2, b2);
   L = F_->createSigmoid("left_sigmoid1", L);
   auto *w3 = mod_.createConstant(ElemKind::FloatTy, {16, 8}, "w3");
   auto *b3 = mod_.createConstant(ElemKind::FloatTy, {8}, "b3");
-  w3->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
-  b3->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
+  w3->getHandle<>().randomize(-range, range, mod_.getPRNG());
+  b3->getHandle<>().randomize(-range, range, mod_.getPRNG());
   L = F_->createFullyConnected("left_fc2", L, w3, b3);
   L = F_->createSigmoid("left_sigmoid2", L);
 
   // Right branch.
   auto *w4 = mod_.createConstant(ElemKind::FloatTy, {16, 16}, "w4");
   auto *b4 = mod_.createConstant(ElemKind::FloatTy, {16}, "b4");
-  w4->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
-  b4->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
+  w4->getHandle<>().randomize(-range, range, mod_.getPRNG());
+  b4->getHandle<>().randomize(-range, range, mod_.getPRNG());
   Node *R = F_->createFullyConnected("right_fc1", input1, w4, b4);
   R = F_->createSigmoid("right_sigmoid1", R);
   auto *w5 = mod_.createConstant(ElemKind::FloatTy, {16, 8}, "w5");
   auto *b5 = mod_.createConstant(ElemKind::FloatTy, {8}, "b5");
-  w5->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
-  b5->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
+  w5->getHandle<>().randomize(-range, range, mod_.getPRNG());
+  b5->getHandle<>().randomize(-range, range, mod_.getPRNG());
   R = F_->createFullyConnected("right_fc2", R, w5, b5);
   R = F_->createSigmoid("right_sigmoid2", R);
 
@@ -214,13 +217,13 @@ TEST_F(PartitionerTest, Basic2) {
 
   // Infer using the un-partitioned graph.
   Tensor in(ElemKind::FloatTy, {1, 16});
+  in.getHandle<>().randomize(-range, range, mod_.getPRNG());
   ExecutionEngine EE;
 
   EE.compile(CompilationMode::Infer, F_);
   updateInputPlaceholders(bindings_, {input, input1}, {&in, &in});
   EE.run(bindings_);
   Tensor ref = res.clone();
-
   std::vector<DeviceInfo> devices = {{2048, "Interpreter"},
                                      {2048, "Interpreter"},
                                      {2048, "Interpreter"},
@@ -255,6 +258,7 @@ TEST_F(PartitionerTest, Basic2) {
 /// This one tests the error msg: if the number of partitions is larger than
 /// given number of devices, report an error.
 TEST_F(PartitionerTest, Error1) {
+  constexpr float range = 2.0;
   auto *input =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 16}, "input", false);
   auto *input1 =
@@ -264,28 +268,28 @@ TEST_F(PartitionerTest, Error1) {
   // Left branch.
   auto *w2 = mod_.createConstant(ElemKind::FloatTy, {16, 16}, "w2");
   auto *b2 = mod_.createConstant(ElemKind::FloatTy, {16}, "b2");
-  w2->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
-  b2->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
+  w2->getHandle<>().randomize(-range, range, mod_.getPRNG());
+  b2->getHandle<>().randomize(-range, range, mod_.getPRNG());
   Node *L = F_->createFullyConnected("left_fc1", input, w2, b2);
   L = F_->createSigmoid("left_sigmoid1", L);
   auto *w3 = mod_.createConstant(ElemKind::FloatTy, {16, 8}, "w3");
   auto *b3 = mod_.createConstant(ElemKind::FloatTy, {8}, "b3");
-  w3->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
-  b3->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
+  w3->getHandle<>().randomize(-range, range, mod_.getPRNG());
+  b3->getHandle<>().randomize(-range, range, mod_.getPRNG());
   L = F_->createFullyConnected("left_fc2", L, w3, b3);
   L = F_->createSigmoid("left_sigmoid2", L);
 
   // Right branch.
   auto *w4 = mod_.createConstant(ElemKind::FloatTy, {16, 16}, "w4");
   auto *b4 = mod_.createConstant(ElemKind::FloatTy, {16}, "b4");
-  w4->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
-  b4->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
+  w4->getHandle<>().randomize(-range, range, mod_.getPRNG());
+  b4->getHandle<>().randomize(-range, range, mod_.getPRNG());
   Node *R = F_->createFullyConnected("right_fc1", input1, w4, b4);
   R = F_->createSigmoid("right_sigmoid1", R);
   auto *w5 = mod_.createConstant(ElemKind::FloatTy, {16, 8}, "w5");
   auto *b5 = mod_.createConstant(ElemKind::FloatTy, {8}, "b5");
-  w5->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
-  b5->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
+  w5->getHandle<>().randomize(-range, range, mod_.getPRNG());
+  b5->getHandle<>().randomize(-range, range, mod_.getPRNG());
   R = F_->createFullyConnected("right_fc2", R, w5, b5);
   R = F_->createSigmoid("right_sigmoid2", R);
 
@@ -296,6 +300,7 @@ TEST_F(PartitionerTest, Error1) {
 
   // Infer using the un-partitioned graph.
   Tensor in(ElemKind::FloatTy, {1, 16});
+  in.getHandle<>().randomize(-range, range, mod_.getPRNG());
   ExecutionEngine EE{};
 
   EE.compile(CompilationMode::Infer, F_);
@@ -313,13 +318,14 @@ TEST_F(PartitionerTest, Error1) {
 /// This one tests the roofline computed with compute, memory and communication
 /// costs
 TEST_F(PartitionerTest, Basic1Roofline) {
+  constexpr float range = 2.0;
   auto *input =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 32}, "input", false);
   auto *w1 = mod_.createConstant(ElemKind::FloatTy, {32, 16}, "w1");
   auto *b1 = mod_.createConstant(ElemKind::FloatTy, {16}, "b1");
   bindings_.allocate(input);
-  w1->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
-  b1->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
+  w1->getHandle<>().randomize(-range, range, mod_.getPRNG());
+  b1->getHandle<>().randomize(-range, range, mod_.getPRNG());
 
   // Initial FC.
   Node *I = F_->createFullyConnected("initial_fc", input, w1, b1);
@@ -328,28 +334,28 @@ TEST_F(PartitionerTest, Basic1Roofline) {
   // Left branch.
   auto *w2 = mod_.createConstant(ElemKind::FloatTy, {16, 16}, "w2");
   auto *b2 = mod_.createConstant(ElemKind::FloatTy, {16}, "b2");
-  w2->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
-  b2->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
+  w2->getHandle<>().randomize(-range, range, mod_.getPRNG());
+  b2->getHandle<>().randomize(-range, range, mod_.getPRNG());
   Node *L = F_->createFullyConnected("left_fc1", I, w2, b2);
   L = F_->createSigmoid("left_sigmoid1", L);
   auto *w3 = mod_.createConstant(ElemKind::FloatTy, {16, 8}, "w3");
   auto *b3 = mod_.createConstant(ElemKind::FloatTy, {8}, "b3");
-  w3->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
-  b3->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
+  w3->getHandle<>().randomize(-range, range, mod_.getPRNG());
+  b3->getHandle<>().randomize(-range, range, mod_.getPRNG());
   L = F_->createFullyConnected("left_fc2", L, w3, b3);
   L = F_->createSigmoid("left_sigmoid2", L);
 
   // Right branch.
   auto *w4 = mod_.createConstant(ElemKind::FloatTy, {16, 16}, "w4");
   auto *b4 = mod_.createConstant(ElemKind::FloatTy, {16}, "b4");
-  w4->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
-  b4->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
+  w4->getHandle<>().randomize(-range, range, mod_.getPRNG());
+  b4->getHandle<>().randomize(-range, range, mod_.getPRNG());
   Node *R = F_->createFullyConnected("right_fc1", I, w4, b4);
   R = F_->createSigmoid("right_sigmoid1", R);
   auto *w5 = mod_.createConstant(ElemKind::FloatTy, {16, 8}, "w5");
   auto *b5 = mod_.createConstant(ElemKind::FloatTy, {8}, "b5");
-  w5->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
-  b5->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
+  w5->getHandle<>().randomize(-range, range, mod_.getPRNG());
+  b5->getHandle<>().randomize(-range, range, mod_.getPRNG());
   R = F_->createFullyConnected("right_fc2", R, w5, b5);
   R = F_->createSigmoid("right_sigmoid2", R);
 
@@ -360,6 +366,7 @@ TEST_F(PartitionerTest, Basic1Roofline) {
 
   // Infer using the un-partitioned graph.
   Tensor in(ElemKind::FloatTy, {1, 32});
+  in.getHandle<>().randomize(-range, range, mod_.getPRNG());
   ExecutionEngine EE;
 
   EE.compile(CompilationMode::Infer, F_);
