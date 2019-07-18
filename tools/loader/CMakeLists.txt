@@ -62,6 +62,6 @@ target_link_libraries(x-model-builder
                         HostManager
                         Importer
                         ExecutionEngine
-                        Optimizer
+                        GraphOptimizer
                         Quantization
                         LLVMSupport)
