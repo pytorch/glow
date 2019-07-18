@@ -1092,6 +1092,7 @@ HabanaBackend::compile(Function *F, const BackendOptions &opts) const {
         std::vector<synTensor> inputs;
         inputs.push_back(tensors[MI->getLHS()].get());
         inputs.push_back(tensors[MI->getRHS()].get());
+        inputs.push_back(/* bias */ nullptr);
         chk(synCreateGenericNode(inputs.data(), &tensors[MI].get(),
                                  inputs.size(), 1, nullptr, "gemm",
                                  MI->getName().data(), nullptr, nullptr));
