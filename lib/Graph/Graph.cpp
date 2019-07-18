@@ -854,7 +854,7 @@ Function::createRowwiseQuantizedFullyConnected(llvm::StringRef name,
   }
 
   // Note: Using int32_t offset here as that is what RWQ-FC expects.
-  quantization::tensorRowwiseQuantization<int32_t, int8_t>(
+  quantization::tensorRowwiseQuantization<float, int32_t, int8_t>(
       wt, qWeights->getPayloadMutable(), scales->getPayloadMutable(),
       offsets->getPayloadMutable(), schema);
 
@@ -1543,7 +1543,8 @@ Function::createRowwiseQuantizedSparseLengthsWeightedSum(
   auto inDims = data->dims();
   ShapeVector outDims(inDims.begin(), inDims.end());
   outDims[0] = lengths.dims()[0];
-  auto outTy = getParent()->uniqueType(ElemKind::FloatTy, outDims);
+  auto outTy =
+      getParent()->uniqueType(weights.getType()->getElementType(), outDims);
   return addNode(new RowwiseQuantizedSparseLengthsWeightedSumNode(
       name, outTy, data, scales, offsets, weights, indices, lengths));
 }
@@ -1551,8 +1552,8 @@ Function::createRowwiseQuantizedSparseLengthsWeightedSum(
 RowwiseQuantizedSparseLengthsWeightedSumNode *
 Function::createRowwiseQuantizedSparseLengthsSum(
     llvm::StringRef name, Constant *data, Constant *scales, Constant *offsets,
-    NodeValue indices, NodeValue lengths) {
-  auto ty = getParent()->uniqueType(ElemKind::FloatTy, {indices.dims()[0]});
+    NodeValue indices, NodeValue lengths, ElemKind precision) {
+  auto ty = getParent()->uniqueType(precision, {indices.dims()[0]});
   auto ones = createSplat(name.str() + ".ones", ty, 1.0);
   return createRowwiseQuantizedSparseLengthsWeightedSum(
       name, data, scales, offsets, ones, indices, lengths);
@@ -1574,15 +1575,27 @@ quantizeDataAndCreateRowwiseQuantizedSparseLengthsWeightedSum(
   // scale/offset come from dataScales and dataOffsets.
   Constant *rwqData = F->getParent()->createConstant(ElemKind::UInt8QTy, inDims,
                                                      0.0, 0, "data");
-  Constant *dataScales = F->getParent()->createConstant(
-      ElemKind::FloatTy, {inDims[0]}, "dataScales");
-  Constant *dataOffsets = F->getParent()->createConstant(
-      ElemKind::FloatTy, {inDims[0]}, "dataOffsets");
+  const ElemKind k = weights.getType()->getElementType();
+  Constant *dataScales =
+      F->getParent()->createConstant(k, {inDims[0]}, "dataScales");
+  Constant *dataOffsets =
+      F->getParent()->createConstant(k, {inDims[0]}, "dataOffsets");
 
   // Note: Using float offset here as that is what RWQ-SLWS expects.
-  quantization::tensorRowwiseQuantization<float, uint8_t>(
-      data, rwqData->getPayloadMutable(), dataScales->getPayloadMutable(),
-      dataOffsets->getPayloadMutable(), schema);
+  switch (weights.getType()->getElementType()) {
+  case ElemKind::FloatTy:
+    quantization::tensorRowwiseQuantization<float, float, uint8_t>(
+        data, rwqData->getPayloadMutable(), dataScales->getPayloadMutable(),
+        dataOffsets->getPayloadMutable(), schema);
+    break;
+  case ElemKind::Float16Ty:
+    quantization::tensorRowwiseQuantization<float16_t, float16_t, uint8_t>(
+        data, rwqData->getPayloadMutable(), dataScales->getPayloadMutable(),
+        dataOffsets->getPayloadMutable(), schema);
+    break;
+  default:
+    LOG(FATAL) << "Unsupported type for Weights found.";
+  }
   return F->createRowwiseQuantizedSparseLengthsWeightedSum(
       name, rwqData, dataScales, dataOffsets, weights, indices, lengths);
 }
@@ -1596,12 +1609,10 @@ Function::createRowwiseQuantizedSparseLengthsWeightedSum(
 }
 
 RowwiseQuantizedSparseLengthsWeightedSumNode *
-Function::createRowwiseQuantizedSparseLengthsSum(llvm::StringRef name,
-                                                 Tensor &data,
-                                                 NodeValue indices,
-                                                 NodeValue lengths,
-                                                 quantization::Schema schema) {
-  auto ty = getParent()->uniqueType(ElemKind::FloatTy, {indices.dims()[0]});
+Function::createRowwiseQuantizedSparseLengthsSum(
+    llvm::StringRef name, Tensor &data, NodeValue indices, NodeValue lengths,
+    quantization::Schema schema, ElemKind precision) {
+  auto ty = getParent()->uniqueType(precision, {indices.dims()[0]});
   auto ones = createSplat(name.str() + ".ones", ty, 1.0);
   return quantizeDataAndCreateRowwiseQuantizedSparseLengthsWeightedSum(
       this, name, data, ones, indices, lengths, schema);

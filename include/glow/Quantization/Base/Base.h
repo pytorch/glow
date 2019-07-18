@@ -233,13 +233,20 @@ std::vector<int8_t> createMapping(TypeRef inTy, TypeRef outTy,
 /// input, quantized from \p input using \p scales and \p offsets for each
 /// row. Note that the shape of input/output can be any non-zero number of
 /// dimensions; row refers to all data in the first dimension of the shape.
-/// \p T represents the type to use for the offsets for quantization. Currently
-/// this must either be int32_t or float. Template parameter \p QP represents
-/// quantization precision, typically int8_t or uint8_t.
-template <typename T, typename QP>
+/// Template parameter \p ScaleT and OffsetT represent the type to use for the
+/// scales and offsets for quantization respectively. Template parameter \p QP
+/// represents quantization precision, typically int8_t or uint8_t.
+template <typename ScaleT, typename OffsetT, typename QP>
 void tensorRowwiseQuantization(const Tensor &input, Tensor &output,
                                Tensor &scales, Tensor &offsets,
                                quantization::Schema schema) {
+  constexpr bool offsetIsFP = std::is_same<float, OffsetT>::value ||
+                              std::is_same<float16_t, OffsetT>::value;
+  constexpr bool offsetIsInt32 = std::is_same<int32_t, OffsetT>::value;
+  static_assert((offsetIsInt32 && std::is_same<float, ScaleT>::value) ||
+                    (offsetIsFP && std::is_same<ScaleT, OffsetT>::value),
+                "Invalid combination of Scale/Offset types.");
+
   const auto fDims = flattenCdr(input.dims());
   Tensor finalIn = input.getUnowned({fDims.first, fDims.second});
   Tensor finalOut = output.getUnowned({fDims.first, fDims.second});
@@ -247,8 +254,8 @@ void tensorRowwiseQuantization(const Tensor &input, Tensor &output,
 
   auto srcH = finalIn.getHandle<float>();
   auto destH = finalOut.getHandle<QP>();
-  auto scalesH = scales.getHandle<float>();
-  auto offsetsH = offsets.getHandle<T>();
+  auto scalesH = scales.getHandle<ScaleT>();
+  auto offsetsH = offsets.getHandle<OffsetT>();
   for (size_t i = 0; i < idim.height; i++) {
     auto slice = srcH.extractSlice(i);
     auto rSrc = slice.getHandle<float>();
@@ -260,7 +267,7 @@ void tensorRowwiseQuantization(const Tensor &input, Tensor &output,
     max = std::max(max, 0.0f);
 
     // Handle rowwise quantization for FCs.
-    if (std::is_same<int32_t, T>::value) {
+    if (offsetIsInt32) {
       TensorQuantizationParams qParams =
           chooseQuantizationParams(min, max, schema);
       for (size_t j = 0; j < idim.width; j++) {
@@ -268,7 +275,7 @@ void tensorRowwiseQuantization(const Tensor &input, Tensor &output,
       }
       scalesH.raw(i) = qParams.scale;
       offsetsH.raw(i) = qParams.offset;
-    } else if (std::is_same<float, T>::value) {
+    } else if (offsetIsFP) {
       // Handle rowwise quantization for Rowwise quantized SLS.
       float scale = ((double)max - (double)min) / 255.0;
       float offset = min;
@@ -277,8 +284,8 @@ void tensorRowwiseQuantization(const Tensor &input, Tensor &output,
         destH.at({i, j}) = quantization::quantizeWithFloatOffset<QP>(
             srcH.at({i, j}), scale, offset);
       }
-      scalesH.raw(i) = scale;
-      offsetsH.raw(i) = offset;
+      scalesH.raw(i) = static_cast<ScaleT>(scale);
+      offsetsH.raw(i) = static_cast<OffsetT>(offset);
     } else {
       llvm_unreachable("Unsupported offset type.");
     }

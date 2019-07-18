@@ -1015,13 +1015,7 @@ bool SparseLengthsWeightedSumGradNode::verify() const {
 }
 
 bool RowwiseQuantizedSparseLengthsWeightedSumNode::verify() const {
-  bool isValid = checkType(getResult(), ElemKind::FloatTy, this);
-  isValid &= checkType(getData(), ElemKind::UInt8QTy, this);
-  isValid &= checkType(getScales(), ElemKind::FloatTy, this);
-  isValid &= checkType(getOffsets(), ElemKind::FloatTy, this);
-  isValid &= checkType(getWeights(), ElemKind::FloatTy, this);
-  isValid &= checkType(getIndices(), ElemKind::Int64ITy, this);
-  isValid &= checkType(getLengths(), ElemKind::Int32ITy, this);
+  bool isValid = checkType(getData(), ElemKind::UInt8QTy, this);
   isValid &= expectCompareTrue("Indices must be a 1D vector",
                                getIndices().dims().size(), size_t(1), this);
   isValid &= expectCompareTrue("Lengths must be a 1D vector",

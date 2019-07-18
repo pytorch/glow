@@ -237,27 +237,20 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
             ElemKind::Int32ITy);
 
   case Kinded::Kind::RowwiseQuantizedSparseLengthsWeightedSumNodeKind:
-    return (NI.getInElemTy(
+    return NI.allInputsAndOutputsHaveSameElemKind(
+               {ElemKind::FloatTy, ElemKind::Float16Ty},
+               {RowwiseQuantizedSparseLengthsWeightedSumNode::DataIdx,
+                RowwiseQuantizedSparseLengthsWeightedSumNode::IndicesIdx,
+                RowwiseQuantizedSparseLengthsWeightedSumNode::LengthsIdx}) &&
+           (NI.getInElemTy(
                 RowwiseQuantizedSparseLengthsWeightedSumNode::DataIdx) ==
             ElemKind::UInt8QTy) &&
-           (NI.getInElemTy(
-                RowwiseQuantizedSparseLengthsWeightedSumNode::ScalesIdx) ==
-            ElemKind::FloatTy) &&
-           (NI.getInElemTy(
-                RowwiseQuantizedSparseLengthsWeightedSumNode::OffsetsIdx) ==
-            ElemKind::FloatTy) &&
-           (NI.getInElemTy(
-                RowwiseQuantizedSparseLengthsWeightedSumNode::WeightsIdx) ==
-            ElemKind::FloatTy) &&
            (NI.getInElemTy(
                 RowwiseQuantizedSparseLengthsWeightedSumNode::IndicesIdx) ==
             ElemKind::Int64ITy) &&
            (NI.getInElemTy(
                 RowwiseQuantizedSparseLengthsWeightedSumNode::LengthsIdx) ==
-            ElemKind::Int32ITy) &&
-           (NI.getOutElemTy(
-                RowwiseQuantizedSparseLengthsWeightedSumNode::ResultIdx) ==
-            ElemKind::FloatTy);
+            ElemKind::Int32ITy);
 
   case Kinded::Kind::FusedRowwiseQuantizedSparseLengthsWeightedSumNodeKind:
     return (NI.getInElemTy(
