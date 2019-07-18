@@ -262,6 +262,7 @@ main(int argc, char **argv)
     gatherFiles(files);
     for (auto &file : files) {
         inputData.clear();
+        inputData.reserve(inputT.getSizeInBytes());
         std::unordered_map<std::string, std::vector<char>> outputData{};
 
         loadInputData(file, inputData, inputT.getSizeInBytes());
