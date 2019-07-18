@@ -265,23 +265,40 @@ inline bool operator==(const ShapeNHWDC &LHS, const ShapeNHWDC &RHS) {
 /// When adding new type, note that this enum definition must match with
 /// ElemKind definition in Glow/lib/Backends/CPU/libjit/libjit.cpp
 enum class ElemKind : unsigned char {
-  FloatTy,       // 32-bit float type (float)
-  Float16Ty,     // 16-bit float type (half, fp16)
-  Int8QTy,       // 8-bit quantized type (int8_t)
-  UInt8QTy,      // unsigned 8-bit quantized type (uint8_t)
-  Int16QTy,      // 16-bit quantized type (int16_t)
-  Int32QTy,      // 32-bit quantized type (int32_t)
-  Int32ITy,      // 32-bit index type (int32_t)
-  Int64ITy,      // 64-bit index type (int64_t)
-  UInt8FusedQTy, // 8-bit quantized type with fused scale/offset (uint8_t)
-  BoolTy,        // Bool type (bool)
+  // 32-bit float type (float)
+  FloatTy,
+  // 16-bit float type (half, fp16)
+  Float16Ty,
+  // 8-bit quantized type (int8_t)
+  Int8QTy,
+  // unsigned 8-bit quantized type (uint8_t)
+  UInt8QTy,
+  // 16-bit quantized type (int16_t)
+  Int16QTy,
+  // 32-bit quantized type (int32_t)
+  Int32QTy,
+  // 32-bit index type (int32_t)
+  Int32ITy,
+  // 64-bit index type (int64_t)
+  Int64ITy,
+  // 8-bit quantized type with fused scale/offset (uint8_t)
+  UInt8FusedQTy,
+  // 8-bit quantized type with fused FP16 scale/offset (uint8_t)
+  UInt8FusedFP16QTy,
+  // Bool type (bool)
+  BoolTy,
 };
 
 /// \returns whether \p e is a quantized ElemKind.
 inline bool isQuantizedElemKind(ElemKind e) {
   return e == ElemKind::Int8QTy || e == ElemKind::UInt8QTy ||
          e == ElemKind::Int16QTy || e == ElemKind::Int32QTy ||
-         e == ElemKind::UInt8FusedQTy;
+         e == ElemKind::UInt8FusedQTy || e == ElemKind::UInt8FusedFP16QTy;
+}
+
+/// \returns whether \p e is a fused quantized ElemKind.
+inline bool isFusedQuantizedElemKind(ElemKind e) {
+  return e == ElemKind::UInt8FusedQTy || e == ElemKind::UInt8FusedFP16QTy;
 }
 
 /// A class that represents a type of a tensor.
@@ -471,6 +488,8 @@ struct Type final {
       return std::is_same<ElemTy, int64_t>::value;
     case ElemKind::UInt8FusedQTy:
       return std::is_same<ElemTy, uint8_t>::value;
+    case ElemKind::UInt8FusedFP16QTy:
+      return std::is_same<ElemTy, uint8_t>::value;
     case ElemKind::BoolTy:
       return std::is_same<ElemTy, bool>::value;
     }
@@ -514,6 +533,8 @@ struct Type final {
       return sizeof(int64_t);
     case ElemKind::UInt8FusedQTy:
       return sizeof(uint8_t);
+    case ElemKind::UInt8FusedFP16QTy:
+      return sizeof(uint8_t);
     case ElemKind::BoolTy:
       return sizeof(bool);
     }
@@ -528,8 +549,8 @@ struct Type final {
   /// \return the textual name of the element \p Ty.
   static llvm::StringRef getElementName(ElemKind Ty) {
     static const char *names[] = {
-        "float", "float16", "i8",      "ui8",      "i16",
-        "i32",   "index32", "index64", "ui8fused", "bool",
+        "float",   "float16", "i8",       "ui8",          "i16",  "i32",
+        "index32", "index64", "ui8fused", "ui8fusedfp16", "bool",
     };
     return names[(int)Ty];
   }

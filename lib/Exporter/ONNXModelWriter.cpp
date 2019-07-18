@@ -276,6 +276,7 @@ ONNXModelWriter::convertType(const Type &glowType) {
   case ElemKind::Int8QTy:
     return TensorType::INT8;
   case ElemKind::UInt8FusedQTy:
+  case ElemKind::UInt8FusedFP16QTy:
   case ElemKind::UInt8QTy:
     return TensorType::UINT8;
   case ElemKind::Int16QTy:
