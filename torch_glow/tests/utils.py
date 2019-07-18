@@ -6,13 +6,16 @@ GLOW_NODE_NAME = "glow::CompilationGroup"
 # Runs the given inputs \p *inputs on \p f both with and without lowering \p f
 # to Glow and compares the results.
 def jitVsGlow(f, *inputs):
+  jitVsGlow_(f, f, *inputs)
+
+def jitVsGlow_(f_torch, f_glow, *inputs):
   with torch.no_grad():
     torch_glow.disableFusionPass()
-    torch_trace = torch.jit.trace(f, inputs)
+    torch_trace = torch.jit.trace(f_torch, inputs)
     torch_res = torch_trace(*inputs)
 
     torch_glow.enableFusionPass()
-    glow_trace = torch.jit.trace(f, inputs)
+    glow_trace = torch.jit.trace(f_glow, inputs)
     glow_res = glow_trace(*inputs)
 
     # check that there are no Glow nodes in the torch graph
