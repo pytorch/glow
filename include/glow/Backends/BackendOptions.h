@@ -16,7 +16,22 @@
 #ifndef GLOW_BACKENDS_BACKENDOPTIONS_H
 #define GLOW_BACKENDS_BACKENDOPTIONS_H
 
+#include "llvm/ADT/SmallVector.h"
+#include <string>
+#include <vector>
+
 namespace glow {
+class Storage;
+
+/// Hints provided to the Backend, the backend is not required to honor them.
+struct BackendHints {
+  /// Number of execution units to reserve, these are the processing elements
+  /// like cores, 0 for unspecified.
+  unsigned executionUnits{0};
+
+  /// Storage nodes to be pinned to SRAM listed in order of priority.
+  std::vector<std::string> SRAMPrioritization;
+};
 
 /// Options relevant to Backends during compilation.
 struct BackendOptions {
@@ -25,6 +40,9 @@ struct BackendOptions {
 
   /// Insert TraceEvents between all instructions for profiling.
   bool autoInstrument{false};
+
+  /// Hints for the compiler for this compilation.
+  BackendHints backendHints;
 };
 
 }; // namespace glow
