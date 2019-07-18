@@ -18,6 +18,7 @@
 
 #include "glow/Backend/Backend.h"
 #include "glow/Backend/BackendUtils.h"
+#include "glow/Backends/BackendOptions.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Support/Error.h"
 
@@ -99,6 +100,11 @@ struct DAGNode {
   /// runtime.
   std::unique_ptr<RuntimeBundle> runtimeBundle;
 
+  /// Backend Hints object, this is populated by the Partitioner and is used
+  /// to communicated hints to the compiler, like SRAM pinning and resource
+  /// reservation.
+  BackendHints backendHints{};
+
   /// Pointer to module the function came from. This is so the executor can
   /// access the associated PHs for the function that are stored in the Module.
   Module *module{nullptr};
@@ -169,6 +175,30 @@ struct HostConfig {
   size_t maxActiveRequests{100};
   /// Number of threads to allocate to the Executor.
   size_t executorThreads{3};
+};
+
+/// This is struct for user defined partition.
+struct PartitionConfig {
+  /// The name of the function to be partitioned.
+  std::string funcName;
+  /// The number of user defined partitions.
+  /// The partition ids are between 0 and numOfPartitions - 1, inclusive.
+  size_t numOfPartitions;
+  /// The backend for each partition. backendNames.size() == numOfPartitions.
+  std::vector<std::string> backendNames;
+  /// The name for each partition. partitionNames.size() == numOfPartitions.
+  std::vector<std::string> partitionNames;
+  /// The mapping between nodes' name to Partition ids. Assume there are n nodes
+  /// and m partitions. We have 2 types of valid mapping: 1. all nodes are
+  /// mapped to a partition. 2. For i-th (0 <= i < m) partition, the nodes
+  /// mapped to this partition id are not in this map, and the nodes mapped to
+  /// other partitions ids must be in this map. The node's name should be the
+  /// name in Glow function and may be different from the original name from
+  /// models. Since Glow will mangle names to make them unique.
+  llvm::StringMap<size_t> nodeToPartition;
+
+  PartitionConfig() : numOfPartitions(0) {}
+  bool enabled() { return numOfPartitions > 0; }
 };
 
 } // namespace runtime

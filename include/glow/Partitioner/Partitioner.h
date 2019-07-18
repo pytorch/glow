@@ -204,10 +204,13 @@ class Partitioner {
   /// use all available devices.
   bool saturateHost_;
 
-  // Flag to set if the funcitons in the module are areadly optimized. By
-  // default, the optimization should be done in Partitioner due to
-  // heterogeneous partition.
+  /// Flag to set if the funcitons in the module are areadly optimized. By
+  /// default, the optimization should be done in Partitioner due to
+  /// heterogeneous partition.
   bool optimized_;
+
+  /// The struct contain user-defined partition info.
+  PartitionConfig partitionConfig_;
 
   /// Get the representative function (the one with the largest input) and
   /// update the memSize.
@@ -295,16 +298,25 @@ public:
   /// "Function Family", that is, without considerting the "dynamic stuff" (i.e.
   /// batch size, input/output shape of each op), all the functions are
   /// identical. The required memory and computation cost for each op can be
-  /// found in Module. The \p devices provides the cost model related to
-  /// devices.
+  /// found in Module.
+  /// The \p devices provides the cost model related to devices.
+  /// Saturating the host will be enabled if \p saturateHost is true.
+  /// \p optimized is false by default, which means the functions in this module
+  /// are not optimized. \p partitionConfig contains the user defined partition
+  /// info.
   Partitioner(Module *parent, const std::vector<DeviceInfo> &devices,
-              bool saturateHost = false, bool optimized = false);
+              bool saturateHost = false, bool optimized = false,
+              PartitionConfig partitionConfig = PartitionConfig());
 
   /// Users can create Mock Backends and pass their points to test Graph
   /// Partitioning without actually register them in GLOW.
   Partitioner(Module *parent, const std::vector<DeviceInfo> &devices,
               const std::vector<Backend *> &backends, bool saturateHost = false,
               bool optimized = false);
+
+  /// Based on partitionConfig_ passed into Partitioner, do the user-defined
+  /// partition.
+  llvm::Error PartitionFromConfig();
 
   /// Decompose each function in a module. Now we support partitioning a module
   /// among different type of devices. \p cctx is used during optimization of

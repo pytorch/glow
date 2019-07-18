@@ -993,6 +993,44 @@ TEST(caffe2, FCTransposedWithFlatten) {
   // already covered in the Operator.FCWithFlatten/* tests.
 }
 
+/// Test loading bucketize op from a Caffe2 model.
+/// Test with arg boundaries = [0.1, 2.5]
+TEST(caffe2, importBucketize) {
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string NetDescFilename(
+      GLOW_DATA_PATH "tests/models/caffe2Models/bucketize_op_net.pbtxt");
+  std::string NetWeightFilename(
+      GLOW_DATA_PATH "tests/models/caffe2Models/empty_init_net.pbtxt");
+
+  PlaceholderBindings bindings;
+  Placeholder *output;
+  Tensor inputs_0(ElemKind::FloatTy, {3, 2});
+  // Destroy the loader after the graph is loaded since the following execution
+  // will not depend on anything from the loader.
+  {
+    Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"input_0"},
+                               {&inputs_0.getType()}, *F);
+    output = EXIT_ON_ERR(caffe2LD.getSingleOutput());
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod, {"input_0"}, {&inputs_0});
+  }
+
+  EXPECT_EQ(F->getNodes().size(), 2);
+  auto *saveNode = getSaveNodeFromDest(output);
+  auto *bucketizeNode =
+      llvm::dyn_cast<BucketizeNode>(saveNode->getInput().getNode());
+  ASSERT_TRUE(bucketizeNode);
+  auto boundriesVec = bucketizeNode->getBoundaries();
+  ASSERT_EQ(boundriesVec.size(), 2);
+  EXPECT_NEAR(boundriesVec[0], 0.1, 0.00001);
+  EXPECT_NEAR(boundriesVec[1], 2.5, 0.00001);
+  // We have one input and one output.
+  EXPECT_EQ(mod.getPlaceholders().size(), 2);
+}
+
 /// Test loading clip op from a Caffe2 model.
 /// Test with arg min = 20.0 max = 60.0
 TEST(caffe2, importClip) {

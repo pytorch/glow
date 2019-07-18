@@ -747,6 +747,17 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     return llvm::Error::success();
   }
 
+  if (typeName == "Bucketize") {
+    NodeValue in;
+    ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
+    RETURN_ERR_IF_NOT(dict.count("boundaries"),
+                      "Bucketize: Expected a boundaries member vector");
+    std::vector<float> boundaries = getFloats(dict["boundaries"]);
+    auto *node = G_.createBucketizeNode(opName, in, boundaries);
+    RETURN_IF_ERR(addNodeAsOutput(op, node));
+    return llvm::Error::success();
+  }
+
   if (typeName == "Concat") {
     const unsigned numInputs = op.input_size();
     llvm::SmallVector<NodeValue, 4> inputs;

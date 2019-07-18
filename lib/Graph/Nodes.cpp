@@ -534,6 +534,41 @@ bool AvgPoolNode::verify() const {
   return verifyPool(getInput(), getResult(), Kernels_, Strides_, Pads_);
 }
 
+bool AdaptiveAvgPoolNode::verify() const {
+  bool isValid = checkTypeIgnoreShape(getInput(), getResult(), this);
+
+  TypeRef inTy = getInput().getType();
+  TypeRef outTy = getResult().getType();
+
+  isValid &= expectCompareTrue("Input should have 4 dimensions",
+                               inTy->dims().size(), (size_t)4, this);
+
+  isValid &= expectCompareTrue("Output should have 4 dimensions",
+                               outTy->dims().size(), (size_t)4, this);
+
+  if (!isValid) {
+    return false;
+  }
+
+  isValid &= expectCompareTrue(
+      "Output should have the same number of batches as the input",
+      inTy->dims()[0], outTy->dims()[0], this);
+
+  isValid &= expectCompareTrue(
+      "Output should have the same number of channels as the input",
+      inTy->dims()[3], outTy->dims()[3], this);
+
+  isValid &= expectCompareTrue(
+      "Output should not have more height than the input", inTy->dims()[1],
+      outTy->dims()[1], this, CompareOperatorGreaterEqual<size_t>());
+
+  isValid &= expectCompareTrue(
+      "Output should not have more width than the input", inTy->dims()[2],
+      outTy->dims()[2], this, CompareOperatorGreaterEqual<size_t>());
+
+  return isValid;
+}
+
 bool MaxPoolGradNode::verify() const {
   bool isValid = verifyInputAndGradInputTypes(getInput(),
                                               getGradOfInputNamedInput(), this);
@@ -645,6 +680,13 @@ bool ExpNode::verify() const {
   }
   isValid &= checkSameType(getInput(), getResult(), parent);
   isValid &= checkSameShape(getInput(), getResult(), parent);
+  return isValid;
+}
+
+bool BucketizeNode::verify() const {
+  bool isValid = checkSameShape(getInput(), getResult(), this);
+  isValid &= !getBoundaries().empty();
+  isValid &= std::is_sorted(getBoundaries().begin(), getBoundaries().end());
   return isValid;
 }
 

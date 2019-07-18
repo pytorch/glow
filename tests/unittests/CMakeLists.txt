@@ -14,6 +14,7 @@ target_link_libraries(BackendTestUtils
                         ExecutionEngine
                         Graph
                         GraphOptimizer
+                        GraphOptimizerPipeline
                         Quantization
                         QuantizationBase
                         LLVMSupport
@@ -43,9 +44,10 @@ add_executable(BackendTest
 target_link_libraries(BackendTest
                       PRIVATE
                         Backends
+                        HostManager
                         Graph
                         IR
-                        ExecutionEngine
+                        ExecutionEngine2
                         gtest
                         TestMain)
 add_glow_test(BackendTest ${GLOW_BINARY_DIR}/tests/BackendTest --gtest_output=xml:BackendTest.xml)
@@ -264,6 +266,7 @@ target_link_libraries(IROptTest
                         Graph
                         IR
                         IROptimizer
+                        GraphOptimizerPipeline
                         gtest
                         TestMain)
 add_glow_test(IROptTest ${GLOW_BINARY_DIR}/tests/IROptTest --gtest_output=xml:IROptTest.xml)
@@ -300,7 +303,7 @@ target_link_libraries(MLTest
         PRIVATE
         Graph
         IR
-        ExecutionEngine
+        ExecutionEngine2
         Quantization
         gtest
         TestMain)
@@ -351,30 +354,45 @@ add_glow_test(NAME OnnxImporterTest
               COMMAND ${GLOW_BINARY_DIR}/tests/OnnxImporterTest --gtest_output=xml:OnnxImporterTest.xml
               WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
+add_executable(OnnxExporterTest
+               OnnxExporterTest.cpp)
+target_link_libraries(OnnxExporterTest
+                      PRIVATE
+                        Backend
+                        Graph
+                        Importer
+                        Exporter
+                        ExecutionEngine
+                        gtest
+                        TestMain)
+add_glow_test(NAME OnnxExporterTest
+              COMMAND ${GLOW_BINARY_DIR}/tests/OnnxExporterTest --gtest_output=xml:OnnxExporterTest.xml
+              WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
 add_executable(OperatorGradTest
         OperatorGradTest.cpp)
 target_link_libraries(OperatorGradTest
-        PRIVATE
-        Base
-        ExecutionEngine
-        Graph
-        gtest
-        TestMain)
+                      PRIVATE
+                        Base
+                        ExecutionEngine
+                        Graph
+                        gtest
+                        TestMain)
 add_glow_test(OperatorGradTest ${GLOW_BINARY_DIR}/tests/OperatorGradTest --gtest_output=xml:OperatorGradTest.xml)
 LIST(APPEND UNOPT_TESTS ./tests/OperatorGradTest -optimize-ir=false &&)
 
 add_executable(OperatorTest
         OperatorTest.cpp)
 target_link_libraries(OperatorTest
-        PRIVATE
-        BackendTestUtils
-        Graph
-        IR
-        ExecutionEngine
-        Quantization
-        GraphOptimizer
-        gtest
-        TestMain)
+                      PRIVATE
+                        BackendTestUtils
+                        Graph
+                        IR
+                        ExecutionEngine
+                        Quantization
+                        GraphOptimizer
+                        gtest
+                        TestMain)
 add_glow_test(OperatorTest ${GLOW_BINARY_DIR}/tests/OperatorTest --gtest_output=xml:OperatorTest.xml)
 LIST(APPEND UNOPT_TESTS ./tests/OperatorTest -optimize-ir=false &&)
 

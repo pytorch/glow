@@ -149,6 +149,14 @@ const std::string strFormat(const char *format, ...)
     __attribute__((__format__(__printf__, 1, 2)));
 #endif
 ;
+
+/// Helper that converts and \returns an enum class to an unsigned. Useful when
+/// using an enum class in a bitset.
+template <class T> inline constexpr unsigned convertEnumToUnsigned(T e) {
+  static_assert(std::is_enum<T>::value, "Can only pass enums.");
+  return static_cast<unsigned>(e);
+}
+
 } // namespace glow
 
 #endif // GLOW_SUPPORT_SUPPORT_H

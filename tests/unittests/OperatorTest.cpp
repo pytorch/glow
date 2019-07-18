@@ -4670,6 +4670,93 @@ TEST_P(OperatorTest, Int8AvgPool) {
   }
 }
 
+/// Verify that the AdaptiveAvgPool operator works correctly.
+TEST_P(OperatorTest, AdaptiveAvgPool) {
+  ENABLED_BACKENDS(Interpreter);
+  auto *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 4, 4, 1}, "input", false);
+  bindings_.allocate(input)->getHandle() = {
+      0., 1., 2., 3., 4., 5., 6., 7., 8., 9., 10., 11., 12., 13., 14., 15.};
+
+  auto outTy = mod_.uniqueType(ElemKind::FloatTy, {1, 3, 3, 1});
+  auto *pool = F_->createAdaptiveAvgPool("pool", input, outTy);
+  auto *S = F_->createSave("save", pool);
+  bindings_.allocate(S->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run(bindings_);
+
+  auto *result = bindings_.get(S->getPlaceholder());
+  Tensor out(ElemKind::FloatTy, {1, 3, 3, 1});
+  out.getHandle() = {2.5, 3.5, 4.5, 6.5, 7.5, 8.5, 10.5, 11.5, 12.5};
+  EXPECT_TRUE(out.isEqual(*result));
+}
+
+/// Verify that the AdaptiveAvgPool operator works correctly with fp16.
+TEST_P(OperatorTest, FP16AdaptiveAvgPool) {
+  ENABLED_BACKENDS(Interpreter);
+  auto *input =
+      mod_.createPlaceholder(ElemKind::Float16Ty, {1, 4, 4, 1}, "input", false);
+  bindings_.allocate(input)->getHandle<float16_t>() = {
+      0., 1., 2., 3., 4., 5., 6., 7., 8., 9., 10., 11., 12., 13., 14., 15.};
+  auto outTy = mod_.uniqueType(ElemKind::Float16Ty, {1, 3, 3, 1});
+  auto *pool = F_->createAdaptiveAvgPool("pool", input, outTy);
+  auto *S = F_->createSave("save", pool);
+  bindings_.allocate(S->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run(bindings_);
+
+  auto *result = bindings_.get(S->getPlaceholder());
+  Tensor out(ElemKind::Float16Ty, {1, 3, 3, 1});
+  out.getHandle<float16_t>() = {2.5, 3.5, 4.5, 6.5, 7.5, 8.5, 10.5, 11.5, 12.5};
+  EXPECT_TRUE(out.isEqual(*result));
+}
+
+/// Verify that the AdaptiveAvgPool operator works correctly with int8.
+TEST_P(OperatorTest, Int8AdaptiveAvgPool) {
+  ENABLED_BACKENDS(Interpreter);
+  auto *input = mod_.createPlaceholder(ElemKind::Int8QTy, {1, 4, 4, 1}, 1, 0,
+                                       "input", false);
+  bindings_.allocate(input)->getHandle<int8_t>() = {
+      0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15};
+  auto outTy = mod_.uniqueType(ElemKind::Int8QTy, {1, 3, 3, 1}, 1, 0);
+  auto *pool = F_->createAdaptiveAvgPool("pool", input, outTy);
+  auto *S = F_->createSave("save", pool);
+  bindings_.allocate(S->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run(bindings_);
+
+  auto *result = bindings_.get(S->getPlaceholder());
+  Tensor out(ElemKind::Int8QTy, {1, 3, 3, 1}, 1, 0);
+  out.getHandle<int8_t>() = {3, 4, 5, 7, 8, 9, 11, 12, 13};
+  EXPECT_TRUE(out.isEqual(*result));
+}
+
+/// Verify that the AdaptiveAvgPool operator works correctly with non-square
+/// inputs and outputs.
+TEST_P(OperatorTest, AdaptiveAvgPoolNonSquare) {
+  ENABLED_BACKENDS(Interpreter);
+  auto *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 5, 3, 1}, "input", false);
+  bindings_.allocate(input)->getHandle() = {0., 1., 2.,  3.,  4.,  5.,  6., 7.,
+                                            8., 9., 10., 11., 12., 13., 14.};
+
+  auto outTy = mod_.uniqueType(ElemKind::FloatTy, {1, 3, 2, 1});
+  auto *pool = F_->createAdaptiveAvgPool("pool", input, outTy);
+  auto *S = F_->createSave("save", pool);
+  bindings_.allocate(S->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run(bindings_);
+
+  auto *result = bindings_.get(S->getPlaceholder());
+  Tensor out(ElemKind::FloatTy, {1, 3, 2, 1});
+  out.getHandle() = {2, 3, 6.5, 7.5, 11, 12};
+  EXPECT_TRUE(out.isEqual(*result));
+}
+
 TEST_P(OperatorTest, MaxPool) {
   auto *input =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 3, 3, 1}, "input", false);
@@ -5345,6 +5432,28 @@ TEST_P(OperatorTest, FP16BatchAdd) {
   for (size_t idx = 0, end = result.size(); idx != end; ++idx) {
     EXPECT_EQ(result.raw(idx),
               handleInput.raw(idx) + handleSlice.raw(idx % handleSlice.size()));
+  }
+}
+
+TEST_P(OperatorTest, BroadcastAdd2x) {
+  ENABLED_BACKENDS(Interpreter, CPU, OpenCL, Habana);
+
+  auto *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {10, 1}, "input", false);
+  auto *bias = mod_.createConstant(ElemKind::FloatTy, {1, 1}, "bias");
+  bias->getPayloadMutable().getHandle() = {42};
+  auto *tile = F_->createTile("tile", bias, 10, 0);
+  auto *add = F_->createAdd("add", input, tile);
+  auto *save = F_->createSave("save", add);
+  auto *output = save->getPlaceholder();
+  bindings_.allocate(input)->getHandle() = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
+  bindings_.allocate(output);
+  EE_.compile(CompilationMode::Infer, F_);
+  for (int i = 0; i < 2; i++) {
+    Tensor expected(ElemKind::FloatTy, {10, 1});
+    expected.getHandle() = {42, 43, 44, 45, 46, 47, 48, 49, 50, 51};
+    EE_.run(bindings_);
+    EXPECT_TRUE(bindings_.get(output)->isEqual(expected));
   }
 }
 
@@ -6857,6 +6966,51 @@ TEST_P(OperatorStatelessTest, rowwiseQuantizedSLWSTest) {
                             ElemKind::FloatTy, ElemKind::Int8QTy, 0.01f,
                             parCloneCountOpt,
                             /* enableRowwiseQuantization */ true);
+}
+
+static SaveNode *setupBucketNode(Function *F, PlaceholderBindings &bindings,
+                                 Placeholder *input,
+                                 const std::string &suffix) {
+  std::vector<float> boundaries = {0.1, 2.5};
+
+  auto *bucketize =
+      F->createBucketizeNode("bucketize" + suffix, input, boundaries);
+  auto *save = F->createSave("save" + suffix, bucketize);
+  bindings.allocate(save->getPlaceholder());
+  return save;
+}
+
+/// Check the correctness of the bucketize operator.
+TEST_P(OperatorTest, Bucketize) {
+  ENABLED_BACKENDS(Interpreter);
+
+  auto *input1 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {3}, "input1", false);
+  bindings_.allocate(input1)->getHandle<float>() = {2.0, 4.0, 1.0};
+  auto *save1 =
+      setupBucketNode(F_, bindings_, input1, /* suffix */ std::to_string(1));
+
+  auto *input2 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {3, 2}, "input2", false);
+  bindings_.allocate(input2)->getHandle<float>() = {2.0, 3.0, 4.0,
+                                                    1.0, 2.0, 5.0};
+  auto *save2 =
+      setupBucketNode(F_, bindings_, input2, /* suffix */ std::to_string(2));
+
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run(bindings_);
+
+  // Check the result of the first op:
+  Tensor *result1 = bindings_.get(save1->getPlaceholder());
+  Tensor expected1(ElemKind::Int32ITy, {3});
+  expected1.getHandle<int32_t>() = {1, 2, 1};
+  EXPECT_TRUE(expected1.isEqual(*result1));
+
+  // Check the result of the second op:
+  Tensor *result2 = bindings_.get(save2->getPlaceholder());
+  Tensor expected2(ElemKind::Int32ITy, {3, 2});
+  expected2.getHandle<int32_t>() = {1, 2, 2, 1, 1, 2};
+  EXPECT_TRUE(expected2.isEqual(*result2));
 }
 
 /// Check the correctness of the SoftMax operator.

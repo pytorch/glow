@@ -25,6 +25,8 @@
 #include "glow/Graph/PlaceholderBindings.h"
 #include "glow/Graph/Utils.h"
 #include "glow/Optimizer/GraphOptimizer/FunctionPasses.h"
+#include "glow/Optimizer/GraphOptimizer/PassManager.h"
+#include "glow/Optimizer/GraphOptimizerPipeline/Pipeline.h"
 #include "glow/Quantization/Base/Base.h"
 #include "glow/Quantization/Quantization.h"
 
@@ -74,7 +76,11 @@ static bool shouldDeleteConstants(Function *F) {
   return true;
 }
 
-bool DCE::run(Function *F) {
+bool EmptyPass::run(Function *F, const CompilationContext &cctx) {
+  return false;
+}
+
+bool DCE::run(Function *F, const CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), getName());
 
   auto &nodes = F->getNodes();
@@ -238,7 +244,7 @@ static bool sinkTranposeBelowChannelShuffle(Function *F,
 }
 
 /// Code Sinking.
-bool SinkCode::run(Function *F) {
+bool SinkCode::run(Function *F, const CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), getName());
   bool changed = false;
   auto &nodes = F->getNodes();
@@ -647,7 +653,7 @@ static bool mayDependOnAny(llvm::ArrayRef<NodeValue> list, Node *N) {
 //   ---- ,  |    |    |         |     T|  B * C  |
 //    K       ----      ---------        ---------
 //             K            R                R
-bool MergeMatMul::run(Function *F) {
+bool MergeMatMul::run(Function *F, const CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), getName());
   bool changed = false;
   auto &nodes = F->getNodes();
@@ -713,7 +719,7 @@ bool MergeMatMul::run(Function *F) {
   return changed;
 }
 
-bool MergePadIntoConvolution::run(Function *F) {
+bool MergePadIntoConvolution::run(Function *F, const CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), getName());
   bool changed = false;
   for (auto &node : F->getNodes()) {
@@ -796,7 +802,8 @@ bool MergePadIntoConvolution::run(Function *F) {
 /// Transpose([N, H, W, C]) -> [N, C, H, W]
 /// Reshape([N, C, H, W]) -> [N, C * H * W]
 /// MatMul/FC([N, C * H * W], [C * H * W, K]) -> [N, K]
-bool MergeTransposeIntoMatMulOrFC::run(Function *F) {
+bool MergeTransposeIntoMatMulOrFC::run(Function *F,
+                                       const CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), getName());
   bool changed = false;
   for (auto &node : F->getNodes()) {
@@ -933,7 +940,8 @@ static bool areSlicesConsecutive(SliceNode *A, SliceNode *B, unsigned_t dim) {
   return true;
 }
 
-bool ConvertBroadcastedBatchMatMul::run(Function *F) {
+bool ConvertBroadcastedBatchMatMul::run(Function *F,
+                                        const CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), getName());
   bool changed = false;
   for (auto &node : F->getNodes()) {
@@ -1064,7 +1072,7 @@ static bool findSlicesThatSpanInput(llvm::ArrayRef<SliceNode *> input,
 }
 
 /// Merge multiple batched add nodes into a large batched-add node.
-bool MergeBatchedAdd::run(Function *F) {
+bool MergeBatchedAdd::run(Function *F, const CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), getName());
   bool changed = false;
   auto &nodes = F->getNodes();
@@ -1135,7 +1143,7 @@ bool MergeBatchedAdd::run(Function *F) {
 
 /// Optimize ReduceMean configuration with AvgPool if possible: last two axes
 /// in a 4D input must be reduced.
-bool OptimizeReduceMean::run(Function *F) {
+bool OptimizeReduceMean::run(Function *F, const CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), getName());
   bool changed = false;
   auto &nodes = F->getNodes();
@@ -1317,7 +1325,7 @@ bool normalizeWeights(Module *M, ConvolutionNode &CV,
   return true;
 }
 
-bool OptimizeBatchNorm::run(Function *F) {
+bool OptimizeBatchNorm::run(Function *F, const CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), getName());
   bool changed = false;
   auto &nodes = F->getNodes();
@@ -1578,7 +1586,7 @@ static NodeValue simplifyConcatNode(Function *F, ConcatNode *CN) {
 }
 
 /// Optimize Concat nodes.
-bool OptimizeConcatNodes::run(Function *F) {
+bool OptimizeConcatNodes::run(Function *F, const CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), getName());
   bool changed = false;
   auto &nodes = F->getNodes();
@@ -1601,7 +1609,7 @@ bool OptimizeConcatNodes::run(Function *F) {
 
 /// Simplify and canonicalize arithmetic nodes by detecting simple arithmetic
 /// identities.
-bool OptimizeArithmeticNodes::run(Function *F) {
+bool OptimizeArithmeticNodes::run(Function *F, const CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), getName());
   bool changed = false;
   // A worklist that contains the nodes to process.
@@ -1647,7 +1655,7 @@ bool OptimizeArithmeticNodes::run(Function *F) {
 }
 
 /// Statically transpose Constants.
-bool TransposeConstants::run(Function *F) {
+bool TransposeConstants::run(Function *F, const CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), getName());
   auto &nodes = F->getNodes();
   bool changed = false;
@@ -1822,7 +1830,7 @@ static bool deduplicateConstants(Module *M) {
 }
 
 /// Common Subexpression Elimination.
-bool CSE::run(Function *F) {
+bool CSE::run(Function *F, const CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), getName());
   CSEVisitor visitor;
 
@@ -1840,7 +1848,7 @@ bool CSE::run(Function *F) {
 
 /// Eliminate SliceNode when the input is SplatNode.
 /// Slice(Splat(args)) -> Splat(args')
-bool OptimizeSliceOfSplat::run(Function *F) {
+bool OptimizeSliceOfSplat::run(Function *F, const CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), getName());
   bool changed = false;
   for (auto &node : F->getNodes()) {
@@ -1862,7 +1870,8 @@ bool OptimizeSliceOfSplat::run(Function *F) {
 }
 
 /// Optimize TransposeNode into ReshapeNode when it actually moves no data.
-bool OptimizeTransposeIntoReshape::run(Function *F) {
+bool OptimizeTransposeIntoReshape::run(Function *F,
+                                       const CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), getName());
   bool changed = false;
 
@@ -1900,7 +1909,7 @@ bool OptimizeTransposeIntoReshape::run(Function *F) {
 }
 
 /// Optimize reshape nodes.
-bool OptimizeReshape::run(Function *F) {
+bool OptimizeReshape::run(Function *F, const CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), getName());
   bool changed = false;
   for (auto &node : F->getNodes()) {
@@ -2094,7 +2103,7 @@ static NodeValue convertConstant(Module &mod, Constant &constant,
 /// This method potentially changes the semantic of the program
 /// because it eliminates some precision loss steps.
 /// However, this actually improves accuracy so we can always do it.
-bool OptimizeConversions::run(Function *F) {
+bool OptimizeConversions::run(Function *F, const CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), getName());
   bool changed = false;
   llvm::SmallVector<Node *, 8> conversions;
@@ -2178,9 +2187,250 @@ static Node *cloneNodeWithNewTypes(Function *F, Node *N,
   return newNode;
 }
 
+template <class T, class U>
+using enable_if_same_t = std::enable_if<std::is_same<T, U>::value, U>;
+#define FUNCTION_ENABLE_IF_TEMPLATE(NODE_NAME_)                                \
+  template <class T, typename... Args>                                         \
+  typename enable_if_same_t<T, NODE_NAME_##Node>::type static
+
+FUNCTION_ENABLE_IF_TEMPLATE(AvgPool) * createNode(Function &F, Args... args) {
+  return F.createAvgPool(args...);
+}
+FUNCTION_ENABLE_IF_TEMPLATE(MaxPool) * createNode(Function &F, Args... args) {
+  return F.createMaxPool(args...);
+}
+FUNCTION_ENABLE_IF_TEMPLATE(Add)
+*createNode(Function &F, Args... args) { return F.createAdd(args...); }
+FUNCTION_ENABLE_IF_TEMPLATE(Sub)
+*createNode(Function &F, Args... args) { return F.createSub(args...); }
+FUNCTION_ENABLE_IF_TEMPLATE(Mul)
+*createNode(Function &F, Args... args) { return F.createMul(args...); }
+FUNCTION_ENABLE_IF_TEMPLATE(Div)
+*createNode(Function &F, Args... args) { return F.createDiv(args...); }
+FUNCTION_ENABLE_IF_TEMPLATE(Min)
+*createNode(Function &F, Args... args) { return F.createMin(args...); }
+FUNCTION_ENABLE_IF_TEMPLATE(Max)
+*createNode(Function &F, Args... args) { return F.createMax(args...); }
+FUNCTION_ENABLE_IF_TEMPLATE(MatMul)
+*createNode(Function &F, Args... args) { return F.createMatMul(args...); }
+
+/// Sink Rescale down with Pooling node.
+/// PoolingNode(Rescale(X)) -> Rescale(PoolingNode(X)).
+/// Apply this transformation for AvgPool and MaxPool.
+template <typename T>
+static bool sinkDownRescaleToPoolingNode(Function &F, T *PN) {
+  LOG_SCOPE(F.getLogContext(), "sinkDownRescaleToPoolingNode")
+
+  bool changed = false;
+
+  if (auto *rescale = dyn_cast<RescaleQuantizedNode>(PN->getInput())) {
+    T *newPN = createNode<T>(F, PN->getName(), rescale->getInput(),
+                             PN->getKernels(), PN->getStrides(), PN->getPads());
+    auto rescaleOutTy = F.getParent()->uniqueTypeWithNewShape(
+        rescale->getResult().getType(), PN->getResult().dims());
+    auto *newRescale = F.createRescaleQuantized(
+        rescale->getName(), newPN->getResult(), rescaleOutTy);
+    PN->getResult().replaceAllUsesOfWith(newRescale);
+    for (size_t i = 1; i < PN->getNumResults(); i++) {
+      PN->getNthResult(i).replaceAllUsesOfWith(newPN->getNthResult(i));
+    }
+    changed = true;
+  }
+
+  return changed;
+}
+
+/// Combine Rescale down with Arithmetic node.
+///   ArithmeticNode(Rescale(X), Rescale(Y)) -> ArithmeticNode(X, Y).
+///   ArithmeticNode(Rescale(X), Y) -> ArithmeticNode(X, Y).
+///   ArithmeticNode(X, Rescale(Y)) -> ArithmeticNode(X, Y).
+/// Apply this optimization for Add, Sub, Mul, Div, Min, Max.
+template <typename T>
+static bool combineDownRescaleToArithmeticNode(Function &F, T *AN) {
+  LOG_SCOPE(F.getLogContext(), "combineDownRescaleToArithmeticNode")
+
+  bool changed = false;
+
+  if (auto *rescale = dyn_cast<RescaleQuantizedNode>(AN->getLHS())) {
+    T *newAN = createNode<T>(F, AN->getName(), AN->getResult().getType(),
+                             rescale->getInput(), AN->getRHS());
+    AN->getResult().replaceAllUsesOfWith(newAN);
+    AN = newAN;
+    changed = true;
+  }
+  if (auto *rescale = dyn_cast<RescaleQuantizedNode>(AN->getRHS())) {
+    T *newAN = createNode<T>(F, AN->getName(), AN->getResult().getType(),
+                             AN->getLHS(), rescale->getInput());
+    AN->getResult().replaceAllUsesOfWith(newAN);
+    changed = true;
+  }
+
+  return changed;
+}
+
+/// Sink Rescale nodes down when possible.
+/// \returns if anything was changed in the given function.
+static bool sinkRescaleQuantizedNode(Function *F) {
+  LOG_SCOPE(F->getLogContext(), "sinkRescaleQuantizedNode");
+  bool changed = false;
+  for (auto &node : F->getNodes()) {
+    // Sink Rescale below Reshape node.
+    // Reshape(Rescale(X)) -> Rescale(Reshape(X)).
+    if (auto *reshape = dyn_cast<ReshapeNode>(&node)) {
+      auto *rescale = dyn_cast<RescaleQuantizedNode>(reshape->getInput());
+      if (!rescale) {
+        continue;
+      }
+
+      auto *newReshape = F->createReshape(
+          reshape->getName(), rescale->getInput(), reshape->getResult().dims());
+      auto *newRescale = F->createRescaleQuantized(
+          rescale->getName(), newReshape, reshape->getResult().getType());
+      reshape->getResult().replaceAllUsesOfWith(newRescale);
+
+      changed = true;
+      continue;
+    }
+
+    // Sink Rescale below Slice node.
+    // Slice(Rescale(X)) -> Rescale(Slice(X)).
+    if (auto *slice = dyn_cast<SliceNode>(&node)) {
+      auto *rescale = dyn_cast<RescaleQuantizedNode>(slice->getInput());
+      if (!rescale) {
+        continue;
+      }
+
+      auto sliceOutTy = F->getParent()->uniqueTypeWithNewShape(
+          rescale->getInput().getType(), slice->getResult().dims());
+      auto *newSlice = F->createSlice(slice->getName(), rescale->getInput(),
+                                      slice->getStart(), sliceOutTy);
+      auto *newRescale = F->createRescaleQuantized(
+          rescale->getName(), newSlice, slice->getResult().getType());
+      slice->getResult().replaceAllUsesOfWith(newRescale);
+
+      changed = true;
+      continue;
+    }
+
+    // Sink Rescale below Transpose node.
+    // Transpose(Rescale(X)) -> Rescale(Transpose(X)).
+    if (auto *transpose = dyn_cast<TransposeNode>(&node)) {
+      auto *rescale = dyn_cast<RescaleQuantizedNode>(transpose->getInput());
+      if (!rescale) {
+        continue;
+      }
+
+      auto *newTranspose = F->createTranspose(
+          transpose->getName(), rescale->getInput(), transpose->getShuffle());
+      auto rescaleOutTy = F->getParent()->uniqueTypeWithNewShape(
+          rescale->getResult().getType(), transpose->getResult().dims());
+      auto *newRescale = F->createRescaleQuantized(rescale->getName(),
+                                                   newTranspose, rescaleOutTy);
+      transpose->getResult().replaceAllUsesOfWith(newRescale);
+
+      changed = true;
+      continue;
+    }
+
+    if (auto *PN = dyn_cast<AvgPoolNode>(&node)) {
+      changed |= sinkDownRescaleToPoolingNode<AvgPoolNode>(*F, PN);
+      continue;
+    }
+
+    if (auto *PN = dyn_cast<MaxPoolNode>(&node)) {
+      changed |= sinkDownRescaleToPoolingNode<MaxPoolNode>(*F, PN);
+      continue;
+    }
+
+    // Combine Rescale down with FullyConnected node.
+    // FullyConnected(Rescale(X)) -> FullyConnected(X).
+    if (auto *FC = dyn_cast<FullyConnectedNode>(&node)) {
+      auto *rescale = dyn_cast<RescaleQuantizedNode>(FC->getInput());
+      if (!rescale) {
+        continue;
+      }
+
+      auto *newFC = F->createFullyConnected(FC->getName(), rescale->getInput(),
+                                            FC->getWeights(), FC->getBias(),
+                                            FC->getResult().getType());
+      FC->getResult().replaceAllUsesOfWith(newFC);
+
+      changed = true;
+      continue;
+    }
+
+    // Combine Rescale down with Convolution node.
+    // Convolution(Rescale(X), F, B) -> Convolution(X, F, B).
+    // Convolution(X, Rescale(F), B) -> Convolution(X, F, B).
+    // Convolution(X, F, Rescale(B)) -> Convolution(X, F, B).
+    // ... and different combinations.
+    if (auto *CN = dyn_cast<ConvolutionNode>(&node)) {
+      auto *rescaleX = dyn_cast<RescaleQuantizedNode>(CN->getInput());
+      auto *rescaleF = dyn_cast<RescaleQuantizedNode>(CN->getFilter());
+      auto *rescaleB = dyn_cast<RescaleQuantizedNode>(CN->getBias());
+      auto newX = rescaleX ? rescaleX->getInput() : CN->getInput();
+      auto newF = rescaleF ? rescaleF->getInput() : CN->getFilter();
+      auto newB = rescaleB ? rescaleB->getInput() : CN->getBias();
+      if (rescaleX || rescaleF || rescaleB) {
+        auto *newCN = F->createConv(CN->getName(), newX, newF, newB,
+                                    CN->getResult().getType(), CN->getKernels(),
+                                    CN->getStrides(), CN->getPads(),
+                                    CN->getGroup(), CN->getDilation());
+        CN->getResult().replaceAllUsesOfWith(newCN);
+        changed = true;
+      }
+      continue;
+    }
+
+    if (auto *AN = dyn_cast<AddNode>(&node)) {
+      changed |= combineDownRescaleToArithmeticNode<AddNode>(*F, AN);
+      continue;
+    }
+    if (auto *AN = dyn_cast<SubNode>(&node)) {
+      changed |= combineDownRescaleToArithmeticNode<SubNode>(*F, AN);
+      continue;
+    }
+    if (auto *AN = dyn_cast<MulNode>(&node)) {
+      changed |= combineDownRescaleToArithmeticNode<MulNode>(*F, AN);
+      continue;
+    }
+    if (auto *AN = dyn_cast<DivNode>(&node)) {
+      changed |= combineDownRescaleToArithmeticNode<DivNode>(*F, AN);
+      continue;
+    }
+    if (auto *AN = dyn_cast<MinNode>(&node)) {
+      changed |= combineDownRescaleToArithmeticNode<MinNode>(*F, AN);
+      continue;
+    }
+    if (auto *AN = dyn_cast<MaxNode>(&node)) {
+      changed |= combineDownRescaleToArithmeticNode<MaxNode>(*F, AN);
+      continue;
+    }
+
+    // Combine Rescale down with Relu node.
+    //   ReluNode(Rescale(in)) -> ReluNode(in).
+    if (auto *RN = dyn_cast<ReluNode>(&node)) {
+      if (auto *rescale = dyn_cast<RescaleQuantizedNode>(RN->getInput())) {
+        auto *newRN = F->createRELU(RN->getName(), rescale->getInput(),
+                                    RN->getResult().getType());
+        RN->getResult().replaceAllUsesOfWith(newRN);
+        changed = true;
+      }
+      continue;
+    }
+
+    if (auto *MN = dyn_cast<MatMulNode>(&node)) {
+      changed |= combineDownRescaleToArithmeticNode<MatMulNode>(*F, MN);
+      continue;
+    }
+  }
+
+  return changed;
+}
+
 /// Eliminate node sequences that are related to quantization.
 /// \returns if anything was changed in the given function.
-bool OptimizeQuantization::run(Function *F) {
+bool OptimizeQuantization::run(Function *F, const CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), getName());
   bool changed = false;
   // A worklist that contains the nodes to process.
@@ -2342,247 +2592,11 @@ bool OptimizeQuantization::run(Function *F) {
   }   // For each item in the worklist.
 
   changed |= optimizeQuantizedMaxSplat(F);
-  return changed;
-}
 
-template <class T, class U>
-using enable_if_same_t = std::enable_if<std::is_same<T, U>::value, U>;
-#define FUNCTION_ENABLE_IF_TEMPLATE(NODE_NAME_)                                \
-  template <class T, typename... Args>                                         \
-  typename enable_if_same_t<T, NODE_NAME_##Node>::type static
-
-FUNCTION_ENABLE_IF_TEMPLATE(AvgPool) * createNode(Function &F, Args... args) {
-  return F.createAvgPool(args...);
-}
-FUNCTION_ENABLE_IF_TEMPLATE(MaxPool) * createNode(Function &F, Args... args) {
-  return F.createMaxPool(args...);
-}
-FUNCTION_ENABLE_IF_TEMPLATE(Add)
-*createNode(Function &F, Args... args) { return F.createAdd(args...); }
-FUNCTION_ENABLE_IF_TEMPLATE(Sub)
-*createNode(Function &F, Args... args) { return F.createSub(args...); }
-FUNCTION_ENABLE_IF_TEMPLATE(Mul)
-*createNode(Function &F, Args... args) { return F.createMul(args...); }
-FUNCTION_ENABLE_IF_TEMPLATE(Div)
-*createNode(Function &F, Args... args) { return F.createDiv(args...); }
-FUNCTION_ENABLE_IF_TEMPLATE(Min)
-*createNode(Function &F, Args... args) { return F.createMin(args...); }
-FUNCTION_ENABLE_IF_TEMPLATE(Max)
-*createNode(Function &F, Args... args) { return F.createMax(args...); }
-FUNCTION_ENABLE_IF_TEMPLATE(MatMul)
-*createNode(Function &F, Args... args) { return F.createMatMul(args...); }
-
-/// Sink Rescale down with Pooling node.
-/// PoolingNode(Rescale(X)) -> Rescale(PoolingNode(X)).
-/// Apply this transformation for AvgPool and MaxPool.
-template <typename T>
-static bool sinkDownRescaleToPoolingNode(Function &F, T *PN) {
-  LOG_SCOPE(F.getLogContext(), "sinkDownRescaleToPoolingNode")
-
-  bool changed = false;
-
-  if (auto *rescale = dyn_cast<RescaleQuantizedNode>(PN->getInput())) {
-    T *newPN = createNode<T>(F, PN->getName(), rescale->getInput(),
-                             PN->getKernels(), PN->getStrides(), PN->getPads());
-    auto rescaleOutTy = F.getParent()->uniqueTypeWithNewShape(
-        rescale->getResult().getType(), PN->getResult().dims());
-    auto *newRescale = F.createRescaleQuantized(
-        rescale->getName(), newPN->getResult(), rescaleOutTy);
-    PN->getResult().replaceAllUsesOfWith(newRescale);
-    for (size_t i = 1; i < PN->getNumResults(); i++) {
-      PN->getNthResult(i).replaceAllUsesOfWith(newPN->getNthResult(i));
-    }
-    changed = true;
+  // If nothing has changed then sink rescale quantization nodes.
+  if (!changed) {
+    changed = sinkRescaleQuantizedNode(F);
   }
-
-  return changed;
-}
-
-/// Combine Rescale down with Arithmetic node.
-///   ArithmeticNode(Rescale(X), Rescale(Y)) -> ArithmeticNode(X, Y).
-///   ArithmeticNode(Rescale(X), Y) -> ArithmeticNode(X, Y).
-///   ArithmeticNode(X, Rescale(Y)) -> ArithmeticNode(X, Y).
-/// Apply this optimization for Add, Sub, Mul, Div, Min, Max.
-template <typename T>
-static bool combineDownRescaleToArithmeticNode(Function &F, T *AN) {
-  LOG_SCOPE(F.getLogContext(), "combineDownRescaleToArithmeticNode")
-
-  bool changed = false;
-
-  if (auto *rescale = dyn_cast<RescaleQuantizedNode>(AN->getLHS())) {
-    T *newAN = createNode<T>(F, AN->getName(), AN->getResult().getType(),
-                             rescale->getInput(), AN->getRHS());
-    AN->getResult().replaceAllUsesOfWith(newAN);
-    AN = newAN;
-    changed = true;
-  }
-  if (auto *rescale = dyn_cast<RescaleQuantizedNode>(AN->getRHS())) {
-    T *newAN = createNode<T>(F, AN->getName(), AN->getResult().getType(),
-                             AN->getLHS(), rescale->getInput());
-    AN->getResult().replaceAllUsesOfWith(newAN);
-    changed = true;
-  }
-
-  return changed;
-}
-
-/// Sink Rescale nodes down when possible.
-/// \returns if anything was changed in the given function.
-bool SinkRescaleQuantizedNode::run(Function *F) {
-  LOG_SCOPE(F->getLogContext(), getName());
-  bool changed = false;
-  for (auto &node : F->getNodes()) {
-    // Sink Rescale below Reshape node.
-    // Reshape(Rescale(X)) -> Rescale(Reshape(X)).
-    if (auto *reshape = dyn_cast<ReshapeNode>(&node)) {
-      auto *rescale = dyn_cast<RescaleQuantizedNode>(reshape->getInput());
-      if (!rescale) {
-        continue;
-      }
-
-      auto *newReshape = F->createReshape(
-          reshape->getName(), rescale->getInput(), reshape->getResult().dims());
-      auto *newRescale = F->createRescaleQuantized(
-          rescale->getName(), newReshape, reshape->getResult().getType());
-      reshape->getResult().replaceAllUsesOfWith(newRescale);
-
-      changed = true;
-      continue;
-    }
-
-    // Sink Rescale below Slice node.
-    // Slice(Rescale(X)) -> Rescale(Slice(X)).
-    if (auto *slice = dyn_cast<SliceNode>(&node)) {
-      auto *rescale = dyn_cast<RescaleQuantizedNode>(slice->getInput());
-      if (!rescale) {
-        continue;
-      }
-
-      auto sliceOutTy = F->getParent()->uniqueTypeWithNewShape(
-          rescale->getInput().getType(), slice->getResult().dims());
-      auto *newSlice = F->createSlice(slice->getName(), rescale->getInput(),
-                                      slice->getStart(), sliceOutTy);
-      auto *newRescale = F->createRescaleQuantized(
-          rescale->getName(), newSlice, slice->getResult().getType());
-      slice->getResult().replaceAllUsesOfWith(newRescale);
-
-      changed = true;
-      continue;
-    }
-
-    // Sink Rescale below Transpose node.
-    // Transpose(Rescale(X)) -> Rescale(Transpose(X)).
-    if (auto *transpose = dyn_cast<TransposeNode>(&node)) {
-      auto *rescale = dyn_cast<RescaleQuantizedNode>(transpose->getInput());
-      if (!rescale) {
-        continue;
-      }
-
-      auto *newTranspose = F->createTranspose(
-          transpose->getName(), rescale->getInput(), transpose->getShuffle());
-      auto rescaleOutTy = F->getParent()->uniqueTypeWithNewShape(
-          rescale->getResult().getType(), transpose->getResult().dims());
-      auto *newRescale = F->createRescaleQuantized(rescale->getName(),
-                                                   newTranspose, rescaleOutTy);
-      transpose->getResult().replaceAllUsesOfWith(newRescale);
-
-      changed = true;
-      continue;
-    }
-
-    if (auto *PN = dyn_cast<AvgPoolNode>(&node)) {
-      changed |= sinkDownRescaleToPoolingNode<AvgPoolNode>(*F, PN);
-      continue;
-    }
-
-    if (auto *PN = dyn_cast<MaxPoolNode>(&node)) {
-      changed |= sinkDownRescaleToPoolingNode<MaxPoolNode>(*F, PN);
-      continue;
-    }
-
-    // Combine Rescale down with FullyConnected node.
-    // FullyConnected(Rescale(X)) -> FullyConnected(X).
-    if (auto *FC = dyn_cast<FullyConnectedNode>(&node)) {
-      auto *rescale = dyn_cast<RescaleQuantizedNode>(FC->getInput());
-      if (!rescale) {
-        continue;
-      }
-
-      auto *newFC = F->createFullyConnected(FC->getName(), rescale->getInput(),
-                                            FC->getWeights(), FC->getBias(),
-                                            FC->getResult().getType());
-      FC->getResult().replaceAllUsesOfWith(newFC);
-
-      changed = true;
-      continue;
-    }
-
-    // Combine Rescale down with Convolution node.
-    // Convolution(Rescale(X), F, B) -> Convolution(X, F, B).
-    // Convolution(X, Rescale(F), B) -> Convolution(X, F, B).
-    // Convolution(X, F, Rescale(B)) -> Convolution(X, F, B).
-    // ... and different combinations.
-    if (auto *CN = dyn_cast<ConvolutionNode>(&node)) {
-      auto *rescaleX = dyn_cast<RescaleQuantizedNode>(CN->getInput());
-      auto *rescaleF = dyn_cast<RescaleQuantizedNode>(CN->getFilter());
-      auto *rescaleB = dyn_cast<RescaleQuantizedNode>(CN->getBias());
-      auto newX = rescaleX ? rescaleX->getInput() : CN->getInput();
-      auto newF = rescaleF ? rescaleF->getInput() : CN->getFilter();
-      auto newB = rescaleB ? rescaleB->getInput() : CN->getBias();
-      if (rescaleX || rescaleF || rescaleB) {
-        auto *newCN = F->createConv(CN->getName(), newX, newF, newB,
-                                    CN->getResult().getType(), CN->getKernels(),
-                                    CN->getStrides(), CN->getPads(),
-                                    CN->getGroup(), CN->getDilation());
-        CN->getResult().replaceAllUsesOfWith(newCN);
-        changed = true;
-      }
-      continue;
-    }
-
-    if (auto *AN = dyn_cast<AddNode>(&node)) {
-      changed |= combineDownRescaleToArithmeticNode<AddNode>(*F, AN);
-      continue;
-    }
-    if (auto *AN = dyn_cast<SubNode>(&node)) {
-      changed |= combineDownRescaleToArithmeticNode<SubNode>(*F, AN);
-      continue;
-    }
-    if (auto *AN = dyn_cast<MulNode>(&node)) {
-      changed |= combineDownRescaleToArithmeticNode<MulNode>(*F, AN);
-      continue;
-    }
-    if (auto *AN = dyn_cast<DivNode>(&node)) {
-      changed |= combineDownRescaleToArithmeticNode<DivNode>(*F, AN);
-      continue;
-    }
-    if (auto *AN = dyn_cast<MinNode>(&node)) {
-      changed |= combineDownRescaleToArithmeticNode<MinNode>(*F, AN);
-      continue;
-    }
-    if (auto *AN = dyn_cast<MaxNode>(&node)) {
-      changed |= combineDownRescaleToArithmeticNode<MaxNode>(*F, AN);
-      continue;
-    }
-
-    // Combine Rescale down with Relu node.
-    //   ReluNode(Rescale(in)) -> ReluNode(in).
-    if (auto *RN = dyn_cast<ReluNode>(&node)) {
-      if (auto *rescale = dyn_cast<RescaleQuantizedNode>(RN->getInput())) {
-        auto *newRN = F->createRELU(RN->getName(), rescale->getInput(),
-                                    RN->getResult().getType());
-        RN->getResult().replaceAllUsesOfWith(newRN);
-        changed = true;
-      }
-      continue;
-    }
-
-    if (auto *MN = dyn_cast<MatMulNode>(&node)) {
-      changed |= combineDownRescaleToArithmeticNode<MatMulNode>(*F, MN);
-      continue;
-    }
-  }
-
   return changed;
 }
 
@@ -2637,7 +2651,7 @@ static bool getFloatScalar(Node *node, float *retFloat) {
 
 /// Fold leakyRelu operations expressed as a sub-graph Max(A, Mul(A, scalar))
 /// and replace it by PRelu(Splat).
-bool FoldLeakyRelu::run(Function *F) {
+bool FoldLeakyRelu::run(Function *F, const CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), getName());
   bool changed = false;
   auto &nodes = F->getNodes();
@@ -2724,7 +2738,7 @@ getChannelShuffleParams(const ReshapeNode &node) {
 }
 
 // Fold Reshape->Transpose->Reshape into ChannelShuffle when applicable.
-bool FoldChannelShuffle::run(Function *F) {
+bool FoldChannelShuffle::run(Function *F, const CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), getName());
   // FIXME: This optimization doesn't check its applicability carefully enough
   // and kicks in when it shouldn't.  See GraphOptzTest.NoFoldChannelShuffle.
@@ -2767,18 +2781,8 @@ bool FoldChannelShuffle::run(Function *F) {
 void glow::fold(Function *F, CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), "glow::fold")
 
-  (void)cctx;
-  // Get Reshape nodes merged into constants to simplify folding.
-  OptimizeReshape().run(F);
-
-  // Fold sub-graphs corresponding to leakyRelu.
-  FoldLeakyRelu().run(F);
-
-  // Fold Reshape->Transpose->Reshape into ChannelShuffle when applicable.
-  FoldChannelShuffle().run(F);
-
-  // Perform Dead Code Elimination.
-  DCE().run(F);
+  FunctionPassManager FPM("FoldFPM", createDefaultFoldPassPipeline());
+  FPM.run(F, cctx);
 }
 
 void glow::fold(Function *F, CompilationMode mode) {
@@ -2787,110 +2791,24 @@ void glow::fold(Function *F, CompilationMode mode) {
   fold(F, cctx);
 }
 
+void glow::optimize(Function *F, CompilationContext &cctx, const Backend &B) {
+  LOG_SCOPE(F->getLogContext(), "glow::optimize")
+
+  FunctionPassManager FPM("TargetDependentGraphOptzFPM",
+                          B.getOptimizationPipeline());
+  FPM.run(F, cctx);
+}
+
 void glow::optimize(Function *F, CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), "glow::optimize")
+
   // Indicates if the given function is completely loaded. A temporary
   // workaround until #3213 is complete.
   F->setState(FunctionState::FuncLoaded);
-  // Optimize may be called after backend specific transformations and some
-  // nodes may have become unused. It is a good idea to remove them, before
-  // proceeding with any further optimizations.
-  DCE().run(F);
 
-  // Sink transpose operations in an attempt to cancel them out.
-  // Perform code sinking until a fixed-point is reached.
-  // On big functions, the number of iterations until the fixpoint
-  // is usually at most 2 or 3 iterations.
-  while (SinkCode().run(F)) {
-    // Perform Dead Code Elimination between rounds of code sinking.
-    DCE().run(F);
-    VLOG_IF_EVERY_N(0, google::COUNTER > 1, 100)
-        << "Warning: sinkCode optimization applied another 100 iterations "
-           "without reaching fixed point";
-  }
-
-  // Transposes that don't move data are optimized into Reshapes, which enables
-  // further optimizations.
-  OptimizeTransposeIntoReshape().run(F);
-  // Need to remove old uses that would prohibit Reshape(Constant) optimization.
-  DCE().run(F);
-
-  // Reshapes and transposes can prevent other optimizations from triggering,
-  // so try to optimize them out first.
-  OptimizeReshape().run(F);
-  if (cctx.compMode == CompilationMode::Infer) {
-    TransposeConstants().run(F);
-  }
-
-  // Perform Common Subexpression Elimination.
-  CSE().run(F);
-
-  // Optimize Pad nodes
-  MergePadIntoConvolution().run(F);
-
-  // Perform Dead Code Elimination.
-  DCE().run(F);
-
-  // Merge multiple matmul nodes into a single large matmul.
-  MergeMatMul().run(F);
-
-  // Merge multiple batched adds into a larger batched add.
-  MergeBatchedAdd().run(F);
-
-  // Merge ReduceMean into AveragePool if possible.
-  OptimizeReduceMean().run(F);
-
-  // Convert BatchMatMuls with a broadcasted RHS to a single MatMul.
-  ConvertBroadcastedBatchMatMul().run(F);
-
-  // Perform Dead Code Elimination.
-  DCE().run(F);
-
-  if (cctx.compMode == CompilationMode::Infer) {
-    // Merge batch normalization operations.
-    // Do after transpose constant folding, as weight transposes can prevent
-    // the optimization from triggering.
-    OptimizeBatchNorm().run(F);
-  }
-
-  // Perform Common Subexpression Elimination.
-  CSE().run(F);
-
-  // Optimize Concat nodes.
-  OptimizeConcatNodes().run(F);
-
-  // Optimize arithmetic nodes based on algebraic identities.
-  OptimizeArithmeticNodes().run(F);
-
-  // Optimize Tensor shape transformations.
-  OptimizeSliceOfSplat().run(F);
-
-  // Merge Transpose into MatMul/FC.
-  // Run DCE to ensure correct number of node users.
-  DCE().run(F);
-  MergeTransposeIntoMatMulOrFC().run(F);
-
-  // Optimize away intermediate type conversions.
-  OptimizeConversions().run(F);
-
-  // Optimize quantization related operators.
-  while (OptimizeQuantization().run(F) || SinkRescaleQuantizedNode().run(F)) {
-    DCE().run(F);
-    VLOG_IF_EVERY_N(0, google::COUNTER > 1, 100)
-        << "Warning: Quantization optimization applied another 100 iterations "
-           "without reaching fixed point";
-  }
-
-  // Optimize reshapes introduced during above optimizations.
-  OptimizeReshape().run(F);
-
-  // Run a round of constant folding.
-  if (cctx.optimizationOpts.enableConstantFolding) {
-    ConstantFold().run(F);
-  }
-
-  // Perform Dead Code Elimination.
-  DCE().run(F);
+  FunctionPassManager FPM("TargetIndependentGraphOptzFPM",
+                          createDefaultGraphOptimizationPassPipeline());
+  FPM.run(F, cctx);
 }
 
 void glow::optimize(Function *F, CompilationMode mode) {
@@ -2980,7 +2898,7 @@ llvm::Error glow::optimizeFunctionBeforeLowering(Function *F,
   // the performance backends that support natively such high-level operators.
   ::glow::fold(F, cctx);
 
-  // Optimize the graph.
+  // Optimize the graph. Only runs optimizations that are target-independent.
   ::glow::optimize(F, cctx);
   return llvm::Error::success();
 }
@@ -3010,14 +2928,14 @@ llvm::Error glow::optimizeFunction(Function *F, const Backend &B,
   // instrument with profiling nodes. This must be done after lowering.
   transformForPrecisionMode(B, F, cctx);
 
-  // Optimize the graph again.
-  ::glow::optimize(F, cctx);
+  // Optimize the graph again, but given the backend's preferred pipeline.
+  ::glow::optimize(F, cctx, B);
 
   // Allow the backend to transform the graph after lowering.
   if (B.transformPostLowering(F, cctx)) {
     // Optimize the graph again after the backend transformation.
     // In particular, DCE is very likely to be useful.
-    ::glow::optimize(F, cctx);
+    ::glow::optimize(F, cctx, B);
   }
 
   return checkAllNodesSupported(*F, B);

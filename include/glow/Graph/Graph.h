@@ -439,6 +439,12 @@ public:
                              unsigned_t kernel, unsigned_t stride,
                              unsigned_t pad);
 
+  /// Creates and \returns an AdaptiveAvgPool node with \p name, \p input, and
+  /// \p outTy. The AdaptiveAvgPoolNode will perform average pooling over the
+  /// input so that the result is of the shape specified by \p outTy.
+  AdaptiveAvgPoolNode *createAdaptiveAvgPool(llvm::StringRef name,
+                                             NodeValue input, TypeRef outTy);
+
   /// Creates and \returns a FullyConnectedNode with \p name, \p input, weights
   /// \p W, bias \p B. If \p input is not 2 dimensional then it is flattened
   /// along \p axis. Note, output type and outputDepth are inferred based on
@@ -639,6 +645,14 @@ public:
                            NodeValue beta, NodeValue gamma, NodeValue mean,
                            NodeValue var, unsigned_t channelIdx = 0,
                            float epsilon = 1e-5, float momentum = 0.9);
+
+  /// Bucketizes the input tensor based on monotonically increasing \p
+  /// boundaries for each value in \p input. For each value x in input, the
+  /// operator \returns index i given boundaries[i-1] < x <= boundaries[i]. If
+  /// the value x is beyond the bounds of boundaries, 0 or len(boundaries) is
+  /// returned as appropriate.
+  BucketizeNode *createBucketizeNode(llvm::StringRef name, NodeValue input,
+                                     llvm::ArrayRef<float> boundaries);
 
   LocalResponseNormalizationNode *createLocalResponseNormalization(
       llvm::StringRef name, NodeValue input, unsigned_t halfWindowSize = 2,

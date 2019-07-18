@@ -211,7 +211,7 @@ TEST_F(HabanaBackendTest, FuseConvAdd) {
 
   ConvolutionNode *CVN = F_->createConv(ctx_, "conv", A, 3, 5, 1, 2, 1);
   MaxPoolNode *PN = F_->createMaxPool("pool", B, 5, 1, 2);
-  AddNode *AN = F_->createAdd("add", CVN, PN);
+  AddNode *AN = F_->createAdd("add", CVN, PN->getResult());
   SaveNode *SN = F_->createSave("save", AN);
 
   // Invoke Habana backend specific graph optimisations.
@@ -301,7 +301,7 @@ TEST_F(HabanaBackendTest, FuseConvAddRelu) {
 
   ConvolutionNode *CVN = F_->createConv(ctx_, "conv", A, 3, 5, 1, 2, 1);
   MaxPoolNode *PN = F_->createMaxPool("pool", B, 5, 1, 2);
-  AddNode *AN = F_->createAdd("add", CVN, PN);
+  AddNode *AN = F_->createAdd("add", CVN, PN->getResult());
   ReluNode *RN = F_->createRELU("relu", AN);
   SaveNode *SN = F_->createSave("save", RN);
 
@@ -513,7 +513,7 @@ TEST_F(HabanaBackendTest, MaxPool) {
                                         "output", false);
 
   auto *pool = F_->createMaxPool("pool", input, {2, 2}, {1, 1}, {0, 0, 0, 0});
-  F_->createSave("save", pool, output);
+  F_->createSave("save", pool->getResult(), output);
 
   Tensor *in = ctx_.allocate(input);
   auto IH = in->getHandle<int8_t>();
@@ -566,7 +566,7 @@ TEST_F(HabanaBackendTest, MaxPoolRelu) {
                                         "output", false);
 
   auto *pool = F_->createMaxPool("pool", input, {2, 2}, {1, 1}, {0, 0, 0, 0});
-  auto *relu = F_->createRELU("relu", pool);
+  auto *relu = F_->createRELU("relu", pool->getResult());
   F_->createSave("save", relu, output);
 
   Tensor *in = ctx_.allocate(input);

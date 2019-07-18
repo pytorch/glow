@@ -148,6 +148,9 @@ private:
 
   /// Load a PyTorch max_pool2d node.
   void loadMaxPool2d(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch adaptive_avg_pool2d node.
+  void loadAdaptiveAvgPool2d(const torch::jit::Node *ptNode);
 };
 
 #endif // GLOW_IMPORTER_PYTORCH_PYTORCHMODELLOADER_H

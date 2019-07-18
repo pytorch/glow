@@ -30,6 +30,7 @@ class IRFunction;
 class Node;
 class PlaceholderBindings;
 class IRGenVisitor;
+class FunctionPassPipeline;
 
 // This is the interface that glow backends need to implement.
 class Backend {
@@ -97,6 +98,9 @@ public:
   /// \returns true if the Backend wants the buffer sharing optimization
   /// performed.
   virtual bool shouldShareBuffers() const { return true; }
+
+  /// Modify the \p optimizationOpts however desired.
+  virtual FunctionPassPipeline getOptimizationPipeline() const;
 
   /// \returns true if the Backend supports partial, unpadded tensors for
   /// inputs that can have variable size (e.g., embedding indices).
