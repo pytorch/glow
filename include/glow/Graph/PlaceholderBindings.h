@@ -70,6 +70,14 @@ public:
   /// Inserts the Placeholder-Tensor pair. This takes ownership of the Tensor.
   void insert(Placeholder *P, Tensor *T);
 
+  /// Copy values from this PlaceholderBindings to another, \p dst, by \p name.
+  /// This is useful when trained weights need to be transferred between
+  /// bindings of two different modules.
+  void copyToTarget(llvm::StringRef name, PlaceholderBindings &dst);
+
+  /// Transfer all trainable weights to target PlaceholderBindings \p dst.
+  void copyTrainedWeightsTo(PlaceholderBindings &dst);
+
   /// Allocates a tensor to back the placeholder \p P. The new tensor has the
   /// type of P.
   Tensor *allocate(Placeholder *P);
