@@ -5435,6 +5435,28 @@ TEST_P(OperatorTest, FP16BatchAdd) {
   }
 }
 
+TEST_P(OperatorTest, BroadcastAdd2x) {
+  ENABLED_BACKENDS(Interpreter, CPU, OpenCL, Habana);
+
+  auto *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {10, 1}, "input", false);
+  auto *bias = mod_.createConstant(ElemKind::FloatTy, {1, 1}, "bias");
+  bias->getPayloadMutable().getHandle() = {42};
+  auto *tile = F_->createTile("tile", bias, 10, 0);
+  auto *add = F_->createAdd("add", input, tile);
+  auto *save = F_->createSave("save", add);
+  auto *output = save->getPlaceholder();
+  bindings_.allocate(input)->getHandle() = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
+  bindings_.allocate(output);
+  EE_.compile(CompilationMode::Infer, F_);
+  for (int i = 0; i < 2; i++) {
+    Tensor expected(ElemKind::FloatTy, {10, 1});
+    expected.getHandle() = {42, 43, 44, 45, 46, 47, 48, 49, 50, 51};
+    EE_.run(bindings_);
+    EXPECT_TRUE(bindings_.get(output)->isEqual(expected));
+  }
+}
+
 /// Helper to test Sigmoid using \p DTy.
 template <typename DataType>
 static void testSigmoid(glow::PlaceholderBindings &bindings, glow::Module &mod,

@@ -73,7 +73,7 @@ static bool checkSaveNode(Module &mod) {
       if (N.getKind() != Kinded::Kind::SaveNodeKind) {
         continue;
       }
-      Placeholder *ph = llvm::dyn_cast<Placeholder>(N.getNthInput(0).getNode());
+      auto *ph = llvm::dyn_cast<Placeholder>(N.getNthInput(0).getNode());
       if (!ph) {
         continue;
       }
@@ -94,13 +94,14 @@ static bool checkSaveNode(Module &mod) {
 /// consumption of all the nodes in each level won't exceed the device memory
 /// constraints.
 TEST_F(PartitionerTest, Basic1) {
+  constexpr float range = 2.0;
   auto *input =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 32}, "input", false);
   auto *w1 = mod_.createConstant(ElemKind::FloatTy, {32, 16}, "w1");
   auto *b1 = mod_.createConstant(ElemKind::FloatTy, {16}, "b1");
   bindings_.allocate(input);
-  w1->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
-  b1->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
+  w1->getHandle<>().randomize(-range, range, mod_.getPRNG());
+  b1->getHandle<>().randomize(-range, range, mod_.getPRNG());
 
   // Initial FC.
   Node *I = F_->createFullyConnected("initial_fc", input, w1, b1);
@@ -109,28 +110,28 @@ TEST_F(PartitionerTest, Basic1) {
   // Left branch.
   auto *w2 = mod_.createConstant(ElemKind::FloatTy, {16, 16}, "w2");
   auto *b2 = mod_.createConstant(ElemKind::FloatTy, {16}, "b2");
-  w2->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
-  b2->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
+  w2->getHandle<>().randomize(-range, range, mod_.getPRNG());
+  b2->getHandle<>().randomize(-range, range, mod_.getPRNG());
   Node *L = F_->createFullyConnected("left_fc1", I, w2, b2);
   L = F_->createSigmoid("left_sigmoid1", L);
   auto *w3 = mod_.createConstant(ElemKind::FloatTy, {16, 8}, "w3");
   auto *b3 = mod_.createConstant(ElemKind::FloatTy, {8}, "b3");
-  w3->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
-  b3->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
+  w3->getHandle<>().randomize(-range, range, mod_.getPRNG());
+  b3->getHandle<>().randomize(-range, range, mod_.getPRNG());
   L = F_->createFullyConnected("left_fc2", L, w3, b3);
   L = F_->createSigmoid("left_sigmoid2", L);
 
   // Right branch.
   auto *w4 = mod_.createConstant(ElemKind::FloatTy, {16, 16}, "w4");
   auto *b4 = mod_.createConstant(ElemKind::FloatTy, {16}, "b4");
-  w4->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
-  b4->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
+  w4->getHandle<>().randomize(-range, range, mod_.getPRNG());
+  b4->getHandle<>().randomize(-range, range, mod_.getPRNG());
   Node *R = F_->createFullyConnected("right_fc1", I, w4, b4);
   R = F_->createSigmoid("right_sigmoid1", R);
   auto *w5 = mod_.createConstant(ElemKind::FloatTy, {16, 8}, "w5");
   auto *b5 = mod_.createConstant(ElemKind::FloatTy, {8}, "b5");
-  w5->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
-  b5->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
+  w5->getHandle<>().randomize(-range, range, mod_.getPRNG());
+  b5->getHandle<>().randomize(-range, range, mod_.getPRNG());
   R = F_->createFullyConnected("right_fc2", R, w5, b5);
   R = F_->createSigmoid("right_sigmoid2", R);
 
@@ -141,6 +142,7 @@ TEST_F(PartitionerTest, Basic1) {
 
   // Infer using the un-partitioned graph.
   Tensor in(ElemKind::FloatTy, {1, 32});
+  in.getHandle<>().randomize(-range, range, mod_.getPRNG());
   ExecutionEngine EE;
 
   EE.compile(CompilationMode::Infer, F_);
@@ -155,9 +157,9 @@ TEST_F(PartitionerTest, Basic1) {
   auto err = myPartitioner.Partition(cctx);
   EXPECT_FALSE(errToBool(std::move(err)));
   DAGListTy dagList = std::move(myPartitioner.getPartitionResult());
-  ASSERT_EQ(mod_.getFunctions().size(), 3);
-  ASSERT_EQ(dagList.size(), 1);
-  ASSERT_TRUE(checkSaveNode(mod_));
+  EXPECT_EQ(mod_.getFunctions().size(), 3);
+  EXPECT_EQ(dagList.size(), 1);
+  EXPECT_TRUE(checkSaveNode(mod_));
 
   // Run the paritioned graph and compare the results.
   bindings_.allocate(mod_.getPlaceholders());
@@ -173,6 +175,7 @@ TEST_F(PartitionerTest, Basic1) {
 /// the memory consumption of all the nodes in which exceeds the device memory
 /// constraints.
 TEST_F(PartitionerTest, Basic2) {
+  constexpr float range = 2.0;
   auto *input =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 16}, "input", false);
   auto *input1 =
@@ -182,28 +185,28 @@ TEST_F(PartitionerTest, Basic2) {
   // Left branch.
   auto *w2 = mod_.createConstant(ElemKind::FloatTy, {16, 16}, "w2");
   auto *b2 = mod_.createConstant(ElemKind::FloatTy, {16}, "b2");
-  w2->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
-  b2->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
+  w2->getHandle<>().randomize(-range, range, mod_.getPRNG());
+  b2->getHandle<>().randomize(-range, range, mod_.getPRNG());
   Node *L = F_->createFullyConnected("left_fc1", input, w2, b2);
   L = F_->createSigmoid("left_sigmoid1", L);
   auto *w3 = mod_.createConstant(ElemKind::FloatTy, {16, 8}, "w3");
   auto *b3 = mod_.createConstant(ElemKind::FloatTy, {8}, "b3");
-  w3->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
-  b3->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
+  w3->getHandle<>().randomize(-range, range, mod_.getPRNG());
+  b3->getHandle<>().randomize(-range, range, mod_.getPRNG());
   L = F_->createFullyConnected("left_fc2", L, w3, b3);
   L = F_->createSigmoid("left_sigmoid2", L);
 
   // Right branch.
   auto *w4 = mod_.createConstant(ElemKind::FloatTy, {16, 16}, "w4");
   auto *b4 = mod_.createConstant(ElemKind::FloatTy, {16}, "b4");
-  w4->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
-  b4->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
+  w4->getHandle<>().randomize(-range, range, mod_.getPRNG());
+  b4->getHandle<>().randomize(-range, range, mod_.getPRNG());
   Node *R = F_->createFullyConnected("right_fc1", input1, w4, b4);
   R = F_->createSigmoid("right_sigmoid1", R);
   auto *w5 = mod_.createConstant(ElemKind::FloatTy, {16, 8}, "w5");
   auto *b5 = mod_.createConstant(ElemKind::FloatTy, {8}, "b5");
-  w5->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
-  b5->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
+  w5->getHandle<>().randomize(-range, range, mod_.getPRNG());
+  b5->getHandle<>().randomize(-range, range, mod_.getPRNG());
   R = F_->createFullyConnected("right_fc2", R, w5, b5);
   R = F_->createSigmoid("right_sigmoid2", R);
 
@@ -214,13 +217,13 @@ TEST_F(PartitionerTest, Basic2) {
 
   // Infer using the un-partitioned graph.
   Tensor in(ElemKind::FloatTy, {1, 16});
+  in.getHandle<>().randomize(-range, range, mod_.getPRNG());
   ExecutionEngine EE;
 
   EE.compile(CompilationMode::Infer, F_);
   updateInputPlaceholders(bindings_, {input, input1}, {&in, &in});
   EE.run(bindings_);
   Tensor ref = res.clone();
-
   std::vector<DeviceInfo> devices = {{2048, "Interpreter"},
                                      {2048, "Interpreter"},
                                      {2048, "Interpreter"},
@@ -230,15 +233,15 @@ TEST_F(PartitionerTest, Basic2) {
   auto err = myPartitioner.Partition(cctx);
   EXPECT_FALSE(errToBool(std::move(err)));
   DAGListTy dagList = std::move(myPartitioner.getPartitionResult());
-  ASSERT_EQ(mod_.getFunctions().size(), 2);
-  ASSERT_EQ(dagList.size(), 1);
+  EXPECT_EQ(mod_.getFunctions().size(), 2);
+  EXPECT_EQ(dagList.size(), 1);
   ASSERT_TRUE(checkSaveNode(mod_));
 
   for (auto &dag : dagList) {
     for (auto &node : dag.nodes) {
       // Since saturateHost is set true, in this case, there should be 2 copys
       // of the partitions.
-      ASSERT_EQ(node->logicalDevices.size(), 2);
+      EXPECT_EQ(node->logicalDevices.size(), 2);
     }
   }
 
@@ -248,13 +251,14 @@ TEST_F(PartitionerTest, Basic2) {
     bindings_.allocate(mod_.getPlaceholders());
     executeDAG((*it).root.get(), mod_, bindings_, {input}, {&in});
     Tensor test = res.clone();
-    EXPECT_TRUE(ref.isEqual(test));
+    ASSERT_TRUE(ref.isEqual(test));
   }
 }
 
 /// This one tests the error msg: if the number of partitions is larger than
 /// given number of devices, report an error.
 TEST_F(PartitionerTest, Error1) {
+  constexpr float range = 2.0;
   auto *input =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 16}, "input", false);
   auto *input1 =
@@ -264,28 +268,28 @@ TEST_F(PartitionerTest, Error1) {
   // Left branch.
   auto *w2 = mod_.createConstant(ElemKind::FloatTy, {16, 16}, "w2");
   auto *b2 = mod_.createConstant(ElemKind::FloatTy, {16}, "b2");
-  w2->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
-  b2->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
+  w2->getHandle<>().randomize(-range, range, mod_.getPRNG());
+  b2->getHandle<>().randomize(-range, range, mod_.getPRNG());
   Node *L = F_->createFullyConnected("left_fc1", input, w2, b2);
   L = F_->createSigmoid("left_sigmoid1", L);
   auto *w3 = mod_.createConstant(ElemKind::FloatTy, {16, 8}, "w3");
   auto *b3 = mod_.createConstant(ElemKind::FloatTy, {8}, "b3");
-  w3->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
-  b3->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
+  w3->getHandle<>().randomize(-range, range, mod_.getPRNG());
+  b3->getHandle<>().randomize(-range, range, mod_.getPRNG());
   L = F_->createFullyConnected("left_fc2", L, w3, b3);
   L = F_->createSigmoid("left_sigmoid2", L);
 
   // Right branch.
   auto *w4 = mod_.createConstant(ElemKind::FloatTy, {16, 16}, "w4");
   auto *b4 = mod_.createConstant(ElemKind::FloatTy, {16}, "b4");
-  w4->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
-  b4->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
+  w4->getHandle<>().randomize(-range, range, mod_.getPRNG());
+  b4->getHandle<>().randomize(-range, range, mod_.getPRNG());
   Node *R = F_->createFullyConnected("right_fc1", input1, w4, b4);
   R = F_->createSigmoid("right_sigmoid1", R);
   auto *w5 = mod_.createConstant(ElemKind::FloatTy, {16, 8}, "w5");
   auto *b5 = mod_.createConstant(ElemKind::FloatTy, {8}, "b5");
-  w5->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
-  b5->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
+  w5->getHandle<>().randomize(-range, range, mod_.getPRNG());
+  b5->getHandle<>().randomize(-range, range, mod_.getPRNG());
   R = F_->createFullyConnected("right_fc2", R, w5, b5);
   R = F_->createSigmoid("right_sigmoid2", R);
 
@@ -296,6 +300,7 @@ TEST_F(PartitionerTest, Error1) {
 
   // Infer using the un-partitioned graph.
   Tensor in(ElemKind::FloatTy, {1, 16});
+  in.getHandle<>().randomize(-range, range, mod_.getPRNG());
   ExecutionEngine EE{};
 
   EE.compile(CompilationMode::Infer, F_);
@@ -313,13 +318,14 @@ TEST_F(PartitionerTest, Error1) {
 /// This one tests the roofline computed with compute, memory and communication
 /// costs
 TEST_F(PartitionerTest, Basic1Roofline) {
+  constexpr float range = 2.0;
   auto *input =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 32}, "input", false);
   auto *w1 = mod_.createConstant(ElemKind::FloatTy, {32, 16}, "w1");
   auto *b1 = mod_.createConstant(ElemKind::FloatTy, {16}, "b1");
   bindings_.allocate(input);
-  w1->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
-  b1->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
+  w1->getHandle<>().randomize(-range, range, mod_.getPRNG());
+  b1->getHandle<>().randomize(-range, range, mod_.getPRNG());
 
   // Initial FC.
   Node *I = F_->createFullyConnected("initial_fc", input, w1, b1);
@@ -328,28 +334,28 @@ TEST_F(PartitionerTest, Basic1Roofline) {
   // Left branch.
   auto *w2 = mod_.createConstant(ElemKind::FloatTy, {16, 16}, "w2");
   auto *b2 = mod_.createConstant(ElemKind::FloatTy, {16}, "b2");
-  w2->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
-  b2->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
+  w2->getHandle<>().randomize(-range, range, mod_.getPRNG());
+  b2->getHandle<>().randomize(-range, range, mod_.getPRNG());
   Node *L = F_->createFullyConnected("left_fc1", I, w2, b2);
   L = F_->createSigmoid("left_sigmoid1", L);
   auto *w3 = mod_.createConstant(ElemKind::FloatTy, {16, 8}, "w3");
   auto *b3 = mod_.createConstant(ElemKind::FloatTy, {8}, "b3");
-  w3->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
-  b3->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
+  w3->getHandle<>().randomize(-range, range, mod_.getPRNG());
+  b3->getHandle<>().randomize(-range, range, mod_.getPRNG());
   L = F_->createFullyConnected("left_fc2", L, w3, b3);
   L = F_->createSigmoid("left_sigmoid2", L);
 
   // Right branch.
   auto *w4 = mod_.createConstant(ElemKind::FloatTy, {16, 16}, "w4");
   auto *b4 = mod_.createConstant(ElemKind::FloatTy, {16}, "b4");
-  w4->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
-  b4->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
+  w4->getHandle<>().randomize(-range, range, mod_.getPRNG());
+  b4->getHandle<>().randomize(-range, range, mod_.getPRNG());
   Node *R = F_->createFullyConnected("right_fc1", I, w4, b4);
   R = F_->createSigmoid("right_sigmoid1", R);
   auto *w5 = mod_.createConstant(ElemKind::FloatTy, {16, 8}, "w5");
   auto *b5 = mod_.createConstant(ElemKind::FloatTy, {8}, "b5");
-  w5->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
-  b5->getHandle<>().randomize(-2.0, 2.0, mod_.getPRNG());
+  w5->getHandle<>().randomize(-range, range, mod_.getPRNG());
+  b5->getHandle<>().randomize(-range, range, mod_.getPRNG());
   R = F_->createFullyConnected("right_fc2", R, w5, b5);
   R = F_->createSigmoid("right_sigmoid2", R);
 
@@ -360,6 +366,7 @@ TEST_F(PartitionerTest, Basic1Roofline) {
 
   // Infer using the un-partitioned graph.
   Tensor in(ElemKind::FloatTy, {1, 32});
+  in.getHandle<>().randomize(-range, range, mod_.getPRNG());
   ExecutionEngine EE;
 
   EE.compile(CompilationMode::Infer, F_);
@@ -433,8 +440,8 @@ TEST_F(PartitionerTest, Basic1Roofline) {
     EXPECT_EQ(myPartitioner.getMemUsage(N), expectedMemUsage[p.second]);
   }
 
-  ASSERT_EQ(mod_.getFunctions().size(), 3);
-  ASSERT_EQ(dagList.size(), 1);
+  EXPECT_EQ(mod_.getFunctions().size(), 3);
+  EXPECT_EQ(dagList.size(), 1);
 }
 
 TEST_F(PartitionerTest, SelectRepFunc) {
@@ -549,7 +556,7 @@ static void heterogeneousPartitionValidation(const DAGListTy &dagList,
     for (auto &node : dag.nodes) {
       // Although the saturateHost is set true, no saturating the host in
       // heterogeneous partiton.
-      ASSERT_EQ(node->logicalDevices.size(), 1);
+      EXPECT_EQ(node->logicalDevices.size(), 1);
       if (node->backendName == "CPU") {
         numOfCPUBackends++;
         auto func = mod.getFunction(node->name);
@@ -568,10 +575,10 @@ static void heterogeneousPartitionValidation(const DAGListTy &dagList,
       }
     }
   }
-  ASSERT_EQ(numOfInterpreterBackends, 2);
-  ASSERT_EQ(numOfCPUBackends, 1);
-  ASSERT_EQ(numOfSubNodes, 2);
-  ASSERT_EQ(numOfMulNodes, 1);
+  EXPECT_EQ(numOfInterpreterBackends, 2);
+  EXPECT_EQ(numOfCPUBackends, 1);
+  EXPECT_EQ(numOfSubNodes, 2);
+  EXPECT_EQ(numOfMulNodes, 1);
 }
 
 /// Test using user-defined backends for heterogeneous partition.
@@ -593,8 +600,8 @@ TEST_F(PartitionerTest, SimpleHeterogeneousPartitioning) {
   auto err = partitioner.Partition(cctx);
   EXPECT_FALSE(errToBool(std::move(err)));
   DAGListTy dagList = std::move(partitioner.getPartitionResult());
-  ASSERT_EQ(mod_.getFunctions().size(), 3);
-  ASSERT_EQ(dagList.size(), 1);
+  EXPECT_EQ(mod_.getFunctions().size(), 3);
+  EXPECT_EQ(dagList.size(), 1);
   ASSERT_TRUE(checkSaveNode(mod_));
   heterogeneousPartitionValidation(dagList, mod_);
 
@@ -614,8 +621,8 @@ TEST_F(PartitionerTest, heterogeneousPartitioningWithNonSupportedNodes) {
   auto err = partitioner.Partition(cctx);
   EXPECT_FALSE(errToBool(std::move(err)));
   DAGListTy dagList = std::move(partitioner.getPartitionResult());
-  ASSERT_EQ(mod_.getFunctions().size(), 3);
-  ASSERT_EQ(dagList.size(), 1);
+  EXPECT_EQ(mod_.getFunctions().size(), 3);
+  EXPECT_EQ(dagList.size(), 1);
   ASSERT_TRUE(checkSaveNode(mod_));
   heterogeneousPartitionValidation(dagList, mod_);
 
@@ -638,8 +645,8 @@ TEST_F(PartitionerTest, heterogeneousPartitioningWithSupportedNodes) {
   auto err = partitioner.Partition(cctx);
   EXPECT_FALSE(errToBool(std::move(err)));
   DAGListTy dagList = std::move(partitioner.getPartitionResult());
-  ASSERT_EQ(mod_.getFunctions().size(), 3);
-  ASSERT_EQ(dagList.size(), 1);
+  EXPECT_EQ(mod_.getFunctions().size(), 3);
+  EXPECT_EQ(dagList.size(), 1);
   ASSERT_TRUE(checkSaveNode(mod_));
   heterogeneousPartitionValidation(dagList, mod_);
 
@@ -675,19 +682,19 @@ TEST_F(PartitionerTest, logicalIDTest0) {
   EXPECT_FALSE(errToBool(std::move(err)));
   DAGListTy dagList = std::move(partitioner.getPartitionResult());
   // Check there are 3 partitions.
-  ASSERT_EQ(mod_.getFunctions().size(), 3);
-  ASSERT_EQ(dagList.size(), 1);
+  EXPECT_EQ(mod_.getFunctions().size(), 3);
+  EXPECT_EQ(dagList.size(), 1);
   ASSERT_TRUE(checkSaveNode(mod_));
 
   for (auto &dag : dagList) {
     // Check number of logical devices;
     llvm::SmallSet<DeviceIDTy, 4> usedID;
     for (auto &node : dag.nodes) {
-      ASSERT_EQ(node->logicalDevices.size(), 1);
+      EXPECT_EQ(node->logicalDevices.size(), 1);
       usedID.insert(node->logicalDevices[0]);
     }
     // Check there are 2 logical devices.
-    ASSERT_EQ(usedID.size(), 2);
+    EXPECT_EQ(usedID.size(), 2);
   }
   mod_.clear();
 }
@@ -710,8 +717,8 @@ TEST_F(PartitionerTest, logicalIDTest1) {
   auto err = partitioner.Partition(cctx);
   EXPECT_FALSE(errToBool(std::move(err)));
   DAGListTy dagList = std::move(partitioner.getPartitionResult());
-  ASSERT_EQ(mod_.getFunctions().size(), 3);
-  ASSERT_EQ(dagList.size(), 1);
+  EXPECT_EQ(mod_.getFunctions().size(), 3);
+  EXPECT_EQ(dagList.size(), 1);
   ASSERT_TRUE(checkSaveNode(mod_));
 
   for (auto &dag : dagList) {
@@ -720,10 +727,10 @@ TEST_F(PartitionerTest, logicalIDTest1) {
     for (auto &node : dag.nodes) {
       // Although the saturateHost is set true, no saturating the host in
       // heterogeneous partiton.
-      ASSERT_EQ(node->logicalDevices.size(), 1);
+      EXPECT_EQ(node->logicalDevices.size(), 1);
       usedID.insert(node->logicalDevices[0]);
     }
-    ASSERT_EQ(usedID.size(), 2);
+    EXPECT_EQ(usedID.size(), 2);
   }
   mod_.clear();
 }
@@ -885,4 +892,29 @@ TEST_F(PartitionerTest, memoryUsageValidation1) {
   CompilationContext cctx;
   auto err = myPartitioner.Partition(cctx);
   EXPECT_TRUE(errToBool(std::move(err)));
+}
+
+/// This one tests partition from a user-defined config.
+TEST_F(PartitionerTest, partitionFromConfig) {
+  createSimpleModule(mod_);
+  std::vector<DeviceInfo> devices = {
+      {3072, "Interpreter"}, {3072, "Interpreter"}, {3072, "CPU"}};
+
+  // User-defined partition: 3 partitions (2 interpreter, 1 cpu), Mul nodes to
+  // CPU, others to Interpreter.
+  PartitionConfig partitionConfig;
+  partitionConfig.funcName = "test";
+  partitionConfig.numOfPartitions = 3;
+  partitionConfig.backendNames = {"Interpreter", "CPU", "Interpreter"};
+  partitionConfig.partitionNames = {"p1", "p2", "p3"};
+  partitionConfig.nodeToPartition = {{"sub", 0}, {"mul", 1}};
+  auto partitioner = Partitioner(&mod_, devices, false, false, partitionConfig);
+  CompilationContext cctx;
+  auto err = partitioner.Partition(cctx);
+  EXPECT_FALSE(errToBool(std::move(err)));
+  DAGListTy dagList = std::move(partitioner.getPartitionResult());
+  EXPECT_EQ(mod_.getFunctions().size(), 3);
+  EXPECT_EQ(dagList.size(), 1);
+  ASSERT_TRUE(checkSaveNode(mod_));
+  heterogeneousPartitionValidation(dagList, mod_);
 }

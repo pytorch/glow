@@ -99,6 +99,22 @@ void PlaceholderBindings::insert(Placeholder *P, Tensor *T) {
   nameMap_[P->getName()] = P;
 }
 
+void PlaceholderBindings::copyToTarget(llvm::StringRef name,
+                                       PlaceholderBindings &dst) {
+  auto *srcPH = this->getPlaceholderByName(name);
+  auto *dstPH = dst.getPlaceholderByName(name);
+  dst.erase(dstPH);
+  dst.insert(dstPH, this->get(srcPH)->clone());
+}
+
+void PlaceholderBindings::copyTrainedWeightsTo(PlaceholderBindings &dst) {
+  for (auto &PH : pairs()) {
+    if (PH.first->isTraining()) {
+      copyToTarget(PH.first->getName(), dst);
+    }
+  }
+}
+
 size_t PlaceholderBindings::count(Placeholder *P) const {
   DCHECK_EQ(map_.size(), nameMap_.size())
       << "Placeholder map and name map out of sync";
