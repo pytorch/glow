@@ -20,6 +20,20 @@ target_link_libraries(BackendTestUtils
                         LLVMSupport
                         gtest)
 
+add_library(BackendTestUtils2
+            BackendTestUtils2.cpp)
+target_link_libraries(BackendTestUtils2
+                      PRIVATE
+                        Base
+                        Converter
+                        ExecutionEngine2
+                        Graph
+                        GraphOptimizer
+                        Quantization
+                        QuantizationBase
+                        LLVMSupport
+                        gtest)
+
 # Test executables, sorted alphabetically.
 
 add_executable(BackendCorrectnessTest
@@ -246,10 +260,10 @@ if(GLOW_WITH_CPU)
                  HyphenTest.cpp)
   target_link_libraries(HyphenTest
                         PRIVATE
-                          BackendTestUtils
+                          BackendTestUtils2
                           Graph
                           IR
-                          ExecutionEngine
+                          ExecutionEngine2
                           Quantization
                           Support
                           gtest

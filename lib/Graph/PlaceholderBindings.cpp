@@ -107,7 +107,7 @@ void PlaceholderBindings::copyToTarget(llvm::StringRef name,
   dst.insert(dstPH, this->get(srcPH)->clone());
 }
 
-void PlaceholderBindings::copyTrainedWeightsTo(PlaceholderBindings &dst) {
+void PlaceholderBindings::copyTrainableWeightsTo(PlaceholderBindings &dst) {
   for (auto &PH : pairs()) {
     if (PH.first->isTraining()) {
       copyToTarget(PH.first->getName(), dst);

@@ -138,7 +138,7 @@ TEST_P(MLTest, trainASimpleNetwork) {
   inferBindings.allocate(EEI_.getModule().getPlaceholders());
   A = EEI_.getModule().getPlaceholderByName("A");
   EEI_.compile(CompilationMode::Infer);
-  trainingBindings.copyTrainedWeightsTo(inferBindings);
+  trainingBindings.copyTrainableWeightsTo(inferBindings);
   updateInputPlaceholders2(inferBindings, {A}, {&inputs});
 
   EEI_.run(inferBindings, fname);
@@ -182,7 +182,7 @@ TEST_P(MLTest, simpleRegression) {
   }
   auto resPH = EEI_.getModule().getPlaceholderByName("result");
   trainingBindings.allocate(EET_.getModule().getPlaceholders());
-  inferBindings.copyTrainedWeightsTo(trainingBindings);
+  inferBindings.copyTrainableWeightsTo(trainingBindings);
   inferBindings.clear();
 
   auto I = inputs.getHandle<>();
@@ -204,7 +204,7 @@ TEST_P(MLTest, simpleRegression) {
 
   // Verify the result of the regression layer.
   inferBindings.allocate(EEI_.getModule().getPlaceholders());
-  trainingBindings.copyTrainedWeightsTo(inferBindings);
+  trainingBindings.copyTrainableWeightsTo(inferBindings);
   A = inferBindings.getPlaceholderByName("A");
   EEI_.compile(CompilationMode::Infer);
 
@@ -251,7 +251,7 @@ TEST_P(MLTest, learnXor) {
     F->createSave("ret", O);
   }
   trainingBindings.allocate(EET_.getModule().getPlaceholders());
-  inferBindings.copyTrainedWeightsTo(trainingBindings);
+  inferBindings.copyTrainableWeightsTo(trainingBindings);
   inferBindings.clear();
   inferBindings.allocate(EEI_.getModule().getPlaceholders());
 
@@ -281,7 +281,7 @@ TEST_P(MLTest, learnXor) {
   // Train the network:
   runBatch2(EET_, trainingBindings, 2500, sampleCounter, {A, Ex},
             {&trainingSet, &trainingLabels}, tfName);
-  trainingBindings.copyTrainedWeightsTo(inferBindings);
+  trainingBindings.copyTrainableWeightsTo(inferBindings);
   EEI_.compile(CompilationMode::Infer);
 
   // Prepare the testing tensor:
@@ -334,7 +334,7 @@ TEST_P(MLTest, learnLog) {
     F->createSave("ret", O);
   }
   trainingBindings.allocate(EET_.getModule().getPlaceholders());
-  inferBindings.copyTrainedWeightsTo(trainingBindings);
+  inferBindings.copyTrainableWeightsTo(trainingBindings);
   inferBindings.clear();
   inferBindings.allocate(EEI_.getModule().getPlaceholders());
 
@@ -365,7 +365,7 @@ TEST_P(MLTest, learnLog) {
   // Train the network:
   runBatch2(EET_, trainingBindings, 1000, sampleCounter, {A, Ex},
             {&trainingSet, &trainingLabels}, tfName);
-  trainingBindings.copyTrainedWeightsTo(inferBindings);
+  trainingBindings.copyTrainableWeightsTo(inferBindings);
   EEI_.compile(CompilationMode::Infer);
 
   // Set the testing data.
@@ -458,7 +458,7 @@ TEST_P(MLTest, circle) {
     F->createSave("ret", SM);
   }
   trainingBindings.allocate(EET_.getModule().getPlaceholders());
-  inferBindings.copyTrainedWeightsTo(trainingBindings);
+  inferBindings.copyTrainableWeightsTo(trainingBindings);
   inferBindings.clear();
   inferBindings.allocate(EEI_.getModule().getPlaceholders());
   auto *res = inferBindings.get(EEI_.getModule().getPlaceholderByName("ret"));
@@ -476,7 +476,7 @@ TEST_P(MLTest, circle) {
   // Training:
   runBatch2(EET_, trainingBindings, 4000, sampleCounter, {A, S},
             {&coordinates, &labels}, tfName);
-  trainingBindings.copyTrainedWeightsTo(inferBindings);
+  trainingBindings.copyTrainableWeightsTo(inferBindings);
   EEI_.compile(CompilationMode::Infer);
   A = inferBindings.getPlaceholderByName("A");
   // Print a diagram that depicts the network decision on a grid.
@@ -571,7 +571,7 @@ TEST_P(MLTest, learnSingleValueConcat) {
   }
 
   trainingBindings.allocate(EET_.getModule().getPlaceholders());
-  inferBindings.copyTrainedWeightsTo(trainingBindings);
+  inferBindings.copyTrainableWeightsTo(trainingBindings);
   inferBindings.clear();
   inferBindings.allocate(EEI_.getModule().getPlaceholders());
   auto *res = inferBindings.get(EEI_.getModule().getPlaceholderByName("ret"));
@@ -588,7 +588,7 @@ TEST_P(MLTest, learnSingleValueConcat) {
   // Train the network:
   runBatch2(EET_, trainingBindings, 1000, sampleCounter, {A, B, Ex},
             {&inputs, &inputs, &expected}, tfName);
-  trainingBindings.copyTrainedWeightsTo(inferBindings);
+  trainingBindings.copyTrainableWeightsTo(inferBindings);
   EEI_.compile(CompilationMode::Infer);
   A = inferBindings.getPlaceholderByName("A");
   // Testing the output vector.
@@ -699,7 +699,7 @@ void testRNNCell(TCellGenerator cell) {
     PH->setAllocZero();
   }
   trainingBindings.allocate(EET.getModule().getPlaceholders());
-  inferBindings.copyTrainedWeightsTo(trainingBindings);
+  inferBindings.copyTrainableWeightsTo(trainingBindings);
   inferBindings.clear();
   inferBindings.allocate(EEI.getModule().getPlaceholders());
   auto *res = inferBindings.get(EEI.getModule().getPlaceholderByName("result"));
@@ -722,7 +722,7 @@ void testRNNCell(TCellGenerator cell) {
   // Train the network. Learn 1000 batches.
   runBatch2(EET, trainingBindings, 1000, sampleCounter, {X, Y},
             {&inputs, &expected}, tfName);
-  trainingBindings.copyTrainedWeightsTo(inferBindings);
+  trainingBindings.copyTrainableWeightsTo(inferBindings);
   // Testing the output vector.
   EEI.compile(CompilationMode::Infer);
   X = inferBindings.getPlaceholderByName("X");
@@ -866,7 +866,7 @@ TEST_P(MLTest, classifyPlayerSport) {
     F->createSave("result", SM);
   }
   trainingBindings.allocate(EET_.getModule().getPlaceholders());
-  inferBindings.copyTrainedWeightsTo(trainingBindings);
+  inferBindings.copyTrainableWeightsTo(trainingBindings);
   inferBindings.clear();
   inferBindings.allocate(EEI_.getModule().getPlaceholders());
 
@@ -883,7 +883,7 @@ TEST_P(MLTest, classifyPlayerSport) {
   // Training:
   runBatch2(EET_, trainingBindings, 2000, sampleCounter, {A, S},
             {&players, &labels}, tfName);
-  trainingBindings.copyTrainedWeightsTo(inferBindings);
+  trainingBindings.copyTrainableWeightsTo(inferBindings);
   EEI_.compile(CompilationMode::Infer);
   A = inferBindings.getPlaceholderByName("A");
   std::vector<std::tuple<unsigned, unsigned, Sport>> testPlayers;
@@ -963,7 +963,7 @@ TEST_P(MLTest, learnSinus) {
     F->createSave("return", R);
   }
   trainingBindings.allocate(EET_.getModule().getPlaceholders());
-  inferBindings.copyTrainedWeightsTo(trainingBindings);
+  inferBindings.copyTrainableWeightsTo(trainingBindings);
   inferBindings.clear();
   inferBindings.allocate(EEI_.getModule().getPlaceholders());
   auto *res =
@@ -977,7 +977,7 @@ TEST_P(MLTest, learnSinus) {
   // Learn on numSamples samples.
   runBatch2(EET_, trainingBindings, 2700, sampleCounter, {inputX, expectedY},
             {&tensorX, &tensorY}, tfName);
-  trainingBindings.copyTrainedWeightsTo(inferBindings);
+  trainingBindings.copyTrainableWeightsTo(inferBindings);
   // Create a test set, which is similar, but different from the training set.
   for (unsigned i = 0; i < numSamples; i++) {
     // Scale x to cover the range [0, 4.2] as this leads to a good convergence
@@ -1032,7 +1032,7 @@ TEST_P(MLTest, nonLinearClassifier) {
     F->createSave("ret", SM);
   }
   trainingBindings.allocate(EET_.getModule().getPlaceholders());
-  inferBindings.copyTrainedWeightsTo(trainingBindings);
+  inferBindings.copyTrainableWeightsTo(trainingBindings);
   inferBindings.clear();
   inferBindings.allocate(EEI_.getModule().getPlaceholders());
   auto *res = inferBindings.get(EEI_.getModule().getPlaceholderByName("ret"));
@@ -1057,7 +1057,7 @@ TEST_P(MLTest, nonLinearClassifier) {
 
   runBatch2(EET_, trainingBindings, 500, sampleCounter, {A, S},
             {&samples, &labels}, tfName);
-  trainingBindings.copyTrainedWeightsTo(inferBindings);
+  trainingBindings.copyTrainableWeightsTo(inferBindings);
   EEI_.compile(CompilationMode::Infer);
   A = inferBindings.getPlaceholderByName("A");
   std::vector<std::tuple<float, float, size_t>> tests;
@@ -1146,7 +1146,7 @@ TEST_P(InterpreterAndCPU, convNetForImageRecognition) {
   auto tfName = TF->getName();
   EET_.compile(CompilationMode::Train);
   trainingBindings.allocate(mod->getPlaceholders());
-  inferBindings.copyTrainedWeightsTo(trainingBindings);
+  inferBindings.copyTrainableWeightsTo(trainingBindings);
 
   Tensor images(ElemKind::FloatTy, {numSamples, 8, 8, 1});
   Tensor labels(ElemKind::Int64ITy, {numSamples, 1});
@@ -1164,7 +1164,7 @@ TEST_P(InterpreterAndCPU, convNetForImageRecognition) {
 
   auto F = mod->getFunction(fName);
   input = mod->getPlaceholderByName("input");
-  trainingBindings.copyTrainedWeightsTo(profileBindings);
+  trainingBindings.copyTrainableWeightsTo(profileBindings);
   EEP.compile(cctxProf);
   // Since we are compiling in profiling mode the partitioner will create a new
   // function from the original. Get the new function.
@@ -1178,7 +1178,7 @@ TEST_P(InterpreterAndCPU, convNetForImageRecognition) {
   mod = &EEI_.getModule();
   inferBindings.clear();
   inferBindings.allocate(mod->getPlaceholders());
-  trainingBindings.copyTrainedWeightsTo(inferBindings);
+  trainingBindings.copyTrainableWeightsTo(inferBindings);
 
   LoweredInfoMap loweredMapForQuant;
   CompilationContext cctxQuant{&inferBindings, &loweredMapForQuant};
@@ -1305,7 +1305,7 @@ TEST_P(InterpreterAndCPU, testFindPixelRegression) {
   cctxProf.precisionConfig.quantMode = QuantizationMode::Profile;
 
   input = mod->getPlaceholderByName("input");
-  trainingBindings.copyTrainedWeightsTo(profileBindings);
+  trainingBindings.copyTrainableWeightsTo(profileBindings);
   EEP.compile(cctxProf);
   // Get new function after partitioning.
   auto F = EEP.getModule().getFunctions().front();
@@ -1317,7 +1317,7 @@ TEST_P(InterpreterAndCPU, testFindPixelRegression) {
   // -- STEP3 - evaluate the quantized function. --
   mod = &EEI_.getModule();
   inferBindings.allocate(mod->getPlaceholders());
-  trainingBindings.copyTrainedWeightsTo(inferBindings);
+  trainingBindings.copyTrainableWeightsTo(inferBindings);
 
   LoweredInfoMap loweredMapForQuant;
   CompilationContext cctxQuant{&inferBindings, &loweredMapForQuant};
@@ -1479,7 +1479,7 @@ TEST_P(MLTest, matrixRotationRecognition) {
     F->createSave("result", softMax);
   }
   trainingBindings.allocate(EET_.getModule().getPlaceholders());
-  inferBindings.copyTrainedWeightsTo(trainingBindings);
+  inferBindings.copyTrainableWeightsTo(trainingBindings);
   inferBindings.clear();
   inferBindings.allocate(EEI_.getModule().getPlaceholders());
   auto *res =
@@ -1501,7 +1501,7 @@ TEST_P(MLTest, matrixRotationRecognition) {
   runBatch2(EET_, trainingBindings, 200, sampleCounter,
             {varMatricesA, varMatricesB, varExpected},
             {&matricesA, &matricesB, &expected}, tfName);
-  trainingBindings.copyTrainedWeightsTo(inferBindings);
+  trainingBindings.copyTrainableWeightsTo(inferBindings);
 
   // Switch to inference mode.
   EEI_.compile(CompilationMode::Infer);
@@ -1591,7 +1591,7 @@ TEST_P(MLTest, learnSparseLengthsWeightedSumEmbeddings) {
   EH = {1, 2, 3, 4, 5};
 
   trainingBindings.allocate(EET_.getModule().getPlaceholders());
-  inferBindings.copyTrainedWeightsTo(trainingBindings);
+  inferBindings.copyTrainableWeightsTo(trainingBindings);
   inferBindings.copyToTarget("dataP", trainingBindings);
   inferBindings.copyToTarget("indicesP", trainingBindings);
   inferBindings.copyToTarget("weightsP", trainingBindings);
@@ -1614,7 +1614,7 @@ TEST_P(MLTest, learnSparseLengthsWeightedSumEmbeddings) {
   for (size_t i = 0; i < numIterations; ++i) {
     EET_.run(trainingBindings, tfName);
   }
-  trainingBindings.copyTrainedWeightsTo(inferBindings);
+  trainingBindings.copyTrainableWeightsTo(inferBindings);
   trainingBindings.copyToTarget("dataP", inferBindings);
   trainingBindings.copyToTarget("indicesP", inferBindings);
   trainingBindings.copyToTarget("weightsP", inferBindings);
@@ -1683,7 +1683,7 @@ TEST_P(MLTest, learnSparseLengthsWeightedSumWeights) {
   EH = {10, 7, 6, 3, 2};
 
   trainingBindings.allocate(EET_.getModule().getPlaceholders());
-  inferBindings.copyTrainedWeightsTo(trainingBindings);
+  inferBindings.copyTrainableWeightsTo(trainingBindings);
   inferBindings.copyToTarget("dataP", trainingBindings);
   inferBindings.copyToTarget("indicesP", trainingBindings);
   inferBindings.copyToTarget("weightsP", trainingBindings);
@@ -1705,7 +1705,7 @@ TEST_P(MLTest, learnSparseLengthsWeightedSumWeights) {
   for (size_t i = 0; i < numIterations; ++i) {
     EET_.run(trainingBindings, tfName);
   }
-  trainingBindings.copyTrainedWeightsTo(inferBindings);
+  trainingBindings.copyTrainableWeightsTo(inferBindings);
   trainingBindings.copyToTarget("dataP", inferBindings);
   trainingBindings.copyToTarget("indicesP", inferBindings);
   trainingBindings.copyToTarget("weightsP", inferBindings);

@@ -17,7 +17,7 @@
 #define GLOW_TESTS_BACKENDTESTUTILS_H
 
 #include "glow/Backend/Backend.h"
-#include "glow/ExecutionEngine/ExecutionEngine.h"
+#include "glow/ExecutionEngine/ExecutionEngine2.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/Node.h"
 #include "glow/IR/IR.h"
@@ -76,10 +76,8 @@ class BackendTest : public BackendStatelessTest {
 public:
   BackendTest() : mod_(EE_.getModule()) { F_ = mod_.createFunction("main"); }
 
-  ~BackendTest() override { mod_.clear(); }
-
 protected:
-  ExecutionEngine EE_{getBackendName()};
+  ExecutionEngine2 EE_{getBackendName()};
   Module &mod_;
   Function *F_;
 };
@@ -201,8 +199,8 @@ using FunctionTensorPair = std::pair<Function *, Tensor *>;
 
 /// Signature of functions used to create and init a Function. Returns a pair of
 /// the Function created and the Placeholder of the output of the Function.
-using CreateAndInitFunction =
-    std::function<FunctionTensorPair(PlaceholderBindings &, ExecutionEngine &)>;
+using CreateAndInitFunction = std::function<FunctionTensorPair(
+    PlaceholderBindings &, ExecutionEngine2 &)>;
 
 /// Given a method \p createAndInitFunction that creates and initializes a
 /// FloatTy Function with a single output Tensor, \returns a bool representing
@@ -284,7 +282,7 @@ void inferTanhConcatNet(Tensor *input1, Tensor *input2, Tensor *input3,
                         Tensor *out, llvm::StringRef kind);
 
 FunctionTensorPair createAndInitBasicFCNet(PlaceholderBindings &bindings,
-                                           ExecutionEngine &EE);
+                                           ExecutionEngine2 &EE);
 
 void inferMixedNet(Tensor *inputs, Tensor *out, llvm::StringRef kind);
 
