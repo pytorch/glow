@@ -113,6 +113,11 @@ llvm::Error HostManager::addNetwork(std::unique_ptr<Module> module,
   auto nodeList = std::move(partitioner.getPartitionResult());
 
   if (cctx.precisionConfig.quantMode == QuantizationMode::Profile) {
+    // Since for profiling the provisioner will be reset, we only allow one
+    // network in one HM.
+    RETURN_ERR_IF_NOT(networks_.size() == 0,
+                      "For quantization profiling flow, there can't be other "
+                      "registered networks before this one");
     // For profiling, we use CPU backend. Overwrite Provisioner and Executor to
     // force the network is compiled and run in profilingBackend.
     // backend.
