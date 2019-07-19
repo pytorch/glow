@@ -1302,6 +1302,18 @@ HabanaBackend::compile(Function *F, const BackendOptions &opts) const {
       }
       break;
     }
+    case Kinded::Kind::LengthsSumNodeKind: {
+      auto *LSNode = llvm::cast<LengthsSumNode>(&I);
+      std::vector<synTensor> inputs = {
+          tensors[LSNode->getData()].get(),
+          tensors[LSNode->getLengths()].get(),
+      };
+      chk(synCreateGenericNode(inputs.data(), &tensors[LSNode].get(),
+                               inputs.size(), 1, nullptr, "lengths_sum_f32",
+                               LSNode->getName().data(), nullptr, nullptr));
+      multiInputs.emplace_back(std::move(inputs));
+      break;
+    }
     case Kinded::Kind::SparseLengthsSumNodeKind: {
       auto *RI = llvm::cast<SparseLengthsSumNode>(&I);
       std::vector<synTensor> inputs = {
@@ -1472,6 +1484,7 @@ bool HabanaBackend::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::TanhNodeKind:
   case Kinded::Kind::TileNodeKind:
   case Kinded::Kind::TransposeNodeKind:
+  case Kinded::Kind::LengthsSumNodeKind:
   case Kinded::Kind::SparseLengthsSumNodeKind:
   case Kinded::Kind::SparseLengthsWeightedSumNodeKind:
   case Kinded::Kind::FusedRowwiseQuantizedSparseLengthsSumNodeKind:
