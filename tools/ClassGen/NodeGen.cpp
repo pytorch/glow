@@ -216,6 +216,15 @@ int main(int argc, char **argv) {
                     "with the provided Scale, Bias, Mean, Var, ChannelIdx, "
                     "Epsilon, and Momentum. Similar to Caffe2 and ONNX LRN.");
 
+  BB.newNode("BatchBoxCox")
+      .addInput("Input")
+      .addInput("Lambda1")
+      .addInput("Lambda2")
+      .addMember(MemberType::Float, "Epsilon")
+      .addResult("Input.getType()")
+      .setDocstring("Apply box-cox transform for each column for each column "
+                    "in NxD input tensor");
+
   //===--------------------------------------------------------------------===//
   //                     Bucketing
   //===--------------------------------------------------------------------===//

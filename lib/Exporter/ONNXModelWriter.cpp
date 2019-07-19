@@ -735,6 +735,13 @@ llvm::Error ONNXModelWriter::writeLocalResponseNormalization(
   return llvm::Error::success();
 }
 
+llvm::Error ONNXModelWriter::writeBatchBoxCox(const BatchBoxCoxNode *node,
+                                              GraphType &graph) {
+  auto *proto = graph.add_node();
+  addValueAttribute(proto, "epsilon", node->getEpsilon());
+  return writeAllWithNode(node->getName(), node, proto);
+}
+
 //===-----------------------------------------------------------------===//
 //                    Operators Supported by Glow only
 //===-----------------------------------------------------------------===//
