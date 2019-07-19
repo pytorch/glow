@@ -5924,7 +5924,7 @@ TEST_P(OperatorTest, SparseLengthsWeightedSumI8) {
 template <typename DataType>
 static void testRowwiseQuantizedSparseLengthsWeightedSum(
     glow::PlaceholderBindings &bindings, glow::Module &mod, glow::Function *F,
-    glow::ExecutionEngine &EE, ElemKind DTy) {
+    glow::ExecutionEngine &EE, ElemKind DTy, float allowedError) {
   /*
     DATA  =   [2.0, -0.5, 13]
     WEIGHTS = [3, 1, 0, 0, 0, 0, 2, -0.5]
@@ -5979,29 +5979,28 @@ static void testRowwiseQuantizedSparseLengthsWeightedSum(
       25,
   };
 
-  EXPECT_TRUE(expected.isEqual(result, 0.01));
+  EXPECT_TRUE(expected.isEqual(result, allowedError));
 }
 
 /// Test RWQ-SLWS with Float Weights, Scales, Offsets, and Output.
 TEST_P(OperatorTest, RowwiseQuantizedSparseLengthsWeightedSum_Float) {
   ENABLED_BACKENDS(Interpreter, CPU);
   testRowwiseQuantizedSparseLengthsWeightedSum<float>(bindings_, mod_, F_, EE_,
-                                                      ElemKind::FloatTy);
+                                                      ElemKind::FloatTy, 0.01);
 }
 
 /// Test RWQ-SLWS with Float16 Weights, Scales, Offsets, and Output.
 TEST_P(OperatorTest, RowwiseQuantizedSparseLengthsWeightedSum_Float16) {
   ENABLED_BACKENDS(Interpreter);
   testRowwiseQuantizedSparseLengthsWeightedSum<float16_t>(
-      bindings_, mod_, F_, EE_, ElemKind::Float16Ty);
+      bindings_, mod_, F_, EE_, ElemKind::Float16Ty, 0.02);
 }
 
 /// Helper to test RowwiseQuantizedSparseLengthsWeightedSum using \p DTy.
 template <typename DataType>
-static void
-testRowwiseQuantizedSparseLengthsSum(glow::PlaceholderBindings &bindings,
-                                     glow::Module &mod, glow::Function *F,
-                                     glow::ExecutionEngine &EE, ElemKind DTy) {
+static void testRowwiseQuantizedSparseLengthsSum(
+    glow::PlaceholderBindings &bindings, glow::Module &mod, glow::Function *F,
+    glow::ExecutionEngine &EE, ElemKind DTy, float allowedError) {
   /*
     DATA  = [
         [1.0, 1.2],
@@ -6049,21 +6048,21 @@ testRowwiseQuantizedSparseLengthsSum(glow::PlaceholderBindings &bindings,
       5.5f, 6.9f, 0.0f, 0.0f, 6.8f, 9.1f, 1.0f, 1.2f, 3.0f, 3.6f,
   };
 
-  EXPECT_TRUE(expected.isEqual(result, 0.03));
+  EXPECT_TRUE(expected.isEqual(result, allowedError));
 }
 
 /// Test RWQ-SLS with Float Weights, Scales, Offsets, and Output.
 TEST_P(OperatorTest, RowwiseQuantizedSparseLengthsSum_Float) {
   ENABLED_BACKENDS(Interpreter, CPU);
   testRowwiseQuantizedSparseLengthsSum<float>(bindings_, mod_, F_, EE_,
-                                              ElemKind::FloatTy);
+                                              ElemKind::FloatTy, 0.025);
 }
 
 /// Test RWQ-SLS with Float16 Weights, Scales, Offsets, and Output.
 TEST_P(OperatorTest, RowwiseQuantizedSparseLengthsSum_Float16) {
   ENABLED_BACKENDS(Interpreter);
   testRowwiseQuantizedSparseLengthsSum<float16_t>(bindings_, mod_, F_, EE_,
-                                                  ElemKind::Float16Ty);
+                                                  ElemKind::Float16Ty, 0.025);
 }
 
 TEST_P(OperatorTest, RepeatedSLSWithPartialTensors) {
@@ -6121,11 +6120,11 @@ TEST_P(OperatorTest, RepeatedSLSWithPartialTensors) {
   }
 }
 
-/// Helper to test RowwiseQuantizedSparseLengthsWeightedSum using \p DTy.
+/// Helper to test FusedRowwiseQuantizedSparseLengthsWeightedSum using \p DTy.
 template <typename DataType>
 static void testFusedRowwiseQuantizedSparseLengthsWeightedSum(
     glow::PlaceholderBindings &bindings, glow::Module &mod, glow::Function *F,
-    glow::ExecutionEngine &EE, ElemKind DTy) {
+    glow::ExecutionEngine &EE, ElemKind DTy, float allowedError) {
   /*
     DATA  =   [[2.0, -0.5, 13]]
     WEIGHTS = [3, 1, 0, 0, 0, 0, 2, -0.5]
@@ -6179,26 +6178,28 @@ static void testFusedRowwiseQuantizedSparseLengthsWeightedSum(
       25,
   };
 
-  EXPECT_TRUE(expected.isEqual(result, 0.02));
+  EXPECT_TRUE(expected.isEqual(result, allowedError));
 }
 
 /// Test Fused-RWQ-SLWS in Float.
 TEST_P(OperatorTest, FusedRowwiseQuantizedSparseLengthsWeightedSum_Float) {
   ENABLED_BACKENDS(Interpreter, CPU, Habana);
   testFusedRowwiseQuantizedSparseLengthsWeightedSum<float>(
-      bindings_, mod_, F_, EE_, ElemKind::FloatTy);
+      bindings_, mod_, F_, EE_, ElemKind::FloatTy, 0.01);
 }
 
 /// Test Fused-RWQ-SLWS in Float16.
 TEST_P(OperatorTest, FusedRowwiseQuantizedSparseLengthsWeightedSum_Float16) {
   ENABLED_BACKENDS(Interpreter);
   testFusedRowwiseQuantizedSparseLengthsWeightedSum<float16_t>(
-      bindings_, mod_, F_, EE_, ElemKind::Float16Ty);
+      bindings_, mod_, F_, EE_, ElemKind::Float16Ty, 0.02);
 }
 
-TEST_P(OperatorTest, FusedRowwiseQuantizedSparseLengthsSum) {
-  ENABLED_BACKENDS(Interpreter, CPU, Habana);
-
+/// Helper to test FusedRowwiseQuantizedSparseLengthsSum using \p DTy.
+template <typename DataType>
+static void testFusedRowwiseQuantizedSparseLengthsSum(
+    glow::PlaceholderBindings &bindings, glow::Module &mod, glow::Function *F,
+    glow::ExecutionEngine &EE, ElemKind DTy, float allowedError) {
   /*
     DATA  = [
         [1.0, 1.2],
@@ -6220,33 +6221,47 @@ TEST_P(OperatorTest, FusedRowwiseQuantizedSparseLengthsSum) {
       1.0f, 1.2f, 2.3f, 3.4f, 4.5f, 5.7f,
   };
 
-  Placeholder *indices = mod_.createPlaceholder(
+  Placeholder *indices = mod.createPlaceholder(
       ElemKind::Int64ITy, {8}, "indices", /* isTrainable */ false);
-  Placeholder *lengths = mod_.createPlaceholder(
+  Placeholder *lengths = mod.createPlaceholder(
       ElemKind::Int32ITy, {5}, "lengths", /* isTrainable */ false);
 
-  bindings_.allocate(indices)->getHandle<int64_t>() = {
+  bindings.allocate(indices)->getHandle<int64_t>() = {
       2, 0, 1, 2, 0, 0, 0, 0,
   };
-  bindings_.allocate(lengths)->getHandle<int32_t>() = {
+  bindings.allocate(lengths)->getHandle<int32_t>() = {
       2, 0, 2, 1, 3,
   };
 
-  auto *R = F_->createFusedRowwiseQuantizedSparseLengthsSum("RQSLWS", data,
-                                                            indices, lengths);
-  SaveNode *S = F_->createSave("save", R);
-  bindings_.allocate(S->getPlaceholder());
+  auto *R = F->createFusedRowwiseQuantizedSparseLengthsSum(
+      "RQSLWS", data, indices, lengths, DTy);
+  SaveNode *S = F->createSave("save", R);
+  bindings.allocate(S->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(bindings_);
+  EE.compile(CompilationMode::Infer, F);
+  EE.run(bindings);
 
-  Tensor &result = *bindings_.get(S->getPlaceholder());
-  Tensor expected(ElemKind::FloatTy, {5, 2});
-  expected.getHandle() = {
+  Tensor &result = *bindings.get(S->getPlaceholder());
+  Tensor expected(DTy, {5, 2});
+  expected.getHandle<DataType>() = {
       5.5f, 6.9f, 0.0f, 0.0f, 6.8f, 9.1f, 1.0f, 1.2f, 3.0f, 3.6f,
   };
 
-  EXPECT_TRUE(expected.isEqual(result, 0.03));
+  EXPECT_TRUE(expected.isEqual(result, allowedError));
+}
+
+/// Test Fused-RWQ-SLS in Float.
+TEST_P(OperatorTest, FusedRowwiseQuantizedSparseLengthsSum_Float) {
+  ENABLED_BACKENDS(Interpreter, CPU, Habana);
+  testFusedRowwiseQuantizedSparseLengthsSum<float>(bindings_, mod_, F_, EE_,
+                                                   ElemKind::FloatTy, 0.025);
+}
+
+/// Test Fused-RWQ-SLS in Float16.
+TEST_P(OperatorTest, FusedRowwiseQuantizedSparseLengthsSum_Float16) {
+  ENABLED_BACKENDS(Interpreter);
+  testFusedRowwiseQuantizedSparseLengthsSum<float16_t>(
+      bindings_, mod_, F_, EE_, ElemKind::Float16Ty, 0.025);
 }
 
 /// Test SLS when some input tensors are constants.
