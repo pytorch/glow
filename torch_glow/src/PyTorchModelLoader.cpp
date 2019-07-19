@@ -254,7 +254,9 @@ llvm::Error PyTorchModelLoader::loadMul(const torch::jit::Node *ptNode) {
   glow::NodeValue rhs;
   ASSIGN_VALUE_OR_RETURN_ERR(rhs, getGlowNodeValue(inputs[1]));
 
-  glow::MulNode *glowNode = F_.createMul("mul", lhs, rhs);
+  glow::MulNode *glowNode =
+      F_.createNodeWithBroadcast<glow::MulNode>("mul", /*axis*/ -1, lhs, rhs);
+
   return addGlowNodeValue(outputs[0], glowNode->getResult());
 }
 
@@ -268,7 +270,9 @@ llvm::Error PyTorchModelLoader::loadDiv(const torch::jit::Node *ptNode) {
   glow::NodeValue rhs;
   ASSIGN_VALUE_OR_RETURN_ERR(rhs, getGlowNodeValue(inputs[1]));
 
-  glow::DivNode *glowNode = F_.createDiv("div", lhs, rhs);
+  glow::DivNode *glowNode =
+      F_.createNodeWithBroadcast<glow::DivNode>("div", /*axis*/ -1, lhs, rhs);
+
   return addGlowNodeValue(outputs[0], glowNode->getResult());
 }
 
@@ -294,7 +298,8 @@ llvm::Error PyTorchModelLoader::loadAdd(const torch::jit::Node *ptNode) {
   glow::NodeValue rhs;
   ASSIGN_VALUE_OR_RETURN_ERR(rhs, getGlowNodeValue(inputs[1]));
 
-  glow::AddNode *glowNode = F_.createAdd("add", lhs, rhs);
+  glow::AddNode *glowNode =
+      F_.createNodeWithBroadcast<glow::AddNode>("add", /*axis*/ -1, lhs, rhs);
   return addGlowNodeValue(outputs[0], glowNode->getResult());
 }
 
@@ -320,7 +325,8 @@ llvm::Error PyTorchModelLoader::loadSub(const torch::jit::Node *ptNode) {
   glow::NodeValue rhs;
   ASSIGN_VALUE_OR_RETURN_ERR(rhs, getGlowNodeValue(inputs[1]));
 
-  glow::SubNode *glowNode = F_.createSub("sub", lhs, rhs);
+  glow::SubNode *glowNode =
+      F_.createNodeWithBroadcast<glow::SubNode>("sub", /*axis*/ -1, lhs, rhs);
   return addGlowNodeValue(outputs[0], glowNode->getResult());
 }
 
