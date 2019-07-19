@@ -847,6 +847,7 @@ HabanaBackend::compile(Function *F, const BackendOptions &opts) const {
   std::vector<std::unique_ptr<ns_LrnKernel::Params>> lrnParams;
   std::vector<std::unique_ptr<synGEMMParams>> gemmParams;
   std::vector<std::unique_ptr<ns_Softmax::Params>> softmaxParams;
+  std::vector<std::unique_ptr<float>> batchBoxCoxParams;
 
   // Keep references to tensor pointer arrays passed into multi-input nodes
   // until the compilation is done.
@@ -1376,6 +1377,21 @@ HabanaBackend::compile(Function *F, const BackendOptions &opts) const {
       gatherParams.emplace_back(std::move(params));
       break;
     }
+    case Kinded::Kind::BatchBoxCoxNodeKind: {
+      auto *BBC = llvm::cast<BatchBoxCoxNode>(&I);
+      std::vector<synTensor> inputs = {
+          tensors[BBC->getInput()].get(),
+          tensors[BBC->getLambda1()].get(),
+          tensors[BBC->getLambda2()].get(),
+      };
+      auto params = llvm::make_unique<float>(BBC->getEpsilon());
+      chk(synCreateGenericNode(
+          inputs.data(), &tensors[BBC].get(), inputs.size(), 1, params.get(),
+          "batch_box_cox_f32", BBC->getName().data(), nullptr, nullptr));
+      multiInputs.emplace_back(std::move(inputs));
+      batchBoxCoxParams.emplace_back(std::move(params));
+      break;
+    }
     default: {
       RETURN_ERR(strFormat("Unhandled node: %s", I.getDebugDesc().c_str()));
       break;
@@ -1447,6 +1463,7 @@ bool HabanaBackend::isOpSupported(const NodeInfo &NI) const {
   switch (NI.getKind()) {
   case Kinded::Kind::AddNodeKind:
   case Kinded::Kind::AvgPoolNodeKind:
+  case Kinded::Kind::BatchBoxCoxNodeKind:
   case Kinded::Kind::BatchMatMulNodeKind:
   case Kinded::Kind::BatchedAddNodeKind:
   case Kinded::Kind::BatchedReduceAddNodeKind:
@@ -1490,6 +1507,7 @@ bool HabanaBackend::isOpSupported(const NodeInfo &NI) const {
 
 bool HabanaBackend::shouldLower(const Node *N) const {
   switch (N->getKind()) {
+  case Kinded::Kind::BatchBoxCoxNodeKind:
   case Kinded::Kind::BatchMatMulNodeKind:
   case Kinded::Kind::ConvolutionNodeKind:
   case Kinded::Kind::FullyConnectedNodeKind:

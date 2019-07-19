@@ -2003,59 +2003,7 @@ Node *Function::createBatchBoxCox(llvm::StringRef name, NodeValue data,
   assert((data.dims()[1] == lambda1.dims()[0]) &&
          "data, lambda1 and lambda2 must have the same number of rows");
 
-  // Broadcast lambda1 and lambda2 so that they are both the same size as the
-  // data.
-  auto *BL1 = createBroadcast(name.str() + ".broadcast", lambda1, data.dims(),
-                              /*axis=*/1);
-  auto *BL2 = createBroadcast(name.str() + ".broadcast", lambda2, data.dims(),
-                              /*axis=*/1);
-
-  // Broadcast is usually implemented via a Tile node returned from
-  // createBroadcast(). However, if the Broadcast was a noop then there is a
-  // Reshape instead of a Tile returned. Thus, get the index here to use based
-  // on the returned kinds from createBroadcast() above.
-  assert((llvm::isa<TileNode>(BL1) || llvm::isa<ReshapeNode>(BL1)) &&
-         "Broadcast is assumed to be either implemented via Tile or Reshape.");
-  TypeRef typeBL1 = llvm::isa<TileNode>(BL1)
-                        ? BL1->getType(TileNode::ResultIdx)
-                        : BL1->getType(ReshapeNode::ResultIdx);
-
-  // Add a small epsilon to lambda1 so that we can avoid dividing by zero
-  // later. It doesn't matter that this is technically incorrect because the
-  // final Select will discard the results of this computation.
-  auto *eps = createSplat(name.str() + ".eps", typeBL1, epsilon);
-  auto *EBL1 = createAdd(name.str() + ".lambda1eps", BL1, eps);
-
-  // Compute data + BL2, which is needed regardless of whether
-  // lambda1 is 0 or not.
-  auto *AN = createAdd(name.str() + ".add", data, BL2);
-
-  // Take the max of data + BL2 and 1e-6 to void exponentiating or taking the
-  // logarithm of too small a number.
-  auto *minArg =
-      createSplat(name.str() + ".logpowmin", AN->getResult().getType(), 1e-6);
-  auto *MN = createMax(name.str() + ".max", AN, minArg);
-
-  // Compute the Box-Cox transform for the lambda1 == 0 case:
-  //    y = ln(max(x + lambda2, 1e-6))
-
-  auto *LN = createLog(name.str() + ".log", MN);
-
-  // Compute the Box-Cox transform for the lambda1 != 0 case:
-  //    y = (max(x + lambda2, 1e-6)^lambda1 - 1)/lambda1
-  auto *PN = createPow(name.str() + ".pow", MN, BL1);
-  auto *ones =
-      createSplat(name.str() + ".ones", PN->getResult().getType(), 1.0f);
-  auto *SN = createSub(name.str() + ".sub", PN, ones);
-  // Divide by EBL1, not BL1 to avoid a divide-by-zero exception.
-  auto *DN = createDiv(name.str() + ".div", SN, EBL1);
-
-  // Compute predicates for selecting between the two cases above.
-  auto *zeroes = createSplat(name.str() + ".zeroes", typeBL1, 0.0f);
-  auto *predicate = createCmpEQ(name.str() + ".cmpeq", BL1, zeroes);
-
-  // Create Select to pick between the two Box-Cox cases.
-  return createSelect(name.str() + ".select", predicate, LN, DN);
+  return addNode(new BatchBoxCoxNode(name, data, lambda1, lambda2, epsilon));
 }
 
 Node *Function::createClip(llvm::StringRef name, NodeValue input, float min,

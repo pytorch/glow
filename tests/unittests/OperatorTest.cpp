@@ -7551,7 +7551,7 @@ static void testBatchBoxCox(glow::PlaceholderBindings &bindings,
 
 /// Test that the BatchBoxCox operator works as expected in FloatTy.
 TEST_P(OperatorTest, BatchBoxCox_Float) {
-  ENABLED_BACKENDS(Interpreter);
+  ENABLED_BACKENDS(Interpreter, Habana);
   testBatchBoxCox<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy, 0.001f);
 }
 
