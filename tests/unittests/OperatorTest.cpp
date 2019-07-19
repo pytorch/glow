@@ -5645,7 +5645,7 @@ TEST_P(OperatorTest, testQuantizedBatchAdd) {
 }
 
 TEST_P(OperatorTest, LengthsSum) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  ENABLED_BACKENDS(Interpreter, CPU, Habana);
 
   /*
     DATA  = [
