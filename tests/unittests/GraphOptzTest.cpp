@@ -1980,9 +1980,6 @@ TEST_F(GraphFold, foldLeakyReluFromConst) {
 
 /// Testing folding of Reshape->Transpose->Reshape into ChannelShuffle.
 TEST_F(GraphFold, foldChannelShuffle) {
-  // FIXME: foldChannelShuffle is disabled; see GraphOptimizer.cpp.
-  return;
-
   const size_t inputDims[] = {3, 136, 28, 28};
 
   Node *K =
