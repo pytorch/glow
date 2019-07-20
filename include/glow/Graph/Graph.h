@@ -851,14 +851,16 @@ public:
   RowwiseQuantizedSparseLengthsWeightedSumNode *
   createRowwiseQuantizedSparseLengthsWeightedSum(
       llvm::StringRef name, Constant *data, Constant *scales, Constant *offsets,
-      NodeValue weights, NodeValue indices, NodeValue lengths);
+      NodeValue weights, NodeValue indices, NodeValue lengths,
+      ElemKind precision = ElemKind::FloatTy);
 
   /// Same as \ref createRowwiseQuantizedSparseLengthsWeightedSum(), but expects
   /// float input \p data, which is rowwise-quantized internally.
   RowwiseQuantizedSparseLengthsWeightedSumNode *
   createRowwiseQuantizedSparseLengthsWeightedSum(
       llvm::StringRef name, Tensor &data, NodeValue weights, NodeValue indices,
-      NodeValue lengths, quantization::Schema schema);
+      NodeValue lengths, quantization::Schema schema,
+      ElemKind precision = ElemKind::FloatTy);
 
   /// Creates and \returns a node of \p name, performing the SparseLengthsSum
   /// operation, using fused rowwise quantization for the input \p data wherein
@@ -869,7 +871,6 @@ public:
   /// to Result[0], next Lengths[1] slices are aggregated to Result[1], etc.
   /// I.e. sum(Lengths) must be equal to len(Indices). \p precision represents
   /// what precision to use for Scale, Offset, and Result.
-
   FusedRowwiseQuantizedSparseLengthsSumNode *
   createFusedRowwiseQuantizedSparseLengthsSum(
       llvm::StringRef name, Constant *data, NodeValue indices,
@@ -885,21 +886,18 @@ public:
   /// Same as \ref createFusedRowwiseQuantizedSparseLengthsSum(), but i-th slice
   /// is multiplied by weights[i]. len(weights) must be equal to len(indices).
   FusedRowwiseQuantizedSparseLengthsWeightedSumNode *
-  createFusedRowwiseQuantizedSparseLengthsWeightedSum(llvm::StringRef name,
-                                                      NodeValue data,
-                                                      NodeValue weights,
-                                                      NodeValue indices,
-                                                      NodeValue lengths);
+  createFusedRowwiseQuantizedSparseLengthsWeightedSum(
+      llvm::StringRef name, NodeValue data, NodeValue weights,
+      NodeValue indices, NodeValue lengths,
+      ElemKind precision = ElemKind::FloatTy);
 
   /// Same as \ref createFusedRowwiseQuantizedSparseLengthsWeightedSum(), but
   /// expects float input \p data, which is rowwise-quantized and fused
   /// internally.
   FusedRowwiseQuantizedSparseLengthsWeightedSumNode *
-  createFusedRowwiseQuantizedSparseLengthsWeightedSum(llvm::StringRef name,
-                                                      Tensor &data,
-                                                      NodeValue weights,
-                                                      NodeValue indices,
-                                                      NodeValue lengths);
+  createFusedRowwiseQuantizedSparseLengthsWeightedSum(
+      llvm::StringRef name, Tensor &data, NodeValue weights, NodeValue indices,
+      NodeValue lengths, ElemKind precision = ElemKind::FloatTy);
 
   /// Given a vector of segment lengths, calculates offsets of each segment and
   /// packs them next to the lengths. For the input vector of length N the

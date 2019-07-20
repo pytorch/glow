@@ -5963,7 +5963,7 @@ static void testRowwiseQuantizedSparseLengthsWeightedSum(
 
   auto *R = F->createRowwiseQuantizedSparseLengthsWeightedSum(
       "RQSLWS", data, weights, indices, lengths,
-      quantization::Schema::Asymmetric);
+      quantization::Schema::Asymmetric, DTy);
   SaveNode *S = F->createSave("save", R);
   bindings.allocate(S->getPlaceholder());
 
@@ -6162,7 +6162,7 @@ static void testFusedRowwiseQuantizedSparseLengthsWeightedSum(
   };
 
   auto *R = F->createFusedRowwiseQuantizedSparseLengthsWeightedSum(
-      "RQSLWS", data, weights, indices, lengths);
+      "RQSLWS", data, weights, indices, lengths, DTy);
   SaveNode *S = F->createSave("save", R);
   bindings.allocate(S->getPlaceholder());
 

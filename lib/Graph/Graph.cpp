@@ -1539,12 +1539,12 @@ Function::createSparseLengthsWeightedSum(llvm::StringRef name, TypeRef outTy,
 RowwiseQuantizedSparseLengthsWeightedSumNode *
 Function::createRowwiseQuantizedSparseLengthsWeightedSum(
     llvm::StringRef name, Constant *data, Constant *scales, Constant *offsets,
-    NodeValue weights, NodeValue indices, NodeValue lengths) {
+    NodeValue weights, NodeValue indices, NodeValue lengths,
+    ElemKind precision) {
   auto inDims = data->dims();
   ShapeVector outDims(inDims.begin(), inDims.end());
   outDims[0] = lengths.dims()[0];
-  auto outTy =
-      getParent()->uniqueType(weights.getType()->getElementType(), outDims);
+  auto outTy = getParent()->uniqueType(precision, outDims);
   return addNode(new RowwiseQuantizedSparseLengthsWeightedSumNode(
       name, outTy, data, scales, offsets, weights, indices, lengths));
 }
@@ -1556,7 +1556,7 @@ Function::createRowwiseQuantizedSparseLengthsSum(
   auto ty = getParent()->uniqueType(precision, {indices.dims()[0]});
   auto ones = createSplat(name.str() + ".ones", ty, 1.0);
   return createRowwiseQuantizedSparseLengthsWeightedSum(
-      name, data, scales, offsets, ones, indices, lengths);
+      name, data, scales, offsets, ones, indices, lengths, precision);
 }
 
 /// Helper to create a RowwiseQuantizedSparseLengthsWeightedSumNode in the
@@ -1567,7 +1567,8 @@ Function::createRowwiseQuantizedSparseLengthsSum(
 static RowwiseQuantizedSparseLengthsWeightedSumNode *
 quantizeDataAndCreateRowwiseQuantizedSparseLengthsWeightedSum(
     Function *F, llvm::StringRef name, Tensor &data, NodeValue weights,
-    NodeValue indices, NodeValue lengths, quantization::Schema schema) {
+    NodeValue indices, NodeValue lengths, quantization::Schema schema,
+    ElemKind precision) {
   auto inDims = data.dims();
 
   // Note: In rwqData, we are using a quantized type, however the scale/offset
@@ -1575,14 +1576,13 @@ quantizeDataAndCreateRowwiseQuantizedSparseLengthsWeightedSum(
   // scale/offset come from dataScales and dataOffsets.
   Constant *rwqData = F->getParent()->createConstant(ElemKind::UInt8QTy, inDims,
                                                      0.0, 0, "data");
-  const ElemKind k = weights.getType()->getElementType();
   Constant *dataScales =
-      F->getParent()->createConstant(k, {inDims[0]}, "dataScales");
+      F->getParent()->createConstant(precision, {inDims[0]}, "dataScales");
   Constant *dataOffsets =
-      F->getParent()->createConstant(k, {inDims[0]}, "dataOffsets");
+      F->getParent()->createConstant(precision, {inDims[0]}, "dataOffsets");
 
-  // Note: Using float offset here as that is what RWQ-SLWS expects.
-  switch (weights.getType()->getElementType()) {
+  // Note: Using floating point offset here as that is what RWQ-SLWS expects.
+  switch (precision) {
   case ElemKind::FloatTy:
     quantization::tensorRowwiseQuantization<float, float, uint8_t>(
         data, rwqData->getPayloadMutable(), dataScales->getPayloadMutable(),
@@ -1594,18 +1594,19 @@ quantizeDataAndCreateRowwiseQuantizedSparseLengthsWeightedSum(
         dataOffsets->getPayloadMutable(), schema);
     break;
   default:
-    LOG(FATAL) << "Unsupported type for Weights found.";
+    LOG(FATAL) << "Unsupported precision for RWQ-SLWS.";
   }
   return F->createRowwiseQuantizedSparseLengthsWeightedSum(
-      name, rwqData, dataScales, dataOffsets, weights, indices, lengths);
+      name, rwqData, dataScales, dataOffsets, weights, indices, lengths,
+      precision);
 }
 
 RowwiseQuantizedSparseLengthsWeightedSumNode *
 Function::createRowwiseQuantizedSparseLengthsWeightedSum(
     llvm::StringRef name, Tensor &data, NodeValue weights, NodeValue indices,
-    NodeValue lengths, quantization::Schema schema) {
+    NodeValue lengths, quantization::Schema schema, ElemKind precision) {
   return quantizeDataAndCreateRowwiseQuantizedSparseLengthsWeightedSum(
-      this, name, data, weights, indices, lengths, schema);
+      this, name, data, weights, indices, lengths, schema, precision);
 }
 
 RowwiseQuantizedSparseLengthsWeightedSumNode *
@@ -1615,7 +1616,7 @@ Function::createRowwiseQuantizedSparseLengthsSum(
   auto ty = getParent()->uniqueType(precision, {indices.dims()[0]});
   auto ones = createSplat(name.str() + ".ones", ty, 1.0);
   return quantizeDataAndCreateRowwiseQuantizedSparseLengthsWeightedSum(
-      this, name, data, ones, indices, lengths, schema);
+      this, name, data, ones, indices, lengths, schema, precision);
 }
 
 /// Helper used to get specific output type required for
@@ -1638,9 +1639,9 @@ static TypeRef getOutputTypeOfFusedRowwiseQuantizedSLS(
 FusedRowwiseQuantizedSparseLengthsWeightedSumNode *
 Function::createFusedRowwiseQuantizedSparseLengthsWeightedSum(
     llvm::StringRef name, NodeValue data, NodeValue weights, NodeValue indices,
-    NodeValue lengths) {
+    NodeValue lengths, ElemKind precision) {
   auto outTy = getOutputTypeOfFusedRowwiseQuantizedSLS(
-      this, data.dims(), lengths.dims(), weights.getElementType());
+      this, data.dims(), lengths.dims(), precision);
   return addNode(new FusedRowwiseQuantizedSparseLengthsWeightedSumNode(
       name, outTy, data, weights, indices, lengths));
 }
@@ -1699,12 +1700,12 @@ static Constant *quantizeDataForFusedRowwiseQuantizedSparseLengthsWeightedSum(
 FusedRowwiseQuantizedSparseLengthsWeightedSumNode *
 Function::createFusedRowwiseQuantizedSparseLengthsWeightedSum(
     llvm::StringRef name, Tensor &data, NodeValue weights, NodeValue indices,
-    NodeValue lengths) {
+    NodeValue lengths, ElemKind precision) {
   Constant *rwqData =
-      quantizeDataForFusedRowwiseQuantizedSparseLengthsWeightedSum(
-          this, data, weights.getType()->getElementType());
+      quantizeDataForFusedRowwiseQuantizedSparseLengthsWeightedSum(this, data,
+                                                                   precision);
   return createFusedRowwiseQuantizedSparseLengthsWeightedSum(
-      name, rwqData, weights, indices, lengths);
+      name, rwqData, weights, indices, lengths, precision);
 }
 
 FusedRowwiseQuantizedSparseLengthsSumNode *
