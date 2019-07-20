@@ -497,7 +497,19 @@ void PyTorchModelLoader::loadTranspose(const torch::jit::Node *ptNode) {
   } else {
     assert(false && "Transpose requires input to have rank <= 2");
   }
+  addGlowNodeValue(outputs[0], output);
+}
 
+void PyTorchModelLoader::loadMin(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  assert(inputs.size() == 2);
+  assert(outputs.size() == 1);
+
+  auto lhs = getGlowNodeValue(inputs[0]);
+  auto rhs = getGlowNodeValue(inputs[1]);
+
+  auto output = f_->createMin("min", lhs, rhs);
   addGlowNodeValue(outputs[0], output);
 }
 
@@ -620,6 +632,9 @@ void PyTorchModelLoader::populateNodeLoaderMapping() {
 
   nodeLoaderMapping_[at::Symbol::fromQualString("aten::t_")] =
       [this](const torch::jit::Node *node) { return loadTranspose(node); };
+
+  nodeLoaderMapping_[at::Symbol::fromQualString("aten::min")] =
+      [this](const torch::jit::Node *node) { return loadMin(node); };
 }
 
 void PyTorchModelLoader::loadNode(const torch::jit::Node *node) {
