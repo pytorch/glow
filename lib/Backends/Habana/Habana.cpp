@@ -1303,6 +1303,19 @@ HabanaBackend::compile(Function *F, const BackendOptions &opts) const {
       }
       break;
     }
+    case Kinded::Kind::BatchOneHotNodeKind: {
+      auto *BOHNode = llvm::cast<BatchOneHotNode>(&I);
+      std::vector<synTensor> inputs = {
+          tensors[BOHNode->getData()].get(),
+          tensors[BOHNode->getLengths()].get(),
+          tensors[BOHNode->getValues()].get(),
+      };
+      chk(synCreateGenericNode(inputs.data(), &tensors[BOHNode].get(),
+                               inputs.size(), 1, nullptr, "batch_one_hot_i32",
+                               BOHNode->getName().data(), nullptr, nullptr));
+      multiInputs.emplace_back(std::move(inputs));
+      break;
+    }
     case Kinded::Kind::LengthsSumNodeKind: {
       auto *LSNode = llvm::cast<LengthsSumNode>(&I);
       std::vector<synTensor> inputs = {
@@ -1508,6 +1521,8 @@ bool HabanaBackend::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::FusedRowwiseQuantizedSparseLengthsWeightedSumNodeKind:
   case Kinded::Kind::LocalResponseNormalizationNodeKind:
     return true;
+  case Kinded::Kind::BatchOneHotNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind({ElemKind::Int32ITy});
   case Kinded::Kind::GatherNodeKind:
     // Gather is technically supported but currently appears to trigger bugs in
     // large models.

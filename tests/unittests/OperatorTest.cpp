@@ -7217,7 +7217,7 @@ TEST_P(OperatorTest, BatchOneHotDataInt64) {
 
 /// Test BatchOneHot with Int32 data and Int32 Lengths.
 TEST_P(OperatorTest, BatchOneHotDataInt32) {
-  ENABLED_BACKENDS(Interpreter);
+  ENABLED_BACKENDS(Interpreter, Habana);
   batchOneHotTest<int32_t>(bindings_, mod_, F_, EE_, ElemKind::Int32ITy);
 }
 
