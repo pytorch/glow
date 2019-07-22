@@ -428,12 +428,12 @@ add_executable(RecommendationSystemTest
                RecommendationSystemTest.cpp)
 target_link_libraries(RecommendationSystemTest
                       PRIVATE
-                        BackendTestUtils
+                        BackendTestUtils2
                         Converter
                         Graph
                         IR
                         ExecutionContext
-                        ExecutionEngine
+                        ExecutionEngine2
                         Quantization
                         Partitioner
                         gtest
