@@ -7134,7 +7134,7 @@ TEST_P(OperatorTest, LengthsToRanges) {
 
 /// Test that LengthsRangeFill works.
 TEST_P(OperatorTest, LengthsRangeFill) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  ENABLED_BACKENDS(Interpreter, CPU, Habana);
 
   /*
     LENGTHS = [4, 3, 1]
