@@ -1315,6 +1315,14 @@ HabanaBackend::compile(Function *F, const BackendOptions &opts) const {
       multiInputs.emplace_back(std::move(inputs));
       break;
     }
+    case Kinded::Kind::LengthsRangeFillNodeKind: {
+      auto *LRFNode = llvm::cast<LengthsRangeFillNode>(&I);
+      chk(synCreateGenericNode(&tensors[LRFNode->getLengths()].get(),
+                               &tensors[LRFNode].get(), 1, 1, nullptr,
+                               "lengths_range_fill_i32",
+                               LRFNode->getName().data(), nullptr, nullptr));
+      break;
+    }
     case Kinded::Kind::SparseLengthsSumNodeKind: {
       auto *RI = llvm::cast<SparseLengthsSumNode>(&I);
       std::vector<synTensor> inputs = {
@@ -1501,6 +1509,7 @@ bool HabanaBackend::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::TanhNodeKind:
   case Kinded::Kind::TileNodeKind:
   case Kinded::Kind::TransposeNodeKind:
+  case Kinded::Kind::LengthsRangeFillNodeKind:
   case Kinded::Kind::LengthsSumNodeKind:
   case Kinded::Kind::SparseLengthsSumNodeKind:
   case Kinded::Kind::SparseLengthsWeightedSumNodeKind:
