@@ -96,7 +96,11 @@ createAndSetTensorType(const caffe2::TensorProto &in) {
   } else if (in.data_type() == caffe2::TensorProto::INT8) {
     result.t->reset(ElemKind::Int8QTy, dim, 1.0, 0);
   } else {
-    RETURN_ERR("Only float and index tensors are supported");
+    RETURN_ERR(
+        strFormat("Only float and index tensors are supported. Got type"
+                  " %s for tensor %s.",
+                  caffe2::TensorProto_DataType_Name(in.data_type()).c_str(),
+                  in.name().c_str()));
   }
 
   return llvm::Expected<LoadWeightResult>(std::move(result));
