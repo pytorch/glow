@@ -93,7 +93,7 @@ protected:
   /// \returns created CompiledFunction.
   virtual std::unique_ptr<CompiledFunction>
   createCompiledFunction(std::unique_ptr<llvm::orc::GlowJIT> JIT,
-                         const runtime::RuntimeBundle &runtimeBundle) const = 0;
+                         runtime::RuntimeBundle &&runtimeBundle) const = 0;
 
   /// \returns libjit bitcode for the current backend.
   virtual llvm::StringRef getLibjitBitcode() const = 0;

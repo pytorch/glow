@@ -471,9 +471,8 @@ public:
 
   class MockFunction : public CompiledFunction {
   public:
-    MockFunction(llvm::StringRef backendName,
-                 const runtime::RuntimeBundle &bundle)
-        : CompiledFunction(bundle), backendName(backendName) {}
+    MockFunction(llvm::StringRef backendName, runtime::RuntimeBundle &&bundle)
+        : CompiledFunction(std::move(bundle)), backendName(backendName) {}
 
     llvm::Error execute(ExecutionContext *) override {
       return llvm::Error::success();

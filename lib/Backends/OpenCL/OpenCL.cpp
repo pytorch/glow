@@ -108,9 +108,9 @@ static void addStringOption(std::vector<std::string> &options,
 }
 
 OpenCLFunction::OpenCLFunction(std::unique_ptr<IRFunction> F,
-                               const runtime::RuntimeBundle &bundle,
+                               runtime::RuntimeBundle &&bundle,
                                TraceInfo traceInfo)
-    : CompiledFunction(bundle), F_(std::move(F)) {
+    : CompiledFunction(std::move(bundle)), F_(std::move(F)) {
   // We need to go through the TraceInfo and pull out some info about manual
   // TraceEvents.
   for (const auto &backingPair : traceInfo.events) {
@@ -1723,7 +1723,7 @@ OCLBackend::compileIR(std::unique_ptr<IRFunction> IR) const {
   runtime::RuntimeBundle bundle =
       runtime::RuntimeBundle::create(*IR, allocator, allocator, allocator);
   std::unique_ptr<CompiledFunction> function =
-      llvm::make_unique<OpenCLFunction>(std::move(IR), bundle,
+      llvm::make_unique<OpenCLFunction>(std::move(IR), std::move(bundle),
                                         std::move(traceInfo));
   auto OCLFunction = static_cast<OpenCLFunction *>(function.get());
   OCLFunction->collectConstants(module);
@@ -1749,7 +1749,7 @@ OCLBackend::compile(Function *F, const BackendOptions &opts) const {
   }
 
   std::unique_ptr<CompiledFunction> compiledFunc =
-      llvm::make_unique<OpenCLFunction>(std::move(IR), bundle,
+      llvm::make_unique<OpenCLFunction>(std::move(IR), std::move(bundle),
                                         std::move(traceInfo));
 
   return llvm::Expected<std::unique_ptr<CompiledFunction>>(

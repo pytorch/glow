@@ -404,9 +404,9 @@ static llvm::Error dumpTopologyInfo(uint32_t deviceId, uint64_t topologyId) {
   return llvm::Error::success();
 }
 
-HabanaFunction::HabanaFunction(const runtime::RuntimeBundle &bundle,
+HabanaFunction::HabanaFunction(runtime::RuntimeBundle &&bundle,
                                const std::string &recipeName, Function *F)
-    : CompiledFunction(bundle), recipeName_(recipeName) {
+    : CompiledFunction(std::move(bundle)), recipeName_(recipeName) {
   findIOPlaceholders(F);
 }
 

@@ -114,8 +114,8 @@ static const auto all_backends = ::testing::Values(
 class MockBackend : public Backend {
   class MockFunction : public CompiledFunction {
   public:
-    MockFunction(const runtime::RuntimeBundle &bundle)
-        : CompiledFunction(bundle) {}
+    MockFunction(runtime::RuntimeBundle &&bundle)
+        : CompiledFunction(std::move(bundle)) {}
 
     llvm::Error execute(ExecutionContext *) override {
       return llvm::Error::success();
@@ -143,8 +143,8 @@ class MockBackend : public Backend {
 class MockBackendCustomIRGen : public Backend {
   class MockFunction : public CompiledFunction {
   public:
-    MockFunction(const runtime::RuntimeBundle &bundle)
-        : CompiledFunction(bundle) {}
+    MockFunction(runtime::RuntimeBundle &&bundle)
+        : CompiledFunction(std::move(bundle)) {}
 
     llvm::Error execute(ExecutionContext *) override {
       return llvm::Error::success();

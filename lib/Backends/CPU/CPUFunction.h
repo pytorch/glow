@@ -28,7 +28,7 @@ namespace glow {
 class CPUFunction final : public LLVMCompiledFunction {
 public:
   CPUFunction(std::unique_ptr<llvm::orc::GlowJIT> JIT,
-              const runtime::RuntimeBundle &runtimeBundle);
+              runtime::RuntimeBundle &&runtimeBundle);
 
   /// \name CompiledFunction interface
   ///@{
