@@ -19,6 +19,7 @@
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/PlaceholderBindings.h"
 #include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
+#include "glow/Support/Error.h"
 
 #include "llvm/ADT/STLExtras.h"
 
@@ -109,6 +110,7 @@ void ExecutionEngine2::runInternal(ExecutionContext &context,
   std::promise<void> runPromise;
   auto fut = runPromise.get_future();
   llvm::Error runErr = llvm::Error::success();
+  MARK_ERR_CHECKED(runErr);
   hostManager_->runNetwork(
       name, std::move(contextPtr),
       [&runPromise, &runErr](runtime::RunIdentifierTy, llvm::Error err,
