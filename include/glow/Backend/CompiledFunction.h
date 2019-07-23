@@ -31,7 +31,7 @@ public:
   CompiledFunction() = delete;
 
   /// Ctor that accepts runtimeBundle.
-  CompiledFunction(const runtime::RuntimeBundle &bundle);
+  CompiledFunction(runtime::RuntimeBundle &&bundle);
 
   /// Dtor.
   virtual ~CompiledFunction();

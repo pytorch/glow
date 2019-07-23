@@ -106,8 +106,7 @@ class OpenCLFunction final : public CompiledFunction {
 public:
   /// Ctor.
   explicit OpenCLFunction(std::unique_ptr<IRFunction> F,
-                          const runtime::RuntimeBundle &bundle,
-                          TraceInfo traceInfo);
+                          runtime::RuntimeBundle &&bundle, TraceInfo traceInfo);
 
   /// @name CompiledFunction interface
   ///@{

@@ -64,6 +64,8 @@ class RuntimeBundle {
   size_t mutableWeightVarsMemSize_{0};
   /// Amount of memory needed for activations.
   size_t activationsMemSize_{0};
+  /// True if the RuntimeBundle is valid, false if not.
+  bool isValid_{false};
 
 public:
   /// Get Constant Weights memory size.
@@ -118,7 +120,17 @@ public:
       : symbolTable_(std::move(symbolTable)), constants_(nullptr),
         constantWeightVarsMemSize_(constWeight),
         mutableWeightVarsMemSize_(mutableWeight),
-        activationsMemSize_(activations) {}
+        activationsMemSize_(activations), isValid_(true) {}
+
+  // Explicit copy constructor and deleted assignment operator. A RuntimeBundle
+  // should be moved. It should only be copied if absolutely necessary and never
+  // implicitly.
+  explicit RuntimeBundle(const RuntimeBundle &) = default;
+  RuntimeBundle &operator=(const RuntimeBundle &) = delete;
+
+  // Move constructor and assignment operator.
+  RuntimeBundle(RuntimeBundle &&rhs);
+  RuntimeBundle &operator=(RuntimeBundle &&rhs);
 };
 } // namespace runtime
 

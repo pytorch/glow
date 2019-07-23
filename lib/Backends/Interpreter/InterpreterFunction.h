@@ -51,7 +51,7 @@ class InterpreterFunction final : public CompiledFunction {
 
 public:
   InterpreterFunction(std::unique_ptr<IRFunction> F,
-                      const runtime::RuntimeBundle &bundle);
+                      runtime::RuntimeBundle &&bundle);
 
   /// \name CompiledFunction interface
   ///@{

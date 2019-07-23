@@ -248,8 +248,8 @@ private:
 class HabanaFunction final : public CompiledFunction {
 public:
   /// Constructor.
-  HabanaFunction(const runtime::RuntimeBundle &bundle,
-                 const std::string &recipeName, Function *F);
+  HabanaFunction(runtime::RuntimeBundle &&bundle, const std::string &recipeName,
+                 Function *F);
 
   /// @name CompiledFunction interface
   ///@{

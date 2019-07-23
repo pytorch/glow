@@ -37,17 +37,45 @@ static llvm::cl::opt<bool> reuseActivationsMemory(
     llvm::cl::desc("Should activation memory allocations be reused"),
     llvm::cl::init(true), llvm::cl::cat(BackendUtilsCat));
 
+glow::runtime::RuntimeBundle::RuntimeBundle(
+    glow::runtime::RuntimeBundle &&rhs) {
+  *this = std::move(rhs);
+}
+
+glow::runtime::RuntimeBundle &glow::runtime::RuntimeBundle::
+operator=(glow::runtime::RuntimeBundle &&rhs) {
+  if (this == &rhs) {
+    // Do nothing if rhs is the same object as this.
+    return *this;
+  }
+
+  std::swap(symbolTable_, rhs.symbolTable_);
+  std::swap(constants_, rhs.constants_);
+  std::swap(constantWeightVarsMemSize_, rhs.constantWeightVarsMemSize_);
+  std::swap(mutableWeightVarsMemSize_, rhs.mutableWeightVarsMemSize_);
+  std::swap(activationsMemSize_, rhs.activationsMemSize_);
+  std::swap(isValid_, rhs.isValid_);
+  // rhs is not valid now that all of its contents have been stolen.
+  rhs.isValid_ = false;
+  return *this;
+}
+
 void glow::runtime::RuntimeBundle::collectConstants(const IRFunction *F) {
+  DCHECK(isValid_);
   collectConstants(F->getGraph()->getParent());
 }
 
 void glow::runtime::RuntimeBundle::freeConstants() {
+  DCHECK(isValid_);
+
   if (constants_) {
     glow::alignedFree(constants_);
     constants_ = nullptr;
   }
 }
 void glow::runtime::RuntimeBundle::collectConstants(const Module *M) {
+  DCHECK(isValid_);
+
   // At compile time condense constants to a single block of memory.
   // This allows the graph to go away after compile time.
   // If there are no constants return nullptr.
@@ -78,6 +106,7 @@ void glow::runtime::RuntimeBundle::collectConstants(const Module *M) {
 }
 
 size_t glow::runtime::RuntimeBundle::getValueOffset(const Named *v) const {
+  DCHECK(isValid_);
   auto it = symbolTable_.find(std::string(v->getName()));
   assert(it != symbolTable_.end() && "Symbol not found.");
   return it->second.offset;
@@ -85,6 +114,7 @@ size_t glow::runtime::RuntimeBundle::getValueOffset(const Named *v) const {
 
 const runtime::RuntimeSymbolInfo &
 runtime::RuntimeBundle::getSymbolInfo(const Named *v) const {
+  DCHECK(isValid_);
   auto it = symbolTable_.find(std::string(v->getName()));
   assert(it != symbolTable_.end() && "Symbol not found.");
   return it->second;
