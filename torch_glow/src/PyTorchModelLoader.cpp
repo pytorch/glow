@@ -389,7 +389,7 @@ void PyTorchModelLoader::loadMaxPool2d(const torch::jit::Node *ptNode) {
   // Indexes of aten::max_pool2d inputs.
   struct Inputs {
     enum {
-      input = 1, // NCHW
+      input = 0, // NCHW
       kernel_size = 1,
       stride = 2,
       padding = 3,
