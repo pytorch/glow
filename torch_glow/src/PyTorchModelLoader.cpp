@@ -389,7 +389,7 @@ void PyTorchModelLoader::loadMaxPool2d(const torch::jit::Node *ptNode) {
   // Indexes of aten::max_pool2d inputs.
   struct Inputs {
     enum {
-      input = 0, // NCHW
+      input = 1, // NCHW
       kernel_size = 1,
       stride = 2,
       padding = 3,
@@ -442,6 +442,33 @@ void PyTorchModelLoader::loadMaxPool2d(const torch::jit::Node *ptNode) {
   glow::NodeValue output = mp->getResult();
   output =
       f_->createTranspose("maxpool2d_output_transposed", output, NHWC2NCHW);
+  addGlowNodeValue(outputs[0], output);
+}
+
+void PyTorchModelLoader::loadReshape(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  assert(inputs.size() == 2);
+  assert(outputs.size() == 1);
+
+  // Indexes of aten::reshape inputs.
+  struct Inputs {
+	enum {
+	  input = 0,
+      output_shape = 1,
+	};
+  };
+
+  glow::NodeValue input = getGlowNodeValue(inputs[Inputs::input]);
+
+  const auto shapeHandle =
+	  getGlowConstantHandle<uint32_t>(inputs[Inputs::output_shape]);
+  // Hardcoded shape size, always assume input is reshape to a 4-dims (NCHW or NHWC) tensor.
+  std::vector<size_t> output_shape =
+	  expandParamIfNeeded<uint32_t, size_t>(shapeHandle, 4);
+
+  glow::NodeValue output = f_->createReshape("reshape", input, output_shape);
+
   addGlowNodeValue(outputs[0], output);
 }
 
@@ -594,6 +621,11 @@ void PyTorchModelLoader::populateNodeLoaderMapping() {
       [this](const torch::jit::Node *node) {
         return loadAdaptiveAvgPool2d(node);
       };
+
+  nodeLoaderMapping_[at::Symbol::fromQualString("aten::reshape")] =
+	  [this](const torch::jit::Node *node) { return loadReshape(node); };
+
+
 }
 
 void PyTorchModelLoader::loadNode(const torch::jit::Node *node) {

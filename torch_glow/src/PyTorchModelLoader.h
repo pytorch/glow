@@ -146,6 +146,9 @@ private:
   /// Load a PyTorch batch_norm node.
   void loadBatchNorm(const torch::jit::Node *ptNode);
 
+  /// Load a PyTorch reshape node.
+  void loadReshape(const torch::jit::Node *ptNode);
+
   /// Load a PyTorch max_pool2d node.
   void loadMaxPool2d(const torch::jit::Node *ptNode);
 
