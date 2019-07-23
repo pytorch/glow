@@ -47,6 +47,9 @@ class ExecutionEngine2 final {
   /// Name of the backend being used for compilation and execution.
   std::string backendName_ = "";
 
+  /// Size of device memory, if 0 device default is used.
+  uint64_t deviceMemory_{0};
+
   /// The HostManager for executing the compiled functions.
   std::unique_ptr<runtime::HostManager> hostManager_;
 
@@ -66,6 +69,13 @@ public:
   /// using this backend. This clears all previously loaded functions and resets
   /// the Module.
   void setBackendName(llvm::StringRef backend);
+
+  /// Set the device memory to \p mem. This will reset the existing device,
+  /// clearing all existing functions and resetting the module.
+  void setDeviceMemory(uint64_t mem) {
+    deviceMemory_ = mem;
+    setBackendName(backendName_);
+  }
 
   /// Get a pointer to the backend.
   llvm::StringRef getBackendName() const;
