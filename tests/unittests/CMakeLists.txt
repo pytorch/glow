@@ -20,6 +20,20 @@ target_link_libraries(BackendTestUtils
                         LLVMSupport
                         gtest)
 
+add_library(BackendTestUtils2
+            BackendTestUtils2.cpp)
+target_link_libraries(BackendTestUtils2
+                      PRIVATE
+                        Base
+                        Converter
+                        ExecutionEngine2
+                        Graph
+                        GraphOptimizer
+                        Quantization
+                        QuantizationBase
+                        LLVMSupport
+                        gtest)
+
 # Test executables, sorted alphabetically.
 
 add_executable(BackendCorrectnessTest
@@ -156,7 +170,7 @@ target_link_libraries(GraphGradTest
                       PRIVATE
                         Graph
                         IR
-                        ExecutionEngine
+                        ExecutionEngine2
                         gtest
                         TestMain)
 add_glow_test(GraphGradTest ${GLOW_BINARY_DIR}/tests/GraphGradTest --gtest_output=xml:GraphGradTest.xml)
@@ -246,10 +260,10 @@ if(GLOW_WITH_CPU)
                  HyphenTest.cpp)
   target_link_libraries(HyphenTest
                         PRIVATE
-                          BackendTestUtils
+                          BackendTestUtils2
                           Graph
                           IR
-                          ExecutionEngine
+                          ExecutionEngine2
                           Quantization
                           Support
                           gtest
@@ -414,12 +428,12 @@ add_executable(RecommendationSystemTest
                RecommendationSystemTest.cpp)
 target_link_libraries(RecommendationSystemTest
                       PRIVATE
-                        BackendTestUtils
+                        BackendTestUtils2
                         Converter
                         Graph
                         IR
                         ExecutionContext
-                        ExecutionEngine
+                        ExecutionEngine2
                         Quantization
                         Partitioner
                         gtest

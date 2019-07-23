@@ -1487,6 +1487,26 @@ bool ConcatNode::verify() const {
   return isValid;
 }
 
+bool BatchBoxCoxNode::verify() const {
+  auto result = getResult();
+  auto data = getInput();
+  auto lambda1 = getLambda1();
+  auto lambda2 = getLambda2();
+  bool isValid = checkSameType(lambda1, lambda2, this);
+  isValid &= checkSameType(data, result, this);
+  isValid &= checkType(data, lambda1.getElementType(), this);
+  isValid &= checkType(data, {ElemKind::FloatTy, ElemKind::Float16Ty}, this);
+  isValid &= expectCompareTrue("Input must be a 2D tensor", data.dims().size(),
+                               size_t(2), this);
+  isValid &= expectCompareTrue("Lambda1 must be a 1D vector",
+                               lambda1.dims().size(), size_t(1), this);
+  if (isValid) {
+    isValid &= expectCompareTrue("Data dim 1 must equal lambda dim",
+                                 data.dims()[1], lambda1.dims()[0], this);
+  }
+  return isValid;
+}
+
 bool ModuloNode::verify() const { return getDivisor() >= 1; }
 
 //===----------------------------------------------------------------------===//

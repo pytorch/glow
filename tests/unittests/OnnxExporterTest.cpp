@@ -60,7 +60,7 @@ TEST(exporter, onnxModels) {
        !code && dirIt != llvm::sys::fs::directory_iterator();
        dirIt.increment(code)) {
     auto name = dirIt->path();
-    if (name == "tests/models/onnxModels/preluInvalidBroadcastSlope.onnxtxt") {
+    if (name.find("preluInvalidBroadcastSlope.onnxtxt") != std::string::npos) {
       continue;
     }
     testLoadAndSaveONNXModel(dirIt->path());

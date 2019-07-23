@@ -89,6 +89,9 @@ class CommonOperatorLoader : public ProtobufLoader {
       if (in.dataType == ONNXIFI_DATATYPE_FLOAT32) {
         Type ty(ElemKind::FloatTy, dims);
         *result.t = Tensor((void *)in.buffer, &ty);
+      } else if (in.dataType == ONNXIFI_DATATYPE_FLOAT16) {
+        Type ty(ElemKind::Float16Ty, dims);
+        *result.t = Tensor((void *)in.buffer, &ty);
       } else if (in.dataType == ONNXIFI_DATATYPE_INT32) {
         Type ty(ElemKind::Int32ITy, dims);
         *result.t = Tensor((void *)in.buffer, &ty);

@@ -5645,7 +5645,7 @@ TEST_P(OperatorTest, testQuantizedBatchAdd) {
 }
 
 TEST_P(OperatorTest, LengthsSum) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  ENABLED_BACKENDS(Interpreter, CPU, Habana);
 
   /*
     DATA  = [
@@ -7134,7 +7134,7 @@ TEST_P(OperatorTest, LengthsToRanges) {
 
 /// Test that LengthsRangeFill works.
 TEST_P(OperatorTest, LengthsRangeFill) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  ENABLED_BACKENDS(Interpreter, CPU, Habana);
 
   /*
     LENGTHS = [4, 3, 1]
@@ -7217,7 +7217,7 @@ TEST_P(OperatorTest, BatchOneHotDataInt64) {
 
 /// Test BatchOneHot with Int32 data and Int32 Lengths.
 TEST_P(OperatorTest, BatchOneHotDataInt32) {
-  ENABLED_BACKENDS(Interpreter);
+  ENABLED_BACKENDS(Interpreter, Habana);
   batchOneHotTest<int32_t>(bindings_, mod_, F_, EE_, ElemKind::Int32ITy);
 }
 
@@ -7551,7 +7551,7 @@ static void testBatchBoxCox(glow::PlaceholderBindings &bindings,
 
 /// Test that the BatchBoxCox operator works as expected in FloatTy.
 TEST_P(OperatorTest, BatchBoxCox_Float) {
-  ENABLED_BACKENDS(Interpreter);
+  ENABLED_BACKENDS(Interpreter, Habana);
   testBatchBoxCox<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy, 0.001f);
 }
 

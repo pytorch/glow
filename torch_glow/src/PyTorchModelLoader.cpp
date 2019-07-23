@@ -508,6 +508,26 @@ void PyTorchModelLoader::loadAdaptiveAvgPool2d(const torch::jit::Node *ptNode) {
   addGlowNodeValue(outputs[0], output);
 }
 
+void PyTorchModelLoader::loadTranspose(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  assert(inputs.size() == 1);
+  assert(outputs.size() == 1);
+
+  glow::NodeValue input = getGlowNodeValue(inputs[0]);
+  glow::NodeValue output;
+
+  if (input.dims().size() == 1) {
+    output = input;
+  } else if (input.dims().size() == 2) {
+    output = f_->createTranspose("transpose", input, {1, 0});
+  } else {
+    assert(false && "Transpose requires input to have rank <= 2");
+  }
+
+  addGlowNodeValue(outputs[0], output);
+}
+
 void PyTorchModelLoader::loadConstant(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
@@ -621,11 +641,13 @@ void PyTorchModelLoader::populateNodeLoaderMapping() {
       [this](const torch::jit::Node *node) {
         return loadAdaptiveAvgPool2d(node);
       };
-
   nodeLoaderMapping_[at::Symbol::fromQualString("aten::reshape")] =
 	  [this](const torch::jit::Node *node) { return loadReshape(node); };
+  nodeLoaderMapping_[at::Symbol::fromQualString("aten::t")] =
+      [this](const torch::jit::Node *node) { return loadTranspose(node); };
 
-
+  nodeLoaderMapping_[at::Symbol::fromQualString("aten::t_")] =
+      [this](const torch::jit::Node *node) { return loadTranspose(node); };
 }
 
 void PyTorchModelLoader::loadNode(const torch::jit::Node *node) {
