@@ -41,10 +41,12 @@ void testLoadAndSaveONNXModel(const std::string &name) {
   llvm::Error err = llvm::Error::success();
   ONNXModelLoader onnxLD(name, {}, {}, *F, &err);
 
-  if (err) {
-    llvm::errs() << "ONNXModelLoader failed to load model: " << name << ".\n";
-    return;
-  }
+  ASSERT_FALSE(handleErrors(std::move(err), [&name](const GlowErr &GE) {
+    llvm::errs() << "ONNXModelLoader failed to load model: " << name << ": ";
+    GE.log(llvm::errs());
+    llvm::errs() << "\n";
+  }));
+
   std::string outputFilename(name + ".output.onnxtxt");
   { ONNXModelWriter onnxWR(outputFilename, *F, 1, 1, &err, true); }
   llvm::sys::fs::remove(outputFilename);
