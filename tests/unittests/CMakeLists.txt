@@ -344,8 +344,8 @@ if(GLOW_WITH_OPENCL)
                           OpenCL::OpenCL
                         PRIVATE
                           Backends
-                          BackendTestUtils
-                          ExecutionEngine
+                          BackendTestUtils2
+                          ExecutionEngine2
                           Graph
                           IR
                           gtest

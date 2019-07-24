@@ -789,8 +789,8 @@ void inferConvDKKC8(Tensor *out, llvm::StringRef kind) {
 
 void trainSoftMaxNet(Tensor *inputs, Tensor *weights, Tensor *bias,
                      Tensor *selected, Tensor *out, llvm::StringRef kind) {
-  ExecutionEngine2 EET(kind);
   ExecutionEngine2 EEI(kind);
+  ExecutionEngine2 EET(kind);
   std::vector<ExecutionEngine2 *> engines;
   engines.push_back(&EEI);
   engines.push_back(&EET);
@@ -817,20 +817,20 @@ void trainSoftMaxNet(Tensor *inputs, Tensor *weights, Tensor *bias,
     auto *softmax = F->createSoftMax("softmax", fc, var2);
     F->createSave("ret", softmax);
   }
-  trainingBindings.allocate(EET.getModule().getPlaceholders());
-  inferBindings.allocate(EEI.getModule().getPlaceholders());
-  bindings.copyTrainableWeightsTo(trainingBindings);
-  auto *res = inferBindings.get(EEI.getModule().getPlaceholderByName("ret"));
+
   auto *TF = glow::differentiate(F, TC);
   auto tfName = TF->getName();
   auto fName = F->getName();
 
   EET.compile(CompilationMode::Train);
-
+  trainingBindings.allocate(EET.getModule().getPlaceholders());
+  bindings.copyTrainableWeightsTo(trainingBindings);
   runBatch2(EET, trainingBindings, 30, sampleCounter, {var1, var2},
             {inputs, selected}, tfName);
-  trainingBindings.copyTrainableWeightsTo(inferBindings);
   EEI.compile(CompilationMode::Infer);
+  inferBindings.allocate(EEI.getModule().getPlaceholders());
+  trainingBindings.copyTrainableWeightsTo(inferBindings);
+  auto *res = inferBindings.get(EEI.getModule().getPlaceholderByName("ret"));
   var1 = inferBindings.getPlaceholderByName("var1");
   var2 = inferBindings.getPlaceholderByName("var2");
   updateInputPlaceholders2(inferBindings, {var1, var2}, {inputs, selected});
