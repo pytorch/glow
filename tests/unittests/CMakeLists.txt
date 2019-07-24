@@ -156,7 +156,7 @@ add_executable(GradCheckTest
 target_link_libraries(GradCheckTest
                       PRIVATE
                         Base
-                        ExecutionEngine
+                        ExecutionEngine2
                         Graph
                         IR
                         gtest
