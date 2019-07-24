@@ -388,7 +388,7 @@ add_executable(OperatorGradTest
 target_link_libraries(OperatorGradTest
                       PRIVATE
                         Base
-                        ExecutionEngine
+                        ExecutionEngine2
                         Graph
                         gtest
                         TestMain)
