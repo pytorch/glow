@@ -204,7 +204,7 @@ target_link_libraries(GraphTest
                       PRIVATE
                         Backend
                         Backends
-                        ExecutionEngine
+                        ExecutionEngine2
                         Graph
                         IR
                         GraphOptimizer
