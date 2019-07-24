@@ -41,10 +41,10 @@ add_executable(BackendCorrectnessTest
 target_link_libraries(BackendCorrectnessTest
                       PRIVATE
                         Backends
-                        BackendTestUtils
+                        BackendTestUtils2
                         Graph
                         IR
-                        ExecutionEngine
+                        ExecutionEngine2
                         Quantization
                         Support
                         gtest

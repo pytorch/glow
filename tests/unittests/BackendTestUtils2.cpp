@@ -265,13 +265,15 @@ void inferIntLookupTableNet(Tensor *input, Tensor *out,
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
   auto outTy = mod.uniqueType(ElemKind::Int8QTy, {input->size()}, 3, 3);
-  auto var = createQuantizedPlaceholder(mod, bindings, input, outTy->getScale(),
-                                        outTy->getOffset(), "var");
+  auto var = createQuantizedPlaceholder(mod, bindings, input,
+                                        input->getType().getScale(),
+                                        input->getType().getOffset(), "var");
   auto *lookupTable = F->createIntLookupTable("lookuptable", var, table, outTy);
   auto *result = F->createSave("ret", lookupTable);
   auto *resultTensor = bindings.allocate(result->getPlaceholder());
 
   EE.compile(CompilationMode::Infer);
+  bindings.allocate(mod.getPlaceholders());
 
   updateInputPlaceholders2(bindings, {var}, {input});
   EE.run(bindings);
@@ -362,15 +364,15 @@ void trainConvNet(Tensor *inputs, Tensor *kernel1, Tensor *bias1,
     auto *softmax = F->createSoftMax("softmax", reshape2, var2);
     F->createSave("ret", softmax);
   }
-  trainingBindings.allocate(EET.getModule().getPlaceholders());
-  inferBindings.allocate(EEI.getModule().getPlaceholders());
-  bindings.copyTrainableWeightsTo(trainingBindings);
-  auto *res = inferBindings.get(EEI.getModule().getPlaceholderByName("ret"));
 
   auto *TF = glow::differentiate(F, TC);
   auto tfName = TF->getName();
   auto fName = F->getName();
   EET.compile(CompilationMode::Train);
+  trainingBindings.allocate(EET.getModule().getPlaceholders());
+  inferBindings.allocate(EEI.getModule().getPlaceholders());
+  bindings.copyTrainableWeightsTo(trainingBindings);
+  auto *res = inferBindings.get(EEI.getModule().getPlaceholderByName("ret"));
 
   runBatch2(EET, trainingBindings, 8, sampleCounter, {var1, var2},
             {inputs, selected}, tfName);
@@ -438,13 +440,13 @@ void trainLocalResponseNormalizationNet(Tensor *inputs, Tensor *weights,
     auto *result = F->createSave("ret", softmax);
     bindings.allocate(result->getPlaceholder());
   }
+  auto *TF = glow::differentiate(EET.getModule().getFunction(fName), TC);
+  auto tfName = TF->getName();
+  EET.compile(CompilationMode::Train);
   trainingBindings.allocate(EET.getModule().getPlaceholders());
   bindings.copyTrainableWeightsTo(trainingBindings);
   bindings.clear();
   bindings.allocate(EEI.getModule().getPlaceholders());
-  auto *TF = glow::differentiate(EET.getModule().getFunction(fName), TC);
-  auto tfName = TF->getName();
-  EET.compile(CompilationMode::Train);
 
   runBatch2(EET, trainingBindings, 8, sampleCounter, {var1, var2},
             {inputs, selected}, tfName);
@@ -492,13 +494,13 @@ void trainAvgPoolNet(Tensor *inputs, Tensor *weights, Tensor *bias,
     auto *result = F->createSave("ret", softmax);
     bindings.allocate(result->getPlaceholder());
   }
+  auto *TF = glow::differentiate(EET.getModule().getFunction("main"), TC);
+  auto tfName = TF->getName();
+  EET.compile(CompilationMode::Train);
   trainingBindings.allocate(EET.getModule().getPlaceholders());
   bindings.copyTrainableWeightsTo(trainingBindings);
   bindings.clear();
   bindings.allocate(EEI.getModule().getPlaceholders());
-  auto *TF = glow::differentiate(EET.getModule().getFunction("main"), TC);
-  auto tfName = TF->getName();
-  EET.compile(CompilationMode::Train);
 
   runBatch2(EET, trainingBindings, 10, sampleCounter, {var1, var2},
             {inputs, selected}, tfName);
@@ -548,14 +550,14 @@ void trainMaxPoolNet(Tensor *inputs, Tensor *weights, Tensor *bias,
     auto *softmax = F->createSoftMax("softmax", reshape2, var2);
     F->createSave("ret", softmax);
   }
-  trainingBindings.allocate(EET.getModule().getPlaceholders());
-  inferBindings.allocate(EEI.getModule().getPlaceholders());
-  bindings.copyTrainableWeightsTo(trainingBindings);
-  auto *res = inferBindings.get(EEI.getModule().getPlaceholderByName("ret"));
   auto *TF = glow::differentiate(F, TC);
   auto fName = F->getName();
   auto tfName = TF->getName();
   EET.compile(CompilationMode::Train);
+  trainingBindings.allocate(EET.getModule().getPlaceholders());
+  inferBindings.allocate(EEI.getModule().getPlaceholders());
+  bindings.copyTrainableWeightsTo(trainingBindings);
+  auto *res = inferBindings.get(EEI.getModule().getPlaceholderByName("ret"));
 
   runBatch2(EET, trainingBindings, 7, sampleCounter, {var1, var2},
             {inputs, selected}, tfName);
@@ -1072,8 +1074,9 @@ void inferMaxSplat(Tensor *input, Tensor *out, llvm::StringRef kind) {
   auto T = mod.uniqueType(ElemKind::Int8QTy, input->getType().dims(),
                           2 * input->getType().getScale(),
                           -input->getType().getOffset());
-  auto *var = createQuantizedPlaceholder(mod, bindings, input, T->getScale(),
-                                         T->getOffset(), "var");
+  auto *var = createQuantizedPlaceholder(mod, bindings, input,
+                                         input->getType().getScale(),
+                                         input->getType().getOffset(), "var");
   auto *rescale = F->createRescaleQuantized("rescale", var, T);
 
   auto *splat1 = F->createSplat("splat1", T, 0.0);
