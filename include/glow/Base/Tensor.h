@@ -142,7 +142,8 @@ public:
 #define FUSED_CASE(ELEM_KIND, DATA_TYPE)                                       \
   case ElemKind::ELEM_KIND: {                                                  \
     assert(dims().size() == 2 && "Fused tensor must be 2-dimensional.");       \
-    assert(dims()[1] > 8 && "Fused tensor must have more than 8 columns.");    \
+    assert(dims()[1] > sizeof(DATA_TYPE) &&                                    \
+           "Fused tensor must have space for scale and offset.");              \
     const size_t width = dims()[1];                                            \
     auto *data = reinterpret_cast<uint8_t *>(getData());                       \
     for (size_t i = 0, e = dims()[0]; i < e; i++) {                            \
@@ -161,9 +162,9 @@ public:
         memcpy(&offset, scaleOffsetPtr + sizeof(DATA_TYPE),                    \
                sizeof(DATA_TYPE));                                             \
       }                                                                        \
-      assert((float)scale != 0.0 &&                                            \
-             "Disallow scale = 0.0 for UInt8FusedQTy; causes div by zero.");   \
-      float zero = nearbyintf(((DATA_TYPE)-1) * offset / scale);               \
+      DCHECK_NE(static_cast<float>(scale), 0.0)                                \
+          << "Disallow scale = 0.0 for Fused ElemKinds; causes div by zero.";  \
+      float zero = nearbyintf(-1 * static_cast<float>(offset / scale));        \
       std::fill(&data[i * width], scaleOffsetPtr, static_cast<uint8_t>(zero)); \
     }                                                                          \
     break;                                                                     \

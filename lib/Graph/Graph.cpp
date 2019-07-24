@@ -1630,9 +1630,10 @@ static TypeRef getOutputTypeOfFusedRowwiseQuantizedSLS(
   ShapeVector outDims(inDims.begin(), inDims.end());
   outDims[0] = lengthsDims[0];
   // The output column count is the same as the input column count, but without
-  // the extra 8 bytes for the fused scale/offset, as the output is not
-  // UInt8FusedQTy.
-  outDims[1] -= (scaleOffsetKind == ElemKind::FloatTy) ? 8 : 4;
+  // the extra bytes for the fused scale/offset, as the output is not fused.
+  outDims[1] -=
+      2 * ((scaleOffsetKind == ElemKind::FloatTy) ? sizeof(float)
+                                                  : sizeof(float16_t));
   return F->getParent()->uniqueType(scaleOffsetKind, outDims);
 }
 
