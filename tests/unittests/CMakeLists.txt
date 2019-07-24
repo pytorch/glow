@@ -399,10 +399,10 @@ add_executable(OperatorTest
         OperatorTest.cpp)
 target_link_libraries(OperatorTest
                       PRIVATE
-                        BackendTestUtils
+                        BackendTestUtils2
                         Graph
                         IR
-                        ExecutionEngine
+                        ExecutionEngine2
                         Quantization
                         GraphOptimizer
                         gtest

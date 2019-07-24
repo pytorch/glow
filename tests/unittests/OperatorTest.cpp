@@ -14,9 +14,9 @@
  * limitations under the License.
  */
 
-#include "BackendTestUtils.h"
+#include "BackendTestUtils2.h"
 
-#include "glow/ExecutionEngine/ExecutionEngine.h"
+#include "glow/ExecutionEngine/ExecutionEngine2.h"
 #include "glow/Graph/Graph.h"
 #include "glow/IR/IR.h"
 #include "glow/IR/IRBuilder.h"
@@ -72,7 +72,7 @@ static Tensor createTensorConditionallyQuantized(ElemKind T,
 template <typename DataType>
 glow::Handle<DataType>
 whereHelper(glow::PlaceholderBindings &bindings, glow::Module &mod,
-            glow::Function *F, glow::ExecutionEngine &EE, ElemKind DTy,
+            glow::Function *F, glow::ExecutionEngine2 &EE, ElemKind DTy,
             llvm::ArrayRef<DataType> xValues, llvm::ArrayRef<DataType> yValues,
             llvm::ArrayRef<bool> cValues, llvm::ArrayRef<size_t> xDims,
             llvm::ArrayRef<size_t> yDims, llvm::ArrayRef<size_t> cDims) {
@@ -99,7 +99,7 @@ whereHelper(glow::PlaceholderBindings &bindings, glow::Module &mod,
   auto *save = F->createSave("save", whr);
   auto *saveAlloc = bindings.allocate(save->getPlaceholder());
 
-  EE.compile(CompilationMode::Infer, F);
+  EE.compile(CompilationMode::Infer);
   EE.run(bindings);
 
   return saveAlloc->getHandle<DataType>();
@@ -338,7 +338,7 @@ TEST_P(OperatorTest, where_element_wise_float) {
 template <typename DataType>
 static void testSpaceToDepthBlock3(glow::PlaceholderBindings &bindings,
                                    glow::Module &mod, glow::Function *F,
-                                   glow::ExecutionEngine &EE, ElemKind DTy) {
+                                   glow::ExecutionEngine2 &EE, ElemKind DTy) {
   unsigned blockSize = 3;
   auto *in = createPlaceholderConditionallyQuantized(mod, DTy, {1, 2, 6, 6},
                                                      "in", false);
@@ -447,7 +447,7 @@ static void testSpaceToDepthBlock3(glow::PlaceholderBindings &bindings,
       -19, -26, -29, 8,   11, 30, 33,  -8,  -11, -30, -33, 9,  20, 31,  34,
       -9,  -20, -31, -34, 10, 21, 32,  35,  -10, -21, -32, -35};
 
-  EE.compile(CompilationMode::Infer, F);
+  EE.compile(CompilationMode::Infer);
   EE.run(bindings);
 
   Handle<DataType> resultH = result->getHandle<DataType>();
@@ -492,7 +492,7 @@ TEST_P(OperatorTest, spaceToDepth_block3_Float) {
 template <typename DataType>
 static void testSpaceToDepth(glow::PlaceholderBindings &bindings,
                              glow::Module &mod, glow::Function *F,
-                             glow::ExecutionEngine &EE, ElemKind DTy) {
+                             glow::ExecutionEngine2 &EE, ElemKind DTy) {
   unsigned blockSize = 2;
   auto *in = createPlaceholderConditionallyQuantized(mod, DTy, {2, 2, 4, 4},
                                                      "in", false);
@@ -557,7 +557,7 @@ static void testSpaceToDepth(glow::PlaceholderBindings &bindings,
       0,  9,  8,  10, 0,  -22, -8,  -10, 7,  23, 9,  33, -21, -23, -9,  -11,
       24, 26, 12, 14, -4, -26, -12, -14, 25, 27, 13, 15, -5,  -27, -13, -15};
 
-  EE.compile(CompilationMode::Infer, F);
+  EE.compile(CompilationMode::Infer);
   EE.run(bindings);
 
   Handle<DataType> resultH = result->getHandle<DataType>();
@@ -626,7 +626,7 @@ TEST_P(OperatorTest, pow) {
   bindings_.allocate(savePlaceholder2);
   bindings_.allocate(savePlaceholder3);
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
 
   EE_.run(bindings_);
 
@@ -648,7 +648,7 @@ TEST_P(OperatorTest, pow) {
 template <typename DataType>
 static void testReplaceNaN(glow::PlaceholderBindings &bindings,
                            glow::Module &mod, glow::Function *F,
-                           glow::ExecutionEngine &EE, ElemKind DTy) {
+                           glow::ExecutionEngine2 &EE, ElemKind DTy) {
   auto value = 1.0f;
   auto *X = mod.createPlaceholder(DTy, {6}, "X", false);
   auto XH = bindings.allocate(X)->getHandle<DataType>();
@@ -659,7 +659,7 @@ static void testReplaceNaN(glow::PlaceholderBindings &bindings,
   auto *save = F->createSave("save", RNN);
   auto *saveTensor = bindings.allocate(save->getPlaceholder());
 
-  EE.compile(CompilationMode::Infer, F);
+  EE.compile(CompilationMode::Infer);
 
   EE.run(bindings);
 
@@ -698,7 +698,7 @@ TEST_P(OperatorTest, log) {
   auto *save = F_->createSave("save", LN);
   auto *saveTensor = bindings_.allocate(save->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
 
   EE_.run(bindings_);
 
@@ -712,7 +712,7 @@ TEST_P(OperatorTest, log) {
 /// Helper to test Logit using \p DTy.
 template <typename DataType>
 static void testLogit(glow::PlaceholderBindings &bindings, glow::Module &mod,
-                      glow::Function *F, glow::ExecutionEngine &EE,
+                      glow::Function *F, glow::ExecutionEngine2 &EE,
                       ElemKind DTy, float allowedError) {
   constexpr auto eps = 1E-6f;      // the default in Caffe2
   constexpr std::size_t size = 10; // sample size for randomized tests
@@ -736,7 +736,7 @@ static void testLogit(glow::PlaceholderBindings &bindings, glow::Module &mod,
   auto *saveCompl = F->createSave("saveCompl", logitCompl);
   bindings.allocate(saveCompl->getPlaceholder());
 
-  EE.compile(CompilationMode::Infer, F);
+  EE.compile(CompilationMode::Infer);
   EE.run(bindings);
 
   // results: differential test against the oracle
@@ -799,7 +799,7 @@ TEST_P(OperatorTest, CmpEQ) {
   auto *save = F_->createSave("save", cmpEQ);
   auto *saveTensor = bindings_.allocate(save->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
 
   EE_.run(bindings_);
 
@@ -828,7 +828,7 @@ TEST_P(OperatorTest, FP16Add) {
   auto *S = F_->createSave("save", Pool);
   bindings_.allocate(S->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
 
   auto result = bindings_.get(S->getPlaceholder())->getHandle<float16_t>();
@@ -851,7 +851,7 @@ TEST_P(OperatorTest, matmul) {
   auto *save = F_->createSave("save", R);
   auto *saveTensor = bindings_.allocate(save->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
 
   auto H = saveTensor->getHandle();
@@ -878,7 +878,7 @@ TEST_P(OperatorTest, matmul_ParCloneTest10) {
 
   EXPECT_EQ(resultTensors.size(), parallelCount);
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
 
   for (Tensor *T : resultTensors) {
@@ -903,7 +903,7 @@ TEST_P(OperatorTest, FP16Matmul) {
   auto *save = F_->createSave("save", R);
   auto *saveTensor = bindings_.allocate(save->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
 
   auto H = saveTensor->getHandle<float16_t>();
@@ -926,7 +926,7 @@ TEST_P(OperatorTest, BroadcastedBatchMatMul) {
   auto *save = F_->createSave("save", R);
   auto *result = bindings_.allocate(save->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
 
   auto H = result->getHandle();
@@ -952,7 +952,7 @@ TEST_P(OperatorTest, ParallelBatchMatMul) {
   auto *save = F_->createSave("save", R);
   auto *result = bindings_.allocate(save->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
 
   auto H = result->getHandle();
@@ -968,7 +968,7 @@ TEST_P(OperatorTest, ParallelBatchMatMul) {
 template <typename DataType>
 static void testBatchedReduceAdd(glow::PlaceholderBindings &bindings,
                                  glow::Module &mod, glow::Function *F,
-                                 glow::ExecutionEngine &EE, ElemKind DTy) {
+                                 glow::ExecutionEngine2 &EE, ElemKind DTy) {
   auto *batch = mod.createPlaceholder(DTy, {2, 4}, "batch", false);
   bindings.allocate(batch)->getHandle<DataType>() = {10, 20, 30, 40,
                                                      1,  2,  3,  4};
@@ -978,7 +978,7 @@ static void testBatchedReduceAdd(glow::PlaceholderBindings &bindings,
   auto *save = F->createSave("save", R);
   auto *result = bindings.allocate(save->getPlaceholder());
 
-  EE.compile(CompilationMode::Infer, F);
+  EE.compile(CompilationMode::Infer);
   EE.run(bindings);
 
   Tensor expected(DTy, {4});
@@ -1002,7 +1002,7 @@ TEST_P(OperatorTest, batchedReduceAdd_Float16) {
 template <typename DataType>
 static void testBatchedReduceZeroDimResult(glow::PlaceholderBindings &bindings,
                                            glow::Module &mod, glow::Function *F,
-                                           glow::ExecutionEngine &EE,
+                                           glow::ExecutionEngine2 &EE,
                                            ElemKind DTy) {
   auto *batch = createPlaceholderConditionallyQuantized(
       mod, DTy, {4}, "batch", /* isTrainable */ false);
@@ -1016,7 +1016,7 @@ static void testBatchedReduceZeroDimResult(glow::PlaceholderBindings &bindings,
   auto *resultRA = bindings.allocate(saveRA->getPlaceholder());
   auto *resultRM = bindings.allocate(saveRM->getPlaceholder());
 
-  EE.compile(CompilationMode::Infer, F);
+  EE.compile(CompilationMode::Infer);
   EE.run(bindings);
 
   auto RAH = resultRA->getHandle<DataType>();
@@ -1055,7 +1055,7 @@ TEST_P(OperatorTest, batchedReduceZeroDimResult_Int8) {
 template <typename DataType>
 static void testBatchedReduceAddWithAxis(glow::PlaceholderBindings &bindings,
                                          glow::Module &mod, glow::Function *F,
-                                         glow::ExecutionEngine &EE,
+                                         glow::ExecutionEngine2 &EE,
                                          ElemKind DTy) {
   auto *batch = createPlaceholderConditionallyQuantized(mod, DTy, {2, 3, 2},
                                                         "batch", false);
@@ -1074,7 +1074,7 @@ static void testBatchedReduceAddWithAxis(glow::PlaceholderBindings &bindings,
   auto *result1 = bindings.allocate(save1->getPlaceholder());
   auto *result2 = bindings.allocate(save2->getPlaceholder());
 
-  EE.compile(CompilationMode::Infer, F);
+  EE.compile(CompilationMode::Infer);
   EE.run(bindings);
 
   auto expected1 = createTensorConditionallyQuantized(DTy, {2, 2});
@@ -1129,7 +1129,7 @@ TEST_P(OperatorTest, batchedReduceAddQuantized) {
   auto *save = F_->createSave("save", R);
   auto OH = bindings_.allocate(save->getPlaceholder())->getHandle<int8_t>();
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
 
   for (size_t i = 0; i < 8; i++) {
@@ -1164,7 +1164,7 @@ TEST_P(OperatorTest, batchedReduceAddQuantizedWithAxis) {
   auto *save = F_->createSave("save", R);
   auto OH = bindings_.allocate(save->getPlaceholder())->getHandle<int8_t>();
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
 
   for (size_t i = 0; i < 2; i++) {
@@ -1191,7 +1191,7 @@ TEST_P(OperatorTest, batchedReduceMean) {
   auto *save = F_->createSave("save", R);
   auto *result = bindings_.allocate(save->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
 
   auto H = result->getHandle();
@@ -1214,7 +1214,7 @@ TEST_P(OperatorTest, batchedReduceMeanWithAxis) {
   auto *save = F_->createSave("save", R);
   auto *result = bindings_.allocate(save->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
 
   auto H = result->getHandle();
@@ -1246,7 +1246,7 @@ TEST_P(OperatorTest, batchedReduceMeanQuantized) {
   auto *save = F_->createSave("save", R);
   auto OH = bindings_.allocate(save->getPlaceholder())->getHandle<int8_t>();
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
 
   for (size_t i = 0; i < 8; i++) {
@@ -1281,7 +1281,7 @@ TEST_P(OperatorTest, batchedReduceMeanQuantizedWithAxis) {
   auto *save = F_->createSave("save", R);
   auto OH = bindings_.allocate(save->getPlaceholder())->getHandle<int8_t>();
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
 
   for (size_t i = 0; i < 2; i++) {
@@ -1313,7 +1313,7 @@ TEST_P(OperatorTest, batchedReduceMeanUsingAvgPool) {
 
   auto *save = F_->createSave("save", R);
   auto *result = bindings_.allocate(save->getPlaceholder());
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
 
   EE_.run(bindings_);
   auto H = result->getHandle();
@@ -1352,7 +1352,7 @@ TEST_P(OperatorTest, batchedReduceMeanUsingAvgPoolQuantized) {
   auto *save = F_->createSave("save", R);
   auto OH = bindings_.allocate(save->getPlaceholder())->getHandle<int8_t>();
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
 
   std::array<std::array<float, 3>, 2> results{};
@@ -1387,7 +1387,7 @@ TEST_P(OperatorTest, BatchedAdd) {
   auto *save = F_->createSave("save", R);
   auto *result = bindings_.allocate(save->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
 
   auto BH = bindings_.get(batch)->getHandle();
@@ -1436,7 +1436,7 @@ TEST_P(OperatorTest, broadcastSimple) {
   auto *saveQ = F_->createSave("saveQ", QR);
   auto *broadcastedQ = bindings_.allocate(saveQ->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
 
   auto broadcastedBHandle = broadcasted->getHandle();
@@ -1502,7 +1502,7 @@ TEST_P(OperatorTest, broadcast) {
   auto *saveQ = F_->createSave("saveQ", QR);
   auto *broadcastedQ = bindings_.allocate(saveQ->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
 
   auto broadcastedBHandle = broadcasted->getHandle();
@@ -1554,7 +1554,7 @@ TEST_P(OperatorTest, weightedSum) {
   auto *save = F_->createSave("save", WS);
   auto *saveTensor = bindings_.allocate(save->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
 
   // Verify the weighted sum was correctly calculated.
@@ -1569,7 +1569,7 @@ TEST_P(OperatorTest, weightedSum) {
 template <typename DataType>
 static void testReluSimple(glow::PlaceholderBindings &bindings,
                            glow::Module &mod, glow::Function *F,
-                           glow::ExecutionEngine &EE, ElemKind DTy) {
+                           glow::ExecutionEngine2 &EE, ElemKind DTy) {
   auto *in = mod.createPlaceholder(DTy, {7}, "in", false);
   auto *relu = F->createRELU("relu", in);
   auto *save = F->createSave("relu", relu);
@@ -1577,7 +1577,7 @@ static void testReluSimple(glow::PlaceholderBindings &bindings,
 
   bindings.allocate(in)->getHandle<DataType>() = {0, -1, -2, -3, 4, 5, 6};
 
-  EE.compile(CompilationMode::Infer, F);
+  EE.compile(CompilationMode::Infer);
   EE.run(bindings);
 
   auto resultH = result->getHandle<DataType>();
@@ -1606,7 +1606,7 @@ TEST_P(OperatorTest, ReluSimple_Float16) {
 template <typename DataType>
 static void testPReluSimple(glow::PlaceholderBindings &bindings,
                             glow::Module &mod, glow::Function *F,
-                            glow::ExecutionEngine &EE, ElemKind DTy,
+                            glow::ExecutionEngine2 &EE, ElemKind DTy,
                             double allowedError) {
   auto *in = mod.createPlaceholder(DTy, {7}, "in", false);
   auto *slope = mod.createPlaceholder(DTy, {7}, "slope", false);
@@ -1618,7 +1618,7 @@ static void testPReluSimple(glow::PlaceholderBindings &bindings,
   bindings.allocate(slope)->getHandle<DataType>().randomize(0.1, 3.0,
                                                             mod.getPRNG());
 
-  EE.compile(CompilationMode::Infer, F);
+  EE.compile(CompilationMode::Infer);
   EE.run(bindings);
 
   auto resultH = result->getHandle<DataType>();
@@ -1667,7 +1667,7 @@ TEST_P(OperatorTest, TopK) {
   F_->createSave("save.values", {R, 0}, values);
   F_->createSave("save.indices", {R, 1}, indices);
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
 
   EE_.run(bindings_);
 
@@ -1726,7 +1726,7 @@ TEST_P(OperatorTest, ConcatTopK) {
   auto *saveIndices = F_->createSave("Save.Indices", CI, indices);
   auto *saveIndicesTensor = bindings_.allocate(saveIndices->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
 
   EE_.run(bindings_);
 
@@ -1790,7 +1790,7 @@ TEST_P(OperatorTest, matmul2) {
   auto *res2 = F_->createSave("save.values", A2);
   bindings_.allocate(res2->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
 
   EE_.run(bindings_);
 
@@ -1825,7 +1825,7 @@ TEST_P(OperatorTest, TopK1) {
   auto *indices = F_->createSave("save.indices", {R, 1});
   bindings_.allocate(indices->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
 
   auto V = bindings_.get(values->getPlaceholder())->getHandle();
@@ -1855,7 +1855,7 @@ TEST_P(OperatorTest, QuantizedTopK) {
   auto *indices = F_->createSave("save.indices", TK->getIndices());
   bindings_.allocate(indices->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
 
   auto VH = bindings_.get(values->getPlaceholder())->getHandle<int8_t>();
@@ -1887,7 +1887,7 @@ TEST_P(OperatorTest, QuantizedTopK) {
 template <typename DataType, typename IndexType>
 static void gatherFloatInputTest(glow::PlaceholderBindings &bindings,
                                  glow::Module &mod, glow::Function *F,
-                                 glow::ExecutionEngine &EE, ElemKind DTy,
+                                 glow::ExecutionEngine2 &EE, ElemKind DTy,
                                  ElemKind ITy) {
   /*
     DATA  = [
@@ -1929,7 +1929,7 @@ static void gatherFloatInputTest(glow::PlaceholderBindings &bindings,
   auto *result = F->createSave("save", R);
   bindings.allocate(result->getPlaceholder());
 
-  EE.compile(CompilationMode::Infer, F);
+  EE.compile(CompilationMode::Infer);
   EE.run(bindings);
 
   Tensor *resultT = bindings.get(result->getPlaceholder());
@@ -1972,7 +1972,7 @@ TEST_P(OperatorTest, GatherDataFloat16IdxInt64) {
 template <typename IndexType>
 static void gatherInt8InputTest(glow::PlaceholderBindings &bindings,
                                 glow::Module &mod, glow::Function *F,
-                                glow::ExecutionEngine &EE, ElemKind ITy) {
+                                glow::ExecutionEngine2 &EE, ElemKind ITy) {
   /*
     DATA  = [
         [1, 2],
@@ -2014,7 +2014,7 @@ static void gatherInt8InputTest(glow::PlaceholderBindings &bindings,
   auto *result = F->createSave("save", R);
   bindings.allocate(result->getPlaceholder());
 
-  EE.compile(CompilationMode::Infer, F);
+  EE.compile(CompilationMode::Infer);
   EE.run(bindings);
 
   Tensor *resultT = bindings.get(result->getPlaceholder());
@@ -2040,7 +2040,7 @@ TEST_P(OperatorTest, GatherDataInt8IdxInt64) {
 /// Helper for testing GatherRanges with different \p ITy / \p IndexType.
 template <typename DataType, typename IndexType>
 void gatherRangesTest(glow::PlaceholderBindings &bindings_, glow::Module &mod_,
-                      glow::Function *F_, glow::ExecutionEngine &EE_,
+                      glow::Function *F_, glow::ExecutionEngine2 &EE_,
                       ElemKind DTy, ElemKind ITy) {
   /*
     DATA  = [1, 2, 3, 4, 5, 6]
@@ -2073,7 +2073,7 @@ void gatherRangesTest(glow::PlaceholderBindings &bindings_, glow::Module &mod_,
   Tensor *outputT = bindings_.allocate(output->getPlaceholder());
   Tensor *lengthsT = bindings_.allocate(lengths->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
 
   auto expectedOutputT = createTensorConditionallyQuantized(DTy, {5});
@@ -2154,7 +2154,7 @@ TEST_P(OperatorTest, Transpose2Dims) {
   auto *result = F_->createSave("saveTranspose", tr);
   bindings_.allocate(result->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
 
   Tensor dest(ElemKind::FloatTy, {13, 20});
@@ -2174,7 +2174,7 @@ TEST_P(OperatorTest, FP16Transpose2Dims) {
   auto *result = F_->createSave("saveTranspose", tr);
   bindings_.allocate(result->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
 
   Tensor dest(ElemKind::Float16Ty, {13, 20});
@@ -2193,7 +2193,7 @@ TEST_P(OperatorTest, BoolTranspose2Dims) {
   auto *result = F_->createSave("saveTranspose", tr);
   bindings_.allocate(result->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
 
   Tensor dest(ElemKind::BoolTy, {13, 20});
@@ -2207,7 +2207,7 @@ TEST_P(OperatorTest, BoolTranspose2Dims) {
 template <typename DataType>
 static void testTranspose3Dims(glow::PlaceholderBindings &bindings,
                                glow::Module &mod, glow::Function *F,
-                               glow::ExecutionEngine &EE, ElemKind DTy) {
+                               glow::ExecutionEngine2 &EE, ElemKind DTy) {
   constexpr size_t dims[] = {20, 13, 7};
   auto *A = createPlaceholderConditionallyQuantized(mod, DTy, dims, "A", false);
   bindings.allocate(A)->getHandle<DataType>().randomize(-3.0, 3.0,
@@ -2240,7 +2240,7 @@ static void testTranspose3Dims(glow::PlaceholderBindings &bindings,
   // We should have exactly 6 possible permutations for 3 dimensions.
   EXPECT_EQ(6, nbOfShuffle);
 
-  EE.compile(CompilationMode::Infer, F);
+  EE.compile(CompilationMode::Infer);
   EE.run(bindings);
 
   for (int i = 0; i < 6; ++i) {
@@ -2283,8 +2283,8 @@ TEST_P(OperatorTest, TransposeIntoReshapeOptim) {
   Node *T = F_->createTranspose("transpose", batch, {1, 2, 0, 3});
   Node *R = F_->createBatchedReduceMean("reduce.mean", T, {2, 3});
   SaveNode *O = F_->createSave("ret", R);
-
-  EE_.compile(CompilationMode::Infer, F_);
+  bindings_.allocate(mod_.getPlaceholders());
+  EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
 
   auto result = bindings_.get(O->getPlaceholder())->getHandle();
@@ -2343,7 +2343,7 @@ TEST_P(OperatorTest, GatherSizeT) {
   auto *result = F_->createSave("save", R);
   bindings_.allocate(result->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
 
   auto H = bindings_.get(result->getPlaceholder())->getHandle<int64_t>();
@@ -2403,7 +2403,7 @@ TEST_P(OperatorTest, BatchedGather) {
   auto *result = F_->createSave("save", R);
   bindings_.allocate(result->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
 
   auto H = bindings_.get(result->getPlaceholder())->getHandle();
@@ -2433,7 +2433,7 @@ TEST_P(OperatorTest, ScatterAssign) {
   auto *result = F_->createSave("save", R);
   bindings_.allocate(result->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
 
   auto H = bindings_.get(result->getPlaceholder())->getHandle();
@@ -2477,7 +2477,7 @@ TEST_P(OperatorTest, ScatterAssignQuantized) {
   auto *result = F_->createSave("save", DQ);
   bindings_.allocate(result->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
 
   auto H = bindings_.get(result->getPlaceholder())->getHandle();
@@ -2496,7 +2496,7 @@ TEST_P(OperatorTest, ScatterAssignQuantized) {
 
 #define COMPARE_ARITH_FUN(_OP_NAME_)                                           \
   static FunctionTensorPair createAndInitBasic##_OP_NAME_##Test(               \
-      glow::PlaceholderBindings &bindings, glow::ExecutionEngine &EE) {        \
+      glow::PlaceholderBindings &bindings, glow::ExecutionEngine2 &EE) {       \
     auto &mod = EE.getModule();                                                \
     Function *F = mod.createFunction("main");                                  \
                                                                                \
@@ -2553,7 +2553,7 @@ COMPARE_ARITH_FLOAT_VS_FLOAT16(Min, Interpreter)
   template <typename DataType>                                                 \
   static void testArithmetic##_OP_NAME_##Impl(                                 \
       glow::PlaceholderBindings &bindings, glow::Module &mod,                  \
-      glow::Function *F, glow::ExecutionEngine &EE, ElemKind DTy) {            \
+      glow::Function *F, glow::ExecutionEngine2 &EE, ElemKind DTy) {           \
     std::vector<DataType> data1 = {3, 17, 7, 23};                              \
     std::vector<DataType> data2 = {13, 5, 19, 11};                             \
     auto *A = mod.createPlaceholder(DTy, {1, 4}, "A", false);                  \
@@ -2565,7 +2565,7 @@ COMPARE_ARITH_FLOAT_VS_FLOAT16(Min, Interpreter)
     auto *result = F->createSave("save", add);                                 \
     auto *resultTensor = bindings.allocate(result->getPlaceholder());          \
                                                                                \
-    EE.compile(CompilationMode::Infer, F);                                     \
+    EE.compile(CompilationMode::Infer);                                        \
     EE.run(bindings);                                                          \
     std::vector<DataType> reference;                                           \
     assert(data1.size() == data2.size() && "Size mismatch!");                  \
@@ -2633,7 +2633,7 @@ TEST_P(OperatorTest, IntMatMul) {
   auto *result = F_->createSave("save", rq);
   bindings_.allocate(result->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
 
   /*
@@ -2685,7 +2685,7 @@ TEST_P(OperatorTest, IntBatchedArith) {
 
   auto *result = F_->createSave("save", rq);
   bindings_.allocate(result->getPlaceholder());
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
 
   EE_.run(bindings_);
 
@@ -2708,7 +2708,7 @@ TEST_P(OperatorTest, IntBatchedArith) {
 template <size_t convDepth>
 static FunctionTensorPair
 createAndInitConvDepthTest(glow::PlaceholderBindings &bindings,
-                           glow::ExecutionEngine &EE) {
+                           glow::ExecutionEngine2 &EE) {
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -2769,7 +2769,7 @@ TEST_P(OperatorStatelessTest, FP16ConvolutionDepth8) {
 
 static FunctionTensorPair
 createAndInitBasicConcatTest(glow::PlaceholderBindings &bindings,
-                             glow::ExecutionEngine &EE) {
+                             glow::ExecutionEngine2 &EE) {
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -2811,7 +2811,7 @@ TEST_P(OperatorTest, FCWithFlatten) {
   auto *S = F_->createSave("save", FC);
   bindings_.allocate(S->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
 
   auto result = bindings_.get(S->getPlaceholder())->getHandle();
@@ -2826,7 +2826,7 @@ TEST_P(OperatorTest, FCWithFlatten) {
 
 static FunctionTensorPair
 createAndInitBasicFCTest(glow::PlaceholderBindings &bindings,
-                         glow::ExecutionEngine &EE) {
+                         glow::ExecutionEngine2 &EE) {
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -2875,7 +2875,7 @@ TEST_P(OperatorTest, EntropyLossTest) {
   auto *L = F_->createSave("save", ceLoss);
   bindings_.allocate(L->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
 
   auto R = bindings_.get(L->getPlaceholder())->getHandle();
@@ -2898,7 +2898,7 @@ TEST_P(OperatorTest, FP16Max) {
   auto *S = F_->createSave("save", Max);
   bindings_.allocate(S->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
 
   auto result = bindings_.get(S->getPlaceholder())->getHandle<float16_t>();
@@ -2930,7 +2930,7 @@ TEST_P(OperatorTest, RescaleNode) {
   auto *output = F_->createSave("save", Z);
   bindings_.allocate(output->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
 
   auto RI = bindings_.get(input)->getHandle<int8_t>();
@@ -3022,7 +3022,7 @@ TEST_P(OperatorTest, QuantizedArithmeticRescaled) {
   bindings_.allocate(O5->getPlaceholder());
   bindings_.allocate(O6->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
 
   for (size_t i = 0; i < len; i++) {
@@ -3052,7 +3052,7 @@ TEST_P(OperatorTest, QuantizedArithmeticRescaled) {
 
 static FunctionTensorPair
 createAndInitTransposeNet(glow::PlaceholderBindings &bindings,
-                          glow::ExecutionEngine &EE) {
+                          glow::ExecutionEngine2 &EE) {
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -3137,7 +3137,7 @@ TEST_P(OperatorTest, QuantizedArithmeticUnrescaled) {
   auto O5H = bindings_.get(O5->getPlaceholder())->getHandle<int8_t>();
   auto O6H = bindings_.get(O6->getPlaceholder())->getHandle<int8_t>();
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
 
   for (size_t i = 0; i < len; i++) {
@@ -3199,7 +3199,7 @@ TEST_P(OperatorTest, QuantizedCmpLTEAndSelect) {
   auto *out = F_->createSave("save", select);
   auto OH = bindings_.allocate(out->getPlaceholder())->getHandle<int8_t>();
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
 
   int count_strict = 0;
@@ -3259,7 +3259,7 @@ TEST_P(OperatorTest, TestQuantizedRescaleSequence) {
   // Test a sequence of rescale operations t
   auto *result = F_->createSave("save", DQ);
   auto OH = bindings_.allocate(result->getPlaceholder())->getHandle();
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
 
   for (size_t i = 0; i < len; i++) {
@@ -3301,8 +3301,9 @@ TEST_P(OperatorTest, FCGradientCheck) {
   initB.getHandle() = {-13.1f, 3.14f};
 
   Function *DF = glow::differentiate(F_, TC, "d_main");
-  EE_.compile(CompilationMode::Train, DF);
-  runBatch(EE_, bindings_, 3, sampleCounter, {A, B}, {&initA, &initB});
+  auto dfName = DF->getName();
+  EE_.compile(CompilationMode::Train);
+  runBatch2(EE_, bindings_, 3, sampleCounter, {A, B}, {&initA, &initB}, dfName);
 
   EXPECT_NEAR(bindings_.get(X)->getHandle().raw(0), -0.21294, 1E-5);
   EXPECT_NEAR(bindings_.get(Y)->getHandle().raw(0), 0.01656, 1E-5);
@@ -3312,7 +3313,7 @@ TEST_P(OperatorTest, FCGradientCheck) {
 template <typename DataType>
 static void testConcatVectors(glow::PlaceholderBindings &bindings,
                               glow::Module &mod, glow::Function *F,
-                              glow::ExecutionEngine &EE, ElemKind DTy) {
+                              glow::ExecutionEngine2 &EE, ElemKind DTy) {
   F->setName("concatVectors");
 
   auto *V1 =
@@ -3344,10 +3345,10 @@ static void testConcatVectors(glow::PlaceholderBindings &bindings,
     I3.getHandle<DataType>().at({i + 20}) = i + 50;
   }
 
-  EE.compile(CompilationMode::Infer, F);
+  EE.compile(CompilationMode::Infer);
 
   // Testing the output vector.
-  updateInputPlaceholders(bindings, {V1, V2, V3}, {&I1, &I2, &I3});
+  updateInputPlaceholders2(bindings, {V1, V2, V3}, {&I1, &I2, &I3});
   EE.run(bindings);
 
   auto RNWH = bindings.get(result->getPlaceholder())->getHandle<DataType>();
@@ -3398,7 +3399,8 @@ TEST_P(OperatorTest, concatVectors_Float16) {
 template <typename DataType>
 static void testConcatVectorsRepeated(glow::PlaceholderBindings &bindings,
                                       glow::Module &mod, glow::Function *F,
-                                      glow::ExecutionEngine &EE, ElemKind DTy) {
+                                      glow::ExecutionEngine2 &EE,
+                                      ElemKind DTy) {
   F->setName("concatVectors");
 
   auto *V1 =
@@ -3425,10 +3427,10 @@ static void testConcatVectorsRepeated(glow::PlaceholderBindings &bindings,
     I2H.at({i + 10}) = 2;
   }
 
-  EE.compile(CompilationMode::Infer, F);
+  EE.compile(CompilationMode::Infer);
 
   // Testing the output vector.
-  updateInputPlaceholders(bindings, {V1, V2}, {&I1, &I2});
+  updateInputPlaceholders2(bindings, {V1, V2}, {&I1, &I2});
   EE.run(bindings);
 
   auto outH = bindings.get(result->getPlaceholder())->getHandle<DataType>();
@@ -3500,7 +3502,7 @@ TEST_P(OperatorTest, concatVectorsRepeated_Float16) {
 template <typename DataType>
 static void testSliceVectors(glow::PlaceholderBindings &bindings,
                              glow::Module &mod, glow::Function *F,
-                             glow::ExecutionEngine &EE, ElemKind DTy) {
+                             glow::ExecutionEngine2 &EE, ElemKind DTy) {
   F->setName("sliceVectors");
 
   auto *V =
@@ -3527,10 +3529,10 @@ static void testSliceVectors(glow::PlaceholderBindings &bindings,
     IH.at({2, j}) = j + 60;
   }
 
-  EE.compile(CompilationMode::Infer, F);
+  EE.compile(CompilationMode::Infer);
 
   // Testing the output slices.
-  updateInputPlaceholders(bindings, {V}, {&I});
+  updateInputPlaceholders2(bindings, {V}, {&I});
   EE.run(bindings);
 
   auto RNWH1 = bindings.get(result1->getPlaceholder())->getHandle<DataType>();
@@ -3584,7 +3586,7 @@ TEST_P(OperatorTest, sliceVectors_Int8) {
 template <typename DataType>
 static void testSliceConcatVectors(glow::PlaceholderBindings &bindings,
                                    glow::Module &mod, glow::Function *F,
-                                   glow::ExecutionEngine &EE, ElemKind DTy) {
+                                   glow::ExecutionEngine2 &EE, ElemKind DTy) {
   F->setName("sliceConcatVectors");
 
   auto *V =
@@ -3613,9 +3615,9 @@ static void testSliceConcatVectors(glow::PlaceholderBindings &bindings,
   auto *result = F->createSave("ret", C2);
   bindings.allocate(result->getPlaceholder());
 
-  EE.compile(CompilationMode::Infer, F);
+  EE.compile(CompilationMode::Infer);
 
-  updateInputPlaceholders(bindings, {V}, {&I});
+  updateInputPlaceholders2(bindings, {V}, {&I});
   EE.run(bindings);
 
   const DataType expected[7][4] = {
@@ -3681,9 +3683,9 @@ TEST_P(OperatorTest, Tile) {
     }
   }
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
 
-  updateInputPlaceholders(bindings_, {V}, {&VT});
+  updateInputPlaceholders2(bindings_, {V}, {&VT});
   EE_.run(bindings_);
 
   // Testing the output vector with axis 0.
@@ -3735,9 +3737,9 @@ TEST_P(OperatorTest, QuantizedTile) {
     }
   }
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
 
-  updateInputPlaceholders(bindings_, {V}, {&VT});
+  updateInputPlaceholders2(bindings_, {V}, {&VT});
   EE_.run(bindings_);
 
   // Testing the output vector with axis 0.
@@ -3772,7 +3774,7 @@ TEST_P(OperatorTest, Clip) {
   auto *node = F_->createClip("clip", X, min, max);
   auto *save = F_->createSave("save", node);
   auto *saveTensor = bindings_.allocate(save->getPlaceholder());
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
 
   auto result = saveTensor->getHandle();
@@ -3820,7 +3822,7 @@ TEST_P(OperatorTest, simpleCmpSelectPredication) {
   auto *SN = F_->createSave("ret", data);
   bindings_.allocate(SN->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
 
   auto H = bindings_.get(SN->getPlaceholder())->getHandle();
@@ -3864,7 +3866,7 @@ TEST_P(OperatorTest, simplePredication) {
 
   ::glow::convertPlaceholdersToConstants(
       F_, bindings_, {inputs, counters, save->getPlaceholder()});
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
 }
 
@@ -3880,7 +3882,7 @@ TEST_P(OperatorTest, ChannelShuffle) {
   SaveNode *S = F_->createSave("save", CS);
   bindings_.allocate(S->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
 
   auto results = bindings_.get(S->getPlaceholder())->getHandle();
@@ -3907,7 +3909,7 @@ TEST_P(OperatorTest, Squeeze) {
     SaveNode *S = F_->createSave("save", SQZ);
     bindings_.allocate(S->getPlaceholder());
 
-    EE_.compile(CompilationMode::Infer, F_);
+    EE_.compile(CompilationMode::Infer);
     EE_.run(bindings_);
 
     auto results = bindings_.get(S->getPlaceholder())->getHandle();
@@ -3916,15 +3918,21 @@ TEST_P(OperatorTest, Squeeze) {
     for (size_t i = 0; i < 10; i++)
       EXPECT_FLOAT_EQ(results.raw(i), expectedValues[i]);
   }
-
+  bindings_.clear();
+  EE_.setBackendName(getBackendName());
   // Test 2:
   {
+    auto mod = &EE_.getModule();
+    F_ = mod->createFunction("main");
+    inputs = mod->createPlaceholder(ElemKind::FloatTy, {1, 2, 1, 5}, "inputs",
+                                    false);
+    bindings_.allocate(inputs)->getHandle() = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
     std::vector<size_t> axes = {0, 2, 2};
     Node *SQZ = F_->createSqueeze("SQZ", inputs, axes);
     SaveNode *S = F_->createSave("save", SQZ);
     bindings_.allocate(S->getPlaceholder());
 
-    EE_.compile(CompilationMode::Infer, F_);
+    EE_.compile(CompilationMode::Infer);
     EE_.run(bindings_);
 
     auto results = bindings_.get(S->getPlaceholder())->getHandle();
@@ -3933,11 +3941,17 @@ TEST_P(OperatorTest, Squeeze) {
     for (size_t i = 0; i < 10; i++)
       EXPECT_FLOAT_EQ(results.raw(i), expectedValues[i]);
   }
-
+  bindings_.clear();
+  EE_.setBackendName(getBackendName());
   // Test 3: 0-dimensional Tensor
   {
+    auto mod = &EE_.getModule();
+    F_ = mod->createFunction("main");
+    inputs = mod->createPlaceholder(ElemKind::FloatTy, {1, 2, 1, 5}, "inputs",
+                                    false);
+    bindings_.allocate(inputs)->getHandle() = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
     auto *emptyInput =
-        mod_.createPlaceholder(ElemKind::FloatTy, {1}, "emptyInput", false);
+        mod->createPlaceholder(ElemKind::FloatTy, {1}, "emptyInput", false);
     bindings_.allocate(emptyInput)->getHandle() = {42.0};
 
     std::vector<size_t> axes = {0};
@@ -3949,7 +3963,7 @@ TEST_P(OperatorTest, Squeeze) {
     bindings_.allocate(S1->getPlaceholder());
     bindings_.allocate(S2->getPlaceholder());
 
-    EE_.compile(CompilationMode::Infer, F_);
+    EE_.compile(CompilationMode::Infer);
     EE_.run(bindings_);
 
     auto res1 = bindings_.get(S1->getPlaceholder())->getHandle();
@@ -3965,7 +3979,7 @@ TEST_P(OperatorTest, Squeeze) {
 template <typename DataType>
 static void testExpandDims(glow::PlaceholderBindings &bindings,
                            glow::Module &mod, glow::Function *F,
-                           glow::ExecutionEngine &EE, ElemKind DTy) {
+                           glow::ExecutionEngine2 &EE, ElemKind DTy) {
   auto *inputs = createPlaceholderConditionallyQuantized(mod, DTy, {2, 2},
                                                          "inputs", false);
   auto IH = bindings.allocate(inputs)->getHandle<DataType>();
@@ -3977,7 +3991,7 @@ static void testExpandDims(glow::PlaceholderBindings &bindings,
   SaveNode *S = F->createSave("save", EDN);
   bindings.allocate(S->getPlaceholder());
 
-  EE.compile(CompilationMode::Infer, F);
+  EE.compile(CompilationMode::Infer);
   EE.run(bindings);
 
   // Expected dims based on the axes above; inserted new dimensions of 1 in
@@ -4016,7 +4030,7 @@ TEST_P(OperatorTest, ExpandDims_Int8) {
 /// Helper to test Split using \p DTy.
 template <typename DataType>
 static void testSplit(glow::PlaceholderBindings &bindings, glow::Module &mod,
-                      glow::Function *F, glow::ExecutionEngine &EE,
+                      glow::Function *F, glow::ExecutionEngine2 &EE,
                       ElemKind DTy) {
   auto *inputs = createPlaceholderConditionallyQuantized(mod, DTy, {1, 2, 6},
                                                          "inputs", false);
@@ -4039,7 +4053,7 @@ static void testSplit(glow::PlaceholderBindings &bindings, glow::Module &mod,
   auto *result3 = bindings.allocate(S3->getPlaceholder());
   auto *result4 = bindings.allocate(S4->getPlaceholder());
 
-  EE.compile(CompilationMode::Infer, F);
+  EE.compile(CompilationMode::Infer);
   EE.run(bindings);
 
   Tensor expected1 = createTensorConditionallyQuantized(DTy, {1, 2, 3});
@@ -4101,7 +4115,7 @@ TEST_P(OperatorTest, IntRelu) {
   auto *save = F_->createSave("save", dequantize);
   bindings_.allocate(mod_.getPlaceholders());
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
 
   auto result = bindings_.get(save->getPlaceholder())->getHandle();
@@ -4123,7 +4137,7 @@ TEST_P(OperatorTest, IntSplat) {
 
   auto *save = F_->createSave("save", dequantize);
   bindings_.allocate(mod_.getPlaceholders());
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
 
   auto result = bindings_.get(save->getPlaceholder())->getHandle();
@@ -4143,7 +4157,7 @@ TEST_P(OperatorTest, Fp16Splat) {
 
   auto *save = F_->createSave("save", splat);
   bindings_.allocate(mod_.getPlaceholders());
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
 
   auto result = bindings_.get(save->getPlaceholder())->getHandle<float16_t>();
@@ -4183,7 +4197,7 @@ TEST_P(OperatorTest, GroupConvolution) {
 
   ::glow::convertPlaceholdersToConstants(F_, bindings_,
                                          {input, S->getPlaceholder()});
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
 
   auto result = bindings_.get(S->getPlaceholder())->getHandle();
@@ -4256,7 +4270,7 @@ TEST_P(OperatorTest, GroupwiseQuantizedConvolution) {
   ::glow::convertPlaceholdersToConstants(F_, bindings_,
                                          {input, S->getPlaceholder()});
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
 
   auto result = bindings_.get(S->getPlaceholder())->getHandle();
@@ -4309,7 +4323,7 @@ TEST_P(OperatorTest, DilatedConvolution) {
   SaveNode *S = F_->createSave("save", CN);
   bindings_.allocate(S->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
 
   auto result = bindings_.get(S->getPlaceholder())->getHandle();
@@ -4355,7 +4369,7 @@ TEST_P(OperatorTest, GroupConv3D) {
 
   ::glow::convertPlaceholdersToConstants(F_, bindings_,
                                          {input, S->getPlaceholder()});
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
 
   auto result = bindings_.get(S->getPlaceholder())->getHandle();
@@ -4425,8 +4439,7 @@ TEST_P(OperatorTest, NonSquarePaddingConvolution) {
 
   ::glow::convertPlaceholdersToConstants(F_, bindings_,
                                          {input, S->getPlaceholder()});
-  EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(bindings_);
+
   Tensor &result = *bindings_.get(S->getPlaceholder());
 
   // Create the reference conv operator whose input is the same as the
@@ -4446,10 +4459,11 @@ TEST_P(OperatorTest, NonSquarePaddingConvolution) {
   S = refF->createSave("save1", CN);
   bindings_.allocate(S->getPlaceholder());
 
-  ::glow::convertPlaceholdersToConstants(F_, bindings_,
+  ::glow::convertPlaceholdersToConstants(refF, bindings_,
                                          {input, input1, S->getPlaceholder()});
-  EE_.compile(CompilationMode::Infer, refF);
-  EE_.run(bindings_);
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_, "main");
+  EE_.run(bindings_, "mainRef");
   Tensor &result1 = *bindings_.get(S->getPlaceholder());
 
   EXPECT_TRUE(result.isEqual(result1));
@@ -4494,8 +4508,7 @@ TEST_P(OperatorTest, NonCubicPaddingConv3D) {
 
   ::glow::convertPlaceholdersToConstants(F_, bindings_,
                                          {input, S->getPlaceholder()});
-  EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(bindings_);
+
   Tensor &result = *bindings_.get(S->getPlaceholder());
 
   // Create the reference conv3D operator whose input is the same as the
@@ -4519,10 +4532,11 @@ TEST_P(OperatorTest, NonCubicPaddingConv3D) {
   S = refF->createSave("save1", CN);
   bindings_.allocate(S->getPlaceholder());
 
-  ::glow::convertPlaceholdersToConstants(F_, bindings_,
+  ::glow::convertPlaceholdersToConstants(refF, bindings_,
                                          {input, input1, S->getPlaceholder()});
-  EE_.compile(CompilationMode::Infer, refF);
-  EE_.run(bindings_);
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_, "main");
+  EE_.run(bindings_, "mainRef");
   Tensor &result1 = *bindings_.get(S->getPlaceholder());
 
   EXPECT_TRUE(result.isEqual(result1));
@@ -4545,8 +4559,6 @@ TEST_P(OperatorTest, NonSquarePaddingAveragePool) {
   auto *S = F_->createSave("save", Pool);
   bindings_.allocate(S->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(bindings_);
   Tensor &result = *bindings_.get(S->getPlaceholder());
 
   auto *input1 =
@@ -4562,8 +4574,9 @@ TEST_P(OperatorTest, NonSquarePaddingAveragePool) {
   Pool = refF->createAvgPool("pool1", input1, 2, 1, 0);
   S = refF->createSave("save1", Pool);
   bindings_.allocate(S->getPlaceholder());
-  EE_.compile(CompilationMode::Infer, refF);
-  EE_.run(bindings_);
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_, "main");
+  EE_.run(bindings_, "mainRef");
   Tensor &result1 = *bindings_.get(S->getPlaceholder());
 
   EXPECT_TRUE(result.isEqual(result1));
@@ -4586,9 +4599,6 @@ TEST_P(OperatorTest, NonSquarePaddingMaxPool) {
   auto *S = F_->createSave("save", Pool->getResult());
   bindings_.allocate(S->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F_);
-  EE_.run(bindings_);
-
   Tensor &result = *bindings_.get(S->getPlaceholder());
 
   auto *input1 =
@@ -4605,8 +4615,9 @@ TEST_P(OperatorTest, NonSquarePaddingMaxPool) {
   S = refF->createSave("save1", Pool->getResult());
   bindings_.allocate(S->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, refF);
-  EE_.run(bindings_);
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_, "main");
+  EE_.run(bindings_, "mainRef");
 
   Tensor &result1 = *bindings_.get(S->getPlaceholder());
 
@@ -4624,7 +4635,7 @@ TEST_P(OperatorTest, FP16AvgPool) {
   auto *S = F_->createSave("save", Pool);
   bindings_.allocate(S->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
 
   auto *result = bindings_.get(S->getPlaceholder());
@@ -4642,7 +4653,7 @@ TEST_P(OperatorTest, AvgPool) {
   auto *S = F_->createSave("save", Pool);
   bindings_.allocate(S->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
 
   auto *result = bindings_.get(S->getPlaceholder());
@@ -4659,7 +4670,7 @@ TEST_P(OperatorTest, Int8AvgPool) {
   auto *S = F_->createSave("save", Pool);
   bindings_.allocate(S->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
 
   auto result = bindings_.get(S->getPlaceholder())->getHandle<int8_t>();
@@ -4683,7 +4694,7 @@ TEST_P(OperatorTest, AdaptiveAvgPool) {
   auto *S = F_->createSave("save", pool);
   bindings_.allocate(S->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
 
   auto *result = bindings_.get(S->getPlaceholder());
@@ -4704,7 +4715,7 @@ TEST_P(OperatorTest, FP16AdaptiveAvgPool) {
   auto *S = F_->createSave("save", pool);
   bindings_.allocate(S->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
 
   auto *result = bindings_.get(S->getPlaceholder());
@@ -4725,7 +4736,7 @@ TEST_P(OperatorTest, Int8AdaptiveAvgPool) {
   auto *S = F_->createSave("save", pool);
   bindings_.allocate(S->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
 
   auto *result = bindings_.get(S->getPlaceholder());
@@ -4748,7 +4759,7 @@ TEST_P(OperatorTest, AdaptiveAvgPoolNonSquare) {
   auto *S = F_->createSave("save", pool);
   bindings_.allocate(S->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
 
   auto *result = bindings_.get(S->getPlaceholder());
@@ -4765,7 +4776,7 @@ TEST_P(OperatorTest, MaxPool) {
   auto *S = F_->createSave("save", pool->getResult());
   bindings_.allocate(S->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
 
   auto result = bindings_.get(S->getPlaceholder());
@@ -4785,7 +4796,7 @@ TEST_P(OperatorTest, FP16MaxPool) {
   auto *S = F_->createSave("save", pool->getResult());
   bindings_.allocate(S->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
 
   auto result = bindings_.get(S->getPlaceholder());
@@ -4802,7 +4813,7 @@ TEST_P(OperatorTest, Int8MaxPool) {
   auto *S = F_->createSave("save", Pool->getResult());
   bindings_.allocate(S->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
 
   auto result = bindings_.get(S->getPlaceholder())->getHandle<int8_t>();
@@ -4815,7 +4826,7 @@ TEST_P(OperatorTest, Int8MaxPool) {
 
 #define COMPARE_UNARY_OP_FUN(_OP_NAME_, LEN, LOW, HIGH)                        \
   static FunctionTensorPair createAndInitBasic##_OP_NAME_##Test(               \
-      glow::PlaceholderBindings &bindings, glow::ExecutionEngine &EE) {        \
+      glow::PlaceholderBindings &bindings, glow::ExecutionEngine2 &EE) {       \
     auto &mod = EE.getModule();                                                \
     Function *F = mod.createFunction("main");                                  \
                                                                                \
@@ -4836,7 +4847,7 @@ COMPARE_UNARY_OP_FUN(Sigmoid, 10, -10.0F, 10.0F)
 template <typename DataType>
 static void testMaxPoolWithArgmax(glow::PlaceholderBindings &bindings,
                                   glow::Module &mod, glow::Function *F,
-                                  glow::ExecutionEngine &EE, ElemKind DTy) {
+                                  glow::ExecutionEngine2 &EE, ElemKind DTy) {
   auto *input = createPlaceholderConditionallyQuantized(mod, DTy, {1, 3, 3, 1},
                                                         "input", false);
   bindings.allocate(input)->getHandle<DataType>() = {0, 3, 7, 6, 5, 1, 2, 8, 4};
@@ -4846,7 +4857,7 @@ static void testMaxPoolWithArgmax(glow::PlaceholderBindings &bindings,
   bindings.allocate(SResult->getPlaceholder());
   bindings.allocate(SArgmax->getPlaceholder());
 
-  EE.compile(CompilationMode::Infer, F);
+  EE.compile(CompilationMode::Infer);
   EE.run(bindings);
 
   auto result = bindings.get(SResult->getPlaceholder());
@@ -4874,7 +4885,7 @@ template <typename DataType>
 static void
 testMaxPoolWithArgmaxTransposed(glow::PlaceholderBindings &bindings,
                                 glow::Module &mod, glow::Function *F,
-                                glow::ExecutionEngine &EE, ElemKind DTy) {
+                                glow::ExecutionEngine2 &EE, ElemKind DTy) {
   // Show that sequence Tensor(NCHW) -> Transpose(NCHWtoNHWC) ->
   // MaxPoolWithArgmax -> Transpose(NHWCtoNCHW) produces correct linearization.
   auto *inputNCHW = createPlaceholderConditionallyQuantized(
@@ -4902,7 +4913,7 @@ testMaxPoolWithArgmaxTransposed(glow::PlaceholderBindings &bindings,
   bindings.allocate(SResult->getPlaceholder());
   bindings.allocate(SArgmax->getPlaceholder());
 
-  EE.compile(CompilationMode::Infer, F);
+  EE.compile(CompilationMode::Infer);
   EE.run(bindings);
 
   auto result = bindings.get(SResult->getPlaceholder());
@@ -4954,7 +4965,7 @@ TEST_P(OperatorTest, Tanh) {
   auto *save = F_->createSave("Save", tanh);
   bindings_.allocate(save->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
 
   auto resultH = bindings_.get(save->getPlaceholder())->getHandle();
@@ -4984,7 +4995,7 @@ TEST_P(OperatorTest, Exp) {
   auto *save = F_->createSave("Save", expn);
   bindings_.allocate(save->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
 
   auto resultH = bindings_.get(save->getPlaceholder())->getHandle();
@@ -5033,7 +5044,7 @@ TEST_P(OperatorTest, NonSquareKernelConvolution) {
 
   ::glow::convertPlaceholdersToConstants(F_, bindings_,
                                          {input, S->getPlaceholder()});
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
   Tensor &result = *bindings_.get(S->getPlaceholder());
 
@@ -5084,7 +5095,7 @@ TEST_P(OperatorTest, NonCubicKernelConv3D) {
 
   ::glow::convertPlaceholdersToConstants(F_, bindings_,
                                          {input, S->getPlaceholder()});
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
   Tensor &result = *bindings_.get(S->getPlaceholder());
 
@@ -5158,7 +5169,8 @@ TEST_P(OperatorTest, NonCubicKernelConv3DQuantized) {
 
   ::glow::convertPlaceholdersToConstants(F_, bindings_,
                                          {input, S->getPlaceholder()});
-  EE_.compile(CompilationMode::Infer, F_);
+  bindings_.allocate(mod_.getPlaceholders());
+  EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
 
   Tensor &result = *bindings_.get(S->getPlaceholder());
@@ -5183,7 +5195,7 @@ TEST_P(OperatorTest, NonSquareKernelAveragePool) {
   auto *S = F_->createSave("save", Pool);
   bindings_.allocate(S->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
   Tensor &result = *bindings_.get(S->getPlaceholder());
 
@@ -5206,7 +5218,7 @@ TEST_P(OperatorTest, NonSquareKernelMaxPool) {
   auto *S = F_->createSave("save", Pool->getResult());
   bindings_.allocate(S->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
   Tensor &result = *bindings_.get(S->getPlaceholder());
 
@@ -5245,7 +5257,7 @@ TEST_P(OperatorTest, NonSquareStrideConvolution) {
 
   ::glow::convertPlaceholdersToConstants(F_, bindings_,
                                          {input, S->getPlaceholder()});
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
   Tensor &result = *bindings_.get(S->getPlaceholder());
 
@@ -5296,7 +5308,7 @@ TEST_P(OperatorTest, NonCubicStrideConv3D) {
 
   ::glow::convertPlaceholdersToConstants(F_, bindings_,
                                          {input, S->getPlaceholder()});
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
   Tensor &result = *bindings_.get(S->getPlaceholder());
 
@@ -5320,7 +5332,7 @@ TEST_P(OperatorTest, NonSquareStrideAveragePool) {
   auto *S = F_->createSave("save", Pool);
   bindings_.allocate(S->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
   Tensor &result = *bindings_.get(S->getPlaceholder());
 
@@ -5343,7 +5355,7 @@ TEST_P(OperatorTest, NonSquareStrideMaxPool) {
   auto *S = F_->createSave("save", Pool->getResult());
   bindings_.allocate(S->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
   Tensor &result = *bindings_.get(S->getPlaceholder());
 
@@ -5363,7 +5375,7 @@ TEST_P(OperatorTest, SigmoidOverflow) {
   auto *fpSigmoid = F_->createSigmoid("fpSigmoid", input);
   auto *S = F_->createSave("fpSave", fpSigmoid);
   bindings_.allocate(S->getPlaceholder());
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
   Tensor &result = *bindings_.get(S->getPlaceholder());
   static const float ref[] = {1, 0};
@@ -5393,7 +5405,7 @@ TEST_P(OperatorTest, BatchAdd) {
   auto *S = F_->createSave("save", batchAdd);
   bindings_.allocate(S->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
 
   auto result = bindings_.get(S->getPlaceholder())->getHandle<float>();
@@ -5422,7 +5434,7 @@ TEST_P(OperatorTest, FP16BatchAdd) {
   auto *S = F_->createSave("save", batchAdd);
   bindings_.allocate(S->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
 
   auto result = bindings_.get(S->getPlaceholder())->getHandle<float16_t>();
@@ -5448,7 +5460,7 @@ TEST_P(OperatorTest, BroadcastAdd2x) {
   auto *output = save->getPlaceholder();
   bindings_.allocate(input)->getHandle() = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
   bindings_.allocate(output);
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   for (int i = 0; i < 2; i++) {
     Tensor expected(ElemKind::FloatTy, {10, 1});
     expected.getHandle() = {42, 43, 44, 45, 46, 47, 48, 49, 50, 51};
@@ -5460,7 +5472,7 @@ TEST_P(OperatorTest, BroadcastAdd2x) {
 /// Helper to test Sigmoid using \p DTy.
 template <typename DataType>
 static void testSigmoid(glow::PlaceholderBindings &bindings, glow::Module &mod,
-                        glow::Function *F, glow::ExecutionEngine &EE,
+                        glow::Function *F, glow::ExecutionEngine2 &EE,
                         ElemKind DTy) {
   constexpr size_t size = 10;
   auto *input = mod.createPlaceholder(DTy, {size}, "input", false);
@@ -5471,7 +5483,7 @@ static void testSigmoid(glow::PlaceholderBindings &bindings, glow::Module &mod,
   auto *save = F->createSave("Save", sigmoid);
   bindings.allocate(save->getPlaceholder());
 
-  EE.compile(CompilationMode::Infer, F);
+  EE.compile(CompilationMode::Infer);
   EE.run(bindings);
 
   auto RH = bindings.get(save->getPlaceholder())->getHandle<DataType>();
@@ -5516,7 +5528,7 @@ TEST_P(OperatorTest, IntLookupTable) {
   auto *save = F_->createSave("save", lookupTable);
   bindings_.allocate(save->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
 
   auto result = bindings_.get(save->getPlaceholder())->getHandle<int8_t>();
@@ -5528,7 +5540,7 @@ TEST_P(OperatorTest, IntLookupTable) {
 /// Helper to test BatchAdd using \p DTy.
 template <typename DataType>
 static void testBatchAdd(glow::PlaceholderBindings &bindings, glow::Module &mod,
-                         glow::Function *F, glow::ExecutionEngine &EE,
+                         glow::Function *F, glow::ExecutionEngine2 &EE,
                          ElemKind DTy) {
   unsigned numSlices = 10;
   auto *input = mod.createPlaceholder(DTy, {numSlices, 10, 10}, "input", false);
@@ -5554,7 +5566,7 @@ static void testBatchAdd(glow::PlaceholderBindings &bindings, glow::Module &mod,
   auto *result = F->createSave("save", cc);
   bindings.allocate(result->getPlaceholder());
 
-  EE.compile(CompilationMode::Infer, F);
+  EE.compile(CompilationMode::Infer);
   EE.run(bindings);
 
   auto RH = bindings.get(result->getPlaceholder())->getHandle<DataType>();
@@ -5583,9 +5595,12 @@ TEST_P(OperatorTest, testBatchAdd_Float16) {
   testBatchAdd<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty);
 }
 
-static void quantizedBatchAdd(ExecutionEngine &EE, Function *F,
+static void quantizedBatchAdd(ExecutionEngine2 &EE,
                               PlaceholderBindings &bindings, ElemKind Ty) {
+  EE.setBackendName(EE.getBackendName());
   auto &mod = EE.getModule();
+  auto *F = mod.createFunction("main");
+  bindings.clear();
   unsigned numSlices = 10;
   auto *input = mod.createPlaceholder(ElemKind::FloatTy, {numSlices, 10, 10},
                                       "input", false);
@@ -5618,7 +5633,7 @@ static void quantizedBatchAdd(ExecutionEngine &EE, Function *F,
   // Remove the reference to the graph nodes to allow DCE to remove them.
   adds.clear();
 
-  EE.compile(CompilationMode::Infer, F);
+  EE.compile(CompilationMode::Infer);
   EE.run(bindings);
 
   auto RH = bindings.get(result->getPlaceholder())->getHandle();
@@ -5639,9 +5654,9 @@ static void quantizedBatchAdd(ExecutionEngine &EE, Function *F,
 TEST_P(OperatorTest, testQuantizedBatchAdd) {
   ENABLED_BACKENDS(Interpreter, CPU, OpenCL);
   // Test Int8QTy Slice.
-  quantizedBatchAdd(EE_, F_, bindings_, ElemKind::Int8QTy);
+  quantizedBatchAdd(EE_, bindings_, ElemKind::Int8QTy);
   // Test Int32QTy Slice.
-  quantizedBatchAdd(EE_, F_, bindings_, ElemKind::Int32QTy);
+  quantizedBatchAdd(EE_, bindings_, ElemKind::Int32QTy);
 }
 
 TEST_P(OperatorTest, LengthsSum) {
@@ -5676,7 +5691,7 @@ TEST_P(OperatorTest, LengthsSum) {
   auto *S = F_->createSave("save", R);
   bindings_.allocate(S->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
 
   Tensor &result = *bindings_.get(S->getPlaceholder());
@@ -5726,7 +5741,7 @@ TEST_P(OperatorTest, SparseLengthsSum) {
   auto *S = F_->createSave("save", R);
   bindings_.allocate(S->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
 
   Tensor &result = *bindings_.get(S->getPlaceholder());
@@ -5778,7 +5793,7 @@ TEST_P(OperatorTest, SparseLengthsSumI8) {
   auto *S = F_->createSave("save", R);
   bindings_.allocate(S->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
 
   Tensor &result = *bindings_.get(S->getPlaceholder());
@@ -5790,8 +5805,9 @@ TEST_P(OperatorTest, SparseLengthsSumI8) {
 }
 
 /// Test SparseLengthsWeightedSum with an N-dimension embedding table.
-void sparseLengthsWeightedSumTest(size_t ndims, ExecutionEngine &EE) {
+void sparseLengthsWeightedSumTest(size_t ndims, ExecutionEngine2 &EE) {
   auto &mod_ = EE.getModule();
+  mod_.eraseFunctions();
   auto *F_ = mod_.createFunction("slws");
   PlaceholderBindings bindings_;
 
@@ -5838,7 +5854,7 @@ void sparseLengthsWeightedSumTest(size_t ndims, ExecutionEngine &EE) {
   auto *S = F_->createSave("save", R);
   bindings_.allocate(S->getPlaceholder());
 
-  EE.compile(CompilationMode::Infer, F_);
+  EE.compile(CompilationMode::Infer);
   EE.run(bindings_);
 
   Tensor &result = *bindings_.get(S->getPlaceholder());
@@ -5905,7 +5921,7 @@ TEST_P(OperatorTest, SparseLengthsWeightedSumI8) {
   auto *S = F_->createSave("save", R);
   bindings_.allocate(S->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
 
   Tensor &result = *bindings_.get(S->getPlaceholder());
@@ -5924,7 +5940,7 @@ TEST_P(OperatorTest, SparseLengthsWeightedSumI8) {
 template <typename DataType>
 static void testRowwiseQuantizedSparseLengthsWeightedSum(
     glow::PlaceholderBindings &bindings, glow::Module &mod, glow::Function *F,
-    glow::ExecutionEngine &EE, ElemKind DTy, float allowedError) {
+    glow::ExecutionEngine2 &EE, ElemKind DTy, float allowedError) {
   /*
     DATA  =   [2.0, -0.5, 13]
     WEIGHTS = [3, 1, 0, 0, 0, 0, 2, -0.5]
@@ -5967,7 +5983,7 @@ static void testRowwiseQuantizedSparseLengthsWeightedSum(
   SaveNode *S = F->createSave("save", R);
   bindings.allocate(S->getPlaceholder());
 
-  EE.compile(CompilationMode::Infer, F);
+  EE.compile(CompilationMode::Infer);
   EE.run(bindings);
 
   Tensor &result = *bindings.get(S->getPlaceholder());
@@ -6000,7 +6016,7 @@ TEST_P(OperatorTest, RowwiseQuantizedSparseLengthsWeightedSum_Float16) {
 template <typename DataType>
 static void testRowwiseQuantizedSparseLengthsSum(
     glow::PlaceholderBindings &bindings, glow::Module &mod, glow::Function *F,
-    glow::ExecutionEngine &EE, ElemKind DTy, float allowedError) {
+    glow::ExecutionEngine2 &EE, ElemKind DTy, float allowedError) {
   /*
     DATA  = [
         [1.0, 1.2],
@@ -6039,7 +6055,7 @@ static void testRowwiseQuantizedSparseLengthsSum(
   SaveNode *S = F->createSave("save", R);
   bindings.allocate(S->getPlaceholder());
 
-  EE.compile(CompilationMode::Infer, F);
+  EE.compile(CompilationMode::Infer);
   EE.run(bindings);
 
   Tensor &result = *bindings.get(S->getPlaceholder());
@@ -6085,7 +6101,7 @@ TEST_P(OperatorTest, RepeatedSLSWithPartialTensors) {
   auto *SLS = F_->createSparseLengthsSum("SLS", data, indices, lengths);
   auto *save = F_->createSave("save", SLS);
   auto *outPH = save->getPlaceholder();
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
 
   Tensor indicesReal(ElemKind::Int64ITy, {numIndices});
   indicesReal.getHandle<int64_t>().randomize(0, embeddingRows - 1,
@@ -6124,7 +6140,7 @@ TEST_P(OperatorTest, RepeatedSLSWithPartialTensors) {
 template <typename DataType>
 static void testFusedRowwiseQuantizedSparseLengthsWeightedSum(
     glow::PlaceholderBindings &bindings, glow::Module &mod, glow::Function *F,
-    glow::ExecutionEngine &EE, ElemKind DTy, float allowedError) {
+    glow::ExecutionEngine2 &EE, ElemKind DTy, float allowedError) {
   /*
     DATA  =   [[2.0, -0.5, 13]]
     WEIGHTS = [3, 1, 0, 0, 0, 0, 2, -0.5]
@@ -6166,7 +6182,7 @@ static void testFusedRowwiseQuantizedSparseLengthsWeightedSum(
   SaveNode *S = F->createSave("save", R);
   bindings.allocate(S->getPlaceholder());
 
-  EE.compile(CompilationMode::Infer, F);
+  EE.compile(CompilationMode::Infer);
   EE.run(bindings);
 
   Tensor &result = *bindings.get(S->getPlaceholder());
@@ -6199,7 +6215,7 @@ TEST_P(OperatorTest, FusedRowwiseQuantizedSparseLengthsWeightedSum_Float16) {
 template <typename DataType>
 static void testFusedRowwiseQuantizedSparseLengthsSum(
     glow::PlaceholderBindings &bindings, glow::Module &mod, glow::Function *F,
-    glow::ExecutionEngine &EE, ElemKind DTy, float allowedError) {
+    glow::ExecutionEngine2 &EE, ElemKind DTy, float allowedError) {
   /*
     DATA  = [
         [1.0, 1.2],
@@ -6238,7 +6254,7 @@ static void testFusedRowwiseQuantizedSparseLengthsSum(
   SaveNode *S = F->createSave("save", R);
   bindings.allocate(S->getPlaceholder());
 
-  EE.compile(CompilationMode::Infer, F);
+  EE.compile(CompilationMode::Infer);
   EE.run(bindings);
 
   Tensor &result = *bindings.get(S->getPlaceholder());
@@ -6293,7 +6309,7 @@ TEST_P(OperatorTest, ConstantSLS) {
   auto *S = F_->createSave("save", R);
   auto *out = bindings_.allocate(S->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
 
   std::vector<float> expected = {120,  345,  570,  856,  1112, 1368, 1515,
@@ -6313,7 +6329,7 @@ TEST_P(OperatorTest, SLSWithZeroLengths) {
 
   compareAgainstInterpreter(
       getBackendName(),
-      [](PlaceholderBindings &bindings, ExecutionEngine &EE) {
+      [](PlaceholderBindings &bindings, ExecutionEngine2 &EE) {
         auto &mod = EE.getModule();
         auto *F = mod.createFunction("main");
         constexpr size_t embedWidth = 1000;
@@ -6369,7 +6385,7 @@ TEST_P(OperatorTest, SparseToDense) {
   auto *S = F_->createSave("save", STDN);
   bindings_.allocate(S->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
 
   Tensor &result = *bindings_.get(S->getPlaceholder());
@@ -6422,7 +6438,7 @@ TEST_P(OperatorTest, SparseToDenseMask1) {
   auto *S = F_->createSave("save", R);
   bindings_.allocate(S->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
 
   Tensor &result = *bindings_.get(S->getPlaceholder());
@@ -6468,7 +6484,7 @@ TEST_P(OperatorTest, SparseToDenseMask2) {
   auto *S = F_->createSave("save", R);
   bindings_.allocate(S->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
 
   Tensor &result = *bindings_.get(S->getPlaceholder());
@@ -6491,7 +6507,7 @@ TEST_P(OperatorTest, FP16Reshape) {
   auto *result = F_->createSave("saveTranspose", tr);
   bindings_.allocate(result->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
 
   auto outputHandle =
@@ -6512,7 +6528,7 @@ TEST_P(OperatorTest, Reshape) {
   auto *result = F_->createSave("saveReshape", RN);
   bindings_.allocate(result->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
 
   auto outputHandle = bindings_.get(result->getPlaceholder())->getHandle();
@@ -6538,7 +6554,7 @@ TEST_P(OperatorTest, ReshapeInt) {
   auto *result = F_->createSave("saveReshape", RN);
   bindings_.allocate(result->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
 
   auto outputHandle =
@@ -6570,7 +6586,7 @@ TEST_P(OperatorTest, Select) {
   auto *result = F_->createSave("saveSelect", SN);
   bindings_.allocate(result->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
 
   auto resH = bindings_.get(result->getPlaceholder())->getHandle();
@@ -6594,7 +6610,7 @@ TEST_P(OperatorTest, CmpLTE) {
   auto *result = F_->createSave("saveCMPLTE", CMPLTE);
   Tensor *resultT = bindings_.allocate(result->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
 
   auto resH = resultT->getHandle<bool>();
@@ -6609,7 +6625,7 @@ TEST_P(OperatorTest, CmpLTE) {
 template <typename DataType>
 static void testSliceReshape(glow::PlaceholderBindings &bindings,
                              glow::Module &mod, glow::Function *F,
-                             glow::ExecutionEngine &EE, ElemKind DTy) {
+                             glow::ExecutionEngine2 &EE, ElemKind DTy) {
   auto *X =
       createPlaceholderConditionallyQuantized(mod, DTy, {3, 3}, "X", false);
 
@@ -6636,7 +6652,7 @@ static void testSliceReshape(glow::PlaceholderBindings &bindings,
   bindings.allocate(resultSSX->getPlaceholder());
   bindings.allocate(resultRSSX->getPlaceholder());
 
-  EE.compile(CompilationMode::Infer, F);
+  EE.compile(CompilationMode::Infer);
 
   EE.run(bindings);
 
@@ -6686,7 +6702,7 @@ TEST_P(OperatorTest, sliceReshape_Int8) {
 /// Helper to test Flatten using \p DTy.
 template <typename DataType>
 static void testFlatten(glow::PlaceholderBindings &bindings, glow::Module &mod,
-                        glow::Function *F, glow::ExecutionEngine &EE,
+                        glow::Function *F, glow::ExecutionEngine2 &EE,
                         ElemKind DTy) {
   auto *tensor4D = createPlaceholderConditionallyQuantized(
       mod, DTy, {3, 2, 4, 3}, "4D", false);
@@ -6743,7 +6759,7 @@ static void testFlatten(glow::PlaceholderBindings &bindings, glow::Module &mod,
   bindings.allocate(save4Dto2Da3->getPlaceholder());
   bindings.allocate(save4Dto2Da4->getPlaceholder());
 
-  EE.compile(CompilationMode::Infer, F);
+  EE.compile(CompilationMode::Infer);
 
   EE.run(bindings);
 
@@ -6818,7 +6834,7 @@ TEST_P(OperatorTest, DivSizeT) {
   auto *result = F_->createSave("save", R);
   bindings_.allocate(result->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
 
   auto H = bindings_.get(result->getPlaceholder())->getHandle<int64_t>();
@@ -6874,7 +6890,7 @@ TEST_P(OperatorTest, SigmoidCrossEntropyWithLogits) {
   auto *result = F_->createSave("save", R);
   bindings_.allocate(result->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
 
   Tensor expected(ElemKind::FloatTy, {2, 2});
@@ -6914,7 +6930,7 @@ TEST_P(OperatorTest, insertTensorTest) {
   SaveNode *result = F_->createSave("result", IN);
   bindings_.allocate(result->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
 
   EE_.run(bindings_);
 
@@ -6932,7 +6948,7 @@ TEST_P(OperatorTest, insertTensorTest) {
 
 static FunctionTensorPair
 createAndInitBasicRowwiseFCTest(glow::PlaceholderBindings &bindings,
-                                glow::ExecutionEngine &EE) {
+                                glow::ExecutionEngine2 &EE) {
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -6976,7 +6992,7 @@ TEST_P(OperatorStatelessTest, rowwiseQuantizedFCTestSymmetric) {
 
 static FunctionTensorPair
 createAndInitBasicSLWSTest(glow::PlaceholderBindings &bindings,
-                           glow::ExecutionEngine &EE) {
+                           glow::ExecutionEngine2 &EE) {
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -7061,7 +7077,7 @@ TEST_P(OperatorTest, Bucketize) {
   auto *save2 =
       setupBucketNode(F_, bindings_, input2, /* suffix */ std::to_string(2));
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
 
   // Check the result of the first op:
@@ -7092,7 +7108,7 @@ TEST_P(OperatorTest, SoftMax) {
   auto *S = F_->createSave("save", Pool);
   bindings_.allocate(S->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
 
   auto result = bindings_.get(S->getPlaceholder());
@@ -7120,7 +7136,7 @@ TEST_P(OperatorTest, FP16SoftMax) {
   auto *S = F_->createSave("save", Pool);
   bindings_.allocate(S->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
 
   auto result = bindings_.get(S->getPlaceholder());
@@ -7132,7 +7148,7 @@ TEST_P(OperatorTest, FP16SoftMax) {
 /// Verify that Quantize, Rescale, Dequantize work correctly together.
 static void quantizeSimpleTest(glow::PlaceholderBindings &bindings_,
                                glow::Module &mod_, glow::Function *F_,
-                               glow::ExecutionEngine &EE_, ElemKind QTy) {
+                               glow::ExecutionEngine2 &EE_, ElemKind QTy) {
   auto *input =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 1}, "input", true);
   bindings_.allocate(input)->init(Tensor::InitKind::Broadcast, 21,
@@ -7147,7 +7163,7 @@ static void quantizeSimpleTest(glow::PlaceholderBindings &bindings_,
   auto *result = bindings_.allocate(save->getPlaceholder());
 
   EXPECT_EQ(F_->getNodes().size(), 4);
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
 
   EE_.run(bindings_);
   EXPECT_EQ(F_->getNodes().size(), 1);
@@ -7184,7 +7200,7 @@ TEST_P(OperatorTest, LengthsToRanges) {
   auto *S = F_->createSave("save", R);
   bindings_.allocate(S->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
 
   Tensor &result = *bindings_.get(S->getPlaceholder());
@@ -7213,7 +7229,7 @@ TEST_P(OperatorTest, LengthsRangeFill) {
   auto *S = F_->createSave("save", LRF);
   bindings_.allocate(S->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
 
   Tensor &result = *bindings_.get(S->getPlaceholder());
@@ -7226,7 +7242,7 @@ TEST_P(OperatorTest, LengthsRangeFill) {
 /// Helper for testing BatchOneHot with different \p DTy.
 template <typename DataType>
 void batchOneHotTest(glow::PlaceholderBindings &bindings, glow::Module &mod,
-                     glow::Function *F, glow::ExecutionEngine &EE,
+                     glow::Function *F, glow::ExecutionEngine2 &EE,
                      ElemKind DTy) {
   /*
     DATA = [[5, 0], [11, 3], [0, 5]]
@@ -7249,7 +7265,7 @@ void batchOneHotTest(glow::PlaceholderBindings &bindings, glow::Module &mod,
   auto *S = F->createSave("save", R);
   bindings.allocate(S->getPlaceholder());
 
-  EE.compile(CompilationMode::Infer, F);
+  EE.compile(CompilationMode::Infer);
   EE.run(bindings);
 
   Tensor &result = *bindings.get(S->getPlaceholder());
@@ -7307,7 +7323,7 @@ TEST_P(OperatorTest, Modulo1) {
   auto *result = F_->createSave("save", modulo);
   bindings_.allocate(result->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
 
   auto resultH = bindings_.get(result->getPlaceholder())->getHandle<int64_t>();
@@ -7337,7 +7353,7 @@ TEST_P(OperatorTest, Modulo2) {
   auto *result = F_->createSave("save", modulo);
   bindings_.allocate(result->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
 
   auto resultH = bindings_.get(result->getPlaceholder())->getHandle<int64_t>();
@@ -7355,7 +7371,7 @@ TEST_P(OperatorTest, Modulo2) {
 template <typename DataType>
 static void testDotProduct1D(glow::PlaceholderBindings &bindings,
                              glow::Module &mod, glow::Function *F,
-                             glow::ExecutionEngine &EE, ElemKind DTy) {
+                             glow::ExecutionEngine2 &EE, ElemKind DTy) {
   // Input tensors.
   constexpr std::size_t kDataSize = 10;
   auto *X = createPlaceholderConditionallyQuantized(mod, DTy, {kDataSize}, "X",
@@ -7383,7 +7399,7 @@ static void testDotProduct1D(glow::PlaceholderBindings &bindings,
   auto *result = F->createSave("save", dotProduct);
   bindings.allocate(result->getPlaceholder());
 
-  EE.compile(CompilationMode::Infer, F);
+  EE.compile(CompilationMode::Infer);
   EE.run(bindings);
 
   auto actualH = bindings.get(result->getPlaceholder())->getHandle<DataType>();
@@ -7451,7 +7467,7 @@ TEST_P(OperatorTest, elementwiseLinear) {
   bindings_.allocate(resultAxisOne->getPlaceholder());
 
   // Compile and run the model.
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
 
   auto resAxisZeroH =
@@ -7477,7 +7493,7 @@ TEST_P(OperatorTest, elementwiseLinear) {
 template <typename DataType>
 static void testDotProduct2D(glow::PlaceholderBindings &bindings,
                              glow::Module &mod, glow::Function *F,
-                             glow::ExecutionEngine &EE, ElemKind DTy) {
+                             glow::ExecutionEngine2 &EE, ElemKind DTy) {
   // Input tensors.
   constexpr std::size_t kRows = 10;
   constexpr std::size_t kCols = 14;
@@ -7513,7 +7529,7 @@ static void testDotProduct2D(glow::PlaceholderBindings &bindings,
   auto *result = F->createSave("save", dotProduct);
   bindings.allocate(result->getPlaceholder());
 
-  EE.compile(CompilationMode::Infer, F);
+  EE.compile(CompilationMode::Infer);
   EE.run(bindings);
 
   auto actualH = bindings.get(result->getPlaceholder())->getHandle<DataType>();
@@ -7547,7 +7563,7 @@ TEST_P(OperatorTest, dotProduct2D_Int8) {
 template <typename DataType>
 static void testBatchBoxCox(glow::PlaceholderBindings &bindings,
                             glow::Module &mod, glow::Function *F,
-                            glow::ExecutionEngine &EE, ElemKind DTy,
+                            glow::ExecutionEngine2 &EE, ElemKind DTy,
                             float allowedError = 0.0001f) {
   // Input tensors.
   const size_t kRows = 10;
@@ -7583,7 +7599,7 @@ static void testBatchBoxCox(glow::PlaceholderBindings &bindings,
       bindings.allocate(save->getPlaceholder())->getHandle<DataType>();
 
   // Compile and run the model, setting results in tensor backed by resultH.
-  EE.compile(CompilationMode::Infer, F);
+  EE.compile(CompilationMode::Infer);
   EE.run(bindings);
 
   // Compute expected output here on the host to compare results.
@@ -7643,7 +7659,7 @@ TEST_P(OperatorTest, BatchBoxCox_Float16) {
     auto *save = F_->createSave("save", N);                                    \
     auto resultH = bindings_.allocate(save->getPlaceholder())->getHandle();    \
                                                                                \
-    EE_.compile(CompilationMode::Infer, F_);                                   \
+    EE_.compile(CompilationMode::Infer);                                       \
     EE_.run(bindings_);                                                        \
                                                                                \
     for (size_t i = 0; i < size; i++) {                                        \
@@ -7662,7 +7678,7 @@ TEST_ARITH_OP_FLOAT(Max, [](float a, float b) { return std::max(a, b); })
 template <typename SourceType, typename DestType>
 static void testConvertTo(glow::PlaceholderBindings &bindings_,
                           glow::Module &mod_, glow::Function *F_,
-                          glow::ExecutionEngine &EE_, ElemKind STy,
+                          glow::ExecutionEngine2 &EE_, ElemKind STy,
                           ElemKind DTy) {
   // Input tensor in source type.
   size_t shape[] = {5, 3, 20};
@@ -7679,7 +7695,7 @@ static void testConvertTo(glow::PlaceholderBindings &bindings_,
       bindings_.allocate(save->getPlaceholder())->getHandle<DestType>();
 
   // Compile and run the model, setting results in tensor backed by resultH.
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
 
   // Compute expected output here on the host to compare results.

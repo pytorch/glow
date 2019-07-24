@@ -81,13 +81,16 @@ profileAndGetNodeQuantizationInfo(CreateAndInitFunction createAndInitFunction,
   LoweredInfoMap loweredMapForProf;
   PlaceholderBindings pBindings;
   ExecutionEngine2 PEE{"Interpreter"};
-  FunctionTensorPair PFT = createAndInitFunction(pBindings, PEE);
+  createAndInitFunction(pBindings, PEE);
   CompilationContext cctx{&pBindings, &loweredMapForProf};
   cctx.precisionConfig.quantMode = QuantizationMode::Profile;
   PEE.compile(cctx);
   PEE.run(pBindings);
-  return quantization::generateNodeQuantizationInfos(pBindings, PFT.first,
-                                                     loweredMapForProf, schema);
+  // We get the new function using front() because the original function was
+  // deleted as part of the Partitioner quantization flow.
+  return quantization::generateNodeQuantizationInfos(
+      pBindings, PEE.getModule().getFunctions().front(), loweredMapForProf,
+      schema);
 }
 
 /// Helper that sets up and \returns a pair of configs for both interpreter and
