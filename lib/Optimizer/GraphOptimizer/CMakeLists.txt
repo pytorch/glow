@@ -8,8 +8,6 @@ add_library(GraphOptimizer
 
 target_link_libraries(GraphOptimizer
                       PRIVATE
-                        Backend
-                        Backends
                         Converter
                         Graph
                         GraphOptimizerPipeline
