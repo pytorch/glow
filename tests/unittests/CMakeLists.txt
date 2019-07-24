@@ -132,7 +132,7 @@ if(GLOW_WITH_CPU AND NOT MSVC)
                           CPURuntimeNative
                           Graph
                           IR
-                          ExecutionEngine
+                          ExecutionEngine2
                           Support
                           gtest
                           TestMain)
