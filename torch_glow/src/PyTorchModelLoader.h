@@ -154,6 +154,9 @@ private:
 
   /// Load a PyTorch t (transpose) node.
   void loadTranspose(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch min node.
+  void loadMin(const torch::jit::Node *ptNode);
 };
 
 #endif // GLOW_IMPORTER_PYTORCH_PYTORCHMODELLOADER_H
