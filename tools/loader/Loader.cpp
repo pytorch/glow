@@ -213,9 +213,17 @@ llvm::cl::opt<unsigned> iterationsOpt(
     "iterations", llvm::cl::desc("Number of iterations to perform"),
     llvm::cl::Optional, llvm::cl::init(0), llvm::cl::cat(loaderCat));
 
-llvm::StringRef Loader::getModelOptPath() {
-  assert(modelPathOpt.size() == 1 && "Model path must be a single path.");
-  return modelPathOpt[0];
+std::string Loader::getModelOptPath() {
+  // If given a single path, return it.
+  if (modelPathOpt.size() == 1 &&
+      llvm::sys::fs::is_directory(*modelPathOpt.begin())) {
+    return *modelPathOpt.begin();
+  }
+
+  // Model path must be to one or more files. Use the path of the first file.
+  size_t found = modelPathOpt[0].find_last_of("/");
+  assert(found != std::string::npos && "Expected path to proto with directory");
+  return modelPathOpt[0].substr(0, found);
 }
 
 llvm::StringRef Loader::getModelOptDir() {

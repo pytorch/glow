@@ -53,6 +53,9 @@ for png_filename in tests/images/imagenet/*.png; do
 done
 runSqueezenetModel "tests/images/imagenet/zebra_340.png" ${imagenetIdxArray[2]} "_0"
 
+./bin/image-classifier tests/images/imagenet/*.png -expected-labels=${imagenetIdxValues} -image-mode=neg128to127 -m=squeezenet/predict_net.pb -m=squeezenet/init_net.pb -model-input-name=data "$@"
+num_errors=$(($num_errors + $?))
+
 
 # Batch processing
 ./bin/image-classifier tests/images/imagenet/*.png -expected-labels=${imagenetIdxValues} -use-imagenet-normalization -image-mode=0to1 -m=resnet50 -model-input-name=gpu_0/data "$@"

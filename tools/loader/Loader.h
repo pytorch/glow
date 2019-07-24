@@ -89,7 +89,7 @@ public:
   llvm::StringRef getOnnxModelFilename() { return onnxModelFilename_; }
   /// Getter for the model path.
   /// \pre (modelPathOpt.size() == 1)
-  static llvm::StringRef getModelOptPath();
+  static std::string getModelOptPath();
   /// Getter for the model path, expected to be a directory.
   /// \pre (modelPathOpt.size() == 1)
   static llvm::StringRef getModelOptDir();
