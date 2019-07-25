@@ -36,7 +36,7 @@ Node *convertConvToNCHWConv(ConvolutionNode *CN, Function *F) {
 
   auto *NC = F->addNode(new NCHWConvNode(
       CN->getName(), outTy, NI, NF, CN->getBias(), CN->getKernels(),
-      CN->getStrides(), CN->getPads(), CN->getGroup()));
+      CN->getStrides(), CN->getPads(), CN->getGroup(), CN->getDilation()));
   auto *NR = F->createTranspose("conv.result", NC, NCHW2NHWC);
 
   return NR;

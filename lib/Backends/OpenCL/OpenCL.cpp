@@ -359,6 +359,7 @@ void OpenCLFunction::executeConvolution(const OCLConvolutionInst *CC,
   ShapeHW kdim(CC->getKernels());
   ShapeHW sdim(CC->getStrides());
   unsigned group = CC->getGroup();
+  unsigned dilation = CC->getDilation();
   // So far, we don't support fast convolution kernel if group > 1.
   // For group convolution, the slow convolution kernel should be invoked.
   // The following debug checks should be removed once the group > 1 is
@@ -384,8 +385,8 @@ void OpenCLFunction::executeConvolution(const OCLConvolutionInst *CC,
   addIntOption(options, "v_s_1", sdim.width);
 
   // Dilation.
-  addIntOption(options, "v_d_0", 1);
-  addIntOption(options, "v_d_1", 1);
+  addIntOption(options, "v_d_0", dilation);
+  addIntOption(options, "v_d_1", dilation);
 
   // Number of kernel input channels.
   addIntOption(options, "v_fin", fdim.c);
@@ -978,23 +979,24 @@ llvm::Error OpenCLFunction::execute(ExecutionContext *context) {
       setKernelArg(kernel, numArgs + 2, sdim);
       setKernelArg(kernel, numArgs + 3, pads);
       setKernelArg(kernel, numArgs + 4, CC->getGroup());
-      setKernelArg(kernel, numArgs + 5, odim);
-      setKernelArg(kernel, numArgs + 6, idim);
-      setKernelArg(kernel, numArgs + 7,
+      setKernelArg(kernel, numArgs + 5, CC->getDilation());
+      setKernelArg(kernel, numArgs + 6, odim);
+      setKernelArg(kernel, numArgs + 7, idim);
+      setKernelArg(kernel, numArgs + 8,
                    ShapeNHWC(CC->getFilter()->getType()->dims()));
       if (isQuantized) {
         auto srcTy = CC->getSrc()->getType();
         auto destTy = CC->getDest()->getType();
         auto filterTy = CC->getFilter()->getType();
         auto biasTy = CC->getBias()->getType();
-        setKernelArg(kernel, numArgs + 8, destTy->getOffset());
-        setKernelArg(kernel, numArgs + 9, destTy->getScale());
-        setKernelArg(kernel, numArgs + 10, srcTy->getOffset());
-        setKernelArg(kernel, numArgs + 11, srcTy->getScale());
-        setKernelArg(kernel, numArgs + 12, filterTy->getOffset());
-        setKernelArg(kernel, numArgs + 13, filterTy->getScale());
-        setKernelArg(kernel, numArgs + 14, biasTy->getOffset());
-        setKernelArg(kernel, numArgs + 15, biasTy->getScale());
+        setKernelArg(kernel, numArgs + 9, destTy->getOffset());
+        setKernelArg(kernel, numArgs + 10, destTy->getScale());
+        setKernelArg(kernel, numArgs + 11, srcTy->getOffset());
+        setKernelArg(kernel, numArgs + 12, srcTy->getScale());
+        setKernelArg(kernel, numArgs + 13, filterTy->getOffset());
+        setKernelArg(kernel, numArgs + 14, filterTy->getScale());
+        setKernelArg(kernel, numArgs + 15, biasTy->getOffset());
+        setKernelArg(kernel, numArgs + 16, biasTy->getScale());
       }
 
       // Use a 3D grid where the first dimension is the depth and the second
@@ -1025,9 +1027,10 @@ llvm::Error OpenCLFunction::execute(ExecutionContext *context) {
       setKernelArg(kernel, numArgs + 2, sdim);
       setKernelArg(kernel, numArgs + 3, pads);
       setKernelArg(kernel, numArgs + 4, CG->getGroup());
-      setKernelArg(kernel, numArgs + 5, srcDim);
-      setKernelArg(kernel, numArgs + 6, destGradDim);
-      setKernelArg(kernel, numArgs + 7, filterGradDim);
+      setKernelArg(kernel, numArgs + 5, CG->getDilation());
+      setKernelArg(kernel, numArgs + 6, srcDim);
+      setKernelArg(kernel, numArgs + 7, destGradDim);
+      setKernelArg(kernel, numArgs + 8, filterGradDim);
       // Zero memory for the output buffers.
       fillBuffer(deviceBuffer_, runtimeBundle_.getValueOffset(srcGrad),
                  srcGrad->size(), 0, srcGrad->getElementType());

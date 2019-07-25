@@ -4280,7 +4280,7 @@ TEST_P(OperatorTest, GroupwiseQuantizedConvolution) {
 }
 
 TEST_P(OperatorTest, DilatedConvolution) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  ENABLED_BACKENDS(Interpreter, CPU, OpenCL);
 
   auto *input =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 4, 1, 1}, "input", false);
@@ -4320,6 +4320,84 @@ TEST_P(OperatorTest, DilatedConvolution) {
   EXPECT_FLOAT_EQ(result.at({0, 1, 0, 0}), 4);
   EXPECT_FLOAT_EQ(result.at({0, 2, 0, 0}), 1);
   EXPECT_FLOAT_EQ(result.at({0, 3, 0, 0}), 2);
+}
+
+TEST_P(OperatorTest, GroupDilatedConvolution) {
+  ENABLED_BACKENDS(Interpreter, CPU, OpenCL);
+
+  auto *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 4, 4, 2}, "input", false);
+  auto IH = bindings_.allocate(input)->getHandle();
+  for (size_t i = 0; i < 4 * 4 * 2; i++) {
+    IH.raw(i) = i;
+  }
+
+  auto filter =
+      mod_.createPlaceholder(ElemKind::FloatTy, {2, 2, 2, 1}, "filter", false);
+  auto FH = bindings_.allocate(filter)->getHandle();
+  for (size_t i = 0; i < 2; i++)
+    for (size_t j = 0; j < 2; j++) {
+      for (size_t k = 0; k < 2; k++) {
+        FH.at({i, j, k, 0}) = 1;
+      }
+    }
+
+  auto *zeroBias =
+      mod_.createPlaceholder(ElemKind::FloatTy, {2}, "bias", false);
+  bindings_.allocate(zeroBias)->zero();
+
+  auto outTy = mod_.uniqueType(ElemKind::FloatTy, {1, 4, 4, 2});
+
+  ConvolutionNode *CN =
+      F_->createConv("Conv", input, filter, zeroBias, outTy, 2, 1, 1, 2, 2);
+  SaveNode *S = F_->createSave("save", CN);
+  bindings_.allocate(S->getPlaceholder());
+
+  ::glow::convertPlaceholdersToConstants(F_, bindings_,
+                                         {input, S->getPlaceholder()});
+  EE_.compile(CompilationMode::Infer, F_);
+  EE_.run(bindings_);
+
+  auto result = bindings_.get(S->getPlaceholder())->getHandle();
+
+  std::vector<size_t> expectedDims = {1, 4, 4, 2};
+  ASSERT_TRUE(result.dims().vec() == expectedDims);
+
+  EXPECT_FLOAT_EQ(result.at({0, 0, 0, 0}), 10);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 0, 1}), 11);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 1, 0}), 20);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 1, 1}), 22);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 2, 0}), 24);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 2, 1}), 26);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 3, 0}), 12);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 3, 1}), 13);
+
+  EXPECT_FLOAT_EQ(result.at({0, 1, 0, 0}), 20);
+  EXPECT_FLOAT_EQ(result.at({0, 1, 0, 1}), 22);
+  EXPECT_FLOAT_EQ(result.at({0, 1, 1, 0}), 40);
+  EXPECT_FLOAT_EQ(result.at({0, 1, 1, 1}), 44);
+  EXPECT_FLOAT_EQ(result.at({0, 1, 2, 0}), 48);
+  EXPECT_FLOAT_EQ(result.at({0, 1, 2, 1}), 52);
+  EXPECT_FLOAT_EQ(result.at({0, 1, 3, 0}), 24);
+  EXPECT_FLOAT_EQ(result.at({0, 1, 3, 1}), 26);
+
+  EXPECT_FLOAT_EQ(result.at({0, 2, 0, 0}), 36);
+  EXPECT_FLOAT_EQ(result.at({0, 2, 0, 1}), 38);
+  EXPECT_FLOAT_EQ(result.at({0, 2, 1, 0}), 72);
+  EXPECT_FLOAT_EQ(result.at({0, 2, 1, 1}), 76);
+  EXPECT_FLOAT_EQ(result.at({0, 2, 2, 0}), 80);
+  EXPECT_FLOAT_EQ(result.at({0, 2, 2, 1}), 84);
+  EXPECT_FLOAT_EQ(result.at({0, 2, 3, 0}), 40);
+  EXPECT_FLOAT_EQ(result.at({0, 2, 3, 1}), 42);
+
+  EXPECT_FLOAT_EQ(result.at({0, 3, 0, 0}), 18);
+  EXPECT_FLOAT_EQ(result.at({0, 3, 0, 1}), 19);
+  EXPECT_FLOAT_EQ(result.at({0, 3, 1, 0}), 36);
+  EXPECT_FLOAT_EQ(result.at({0, 3, 1, 1}), 38);
+  EXPECT_FLOAT_EQ(result.at({0, 3, 2, 0}), 40);
+  EXPECT_FLOAT_EQ(result.at({0, 3, 2, 1}), 42);
+  EXPECT_FLOAT_EQ(result.at({0, 3, 3, 0}), 20);
+  EXPECT_FLOAT_EQ(result.at({0, 3, 3, 1}), 21);
 }
 
 /// Test Conv3D with group size of 2 to make sure that group 3d convolution
