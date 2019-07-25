@@ -67,8 +67,8 @@ else
     sudo apt-get install -y libpng-dev libgoogle-glog-dev
 fi
 
-# Install ninja and (newest version of) cmake through pip
-sudo pip install ninja cmake
+# Install ninja, (newest version of) cmake and autopep8 through pip
+sudo pip install ninja cmake autopep8
 hash cmake ninja
 
 # Build glow

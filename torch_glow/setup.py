@@ -54,14 +54,25 @@ first_arg = sys.argv[0]
 
 # parse known arguments
 parser = argparse.ArgumentParser()
-parser.add_argument("--run_cmake", action='store_true', default=False, help="Run cmake")
-parser.add_argument("--release", action='store_true', default=False, help="Compile with debug on")
-parser.add_argument("--cmake_prefix_path", type=str, help="Populates -DCMAKE_PREFIX_PATH")
+parser.add_argument(
+    "--run_cmake",
+    action='store_true',
+    default=False,
+    help="Run cmake")
+parser.add_argument(
+    "--release",
+    action='store_true',
+    default=False,
+    help="Compile with debug on")
+parser.add_argument(
+    "--cmake_prefix_path",
+    type=str,
+    help="Populates -DCMAKE_PREFIX_PATH")
 
 # restore first and remaining arguments to argv
 arg_parse_res = parser.parse_known_args()
 args = arg_parse_res[0]
-sys.argv =  [first_arg] + arg_parse_res[1]
+sys.argv = [first_arg] + arg_parse_res[1]
 
 
 # ################################################################################
@@ -72,7 +83,8 @@ sys.argv =  [first_arg] + arg_parse_res[1]
 @contextmanager
 def cd(path):
     if not os.path.isabs(path):
-        raise RuntimeError('Can only cd to absolute path, got: {}'.format(path))
+        raise RuntimeError(
+            'Can only cd to absolute path, got: {}'.format(path))
     orig_path = os.getcwd()
     os.chdir(path)
     try:
@@ -93,6 +105,7 @@ class cmake_build(setuptools.Command):
     Custom args can be passed to cmake by specifying the `CMAKE_ARGS`
     environment variable.
     """
+
     def initialize_options(self):
         pass
 
@@ -106,7 +119,8 @@ class cmake_build(setuptools.Command):
                 '-DGLOW_BUILD_PYTORCH_INTEGRATION=ON',
                 '-DBUILD_SHARED_LIBS=OFF',
                 '-DCMAKE_EXPORT_COMPILE_COMMANDS=ON',
-                '-DCMAKE_BUILD_TYPE={}'.format('Release' if args.release else 'Debug'),
+                '-DCMAKE_BUILD_TYPE={}'.format(
+                    'Release' if args.release else 'Debug'),
                 '-DPYTHON_EXECUTABLE={}'.format(sys.executable),
                 # PyTorch cmake args
                 '-DPYTORCH_DIR={}'.format(
@@ -114,7 +128,8 @@ class cmake_build(setuptools.Command):
             ]
 
             if args.cmake_prefix_path:
-                cmake_args.append('-DCMAKE_PREFIX_PATH={}'.format(args.cmake_prefix_path))
+                cmake_args.append(
+                    '-DCMAKE_PREFIX_PATH={}'.format(args.cmake_prefix_path))
 
             if 'CMAKE_ARGS' in os.environ:
                 extra_cmake_args = shlex.split(os.environ['CMAKE_ARGS'])
@@ -158,7 +173,11 @@ class build_ext(setuptools.command.build_ext.build_ext):
             filename = os.path.basename(self.get_ext_filename(fullname))
 
             src = os.path.join(CMAKE_BUILD_DIR, "torch_glow", "src", filename)
-            dst = os.path.join(os.path.realpath(self.build_lib), 'torch_glow', filename)
+            dst = os.path.join(
+                os.path.realpath(
+                    self.build_lib),
+                'torch_glow',
+                filename)
             print("dst", dst)
             if not os.path.exists(os.path.dirname(dst)):
                 os.makedirs(os.path.dirname(dst))

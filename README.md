@@ -79,7 +79,7 @@ Install the required dependencies using either [Homebrew](https://brew.sh/) or
 [MacPorts](https://www.macports.org/). If using Homebrew, run:
 
   ```bash
-  brew install cmake graphviz libpng ninja protobuf wget glog
+  brew install cmake graphviz libpng ninja protobuf wget glog autopep8
   brew install llvm@7
   ```
 
