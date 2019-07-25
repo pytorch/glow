@@ -450,7 +450,6 @@ void PyTorchModelLoader::loadReshape(const torch::jit::Node *ptNode) {
   auto outputs = ptNode->outputs();
   assert(inputs.size() == 2);
   assert(outputs.size() == 1);
-
   // Indexes of aten::reshape inputs.
   struct Inputs {
 	enum {
@@ -668,9 +667,13 @@ bool PyTorchModelLoader::isNodeSupported(const torch::jit::Node *node) {
   std::call_once(flag, [&]() {
     PyTorchModelLoader loader;
     for (const auto &kv : loader.nodeLoaderMapping_) {
+	  std::cout<< "it is " << kv.first.toQualString() << kv.first << std::endl;
       knownSymbols.insert(kv.first);
     }
   });
+  std::cout << node->kind().toQualString() << node->kind() << std::endl;
+  if (knownSymbols.count(node->kind()))
+	  std::cout << "bingo" << std::endl;
   return knownSymbols.count(node->kind());
 }
 
