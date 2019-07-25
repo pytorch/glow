@@ -464,7 +464,7 @@ target_link_libraries(QuantizationTest
                       PRIVATE
                         Backend
                         Backends
-                        ExecutionEngine
+                        ExecutionEngine2
                         Graph
                         GraphOptimizer
                         Quantization
