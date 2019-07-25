@@ -113,7 +113,7 @@ void report(const char *msg);
 inline void report(const std::string &str) { report(str.c_str()); }
 inline void report(llvm::StringRef str) { report(str.data()); }
 
-/// Legalize \p name used in Module. In GLow module, the name of placeholders
+/// Legalize \p name used in Module. In Glow module, the name of placeholders
 /// and constants should look like valid C identifiers. Therefore, those symbols
 /// can be inspected under debugger.
 std::string legalizeName(llvm::StringRef name);
