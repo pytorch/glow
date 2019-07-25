@@ -140,6 +140,9 @@ private:
   /// Load a PyTorch relu node.
   void loadRelu(const torch::jit::Node *ptNode);
 
+  /// Load a PyTorch exp node.
+  void loadExp(const torch::jit::Node *ptNode);
+
   /// Load a PyTorch _convolution node.
   void loadConvolution(const torch::jit::Node *ptNode);
 
