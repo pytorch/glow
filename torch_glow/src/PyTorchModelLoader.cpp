@@ -197,6 +197,18 @@ void PyTorchModelLoader::loadSub(const torch::jit::Node *ptNode) {
   addGlowNodeValue(outputs[0], glowNode->getResult());
 }
 
+void PyTorchModelLoader::loadMax(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  assert(inputs.size() == 2);
+  assert(outputs.size() == 1);
+
+  glow::NodeValue lhs = getGlowNodeValue(inputs[0]);
+  glow::NodeValue rhs = getGlowNodeValue(inputs[1]);
+  glow::MaxNode *glowNode = f_->createMax("max", lhs, rhs);
+  addGlowNodeValue(outputs[0], glowNode->getResult());
+}
+
 void PyTorchModelLoader::loadRelu(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
@@ -618,6 +630,9 @@ void PyTorchModelLoader::populateNodeLoaderMapping() {
       [this](const torch::jit::Node *node) { return loadSub(node); };
   nodeLoaderMapping_[at::Symbol::fromQualString("aten::sub_")] =
       [this](const torch::jit::Node *node) { return loadSub(node); };
+
+  nodeLoaderMapping_[at::Symbol::fromQualString("aten::max")] =
+      [this](const torch::jit::Node *node) { return loadMax(node); };
 
   nodeLoaderMapping_[at::Symbol::fromQualString("aten::relu")] =
       [this](const torch::jit::Node *node) { return loadRelu(node); };

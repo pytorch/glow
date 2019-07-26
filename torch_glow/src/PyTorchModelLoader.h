@@ -137,6 +137,9 @@ private:
   /// Load a PyTorch sub node.
   void loadSub(const torch::jit::Node *ptNode);
 
+  /// Load a PyTorch max node.
+  void loadMax(const torch::jit::Node *ptNode);
+
   /// Load a PyTorch relu node.
   void loadRelu(const torch::jit::Node *ptNode);
 
