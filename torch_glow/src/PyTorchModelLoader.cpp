@@ -231,6 +231,17 @@ void PyTorchModelLoader::loadExp(const torch::jit::Node *ptNode) {
   addGlowNodeValue(outputs[0], glowNode->getResult());
 }
 
+void PyTorchModelLoader::loadSqrt(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  assert(inputs.size() == 1);
+  assert(outputs.size() == 1);
+
+  glow::NodeValue input = getGlowNodeValue(inputs[0]);
+  glow::PowNode *glowNode = f_->createPow("sqrt", input, /*exp=*/0.5);
+  addGlowNodeValue(outputs[0], glowNode->getResult());
+}
+
 void PyTorchModelLoader::loadConvolution(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
@@ -641,6 +652,11 @@ void PyTorchModelLoader::populateNodeLoaderMapping() {
 
   nodeLoaderMapping_[at::Symbol::fromQualString("aten::exp")] =
       [this](const torch::jit::Node *node) { return loadExp(node); };
+
+  nodeLoaderMapping_[at::Symbol::fromQualString("aten::sqrt")] =
+      [this](const torch::jit::Node *node) { return loadSqrt(node); };
+  nodeLoaderMapping_[at::Symbol::fromQualString("aten::sqrt_")] =
+      [this](const torch::jit::Node *node) { return loadSqrt(node); };
 
   nodeLoaderMapping_[at::Symbol::fromQualString("aten::_convolution")] =
       [this](const torch::jit::Node *node) { return loadConvolution(node); };
