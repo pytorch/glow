@@ -36,8 +36,14 @@ std::vector<Node *> getOutUsersWithOnePredecessor(const NodesSet &nodes);
 /// in the set \p nodes.
 uint64_t getOutMemPerNode(const NodesSet &nodes, const Node *node);
 
-/// Given a node, \return the NodeSet of inputs of this node.
+/// Given a node, \returns the NodeSet of inputs of this node.
 NodesSet getInputs(const Node *node);
+
+/// Return the estimated op computation time based on \p backendInfo.
+float getNodeComputeTime(const Node *node, const BackendInfo &backendInfo);
+
+/// Given a node, \returns the memory usage of its inputs (i.e. Storage input).
+uint64_t getNodeMemUsage(const Node *node);
 
 /// Given nodes set \p currNodes and its memory usage info \p info, \returns the
 /// new memory usage if \p newNode is added into \p currNodes.
