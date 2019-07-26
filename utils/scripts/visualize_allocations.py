@@ -44,7 +44,7 @@ from PIL import Image
 
 
 content = open(sys.argv[1]).read()
-lines = content.split('\n')
+lines = content.split("\n")
 
 canvas_size = 512
 pixelsize = 8
@@ -57,59 +57,80 @@ pixels = img.load()
 filename_counter = 10000000
 
 # Maps from address to size
-sizes={}
+sizes = {}
 
 color_index = 0
-colors=[(218, 112, 214), (255, 182, 193), (250, 235, 215), (255, 250, 205),
-        (210, 105, 30), (210, 180, 140), (188, 143, 143), (255, 240, 245),
-        (230, 230, 250), (255, 255, 240)]
+colors = [
+    (218, 112, 214),
+    (255, 182, 193),
+    (250, 235, 215),
+    (255, 250, 205),
+    (210, 105, 30),
+    (210, 180, 140),
+    (188, 143, 143),
+    (255, 240, 245),
+    (230, 230, 250),
+    (255, 255, 240),
+]
+
 
 def getColor():
     global color_index
-    color_index+=1
+    color_index += 1
     return colors[color_index % len(colors)]
+
 
 def setPixel(addr, color):
     # Don't draw out-of-bounds pixels.
-    if (addr >= canvas_size * canvas_size): return
+    if addr >= canvas_size * canvas_size:
+        return
     # Only draw pixels that are aligned to the block size.
-    if (addr % pixelsize != 0): return
+    if addr % pixelsize != 0:
+        return
     # Draw large pixels.
-    sx = addr%canvas_size
-    sy = addr/canvas_size
-    sx = int(sx/pixelsize)
-    sy = int(sy/pixelsize)
+    sx = addr % canvas_size
+    sy = addr / canvas_size
+    sx = int(sx / pixelsize)
+    sy = int(sy / pixelsize)
     for x in range(pixelsize):
         for y in range(pixelsize):
-            pixels[sx*pixelsize + x, sy*pixelsize + y] = color
+            pixels[sx * pixelsize + x, sy * pixelsize + y] = color
+
 
 def saveFrame():
     global filename_counter
-    filename_counter+=1
+    filename_counter += 1
     img.save("heap" + str(filename_counter) + ".bmp")
+
 
 for line in lines:
     tokens = line.split()
-    if (len(tokens) < 1): break
+    if len(tokens) < 1:
+        break
 
     print(tokens)
-    if (tokens[0] == 'a'):
+    if tokens[0] == "a":
         frm = int(tokens[1])
         sz = int(tokens[2])
         sizes[frm] = sz
-        if (frm + sz >= canvas_size * canvas_size): continue
-        for i in range(sz): setPixel(i + frm ,(255,255,255)) # allocate
+        if frm + sz >= canvas_size * canvas_size:
+            continue
+        for i in range(sz):
+            setPixel(i + frm, (255, 255, 255))  # allocate
         saveFrame()
         cc = getColor()
-        for i in range(sz): setPixel(i + frm ,cc) # allocated
+        for i in range(sz):
+            setPixel(i + frm, cc)  # allocated
         saveFrame()
 
-
-    if (tokens[0] == 'd'):
+    if tokens[0] == "d":
         frm = int(tokens[1])
         sz = sizes[frm]
-        if (frm + sz >= canvas_size * canvas_size): continue
-        for i in range(sz): setPixel(i + frm ,(128,0,0)) # deallocate
+        if frm + sz >= canvas_size * canvas_size:
+            continue
+        for i in range(sz):
+            setPixel(i + frm, (128, 0, 0))  # deallocate
         saveFrame()
-        for i in range(sz): setPixel(i + frm ,(15,15,15)) # previously allocated
+        for i in range(sz):
+            setPixel(i + frm, (15, 15, 15))  # previously allocated
         saveFrame()
