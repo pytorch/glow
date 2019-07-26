@@ -1252,10 +1252,10 @@ void Function::createSplit(llvm::StringRef name, NodeValue input,
 }
 
 BatchNormalizationNode *Function::createBatchNormalization(
-    llvm::StringRef name, NodeValue input, NodeValue beta, NodeValue gamma,
+    llvm::StringRef name, NodeValue input, NodeValue beta, NodeValue scale,
     NodeValue mean, NodeValue var, unsigned_t channelIdx, float epsilon,
     float momentum) {
-  return addNode(new BatchNormalizationNode(name, input, gamma, beta, mean, var,
+  return addNode(new BatchNormalizationNode(name, input, scale, beta, mean, var,
                                             channelIdx, epsilon, momentum));
 }
 
@@ -2060,13 +2060,11 @@ BatchNormalizationNode *Function::createBatchNormalization(
   // Allocate the learnable parameters beta and gamma.
   auto *beta =
       getParent()->createPlaceholder(inputTy, {channels}, "beta", true);
-  bindings.allocate(beta)->init(glow::Tensor::InitKind::Zero, 0, getPRNG());
+  bindings.allocate(beta)->init(Tensor::InitKind::Broadcast, 0.1, getPRNG());
 
-  auto *gamma =
-      getParent()->createPlaceholder(inputTy, {channels}, "gamma", true);
-
-  bindings.allocate(gamma)->init(glow::Tensor::InitKind::Broadcast, 1.0,
-                                 getPRNG());
+  auto *scale =
+      getParent()->createPlaceholder(inputTy, {channels}, "scale", true);
+  bindings.allocate(scale)->init(Tensor::InitKind::Broadcast, 0.001, getPRNG());
 
   auto *mean =
       getParent()->createPlaceholder(inputTy, {channels}, "mean", false);
@@ -2074,9 +2072,10 @@ BatchNormalizationNode *Function::createBatchNormalization(
 
   auto *variance =
       getParent()->createPlaceholder(inputTy, {channels}, "variance", false);
-  bindings.allocate(variance)->zero();
+  bindings.allocate(variance)->init(Tensor::InitKind::Broadcast, 1.0,
+                                    getPRNG());
 
-  return createBatchNormalization(name, input, beta, gamma, mean, variance,
+  return createBatchNormalization(name, input, beta, scale, mean, variance,
                                   channelIdx, epsilon, momentum);
 }
 
