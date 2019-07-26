@@ -16,147 +16,12 @@
 #ifndef GLOW_PARTITIONER_PARTITIONER_H
 #define GLOW_PARTITIONER_PARTITIONER_H
 
-#include "glow/Graph/Graph.h"
 #include "glow/Partitioner/PartitionerUtils.h"
-#include "glow/Runtime/RuntimeTypes.h"
 #include "glow/Support/Error.h"
 
 namespace glow {
 
 using namespace runtime;
-
-/// Data structure that contains the info for each type of backend used for
-/// partitioning.
-struct BackendInfo {
-  /// Num of the devices which has the same type of backend.
-  size_t num = 0;
-  /// The memory constraints for this backend.
-  uint64_t memSize;
-  /// Backend pointer.
-  Backend *backend = nullptr;
-  /// The non-supported nodes kind.
-  std::set<Kinded::Kind> nonSupportedNodesKinds;
-  /// The supported nodes kind.
-  std::set<Kinded::Kind> supportedNodesKinds;
-};
-
-/// A mapping of newly-created functions along with a set of nodes sets. The
-/// overloaded compare function to make sure the map is sorted by the key's
-/// name(i.e. the function's name) which makes the optimization sequence is
-/// consistent for each run.
-struct FunctionNameComparator {
-  bool operator()(const Function *lhs, const Function *rhs) const {
-    return strcmp(lhs->getName().data(), rhs->getName().data()) < 0;
-  }
-};
-using FunctionToNodesMap =
-    std::map<Function *, NodesSet, FunctionNameComparator>;
-
-using FunctionToBackendNameMap =
-    std::map<Function *, std::string, FunctionNameComparator>;
-
-class NodeToFunctionMap {
-  /// Helper structure for building a partition. Records mapping of nodes in
-  /// the original function to destination partitions, along with a list of the
-  /// newly-created functions;
-  using Map = llvm::DenseMap<Node *, Function *>;
-
-  using PartitionCostMap = llvm::DenseMap<Function *, GraphMemInfo>;
-
-  /// Newly-created partitions.
-  FunctionList functions_;
-
-  /// Map of nodes in the original function to their target partition.
-  Map nodeToFunction_;
-
-  /// Map of the partitions to the backend which will be used for compiling
-  /// this partition.
-  FunctionToBackendNameMap functionToBackendName_;
-
-  /// Map of sub-functions to their memory consumption.
-  PartitionCostMap partitionCost_;
-
-  /// Map of partitions and the logicalDeviceID. The partitions with the same
-  /// logcialDeviceID will be assigned into the same physical device.
-  std::map<Function *, std::vector<DeviceIDTy>> logicalDeviceIDMap_;
-
-public:
-  /// Create a new partition \p F, and map it with \p backendName.
-  void createPartition(Function *F, llvm::StringRef backendName) {
-    functions_.emplace_back(F);
-    functionToBackendName_[F] = backendName;
-  }
-
-  std::string getPartitionBackendName(Function *F) const {
-    DCHECK(functionToBackendName_.find(F) != functionToBackendName_.end())
-        << "Unknown partition in Function: " << F->getName().str();
-    return functionToBackendName_.find(F)->second;
-  }
-
-  /// Add a new Node->Function mapping.
-  void add(Node *N, Function *F) { nodeToFunction_[N] = F; }
-
-  /// Get list of functions contained in this map.
-  const FunctionList &getPartitions() const { return functions_; }
-
-  /// Get the list of logical device ID related to this function \p F.
-  const std::vector<DeviceIDTy> getLogicalDeviceIDList(Function *F) const {
-    if (logicalDeviceIDMap_.find(F) == logicalDeviceIDMap_.end()) {
-      return {};
-    }
-    return logicalDeviceIDMap_.at(F);
-  }
-
-  void appendLogicalDeviceID(Function *F, DeviceIDTy id) {
-    if (logicalDeviceIDMap_.find(F) == logicalDeviceIDMap_.end()) {
-      logicalDeviceIDMap_.emplace(
-          std::make_pair(F, std::vector<DeviceIDTy>{id}));
-    } else {
-      logicalDeviceIDMap_[F].push_back(id);
-    }
-  }
-  /// attach \p map to current mapping.
-  void insert(NodeToFunctionMap &map) {
-    FunctionList flist = map.getPartitions();
-    for (auto it = flist.begin(); it != flist.end(); ++it) {
-      Function *func = *it;
-      auto backendName = map.getPartitionBackendName(func);
-      createPartition(func, backendName);
-      GraphMemInfo cost = map.getGraphMemInfo(func);
-      setGraphMemInfo(func, cost);
-    }
-    for (auto it = map.begin(); it != map.end(); ++it) {
-      Node *n = it->first;
-      Function *f = it->second;
-      add(n, f);
-    }
-  }
-
-  /// Map API.
-  Map::iterator find(Node *N) { return nodeToFunction_.find(N); }
-  Map::iterator begin() { return nodeToFunction_.begin(); }
-  Map::iterator end() { return nodeToFunction_.end(); }
-  Function *operator[](Node *n) { return nodeToFunction_[n]; }
-
-  void deletePartition(Function *func) {
-    functions_.remove(func);
-    functionToBackendName_.erase(func);
-    partitionCost_.erase(func);
-  }
-
-  /// Set the memory consumption \p cost for a partition \p func.
-  void setGraphMemInfo(Function *func, GraphMemInfo cost) {
-    partitionCost_[func] = cost;
-  }
-
-  /// Get the memory consumption for a partition \p func.
-  GraphMemInfo getGraphMemInfo(Function *func) const {
-    if (partitionCost_.find(func) == partitionCost_.end()) {
-      return GraphMemInfo{};
-    }
-    return partitionCost_.find(func)->second;
-  }
-};
 
 /// Given a module, partitions each of the its functions into multiple ones
 /// based on memory constraints and minimizes the communication cost.
@@ -222,14 +87,6 @@ class Partitioner {
   /// Inititalize the minimal compute time for each op in the function \p F.
   void initOpComputeTime(Function *F);
 
-  /// Combine the partitions if necessary : if all outside uses of the nodes in
-  /// partition1 is in partition2, and the sum of memory consumption of
-  /// partition1 and partition2 is less than availableMemory, combine partition1
-  /// and partition2.
-  void partitionsCombine(NodeToFunctionMap &partitions,
-                         FunctionToNodesMap &nodesSet,
-                         uint64_t availableMemory);
-
   /// After getting the initial partitions, adjust the partitions to minimize
   /// communication and computation cost.
   void partitionsAdjust(NodeToFunctionMap &partitions,
@@ -239,21 +96,6 @@ class Partitioner {
   /// mapping.
   NodeToFunctionMap selectPartitions(Function *F, uint64_t availableMemory,
                                      llvm::StringRef backendName);
-
-  /// Assign a logicalDeviceID to each partition. It is possible that two
-  /// partitions need to be assigned into 1 device due to the number of physical
-  /// devices.
-  DeviceIDTy assignLogicalDeviceID(NodeToFunctionMap &partitions);
-
-  /// Check if \p partitions satisfies number of physical devices restriction.
-  /// I.e. check if the number of logical devices is less than the given
-  /// physical devices.
-  llvm::Error
-  logicalDevicesValidation(const NodeToFunctionMap &partitions) const;
-
-  /// Check if the memory usage of each partition meets the physical device
-  /// memory restriction.
-  llvm::Error memoryUsageValidation(const NodeToFunctionMap &partitions) const;
 
   /// Duplicates all networks in the module order to saturate the Host.
   void saturateHost(unsigned logicalDeviceCount);
@@ -331,7 +173,7 @@ public:
                                              Function *F,
                                              std::vector<Backend *> backends);
 
-  /// Get the partitions.
+  /// Get the final partitions.
   DAGListTy &getPartitionResult() { return partitions_; }
 
   /// Dump the partition result to a dot file. Since now all functions belong to
