@@ -110,7 +110,7 @@ void createModel(ExecutionEngine2 &EE, Function *F,
 void trainModel(ExecutionEngine2 &EE, PlaceholderBindings &bindings,
                 Function *F, unsigned minibatchSize, unsigned numIterations,
                 Tensor &imageInputs, Tensor &labelInputs, Placeholder *inputPH,
-                Placeholder *selectedPH) {
+                Placeholder *selectedPH, Placeholder *resultPH) {
   llvm::Timer timer("Training", "Training");
   /// The training configuration.
   TrainingConfig TC;
@@ -138,11 +138,10 @@ void trainModel(ExecutionEngine2 &EE, PlaceholderBindings &bindings,
 
     timer.startTimer();
 
-    // On each training iteration take a slice of imageInputs and labelInputs
-    // and put them into variables A and B, then run forward and backward passes
-    // and update weights.
-    runBatch2(EE, bindings, numIterations, sampleCounter, {inputPH, selectedPH},
-              {&imageInputs, &labelInputs}, tfName);
+    std::vector<float> loss;
+    runBatchReportLoss(EE, bindings, numIterations, sampleCounter,
+                       {inputPH, selectedPH}, {&imageInputs, &labelInputs},
+                       tfName, resultPH, loss);
 
     timer.stopTimer();
   }
@@ -225,9 +224,11 @@ void testMNIST() {
   auto &trainMod = EET_.getModule();
   Function *TF = trainMod.createFunction("mnist");
   createModel(EET_, TF, trainingBindings, minibatchSize, A, E, selected);
+  trainingBindings.allocate(trainMod.getPlaceholders());
+  E = trainingBindings.getPlaceholderByName("return");
 
   trainModel(EET_, trainingBindings, TF, minibatchSize, numIterations,
-             imageInputs, labelInputs, A, selected);
+             imageInputs, labelInputs, A, selected, E);
 
   trainingBindings.copyTrainableWeightsTo(inferBindings);
   A = inferBindings.getPlaceholderByName("input");
@@ -302,14 +303,15 @@ void testMNISTLoadAndTraining() {
   // Get input placeholder.
   auto *A = llvm::cast<glow::Placeholder>(
       EXIT_ON_ERR(trainingLoader.getNodeValueByName(inputName)));
+  auto *E = EXIT_ON_ERR(trainingLoader.getSingleOutput());
 
   trainModel(EET_, trainingBindings, TF, minibatchSize, numIterations,
-             imageInputs, labelInputs, A, selected);
+             imageInputs, labelInputs, A, selected, E);
 
   // Get input and output placeholders.
   A = llvm::cast<glow::Placeholder>(
       EXIT_ON_ERR(loader.getNodeValueByName(inputName)));
-  auto *E = EXIT_ON_ERR(loader.getSingleOutput());
+  E = EXIT_ON_ERR(loader.getSingleOutput());
   trainingBindings.copyTrainableWeightsTo(inferBindings);
 
   validateModel(EEI_, inferBindings, F, minibatchSize, numIterations,

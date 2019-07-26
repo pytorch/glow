@@ -135,6 +135,11 @@ void updateInputPlaceholdersByName2(PlaceholderBindings &bindings, Module *mod,
                                     llvm::ArrayRef<llvm::StringRef> ph,
                                     llvm::ArrayRef<Tensor *> inputs);
 
+void runBatchIteration(ExecutionEngine2 &EE, PlaceholderBindings &bindings,
+                       size_t &sampleCounter, llvm::ArrayRef<Placeholder *> ph,
+                       llvm::ArrayRef<Tensor *> inputs, llvm::StringRef name,
+                       size_t batchSize);
+
 /// Runs \p iterations iterations of the compiled function. The method updates a
 /// global counter and future invocations of this method continue running
 /// iterations of the batch at the next available slice.
@@ -151,6 +156,30 @@ void runBatch2(ExecutionEngine2 &EE, PlaceholderBindings &bindings,
                size_t iterations, size_t &sampleCounter,
                llvm::ArrayRef<Placeholder *> ph,
                llvm::ArrayRef<Tensor *> inputs, llvm::StringRef name = "");
+
+/// Runs \p iterations iterations of the compiled function. The method updates a
+/// global counter and future invocations of this method continue running
+/// iterations of the batch at the next available slice.
+///
+/// The method updates the placeholder in \p ph with the tensors \p inputs. The
+/// shape of the slice has to be identical to the shape of slices in the batch.
+/// All dimensions, except for the first (batch) dimension must be identical.
+///
+/// The variable \p sampleCounter is consumed and updated by the function. This
+/// variable records the number of samples that were consumed by the network in
+/// previous iterations. The next input to be loaded is
+/// (sampleCounter % batchsize).
+///
+/// \p resultPH is used to calculate the cross-entropy loss for each iteration.
+/// The loss is printed and stored in \p loss vector. In case the Function
+/// contains a CE node, \ceLossPH points to its placeholder. Otherwise,
+/// SoftMax is assumed.
+void runBatchReportLoss(ExecutionEngine2 &EE, PlaceholderBindings &bindings,
+                        size_t iterations, size_t &sampleCounter,
+                        llvm::ArrayRef<Placeholder *> ph,
+                        llvm::ArrayRef<Tensor *> inputs, llvm::StringRef name,
+                        Placeholder *resultPH, std::vector<float> &loss,
+                        Placeholder *ceLossPH = nullptr, bool verbose = false);
 
 } // namespace glow
 

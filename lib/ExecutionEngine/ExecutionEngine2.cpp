@@ -154,6 +154,37 @@ void ExecutionEngine2::run(PlaceholderBindings &bindings,
   context.movePlaceholderBindings().release();
 }
 
+void glow::runBatchIteration(ExecutionEngine2 &EE,
+                             PlaceholderBindings &bindings,
+                             size_t &sampleCounter,
+                             llvm::ArrayRef<Placeholder *> ph,
+                             llvm::ArrayRef<Tensor *> inputs,
+                             llvm::StringRef name, size_t batchSize) {
+  // Update the input placeholders.
+  for (int i = 0, e = ph.size(); i < e; i++) {
+    assert(ph[i] && "Invalid value");
+    auto *backingTensor = bindings.get(ph[i]);
+    assert(backingTensor && "Can't find the backing tensor");
+
+    auto dim = inputs[i]->dims();
+    assert(backingTensor->dims().drop_front() == dim.drop_front() &&
+           "Invalid slice size");
+    // Extract the n'th slice, that must be a tensor.
+    size_t slc = sampleCounter % dim[0];
+    // Pick up one slice from the input tensors, and load it into the
+    // corresponding network Placeholder.
+    backingTensor->copyConsecutiveSlices(inputs[i], slc);
+  }
+
+  // Run the network.
+  if (name == "") {
+    EE.run(bindings);
+  } else {
+    EE.run(bindings, name);
+  }
+  sampleCounter += batchSize;
+}
+
 void glow::runBatch2(ExecutionEngine2 &EE, PlaceholderBindings &bindings,
                      size_t iterations, size_t &sampleCounter,
                      llvm::ArrayRef<Placeholder *> ph,
@@ -167,30 +198,46 @@ void glow::runBatch2(ExecutionEngine2 &EE, PlaceholderBindings &bindings,
 
   // For each iteration in the batch:
   for (size_t j = 0; j < iterations; j++) {
+    runBatchIteration(EE, bindings, sampleCounter, ph, inputs, name, batchSize);
+  }
+}
 
-    // Update the input placeholders.
-    for (int i = 0, e = ph.size(); i < e; i++) {
-      assert(ph[i] && "Invalid value");
-      auto *backingTensor = bindings.get(ph[i]);
-      assert(backingTensor && "Can't find the backing tensor");
+void glow::runBatchReportLoss(ExecutionEngine2 &EE,
+                              PlaceholderBindings &bindings, size_t iterations,
+                              size_t &sampleCounter,
+                              llvm::ArrayRef<Placeholder *> ph,
+                              llvm::ArrayRef<Tensor *> inputs,
+                              llvm::StringRef name, Placeholder *resultPH,
+                              std::vector<float> &loss, Placeholder *ceLossPH,
+                              bool verbose) {
+  // This is the size of one batch (the number of samples in the batch).
+  size_t batchSize = ph[0]->getType()->dims()[0];
 
-      auto dim = inputs[i]->dims();
-      assert(backingTensor->dims().drop_front() == dim.drop_front() &&
-             "Invalid slice size");
-      // Extract the n'th slice, that must be a tensor.
-      size_t slc = sampleCounter % dim[0];
-      // Pick up one slice from the input tensors, and load it into the
-      // corresponding network Placeholder.
-      backingTensor->copyConsecutiveSlices(inputs[i], slc);
-    }
+  assert(!inputs.empty() && "No inputs");
+  assert(inputs.size() == ph.size() &&
+         "The number of inputs does not match the number of placeholders");
 
-    // Run the network.
-    if (name == "") {
-      EE.run(bindings);
+  // For each iteration in the batch:
+  for (size_t j = 0; j < iterations; j++) {
+    runBatchIteration(EE, bindings, sampleCounter, ph, inputs, name, batchSize);
+    float ce_loss = 0;
+    if (ceLossPH) {
+      // Get CE loss in case of CrossEntropyLoss node
+      auto *lossTensor = bindings.get(resultPH);
+      float ce_loss = lossTensor->getHandle<>().at({0, 0});
+      loss.emplace_back(ce_loss);
     } else {
-      EE.run(bindings, name);
+      // Calculate CE loss. Assumes last node to be Softmax node
+      for (size_t k = 0; k < batchSize; ++k) {
+        size_t y = bindings.get(ph[1])->getHandle<int64_t>().raw(k);
+        float p_n = bindings.get(resultPH)->getHandle<>().at({k, y});
+        ce_loss -= log(p_n);
+      }
+      loss.emplace_back(ce_loss);
     }
-    sampleCounter += batchSize;
+    if (verbose) {
+      llvm::outs() << ce_loss << "\n";
+    }
   }
 }
 
