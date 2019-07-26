@@ -44,7 +44,8 @@ TEST_P(SparseLengthsSum, Big) {
     fData.getHandle<float>().randomize(-1.0, 1.0, mod_.getPRNG());
     auto *C = mod_.createConstant(ElemKind::UInt8FusedQTy, {dataRows[i], 80},
                                   0.0, 0, "data");
-    quantization::tensorFusedRowwiseQuantization(fData, C->getPayloadMutable());
+    quantization::tensorFusedRowwiseQuantization<float>(fData,
+                                                        C->getPayloadMutable());
     data.push_back(C);
   }
   for (int i = 0; i < 13; i++) {

@@ -839,20 +839,24 @@ TEST(Tensor, insertSlice) {
 /// Check that after initializing a fused tensor to zero that the scale and
 /// offset are not changed and that the values for each row are set to that
 /// row's offset.
-TEST(Tensor, initZeroFused) {
-  Tensor T(ElemKind::UInt8FusedQTy, {10, 10}, 0.0, 0);
+template <typename ScaleOffsetT>
+static void testInitZeroFused(ElemKind fusedKind, float allowedError) {
+  constexpr size_t numTotalColumns = 2 + 2 * sizeof(ScaleOffsetT);
+  Tensor T(fusedKind, {10, numTotalColumns}, 0.0, 0);
   auto TH = T.getHandle<uint8_t>();
   auto *TData = reinterpret_cast<uint8_t *>(T.getUnsafePtr());
   TH.clear(127);
 
   // Now set the scale/offset of each row. Set the scale to 0.1 so that we are
   // multiplying by 10 when calculating zero. Offset is dependent on each row.
-  float scaleForAllRows = 0.1;
+  const ScaleOffsetT scaleForAllRows = 0.1;
   for (size_t i = 0; i < 10; i++) {
-    const float offset = -(i + 0.7);
-    uint8_t *scaleOffsetPtr = &TData[(i + 1) * 10] - 2 * sizeof(float);
-    memcpy(scaleOffsetPtr, &scaleForAllRows, sizeof(float));
-    memcpy(scaleOffsetPtr + sizeof(float), &offset, sizeof(float));
+    const ScaleOffsetT offset = -(i + 0.7);
+    uint8_t *scaleOffsetPtr =
+        &TData[(i + 1) * numTotalColumns] - 2 * sizeof(ScaleOffsetT);
+    memcpy(scaleOffsetPtr, &scaleForAllRows, sizeof(ScaleOffsetT));
+    memcpy(scaleOffsetPtr + sizeof(ScaleOffsetT), &offset,
+           sizeof(ScaleOffsetT));
   }
 
   // Now reset so that all row's actual data is set to zero based on the
@@ -860,39 +864,56 @@ TEST(Tensor, initZeroFused) {
   PseudoRNG PRNG;
   T.init(Tensor::InitKind::Zero, 1, PRNG);
 
-  EXPECT_TRUE(TH.isZero(0.00001f));
+  EXPECT_TRUE(TH.isZero(allowedError));
 
   // Now check that we correctly set the data, and that the scale/offsets are
   // the same as expected (untouched by initializing to zero).
   for (size_t i = 0; i < 10; i++) {
-    uint8_t *scaleOffsetPtr = &TData[(i + 1) * 10] - 2 * sizeof(float);
-    float scale, offset;
-    memcpy(&scale, scaleOffsetPtr, sizeof(float));
-    memcpy(&offset, scaleOffsetPtr + sizeof(float), sizeof(float));
+    uint8_t *scaleOffsetPtr =
+        &TData[(i + 1) * numTotalColumns] - 2 * sizeof(ScaleOffsetT);
+    ScaleOffsetT scale, offset;
+    memcpy(&scale, scaleOffsetPtr, sizeof(ScaleOffsetT));
+    memcpy(&offset, scaleOffsetPtr + sizeof(ScaleOffsetT),
+           sizeof(ScaleOffsetT));
 
-    EXPECT_NEAR(quantization::dequantizeWithFloatOffset<uint8_t>(TH.at({i, 0}),
-                                                                 scale, offset),
-                0, 1E-5);
-    EXPECT_NEAR(quantization::dequantizeWithFloatOffset<uint8_t>(TH.at({i, 1}),
-                                                                 scale, offset),
-                0, 1E-5);
+    EXPECT_NEAR(quantization::dequantizeWithFloatOffset<uint8_t>(
+                    TH.at({i, 0}), static_cast<float>(scale),
+                    static_cast<float>(offset)),
+                0, allowedError);
+    EXPECT_NEAR(quantization::dequantizeWithFloatOffset<uint8_t>(
+                    TH.at({i, 1}), static_cast<float>(scale),
+                    static_cast<float>(offset)),
+                0, allowedError);
   }
+}
+
+/// Test zeroing a Fused tensor with Float scale/offsets.
+TEST(Tensor, initZeroFused_Float) {
+  testInitZeroFused<float>(ElemKind::UInt8FusedQTy, 1E-5);
+}
+
+/// Test zeroing a Fused tensor with Float16 scale/offsets.
+TEST(Tensor, initZeroFused_Float16) {
+  testInitZeroFused<float16_t>(ElemKind::UInt8FusedFP16QTy, 1E-2);
 }
 
 /// Check that initializing a fused tensor with Broadcast that the scale and
 /// offset are not changed, and broadcast value is set correctly.
-TEST(Tensor, initBroadcastFused) {
-  Tensor T(ElemKind::UInt8FusedQTy, {10, 10}, 0.0, 0);
+static void testBroadcastFused(ElemKind fusedKind) {
+  const size_t numTotalColumns =
+      2 + 2 * ((fusedKind == ElemKind::UInt8FusedQTy) ? sizeof(float)
+                                                      : sizeof(float16_t));
+  Tensor T(fusedKind, {10, numTotalColumns}, 0.0, 0);
   auto TH = T.getHandle<uint8_t>();
   for (size_t i = 0; i < 10; i++) {
-    for (size_t j = 0; j < 10; j++) {
+    for (size_t j = 0; j < numTotalColumns; j++) {
       TH.at({i, j}) = i * 10 + j;
     }
   }
   PseudoRNG PRNG;
   T.init(Tensor::InitKind::Broadcast, 5, PRNG);
   for (size_t i = 0; i < 10; i++) {
-    for (size_t j = 0; j < 10; j++) {
+    for (size_t j = 0; j < numTotalColumns; j++) {
       // Check that the scales/offsets are unchanged, and that the broadcast
       // value is everywhere else.
       if (j < 2) {
@@ -904,24 +925,47 @@ TEST(Tensor, initBroadcastFused) {
   }
 }
 
+/// Test broadcasting a Fused tensor with Float scale/offsets.
+TEST(Tensor, initBroadcastFused_Float) {
+  testBroadcastFused(ElemKind::UInt8FusedQTy);
+}
+
+/// Test broadcasting a Fused tensor with Float16 scale/offsets.
+TEST(Tensor, initBroadcastFused_Float16) {
+  testBroadcastFused(ElemKind::UInt8FusedFP16QTy);
+}
+
 /// Check that when randomizing a fused quantized tensor, the scale and offset
 /// are not changed.
-TEST(Tensor, randomizeFused) {
-  Tensor T(ElemKind::UInt8FusedQTy, {10, 10}, 1.0, 0);
+static void testRandomizeFused(ElemKind fusedKind) {
+  const size_t numTotalColumns =
+      2 + 2 * ((fusedKind == ElemKind::UInt8FusedQTy) ? sizeof(float)
+                                                      : sizeof(float16_t));
+  Tensor T(fusedKind, {10, numTotalColumns}, 1.0, 0);
   auto TH = T.getHandle<uint8_t>();
   for (size_t i = 0; i < 10; i++) {
-    for (size_t j = 0; j < 10; j++) {
+    for (size_t j = 0; j < numTotalColumns; j++) {
       TH.at({i, j}) = i * 10 + j;
     }
   }
   PseudoRNG PRNG;
   TH.randomize(0, 255, PRNG);
   for (size_t i = 0; i < 10; i++) {
-    for (size_t j = 2; j < 10; j++) {
+    for (size_t j = 2; j < numTotalColumns; j++) {
       // Check that the scales/offsets are unchanged.
       EXPECT_EQ(TH.at({i, j}), i * 10 + j);
     }
   }
+}
+
+/// Test randomizing a Fused tensor with Float scale/offsets.
+TEST(Tensor, randomizeFused_Float) {
+  testRandomizeFused(ElemKind::UInt8FusedQTy);
+}
+
+/// Test randomizing a Fused tensor with Float16 scale/offsets.
+TEST(Tensor, randomizeFused_Foat16) {
+  testRandomizeFused(ElemKind::UInt8FusedFP16QTy);
 }
 
 /// Check if dump functions work for Tensor

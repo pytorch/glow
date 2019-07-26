@@ -377,50 +377,5 @@ std::vector<int8_t> createMapping(TypeRef inTy, TypeRef outTy,
   return mapping;
 }
 
-void tensorFusedRowwiseQuantization(const Tensor &input, Tensor &output) {
-  // We are fusing the float scale and int32_t offset onto the end of each
-  // row. Thus input and output must both be 2 dimensional, with output having 8
-  // extra columns for 4 bytes for float scale, and 4 bytes for int32_t offset.
-  assert(input.dims().size() == 2 && output.dims().size() == 2 &&
-         "Input and output must be 2 dimensional.");
-  assert(input.dims()[1] + 8 == output.dims()[1] &&
-         "Output must have 8 more columns than input.");
-
-  const size_t outWidth = output.dims()[1];
-  char *dataBasePtr = output.getUnsafePtr();
-
-  auto srcH = input.getHandle<float>();
-  auto destH = output.getHandle<uint8_t>();
-  for (size_t i = 0, e = input.dims()[0]; i < e; i++) {
-    auto slice = srcH.extractSlice(i);
-    auto rSrc = slice.getHandle<float>();
-    auto res = rSrc.minMaxArg();
-    float min = rSrc.raw(res.first);
-    float max = rSrc.raw(res.second);
-
-    min = std::min(min, 0.0f);
-    max = std::max(max, 0.0f);
-
-    // This matches the Caffe2 implementation for FloatToRowwiseQuantized8BitsOp
-    // found in operators/lengths_reducer_rowwise_8bit_ops.h.
-    constexpr float kEqualityThreshold = 1e-10f;
-    const float scale = ((max - min) < kEqualityThreshold)
-                            ? 1.0
-                            : ((double)max - (double)min) / 255.0;
-    const float offset = min;
-
-    for (size_t j = 0, f = input.dims()[1]; j < f; j++) {
-      destH.at({i, j}) = quantization::quantizeWithFloatOffset<uint8_t>(
-          srcH.at({i, j}), scale, offset);
-    }
-
-    // Now set the scale/offset at the end of each row.
-    char *currRowScaleOffsetPtr =
-        dataBasePtr + (i + 1) * outWidth - 2 * sizeof(float);
-    memcpy(currRowScaleOffsetPtr, &scale, sizeof(float));
-    memcpy(currRowScaleOffsetPtr + sizeof(float), &offset, sizeof(float));
-  }
-}
-
 } // namespace quantization
 } // namespace glow

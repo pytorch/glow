@@ -1015,13 +1015,7 @@ bool SparseLengthsWeightedSumGradNode::verify() const {
 }
 
 bool RowwiseQuantizedSparseLengthsWeightedSumNode::verify() const {
-  bool isValid = checkType(getResult(), ElemKind::FloatTy, this);
-  isValid &= checkType(getData(), ElemKind::UInt8QTy, this);
-  isValid &= checkType(getScales(), ElemKind::FloatTy, this);
-  isValid &= checkType(getOffsets(), ElemKind::FloatTy, this);
-  isValid &= checkType(getWeights(), ElemKind::FloatTy, this);
-  isValid &= checkType(getIndices(), ElemKind::Int64ITy, this);
-  isValid &= checkType(getLengths(), ElemKind::Int32ITy, this);
+  bool isValid = checkType(getData(), ElemKind::UInt8QTy, this);
   isValid &= expectCompareTrue("Indices must be a 1D vector",
                                getIndices().dims().size(), size_t(1), this);
   isValid &= expectCompareTrue("Lengths must be a 1D vector",
@@ -1050,8 +1044,17 @@ static bool verifyFusedRowwiseQuantizedSparseLengthsSum(NodeValue result,
                                                         NodeValue lengths,
                                                         NodeValue weights) {
   const Node *parent = result.getNode();
-  bool isValid = checkType(result, ElemKind::FloatTy, parent);
-  isValid &= checkType(data, ElemKind::UInt8FusedQTy, parent);
+  bool isValid = expectCompareTrue(
+      "Input data must be Fused Quantized type",
+      isFusedQuantizedElemKind(data.getType()->getElementType()), true, parent);
+  size_t extraCols;
+  if (data.getType()->getElementType() == ElemKind::UInt8FusedQTy) {
+    isValid &= checkType(result, ElemKind::FloatTy, parent);
+    extraCols = 2 * sizeof(float);
+  } else {
+    isValid &= checkType(result, ElemKind::Float16Ty, parent);
+    extraCols = 2 * sizeof(float16_t);
+  }
   isValid &= checkType(indices, ElemKind::Int64ITy, parent);
   isValid &= checkType(lengths, ElemKind::Int32ITy, parent);
   isValid &= expectCompareTrue("Indices must be a 1D vector",
@@ -1060,14 +1063,18 @@ static bool verifyFusedRowwiseQuantizedSparseLengthsSum(NodeValue result,
                                lengths.dims().size(), size_t(1), parent);
   isValid &= expectCompareTrue("Data must be 2 dimensional.",
                                data.dims().size(), size_t(2), parent);
-  isValid &= expectCompareTrue("Data must have more than 8 columns.",
-                               data.dims()[1], size_t(8), parent,
+  isValid &= expectCompareTrue("Data must have extra columns for scale/offset.",
+                               data.dims()[1], extraCols, parent,
                                CompareOperatorGreaterEqual<size_t>());
   isValid &= expectCompareTrue("Result must be 2 dimensional.",
                                result.dims().size(), size_t(2), parent);
 
   if (weights.getNode()) {
-    isValid &= checkType(weights, ElemKind::FloatTy, parent);
+    if (data.getType()->getElementType() == ElemKind::UInt8FusedQTy) {
+      isValid &= checkType(weights, ElemKind::FloatTy, parent);
+    } else {
+      isValid &= checkType(weights, ElemKind::Float16Ty, parent);
+    }
     isValid &= expectCompareTrue("Weights must be a 1D vector",
                                  weights.dims().size(), size_t(1), parent);
     isValid &= expectCompareTrue("Weights and Indices must have the same size",
@@ -1077,9 +1084,10 @@ static bool verifyFusedRowwiseQuantizedSparseLengthsSum(NodeValue result,
   // Wrap this in isValid to prevent potential segfault if the result is
   // incorrectly shaped.
   if (isValid) {
-    isValid &= expectCompareTrue(
-        "Result output shape should have second dim as 8 less than Data.",
-        result.dims()[1] + 8, data.dims()[1], parent);
+    isValid &=
+        expectCompareTrue("Result output shape should have second dim without "
+                          "extra columns from scale/offset in Data.",
+                          result.dims()[1] + extraCols, data.dims()[1], parent);
   }
   return isValid;
 }

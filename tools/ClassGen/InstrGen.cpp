@@ -285,11 +285,7 @@ int main(int argc, char **argv) {
       .addOperand("Indices", OperandKind::In)
       .addOperand("Lengths", OperandKind::In)
       .autoIRGen()
-      .autoVerify(VerifyKind::SameElementType, {"Dest", "ElemKind::FloatTy"})
       .autoVerify(VerifyKind::SameElementType, {"Data", "ElemKind::UInt8QTy"})
-      .autoVerify(VerifyKind::SameElementType, {"Scales", "ElemKind::FloatTy"})
-      .autoVerify(VerifyKind::SameElementType, {"Offsets", "ElemKind::FloatTy"})
-      .autoVerify(VerifyKind::SameElementType, {"Weights", "ElemKind::FloatTy"})
       .autoVerify(VerifyKind::SameElementType,
                   {"Indices", "ElemKind::Int64ITy"})
       .autoVerify(VerifyKind::SameElementType,
@@ -303,10 +299,6 @@ int main(int argc, char **argv) {
       .addOperand("Indices", OperandKind::In)
       .addOperand("Lengths", OperandKind::In)
       .autoIRGen()
-      .autoVerify(VerifyKind::SameElementType, {"Dest", "ElemKind::FloatTy"})
-      .autoVerify(VerifyKind::SameElementType,
-                  {"Data", "ElemKind::UInt8FusedQTy"})
-      .autoVerify(VerifyKind::SameElementType, {"Weights", "ElemKind::FloatTy"})
       .autoVerify(VerifyKind::SameElementType,
                   {"Indices", "ElemKind::Int64ITy"})
       .autoVerify(VerifyKind::SameElementType,

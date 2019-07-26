@@ -265,6 +265,14 @@ private:
                                    TensorQuantizationParams &destQ);
 
   template <typename ElemTy> void fwdModuloInstImpl(glow::ModuloInst const *I);
+
+  template <typename T>
+  void fwdRowwiseQuantizedSparseLengthsWeightedSumImpl(
+      const RowwiseQuantizedSparseLengthsWeightedSumInst *I);
+
+  template <typename T>
+  void fwdFusedRowwiseQuantizedSparseLengthsWeightedSumImpl(
+      const FusedRowwiseQuantizedSparseLengthsWeightedSumInst *I);
   ///@}
 };
 
