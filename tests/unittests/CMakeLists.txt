@@ -506,10 +506,11 @@ add_executable(TraceEventsTest
                TraceEventsTest.cpp)
 target_link_libraries(TraceEventsTest
                       PRIVATE
-                        Backend
+                        Backends
                         Graph
                         IR
-                        ExecutionEngine
+                        ExecutionEngine2
+                        BackendTestUtils2
                         GraphOptimizer
                         gtest
                         TestMain)

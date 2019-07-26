@@ -1089,4 +1089,40 @@ void inferMaxSplat(Tensor *input, Tensor *out, llvm::StringRef kind) {
   out->assign(resultTensor);
 }
 
+void insertCompiledFunction(llvm::StringRef name, CompiledFunction *func,
+                            runtime::DeviceManager *device, Module *mod) {
+  runtime::FunctionMapTy functionMap;
+  functionMap[name] = func;
+
+  std::promise<void> addPromise;
+  auto fut = addPromise.get_future();
+  llvm::Error addErr = llvm::Error::success();
+  device->addNetwork(mod, std::move(functionMap),
+                     [&addPromise, &addErr](const Module *, llvm::Error err) {
+                       addErr = std::move(err);
+                       addPromise.set_value();
+                     });
+  fut.wait();
+  EXIT_ON_ERR(std::move(addErr));
+}
+
+void runOnDevice(ExecutionContext &context, llvm::StringRef name,
+                 runtime::DeviceManager *device) {
+  std::unique_ptr<ExecutionContext> contextPtr(&context);
+  std::promise<void> runPromise;
+  auto fut = runPromise.get_future();
+  llvm::Error runErr = llvm::Error::success();
+  device->runFunction(
+      name, std::move(contextPtr),
+      [&runPromise, &runErr](runtime::RunIdentifierTy, llvm::Error err,
+                             std::unique_ptr<ExecutionContext> contextPtr) {
+        // Don't delete context.
+        contextPtr.release();
+        runErr = std::move(err);
+        runPromise.set_value();
+      });
+  fut.wait();
+  EXIT_ON_ERR(std::move(runErr));
+}
+
 } // namespace glow
