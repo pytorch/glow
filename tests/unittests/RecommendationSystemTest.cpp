@@ -663,8 +663,7 @@ protected:
       createSimpleRecSysGraph(*pMod, pBindings_, pFunc, tableSizes,
                               embeddingDim, quantizeSLWS, quantizeFC,
                               gatherWeights);
-      // Copy values from the first graph so they have the
-      // same random values.
+      // Copy values from the first graph so they have the same random values.
       for (auto *C : mod->getConstants()) {
         auto *dest = partitionedEE_.getModule().getConstantByName(C->getName());
         dest->getPayloadMutable().copyRawFrom(&C->getPayload());
@@ -672,6 +671,7 @@ protected:
     }
     SaveNode *result1 = llvm::cast<SaveNode>(F_->getNodeByName("save"));
     result = result1->getPlaceholder();
+    Tensor *resultTensor = bindings_->get(result);
 
     Placeholder *concatPH = nullptr;
     if (checkConcat) {
@@ -691,15 +691,48 @@ protected:
           Kinded::Kind::RowwiseQuantizedFullyConnectedNodeKind);
     }
 
+    // Compare against interpreter if we're not executing already on it.
+    const bool compareAgainstInterp = getBackendName() != "Interpreter";
+    ExecutionContext contextI;
+    Tensor *resultIT = nullptr;
+    if (compareAgainstInterp) {
+      ExecutionEngine2 IEE;
+      // Set device memory to 64GB to prevent partitioning. We are using the
+      // Interpreter's result just as a reference result to compare against.
+      IEE.setDeviceMemory(64e+9);
+      auto *modI = &IEE.getModule();
+      auto *IF = modI->createFunction("main");
+      PlaceholderBindings *bindingsI = contextI.getPlaceholderBindings();
+      createSimpleRecSysGraph(*modI, *bindingsI, IF, tableSizes, embeddingDim,
+                              quantizeSLWS, quantizeFC, gatherWeights);
+      // Copy values from the first graph so they have the same random values.
+      for (auto *C : mod->getConstants()) {
+        auto *dest = IEE.getModule().getConstantByName(C->getName());
+        dest->getPayloadMutable().copyRawFrom(&C->getPayload());
+      }
+      bindingsI->allocate(modI->getPlaceholders());
+
+      SaveNode *resultI = llvm::cast<SaveNode>(IF->getNodeByName("save"));
+      resultIT = bindingsI->get(resultI->getPlaceholder());
+
+      // Compile with the same cctx as before, so we get the same precision
+      // transformation.
+      IEE.compile(cctx);
+      IEE.run(contextI);
+    }
+
     // Compile.
     EE_.compile(cctx);
 
     // Run graph
     EE_.run(context_);
 
+    if (compareAgainstInterp) {
+      EXPECT_TRUE(resultIT->isEqual(*resultTensor, 0.00001));
+    }
+
     if (checkConcat) {
       // Get result and verify.
-      auto *resultTensor = bindings_->get(result);
       auto resultHandle = resultTensor->getHandle();
 
       EXPECT_EQ(resultTensor->size(), miniBatch);
