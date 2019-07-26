@@ -271,32 +271,34 @@ protected:
   }
 
   /// Returns a new Constant, of the provided \p type and \p dims initialized
-  /// with random data.
+  /// with random data. If using floating point, then it is initialized via
+  /// Xavier with filterSize equal to twice the number of elements in \p dims.
+  /// Otherwise integer types are initialzed via their min and max values.
   static Constant *createRandomizedConstant(Module &mod, TypeRef type,
                                             llvm::ArrayRef<size_t> dims,
-                                            llvm::StringRef name,
-                                            float min = 0.0, float max = 1.0) {
+                                            llvm::StringRef name) {
     auto *c = mod.createConstant(mod.uniqueTypeWithNewShape(type, dims), name);
 
     switch (type->getElementType()) {
     case ElemKind::FloatTy: {
-      c->getHandle<float>().randomize(min, max, mod.getPRNG());
+      c->getHandle<float>().initXavier(c->getType()->size() * 2, mod.getPRNG());
       break;
     }
     case ElemKind::Float16Ty: {
-      c->getHandle<float16_t>().randomize(min, max, mod.getPRNG());
+      c->getHandle<float16_t>().initXavier(c->getType()->size() * 2,
+                                           mod.getPRNG());
       break;
     }
     case ElemKind::Int32QTy: {
-      c->getHandle<int32_t>().randomize(-INT32_MAX, INT32_MAX, mod.getPRNG());
+      c->getHandle<int32_t>().randomize(INT32_MIN, INT32_MAX, mod.getPRNG());
       break;
     }
     case ElemKind::Int8QTy: {
-      c->getHandle<int8_t>().randomize(-128, 127, mod.getPRNG());
+      c->getHandle<int8_t>().randomize(INT8_MIN, INT8_MAX, mod.getPRNG());
       break;
     }
     case ElemKind::UInt8FusedQTy: {
-      c->getHandle<uint8_t>().randomize(0, 255, mod.getPRNG());
+      c->getHandle<uint8_t>().randomize(UINT8_MIN, UINT8_MAX, mod.getPRNG());
       break;
     }
     default:
@@ -351,10 +353,10 @@ protected:
     auto internalType = mod.uniqueType(ElemKind::FloatTy, {1});
 
     /// Initial
-    auto *initial_bias = createRandomizedConstant(mod, internalType, {intDim},
-                                                  "initial_bias", 0, 0.00001);
+    auto *initial_bias =
+        createRandomizedConstant(mod, internalType, {intDim}, "initial_bias");
     auto *initial_weight = createRandomizedConstant(
-        mod, internalType, {inputDim, intDim}, "initial_weight", -0.03, 0.03);
+        mod, internalType, {inputDim, intDim}, "initial_weight");
 
     FullyConnectedNode *initial_layer = F_->createFullyConnected(
         "dense", N_, initial_weight,
@@ -367,10 +369,9 @@ protected:
     for (unsigned i = 0; i < intermediateLayers; ++i) {
 
       auto *intermediate_bias = createRandomizedConstant(
-          mod, internalType, {intDim}, "intermediate_bias", 0, 0.00001);
-      auto *intermediate_weight =
-          createRandomizedConstant(mod, internalType, {intDim, intDim},
-                                   "intermediate_weight", -0.03, 0.03);
+          mod, internalType, {intDim}, "intermediate_bias");
+      auto *intermediate_weight = createRandomizedConstant(
+          mod, internalType, {intDim, intDim}, "intermediate_weight");
 
       FullyConnectedNode *intermediate_layer = F_->createFullyConnected(
           "dense", last, intermediate_weight,
@@ -379,10 +380,10 @@ protected:
     }
 
     /// End
-    auto *end_bias = createRandomizedConstant(mod, internalType, {outputDim},
-                                              "end_bias", 0, 0.00001);
+    auto *end_bias =
+        createRandomizedConstant(mod, internalType, {outputDim}, "end_bias");
     auto *end_weight = createRandomizedConstant(
-        mod, internalType, {intDim, outputDim}, "end_weight", -0.001, 0.003);
+        mod, internalType, {intDim, outputDim}, "end_weight");
 
     FullyConnectedNode *end_layer = F_->createFullyConnected(
         "dense", last, end_weight, end_bias); // Output is size {MB, embDim}
@@ -430,7 +431,7 @@ protected:
     auto *initial_bias = createRandomizedConstant(mod, internalBiasType,
                                                   {intDim}, "initial_bias");
     auto *initial_weight = createRandomizedConstant(
-        mod, internalTypeF, {inputDim, intDim}, "initial_weight", -0.03, 0.03);
+        mod, internalTypeF, {inputDim, intDim}, "initial_weight");
 
     // Output is size {MB, intermediatDim}
     quantization::Schema rowwiseQuantSchema = useSymmetricRowwiseQuantFCOpt
@@ -449,9 +450,8 @@ protected:
     for (unsigned i = 0; i < intermediateLayers; ++i) {
       auto *intermediate_bias = createRandomizedConstant(
           mod, internalBiasType, {intDim}, "intermediate_bias");
-      auto *intermediate_weight =
-          createRandomizedConstant(mod, internalTypeF, {intDim, intDim},
-                                   "intermediate_weight", -0.03, 0.03);
+      auto *intermediate_weight = createRandomizedConstant(
+          mod, internalTypeF, {intDim, intDim}, "intermediate_weight");
 
       Node *intermediate_layer = F_->createRowwiseQuantizedFullyConnected(
           "dense", last, intermediate_weight, intermediate_bias,
@@ -465,7 +465,7 @@ protected:
     auto *end_bias = createRandomizedConstant(mod, internalBiasType,
                                               {outputDim}, "end_bias");
     auto *end_weight = createRandomizedConstant(
-        mod, internalTypeF, {intDim, outputDim}, "end_weight", -0.03, 0.03);
+        mod, internalTypeF, {intDim, outputDim}, "end_weight");
 
     // Output is size {MB, embDim}
     auto *end_layer = F_->createRowwiseQuantizedFullyConnected(
@@ -537,7 +537,7 @@ protected:
       // randomized constant.
       Constant *weightsConst = createRandomizedConstant(
           mod, mod.uniqueType(ElemKind::FloatTy, {weightsSize}), {weightsSize},
-          "weights" + std::to_string(i), 1.0f, 1.0000001f);
+          "weights" + std::to_string(i));
 
       auto *weightIndices =
           mod.createPlaceholder(ElemKind::Int32ITy, {sum},
@@ -728,7 +728,7 @@ protected:
     EE_.run(context_);
 
     if (compareAgainstInterp) {
-      EXPECT_TRUE(resultIT->isEqual(*resultTensor, 0.00001));
+      EXPECT_TRUE(resultIT->isEqual(*resultTensor));
     }
 
     if (checkConcat) {
