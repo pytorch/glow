@@ -35,7 +35,9 @@ using namespace std;
 llvm::Expected<ONNX_NAMESPACE::ModelProto>
 loadProto(const std::string &filename) {
   std::ifstream ff(filename, std::ios::in | std::ios::binary);
-  RETURN_ERR_IF_NOT(ff, "Can't find the model or network files.",
+  RETURN_ERR_IF_NOT(ff,
+                    strFormat("Can't find the model or network files for %s.",
+                              filename.c_str()),
                     GlowErr::ErrorCode::MODEL_LOADER_INVALID_PROTOBUF);
   if (filename.find(".onnxtxt") != std::string::npos) {
     std::string str((std::istreambuf_iterator<char>(ff)),
