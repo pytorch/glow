@@ -141,9 +141,9 @@ void PyTorchModelLoader::loadMul(const torch::jit::Node *ptNode) {
   assert(inputs.size() == 2);
   assert(outputs.size() == 1);
 
-  glow::NodeValue rhs = getGlowNodeValue(inputs[0]);
-  glow::NodeValue lhs = getGlowNodeValue(inputs[1]);
-  glow::MulNode *glowNode = f_->createMul("mul", rhs, lhs);
+  glow::NodeValue lhs = getGlowNodeValue(inputs[0]);
+  glow::NodeValue rhs = getGlowNodeValue(inputs[1]);
+  glow::MulNode *glowNode = f_->createMul("mul", lhs, rhs);
   addGlowNodeValue(outputs[0], glowNode->getResult());
 }
 
@@ -153,9 +153,9 @@ void PyTorchModelLoader::loadDiv(const torch::jit::Node *ptNode) {
   assert(inputs.size() == 2);
   assert(outputs.size() == 1);
 
-  glow::NodeValue rhs = getGlowNodeValue(inputs[0]);
-  glow::NodeValue lhs = getGlowNodeValue(inputs[1]);
-  glow::DivNode *glowNode = f_->createDiv("div", rhs, lhs);
+  glow::NodeValue lhs = getGlowNodeValue(inputs[0]);
+  glow::NodeValue rhs = getGlowNodeValue(inputs[1]);
+  glow::DivNode *glowNode = f_->createDiv("div", lhs, rhs);
   addGlowNodeValue(outputs[0], glowNode->getResult());
 }
 
@@ -172,9 +172,9 @@ void PyTorchModelLoader::loadAdd(const torch::jit::Node *ptNode) {
   assert(scalarHandle.raw(0) == 1);
   (void)scalarHandle;
 
-  glow::NodeValue rhs = getGlowNodeValue(inputs[0]);
-  glow::NodeValue lhs = getGlowNodeValue(inputs[1]);
-  glow::AddNode *glowNode = f_->createAdd("add", rhs, lhs);
+  glow::NodeValue lhs = getGlowNodeValue(inputs[0]);
+  glow::NodeValue rhs = getGlowNodeValue(inputs[1]);
+  glow::AddNode *glowNode = f_->createAdd("add", lhs, rhs);
   addGlowNodeValue(outputs[0], glowNode->getResult());
 }
 
@@ -191,9 +191,9 @@ void PyTorchModelLoader::loadSub(const torch::jit::Node *ptNode) {
   assert(scalarHandle.raw(0) == 1);
   (void)scalarHandle;
 
-  glow::NodeValue rhs = getGlowNodeValue(inputs[0]);
-  glow::NodeValue lhs = getGlowNodeValue(inputs[1]);
-  glow::SubNode *glowNode = f_->createSub("sub", rhs, lhs);
+  glow::NodeValue lhs = getGlowNodeValue(inputs[0]);
+  glow::NodeValue rhs = getGlowNodeValue(inputs[1]);
+  glow::SubNode *glowNode = f_->createSub("sub", lhs, rhs);
   addGlowNodeValue(outputs[0], glowNode->getResult());
 }
 
