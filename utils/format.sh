@@ -28,7 +28,7 @@ print_usage() {
 }
 
 fix_format() {
-  find lib tests/unittests/ tools/ include examples \
+  find lib tests/unittests/ tools/ include examples torch_glow \
     -name \*.h -print0 \
     -o -name \*.hpp -print0 \
     -o -name \*.c -print0 \
