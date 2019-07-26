@@ -24,77 +24,37 @@
 
 /// Loads PyTorch JIT IR subgraphs as a Glow Function.
 class PyTorchModelLoader {
-  /// Glow module in which the loaded Glow Function will be created.
-  glow::Module *mod_ = nullptr;
-
-  /// The PyTorch subgraph being loaded.
-  torch::jit::Graph *subgraph_ = nullptr;
-
-  /// The reference PyTorch inputs used for loading. This is required for shape
-  /// information.
-  at::ArrayRef<torch::jit::IValue> *inputs_ = nullptr;
-
-  /// The Glow function that will created.
-  glow::Function *f_ = nullptr;
-
-  /// Glow Placeholders corresponding to stack inputs from PyTorch.
-  std::vector<glow::Placeholder *> inputPlaceholders_;
-
-  /// Glow Placeholders corresponding to stack outputs to back PyTorch.
-  std::vector<glow::Placeholder *> outputPlaceholders_;
+  /// Glow Function created outside this class.
+  glow::Function &F_;
 
   /// Mapping from PyTorch Values to Glow NodeValues created during loading.
   std::unordered_map<const torch::jit::Value *, glow::NodeValue> valueMap_;
 
-  /// A mapping from jit Symbols representing jit operators to the
-  /// PyTorchModelLoader method that is used to load that operator.
-  std::unordered_map<torch::jit::Symbol,
-                     std::function<void(const torch::jit::Node *)>>
-      nodeLoaderMapping_;
+  /// Defines type for mapping Symbols to PyTorchModelLoader member functions
+  /// for loading torch::jit::Node * objects.
+  using MappingOfMemberFunctions =
+      std::unordered_map<torch::jit::Symbol, void (PyTorchModelLoader::*)(
+                                                 const torch::jit::Node *)>;
 
 public:
-  PyTorchModelLoader();
-
-  /// Takes a glow::Module \p mod, a jit::Graph \p subgraph to load, and a stack
-  /// of \p inputs for the subgraph to be loaded and retains references to those
-  /// things to be used during loading.
-  PyTorchModelLoader(glow::Module *mod, torch::jit::Graph *subgraph,
-                     at::ArrayRef<torch::jit::IValue> *inputs);
-
-  /// Creates a glow::Function that represents the loader's subgraph imported
-  /// for the shapes seen in the given inputs stack.
-  // TODO: return and error upon failure.
-  void load();
+  /// Takes a glow::Function \p F, a jit::Graph \p subgraph to load, and a
+  /// stack of \p inputs for the subgraph to be loaded. Output parameters
+  /// \p inputPlaceholders and \p outputPlaceholders are filled out.
+  PyTorchModelLoader(glow::Function &F, torch::jit::Graph &subgraph,
+                     at::ArrayRef<torch::jit::IValue> &inputs,
+                     std::vector<glow::Placeholder *> &inputPlaceholders,
+                     std::vector<glow::Placeholder *> &outputPlaceholders);
 
   /// Returns whether or not a PyTorch node is supported.
   /// NOTE: For now this is just an enumeration of all type of PyTorch nodes
-  /// that the loader knows about but doesn't really guarantee that loading will
+  /// that the loader knows about but doesn't really guarantee that loading
   /// will succeed because determining this requires more informations such as
   /// shape info that isn't yet available when this is run.
   static bool isNodeSupported(const torch::jit::Node *node);
 
-  /// Get the Glow function that this loader has created.
-  glow::Function *getFunction() { return f_; }
-
-  /// \returns the Glow input placeholders for the loaded function in the order
-  /// that is expected by the stack of PyTorch inputs when running the function.
-  const std::vector<glow::Placeholder *> &getInputPlaceholders() {
-    return inputPlaceholders_;
-  }
-
-  /// \returns the Glow output placeholders for the loaded function in the order
-  /// that is expected by the stack of PyTorch inputs when running the function.
-  const std::vector<glow::Placeholder *> &getOutputPlaceholders() {
-    return outputPlaceholders_;
-  }
-
 private:
-  /// Populates nodeLoaderMapping_ with a mapping from jit Symbols representing
-  /// jit operators to the PyTorchModelLoader method that is used to load that
-  /// operator.
-  /// NOTE: This must be called by all PyTorchModelLoader constructors so that
-  /// this mapping is available when loading begins.
-  void populateNodeLoaderMapping();
+  /// Save access to the mapping.
+  static const MappingOfMemberFunctions &getSymbolsMapping();
 
   /// Find the Glow NodeValue that maps to a given PyTorch value \p value.
   glow::NodeValue getGlowNodeValue(const torch::jit::Value *value) const;
@@ -120,7 +80,7 @@ private:
   glow::Placeholder *loadValue(const torch::jit::Value *value);
 
   /// Load a given PyTorch Node \p ptNode.
-  void loadNode(const torch::jit::Node *ptNode);
+  bool loadNode(const torch::jit::Node *ptNode);
 
   /// Load a PyTorch Constant node as a Glow Constant.
   void loadConstant(const torch::jit::Node *ptNode);

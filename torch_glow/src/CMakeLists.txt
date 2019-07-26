@@ -13,6 +13,7 @@ link_directories(${PYTORCH_DIR}/lib)
 
 pybind11_add_module(_torch_glow
                       binding.cpp
+                      PyTorchFileLoader.cpp
                       PyTorchModelLoader.cpp
                       CachingGraphRunner.cpp)
 
@@ -25,7 +26,7 @@ target_link_libraries(_torch_glow
                         ExecutionEngine
                         Graph
                         Importer
-                        Support
+                        Interpreter
                         Backends
                         pybind11)
 

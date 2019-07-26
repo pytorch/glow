@@ -22,18 +22,10 @@
 
 #include "glow/ExecutionEngine/ExecutionEngine.h"
 
-/// All information per graph.
-struct GraphInfo {
-  std::shared_ptr<torch::jit::Graph> subgraph;
-  GraphInfo(const torch::jit::Node *node);
-};
-
 /// Responsible for maintaining a mapping from PyTorch subgraphs and their
 /// unique input types to compiled Glow Functions.
 class CachingGraphRunner {
-  /// Map of from PyTorch JIT Node containing contracted JIT subgraph to
-  /// to GraphInfo containing information relevent to Glow about that subgraph.
-  std::unordered_map<const torch::jit::Node *, GraphInfo> jitNodeToInfoMap_;
+  /// Glow ExecutionEngine.
   glow::ExecutionEngine executionEngine_;
 
 public:
