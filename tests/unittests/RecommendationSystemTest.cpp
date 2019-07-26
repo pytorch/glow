@@ -723,9 +723,7 @@ protected:
   }
 
   /// Execute a graph of functions based on the given DAG.
-  void executeDAG(DAGNode *G, Module &mod, ExecutionContext &context,
-                  llvm::ArrayRef<Placeholder *> vars,
-                  llvm::ArrayRef<Tensor *> inputs) {
+  void executeDAG(DAGNode *G, Module &mod, ExecutionContext &context) {
     std::unordered_map<std::string, Function *> name2func;
 
     for (auto *F : mod.getFunctions()) {
@@ -745,8 +743,7 @@ protected:
       DAGNode *dag = exeList.at(curPt);
       // The root in a G is always a dummy function.
       if (curPt > 0) {
-        updateInputPlaceholders2(*context.getPlaceholderBindings(), vars,
-                                 inputs);
+        updateInputPlaceholders2(*context.getPlaceholderBindings(), {}, {});
         partitionedEE_.run(context, dag->name);
       }
       for (unsigned int i = 0, e = dag->children.size(); i < e; i++) {
@@ -776,7 +773,7 @@ protected:
     ASSERT_EQ(myList.size(), 1);
     DAG &dag = myList.front();
 
-    // Run the paritioned graph and compare the results.
+    // Run the partitioned graph and compare the results.
 
     auto &bindings = *context.getPlaceholderBindings();
     bindings.clear();
@@ -785,7 +782,7 @@ protected:
     for (auto PH : pBindings_.pairs()) {
       pBindings_.copyToTarget(PH.first->getName(), bindings);
     }
-    executeDAG(dag.root.get(), *pMod, context, {}, {});
+    executeDAG(dag.root.get(), *pMod, context);
     auto res = bindings.getPlaceholderByName("save");
     Tensor *resultTensor = bindings.get(res);
     EXPECT_TRUE(referenceResult.isEqual(*resultTensor));
