@@ -5,7 +5,7 @@ add_executable(SparseLengthsSumTest
 target_link_libraries(SparseLengthsSumTest
   PRIVATE
   Backends
-  ExecutionEngine
+  ExecutionEngine2
   gtest
   glog::glog)
 
