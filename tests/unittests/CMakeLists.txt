@@ -98,7 +98,7 @@ target_link_libraries(DeviceManagerTest
                         Backends
                         Graph
                         IR
-                        ExecutionEngine
+                        ExecutionEngine2
                         GraphOptimizer
                         gtest
                         TestMain)

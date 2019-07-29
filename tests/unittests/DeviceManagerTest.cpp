@@ -19,7 +19,7 @@
 
 #include "../../lib/Backends/CPU/CPUDeviceManager.h"
 #include "../../lib/Backends/Interpreter/InterpreterDeviceManager.h"
-#include "glow/ExecutionEngine/ExecutionEngine.h"
+#include "glow/ExecutionEngine/ExecutionEngine2.h"
 #include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
 #include "glow/Runtime/RuntimeTypes.h"
 
@@ -118,9 +118,9 @@ TEST_P(DeviceManagerTest, Basic) {
   input1.getHandle().clear(0.5);
   output1.getHandle().clear(std::tanh(0.5));
 
-  updateInputPlaceholders(*context->getPlaceholderBindings(),
-                          {module->getPlaceholderByName("main_input")},
-                          {&input1});
+  updateInputPlaceholders2(*context->getPlaceholderBindings(),
+                           {module->getPlaceholderByName("main_input")},
+                           {&input1});
 
   std::promise<std::unique_ptr<ExecutionContext>> runPromise;
   std::future<std::unique_ptr<ExecutionContext>> runFuture;
@@ -244,12 +244,12 @@ TEST_P(DeviceManagerTest, MultiRun) {
   output1.getHandle().clear(std::tanh(2.0f));
   output2.getHandle().clear(std::tanh(3.0f));
 
-  updateInputPlaceholders(*context1->getPlaceholderBindings(),
-                          {module->getPlaceholderByName("main_input")},
-                          {&input1});
-  updateInputPlaceholders(*context2->getPlaceholderBindings(),
-                          {module->getPlaceholderByName("main_input")},
-                          {&input2});
+  updateInputPlaceholders2(*context1->getPlaceholderBindings(),
+                           {module->getPlaceholderByName("main_input")},
+                           {&input1});
+  updateInputPlaceholders2(*context2->getPlaceholderBindings(),
+                           {module->getPlaceholderByName("main_input")},
+                           {&input2});
 
   std::promise<std::unique_ptr<ExecutionContext>> runP1, runP2;
   std::future<std::unique_ptr<ExecutionContext>> runF1, runF2;
@@ -337,12 +337,12 @@ TEST_P(DeviceManagerTest, MultiFunction) {
   Tensor output2(ElemKind::FloatTy, {1});
   output2.getHandle().clear(std::tanh(0.5f));
 
-  updateInputPlaceholders(*context1->getPlaceholderBindings(),
-                          {module->getPlaceholderByName("func1_input")},
-                          {&input});
-  updateInputPlaceholders(*context2->getPlaceholderBindings(),
-                          {module->getPlaceholderByName("func1_input")},
-                          {&input});
+  updateInputPlaceholders2(*context1->getPlaceholderBindings(),
+                           {module->getPlaceholderByName("func1_input")},
+                           {&input});
+  updateInputPlaceholders2(*context2->getPlaceholderBindings(),
+                           {module->getPlaceholderByName("func1_input")},
+                           {&input});
 
   std::promise<std::unique_ptr<ExecutionContext>> runP1, runP2;
   std::future<std::unique_ptr<ExecutionContext>> runF1, runF2;
@@ -415,16 +415,16 @@ TEST_P(DeviceManagerTest, MultiModule) {
   Tensor output(ElemKind::FloatTy, {1});
   output.getHandle().clear(std::tanh(0.5f));
 
-  updateInputPlaceholders(*context1->getPlaceholderBindings(),
-                          {module1->getPlaceholderByName("func1_input")},
-                          {&input});
+  updateInputPlaceholders2(*context1->getPlaceholderBindings(),
+                           {module1->getPlaceholderByName("func1_input")},
+                           {&input});
 
   std::unique_ptr<ExecutionContext> context2 =
       llvm::make_unique<ExecutionContext>();
   context2->getPlaceholderBindings()->allocate(module2->getPlaceholders());
-  updateInputPlaceholders(*context2->getPlaceholderBindings(),
-                          {module2->getPlaceholderByName("func2_input")},
-                          {&input});
+  updateInputPlaceholders2(*context2->getPlaceholderBindings(),
+                           {module2->getPlaceholderByName("func2_input")},
+                           {&input});
 
   std::promise<std::unique_ptr<ExecutionContext>> runP1, runP2;
   std::future<std::unique_ptr<ExecutionContext>> runF1, runF2;
@@ -518,12 +518,12 @@ TEST_P(DeviceManagerTest, ReuseModule) {
   Tensor output2(ElemKind::FloatTy, {1});
   output2.getHandle().clear(std::tanh(0.5f));
 
-  updateInputPlaceholders(*context1->getPlaceholderBindings(),
-                          {module->getPlaceholderByName("func1_input")},
-                          {&input});
-  updateInputPlaceholders(*context2->getPlaceholderBindings(),
-                          {module->getPlaceholderByName("func1_input")},
-                          {&input});
+  updateInputPlaceholders2(*context1->getPlaceholderBindings(),
+                           {module->getPlaceholderByName("func1_input")},
+                           {&input});
+  updateInputPlaceholders2(*context2->getPlaceholderBindings(),
+                           {module->getPlaceholderByName("func1_input")},
+                           {&input});
 
   std::promise<std::unique_ptr<ExecutionContext>> runP1, runP2;
   std::future<std::unique_ptr<ExecutionContext>> runF1, runF2;
@@ -694,9 +694,9 @@ TEST(DeviceManagerTest, DummyDeviceManager) {
   input1.getHandle().clear(0.5f);
   output1.getHandle().clear(std::tanh(0.5f));
 
-  updateInputPlaceholders(*context1->getPlaceholderBindings(),
-                          {module->getPlaceholderByName("main_input")},
-                          {&input1});
+  updateInputPlaceholders2(*context1->getPlaceholderBindings(),
+                           {module->getPlaceholderByName("main_input")},
+                           {&input1});
 
   std::promise<std::unique_ptr<ExecutionContext>> runPromise;
   std::future<std::unique_ptr<ExecutionContext>> runFuture;
