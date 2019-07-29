@@ -13,8 +13,8 @@ add_executable(ParameterSweepTest
                ParameterSweepTest.cpp)
 target_link_libraries(ParameterSweepTest
                       PRIVATE
-                        BackendTestUtils
-                        ExecutionEngine
+                        BackendTestUtils2
+                        ExecutionEngine2
                         glog::glog
                         gtest
                         Graph
