@@ -1816,6 +1816,46 @@ TEST(onnx, importCastToInt64) {
   importCast("castToInt64.onnxtxt", "data", {1, 2, 2, 2}, ElemKind::Int64ITy);
 }
 
+TEST(onnx, cast_32_64) {
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/castInt-32-64.onnxtxt");
+  PlaceholderBindings bindings;
+  Placeholder *graphOutputVar;
+  std::vector<float> init(1 * 2 * 4 * 3);
+  std::vector<float> expectedOut(1 * 2 * 4 * 3);
+  for (size_t i = 0; i < init.size(); i++) {
+    const float value = i * 12.345678f;
+    init[i] = value;
+    expectedOut[i] = int32_t(value);
+  }
+  {
+    Tensor data(ElemKind::FloatTy, {1, 2, 4, 3});
+    data.getHandle() = init;
+    ONNXModelLoader onnxLD(netFilename, {"input"}, {&data.getType()}, *F);
+    graphOutputVar = EXIT_ON_ERR(onnxLD.getSingleOutput());
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod, {"input"}, {&data});
+  }
+
+  EE.compile(CompilationMode::Infer, F);
+  EE.run(bindings);
+  // Make sure that the optimizer did not eliminate float->int casts. They are
+  // not NOOP. Conversions int32 -> int64 -> int32 are always NOOP, so they can
+  // be optimized away.
+  EXPECT_EQ(F->getNodes().size(), 3);
+  auto result = bindings.get(graphOutputVar)->getHandle();
+  std::vector<size_t> expectedDims = {1, 2, 4, 3};
+
+  EXPECT_TRUE(result.dims().vec() == expectedDims);
+  for (size_t i = 0; i < expectedOut.size(); i++) {
+    EXPECT_EQ(result.raw(i), expectedOut[i]);
+  }
+}
+
 static void importPad(std::string fileName, const char *inputName,
                       const llvm::ArrayRef<size_t> inputShape,
                       const llvm::ArrayRef<ssize_t> starts,

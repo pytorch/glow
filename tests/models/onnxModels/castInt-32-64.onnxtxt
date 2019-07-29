@@ -1,0 +1,93 @@
+ir_version: 5
+producer_name: "onnx-example"
+graph {
+  node {
+    input: "input"
+    output: "c1"
+    op_type: "Cast"
+    attribute {
+      name: "to"
+      i: 6
+      type: INT
+    }
+  }
+  node {
+    input: "c1"
+    output: "c2"
+    op_type: "Cast"
+    attribute {
+      name: "to"
+      i: 7
+      type: INT
+    }
+  }
+  node {
+    input: "c2"
+    output: "c3"
+    op_type: "Cast"
+    attribute {
+      name: "to"
+      i: 6
+      type: INT
+    }
+  }
+  node {
+    input: "c3"
+    output: "result"
+    op_type: "Cast"
+    attribute {
+      name: "to"
+      i: 1
+      type: INT
+    }
+  }
+  name: "test-model"
+  input {
+    name: "input"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 1
+          }
+          dim {
+            dim_value: 2
+          }
+          dim {
+            dim_value: 4
+          }
+          dim {
+            dim_value: 3
+          }
+        }
+      }
+    }
+  }
+  output {
+    name: "result"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 1
+          }
+          dim {
+            dim_value: 2
+          }
+          dim {
+            dim_value: 4
+          }
+          dim {
+            dim_value: 3
+          }
+        }
+      }
+    }
+  }
+}
+opset_import {
+  version: 10
+}
+
