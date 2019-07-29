@@ -177,11 +177,55 @@ private:
   std::string message_;
   /// Optional error code associated with the error.
   ErrorCode ec_ = ErrorCode::UNKNOWN;
-}; // namespace glow
+};
+
+/// Marks the Error \p err as as checked. \returns true if it contains an
+/// error value and prints the message in the error value, returns false
+/// otherwise.
+inline bool errToBool(llvm::Error err) {
+  if (static_cast<bool>(err)) {
+    LOG(ERROR) << "Converting error to boolean: "
+               << llvm::toString(std::move(err));
+    return true;
+  }
+  return false;
+}
+
+template <typename T> llvm::Error takeErr(llvm::Expected<T> e) {
+  if (!bool(e)) {
+    return e.takeError();
+  } else {
+    return llvm::Error::success();
+  }
+}
+
+/// This class holds an llvm::Error provided via the add method. If an Error is
+/// added when the class already holds an Error, it will discard the new Error
+/// in favor of the original one. All methods in OneErrOnly are thread-safe.
+class OneErrOnly {
+  llvm::Error err_ = llvm::Error::success();
+  std::mutex m_;
+
+public:
+  /// Add a new llvm::Error \p err to be stored. If an existing Error has
+  /// already been added then the contents of the new error will be logged and
+  /// the new err will be discarded. \returns true if \p err was stored and
+  /// \returns false otherwise. If \p err is an empty Error then does nothing
+  /// and \returns false;
+  bool set(llvm::Error err);
+
+  /// \returns the stored llvm:Error clearing out the storage of the class.
+  llvm::Error get();
+
+  /// \returns true if contains an Error and false otherwise.
+  bool containsErr();
+};
+
+} // end namespace glow
 
 /// Unwraps the T from within an llvm::Expected<T>. If the Expected<T> contains
 /// an error, the program will exit.
-#define EXIT_ON_ERR(...) (exitOnErr(__VA_ARGS__))
+#define EXIT_ON_ERR(...) (glow::exitOnErr(__VA_ARGS__))
 
 /// A temporary placeholder for EXIT_ON_ERR. This should be used only during
 /// refactoring to temporarily place an EXIT_ON_ERR and should eventually be
@@ -190,7 +234,8 @@ private:
 #define TEMP_EXIT_ON_ERR(...) (EXIT_ON_ERR(__VA_ARGS__))
 
 /// Make a new GlowErr.
-#define MAKE_ERR(...) llvm::make_error<GlowErr>(__FILE__, __LINE__, __VA_ARGS__)
+#define MAKE_ERR(...)                                                          \
+  llvm::make_error<glow::GlowErr>(__FILE__, __LINE__, __VA_ARGS__)
 
 /// Makes a new GlowErr and returns it.
 #define RETURN_ERR(...)                                                        \
@@ -257,49 +302,5 @@ private:
     assert(success && "MARK_ERR_CHECKED should not be called on an "           \
                       "llvm::Error that contains an actual error.");           \
   } while (0)
-
-/// Marks the Error \p err as as checked. \returns true if it contains an
-/// error value and prints the message in the error value, returns false
-/// otherwise.
-inline bool errToBool(llvm::Error err) {
-  if (static_cast<bool>(err)) {
-    LOG(ERROR) << "Converting error to boolean: "
-               << llvm::toString(std::move(err));
-    return true;
-  }
-  return false;
-}
-
-template <typename T> llvm::Error takeErr(llvm::Expected<T> e) {
-  if (!bool(e)) {
-    return e.takeError();
-  } else {
-    return llvm::Error::success();
-  }
-}
-
-/// This class holds an llvm::Error provided via the add method. If an Error is
-/// added when the class already holds an Error, it will discard the new Error
-/// in favor of the original one. All methods in OneErrOnly are thread-safe.
-class OneErrOnly {
-  llvm::Error err_ = llvm::Error::success();
-  std::mutex m_;
-
-public:
-  /// Add a new llvm::Error \p err to be stored. If an existing Error has
-  /// already been added then the contents of the new error will be logged and
-  /// the new err will be discarded. \returns true if \p err was stored and
-  /// \returns false otherwise. If \p err is an empty Error then does nothing
-  /// and \returns false;
-  bool set(llvm::Error err);
-
-  /// \returns the stored llvm:Error clearing out the storage of the class.
-  llvm::Error get();
-
-  /// \returns true if contains an Error and false otherwise.
-  bool containsErr();
-};
-
-} // end namespace glow
 
 #endif // GLOW_SUPPORT_ERROR_H
