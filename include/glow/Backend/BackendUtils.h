@@ -104,6 +104,13 @@ public:
                                        MemoryAllocator &placeholderAllocator,
                                        MemoryAllocator &activationsAllocator);
 
+  /// Computes offsets and total allocations for Constants, Placeholders, and
+  /// Activations to build runtime symbol table. \returns RuntimeBundle. Uses a
+  /// single allocator \p allocator and allocates all buffers contiguously in
+  /// the same block.
+  static runtime::RuntimeBundle create(const IRFunction &F,
+                                       MemoryAllocator &allocator);
+
   /// Build a runtime symbol table from a Function.  Computes Constant and
   /// Placeholder sizes, but not Activations, since Functions are unserialized.
   /// Only use this method to generate bundles for backends that do not use

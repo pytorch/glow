@@ -327,6 +327,14 @@ runtime::RuntimeBundle::create(const IRFunction &F,
                                MemoryAllocator &constantAllocator,
                                MemoryAllocator &placeholderAllocator,
                                MemoryAllocator &activationsAllocator) {
+
+  // If all allocators refer to the same underlying allocator, Constants,
+  // Placeholders and activations will be allocated contiguously. The maximum
+  // memory usage reported by the allocator for each kind of storage will
+  // include the memory usage of all previously allocated types of storage and
+  // needs to be adjusted accordingly.
+  bool contiguous = (&constantAllocator == &placeholderAllocator &&
+                     &constantAllocator == &activationsAllocator);
   // Handle Constants, Placeholders, and Activations, in that order.
   // Symbol table mapping symbol name to offset for runtime.
   std::map<std::string, runtime::RuntimeSymbolInfo> symbolTable;
@@ -375,6 +383,9 @@ runtime::RuntimeBundle::create(const IRFunction &F,
                    w->getName().data(), symbol.offset, symbol.size));
   }
   auto placeholderMaxSize = placeholderAllocator.getMaxMemoryUsage();
+  if (contiguous) {
+    placeholderMaxSize -= constantMaxSize;
+  }
 
   // Compute the offsets for Activations.
   for (const auto &I : F.getInstrs()) {
@@ -443,7 +454,18 @@ runtime::RuntimeBundle::create(const IRFunction &F,
     }
   }
   auto activationsMaxSize = activationsAllocator.getMaxMemoryUsage();
+  if (contiguous) {
+    activationsMaxSize -= constantMaxSize + placeholderMaxSize;
+    DCHECK_EQ(constantAllocator.getMaxMemoryUsage(),
+              constantMaxSize + placeholderMaxSize + activationsMaxSize);
+  }
 
   return runtime::RuntimeBundle(symbolTable, constantMaxSize,
                                 placeholderMaxSize, activationsMaxSize);
+}
+
+runtime::RuntimeBundle
+runtime::RuntimeBundle::create(const IRFunction &F,
+                               MemoryAllocator &allocator) {
+  return create(F, allocator, allocator, allocator);
 }
