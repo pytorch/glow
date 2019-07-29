@@ -21,6 +21,7 @@
 
 #include <chrono>
 #include <iostream>
+#include <map>
 #include <sstream>
 
 namespace glow {
@@ -142,6 +143,10 @@ struct DeviceConfigHelper {
 /// Deserialize quantization infos from the file \p fileName.
 std::vector<DeviceConfigHelper>
 deserializeDeviceConfigFromYaml(llvm::StringRef fileName);
+
+/// Deserialize string to string map from the file \p fileName.
+std::map<std::string, std::string>
+deserializeStrStrMapFromYaml(llvm::StringRef fileName);
 
 /// Printf-like formatting for std::string.
 const std::string strFormat(const char *format, ...)

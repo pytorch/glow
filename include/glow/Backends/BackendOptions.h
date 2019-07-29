@@ -17,6 +17,7 @@
 #define GLOW_BACKENDS_BACKENDOPTIONS_H
 
 #include "llvm/ADT/SmallVector.h"
+#include <map>
 #include <string>
 #include <vector>
 
@@ -31,6 +32,9 @@ struct BackendHints {
 
   /// Storage nodes to be pinned to SRAM listed in order of priority.
   std::vector<std::string> SRAMPrioritization;
+
+  /// Hints that are specific to a backend. Backend is responsible for parsing.
+  std::map<std::string, std::string> backendSpecificHints;
 };
 
 /// Options relevant to Backends during compilation.
