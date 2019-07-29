@@ -990,7 +990,7 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     // Glow frees memory automatically.
     return llvm::Error::success();
   }
-  if (typeName == "StopGradient") {
+  if (typeName == "StopGradient" || typeName == "ScaleGradient") {
     NodeValue in;
     ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
     // Currently Caffe2 importer only supports inference.
