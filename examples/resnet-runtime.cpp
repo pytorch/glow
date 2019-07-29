@@ -56,7 +56,8 @@ llvm::cl::opt<std::string> tracePath("trace-path",
 llvm::cl::opt<std::string>
     backend("backend",
             llvm::cl::desc("Backend to use, e.g., Interpreter, CPU, OpenCL:"),
-            llvm::cl::Optional, llvm::cl::init("CPU"), llvm::cl::cat(category));
+            llvm::cl::Optional, llvm::cl::init("OpenCL"),
+            llvm::cl::cat(category));
 
 llvm::cl::opt<bool>
     autoInstrument("auto-instrument",
@@ -138,85 +139,87 @@ int main(int argc, char **argv) {
 
   std::unique_ptr<HostManager> hostManager =
       llvm::make_unique<HostManager>(std::move(configs));
+  hostManager.reset();
 
-  // If tracing is enabled, create a TraceContext to merge each runs events
-  // into.
-  if (!tracePath.empty()) {
-    traceContext = llvm::make_unique<TraceContext>(TraceLevel::STANDARD);
-  }
+  // // If tracing is enabled, create a TraceContext to merge each runs events
+  // // into.
+  // if (!tracePath.empty()) {
+  //   traceContext = llvm::make_unique<TraceContext>(TraceLevel::STANDARD);
+  // }
 
-  // Load model, create a context, and add to HostManager.
+  // // Load model, create a context, and add to HostManager.
 
-  std::vector<size_t> inputShape{1, 3, 224, 224};
+  // std::vector<size_t> inputShape{1, 3, 224, 224};
 
-  Placeholder *input;
-  PlaceholderList phList;
+  // Placeholder *input;
+  // PlaceholderList phList;
 
-  std::unique_ptr<Module> module = llvm::make_unique<Module>();
-  TypeRef inputType = module->uniqueType(ElemKind::FloatTy, inputShape);
-  input = loadResnet50Model(inputType, module.get(), 0);
-  phList = module->getPlaceholders();
-  CompilationContext cctx;
-  cctx.backendOpts.autoInstrument = autoInstrument;
-  EXIT_ON_ERR(hostManager->addNetwork(std::move(module), cctx,
-                                      /*saturateHost*/ true));
+  // std::unique_ptr<Module> module = llvm::make_unique<Module>();
+  // TypeRef inputType = module->uniqueType(ElemKind::FloatTy, inputShape);
+  // input = loadResnet50Model(inputType, module.get(), 0);
+  // phList = module->getPlaceholders();
+  // CompilationContext cctx;
+  // cctx.backendOpts.autoInstrument = autoInstrument;
+  // EXIT_ON_ERR(hostManager->addNetwork(std::move(module), cctx,
+  //                                     /*saturateHost*/ true));
 
-  LOG(INFO) << "Loading files from " << inputDirectory;
-  std::error_code code;
-  llvm::sys::fs::directory_iterator dirIt(inputDirectory, code);
-  if (code.value()) {
-    LOG(ERROR) << "Couldn't read from directory: " << inputDirectory
-               << " - code" << code.value() << "\n";
-    exit(code.value());
-  }
+  // LOG(INFO) << "Loading files from " << inputDirectory;
+  // std::error_code code;
+  // llvm::sys::fs::directory_iterator dirIt(inputDirectory, code);
+  // if (code.value()) {
+  //   LOG(ERROR) << "Couldn't read from directory: " << inputDirectory
+  //              << " - code" << code.value() << "\n";
+  //   exit(code.value());
+  // }
 
-  std::promise<void> finished;
+  // std::promise<void> finished;
 
-  size_t started = 0;
-  std::atomic<size_t> returned{0};
+  // size_t started = 0;
+  // std::atomic<size_t> returned{0};
 
-  // Run up to maxImages classifications.
-  unsigned int currDevice{0};
-  while (started++ < maxImages) {
-    if (code.value() != 0 || dirIt == llvm::sys::fs::directory_iterator()) {
-      started--;
-      returned += maxImages - started;
+  // // Run up to maxImages classifications.
+  // unsigned int currDevice{0};
+  // while (started++ < maxImages) {
+  //   if (code.value() != 0 || dirIt == llvm::sys::fs::directory_iterator()) {
+  //     started--;
+  //     returned += maxImages - started;
 
-      if (returned == maxImages) {
-        finished.set_value();
-      }
-      break;
-    }
+  //     if (returned == maxImages) {
+  //       finished.set_value();
+  //     }
+  //     break;
+  //   }
 
-    std::string path = dirIt->path();
+  //   std::string path = dirIt->path();
 
-    auto image = readPngImageAndPreprocess(
-        path, ImageNormalizationMode::k0to1, ImageChannelOrder::BGR,
-        ImageLayout::NCHW, imagenetNormMean, imagenetNormStd);
-    std::unique_ptr<ExecutionContext> context =
-        llvm::make_unique<ExecutionContext>();
-    context->setTraceContext(
-        llvm::make_unique<TraceContext>(TraceLevel::STANDARD));
+  //   auto image = readPngImageAndPreprocess(
+  //       path, ImageNormalizationMode::k0to1, ImageChannelOrder::BGR,
+  //       ImageLayout::NCHW, imagenetNormMean, imagenetNormStd);
+  //   std::unique_ptr<ExecutionContext> context =
+  //       llvm::make_unique<ExecutionContext>();
+  //   context->setTraceContext(
+  //       llvm::make_unique<TraceContext>(TraceLevel::STANDARD));
 
-    context->getPlaceholderBindings()->allocate(phList);
-    Tensor batch = image.getUnowned(inputShape);
-    updateInputPlaceholders(*(context->getPlaceholderBindings()), {input},
-                            {&batch});
+  //   context->getPlaceholderBindings()->allocate(phList);
+  //   Tensor batch = image.getUnowned(inputShape);
+  //   updateInputPlaceholders(*(context->getPlaceholderBindings()), {input},
+  //                           {&batch});
 
-    dispatchClassify(0, hostManager.get(), std::move(path), std::move(context),
-                     returned, finished);
+  //   dispatchClassify(0, hostManager.get(), std::move(path),
+  //   std::move(context),
+  //                    returned, finished);
 
-    dirIt.increment(code);
-    currDevice++;
-  }
+  //   dirIt.increment(code);
+  //   currDevice++;
+  // }
 
-  finished.get_future().wait();
+  // finished.get_future().wait();
 
-  LOG(INFO) << "Finished classifying " << started << " images.";
+  // LOG(INFO) << "Finished classifying " << started << " images.";
 
-  if (!tracePath.empty()) {
-    traceContext->dump(tracePath, "resnet-runtime");
-  }
+  // if (!tracePath.empty()) {
+  //   traceContext->dump(tracePath, "resnet-runtime");
+  // }
 
   return 0;
 }
