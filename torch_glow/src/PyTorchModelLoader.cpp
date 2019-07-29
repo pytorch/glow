@@ -116,6 +116,10 @@ PyTorchModelLoader::getSymbolsMapping() {
       {at::Symbol::fromQualString("aten::relu"), &PyTorchModelLoader::loadRelu},
       {at::Symbol::fromQualString("aten::relu_"),
        &PyTorchModelLoader::loadRelu},
+      {at::Symbol::fromQualString("aten::reciprocal"),
+       &PyTorchModelLoader::loadReciprocal},
+      {at::Symbol::fromQualString("aten::reciprocal_"),
+       &PyTorchModelLoader::loadReciprocal},
       {at::Symbol::fromQualString("aten::_convolution"),
        &PyTorchModelLoader::loadConvolution},
       {at::Symbol::fromQualString("aten::batch_norm"),
@@ -296,6 +300,17 @@ void PyTorchModelLoader::loadSqrt(const torch::jit::Node *ptNode) {
 
   glow::NodeValue input = getGlowNodeValue(inputs[0]);
   glow::PowNode *glowNode = F_.createPow("sqrt", input, /*exp=*/0.5);
+  addGlowNodeValue(outputs[0], glowNode->getResult());
+}
+
+void PyTorchModelLoader::loadReciprocal(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  assert(inputs.size() == 1);
+  assert(outputs.size() == 1);
+
+  glow::NodeValue input = getGlowNodeValue(inputs[0]);
+  glow::PowNode *glowNode = F_.createPow("reciprocal", input, /*exp=*/-1);
   addGlowNodeValue(outputs[0], glowNode->getResult());
 }
 
