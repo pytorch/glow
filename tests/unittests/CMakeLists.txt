@@ -83,7 +83,7 @@ target_link_libraries(Caffe2ImporterTest
                       PRIVATE
                         Graph
                         Importer
-                        ExecutionEngine
+                        ExecutionEngine2
                         gtest
                         TestMain)
 add_glow_test(NAME Caffe2ImporterTest
