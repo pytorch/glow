@@ -991,6 +991,7 @@ llvm::Error ONNXModelWriter::writeOCLConvolution(const OCLConvolutionNode *node,
   addValueAttribute(proto, "strides", node->getStrides());
   addValueAttribute(proto, "pads", node->getPads());
   addValueAttribute(proto, "group", node->getGroup());
+  addValueAttribute(proto, "dilation", node->getDilation());
 
   return writeAllWithNode(node->getName(), node, proto);
 }
