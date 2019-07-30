@@ -65,6 +65,17 @@ struct BackendInfo {
   size_t num = 0;
   /// The memory constraints for this backend.
   uint64_t memSize;
+  /// The following peakCompute, peakDramBw, peakSramBw, peakPCIeBw are from
+  /// DeviceInfo_. Available SRAM capacity in bytes.
+  uint64_t sramCapacity;
+  /// Peak compute on device in ops/second. Assumes all ops are in int8.
+  float peakCompute;
+  /// Peak memory bandwidth from DRAM on device in bytes/second.
+  float peakDramBw;
+  /// Peak memory bandwidth from SRAM on device in bytes/second.
+  float peakSramBw;
+  /// Peak ingress/egress PCI-E bandwidth from device in bytes/second.
+  float peakPCIeBw;
   /// Backend pointer.
   Backend *backend = nullptr;
   /// The non-supported nodes kind.

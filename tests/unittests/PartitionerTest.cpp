@@ -17,6 +17,7 @@
 #include "glow/ExecutionEngine/ExecutionEngine2.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
+#include "glow/Partitioner/PartitionerUtils.h"
 
 #include "gtest/gtest.h"
 
@@ -428,17 +429,6 @@ TEST_F(PartitionerTest, Basic1Roofline) {
     nodeNamesMap[&node] = node.getName();
   }
 
-  std::vector<DeviceInfo> devices = {
-      {3072, "Interpreter", "", "", 100, 10, 0.1, 1, 0.05},
-      {3072, "Interpreter", "", "", 100, 10, 0.1, 1, 0.05},
-      {3072, "Interpreter", "", "", 100, 10, 0.1, 1, 0.05}};
-  Partitioner myPartitioner(&EEP.getModule(), devices);
-
-  auto err = myPartitioner.Partition(cctx);
-  EXPECT_FALSE(errToBool(std::move(err)));
-
-  DAGListTy dagList = std::move(myPartitioner.getPartitionResult());
-
   // check compute costs
   std::unordered_map<std::string, float> expectedComputeTime{
       {"initial_sigmoid", 128},
@@ -460,38 +450,17 @@ TEST_F(PartitionerTest, Basic1Roofline) {
       {"fc_add_bias4", 96},
   };
 
+  BackendInfo backendInfo;
+  backendInfo.sramCapacity = 100;
+  backendInfo.peakCompute = 10;
+  backendInfo.peakDramBw = 0.1;
+  backendInfo.peakSramBw = 1;
+  backendInfo.peakPCIeBw = 0.05;
   for (auto const &p : nodeNamesMap) {
     auto *N = p.first;
-    EXPECT_EQ(myPartitioner.getComputeTime(N), expectedComputeTime[p.second]);
+    EXPECT_EQ(getNodeComputeTime(N, backendInfo),
+              expectedComputeTime[p.second]);
   }
-
-  // check memUsage
-  std::unordered_map<std::string, uint64_t> expectedMemUsage{
-      {"initial_sigmoid", 0},
-      {"left_sigmoid2", 0},
-      {"fc_add_bias3", 64},
-      {"right_sigmoid1", 0},
-      {"mul", 0},
-      {"fc_add_bias2", 32},
-      {"ret", 0},
-      {"fc_dot", 2176},
-      {"left_sigmoid1", 0},
-      {"fc_add_bias", 64},
-      {"fc_dot1", 1024},
-      {"right_sigmoid2", 0},
-      {"fc_add_bias1", 64},
-      {"fc_dot2", 512},
-      {"fc_dot3", 1024},
-      {"fc_dot4", 512},
-      {"fc_add_bias4", 32},
-  };
-  for (auto const &p : nodeNamesMap) {
-    auto *N = p.first;
-    EXPECT_EQ(myPartitioner.getMemUsage(N), expectedMemUsage[p.second]);
-  }
-
-  EXPECT_EQ(EEP.getModule().getFunctions().size(), 3);
-  EXPECT_EQ(dagList.size(), 1);
 }
 
 TEST_F(PartitionerTest, SelectRepFunc) {

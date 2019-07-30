@@ -16,7 +16,7 @@
 #ifndef GLOW_PARTITIONER_PARTITIONER_H
 #define GLOW_PARTITIONER_PARTITIONER_H
 
-#include "glow/Partitioner/PartitionerUtils.h"
+#include "glow/Partitioner/PartitionerTypes.h"
 #include "glow/Support/Error.h"
 
 namespace glow {
@@ -26,9 +26,6 @@ using namespace runtime;
 /// Given a module, partitions each of the its functions into multiple ones
 /// based on memory constraints and minimizes the communication cost.
 class Partitioner {
-  using MemUsageMap = std::unordered_map<Node *, uint64_t>;
-  using ComputeTimeMap = std::unordered_map<Node *, float>;
-
   /// The module that needs to be decomposed.
   Module *module_;
 
@@ -59,12 +56,6 @@ class Partitioner {
   /// Total memory (bytes) requested by one module.
   uint64_t memSize_;
 
-  /// The map of each operator and the corresponding memory size.
-  MemUsageMap memUsage_;
-
-  /// The map of each operator and the compute runtime.
-  ComputeTimeMap computeTime_;
-
   /// Flag to set if the Partitioner should attempt to saturate the host, and
   /// use all available devices.
   bool saturateHost_;
@@ -80,12 +71,6 @@ class Partitioner {
   /// Get the representative function (the one with the largest input) and
   /// update the memSize.
   static Function *selectRepFunc(Module *parent, uint64_t &memSize);
-
-  /// Get the minimal memory requirement for each op in the function \p F
-  void initOpMemUsage(Function *F);
-
-  /// Inititalize the minimal compute time for each op in the function \p F.
-  void initOpComputeTime(Function *F);
 
   /// After getting the initial partitions, adjust the partitions to minimize
   /// communication and computation cost.
@@ -180,20 +165,6 @@ public:
   /// a function family and they have the same partition, we only dump the one
   /// function's partition.
   void dumpDAG(llvm::StringRef dotFilename) const;
-
-  /// Get function for computeTime_
-  float getComputeTime(Node *N) const {
-    auto it = computeTime_.find(N);
-    assert(it != computeTime_.end());
-    return it == computeTime_.end() ? 0.0 : it->second;
-  }
-
-  /// Get function for memUsage_
-  uint64_t getMemUsage(Node *N) const {
-    auto it = memUsage_.find(N);
-    assert(it != memUsage_.end());
-    return it == memUsage_.end() ? 0 : it->second;
-  }
 };
 } // namespace glow
 #endif // GLOW_PARTITIONER_PARTITIONER_H
