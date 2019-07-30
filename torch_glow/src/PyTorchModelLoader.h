@@ -109,6 +109,9 @@ private:
   /// Load a PyTorch sqrt node.
   void loadSqrt(const torch::jit::Node *ptNode);
 
+  /// Load a PyTorch reciprocal node.
+  void loadReciprocal(const torch::jit::Node *ptNode);
+
   /// Load a PyTorch _convolution node.
   void loadConvolution(const torch::jit::Node *ptNode);
 
