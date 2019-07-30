@@ -38,8 +38,13 @@ void testLoadAndSaveONNXModel(const std::string &name) {
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
+  size_t irVer = 0, opsetVer = 0;
   llvm::Error err = llvm::Error::success();
-  ONNXModelLoader onnxLD(name, {}, {}, *F, &err);
+  {
+    ONNXModelLoader onnxLD(name, {}, {}, *F, &err);
+    irVer = onnxLD.getIrVersion();
+    opsetVer = onnxLD.getOpSetVersion();
+  }
 
   ASSERT_FALSE(handleErrors(std::move(err), [&name](const GlowErr &GE) {
     llvm::errs() << "ONNXModelLoader failed to load model: " << name << ": ";
@@ -48,9 +53,19 @@ void testLoadAndSaveONNXModel(const std::string &name) {
   }));
 
   std::string outputFilename(name + ".output.onnxtxt");
-  { ONNXModelWriter onnxWR(outputFilename, *F, 1, 1, &err, true); }
+  { ONNXModelWriter onnxWR(outputFilename, *F, irVer, opsetVer, &err, true); }
+
+  if (err) {
+    llvm::errs() << "ONNXModelWriter failed to write model: " << name << ".\n";
+    llvm::sys::fs::remove(outputFilename);
+    EXPECT_FALSE(err);
+  }
+
+  Function *R = mod.createFunction("reload");
+  { ONNXModelLoader onnxLD(outputFilename, {}, {}, *R, &err); }
   llvm::sys::fs::remove(outputFilename);
-  EXPECT_FALSE(err) << "file name: " << name;
+  EXPECT_FALSE(err) << "ONNXModelLoader failed to reload model: "
+                    << outputFilename;
 }
 } // namespace
 
@@ -62,9 +77,36 @@ TEST(exporter, onnxModels) {
        !code && dirIt != llvm::sys::fs::directory_iterator();
        dirIt.increment(code)) {
     auto name = dirIt->path();
-    if (name.find("preluInvalidBroadcastSlope.onnxtxt") != std::string::npos) {
+    if (name.find("/preluInvalidBroadcastSlope.onnxtxt") != std::string::npos ||
+        name.find("/padReflect.onnxtxt") != std::string::npos ||
+        name.find("/gatherConstantFolding.onnxtxt") != std::string::npos ||
+        name.find("/averagePool3D.onnxtxt") != std::string::npos ||
+        name.find("/sparseLengthsSum.onnxtxt") != std::string::npos ||
+        name.find("/constantOfShapeInt32Fail.onnxtxt") != std::string::npos ||
+        name.find("/padEdge.onnxtxt") != std::string::npos ||
+        name.find("/castToFloat.onnxtxt") != std::string::npos ||
+        name.find("/castToFloat16.onnxtxt") != std::string::npos ||
+        name.find("/castToInt64.onnxtxt") != std::string::npos ||
+        name.find("/castToInt32.onnxtxt") != std::string::npos ||
+        name.find("/Where.onnxtxt") != std::string::npos ||
+        name.find("/constantOfShapeInt64Fail.onnxtxt") != std::string::npos) {
+      // Ignore invalid ONNX files and graphs without nodes.
+      llvm::outs() << "Ignore invalid input files: " << name << "\n";
       continue;
     }
+    if (name.find("/constant.onnxtxt") != std::string::npos ||
+        name.find("/shape.onnxtxt") != std::string::npos ||
+        name.find("/sum1.onnxtxt") != std::string::npos) {
+      // Ignore invalid ONNX files and graphs without nodes.
+      llvm::outs() << "Ignore empty graph file: " << name << "\n";
+      continue;
+    }
+    if (name.find(".output.onnxtxt") != std::string::npos) {
+      // Ignore output files - debugging mode only.
+      llvm::outs() << "Ignore output file: " << name << "\n";
+      continue;
+    }
+
     testLoadAndSaveONNXModel(dirIt->path());
   }
 }

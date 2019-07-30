@@ -332,7 +332,7 @@ protected:
         inputs.push_back(G_.createExpandDims(opName, in, {0}));
       }
       ConcatNode *concat = G_.createConcat(opName, inputs, /* axis */ 0);
-      Node *node = G_.createBatchedReduceAdd(opName, concat, /* axis */ 0);
+      Node *node = G_.createBatchedReduceAdd(opName, concat, /* axis */ {0});
       RETURN_IF_ERR(addNodeAsOutput(op, node));
     }
     return llvm::Error::success();
