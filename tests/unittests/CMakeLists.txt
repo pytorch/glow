@@ -522,7 +522,7 @@ add_executable(TypeAToTypeBFunctionConverterTest
 target_link_libraries(TypeAToTypeBFunctionConverterTest
                       PRIVATE
                         Converter
-                        ExecutionEngine
+                        ExecutionEngine2
                         Graph
                         GraphOptimizer
                         gtest
