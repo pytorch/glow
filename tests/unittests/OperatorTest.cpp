@@ -4369,7 +4369,7 @@ TEST_P(OperatorTest, GroupDilatedConvolution) {
 
   ::glow::convertPlaceholdersToConstants(F_, bindings_,
                                          {input, S->getPlaceholder()});
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
 
   auto result = bindings_.get(S->getPlaceholder())->getHandle();
@@ -7824,7 +7824,7 @@ TEST_CONVERT_TO(int64_t, int64_t, ElemKind::Int64ITy, ElemKind::Int64ITy)
 template <typename SourceType, typename DestType>
 static void testConvertToAndBack(glow::PlaceholderBindings &bindings_,
                                  glow::Module &mod_, glow::Function *F_,
-                                 glow::ExecutionEngine &EE_, ElemKind STy,
+                                 glow::ExecutionEngine2 &EE_, ElemKind STy,
                                  ElemKind DTy, bool castIsNoOp) {
   // Input tensor in source type.
   size_t shape[] = {5, 3, 20};
@@ -7845,7 +7845,7 @@ static void testConvertToAndBack(glow::PlaceholderBindings &bindings_,
 
   // Compile and run the model, setting results in tensor backed by resultH.
   EXPECT_EQ(F_->getNodes().size(), 3);
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
   EXPECT_EQ(F_->getNodes().size(), size_t(castIsNoOp ? 1 : 3));
 
