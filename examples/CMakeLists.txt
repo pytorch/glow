@@ -14,7 +14,7 @@ add_executable(mnist
 target_link_libraries(mnist
                       PRIVATE
                         Backends
-                        ExecutionEngine
+                        ExecutionEngine2
                         Graph
                         Importer
                         IR
