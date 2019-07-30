@@ -1724,7 +1724,7 @@ OCLBackend::compileIR(std::unique_ptr<IRFunction> IR) const {
 
   MemoryAllocator allocator("GPU", 0xFFFFFFFF);
   runtime::RuntimeBundle bundle =
-      runtime::RuntimeBundle::create(*IR, allocator, allocator, allocator);
+      runtime::RuntimeBundle::create(*IR, allocator);
   std::unique_ptr<CompiledFunction> function =
       llvm::make_unique<OpenCLFunction>(std::move(IR), std::move(bundle),
                                         std::move(traceInfo));
@@ -1745,7 +1745,7 @@ OCLBackend::compile(Function *F, const BackendOptions &opts) const {
 
   MemoryAllocator allocator("GPU", 0xFFFFFFFF);
   runtime::RuntimeBundle bundle =
-      runtime::RuntimeBundle::create(*IR, allocator, allocator, allocator);
+      runtime::RuntimeBundle::create(*IR, allocator);
 
   if (opts.collectConstants) {
     bundle.collectConstants(F->getParent());
