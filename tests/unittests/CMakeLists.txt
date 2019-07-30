@@ -376,7 +376,7 @@ target_link_libraries(OnnxExporterTest
                         Graph
                         Importer
                         Exporter
-                        ExecutionEngine
+                        ExecutionEngine2
                         gtest
                         TestMain)
 add_glow_test(NAME OnnxExporterTest
