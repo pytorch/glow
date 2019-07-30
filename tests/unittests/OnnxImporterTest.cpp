@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #include "ImporterTestUtils.h"
-#include "glow/ExecutionEngine/ExecutionEngine.h"
+#include "glow/ExecutionEngine/ExecutionEngine2.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/Nodes.h"
 #include "glow/Graph/PlaceholderBindings.h"
@@ -146,7 +146,7 @@ bool checkConstFoldedOutput(std::string NetFilename,
 
   // It is expected that loading will fold the whole graph and output
   // nodes will become constants during the loading process.
-  ExecutionEngine EE;
+  ExecutionEngine2 EE;
   Module &mod = EE.getModule();
   Function *F = mod.createFunction("temp");
   ONNXModelLoader onnxLD(netFilename, {}, {}, *F);
@@ -173,7 +173,7 @@ importArithMultiBroadcastTest(std::string fileName,
                               llvm::ArrayRef<size_t> inputShape, bool multi,
                               int numLeftTile, int numRightTile,
                               const std::function<float(float, float)> &op) {
-  ExecutionEngine EE{};
+  ExecutionEngine2 EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -190,7 +190,7 @@ importArithMultiBroadcastTest(std::string fileName,
     ONNXModelLoader onnxLD(NetFilename, {"data"}, {&data.getType()}, *F);
     graphOutputVar = EXIT_ON_ERR(onnxLD.getSingleOutput());
     bindings.allocate(mod.getPlaceholders());
-    updateInputPlaceholdersByName(bindings, &mod, {"data"}, {&data});
+    updateInputPlaceholdersByName2(bindings, &mod, {"data"}, {&data});
   }
   // ONNX importer loads an arithmetic node and inserts:
   // - a Reshape node for each broadcasted operand
@@ -228,7 +228,7 @@ importArithMultiBroadcastTest(std::string fileName,
   }
 
   // Compile&run the graph, and check the output
-  EE.compile(CompilationMode::Infer, F);
+  EE.compile(CompilationMode::Infer);
   EE.run(bindings);
   auto result = bindings.get(graphOutputVar)->getHandle();
   std::vector<size_t> expectedDims = {1, 3, 4, 2};
@@ -258,7 +258,7 @@ importArithMultiBroadcastTest(std::string fileName,
 
 /// Test loading LeakyRelu op from an ONNX model.
 TEST(onnx, leakyRelu) {
-  ExecutionEngine EE{};
+  ExecutionEngine2 EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -286,7 +286,7 @@ TEST(onnx, leakyRelu) {
 
 /// Test Loading LeakyRelu op from an ONNX model with default alpha.
 TEST(onnx, leakyReluDefault) {
-  ExecutionEngine EE{};
+  ExecutionEngine2 EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -386,7 +386,7 @@ TEST(onnx, importDivUniBroadcastOp6Axis) {
 
 /// This tests reproduces issue #2135.
 TEST(onnx, importUniBroadcastMultiOutput) {
-  ExecutionEngine EE{};
+  ExecutionEngine2 EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -402,7 +402,7 @@ static void testEltwiseUnaryOpFloat(std::string fileName,
                                     llvm::ArrayRef<size_t> inputShape,
                                     std::string input_name, float delta,
                                     const std::function<float(float)> &op) {
-  ExecutionEngine EE{};
+  ExecutionEngine2 EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
   std::string NetFilename =
@@ -416,7 +416,8 @@ static void testEltwiseUnaryOpFloat(std::string fileName,
   auto *inTensor = bindings.allocate(PH);
   inTensor->getHandle().randomize(-10.0, 10.0, mod.getPRNG());
   // Compile&run the graph, and check the output
-  EE.compile(CompilationMode::Infer, F);
+  EE.compile(CompilationMode::Infer);
+  bindings.allocate(mod.getPlaceholders());
   EE.run(bindings);
   auto result = bindings.get(graphOutputVar)->getHandle();
   auto inHandle = inTensor->getHandle();
@@ -434,7 +435,7 @@ TEST(onnx, importExp) {
 static void testImportPRelu(std::string filename,
                             llvm::ArrayRef<size_t> inputShape,
                             std::vector<float> expectedSlope) {
-  ExecutionEngine EE{};
+  ExecutionEngine2 EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -451,11 +452,11 @@ static void testImportPRelu(std::string filename,
     ONNXModelLoader onnxLoader(NetFileName, {"data"}, {&data.getType()}, *F);
     graphOutputVar = EXIT_ON_ERR(onnxLoader.getSingleOutput());
     bindings.allocate(mod.getPlaceholders());
-    updateInputPlaceholdersByName(bindings, &mod, {"data"}, {&data});
+    updateInputPlaceholdersByName2(bindings, &mod, {"data"}, {&data});
   }
 
   // Compile&run the graph, and check the output.
-  EE.compile(CompilationMode::Infer, F);
+  EE.compile(CompilationMode::Infer);
   EE.run(bindings);
   auto dataH = bindings.get(bindings.getPlaceholderByName("data"))->getHandle();
   auto result = bindings.get(graphOutputVar)->getHandle();
@@ -493,7 +494,7 @@ TEST(onnx, importPReluBroadcastSlope) {
 
 /// Expects failure to load PRelu in case of invalid slope shape.
 TEST(onnx, importPReluInvalidBroadcastSlope) {
-  ExecutionEngine EE{};
+  ExecutionEngine2 EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -520,7 +521,7 @@ static void convTestHelper(std::string &filename,
                            const llvm::ArrayRef<size_t> expectedDims,
                            const llvm::ArrayRef<float> expectedValues) {
 
-  ExecutionEngine EE{};
+  ExecutionEngine2 EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -537,7 +538,7 @@ static void convTestHelper(std::string &filename,
     ONNXModelLoader onnxLD(NetFilename, {"data"}, {&data.getType()}, *F);
     graphOutputVar = EXIT_ON_ERR(onnxLD.getSingleOutput());
     bindings.allocate(mod.getPlaceholders());
-    updateInputPlaceholdersByName(bindings, &mod, {"data"}, {&data});
+    updateInputPlaceholdersByName2(bindings, &mod, {"data"}, {&data});
   }
 
   // ONNX importer loads a conv node and converts it to 4 ops:
@@ -566,7 +567,7 @@ static void convTestHelper(std::string &filename,
   EXPECT_TRUE(tInNode->getKind() == Kinded::Kind::TransposeNodeKind);
   EXPECT_TRUE(tFilterNode->getKind() == Kinded::Kind::TransposeNodeKind);
 
-  EE.compile(CompilationMode::Infer, F);
+  EE.compile(CompilationMode::Infer);
   EE.run(bindings);
   auto result = bindings.get(graphOutputVar)->getHandle();
   EXPECT_TRUE(result.dims() == expectedDims);
@@ -627,7 +628,7 @@ static void averagePoolTestHelper(std::string &filename,
                                   const llvm::ArrayRef<size_t> expectedDims,
                                   const llvm::ArrayRef<float> expectedValues) {
 
-  ExecutionEngine EE{};
+  ExecutionEngine2 EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -644,7 +645,7 @@ static void averagePoolTestHelper(std::string &filename,
     ONNXModelLoader onnxLD(NetFilename, {"x"}, {&data.getType()}, *F);
     graphOutputVar = EXIT_ON_ERR(onnxLD.getSingleOutput());
     bindings.allocate(mod.getPlaceholders());
-    updateInputPlaceholdersByName(bindings, &mod, {"x"}, {&data});
+    updateInputPlaceholdersByName2(bindings, &mod, {"x"}, {&data});
   }
 
   // ONNX importer loads a AveragePool node and converts it to 4 ops:
@@ -663,7 +664,7 @@ static void averagePoolTestHelper(std::string &filename,
 
   EXPECT_TRUE(tInNode->getKind() == Kinded::Kind::TransposeNodeKind);
 
-  EE.compile(CompilationMode::Infer, F);
+  EE.compile(CompilationMode::Infer);
   EE.run(bindings);
   auto result = bindings.get(graphOutputVar)->getHandle();
   EXPECT_TRUE(result.dims() == expectedDims);
@@ -707,7 +708,7 @@ TEST(onnx, importAveragePool2DAutoPadSameLower) {
 }
 
 TEST(onnx, importAveragePool3D) {
-  ExecutionEngine EE{};
+  ExecutionEngine2 EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -726,7 +727,7 @@ TEST(onnx, importAveragePool3D) {
 /// Test loading ReduceMean op from a ONNX model.
 /// Input shape is 4D, one dimension is reduced, and output shape is 3D.
 TEST(onnx, reduceMean4Dto3D) {
-  ExecutionEngine EE{};
+  ExecutionEngine2 EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -742,11 +743,11 @@ TEST(onnx, reduceMean4Dto3D) {
     output = EXIT_ON_ERR(onnxLD.getSingleOutput());
     bindings.allocate(mod.getPlaceholders());
 
-    updateInputPlaceholdersByName(bindings, &mod, {"x"}, {&x});
+    updateInputPlaceholdersByName2(bindings, &mod, {"x"}, {&x});
   }
 
   auto *res = bindings.get(output);
-  EE.compile(CompilationMode::Infer, F);
+  EE.compile(CompilationMode::Infer);
   EE.run(bindings);
 
   auto result = res->getHandle();
@@ -768,7 +769,7 @@ TEST(onnx, reduceMean4Dto3D) {
 /// Test loading ReduceMean op from a ONNX model.
 /// Input shape is 4D, one dimension is reduced, and output shape stays 4D.
 TEST(onnx, reduceMean4Dto4D) {
-  ExecutionEngine EE{};
+  ExecutionEngine2 EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -786,11 +787,11 @@ TEST(onnx, reduceMean4Dto4D) {
     output = EXIT_ON_ERR(onnxLD.getSingleOutput());
     bindings.allocate(mod.getPlaceholders());
 
-    updateInputPlaceholdersByName(bindings, &mod, {"x"}, {&x});
+    updateInputPlaceholdersByName2(bindings, &mod, {"x"}, {&x});
   }
 
   auto *res = bindings.get(output);
-  EE.compile(CompilationMode::Infer, F);
+  EE.compile(CompilationMode::Infer);
   EE.run(bindings);
 
   auto result = res->getHandle();
@@ -812,7 +813,7 @@ TEST(onnx, reduceMean4Dto4D) {
 /// Test loading ReduceSum op from a ONNX model.
 /// Input shape is 4D, one dimension is reduced, and output shape is 4D.
 TEST(onnx, reduceSum4D) {
-  ExecutionEngine EE{};
+  ExecutionEngine2 EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -830,11 +831,11 @@ TEST(onnx, reduceSum4D) {
     output = EXIT_ON_ERR(onnxLD.getSingleOutput());
     bindings.allocate(mod.getPlaceholders());
 
-    updateInputPlaceholdersByName(bindings, &mod, {"x"}, {&x});
+    updateInputPlaceholdersByName2(bindings, &mod, {"x"}, {&x});
   }
 
   auto *res = bindings.get(output);
-  EE.compile(CompilationMode::Infer, F);
+  EE.compile(CompilationMode::Infer);
   EE.run(bindings);
   auto result = res->getHandle();
   std::vector<size_t> expectedDims = {2, 2, 2, 1};
@@ -853,7 +854,7 @@ TEST(onnx, reduceSum4D) {
 /// Input shape is 4D, two dimensions are reduced, targeting ReduceMean
 /// optimization using AvgPool. Output shape is 4D.
 TEST(onnx, reduceMean2AvgPoolKeepDims) {
-  ExecutionEngine EE{};
+  ExecutionEngine2 EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -871,11 +872,11 @@ TEST(onnx, reduceMean2AvgPoolKeepDims) {
     output = EXIT_ON_ERR(onnxLD.getSingleOutput());
     bindings.allocate(mod.getPlaceholders());
 
-    updateInputPlaceholdersByName(bindings, &mod, {"x"}, {&x});
+    updateInputPlaceholdersByName2(bindings, &mod, {"x"}, {&x});
   }
 
   auto *res = bindings.get(output);
-  EE.compile(CompilationMode::Infer, F);
+  EE.compile(CompilationMode::Infer);
   EE.run(bindings);
 
   auto result = res->getHandle();
@@ -900,7 +901,7 @@ TEST(onnx, reduceMean2AvgPoolKeepDims) {
 /// Input shape is 4D, two dimensions are reduced, targeting ReduceMean
 /// optimization using AvgPool. Output shape is 2D.
 TEST(onnx, reduceMean2AvgPoolNoKeepDims) {
-  ExecutionEngine EE{};
+  ExecutionEngine2 EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -919,11 +920,11 @@ TEST(onnx, reduceMean2AvgPoolNoKeepDims) {
     output = EXIT_ON_ERR(onnxLD.getSingleOutput());
     bindings.allocate(mod.getPlaceholders());
 
-    updateInputPlaceholdersByName(bindings, &mod, {"x"}, {&x});
+    updateInputPlaceholdersByName2(bindings, &mod, {"x"}, {&x});
   }
 
   auto *res = bindings.get(output);
-  EE.compile(CompilationMode::Infer, F);
+  EE.compile(CompilationMode::Infer);
   EE.run(bindings);
 
   auto result = res->getHandle();
@@ -947,7 +948,7 @@ TEST(onnx, reduceMean2AvgPoolNoKeepDims) {
 
 /// Test loading SpaceToDepth op from an ONNX model.
 TEST(onnx, spaceToDepth) {
-  ExecutionEngine EE{};
+  ExecutionEngine2 EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -978,7 +979,7 @@ TEST(onnx, spaceToDepth) {
 /// Test loading clip op from an ONNX model.
 /// Test with arg min = 20.0 max = 60.0
 TEST(onnx, importClip) {
-  ExecutionEngine EE{};
+  ExecutionEngine2 EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -995,11 +996,11 @@ TEST(onnx, importClip) {
     output = EXIT_ON_ERR(onnxLD.getSingleOutput());
     bindings.allocate(mod.getPlaceholders());
 
-    updateInputPlaceholdersByName(bindings, &mod, {"x"}, {&x});
+    updateInputPlaceholdersByName2(bindings, &mod, {"x"}, {&x});
   }
 
   auto *res = bindings.get(output);
-  EE.compile(CompilationMode::Infer, F);
+  EE.compile(CompilationMode::Infer);
   EE.run(bindings);
 
   auto result = res->getHandle();
@@ -1018,7 +1019,7 @@ TEST(onnx, importClip) {
 
 /// Test loading BatchMatMul op from an ONNX model.
 TEST(onnx, importBatchMatMul) {
-  ExecutionEngine EE{};
+  ExecutionEngine2 EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
   std::string netFilename(GLOW_DATA_PATH
@@ -1038,11 +1039,11 @@ TEST(onnx, importBatchMatMul) {
                            {&inputs_0.getType(), &inputs_1.getType()}, *F);
     output = EXIT_ON_ERR(onnxLD.getSingleOutput());
     bindings.allocate(mod.getPlaceholders());
-    updateInputPlaceholdersByName(bindings, &mod, {"inputs_0", "inputs_1"},
-                                  {&inputs_0, &inputs_1});
+    updateInputPlaceholdersByName2(bindings, &mod, {"inputs_0", "inputs_1"},
+                                   {&inputs_0, &inputs_1});
   }
   auto *res = bindings.get(output);
-  EE.compile(CompilationMode::Infer, F);
+  EE.compile(CompilationMode::Infer);
   EE.run(bindings);
 
   auto result = res->getHandle();
@@ -1087,7 +1088,7 @@ TEST(onnx, importBatchMatMul) {
 
 /// Test loading BatchBoxCox op from an ONNX model.
 TEST(onnx, importBatchBoxCox) {
-  ExecutionEngine EE{};
+  ExecutionEngine2 EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -1124,13 +1125,13 @@ TEST(onnx, importBatchBoxCox) {
     output = EXIT_ON_ERR(onnxLD.getSingleOutput());
     bindings.allocate(mod.getPlaceholders());
 
-    updateInputPlaceholdersByName(bindings, &mod,
-                                  {"data", "lambda1", "lambda2"},
-                                  {&data, &lambda1, &lambda2});
+    updateInputPlaceholdersByName2(bindings, &mod,
+                                   {"data", "lambda1", "lambda2"},
+                                   {&data, &lambda1, &lambda2});
   }
 
   auto *res = bindings.get(output);
-  EE.compile(CompilationMode::Infer, F);
+  EE.compile(CompilationMode::Infer);
   EE.run(bindings);
 
   auto result = res->getHandle();
@@ -1168,7 +1169,7 @@ TEST(onnx, importBatchBoxCox) {
 
 /// Test loading DotProduct op from an ONNX model.
 TEST(onnx, importDotProduct) {
-  ExecutionEngine EE{};
+  ExecutionEngine2 EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -1198,7 +1199,7 @@ TEST(onnx, importDotProduct) {
 
 /// Test loading Sum with more than 2 inputs
 TEST(onnx, importSumN) {
-  ExecutionEngine EE{};
+  ExecutionEngine2 EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
   std::string netFilename(GLOW_DATA_PATH
@@ -1219,12 +1220,12 @@ TEST(onnx, importSumN) {
     output = EXIT_ON_ERR(onnxLD.getSingleOutput());
 
     bindings.allocate(mod.getPlaceholders());
-    updateInputPlaceholdersByName(bindings, &mod, {"i0", "i1", "i2"},
-                                  {&i0, &i1, &i2});
+    updateInputPlaceholdersByName2(bindings, &mod, {"i0", "i1", "i2"},
+                                   {&i0, &i1, &i2});
   }
 
   auto *res = bindings.get(output);
-  EE.compile(CompilationMode::Infer, F);
+  EE.compile(CompilationMode::Infer);
   EE.run(bindings);
 
   auto result = res->getHandle();
@@ -1259,7 +1260,7 @@ TEST(onnx, importSumN) {
 
 /// Test loading Sum with one input and one output
 TEST(onnx, importSum1) {
-  ExecutionEngine EE{};
+  ExecutionEngine2 EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
   std::string netFilename(GLOW_DATA_PATH
@@ -1275,11 +1276,11 @@ TEST(onnx, importSum1) {
     output = EXIT_ON_ERR(onnxLD.getSingleOutput());
 
     bindings.allocate(mod.getPlaceholders());
-    updateInputPlaceholdersByName(bindings, &mod, {"x"}, {&x});
+    updateInputPlaceholdersByName2(bindings, &mod, {"x"}, {&x});
   }
 
   auto *res = bindings.get(output);
-  EE.compile(CompilationMode::Infer, F);
+  EE.compile(CompilationMode::Infer);
   EE.run(bindings);
 
   auto result = res->getHandle();
@@ -1304,7 +1305,7 @@ TEST(onnx, importSum1) {
 
 /// Test loading LengthsToRanges from an ONNX model.
 TEST(onnx, importLengthsToRanges) {
-  ExecutionEngine EE;
+  ExecutionEngine2 EE;
   auto &mod = EE.getModule();
   auto *F = mod.createFunction("main");
   std::string netFilename(GLOW_DATA_PATH
@@ -1327,7 +1328,7 @@ TEST(onnx, importLengthsToRanges) {
 /// Test loading ReplaceNaN op from an ONNX model.
 /// Test with arg value = 1.0.
 TEST(onnx, importReplaceNaN) {
-  ExecutionEngine EE{};
+  ExecutionEngine2 EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -1342,7 +1343,7 @@ TEST(onnx, importReplaceNaN) {
     ONNXModelLoader onnxLD(netFilename, {"x"}, {&x.getType()}, *F);
     output = EXIT_ON_ERR(onnxLD.getSingleOutput());
     bindings.allocate(mod.getPlaceholders());
-    updateInputPlaceholdersByName(bindings, &mod, {"x"}, {&x});
+    updateInputPlaceholdersByName2(bindings, &mod, {"x"}, {&x});
   }
 
   // Verify structure: Input -> ReplaceNaN -> Save.
@@ -1361,7 +1362,7 @@ TEST(onnx, importReplaceNaN) {
 
 /// Test loading SparseToDense op from an ONNX model.
 TEST(onnx, importSparseToDense) {
-  ExecutionEngine EE{};
+  ExecutionEngine2 EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -1406,7 +1407,7 @@ TEST(onnx, importSparseToDense) {
 
 /// Test loading SparseLengthsSum from an ONNX model.
 TEST(onnx, importSparseLengthsSum) {
-  ExecutionEngine EE;
+  ExecutionEngine2 EE;
   auto &mod = EE.getModule();
   auto *F = mod.createFunction("main");
   std::string netFilename(GLOW_DATA_PATH
@@ -1435,7 +1436,7 @@ TEST(onnx, importSparseLengthsSum) {
 
 /// Test loading LengthsSum from an ONNX model.
 TEST(onnx, importLengthsSum) {
-  ExecutionEngine EE;
+  ExecutionEngine2 EE;
   auto &mod = EE.getModule();
   auto *F = mod.createFunction("main");
   std::string netFilename(GLOW_DATA_PATH
@@ -1460,7 +1461,7 @@ TEST(onnx, importLengthsSum) {
 
 /// Test loading a FCTransposed node: I * W + B, where I is need to be flatten.
 TEST(onnx, FCTransposedWithFlatten) {
-  ExecutionEngine EE{};
+  ExecutionEngine2 EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -1489,7 +1490,7 @@ TEST(onnx, FCTransposedWithFlatten) {
 
 /// Test loading Constant from an ONNX model.
 TEST(onnx, constant) {
-  ExecutionEngine EE;
+  ExecutionEngine2 EE;
   auto &mod = EE.getModule();
   auto *F = mod.createFunction("main");
   std::string netFilename(GLOW_DATA_PATH
@@ -1508,7 +1509,7 @@ TEST(onnx, constant) {
 /// Test loading of testConstantOfShape.
 template <class ElemType>
 static void testConstantOfShape(std::string fileName, ElemType ref) {
-  ExecutionEngine EE;
+  ExecutionEngine2 EE;
   auto &mod = EE.getModule();
   auto *F = mod.createFunction("main");
   PlaceholderBindings bindings;
@@ -1525,7 +1526,8 @@ static void testConstantOfShape(std::string fileName, ElemType ref) {
   ASSERT_EQ(mod.getPlaceholders().size(), 1);
   ASSERT_EQ(F->getNodes().size(), 2);
 
-  EE.compile(CompilationMode::Infer, F);
+  EE.compile(CompilationMode::Infer);
+  bindings.allocate(mod.getPlaceholders());
   EE.run(bindings);
 
   auto result = bindings.get(output)->getHandle<ElemType>();
@@ -1538,7 +1540,7 @@ static void testConstantOfShape(std::string fileName, ElemType ref) {
 /// Test loading of testConstantOfShape.
 template <class ElemType>
 static void testConstantOfShapeFailure(std::string fileName) {
-  ExecutionEngine EE;
+  ExecutionEngine2 EE;
   auto &mod = EE.getModule();
   auto *F = mod.createFunction("main");
   std::string netFilename =
@@ -1568,7 +1570,7 @@ TEST(onnx, importConstantOfShapeInt32LossFailure) {
 
 /// Test loading ExpandDims from an ONNX model.
 TEST(onnx, expandDims) {
-  ExecutionEngine EE;
+  ExecutionEngine2 EE;
   auto &mod = EE.getModule();
   auto *F = mod.createFunction("main");
   std::string netFilename(GLOW_DATA_PATH
@@ -1591,7 +1593,7 @@ TEST(onnx, expandDims) {
 
 /// Test loading Gather from an ONNX model.
 TEST(onnx, gather) {
-  ExecutionEngine EE;
+  ExecutionEngine2 EE;
   auto &mod = EE.getModule();
   std::string netFilename(GLOW_DATA_PATH
                           "tests/models/onnxModels/gather.onnxtxt");
@@ -1617,7 +1619,7 @@ TEST(onnx, gather) {
 
 /// Test loading GatherRanges from an ONNX model.
 TEST(onnx, gatherRanges) {
-  ExecutionEngine EE;
+  ExecutionEngine2 EE;
   auto &mod = EE.getModule();
   std::string netFilename(GLOW_DATA_PATH
                           "tests/models/onnxModels/gatherranges.onnxtxt");
@@ -1647,7 +1649,7 @@ TEST(onnx, gatherRanges) {
 TEST(onnx, gatherOpConstantFoldingAndReshape) {
   // This test verifies that Gather gets constant-folded, so that the argument
   // of the reshape becomes constant.
-  ExecutionEngine EE;
+  ExecutionEngine2 EE;
   auto &mod = EE.getModule();
   std::string netFilename(
       GLOW_DATA_PATH "tests/models/onnxModels/gatherConstantFolding.onnxtxt");
@@ -1661,7 +1663,7 @@ TEST(onnx, gatherOpConstantFoldingAndReshape) {
     output = EXIT_ON_ERR(onnxLD.getSingleOutput());
     bindings.allocate(mod.getPlaceholders());
   }
-  EE.compile(CompilationMode::Infer, F);
+  EE.compile(CompilationMode::Infer);
   EE.run(bindings);
   setConstantFoldLoaderOpsFlag(false);
 
@@ -1674,7 +1676,7 @@ static void importSliceTest(std::string fileName, const char *inputName,
                             const llvm::ArrayRef<size_t> inputShape,
                             const llvm::ArrayRef<size_t> starts,
                             const llvm::ArrayRef<size_t> outputShape) {
-  ExecutionEngine EE{};
+  ExecutionEngine2 EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -1691,7 +1693,7 @@ static void importSliceTest(std::string fileName, const char *inputName,
     ONNXModelLoader onnxLD(NetFilename, {inputName}, {&data.getType()}, *F);
     graphOutputVar = EXIT_ON_ERR(onnxLD.getSingleOutput());
     bindings.allocate(mod.getPlaceholders());
-    updateInputPlaceholdersByName(bindings, &mod, {inputName}, {&data});
+    updateInputPlaceholdersByName2(bindings, &mod, {inputName}, {&data});
   }
 
   // ONNX importer loads an Slice operator and adds to the IR:
@@ -1704,7 +1706,7 @@ static void importSliceTest(std::string fileName, const char *inputName,
   EXPECT_NE(nullptr, sliceNode);
 
   // Compile&run the graph, and check the output.
-  EE.compile(CompilationMode::Infer, F);
+  EE.compile(CompilationMode::Infer);
   EE.run(bindings);
   auto result = bindings.get(graphOutputVar)->getHandle();
   EXPECT_TRUE(result.dims().vec() == outputShape.vec());
@@ -1770,7 +1772,7 @@ TEST(onnx, importSliceNoAxes) {
 static void importCast(llvm::StringRef fileName, llvm::StringRef inputName,
                        const llvm::ArrayRef<size_t> inputShape,
                        ElemKind outputKind) {
-  ExecutionEngine EE{};
+  ExecutionEngine2 EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -1786,7 +1788,7 @@ static void importCast(llvm::StringRef fileName, llvm::StringRef inputName,
                            {&data.getType()}, *F);
     graphOutputVar = EXIT_ON_ERR(onnxLD.getSingleOutput());
     bindings.allocate(mod.getPlaceholders());
-    updateInputPlaceholdersByName(bindings, &mod, {inputName}, {&data});
+    updateInputPlaceholdersByName2(bindings, &mod, {inputName}, {&data});
   }
 
   // ONNX importer loads a Cast operator and adds to the IR:
@@ -1817,7 +1819,7 @@ TEST(onnx, importCastToInt64) {
 }
 
 TEST(onnx, cast_32_64) {
-  ExecutionEngine EE{};
+  ExecutionEngine2 EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -1838,10 +1840,10 @@ TEST(onnx, cast_32_64) {
     ONNXModelLoader onnxLD(netFilename, {"input"}, {&data.getType()}, *F);
     graphOutputVar = EXIT_ON_ERR(onnxLD.getSingleOutput());
     bindings.allocate(mod.getPlaceholders());
-    updateInputPlaceholdersByName(bindings, &mod, {"input"}, {&data});
+    updateInputPlaceholdersByName2(bindings, &mod, {"input"}, {&data});
   }
 
-  EE.compile(CompilationMode::Infer, F);
+  EE.compile(CompilationMode::Infer);
   EE.run(bindings);
   // Make sure that the optimizer did not eliminate float->int casts. They are
   // not NOOP. Conversions int32 -> int64 -> int32 are always NOOP, so they can
@@ -1862,7 +1864,7 @@ static void importPad(std::string fileName, const char *inputName,
                       const llvm::ArrayRef<ssize_t> ends, PaddingMode mode,
                       float value, bool testOutput,
                       bool expectLoadError = false) {
-  ExecutionEngine EE{};
+  ExecutionEngine2 EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -1886,7 +1888,7 @@ static void importPad(std::string fileName, const char *inputName,
     ONNXModelLoader onnxLD(NetFilename, {inputName}, {&data.getType()}, *F);
     graphOutputVar = EXIT_ON_ERR(onnxLD.getSingleOutput());
     bindings.allocate(mod.getPlaceholders());
-    updateInputPlaceholdersByName(bindings, &mod, {inputName}, {&data});
+    updateInputPlaceholdersByName2(bindings, &mod, {inputName}, {&data});
   }
 
   // ONNX importer loads a Pad operator and adds to the IR:
@@ -1915,7 +1917,7 @@ static void importPad(std::string fileName, const char *inputName,
   // We just consider this test case.
   if (testOutput && mode == PaddingMode::CONSTANT) {
     // Compile&run the graph, and check the output.
-    EE.compile(CompilationMode::Infer, F);
+    EE.compile(CompilationMode::Infer);
     EE.run(bindings);
     auto result = bindings.get(graphOutputVar)->getHandle();
     EXPECT_TRUE(result.dims().vec() == expectedOutputShape);
@@ -1986,7 +1988,7 @@ TEST(onnx, importPadConstantPositive) {
 /// optional outputs while not using them in the model should not make the
 /// import fail.
 TEST(onnx, batchNormPR2304) {
-  ExecutionEngine EE;
+  ExecutionEngine2 EE;
   auto &mod = EE.getModule();
   std::string netFilename(GLOW_DATA_PATH
                           "tests/models/onnxModels/batchNormPR2304.onnxtxt");
@@ -2010,7 +2012,7 @@ TEST(onnx, batchNormPR2304) {
 
 /// Test constructor for auto loading inputs case.
 TEST(onnx, autoLoadInputs) {
-  ExecutionEngine EE;
+  ExecutionEngine2 EE;
   auto &mod = EE.getModule();
   std::string netFilename(GLOW_DATA_PATH
                           "tests/models/onnxModels/batchNormPR2304.onnxtxt");
@@ -2024,7 +2026,7 @@ TEST(onnx, autoLoadInputs) {
 }
 
 TEST(onnx, shape) {
-  ExecutionEngine EE{};
+  ExecutionEngine2 EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -2040,11 +2042,11 @@ TEST(onnx, shape) {
     ONNXModelLoader onnxLD(netFilename, {"input"}, {&x.getType()}, *F);
     output = EXIT_ON_ERR(onnxLD.getSingleOutput());
     bindings.allocate(mod.getPlaceholders());
-    updateInputPlaceholdersByName(bindings, &mod, {"input"}, {&x});
+    updateInputPlaceholdersByName2(bindings, &mod, {"input"}, {&x});
   }
 
   auto *res = bindings.get(output);
-  EE.compile(CompilationMode::Infer, F);
+  EE.compile(CompilationMode::Infer);
   EE.run(bindings);
 
   auto result = res->getHandle<int64_t>();
@@ -2062,7 +2064,7 @@ TEST(onnx, shape) {
 }
 
 TEST(onnx, tile) {
-  ExecutionEngine EE;
+  ExecutionEngine2 EE;
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -2078,11 +2080,11 @@ TEST(onnx, tile) {
     ONNXModelLoader onnxLD(netFilename, {"input"}, {&x.getType()}, *F);
     output = EXIT_ON_ERR(onnxLD.getSingleOutput());
     bindings.allocate(mod.getPlaceholders());
-    updateInputPlaceholdersByName(bindings, &mod, {"input"}, {&x});
+    updateInputPlaceholdersByName2(bindings, &mod, {"input"}, {&x});
   }
 
   auto *res = bindings.get(output);
-  EE.compile(CompilationMode::Infer, F);
+  EE.compile(CompilationMode::Infer);
   EE.run(bindings);
 
   auto result = res->getHandle();
@@ -2101,7 +2103,7 @@ TEST(onnx, tile) {
 }
 
 TEST(onnx, topK) {
-  ExecutionEngine EE{};
+  ExecutionEngine2 EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -2119,13 +2121,13 @@ TEST(onnx, topK) {
     output = EXIT_ON_ERR(onnxLD.getOutputByName("topscores"));
     index = EXIT_ON_ERR(onnxLD.getOutputByName("topindices"));
     bindings.allocate(mod.getPlaceholders());
-    updateInputPlaceholdersByName(bindings, &mod, {"scores"}, {&x});
+    updateInputPlaceholdersByName2(bindings, &mod, {"scores"}, {&x});
   }
 
   auto *outputT = bindings.get(output);
   auto *indexT = bindings.get(index);
 
-  EE.compile(CompilationMode::Infer, F);
+  EE.compile(CompilationMode::Infer);
   EE.run(bindings);
 
   auto outputH = outputT->getHandle();
@@ -2152,7 +2154,7 @@ TEST(onnx, topK) {
 }
 
 TEST(onnx, importMaxPoolWithArgmax) {
-  ExecutionEngine EE;
+  ExecutionEngine2 EE;
   auto &mod = EE.getModule();
   std::string netFilename(GLOW_DATA_PATH
                           "tests/models/onnxModels/maxPoolWithArgmax.onnxtxt");
@@ -2209,10 +2211,10 @@ TEST(onnx, importMaxPoolWithArgmax) {
     resultPH = EXIT_ON_ERR(onnxLD.getOutputByName("result"));
     indicesPH = EXIT_ON_ERR(onnxLD.getOutputByName("indices"));
     bindings.allocate(mod.getPlaceholders());
-    updateInputPlaceholdersByName(bindings, &mod, {"input"}, {&inputTensor});
+    updateInputPlaceholdersByName2(bindings, &mod, {"input"}, {&inputTensor});
   }
 
-  EE.compile(CompilationMode::Infer, F);
+  EE.compile(CompilationMode::Infer);
   EE.run(bindings);
 
   auto result = bindings.get(resultPH)->getHandle();
@@ -2234,7 +2236,7 @@ TEST(onnx, importMaxPoolWithArgmax) {
 }
 
 TEST(onnx, importWhere) {
-  ExecutionEngine EE{};
+  ExecutionEngine2 EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
