@@ -21,7 +21,7 @@
 
 static llvm::cl::OptionCategory
     InterpreterBackendCat("Glow Interpreter Backend Options");
-llvm::cl::opt<unsigned> interpreterMaxMem(
+static llvm::cl::opt<unsigned> interpreterMaxMem(
     "interpreter-memory",
     llvm::cl::desc("Interpreter DeviceManager maximum memory in kilobytes"),
     llvm::cl::init(0), llvm::cl::cat(InterpreterBackendCat));
