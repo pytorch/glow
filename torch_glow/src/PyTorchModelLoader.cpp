@@ -129,6 +129,11 @@ PyTorchModelLoader::getSymbolsMapping() {
       {at::Symbol::fromQualString("aten::t_"),
        &PyTorchModelLoader::loadTranspose},
       {at::Symbol::fromQualString("aten::min"), &PyTorchModelLoader::loadMin},
+      {at::Symbol::fromQualString("aten::max"), &PyTorchModelLoader::loadMax},
+      {at::Symbol::fromQualString("aten::exp"), &PyTorchModelLoader::loadExp},
+      {at::Symbol::fromQualString("aten::sqrt"), &PyTorchModelLoader::loadSqrt},
+      {at::Symbol::fromQualString("aten::sqrt_"),
+       &PyTorchModelLoader::loadSqrt},
   };
 
   return symbolLoaderMapping;
