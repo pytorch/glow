@@ -1942,6 +1942,30 @@ SpaceToDepthNode *Function::createSpaceToDepth(llvm::StringRef name,
   return addNode(new SpaceToDepthNode(name, outTy, input, blockSize));
 }
 
+ResizeNearestNode *Function::createResizeNearest(llvm::StringRef name,
+                                                 NodeValue input,
+                                                 float heightScale,
+                                                 float widthScale) {
+
+  auto inputDim = input.dims();
+  DCHECK_EQ(inputDim.size(), 4)
+      << "Dimension size: " << inputDim.size() << ", size of 4 is expected.";
+  DCHECK_GT(heightScale, 0.0) << "Height scale: " << heightScale
+                              << ", Scale larger than 0 is expected.";
+  DCHECK_GT(widthScale, 0.0)
+      << "Width scale: " << widthScale << ", Scale larger than 0 is expected.";
+  auto newH = size_t(std::floor(inputDim[1] * heightScale));
+  DCHECK_GT(newH, 0) << "Scaled height is " << newH
+                     << ", Scaled value needs to be larger than 0.";
+  auto newW = size_t(std::floor(inputDim[2] * widthScale));
+  DCHECK_GT(newW, 0) << "Scaled width is " << newW
+                     << ", Scaled value needs to be larger than 0.";
+  std::vector<size_t> newDim = {inputDim[0], newH, newW, inputDim[3]};
+  auto outTy = getParent()->uniqueTypeWithNewShape(input.getType(), newDim);
+  return addNode(
+      new ResizeNearestNode(name, outTy, input, heightScale, widthScale));
+}
+
 QuantizeNode *Function::createQuantize(llvm::StringRef name, NodeValue input,
                                        TypeRef outTy) {
   assert(input.getType()->isFPType() && "Input must be a floating type");

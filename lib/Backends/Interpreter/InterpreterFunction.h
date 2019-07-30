@@ -195,6 +195,9 @@ private:
   template <typename ElemTy>
   void fwdSpaceToDepthInstImpl(const glow::SpaceToDepthInst *I);
 
+  template <typename ElemTy>
+  void fwdResizeNearestInstImpl(const ResizeNearestInst *I);
+
   template <typename ElemTy> void fwdSigmoidInstFloatImpl(const SigmoidInst *I);
 
   template <typename ElemTy> void fwdTanhInstFloatImpl(const TanhInst *I);

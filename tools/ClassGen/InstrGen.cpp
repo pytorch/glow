@@ -590,6 +590,14 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
       .autoIRGen();
 
+  BB.newInstr("ResizeNearest")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .addMember(MemberType::Float, "HeightScale")
+      .addMember(MemberType::Float, "WidthScale")
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
+      .autoIRGen();
+
   //===--------------------------------------------------------------------===//
   //             Instructions used for debugging/profiling/printing
   //===--------------------------------------------------------------------===//

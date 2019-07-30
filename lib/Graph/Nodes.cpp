@@ -1366,6 +1366,37 @@ bool SpaceToDepthNode::verify() const {
   return sameType && dimTransform;
 }
 
+bool ResizeNearestNode::verify() const {
+  auto input = getInput();
+  auto result = getResult();
+  auto inputDims = input.dims();
+  auto outputDims = result.dims();
+
+  bool isValid = checkTypeIgnoreShape(input, result, this);
+  isValid &= expectCompareTrue("Input must be a 4D tensor", inputDims.size(),
+                               size_t(4), this);
+  isValid &= expectCompareTrue("Output must be a 4D tensor", outputDims.size(),
+                               size_t(4), this);
+  isValid &= expectCompareTrue("Batch size must be the same", inputDims[0],
+                               outputDims[0], this);
+  isValid &= expectCompareTrue("Depth must be the same", inputDims[3],
+                               outputDims[0], this);
+  isValid &= expectCompareTrue(
+      "Unexpected output height",
+      size_t(std::floor(inputDims[1] * getHeightScale())), outputDims[1], this);
+  isValid &= expectCompareTrue(
+      "Unexpected output width",
+      size_t(std::floor(inputDims[2] * getWidthScale())), outputDims[2], this);
+  isValid &=
+      expectCompareTrue("Invalid height scale", getHeightScale(), float(0.0),
+                        this, CompareOperatorGreaterThan<float>());
+  isValid &=
+      expectCompareTrue("Invalid width scale", getWidthScale(), float(0.0),
+                        this, CompareOperatorGreaterThan<float>());
+
+  return isValid;
+}
+
 bool SaveNode::verify() const {
   return checkSameType(getInput(), getOutput(), this);
 }

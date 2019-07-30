@@ -765,6 +765,33 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     return llvm::Error::success();
   }
 
+  if (typeName == "ResizeNearest") {
+    NodeValue in;
+    ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
+
+    std::string order = "NCHW";
+    if (dict.count("order")) {
+      ASSIGN_VALUE_OR_RETURN_ERR(order, loadStr(dict["order"]));
+    }
+    // We expect the input to be NHWC.
+    NodeValue finalIn;
+    if (order == "NCHW") {
+      finalIn = G_.createTranspose(opName, in, NCHW2NHWC)->getResult();
+    } else {
+      finalIn = in;
+    }
+
+    float heightScale;
+    ASSIGN_VALUE_OR_RETURN_ERR(heightScale, loadFloat(dict["height_scale"]));
+    float widthScale;
+    ASSIGN_VALUE_OR_RETURN_ERR(widthScale, loadFloat(dict["width_scale"]));
+
+    auto *node =
+        G_.createResizeNearest(opName, finalIn, heightScale, widthScale);
+    RETURN_IF_ERR(addNodeAsOutput(op, node));
+    return llvm::Error::success();
+  }
+
   if (typeName == "Concat") {
     const unsigned numInputs = op.input_size();
     llvm::SmallVector<NodeValue, 4> inputs;

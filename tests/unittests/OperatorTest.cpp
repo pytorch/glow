@@ -598,6 +598,94 @@ TEST_P(OperatorTest, spaceToDepth_block2_Float) {
   testSpaceToDepth<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy);
 }
 
+/// Helper to test ResizeNearest using \p DTy.
+template <typename DataType>
+static void testResizeNearest(glow::PlaceholderBindings &bindings,
+                              glow::Module &mod, glow::Function *F,
+                              glow::ExecutionEngine2 &EE, ElemKind DTy) {
+  auto *input = createPlaceholderConditionallyQuantized(mod, DTy, {1, 2, 2, 1},
+                                                        "input", false);
+  bindings.allocate(input)->getHandle<DataType>() = {2, 4, 8, 16};
+
+  auto heightScaleUp = 2.0f;
+  auto widthScaleUp = 1.5f;
+
+  auto *resizeNearestUp = F->createResizeNearest("resizeNearestUp", input,
+                                                 heightScaleUp, widthScaleUp);
+  auto *saveUp = F->createSave("saveUp", resizeNearestUp);
+  auto *resultUp = bindings.allocate(saveUp->getPlaceholder());
+
+  auto heightScaleDown = 0.9f;
+  auto widthScaleDown = 0.6;
+
+  auto *resizeNearestDown = F->createResizeNearest(
+      "resizeNearestDown", input, heightScaleDown, widthScaleDown);
+  auto *saveDown = F->createSave("saveDown", resizeNearestDown);
+  auto *resultDown = bindings.allocate(saveDown->getPlaceholder());
+
+  ::glow::convertPlaceholdersToConstants(
+      F, bindings,
+      {input, saveUp->getPlaceholder(), saveDown->getPlaceholder()});
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  auto resultUpH = resultUp->getHandle<DataType>();
+  std::vector<size_t> expectedDimsUp = {1, 4, 3, 1};
+  ASSERT_TRUE(resultUpH.dims().vec() == expectedDimsUp);
+
+  EXPECT_EQ(resultUpH.at({0, 0, 0, 0}), static_cast<DataType>(2));
+  EXPECT_EQ(resultUpH.at({0, 0, 1, 0}), static_cast<DataType>(2));
+  EXPECT_EQ(resultUpH.at({0, 0, 2, 0}), static_cast<DataType>(4));
+
+  EXPECT_EQ(resultUpH.at({0, 1, 0, 0}), static_cast<DataType>(2));
+  EXPECT_EQ(resultUpH.at({0, 1, 1, 0}), static_cast<DataType>(2));
+  EXPECT_EQ(resultUpH.at({0, 1, 2, 0}), static_cast<DataType>(4));
+
+  EXPECT_EQ(resultUpH.at({0, 2, 0, 0}), static_cast<DataType>(8));
+  EXPECT_EQ(resultUpH.at({0, 2, 1, 0}), static_cast<DataType>(8));
+  EXPECT_EQ(resultUpH.at({0, 2, 2, 0}), static_cast<DataType>(16));
+
+  EXPECT_EQ(resultUpH.at({0, 3, 0, 0}), static_cast<DataType>(8));
+  EXPECT_EQ(resultUpH.at({0, 3, 1, 0}), static_cast<DataType>(8));
+  EXPECT_EQ(resultUpH.at({0, 3, 2, 0}), static_cast<DataType>(16));
+
+  auto resultDownH = resultDown->getHandle<DataType>();
+  std::vector<size_t> expectedDimsDown = {1, 1, 1, 1};
+  ASSERT_TRUE(resultDownH.dims().vec() == expectedDimsDown);
+  EXPECT_EQ(resultDownH.at({0, 0, 0, 0}), static_cast<DataType>(2));
+}
+
+/// Verify that the ResizeNearest operator works correctly for Float.
+TEST_P(OperatorTest, ResizeNearest_Float) {
+  ENABLED_BACKENDS(Interpreter);
+  testResizeNearest<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy);
+}
+
+/// Verify that the ResizeNearest operator works correctly for Float16.
+TEST_P(OperatorTest, ResizeNearest_Float16) {
+  ENABLED_BACKENDS(Interpreter);
+  testResizeNearest<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty);
+}
+
+/// Verify that the ResizeNearest operator works correctly for Int8Q.
+TEST_P(OperatorTest, ResizeNearest_Int8) {
+  ENABLED_BACKENDS(Interpreter);
+  testResizeNearest<int8_t>(bindings_, mod_, F_, EE_, ElemKind::Int8QTy);
+}
+
+/// Verify that the ResizeNearest operator works correctly for Int16Q.
+TEST_P(OperatorTest, ResizeNearest_Int16) {
+  ENABLED_BACKENDS(Interpreter);
+  testResizeNearest<int16_t>(bindings_, mod_, F_, EE_, ElemKind::Int16QTy);
+}
+
+/// Verify that the ResizeNearest operator works correctly for Int32Q.
+TEST_P(OperatorTest, ResizeNearest_Int32) {
+  ENABLED_BACKENDS(Interpreter);
+  testResizeNearest<int32_t>(bindings_, mod_, F_, EE_, ElemKind::Int32QTy);
+}
+
 TEST_P(OperatorTest, pow) {
   ENABLED_BACKENDS(Interpreter, CPU, OpenCL);
 
