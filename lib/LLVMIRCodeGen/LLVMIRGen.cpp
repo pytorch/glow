@@ -1343,6 +1343,37 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
     break;
   }
 
+  case Kinded::Kind::ModuloInstKind: {
+    auto *MI = cast<ModuloInst>(I);
+    auto *dest = MI->getDest();
+    auto *src = MI->getSrc();
+    auto *destPtr = emitBufferAddress(builder, dest, kernel, bufferToArgNum);
+    auto *srcPtr = emitBufferAddress(builder, src, kernel, bufferToArgNum);
+    auto *divisor = emitConst(builder, MI->getDivisor(), ElemKind::Int64ITy);
+    llvm::Function *F = nullptr;
+    // Need _kernel suffix since these operations are implemented as
+    // "data-parallel" kernels in libjit.
+    if (MI->getSignFollowDivisor()) {
+      F = getFunction("element_modulo_kernel_sign_follow",
+                      dest->getElementType());
+    } else {
+      F = getFunction("element_modulo_kernel_no_sign_follow",
+                      dest->getElementType());
+    }
+    auto *stackedOpCall = createCall(builder, F, {loopCount, divisor, srcPtr});
+    llvm::Value *destAddr = nullptr;
+    if (dest->getElementType() == ElemKind::Int64ITy) {
+      destAddr = builder.CreateGEP(builder.getInt64Ty(), destPtr, loopCount,
+                                   "buffer.element.addr");
+    } else {
+      destAddr = builder.CreateGEP(builder.getInt32Ty(), destPtr, loopCount,
+                                   "buffer.element.addr");
+    }
+    destAddr->print(errs());
+    builder.CreateStore(stackedOpCall, destAddr);
+    break;
+  }
+
   default:
     std::string sBuf;
     llvm::raw_string_ostream s(sBuf);

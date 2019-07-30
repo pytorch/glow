@@ -7385,9 +7385,9 @@ TEST_P(OperatorTest, BatchOneHotDataInt8) {
   batchOneHotTest<int8_t>(bindings_, mod_, F_, EE_, ElemKind::Int8QTy);
 }
 
-/// Check that modulo works.
-TEST_P(OperatorTest, Modulo1) {
-  ENABLED_BACKENDS(Interpreter);
+/// Modulo with Int64 Tensors with SignFollowDivisor off.
+TEST_P(OperatorTest, ModuloInt64NoSignFollow) {
+  ENABLED_BACKENDS(Interpreter, CPU);
 
   auto *src = mod_.createPlaceholder(ElemKind::Int64ITy, {3, 5}, "src", false);
   auto srcH = bindings_.allocate(src)->getHandle<int64_t>();
@@ -7415,9 +7415,9 @@ TEST_P(OperatorTest, Modulo1) {
   }
 }
 
-// Test signFollowDivisor works in modulo.
-TEST_P(OperatorTest, Modulo2) {
-  ENABLED_BACKENDS(Interpreter);
+/// Modulo with Int64 Tensors with SignFollowDivisor on.
+TEST_P(OperatorTest, ModuloInt64SignFollow) {
+  ENABLED_BACKENDS(Interpreter, CPU);
 
   auto *src = mod_.createPlaceholder(ElemKind::Int64ITy, {3, 5}, "src", false);
   auto srcH = bindings_.allocate(src)->getHandle<int64_t>();
@@ -7437,6 +7437,66 @@ TEST_P(OperatorTest, Modulo2) {
   auto resultH = bindings_.get(result->getPlaceholder())->getHandle<int64_t>();
 
   std::vector<int64_t> expectedResults = {2, 0, 1, 2, 0, 1, 2, 0,
+                                          1, 2, 0, 1, 2, 0, 1};
+  ASSERT_EQ(expectedResults.size(), resultH.size());
+
+  for (size_t i = 0, end = expectedResults.size(); i < end; ++i) {
+    EXPECT_EQ(resultH.raw(i), expectedResults.at(i));
+  }
+}
+
+/// Modulo with Int32 Tensors with SignFollowDivisor off.
+TEST_P(OperatorTest, ModuloInt32NoSignFollow) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+#define TENSORTYPE int32_t
+  auto *src = mod_.createPlaceholder(ElemKind::Int32ITy, {3, 5}, "src", false);
+  auto srcH = bindings_.allocate(src)->getHandle<int32_t>();
+
+  srcH = {-7, -6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7};
+
+  int64_t divisor = 3;
+  bool signFollowDivisor = false;
+
+  auto *modulo = F_->createModulo("mod", src, divisor, signFollowDivisor);
+  auto *result = F_->createSave("save", modulo);
+  bindings_.allocate(result->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  auto resultH = bindings_.get(result->getPlaceholder())->getHandle<int32_t>();
+
+  std::vector<int32_t> expectedResults = {-1, 0, -2, -1, 0, -2, -1, 0,
+                                          1,  2, 0,  1,  2, 0,  1};
+  ASSERT_EQ(expectedResults.size(), resultH.size());
+
+  for (size_t i = 0, end = expectedResults.size(); i < end; ++i) {
+    EXPECT_EQ(resultH.raw(i), expectedResults.at(i));
+  }
+}
+
+/// Modulo with Int32 Tensors with SignFollowDivisor off.
+TEST_P(OperatorTest, ModuloInt32SignFollow) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+
+  auto *src = mod_.createPlaceholder(ElemKind::Int32ITy, {3, 5}, "src", false);
+  auto srcH = bindings_.allocate(src)->getHandle<int32_t>();
+
+  srcH = {-7, -6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7};
+
+  int64_t divisor = 3;
+  bool signFollowDivisor = true;
+
+  auto *modulo = F_->createModulo("mod", src, divisor, signFollowDivisor);
+  auto *result = F_->createSave("save", modulo);
+  bindings_.allocate(result->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  auto resultH = bindings_.get(result->getPlaceholder())->getHandle<int32_t>();
+
+  std::vector<int32_t> expectedResults = {2, 0, 1, 2, 0, 1, 2, 0,
                                           1, 2, 0, 1, 2, 0, 1};
   ASSERT_EQ(expectedResults.size(), resultH.size());
 

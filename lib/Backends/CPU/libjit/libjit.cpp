@@ -822,6 +822,40 @@ DEFINE_DATA_PARALLEL_KERNEL_QUANTIZED_M(libjit_element_div_kernel_i8, lhs / rhs)
 /// for size_t when libjit was compiled.
 size_t libjit_sizeTVar;
 
+/// Specialize the Modulo kernel into two functions based on the
+/// value of SignFollowDivisor.
+int64_t libjit_element_modulo_kernel_sign_follow_u(size_t idx,
+                                                   const int64_t divisor,
+                                                   const int64_t *input) {
+  int64_t res = input[idx] % divisor;
+  if (res && ((res > 0) != (divisor > 0))) {
+    res += divisor;
+  }
+  return res;
+}
+
+int64_t libjit_element_modulo_kernel_no_sign_follow_u(size_t idx,
+                                                      const int64_t divisor,
+                                                      const int64_t *input) {
+  return input[idx] % divisor;
+}
+
+int32_t libjit_element_modulo_kernel_sign_follow_i32(size_t idx,
+                                                     const int64_t divisor,
+                                                     const int32_t *input) {
+  int32_t res = input[idx] % divisor;
+  if (res && ((res > 0) != (divisor > 0))) {
+    res += divisor;
+  }
+  return res;
+}
+
+int32_t libjit_element_modulo_kernel_no_sign_follow_i32(size_t idx,
+                                                        const int64_t divisor,
+                                                        const int32_t *input) {
+  return input[idx] % divisor;
+}
+
 int8_t libjit_element_cmp_eq_kernel_u(size_t idx, const size_t *LHS,
                                       const size_t *RHS) {
   return LHS[idx] == RHS[idx] ? 1 : 0;

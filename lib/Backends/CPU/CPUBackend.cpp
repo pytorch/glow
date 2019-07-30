@@ -167,6 +167,10 @@ bool CPUBackend::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::ExpNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind({ElemKind::FloatTy});
 
+  case Kinded::Kind::ModuloNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind(
+        {ElemKind::Int32ITy, ElemKind::Int64ITy});
+
   case Kinded::Kind::MaxPoolGradNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
                {ElemKind::FloatTy},
