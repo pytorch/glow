@@ -999,23 +999,3 @@ TEST_P(RecommendationSystemTest, RecSys_FP32_Gather_Weights) {
              /* convertToFP16 */ false,
              /* gatherWeights */ true);
 }
-
-/// Test gathering weights for SLWS.
-TEST_P(RecommendationSystemTest, RecSys_FP32_Medium_Gather_Weights) {
-  ENABLED_BACKENDS(CPU);
-
-  // Note that this overrides the parameters provided by command line options if
-  // provided, as this comes after SetUp().
-  tableSizes = {800000, 600000, 700000, 900000, 1200000,
-                800000, 600000, 700000, 900000, 1200000,
-                800000, 600000, 700000, 900000, 1200000};
-  deviceMemCapacity = 1024ULL * 1024 * 1024 * 4; // 4GB.
-  // Since this is bigger than the default set the device memory.
-  EE_.setDeviceMemory(deviceMemCapacity);
-  // Recreate function.
-  F_ = EE_.getModule().createFunction("main");
-  testRecSys(/* quantizeSLWS */ false,
-             /* quantizeFC */ false,
-             /* convertToFP16 */ false,
-             /* gatherWeights */ true);
-}
