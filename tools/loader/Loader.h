@@ -32,6 +32,7 @@ extern llvm::cl::opt<unsigned> iterationsOpt;
 namespace glow {
 
 class Tensor;
+struct CompilationContext;
 
 /// \return true if emit bundle mode is enabled.
 bool emittingBundle();
@@ -99,6 +100,10 @@ public:
   /// placeholders to concrete tensors. The concrete tensors include
   /// quantization profile guided information.
   void compile(PlaceholderBindings &bindings);
+
+  /// Compiles the Function F_. Handles quantization, emitting bundles, and
+  /// dumping debug information. \p cctx is used for compiling F_.
+  void compile(CompilationContext &cctx);
 
   /// Runs inference, unless emit bundle mode is enabled. \p bindings
   /// binds specific placeholders to concrete tensors. The concrete
