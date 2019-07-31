@@ -2667,8 +2667,7 @@ void glow::convertPlaceholdersToConstants(Function *F,
   LOG_SCOPE(F->getLogContext(), "convertPlaceholdersToConstants")
 
   auto *M = F->getParent();
-  auto &placeholders = M->getPlaceholders();
-  for (auto &PH : placeholders) {
+  for (auto &PH : F->findPlaceholders()) {
     if (std::find(phs.begin(), phs.end(), PH) != phs.end()) {
       continue;
     }
