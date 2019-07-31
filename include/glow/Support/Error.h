@@ -248,7 +248,7 @@ public:
 #define ASSIGN_VALUE_OR_RETURN_ERR(rhs, lhsOrErr)                              \
   do {                                                                         \
     auto lhsOrErrV = (lhsOrErr);                                               \
-    static_assert(IsLLVMExpected<decltype(lhsOrErrV)>(),                       \
+    static_assert(glow::IsLLVMExpected<decltype(lhsOrErrV)>(),                 \
                   "Expected value to be a llvm::Expected");                    \
     if (lhsOrErrV) {                                                           \
       rhs = std::move(lhsOrErrV.get());                                        \
@@ -262,7 +262,7 @@ public:
 #define ASSIGN_VALUE_OR_RETURN_FALSE(rhs, lhsOrErr)                            \
   do {                                                                         \
     auto lhsOrErrV = (lhsOrErr);                                               \
-    static_assert(IsLLVMExpected<decltype(lhsOrErrV)>(),                       \
+    static_assert(glow::IsLLVMExpected<decltype(lhsOrErrV)>(),                 \
                   "Expected value to be a llvm::Expected");                    \
     if (lhsOrErrV) {                                                           \
       rhs = std::move(lhsOrErrV.get());                                        \
@@ -276,7 +276,7 @@ public:
 #define RETURN_IF_ERR(err)                                                     \
   do {                                                                         \
     if (auto errV = std::forward<llvm::Error>(err)) {                          \
-      static_assert(IsLLVMError<decltype(errV)>::value,                        \
+      static_assert(glow::IsLLVMError<decltype(errV)>::value,                  \
                     "Expected value to be a llvm::Error");                     \
       return std::forward<llvm::Error>(errV);                                  \
     }                                                                          \

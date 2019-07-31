@@ -53,15 +53,19 @@ void registerGlowOp() {
   auto options = c10::OperatorOptions();
   options.setAliasAnalysis(at::AliasAnalysisKind::PURE);
 
-  torch::jit::RegisterOperators op(
-      {torch::jit::Operator(glowSymbol,
-                            [](const torch::jit::Node *node) {
-                              return [node](torch::jit::Stack &stack) {
-                                getGraphRunner()->runGraph(node, stack);
-                                return 0;
-                              };
-                            },
-                            options)});
+  torch::jit::RegisterOperators op({torch::jit::Operator(
+      glowSymbol,
+      [](const torch::jit::Node *node) {
+        return [node](torch::jit::Stack &stack) {
+          llvm::Error err = getGraphRunner()->runGraph(node, stack);
+          if (static_cast<bool>(err)) {
+            // PyTorch framework expects an exception been thrown here.
+            throw std::invalid_argument(llvm::toString(std::move(err)));
+          }
+          return 0;
+        };
+      },
+      options)});
 }
 
 /// Register the pass that fuses parts of the graph into
