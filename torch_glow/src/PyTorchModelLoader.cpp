@@ -45,7 +45,8 @@ inline llvm::Expected<float> to32Bit(double val) {
 inline llvm::Expected<int32_t> to32Bit(int64_t val) {
   RETURN_ERR_IF_NOT(val <= std::numeric_limits<int32_t>::max() ||
                         val >= std::numeric_limits<int32_t>::lowest(),
-                    glow::strFormat("Value %ld is out of limit.", val));
+                    glow::strFormat("Value %lld is out of limit.",
+                                    static_cast<long long int>(val)));
   return llvm::Expected<int32_t>(static_cast<int32_t>(val));
 }
 
@@ -568,9 +569,9 @@ llvm::Error PyTorchModelLoader::loadBatchNorm(const torch::jit::Node *ptNode) {
   ASSIGN_VALUE_OR_RETURN_ERR(epsilonHandle,
                              getGlowConstantHandle<float>(inputs[Inputs::eps]));
   RETURN_ERR_IF_NOT(
-      input.dims().size() == 1,
+      epsilonHandle.size() == 1,
       glow::strFormat("Number epsilon dimensions must be equal to 1, got %lu",
-                      input.dims().size()));
+                      epsilonHandle.size()));
   float epsilon = epsilonHandle.raw(0);
 
   // Input is in NCHW.
@@ -633,8 +634,10 @@ llvm::Error PyTorchModelLoader::loadMaxPool2d(const torch::jit::Node *ptNode) {
   ASSIGN_VALUE_OR_RETURN_ERR(
       dilationHandle, getGlowConstantHandle<int32_t>(inputs[Inputs::dilation]));
   for (size_t i = 0; i < dilationHandle.size(); ++i) {
-    RETURN_ERR_IF_NOT(dilationHandle.size() == 1,
-                      "Dilation value must be equal to 1.");
+    RETURN_ERR_IF_NOT(
+        dilationHandle.raw(i) == 1,
+        glow::strFormat("Dilation value must be equal to 1, got %d",
+                        dilationHandle.raw(i)));
   }
 
   // Glow doesn't support maxpool ceil mode.
@@ -746,7 +749,7 @@ llvm::Error PyTorchModelLoader::loadConstant(const torch::jit::Node *ptNode) {
   } else if (iVal.isIntList()) {
     const auto vals = iVal.toIntListRef();
     if (vals.empty()) {
-      llvm::Error::success();
+      return llvm::Error::success();
     }
     t.reset(glow::ElemKind::Int32ITy, {vals.size()});
     auto handle = t.getHandle<int32_t>();
@@ -760,7 +763,7 @@ llvm::Error PyTorchModelLoader::loadConstant(const torch::jit::Node *ptNode) {
   } else if (iVal.isDoubleList()) {
     const auto vals = iVal.toDoubleListRef();
     if (vals.empty()) {
-      llvm::Error::success();
+      return llvm::Error::success();
     }
     t.reset(glow::ElemKind::FloatTy, {vals.size()});
     auto handle = t.getHandle<float>();
@@ -775,7 +778,7 @@ llvm::Error PyTorchModelLoader::loadConstant(const torch::jit::Node *ptNode) {
     const auto &valsList = iVal.toBoolList();
     const auto &vals = c10::impl::toVector(valsList);
     if (vals.empty()) {
-      llvm::Error::success();
+      return llvm::Error::success();
     }
     t.reset(glow::ElemKind::BoolTy, {vals.size()});
     auto handle = t.getHandle<bool>();
@@ -786,7 +789,7 @@ llvm::Error PyTorchModelLoader::loadConstant(const torch::jit::Node *ptNode) {
     RETURN_ERR("Not yet implemented tensor constants.");
   } else if (iVal.isNone()) {
     // Nothing to do for None
-    llvm::Error::success();
+    return llvm::Error::success();
   } else {
     RETURN_ERR("Unsupported constant type.");
   }
