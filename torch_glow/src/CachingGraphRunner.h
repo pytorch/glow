@@ -35,7 +35,8 @@ public:
   /// PyTorch subgraph and corresponding PyTorch Stack \p stack of inputs, run
   /// that subgraph on those inputs. If this is the first time this node has
   /// been seen then this first loads it as a Glow Function and compiles.
-  void runGraph(const torch::jit::Node *node, torch::jit::Stack &stack);
+  /// \returns error of failure.
+  llvm::Error runGraph(const torch::jit::Node *node, torch::jit::Stack &stack);
 };
 
 #endif // GLOW_IMPORTER_PYTORCH_CACHINGGRAPHRUNNER_H

@@ -59,8 +59,11 @@ void convertJitGraphToGlowFunction(torch::jit::Stack &stack,
   // Load JIT Graph into Glow Function.
   std::vector<glow::Placeholder *> inputPlaceholders;
   std::vector<glow::Placeholder *> outputPlaceholders;
-  PyTorchModelLoader loader(f, graph, inputs, inputPlaceholders,
-                            outputPlaceholders);
+  llvm::Error errPtr = PyTorchModelLoader::loadJITGraph(
+      f, graph, inputs, inputPlaceholders, outputPlaceholders);
+
+  EXPECT_FALSE(errPtr);
+
   // Remove from stack input parameters.
   torch::jit::drop(stack, numInputs);
   // Lookup placeholders for the output shapes.
@@ -103,8 +106,9 @@ TEST(PyTorchModelLoader, Model) {
   vec.insert(vec.begin(), module->module_object());
 
   at::ArrayRef<torch::jit::IValue> inputs(vec);
-  PyTorchModelLoader loader(*f, *subgraph, inputs, inputPlaceholders,
-                            outputPlaceholders);
+  errPtr = PyTorchModelLoader::loadJITGraph(
+      *f, *subgraph, inputs, inputPlaceholders, outputPlaceholders);
+  EXPECT_FALSE(!errPtr); // TODO
 }
 
 TEST(PyTorchModelLoader, Fuser) {

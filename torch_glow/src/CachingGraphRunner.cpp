@@ -20,8 +20,8 @@
 
 #include "glow/Support/Support.h"
 
-void CachingGraphRunner::runGraph(const torch::jit::Node *node,
-                                  torch::jit::Stack &stack) {
+llvm::Error CachingGraphRunner::runGraph(const torch::jit::Node *node,
+                                         torch::jit::Stack &stack) {
   // If this is the first time this subgraph has been run then create a new
   // GraphInfo object to store information about it.
 
@@ -40,8 +40,8 @@ void CachingGraphRunner::runGraph(const torch::jit::Node *node,
   std::vector<glow::Placeholder *> inputPlaceholders;
   std::vector<glow::Placeholder *> outputPlaceholders;
 
-  PyTorchModelLoader loader(*f, *graph, inputs, inputPlaceholders,
-                            outputPlaceholders);
+  RETURN_IF_ERR(PyTorchModelLoader::loadJITGraph(
+      *f, *graph, inputs, inputPlaceholders, outputPlaceholders));
 
   glow::CompilationContext cctx;
   executionEngine_.compile(f, cctx);
@@ -73,4 +73,6 @@ void CachingGraphRunner::runGraph(const torch::jit::Node *node,
     auto var = torch::autograd::make_variable(output.toTensor());
     stack.push_back(at::IValue(var));
   }
+
+  return llvm::Error::success();
 }
