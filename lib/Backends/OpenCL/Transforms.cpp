@@ -43,9 +43,15 @@ bool OCLBackend::transformPostLowering(Function *F,
       // TODO: OpenCL fast convolution kernel itself has some issue with group >
       // 1, which will be investigated later. So far, if the group > 1, we just
       // call the slow convolution kernel.
-      if (CN->getGroup() > 1)
+      if (CN->getGroup() > 1) {
         continue;
-      auto *NR = convertConvToNCHWConv<OCLConvolutionNode>(CN, F);
+      }
+
+      if (CN->getLayout() == NCHW) {
+        continue;
+      }
+
+      auto *NR = convertConvToNCHWConv(CN, F);
       CN->getResult().replaceAllUsesOfWith(NR);
       changed = true;
       continue;
@@ -55,7 +61,11 @@ bool OCLBackend::transformPostLowering(Function *F,
         continue;
       }
 
-      auto *NR = convertPoolToNCHWPool<MaxPoolNode, OCLMaxPoolNode>(PMN, F);
+      if (PMN->getLayout() == NCHW) {
+        continue;
+      }
+
+      auto *NR = convertMaxPoolToNCHWPool(PMN, F);
       PMN->getResult().replaceAllUsesOfWith(NR);
       changed = true;
       continue;
@@ -64,8 +74,11 @@ bool OCLBackend::transformPostLowering(Function *F,
       if (cctx.compMode == CompilationMode::Train) {
         continue;
       }
+      if (PAN->getLayout() == NCHW) {
+        continue;
+      }
 
-      auto *NR = convertPoolToNCHWPool<AvgPoolNode, OCLAvgPoolNode>(PAN, F);
+      auto *NR = convertAvgPoolToNCHWPool(PAN, F);
       PAN->getResult().replaceAllUsesOfWith(NR);
       changed = true;
       continue;

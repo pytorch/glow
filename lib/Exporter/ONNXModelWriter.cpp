@@ -513,6 +513,7 @@ llvm::Error ONNXModelWriter::writeTranspose(const TransposeNode *node,
 
 llvm::Error ONNXModelWriter::writeConvolution(const ConvolutionNode *node,
                                               GraphType &graph) {
+  assert(node->getLayout() == NHWC && "can only write NHWC Convolutions");
   auto *proto = graph.add_node();
   // Add dictionary entries.
   addValueAttribute(proto, "strides", node->getStrides());
@@ -913,6 +914,7 @@ llvm::Error ONNXModelWriter::writeModulo(const ModuloNode *node,
 namespace {
 template <typename T>
 void writePool(const T *node, ONNX_NAMESPACE::NodeProto *proto) {
+  assert(node->getLayout() == NHWC && "can only write NHWC Pools");
   // Add dictionary entries.
   addValueAttribute(proto, "kernel_shape", node->getKernels());
   addValueAttribute(proto, "strides", node->getStrides());
@@ -1323,41 +1325,6 @@ llvm::Error ONNXModelWriter::writeCPUConvDKKC8(const CPUConvDKKC8Node *node,
 #endif // GLOW_WITH_CPU
 
 #ifdef GLOW_WITH_OPENCL
-
-llvm::Error ONNXModelWriter::writeOCLConvolution(const OCLConvolutionNode *node,
-                                                 GraphType &graph) {
-  auto *proto = graph.add_node();
-  // Add dictionary entries.
-  addValueAttribute(proto, "kernels", node->getKernels());
-  addValueAttribute(proto, "strides", node->getStrides());
-  addValueAttribute(proto, "pads", node->getPads());
-  addValueAttribute(proto, "group", node->getGroup());
-  addValueAttribute(proto, "dilation", node->getDilation());
-
-  return writeAllWithNode("OCLConvolution", node, proto);
-}
-
-llvm::Error ONNXModelWriter::writeOCLAvgPool(const OCLAvgPoolNode *node,
-                                             GraphType &graph) {
-  auto *proto = graph.add_node();
-  // Add dictionary entries.
-  addValueAttribute(proto, "kernel", node->getKernel());
-  addValueAttribute(proto, "stride", node->getStride());
-  addValueAttribute(proto, "pads", node->getPads());
-
-  return writeAllWithNode("OCLAvgPool", node, proto);
-}
-
-llvm::Error ONNXModelWriter::writeOCLMaxPool(const OCLMaxPoolNode *node,
-                                             GraphType &graph) {
-  auto *proto = graph.add_node();
-  // Add dictionary entries.
-  addValueAttribute(proto, "kernel", node->getKernel());
-  addValueAttribute(proto, "stride", node->getStride());
-  addValueAttribute(proto, "pads", node->getPads());
-
-  return writeAllWithNode("OCLMaxPool", node, proto);
-}
 
 llvm::Error
 ONNXModelWriter::writeOCLBatchedReduceAdd(const OCLBatchedReduceAddNode *node,

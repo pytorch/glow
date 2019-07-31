@@ -16,42 +16,6 @@
 
 #ifdef GLOW_WITH_OPENCL
 
-BB.newNode("OCLConvolution")
-    .addInput("Input")
-    .addInput("Filter")
-    .addInput("Bias")
-    .addMember(MemberType::VectorUnsigned, "Kernels")
-    .addMember(MemberType::VectorUnsigned, "Strides")
-    .addMember(MemberType::VectorUnsigned, "Pads")
-    .addMember(MemberType::Unsigned, "Group")
-    .addMember(MemberType::Unsigned, "Dilation")
-    .addResultFromCtorArg()
-    .setDocstring(
-        "This is an OpenCL-specific convolution implementation where the "
-        "filter, the bias and the input are in the HCHW format");
-
-BB.newNode("OCLAvgPool")
-    .addInput("Input")
-    .addMember(MemberType::Unsigned, "Kernel")
-    .addMember(MemberType::Unsigned, "Stride")
-    .addMember(MemberType::VectorUnsigned, "Pads")
-    .addResultFromCtorArg()
-    .setDocstring(
-        "This is an OpenCL-specific Average Pool operation on the Input given "
-        "provided Kernel, Stride, and Pads. The input and output are in NCHW "
-        "format");
-
-BB.newNode("OCLMaxPool")
-    .addInput("Input")
-    .addMember(MemberType::Unsigned, "Kernel")
-    .addMember(MemberType::Unsigned, "Stride")
-    .addMember(MemberType::VectorUnsigned, "Pads")
-    .addResultFromCtorArg()
-    .setDocstring(
-        "This is an OpenCL-specific Max Pool operation on the Input given "
-        "provided "
-        "Kernel, Stride, and Pads. The input and output are in NCHW format");
-
 BB.newNode("OCLBatchedReduceAdd")
     .addInput("Input")
     .addInput("DestSliceSizes")

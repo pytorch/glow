@@ -86,6 +86,7 @@ int main(int argc, char **argv) {
       .addMember(MemberType::VectorUnsigned, "Pads")
       .addMember(MemberType::Unsigned, "Group")
       .addMember(MemberType::Unsigned, "Dilation")
+      .addMember(MemberType::Unsigned, "Layout")
       .autoIRGen()
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Src", "Filter"})
       .addGradientInstr({"Src", "Filter"}, {"Dest", "Src", "Filter", "Bias"});
@@ -129,6 +130,7 @@ int main(int argc, char **argv) {
       .addMember(MemberType::VectorUnsigned, "Kernels")
       .addMember(MemberType::VectorUnsigned, "Strides")
       .addMember(MemberType::VectorUnsigned, "Pads")
+      .addMember(MemberType::Unsigned, "Layout")
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
       .addGradientInstr({"Dest", "Argmax"}, {"Dest", "Src"});
 
@@ -138,6 +140,7 @@ int main(int argc, char **argv) {
       .addMember(MemberType::VectorUnsigned, "Kernels")
       .addMember(MemberType::VectorUnsigned, "Strides")
       .addMember(MemberType::VectorUnsigned, "Pads")
+      .addMember(MemberType::Unsigned, "Layout")
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"});
 
   BB.newInstr("AvgPool")
@@ -146,6 +149,7 @@ int main(int argc, char **argv) {
       .addMember(MemberType::VectorUnsigned, "Kernels")
       .addMember(MemberType::VectorUnsigned, "Strides")
       .addMember(MemberType::VectorUnsigned, "Pads")
+      .addMember(MemberType::Unsigned, "Layout")
       .autoIRGen()
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
       .addGradientInstr({"Dest"}, {"Dest", "Src"});

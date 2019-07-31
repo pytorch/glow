@@ -203,6 +203,9 @@ inline ShapeHWD calculate3DConvPoolOutputDims(
 /// Modes of the padding operation.
 enum PaddingMode { CONSTANT = 0, REFLECT, EDGE };
 
+/// Convolution Layouts.
+enum ConvolutionLayout { NHWC = 0, NCHW };
+
 /// Support for hashing the Nodes. This is required for using
 /// llvm::hash_combine.
 class Node;
