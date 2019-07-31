@@ -81,7 +81,7 @@ TEST(Support, loadYamlFile) {
 
 TEST(Support, loadStrStrMapYamlFile) {
   std::string yamlFilename(GLOW_DATA_PATH
-                           "tests/runtime_test/backendSpecificHints.yaml");
+                           "tests/runtime_test/backendSpecificOpts.yaml");
   auto map = deserializeStrStrMapFromYaml(yamlFilename);
   EXPECT_EQ(map.size(), 2);
   // Check the loading items.

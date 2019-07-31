@@ -37,10 +37,10 @@ using namespace runtime;
 namespace {
 llvm::cl::OptionCategory hostManagerCat("HostManager Options");
 
-llvm::cl::opt<std::string> loadBackendSpecificHintsOpt(
-    "load-backend-specific-hints",
-    llvm::cl::desc("Load backend-specific hints for compilation."),
-    llvm::cl::value_desc("hints.yaml"), llvm::cl::Optional,
+llvm::cl::opt<std::string> loadBackendSpecificOptionsOpt(
+    "load-backend-specific-opts",
+    llvm::cl::desc("Load backend-specific options for compilation."),
+    llvm::cl::value_desc("options.yaml"), llvm::cl::Optional,
     llvm::cl::cat(hostManagerCat));
 } // namespace
 
@@ -107,6 +107,16 @@ llvm::Error HostManager::addNetwork(std::unique_ptr<Module> module,
     }
   }
 
+  // Load backend-specific options if specified.
+  if (!loadBackendSpecificOptionsOpt.empty()) {
+    if (cctx.backendOpts.backendSpecificOpts.size() != 0) {
+      VLOG_EVERY_N(1, 1000) << "Warning: backendSpecificOpts is set via the "
+                               "HostManager, ignoring previously set options.";
+    }
+    cctx.backendOpts.backendSpecificOpts =
+        deserializeStrStrMapFromYaml(loadBackendSpecificOptionsOpt);
+  }
+
   std::vector<DeviceInfo> deviceInfo;
   for (auto &device : devices_) {
     DeviceInfo info = device.second->getDeviceInfo();
@@ -124,16 +134,6 @@ llvm::Error HostManager::addNetwork(std::unique_ptr<Module> module,
   auto partitioner = Partitioner(module.get(), deviceInfo, saturateHost);
   RETURN_IF_ERR(partitioner.Partition(cctx));
   auto nodeList = std::move(partitioner.getPartitionResult());
-
-  // Load backend-specific hints if specified.
-  if (!loadBackendSpecificHintsOpt.empty()) {
-    auto hints = deserializeStrStrMapFromYaml(loadBackendSpecificHintsOpt);
-    for (auto &network : nodeList) {
-      for (auto &node : network.nodes) {
-        node->backendHints.backendSpecificHints = hints;
-      }
-    }
-  }
 
   if (cctx.precisionConfig.quantMode == QuantizationMode::Profile) {
     // Since for profiling the provisioner will be reset, we only allow one

@@ -83,8 +83,7 @@ llvm::Error Provisioner::provision(DAGListTy &networks, Module &module,
            "ignoring it.";
   }
   if (cctx.backendOpts.backendHints.SRAMPrioritization.size() != 0 ||
-      cctx.backendOpts.backendHints.executionUnits ||
-      cctx.backendOpts.backendHints.backendSpecificHints.size() != 0) {
+      cctx.backendOpts.backendHints.executionUnits) {
     VLOG_EVERY_N(1, 1000)
         << "Warning: backendHints is set in a Runtime compile, "
            "ignoring it.";
