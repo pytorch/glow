@@ -227,23 +227,24 @@ struct LinearInputs {
 const PyTorchModelLoader::MappingOfMemberFunctions &
 PyTorchModelLoader::getSymbolsMapping() {
   /// Static map of the set of PyTorch symbols to load, the PyTorchModelLoader
-  /// for loading these symbols, and optionally the set of inputs that should be
-  /// considered immutable between inference invocations by Glow and loaded as
-  /// Constants instead of Placeholders.
+  /// for loading these symbols, and the set of inputs that should be considered
+  /// immutable between inference invocations by Glow and loaded as Constants
+  /// instead of Placeholders.
   static auto symbolLoaderMapping = MappingOfMemberFunctions(
-      {{{"prim::Constant"}, &PyTorchModelLoader::loadConstant},
-       {{"aten::mul", "aten::mul_"}, &PyTorchModelLoader::loadMul},
-       {{"aten::div", "aten::div_"}, &PyTorchModelLoader::loadDiv},
-       {{"aten::add", "aten::add_"}, &PyTorchModelLoader::loadAdd},
-       {{"aten::sub", "aten::sub_"}, &PyTorchModelLoader::loadSub},
-       {{"aten::relu", "aten::relu_"}, &PyTorchModelLoader::loadRelu},
-       {{"aten::t, aten::t_"}, &PyTorchModelLoader::loadTranspose},
-       {{"aten::min"}, &PyTorchModelLoader::loadMin},
-       {{"aten::max"}, &PyTorchModelLoader::loadMax},
-       {{"aten::exp"}, &PyTorchModelLoader::loadExp},
-       {{"aten::sqrt", "aten::sqrt_"}, &PyTorchModelLoader::loadSqrt},
+      {{{"prim::Constant"}, &PyTorchModelLoader::loadConstant, {}},
+       {{"aten::mul", "aten::mul_"}, &PyTorchModelLoader::loadMul, {}},
+       {{"aten::div", "aten::div_"}, &PyTorchModelLoader::loadDiv, {}},
+       {{"aten::add", "aten::add_"}, &PyTorchModelLoader::loadAdd, {}},
+       {{"aten::sub", "aten::sub_"}, &PyTorchModelLoader::loadSub, {}},
+       {{"aten::relu", "aten::relu_"}, &PyTorchModelLoader::loadRelu, {}},
+       {{"aten::t, aten::t_"}, &PyTorchModelLoader::loadTranspose, {}},
+       {{"aten::min"}, &PyTorchModelLoader::loadMin, {}},
+       {{"aten::max"}, &PyTorchModelLoader::loadMax, {}},
+       {{"aten::exp"}, &PyTorchModelLoader::loadExp, {}},
+       {{"aten::sqrt", "aten::sqrt_"}, &PyTorchModelLoader::loadSqrt, {}},
        {{"aten::reciprocal", "aten::reciprocal_"},
-        &PyTorchModelLoader::loadReciprocal},
+        &PyTorchModelLoader::loadReciprocal,
+        {}},
        {{"aten::adaptive_avg_pool2d"},
         &PyTorchModelLoader::loadAdaptiveAvgPool2d,
         {AdaptiveAvgPoolInputs::output_size}},

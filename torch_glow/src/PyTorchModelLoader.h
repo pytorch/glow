@@ -67,7 +67,7 @@ class PyTorchModelLoader {
 
     MappingOfMemberFunctionsValue(std::vector<const char *> symbolsP,
                                   LoadFn loadFnP,
-                                  std::unordered_set<size_t> constInputsP = {})
+                                  std::unordered_set<size_t> constInputsP)
         : symbols(symbolsP), loadFn(loadFnP), constInputs(constInputsP) {}
   };
 
