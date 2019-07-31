@@ -54,7 +54,11 @@ int main(int argc, char **argv) {
 
   // Compile the model, and perform quantization/emit a bundle/dump debug info
   // if requested from command line.
-  loader.compile(bindings);
+  CompilationContext cctx{&bindings};
+  // Disable constant folding, as the model runner is designed for models with
+  // all Constant inputs.
+  cctx.optimizationOpts.enableConstantFolding = false;
+  loader.compile(cctx);
 
   // If in bundle mode, do not run inference.
   if (!emittingBundle()) {
