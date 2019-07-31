@@ -6986,18 +6986,17 @@ TEST_P(OperatorTest, SigmoidCrossEntropyWithLogits) {
 TEST_P(OperatorTest, insertTensorTest) {
   ENABLED_BACKENDS(Interpreter, CPU);
 
-  auto SN0Ty = mod_.uniqueType(ElemKind::Int64ITy, {4, 6});
-  auto SN1Ty = mod_.uniqueType(ElemKind::Int64ITy, {2, 2});
-
   // 0 0 0 0 0 0
   // 0 0 0 0 0 0
   // 0 0 0 0 0 0
   // 0 0 0 0 0 0
-  Node *SN0 = F_->createSplat("zero", SN0Ty, 0.);
+  auto *SN0 = mod_.createPlaceholder(ElemKind::Int64ITy, {4, 6}, "SN0", false);
+  bindings_.allocate(SN0)->init(Tensor::InitKind::Broadcast, 0, mod_.getPRNG());
 
   // 1 1
   // 1 1
-  Node *SN1 = F_->createSplat("one", SN1Ty, 1.);
+  auto *SN1 = mod_.createPlaceholder(ElemKind::Int64ITy, {2, 2}, "SN1", false);
+  bindings_.allocate(SN1)->init(Tensor::InitKind::Broadcast, 1, mod_.getPRNG());
 
   // 0 0 0 0 0 0
   // 0 1 1 1 1 0
