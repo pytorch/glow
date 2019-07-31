@@ -193,6 +193,19 @@ struct BNInputs {
   };
 };
 
+// Indexes of aten::avg_pool2d inputs.
+struct AvgPoolInputs {
+  enum {
+    input = 0,
+    kernel_size = 1,
+    stride = 2,
+    padding = 3,
+    ceil_mode = 4,
+    count_include_pad = 5,
+    divisor_override = 6,
+  };
+};
+
 // Indexes of aten::max_pool2d inputs.
 struct MaxPoolInputs {
   enum {
@@ -286,6 +299,16 @@ PyTorchModelLoader::getSymbolsMapping() {
             MaxPoolInputs::padding,
             MaxPoolInputs::dilation,
             MaxPoolInputs::ceil_mode,
+        }},
+       {{"aten::avg_pool2d"},
+        &PyTorchModelLoader::loadAvgPool2d,
+        {
+            AvgPoolInputs::kernel_size,
+            AvgPoolInputs::stride,
+            AvgPoolInputs::padding,
+            AvgPoolInputs::ceil_mode,
+            AvgPoolInputs::count_include_pad,
+            AvgPoolInputs::divisor_override,
         }}});
 
   return symbolLoaderMapping;
@@ -820,6 +843,68 @@ llvm::Error PyTorchModelLoader::loadMaxPool2d(const torch::jit::Node *ptNode) {
       F_.createMaxPool("maxpool2d", input, kernels, strides, pads);
   glow::NodeValue output = mp->getResult();
   output = F_.createTranspose("maxpool2d_output_transposed", output, NHWC2NCHW);
+  return addGlowNodeValue(outputs[0], output);
+}
+
+llvm::Error PyTorchModelLoader::loadAvgPool2d(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 7, outputs, 1));
+
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input,
+                             getGlowNodeValue(inputs[AvgPoolInputs::input]));
+  input = F_.createTranspose("avgpool2d_input_transposed", input, NCHW2NHWC);
+
+  auto kernelsHandle = glow::Handle<int32_t>::createInvalidHandle();
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      kernelsHandle,
+      getGlowConstantHandle<int32_t>(inputs[AvgPoolInputs::kernel_size]));
+  std::vector<uint32_t> kernels;
+  RETURN_IF_ERR(expandParamIfNeeded(kernelsHandle, 2, kernels));
+
+  auto padsHandle = glow::Handle<int32_t>::createInvalidHandle();
+  ASSIGN_VALUE_OR_RETURN_ERR(padsHandle, getGlowConstantHandle<int32_t>(
+                                             inputs[AvgPoolInputs::padding]));
+  std::vector<uint32_t> padsPair;
+  RETURN_IF_ERR(expandParamIfNeeded(padsHandle, 2, padsPair));
+  std::vector<uint32_t> pads = {padsPair[0], padsPair[1], padsPair[0],
+                                padsPair[1]};
+
+  // Stride defaults to kernel_size.
+  std::vector<uint32_t> strides;
+  if (hasGlowNodeValue(inputs[AvgPoolInputs::stride])) {
+    auto stridesHandle = glow::Handle<int32_t>::createInvalidHandle();
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        stridesHandle,
+        getGlowConstantHandle<int32_t>(inputs[AvgPoolInputs::stride]));
+    RETURN_IF_ERR(expandParamIfNeeded(stridesHandle, 2, strides));
+  } else {
+    strides = kernels;
+  }
+
+  // Glow doesn't support avgpool ceil mode.
+  auto ceilModeHandle = glow::Handle<bool>::createInvalidHandle();
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      ceilModeHandle,
+      getGlowConstantHandle<bool>(inputs[AvgPoolInputs::ceil_mode]));
+  RETURN_ERR_IF_NOT(ceilModeHandle.size() == 1, "ceilMode must be 1D vector.");
+  RETURN_ERR_IF_NOT(ceilModeHandle.raw(0) == false, "ceilMode not supported.");
+
+  // Glow always includes zero-padding in the averaging calculation.
+  auto countIncludePadHandle = glow::Handle<bool>::createInvalidHandle();
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      countIncludePadHandle,
+      getGlowConstantHandle<bool>(inputs[AvgPoolInputs::count_include_pad]));
+  RETURN_ERR_IF_NOT(countIncludePadHandle.size() == 1,
+                    "countIncludePad must be 1D vector.");
+  RETURN_ERR_IF_NOT(countIncludePadHandle.raw(0) == true,
+                    "countIncludePad must be scalar with true value.");
+
+  glow::AvgPoolNode *ap =
+      F_.createAvgPool("avgpool2d", input, kernels, strides, pads);
+  glow::NodeValue output = ap->getResult();
+  output = F_.createTranspose("avgpool2d_output_transposed", output, NHWC2NCHW);
   return addGlowNodeValue(outputs[0], output);
 }
 
