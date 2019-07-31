@@ -38,7 +38,7 @@ add_executable(char-rnn
 target_link_libraries(char-rnn
                       PRIVATE
                         Backends
-                        ExecutionEngine
+                        ExecutionEngine2
                         Graph
                         IR
                         GraphOptimizer
