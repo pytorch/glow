@@ -247,6 +247,8 @@ static void quantizeSimpleConvGraph(ElemKind quantizationPrecision) {
   auto outTy = mod.uniqueType(ElemKind::FloatTy, {1, 4, 8, 2});
   PlaceholderBindings bindings;
   bindings.allocate(input);
+  filter->getHandle().randomize(-1.0, 1.0, mod.getPRNG());
+  bias->getHandle().randomize(-1.0, 1.0, mod.getPRNG());
 
   auto *CN = F->createConv("Conv", input, filter, bias, outTy, {2, 2}, {1, 1},
                            {0, 2, 1, 3}, 1);
