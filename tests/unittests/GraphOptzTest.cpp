@@ -2453,9 +2453,10 @@ TEST_F(GraphOptz, ReshapeConstantOneUse) {
   const size_t shape[] = {10, 20};
   const size_t reshape1[] = {200, 1};
   const size_t reshape2[] = {200};
-  auto *input = F_->getParent()->createPlaceholder(ElemKind::FloatTy, shape,
-                                                   "input", true);
-  bindings_.allocate(input);
+  Constant *input =
+      F_->getParent()->createConstant(ElemKind::FloatTy, shape, "input");
+  input->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
+
   auto *R1 = F_->createReshape("reshape1", input, reshape1);
   auto *R2 = F_->createReshape("reshape2", R1, reshape2);
   auto *O = F_->createSave("ret", R2);
@@ -2463,8 +2464,10 @@ TEST_F(GraphOptz, ReshapeConstantOneUse) {
   // Before optimization, we have 2 Reshapes and a Save.
   EXPECT_EQ(F_->getNodes().size(), 3);
 
-  ::glow::convertPlaceholdersToConstants(F_, bindings_, {});
-  ::glow::optimize(F_, CompilationMode::Infer);
+  CompilationContext cctx;
+  // Skip ConstantFolding as it would have the same result as this opt.
+  cctx.optimizationOpts.enableConstantFolding = false;
+  ::glow::optimize(F_, cctx);
 
   // After optimization, we expect to see just a Save.
   EXPECT_EQ(F_->getNodes().size(), 1);
