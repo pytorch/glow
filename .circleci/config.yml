@@ -66,7 +66,7 @@ linux_default: &linux_default
       name: Test
       no_output_timeout: "1h"
       command: |
-        docker exec -e CIRCLE_JOB=${CIRCLE_JOB} -u jenkins $(cat .docker_pid) .circleci/test.sh
+        docker exec -e CIRCLE_BRANCH=${CIRCLE_BRANCH} -e CIRCLE_JOB=${CIRCLE_JOB} -u jenkins $(cat .docker_pid) .circleci/test.sh
 
 jobs:
   DEBUG:
