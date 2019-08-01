@@ -249,12 +249,20 @@ struct SoftMaxInputs {
     dtype = 2,
   };
 };
+
+// Indexes of aten::flatten inputs.
+struct FlattenInputs {
+  enum {
+    input = 0,
+    start_dim = 1,
+    end_dim = 2,
+  };
+};
 } // namespace
 
 // static
 const PyTorchModelLoader::MappingOfMemberFunctions &
 PyTorchModelLoader::getSymbolsMapping() {
-
   /// Static map of the set of PyTorch symbols to load, the PyTorchModelLoader
   /// for loading these symbols, and the set of inputs that should be considered
   /// immutable between inference invocations by Glow and loaded as Constants
@@ -330,6 +338,12 @@ PyTorchModelLoader::getSymbolsMapping() {
             AvgPoolInputs::divisor_override,
         }},
        {{"aten::mm"}, &PyTorchModelLoader::loadMatMul, {}},
+       {{"aten::flatten"},
+        &PyTorchModelLoader::loadFlatten,
+        {
+            FlattenInputs::start_dim,
+            FlattenInputs::end_dim,
+        }},
        {{"aten::prelu"},
         &PyTorchModelLoader::loadPRelu,
         {
@@ -1099,6 +1113,34 @@ llvm::Error PyTorchModelLoader::loadSoftMax(const torch::jit::Node *ptNode) {
   auto *SM = F_.createSoftMax("SoftMax", FN, selected);
   auto origInDims = in.getType()->dims();
   auto *glowNode = F_.createReshape("reshapeOutput", SM, origInDims);
+  return addGlowNodeValue(outputs[0], glowNode);
+}
+
+llvm::Error PyTorchModelLoader::loadFlatten(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 3, outputs, 1));
+
+  glow::NodeValue in;
+  ASSIGN_VALUE_OR_RETURN_ERR(in,
+                             getGlowNodeValue(inputs[FlattenInputs::input]));
+
+  auto startHandle = glow::Handle<int32_t>::createInvalidHandle();
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      startHandle,
+      getGlowConstantHandle<int32_t>(inputs[FlattenInputs::start_dim]));
+  RETURN_ERR_IF_NOT(startHandle.size() == 1, "start_dim must be 1D vector.");
+  uint32_t startDim = static_cast<uint32_t>(startHandle.raw(0));
+
+  auto endHandle = glow::Handle<int32_t>::createInvalidHandle();
+  ASSIGN_VALUE_OR_RETURN_ERR(endHandle, getGlowConstantHandle<int32_t>(
+                                            inputs[FlattenInputs::end_dim]));
+  RETURN_ERR_IF_NOT(endHandle.size() == 1, "end_dim must be 1D vector.");
+  uint32_t endDim = static_cast<uint32_t>(endHandle.raw(0));
+  RETURN_ERR_IF_NOT(endDim == -1, "only -1 value for end_dim is supported.");
+
+  auto xDim = glow::flattenCdr(in.dims(), startDim);
+  auto *glowNode = F_.createReshape("flatten", in, {xDim.first, xDim.second});
   return addGlowNodeValue(outputs[0], glowNode);
 }
 
