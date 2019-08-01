@@ -271,32 +271,34 @@ protected:
   }
 
   /// Returns a new Constant, of the provided \p type and \p dims initialized
-  /// with random data.
+  /// with random data. If using floating point, then it is initialized via
+  /// Xavier with filterSize equal to twice the number of elements in \p dims.
+  /// Otherwise integer types are initialzed via their min and max values.
   static Constant *createRandomizedConstant(Module &mod, TypeRef type,
                                             llvm::ArrayRef<size_t> dims,
-                                            llvm::StringRef name,
-                                            float min = 0.0, float max = 1.0) {
+                                            llvm::StringRef name) {
     auto *c = mod.createConstant(mod.uniqueTypeWithNewShape(type, dims), name);
 
     switch (type->getElementType()) {
     case ElemKind::FloatTy: {
-      c->getHandle<float>().randomize(min, max, mod.getPRNG());
+      c->getHandle<float>().initXavier(c->getType()->size() * 2, mod.getPRNG());
       break;
     }
     case ElemKind::Float16Ty: {
-      c->getHandle<float16_t>().randomize(min, max, mod.getPRNG());
+      c->getHandle<float16_t>().initXavier(c->getType()->size() * 2,
+                                           mod.getPRNG());
       break;
     }
     case ElemKind::Int32QTy: {
-      c->getHandle<int32_t>().randomize(-INT32_MAX, INT32_MAX, mod.getPRNG());
+      c->getHandle<int32_t>().randomize(INT32_MIN, INT32_MAX, mod.getPRNG());
       break;
     }
     case ElemKind::Int8QTy: {
-      c->getHandle<int8_t>().randomize(-128, 127, mod.getPRNG());
+      c->getHandle<int8_t>().randomize(INT8_MIN, INT8_MAX, mod.getPRNG());
       break;
     }
     case ElemKind::UInt8FusedQTy: {
-      c->getHandle<uint8_t>().randomize(0, 255, mod.getPRNG());
+      c->getHandle<uint8_t>().randomize(UINT8_MIN, UINT8_MAX, mod.getPRNG());
       break;
     }
     default:
@@ -351,10 +353,10 @@ protected:
     auto internalType = mod.uniqueType(ElemKind::FloatTy, {1});
 
     /// Initial
-    auto *initial_bias = createRandomizedConstant(mod, internalType, {intDim},
-                                                  "initial_bias", 0, 0.00001);
+    auto *initial_bias =
+        createRandomizedConstant(mod, internalType, {intDim}, "initial_bias");
     auto *initial_weight = createRandomizedConstant(
-        mod, internalType, {inputDim, intDim}, "initial_weight", -0.03, 0.03);
+        mod, internalType, {inputDim, intDim}, "initial_weight");
 
     FullyConnectedNode *initial_layer = F_->createFullyConnected(
         "dense", N_, initial_weight,
@@ -367,10 +369,9 @@ protected:
     for (unsigned i = 0; i < intermediateLayers; ++i) {
 
       auto *intermediate_bias = createRandomizedConstant(
-          mod, internalType, {intDim}, "intermediate_bias", 0, 0.00001);
-      auto *intermediate_weight =
-          createRandomizedConstant(mod, internalType, {intDim, intDim},
-                                   "intermediate_weight", -0.03, 0.03);
+          mod, internalType, {intDim}, "intermediate_bias");
+      auto *intermediate_weight = createRandomizedConstant(
+          mod, internalType, {intDim, intDim}, "intermediate_weight");
 
       FullyConnectedNode *intermediate_layer = F_->createFullyConnected(
           "dense", last, intermediate_weight,
@@ -379,10 +380,10 @@ protected:
     }
 
     /// End
-    auto *end_bias = createRandomizedConstant(mod, internalType, {outputDim},
-                                              "end_bias", 0, 0.00001);
+    auto *end_bias =
+        createRandomizedConstant(mod, internalType, {outputDim}, "end_bias");
     auto *end_weight = createRandomizedConstant(
-        mod, internalType, {intDim, outputDim}, "end_weight", -0.001, 0.003);
+        mod, internalType, {intDim, outputDim}, "end_weight");
 
     FullyConnectedNode *end_layer = F_->createFullyConnected(
         "dense", last, end_weight, end_bias); // Output is size {MB, embDim}
@@ -430,7 +431,7 @@ protected:
     auto *initial_bias = createRandomizedConstant(mod, internalBiasType,
                                                   {intDim}, "initial_bias");
     auto *initial_weight = createRandomizedConstant(
-        mod, internalTypeF, {inputDim, intDim}, "initial_weight", -0.03, 0.03);
+        mod, internalTypeF, {inputDim, intDim}, "initial_weight");
 
     // Output is size {MB, intermediatDim}
     quantization::Schema rowwiseQuantSchema = useSymmetricRowwiseQuantFCOpt
@@ -449,9 +450,8 @@ protected:
     for (unsigned i = 0; i < intermediateLayers; ++i) {
       auto *intermediate_bias = createRandomizedConstant(
           mod, internalBiasType, {intDim}, "intermediate_bias");
-      auto *intermediate_weight =
-          createRandomizedConstant(mod, internalTypeF, {intDim, intDim},
-                                   "intermediate_weight", -0.03, 0.03);
+      auto *intermediate_weight = createRandomizedConstant(
+          mod, internalTypeF, {intDim, intDim}, "intermediate_weight");
 
       Node *intermediate_layer = F_->createRowwiseQuantizedFullyConnected(
           "dense", last, intermediate_weight, intermediate_bias,
@@ -465,7 +465,7 @@ protected:
     auto *end_bias = createRandomizedConstant(mod, internalBiasType,
                                               {outputDim}, "end_bias");
     auto *end_weight = createRandomizedConstant(
-        mod, internalTypeF, {intDim, outputDim}, "end_weight", -0.03, 0.03);
+        mod, internalTypeF, {intDim, outputDim}, "end_weight");
 
     // Output is size {MB, embDim}
     auto *end_layer = F_->createRowwiseQuantizedFullyConnected(
@@ -537,7 +537,7 @@ protected:
       // randomized constant.
       Constant *weightsConst = createRandomizedConstant(
           mod, mod.uniqueType(ElemKind::FloatTy, {weightsSize}), {weightsSize},
-          "weights" + std::to_string(i), 1.0f, 1.0000001f);
+          "weights" + std::to_string(i));
 
       auto *weightIndices =
           mod.createPlaceholder(ElemKind::Int32ITy, {sum},
@@ -663,8 +663,7 @@ protected:
       createSimpleRecSysGraph(*pMod, pBindings_, pFunc, tableSizes,
                               embeddingDim, quantizeSLWS, quantizeFC,
                               gatherWeights);
-      // Copy values from the first graph so they have the
-      // same random values.
+      // Copy values from the first graph so they have the same random values.
       for (auto *C : mod->getConstants()) {
         auto *dest = partitionedEE_.getModule().getConstantByName(C->getName());
         dest->getPayloadMutable().copyRawFrom(&C->getPayload());
@@ -672,6 +671,7 @@ protected:
     }
     SaveNode *result1 = llvm::cast<SaveNode>(F_->getNodeByName("save"));
     result = result1->getPlaceholder();
+    Tensor *resultTensor = bindings_->get(result);
 
     Placeholder *concatPH = nullptr;
     if (checkConcat) {
@@ -691,15 +691,48 @@ protected:
           Kinded::Kind::RowwiseQuantizedFullyConnectedNodeKind);
     }
 
+    // Compare against interpreter if we're not executing already on it.
+    const bool compareAgainstInterp = getBackendName() != "Interpreter";
+    ExecutionContext contextI;
+    Tensor *resultIT = nullptr;
+    if (compareAgainstInterp) {
+      ExecutionEngine2 IEE;
+      // Set device memory to 64GB to prevent partitioning. We are using the
+      // Interpreter's result just as a reference result to compare against.
+      IEE.setDeviceMemory(64e+9);
+      auto *modI = &IEE.getModule();
+      auto *IF = modI->createFunction("main");
+      PlaceholderBindings *bindingsI = contextI.getPlaceholderBindings();
+      createSimpleRecSysGraph(*modI, *bindingsI, IF, tableSizes, embeddingDim,
+                              quantizeSLWS, quantizeFC, gatherWeights);
+      // Copy values from the first graph so they have the same random values.
+      for (auto *C : mod->getConstants()) {
+        auto *dest = IEE.getModule().getConstantByName(C->getName());
+        dest->getPayloadMutable().copyRawFrom(&C->getPayload());
+      }
+      bindingsI->allocate(modI->getPlaceholders());
+
+      SaveNode *resultI = llvm::cast<SaveNode>(IF->getNodeByName("save"));
+      resultIT = bindingsI->get(resultI->getPlaceholder());
+
+      // Compile with the same cctx as before, so we get the same precision
+      // transformation.
+      IEE.compile(cctx);
+      IEE.run(contextI);
+    }
+
     // Compile.
     EE_.compile(cctx);
 
     // Run graph
     EE_.run(context_);
 
+    if (compareAgainstInterp) {
+      EXPECT_TRUE(resultIT->isEqual(*resultTensor));
+    }
+
     if (checkConcat) {
       // Get result and verify.
-      auto *resultTensor = bindings_->get(result);
       auto resultHandle = resultTensor->getHandle();
 
       EXPECT_EQ(resultTensor->size(), miniBatch);
@@ -723,9 +756,7 @@ protected:
   }
 
   /// Execute a graph of functions based on the given DAG.
-  void executeDAG(DAGNode *G, Module &mod, ExecutionContext &context,
-                  llvm::ArrayRef<Placeholder *> vars,
-                  llvm::ArrayRef<Tensor *> inputs) {
+  void executeDAG(DAGNode *G, Module &mod, ExecutionContext &context) {
     std::unordered_map<std::string, Function *> name2func;
 
     for (auto *F : mod.getFunctions()) {
@@ -745,8 +776,7 @@ protected:
       DAGNode *dag = exeList.at(curPt);
       // The root in a G is always a dummy function.
       if (curPt > 0) {
-        updateInputPlaceholders2(*context.getPlaceholderBindings(), vars,
-                                 inputs);
+        updateInputPlaceholders2(*context.getPlaceholderBindings(), {}, {});
         partitionedEE_.run(context, dag->name);
       }
       for (unsigned int i = 0, e = dag->children.size(); i < e; i++) {
@@ -776,7 +806,7 @@ protected:
     ASSERT_EQ(myList.size(), 1);
     DAG &dag = myList.front();
 
-    // Run the paritioned graph and compare the results.
+    // Run the partitioned graph and compare the results.
 
     auto &bindings = *context.getPlaceholderBindings();
     bindings.clear();
@@ -785,7 +815,7 @@ protected:
     for (auto PH : pBindings_.pairs()) {
       pBindings_.copyToTarget(PH.first->getName(), bindings);
     }
-    executeDAG(dag.root.get(), *pMod, context, {}, {});
+    executeDAG(dag.root.get(), *pMod, context);
     auto res = bindings.getPlaceholderByName("save");
     Tensor *resultTensor = bindings.get(res);
     EXPECT_TRUE(referenceResult.isEqual(*resultTensor));
@@ -964,26 +994,6 @@ TEST_P(RecommendationSystemTest, RecSys_SLS_Only) {
 TEST_P(RecommendationSystemTest, RecSys_FP32_Gather_Weights) {
   ENABLED_BACKENDS(CPU);
 
-  testRecSys(/* quantizeSLWS */ false,
-             /* quantizeFC */ false,
-             /* convertToFP16 */ false,
-             /* gatherWeights */ true);
-}
-
-/// Test gathering weights for SLWS.
-TEST_P(RecommendationSystemTest, RecSys_FP32_Medium_Gather_Weights) {
-  ENABLED_BACKENDS(CPU);
-
-  // Note that this overrides the parameters provided by command line options if
-  // provided, as this comes after SetUp().
-  tableSizes = {800000, 600000, 700000, 900000, 1200000,
-                800000, 600000, 700000, 900000, 1200000,
-                800000, 600000, 700000, 900000, 1200000};
-  deviceMemCapacity = 1024ULL * 1024 * 1024 * 4; // 4GB.
-  // Since this is bigger than the default set the device memory.
-  EE_.setDeviceMemory(deviceMemCapacity);
-  // Recreate function.
-  F_ = EE_.getModule().createFunction("main");
   testRecSys(/* quantizeSLWS */ false,
              /* quantizeFC */ false,
              /* convertToFP16 */ false,
