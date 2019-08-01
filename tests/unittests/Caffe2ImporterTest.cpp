@@ -1032,6 +1032,44 @@ TEST(caffe2, importBucketize) {
   EXPECT_EQ(mod.getPlaceholders().size(), 2);
 }
 
+/// Test loading ResizeNearest op from a Caffe2 model.
+/// Test with NHWC order, 2.0 height scale and 1.5 width scale
+TEST(caffe2, importResizeNearest) {
+  ExecutionEngine2 EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string NetDescFilename(
+      GLOW_DATA_PATH "tests/models/caffe2Models/resize_nearest_op_net.pbtxt");
+  std::string NetWeightFilename(
+      GLOW_DATA_PATH "tests/models/caffe2Models/empty_init_net.pbtxt");
+
+  Placeholder *output;
+  PlaceholderBindings bindings;
+
+  {
+    Tensor input(ElemKind::FloatTy, {1, 2, 2, 1});
+
+    Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"input_0"},
+                               {&input.getType()}, *F);
+    output = EXIT_ON_ERR(caffe2LD.getSingleOutput());
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName2(bindings, &mod, {"input_0"}, {&input});
+  }
+
+  EXPECT_EQ(F->getNodes().size(), 2);
+  auto *saveNode = getSaveNodeFromDest(output);
+  auto *resizeNearestNode =
+      llvm::dyn_cast<ResizeNearestNode>(saveNode->getInput().getNode());
+  ASSERT_TRUE(resizeNearestNode);
+  // We have one input and one output.
+  EXPECT_EQ(mod.getPlaceholders().size(), 2);
+  auto heightScale = resizeNearestNode->getHeightScale();
+  auto widthScale = resizeNearestNode->getWidthScale();
+  EXPECT_NEAR(heightScale, 2.0, 0.00001);
+  EXPECT_NEAR(widthScale, 1.5, 0.00001);
+}
+
 /// Test loading clip op from a Caffe2 model.
 /// Test with arg min = 20.0 max = 60.0
 TEST(caffe2, importClip) {

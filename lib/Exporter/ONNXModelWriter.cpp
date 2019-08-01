@@ -803,6 +803,16 @@ llvm::Error ONNXModelWriter::writeBucketize(const BucketizeNode *node,
   return writeAllWithNode("Bucketize", node, proto);
 }
 
+llvm::Error ONNXModelWriter::writeResizeNearest(const ResizeNearestNode *node,
+                                                GraphType &graph) {
+  auto *proto = graph.add_node();
+  // Find dictionary entries.
+  addValueAttribute(proto, "height_scale", node->getHeightScale());
+  addValueAttribute(proto, "width_scale", node->getWidthScale());
+
+  return writeAllWithNode(node->getName(), node, proto);
+}
+
 llvm::Error ONNXModelWriter::writeSoftMax(const SoftMaxNode *node,
                                           GraphType &graph) {
   auto *proto = graph.add_node();

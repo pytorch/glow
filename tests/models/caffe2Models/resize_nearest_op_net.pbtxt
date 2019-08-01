@@ -1,0 +1,20 @@
+name: "resizenearest"
+op {
+  type: "ResizeNearest"
+  input: "input_0"
+  output: "resize_nearest_test_output"
+  arg {
+    name: "order"
+    s: "NHWC"
+  }
+  arg {
+    name: "height_scale"
+    f: 2.0
+  }
+  arg {
+    name: "width_scale"
+    f: 1.5
+  }
+}
+external_input: "input_0"
+external_output: "resize_nearest_test_output"

@@ -1589,6 +1589,43 @@ void BoundInterpreterFunction::fwdSpaceToDepthInst(
   }
 }
 
+template <typename ElemTy>
+void BoundInterpreterFunction::fwdResizeNearestInstImpl(
+    const ResizeNearestInst *I) {
+  auto inW = getWeightHandle<ElemTy>(I->getSrc());
+  auto outW = getWeightHandle<ElemTy>(I->getDest());
+
+  ShapeNHWC odim(outW.dims());
+  ShapeNHWC idim(inW.dims());
+
+  auto heightScale = I->getHeightScale();
+  auto widthScale = I->getWidthScale();
+
+  for (size_t ob = 0; ob < odim.n; ++ob) {
+    for (size_t oh = 0; oh < odim.h; ++oh) {
+      auto ic = std::min(size_t(oh / heightScale), idim.h - 1);
+      for (size_t ow = 0; ow < odim.w; ++ow) {
+        auto iw = std::min(size_t(ow / widthScale), idim.w - 1);
+        for (size_t oc = 0; oc < odim.c; ++oc) {
+          outW.at({ob, oh, ow, oc}) = inW.at({ob, ic, iw, oc});
+        }
+      }
+    }
+  }
+}
+
+void BoundInterpreterFunction::fwdResizeNearestInst(
+    const ResizeNearestInst *I) {
+  if (getTensor(I->getSrc())->getType().isQuantizedType()) {
+    dispatchQuantizedImpl(fwdResizeNearestInstImpl,
+                          I->getSrc()->getElementType(), I);
+    return;
+  }
+
+  dispatchFloatingPointImpl(fwdResizeNearestInstImpl,
+                            I->getSrc()->getElementType(), I);
+}
+
 //===----------------------------------------------------------------------===//
 //                      Local Response Normalization
 //===----------------------------------------------------------------------===//
