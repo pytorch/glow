@@ -473,6 +473,16 @@ target_link_libraries(QuantizationTest
 add_glow_test(QuantizationTest ${GLOW_BINARY_DIR}/tests/QuantizationTest --gtest_output=xml:QuantizationTest.xml)
 LIST(APPEND UNOPT_TESTS ./tests/QuantizationTest -optimize-ir=false &&)
 
+add_executable(StatsExporterTest
+               StatsExporterTest.cpp)
+target_link_libraries(StatsExporterTest
+                      PRIVATE
+                        Backends
+                        Runtime
+                        gtest
+                        TestMain)
+add_glow_test(StatsExporterTest ${GLOW_BINARY_DIR}/tests/StatsExporterTest --gtest_output=xml:StatsExporterTest.xml)
+
 add_executable(TensorsTest
                TensorsTest.cpp)
 target_link_libraries(TensorsTest

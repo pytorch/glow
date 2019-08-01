@@ -122,6 +122,9 @@ public:
 /// A class controlling a single OpenCL device. Many OpenCLFunctions may be
 /// added, but only one inference is executed at a time.
 class OpenCLDeviceManager : public QueueBackedDeviceManager {
+  /// String constant for logging number of in-use devices.
+  static constexpr const char *kDevicesUsedOpenCL = "glow.devices_used.opencl";
+
   /// Compiled function list by name.
   FunctionMapTy functions_;
 

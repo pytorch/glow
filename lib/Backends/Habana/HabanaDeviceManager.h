@@ -41,6 +41,9 @@ class HabanaDeviceManager : public DeviceManager {
   static constexpr auto INVALID_TOPOLOGY =
       std::numeric_limits<TopologyId>::max();
 
+  /// String constant for logging number of in-use devices.
+  static constexpr const char *kDevicesUsedHabana = "glow.devices_used.habana";
+
   /// The ID of the device managed by this instance.
   DeviceId deviceId_{INVALID_DEVICE};
   /// The available memory on the device.
