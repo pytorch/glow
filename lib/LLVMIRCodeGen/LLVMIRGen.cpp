@@ -1373,7 +1373,6 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
       destAddr = builder.CreateGEP(builder.getInt32Ty(), destPtr, loopCount,
                                    "buffer.element.addr");
     }
-    destAddr->print(errs());
     builder.CreateStore(stackedOpCall, destAddr);
     break;
   }
