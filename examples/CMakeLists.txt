@@ -3,7 +3,7 @@ add_executable(cifar10
 target_link_libraries(cifar10
                       PRIVATE
                         Backends
-                        ExecutionEngine
+                        ExecutionEngine2
                         Graph
                         IR
                         Support
