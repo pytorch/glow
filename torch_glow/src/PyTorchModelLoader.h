@@ -53,7 +53,7 @@ class PyTorchModelLoader {
         llvm::Error (PyTorchModelLoader::*)(const torch::jit::Node *);
 
     /// Symbols (as strings) that this mapping value is applicable to.
-    std::vector<const char *> symbols;
+    const std::vector<const char *> symbols;
 
     /// The PyTorchModelLoader method that should be used to load the given
     /// PyTorch node.
@@ -63,7 +63,7 @@ class PyTorchModelLoader {
     /// as placeholders for inference because they should be expected to not
     /// change between inferences. An example would be the weights for
     /// convolutions.
-    std::unordered_set<size_t> constInputs;
+    const std::unordered_set<size_t> constInputs;
 
     MappingOfMemberFunctionsValue(std::vector<const char *> symbolsP,
                                   LoadFn loadFnP,
@@ -249,6 +249,10 @@ private:
   /// Load a PyTorch prelu node.
   /// \returns error on failure.
   llvm::Error loadPRelu(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch SoftMax node.
+  /// \returns error on failure.
+  llvm::Error loadSoftMax(const torch::jit::Node *ptNode);
 };
 } // namespace glow
 
