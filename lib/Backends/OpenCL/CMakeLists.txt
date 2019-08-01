@@ -48,7 +48,8 @@ target_link_libraries(OpenCLBackend
                       LLVMCore
                       IROptimizer
                       GraphOptimizerPipeline
-                      QuantizationBase)
+                      QuantizationBase
+                      Runtime)
 
 target_link_libraries(OpenCLBackend
                       PUBLIC

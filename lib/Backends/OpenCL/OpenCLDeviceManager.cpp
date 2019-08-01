@@ -23,6 +23,8 @@
 #include "OpenCLDeviceManager.h"
 #include "OpenCL.h"
 
+#include "glow/Runtime/StatsExporter.h"
+
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/raw_ostream.h"
@@ -233,13 +235,16 @@ llvm::Error OpenCLDeviceManager::init() {
   commandQueuePool_.setContext(context_);
   commandQueuePool_.setDevice(deviceId_);
 
+  Stats()->incrementCounter(kDevicesUsedOpenCL);
   return llvm::Error::success();
 }
 
 OpenCLDeviceManager::~OpenCLDeviceManager() {
   clReleaseContext(context_);
   buffers_.clear();
+  Stats()->incrementCounter(kDevicesUsedOpenCL, -1);
 }
+
 uint64_t OpenCLDeviceManager::getMaximumMemory() const {
   return maxMemoryBytes_;
 }
