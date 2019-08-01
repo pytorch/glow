@@ -1911,11 +1911,11 @@ GatherRangesNode *Function::createGatherRanges(llvm::StringRef name,
       ranges));
 }
 
-ScatterAssignNode *Function::createScatterAssign(llvm::StringRef name,
-                                                 NodeValue data,
-                                                 NodeValue indices,
-                                                 NodeValue slices) {
-  return addNode(new ScatterAssignNode(name, data, indices, slices));
+ScatterDataNode *Function::createScatterData(llvm::StringRef name,
+                                             NodeValue data, NodeValue indices,
+                                             NodeValue slices,
+                                             bool cumulative) {
+  return addNode(new ScatterDataNode(name, data, indices, slices, cumulative));
 }
 
 BatchOneHotNode *Function::createBatchOneHot(llvm::StringRef name,

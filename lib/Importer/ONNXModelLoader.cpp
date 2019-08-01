@@ -1326,7 +1326,7 @@ ONNXModelLoader::loadScatterAssign(const ONNX_NAMESPACE::NodeProto &op,
   NodeValue slices;
   ASSIGN_VALUE_OR_RETURN_ERR(slices, getNodeValueByName(op.input(2)));
 
-  Node *N = G_.createScatterAssign(loadOperatorName(op), data, indices, slices);
+  Node *N = G_.createScatterData(loadOperatorName(op), data, indices, slices);
 
   RETURN_IF_ERR(addNodeAsOutput(op, N));
   return llvm::Error::success();

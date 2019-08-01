@@ -2503,12 +2503,12 @@ TEST_P(OperatorTest, BatchedGather) {
   EXPECT_FLOAT_EQ(H.at({2, 1}), 1.2);
 }
 
-TEST_P(OperatorTest, ScatterAssign) {
+TEST_P(OperatorTest, ScatterData) {
   ENABLED_BACKENDS(Interpreter, CPU, OpenCL);
 
   auto *data = mod_.createPlaceholder(ElemKind::FloatTy, {5, 2}, "data", false);
   auto *indices =
-      mod_.createPlaceholder(ElemKind::Int64ITy, {2}, "indices", false);
+      mod_.createPlaceholder(ElemKind::Int64ITy, {2, 1}, "indices", false);
   auto *slices =
       mod_.createPlaceholder(ElemKind::FloatTy, {2, 2}, "slices", false);
 
@@ -2516,7 +2516,7 @@ TEST_P(OperatorTest, ScatterAssign) {
   bindings_.allocate(indices)->getHandle<int64_t>() = {1, 3};
   bindings_.allocate(slices)->getHandle() = {-3, -4, -7, -8};
 
-  auto *R = F_->createScatterAssign("scatterassign", data, indices, slices);
+  auto *R = F_->createScatterData("scatterdata", data, indices, slices);
 
   auto *result = F_->createSave("save", R);
   bindings_.allocate(result->getPlaceholder());
@@ -2538,12 +2538,12 @@ TEST_P(OperatorTest, ScatterAssign) {
   EXPECT_FLOAT_EQ(H.at({4, 1}), 10.0);
 }
 
-TEST_P(OperatorTest, ScatterAssignQuantized) {
+TEST_P(OperatorTest, ScatterDataQuantized) {
   ENABLED_BACKENDS(Interpreter, CPU);
 
   auto *data = mod_.createPlaceholder(ElemKind::FloatTy, {5, 2}, "data", false);
   auto *indices =
-      mod_.createPlaceholder(ElemKind::Int64ITy, {2}, "indices", false);
+      mod_.createPlaceholder(ElemKind::Int64ITy, {2, 1}, "indices", false);
   auto *slices =
       mod_.createPlaceholder(ElemKind::FloatTy, {2, 2}, "slices", false);
 
@@ -2559,7 +2559,7 @@ TEST_P(OperatorTest, ScatterAssignQuantized) {
 
   auto *dataQ = F_->createQuantize("quantizeQ", data, dataTy);
   auto *slicesQ = F_->createQuantize("quantizeS", slices, slicesTy);
-  auto *SA = F_->createScatterAssign("scatterassign", dataQ, indices, slicesQ);
+  auto *SA = F_->createScatterData("scatterdata", dataQ, indices, slicesQ);
   auto *DQ = F_->createDequantize("dequantize", SA);
 
   auto *result = F_->createSave("save", DQ);
@@ -2580,6 +2580,238 @@ TEST_P(OperatorTest, ScatterAssignQuantized) {
   EXPECT_NEAR(H.at({3, 1}), -8.0, 0.05);
   EXPECT_NEAR(H.at({4, 0}), 9.0, 0.05);
   EXPECT_NEAR(H.at({4, 1}), 10.0, 0.05);
+}
+
+TEST_P(OperatorTest, ScatterDataNDimensionalSimple) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+
+  // Data = {{1,2},{3,4},{5,6}}
+  // Slices = {-3,-4}
+  // Indices = {{1,0},{1,1}}
+  // Result = {{1,2},{-3,-4},{5,6}}
+  auto *data = mod_.createPlaceholder(ElemKind::FloatTy, {3, 2}, "data", false);
+  auto *indices =
+      mod_.createPlaceholder(ElemKind::Int64ITy, {2, 2}, "indices", false);
+  auto *slices =
+      mod_.createPlaceholder(ElemKind::FloatTy, {2}, "slices", false);
+
+  // Fill tensor with consecutive data.
+  std::vector<float> init(6);
+  std::iota(init.begin(), init.end(), 1);
+  bindings_.allocate(data)->getHandle() = init;
+  bindings_.allocate(indices)->getHandle<int64_t>() = {1, 0, 1, 1};
+  bindings_.allocate(slices)->getHandle() = {-3., -4.};
+  auto *R = F_->createScatterData("scatterdata", data, indices, slices);
+
+  auto *result = F_->createSave("save", R);
+  bindings_.allocate(result->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  std::vector<size_t> expectedDims = {3, 2};
+  std::vector<float> expectedValues = {1., 2., -3., -4., 5., 6.};
+  auto H = bindings_.get(result->getPlaceholder())->getHandle();
+  EXPECT_TRUE(H.dims().vec() == expectedDims);
+  for (size_t i = 0; i < expectedValues.size(); i++) {
+    EXPECT_EQ(expectedValues[i], H.raw(i));
+  }
+}
+
+TEST_P(OperatorTest, ScatterDataNDimensional) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+
+  // In tensor 2x4x4x3, make two updates with 2-dimensional slices by
+  // 2-dimensional indices:
+  // 1. By index [0, 3], set [[-1.,  -2.,  -3.]
+  //                          [-4.,  -5.,  -6.]
+  //                          [-7.,  -8.,  -9.]
+  //                          [-10., -11., -12.]];
+  //
+  // 2. By index [1, 1], set [[-13., -14., -15.]
+  //                          [-16., -17., -18.]
+  //                          [-19., -20., -21.]
+  //                          [-22., -23., -24.]];
+  //
+  auto *data =
+      mod_.createPlaceholder(ElemKind::FloatTy, {2, 4, 4, 3}, "data", false);
+  auto *indices =
+      mod_.createPlaceholder(ElemKind::Int64ITy, {2, 2}, "indices", false);
+  auto *slices =
+      mod_.createPlaceholder(ElemKind::FloatTy, {2, 4, 3}, "slices", false);
+
+  // Fill tensor with consecutive data.
+  std::vector<float> init(2 * 4 * 4 * 3);
+  std::iota(init.begin(), init.end(), 0);
+  bindings_.allocate(data)->getHandle() = init;
+  bindings_.allocate(indices)->getHandle<int64_t>() = {0, 3, 1, 1};
+  std::vector<float> initUpdates;
+  for (int32_t i = -1; i > -25; i--) {
+    initUpdates.push_back(static_cast<float>(i));
+  }
+  bindings_.allocate(slices)->getHandle() = initUpdates;
+
+  auto *R = F_->createScatterData("scatterdata", data, indices, slices);
+
+  auto *result = F_->createSave("save", R);
+  bindings_.allocate(result->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  std::vector<size_t> expectedDims = {2, 4, 4, 3};
+  std::vector<float> expectedValues = {
+      0.0f,   1.0f,   2.0f,   3.0f,   4.0f,   5.0f,
+      6.0f,   7.0f,   8.0f,   9.0f,   10.0f,  11.0f,
+
+      12.0f,  13.0f,  14.0f,  15.0f,  16.0f,  17.0f,
+      18.0f,  19.0f,  20.0f,  21.0f,  22.0f,  23.0f,
+
+      24.0f,  25.0f,  26.0f,  27.0f,  28.0f,  29.0f,
+      30.0f,  31.0f,  32.0f,  33.0f,  34.0f,  35.0f,
+
+      -1.0f,  -2.0f,  -3.0f,  -4.0f,  -5.0f,  -6.0f,
+      -7.0f,  -8.0f,  -9.0f,  -10.0f, -11.0f, -12.0f,
+
+      48.0f,  49.0f,  50.0f,  51.0f,  52.0f,  53.0f,
+      54.0f,  55.0f,  56.0f,  57.0f,  58.0f,  59.0f,
+
+      -13.0f, -14.0f, -15.0f, -16.0f, -17.0f, -18.0f,
+      -19.0f, -20.0f, -21.0f, -22.0f, -23.0f, -24.0f,
+
+      72.0f,  73.0f,  74.0f,  75.0f,  76.0f,  77.0f,
+      78.0f,  79.0f,  80.0f,  81.0f,  82.0f,  83.0f,
+
+      84.0f,  85.0f,  86.0f,  87.0f,  88.0f,  89.0f,
+      90.0f,  91.0f,  92.0f,  93.0f,  94.0f,  95.0f};
+  auto H = bindings_.get(result->getPlaceholder())->getHandle();
+  EXPECT_TRUE(H.dims().vec() == expectedDims);
+  for (size_t i = 0; i < expectedValues.size(); i++) {
+    EXPECT_EQ(expectedValues[i], H.raw(i));
+  }
+}
+
+TEST_P(OperatorTest, ScatterAddQuantized) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+
+  auto *data = mod_.createPlaceholder(ElemKind::FloatTy, {5, 2}, "data", false);
+  auto *indices =
+      mod_.createPlaceholder(ElemKind::Int64ITy, {2, 1}, "indices", false);
+  auto *slices =
+      mod_.createPlaceholder(ElemKind::FloatTy, {2, 2}, "slices", false);
+
+  bindings_.allocate(data)->getHandle() = {1, 2, -3, -8, 5, 6, 7, 8, 9, 10};
+  bindings_.allocate(indices)->getHandle<int64_t>() = {1, 3};
+  bindings_.allocate(slices)->getHandle() = {3, -8, -7, 8};
+
+  auto qParams = glow::quantization::chooseQuantizationParams(-11, 11);
+  auto dataTy =
+      mod_.uniqueType(ElemKind::Int8QTy, {5, 2}, qParams.scale, qParams.offset);
+  auto slicesTy =
+      mod_.uniqueType(ElemKind::Int8QTy, {2, 2}, qParams.scale, qParams.offset);
+
+  auto *dataQ = F_->createQuantize("quantizeQ", data, dataTy);
+  auto *slicesQ = F_->createQuantize("quantizeS", slices, slicesTy);
+  auto *SA = F_->createScatterData("scatteradd", dataQ, indices, slicesQ,
+                                   /*Cumulative*/ true);
+  auto *DQ = F_->createDequantize("dequantize", SA);
+
+  auto *result = F_->createSave("save", DQ);
+  bindings_.allocate(result->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  auto H = bindings_.get(result->getPlaceholder())->getHandle();
+
+  EXPECT_NEAR(H.at({0, 0}), 1.0, 0.05);
+  EXPECT_NEAR(H.at({0, 1}), 2.0, 0.05);
+  EXPECT_NEAR(H.at({1, 0}), 0.0, 0.05);
+  EXPECT_NEAR(H.at({1, 1}), -11.0, 0.05);
+  EXPECT_NEAR(H.at({2, 0}), 5.0, 0.05);
+  EXPECT_NEAR(H.at({2, 1}), 6.0, 0.05);
+  EXPECT_NEAR(H.at({3, 0}), 0.0, 0.05);
+  EXPECT_NEAR(H.at({3, 1}), 11.0, 0.05);
+  EXPECT_NEAR(H.at({4, 0}), 9.0, 0.05);
+  EXPECT_NEAR(H.at({4, 1}), 10.0, 0.05);
+}
+
+TEST_P(OperatorTest, ScatterAddNDimensionalSimple) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  // Test that scatter addition works.
+  // Data = {{1,2},{3,4},{5,6}}
+  // Slices = {-3,-4}
+  // Indices = {{1,0},{1,1}}
+  // Result = {{1,2},{0,0},{5,6}}
+  auto *data = mod_.createPlaceholder(ElemKind::FloatTy, {3, 2}, "data", false);
+  auto *indices =
+      mod_.createPlaceholder(ElemKind::Int64ITy, {2, 2}, "indices", false);
+  auto *slices =
+      mod_.createPlaceholder(ElemKind::FloatTy, {2}, "slices", false);
+
+  // Fill tensor with consecutive data.
+  std::vector<float> init;
+  for (int32_t i = 1; i < 7; i++) {
+    init.push_back(static_cast<float>(i));
+  }
+  bindings_.allocate(data)->getHandle() = init;
+  bindings_.allocate(indices)->getHandle<int64_t>() = {1, 0, 1, 1};
+  bindings_.allocate(slices)->getHandle() = {-3., -4.};
+  auto *R = F_->createScatterData("scatteradd", data, indices, slices,
+                                  /*Cumulative*/ true);
+
+  auto *result = F_->createSave("save", R);
+  bindings_.allocate(result->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  std::vector<size_t> expectedDims = {3, 2};
+  std::vector<float> expectedValues = {1., 2., 0., 0., 5., 6.};
+  auto H = bindings_.get(result->getPlaceholder())->getHandle();
+  EXPECT_TRUE(H.dims().vec() == expectedDims);
+  for (size_t i = 0; i < expectedValues.size(); i++) {
+    EXPECT_EQ(expectedValues[i], H.raw(i));
+  }
+}
+
+TEST_P(OperatorTest, ScatterAddNDimensionalDuplicatingIndices) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  // Test that scatter addition with duplicating indices works.
+  // Data = {{1,2},{3,4},{5,6}}
+  // Slices = {-3,-4,-3,-4}
+  // Indices = {{1,0},{1,1}{1,0},{1,1}}
+  // Result = {{1,2},{-3,-4},{5,6}}
+  auto *data = mod_.createPlaceholder(ElemKind::FloatTy, {3, 2}, "data", false);
+  auto *indices =
+      mod_.createPlaceholder(ElemKind::Int64ITy, {4, 2}, "indices", false);
+  auto *slices =
+      mod_.createPlaceholder(ElemKind::FloatTy, {4}, "slices", false);
+
+  // Fill tensor with consecutive data.
+  std::vector<float> init;
+  for (int32_t i = 1; i < 7; i++) {
+    init.push_back(static_cast<float>(i));
+  }
+  bindings_.allocate(data)->getHandle() = init;
+  bindings_.allocate(indices)->getHandle<int64_t>() = {1, 0, 1, 1, 1, 0, 1, 1};
+  bindings_.allocate(slices)->getHandle() = {-3., -4., -3., -4.};
+  auto *R = F_->createScatterData("scatteradd", data, indices, slices,
+                                  /*Cumulative*/ true);
+
+  auto *result = F_->createSave("save", R);
+  bindings_.allocate(result->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  std::vector<size_t> expectedDims = {3, 2};
+  std::vector<float> expectedValues = {1., 2., -3., -4., 5., 6.};
+  auto H = bindings_.get(result->getPlaceholder())->getHandle();
+  EXPECT_TRUE(H.dims().vec() == expectedDims);
+  for (size_t i = 0; i < expectedValues.size(); i++) {
+    EXPECT_EQ(expectedValues[i], H.raw(i));
+  }
 }
 
 #define COMPARE_ARITH_FUN(_OP_NAME_)                                           \

@@ -1243,14 +1243,17 @@ llvm::Error OpenCLFunction::execute(ExecutionContext *context) {
       continue;
     }
 
-    if (auto *SAI = dyn_cast<ScatterAssignInst>(&I)) {
+    if (auto *SDI = dyn_cast<ScatterDataInst>(&I)) {
+      assert(!SDI->getCumulative() && "Cumulative assign not supported!");
+      assert(SDI->getIndices()->dims()[1] == 1 &&
+             "Only one-dimensional indices are supported!");
       cl_kernel kernel = createKernel(kernelName);
       setKernelArg(kernel, 0, deviceBuffer_);
       auto numArgs = setKernelArgsForBuffers(kernel, I, 1, runtimeBundle_);
 
-      auto *data = SAI->getData();
+      auto *data = SDI->getData();
       size_t dataSliceSize = data->size() / data->dims()[0];
-      size_t numIndices = SAI->getIndices()->size();
+      size_t numIndices = SDI->getIndices()->size();
       setKernelArg<cl_uint>(kernel, numArgs + 1, dataSliceSize);
 
       enqueueKernel(I.getName(), commands_, kernel, deviceId_, {numIndices},
@@ -1832,11 +1835,10 @@ bool OCLBackend::isOpSupported(const NodeInfo &NI) const {
                                                   {GatherNode::IndicesIdx}) &&
            (NI.getInElemTy(GatherNode::IndicesIdx) == ElemKind::Int64ITy);
 
-  case Kinded::Kind::ScatterAssignNodeKind:
+  case Kinded::Kind::ScatterDataNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
-               {ElemKind::FloatTy}, {ScatterAssignNode::IndicesIdx}) &&
-           (NI.getInElemTy(ScatterAssignNode::IndicesIdx) ==
-            ElemKind::Int64ITy);
+               {ElemKind::FloatTy}, {ScatterDataNode::IndicesIdx}) &&
+           (NI.getInElemTy(ScatterDataNode::IndicesIdx) == ElemKind::Int64ITy);
 
   case Kinded::Kind::SparseLengthsWeightedSumNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(

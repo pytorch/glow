@@ -1119,7 +1119,10 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     NodeValue slices;
     ASSIGN_VALUE_OR_RETURN_ERR(slices, getNodeValueByName(op.input(2)));
 
-    Node *SAN = G_.createScatterAssign(opName, data, indices, slices);
+    assert(indices.dims().size() == 1 && "Indices should be 1-dimensional!");
+    NodeValue indices2D =
+        G_.createReshape("indices.2d", indices, {indices.dims()[0], 1});
+    Node *SAN = G_.createScatterData(opName, data, indices2D, slices);
     RETURN_IF_ERR(addNodeAsOutput(op, SAN));
     return llvm::Error::success();
   }

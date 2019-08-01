@@ -566,10 +566,11 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::SameElementType, {"Ranges", "Lengths"})
       .autoIRGen();
 
-  BB.newInstr("ScatterAssign")
+  BB.newInstr("ScatterData")
       .addOperand("Data", OperandKind::InOut)
       .addOperand("Indices", OperandKind::In)
       .addOperand("Slices", OperandKind::In)
+      .addMember(MemberType::Boolean, "Cumulative")
       .autoVerify(VerifyKind::SameElementType,
                   {"Indices", "ElemKind::Int64ITy"});
 

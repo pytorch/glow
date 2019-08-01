@@ -160,6 +160,8 @@ protected:
   /// Generates LLVM IR that materializes the constant \p val.
   llvm::Value *emitConstI8(llvm::IRBuilder<> &builder, int8_t val);
   /// Generates LLVM IR that materializes the constant \p val.
+  llvm::Value *emitConstI1(llvm::IRBuilder<> &builder, bool val);
+  /// Generates LLVM IR that materializes the constant \p val.
   llvm::Value *emitConstSizeT(llvm::IRBuilder<> &builder, size_t val);
   /// Generates LLVM IR that materializes the constant \p val as a constant of
   /// the type specified by \p kind.

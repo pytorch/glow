@@ -995,9 +995,11 @@ public:
   /// Copies each slice from \p slices into \p data at the corresponding index
   /// in \p indices, and \returns this new version of data. For example, given
   /// input data {{1,2},{3,4},{5,6}}, slices {{-3,-4}}, and indices {1}, the
-  /// result is {{1,2},{-3,-4},{5,6}}.
-  ScatterAssignNode *createScatterAssign(llvm::StringRef name, NodeValue data,
-                                         NodeValue indices, NodeValue slices);
+  /// result is {{1,2},{-3,-4},{5,6}}. If \p cumulative is true, this node adds
+  /// values instead of copying.
+  ScatterDataNode *createScatterData(llvm::StringRef name, NodeValue data,
+                                     NodeValue indices, NodeValue slices,
+                                     bool cumulative = false);
 
   /// Given 2D matrix \p data, 1D vector \p lengths (of the same size as width
   /// of \p data), and 1D vector \p values (of the same size as sum of

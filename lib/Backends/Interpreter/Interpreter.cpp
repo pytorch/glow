@@ -362,13 +362,13 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
                {TopKNode::IndicesIdx}) &&
            (NI.getOutElemTy(TopKNode::IndicesIdx) == ElemKind::Int64ITy);
 
-  case Kinded::Kind::ScatterAssignNodeKind:
-    return (NI.getInElemTy(ScatterAssignNode::IndicesIdx) ==
+  case Kinded::Kind::ScatterDataNodeKind:
+    return (NI.getInElemTy(ScatterDataNode::IndicesIdx) ==
             ElemKind::Int64ITy) &&
-           (NI.getOutElemTy(ScatterAssignNode::ResultIdx) ==
-            NI.getInElemTy(ScatterAssignNode::DataIdx)) &&
-           (NI.getOutElemTy(ScatterAssignNode::ResultIdx) ==
-            NI.getInElemTy(ScatterAssignNode::SlicesIdx));
+           (NI.getOutElemTy(ScatterDataNode::ResultIdx) ==
+            NI.getInElemTy(ScatterDataNode::DataIdx)) &&
+           (NI.getOutElemTy(ScatterDataNode::ResultIdx) ==
+            NI.getInElemTy(ScatterDataNode::SlicesIdx));
 
   case Kinded::Kind::SoftMaxNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(

@@ -425,13 +425,56 @@ static void libjit_gatherranges(T *output, U *lengths, const T *data,
 }
 
 template <typename T>
-static void libjit_scatterassign(T *data, const size_t *indices,
-                                 const T *slices, size_t numIndices,
-                                 size_t sliceSize) {
+static void libjit_scatterdatacopy(T *data, const size_t *dataDims,
+                                   const size_t *indices, const T *slices,
+                                   size_t numIndices, size_t indexSize,
+                                   size_t sliceSize) {
   for (size_t i = 0; i < numIndices; i++) {
-    size_t destDataIdx = indices[i];
+    size_t destDataIdx = indices[i * indexSize];
+    for (size_t j = 1; j < indexSize; j++) {
+      destDataIdx *= dataDims[j];
+      destDataIdx += indices[i * indexSize + j];
+    }
     memcpy(data + destDataIdx * sliceSize, slices + i * sliceSize,
            sliceSize * sizeof(T));
+  }
+}
+
+template <typename T>
+static void libjit_scatterdataaddfloat(T *data, const size_t *dataDims,
+                                       const size_t *indices, const T *slices,
+                                       size_t numIndices, size_t indexSize,
+                                       size_t sliceSize) {
+  for (size_t i = 0; i < numIndices; i++) {
+    size_t destDataIdx = indices[i * indexSize];
+    for (size_t j = 1; j < indexSize; j++) {
+      destDataIdx *= dataDims[j];
+      destDataIdx += indices[i * indexSize + j];
+    }
+    for (size_t j = 0; j < sliceSize; j++) {
+      data[destDataIdx * sliceSize + j] += slices[i * sliceSize + j];
+    }
+  }
+}
+
+template <typename T>
+static void libjit_scatterdataaddquantized(
+    T *data, const size_t *dataDims, const size_t *indices, const T *slices,
+    size_t numIndices, size_t indexSize, size_t sliceSize, float dataScale,
+    int32_t dataOffset, float sliceScale, int32_t sliceOffset) {
+
+  for (size_t i = 0; i < numIndices; i++) {
+    size_t destDataIdx = indices[i * indexSize];
+    for (size_t j = 1; j < indexSize; j++) {
+      destDataIdx *= dataDims[j];
+      destDataIdx += indices[i * indexSize + j];
+    }
+    for (size_t j = 0; j < sliceSize; j++) {
+      float lhs = (data[destDataIdx * sliceSize + j] - dataOffset) * dataScale;
+      float rhs = (slices[i * sliceSize + j] - sliceOffset) * sliceScale;
+      T result = libjit_clip((lhs + rhs) / dataScale + dataOffset);
+      data[destDataIdx * sliceSize + j] = result;
+    }
   }
 }
 
@@ -1134,16 +1177,33 @@ void libjit_lengths_range_fill_i32(const int32_t *lengths, int32_t *output,
   }
 }
 
-void libjit_scatterassign_f(float *data, const size_t *indices,
-                            const float *slices, size_t numIndices,
-                            size_t sliceSize) {
-  libjit_scatterassign(data, indices, slices, numIndices, sliceSize);
+void libjit_scatterdata_f(float *data, const size_t *dataDims,
+                          const size_t *indices, const float *slices,
+                          size_t numIndices, size_t indexSize, size_t sliceSize,
+                          bool isCumulative) {
+  if (isCumulative) {
+    libjit_scatterdataaddfloat(data, dataDims, indices, slices, numIndices,
+                               indexSize, sliceSize);
+  } else {
+    libjit_scatterdatacopy(data, dataDims, indices, slices, numIndices,
+                           indexSize, sliceSize);
+  }
 }
 
-void libjit_scatterassign_i8(int8_t *data, const size_t *indices,
-                             const int8_t *slices, size_t numIndices,
-                             size_t sliceSize) {
-  libjit_scatterassign(data, indices, slices, numIndices, sliceSize);
+void libjit_scatterdata_i8(int8_t *data, const size_t *dataDims,
+                           const size_t *indices, const int8_t *slices,
+                           size_t numIndices, size_t indexSize,
+                           size_t sliceSize, bool isCumulative, float dataScale,
+                           int32_t dataOffset, float sliceScale,
+                           int32_t sliceOffset) {
+  if (isCumulative) {
+    libjit_scatterdataaddquantized(data, dataDims, indices, slices, numIndices,
+                                   indexSize, sliceSize, dataScale, dataOffset,
+                                   sliceScale, sliceOffset);
+  } else {
+    libjit_scatterdatacopy(data, dataDims, indices, slices, numIndices,
+                           indexSize, sliceSize);
+  }
 }
 
 void libjit_lengths_to_ranges_i32(int32_t *ranges, const int32_t *lengths,
