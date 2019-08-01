@@ -60,7 +60,7 @@ add_executable(lenet-loader
                  lenet-loader.cpp)
 target_link_libraries(lenet-loader
                       PRIVATE
-                        ExecutionEngine
+                        ExecutionEngine2
                         Graph
                         Importer
                         Support)
