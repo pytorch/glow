@@ -43,8 +43,10 @@ target_compile_definitions(Importer
                              -DGOOGLE_PROTOBUF_NO_RTTI)
 target_link_libraries(Importer
                       PRIVATE
+                        Backends
                         Base
                         Graph
+                        GraphOptimizer
                         LLVMSupport
                         Support)
 target_link_libraries(Importer PUBLIC onnx_proto ${PROTOBUF_LIBRARY})
