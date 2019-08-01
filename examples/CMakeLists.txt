@@ -27,7 +27,7 @@ add_executable(ptb
 target_link_libraries(ptb
                       PRIVATE
                         Backends
-                        ExecutionEngine
+                        ExecutionEngine2
                         Graph
                         IR
                         Support
