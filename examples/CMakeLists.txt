@@ -49,7 +49,7 @@ add_executable(fr2en
 target_link_libraries(fr2en
                       PRIVATE
                         Base
-                        ExecutionEngine
+                        ExecutionEngine2
                         IR
                         GraphOptimizer
                         Quantization
