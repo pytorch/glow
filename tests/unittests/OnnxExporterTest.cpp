@@ -52,7 +52,13 @@ void testLoadAndSaveONNXModel(const std::string &name) {
     llvm::errs() << "\n";
   }));
 
-  std::string outputFilename(name + ".output.onnxtxt");
+  llvm::SmallString<64> path;
+  auto tempFileRes =
+      llvm::sys::fs::createTemporaryFile("exporter", ".output.onnxtxt", path);
+
+  EXPECT_EQ(tempFileRes.value(), 0);
+
+  std::string outputFilename(path.c_str());
   { ONNXModelWriter onnxWR(outputFilename, *F, irVer, opsetVer, &err, true); }
 
   if (err) {
