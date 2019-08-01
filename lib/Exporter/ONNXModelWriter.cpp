@@ -731,6 +731,29 @@ llvm::Error ONNXModelWriter::writeTopK(const TopKNode *node, GraphType &graph) {
   return llvm::Error::success();
 }
 
+llvm::Error ONNXModelWriter::writeArgMax(const ArgMaxNode *node,
+                                         GraphType &graph) {
+  auto *proto = graph.add_node();
+
+  Tensor axis(ElemKind::Int64ITy, {1});
+  Tensor keepDims(ElemKind::BoolTy, {1});
+  auto axisH = axis.getHandle<int64_t>();
+  auto keepDimsH = keepDims.getHandle<int8_t>();
+  axisH.raw(0) = node->getAxis();
+  keepDimsH.raw(0) = node->getKeepDims();
+
+  auto *tensorProto = graph.add_initializer();
+  tensorProto->set_name("axis");
+  writeTensor(axis, tensorProto);
+
+  tensorProto = graph.add_initializer();
+  tensorProto->set_name("keepDims");
+  writeTensor(keepDims, tensorProto);
+  RETURN_IF_ERR(writeAllWithNode("ArgMax", node, proto));
+
+  return llvm::Error::success();
+}
+
 llvm::Error ONNXModelWriter::writePRelu(const PReluNode *node,
                                         GraphType &graph) {
   auto *proto = graph.add_node();

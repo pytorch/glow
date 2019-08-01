@@ -708,6 +708,25 @@ llvm::Error ONNXModelLoader::loadPool(const ONNX_NAMESPACE::NodeProto &op,
   return llvm::Error::success();
 }
 
+llvm::Error ONNXModelLoader::loadArgMax(const ONNX_NAMESPACE::NodeProto &op,
+                                        const ArgumentDictionaryTy &dict) {
+  const std::string &opName = loadOperatorName(op);
+
+  NodeValue in;
+  ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
+  size_t axis = 0;
+  if (dict.count("axis")) {
+    ASSIGN_VALUE_OR_RETURN_ERR(axis, loadInt(dict.at("axis")));
+  }
+  bool keepDims = true;
+  if (dict.count("keepDims")) {
+    ASSIGN_VALUE_OR_RETURN_ERR(keepDims, loadInt(dict.at("keepDims")));
+  }
+  Node *node = G_.createArgMax(opName, in, axis, keepDims);
+  RETURN_IF_ERR(addNodeAsOutput(op, node));
+  return llvm::Error::success();
+}
+
 llvm::Error
 ONNXModelLoader::loadGlobalAveragePool(const ONNX_NAMESPACE::NodeProto &op,
                                        const ArgumentDictionaryTy &dict) {
@@ -1575,6 +1594,9 @@ llvm::Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
   }
   if (typeName == "Splat") {
     return loadSplat(op, dict);
+  }
+  if (typeName == "ArgMax") {
+    return loadArgMax(op, dict);
   }
 
   RETURN_ERR("Failed to load operator " + typeName + " .",

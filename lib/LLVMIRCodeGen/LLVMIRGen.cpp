@@ -2000,6 +2000,22 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     break;
   }
 
+  case Kinded::Kind::ArgMaxInstKind: {
+    auto *AM = cast<ArgMaxInst>(I);
+    auto *argmax = AM->getArgmax();
+    auto *input = AM->getInput();
+    auto *argmaxPtr = emitValueAddress(builder, argmax);
+    auto *inputPtr = emitValueAddress(builder, input);
+
+    auto *srcDims = emitValueDims(builder, input);
+
+    auto *axis = emitConstSizeT(builder, AM->getAxis());
+
+    auto *F = getFunction("arg_max", input->getElementType());
+    createCall(builder, F, {inputPtr, argmaxPtr, srcDims, axis});
+    break;
+  }
+
   case Kinded::Kind::AvgPoolInstKind: {
     auto *PA = cast<AvgPoolInst>(I);
     assert(PA->getLayout() == NHWC &&

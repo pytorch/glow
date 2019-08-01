@@ -1913,6 +1913,21 @@ TopKNode *Function::createTopK(llvm::StringRef name, NodeValue input,
       k));
 }
 
+ArgMaxNode *Function::createArgMax(llvm::StringRef name, NodeValue input,
+                                   unsigned_t axis, bool keepDims) {
+  auto inDims = input.dims();
+  ShapeVector newDims;
+  for (size_t i = 0, e = inDims.size(); i < e; i++) {
+    if (i == axis && !keepDims) {
+      continue;
+    } else {
+      newDims.push_back(i == axis ? 1 : inDims[i]);
+    }
+  }
+  auto TR = getParent()->uniqueType(ElemKind::Int64ITy, newDims);
+  return addNode(new ArgMaxNode(name, TR, input, axis, keepDims));
+}
+
 GatherNode *Function::createGather(llvm::StringRef name, NodeValue data,
                                    NodeValue indices, unsigned_t batchDims) {
 

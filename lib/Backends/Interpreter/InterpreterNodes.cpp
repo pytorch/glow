@@ -3508,6 +3508,48 @@ static void fwdTopK(Tensor *outW, Tensor *indW, Tensor *inW, size_t k) {
   }
 }
 
+template <typename T>
+static void fwdArgMax(Tensor *argmaxW, Tensor *inW, size_t axis) {
+  auto argmaxH = argmaxW->getHandle<int64_t>();
+  auto inH = inW->getHandle<T>();
+
+  auto idim = inW->dims();
+
+  size_t a, b, c, d = 0;
+
+  size_t *dim[4];
+  dim[(axis + 1) % 4] = &a;
+  dim[(axis + 2) % 4] = &b;
+  dim[(axis + 3) % 4] = &c;
+  dim[axis] = &d;
+
+  size_t odim[4] = {idim[0], idim[1], idim[2], idim[3]};
+  odim[axis] = 1;
+
+  for (a = 0; a < idim[(axis + 1) % 4]; a++) {
+    for (b = 0; b < idim[(axis + 2) % 4]; b++) {
+      for (c = 0; c < idim[(axis + 3) % 4]; c++) {
+
+        T max = inH.at({*dim[0], *dim[1], *dim[2], 0});
+        int64_t maxi = 0;
+
+        for (d = 0; d < idim[axis]; d++) {
+          T elem = inH.at({*dim[0], *dim[1], *dim[2], *dim[3]});
+          if (elem > max) {
+            max = elem;
+            maxi = d;
+          }
+        }
+        *dim[axis] = 0;
+        size_t ind = (*dim[0]) * odim[1] * odim[2] * odim[3] +
+                     (*dim[1]) * odim[2] * odim[3] + (*dim[2]) * odim[3] +
+                     (*dim[3]);
+        argmaxH.raw(ind) = maxi;
+      }
+    }
+  }
+}
+
 //===----------------------------------------------------------------------===//
 //                       Sorting operators
 //===----------------------------------------------------------------------===//
@@ -3524,6 +3566,19 @@ void BoundInterpreterFunction::fwdTopKInst(const TopKInst *I) {
   }
 
   dispatchFloatingPointImpl(fwdTopK, inW->getElementType(), outW, indW, inW, k);
+}
+
+void BoundInterpreterFunction::fwdArgMaxInst(const ArgMaxInst *I) {
+  auto argmaxW = getTensor(I->getArgmax());
+  auto inW = getTensor(I->getInput());
+  size_t axis = I->getAxis();
+
+  if (inW->getType().isQuantizedType()) {
+    dispatchQuantizedImpl(fwdArgMax, inW->getElementType(), argmaxW, inW, axis);
+    return;
+  }
+  dispatchFloatingPointImpl(fwdArgMax, inW->getElementType(), argmaxW, inW,
+                            axis);
 }
 
 //===----------------------------------------------------------------------===//

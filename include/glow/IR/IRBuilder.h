@@ -58,6 +58,9 @@ public:
                             llvm::ArrayRef<unsigned_t> strides,
                             llvm::ArrayRef<unsigned_t> pads, unsigned_t layout);
 
+  ArgMaxInst *createArgMaxOp(llvm::StringRef name, Value *input,
+                             unsigned_t axis, bool keepDims);
+
   AvgPoolInst *createAvgPoolOp(Value *input, llvm::ArrayRef<unsigned_t> kernels,
                                llvm::ArrayRef<unsigned_t> strides,
                                llvm::ArrayRef<unsigned_t> pads,
