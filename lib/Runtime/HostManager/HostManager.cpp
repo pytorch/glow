@@ -22,6 +22,9 @@
 #include "glow/Runtime/Executor/ThreadPoolExecutor.h"
 #include "glow/Runtime/Provisioner/Provisioner.h"
 #include "glow/Runtime/RuntimeTypes.h"
+#include "glow/Support/Support.h"
+
+#include "llvm/Support/CommandLine.h"
 
 #include <glog/logging.h>
 
@@ -30,6 +33,16 @@
 
 using namespace glow;
 using namespace runtime;
+
+namespace {
+llvm::cl::OptionCategory hostManagerCat("HostManager Options");
+
+llvm::cl::opt<std::string> loadBackendSpecificOptionsOpt(
+    "load-backend-specific-opts",
+    llvm::cl::desc("Load backend-specific options for compilation."),
+    llvm::cl::value_desc("options.yaml"), llvm::cl::Optional,
+    llvm::cl::cat(hostManagerCat));
+} // namespace
 
 HostManager::HostManager(const HostConfig &hostConfig) : config_(hostConfig) {}
 
@@ -92,6 +105,16 @@ llvm::Error HostManager::addNetwork(std::unique_ptr<Module> module,
                       "Failed to add network: already have a function called " +
                           name);
     }
+  }
+
+  // Load backend-specific options if specified.
+  if (!loadBackendSpecificOptionsOpt.empty()) {
+    if (cctx.backendOpts.backendSpecificOpts.size() != 0) {
+      VLOG_EVERY_N(1, 1000) << "Warning: backendSpecificOpts is set via the "
+                               "HostManager, ignoring previously set options.";
+    }
+    cctx.backendOpts.backendSpecificOpts =
+        deserializeStrStrMapFromYaml(loadBackendSpecificOptionsOpt);
   }
 
   std::vector<DeviceInfo> deviceInfo;

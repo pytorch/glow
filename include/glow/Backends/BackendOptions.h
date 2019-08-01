@@ -17,6 +17,7 @@
 #define GLOW_BACKENDS_BACKENDOPTIONS_H
 
 #include "llvm/ADT/SmallVector.h"
+#include <map>
 #include <string>
 #include <vector>
 
@@ -43,6 +44,10 @@ struct BackendOptions {
 
   /// Hints for the compiler for this compilation.
   BackendHints backendHints;
+
+  /// Options that are specific to a backend. Backend is responsible for
+  /// parsing.
+  std::map<std::string, std::string> backendSpecificOpts;
 };
 
 }; // namespace glow
