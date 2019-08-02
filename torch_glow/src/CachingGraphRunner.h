@@ -20,13 +20,13 @@
 #include <torch/csrc/jit/custom_operator.h>
 #include <torch/csrc/jit/ir.h>
 
-#include "glow/ExecutionEngine/ExecutionEngine.h"
+#include "glow/ExecutionEngine/ExecutionEngine2.h"
 
 /// Responsible for maintaining a mapping from PyTorch subgraphs and their
 /// unique input types to compiled Glow Functions.
 class CachingGraphRunner {
   /// Glow ExecutionEngine.
-  glow::ExecutionEngine executionEngine_;
+  glow::ExecutionEngine2 executionEngine_;
 
 public:
   CachingGraphRunner() = default;

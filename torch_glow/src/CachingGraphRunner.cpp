@@ -32,10 +32,8 @@ llvm::Error CachingGraphRunner::runGraph(const torch::jit::Node *node,
   const char *const functionName = "PyTorchFunction";
 
   glow::Function *f = nullptr;
+  executionEngine_.setBackendName(executionEngine_.getBackendName());
   auto &mod = executionEngine_.getModule();
-  if ((f = mod.getFunction(functionName))) {
-    mod.eraseFunction(f);
-  }
   f = mod.createFunction(functionName);
   std::vector<glow::Placeholder *> inputPlaceholders;
   std::vector<glow::Placeholder *> outputPlaceholders;
@@ -44,7 +42,7 @@ llvm::Error CachingGraphRunner::runGraph(const torch::jit::Node *node,
       *f, *graph, inputs, inputPlaceholders, outputPlaceholders));
 
   glow::CompilationContext cctx;
-  executionEngine_.compile(f, cctx);
+  executionEngine_.compile(cctx);
 
   glow::PlaceholderBindings bindings;
   for (size_t i = 0; i < inputs.size(); ++i) {
