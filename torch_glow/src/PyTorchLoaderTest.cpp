@@ -16,7 +16,7 @@
 
 #include "PyTorchFileLoader.h"
 #include "PyTorchModelLoader.h"
-#include "glow/ExecutionEngine/ExecutionEngine.h"
+#include "glow/ExecutionEngine/ExecutionEngine2.h"
 #include "gtest/gtest.h"
 #include <torch/csrc/jit/pass_manager.h>
 #include <torch/csrc/jit/passes/graph_fuser.h>
