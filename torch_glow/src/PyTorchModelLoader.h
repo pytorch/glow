@@ -158,6 +158,10 @@ private:
   /// \returns error on failure.
   llvm::Error loadTranspose(const torch::jit::Node *ptNode);
 
+  /// Load a PyTorch aten::linear node.
+  /// \returns error on failure.
+  llvm::Error loadLinear(const torch::jit::Node *ptNode);
+
   /// Load a PyTorch min node.
   /// \returns error on failure.
   llvm::Error loadMin(const torch::jit::Node *ptNode);

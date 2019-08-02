@@ -174,6 +174,8 @@ PyTorchModelLoader::getSymbolsMapping() {
       {at::Symbol::fromQualString("aten::t_"),
        &PyTorchModelLoader::loadTranspose},
       {at::Symbol::fromQualString("aten::min"), &PyTorchModelLoader::loadMin},
+      {at::Symbol::fromQualString("aten::linear"),
+       &PyTorchModelLoader::loadLinear},
       {at::Symbol::fromQualString("aten::max"), &PyTorchModelLoader::loadMax},
       {at::Symbol::fromQualString("aten::exp"), &PyTorchModelLoader::loadExp},
       {at::Symbol::fromQualString("aten::sqrt"), &PyTorchModelLoader::loadSqrt},
@@ -495,6 +497,38 @@ PyTorchModelLoader::loadConvolution(const torch::jit::Node *ptNode) {
       "conv_output_transposed", conv->getResult(), NHWC2NCHW);
 
   return addGlowNodeValue(outputs[0], output->getResult());
+}
+
+llvm::Error PyTorchModelLoader::loadLinear(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  assert(inputs.size() == 3);
+  assert(outputs.size() == 1);
+
+  // Indexes of aten::linear inputs.
+  struct Inputs {
+    enum {
+      input = 0,
+      weights = 1,
+      bias = 2,
+    };
+  };
+
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValue(inputs[Inputs::input]));
+  glow::NodeValue weights;
+  ASSIGN_VALUE_OR_RETURN_ERR(weights,
+                             getGlowNodeValue(inputs[Inputs::weights]));
+
+  auto *mul = F_.createMatMul("linear_mul", input, weights);
+
+  if (hasGlowNodeValue(inputs[Inputs::bias])) {
+    glow::NodeValue bias;
+    ASSIGN_VALUE_OR_RETURN_ERR(bias, getGlowNodeValue(inputs[Inputs::bias]));
+    return addGlowNodeValue(outputs[0], F_.createAdd("linear_add", mul, bias));
+  } else {
+    return addGlowNodeValue(outputs[0], mul);
+  }
 }
 
 llvm::Error PyTorchModelLoader::loadBatchNorm(const torch::jit::Node *ptNode) {
