@@ -105,6 +105,11 @@ public:
   /// The new type is identical to \p T, with a new shape \p dims.
   TypeRef uniqueTypeWithNewShape(TypeRef T, llvm::ArrayRef<size_t> dims);
 
+  /// The new type is identical to \p T, with a new shape \p dims and new \p
+  /// alignments.
+  TypeRef uniqueTypeWithNewShape(TypeRef T, llvm::ArrayRef<size_t> dims,
+                                 llvm::ArrayRef<size_t> alignments);
+
   /// Return the void type.
   TypeRef getVoidTy();
 

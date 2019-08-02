@@ -846,6 +846,8 @@ static void testInitZeroFused(ElemKind fusedKind, float allowedError) {
   auto TH = T.getHandle<uint8_t>();
   auto *TData = reinterpret_cast<uint8_t *>(T.getUnsafePtr());
   TH.clear(127);
+  auto rowLength = TH.getElementPtr({1, 0});
+  auto width = TH.dims()[1];
 
   // Now set the scale/offset of each row. Set the scale to 0.1 so that we are
   // multiplying by 10 when calculating zero. Offset is dependent on each row.
@@ -853,7 +855,7 @@ static void testInitZeroFused(ElemKind fusedKind, float allowedError) {
   for (size_t i = 0; i < 10; i++) {
     const ScaleOffsetT offset = -(i + 0.7);
     uint8_t *scaleOffsetPtr =
-        &TData[(i + 1) * numTotalColumns] - 2 * sizeof(ScaleOffsetT);
+        &TData[i * rowLength] + width - 2 * sizeof(ScaleOffsetT);
     memcpy(scaleOffsetPtr, &scaleForAllRows, sizeof(ScaleOffsetT));
     memcpy(scaleOffsetPtr + sizeof(ScaleOffsetT), &offset,
            sizeof(ScaleOffsetT));
@@ -870,7 +872,7 @@ static void testInitZeroFused(ElemKind fusedKind, float allowedError) {
   // the same as expected (untouched by initializing to zero).
   for (size_t i = 0; i < 10; i++) {
     uint8_t *scaleOffsetPtr =
-        &TData[(i + 1) * numTotalColumns] - 2 * sizeof(ScaleOffsetT);
+        &TData[i * rowLength] + width - 2 * sizeof(ScaleOffsetT);
     ScaleOffsetT scale, offset;
     memcpy(&scale, scaleOffsetPtr, sizeof(ScaleOffsetT));
     memcpy(&offset, scaleOffsetPtr + sizeof(ScaleOffsetT),

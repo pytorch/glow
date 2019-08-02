@@ -94,7 +94,9 @@ public:
   /// Set the type of the Tensor to \p t.
   void setType(const TypeRef t) {
     assert(type_.dims() == t->dims() && "New type must retain the same shape.");
-    assert(type_.getSizeInBytes() == t->getSizeInBytes() &&
+    assert(((type_.getElementType() == t->getElementType() &&
+             type_.size() == t->size()) ||
+            type_.getSizeInBytes() == t->getSizeInBytes()) &&
            "New type must retain the same size in bytes.");
     type_ = *t;
   }
@@ -116,39 +118,40 @@ public:
   /// Set the content of the tensor to zero. If \p resetFusedScalesOffsets, then
   /// fused scales/offsets will be set to 1.0/0.0 as well.
   void zero(bool resetFusedScalesOffsets = false) {
+    size_t size = actualSize();
     // Quantized tensors should go to their offset.
     switch (type_.getElementType()) {
     case ElemKind::Int8QTy: {
       auto *data = reinterpret_cast<int8_t *>(getData());
-      std::fill(&data[0], &data[0] + size(), (int8_t)type_.getOffset());
+      std::fill(&data[0], &data[0] + size, (int8_t)type_.getOffset());
       break;
     }
     case ElemKind::UInt8QTy: {
       auto *data = reinterpret_cast<uint8_t *>(getData());
-      std::fill(&data[0], &data[0] + size(), (uint8_t)type_.getOffset());
+      std::fill(&data[0], &data[0] + size, (uint8_t)type_.getOffset());
       break;
     }
     case ElemKind::Int16QTy: {
       auto *data = reinterpret_cast<int16_t *>(getData());
-      std::fill(&data[0], &data[0] + size(), (int16_t)type_.getOffset());
+      std::fill(&data[0], &data[0] + size, (int16_t)type_.getOffset());
       break;
     }
     case ElemKind::Int32QTy: {
       auto *data = reinterpret_cast<int32_t *>(getData());
-      std::fill(&data[0], &data[0] + size(), (int32_t)type_.getOffset());
+      std::fill(&data[0], &data[0] + size, (int32_t)type_.getOffset());
       break;
     }
-
 #define FUSED_CASE(ELEM_KIND, DATA_TYPE)                                       \
   case ElemKind::ELEM_KIND: {                                                  \
     assert(dims().size() == 2 && "Fused tensor must be 2-dimensional.");       \
     assert(dims()[1] > sizeof(DATA_TYPE) &&                                    \
            "Fused tensor must have space for scale and offset.");              \
-    const size_t width = dims()[1];                                            \
+    const size_t dataWidth = dims()[1];                                        \
+    const size_t alignedLength = type_.strides()[0];                           \
     auto *data = reinterpret_cast<uint8_t *>(getData());                       \
     for (size_t i = 0, e = dims()[0]; i < e; i++) {                            \
       uint8_t *scaleOffsetPtr =                                                \
-          &data[(i + 1) * width] - 2 * sizeof(DATA_TYPE);                      \
+          data + i * alignedLength + dataWidth - 2 * sizeof(DATA_TYPE);        \
       DATA_TYPE scale, offset;                                                 \
       if (resetFusedScalesOffsets) {                                           \
         /* Use these as defaults, and copy them into each row. */              \
@@ -165,7 +168,8 @@ public:
       DCHECK_NE(static_cast<float>(scale), 0.0)                                \
           << "Disallow scale = 0.0 for Fused ElemKinds; causes div by zero.";  \
       float zero = nearbyintf(-1 * static_cast<float>(offset / scale));        \
-      std::fill(&data[i * width], scaleOffsetPtr, static_cast<uint8_t>(zero)); \
+      std::fill(data + i * alignedLength, scaleOffsetPtr,                      \
+                static_cast<uint8_t>(zero));                                   \
     }                                                                          \
     break;                                                                     \
   }
@@ -175,7 +179,7 @@ public:
 
     default:
       // Non-quantized tensors are set to 0.
-      std::fill(&getData()[0], &getData()[0] + size() * type_.getElementSize(),
+      std::fill(&getData()[0], &getData()[0] + size * type_.getElementSize(),
                 0);
       break;
     }
@@ -186,6 +190,13 @@ public:
 
   /// \returns the number of elements in the tensor.
   size_t size() const { return type_.size(); }
+
+  /// \returns the actual number of elements in the tensor taking striding into
+  /// account. Since size() does not take striding into account, size() is
+  /// always <= actualSize().
+  size_t actualSize() const {
+    return type_.getSizeInBytes() / type_.getElementSize();
+  }
 
   /// \returns the number of bytes required to store the tensor.
   uint64_t getSizeInBytes() const { return type_.getSizeInBytes(); }
@@ -290,14 +301,16 @@ public:
     unownedTensor.unpaddedSize_ = unpaddedSize_;
 
     if (offsets.size() == 0) {
-      assert(size() == unownedTensor.size() && "The size of the unowned tensor "
-                                               "should the same as the size of "
-                                               "the original tensor");
+      assert(actualSize() == unownedTensor.actualSize() &&
+             "The size of the unowned tensor "
+             "should be the same as the size of "
+             "the original tensor");
 
     } else {
-      assert(size() >= unownedTensor.size() && "The size of the unowned tensor "
-                                               "should be no greater than the "
-                                               "size of the original tensor");
+      assert(actualSize() >= unownedTensor.actualSize() &&
+             "The size of the unowned tensor "
+             "should be no greater than the "
+             "size of the original tensor");
     }
     return unownedTensor;
   }
@@ -349,7 +362,7 @@ public:
 
     // Note: zero-dimensional tensors have size 1.
     assert(size() > 0 && "Tensors must always have positive size.");
-    size_t count = size() * type_.getElementSize();
+    size_t count = type_.getSizeInBytes();
     data_ = reinterpret_cast<char *>(alignedAlloc(count, TensorAlignment));
 
 #ifdef GLOW_DEBUG_TENSOR_INIT
@@ -501,16 +514,16 @@ public:
   void assign(const Tensor *t) {
     assert(this != t && "Copying to self");
     reset(t);
-    size_t bufferSize = size() * type_.getElementSize();
+    size_t bufferSize = type_.getSizeInBytes();
     std::copy(&t->getData()[0], &t->getData()[bufferSize], getData());
   }
 
   /// Update the raw data of the tensor from the tensor \p t.
   void copyRawFrom(const Tensor *t) {
     assert(this != t && "Copying to self");
-    assert(size() == t->size());
+    assert(actualSize() == t->actualSize());
     assert(getElementType() == t->getElementType() && "Invalid element type");
-    size_t bufferSize = size() * type_.getElementSize();
+    size_t bufferSize = type_.getSizeInBytes();
     std::copy(&t->getData()[0], &t->getData()[bufferSize], getData());
   }
 
@@ -522,7 +535,7 @@ public:
     assert(dim == dims() && "Invalid slice size");
     assert(getElementType() == t->getElementType() && "Invalid element type");
 
-    size_t bufferSize = size() * type_.getElementSize();
+    size_t bufferSize = type_.getSizeInBytes();
     std::copy(&t->getData()[bufferSize * slice],
               &t->getData()[bufferSize * (slice + 1)], getData());
   }
@@ -539,7 +552,7 @@ public:
     assert(dims().size() > 1 && "Tensor must contain at least two dimensions");
 
     size_t numSlicesInInput = t->dims()[0];
-    size_t numElementsInSlice = size() / dims()[0];
+    size_t numElementsInSlice = actualSize() / dims()[0];
     size_t bufferSize = numElementsInSlice * type_.getElementSize();
 
     // For each outer slice in the current tensor:
@@ -562,10 +575,10 @@ public:
     assert(this != t && "Copying to self");
     assert(getElementType() != t->getElementType() &&
            "Use copyRawFrom instead");
-    assert(size() == t->size() && "Different sizes");
+    assert(actualSize() == t->actualSize() && "Different sizes");
     const auto *src = t->getRawDataPointer<SrcElemType>();
     auto *dst = getRawDataPointer<DestElemType>();
-    for (size_t idx = 0, end = size(); idx != end; ++idx) {
+    for (size_t idx = 0, end = actualSize(); idx != end; ++idx) {
       dst[idx] = DestElemType(src[idx]);
     }
   }
@@ -706,9 +719,11 @@ public:
   const_iterator begin() const { return tensor_->getRawDataPointer<ElemTy>(); }
 
   /// \returns an iterator referring to the past-the-end element.
-  iterator end() { return tensor_->getRawDataPointer<ElemTy>() + size(); }
+  iterator end() {
+    return tensor_->getRawDataPointer<ElemTy>() + tensor_->actualSize();
+  }
   const_iterator end() const {
-    return tensor_->getRawDataPointer<ElemTy>() + size();
+    return tensor_->getRawDataPointer<ElemTy>() + tensor_->actualSize();
   }
 
   /// Allocate a new invalid handle.
@@ -759,14 +774,9 @@ public:
     // Copy the sizes of the tensor.
     memcpy(sizes_, tensor_->type_.sizes_,
            max_tensor_dimensions * sizeof(sizes_[0]));
-
-    size_t pi = 1;
-    for (int i = numDims_ - 1; i >= 0; i--) {
-      sizeIntegral_[i] = pi;
-      assert(sizes_[i] > 0 && "invalid dim size");
-      pi *= sizes_[i];
-    }
-
+    // Copy the strides of the tensor.
+    memcpy(sizeIntegral_, tensor_->type_.strides_,
+           max_tensor_dimensions * sizeof(tensor_->type_.strides_[0]));
     assert(numDims_ <= max_tensor_dimensions && "Too many dimensions.");
   }
 
@@ -777,6 +787,11 @@ public:
   /// \returns the number of elements in the whole tensor.
   size_t size() const { return tensor_->size(); }
 
+  /// \returns the actual number of elements in the tensor taking striding into
+  /// account. Since size() does not take striding into account, size() is
+  /// always <= actualSize().
+  size_t actualSize() const { return tensor_->actualSize(); }
+
   bool isInBounds(llvm::ArrayRef<size_t> indices) const {
     return tensor_->isInBounds(indices);
   }
@@ -786,7 +801,7 @@ public:
   ElemTy &at(llvm::ArrayRef<size_t> indices) {
     assert(tensor_->isInBounds(indices));
     size_t index = getElementPtr(indices);
-    assert(index < size() && "Out of bounds");
+    assert(index < actualSize() && "Out of bounds");
     auto *data = tensor_->getRawDataPointer<ElemTy>();
     return data[index];
   }
@@ -794,21 +809,21 @@ public:
   const ElemTy &at(llvm::ArrayRef<size_t> indices) const {
     assert(tensor_->isInBounds(indices));
     size_t index = getElementPtr(indices);
-    assert(index < size() && "Out of bounds");
+    assert(index < actualSize() && "Out of bounds");
     auto *data = tensor_->getRawDataPointer<ElemTy>();
     return data[index];
   }
 
   /// \returns the element at offset \p idx without any size calculations.
   ElemTy &raw(size_t index) {
-    assert(index < size() && "Out of bounds");
+    assert(index < actualSize() && "Out of bounds");
     auto *data = tensor_->getRawDataPointer<ElemTy>();
     return data[index];
   }
 
   /// \returns the element at offset \p idx without any size calculations.
   const ElemTy &raw(size_t index) const {
-    assert(index < size() && "Out of bounds");
+    assert(index < actualSize() && "Out of bounds");
     auto *data = tensor_->getRawDataPointer<ElemTy>();
     return data[index];
   }
@@ -820,7 +835,8 @@ public:
     assert(sizes.size() > 1 && "Tensor must have at least two dimensions");
     assert(idx < sizes[0] && "Invalid first index");
 
-    Tensor slice{Type::newShape(tensor_->getType(), sizes.slice(1))};
+    Tensor slice{Type::newShape(tensor_->getType(), sizes.slice(1),
+                                tensor_->type_.strides().slice(1))};
 
     // Extract the whole slice.
     size_t startIdx = sizeIntegral_[0] * idx;
@@ -852,7 +868,7 @@ public:
 
   /// Update the content of the tensor from a literal list:
   void operator=(const std::initializer_list<ElemTy> &vec) {
-    assert(size() == vec.size() && "Invalid input size.");
+    assert(actualSize() == vec.size() && "Invalid input size.");
     size_t i = 0;
     for (auto &e : vec) {
       raw(i++) = e;
@@ -860,7 +876,7 @@ public:
   }
 
   void operator=(llvm::ArrayRef<ElemTy> array) {
-    assert(size() == array.size() && "Invalid input size.");
+    assert(actualSize() == array.size() && "Invalid input size.");
     std::copy(array.begin(), array.end(), begin());
   }
 
@@ -876,7 +892,7 @@ public:
     size_t maxIdx = 0;
     size_t minIdx = 0;
 
-    for (size_t i = 1, e = size(); i < e; i++) {
+    for (size_t i = 1, e = actualSize(); i < e; i++) {
       ElemTy val = raw(i);
       if (val > max) {
         max = val;
@@ -898,14 +914,16 @@ public:
   assert(dims().size() == 2 && "Fused tensor must be 2-dimensional.");         \
   assert(dims()[1] > 2 * sizeof(DATA_TYPE) &&                                  \
          "Fused tensor must have space for scale/offset.");                    \
-  const size_t width = dims()[1];                                              \
+  const size_t dataWidth = dims()[1];                                          \
+  const size_t alignedLength = tensor_->getType().strides()[0];                \
   auto *data = reinterpret_cast<uint8_t *>(tensor_->getUnsafePtr());           \
   for (size_t i = 0, e = dims()[0]; i < e; i++) {                              \
-    uint8_t *scaleOffsetPtr = &data[(i + 1) * width] - 2 * sizeof(DATA_TYPE);  \
+    uint8_t *scaleOffsetPtr =                                                  \
+        data + i * alignedLength + dataWidth - 2 * sizeof(DATA_TYPE);          \
     DATA_TYPE scale, offset;                                                   \
     memcpy(&scale, scaleOffsetPtr, sizeof(DATA_TYPE));                         \
     memcpy(&offset, scaleOffsetPtr + sizeof(DATA_TYPE), sizeof(DATA_TYPE));    \
-    for (size_t j = 0, e = width - 2 * sizeof(DATA_TYPE); j < e; j++) {        \
+    for (size_t j = 0, e = dataWidth - 2 * sizeof(DATA_TYPE); j < e; j++) {    \
       float currVal = (at({i, j}) * (float)scale) + (float)offset;             \
       if (std::abs(currVal) > allowedError) {                                  \
         return false;                                                          \
@@ -1015,7 +1033,7 @@ public:
 
   /// \returns the mean and variance of the tensor.
   std::pair<double, double> calculateMeanVariance() const {
-    size_t n = size();
+    size_t n = actualSize();
     assert(n > 1 && "Input must have at least 2 elements.");
 
     // Calculate mean.

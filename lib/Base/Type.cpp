@@ -42,6 +42,12 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const Type &type) {
       os << " x ";
     }
     os << type.sizes_[i];
+    if (type.numSizes_ >= 2 && i < type.numSizes_ - 1 &&
+        type.strides_[i] != type.strides_[i + 1] * type.sizes_[i + 1]) {
+      assert(type.strides_[i] % type.strides_[i + 1] == 0);
+      // Print the alignment only if it is not 1.
+      os << ":" << (type.strides_[i] / type.strides_[i + 1]);
+    }
   }
   os << '>';
 
