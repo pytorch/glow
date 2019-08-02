@@ -22,4 +22,4 @@ def test_addmm():
     z = torch.randn(6, 6)
     a = torch.randn(6, 6)
 
-    jitVsGlow(test_f, z, x, y, a)
+    jitVsGlow(test_f, z, x, y, a, expected_fused_ops={"aten::linear"})

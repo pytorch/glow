@@ -14,7 +14,8 @@ def test_max_pool2d_basic():
 
     inputs = torch.randn(1, 4, 5, 5)
 
-    jitVsGlow(test_f, inputs)
+    jitVsGlow(test_f, inputs,
+              expected_fused_ops={"aten::max_pool2d"})
 
 
 def test_max_pool2d_with_args():
@@ -25,4 +26,5 @@ def test_max_pool2d_with_args():
 
     inputs = torch.randn(1, 4, 10, 10)
 
-    jitVsGlow(test_f, inputs)
+    jitVsGlow(test_f, inputs,
+              expected_fused_ops={"aten::max_pool2d"})

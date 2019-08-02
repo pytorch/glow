@@ -11,4 +11,5 @@ def test_elementwise_min():
     def test_f(a, b):
         return torch.min(a + a, b + b)
 
-    jitVsGlow(test_f, torch.randn(7), torch.randn(7))
+    jitVsGlow(test_f, torch.randn(7), torch.randn(
+        7), expected_fused_ops={"aten::min"})

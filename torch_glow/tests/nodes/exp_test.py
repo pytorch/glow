@@ -14,4 +14,4 @@ def test_exp_basic():
 
     x = torch.randn(4)
 
-    jitVsGlow(test_f, x)
+    jitVsGlow(test_f, x, expected_fused_ops={"aten::exp"})

@@ -16,7 +16,8 @@ def test_batchnorm_basic():
     running_mean = torch.rand(4)
     running_var = torch.rand(4)
 
-    jitVsGlow(test_f, inputs, running_mean, running_var)
+    jitVsGlow(test_f, inputs, running_mean, running_var,
+              expected_fused_ops={"aten::batch_norm"})
 
 
 def test_batchnorm_with_weights():
@@ -39,4 +40,4 @@ def test_batchnorm_with_weights():
         weight,
         bias,
         running_mean,
-        running_var)
+        running_var, expected_fused_ops={"aten::batch_norm"})

@@ -14,7 +14,7 @@ def test_sqrt_basic():
     # Make sure the input is positive and not super close to zero.
     x = torch.rand(4) + 5
 
-    jitVsGlow(test_f, x)
+    jitVsGlow(test_f, x, expected_fused_ops={"aten::sqrt"})
 
 
 def test_sqrt_inplace():
@@ -27,4 +27,4 @@ def test_sqrt_inplace():
     # Make sure the input is positive and not super close to zero.
     x = torch.rand(4) + 5
 
-    jitVsGlow(test_f, x)
+    jitVsGlow(test_f, x, expected_fused_ops={"aten::sqrt_"})
