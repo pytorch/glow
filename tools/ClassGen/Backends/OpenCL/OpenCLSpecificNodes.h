@@ -24,6 +24,7 @@ BB.newNode("OCLConvolution")
     .addMember(MemberType::VectorUnsigned, "Strides")
     .addMember(MemberType::VectorUnsigned, "Pads")
     .addMember(MemberType::Unsigned, "Group")
+    .addMember(MemberType::Unsigned, "Dilation")
     .addResultFromCtorArg()
     .setDocstring(
         "This is an OpenCL-specific convolution implementation where the "

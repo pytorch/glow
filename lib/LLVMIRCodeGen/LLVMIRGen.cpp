@@ -243,6 +243,8 @@ llvm::Type *LLVMIRGen::getElementType(llvm::IRBuilder<> &builder,
     return builder.getInt32Ty();
   case ElemKind::UInt8FusedQTy:
     return builder.getInt8Ty();
+  case ElemKind::UInt8FusedFP16QTy:
+    return builder.getInt8Ty();
   case ElemKind::BoolTy:
     static_assert(sizeof(bool) == sizeof(int8_t),
                   "Bool is expected to be the same size as int8.");
@@ -338,6 +340,9 @@ llvm::Value *LLVMIRGen::emitValueAddress(llvm::IRBuilder<> &builder,
     T = llvm::Type::getInt32PtrTy(ctx_);
     break;
   case ElemKind::UInt8FusedQTy:
+    T = llvm::Type::getInt8PtrTy(ctx_);
+    break;
+  case ElemKind::UInt8FusedFP16QTy:
     T = llvm::Type::getInt8PtrTy(ctx_);
     break;
   case ElemKind::BoolTy:
@@ -467,6 +472,10 @@ llvm::Value *LLVMIRGen::emitConstI8(llvm::IRBuilder<> &builder, int8_t val) {
   return builder.getInt8(val);
 }
 
+llvm::Value *LLVMIRGen::emitConstI1(llvm::IRBuilder<> &builder, bool val) {
+  return builder.getInt1(val);
+}
+
 llvm::Value *LLVMIRGen::emitConstSizeT(llvm::IRBuilder<> &builder, size_t val) {
   return builder.getIntN(getLibjitSizeTWidth(), val);
 }
@@ -491,6 +500,8 @@ llvm::Value *LLVMIRGen::emitConst(llvm::IRBuilder<> &builder, float val,
   case ElemKind::Int32ITy:
     return builder.getInt32(static_cast<int32_t>(val));
   case ElemKind::UInt8FusedQTy:
+    return builder.getInt8(static_cast<int8_t>(val));
+  case ElemKind::UInt8FusedFP16QTy:
     return builder.getInt8(static_cast<int8_t>(val));
   case ElemKind::BoolTy:
     return builder.getInt8(static_cast<int8_t>(val));
@@ -1333,6 +1344,36 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
                                          "buffer.element.addr");
       builder.CreateStore(stackedOpCall, destAddr);
     }
+    break;
+  }
+
+  case Kinded::Kind::ModuloInstKind: {
+    auto *MI = cast<ModuloInst>(I);
+    auto *dest = MI->getDest();
+    auto *src = MI->getSrc();
+    auto *destPtr = emitBufferAddress(builder, dest, kernel, bufferToArgNum);
+    auto *srcPtr = emitBufferAddress(builder, src, kernel, bufferToArgNum);
+    auto *divisor = emitConst(builder, MI->getDivisor(), ElemKind::Int64ITy);
+    llvm::Function *F = nullptr;
+    // Need _kernel suffix since these operations are implemented as
+    // "data-parallel" kernels in libjit.
+    if (MI->getSignFollowDivisor()) {
+      F = getFunction("element_modulo_kernel_sign_follow",
+                      dest->getElementType());
+    } else {
+      F = getFunction("element_modulo_kernel_no_sign_follow",
+                      dest->getElementType());
+    }
+    auto *stackedOpCall = createCall(builder, F, {loopCount, divisor, srcPtr});
+    llvm::Value *destAddr = nullptr;
+    if (dest->getElementType() == ElemKind::Int64ITy) {
+      destAddr = builder.CreateGEP(builder.getInt64Ty(), destPtr, loopCount,
+                                   "buffer.element.addr");
+    } else {
+      destAddr = builder.CreateGEP(builder.getInt32Ty(), destPtr, loopCount,
+                                   "buffer.element.addr");
+    }
+    builder.CreateStore(stackedOpCall, destAddr);
     break;
   }
 
@@ -2220,25 +2261,38 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     break;
   }
 
-  case Kinded::Kind::ScatterAssignInstKind: {
-    auto *SAI = llvm::cast<ScatterAssignInst>(I);
-    auto *data = SAI->getData();
-    auto *indices = SAI->getIndices();
-    auto *slices = SAI->getSlices();
+  case Kinded::Kind::ScatterDataInstKind: {
+    auto *SDI = llvm::cast<ScatterDataInst>(I);
+    auto *data = SDI->getData();
+    auto *indices = SDI->getIndices();
+    auto *slices = SDI->getSlices();
 
     auto *dataPtr = emitValueAddress(builder, data);
     auto *indicesPtr = emitValueAddress(builder, indices);
     auto *slicesPtr = emitValueAddress(builder, slices);
+    auto *dataDims = emitValueDims(builder, data);
 
-    auto *indicesSize = emitConstSizeT(builder, indices->size());
-
-    auto *dataType = data->getType();
+    auto *indicesCnt = emitConstSizeT(builder, indices->getType()->dims()[0]);
+    auto *indicesSize = emitConstSizeT(builder, indices->getType()->dims()[1]);
+    auto *slicesType = slices->getType();
     auto *sliceSize =
-        emitConstSizeT(builder, dataType->size() / dataType->dims()[0]);
-
-    auto *F = getFunction("scatterassign", data->getElementType());
-    createCall(builder, F,
-               {dataPtr, indicesPtr, slicesPtr, indicesSize, sliceSize});
+        emitConstSizeT(builder, slicesType->size() / slicesType->dims()[0]);
+    auto *isCumulative = emitConstI1(builder, SDI->getCumulative());
+    auto *F = getFunction("scatterdata", data->getElementType());
+    if (data->getType()->isQuantizedType()) {
+      auto *dataScale = emitConstF32(builder, data->getType()->getScale());
+      auto *dataOffset = emitConstI32(builder, data->getType()->getOffset());
+      auto *sliceScale = emitConstF32(builder, slices->getType()->getScale());
+      auto *sliceOffset = emitConstI32(builder, slices->getType()->getOffset());
+      createCall(builder, F,
+                 {dataPtr, dataDims, indicesPtr, slicesPtr, indicesCnt,
+                  indicesSize, sliceSize, isCumulative, dataScale, dataOffset,
+                  sliceScale, sliceOffset});
+    } else {
+      createCall(builder, F,
+                 {dataPtr, dataDims, indicesPtr, slicesPtr, indicesCnt,
+                  indicesSize, sliceSize, isCumulative});
+    }
     break;
   }
 

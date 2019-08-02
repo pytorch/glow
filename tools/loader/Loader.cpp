@@ -19,6 +19,7 @@
 #include "glow/Base/Tensor.h"
 #include "glow/Converter/TypeAToTypeBFunctionConverter.h"
 #include "glow/IR/IR.h"
+#include "glow/Optimizer/GraphOptimizer/CompilationContext.h"
 #include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
 #include "glow/Quantization/Quantization.h"
 #include "glow/Quantization/Serialization.h"
@@ -213,9 +214,17 @@ llvm::cl::opt<unsigned> iterationsOpt(
     "iterations", llvm::cl::desc("Number of iterations to perform"),
     llvm::cl::Optional, llvm::cl::init(0), llvm::cl::cat(loaderCat));
 
-llvm::StringRef Loader::getModelOptPath() {
-  assert(modelPathOpt.size() == 1 && "Model path must be a single path.");
-  return modelPathOpt[0];
+std::string Loader::getModelOptPath() {
+  // If given a single path, return it.
+  if (modelPathOpt.size() == 1 &&
+      llvm::sys::fs::is_directory(*modelPathOpt.begin())) {
+    return *modelPathOpt.begin();
+  }
+
+  // Model path must be to one or more files. Use the path of the first file.
+  size_t found = modelPathOpt[0].find_last_of("/");
+  assert(found != std::string::npos && "Expected path to proto with directory");
+  return modelPathOpt[0].substr(0, found);
 }
 
 llvm::StringRef Loader::getModelOptDir() {
@@ -350,12 +359,18 @@ generateDeviceConfigs(std::string &loadDeviceConfigsFile,
 }
 
 void Loader::compile(PlaceholderBindings &bindings) {
+  CompilationContext cctx{&bindings};
+  compile(cctx);
+}
+
+void Loader::compile(CompilationContext &cctx) {
+  cctx.loweredInfoMap = &loweredMap_;
+
   // Dump the DAG before compilation if needed.
   if (!dumpGraphDAGFileBeforeCompilationOpt.empty()) {
     F_->dumpDAG(dumpGraphDAGFileBeforeCompilationOpt.c_str());
   }
 
-  CompilationContext cctx{&bindings, &loweredMap_};
   PrecisionConfiguration &precConfig = cctx.precisionConfig;
 
   // Handle the request to profile the graph in preparation for quantization.

@@ -16,6 +16,8 @@
 
 #include "HabanaDeviceManager.h"
 
+#include "glow/Runtime/StatsExporter.h"
+
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -61,6 +63,7 @@ HabanaDeviceManager::~HabanaDeviceManager() {
   }
   std::lock_guard<std::mutex> lock(synapseMtx_);
   numActiveDevices_--;
+  Stats()->incrementCounter(kDevicesUsedHabana, -1);
 
   // Explicitly clear this map to force synFree of the managed IOBuffers to
   // happen now, before we synReleaseDevice.  Otherwise synReleaseDevice will
@@ -96,6 +99,7 @@ llvm::Error HabanaDeviceManager::init() {
   }
 
   numActiveDevices_++;
+  Stats()->incrementCounter(kDevicesUsedHabana);
 
   // Fetch initial memory information.
   RETURN_IF_ERR(updateMemoryUsage());

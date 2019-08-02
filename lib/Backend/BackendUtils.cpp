@@ -37,17 +37,45 @@ static llvm::cl::opt<bool> reuseActivationsMemory(
     llvm::cl::desc("Should activation memory allocations be reused"),
     llvm::cl::init(true), llvm::cl::cat(BackendUtilsCat));
 
+glow::runtime::RuntimeBundle::RuntimeBundle(
+    glow::runtime::RuntimeBundle &&rhs) {
+  *this = std::move(rhs);
+}
+
+glow::runtime::RuntimeBundle &glow::runtime::RuntimeBundle::
+operator=(glow::runtime::RuntimeBundle &&rhs) {
+  if (this == &rhs) {
+    // Do nothing if rhs is the same object as this.
+    return *this;
+  }
+
+  std::swap(symbolTable_, rhs.symbolTable_);
+  std::swap(constants_, rhs.constants_);
+  std::swap(constantWeightVarsMemSize_, rhs.constantWeightVarsMemSize_);
+  std::swap(mutableWeightVarsMemSize_, rhs.mutableWeightVarsMemSize_);
+  std::swap(activationsMemSize_, rhs.activationsMemSize_);
+  std::swap(isValid_, rhs.isValid_);
+  // rhs is not valid now that all of its contents have been stolen.
+  rhs.isValid_ = false;
+  return *this;
+}
+
 void glow::runtime::RuntimeBundle::collectConstants(const IRFunction *F) {
+  DCHECK(isValid_);
   collectConstants(F->getGraph()->getParent());
 }
 
 void glow::runtime::RuntimeBundle::freeConstants() {
+  DCHECK(isValid_);
+
   if (constants_) {
     glow::alignedFree(constants_);
     constants_ = nullptr;
   }
 }
 void glow::runtime::RuntimeBundle::collectConstants(const Module *M) {
+  DCHECK(isValid_);
+
   // At compile time condense constants to a single block of memory.
   // This allows the graph to go away after compile time.
   // If there are no constants return nullptr.
@@ -78,6 +106,7 @@ void glow::runtime::RuntimeBundle::collectConstants(const Module *M) {
 }
 
 size_t glow::runtime::RuntimeBundle::getValueOffset(const Named *v) const {
+  DCHECK(isValid_);
   auto it = symbolTable_.find(std::string(v->getName()));
   assert(it != symbolTable_.end() && "Symbol not found.");
   return it->second.offset;
@@ -85,6 +114,7 @@ size_t glow::runtime::RuntimeBundle::getValueOffset(const Named *v) const {
 
 const runtime::RuntimeSymbolInfo &
 runtime::RuntimeBundle::getSymbolInfo(const Named *v) const {
+  DCHECK(isValid_);
   auto it = symbolTable_.find(std::string(v->getName()));
   assert(it != symbolTable_.end() && "Symbol not found.");
   return it->second;
@@ -297,6 +327,14 @@ runtime::RuntimeBundle::create(const IRFunction &F,
                                MemoryAllocator &constantAllocator,
                                MemoryAllocator &placeholderAllocator,
                                MemoryAllocator &activationsAllocator) {
+
+  // If all allocators refer to the same underlying allocator, Constants,
+  // Placeholders and activations will be allocated contiguously. The maximum
+  // memory usage reported by the allocator for each kind of storage will
+  // include the memory usage of all previously allocated types of storage and
+  // needs to be adjusted accordingly.
+  bool contiguous = (&constantAllocator == &placeholderAllocator &&
+                     &constantAllocator == &activationsAllocator);
   // Handle Constants, Placeholders, and Activations, in that order.
   // Symbol table mapping symbol name to offset for runtime.
   std::map<std::string, runtime::RuntimeSymbolInfo> symbolTable;
@@ -345,6 +383,9 @@ runtime::RuntimeBundle::create(const IRFunction &F,
                    w->getName().data(), symbol.offset, symbol.size));
   }
   auto placeholderMaxSize = placeholderAllocator.getMaxMemoryUsage();
+  if (contiguous) {
+    placeholderMaxSize -= constantMaxSize;
+  }
 
   // Compute the offsets for Activations.
   for (const auto &I : F.getInstrs()) {
@@ -413,7 +454,18 @@ runtime::RuntimeBundle::create(const IRFunction &F,
     }
   }
   auto activationsMaxSize = activationsAllocator.getMaxMemoryUsage();
+  if (contiguous) {
+    activationsMaxSize -= constantMaxSize + placeholderMaxSize;
+    DCHECK_EQ(constantAllocator.getMaxMemoryUsage(),
+              constantMaxSize + placeholderMaxSize + activationsMaxSize);
+  }
 
   return runtime::RuntimeBundle(symbolTable, constantMaxSize,
                                 placeholderMaxSize, activationsMaxSize);
+}
+
+runtime::RuntimeBundle
+runtime::RuntimeBundle::create(const IRFunction &F,
+                               MemoryAllocator &allocator) {
+  return create(F, allocator, allocator, allocator);
 }

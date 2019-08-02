@@ -216,6 +216,15 @@ int main(int argc, char **argv) {
                     "with the provided Scale, Bias, Mean, Var, ChannelIdx, "
                     "Epsilon, and Momentum. Similar to Caffe2 and ONNX LRN.");
 
+  BB.newNode("BatchBoxCox")
+      .addInput("Input")
+      .addInput("Lambda1")
+      .addInput("Lambda2")
+      .addMember(MemberType::Float, "Epsilon")
+      .addResult("Input.getType()")
+      .setDocstring("Apply box-cox transform for each column for each column "
+                    "in NxD input tensor");
+
   //===--------------------------------------------------------------------===//
   //                     Bucketing
   //===--------------------------------------------------------------------===//
@@ -652,15 +661,24 @@ int main(int argc, char **argv) {
                     "lengths of the ranges gathered by each list of pairs in "
                     "Ranges.");
 
-  BB.newNode("ScatterAssign")
+  BB.newNode("ScatterData")
       .addInput("Data")
       .addInput("Indices")
       .addInput("Slices")
+      .addMember(MemberType::Boolean, "Cumulative")
       .addResult("Data.getType()")
-      .setDocstring("Copies each slice from Slices into Data at the "
-                    "corresponding index in Indices. For example, given input "
-                    "Data {{1,2},{3,4},{5,6}}, Slices {{-3,-4}}, and Indices "
-                    "{1}, the result is {{1,2},{-3,-4},{5,6}}.");
+      .setDocstring(
+          "Copies each slice from Slices into Data at the "
+          "corresponding index in Indices. For example, given input "
+          "Data {{1,2},{3,4},{5,6}}, Slices {{-3,-4}}, and Indices "
+          "{{1}}, the result is {{1,2},{-3,-4},{5,6}}. It also supports "
+          "multi-dimensional indices. For example, given input Data "
+          "{{1,2},{3,4},{5,6}}, Slices {-3,-4}, and Indices {{1,0},{1,1}} also "
+          "produces {{1,2},{-3,-4},{5,6}}. If Cumulative is true, the node "
+          "adds values from Slices to Data instead of copying. For example, "
+          "given input Data {{1,2},{3,4},{5,6}}, Slices {{-3,-4}}, and Indices "
+          "{1}, the result is {{1,2},{0,0},{5,6}}. If an index is specified "
+          "several times, its updates will be added several times as well.");
 
   BB.newNode("Tile")
       .addInput("Input")
@@ -688,6 +706,18 @@ int main(int argc, char **argv) {
                     "the width. This produces Output tensor of [N, "
                     "H/BlockSize, W/BlockSize, C * "
                     "BlockSize * BlockSize].");
+
+  BB.newNode("ResizeNearest")
+      .addInput("Input")
+      .addMember(MemberType::Float, "HeightScale")
+      .addMember(MemberType::Float, "WidthScale")
+      .addResultFromCtorArg()
+      .setDocstring(
+          "Given Input tensor of [N,H,W,C], where N is the batch, C is the "
+          "channel or depth, H is the height and W is the width, Generates an "
+          "Output tensor with resized spatial dimensions using nearest "
+          "neighbor interpolation. The Output tensor is of shape [N, "
+          "floor(H*HeightScale), floor(W*WidthScale), C]");
 
   //===--------------------------------------------------------------------===//
   //                Nodes used for network training

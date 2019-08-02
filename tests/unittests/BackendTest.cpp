@@ -132,6 +132,7 @@ TEST(RuntimeBundle, BundleSymbolInfo) {
 
   EE.compile(CompilationMode::Infer);
   auto dag = EE.getDAG("main");
+  ASSERT_TRUE((bool)dag);
   assert(dag->nodes.size() > 0 && "Empty DAG list");
   auto table = dag->nodes[0]->runtimeBundle->getSymbolTable();
   // Check that placeholders and constants are correctly labelled.
@@ -190,7 +191,9 @@ TEST(RuntimeBundle, ContiguousPlaceholder) {
   bindings.allocate(A);
   bindings.allocate(Ex);
   EE.compile(cctx);
-  auto &table = EE.getDAG("main")->nodes[0]->runtimeBundle->getSymbolTable();
+  auto dag = EE.getDAG("main");
+  ASSERT_TRUE((bool)dag);
+  auto &table = dag->nodes[0]->runtimeBundle->getSymbolTable();
 
   std::vector<glow::runtime::RuntimeSymbolInfo> tableContainer;
   // Only check placeholders.
@@ -320,6 +323,7 @@ TEST_P(BackendTest, debugPrint) {
   std::promise<void> addPromise;
   auto fut = addPromise.get_future();
   llvm::Error addErr = llvm::Error::success();
+  MARK_ERR_CHECKED(addErr);
   device->addNetwork(&EE_.getModule(), std::move(functionMap),
                      [&addPromise, &addErr](const Module *, llvm::Error err) {
                        addErr = std::move(err);
@@ -331,6 +335,7 @@ TEST_P(BackendTest, debugPrint) {
   std::promise<void> runPromise;
   fut = runPromise.get_future();
   llvm::Error runErr = llvm::Error::success();
+  MARK_ERR_CHECKED(runErr);
   device->runFunction(name, std::move(ctx),
                       [&runPromise, &runErr,
                        &ctx](runtime::RunIdentifierTy, llvm::Error err,

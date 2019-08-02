@@ -3,7 +3,7 @@ add_executable(cifar10
 target_link_libraries(cifar10
                       PRIVATE
                         Backends
-                        ExecutionEngine
+                        ExecutionEngine2
                         Graph
                         IR
                         Support
@@ -14,7 +14,7 @@ add_executable(mnist
 target_link_libraries(mnist
                       PRIVATE
                         Backends
-                        ExecutionEngine
+                        ExecutionEngine2
                         Graph
                         Importer
                         IR
@@ -27,7 +27,7 @@ add_executable(ptb
 target_link_libraries(ptb
                       PRIVATE
                         Backends
-                        ExecutionEngine
+                        ExecutionEngine2
                         Graph
                         IR
                         Support
@@ -38,7 +38,7 @@ add_executable(char-rnn
 target_link_libraries(char-rnn
                       PRIVATE
                         Backends
-                        ExecutionEngine
+                        ExecutionEngine2
                         Graph
                         IR
                         GraphOptimizer
@@ -49,7 +49,7 @@ add_executable(fr2en
 target_link_libraries(fr2en
                       PRIVATE
                         Base
-                        ExecutionEngine
+                        ExecutionEngine2
                         IR
                         GraphOptimizer
                         Quantization
@@ -60,7 +60,7 @@ add_executable(lenet-loader
                  lenet-loader.cpp)
 target_link_libraries(lenet-loader
                       PRIVATE
-                        ExecutionEngine
+                        ExecutionEngine2
                         Graph
                         Importer
                         Support)
@@ -70,7 +70,7 @@ if(GLOW_WITH_CPU)
                    resnet-verify.cpp)
   target_link_libraries(resnet-verify
                         PRIVATE
-                          ExecutionEngine
+                          ExecutionEngine2
                           Graph
                           Importer)
 
@@ -80,7 +80,7 @@ if(GLOW_WITH_CPU)
                         PRIVATE
                           Backends
                           ExecutionContext
-                          ExecutionEngine
+                          ExecutionEngine2
                           HostManager
                           Partitioner
                           Graph
@@ -93,7 +93,7 @@ if(GLOW_WITH_CPU)
                         PRIVATE
                           Backend
                           Backends
-                          ExecutionEngine
+                          ExecutionEngine2
                           Graph
                           Importer
                           GraphOptimizer)

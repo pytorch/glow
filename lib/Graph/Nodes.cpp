@@ -1015,13 +1015,7 @@ bool SparseLengthsWeightedSumGradNode::verify() const {
 }
 
 bool RowwiseQuantizedSparseLengthsWeightedSumNode::verify() const {
-  bool isValid = checkType(getResult(), ElemKind::FloatTy, this);
-  isValid &= checkType(getData(), ElemKind::UInt8QTy, this);
-  isValid &= checkType(getScales(), ElemKind::FloatTy, this);
-  isValid &= checkType(getOffsets(), ElemKind::FloatTy, this);
-  isValid &= checkType(getWeights(), ElemKind::FloatTy, this);
-  isValid &= checkType(getIndices(), ElemKind::Int64ITy, this);
-  isValid &= checkType(getLengths(), ElemKind::Int32ITy, this);
+  bool isValid = checkType(getData(), ElemKind::UInt8QTy, this);
   isValid &= expectCompareTrue("Indices must be a 1D vector",
                                getIndices().dims().size(), size_t(1), this);
   isValid &= expectCompareTrue("Lengths must be a 1D vector",
@@ -1050,8 +1044,17 @@ static bool verifyFusedRowwiseQuantizedSparseLengthsSum(NodeValue result,
                                                         NodeValue lengths,
                                                         NodeValue weights) {
   const Node *parent = result.getNode();
-  bool isValid = checkType(result, ElemKind::FloatTy, parent);
-  isValid &= checkType(data, ElemKind::UInt8FusedQTy, parent);
+  bool isValid = expectCompareTrue(
+      "Input data must be Fused Quantized type",
+      isFusedQuantizedElemKind(data.getType()->getElementType()), true, parent);
+  size_t extraCols;
+  if (data.getType()->getElementType() == ElemKind::UInt8FusedQTy) {
+    isValid &= checkType(result, ElemKind::FloatTy, parent);
+    extraCols = 2 * sizeof(float);
+  } else {
+    isValid &= checkType(result, ElemKind::Float16Ty, parent);
+    extraCols = 2 * sizeof(float16_t);
+  }
   isValid &= checkType(indices, ElemKind::Int64ITy, parent);
   isValid &= checkType(lengths, ElemKind::Int32ITy, parent);
   isValid &= expectCompareTrue("Indices must be a 1D vector",
@@ -1060,14 +1063,18 @@ static bool verifyFusedRowwiseQuantizedSparseLengthsSum(NodeValue result,
                                lengths.dims().size(), size_t(1), parent);
   isValid &= expectCompareTrue("Data must be 2 dimensional.",
                                data.dims().size(), size_t(2), parent);
-  isValid &= expectCompareTrue("Data must have more than 8 columns.",
-                               data.dims()[1], size_t(8), parent,
+  isValid &= expectCompareTrue("Data must have extra columns for scale/offset.",
+                               data.dims()[1], extraCols, parent,
                                CompareOperatorGreaterEqual<size_t>());
   isValid &= expectCompareTrue("Result must be 2 dimensional.",
                                result.dims().size(), size_t(2), parent);
 
   if (weights.getNode()) {
-    isValid &= checkType(weights, ElemKind::FloatTy, parent);
+    if (data.getType()->getElementType() == ElemKind::UInt8FusedQTy) {
+      isValid &= checkType(weights, ElemKind::FloatTy, parent);
+    } else {
+      isValid &= checkType(weights, ElemKind::Float16Ty, parent);
+    }
     isValid &= expectCompareTrue("Weights must be a 1D vector",
                                  weights.dims().size(), size_t(1), parent);
     isValid &= expectCompareTrue("Weights and Indices must have the same size",
@@ -1077,9 +1084,10 @@ static bool verifyFusedRowwiseQuantizedSparseLengthsSum(NodeValue result,
   // Wrap this in isValid to prevent potential segfault if the result is
   // incorrectly shaped.
   if (isValid) {
-    isValid &= expectCompareTrue(
-        "Result output shape should have second dim as 8 less than Data.",
-        result.dims()[1] + 8, data.dims()[1], parent);
+    isValid &=
+        expectCompareTrue("Result output shape should have second dim without "
+                          "extra columns from scale/offset in Data.",
+                          result.dims()[1] + extraCols, data.dims()[1], parent);
   }
   return isValid;
 }
@@ -1290,34 +1298,48 @@ bool GatherRangesNode::verify() const {
   return isValid;
 }
 
-bool ScatterAssignNode::verify() const {
+bool ScatterDataNode::verify() const {
   const auto &slicesDims = getSlices().dims();
   const auto &dataDims = getData().dims();
   const auto &indicesDims = getIndices().dims();
-
-  bool isValid =
-      expectCompareTrue("Indices should be a single dimensional vector",
-                        indicesDims.size(), size_t(1), this);
+  bool isValid = true;
+  isValid &= expectCompareTrue("Type mismatch",
+                               getSlices().getType()->getElementType(),
+                               getData().getType()->getElementType(), this);
+  if (!isValid) {
+    return false;
+  }
+  // TODO: Do we need support for different quant params of copy?
+  if (getSlices().getType()->isQuantizedType() && !getCumulative()) {
+    isValid &=
+        expectCompareTrue("Scale mismatch", getSlices().getType()->getScale(),
+                          getData().getType()->getScale(), this);
+    isValid &=
+        expectCompareTrue("Offset mismatch", getSlices().getType()->getOffset(),
+                          getData().getType()->getOffset(), this);
+  }
   isValid &= expectCompareTrue("There should be an index for each slice",
                                indicesDims[0], slicesDims[0], this);
-  isValid &=
-      expectCompareTrue("Slices and data should have same number of dimensions",
-                        slicesDims.size(), dataDims.size(), this);
-
+  isValid &= expectCompareTrue("Indices should be a 2D tensor",
+                               indicesDims.size(), size_t(2), this);
+  // The code below may crash if these conditions are not met.
+  if (!isValid) {
+    return false;
+  }
+  const size_t indexSize = indicesDims[1];
+  isValid &= expectCompareTrue("Dimensions of Data should be equal to "
+                               "dimensions of indices + dimensions of updates",
+                               slicesDims.size() - 1 + indexSize,
+                               dataDims.size(), this);
   if (dataDims.size() > 1) {
-    if (!isValid) {
-      // The following loop may be out-of-bound if the previous
-      // comparisons failed.
-      return false;
-    }
-
-    for (size_t i = 1; i < dataDims.size(); i++) {
+    for (size_t i = indexSize; i < dataDims.size(); i++) {
       std::string msg = std::to_string(i);
       msg = "Slice shape should equal data shape for dim " + msg;
-      isValid &=
-          expectCompareTrue(msg.c_str(), dataDims[i], slicesDims[i], this);
+      isValid &= expectCompareTrue(msg.c_str(), dataDims[i],
+                                   slicesDims[i - indexSize + 1], this);
     }
   }
+
   return isValid;
 }
 
@@ -1356,6 +1378,37 @@ bool SpaceToDepthNode::verify() const {
                       inputDims[3] * blockSize * blockSize == outputDims[3];
 
   return sameType && dimTransform;
+}
+
+bool ResizeNearestNode::verify() const {
+  auto input = getInput();
+  auto result = getResult();
+  auto inputDims = input.dims();
+  auto outputDims = result.dims();
+
+  bool isValid = checkTypeIgnoreShape(input, result, this);
+  isValid &= expectCompareTrue("Input must be a 4D tensor", inputDims.size(),
+                               size_t(4), this);
+  isValid &= expectCompareTrue("Output must be a 4D tensor", outputDims.size(),
+                               size_t(4), this);
+  isValid &= expectCompareTrue("Batch size must be the same", inputDims[0],
+                               outputDims[0], this);
+  isValid &= expectCompareTrue("Depth must be the same", inputDims[3],
+                               outputDims[0], this);
+  isValid &= expectCompareTrue(
+      "Unexpected output height",
+      size_t(std::floor(inputDims[1] * getHeightScale())), outputDims[1], this);
+  isValid &= expectCompareTrue(
+      "Unexpected output width",
+      size_t(std::floor(inputDims[2] * getWidthScale())), outputDims[2], this);
+  isValid &=
+      expectCompareTrue("Invalid height scale", getHeightScale(), float(0.0),
+                        this, CompareOperatorGreaterThan<float>());
+  isValid &=
+      expectCompareTrue("Invalid width scale", getWidthScale(), float(0.0),
+                        this, CompareOperatorGreaterThan<float>());
+
+  return isValid;
 }
 
 bool SaveNode::verify() const {
@@ -1483,6 +1536,26 @@ bool ConcatNode::verify() const {
       isValid &= checkNotQuantizedOrSameParams(getResult().getType(),
                                                inputs[i].getType(), this);
     }
+  }
+  return isValid;
+}
+
+bool BatchBoxCoxNode::verify() const {
+  auto result = getResult();
+  auto data = getInput();
+  auto lambda1 = getLambda1();
+  auto lambda2 = getLambda2();
+  bool isValid = checkSameType(lambda1, lambda2, this);
+  isValid &= checkSameType(data, result, this);
+  isValid &= checkType(data, lambda1.getElementType(), this);
+  isValid &= checkType(data, {ElemKind::FloatTy, ElemKind::Float16Ty}, this);
+  isValid &= expectCompareTrue("Input must be a 2D tensor", data.dims().size(),
+                               size_t(2), this);
+  isValid &= expectCompareTrue("Lambda1 must be a 1D vector",
+                               lambda1.dims().size(), size_t(1), this);
+  if (isValid) {
+    isValid &= expectCompareTrue("Data dim 1 must equal lambda dim",
+                                 data.dims()[1], lambda1.dims()[0], this);
   }
   return isValid;
 }

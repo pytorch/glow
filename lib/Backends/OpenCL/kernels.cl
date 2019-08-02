@@ -952,8 +952,9 @@ __kernel void softmaxgradW(__global void *mem, cl_uint32_t origDest,
 __kernel void convolutionK(__global float *dest, __global float *src,
                            __global float *filter, __global float *bias,
                            ShapeHW kernelSizes, ShapeHW strides,
-                           PaddingTLBR pads, cl_uint32_t group, ShapeNHWC odim,
-                           ShapeNHWC idim, ShapeNHWC filterDim) {
+                           PaddingTLBR pads, cl_uint32_t group,
+                           cl_uint32_t dilation, ShapeNHWC odim, ShapeNHWC idim,
+                           ShapeNHWC filterDim) {
   size_t ax = get_global_id(0);
   size_t ay = get_global_id(1);
   size_t d = get_global_id(2);
@@ -973,8 +974,8 @@ __kernel void convolutionK(__global float *dest, __global float *src,
     float sum = 0;
     for (size_t fx = 0; fx < kernelSizes.height; fx++) {
       for (size_t fy = 0; fy < kernelSizes.width; fy++) {
-        ssize_t ox = x + fx;
-        ssize_t oy = y + fy;
+        ssize_t ox = x + fx * dilation;
+        ssize_t oy = y + fy * dilation;
 
         // Ignore index access below zero (this is due to padding).
         if (ox < 0 || oy < 0 || ox >= (ssize_t)idim.h ||
@@ -999,19 +1000,21 @@ __kernel void convolutionW(__global void *mem, cl_uint32_t dest,
                            cl_uint32_t src, cl_uint32_t filter,
                            cl_uint32_t bias, ShapeHW kernelSizes,
                            ShapeHW strides, PaddingTLBR pads, cl_uint32_t group,
-                           ShapeNHWC odim, ShapeNHWC idim,
+                           cl_uint32_t dilation, ShapeNHWC odim, ShapeNHWC idim,
                            ShapeNHWC filterDim) {
   convolutionK(&mem[dest], &mem[src], &mem[filter], &mem[bias], kernelSizes,
-               strides, pads, group, odim, idim, filterDim);
+               strides, pads, group, dilation, odim, idim, filterDim);
 }
 
-__kernel void convolution_i8K(
-    __global cl_int8_t *dest, __global cl_int8_t *src,
-    __global cl_int8_t *filter, __global cl_int32_t *bias, ShapeHW kernelSizes,
-    ShapeHW strides, cl_int32_t destOffset, float destScale,
-    cl_int32_t srcOffset, float srcScale, cl_int32_t filterOffset,
-    float filterScale, cl_int32_t biasOffset, float biasScale, PaddingTLBR pads,
-    cl_uint32_t group, ShapeNHWC odim, ShapeNHWC idim, ShapeNHWC filterDim) {
+__kernel void
+convolution_i8K(__global cl_int8_t *dest, __global cl_int8_t *src,
+                __global cl_int8_t *filter, __global cl_int32_t *bias,
+                ShapeHW kernelSizes, ShapeHW strides, cl_int32_t destOffset,
+                float destScale, cl_int32_t srcOffset, float srcScale,
+                cl_int32_t filterOffset, float filterScale,
+                cl_int32_t biasOffset, float biasScale, PaddingTLBR pads,
+                cl_uint32_t group, cl_uint32_t dilation, ShapeNHWC odim,
+                ShapeNHWC idim, ShapeNHWC filterDim) {
   size_t ax = get_global_id(0);
   size_t ay = get_global_id(1);
   size_t d = get_global_id(2);
@@ -1033,8 +1036,8 @@ __kernel void convolution_i8K(
     cl_int32_t sum = 0;
     for (size_t fx = 0; fx < kernelSizes.height; fx++) {
       for (size_t fy = 0; fy < kernelSizes.width; fy++) {
-        ssize_t ox = x + fx;
-        ssize_t oy = y + fy;
+        ssize_t ox = x + fx * dilation;
+        ssize_t oy = y + fy * dilation;
 
         // Ignore index access below zero (this is due to padding).
         if (ox < 0 || oy < 0 || ox >= (ssize_t)idim.h ||
@@ -1061,14 +1064,14 @@ __kernel void
 convolution_i8W(__global void *mem, cl_uint32_t dest, cl_uint32_t src,
                 cl_uint32_t filter, cl_uint32_t bias, ShapeHW kernelSizes,
                 ShapeHW strides, PaddingTLBR pads, cl_uint32_t group,
-                ShapeNHWC odim, ShapeNHWC idim, ShapeNHWC filterDim,
-                cl_int32_t destOffset, float destScale, cl_int32_t srcOffset,
-                float srcScale, cl_int32_t filterOffset, float filterScale,
-                cl_int32_t biasOffset, float biasScale) {
+                cl_uint32_t dilation, ShapeNHWC odim, ShapeNHWC idim,
+                ShapeNHWC filterDim, cl_int32_t destOffset, float destScale,
+                cl_int32_t srcOffset, float srcScale, cl_int32_t filterOffset,
+                float filterScale, cl_int32_t biasOffset, float biasScale) {
   convolution_i8K(&mem[dest], &mem[src], &mem[filter], &mem[bias], kernelSizes,
                   strides, destOffset, destScale, srcOffset, srcScale,
                   filterOffset, filterScale, biasOffset, biasScale, pads, group,
-                  odim, idim, filterDim);
+                  dilation, odim, idim, filterDim);
 }
 
 __kernel void convolutiongradK(const __global float *inW,
@@ -1077,8 +1080,8 @@ __kernel void convolutiongradK(const __global float *inW,
                                __global float *filterG, __global float *biasG,
                                ShapeHW kernelSizes, ShapeHW strides,
                                PaddingTLBR pads, cl_uint32_t group,
-                               ShapeNHWC inWdims, ShapeNHWC outGdims,
-                               ShapeNHWC filterGdims) {
+                               cl_uint32_t dilation, ShapeNHWC inWdims,
+                               ShapeNHWC outGdims, ShapeNHWC filterGdims) {
 
   // ax and ay are coordinates in the tensor outG.
   size_t ax = get_global_id(0);
@@ -1101,8 +1104,8 @@ __kernel void convolutiongradK(const __global float *inW,
 
     for (size_t fx = 0; fx < kernelSizes.height; fx++) {
       for (size_t fy = 0; fy < kernelSizes.width; fy++) {
-        ssize_t ox = x + fx;
-        ssize_t oy = y + fy;
+        ssize_t ox = x + fx * dilation;
+        ssize_t oy = y + fy * dilation;
 
         if (ox < 0 || oy < 0 || ox >= (ssize_t)inWdims.h ||
             oy >= (ssize_t)inWdims.w) {
@@ -1129,11 +1132,12 @@ __kernel void convolutiongradW(__global void *mem, cl_uint32_t src,
                                cl_uint32_t srcGrad, cl_uint32_t filterGrad,
                                cl_uint32_t biasGrad, ShapeHW kernelSizes,
                                ShapeHW strides, PaddingTLBR pads,
-                               cl_uint32_t group, ShapeNHWC srcDim,
-                               ShapeNHWC destGradDim, ShapeNHWC filterGradDim) {
+                               cl_uint32_t group, cl_uint32_t dilation,
+                               ShapeNHWC srcDim, ShapeNHWC destGradDim,
+                               ShapeNHWC filterGradDim) {
   convolutiongradK(&mem[src], &mem[filter], &mem[destGrad], &mem[srcGrad],
                    &mem[filterGrad], &mem[biasGrad], kernelSizes, strides, pads,
-                   group, srcDim, destGradDim, filterGradDim);
+                   group, dilation, srcDim, destGradDim, filterGradDim);
 }
 
 __kernel void maxpoolK(__global float *dest, __global float *src,
@@ -1595,20 +1599,19 @@ __kernel void gatherW(__global void *mem, cl_uint32_t dest, cl_uint32_t src,
           numSamples, destSampleSize, srcSampleSize);
 }
 
-__kernel void scatterassignK(__global float *data,
-                             __global cl_uint64_t *indices,
-                             __global const float *slices,
-                             cl_uint32_t sliceSize) {
+__kernel void scatterdataK(__global float *data, __global cl_uint64_t *indices,
+                           __global const float *slices,
+                           cl_uint32_t sliceSize) {
   int idx = get_global_id(0);
   cl_uint64_t destDataIdx = indices[idx];
   memcpy_float(data + destDataIdx * sliceSize, slices + idx * sliceSize,
                sliceSize);
 }
 
-__kernel void scatterassignW(__global void *mem, cl_uint32_t data,
-                             cl_uint32_t indices, cl_uint32_t slices,
-                             cl_uint32_t sliceSize) {
-  scatterassignK(&mem[data], &mem[indices], &mem[slices], sliceSize);
+__kernel void scatterdataW(__global void *mem, cl_uint32_t data,
+                           cl_uint32_t indices, cl_uint32_t slices,
+                           cl_uint32_t sliceSize) {
+  scatterdataK(&mem[data], &mem[indices], &mem[slices], sliceSize);
 }
 
 __kernel void sparselengthsweightedsumK(__global float *dest,

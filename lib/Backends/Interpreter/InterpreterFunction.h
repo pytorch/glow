@@ -51,7 +51,7 @@ class InterpreterFunction final : public CompiledFunction {
 
 public:
   InterpreterFunction(std::unique_ptr<IRFunction> F,
-                      const runtime::RuntimeBundle &bundle);
+                      runtime::RuntimeBundle &&bundle);
 
   /// \name CompiledFunction interface
   ///@{
@@ -195,6 +195,9 @@ private:
   template <typename ElemTy>
   void fwdSpaceToDepthInstImpl(const glow::SpaceToDepthInst *I);
 
+  template <typename ElemTy>
+  void fwdResizeNearestInstImpl(const ResizeNearestInst *I);
+
   template <typename ElemTy> void fwdSigmoidInstFloatImpl(const SigmoidInst *I);
 
   template <typename ElemTy> void fwdTanhInstFloatImpl(const TanhInst *I);
@@ -245,6 +248,12 @@ private:
   template <typename ElemTy> void fwdGatherInstImpl(const GatherInst *I);
   template <typename ElemTy>
   void fwdGatherRangesInstImpl(const GatherRangesInst *I);
+  template <typename ElemTy>
+  void fwdScatterDataInstCopyImpl(const ScatterDataInst *I);
+  template <typename ElemTy>
+  void fwdScatterDataInstAddFloatImpl(const ScatterDataInst *I);
+  template <typename ElemTy>
+  void fwdScatterDataInstAddQuantizedImpl(const ScatterDataInst *I);
 
   void fwdSparseLengthsSumInstI8Impl(const SparseLengthsSumInst *I);
   template <typename ElemTy>
@@ -265,6 +274,14 @@ private:
                                    TensorQuantizationParams &destQ);
 
   template <typename ElemTy> void fwdModuloInstImpl(glow::ModuloInst const *I);
+
+  template <typename T>
+  void fwdRowwiseQuantizedSparseLengthsWeightedSumImpl(
+      const RowwiseQuantizedSparseLengthsWeightedSumInst *I);
+
+  template <typename T>
+  void fwdFusedRowwiseQuantizedSparseLengthsWeightedSumImpl(
+      const FusedRowwiseQuantizedSparseLengthsWeightedSumInst *I);
   ///@}
 };
 

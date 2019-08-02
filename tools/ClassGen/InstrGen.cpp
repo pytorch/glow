@@ -285,11 +285,7 @@ int main(int argc, char **argv) {
       .addOperand("Indices", OperandKind::In)
       .addOperand("Lengths", OperandKind::In)
       .autoIRGen()
-      .autoVerify(VerifyKind::SameElementType, {"Dest", "ElemKind::FloatTy"})
       .autoVerify(VerifyKind::SameElementType, {"Data", "ElemKind::UInt8QTy"})
-      .autoVerify(VerifyKind::SameElementType, {"Scales", "ElemKind::FloatTy"})
-      .autoVerify(VerifyKind::SameElementType, {"Offsets", "ElemKind::FloatTy"})
-      .autoVerify(VerifyKind::SameElementType, {"Weights", "ElemKind::FloatTy"})
       .autoVerify(VerifyKind::SameElementType,
                   {"Indices", "ElemKind::Int64ITy"})
       .autoVerify(VerifyKind::SameElementType,
@@ -303,10 +299,6 @@ int main(int argc, char **argv) {
       .addOperand("Indices", OperandKind::In)
       .addOperand("Lengths", OperandKind::In)
       .autoIRGen()
-      .autoVerify(VerifyKind::SameElementType, {"Dest", "ElemKind::FloatTy"})
-      .autoVerify(VerifyKind::SameElementType,
-                  {"Data", "ElemKind::UInt8FusedQTy"})
-      .autoVerify(VerifyKind::SameElementType, {"Weights", "ElemKind::FloatTy"})
       .autoVerify(VerifyKind::SameElementType,
                   {"Indices", "ElemKind::Int64ITy"})
       .autoVerify(VerifyKind::SameElementType,
@@ -574,10 +566,11 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::SameElementType, {"Ranges", "Lengths"})
       .autoIRGen();
 
-  BB.newInstr("ScatterAssign")
+  BB.newInstr("ScatterData")
       .addOperand("Data", OperandKind::InOut)
       .addOperand("Indices", OperandKind::In)
       .addOperand("Slices", OperandKind::In)
+      .addMember(MemberType::Boolean, "Cumulative")
       .autoVerify(VerifyKind::SameElementType,
                   {"Indices", "ElemKind::Int64ITy"});
 
@@ -595,6 +588,14 @@ int main(int argc, char **argv) {
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Src", OperandKind::In)
       .addMember(MemberType::Unsigned, "BlockSize")
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
+      .autoIRGen();
+
+  BB.newInstr("ResizeNearest")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .addMember(MemberType::Float, "HeightScale")
+      .addMember(MemberType::Float, "WidthScale")
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
       .autoIRGen();
 

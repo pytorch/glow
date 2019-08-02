@@ -26,7 +26,7 @@ namespace glow {
 class LLVMCompiledFunction : public CompiledFunction {
 public:
   LLVMCompiledFunction(std::unique_ptr<llvm::orc::GlowJIT> JIT,
-                       const runtime::RuntimeBundle &runtimeBundle);
+                       runtime::RuntimeBundle &&runtimeBundle);
 
   /// \name CompiledFunction interface
   ///@{

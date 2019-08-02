@@ -67,8 +67,8 @@ else
     sudo apt-get install -y libpng-dev libgoogle-glog-dev
 fi
 
-# Install ninja and (newest version of) cmake through pip
-sudo pip install ninja cmake
+# Install ninja, (newest version of) cmake and autopep8 through pip
+sudo pip install ninja cmake autopep8
 hash cmake ninja
 
 # Build glow
@@ -128,7 +128,7 @@ elif [[ "$CIRCLE_JOB" == "PYTORCH" ]]; then
     source venv/bin/activate
     git clone https://github.com/pytorch/pytorch.git --recursive
     cd pytorch
-    git checkout 7fcfed19e7c4805405f3bec311fc056803ca7afb
+    git checkout 3b5daef6dec7b541a74e33a9a0b0646941b0440d
     pip install -r requirements.txt
     python setup.py install
     cd ${GLOW_DIR}

@@ -13,6 +13,8 @@ link_directories(${PYTORCH_DIR}/lib)
 
 pybind11_add_module(_torch_glow
                       binding.cpp
+                      PyTorchFileLoader.cpp
+                      FusingOptimizer.cpp
                       PyTorchModelLoader.cpp
                       CachingGraphRunner.cpp)
 

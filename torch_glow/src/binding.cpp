@@ -22,6 +22,7 @@
 #include <torch/csrc/jit/passes/graph_fuser.h>
 
 #include "CachingGraphRunner.h"
+#include "FusingOptimizer.h"
 #include "PyTorchModelLoader.h"
 
 #include "glow/Graph/Graph.h"
@@ -53,15 +54,19 @@ void registerGlowOp() {
   auto options = c10::OperatorOptions();
   options.setAliasAnalysis(at::AliasAnalysisKind::PURE);
 
-  torch::jit::RegisterOperators op(
-      {torch::jit::Operator(glowSymbol,
-                            [](const torch::jit::Node *node) {
-                              return [node](torch::jit::Stack &stack) {
-                                getGraphRunner()->runGraph(node, stack);
-                                return 0;
-                              };
-                            },
-                            options)});
+  torch::jit::RegisterOperators op({torch::jit::Operator(
+      glowSymbol,
+      [](const torch::jit::Node *node) {
+        return [node](torch::jit::Stack &stack) {
+          llvm::Error err = getGraphRunner()->runGraph(node, stack);
+          if (static_cast<bool>(err)) {
+            // PyTorch framework expects an exception been thrown here.
+            throw std::invalid_argument(llvm::toString(std::move(err)));
+          }
+          return 0;
+        };
+      },
+      options)});
 }
 
 /// Register the pass that fuses parts of the graph into
@@ -69,6 +74,13 @@ void registerGlowOp() {
 void registerPass() {
   torch::jit::RegisterPass pass([](std::shared_ptr<torch::jit::Graph> &g) {
     if (fusionPassEnabled) {
+
+      // Fuse all linear operators
+      // Currently PyTorch does not have good support for aten:addmm when fusing
+      // Therefore we use some pattern to translate all aten::addmm to
+      // aten::linear before we fuse the whole graph.
+      FuseLinear(g);
+
       torch::jit::CustomFuseGraph(g, PyTorchModelLoader::isNodeSupported,
                                   glowSymbol);
     }

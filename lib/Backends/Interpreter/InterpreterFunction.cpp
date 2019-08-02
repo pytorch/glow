@@ -25,8 +25,8 @@
 using namespace glow;
 
 InterpreterFunction::InterpreterFunction(std::unique_ptr<IRFunction> F,
-                                         const runtime::RuntimeBundle &bundle)
-    : CompiledFunction(bundle), F_(std::move(F)) {}
+                                         runtime::RuntimeBundle &&bundle)
+    : CompiledFunction(std::move(bundle)), F_(std::move(F)) {}
 
 InterpreterFunction::~InterpreterFunction() {
   for (const auto &p : constants_) {

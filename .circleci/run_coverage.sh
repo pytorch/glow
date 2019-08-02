@@ -18,5 +18,5 @@ if [ "${CIRCLE_BRANCH}" == "master" ]; then
   aws s3 cp "${COVERAGE_DIR}" "s3://${UPLOAD_LOCATION}" --recursive --acl public-read
   echo "INFO: Coverage report for branch '${BRANCH_NAME}': https://fb-glow-assets.s3.amazonaws.com/coverage/coverage-${BRANCH_NAME}/index.html"
 else
-  echo "WARNING: Coverage cannot be uploaded to s3 for PR from a fork."
+  echo "WARNING: Coverage cannot be uploaded to s3 for PR from a fork, branch: ${CIRCLE_BRANCH}."
 fi

@@ -233,13 +233,20 @@ std::vector<int8_t> createMapping(TypeRef inTy, TypeRef outTy,
 /// input, quantized from \p input using \p scales and \p offsets for each
 /// row. Note that the shape of input/output can be any non-zero number of
 /// dimensions; row refers to all data in the first dimension of the shape.
-/// \p T represents the type to use for the offsets for quantization. Currently
-/// this must either be int32_t or float. Template parameter \p QP represents
-/// quantization precision, typically int8_t or uint8_t.
-template <typename T, typename QP>
+/// Template parameter \p ScaleT and OffsetT represent the type to use for the
+/// scales and offsets for quantization respectively. Template parameter \p QP
+/// represents quantization precision, typically int8_t or uint8_t.
+template <typename ScaleT, typename OffsetT, typename QP>
 void tensorRowwiseQuantization(const Tensor &input, Tensor &output,
                                Tensor &scales, Tensor &offsets,
                                quantization::Schema schema) {
+  constexpr bool offsetIsFP = std::is_same<float, OffsetT>::value ||
+                              std::is_same<float16_t, OffsetT>::value;
+  constexpr bool offsetIsInt32 = std::is_same<int32_t, OffsetT>::value;
+  static_assert((offsetIsInt32 && std::is_same<float, ScaleT>::value) ||
+                    (offsetIsFP && std::is_same<ScaleT, OffsetT>::value),
+                "Invalid combination of Scale/Offset types.");
+
   const auto fDims = flattenCdr(input.dims());
   Tensor finalIn = input.getUnowned({fDims.first, fDims.second});
   Tensor finalOut = output.getUnowned({fDims.first, fDims.second});
@@ -247,8 +254,8 @@ void tensorRowwiseQuantization(const Tensor &input, Tensor &output,
 
   auto srcH = finalIn.getHandle<float>();
   auto destH = finalOut.getHandle<QP>();
-  auto scalesH = scales.getHandle<float>();
-  auto offsetsH = offsets.getHandle<T>();
+  auto scalesH = scales.getHandle<ScaleT>();
+  auto offsetsH = offsets.getHandle<OffsetT>();
   for (size_t i = 0; i < idim.height; i++) {
     auto slice = srcH.extractSlice(i);
     auto rSrc = slice.getHandle<float>();
@@ -260,7 +267,7 @@ void tensorRowwiseQuantization(const Tensor &input, Tensor &output,
     max = std::max(max, 0.0f);
 
     // Handle rowwise quantization for FCs.
-    if (std::is_same<int32_t, T>::value) {
+    if (offsetIsInt32) {
       TensorQuantizationParams qParams =
           chooseQuantizationParams(min, max, schema);
       for (size_t j = 0; j < idim.width; j++) {
@@ -268,7 +275,7 @@ void tensorRowwiseQuantization(const Tensor &input, Tensor &output,
       }
       scalesH.raw(i) = qParams.scale;
       offsetsH.raw(i) = qParams.offset;
-    } else if (std::is_same<float, T>::value) {
+    } else if (offsetIsFP) {
       // Handle rowwise quantization for Rowwise quantized SLS.
       float scale = ((double)max - (double)min) / 255.0;
       float offset = min;
@@ -277,8 +284,8 @@ void tensorRowwiseQuantization(const Tensor &input, Tensor &output,
         destH.at({i, j}) = quantization::quantizeWithFloatOffset<QP>(
             srcH.at({i, j}), scale, offset);
       }
-      scalesH.raw(i) = scale;
-      offsetsH.raw(i) = offset;
+      scalesH.raw(i) = static_cast<ScaleT>(scale);
+      offsetsH.raw(i) = static_cast<OffsetT>(offset);
     } else {
       llvm_unreachable("Unsupported offset type.");
     }
@@ -287,12 +294,58 @@ void tensorRowwiseQuantization(const Tensor &input, Tensor &output,
 
 /// Fused-rowwise quantize the tensor \p input. Scales and offsets are generated
 /// from each row of \p input. \p output is tensor of the same shape as input
-/// but with 8 extra columns for storing fused scales (4 bytes (columns) for
-/// float) and offset (4 bytes (columns) for int32_t).
+/// but with extra columns for storing fused scales. Template parameter \p T
+/// represents the datatype used for storing the scale and offset in the row.
 /// \pre input.dims().size() == 2
 /// \pre output.dims().size() == 2
-/// \pre input.dims()[1] + 8 == output.dims()[1]
-void tensorFusedRowwiseQuantization(const Tensor &input, Tensor &output);
+/// \pre input.dims()[1] + 2 * sizeof(T) == output.dims()[1]
+template <typename T>
+void tensorFusedRowwiseQuantization(const Tensor &input, Tensor &output) {
+  // We are fusing the scale and offset onto the end of each row. Thus input and
+  // output must both be 2 dimensional, with output having 2*sizeof(T) extra
+  // columns for the scale and offset.
+  assert(input.dims().size() == 2 && output.dims().size() == 2 &&
+         "Input and output must be 2 dimensional.");
+  assert(input.dims()[1] + 2 * sizeof(T) == output.dims()[1] &&
+         "Output must have 2*sizeof(T) more columns than input.");
+
+  const size_t outWidth = output.dims()[1];
+  char *dataBasePtr = output.getUnsafePtr();
+
+  auto srcH = input.getHandle<float>();
+  auto destH = output.getHandle<uint8_t>();
+  for (size_t i = 0, e = input.dims()[0]; i < e; i++) {
+    auto slice = srcH.extractSlice(i);
+    auto rSrc = slice.getHandle<float>();
+    auto res = rSrc.minMaxArg();
+    float min = rSrc.raw(res.first);
+    float max = rSrc.raw(res.second);
+
+    min = std::min(min, 0.0f);
+    max = std::max(max, 0.0f);
+
+    // This matches the Caffe2 implementation for FloatToRowwiseQuantized8BitsOp
+    // found in operators/lengths_reducer_rowwise_8bit_ops.h.
+    constexpr float kEqualityThreshold = 1e-10f;
+    const float scale = ((max - min) < kEqualityThreshold)
+                            ? 1.0
+                            : ((double)max - (double)min) / 255.0;
+    const float offset = min;
+
+    for (size_t j = 0, f = input.dims()[1]; j < f; j++) {
+      destH.at({i, j}) = quantization::quantizeWithFloatOffset<uint8_t>(
+          srcH.at({i, j}), scale, offset);
+    }
+
+    // Now set the scale/offset at the end of each row.
+    T finalScale = static_cast<T>(scale);
+    T finalOffset = static_cast<T>(offset);
+    char *currRowScaleOffsetPtr =
+        dataBasePtr + (i + 1) * outWidth - 2 * sizeof(T);
+    memcpy(currRowScaleOffsetPtr, &finalScale, sizeof(T));
+    memcpy(currRowScaleOffsetPtr + sizeof(T), &finalOffset, sizeof(T));
+  }
+}
 
 } // namespace quantization
 } // namespace glow

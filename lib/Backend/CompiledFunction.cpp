@@ -21,5 +21,5 @@ using namespace glow;
 
 CompiledFunction::~CompiledFunction() { runtimeBundle_.freeConstants(); }
 
-CompiledFunction::CompiledFunction(const runtime::RuntimeBundle &bundle)
-    : runtimeBundle_(bundle){};
+CompiledFunction::CompiledFunction(runtime::RuntimeBundle &&bundle)
+    : runtimeBundle_(std::move(bundle)){};

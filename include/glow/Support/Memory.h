@@ -44,7 +44,8 @@ inline void alignedFree(void *p) { glow_aligned_free(p); }
 
 /// Rounds up \p size to the nearest \p alignment.
 inline size_t alignedSize(size_t size, size_t alignment) {
-  return (size + alignment - 1) & ~(alignment - 1);
+  size_t mod = size % alignment;
+  return mod ? size + alignment - mod : size;
 }
 
 } // end namespace glow

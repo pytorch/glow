@@ -5,7 +5,7 @@ add_executable(SparseLengthsSumTest
 target_link_libraries(SparseLengthsSumTest
   PRIVATE
   Backends
-  ExecutionEngine
+  ExecutionEngine2
   gtest
   glog::glog)
 
@@ -13,8 +13,8 @@ add_executable(ParameterSweepTest
                ParameterSweepTest.cpp)
 target_link_libraries(ParameterSweepTest
                       PRIVATE
-                        BackendTestUtils
-                        ExecutionEngine
+                        BackendTestUtils2
+                        ExecutionEngine2
                         glog::glog
                         gtest
                         Graph

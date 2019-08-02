@@ -56,9 +56,9 @@ public:
               AllocationsInfo &allocationsInfo) const override;
 
 protected:
-  virtual std::unique_ptr<CompiledFunction> createCompiledFunction(
-      std::unique_ptr<llvm::orc::GlowJIT> JIT,
-      const runtime::RuntimeBundle &runtimeBundle) const override;
+  virtual std::unique_ptr<CompiledFunction>
+  createCompiledFunction(std::unique_ptr<llvm::orc::GlowJIT> JIT,
+                         runtime::RuntimeBundle &&runtimeBundle) const override;
 
   virtual llvm::StringRef getLibjitBitcode() const override;
   /// @}

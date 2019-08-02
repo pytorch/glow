@@ -64,6 +64,8 @@ class RuntimeBundle {
   size_t mutableWeightVarsMemSize_{0};
   /// Amount of memory needed for activations.
   size_t activationsMemSize_{0};
+  /// True if the RuntimeBundle is valid, false if not.
+  bool isValid_{false};
 
 public:
   /// Get Constant Weights memory size.
@@ -102,6 +104,13 @@ public:
                                        MemoryAllocator &placeholderAllocator,
                                        MemoryAllocator &activationsAllocator);
 
+  /// Computes offsets and total allocations for Constants, Placeholders, and
+  /// Activations to build runtime symbol table. \returns RuntimeBundle. Uses a
+  /// single allocator \p allocator and allocates all buffers contiguously in
+  /// the same block.
+  static runtime::RuntimeBundle create(const IRFunction &F,
+                                       MemoryAllocator &allocator);
+
   /// Build a runtime symbol table from a Function.  Computes Constant and
   /// Placeholder sizes, but not Activations, since Functions are unserialized.
   /// Only use this method to generate bundles for backends that do not use
@@ -118,7 +127,17 @@ public:
       : symbolTable_(std::move(symbolTable)), constants_(nullptr),
         constantWeightVarsMemSize_(constWeight),
         mutableWeightVarsMemSize_(mutableWeight),
-        activationsMemSize_(activations) {}
+        activationsMemSize_(activations), isValid_(true) {}
+
+  // Explicit copy constructor and deleted assignment operator. A RuntimeBundle
+  // should be moved. It should only be copied if absolutely necessary and never
+  // implicitly.
+  explicit RuntimeBundle(const RuntimeBundle &) = default;
+  RuntimeBundle &operator=(const RuntimeBundle &) = delete;
+
+  // Move constructor and assignment operator.
+  RuntimeBundle(RuntimeBundle &&rhs);
+  RuntimeBundle &operator=(RuntimeBundle &&rhs);
 };
 } // namespace runtime
 

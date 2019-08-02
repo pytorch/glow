@@ -87,6 +87,8 @@ createAndSetTensorType(const caffe2::TensorProto &in) {
 
   if (in.data_type() == caffe2::TensorProto::FLOAT) {
     result.t->reset(ElemKind::FloatTy, dim);
+  } else if (in.data_type() == caffe2::TensorProto::FLOAT16) {
+    result.t->reset(ElemKind::Float16Ty, dim);
   } else if (in.data_type() == caffe2::TensorProto::INT32) {
     result.t->reset(ElemKind::Int32ITy, dim);
   } else if (in.data_type() == caffe2::TensorProto::INT64) {
@@ -96,7 +98,11 @@ createAndSetTensorType(const caffe2::TensorProto &in) {
   } else if (in.data_type() == caffe2::TensorProto::INT8) {
     result.t->reset(ElemKind::Int8QTy, dim, 1.0, 0);
   } else {
-    RETURN_ERR("Only float and index tensors are supported");
+    RETURN_ERR(
+        strFormat("FP32/16, Int32/64, Int8/Uint8 are supported. Got type"
+                  " %s for tensor %s.",
+                  caffe2::TensorProto_DataType_Name(in.data_type()).c_str(),
+                  in.name().c_str()));
   }
 
   return llvm::Expected<LoadWeightResult>(std::move(result));
@@ -238,8 +244,9 @@ getSizeHW(ArgumentDictionaryTy &dict, const std::string &name,
 llvm::Expected<caffe2::NetDef>
 Caffe2ModelLoader::loadProtoFile(const std::string &filename) {
   std::ifstream ff(filename, std::ios::in | std::ios::binary);
-  RETURN_ERR_IF_NOT(ff, "Can't find the model or network files.");
-
+  RETURN_ERR_IF_NOT(ff,
+                    strFormat("Can't find the model or network files for %s",
+                              filename.c_str()));
   caffe2::NetDef net;
 
   bool parseNet = false;
@@ -758,6 +765,33 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     return llvm::Error::success();
   }
 
+  if (typeName == "ResizeNearest") {
+    NodeValue in;
+    ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
+
+    std::string order = "NCHW";
+    if (dict.count("order")) {
+      ASSIGN_VALUE_OR_RETURN_ERR(order, loadStr(dict["order"]));
+    }
+    // We expect the input to be NHWC.
+    NodeValue finalIn;
+    if (order == "NCHW") {
+      finalIn = G_.createTranspose(opName, in, NCHW2NHWC)->getResult();
+    } else {
+      finalIn = in;
+    }
+
+    float heightScale;
+    ASSIGN_VALUE_OR_RETURN_ERR(heightScale, loadFloat(dict["height_scale"]));
+    float widthScale;
+    ASSIGN_VALUE_OR_RETURN_ERR(widthScale, loadFloat(dict["width_scale"]));
+
+    auto *node =
+        G_.createResizeNearest(opName, finalIn, heightScale, widthScale);
+    RETURN_IF_ERR(addNodeAsOutput(op, node));
+    return llvm::Error::success();
+  }
+
   if (typeName == "Concat") {
     const unsigned numInputs = op.input_size();
     llvm::SmallVector<NodeValue, 4> inputs;
@@ -810,7 +844,8 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     return llvm::Error::success();
   }
 
-  if (typeName == "FC" || typeName == "FCTransposed" || typeName == "Int8FC") {
+  if (typeName == "FC" || typeName == "FCTransposed" || typeName == "Int8FC" ||
+      typeName == "FbFCPacked") {
     // Load the inputs:
     NodeValue in;
     ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
@@ -838,6 +873,8 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
       Tensor tmp;
       if (typeName == "FC" || typeName == "FCTransposed") {
         tmp.reset(ElemKind::FloatTy, {wDims.first, wDims.second});
+      } else if (typeName == "FbFCPacked") {
+        tmp.reset(ElemKind::Float16Ty, {wDims.first, wDims.second});
       } else {
         tmp.reset(ElemKind::Int8QTy, {wDims.first, wDims.second},
                   W->getType()->getScale(), W->getType()->getOffset());
@@ -846,7 +883,7 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
       W = G_.getParent()->createConstant(W->getName(), tmp);
     }
 
-    if (typeName == "FC" || typeName == "Int8FC") {
+    if (typeName == "FC" || typeName == "Int8FC" || typeName == "FbFCPacked") {
       Tensor tmp;
       W->getPayloadMutable().transpose(&tmp, {1, 0});
       W = G_.getParent()->createConstant(W->getName(), tmp);
@@ -980,7 +1017,7 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     // Glow frees memory automatically.
     return llvm::Error::success();
   }
-  if (typeName == "StopGradient") {
+  if (typeName == "StopGradient" || typeName == "ScaleGradient") {
     NodeValue in;
     ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
     // Currently Caffe2 importer only supports inference.
@@ -1082,7 +1119,10 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     NodeValue slices;
     ASSIGN_VALUE_OR_RETURN_ERR(slices, getNodeValueByName(op.input(2)));
 
-    Node *SAN = G_.createScatterAssign(opName, data, indices, slices);
+    assert(indices.dims().size() == 1 && "Indices should be 1-dimensional!");
+    NodeValue indices2D =
+        G_.createReshape("indices.2d", indices, {indices.dims()[0], 1});
+    Node *SAN = G_.createScatterData(opName, data, indices2D, slices);
     RETURN_IF_ERR(addNodeAsOutput(op, SAN));
     return llvm::Error::success();
   }

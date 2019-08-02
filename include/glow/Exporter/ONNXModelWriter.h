@@ -50,10 +50,6 @@ class ONNXModelWriter : public CommonOperatorWriter<ONNX_TRAITS> {
   size_t opsetVersion_;
   /// Keeps the track of already visited or processed nodes.
   ReportedNodes reportedNodes_;
-  /// Converts \p glowType to \p protoType.
-  static typename TensorType::DataType convertType(const Type &glowType);
-  /// Writes Glow tensor \p T to proto output \p out.
-  static void writeTensor(const Tensor &T, TensorType *out);
   /// Writes tensor shape from placeholder \p PH into protpbuf \p valueProto.
   static void tensorShapeFromPlaceholder(const Placeholder *PH,
                                          ValueInfoType *valueProto);
@@ -69,6 +65,11 @@ class ONNXModelWriter : public CommonOperatorWriter<ONNX_TRAITS> {
   static bool hasUsesOfKind(const Node *node, Kinded::Kind kind);
 
 public:
+  /// Converts \p glowType to \p protoType.
+  static typename TensorType::DataType convertType(const Type &glowType);
+  /// Writes Glow tensor \p T to proto output \p out.
+  static void writeTensor(const Tensor &T, TensorType *out);
+
   /// Creates an ONNX model writer to serialize \p F graph into file
   /// \p modelFilename, writing \p irVersion and \p opsetVersion.
   /// If \p errPtr is not null then if an error occurs it will get assigned
@@ -80,8 +81,8 @@ public:
 private:
   /// \returns error for the unexpected node kind.
   static llvm::Error writeUnexpectedKind(const Node *node) {
-    RETURN_ERR(strFormat("Glow can not export node %s, unsupported kind: %d.",
-                         node->getName().str().c_str(), node->getKind()));
+    RETURN_ERR(strFormat("Glow can not export node %s, unsupported kind: %s.",
+                         node->getName().str().c_str(), node->getKindName()));
   }
 
   /// Declares the overriden all pure virtual methods, declared in base class.

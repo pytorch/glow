@@ -105,6 +105,7 @@ target_link_libraries(CPUBackend
                         IROptimizer
                         GraphOptimizerPipeline
                         QuantizationBase
+                        Runtime
                         LLVMIRCodeGen)
 add_dependencies(CPUBackend CPURuntime)
 

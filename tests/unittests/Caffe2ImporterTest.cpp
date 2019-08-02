@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #include "ImporterTestUtils.h"
-#include "glow/ExecutionEngine/ExecutionEngine.h"
+#include "glow/ExecutionEngine/ExecutionEngine2.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Importer/Caffe2ModelLoader.h"
 #include "gtest/gtest.h"
@@ -29,7 +29,7 @@ static void testEltwiseUnaryOpFloat(std::string fileName,
                                     llvm::ArrayRef<size_t> inputShape,
                                     std::string input_name, float delta,
                                     const std::function<float(float)> &op) {
-  ExecutionEngine EE{};
+  ExecutionEngine2 EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
   std::string NetDescFilename =
@@ -46,7 +46,8 @@ static void testEltwiseUnaryOpFloat(std::string fileName,
   auto PH = mod.getPlaceholderByName(input_name);
   auto *inTensor = bindings.allocate(PH);
   inTensor->getHandle().randomize(-10.0, 10.0, mod.getPRNG());
-  EE.compile(CompilationMode::Infer, F);
+  EE.compile(CompilationMode::Infer);
+  bindings.allocate(mod.getPlaceholders());
   EE.run(bindings);
   auto result = bindings.get(graphOutputVar)->getHandle();
   auto inHandle = inTensor->getHandle();
@@ -65,7 +66,7 @@ TEST(caffe2, importExp) {
 /// The input is N*C*H*W (1*1*3*3), the kernel is 2,
 /// stride is 1, pad is 1, group is 1.
 TEST(caffe2, importConv) {
-  ExecutionEngine EE{};
+  ExecutionEngine2 EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -87,11 +88,11 @@ TEST(caffe2, importConv) {
     output = EXIT_ON_ERR(caffe2LD.getSingleOutput());
 
     bindings.allocate(mod.getPlaceholders());
-    updateInputPlaceholdersByName(bindings, &mod, {"gpu_0/data_0"}, {&data});
+    updateInputPlaceholdersByName2(bindings, &mod, {"gpu_0/data_0"}, {&data});
   }
 
   auto res = bindings.get(output);
-  EE.compile(CompilationMode::Infer, F);
+  EE.compile(CompilationMode::Infer);
 
   EE.run(bindings);
   auto result = res->getHandle();
@@ -107,7 +108,7 @@ TEST(caffe2, importConv) {
 /// The input is N*C*H*W (1*1*3*3), the kernel is 2,
 /// stride is 1, pad is 1, group is 1.
 TEST(caffe2, importConvRelu) {
-  ExecutionEngine EE{};
+  ExecutionEngine2 EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -129,7 +130,7 @@ TEST(caffe2, importConvRelu) {
     output = EXIT_ON_ERR(caffe2LD.getSingleOutput());
 
     bindings.allocate(mod.getPlaceholders());
-    updateInputPlaceholdersByName(bindings, &mod, {"gpu_0/data_0"}, {&data});
+    updateInputPlaceholdersByName2(bindings, &mod, {"gpu_0/data_0"}, {&data});
   }
 
   // High level check on the content of the graph. We should have
@@ -150,7 +151,7 @@ TEST(caffe2, importConvRelu) {
   ASSERT_TRUE(transNode2);
 
   auto res = bindings.get(output);
-  EE.compile(CompilationMode::Infer, F);
+  EE.compile(CompilationMode::Infer);
 
   EE.run(bindings);
   auto result = res->getHandle();
@@ -166,7 +167,7 @@ TEST(caffe2, importConvRelu) {
 /// The input is N*H*W*C (1*3*3*1), the kernel is 2,
 /// stride is 1, pad is 1, group is 1.
 TEST(caffe2, convNHWC) {
-  ExecutionEngine EE{};
+  ExecutionEngine2 EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -205,7 +206,7 @@ TEST(caffe2, convNHWC) {
 /// The input is N*H*W*C (1*1*1*4), the kernel is 1,
 /// stride is 1, pad is 1, group is 2.
 TEST(caffe2, convGroupQuantized) {
-  ExecutionEngine EE{};
+  ExecutionEngine2 EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -293,7 +294,7 @@ TEST(caffe2, convGroupQuantized) {
 
 /// Test loading MaxPool with NHWC order input.
 TEST(caffe2, maxPoolNHWC) {
-  ExecutionEngine EE{};
+  ExecutionEngine2 EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -331,7 +332,7 @@ TEST(caffe2, maxPoolNHWC) {
 
 /// Test that loading MaxPool with legacy padding terminates early.
 TEST(caffe2, maxPoolLegacyPadding) {
-  ExecutionEngine EE{};
+  ExecutionEngine2 EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -356,7 +357,7 @@ TEST(caffe2, maxPoolLegacyPadding) {
 
 /// Test loading MaxPool with default NCHW order input.
 TEST(caffe2, maxPool) {
-  ExecutionEngine EE{};
+  ExecutionEngine2 EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -400,7 +401,7 @@ TEST(caffe2, maxPool) {
 
 /// Test loading AvgPool with NHWC order input.
 TEST(caffe2, avgPoolNHWC) {
-  ExecutionEngine EE{};
+  ExecutionEngine2 EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -438,7 +439,7 @@ TEST(caffe2, avgPoolNHWC) {
 
 /// Test loading AveragePool with default NCHW order input.
 TEST(caffe2, avgPool) {
-  ExecutionEngine EE{};
+  ExecutionEngine2 EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -491,7 +492,7 @@ TEST(caffe2, avgPool) {
 /// To fill the gap between the two, glow issues a reshape
 /// right after its concat.
 TEST(caffe2, concatAddAxis) {
-  ExecutionEngine EE{};
+  ExecutionEngine2 EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -520,9 +521,9 @@ TEST(caffe2, concatAddAxis) {
     output = EXIT_ON_ERR(caffe2LD.getSingleOutput());
 
     bindings.allocate(mod.getPlaceholders());
-    updateInputPlaceholdersByName(bindings, &mod,
-                                  {"inputs_0", "inputs_1", "inputs_2"},
-                                  {&inputs_0, &inputs_1, &inputs_2});
+    updateInputPlaceholdersByName2(bindings, &mod,
+                                   {"inputs_0", "inputs_1", "inputs_2"},
+                                   {&inputs_0, &inputs_1, &inputs_2});
   }
 
   // Check that the shape of the output matches what Caffe2 expects.
@@ -530,7 +531,7 @@ TEST(caffe2, concatAddAxis) {
   EXPECT_TRUE(output->dims().vec() == expectedDims);
 
   auto res = bindings.get(output);
-  EE.compile(CompilationMode::Infer, F);
+  EE.compile(CompilationMode::Infer);
 
   EE.run(bindings);
   // High level check on the content of the graph.
@@ -569,7 +570,7 @@ TEST(caffe2, concatAddAxis) {
 
 /// Test loading a regular concat node.
 TEST(caffe2, concat) {
-  ExecutionEngine EE{};
+  ExecutionEngine2 EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -596,9 +597,9 @@ TEST(caffe2, concat) {
     output = EXIT_ON_ERR(caffe2LD.getSingleOutput());
 
     bindings.allocate(mod.getPlaceholders());
-    updateInputPlaceholdersByName(bindings, &mod,
-                                  {"inputs_0", "inputs_1", "inputs_2"},
-                                  {&inputs_0, &inputs_1, &inputs_2});
+    updateInputPlaceholdersByName2(bindings, &mod,
+                                   {"inputs_0", "inputs_1", "inputs_2"},
+                                   {&inputs_0, &inputs_1, &inputs_2});
   }
 
   // Check that the shape of the output matches what Caffe2 expects.
@@ -607,7 +608,7 @@ TEST(caffe2, concat) {
 
   bindings.allocate(mod.getPlaceholders());
   auto res = bindings.get(output);
-  EE.compile(CompilationMode::Infer, F);
+  EE.compile(CompilationMode::Infer);
 
   EE.run(bindings);
   // High level check on the content of the graph.
@@ -647,7 +648,7 @@ TEST(caffe2, concat) {
 
 /// Test loading a batched matmul with transpose on RHS.
 TEST(caffe2, batchedMatmulRHS) {
-  ExecutionEngine EE{};
+  ExecutionEngine2 EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
   std::string NetDescFilename(
@@ -702,7 +703,7 @@ TEST(caffe2, batchedMatmulRHS) {
 
 /// Test loading a parallel batched matmul.
 TEST(caffe2, parallelBatchedMatmulRHS) {
-  ExecutionEngine EE{};
+  ExecutionEngine2 EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
   std::string NetDescFilename(
@@ -751,7 +752,7 @@ TEST(caffe2, parallelBatchedMatmulRHS) {
 
 /// Test loading a FC node : I * transpose(W) + B.
 TEST(caffe2, FC) {
-  ExecutionEngine EE{};
+  ExecutionEngine2 EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -775,7 +776,7 @@ TEST(caffe2, FC) {
                                {&inputs.getType()}, *F);
     output = EXIT_ON_ERR(caffe2LD.getSingleOutput());
     bindings.allocate(mod.getPlaceholders());
-    updateInputPlaceholdersByName(bindings, &mod, {"inputs"}, {&inputs});
+    updateInputPlaceholdersByName2(bindings, &mod, {"inputs"}, {&inputs});
   }
 
   // High level check on the content of the graph. We have 1 FC node and 1 save.
@@ -825,7 +826,7 @@ TEST(caffe2, FC) {
 /// Test loading a FC node : I * transpose(W) + B, where I is need to be
 /// flatten.
 TEST(caffe2, FCWithFlatten) {
-  ExecutionEngine EE{};
+  ExecutionEngine2 EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -845,7 +846,7 @@ TEST(caffe2, FCWithFlatten) {
                                {&inputs.getType()}, *F);
     output = EXIT_ON_ERR(caffe2LD.getSingleOutput());
     bindings.allocate(mod.getPlaceholders());
-    updateInputPlaceholdersByName(bindings, &mod, {"inputs"}, {&inputs});
+    updateInputPlaceholdersByName2(bindings, &mod, {"inputs"}, {&inputs});
   }
 
   // High level check on the content of the graph. We have a reshape, an FC,
@@ -872,7 +873,7 @@ TEST(caffe2, FCWithFlatten) {
 
 /// Test loading a FCTransposed node: I * W + B
 TEST(caffe2, FCTransposed) {
-  ExecutionEngine EE{};
+  ExecutionEngine2 EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -898,7 +899,7 @@ TEST(caffe2, FCTransposed) {
                                {&inputs.getType()}, *F);
     output = EXIT_ON_ERR(caffe2LD.getSingleOutput());
     bindings.allocate(mod.getPlaceholders());
-    updateInputPlaceholdersByName(bindings, &mod, {"inputs"}, {&inputs});
+    updateInputPlaceholdersByName2(bindings, &mod, {"inputs"}, {&inputs});
   }
 
   // High level check on the content of the graph. We have 1 FC and 1 save,
@@ -946,7 +947,7 @@ TEST(caffe2, FCTransposed) {
 
 /// Test loading a FCTransposed node: I * W + B, where I is need to be flatten.
 TEST(caffe2, FCTransposedWithFlatten) {
-  ExecutionEngine EE{};
+  ExecutionEngine2 EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -968,7 +969,7 @@ TEST(caffe2, FCTransposedWithFlatten) {
                                {&inputs.getType()}, *F);
     output = EXIT_ON_ERR(caffe2LD.getSingleOutput());
     bindings.allocate(mod.getPlaceholders());
-    updateInputPlaceholdersByName(bindings, &mod, {"inputs"}, {&inputs});
+    updateInputPlaceholdersByName2(bindings, &mod, {"inputs"}, {&inputs});
   }
 
   // High level check on the content of the graph. We have a reshape, an FC,
@@ -996,7 +997,7 @@ TEST(caffe2, FCTransposedWithFlatten) {
 /// Test loading bucketize op from a Caffe2 model.
 /// Test with arg boundaries = [0.1, 2.5]
 TEST(caffe2, importBucketize) {
-  ExecutionEngine EE{};
+  ExecutionEngine2 EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -1015,7 +1016,7 @@ TEST(caffe2, importBucketize) {
                                {&inputs_0.getType()}, *F);
     output = EXIT_ON_ERR(caffe2LD.getSingleOutput());
     bindings.allocate(mod.getPlaceholders());
-    updateInputPlaceholdersByName(bindings, &mod, {"input_0"}, {&inputs_0});
+    updateInputPlaceholdersByName2(bindings, &mod, {"input_0"}, {&inputs_0});
   }
 
   EXPECT_EQ(F->getNodes().size(), 2);
@@ -1031,10 +1032,48 @@ TEST(caffe2, importBucketize) {
   EXPECT_EQ(mod.getPlaceholders().size(), 2);
 }
 
+/// Test loading ResizeNearest op from a Caffe2 model.
+/// Test with NHWC order, 2.0 height scale and 1.5 width scale
+TEST(caffe2, importResizeNearest) {
+  ExecutionEngine2 EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string NetDescFilename(
+      GLOW_DATA_PATH "tests/models/caffe2Models/resize_nearest_op_net.pbtxt");
+  std::string NetWeightFilename(
+      GLOW_DATA_PATH "tests/models/caffe2Models/empty_init_net.pbtxt");
+
+  Placeholder *output;
+  PlaceholderBindings bindings;
+
+  {
+    Tensor input(ElemKind::FloatTy, {1, 2, 2, 1});
+
+    Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"input_0"},
+                               {&input.getType()}, *F);
+    output = EXIT_ON_ERR(caffe2LD.getSingleOutput());
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName2(bindings, &mod, {"input_0"}, {&input});
+  }
+
+  EXPECT_EQ(F->getNodes().size(), 2);
+  auto *saveNode = getSaveNodeFromDest(output);
+  auto *resizeNearestNode =
+      llvm::dyn_cast<ResizeNearestNode>(saveNode->getInput().getNode());
+  ASSERT_TRUE(resizeNearestNode);
+  // We have one input and one output.
+  EXPECT_EQ(mod.getPlaceholders().size(), 2);
+  auto heightScale = resizeNearestNode->getHeightScale();
+  auto widthScale = resizeNearestNode->getWidthScale();
+  EXPECT_NEAR(heightScale, 2.0, 0.00001);
+  EXPECT_NEAR(widthScale, 1.5, 0.00001);
+}
+
 /// Test loading clip op from a Caffe2 model.
 /// Test with arg min = 20.0 max = 60.0
 TEST(caffe2, importClip) {
-  ExecutionEngine EE{};
+  ExecutionEngine2 EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -1053,7 +1092,7 @@ TEST(caffe2, importClip) {
                                {&inputs_0.getType()}, *F);
     output = EXIT_ON_ERR(caffe2LD.getSingleOutput());
     bindings.allocate(mod.getPlaceholders());
-    updateInputPlaceholdersByName(bindings, &mod, {"inputs_0"}, {&inputs_0});
+    updateInputPlaceholdersByName2(bindings, &mod, {"inputs_0"}, {&inputs_0});
   }
 
   EXPECT_EQ(F->getNodes().size(), 5);
@@ -1078,7 +1117,7 @@ TEST(caffe2, importClip) {
 /// min = std::numeric_limits<float>::lowest()
 /// max = std::numeric_limits<float>::max()
 TEST(caffe2, importClipDefault) {
-  ExecutionEngine EE{};
+  ExecutionEngine2 EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -1098,7 +1137,7 @@ TEST(caffe2, importClipDefault) {
                                {&inputs_0.getType()}, *F);
     output = EXIT_ON_ERR(caffe2LD.getSingleOutput());
     bindings.allocate(mod.getPlaceholders());
-    updateInputPlaceholdersByName(bindings, &mod, {"inputs_0"}, {&inputs_0});
+    updateInputPlaceholdersByName2(bindings, &mod, {"inputs_0"}, {&inputs_0});
   }
   EXPECT_EQ(F->getNodes().size(), 5);
   auto *saveNode = getSaveNodeFromDest(output);
@@ -1120,7 +1159,7 @@ TEST(caffe2, importClipDefault) {
 
 /// Test loading a ReplaceNaN operator.
 TEST(caffe2, replaceNaN) {
-  ExecutionEngine EE{};
+  ExecutionEngine2 EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -1140,7 +1179,7 @@ TEST(caffe2, replaceNaN) {
                                {&input.getType()}, *F);
     output = EXIT_ON_ERR(caffe2LD.getSingleOutput());
     bindings.allocate(mod.getPlaceholders());
-    updateInputPlaceholdersByName(bindings, &mod, {"input"}, {&input});
+    updateInputPlaceholdersByName2(bindings, &mod, {"input"}, {&input});
   }
 
   // Check that the shape of the output matches the input.
@@ -1164,7 +1203,7 @@ TEST(caffe2, replaceNaN) {
 
 /// Test loading a DotProduct operator with 1D inputs.
 TEST(caffe2, dotProduct1D) {
-  ExecutionEngine EE{};
+  ExecutionEngine2 EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -1206,7 +1245,7 @@ TEST(caffe2, dotProduct1D) {
 
 // Test loading a DotProduct operator with 2D inputs.
 TEST(caffe2, dotProduct2D) {
-  ExecutionEngine EE{};
+  ExecutionEngine2 EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -1253,7 +1292,7 @@ TEST(caffe2, dotProduct2D) {
 
 // Test loading a BatchBoxCox operator.
 TEST(caffe2, batchBoxCox) {
-  ExecutionEngine EE{};
+  ExecutionEngine2 EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -1281,100 +1320,28 @@ TEST(caffe2, batchBoxCox) {
         {&data.getType(), &lambda1.getType(), &lambda2.getType()}, *F);
     output = EXIT_ON_ERR(caffe2LD.getSingleOutput());
     bindings.allocate(mod.getPlaceholders());
-    updateInputPlaceholdersByName(bindings, &mod,
-                                  {"data", "lambda1", "lambda2"},
-                                  {&data, &lambda1, &lambda2});
+    updateInputPlaceholdersByName2(bindings, &mod,
+                                   {"data", "lambda1", "lambda2"},
+                                   {&data, &lambda1, &lambda2});
   }
 
-  // Check that the shape of the output matches that of the expected output.
-  EXPECT_TRUE(output->dims().vec() == O.dims().vec());
-
-  // High level checks on the content of the graph.
-  // We should have 2 Broadcast (2 Reshape and 2 Tile), 2 Add, 4 Splat,
-  // 1 Max, 1 Log, 1 Pow, 1 Sub, 1 Div, 1 CmpEQ, 1 Select and 1 Output =
-  // 18 nodes in total.
-  //
-  EXPECT_EQ(F->getNodes().size(), 18);
-
-  // Check that the graph has the expected shape:
-  //
-  //        (input) Broadcast          Broadcast -----
-  //              \   |        ________/ /           |
-  //              v   v       v         /            |
-  //       Splat   Add  -> Pow  Splat  /             |
-  //           \    |   |   |   /     /              |
-  //            v   v   |   v  v     v               |
-  //             Max ----   Sub    Add <-- Splat     |
-  //              |          |    /                  |
-  //              v          v   v                   |
-  //             Log         Div                     |
-  //                \       /         _______________|
-  //                 v     v         v
-  //                 Select  <--- CmpEQ <--- Splat
-  //                   |
-  //                   v
-  //                 Output
-  //
-  // Search in a breadth-first fashion starting from the output.
-  // Broadcast consists of (Reshape -> Tile), so cast to TileNode
-  // when checking for Broadcast.
+  EXPECT_EQ(F->getNodes().size(), 2);
 
   // Output.
   auto *saveNode = getSaveNodeFromDest(output);
   ASSERT_TRUE(saveNode);
 
   // Select.
-  auto *selectNode = llvm::dyn_cast<SelectNode>(saveNode->getInput());
-  ASSERT_TRUE(selectNode);
-
-  // CmpEQ, Log, Div.
-  auto *CEQ = llvm::dyn_cast<CmpEQNode>(selectNode->getCond());
-  ASSERT_TRUE(CEQ);
-  auto *LN = llvm::dyn_cast<LogNode>(selectNode->getLHS());
-  ASSERT_TRUE(LN);
-  auto *DN = llvm::dyn_cast<DivNode>(selectNode->getRHS());
-  ASSERT_TRUE(DN);
-
-  // Splat, Broadcast, Max, Sub, Add.
-  ASSERT_TRUE(llvm::dyn_cast<SplatNode>(CEQ->getRHS()));
-  auto *BN1 = llvm::dyn_cast<TileNode>(CEQ->getLHS());
-  ASSERT_TRUE(BN1);
-  auto *MN = llvm::dyn_cast<MaxNode>(LN->getInput());
-  ASSERT_TRUE(MN);
-  auto *subNode = llvm::dyn_cast<SubNode>(DN->getLHS());
-  ASSERT_TRUE(subNode);
-  auto *AN1 = llvm::dyn_cast<AddNode>(DN->getRHS());
-  ASSERT_TRUE(AN1);
-
-  // Splat, Splat, Splat. Add, Pow, Broadcast.
-  ASSERT_TRUE(llvm::dyn_cast<SplatNode>(MN->getRHS()));
-  ASSERT_TRUE(llvm::dyn_cast<SplatNode>(subNode->getRHS()));
-  ASSERT_TRUE(llvm::dyn_cast<SplatNode>(AN1->getRHS()));
-  auto *AN2 = llvm::dyn_cast<AddNode>(MN->getLHS());
-  ASSERT_TRUE(AN2);
-  auto *PN = llvm::dyn_cast<PowNode>(subNode->getLHS());
-  ASSERT_TRUE(PN);
-  EXPECT_EQ(MN, llvm::dyn_cast<MaxNode>(PN->getLHS()));
-  EXPECT_EQ(BN1, llvm::dyn_cast<TileNode>(AN1->getLHS()));
-
-  // Broadcast, Broadcast.
-  EXPECT_EQ(BN1, llvm::dyn_cast<TileNode>(PN->getRHS()));
-  auto *BN2 = llvm::dyn_cast<TileNode>(AN2->getRHS());
-  EXPECT_TRUE(BN2);
+  auto *BBCN = llvm::dyn_cast<BatchBoxCoxNode>(saveNode->getInput());
+  ASSERT_TRUE(BBCN);
 
   // There are three inputs and one output.
   EXPECT_EQ(mod.getPlaceholders().size(), 4);
-
-  // Compile and run the model.
-  EE.compile(CompilationMode::Infer, F);
-  EE.run(bindings);
-
-  // Correctness is checked in the OperatorTest's BatchBoxCoxFloat.
 }
 
 // Test loading a EQ operator with 1D inputs.
 TEST(caffe2, EQ1D) {
-  ExecutionEngine EE{};
+  ExecutionEngine2 EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -1414,7 +1381,7 @@ TEST(caffe2, EQ1D) {
 
 // Test loading a LengthsToRanges operator.
 TEST(caffe2, LengthsToRanges) {
-  ExecutionEngine EE{};
+  ExecutionEngine2 EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -1448,7 +1415,7 @@ TEST(caffe2, LengthsToRanges) {
 
 // Test loading Logit operator from a Caffe2 model.
 TEST(caffe2, Logit) {
-  ExecutionEngine EE{};
+  ExecutionEngine2 EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -1485,7 +1452,7 @@ TEST(caffe2, Logit) {
 
 // Test loading a SparseToDense operator.
 TEST(caffe2, sparseToDense) {
-  ExecutionEngine EE{};
+  ExecutionEngine2 EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -1515,8 +1482,8 @@ TEST(caffe2, sparseToDense) {
         {&indices.getType(), &values.getType(), &dataToInferDim.getType()}, *F);
     output = EXIT_ON_ERR(caffe2LD.getSingleOutput());
     bindings.allocate(mod.getPlaceholders());
-    updateInputPlaceholdersByName(bindings, &mod, {"indices", "values"},
-                                  {&indices, &values});
+    updateInputPlaceholdersByName2(bindings, &mod, {"indices", "values"},
+                                   {&indices, &values});
   }
 
   // Check that the shape of the output matches that of the expected output.
@@ -1537,7 +1504,7 @@ TEST(caffe2, sparseToDense) {
 }
 
 TEST(caffe2, SparseToDenseMask) {
-  ExecutionEngine EE{};
+  ExecutionEngine2 EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -1590,7 +1557,7 @@ TEST(caffe2, SparseToDenseMask) {
 
 /// Test loading NCHW2NHWC op.
 TEST(caffe2, testNCHW2NHWC) {
-  ExecutionEngine EE{};
+  ExecutionEngine2 EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -1634,7 +1601,7 @@ TEST(caffe2, testNCHW2NHWC) {
 
 /// Test loading a LengthsSum operator.
 TEST(caffe2, lengthsSum) {
-  ExecutionEngine EE{};
+  ExecutionEngine2 EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -1679,7 +1646,7 @@ TEST(caffe2, lengthsSum) {
 
 /// Test loading a GatherRanges op.
 TEST(caffe2, gatherRanges) {
-  ExecutionEngine EE;
+  ExecutionEngine2 EE;
   auto &mod = EE.getModule();
   auto *F = mod.createFunction("main");
 
@@ -1714,7 +1681,7 @@ TEST(caffe2, gatherRanges) {
 TEST(caffe2, gatherConstantFoldingAndReshape) {
   // This test verifies that Gather gets constant-folded, so that the argument
   // of the reshape becomes constant.
-  ExecutionEngine EE;
+  ExecutionEngine2 EE;
   auto &mod = EE.getModule();
 
   std::string netDescFilename(
@@ -1733,7 +1700,7 @@ TEST(caffe2, gatherConstantFoldingAndReshape) {
     bindings.allocate(mod.getPlaceholders());
   }
   setConstantFoldLoaderOpsFlag(false);
-  EE.compile(CompilationMode::Infer, F);
+  EE.compile(CompilationMode::Infer);
   EE.run(bindings);
 
   auto result = bindings.get(output)->getHandle();
@@ -1742,7 +1709,7 @@ TEST(caffe2, gatherConstantFoldingAndReshape) {
 }
 /// Test loading a LengthsRangeFill op.
 TEST(caffe2, LengthsRangeFill) {
-  ExecutionEngine EE;
+  ExecutionEngine2 EE;
   auto &mod = EE.getModule();
   auto *F = mod.createFunction("main");
 
@@ -1775,7 +1742,7 @@ TEST(caffe2, LengthsRangeFill) {
 
 /// Verify that different fill types are loaded with the correct types.
 TEST(caffe2, tensorFillsTest) {
-  ExecutionEngine EE{};
+  ExecutionEngine2 EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -1839,7 +1806,7 @@ TEST(caffe2, tensorFillsTest) {
 }
 
 TEST(caffe2, Alias) {
-  ExecutionEngine EE{};
+  ExecutionEngine2 EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -1875,7 +1842,7 @@ TEST(caffe2, Alias) {
 }
 
 TEST(caffe2, Modulo) {
-  ExecutionEngine EE{};
+  ExecutionEngine2 EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -1916,7 +1883,7 @@ TEST(caffe2, Modulo) {
 
 /// Test loading an ElementwiseLinear operator.
 TEST(caffe2, elementwiseLinear) {
-  ExecutionEngine EE{};
+  ExecutionEngine2 EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -1992,7 +1959,7 @@ TEST(caffe2, elementwiseLinear) {
 
 /// Test loading an ElementwiseLinear operator with no axis specified.
 TEST(caffe2, elementwiseLinearUnspecifiedAxis) {
-  ExecutionEngine EE{};
+  ExecutionEngine2 EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -2082,7 +2049,7 @@ TEST(caffe2, elementwiseLinearUnspecifiedAxis) {
 ///    LENGTHS = [3, 0, 3, 2]
 ///    OUTPUT =  [[0.5, 0, 0, 25]]
 TEST(caffe2, SparseLengthsWeightedSum8BitsRowwise) {
-  ExecutionEngine EE{};
+  ExecutionEngine2 EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -2147,7 +2114,8 @@ TEST(caffe2, SparseLengthsWeightedSum8BitsRowwise) {
   // data is no longer used and is removed by loader.
   EXPECT_EQ(mod.getConstants().size(), 4);
 
-  EE.compile(CompilationMode::Infer, F);
+  EE.compile(CompilationMode::Infer);
+  bindings.allocate(mod.getPlaceholders());
 
   // Post compile, DCE should have gotten rid of the originally fused data
   // Constant, as it is no longer used.
@@ -2188,7 +2156,7 @@ TEST(caffe2, SparseLengthsWeightedSum8BitsRowwise) {
 ///        [3.0, 3.6],
 ///    ]
 TEST(caffe2, SparseLengthsSum8BitsRowwise) {
-  ExecutionEngine EE{};
+  ExecutionEngine2 EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -2249,7 +2217,8 @@ TEST(caffe2, SparseLengthsSum8BitsRowwise) {
   // longer used and is removed by loader.
   EXPECT_EQ(mod.getConstants().size(), 3);
 
-  EE.compile(CompilationMode::Infer, F);
+  EE.compile(CompilationMode::Infer);
+  bindings.allocate(mod.getPlaceholders());
 
   // Post compile, DCE should have gotten rid of the originally fused data
   // Constant, as it is no longer used.
@@ -2276,7 +2245,7 @@ TEST(caffe2, SparseLengthsSum8BitsRowwise) {
 ///    LENGTHS = [3, 0, 3, 2]
 ///    OUTPUT =  [[0.5, 0, 0, 25]]
 TEST(caffe2, SparseLengthsWeightedSumFused8BitRowwise) {
-  ExecutionEngine EE{};
+  ExecutionEngine2 EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -2345,7 +2314,8 @@ TEST(caffe2, SparseLengthsWeightedSumFused8BitRowwise) {
   // We have 2 constants: data and weights.
   EXPECT_EQ(mod.getConstants().size(), 2);
 
-  EE.compile(CompilationMode::Infer, F);
+  EE.compile(CompilationMode::Infer);
+  bindings.allocate(mod.getPlaceholders());
 
   EE.run(bindings);
 
@@ -2380,7 +2350,7 @@ TEST(caffe2, SparseLengthsWeightedSumFused8BitRowwise) {
 ///        [3.0, 3.6],
 ///    ]
 TEST(caffe2, SparseLengthsSumFused8BitRowwise) {
-  ExecutionEngine EE{};
+  ExecutionEngine2 EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -2442,7 +2412,8 @@ TEST(caffe2, SparseLengthsSumFused8BitRowwise) {
   // We have 1 constant: data.
   EXPECT_EQ(mod.getConstants().size(), 1);
 
-  EE.compile(CompilationMode::Infer, F);
+  EE.compile(CompilationMode::Infer);
+  bindings.allocate(mod.getPlaceholders());
 
   EE.run(bindings);
 
@@ -2457,7 +2428,7 @@ TEST(caffe2, SparseLengthsSumFused8BitRowwise) {
 
 /// Load big enough model and validate node order.
 TEST(caffe2, validateNodeOrder) {
-  ExecutionEngine EE{};
+  ExecutionEngine2 EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
   std::string NetDescFilename(
@@ -2482,15 +2453,12 @@ TEST(caffe2, validateNodeOrder) {
         NetDescFilename, NetWeightFilename, {"data", "lambda1", "lambda2"},
         {&data.getType(), &lambda1.getType(), &lambda2.getType()}, *F);
     bindings.allocate(mod.getPlaceholders());
-    updateInputPlaceholdersByName(bindings, &mod,
-                                  {"data", "lambda1", "lambda2"},
-                                  {&data, &lambda1, &lambda2});
+    updateInputPlaceholdersByName2(bindings, &mod,
+                                   {"data", "lambda1", "lambda2"},
+                                   {&data, &lambda1, &lambda2});
   }
 
-  // We should have 2 Broadcast (2 Reshape and 2 Tile), 2 Add, 4 Splat,
-  // 1 Max, 1 Log, 1 Pow, 1 Sub, 1 Div, 1 CmpEQ, 1 Select and 1 Output =
-  // 18 nodes in total.
-  EXPECT_EQ(F->getNodes().size(), 18);
+  EXPECT_EQ(F->getNodes().size(), 2);
   // Make sure that nodes are sorted by name.
   EXPECT_TRUE(std::is_sorted(
       F->getNodes().begin(), F->getNodes().end(),
@@ -2498,7 +2466,7 @@ TEST(caffe2, validateNodeOrder) {
 }
 
 TEST(caffe2, importInt8ConvRelu) {
-  ExecutionEngine EE{};
+  ExecutionEngine2 EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -2519,7 +2487,7 @@ TEST(caffe2, importInt8ConvRelu) {
     output = EXIT_ON_ERR(caffe2LD.getSingleOutput());
 
     bindings.allocate(mod.getPlaceholders());
-    updateInputPlaceholdersByName(bindings, &mod, {"gpu_0/data_0"}, {&data});
+    updateInputPlaceholdersByName2(bindings, &mod, {"gpu_0/data_0"}, {&data});
   }
 
   // High level check on the content of the graph. We should have
@@ -2539,11 +2507,11 @@ TEST(caffe2, importInt8ConvRelu) {
       llvm::dyn_cast<TransposeNode>(convNode->getInput().getNode());
   ASSERT_TRUE(transNode2);
 
-  EE.compile(CompilationMode::Infer, F);
+  EE.compile(CompilationMode::Infer);
 }
 
 TEST(caffe2, importInt8SumRelu) {
-  ExecutionEngine EE{};
+  ExecutionEngine2 EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -2564,7 +2532,7 @@ TEST(caffe2, importInt8SumRelu) {
     output = EXIT_ON_ERR(caffe2LD.getSingleOutput());
 
     bindings.allocate(mod.getPlaceholders());
-    updateInputPlaceholdersByName(bindings, &mod, {"gpu_0/data_0"}, {&data});
+    updateInputPlaceholdersByName2(bindings, &mod, {"gpu_0/data_0"}, {&data});
   }
 
   // High level check on the content of the graph. We should have
@@ -2582,7 +2550,7 @@ TEST(caffe2, importInt8SumRelu) {
   auto *val = llvm::dyn_cast<Constant>(add->getRHS().getNode());
   ASSERT_TRUE(val);
 
-  EE.compile(CompilationMode::Infer, F);
+  EE.compile(CompilationMode::Infer);
 }
 
 TEST(caffe2, importNames) {
@@ -2590,7 +2558,7 @@ TEST(caffe2, importNames) {
                               "tests/models/caffe2Models/sigmoid.pbtxt");
   std::string NetWeightFilename(
       GLOW_DATA_PATH "tests/models/caffe2Models/empty_init_net.pbtxt");
-  ExecutionEngine EE;
+  ExecutionEngine2 EE;
   auto &mod = EE.getModule();
   auto *F = mod.createFunction("main");
   Tensor input(ElemKind::FloatTy, {6});

@@ -20,9 +20,9 @@
 // compiler with a small end-to-end example. The toy network is small
 // enough that it can be trained as part of the unit test suite.
 
-#include "BackendTestUtils.h"
+#include "BackendTestUtils2.h"
 
-#include "glow/ExecutionEngine/ExecutionEngine.h"
+#include "glow/ExecutionEngine/ExecutionEngine2.h"
 #include "glow/Graph/Graph.h"
 #include "glow/IR/IR.h"
 #include "glow/IR/IRBuilder.h"
@@ -283,18 +283,14 @@ struct HyphenNetwork {
 
   // Run `inputs` through the inference function and check the results against
   // `hyphens`. Return the number of errors.
-  unsigned inferenceErrors(ExecutionEngine &EE, llvm::StringRef name,
+  unsigned inferenceErrors(ExecutionEngine2 &EE, llvm::StringRef fName,
                            Tensor &inputs, const vector<bool> &hyphens,
                            TrainingConfig &TC) {
-    // Compilation is destructive because of target-specific lowering.
-    // Compile a clone of the inference function.
-    auto *CF = infer_->clone(name);
-    EE.compile(CompilationMode::Infer, CF);
-
     auto batchSize = TC.batchSize;
     auto numSamples = inputs.dims()[0];
     EXPECT_LE(batchSize, numSamples);
-    auto resultHandle = bindings_.get(result_->getPlaceholder())->getHandle<>();
+    auto resultHandle =
+        bindings_.get(bindings_.getPlaceholderByName("result"))->getHandle<>();
     unsigned errors = 0;
 
     for (size_t bi = 0; bi < numSamples; bi += batchSize) {
@@ -305,8 +301,8 @@ struct HyphenNetwork {
         bi = numSamples - batchSize;
       }
       auto batchInputs = inputs.getUnowned({batchSize, 6, 27}, {bi, 0, 0});
-      updateInputPlaceholders(bindings_, {input_}, {&batchInputs});
-      EE.run(bindings_);
+      updateInputPlaceholders2(bindings_, {input_}, {&batchInputs});
+      EE.run(bindings_, fName);
 
       // Check each output in the batch.
       for (size_t i = 0; i != batchSize; i++) {
@@ -324,7 +320,7 @@ struct HyphenNetwork {
 } // namespace
 
 TEST(HyphenTest, network) {
-  ExecutionEngine EE("CPU");
+  ExecutionEngine2 EE("CPU");
 
   // Convert the training data to word windows and labels.
   vector<string> words;
@@ -363,21 +359,32 @@ TEST(HyphenTest, network) {
   TC.learningRate = 0.8;
   TC.batchSize = 50;
   HyphenNetwork net(EE.getModule(), TC);
+  auto fName = net.infer_->getName();
+  auto tfName = net.train_->getName();
 
   // This variable records the number of the next sample to be used for
   // training.
   size_t sampleCounter = 0;
 
   // Train using mini-batch SGD.
-  EE.compile(CompilationMode::Train, net.train_);
-  runBatch(EE, net.bindings_, 1000, sampleCounter, {net.input_, net.expected_},
-           {&inputs, &expected});
+  EE.compile(CompilationMode::Train);
+  runBatch2(EE, net.bindings_, 1000, sampleCounter, {net.input_, net.expected_},
+            {&inputs, &expected}, tfName);
 
   // Now test inference on the trained network.
   // Note that we have probably overfitted the data, so we expect 100% accuracy.
-  EXPECT_EQ(net.inferenceErrors(EE, "cpu", inputs, hyphens, TC), 0);
+  EXPECT_EQ(net.inferenceErrors(EE, fName, inputs, hyphens, TC), 0);
 
   // See of the interpreter gets the same result.
-  EE.setBackend("Interpreter");
-  EXPECT_EQ(net.inferenceErrors(EE, "interpreter", inputs, hyphens, TC), 0);
+
+  ExecutionEngine2 EE2("CPU");
+  HyphenNetwork netInterpreter(EE2.getModule(), TC);
+  EE2.compile(CompilationMode::Train);
+  // Copy the trained weights from the CPU run.
+  net.bindings_.copyToTarget("bias", netInterpreter.bindings_);
+  net.bindings_.copyToTarget("bias1", netInterpreter.bindings_);
+  net.bindings_.copyToTarget("weights", netInterpreter.bindings_);
+  net.bindings_.copyToTarget("weights1", netInterpreter.bindings_);
+
+  EXPECT_EQ(netInterpreter.inferenceErrors(EE2, fName, inputs, hyphens, TC), 0);
 }

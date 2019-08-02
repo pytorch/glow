@@ -16,6 +16,7 @@ from caffe2.proto import caffe2_pb2
 from google.protobuf import text_format
 import argparse
 
+
 def read_model_from_file(path):
     m = caffe2_pb2.NetDef()
     with open(path, "rb") as f:
@@ -25,6 +26,7 @@ def read_model_from_file(path):
             m.ParseFromString(f.read())
     return m
 
+
 def write_model_to_file(path, m):
     with open(path, "wb") as f:
         if ".pbtxt" in path:
@@ -32,9 +34,12 @@ def write_model_to_file(path, m):
         else:
             f.write(m.SerializeToString())
 
+
 # Perform dead code elimination on predict_net removing any nodes that aren't
 # used for producing values in predict_net.external_output. Remove any nodes in
 # init_net that produce values that are no longer needed by predict_net.
+
+
 def dce(init_net, predict_net):
     num_predict_net_ops_original = len(predict_net.op)
     num_predict_net_inputs_original = len(predict_net.external_input)
@@ -62,7 +67,8 @@ def dce(init_net, predict_net):
                 live_predict_net_ops.append(op)
 
     # Delete all unused ops in predict_net.
-    num_predict_net_ops_eliminated = len(predict_net.op) - len(live_predict_net_ops)
+    num_predict_net_ops_eliminated = len(
+        predict_net.op) - len(live_predict_net_ops)
     del predict_net.op[:]
     predict_net.op.extend(live_predict_net_ops)
 
@@ -79,16 +85,26 @@ def dce(init_net, predict_net):
             live_predict_net_external_inputs.add(external_input)
 
     # Delete unused external_inputs in predict_net.
-    num_predict_net_inputs_eliminated = len(predict_net.external_input) - len(live_predict_net_external_inputs)
+    num_predict_net_inputs_eliminated = len(predict_net.external_input) - len(
+        live_predict_net_external_inputs
+    )
     del predict_net.external_input[:]
     predict_net.external_input.extend(live_predict_net_external_inputs)
 
-    print("predict_net ops eliminated: {}/{}".format(num_predict_net_ops_eliminated, num_predict_net_ops_original))
-    print("predict_net external_inputs eliminated: {}/{}".format(num_predict_net_inputs_eliminated, num_predict_net_inputs_original))
+    print(
+        "predict_net ops eliminated: {}/{}".format(
+            num_predict_net_ops_eliminated, num_predict_net_ops_original
+        )
+    )
+    print(
+        "predict_net external_inputs eliminated: {}/{}".format(
+            num_predict_net_inputs_eliminated, num_predict_net_inputs_original
+        )
+    )
 
     # Everything below pertains to removing unused outputs in the init_net,
     # if no init net was provided then stop here.
-    if init_net == None:
+    if init_net is None:
         return
 
     num_init_net_ops_original = len(init_net.op)
@@ -119,27 +135,31 @@ def dce(init_net, predict_net):
     del init_net.external_output[:]
     init_net.external_output.extend(live_init_net_external_outputs)
 
-    print("init_net ops eliminated: {}/{}".format(num_init_net_ops_eliminated, num_init_net_ops_original))
+    print(
+        "init_net ops eliminated: {}/{}".format(
+            num_init_net_ops_eliminated, num_init_net_ops_original
+        )
+    )
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser("Caffe2 model dead code elimination")
-    parser.add_argument('--input_init_net_path', type=str)
-    parser.add_argument('--input_predict_net_path', type=str, required=True)
-    parser.add_argument('--output_init_net_path', type=str)
-    parser.add_argument('--output_predict_net_path', type=str, required=True)
+    parser.add_argument("--input_init_net_path", type=str)
+    parser.add_argument("--input_predict_net_path", type=str, required=True)
+    parser.add_argument("--output_init_net_path", type=str)
+    parser.add_argument("--output_predict_net_path", type=str, required=True)
 
     args = parser.parse_args()
 
     predict_net = read_model_from_file(args.input_predict_net_path)
 
     init_net = None
-    if args.input_init_net_path != None:
+    if args.input_init_net_path is not None:
         init_net = read_model_from_file(args.input_init_net_path)
 
     dce(init_net, predict_net)
 
     write_model_to_file(args.output_predict_net_path, predict_net)
 
-    if args.output_init_net_path != None:
+    if args.output_init_net_path is not None:
         write_model_to_file(args.output_init_net_path, init_net)

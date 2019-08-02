@@ -16,6 +16,7 @@
 
 #include "PyTorchModelLoader.h"
 
+#include "glow/Support/Error.h"
 #include "glow/Support/Support.h"
 
 #include <torch/csrc/jit/ir.h>
@@ -23,7 +24,7 @@
 namespace {
 /// \returns a corresponding Glow Type for a given PyTorch CompleteTensorType \p
 /// ptType.
-glow::Type ptTypeToGlowType(const at::CompleteTensorType &ptType) {
+inline glow::Type ptTypeToGlowType(const at::CompleteTensorType &ptType) {
   // TODO: get correct ElemKind
   std::vector<size_t> dims;
   for (auto &size : ptType.sizes()) {
@@ -33,186 +34,370 @@ glow::Type ptTypeToGlowType(const at::CompleteTensorType &ptType) {
 }
 
 /// Downcast a double to a float.
-float to32Bit(double val) {
-  assert(val <= std::numeric_limits<float>::max());
-  assert(val >= std::numeric_limits<float>::lowest());
-  return static_cast<float>(val);
+inline llvm::Expected<float> to32Bit(double val) {
+  RETURN_ERR_IF_NOT(val <= std::numeric_limits<float>::max() ||
+                        val >= std::numeric_limits<float>::lowest(),
+                    glow::strFormat("Value %f is out of limit.", val));
+  return llvm::Expected<float>(static_cast<float>(val));
 }
 
 /// Downcast an int64_t to a int32_t.
-int32_t to32Bit(int64_t val) {
-  assert(val <= std::numeric_limits<int32_t>::max());
-  assert(val >= std::numeric_limits<int32_t>::lowest());
-  return static_cast<int32_t>(val);
+inline llvm::Expected<int32_t> to32Bit(int64_t val) {
+  RETURN_ERR_IF_NOT(val <= std::numeric_limits<int32_t>::max() ||
+                        val >= std::numeric_limits<int32_t>::lowest(),
+                    glow::strFormat("Value %lld is out of limit.",
+                                    static_cast<long long int>(val)));
+  return llvm::Expected<int32_t>(static_cast<int32_t>(val));
 }
 
 /// Given a Glow Node \p glowNode which must be a Glow Constant, returns a Glow
 /// Handle to that Constant's payload.
 template <typename T>
-const glow::Handle<T> getGlowConstantPayload(const glow::Node *glowNode) {
-  assert(glowNode);
-  const glow::Constant *glowConstant = llvm::dyn_cast<glow::Constant>(glowNode);
-  assert(glowConstant);
+llvm::Expected<glow::Handle<T>>
+getGlowConstantPayload(const glow::Node *glowNode) {
+  RETURN_ERR_IF_NOT(glowNode,
+                    glow::strFormat("Expected not null input glow node."));
+
+  const glow::Constant *glowConstant;
+  RETURN_ERR_IF_NOT(glowConstant = llvm::dyn_cast<glow::Constant>(glowNode),
+                    glow::strFormat("Expected glow node has Constant type."));
+
+  auto type = glowConstant->getElementType();
   if (std::is_same<int32_t, T>::value) {
-    assert(glowConstant->getElementType() == glow::ElemKind::Int32ITy);
+    RETURN_ERR_IF_NOT(type == glow::ElemKind::Int32ITy,
+                      glow::strFormat("Expected Int32ITy type, got %s",
+                                      glow::Type::getElementName(type).data()));
   } else if (std::is_same<float, T>::value) {
-    assert(glowConstant->getElementType() == glow::ElemKind::FloatTy);
+    RETURN_ERR_IF_NOT(type == glow::ElemKind::FloatTy,
+                      glow::strFormat("Expected FloatTy type, got %s",
+                                      glow::Type::getElementName(type).data()));
   } else if (std::is_same<bool, T>::value) {
-    assert(glowConstant->getElementType() == glow::ElemKind::BoolTy);
+    RETURN_ERR_IF_NOT(type == glow::ElemKind::BoolTy,
+                      glow::strFormat("Expected BoolTy type, got %s",
+                                      glow::Type::getElementName(type).data()));
   } else {
-    assert(false && "Unsupported type");
+    RETURN_ERR(glow::strFormat("Unsupported type %s",
+                               glow::Type::getElementName(type).data()));
   }
-  return glowConstant->getPayload().getHandle<T>();
+  return llvm::Expected<glow::Handle<T>>(
+      glowConstant->getPayload().getHandle<T>());
 }
 
 /// Given a Glow Handle \p handle and \p targetSize, will return an std::vector
 /// of the elements in the Tensor the Handle manages if the size of that Tensor
 /// is targetSize or if the Tensor has only one element in it, will replicate
 /// that element targetSize times.
-template <typename T, typename OutT = T>
-std::vector<OutT> expandParamIfNeeded(const glow::Handle<T> &handle,
-                                      size_t targetSize) {
-  assert(handle.dims().size() == 1 && "Expected a 1d Glow Tensor");
-  assert(handle.size() == 1 ||
-         handle.size() == targetSize &&
-             "Expected input size to be either 1 or the target size");
-  std::vector<OutT> out;
+template <typename T, typename OutT>
+llvm::Error expandParamIfNeeded(const glow::Handle<T> &handle,
+                                size_t targetSize, std::vector<OutT> &out) {
+  RETURN_ERR_IF_NOT(
+      handle.dims().size() == 1,
+      glow::strFormat("Expected a 1d Glow Tensor, got %lu dimensions.",
+                      handle.dims().size()));
+  RETURN_ERR_IF_NOT(
+      handle.size() == 1 || handle.size() == targetSize,
+      glow::strFormat(
+          "Expected input size to be either 1 or the %lu size, got %lu",
+          targetSize, handle.size()));
   out.resize(targetSize);
   for (size_t i = 0; i < targetSize; ++i) {
     out[i] =
         static_cast<OutT>(handle.size() == 1 ? handle.raw(0) : handle.raw(i));
   }
-  return out;
+  return llvm::Error::success();
 }
 
 /// Given a Glow Handle \p Handle returns the first element in the Tensor
 /// of that Handle, asserting it is equivalent to all other elements in the
 /// Tensor.
-template <typename T> T contractParamIfNeeded(const glow::Handle<T> &handle) {
-  assert(handle.size() > 0);
-  const T firstElem = handle.raw(0);
+template <typename T, typename OutT>
+llvm::Error contractParamIfNeeded(const glow::Handle<T> &handle,
+                                  OutT &firstElem) {
+  RETURN_ERR_IF_NOT(
+      handle.size() > 0,
+      glow::strFormat("Handle size must be > 0, got %lu.", handle.size()));
+  firstElem = handle.raw(0);
   for (size_t i = 1; i < handle.size(); i++) {
-    assert(handle.raw(i) == firstElem);
+    RETURN_ERR_IF_NOT(handle.raw(i) == firstElem,
+                      "All elements must be equal.");
   }
-  return firstElem;
+  return llvm::Error::success();
 }
+
+/// Given Node inputs and outputs, check the expected sizes.
+template <typename T>
+llvm::Error checkInputAndOutputSizes(const T &inputs, size_t inputsSize,
+                                     const T &outputs, size_t outputsSize) {
+  RETURN_ERR_IF_NOT(inputs.size() == inputsSize,
+                    glow::strFormat("Expected number inputs %lu, got %lu.",
+                                    inputsSize, inputs.size()));
+  RETURN_ERR_IF_NOT(outputs.size() == outputsSize,
+                    glow::strFormat("Expected number outputs %lu, got %lu.",
+                                    outputsSize, outputs.size()));
+  return llvm::Error::success();
+}
+
 } // namespace
 
-glow::NodeValue
+// static
+const PyTorchModelLoader::MappingOfMemberFunctions &
+PyTorchModelLoader::getSymbolsMapping() {
+  /// Static map of the above mappings PyTorch operator -> loader method.
+  static const MappingOfMemberFunctions symbolLoaderMapping = {
+      {at::Symbol::fromQualString("prim::Constant"),
+       &PyTorchModelLoader::loadConstant},
+      {at::Symbol::fromQualString("aten::mul"), &PyTorchModelLoader::loadMul},
+      {at::Symbol::fromQualString("aten::mul_"), &PyTorchModelLoader::loadMul},
+      {at::Symbol::fromQualString("aten::div"), &PyTorchModelLoader::loadDiv},
+      {at::Symbol::fromQualString("aten::div_"), &PyTorchModelLoader::loadDiv},
+      {at::Symbol::fromQualString("aten::add"), &PyTorchModelLoader::loadAdd},
+      {at::Symbol::fromQualString("aten::add_"), &PyTorchModelLoader::loadAdd},
+      {at::Symbol::fromQualString("aten::sub"), &PyTorchModelLoader::loadSub},
+      {at::Symbol::fromQualString("aten::sub_"), &PyTorchModelLoader::loadSub},
+      {at::Symbol::fromQualString("aten::relu"), &PyTorchModelLoader::loadRelu},
+      {at::Symbol::fromQualString("aten::relu_"),
+       &PyTorchModelLoader::loadRelu},
+      {at::Symbol::fromQualString("aten::reciprocal"),
+       &PyTorchModelLoader::loadReciprocal},
+      {at::Symbol::fromQualString("aten::reciprocal_"),
+       &PyTorchModelLoader::loadReciprocal},
+      {at::Symbol::fromQualString("aten::_convolution"),
+       &PyTorchModelLoader::loadConvolution},
+      {at::Symbol::fromQualString("aten::batch_norm"),
+       &PyTorchModelLoader::loadBatchNorm},
+      {at::Symbol::fromQualString("aten::max_pool2d"),
+       &PyTorchModelLoader::loadMaxPool2d},
+      {at::Symbol::fromQualString("aten::adaptive_avg_pool2d"),
+       &PyTorchModelLoader::loadAdaptiveAvgPool2d},
+      {at::Symbol::fromQualString("aten::t"),
+       &PyTorchModelLoader::loadTranspose},
+      {at::Symbol::fromQualString("aten::t_"),
+       &PyTorchModelLoader::loadTranspose},
+      {at::Symbol::fromQualString("aten::min"), &PyTorchModelLoader::loadMin},
+      {at::Symbol::fromQualString("aten::linear"),
+       &PyTorchModelLoader::loadLinear},
+      {at::Symbol::fromQualString("aten::max"), &PyTorchModelLoader::loadMax},
+      {at::Symbol::fromQualString("aten::exp"), &PyTorchModelLoader::loadExp},
+      {at::Symbol::fromQualString("aten::sqrt"), &PyTorchModelLoader::loadSqrt},
+      {at::Symbol::fromQualString("aten::sqrt_"),
+       &PyTorchModelLoader::loadSqrt},
+  };
+
+  return symbolLoaderMapping;
+}
+
+// static
+bool PyTorchModelLoader::isNodeSupported(const torch::jit::Node *node) {
+  const auto &mapping = getSymbolsMapping();
+  return mapping.count(node->kind()) != 0;
+}
+
+llvm::Error PyTorchModelLoader::loadNode(const torch::jit::Node *node) {
+  const auto &mapping = getSymbolsMapping();
+  auto it = mapping.find(node->kind());
+  if (it == mapping.end()) {
+    RETURN_ERR(glow::strFormat("Node kind %s is not supported by Glow",
+                               node->kind().toDisplayString()));
+  }
+  return (this->*it->second)(node);
+}
+
+llvm::Expected<glow::NodeValue>
 PyTorchModelLoader::getGlowNodeValue(const torch::jit::Value *value) const {
   const auto it = valueMap_.find(value);
-  assert(it != valueMap_.end());
-  return it->second;
+  if (it == valueMap_.end()) {
+    RETURN_ERR(glow::strFormat("Value %s is not found.",
+                               value->debugNameBase().c_str()));
+  }
+  return llvm::Expected<glow::NodeValue>(it->second);
 }
 
 bool PyTorchModelLoader::hasGlowNodeValue(
     const torch::jit::Value *value) const {
-  const auto it = valueMap_.find(value);
-  return it != valueMap_.end();
+  return valueMap_.count(value) != 0;
 }
 
-void PyTorchModelLoader::addGlowNodeValue(const torch::jit::Value *value,
-                                          glow::NodeValue nodeValue) {
-  assert(valueMap_.count(value) == 0);
-  valueMap_[value] = nodeValue;
+llvm::Error PyTorchModelLoader::addGlowNodeValue(const torch::jit::Value *value,
+                                                 glow::NodeValue nodeValue) {
+  auto p = valueMap_.insert({value, nodeValue});
+  RETURN_ERR_IF_NOT(p.second, glow::strFormat("Value %s is already in the map.",
+                                              value->debugNameBase().c_str()));
+  return llvm::Error::success();
 }
 
 template <typename T>
-glow::Handle<T> PyTorchModelLoader::getGlowConstantHandle(
+llvm::Expected<glow::Handle<T>> PyTorchModelLoader::getGlowConstantHandle(
     const torch::jit::Value *value) const {
-  glow::NodeValue nodeValue = getGlowNodeValue(value);
+  glow::NodeValue nodeValue;
+  ASSIGN_VALUE_OR_RETURN_ERR(nodeValue, getGlowNodeValue(value));
   return getGlowConstantPayload<T>(nodeValue.getNode());
 }
 
-glow::Placeholder *
+llvm::Expected<glow::Placeholder *>
 PyTorchModelLoader::loadValue(const torch::jit::Value *value) {
-  assert(value->isCompleteTensor());
+  RETURN_ERR_IF_NOT(value->isCompleteTensor(),
+                    glow::strFormat("Value %s must have CompleteTensor type.",
+                                    value->debugNameBase().c_str()));
   auto ptType = value->type()->cast<at::CompleteTensorType>();
   auto glowType = ptTypeToGlowType(*ptType.get());
-  glow::Placeholder *ph =
-      mod_->createPlaceholder(&glowType, "input", /*isTrainable*/ false);
-  addGlowNodeValue(value, ph->getOutput());
-  return ph;
+  glow::Placeholder *ph = F_.getParent()->createPlaceholder(
+      &glowType, "input", /*isTrainable*/ false);
+  RETURN_IF_ERR(addGlowNodeValue(value, ph->getOutput()));
+  return llvm::Expected<glow::Placeholder *>(ph);
 }
 
-void PyTorchModelLoader::loadMul(const torch::jit::Node *ptNode) {
+llvm::Error PyTorchModelLoader::loadMul(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
-  assert(inputs.size() == 2);
-  assert(outputs.size() == 1);
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 2, outputs, 1));
 
-  glow::NodeValue rhs = getGlowNodeValue(inputs[0]);
-  glow::NodeValue lhs = getGlowNodeValue(inputs[1]);
-  glow::MulNode *glowNode = f_->createMul("mul", rhs, lhs);
-  addGlowNodeValue(outputs[0], glowNode->getResult());
+  glow::NodeValue lhs;
+  ASSIGN_VALUE_OR_RETURN_ERR(lhs, getGlowNodeValue(inputs[0]));
+  glow::NodeValue rhs;
+  ASSIGN_VALUE_OR_RETURN_ERR(rhs, getGlowNodeValue(inputs[1]));
+
+  glow::MulNode *glowNode =
+      F_.createNodeWithBroadcast<glow::MulNode>("mul", /*axis*/ -1, lhs, rhs);
+
+  return addGlowNodeValue(outputs[0], glowNode->getResult());
 }
 
-void PyTorchModelLoader::loadDiv(const torch::jit::Node *ptNode) {
+llvm::Error PyTorchModelLoader::loadDiv(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
-  assert(inputs.size() == 2);
-  assert(outputs.size() == 1);
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 2, outputs, 1));
 
-  glow::NodeValue rhs = getGlowNodeValue(inputs[0]);
-  glow::NodeValue lhs = getGlowNodeValue(inputs[1]);
-  glow::DivNode *glowNode = f_->createDiv("div", rhs, lhs);
-  addGlowNodeValue(outputs[0], glowNode->getResult());
+  glow::NodeValue lhs;
+  ASSIGN_VALUE_OR_RETURN_ERR(lhs, getGlowNodeValue(inputs[0]));
+  glow::NodeValue rhs;
+  ASSIGN_VALUE_OR_RETURN_ERR(rhs, getGlowNodeValue(inputs[1]));
+
+  glow::DivNode *glowNode =
+      F_.createNodeWithBroadcast<glow::DivNode>("div", /*axis*/ -1, lhs, rhs);
+
+  return addGlowNodeValue(outputs[0], glowNode->getResult());
 }
 
-void PyTorchModelLoader::loadAdd(const torch::jit::Node *ptNode) {
+llvm::Error PyTorchModelLoader::loadAdd(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
-  assert(inputs.size() == 3);
-  assert(outputs.size() == 1);
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 3, outputs, 1));
 
   // TODO: extend this to allow non-constant scalars.
   // Check scalar is 1, any other value is not supported.
-  const auto scalarHandle = getGlowConstantHandle<int32_t>(inputs[2]);
-  assert(scalarHandle.size() == 1);
-  assert(scalarHandle.raw(0) == 1);
-  (void)scalarHandle;
+  auto scalarHandle = glow::Handle<int32_t>::createInvalidHandle();
+  ASSIGN_VALUE_OR_RETURN_ERR(scalarHandle,
+                             getGlowConstantHandle<int32_t>(inputs[2]));
+  RETURN_ERR_IF_NOT(
+      scalarHandle.size() == 1,
+      glow::strFormat("Second input must be 1D tensor, got %lu dimensions.",
+                      scalarHandle.size()));
+  RETURN_ERR_IF_NOT(scalarHandle.raw(0) == 1,
+                    glow::strFormat("Scalar must have value equal 1."));
 
-  glow::NodeValue rhs = getGlowNodeValue(inputs[0]);
-  glow::NodeValue lhs = getGlowNodeValue(inputs[1]);
-  glow::AddNode *glowNode = f_->createAdd("add", rhs, lhs);
-  addGlowNodeValue(outputs[0], glowNode->getResult());
+  glow::NodeValue lhs;
+  ASSIGN_VALUE_OR_RETURN_ERR(lhs, getGlowNodeValue(inputs[0]));
+  glow::NodeValue rhs;
+  ASSIGN_VALUE_OR_RETURN_ERR(rhs, getGlowNodeValue(inputs[1]));
+
+  glow::AddNode *glowNode =
+      F_.createNodeWithBroadcast<glow::AddNode>("add", /*axis*/ -1, lhs, rhs);
+  return addGlowNodeValue(outputs[0], glowNode->getResult());
 }
 
-void PyTorchModelLoader::loadSub(const torch::jit::Node *ptNode) {
+llvm::Error PyTorchModelLoader::loadSub(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
-  assert(inputs.size() == 3);
-  assert(outputs.size() == 1);
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 3, outputs, 1));
 
   // TODO: extend this to allow non-constant scalars.
   // Check scalar is 1, any other value is not supported.
-  const auto scalarHandle = getGlowConstantHandle<int32_t>(inputs[2]);
-  assert(scalarHandle.size() == 1);
-  assert(scalarHandle.raw(0) == 1);
-  (void)scalarHandle;
+  auto scalarHandle = glow::Handle<int32_t>::createInvalidHandle();
+  ASSIGN_VALUE_OR_RETURN_ERR(scalarHandle,
+                             getGlowConstantHandle<int32_t>(inputs[2]));
+  RETURN_ERR_IF_NOT(
+      scalarHandle.size() == 1,
+      glow::strFormat("Second input must be 1D tensor, got %lu dimensions.",
+                      scalarHandle.size()));
+  RETURN_ERR_IF_NOT(scalarHandle.raw(0) == 1,
+                    glow::strFormat("Scalar must have value equal 1."));
 
-  glow::NodeValue rhs = getGlowNodeValue(inputs[0]);
-  glow::NodeValue lhs = getGlowNodeValue(inputs[1]);
-  glow::SubNode *glowNode = f_->createSub("sub", rhs, lhs);
-  addGlowNodeValue(outputs[0], glowNode->getResult());
+  glow::NodeValue lhs;
+  ASSIGN_VALUE_OR_RETURN_ERR(lhs, getGlowNodeValue(inputs[0]));
+  glow::NodeValue rhs;
+  ASSIGN_VALUE_OR_RETURN_ERR(rhs, getGlowNodeValue(inputs[1]));
+
+  glow::SubNode *glowNode =
+      F_.createNodeWithBroadcast<glow::SubNode>("sub", /*axis*/ -1, lhs, rhs);
+  return addGlowNodeValue(outputs[0], glowNode->getResult());
 }
 
-void PyTorchModelLoader::loadRelu(const torch::jit::Node *ptNode) {
+llvm::Error PyTorchModelLoader::loadMax(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
-  assert(inputs.size() == 1);
-  assert(outputs.size() == 1);
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 2, outputs, 1));
 
-  glow::NodeValue input = getGlowNodeValue(inputs[0]);
-  glow::ReluNode *glowNode = f_->createRELU("relu", input);
-  addGlowNodeValue(outputs[0], glowNode->getResult());
+  glow::NodeValue lhs;
+  ASSIGN_VALUE_OR_RETURN_ERR(lhs, getGlowNodeValue(inputs[0]));
+  glow::NodeValue rhs;
+  ASSIGN_VALUE_OR_RETURN_ERR(rhs, getGlowNodeValue(inputs[1]));
+
+  glow::MaxNode *glowNode = F_.createMax("max", lhs, rhs);
+  return addGlowNodeValue(outputs[0], glowNode->getResult());
 }
 
-void PyTorchModelLoader::loadConvolution(const torch::jit::Node *ptNode) {
+llvm::Error PyTorchModelLoader::loadRelu(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
-  assert(inputs.size() == 12);
-  assert(outputs.size() == 1);
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 1, outputs, 1));
+
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValue(inputs[0]));
+
+  glow::ReluNode *glowNode = F_.createRELU("relu", input);
+  return addGlowNodeValue(outputs[0], glowNode->getResult());
+}
+
+llvm::Error PyTorchModelLoader::loadExp(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 1, outputs, 1));
+
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValue(inputs[0]));
+
+  glow::ExpNode *glowNode = F_.createExp("exp", input);
+  return addGlowNodeValue(outputs[0], glowNode->getResult());
+}
+
+llvm::Error PyTorchModelLoader::loadSqrt(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 1, outputs, 1));
+
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValue(inputs[0]));
+
+  glow::PowNode *glowNode = F_.createPow("sqrt", input, /*exp=*/0.5);
+  return addGlowNodeValue(outputs[0], glowNode->getResult());
+}
+
+llvm::Error PyTorchModelLoader::loadReciprocal(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 1, outputs, 1));
+
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValue(inputs[0]));
+  glow::PowNode *glowNode = F_.createPow("reciprocal", input, /*exp=*/-1);
+  return addGlowNodeValue(outputs[0], glowNode->getResult());
+}
+
+llvm::Error
+PyTorchModelLoader::loadConvolution(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 12, outputs, 1));
 
   // Indexes of aten::_convolution inputs.
   struct Inputs {
@@ -232,56 +417,67 @@ void PyTorchModelLoader::loadConvolution(const torch::jit::Node *ptNode) {
     };
   };
 
-  // Glow expects conv inputs to be in NHWC but PyTorch keeps them in NCHW so we
-  // tranpose them.
-  glow::NodeValue input = getGlowNodeValue(inputs[Inputs::input]);
-  input = f_->createTranspose("conv_input_transposed", input, NCHW2NHWC);
+  // Glow expects conv inputs to be in NHWC but PyTorch keeps them in NCHW so
+  // we tranpose them.
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValue(inputs[Inputs::input]));
+
+  input = F_.createTranspose("conv_input_transposed", input, NCHW2NHWC);
   glow::ShapeNHWC inputShape(input.dims());
 
   // Glow expects conv weights to be in CRSK but PyTorch keeps them in CKRS
   // so we tranpose them. C - output_depth, R - filter_height, S -
   // filter_width, K - input_depth.
-  glow::NodeValue weights = getGlowNodeValue(inputs[Inputs::weights]);
-  weights = f_->createTranspose("conv_weights_transposed", weights, NCHW2NHWC);
+  glow::NodeValue weights;
+  ASSIGN_VALUE_OR_RETURN_ERR(weights,
+                             getGlowNodeValue(inputs[Inputs::weights]));
+  weights = F_.createTranspose("conv_weights_transposed", weights, NCHW2NHWC);
   glow::ShapeNHWC weightsShape(weights.dims());
 
   // If a bias was provided then use it otherwise create a 0 bias.
   glow::NodeValue bias;
   if (hasGlowNodeValue(inputs[Inputs::bias])) {
-    bias = getGlowNodeValue(inputs[Inputs::bias]);
+    ASSIGN_VALUE_OR_RETURN_ERR(bias, getGlowNodeValue(inputs[Inputs::bias]));
   } else {
     glow::Tensor biasT(glow::ElemKind::FloatTy, {weightsShape.n});
     biasT.zero();
     glow::Constant *biasConstant =
-        f_->getParent()->createConstant("conv_bias", std::move(biasT));
+        F_.getParent()->createConstant("conv_bias", std::move(biasT));
     bias = biasConstant->getOutput();
   }
 
-  glow::Handle<int32_t> stridesHandle =
-      getGlowConstantHandle<int32_t>(inputs[Inputs::stride]);
-  std::vector<uint32_t> strides =
-      expandParamIfNeeded<int32_t, uint32_t>(stridesHandle, 2);
+  auto stridesHandle = glow::Handle<int32_t>::createInvalidHandle();
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      stridesHandle, getGlowConstantHandle<int32_t>(inputs[Inputs::stride]));
+  std::vector<uint32_t> strides;
+  RETURN_IF_ERR(expandParamIfNeeded(stridesHandle, 2, strides));
 
-  glow::Handle<int32_t> padsHandle =
-      getGlowConstantHandle<int32_t>(inputs[Inputs::padding]);
-  uint32_t pad = static_cast<uint32_t>(contractParamIfNeeded(padsHandle));
+  auto padsHandle = glow::Handle<int32_t>::createInvalidHandle();
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      padsHandle, getGlowConstantHandle<int32_t>(inputs[Inputs::padding]));
+  uint32_t pad;
+  RETURN_IF_ERR(contractParamIfNeeded(padsHandle, pad));
   std::vector<uint32_t> pads = {pad, pad, pad, pad};
 
-  glow::Handle<int32_t> dilationHandle =
-      getGlowConstantHandle<int32_t>(inputs[Inputs::dilation]);
-  uint32_t dilation =
-      static_cast<uint32_t>(contractParamIfNeeded(dilationHandle));
+  auto dilationHandle = glow::Handle<int32_t>::createInvalidHandle();
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      dilationHandle, getGlowConstantHandle<int32_t>(inputs[Inputs::dilation]));
+  uint32_t dilation;
+  RETURN_IF_ERR(contractParamIfNeeded(dilationHandle, dilation));
 
   // Don't support transposed convolutions yet.
-  glow::Handle<bool> transposedHandle =
-      getGlowConstantHandle<bool>(inputs[Inputs::transposed]);
-  assert(transposedHandle.size() == 1 && !transposedHandle.raw(0) &&
-         "Transposed convolutions not supported");
-  (void)transposedHandle;
+  auto transposedHandle = glow::Handle<bool>::createInvalidHandle();
+  ASSIGN_VALUE_OR_RETURN_ERR(transposedHandle, getGlowConstantHandle<bool>(
+                                                   inputs[Inputs::transposed]));
+  RETURN_ERR_IF_NOT(transposedHandle.size() == 1 && !transposedHandle.raw(0),
+                    "Transposed convolutions not supported.");
 
-  glow::Handle<int32_t> groupsHandle =
-      getGlowConstantHandle<int32_t>(inputs[Inputs::groups]);
-  assert(groupsHandle.size() == 1);
+  auto groupsHandle = glow::Handle<int32_t>::createInvalidHandle();
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      groupsHandle, getGlowConstantHandle<int32_t>(inputs[Inputs::groups]));
+  RETURN_ERR_IF_NOT(groupsHandle.size() == 1,
+                    glow::strFormat("Groups size must be equal to 1, got %lu",
+                                    groupsHandle.size()));
   uint32_t groups = groupsHandle.raw(0);
 
   std::vector<uint32_t> kernels = {static_cast<uint32_t>(weightsShape.h),
@@ -292,22 +488,53 @@ void PyTorchModelLoader::loadConvolution(const torch::jit::Node *ptNode) {
   std::array<size_t, 4> outDims = {
       {input.dims()[0], outSz.first, outSz.second, weightsShape.n}};
   glow::TypeRef outTy =
-      f_->getParent()->uniqueType(glow::ElemKind::FloatTy, outDims);
+      F_.getParent()->uniqueType(glow::ElemKind::FloatTy, outDims);
 
   glow::ConvolutionNode *conv =
-      f_->createConv("conv", input, weights, bias, outTy, kernels, strides,
-                     pads, groups, dilation);
-  glow::TransposeNode *output = f_->createTranspose(
+      F_.createConv("conv", input, weights, bias, outTy, kernels, strides, pads,
+                    groups, dilation);
+  glow::TransposeNode *output = F_.createTranspose(
       "conv_output_transposed", conv->getResult(), NHWC2NCHW);
 
-  addGlowNodeValue(outputs[0], output->getResult());
+  return addGlowNodeValue(outputs[0], output->getResult());
 }
 
-void PyTorchModelLoader::loadBatchNorm(const torch::jit::Node *ptNode) {
+llvm::Error PyTorchModelLoader::loadLinear(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
-  assert(inputs.size() == 9);
+  assert(inputs.size() == 3);
   assert(outputs.size() == 1);
+
+  // Indexes of aten::linear inputs.
+  struct Inputs {
+    enum {
+      input = 0,
+      weights = 1,
+      bias = 2,
+    };
+  };
+
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValue(inputs[Inputs::input]));
+  glow::NodeValue weights;
+  ASSIGN_VALUE_OR_RETURN_ERR(weights,
+                             getGlowNodeValue(inputs[Inputs::weights]));
+
+  auto *mul = F_.createMatMul("linear_mul", input, weights);
+
+  if (hasGlowNodeValue(inputs[Inputs::bias])) {
+    glow::NodeValue bias;
+    ASSIGN_VALUE_OR_RETURN_ERR(bias, getGlowNodeValue(inputs[Inputs::bias]));
+    return addGlowNodeValue(outputs[0], F_.createAdd("linear_add", mul, bias));
+  } else {
+    return addGlowNodeValue(outputs[0], mul);
+  }
+}
+
+llvm::Error PyTorchModelLoader::loadBatchNorm(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 9, outputs, 1));
 
   // Indexes of aten::batch_norm inputs.
   struct Inputs {
@@ -325,66 +552,81 @@ void PyTorchModelLoader::loadBatchNorm(const torch::jit::Node *ptNode) {
   };
 
   // Don't support training yet.
-  const auto trainingHandle =
-      getGlowConstantHandle<bool>(inputs[Inputs::training]);
-  assert(trainingHandle.size() == 1);
-  assert(trainingHandle.raw(0) == false);
-  (void)trainingHandle;
+  auto trainingHandle = glow::Handle<bool>::createInvalidHandle();
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      trainingHandle, getGlowConstantHandle<bool>(inputs[Inputs::training]));
+  RETURN_ERR_IF_NOT(trainingHandle.size() == 1, "Training must be 1D vector.");
+  RETURN_ERR_IF_NOT(trainingHandle.raw(0) == false,
+                    "Training must be scalar with false value.");
 
-  glow::NodeValue input = getGlowNodeValue(inputs[Inputs::input]);
-  assert(input.dims().size() == 4);
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValue(inputs[Inputs::input]));
+  RETURN_ERR_IF_NOT(
+      input.dims().size() == 4,
+      glow::strFormat("Number input dimensions must be equal to 4, got %lu",
+                      input.dims().size()));
 
   size_t numChannels = input.dims()[1];
 
   glow::NodeValue weights;
   if (hasGlowNodeValue(inputs[Inputs::weights])) {
-    weights = getGlowNodeValue(inputs[Inputs::weights]);
+    ASSIGN_VALUE_OR_RETURN_ERR(weights,
+                               getGlowNodeValue(inputs[Inputs::weights]));
   } else {
     glow::Tensor weightsT(glow::ElemKind::FloatTy, {numChannels});
     weightsT.init(glow::Tensor::InitKind::Broadcast, 1,
-                  f_->getParent()->getPRNG());
-    glow::Constant *weightsConstant = f_->getParent()->createConstant(
+                  F_.getParent()->getPRNG());
+    glow::Constant *weightsConstant = F_.getParent()->createConstant(
         "batchnorm_weights", std::move(weightsT));
     weights = weightsConstant->getOutput();
   }
 
   glow::NodeValue bias;
   if (hasGlowNodeValue(inputs[Inputs::bias])) {
-    bias = getGlowNodeValue(inputs[Inputs::bias]);
+    ASSIGN_VALUE_OR_RETURN_ERR(bias, getGlowNodeValue(inputs[Inputs::bias]));
   } else {
     glow::Tensor biasT(glow::ElemKind::FloatTy, {numChannels});
     biasT.zero();
     glow::Constant *biasConstant =
-        f_->getParent()->createConstant("batchnorm_bias", std::move(biasT));
+        F_.getParent()->createConstant("batchnorm_bias", std::move(biasT));
     bias = biasConstant->getOutput();
   }
 
-  glow::NodeValue mean = getGlowNodeValue(inputs[Inputs::running_mean]);
-  glow::NodeValue var = getGlowNodeValue(inputs[Inputs::running_var]);
+  glow::NodeValue mean;
+  ASSIGN_VALUE_OR_RETURN_ERR(mean,
+                             getGlowNodeValue(inputs[Inputs::running_mean]));
+  glow::NodeValue var;
+  ASSIGN_VALUE_OR_RETURN_ERR(var,
+                             getGlowNodeValue(inputs[Inputs::running_var]));
 
-  const auto momentumHandle =
-      getGlowConstantHandle<float>(inputs[Inputs::momentum]);
-  assert(momentumHandle.size() == 1);
+  auto momentumHandle = glow::Handle<float>::createInvalidHandle();
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      momentumHandle, getGlowConstantHandle<float>(inputs[Inputs::momentum]));
+  RETURN_ERR_IF_NOT(momentumHandle.size() == 1, "Momentum must be 1D vector.");
   float momentum = momentumHandle.raw(0);
 
-  const auto epsilonHandle = getGlowConstantHandle<float>(inputs[Inputs::eps]);
-  assert(epsilonHandle.size() == 1);
+  auto epsilonHandle = glow::Handle<float>::createInvalidHandle();
+  ASSIGN_VALUE_OR_RETURN_ERR(epsilonHandle,
+                             getGlowConstantHandle<float>(inputs[Inputs::eps]));
+  RETURN_ERR_IF_NOT(
+      epsilonHandle.size() == 1,
+      glow::strFormat("Number epsilon dimensions must be equal to 1, got %lu",
+                      epsilonHandle.size()));
   float epsilon = epsilonHandle.raw(0);
 
   // Input is in NCHW.
   uint32_t channelIdx = 1;
 
   glow::BatchNormalizationNode *bn =
-      f_->createBatchNormalization("batchnorm", input, bias, weights, mean, var,
-                                   channelIdx, epsilon, momentum);
-  addGlowNodeValue(outputs[0], bn->getResult());
+      F_.createBatchNormalization("batchnorm", input, bias, weights, mean, var,
+                                  channelIdx, epsilon, momentum);
+  return addGlowNodeValue(outputs[0], bn->getResult());
 }
 
-void PyTorchModelLoader::loadMaxPool2d(const torch::jit::Node *ptNode) {
+llvm::Error PyTorchModelLoader::loadMaxPool2d(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
-  assert(inputs.size() == 6);
-  assert(outputs.size() == 1);
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 6, outputs, 1));
 
   // Indexes of aten::max_pool2d inputs.
   struct Inputs {
@@ -398,58 +640,66 @@ void PyTorchModelLoader::loadMaxPool2d(const torch::jit::Node *ptNode) {
     };
   };
 
-  glow::NodeValue input = getGlowNodeValue(inputs[Inputs::input]);
-  input = f_->createTranspose("maxpool2d_input_transposed", input, NCHW2NHWC);
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValue(inputs[Inputs::input]));
+  input = F_.createTranspose("maxpool2d_input_transposed", input, NCHW2NHWC);
 
-  const auto kernelsHandle =
-      getGlowConstantHandle<int32_t>(inputs[Inputs::kernel_size]);
-  std::vector<uint32_t> kernels =
-      expandParamIfNeeded<int32_t, uint32_t>(kernelsHandle, 2);
+  auto kernelsHandle = glow::Handle<int32_t>::createInvalidHandle();
+  ASSIGN_VALUE_OR_RETURN_ERR(kernelsHandle, getGlowConstantHandle<int32_t>(
+                                                inputs[Inputs::kernel_size]));
+  std::vector<uint32_t> kernels;
+  RETURN_IF_ERR(expandParamIfNeeded(kernelsHandle, 2, kernels));
 
-  const auto padsHandle =
-      getGlowConstantHandle<int32_t>(inputs[Inputs::padding]);
-  std::vector<uint32_t> padsPair =
-      expandParamIfNeeded<int32_t, uint32_t>(padsHandle, 2);
+  auto padsHandle = glow::Handle<int32_t>::createInvalidHandle();
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      padsHandle, getGlowConstantHandle<int32_t>(inputs[Inputs::padding]));
+  std::vector<uint32_t> padsPair;
+  RETURN_IF_ERR(expandParamIfNeeded(padsHandle, 2, padsPair));
   std::vector<uint32_t> pads = {padsPair[0], padsPair[1], padsPair[0],
                                 padsPair[1]};
 
   // Stride defaults to kernel_size.
   std::vector<uint32_t> strides;
   if (hasGlowNodeValue(inputs[2])) {
-    const auto stridesHandle =
-        getGlowConstantHandle<int32_t>(inputs[Inputs::stride]);
-    strides = expandParamIfNeeded<int32_t, uint32_t>(stridesHandle, 2);
+    auto stridesHandle = glow::Handle<int32_t>::createInvalidHandle();
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        stridesHandle, getGlowConstantHandle<int32_t>(inputs[Inputs::stride]));
+    RETURN_IF_ERR(expandParamIfNeeded(stridesHandle, 2, strides));
   } else {
     strides = kernels;
   }
 
   // Glow doesn't support maxpool dilation.
-  const auto dilationHandle =
-      getGlowConstantHandle<int32_t>(inputs[Inputs::dilation]);
+  auto dilationHandle = glow::Handle<int32_t>::createInvalidHandle();
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      dilationHandle, getGlowConstantHandle<int32_t>(inputs[Inputs::dilation]));
   for (size_t i = 0; i < dilationHandle.size(); ++i) {
-    assert(dilationHandle.raw(i) == 1);
+    RETURN_ERR_IF_NOT(
+        dilationHandle.raw(i) == 1,
+        glow::strFormat("Dilation value must be equal to 1, got %d",
+                        dilationHandle.raw(i)));
   }
 
   // Glow doesn't support maxpool ceil mode.
-  const auto ceilModeHandle =
-      getGlowConstantHandle<bool>(inputs[Inputs::ceil_mode]);
-  assert(ceilModeHandle.size() == 1);
-  assert(ceilModeHandle.raw(0) == false);
-  (void)ceilModeHandle;
+  auto ceilModeHandle = glow::Handle<bool>::createInvalidHandle();
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      ceilModeHandle, getGlowConstantHandle<bool>(inputs[Inputs::ceil_mode]));
+  RETURN_ERR_IF_NOT(ceilModeHandle.size() == 1, "ceilMode must be 1D vector.");
+  RETURN_ERR_IF_NOT(ceilModeHandle.raw(0) == false,
+                    "ceilMode must be scalar with false value.");
 
   glow::MaxPoolNode *mp =
-      f_->createMaxPool("maxpool2d", input, kernels, strides, pads);
+      F_.createMaxPool("maxpool2d", input, kernels, strides, pads);
   glow::NodeValue output = mp->getResult();
-  output =
-      f_->createTranspose("maxpool2d_output_transposed", output, NHWC2NCHW);
-  addGlowNodeValue(outputs[0], output);
+  output = F_.createTranspose("maxpool2d_output_transposed", output, NHWC2NCHW);
+  return addGlowNodeValue(outputs[0], output);
 }
 
-void PyTorchModelLoader::loadAdaptiveAvgPool2d(const torch::jit::Node *ptNode) {
+llvm::Error
+PyTorchModelLoader::loadAdaptiveAvgPool2d(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
-  assert(inputs.size() == 2);
-  assert(outputs.size() == 1);
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 2, outputs, 1));
 
   // Indexes of aten::adaptive_avg_pool2d inputs.
   struct Inputs {
@@ -461,68 +711,104 @@ void PyTorchModelLoader::loadAdaptiveAvgPool2d(const torch::jit::Node *ptNode) {
 
   // Glow expects inputs to be in NHWC but PyTorch keeps them in NCHW so we
   // tranpose them.
-  glow::NodeValue input = getGlowNodeValue(inputs[Inputs::input]);
-  input = f_->createTranspose("adaptive_avg_pool2d_input_transposed", input,
-                              NCHW2NHWC);
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValue(inputs[Inputs::input]));
 
-  glow::Handle<int32_t> outputSizeHandle =
-      getGlowConstantHandle<int32_t>(inputs[Inputs::output_size]);
-  std::vector<uint32_t> outputSize =
-      expandParamIfNeeded<int32_t, uint32_t>(outputSizeHandle, 2);
+  input = F_.createTranspose("adaptive_avg_pool2d_input_transposed", input,
+                             NCHW2NHWC);
+
+  auto outputSizeHandle = glow::Handle<int32_t>::createInvalidHandle();
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      outputSizeHandle,
+      getGlowConstantHandle<int32_t>(inputs[Inputs::output_size]));
+  std::vector<uint32_t> outputSize;
+  RETURN_IF_ERR(expandParamIfNeeded(outputSizeHandle, 2, outputSize));
 
   auto idim = glow::ShapeNHWC(input.dims());
-  auto outTy = f_->getParent()->uniqueTypeWithNewShape(
+  auto outTy = F_.getParent()->uniqueTypeWithNewShape(
       input.getType(), {idim.n, outputSize[0], outputSize[1], idim.c});
 
   glow::NodeValue output =
-      f_->createAdaptiveAvgPool("adaptive_avg_pool2d", input, outTy);
-  output = f_->createTranspose("adaptive_avg_pool2d_output_transposed", output,
-                               NHWC2NCHW);
-  addGlowNodeValue(outputs[0], output);
+      F_.createAdaptiveAvgPool("adaptive_avg_pool2d", input, outTy);
+  output = F_.createTranspose("adaptive_avg_pool2d_output_transposed", output,
+                              NHWC2NCHW);
+  return addGlowNodeValue(outputs[0], output);
 }
 
-void PyTorchModelLoader::loadConstant(const torch::jit::Node *ptNode) {
+llvm::Error PyTorchModelLoader::loadTranspose(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
-  assert(inputs.size() == 0);
-  assert(outputs.size() == 1);
-  (void)inputs;
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 1, outputs, 1));
+
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValue(inputs[0]));
+
+  glow::NodeValue output;
+  if (input.dims().size() == 1) {
+    output = input;
+  } else if (input.dims().size() == 2) {
+    output = F_.createTranspose("transpose", input, {1, 0});
+  } else {
+    RETURN_ERR("Transpose requires input to have rank <= 2");
+  }
+  return addGlowNodeValue(outputs[0], output);
+}
+
+llvm::Error PyTorchModelLoader::loadMin(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 2, outputs, 1));
+
+  glow::NodeValue lhs;
+  ASSIGN_VALUE_OR_RETURN_ERR(lhs, getGlowNodeValue(inputs[0]));
+  glow::NodeValue rhs;
+  ASSIGN_VALUE_OR_RETURN_ERR(rhs, getGlowNodeValue(inputs[1]));
+
+  auto output = F_.createMin("min", lhs, rhs);
+  return addGlowNodeValue(outputs[0], output);
+}
+
+llvm::Error PyTorchModelLoader::loadConstant(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 0, outputs, 1));
 
   auto optionalIValue = torch::jit::toIValue(outputs[0]);
-  assert(optionalIValue.has_value() && "Constants should have IValue outputs");
+  RETURN_ERR_IF_NOT(optionalIValue.has_value(),
+                    "Constants should have IValue outputs.");
   const torch::jit::IValue iVal = *optionalIValue;
 
-  glow::Module *mod = f_->getParent();
+  glow::Module *mod = F_.getParent();
 
   glow::Tensor t;
 
   if (iVal.isInt()) {
     int64_t val = iVal.toInt();
     t.reset(glow::ElemKind::Int32ITy, {1});
-    t.getHandle<int32_t>().raw(0) = to32Bit(val);
+    ASSIGN_VALUE_OR_RETURN_ERR(t.getHandle<int32_t>().raw(0), to32Bit(val));
   } else if (iVal.isIntList()) {
     const auto vals = iVal.toIntListRef();
     if (vals.empty()) {
-      return;
+      return llvm::Error::success();
     }
     t.reset(glow::ElemKind::Int32ITy, {vals.size()});
     auto handle = t.getHandle<int32_t>();
     for (size_t i = 0; i < vals.size(); ++i) {
-      handle.raw(i) = to32Bit(vals[i]);
+      ASSIGN_VALUE_OR_RETURN_ERR(handle.raw(i), to32Bit(vals[i]));
     }
   } else if (iVal.isDouble()) {
     double val = iVal.toDouble();
     t.reset(glow::ElemKind::FloatTy, {1});
-    t.getHandle<float>().raw(0) = to32Bit(val);
+    ASSIGN_VALUE_OR_RETURN_ERR(t.getHandle<float>().raw(0), to32Bit(val));
   } else if (iVal.isDoubleList()) {
     const auto vals = iVal.toDoubleListRef();
     if (vals.empty()) {
-      return;
+      return llvm::Error::success();
     }
     t.reset(glow::ElemKind::FloatTy, {vals.size()});
     auto handle = t.getHandle<float>();
     for (size_t i = 0; i < vals.size(); ++i) {
-      handle.raw(i) = to32Bit(vals[i]);
+      ASSIGN_VALUE_OR_RETURN_ERR(handle.raw(i), to32Bit(vals[i]));
     }
   } else if (iVal.isBool()) {
     bool val = iVal.toBool();
@@ -532,7 +818,7 @@ void PyTorchModelLoader::loadConstant(const torch::jit::Node *ptNode) {
     const auto &valsList = iVal.toBoolList();
     const auto &vals = c10::impl::toVector(valsList);
     if (vals.empty()) {
-      return;
+      return llvm::Error::success();
     }
     t.reset(glow::ElemKind::BoolTy, {vals.size()});
     auto handle = t.getHandle<bool>();
@@ -540,121 +826,81 @@ void PyTorchModelLoader::loadConstant(const torch::jit::Node *ptNode) {
       handle.raw(i) = vals[i];
     }
   } else if (iVal.isTensor()) {
-    assert(false && "not yet implemented tensor constants");
+    RETURN_ERR("Not yet implemented tensor constants.");
   } else if (iVal.isNone()) {
     // Nothing to do for None
-    return;
+    return llvm::Error::success();
   } else {
-    assert(false && "Unsupported constant type");
+    RETURN_ERR("Unsupported constant type.");
   }
 
   glow::Constant *glowConstant = mod->createConstant("constant", std::move(t));
-  addGlowNodeValue(outputs[0], glowConstant->getOutput());
+  return addGlowNodeValue(outputs[0], glowConstant->getOutput());
 }
 
-void PyTorchModelLoader::populateNodeLoaderMapping() {
-  nodeLoaderMapping_[at::Symbol::fromQualString("prim::Constant")] =
-      [this](const torch::jit::Node *node) { return loadConstant(node); };
-
-  nodeLoaderMapping_[at::Symbol::fromQualString("aten::mul")] =
-      [this](const torch::jit::Node *node) { return loadMul(node); };
-  nodeLoaderMapping_[at::Symbol::fromQualString("aten::mul_")] =
-      [this](const torch::jit::Node *node) { return loadMul(node); };
-
-  nodeLoaderMapping_[at::Symbol::fromQualString("aten::div")] =
-      [this](const torch::jit::Node *node) { return loadDiv(node); };
-  nodeLoaderMapping_[at::Symbol::fromQualString("aten::div_")] =
-      [this](const torch::jit::Node *node) { return loadDiv(node); };
-
-  nodeLoaderMapping_[at::Symbol::fromQualString("aten::add")] =
-      [this](const torch::jit::Node *node) { return loadAdd(node); };
-  nodeLoaderMapping_[at::Symbol::fromQualString("aten::add_")] =
-      [this](const torch::jit::Node *node) { return loadAdd(node); };
-
-  nodeLoaderMapping_[at::Symbol::fromQualString("aten::sub")] =
-      [this](const torch::jit::Node *node) { return loadSub(node); };
-  nodeLoaderMapping_[at::Symbol::fromQualString("aten::sub_")] =
-      [this](const torch::jit::Node *node) { return loadSub(node); };
-
-  nodeLoaderMapping_[at::Symbol::fromQualString("aten::relu")] =
-      [this](const torch::jit::Node *node) { return loadRelu(node); };
-  nodeLoaderMapping_[at::Symbol::fromQualString("aten::relu_")] =
-      [this](const torch::jit::Node *node) { return loadRelu(node); };
-
-  nodeLoaderMapping_[at::Symbol::fromQualString("aten::_convolution")] =
-      [this](const torch::jit::Node *node) { return loadConvolution(node); };
-
-  nodeLoaderMapping_[at::Symbol::fromQualString("aten::batch_norm")] =
-      [this](const torch::jit::Node *node) { return loadBatchNorm(node); };
-
-  nodeLoaderMapping_[at::Symbol::fromQualString("aten::max_pool2d")] =
-      [this](const torch::jit::Node *node) { return loadMaxPool2d(node); };
-
-  nodeLoaderMapping_[at::Symbol::fromQualString("aten::adaptive_avg_pool2d")] =
-      [this](const torch::jit::Node *node) {
-        return loadAdaptiveAvgPool2d(node);
-      };
+/*static*/
+llvm::Error PyTorchModelLoader::loadJITGraph(
+    glow::Function &F, torch::jit::Graph &subgraph,
+    at::ArrayRef<torch::jit::IValue> &inputs,
+    std::vector<glow::Placeholder *> &inputPlaceholders,
+    std::vector<glow::Placeholder *> &outputPlaceholders) {
+  llvm::Error error = llvm::Error::success();
+  MARK_ERR_CHECKED(error);
+  PyTorchModelLoader loader(F, subgraph, inputs, inputPlaceholders,
+                            outputPlaceholders, error);
+  return error;
 }
 
-void PyTorchModelLoader::loadNode(const torch::jit::Node *node) {
-  auto kind = node->kind();
-  assert(nodeLoaderMapping_.count(kind));
-  return nodeLoaderMapping_.at(kind)(node);
-}
+PyTorchModelLoader::PyTorchModelLoader(
+    glow::Function &F, torch::jit::Graph &subgraph,
+    at::ArrayRef<torch::jit::IValue> &inputs,
+    std::vector<glow::Placeholder *> &inputPlaceholders,
+    std::vector<glow::Placeholder *> &outputPlaceholders, llvm::Error &error)
+    : F_(F) {
+  auto subgraphInputValues = subgraph.inputs();
 
-/// knownSymbols contains the list of jit Symbols that are known to
-/// PyTorchModelLoader. This is populated the first time \ref
-/// PyTorchModelLoader::isNodeSupported is called and referenced on subsequent
-/// calls.
-static std::unordered_set<torch::jit::Symbol> knownSymbols;
-
-// static
-bool PyTorchModelLoader::isNodeSupported(const torch::jit::Node *node) {
-  static std::once_flag flag;
-  std::call_once(flag, [&]() {
-    PyTorchModelLoader loader;
-    for (const auto &kv : loader.nodeLoaderMapping_) {
-      knownSymbols.insert(kv.first);
-    }
-  });
-  return knownSymbols.count(node->kind());
-}
-
-void PyTorchModelLoader::load() {
-  assert(f_ == nullptr && "This model loader has already been used.");
-
-  static std::atomic<size_t> nextFuncId{0};
-  f_ = mod_->createFunction(
-      glow::strFormat("PyTorchFunction_%lu", nextFuncId++));
-
-  auto subgraphInputValues = subgraph_->inputs();
-
-  assert(inputs_->size() == subgraphInputValues.size());
+  if (inputs.size() != subgraphInputValues.size()) {
+    error =
+        MAKE_ERR(glow::strFormat("Number of Graph inputs %lu must match the "
+                                 "number of provided inputs %lu.",
+                                 subgraphInputValues.size(), inputs.size()));
+    return;
+  }
 
   for (size_t i = 0; i < subgraphInputValues.size(); ++i) {
     torch::jit::Value *inputValue = subgraphInputValues[i];
-    const c10::IValue inputIValue = inputs_->at(i);
-    inputValue->inferTypeFrom(inputIValue.toTensor());
-    inputPlaceholders_.push_back(loadValue(inputValue));
+    const c10::IValue inputIValue = inputs.at(i);
+    if (inputIValue.isTensor()) {
+      inputValue->inferTypeFrom(inputIValue.toTensor());
+      glow::Placeholder *PH;
+      if (auto resOrErr = loadValue(inputValue)) {
+        PH = std::move(*resOrErr);
+      } else {
+        error = resOrErr.takeError();
+        return;
+      }
+      inputPlaceholders.push_back(PH);
+    }
   }
 
   // Nodes are topologically sorted.
-  for (auto node : subgraph_->nodes()) {
-    loadNode(node);
+  for (auto node : subgraph.nodes()) {
+    if ((error = loadNode(node))) {
+      return;
+    }
   }
 
-  for (torch::jit::Value *output : subgraph_->outputs()) {
-    glow::NodeValue outputNodeValue = getGlowNodeValue(output);
-    auto *save = f_->createSave("save", outputNodeValue);
-    outputPlaceholders_.push_back(save->getPlaceholder());
+  for (torch::jit::Value *output : subgraph.outputs()) {
+    glow::NodeValue outputNodeValue;
+    if (auto resOrErr = getGlowNodeValue(output)) {
+      outputNodeValue = std::move(*resOrErr);
+    } else {
+      error = resOrErr.takeError();
+      return;
+    }
+
+    auto *save = F_.createSave("save", outputNodeValue);
+    outputPlaceholders.push_back(save->getPlaceholder());
   }
-}
-
-PyTorchModelLoader::PyTorchModelLoader() { populateNodeLoaderMapping(); }
-
-PyTorchModelLoader::PyTorchModelLoader(glow::Module *mod,
-                                       torch::jit::Graph *subgraph,
-                                       at::ArrayRef<torch::jit::IValue> *inputs)
-    : mod_(mod), subgraph_(subgraph), inputs_(inputs) {
-  populateNodeLoaderMapping();
+  error = llvm::Error::success();
 }

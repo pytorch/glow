@@ -17,6 +17,7 @@
 #define GLOW_BACKENDS_CPU_CPUDEVICEMANAGER_H
 
 #include "glow/Backends/QueueBackedDeviceManager.h"
+#include "glow/Runtime/StatsExporter.h"
 
 namespace glow {
 namespace runtime {
@@ -39,10 +40,19 @@ class CPUDeviceManager : public QueueBackedDeviceManager {
   /// This is very arbitrary for the CPU backend.
   const uint64_t functionCost_{1};
 
+  /// String constant for logging number of in-use devices.
+  static constexpr const char *kDevicesUsedCPU = "glow.devices_used.cpu";
+
 public:
-  CPUDeviceManager(const DeviceConfig &config)
+  explicit CPUDeviceManager(const DeviceConfig &config)
       : QueueBackedDeviceManager(config),
-        maxMemoryBytes_(config_.getDeviceMemory(2000000000)) {}
+        maxMemoryBytes_(config_.getDeviceMemory(2000000000)) {
+    Stats()->incrementCounter(kDevicesUsedCPU);
+  }
+
+  ~CPUDeviceManager() override {
+    Stats()->incrementCounter(kDevicesUsedCPU, -1);
+  }
 
   /// Returns the amount of memory in bytes available on the device when no
   /// models are loaded.

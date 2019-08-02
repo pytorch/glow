@@ -167,6 +167,10 @@ bool CPUBackend::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::ExpNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind({ElemKind::FloatTy});
 
+  case Kinded::Kind::ModuloNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind(
+        {ElemKind::Int32ITy, ElemKind::Int64ITy});
+
   case Kinded::Kind::MaxPoolGradNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
                {ElemKind::FloatTy},
@@ -215,15 +219,14 @@ bool CPUBackend::isOpSupported(const NodeInfo &NI) const {
              (NI.getOutElemTy(GatherRangesNode::LengthsIdx) ==
               ElemKind::Int64ITy)));
 
-  case Kinded::Kind::ScatterAssignNodeKind:
-    // ScatterAssign ==> Copy + ScatterAssign. Copy supports everything
-    // ReshapeNode above supports, however ScatterAssign only supports the
+  case Kinded::Kind::ScatterDataNodeKind:
+    // ScatterData ==> Copy + ScatterData. Copy supports everything
+    // ReshapeNode above supports, however ScatterData only supports the
     // following.
     return NI.allInputsAndOutputsHaveSameElemKind(
                {ElemKind::FloatTy, ElemKind::Int8QTy},
-               {ScatterAssignNode::IndicesIdx}) &&
-           (NI.getInElemTy(ScatterAssignNode::IndicesIdx) ==
-            ElemKind::Int64ITy);
+               {ScatterDataNode::IndicesIdx}) &&
+           (NI.getInElemTy(ScatterDataNode::IndicesIdx) == ElemKind::Int64ITy);
 
   case Kinded::Kind::SelectNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
@@ -352,8 +355,9 @@ bool CPUBackend::shouldLower(const Node *N) const {
 
 std::unique_ptr<CompiledFunction> CPUBackend::createCompiledFunction(
     std::unique_ptr<llvm::orc::GlowJIT> JIT,
-    const runtime::RuntimeBundle &runtimeBundle) const {
-  return llvm::make_unique<CPUFunction>(std::move(JIT), runtimeBundle);
+    runtime::RuntimeBundle &&runtimeBundle) const {
+  return llvm::make_unique<CPUFunction>(std::move(JIT),
+                                        std::move(runtimeBundle));
 }
 
 std::unique_ptr<LLVMIRGen>

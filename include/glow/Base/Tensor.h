@@ -138,31 +138,41 @@ public:
       std::fill(&data[0], &data[0] + size(), (int32_t)type_.getOffset());
       break;
     }
-    case ElemKind::UInt8FusedQTy: {
-      assert(dims().size() == 2 && "Fused tensor must be 2-dimensional.");
-      assert(dims()[1] > 8 && "Fused tensor must have more than 8 columns.");
-      const size_t width = dims()[1];
-      auto *data = reinterpret_cast<uint8_t *>(getData());
-      for (size_t i = 0, e = dims()[0]; i < e; i++) {
-        uint8_t *scaleOffsetPtr = &data[(i + 1) * width] - 2 * sizeof(float);
-        float scale, offset;
-        if (resetFusedScalesOffsets) {
-          // Use these as defaults, and copy them into each row.
-          scale = 1.0;
-          offset = 0.0;
-          memcpy(scaleOffsetPtr, &scale, sizeof(float));
-          memcpy(scaleOffsetPtr + sizeof(float), &offset, sizeof(float));
-        } else {
-          memcpy(&scale, scaleOffsetPtr, sizeof(float));
-          memcpy(&offset, scaleOffsetPtr + sizeof(float), sizeof(float));
-        }
-        assert(scale != 0.0 &&
-               "Disallow scale = 0.0 for UInt8FusedQTy; causes div by zero.");
-        float zero = nearbyintf(-offset / scale);
-        std::fill(&data[i * width], scaleOffsetPtr, static_cast<uint8_t>(zero));
-      }
-      break;
-    }
+
+#define FUSED_CASE(ELEM_KIND, DATA_TYPE)                                       \
+  case ElemKind::ELEM_KIND: {                                                  \
+    assert(dims().size() == 2 && "Fused tensor must be 2-dimensional.");       \
+    assert(dims()[1] > sizeof(DATA_TYPE) &&                                    \
+           "Fused tensor must have space for scale and offset.");              \
+    const size_t width = dims()[1];                                            \
+    auto *data = reinterpret_cast<uint8_t *>(getData());                       \
+    for (size_t i = 0, e = dims()[0]; i < e; i++) {                            \
+      uint8_t *scaleOffsetPtr =                                                \
+          &data[(i + 1) * width] - 2 * sizeof(DATA_TYPE);                      \
+      DATA_TYPE scale, offset;                                                 \
+      if (resetFusedScalesOffsets) {                                           \
+        /* Use these as defaults, and copy them into each row. */              \
+        scale = 1.0;                                                           \
+        offset = 0.0;                                                          \
+        memcpy(scaleOffsetPtr, &scale, sizeof(DATA_TYPE));                     \
+        memcpy(scaleOffsetPtr + sizeof(DATA_TYPE), &offset,                    \
+               sizeof(DATA_TYPE));                                             \
+      } else {                                                                 \
+        memcpy(&scale, scaleOffsetPtr, sizeof(DATA_TYPE));                     \
+        memcpy(&offset, scaleOffsetPtr + sizeof(DATA_TYPE),                    \
+               sizeof(DATA_TYPE));                                             \
+      }                                                                        \
+      DCHECK_NE(static_cast<float>(scale), 0.0)                                \
+          << "Disallow scale = 0.0 for Fused ElemKinds; causes div by zero.";  \
+      float zero = nearbyintf(-1 * static_cast<float>(offset / scale));        \
+      std::fill(&data[i * width], scaleOffsetPtr, static_cast<uint8_t>(zero)); \
+    }                                                                          \
+    break;                                                                     \
+  }
+      FUSED_CASE(UInt8FusedQTy, float);
+      FUSED_CASE(UInt8FusedFP16QTy, float16_t);
+#undef FUSED_CASE
+
     default:
       // Non-quantized tensors are set to 0.
       std::fill(&getData()[0], &getData()[0] + size() * type_.getElementSize(),
@@ -243,7 +253,7 @@ public:
 
   /// Initialize the content of the tensor using the \p init method. The value
   /// \p val is the initialization parameter. \p PRNG is used to generate random
-  /// numbers. Note that if the tensor's kind is UInt8FusedQTy, then the fused
+  /// numbers. Note that if the tensor's kind is Fused, then the fused
   /// scaled/offsets will not be modified.
   void init(InitKind init, float val, PseudoRNG &PRNG);
 
@@ -412,15 +422,17 @@ public:
     }
 
     // For now, make sure that either both or neither of the tensors have
-    // UInt8FusedQTy. While it is possible for an Int8QTy tensor to equal a
-    // UInt8FusedQTy tensor if the UInt8FusedQTy tensor has the same
+    // UInt8FusedQTy or UInt8Fused16QTy. While it is possible for an Int8QTy
+    // tensor to equal a fused tensor if the fused tensor has the same
     // scale/offset on all of its rows, and that scale/offset match that of the
     // Int8QTy, we do not support checking this for now.
     assert(((getElementType() == ElemKind::UInt8FusedQTy &&
              other.getElementType() == ElemKind::UInt8FusedQTy) ||
-            (getElementType() != ElemKind::UInt8FusedQTy &&
+            (getElementType() == ElemKind::UInt8FusedFP16QTy &&
+             other.getElementType() == ElemKind::UInt8FusedFP16QTy) ||
+            (getElementType() != ElemKind::UInt8FusedFP16QTy &&
              other.getElementType() != ElemKind::UInt8FusedQTy)) &&
-           "UInt8FusedQTy only supports comparing against same ElemKind.");
+           "Fused ElemKinds only supports comparing against same ElemKind.");
 
     switch (getElementType()) {
     case ElemKind::FloatTy:
@@ -459,6 +471,8 @@ public:
       // compared as if they were data, so we will return false if any rowwise
       // scale/offset do not match.
     case ElemKind::UInt8FusedQTy:
+      return isEqualImpl<uint8_t>(other, allowedError, verbose);
+    case ElemKind::UInt8FusedFP16QTy:
       return isEqualImpl<uint8_t>(other, allowedError, verbose);
     case ElemKind::BoolTy:
       return isEqualImpl<bool>(other, allowedError, verbose);
@@ -856,25 +870,34 @@ public:
   /// \p allowedError represents the delta from zero that is allowed before
   /// returning false.
   bool isZero(float allowedError = 0.0) const {
+#define RETURN_WHETHER_FUSED_IS_ZERO(DATA_TYPE)                                \
+  assert(dims().size() == 2 && "Fused tensor must be 2-dimensional.");         \
+  assert(dims()[1] > 2 * sizeof(DATA_TYPE) &&                                  \
+         "Fused tensor must have space for scale/offset.");                    \
+  const size_t width = dims()[1];                                              \
+  auto *data = reinterpret_cast<uint8_t *>(tensor_->getUnsafePtr());           \
+  for (size_t i = 0, e = dims()[0]; i < e; i++) {                              \
+    uint8_t *scaleOffsetPtr = &data[(i + 1) * width] - 2 * sizeof(DATA_TYPE);  \
+    DATA_TYPE scale, offset;                                                   \
+    memcpy(&scale, scaleOffsetPtr, sizeof(DATA_TYPE));                         \
+    memcpy(&offset, scaleOffsetPtr + sizeof(DATA_TYPE), sizeof(DATA_TYPE));    \
+    for (size_t j = 0, e = width - 2 * sizeof(DATA_TYPE); j < e; j++) {        \
+      float currVal = (at({i, j}) * (float)scale) + (float)offset;             \
+      if (std::abs(currVal) > allowedError) {                                  \
+        return false;                                                          \
+      }                                                                        \
+    }                                                                          \
+  }                                                                            \
+  return true;
+
     if (getElementType() == ElemKind::UInt8FusedQTy) {
-      assert(dims().size() == 2 && "Fused tensor must be 2-dimensional.");
-      assert(dims()[1] > 8 && "Fused tensor must have more than 8 columns.");
-      const size_t width = dims()[1];
-      auto *data = reinterpret_cast<uint8_t *>(tensor_->getUnsafePtr());
-      for (size_t i = 0, e = dims()[0]; i < e; i++) {
-        uint8_t *scaleOffsetPtr = &data[(i + 1) * width] - 2 * sizeof(float);
-        float scale, offset;
-        memcpy(&scale, scaleOffsetPtr, sizeof(float));
-        memcpy(&offset, scaleOffsetPtr + sizeof(float), sizeof(float));
-        for (size_t j = 0, e = width - 2 * sizeof(float); j < e; j++) {
-          float currVal = (at({i, j}) * scale) + offset;
-          if (std::abs(currVal) > allowedError) {
-            return false;
-          }
-        }
-      }
-      return true;
+      RETURN_WHETHER_FUSED_IS_ZERO(float);
     }
+    if (getElementType() == ElemKind::UInt8FusedFP16QTy) {
+      RETURN_WHETHER_FUSED_IS_ZERO(float16_t);
+    }
+#undef RETURN_WHETHER_FUSED_IS_ZERO
+
     int32_t trueZero = getType().isQuantizedType() ? getType().getOffset() : 0;
     return std::all_of(begin(), end(), [=](ElemTy e) { return e == trueZero; });
   }
@@ -934,16 +957,22 @@ public:
       }
       return;
     }
-    case ElemKind::UInt8FusedQTy: {
-      assert(dims().size() == 2 && "Fused tensor must be 2-dimensional.");
-      assert(dims()[1] > 8 && "Fused tensor must have more than 8 columns.");
-      for (size_t i = 0, e = dims()[0]; i < e; i++) {
-        for (size_t j = 0, f = dims()[1] - 8; j < f; j++) {
-          at({i, j}) = dist(PRNG);
-        }
-      }
-      return;
-    }
+
+#define FUSED_CASE(ELEM_KIND, DATA_TYPE)                                       \
+  case ElemKind::ELEM_KIND: {                                                  \
+    assert(dims().size() == 2 && "Fused tensor must be 2-dimensional.");       \
+    assert(dims()[1] > 2 * sizeof(DATA_TYPE) &&                                \
+           "Fused tensor must have space for scale/offset.");                  \
+    for (size_t i = 0, e = dims()[0]; i < e; i++) {                            \
+      for (size_t j = 0, f = dims()[1] - 2 * sizeof(DATA_TYPE); j < f; j++) {  \
+        at({i, j}) = dist(PRNG);                                               \
+      }                                                                        \
+    }                                                                          \
+    return;                                                                    \
+  }
+      FUSED_CASE(UInt8FusedQTy, float);
+      FUSED_CASE(UInt8FusedFP16QTy, float16_t);
+#undef FUSED_CASE
     }
   }
 

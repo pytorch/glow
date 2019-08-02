@@ -22,18 +22,10 @@
 
 #include "glow/ExecutionEngine/ExecutionEngine.h"
 
-/// All information per graph.
-struct GraphInfo {
-  std::shared_ptr<torch::jit::Graph> subgraph;
-  GraphInfo(const torch::jit::Node *node);
-};
-
 /// Responsible for maintaining a mapping from PyTorch subgraphs and their
 /// unique input types to compiled Glow Functions.
 class CachingGraphRunner {
-  /// Map of from PyTorch JIT Node containing contracted JIT subgraph to
-  /// to GraphInfo containing information relevent to Glow about that subgraph.
-  std::unordered_map<const torch::jit::Node *, GraphInfo> jitNodeToInfoMap_;
+  /// Glow ExecutionEngine.
   glow::ExecutionEngine executionEngine_;
 
 public:
@@ -43,7 +35,8 @@ public:
   /// PyTorch subgraph and corresponding PyTorch Stack \p stack of inputs, run
   /// that subgraph on those inputs. If this is the first time this node has
   /// been seen then this first loads it as a Glow Function and compiles.
-  void runGraph(const torch::jit::Node *node, torch::jit::Stack &stack);
+  /// \returns error of failure.
+  llvm::Error runGraph(const torch::jit::Node *node, torch::jit::Stack &stack);
 };
 
 #endif // GLOW_IMPORTER_PYTORCH_CACHINGGRAPHRUNNER_H

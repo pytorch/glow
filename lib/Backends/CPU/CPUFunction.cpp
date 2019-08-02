@@ -22,8 +22,8 @@
 using namespace glow;
 
 CPUFunction::CPUFunction(std::unique_ptr<llvm::orc::GlowJIT> JIT,
-                         const runtime::RuntimeBundle &runtimeBundle)
-    : LLVMCompiledFunction(std::move(JIT), runtimeBundle) {}
+                         runtime::RuntimeBundle &&runtimeBundle)
+    : LLVMCompiledFunction(std::move(JIT), std::move(runtimeBundle)) {}
 
 llvm::Error CPUFunction::execute(ExecutionContext *context) {
   return LLVMCompiledFunction::execute(context);

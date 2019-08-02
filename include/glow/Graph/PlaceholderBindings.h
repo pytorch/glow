@@ -76,7 +76,7 @@ public:
   void copyToTarget(llvm::StringRef name, PlaceholderBindings &dst);
 
   /// Transfer all trainable weights to target PlaceholderBindings \p dst.
-  void copyTrainedWeightsTo(PlaceholderBindings &dst);
+  void copyTrainableWeightsTo(PlaceholderBindings &dst);
 
   /// Allocates a tensor to back the placeholder \p P. The new tensor has the
   /// type of P.

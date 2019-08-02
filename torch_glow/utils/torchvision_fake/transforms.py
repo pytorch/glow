@@ -9,14 +9,18 @@ try:
 except ImportError:
     accimage = None
 
+
 def _is_pil_image(img):
     return isinstance(img, Image.Image)
+
 
 def _is_numpy(img):
     return isinstance(img, np.ndarray)
 
+
 def _is_tensor_image(img):
     return torch.is_tensor(img) and img.ndimension() == 3
+
 
 def resize(img, size, interpolation=Image.BILINEAR):
     r"""Resize the input PIL Image to the given size.
@@ -34,7 +38,13 @@ def resize(img, size, interpolation=Image.BILINEAR):
     """
     if not _is_pil_image(img):
         raise TypeError('img should be PIL Image. Got {}'.format(type(img)))
-    if not (isinstance(size, int) or (isinstance(size, Iterable) and len(size) == 2)):
+    if not (
+        isinstance(
+            size,
+            int) or (
+            isinstance(
+                size,
+                Iterable) and len(size) == 2)):
         raise TypeError('Got inappropriate size arg: {}'.format(size))
 
     if isinstance(size, int):
@@ -52,6 +62,7 @@ def resize(img, size, interpolation=Image.BILINEAR):
     else:
         return img.resize(size[::-1], interpolation)
 
+
 def center_crop(img, output_size):
     if isinstance(output_size, numbers.Number):
         output_size = (int(output_size), int(output_size))
@@ -60,6 +71,7 @@ def center_crop(img, output_size):
     i = int(round((h - th) / 2.))
     j = int(round((w - tw) / 2.))
     return crop(img, i, j, th, tw)
+
 
 def crop(img, i, j, h, w):
     if not _is_pil_image(img):
@@ -77,10 +89,13 @@ def to_tensor(pic):
         Tensor: Converted image.
     """
     if not(_is_pil_image(pic) or _is_numpy(pic)):
-        raise TypeError('pic should be PIL Image or ndarray. Got {}'.format(type(pic)))
+        raise TypeError(
+            'pic should be PIL Image or ndarray. Got {}'.format(
+                type(pic)))
 
     if _is_numpy(pic) and not _is_numpy_image(pic):
-        raise ValueError('pic should be 2/3 dimensional. Got {} dimensions.'.format(pic.ndim))
+        raise ValueError(
+            'pic should be 2/3 dimensional. Got {} dimensions.'.format(pic.ndim))
 
     if isinstance(pic, np.ndarray):
         # handle numpy array
@@ -95,7 +110,8 @@ def to_tensor(pic):
             return img
 
     if accimage is not None and isinstance(pic, accimage.Image):
-        nppic = np.zeros([pic.channels, pic.height, pic.width], dtype=np.float32)
+        nppic = np.zeros(
+            [pic.channels, pic.height, pic.width], dtype=np.float32)
         pic.copyto(nppic)
         return torch.from_numpy(nppic)
 
@@ -125,6 +141,7 @@ def to_tensor(pic):
         return img.float().div(255)
     else:
         return img
+
 
 def normalize(tensor, mean, std, inplace=False):
     """Normalize a tensor image with mean and standard deviation.

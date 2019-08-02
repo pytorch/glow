@@ -177,86 +177,7 @@ private:
   std::string message_;
   /// Optional error code associated with the error.
   ErrorCode ec_ = ErrorCode::UNKNOWN;
-}; // namespace glow
-
-/// Unwraps the T from within an llvm::Expected<T>. If the Expected<T> contains
-/// an error, the program will exit.
-#define EXIT_ON_ERR(...) (glow::exitOnErr(__VA_ARGS__))
-
-/// A temporary placeholder for EXIT_ON_ERR. This should be used only during
-/// refactoring to temporarily place an EXIT_ON_ERR and should eventually be
-/// replaced with either an actual EXIT_ON_ERR or code that will propogate
-/// potential errors up the stack.
-#define TEMP_EXIT_ON_ERR(...) (EXIT_ON_ERR(__VA_ARGS__))
-
-/// Make a new GlowErr.
-#define MAKE_ERR(...) llvm::make_error<GlowErr>(__FILE__, __LINE__, __VA_ARGS__)
-
-/// Makes a new GlowErr and returns it.
-#define RETURN_ERR(...)                                                        \
-  do {                                                                         \
-    return MAKE_ERR(__VA_ARGS__);                                              \
-  } while (0)
-
-/// Takes an llvm::Expected<T> \p lhsOrErr and if it is an Error then returns
-/// it, otherwise takes the value from lhsOrErr and assigns it to \p rhs.
-#define ASSIGN_VALUE_OR_RETURN_ERR(rhs, lhsOrErr)                              \
-  do {                                                                         \
-    auto lhsOrErrV = (lhsOrErr);                                               \
-    static_assert(IsLLVMExpected<decltype(lhsOrErrV)>(),                       \
-                  "Expected value to be a llvm::Expected");                    \
-    if (lhsOrErrV) {                                                           \
-      rhs = std::move(lhsOrErrV.get());                                        \
-    } else {                                                                   \
-      return lhsOrErrV.takeError();                                            \
-    }                                                                          \
-  } while (0)
-
-/// Takes an llvm::Expected<T> \p lhsOrErr and if it is an Error then returns
-/// false, otherwise takes the value from lhsOrErr and assigns it to \p rhs.
-#define ASSIGN_VALUE_OR_RETURN_FALSE(rhs, lhsOrErr)                            \
-  do {                                                                         \
-    auto lhsOrErrV = (lhsOrErr);                                               \
-    static_assert(IsLLVMExpected<decltype(lhsOrErrV)>(),                       \
-                  "Expected value to be a llvm::Expected");                    \
-    if (lhsOrErrV) {                                                           \
-      rhs = std::move(lhsOrErrV.get());                                        \
-    } else {                                                                   \
-      return false;                                                            \
-    }                                                                          \
-  } while (0)
-
-/// Takes an llvm::Error and returns it if it's not success.
-// TODO: extend this to work with llvm::Expected as well.
-#define RETURN_IF_ERR(err)                                                     \
-  do {                                                                         \
-    if (auto errV = std::forward<llvm::Error>(err)) {                          \
-      static_assert(IsLLVMError<decltype(errV)>::value,                        \
-                    "Expected value to be a llvm::Error");                     \
-      return std::forward<llvm::Error>(errV);                                  \
-    }                                                                          \
-  } while (0)
-
-/// Takes a predicate \p and if it is false then creates a new GlowErr
-/// and returns it.
-#define RETURN_ERR_IF_NOT(p, ...)                                              \
-  do {                                                                         \
-    if (!(p)) {                                                                \
-      RETURN_ERR(__VA_ARGS__);                                                 \
-    }                                                                          \
-  } while (0)
-
-/// Marks the given llvm::Error as checked as long as it's value is equal to
-/// llvm::Error::success(). This macro should be used as little as possible but
-/// but is useful for example for creating dummy Errors that can be passed into
-/// fallible constructor by reference to be filled in the event an Error occurs.
-#define MARK_ERR_CHECKED(err)                                                  \
-  do {                                                                         \
-    bool success = !(err);                                                     \
-    (void)success;                                                             \
-    assert(success && "MARK_ERR_CHECKED should not be called on an "           \
-                      "llvm::Error that contains an actual error.");           \
-  } while (0)
+};
 
 /// Marks the Error \p err as as checked. \returns true if it contains an
 /// error value and prints the message in the error value, returns false
@@ -301,5 +222,85 @@ public:
 };
 
 } // end namespace glow
+
+/// Unwraps the T from within an llvm::Expected<T>. If the Expected<T> contains
+/// an error, the program will exit.
+#define EXIT_ON_ERR(...) (glow::exitOnErr(__VA_ARGS__))
+
+/// A temporary placeholder for EXIT_ON_ERR. This should be used only during
+/// refactoring to temporarily place an EXIT_ON_ERR and should eventually be
+/// replaced with either an actual EXIT_ON_ERR or code that will propogate
+/// potential errors up the stack.
+#define TEMP_EXIT_ON_ERR(...) (EXIT_ON_ERR(__VA_ARGS__))
+
+/// Make a new GlowErr.
+#define MAKE_ERR(...)                                                          \
+  llvm::make_error<glow::GlowErr>(__FILE__, __LINE__, __VA_ARGS__)
+
+/// Makes a new GlowErr and returns it.
+#define RETURN_ERR(...)                                                        \
+  do {                                                                         \
+    return MAKE_ERR(__VA_ARGS__);                                              \
+  } while (0)
+
+/// Takes an llvm::Expected<T> \p lhsOrErr and if it is an Error then returns
+/// it, otherwise takes the value from lhsOrErr and assigns it to \p rhs.
+#define ASSIGN_VALUE_OR_RETURN_ERR(rhs, lhsOrErr)                              \
+  do {                                                                         \
+    auto lhsOrErrV = (lhsOrErr);                                               \
+    static_assert(glow::IsLLVMExpected<decltype(lhsOrErrV)>(),                 \
+                  "Expected value to be a llvm::Expected");                    \
+    if (lhsOrErrV) {                                                           \
+      rhs = std::move(lhsOrErrV.get());                                        \
+    } else {                                                                   \
+      return lhsOrErrV.takeError();                                            \
+    }                                                                          \
+  } while (0)
+
+/// Takes an llvm::Expected<T> \p lhsOrErr and if it is an Error then returns
+/// false, otherwise takes the value from lhsOrErr and assigns it to \p rhs.
+#define ASSIGN_VALUE_OR_RETURN_FALSE(rhs, lhsOrErr)                            \
+  do {                                                                         \
+    auto lhsOrErrV = (lhsOrErr);                                               \
+    static_assert(glow::IsLLVMExpected<decltype(lhsOrErrV)>(),                 \
+                  "Expected value to be a llvm::Expected");                    \
+    if (lhsOrErrV) {                                                           \
+      rhs = std::move(lhsOrErrV.get());                                        \
+    } else {                                                                   \
+      return false;                                                            \
+    }                                                                          \
+  } while (0)
+
+/// Takes an llvm::Error and returns it if it's not success.
+// TODO: extend this to work with llvm::Expected as well.
+#define RETURN_IF_ERR(err)                                                     \
+  do {                                                                         \
+    if (auto errV = std::forward<llvm::Error>(err)) {                          \
+      static_assert(glow::IsLLVMError<decltype(errV)>::value,                  \
+                    "Expected value to be a llvm::Error");                     \
+      return std::forward<llvm::Error>(errV);                                  \
+    }                                                                          \
+  } while (0)
+
+/// Takes a predicate \p and if it is false then creates a new GlowErr
+/// and returns it.
+#define RETURN_ERR_IF_NOT(p, ...)                                              \
+  do {                                                                         \
+    if (!(p)) {                                                                \
+      RETURN_ERR(__VA_ARGS__);                                                 \
+    }                                                                          \
+  } while (0)
+
+/// Marks the given llvm::Error as checked as long as it's value is equal to
+/// llvm::Error::success(). This macro should be used as little as possible but
+/// but is useful for example for creating dummy Errors that can be passed into
+/// fallible constructor by reference to be filled in the event an Error occurs.
+#define MARK_ERR_CHECKED(err)                                                  \
+  do {                                                                         \
+    bool success = !(err);                                                     \
+    (void)success;                                                             \
+    assert(success && "MARK_ERR_CHECKED should not be called on an "           \
+                      "llvm::Error that contains an actual error.");           \
+  } while (0)
 
 #endif // GLOW_SUPPORT_ERROR_H

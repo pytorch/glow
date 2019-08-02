@@ -854,7 +854,7 @@ Function::createRowwiseQuantizedFullyConnected(llvm::StringRef name,
   }
 
   // Note: Using int32_t offset here as that is what RWQ-FC expects.
-  quantization::tensorRowwiseQuantization<int32_t, int8_t>(
+  quantization::tensorRowwiseQuantization<float, int32_t, int8_t>(
       wt, qWeights->getPayloadMutable(), scales->getPayloadMutable(),
       offsets->getPayloadMutable(), schema);
 
@@ -1252,10 +1252,10 @@ void Function::createSplit(llvm::StringRef name, NodeValue input,
 }
 
 BatchNormalizationNode *Function::createBatchNormalization(
-    llvm::StringRef name, NodeValue input, NodeValue beta, NodeValue gamma,
+    llvm::StringRef name, NodeValue input, NodeValue beta, NodeValue scale,
     NodeValue mean, NodeValue var, unsigned_t channelIdx, float epsilon,
     float momentum) {
-  return addNode(new BatchNormalizationNode(name, input, gamma, beta, mean, var,
+  return addNode(new BatchNormalizationNode(name, input, scale, beta, mean, var,
                                             channelIdx, epsilon, momentum));
 }
 
@@ -1539,11 +1539,12 @@ Function::createSparseLengthsWeightedSum(llvm::StringRef name, TypeRef outTy,
 RowwiseQuantizedSparseLengthsWeightedSumNode *
 Function::createRowwiseQuantizedSparseLengthsWeightedSum(
     llvm::StringRef name, Constant *data, Constant *scales, Constant *offsets,
-    NodeValue weights, NodeValue indices, NodeValue lengths) {
+    NodeValue weights, NodeValue indices, NodeValue lengths,
+    ElemKind precision) {
   auto inDims = data->dims();
   ShapeVector outDims(inDims.begin(), inDims.end());
   outDims[0] = lengths.dims()[0];
-  auto outTy = getParent()->uniqueType(ElemKind::FloatTy, outDims);
+  auto outTy = getParent()->uniqueType(precision, outDims);
   return addNode(new RowwiseQuantizedSparseLengthsWeightedSumNode(
       name, outTy, data, scales, offsets, weights, indices, lengths));
 }
@@ -1551,11 +1552,11 @@ Function::createRowwiseQuantizedSparseLengthsWeightedSum(
 RowwiseQuantizedSparseLengthsWeightedSumNode *
 Function::createRowwiseQuantizedSparseLengthsSum(
     llvm::StringRef name, Constant *data, Constant *scales, Constant *offsets,
-    NodeValue indices, NodeValue lengths) {
-  auto ty = getParent()->uniqueType(ElemKind::FloatTy, {indices.dims()[0]});
+    NodeValue indices, NodeValue lengths, ElemKind precision) {
+  auto ty = getParent()->uniqueType(precision, {indices.dims()[0]});
   auto ones = createSplat(name.str() + ".ones", ty, 1.0);
   return createRowwiseQuantizedSparseLengthsWeightedSum(
-      name, data, scales, offsets, ones, indices, lengths);
+      name, data, scales, offsets, ones, indices, lengths, precision);
 }
 
 /// Helper to create a RowwiseQuantizedSparseLengthsWeightedSumNode in the
@@ -1566,7 +1567,8 @@ Function::createRowwiseQuantizedSparseLengthsSum(
 static RowwiseQuantizedSparseLengthsWeightedSumNode *
 quantizeDataAndCreateRowwiseQuantizedSparseLengthsWeightedSum(
     Function *F, llvm::StringRef name, Tensor &data, NodeValue weights,
-    NodeValue indices, NodeValue lengths, quantization::Schema schema) {
+    NodeValue indices, NodeValue lengths, quantization::Schema schema,
+    ElemKind precision) {
   auto inDims = data.dims();
 
   // Note: In rwqData, we are using a quantized type, however the scale/offset
@@ -1574,37 +1576,47 @@ quantizeDataAndCreateRowwiseQuantizedSparseLengthsWeightedSum(
   // scale/offset come from dataScales and dataOffsets.
   Constant *rwqData = F->getParent()->createConstant(ElemKind::UInt8QTy, inDims,
                                                      0.0, 0, "data");
-  Constant *dataScales = F->getParent()->createConstant(
-      ElemKind::FloatTy, {inDims[0]}, "dataScales");
-  Constant *dataOffsets = F->getParent()->createConstant(
-      ElemKind::FloatTy, {inDims[0]}, "dataOffsets");
+  Constant *dataScales =
+      F->getParent()->createConstant(precision, {inDims[0]}, "dataScales");
+  Constant *dataOffsets =
+      F->getParent()->createConstant(precision, {inDims[0]}, "dataOffsets");
 
-  // Note: Using float offset here as that is what RWQ-SLWS expects.
-  quantization::tensorRowwiseQuantization<float, uint8_t>(
-      data, rwqData->getPayloadMutable(), dataScales->getPayloadMutable(),
-      dataOffsets->getPayloadMutable(), schema);
+  // Note: Using floating point offset here as that is what RWQ-SLWS expects.
+  switch (precision) {
+  case ElemKind::FloatTy:
+    quantization::tensorRowwiseQuantization<float, float, uint8_t>(
+        data, rwqData->getPayloadMutable(), dataScales->getPayloadMutable(),
+        dataOffsets->getPayloadMutable(), schema);
+    break;
+  case ElemKind::Float16Ty:
+    quantization::tensorRowwiseQuantization<float16_t, float16_t, uint8_t>(
+        data, rwqData->getPayloadMutable(), dataScales->getPayloadMutable(),
+        dataOffsets->getPayloadMutable(), schema);
+    break;
+  default:
+    LOG(FATAL) << "Unsupported precision for RWQ-SLWS.";
+  }
   return F->createRowwiseQuantizedSparseLengthsWeightedSum(
-      name, rwqData, dataScales, dataOffsets, weights, indices, lengths);
+      name, rwqData, dataScales, dataOffsets, weights, indices, lengths,
+      precision);
 }
 
 RowwiseQuantizedSparseLengthsWeightedSumNode *
 Function::createRowwiseQuantizedSparseLengthsWeightedSum(
     llvm::StringRef name, Tensor &data, NodeValue weights, NodeValue indices,
-    NodeValue lengths, quantization::Schema schema) {
+    NodeValue lengths, quantization::Schema schema, ElemKind precision) {
   return quantizeDataAndCreateRowwiseQuantizedSparseLengthsWeightedSum(
-      this, name, data, weights, indices, lengths, schema);
+      this, name, data, weights, indices, lengths, schema, precision);
 }
 
 RowwiseQuantizedSparseLengthsWeightedSumNode *
-Function::createRowwiseQuantizedSparseLengthsSum(llvm::StringRef name,
-                                                 Tensor &data,
-                                                 NodeValue indices,
-                                                 NodeValue lengths,
-                                                 quantization::Schema schema) {
-  auto ty = getParent()->uniqueType(ElemKind::FloatTy, {indices.dims()[0]});
+Function::createRowwiseQuantizedSparseLengthsSum(
+    llvm::StringRef name, Tensor &data, NodeValue indices, NodeValue lengths,
+    quantization::Schema schema, ElemKind precision) {
+  auto ty = getParent()->uniqueType(precision, {indices.dims()[0]});
   auto ones = createSplat(name.str() + ".ones", ty, 1.0);
   return quantizeDataAndCreateRowwiseQuantizedSparseLengthsWeightedSum(
-      this, name, data, ones, indices, lengths, schema);
+      this, name, data, ones, indices, lengths, schema, precision);
 }
 
 /// Helper used to get specific output type required for
@@ -1614,22 +1626,23 @@ Function::createRowwiseQuantizedSparseLengthsSum(llvm::StringRef name,
 /// \p lenghtsDims to compute output dimensions.
 static TypeRef getOutputTypeOfFusedRowwiseQuantizedSLS(
     Function *F, const llvm::ArrayRef<size_t> &inDims,
-    const llvm::ArrayRef<size_t> &lengthsDims) {
+    const llvm::ArrayRef<size_t> &lengthsDims, ElemKind scaleOffsetKind) {
   ShapeVector outDims(inDims.begin(), inDims.end());
   outDims[0] = lengthsDims[0];
   // The output column count is the same as the input column count, but without
-  // the extra 8 bytes for the fused scale/offset, as the output is not
-  // UInt8FusedQTy.
-  outDims[1] -= 8;
-  return F->getParent()->uniqueType(ElemKind::FloatTy, outDims);
+  // the extra bytes for the fused scale/offset, as the output is not fused.
+  outDims[1] -=
+      2 * ((scaleOffsetKind == ElemKind::FloatTy) ? sizeof(float)
+                                                  : sizeof(float16_t));
+  return F->getParent()->uniqueType(scaleOffsetKind, outDims);
 }
 
 FusedRowwiseQuantizedSparseLengthsWeightedSumNode *
 Function::createFusedRowwiseQuantizedSparseLengthsWeightedSum(
     llvm::StringRef name, NodeValue data, NodeValue weights, NodeValue indices,
-    NodeValue lengths) {
-  auto outTy = getOutputTypeOfFusedRowwiseQuantizedSLS(this, data.dims(),
-                                                       lengths.dims());
+    NodeValue lengths, ElemKind precision) {
+  auto outTy = getOutputTypeOfFusedRowwiseQuantizedSLS(
+      this, data.dims(), lengths.dims(), precision);
   return addNode(new FusedRowwiseQuantizedSparseLengthsWeightedSumNode(
       name, outTy, data, weights, indices, lengths));
 }
@@ -1638,9 +1651,10 @@ FusedRowwiseQuantizedSparseLengthsSumNode *
 Function::createFusedRowwiseQuantizedSparseLengthsSum(llvm::StringRef name,
                                                       Constant *data,
                                                       NodeValue indices,
-                                                      NodeValue lengths) {
-  auto outTy = getOutputTypeOfFusedRowwiseQuantizedSLS(this, data->dims(),
-                                                       lengths.dims());
+                                                      NodeValue lengths,
+                                                      ElemKind precision) {
+  auto outTy = getOutputTypeOfFusedRowwiseQuantizedSLS(
+      this, data->dims(), lengths.dims(), precision);
   return addNode(new FusedRowwiseQuantizedSparseLengthsSumNode(
       name, outTy, data, indices, lengths));
 }
@@ -1650,9 +1664,8 @@ Function::createFusedRowwiseQuantizedSparseLengthsSum(llvm::StringRef name,
 /// RowwiseQuantizedSparseLengthsSumNode. Function \p F uses float Tensor \p
 /// data to create a rowwise qunatized Constant \p rwqData, which contains fused
 /// scales and offsets.
-static Constant *
-quantizeDataForFusedRowwiseQuantizedSparseLengthsWeightedSum(Function *F,
-                                                             Tensor &data) {
+static Constant *quantizeDataForFusedRowwiseQuantizedSparseLengthsWeightedSum(
+    Function *F, Tensor &data, ElemKind precision) {
   // For fused rowwise quantization, we must have a two-dimensional input. If
   // passed in a single dimensional data Tensor then add an extra dimension.
   const auto fDims = flattenCdr(data.dims());
@@ -1663,33 +1676,50 @@ quantizeDataForFusedRowwiseQuantizedSparseLengthsWeightedSum(Function *F,
   // scale/offset are fused inline with each row. Also, we expand the second
   // dimension to include space for the scale/offset, each 4 bytes
   // (float/int32_t).
-  Constant *rwqData = F->getParent()->createConstant(
-      ElemKind::UInt8FusedQTy, {fDims.first, fDims.second + 8}, 0.0, 0, "data");
-
-  quantization::tensorFusedRowwiseQuantization(fData,
-                                               rwqData->getPayloadMutable());
-  return rwqData;
+  switch (precision) {
+  case ElemKind::FloatTy: {
+    Constant *rwqData = F->getParent()->createConstant(
+        ElemKind::UInt8FusedQTy,
+        {fDims.first, fDims.second + 2 * sizeof(float)}, 0.0, 0, "data");
+    quantization::tensorFusedRowwiseQuantization<float>(
+        fData, rwqData->getPayloadMutable());
+    return rwqData;
+  }
+  case ElemKind::Float16Ty: {
+    Constant *rwqData = F->getParent()->createConstant(
+        ElemKind::UInt8FusedFP16QTy,
+        {fDims.first, fDims.second + 2 * sizeof(float16_t)}, 0.0, 0, "data");
+    quantization::tensorFusedRowwiseQuantization<float16_t>(
+        fData, rwqData->getPayloadMutable());
+    return rwqData;
+  }
+  default:
+    LOG(FATAL) << "Invalid type for FusedRowwiswQuantization.";
+  }
 }
 
 FusedRowwiseQuantizedSparseLengthsWeightedSumNode *
 Function::createFusedRowwiseQuantizedSparseLengthsWeightedSum(
     llvm::StringRef name, Tensor &data, NodeValue weights, NodeValue indices,
-    NodeValue lengths) {
+    NodeValue lengths, ElemKind precision) {
   Constant *rwqData =
-      quantizeDataForFusedRowwiseQuantizedSparseLengthsWeightedSum(this, data);
+      quantizeDataForFusedRowwiseQuantizedSparseLengthsWeightedSum(this, data,
+                                                                   precision);
   return createFusedRowwiseQuantizedSparseLengthsWeightedSum(
-      name, rwqData, weights, indices, lengths);
+      name, rwqData, weights, indices, lengths, precision);
 }
 
 FusedRowwiseQuantizedSparseLengthsSumNode *
 Function::createFusedRowwiseQuantizedSparseLengthsSum(llvm::StringRef name,
                                                       Tensor &data,
                                                       NodeValue indices,
-                                                      NodeValue lengths) {
+                                                      NodeValue lengths,
+                                                      ElemKind precision) {
   Constant *rwqData =
-      quantizeDataForFusedRowwiseQuantizedSparseLengthsWeightedSum(this, data);
-  return this->createFusedRowwiseQuantizedSparseLengthsSum(name, rwqData,
-                                                           indices, lengths);
+      quantizeDataForFusedRowwiseQuantizedSparseLengthsWeightedSum(this, data,
+                                                                   precision);
+  return this->createFusedRowwiseQuantizedSparseLengthsSum(
+      name, rwqData, indices, lengths, precision);
 }
 
 LengthsToRangesNode *Function::createLengthsToRanges(llvm::StringRef name,
@@ -1881,11 +1911,11 @@ GatherRangesNode *Function::createGatherRanges(llvm::StringRef name,
       ranges));
 }
 
-ScatterAssignNode *Function::createScatterAssign(llvm::StringRef name,
-                                                 NodeValue data,
-                                                 NodeValue indices,
-                                                 NodeValue slices) {
-  return addNode(new ScatterAssignNode(name, data, indices, slices));
+ScatterDataNode *Function::createScatterData(llvm::StringRef name,
+                                             NodeValue data, NodeValue indices,
+                                             NodeValue slices,
+                                             bool cumulative) {
+  return addNode(new ScatterDataNode(name, data, indices, slices, cumulative));
 }
 
 BatchOneHotNode *Function::createBatchOneHot(llvm::StringRef name,
@@ -1910,6 +1940,30 @@ SpaceToDepthNode *Function::createSpaceToDepth(llvm::StringRef name,
                                 inputDim[3] * blockSize * blockSize};
   auto outTy = getParent()->uniqueTypeWithNewShape(input.getType(), newDim);
   return addNode(new SpaceToDepthNode(name, outTy, input, blockSize));
+}
+
+ResizeNearestNode *Function::createResizeNearest(llvm::StringRef name,
+                                                 NodeValue input,
+                                                 float heightScale,
+                                                 float widthScale) {
+
+  auto inputDim = input.dims();
+  DCHECK_EQ(inputDim.size(), 4)
+      << "Dimension size: " << inputDim.size() << ", size of 4 is expected.";
+  DCHECK_GT(heightScale, 0.0) << "Height scale: " << heightScale
+                              << ", Scale larger than 0 is expected.";
+  DCHECK_GT(widthScale, 0.0)
+      << "Width scale: " << widthScale << ", Scale larger than 0 is expected.";
+  auto newH = size_t(std::floor(inputDim[1] * heightScale));
+  DCHECK_GT(newH, 0) << "Scaled height is " << newH
+                     << ", Scaled value needs to be larger than 0.";
+  auto newW = size_t(std::floor(inputDim[2] * widthScale));
+  DCHECK_GT(newW, 0) << "Scaled width is " << newW
+                     << ", Scaled value needs to be larger than 0.";
+  std::vector<size_t> newDim = {inputDim[0], newH, newW, inputDim[3]};
+  auto outTy = getParent()->uniqueTypeWithNewShape(input.getType(), newDim);
+  return addNode(
+      new ResizeNearestNode(name, outTy, input, heightScale, widthScale));
 }
 
 QuantizeNode *Function::createQuantize(llvm::StringRef name, NodeValue input,
@@ -2003,59 +2057,7 @@ Node *Function::createBatchBoxCox(llvm::StringRef name, NodeValue data,
   assert((data.dims()[1] == lambda1.dims()[0]) &&
          "data, lambda1 and lambda2 must have the same number of rows");
 
-  // Broadcast lambda1 and lambda2 so that they are both the same size as the
-  // data.
-  auto *BL1 = createBroadcast(name.str() + ".broadcast", lambda1, data.dims(),
-                              /*axis=*/1);
-  auto *BL2 = createBroadcast(name.str() + ".broadcast", lambda2, data.dims(),
-                              /*axis=*/1);
-
-  // Broadcast is usually implemented via a Tile node returned from
-  // createBroadcast(). However, if the Broadcast was a noop then there is a
-  // Reshape instead of a Tile returned. Thus, get the index here to use based
-  // on the returned kinds from createBroadcast() above.
-  assert((llvm::isa<TileNode>(BL1) || llvm::isa<ReshapeNode>(BL1)) &&
-         "Broadcast is assumed to be either implemented via Tile or Reshape.");
-  TypeRef typeBL1 = llvm::isa<TileNode>(BL1)
-                        ? BL1->getType(TileNode::ResultIdx)
-                        : BL1->getType(ReshapeNode::ResultIdx);
-
-  // Add a small epsilon to lambda1 so that we can avoid dividing by zero
-  // later. It doesn't matter that this is technically incorrect because the
-  // final Select will discard the results of this computation.
-  auto *eps = createSplat(name.str() + ".eps", typeBL1, epsilon);
-  auto *EBL1 = createAdd(name.str() + ".lambda1eps", BL1, eps);
-
-  // Compute data + BL2, which is needed regardless of whether
-  // lambda1 is 0 or not.
-  auto *AN = createAdd(name.str() + ".add", data, BL2);
-
-  // Take the max of data + BL2 and 1e-6 to void exponentiating or taking the
-  // logarithm of too small a number.
-  auto *minArg =
-      createSplat(name.str() + ".logpowmin", AN->getResult().getType(), 1e-6);
-  auto *MN = createMax(name.str() + ".max", AN, minArg);
-
-  // Compute the Box-Cox transform for the lambda1 == 0 case:
-  //    y = ln(max(x + lambda2, 1e-6))
-
-  auto *LN = createLog(name.str() + ".log", MN);
-
-  // Compute the Box-Cox transform for the lambda1 != 0 case:
-  //    y = (max(x + lambda2, 1e-6)^lambda1 - 1)/lambda1
-  auto *PN = createPow(name.str() + ".pow", MN, BL1);
-  auto *ones =
-      createSplat(name.str() + ".ones", PN->getResult().getType(), 1.0f);
-  auto *SN = createSub(name.str() + ".sub", PN, ones);
-  // Divide by EBL1, not BL1 to avoid a divide-by-zero exception.
-  auto *DN = createDiv(name.str() + ".div", SN, EBL1);
-
-  // Compute predicates for selecting between the two cases above.
-  auto *zeroes = createSplat(name.str() + ".zeroes", typeBL1, 0.0f);
-  auto *predicate = createCmpEQ(name.str() + ".cmpeq", BL1, zeroes);
-
-  // Create Select to pick between the two Box-Cox cases.
-  return createSelect(name.str() + ".select", predicate, LN, DN);
+  return addNode(new BatchBoxCoxNode(name, data, lambda1, lambda2, epsilon));
 }
 
 Node *Function::createClip(llvm::StringRef name, NodeValue input, float min,
@@ -2082,13 +2084,11 @@ BatchNormalizationNode *Function::createBatchNormalization(
   // Allocate the learnable parameters beta and gamma.
   auto *beta =
       getParent()->createPlaceholder(inputTy, {channels}, "beta", true);
-  bindings.allocate(beta)->init(glow::Tensor::InitKind::Zero, 0, getPRNG());
+  bindings.allocate(beta)->init(Tensor::InitKind::Broadcast, 0.1, getPRNG());
 
-  auto *gamma =
-      getParent()->createPlaceholder(inputTy, {channels}, "gamma", true);
-
-  bindings.allocate(gamma)->init(glow::Tensor::InitKind::Broadcast, 1.0,
-                                 getPRNG());
+  auto *scale =
+      getParent()->createPlaceholder(inputTy, {channels}, "scale", true);
+  bindings.allocate(scale)->init(Tensor::InitKind::Broadcast, 0.001, getPRNG());
 
   auto *mean =
       getParent()->createPlaceholder(inputTy, {channels}, "mean", false);
@@ -2096,9 +2096,10 @@ BatchNormalizationNode *Function::createBatchNormalization(
 
   auto *variance =
       getParent()->createPlaceholder(inputTy, {channels}, "variance", false);
-  bindings.allocate(variance)->zero();
+  bindings.allocate(variance)->init(Tensor::InitKind::Broadcast, 1.0,
+                                    getPRNG());
 
-  return createBatchNormalization(name, input, beta, gamma, mean, variance,
+  return createBatchNormalization(name, input, beta, scale, mean, variance,
                                   channelIdx, epsilon, momentum);
 }
 

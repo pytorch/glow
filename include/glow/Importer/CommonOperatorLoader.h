@@ -89,6 +89,9 @@ class CommonOperatorLoader : public ProtobufLoader {
       if (in.dataType == ONNXIFI_DATATYPE_FLOAT32) {
         Type ty(ElemKind::FloatTy, dims);
         *result.t = Tensor((void *)in.buffer, &ty);
+      } else if (in.dataType == ONNXIFI_DATATYPE_FLOAT16) {
+        Type ty(ElemKind::Float16Ty, dims);
+        *result.t = Tensor((void *)in.buffer, &ty);
       } else if (in.dataType == ONNXIFI_DATATYPE_INT32) {
         Type ty(ElemKind::Int32ITy, dims);
         *result.t = Tensor((void *)in.buffer, &ty);
@@ -329,7 +332,7 @@ protected:
         inputs.push_back(G_.createExpandDims(opName, in, {0}));
       }
       ConcatNode *concat = G_.createConcat(opName, inputs, /* axis */ 0);
-      Node *node = G_.createBatchedReduceAdd(opName, concat, /* axis */ 0);
+      Node *node = G_.createBatchedReduceAdd(opName, concat, /* axis */ {0});
       RETURN_IF_ERR(addNodeAsOutput(op, node));
     }
     return llvm::Error::success();
@@ -675,8 +678,18 @@ protected:
     const std::string &opName = loadOperatorName(op);
     NodeValue in;
     ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
-    unsigned_t k;
-    ASSIGN_VALUE_OR_RETURN_ERR(k, loadInt(dict["k"]));
+    RETURN_ERR_IF_NOT(op.input_size() <= 2, "Maximum number of inputs is 2.");
+    unsigned_t k = 0;
+    if (op.input_size() > 1) {
+      Constant *kConst = getConstantByNameOrNull(op.input(1));
+      RETURN_ERR_IF_NOT(kConst, "Non-constant k is not supported by Glow.");
+      RETURN_ERR_IF_NOT(kConst->getElementType() == ElemKind::Int64ITy,
+                        "k input must be of type Int64.");
+      auto constH = kConst->getPayload().getHandle<int64_t>();
+      k = constH.at({0});
+    } else {
+      ASSIGN_VALUE_OR_RETURN_ERR(k, loadInt(dict["k"]));
+    }
 
     int axis = -1;
     if (dict.count("axis")) {

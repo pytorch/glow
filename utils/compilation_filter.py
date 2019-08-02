@@ -16,16 +16,13 @@
 import argparse
 import sqlite3
 import os
-from typing import (
-    List,
-    Dict,
-)
+from typing import List, Dict
 
 # A list of all filtered transformations.
-TRANS_LIST: List['Transformation'] = []
+TRANS_LIST: List["Transformation"] = []
 
 # Mapping between added nodes and the transformation that adds these nodes.
-NODES_ADDING_MAP: Dict[str, 'Transformation'] = {}
+NODES_ADDING_MAP: Dict[str, "Transformation"] = {}
 
 
 class Transformation:
@@ -43,8 +40,8 @@ class Transformation:
     def __init__(self, transID: str):
         self.addedNodes_: List[str] = []
         self.removedNodes_: List[str] = []
-        self.ancestors_: List['Transformation'] = []
-        self.scopeName_: str = ''
+        self.ancestors_: List["Transformation"] = []
+        self.scopeName_: str = ""
         self.transID_: str = transID
         self.isDirectTrans_: bool = False
 
@@ -58,7 +55,7 @@ class Transformation:
 
         self.removedNodes_.append(nodeName)
 
-    def addAncestor(self, ancestor: 'Transformation') -> None:
+    def addAncestor(self, ancestor: "Transformation") -> None:
         """Add ancestors of this transformation."""
 
         self.ancestors_.append(ancestor)
@@ -88,7 +85,9 @@ class DottyPrinter:
     def dump_label(self, tran: Transformation) -> str:
         """Returns the string for the label of the given transformation. """
 
-        labelStr = rf"""{{ {{SCOPE:\l{tran.scopeName_} }}|{{ORIGINAL OPERAND CHAIN:\l\l"""
+        labelStr = (
+            rf"""{{ {{SCOPE:\l{tran.scopeName_} }}|{{ORIGINAL OPERAND CHAIN:\l\l"""
+        )
         for rstr in tran.removedNodes_:
             labelStr += rf"""{rstr}\l\l"""
         labelStr += rf"}}| {{NEW OPERAND CHAIN:\l\l"
@@ -132,7 +131,8 @@ class DottyPrinter:
         self.visit_edges()
         with open(f"transformations_{dottyFile}.dot", "w") as f:
             print(
-                f"\nWriting DAG info into dotty file transformations_{dottyFile}.dot ...")
+                f"\nWriting DAG info into dotty file transformations_{dottyFile}.dot ..."
+            )
             f.write("digraph DAG {\n\trankdir=TB;\n")
             for v in self.vertices_:
                 f.write(f"{v}\n")
@@ -158,8 +158,7 @@ def init_db(sqliteFile: str) -> sqlite3.Connection:
 
 
 def find_all_related_transformation(
-        cursor: sqlite3.Cursor,
-        transIDs: List[str]):
+        cursor: sqlite3.Cursor, transIDs: List[str]):
     """A recursive function that find all related transformations given a list of transformation IDs in the database.
 
     Args:
@@ -167,23 +166,27 @@ def find_all_related_transformation(
         transIDs: List[str]. A list of transformation IDs.
     """
 
-    transQueryStr = "(" + ', '.join(transIDs) + ')'
-    cursor.execute(f"""
+    transQueryStr = "(" + ", ".join(transIDs) + ")"
+    cursor.execute(
+        f"""
             SELECT node_name
             FROM Log_Transformation
             WHERE trans_id in {transQueryStr} and operation_type in ('ADD_OPERAND', 'REMOVE_OPERAND')
             GROUP BY node_name
-        """)
+        """
+    )
     rows = cursor.fetchall()
     nodesList = ["'" + r[0] + "'" for r in rows]
 
-    transQueryStr = "(" + ', '.join(nodesList) + ')'
-    cursor.execute(f"""
+    transQueryStr = "(" + ", ".join(nodesList) + ")"
+    cursor.execute(
+        f"""
             SELECT trans_id
             FROM Log_Transformation
             WHERE node_name in {transQueryStr} and operation_type in ('ADD_OPERAND', 'REMOVE_OPERAND')
             GROUP BY trans_id
-        """)
+        """
+    )
     rows = cursor.fetchall()
     newTransIDs = [str(r[0]) for r in rows]
 
@@ -193,10 +196,8 @@ def find_all_related_transformation(
 
 
 def filter_node_transformation(
-        nodeName: str,
-        conn: sqlite3.Connection,
-        verbose: bool,
-        dottyFile: str):
+    nodeName: str, conn: sqlite3.Connection, verbose: bool, dottyFile: str
+):
     """Filter out all node transformation that is related to the given node.
 
     Args:
@@ -207,12 +208,15 @@ def filter_node_transformation(
     """
 
     cursor = conn.cursor()
-    cursor.execute("""
+    cursor.execute(
+        """
             SELECT trans_id
             FROM Log_Transformation
             WHERE node_name = ?
             GROUP BY trans_id
-        """, (nodeName,))
+        """,
+        (nodeName,),
+    )
     rows = cursor.fetchall()
 
     directTransIDs = [str(r[0]) for r in rows]
@@ -220,11 +224,14 @@ def filter_node_transformation(
     transIDs = find_all_related_transformation(cursor, directTransIDs)
 
     for tid in transIDs:
-        cursor.execute("""
+        cursor.execute(
+            """
             SELECT *
             FROM Log_Transformation
             WHERE trans_id = ?
-        """, (tid, ))
+        """,
+            (tid,),
+        )
         rows = cursor.fetchall()
         if len(rows):
             tran = Transformation(tid)
@@ -236,16 +243,16 @@ def filter_node_transformation(
                 "->", r" --\> ")
             for r in rows:
                 opr_type, name, kind = r[1:4]
-                if opr_type == 'ADD_OPERAND':
+                if opr_type == "ADD_OPERAND":
                     nodeKindAndName = kind + r" \l" + name
                     tran.appendAddedNode(nodeKindAndName)
                     NODES_ADDING_MAP[nodeKindAndName] = tran
-                elif opr_type == 'REMOVE_OPERAND':
+                elif opr_type == "REMOVE_OPERAND":
                     nodeKindAndName = kind + r" \l" + name
                     tran.appendRemovedNode(nodeKindAndName)
                     if nodeKindAndName in NODES_ADDING_MAP:
                         tran.addAncestor(NODES_ADDING_MAP[nodeKindAndName])
-                elif opr_type == 'OPERATOR_BASE':
+                elif opr_type == "OPERATOR_BASE":
                     nodeKindAndName = kind + r" \l" + name
                     tran.setBase(nodeKindAndName)
 
@@ -299,32 +306,33 @@ def filter_node_transformation(
 
 def stat_list_phases(conn, depth=0):
     cursor = conn.cursor()
-    cursor.execute("""
+    cursor.execute(
+        """
             SELECT *
             FROM Log_Scope
             ORDER BY scope_id
-        """)
+        """
+    )
     rows = cursor.fetchall()
 
     currDepth = 0
     print("Phase ID \tPhase Name\n-------------------------\n")
     for r in rows:
-        if 'ENTER' in r[1]:
+        if "ENTER" in r[1]:
             currDepth += 1
         if currDepth <= depth or depth == 0:
             print(r[0], "\t" * currDepth + r[1])
 
-        if 'EXIT' in r[1]:
+        if "EXIT" in r[1]:
             currDepth -= 1
             assert currDepth >= 0
 
 
-def stat_phases_summary(
-        conn: sqlite3.Connection,
-        startPhase: int,
-        endPhase: int):
+def stat_phases_summary(conn: sqlite3.Connection,
+                        startPhase: int, endPhase: int):
     cursor = conn.cursor()
-    cursor.execute("""
+    cursor.execute(
+        """
             SELECT lng.scope_id, ls.full_scope_str, lng.operation, lng.node_kind, COUNT(node_kind)
             FROM Log_Node_Operation lng
             LEFT JOIN Log_Scope ls
@@ -332,7 +340,9 @@ def stat_phases_summary(
             WHERE lng.scope_id >= ? AND lng.scope_id < ?
             GROUP By lng.node_kind
             ORDER BY lng.scope_id
-        """, (startPhase, endPhase))
+        """,
+        (startPhase, endPhase),
+    )
     rows = cursor.fetchall()
     print(f"---- Between phase {startPhase} and phase {endPhase}:\n")
     summaryStrs = {}
@@ -350,23 +360,27 @@ def stat_phases_summary(
 def stat_phase(conn: sqlite3.Connection, phaseId: int):
     cursor = conn.cursor()
     cursor.execute(
-        """SELECT full_scope_str FROM Log_Scope WHERE scope_id=?""", (phaseId,))
+        """SELECT full_scope_str FROM Log_Scope WHERE scope_id=?""", (phaseId,)
+    )
     rows = cursor.fetchall()
     fullScope = rows[0][0]
-    cursor.execute("""
+    cursor.execute(
+        """
             SELECT node_kind, COUNT(node_kind), COUNT(node_kind)*100.0/ (SELECT Count(*) FROM  Log_Node WHERE create_scope_id < ? AND delete_scope_id >= ?)
             FROM Log_Node
             WHERE create_scope_id < ? AND delete_scope_id >= ?
             GROUP By node_kind
             ORDER BY COUNT(node_kind) DESC
-        """, (phaseId, phaseId, phaseId, phaseId))
+        """,
+        (phaseId, phaseId, phaseId, phaseId),
+    )
     rows = cursor.fetchall()
     print(f"=== At phase {phaseId} ({fullScope}): \n")
     print(
         "\t{:>4s}  \t{:>12s} \t\t{:>2s}\n--------------------------------------------------------".format(
-            'Num',
-            'Kind',
-            '(Percentage)'))
+            "Num",
+            "Kind",
+            "(Percentage)"))
     for r in rows:
         kind, num, perc = r
         print(
@@ -399,7 +413,8 @@ def process():
 
         if options.filter_target_verbose:
             filter_node_transformation(
-                options.filter_target_verbose, conn, True, dottyFile)
+                options.filter_target_verbose, conn, True, dottyFile
+            )
 
         if options.stat_list_phases:
             stat_list_phases(conn)
