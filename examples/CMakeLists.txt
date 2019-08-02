@@ -93,7 +93,7 @@ if(GLOW_WITH_CPU)
                         PRIVATE
                           Backend
                           Backends
-                          ExecutionEngine
+                          ExecutionEngine2
                           Graph
                           Importer
                           GraphOptimizer)
