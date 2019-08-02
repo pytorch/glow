@@ -853,7 +853,7 @@ llvm::Error Partitioner::Partition(CompilationContext &cctx) {
     if (dumpPartition) {
       subF->dumpDAG("partitionLogicalID" +
                     std::to_string(mapping.getLogicalDeviceIDList(subF)[0]) +
-                    "__" + subF->getFilename() + "__" +
+                    "__" + subF->getName().str() + "__" +
                     mapping.getPartitionBackendName(subF) + ".dot");
     }
     assert(subF->verify() && "Conversion led to invalid function");
