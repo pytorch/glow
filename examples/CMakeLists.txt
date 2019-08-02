@@ -80,7 +80,7 @@ if(GLOW_WITH_CPU)
                         PRIVATE
                           Backends
                           ExecutionContext
-                          ExecutionEngine
+                          ExecutionEngine2
                           HostManager
                           Partitioner
                           Graph
