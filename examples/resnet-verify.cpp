@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #include "glow/Base/Image.h"
-#include "glow/ExecutionEngine/ExecutionEngine.h"
+#include "glow/ExecutionEngine/ExecutionEngine2.h"
 #include "glow/Graph/Hook.h"
 #include "glow/Importer/Caffe2ModelLoader.h"
 
@@ -26,18 +26,18 @@ using namespace glow;
 const char inputName[] = "gpu_0/data";
 
 class Tester {
-  PlaceholderBindings bindings;
-  ExecutionEngine EE;
-  Module &mod;
+  PlaceholderBindings bindings, inferBindings;
+  ExecutionEngine2 EEI;
+  std::unique_ptr<Module> mod;
   Function *F;
   TypeRef inputType;
   Placeholder *input;
   Placeholder *output;
 
 public:
-  Tester(llvm::StringRef backendName)
-      : EE(backendName), mod(EE.getModule()), F(mod.createFunction("resnet50")),
-        inputType(mod.uniqueType(ElemKind::FloatTy, {1, 3, 224, 224})) {
+  explicit Tester(llvm::StringRef backendName)
+      : EEI(backendName), mod(new Module), F(mod->createFunction("resnet50")),
+        inputType(mod->uniqueType(ElemKind::FloatTy, {1, 3, 224, 224})) {
     // Load and compile ResNet-50.
     Caffe2ModelLoader loader("resnet50/predict_net.pb", "resnet50/init_net.pb",
                              {inputName}, {inputType}, *F);
@@ -48,8 +48,8 @@ public:
 
   void bindInput(Tensor *batch) {
     // Allocate memory for input and bind it to the placeholders.
-    bindings.allocate(mod.getPlaceholders());
-    updateInputPlaceholders(bindings, {input}, {batch});
+    bindings.allocate(mod->getPlaceholders());
+    updateInputPlaceholders2(bindings, {input}, {batch});
   }
 
   TypeRef getInputType() const { return inputType; }
@@ -57,11 +57,23 @@ public:
   Function *getFunction() const { return F; }
 
   Tensor *hookAndRun(llvm::StringRef name) {
-    auto hook = hookOutput(F, name);
-    auto *out = bindings.allocate(hook.output);
-    EE.compile(CompilationMode::Infer, hook.function);
-    EE.run(bindings);
-    mod.eraseFunction(hook.function);
+    EEI.setBackendName(EEI.getBackendName());
+    inferBindings.clear();
+    auto modI = &EEI.getModule();
+    auto *FI = modI->createFunction("resnet50");
+    Caffe2ModelLoader loader(
+        "resnet50/predict_net.pb", "resnet50/init_net.pb", {inputName},
+        {mod->uniqueType(ElemKind::FloatTy, {1, 3, 224, 224})}, *FI);
+    auto hook = hookOutput(FI, name);
+    inferBindings.allocate(modI->getPlaceholders());
+    for (auto PH : bindings.pairs()) {
+      auto iPH = inferBindings.getPlaceholderByName(PH.first->getName());
+      inferBindings.get(iPH)->assign(PH.second);
+    }
+    auto *out = inferBindings.get(hook.output);
+    auto fName = hook.function->getName();
+    EEI.compile(CompilationMode::Infer);
+    EEI.run(inferBindings, fName);
     return out;
   }
 };

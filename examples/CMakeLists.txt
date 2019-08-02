@@ -70,7 +70,7 @@ if(GLOW_WITH_CPU)
                    resnet-verify.cpp)
   target_link_libraries(resnet-verify
                         PRIVATE
-                          ExecutionEngine
+                          ExecutionEngine2
                           Graph
                           Importer)
 
