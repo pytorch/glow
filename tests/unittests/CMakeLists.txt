@@ -219,7 +219,7 @@ if(GLOW_WITH_HABANA)
   target_link_libraries(HabanaBackendTest
                         PRIVATE
                           Backends
-                          ExecutionEngine
+                          ExecutionEngine2
                           Graph
                           GraphOptimizer
                           gtest

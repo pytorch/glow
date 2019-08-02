@@ -16,7 +16,7 @@
 
 #include "../../lib/Backends/Habana/Habana.h"
 #include "../../lib/Backends/Habana/HabanaDeviceManager.h"
-#include "glow/ExecutionEngine/ExecutionEngine.h"
+#include "glow/ExecutionEngine/ExecutionEngine2.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/PlaceholderBindings.h"
 #include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
@@ -37,7 +37,7 @@ protected:
 
   template <ElemKind kind, typename ElemTy> void testFCHelper();
 
-  ExecutionEngine EE_;
+  ExecutionEngine2 EE_;
   Module &mod_;
   Function *F_;
   PlaceholderBindings ctx_;
@@ -436,7 +436,7 @@ void HabanaBackendTest::testFCHelper() {
   Tensor *out = ctx_.allocate(output);
 
   glow::convertPlaceholdersToConstants(F_, ctx_, {input, output});
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(ctx_);
   auto H = out->getHandle<ElemTy>();
   for (size_t i = 0; i < H.size(); i++) {
@@ -467,7 +467,7 @@ TEST_F(HabanaBackendTest, FCFP32) {
 
   // Let weight and bias to be constants.
   glow::convertPlaceholdersToConstants(F_, ctx_, {input, output});
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(ctx_);
   auto H = out->getHandle<float>();
   for (size_t i = 0; i < H.size(); i++) {
@@ -496,7 +496,7 @@ TEST_F(HabanaBackendTest, Conv) {
   Tensor *out = ctx_.allocate(output);
 
   glow::convertPlaceholdersToConstants(F_, ctx_, {input, output});
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(ctx_);
 
   auto H = out->getHandle<int8_t>();
@@ -526,7 +526,7 @@ TEST_F(HabanaBackendTest, MaxPool) {
   auto OH = out->getHandle<int8_t>();
 
   glow::convertPlaceholdersToConstants(F_, ctx_, {input, output});
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(ctx_);
 
   // The input looks like this:
@@ -580,7 +580,7 @@ TEST_F(HabanaBackendTest, MaxPoolRelu) {
   auto OH = out->getHandle<int8_t>();
 
   glow::convertPlaceholdersToConstants(F_, ctx_, {input, output});
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(ctx_);
 
   EXPECT_EQ(OH.raw(0), 4);
@@ -609,7 +609,7 @@ TEST_F(HabanaBackendTest, AvgPool) {
   auto OH = out->getHandle<int8_t>();
 
   glow::convertPlaceholdersToConstants(F_, ctx_, {input, output});
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(ctx_);
 
   // The input looks like this:
@@ -663,7 +663,7 @@ TEST_F(HabanaBackendTest, AvgPoolRelu) {
   auto OH = out->getHandle<int8_t>();
 
   glow::convertPlaceholdersToConstants(F_, ctx_, {input, output});
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(ctx_);
 
   EXPECT_EQ(OH.raw(0), 2);
@@ -692,7 +692,7 @@ TEST_F(HabanaBackendTest, Transpose) {
   auto OH = out->getHandle<>();
 
   glow::convertPlaceholdersToConstants(F_, ctx_, {input, output});
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(ctx_);
 
   // Since the shuffle for the transpose is {3, 0, 2 ,1}, it should be true that
@@ -737,7 +737,7 @@ TEST_F(HabanaBackendTest, TransposeRelu) {
   auto OH = out->getHandle<>();
 
   glow::convertPlaceholdersToConstants(F_, ctx_, {input, output});
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(ctx_);
 
   // Since the shuffle for the transpose is {3, 0, 2 ,1}, it should be true that
@@ -781,7 +781,7 @@ TEST_F(HabanaBackendTest, QuantizedFC) {
   Tensor *out = ctx_.allocate(output);
 
   glow::convertPlaceholdersToConstants(F_, ctx_, {input, output});
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(ctx_);
 
   auto H = out->getHandle<float>();
@@ -812,7 +812,7 @@ TEST_F(HabanaBackendTest, QuantizedNonZeroOffset) {
   auto *result = F_->createSave("save", rq);
   ctx_.allocate(result->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(ctx_);
 
   auto H = ctx_.get(result->getPlaceholder())->getHandle();
@@ -845,7 +845,7 @@ TEST_F(HabanaBackendTest, FC2) {
   Tensor *out = ctx_.allocate(output);
 
   glow::convertPlaceholdersToConstants(F_, ctx_, /*except=*/{input, output});
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(ctx_);
 
   auto H = out->getHandle<int8_t>();
@@ -887,7 +887,7 @@ TEST_F(HabanaBackendTest, MLP) {
   Tensor *out = ctx_.allocate(output);
 
   glow::convertPlaceholdersToConstants(F_, ctx_, {input, output});
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(ctx_);
 
   auto H = out->getHandle<int8_t>();
@@ -915,7 +915,7 @@ TEST_F(HabanaBackendTest, MatMul) {
   };
   Tensor *out = ctx_.allocate(output);
   glow::convertPlaceholdersToConstants(F_, ctx_, /*except=*/{input, output});
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(ctx_);
   Tensor expected(ElemKind::Int8QTy, {B, K}, 1.0, 0);
   expected.getHandle<int8_t>() = {
@@ -937,7 +937,7 @@ TEST_F(HabanaBackendTest, MatMulFp32) {
   ctx_.allocate(rhs)->getHandle<float>() = {1, 2, 3, 4};
   Tensor *out = ctx_.allocate(output);
   glow::convertPlaceholdersToConstants(F_, ctx_, /*except=*/{lhs, output});
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(ctx_);
   Tensor expected(ElemKind::FloatTy, {B, K});
   expected.getHandle<float>() = {7, 10, 15, 22};
@@ -956,7 +956,7 @@ TEST_F(HabanaBackendTest, MatMulFp32NonStaticB) {
   ctx_.allocate(lhs)->getHandle<float>() = {1, 2, 3, 4};
   ctx_.allocate(rhs)->getHandle<float>() = {1, 2, 3, 4};
   Tensor *out = ctx_.allocate(output);
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(ctx_);
   Tensor expected(ElemKind::FloatTy, {B, K});
   expected.getHandle<float>() = {7, 10, 15, 22};
@@ -999,7 +999,7 @@ TEST_F(HabanaBackendTest, FCx2) {
   auto *ot1 = ctx_.allocate(o1);
   auto *ot2 = ctx_.allocate(o2);
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(ctx_);
 
   Tensor e1(ElemKind::Int8QTy, {2, 2}, 1.0, 0);
@@ -1025,7 +1025,7 @@ TEST_F(HabanaBackendTest, Sigmoid) {
 
   inputHandle.randomize(-1.0f, 1.0f, mod_.getPRNG());
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(ctx_);
 
   for (size_t i = 0; i < inputHandle.size(); ++i) {
@@ -1050,7 +1050,7 @@ TEST_F(HabanaBackendTest, Reshape) {
     inputHandle.raw(i) = i;
   }
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(ctx_);
 
   for (size_t i = 0; i < inputHandle.size(); ++i) {
@@ -1072,7 +1072,7 @@ TEST_F(HabanaBackendTest, Tanh) {
 
   inputHandle.randomize(-1.0f, 1.0f, mod_.getPRNG());
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(ctx_);
 
   for (size_t i = 0; i < inputHandle.size(); ++i) {
@@ -1095,7 +1095,7 @@ TEST_F(HabanaBackendTest, Logit) {
 
   inputHandle.randomize(-1.0f, 1.0f, mod_.getPRNG());
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(ctx_);
 
   for (size_t i = 0; i < inputHandle.size(); ++i) {
@@ -1121,7 +1121,7 @@ TEST_F(HabanaBackendTest, BatchedAdd) {
   auto *save = F_->createSave("save", R);
   auto *result = ctx_.allocate(save->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(ctx_);
 
   auto BH = ctx_.get(batch)->getHandle();
@@ -1149,7 +1149,7 @@ TEST_F(HabanaBackendTest, Slice) {
 
   inputHandle.randomize(-1.0f, 1.0f, mod_.getPRNG());
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(ctx_);
 
   EXPECT_FLOAT_EQ(outputHandle.at({0, 0, 0}), inputHandle.at({0, 1, 2}));
@@ -1169,7 +1169,7 @@ TEST_F(HabanaBackendTest, Flatten) {
 
   inputHandle.randomize(-1.0f, 1.0f, mod_.getPRNG());
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(ctx_);
 
   for (size_t i = 0; i < inputHandle.size(); ++i) {
@@ -1191,7 +1191,7 @@ TEST_F(HabanaBackendTest, Broadcast) {
 
   inputHandle.clear(42);
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(ctx_);
 
   for (size_t i = 0; i < outputHandle.size(); ++i) {
@@ -1218,7 +1218,7 @@ TEST_F(HabanaBackendTest, Add) {
   lhsHandle.randomize(-3.0f, 3.0f, mod_.getPRNG());
   rhsHandle.randomize(-3.0f, 3.0f, mod_.getPRNG());
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(ctx_);
 
   for (size_t i = 0; i < lhsHandle.size(); ++i) {
@@ -1245,7 +1245,7 @@ TEST_F(HabanaBackendTest, BroadcastAdd) {
   lhsHandle.randomize(-3.0f, 3.0f, mod_.getPRNG());
   rhsHandle.randomize(-3.0f, 3.0f, mod_.getPRNG());
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(ctx_);
 
   float rhsValue = rhsHandle.raw(0);
@@ -1271,7 +1271,7 @@ TEST_F(HabanaBackendTest, Clip) {
 
   inputHandle.randomize(-3.0f, 3.0f, mod_.getPRNG());
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(ctx_);
 
   for (size_t i = 0; i < inputHandle.size(); ++i) {
@@ -1303,7 +1303,7 @@ TEST_F(HabanaBackendTest, Copy) {
   auto *p2t = ctx_.allocate(p2);
   fill(c2t, 21);
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(ctx_);
 
   ASSERT_TRUE(ct.isEqual(*pt));
@@ -1313,7 +1313,7 @@ TEST_F(HabanaBackendTest, Copy) {
 TEST_F(HabanaBackendTest, CopyPlaceholder) {
   auto *in = mod_.createPlaceholder(ElemKind::FloatTy, {64, 1}, "in", false);
   auto *save = F_->createSave("save", in);
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   ctx_.allocate(in)->getHandle().clear(3.0);
   Tensor *out = ctx_.allocate(save->getPlaceholder());
   EE_.run(ctx_);
@@ -1335,7 +1335,7 @@ TEST_F(HabanaBackendTest, ReluQuantized) {
   for (size_t i = 0; i < size; i++) {
     IH.at({i}) = i - size / 2;
   }
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(ctx_);
   for (size_t i = 0; i < size; i++) {
     EXPECT_EQ(OH.at({i}), std::max<int8_t>(0, i - size / 2));
@@ -1347,7 +1347,7 @@ TEST_F(HabanaBackendTest, Concat) {
   auto *i2 = mod_.createPlaceholder(ElemKind::FloatTy, {8, 2}, "i2", false);
   auto *concat = F_->createConcat("concat", {i1, i2}, 1);
   auto *save = F_->createSave("save", concat);
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
 
   auto i1h = ctx_.allocate(i1)->getHandle<float>();
   auto i2h = ctx_.allocate(i2)->getHandle<float>();
@@ -1385,7 +1385,7 @@ TEST_F(HabanaBackendTest, IntermediateReshapeMLP) {
   auto *relu2 = F_->createRELU("relu2", fc3);
   F_->createSave("save4", relu2);
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   ctx_.allocate(mod_.getPlaceholders());
   EE_.run(ctx_);
 }
@@ -1400,7 +1400,7 @@ TEST_F(HabanaBackendTest, BatchedReduceAdd) {
   auto *save = F_->createSave("save", R);
   auto *result = ctx_.allocate(save->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(ctx_);
 
   auto H = result->getHandle();
@@ -1438,7 +1438,7 @@ TEST_F(HabanaBackendTest, BigPseudoBatchedAdd) {
   std::iota(i2h.begin(), i2h.end(), 1);
   auto oh = ctx_.allocate(o)->getHandle();
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(ctx_);
 
   int expected = 1;
@@ -1456,7 +1456,7 @@ TEST_F(HabanaBackendTest, Mul) {
   ctx_.allocate(i1)->getHandle() = {1, 2, 3, 4, 5, 6, 7, 8};
   ctx_.allocate(i2)->getHandle() = {8, 7, 6, 5, 4, 3, 2, 1};
   auto *out = ctx_.allocate(save->getPlaceholder());
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(ctx_);
   Tensor expected(ElemKind::FloatTy, {8});
   expected.getHandle() = {8, 14, 18, 20, 20, 18, 14, 8};
@@ -1634,7 +1634,7 @@ TEST_F(HabanaBackendTest, FCPerf) {
 
   glow::convertPlaceholdersToConstants(F_, ctx_, {data, output});
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(ctx_);
   struct timespec begin;
   clock_gettime(CLOCK_MONOTONIC_RAW, &begin);
@@ -1674,7 +1674,7 @@ TEST_F(HabanaBackendTest, GatherPerf) {
   auto *result = F_->createSave("save", R);
   ctx_.allocate(result->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(ctx_);
   struct timespec begin;
   clock_gettime(CLOCK_MONOTONIC_RAW, &begin);
@@ -1722,7 +1722,7 @@ TEST_F(HabanaBackendTest, BatchedGather) {
   auto *result = F_->createSave("save", R);
   ctx_.allocate(result->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
   EE_.run(ctx_);
 
   auto H = ctx_.get(result->getPlaceholder())->getHandle();
@@ -1764,7 +1764,7 @@ TEST_F(HabanaBackendTest, BatchedGatherMultipleRuns) {
   auto *result = F_->createSave("save", R);
   ctx_.allocate(result->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
 
   // run this multiple times
   for (auto ntimes = 0; ntimes < 10; ntimes++) {
@@ -1795,7 +1795,7 @@ TEST_F(HabanaBackendTest, MergeFCRelu) {
   // Should have three nodes FC, Relu, save
   ASSERT_EQ(F_->getNodes().size(), 3);
 
-  EE_.compile(CompilationMode::Infer, F_);
+  EE_.compile(CompilationMode::Infer);
 
   // Should have two nodes FC, save
   ASSERT_EQ(F_->getNodes().size(), 2);
