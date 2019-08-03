@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "glow/ExecutionEngine/ExecutionEngine.h"
+#include "glow/ExecutionEngine/ExecutionEngine2.h"
 #include "glow/Graph/Graph.h"
 #include "glow/IR/IR.h"
 #include "glow/Support/Support.h"
@@ -182,7 +182,7 @@ void testPTB() {
   unsigned numWords = loadPTB(inputWords, targetWords, numSteps, vocabSize,
                               minibatchSize, maxNumWords);
   LOG(INFO) << "Loaded " << numWords << " words.";
-  ExecutionEngine EE(executionBackend);
+  ExecutionEngine2 EE(executionBackend);
   PlaceholderBindings bindings;
 
   // Construct the network:
@@ -231,8 +231,10 @@ void testPTB() {
   }
 
   Function *TF = glow::differentiate(F, TC);
+  auto tfName = TF->getName();
 
-  EE.compile(CompilationMode::Train, TF);
+  EE.compile(CompilationMode::Train);
+  bindings.allocate(mod.getPlaceholders());
 
   if (!dumpTrainingGraphDAGFileOpt.empty()) {
     LOG(INFO) << "Dumping training graph";
@@ -268,8 +270,8 @@ void testPTB() {
       targetWordsBatch.copyConsecutiveSlices(&targetWords,
                                              minibatchSize * batch);
 
-      runBatch(EE, bindings, 1, sampleCounter, {X, Y},
-               {&inputWordsBatch, &targetWordsBatch});
+      runBatch2(EE, bindings, 1, sampleCounter, {X, Y},
+                {&inputWordsBatch, &targetWordsBatch}, tfName);
       for (size_t step = 0; step < numSteps; step++) {
         for (unsigned int i = 0; i < minibatchSize; i++) {
           auto T =

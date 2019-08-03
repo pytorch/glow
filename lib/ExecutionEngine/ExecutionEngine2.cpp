@@ -19,6 +19,7 @@
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/PlaceholderBindings.h"
 #include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
+#include "glow/Support/Error.h"
 
 #include "llvm/ADT/STLExtras.h"
 
@@ -45,6 +46,9 @@ void ExecutionEngine2::setBackendName(llvm::StringRef backend) {
   if (backend != "") {
     std::vector<std::unique_ptr<runtime::DeviceConfig>> configs;
     auto config = llvm::make_unique<runtime::DeviceConfig>(backend);
+    if (deviceMemory_) {
+      config->setDeviceMemory(deviceMemory_);
+    }
     configs.push_back(std::move(config));
     hostManager_ = llvm::make_unique<runtime::HostManager>(std::move(configs));
   }
@@ -106,6 +110,7 @@ void ExecutionEngine2::runInternal(ExecutionContext &context,
   std::promise<void> runPromise;
   auto fut = runPromise.get_future();
   llvm::Error runErr = llvm::Error::success();
+  MARK_ERR_CHECKED(runErr);
   hostManager_->runNetwork(
       name, std::move(contextPtr),
       [&runPromise, &runErr](runtime::RunIdentifierTy, llvm::Error err,

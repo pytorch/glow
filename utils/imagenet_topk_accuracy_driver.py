@@ -24,16 +24,20 @@ import pexpect
 import PIL.Image as Image
 import torchvision
 
-parser = argparse.ArgumentParser(description="Glow image-classifier Driver for "
-                                 "TopK ImageNet Calculation")
+parser = argparse.ArgumentParser(
+    description="Glow image-classifier Driver for "
+    "TopK ImageNet Calculation")
 
-parser.add_argument("--validation-images-dir", metavar="DIR", required=True,
-                    help="Path to the directory containing the validation set "
-                    "of images. Subdirectories are expected to be organized "
-                    "such that when sorted their index corresponds to their "
-                    "label. For example, if the validation_images_dir contains "
-                    "{'abc/', 'def/', 'ghi/'}, then this should correspond to "
-                    "labels {0, 1, 2} respectively.")
+parser.add_argument(
+    "--validation-images-dir",
+    metavar="DIR",
+    required=True,
+    help="Path to the directory containing the validation set "
+    "of images. Subdirectories are expected to be organized "
+    "such that when sorted their index corresponds to their "
+    "label. For example, if the validation_images_dir contains "
+    "{'abc/', 'def/', 'ghi/'}, then this should correspond to "
+    "labels {0, 1, 2} respectively.")
 
 parser.add_argument("--batch-size", default=1, type=int, metavar="N",
                     help="Batch size for use with the model. The total number "
@@ -57,7 +61,9 @@ parser.add_argument("--image-classifier-cmd", default="",
                     "including the binary and all of its command lime "
                     "parameters.")
 
-## Opens and returns an image located at @param path using the PIL loader.
+# Opens and returns an image located at @param path using the PIL loader.
+
+
 def pil_loader(path):
     # open path as file to avoid ResourceWarning
     # (https://github.com/python-pillow/Pillow/issues/835)
@@ -65,7 +71,9 @@ def pil_loader(path):
         img = Image.open(img)
         return img.convert("RGB")
 
-## Opens and returns an image located at @param path using the accimage loader.
+# Opens and returns an image located at @param path using the accimage loader.
+
+
 def accimage_loader(path):
     import accimage
     try:
@@ -75,12 +83,13 @@ def accimage_loader(path):
         return pil_loader(path)
 
 
-## Opens and returns an image located at @param path using either the accimage
+# Opens and returns an image located at @param path using either the accimage
 # loader or PIL loader.
 def default_image_loader(path):
     if torchvision.get_image_backend() == "accimage":
         return accimage_loader(path)
     return pil_loader(path)
+
 
 def get_sorted_img_subdirs(validation_images_dir):
     img_dir_paths = []
@@ -93,7 +102,7 @@ def get_sorted_img_subdirs(validation_images_dir):
     return img_dir_paths
 
 
-## @returns two lists of the same length found in directory
+# @returns two lists of the same length found in directory
 # @param validation_images_dir; the first list contains paths to all images
 # found, and the second list contains the corresponding labels of the image.
 def get_img_paths_and_labels(validation_images_dir):
@@ -114,8 +123,10 @@ def get_img_paths_and_labels(validation_images_dir):
         curr_label_idx = curr_label_idx + 1
     return img_paths, img_labels
 
-## Given an image located at @param img_path, transform the image
+# Given an image located at @param img_path, transform the image
 # and save it to the path @param path_to_new_img.
+
+
 def resize_and_save_image(img_path, path_to_new_img):
     # Load the image.
     img = default_image_loader(img_path)
@@ -129,9 +140,11 @@ def resize_and_save_image(img_path, path_to_new_img):
     resized_img = transform_resize(img)
     resized_img.save(path_to_new_img, format="png")
 
-## Used to pre-process an input set of images. Takes a string of a directory
+# Used to pre-process an input set of images. Takes a string of a directory
 # @param validation_images_dir and saves the cropped subset of the images in a
 # subdirectory `processed/`, which must not yet exist.
+
+
 def save_centered_cropped_dataset(validation_images_dir):
     processed_validation_images_dir = os.path.join(validation_images_dir,
                                                    "processed")
@@ -149,8 +162,8 @@ def save_centered_cropped_dataset(validation_images_dir):
     # all images to the new location.
     for img_subdir in img_subdirs:
         orig_img_subdir_path = os.path.join(validation_images_dir, img_subdir)
-        processed_img_subdir_path = os.path.join(processed_validation_images_dir,
-                                                 img_subdir)
+        processed_img_subdir_path = os.path.join(
+            processed_validation_images_dir, img_subdir)
 
         # Create a new subdirectory for the next label.
         try:
@@ -160,19 +173,22 @@ def save_centered_cropped_dataset(validation_images_dir):
 
         # Transform and save all images in this label subdirectory.
         for orig_img_filename in os.listdir(orig_img_subdir_path):
-            orig_img_path = os.path.join(orig_img_subdir_path, orig_img_filename)
+            orig_img_path = os.path.join(
+                orig_img_subdir_path, orig_img_filename)
             if os.path.isfile(orig_img_path):
                 processed_img_path = os.path.join(processed_img_subdir_path,
                                                   orig_img_filename)
                 resize_and_save_image(orig_img_path, processed_img_path)
 
-## @returns a list of strings (of length equal to the @param batch_size) which
+# @returns a list of strings (of length equal to the @param batch_size) which
 # are paths to images to do inference on. @param img_paths is the set of all
 # image paths, @param img_index is the next index to use in @param img_paths,
 # and @param tmp_dir_name is the location of where to save the images if
 # @param resize_input_images is true. Note that if @param resize_input_images is
 # true, then names for the temporary images are used for every batch, thus only
 # @param batch_size temporary images will ever exist in @param tmp_dir_name.
+
+
 def get_curr_img_paths(img_paths, img_index, batch_size, tmp_dir_name,
                        resize_input_images):
     curr_img_paths = []
@@ -192,8 +208,10 @@ def get_curr_img_paths(img_paths, img_index, batch_size, tmp_dir_name,
 
     return curr_img_paths
 
-## Verifies that the @param image_classifier_cmd is well formatted via
+# Verifies that the @param image_classifier_cmd is well formatted via
 # assertions.
+
+
 def verify_spawn_cmd(image_classifier_cmd):
     split_cmd = image_classifier_cmd.split()
     if "image-classifier" in split_cmd[0]:
@@ -206,17 +224,21 @@ def verify_spawn_cmd(image_classifier_cmd):
         assert any("-image-mode=" in s for s in split_cmd), (
             "image-classifier requires -image-mode to be specified")
 
-## Prints the Top-1 and Top-5 accuracy given @param total_image_count, @param
+# Prints the Top-1 and Top-5 accuracy given @param total_image_count, @param
 # top1_count, and @param top5_count.
+
+
 def print_topk_accuracy(total_image_count, top1_count, top5_count):
     top1_accuracy = float(top1_count) / float(total_image_count)
     top5_accuracy = float(top5_count) / float(total_image_count)
     print "\tTop-1 accuracy: " + "{0:.4f}".format(top1_accuracy)
     print "\tTop-5 accuracy: " + "{0:.4f}".format(top5_accuracy)
 
-## Calculates and prints top-1 and top-5 accuracy for images located in
+# Calculates and prints top-1 and top-5 accuracy for images located in
 # subdirectories at @param validation_images_dir, given the command line
 # parameters passed in to @param args.
+
+
 def calculate_top_k(validation_images_dir, image_classifier_cmd, batch_size,
                     resize_input_images, verbose):
     print "Calculating Top-1 and Top-5 accuracy..."
@@ -329,6 +351,7 @@ def main():
 
     calculate_top_k(validation_images_dir, args.image_classifier_cmd,
                     args.batch_size, args.resize_input_images, args.verbose)
+
 
 if __name__ == "__main__":
     main()

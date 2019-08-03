@@ -186,7 +186,9 @@ ONNXModelLoader::loadProto(const void *onnxModel, size_t onnxModelSize) {
 llvm::Expected<ONNX_NAMESPACE::ModelProto>
 ONNXModelLoader::loadProto(const std::string &filename) {
   std::ifstream ff(filename, std::ios::in | std::ios::binary);
-  RETURN_ERR_IF_NOT(ff, "Can't find the model or network files.",
+  RETURN_ERR_IF_NOT(ff,
+                    strFormat("Can't find the model or network files for %s.",
+                              filename.c_str()),
                     GlowErr::ErrorCode::MODEL_LOADER_INVALID_PROTOBUF);
 
   // TODO: intend to find a way to reuse the following function later
@@ -587,8 +589,7 @@ llvm::Error ONNXModelLoader::loadConv(const ONNX_NAMESPACE::NodeProto &op,
   // Extra check when the 'kernel_shape' attribute exists.
   // The 'kernel_shape' attribute is redundant not mandatory.
   if (dict.count("kernel_shape")) {
-    std::vector<unsigned_t> kernelShapeAttribute =
-        getShape<unsigned_t>(dict.at("kernel_shape"));
+    auto kernelShapeAttribute = getShape<unsigned_t>(dict.at("kernel_shape"));
     RETURN_ERR_IF_NOT(
         (kernelShape[0] == kernelShapeAttribute[0] &&
          kernelShape[1] == kernelShapeAttribute[1]),
@@ -655,8 +656,7 @@ llvm::Error ONNXModelLoader::loadPool(const ONNX_NAMESPACE::NodeProto &op,
   if (dict.count("strides")) {
     strides = getShape<unsigned_t>(dict.at("strides"));
   }
-  std::vector<unsigned_t> kernels =
-      getShape<unsigned_t>(dict.at("kernel_shape"));
+  auto kernels = getShape<unsigned_t>(dict.at("kernel_shape"));
 
   if (in.dims().size() != 4 || kernels.size() != 2) {
     // Glow only handles 2D pooling currently.
@@ -1062,18 +1062,22 @@ ONNXModelLoader::loadSpaceToDepth(const ONNX_NAMESPACE::NodeProto &op,
 
 llvm::Error
 ONNXModelLoader::loadConstantOfShape(const ONNX_NAMESPACE::NodeProto &op,
-                                     const ArgumentDictionaryTy &dict) {
+                                     const ArgumentDictionaryTy &dict,
+                                     bool isSplat) {
   Tensor T(ElemKind::FloatTy, {1});
   T.getHandle().raw(0) = 0.0;
 
   if (dict.count("value")) {
     RETURN_IF_ERR(loadTensor(dict.at("value")->t(), &T));
-    RETURN_ERR_IF_NOT(T.dims().size() == 1, "Value must be a 1D vector.");
-    RETURN_ERR_IF_NOT(T.getType().getElementType() == ElemKind::FloatTy ||
-                          T.getType().getElementType() == ElemKind::Int64ITy ||
-                          T.getType().getElementType() == ElemKind::Int32ITy,
-                      T.getType().getElementName().str() +
-                          " type Value is not supported.");
+    if (!isSplat) {
+      // Validate tensor only for ConstantOfShape operator.
+      RETURN_ERR_IF_NOT(T.dims().size() == 1, "Value must be a 1D vector.");
+      RETURN_ERR_IF_NOT(
+          T.getType().getElementType() == ElemKind::FloatTy ||
+              T.getType().getElementType() == ElemKind::Int64ITy ||
+              T.getType().getElementType() == ElemKind::Int32ITy,
+          T.getType().getElementName().str() + " type Value is not supported.");
+    }
   }
 
   TypeRef ty;
@@ -1114,7 +1118,7 @@ ONNXModelLoader::loadConstantOfShape(const ONNX_NAMESPACE::NodeProto &op,
       SN = G_.createSplat(loadOperatorName(op), ty, T.getHandle().raw(0));
     }
   } else {
-    ty = G_.getParent()->uniqueType(ElemKind::FloatTy, {1});
+    ty = G_.getParent()->uniqueType(T.getType().getElementType(), T.dims());
     SN = G_.createSplat(loadOperatorName(op), ty, T.getHandle().raw(0));
   }
   RETURN_IF_ERR(addNodeAsOutput(op, SN));
@@ -1199,6 +1203,257 @@ llvm::Error ONNXModelLoader::loadWhere(const ONNX_NAMESPACE::NodeProto &op,
   return llvm::Error::success();
 }
 
+llvm::Error ONNXModelLoader::loadCmpEQ(const ONNX_NAMESPACE::NodeProto &op,
+                                       const ArgumentDictionaryTy &dict) {
+  NodeValue LHS;
+  ASSIGN_VALUE_OR_RETURN_ERR(LHS, getNodeValueByName(op.input(0)));
+  NodeValue RHS;
+  ASSIGN_VALUE_OR_RETURN_ERR(RHS, getNodeValueByName(op.input(1)));
+
+  Node *N = G_.createCmpEQ(loadOperatorName(op), LHS, RHS);
+
+  RETURN_IF_ERR(addNodeAsOutput(op, N));
+  return llvm::Error::success();
+}
+
+llvm::Error ONNXModelLoader::loadCmpLTE(const ONNX_NAMESPACE::NodeProto &op,
+                                        const ArgumentDictionaryTy &dict) {
+  NodeValue LHS;
+  ASSIGN_VALUE_OR_RETURN_ERR(LHS, getNodeValueByName(op.input(0)));
+  NodeValue RHS;
+  ASSIGN_VALUE_OR_RETURN_ERR(RHS, getNodeValueByName(op.input(1)));
+
+  Node *N = G_.createCmpLTE(loadOperatorName(op), LHS, RHS);
+
+  RETURN_IF_ERR(addNodeAsOutput(op, N));
+  return llvm::Error::success();
+}
+
+llvm::Error ONNXModelLoader::loadSelect(const ONNX_NAMESPACE::NodeProto &op,
+                                        const ArgumentDictionaryTy &dict) {
+  NodeValue Cond;
+  ASSIGN_VALUE_OR_RETURN_ERR(Cond, getNodeValueByName(op.input(0)));
+  NodeValue LHS;
+  ASSIGN_VALUE_OR_RETURN_ERR(LHS, getNodeValueByName(op.input(1)));
+  NodeValue RHS;
+  ASSIGN_VALUE_OR_RETURN_ERR(RHS, getNodeValueByName(op.input(2)));
+
+  auto shape = getShape<size_t>(dict.at("shape"));
+
+  auto outTy = G_.getParent()->uniqueType(LHS.getElementType(), shape);
+  Node *N = G_.createSelect(loadOperatorName(op), outTy, Cond, LHS, RHS);
+
+  RETURN_IF_ERR(addNodeAsOutput(op, N));
+  return llvm::Error::success();
+}
+
+llvm::Error ONNXModelLoader::loadQuantize(const ONNX_NAMESPACE::NodeProto &op,
+                                          const ArgumentDictionaryTy &dict) {
+  NodeValue in;
+  ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
+  float scale;
+  ASSIGN_VALUE_OR_RETURN_ERR(scale, loadFloat(dict.at("scale")));
+  unsigned_t offset;
+  ASSIGN_VALUE_OR_RETURN_ERR(offset, loadInt(dict.at("offset")));
+
+  auto outDims = in.getType()->dims();
+  auto outTy =
+      G_.getParent()->uniqueType(ElemKind::Int8QTy, outDims, scale, offset);
+  Node *N = G_.createQuantize(loadOperatorName(op), in, outTy);
+
+  RETURN_IF_ERR(addNodeAsOutput(op, N));
+  return llvm::Error::success();
+}
+
+llvm::Error ONNXModelLoader::loadConvertTo(const ONNX_NAMESPACE::NodeProto &op,
+                                           const ArgumentDictionaryTy &dict) {
+  NodeValue in;
+  ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
+
+  auto shape = getShape<size_t>(dict.at("shape"));
+
+  auto outTy = G_.getParent()->uniqueType(in.getElementType(), shape);
+  Node *N = G_.createConvertTo(loadOperatorName(op), in, outTy);
+
+  RETURN_IF_ERR(addNodeAsOutput(op, N));
+  return llvm::Error::success();
+}
+
+llvm::Error ONNXModelLoader::loadDequantize(const ONNX_NAMESPACE::NodeProto &op,
+                                            const ArgumentDictionaryTy &dict) {
+  NodeValue in;
+  ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
+
+  Node *N = G_.createDequantize(loadOperatorName(op), in);
+
+  RETURN_IF_ERR(addNodeAsOutput(op, N));
+  return llvm::Error::success();
+}
+
+llvm::Error ONNXModelLoader::loadRegression(const ONNX_NAMESPACE::NodeProto &op,
+                                            const ArgumentDictionaryTy &dict) {
+  NodeValue in;
+  ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
+  NodeValue expected;
+  ASSIGN_VALUE_OR_RETURN_ERR(expected, getNodeValueByName(op.input(1)));
+
+  Node *N = G_.createRegression(loadOperatorName(op), in, expected);
+
+  RETURN_IF_ERR(addNodeAsOutput(op, N));
+  return llvm::Error::success();
+}
+
+llvm::Error ONNXModelLoader::loadBatchedAdd(const ONNX_NAMESPACE::NodeProto &op,
+                                            const ArgumentDictionaryTy &dict) {
+  NodeValue batch;
+  ASSIGN_VALUE_OR_RETURN_ERR(batch, getNodeValueByName(op.input(0)));
+  NodeValue sample;
+  ASSIGN_VALUE_OR_RETURN_ERR(sample, getNodeValueByName(op.input(1)));
+
+  Node *N = G_.createBatchedAdd(loadOperatorName(op), batch, sample);
+
+  RETURN_IF_ERR(addNodeAsOutput(op, N));
+  return llvm::Error::success();
+}
+
+llvm::Error
+ONNXModelLoader::loadScatterAssign(const ONNX_NAMESPACE::NodeProto &op,
+                                   const ArgumentDictionaryTy &dict) {
+  NodeValue data;
+  ASSIGN_VALUE_OR_RETURN_ERR(data, getNodeValueByName(op.input(0)));
+  NodeValue indices;
+  ASSIGN_VALUE_OR_RETURN_ERR(indices, getNodeValueByName(op.input(1)));
+  NodeValue slices;
+  ASSIGN_VALUE_OR_RETURN_ERR(slices, getNodeValueByName(op.input(2)));
+
+  Node *N = G_.createScatterData(loadOperatorName(op), data, indices, slices);
+
+  RETURN_IF_ERR(addNodeAsOutput(op, N));
+  return llvm::Error::success();
+}
+
+llvm::Error
+ONNXModelLoader::loadIntLookupTable(const ONNX_NAMESPACE::NodeProto &op,
+                                    const ArgumentDictionaryTy &dict) {
+  NodeValue in;
+  ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
+
+  auto values = getShape<int8_t>(dict.at("values"));
+  auto shape = getShape<size_t>(dict.at("shape"));
+
+  auto outTy = G_.getParent()->uniqueType(in.getElementType(), shape);
+  Node *N = G_.createIntLookupTable(loadOperatorName(op), in, values, outTy);
+
+  RETURN_IF_ERR(addNodeAsOutput(op, N));
+  return llvm::Error::success();
+}
+
+llvm::Error
+ONNXModelLoader::loadLengthsRangeFill(const ONNX_NAMESPACE::NodeProto &op,
+                                      const ArgumentDictionaryTy &dict) {
+  NodeValue lengths;
+  ASSIGN_VALUE_OR_RETURN_ERR(lengths, getNodeValueByName(op.input(0)));
+  unsigned_t size;
+  ASSIGN_VALUE_OR_RETURN_ERR(size, loadInt(dict.at("size")));
+
+  Node *N = G_.createLengthsRangeFill(loadOperatorName(op), lengths, size);
+
+  RETURN_IF_ERR(addNodeAsOutput(op, N));
+  return llvm::Error::success();
+}
+
+llvm::Error
+ONNXModelLoader::loadRescaleQuantized(const ONNX_NAMESPACE::NodeProto &op,
+                                      const ArgumentDictionaryTy &dict) {
+  NodeValue in;
+  ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
+  float scale;
+  ASSIGN_VALUE_OR_RETURN_ERR(scale, loadFloat(dict.at("scale")));
+  unsigned_t offset;
+  ASSIGN_VALUE_OR_RETURN_ERR(offset, loadInt(dict.at("offset")));
+
+  auto inTy = in.getType();
+  auto outTy = G_.getParent()->uniqueType(inTy->getElementType(), inTy->dims(),
+                                          scale, offset);
+
+  Node *N = G_.createRescaleQuantized(loadOperatorName(op), in, outTy);
+
+  RETURN_IF_ERR(addNodeAsOutput(op, N));
+  return llvm::Error::success();
+}
+
+llvm::Error ONNXModelLoader::loadRowwiseQuantizedSparseLengthsWeightedSum(
+    const ONNX_NAMESPACE::NodeProto &op, const ArgumentDictionaryTy &dict) {
+  Constant *data;
+  ASSIGN_VALUE_OR_RETURN_ERR(data, getConstantByName(op.input(0)));
+  Constant *scales;
+  ASSIGN_VALUE_OR_RETURN_ERR(scales, getConstantByName(op.input(1)));
+  Constant *offsets;
+  ASSIGN_VALUE_OR_RETURN_ERR(offsets, getConstantByName(op.input(2)));
+  NodeValue weights;
+  ASSIGN_VALUE_OR_RETURN_ERR(weights, getNodeValueByName(op.input(3)));
+  NodeValue indices;
+  ASSIGN_VALUE_OR_RETURN_ERR(indices, getNodeValueByName(op.input(4)));
+  NodeValue lengths;
+  ASSIGN_VALUE_OR_RETURN_ERR(lengths, getNodeValueByName(op.input(5)));
+
+  Node *N = G_.createRowwiseQuantizedSparseLengthsWeightedSum(
+      loadOperatorName(op), data, scales, offsets, weights, indices, lengths);
+
+  RETURN_IF_ERR(addNodeAsOutput(op, N));
+  return llvm::Error::success();
+}
+
+llvm::Error ONNXModelLoader::loadFusedRowwiseQuantizedSparseLengthsWeightedSum(
+    const ONNX_NAMESPACE::NodeProto &op, const ArgumentDictionaryTy &dict) {
+  NodeValue data;
+  ASSIGN_VALUE_OR_RETURN_ERR(data, getNodeValueByName(op.input(0)));
+  NodeValue weights;
+  ASSIGN_VALUE_OR_RETURN_ERR(weights, getNodeValueByName(op.input(1)));
+  NodeValue indices;
+  ASSIGN_VALUE_OR_RETURN_ERR(indices, getNodeValueByName(op.input(2)));
+  NodeValue lengths;
+  ASSIGN_VALUE_OR_RETURN_ERR(lengths, getNodeValueByName(op.input(3)));
+
+  Node *N = G_.createFusedRowwiseQuantizedSparseLengthsWeightedSum(
+      loadOperatorName(op), data, weights, indices, lengths);
+
+  RETURN_IF_ERR(addNodeAsOutput(op, N));
+  return llvm::Error::success();
+}
+
+llvm::Error
+ONNXModelLoader::loadFullyConnected(const ONNX_NAMESPACE::NodeProto &op,
+                                    const ArgumentDictionaryTy &dict) {
+  NodeValue in;
+  ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
+  Constant *W;
+  ASSIGN_VALUE_OR_RETURN_ERR(W, getConstantByName(op.input(1)));
+  Constant *B;
+  ASSIGN_VALUE_OR_RETURN_ERR(B, getConstantByName(op.input(2)));
+
+  unsigned_t axis = 1;
+  if (dict.count("axis")) {
+    ASSIGN_VALUE_OR_RETURN_ERR(axis, loadInt(dict.at("axis")));
+  }
+
+  Node *N = G_.createFullyConnected(loadOperatorName(op), in, W, B, axis);
+
+  RETURN_IF_ERR(addNodeAsOutput(op, N));
+  return llvm::Error::success();
+}
+
+llvm::Error ONNXModelLoader::loadSplat(const ONNX_NAMESPACE::NodeProto &op,
+                                       const ArgumentDictionaryTy &dict) {
+  return loadConstantOfShape(op, dict, true /* isSplat */);
+}
+
+llvm::Error ONNXModelLoader::loadRowwiseQuantizedFullyConnected(
+    const ONNX_NAMESPACE::NodeProto &op, const ArgumentDictionaryTy &dict) {
+  // TODO
+  RETURN_ERR("Not implemented.");
+}
+
 llvm::Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
   ArgumentDictionaryTy dict = loadArgumentMap(op);
   const std::string &typeName = op.op_type();
@@ -1263,13 +1518,65 @@ llvm::Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
     return loadSpaceToDepth(op, dict);
   }
   if (typeName == "ConstantOfShape") {
-    return loadConstantOfShape(op, dict);
+    return loadConstantOfShape(op, dict, false /* isSplat */);
   }
   if (typeName == "Tile") {
     return loadTile(op, dict);
   }
   if (typeName == "Where") {
     return loadWhere(op, dict);
+  }
+  // Glow specific operators
+  if (typeName == "CmpEQ") {
+    return loadCmpEQ(op, dict);
+  }
+  if (typeName == "CmpLTE") {
+    return loadCmpLTE(op, dict);
+  }
+  if (typeName == "Select") {
+    return loadSelect(op, dict);
+  }
+  if (typeName == "Quantize") {
+    return loadQuantize(op, dict);
+  }
+  if (typeName == "ConvertTo") {
+    return loadConvertTo(op, dict);
+  }
+  if (typeName == "Dequantize") {
+    return loadDequantize(op, dict);
+  }
+  if (typeName == "Regression") {
+    return loadRegression(op, dict);
+  }
+  if (typeName == "BatchedAdd") {
+    return loadBatchedAdd(op, dict);
+  }
+  if (typeName == "ScatterAssign") {
+    return loadScatterAssign(op, dict);
+  }
+  if (typeName == "IntLookupTable") {
+    return loadIntLookupTable(op, dict);
+  }
+  if (typeName == "LengthsRangeFill") {
+    return loadLengthsRangeFill(op, dict);
+  }
+  if (typeName == "RescaleQuantized") {
+    return loadRescaleQuantized(op, dict);
+  }
+  if (typeName == "RowwiseQuantizedSparseLengthsWeightedSum") {
+    return loadRowwiseQuantizedSparseLengthsWeightedSum(op, dict);
+  }
+  if (typeName == "FusedRowwiseQuantizedSparseLengthsWeightedSum") {
+    return loadFusedRowwiseQuantizedSparseLengthsWeightedSum(op, dict);
+  }
+  if (typeName == "FullyConnected") {
+    return loadFullyConnected(op, dict);
+  }
+  if (typeName == "RowwiseQuantizedFullyConnected") {
+    return loadRowwiseQuantizedFullyConnected(op, dict);
+  }
+  if (typeName == "Splat") {
+    return loadSplat(op, dict);
   }
 
   RETURN_ERR("Failed to load operator " + typeName + " .",

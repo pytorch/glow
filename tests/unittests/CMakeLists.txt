@@ -20,6 +20,20 @@ target_link_libraries(BackendTestUtils
                         LLVMSupport
                         gtest)
 
+add_library(BackendTestUtils2
+            BackendTestUtils2.cpp)
+target_link_libraries(BackendTestUtils2
+                      PRIVATE
+                        Base
+                        Converter
+                        ExecutionEngine2
+                        Graph
+                        GraphOptimizer
+                        Quantization
+                        QuantizationBase
+                        LLVMSupport
+                        gtest)
+
 # Test executables, sorted alphabetically.
 
 add_executable(BackendCorrectnessTest
@@ -27,10 +41,10 @@ add_executable(BackendCorrectnessTest
 target_link_libraries(BackendCorrectnessTest
                       PRIVATE
                         Backends
-                        BackendTestUtils
+                        BackendTestUtils2
                         Graph
                         IR
-                        ExecutionEngine
+                        ExecutionEngine2
                         Quantization
                         Support
                         gtest
@@ -69,7 +83,7 @@ target_link_libraries(Caffe2ImporterTest
                       PRIVATE
                         Graph
                         Importer
-                        ExecutionEngine
+                        ExecutionEngine2
                         gtest
                         TestMain)
 add_glow_test(NAME Caffe2ImporterTest
@@ -84,7 +98,7 @@ target_link_libraries(DeviceManagerTest
                         Backends
                         Graph
                         IR
-                        ExecutionEngine
+                        ExecutionEngine2
                         GraphOptimizer
                         gtest
                         TestMain)
@@ -118,7 +132,7 @@ if(GLOW_WITH_CPU AND NOT MSVC)
                           CPURuntimeNative
                           Graph
                           IR
-                          ExecutionEngine
+                          ExecutionEngine2
                           Support
                           gtest
                           TestMain)
@@ -142,7 +156,7 @@ add_executable(GradCheckTest
 target_link_libraries(GradCheckTest
                       PRIVATE
                         Base
-                        ExecutionEngine
+                        ExecutionEngine2
                         Graph
                         IR
                         gtest
@@ -156,7 +170,7 @@ target_link_libraries(GraphGradTest
                       PRIVATE
                         Graph
                         IR
-                        ExecutionEngine
+                        ExecutionEngine2
                         gtest
                         TestMain)
 add_glow_test(GraphGradTest ${GLOW_BINARY_DIR}/tests/GraphGradTest --gtest_output=xml:GraphGradTest.xml)
@@ -190,7 +204,7 @@ target_link_libraries(GraphTest
                       PRIVATE
                         Backend
                         Backends
-                        ExecutionEngine
+                        ExecutionEngine2
                         Graph
                         IR
                         GraphOptimizer
@@ -205,7 +219,7 @@ if(GLOW_WITH_HABANA)
   target_link_libraries(HabanaBackendTest
                         PRIVATE
                           Backends
-                          ExecutionEngine
+                          ExecutionEngine2
                           Graph
                           GraphOptimizer
                           gtest
@@ -246,10 +260,10 @@ if(GLOW_WITH_CPU)
                  HyphenTest.cpp)
   target_link_libraries(HyphenTest
                         PRIVATE
-                          BackendTestUtils
+                          BackendTestUtils2
                           Graph
                           IR
-                          ExecutionEngine
+                          ExecutionEngine2
                           Quantization
                           Support
                           gtest
@@ -330,8 +344,8 @@ if(GLOW_WITH_OPENCL)
                           OpenCL::OpenCL
                         PRIVATE
                           Backends
-                          BackendTestUtils
-                          ExecutionEngine
+                          BackendTestUtils2
+                          ExecutionEngine2
                           Graph
                           IR
                           gtest
@@ -347,7 +361,7 @@ target_link_libraries(OnnxImporterTest
                         Backend
                         Graph
                         Importer
-                        ExecutionEngine
+                        ExecutionEngine2
                         gtest
                         TestMain)
 add_glow_test(NAME OnnxImporterTest
@@ -362,7 +376,7 @@ target_link_libraries(OnnxExporterTest
                         Graph
                         Importer
                         Exporter
-                        ExecutionEngine
+                        ExecutionEngine2
                         gtest
                         TestMain)
 add_glow_test(NAME OnnxExporterTest
@@ -374,7 +388,7 @@ add_executable(OperatorGradTest
 target_link_libraries(OperatorGradTest
                       PRIVATE
                         Base
-                        ExecutionEngine
+                        ExecutionEngine2
                         Graph
                         gtest
                         TestMain)
@@ -385,10 +399,10 @@ add_executable(OperatorTest
         OperatorTest.cpp)
 target_link_libraries(OperatorTest
                       PRIVATE
-                        BackendTestUtils
+                        BackendTestUtils2
                         Graph
                         IR
-                        ExecutionEngine
+                        ExecutionEngine2
                         Quantization
                         GraphOptimizer
                         gtest
@@ -402,8 +416,9 @@ target_link_libraries(PartitionerTest
                       PRIVATE
                         Backend
                         Backends
-                        ExecutionEngine
+                        ExecutionEngine2
                         Graph
+                        GraphOptimizer
                         IR
                         Partitioner
                         gtest
@@ -414,12 +429,12 @@ add_executable(RecommendationSystemTest
                RecommendationSystemTest.cpp)
 target_link_libraries(RecommendationSystemTest
                       PRIVATE
-                        BackendTestUtils
+                        BackendTestUtils2
                         Converter
                         Graph
                         IR
                         ExecutionContext
-                        ExecutionEngine
+                        ExecutionEngine2
                         Quantization
                         Partitioner
                         gtest
@@ -449,7 +464,7 @@ target_link_libraries(QuantizationTest
                       PRIVATE
                         Backend
                         Backends
-                        ExecutionEngine
+                        ExecutionEngine2
                         Graph
                         GraphOptimizer
                         Quantization
@@ -457,6 +472,16 @@ target_link_libraries(QuantizationTest
                         TestMain)
 add_glow_test(QuantizationTest ${GLOW_BINARY_DIR}/tests/QuantizationTest --gtest_output=xml:QuantizationTest.xml)
 LIST(APPEND UNOPT_TESTS ./tests/QuantizationTest -optimize-ir=false &&)
+
+add_executable(StatsExporterTest
+               StatsExporterTest.cpp)
+target_link_libraries(StatsExporterTest
+                      PRIVATE
+                        Backends
+                        Runtime
+                        gtest
+                        TestMain)
+add_glow_test(StatsExporterTest ${GLOW_BINARY_DIR}/tests/StatsExporterTest --gtest_output=xml:StatsExporterTest.xml)
 
 add_executable(TensorsTest
                TensorsTest.cpp)
@@ -491,10 +516,11 @@ add_executable(TraceEventsTest
                TraceEventsTest.cpp)
 target_link_libraries(TraceEventsTest
                       PRIVATE
-                        Backend
+                        Backends
                         Graph
                         IR
-                        ExecutionEngine
+                        ExecutionEngine2
+                        BackendTestUtils2
                         GraphOptimizer
                         gtest
                         TestMain)
@@ -506,7 +532,7 @@ add_executable(TypeAToTypeBFunctionConverterTest
 target_link_libraries(TypeAToTypeBFunctionConverterTest
                       PRIVATE
                         Converter
-                        ExecutionEngine
+                        ExecutionEngine2
                         Graph
                         GraphOptimizer
                         gtest

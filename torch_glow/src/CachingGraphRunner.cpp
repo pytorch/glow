@@ -20,41 +20,31 @@
 
 #include "glow/Support/Support.h"
 
-GraphInfo::GraphInfo(const torch::jit::Node *node)
-    : subgraph(node->g(at::attr::Subgraph)) {}
-
-void CachingGraphRunner::runGraph(const torch::jit::Node *node,
-                                  torch::jit::Stack &stack) {
+llvm::Error CachingGraphRunner::runGraph(const torch::jit::Node *node,
+                                         torch::jit::Stack &stack) {
   // If this is the first time this subgraph has been run then create a new
   // GraphInfo object to store information about it.
-  if (!jitNodeToInfoMap_.count(node)) {
-    GraphInfo graphInfo(node);
-    jitNodeToInfoMap_.insert({node, std::move(graphInfo)});
-  }
 
-  auto &graphInfo = jitNodeToInfoMap_.at(node);
-
-  const at::ArrayRef<torch::jit::Value *> &graphInputs =
-      graphInfo.subgraph->inputs();
+  const std::shared_ptr<torch::jit::Graph> graph = node->g(at::attr::Subgraph);
+  const auto &graphInputs = graph->inputs();
   const auto numInputs = graphInputs.size();
+  auto inputs = torch::jit::last(stack, numInputs);
+  const char *const functionName = "PyTorchFunction";
 
-  at::ArrayRef<torch::jit::IValue> inputs = torch::jit::last(stack, numInputs);
+  glow::Function *f = nullptr;
+  auto &mod = executionEngine_.getModule();
+  if ((f = mod.getFunction(functionName))) {
+    mod.eraseFunction(f);
+  }
+  f = mod.createFunction(functionName);
+  std::vector<glow::Placeholder *> inputPlaceholders;
+  std::vector<glow::Placeholder *> outputPlaceholders;
 
-  // TODO: cache loaderResult so we don't have to recompile every run.
-  PyTorchModelLoader loader(&executionEngine_.getModule(),
-                            graphInfo.subgraph.get(), &inputs);
-  loader.load();
-
-  glow::Function *f = loader.getFunction();
-  std::vector<glow::Placeholder *> inputPlaceholders =
-      loader.getInputPlaceholders();
-  std::vector<glow::Placeholder *> outputPlaceholders =
-      loader.getOutputPlaceholders();
+  RETURN_IF_ERR(PyTorchModelLoader::loadJITGraph(
+      *f, *graph, inputs, inputPlaceholders, outputPlaceholders));
 
   glow::CompilationContext cctx;
   executionEngine_.compile(f, cctx);
-
-  assert(inputs.size() == inputPlaceholders.size());
 
   glow::PlaceholderBindings bindings;
   for (size_t i = 0; i < inputs.size(); ++i) {
@@ -83,4 +73,6 @@ void CachingGraphRunner::runGraph(const torch::jit::Node *node,
     auto var = torch::autograd::make_variable(output.toTensor());
     stack.push_back(at::IValue(var));
   }
+
+  return llvm::Error::success();
 }

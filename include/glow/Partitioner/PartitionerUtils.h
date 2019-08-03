@@ -17,44 +17,10 @@
 #define GLOW_PARTITIONER_PARTITIONUTILS_H
 
 #include "glow/Graph/Graph.h"
+#include "glow/Partitioner/PartitionerTypes.h"
 #include "llvm/ADT/DenseMap.h"
 
 namespace glow {
-using NodesSet = std::set<Node *>;
-
-/// The memory usage of a subgraph (i.e. a list of nodes of a function).
-struct GraphMemInfo {
-  // The memory usage of all input nodes (whose predecessors are not included in
-  // this subgraph) of this subgraph.
-  uint64_t inMemSize;
-  // The memory usage of all output nodes (whose successors are not included in
-  // this subgraph) of this subgraph.
-  uint64_t outMemSize;
-  // The memory usage of all constants used in this subgraph.
-  uint64_t constMemSize;
-
-  GraphMemInfo() : inMemSize(0), outMemSize(0), constMemSize(0){};
-  GraphMemInfo(uint64_t inMem, uint64_t outMem, uint64_t constMem)
-      : inMemSize(inMem), outMemSize(outMem), constMemSize(constMem){};
-
-  // Get the total memory size of each partition.
-  uint64_t getTotalMemSize() const {
-    return inMemSize + outMemSize + constMemSize;
-  }
-
-  bool equals(const GraphMemInfo &other) const {
-    return inMemSize == other.inMemSize && outMemSize == other.outMemSize &&
-           constMemSize == other.constMemSize;
-  }
-};
-
-inline bool operator==(const GraphMemInfo &LHS, const GraphMemInfo &RHS) {
-  return LHS.equals(RHS);
-}
-
-/// A list of <nodelist> with BFS order.
-using BFSLevel = std::vector<std::vector<Node *>>;
-
 /// Visit nodes if Function \p F in BFS order and return the nodes by levels
 /// (the longest distance between one node and the root).
 BFSLevel getBFSLevel(Function *F);
@@ -70,8 +36,14 @@ std::vector<Node *> getOutUsersWithOnePredecessor(const NodesSet &nodes);
 /// in the set \p nodes.
 uint64_t getOutMemPerNode(const NodesSet &nodes, const Node *node);
 
-/// Given a node, \return the NodeSet of inputs of this node.
+/// Given a node, \returns the NodeSet of inputs of this node.
 NodesSet getInputs(const Node *node);
+
+/// Return the estimated op computation time based on \p backendInfo.
+float getNodeComputeTime(const Node *node, const BackendInfo &backendInfo);
+
+/// Given a node, \returns the memory usage of its inputs (i.e. Storage input).
+uint64_t getNodeMemUsage(const Node *node);
 
 /// Given nodes set \p currNodes and its memory usage info \p info, \returns the
 /// new memory usage if \p newNode is added into \p currNodes.
@@ -85,5 +57,8 @@ GraphMemInfo getGraphMemInfo(const NodesSet &nodes);
 /// Parse a node name string (e.g. "Div,Add") \p names, \returns a set of
 /// NodeKinds corresponding to the names in the string.
 std::set<Kinded::Kind> generateNodeKindsSet(llvm::StringRef names);
+
+/// Log the info of current partition \p partitions.
+void logPartitionInfo(const NodeToFunctionMap &partitions);
 } // namespace glow
 #endif // GLOW_PARTITIONER_PARTITIONUTILS_H

@@ -16,7 +16,7 @@
 
 #include "glow/Backends/DeviceManager.h"
 #include "glow/Base/Image.h"
-#include "glow/ExecutionEngine/ExecutionEngine.h"
+#include "glow/ExecutionEngine/ExecutionEngine2.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Importer/Caffe2ModelLoader.h"
 #include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
@@ -152,8 +152,8 @@ int main(int argc, char **argv) {
     context->setTraceContext(
         llvm::make_unique<TraceContext>(TraceLevel::STANDARD));
     context->getPlaceholderBindings()->allocate(module.getPlaceholders());
-    updateInputPlaceholders(*(context->getPlaceholderBindings()), {input},
-                            {&batch});
+    updateInputPlaceholders2(*(context->getPlaceholderBindings()), {input},
+                             {&batch});
 
     devices[i]->runFunction(
         "resnet50", std::move(context),

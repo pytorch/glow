@@ -25,6 +25,7 @@ BB.newBackendSpecificInstr("OCLConvolution")
     .addMember(MemberType::VectorUnsigned, "Strides")
     .addMember(MemberType::VectorUnsigned, "Pads")
     .addMember(MemberType::Unsigned, "Group")
+    .addMember(MemberType::Unsigned, "Dilation")
     .autoIRGen()
     .autoVerify(VerifyKind::SameElementType, {"Dest", "Src", "Filter"});
 

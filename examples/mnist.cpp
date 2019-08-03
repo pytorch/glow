@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #include "glow/Base/Image.h"
-#include "glow/ExecutionEngine/ExecutionEngine.h"
+#include "glow/ExecutionEngine/ExecutionEngine2.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Importer/Caffe2ModelLoader.h"
 #include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
@@ -82,7 +82,7 @@ unsigned loadMNIST(Tensor &imageInputs, Tensor &labelInputs) {
   return numImages;
 }
 
-void createModel(ExecutionEngine &EE, Function *F,
+void createModel(ExecutionEngine2 &EE, Function *F,
                  PlaceholderBindings &bindings, unsigned minibatchSize,
                  Placeholder *&inputPH, Placeholder *&outputPH,
                  Placeholder *&selectedPH) {
@@ -107,8 +107,8 @@ void createModel(ExecutionEngine &EE, Function *F,
   outputPH = result->getPlaceholder();
 }
 
-void trainModel(ExecutionEngine &EE, PlaceholderBindings &bindings, Function *F,
-                unsigned minibatchSize, unsigned numIterations,
+void trainModel(ExecutionEngine2 &EE, PlaceholderBindings &bindings,
+                Function *F, unsigned minibatchSize, unsigned numIterations,
                 Tensor &imageInputs, Tensor &labelInputs, Placeholder *inputPH,
                 Placeholder *selectedPH) {
   llvm::Timer timer("Training", "Training");
@@ -123,13 +123,15 @@ void trainModel(ExecutionEngine &EE, PlaceholderBindings &bindings, Function *F,
 
   Function *TF = glow::differentiate(F, TC);
 
-  EE.compile(CompilationMode::Train, TF);
+  EE.compile(CompilationMode::Train);
+  bindings.allocate(EE.getModule().getPlaceholders());
 
   LOG(INFO) << "Training.";
 
   // This variable records the number of the next sample to be used for
   // training.
   size_t sampleCounter = 0;
+  auto tfName = TF->getName();
 
   for (int epoch = 0; epoch < 60; epoch++) {
     LOG(INFO) << "Training - epoch #" << epoch;
@@ -139,14 +141,14 @@ void trainModel(ExecutionEngine &EE, PlaceholderBindings &bindings, Function *F,
     // On each training iteration take a slice of imageInputs and labelInputs
     // and put them into variables A and B, then run forward and backward passes
     // and update weights.
-    runBatch(EE, bindings, numIterations, sampleCounter, {inputPH, selectedPH},
-             {&imageInputs, &labelInputs});
+    runBatch2(EE, bindings, numIterations, sampleCounter, {inputPH, selectedPH},
+              {&imageInputs, &labelInputs}, tfName);
 
     timer.stopTimer();
   }
 }
 
-void validateModel(ExecutionEngine &EE, PlaceholderBindings &bindings,
+void validateModel(ExecutionEngine2 &EE, PlaceholderBindings &bindings,
                    Function *F, unsigned minibatchSize, unsigned numIterations,
                    Tensor &imageInputs, Tensor &labelInputs,
                    Placeholder *inputPH, Placeholder *outputPH,
@@ -154,18 +156,19 @@ void validateModel(ExecutionEngine &EE, PlaceholderBindings &bindings,
   LOG(INFO) << "Validating.";
 
   ::glow::convertPlaceholdersToConstants(F, bindings, {inputPH, outputPH});
-  EE.compile(CompilationMode::Infer, F);
+  EE.compile(CompilationMode::Infer);
 
   auto LIH = labelInputs.getHandle<int64_t>();
 
   // Check how many examples out of eighty previously unseen digits we can
   // classify correctly.
   int rightAnswer = 0;
+  auto fname = F->getName();
 
   for (int iter = numIterations; iter < numIterations + 10; iter++) {
     bindings.get(inputPH)->copyConsecutiveSlices(&imageInputs,
                                                  minibatchSize * iter);
-    EE.run(bindings);
+    EE.run(bindings, fname);
 
     for (unsigned i = 0; i < minibatchSize; i++) {
       auto T = bindings.get(outputPH)->getHandle().extractSlice(i);
@@ -206,24 +209,32 @@ void testMNIST() {
   Tensor labelInputs;
   loadMNIST(imageInputs, labelInputs);
 
-  ExecutionEngine EE(executionBackend);
-  auto &mod = EE.getModule();
-  Function *F = mod.createFunction("main");
-
-  Placeholder *A, *E, *selected;
-  PlaceholderBindings bindings;
   unsigned minibatchSize = 8;
-
-  createModel(EE, F, bindings, minibatchSize, A, E, selected);
-  bindings.allocate(mod.getPlaceholders());
-
   const int numIterations = 30;
 
-  trainModel(EE, bindings, F, minibatchSize, numIterations, imageInputs,
-             labelInputs, A, selected);
+  PlaceholderBindings trainingBindings, inferBindings;
+  Placeholder *A, *E, *selected;
 
-  validateModel(EE, bindings, F, minibatchSize, numIterations, imageInputs,
-                labelInputs, A, E, false /*transpose*/);
+  ExecutionEngine2 EEI_(executionBackend);
+  auto &inferMod = EEI_.getModule();
+  Function *F = inferMod.createFunction("mnist");
+  createModel(EEI_, F, inferBindings, minibatchSize, A, E, selected);
+  inferBindings.allocate(inferMod.getPlaceholders());
+
+  ExecutionEngine2 EET_(executionBackend);
+  auto &trainMod = EET_.getModule();
+  Function *TF = trainMod.createFunction("mnist");
+  createModel(EET_, TF, trainingBindings, minibatchSize, A, E, selected);
+
+  trainModel(EET_, trainingBindings, TF, minibatchSize, numIterations,
+             imageInputs, labelInputs, A, selected);
+
+  trainingBindings.copyTrainableWeightsTo(inferBindings);
+  A = inferBindings.getPlaceholderByName("input");
+  E = inferBindings.getPlaceholderByName("return");
+
+  validateModel(EEI_, inferBindings, F, minibatchSize, numIterations,
+                imageInputs, labelInputs, A, E, false /*transpose*/);
 }
 
 /// This test loads LENET-MNIST model, transferred it into the trainable form,
@@ -235,13 +246,14 @@ void testMNISTLoadAndTraining() {
   loadMNIST(imageInputsTransposed, labelInputs);
   imageInputsTransposed.transpose(&imageInputs, NHWC2NCHW);
 
-  glow::ExecutionEngine EE;
-  auto &mod = EE.getModule();
-  auto *F = mod.createFunction("lenet_mnist");
+  PlaceholderBindings trainingBindings, inferBindings;
+  ExecutionEngine2 EEI_(executionBackend);
+  auto &inferMod = EEI_.getModule();
+  auto *F = inferMod.createFunction("lenet_mnist");
   unsigned minibatchSize = 8;
 
   auto *inputType =
-      mod.uniqueType(glow::ElemKind::FloatTy, {minibatchSize, 1, 28, 28});
+      inferMod.uniqueType(glow::ElemKind::FloatTy, {minibatchSize, 1, 28, 28});
   const char *inputName = "data";
 
   llvm::Error errPtr = llvm::Error::success();
@@ -258,25 +270,50 @@ void testMNISTLoadAndTraining() {
     return;
   }
 
-  glow::PlaceholderBindings bindings;
-  // Get input and output placeholders.
-  auto *A = llvm::cast<glow::Placeholder>(
-      EXIT_ON_ERR(loader.getNodeValueByName(inputName)));
-  auto *E = EXIT_ON_ERR(loader.getSingleOutput());
-  bindings.allocate(mod.getPlaceholders());
+  Placeholder *selectedI{nullptr};
+  if ((errPtr =
+           glow::prepareFunctionForTraining(F, inferBindings, selectedI))) {
+    return;
+  }
+
+  inferBindings.allocate(inferMod.getPlaceholders());
+
+  // Load the model a second time for training.
+  // TODO: remove once EE2 is able to compile in different modes.
+  ExecutionEngine2 EET_(executionBackend);
+  auto &trainMod = EET_.getModule();
+  auto *TF = trainMod.createFunction("lenet_mnist_train");
+  glow::Caffe2ModelLoader trainingLoader("lenet_mnist/predict_net.pb",
+                                         "lenet_mnist/init_net.pb", {inputName},
+                                         {inputType}, *TF, &errPtr);
+
+  if (errPtr) {
+    LOG(ERROR) << "Loader failed to load lenet_mnist model for training.";
+    return;
+  }
 
   Placeholder *selected{nullptr};
-  if ((errPtr = glow::prepareFunctionForTraining(F, bindings, selected))) {
+  if ((errPtr =
+           glow::prepareFunctionForTraining(TF, trainingBindings, selected))) {
     return;
   }
 
   const int numIterations = 30;
+  // Get input placeholder.
+  auto *A = llvm::cast<glow::Placeholder>(
+      EXIT_ON_ERR(trainingLoader.getNodeValueByName(inputName)));
 
-  trainModel(EE, bindings, F, minibatchSize, numIterations, imageInputs,
-             labelInputs, A, selected);
+  trainModel(EET_, trainingBindings, TF, minibatchSize, numIterations,
+             imageInputs, labelInputs, A, selected);
 
-  validateModel(EE, bindings, F, minibatchSize, numIterations, imageInputs,
-                labelInputs, A, E, true /*transpose*/);
+  // Get input and output placeholders.
+  A = llvm::cast<glow::Placeholder>(
+      EXIT_ON_ERR(loader.getNodeValueByName(inputName)));
+  auto *E = EXIT_ON_ERR(loader.getSingleOutput());
+  trainingBindings.copyTrainableWeightsTo(inferBindings);
+
+  validateModel(EEI_, inferBindings, F, minibatchSize, numIterations,
+                imageInputs, labelInputs, A, E, true /*transpose*/);
 }
 
 int main(int argc, char **argv) {

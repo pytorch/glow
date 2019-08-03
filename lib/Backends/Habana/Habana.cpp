@@ -404,9 +404,9 @@ static llvm::Error dumpTopologyInfo(uint32_t deviceId, uint64_t topologyId) {
   return llvm::Error::success();
 }
 
-HabanaFunction::HabanaFunction(const runtime::RuntimeBundle &bundle,
+HabanaFunction::HabanaFunction(runtime::RuntimeBundle &&bundle,
                                const std::string &recipeName, Function *F)
-    : CompiledFunction(bundle), recipeName_(recipeName) {
+    : CompiledFunction(std::move(bundle)), recipeName_(recipeName) {
   findIOPlaceholders(F);
 }
 
@@ -847,6 +847,7 @@ HabanaBackend::compile(Function *F, const BackendOptions &opts) const {
   std::vector<std::unique_ptr<ns_LrnKernel::Params>> lrnParams;
   std::vector<std::unique_ptr<synGEMMParams>> gemmParams;
   std::vector<std::unique_ptr<ns_Softmax::Params>> softmaxParams;
+  std::vector<std::unique_ptr<float>> batchBoxCoxParams;
 
   // Keep references to tensor pointer arrays passed into multi-input nodes
   // until the compilation is done.
@@ -1092,6 +1093,7 @@ HabanaBackend::compile(Function *F, const BackendOptions &opts) const {
         std::vector<synTensor> inputs;
         inputs.push_back(tensors[MI->getLHS()].get());
         inputs.push_back(tensors[MI->getRHS()].get());
+        inputs.push_back(/* bias */ nullptr);
         chk(synCreateGenericNode(inputs.data(), &tensors[MI].get(),
                                  inputs.size(), 1, nullptr, "gemm",
                                  MI->getName().data(), nullptr, nullptr));
@@ -1301,6 +1303,39 @@ HabanaBackend::compile(Function *F, const BackendOptions &opts) const {
       }
       break;
     }
+    case Kinded::Kind::BatchOneHotNodeKind: {
+      auto *BOHNode = llvm::cast<BatchOneHotNode>(&I);
+      std::vector<synTensor> inputs = {
+          tensors[BOHNode->getData()].get(),
+          tensors[BOHNode->getLengths()].get(),
+          tensors[BOHNode->getValues()].get(),
+      };
+      chk(synCreateGenericNode(inputs.data(), &tensors[BOHNode].get(),
+                               inputs.size(), 1, nullptr, "batch_one_hot_i32",
+                               BOHNode->getName().data(), nullptr, nullptr));
+      multiInputs.emplace_back(std::move(inputs));
+      break;
+    }
+    case Kinded::Kind::LengthsSumNodeKind: {
+      auto *LSNode = llvm::cast<LengthsSumNode>(&I);
+      std::vector<synTensor> inputs = {
+          tensors[LSNode->getData()].get(),
+          tensors[LSNode->getLengths()].get(),
+      };
+      chk(synCreateGenericNode(inputs.data(), &tensors[LSNode].get(),
+                               inputs.size(), 1, nullptr, "lengths_sum_f32",
+                               LSNode->getName().data(), nullptr, nullptr));
+      multiInputs.emplace_back(std::move(inputs));
+      break;
+    }
+    case Kinded::Kind::LengthsRangeFillNodeKind: {
+      auto *LRFNode = llvm::cast<LengthsRangeFillNode>(&I);
+      chk(synCreateGenericNode(&tensors[LRFNode->getLengths()].get(),
+                               &tensors[LRFNode].get(), 1, 1, nullptr,
+                               "lengths_range_fill_i32",
+                               LRFNode->getName().data(), nullptr, nullptr));
+      break;
+    }
     case Kinded::Kind::SparseLengthsSumNodeKind: {
       auto *RI = llvm::cast<SparseLengthsSumNode>(&I);
       std::vector<synTensor> inputs = {
@@ -1375,6 +1410,21 @@ HabanaBackend::compile(Function *F, const BackendOptions &opts) const {
       gatherParams.emplace_back(std::move(params));
       break;
     }
+    case Kinded::Kind::BatchBoxCoxNodeKind: {
+      auto *BBC = llvm::cast<BatchBoxCoxNode>(&I);
+      std::vector<synTensor> inputs = {
+          tensors[BBC->getInput()].get(),
+          tensors[BBC->getLambda1()].get(),
+          tensors[BBC->getLambda2()].get(),
+      };
+      auto params = llvm::make_unique<float>(BBC->getEpsilon());
+      chk(synCreateGenericNode(
+          inputs.data(), &tensors[BBC].get(), inputs.size(), 1, params.get(),
+          "batch_box_cox_f32", BBC->getName().data(), nullptr, nullptr));
+      multiInputs.emplace_back(std::move(inputs));
+      batchBoxCoxParams.emplace_back(std::move(params));
+      break;
+    }
     default: {
       RETURN_ERR(strFormat("Unhandled node: %s", I.getDebugDesc().c_str()));
       break;
@@ -1446,6 +1496,7 @@ bool HabanaBackend::isOpSupported(const NodeInfo &NI) const {
   switch (NI.getKind()) {
   case Kinded::Kind::AddNodeKind:
   case Kinded::Kind::AvgPoolNodeKind:
+  case Kinded::Kind::BatchBoxCoxNodeKind:
   case Kinded::Kind::BatchMatMulNodeKind:
   case Kinded::Kind::BatchedAddNodeKind:
   case Kinded::Kind::BatchedReduceAddNodeKind:
@@ -1471,12 +1522,16 @@ bool HabanaBackend::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::TanhNodeKind:
   case Kinded::Kind::TileNodeKind:
   case Kinded::Kind::TransposeNodeKind:
+  case Kinded::Kind::LengthsRangeFillNodeKind:
+  case Kinded::Kind::LengthsSumNodeKind:
   case Kinded::Kind::SparseLengthsSumNodeKind:
   case Kinded::Kind::SparseLengthsWeightedSumNodeKind:
   case Kinded::Kind::FusedRowwiseQuantizedSparseLengthsSumNodeKind:
   case Kinded::Kind::FusedRowwiseQuantizedSparseLengthsWeightedSumNodeKind:
   case Kinded::Kind::LocalResponseNormalizationNodeKind:
     return true;
+  case Kinded::Kind::BatchOneHotNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind({ElemKind::Int32ITy});
   case Kinded::Kind::GatherNodeKind:
     // Gather is technically supported but currently appears to trigger bugs in
     // large models.
@@ -1489,6 +1544,7 @@ bool HabanaBackend::isOpSupported(const NodeInfo &NI) const {
 
 bool HabanaBackend::shouldLower(const Node *N) const {
   switch (N->getKind()) {
+  case Kinded::Kind::BatchBoxCoxNodeKind:
   case Kinded::Kind::BatchMatMulNodeKind:
   case Kinded::Kind::ConvolutionNodeKind:
   case Kinded::Kind::FullyConnectedNodeKind:

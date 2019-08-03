@@ -78,3 +78,18 @@ TEST(Support, loadYamlFile) {
   EXPECT_EQ(lists[1].name_, "Device2");
   EXPECT_EQ(lists[1].parameters_.str, "\"platformID\":\"1\"\n");
 }
+
+TEST(Support, loadStrStrMapYamlFile) {
+  std::string yamlFilename(GLOW_DATA_PATH
+                           "tests/runtime_test/backendSpecificOpts.yaml");
+  auto map = deserializeStrStrMapFromYaml(yamlFilename);
+  EXPECT_EQ(map.size(), 2);
+  // Check the loading items.
+  // The config file is:
+  // ---
+  // backendOption1: 'foo'
+  // backendOption2: 'bar'
+  // ...
+  EXPECT_EQ(map["backendOption1"], "foo");
+  EXPECT_EQ(map["backendOption2"], "bar");
+}

@@ -19,6 +19,7 @@ target_link_libraries(Habana
                         IR
                         LLVMCore
                         QuantizationBase
+                        Runtime
                         Support)
 
 set(linked_backends ${linked_backends} Habana PARENT_SCOPE)

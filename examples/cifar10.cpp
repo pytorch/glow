@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "glow/ExecutionEngine/ExecutionEngine.h"
+#include "glow/ExecutionEngine/ExecutionEngine2.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Support/Support.h"
 
@@ -157,7 +157,7 @@ void testCIFAR10() {
   // Construct the network:
   TrainingConfig TC;
 
-  ExecutionEngine EE(executionBackend);
+  ExecutionEngine2 EE(executionBackend);
   PlaceholderBindings bindings;
 
   TC.learningRate = 0.001;
@@ -182,7 +182,9 @@ void testCIFAR10() {
   auto *result = bindings.allocate(resultPH);
 
   Function *TF = glow::differentiate(F, TC);
-  EE.compile(CompilationMode::Train, TF);
+  auto tfName = TF->getName();
+  EE.compile(CompilationMode::Train);
+  bindings.allocate(mod.getPlaceholders());
 
   // Report progress every this number of training iterations.
   // Report less often for fast models.
@@ -204,15 +206,15 @@ void testCIFAR10() {
 
     // Bind the images tensor to the input array A, and the labels tensor
     // to the softmax node SM.
-    runBatch(EE, bindings, reportRate, sampleCounter, {A, E},
-             {&images, &labels});
+    runBatch2(EE, bindings, reportRate, sampleCounter, {A, E},
+              {&images, &labels}, tfName);
 
     unsigned score = 0;
 
     for (unsigned int i = 0; i < 100 / minibatchSize; i++) {
       Tensor sample(ElemKind::FloatTy, {minibatchSize, 32, 32, 3});
       sample.copyConsecutiveSlices(&images, minibatchSize * i);
-      updateInputPlaceholders(bindings, {A}, {&sample});
+      updateInputPlaceholders2(bindings, {A}, {&sample});
       EE.run(bindings);
 
       for (unsigned int iter = 0; iter < minibatchSize; iter++) {

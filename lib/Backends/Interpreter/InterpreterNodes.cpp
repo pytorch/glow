@@ -1473,22 +1473,126 @@ void BoundInterpreterFunction::fwdGatherRangesInst(
   }
 }
 
-void BoundInterpreterFunction::fwdScatterAssignInst(
-    const glow::ScatterAssignInst *I) {
+template <typename ElemTy>
+void BoundInterpreterFunction::fwdScatterDataInstCopyImpl(
+    const glow::ScatterDataInst *I) {
   Tensor *dataT = getTensor(I->getData());
   Tensor *indicesT = getTensor(I->getIndices());
   Tensor *slicesT = getTensor(I->getSlices());
 
-  size_t dataSliceSize =
-      dataT->size() / dataT->dims()[0] * dataT->getType().getElementSize();
+  assert(indicesT->dims().size() == 2 &&
+         "Index should be stored in 2D tensor!");
+  const size_t dataSliceSize = slicesT->size() / slicesT->dims()[0] *
+                               slicesT->getType().getElementSize();
 
+  auto IH = indicesT->getHandle<int64_t>();
   // For each index, copy from the slice at that index into the location in data
   // given the offset from the indices tensor.
-  for (size_t i = 0, end = indicesT->size(); i < end; i++) {
-    size_t destDataIdx = indicesT->getHandle<int64_t>().raw(i);
+  for (size_t i = 0, end = indicesT->dims()[0]; i < end; i++) {
+    size_t destDataIdx = 0;
+    for (size_t j = 0, e = indicesT->dims()[1]; j < e; j++) {
+      destDataIdx *= dataT->dims()[j];
+      destDataIdx += IH.at({i, j});
+    }
     std::copy(&slicesT->getUnsafePtr()[i * dataSliceSize],
               &slicesT->getUnsafePtr()[(i + 1) * dataSliceSize],
               &dataT->getUnsafePtr()[dataSliceSize * destDataIdx]);
+  }
+}
+
+template <typename ElemTy>
+void BoundInterpreterFunction::fwdScatterDataInstAddFloatImpl(
+    const glow::ScatterDataInst *I) {
+  Tensor *dataT = getTensor(I->getData());
+  Tensor *indicesT = getTensor(I->getIndices());
+  Tensor *slicesT = getTensor(I->getSlices());
+
+  assert(!dataT->getType().isQuantizedType() && "Should be float type!");
+  assert(!slicesT->getType().isQuantizedType() && "Should be float type!");
+
+  const size_t numSlices = slicesT->size() / slicesT->dims()[0];
+
+  auto IH = indicesT->getHandle<int64_t>();
+  // For each index, copy from the slice at that index into the location in data
+  // given the offset from the indices tensor.
+  assert(indicesT->dims().size() == 2 &&
+         "Multi-dimensional index should be stored in 2D tensor!");
+  auto D = dataT->getHandle<ElemTy>(), S = slicesT->getHandle<ElemTy>();
+  for (size_t i = 0, end = indicesT->dims()[0]; i < end; i++) {
+    size_t destDataIdx = 0;
+    for (size_t j = 0, e = indicesT->dims()[1]; j < e; j++) {
+      destDataIdx *= dataT->dims()[j];
+      destDataIdx += IH.at({i, j});
+    }
+    for (size_t j = 0; j < numSlices; j++) {
+      D.raw(destDataIdx * numSlices + j) += S.raw(i * numSlices + j);
+    }
+  }
+}
+
+template <typename ElemTy>
+void BoundInterpreterFunction::fwdScatterDataInstAddQuantizedImpl(
+    const glow::ScatterDataInst *I) {
+  Tensor *dataT = getTensor(I->getData());
+  Tensor *indicesT = getTensor(I->getIndices());
+  Tensor *slicesT = getTensor(I->getSlices());
+
+  assert(dataT->getType().isQuantizedType() && "Should be quantized type!");
+  assert(slicesT->getType().isQuantizedType() && "Should be quantized type!");
+
+  const size_t numSlices = slicesT->size() / slicesT->dims()[0];
+
+  TensorQuantizationParams dataQ{dataT->getType().getScale(),
+                                 dataT->getType().getOffset()};
+  TensorQuantizationParams sliceQ{slicesT->getType().getScale(),
+                                  slicesT->getType().getOffset()};
+
+  auto IH = indicesT->getHandle<int64_t>();
+  // For each index, copy from the slice at that index into the location in data
+  // given the offset from the indices tensor.
+  assert(indicesT->dims().size() == 2 &&
+         "Multi-dimensional index should be stored in 2D tensor!");
+  auto D = dataT->getHandle<ElemTy>(), S = slicesT->getHandle<ElemTy>();
+  for (size_t i = 0, end = indicesT->dims()[0]; i < end; i++) {
+    size_t destDataIdx = 0;
+    for (size_t j = 0, e = indicesT->dims()[1]; j < e; j++) {
+      destDataIdx *= dataT->dims()[j];
+      destDataIdx += IH.at({i, j});
+    }
+    for (size_t j = 0; j < numSlices; j++) {
+      float lhs =
+          quantization::dequantize(D.raw(destDataIdx * numSlices + j), dataQ);
+      float rhs = quantization::dequantize(S.raw(i * numSlices + j), sliceQ);
+      ElemTy result = quantization::quantize(lhs + rhs, dataQ);
+      D.raw(destDataIdx * numSlices + j) = result;
+    }
+  }
+}
+
+void BoundInterpreterFunction::fwdScatterDataInst(
+    const glow::ScatterDataInst *I) {
+  if (I->getCumulative()) {
+    switch (I->getData()->getElementType()) {
+    case ElemKind::FloatTy:
+      fwdScatterDataInstAddFloatImpl<float>(I);
+      break;
+    case ElemKind::Int8QTy:
+      fwdScatterDataInstAddQuantizedImpl<int8_t>(I);
+      break;
+    default:
+      llvm_unreachable("Unsupported type for ScatterData.");
+    }
+  } else {
+    switch (I->getData()->getElementType()) {
+    case ElemKind::FloatTy:
+      fwdScatterDataInstCopyImpl<float>(I);
+      break;
+    case ElemKind::Int8QTy:
+      fwdScatterDataInstCopyImpl<int8_t>(I);
+      break;
+    default:
+      llvm_unreachable("Unsupported type for ScatterData.");
+    }
   }
 }
 
@@ -1587,6 +1691,43 @@ void BoundInterpreterFunction::fwdSpaceToDepthInst(
     llvm_unreachable("Type is not supported");
     break;
   }
+}
+
+template <typename ElemTy>
+void BoundInterpreterFunction::fwdResizeNearestInstImpl(
+    const ResizeNearestInst *I) {
+  auto inW = getWeightHandle<ElemTy>(I->getSrc());
+  auto outW = getWeightHandle<ElemTy>(I->getDest());
+
+  ShapeNHWC odim(outW.dims());
+  ShapeNHWC idim(inW.dims());
+
+  auto heightScale = I->getHeightScale();
+  auto widthScale = I->getWidthScale();
+
+  for (size_t ob = 0; ob < odim.n; ++ob) {
+    for (size_t oh = 0; oh < odim.h; ++oh) {
+      auto ic = std::min(size_t(oh / heightScale), idim.h - 1);
+      for (size_t ow = 0; ow < odim.w; ++ow) {
+        auto iw = std::min(size_t(ow / widthScale), idim.w - 1);
+        for (size_t oc = 0; oc < odim.c; ++oc) {
+          outW.at({ob, oh, ow, oc}) = inW.at({ob, ic, iw, oc});
+        }
+      }
+    }
+  }
+}
+
+void BoundInterpreterFunction::fwdResizeNearestInst(
+    const ResizeNearestInst *I) {
+  if (getTensor(I->getSrc())->getType().isQuantizedType()) {
+    dispatchQuantizedImpl(fwdResizeNearestInstImpl,
+                          I->getSrc()->getElementType(), I);
+    return;
+  }
+
+  dispatchFloatingPointImpl(fwdResizeNearestInstImpl,
+                            I->getSrc()->getElementType(), I);
 }
 
 //===----------------------------------------------------------------------===//
@@ -2845,7 +2986,8 @@ void BoundInterpreterFunction::fwdSparseLengthsWeightedSumGradInst(
   }
 }
 
-void BoundInterpreterFunction::fwdRowwiseQuantizedSparseLengthsWeightedSumInst(
+template <typename T>
+void BoundInterpreterFunction::fwdRowwiseQuantizedSparseLengthsWeightedSumImpl(
     const RowwiseQuantizedSparseLengthsWeightedSumInst *I) {
   auto *out = getTensor(I->getDest());
   auto *data = getTensor(I->getData());
@@ -2871,31 +3013,45 @@ void BoundInterpreterFunction::fwdRowwiseQuantizedSparseLengthsWeightedSumInst(
   size_t lineSize = data->size() / data->dims()[0];
 
   auto DH = data->getHandle<uint8_t>();
-  auto DSH = dataScales->getHandle<float>();
-  auto DOH = dataOffsets->getHandle<float>();
-  auto WH = weights->getHandle<float>();
-  auto OH = out->getHandle<float>();
+  auto DSH = dataScales->getHandle<T>();
+  auto DOH = dataOffsets->getHandle<T>();
+  auto WH = weights->getHandle<T>();
+  auto OH = out->getHandle<T>();
 
   size_t curIdx = 0;
   for (size_t i = 0; i < segments; i++) {
+    // Always accumulate in FP32.
+    std::vector<float> accum(lineSize, 0.0f);
     for (size_t j = 0, e = LH.raw(i); j < e; j++) {
-      const float weight = WH.raw(curIdx);
+      const float weight = static_cast<float>(WH.raw(curIdx));
       const size_t rowIdx = IH.raw(curIdx++);
-      const float scale = DSH.at({rowIdx});
-      const float offset = DOH.at({rowIdx});
+      const float scale = static_cast<float>(DSH.at({rowIdx}));
+      const float offset = static_cast<float>(DOH.at({rowIdx}));
       size_t offsetIn = rowIdx * lineSize;
-      size_t offsetOut = i * lineSize;
       for (size_t k = 0; k < lineSize; k++) {
         float d = quantization::dequantizeWithFloatOffset(DH.raw(offsetIn++),
                                                           scale, offset);
-        OH.raw(offsetOut++) += d * weight;
+        accum[k] += d * weight;
       }
+    }
+    // Accumulation in FP32 complete, now copy back to output with cast to T.
+    size_t offsetOut = i * lineSize;
+    for (size_t k = 0; k < lineSize; k++) {
+      OH.raw(offsetOut++) = static_cast<T>(accum[k]);
     }
   }
 }
 
+void BoundInterpreterFunction::fwdRowwiseQuantizedSparseLengthsWeightedSumInst(
+    const RowwiseQuantizedSparseLengthsWeightedSumInst *I) {
+
+  dispatchFloatingPointImpl(fwdRowwiseQuantizedSparseLengthsWeightedSumImpl,
+                            I->getDest()->getElementType(), I);
+}
+
+template <typename T>
 void BoundInterpreterFunction::
-    fwdFusedRowwiseQuantizedSparseLengthsWeightedSumInst(
+    fwdFusedRowwiseQuantizedSparseLengthsWeightedSumImpl(
         const FusedRowwiseQuantizedSparseLengthsWeightedSumInst *I) {
   auto *out = getTensor(I->getDest());
   auto *data = getTensor(I->getData());
@@ -2920,32 +3076,47 @@ void BoundInterpreterFunction::
   const size_t outLineSize = out->size() / out->dims()[0];
 
   auto DH = data->getHandle<uint8_t>();
-  auto WH = weights->getHandle<float>();
-  auto OH = out->getHandle<float>();
+  auto WH = weights->getHandle<T>();
+  auto OH = out->getHandle<T>();
 
   size_t curIdx = 0;
   for (size_t i = 0; i < segments; i++) {
+    // Always accumulate in FP32.
+    std::vector<float> accum(outLineSize, 0.0f);
     for (size_t j = 0, e = LH.raw(i); j < e; j++) {
-      const float weight = WH.raw(curIdx);
+      const float weight = static_cast<float>(WH.raw(curIdx));
       const size_t rowIdx = IH.raw(curIdx++);
       size_t offsetIn = rowIdx * inLineSize;
-      size_t offsetOut = i * outLineSize;
       // Get the scale and offset from the row; go to the current row and offset
-      // into it up until the last 8 bytes. Use memcpy to get the values out to
-      // avoid alignment issues of accessing 4-byte values.
+      // into it up until the last 2*sizeof(T) bytes. Use memcpy to get the
+      // values out to avoid alignment issues.
       const char *currRowScaleOffsetPtr =
-          data->getUnsafePtr() + offsetIn + inLineSize - 8;
-      float scale;
-      float offset;
-      memcpy(&scale, currRowScaleOffsetPtr, sizeof(float));
-      memcpy(&offset, currRowScaleOffsetPtr + sizeof(float), sizeof(float));
+          data->getUnsafePtr() + offsetIn + inLineSize - 2 * sizeof(T);
+      T scale;
+      T offset;
+      memcpy(&scale, currRowScaleOffsetPtr, sizeof(T));
+      memcpy(&offset, currRowScaleOffsetPtr + sizeof(T), sizeof(T));
       for (size_t k = 0; k < outLineSize; k++) {
-        float d = quantization::dequantizeWithFloatOffset(DH.raw(offsetIn++),
-                                                          scale, offset);
-        OH.raw(offsetOut++) += d * weight;
+        float d = quantization::dequantizeWithFloatOffset(
+            DH.raw(offsetIn++), static_cast<float>(scale),
+            static_cast<float>(offset));
+        accum[k] += d * weight;
       }
     }
+    // Accumulation in FP32 complete, now copy back to output with cast to T.
+    size_t offsetOut = i * outLineSize;
+    for (size_t k = 0; k < outLineSize; k++) {
+      OH.raw(offsetOut++) = static_cast<T>(accum[k]);
+    }
   }
+}
+
+void BoundInterpreterFunction::
+    fwdFusedRowwiseQuantizedSparseLengthsWeightedSumInst(
+        const FusedRowwiseQuantizedSparseLengthsWeightedSumInst *I) {
+  dispatchFloatingPointImpl(
+      fwdFusedRowwiseQuantizedSparseLengthsWeightedSumImpl,
+      I->getDest()->getElementType(), I);
 }
 
 void BoundInterpreterFunction::fwdLengthsToRangesInst(

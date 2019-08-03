@@ -128,7 +128,7 @@ LLVMBackend::compileIRWithoutConstants(IRFunction *IR) const {
   MemoryAllocator activationsAllocator("Activations", 0);
   auto runtimeInfo = runtime::RuntimeBundle::create(
       *IR, constantAllocator, placeholderAllocator, activationsAllocator);
-  return createCompiledFunction(std::move(JIT), runtimeInfo);
+  return createCompiledFunction(std::move(JIT), std::move(runtimeInfo));
 }
 
 llvm::Expected<std::unique_ptr<CompiledFunction>>

@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#include "glow/ExecutionEngine/ExecutionEngine.h"
+#include "glow/ExecutionEngine/ExecutionEngine2.h"
 #include "glow/Graph/Graph.h"
 #include "glow/IR/IR.h"
 #include "glow/IR/IRBuilder.h"
@@ -28,7 +28,7 @@
 using namespace glow;
 
 TEST(GraphAutoGrad, autoGrad) {
-  ExecutionEngine EE;
+  ExecutionEngine2 EE;
   PlaceholderBindings bindings;
 
   TrainingConfig TC;
@@ -63,13 +63,12 @@ TEST(GraphAutoGrad, autoGrad) {
   auto *result = F->createSave("return", SM);
   (void)result;
 
-  Function *TF = glow::differentiate(F, TC);
-  EE.compile(CompilationMode::Train, TF);
-  EE.compile(CompilationMode::Infer, F);
+  glow::differentiate(F, TC);
+  EE.compile(CompilationMode::Train);
 }
 
 TEST(GraphAutoGrad, checkLRNGen) {
-  ExecutionEngine EE;
+  ExecutionEngine2 EE;
   TrainingConfig TC;
   PlaceholderBindings bindings;
 
@@ -93,14 +92,13 @@ TEST(GraphAutoGrad, checkLRNGen) {
 
   auto *result = F->createSave("return", SM);
   (void)result;
-  Function *TF = glow::differentiate(F, TC);
-  EE.compile(CompilationMode::Train, TF);
-  EE.compile(CompilationMode::Infer, F);
+  glow::differentiate(F, TC);
+  EE.compile(CompilationMode::Train);
 }
 
 TEST(GraphAutoGrad, cloneAndDiff) {
   // The test ensures that unused variables are not touched in differentiation.
-  ExecutionEngine EE;
+  ExecutionEngine2 EE;
   TrainingConfig TC;
   PlaceholderBindings bindings;
   Module M;
@@ -156,7 +154,7 @@ TEST(GraphAutoGrad, cloneAndDiff) {
 
 /// Check that we can differentiate functions that update Placeholder graphs.
 TEST(GraphAutoGrad, checkPlaceholderGradTest) {
-  ExecutionEngine EE;
+  ExecutionEngine2 EE;
   TrainingConfig TC;
   PlaceholderBindings bindings;
 
@@ -174,9 +172,8 @@ TEST(GraphAutoGrad, checkPlaceholderGradTest) {
   // Expect a single user to the trainable input placeholder.
   EXPECT_EQ(A->getNumUsers(), 1);
 
-  Function *TF = glow::differentiate(F, TC);
-  EE.compile(CompilationMode::Train, TF);
-  EE.compile(CompilationMode::Infer, F);
+  glow::differentiate(F, TC);
+  EE.compile(CompilationMode::Train);
 
   // Check that the Placeholder has multiple users, because at least one write
   // node will be added.
@@ -185,7 +182,7 @@ TEST(GraphAutoGrad, checkPlaceholderGradTest) {
 
 /// Check that we can differentiate functions that use ConvertToNode.
 TEST(GraphAutoGrad, checkConvertToGradTest) {
-  ExecutionEngine EE;
+  ExecutionEngine2 EE;
   TrainingConfig TC;
   PlaceholderBindings bindings;
 
@@ -205,14 +202,13 @@ TEST(GraphAutoGrad, checkConvertToGradTest) {
   auto *result = F->createSave("save", convertTo);
   bindings.allocate(result->getPlaceholder());
 
-  Function *TF = glow::differentiate(F, TC);
-  EE.compile(CompilationMode::Train, TF);
-  EE.compile(CompilationMode::Infer, F);
+  glow::differentiate(F, TC);
+  EE.compile(CompilationMode::Train);
 }
 
 /// Check that we can differentiate functions that use MatMulNode.
 TEST(GraphAutoGrad, checkMatMulGradTest) {
-  ExecutionEngine EE;
+  ExecutionEngine2 EE;
   TrainingConfig TC;
   PlaceholderBindings Bindings;
 
@@ -234,14 +230,13 @@ TEST(GraphAutoGrad, checkMatMulGradTest) {
   auto *R = F->createSave("save", MatMul);
   Bindings.allocate(R->getPlaceholder());
 
-  Function *TF = glow::differentiate(F, TC);
-  EE.compile(CompilationMode::Train, TF);
-  EE.compile(CompilationMode::Infer, F);
+  glow::differentiate(F, TC);
+  EE.compile(CompilationMode::Train);
 }
 
 /// Check that we can differentiate functions that use BatchedReduceAddNode.
 TEST(GraphAutoGrad, checkBatchedReduceAddGradTest) {
-  ExecutionEngine EE;
+  ExecutionEngine2 EE;
   TrainingConfig TC;
   PlaceholderBindings Bindings;
 
@@ -257,14 +252,13 @@ TEST(GraphAutoGrad, checkBatchedReduceAddGradTest) {
   auto *R = F->createSave("save", BRA);
   Bindings.allocate(R->getPlaceholder());
 
-  Function *TF = glow::differentiate(F, TC);
-  EE.compile(CompilationMode::Train, TF);
-  EE.compile(CompilationMode::Infer, F);
+  glow::differentiate(F, TC);
+  EE.compile(CompilationMode::Train);
 }
 
 /// Check that we can differentiate functions that use GatherNode.
 TEST(GraphAutoGrad, checkGatherGrad1DIndexTest) {
-  ExecutionEngine EE;
+  ExecutionEngine2 EE;
   TrainingConfig TC;
   PlaceholderBindings Bindings;
 
@@ -284,13 +278,12 @@ TEST(GraphAutoGrad, checkGatherGrad1DIndexTest) {
   auto *R = F->createSave("save", G);
   Bindings.allocate(R->getPlaceholder());
 
-  Function *TF = glow::differentiate(F, TC);
-  EE.compile(CompilationMode::Train, TF);
-  EE.compile(CompilationMode::Infer, F);
+  glow::differentiate(F, TC);
+  EE.compile(CompilationMode::Train);
 }
 
 TEST(GraphAutoGrad, checkGatherGrad2DIndexTest) {
-  ExecutionEngine EE;
+  ExecutionEngine2 EE;
   TrainingConfig TC;
   PlaceholderBindings Bindings;
 
@@ -310,13 +303,12 @@ TEST(GraphAutoGrad, checkGatherGrad2DIndexTest) {
   auto *R = F->createSave("save", G);
   Bindings.allocate(R->getPlaceholder());
 
-  Function *TF = glow::differentiate(F, TC);
-  EE.compile(CompilationMode::Train, TF);
-  EE.compile(CompilationMode::Infer, F);
+  glow::differentiate(F, TC);
+  EE.compile(CompilationMode::Train);
 }
 
 TEST(GraphAutoGrad, checkGatherGrad3DIndexTest) {
-  ExecutionEngine EE;
+  ExecutionEngine2 EE;
   TrainingConfig TC;
   PlaceholderBindings Bindings;
 
@@ -336,7 +328,6 @@ TEST(GraphAutoGrad, checkGatherGrad3DIndexTest) {
   auto *R = F->createSave("save", G);
   Bindings.allocate(R->getPlaceholder());
 
-  Function *TF = glow::differentiate(F, TC);
-  EE.compile(CompilationMode::Train, TF);
-  EE.compile(CompilationMode::Infer, F);
+  glow::differentiate(F, TC);
+  EE.compile(CompilationMode::Train);
 }

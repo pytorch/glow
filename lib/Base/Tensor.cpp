@@ -291,6 +291,8 @@ void glow::dumpAsciiImpl(const Tensor *T, llvm::raw_ostream &os) {
     return dumpAsciiGenericImpl(T->getHandle<int64_t>(), os);
   case ElemKind::UInt8FusedQTy:
     return dumpAsciiGenericImpl(T->getHandle<uint8_t>(), os);
+  case ElemKind::UInt8FusedFP16QTy:
+    return dumpAsciiGenericImpl(T->getHandle<uint8_t>(), os);
   case ElemKind::BoolTy:
     return dumpAsciiGenericImpl(T->getHandle<bool>(), os);
   }
@@ -318,6 +320,8 @@ void glow::dumpImpl(const Tensor *T, llvm::raw_ostream &os,
   case ElemKind::Int64ITy:
     return dumpGenericImpl(T->getHandle<int64_t>(), os, maxNumElem);
   case ElemKind::UInt8FusedQTy:
+    return dumpGenericImpl(T->getHandle<uint8_t>(), os, maxNumElem);
+  case ElemKind::UInt8FusedFP16QTy:
     return dumpGenericImpl(T->getHandle<uint8_t>(), os, maxNumElem);
   case ElemKind::BoolTy:
     return dumpGenericImpl(T->getHandle<bool>(), os, maxNumElem);
@@ -430,6 +434,9 @@ void glow::genericTranspose(const Tensor *src, Tensor *dest,
   case ElemKind::UInt8FusedQTy: {
     llvm_unreachable("Transposing UInt8FusedQTy is unsupported.");
   }
+  case ElemKind::UInt8FusedFP16QTy: {
+    llvm_unreachable("Transposing UInt8FusedFP16QTy is unsupported.");
+  }
   case ElemKind::BoolTy: {
     auto srcH = src->getHandle<bool>();
     auto destH = dest->getHandle<bool>();
@@ -487,21 +494,27 @@ void Tensor::init(InitKind init, float val, PseudoRNG &PRNG) {
       getHandle<int64_t>().clear(val);
       break;
     }
-    case ElemKind::UInt8FusedQTy: {
-      DCHECK(dims().size() == 2)
-          << "Fused tensor must be 2-dimensional but instead has "
-          << dims().size() << " dimensions.";
-      DCHECK(dims()[1] > 8)
-          << "Fused tensor must have more than 8 columns but has " << dims()[1]
-          << " columns.";
-      auto H = getHandle<uint8_t>();
-      for (size_t i = 0; i < dims()[0]; i++) {
-        for (size_t j = 0, f = dims()[1] - 8; j < f; j++) {
-          H.at({i, j}) = val;
-        }
-      }
-      break;
-    }
+
+#define FUSED_CASE(ELEM_KIND, DATA_TYPE)                                       \
+  case ElemKind::ELEM_KIND: {                                                  \
+    DCHECK(dims().size() == 2)                                                 \
+        << "Fused tensor must be 2-dimensional but instead has "               \
+        << dims().size() << " dimensions.";                                    \
+    DCHECK(dims()[1] > 2 * sizeof(DATA_TYPE))                                  \
+        << "Fused tensor must have space for scale/offset, but only has  "     \
+        << dims()[1] << " columns.";                                           \
+    auto H = getHandle<uint8_t>();                                             \
+    for (size_t i = 0; i < dims()[0]; i++) {                                   \
+      for (size_t j = 0, f = dims()[1] - 2 * sizeof(DATA_TYPE); j < f; j++) {  \
+        H.at({i, j}) = val;                                                    \
+      }                                                                        \
+    }                                                                          \
+    break;                                                                     \
+  }
+      FUSED_CASE(UInt8FusedQTy, float);
+      FUSED_CASE(UInt8FusedFP16QTy, float16_t);
+#undef FUSED_CASE
+
     case ElemKind::BoolTy: {
       getHandle<bool>().clear(val);
       break;

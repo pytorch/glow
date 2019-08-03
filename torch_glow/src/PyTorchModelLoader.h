@@ -17,6 +17,7 @@
 #ifndef GLOW_IMPORTER_PYTORCH_PYTORCHMODELLOADER_H
 #define GLOW_IMPORTER_PYTORCH_PYTORCHMODELLOADER_H
 
+#include <llvm/Support/Error.h>
 #include <torch/csrc/jit/custom_operator.h>
 #include <torch/csrc/jit/ir.h>
 
@@ -24,80 +25,53 @@
 
 /// Loads PyTorch JIT IR subgraphs as a Glow Function.
 class PyTorchModelLoader {
-  /// Glow module in which the loaded Glow Function will be created.
-  glow::Module *mod_ = nullptr;
-
-  /// The PyTorch subgraph being loaded.
-  torch::jit::Graph *subgraph_ = nullptr;
-
-  /// The reference PyTorch inputs used for loading. This is required for shape
-  /// information.
-  at::ArrayRef<torch::jit::IValue> *inputs_ = nullptr;
-
-  /// The Glow function that will created.
-  glow::Function *f_ = nullptr;
-
-  /// Glow Placeholders corresponding to stack inputs from PyTorch.
-  std::vector<glow::Placeholder *> inputPlaceholders_;
-
-  /// Glow Placeholders corresponding to stack outputs to back PyTorch.
-  std::vector<glow::Placeholder *> outputPlaceholders_;
+  /// Glow Function created outside this class.
+  glow::Function &F_;
 
   /// Mapping from PyTorch Values to Glow NodeValues created during loading.
   std::unordered_map<const torch::jit::Value *, glow::NodeValue> valueMap_;
 
-  /// A mapping from jit Symbols representing jit operators to the
-  /// PyTorchModelLoader method that is used to load that operator.
-  std::unordered_map<torch::jit::Symbol,
-                     std::function<void(const torch::jit::Node *)>>
-      nodeLoaderMapping_;
+  /// Defines type for mapping Symbols to PyTorchModelLoader member functions
+  /// for loading torch::jit::Node * objects.
+  using MappingOfMemberFunctions =
+      std::unordered_map<torch::jit::Symbol,
+                         llvm::Error (PyTorchModelLoader::*)(
+                             const torch::jit::Node *)>;
 
 public:
-  PyTorchModelLoader();
-
-  /// Takes a glow::Module \p mod, a jit::Graph \p subgraph to load, and a stack
-  /// of \p inputs for the subgraph to be loaded and retains references to those
-  /// things to be used during loading.
-  PyTorchModelLoader(glow::Module *mod, torch::jit::Graph *subgraph,
-                     at::ArrayRef<torch::jit::IValue> *inputs);
-
-  /// Creates a glow::Function that represents the loader's subgraph imported
-  /// for the shapes seen in the given inputs stack.
-  // TODO: return and error upon failure.
-  void load();
-
   /// Returns whether or not a PyTorch node is supported.
   /// NOTE: For now this is just an enumeration of all type of PyTorch nodes
-  /// that the loader knows about but doesn't really guarantee that loading will
+  /// that the loader knows about but doesn't really guarantee that loading
   /// will succeed because determining this requires more informations such as
   /// shape info that isn't yet available when this is run.
   static bool isNodeSupported(const torch::jit::Node *node);
 
-  /// Get the Glow function that this loader has created.
-  glow::Function *getFunction() { return f_; }
-
-  /// \returns the Glow input placeholders for the loaded function in the order
-  /// that is expected by the stack of PyTorch inputs when running the function.
-  const std::vector<glow::Placeholder *> &getInputPlaceholders() {
-    return inputPlaceholders_;
-  }
-
-  /// \returns the Glow output placeholders for the loaded function in the order
-  /// that is expected by the stack of PyTorch inputs when running the function.
-  const std::vector<glow::Placeholder *> &getOutputPlaceholders() {
-    return outputPlaceholders_;
-  }
+  /// Takes a glow::Function \p F, a jit::Graph \p subgraph to load, and a
+  /// stack of \p inputs for the subgraph to be loaded. Output parameters
+  /// \p inputPlaceholders and \p outputPlaceholders are filled out.
+  /// \returns error on failure
+  static llvm::Error
+  loadJITGraph(glow::Function &F, torch::jit::Graph &subgraph,
+               at::ArrayRef<torch::jit::IValue> &inputs,
+               std::vector<glow::Placeholder *> &inputPlaceholders,
+               std::vector<glow::Placeholder *> &outputPlaceholders);
 
 private:
-  /// Populates nodeLoaderMapping_ with a mapping from jit Symbols representing
-  /// jit operators to the PyTorchModelLoader method that is used to load that
-  /// operator.
-  /// NOTE: This must be called by all PyTorchModelLoader constructors so that
-  /// this mapping is available when loading begins.
-  void populateNodeLoaderMapping();
+  /// Takes a glow::Function \p F, a jit::Graph \p subgraph to load, and a
+  /// stack of \p inputs for the subgraph to be loaded. Output parameters
+  /// \p inputPlaceholders and \p outputPlaceholders are filled out.
+  PyTorchModelLoader(glow::Function &F, torch::jit::Graph &subgraph,
+                     at::ArrayRef<torch::jit::IValue> &inputs,
+                     std::vector<glow::Placeholder *> &inputPlaceholders,
+                     std::vector<glow::Placeholder *> &outputPlaceholders,
+                     llvm::Error &error);
+
+  /// Save access to the mapping.
+  static const MappingOfMemberFunctions &getSymbolsMapping();
 
   /// Find the Glow NodeValue that maps to a given PyTorch value \p value.
-  glow::NodeValue getGlowNodeValue(const torch::jit::Value *value) const;
+  llvm::Expected<glow::NodeValue>
+  getGlowNodeValue(const torch::jit::Value *value) const;
 
   /// Returns true if a Glow NodeValue has been created for a given PyTorch
   /// Value \p value.
@@ -105,52 +79,92 @@ private:
 
   /// Add a new mapping from the PyTorch Value \p value to the Glow NodeValue
   /// \nodeValue.
-  void addGlowNodeValue(const torch::jit::Value *value,
-                        glow::NodeValue nodeValue);
+  /// \returns error on failure.
+  llvm::Error addGlowNodeValue(const torch::jit::Value *value,
+                               glow::NodeValue nodeValue);
 
   /// Given a PyTorch Value \p value, returns a handle to the tensor backning
   /// the glow Constant that is mapped to this PyTorch Value. This requires that
   /// the a mapping from the given Value to a Glow NodeValue has already been
   /// created and that the NodeValue is the output of a Glow ConstantNode.
   template <typename T>
-  glow::Handle<T> getGlowConstantHandle(const torch::jit::Value *value) const;
+  llvm::Expected<glow::Handle<T>>
+  getGlowConstantHandle(const torch::jit::Value *value) const;
 
   /// Creates and \returns a new Glow Placeholder corresponding to the given
   /// PyTorch Value \p value.
-  glow::Placeholder *loadValue(const torch::jit::Value *value);
+  llvm::Expected<glow::Placeholder *> loadValue(const torch::jit::Value *value);
 
   /// Load a given PyTorch Node \p ptNode.
-  void loadNode(const torch::jit::Node *ptNode);
+  /// \returns error on failure.
+  llvm::Error loadNode(const torch::jit::Node *ptNode);
 
   /// Load a PyTorch Constant node as a Glow Constant.
-  void loadConstant(const torch::jit::Node *ptNode);
+  /// \returns error on failure.
+  llvm::Error loadConstant(const torch::jit::Node *ptNode);
 
   /// Load a PyTorch mul node.
-  void loadMul(const torch::jit::Node *ptNode);
+  /// \returns error on failure.
+  llvm::Error loadMul(const torch::jit::Node *ptNode);
 
   /// Load a PyTorch div node.
-  void loadDiv(const torch::jit::Node *ptNode);
+  /// \returns error on failure.
+  llvm::Error loadDiv(const torch::jit::Node *ptNode);
 
   /// Load a PyTorch add node.
-  void loadAdd(const torch::jit::Node *ptNode);
+  /// \returns error on failure.
+  llvm::Error loadAdd(const torch::jit::Node *ptNode);
 
   /// Load a PyTorch sub node.
-  void loadSub(const torch::jit::Node *ptNode);
+  /// \returns error on failure.
+  llvm::Error loadSub(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch max node.
+  /// \returns error on failure.
+  llvm::Error loadMax(const torch::jit::Node *ptNode);
 
   /// Load a PyTorch relu node.
-  void loadRelu(const torch::jit::Node *ptNode);
+  /// \returns error on failure.
+  llvm::Error loadRelu(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch exp node.
+  /// \returns error on failure.
+  llvm::Error loadExp(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch sqrt node.
+  /// \returns error on failure.
+  llvm::Error loadSqrt(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch reciprocal node.
+  llvm::Error loadReciprocal(const torch::jit::Node *ptNode);
 
   /// Load a PyTorch _convolution node.
-  void loadConvolution(const torch::jit::Node *ptNode);
+  /// \returns error on failure.
+  llvm::Error loadConvolution(const torch::jit::Node *ptNode);
 
   /// Load a PyTorch batch_norm node.
-  void loadBatchNorm(const torch::jit::Node *ptNode);
+  /// \returns error on failure.
+  llvm::Error loadBatchNorm(const torch::jit::Node *ptNode);
 
   /// Load a PyTorch max_pool2d node.
-  void loadMaxPool2d(const torch::jit::Node *ptNode);
+  /// \returns error on failure.
+  llvm::Error loadMaxPool2d(const torch::jit::Node *ptNode);
 
   /// Load a PyTorch adaptive_avg_pool2d node.
-  void loadAdaptiveAvgPool2d(const torch::jit::Node *ptNode);
+  /// \returns error on failure.
+  llvm::Error loadAdaptiveAvgPool2d(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch t (transpose) node.
+  /// \returns error on failure.
+  llvm::Error loadTranspose(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch aten::linear node.
+  /// \returns error on failure.
+  llvm::Error loadLinear(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch min node.
+  /// \returns error on failure.
+  llvm::Error loadMin(const torch::jit::Node *ptNode);
 };
 
 #endif // GLOW_IMPORTER_PYTORCH_PYTORCHMODELLOADER_H

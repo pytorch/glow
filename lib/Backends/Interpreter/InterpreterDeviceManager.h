@@ -17,6 +17,7 @@
 #define GLOW_BACKENDS_INTERPRETER_INTERPRETERDEVICEMANAGER_H
 
 #include "glow/Backends/QueueBackedDeviceManager.h"
+#include "glow/Runtime/StatsExporter.h"
 
 namespace glow {
 namespace runtime {
@@ -39,10 +40,20 @@ class InterpreterDeviceManager : public QueueBackedDeviceManager {
   /// This is very arbitrary for the Interpreter backend.
   const uint64_t functionCost_{1};
 
+  /// String constant for logging number of in-use devices.
+  static constexpr const char *kDevicesUsedInterpreter =
+      "glow.devices_used.interpreter";
+
 public:
-  InterpreterDeviceManager(const DeviceConfig &config)
+  explicit InterpreterDeviceManager(const DeviceConfig &config)
       : QueueBackedDeviceManager(config),
-        maxMemoryBytes_(config_.getDeviceMemory(2000000000)) {}
+        maxMemoryBytes_(config_.getDeviceMemory(2000000000)) {
+    Stats()->incrementCounter(kDevicesUsedInterpreter);
+  }
+
+  ~InterpreterDeviceManager() override {
+    Stats()->incrementCounter(kDevicesUsedInterpreter, -1);
+  }
 
   /// Returns the amount of memory in bytes available on the device when no
   /// models are loaded.

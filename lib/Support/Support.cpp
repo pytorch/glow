@@ -55,6 +55,8 @@ template <> struct MappingTraits<glow::DeviceConfigHelper> {
 
 LLVM_YAML_IS_SEQUENCE_VECTOR(glow::DeviceConfigHelper);
 
+LLVM_YAML_IS_STRING_MAP(std::string);
+
 namespace glow {
 llvm::raw_ostream &operator<<(llvm::raw_ostream &os, void *ptr) {
   std::ostringstream stringstream;
@@ -163,9 +165,8 @@ const char *getDotFileNodeColor(size_t index) {
   return colorNames[index % arrayLen];
 }
 
-std::vector<DeviceConfigHelper>
-deserializeDeviceConfigFromYaml(llvm::StringRef fileName) {
-  std::vector<DeviceConfigHelper> result;
+template <typename T> static T deserializeFromYaml(llvm::StringRef fileName) {
+  T result;
   llvm::outs() << fileName << "\n";
   llvm::ErrorOr<std::unique_ptr<llvm::MemoryBuffer>> text =
       llvm::MemoryBuffer::getFileAsStream(fileName);
@@ -179,4 +180,15 @@ deserializeDeviceConfigFromYaml(llvm::StringRef fileName) {
 
   return result;
 }
+
+std::vector<DeviceConfigHelper>
+deserializeDeviceConfigFromYaml(llvm::StringRef fileName) {
+  return deserializeFromYaml<std::vector<DeviceConfigHelper>>(fileName);
+}
+
+std::map<std::string, std::string>
+deserializeStrStrMapFromYaml(llvm::StringRef fileName) {
+  return deserializeFromYaml<std::map<std::string, std::string>>(fileName);
+}
+
 } // namespace glow

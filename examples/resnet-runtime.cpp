@@ -15,7 +15,7 @@
  */
 
 #include "glow/Base/Image.h"
-#include "glow/ExecutionEngine/ExecutionEngine.h"
+#include "glow/ExecutionEngine/ExecutionEngine2.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Importer/Caffe2ModelLoader.h"
 #include "glow/Runtime/HostManager/HostManager.h"
@@ -200,8 +200,8 @@ int main(int argc, char **argv) {
 
     context->getPlaceholderBindings()->allocate(phList);
     Tensor batch = image.getUnowned(inputShape);
-    updateInputPlaceholders(*(context->getPlaceholderBindings()), {input},
-                            {&batch});
+    updateInputPlaceholders2(*(context->getPlaceholderBindings()), {input},
+                             {&batch});
 
     dispatchClassify(0, hostManager.get(), std::move(path), std::move(context),
                      returned, finished);
