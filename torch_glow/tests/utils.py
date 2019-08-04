@@ -1,13 +1,16 @@
+from __future__ import absolute_import, division, print_function, unicode_literals
+
 import torch
 import torch_glow
 
-GLOW_NODE_NAME = "glow::CompilationGroup"
-
-# Runs the given inputs \p *inputs on \p f both with and without lowering \p f
-# to Glow and compares the results.
+GLOW_NODE_NAME = "glow::FusionGroup"
 
 
 def jitVsGlow(f, *inputs):
+    """
+    Runs the given inputs *inputs on f both with and without lowering f to Glow
+    and compares the results.
+    """
     jitVsGlow_(f, f, *inputs)
 
 

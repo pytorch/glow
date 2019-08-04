@@ -1,3 +1,5 @@
+from __future__ import absolute_import, division, print_function, unicode_literals
+
 import torch
 import torch_glow
 from PIL import Image
@@ -13,10 +15,11 @@ def load_image(image_path):
     transformed_image = transform_image(image)
     return torch.reshape(transformed_image, (1, 3, 224, 224))
 
-# given a PIL image, transform it to a normalized tensor for classification.
-
 
 def transform_image(image):
+    """
+    Given a PIL image, transform it to a normalized tensor for classification.
+    """
     image = torchvisionTransforms.resize(image, 256)
     image = torchvisionTransforms.center_crop(image, 224)
     image = torchvisionTransforms.to_tensor(image)
@@ -68,7 +71,7 @@ def run():
     (indices, scores) = run_model(model, image,
                                   use_glow=use_glow, print_graph=args.print_graph)
     print("rank", "class", "P")
-    for i in xrange(args.k):
+    for i in range(args.k):
         print(i, int(indices[0][i]), float(scores[0][i]))
 
 

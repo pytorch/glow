@@ -14,13 +14,15 @@
  * limitations under the License.
  */
 
-#ifndef GLOW_IMPORTER_PYTORCH_CACHINGGRAPHRUNNER_H
-#define GLOW_IMPORTER_PYTORCH_CACHINGGRAPHRUNNER_H
+#ifndef GLOW_TORCH_GLOW_SRC_CACHINGGRAPHRUNNER_H
+#define GLOW_TORCH_GLOW_SRC_CACHINGGRAPHRUNNER_H
 
 #include <torch/csrc/jit/custom_operator.h>
 #include <torch/csrc/jit/ir.h>
 
 #include "glow/ExecutionEngine/ExecutionEngine2.h"
+
+namespace glow {
 
 /// Responsible for maintaining a mapping from PyTorch subgraphs and their
 /// unique input types to compiled Glow Functions.
@@ -31,12 +33,13 @@ class CachingGraphRunner {
 public:
   CachingGraphRunner() = default;
 
-  /// Given a PyTorch glow::CompilationGroup Node \p node that contains a
+  /// Given a PyTorch glow::FusionGroup Node \p node that contains a
   /// PyTorch subgraph and corresponding PyTorch Stack \p stack of inputs, run
   /// that subgraph on those inputs. If this is the first time this node has
   /// been seen then this first loads it as a Glow Function and compiles.
   /// \returns error of failure.
   llvm::Error runGraph(const torch::jit::Node *node, torch::jit::Stack &stack);
 };
+} // namespace glow
 
-#endif // GLOW_IMPORTER_PYTORCH_CACHINGGRAPHRUNNER_H
+#endif // GLOW_TORCH_GLOW_SRC_CACHINGGRAPHRUNNER_H

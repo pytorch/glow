@@ -20,6 +20,8 @@
 
 #include "glow/Support/Support.h"
 
+namespace glow {
+
 llvm::Error CachingGraphRunner::runGraph(const torch::jit::Node *node,
                                          torch::jit::Stack &stack) {
   // If this is the first time this subgraph has been run then create a new
@@ -74,3 +76,4 @@ llvm::Error CachingGraphRunner::runGraph(const torch::jit::Node *node,
 
   return llvm::Error::success();
 }
+} // namespace glow

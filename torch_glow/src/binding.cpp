@@ -23,18 +23,16 @@
 
 #include "CachingGraphRunner.h"
 #include "FusingOptimizer.h"
+#include "PyTorchCommon.h"
 #include "PyTorchModelLoader.h"
 
 #include "glow/Graph/Graph.h"
 
 namespace py = pybind11;
 
-/// The PyTorch symbol used to identify the Node that contains PyTorch subgraphs
-/// that are compiled for running on Glow.
-static auto glowSymbol = at::Symbol::fromQualString("glow::CompilationGroup");
+using namespace glow;
 
-/// Whether or not run the custom pass that fuses jit nodes into a glow node.
-static bool fusionPassEnabled = false;
+namespace {
 
 /// Manages a CachingGraphRunner singleton.
 CachingGraphRunner *getGraphRunner() {
@@ -43,19 +41,13 @@ CachingGraphRunner *getGraphRunner() {
   return runner_.get();
 }
 
-/// Enable compiling PyTorch subgraphs to Glow Functions.
-void enableFusionPass() { fusionPassEnabled = true; }
-
-/// Disable compiling PyTorch subgraphs to Glow Functions.
-void disableFusionPass() { fusionPassEnabled = false; }
-
-/// Register the glow::CompilationGroup operator.
+/// Register the glow::FusionGroup operator.
 void registerGlowOp() {
   auto options = c10::OperatorOptions();
   options.setAliasAnalysis(at::AliasAnalysisKind::PURE);
 
   torch::jit::RegisterOperators op({torch::jit::Operator(
-      glowSymbol,
+      getGlowSymbol(),
       [](const torch::jit::Node *node) {
         return [node](torch::jit::Stack &stack) {
           llvm::Error err = getGraphRunner()->runGraph(node, stack);
@@ -70,10 +62,10 @@ void registerGlowOp() {
 }
 
 /// Register the pass that fuses parts of the graph into
-/// a glow::CompilationGroup
+/// a glow::FusionGroup
 void registerPass() {
   torch::jit::RegisterPass pass([](std::shared_ptr<torch::jit::Graph> &g) {
-    if (fusionPassEnabled) {
+    if (getPyTorchLoaderSettings().fusionPassEnabled) {
 
       // Fuse all linear operators
       // Currently PyTorch does not have good support for aten:addmm when fusing
@@ -82,16 +74,30 @@ void registerPass() {
       FuseLinear(g);
 
       torch::jit::CustomFuseGraph(g, PyTorchModelLoader::isNodeSupported,
-                                  glowSymbol);
+                                  getGlowSymbol());
     }
   });
 }
+} // namespace
 
 /// The torch_glow pybind11 module.
 PYBIND11_MODULE(_torch_glow, m) {
   registerGlowOp();
   registerPass();
 
-  m.def("enableFusionPass", &enableFusionPass);
-  m.def("disableFusionPass", &disableFusionPass);
+  /// Enable compiling PyTorch subgraphs to Glow Functions.
+  m.def("enableFusionPass",
+        []() { getPyTorchLoaderSettings().fusionPassEnabled = true; });
+
+  /// Disable compiling PyTorch subgraphs to Glow Functions.
+  m.def("disableFusionPass",
+        []() { getPyTorchLoaderSettings().fusionPassEnabled = false; });
+
+  /// Enable freezing weights as Constants in PyTorch subgraphs loaded in Glow.
+  m.def("enableWeightFreezing",
+        []() { getPyTorchLoaderSettings().weightFreezingEnabled = true; });
+
+  /// Disable freezing weights as Constants in PyTorch subgraphs loaded in Glow.
+  m.def("disableWeightFreezing",
+        []() { getPyTorchLoaderSettings().weightFreezingEnabled = false; });
 }
