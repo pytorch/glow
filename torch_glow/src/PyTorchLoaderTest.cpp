@@ -59,7 +59,7 @@ void convertJitGraphToGlowFunction(torch::jit::Stack &stack,
   // Load JIT Graph into Glow Function.
   std::vector<glow::Placeholder *> inputPlaceholders;
   std::vector<glow::Placeholder *> outputPlaceholders;
-  llvm::Error errPtr = PyTorchModelLoader::loadJITGraph(
+  llvm::Error errPtr = glow::PyTorchModelLoader::loadJITGraph(
       f, graph, inputs, inputPlaceholders, outputPlaceholders);
 
   EXPECT_FALSE(errPtr);
@@ -86,7 +86,7 @@ TEST(PyTorchModelLoader, Model) {
                              "tests/models/pytorchModels/resnet18.pt"};
   std::shared_ptr<torch::jit::script::Module> module;
   llvm::Error errPtr = llvm::Error::success();
-  PyTorchFileLoader fileLoader(fileName, module, &errPtr);
+  glow::PyTorchFileLoader fileLoader(fileName, module, &errPtr);
   EXPECT_FALSE(errPtr);
 
   std::vector<torch::jit::IValue> vec;
@@ -106,7 +106,7 @@ TEST(PyTorchModelLoader, Model) {
   vec.insert(vec.begin(), module->module_object());
 
   at::ArrayRef<torch::jit::IValue> inputs(vec);
-  errPtr = PyTorchModelLoader::loadJITGraph(
+  errPtr = glow::PyTorchModelLoader::loadJITGraph(
       *f, *subgraph, inputs, inputPlaceholders, outputPlaceholders);
   EXPECT_FALSE(!errPtr); // TODO
 }
@@ -116,7 +116,7 @@ TEST(PyTorchModelLoader, Fuser) {
                              "tests/models/pytorchModels/resnet18.pt"};
   std::shared_ptr<torch::jit::script::Module> module;
   llvm::Error errPtr = llvm::Error::success();
-  PyTorchFileLoader fileLoader(fileName, module, &errPtr);
+  glow::PyTorchFileLoader fileLoader(fileName, module, &errPtr);
   EXPECT_FALSE(errPtr);
   std::shared_ptr<torch::jit::Graph> graph;
   static auto testSymbol = at::Symbol::fromQualString("glow::LoaderTest");
@@ -141,7 +141,7 @@ TEST(PyTorchModelLoader, Fuser) {
         options)});
 
     torch::jit::RegisterPass pass([&](std::shared_ptr<torch::jit::Graph> &g) {
-      torch::jit::CustomFuseGraph(g, PyTorchModelLoader::isNodeSupported,
+      torch::jit::CustomFuseGraph(g, glow::PyTorchModelLoader::isNodeSupported,
                                   testSymbol);
     });
   }

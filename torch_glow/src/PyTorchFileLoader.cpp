@@ -18,7 +18,7 @@
 #include "glow/Support/Error.h"
 #include "glow/Support/Support.h"
 
-using namespace glow;
+namespace glow {
 
 PyTorchFileLoader::PyTorchFileLoader(
     const std::string &fileName,
@@ -40,3 +40,5 @@ PyTorchFileLoader::PyTorchFileLoader(
     EXIT_ON_ERR(setup());
   }
 }
+
+} // namespace glow

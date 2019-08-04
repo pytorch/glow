@@ -29,6 +29,8 @@ except ImportError as e:
     print('You need to install pytorch first.')
     sys.exit(1)
 
+print("torch version:", torch.__version__)
+print("torch location:", os.path.dirname(os.path.realpath(torch.__file__)))
 
 FILE_DIR = os.path.realpath(os.path.dirname(__file__))
 TOP_DIR = os.path.realpath(os.path.dirname(FILE_DIR))

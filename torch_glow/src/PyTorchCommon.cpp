@@ -14,24 +14,18 @@
  * limitations under the License.
  */
 
-#ifndef GLOW_TORCH_GLOW_SRC_PYTORCHFILELOADER_H
-#define GLOW_TORCH_GLOW_SRC_PYTORCHFILELOADER_H
-
-#include "llvm/Support/Error.h"
-#include <torch/csrc/jit/import.h>
+#include "PyTorchCommon.h"
 
 namespace glow {
 
-/// Loads PyTorch model from file to JIT IR subgraphs.
-class PyTorchFileLoader {
-public:
-  /// Takes a model file \p fileName, loads model into torch Module \p module,
-  /// reports error assigning \p errPtr.
-  PyTorchFileLoader(const std::string &fileName,
-                    std::shared_ptr<torch::jit::script::Module> &module,
-                    llvm::Error *errPtr);
-};
+PyTorchLoaderSettings &getPyTorchLoaderSettings() {
+  static PyTorchLoaderSettings settings;
+  return settings;
+}
 
+const c10::Symbol &getGlowSymbol() {
+  static c10::Symbol glowSymbol =
+      at::Symbol::fromQualString("glow::FusionGroup");
+  return glowSymbol;
+}
 } // namespace glow
-
-#endif // GLOW_TORCH_GLOW_SRC_PYTORCHFILELOADER_H
