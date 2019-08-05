@@ -21,7 +21,7 @@ target_link_libraries(RuntimeBench
                       PRIVATE
                         Backend
                         Backends
-                        ExecutionEngine
+                        ExecutionEngine2
                         Executor
                         HostManager
                         Graph

@@ -5,21 +5,6 @@ target_link_libraries(TestMain
                         LLVMSupport
                         gtest)
 
-add_library(BackendTestUtils
-            BackendTestUtils.cpp)
-target_link_libraries(BackendTestUtils
-                      PRIVATE
-                        Base
-                        Converter
-                        ExecutionEngine
-                        Graph
-                        GraphOptimizer
-                        GraphOptimizerPipeline
-                        Quantization
-                        QuantizationBase
-                        LLVMSupport
-                        gtest)
-
 add_library(BackendTestUtils2
             BackendTestUtils2.cpp)
 target_link_libraries(BackendTestUtils2
@@ -180,7 +165,7 @@ add_executable(GraphOptzTest
                GraphOptzTest.cpp)
 target_link_libraries(GraphOptzTest
                       PRIVATE
-                        ExecutionEngine
+                        ExecutionEngine2
                         Graph
                         IR
                         GraphOptimizer
@@ -245,7 +230,7 @@ if(GLOW_WITH_CPU)
           PRIVATE
           Backends
           HostManager
-          ExecutionEngine
+          ExecutionEngine2
           Executor
           Graph
           IR
@@ -447,7 +432,7 @@ if(GLOW_WITH_CPU)
   target_link_libraries(ProvisionerTest
                         PRIVATE
                           Backends
-                          ExecutionEngine
+                          ExecutionEngine2
                           Graph
                           IR
                           Provisioner
