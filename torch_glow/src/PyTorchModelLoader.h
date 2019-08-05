@@ -218,6 +218,10 @@ private:
   /// \returns error on failure.
   llvm::Error loadMaxPool2d(const torch::jit::Node *ptNode);
 
+  /// Load a PyTorch sigmoid node.
+  /// \returns error on failure.
+  llvm::Error loadSigmoid(const torch::jit::Node *ptNode);
+
   /// Load a PyTorch avg_pool2d node.
   /// \returns error on failure.
   llvm::Error loadAvgPool2d(const torch::jit::Node *ptNode);
