@@ -313,7 +313,8 @@ PyTorchModelLoader::getSymbolsMapping() {
             AvgPoolInputs::ceil_mode,
             AvgPoolInputs::count_include_pad,
             AvgPoolInputs::divisor_override,
-        }}});
+        }},
+       {{"aten::mm"}, &PyTorchModelLoader::loadMatMul, {}}});
 
   return symbolLoaderMapping;
 }
@@ -988,6 +989,20 @@ llvm::Error PyTorchModelLoader::loadMin(const torch::jit::Node *ptNode) {
 
   auto output = F_.createMin("min", lhs, rhs);
   return addGlowNodeValue(outputs[0], output);
+}
+
+llvm::Error PyTorchModelLoader::loadMatMul(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 2, outputs, 1));
+
+  glow::NodeValue lhs;
+  ASSIGN_VALUE_OR_RETURN_ERR(lhs, getGlowNodeValue(inputs[0]));
+  glow::NodeValue rhs;
+  ASSIGN_VALUE_OR_RETURN_ERR(rhs, getGlowNodeValue(inputs[1]));
+
+  auto *glowNode = F_.createMatMul("MatMul", lhs, rhs);
+  return addGlowNodeValue(outputs[0], glowNode);
 }
 
 llvm::Error PyTorchModelLoader::loadConstant(const torch::jit::Node *ptNode) {

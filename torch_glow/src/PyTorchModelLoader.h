@@ -241,6 +241,10 @@ private:
   /// Load a PyTorch min node.
   /// \returns error on failure.
   llvm::Error loadMin(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch matmul (n x k) x (k x m) -> (n x m) node.
+  /// \returns error on failure.
+  llvm::Error loadMatMul(const torch::jit::Node *ptNode);
 };
 } // namespace glow
 
