@@ -34,6 +34,7 @@
 #include "llvm/Support/Timer.h"
 #include "llvm/Support/raw_ostream.h"
 
+#include <algorithm>
 #include <future>
 #include <sstream>
 
@@ -659,6 +660,11 @@ void Loader::runInference(ExecutionContext *context, size_t batchSize) {
   }
 }
 
+static bool compareQI(const NodeQuantizationInfo &a,
+                      const NodeQuantizationInfo &b) {
+  return (a.nodeOutputName_.compare(b.nodeOutputName_) < 0);
+}
+
 void Loader::generateAndSerializeQuantizationInfos(
     PlaceholderBindings &bindings) {
   assert(!dumpProfileFileOpt.empty() &&
@@ -671,6 +677,7 @@ void Loader::generateAndSerializeQuantizationInfos(
             quantizationPrecisionBias);
     QI.insert(QI.end(), tmp.begin(), tmp.end());
   }
+  std::sort(QI.begin(), QI.end(), compareQI);
   serializeToYaml(dumpProfileFileOpt, QI);
 }
 
