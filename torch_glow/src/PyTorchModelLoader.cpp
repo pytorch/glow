@@ -239,6 +239,7 @@ struct LinearInputs {
 // static
 const PyTorchModelLoader::MappingOfMemberFunctions &
 PyTorchModelLoader::getSymbolsMapping() {
+
   /// Static map of the set of PyTorch symbols to load, the PyTorchModelLoader
   /// for loading these symbols, and the set of inputs that should be considered
   /// immutable between inference invocations by Glow and loaded as Constants
@@ -248,6 +249,9 @@ PyTorchModelLoader::getSymbolsMapping() {
        {{"aten::mul", "aten::mul_"}, &PyTorchModelLoader::loadMul, {}},
        {{"aten::div", "aten::div_"}, &PyTorchModelLoader::loadDiv, {}},
        {{"aten::add", "aten::add_"}, &PyTorchModelLoader::loadAdd, {}},
+       {{"aten::sigmoid", "aten::sigmoid_"},
+        &PyTorchModelLoader::loadSigmoid,
+        {}},
        {{"aten::sub", "aten::sub_"}, &PyTorchModelLoader::loadSub, {}},
        {{"aten::relu", "aten::relu_"}, &PyTorchModelLoader::loadRelu, {}},
        {{"aten::t, aten::t_"}, &PyTorchModelLoader::loadTranspose, {}},
@@ -574,6 +578,18 @@ llvm::Error PyTorchModelLoader::loadSqrt(const torch::jit::Node *ptNode) {
   ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValue(inputs[0]));
 
   glow::PowNode *glowNode = F_.createPow("sqrt", input, /*exp=*/0.5);
+  return addGlowNodeValue(outputs[0], glowNode->getResult());
+}
+
+llvm::Error PyTorchModelLoader::loadSigmoid(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 1, outputs, 1));
+
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValue(inputs[0]));
+
+  glow::SigmoidNode *glowNode = F_.createSigmoid("sigmoid", input);
   return addGlowNodeValue(outputs[0], glowNode->getResult());
 }
 
