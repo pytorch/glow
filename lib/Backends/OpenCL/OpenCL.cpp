@@ -345,8 +345,8 @@ void OpenCLFunction::enqueueKernel(llvm::StringRef name,
   kernelLaunches.push_back(KernelLaunch(kernel, name, kernelType, event));
 }
 
-void OpenCLFunction::executeConvolution(const OCLConvolutionInst *CC,
-                                        ExecutionContext *executionContext) {
+void OpenCLFunction::executeNCHWConvolution(
+    const ConvolutionInst *CC, ExecutionContext *executionContext) {
   auto input = CC->getSrc();
   auto output = CC->getDest();
   auto bias = CC->getBias();
@@ -959,12 +959,12 @@ llvm::Error OpenCLFunction::execute(ExecutionContext *context) {
       continue;
     }
 
-    if (auto *CC = dyn_cast<OCLConvolutionInst>(&I)) {
-      executeConvolution(CC, context);
-      continue;
-    }
-
     if (auto *CC = dyn_cast<ConvolutionInst>(&I)) {
+      if (CC->getLayout() == NCHW) {
+        executeNCHWConvolution(CC, context);
+        continue;
+      }
+
       // This is a naive implementation that parallelizes using three dims:
       // the X and the Y in the output filter.
       cl_kernel kernel = createKernel(kernelName);
@@ -1050,27 +1050,43 @@ llvm::Error OpenCLFunction::execute(ExecutionContext *context) {
     }
 
     if (auto *PM = dyn_cast<MaxPoolInst>(&I)) {
-      // This is a naive implementation that parallelizes using three dims:
-      // the X and the Y in the output filter.
+      bool isNCHW = PM->getLayout() == NCHW;
+
+      if (isNCHW) {
+        kernelName = "ocl" + kernelName;
+      }
+
       cl_kernel kernel = createKernel(kernelName);
       setKernelArg(kernel, 0, deviceBuffer_);
       auto numArgs = setKernelArgsForBuffers(kernel, I, 1, runtimeBundle_);
 
-      auto odim = ShapeNHWC(PM->getDest()->getType()->dims());
-      auto idim = ShapeNHWC(PM->getSrc()->getType()->dims());
-      auto pads = PaddingTLBR(PM->getPads());
       ShapeHW kdim(PM->getKernels());
       DCHECK(kdim.isSquare()) << "Only square kernel is supported";
       ShapeHW sdim(PM->getStrides());
       DCHECK(sdim.isSquare()) << "Only square stride is supported";
       setKernelArg<cl_uint>(kernel, numArgs + 1, kdim.height);
       setKernelArg<cl_uint>(kernel, numArgs + 2, sdim.height);
+      auto pads = PaddingTLBR(PM->getPads());
       setKernelArg(kernel, numArgs + 3, pads);
-      setKernelArg(kernel, numArgs + 4, odim);
-      setKernelArg(kernel, numArgs + 5, idim);
 
-      enqueueKernel(I.getName(), commands_, kernel, deviceId_,
-                    {odim.h, odim.w, odim.c}, kernelLaunches_);
+      std::array<size_t, 3> global;
+      if (isNCHW) {
+        ShapeNCHW odim(PM->getDest()->getType()->dims());
+        ShapeNCHW idim(PM->getSrc()->getType()->dims());
+
+        setKernelArg(kernel, numArgs + 4, odim);
+        setKernelArg(kernel, numArgs + 5, idim);
+        global = {odim.h, odim.w, odim.c};
+      } else {
+        ShapeNHWC odim(PM->getDest()->getType()->dims());
+        ShapeNHWC idim(PM->getSrc()->getType()->dims());
+        setKernelArg(kernel, numArgs + 4, odim);
+        setKernelArg(kernel, numArgs + 5, idim);
+        global = {odim.h, odim.w, odim.c};
+      }
+
+      enqueueKernel(I.getName(), commands_, kernel, deviceId_, global,
+                    kernelLaunches_);
       continue;
     }
 
@@ -1126,27 +1142,54 @@ llvm::Error OpenCLFunction::execute(ExecutionContext *context) {
     }
 
     if (auto *PA = dyn_cast<AvgPoolInst>(&I)) {
-      // This is a naive implementation that parallelizes using three dims:
-      // the X and the Y in the output filter.
+      bool isNCHW = PA->getLayout() == NCHW;
+
+      if (isNCHW) {
+        kernelName = "ocl" + kernelName;
+      }
+
       cl_kernel kernel = createKernel(kernelName);
       setKernelArg(kernel, 0, deviceBuffer_);
       auto numArgs = setKernelArgsForBuffers(kernel, I, 1, runtimeBundle_);
 
-      auto odim = ShapeNHWC(PA->getDest()->getType()->dims());
-      auto idim = ShapeNHWC(PA->getSrc()->getType()->dims());
-      auto pads = PaddingTLBR(PA->getPads());
       ShapeHW kdim(PA->getKernels());
       DCHECK(kdim.isSquare()) << "Only square kernel is supported";
       ShapeHW sdim(PA->getStrides());
       DCHECK(sdim.isSquare()) << "Only square stride is supported";
       setKernelArg<cl_uint>(kernel, numArgs + 1, kdim.height);
       setKernelArg<cl_uint>(kernel, numArgs + 2, sdim.height);
+      auto pads = PaddingTLBR(PA->getPads());
       setKernelArg(kernel, numArgs + 3, pads);
-      setKernelArg(kernel, numArgs + 4, odim);
-      setKernelArg(kernel, numArgs + 5, idim);
 
-      enqueueKernel(I.getName(), commands_, kernel, deviceId_,
-                    {odim.h, odim.w, odim.c}, kernelLaunches_);
+      std::array<size_t, 3> global;
+      if (isNCHW) {
+        ShapeNCHW odim(PA->getDest()->getType()->dims());
+        ShapeNCHW idim(PA->getSrc()->getType()->dims());
+
+        setKernelArg(kernel, numArgs + 4, odim);
+        setKernelArg(kernel, numArgs + 5, idim);
+        global = {odim.h, odim.w, odim.c};
+      } else {
+        ShapeNHWC odim(PA->getDest()->getType()->dims());
+        ShapeNHWC idim(PA->getSrc()->getType()->dims());
+        setKernelArg(kernel, numArgs + 4, odim);
+        setKernelArg(kernel, numArgs + 5, idim);
+        global = {odim.h, odim.w, odim.c};
+      }
+
+      if (isNCHW && isQuantized) {
+        auto srcTy = PA->getSrc()->getType();
+        auto destTy = PA->getDest()->getType();
+        auto destScaleParam = quantization::quantizeScaleOffset32To8(
+            srcTy->getScale() / destTy->getScale() /
+                (PA->getKernels()[0] * PA->getKernels()[0]),
+            destTy->getOffset());
+        setKernelArg(kernel, numArgs + 6, srcTy->getOffset());
+        setKernelArg(kernel, numArgs + 7, destScaleParam);
+      }
+
+      enqueueKernel(I.getName(), commands_, kernel, deviceId_, global,
+                    kernelLaunches_);
       continue;
     }
 
@@ -1385,56 +1428,6 @@ llvm::Error OpenCLFunction::execute(ExecutionContext *context) {
       copyValueToDevice(destDev, destT.getUnsafePtr());
       copyValueToDevice(indDev, indT.getUnsafePtr());
       clFinish(commands_);
-      continue;
-    }
-
-    if (auto PA = dyn_cast<OCLAvgPoolInst>(&I)) {
-      cl_kernel kernel = createKernel(kernelName);
-      setKernelArg(kernel, 0, deviceBuffer_);
-      auto numArgs = setKernelArgsForBuffers(kernel, I, 1, runtimeBundle_);
-
-      auto odim = ShapeNCHW(PA->getDest()->getType()->dims());
-      auto idim = ShapeNCHW(PA->getSrc()->getType()->dims());
-      auto pads = PaddingTLBR(PA->getPads());
-
-      setKernelArg<cl_uint>(kernel, numArgs + 1, PA->getKernel());
-      setKernelArg<cl_uint>(kernel, numArgs + 2, PA->getStride());
-      setKernelArg(kernel, numArgs + 3, pads);
-      setKernelArg(kernel, numArgs + 4, odim);
-      setKernelArg(kernel, numArgs + 5, idim);
-      if (isQuantized) {
-        auto srcTy = PA->getSrc()->getType();
-        auto destTy = PA->getDest()->getType();
-        auto destScaleParam = quantization::quantizeScaleOffset32To8(
-            srcTy->getScale() / destTy->getScale() /
-                (PA->getKernel() * PA->getKernel()),
-            destTy->getOffset());
-        setKernelArg(kernel, numArgs + 6, srcTy->getOffset());
-        setKernelArg(kernel, numArgs + 7, destScaleParam);
-      }
-
-      enqueueKernel(I.getName(), commands_, kernel, deviceId_,
-                    {odim.h, odim.w, odim.c}, kernelLaunches_);
-      continue;
-    }
-
-    if (auto *PM = dyn_cast<OCLMaxPoolInst>(&I)) {
-      cl_kernel kernel = createKernel(kernelName);
-      setKernelArg(kernel, 0, deviceBuffer_);
-      auto numArgs = setKernelArgsForBuffers(kernel, I, 1, runtimeBundle_);
-
-      auto odim = ShapeNCHW(PM->getDest()->getType()->dims());
-      auto idim = ShapeNCHW(PM->getSrc()->getType()->dims());
-      auto pads = PaddingTLBR(PM->getPads());
-
-      setKernelArg<cl_uint>(kernel, numArgs + 1, PM->getKernel());
-      setKernelArg<cl_uint>(kernel, numArgs + 2, PM->getStride());
-      setKernelArg(kernel, numArgs + 3, pads);
-      setKernelArg(kernel, numArgs + 4, odim);
-      setKernelArg(kernel, numArgs + 5, idim);
-
-      enqueueKernel(I.getName(), commands_, kernel, deviceId_,
-                    {odim.h, odim.w, odim.c}, kernelLaunches_);
       continue;
     }
 
@@ -1785,10 +1778,6 @@ bool OCLBackend::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::ConcatNodeKind:
   case Kinded::Kind::SliceNodeKind:
   case Kinded::Kind::InsertTensorNodeKind:
-  case Kinded::Kind::OCLAvgPoolNodeKind:
-  case Kinded::Kind::OCLMaxPoolNodeKind:
-    // Note: Pools/Conv support Int8QTy because they're always transformed via
-    // the backend to be an OCLPool/OCLConv.
   case Kinded::Kind::AvgPoolNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Int8QTy});
@@ -1806,14 +1795,6 @@ bool OCLBackend::isOpSupported(const NodeInfo &NI) const {
     return NI.allInputsAndOutputsHaveSameElemKind({ElemKind::Int8QTy},
                                                   {ConvolutionNode::BiasIdx}) &&
            (NI.getInElemTy(ConvolutionNode::BiasIdx) == ElemKind::Int32QTy);
-
-  case Kinded::Kind::OCLConvolutionNodeKind:
-    if (!NI.getInTy(OCLConvolutionNode::InputIdx)->isQuantizedType()) {
-      return NI.allInputsAndOutputsHaveSameElemKind({ElemKind::FloatTy});
-    }
-    return NI.allInputsAndOutputsHaveSameElemKind(
-               {ElemKind::Int8QTy}, {OCLConvolutionNode::BiasIdx}) &&
-           (NI.getInElemTy(OCLConvolutionNode::BiasIdx) == ElemKind::Int32QTy);
 
   case Kinded::Kind::TopKNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(

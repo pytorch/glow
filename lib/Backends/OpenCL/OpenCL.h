@@ -37,7 +37,7 @@
 
 namespace glow {
 
-class OCLConvolutionInst;
+class ConvolutionInst;
 class Value;
 
 /// A helper struct with information about kernels launches.
@@ -145,8 +145,8 @@ private:
                   ElemKind elemKind);
 
   /// Execution a convolution instruction which uses NCHW format.
-  void executeConvolution(const OCLConvolutionInst *CC,
-                          ExecutionContext *executionContext);
+  void executeNCHWConvolution(const ConvolutionInst *CC,
+                              ExecutionContext *executionContext);
   /// Allocate a device buffer of required \p size.
   cl_mem allocDeviceBuffer(uint64_t size);
   /// Frees a device buffer.

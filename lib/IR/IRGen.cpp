@@ -134,10 +134,10 @@ void IRGenVisitor::post(Node *parent, Node *N) {
     auto *filterG =
         builder_.createAllocActivationInst("conv.filter.G", filter->getType());
 
-    builder_.createConvolutionGradInst(N->getName(), input, filter, outGrad,
-                                       inG, filterG, biasG, CG->getKernels(),
-                                       CG->getStrides(), CG->getPads(),
-                                       CG->getGroup(), CG->getDilation());
+    builder_.createConvolutionGradInst(
+        N->getName(), input, filter, outGrad, inG, filterG, biasG,
+        CG->getKernels(), CG->getStrides(), CG->getPads(), CG->getGroup(),
+        CG->getDilation(), CG->getLayout());
 
     registerIR(CG->getGradOfInputNamedInput(), inG);
     registerIR(CG->getGradOfInputNamedFilter(), filterG);
@@ -148,7 +148,8 @@ void IRGenVisitor::post(Node *parent, Node *N) {
     auto *P = cast<MaxPoolNode>(N);
     auto *in = valueForNode(P->getInput());
     auto *V = builder_.createMaxPoolWithArgmaxOp(
-        N->getName(), in, P->getKernels(), P->getStrides(), P->getPads());
+        N->getName(), in, P->getKernels(), P->getStrides(), P->getPads(),
+        P->getLayout());
     Value *dest = V->getDest();
     Value *argmax = V->getArgmax();
     nodeToInstr_[N] = V;
@@ -172,7 +173,7 @@ void IRGenVisitor::post(Node *parent, Node *N) {
 
     builder_.createMaxPoolWithArgmaxGradInst(
         N->getName(), outW, PI->getArgmax(), outG, inG, PG->getKernels(),
-        PG->getStrides(), PG->getPads());
+        PG->getStrides(), PG->getPads(), PG->getLayout());
     registerIR(PG->getGradOfInputNamedInput(), inG);
     break;
   }
@@ -188,7 +189,7 @@ void IRGenVisitor::post(Node *parent, Node *N) {
 
     builder_.createAvgPoolGradInst(N->getName(), outW, outG, inG,
                                    PG->getKernels(), PG->getStrides(),
-                                   PG->getPads());
+                                   PG->getPads(), PG->getLayout());
     registerIR(PG->getGradOfInputNamedInput(), inG);
     break;
   }

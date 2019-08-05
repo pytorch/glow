@@ -177,7 +177,7 @@ class MockBackendCustomIRGen : public Backend {
       auto *V = builder_->createConvolutionInst(
           "CustomConvolutionInstruction", Dest__, Src, Filter, Bias,
           CN__->getKernels(), CN__->getStrides(), CN__->getPads(),
-          CN__->getGroup(), CN__->getDilation());
+          CN__->getGroup(), CN__->getDilation(), CN__->getLayout());
       if (N->hasPredicate()) {
         V->setPredicate(irgen.valueForNode(N->getPredicate()));
       }

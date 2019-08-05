@@ -23,7 +23,6 @@ namespace glow {
 
 /// Convert regular convolution nodes (that use NHWC) into a backend-specific
 /// convolution nodes using NCHW.
-template <class NCHWConvNode>
 Node *convertConvToNCHWConv(ConvolutionNode *CN, Function *F) {
   // Convert filter and input from NHWC (Glow's default) into NCHW.
   auto *NI = F->createTranspose("conv.input", CN->getInput(), NHWC2NCHW);
@@ -34,9 +33,10 @@ Node *convertConvToNCHWConv(ConvolutionNode *CN, Function *F) {
   auto outTy = F->getParent()->uniqueTypeWithNewShape(CN->getResult().getType(),
                                                       dimsNCHW);
 
-  auto *NC = F->addNode(new NCHWConvNode(
-      CN->getName(), outTy, NI, NF, CN->getBias(), CN->getKernels(),
-      CN->getStrides(), CN->getPads(), CN->getGroup(), CN->getDilation()));
+  auto *NC = F->addNode(
+      new ConvolutionNode(CN->getName(), outTy, NI, NF, CN->getBias(),
+                          CN->getKernels(), CN->getStrides(), CN->getPads(),
+                          CN->getGroup(), CN->getDilation(), NCHW));
   auto *NR = F->createTranspose("conv.result", NC, NCHW2NHWC);
 
   return NR;
@@ -44,10 +44,28 @@ Node *convertConvToNCHWConv(ConvolutionNode *CN, Function *F) {
 
 /// Convert regular pool nodes (that use NHWC) into backend-specific nodes using
 /// NCHW.
-template <class PoolNode, class NCHWPoolNode>
-Node *convertPoolToNCHWPool(PoolNode *PN, Function *F) {
+Node *convertMaxPoolToNCHWPool(MaxPoolNode *PN, Function *F) {
   // Convert input from NHWC (Glow's default) into NCHW.
-  auto *NI = F->createTranspose("conv.input", PN->getInput(), NHWC2NCHW);
+  auto *NI = F->createTranspose("maxpool.input", PN->getInput(), NHWC2NCHW);
+
+  auto dimsNHWC = ShapeNHWC(PN->getResult().getType()->dims());
+  auto dimsNCHW = {dimsNHWC.n, dimsNHWC.c, dimsNHWC.h, dimsNHWC.w};
+  auto outTy = F->getParent()->uniqueTypeWithNewShape(PN->getResult().getType(),
+                                                      dimsNCHW);
+  auto AMT = F->getParent()->uniqueTypeWithNewShape(PN->getArgmax().getType(),
+                                                    dimsNCHW);
+
+  auto *NPN = F->addNode(new MaxPoolNode(PN->getName(), outTy, AMT, NI,
+                                         PN->getKernels(), PN->getStrides(),
+                                         PN->getPads(), NCHW));
+  auto *NR = F->createTranspose("maxpool.result", NPN->getResult(), NCHW2NHWC);
+
+  return NR;
+}
+
+Node *convertAvgPoolToNCHWPool(AvgPoolNode *PN, Function *F) {
+  // Convert input from NHWC (Glow's default) into NCHW.
+  auto *NI = F->createTranspose("maxpool.input", PN->getInput(), NHWC2NCHW);
 
   auto dimsNHWC = ShapeNHWC(PN->getResult().getType()->dims());
   auto dimsNCHW = {dimsNHWC.n, dimsNHWC.c, dimsNHWC.h, dimsNHWC.w};
@@ -55,9 +73,9 @@ Node *convertPoolToNCHWPool(PoolNode *PN, Function *F) {
                                                       dimsNCHW);
 
   auto *NPN =
-      F->addNode(new NCHWPoolNode(PN->getName(), outTy, NI, PN->getKernels()[0],
-                                  PN->getStrides()[0], PN->getPads()));
-  auto *NR = F->createTranspose("maxpool.result", NPN, NCHW2NHWC);
+      F->addNode(new AvgPoolNode(PN->getName(), outTy, NI, PN->getKernels(),
+                                 PN->getStrides(), PN->getPads(), NCHW));
+  auto *NR = F->createTranspose("avgpool.result", NPN->getResult(), NCHW2NHWC);
 
   return NR;
 }

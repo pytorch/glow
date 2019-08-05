@@ -670,29 +670,28 @@ static void assertConv3DDims(NodeValue input, NodeValue filter, NodeValue bias,
   assert(bias.getType()->size() == filterDims.n && "Invalid bias size");
 }
 
-ConvolutionNode *Function::createConv(llvm::StringRef name, NodeValue input,
-                                      NodeValue filter, NodeValue bias,
-                                      TypeRef outTy,
-                                      llvm::ArrayRef<unsigned_t> kernels,
-                                      llvm::ArrayRef<unsigned_t> strides,
-                                      llvm::ArrayRef<unsigned_t> pads,
-                                      unsigned_t group, unsigned_t dilation) {
+ConvolutionNode *Function::createConv(
+    llvm::StringRef name, NodeValue input, NodeValue filter, NodeValue bias,
+    TypeRef outTy, llvm::ArrayRef<unsigned_t> kernels,
+    llvm::ArrayRef<unsigned_t> strides, llvm::ArrayRef<unsigned_t> pads,
+    unsigned_t group, unsigned_t dilation, ConvolutionLayout layout) {
   assertConvDims(input, filter, bias, kernels, strides, pads, group);
   auto OT = getParent()->uniqueType(*outTy);
   return addNode(new ConvolutionNode(name, OT, input, filter, bias, kernels,
-                                     strides, pads, group, dilation));
+                                     strides, pads, group, dilation, layout));
 }
 
 ConvolutionNode *Function::createConv(llvm::StringRef name, NodeValue input,
                                       NodeValue filter, NodeValue bias,
                                       TypeRef outTy, unsigned_t kernel,
                                       unsigned_t stride, unsigned_t pad,
-                                      unsigned_t group, unsigned_t dilation) {
+                                      unsigned_t group, unsigned_t dilation,
+                                      ConvolutionLayout layout) {
   llvm::SmallVector<unsigned_t, 4> pads = {pad, pad, pad, pad};
   llvm::SmallVector<unsigned_t, 2> strides = {stride, stride};
   llvm::SmallVector<unsigned_t, 2> kernels = {kernel, kernel};
   return createConv(name, input, filter, bias, outTy, kernels, strides, pads,
-                    group, dilation);
+                    group, dilation, layout);
 }
 
 Convolution3DNode *Function::createConv3D(llvm::StringRef name, NodeValue input,
@@ -723,7 +722,8 @@ Convolution3DNode *Function::createConv3D(llvm::StringRef name, NodeValue input,
 MaxPoolNode *Function::createMaxPool(llvm::StringRef name, NodeValue input,
                                      llvm::ArrayRef<unsigned_t> kernels,
                                      llvm::ArrayRef<unsigned_t> strides,
-                                     llvm::ArrayRef<unsigned_t> pads) {
+                                     llvm::ArrayRef<unsigned_t> pads,
+                                     ConvolutionLayout layout) {
   ShapeNHWC idim = ShapeNHWC(input.dims());
   checkKernelSize(idim, kernels, pads);
 
@@ -734,22 +734,24 @@ MaxPoolNode *Function::createMaxPool(llvm::StringRef name, NodeValue input,
   auto AMT = getParent()->uniqueType(
       ElemKind::Int64ITy, {idim.n, outSz.first, outSz.second, idim.c});
 
-  return addNode(new MaxPoolNode(name, OT, AMT, input, kernels, strides, pads));
+  return addNode(
+      new MaxPoolNode(name, OT, AMT, input, kernels, strides, pads, layout));
 }
 
 MaxPoolNode *Function::createMaxPool(llvm::StringRef name, NodeValue input,
                                      unsigned_t kernel, unsigned_t stride,
-                                     unsigned_t pad) {
+                                     unsigned_t pad, ConvolutionLayout layout) {
   llvm::SmallVector<unsigned_t, 4> pads = {pad, pad, pad, pad};
   llvm::SmallVector<unsigned_t, 2> strides = {stride, stride};
   llvm::SmallVector<unsigned_t, 2> kernels = {kernel, kernel};
-  return createMaxPool(name, input, kernels, strides, pads);
+  return createMaxPool(name, input, kernels, strides, pads, layout);
 }
 
 AvgPoolNode *Function::createAvgPool(llvm::StringRef name, NodeValue input,
                                      llvm::ArrayRef<unsigned_t> kernels,
                                      llvm::ArrayRef<unsigned_t> strides,
-                                     llvm::ArrayRef<unsigned_t> pads) {
+                                     llvm::ArrayRef<unsigned_t> pads,
+                                     ConvolutionLayout layout) {
   ShapeNHWC idim = ShapeNHWC(input.dims());
   checkKernelSize(idim, kernels, pads);
 
@@ -758,28 +760,31 @@ AvgPoolNode *Function::createAvgPool(llvm::StringRef name, NodeValue input,
   auto OT = getParent()->uniqueTypeWithNewShape(
       input.getType(), {idim.n, outSz.first, outSz.second, idim.c});
 
-  return addNode(new AvgPoolNode(name, OT, input, kernels, strides, pads));
+  return addNode(
+      new AvgPoolNode(name, OT, input, kernels, strides, pads, layout));
 }
 
 AvgPoolNode *Function::createAvgPool(llvm::StringRef name, NodeValue input,
                                      TypeRef outTy,
                                      llvm::ArrayRef<unsigned_t> kernels,
                                      llvm::ArrayRef<unsigned_t> strides,
-                                     llvm::ArrayRef<unsigned_t> pads) {
+                                     llvm::ArrayRef<unsigned_t> pads,
+                                     ConvolutionLayout layout) {
   ShapeNHWC idim = ShapeNHWC(input.dims());
   ShapeHW kdim(kernels);
   (void)kdim;
   checkKernelSize(idim, kernels, pads);
-  return addNode(new AvgPoolNode(name, outTy, input, kernels, strides, pads));
+  return addNode(
+      new AvgPoolNode(name, outTy, input, kernels, strides, pads, layout));
 }
 
 AvgPoolNode *Function::createAvgPool(llvm::StringRef name, NodeValue input,
                                      unsigned_t kernel, unsigned_t stride,
-                                     unsigned_t pad) {
+                                     unsigned_t pad, ConvolutionLayout layout) {
   llvm::SmallVector<unsigned_t, 4> pads = {pad, pad, pad, pad};
   llvm::SmallVector<unsigned_t, 2> strides = {stride, stride};
   llvm::SmallVector<unsigned_t, 2> kernels = {kernel, kernel};
-  return createAvgPool(name, input, kernels, strides, pads);
+  return createAvgPool(name, input, kernels, strides, pads, layout);
 }
 
 AdaptiveAvgPoolNode *Function::createAdaptiveAvgPool(llvm::StringRef name,
@@ -2103,13 +2108,11 @@ BatchNormalizationNode *Function::createBatchNormalization(
                                   channelIdx, epsilon, momentum);
 }
 
-ConvolutionNode *Function::createConv(PlaceholderBindings &bindings,
-                                      llvm::StringRef name, NodeValue input,
-                                      size_t outChannels,
-                                      llvm::ArrayRef<unsigned_t> kernels,
-                                      llvm::ArrayRef<unsigned_t> strides,
-                                      llvm::ArrayRef<unsigned_t> pads,
-                                      unsigned_t group, unsigned_t dilation) {
+ConvolutionNode *Function::createConv(
+    PlaceholderBindings &bindings, llvm::StringRef name, NodeValue input,
+    size_t outChannels, llvm::ArrayRef<unsigned_t> kernels,
+    llvm::ArrayRef<unsigned_t> strides, llvm::ArrayRef<unsigned_t> pads,
+    unsigned_t group, unsigned_t dilation, ConvolutionLayout layout) {
   ShapeNHWC idim = ShapeNHWC(input.dims());
   ShapeHW kdim(kernels);
   PaddingTLBR pdim(pads);
@@ -2149,19 +2152,20 @@ ConvolutionNode *Function::createConv(PlaceholderBindings &bindings,
   auto OT = getParent()->uniqueType(inputTy, outDims);
 
   return addNode(new ConvolutionNode(name, OT, input, filter, bias, kernels,
-                                     strides, pads, group, dilation));
+                                     strides, pads, group, dilation, layout));
 }
 
 ConvolutionNode *Function::createConv(PlaceholderBindings &bindings,
                                       llvm::StringRef name, NodeValue input,
                                       size_t outChannels, unsigned_t kernel,
                                       unsigned_t stride, unsigned_t pad,
-                                      unsigned_t group, unsigned_t dilation) {
+                                      unsigned_t group, unsigned_t dilation,
+                                      ConvolutionLayout layout) {
   llvm::SmallVector<unsigned_t, 4> pads = {pad, pad, pad, pad};
   llvm::SmallVector<unsigned_t, 2> strides = {stride, stride};
   llvm::SmallVector<unsigned_t, 2> kernels = {kernel, kernel};
   return createConv(bindings, name, input, outChannels, kernels, strides, pads,
-                    group, dilation);
+                    group, dilation, layout);
 }
 
 Convolution3DNode *Function::createConv3D(PlaceholderBindings &bindings,
