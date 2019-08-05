@@ -16,7 +16,7 @@
 #ifndef GLOW_TOOLS_LOADER_LOADER_H
 #define GLOW_TOOLS_LOADER_LOADER_H
 
-#include "glow/ExecutionEngine/ExecutionEngine.h"
+#include "glow/ExecutionEngine/ExecutionEngine2.h"
 #include "glow/Runtime/HostManager/HostManager.h"
 
 #include "llvm/Support/CommandLine.h"

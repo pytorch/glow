@@ -611,7 +611,7 @@ int main(int argc, char **argv) {
       }
       // About to run inference, so update the input image Placeholder's backing
       // Tensor with inputImageData.
-      updateInputPlaceholders(bindings, {inputImagePH}, {&inputImageData});
+      updateInputPlaceholders2(bindings, {inputImagePH}, {&inputImageData});
 
       // Perform the inference execution, updating SMT.
       auto batchSize = inputImageData.dims()[0];
