@@ -1778,11 +1778,8 @@ struct ConstsEqDedup {
     if (lhs->getType() != rhs->getType()) {
       return false;
     }
-    // Only dedup Constants if their data matches exactly, so allowed error is
-    // 0.0.
-    return lhs->getPayload().isEqual(rhs->getPayload(),
-                                     /* allowedError */ 0.0,
-                                     /* verbose */ false);
+    // Only dedup Constants if they're bit exact matches.
+    return lhs->getPayload().isBitwiseEqual(rhs->getPayload());
   }
 };
 

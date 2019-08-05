@@ -417,6 +417,18 @@ public:
   /// elements exceeding allowed error; maximum error and location found; etc.).
   bool isEqual(const Tensor &other, float allowedError = 0.0001,
                bool verbose = true) const {
+    return isEqualImpl(other, /*isBitwise=*/false, allowedError, verbose);
+  }
+
+  /// \returns true if the content of the other tensor \p other is bitwise
+  /// identical to this one.
+  bool isBitwiseEqual(const Tensor &other) const {
+    return isEqualImpl(other, /*isBitwise=*/true, /*allowedError=*/0.0,
+                       /*verbose=*/false);
+  }
+
+  bool isEqualImpl(const Tensor &other, bool isBitwise, float allowedError,
+                   bool verbose) const {
     if (other.dims() != dims()) {
       return false;
     }
@@ -434,34 +446,36 @@ public:
              other.getElementType() != ElemKind::UInt8FusedQTy)) &&
            "Fused ElemKinds only supports comparing against same ElemKind.");
 
+    // Assert that the scale and offset match for the quantized types.
+    switch (getElementType()) {
+    default:
+      break;
+    case ElemKind::Int8QTy:
+    case ElemKind::UInt8QTy:
+    case ElemKind::Int16QTy:
+    case ElemKind::Int32QTy:
+      assert(getType().getScale() == other.getType().getScale() &&
+             "Scales must match.");
+      assert(getType().getOffset() == other.getType().getOffset() &&
+             "Offsets must match.");
+    }
+
+    // Bitwise compare.
+    if (isBitwise)
+      return isBitwiseEqualImpl(other);
+
     switch (getElementType()) {
     case ElemKind::FloatTy:
       return isEqualImpl<float>(other, allowedError, verbose);
     case ElemKind::Float16Ty:
       return isEqualImpl<float16_t>(other, allowedError, verbose);
     case ElemKind::Int8QTy:
-      assert(getType().getScale() == other.getType().getScale() &&
-             "Scales must match.");
-      assert(getType().getOffset() == other.getType().getOffset() &&
-             "Offsets must match.");
       return isEqualImpl<int8_t>(other, allowedError, verbose);
     case ElemKind::UInt8QTy:
-      assert(getType().getScale() == other.getType().getScale() &&
-             "Scales must match.");
-      assert(getType().getOffset() == other.getType().getOffset() &&
-             "Offsets must match.");
       return isEqualImpl<uint8_t>(other, allowedError, verbose);
     case ElemKind::Int16QTy:
-      assert(getType().getScale() == other.getType().getScale() &&
-             "Scales must match.");
-      assert(getType().getOffset() == other.getType().getOffset() &&
-             "Offsets must match.");
       return isEqualImpl<int16_t>(other, allowedError, verbose);
     case ElemKind::Int32QTy:
-      assert(getType().getScale() == other.getType().getScale() &&
-             "Scales must match.");
-      assert(getType().getOffset() == other.getType().getOffset() &&
-             "Offsets must match.");
       return isEqualImpl<int32_t>(other, allowedError, verbose);
     case ElemKind::Int32ITy:
       return isEqualImpl<int32_t>(other, allowedError, verbose);
@@ -628,6 +642,16 @@ private:
                 << otherData[maxFoundErrorIdx];
     }
     return numExceedingError == 0;
+  }
+
+  bool isBitwiseEqualImpl(const Tensor &other) const {
+    auto const *myData = getUnsafePtr();
+    auto const *otherData = other.getUnsafePtr();
+    for (size_t i = 0, e = getSizeInBytes(); i < e; i++) {
+      if (myData[i] != otherData[i])
+        return false;
+    }
+    return true;
   }
 };
 
