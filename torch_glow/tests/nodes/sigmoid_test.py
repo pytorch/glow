@@ -17,6 +17,7 @@ def test_sigmoid_basic():
 
     jitVsGlow(sigmoid_basic, x)
 
+
 def test_sigmoid_inplace():
     def sigmoid_inplace(a):
         c = a.sigmoid_()
