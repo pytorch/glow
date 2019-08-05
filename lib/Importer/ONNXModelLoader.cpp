@@ -1023,12 +1023,8 @@ llvm::Error ONNXModelLoader::loadCast(const ONNX_NAMESPACE::NodeProto &op,
                         (!isQuantizedElemKind(targetKind)),
                     "Unsupported Cast");
 
-  // Create the node.
-  auto inputDims = input.dims();
-  auto outTy = G_.getParent()->uniqueType(targetKind, inputDims);
-
   // Create the IR node.
-  Node *N = G_.createConvertTo(opName, input, outTy);
+  Node *N = G_.createConvertTo(opName, input, targetKind);
   RETURN_IF_ERR(addNodeAsOutput(op, N));
 
   return llvm::Error::success();

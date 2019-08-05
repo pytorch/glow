@@ -877,8 +877,8 @@ TEST_P(AllBackends, convertExistingConversionToNoop) {
   auto *placeholder =
       mod.createPlaceholder(ElemKind::FloatTy, {20, 13}, "Input", false);
 
-  TypeRef outTy = mod.uniqueType(ElemKind::Float16Ty, placeholder->dims());
-  auto *convert = F->createConvertTo("convert", placeholder, outTy);
+  auto *convert =
+      F->createConvertTo("convert", placeholder, ElemKind::Float16Ty);
   auto *save = F->createSave("save", convert);
 
   size_t origSize = F->getNodes().size();
