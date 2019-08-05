@@ -40,7 +40,7 @@ public:
                  onnxTraceEventList *traceEvents) override;
 
 private:
-  ExecutionEngine executionEngine_;
+  ExecutionEngine2 executionEngine_;
   Function *function_;
   QuantizationMode quantizationMode_;
 
