@@ -450,6 +450,7 @@ int main(int argc, char **argv) {
       .addInput("Weights")
       .addInput("Indices")
       .addInput("Lengths")
+      .addMember(MemberType::Boolean, "UseFP16Accumulation")
       .addResultFromCtorArg()
       .setDocstring("Gathers slices of the outer-most dimension of Data "
                     "indexed by Indices vector, and then accumulates them into "
@@ -468,6 +469,7 @@ int main(int argc, char **argv) {
       .addInput("Weights")
       .addInput("Indices")
       .addInput("Lengths")
+      .addMember(MemberType::Boolean, "UseFP16Accumulation")
       .addResultFromCtorArg()
       .setDocstring("Gathers slices of the outer-most dimension of Data "
                     "indexed by Indices vector, and then accumulates them into "
@@ -486,6 +488,7 @@ int main(int argc, char **argv) {
       .addInput("Data")
       .addInput("Indices")
       .addInput("Lengths")
+      .addMember(MemberType::Boolean, "UseFP16Accumulation")
       .addResultFromCtorArg()
       .setDocstring("Gathers slices of the outer-most dimension of Data "
                     "indexed by Indices vector, and then accumulates them into "

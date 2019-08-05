@@ -2993,7 +2993,7 @@ void BoundInterpreterFunction::fwdSparseLengthsWeightedSumGradInst(
   }
 }
 
-template <typename T>
+template <typename T, typename AccumT>
 void BoundInterpreterFunction::fwdRowwiseQuantizedSparseLengthsWeightedSumImpl(
     const RowwiseQuantizedSparseLengthsWeightedSumInst *I) {
   auto *out = getTensor(I->getDest());
@@ -3027,8 +3027,7 @@ void BoundInterpreterFunction::fwdRowwiseQuantizedSparseLengthsWeightedSumImpl(
 
   size_t curIdx = 0;
   for (size_t i = 0; i < segments; i++) {
-    // Always accumulate in FP32.
-    std::vector<float> accum(lineSize, 0.0f);
+    std::vector<AccumT> accum(lineSize, 0.0f);
     for (size_t j = 0, e = LH.raw(i); j < e; j++) {
       const float weight = static_cast<float>(WH.raw(curIdx));
       const size_t rowIdx = IH.raw(curIdx++);
@@ -3051,12 +3050,23 @@ void BoundInterpreterFunction::fwdRowwiseQuantizedSparseLengthsWeightedSumImpl(
 
 void BoundInterpreterFunction::fwdRowwiseQuantizedSparseLengthsWeightedSumInst(
     const RowwiseQuantizedSparseLengthsWeightedSumInst *I) {
-
-  dispatchFloatingPointImpl(fwdRowwiseQuantizedSparseLengthsWeightedSumImpl,
-                            I->getDest()->getElementType(), I);
+  switch (I->getDest()->getElementType()) {
+  case ElemKind::FloatTy:
+    fwdRowwiseQuantizedSparseLengthsWeightedSumImpl<float, float>(I);
+    break;
+  case ElemKind::Float16Ty:
+    if (I->getUseFP16Accumulation()) {
+      fwdRowwiseQuantizedSparseLengthsWeightedSumImpl<float16_t, float16_t>(I);
+    } else {
+      fwdRowwiseQuantizedSparseLengthsWeightedSumImpl<float16_t, float>(I);
+    }
+    break;
+  default:
+    llvm_unreachable("Type is not supported");
+  }
 }
 
-template <typename T>
+template <typename T, typename AccumT>
 void BoundInterpreterFunction::
     fwdFusedRowwiseQuantizedSparseLengthsWeightedSumImpl(
         const FusedRowwiseQuantizedSparseLengthsWeightedSumInst *I) {
@@ -3088,8 +3098,7 @@ void BoundInterpreterFunction::
 
   size_t curIdx = 0;
   for (size_t i = 0; i < segments; i++) {
-    // Always accumulate in FP32.
-    std::vector<float> accum(outLineSize, 0.0f);
+    std::vector<AccumT> accum(outLineSize, 0.0f);
     for (size_t j = 0, e = LH.raw(i); j < e; j++) {
       const float weight = static_cast<float>(WH.raw(curIdx));
       const size_t rowIdx = IH.raw(curIdx++);
@@ -3121,9 +3130,21 @@ void BoundInterpreterFunction::
 void BoundInterpreterFunction::
     fwdFusedRowwiseQuantizedSparseLengthsWeightedSumInst(
         const FusedRowwiseQuantizedSparseLengthsWeightedSumInst *I) {
-  dispatchFloatingPointImpl(
-      fwdFusedRowwiseQuantizedSparseLengthsWeightedSumImpl,
-      I->getDest()->getElementType(), I);
+  switch (I->getDest()->getElementType()) {
+  case ElemKind::FloatTy:
+    fwdFusedRowwiseQuantizedSparseLengthsWeightedSumImpl<float, float>(I);
+    break;
+  case ElemKind::Float16Ty:
+    if (I->getUseFP16Accumulation()) {
+      fwdFusedRowwiseQuantizedSparseLengthsWeightedSumImpl<float16_t,
+                                                           float16_t>(I);
+    } else {
+      fwdFusedRowwiseQuantizedSparseLengthsWeightedSumImpl<float16_t, float>(I);
+    }
+    break;
+  default:
+    llvm_unreachable("Type is not supported");
+  }
 }
 
 void BoundInterpreterFunction::fwdLengthsToRangesInst(

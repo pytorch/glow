@@ -275,11 +275,11 @@ private:
 
   template <typename ElemTy> void fwdModuloInstImpl(glow::ModuloInst const *I);
 
-  template <typename T>
+  template <typename T, typename AccumT>
   void fwdRowwiseQuantizedSparseLengthsWeightedSumImpl(
       const RowwiseQuantizedSparseLengthsWeightedSumInst *I);
 
-  template <typename T>
+  template <typename T, typename AccumT>
   void fwdFusedRowwiseQuantizedSparseLengthsWeightedSumImpl(
       const FusedRowwiseQuantizedSparseLengthsWeightedSumInst *I);
   ///@}

@@ -288,6 +288,7 @@ int main(int argc, char **argv) {
       .addOperand("Weights", OperandKind::In)
       .addOperand("Indices", OperandKind::In)
       .addOperand("Lengths", OperandKind::In)
+      .addMember(MemberType::Boolean, "UseFP16Accumulation")
       .autoIRGen()
       .autoVerify(VerifyKind::SameElementType, {"Data", "ElemKind::UInt8QTy"})
       .autoVerify(VerifyKind::SameElementType,
@@ -302,6 +303,7 @@ int main(int argc, char **argv) {
       .addOperand("Weights", OperandKind::In)
       .addOperand("Indices", OperandKind::In)
       .addOperand("Lengths", OperandKind::In)
+      .addMember(MemberType::Boolean, "UseFP16Accumulation")
       .autoIRGen()
       .autoVerify(VerifyKind::SameElementType,
                   {"Indices", "ElemKind::Int64ITy"})

@@ -1101,14 +1101,17 @@ bool RowwiseQuantizedSparseLengthsWeightedSumNode::verify() const {
   isValid &= expectCompareTrue(
       "Offsets and Data must have the same first dimension size",
       getData().dims()[0], getOffsets().dims()[0], this);
+  if (getUseFP16Accumulation()) {
+    isValid &= expectCompareTrue(
+        "Only use FP16 accumulation with FP16 version of Fused-RWQ-SLWS.",
+        getResult().getType()->getElementType(), ElemKind::Float16Ty, this);
+  }
   return isValid;
 }
 
-static bool verifyFusedRowwiseQuantizedSparseLengthsSum(NodeValue result,
-                                                        NodeValue data,
-                                                        NodeValue indices,
-                                                        NodeValue lengths,
-                                                        NodeValue weights) {
+static bool verifyFusedRowwiseQuantizedSparseLengthsSum(
+    NodeValue result, NodeValue data, NodeValue indices, NodeValue lengths,
+    NodeValue weights, bool useFP16Accumulation) {
   const Node *parent = result.getNode();
   bool isValid = expectCompareTrue(
       "Input data must be Fused Quantized type",
@@ -1120,6 +1123,11 @@ static bool verifyFusedRowwiseQuantizedSparseLengthsSum(NodeValue result,
   } else {
     isValid &= checkType(result, ElemKind::Float16Ty, parent);
     extraCols = 2 * sizeof(float16_t);
+  }
+  if (useFP16Accumulation) {
+    isValid &= expectCompareTrue(
+        "Only use FP16 accumulation with FP16 version of RWQ-SLWS.",
+        result.getType()->getElementType(), ElemKind::Float16Ty, parent);
   }
   isValid &= checkType(indices, ElemKind::Int64ITy, parent);
   isValid &= checkType(lengths, ElemKind::Int32ITy, parent);
@@ -1160,12 +1168,14 @@ static bool verifyFusedRowwiseQuantizedSparseLengthsSum(NodeValue result,
 
 bool FusedRowwiseQuantizedSparseLengthsWeightedSumNode::verify() const {
   return verifyFusedRowwiseQuantizedSparseLengthsSum(
-      getResult(), getData(), getIndices(), getLengths(), getWeights());
+      getResult(), getData(), getIndices(), getLengths(), getWeights(),
+      getUseFP16Accumulation());
 }
 
 bool FusedRowwiseQuantizedSparseLengthsSumNode::verify() const {
   return verifyFusedRowwiseQuantizedSparseLengthsSum(
-      getResult(), getData(), getIndices(), getLengths(), nullptr);
+      getResult(), getData(), getIndices(), getLengths(), nullptr,
+      getUseFP16Accumulation());
 }
 
 bool LengthsToRangesNode::verify() const {
