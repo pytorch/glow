@@ -480,7 +480,8 @@ target_link_libraries(StatsExporterTest
                         Backends
                         Runtime
                         gtest
-                        TestMain)
+                        TestMain
+                        glog::glog)
 add_glow_test(StatsExporterTest ${GLOW_BINARY_DIR}/tests/StatsExporterTest --gtest_output=xml:StatsExporterTest.xml)
 
 add_executable(TensorsTest
