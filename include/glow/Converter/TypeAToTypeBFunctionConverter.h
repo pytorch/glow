@@ -20,6 +20,7 @@
 
 #include "glow/Base/Traits.h" // For KindSet.
 #include "glow/Base/Type.h"
+#include "glow/Optimizer/GraphOptimizer/CompilationContext.h"
 
 namespace glow {
 
@@ -38,8 +39,8 @@ protected:
   /// Source type of the conversions. I.e., the values of this
   /// element type are going to be converted.
   ElemKind srcKind_;
-  /// Set of node kinds that should not be converted.
-  KindSet doNotConvertKinds_;
+  /// Precision configuration used during conversion.
+  const PrecisionConfiguration &precConfig_;
 
   /// If the element type of \p out is srcKind_ returns a similarly shaped type
   /// using dstKind_. Otherwise returns nullptr.
@@ -64,11 +65,10 @@ protected:
   void convertTensor(Tensor &tensor, TypeRef destTy) override;
 
 public:
-  /// Create a type converter from \p fromKind to \p toKind for \p F.
-  /// If \p doNotConvertKinds is not nullptr, the nodes which kind
-  /// is in this set won't be converted.
+  /// Create a type converter from \p fromKind to \p toKind for \p F given
+  /// \p precConfig.
   TypeAToTypeBFunctionConverter(Function &F, ElemKind fromKind, ElemKind toKind,
-                                const KindSet *doNotConvertKinds = nullptr);
+                                const PrecisionConfiguration &precConfig);
 };
 } // namespace glow
 #endif
