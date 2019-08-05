@@ -1,36 +1,39 @@
+from __future__ import absolute_import, division, print_function, unicode_literals
+
 import torch
 import torch.nn.functional as F
-import torch_glow
 
 from tests.utils import jitVsGlow
 
-# Basic test of the PyTorch adaptive_avg_pool2d Node on Glow.
-
 
 def test_adaptive_avg_pool2d_basic():
-    def adaptive_avg_pool2d_basic(inputs):
+    """Basic test of PyTorch adaptive_avg_pool2d Node."""
+
+    def test_f(inputs):
         return F.adaptive_avg_pool2d(inputs, (5, 5))
 
     inputs = torch.randn(3, 6, 14, 14)
 
-    jitVsGlow(adaptive_avg_pool2d_basic, inputs)
+    jitVsGlow(test_f, inputs)
 
 
-# Test of the PyTorch adaptive_avg_pool2d Node with non-square inputs on Glow.
 def test_adaptive_avg_pool2d_nonsquare_inputs():
-    def adaptive_avg_pool2d_nonsquare_inputs(inputs):
+    """Test of PyTorch adaptive_avg_pool2d Node with non-square inputs."""
+
+    def test_f(inputs):
         return F.adaptive_avg_pool2d(inputs, (3, 3))
 
     inputs = torch.randn(3, 6, 13, 14)
 
-    jitVsGlow(adaptive_avg_pool2d_nonsquare_inputs, inputs)
+    jitVsGlow(test_f, inputs)
 
 
-# Test of the PyTorch adaptive_avg_pool2d Node with non-square outputs on Glow.
 def test_adaptive_avg_pool2d_nonsquare_outputs():
-    def adaptive_avg_pool2d_nonsquare_outputs(inputs):
+    """Test of PyTorch adaptive_avg_pool2d Node with non-square outputs."""
+
+    def test_f(inputs):
         return F.adaptive_avg_pool2d(inputs, (5, 3))
 
     inputs = torch.randn(3, 6, 14, 14)
 
-    jitVsGlow(adaptive_avg_pool2d_nonsquare_outputs, inputs)
+    jitVsGlow(test_f, inputs)

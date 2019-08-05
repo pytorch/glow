@@ -1,11 +1,13 @@
+from __future__ import absolute_import, division, print_function, unicode_literals
+
 import torch
 
 from tests.utils import jitVsGlow
 
-# Test of PyTorch t (transpose) on Glow with 2d inputs.
-
 
 def test_transpose_2d():
+    """Test of PyTorch t (transpose) on Glow with 2d inputs."""
+
     def test_f(a):
         b = a + a
         return b.t()
@@ -15,10 +17,9 @@ def test_transpose_2d():
     jitVsGlow(test_f, x)
 
 
-# Test of PyTorch t (transpose) on Glow with 1d inputs.
-
-
 def test_transpose_1d():
+    """Test of PyTorch t (transpose) on Glow with 1d inputs."""
+
     def test_f(a):
         b = a + a
         return b.t()
@@ -28,8 +29,9 @@ def test_transpose_1d():
     jitVsGlow(test_f, x)
 
 
-# Test of PyTorch t_ (in place transpose) on Glow.
 def test_transpose_inplace():
+    """Test of PyTorch t_ (in place transpose) on Glow."""
+
     def test_f(a):
         b = a + a
         return b.t_()
