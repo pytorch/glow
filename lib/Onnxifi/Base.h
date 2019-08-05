@@ -17,7 +17,7 @@
 #define GLOW_ONNXIFI_BASE_H
 
 #include "glow/Backend/Backend.h"
-#include "glow/ExecutionEngine/ExecutionEngine.h"
+#include "glow/ExecutionEngine/ExecutionEngine2.h"
 #include "glow/Importer/ONNXIFIModelLoader.h"
 #include "glow/Runtime/RuntimeTypes.h"
 #include "glow/Support/TensorPool.h"

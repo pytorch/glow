@@ -70,7 +70,7 @@ InlineGraph::initGraph(const void *onnxModel, size_t onnxModelSize,
     precConfig.quantConfig.schema = quantization::Schema::Symmetric;
   }
 
-  executionEngine_.compile(CompilationMode::Infer, function_);
+  executionEngine_.compile(CompilationMode::Infer);
 
   return ONNXIFI_STATUS_SUCCESS;
 }
