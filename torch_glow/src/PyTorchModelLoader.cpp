@@ -234,6 +234,14 @@ struct LinearInputs {
     bias = 2,
   };
 };
+
+// Indexes of aten::prelu inputs.
+struct PReluInputs {
+  enum {
+    input = 0,
+    weight = 1,
+  };
+};
 } // namespace
 
 // static
@@ -314,7 +322,12 @@ PyTorchModelLoader::getSymbolsMapping() {
             AvgPoolInputs::count_include_pad,
             AvgPoolInputs::divisor_override,
         }},
-       {{"aten::mm"}, &PyTorchModelLoader::loadMatMul, {}}});
+       {{"aten::mm"}, &PyTorchModelLoader::loadMatMul, {}},
+       {{"aten::prelu"},
+        &PyTorchModelLoader::loadPRelu,
+        {
+            PReluInputs::weight,
+        }}});
 
   return symbolLoaderMapping;
 }
@@ -1002,6 +1015,33 @@ llvm::Error PyTorchModelLoader::loadMatMul(const torch::jit::Node *ptNode) {
   ASSIGN_VALUE_OR_RETURN_ERR(rhs, getGlowNodeValue(inputs[1]));
 
   auto *glowNode = F_.createMatMul("MatMul", lhs, rhs);
+  return addGlowNodeValue(outputs[0], glowNode);
+}
+
+llvm::Error PyTorchModelLoader::loadPRelu(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 2, outputs, 1));
+
+  glow::NodeValue in;
+  ASSIGN_VALUE_OR_RETURN_ERR(in, getGlowNodeValue(inputs[PReluInputs::input]));
+  glow::NodeValue weight;
+  ASSIGN_VALUE_OR_RETURN_ERR(weight,
+                             getGlowNodeValue(inputs[PReluInputs::weight]));
+
+  // Do broadcasting.
+  auto targetDim = in.dims();
+  auto weightDim = weight.dims();
+  RETURN_ERR_IF_NOT(
+      weightDim.size() == targetDim.size() || weightDim.size() == 1,
+      glow::strFormat(
+          "Weight dimensions must be 1, or the number of channels, got %lu",
+          weightDim.size()));
+  // Sets the axis of each inputs so that the trailing-most dimensions of
+  // input tensors and the target shape are aligned.
+  int axis = targetDim.size() - weight.dims().size();
+  auto *slope = F_.createBroadcast("broadcast", weight, targetDim, axis);
+  auto *glowNode = F_.createPRELU("prelu", in, slope);
   return addGlowNodeValue(outputs[0], glowNode);
 }
 
