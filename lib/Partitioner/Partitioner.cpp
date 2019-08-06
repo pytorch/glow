@@ -45,7 +45,7 @@ static llvm::cl::OptionCategory PartitionerCat("Glow Partitioner Options");
 static llvm::cl::opt<bool>
     logPartition("log-partition",
                  llvm::cl::desc("Enable logging partition info"),
-                 llvm::cl::init(true), llvm::cl::cat(PartitionerCat));
+                 llvm::cl::init(false), llvm::cl::cat(PartitionerCat));
 
 /// -dump-partition - Command line option to dump the graph of each partitions
 /// by calling F->dumpDAG().

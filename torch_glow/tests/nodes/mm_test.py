@@ -16,4 +16,4 @@ def test_mm_basic():
     rhs = torch.randn(3, 4)
     t = torch.randn(4, 2)
 
-    jitVsGlow(test_mm, lhs, rhs, t)
+    jitVsGlow(test_mm, lhs, rhs, t, expected_fused_ops={"aten::mm"})
