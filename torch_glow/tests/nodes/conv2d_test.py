@@ -18,7 +18,8 @@ def test_conv2d_basic():
     inputs = torch.randn(1, 4, 5, 5)
     filters = torch.randn(8, 4, 3, 3)
 
-    jitVsGlow(test_f, inputs, filters)
+    jitVsGlow(test_f, inputs, filters,
+              expected_fused_ops={"aten::_convolution"})
 
 
 def test_conv2d_with_bias():
@@ -32,7 +33,8 @@ def test_conv2d_with_bias():
     filters = torch.randn(8, 4, 3, 3)
     bias = torch.randn(8)
 
-    jitVsGlow(test_f, inputs, filters, bias)
+    jitVsGlow(test_f, inputs, filters, bias,
+              expected_fused_ops={"aten::_convolution"})
 
 
 @pytest.mark.skip(reason="not ready")
@@ -73,4 +75,5 @@ def test_conv2d_param_sweep():
         inputs = torch.randn(2, 4, setting.h, setting.w)
         filters = torch.randn(8, 4 / setting.g, 3, 3)
 
-        jitVsGlow(test_f, inputs, filters)
+        jitVsGlow(test_f, inputs, filters,
+                  expected_fused_ops={"aten::_convolution"})

@@ -17,7 +17,7 @@ def test_relu_basic():
     # make sure we have at least one negative
     x[0] = -2.0
 
-    jitVsGlow(test_f, x)
+    jitVsGlow(test_f, x, expected_fused_ops={"aten::relu"})
 
 
 def test_relu_inplace():
@@ -31,4 +31,4 @@ def test_relu_inplace():
     # make sure we have at least one negative
     x[0] = -2.0
 
-    jitVsGlow(test_f, x)
+    jitVsGlow(test_f, x, expected_fused_ops={"aten::relu_"})

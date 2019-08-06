@@ -14,7 +14,7 @@ def test_adaptive_avg_pool2d_basic():
 
     inputs = torch.randn(3, 6, 14, 14)
 
-    jitVsGlow(test_f, inputs)
+    jitVsGlow(test_f, inputs, expected_fused_ops={"aten::adaptive_avg_pool2d"})
 
 
 def test_adaptive_avg_pool2d_nonsquare_inputs():
@@ -25,7 +25,7 @@ def test_adaptive_avg_pool2d_nonsquare_inputs():
 
     inputs = torch.randn(3, 6, 13, 14)
 
-    jitVsGlow(test_f, inputs)
+    jitVsGlow(test_f, inputs, expected_fused_ops={"aten::adaptive_avg_pool2d"})
 
 
 def test_adaptive_avg_pool2d_nonsquare_outputs():
@@ -36,4 +36,4 @@ def test_adaptive_avg_pool2d_nonsquare_outputs():
 
     inputs = torch.randn(3, 6, 14, 14)
 
-    jitVsGlow(test_f, inputs)
+    jitVsGlow(test_f, inputs, expected_fused_ops={"aten::adaptive_avg_pool2d"})

@@ -12,7 +12,7 @@ def test_reciprocal():
 
     x = torch.randn(4)
 
-    jitVsGlow(test_f, x)
+    jitVsGlow(test_f, x, expected_fused_ops={"aten::reciprocal"})
 
 
 def test_inplace_reciprocal():
@@ -24,4 +24,4 @@ def test_inplace_reciprocal():
 
     x = torch.randn(4)
 
-    jitVsGlow(test_f, x)
+    jitVsGlow(test_f, x, expected_fused_ops={"aten::reciprocal_"})

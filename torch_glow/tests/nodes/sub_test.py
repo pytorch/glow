@@ -15,7 +15,7 @@ def test_sub_basic():
     x = torch.randn(4)
     y = torch.randn(4)
 
-    jitVsGlow(test_f, x, y)
+    jitVsGlow(test_f, x, y, expected_fused_ops={"aten::sub"})
 
 
 def test_sub_broadcast_1():
@@ -28,7 +28,7 @@ def test_sub_broadcast_1():
     x = torch.randn(8, 3, 4, 2)
     y = torch.randn(4, 2)
 
-    jitVsGlow(test_f, x, y)
+    jitVsGlow(test_f, x, y, expected_fused_ops={"aten::sub"})
 
 
 def test_sub_broadcast_2():
@@ -41,7 +41,7 @@ def test_sub_broadcast_2():
     x = torch.randn(8, 3, 4, 2)
     y = torch.randn(1, 2)
 
-    jitVsGlow(test_f, x, y)
+    jitVsGlow(test_f, x, y, expected_fused_ops={"aten::sub"})
 
 
 def test_sub_broadcast_3():
@@ -54,4 +54,4 @@ def test_sub_broadcast_3():
     x = torch.randn(4, 2)
     y = torch.randn(8, 3, 4, 2)
 
-    jitVsGlow(test_f, x, y)
+    jitVsGlow(test_f, x, y, expected_fused_ops={"aten::sub"})
