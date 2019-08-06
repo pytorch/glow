@@ -14,11 +14,11 @@
  * limitations under the License.
  */
 
-#include "BackendTestUtils2.h"
+#include "BackendTestUtils.h"
 
 #include "glow/Backends/DeviceManager.h"
 #include "glow/ExecutionContext/ExecutionContext.h"
-#include "glow/ExecutionEngine/ExecutionEngine2.h"
+#include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Graph/Graph.h"
 #include "glow/IR/IRBuilder.h"
 #include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
@@ -36,7 +36,7 @@ using namespace glow;
 
 class TraceEventsTest : public ::testing::TestWithParam<std::string> {
 public:
-  ExecutionEngine2 EE_{GetParam()};
+  ExecutionEngine EE_{GetParam()};
   Tensor inputs{ElemKind::FloatTy, {1, 32, 32, 3}};
   Placeholder *inputPH;
 
@@ -145,8 +145,8 @@ TEST_P(TraceEventsTest, manualEvents) {
   cctx.compMode = CompilationMode::Infer;
   EE_.compile(cctx);
 
-  updateInputPlaceholders2(*context.getPlaceholderBindings(), {inputPH},
-                           {&inputs});
+  updateInputPlaceholders(*context.getPlaceholderBindings(), {inputPH},
+                          {&inputs});
   EE_.run(context);
 
   auto &traceEvents = context.getTraceContext()->getTraceEvents();
@@ -192,8 +192,8 @@ TEST_P(TraceEventsTest, incompleteCoverage) {
   cctx.compMode = CompilationMode::Infer;
   EE_.compile(cctx);
 
-  updateInputPlaceholders2(*context.getPlaceholderBindings(), {inputPH},
-                           {&inputs});
+  updateInputPlaceholders(*context.getPlaceholderBindings(), {inputPH},
+                          {&inputs});
   EE_.run(context);
 
   auto &traceEvents = context.getTraceContext()->getTraceEvents();
@@ -235,8 +235,8 @@ TEST_P(TraceEventsTest, internalGap) {
   cctx.compMode = CompilationMode::Infer;
   EE_.compile(cctx);
 
-  updateInputPlaceholders2(*context.getPlaceholderBindings(), {inputPH},
-                           {&inputs});
+  updateInputPlaceholders(*context.getPlaceholderBindings(), {inputPH},
+                          {&inputs});
   EE_.run(context);
 
   auto &traceEvents = context.getTraceContext()->getTraceEvents();
@@ -272,8 +272,8 @@ TEST_P(TraceEventsTest, automaticInstrumentation) {
   cctx.backendOpts.autoInstrument = true;
   EE_.compile(cctx);
 
-  updateInputPlaceholders2(*context.getPlaceholderBindings(), {inputPH},
-                           {&inputs});
+  updateInputPlaceholders(*context.getPlaceholderBindings(), {inputPH},
+                          {&inputs});
   EE_.run(context);
 
   auto &traceEvents = context.getTraceContext()->getTraceEvents();
@@ -309,8 +309,8 @@ TEST_P(TraceEventsTest, manualAndAutomatic) {
   cctx.backendOpts.autoInstrument = true;
   EE_.compile(cctx);
 
-  updateInputPlaceholders2(*context.getPlaceholderBindings(), {inputPH},
-                           {&inputs});
+  updateInputPlaceholders(*context.getPlaceholderBindings(), {inputPH},
+                          {&inputs});
   EE_.run(context);
 
   auto &traceEvents = context.getTraceContext()->getTraceEvents();
@@ -372,8 +372,8 @@ TEST_P(TraceEventsTest, twoCompiles) {
   auto func2 = EXIT_ON_ERR(backend->compile(F, cctx.backendOpts));
   insertCompiledFunction(name2, func2.get(), device.get(), &EE_.getModule());
   context.getPlaceholderBindings()->allocate(EE_.getModule().getPlaceholders());
-  updateInputPlaceholders2(*context.getPlaceholderBindings(), {inputPH},
-                           {&inputs});
+  updateInputPlaceholders(*context.getPlaceholderBindings(), {inputPH},
+                          {&inputs});
 
   runOnDevice(context, name, device.get());
   auto &traceEvents = context.getTraceContext()->getTraceEvents();
@@ -387,8 +387,8 @@ TEST_P(TraceEventsTest, twoCompiles) {
   // same millisecond.
   std::this_thread::sleep_for(std::chrono::milliseconds(1));
 
-  updateInputPlaceholders2(*context2.getPlaceholderBindings(), {inputPH},
-                           {&inputs});
+  updateInputPlaceholders(*context2.getPlaceholderBindings(), {inputPH},
+                          {&inputs});
   runOnDevice(context2, name2, device.get());
   auto &traceEvents2 = context2.getTraceContext()->getTraceEvents();
 
@@ -424,8 +424,8 @@ TEST_P(TraceEventsTest, onlyTraceEvents) {
   cctx.compMode = CompilationMode::Infer;
   EE_.compile(cctx);
 
-  updateInputPlaceholders2(*context.getPlaceholderBindings(), {inputPH},
-                           {&inputs});
+  updateInputPlaceholders(*context.getPlaceholderBindings(), {inputPH},
+                          {&inputs});
   EE_.run(context);
 
   auto &traceEvents = context.getTraceContext()->getTraceEvents();
@@ -475,8 +475,8 @@ TEST_P(TraceEventsTest, multipleBackingTensors) {
   cctx.compMode = CompilationMode::Infer;
   EE_.compile(cctx);
 
-  updateInputPlaceholders2(*context.getPlaceholderBindings(), {inputPH},
-                           {&inputs});
+  updateInputPlaceholders(*context.getPlaceholderBindings(), {inputPH},
+                          {&inputs});
   EE_.run(context);
 
   auto &traceEvents = context.getTraceContext()->getTraceEvents();
@@ -528,8 +528,8 @@ TEST_P(TraceEventsTest, multipleRunsAreDistinct) {
   cctx.compMode = CompilationMode::Infer;
   EE_.compile(cctx);
 
-  updateInputPlaceholders2(*context.getPlaceholderBindings(), {inputPH},
-                           {&inputs});
+  updateInputPlaceholders(*context.getPlaceholderBindings(), {inputPH},
+                          {&inputs});
 
   ExecutionContext context2{context.clone()};
   context2.setTraceContext(
@@ -569,8 +569,8 @@ TEST_P(TraceEventsTest, deviceManagerEvents) {
   cctx.compMode = CompilationMode::Infer;
   EE_.compile(cctx);
 
-  updateInputPlaceholders2(*context.getPlaceholderBindings(), {inputPH},
-                           {&inputs});
+  updateInputPlaceholders(*context.getPlaceholderBindings(), {inputPH},
+                          {&inputs});
   EE_.run(context);
 
   auto &traceEvents = context.getTraceContext()->getTraceEvents();

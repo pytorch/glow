@@ -15,7 +15,7 @@
  */
 
 #include "glow/Base/Image.h"
-#include "glow/ExecutionEngine/ExecutionEngine2.h"
+#include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Graph/Nodes.h"
 #include "glow/Importer/Caffe2ModelLoader.h"
 #include "glow/Optimizer/GraphOptimizer/TrainingPreparation.h"
@@ -145,7 +145,7 @@ int main(int argc, char **argv) {
                                            IMAGE_WIDTH};
   llvm::ArrayRef<size_t> allLabelsDims = {CIFAR_NUM_IMAGES, 1};
 
-  ExecutionEngine2 EE(executionBackend);
+  ExecutionEngine EE(executionBackend);
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("resnet50");
 

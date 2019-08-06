@@ -14,10 +14,10 @@
  * limitations under the License.
  */
 
-#include "BackendTestUtils2.h"
+#include "BackendTestUtils.h"
 
 #include "glow/Converter/TypeAToTypeBFunctionConverter.h"
-#include "glow/ExecutionEngine/ExecutionEngine2.h"
+#include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Graph/Graph.h"
 #include "glow/IR/IR.h"
 #include "glow/IR/IRBuilder.h"
@@ -80,7 +80,7 @@ profileAndGetNodeQuantizationInfo(CreateAndInitFunction createAndInitFunction,
                                   quantization::Schema schema) {
   LoweredInfoMap loweredMapForProf;
   PlaceholderBindings pBindings;
-  ExecutionEngine2 PEE{"Interpreter"};
+  ExecutionEngine PEE{"Interpreter"};
   createAndInitFunction(pBindings, PEE);
   CompilationContext cctx{&pBindings, &loweredMapForProf};
   cctx.precisionConfig.quantMode = QuantizationMode::Profile;
@@ -97,7 +97,7 @@ profileAndGetNodeQuantizationInfo(CreateAndInitFunction createAndInitFunction,
 /// backend being tested.
 static std::pair<CompilationContext, CompilationContext>
 setupInterpAndBackendConfigs(
-    Function *IF, ExecutionEngine2 &IEE, PlaceholderBindings &iBindings,
+    Function *IF, ExecutionEngine &IEE, PlaceholderBindings &iBindings,
     LoweredInfoMap &ILIM, PlaceholderBindings &bBindings, LoweredInfoMap &BLIM,
     ElemKind interpElemKind, ElemKind backendElemKind,
     quantization::Schema schema, bool enableRowwiseQuantization,
@@ -146,8 +146,8 @@ void compareAgainstInterpreter(llvm::StringRef backendName,
                                ElemKind backendElemKind, float allowedError,
                                unsigned count, bool enableRowwiseQuantization,
                                quantization::Schema schema) {
-  ExecutionEngine2 IEE{"Interpreter"};
-  ExecutionEngine2 BEE{backendName};
+  ExecutionEngine IEE{"Interpreter"};
+  ExecutionEngine BEE{backendName};
   PlaceholderBindings iBindings, bBindings;
 
   LOG(INFO) << "Comparing Interpreter with precision "
@@ -261,7 +261,7 @@ void inferIntLookupTableNet(Tensor *input, Tensor *out,
                             llvm::ArrayRef<int8_t> table,
                             llvm::StringRef kind) {
   PlaceholderBindings bindings;
-  ExecutionEngine2 EE(kind);
+  ExecutionEngine EE(kind);
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
   auto outTy = mod.uniqueType(ElemKind::Int8QTy, {input->size()}, 3, 3);
@@ -275,7 +275,7 @@ void inferIntLookupTableNet(Tensor *input, Tensor *out,
   EE.compile(CompilationMode::Infer);
   bindings.allocate(mod.getPlaceholders());
 
-  updateInputPlaceholders2(bindings, {var}, {input});
+  updateInputPlaceholders(bindings, {var}, {input});
   EE.run(bindings);
   out->assign(resultTensor);
 }
@@ -283,7 +283,7 @@ void inferIntLookupTableNet(Tensor *input, Tensor *out,
 void inferConvNet(Tensor *inputs, Tensor *filter, Tensor *bias, Tensor *out,
                   llvm::StringRef kind) {
   PlaceholderBindings bindings;
-  ExecutionEngine2 EE(kind);
+  ExecutionEngine EE(kind);
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
   Placeholder *inputP;
@@ -320,8 +320,8 @@ void inferConvNet(Tensor *inputs, Tensor *filter, Tensor *bias, Tensor *out,
 
   EE.compile(CompilationMode::Infer);
 
-  updateInputPlaceholders2(bindings, {inputP, filterP, biasP},
-                           {inputs, filter, bias});
+  updateInputPlaceholders(bindings, {inputP, filterP, biasP},
+                          {inputs, filter, bias});
   EE.run(bindings);
   out->assign(resultTensor);
 }
@@ -330,9 +330,9 @@ void trainConvNet(Tensor *inputs, Tensor *kernel1, Tensor *bias1,
                   Tensor *kernel2, Tensor *bias2, Tensor *selected,
                   llvm::ArrayRef<size_t> shape1, llvm::ArrayRef<size_t> shape2,
                   Tensor *out, llvm::StringRef kind) {
-  ExecutionEngine2 EET(kind);
-  ExecutionEngine2 EEI(kind);
-  std::vector<ExecutionEngine2 *> engines;
+  ExecutionEngine EET(kind);
+  ExecutionEngine EEI(kind);
+  std::vector<ExecutionEngine *> engines;
   engines.push_back(&EEI);
   engines.push_back(&EET);
   TrainingConfig TC;
@@ -374,13 +374,13 @@ void trainConvNet(Tensor *inputs, Tensor *kernel1, Tensor *bias1,
   bindings.copyTrainableWeightsTo(trainingBindings);
   auto *res = inferBindings.get(EEI.getModule().getPlaceholderByName("ret"));
 
-  runBatch2(EET, trainingBindings, 8, sampleCounter, {var1, var2},
-            {inputs, selected}, tfName);
+  runBatch(EET, trainingBindings, 8, sampleCounter, {var1, var2},
+           {inputs, selected}, tfName);
   trainingBindings.copyTrainableWeightsTo(inferBindings);
   EEI.compile(CompilationMode::Infer);
   var1 = inferBindings.getPlaceholderByName("var1");
   var2 = inferBindings.getPlaceholderByName("var2");
-  updateInputPlaceholders2(inferBindings, {var1, var2}, {inputs, selected});
+  updateInputPlaceholders(inferBindings, {var1, var2}, {inputs, selected});
   EEI.run(inferBindings, fName);
   out->assign(res);
 }
@@ -388,7 +388,7 @@ void trainConvNet(Tensor *inputs, Tensor *kernel1, Tensor *bias1,
 void inferLocalResponseNormalizationNet(Tensor *inputs, Tensor *out,
                                         llvm::StringRef kind) {
   PlaceholderBindings bindings;
-  ExecutionEngine2 EE(kind);
+  ExecutionEngine EE(kind);
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
   auto *var = createPlaceholder(mod, bindings, inputs, "var");
@@ -398,7 +398,7 @@ void inferLocalResponseNormalizationNet(Tensor *inputs, Tensor *out,
 
   EE.compile(CompilationMode::Infer);
 
-  updateInputPlaceholders2(bindings, {var}, {inputs});
+  updateInputPlaceholders(bindings, {var}, {inputs});
   EE.run(bindings);
   out->assign(resultTensor);
 }
@@ -409,9 +409,9 @@ void trainLocalResponseNormalizationNet(Tensor *inputs, Tensor *weights,
                                         llvm::ArrayRef<size_t> shape2,
                                         Tensor *out, llvm::StringRef kind) {
   PlaceholderBindings bindings, trainingBindings;
-  ExecutionEngine2 EET(kind);
-  ExecutionEngine2 EEI(kind);
-  std::vector<ExecutionEngine2 *> engines{&EEI, &EET};
+  ExecutionEngine EET(kind);
+  ExecutionEngine EEI(kind);
+  std::vector<ExecutionEngine *> engines{&EEI, &EET};
   TrainingConfig TC;
 
   // This variable records the number of the next sample to be used for
@@ -448,14 +448,14 @@ void trainLocalResponseNormalizationNet(Tensor *inputs, Tensor *weights,
   bindings.clear();
   bindings.allocate(EEI.getModule().getPlaceholders());
 
-  runBatch2(EET, trainingBindings, 8, sampleCounter, {var1, var2},
-            {inputs, selected}, tfName);
+  runBatch(EET, trainingBindings, 8, sampleCounter, {var1, var2},
+           {inputs, selected}, tfName);
   trainingBindings.copyTrainableWeightsTo(bindings);
   var1 = bindings.getPlaceholderByName("var1");
   var2 = bindings.getPlaceholderByName("var2");
   EEI.compile(CompilationMode::Infer);
 
-  runBatch2(EEI, bindings, 1, sampleCounter, {var1, var2}, {inputs, selected});
+  runBatch(EEI, bindings, 1, sampleCounter, {var1, var2}, {inputs, selected});
   out->assign(bindings.get(bindings.getPlaceholderByName("ret")));
 }
 
@@ -463,9 +463,9 @@ void trainAvgPoolNet(Tensor *inputs, Tensor *weights, Tensor *bias,
                      Tensor *selected, llvm::ArrayRef<size_t> shape1,
                      llvm::ArrayRef<size_t> shape2, Tensor *out,
                      llvm::StringRef kind) {
-  ExecutionEngine2 EET(kind);
-  ExecutionEngine2 EEI(kind);
-  std::vector<ExecutionEngine2 *> engines{&EEI, &EET};
+  ExecutionEngine EET(kind);
+  ExecutionEngine EEI(kind);
+  std::vector<ExecutionEngine *> engines{&EEI, &EET};
   TrainingConfig TC;
   PlaceholderBindings bindings, trainingBindings;
 
@@ -502,14 +502,14 @@ void trainAvgPoolNet(Tensor *inputs, Tensor *weights, Tensor *bias,
   bindings.clear();
   bindings.allocate(EEI.getModule().getPlaceholders());
 
-  runBatch2(EET, trainingBindings, 10, sampleCounter, {var1, var2},
-            {inputs, selected}, tfName);
+  runBatch(EET, trainingBindings, 10, sampleCounter, {var1, var2},
+           {inputs, selected}, tfName);
   trainingBindings.copyTrainableWeightsTo(bindings);
   var1 = bindings.getPlaceholderByName("var1");
   var2 = bindings.getPlaceholderByName("var2");
   EEI.compile(CompilationMode::Infer);
 
-  updateInputPlaceholders2(bindings, {var1, var2}, {inputs, selected});
+  updateInputPlaceholders(bindings, {var1, var2}, {inputs, selected});
   EEI.run(bindings);
   out->assign(bindings.get(bindings.getPlaceholderByName("ret")));
 }
@@ -518,9 +518,9 @@ void trainMaxPoolNet(Tensor *inputs, Tensor *weights, Tensor *bias,
                      Tensor *selected, llvm::ArrayRef<size_t> shape1,
                      llvm::ArrayRef<size_t> shape2, Tensor *out,
                      llvm::StringRef kind) {
-  ExecutionEngine2 EET(kind);
-  ExecutionEngine2 EEI(kind);
-  std::vector<ExecutionEngine2 *> engines;
+  ExecutionEngine EET(kind);
+  ExecutionEngine EEI(kind);
+  std::vector<ExecutionEngine *> engines;
   engines.push_back(&EEI);
   engines.push_back(&EET);
   TrainingConfig TC;
@@ -559,20 +559,20 @@ void trainMaxPoolNet(Tensor *inputs, Tensor *weights, Tensor *bias,
   bindings.copyTrainableWeightsTo(trainingBindings);
   auto *res = inferBindings.get(EEI.getModule().getPlaceholderByName("ret"));
 
-  runBatch2(EET, trainingBindings, 7, sampleCounter, {var1, var2},
-            {inputs, selected}, tfName);
+  runBatch(EET, trainingBindings, 7, sampleCounter, {var1, var2},
+           {inputs, selected}, tfName);
   trainingBindings.copyTrainableWeightsTo(inferBindings);
   EEI.compile(CompilationMode::Infer);
   var1 = inferBindings.getPlaceholderByName("var1");
   var2 = inferBindings.getPlaceholderByName("var2");
-  runBatch2(EEI, inferBindings, 1, sampleCounter, {var1, var2},
-            {inputs, selected}, fName);
+  runBatch(EEI, inferBindings, 1, sampleCounter, {var1, var2},
+           {inputs, selected}, fName);
   out->assign(res);
 }
 
 void inferSmallConv(Tensor *inputs, Tensor *out, llvm::StringRef kind) {
   PlaceholderBindings bindings;
-  ExecutionEngine2 EE(kind);
+  ExecutionEngine EE(kind);
   auto &mod = EE.getModule();
   auto *F = mod.createFunction("main");
   auto *in = createPlaceholder(mod, bindings, inputs, "in");
@@ -585,7 +585,7 @@ void inferSmallConv(Tensor *inputs, Tensor *out, llvm::StringRef kind) {
 
   EE.compile(CompilationMode::Infer);
 
-  updateInputPlaceholders2(bindings, {in}, {inputs});
+  updateInputPlaceholders(bindings, {in}, {inputs});
   EE.run(bindings);
 
   out->assign(resultTensor);
@@ -593,7 +593,7 @@ void inferSmallConv(Tensor *inputs, Tensor *out, llvm::StringRef kind) {
 
 void inferGroupConv(Tensor *out, llvm::StringRef kind) {
   PlaceholderBindings bindings;
-  ExecutionEngine2 EE(kind);
+  ExecutionEngine EE(kind);
   auto &mod = EE.getModule();
   auto *F = mod.createFunction("main");
 
@@ -633,7 +633,7 @@ void inferGroupConv(Tensor *out, llvm::StringRef kind) {
 
 void inferNonSquarePaddingConv(Tensor *out, llvm::StringRef kind) {
   PlaceholderBindings bindings;
-  ExecutionEngine2 EE(kind);
+  ExecutionEngine EE(kind);
   auto &mod = EE.getModule();
   auto *F = mod.createFunction("main");
 
@@ -672,7 +672,7 @@ void inferNonSquarePaddingConv(Tensor *out, llvm::StringRef kind) {
 
 void inferNonSquareKernelConv(Tensor *out, llvm::StringRef kind) {
   PlaceholderBindings bindings;
-  ExecutionEngine2 EE(kind);
+  ExecutionEngine EE(kind);
   auto &mod = EE.getModule();
   auto *F = mod.createFunction("main");
 
@@ -712,7 +712,7 @@ void inferNonSquareKernelConv(Tensor *out, llvm::StringRef kind) {
 
 void inferNonSquareStrideConv(Tensor *out, llvm::StringRef kind) {
   PlaceholderBindings bindings;
-  ExecutionEngine2 EE(kind);
+  ExecutionEngine EE(kind);
   auto &mod = EE.getModule();
   auto *F = mod.createFunction("main");
 
@@ -752,7 +752,7 @@ void inferNonSquareStrideConv(Tensor *out, llvm::StringRef kind) {
 
 void inferConvDKKC8(Tensor *out, llvm::StringRef kind) {
   PlaceholderBindings bindings;
-  ExecutionEngine2 EE(kind);
+  ExecutionEngine EE(kind);
   auto &mod = EE.getModule();
   auto *F = mod.createFunction("main");
 
@@ -794,9 +794,9 @@ void inferConvDKKC8(Tensor *out, llvm::StringRef kind) {
 
 void trainSoftMaxNet(Tensor *inputs, Tensor *weights, Tensor *bias,
                      Tensor *selected, Tensor *out, llvm::StringRef kind) {
-  ExecutionEngine2 EEI(kind);
-  ExecutionEngine2 EET(kind);
-  std::vector<ExecutionEngine2 *> engines;
+  ExecutionEngine EEI(kind);
+  ExecutionEngine EET(kind);
+  std::vector<ExecutionEngine *> engines;
   engines.push_back(&EEI);
   engines.push_back(&EET);
   TrainingConfig TC;
@@ -830,15 +830,15 @@ void trainSoftMaxNet(Tensor *inputs, Tensor *weights, Tensor *bias,
   EET.compile(CompilationMode::Train);
   trainingBindings.allocate(EET.getModule().getPlaceholders());
   bindings.copyTrainableWeightsTo(trainingBindings);
-  runBatch2(EET, trainingBindings, 30, sampleCounter, {var1, var2},
-            {inputs, selected}, tfName);
+  runBatch(EET, trainingBindings, 30, sampleCounter, {var1, var2},
+           {inputs, selected}, tfName);
   EEI.compile(CompilationMode::Infer);
   inferBindings.allocate(EEI.getModule().getPlaceholders());
   trainingBindings.copyTrainableWeightsTo(inferBindings);
   auto *res = inferBindings.get(EEI.getModule().getPlaceholderByName("ret"));
   var1 = inferBindings.getPlaceholderByName("var1");
   var2 = inferBindings.getPlaceholderByName("var2");
-  updateInputPlaceholders2(inferBindings, {var1, var2}, {inputs, selected});
+  updateInputPlaceholders(inferBindings, {var1, var2}, {inputs, selected});
   EEI.run(inferBindings, fName);
   out->assign(res);
 }
@@ -846,7 +846,7 @@ void trainSoftMaxNet(Tensor *inputs, Tensor *weights, Tensor *bias,
 void inferTanhConcatNet(Tensor *input1, Tensor *input2, Tensor *input3,
                         Tensor *out, llvm::StringRef kind) {
   PlaceholderBindings bindings;
-  ExecutionEngine2 EE(kind);
+  ExecutionEngine EE(kind);
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
   auto *var1 = createPlaceholder(mod, bindings, input1, "var1");
@@ -862,8 +862,8 @@ void inferTanhConcatNet(Tensor *input1, Tensor *input2, Tensor *input3,
 
   EE.compile(CompilationMode::Infer);
 
-  updateInputPlaceholders2(bindings, {var1, var2, var3},
-                           {input1, input2, input3});
+  updateInputPlaceholders(bindings, {var1, var2, var3},
+                          {input1, input2, input3});
   EE.run(bindings);
   out->assign(resultTensor);
 }
@@ -871,7 +871,7 @@ void inferTanhConcatNet(Tensor *input1, Tensor *input2, Tensor *input3,
 void inferBasicConvNet(Tensor *inputs, Tensor *out, llvm::StringRef kind,
                        size_t convDepth) {
   PlaceholderBindings bindings;
-  ExecutionEngine2 EE(kind);
+  ExecutionEngine EE(kind);
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
   auto *var = createPlaceholder(mod, bindings, inputs, "var");
@@ -887,13 +887,13 @@ void inferBasicConvNet(Tensor *inputs, Tensor *out, llvm::StringRef kind,
 
   EE.compile(CompilationMode::Infer);
 
-  updateInputPlaceholders2(bindings, {var}, {inputs});
+  updateInputPlaceholders(bindings, {var}, {inputs});
   EE.run(bindings);
   out->assign(resultTensor);
 }
 
 FunctionTensorPair createAndInitBasicFCNet(PlaceholderBindings &bindings,
-                                           ExecutionEngine2 &EE) {
+                                           ExecutionEngine &EE) {
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -917,7 +917,7 @@ FunctionTensorPair createAndInitBasicFCNet(PlaceholderBindings &bindings,
 
 void inferMixedNet(Tensor *inputs, Tensor *out, llvm::StringRef kind) {
   PlaceholderBindings bindings;
-  ExecutionEngine2 EE(kind);
+  ExecutionEngine EE(kind);
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
   auto *var = createPlaceholder(mod, bindings, inputs, "var");
@@ -941,7 +941,7 @@ void inferMixedNet(Tensor *inputs, Tensor *out, llvm::StringRef kind) {
 
   EE.compile(CompilationMode::Infer);
 
-  updateInputPlaceholders2(bindings, {var}, {inputs});
+  updateInputPlaceholders(bindings, {var}, {inputs});
   EE.run(bindings);
   out->assign(resultTensor);
 }
@@ -949,7 +949,7 @@ void inferMixedNet(Tensor *inputs, Tensor *out, llvm::StringRef kind) {
 void inferComplexNet1(Tensor *inputs1, Tensor *inputs2, Tensor *inputs3,
                       Tensor *inputs4, Tensor *out, llvm::StringRef kind) {
   PlaceholderBindings bindings;
-  ExecutionEngine2 EE(kind);
+  ExecutionEngine EE(kind);
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
   auto *var1 = createPlaceholder(mod, bindings, inputs1, "var1");
@@ -985,8 +985,8 @@ void inferComplexNet1(Tensor *inputs1, Tensor *inputs2, Tensor *inputs3,
 
   EE.compile(CompilationMode::Infer);
 
-  updateInputPlaceholders2(bindings, {var1, var2, var3, var4},
-                           {inputs1, inputs2, inputs3, inputs4});
+  updateInputPlaceholders(bindings, {var1, var2, var3, var4},
+                          {inputs1, inputs2, inputs3, inputs4});
   EE.run(bindings);
   out->assign(resultTensor);
 }
@@ -1003,7 +1003,7 @@ static void initConv(PlaceholderBindings &bindings, ConvolutionNode *C,
 void inferTinyResnet(Tensor *input, Tensor *out, std::vector<Tensor> &weights,
                      llvm::StringRef kind) {
   PlaceholderBindings bindings;
-  ExecutionEngine2 EE(kind);
+  ExecutionEngine EE(kind);
   auto &mod = EE.getModule();
   auto *F = mod.createFunction("main");
 
@@ -1027,14 +1027,14 @@ void inferTinyResnet(Tensor *input, Tensor *out, std::vector<Tensor> &weights,
 
   EE.compile(CompilationMode::Infer);
 
-  updateInputPlaceholders2(bindings, {in}, {input});
+  updateInputPlaceholders(bindings, {in}, {input});
   EE.run(bindings);
   out->assign(resultTensor);
 }
 
 void inferExtract3D(Tensor *input, Tensor *out, llvm::StringRef kind) {
   PlaceholderBindings bindings;
-  ExecutionEngine2 EE(kind);
+  ExecutionEngine EE(kind);
   auto &mod = EE.getModule();
   auto *F = mod.createFunction("main");
 
@@ -1060,14 +1060,14 @@ void inferExtract3D(Tensor *input, Tensor *out, llvm::StringRef kind) {
 
   EE.compile(CompilationMode::Infer);
 
-  updateInputPlaceholders2(bindings, {inputs}, {input});
+  updateInputPlaceholders(bindings, {inputs}, {input});
   EE.run(bindings);
   out->assign(resultTensor);
 }
 
 void inferMaxSplat(Tensor *input, Tensor *out, llvm::StringRef kind) {
   PlaceholderBindings bindings;
-  ExecutionEngine2 EE(kind);
+  ExecutionEngine EE(kind);
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
@@ -1090,7 +1090,7 @@ void inferMaxSplat(Tensor *input, Tensor *out, llvm::StringRef kind) {
 
   EE.compile(CompilationMode::Infer);
 
-  updateInputPlaceholders2(bindings, {var}, {input});
+  updateInputPlaceholders(bindings, {var}, {input});
   EE.run(bindings);
   out->assign(resultTensor);
 }

@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#include "glow/ExecutionEngine/ExecutionEngine2.h"
+#include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Backend/Backend.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/PlaceholderBindings.h"
@@ -27,12 +27,12 @@
 
 using namespace glow;
 
-ExecutionEngine2::ExecutionEngine2(llvm::StringRef backend) {
+ExecutionEngine::ExecutionEngine(llvm::StringRef backend) {
   setBackendName(backend);
 }
 
 /// Set the code generator to the given \p backend.
-void ExecutionEngine2::setBackendName(llvm::StringRef backend) {
+void ExecutionEngine::setBackendName(llvm::StringRef backend) {
   module_.reset(new Module);
   rawModule_ = module_.get();
   backendName_ = backend;
@@ -54,25 +54,23 @@ void ExecutionEngine2::setBackendName(llvm::StringRef backend) {
   }
 }
 
-llvm::StringRef ExecutionEngine2::getBackendName() const {
-  return backendName_;
-}
+llvm::StringRef ExecutionEngine::getBackendName() const { return backendName_; }
 
-ExecutionEngine2::~ExecutionEngine2() {
+ExecutionEngine::~ExecutionEngine() {
   // Call setBackendName with backend="" to clear the EE.
   setBackendName("");
 }
 
-void ExecutionEngine2::clear() {
+void ExecutionEngine::clear() {
   if (hostManager_) {
     EXIT_ON_ERR(hostManager_->clearHost());
   }
   compiledFunctions_.clear();
 }
 
-void glow::updateInputPlaceholders2(PlaceholderBindings &bindings,
-                                    llvm::ArrayRef<Placeholder *> ph,
-                                    llvm::ArrayRef<Tensor *> inputs) {
+void glow::updateInputPlaceholders(PlaceholderBindings &bindings,
+                                   llvm::ArrayRef<Placeholder *> ph,
+                                   llvm::ArrayRef<Tensor *> inputs) {
   assert(inputs.size() == ph.size() &&
          "The number of inputs does not match the number of Placeholders");
 
@@ -88,10 +86,10 @@ void glow::updateInputPlaceholders2(PlaceholderBindings &bindings,
   }
 }
 
-void glow::updateInputPlaceholdersByName2(PlaceholderBindings &bindings,
-                                          Module *mod,
-                                          llvm::ArrayRef<llvm::StringRef> ph,
-                                          llvm::ArrayRef<Tensor *> inputs) {
+void glow::updateInputPlaceholdersByName(PlaceholderBindings &bindings,
+                                         Module *mod,
+                                         llvm::ArrayRef<llvm::StringRef> ph,
+                                         llvm::ArrayRef<Tensor *> inputs) {
   assert(inputs.size() == ph.size() &&
          "The number of inputs does not match the number of Placeholders");
 
@@ -100,12 +98,12 @@ void glow::updateInputPlaceholdersByName2(PlaceholderBindings &bindings,
     Tensor *t = inputs[i];
     assert(t && "Invalid tensor.");
     assert(p && "Invalid placeholder.");
-    updateInputPlaceholders2(bindings, {p}, {t});
+    updateInputPlaceholders(bindings, {p}, {t});
   }
 }
 
-void ExecutionEngine2::runInternal(ExecutionContext &context,
-                                   llvm::StringRef name) {
+void ExecutionEngine::runInternal(ExecutionContext &context,
+                                  llvm::StringRef name) {
   std::unique_ptr<ExecutionContext> contextPtr(&context);
   std::promise<void> runPromise;
   auto fut = runPromise.get_future();
@@ -125,17 +123,17 @@ void ExecutionEngine2::runInternal(ExecutionContext &context,
   EXIT_ON_ERR(std::move(runErr));
 }
 
-void ExecutionEngine2::run(ExecutionContext &context) {
+void ExecutionEngine::run(ExecutionContext &context) {
   assert(compiledFunctions_.size() == 1 &&
          "Expected exactly one compiled function.");
   runInternal(context, *compiledFunctions_.begin());
 }
 
-void ExecutionEngine2::run(ExecutionContext &context, llvm::StringRef name) {
+void ExecutionEngine::run(ExecutionContext &context, llvm::StringRef name) {
   runInternal(context, name);
 }
 
-void ExecutionEngine2::run(PlaceholderBindings &bindings) {
+void ExecutionEngine::run(PlaceholderBindings &bindings) {
   assert(compiledFunctions_.size() == 1 &&
          "Expected exactly one compiled function.");
   std::unique_ptr<PlaceholderBindings> bindingsPtr(&bindings);
@@ -145,8 +143,7 @@ void ExecutionEngine2::run(PlaceholderBindings &bindings) {
   context.movePlaceholderBindings().release();
 }
 
-void ExecutionEngine2::run(PlaceholderBindings &bindings,
-                           llvm::StringRef name) {
+void ExecutionEngine::run(PlaceholderBindings &bindings, llvm::StringRef name) {
   std::unique_ptr<PlaceholderBindings> bindingsPtr(&bindings);
   ExecutionContext context(std::move(bindingsPtr));
   runInternal(context, name);
@@ -154,10 +151,10 @@ void ExecutionEngine2::run(PlaceholderBindings &bindings,
   context.movePlaceholderBindings().release();
 }
 
-void glow::runBatch2(ExecutionEngine2 &EE, PlaceholderBindings &bindings,
-                     size_t iterations, size_t &sampleCounter,
-                     llvm::ArrayRef<Placeholder *> ph,
-                     llvm::ArrayRef<Tensor *> inputs, llvm::StringRef name) {
+void glow::runBatch(ExecutionEngine &EE, PlaceholderBindings &bindings,
+                    size_t iterations, size_t &sampleCounter,
+                    llvm::ArrayRef<Placeholder *> ph,
+                    llvm::ArrayRef<Tensor *> inputs, llvm::StringRef name) {
   // This is the size of one batch (the number of samples in the batch).
   size_t batchSize = ph[0]->getType()->dims()[0];
 
@@ -194,13 +191,13 @@ void glow::runBatch2(ExecutionEngine2 &EE, PlaceholderBindings &bindings,
   }
 }
 
-void ExecutionEngine2::compile(CompilationMode mode) {
+void ExecutionEngine::compile(CompilationMode mode) {
   CompilationContext cctx;
   cctx.compMode = mode;
   compile(cctx);
 }
 
-void ExecutionEngine2::compile(CompilationContext &cctx) {
+void ExecutionEngine::compile(CompilationContext &cctx) {
   assert(module_.get() && "Compile has already been called.");
 
   for (auto &function : module_->getFunctions()) {

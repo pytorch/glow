@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#include "BackendTestUtils2.h"
+#include "BackendTestUtils.h"
 
 // Silence Apple's warning about the deprecation of OpenCL.
 #define CL_SILENCE_DEPRECATION
@@ -24,7 +24,7 @@
 
 #include "../../lib/Backends/OpenCL/OpenCLDeviceManager.h"
 #include "glow/Backends/DeviceManager.h"
-#include "glow/ExecutionEngine/ExecutionEngine2.h"
+#include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Graph/Graph.h"
 #include "glow/IR/IR.h"
 #include "glow/IR/IRBuilder.h"

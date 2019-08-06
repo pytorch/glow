@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #include "glow/Base/Image.h"
-#include "glow/ExecutionEngine/ExecutionEngine2.h"
+#include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Importer/Caffe2ModelLoader.h"
 #include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
@@ -82,7 +82,7 @@ unsigned loadMNIST(Tensor &imageInputs, Tensor &labelInputs) {
   return numImages;
 }
 
-void createModel(ExecutionEngine2 &EE, Function *F,
+void createModel(ExecutionEngine &EE, Function *F,
                  PlaceholderBindings &bindings, unsigned minibatchSize,
                  Placeholder *&inputPH, Placeholder *&outputPH,
                  Placeholder *&selectedPH) {
@@ -107,8 +107,8 @@ void createModel(ExecutionEngine2 &EE, Function *F,
   outputPH = result->getPlaceholder();
 }
 
-void trainModel(ExecutionEngine2 &EE, PlaceholderBindings &bindings,
-                Function *F, unsigned minibatchSize, unsigned numIterations,
+void trainModel(ExecutionEngine &EE, PlaceholderBindings &bindings, Function *F,
+                unsigned minibatchSize, unsigned numIterations,
                 Tensor &imageInputs, Tensor &labelInputs, Placeholder *inputPH,
                 Placeholder *selectedPH) {
   llvm::Timer timer("Training", "Training");
@@ -141,14 +141,14 @@ void trainModel(ExecutionEngine2 &EE, PlaceholderBindings &bindings,
     // On each training iteration take a slice of imageInputs and labelInputs
     // and put them into variables A and B, then run forward and backward passes
     // and update weights.
-    runBatch2(EE, bindings, numIterations, sampleCounter, {inputPH, selectedPH},
-              {&imageInputs, &labelInputs}, tfName);
+    runBatch(EE, bindings, numIterations, sampleCounter, {inputPH, selectedPH},
+             {&imageInputs, &labelInputs}, tfName);
 
     timer.stopTimer();
   }
 }
 
-void validateModel(ExecutionEngine2 &EE, PlaceholderBindings &bindings,
+void validateModel(ExecutionEngine &EE, PlaceholderBindings &bindings,
                    Function *F, unsigned minibatchSize, unsigned numIterations,
                    Tensor &imageInputs, Tensor &labelInputs,
                    Placeholder *inputPH, Placeholder *outputPH,
@@ -215,13 +215,13 @@ void testMNIST() {
   PlaceholderBindings trainingBindings, inferBindings;
   Placeholder *A, *E, *selected;
 
-  ExecutionEngine2 EEI_(executionBackend);
+  ExecutionEngine EEI_(executionBackend);
   auto &inferMod = EEI_.getModule();
   Function *F = inferMod.createFunction("mnist");
   createModel(EEI_, F, inferBindings, minibatchSize, A, E, selected);
   inferBindings.allocate(inferMod.getPlaceholders());
 
-  ExecutionEngine2 EET_(executionBackend);
+  ExecutionEngine EET_(executionBackend);
   auto &trainMod = EET_.getModule();
   Function *TF = trainMod.createFunction("mnist");
   createModel(EET_, TF, trainingBindings, minibatchSize, A, E, selected);
@@ -247,7 +247,7 @@ void testMNISTLoadAndTraining() {
   imageInputsTransposed.transpose(&imageInputs, NHWC2NCHW);
 
   PlaceholderBindings trainingBindings, inferBindings;
-  ExecutionEngine2 EEI_(executionBackend);
+  ExecutionEngine EEI_(executionBackend);
   auto &inferMod = EEI_.getModule();
   auto *F = inferMod.createFunction("lenet_mnist");
   unsigned minibatchSize = 8;
@@ -280,7 +280,7 @@ void testMNISTLoadAndTraining() {
 
   // Load the model a second time for training.
   // TODO: remove once EE2 is able to compile in different modes.
-  ExecutionEngine2 EET_(executionBackend);
+  ExecutionEngine EET_(executionBackend);
   auto &trainMod = EET_.getModule();
   auto *TF = trainMod.createFunction("lenet_mnist_train");
   glow::Caffe2ModelLoader trainingLoader("lenet_mnist/predict_net.pb",

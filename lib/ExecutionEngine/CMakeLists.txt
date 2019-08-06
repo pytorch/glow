@@ -1,7 +1,7 @@
-add_library(ExecutionEngine2
-              ExecutionEngine2.cpp)
+add_library(ExecutionEngine
+              ExecutionEngine.cpp)
 
-target_link_libraries(ExecutionEngine2
+target_link_libraries(ExecutionEngine
                       PRIVATE
                         Backend
                         Backends

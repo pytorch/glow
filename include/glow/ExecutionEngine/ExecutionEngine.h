@@ -13,8 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#ifndef GLOW_EXECUTIONENGINE_EXECUTIONENGINE2_H
-#define GLOW_EXECUTIONENGINE_EXECUTIONENGINE2_H
+#ifndef GLOW_EXECUTIONENGINE_EXECUTIONENGINE_H
+#define GLOW_EXECUTIONENGINE_EXECUTIONENGINE_H
 
 #include "glow/Backend/Backend.h"
 #include "glow/Backend/CompiledFunction.h"
@@ -36,7 +36,7 @@ namespace glow {
 /// compiled function.  The Graph, etc in this class are defined as pointers, in
 /// order to erase the type and prevent the internal types from leaking out to
 /// the users of this class.
-class ExecutionEngine2 final {
+class ExecutionEngine final {
   /// Module containing the function and supporting information.
   std::unique_ptr<Module> module_;
 
@@ -61,9 +61,9 @@ class ExecutionEngine2 final {
   void runInternal(ExecutionContext &context, llvm::StringRef name);
 
 public:
-  ExecutionEngine2(llvm::StringRef backend = "Interpreter");
+  ExecutionEngine(llvm::StringRef backend = "Interpreter");
 
-  ~ExecutionEngine2();
+  ~ExecutionEngine();
 
   /// Set the code generator to \p backend. New code will be generated
   /// using this backend. This clears all previously loaded functions and resets
@@ -124,16 +124,16 @@ public:
 
 /// This method updates the placeholders in \p ph with the tensor content
 /// values \p inputs, in \p bindings.
-void updateInputPlaceholders2(PlaceholderBindings &bindings,
-                              llvm::ArrayRef<Placeholder *> ph,
-                              llvm::ArrayRef<Tensor *> inputs);
+void updateInputPlaceholders(PlaceholderBindings &bindings,
+                             llvm::ArrayRef<Placeholder *> ph,
+                             llvm::ArrayRef<Tensor *> inputs);
 
 /// This method updates the placeholders in the module. The placeholders are
 /// found by name
 ///  in \p ph with the tensor content values \p inputs.
-void updateInputPlaceholdersByName2(PlaceholderBindings &bindings, Module *mod,
-                                    llvm::ArrayRef<llvm::StringRef> ph,
-                                    llvm::ArrayRef<Tensor *> inputs);
+void updateInputPlaceholdersByName(PlaceholderBindings &bindings, Module *mod,
+                                   llvm::ArrayRef<llvm::StringRef> ph,
+                                   llvm::ArrayRef<Tensor *> inputs);
 
 /// Runs \p iterations iterations of the compiled function. The method updates a
 /// global counter and future invocations of this method continue running
@@ -147,11 +147,11 @@ void updateInputPlaceholdersByName2(PlaceholderBindings &bindings, Module *mod,
 /// variable records the number of samples that were consumed by the network in
 /// previous iterations. The next input to be loaded is
 /// (sampleCounter % batchsize).
-void runBatch2(ExecutionEngine2 &EE, PlaceholderBindings &bindings,
-               size_t iterations, size_t &sampleCounter,
-               llvm::ArrayRef<Placeholder *> ph,
-               llvm::ArrayRef<Tensor *> inputs, llvm::StringRef name = "");
+void runBatch(ExecutionEngine &EE, PlaceholderBindings &bindings,
+              size_t iterations, size_t &sampleCounter,
+              llvm::ArrayRef<Placeholder *> ph, llvm::ArrayRef<Tensor *> inputs,
+              llvm::StringRef name = "");
 
 } // namespace glow
 
-#endif // GLOW_EXECUTIONENGINE_EXECUTIONENGINE2_H
+#endif // GLOW_EXECUTIONENGINE_EXECUTIONENGINE_H

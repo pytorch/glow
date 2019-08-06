@@ -20,9 +20,9 @@
 // compiler with a small end-to-end example. The toy network is small
 // enough that it can be trained as part of the unit test suite.
 
-#include "BackendTestUtils2.h"
+#include "BackendTestUtils.h"
 
-#include "glow/ExecutionEngine/ExecutionEngine2.h"
+#include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Graph/Graph.h"
 #include "glow/IR/IR.h"
 #include "glow/IR/IRBuilder.h"
@@ -283,7 +283,7 @@ struct HyphenNetwork {
 
   // Run `inputs` through the inference function and check the results against
   // `hyphens`. Return the number of errors.
-  unsigned inferenceErrors(ExecutionEngine2 &EE, llvm::StringRef fName,
+  unsigned inferenceErrors(ExecutionEngine &EE, llvm::StringRef fName,
                            Tensor &inputs, const vector<bool> &hyphens,
                            TrainingConfig &TC) {
     auto batchSize = TC.batchSize;
@@ -301,7 +301,7 @@ struct HyphenNetwork {
         bi = numSamples - batchSize;
       }
       auto batchInputs = inputs.getUnowned({batchSize, 6, 27}, {bi, 0, 0});
-      updateInputPlaceholders2(bindings_, {input_}, {&batchInputs});
+      updateInputPlaceholders(bindings_, {input_}, {&batchInputs});
       EE.run(bindings_, fName);
 
       // Check each output in the batch.
@@ -320,7 +320,7 @@ struct HyphenNetwork {
 } // namespace
 
 TEST(HyphenTest, network) {
-  ExecutionEngine2 EE("CPU");
+  ExecutionEngine EE("CPU");
 
   // Convert the training data to word windows and labels.
   vector<string> words;
@@ -368,8 +368,8 @@ TEST(HyphenTest, network) {
 
   // Train using mini-batch SGD.
   EE.compile(CompilationMode::Train);
-  runBatch2(EE, net.bindings_, 1000, sampleCounter, {net.input_, net.expected_},
-            {&inputs, &expected}, tfName);
+  runBatch(EE, net.bindings_, 1000, sampleCounter, {net.input_, net.expected_},
+           {&inputs, &expected}, tfName);
 
   // Now test inference on the trained network.
   // Note that we have probably overfitted the data, so we expect 100% accuracy.
@@ -377,7 +377,7 @@ TEST(HyphenTest, network) {
 
   // See of the interpreter gets the same result.
 
-  ExecutionEngine2 EE2("CPU");
+  ExecutionEngine EE2("CPU");
   HyphenNetwork netInterpreter(EE2.getModule(), TC);
   EE2.compile(CompilationMode::Train);
   // Copy the trained weights from the CPU run.

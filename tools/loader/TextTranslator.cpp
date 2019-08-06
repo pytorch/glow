@@ -355,7 +355,7 @@ int main(int argc, char **argv) {
 
   while (loadNextInputTranslationText(&encoderInputs)) {
     // Update the inputs.
-    updateInputPlaceholders2(bindings, {encoderInputsVar}, {&encoderInputs});
+    updateInputPlaceholders(bindings, {encoderInputsVar}, {&encoderInputs});
 
     // Run actual translation.
     loader.runInference(bindings);

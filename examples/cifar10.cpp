@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "glow/ExecutionEngine/ExecutionEngine2.h"
+#include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Support/Support.h"
 
@@ -157,7 +157,7 @@ void testCIFAR10() {
   // Construct the network:
   TrainingConfig TC;
 
-  ExecutionEngine2 EE(executionBackend);
+  ExecutionEngine EE(executionBackend);
   PlaceholderBindings bindings;
 
   TC.learningRate = 0.001;
@@ -206,15 +206,15 @@ void testCIFAR10() {
 
     // Bind the images tensor to the input array A, and the labels tensor
     // to the softmax node SM.
-    runBatch2(EE, bindings, reportRate, sampleCounter, {A, E},
-              {&images, &labels}, tfName);
+    runBatch(EE, bindings, reportRate, sampleCounter, {A, E},
+             {&images, &labels}, tfName);
 
     unsigned score = 0;
 
     for (unsigned int i = 0; i < 100 / minibatchSize; i++) {
       Tensor sample(ElemKind::FloatTy, {minibatchSize, 32, 32, 3});
       sample.copyConsecutiveSlices(&images, minibatchSize * i);
-      updateInputPlaceholders2(bindings, {A}, {&sample});
+      updateInputPlaceholders(bindings, {A}, {&sample});
       EE.run(bindings);
 
       for (unsigned int iter = 0; iter < minibatchSize; iter++) {

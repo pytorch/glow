@@ -7,7 +7,7 @@ target_link_libraries(image-classifier
                         Backends
                         Base
                         Converter
-                        ExecutionEngine2
+                        ExecutionEngine
                         HostManager
                         Graph
                         Importer
@@ -27,7 +27,7 @@ target_link_libraries(text-translator
                         Graph
                         HostManager
                         Importer
-                        ExecutionEngine2
+                        ExecutionEngine
                         GraphOptimizer
                         Quantization
                         LLVMSupport)
@@ -44,7 +44,7 @@ target_link_libraries(model-runner
                         Graph
                         HostManager
                         Importer
-                        ExecutionEngine2
+                        ExecutionEngine
                         GraphOptimizer
                         Quantization
                         LLVMSupport)

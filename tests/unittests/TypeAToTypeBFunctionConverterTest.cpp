@@ -17,7 +17,7 @@
 #include "glow/Converter/TypeAToTypeBFunctionConverter.h"
 
 #include "glow/Backend/Backend.h"
-#include "glow/ExecutionEngine/ExecutionEngine2.h"
+#include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
 
 #include "llvm/Support/Casting.h"
@@ -28,7 +28,7 @@ using namespace glow;
 
 struct AllBackends : public ::testing::TestWithParam<std::string> {
 protected:
-  ExecutionEngine2 EE_{GetParam()};
+  ExecutionEngine EE_{GetParam()};
 };
 
 /// Check that a simple graph is converted properly.

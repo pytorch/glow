@@ -15,8 +15,8 @@
  */
 
 #include "glow/Graph/Graph.h"
-#include "BackendTestUtils2.h"
-#include "glow/ExecutionEngine/ExecutionEngine2.h"
+#include "BackendTestUtils.h"
+#include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Graph/Hook.h"
 #include "glow/Graph/Node.h"
 #include "glow/Graph/Nodes.h"
@@ -513,7 +513,7 @@ TEST(Graph, QuantizationProfileNodes) {
 }
 
 TEST(Graph, simpleQuant) {
-  ExecutionEngine2 EE;
+  ExecutionEngine EE;
   auto &MD = EE.getModule();
   auto *F = MD.createFunction("main");
 
@@ -553,7 +553,7 @@ TEST(Graph, simpleQuant) {
 }
 
 TEST(Graph, quantizeDequantizeNodes) {
-  ExecutionEngine2 EE;
+  ExecutionEngine EE;
   auto &MD = EE.getModule();
   auto F = MD.createFunction("main");
 
@@ -573,7 +573,7 @@ TEST(Graph, quantizeDequantizeNodes) {
 }
 
 TEST(Graph, quantizeGather) {
-  ExecutionEngine2 EE;
+  ExecutionEngine EE;
   auto &mod = EE.getModule();
   auto *F = mod.createFunction("main");
   auto *input =
@@ -667,7 +667,7 @@ TEST(Graph, cloneTest2) {
 }
 
 TEST(Graph, NodeValue) {
-  ExecutionEngine2 EE;
+  ExecutionEngine EE;
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
   PlaceholderBindings bindings;
@@ -691,7 +691,7 @@ TEST(Graph, NodeValue) {
 /// Check that by deleting one function, the variables that refernced
 /// by this function, will reduce its number of uses by one.
 TEST(Graph, deleteFunction) {
-  ExecutionEngine2 EE;
+  ExecutionEngine EE;
   auto &mod = EE.getModule();
   Function *F1 = mod.createFunction("f1");
   auto *inputX = mod.createPlaceholder(ElemKind::FloatTy, {1}, "input", true);
@@ -708,7 +708,7 @@ TEST(Graph, deleteFunction) {
 }
 
 TEST(Graph, nodesWithPredicates) {
-  ExecutionEngine2 EE;
+  ExecutionEngine EE;
 
   Tensor inputs(ElemKind::FloatTy, {1, 32, 32, 3});
 
@@ -741,7 +741,7 @@ TEST(Graph, nodesWithPredicates) {
 
   EE.compile(CompilationMode::Infer);
 
-  updateInputPlaceholders2(bindings, {input}, {&inputs});
+  updateInputPlaceholders(bindings, {input}, {&inputs});
   EE.run(bindings);
 }
 
@@ -795,7 +795,7 @@ TEST(Graph, disableUnrollingGroupConv) {
 /// That is, they happen after the last use of the related variable.
 /// In that test, the order of the creation of the nodes give a valid schedule.
 TEST(Graph, schedulingOfSavesOrderProvided) {
-  ExecutionEngine2 EE;
+  ExecutionEngine EE;
 
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
@@ -841,7 +841,7 @@ TEST(Graph, schedulingOfSavesOrderProvided) {
 /// In other words, the scheduler won't get away with scheduling
 /// using only the order of the nodes in the list of nodes.
 TEST(Graph, schedulingOfSaves) {
-  ExecutionEngine2 EE;
+  ExecutionEngine EE;
   PlaceholderBindings bindings;
 
   auto &mod = EE.getModule();
@@ -885,7 +885,7 @@ TEST(Graph, schedulingOfSaves) {
 /// Check that the parent link is properly updated while tweaking
 /// nodes and their function.
 TEST(Graph, parentLink) {
-  ExecutionEngine2 EE;
+  ExecutionEngine EE;
 
   auto &mod = EE.getModule();
   Constant *V = new Constant("V", mod.uniqueType(ElemKind::FloatTy, {3, 32}));
@@ -931,7 +931,7 @@ TEST(Graph, parentLink) {
 
 /// Check that Cmp nodes are created with proper output types.
 TEST(Graph, cmpOutputTypes) {
-  ExecutionEngine2 EE;
+  ExecutionEngine EE;
 
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
@@ -979,7 +979,7 @@ hasAllTheseUses(const llvm::SmallPtrSetImpl<const Node *> &expectedUsers,
 
 /// Check that our uses lists are correct for nodes with multiple results.
 TEST(Graph, usesListsWithSeveralResult) {
-  ExecutionEngine2 EE;
+  ExecutionEngine EE;
   PlaceholderBindings bindings;
 
   auto &mod = EE.getModule();
@@ -1056,7 +1056,7 @@ TEST(Graph, usesListsWithSeveralResult) {
 /// Check that our uses lists are correct when accessed through
 /// NodeValue.
 TEST(Graph, usesListsThroughNodeValues) {
-  ExecutionEngine2 EE;
+  ExecutionEngine EE;
   PlaceholderBindings bindings;
 
   auto &mod = EE.getModule();
@@ -1556,7 +1556,7 @@ TEST(Graph, clonePlaceholderBindings) {
 /// Check that running a function multiple times on cloned PlaceholderBindingss
 /// have distinct outputs.
 TEST(Graph, clonePlaceholderBindingsRuns) {
-  ExecutionEngine2 EE;
+  ExecutionEngine EE;
   PseudoRNG PRNG;
 
   Tensor inputs(ElemKind::FloatTy, {1, 32, 32, 3});
@@ -1579,7 +1579,7 @@ TEST(Graph, clonePlaceholderBindingsRuns) {
 
   // Run with random inputs.
   inputs.getHandle<>().randomize(-3.0, 3.0, PRNG);
-  updateInputPlaceholders2(bindings, {input}, {&inputs});
+  updateInputPlaceholders(bindings, {input}, {&inputs});
   EE.run(bindings);
 
   // Clone the context.
@@ -1596,7 +1596,7 @@ TEST(Graph, clonePlaceholderBindingsRuns) {
   // Run again with different random inputs using the cloned context.
   Tensor inputs2(ElemKind::FloatTy, {1, 32, 32, 3});
   inputs2.getHandle<>().randomize(-3.0, 3.0, PRNG);
-  updateInputPlaceholders2(bindings2, {input}, {&inputs2});
+  updateInputPlaceholders(bindings2, {input}, {&inputs2});
   EE.run(bindings2);
 
   // PlaceholderBindingss are no longer identical.

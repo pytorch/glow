@@ -13,10 +13,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "BackendTestUtils2.h"
+#include "BackendTestUtils.h"
 
 #include "glow/Converter/TypeAToTypeBFunctionConverter.h"
-#include "glow/ExecutionEngine/ExecutionEngine2.h"
+#include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Partitioner/Partitioner.h"
 
@@ -178,7 +178,7 @@ protected:
   PlaceholderBindings *bindings_, pBindings_;
 
   // Separate EE for testing a partitioned RecSys.
-  ExecutionEngine2 partitionedEE_{getBackendName()};
+  ExecutionEngine partitionedEE_{getBackendName()};
 
   // Test Config:
   size_t miniBatch;
@@ -696,7 +696,7 @@ protected:
     ExecutionContext contextI;
     Tensor *resultIT = nullptr;
     if (compareAgainstInterp) {
-      ExecutionEngine2 IEE;
+      ExecutionEngine IEE;
       // Set device memory to 64GB to prevent partitioning. We are using the
       // Interpreter's result just as a reference result to compare against.
       IEE.setDeviceMemory(64e+9);
@@ -776,7 +776,7 @@ protected:
       DAGNode *dag = exeList.at(curPt);
       // The root in a G is always a dummy function.
       if (curPt > 0) {
-        updateInputPlaceholders2(*context.getPlaceholderBindings(), {}, {});
+        updateInputPlaceholders(*context.getPlaceholderBindings(), {}, {});
         partitionedEE_.run(context, dag->name);
       }
       for (unsigned int i = 0, e = dag->children.size(); i < e; i++) {
