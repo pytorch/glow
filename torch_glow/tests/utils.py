@@ -7,7 +7,7 @@ GLOW_NODE_NAME = "glow::FusionGroup"
 SUBGRAPH_ATTR = "Subgraph"
 
 
-def jitVsGlow(f, *inputs, expected_fused_ops=None):
+def jitVsGlow(f, *inputs, expected_fused_ops):
     """
     Runs the given inputs *inputs on f both with and without lowering f to Glow,
     compares the results, and checks that ops in expected_fused_ops were indeed
@@ -32,12 +32,16 @@ def jitVsGlow_(f_torch, f_glow, *inputs, expected_fused_ops):
 
         # check that there are no Glow nodes in the torch graph
         torch_graph = torch_trace.graph_for(*inputs)
+        print("torch_graph,", torch_graph)
+
         num_glow_nodes = len(torch_graph.findAllNodes(GLOW_NODE_NAME))
         assert num_glow_nodes == 0, "Expected no Glow nodes, found {}".format(
             num_glow_nodes
         )
 
         glow_graph = glow_trace.graph_for(*inputs)
+        print("glow_graph,", glow_graph)
+
         expected_fused_ops_seen = set()
 
         # Check that ops that were *not* fused are *not* in expected_fused_ops
