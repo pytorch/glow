@@ -259,9 +259,10 @@ DECLARE_STATELESS_BACKEND_TEST(FCSweepTest, ThreeIntTupleConfig);
 
 INSTANTIATE_TEST_CASE_P_FOR_BACKEND_COMBINED_TEST(
     SweepTest, FCSweepTest,
-    ::testing::Combine(/* A */ ::testing::Values(1, 4, 16, 64),
-                       /* Z */ ::testing::Values(256, 512, 1024, 2048, 4096),
-                       /* B */ ::testing::Values(64, 256, 1024)));
+    ::testing::Combine(
+        /* A */ ::testing::Values(1, 4, 16, 64),
+        /* Z */ ::testing::Values(16, 128, 256, 512, 1024, 2048, 4096),
+        /* B */ ::testing::Values(1, 48, 64, 256, 1024)));
 
 /// Compare backend against the interpreter in Float.
 TEST_P(FCSweepTest, FCTest_Float) {
