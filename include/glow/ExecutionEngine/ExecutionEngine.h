@@ -23,6 +23,7 @@
 #include "glow/Base/Traits.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/PlaceholderBindings.h"
+#include "glow/Runtime/HostManager/HostManager.h"
 
 #include "llvm/ADT/ArrayRef.h"
 
@@ -36,27 +37,28 @@ namespace glow {
 /// order to erase the type and prevent the internal types from leaking out to
 /// the users of this class.
 class ExecutionEngine final {
-  /// The Module that represents the high-level program.
-  Module M_;
+  /// Module containing the function and supporting information.
+  std::unique_ptr<Module> module_;
 
-  /// The network execution backend.
-  Backend *backend_ = nullptr;
+  /// Raw pointer to module_ this is to support module access after the module
+  /// has been added to hostManager_.
+  Module *rawModule_;
 
-  /// Whether or not the ExecutionEngine owns the backend or is just using
-  /// a backend provided from elsewhere. If ownsBackend is true,
-  /// ~ExecutionEngine will delete the backend_.
-  bool ownsBackend_ = false;
+  /// Name of the backend being used for compilation and execution.
+  std::string backendName_ = "";
 
-  /// The device manager for executing compiled funtions.
-  std::unique_ptr<runtime::DeviceManager> device_;
+  /// Size of device memory, if 0 device default is used.
+  uint64_t deviceMemory_{0};
+
+  /// The HostManager for executing the compiled functions.
+  std::unique_ptr<runtime::HostManager> hostManager_;
 
   /// Glow functions compiled for this ExecutionEngine's backend.
-  llvm::StringMap<std::unique_ptr<CompiledFunction>> compiledFunctions_;
+  std::set<std::string> compiledFunctions_;
 
   /// Single execution of the given \compiledFunction with the given context
   /// \bindings.
-  void runInternal(ExecutionContext &context, llvm::StringRef name,
-                   CompiledFunction &compiledFunction);
+  void runInternal(ExecutionContext &context, llvm::StringRef name);
 
 public:
   ExecutionEngine(llvm::StringRef backend = "Interpreter");
@@ -64,52 +66,38 @@ public:
   ~ExecutionEngine();
 
   /// Set the code generator to \p backend. New code will be generated
-  /// using this backend.
-  void setBackend(llvm::StringRef backend);
+  /// using this backend. This clears all previously loaded functions and resets
+  /// the Module.
+  void setBackendName(llvm::StringRef backend);
 
-  /// Set the code generator to a custom \p backend. If \p ownsBackend is false
-  /// then ExecutionEngine will use the given backend without owning it which
-  /// means that ~ExecutionEngine will not delete it.
-  void setBackend(Backend *backend, bool ownsBackend = true);
-
-  /// Get a pointer to the backend.
-  const Backend *getBackend() const;
-
-  /// \returns the internal graph.
-  Module &getModule() { return M_; }
-
-  /// Clears the DeviceManager and all CompiledFunctions.
-  void clear();
-
-  /// \returns the compiled function. If more than one function
-  /// has been compiled by this ExecutionEngine then a name must be supplied
-  /// to specify which function to return.
-  CompiledFunction &getCompiledFunction();
-
-  /// \returns the compiled function with the given \p name.
-  CompiledFunction &getCompiledFunction(llvm::StringRef name);
-
-  /// Stores \p func in the CompiledFunction map, enabling it to be run.
-  void insertCompiledFunction(llvm::StringRef name,
-                              std::unique_ptr<CompiledFunction> func);
-
-  /// \returns whether a node with the provided \p NI is supported by the
-  /// underlying backend.
-  bool isOpSupported(const NodeInfo &NI) const {
-    return backend_->isOpSupported(NI);
+  /// Set the device memory to \p mem. This will reset the existing device,
+  /// clearing all existing functions and resetting the module.
+  void setDeviceMemory(uint64_t mem) {
+    deviceMemory_ = mem;
+    setBackendName(backendName_);
   }
 
-  /// Optimize the Function \p f and pass it to the backend to compile it for a
-  /// specific target, all given \p cctx. If \p clearOtherFunctions is false
-  /// then the function will be added to the collection of previously compiled
-  /// functions otherwise any previously compiled functions will be removed
-  /// first. This method should be invoked before the run method.
-  void compile(Function *F, CompilationContext &cctx,
-               bool clearOtherFunctions = true);
+  /// Get a pointer to the backend.
+  llvm::StringRef getBackendName() const;
+
+  /// \returns the internal graph.
+  Module &getModule() { return *rawModule_; }
+
+  /// Clears the ExecutionEngine and all CompiledFunctions.
+  void clear();
+
+  /// \returns the DAG for the specified \p network.
+  llvm::Expected<runtime::DAG &> getDAG(llvm::StringRef network) {
+    return hostManager_->getNetworkDAG(network);
+  }
+
+  /// Compiles all functions in the Module with the given \p cctx.  This method
+  /// should be invoked before the run method and can only be called once
+  /// without resetting the backend.
+  void compile(CompilationContext &cctx);
 
   /// A convenience function for the most common type of compile.
-  void compile(CompilationMode mode, Function *F,
-               bool clearOtherFunctions = true);
+  void compile(CompilationMode mode);
 
   /// Context aware single execution of a function. If more than one
   /// function has been compiled by this ExecutionEngine then a name must be
@@ -161,8 +149,8 @@ void updateInputPlaceholdersByName(PlaceholderBindings &bindings, Module *mod,
 /// (sampleCounter % batchsize).
 void runBatch(ExecutionEngine &EE, PlaceholderBindings &bindings,
               size_t iterations, size_t &sampleCounter,
-              llvm::ArrayRef<Placeholder *> ph,
-              llvm::ArrayRef<Tensor *> inputs);
+              llvm::ArrayRef<Placeholder *> ph, llvm::ArrayRef<Tensor *> inputs,
+              llvm::StringRef name = "");
 
 } // namespace glow
 

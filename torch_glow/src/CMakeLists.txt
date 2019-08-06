@@ -25,7 +25,7 @@ target_link_libraries(_torch_glow
                         torch
                         c10
                         Support
-                        ExecutionEngine2
+                        ExecutionEngine
                         Graph
                         Importer
                         Backends

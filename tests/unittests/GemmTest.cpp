@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#include "glow/ExecutionEngine/ExecutionEngine2.h"
+#include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Graph/Graph.h"
 #include "glow/IR/IR.h"
 #include "glow/IR/IRBuilder.h"
@@ -37,7 +37,7 @@ extern void libjit_matmul_f(float *c, const float *a, const float *b,
 }
 
 void infer(Tensor *out, Tensor *lhs, Tensor *rhs) {
-  ExecutionEngine2 EE;
+  ExecutionEngine EE;
   PlaceholderBindings bindings;
 
   auto &mod = EE.getModule();
@@ -55,7 +55,7 @@ void infer(Tensor *out, Tensor *lhs, Tensor *rhs) {
 
   EE.compile(CompilationMode::Infer);
 
-  updateInputPlaceholders2(bindings, {lhsVar, rhsVar}, {lhs, rhs});
+  updateInputPlaceholders(bindings, {lhsVar, rhsVar}, {lhs, rhs});
   EE.run(bindings);
 
   out->assign(res);

@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #include "glow/Partitioner/Partitioner.h"
-#include "glow/ExecutionEngine/ExecutionEngine2.h"
+#include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
 #include "glow/Partitioner/PartitionerUtils.h"
@@ -36,7 +36,7 @@ protected:
 /// Execute a graph of functions based on the given DAG.
 static void executeDAG(DAGNode *G, Module &mod, PlaceholderBindings &bindings,
                        llvm::ArrayRef<Placeholder *> vars,
-                       llvm::ArrayRef<Tensor *> inputs, ExecutionEngine2 *EE) {
+                       llvm::ArrayRef<Tensor *> inputs, ExecutionEngine *EE) {
   std::unordered_map<std::string, Function *> name2func;
 
   for (auto *F : mod.getFunctions()) {
@@ -53,7 +53,7 @@ static void executeDAG(DAGNode *G, Module &mod, PlaceholderBindings &bindings,
     DAGNode *dag = exeList.at(curPt);
     // The root in a G is always a dummy function.
     if (curPt > 0) {
-      updateInputPlaceholders2(bindings, vars, inputs);
+      updateInputPlaceholders(bindings, vars, inputs);
       EE->run(bindings, dag->name);
     }
     for (int i = 0, e = dag->children.size(); i < e; i++) {
@@ -93,9 +93,9 @@ static bool checkSaveNode(Module &mod) {
 /// consumption of all the nodes in each level won't exceed the device memory
 /// constraints.
 TEST_F(PartitionerTest, Basic1) {
-  ExecutionEngine2 EER, EEP;
+  ExecutionEngine EER, EEP;
   constexpr float range = 2.0;
-  std::vector<ExecutionEngine2 *> engines{&EER, &EEP};
+  std::vector<ExecutionEngine *> engines{&EER, &EEP};
   // Since compiling modifies the module and partitioning modifies the function,
   // setup two EEs with identical functions for validation.
   for (auto EE : engines) {
@@ -154,8 +154,8 @@ TEST_F(PartitionerTest, Basic1) {
   EER.compile(CompilationMode::Infer);
   bindings_.clear();
   bindings_.allocate(EER.getModule().getPlaceholders());
-  updateInputPlaceholders2(bindings_, {bindings_.getPlaceholderByName("input")},
-                           {&in});
+  updateInputPlaceholders(bindings_, {bindings_.getPlaceholderByName("input")},
+                          {&in});
   EER.run(bindings_);
   Tensor ref = bindings_.get(bindings_.getPlaceholderByName("ret"))->clone();
 
@@ -187,9 +187,9 @@ TEST_F(PartitionerTest, Basic1) {
 /// constraints.
 TEST_F(PartitionerTest, Basic2) {
 
-  ExecutionEngine2 EER, EEP;
+  ExecutionEngine EER, EEP;
   constexpr float range = 2.0;
-  std::vector<ExecutionEngine2 *> engines{&EER, &EEP};
+  std::vector<ExecutionEngine *> engines{&EER, &EEP};
   for (auto EE : engines) {
     auto mod = &EE->getModule();
     F_ = mod->createFunction("main");
@@ -238,10 +238,10 @@ TEST_F(PartitionerTest, Basic2) {
   EER.compile(CompilationMode::Infer);
   bindings_.clear();
   bindings_.allocate(EER.getModule().getPlaceholders());
-  updateInputPlaceholders2(bindings_,
-                           {bindings_.getPlaceholderByName("input"),
-                            bindings_.getPlaceholderByName("input1")},
-                           {&in, &in});
+  updateInputPlaceholders(bindings_,
+                          {bindings_.getPlaceholderByName("input"),
+                           bindings_.getPlaceholderByName("input1")},
+                          {&in, &in});
   EER.run(bindings_);
   Tensor ref = bindings_.get(bindings_.getPlaceholderByName("ret"))->clone();
 
@@ -271,10 +271,10 @@ TEST_F(PartitionerTest, Basic2) {
   bindings_.allocate(EEP.getModule().getPlaceholders());
   EEP.compile(cctx);
   for (auto it = dagList.begin(); it != dagList.end(); ++it) {
-    updateInputPlaceholders2(bindings_,
-                             {bindings_.getPlaceholderByName("input"),
-                              bindings_.getPlaceholderByName("input1")},
-                             {&in, &in});
+    updateInputPlaceholders(bindings_,
+                            {bindings_.getPlaceholderByName("input"),
+                             bindings_.getPlaceholderByName("input1")},
+                            {&in, &in});
     executeDAG((*it).root.get(), EEP.getModule(), bindings_,
                {bindings_.getPlaceholderByName("input")}, {&in}, &EEP);
     Tensor test = bindings_.get(bindings_.getPlaceholderByName("ret"))->clone();
@@ -285,9 +285,9 @@ TEST_F(PartitionerTest, Basic2) {
 /// This one tests the error msg: if the number of partitions is larger than
 /// given number of devices, report an error.
 TEST_F(PartitionerTest, Error1) {
-  ExecutionEngine2 EER, EEP;
+  ExecutionEngine EER, EEP;
   constexpr float range = 2.0;
-  std::vector<ExecutionEngine2 *> engines{&EER, &EEP};
+  std::vector<ExecutionEngine *> engines{&EER, &EEP};
   for (auto EE : engines) {
     auto mod = &EE->getModule();
     F_ = mod->createFunction("main");
@@ -337,10 +337,10 @@ TEST_F(PartitionerTest, Error1) {
   EER.compile(CompilationMode::Infer);
   bindings_.clear();
   bindings_.allocate(EER.getModule().getPlaceholders());
-  updateInputPlaceholders2(bindings_,
-                           {bindings_.getPlaceholderByName("input"),
-                            bindings_.getPlaceholderByName("input1")},
-                           {&in, &in});
+  updateInputPlaceholders(bindings_,
+                          {bindings_.getPlaceholderByName("input"),
+                           bindings_.getPlaceholderByName("input1")},
+                          {&in, &in});
   EER.run(bindings_);
 
   std::vector<DeviceInfo> devices = {{2048, "Interpreter"}};
@@ -353,9 +353,9 @@ TEST_F(PartitionerTest, Error1) {
 /// This one tests the roofline computed with compute, memory and
 /// communication costs
 TEST_F(PartitionerTest, Basic1Roofline) {
-  ExecutionEngine2 EER, EEP;
+  ExecutionEngine EER, EEP;
   constexpr float range = 2.0;
-  std::vector<ExecutionEngine2 *> engines{&EER, &EEP};
+  std::vector<ExecutionEngine *> engines{&EER, &EEP};
   for (auto EE : engines) {
     auto mod = &EE->getModule();
     F_ = mod->createFunction("main");
@@ -411,8 +411,8 @@ TEST_F(PartitionerTest, Basic1Roofline) {
   EER.compile(CompilationMode::Infer);
   bindings_.clear();
   bindings_.allocate(EER.getModule().getPlaceholders());
-  updateInputPlaceholders2(bindings_, {bindings_.getPlaceholderByName("input")},
-                           {&in});
+  updateInputPlaceholders(bindings_, {bindings_.getPlaceholderByName("input")},
+                          {&in});
   EER.run(bindings_);
 
   // Since the partitioner will look at all nodesin the function post

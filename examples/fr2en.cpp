@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "glow/ExecutionEngine/ExecutionEngine2.h"
+#include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
 #include "glow/Quantization/Quantization.h"
@@ -126,7 +126,7 @@ void loadMatrixFromFile(llvm::StringRef filename, Tensor &result) {
 /// few references to input/output Variables.
 struct Model {
   unsigned batchSize_;
-  ExecutionEngine2 EE_{ExecutionBackend};
+  ExecutionEngine EE_{ExecutionBackend};
   Function *F_;
   Vocabulary en_, fr_;
   Placeholder *input_;
@@ -376,8 +376,7 @@ void Model::translate(const std::vector<std::string> &batch) {
         (words.size() - 1) + j * MAX_LENGTH;
   }
 
-  updateInputPlaceholders2(bindings, {input_, seqLength_},
-                           {&input, &seqLength});
+  updateInputPlaceholders(bindings, {input_, seqLength_}, {&input, &seqLength});
   EE_.run(bindings);
 
   auto OH = bindings.get(output_)->getHandle<int64_t>();

@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "glow/ExecutionEngine/ExecutionEngine2.h"
+#include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Exporter/ONNXModelWriter.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/Nodes.h"
@@ -34,7 +34,7 @@ namespace {
 /// On success exports glow graph to the output file in "extended" ONNX format,
 /// i.e. some glow operators don't have presentation in vanilla ONNX standard.
 void testLoadAndSaveONNXModel(const std::string &name) {
-  ExecutionEngine2 EE{};
+  ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 

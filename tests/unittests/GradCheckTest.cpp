@@ -15,7 +15,7 @@
  */
 
 #include "glow/Base/Tensor.h"
-#include "glow/ExecutionEngine/ExecutionEngine2.h"
+#include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/Nodes.h"
 #include "glow/IR/IR.h"
@@ -29,9 +29,9 @@ using llvm::cast;
 
 class GradCheckBase : public ::testing::TestWithParam<std::string> {
 public:
-  ExecutionEngine2 EET_{GetParam()};
-  ExecutionEngine2 EEI_{GetParam()};
-  std::vector<ExecutionEngine2 *> engines_;
+  ExecutionEngine EET_{GetParam()};
+  ExecutionEngine EEI_{GetParam()};
+  std::vector<ExecutionEngine *> engines_;
   void SetUp() {
     engines_.push_back(&EEI_);
     engines_.push_back(&EET_);
@@ -92,7 +92,7 @@ void allocateGrads(PlaceholderBindings &bindings,
 /// training. \param inputs Tensor for \p inputVar placeholder. \param outputs
 /// Tensor for \p expVar placeholder. \param allowedError allowed delta between
 /// analytical and numerical gradients.
-void performGradCheck(ExecutionEngine2 &EET, ExecutionEngine2 &EEI,
+void performGradCheck(ExecutionEngine &EET, ExecutionEngine &EEI,
                       PlaceholderBindings &bindings, Placeholder *result,
                       Placeholder *inputVar, Placeholder *expVar,
                       Tensor *inputs, Tensor *outputs, float delta,
@@ -124,8 +124,8 @@ void performGradCheck(ExecutionEngine2 &EET, ExecutionEngine2 &EEI,
 
   // The network might have variables, other than inputVar and expVar.
   // Train the network until other variables reach some stable local minimum.
-  runBatch2(EET, bindings, 300, sampleCounter, {inputVar, expVar},
-            {inputs, outputs}, tfName);
+  runBatch(EET, bindings, 300, sampleCounter, {inputVar, expVar},
+           {inputs, outputs}, tfName);
 
   // Clear the gradients of the first layer.
   auto gradVar = getGrad(varGrads, inputVar);
@@ -133,8 +133,8 @@ void performGradCheck(ExecutionEngine2 &EET, ExecutionEngine2 &EEI,
   gradVarTensor->zero();
 
   // Train the network just once to record the values of gradient for inputVar.
-  runBatch2(EET, bindings, 1, sampleCounter, {inputVar, expVar},
-            {inputs, outputs}, rfName);
+  runBatch(EET, bindings, 1, sampleCounter, {inputVar, expVar},
+           {inputs, outputs}, rfName);
   // Compile the original network in inference mode.
   EEI.compile(CompilationMode::Infer);
   PlaceholderBindings inferBindings;
@@ -156,13 +156,13 @@ void performGradCheck(ExecutionEngine2 &EET, ExecutionEngine2 &EEI,
     auto old = inputsH.raw(i);
     // Calculate f(x+e):
     inputsH.raw(i) = old + delta;
-    updateInputPlaceholders2(inferBindings, {inferInput}, {inputs});
+    updateInputPlaceholders(inferBindings, {inferInput}, {inputs});
     EEI.run(inferBindings);
     auto plusLoss = computeL2Loss(outputs, resultTensor);
 
     // Calculate f(x-e):
     inputsH.raw(i) = old - delta;
-    updateInputPlaceholders2(inferBindings, {inferInput}, {inputs});
+    updateInputPlaceholders(inferBindings, {inferInput}, {inputs});
     EEI.run(inferBindings);
 
     auto minusLoss = computeL2Loss(outputs, resultTensor);
@@ -395,11 +395,11 @@ TEST_P(InterpreterGrad, gradientCheckGatherDim) {
 }
 
 static void gradientCheckGroupConv(size_t depth, size_t group,
-                                   ExecutionEngine2 &EET_,
-                                   ExecutionEngine2 &EEI_) {
+                                   ExecutionEngine &EET_,
+                                   ExecutionEngine &EEI_) {
   PlaceholderBindings bindings;
   size_t numDim = 10;
-  std::vector<ExecutionEngine2 *> engines;
+  std::vector<ExecutionEngine *> engines;
   engines.push_back(&EEI_);
   engines.push_back(&EET_);
   Placeholder *A, *Ex;
@@ -444,11 +444,11 @@ TEST_P(GradCheck, gradientCheckGroupConv) {
 }
 
 static void gradientCheckDilatedConv(size_t depth, size_t group,
-                                     size_t dilation, ExecutionEngine2 &EET_,
-                                     ExecutionEngine2 &EEI_) {
+                                     size_t dilation, ExecutionEngine &EET_,
+                                     ExecutionEngine &EEI_) {
   PlaceholderBindings bindings;
   size_t numDim = 10;
-  std::vector<ExecutionEngine2 *> engines;
+  std::vector<ExecutionEngine *> engines;
   engines.push_back(&EEI_);
   engines.push_back(&EET_);
   Placeholder *A, *Ex;
@@ -842,23 +842,23 @@ TEST_P(InterpreterGrad, gradientCheckCrossEntropyLoss) {
   for (int i = 0; i < testSamples; ++i) {
     inputsH.randomize(0.0, 1.0, mod.getPRNG());
     for (size_t j = 0; j < inputsH.size(); ++j) {
-      updateInputPlaceholders2(bindings, {P, Y}, {&inputs, &outputs});
+      updateInputPlaceholders(bindings, {P, Y}, {&inputs, &outputs});
       EET_.run(bindings, "record");
       LTensor->zero();
       auto x = inputsH.raw(j);
       auto g = gradTensorHandle.raw(j);
       inputsH.raw(j) = x + stepSize;
-      updateInputPlaceholders2(bindings, {P, Y}, {&inputs, &outputs});
+      updateInputPlaceholders(bindings, {P, Y}, {&inputs, &outputs});
       EET_.run(bindings, "record");
       auto lp = LTensor->getHandle().raw(0);
       inputsH.raw(j) = x - stepSize;
       LTensor->zero();
-      updateInputPlaceholders2(bindings, {P, Y}, {&inputs, &outputs});
+      updateInputPlaceholders(bindings, {P, Y}, {&inputs, &outputs});
       EET_.run(bindings, "record");
       auto lm = LTensor->getHandle().raw(0);
       auto diff = (lp - lm) / (2 * stepSize);
       inputsH.raw(j) = x;
-      updateInputPlaceholders2(bindings, {P, Y}, {&inputs, &outputs});
+      updateInputPlaceholders(bindings, {P, Y}, {&inputs, &outputs});
       EET_.run(bindings, "record");
       EXPECT_NEAR(diff, g, delta);
     }

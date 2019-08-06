@@ -18,7 +18,7 @@
 #define GLOW_IMPORTER_PROTOBUFLOADER_H
 
 #include "glow/Base/Tensor.h"
-#include "glow/ExecutionEngine/ExecutionEngine2.h"
+#include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
 

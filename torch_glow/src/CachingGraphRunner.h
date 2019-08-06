@@ -20,7 +20,7 @@
 #include <torch/csrc/jit/custom_operator.h>
 #include <torch/csrc/jit/ir.h>
 
-#include "glow/ExecutionEngine/ExecutionEngine2.h"
+#include "glow/ExecutionEngine/ExecutionEngine.h"
 
 namespace glow {
 
@@ -28,7 +28,7 @@ namespace glow {
 /// unique input types to compiled Glow Functions.
 class CachingGraphRunner {
   /// Glow ExecutionEngine.
-  glow::ExecutionEngine2 executionEngine_;
+  glow::ExecutionEngine executionEngine_;
 
 public:
   CachingGraphRunner() = default;

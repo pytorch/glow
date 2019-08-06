@@ -14,9 +14,9 @@
  * limitations under the License.
  */
 
-#include "BackendTestUtils2.h"
+#include "BackendTestUtils.h"
 
-#include "glow/ExecutionEngine/ExecutionEngine2.h"
+#include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/PlaceholderBindings.h"
 #include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
@@ -59,7 +59,7 @@ using FourIntTupleConfig =
 /// Create a simple network that has a single fp convolution.
 static FunctionTensorPair
 createAndInitConvNet(glow::PlaceholderBindings &bindings,
-                     glow::ExecutionEngine2 &EE, size_t size, size_t convDepth,
+                     glow::ExecutionEngine &EE, size_t size, size_t convDepth,
                      size_t kernel, size_t stride, size_t pad) {
   PseudoRNG PRNG;
   auto &mod = EE.getModule();
@@ -136,7 +136,7 @@ TEST_P(ConvSweepTest, ConvTest_Float16) {
 /// Create a simple network that has a single fp batch mat mul.
 static FunctionTensorPair
 createAndInitBatchMatMulNet(glow::PlaceholderBindings &bindings,
-                            glow::ExecutionEngine2 &EE, size_t N, size_t A,
+                            glow::ExecutionEngine &EE, size_t N, size_t A,
                             size_t Z, size_t B) {
   PseudoRNG PRNG;
   auto &mod = EE.getModule();
@@ -215,7 +215,7 @@ TEST_P(BatchMatMulSweepTest, BatchMatMulTest_Float16) {
 /// Create a simple network that has a single fp FC.
 static FunctionTensorPair
 createAndInitFCNet(glow::PlaceholderBindings &bindings,
-                   glow::ExecutionEngine2 &EE, size_t A, size_t Z, size_t B) {
+                   glow::ExecutionEngine &EE, size_t A, size_t Z, size_t B) {
   PseudoRNG PRNG;
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
@@ -288,7 +288,7 @@ TEST_P(FCSweepTest, FCTest_Float16) {
 /// Create a simple network that has a single fp Concat.
 static FunctionTensorPair
 createAndInitConcatNet(glow::PlaceholderBindings &bindings,
-                       glow::ExecutionEngine2 &EE, size_t numInputs,
+                       glow::ExecutionEngine &EE, size_t numInputs,
                        size_t numDims, size_t maxLength, size_t axis) {
   PseudoRNG PRNG;
   auto &mod = EE.getModule();

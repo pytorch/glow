@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#include "glow/ExecutionEngine/ExecutionEngine2.h"
+#include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Quantization/Quantization.h"
 
@@ -30,9 +30,9 @@ using llvm::isa;
 
 class TestRunnerBase : public ::testing::TestWithParam<std::string> {
 public:
-  ExecutionEngine2 EEI_{GetParam()};
-  ExecutionEngine2 EET_{GetParam()};
-  std::vector<ExecutionEngine2 *> engines_;
+  ExecutionEngine EEI_{GetParam()};
+  ExecutionEngine EET_{GetParam()};
+  std::vector<ExecutionEngine *> engines_;
   void SetUp() override {
     // The order here is intentional, the tests assume that EET is the last in
     // the list.
@@ -130,8 +130,8 @@ TEST_P(MLTest, trainASimpleNetwork) {
   EET_.compile(CompilationMode::Train);
 
   // Train the network. Learn 1000 batches.
-  runBatch2(EET_, trainingBindings, 1000, sampleCounter, {A, E},
-            {&inputs, &expected}, tfName);
+  runBatch(EET_, trainingBindings, 1000, sampleCounter, {A, E},
+           {&inputs, &expected}, tfName);
 
   // Testing the output vector.
   PlaceholderBindings inferBindings;
@@ -139,7 +139,7 @@ TEST_P(MLTest, trainASimpleNetwork) {
   A = EEI_.getModule().getPlaceholderByName("A");
   EEI_.compile(CompilationMode::Infer);
   trainingBindings.copyTrainableWeightsTo(inferBindings);
-  updateInputPlaceholders2(inferBindings, {A}, {&inputs});
+  updateInputPlaceholders(inferBindings, {A}, {&inputs});
 
   EEI_.run(inferBindings, fname);
 
@@ -198,8 +198,8 @@ TEST_P(MLTest, simpleRegression) {
     float target = float(iter % 9);
     I = {target, 0., 0., 0.};
     E = {0., target + 1, 0., 0.};
-    runBatch2(EET_, trainingBindings, 1, sampleCounter, {A, Ex},
-              {&inputs, &expected}, tfName);
+    runBatch(EET_, trainingBindings, 1, sampleCounter, {A, Ex},
+             {&inputs, &expected}, tfName);
   }
 
   // Verify the result of the regression layer.
@@ -212,7 +212,7 @@ TEST_P(MLTest, simpleRegression) {
   for (int iter = 0; iter < 5; iter++) {
     float target = iter % 9 + 1;
     I = {target, 0., 0., 0.};
-    updateInputPlaceholders2(inferBindings, {A}, {&inputs});
+    updateInputPlaceholders(inferBindings, {A}, {&inputs});
     EEI_.run(inferBindings, fName);
     auto *res = inferBindings.get(resPH);
     auto resH = res->getHandle<>();
@@ -279,8 +279,8 @@ TEST_P(MLTest, learnXor) {
   EET_.compile(CompilationMode::Train);
 
   // Train the network:
-  runBatch2(EET_, trainingBindings, 2500, sampleCounter, {A, Ex},
-            {&trainingSet, &trainingLabels}, tfName);
+  runBatch(EET_, trainingBindings, 2500, sampleCounter, {A, Ex},
+           {&trainingSet, &trainingLabels}, tfName);
   trainingBindings.copyTrainableWeightsTo(inferBindings);
   EEI_.compile(CompilationMode::Infer);
 
@@ -292,7 +292,7 @@ TEST_P(MLTest, learnXor) {
     TS.at({i, 1}) = b;
   }
   A = inferBindings.getPlaceholderByName("A");
-  updateInputPlaceholders2(inferBindings, {A}, {&trainingSet});
+  updateInputPlaceholders(inferBindings, {A}, {&trainingSet});
   EEI_.run(inferBindings, fname);
 
   auto resH = res->getHandle<>();
@@ -363,8 +363,8 @@ TEST_P(MLTest, learnLog) {
   EET_.compile(CompilationMode::Train);
 
   // Train the network:
-  runBatch2(EET_, trainingBindings, 1000, sampleCounter, {A, Ex},
-            {&trainingSet, &trainingLabels}, tfName);
+  runBatch(EET_, trainingBindings, 1000, sampleCounter, {A, Ex},
+           {&trainingSet, &trainingLabels}, tfName);
   trainingBindings.copyTrainableWeightsTo(inferBindings);
   EEI_.compile(CompilationMode::Infer);
 
@@ -382,7 +382,7 @@ TEST_P(MLTest, learnLog) {
     TES.at({i, 0}) = a;
   }
   A = inferBindings.getPlaceholderByName("A");
-  updateInputPlaceholders2(inferBindings, {A}, {&testSet});
+  updateInputPlaceholders(inferBindings, {A}, {&testSet});
   EEI_.run(inferBindings, fname);
 
   auto resH = res->getHandle<>();
@@ -474,8 +474,8 @@ TEST_P(MLTest, circle) {
   generateCircleData(coordinates, labels, EET_.getModule().getPRNG());
 
   // Training:
-  runBatch2(EET_, trainingBindings, 4000, sampleCounter, {A, S},
-            {&coordinates, &labels}, tfName);
+  runBatch(EET_, trainingBindings, 4000, sampleCounter, {A, S},
+           {&coordinates, &labels}, tfName);
   trainingBindings.copyTrainableWeightsTo(inferBindings);
   EEI_.compile(CompilationMode::Infer);
   A = inferBindings.getPlaceholderByName("A");
@@ -488,7 +488,7 @@ TEST_P(MLTest, circle) {
       sample.getHandle<>().at({0, 0}) = float(x) / 10;
       sample.getHandle<>().at({0, 1}) = float(y) / 10;
 
-      updateInputPlaceholders2(inferBindings, {A}, {&sample});
+      updateInputPlaceholders(inferBindings, {A}, {&sample});
       EEI_.run(inferBindings, fname);
 
       auto SMH = res->getHandle<>();
@@ -512,7 +512,7 @@ TEST_P(MLTest, circle) {
     // The dot in the middle must be one.
     sample.getHandle<>().at({0, 0}) = 0;
     sample.getHandle<>().at({0, 1}) = 0;
-    updateInputPlaceholders2(inferBindings, {A}, {&sample});
+    updateInputPlaceholders(inferBindings, {A}, {&sample});
     EEI_.run(inferBindings, fname);
 
     auto SMH = res->getHandle<>();
@@ -525,7 +525,7 @@ TEST_P(MLTest, circle) {
     // Far away dot must be zero.
     sample.getHandle<>().at({0, 0}) = 1;
     sample.getHandle<>().at({0, 1}) = 1;
-    updateInputPlaceholders2(inferBindings, {A}, {&sample});
+    updateInputPlaceholders(inferBindings, {A}, {&sample});
     EEI_.run(inferBindings, fname);
     auto SMH = res->getHandle<>();
     auto A = SMH.at({0, 0});
@@ -586,13 +586,13 @@ TEST_P(MLTest, learnSingleValueConcat) {
   trainingBindings.allocate(EET_.getModule().getPlaceholders());
 
   // Train the network:
-  runBatch2(EET_, trainingBindings, 1000, sampleCounter, {A, B, Ex},
-            {&inputs, &inputs, &expected}, tfName);
+  runBatch(EET_, trainingBindings, 1000, sampleCounter, {A, B, Ex},
+           {&inputs, &inputs, &expected}, tfName);
   trainingBindings.copyTrainableWeightsTo(inferBindings);
   EEI_.compile(CompilationMode::Infer);
   A = inferBindings.getPlaceholderByName("A");
   // Testing the output vector.
-  updateInputPlaceholders2(inferBindings, {A}, {&inputs});
+  updateInputPlaceholders(inferBindings, {A}, {&inputs});
   EEI_.run(inferBindings);
   auto RNWH = res->getHandle<>();
   (void)RNWH;
@@ -634,8 +634,8 @@ void testRNNCell(TCellGenerator cell) {
   size_t sampleCounter = 0;
 
   PlaceholderBindings inferBindings, trainingBindings;
-  ExecutionEngine2 EEI, EET;
-  std::vector<ExecutionEngine2 *> engines;
+  ExecutionEngine EEI, EET;
+  std::vector<ExecutionEngine *> engines;
   engines.push_back(&EEI);
   engines.push_back(&EET);
   const unsigned NumVectors = 3;
@@ -720,13 +720,13 @@ void testRNNCell(TCellGenerator cell) {
   }
 
   // Train the network. Learn 1000 batches.
-  runBatch2(EET, trainingBindings, 1000, sampleCounter, {X, Y},
-            {&inputs, &expected}, tfName);
+  runBatch(EET, trainingBindings, 1000, sampleCounter, {X, Y},
+           {&inputs, &expected}, tfName);
   trainingBindings.copyTrainableWeightsTo(inferBindings);
   // Testing the output vector.
   EEI.compile(CompilationMode::Infer);
   X = inferBindings.getPlaceholderByName("X");
-  updateInputPlaceholders2(inferBindings, {X}, {&inputs});
+  updateInputPlaceholders(inferBindings, {X}, {&inputs});
   EEI.run(inferBindings, fname);
 
   auto RNWH = res->getHandle<>();
@@ -798,8 +798,8 @@ TEST_P(MLTest, trainSimpleLinearRegression) {
   EET_.compile(CompilationMode::Train);
 
   // Train the network doing 100 steps. Learn on 500 samples.
-  runBatch2(EET_, bindings, 100, sampleCounter, {inputX, expectedY},
-            {&tensorX, &tensorY}, tfName);
+  runBatch(EET_, bindings, 100, sampleCounter, {inputX, expectedY},
+           {&tensorX, &tensorY}, tfName);
 
   // Testing trained m and b:
   EXPECT_NEAR(bindings.get(M)->getHandle<>().at({0, 0}), referenceM, 0.01);
@@ -881,8 +881,8 @@ TEST_P(MLTest, classifyPlayerSport) {
                      EET_.getModule().getPRNG());
 
   // Training:
-  runBatch2(EET_, trainingBindings, 2000, sampleCounter, {A, S},
-            {&players, &labels}, tfName);
+  runBatch(EET_, trainingBindings, 2000, sampleCounter, {A, S},
+           {&players, &labels}, tfName);
   trainingBindings.copyTrainableWeightsTo(inferBindings);
   EEI_.compile(CompilationMode::Infer);
   A = inferBindings.getPlaceholderByName("A");
@@ -900,7 +900,7 @@ TEST_P(MLTest, classifyPlayerSport) {
     testPlayersTensor.getHandle<>().at({i, 1}) = std::get<1>(testPlayers[i]);
   }
 
-  updateInputPlaceholders2(inferBindings, {A}, {&testPlayersTensor});
+  updateInputPlaceholders(inferBindings, {A}, {&testPlayersTensor});
   EEI_.run(inferBindings, fname);
 
   auto SMH = inferBindings.get(inferBindings.getPlaceholderByName("result"))
@@ -975,8 +975,8 @@ TEST_P(MLTest, learnSinus) {
   EET_.compile(CompilationMode::Train);
 
   // Learn on numSamples samples.
-  runBatch2(EET_, trainingBindings, 2700, sampleCounter, {inputX, expectedY},
-            {&tensorX, &tensorY}, tfName);
+  runBatch(EET_, trainingBindings, 2700, sampleCounter, {inputX, expectedY},
+           {&tensorX, &tensorY}, tfName);
   trainingBindings.copyTrainableWeightsTo(inferBindings);
   // Create a test set, which is similar, but different from the training set.
   for (unsigned i = 0; i < numSamples; i++) {
@@ -989,7 +989,7 @@ TEST_P(MLTest, learnSinus) {
   }
   inputX = inferBindings.getPlaceholderByName("input");
   EEI_.compile(CompilationMode::Infer);
-  updateInputPlaceholders2(inferBindings, {inputX}, {&tensorX});
+  updateInputPlaceholders(inferBindings, {inputX}, {&tensorX});
   EEI_.run(inferBindings, fname);
   auto resH = res->getHandle<>();
 
@@ -1055,8 +1055,8 @@ TEST_P(MLTest, nonLinearClassifier) {
     labels.getHandle<int64_t>().at({i, 0}) = label;
   }
 
-  runBatch2(EET_, trainingBindings, 500, sampleCounter, {A, S},
-            {&samples, &labels}, tfName);
+  runBatch(EET_, trainingBindings, 500, sampleCounter, {A, S},
+           {&samples, &labels}, tfName);
   trainingBindings.copyTrainableWeightsTo(inferBindings);
   EEI_.compile(CompilationMode::Infer);
   A = inferBindings.getPlaceholderByName("A");
@@ -1070,7 +1070,7 @@ TEST_P(MLTest, nonLinearClassifier) {
     Tensor T(ElemKind::FloatTy, {batchSize, 2});
     T.getHandle<>().at({0, 0}) = std::get<0>(tests[i]);
     T.getHandle<>().at({0, 1}) = std::get<1>(tests[i]);
-    updateInputPlaceholders2(inferBindings, {A}, {&T});
+    updateInputPlaceholders(inferBindings, {A}, {&T});
     EEI_.run(inferBindings, fname);
     EXPECT_NEAR(RH.at({0, std::get<2>(tests[i])}), 1.0, 0.2);
   }
@@ -1105,7 +1105,7 @@ static void generateImageData(Tensor &images, Tensor &labels, PseudoRNG &PRNG) {
 /// This test checks the results of the quantized network.
 TEST_P(InterpreterAndCPU, convNetForImageRecognition) {
   EET_.setBackendName("Interpreter");
-  ExecutionEngine2 EEP{"Interpreter"};
+  ExecutionEngine EEP{"Interpreter"};
   engines_.emplace(engines_.begin(), &EEP);
   const unsigned numSamples = 500;
   const unsigned batchSize = 7;
@@ -1153,8 +1153,8 @@ TEST_P(InterpreterAndCPU, convNetForImageRecognition) {
   generateImageData(images, labels, mod->getPRNG());
 
   // Training:
-  runBatch2(EET_, trainingBindings, 500, sampleCounter, {input, ex},
-            {&images, &labels}, tfName);
+  runBatch(EET_, trainingBindings, 500, sampleCounter, {input, ex},
+           {&images, &labels}, tfName);
 
   mod = &EEP.getModule();
   profileBindings.allocate(mod->getPlaceholders());
@@ -1170,8 +1170,7 @@ TEST_P(InterpreterAndCPU, convNetForImageRecognition) {
   // function from the original. Get the new function.
   F = mod->getFunctions().front();
 
-  runBatch2(EEP, profileBindings, 100, sampleCounter, {input}, {&images},
-            fName);
+  runBatch(EEP, profileBindings, 100, sampleCounter, {input}, {&images}, fName);
 
   // Evaluate on the quantized function:
   // Set the execution backend to the backend that we test.
@@ -1200,7 +1199,7 @@ TEST_P(InterpreterAndCPU, convNetForImageRecognition) {
   Tensor testImages(ElemKind::FloatTy, {batchSize, 8, 8, 1});
   Tensor testLabels(ElemKind::Int64ITy, {batchSize, 1});
   generateImageData(testImages, testLabels, mod->getPRNG());
-  updateInputPlaceholders2(inferBindings, {input}, {&testImages});
+  updateInputPlaceholders(inferBindings, {input}, {&testImages});
 
   EEI_.run(inferBindings);
 
@@ -1238,7 +1237,7 @@ static void generateRegressionTestData(Tensor &images, Tensor &labels,
 /// network reports the coordinate of the pixel.
 TEST_P(InterpreterAndCPU, testFindPixelRegression) {
   EET_.setBackendName("Interpreter");
-  ExecutionEngine2 EEP{"Interpreter"};
+  ExecutionEngine EEP{"Interpreter"};
   engines_.emplace(engines_.begin(), &EEP);
   PlaceholderBindings inferBindings, trainingBindings, profileBindings;
 
@@ -1294,8 +1293,8 @@ TEST_P(InterpreterAndCPU, testFindPixelRegression) {
   generateRegressionTestData(images, labels, mod->getPRNG());
 
   // Training:
-  runBatch2(EET_, trainingBindings, 400, sampleCounter, {input, ex},
-            {&images, &labels}, tfName);
+  runBatch(EET_, trainingBindings, 400, sampleCounter, {input, ex},
+           {&images, &labels}, tfName);
 
   // -- STEP2 - Profile and quantize the network. --
   mod = &EEP.getModule();
@@ -1311,8 +1310,7 @@ TEST_P(InterpreterAndCPU, testFindPixelRegression) {
   auto F = EEP.getModule().getFunctions().front();
 
   // Run the graph to capture the profile.
-  runBatch2(EEP, profileBindings, 100, sampleCounter, {input}, {&images},
-            fName);
+  runBatch(EEP, profileBindings, 100, sampleCounter, {input}, {&images}, fName);
 
   // -- STEP3 - evaluate the quantized function. --
   mod = &EEI_.getModule();
@@ -1338,7 +1336,7 @@ TEST_P(InterpreterAndCPU, testFindPixelRegression) {
   generateRegressionTestData(testImages, testLabels, mod->getPRNG());
 
   // Run the inference:
-  updateInputPlaceholders2(inferBindings, {input}, {&testImages});
+  updateInputPlaceholders(inferBindings, {input}, {&testImages});
   EEI_.run(inferBindings);
 
   // A handle to the projected result.
@@ -1498,9 +1496,9 @@ TEST_P(MLTest, matrixRotationRecognition) {
 
   EET_.compile(CompilationMode::Train);
   // Training:
-  runBatch2(EET_, trainingBindings, 200, sampleCounter,
-            {varMatricesA, varMatricesB, varExpected},
-            {&matricesA, &matricesB, &expected}, tfName);
+  runBatch(EET_, trainingBindings, 200, sampleCounter,
+           {varMatricesA, varMatricesB, varExpected},
+           {&matricesA, &matricesB, &expected}, tfName);
   trainingBindings.copyTrainableWeightsTo(inferBindings);
 
   // Switch to inference mode.
@@ -1519,8 +1517,8 @@ TEST_P(MLTest, matrixRotationRecognition) {
       matricesA.getUnowned({batchSize, 3, 3}, {batchStartIdx, 0, 0});
   auto batchMatricesB =
       matricesB.getUnowned({batchSize, 3, 3}, {batchStartIdx, 0, 0});
-  updateInputPlaceholders2(inferBindings, {varMatricesA, varMatricesB},
-                           {&batchMatricesA, &batchMatricesB});
+  updateInputPlaceholders(inferBindings, {varMatricesA, varMatricesB},
+                          {&batchMatricesA, &batchMatricesB});
   EEI_.run(inferBindings, fname);
 
   unsigned errors = 0;

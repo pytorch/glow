@@ -15,7 +15,7 @@
  */
 
 #include "glow/Backend/BackendUtils.h"
-#include "glow/ExecutionEngine/ExecutionEngine2.h"
+#include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/PlaceholderBindings.h"
 #include "glow/IR/IRBuilder.h"
@@ -39,11 +39,11 @@ enum class PlaceholderType {
 
 class BackendTest : public ::testing::TestWithParam<std::string> {
 public:
-  ExecutionEngine2 EE_{GetParam()};
+  ExecutionEngine EE_{GetParam()};
 };
 
 TEST(Interpreter, profileQuantizationForANetwork) {
-  ExecutionEngine2 EE;
+  ExecutionEngine EE;
   PlaceholderBindings bindings;
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
@@ -68,7 +68,7 @@ TEST(Interpreter, profileQuantizationForANetwork) {
 
   // TODO: Verify histogram itself, for now just verify min and max.
   // Run inference first time and capture tensor stats.
-  updateInputPlaceholders2(bindings, {A}, {&inputs});
+  updateInputPlaceholders(bindings, {A}, {&inputs});
   EE.run(bindings);
   // Because we are quantizing the partitioner deleted the original function and
   // created a new one, get the new function.
@@ -98,7 +98,7 @@ TEST(Interpreter, profileQuantizationForANetwork) {
 
   // Run inference for the second time with new min and max.
   inputs.getHandle() = {0.2f, 1.6f, 0.5f, 1.3f};
-  updateInputPlaceholders2(bindings, {A}, {&inputs});
+  updateInputPlaceholders(bindings, {A}, {&inputs});
   EE.run(bindings);
   min = CI.raw(0);
   max = CI.raw(1);
@@ -109,7 +109,7 @@ TEST(Interpreter, profileQuantizationForANetwork) {
 /// Test that the symbol category for a symbol is properly set.
 TEST(RuntimeBundle, BundleSymbolInfo) {
 
-  ExecutionEngine2 EE;
+  ExecutionEngine EE;
   auto &mod = EE.getModule();
   PlaceholderBindings bindings;
 
@@ -170,7 +170,7 @@ TEST(RuntimeBundle, BundleSymbolInfo) {
 // Test if the placeholders are allocated contiguously as
 // Input|InputOutput|Output.
 TEST(RuntimeBundle, ContiguousPlaceholder) {
-  ExecutionEngine2 EE;
+  ExecutionEngine EE;
   PlaceholderBindings bindings;
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
@@ -281,7 +281,7 @@ TEST_P(BackendTest, simpleInference) {
   bindings.allocate(S->getPlaceholder());
   EE_.compile(CompilationMode::Infer);
 
-  updateInputPlaceholders2(bindings, {input}, {&inputs});
+  updateInputPlaceholders(bindings, {input}, {&inputs});
   EE_.run(bindings);
 }
 
@@ -536,8 +536,8 @@ TEST_P(BackendTest, compileThenAddNetwork) {
   // Allocate all placeholders.
   bindings1.allocate(mod.getPlaceholders());
   bindings2.allocate(mod.getPlaceholders());
-  updateInputPlaceholders2(bindings1, {input}, {&inputs});
-  updateInputPlaceholders2(bindings2, {input2}, {&inputs});
+  updateInputPlaceholders(bindings1, {input}, {&inputs});
+  updateInputPlaceholders(bindings2, {input2}, {&inputs});
 
   EE_.run(bindings1, "main");
   EE_.run(bindings2, "other");
