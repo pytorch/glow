@@ -827,6 +827,9 @@ llvm::Error Partitioner::Partition(CompilationContext &cctx) {
   // Step 5 : do the real partitioning for the function list.
   doPartitioning(origName, funcs, mapping, true);
 
+  // DAG validation.
+  RETURN_IF_ERR(dagValidation(partitions_[0]));
+
   // Step 6 : Post-partition optimization - Adjust the logicalDevice for each
   // DAGNode.
   if (saturateHost_ && backends.size() == 1 &&
@@ -928,11 +931,12 @@ llvm::Error Partitioner::PartitionFromConfig() {
   logicalDeviceID_ = assignLogicalDeviceID(partitionMap, backendMap_);
   RETURN_IF_ERR(logicalDevicesValidation(partitionMap, backendMap_));
 
-  // TODO : loop-free validation.
-
   // Do partition.
   doPartitioning(F->getName(), {F}, partitionMap, true);
   module_->eraseFunction(F);
+
+  // DAG validation.
+  RETURN_IF_ERR(dagValidation(partitions_[0]));
 
   // Do optimization based on backendName.
   for (size_t i = 0; i < partitionConfig_.numOfPartitions; i++) {
