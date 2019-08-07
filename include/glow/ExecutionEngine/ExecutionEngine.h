@@ -32,19 +32,19 @@
 
 namespace glow {
 
-/// This is the ExecutionEngine. It owns the Graph, the backend, and the
-/// compiled function.  The Graph, etc in this class are defined as pointers, in
-/// order to erase the type and prevent the internal types from leaking out to
-/// the users of this class.
+/// This is the ExecutionEngine. It encapsulates the Glow Runtime.  It handles
+/// compilation and execution of a network.
 class ExecutionEngine final {
-  /// Module containing the function and supporting information.
+  /// Module containing the function and supporting information. This is reset
+  /// if the backend type is changed.
   std::unique_ptr<Module> module_;
 
   /// Raw pointer to module_ this is to support module access after the module
   /// has been added to hostManager_.
   Module *rawModule_;
 
-  /// Name of the backend being used for compilation and execution.
+  /// Name of the backend being used for compilation and execution. Changing
+  /// this resets the ExecutionEngine.
   std::string backendName_ = "";
 
   /// Size of device memory, if 0 device default is used.
@@ -56,7 +56,7 @@ class ExecutionEngine final {
   /// Glow functions compiled for this ExecutionEngine's backend.
   std::set<std::string> compiledFunctions_;
 
-  /// Single execution of the given \compiledFunction with the given context
+  /// Single execution of the given function, \p name with the given context
   /// \bindings.
   void runInternal(ExecutionContext &context, llvm::StringRef name);
 
@@ -77,10 +77,12 @@ public:
     setBackendName(backendName_);
   }
 
-  /// Get a pointer to the backend.
+  /// Get the name of the current backend in use.
   llvm::StringRef getBackendName() const;
 
-  /// \returns the internal graph.
+  /// \returns the internal graph. Note: After compilation the contents of the
+  /// module will have been altered and raw pointers to elements of the graph
+  /// may no longer be valid.
   Module &getModule() { return *rawModule_; }
 
   /// Clears the ExecutionEngine and all CompiledFunctions.
@@ -96,7 +98,8 @@ public:
   /// without resetting the backend.
   void compile(CompilationContext &cctx);
 
-  /// A convenience function for the most common type of compile.
+  /// A convenience function for the most common type of compile. Can only be
+  /// called once without resetting the backend.
   void compile(CompilationMode mode);
 
   /// Context aware single execution of a function. If more than one
@@ -146,7 +149,8 @@ void updateInputPlaceholdersByName(PlaceholderBindings &bindings, Module *mod,
 /// The variable \p sampleCounter is consumed and updated by the function. This
 /// variable records the number of samples that were consumed by the network in
 /// previous iterations. The next input to be loaded is
-/// (sampleCounter % batchsize).
+/// (sampleCounter % batchsize). If there is more than one compiledFunction \p
+/// name must be provided to specify the desired function.
 void runBatch(ExecutionEngine &EE, PlaceholderBindings &bindings,
               size_t iterations, size_t &sampleCounter,
               llvm::ArrayRef<Placeholder *> ph, llvm::ArrayRef<Tensor *> inputs,
