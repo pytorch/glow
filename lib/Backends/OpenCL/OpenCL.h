@@ -16,6 +16,8 @@
 #ifndef GLOW_BACKENDS_OPENCL_OPENCL_H
 #define GLOW_BACKENDS_OPENCL_OPENCL_H
 
+#include "OpenCLDeviceManager.h"
+
 #include "glow/Backend/Backend.h"
 #include "glow/Backend/BackendUtils.h"
 #include "glow/Backend/CompiledFunction.h"
@@ -115,9 +117,7 @@ public:
   void collectConstants(const Module *module) override;
 
   /// \returns the backend used to compile this function.
-  virtual std::string getCompileBackendName() const override {
-    return "OpenCL";
-  }
+  std::string getCompileBackendName() const override { return "OpenCL"; }
   ///@}
 
   /// Returns IR function pointer.
@@ -219,6 +219,12 @@ public:
   /// Size of each TraceEvent (for manual events).
   size_t getTraceEventDataSize() const override { return sizeof(uint64_t); }
 
+  runtime::DeviceManager *
+  createDeviceManager(const runtime::DeviceConfig &deviceConfig) override {
+    return createOCLDeviceManager(deviceConfig);
+  }
+
+private:
   /// Parses the graph \F and builds a TraceInfo structure from any found
   /// TraceEventNodes.
   TraceInfo buildManualTraceInfo(Function *F) const;

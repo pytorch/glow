@@ -81,6 +81,8 @@ protected:
                        ResultCBTy cb) override;
 };
 
+DeviceManager *createInterpreterDeviceManager(const DeviceConfig &config);
+
 } // namespace runtime
 } // namespace glow
 

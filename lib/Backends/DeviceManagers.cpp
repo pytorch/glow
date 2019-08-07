@@ -16,6 +16,7 @@
 
 #include "glow/Backends/DeviceManager.h"
 #include "glow/Backends/DummyDeviceManager.h"
+#include "glow/Support/Register.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -23,58 +24,27 @@
 #include <string>
 #include <thread>
 
+#include <glog/logging.h>
+
 using namespace glow;
 using namespace glow::runtime;
 
 namespace glow {
 namespace runtime {
-/// NOTE: Please add a declaration of a device-specific `create` method here
-/// when you define a new DeviceManager.
-
-/// Create a new instance of the interpreter Device.
-DeviceManager *createInterpreterDeviceManager(const DeviceConfig &config);
-
-#if defined(GLOW_WITH_CPU)
-/// Create a new instance of the CPUBackend DeviceManager.
-DeviceManager *createCPUDeviceManager(const DeviceConfig &config);
-#else
-DeviceManager *createCPUDeviceManager(const DeviceConfig &config) {
-  (void)config;
-  LOG(FATAL) << "Must compile with CPU support";
-}
-#endif
-
-#if defined(GLOW_WITH_OPENCL)
-/// Create a new instance of the OpenCL backend.
-DeviceManager *createOCLDeviceManager(const DeviceConfig &config);
-#else
-DeviceManager *createOCLDeviceManager(const DeviceConfig &config) {
-  (void)config;
-  LOG(FATAL) << "Must compile with OpenCL support";
-}
-#endif
-
-#if defined(GLOW_WITH_HABANA)
-DeviceManager *createHabanaDeviceManager(const DeviceConfig &config);
-#else
-DeviceManager *createHabanaDeviceManager(const DeviceConfig &config) {
-  (void)config;
-  LOG(FATAL) << "Must compile with Habana support";
-}
-#endif
-} // namespace runtime
-} // namespace glow
 
 DeviceManager *DeviceManager::createDeviceManager(const DeviceConfig &config) {
-  if (config.backendName == "Interpreter") {
-    return createInterpreterDeviceManager(config);
-  } else if (config.backendName == "OpenCL") {
-    return createOCLDeviceManager(config);
-  } else if (config.backendName == "CPU") {
-    return createCPUDeviceManager(config);
-  } else if (config.backendName == "Habana") {
-    return createHabanaDeviceManager(config);
-  } else {
+  std::unique_ptr<Backend> backend(
+      FactoryRegistry<std::string, Backend>::get(config.backendName));
+
+  if (backend == nullptr) {
+    LOG(ERROR) << "There is no registered backend by name: "
+               << config.backendName;
+    LOG(ERROR) << "List of all registered backends: ";
+    for (const auto &factory :
+         FactoryRegistry<std::string, Backend>::factories()) {
+      LOG(ERROR) << factory.first;
+    }
+
     // As a fallback to make developing new Backends easier we'll create a
     // DummyDeviceManager here, but this is not threadsafe and very simplistic.
     // Strongly recommended that you create a DeviceManager customized for your
@@ -82,6 +52,8 @@ DeviceManager *DeviceManager::createDeviceManager(const DeviceConfig &config) {
     LOG(ERROR) << "Warning: Creating a DummyDeviceManager.\n";
     return new DummyDeviceManager(config);
   }
+
+  return backend->createDeviceManager(config);
 }
 
 #if defined(GLOW_WITH_CPU)
@@ -127,3 +99,6 @@ unsigned DeviceManager::numDevices(llvm::StringRef backendName) {
   }
   return 0;
 }
+
+} // namespace runtime
+} // namespace glow
