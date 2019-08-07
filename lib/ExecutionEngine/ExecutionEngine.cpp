@@ -43,23 +43,18 @@ void ExecutionEngine::setBackendName(llvm::StringRef backend) {
     hostManager_.reset();
   }
 
-  if (backend != "") {
-    std::vector<std::unique_ptr<runtime::DeviceConfig>> configs;
-    auto config = llvm::make_unique<runtime::DeviceConfig>(backend);
-    if (deviceMemory_) {
-      config->setDeviceMemory(deviceMemory_);
-    }
-    configs.push_back(std::move(config));
-    hostManager_ = llvm::make_unique<runtime::HostManager>(std::move(configs));
+  std::vector<std::unique_ptr<runtime::DeviceConfig>> configs;
+  auto config = llvm::make_unique<runtime::DeviceConfig>(backend);
+  if (deviceMemory_) {
+    config->setDeviceMemory(deviceMemory_);
   }
+  configs.push_back(std::move(config));
+  hostManager_ = llvm::make_unique<runtime::HostManager>(std::move(configs));
 }
 
 llvm::StringRef ExecutionEngine::getBackendName() const { return backendName_; }
 
-ExecutionEngine::~ExecutionEngine() {
-  // Call setBackendName with backend="" to clear the EE.
-  setBackendName("");
-}
+ExecutionEngine::~ExecutionEngine() { clear(); }
 
 void ExecutionEngine::clear() {
   if (hostManager_) {
