@@ -684,7 +684,6 @@ llvm::Error PyTorchModelLoader::loadLinear(const torch::jit::Node *ptNode) {
   auto outputs = ptNode->outputs();
   assert(inputs.size() == 3);
   assert(outputs.size() == 1);
-
   glow::NodeValue input;
   ASSIGN_VALUE_OR_RETURN_ERR(input,
                              getGlowNodeValue(inputs[LinearInputs::input]));
@@ -692,15 +691,22 @@ llvm::Error PyTorchModelLoader::loadLinear(const torch::jit::Node *ptNode) {
   ASSIGN_VALUE_OR_RETURN_ERR(weights,
                              getGlowNodeValue(inputs[LinearInputs::weights]));
 
-  auto *mul = F_.createMatMul("linear_mul", input, weights);
+  // Currently in Pytorch => Glow, we only translate t()+addmm(), t()+mm() and
+  // t()+matmul() to linear, Which means we need a transpose anyway, and also
+  // since addmm and mm only works for 2-D, we dont need to consider other
+  // transpose implementation.
+  auto *weights_t = F_.createTranspose("weights_t", weights, {1, 0});
+  auto *mul = F_.createMatMul("linear_mul", input, weights_t->getResult());
 
   if (hasGlowNodeValue(inputs[LinearInputs::bias])) {
     glow::NodeValue bias;
     ASSIGN_VALUE_OR_RETURN_ERR(bias,
                                getGlowNodeValue(inputs[LinearInputs::bias]));
-    return addGlowNodeValue(outputs[0], F_.createAdd("linear_add", mul, bias));
+    return addGlowNodeValue(
+        outputs[0],
+        (F_.createAdd("linear_add", mul->getResult(), bias))->getResult());
   } else {
-    return addGlowNodeValue(outputs[0], mul);
+    return addGlowNodeValue(outputs[0], mul->getResult());
   }
 }
 
