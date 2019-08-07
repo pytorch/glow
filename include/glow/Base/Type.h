@@ -308,7 +308,11 @@ struct Type final {
       0,
   };
   /// Contains the strides for each dimension (in elements). The order should be
-  /// the same as in sizes_.
+  /// the same as in sizes_. In more details, suppose that the tensor is laid
+  /// out flat in memory, and some dimensions are aligned. strides_[i] is the
+  /// number of elements that needs to be skipped in order to reach the next
+  /// plane in the i-th dimension. For example, if the tensor has dimensions
+  /// [3, 5, 10] and alignments [3, 32, 1], the strides will be [162, 32, 1].
   size_t strides_[max_tensor_dimensions] = {
       0,
   };
@@ -367,6 +371,7 @@ struct Type final {
     }
   }
 
+  /// Reshape existing type and change alignments.
   static Type newShape(const Type &T, llvm::ArrayRef<size_t> dims,
                        llvm::ArrayRef<size_t> alignments) {
     if (T.isQuantizedType()) {
@@ -562,6 +567,11 @@ struct Type final {
     return s;
   }
 
+  /// \returns the actual number of elements in the tensor taking striding into
+  /// account. Since size() does not take striding into account, size() is
+  /// always <= actualSize().
+  size_t actualSize() const { return getSizeInBytes() / getElementSize(); }
+
   /// \return the size of the element \p Ty.
   static unsigned getElementSize(ElemKind Ty) {
     switch (Ty) {
@@ -624,9 +634,14 @@ private:
     assert(dims.size() <= max_tensor_dimensions && "Too many dimensions.");
     assert(dims.size() == alignments.size() &&
            "The number of dimensions and alignments should be the same");
-    // Update the tensor sizes.
+    // Update the tensor strides and sizes based on given dims and alignments.
+    // Sizes are simply assigned to dims. And strides are computed as partial
+    // product of dims, making sure that each dimension is aligned as required.
     numSizes_ = dims.size();
     if (numSizes_ > 0) {
+      // Stride of the last dimension is always 1.
+      assert(alignments[numSizes_ - 1] == 1 &&
+             "Last dimension must always be aligned.");
       strides_[numSizes_ - 1] = 1;
       sizes_[numSizes_ - 1] = dims[numSizes_ - 1];
     }
@@ -637,6 +652,7 @@ private:
                "Alignment should be a multiple of element size");
         alignment /= getElementSize();
       }
+      // All the strides (except for last one) depend on the previous dimension.
       strides_[i] = alignedSize(dims[i + 1] * strides_[i + 1], alignment);
       assert(dims[i] > 0 && "Do not allow a dimension of zero.");
       sizes_[i] = dims[i];

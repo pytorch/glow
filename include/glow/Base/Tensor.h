@@ -16,6 +16,7 @@
 #ifndef GLOW_BASE_TENSOR_H
 #define GLOW_BASE_TENSOR_H
 
+#include <algorithm>
 #include <cassert>
 #include <vector>
 
@@ -188,15 +189,14 @@ public:
   /// \returns the shape of the tensor.
   llvm::ArrayRef<size_t> dims() const { return type_.dims(); }
 
-  /// \returns the number of elements in the tensor.
+  /// \returns the number of real meaningful elements in the tensor. Does not
+  /// take strides into account.
   size_t size() const { return type_.size(); }
 
   /// \returns the actual number of elements in the tensor taking striding into
   /// account. Since size() does not take striding into account, size() is
   /// always <= actualSize().
-  size_t actualSize() const {
-    return type_.getSizeInBytes() / type_.getElementSize();
-  }
+  size_t actualSize() const { return type_.actualSize(); }
 
   /// \returns the number of bytes required to store the tensor.
   uint64_t getSizeInBytes() const { return type_.getSizeInBytes(); }
@@ -287,10 +287,9 @@ public:
              "Number of dims of tensor must equal number of dims in offsets");
       // Find the index of the first element and use it to find the pointer to
       // the first element.
-      size_t index = 0, pi = 1;
-      for (int i = this->dims().size() - 1; i >= 0; i--) {
-        index += pi * offsets[i];
-        pi *= this->dims()[i];
+      size_t index = 0;
+      for (size_t i = 0; i < this->dims().size(); i++) {
+        index += type_.strides()[i] * offsets[i];
       }
       firstElemPtr = &firstElemPtr[index * type_.getElementSize()];
     }
@@ -682,6 +681,95 @@ void dumpImpl(const Tensor *T, llvm::raw_ostream &os,
 void dumpImpl(const Tensor *T, unsigned maxNumElem);
 void dumpImpl(const Tensor *T);
 
+template <class ElemTy> class Handle;
+
+/// A class that provides ability to iterate over a Handle<ElemTy>. Since it's
+/// common to have both mutating and const iterators, this class has template
+/// parameter IsConst, which is true to create const_iterator and false
+/// otherwise.
+template <class ElemTy, bool IsConst>
+class HandleIterator
+    : public std::iterator<std::random_access_iterator_tag, ElemTy> {
+  using HandleTy = typename std::conditional_t<IsConst, const Handle<ElemTy> *,
+                                               Handle<ElemTy> *>;
+  using ElemTyRef =
+      typename std::conditional_t<IsConst, const ElemTy &, ElemTy &>;
+
+  /// At every given moment, the iterator maintains an index, which is used to
+  /// access the Handle. When moving the iterator forward, the index is
+  /// incremented. Only valid elements can be accessed.
+  /// 0 <= idx_ <= handle_->size()
+  HandleTy handle_;
+  llvm::ArrayRef<size_t> sizes_;
+  size_t idx_;
+  /// Holds true if the underlying tensor has non-trivial alignment (i.e. not 1)
+  bool isAligned_;
+
+  HandleIterator() = default;
+
+  HandleIterator(HandleTy handle) : handle_(handle) {
+    sizes_ = handle->dims();
+    isAligned_ = handle->size() < handle->actualSize();
+  }
+
+  static HandleIterator begin(HandleTy handle) {
+    auto res = HandleIterator(handle);
+    res.idx_ = 0;
+    return res;
+  }
+
+  static HandleIterator end(HandleTy handle) {
+    auto res = HandleIterator(handle);
+    res.idx_ = res.handle_->size();
+    return res;
+  }
+
+  friend class Handle<ElemTy>;
+
+public:
+  HandleIterator &operator++() {
+    if (*this != handle_->end()) {
+      idx_++;
+    }
+    return *this;
+  }
+  HandleIterator &operator--() {
+    if (idx_) {
+      idx_--;
+    }
+    return *this;
+  }
+  HandleIterator operator+(int n) const {
+    auto res = HandleIterator(handle_);
+    res.idx_ = std::max(static_cast<int>(idx_) + n, 0);
+    res.idx_ = std::min(res.idx_, res.handle_->size());
+    return res;
+  }
+  HandleIterator operator-(int n) const { return *this + (-n); }
+  operator int() const { return idx_; }
+
+  ElemTyRef operator*() {
+    if (!isAligned_) {
+      return handle_->raw(idx_);
+    }
+    std::vector<size_t> indices(sizes_.size(), 0);
+    size_t rem = idx_;
+    for (int i = static_cast<int>(sizes_.size()) - 1; i >= 0; i--) {
+      indices[i] = rem % sizes_[i];
+      rem /= sizes_[i];
+    }
+    return handle_->at(indices);
+  }
+
+  bool operator==(const HandleIterator<ElemTy, IsConst> &other) const {
+    return idx_ == other.idx_;
+  }
+
+  bool operator!=(const HandleIterator<ElemTy, IsConst> &other) const {
+    return !(*this == other);
+  }
+};
+
 /// A class that provides indexed access to a tensor. This class has value
 /// semantics and it's copied around. One of the reasons for making this class
 /// value semantics is to allow efficient index calculation that the compiler
@@ -703,28 +791,27 @@ template <class ElemTy> class Handle final {
   /// Saves the number of dimensions used in the tensor.
   uint8_t numDims_{0};
 
+  /// Remember end iterators. This is needed to speed up iterator increment,
+  /// which has to check that iterator hasn't reached the end yet.
+  HandleIterator<ElemTy, false> mutating_end_;
+  HandleIterator<ElemTy, true> const_end_;
+
   /// Create a new invalid handle. Notice that this method is private and may
   /// only be used by the static factory method below.
   Handle() = default;
 
 public:
-  /// Random access iterator to tensor elements.
-  using iterator = ElemTy *;
-
-  /// Constant random access iterator to tensor elements.
-  using const_iterator = const iterator;
-
   /// \returns an iterator to the first element of the tensor.
-  iterator begin() { return tensor_->getRawDataPointer<ElemTy>(); }
-  const_iterator begin() const { return tensor_->getRawDataPointer<ElemTy>(); }
+  HandleIterator<ElemTy, false> begin() {
+    return HandleIterator<ElemTy, false>::begin(this);
+  }
+  HandleIterator<ElemTy, true> begin() const {
+    return HandleIterator<ElemTy, true>::begin(this);
+  }
 
   /// \returns an iterator referring to the past-the-end element.
-  iterator end() {
-    return tensor_->getRawDataPointer<ElemTy>() + tensor_->actualSize();
-  }
-  const_iterator end() const {
-    return tensor_->getRawDataPointer<ElemTy>() + tensor_->actualSize();
-  }
+  HandleIterator<ElemTy, false> end() { return mutating_end_; }
+  HandleIterator<ElemTy, true> end() const { return const_end_; }
 
   /// Allocate a new invalid handle.
   static Handle createInvalidHandle() { return Handle(); }
@@ -733,7 +820,9 @@ public:
   bool isValid() const { return tensor_; }
 
   /// Calculate the index for a specific element in the tensor. Notice that
-  /// the list of indices may be incomplete.
+  /// the list of indices may be incomplete. This method provides access to
+  /// padding elements, meaning that it's possible to get an index pointing at
+  /// data, added to meet alignment requirements.
   size_t getElementPtr(llvm::ArrayRef<size_t> indices) const {
     assert(indices.size() <= numDims_ && "Invalid number of indices");
     // The loop below can be rewritten using std::inner_product. Unfortunately
@@ -748,10 +837,16 @@ public:
     return index;
   }
 
-  /// \returns the value of the n'th dimension \p dim, for the raw index \p idx.
+  /// \returns the value of the n'th dimension \p dim, for the index \p idx.
+  /// 0 <= idx < size(), meaning that \p idx addresses a real data elements,
+  /// not paddings.
   size_t getDimForPtr(size_t dim, size_t idx) const {
     assert(dim < numDims_ && "Invalid dimension");
-    auto R = idx / sizeIntegral_[dim];
+    assert(idx < size() && "Invalid index");
+    auto R = idx;
+    for (size_t i = dim + 1; i < numDims_; i++) {
+      R /= sizes_[i];
+    }
     return R % sizes_[dim];
   }
 
@@ -767,17 +862,18 @@ public:
     numDims_ = sizes.size();
 
     /// We allow handles that wrap uninitialized tensors.
-    if (!numDims_) {
-      return;
+    if (numDims_) {
+      // Copy the sizes of the tensor.
+      memcpy(sizes_, tensor_->type_.sizes_,
+             max_tensor_dimensions * sizeof(sizes_[0]));
+      // Copy the strides of the tensor.
+      memcpy(sizeIntegral_, tensor_->type_.strides_,
+             max_tensor_dimensions * sizeof(tensor_->type_.strides_[0]));
+      assert(numDims_ <= max_tensor_dimensions && "Too many dimensions.");
     }
 
-    // Copy the sizes of the tensor.
-    memcpy(sizes_, tensor_->type_.sizes_,
-           max_tensor_dimensions * sizeof(sizes_[0]));
-    // Copy the strides of the tensor.
-    memcpy(sizeIntegral_, tensor_->type_.strides_,
-           max_tensor_dimensions * sizeof(tensor_->type_.strides_[0]));
-    assert(numDims_ <= max_tensor_dimensions && "Too many dimensions.");
+    mutating_end_ = HandleIterator<ElemTy, false>::end(this);
+    const_end_ = HandleIterator<ElemTy, true>::end(this);
   }
 
   llvm::ArrayRef<size_t> dims() const {
@@ -798,6 +894,8 @@ public:
 
   void clear(ElemTy value = 0) { std::fill(begin(), end(), value); }
 
+  /// Returns reference to a meaningful data element. This method does not
+  /// address padding elements.
   ElemTy &at(llvm::ArrayRef<size_t> indices) {
     assert(tensor_->isInBounds(indices));
     size_t index = getElementPtr(indices);
@@ -815,6 +913,7 @@ public:
   }
 
   /// \returns the element at offset \p idx without any size calculations.
+  /// The returned element can be a pad element.
   ElemTy &raw(size_t index) {
     assert(index < actualSize() && "Out of bounds");
     auto *data = tensor_->getRawDataPointer<ElemTy>();
@@ -822,6 +921,7 @@ public:
   }
 
   /// \returns the element at offset \p idx without any size calculations.
+  /// The returned element can be a pad element.
   const ElemTy &raw(size_t index) const {
     assert(index < actualSize() && "Out of bounds");
     auto *data = tensor_->getRawDataPointer<ElemTy>();
@@ -877,7 +977,7 @@ public:
 
   void operator=(llvm::ArrayRef<ElemTy> array) {
     assert(actualSize() == array.size() && "Invalid input size.");
-    std::copy(array.begin(), array.end(), begin());
+    std::copy(array.begin(), array.end(), &raw(0));
   }
 
   void dumpAscii(llvm::raw_ostream &os) const { dumpAsciiImpl(tensor_, os); }
