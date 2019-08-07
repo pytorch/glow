@@ -50,7 +50,7 @@ if(GLOW_USE_COVERAGE)
     COMMAND ${LCOV_PATH} --no-checksum --directory . --capture --output-file glow_coverage.info
 
     # Ignore not related files.
-    COMMAND ${LCOV_PATH} --remove glow_coverage.info '*v1*' '/usr/*' '*tests/*' '*llvm_install*' --output-file ${PROJECT_BINARY_DIR}/glow_coverage_result.info
+    COMMAND ${LCOV_PATH} --remove glow_coverage.info '*v1*' '/usr/*' '*tests/*' '*llvm_install*' 'build/*' --output-file ${PROJECT_BINARY_DIR}/glow_coverage_result.info
 
     # Generate HTML report based on the profiles.
     COMMAND ${GENHTML_PATH} -o glow_coverage ${PROJECT_BINARY_DIR}/glow_coverage_result.info
