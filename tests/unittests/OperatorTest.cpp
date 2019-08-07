@@ -6098,9 +6098,11 @@ TEST_P(OperatorTest, LengthsSum) {
   EXPECT_TRUE(expected.isEqual(result));
 }
 
-TEST_P(OperatorTest, SparseLengthsSum) {
-  ENABLED_BACKENDS(Interpreter, CPU, OpenCL, Habana);
-
+/// Helper to test SLS using \p DTy.
+template <typename DataType>
+static void testSLS(glow::PlaceholderBindings &bindings, glow::Module &mod,
+                    glow::Function *F, glow::ExecutionEngine &EE, ElemKind DTy,
+                    float allowedError) {
   /*
     DATA  = [
         [1.0, 1.2],
@@ -6117,37 +6119,49 @@ TEST_P(OperatorTest, SparseLengthsSum) {
         [3.0, 3.6],
     ]
   */
-  auto *data = mod_.createPlaceholder(ElemKind::FloatTy, {3, 2}, "data", false);
+  auto *data = mod.createPlaceholder(DTy, {3, 2}, "data", false);
   auto *indices =
-      mod_.createPlaceholder(ElemKind::Int64ITy, {8}, "indices", false);
+      mod.createPlaceholder(ElemKind::Int64ITy, {8}, "indices", false);
   auto *lengths =
-      mod_.createPlaceholder(ElemKind::Int32ITy, {5}, "lengths", false);
+      mod.createPlaceholder(ElemKind::Int32ITy, {5}, "lengths", false);
 
-  bindings_.allocate(data)->getHandle() = {
+  bindings.allocate(data)->getHandle<DataType>() = {
       1.0f, 1.2f, 2.3f, 3.4f, 4.5f, 5.7f,
   };
-  bindings_.allocate(indices)->getHandle<int64_t>() = {
+  bindings.allocate(indices)->getHandle<int64_t>() = {
       2, 0, 1, 2, 0, 0, 0, 0,
   };
-  bindings_.allocate(lengths)->getHandle<int32_t>() = {
+  bindings.allocate(lengths)->getHandle<int32_t>() = {
       2, 0, 2, 1, 3,
   };
 
-  auto *R = F_->createSparseLengthsSum("SLS", data, indices, lengths);
+  auto *R = F->createSparseLengthsSum("SLS", data, indices, lengths);
 
-  auto *S = F_->createSave("save", R);
-  bindings_.allocate(S->getPlaceholder());
+  auto *S = F->createSave("save", R);
+  bindings.allocate(S->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer);
-  EE_.run(bindings_);
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
 
-  Tensor &result = *bindings_.get(S->getPlaceholder());
-  Tensor expected(ElemKind::FloatTy, {5, 2});
-  expected.getHandle() = {
+  Tensor &result = *bindings.get(S->getPlaceholder());
+  Tensor expected(DTy, {5, 2});
+  expected.getHandle<DataType>() = {
       5.5f, 6.9f, 0.0f, 0.0f, 6.8f, 9.1f, 1.0f, 1.2f, 3.0f, 3.6f,
   };
 
-  EXPECT_TRUE(expected.isEqual(result));
+  EXPECT_TRUE(expected.isEqual(result, allowedError));
+}
+
+/// Test that SLS is correctly supported in FloatTy.
+TEST_P(OperatorTest, SparseLengthsSum_Float) {
+  ENABLED_BACKENDS(Interpreter, CPU, OpenCL, Habana);
+  testSLS<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy, 0.0001);
+}
+
+/// Test that SLS is correctly supported in Float16Ty.
+TEST_P(OperatorTest, SparseLengthsSum_Float16) {
+  ENABLED_BACKENDS(Interpreter);
+  testSLS<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty, 0.002);
 }
 
 TEST_P(OperatorTest, SparseLengthsSumI8) {
@@ -6202,12 +6216,10 @@ TEST_P(OperatorTest, SparseLengthsSumI8) {
 }
 
 /// Test SparseLengthsWeightedSum with an N-dimension embedding table.
-void sparseLengthsWeightedSumTest(size_t ndims, ExecutionEngine &EE) {
-  auto &mod_ = EE.getModule();
-  mod_.eraseFunctions();
-  auto *F_ = mod_.createFunction("slws");
-  PlaceholderBindings bindings_;
-
+template <typename DataType>
+static void testSLWS(glow::PlaceholderBindings &bindings, glow::Module &mod,
+                     glow::Function *F, glow::ExecutionEngine &EE, ElemKind DTy,
+                     float allowedError, size_t ndims) {
   /*
     DATA  =   [[2.0, -0.5, 13]]
     WEIGHTS = [3, 1, 0, 0, 0, 0, 2, -0.5]
@@ -6220,43 +6232,42 @@ void sparseLengthsWeightedSumTest(size_t ndims, ExecutionEngine &EE) {
   idims[0] = 3;
   odims[0] = 4;
 
-  auto *data = mod_.createPlaceholder(ElemKind::FloatTy, idims, "data", false);
-  auto *weights =
-      mod_.createPlaceholder(ElemKind::FloatTy, {8}, "weights", false);
+  auto *data = mod.createPlaceholder(DTy, idims, "data", false);
+  auto *weights = mod.createPlaceholder(DTy, {8}, "weights", false);
   auto *indices =
-      mod_.createPlaceholder(ElemKind::Int64ITy, {8}, "indices", false);
+      mod.createPlaceholder(ElemKind::Int64ITy, {8}, "indices", false);
   auto *lengths =
-      mod_.createPlaceholder(ElemKind::Int32ITy, {4}, "lengths", false);
+      mod.createPlaceholder(ElemKind::Int32ITy, {4}, "lengths", false);
 
-  bindings_.allocate(data)->getHandle() = {
+  bindings.allocate(data)->getHandle<DataType>() = {
       2.0,
       -0.5,
       13,
   };
-  bindings_.allocate(weights)->getHandle() = {
+  bindings.allocate(weights)->getHandle<DataType>() = {
       3, 1, 0, 0, 0, 0, 2, -0.5,
   };
-  bindings_.allocate(indices)->getHandle<int64_t>() = {
+  bindings.allocate(indices)->getHandle<int64_t>() = {
       1, 0, 2, 0, 1, 2, 2, 0,
   };
-  bindings_.allocate(lengths)->getHandle<int32_t>() = {
+  bindings.allocate(lengths)->getHandle<int32_t>() = {
       3,
       0,
       3,
       2,
   };
 
-  auto *R = F_->createSparseLengthsWeightedSum("SLWS", data, weights, indices,
-                                               lengths);
-  auto *S = F_->createSave("save", R);
-  bindings_.allocate(S->getPlaceholder());
+  auto *R = F->createSparseLengthsWeightedSum("SLWS", data, weights, indices,
+                                              lengths);
+  auto *S = F->createSave("save", R);
+  bindings.allocate(S->getPlaceholder());
 
   EE.compile(CompilationMode::Infer);
-  EE.run(bindings_);
+  EE.run(bindings);
 
-  Tensor &result = *bindings_.get(S->getPlaceholder());
-  Tensor expected(ElemKind::FloatTy, odims);
-  expected.getHandle() = {
+  Tensor &result = *bindings.get(S->getPlaceholder());
+  Tensor expected(DTy, odims);
+  expected.getHandle<DataType>() = {
       0.5,
       0,
       0,
@@ -6266,14 +6277,32 @@ void sparseLengthsWeightedSumTest(size_t ndims, ExecutionEngine &EE) {
   EXPECT_TRUE(expected.isEqual(result));
 }
 
-TEST_P(OperatorTest, SparseLengthsWeightedSum_1D) {
+/// Test that SLWS is correctly supported in FloatTy in 1D.
+TEST_P(OperatorTest, SparseLengthsWeightedSum_1D_Float) {
   ENABLED_BACKENDS(Interpreter, CPU, OpenCL);
-  sparseLengthsWeightedSumTest(1, EE_);
+  testSLWS<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy, 0.0001,
+                  /* ndims */ 1);
 }
 
-TEST_P(OperatorTest, SparseLengthsWeightedSum_2D) {
+/// Test that SLWS is correctly supported in FloatTy in 2D.
+TEST_P(OperatorTest, SparseLengthsWeightedSum_2D_Float) {
   ENABLED_BACKENDS(Interpreter, CPU, OpenCL, Habana);
-  sparseLengthsWeightedSumTest(2, EE_);
+  testSLWS<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy, 0.0001,
+                  /* ndims */ 2);
+}
+
+/// Test that SLWS is correctly supported in Float16Ty in 1D.
+TEST_P(OperatorTest, SparseLengthsWeightedSum_1D_Float16) {
+  ENABLED_BACKENDS(Interpreter);
+  testSLWS<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty, 0.0001,
+                      /* ndims */ 1);
+}
+
+/// Test that SLWS is correctly supported in Float16Ty in 2D.
+TEST_P(OperatorTest, SparseLengthsWeightedSum_2D_Float16) {
+  ENABLED_BACKENDS(Interpreter);
+  testSLWS<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty, 0.0001,
+                      /* ndims */ 2);
 }
 
 TEST_P(OperatorTest, SparseLengthsWeightedSumI8) {
