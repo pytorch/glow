@@ -60,7 +60,8 @@ void convertJitGraphToGlowFunction(torch::jit::Stack &stack,
   std::vector<glow::Placeholder *> inputPlaceholders;
   std::vector<glow::Placeholder *> outputPlaceholders;
   llvm::Error errPtr = glow::PyTorchModelLoader::loadJITGraph(
-      f, graph, inputs, inputPlaceholders, outputPlaceholders);
+      f, graph, inputs, inputPlaceholders, outputPlaceholders,
+      glow::getPyTorchLoaderSettings());
 
   EXPECT_FALSE(errPtr);
 
@@ -107,7 +108,8 @@ TEST(PyTorchModelLoader, Model) {
 
   at::ArrayRef<torch::jit::IValue> inputs(vec);
   errPtr = glow::PyTorchModelLoader::loadJITGraph(
-      *f, *subgraph, inputs, inputPlaceholders, outputPlaceholders);
+      *f, *subgraph, inputs, inputPlaceholders, outputPlaceholders,
+      glow::getPyTorchLoaderSettings());
   EXPECT_FALSE(!errPtr); // TODO
 }
 

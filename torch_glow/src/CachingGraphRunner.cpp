@@ -41,7 +41,8 @@ llvm::Error CachingGraphRunner::runGraph(const torch::jit::Node *node,
   std::vector<glow::Placeholder *> outputPlaceholders;
 
   RETURN_IF_ERR(PyTorchModelLoader::loadJITGraph(
-      *f, *graph, inputs, inputPlaceholders, outputPlaceholders));
+      *f, *graph, inputs, inputPlaceholders, outputPlaceholders,
+      getPyTorchLoaderSettings()));
 
   glow::CompilationContext cctx;
   executionEngine_.compile(cctx);

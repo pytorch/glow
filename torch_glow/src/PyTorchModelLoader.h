@@ -17,9 +17,9 @@
 #ifndef GLOW_TORCH_GLOW_SRC_PYTORCHMODELLOADER_H
 #define GLOW_TORCH_GLOW_SRC_PYTORCHMODELLOADER_H
 
+#include "PyTorchCommon.h"
 #include <llvm/Support/Error.h>
 #include <torch/csrc/jit/custom_operator.h>
-#include <torch/csrc/jit/ir.h>
 
 #include "glow/Graph/Graph.h"
 
@@ -106,7 +106,8 @@ public:
   loadJITGraph(glow::Function &F, torch::jit::Graph &subgraph,
                at::ArrayRef<torch::jit::IValue> &inputs,
                std::vector<glow::Placeholder *> &inputPlaceholders,
-               std::vector<glow::Placeholder *> &outputPlaceholders);
+               std::vector<glow::Placeholder *> &outputPlaceholders,
+               const PyTorchLoaderSettings &settings);
 
 private:
   /// Takes a glow::Function \p F, a jit::Graph \p subgraph to load, and a
@@ -116,7 +117,7 @@ private:
                      at::ArrayRef<torch::jit::IValue> &inputs,
                      std::vector<glow::Placeholder *> &inputPlaceholders,
                      std::vector<glow::Placeholder *> &outputPlaceholders,
-                     llvm::Error &error);
+                     llvm::Error &error, const PyTorchLoaderSettings &settings);
 
   /// Save access to the mapping.
   static const MappingOfMemberFunctions &getSymbolsMapping();
