@@ -2246,6 +2246,12 @@ ConvertToNode *Function::createConvertTo(llvm::StringRef name, NodeValue input,
   return addNode(new ConvertToNode(name, outTy, input));
 }
 
+ConvertToNode *Function::createConvertTo(llvm::StringRef name, NodeValue input,
+                                         ElemKind k) {
+  auto OT = getParent()->uniqueType(k, input.dims());
+  return addNode(new ConvertToNode(name, OT, input));
+}
+
 FullyConnectedNode *
 Function::createFullyConnected(PlaceholderBindings &bindings,
                                llvm::StringRef name, NodeValue input,

@@ -2646,9 +2646,8 @@ TEST_F(GraphOptz, ConvertPlaceholdersToConstants) {
 TEST_F(GraphOptz, optimizeSameTypeConversions) {
   auto *input1 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "input1", true);
   auto *input2 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "input2", true);
-  auto *conv1 = F_->createConvertTo("cast1", input1, input1->getType());
-  auto *conv2 = F_->createConvertTo(
-      "cast2", input2, mod_.uniqueType(ElemKind::Float16Ty, input2->dims()));
+  auto *conv1 = F_->createConvertTo("cast1", input1, ElemKind::FloatTy);
+  auto *conv2 = F_->createConvertTo("cast2", input2, ElemKind::Float16Ty);
   auto *save1 = F_->createSave("save1", conv1);
   auto *save2 = F_->createSave("save1", conv2);
 

@@ -196,9 +196,7 @@ TEST(GraphAutoGrad, checkConvertToGradTest) {
   auto inputHandle = bindings.allocate(A)->getHandle<float>();
   inputHandle.randomize(-3.0, 3.0, mod.getPRNG());
 
-  TypeRef outTy = mod.uniqueType(ElemKind::Float16Ty, A->dims());
-
-  auto *convertTo = F->createConvertTo("convertTo", A, outTy);
+  auto *convertTo = F->createConvertTo("convertTo", A, ElemKind::Float16Ty);
   auto *result = F->createSave("save", convertTo);
   bindings.allocate(result->getPlaceholder());
 

@@ -416,8 +416,15 @@ public:
       llvm::ArrayRef<unsigned_t> kernels, llvm::ArrayRef<unsigned_t> strides,
       llvm::ArrayRef<unsigned_t> pads, unsigned_t group);
 
+  /// Creates and \returns a ConvertTo Node with name \p name of \p input to
+  /// output type \p outTy.
   ConvertToNode *createConvertTo(llvm::StringRef name, NodeValue input,
                                  TypeRef outTy);
+
+  /// Creates and \returns a ConvertTo Node with name \p name of \p input to
+  /// output ElemKind \p k.
+  ConvertToNode *createConvertTo(llvm::StringRef name, NodeValue input,
+                                 ElemKind k);
 
   MaxPoolNode *createMaxPool(llvm::StringRef name, NodeValue input,
                              llvm::ArrayRef<unsigned_t> kernels,
