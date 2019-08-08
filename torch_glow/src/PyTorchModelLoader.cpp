@@ -702,9 +702,8 @@ llvm::Error PyTorchModelLoader::loadLinear(const torch::jit::Node *ptNode) {
     glow::NodeValue bias;
     ASSIGN_VALUE_OR_RETURN_ERR(bias,
                                getGlowNodeValue(inputs[LinearInputs::bias]));
-    return addGlowNodeValue(
-        outputs[0],
-        (F_.createAdd("linear_add", mul->getResult(), bias))->getResult());
+    auto *output = F_.createAdd("linear_add", mul->getResult(), bias);
+    return addGlowNodeValue(outputs[0], output->getResult());
   } else {
     return addGlowNodeValue(outputs[0], mul->getResult());
   }
