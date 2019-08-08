@@ -124,7 +124,7 @@ onnxStatus HostManagerGraph::run(std::unique_ptr<ExecutionContext> ctx,
         // If an Error occurred then log it in errToBool and signal the output
         // event.
         if (errToBool(std::move(err))) {
-          outputEvent->signal();
+          outputEvent->signal(ONNXIFI_STATUS_INTERNAL_ERROR);
           return;
         }
 
@@ -148,7 +148,7 @@ onnxStatus HostManagerGraph::run(std::unique_ptr<ExecutionContext> ctx,
           }
         }
 
-        outputEvent->signal();
+        outputEvent->signal(ONNXIFI_STATUS_SUCCESS);
       });
 
   return ONNXIFI_STATUS_SUCCESS;

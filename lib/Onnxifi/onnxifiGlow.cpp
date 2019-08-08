@@ -204,7 +204,8 @@ GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxGetBackendInfo)(
   case ONNXIFI_BACKEND_EXTENSIONS:
     return setBackendInfoString(
         infoValue, infoValueSize,
-        "onnxSetIOAndRunGraphFunction onnxReleaseTraceEventsFunction");
+        "onnxSetIOAndRunGraphFunction onnxWaitEventForFunction "
+        "onnxReleaseTraceEventsFunction");
   default:
     return ONNXIFI_STATUS_UNSUPPORTED_PROPERTY;
   }
@@ -296,14 +297,14 @@ GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxSignalEvent)(onnxEvent event) {
     return ONNXIFI_STATUS_INVALID_EVENT;
   }
 
-  if (!glowEvent->signal()) {
+  if (!glowEvent->signal(ONNXIFI_STATUS_SUCCESS)) {
     return ONNXIFI_STATUS_INVALID_STATE;
   }
 
   return ONNXIFI_STATUS_SUCCESS;
 }
 
-/// Wait until an ONNXIFI event is signalled.
+/// Wait until an ONNXIFI \p event is signalled.
 EXTERNC ONNXIFI_PUBLIC ONNXIFI_CHECK_RESULT onnxStatus ONNXIFI_ABI
 GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxWaitEvent)(onnxEvent event) {
   auto &manager = glow::onnxifi::GlowOnnxifiManager::get();
@@ -314,6 +315,41 @@ GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxWaitEvent)(onnxEvent event) {
   }
 
   glowEvent->wait();
+
+  return ONNXIFI_STATUS_SUCCESS;
+}
+
+/// Wait until an ONNXIFI \p event is signalled or until \p timeoutMs
+/// milliseconds have elapsed. If \p timeoutMs is 0 then wait fallback to
+/// waiting indefinitely for the event to be signalled.
+EXTERNC ONNXIFI_PUBLIC ONNXIFI_CHECK_RESULT onnxStatus ONNXIFI_ABI
+GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxWaitEventFor)(
+    onnxEvent event, uint32_t timeoutMs, onnxEventState *eventState,
+    onnxStatus *eventStatus) {
+  auto &manager = glow::onnxifi::GlowOnnxifiManager::get();
+
+  if (!eventState || !eventStatus) {
+    return ONNXIFI_STATUS_INVALID_POINTER;
+  }
+
+  auto *glowEvent = static_cast<glow::onnxifi::EventPtr>(event);
+  if (!manager.isValid(glowEvent)) {
+    return ONNXIFI_STATUS_INVALID_EVENT;
+  }
+
+  if (timeoutMs == 0) {
+    auto res = glowEvent->wait();
+    *eventState = ONNXIFI_EVENT_STATE_SIGNALLED;
+    *eventStatus = res;
+  } else {
+    auto resPair = glowEvent->waitFor(timeoutMs);
+    if (resPair.first) {
+      *eventState = ONNXIFI_EVENT_STATE_SIGNALLED;
+      *eventStatus = resPair.second;
+    } else {
+      *eventState = ONNXIFI_EVENT_STATE_NONSIGNALLED;
+    }
+  }
 
   return ONNXIFI_STATUS_SUCCESS;
 }
@@ -547,6 +583,9 @@ GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxGetExtensionFunctionAddress)(
           {"onnxSetIOAndRunGraphFunction",
            reinterpret_cast<onnxExtensionFunctionPointer>(
                GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxSetIOAndRunGraph))},
+          {"onnxWaitEventForFunction",
+           reinterpret_cast<onnxExtensionFunctionPointer>(
+               GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxWaitEventFor))},
           {"onnxReleaseTraceEventsFunction",
            reinterpret_cast<onnxExtensionFunctionPointer>(
                GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxReleaseTraceEvents))}};

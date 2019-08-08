@@ -80,10 +80,16 @@ class Event {
 public:
   Event() : fired_{false} {}
   /// Signal the event.
-  bool signal();
+  bool signal(onnxStatus status);
 
   /// Wait until the event is signalled.
-  void wait();
+  onnxStatus wait();
+
+  /// Wait until the event is signalled or until at least \p timeoutMs
+  /// milliseconds have elapsed. \returns a pair with the first value being a
+  /// boolean that is true if the event was signalled (no timeout occurred) and
+  /// the second is the value of the event's status.
+  std::pair<bool, onnxStatus> waitFor(size_t timeoutMs);
 
   /// Check if event was signalled.
   bool isSignalled() { return fired_; }
@@ -92,6 +98,9 @@ private:
   std::atomic<bool> fired_;
   std::mutex mutex_;
   std::condition_variable cond_;
+  /// Used to hold an onnxStatus that will be passed for the signaller of the
+  /// event to a waiter. Should only be accessed while holding mutex_.
+  onnxStatus status_ = ONNXIFI_STATUS_SUCCESS;
 };
 
 typedef Event *EventPtr;
