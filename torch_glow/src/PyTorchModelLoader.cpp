@@ -16,8 +16,6 @@
 
 #include "PyTorchModelLoader.h"
 
-#include "PyTorchCommon.h"
-
 #include "glow/Support/Error.h"
 #include "glow/Support/Support.h"
 
@@ -1190,11 +1188,12 @@ llvm::Error PyTorchModelLoader::loadJITGraph(
     glow::Function &F, torch::jit::Graph &subgraph,
     at::ArrayRef<torch::jit::IValue> &inputs,
     std::vector<glow::Placeholder *> &inputPlaceholders,
-    std::vector<glow::Placeholder *> &outputPlaceholders) {
+    std::vector<glow::Placeholder *> &outputPlaceholders,
+    const PyTorchLoaderSettings &settings) {
   llvm::Error error = llvm::Error::success();
   MARK_ERR_CHECKED(error);
   PyTorchModelLoader loader(F, subgraph, inputs, inputPlaceholders,
-                            outputPlaceholders, error);
+                            outputPlaceholders, error, settings);
   return error;
 }
 
@@ -1202,7 +1201,8 @@ PyTorchModelLoader::PyTorchModelLoader(
     glow::Function &F, torch::jit::Graph &subgraph,
     at::ArrayRef<torch::jit::IValue> &inputs,
     std::vector<glow::Placeholder *> &inputPlaceholders,
-    std::vector<glow::Placeholder *> &outputPlaceholders, llvm::Error &error)
+    std::vector<glow::Placeholder *> &outputPlaceholders, llvm::Error &error,
+    const PyTorchLoaderSettings &settings)
     : F_(F), inputs_(inputs) {
   auto subgraphInputValues = subgraph.inputs();
 
@@ -1231,7 +1231,7 @@ PyTorchModelLoader::PyTorchModelLoader(
     }
   }
 
-  bool weightFreezingEnabled = getPyTorchLoaderSettings().weightFreezingEnabled;
+  bool weightFreezingEnabled = settings.weightFreezingEnabled;
 
   // Nodes are topologically sorted.
   for (auto node : subgraph.nodes()) {
