@@ -242,6 +242,15 @@ struct PReluInputs {
     weight = 1,
   };
 };
+
+// Indexes of aten::softmax inputs.
+struct SoftMaxInputs {
+  enum {
+    input = 0,
+    dim = 1,
+    dtype = 2,
+  };
+};
 } // namespace
 
 // static
@@ -327,6 +336,12 @@ PyTorchModelLoader::getSymbolsMapping() {
         &PyTorchModelLoader::loadPRelu,
         {
             PReluInputs::weight,
+        }},
+       {{"aten::softmax"},
+        &PyTorchModelLoader::loadSoftMax,
+        {
+            SoftMaxInputs::dim,
+            SoftMaxInputs::dtype,
         }}});
 
   return symbolLoaderMapping;
@@ -1042,6 +1057,45 @@ llvm::Error PyTorchModelLoader::loadPRelu(const torch::jit::Node *ptNode) {
   int axis = targetDim.size() - weight.dims().size();
   auto *slope = F_.createBroadcast("broadcast", weight, targetDim, axis);
   auto *glowNode = F_.createPRELU("prelu", in, slope);
+  return addGlowNodeValue(outputs[0], glowNode);
+}
+
+llvm::Error PyTorchModelLoader::loadSoftMax(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 3, outputs, 1));
+
+  glow::NodeValue in;
+  ASSIGN_VALUE_OR_RETURN_ERR(in,
+                             getGlowNodeValue(inputs[SoftMaxInputs::input]));
+
+  // Dim.
+  auto dimHandle = glow::Handle<int32_t>::createInvalidHandle();
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      dimHandle, getGlowConstantHandle<int32_t>(inputs[SoftMaxInputs::dim]));
+  RETURN_ERR_IF_NOT(dimHandle.size() == 1, "dim must be 1D vector.");
+  glow::unsigned_t dim = static_cast<glow::unsigned_t>(dimHandle.raw(0));
+
+  // Dtype (optional).
+  if (hasGlowNodeValue(inputs[SoftMaxInputs::dtype])) {
+    auto dtypeHandle = glow::Handle<int32_t>::createInvalidHandle();
+    ASSIGN_VALUE_OR_RETURN_ERR(dtypeHandle, getGlowConstantHandle<int32_t>(
+                                                inputs[SoftMaxInputs::dtype]));
+    RETURN_ERR_IF_NOT(dtypeHandle.size() == 1, "dim must be 1D vector.");
+    glow::unsigned_t dtype = static_cast<glow::unsigned_t>(dtypeHandle.raw(0));
+    RETURN_ERR_IF_NOT(
+        dtype == static_cast<glow::unsigned_t>(at::ScalarType::Float),
+        glow::strFormat(
+            "Dtype parameter must have value torch::float(1), got %u", dtype));
+  }
+
+  auto selected = F_.getParent()->createConstant(glow::ElemKind::Int64ITy,
+                                                 {in.dims()[0], 1}, "selected");
+
+  auto *FN = F_.createFlatten("reshapeInput", in, dim);
+  auto *SM = F_.createSoftMax("SoftMax", FN, selected);
+  auto origInDims = in.getType()->dims();
+  auto *glowNode = F_.createReshape("reshapeOutput", SM, origInDims);
   return addGlowNodeValue(outputs[0], glowNode);
 }
 
