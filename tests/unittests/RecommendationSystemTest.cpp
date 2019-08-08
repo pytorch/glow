@@ -33,16 +33,6 @@ using namespace glow;
 namespace {
 llvm::cl::OptionCategory recSysTestCat("RecSys Category");
 
-llvm::cl::opt<unsigned> bottomMLPIntermediateDimOpt(
-    "bottom-mlp-intermediate-dim",
-    llvm::cl::desc("Intermediate dim for the bottom MLP."), llvm::cl::Optional,
-    llvm::cl::init(1024), llvm::cl::cat(recSysTestCat));
-
-llvm::cl::opt<unsigned> topMLPIntermediateDimOpt(
-    "top-mlp-intermediate-dim",
-    llvm::cl::desc("Intermediate dim for the top MLP."), llvm::cl::Optional,
-    llvm::cl::init(1024), llvm::cl::cat(recSysTestCat));
-
 llvm::cl::opt<unsigned> miniBatchOpt("mini-batch", llvm::cl::desc("Minibatch."),
                                      llvm::cl::Optional, llvm::cl::init(16),
                                      llvm::cl::cat(recSysTestCat));
@@ -56,13 +46,36 @@ llvm::cl::opt<unsigned> denseDimOpt("dense-dim", llvm::cl::desc("Dense dim."),
                                     llvm::cl::Optional, llvm::cl::init(800),
                                     llvm::cl::cat(recSysTestCat));
 
-llvm::cl::opt<unsigned> numBottomMLPLayersOpt(
-    "num-bottom-mlp-layers", llvm::cl::desc("Number of bottom MLP layers."),
-    llvm::cl::Optional, llvm::cl::init(3), llvm::cl::cat(recSysTestCat));
+llvm::cl::opt<unsigned> numHiddenBottomMLPLayersOpt(
+    "num-hidden-bottom-mlp-layers",
+    llvm::cl::desc("Number of hidden bottom MLP layers."), llvm::cl::Optional,
+    llvm::cl::init(3), llvm::cl::cat(recSysTestCat));
 
-llvm::cl::opt<unsigned> numTopMLPLayersOpt(
-    "num-top-mlp-layers", llvm::cl::desc("Number of top MLP layers."),
-    llvm::cl::Optional, llvm::cl::init(3), llvm::cl::cat(recSysTestCat));
+llvm::cl::list<unsigned> bottomMLPIntermediateDimsOpt(
+    "bottom-mlp-intermediate-dims",
+    llvm::cl::desc(
+        "Comma-separated list of intermediate dim for each of the bottom MLP "
+        "hidden layers and output layer. Will wrap around to the start of the "
+        "list and reuse dimensions if less than the number of layers. If "
+        "unprovided, default is 1024."),
+    llvm::cl::ZeroOrMore, llvm::cl::CommaSeparated,
+    llvm::cl::cat(recSysTestCat));
+
+llvm::cl::opt<unsigned>
+    numHiddenTopMLPLayersOpt("num-hidden-top-mlp-layers",
+                             llvm::cl::desc("Number of hidden top MLP layers."),
+                             llvm::cl::Optional, llvm::cl::init(3),
+                             llvm::cl::cat(recSysTestCat));
+
+llvm::cl::list<unsigned> topMLPIntermediateDimsOpt(
+    "top-mlp-intermediate-dims",
+    llvm::cl::desc(
+        "Comma-separated list of intermediate dim for each of the top MLP "
+        "hidden layers and output layer. Will wrap around to the start of the "
+        "list and reuse dimensions if less than the number of layers. If "
+        "unprovided, default is 1024."),
+    llvm::cl::ZeroOrMore, llvm::cl::CommaSeparated,
+    llvm::cl::cat(recSysTestCat));
 
 llvm::cl::list<unsigned> tableSizesOpt(
     "embedding-table-sizes",
@@ -187,6 +200,8 @@ protected:
   size_t embeddingDim;
   size_t denseDim;
   std::vector<size_t> tableSizes;
+  std::vector<size_t> bottomMLPIntermediateDims;
+  std::vector<size_t> topMLPIntermediateDims;
 
   // Used to configure correct precision settings:
   bool quantizeSLWSData{false};
@@ -201,6 +216,32 @@ protected:
 
   // Result handle.
   Placeholder *result{nullptr};
+
+  /// Helper that \returns intermediate dims given a provided list of dims \p
+  /// providedIntermediateDims and the number of layers needed \p numLayers. If
+  /// the provided list is empty then all dims will be set to
+  /// \p defaultIntermediateDim. If the size of \p providedIntermediateDims is
+  /// less than \p numLayers then it will wrap around and reuse
+  /// \p providedIntermediateDims until \p numLayers are added to the returned
+  /// vector.
+  static std::vector<size_t>
+  getIntermediateDims(llvm::ArrayRef<unsigned> providedIntermediateDims,
+                      unsigned numLayers,
+                      size_t defaultIntermediateDim = 1024) {
+    std::vector<size_t> destIntermediateDims;
+    std::vector<size_t> dims(providedIntermediateDims.begin(),
+                             providedIntermediateDims.end());
+    if (dims.empty()) {
+      dims.push_back(defaultIntermediateDim);
+    }
+    const size_t numProvidedDimsTop = dims.size();
+    // Note: Add one extra intermediate dim, which is used by the output layer
+    // of the MLP. The input layer is set based on its own input.
+    for (size_t i = 0, e = numLayers + 1; i < e; i++) {
+      destIntermediateDims.push_back(dims[i % numProvidedDimsTop]);
+    }
+    return destIntermediateDims;
+  }
 
   void SetUp() override {
     bindings_ = context_.getPlaceholderBindings();
@@ -229,6 +270,12 @@ protected:
       tableSizes = {8000, 6000, 7000, 9000, 12000,
                     8000, 6000, 7000, 9000, 12000};
     }
+
+    // Set up the bottom and top MLP intermediate dimensions.
+    bottomMLPIntermediateDims = getIntermediateDims(
+        bottomMLPIntermediateDimsOpt, numHiddenBottomMLPLayersOpt);
+    topMLPIntermediateDims = getIntermediateDims(topMLPIntermediateDimsOpt,
+                                                 numHiddenTopMLPLayersOpt);
 
     // Create TraceContext if trace file path is provided.
     if (!traceDir.empty()) {
@@ -370,9 +417,11 @@ protected:
   ///   * Hidden layers have dimension of \p intDim * intDim.
   ///   * Output layer has output dimension \p outputDim.
   static NodeValue createMLP(Module &mod, Function *F_, Node *N_,
-                             size_t inputDim, size_t intDim, size_t outputDim,
-                             size_t intermediateLayers) {
+                             size_t inputDim, llvm::ArrayRef<size_t> intDims,
+                             size_t outputDim, size_t intermediateLayers) {
     assert(intermediateLayers > 0);
+
+    const size_t firstIntDim = intDims[0];
 
     // Type object for the internal layers.
     // Note: dimension argument is a placeholder and will get filled out by each
@@ -380,29 +429,30 @@ protected:
     auto internalType = mod.uniqueType(ElemKind::FloatTy, {1});
 
     /// Initial
-    auto *initial_bias =
-        createRandomizedConstant(mod, internalType, {intDim}, "initial_bias");
+    auto *initial_bias = createRandomizedConstant(
+        mod, internalType, {firstIntDim}, "initial_bias");
     auto *initial_weight = createRandomizedConstant(
-        mod, internalType, {inputDim, intDim}, "initial_weight");
+        mod, internalType, {inputDim, firstIntDim}, "initial_weight");
 
     FullyConnectedNode *initial_layer = F_->createFullyConnected(
         "dense", N_, initial_weight,
         initial_bias); // Output is size {MB, intermediate dim}
-    auto *initial_relu = F_->createRELU("relu1", initial_layer);
-
-    auto *last = initial_relu;
+    NodeValue last = F_->createRELU("relu1", initial_layer);
 
     /// Intermediate
     for (unsigned i = 0; i < intermediateLayers; ++i) {
-
+      // The current intermediate dimension is based on the previous FC's
+      // result's trailing dimension. Thus we set the current FC's trailing
+      // weight dim equal to the next FC's intermediate dimension.
+      const size_t intDim = intDims[i + 1];
       auto *intermediate_bias = createRandomizedConstant(
           mod, internalType, {intDim}, "intermediate_bias");
       auto *intermediate_weight = createRandomizedConstant(
-          mod, internalType, {intDim, intDim}, "intermediate_weight");
+          mod, internalType, {last.dims()[1], intDim}, "intermediate_weight");
 
       FullyConnectedNode *intermediate_layer = F_->createFullyConnected(
           "dense", last, intermediate_weight,
-          intermediate_bias); // Output is size {MB, intDim}
+          intermediate_bias); // Output is size {MB, intDims[i]}
       last = F_->createRELU("relu2", intermediate_layer);
     }
 
@@ -410,7 +460,7 @@ protected:
     auto *end_bias =
         createRandomizedConstant(mod, internalType, {outputDim}, "end_bias");
     auto *end_weight = createRandomizedConstant(
-        mod, internalType, {intDim, outputDim}, "end_weight");
+        mod, internalType, {last.dims()[1], outputDim}, "end_weight");
 
     FullyConnectedNode *end_layer = F_->createFullyConnected(
         "dense", last, end_weight, end_bias); // Output is size {MB, embDim}
@@ -436,11 +486,14 @@ protected:
   ///     Tensors internally
   ///   * Biases are Int32 quantized.
   static NodeValue createQuantizedMLP(Module &mod, Function *F_, NodeValue N_,
-                                      size_t inputDim, size_t intDim,
+                                      size_t inputDim,
+                                      llvm::ArrayRef<size_t> intDims,
                                       size_t outputDim,
                                       size_t intermediateLayers) {
     // Must have intermediate layers.
     assert(intermediateLayers > 0);
+
+    const size_t firstIntDim = intDims[0];
 
     const size_t minibatchSize = N_.dims()[0];
 
@@ -455,10 +508,10 @@ protected:
         "mlp_quant", N_, mod.uniqueTypeWithNewShape(internalTypeQ, N_.dims()));
 
     /// Initial.
-    auto *initial_bias = createRandomizedConstant(mod, internalBiasType,
-                                                  {intDim}, "initial_bias");
+    auto *initial_bias = createRandomizedConstant(
+        mod, internalBiasType, {firstIntDim}, "initial_bias");
     auto *initial_weight = createRandomizedConstant(
-        mod, internalTypeF, {inputDim, intDim}, "initial_weight");
+        mod, internalTypeF, {inputDim, firstIntDim}, "initial_weight");
 
     // Output is size {MB, intermediatDim}
     quantization::Schema rowwiseQuantSchema = useSymmetricRowwiseQuantFCOpt
@@ -466,25 +519,28 @@ protected:
                                                   : quantization::Asymmetric;
     Node *initial_layer = F_->createRowwiseQuantizedFullyConnected(
         "dense", start, initial_weight, initial_bias,
-        mod.uniqueTypeWithNewShape(internalTypeQ, {minibatchSize, intDim}),
+        mod.uniqueTypeWithNewShape(internalTypeQ, {minibatchSize, firstIntDim}),
         rowwiseQuantSchema,
         /* transposeWeight */ true);
 
-    Node *initial_relu = F_->createRELU("initial_relu", initial_layer);
+    NodeValue last = F_->createRELU("initial_relu", initial_layer);
 
     /// Intermediate
-    auto *last = initial_relu;
     for (unsigned i = 0; i < intermediateLayers; ++i) {
+      // The current intermediate dimension is based on the previous FC's
+      // result's trailing dimension. Thus we set the current FC's trailing
+      // weight dim equal to the next FC's intermediate dimension.
+      const size_t intDim = intDims[i + 1];
       auto *intermediate_bias = createRandomizedConstant(
           mod, internalBiasType, {intDim}, "intermediate_bias");
       auto *intermediate_weight = createRandomizedConstant(
-          mod, internalTypeF, {intDim, intDim}, "intermediate_weight");
+          mod, internalTypeF, {last.dims()[1], intDim}, "intermediate_weight");
 
       Node *intermediate_layer = F_->createRowwiseQuantizedFullyConnected(
           "dense", last, intermediate_weight, intermediate_bias,
           mod.uniqueType(ElemKind::Int8QTy, {minibatchSize, intDim}, 1.0, 0),
           rowwiseQuantSchema,
-          /* transposeWeight */ true); // Output is size {MB, intDim}
+          /* transposeWeight */ true); // Output is size {MB, intDims[i]}
       last = F_->createRELU("intermediate_relu", intermediate_layer);
     }
 
@@ -492,7 +548,7 @@ protected:
     auto *end_bias = createRandomizedConstant(mod, internalBiasType,
                                               {outputDim}, "end_bias");
     auto *end_weight = createRandomizedConstant(
-        mod, internalTypeF, {intDim, outputDim}, "end_weight");
+        mod, internalTypeF, {last.dims()[1], outputDim}, "end_weight");
 
     // Output is size {MB, embDim}
     auto *end_layer = F_->createRowwiseQuantizedFullyConnected(
@@ -642,12 +698,12 @@ protected:
     NodeValue bottomMLP;
     if (quantizeFC) {
       bottomMLP = createQuantizedMLP(mod, F, denseData, denseData->dims()[1],
-                                     bottomMLPIntermediateDimOpt, embDim,
-                                     numBottomMLPLayersOpt);
+                                     bottomMLPIntermediateDims, embDim,
+                                     numHiddenBottomMLPLayersOpt);
     } else {
-      bottomMLP =
-          createMLP(mod, F, denseData, denseData->dims()[1],
-                    bottomMLPIntermediateDimOpt, embDim, numBottomMLPLayersOpt);
+      bottomMLP = createMLP(mod, F, denseData, denseData->dims()[1],
+                            bottomMLPIntermediateDims, embDim,
+                            numHiddenBottomMLPLayersOpt);
     }
 
     // Sparse Embeddings
@@ -684,12 +740,12 @@ protected:
     Node *topMLP;
     if (quantizeFC) {
       topMLP = createQuantizedMLP(mod, F, interact, interact.dims()[1],
-                                  topMLPIntermediateDimOpt, /* outputDim */ 1,
-                                  numTopMLPLayersOpt);
+                                  topMLPIntermediateDims,
+                                  /* outputDim */ 1, numHiddenTopMLPLayersOpt);
     } else {
       topMLP = createMLP(mod, F, interact, interact.dims()[1],
-                         topMLPIntermediateDimOpt, /* outputDim */ 1,
-                         numTopMLPLayersOpt);
+                         topMLPIntermediateDims,
+                         /* outputDim */ 1, numHiddenTopMLPLayersOpt);
     }
 
     // Output
