@@ -7,18 +7,16 @@ from tests.utils import jitVsGlow
 import pytest
 
 
-@pytest.mark.skip(reason="not ready")
 def test_addmm():
 
     def test_f(M, aa, b, bias):
         """Basic test of the PyTorch addmm Node on Glow."""
         a = aa.t()
-        M1 = M.addmm(a, b)
-        M2 = M1.add(bias)
-        return M2
+        M1 = M.addmm(b, a)
+        return M1.add(bias)
 
-    x = torch.randn(10, 6)
-    y = torch.randn(10, 6)
+    x = torch.randn(6, 10)
+    y = torch.randn(6, 10)
     z = torch.randn(6, 6)
     a = torch.randn(6, 6)
 
