@@ -321,6 +321,7 @@ void OpenCLDeviceManager::addNetworkImpl(const Module *module,
       readyCB(module, autoDeviceBufferOrErr.takeError());
       return;
     }
+
     auto buffer = std::make_shared<OpenCLBuffer>(deviceBuffer, size);
     if (bundle.getConstants()) {
       auto buf = bundle.getConstants();
@@ -353,7 +354,8 @@ void OpenCLDeviceManager::addNetworkImpl(const Module *module,
     std::string source(reinterpret_cast<const char *>(kernels_cl_src),
                        kernels_cl_src_size);
     OpenCLFunction *function = static_cast<OpenCLFunction *>(func.second);
-    function->createProgram(source, options, commands);
+    auto program = function->createProgram(source, options, commands);
+    programs_.emplace(func.first, program);
     functions_.emplace(func.first, func.second);
     buffers_.emplace(func.first, buffer);
     buffer->incrementUsers();
@@ -435,8 +437,11 @@ void OpenCLDeviceManager::runFunctionImpl(
   TRACE_EVENT_SCOPE_END();
   // Create and set deviceBindings for call. This contains all the state needed
   // for the function to run on a device.
+  auto program = programs_[function];
   auto clBindings = llvm::make_unique<runtime::OpenCLDeviceBindings>(
-      buffers_[function]->getBuffer(), queue.backingQueue, deviceId_, context_);
+      buffers_[function]->getBuffer(), queue.backingQueue, deviceId_, context_,
+      program);
+
   context->setDeviceBindings(std::move(clBindings));
 
   // Run that function.

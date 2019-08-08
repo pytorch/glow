@@ -73,8 +73,8 @@ class OpenCLFunction final : public CompiledFunction {
   /// A helper type representing a key for the program's cache.
   /// Each compiled program is uniquely identified by its source code, set of
   /// compiler options that were used and the device it was compiled for.
-  using ProgramKey =
-      std::tuple<const std::string, const std::string, const cl_device_id>;
+  using ProgramKey = std::tuple<const std::string, const std::string,
+                                const cl_device_id, const cl_context>;
   struct ProgramKeyHash {
     std::size_t operator()(const ProgramKey &K) const noexcept {
       return llvm::hash_combine(std::get<0>(K), std::get<1>(K), std::get<2>(K));
@@ -142,7 +142,7 @@ private:
   /// \param len number of buffer elements to be filled by the \p value.
   /// Elements are considered to be of the type described by \p elemKind.
   void fillBuffer(cl_mem buffer, uint64_t start, uint64_t len, float value,
-                  ElemKind elemKind);
+                  ElemKind elemKind, cl_program program);
 
   /// Execution a convolution instruction which uses NCHW format.
   void executeNCHWConvolution(const ConvolutionInst *CC,
@@ -155,7 +155,7 @@ private:
   /// Create kernel with a given \p name from a \p program.
   /// If \p program is nullptr, try to find the kernel with a given \p name
   /// in any of compiled programs.
-  cl_kernel createKernel(const std::string &name, cl_program program = nullptr);
+  cl_kernel createKernel(const std::string &name, cl_program program);
 
   /// Enqueue a \p kernel on a provided \p commands queue.
   void enqueueKernel(llvm::StringRef name, cl_command_queue commands,
@@ -231,9 +231,9 @@ namespace runtime {
 /// device.
 struct OpenCLDeviceBindings : DeviceBindings {
   OpenCLDeviceBindings(cl_mem buffer, cl_command_queue commands,
-                       cl_device_id device, cl_context ctx)
+                       cl_device_id device, cl_context ctx, cl_program prog)
       : DeviceBindings(OCLBackend::getName()), deviceBuffer{buffer},
-        commandQueue{commands}, deviceId{device}, context{ctx} {}
+        commandQueue{commands}, deviceId{device}, context{ctx}, program{prog} {}
 
   /// CL memory buffer. Currently this contains both mutable and immutable
   /// weights, the buffer is allocated once when the network is added.
@@ -251,6 +251,9 @@ struct OpenCLDeviceBindings : DeviceBindings {
   /// will take place in.
   ///
   cl_context context;
+
+  /// CL program which was compiled at addNetwork.
+  cl_program program;
 };
 } // namespace runtime
 } // namespace glow

@@ -153,22 +153,9 @@ static std::string getKernelName(const char *baseName, ElemKind elemTy) {
 cl_kernel OpenCLFunction::createKernel(const std::string &name,
                                        cl_program program) {
   cl_int err = CL_SUCCESS;
-  cl_kernel kernel = nullptr;
-  if (program) {
-    cl_kernel kernel = clCreateKernel(program, name.c_str(), &err);
-    CHECK(kernel) << "clCreateKernel Failed.";
-    CHECK_EQ(err, CL_SUCCESS) << "clCreateKernel Failed.";
-    return kernel;
-  }
-  // Inspect all programs.
-  for (auto &kv : programsCache_) {
-    auto prog = kv.second;
-    cl_kernel kernel = clCreateKernel(prog, name.c_str(), &err);
-    if (err == CL_SUCCESS) {
-      return kernel;
-    }
-  }
+  cl_kernel kernel = clCreateKernel(program, name.c_str(), &err);
   CHECK(kernel) << "clCreateKernel Failed.";
+  CHECK_EQ(err, CL_SUCCESS) << "clCreateKernel Failed.";
   return kernel;
 }
 
@@ -193,7 +180,7 @@ OpenCLFunction::createProgram(const std::string &source,
     combinedOptions.append(opt).append(" ");
   }
 
-  ProgramKey key = std::make_tuple(source, combinedOptions, deviceId);
+  ProgramKey key = std::make_tuple(source, combinedOptions, deviceId, ctx);
   cl_program &program = programsCache_[key];
   if (program) {
     return program;
@@ -248,8 +235,9 @@ static size_t setKernelArgsForBuffers(cl_kernel kernel, const Instruction &I,
 }
 
 void OpenCLFunction::fillBuffer(cl_mem buffer, uint64_t start, uint64_t len,
-                                float value, ElemKind elemKind) {
-  auto kernel = createKernel(getKernelName("splat", elemKind));
+                                float value, ElemKind elemKind,
+                                cl_program program) {
+  auto kernel = createKernel(getKernelName("splat", elemKind), program);
   setKernelArg(kernel, 0, buffer);
   setKernelArg<cl_uint>(kernel, 1, start);
   setKernelArg(kernel, 2, value);
@@ -559,6 +547,7 @@ llvm::Error OpenCLFunction::execute(ExecutionContext *context) {
   deviceId_ = clBindings->deviceId;
   commands_ = clBindings->commandQueue;
   context_ = clBindings->context;
+  auto program = clBindings->program;
 
   kernelProfiling_ = clDoProfile || getTraceInfo().autoInstrumented;
 
@@ -575,7 +564,6 @@ llvm::Error OpenCLFunction::execute(ExecutionContext *context) {
         isa<TensorViewInst>(I)) {
       continue;
     }
-
     // The kernels are named after the name of the instruction, plus the "W"
     // suffix to prevent name colissions for functions like 'tanh' that are also
     // a part of the OpenCL runtime.
@@ -623,7 +611,7 @@ llvm::Error OpenCLFunction::execute(ExecutionContext *context) {
         LOG(FATAL) << "Invalid instruction: " << I.getName().str();
       }
 
-      cl_kernel kernel = createKernel(kernelName);
+      cl_kernel kernel = createKernel(kernelName, program);
       setKernelArg(kernel, 0, deviceBuffer_);
       auto numArgs = setKernelArgsForBuffers(kernel, I, 1, runtimeBundle_);
       auto numMandatoryArgs = numArgs;
@@ -717,7 +705,7 @@ llvm::Error OpenCLFunction::execute(ExecutionContext *context) {
     if (auto *SM = dyn_cast<SoftMaxInst>(&I)) {
       // Implement Softmax by parallelizing the batch dimension. Each sample in
       // the batch is processed by a different parallel 'thread'.
-      cl_kernel kernel = createKernel(kernelName);
+      cl_kernel kernel = createKernel(kernelName, program);
       setKernelArg(kernel, 0, deviceBuffer_);
       auto numArgs = setKernelArgsForBuffers(kernel, I, 1, runtimeBundle_);
 
@@ -737,7 +725,7 @@ llvm::Error OpenCLFunction::execute(ExecutionContext *context) {
     if (auto *SM = dyn_cast<SoftMaxGradInst>(&I)) {
       // Implement Softmax by parallelizing the batch dimension. Each sample in
       // the batch is processed by a different parallel 'thread'.
-      cl_kernel kernel = createKernel(kernelName);
+      cl_kernel kernel = createKernel(kernelName, program);
       setKernelArg(kernel, 0, deviceBuffer_);
       auto numArgs = setKernelArgsForBuffers(kernel, I, 1, runtimeBundle_);
 
@@ -755,7 +743,7 @@ llvm::Error OpenCLFunction::execute(ExecutionContext *context) {
     }
 
     if (auto *ET = dyn_cast<ExtractTensorInst>(&I)) {
-      cl_kernel kernel = createKernel(kernelName);
+      cl_kernel kernel = createKernel(kernelName, program);
       setKernelArg(kernel, 0, deviceBuffer_);
       auto numArgs = setKernelArgsForBuffers(kernel, I, 1, runtimeBundle_);
 
@@ -795,7 +783,7 @@ llvm::Error OpenCLFunction::execute(ExecutionContext *context) {
     }
 
     if (auto *IT = dyn_cast<InsertTensorInst>(&I)) {
-      cl_kernel kernel = createKernel(kernelName);
+      cl_kernel kernel = createKernel(kernelName, program);
       setKernelArg(kernel, 0, deviceBuffer_);
       auto numArgs = setKernelArgsForBuffers(kernel, I, 1, runtimeBundle_);
 
@@ -849,7 +837,7 @@ llvm::Error OpenCLFunction::execute(ExecutionContext *context) {
       bool useTiledMatMul = (WIS[0] >= TILE_DIM && WIS[1] >= TILE_DIM);
       auto tiledKernelName = isQuantized ? "matmul_tiled_i8" : "matmul_tiled";
       cl_kernel kernel =
-          createKernel(useTiledMatMul ? tiledKernelName : kernelName);
+          createKernel(useTiledMatMul ? tiledKernelName : kernelName, program);
       setKernelArg(kernel, 0, deviceBuffer_);
       auto numArgs = setKernelArgsForBuffers(kernel, I, 1, runtimeBundle_);
 
@@ -892,7 +880,7 @@ llvm::Error OpenCLFunction::execute(ExecutionContext *context) {
           BA->getSlice()->getType()->getElementType() == ElemKind::Int32QTy) {
         kernelName += "_32";
       }
-      cl_kernel kernel = createKernel(kernelName);
+      cl_kernel kernel = createKernel(kernelName, program);
       setKernelArg(kernel, 0, deviceBuffer_);
       auto numArgs = setKernelArgsForBuffers(kernel, I, 1, runtimeBundle_);
 
@@ -946,7 +934,7 @@ llvm::Error OpenCLFunction::execute(ExecutionContext *context) {
       }
 
       // Create kernel and set arguments.
-      cl_kernel kernel = createKernel(kernelName);
+      cl_kernel kernel = createKernel(kernelName, program);
       setKernelArg(kernel, 0, deviceBuffer_);
       auto numArgs = setKernelArgsForBuffers(kernel, I, 1, runtimeBundle_);
 
@@ -967,7 +955,7 @@ llvm::Error OpenCLFunction::execute(ExecutionContext *context) {
 
       // This is a naive implementation that parallelizes using three dims:
       // the X and the Y in the output filter.
-      cl_kernel kernel = createKernel(kernelName);
+      cl_kernel kernel = createKernel(kernelName, program);
       setKernelArg(kernel, 0, deviceBuffer_);
       auto numArgs = setKernelArgsForBuffers(kernel, I, 1, runtimeBundle_);
       auto odim = ShapeNHWC(CC->getDest()->getType()->dims());
@@ -1013,7 +1001,7 @@ llvm::Error OpenCLFunction::execute(ExecutionContext *context) {
       auto *srcGrad = CG->getSrcGrad();
       auto *filterGrad = CG->getFilterGrad();
       auto *biasGrad = CG->getBiasGrad();
-      cl_kernel kernel = createKernel(kernelName);
+      cl_kernel kernel = createKernel(kernelName, program);
       setKernelArg(kernel, 0, deviceBuffer_);
       auto numArgs = setKernelArgsForBuffers(kernel, I, 1, runtimeBundle_);
 
@@ -1033,11 +1021,11 @@ llvm::Error OpenCLFunction::execute(ExecutionContext *context) {
       setKernelArg(kernel, numArgs + 8, filterGradDim);
       // Zero memory for the output buffers.
       fillBuffer(deviceBuffer_, runtimeBundle_.getValueOffset(srcGrad),
-                 srcGrad->size(), 0, srcGrad->getElementType());
+                 srcGrad->size(), 0, srcGrad->getElementType(), program);
       fillBuffer(deviceBuffer_, runtimeBundle_.getValueOffset(filterGrad),
-                 filterGrad->size(), 0, filterGrad->getElementType());
+                 filterGrad->size(), 0, filterGrad->getElementType(), program);
       fillBuffer(deviceBuffer_, runtimeBundle_.getValueOffset(biasGrad),
-                 biasGrad->size(), 0, biasGrad->getElementType());
+                 biasGrad->size(), 0, biasGrad->getElementType(), program);
 
       (void)filter;
       DCHECK(filter->dims() == filterGrad->dims()) << "Dims should be the same";
@@ -1056,7 +1044,7 @@ llvm::Error OpenCLFunction::execute(ExecutionContext *context) {
         kernelName = "ocl" + kernelName;
       }
 
-      cl_kernel kernel = createKernel(kernelName);
+      cl_kernel kernel = createKernel(kernelName, program);
       setKernelArg(kernel, 0, deviceBuffer_);
       auto numArgs = setKernelArgsForBuffers(kernel, I, 1, runtimeBundle_);
 
@@ -1093,7 +1081,7 @@ llvm::Error OpenCLFunction::execute(ExecutionContext *context) {
     if (auto *PM = dyn_cast<MaxPoolWithArgmaxInst>(&I)) {
       // This is a naive implementation that parallelizes using three dims:
       // the X and the Y in the output filter.
-      cl_kernel kernel = createKernel(kernelName);
+      cl_kernel kernel = createKernel(kernelName, program);
       setKernelArg(kernel, 0, deviceBuffer_);
       auto numArgs = setKernelArgsForBuffers(kernel, I, 1, runtimeBundle_);
 
@@ -1116,7 +1104,7 @@ llvm::Error OpenCLFunction::execute(ExecutionContext *context) {
     }
 
     if (auto *PMG = dyn_cast<MaxPoolWithArgmaxGradInst>(&I)) {
-      cl_kernel kernel = createKernel(kernelName);
+      cl_kernel kernel = createKernel(kernelName, program);
       setKernelArg(kernel, 0, deviceBuffer_);
       auto numArgs = setKernelArgsForBuffers(kernel, I, 1, runtimeBundle_);
 
@@ -1148,7 +1136,7 @@ llvm::Error OpenCLFunction::execute(ExecutionContext *context) {
         kernelName = "ocl" + kernelName;
       }
 
-      cl_kernel kernel = createKernel(kernelName);
+      cl_kernel kernel = createKernel(kernelName, program);
       setKernelArg(kernel, 0, deviceBuffer_);
       auto numArgs = setKernelArgsForBuffers(kernel, I, 1, runtimeBundle_);
 
@@ -1199,7 +1187,7 @@ llvm::Error OpenCLFunction::execute(ExecutionContext *context) {
       CHECK_LE(TR->getShuffle().size(), 4)
           << "This code supports only 4 and lower dimensional transposes";
 
-      cl_kernel kernel = createKernel(kernelName);
+      cl_kernel kernel = createKernel(kernelName, program);
       setKernelArg(kernel, 0, deviceBuffer_);
       auto numArgs = setKernelArgsForBuffers(kernel, I, 1, runtimeBundle_);
 
@@ -1250,7 +1238,7 @@ llvm::Error OpenCLFunction::execute(ExecutionContext *context) {
     }
 
     if (auto *GI = dyn_cast<GatherInst>(&I)) {
-      cl_kernel kernel = createKernel(kernelName);
+      cl_kernel kernel = createKernel(kernelName, program);
       setKernelArg(kernel, 0, deviceBuffer_);
       auto numArgs = setKernelArgsForBuffers(kernel, I, 1, runtimeBundle_);
       unsigned_t batchDims = GI->getBatchDims();
@@ -1290,7 +1278,7 @@ llvm::Error OpenCLFunction::execute(ExecutionContext *context) {
       assert(!SDI->getCumulative() && "Cumulative assign not supported!");
       assert(SDI->getIndices()->dims()[1] == 1 &&
              "Only one-dimensional indices are supported!");
-      cl_kernel kernel = createKernel(kernelName);
+      cl_kernel kernel = createKernel(kernelName, program);
       setKernelArg(kernel, 0, deviceBuffer_);
       auto numArgs = setKernelArgsForBuffers(kernel, I, 1, runtimeBundle_);
 
@@ -1305,7 +1293,7 @@ llvm::Error OpenCLFunction::execute(ExecutionContext *context) {
     }
 
     if (auto *SLWS = dyn_cast<SparseLengthsWeightedSumInst>(&I)) {
-      cl_kernel kernel = createKernel(kernelName);
+      cl_kernel kernel = createKernel(kernelName, program);
       // Set the device buffer as the first argument.
       setKernelArg(kernel, 0, deviceBuffer_);
       // Set all buffer arguments from the instruction (data, dest, weights,
@@ -1321,7 +1309,7 @@ llvm::Error OpenCLFunction::execute(ExecutionContext *context) {
       // it.
       auto *dest = SLWS->getDest();
       fillBuffer(deviceBuffer_, runtimeBundle_.getValueOffset(dest),
-                 dest->size(), 0, dest->getElementType());
+                 dest->size(), 0, dest->getElementType(), program);
 
       // Get the number of segments. The output for each segment will be
       // computed in parallel by setting the global size equal to the number of
@@ -1335,7 +1323,7 @@ llvm::Error OpenCLFunction::execute(ExecutionContext *context) {
     }
 
     if (auto *SLWSG = dyn_cast<SparseLengthsWeightedSumGradInst>(&I)) {
-      cl_kernel kernel = createKernel(kernelName);
+      cl_kernel kernel = createKernel(kernelName, program);
       // Set the device buffer as the first argument.
       setKernelArg(kernel, 0, deviceBuffer_);
       // Set all buffer arguments from the instruction (dataGrad, destGrad,
@@ -1356,7 +1344,7 @@ llvm::Error OpenCLFunction::execute(ExecutionContext *context) {
       // into it.
       auto *dataGrad = SLWSG->getDataGrad();
       fillBuffer(deviceBuffer_, runtimeBundle_.getValueOffset(dataGrad),
-                 dataGrad->size(), 0, dataGrad->getElementType());
+                 dataGrad->size(), 0, dataGrad->getElementType(), program);
 
       // Enqueue the kernel. Set the global size to 1 so that all segments are
       // processed sequentially to avoid two kernel instances accumulating into
@@ -1386,7 +1374,7 @@ llvm::Error OpenCLFunction::execute(ExecutionContext *context) {
     }
 
     if (auto *TE = dyn_cast<TraceEventInst>(&I)) {
-      cl_kernel kernel = createKernel("checkpoint");
+      cl_kernel kernel = createKernel("checkpoint", program);
       setKernelArg(kernel, 0, deviceBuffer_);
 
       llvm::SmallVector<size_t, 1> global = {1};
