@@ -77,6 +77,14 @@ llvm::cl::list<unsigned> topMLPIntermediateDimsOpt(
     llvm::cl::ZeroOrMore, llvm::cl::CommaSeparated,
     llvm::cl::cat(recSysTestCat));
 
+llvm::cl::list<unsigned> lengthsMinMaxOpt(
+    "lengths-min-max",
+    llvm::cl::desc("Comma separated [min, max) value to be used when "
+                   "generating random lengths inputs for SLS/SLWS. If left "
+                   "unspecified, will use [90, 110)."),
+    llvm::cl::ZeroOrMore, llvm::cl::CommaSeparated,
+    llvm::cl::cat(recSysTestCat));
+
 llvm::cl::list<unsigned> tableSizesOpt(
     "embedding-table-sizes",
     llvm::cl::desc("Comma-separated list of embedding table sizes."),
@@ -202,6 +210,8 @@ protected:
   std::vector<size_t> tableSizes;
   std::vector<size_t> bottomMLPIntermediateDims;
   std::vector<size_t> topMLPIntermediateDims;
+  size_t lengthsMin;
+  size_t lengthsMax;
 
   // Used to configure correct precision settings:
   bool quantizeSLWSData{false};
@@ -250,6 +260,8 @@ protected:
     miniBatch = miniBatchOpt;
     embeddingDim = embeddingDimOpt;
     denseDim = denseDimOpt;
+    lengthsMin = 90;
+    lengthsMax = 111;
 
     if (!tableSizesOpt.empty()) {
       if (!tableCountsOpt.empty()) {
@@ -276,6 +288,14 @@ protected:
         bottomMLPIntermediateDimsOpt, numHiddenBottomMLPLayersOpt);
     topMLPIntermediateDims = getIntermediateDims(topMLPIntermediateDimsOpt,
                                                  numHiddenTopMLPLayersOpt);
+
+    if (!lengthsMinMaxOpt.empty()) {
+      assert(lengthsMinMaxOpt.size() == 2 &&
+             "If min and max are used, must be 2 values provided");
+      lengthsMin = lengthsMinMaxOpt[0];
+      lengthsMax = lengthsMinMaxOpt[1];
+      assert(lengthsMinMaxOpt[0] < lengthsMinMaxOpt[1] && "Min must be < max");
+    }
 
     // Create TraceContext if trace file path is provided.
     if (!traceDir.empty()) {
@@ -577,7 +597,8 @@ protected:
 
     for (unsigned int i = 0; i < lengths.size(); i++) {
       fillStableRandomIndex(
-          bindings_.allocate(lengths[i])->getHandle<int32_t>(), 2011, 90, 111);
+          bindings_.allocate(lengths[i])->getHandle<int32_t>(), 2011,
+          lengthsMin, lengthsMax);
 
       size_t sum =
           sumOfElements(bindings_.get(lengths[i])->getHandle<int32_t>());
@@ -624,7 +645,8 @@ protected:
 
     for (size_t i = 0; i < lengths.size(); i++) {
       fillStableRandomIndex(
-          bindings_.allocate(lengths[i])->getHandle<int32_t>(), 2011, 90, 111);
+          bindings_.allocate(lengths[i])->getHandle<int32_t>(), 2011,
+          lengthsMin, lengthsMax);
 
       size_t sum =
           sumOfElements(bindings_.get(lengths[i])->getHandle<int32_t>());
