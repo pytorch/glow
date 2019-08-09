@@ -128,6 +128,9 @@ class OpenCLDeviceManager : public QueueBackedDeviceManager {
   /// Compiled function list by name.
   FunctionMapTy functions_;
 
+  /// Map of function name to cl_program.
+  std::unordered_map<std::string, cl_program> programs_;
+
   /// Maximum available memory on the device.
   uint64_t maxMemoryBytes_{0};
 
