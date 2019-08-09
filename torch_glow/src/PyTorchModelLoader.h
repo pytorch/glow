@@ -254,6 +254,10 @@ private:
   /// Load a PyTorch SoftMax node.
   /// \returns error on failure.
   llvm::Error loadSoftMax(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch flatten node.
+  /// \returns error on failure.
+  llvm::Error loadFlatten(const torch::jit::Node *ptNode);
 };
 } // namespace glow
 

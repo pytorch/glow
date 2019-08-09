@@ -16,6 +16,7 @@
 #include <algorithm>
 #include <assert.h>
 #include <chrono>
+#include <cmath>
 #include <math.h>
 #include <numeric>
 #include <stddef.h>
