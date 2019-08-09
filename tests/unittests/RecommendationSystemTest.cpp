@@ -101,9 +101,9 @@ llvm::cl::list<unsigned> tableCountsOpt(
 
 llvm::cl::opt<unsigned> deviceMemCapacityOpt(
     "device-mem-capacity",
-    llvm::cl::desc("Device memory capacity. Default is 8 MB."),
-    llvm::cl::Optional, llvm::cl::init(1024 * 1024 * 8),
-    llvm::cl::cat(recSysTestCat));
+    llvm::cl::desc("Device memory capacity. Default is dependent on the test "
+                   "in order to potentially force partitioning."),
+    llvm::cl::Optional, llvm::cl::init(0), llvm::cl::cat(recSysTestCat));
 
 llvm::cl::opt<unsigned> numDevicesOpt(
     "num-devices", llvm::cl::desc("Number of devices to use for partitioning."),
@@ -303,7 +303,9 @@ protected:
           llvm::make_unique<TraceContext>(TraceEvent::TraceLevel::STANDARD));
     }
 
-    deviceMemCapacity = deviceMemCapacityOpt;
+    // If device memory capacity is unset via command line, use 8MB by default.
+    deviceMemCapacity =
+        (deviceMemCapacityOpt != 0) ? deviceMemCapacityOpt : 1024 * 1024 * 8;
 
     numDevices = numDevicesOpt;
   }
@@ -1159,7 +1161,11 @@ TEST_P(RecommendationSystemTest, RecSys_FP32_Partitioned) {
   testRecSys(/* gatherWeights */ false,
              /* setupPartitionTest */ true);
 
-  deviceMemCapacity *= 2; // Double memory for this test
+  // If the memory capacity was not set on the command line, then double the
+  // default value for this test.
+  if (deviceMemCapacityOpt == 0) {
+    deviceMemCapacity *= 2; // Double memory for this test
+  }
 
   runPartitionedGraph(numDevices, deviceMemCapacity,
                       bindings_->get(result)->clone(), context_);
@@ -1177,7 +1183,11 @@ TEST_P(RecommendationSystemTest, RecSys_Partitioned_RWQuantized_SLWS) {
   testRecSys(/* gatherWeights */ false,
              /* setupPartitionTest */ true);
 
-  deviceMemCapacity *= 2; // Double memory for this test
+  // If the memory capacity was not set on the command line, then double the
+  // default value for this test.
+  if (deviceMemCapacityOpt == 0) {
+    deviceMemCapacity *= 2; // Double memory for this test
+  }
 
   runPartitionedGraph(numDevices, deviceMemCapacity,
                       bindings_->get(result)->clone(), context_);
@@ -1246,7 +1256,11 @@ TEST_P(RecommendationSystemTest, RecSys_Partitioned_RWQuantizedFP16_SLWS) {
   testRecSys(/* gatherWeights */ false,
              /* setupPartitionTest */ true);
 
-  deviceMemCapacity *= 2; // Double memory for this test
+  // If the memory capacity was not set on the command line, then double the
+  // default value for this test.
+  if (deviceMemCapacityOpt == 0) {
+    deviceMemCapacity *= 2; // Double memory for this test
+  }
 
   runPartitionedGraph(numDevices, deviceMemCapacity,
                       bindings_->get(result)->clone(), context_);
