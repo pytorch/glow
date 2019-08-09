@@ -27,7 +27,8 @@
 
 using namespace glow;
 
-ExecutionEngine::ExecutionEngine(llvm::StringRef backend) {
+ExecutionEngine::ExecutionEngine(llvm::StringRef backend, uint64_t deviceMemory)
+    : deviceMemory_(deviceMemory) {
   setBackendName(backend);
 }
 
