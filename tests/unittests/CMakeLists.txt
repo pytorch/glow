@@ -62,6 +62,22 @@ target_link_libraries(BasicIRTest
                         TestMain)
 add_glow_test(BasicIRTest ${GLOW_BINARY_DIR}/tests/BasicIRTest --gtest_output=xml:BasicIRTest.xml)
 
+if(GLOW_WITH_LLVMIRCODEGEN)
+  add_executable(BundleSaverTest
+                 BundleSaverTest.cpp)
+  target_link_libraries(BundleSaverTest
+                        PRIVATE
+                          Backends
+                          Graph
+                          Support
+                          gtest
+                          TestMain)
+  add_glow_test(BundleSaverDynamicAPITest 
+                ${GLOW_BINARY_DIR}/tests/BundleSaverTest --gtest_output=xml:BundleSaverDynamicAPITest.xml -bundle-api=dynamic)
+  add_glow_test(BundleSaverStaticAPITest
+                ${GLOW_BINARY_DIR}/tests/BundleSaverTest --gtest_output=xml:BundleSaverStaticAPITest.xml -bundle-api=static)
+endif()
+
 add_executable(Caffe2ImporterTest
                Caffe2ImporterTest.cpp)
 target_link_libraries(Caffe2ImporterTest

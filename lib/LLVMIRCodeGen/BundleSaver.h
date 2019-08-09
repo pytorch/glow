@@ -1,5 +1,6 @@
 /**
  * Copyright (c) 2017-present, Facebook, Inc.
+ * Copyright (c) 2019-present, NXP Semiconductor, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -36,6 +37,8 @@ class BundleSaver final {
   void performBundleMemoryAllocation();
   /// Save weights for the bundle.
   void saveWeights(llvm::StringRef weightsFileName);
+  /// Save header file for the bundle.
+  void saveHeader(llvm::StringRef headerFileName);
   /// Produce a bundle.
   void produceBundle(llvm::StringRef outputDir);
   /// Emit config for a bundle.
