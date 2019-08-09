@@ -316,6 +316,24 @@ llvm::Error HostManager::runNetworkBlocking(llvm::StringRef networkName,
   return std::move(*DCHECK_NOTNULL(runErr.get()));
 }
 
+llvm::Error
+HostManager::runNetworkBlocking(llvm::StringRef networkName,
+                                std::unique_ptr<ExecutionContext> context) {
+  std::promise<void> runPromise;
+  auto fut = runPromise.get_future();
+  std::unique_ptr<llvm::Error> runErr;
+  runNetwork(
+      networkName, std::move(context),
+      [&runPromise, &runErr](runtime::RunIdentifierTy, llvm::Error err,
+                             std::unique_ptr<ExecutionContext> contextPtr) {
+        runErr = llvm::make_unique<llvm::Error>(std::move(err));
+        runPromise.set_value();
+      });
+
+  fut.wait();
+  return std::move(*DCHECK_NOTNULL(runErr.get()));
+}
+
 void HostManager::dispatchNextRun() {
 
   std::lock_guard<std::mutex> networkLock(networkLock_);

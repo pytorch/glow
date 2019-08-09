@@ -18,6 +18,8 @@
 #include "glow/Backend/Backend.h"
 #include "glow/Backends/DeviceManager.h"
 #include "glow/Graph/Graph.h"
+#include "glow/Runtime/Executor/Executor.h"
+#include "glow/Runtime/Provisioner/Provisioner.h"
 #include "glow/Runtime/RuntimeTypes.h"
 
 #include <atomic>
@@ -29,11 +31,6 @@
 
 namespace glow {
 namespace runtime {
-
-class Executor;
-
-class Provisioner;
-
 /// The HostManager serves as an entry point into the Runtime environment. It
 /// provides an interface to add, run, and evict networks from the host. It
 /// handles DeviceManager initialization, houses the Executor, and calls into
@@ -181,10 +178,17 @@ public:
 
   /// A wrapper around runNetwork that provides a blocking interface for an
   /// inference request. Runs the network provided in \p networkName using \p
+  /// context. \returns an llvm::Error indicating success or failure.
+  llvm::Error runNetworkBlocking(llvm::StringRef networkName,
+                                 std::unique_ptr<ExecutionContext> context);
+
+  /// A wrapper around runNetwork that provides a blocking interface for an
+  /// inference request. Runs the network provided in \p networkName using \p
   /// bindings for placeholder bindings. \returns an llvm::Error indicating
   /// success or failure.
   llvm::Error runNetworkBlocking(llvm::StringRef networkName,
                                  PlaceholderBindings &bindings);
+
   /// Initialize the HostManager with the given \p configs creating one
   /// DeviceManager for each config listed.
   llvm::Error init(std::vector<std::unique_ptr<DeviceConfig>> configs);
