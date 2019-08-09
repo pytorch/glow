@@ -39,6 +39,9 @@ namespace glow {
 
 class ConvolutionInst;
 class Value;
+namespace runtime {
+struct OpenCLDeviceBindings;
+}
 
 /// A helper struct with information about kernels launches.
 struct KernelLaunch {
@@ -82,19 +85,13 @@ class OpenCLFunction final : public CompiledFunction {
   };
   /// The IR to be executed.
   std::unique_ptr<IRFunction> F_;
-  /// CL compute device id.
-  cl_device_id deviceId_;
-  /// CL compute context.
-  cl_context context_;
-  /// CL compute command queue.
-  cl_command_queue commands_;
+
   /// Cache of compiled programs.
   /// The same source code can be compile with different options (e.g. with
   /// different set of macro definitions) and/or for a different device and
   /// would result in different programs.
   std::unordered_map<ProgramKey, cl_program, ProgramKeyHash> programsCache_;
-  /// A pointer to the on-device memory buffer.
-  cl_mem deviceBuffer_{0};
+
   /// Information about kernel launches.
   std::vector<KernelLaunch> kernelLaunches_;
   /// is kernel level profiling (autoInstrumentation) enabled.
@@ -134,21 +131,26 @@ public:
 private:
   /// Copy the value from a device to a provided buffer.
   /// \returns number of copied bytes.
-  uint64_t copyValueFromDevice(const Value *v, void *buf = nullptr);
+  uint64_t copyValueFromDevice(const Value *v,
+                               runtime::OpenCLDeviceBindings *devBindings,
+                               void *buf = nullptr);
   /// Copy value from the provided buffer to the device.
   /// \returns number of copied bytes.
-  uint64_t copyValueToDevice(const Value *v, void *buf = nullptr);
+  uint64_t copyValueToDevice(const Value *v,
+                             runtime::OpenCLDeviceBindings *devBindings,
+                             void *buf = nullptr);
   /// Fill the device \p buffer with a given \p value.
   /// \param len number of buffer elements to be filled by the \p value.
   /// Elements are considered to be of the type described by \p elemKind.
   void fillBuffer(cl_mem buffer, uint64_t start, uint64_t len, float value,
-                  ElemKind elemKind, cl_program program);
+                  ElemKind elemKind,
+                  runtime::OpenCLDeviceBindings *devBindings);
 
   /// Execution a convolution instruction which uses NCHW format.
   void executeNCHWConvolution(const ConvolutionInst *CC,
                               ExecutionContext *executionContext);
   /// Allocate a device buffer of required \p size.
-  cl_mem allocDeviceBuffer(uint64_t size);
+  cl_mem allocDeviceBuffer(uint64_t size, cl_context clContext);
   /// Frees a device buffer.
   void freeDeviceBuffer(cl_mem buf);
 
@@ -171,10 +173,12 @@ private:
                      std::vector<KernelLaunch> &kernelLaunches);
 
   /// Load inputs from \p bindings onto the device.
-  void loadPlaceholders(PlaceholderBindings *bindings);
+  void loadPlaceholders(PlaceholderBindings *bindings,
+                        runtime::OpenCLDeviceBindings *devBindings);
 
   /// Load outputs from the device into \p bindings.
-  void updatePlaceholders(PlaceholderBindings *bindings);
+  void updatePlaceholders(PlaceholderBindings *bindings,
+                          runtime::OpenCLDeviceBindings *devBindings);
 
   /// Read trace events out of this func and write them into /p bindings
   void translateTraceEvents(ExecutionContext *context) const override;
