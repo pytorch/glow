@@ -1074,6 +1074,89 @@ static void testBatchedReduceAdd(glow::PlaceholderBindings &bindings,
   EXPECT_TRUE(result->isEqual(expected));
 }
 
+/// Helper to test BatchedReduceMin using \p DTy.
+template <typename DataType>
+static void testBatchedReduceMin(glow::PlaceholderBindings &bindings,
+                                 glow::Module &mod, glow::Function *F,
+                                 glow::ExecutionEngine &EE, ElemKind DTy) {
+
+  auto *batch = mod.createPlaceholder(DTy, {2, 4}, "batch", false);
+  bindings.allocate(batch)->getHandle<DataType>() = {10, 20, 30, 40,
+                                                     1,  2,  3,  4};
+  auto *R = F->createBatchedReduceMin("reduce.min", batch, /* axis */ 0);
+
+  auto *save = F->createSave("save", R);
+  auto *result = bindings.allocate(save->getPlaceholder());
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  Tensor expected(DTy, {4});
+  expected.getHandle<DataType>() = {1, 2, 3, 4};
+
+  EXPECT_TRUE(result->isEqual(expected));
+}
+
+/// Helper to test BatchedReduceMin using \p DTy.
+template <typename DataType>
+static void testBatchedReduceMinMultiAxis(glow::PlaceholderBindings &bindings,
+                                          glow::Module &mod, glow::Function *F,
+                                          glow::ExecutionEngine &EE,
+                                          ElemKind DTy) {
+  auto *batch = mod.createPlaceholder(DTy, {2, 2, 2, 2}, "batch", false);
+  bindings.allocate(batch)->getHandle<DataType>() = {
+      1, -2, 3, -4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16};
+  auto *R = F->createBatchedReduceMin("reduce.min", batch, /* axis */ {1, 3});
+  auto *save = F->createSave("save", R);
+  auto *result = bindings.allocate(save->getPlaceholder());
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  Tensor expected(DTy, {2, 2});
+  expected.getHandle<DataType>() = {-2, -4, 9, 11};
+  EXPECT_TRUE(result->isEqual(expected));
+}
+
+/// Test that BatchedReduceMin is correctly supported in FloatTy.
+TEST_P(OperatorTest, batchedReduceMin_Float) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  testBatchedReduceMin<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy);
+}
+
+/// Test that BatchedReduceMin is correctly supported in Int32Ty.
+TEST_P(OperatorTest, batchedReduceMin_Int32) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  testBatchedReduceMin<int32_t>(bindings_, mod_, F_, EE_, ElemKind::Int32ITy);
+}
+
+/// Test that BatchedReduceMin is correctly supported in Int64Ty.
+TEST_P(OperatorTest, batchedReduceMin_Int64) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  testBatchedReduceMin<int64_t>(bindings_, mod_, F_, EE_, ElemKind::Int64ITy);
+}
+
+/// Test that BatchedReduceMin is correctly supported in FloatTy.
+TEST_P(OperatorTest, batchedReduceMinMultiAxis_Float) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  testBatchedReduceMinMultiAxis<float>(bindings_, mod_, F_, EE_,
+                                       ElemKind::FloatTy);
+}
+
+/// Test that BatchedReduceMin is correctly supported in Int32Ty.
+TEST_P(OperatorTest, batchedReduceMinMultiAxis_Int32) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  testBatchedReduceMinMultiAxis<int32_t>(bindings_, mod_, F_, EE_,
+                                         ElemKind::Int32ITy);
+}
+
+/// Test that BatchedReduceMin is correctly supported in Int64Ty.
+TEST_P(OperatorTest, batchedReduceMinMultiAxis_Int64) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  testBatchedReduceMinMultiAxis<int64_t>(bindings_, mod_, F_, EE_,
+                                         ElemKind::Int64ITy);
+}
+
 /// Test that BatchedReduceAdd is correctly supported in FloatTy.
 TEST_P(OperatorTest, batchedReduceAdd_Float) {
   testBatchedReduceAdd<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy);
