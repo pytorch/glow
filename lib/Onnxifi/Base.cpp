@@ -74,8 +74,8 @@ onnxStatus Backend::checkGraphCompatibility(const void *onnxModel,
   for (const auto &node : nodes) {
     if (!glowBackend_->isOpSupported(node)) {
       LOG(ERROR) << "ONNXIFI: Not supported op: " << node.getDebugDesc();
-      // TODO: Use a more specific ONNXIFI error code here to denote what about
-      // this operator is not supported (shape, type, etc).
+      // TODO: Use a more specific ONNXIFI error code here to denote what
+      // about this operator is not supported (shape, type, etc).
       return ONNXIFI_STATUS_UNSUPPORTED_OPERATOR;
     }
   }
@@ -83,21 +83,40 @@ onnxStatus Backend::checkGraphCompatibility(const void *onnxModel,
   return ONNXIFI_STATUS_SUCCESS;
 }
 
-bool Event::signal() {
+bool Event::signal(onnxStatus status) {
   {
     std::lock_guard<std::mutex> guard(mutex_);
     if (fired_) {
       return false;
     }
+    status_ = status;
     fired_ = true;
   }
   cond_.notify_all();
   return true;
 }
 
-void Event::wait() {
+onnxStatus Event::wait() {
   std::unique_lock<std::mutex> guard(mutex_);
   cond_.wait(guard, [this] { return fired_ == true; });
+  return status_;
+}
+
+std::pair<bool, onnxStatus> Event::waitFor(size_t timeoutMs) {
+  DCHECK_GT(timeoutMs, 0)
+      << "0 timeoutMs should instead use Event::wait to wait indefinitely";
+
+  auto endTime =
+      std::chrono::steady_clock::now() + std::chrono::milliseconds(timeoutMs);
+
+  std::unique_lock<std::mutex> guard(mutex_);
+  while (!fired_) {
+    if (std::cv_status::timeout == cond_.wait_until(guard, endTime)) {
+      return {/*signalled*/ false, status_};
+    }
+  }
+
+  return {/*signalled*/ true, status_};
 }
 
 onnxStatus Graph::setIOAndRun(uint32_t inputsCount,

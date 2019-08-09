@@ -93,7 +93,7 @@ onnxStatus InlineGraph::run(std::unique_ptr<ExecutionContext> ctx,
     setTraceEvents(traceEvents, traceContext);
   }
 
-  outputEvent->signal();
+  outputEvent->signal(ONNXIFI_STATUS_SUCCESS);
   return ONNXIFI_STATUS_SUCCESS;
 }
 
