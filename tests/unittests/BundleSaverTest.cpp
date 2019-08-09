@@ -29,7 +29,6 @@ using namespace glow;
 /// Test BundleSaver. This unit test is for code coverage.
 TEST(BundleSaver, testAPI) {
   Module M;
-  PlaceholderBindings bindings;
   Function *F = M.createFunction("F");
 
   // Create a simple graph
@@ -42,6 +41,6 @@ TEST(BundleSaver, testAPI) {
   llvm::StringRef outputDir = ".";
   llvm::StringRef bundleName = "testBundle";
   llvm::StringRef mainEntryName = "testMainEntry";
-  Backend *backend = createBackend("CPU");
+  std::unique_ptr<Backend> backend(createBackend("CPU"));
   backend->save(F, outputDir, bundleName, mainEntryName);
 }
