@@ -33,10 +33,10 @@ ExecutionEngine::ExecutionEngine(llvm::StringRef backend) {
 
 /// Set the code generator to the given \p backend.
 void ExecutionEngine::setBackendName(llvm::StringRef backend) {
+  clear();
   module_.reset(new Module);
   rawModule_ = module_.get();
   backendName_ = backend;
-  clear();
 
   if (hostManager_) {
     EXIT_ON_ERR(hostManager_->clearHost());
@@ -61,6 +61,7 @@ void ExecutionEngine::clear() {
     EXIT_ON_ERR(hostManager_->clearHost());
   }
   compiledFunctions_.clear();
+  module_.reset(nullptr);
 }
 
 void glow::updateInputPlaceholders(PlaceholderBindings &bindings,
