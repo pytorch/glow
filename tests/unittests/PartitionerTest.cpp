@@ -912,6 +912,67 @@ TEST_F(PartitionerTest, memoryUsageValidation1) {
   EXPECT_TRUE(errToBool(std::move(err)));
 }
 
+/// This one test dagValidation in partitioner : p1->p2, p2->p1.
+TEST_F(PartitionerTest, dagValidation1) {
+  auto *input1 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {2, 10}, "input1", false);
+  auto *input2 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {2, 10}, "input2", false);
+  auto *input3 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {2, 10}, "input3", false);
+  auto *add1 = F_->createAdd("add1", input1, input2);
+  auto *add2 = F_->createAdd("add2", add1, input3);
+  auto *sub1 = F_->createSub("sub1", add1, add2);
+  F_->createSave("save", sub1);
+
+  std::vector<DeviceInfo> devices = {{3072, "Interpreter"},
+                                     {3072, "Interpreter"}};
+
+  // User-defined partition: p1->p2, p2->p1.
+  PartitionConfig partitionConfig;
+  partitionConfig.funcName = "main";
+  partitionConfig.numOfPartitions = 2;
+  partitionConfig.backendNames = {"Interpreter", "Interpreter"};
+  partitionConfig.partitionNames = {"p1", "p2"};
+  partitionConfig.nodeToPartition = {{"add2", 0}};
+  auto partitioner = Partitioner(&mod_, devices, false, false, partitionConfig);
+  CompilationContext cctx;
+  auto err = partitioner.Partition(cctx);
+  EXPECT_TRUE(errToBool(std::move(err)));
+}
+
+/// This one test dagValidation in partitioner: p0->p1, p1->p2, p2->p1.
+TEST_F(PartitionerTest, dagValidation2) {
+  auto *input1 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {2, 10}, "input1", false);
+  auto *input2 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {2, 10}, "input2", false);
+  auto *input3 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {2, 10}, "input3", false);
+  auto *input4 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {2, 10}, "input4", false);
+  auto *add0 = F_->createAdd("add0", input1, input2);
+  auto *add1 = F_->createAdd("add1", add0, input3);
+  auto *add2 = F_->createAdd("add2", add1, input4);
+  auto *sub1 = F_->createSub("sub1", add1, add2);
+  F_->createSave("save", sub1);
+
+  std::vector<DeviceInfo> devices = {
+      {3072, "Interpreter"}, {3072, "Interpreter"}, {3072, "Interpreter"}};
+
+  // User-defined partition: p0->p1, p1->p2, p2->p1.
+  PartitionConfig partitionConfig;
+  partitionConfig.funcName = "main";
+  partitionConfig.numOfPartitions = 3;
+  partitionConfig.backendNames = {"Interpreter", "Interpreter", "Interpreter"};
+  partitionConfig.partitionNames = {"p0", "p1", "p2"};
+  partitionConfig.nodeToPartition = {{"add0", 0}, {"add2", 2}};
+  auto partitioner = Partitioner(&mod_, devices, false, false, partitionConfig);
+  CompilationContext cctx;
+  auto err = partitioner.Partition(cctx);
+  EXPECT_TRUE(errToBool(std::move(err)));
+}
+
 /// This one tests partition from a user-defined config.
 TEST_F(PartitionerTest, partitionFromConfig) {
   createSimpleModule(mod_);
