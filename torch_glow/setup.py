@@ -115,6 +115,7 @@ class cmake_build(setuptools.Command):
         with cd(CMAKE_BUILD_DIR):
             cmake_args = [
                 CMAKE,
+                '-DC10_USE_GLOG=1',
                 '-DGLOW_BUILD_PYTORCH_INTEGRATION=ON',
                 '-DBUILD_SHARED_LIBS=OFF',
                 '-DCMAKE_EXPORT_COMPILE_COMMANDS=ON',
@@ -124,6 +125,7 @@ class cmake_build(setuptools.Command):
                 # PyTorch cmake args
                 '-DPYTORCH_DIR={}'.format(
                     os.path.dirname(os.path.realpath(torch.__file__))),
+                '-DTORCH_GLOW={}'.format(FILE_DIR),
             ]
 
             if args.cmake_prefix_path:

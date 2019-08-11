@@ -15,6 +15,9 @@
  */
 
 #include "PyTorchCommon.h"
+#include "FusingOptimizer.h"
+#include "PyTorchModelLoader.h"
+#include <torch/csrc/jit/passes/graph_fuser.h>
 
 namespace glow {
 
@@ -28,4 +31,17 @@ const c10::Symbol &getGlowSymbol() {
       at::Symbol::fromQualString("glow::FusionGroup");
   return glowSymbol;
 }
+
+void glowCustomFuse(std::shared_ptr<torch::jit::Graph> &g,
+                    at::Symbol fuseSymbol) {
+  // Fuse all linear operators
+  // Currently PyTorch does not have good support for aten:addmm when fusing
+  // Therefore we use some pattern to translate all aten::addmm to
+  // aten::linear before we fuse the whole graph.
+  FuseLinear(g);
+
+  torch::jit::CustomFuseGraph(g, PyTorchModelLoader::isNodeSupported,
+                              fuseSymbol);
+}
+
 } // namespace glow

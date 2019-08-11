@@ -20,8 +20,8 @@
 #include <torch/csrc/jit/ir.h>
 
 namespace glow {
-
+/// Performs specific fusion for Linear operator.
 void FuseLinear(std::shared_ptr<torch::jit::Graph> &graph);
-}
+} // namespace glow
 
 #endif // GLOW_TORCH_GLOW_SRC_FUSINGOPTIMIZER_H

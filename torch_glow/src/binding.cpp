@@ -16,13 +16,10 @@
 
 #include <pybind11/pybind11.h>
 
-#include <torch/csrc/jit/custom_operator.h>
 #include <torch/csrc/jit/operator_options.h>
 #include <torch/csrc/jit/pass_manager.h>
-#include <torch/csrc/jit/passes/graph_fuser.h>
 
 #include "CachingGraphRunner.h"
-#include "FusingOptimizer.h"
 #include "PyTorchCommon.h"
 #include "PyTorchModelLoader.h"
 
@@ -66,15 +63,7 @@ void registerGlowOp() {
 void registerPass() {
   torch::jit::RegisterPass pass([](std::shared_ptr<torch::jit::Graph> &g) {
     if (getPyTorchLoaderSettings().fusionPassEnabled) {
-
-      // Fuse all linear operators
-      // Currently PyTorch does not have good support for aten:addmm when fusing
-      // Therefore we use some pattern to translate all aten::addmm to
-      // aten::linear before we fuse the whole graph.
-      FuseLinear(g);
-
-      torch::jit::CustomFuseGraph(g, PyTorchModelLoader::isNodeSupported,
-                                  getGlowSymbol());
+      glow::glowCustomFuse(g, getGlowSymbol());
     }
   });
 }

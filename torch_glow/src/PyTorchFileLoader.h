@@ -17,6 +17,8 @@
 #ifndef GLOW_TORCH_GLOW_SRC_PYTORCHFILELOADER_H
 #define GLOW_TORCH_GLOW_SRC_PYTORCHFILELOADER_H
 
+#include "PyTorchCommon.h"
+#include "glow/Graph/Graph.h"
 #include "llvm/Support/Error.h"
 #include <torch/csrc/jit/import.h>
 
@@ -24,12 +26,30 @@ namespace glow {
 
 /// Loads PyTorch model from file to JIT IR subgraphs.
 class PyTorchFileLoader {
+  /// Performs sanity check making sure custom fuse pass succeeded as expected,
+  /// \returns error otherwise.
+  static llvm::Error performSanityCheck();
+
 public:
   /// Takes a model file \p fileName, loads model into torch Module \p module,
-  /// reports error assigning \p errPtr.
-  PyTorchFileLoader(const std::string &fileName,
-                    std::shared_ptr<torch::jit::script::Module> &module,
-                    llvm::Error *errPtr);
+  /// \returns error if any.
+  static llvm::Error
+  loadPyTorchModel(const std::string &fileName,
+                   std::shared_ptr<torch::jit::script::Module> &module);
+
+  /// Takes a model file \p fileName, loads optimized graph into Glow Function
+  /// \p F and input \p inputPlaceholders, output \p outputPlaceholders
+  /// placeholders, \returns error if any. Parameter \p settings
+  /// control the fusion details. Optionally method performs a sanity check if
+  /// \p sanityCheck is set.
+  /// Method is thread safe, internally it uses local thread structures for
+  /// executing custom fusion pass, registered globally. No other passes or
+  /// other treads calling this method will be affected.
+  static llvm::Error loadPyTorchGraph(
+      const std::string &fileName, std::vector<torch::jit::IValue> &inputs,
+      glow::Function &F, std::vector<glow::Placeholder *> &inputPlaceholders,
+      std::vector<glow::Placeholder *> &outputPlaceholders,
+      const PyTorchLoaderSettings &settings, bool sanityCheck = true);
 };
 
 } // namespace glow

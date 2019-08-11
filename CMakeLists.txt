@@ -185,6 +185,7 @@ if (GLOW_BUILD_PYTORCH_INTEGRATION)
   endif()
 
   add_subdirectory(torch_glow/src)
+  add_subdirectory(torch_glow/tests/unittests)
 endif()
 
 if (GLOW_WITH_BUNDLES AND NOT GLOW_WITH_CPU)
