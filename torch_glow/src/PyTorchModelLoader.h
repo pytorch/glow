@@ -99,9 +99,9 @@ public:
   static bool isNodeSupported(const torch::jit::Node *node);
 
   /// Takes a glow::Function \p F, a jit::Graph \p subgraph to load, and a
-  /// stack of \p inputs for the subgraph to be loaded. Output parameters
-  /// \p inputPlaceholders and \p outputPlaceholders are filled out.
-  /// \returns error on failure
+  /// stack of \p inputs for the subgraph to be loaded. Parameter \p settings
+  /// control the fusion details. Output parameters \p inputPlaceholders and
+  /// \p outputPlaceholders are filled out. \returns error on failure
   static llvm::Error
   loadJITGraph(glow::Function &F, torch::jit::Graph &subgraph,
                at::ArrayRef<torch::jit::IValue> &inputs,
@@ -111,8 +111,9 @@ public:
 
 private:
   /// Takes a glow::Function \p F, a jit::Graph \p subgraph to load, and a
-  /// stack of \p inputs for the subgraph to be loaded. Output parameters
-  /// \p inputPlaceholders and \p outputPlaceholders are filled out.
+  /// stack of \p inputs for the subgraph to be loaded. Parameter \p settings
+  /// control the fusion details. Output parameters \p inputPlaceholders and
+  /// \p outputPlaceholders are filled out.
   PyTorchModelLoader(glow::Function &F, torch::jit::Graph &subgraph,
                      at::ArrayRef<torch::jit::IValue> &inputs,
                      std::vector<glow::Placeholder *> &inputPlaceholders,

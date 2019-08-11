@@ -40,6 +40,11 @@ PyTorchLoaderSettings &getPyTorchLoaderSettings();
 /// \returns the PyTorch symbol to be used for the PyTorch node which represents
 /// the subgraph that Glow will compile and run.
 const c10::Symbol &getGlowSymbol();
+
+/// Executes custom fuse pass for the given \p graph and \p fuseSymbol.
+void glowCustomFuse(std::shared_ptr<torch::jit::Graph> &graph,
+                    at::Symbol fuseSymbol);
+
 } // namespace glow
 
 #endif // GLOW_TORCH_GLOW_SRC_COMMON_H
