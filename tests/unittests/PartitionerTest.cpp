@@ -101,7 +101,6 @@ TEST_F(PartitionerTest, Basic1) {
   for (auto EE : engines) {
     auto mod = &EE->getModule();
     F_ = mod->createFunction("main");
-    constexpr float range = 2.0;
     auto *input =
         mod->createPlaceholder(ElemKind::FloatTy, {1, 32}, "input", false);
     auto *w1 = mod->createConstant(ElemKind::FloatTy, {32, 16}, "w1");
@@ -996,4 +995,93 @@ TEST_F(PartitionerTest, partitionFromConfigDirectCall) {
   EXPECT_EQ(dagList->size(), 1);
   ASSERT_TRUE(checkSaveNode(mod_));
   heterogeneousPartitionValidation(dagList.get(), mod_);
+}
+
+/// This one test load-balanced partition flow.
+TEST_F(PartitionerTest, loadBalancedPartition) {
+  ExecutionEngine EER, EEP;
+  constexpr float range = 2.0;
+  std::vector<ExecutionEngine *> engines{&EER, &EEP};
+  // Since compiling modifies the module and partitioning modifies the function,
+  // setup two EEs with identical functions for validation.
+  for (auto EE : engines) {
+    auto mod = &EE->getModule();
+    F_ = mod->createFunction("main");
+    auto *input =
+        mod->createPlaceholder(ElemKind::FloatTy, {1, 32}, "input", false);
+    auto *w1 = mod->createConstant(ElemKind::FloatTy, {32, 16}, "w1");
+    auto *b1 = mod->createConstant(ElemKind::FloatTy, {16}, "b1");
+    bindings_.allocate(input);
+    w1->getHandle<>().randomize(-range, range, mod->getPRNG());
+    b1->getHandle<>().randomize(-range, range, mod->getPRNG());
+
+    // Initial FC.
+    Node *I = F_->createFullyConnected("initial_fc", input, w1, b1);
+    I = F_->createSigmoid("initial_sigmoid", I);
+
+    // Left branch.
+    auto *w2 = mod->createConstant(ElemKind::FloatTy, {16, 16}, "w2");
+    auto *b2 = mod->createConstant(ElemKind::FloatTy, {16}, "b2");
+    w2->getHandle<>().randomize(-range, range, mod->getPRNG());
+    b2->getHandle<>().randomize(-range, range, mod->getPRNG());
+    Node *L = F_->createFullyConnected("left_fc1", I, w2, b2);
+    L = F_->createSigmoid("left_sigmoid1", L);
+    auto *w3 = mod->createConstant(ElemKind::FloatTy, {16, 8}, "w3");
+    auto *b3 = mod->createConstant(ElemKind::FloatTy, {8}, "b3");
+    w3->getHandle<>().randomize(-range, range, mod->getPRNG());
+    b3->getHandle<>().randomize(-range, range, mod->getPRNG());
+    L = F_->createFullyConnected("left_fc2", L, w3, b3);
+    L = F_->createSigmoid("left_sigmoid2", L);
+
+    // Right branch.
+    auto *w4 = mod->createConstant(ElemKind::FloatTy, {16, 16}, "w4");
+    auto *b4 = mod->createConstant(ElemKind::FloatTy, {16}, "b4");
+    w4->getHandle<>().randomize(-range, range, mod->getPRNG());
+    b4->getHandle<>().randomize(-range, range, mod->getPRNG());
+    Node *R = F_->createFullyConnected("right_fc1", I, w4, b4);
+    R = F_->createSigmoid("right_sigmoid1", R);
+    auto *w5 = mod->createConstant(ElemKind::FloatTy, {16, 8}, "w5");
+    auto *b5 = mod->createConstant(ElemKind::FloatTy, {8}, "b5");
+    w5->getHandle<>().randomize(-range, range, mod->getPRNG());
+    b5->getHandle<>().randomize(-range, range, mod->getPRNG());
+    R = F_->createFullyConnected("right_fc2", R, w5, b5);
+    R = F_->createSigmoid("right_sigmoid2", R);
+
+    // Join branches.
+    auto *mul = F_->createMul("mul", L, R);
+    F_->createSave("ret", mul);
+  }
+
+  // Infer using the un-partitioned graph.
+  Tensor in(ElemKind::FloatTy, {1, 32});
+  in.getHandle<>().randomize(-range, range, EER.getModule().getPRNG());
+
+  EER.compile(CompilationMode::Infer);
+  bindings_.clear();
+  bindings_.allocate(EER.getModule().getPlaceholders());
+  updateInputPlaceholders(bindings_, {bindings_.getPlaceholderByName("input")},
+                          {&in});
+  EER.run(bindings_);
+  Tensor ref = bindings_.get(bindings_.getPlaceholderByName("ret"))->clone();
+
+  std::vector<DeviceInfo> devices = {
+      {3072, "Interpreter"}, {3072, "Interpreter"}, {3072, "Interpreter"}};
+  Partitioner myPartitioner(&EEP.getModule(), devices, false, true);
+  CompilationContext cctx;
+  auto dagList = myPartitioner.loadBalancedPartition(cctx);
+  EXPECT_TRUE((bool)dagList);
+  EXPECT_EQ(EEP.getModule().getFunctions().size(), 3);
+  EXPECT_EQ(dagList->size(), 1);
+  EXPECT_TRUE(checkSaveNode(EEP.getModule()));
+
+  // Run the paritioned graph and compare the results.
+  bindings_.clear();
+  bindings_.allocate(EEP.getModule().getPlaceholders());
+  EEP.compile(cctx);
+  for (auto it = dagList->begin(); it != dagList->end(); ++it) {
+    executeDAG((*it).root.get(), EEP.getModule(), bindings_,
+               {bindings_.getPlaceholderByName("input")}, {&in}, &EEP);
+    Tensor test = bindings_.get(bindings_.getPlaceholderByName("ret"))->clone();
+    EXPECT_TRUE(ref.isEqual(test));
+  }
 }
