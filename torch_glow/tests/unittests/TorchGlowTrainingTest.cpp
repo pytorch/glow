@@ -14,41 +14,43 @@
  * limitations under the License.
  */
 
-#include "PyTorchFileLoader.h"
-#include "PyTorchModelLoader.h"
-#include "glow/Support/Error.h"
-
+#include "TorchGlowTraining.h"
 #include <gtest/gtest.h>
 
 #ifndef GLOW_DATA_PATH
 #define GLOW_DATA_PATH
 #endif
 
-TEST(ModelLoaderTest, Loader) {
+using namespace glow;
+
+TEST(TorchGlowTraining, Test) {
   const std::string fileName{GLOW_DATA_PATH
                              "tests/models/pytorchModels/resnet18.pt"};
-  std::shared_ptr<torch::jit::script::Module> module;
-  llvm::Error err = glow::PyTorchFileLoader::loadPyTorchModel(fileName, module);
-  EXPECT_FALSE(err);
-}
-
-TEST(ModelLoaderTest, Fusion) {
-  const std::string fileName{GLOW_DATA_PATH
-                             "tests/models/pytorchModels/resnet18.pt"};
-
-  glow::Module mod;
-  auto *F = mod.createFunction("GlowFunction");
+  TorchGlowTraining trainer;
   std::vector<torch::jit::IValue> vec;
   auto emptyTensor = at::empty({1, 3, 224, 224});
   vec.push_back(torch::autograd::make_variable(emptyTensor));
-
-  std::vector<glow::Placeholder *> inputPlaceholders;
-  std::vector<glow::Placeholder *> outputPlaceholders;
-  glow::PyTorchLoaderSettings settings;
-
-  llvm::Error err = glow::PyTorchFileLoader::loadPyTorchGraph(
-      fileName, vec, *F, inputPlaceholders, outputPlaceholders, settings);
+  TorchGlowTraining::ONNXWriterParameters parameters;
+  PyTorchLoaderSettings settings;
+  settings.weightFreezingEnabled = false;
+  TrainingConfig config;
+  config.learningRate = 0.01;
+  config.momentum = 0.9;
+  config.L2Decay = 0.01;
+  config.batchSize = 1;
 
   // TODO (after full fusion is available)
-  glow::errToBool(std::move(err));
+  if (!errToBool(trainer.init(fileName, vec, "Interpreter", parameters,
+                              settings, config))) {
+    return;
+  }
+
+  llvm::ArrayRef<size_t> sampleDims = {1, 3, 224, 224};
+  Tensor samples(ElemKind::FloatTy, sampleDims);
+
+  llvm::ArrayRef<size_t> labelDims = {1, 1024};
+  Tensor labels(ElemKind::Int64ITy, labelDims);
+  EXPECT_FALSE(errToBool(trainer.train(samples, labels)));
+
+  EXPECT_FALSE(errToBool(trainer.save("/tmp/test.onnx")));
 }

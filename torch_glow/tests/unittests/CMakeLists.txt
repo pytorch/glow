@@ -28,9 +28,25 @@ target_compile_options(PyTorchLoaderTest
 target_link_libraries(PyTorchLoaderTest
                       PRIVATE
                         PyTorchFileLoader
-                        gtest
-                        TestMain)
+                        TestMain
+                        gtest)
 
 target_include_directories(PyTorchLoaderTest PUBLIC
                             ${PYTORCH_DIR}/include
                             ${TORCH_GLOW}/src)
+
+add_executable(TorchGlowTrainingTest
+               ${TORCH_GLOW}/tests/unittests/TorchGlowTrainingTest.cpp)
+target_compile_options(TorchGlowTrainingTest
+                      PRIVATE
+                        -frtti -fexceptions -DC10_USE_GLOG)
+target_link_libraries(TorchGlowTrainingTest
+                      PRIVATE
+                        TorchGlowTraining
+                        TestMain
+                        gtest)
+
+target_include_directories(TorchGlowTrainingTest PUBLIC
+                            ${PYTORCH_DIR}/include
+                            ${TORCH_GLOW}/src
+                            ${TORCH_GLOW}/src/training)

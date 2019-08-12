@@ -57,3 +57,5 @@ target_include_directories(PyTorchFileLoader PUBLIC
 
 target_include_directories(_torch_glow PUBLIC
                             ${PYTORCH_DIR}/include)
+
+add_subdirectory(training)
