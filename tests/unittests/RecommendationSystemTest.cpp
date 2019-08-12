@@ -949,13 +949,12 @@ protected:
     // Use the same precision transformation for compilation.
     CompilationContext cctx;
     cctx.precisionConfig = precConfig_;
-    EXIT_ON_ERR(myPartitioner.Partition(cctx));
-
-    DAGListTy myList = std::move(myPartitioner.getPartitionResult());
+    auto myList = myPartitioner.partition(cctx);
+    ASSERT_TRUE((bool)myList);
     std::cout << "Partitions = " << pMod->getFunctions().size() << std::endl;
     ASSERT_LE(pMod->getFunctions().size(), numDevices);
-    ASSERT_EQ(myList.size(), 1);
-    DAG &dag = myList.front();
+    ASSERT_EQ(myList->size(), 1);
+    DAG &dag = myList->front();
 
     // Run the partitioned graph and compare the results.
 

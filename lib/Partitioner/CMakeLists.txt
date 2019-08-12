@@ -1,4 +1,5 @@
 add_library(Partitioner
+              PartitionerBase.cpp
               PartitionerUtils.cpp
               PartitionerOptimizer.cpp
               PartitionerValidation.cpp
