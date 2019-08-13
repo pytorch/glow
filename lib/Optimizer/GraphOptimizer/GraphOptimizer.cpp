@@ -1778,11 +1778,8 @@ struct ConstsEqDedup {
     if (lhs->getType() != rhs->getType()) {
       return false;
     }
-    // Only dedup Constants if their data matches exactly, so allowed error is
-    // 0.0.
-    return lhs->getPayload().isEqual(rhs->getPayload(),
-                                     /* allowedError */ 0.0,
-                                     /* verbose */ false);
+    // Only dedup Constants if they're bit exact matches.
+    return lhs->getPayload().isBitwiseEqual(rhs->getPayload());
   }
 };
 
@@ -2936,8 +2933,7 @@ static void transformForPrecisionMode(const Backend &B, Function *F,
     LOG_SCOPE(F->getLogContext(), "TypeAToTypeBFunctionConverter::convert()")
 
     TypeAToTypeBFunctionConverter converter(*F, ElemKind::FloatTy,
-                                            ElemKind::Float16Ty,
-                                            &precConfig.precisionModeKindSet);
+                                            ElemKind::Float16Ty, precConfig);
     converter.convert();
   }
 }

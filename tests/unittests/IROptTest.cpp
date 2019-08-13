@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#include "BackendTestUtils2.h"
+#include "BackendTestUtils.h"
 #include "glow/Graph/Graph.h"
 #include "glow/IR/IR.h"
 #include "glow/IR/IRBuilder.h"

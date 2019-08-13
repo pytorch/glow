@@ -14,9 +14,9 @@
  * limitations under the License.
  */
 
-#include "BackendTestUtils2.h"
+#include "BackendTestUtils.h"
 
-#include "glow/ExecutionEngine/ExecutionEngine2.h"
+#include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/PlaceholderBindings.h"
 #include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
@@ -59,7 +59,7 @@ using FourIntTupleConfig =
 /// Create a simple network that has a single fp convolution.
 static FunctionTensorPair
 createAndInitConvNet(glow::PlaceholderBindings &bindings,
-                     glow::ExecutionEngine2 &EE, size_t size, size_t convDepth,
+                     glow::ExecutionEngine &EE, size_t size, size_t convDepth,
                      size_t kernel, size_t stride, size_t pad) {
   PseudoRNG PRNG;
   auto &mod = EE.getModule();
@@ -136,7 +136,7 @@ TEST_P(ConvSweepTest, ConvTest_Float16) {
 /// Create a simple network that has a single fp batch mat mul.
 static FunctionTensorPair
 createAndInitBatchMatMulNet(glow::PlaceholderBindings &bindings,
-                            glow::ExecutionEngine2 &EE, size_t N, size_t A,
+                            glow::ExecutionEngine &EE, size_t N, size_t A,
                             size_t Z, size_t B) {
   PseudoRNG PRNG;
   auto &mod = EE.getModule();
@@ -215,7 +215,7 @@ TEST_P(BatchMatMulSweepTest, BatchMatMulTest_Float16) {
 /// Create a simple network that has a single fp FC.
 static FunctionTensorPair
 createAndInitFCNet(glow::PlaceholderBindings &bindings,
-                   glow::ExecutionEngine2 &EE, size_t A, size_t Z, size_t B) {
+                   glow::ExecutionEngine &EE, size_t A, size_t Z, size_t B) {
   PseudoRNG PRNG;
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
@@ -259,9 +259,10 @@ DECLARE_STATELESS_BACKEND_TEST(FCSweepTest, ThreeIntTupleConfig);
 
 INSTANTIATE_TEST_CASE_P_FOR_BACKEND_COMBINED_TEST(
     SweepTest, FCSweepTest,
-    ::testing::Combine(/* A */ ::testing::Values(1, 4, 16, 64),
-                       /* Z */ ::testing::Values(256, 512, 1024, 2048, 4096),
-                       /* B */ ::testing::Values(64, 256, 1024)));
+    ::testing::Combine(
+        /* A */ ::testing::Values(1, 4, 16, 64),
+        /* Z */ ::testing::Values(16, 128, 256, 512, 1024, 2048, 4096),
+        /* B */ ::testing::Values(1, 48, 64, 256, 1024)));
 
 /// Compare backend against the interpreter in Float.
 TEST_P(FCSweepTest, FCTest_Float) {
@@ -288,7 +289,7 @@ TEST_P(FCSweepTest, FCTest_Float16) {
 /// Create a simple network that has a single fp Concat.
 static FunctionTensorPair
 createAndInitConcatNet(glow::PlaceholderBindings &bindings,
-                       glow::ExecutionEngine2 &EE, size_t numInputs,
+                       glow::ExecutionEngine &EE, size_t numInputs,
                        size_t numDims, size_t maxLength, size_t axis) {
   PseudoRNG PRNG;
   auto &mod = EE.getModule();
@@ -379,6 +380,197 @@ TEST_P(ConcatSweepTest, ConcatTest_Float16) {
   ENABLED_BACKENDS(Interpreter);
   testParamSweepConcat(GetParam(), ElemKind::FloatTy, ElemKind::Float16Ty,
                        0.0001f);
+}
+
+//===--------------------------------------------------------------------===//
+//                   SLWS Parameter Sweep Tests
+//===--------------------------------------------------------------------===//
+
+/// Create a simple network that has a single fp SLWS.
+static FunctionTensorPair createAndInitSLWSNet(
+    glow::PlaceholderBindings &bindings, glow::ExecutionEngine &EE,
+    size_t embeddingRows, size_t embeddingDim, size_t numLengths,
+    bool rowwiseQuantize, bool fused, bool FP16, bool accumFP16) {
+  PseudoRNG PRNG;
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  // Initialize lengths according to the number provided by the test. Note that
+  // we arbitrarily set them between [80,120].
+  auto *lengths =
+      mod.createPlaceholder(ElemKind::Int32ITy, {numLengths}, "lengths", false);
+  auto LH = bindings.allocate(lengths)->getHandle<int32_t>();
+  LH.randomize(80, 120, mod.getPRNG());
+
+  // Get the sum of the lengths to then use as the size for indices and weights.
+  size_t sumOfLengths = 0;
+  for (const int32_t &e : LH) {
+    sumOfLengths += e;
+  }
+
+  // Initialize indices to size of sum of lengths. Randomly set them to point
+  // somewhere inside the embedding.
+  auto *indices = mod.createPlaceholder(ElemKind::Int64ITy, {sumOfLengths},
+                                        "indices", false);
+  bindings.allocate(indices)->getHandle<int64_t>().randomize(
+      0, embeddingRows - 1, mod.getPRNG());
+
+  // Xavier initialize the weights with the correct data type.
+  Constant *weights;
+  if (FP16) {
+    weights =
+        mod.createConstant(ElemKind::Float16Ty, {sumOfLengths}, "weights");
+    weights->getPayloadMutable().getHandle<float16_t>().initXavier(
+        weights->getType()->size() * 2, mod.getPRNG());
+  } else {
+    weights = mod.createConstant(ElemKind::FloatTy, {sumOfLengths}, "weights");
+    weights->getPayloadMutable().getHandle<float>().initXavier(
+        weights->getType()->size() * 2, mod.getPRNG());
+  }
+
+  // Create the embedding; non-RWQ versions will simply create a Constant with
+  // it, while RWQ versions will use its data to create a RWQ Constant
+  // internally in the Node constructor.
+  Tensor embeddingT(ElemKind::FloatTy, {embeddingRows, embeddingDim});
+  embeddingT.getHandle().initXavier(embeddingT.size() * 2, mod.getPRNG());
+
+  // Create the SLWS based on provided options.
+  Node *SLWS;
+  if (!rowwiseQuantize) {
+    auto *embeddingC = mod.createConstant("embedding", std::move(embeddingT));
+    SLWS = F->createSparseLengthsWeightedSum("SLWS", embeddingC, weights,
+                                             indices, lengths);
+  } else {
+    const ElemKind precision = FP16 ? ElemKind::Float16Ty : ElemKind::FloatTy;
+    if (fused) {
+      SLWS = F->createFusedRowwiseQuantizedSparseLengthsWeightedSum(
+          "FRQSLWS", embeddingT, weights, indices, lengths, precision,
+          accumFP16);
+    } else {
+      SLWS = F->createRowwiseQuantizedSparseLengthsWeightedSum(
+          "RQSLWS", embeddingT, weights, indices, lengths,
+          quantization::Schema::Asymmetric, precision, accumFP16);
+    }
+  }
+  auto *save = F->createSave("save", SLWS);
+  auto *resultTensor = bindings.allocate(save->getPlaceholder());
+
+  return std::make_pair(F, resultTensor);
+}
+
+/// Helper to test sweeping across a variety of configurations of a SLWS by
+/// comparing the results to the Interpreter given some \p allowedError.
+/// \p config contains the backend to compare the Interpreter against, plus the
+/// specific configuration to run for this test. \p interpElemKind and \p
+/// backendElemKind are the element kinds to use for the Interpreter and
+/// backend, respectively. Pass in options for the test \p rowwiseQuantize,
+/// \p fused, \p FP16, and \p accumFP16.
+static void testParamSweepSLWS(ThreeIntTupleConfig config,
+                               ElemKind interpElemKind,
+                               ElemKind backendElemKind, float allowedError,
+                               bool rowwiseQuantize, bool fused, bool FP16,
+                               bool accumFP16) {
+  std::string backend;
+  size_t embeddingRows, embeddingDim, numLengths;
+  SET_BACKEND_KIND_AND_THREE_INT_PARAMS(config, backend, embeddingRows,
+                                        embeddingDim, numLengths);
+
+  LOG(INFO) << "\n\tTesting SLWS with embeddingRows: " << embeddingRows
+            << "; embeddingDim: " << embeddingDim
+            << "; numLengths: " << numLengths << "\n";
+
+  auto boundF = std::bind(createAndInitSLWSNet, std::placeholders::_1,
+                          std::placeholders::_2, embeddingRows, embeddingDim,
+                          numLengths, rowwiseQuantize, fused, FP16, accumFP16);
+  compareAgainstInterpreter(backend, boundF, interpElemKind, backendElemKind,
+                            allowedError, parCloneCountOpt);
+}
+
+DECLARE_STATELESS_BACKEND_TEST(SLWSSweepTest, ThreeIntTupleConfig);
+
+INSTANTIATE_TEST_CASE_P_FOR_BACKEND_COMBINED_TEST(
+    SweepTest, SLWSSweepTest,
+    ::testing::Combine(
+        /* embeddingRows */ ::testing::Values(100, 1000, 10000, 100000),
+        /* embeddingDim */ ::testing::Values(32, 64, 96, 128),
+        /* numLengths */ ::testing::Values(16, 32, 64, 128, 256)));
+
+/// Compare backend against the interpreter.
+TEST_P(SLWSSweepTest, SLWS_Float) {
+  ENABLED_BACKENDS(CPU);
+  testParamSweepSLWS(GetParam(), ElemKind::FloatTy, ElemKind::FloatTy,
+                     0.000001f,
+                     /* rowwiseQuantize */ false,
+                     /* fused */ false, /* FP16 */ false,
+                     /* accumFP16 */ false);
+}
+
+/// Compare backend against the interpreter in Float.
+TEST_P(SLWSSweepTest, RWQSLWS_Float) {
+  ENABLED_BACKENDS(CPU);
+  testParamSweepSLWS(GetParam(), ElemKind::FloatTy, ElemKind::FloatTy,
+                     0.000001f,
+                     /* rowwiseQuantize */ true,
+                     /* fused */ false, /* FP16 */ false,
+                     /* accumFP16 */ false);
+}
+
+/// Compare backend against the interpreter in Float.
+TEST_P(SLWSSweepTest, FRWQSLWS_Float) {
+  ENABLED_BACKENDS(CPU);
+  testParamSweepSLWS(GetParam(), ElemKind::FloatTy, ElemKind::FloatTy,
+                     0.000001f,
+                     /* rowwiseQuantize */ true,
+                     /* fused */ true, /* FP16 */ false,
+                     /* accumFP16 */ false);
+}
+
+/// Compare backend against the interpreter in Float.
+TEST_P(SLWSSweepTest, RWQSLWS_Float16) {
+  // Note: not currently enabled for any open-source backends, as only the
+  // Interpreter supports this.
+  ENABLED_BACKENDS();
+  testParamSweepSLWS(GetParam(), ElemKind::FloatTy, ElemKind::FloatTy,
+                     0.000001f,
+                     /* rowwiseQuantize */ true,
+                     /* fused */ false, /* FP16 */ true,
+                     /* accumFP16 */ false);
+}
+
+/// Compare backend against the interpreter in Float.
+TEST_P(SLWSSweepTest, FRWQSLWS_Float16) {
+  // Note: not currently enabled for any open-source backends, as only the
+  // Interpreter supports this.
+  ENABLED_BACKENDS();
+  testParamSweepSLWS(GetParam(), ElemKind::FloatTy, ElemKind::FloatTy,
+                     0.000001f,
+                     /* rowwiseQuantize */ true,
+                     /* fused */ true, /* FP16 */ true,
+                     /* accumFP16 */ false);
+}
+
+/// Compare backend against the interpreter in Float.
+TEST_P(SLWSSweepTest, RWQSLWS_Float16_AccumFloat16) {
+  // Note: not currently enabled for any open-source backends, as only the
+  // Interpreter supports this.
+  ENABLED_BACKENDS();
+  testParamSweepSLWS(GetParam(), ElemKind::FloatTy, ElemKind::FloatTy,
+                     0.000001f,
+                     /* rowwiseQuantize */ true,
+                     /* fused */ false, /* FP16 */ true,
+                     /* accumFP16 */ true);
+}
+
+/// Compare backend against the interpreter in Float.
+TEST_P(SLWSSweepTest, FRWQSLWS_Float16_AccumFloat16) {
+  // Note: not currently enabled for any open-source backends, as only the
+  // Interpreter supports this.
+  ENABLED_BACKENDS();
+  testParamSweepSLWS(GetParam(), ElemKind::FloatTy, ElemKind::FloatTy,
+                     0.000001f,
+                     /* rowwiseQuantize */ true,
+                     /* fused */ true, /* FP16 */ true,
+                     /* accumFP16 */ true);
 }
 
 int main(int argc, char **argv) {

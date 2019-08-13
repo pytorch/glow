@@ -18,19 +18,6 @@
 
 #include "glow/Graph/VerifierHelper.h"
 
-bool OCLConvolutionNode::verify() const {
-  ShapeNCHW idim(getInput().getType()->dims());
-  ShapeNCHW odim(getResult().getType()->dims());
-  auto outSz = calculateConvPoolOutputDims(
-      idim.h, idim.w, getKernels(), getStrides(), getPads(), getDilation());
-  ShapeNCHW exp(idim.n, getBias().dims()[0], outSz.first, outSz.second);
-  return expectCompareTrue("Invalid output dimensions", exp, odim, this);
-}
-
-bool OCLAvgPoolNode::verify() const { return true; }
-
-bool OCLMaxPoolNode::verify() const { return true; }
-
 bool OCLBatchedReduceAddNode::verify() const {
   Constant *destSliceSizes =
       llvm::dyn_cast<Constant>(getDestSliceSizes().getNode());

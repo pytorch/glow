@@ -14,9 +14,9 @@
  * limitations under the License.
  */
 
-#include "BackendTestUtils2.h"
+#include "BackendTestUtils.h"
 
-#include "glow/ExecutionEngine/ExecutionEngine2.h"
+#include "glow/ExecutionEngine/ExecutionEngine.h"
 
 #include <glog/logging.h>
 #include <gtest/gtest.h>
@@ -27,7 +27,7 @@ class SparseLengthsSum : public BackendTest {};
 
 TEST_P(SparseLengthsSum, Big) {
   ENABLED_BACKENDS(CPU, Habana);
-  ExecutionEngine2 interp{};
+  ExecutionEngine interp{};
   interp.setDeviceMemory(10000000000);
   EE_.setDeviceMemory(10000000000);
   auto *mod = &EE_.getModule();

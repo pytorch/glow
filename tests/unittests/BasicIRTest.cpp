@@ -160,8 +160,8 @@ TEST(IR, allInstrs) {
 
     builder.createCopyInst("", I1, I0);
     builder.createConvolutionInst("", I3, I1, F0, B0, {7, 7}, {2, 2},
-                                  {3, 3, 3, 3}, 1, 1);
-    builder.createMaxPoolInst("", I4, I0, {7, 7}, {2, 2}, {3, 3, 3, 3});
+                                  {3, 3, 3, 3}, 1, 1, NHWC);
+    builder.createMaxPoolInst("", I4, I0, {7, 7}, {2, 2}, {3, 3, 3, 3}, NHWC);
     builder.createSigmoidInst("", I1, I0);
     builder.createTanhInst("", I1, I0);
     builder.createSoftMaxInst("", I1, I0);
@@ -186,7 +186,7 @@ TEST(IR, casting) {
     auto *res = bb.createAllocActivationInst("sigmoid.res", input->getType());
     auto *sig = bb.createSigmoidInst("sigmoid", res, input);
     auto *pool =
-        bb.createAvgPoolOp(sig->getDest(), {7, 7}, {2, 2}, {3, 3, 3, 3});
+        bb.createAvgPoolOp(sig->getDest(), {7, 7}, {2, 2}, {3, 3, 3, 3}, NHWC);
 
     EXPECT_EQ(isa<AvgPoolInst>(pool), true);
     EXPECT_EQ(isa<AvgPoolInst>(input), false);
@@ -293,7 +293,7 @@ TEST(IR, InstUniqueNames) {
     EXPECT_TRUE(it.second);
 
     MaxPoolWithArgmaxInst *MP1 = builder.createMaxPoolWithArgmaxOp(
-        name, V1, {2, 2}, {1, 1}, {0, 2, 1, 3});
+        name, V1, {2, 2}, {1, 1}, {0, 2, 1, 3}, NHWC);
     it = nameSet.insert(MP1->getName());
     EXPECT_TRUE(it.second);
 

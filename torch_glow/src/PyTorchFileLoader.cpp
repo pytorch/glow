@@ -15,28 +15,189 @@
  */
 
 #include "PyTorchFileLoader.h"
+#include "PyTorchModelLoader.h"
 #include "glow/Support/Error.h"
 #include "glow/Support/Support.h"
+#include <ATen/core/grad_mode.h>
+#include <torch/csrc/jit/operator_options.h>
+#include <torch/csrc/jit/pass_manager.h>
 
-using namespace glow;
+namespace glow {
 
-PyTorchFileLoader::PyTorchFileLoader(
-    const std::string &fileName,
-    std::shared_ptr<torch::jit::script::Module> &module, llvm::Error *errPtr) {
-  auto setup = [&]() -> llvm::Error {
-    try {
-      module = std::make_shared<torch::jit::script::Module>(
-          torch::jit::load(fileName));
-    } catch (const std::exception &x) {
-      RETURN_ERR(strFormat("Cannot load model from file: %s, , reason: %s",
-                           fileName.c_str(), x.what()));
-    }
-    return llvm::Error::success();
-  };
+namespace {
+/// struct keeps pointers to Glow Function and Placeholders as a local thread
+/// variable.
+struct LocalFusionFunction {
+  glow::Function *function{nullptr};
+  std::vector<glow::Placeholder *> *inputPlaceholders{nullptr};
+  std::vector<glow::Placeholder *> *outputPlaceholders{nullptr};
+  const PyTorchLoaderSettings *settings{nullptr};
 
-  if (errPtr) {
-    *errPtr = setup();
-  } else {
-    EXIT_ON_ERR(setup());
+  void set(glow::Function *f, std::vector<glow::Placeholder *> *in,
+           std::vector<glow::Placeholder *> *out,
+           const PyTorchLoaderSettings *s) {
+    function = f;
+    inputPlaceholders = in;
+    outputPlaceholders = out;
+    settings = s;
   }
+
+  void reset() { set(nullptr, nullptr, nullptr, nullptr); }
+};
+
+/// Meyer's singleton for static fusion symbol.
+static at::Symbol getFusionSymbol() {
+  /// Fusion pass unique symbol.
+  static const auto fusionSymbol =
+      at::Symbol::fromQualString("glow::LoaderFusionPass");
+  return fusionSymbol;
 }
+
+/// Local thread variable, used in PyTorch Custom Fusion pass.
+static thread_local LocalFusionFunction localFusionInfo;
+
+/// Loads JIT Graph into Glow Function.
+llvm::Error
+loadJitGraphToGlowFunction(torch::jit::Stack &stack, torch::jit::Graph &graph,
+                           glow::Function &f,
+                           std::vector<glow::Placeholder *> &inputPlaceholders,
+                           std::vector<glow::Placeholder *> &outputPlaceholders,
+                           const PyTorchLoaderSettings &settings) {
+  const auto &graphInputs = graph.inputs();
+  const auto numInputs = graphInputs.size();
+  auto inputs = torch::jit::last(stack, numInputs);
+
+  // Load JIT Graph into Glow Function.
+  RETURN_IF_ERR(PyTorchModelLoader::loadJITGraph(
+      f, graph, inputs, inputPlaceholders, outputPlaceholders, settings));
+
+  // Remove from stack input parameters.
+  torch::jit::drop(stack, numInputs);
+  // Lookup placeholders for the output shapes.
+  for (auto *ph : outputPlaceholders) {
+    std::vector<int64_t> sizes;
+    for (auto size : ph->dims()) {
+      sizes.push_back(static_cast<int64_t>(size));
+    }
+    // Create an empty tensor with the correct shape.
+    auto ptT = at::empty(sizes);
+    auto var = torch::autograd::make_variable(ptT);
+    // Add to stack output parameter.
+    stack.push_back(at::IValue(var));
+  }
+
+  return llvm::Error::success();
+}
+
+/// Runs Module forward pass, triggers custom fusion pass if local thread
+/// Glow function is set.
+llvm::Error
+evaluateModuleGraph(std::shared_ptr<torch::jit::script::Module> &module,
+                    std::vector<torch::jit::IValue> &inputs) {
+  try {
+    module->forward(inputs);
+  } catch (const std::exception &x) {
+    RETURN_ERR(x.what());
+  }
+  return llvm::Error::success();
+}
+
+/// Helper struct, which on constructor registers custom fusion pass
+/// and operator.
+struct RegisterCustomFusionPass {
+  RegisterCustomFusionPass() {
+    auto options = c10::OperatorOptions();
+    options.setAliasAnalysis(at::AliasAnalysisKind::PURE);
+    torch::jit::RegisterOperators op({torch::jit::Operator(
+        getFusionSymbol(),
+        [](const torch::jit::Node *node) {
+          return [node](torch::jit::Stack &stack) {
+            // Get JIT Graph.
+            auto graph = node->g(at::attr::Subgraph);
+            auto err = loadJitGraphToGlowFunction(
+                stack, *graph, *localFusionInfo.function,
+                *localFusionInfo.inputPlaceholders,
+                *localFusionInfo.outputPlaceholders, *localFusionInfo.settings);
+            if (static_cast<bool>(err)) {
+              throw std::invalid_argument(llvm::toString(std::move(err)));
+            }
+            return 0;
+          };
+        },
+        options)});
+
+    torch::jit::RegisterPass pass([&](std::shared_ptr<torch::jit::Graph> &g) {
+      // Trigger custom fusion pass only if local thread Glow Function is set.
+      if (localFusionInfo.function) {
+        glowCustomFuse(g, getFusionSymbol());
+      }
+    });
+  }
+};
+} // namespace
+
+/*static*/
+llvm::Error PyTorchFileLoader::loadPyTorchModel(
+    const std::string &fileName,
+    std::shared_ptr<torch::jit::script::Module> &module) {
+  try {
+    module = std::make_shared<torch::jit::script::Module>(
+        torch::jit::load(fileName));
+  } catch (const std::exception &x) {
+    RETURN_ERR(strFormat("Cannot load model from file: %s, , reason: %s",
+                         fileName.c_str(), x.what()));
+  }
+  return llvm::Error::success();
+}
+
+/*static*/
+llvm::Error PyTorchFileLoader::loadPyTorchGraph(
+    const std::string &fileName, std::vector<torch::jit::IValue> &inputs,
+    glow::Function &F, std::vector<glow::Placeholder *> &inputPlaceholders,
+    std::vector<glow::Placeholder *> &outputPlaceholders,
+    const PyTorchLoaderSettings &settings, bool sanityCheck) {
+  // Register custom pass once.
+  static RegisterCustomFusionPass fuser;
+
+  // Convert PyTorch model into JIT Module.
+  std::shared_ptr<torch::jit::script::Module> module;
+  RETURN_IF_ERR(PyTorchFileLoader::loadPyTorchModel(fileName, module));
+
+  // Disable gradient nodes generation.
+  at::NoGradGuard guard;
+
+  // Set thread local pointer, not null values activate custom fusion pass.
+  localFusionInfo.set(&F, &inputPlaceholders, &outputPlaceholders, &settings);
+  auto err = evaluateModuleGraph(module, inputs);
+  localFusionInfo.reset();
+
+  RETURN_IF_ERR(err);
+
+  return sanityCheck ? performSanityCheck() : llvm::Error::success();
+}
+
+// Sanity check, after "fusionSymbol" node, not other nodes should exist.
+/*static*/
+llvm::Error PyTorchFileLoader::performSanityCheck() {
+  std::shared_ptr<torch::jit::Graph> subgraph =
+      torch::jit::lastExecutedOptimizedGraph();
+  size_t fusedNodes = 0, missedNodes = 0;
+  const auto symbol = getFusionSymbol();
+  for (const auto &node : subgraph->nodes()) {
+    if (node->kind() == symbol) {
+      ++fusedNodes;
+    } else if (fusedNodes) {
+      // fusionSymbol node has been found, output missing node information.
+      LOG(ERROR) << "Missing node: " << *node;
+      ++missedNodes;
+    }
+  }
+
+  RETURN_ERR_IF_NOT(
+      fusedNodes == 1 && missedNodes == 0,
+      glow::strFormat("Fused optimized nodes: %lu, missing nodes: %lu",
+                      fusedNodes, missedNodes));
+  return llvm::Error::success();
+}
+
+} // namespace glow

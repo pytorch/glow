@@ -341,14 +341,15 @@ public:
   /// \p group defines the number of groups the input and output channels should
   /// be divided into and convolved separately. \p dilation defines factor by
   /// which gap between 2 neighboring kernel elements is expanded along each
-  /// axis.
+  /// axis. \p layout defines the Tensor layout and must be either NHWC or NCHW.
 
-  ConvolutionNode *createConv(llvm::StringRef name, NodeValue input,
-                              NodeValue filter, NodeValue bias, TypeRef outTy,
-                              llvm::ArrayRef<unsigned_t> kernels,
-                              llvm::ArrayRef<unsigned_t> strides,
-                              llvm::ArrayRef<unsigned_t> pads, unsigned_t group,
-                              unsigned_t dilation = 1);
+  ConvolutionNode *
+  createConv(llvm::StringRef name, NodeValue input, NodeValue filter,
+             NodeValue bias, TypeRef outTy, llvm::ArrayRef<unsigned_t> kernels,
+             llvm::ArrayRef<unsigned_t> strides,
+             llvm::ArrayRef<unsigned_t> pads, unsigned_t group,
+             unsigned_t dilation = 1,
+             ConvolutionLayout layout = ConvolutionLayout::NHWC);
 
   /// Creates a ConvolutionNode with the given \p name which convolves the 4D
   /// \p input with \p filter and \bias. \p kernel defines the size of the
@@ -358,13 +359,14 @@ public:
   /// \p group defines the number of groups the input and output channels should
   /// be divided into and convolved separately. \p dilation defines factor by
   /// which gap between 2 neighboring kernel elements is expanded along each
-  /// axis.
+  /// axis. \p layout defines the Tensor layout and must be either NHWC or NCHW.
 
-  ConvolutionNode *createConv(llvm::StringRef name, NodeValue input,
-                              NodeValue filter, NodeValue bias, TypeRef outTy,
-                              unsigned_t kernel, unsigned_t stride,
-                              unsigned_t pad, unsigned_t group,
-                              unsigned_t dilation = 1);
+  ConvolutionNode *
+  createConv(llvm::StringRef name, NodeValue input, NodeValue filter,
+             NodeValue bias, TypeRef outTy, unsigned_t kernel,
+             unsigned_t stride, unsigned_t pad, unsigned_t group,
+             unsigned_t dilation = 1,
+             ConvolutionLayout layout = ConvolutionLayout::NHWC);
 
   /// Creates a Convolution3DNode with the given \p name which convolves the 5D
   /// \p input with \p filter and \bias. \p kernels defines the size of the
@@ -405,39 +407,50 @@ public:
   /// cells should be added to the input during convolution. \p group defines
   /// the number of groups the input and output channels should be divided into
   /// and convolved separately.
-  /// NOTE: ChannelwiseQuantizedConvolutionNode does not yet have an
-  /// implementation so attempting to run a graph containing this node fails.
+  /// NOTE: ChannelwiseQuantizedConvolutionNode does
+  /// not yet have an implementation so attempting to run a graph containing
+  /// this node fails.
   ChannelwiseQuantizedConvolutionNode *createChannelwiseQuantizedConv(
       llvm::StringRef name, NodeValue input, Constant *filter, Constant *bias,
       Constant *scales, Constant *offsets, TypeRef outTy,
       llvm::ArrayRef<unsigned_t> kernels, llvm::ArrayRef<unsigned_t> strides,
       llvm::ArrayRef<unsigned_t> pads, unsigned_t group);
 
+  /// Creates and \returns a ConvertTo Node with name \p name of \p input to
+  /// output type \p outTy.
   ConvertToNode *createConvertTo(llvm::StringRef name, NodeValue input,
                                  TypeRef outTy);
+
+  /// Creates and \returns a ConvertTo Node with name \p name of \p input to
+  /// output ElemKind \p k.
+  ConvertToNode *createConvertTo(llvm::StringRef name, NodeValue input,
+                                 ElemKind k);
 
   MaxPoolNode *createMaxPool(llvm::StringRef name, NodeValue input,
                              llvm::ArrayRef<unsigned_t> kernels,
                              llvm::ArrayRef<unsigned_t> strides,
-                             llvm::ArrayRef<unsigned_t> pads);
+                             llvm::ArrayRef<unsigned_t> pads,
+                             ConvolutionLayout layout = NHWC);
 
   MaxPoolNode *createMaxPool(llvm::StringRef name, NodeValue input,
                              unsigned_t kernel, unsigned_t stride,
-                             unsigned_t pad);
+                             unsigned_t pad, ConvolutionLayout layout = NHWC);
 
   AvgPoolNode *createAvgPool(llvm::StringRef name, NodeValue input,
                              llvm::ArrayRef<unsigned_t> kernels,
                              llvm::ArrayRef<unsigned_t> strides,
-                             llvm::ArrayRef<unsigned_t> pads);
+                             llvm::ArrayRef<unsigned_t> pads,
+                             ConvolutionLayout layout = NHWC);
 
   AvgPoolNode *createAvgPool(llvm::StringRef name, NodeValue input,
                              TypeRef outTy, llvm::ArrayRef<unsigned_t> kernels,
                              llvm::ArrayRef<unsigned_t> strides,
-                             llvm::ArrayRef<unsigned_t> pads);
+                             llvm::ArrayRef<unsigned_t> pads,
+                             ConvolutionLayout layout = NHWC);
 
   AvgPoolNode *createAvgPool(llvm::StringRef name, NodeValue input,
                              unsigned_t kernel, unsigned_t stride,
-                             unsigned_t pad);
+                             unsigned_t pad, ConvolutionLayout layout = NHWC);
 
   /// Creates and \returns an AdaptiveAvgPool node with \p name, \p input, and
   /// \p outTy. The AdaptiveAvgPoolNode will perform average pooling over the
@@ -770,6 +783,13 @@ public:
                                                TypeRef outTy, NodeValue batch,
                                                llvm::ArrayRef<unsigned_t> axes);
 
+  /// Create a node, performing BatchedReduceMin operation. Output type is
+  /// based on the input \p batch type with dimensions specified with \p axes
+  /// removed.
+  BatchedReduceMinNode *createBatchedReduceMin(llvm::StringRef name,
+                                               NodeValue batch,
+                                               llvm::ArrayRef<unsigned_t> axes);
+
   /// Create a node, performing BatchedReduceMean operation. Output type
   /// matches input \p outTy type.
   BatchedReduceMeanNode *
@@ -831,12 +851,14 @@ public:
   /// aggregated to Result[0], next Lengths[1] slices are aggregated to
   /// Result[1], etc. I.e. sum(Lengths) must be equal to len(Indices).
   /// \p precision represents what precision to use for Scale, Offset, and
-  /// Result.
+  /// Result. If \p useFP16Accumulation, then internal arithmetic will use FP16
+  /// accumulation; otherwise defaults to FP32.
   RowwiseQuantizedSparseLengthsWeightedSumNode *
-  createRowwiseQuantizedSparseLengthsSum(
-      llvm::StringRef name, Constant *data, Constant *scales, Constant *offsets,
-      NodeValue indices, NodeValue lengths,
-      ElemKind precision = ElemKind::FloatTy);
+  createRowwiseQuantizedSparseLengthsSum(llvm::StringRef name, Constant *data,
+                                         Constant *scales, Constant *offsets,
+                                         NodeValue indices, NodeValue lengths,
+                                         ElemKind precision = ElemKind::FloatTy,
+                                         bool useFP16Accumulation = false);
 
   /// Same as \ref createRowwiseQuantizedSparseLengthsSum(), but expects
   /// float input \p data, which is rowwise-quantized internally.
@@ -844,7 +866,8 @@ public:
   createRowwiseQuantizedSparseLengthsSum(llvm::StringRef name, Tensor &data,
                                          NodeValue indices, NodeValue lengths,
                                          quantization::Schema schema,
-                                         ElemKind precision);
+                                         ElemKind precision = ElemKind::FloatTy,
+                                         bool useFP16Accumulation = false);
 
   /// Same as \ref createRowwiseQuantizedSparseLengthsSum(), but i-th slice is
   /// multiplied by weights[i]. len(weights) must be equal to len(indices).
@@ -852,7 +875,7 @@ public:
   createRowwiseQuantizedSparseLengthsWeightedSum(
       llvm::StringRef name, Constant *data, Constant *scales, Constant *offsets,
       NodeValue weights, NodeValue indices, NodeValue lengths,
-      ElemKind precision = ElemKind::FloatTy);
+      ElemKind precision = ElemKind::FloatTy, bool useFP16Accumulation = false);
 
   /// Same as \ref createRowwiseQuantizedSparseLengthsWeightedSum(), but expects
   /// float input \p data, which is rowwise-quantized internally.
@@ -860,7 +883,7 @@ public:
   createRowwiseQuantizedSparseLengthsWeightedSum(
       llvm::StringRef name, Tensor &data, NodeValue weights, NodeValue indices,
       NodeValue lengths, quantization::Schema schema,
-      ElemKind precision = ElemKind::FloatTy);
+      ElemKind precision = ElemKind::FloatTy, bool useFP16Accumulation = false);
 
   /// Creates and \returns a node of \p name, performing the SparseLengthsSum
   /// operation, using fused rowwise quantization for the input \p data wherein
@@ -870,18 +893,21 @@ public:
   /// them into len(\p lengths) entries: first Lengths[0] slices are aggregated
   /// to Result[0], next Lengths[1] slices are aggregated to Result[1], etc.
   /// I.e. sum(Lengths) must be equal to len(Indices). \p precision represents
-  /// what precision to use for Scale, Offset, and Result.
+  /// what precision to use for Scale, Offset, and Result. If
+  /// \p useFP16Accumulation, then internal arithmetic will use FP16
+  /// accumulation; otherwise defaults to FP32.
   FusedRowwiseQuantizedSparseLengthsSumNode *
   createFusedRowwiseQuantizedSparseLengthsSum(
       llvm::StringRef name, Constant *data, NodeValue indices,
-      NodeValue lengths, ElemKind precision = ElemKind::FloatTy);
+      NodeValue lengths, ElemKind precision = ElemKind::FloatTy,
+      bool useFP16Accumulation = false);
 
   /// Same as \ref createFusedRowwiseQuantizedSparseLengthsSum(), but expects
   /// float input \p data, which is rowwise-quantized and fused internally.
   FusedRowwiseQuantizedSparseLengthsSumNode *
   createFusedRowwiseQuantizedSparseLengthsSum(
       llvm::StringRef name, Tensor &data, NodeValue indices, NodeValue lengths,
-      ElemKind precision = ElemKind::FloatTy);
+      ElemKind precision = ElemKind::FloatTy, bool useFP16Accumulation = false);
 
   /// Same as \ref createFusedRowwiseQuantizedSparseLengthsSum(), but i-th slice
   /// is multiplied by weights[i]. len(weights) must be equal to len(indices).
@@ -889,7 +915,7 @@ public:
   createFusedRowwiseQuantizedSparseLengthsWeightedSum(
       llvm::StringRef name, NodeValue data, NodeValue weights,
       NodeValue indices, NodeValue lengths,
-      ElemKind precision = ElemKind::FloatTy);
+      ElemKind precision = ElemKind::FloatTy, bool useFP16Accumulation = false);
 
   /// Same as \ref createFusedRowwiseQuantizedSparseLengthsWeightedSum(), but
   /// expects float input \p data, which is rowwise-quantized and fused
@@ -897,7 +923,8 @@ public:
   FusedRowwiseQuantizedSparseLengthsWeightedSumNode *
   createFusedRowwiseQuantizedSparseLengthsWeightedSum(
       llvm::StringRef name, Tensor &data, NodeValue weights, NodeValue indices,
-      NodeValue lengths, ElemKind precision = ElemKind::FloatTy);
+      NodeValue lengths, ElemKind precision = ElemKind::FloatTy,
+      bool useFP16Accumulation = false);
 
   /// Given a vector of segment lengths, calculates offsets of each segment and
   /// packs them next to the lengths. For the input vector of length N the
@@ -1100,14 +1127,15 @@ public:
   /// defines the number of groups the input and output channels should be
   /// divided into and convolved separately. \p dilation defines factor by
   /// which gap between 2 neighboring kernel elements is expanded along each
-  /// axis.
+  /// axis. \p layout defines the Tensor layout and must be either NHWC or NCHW.
   ConvolutionNode *createConv(PlaceholderBindings &bindings,
                               llvm::StringRef name, NodeValue input,
                               size_t outChannels,
                               llvm::ArrayRef<unsigned_t> kernels,
                               llvm::ArrayRef<unsigned_t> strides,
                               llvm::ArrayRef<unsigned_t> pads, unsigned_t group,
-                              unsigned_t dilation = 1);
+                              unsigned_t dilation = 1,
+                              ConvolutionLayout layout = NHWC);
 
   /// Creates a ConvolutionNode with the given \p name which convolves the 4D
   /// \p input. \p kernel defines the size of the height and width dimensions of
@@ -1117,12 +1145,13 @@ public:
   /// defines the number of groups the input and output channels should be
   /// divided into and convolved separately.\p dilation defines factor by
   /// which gap between 2 neighboring kernel elements is expanded along each
-  /// axis.
+  /// axis. \p layout defines the Tensor layout and must be either NHWC or NCHW.
   ConvolutionNode *createConv(PlaceholderBindings &bindings,
                               llvm::StringRef name, NodeValue input,
                               size_t outChannels, unsigned_t kernel,
                               unsigned_t stride, unsigned_t pad,
-                              unsigned_t group, unsigned_t dilation = 1);
+                              unsigned_t group, unsigned_t dilation = 1,
+                              ConvolutionLayout layout = NHWC);
 
   /// Creates a Convolution3DNode with the given \p name which convolves the 5D
   /// \p input. \p kernels defines the size of the height, width, and depth

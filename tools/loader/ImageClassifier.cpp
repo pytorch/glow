@@ -213,8 +213,10 @@ buildAndCompileAndGetInAndOutPair(Loader &loader, PlaceholderBindings &bindings,
   // Convert the placeholders for now. The backing Tensor's data will be
   // converted later.
   if (convertInAndOutToFp16) {
-    TypeAToTypeBFunctionConverter converter(
-        *loader.getFunction(), ElemKind::FloatTy, ElemKind::Float16Ty);
+    PrecisionConfiguration precConfig;
+    TypeAToTypeBFunctionConverter converter(*loader.getFunction(),
+                                            ElemKind::FloatTy,
+                                            ElemKind::Float16Ty, precConfig);
     for (auto *placeholder : loader.getModule()->getPlaceholders()) {
       converter.convertPlaceholder(*placeholder, &bindings);
     }

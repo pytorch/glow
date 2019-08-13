@@ -16,7 +16,7 @@
 
 #include "../../lib/Backends/Habana/Habana.h"
 #include "../../lib/Backends/Habana/HabanaDeviceManager.h"
-#include "glow/ExecutionEngine/ExecutionEngine2.h"
+#include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/PlaceholderBindings.h"
 #include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
@@ -37,7 +37,7 @@ protected:
 
   template <ElemKind kind, typename ElemTy> void testFCHelper();
 
-  ExecutionEngine2 EE_;
+  ExecutionEngine EE_;
   Module &mod_;
   Function *F_;
   PlaceholderBindings ctx_;

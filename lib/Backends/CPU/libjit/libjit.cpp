@@ -13,9 +13,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#include <algorithm>
 #include <assert.h>
 #include <chrono>
+#include <cmath>
 #include <math.h>
+#include <numeric>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -763,6 +766,39 @@ libjit_space_to_depth_generic(const T *inPtr, T *outPtr, size_t blockSize,
     }
   }
 }
+/// The dimensions passed in here are pre-expanded in LLVMIRGen with 1s so that
+/// we can iterate over the shape here, regardless of the shape of the tensor.
+template <typename T>
+static void libjit_reducemin(T *dest, const T *batch, size_t destSize,
+                             const size_t *destDims, const size_t *batchDims,
+                             T init) {
+  for (size_t i = 0; i < destSize; i++) {
+    dest[i] = init;
+  }
+
+  unsigned int axis[6];
+  for (size_t i = 0; i < 6; i++) {
+    axis[i] = (destDims[i] > 1);
+  }
+
+  for (size_t x = 0, dx = 0; x < batchDims[0]; x++, dx += axis[0]) {
+    for (size_t y = 0, dy = 0; y < batchDims[1]; y++, dy += axis[1]) {
+      for (size_t z = 0, dz = 0; z < batchDims[2]; z++, dz += axis[2]) {
+        for (size_t w = 0, dw = 0; w < batchDims[3]; w++, dw += axis[3]) {
+          for (size_t q = 0, dq = 0; q < batchDims[4]; q++, dq += axis[4]) {
+            for (size_t r = 0, dr = 0; r < batchDims[5]; r++, dr += axis[5]) {
+              T fdest =
+                  dest[libjit_getXYZWQR(destDims, dx, dy, dz, dw, dq, dr)];
+              T fnew = batch[libjit_getXYZWQR(batchDims, x, y, z, w, q, r)];
+              dest[libjit_getXYZWQR(destDims, dx, dy, dz, dw, dq, dr)] =
+                  std::min(fdest, fnew);
+            }
+          }
+        }
+      }
+    }
+  }
+}
 } // namespace
 
 extern "C" {
@@ -905,7 +941,7 @@ int8_t libjit_element_cmp_eq_kernel_u(size_t idx, const size_t *LHS,
 }
 
 int8_t libjit_element_is_nan_kernel_f(size_t idx, const float *input) {
-  return isnan(input[idx]) ? 1 : 0;
+  return std::isnan(input[idx]) ? 1 : 0;
 }
 
 int8_t libjit_element_cmp_lte_kernel_f(size_t idx, const float *LHS,
@@ -1031,6 +1067,24 @@ void libjit_batchedreduceadd_f(float *dest, const float *batch, size_t destSize,
                                     I[5])] +=
                   batch[libjit_getXYZWQR(batchDims, x, y, z, w, q, r)];
             }
+}
+
+void libjit_reducemin_f(float *dest, const float *batch, size_t destSize,
+                        const size_t *destDims, const size_t *batchDims) {
+  libjit_reducemin(dest, batch, destSize, destDims, batchDims,
+                   std::numeric_limits<float>::max());
+}
+
+void libjit_reducemin_i32(int32_t *dest, const int32_t *batch, size_t destSize,
+                          const size_t *destDims, const size_t *batchDims) {
+  libjit_reducemin(dest, batch, destSize, destDims, batchDims,
+                   std::numeric_limits<int32_t>::max());
+}
+
+void libjit_reducemin_u(int64_t *dest, const int64_t *batch, size_t destSize,
+                        const size_t *destDims, const size_t *batchDims) {
+  libjit_reducemin(dest, batch, destSize, destDims, batchDims,
+                   std::numeric_limits<int64_t>::max());
 }
 
 /// Same as the non-quantized version, the dimensions here are pre-expanded in

@@ -38,7 +38,7 @@ install_pocl() {
    cd ../
 }
 
-if [ "${CIRCLE_JOB}" == "CHECK_CLANG_FORMAT" ]; then
+if [ "${CIRCLE_JOB}" == "CHECK_CLANG_AND_PEP8_FORMAT" ]; then
     sudo -E apt-add-repository -y "ppa:ubuntu-toolchain-r/test"
     curl -sSL "https://build.travis-ci.org/files/gpg/llvm-toolchain-trusty-7.asc" | sudo -E apt-key add -
     echo "deb http://apt.llvm.org/trusty/ llvm-toolchain-trusty-7 main" | sudo tee -a /etc/apt/sources.list >/dev/null
@@ -119,7 +119,7 @@ elif [[ "$CIRCLE_JOB" == "COVERAGE" ]]; then
           -DLLVM_DIR=/usr/lib/llvm-7/cmake \
           -DGLOW_USE_COVERAGE=ON \
           ../
-elif [[ "$CIRCLE_JOB" == "CHECK_CLANG_FORMAT" ]]; then
+elif [[ "$CIRCLE_JOB" == "CHECK_CLANG_AND_PEP8_FORMAT" ]]; then
     sudo apt-get install -y clang-format-7
 elif [[ "$CIRCLE_JOB" == "PYTORCH" ]]; then
     # Build PyTorch
@@ -143,7 +143,7 @@ else
     fi
 fi
 
-if [ "${CIRCLE_JOB}" != "COVERAGE" ] && [ "${CIRCLE_JOB}" != "CHECK_CLANG_FORMAT" ]; then
+if [ "${CIRCLE_JOB}" != "COVERAGE" ] && [ "${CIRCLE_JOB}" != "CHECK_CLANG_AND_PEP8_FORMAT" ]; then
     cmake -GNinja ${CMAKE_ARGS[*]} ../
     ninja
 

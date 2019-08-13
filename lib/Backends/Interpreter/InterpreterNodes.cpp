@@ -282,6 +282,8 @@ void BoundInterpreterFunction::fwdConvolutionInstQuantizedImpl(
 }
 
 void BoundInterpreterFunction::fwdConvolutionInst(const ConvolutionInst *I) {
+  assert(I->getLayout() == NHWC &&
+         "Glow Interpreter supports only NHWC Convolutions");
   auto kernelSizes = I->getKernels();
   auto pads = I->getPads();
   auto strides = I->getStrides();
@@ -303,6 +305,8 @@ void BoundInterpreterFunction::fwdConvolutionInst(const ConvolutionInst *I) {
 
 void BoundInterpreterFunction::fwdConvolutionGradInst(
     const ConvolutionGradInst *I) {
+  assert(I->getLayout() == NHWC &&
+         "Glow Interpreter supports only NHWC Convolutions");
   auto inW = getWeightHandle(I->getSrc());
   auto inG = getWeightHandle(I->getSrcGrad());
   auto outG = getWeightHandle(I->getDestGrad());
@@ -753,6 +757,7 @@ static void fwdMaxPool(Tensor *inW, Tensor *outW, Tensor *argmaxW,
 }
 
 void BoundInterpreterFunction::fwdMaxPoolInst(const MaxPoolInst *I) {
+  assert(I->getLayout() == NHWC && "Glow Interpreter supports only NHWC Pools");
   auto inW = getTensor(I->getSrc());
   auto outW = getTensor(I->getDest());
 
@@ -770,6 +775,7 @@ void BoundInterpreterFunction::fwdMaxPoolInst(const MaxPoolInst *I) {
 
 void BoundInterpreterFunction::fwdMaxPoolWithArgmaxInst(
     const MaxPoolWithArgmaxInst *I) {
+  assert(I->getLayout() == NHWC && "Glow Interpreter supports only NHWC Pools");
   auto inW = getTensor(I->getSrc());
   auto outW = getTensor(I->getDest());
   auto argmaxW = getTensor(I->getArgmax());
@@ -888,6 +894,7 @@ void BoundInterpreterFunction::fwdAvgPoolInstI8Impl(const AvgPoolInst *I) {
 }
 
 void BoundInterpreterFunction::fwdAvgPoolInst(const AvgPoolInst *I) {
+  assert(I->getLayout() == NHWC && "Glow Interpreter supports only NHWC Pools");
   if (I->getSrc()->getType()->isQuantizedType()) {
     fwdAvgPoolInstI8Impl(I);
     return;
@@ -2687,6 +2694,68 @@ void BoundInterpreterFunction::fwdBatchedReduceAddInst(
 }
 
 template <typename ElemTy>
+void BoundInterpreterFunction::fwdBatchedReduceMinInstImpl(
+    Value *batch, Value *dest, const ShapeVector &eBatchDims,
+    const ShapeVector &eDestDims, ElemTy max) {
+  static_assert(max_tensor_dimensions == 6,
+                "Loops below assume max_tensor_dimensions = 6.");
+  // Get unowned handles of the batch and dest with these new expanded dims.
+  auto eBatch = getTensor(batch)->getUnowned(eBatchDims);
+  auto eDest = getTensor(dest)->getUnowned(eDestDims);
+  auto eBatchH = eBatch.getHandle<ElemTy>();
+  auto eDestH = eDest.getHandle<ElemTy>();
+  eDestH.clear(max);
+
+  unsigned int axes[max_tensor_dimensions];
+  for (int i = 0; i < max_tensor_dimensions; i++) {
+    axes[i] = (eDestDims[i] > 1);
+  }
+
+  // We can use this loop for all shapes. Use the same indices for both the
+  // batch and dest, except for setting the axis index in the dest to 0.
+  for (size_t x = 0, dx = 0; x < eBatchDims[0]; x++, dx += axes[0]) {
+    for (size_t y = 0, dy = 0; y < eBatchDims[1]; y++, dy += axes[1]) {
+      for (size_t z = 0, dz = 0; z < eBatchDims[2]; z++, dz += axes[2]) {
+        for (size_t w = 0, dw = 0; w < eBatchDims[3]; w++, dw += axes[3]) {
+          for (size_t q = 0, dq = 0; q < eBatchDims[4]; q++, dq += axes[4]) {
+            for (size_t r = 0, dr = 0; r < eBatchDims[5]; r++, dr += axes[5]) {
+              size_t destIndices[] = {dx, dy, dz, dw, dq, dr};
+              size_t srcIndices[] = {x, y, z, w, q, r};
+              eDestH.at(destIndices) =
+                  eDestH.at(destIndices) < eBatchH.at(srcIndices)
+                      ? eDestH.at(destIndices)
+                      : eBatchH.at(srcIndices);
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+void BoundInterpreterFunction::fwdBatchedReduceMinInst(
+    const glow::BatchedReduceMinInst *I) {
+
+  auto *batch = I->getBatch();
+  auto *dest = I->getDest();
+  const auto axes = I->getAxes();
+
+  // Initialize both expanded batch and dest dims to the expanded batch
+  // dims. This allows us below to iterate over the tensor regardless of its
+  // shape using max_tensor_dimensions loops below.
+  ShapeVector eBatchDims = expandDimsToMax(batch->dims());
+  ShapeVector eDestDims = eBatchDims;
+  // Set the destination axes dimensions (the one we are reducing) to 1.
+  for (int i = 0; i < axes.size(); i++) {
+    eDestDims[axes[i]] = 1;
+  }
+
+  dispatchArithmeticImpl(fwdBatchedReduceMinInstImpl, batch->getElementType(),
+                         batch, dest, eBatchDims, eDestDims,
+                         std::numeric_limits<int32_t>::max());
+}
+
+template <typename ElemTy>
 void BoundInterpreterFunction::fwdLengthsSumInstFloatImpl(
     const LengthsSumInst *I) {
   staticAssertFloatingPointType(ElemTy);
@@ -2986,7 +3055,7 @@ void BoundInterpreterFunction::fwdSparseLengthsWeightedSumGradInst(
   }
 }
 
-template <typename T>
+template <typename T, typename AccumT>
 void BoundInterpreterFunction::fwdRowwiseQuantizedSparseLengthsWeightedSumImpl(
     const RowwiseQuantizedSparseLengthsWeightedSumInst *I) {
   auto *out = getTensor(I->getDest());
@@ -3020,8 +3089,7 @@ void BoundInterpreterFunction::fwdRowwiseQuantizedSparseLengthsWeightedSumImpl(
 
   size_t curIdx = 0;
   for (size_t i = 0; i < segments; i++) {
-    // Always accumulate in FP32.
-    std::vector<float> accum(lineSize, 0.0f);
+    std::vector<AccumT> accum(lineSize, 0.0f);
     for (size_t j = 0, e = LH.raw(i); j < e; j++) {
       const float weight = static_cast<float>(WH.raw(curIdx));
       const size_t rowIdx = IH.raw(curIdx++);
@@ -3044,12 +3112,23 @@ void BoundInterpreterFunction::fwdRowwiseQuantizedSparseLengthsWeightedSumImpl(
 
 void BoundInterpreterFunction::fwdRowwiseQuantizedSparseLengthsWeightedSumInst(
     const RowwiseQuantizedSparseLengthsWeightedSumInst *I) {
-
-  dispatchFloatingPointImpl(fwdRowwiseQuantizedSparseLengthsWeightedSumImpl,
-                            I->getDest()->getElementType(), I);
+  switch (I->getDest()->getElementType()) {
+  case ElemKind::FloatTy:
+    fwdRowwiseQuantizedSparseLengthsWeightedSumImpl<float, float>(I);
+    break;
+  case ElemKind::Float16Ty:
+    if (I->getUseFP16Accumulation()) {
+      fwdRowwiseQuantizedSparseLengthsWeightedSumImpl<float16_t, float16_t>(I);
+    } else {
+      fwdRowwiseQuantizedSparseLengthsWeightedSumImpl<float16_t, float>(I);
+    }
+    break;
+  default:
+    llvm_unreachable("Type is not supported");
+  }
 }
 
-template <typename T>
+template <typename T, typename AccumT>
 void BoundInterpreterFunction::
     fwdFusedRowwiseQuantizedSparseLengthsWeightedSumImpl(
         const FusedRowwiseQuantizedSparseLengthsWeightedSumInst *I) {
@@ -3081,8 +3160,7 @@ void BoundInterpreterFunction::
 
   size_t curIdx = 0;
   for (size_t i = 0; i < segments; i++) {
-    // Always accumulate in FP32.
-    std::vector<float> accum(outLineSize, 0.0f);
+    std::vector<AccumT> accum(outLineSize, 0.0f);
     for (size_t j = 0, e = LH.raw(i); j < e; j++) {
       const float weight = static_cast<float>(WH.raw(curIdx));
       const size_t rowIdx = IH.raw(curIdx++);
@@ -3114,9 +3192,21 @@ void BoundInterpreterFunction::
 void BoundInterpreterFunction::
     fwdFusedRowwiseQuantizedSparseLengthsWeightedSumInst(
         const FusedRowwiseQuantizedSparseLengthsWeightedSumInst *I) {
-  dispatchFloatingPointImpl(
-      fwdFusedRowwiseQuantizedSparseLengthsWeightedSumImpl,
-      I->getDest()->getElementType(), I);
+  switch (I->getDest()->getElementType()) {
+  case ElemKind::FloatTy:
+    fwdFusedRowwiseQuantizedSparseLengthsWeightedSumImpl<float, float>(I);
+    break;
+  case ElemKind::Float16Ty:
+    if (I->getUseFP16Accumulation()) {
+      fwdFusedRowwiseQuantizedSparseLengthsWeightedSumImpl<float16_t,
+                                                           float16_t>(I);
+    } else {
+      fwdFusedRowwiseQuantizedSparseLengthsWeightedSumImpl<float16_t, float>(I);
+    }
+    break;
+  default:
+    llvm_unreachable("Type is not supported");
+  }
 }
 
 void BoundInterpreterFunction::fwdLengthsToRangesInst(

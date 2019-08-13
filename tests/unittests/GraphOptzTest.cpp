@@ -2371,6 +2371,57 @@ TEST_F(GraphOptz, VarsCSE) {
   EXPECT_TRUE(input3->getUsers().begin()->getUser() == RN);
 }
 
+TEST_F(GraphOptz, VarsCSENaN) {
+  // Create two variables that are Private, are not trainable, have no writers
+  // and include NaNs. The first two variables have the same data, and so should
+  // be combined via variable CSE.  In particular, the NaN constants should not
+  // prevent the variables from being combine.
+  auto *input1 = mod_.createConstant(ElemKind::FloatTy, {5}, "input1");
+  auto *input2 = mod_.createConstant(ElemKind::FloatTy, {5}, "input2");
+  input1->getHandle() = {0, NAN, 2, NAN, 4};
+  input2->getHandle() = {0, NAN, 2, NAN, 4};
+
+  // Input them each to different nodes, so node CSE does not change them.
+  auto *TN = F_->createTanh("tanh", input1);
+  auto *SN = F_->createSigmoid("sigmoid", input2);
+  auto *CN = F_->createConcat("concat", {TN, SN}, /* axis */ 0);
+  F_->createSave("ret", CN);
+
+  // Initially there are two variables: inputs 1 and 2 (the save uses a
+  // placeholder).
+  EXPECT_EQ(mod_.getConstants().size(), 2);
+
+  CompilationContext cctx;
+  cctx.compMode = CompilationMode::Infer;
+  // Do not perform any compile-time constant folding.
+  cctx.optimizationOpts.enableConstantFolding = false;
+  ::glow::optimize(F_, cctx);
+
+  // Now only one variables is left; input1 and input2 have been combined.
+  EXPECT_EQ(mod_.getConstants().size(), 1);
+
+  // Verify that only one of input1 and input2 exists.
+  Constant *varOneOrTwo = nullptr;
+  for (auto *V : mod_.getConstants()) {
+    if (V == input1 || V == input2) {
+      EXPECT_TRUE(varOneOrTwo == nullptr);
+      varOneOrTwo = V;
+    }
+  }
+  EXPECT_TRUE(varOneOrTwo != nullptr);
+
+  // Verify that the users of the inputs are updated correctly.
+  EXPECT_TRUE(TN->getInput().getNode() == varOneOrTwo);
+  EXPECT_TRUE(SN->getInput().getNode() == varOneOrTwo);
+
+  // Verify that whichever input1/input2 is left over has two users TN and SN.
+  EXPECT_TRUE(varOneOrTwo->getUsers().size() == 2);
+  for (auto &U : varOneOrTwo->getUsers()) {
+    auto *N = U.getUser();
+    EXPECT_TRUE(N == TN || N == SN);
+  }
+}
+
 // Verify that constant input canonicalization works correctly when the
 // arithmetic nodes have multiple users.
 TEST_F(GraphOptz, simplifyArithmeticMultipleUsers) {
@@ -2595,9 +2646,8 @@ TEST_F(GraphOptz, ConvertPlaceholdersToConstants) {
 TEST_F(GraphOptz, optimizeSameTypeConversions) {
   auto *input1 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "input1", true);
   auto *input2 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "input2", true);
-  auto *conv1 = F_->createConvertTo("cast1", input1, input1->getType());
-  auto *conv2 = F_->createConvertTo(
-      "cast2", input2, mod_.uniqueType(ElemKind::Float16Ty, input2->dims()));
+  auto *conv1 = F_->createConvertTo("cast1", input1, ElemKind::FloatTy);
+  auto *conv2 = F_->createConvertTo("cast2", input2, ElemKind::Float16Ty);
   auto *save1 = F_->createSave("save1", conv1);
   auto *save2 = F_->createSave("save1", conv2);
 

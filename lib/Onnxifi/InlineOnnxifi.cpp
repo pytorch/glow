@@ -70,7 +70,7 @@ InlineGraph::initGraph(const void *onnxModel, size_t onnxModelSize,
     precConfig.quantConfig.schema = quantization::Schema::Symmetric;
   }
 
-  executionEngine_.compile(CompilationMode::Infer, function_);
+  executionEngine_.compile(CompilationMode::Infer);
 
   return ONNXIFI_STATUS_SUCCESS;
 }
@@ -93,7 +93,7 @@ onnxStatus InlineGraph::run(std::unique_ptr<ExecutionContext> ctx,
     setTraceEvents(traceEvents, traceContext);
   }
 
-  outputEvent->signal();
+  outputEvent->signal(ONNXIFI_STATUS_SUCCESS);
   return ONNXIFI_STATUS_SUCCESS;
 }
 

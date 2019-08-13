@@ -48,47 +48,6 @@ ReLU is max between zero and the input value. Glow lowers `ReLUNode` to two basi
 
 Please refer to the document in [Backend](https://github.com/pytorch/glow/blob/master/docs/Backends.md#backend-specific-nodes-and-instructions) part for source code details on adding a new backend-specific CPUMaxSplatNode on CPU.
 
-#### Data Layout Transformation for Conv Operator in OpenCL
-
-OpenCL Conv is faster in layout `NCHW`, but  the default layout of convolution operator in Glow is `NHWC`. So we transpose the inputs/output and replace the `ConvolutionNode` with a backend-specific `OCLConvolutionNode` that uses `NCHW`. The transposes mostly can get optimized away thanks to the high-level graph optimizations.
-
-The OpenCL backend defines `OCLConvolution` in `tools/ClassGen/OpenCL/OpenCLSpecificNodes.h` to support layout `NCHW` input.
-
-```cpp
-BB.newNode("OCLConvolution")
-    .addInput("Input")
-    .addInput("Filter")
-    .addInput("Bias")
-    .addMember(MemberType::VectorUnsigned, "Kernels")
-    .addMember(MemberType::VectorUnsigned, "Strides")
-    .addMember(MemberType::VectorUnsigned, "Pads")
-    .addMember(MemberType::Unsigned, "Group")
-    .addResultFromCtorArg()
-    .setDocstring(
-        "This is an OpenCL-specific convolution implementation where the "
-        "filter, the bias and the input are in the NCHW format");
-```
-
-During `transformPostLowering()`, this `convertConvToNCHWConv` node which contains a `NCHWConvNode` node and multiple`Transpose` nodes for `Input`, `Filter` and `Result` replaces the aforementioned pattern.
-
-A corresponding backend-specific `OCLConvolution` instruction is also needed, defined in
-`tools/ClassGen/Backends/OpenCL/OpenCLSpecificInstrs.h`:
-
-```cpp
-BB.newBackendSpecificInstr("OCLConvolution")
-    .addOperand("Dest", OperandKind::Out)
-    .addOperand("Src", OperandKind::In)
-    .addOperand("Filter", OperandKind::In)
-    .addOperand("Bias", OperandKind::In)
-    .addMember(MemberType::VectorUnsigned, "Kernels")
-    .addMember(MemberType::VectorUnsigned, "Strides")
-    .addMember(MemberType::VectorUnsigned, "Pads")
-    .addMember(MemberType::Unsigned, "Group")
-    .autoIRGen()
-    .autoVerify(VerifyKind::SameElementType, {"Dest", "Src", "Filter", "Bias"});
-
-```
-
 
 ### References
 

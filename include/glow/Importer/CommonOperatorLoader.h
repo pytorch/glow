@@ -28,6 +28,7 @@
 #include "llvm/ADT/StringRef.h"
 
 #include <functional>
+#include <numeric>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -708,13 +709,20 @@ protected:
     return llvm::Error::success();
   }
 
-  llvm::Error loadReduceMeanOrSum(llvm::StringRef typeName, const OpType &op,
-                                  ArgumentDictionaryTy &dict) {
+  llvm::Error loadReduceOp(llvm::StringRef typeName, const OpType &op,
+                           ArgumentDictionaryTy &dict) {
     const std::string &opName = loadOperatorName(op);
     NodeValue in;
     ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
 
-    auto shapeAxes = getShape<unsigned_t>(dict["axes"]);
+    std::vector<unsigned_t> shapeAxes = {};
+    if (dict.count("axes")) {
+      shapeAxes = getShape<unsigned_t>(dict["axes"]);
+    } else {
+      shapeAxes.resize(in.dims().size());
+      std::iota(shapeAxes.begin(), shapeAxes.end(), 0);
+    }
+
     std::sort(shapeAxes.begin(), shapeAxes.end());
 
     llvm::ArrayRef<unsigned_t> axes(shapeAxes);
@@ -738,8 +746,12 @@ protected:
     NodeValue node;
     if (typeName == "ReduceMean") {
       node = G_.createBatchedReduceMean(opName, in, axes);
-    } else {
+    } else if (typeName == "ReduceSum") {
       node = G_.createBatchedReduceAdd(opName, in, axes);
+    } else if (typeName == "ReduceMin") {
+      node = G_.createBatchedReduceMin(opName, in, axes);
+    } else {
+      RETURN_ERR("Unsupported Reduce Op " + typeName.str());
     }
 
     // Our batched reduce add/mean does not keep the dim; reshape if necessary.
@@ -1086,8 +1098,9 @@ protected:
       RETURN_IF_ERR(loadTopK(op, dict));
       return true;
     }
-    if (typeName == "ReduceMean" || typeName == "ReduceSum") {
-      RETURN_IF_ERR(loadReduceMeanOrSum(typeName, op, dict));
+    if (typeName == "ReduceMean" || typeName == "ReduceSum" ||
+        typeName == "ReduceMin") {
+      RETURN_IF_ERR(loadReduceOp(typeName, op, dict));
       return true;
     }
     if (typeName == "BatchMatMul") {

@@ -11,15 +11,15 @@ message(STATUS "Using pytorch dir ${PYTORCH_DIR}")
 
 link_directories(${PYTORCH_DIR}/lib)
 
-pybind11_add_module(_torch_glow
-                      binding.cpp
-                      PyTorchFileLoader.cpp
-                      FusingOptimizer.cpp
-                      PyTorchModelLoader.cpp
-                      CachingGraphRunner.cpp)
-
-target_compile_options(_torch_glow PRIVATE -frtti -fexceptions)
-target_link_libraries(_torch_glow
+add_library(PyTorchModelLoader
+                     PyTorchCommon.cpp
+                     FusingOptimizer.cpp
+                     PyTorchModelLoader.cpp
+                     CachingGraphRunner.cpp)
+target_compile_options(PyTorchModelLoader
+                      PRIVATE
+                        -frtti -fexceptions -DC10_USE_GLOG)
+target_link_libraries(PyTorchModelLoader
                       PRIVATE
                         torch
                         c10
@@ -27,10 +27,33 @@ target_link_libraries(_torch_glow
                         ExecutionEngine
                         Graph
                         Importer
-                        Support
-                        Backends
+                        Backends)
+
+add_library(PyTorchFileLoader
+                     PyTorchFileLoader.cpp)
+target_compile_options(PyTorchFileLoader
+                      PRIVATE
+                        -frtti -fexceptions -DC10_USE_GLOG)
+target_link_libraries(PyTorchFileLoader
+                      PRIVATE
+                        PyTorchModelLoader)
+
+pybind11_add_module(_torch_glow
+                      binding.cpp)
+
+target_compile_options(_torch_glow
+                      PRIVATE
+                        -frtti -fexceptions -DC10_USE_GLOG)
+target_link_libraries(_torch_glow
+                      PRIVATE
+                        PyTorchModelLoader
                         pybind11)
 
+target_include_directories(PyTorchModelLoader PUBLIC
+                            ${PYTORCH_DIR}/include)
+
+target_include_directories(PyTorchFileLoader PUBLIC
+                            ${PYTORCH_DIR}/include)
+
 target_include_directories(_torch_glow PUBLIC
-                            ${PYTORCH_DIR}/include
-)
+                            ${PYTORCH_DIR}/include)

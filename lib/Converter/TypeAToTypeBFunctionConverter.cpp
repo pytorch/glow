@@ -23,16 +23,15 @@ using namespace glow;
 
 TypeAToTypeBFunctionConverter::TypeAToTypeBFunctionConverter(
     Function &F, ElemKind fromKind, ElemKind toKind,
-    const KindSet *doNotConvertKinds)
+    const PrecisionConfiguration &precConfig)
     : FunctionConverter(F), mod_(*F.getParent()), dstKind_(toKind),
-      srcKind_(fromKind) {
-  if (doNotConvertKinds) {
-    doNotConvertKinds_ = *doNotConvertKinds;
-  }
-}
+      srcKind_(fromKind), precConfig_(precConfig) {}
 
 bool TypeAToTypeBFunctionConverter::canConvert(const Node &node) const {
-  if (doNotConvertKinds_.count(node.getKind())) {
+  const bool inSet = precConfig_.precisionModeKindSet.count(node.getKind());
+  const bool allowConversion = precConfig_.useSetAsWhitelist ? inSet : !inSet;
+
+  if (!allowConversion) {
     return false;
   }
   return FunctionConverter::canConvert(node);

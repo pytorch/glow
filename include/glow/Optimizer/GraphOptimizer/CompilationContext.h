@@ -45,6 +45,10 @@ struct PrecisionConfiguration {
   /// convolutions for profiling; see `-do-not-lower-nodes-for-profiling` in
   /// docs/Quantization.md).
   KindSet precisionModeKindSet;
+
+  /// Whether to use the precisionModeKindSet as a whitelist instead of the
+  /// default blacklist. Currently only supported for convertToFP16.
+  bool useSetAsWhitelist{false};
 };
 
 using QuantizationMode = PrecisionConfiguration::QuantizationMode;
@@ -87,6 +91,11 @@ struct CompilationContext {
   /// \returns an error if the CompilationContext is malformed for whatever
   /// configuration it is set up for, otherwise returns success.
   llvm::Error verify() const {
+    RETURN_ERR_IF_NOT(!precisionConfig.useSetAsWhitelist ||
+                          precisionConfig.convertToFP16,
+                      "Can only use the precisionModeKindSet as a whitelist in "
+                      "convertToFP16 mode.");
+
     switch (precisionConfig.quantMode) {
     case QuantizationMode::Profile:
       RETURN_ERR_IF_NOT(bindings, GlowErr::ErrorCode::COMPILE_CONTEXT_MALFORMED,

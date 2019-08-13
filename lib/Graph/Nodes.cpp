@@ -104,6 +104,28 @@ std::string Placeholder::getDebugDesc() const {
 //                       Nodes verification
 //===----------------------------------------------------------------------===//
 
+static bool verifyConvFilter(const Node *parent, NodeValue filter,
+                             const ShapeNHWC &idim, const ShapeNHWC &odim,
+                             const ShapeHW &kdim, unsigned_t group) {
+  const size_t filterDims[] = {odim.c, kdim.height, kdim.width,
+                               idim.c / (size_t)group};
+  return expectCompareTrue("Invalid filter dimensions",
+                           filter.getType()->dims(),
+                           llvm::makeArrayRef(filterDims), parent);
+}
+
+static bool verifyConvFilter(const Node *parent, NodeValue filter,
+                             const ShapeNCHW &idim, const ShapeNCHW &odim,
+                             const ShapeHW &kdim, unsigned_t group) {
+  const size_t filterDims[] = {odim.c, idim.c / (size_t)group, kdim.height,
+                               kdim.width};
+
+  return expectCompareTrue("Invalid filter dimensions",
+                           filter.getType()->dims(),
+                           llvm::makeArrayRef(filterDims), parent);
+}
+
+template <typename Shape>
 static bool verifyConvolution(NodeValue src, NodeValue dest, NodeValue filter,
                               NodeValue bias,
                               llvm::ArrayRef<unsigned_t> kernels,
@@ -123,8 +145,8 @@ static bool verifyConvolution(NodeValue src, NodeValue dest, NodeValue filter,
       isValid &= checkType(bias, ElemKind::Int32QTy, parent);
     }
   }
-  ShapeNHWC idim(src.getType()->dims());
-  ShapeNHWC odim(dest.getType()->dims());
+  Shape idim(src.getType()->dims());
+  Shape odim(dest.getType()->dims());
   PaddingTLBR pdim(pads);
   ShapeHW kdim(kernels);
   isValid &= expectCompareTrue("buffer height too small for selected stride",
@@ -147,11 +169,8 @@ static bool verifyConvolution(NodeValue src, NodeValue dest, NodeValue filter,
   isValid &= expectCompareTrue("Invalid output dimension C", odim.c % group,
                                size_t(0), parent);
 
-  const size_t filterDims[] = {odim.c, kdim.height, kdim.width,
-                               idim.c / (size_t)group};
-  isValid &=
-      expectCompareTrue("Invalid filter dimensions", filter.getType()->dims(),
-                        llvm::makeArrayRef(filterDims), parent);
+  isValid &= verifyConvFilter(parent, filter, idim, odim, kdim, group);
+
   const size_t biasDims[] = {odim.c};
   isValid &=
       expectCompareTrue("Invalid bias dimensions", bias.getType()->dims(),
@@ -240,13 +259,14 @@ static bool verifyFullyConnected(NodeValue src, NodeValue weights,
   return isValid;
 }
 
+template <typename Shape>
 static bool verifyPool(NodeValue src, NodeValue dest,
                        llvm::ArrayRef<unsigned_t> kernels,
                        llvm::ArrayRef<unsigned_t> strides,
                        llvm::ArrayRef<unsigned_t> pads, bool isAvgPool = true) {
   const Node *parent = dest.getNode();
-  ShapeNHWC idim = ShapeNHWC(src.getType()->dims());
-  ShapeNHWC odim = ShapeNHWC(dest.getType()->dims());
+  Shape idim(src.getType()->dims());
+  Shape odim(dest.getType()->dims());
   PaddingTLBR pdim(pads);
   ShapeHW kdim(kernels);
 
@@ -260,7 +280,9 @@ static bool verifyPool(NodeValue src, NodeValue dest,
 
   auto outSz =
       calculateConvPoolOutputDims(idim.h, idim.w, kernels, strides, pads);
-  ShapeNHWC exp(idim.n, outSz.first, outSz.second, idim.c);
+  Shape exp(idim);
+  exp.h = outSz.first;
+  exp.w = outSz.second;
   isValid &=
       expectCompareTrue("Unexpected output dimensions", exp, odim, parent);
 
@@ -421,8 +443,15 @@ bool PadNode::verify() const {
 }
 
 bool ConvolutionNode::verify() const {
-  return verifyConvolution(getInput(), getResult(), getFilter(), getBias(),
-                           Kernels_, Strides_, Pads_, Group_, Dilation_);
+  if (getLayout() == NHWC) {
+    return verifyConvolution<ShapeNHWC>(getInput(), getResult(), getFilter(),
+                                        getBias(), Kernels_, Strides_, Pads_,
+                                        Group_, Dilation_);
+  } else {
+    return verifyConvolution<ShapeNCHW>(getInput(), getResult(), getFilter(),
+                                        getBias(), Kernels_, Strides_, Pads_,
+                                        Group_, Dilation_);
+  }
 }
 
 bool ChannelwiseQuantizedConvolutionNode::verify() const {
@@ -433,9 +462,10 @@ bool ChannelwiseQuantizedConvolutionNode::verify() const {
     return false;
   }
 
-  isValid = verifyConvolution(getInput(), getResult(), getFilter(), getBias(),
-                              Kernels_, Strides_, Pads_, Group_,
-                              /* dilation */ 1, /* checkBiasType */ false);
+  isValid =
+      verifyConvolution<ShapeNHWC>(getInput(), getResult(), getFilter(),
+                                   getBias(), Kernels_, Strides_, Pads_, Group_,
+                                   /* dilation */ 1, /* checkBiasType */ false);
 
   isValid &= checkType(getBias(), ElemKind::FloatTy, this);
   isValid &= checkType(getInput(), ElemKind::Int8QTy, this);
@@ -492,10 +522,18 @@ bool ConvolutionGradNode::verify() const {
       verifyInputAndGradInputTypes(getBias(), getGradOfInputNamedBias(), this);
   isValid &= verifyOutputAndGradOutputTypes(
       getOriginalOutputForResult(), getGradOfOriginalOutputNamedResult(), this);
-  isValid &= verifyConvolution(
-      getGradOfInputNamedInput(), getGradOfOriginalOutputNamedResult(),
-      getGradOfInputNamedFilter(), getGradOfInputNamedBias(), Kernels_,
-      Strides_, Pads_, Group_, Dilation_);
+  if (getLayout() == NHWC) {
+    isValid &= verifyConvolution<ShapeNHWC>(
+        getGradOfInputNamedInput(), getGradOfOriginalOutputNamedResult(),
+        getGradOfInputNamedFilter(), getGradOfInputNamedBias(), Kernels_,
+        Strides_, Pads_, Group_, Dilation_);
+  } else {
+    isValid &= verifyConvolution<ShapeNCHW>(
+        getGradOfInputNamedInput(), getGradOfOriginalOutputNamedResult(),
+        getGradOfInputNamedFilter(), getGradOfInputNamedBias(), Kernels_,
+        Strides_, Pads_, Group_, Dilation_);
+  }
+
   return isValid;
 }
 
@@ -526,12 +564,25 @@ bool ConvertToNode::verify() const {
 }
 
 bool MaxPoolNode::verify() const {
-  return verifyPool(getInput(), getResult(), Kernels_, Strides_, Pads_,
-                    /* isAvgPool */ false);
+  if (getLayout() == NHWC) {
+    return verifyPool<ShapeNHWC>(getInput(), getResult(), Kernels_, Strides_,
+                                 Pads_,
+                                 /* isAvgPool */ false);
+  } else {
+    return verifyPool<ShapeNCHW>(getInput(), getResult(), Kernels_, Strides_,
+                                 Pads_,
+                                 /* isAvgPool */ false);
+  }
 }
 
 bool AvgPoolNode::verify() const {
-  return verifyPool(getInput(), getResult(), Kernels_, Strides_, Pads_);
+  if (getLayout() == NHWC) {
+    return verifyPool<ShapeNHWC>(getInput(), getResult(), Kernels_, Strides_,
+                                 Pads_);
+  } else {
+    return verifyPool<ShapeNCHW>(getInput(), getResult(), Kernels_, Strides_,
+                                 Pads_);
+  }
 }
 
 bool AdaptiveAvgPoolNode::verify() const {
@@ -574,9 +625,16 @@ bool MaxPoolGradNode::verify() const {
                                               getGradOfInputNamedInput(), this);
   isValid &= verifyOutputAndGradOutputTypes(
       getOriginalOutputForResult(), getGradOfOriginalOutputNamedResult(), this);
-  isValid &= verifyPool(getGradOfInputNamedInput(),
-                        getGradOfOriginalOutputNamedResult(), Kernels_,
-                        Strides_, Pads_, /* isAvgPool */ false);
+
+  if (getLayout() == NHWC) {
+    isValid &= verifyPool<ShapeNHWC>(
+        getGradOfInputNamedInput(), getGradOfOriginalOutputNamedResult(),
+        Kernels_, Strides_, Pads_, /* isAvgPool */ false);
+  } else {
+    isValid &= verifyPool<ShapeNCHW>(
+        getGradOfInputNamedInput(), getGradOfOriginalOutputNamedResult(),
+        Kernels_, Strides_, Pads_, /* isAvgPool */ false);
+  }
   return isValid;
 }
 
@@ -585,9 +643,17 @@ bool AvgPoolGradNode::verify() const {
                                               getGradOfInputNamedInput(), this);
   isValid &= verifyOutputAndGradOutputTypes(
       getOriginalOutputForResult(), getGradOfOriginalOutputNamedResult(), this);
-  isValid &= verifyPool(getGradOfInputNamedInput(),
-                        getGradOfOriginalOutputNamedResult(), Kernels_,
-                        Strides_, Pads_);
+
+  if (getLayout() == NHWC) {
+    isValid &= verifyPool<ShapeNHWC>(getGradOfInputNamedInput(),
+                                     getGradOfOriginalOutputNamedResult(),
+                                     Kernels_, Strides_, Pads_);
+  } else {
+    isValid &= verifyPool<ShapeNCHW>(getGradOfInputNamedInput(),
+                                     getGradOfOriginalOutputNamedResult(),
+                                     Kernels_, Strides_, Pads_);
+  }
+
   return isValid;
 }
 
@@ -988,6 +1054,15 @@ bool BatchedReduceMeanNode::verify() const {
   return isValid;
 }
 
+bool BatchedReduceMinNode::verify() const {
+  bool isValid = checkType(getResult(), getBatch().getElementType(), this);
+
+  isValid &=
+      expectCompareTrue("Invalid shape", getBatch().dims().size(), size_t(0),
+                        this, CompareOperatorGreaterThan<size_t>());
+  return isValid;
+}
+
 bool SparseLengthsSumNode::verify() const {
   return verifySparseLengthsSum(getResult(), getData(), getIndices(),
                                 getLengths());
@@ -1035,14 +1110,17 @@ bool RowwiseQuantizedSparseLengthsWeightedSumNode::verify() const {
   isValid &= expectCompareTrue(
       "Offsets and Data must have the same first dimension size",
       getData().dims()[0], getOffsets().dims()[0], this);
+  if (getUseFP16Accumulation()) {
+    isValid &= expectCompareTrue(
+        "Only use FP16 accumulation with FP16 version of Fused-RWQ-SLWS.",
+        getResult().getType()->getElementType(), ElemKind::Float16Ty, this);
+  }
   return isValid;
 }
 
-static bool verifyFusedRowwiseQuantizedSparseLengthsSum(NodeValue result,
-                                                        NodeValue data,
-                                                        NodeValue indices,
-                                                        NodeValue lengths,
-                                                        NodeValue weights) {
+static bool verifyFusedRowwiseQuantizedSparseLengthsSum(
+    NodeValue result, NodeValue data, NodeValue indices, NodeValue lengths,
+    NodeValue weights, bool useFP16Accumulation) {
   const Node *parent = result.getNode();
   bool isValid = expectCompareTrue(
       "Input data must be Fused Quantized type",
@@ -1054,6 +1132,11 @@ static bool verifyFusedRowwiseQuantizedSparseLengthsSum(NodeValue result,
   } else {
     isValid &= checkType(result, ElemKind::Float16Ty, parent);
     extraCols = 2 * sizeof(float16_t);
+  }
+  if (useFP16Accumulation) {
+    isValid &= expectCompareTrue(
+        "Only use FP16 accumulation with FP16 version of RWQ-SLWS.",
+        result.getType()->getElementType(), ElemKind::Float16Ty, parent);
   }
   isValid &= checkType(indices, ElemKind::Int64ITy, parent);
   isValid &= checkType(lengths, ElemKind::Int32ITy, parent);
@@ -1094,12 +1177,14 @@ static bool verifyFusedRowwiseQuantizedSparseLengthsSum(NodeValue result,
 
 bool FusedRowwiseQuantizedSparseLengthsWeightedSumNode::verify() const {
   return verifyFusedRowwiseQuantizedSparseLengthsSum(
-      getResult(), getData(), getIndices(), getLengths(), getWeights());
+      getResult(), getData(), getIndices(), getLengths(), getWeights(),
+      getUseFP16Accumulation());
 }
 
 bool FusedRowwiseQuantizedSparseLengthsSumNode::verify() const {
   return verifyFusedRowwiseQuantizedSparseLengthsSum(
-      getResult(), getData(), getIndices(), getLengths(), nullptr);
+      getResult(), getData(), getIndices(), getLengths(), nullptr,
+      getUseFP16Accumulation());
 }
 
 bool LengthsToRangesNode::verify() const {

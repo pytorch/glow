@@ -670,29 +670,28 @@ static void assertConv3DDims(NodeValue input, NodeValue filter, NodeValue bias,
   assert(bias.getType()->size() == filterDims.n && "Invalid bias size");
 }
 
-ConvolutionNode *Function::createConv(llvm::StringRef name, NodeValue input,
-                                      NodeValue filter, NodeValue bias,
-                                      TypeRef outTy,
-                                      llvm::ArrayRef<unsigned_t> kernels,
-                                      llvm::ArrayRef<unsigned_t> strides,
-                                      llvm::ArrayRef<unsigned_t> pads,
-                                      unsigned_t group, unsigned_t dilation) {
+ConvolutionNode *Function::createConv(
+    llvm::StringRef name, NodeValue input, NodeValue filter, NodeValue bias,
+    TypeRef outTy, llvm::ArrayRef<unsigned_t> kernels,
+    llvm::ArrayRef<unsigned_t> strides, llvm::ArrayRef<unsigned_t> pads,
+    unsigned_t group, unsigned_t dilation, ConvolutionLayout layout) {
   assertConvDims(input, filter, bias, kernels, strides, pads, group);
   auto OT = getParent()->uniqueType(*outTy);
   return addNode(new ConvolutionNode(name, OT, input, filter, bias, kernels,
-                                     strides, pads, group, dilation));
+                                     strides, pads, group, dilation, layout));
 }
 
 ConvolutionNode *Function::createConv(llvm::StringRef name, NodeValue input,
                                       NodeValue filter, NodeValue bias,
                                       TypeRef outTy, unsigned_t kernel,
                                       unsigned_t stride, unsigned_t pad,
-                                      unsigned_t group, unsigned_t dilation) {
+                                      unsigned_t group, unsigned_t dilation,
+                                      ConvolutionLayout layout) {
   llvm::SmallVector<unsigned_t, 4> pads = {pad, pad, pad, pad};
   llvm::SmallVector<unsigned_t, 2> strides = {stride, stride};
   llvm::SmallVector<unsigned_t, 2> kernels = {kernel, kernel};
   return createConv(name, input, filter, bias, outTy, kernels, strides, pads,
-                    group, dilation);
+                    group, dilation, layout);
 }
 
 Convolution3DNode *Function::createConv3D(llvm::StringRef name, NodeValue input,
@@ -723,7 +722,8 @@ Convolution3DNode *Function::createConv3D(llvm::StringRef name, NodeValue input,
 MaxPoolNode *Function::createMaxPool(llvm::StringRef name, NodeValue input,
                                      llvm::ArrayRef<unsigned_t> kernels,
                                      llvm::ArrayRef<unsigned_t> strides,
-                                     llvm::ArrayRef<unsigned_t> pads) {
+                                     llvm::ArrayRef<unsigned_t> pads,
+                                     ConvolutionLayout layout) {
   ShapeNHWC idim = ShapeNHWC(input.dims());
   checkKernelSize(idim, kernels, pads);
 
@@ -734,22 +734,24 @@ MaxPoolNode *Function::createMaxPool(llvm::StringRef name, NodeValue input,
   auto AMT = getParent()->uniqueType(
       ElemKind::Int64ITy, {idim.n, outSz.first, outSz.second, idim.c});
 
-  return addNode(new MaxPoolNode(name, OT, AMT, input, kernels, strides, pads));
+  return addNode(
+      new MaxPoolNode(name, OT, AMT, input, kernels, strides, pads, layout));
 }
 
 MaxPoolNode *Function::createMaxPool(llvm::StringRef name, NodeValue input,
                                      unsigned_t kernel, unsigned_t stride,
-                                     unsigned_t pad) {
+                                     unsigned_t pad, ConvolutionLayout layout) {
   llvm::SmallVector<unsigned_t, 4> pads = {pad, pad, pad, pad};
   llvm::SmallVector<unsigned_t, 2> strides = {stride, stride};
   llvm::SmallVector<unsigned_t, 2> kernels = {kernel, kernel};
-  return createMaxPool(name, input, kernels, strides, pads);
+  return createMaxPool(name, input, kernels, strides, pads, layout);
 }
 
 AvgPoolNode *Function::createAvgPool(llvm::StringRef name, NodeValue input,
                                      llvm::ArrayRef<unsigned_t> kernels,
                                      llvm::ArrayRef<unsigned_t> strides,
-                                     llvm::ArrayRef<unsigned_t> pads) {
+                                     llvm::ArrayRef<unsigned_t> pads,
+                                     ConvolutionLayout layout) {
   ShapeNHWC idim = ShapeNHWC(input.dims());
   checkKernelSize(idim, kernels, pads);
 
@@ -758,28 +760,31 @@ AvgPoolNode *Function::createAvgPool(llvm::StringRef name, NodeValue input,
   auto OT = getParent()->uniqueTypeWithNewShape(
       input.getType(), {idim.n, outSz.first, outSz.second, idim.c});
 
-  return addNode(new AvgPoolNode(name, OT, input, kernels, strides, pads));
+  return addNode(
+      new AvgPoolNode(name, OT, input, kernels, strides, pads, layout));
 }
 
 AvgPoolNode *Function::createAvgPool(llvm::StringRef name, NodeValue input,
                                      TypeRef outTy,
                                      llvm::ArrayRef<unsigned_t> kernels,
                                      llvm::ArrayRef<unsigned_t> strides,
-                                     llvm::ArrayRef<unsigned_t> pads) {
+                                     llvm::ArrayRef<unsigned_t> pads,
+                                     ConvolutionLayout layout) {
   ShapeNHWC idim = ShapeNHWC(input.dims());
   ShapeHW kdim(kernels);
   (void)kdim;
   checkKernelSize(idim, kernels, pads);
-  return addNode(new AvgPoolNode(name, outTy, input, kernels, strides, pads));
+  return addNode(
+      new AvgPoolNode(name, outTy, input, kernels, strides, pads, layout));
 }
 
 AvgPoolNode *Function::createAvgPool(llvm::StringRef name, NodeValue input,
                                      unsigned_t kernel, unsigned_t stride,
-                                     unsigned_t pad) {
+                                     unsigned_t pad, ConvolutionLayout layout) {
   llvm::SmallVector<unsigned_t, 4> pads = {pad, pad, pad, pad};
   llvm::SmallVector<unsigned_t, 2> strides = {stride, stride};
   llvm::SmallVector<unsigned_t, 2> kernels = {kernel, kernel};
-  return createAvgPool(name, input, kernels, strides, pads);
+  return createAvgPool(name, input, kernels, strides, pads, layout);
 }
 
 AdaptiveAvgPoolNode *Function::createAdaptiveAvgPool(llvm::StringRef name,
@@ -1486,6 +1491,15 @@ Function::createBatchedReduceMean(llvm::StringRef name, NodeValue batch,
   return createBatchedReduceMean(name, OT, batch, axes);
 }
 
+BatchedReduceMinNode *
+Function::createBatchedReduceMin(llvm::StringRef name, NodeValue batch,
+                                 llvm::ArrayRef<unsigned_t> axes) {
+  // Create new shape with specified dimensions either reduced or removed.
+  auto outDims = getNewShapeWithoutAxes(batch.dims(), axes);
+  auto OT = getParent()->uniqueType(batch.getType()->getElementType(), outDims);
+  return addNode(new BatchedReduceMinNode(name, OT, batch, axes));
+}
+
 BatchedAddNode *Function::createBatchedAdd(llvm::StringRef name,
                                            NodeValue batch, NodeValue sample) {
   return addNode(new BatchedAddNode(name, batch.getType(), batch, sample));
@@ -1539,24 +1553,27 @@ Function::createSparseLengthsWeightedSum(llvm::StringRef name, TypeRef outTy,
 RowwiseQuantizedSparseLengthsWeightedSumNode *
 Function::createRowwiseQuantizedSparseLengthsWeightedSum(
     llvm::StringRef name, Constant *data, Constant *scales, Constant *offsets,
-    NodeValue weights, NodeValue indices, NodeValue lengths,
-    ElemKind precision) {
+    NodeValue weights, NodeValue indices, NodeValue lengths, ElemKind precision,
+    bool useFP16Accumulation) {
   auto inDims = data->dims();
   ShapeVector outDims(inDims.begin(), inDims.end());
   outDims[0] = lengths.dims()[0];
   auto outTy = getParent()->uniqueType(precision, outDims);
   return addNode(new RowwiseQuantizedSparseLengthsWeightedSumNode(
-      name, outTy, data, scales, offsets, weights, indices, lengths));
+      name, outTy, data, scales, offsets, weights, indices, lengths,
+      useFP16Accumulation));
 }
 
 RowwiseQuantizedSparseLengthsWeightedSumNode *
 Function::createRowwiseQuantizedSparseLengthsSum(
     llvm::StringRef name, Constant *data, Constant *scales, Constant *offsets,
-    NodeValue indices, NodeValue lengths, ElemKind precision) {
+    NodeValue indices, NodeValue lengths, ElemKind precision,
+    bool useFP16Accumulation) {
   auto ty = getParent()->uniqueType(precision, {indices.dims()[0]});
   auto ones = createSplat(name.str() + ".ones", ty, 1.0);
   return createRowwiseQuantizedSparseLengthsWeightedSum(
-      name, data, scales, offsets, ones, indices, lengths, precision);
+      name, data, scales, offsets, ones, indices, lengths, precision,
+      useFP16Accumulation);
 }
 
 /// Helper to create a RowwiseQuantizedSparseLengthsWeightedSumNode in the
@@ -1568,7 +1585,7 @@ static RowwiseQuantizedSparseLengthsWeightedSumNode *
 quantizeDataAndCreateRowwiseQuantizedSparseLengthsWeightedSum(
     Function *F, llvm::StringRef name, Tensor &data, NodeValue weights,
     NodeValue indices, NodeValue lengths, quantization::Schema schema,
-    ElemKind precision) {
+    ElemKind precision, bool useFP16Accumulation) {
   auto inDims = data.dims();
 
   // Note: In rwqData, we are using a quantized type, however the scale/offset
@@ -1598,25 +1615,28 @@ quantizeDataAndCreateRowwiseQuantizedSparseLengthsWeightedSum(
   }
   return F->createRowwiseQuantizedSparseLengthsWeightedSum(
       name, rwqData, dataScales, dataOffsets, weights, indices, lengths,
-      precision);
+      precision, useFP16Accumulation);
 }
 
 RowwiseQuantizedSparseLengthsWeightedSumNode *
 Function::createRowwiseQuantizedSparseLengthsWeightedSum(
     llvm::StringRef name, Tensor &data, NodeValue weights, NodeValue indices,
-    NodeValue lengths, quantization::Schema schema, ElemKind precision) {
+    NodeValue lengths, quantization::Schema schema, ElemKind precision,
+    bool useFP16Accumulation) {
   return quantizeDataAndCreateRowwiseQuantizedSparseLengthsWeightedSum(
-      this, name, data, weights, indices, lengths, schema, precision);
+      this, name, data, weights, indices, lengths, schema, precision,
+      useFP16Accumulation);
 }
 
 RowwiseQuantizedSparseLengthsWeightedSumNode *
 Function::createRowwiseQuantizedSparseLengthsSum(
     llvm::StringRef name, Tensor &data, NodeValue indices, NodeValue lengths,
-    quantization::Schema schema, ElemKind precision) {
+    quantization::Schema schema, ElemKind precision, bool useFP16Accumulation) {
   auto ty = getParent()->uniqueType(precision, {indices.dims()[0]});
   auto ones = createSplat(name.str() + ".ones", ty, 1.0);
   return quantizeDataAndCreateRowwiseQuantizedSparseLengthsWeightedSum(
-      this, name, data, ones, indices, lengths, schema, precision);
+      this, name, data, ones, indices, lengths, schema, precision,
+      useFP16Accumulation);
 }
 
 /// Helper used to get specific output type required for
@@ -1640,23 +1660,21 @@ static TypeRef getOutputTypeOfFusedRowwiseQuantizedSLS(
 FusedRowwiseQuantizedSparseLengthsWeightedSumNode *
 Function::createFusedRowwiseQuantizedSparseLengthsWeightedSum(
     llvm::StringRef name, NodeValue data, NodeValue weights, NodeValue indices,
-    NodeValue lengths, ElemKind precision) {
+    NodeValue lengths, ElemKind precision, bool useFP16Accumulation) {
   auto outTy = getOutputTypeOfFusedRowwiseQuantizedSLS(
       this, data.dims(), lengths.dims(), precision);
   return addNode(new FusedRowwiseQuantizedSparseLengthsWeightedSumNode(
-      name, outTy, data, weights, indices, lengths));
+      name, outTy, data, weights, indices, lengths, useFP16Accumulation));
 }
 
 FusedRowwiseQuantizedSparseLengthsSumNode *
-Function::createFusedRowwiseQuantizedSparseLengthsSum(llvm::StringRef name,
-                                                      Constant *data,
-                                                      NodeValue indices,
-                                                      NodeValue lengths,
-                                                      ElemKind precision) {
+Function::createFusedRowwiseQuantizedSparseLengthsSum(
+    llvm::StringRef name, Constant *data, NodeValue indices, NodeValue lengths,
+    ElemKind precision, bool useFP16Accumulation) {
   auto outTy = getOutputTypeOfFusedRowwiseQuantizedSLS(
       this, data->dims(), lengths.dims(), precision);
   return addNode(new FusedRowwiseQuantizedSparseLengthsSumNode(
-      name, outTy, data, indices, lengths));
+      name, outTy, data, indices, lengths, useFP16Accumulation));
 }
 
 /// Helper to get quantized data required for
@@ -1701,25 +1719,23 @@ static Constant *quantizeDataForFusedRowwiseQuantizedSparseLengthsWeightedSum(
 FusedRowwiseQuantizedSparseLengthsWeightedSumNode *
 Function::createFusedRowwiseQuantizedSparseLengthsWeightedSum(
     llvm::StringRef name, Tensor &data, NodeValue weights, NodeValue indices,
-    NodeValue lengths, ElemKind precision) {
+    NodeValue lengths, ElemKind precision, bool useFP16Accumulation) {
   Constant *rwqData =
       quantizeDataForFusedRowwiseQuantizedSparseLengthsWeightedSum(this, data,
                                                                    precision);
   return createFusedRowwiseQuantizedSparseLengthsWeightedSum(
-      name, rwqData, weights, indices, lengths, precision);
+      name, rwqData, weights, indices, lengths, precision, useFP16Accumulation);
 }
 
 FusedRowwiseQuantizedSparseLengthsSumNode *
-Function::createFusedRowwiseQuantizedSparseLengthsSum(llvm::StringRef name,
-                                                      Tensor &data,
-                                                      NodeValue indices,
-                                                      NodeValue lengths,
-                                                      ElemKind precision) {
+Function::createFusedRowwiseQuantizedSparseLengthsSum(
+    llvm::StringRef name, Tensor &data, NodeValue indices, NodeValue lengths,
+    ElemKind precision, bool useFP16Accumulation) {
   Constant *rwqData =
       quantizeDataForFusedRowwiseQuantizedSparseLengthsWeightedSum(this, data,
                                                                    precision);
   return this->createFusedRowwiseQuantizedSparseLengthsSum(
-      name, rwqData, indices, lengths, precision);
+      name, rwqData, indices, lengths, precision, useFP16Accumulation);
 }
 
 LengthsToRangesNode *Function::createLengthsToRanges(llvm::StringRef name,
@@ -2103,13 +2119,11 @@ BatchNormalizationNode *Function::createBatchNormalization(
                                   channelIdx, epsilon, momentum);
 }
 
-ConvolutionNode *Function::createConv(PlaceholderBindings &bindings,
-                                      llvm::StringRef name, NodeValue input,
-                                      size_t outChannels,
-                                      llvm::ArrayRef<unsigned_t> kernels,
-                                      llvm::ArrayRef<unsigned_t> strides,
-                                      llvm::ArrayRef<unsigned_t> pads,
-                                      unsigned_t group, unsigned_t dilation) {
+ConvolutionNode *Function::createConv(
+    PlaceholderBindings &bindings, llvm::StringRef name, NodeValue input,
+    size_t outChannels, llvm::ArrayRef<unsigned_t> kernels,
+    llvm::ArrayRef<unsigned_t> strides, llvm::ArrayRef<unsigned_t> pads,
+    unsigned_t group, unsigned_t dilation, ConvolutionLayout layout) {
   ShapeNHWC idim = ShapeNHWC(input.dims());
   ShapeHW kdim(kernels);
   PaddingTLBR pdim(pads);
@@ -2149,19 +2163,20 @@ ConvolutionNode *Function::createConv(PlaceholderBindings &bindings,
   auto OT = getParent()->uniqueType(inputTy, outDims);
 
   return addNode(new ConvolutionNode(name, OT, input, filter, bias, kernels,
-                                     strides, pads, group, dilation));
+                                     strides, pads, group, dilation, layout));
 }
 
 ConvolutionNode *Function::createConv(PlaceholderBindings &bindings,
                                       llvm::StringRef name, NodeValue input,
                                       size_t outChannels, unsigned_t kernel,
                                       unsigned_t stride, unsigned_t pad,
-                                      unsigned_t group, unsigned_t dilation) {
+                                      unsigned_t group, unsigned_t dilation,
+                                      ConvolutionLayout layout) {
   llvm::SmallVector<unsigned_t, 4> pads = {pad, pad, pad, pad};
   llvm::SmallVector<unsigned_t, 2> strides = {stride, stride};
   llvm::SmallVector<unsigned_t, 2> kernels = {kernel, kernel};
   return createConv(bindings, name, input, outChannels, kernels, strides, pads,
-                    group, dilation);
+                    group, dilation, layout);
 }
 
 Convolution3DNode *Function::createConv3D(PlaceholderBindings &bindings,
@@ -2238,6 +2253,12 @@ ChannelwiseQuantizedConvolutionNode *Function::createChannelwiseQuantizedConv(
 ConvertToNode *Function::createConvertTo(llvm::StringRef name, NodeValue input,
                                          TypeRef outTy) {
   return addNode(new ConvertToNode(name, outTy, input));
+}
+
+ConvertToNode *Function::createConvertTo(llvm::StringRef name, NodeValue input,
+                                         ElemKind k) {
+  auto OT = getParent()->uniqueType(k, input.dims());
+  return addNode(new ConvertToNode(name, OT, input));
 }
 
 FullyConnectedNode *

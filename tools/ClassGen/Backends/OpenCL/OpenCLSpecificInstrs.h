@@ -16,38 +16,6 @@
 
 #ifdef GLOW_WITH_OPENCL
 
-BB.newBackendSpecificInstr("OCLConvolution")
-    .addOperand("Dest", OperandKind::Out)
-    .addOperand("Src", OperandKind::In)
-    .addOperand("Filter", OperandKind::In)
-    .addOperand("Bias", OperandKind::In)
-    .addMember(MemberType::VectorUnsigned, "Kernels")
-    .addMember(MemberType::VectorUnsigned, "Strides")
-    .addMember(MemberType::VectorUnsigned, "Pads")
-    .addMember(MemberType::Unsigned, "Group")
-    .addMember(MemberType::Unsigned, "Dilation")
-    .autoIRGen()
-    .autoVerify(VerifyKind::SameElementType, {"Dest", "Src", "Filter"});
-
-BB.newBackendSpecificInstr("OCLAvgPool")
-    .addOperand("Dest", OperandKind::Out)
-    .addOperand("Src", OperandKind::In)
-    .addMember(MemberType::Unsigned, "Kernel")
-    .addMember(MemberType::Unsigned, "Stride")
-    .addMember(MemberType::VectorUnsigned, "Pads")
-    .autoIRGen()
-    .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
-    .addGradientInstr({"Dest"}, {"Dest", "Src"});
-
-BB.newBackendSpecificInstr("OCLMaxPool")
-    .addOperand("Dest", OperandKind::Out)
-    .addOperand("Src", OperandKind::In)
-    .addMember(MemberType::Unsigned, "Kernel")
-    .addMember(MemberType::Unsigned, "Stride")
-    .addMember(MemberType::VectorUnsigned, "Pads")
-    .autoIRGen()
-    .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"});
-
 BB.newBackendSpecificInstr("OCLBatchedReduceAdd")
     .addOperand("Dest", OperandKind::Out)
     .addOperand("Src", OperandKind::In)

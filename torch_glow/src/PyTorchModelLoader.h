@@ -14,29 +14,81 @@
  * limitations under the License.
  */
 
-#ifndef GLOW_IMPORTER_PYTORCH_PYTORCHMODELLOADER_H
-#define GLOW_IMPORTER_PYTORCH_PYTORCHMODELLOADER_H
+#ifndef GLOW_TORCH_GLOW_SRC_PYTORCHMODELLOADER_H
+#define GLOW_TORCH_GLOW_SRC_PYTORCHMODELLOADER_H
 
+#include "PyTorchCommon.h"
 #include <llvm/Support/Error.h>
 #include <torch/csrc/jit/custom_operator.h>
-#include <torch/csrc/jit/ir.h>
 
 #include "glow/Graph/Graph.h"
+
+namespace glow {
 
 /// Loads PyTorch JIT IR subgraphs as a Glow Function.
 class PyTorchModelLoader {
   /// Glow Function created outside this class.
   glow::Function &F_;
 
+  /// Map from input placeholders to their location on the input stack.
+  std::unordered_map<glow::Placeholder *, size_t>
+      inputPlaceholdersReverseIndex_;
+
+  /// The reference PyTorch inputs used for loading. This is required for shape
+  /// information.
+  at::ArrayRef<torch::jit::IValue> &inputs_;
+
   /// Mapping from PyTorch Values to Glow NodeValues created during loading.
-  std::unordered_map<const torch::jit::Value *, glow::NodeValue> valueMap_;
+  using ValueMap =
+      std::unordered_map<const torch::jit::Value *, glow::NodeValue>;
+  ValueMap valueMap_;
+
+  /// Values in the MappingOfMemberFunctions map. These values contain the
+  /// information necessary to load PyTorch nodes such as which
+  /// PyTorchModelLoader method to use and which inputs should be considered as
+  /// constants.
+  struct MappingOfMemberFunctionsValue {
+    /// The type of functions used to load PyTorch nodes in PyTorchModelLoader.
+    using LoadFn =
+        llvm::Error (PyTorchModelLoader::*)(const torch::jit::Node *);
+
+    /// Symbols (as strings) that this mapping value is applicable to.
+    const std::vector<const char *> symbols;
+
+    /// The PyTorchModelLoader method that should be used to load the given
+    /// PyTorch node.
+    LoadFn loadFn;
+
+    /// The set of inputs that should be loaded as Glow Constants instead of
+    /// as placeholders for inference because they should be expected to not
+    /// change between inferences. An example would be the weights for
+    /// convolutions.
+    const std::unordered_set<size_t> constInputs;
+
+    MappingOfMemberFunctionsValue(std::vector<const char *> symbolsP,
+                                  LoadFn loadFnP,
+                                  std::unordered_set<size_t> constInputsP)
+        : symbols(symbolsP), loadFn(loadFnP), constInputs(constInputsP) {}
+  };
 
   /// Defines type for mapping Symbols to PyTorchModelLoader member functions
-  /// for loading torch::jit::Node * objects.
-  using MappingOfMemberFunctions =
-      std::unordered_map<torch::jit::Symbol,
-                         llvm::Error (PyTorchModelLoader::*)(
-                             const torch::jit::Node *)>;
+  /// for loading torch::jit::Node objects.
+  class MappingOfMemberFunctions
+      : public std::unordered_map<torch::jit::Symbol,
+                                  MappingOfMemberFunctionsValue> {
+  public:
+    /// Construct a MappingOfMemberFunctions from a list of
+    /// MappingOfMemberFunctionsValues \p initList.
+    MappingOfMemberFunctions(
+        std::initializer_list<MappingOfMemberFunctionsValue> initList) {
+      for (const auto &val : initList) {
+        for (const char *symbolStr : val.symbols) {
+          auto res = this->insert({at::Symbol::fromQualString(symbolStr), val});
+          DCHECK(res.second) << "Duplicate symbol mapping for " << symbolStr;
+        }
+      }
+    }
+  };
 
 public:
   /// Returns whether or not a PyTorch node is supported.
@@ -47,24 +99,26 @@ public:
   static bool isNodeSupported(const torch::jit::Node *node);
 
   /// Takes a glow::Function \p F, a jit::Graph \p subgraph to load, and a
-  /// stack of \p inputs for the subgraph to be loaded. Output parameters
-  /// \p inputPlaceholders and \p outputPlaceholders are filled out.
-  /// \returns error on failure
+  /// stack of \p inputs for the subgraph to be loaded. Parameter \p settings
+  /// control the fusion details. Output parameters \p inputPlaceholders and
+  /// \p outputPlaceholders are filled out. \returns error on failure
   static llvm::Error
   loadJITGraph(glow::Function &F, torch::jit::Graph &subgraph,
                at::ArrayRef<torch::jit::IValue> &inputs,
                std::vector<glow::Placeholder *> &inputPlaceholders,
-               std::vector<glow::Placeholder *> &outputPlaceholders);
+               std::vector<glow::Placeholder *> &outputPlaceholders,
+               const PyTorchLoaderSettings &settings);
 
 private:
   /// Takes a glow::Function \p F, a jit::Graph \p subgraph to load, and a
-  /// stack of \p inputs for the subgraph to be loaded. Output parameters
-  /// \p inputPlaceholders and \p outputPlaceholders are filled out.
+  /// stack of \p inputs for the subgraph to be loaded. Parameter \p settings
+  /// control the fusion details. Output parameters \p inputPlaceholders and
+  /// \p outputPlaceholders are filled out.
   PyTorchModelLoader(glow::Function &F, torch::jit::Graph &subgraph,
                      at::ArrayRef<torch::jit::IValue> &inputs,
                      std::vector<glow::Placeholder *> &inputPlaceholders,
                      std::vector<glow::Placeholder *> &outputPlaceholders,
-                     llvm::Error &error);
+                     llvm::Error &error, const PyTorchLoaderSettings &settings);
 
   /// Save access to the mapping.
   static const MappingOfMemberFunctions &getSymbolsMapping();
@@ -91,13 +145,29 @@ private:
   llvm::Expected<glow::Handle<T>>
   getGlowConstantHandle(const torch::jit::Value *value) const;
 
+  /// For each Placeholder input to \p ptNode, if this input has been marked
+  /// as being an input that should be converted to a glow Constant in \p
+  /// constInputs, create a glow Constant for that placeholder with the iValue
+  /// from the stack of inputs for this loader. \returns a ValueMap containing
+  /// just these new Constants.
+  llvm::Expected<ValueMap>
+  createConstantPhReplacements(const torch::jit::Node *ptNode,
+                               const std::unordered_set<size_t> &constInputs);
+
+  /// \returns a glow Constant from a given PyTorch IValue \p iVal.
+  llvm::Expected<glow::Constant *>
+  createGlowConstantFromIValue(const torch::jit::IValue &iVal);
+
   /// Creates and \returns a new Glow Placeholder corresponding to the given
   /// PyTorch Value \p value.
   llvm::Expected<glow::Placeholder *> loadValue(const torch::jit::Value *value);
 
-  /// Load a given PyTorch Node \p ptNode.
-  /// \returns error on failure.
-  llvm::Error loadNode(const torch::jit::Node *ptNode);
+  /// Load a given PyTorch Node \p ptNode. If \p weightFreezingEnabled then
+  /// load inputs that have been marked as constInputs in
+  /// MappingOfMemberFunctions as Constants instead of as Placeholders. \returns
+  /// error on failure.
+  llvm::Error loadNode(const torch::jit::Node *ptNode,
+                       bool weightFreezingEnabled);
 
   /// Load a PyTorch Constant node as a Glow Constant.
   /// \returns error on failure.
@@ -150,6 +220,14 @@ private:
   /// \returns error on failure.
   llvm::Error loadMaxPool2d(const torch::jit::Node *ptNode);
 
+  /// Load a PyTorch sigmoid node.
+  /// \returns error on failure.
+  llvm::Error loadSigmoid(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch avg_pool2d node.
+  /// \returns error on failure.
+  llvm::Error loadAvgPool2d(const torch::jit::Node *ptNode);
+
   /// Load a PyTorch adaptive_avg_pool2d node.
   /// \returns error on failure.
   llvm::Error loadAdaptiveAvgPool2d(const torch::jit::Node *ptNode);
@@ -165,6 +243,23 @@ private:
   /// Load a PyTorch min node.
   /// \returns error on failure.
   llvm::Error loadMin(const torch::jit::Node *ptNode);
-};
 
-#endif // GLOW_IMPORTER_PYTORCH_PYTORCHMODELLOADER_H
+  /// Load a PyTorch matmul (n x k) x (k x m) -> (n x m) node.
+  /// \returns error on failure.
+  llvm::Error loadMatMul(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch prelu node.
+  /// \returns error on failure.
+  llvm::Error loadPRelu(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch SoftMax node.
+  /// \returns error on failure.
+  llvm::Error loadSoftMax(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch flatten node.
+  /// \returns error on failure.
+  llvm::Error loadFlatten(const torch::jit::Node *ptNode);
+};
+} // namespace glow
+
+#endif // GLOW_TORCH_GLOW_SRC_PYTORCHMODELLOADER_H

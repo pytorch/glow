@@ -243,6 +243,11 @@ private:
                                         const ShapeVector &eDestDims);
 
   template <typename ElemTy>
+  void fwdBatchedReduceMinInstImpl(Value *batch, Value *dest,
+                                   const ShapeVector &eBatchDims,
+                                   const ShapeVector &eDestDims, ElemTy max);
+
+  template <typename ElemTy>
   void fwdLengthsSumInstFloatImpl(const LengthsSumInst *I);
 
   template <typename ElemTy> void fwdGatherInstImpl(const GatherInst *I);
@@ -275,11 +280,11 @@ private:
 
   template <typename ElemTy> void fwdModuloInstImpl(glow::ModuloInst const *I);
 
-  template <typename T>
+  template <typename T, typename AccumT>
   void fwdRowwiseQuantizedSparseLengthsWeightedSumImpl(
       const RowwiseQuantizedSparseLengthsWeightedSumInst *I);
 
-  template <typename T>
+  template <typename T, typename AccumT>
   void fwdFusedRowwiseQuantizedSparseLengthsWeightedSumImpl(
       const FusedRowwiseQuantizedSparseLengthsWeightedSumInst *I);
   ///@}

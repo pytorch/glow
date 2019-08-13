@@ -15,11 +15,14 @@ See `glow/torch_glow/examples` for illustrative examples.
 ## Usage
 ### Run tests
 * `python setup.py test`
-  * use the `--cmake_prefix_path` flag to specify an llvm install location just like when building glow
-  * to disable capturing test outputs, add `addopts = -s` to `[tool:pytest]` in setup.cfg
 ### Temporarily install while developing on Glow
 * `python setup.py develop` 
   * verify with installation worked with `import torch_glow` in Python
 ### Install
 * `python setup.py install` 
   * verify with installation worked with `import torch_glow` in Python
+
+## Tips
+* Use the `--run_cmake` flag to force rerun cmake
+* Use the `--cmake_prefix_path` flag to specify an llvm install location just like when building glow
+* To disable capturing test outputs and print a lot more test details, add `addopts = -s` to `[tool:pytest]` in setup.cfg

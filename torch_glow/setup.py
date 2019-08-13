@@ -1,7 +1,4 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-from __future__ import unicode_literals
+from __future__ import absolute_import, division, print_function, unicode_literals
 
 from distutils.spawn import find_executable
 from distutils import sysconfig, log
@@ -29,6 +26,8 @@ except ImportError as e:
     print('You need to install pytorch first.')
     sys.exit(1)
 
+print("torch version:", torch.__version__)
+print("torch location:", os.path.dirname(os.path.realpath(torch.__file__)))
 
 FILE_DIR = os.path.realpath(os.path.dirname(__file__))
 TOP_DIR = os.path.realpath(os.path.dirname(FILE_DIR))
@@ -116,6 +115,7 @@ class cmake_build(setuptools.Command):
         with cd(CMAKE_BUILD_DIR):
             cmake_args = [
                 CMAKE,
+                '-DC10_USE_GLOG=1',
                 '-DGLOW_BUILD_PYTORCH_INTEGRATION=ON',
                 '-DBUILD_SHARED_LIBS=OFF',
                 '-DCMAKE_EXPORT_COMPILE_COMMANDS=ON',
@@ -125,6 +125,7 @@ class cmake_build(setuptools.Command):
                 # PyTorch cmake args
                 '-DPYTORCH_DIR={}'.format(
                     os.path.dirname(os.path.realpath(torch.__file__))),
+                '-DTORCH_GLOW={}'.format(FILE_DIR),
             ]
 
             if args.cmake_prefix_path:

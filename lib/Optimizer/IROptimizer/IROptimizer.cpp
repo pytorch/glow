@@ -1557,9 +1557,9 @@ void performPeepholeOptimizations(IRFunction &M) {
         continue;
       }
 
-      auto *newI = B.createMaxPoolInst(PMI->getName(), PMI->getDest(),
-                                       PMI->getSrc(), PMI->getKernels(),
-                                       PMI->getStrides(), PMI->getPads());
+      auto *newI = B.createMaxPoolInst(
+          PMI->getName(), PMI->getDest(), PMI->getSrc(), PMI->getKernels(),
+          PMI->getStrides(), PMI->getPads(), PMI->getLayout());
       it = M.moveInstruction(I, newI);
       M.eraseInstruction(I);
       continue;

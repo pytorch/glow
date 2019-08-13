@@ -131,9 +131,9 @@ llvm::Error HostManager::addNetwork(std::unique_ptr<Module> module,
   for (Function *F : module->getFunctions()) {
     RETURN_IF_ERR(optimizeFunctionBeforeLowering(F, cctx));
   }
-  auto partitioner = Partitioner(module.get(), deviceInfo, saturateHost);
-  RETURN_IF_ERR(partitioner.Partition(cctx));
-  auto nodeList = std::move(partitioner.getPartitionResult());
+  Partitioner partitioner(module.get(), deviceInfo, saturateHost);
+  DAGListTy nodeList;
+  ASSIGN_VALUE_OR_RETURN_ERR(nodeList, partitioner.partition(cctx));
 
   if (cctx.precisionConfig.quantMode == QuantizationMode::Profile) {
     // Since for profiling the provisioner will be reset, we only allow one

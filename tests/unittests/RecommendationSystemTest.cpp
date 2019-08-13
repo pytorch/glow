@@ -13,14 +13,15 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "BackendTestUtils2.h"
+#include "BackendTestUtils.h"
 
 #include "glow/Converter/TypeAToTypeBFunctionConverter.h"
-#include "glow/ExecutionEngine/ExecutionEngine2.h"
+#include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Partitioner/Partitioner.h"
 
 #include <algorithm>
+#include <cmath>
 #include <random>
 
 #include "gtest/gtest.h"
@@ -31,16 +32,6 @@ using namespace glow;
 
 namespace {
 llvm::cl::OptionCategory recSysTestCat("RecSys Category");
-
-llvm::cl::opt<unsigned> bottomMLPIntermediateDimOpt(
-    "bottom-mlp-intermediate-dim",
-    llvm::cl::desc("Intermediate dim for the bottom MLP."), llvm::cl::Optional,
-    llvm::cl::init(1024), llvm::cl::cat(recSysTestCat));
-
-llvm::cl::opt<unsigned> topMLPIntermediateDimOpt(
-    "top-mlp-intermediate-dim",
-    llvm::cl::desc("Intermediate dim for the top MLP."), llvm::cl::Optional,
-    llvm::cl::init(1024), llvm::cl::cat(recSysTestCat));
 
 llvm::cl::opt<unsigned> miniBatchOpt("mini-batch", llvm::cl::desc("Minibatch."),
                                      llvm::cl::Optional, llvm::cl::init(16),
@@ -55,13 +46,44 @@ llvm::cl::opt<unsigned> denseDimOpt("dense-dim", llvm::cl::desc("Dense dim."),
                                     llvm::cl::Optional, llvm::cl::init(800),
                                     llvm::cl::cat(recSysTestCat));
 
-llvm::cl::opt<unsigned> numBottomMLPLayersOpt(
-    "num-bottom-mlp-layers", llvm::cl::desc("Number of bottom MLP layers."),
-    llvm::cl::Optional, llvm::cl::init(3), llvm::cl::cat(recSysTestCat));
+llvm::cl::opt<unsigned> numHiddenBottomMLPLayersOpt(
+    "num-hidden-bottom-mlp-layers",
+    llvm::cl::desc("Number of hidden bottom MLP layers."), llvm::cl::Optional,
+    llvm::cl::init(3), llvm::cl::cat(recSysTestCat));
 
-llvm::cl::opt<unsigned> numTopMLPLayersOpt(
-    "num-top-mlp-layers", llvm::cl::desc("Number of top MLP layers."),
-    llvm::cl::Optional, llvm::cl::init(3), llvm::cl::cat(recSysTestCat));
+llvm::cl::list<unsigned> bottomMLPIntermediateDimsOpt(
+    "bottom-mlp-intermediate-dims",
+    llvm::cl::desc(
+        "Comma-separated list of intermediate dim for each of the bottom MLP "
+        "hidden layers and output layer. Will wrap around to the start of the "
+        "list and reuse dimensions if less than the number of layers. If "
+        "unprovided, default is 1024."),
+    llvm::cl::ZeroOrMore, llvm::cl::CommaSeparated,
+    llvm::cl::cat(recSysTestCat));
+
+llvm::cl::opt<unsigned>
+    numHiddenTopMLPLayersOpt("num-hidden-top-mlp-layers",
+                             llvm::cl::desc("Number of hidden top MLP layers."),
+                             llvm::cl::Optional, llvm::cl::init(3),
+                             llvm::cl::cat(recSysTestCat));
+
+llvm::cl::list<unsigned> topMLPIntermediateDimsOpt(
+    "top-mlp-intermediate-dims",
+    llvm::cl::desc(
+        "Comma-separated list of intermediate dim for each of the top MLP "
+        "hidden layers and output layer. Will wrap around to the start of the "
+        "list and reuse dimensions if less than the number of layers. If "
+        "unprovided, default is 1024."),
+    llvm::cl::ZeroOrMore, llvm::cl::CommaSeparated,
+    llvm::cl::cat(recSysTestCat));
+
+llvm::cl::list<unsigned> lengthsMinMaxOpt(
+    "lengths-min-max",
+    llvm::cl::desc("Comma separated [min, max) value to be used when "
+                   "generating random lengths inputs for SLS/SLWS. If left "
+                   "unspecified, will use [90, 110)."),
+    llvm::cl::ZeroOrMore, llvm::cl::CommaSeparated,
+    llvm::cl::cat(recSysTestCat));
 
 llvm::cl::list<unsigned> tableSizesOpt(
     "embedding-table-sizes",
@@ -79,9 +101,9 @@ llvm::cl::list<unsigned> tableCountsOpt(
 
 llvm::cl::opt<unsigned> deviceMemCapacityOpt(
     "device-mem-capacity",
-    llvm::cl::desc("Device memory capacity. Default is 8 MB."),
-    llvm::cl::Optional, llvm::cl::init(1024 * 1024 * 8),
-    llvm::cl::cat(recSysTestCat));
+    llvm::cl::desc("Device memory capacity. Default is dependent on the test "
+                   "in order to potentially force partitioning."),
+    llvm::cl::Optional, llvm::cl::init(0), llvm::cl::cat(recSysTestCat));
 
 llvm::cl::opt<unsigned> numDevicesOpt(
     "num-devices", llvm::cl::desc("Number of devices to use for partitioning."),
@@ -176,15 +198,27 @@ public:
 protected:
   ExecutionContext context_;
   PlaceholderBindings *bindings_, pBindings_;
+  PrecisionConfiguration precConfig_;
 
   // Separate EE for testing a partitioned RecSys.
-  ExecutionEngine2 partitionedEE_{getBackendName()};
+  ExecutionEngine partitionedEE_{getBackendName()};
 
   // Test Config:
   size_t miniBatch;
   size_t embeddingDim;
   size_t denseDim;
   std::vector<size_t> tableSizes;
+  std::vector<size_t> bottomMLPIntermediateDims;
+  std::vector<size_t> topMLPIntermediateDims;
+  size_t lengthsMin;
+  size_t lengthsMax;
+
+  // Used to configure correct precision settings:
+  bool quantizeSLWSData{false};
+  bool quantizeFC{false};
+  bool convertToFP16{false};
+  bool useFP16SLWS{false};
+  bool useFP16AccumSLWS{false};
 
   // Partitioner config:
   uint64_t deviceMemCapacity;
@@ -193,6 +227,32 @@ protected:
   // Result handle.
   Placeholder *result{nullptr};
 
+  /// Helper that \returns intermediate dims given a provided list of dims \p
+  /// providedIntermediateDims and the number of layers needed \p numLayers. If
+  /// the provided list is empty then all dims will be set to
+  /// \p defaultIntermediateDim. If the size of \p providedIntermediateDims is
+  /// less than \p numLayers then it will wrap around and reuse
+  /// \p providedIntermediateDims until \p numLayers are added to the returned
+  /// vector.
+  static std::vector<size_t>
+  getIntermediateDims(llvm::ArrayRef<unsigned> providedIntermediateDims,
+                      unsigned numLayers,
+                      size_t defaultIntermediateDim = 1024) {
+    std::vector<size_t> destIntermediateDims;
+    std::vector<size_t> dims(providedIntermediateDims.begin(),
+                             providedIntermediateDims.end());
+    if (dims.empty()) {
+      dims.push_back(defaultIntermediateDim);
+    }
+    const size_t numProvidedDimsTop = dims.size();
+    // Note: Add one extra intermediate dim, which is used by the output layer
+    // of the MLP. The input layer is set based on its own input.
+    for (size_t i = 0, e = numLayers + 1; i < e; i++) {
+      destIntermediateDims.push_back(dims[i % numProvidedDimsTop]);
+    }
+    return destIntermediateDims;
+  }
+
   void SetUp() override {
     bindings_ = context_.getPlaceholderBindings();
 
@@ -200,6 +260,8 @@ protected:
     miniBatch = miniBatchOpt;
     embeddingDim = embeddingDimOpt;
     denseDim = denseDimOpt;
+    lengthsMin = 90;
+    lengthsMax = 111;
 
     if (!tableSizesOpt.empty()) {
       if (!tableCountsOpt.empty()) {
@@ -221,13 +283,29 @@ protected:
                     8000, 6000, 7000, 9000, 12000};
     }
 
+    // Set up the bottom and top MLP intermediate dimensions.
+    bottomMLPIntermediateDims = getIntermediateDims(
+        bottomMLPIntermediateDimsOpt, numHiddenBottomMLPLayersOpt);
+    topMLPIntermediateDims = getIntermediateDims(topMLPIntermediateDimsOpt,
+                                                 numHiddenTopMLPLayersOpt);
+
+    if (!lengthsMinMaxOpt.empty()) {
+      assert(lengthsMinMaxOpt.size() == 2 &&
+             "If min and max are used, must be 2 values provided");
+      lengthsMin = lengthsMinMaxOpt[0];
+      lengthsMax = lengthsMinMaxOpt[1];
+      assert(lengthsMinMaxOpt[0] < lengthsMinMaxOpt[1] && "Min must be < max");
+    }
+
     // Create TraceContext if trace file path is provided.
     if (!traceDir.empty()) {
       context_.setTraceContext(
           llvm::make_unique<TraceContext>(TraceEvent::TraceLevel::STANDARD));
     }
 
-    deviceMemCapacity = deviceMemCapacityOpt;
+    // If device memory capacity is unset via command line, use 8MB by default.
+    deviceMemCapacity =
+        (deviceMemCapacityOpt != 0) ? deviceMemCapacityOpt : 1024 * 1024 * 8;
 
     numDevices = numDevicesOpt;
   }
@@ -297,7 +375,8 @@ protected:
       c->getHandle<int8_t>().randomize(INT8_MIN, INT8_MAX, mod.getPRNG());
       break;
     }
-    case ElemKind::UInt8FusedQTy: {
+    case ElemKind::UInt8FusedQTy:
+    case ElemKind::UInt8FusedFP16QTy: {
       c->getHandle<uint8_t>().randomize(UINT8_MIN, UINT8_MAX, mod.getPRNG());
       break;
     }
@@ -308,28 +387,45 @@ protected:
     return c;
   }
 
+  /// Copies a predefined scale and offset into the current row given a pointer
+  /// to the scale and offset \p currRowScaleOffsetPtr. Uses \p T as the
+  /// datatype for the scale and offset.
+  template <typename T>
+  static void copyInScaleOffset(char *currRowScaleOffsetPtr) {
+    // Range (0, 255) -> (-0.1, 0.1)
+    T scale = 1.0f / 1275;
+    T offset = -0.1;
+
+    memcpy(currRowScaleOffsetPtr, &scale, sizeof(T));
+    memcpy(currRowScaleOffsetPtr + sizeof(T), &offset, sizeof(T));
+  }
+
   /// Returns a new Constant of type UInt8FusedQTy with fused rowwise
   /// quantization scales and offsets (i.e. the last 8 bytes of each row
   /// contains the scale and offset).
   static Constant *createRandomFusedRowwiseQuantizedConstant(
-      Module &mod, llvm::ArrayRef<size_t> dims, llvm::StringRef name) {
+      Module &mod, llvm::ArrayRef<size_t> dims, llvm::StringRef name,
+      bool useFP16SLWS) {
+    auto T = mod.uniqueType(
+        (useFP16SLWS ? ElemKind::UInt8FusedFP16QTy : ElemKind::UInt8FusedQTy),
+        {1}, 1, 0);
+    const size_t sizeScaleOffset =
+        useFP16SLWS ? sizeof(float16_t) : sizeof(float);
     Constant *c = createRandomizedConstant(
-        mod, mod.uniqueType(ElemKind::UInt8FusedQTy, {1}, 1, 0),
-        {dims[0], dims[1] + 8}, name);
+        mod, T, {dims[0], dims[1] + 2 * sizeScaleOffset}, name);
 
     auto *dbP = c->getPayload().getUnsafePtr();
     const size_t outWidth = c->dims()[1];
     for (unsigned j = 0, e = c->dims()[0]; j < e; j++) {
       // Now set the scale/offset at the end of each row.
       char *currRowScaleOffsetPtr =
-          dbP + (j + 1) * outWidth - 2 * sizeof(float);
+          dbP + (j + 1) * outWidth - 2 * sizeScaleOffset;
 
-      // range (0, 255) -> (-0.1, 0.1)
-      float scale = 1.0f / 1275;
-      float offset = -0.1;
-
-      memcpy(currRowScaleOffsetPtr, &scale, sizeof(float));
-      memcpy(currRowScaleOffsetPtr + sizeof(float), &offset, sizeof(float));
+      if (useFP16SLWS) {
+        copyInScaleOffset<float16_t>(currRowScaleOffsetPtr);
+      } else {
+        copyInScaleOffset<float>(currRowScaleOffsetPtr);
+      }
     }
 
     return c;
@@ -343,9 +439,11 @@ protected:
   ///   * Hidden layers have dimension of \p intDim * intDim.
   ///   * Output layer has output dimension \p outputDim.
   static NodeValue createMLP(Module &mod, Function *F_, Node *N_,
-                             size_t inputDim, size_t intDim, size_t outputDim,
-                             size_t intermediateLayers) {
+                             size_t inputDim, llvm::ArrayRef<size_t> intDims,
+                             size_t outputDim, size_t intermediateLayers) {
     assert(intermediateLayers > 0);
+
+    const size_t firstIntDim = intDims[0];
 
     // Type object for the internal layers.
     // Note: dimension argument is a placeholder and will get filled out by each
@@ -353,29 +451,30 @@ protected:
     auto internalType = mod.uniqueType(ElemKind::FloatTy, {1});
 
     /// Initial
-    auto *initial_bias =
-        createRandomizedConstant(mod, internalType, {intDim}, "initial_bias");
+    auto *initial_bias = createRandomizedConstant(
+        mod, internalType, {firstIntDim}, "initial_bias");
     auto *initial_weight = createRandomizedConstant(
-        mod, internalType, {inputDim, intDim}, "initial_weight");
+        mod, internalType, {inputDim, firstIntDim}, "initial_weight");
 
     FullyConnectedNode *initial_layer = F_->createFullyConnected(
         "dense", N_, initial_weight,
         initial_bias); // Output is size {MB, intermediate dim}
-    auto *initial_relu = F_->createRELU("relu1", initial_layer);
-
-    auto *last = initial_relu;
+    NodeValue last = F_->createRELU("relu1", initial_layer);
 
     /// Intermediate
     for (unsigned i = 0; i < intermediateLayers; ++i) {
-
+      // The current intermediate dimension is based on the previous FC's
+      // result's trailing dimension. Thus we set the current FC's trailing
+      // weight dim equal to the next FC's intermediate dimension.
+      const size_t intDim = intDims[i + 1];
       auto *intermediate_bias = createRandomizedConstant(
           mod, internalType, {intDim}, "intermediate_bias");
       auto *intermediate_weight = createRandomizedConstant(
-          mod, internalType, {intDim, intDim}, "intermediate_weight");
+          mod, internalType, {last.dims()[1], intDim}, "intermediate_weight");
 
       FullyConnectedNode *intermediate_layer = F_->createFullyConnected(
           "dense", last, intermediate_weight,
-          intermediate_bias); // Output is size {MB, intDim}
+          intermediate_bias); // Output is size {MB, intDims[i]}
       last = F_->createRELU("relu2", intermediate_layer);
     }
 
@@ -383,7 +482,7 @@ protected:
     auto *end_bias =
         createRandomizedConstant(mod, internalType, {outputDim}, "end_bias");
     auto *end_weight = createRandomizedConstant(
-        mod, internalType, {intDim, outputDim}, "end_weight");
+        mod, internalType, {last.dims()[1], outputDim}, "end_weight");
 
     FullyConnectedNode *end_layer = F_->createFullyConnected(
         "dense", last, end_weight, end_bias); // Output is size {MB, embDim}
@@ -409,11 +508,14 @@ protected:
   ///     Tensors internally
   ///   * Biases are Int32 quantized.
   static NodeValue createQuantizedMLP(Module &mod, Function *F_, NodeValue N_,
-                                      size_t inputDim, size_t intDim,
+                                      size_t inputDim,
+                                      llvm::ArrayRef<size_t> intDims,
                                       size_t outputDim,
                                       size_t intermediateLayers) {
     // Must have intermediate layers.
     assert(intermediateLayers > 0);
+
+    const size_t firstIntDim = intDims[0];
 
     const size_t minibatchSize = N_.dims()[0];
 
@@ -428,10 +530,10 @@ protected:
         "mlp_quant", N_, mod.uniqueTypeWithNewShape(internalTypeQ, N_.dims()));
 
     /// Initial.
-    auto *initial_bias = createRandomizedConstant(mod, internalBiasType,
-                                                  {intDim}, "initial_bias");
+    auto *initial_bias = createRandomizedConstant(
+        mod, internalBiasType, {firstIntDim}, "initial_bias");
     auto *initial_weight = createRandomizedConstant(
-        mod, internalTypeF, {inputDim, intDim}, "initial_weight");
+        mod, internalTypeF, {inputDim, firstIntDim}, "initial_weight");
 
     // Output is size {MB, intermediatDim}
     quantization::Schema rowwiseQuantSchema = useSymmetricRowwiseQuantFCOpt
@@ -439,25 +541,28 @@ protected:
                                                   : quantization::Asymmetric;
     Node *initial_layer = F_->createRowwiseQuantizedFullyConnected(
         "dense", start, initial_weight, initial_bias,
-        mod.uniqueTypeWithNewShape(internalTypeQ, {minibatchSize, intDim}),
+        mod.uniqueTypeWithNewShape(internalTypeQ, {minibatchSize, firstIntDim}),
         rowwiseQuantSchema,
         /* transposeWeight */ true);
 
-    Node *initial_relu = F_->createRELU("initial_relu", initial_layer);
+    NodeValue last = F_->createRELU("initial_relu", initial_layer);
 
     /// Intermediate
-    auto *last = initial_relu;
     for (unsigned i = 0; i < intermediateLayers; ++i) {
+      // The current intermediate dimension is based on the previous FC's
+      // result's trailing dimension. Thus we set the current FC's trailing
+      // weight dim equal to the next FC's intermediate dimension.
+      const size_t intDim = intDims[i + 1];
       auto *intermediate_bias = createRandomizedConstant(
           mod, internalBiasType, {intDim}, "intermediate_bias");
       auto *intermediate_weight = createRandomizedConstant(
-          mod, internalTypeF, {intDim, intDim}, "intermediate_weight");
+          mod, internalTypeF, {last.dims()[1], intDim}, "intermediate_weight");
 
       Node *intermediate_layer = F_->createRowwiseQuantizedFullyConnected(
           "dense", last, intermediate_weight, intermediate_bias,
           mod.uniqueType(ElemKind::Int8QTy, {minibatchSize, intDim}, 1.0, 0),
           rowwiseQuantSchema,
-          /* transposeWeight */ true); // Output is size {MB, intDim}
+          /* transposeWeight */ true); // Output is size {MB, intDims[i]}
       last = F_->createRELU("intermediate_relu", intermediate_layer);
     }
 
@@ -465,7 +570,7 @@ protected:
     auto *end_bias = createRandomizedConstant(mod, internalBiasType,
                                               {outputDim}, "end_bias");
     auto *end_weight = createRandomizedConstant(
-        mod, internalTypeF, {intDim, outputDim}, "end_weight");
+        mod, internalTypeF, {last.dims()[1], outputDim}, "end_weight");
 
     // Output is size {MB, embDim}
     auto *end_layer = F_->createRowwiseQuantizedFullyConnected(
@@ -482,15 +587,20 @@ protected:
 
   /// Creates a number of Sparse tables (FP32 or Int8Q), the Indices lookup and
   /// the SpareLengthsSum Node tying it together.
-  static void createSparseEmbeddings(
-      Module &mod, PlaceholderBindings &bindings_, Function *F_,
-      llvm::ArrayRef<Placeholder *> lengths, llvm::ArrayRef<size_t> embSizes,
-      size_t embDim, std::vector<NodeValue> &embeddings, bool quantizeSLWS) {
+  void createSparseEmbeddings(Module &mod, PlaceholderBindings &bindings_,
+                              Function *F_,
+                              llvm::ArrayRef<Placeholder *> lengths,
+                              llvm::ArrayRef<size_t> embSizes, size_t embDim,
+                              std::vector<NodeValue> &embeddings) {
     auto internalTypeF = mod.uniqueType(ElemKind::FloatTy, {1});
+
+    const ElemKind precisionForSLWS =
+        useFP16SLWS ? ElemKind::Float16Ty : ElemKind::FloatTy;
 
     for (unsigned int i = 0; i < lengths.size(); i++) {
       fillStableRandomIndex(
-          bindings_.allocate(lengths[i])->getHandle<int32_t>(), 2011, 90, 111);
+          bindings_.allocate(lengths[i])->getHandle<int32_t>(), 2011,
+          lengthsMin, lengthsMax);
 
       size_t sum =
           sumOfElements(bindings_.get(lengths[i])->getHandle<int32_t>());
@@ -500,11 +610,21 @@ protected:
                             2001, 0, embSizes[i]);
 
       // output is size {MB, embDim}
-      if (quantizeSLWS) {
+      if (quantizeSLWSData) {
         Constant *data = createRandomFusedRowwiseQuantizedConstant(
-            mod, {embSizes[i], embDim}, "data" + std::to_string(i));
+            mod, {embSizes[i], embDim}, "data" + std::to_string(i),
+            useFP16SLWS);
         embeddings[i] = F_->createFusedRowwiseQuantizedSparseLengthsSum(
-            "RQSLWS" + std::to_string(i), data, indices, lengths[i]);
+            "RQSLWS" + std::to_string(i), data, indices, lengths[i],
+            precisionForSLWS, useFP16AccumSLWS);
+        // Convert back to Float if we used Float16 here. Optimizer will
+        // eliminate if necessary.
+        if (useFP16SLWS) {
+          embeddings[i] = F_->createConvertTo(
+              "convert_" + embeddings[i].getNode()->getName().str(),
+              embeddings[i], ElemKind::FloatTy);
+        }
+        F_->createSave("save_embedding", embeddings[i]);
       } else {
         Constant *data =
             createRandomizedConstant(mod, internalTypeF, {embSizes[i], embDim},
@@ -517,14 +637,18 @@ protected:
 
   /// Creates a number of Sparse tables (FP32 or Int8Q), the Indices lookup and
   /// the SpareLengthsSum Node tying it together.
-  static void createSparseWeightedGatherEmbeddings(
+  void createSparseWeightedGatherEmbeddings(
       Module &mod, PlaceholderBindings &bindings_, Function *F_,
       llvm::ArrayRef<Placeholder *> lengths, llvm::ArrayRef<size_t> tableSizes,
       size_t embeddingDim, std::vector<NodeValue> &embeddings,
-      bool quantizeSLWS, uint32_t weightsSize = 1000) {
+      uint32_t weightsSize = 1000) {
+    const ElemKind precisionForSLWS =
+        useFP16SLWS ? ElemKind::Float16Ty : ElemKind::FloatTy;
+
     for (size_t i = 0; i < lengths.size(); i++) {
       fillStableRandomIndex(
-          bindings_.allocate(lengths[i])->getHandle<int32_t>(), 2011, 90, 111);
+          bindings_.allocate(lengths[i])->getHandle<int32_t>(), 2011,
+          lengthsMin, lengthsMax);
 
       size_t sum =
           sumOfElements(bindings_.get(lengths[i])->getHandle<int32_t>());
@@ -550,12 +674,20 @@ protected:
                                        weightsConst, weightIndices, 0);
 
       // output is size {MB, embeddingDim_}
-      if (quantizeSLWS) {
+      if (quantizeSLWSData) {
         Constant *data = createRandomFusedRowwiseQuantizedConstant(
-            mod, {tableSizes[i], embeddingDim}, "data" + std::to_string(i));
+            mod, {tableSizes[i], embeddingDim}, "data" + std::to_string(i),
+            useFP16SLWS);
         embeddings[i] = F_->createFusedRowwiseQuantizedSparseLengthsWeightedSum(
-            "RQSLWS" + std::to_string(i), data, weights, indices, lengths[i]);
-
+            "RQSLWS" + std::to_string(i), data, weights, indices, lengths[i],
+            precisionForSLWS, useFP16AccumSLWS);
+        // Convert back to Float if we used Float16 here. Optimizer will
+        // eliminate if necessary.
+        if (useFP16SLWS) {
+          embeddings[i] = F_->createConvertTo(
+              "convert_" + embeddings[i].getNode()->getName().str(),
+              embeddings[i], ElemKind::FloatTy);
+        }
       } else {
         Constant *data = createRandomizedConstant(
             mod,
@@ -570,8 +702,7 @@ protected:
   /// Builds a simple graph, returns back input var and save node through refs.
   void createSimpleRecSysGraph(Module &mod, PlaceholderBindings &bindings,
                                Function *F, llvm::ArrayRef<size_t> embSizes,
-                               size_t embDim, bool quantizeSLWS,
-                               bool quantizeFC, bool gatherWeights) {
+                               size_t embDim, bool gatherWeights) {
     EXPECT_EQ(tableSizes.size(), embSizes.size());
 
     // Create the tables.
@@ -591,22 +722,22 @@ protected:
     NodeValue bottomMLP;
     if (quantizeFC) {
       bottomMLP = createQuantizedMLP(mod, F, denseData, denseData->dims()[1],
-                                     bottomMLPIntermediateDimOpt, embDim,
-                                     numBottomMLPLayersOpt);
+                                     bottomMLPIntermediateDims, embDim,
+                                     numHiddenBottomMLPLayersOpt);
     } else {
-      bottomMLP =
-          createMLP(mod, F, denseData, denseData->dims()[1],
-                    bottomMLPIntermediateDimOpt, embDim, numBottomMLPLayersOpt);
+      bottomMLP = createMLP(mod, F, denseData, denseData->dims()[1],
+                            bottomMLPIntermediateDims, embDim,
+                            numHiddenBottomMLPLayersOpt);
     }
 
     // Sparse Embeddings
     std::vector<NodeValue> embeddings(lengths.size());
     if (gatherWeights) {
       createSparseWeightedGatherEmbeddings(mod, bindings, F, lengths, embSizes,
-                                           embDim, embeddings, quantizeSLWS);
+                                           embDim, embeddings);
     } else {
       createSparseEmbeddings(mod, bindings, F, lengths, embSizes, embDim,
-                             embeddings, quantizeSLWS);
+                             embeddings);
     }
 
     // Interacting sparse and dense
@@ -633,12 +764,12 @@ protected:
     Node *topMLP;
     if (quantizeFC) {
       topMLP = createQuantizedMLP(mod, F, interact, interact.dims()[1],
-                                  topMLPIntermediateDimOpt, /* outputDim */ 1,
-                                  numTopMLPLayersOpt);
+                                  topMLPIntermediateDims,
+                                  /* outputDim */ 1, numHiddenTopMLPLayersOpt);
     } else {
       topMLP = createMLP(mod, F, interact, interact.dims()[1],
-                         topMLPIntermediateDimOpt, /* outputDim */ 1,
-                         numTopMLPLayersOpt);
+                         topMLPIntermediateDims,
+                         /* outputDim */ 1, numHiddenTopMLPLayersOpt);
     }
 
     // Output
@@ -648,21 +779,39 @@ protected:
     return;
   }
 
-  void testRecSys(bool quantizeSLWS, bool quantizeFC, bool convertToFP16,
-                  bool gatherWeights, bool setupPartitionTest = false,
+  /// Set up the precision configuration. This will be used for all
+  /// compilations which are compared to (Interpreter/Partitioned).
+  void setupPrecisionConfig() {
+    if (convertToFP16) {
+      precConfig_.convertToFP16 = convertToFP16;
+      // Note: always do not convert RWQ-SLWS here. The creator itself for
+      // precisionForNonDataSLWS already directly created the node with the
+      // correct precision.
+      precConfig_.precisionModeKindSet.insert(
+          Kinded::Kind::FusedRowwiseQuantizedSparseLengthsWeightedSumNodeKind);
+      precConfig_.precisionModeKindSet.insert(
+          Kinded::Kind::RowwiseQuantizedFullyConnectedNodeKind);
+    }
+  }
+
+  void testRecSys(bool gatherWeights, bool setupPartitionTest = false,
                   bool checkConcat = false) {
+    assert((!useFP16AccumSLWS || useFP16SLWS) &&
+           "Can only use FP16 accumulation when using FP16 precision.");
+
+    setupPrecisionConfig();
+
     // Generate the network.
     auto *mod = &EE_.getModule();
     createSimpleRecSysGraph(*mod, *bindings_, F_, tableSizes, embeddingDim,
-                            quantizeSLWS, quantizeFC, gatherWeights);
+                            gatherWeights);
 
     // If we are running a partitioned test too, setup the partitionedEE also.
     if (setupPartitionTest) {
       auto *pMod = &partitionedEE_.getModule();
       auto *pFunc = pMod->createFunction("main");
       createSimpleRecSysGraph(*pMod, pBindings_, pFunc, tableSizes,
-                              embeddingDim, quantizeSLWS, quantizeFC,
-                              gatherWeights);
+                              embeddingDim, gatherWeights);
       // Copy values from the first graph so they have the same random values.
       for (auto *C : mod->getConstants()) {
         auto *dest = partitionedEE_.getModule().getConstantByName(C->getName());
@@ -681,22 +830,12 @@ protected:
       concatPH = saveConcat->getPlaceholder();
     }
 
-    CompilationContext cctx;
-    if (convertToFP16) {
-      PrecisionConfiguration &precConfig = cctx.precisionConfig;
-      precConfig.convertToFP16 = convertToFP16;
-      precConfig.precisionModeKindSet.insert(
-          Kinded::Kind::FusedRowwiseQuantizedSparseLengthsWeightedSumNodeKind);
-      precConfig.precisionModeKindSet.insert(
-          Kinded::Kind::RowwiseQuantizedFullyConnectedNodeKind);
-    }
-
     // Compare against interpreter if we're not executing already on it.
     const bool compareAgainstInterp = getBackendName() != "Interpreter";
     ExecutionContext contextI;
     Tensor *resultIT = nullptr;
     if (compareAgainstInterp) {
-      ExecutionEngine2 IEE;
+      ExecutionEngine IEE;
       // Set device memory to 64GB to prevent partitioning. We are using the
       // Interpreter's result just as a reference result to compare against.
       IEE.setDeviceMemory(64e+9);
@@ -704,7 +843,7 @@ protected:
       auto *IF = modI->createFunction("main");
       PlaceholderBindings *bindingsI = contextI.getPlaceholderBindings();
       createSimpleRecSysGraph(*modI, *bindingsI, IF, tableSizes, embeddingDim,
-                              quantizeSLWS, quantizeFC, gatherWeights);
+                              gatherWeights);
       // Copy values from the first graph so they have the same random values.
       for (auto *C : mod->getConstants()) {
         auto *dest = IEE.getModule().getConstantByName(C->getName());
@@ -715,17 +854,26 @@ protected:
       SaveNode *resultI = llvm::cast<SaveNode>(IF->getNodeByName("save"));
       resultIT = bindingsI->get(resultI->getPlaceholder());
 
-      // Compile with the same cctx as before, so we get the same precision
-      // transformation.
+      // Use the same precision transformation for compilation.
+      CompilationContext cctx;
+      cctx.precisionConfig = precConfig_;
       IEE.compile(cctx);
       IEE.run(contextI);
     }
 
-    // Compile.
+    CompilationContext cctx;
+    cctx.precisionConfig = precConfig_;
     EE_.compile(cctx);
 
     // Run graph
     EE_.run(context_);
+
+    // NaNs are a sign of something gone wrong. Always verify there aren't any
+    // in the result.
+    auto resultTensorH = resultTensor->getHandle();
+    for (size_t i = 0, e = resultTensorH.size(); i < e; i++) {
+      EXPECT_FALSE(std::isnan(resultTensorH.raw(i)));
+    }
 
     if (compareAgainstInterp) {
       EXPECT_TRUE(resultIT->isEqual(*resultTensor));
@@ -756,7 +904,8 @@ protected:
   }
 
   /// Execute a graph of functions based on the given DAG.
-  void executeDAG(DAGNode *G, Module &mod, ExecutionContext &context) {
+  void executeDAG(DAGNode *G, Module &mod, ExecutionContext &context,
+                  CompilationContext &cctx) {
     std::unordered_map<std::string, Function *> name2func;
 
     for (auto *F : mod.getFunctions()) {
@@ -770,13 +919,13 @@ protected:
     exeList.push_back(G);
     endPt++;
     // All the functions are in the module, compile them all at once.
-    partitionedEE_.compile(CompilationMode::Infer);
+    partitionedEE_.compile(cctx);
 
     while (curPt < endPt) {
       DAGNode *dag = exeList.at(curPt);
       // The root in a G is always a dummy function.
       if (curPt > 0) {
-        updateInputPlaceholders2(*context.getPlaceholderBindings(), {}, {});
+        updateInputPlaceholders(*context.getPlaceholderBindings(), {}, {});
         partitionedEE_.run(context, dag->name);
       }
       for (unsigned int i = 0, e = dag->children.size(); i < e; i++) {
@@ -797,14 +946,15 @@ protected:
     std::vector<DeviceInfo> devices(numDevices, {memSize, backendName});
     auto *pMod = &partitionedEE_.getModule();
     Partitioner myPartitioner(pMod, devices);
+    // Use the same precision transformation for compilation.
     CompilationContext cctx;
-    EXIT_ON_ERR(myPartitioner.Partition(cctx));
-
-    DAGListTy myList = std::move(myPartitioner.getPartitionResult());
+    cctx.precisionConfig = precConfig_;
+    auto myList = myPartitioner.partition(cctx);
+    ASSERT_TRUE((bool)myList);
     std::cout << "Partitions = " << pMod->getFunctions().size() << std::endl;
     ASSERT_LE(pMod->getFunctions().size(), numDevices);
-    ASSERT_EQ(myList.size(), 1);
-    DAG &dag = myList.front();
+    ASSERT_EQ(myList->size(), 1);
+    DAG &dag = myList->front();
 
     // Run the partitioned graph and compare the results.
 
@@ -815,7 +965,7 @@ protected:
     for (auto PH : pBindings_.pairs()) {
       pBindings_.copyToTarget(PH.first->getName(), bindings);
     }
-    executeDAG(dag.root.get(), *pMod, context);
+    executeDAG(dag.root.get(), *pMod, context, cctx);
     auto res = bindings.getPlaceholderByName("save");
     Tensor *resultTensor = bindings.get(res);
     EXPECT_TRUE(referenceResult.isEqual(*resultTensor));
@@ -830,7 +980,7 @@ protected:
 
     std::vector<NodeValue> embeddings(sparseLengths.size());
     createSparseEmbeddings(*mod, *bindings_, F_, sparseLengths, tableSizes,
-                           embeddingDim, embeddings, true);
+                           embeddingDim, embeddings);
 
     auto *save = F_->createSave("save", embeddings[0]);
     bindings_->allocate(save->getPlaceholder());
@@ -838,7 +988,10 @@ protected:
     SaveNode *result1 = llvm::cast<SaveNode>(F_->getNodeByName("save"));
     result = result1->getPlaceholder();
 
-    EE_.compile(CompilationMode::Infer);
+    // Use the same precision transformation for compilation.
+    CompilationContext cctx;
+    cctx.precisionConfig = precConfig_;
+    EE_.compile(cctx);
 
     // Run graph
     EE_.run(context_);
@@ -854,59 +1007,140 @@ INSTANTIATE_TEST_CASE_P_FOR_BACKEND_TEST(RecSys, RecommendationSystemTest);
 
 /// Standard Tests
 /// These tests have three options:
-///   * quantizeSLWS  enables Int8 Fused Rowwise Quantization for the Sparse
+///   * quantizeSLWSData enables Int8 Fused Rowwise Quantization for the Sparse
 ///     Embeddings (Int8 quantized values with float scale and offset).
-///   * quantizeFC    enables Int8 Fused Rowwise Quantization for FC weights and
+///   * quantizeFC enables Int8 Fused Rowwise Quantization for FC weights and
 ///     activations inside the MLPs.
 ///   * convertToFP16 walks the graph at the end of constructing the graph and
 ///     converts all FP32 nodes & tensors to FP16, meaning the graph will use
 ///     FP16 for internal weights, biases and activations (when not already Int8
 ///     quantized). Inputs and outputs are still FP32 but are immediately
 ///     dropped to FP16 precision at the beginning of the graph.
+///   * useFP16SLWS represents whether to use Float16 for non-data
+///     inputs/outputs for SLWS and SLS Nodes, and for data per-row scale and
+///     offset.
+///   * useFP16AccumSLWS represents whether to use Float16 accumulation for SLWS
+///     and SLS Nodes. Note this should only be used if useFP16SLWS.
 
+/// Everything in FP32.
 TEST_P(RecommendationSystemTest, RecSys_FP32) {
   ENABLED_BACKENDS(CPU, Habana);
 
-  testRecSys(/* quantizeSLWS */ false,
-             /* quantizeFC */ false,
-             /* convertToFP16 */ false,
-             /* gatherWeights */ false);
+  quantizeSLWSData = false;
+  useFP16SLWS = false;
+  useFP16AccumSLWS = false;
+  quantizeFC = false;
+  convertToFP16 = false;
+
+  testRecSys(/* gatherWeights */ false);
 }
 
+/// Rowwise quantize the SLWS and FC; everything else in FP32.
 TEST_P(RecommendationSystemTest, RecSys_RWQuantized_SLWS_FC) {
   ENABLED_BACKENDS(CPU);
 
-  testRecSys(/* quantizeSLWS */ true,
-             /* quantizeFC */ true,
-             /* convertToFP16 */ false,
-             /* gatherWeights */ false);
+  quantizeSLWSData = true;
+  useFP16SLWS = false;
+  useFP16AccumSLWS = false;
+  quantizeFC = true;
+  convertToFP16 = false;
+
+  testRecSys(/* gatherWeights */ false);
 }
 
+/// Rowwise quantize the SLWS; everything else in FP32.
 TEST_P(RecommendationSystemTest, RecSys_RWQuantized_SLWS) {
   ENABLED_BACKENDS(CPU, Habana);
 
-  testRecSys(/* quantizeSLWS */ true,
-             /* quantizeFC */ false,
-             /* convertToFP16 */ false,
-             /* gatherWeights */ false);
+  quantizeSLWSData = true;
+  useFP16SLWS = false;
+  useFP16AccumSLWS = false;
+  quantizeFC = false;
+  convertToFP16 = false;
+
+  testRecSys(/* gatherWeights */ false);
 }
 
+/// Rowwise quantize the SLWS and FC; everything else in FP16.
 TEST_P(RecommendationSystemTest, RecSys_RWQuantized_SLWS_FC_FP16) {
   ENABLED_BACKENDS(Interpreter);
 
-  testRecSys(/* quantizeSLWS */ true,
-             /* quantizeFC */ true,
-             /* convertToFP16 */ true,
-             /* gatherWeights */ false);
+  quantizeSLWSData = true;
+  useFP16SLWS = false;
+  useFP16AccumSLWS = false;
+  quantizeFC = true;
+  convertToFP16 = true;
+
+  testRecSys(/* gatherWeights */ false);
 }
 
+/// Rowwise quantize the SLWS; everything else in FP16.
 TEST_P(RecommendationSystemTest, RecSys_RWQuantized_SLWS_FP16) {
   ENABLED_BACKENDS(Interpreter);
 
-  testRecSys(/* quantizeSLWS */ true,
-             /* quantizeFC */ false,
-             /* convertToFP16 */ true,
-             /* gatherWeights */ false);
+  quantizeSLWSData = true;
+  useFP16SLWS = false;
+  useFP16AccumSLWS = false;
+  quantizeFC = false;
+  convertToFP16 = true;
+
+  testRecSys(/* gatherWeights */ false);
+}
+
+/// Rowwise quantize the SLWS, with FP16 for scales/bias, and other
+/// inputs/outputs in FP16. Everything else in FP32.
+TEST_P(RecommendationSystemTest, RecSys_RWQuantizedFP16_SLWS) {
+  ENABLED_BACKENDS(Interpreter);
+
+  quantizeSLWSData = true;
+  useFP16SLWS = true;
+  useFP16AccumSLWS = false;
+  quantizeFC = false;
+  convertToFP16 = false;
+
+  testRecSys(/* gatherWeights */ false);
+}
+
+/// Rowwise quantize the SLWS, with FP16 for scales/bias, and other
+/// inputs/outputs in FP16, and use FP16 accumulation. Everything else in FP32.
+TEST_P(RecommendationSystemTest, RecSys_RWQuantizedFP16AccumFP16_SLWS) {
+  ENABLED_BACKENDS(Interpreter);
+
+  quantizeSLWSData = true;
+  useFP16SLWS = true;
+  useFP16AccumSLWS = true;
+  quantizeFC = false;
+  convertToFP16 = false;
+
+  testRecSys(/* gatherWeights */ false);
+}
+
+/// Rowwise quantize the SLWS, with FP16 for scales/bias, and other
+/// inputs/outputs in FP16. Everything else in FP16.
+TEST_P(RecommendationSystemTest, RecSys_RWQuantizedFP16_SLWS_FP16) {
+  ENABLED_BACKENDS(Interpreter);
+
+  quantizeSLWSData = true;
+  useFP16SLWS = true;
+  useFP16AccumSLWS = false;
+  quantizeFC = false;
+  convertToFP16 = true;
+
+  testRecSys(/* gatherWeights */ false);
+}
+
+/// Rowwise quantize the SLWS, with FP16 for scales/bias, and other
+/// inputs/outputs in FP16, and use FP16 accumulation. Everything else in FP16.
+TEST_P(RecommendationSystemTest, RecSys_RWQuantizedFP16AccumFP16_SLWS_FP16) {
+  ENABLED_BACKENDS(Interpreter);
+
+  quantizeSLWSData = true;
+  useFP16SLWS = true;
+  useFP16AccumSLWS = true;
+  quantizeFC = false;
+  convertToFP16 = true;
+
+  testRecSys(/* gatherWeights */ false);
 }
 
 /// Partitioning Tests
@@ -917,13 +1151,20 @@ TEST_P(RecommendationSystemTest, RecSys_RWQuantized_SLWS_FP16) {
 TEST_P(RecommendationSystemTest, RecSys_FP32_Partitioned) {
   ENABLED_BACKENDS(CPU, Habana);
 
-  testRecSys(/* quantizeSLWS */ false,
-             /* quantizeFC */ false,
-             /* convertToFP16 */ false,
-             /* gatherWeights */ false,
+  quantizeSLWSData = false;
+  useFP16SLWS = false;
+  useFP16AccumSLWS = false;
+  quantizeFC = false;
+  convertToFP16 = false;
+
+  testRecSys(/* gatherWeights */ false,
              /* setupPartitionTest */ true);
 
-  deviceMemCapacity *= 2; // Double memory for this test
+  // If the memory capacity was not set on the command line, then double the
+  // default value for this test.
+  if (deviceMemCapacityOpt == 0) {
+    deviceMemCapacity *= 2; // Double memory for this test
+  }
 
   runPartitionedGraph(numDevices, deviceMemCapacity,
                       bindings_->get(result)->clone(), context_);
@@ -932,13 +1173,20 @@ TEST_P(RecommendationSystemTest, RecSys_FP32_Partitioned) {
 TEST_P(RecommendationSystemTest, RecSys_Partitioned_RWQuantized_SLWS) {
   ENABLED_BACKENDS(CPU, Habana);
 
-  testRecSys(/* quantizeSLWS */ true,
-             /* quantizeFC */ false,
-             /* convertToFP16 */ false,
-             /* gatherWeights */ false,
+  quantizeSLWSData = true;
+  useFP16SLWS = false;
+  useFP16AccumSLWS = false;
+  quantizeFC = false;
+  convertToFP16 = false;
+
+  testRecSys(/* gatherWeights */ false,
              /* setupPartitionTest */ true);
 
-  deviceMemCapacity *= 2; // Double memory for this test
+  // If the memory capacity was not set on the command line, then double the
+  // default value for this test.
+  if (deviceMemCapacityOpt == 0) {
+    deviceMemCapacity *= 2; // Double memory for this test
+  }
 
   runPartitionedGraph(numDevices, deviceMemCapacity,
                       bindings_->get(result)->clone(), context_);
@@ -947,10 +1195,13 @@ TEST_P(RecommendationSystemTest, RecSys_Partitioned_RWQuantized_SLWS) {
 TEST_P(RecommendationSystemTest, RecSys_Partitioned_RWQuantized_SLWS_FC) {
   ENABLED_BACKENDS(CPU);
 
-  testRecSys(/* quantizeSLWS */ true,
-             /* quantizeFC */ true,
-             /* convertToFP16 */ false,
-             /* gatherWeights */ false,
+  quantizeSLWSData = true;
+  useFP16SLWS = false;
+  useFP16AccumSLWS = false;
+  quantizeFC = true;
+  convertToFP16 = false;
+
+  testRecSys(/* gatherWeights */ false,
              /* setupPartitionTest */ true);
 
   runPartitionedGraph(numDevices, deviceMemCapacity,
@@ -960,10 +1211,13 @@ TEST_P(RecommendationSystemTest, RecSys_Partitioned_RWQuantized_SLWS_FC) {
 TEST_P(RecommendationSystemTest, RecSys_Partitioned_RWQuantized_SLWS_FP16) {
   ENABLED_BACKENDS(Interpreter);
 
-  testRecSys(/* quantizeSLWS */ true,
-             /* quantizeFC */ false,
-             /* convertToFP16 */ true,
-             /* gatherWeights */ false,
+  quantizeSLWSData = true;
+  useFP16SLWS = false;
+  useFP16AccumSLWS = false;
+  quantizeFC = false;
+  convertToFP16 = true;
+
+  testRecSys(/* gatherWeights */ false,
              /* setupPartitionTest */ true);
 
   runPartitionedGraph(numDevices, deviceMemCapacity,
@@ -973,10 +1227,97 @@ TEST_P(RecommendationSystemTest, RecSys_Partitioned_RWQuantized_SLWS_FP16) {
 TEST_P(RecommendationSystemTest, RecSys_Partitioned_RWQuantized_SLWS_FC_FP16) {
   ENABLED_BACKENDS(Interpreter);
 
-  testRecSys(/* quantizeSLWS */ true,
-             /* quantizeFC */ true,
-             /* convertToFP16 */ true,
-             /* gatherWeights */ false,
+  quantizeSLWSData = true;
+  useFP16SLWS = false;
+  useFP16AccumSLWS = false;
+  quantizeFC = true;
+  convertToFP16 = true;
+
+  testRecSys(/* gatherWeights */ false,
+             /* setupPartitionTest */ true);
+
+  runPartitionedGraph(numDevices, deviceMemCapacity,
+                      bindings_->get(result)->clone(), context_);
+}
+
+/// Rowwise quantize the SLWS, with FP16 for scales/bias, and other
+/// inputs/outputs in FP16. Everything else in FP32. Also run partitioned and
+/// compare results.
+TEST_P(RecommendationSystemTest, RecSys_Partitioned_RWQuantizedFP16_SLWS) {
+  ENABLED_BACKENDS(Interpreter);
+
+  quantizeSLWSData = true;
+  useFP16SLWS = true;
+  useFP16AccumSLWS = false;
+  quantizeFC = false;
+  convertToFP16 = false;
+
+  testRecSys(/* gatherWeights */ false,
+             /* setupPartitionTest */ true);
+
+  // If the memory capacity was not set on the command line, then double the
+  // default value for this test.
+  if (deviceMemCapacityOpt == 0) {
+    deviceMemCapacity *= 2; // Double memory for this test
+  }
+
+  runPartitionedGraph(numDevices, deviceMemCapacity,
+                      bindings_->get(result)->clone(), context_);
+}
+
+/// Rowwise quantize the SLWS, with FP16 for scales/bias, and other
+/// inputs/outputs in FP16, and use FP16 accumulation. Everything else in FP32.
+/// Also run partitioned and compare results.
+TEST_P(RecommendationSystemTest,
+       RecSys_Partitioned_RWQuantizedFP16AccumFP16_SLWS) {
+  ENABLED_BACKENDS(Interpreter);
+
+  quantizeSLWSData = true;
+  useFP16SLWS = true;
+  useFP16AccumSLWS = true;
+  quantizeFC = false;
+  convertToFP16 = false;
+
+  testRecSys(/* gatherWeights */ false,
+             /* setupPartitionTest */ true);
+
+  runPartitionedGraph(numDevices, deviceMemCapacity,
+                      bindings_->get(result)->clone(), context_);
+}
+
+/// Rowwise quantize the SLWS, with FP16 for scales/bias, and other
+/// inputs/outputs in FP16. Everything else in FP16. Also run partitioned and
+/// compare results.
+TEST_P(RecommendationSystemTest, RecSys_Partitioned_RWQuantizedFP16_SLWS_FP16) {
+  ENABLED_BACKENDS(Interpreter);
+
+  quantizeSLWSData = true;
+  useFP16SLWS = true;
+  useFP16AccumSLWS = false;
+  quantizeFC = false;
+  convertToFP16 = true;
+
+  testRecSys(/* gatherWeights */ false,
+             /* setupPartitionTest */ true);
+
+  runPartitionedGraph(numDevices, deviceMemCapacity,
+                      bindings_->get(result)->clone(), context_);
+}
+
+/// Rowwise quantize the SLWS, with FP16 for scales/bias, and other
+/// inputs/outputs in FP16, and use FP16 accumulation. Everything else in FP16.
+/// Also run partitioned and compare results.
+TEST_P(RecommendationSystemTest,
+       RecSys_Partitioned_RWQuantizedFP16AccumFP16_SLWS_FP16) {
+  ENABLED_BACKENDS(Interpreter);
+
+  quantizeSLWSData = true;
+  useFP16SLWS = true;
+  useFP16AccumSLWS = true;
+  quantizeFC = false;
+  convertToFP16 = true;
+
+  testRecSys(/* gatherWeights */ false,
              /* setupPartitionTest */ true);
 
   runPartitionedGraph(numDevices, deviceMemCapacity,
@@ -987,6 +1328,11 @@ TEST_P(RecommendationSystemTest, RecSys_Partitioned_RWQuantized_SLWS_FC_FP16) {
 TEST_P(RecommendationSystemTest, RecSys_SLS_Only) {
   ENABLED_BACKENDS(CPU, Habana);
 
+  quantizeSLWSData = true;
+
+  // Normally called in testRecSys(), but we're bypassing it here.
+  setupPrecisionConfig();
+
   testSLSQuant();
 }
 
@@ -994,8 +1340,11 @@ TEST_P(RecommendationSystemTest, RecSys_SLS_Only) {
 TEST_P(RecommendationSystemTest, RecSys_FP32_Gather_Weights) {
   ENABLED_BACKENDS(CPU);
 
-  testRecSys(/* quantizeSLWS */ false,
-             /* quantizeFC */ false,
-             /* convertToFP16 */ false,
-             /* gatherWeights */ true);
+  quantizeSLWSData = false;
+  useFP16SLWS = false;
+  useFP16AccumSLWS = false;
+  quantizeFC = false;
+  convertToFP16 = false;
+
+  testRecSys(/* gatherWeights */ true);
 }

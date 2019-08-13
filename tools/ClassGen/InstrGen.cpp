@@ -86,6 +86,7 @@ int main(int argc, char **argv) {
       .addMember(MemberType::VectorUnsigned, "Pads")
       .addMember(MemberType::Unsigned, "Group")
       .addMember(MemberType::Unsigned, "Dilation")
+      .addMember(MemberType::Unsigned, "Layout")
       .autoIRGen()
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Src", "Filter"})
       .addGradientInstr({"Src", "Filter"}, {"Dest", "Src", "Filter", "Bias"});
@@ -129,6 +130,7 @@ int main(int argc, char **argv) {
       .addMember(MemberType::VectorUnsigned, "Kernels")
       .addMember(MemberType::VectorUnsigned, "Strides")
       .addMember(MemberType::VectorUnsigned, "Pads")
+      .addMember(MemberType::Unsigned, "Layout")
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
       .addGradientInstr({"Dest", "Argmax"}, {"Dest", "Src"});
 
@@ -138,6 +140,7 @@ int main(int argc, char **argv) {
       .addMember(MemberType::VectorUnsigned, "Kernels")
       .addMember(MemberType::VectorUnsigned, "Strides")
       .addMember(MemberType::VectorUnsigned, "Pads")
+      .addMember(MemberType::Unsigned, "Layout")
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"});
 
   BB.newInstr("AvgPool")
@@ -146,6 +149,7 @@ int main(int argc, char **argv) {
       .addMember(MemberType::VectorUnsigned, "Kernels")
       .addMember(MemberType::VectorUnsigned, "Strides")
       .addMember(MemberType::VectorUnsigned, "Pads")
+      .addMember(MemberType::Unsigned, "Layout")
       .autoIRGen()
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
       .addGradientInstr({"Dest"}, {"Dest", "Src"});
@@ -237,6 +241,16 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Batch"})
       .autoIRGen();
 
+  /// Calculates minimum of all of the layers in the batch along the axes
+  /// dimensions and produce a tensor that has the same dimensions as the input.
+  /// tensor without the Axes dimension.
+  BB.newInstr("BatchedReduceMin")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Batch", OperandKind::In)
+      .addMember(MemberType::VectorUnsigned, "Axes")
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "Batch"})
+      .autoIRGen();
+
   /// Sums together groups of consecutive slices of Data as per the group sizes
   /// specified by Lengths.
   BB.newInstr("LengthsSum")
@@ -284,6 +298,7 @@ int main(int argc, char **argv) {
       .addOperand("Weights", OperandKind::In)
       .addOperand("Indices", OperandKind::In)
       .addOperand("Lengths", OperandKind::In)
+      .addMember(MemberType::Boolean, "UseFP16Accumulation")
       .autoIRGen()
       .autoVerify(VerifyKind::SameElementType, {"Data", "ElemKind::UInt8QTy"})
       .autoVerify(VerifyKind::SameElementType,
@@ -298,6 +313,7 @@ int main(int argc, char **argv) {
       .addOperand("Weights", OperandKind::In)
       .addOperand("Indices", OperandKind::In)
       .addOperand("Lengths", OperandKind::In)
+      .addMember(MemberType::Boolean, "UseFP16Accumulation")
       .autoIRGen()
       .autoVerify(VerifyKind::SameElementType,
                   {"Indices", "ElemKind::Int64ITy"})

@@ -57,38 +57,69 @@ void IRBuilder::deallocateActiveInstrs() {
 //===----------------------------------------------------------------------===//
 MaxPoolWithArgmaxInst *IRBuilder::createMaxPoolWithArgmaxOp(
     llvm::StringRef name, Value *input, llvm::ArrayRef<unsigned_t> kernels,
-    llvm::ArrayRef<unsigned_t> strides, llvm::ArrayRef<unsigned_t> pads) {
-  ShapeNHWC idim = ShapeNHWC(input->dims());
+    llvm::ArrayRef<unsigned_t> strides, llvm::ArrayRef<unsigned_t> pads,
+    unsigned_t layout) {
+  TypeRef outTy{nullptr};
+  Value *argmax{nullptr};
 
-  auto outSz =
-      calculateConvPoolOutputDims(idim.h, idim.w, kernels, strides, pads);
+  if (layout == NHWC) {
+    ShapeNHWC idim = ShapeNHWC(input->dims());
 
-  // Allocate storage for flattened NCHW index of max element.
-  Value *argmax =
-      createAllocActivationInst(name.str() + ".argmax", ElemKind::Int64ITy,
-                                {idim.n, outSz.first, outSz.second, idim.c});
+    auto outSz =
+        calculateConvPoolOutputDims(idim.h, idim.w, kernels, strides, pads);
 
-  auto outTy = F_->getGraph()->getParent()->uniqueTypeWithNewShape(
-      input->getType(), {idim.n, outSz.first, outSz.second, idim.c});
+    // Allocate storage for flattened NCHW index of max element.
+    argmax =
+        createAllocActivationInst(name.str() + ".argmax", ElemKind::Int64ITy,
+                                  {idim.n, outSz.first, outSz.second, idim.c});
+
+    outTy = F_->getGraph()->getParent()->uniqueTypeWithNewShape(
+        input->getType(), {idim.n, outSz.first, outSz.second, idim.c});
+  } else {
+    ShapeNCHW idim(input->dims());
+
+    auto outSz =
+        calculateConvPoolOutputDims(idim.h, idim.w, kernels, strides, pads);
+
+    // Allocate storage for flattened NCHW index of max element.
+    argmax =
+        createAllocActivationInst(name.str() + ".argmax", ElemKind::Int64ITy,
+                                  {idim.n, idim.c, outSz.first, outSz.second});
+
+    outTy = F_->getGraph()->getParent()->uniqueTypeWithNewShape(
+        input->getType(), {idim.n, idim.c, outSz.first, outSz.second});
+  }
+
   Value *dest = createAllocActivationInst(name.str() + ".res", outTy);
 
   return createMaxPoolWithArgmaxInst(name, dest, input, argmax, kernels,
-                                     strides, pads);
+                                     strides, pads, layout);
 }
 
 AvgPoolInst *IRBuilder::createAvgPoolOp(Value *input,
                                         llvm::ArrayRef<unsigned_t> kernels,
                                         llvm::ArrayRef<unsigned_t> strides,
-                                        llvm::ArrayRef<unsigned_t> pads) {
-  ShapeNHWC idim = ShapeNHWC(input->dims());
+                                        llvm::ArrayRef<unsigned_t> pads,
+                                        unsigned_t layout) {
 
-  auto outSz =
-      calculateConvPoolOutputDims(idim.h, idim.w, kernels, strides, pads);
-  auto outTy = F_->getGraph()->getParent()->uniqueTypeWithNewShape(
-      input->getType(), {idim.n, outSz.first, outSz.second, idim.c});
+  TypeRef outTy;
+
+  if (layout == NHWC) {
+    ShapeNHWC idim(input->dims());
+    auto outSz =
+        calculateConvPoolOutputDims(idim.h, idim.w, kernels, strides, pads);
+    outTy = F_->getGraph()->getParent()->uniqueTypeWithNewShape(
+        input->getType(), {idim.n, outSz.first, outSz.second, idim.c});
+  } else {
+    ShapeNCHW idim(input->dims());
+    auto outSz =
+        calculateConvPoolOutputDims(idim.h, idim.w, kernels, strides, pads);
+    outTy = F_->getGraph()->getParent()->uniqueTypeWithNewShape(
+        input->getType(), {idim.n, idim.c, outSz.first, outSz.second});
+  }
+
   Value *dest = createAllocActivationInst("pool.res", outTy);
-
-  return createAvgPoolInst("pool", dest, input, kernels, strides, pads);
+  return createAvgPoolInst("pool", dest, input, kernels, strides, pads, layout);
 }
 
 CrossEntropyLossInst *IRBuilder::createCrossEntropyLossOp(llvm::StringRef name,

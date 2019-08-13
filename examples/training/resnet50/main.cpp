@@ -188,9 +188,10 @@ int main(int argc, char **argv) {
   TC.L2Decay = l2Decay;
   TC.batchSize = miniBatchSize;
   Function *TF = glow::differentiate(F, TC);
+  auto tfName = TF->getName();
 
   llvm::outs() << "Compiling backend.\n";
-  EE.compile(CompilationMode::Train, TF);
+  EE.compile(CompilationMode::Train);
 
   // Get input and output tensors.
   auto *input = bindings.get(A);
@@ -220,7 +221,7 @@ int main(int argc, char **argv) {
       label->copyConsecutiveSlices(&labels, i);
 
       timer.startTimer();
-      EE.run(bindings);
+      EE.run(bindings, tfName);
       timer.stopTimer();
 
       int64_t correct = labelsH.at({i, 0});

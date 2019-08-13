@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #include "glow/Base/Image.h"
-#include "glow/ExecutionEngine/ExecutionEngine2.h"
+#include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Importer/Caffe2ModelLoader.h"
 #include "glow/Support/Error.h"
 
@@ -24,7 +24,7 @@ using namespace glow;
 /// inference.
 int main() {
   glow::PlaceholderBindings bindings;
-  glow::ExecutionEngine2 EE;
+  glow::ExecutionEngine EE;
   auto &mod = EE.getModule();
   auto *F = mod.createFunction("lenet_mnist");
   auto *inputType = mod.uniqueType(glow::ElemKind::FloatTy, {1, 1, 28, 28});
@@ -50,7 +50,7 @@ int main() {
 
   // Allocate memory for input and bind it to the placeholders.
   bindings.allocate(mod.getPlaceholders());
-  glow::updateInputPlaceholders2(bindings, {input}, {&batch});
+  glow::updateInputPlaceholders(bindings, {input}, {&batch});
 
   // Perform inference.
   EE.run(bindings);

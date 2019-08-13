@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #include "glow/Base/Image.h"
-#include "glow/ExecutionEngine/ExecutionEngine2.h"
+#include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Graph/Hook.h"
 #include "glow/Importer/Caffe2ModelLoader.h"
 
@@ -27,7 +27,7 @@ const char inputName[] = "gpu_0/data";
 
 class Tester {
   PlaceholderBindings bindings, inferBindings;
-  ExecutionEngine2 EEI;
+  ExecutionEngine EEI;
   std::unique_ptr<Module> mod;
   Function *F;
   TypeRef inputType;
@@ -49,7 +49,7 @@ public:
   void bindInput(Tensor *batch) {
     // Allocate memory for input and bind it to the placeholders.
     bindings.allocate(mod->getPlaceholders());
-    updateInputPlaceholders2(bindings, {input}, {batch});
+    updateInputPlaceholders(bindings, {input}, {batch});
   }
 
   TypeRef getInputType() const { return inputType; }

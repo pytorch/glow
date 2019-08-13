@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#include "glow/ExecutionEngine/ExecutionEngine2.h"
+#include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Graph/Graph.h"
 #include "glow/IR/IR.h"
 #include "glow/IR/IRBuilder.h"
@@ -28,7 +28,7 @@
 using namespace glow;
 
 TEST(GraphAutoGrad, autoGrad) {
-  ExecutionEngine2 EE;
+  ExecutionEngine EE;
   PlaceholderBindings bindings;
 
   TrainingConfig TC;
@@ -68,7 +68,7 @@ TEST(GraphAutoGrad, autoGrad) {
 }
 
 TEST(GraphAutoGrad, checkLRNGen) {
-  ExecutionEngine2 EE;
+  ExecutionEngine EE;
   TrainingConfig TC;
   PlaceholderBindings bindings;
 
@@ -98,7 +98,7 @@ TEST(GraphAutoGrad, checkLRNGen) {
 
 TEST(GraphAutoGrad, cloneAndDiff) {
   // The test ensures that unused variables are not touched in differentiation.
-  ExecutionEngine2 EE;
+  ExecutionEngine EE;
   TrainingConfig TC;
   PlaceholderBindings bindings;
   Module M;
@@ -154,7 +154,7 @@ TEST(GraphAutoGrad, cloneAndDiff) {
 
 /// Check that we can differentiate functions that update Placeholder graphs.
 TEST(GraphAutoGrad, checkPlaceholderGradTest) {
-  ExecutionEngine2 EE;
+  ExecutionEngine EE;
   TrainingConfig TC;
   PlaceholderBindings bindings;
 
@@ -182,7 +182,7 @@ TEST(GraphAutoGrad, checkPlaceholderGradTest) {
 
 /// Check that we can differentiate functions that use ConvertToNode.
 TEST(GraphAutoGrad, checkConvertToGradTest) {
-  ExecutionEngine2 EE;
+  ExecutionEngine EE;
   TrainingConfig TC;
   PlaceholderBindings bindings;
 
@@ -196,9 +196,7 @@ TEST(GraphAutoGrad, checkConvertToGradTest) {
   auto inputHandle = bindings.allocate(A)->getHandle<float>();
   inputHandle.randomize(-3.0, 3.0, mod.getPRNG());
 
-  TypeRef outTy = mod.uniqueType(ElemKind::Float16Ty, A->dims());
-
-  auto *convertTo = F->createConvertTo("convertTo", A, outTy);
+  auto *convertTo = F->createConvertTo("convertTo", A, ElemKind::Float16Ty);
   auto *result = F->createSave("save", convertTo);
   bindings.allocate(result->getPlaceholder());
 
@@ -208,7 +206,7 @@ TEST(GraphAutoGrad, checkConvertToGradTest) {
 
 /// Check that we can differentiate functions that use MatMulNode.
 TEST(GraphAutoGrad, checkMatMulGradTest) {
-  ExecutionEngine2 EE;
+  ExecutionEngine EE;
   TrainingConfig TC;
   PlaceholderBindings Bindings;
 
@@ -236,7 +234,7 @@ TEST(GraphAutoGrad, checkMatMulGradTest) {
 
 /// Check that we can differentiate functions that use BatchedReduceAddNode.
 TEST(GraphAutoGrad, checkBatchedReduceAddGradTest) {
-  ExecutionEngine2 EE;
+  ExecutionEngine EE;
   TrainingConfig TC;
   PlaceholderBindings Bindings;
 
@@ -258,7 +256,7 @@ TEST(GraphAutoGrad, checkBatchedReduceAddGradTest) {
 
 /// Check that we can differentiate functions that use GatherNode.
 TEST(GraphAutoGrad, checkGatherGrad1DIndexTest) {
-  ExecutionEngine2 EE;
+  ExecutionEngine EE;
   TrainingConfig TC;
   PlaceholderBindings Bindings;
 
@@ -283,7 +281,7 @@ TEST(GraphAutoGrad, checkGatherGrad1DIndexTest) {
 }
 
 TEST(GraphAutoGrad, checkGatherGrad2DIndexTest) {
-  ExecutionEngine2 EE;
+  ExecutionEngine EE;
   TrainingConfig TC;
   PlaceholderBindings Bindings;
 
@@ -308,7 +306,7 @@ TEST(GraphAutoGrad, checkGatherGrad2DIndexTest) {
 }
 
 TEST(GraphAutoGrad, checkGatherGrad3DIndexTest) {
-  ExecutionEngine2 EE;
+  ExecutionEngine EE;
   TrainingConfig TC;
   PlaceholderBindings Bindings;
 

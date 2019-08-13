@@ -82,11 +82,13 @@ int main(int argc, char **argv) {
       .addMember(MemberType::VectorUnsigned, "Pads")
       .addMember(MemberType::Unsigned, "Group")
       .addMember(MemberType::Unsigned, "Dilation")
+      .addMember(MemberType::Enum, "Layout")
       .addResultFromCtorArg()
       .addGradient()
       .setDocstring("Performs 2D Convolution using a given Input, Filter, and "
                     "Bias tensors, as well as provided Kernels, Strides, Pads, "
-                    "Group and Dilation.");
+                    "Group and Dilation. Supported Layouts are defined in the "
+                    "ConvoltionLayout enum: NHWC and NCHW.");
 
   BB.newNode("ChannelwiseQuantizedConvolution")
       .addInput("Input")
@@ -125,23 +127,28 @@ int main(int argc, char **argv) {
       .addMember(MemberType::VectorUnsigned, "Kernels")
       .addMember(MemberType::VectorUnsigned, "Strides")
       .addMember(MemberType::VectorUnsigned, "Pads")
+      .addMember(MemberType::Enum, "Layout")
       .addResultFromCtorArg("Result")
       .addResultFromCtorArg("Argmax")
       .addGradient()
       .setDocstring(
           "Performs a Max Pool with Argmax operation on the Input "
           "given provided Kernels, Strides, and Pads. Argmax is a flattened "
-          "NHWC index corresponding to respective max element.");
+          "index corresponding to respective max element. Supported layouts "
+          "are defined in the ConvolutionLayout enum: NHWC and NCHW.");
 
   BB.newNode("AvgPool")
       .addInput("Input")
       .addMember(MemberType::VectorUnsigned, "Kernels")
       .addMember(MemberType::VectorUnsigned, "Strides")
       .addMember(MemberType::VectorUnsigned, "Pads")
+      .addMember(MemberType::Enum, "Layout")
       .addResultFromCtorArg()
       .addGradient()
-      .setDocstring("Performs an Average Pool operation on the Input given "
-                    "provided Kernels, Strides, and Pads.");
+      .setDocstring(
+          "Performs an Average Pool operation on the Input given "
+          "provided Kernels, Strides, and Pads. Supported layouts are defined "
+          "in the ConvolutionLayout enum: NHWC and NCHW.");
 
   BB.newNode("AdaptiveAvgPool")
       .addInput("Input")
@@ -390,6 +397,13 @@ int main(int argc, char **argv) {
       .setDocstring("Performs Average Mean operation on the Input given "
                     "Axes.");
 
+  BB.newNode("BatchedReduceMin")
+      .addInput("Batch")
+      .addMember(MemberType::VectorUnsigned, "Axes")
+      .addResultFromCtorArg()
+      .setDocstring("Performs Reduce Min operation on the Input given "
+                    "Axes.");
+
   BB.newNode("ChannelShuffle")
       .addInput("Input")
       .addMember(MemberType::Unsigned, "Group")
@@ -443,6 +457,7 @@ int main(int argc, char **argv) {
       .addInput("Weights")
       .addInput("Indices")
       .addInput("Lengths")
+      .addMember(MemberType::Boolean, "UseFP16Accumulation")
       .addResultFromCtorArg()
       .setDocstring("Gathers slices of the outer-most dimension of Data "
                     "indexed by Indices vector, and then accumulates them into "
@@ -461,6 +476,7 @@ int main(int argc, char **argv) {
       .addInput("Weights")
       .addInput("Indices")
       .addInput("Lengths")
+      .addMember(MemberType::Boolean, "UseFP16Accumulation")
       .addResultFromCtorArg()
       .setDocstring("Gathers slices of the outer-most dimension of Data "
                     "indexed by Indices vector, and then accumulates them into "
@@ -479,6 +495,7 @@ int main(int argc, char **argv) {
       .addInput("Data")
       .addInput("Indices")
       .addInput("Lengths")
+      .addMember(MemberType::Boolean, "UseFP16Accumulation")
       .addResultFromCtorArg()
       .setDocstring("Gathers slices of the outer-most dimension of Data "
                     "indexed by Indices vector, and then accumulates them into "

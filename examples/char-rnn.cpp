@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "glow/ExecutionEngine/ExecutionEngine2.h"
+#include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Graph/Graph.h"
 #include "glow/IR/IR.h"
 #include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
@@ -220,8 +220,7 @@ int main(int argc, char **argv) {
   CHECK_GT(text.size(), numSteps) << "Text is too short";
   TrainingConfig TC;
 
-  // ExecutionEngine2 EEI(executionBackend);
-  ExecutionEngine2 EET(executionBackend);
+  ExecutionEngine EET(executionBackend);
   TC.learningRate = 0.001;
   TC.momentum = 0.9;
   TC.batchSize = minibatchSize;
@@ -252,10 +251,10 @@ int main(int argc, char **argv) {
 
     // Train the network on the whole input.
     LOG(INFO) << "Iteration " << i + 1 << "/" << numEpochs;
-    runBatch2(EET, trainingBindings, batchSize / minibatchSize, sampleCounter,
-              {XT, YT}, {&thisCharTrain, &nextCharTrain});
+    runBatch(EET, trainingBindings, batchSize / minibatchSize, sampleCounter,
+             {XT, YT}, {&thisCharTrain, &nextCharTrain});
 
-    ExecutionEngine2 EEO(executionBackend);
+    ExecutionEngine EEO(executionBackend);
     inferBindings.clear();
     auto &mod = EEO.getModule();
     auto OF =
@@ -285,7 +284,7 @@ int main(int argc, char **argv) {
     // Generate a sentence by running inference over and over again.
     for (unsigned i = 0; i < generateChars; i++) {
       // Generate a char:
-      updateInputPlaceholders2(inferBindings, {X}, {&currCharInfer});
+      updateInputPlaceholders(inferBindings, {X}, {&currCharInfer});
       EEO.run(inferBindings);
 
       // Pick a char at random from the softmax distribution.
