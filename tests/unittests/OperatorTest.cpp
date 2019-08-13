@@ -3108,6 +3108,40 @@ TEST_P(OperatorTest, IntBatchedArith) {
   EXPECT_NEAR(H.at({0, 2, 2}), 9.3, allowedError);
 }
 
+TEST_P(OperatorTest, convTest) {
+  ENABLED_BACKENDS(Interpreter, CPU, OpenCL, Habana);
+  auto *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 3, 3, 1}, "input", false);
+  auto IH = bindings_.allocate(input)->getHandle();
+  IH = {1, 1, 1, 1, 1, 1, 1, 1, 1};
+
+  auto filter =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 3, 3, 1}, "filter", false);
+  auto FH = bindings_.allocate(filter)->getHandle();
+  FH = {0, 0, 0, 1, 1, 1, 0, 0, 0};
+
+  auto *zeroBias =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1}, "bias", false);
+  bindings_.allocate(zeroBias)->zero();
+
+  auto outTy = mod_.uniqueType(ElemKind::FloatTy, {1, 3, 3, 1});
+
+  ConvolutionNode *CN =
+      F_->createConv("Conv", input, filter, zeroBias, outTy, 3, 1, 1, 1);
+  SaveNode *S = F_->createSave("save", CN);
+  bindings_.allocate(S->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  auto result = bindings_.get(S->getPlaceholder());
+
+  Tensor expected(outTy);
+  expected.getHandle() = {2, 3, 2, 2, 3, 2, 2, 3, 2};
+
+  EXPECT_TRUE(expected.isEqual(*result));
+}
+
 template <size_t convDepth>
 static FunctionTensorPair
 createAndInitConvDepthTest(glow::PlaceholderBindings &bindings,
