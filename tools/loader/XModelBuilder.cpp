@@ -121,8 +121,10 @@ buildNetwork(glow::Loader &loader, const glow::TypeRef inputType, glow::Placehol
     (void) ioBindings.allocate(loader.getModule()->getPlaceholders());
 
     if (convertInAndOutToFp16) {
+        glow::PrecisionConfiguration precConfig;
         glow::TypeAToTypeBFunctionConverter converter(
-            *loader.getFunction(), glow::ElemKind::FloatTy, glow::ElemKind::Float16Ty);
+            *loader.getFunction(), glow::ElemKind::FloatTy,
+            glow::ElemKind::Float16Ty, precConfig);
         for (auto *placeholder : loader.getModule()->getPlaceholders())
             converter.convertPlaceholder(*placeholder, &ioBindings);
     }
@@ -190,6 +192,10 @@ runInference(glow::Loader &loader,
     glow::Tensor *inputT = ioBindings.get(ioPlaceholders.first);
 
     std::memcpy(inputT->getUnsafePtr(), inputData.data(), inputData.size());
+
+    if (convertInAndOutToFp16)
+        inputT->convertToType(glow::ElemKind::Float16Ty);
+
     loader.runInference(ioBindings, 1);
 
     for (auto &keyval : ioPlaceholders.second) {
@@ -229,8 +235,11 @@ writeOutputData(const std::unordered_map<std::string, std::pair<std::vector<char
 int 
 main(int argc, char **argv)
 {
-    glow::PlaceholderBindings ioBindings{};
-    std::pair<glow::Placeholder *, std::unordered_map<std::string, glow::Tensor *>> ioPlaceholders{};
+    glow::PlaceholderBindings ioBindings{};                        // IO Bindings
+    std::pair<glow::Placeholder *,
+              std::unordered_map<std::string, glow::Tensor *>>
+        ioPlaceholders{};                                         // first = input placeholder,
+                                                                  // second = <output name, output tensor>
 
     // This must be called before a loader instance is created.
     glow::parseCommandLine(argc, argv);
@@ -267,17 +276,29 @@ main(int argc, char **argv)
         std::exit(1);
     }
 
+    // Stores the list of files containing input in "files".
     gatherFiles(files);
     for (auto &file : files) {
         inputData.clear();
+        // The size of input is computed from input dimensions, known from command line
+        // arguments, and the size of float.
         inputData.reserve(inputT.getSizeInBytes());
+        // Every output is identified by its name (std::string), and is stored in 
+        // a byte array; it also carries information about its size. So
+        // first = name
+        // second = <byte array, array size>.
         std::unordered_map<std::string, std::pair<std::vector<char>, std::size_t>> outputData{};
 
+        // Reads input from file to the inputData vector, of max size = the capacity of
+        // the input tensor.
         loadInputData(file, inputData, inputT.getSizeInBytes());
+        // Output data is stored in outputData.
         runInference(loader, ioBindings, ioPlaceholders, inputData, outputData);
+        // Writes output to a file whose base name is given by "file".
         writeOutputData(outputData, file);
     }
 
+    // Are we profiling? If so, spit out the profile.
     if (glow::profilingGraph())
         loader.generateAndSerializeQuantizationInfos(ioBindings);
 
