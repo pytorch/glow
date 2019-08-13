@@ -98,6 +98,9 @@ public:
   /// shape info that isn't yet available when this is run.
   static bool isNodeSupported(const torch::jit::Node *node);
 
+  /// Converts Glow type into ATen Tensor type.
+  static c10::ScalarType convertGlowType(TypeRef ty);
+
   /// Takes a glow::Function \p F, a jit::Graph \p subgraph to load, and a
   /// stack of \p inputs for the subgraph to be loaded. Parameter \p settings
   /// control the fusion details. Output parameters \p inputPlaceholders and
@@ -259,6 +262,10 @@ private:
   /// Load a PyTorch flatten node.
   /// \returns error on failure.
   llvm::Error loadFlatten(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch topK node.
+  /// \returns error on failure.
+  llvm::Error loadTopK(const torch::jit::Node *ptNode);
 };
 } // namespace glow
 
