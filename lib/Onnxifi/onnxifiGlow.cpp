@@ -84,10 +84,12 @@ GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxGetBackendIDs)(
       return ONNXIFI_STATUS_FALLBACK;
     }
 
-    auto *quantizationBackendC2 = manager.createBackend(
-        GlowOnnxifiBackend.empty() ? "Interpreter" : GlowOnnxifiBackend,
-        /*useOnnx*/ false, /*forQuantization*/ true);
-
+    auto backendName =
+        GlowOnnxifiBackend.empty() ? "Interpreter" : GlowOnnxifiBackend;
+    LOG(INFO) << "ONNXIFI: Executing on " << backendName << " Glow backend";
+    auto *quantizationBackendC2 =
+        manager.createBackend(backendName,
+                              /*useOnnx*/ false, /*forQuantization*/ true);
     backendIDs[0] = quantizationBackendC2;
   } else {
     *numBackends = 1;
@@ -110,6 +112,7 @@ GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxGetBackendIDs)(
       return ONNXIFI_STATUS_FALLBACK;
     }
 
+    LOG(INFO) << "ONNXIFI: Executing on " << backendName << " Glow backend";
     auto *executionBackend = manager.createBackend(backendName,
                                                    /*useOnnx*/ false);
 

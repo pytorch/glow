@@ -907,6 +907,21 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
           ElemKind::Int8QTy, {in.getType()->dims()[0], B->getType()->dims()[0]},
           yScale, yZeroPoint - OFFSETSHIFT);
       node = G_.createFullyConnected(opName, in, W, B, outTy, axis);
+    } else if (typeName == "FbFCPacked") {
+      auto fp16InputType =
+          G_.getParent()->uniqueType(ElemKind::Float16Ty, in.getType()->dims());
+      in = G_.createConvertTo("ConvertInput", in, fp16InputType);
+
+      auto fp16BiasType =
+          G_.getParent()->uniqueType(ElemKind::Float16Ty, B->getType()->dims());
+      auto *fp16Bias = G_.createConvertTo("ConvertBias", B, fp16BiasType);
+      TypeRef OT = G_.getParent()->uniqueType(
+          ElemKind::Float16Ty, {in.dims()[0], B->getType()->dims()[0]});
+
+      auto fc = G_.createFullyConnected(opName, in, W, fp16Bias, OT, axis);
+      auto outputType =
+          G_.getParent()->uniqueType(ElemKind::FloatTy, fc->getResult().dims());
+      node = G_.createConvertTo("ConvertOutput", fc, outputType);
     } else {
       node = G_.createFullyConnected(opName, in, W, B, axis);
     }
