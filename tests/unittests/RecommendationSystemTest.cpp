@@ -101,8 +101,8 @@ llvm::cl::list<unsigned> tableCountsOpt(
 
 llvm::cl::opt<unsigned> deviceMemCapacityOpt(
     "device-mem-capacity",
-    llvm::cl::desc("Device memory capacity. Default is dependent on the test "
-                   "in order to potentially force partitioning."),
+    llvm::cl::desc("Device memory capacity in kB. Default is dependent on the "
+                   "test in order to potentially force partitioning."),
     llvm::cl::Optional, llvm::cl::init(0), llvm::cl::cat(recSysTestCat));
 
 llvm::cl::opt<unsigned> numDevicesOpt(
@@ -195,13 +195,12 @@ static size_t sumOfElements(Handle<int32_t> H) {
 ///
 class RecommendationSystemTest : public BackendTest {
 public:
+  RecommendationSystemTest() : BackendTest(/* deviceMemory */ 64e+9) {}
+
 protected:
   ExecutionContext context_;
-  PlaceholderBindings *bindings_, pBindings_;
+  PlaceholderBindings *bindings_;
   PrecisionConfiguration precConfig_;
-
-  // Separate EE for testing a partitioned RecSys.
-  ExecutionEngine partitionedEE_{getBackendName()};
 
   // Test Config:
   size_t miniBatch;
@@ -220,12 +219,15 @@ protected:
   bool useFP16SLWS{false};
   bool useFP16AccumSLWS{false};
 
+  // Whether to use SLWS with gather of weights, instead of SLS.
+  bool gatherWeights{false};
+
   // Partitioner config:
   uint64_t deviceMemCapacity;
   size_t numDevices;
 
-  // Result handle.
-  Placeholder *result{nullptr};
+  // Result from executing the unpartitioned model on the backend being tested.
+  Tensor *resultTensor{nullptr};
 
   /// Helper that \returns intermediate dims given a provided list of dims \p
   /// providedIntermediateDims and the number of layers needed \p numLayers. If
@@ -305,14 +307,15 @@ protected:
 
     // If device memory capacity is unset via command line, use 8MB by default.
     deviceMemCapacity =
-        (deviceMemCapacityOpt != 0) ? deviceMemCapacityOpt : 1024 * 1024 * 8;
+        (int64_t)1024 *
+        ((deviceMemCapacityOpt != 0) ? deviceMemCapacityOpt : 1024 * 8);
 
     numDevices = numDevicesOpt;
   }
 
   void TearDown() override {
     EE_.clear();
-    result = nullptr;
+    resultTensor = nullptr;
     bindings_->clear();
 
     auto *traceContext = context_.getTraceContext();
@@ -699,10 +702,10 @@ protected:
     }
   }
 
-  /// Builds a simple graph, returns back input var and save node through refs.
-  void createSimpleRecSysGraph(Module &mod, PlaceholderBindings &bindings,
-                               Function *F, llvm::ArrayRef<size_t> embSizes,
-                               size_t embDim, bool gatherWeights) {
+  /// Builds a simple graph, \returns the Tensor output of the graph.
+  Tensor *createSimpleRecSysGraph(Module &mod, PlaceholderBindings &bindings,
+                                  Function *F, llvm::ArrayRef<size_t> embSizes,
+                                  size_t embDim) {
     EXPECT_EQ(tableSizes.size(), embSizes.size());
 
     // Create the tables.
@@ -774,9 +777,8 @@ protected:
 
     // Output
     auto *save = F->createSave("save", topMLP);
-    bindings.allocate(save->getPlaceholder());
 
-    return;
+    return bindings.allocate(save->getPlaceholder());
   }
 
   /// Set up the precision configuration. This will be used for all
@@ -794,8 +796,7 @@ protected:
     }
   }
 
-  void testRecSys(bool gatherWeights, bool setupPartitionTest = false,
-                  bool checkConcat = false) {
+  void testRecSys(bool checkConcat = false) {
     assert((!useFP16AccumSLWS || useFP16SLWS) &&
            "Can only use FP16 accumulation when using FP16 precision.");
 
@@ -803,24 +804,8 @@ protected:
 
     // Generate the network.
     auto *mod = &EE_.getModule();
-    createSimpleRecSysGraph(*mod, *bindings_, F_, tableSizes, embeddingDim,
-                            gatherWeights);
-
-    // If we are running a partitioned test too, setup the partitionedEE also.
-    if (setupPartitionTest) {
-      auto *pMod = &partitionedEE_.getModule();
-      auto *pFunc = pMod->createFunction("main");
-      createSimpleRecSysGraph(*pMod, pBindings_, pFunc, tableSizes,
-                              embeddingDim, gatherWeights);
-      // Copy values from the first graph so they have the same random values.
-      for (auto *C : mod->getConstants()) {
-        auto *dest = partitionedEE_.getModule().getConstantByName(C->getName());
-        dest->getPayloadMutable().copyRawFrom(&C->getPayload());
-      }
-    }
-    SaveNode *result1 = llvm::cast<SaveNode>(F_->getNodeByName("save"));
-    result = result1->getPlaceholder();
-    Tensor *resultTensor = bindings_->get(result);
+    resultTensor =
+        createSimpleRecSysGraph(*mod, *bindings_, F_, tableSizes, embeddingDim);
 
     Placeholder *concatPH = nullptr;
     if (checkConcat) {
@@ -828,37 +813,6 @@ protected:
       auto *CN = F_->getNodeByName("concat");
       auto *saveConcat = F_->createSave("after_concat_data", CN);
       concatPH = saveConcat->getPlaceholder();
-    }
-
-    // Compare against interpreter if we're not executing already on it.
-    const bool compareAgainstInterp = getBackendName() != "Interpreter";
-    ExecutionContext contextI;
-    Tensor *resultIT = nullptr;
-    if (compareAgainstInterp) {
-      ExecutionEngine IEE;
-      // Set device memory to 64GB to prevent partitioning. We are using the
-      // Interpreter's result just as a reference result to compare against.
-      IEE.setDeviceMemory(64e+9);
-      auto *modI = &IEE.getModule();
-      auto *IF = modI->createFunction("main");
-      PlaceholderBindings *bindingsI = contextI.getPlaceholderBindings();
-      createSimpleRecSysGraph(*modI, *bindingsI, IF, tableSizes, embeddingDim,
-                              gatherWeights);
-      // Copy values from the first graph so they have the same random values.
-      for (auto *C : mod->getConstants()) {
-        auto *dest = IEE.getModule().getConstantByName(C->getName());
-        dest->getPayloadMutable().copyRawFrom(&C->getPayload());
-      }
-      bindingsI->allocate(modI->getPlaceholders());
-
-      SaveNode *resultI = llvm::cast<SaveNode>(IF->getNodeByName("save"));
-      resultIT = bindingsI->get(resultI->getPlaceholder());
-
-      // Use the same precision transformation for compilation.
-      CompilationContext cctx;
-      cctx.precisionConfig = precConfig_;
-      IEE.compile(cctx);
-      IEE.run(contextI);
     }
 
     CompilationContext cctx;
@@ -875,14 +829,8 @@ protected:
       EXPECT_FALSE(std::isnan(resultTensorH.raw(i)));
     }
 
-    if (compareAgainstInterp) {
-      EXPECT_TRUE(resultIT->isEqual(*resultTensor));
-    }
-
     if (checkConcat) {
       // Get result and verify.
-      auto resultHandle = resultTensor->getHandle();
-
       EXPECT_EQ(resultTensor->size(), miniBatch);
 
       auto *concatT = bindings_->get(concatPH);
@@ -895,23 +843,25 @@ protected:
       }
 
       std::cout << "Result of prediction" << std::endl;
-      std::cout << resultHandle.size() << std::endl;
-      resultHandle.dump();
-      for (int i = 0, e = resultHandle.size(); i < e; ++i) {
-        EXPECT_GE(resultHandle.raw(i), 0.0);
+      std::cout << resultTensorH.size() << std::endl;
+      resultTensorH.dump();
+      for (int i = 0, e = resultTensorH.size(); i < e; ++i) {
+        EXPECT_GE(resultTensorH.raw(i), 0.0);
       }
+    }
+
+    // Clear the EE to free memory up for other runs to compare against.
+    EE_.clear();
+
+    // Compare against interpreter if we're not executing already on it.
+    if (getBackendName() != "Interpreter") {
+      compareAgainstInterpreter();
     }
   }
 
   /// Execute a graph of functions based on the given DAG.
-  void executeDAG(DAGNode *G, Module &mod, ExecutionContext &context,
-                  CompilationContext &cctx) {
-    std::unordered_map<std::string, Function *> name2func;
-
-    for (auto *F : mod.getFunctions()) {
-      name2func[F->getName()] = F;
-    }
-
+  void executeDAG(ExecutionEngine &partitionedEE, DAGNode *G,
+                  ExecutionContext &context, CompilationContext &cctx) {
     std::vector<DAGNode *> exeList;
     int endPt = 0;
     int curPt = 0;
@@ -919,14 +869,14 @@ protected:
     exeList.push_back(G);
     endPt++;
     // All the functions are in the module, compile them all at once.
-    partitionedEE_.compile(cctx);
+    partitionedEE.compile(cctx);
 
     while (curPt < endPt) {
       DAGNode *dag = exeList.at(curPt);
       // The root in a G is always a dummy function.
       if (curPt > 0) {
         updateInputPlaceholders(*context.getPlaceholderBindings(), {}, {});
-        partitionedEE_.run(context, dag->name);
+        partitionedEE.run(context, dag->name);
       }
       for (unsigned int i = 0, e = dag->children.size(); i < e; i++) {
         exeList.push_back(dag->children.at(i));
@@ -936,15 +886,52 @@ protected:
     }
   }
 
+  /// Run on the Interpreter and compare the result to previous result.
+  void compareAgainstInterpreter() {
+    ExecutionContext contextI;
+    // Set device memory to 64GB to prevent partitioning. We are using the
+    // Interpreter's result just as a reference result to compare against.
+    ExecutionEngine IEE("Interpreter", 64e+9);
+    auto *modI = &IEE.getModule();
+    auto *IF = modI->createFunction("main");
+    PlaceholderBindings *bindingsI = contextI.getPlaceholderBindings();
+    Tensor *resultIT = createSimpleRecSysGraph(*modI, *bindingsI, IF,
+                                               tableSizes, embeddingDim);
+    bindingsI->allocate(modI->getPlaceholders());
+
+    // Use the same precision transformation for compilation.
+    CompilationContext cctx;
+    cctx.precisionConfig = precConfig_;
+    IEE.compile(cctx);
+    IEE.run(contextI);
+
+    assert(resultTensor && "Must run and set resultTensor before comparing "
+                           "against the intepreter.");
+    EXPECT_TRUE(resultIT->isEqual(*resultTensor));
+  }
+
   /// Create partitions to run and compare results.
-  void runPartitionedGraph(size_t numDevices, size_t memSize,
-                           Tensor referenceResult, ExecutionContext &context) {
+  void testPartitionedRecSys(size_t numDevices, size_t memSize,
+                             ExecutionContext &context) {
+    // Result tensors are reused below, so create a local copy.
+    Tensor referenceResultT = resultTensor->clone();
+
+    // Separate EE for testing a partitioned RecSys. Note that we set a high
+    // device memory here separate from memSize; memSize is used to do the
+    // partitioning directly via the partitioner, and then we use the
+    // partitionedEE here to just execute, so avoid any secondary partitioning.
+    ExecutionEngine partitionedEE(getBackendName(), /* deviceMemory */ 64e+9);
+    PlaceholderBindings pBindings;
+
+    auto *pMod = &partitionedEE.getModule();
+    auto *pFunc = pMod->createFunction("main");
+    createSimpleRecSysGraph(*pMod, pBindings, pFunc, tableSizes, embeddingDim);
+
     assert(memSize > 0 && "Must set partitionerPerDeviceMemCapacity > 0.");
     assert(numDevices > 0 && "Must set partitionerNumDevices > 0.");
-    auto backendName = partitionedEE_.getBackendName();
+    auto backendName = partitionedEE.getBackendName();
     std::cout << numDevices << " devices of size " << memSize << "\n";
     std::vector<DeviceInfo> devices(numDevices, {memSize, backendName});
-    auto *pMod = &partitionedEE_.getModule();
     Partitioner myPartitioner(pMod, devices);
     // Use the same precision transformation for compilation.
     CompilationContext cctx;
@@ -958,18 +945,16 @@ protected:
     DAG &dag = myList.front();
 
     // Run the partitioned graph and compare the results.
-
     auto &bindings = *context.getPlaceholderBindings();
     bindings.clear();
     bindings.allocate(pMod->getPlaceholders());
-    pBindings_.allocate(pMod->getPlaceholders());
-    for (auto PH : pBindings_.pairs()) {
-      pBindings_.copyToTarget(PH.first->getName(), bindings);
+    pBindings.allocate(pMod->getPlaceholders());
+    for (auto PH : pBindings.pairs()) {
+      pBindings.copyToTarget(PH.first->getName(), bindings);
     }
-    executeDAG(dag.root.get(), *pMod, context, cctx);
-    auto res = bindings.getPlaceholderByName("save");
-    Tensor *resultTensor = bindings.get(res);
-    EXPECT_TRUE(referenceResult.isEqual(*resultTensor));
+    executeDAG(partitionedEE, dag.root.get(), context, cctx);
+    Tensor *resultTensorP = bindings.get(bindings.getPlaceholderByName("save"));
+    EXPECT_TRUE(referenceResultT.isEqual(*resultTensorP));
   }
 
   /// Test SparseLengthsSum independently.
@@ -984,10 +969,7 @@ protected:
                            embeddingDim, embeddings);
 
     auto *save = F_->createSave("save", embeddings[0]);
-    bindings_->allocate(save->getPlaceholder());
-
-    SaveNode *result1 = llvm::cast<SaveNode>(F_->getNodeByName("save"));
-    result = result1->getPlaceholder();
+    Tensor *resultTensorLocal = bindings_->allocate(save->getPlaceholder());
 
     // Use the same precision transformation for compilation.
     CompilationContext cctx;
@@ -996,11 +978,10 @@ protected:
 
     // Run graph
     EE_.run(context_);
-    auto *resultTensor = bindings_->get(result);
 
     // TODO: for now we only check the output dimension, contents are ignored
-    EXPECT_EQ(resultTensor->size(), miniBatch * embeddingDim);
-    resultTensor->getHandle().dump();
+    EXPECT_EQ(resultTensorLocal->size(), miniBatch * embeddingDim);
+    resultTensorLocal->getHandle().dump();
   }
 };
 
@@ -1033,7 +1014,7 @@ TEST_P(RecommendationSystemTest, RecSys_FP32) {
   quantizeFC = false;
   convertToFP16 = false;
 
-  testRecSys(/* gatherWeights */ false);
+  testRecSys();
 }
 
 /// Rowwise quantize the SLWS and FC; everything else in FP32.
@@ -1046,7 +1027,7 @@ TEST_P(RecommendationSystemTest, RecSys_RWQuantized_SLWS_FC) {
   quantizeFC = true;
   convertToFP16 = false;
 
-  testRecSys(/* gatherWeights */ false);
+  testRecSys();
 }
 
 /// Rowwise quantize the SLWS; everything else in FP32.
@@ -1059,7 +1040,7 @@ TEST_P(RecommendationSystemTest, RecSys_RWQuantized_SLWS) {
   quantizeFC = false;
   convertToFP16 = false;
 
-  testRecSys(/* gatherWeights */ false);
+  testRecSys();
 }
 
 /// Rowwise quantize the SLWS and FC; everything else in FP16.
@@ -1072,7 +1053,7 @@ TEST_P(RecommendationSystemTest, RecSys_RWQuantized_SLWS_FC_FP16) {
   quantizeFC = true;
   convertToFP16 = true;
 
-  testRecSys(/* gatherWeights */ false);
+  testRecSys();
 }
 
 /// Rowwise quantize the SLWS; everything else in FP16.
@@ -1085,7 +1066,7 @@ TEST_P(RecommendationSystemTest, RecSys_RWQuantized_SLWS_FP16) {
   quantizeFC = false;
   convertToFP16 = true;
 
-  testRecSys(/* gatherWeights */ false);
+  testRecSys();
 }
 
 /// Rowwise quantize the SLWS, with FP16 for scales/bias, and other
@@ -1099,7 +1080,7 @@ TEST_P(RecommendationSystemTest, RecSys_RWQuantizedFP16_SLWS) {
   quantizeFC = false;
   convertToFP16 = false;
 
-  testRecSys(/* gatherWeights */ false);
+  testRecSys();
 }
 
 /// Rowwise quantize the SLWS, with FP16 for scales/bias, and other
@@ -1113,7 +1094,7 @@ TEST_P(RecommendationSystemTest, RecSys_RWQuantizedFP16AccumFP16_SLWS) {
   quantizeFC = false;
   convertToFP16 = false;
 
-  testRecSys(/* gatherWeights */ false);
+  testRecSys();
 }
 
 /// Rowwise quantize the SLWS, with FP16 for scales/bias, and other
@@ -1127,7 +1108,7 @@ TEST_P(RecommendationSystemTest, RecSys_RWQuantizedFP16_SLWS_FP16) {
   quantizeFC = false;
   convertToFP16 = true;
 
-  testRecSys(/* gatherWeights */ false);
+  testRecSys();
 }
 
 /// Rowwise quantize the SLWS, with FP16 for scales/bias, and other
@@ -1141,7 +1122,7 @@ TEST_P(RecommendationSystemTest, RecSys_RWQuantizedFP16AccumFP16_SLWS_FP16) {
   quantizeFC = false;
   convertToFP16 = true;
 
-  testRecSys(/* gatherWeights */ false);
+  testRecSys();
 }
 
 /// Partitioning Tests
@@ -1158,8 +1139,7 @@ TEST_P(RecommendationSystemTest, RecSys_FP32_Partitioned) {
   quantizeFC = false;
   convertToFP16 = false;
 
-  testRecSys(/* gatherWeights */ false,
-             /* setupPartitionTest */ true);
+  testRecSys();
 
   // If the memory capacity was not set on the command line, then double the
   // default value for this test.
@@ -1167,8 +1147,7 @@ TEST_P(RecommendationSystemTest, RecSys_FP32_Partitioned) {
     deviceMemCapacity *= 2; // Double memory for this test
   }
 
-  runPartitionedGraph(numDevices, deviceMemCapacity,
-                      bindings_->get(result)->clone(), context_);
+  testPartitionedRecSys(numDevices, deviceMemCapacity, context_);
 }
 
 TEST_P(RecommendationSystemTest, RecSys_Partitioned_RWQuantized_SLWS) {
@@ -1180,8 +1159,7 @@ TEST_P(RecommendationSystemTest, RecSys_Partitioned_RWQuantized_SLWS) {
   quantizeFC = false;
   convertToFP16 = false;
 
-  testRecSys(/* gatherWeights */ false,
-             /* setupPartitionTest */ true);
+  testRecSys();
 
   // If the memory capacity was not set on the command line, then double the
   // default value for this test.
@@ -1189,8 +1167,7 @@ TEST_P(RecommendationSystemTest, RecSys_Partitioned_RWQuantized_SLWS) {
     deviceMemCapacity *= 2; // Double memory for this test
   }
 
-  runPartitionedGraph(numDevices, deviceMemCapacity,
-                      bindings_->get(result)->clone(), context_);
+  testPartitionedRecSys(numDevices, deviceMemCapacity, context_);
 }
 
 TEST_P(RecommendationSystemTest, RecSys_Partitioned_RWQuantized_SLWS_FC) {
@@ -1202,11 +1179,9 @@ TEST_P(RecommendationSystemTest, RecSys_Partitioned_RWQuantized_SLWS_FC) {
   quantizeFC = true;
   convertToFP16 = false;
 
-  testRecSys(/* gatherWeights */ false,
-             /* setupPartitionTest */ true);
+  testRecSys();
 
-  runPartitionedGraph(numDevices, deviceMemCapacity,
-                      bindings_->get(result)->clone(), context_);
+  testPartitionedRecSys(numDevices, deviceMemCapacity, context_);
 }
 
 TEST_P(RecommendationSystemTest, RecSys_Partitioned_RWQuantized_SLWS_FP16) {
@@ -1218,11 +1193,9 @@ TEST_P(RecommendationSystemTest, RecSys_Partitioned_RWQuantized_SLWS_FP16) {
   quantizeFC = false;
   convertToFP16 = true;
 
-  testRecSys(/* gatherWeights */ false,
-             /* setupPartitionTest */ true);
+  testRecSys();
 
-  runPartitionedGraph(numDevices, deviceMemCapacity,
-                      bindings_->get(result)->clone(), context_);
+  testPartitionedRecSys(numDevices, deviceMemCapacity, context_);
 }
 
 TEST_P(RecommendationSystemTest, RecSys_Partitioned_RWQuantized_SLWS_FC_FP16) {
@@ -1234,11 +1207,9 @@ TEST_P(RecommendationSystemTest, RecSys_Partitioned_RWQuantized_SLWS_FC_FP16) {
   quantizeFC = true;
   convertToFP16 = true;
 
-  testRecSys(/* gatherWeights */ false,
-             /* setupPartitionTest */ true);
+  testRecSys();
 
-  runPartitionedGraph(numDevices, deviceMemCapacity,
-                      bindings_->get(result)->clone(), context_);
+  testPartitionedRecSys(numDevices, deviceMemCapacity, context_);
 }
 
 /// Rowwise quantize the SLWS, with FP16 for scales/bias, and other
@@ -1253,8 +1224,7 @@ TEST_P(RecommendationSystemTest, RecSys_Partitioned_RWQuantizedFP16_SLWS) {
   quantizeFC = false;
   convertToFP16 = false;
 
-  testRecSys(/* gatherWeights */ false,
-             /* setupPartitionTest */ true);
+  testRecSys();
 
   // If the memory capacity was not set on the command line, then double the
   // default value for this test.
@@ -1262,8 +1232,7 @@ TEST_P(RecommendationSystemTest, RecSys_Partitioned_RWQuantizedFP16_SLWS) {
     deviceMemCapacity *= 2; // Double memory for this test
   }
 
-  runPartitionedGraph(numDevices, deviceMemCapacity,
-                      bindings_->get(result)->clone(), context_);
+  testPartitionedRecSys(numDevices, deviceMemCapacity, context_);
 }
 
 /// Rowwise quantize the SLWS, with FP16 for scales/bias, and other
@@ -1279,11 +1248,9 @@ TEST_P(RecommendationSystemTest,
   quantizeFC = false;
   convertToFP16 = false;
 
-  testRecSys(/* gatherWeights */ false,
-             /* setupPartitionTest */ true);
+  testRecSys();
 
-  runPartitionedGraph(numDevices, deviceMemCapacity,
-                      bindings_->get(result)->clone(), context_);
+  testPartitionedRecSys(numDevices, deviceMemCapacity, context_);
 }
 
 /// Rowwise quantize the SLWS, with FP16 for scales/bias, and other
@@ -1298,11 +1265,9 @@ TEST_P(RecommendationSystemTest, RecSys_Partitioned_RWQuantizedFP16_SLWS_FP16) {
   quantizeFC = false;
   convertToFP16 = true;
 
-  testRecSys(/* gatherWeights */ false,
-             /* setupPartitionTest */ true);
+  testRecSys();
 
-  runPartitionedGraph(numDevices, deviceMemCapacity,
-                      bindings_->get(result)->clone(), context_);
+  testPartitionedRecSys(numDevices, deviceMemCapacity, context_);
 }
 
 /// Rowwise quantize the SLWS, with FP16 for scales/bias, and other
@@ -1318,11 +1283,9 @@ TEST_P(RecommendationSystemTest,
   quantizeFC = false;
   convertToFP16 = true;
 
-  testRecSys(/* gatherWeights */ false,
-             /* setupPartitionTest */ true);
+  testRecSys();
 
-  runPartitionedGraph(numDevices, deviceMemCapacity,
-                      bindings_->get(result)->clone(), context_);
+  testPartitionedRecSys(numDevices, deviceMemCapacity, context_);
 }
 
 /// Test SLS independently, with no other layers being run.
@@ -1347,5 +1310,7 @@ TEST_P(RecommendationSystemTest, RecSys_FP32_Gather_Weights) {
   quantizeFC = false;
   convertToFP16 = false;
 
-  testRecSys(/* gatherWeights */ true);
+  gatherWeights = true;
+
+  testRecSys();
 }
