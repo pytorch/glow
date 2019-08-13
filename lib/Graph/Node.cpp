@@ -27,12 +27,12 @@ void Node::setPredicate(const NodeValue &P) { predicate_ = P; }
 bool Node::hasPredicate() const { return predicate_.getNode(); }
 
 TypeRef Node::getType(unsigned idx) const {
-  assert(idx < numRes_ && "Result number does not exist.");
+  assert(idx < getNumResults() && "Result number does not exist.");
   return types_[idx];
 }
 
 void Node::setType(unsigned idx, TypeRef ty) {
-  assert(idx < numRes_ && "Result number does not exist.");
+  assert(idx < getNumResults() && "Result number does not exist.");
   assert(types_[idx]->dims() == ty->dims() &&
          "Better create a new node at this point");
   types_[idx] = ty;
@@ -48,10 +48,7 @@ llvm::ArrayRef<size_t> Node::dims(unsigned resNo) const {
   return TR->dims();
 }
 
-void Node::addResult(TypeRef T) {
-  assert(numRes_ < maxNodeResno_ && "Too many results");
-  types_[numRes_++] = T;
-}
+void Node::addResult(TypeRef T) { types_.push_back(T); }
 
 bool Node::isEqual(const Node &other) const {
   if (this == &other)
