@@ -15,7 +15,7 @@
  */
 
 #include "PyTorchCommon.h"
-#include "FusingOptimizer.h"
+#include "GlowFuser.h"
 #include "PyTorchModelLoader.h"
 #include <torch/csrc/jit/passes/graph_fuser.h>
 
@@ -40,8 +40,7 @@ void glowCustomFuse(std::shared_ptr<torch::jit::Graph> &g,
   // aten::linear before we fuse the whole graph.
   FuseLinear(g);
 
-  torch::jit::CustomFuseGraph(g, PyTorchModelLoader::isNodeSupported,
-                              fuseSymbol);
+  GlowCustomFuse(g, PyTorchModelLoader::isNodeSupported, fuseSymbol);
 }
 
 } // namespace glow
