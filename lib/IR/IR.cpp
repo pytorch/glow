@@ -144,6 +144,10 @@ void Value::verifyUseList(const InstructionNumbering &InstrNumbering) const {
     (void)I;
     // Every instruction using this value should be in the instruction list.
     assert(InstrNumbering.getInstrNumber(I) != -1);
+    // All uses must come after defs.
+    assert(!isa<Instruction>(this) ||
+           InstrNumbering.getInstrNumber(I) >
+               InstrNumbering.getInstrNumber(cast<Instruction>(this)));
   }
 }
 
