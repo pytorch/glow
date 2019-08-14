@@ -206,7 +206,12 @@ private:
   llvm::Error loadSqrt(const torch::jit::Node *ptNode);
 
   /// Load a PyTorch reciprocal node.
+  /// \returns error on failure.
   llvm::Error loadReciprocal(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch sqrt node.
+  /// \returns error on failure.
+  llvm::Error loadReshape(const torch::jit::Node *ptNode);
 
   /// Load a PyTorch _convolution node.
   /// \returns error on failure.

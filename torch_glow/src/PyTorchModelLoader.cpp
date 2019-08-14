@@ -233,6 +233,14 @@ struct LinearInputs {
   };
 };
 
+// Indexes of aten::reshape inputs.
+struct ReshapeInputs {
+  enum {
+    input = 0,
+	new_shape = 1,
+  }
+};
+
 // Indexes of aten::prelu inputs.
 struct PReluInputs {
   enum {
@@ -275,6 +283,8 @@ PyTorchModelLoader::getSymbolsMapping() {
        {{"aten::sigmoid", "aten::sigmoid_"},
         &PyTorchModelLoader::loadSigmoid,
         {}},
+	   {{"aten::reshape"}, &PyTorchModelLoader::loadReshape,
+	   {ReshapeInputs::input, ReshapeInputs::new_shape}},
        {{"aten::sub", "aten::sub_"}, &PyTorchModelLoader::loadSub, {}},
        {{"aten::relu", "aten::relu_"}, &PyTorchModelLoader::loadRelu, {}},
        {{"aten::t, aten::t_"}, &PyTorchModelLoader::loadTranspose, {}},
@@ -1048,6 +1058,25 @@ llvm::Error PyTorchModelLoader::loadMatMul(const torch::jit::Node *ptNode) {
 
   auto *glowNode = F_.createMatMul("MatMul", lhs, rhs);
   return addGlowNodeValue(outputs[0], glowNode);
+}
+
+llvmError PyTModelLoaderLoader::LoadReshape(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 2, outputs, 1));
+
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValue(inputs[ReshapeInputs::input]));
+
+  glow::Handle<uint32_t> shapeHandle;
+  ASSIGN_VALUE_OR_RETURN_ERR(shapeHandle, getGlowConstantHandle<uint32_t>inputs[ReshapeInputs::new_shape]);
+  std::vector<size_t> new_shape;
+  ASSIGN_VALUE_OR_RETURN_ERR(new_shape, expandParamIfNeeded<uint32_t, size_t>(shapeHandle, 4));
+
+  glow::NodeValue output;
+  ASSIGN_VALUE_OR_RETURN_ERR(output, F_.createReshape("reshape", input, new_shape));
+
+  return addGlowNodeValue(outputs[0], output);
 }
 
 llvm::Error PyTorchModelLoader::loadPRelu(const torch::jit::Node *ptNode) {
