@@ -16,6 +16,8 @@
 #ifndef X_PERF_MONITOR_H
 #define X_PERF_MONITOR_H
 
+#ifdef ENABLE_PERF_MONITORING
+
 #include <stdlib.h>
 #include <unistd.h>
 #include <stdint.h>
@@ -44,4 +46,5 @@ int resume_perf_monitoring(struct PerfData *pd);
 int reset_perf_statistics(struct PerfData *pd);
 int read_perf_statistics(struct PerfData *pd);
 
+#endif
 #endif

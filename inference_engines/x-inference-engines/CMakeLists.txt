@@ -6,9 +6,8 @@ option(BUILD_FOR_DYNAMIC_LINKAGE "Whether to build for dynamic or static bundle 
 option(LINK_LIBS_STATICALLY "Whether to link in all the required libraries statically" ON)
 option(ENABLE_PERF_MONITORING "Whether to enable performance monitoring" OFF)
 
-set(CMAKE_BINARY_DIR ./bin)
-set(EXECUTABLE_OUTPUT_PATH ${CMAKE_BINARY_DIR})
-set(LIBRARY_OUTPUT_PATH ${CMAKE_BINARY_DIR})
+set(EXECUTABLE_OUTPUT_PATH ${CMAKE_BINARY_DIR}/bin)
+set(LIBRARY_OUTPUT_PATH ${CMAKE_BINARY_DIR}/bin)
 
 if(LINK_LIBS_STATICALLY)
     message(WARNING "Static linking may cause issues with dlopen on target")

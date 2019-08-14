@@ -1,4 +1,3 @@
-
 /** Copyright 2019 Xperi Corporation.
  *
  * Licensed under the Apache License, Version 2.0 (the "License”); 
@@ -14,6 +13,7 @@
  * limitations under the License.
  */
 
+#ifdef ENABLE_PERF_MONITORING
 
 #include <sys/ioctl.h>
 #include <string.h>
@@ -94,3 +94,5 @@ read_perf_statistics(struct PerfData *pd)
 
     return ret;
 }
+
+#endif

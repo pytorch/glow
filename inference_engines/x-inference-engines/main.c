@@ -38,7 +38,7 @@ extern void X_MODEL_NAME(uint8_t *, uint8_t *, uint8_t *);
 #endif
 
 const char *argp_program_version = "x-infer v0.01";
-const char *argp_program_bug_address = "<william.yessen@xperi.com>";
+const char *argp_program_bug_address = "Github Pytorch Glow repository at https://github.com/pytorch/glow";
 const char doc[] = 
                    "\n                    Generic Inference Engine                         \n"
                    "-----------------------------------------------------------------------\n"
@@ -202,7 +202,9 @@ int main(int argc, char **argv)
     network_data.input_tensor_name = arguments.in_name;
     network_data.output_tensor_name = arguments.out_name;
     network_data.weights_file_name = arguments.weights_file;
+#ifdef ENABLE_PERF_MONITORING
     network_data.do_perf_monitoring = arguments.perf_monitor;
+#endif
 
     /* Initialize the runtime data... */
     retval = init_runtime_data(&network_data, &runtime_data);

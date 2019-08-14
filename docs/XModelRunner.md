@@ -41,4 +41,4 @@ When input files are specified, output is produced (saved into binary files) onl
 
 ### A Note on the Initial Contribution
 
-The initial contribution of this runner was made as part of the open source contribution initiative by the XPERI Corporation (xperi.com). 
+The initial contribution of this runner (as well as the corresponding documentation) was made as part of the open source contribution initiative by the XPERI Corporation (xperi.com). 
