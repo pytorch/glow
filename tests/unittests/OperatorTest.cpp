@@ -7232,6 +7232,67 @@ TEST_P(OperatorTest,
       /* useFP16Accumulation */ true);
 }
 
+TEST_P(OperatorTest,
+       FusedRowwiseQuantizedSparseLengthsWeightedSum_ConvertedFloat16) {
+  ENABLED_BACKENDS(Interpreter);
+  /*
+    DATA  =   [[2.0, -0.5, 13]]
+    WEIGHTS = [3, 1, 0, 0, 0, 0, 2, -0.5]
+    INDICES = [1, 0, 2, 0, 1, 2, 2, 0]
+    LENGTHS = [3, 0, 3, 2]
+    OUTPUT =  [[0.5, 0, 0, 25]]
+  */
+  Tensor data(ElemKind::FloatTy, {3, 1});
+  data.getHandle() = {
+      2.0,
+      -0.5,
+      13,
+  };
+
+  Constant *weights = mod_.createConstant(ElemKind::FloatTy, {8}, "weights");
+  weights->getPayloadMutable().getHandle<float>() = {
+      3., 1., 0., 0., 0., 0., 2., -0.5,
+  };
+
+  Placeholder *indices =
+      mod_.createPlaceholder(ElemKind::Int64ITy, {8}, "indices",
+                             /* isTrainable */ false);
+  Placeholder *lengths =
+      mod_.createPlaceholder(ElemKind::Int32ITy, {4}, "lengths",
+                             /* isTrainable */ false);
+
+  bindings_.allocate(indices)->getHandle<int64_t>() = {
+      1, 0, 2, 0, 1, 2, 2, 0,
+  };
+  bindings_.allocate(lengths)->getHandle<int32_t>() = {
+      3,
+      0,
+      3,
+      2,
+  };
+
+  auto *R = F_->createFusedRowwiseQuantizedSparseLengthsWeightedSum(
+      "RQSLWS", data, weights, indices, lengths);
+  SaveNode *S = F_->createSave("save", R);
+  bindings_.allocate(S->getPlaceholder());
+
+  CompilationContext cctx;
+  cctx.precisionConfig.convertToFP16 = true;
+  EE_.compile(cctx);
+  EE_.run(bindings_);
+
+  Tensor &result = *bindings_.get(S->getPlaceholder());
+  Tensor expected(ElemKind::FloatTy, {4, 1});
+  expected.getHandle<float>() = {
+      0.5,
+      0,
+      0,
+      25,
+  };
+
+  EXPECT_TRUE(expected.isEqual(result, 0.02));
+}
+
 /// Helper to test FusedRowwiseQuantizedSparseLengthsSum using \p DTy.
 template <typename DataType>
 static void testFusedRowwiseQuantizedSparseLengthsSum(

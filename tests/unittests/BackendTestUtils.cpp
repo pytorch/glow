@@ -1160,4 +1160,81 @@ void runOnDevice(ExecutionContext &context, llvm::StringRef name,
   EXIT_ON_ERR(std::move(runErr));
 }
 
+/// Copies a predefined scale and offset into the current row given a pointer
+/// to the scale and offset \p currRowScaleOffsetPtr. Uses \p T as the
+/// datatype for the scale and offset.
+template <typename T>
+static void copyInScaleOffset(char *currRowScaleOffsetPtr) {
+  // Range (0, 255) -> (-0.1, 0.1)
+  T scale = 1.0f / 1275;
+  T offset = -0.1;
+
+  memcpy(currRowScaleOffsetPtr, &scale, sizeof(T));
+  memcpy(currRowScaleOffsetPtr + sizeof(T), &offset, sizeof(T));
+}
+
+Constant *createRandomizedConstant(Module &mod, TypeRef type,
+                                   llvm::ArrayRef<size_t> dims,
+                                   llvm::StringRef name) {
+  auto *c = mod.createConstant(mod.uniqueTypeWithNewShape(type, dims), name);
+
+  switch (type->getElementType()) {
+  case ElemKind::FloatTy: {
+    c->getHandle<float>().initXavier(c->getType()->size() * 2, mod.getPRNG());
+    break;
+  }
+  case ElemKind::Float16Ty: {
+    c->getHandle<float16_t>().initXavier(c->getType()->size() * 2,
+                                         mod.getPRNG());
+    break;
+  }
+  case ElemKind::Int32QTy: {
+    c->getHandle<int32_t>().randomize(INT32_MIN, INT32_MAX, mod.getPRNG());
+    break;
+  }
+  case ElemKind::Int8QTy: {
+    c->getHandle<int8_t>().randomize(INT8_MIN, INT8_MAX, mod.getPRNG());
+    break;
+  }
+  case ElemKind::UInt8FusedQTy:
+  case ElemKind::UInt8FusedFP16QTy: {
+    c->getHandle<uint8_t>().randomize(UINT8_MIN, UINT8_MAX, mod.getPRNG());
+    break;
+  }
+  default:
+    LOG(FATAL) << "Unsupported type: " << type->getElementName().str();
+  }
+
+  return c;
+}
+
+Constant *createRandomFusedRowwiseQuantizedConstant(Module &mod,
+                                                    llvm::ArrayRef<size_t> dims,
+                                                    llvm::StringRef name,
+                                                    bool useFusedFP16) {
+  auto T = mod.uniqueType(
+      (useFusedFP16 ? ElemKind::UInt8FusedFP16QTy : ElemKind::UInt8FusedQTy),
+      {1}, 1, 0);
+  const size_t sizeScaleOffset =
+      useFusedFP16 ? sizeof(float16_t) : sizeof(float);
+  Constant *c = createRandomizedConstant(
+      mod, T, {dims[0], dims[1] + 2 * sizeScaleOffset}, name);
+
+  auto *dbP = c->getPayload().getUnsafePtr();
+  const size_t outWidth = c->dims()[1];
+  for (unsigned j = 0, e = c->dims()[0]; j < e; j++) {
+    // Now set the scale/offset at the end of each row.
+    char *currRowScaleOffsetPtr =
+        dbP + (j + 1) * outWidth - 2 * sizeScaleOffset;
+
+    if (useFusedFP16) {
+      copyInScaleOffset<float16_t>(currRowScaleOffsetPtr);
+    } else {
+      copyInScaleOffset<float>(currRowScaleOffsetPtr);
+    }
+  }
+
+  return c;
+}
+
 } // namespace glow

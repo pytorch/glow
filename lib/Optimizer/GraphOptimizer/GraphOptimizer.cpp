@@ -17,7 +17,7 @@
 #include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
 
 #include "glow/Backend/Backend.h"
-#include "glow/Converter/TypeAToTypeBFunctionConverter.h"
+#include "glow/Converter/Float16Converter.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/Log.h"
 #include "glow/Graph/Node.h"
@@ -2094,6 +2094,16 @@ static NodeValue convertConstant(Module &mod, Constant &constant,
       // Plain conversion: {FloatTy, Float16Ty} -> Int64ITy.
       return NodeValue();
     }
+  case ElemKind::UInt8FusedQTy: {
+    if (dstTy->getElementType() != ElemKind::UInt8FusedFP16QTy) {
+      return NodeValue();
+    }
+    auto *NC = mod.createConstant(dstTy, constant.getName());
+    NC->getPayloadMutable() =
+        tensor.getCopyConvertedToType(dstTy->getElementType());
+    return NC->getOutput();
+  }
+
   default:
     // For now we don't see other quantize, dequantize, or rescale nodes
     // directly attached to constants.
@@ -2193,6 +2203,7 @@ bool OptimizeConversions::run(Function *F, const CompilationContext &cctx) {
       srcVal =
           convertConstant(mod, *llvm::cast<Constant>(conversionInput.getNode()),
                           dstVal.getType());
+      assert(srcVal.getNode() != nullptr && "Unhandled convertConstant case.");
       // Reset conversionInput because it may not be valid anymore.
       conversionInput = NodeValue();
       break;
@@ -2943,11 +2954,8 @@ static void transformForPrecisionMode(const Backend &B, Function *F,
   }
 
   if (precConfig.convertToFP16) {
-    LOG_SCOPE(F->getLogContext(), "TypeAToTypeBFunctionConverter::convert()")
-
-    TypeAToTypeBFunctionConverter converter(*F, ElemKind::FloatTy,
-                                            ElemKind::Float16Ty, precConfig);
-    converter.convert();
+    LOG_SCOPE(F->getLogContext(), "glow::convertFunctionToFloat16")
+    convertFunctionToFloat16(F, precConfig);
   }
 }
 
