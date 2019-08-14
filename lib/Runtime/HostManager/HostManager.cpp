@@ -226,20 +226,18 @@ llvm::Error HostManager::clearHost() {
   DCHECK_EQ(activeRequestCount_, 0)
       << "All requests should be finished when shutting down HostManager.";
 
+  // Remove all networks from the host and device(s).
+  while (networks_.size() != 0) {
+    RETURN_IF_ERR(removeNetwork(networks_.begin()->first));
+  }
+
+  // Now it's safe to stop the DeviceManagers.
   std::lock_guard<std::mutex> networkLock(networkLock_);
   OneErrOnly errContainer;
   for (auto &it : devices_) {
     errContainer.set(it.second->stop());
   }
 
-  for (auto &network : networks_) {
-    for (auto &node : network.second.dag.nodes) {
-      for (auto device : node->deviceIDs) {
-        devices_[device]->evictNetwork(node->name);
-      }
-    }
-  }
-  networks_.clear();
   return errContainer.get();
 }
 
