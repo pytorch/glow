@@ -20,9 +20,6 @@
 
 #include "glow/Support/Support.h"
 
-#include <torch/csrc/jit/argument_spec.h>
-#include <torch/csrc/utils/hash.h>
-
 namespace glow {
 
 namespace {
@@ -31,12 +28,9 @@ namespace {
 /// stack.
 size_t getGraphHash(const torch::jit::Node *node,
                     const torch::jit::Stack &stack) {
-  const std::shared_ptr<torch::jit::Graph> graph = node->g(at::attr::Subgraph);
-  const auto &graphInputs = graph->inputs();
-  const auto inputs = torch::jit::last(stack, graphInputs.size());
-  torch::jit::CompleteArgumentSpec spec(/*with_grad*/ false, inputs);
-
-  return torch::hash_combine(reinterpret_cast<size_t>(node), spec.hashCode());
+  // TODO: Actually hash this using the node, stack values and shapes, etc.
+  // TODO: Remove cached graphs when corresponding JIT node is destroyed.
+  return reinterpret_cast<size_t>(node);
 }
 
 } // namespace
@@ -61,7 +55,6 @@ CachingGraphRunner::loadGraphImpl(const torch::jit::Node *node,
 
   auto info = llvm::make_unique<PerGlowGraphInfo>();
   info->functionName = strFormat("PTFunction%lu", hash);
-  info->hash = hash;
   info->node = node;
 
   std::unique_ptr<Module> module = llvm::make_unique<Module>();
@@ -75,16 +68,13 @@ CachingGraphRunner::loadGraphImpl(const torch::jit::Node *node,
 
   RETURN_IF_ERR(hostManager_->addNetwork(std::move(module), cctx));
 
-  perGlowGraphInfoMap.insert({hash, std::move(info)});
+  perGlowGraphInfoMap[hash] = std::move(info);
 
   return perGlowGraphInfoMap[hash].get();
 }
 
 llvm::Error CachingGraphRunner::runGraphImpl(const PerGlowGraphInfo &info,
                                              torch::jit::Stack &stack) {
-  DCHECK_EQ(getGraphHash(info.node, stack), info.hash)
-      << "Tried to run a graph with incompatible input shapes.";
-
   size_t numInputs = info.inputPlaceholders.size();
 
   auto inputs = torch::jit::last(stack, numInputs);
@@ -131,21 +121,25 @@ llvm::Error CachingGraphRunner::runGraph(const torch::jit::Node *node,
                                          torch::jit::Stack &stack) {
   PerGlowGraphInfo *info;
   ASSIGN_VALUE_OR_RETURN_ERR(info, loadGraphImpl(node, stack));
-  RETURN_IF_ERR(runGraphImpl(*DCHECK_NOTNULL(info), stack));
-  return llvm::Error::success();
+  return runGraphImpl(*DCHECK_NOTNULL(info), stack);
 }
 
 CachingGraphRunner::CachingGraphRunner() {
   constexpr size_t numGlowDevices = 1;
-  constexpr const char *glowBackendName = "Interpreter";
 
   std::vector<std::unique_ptr<runtime::DeviceConfig>> deviceConfigs;
   for (int i = 0; i < numGlowDevices; i++) {
-    deviceConfigs.push_back(
-        llvm::make_unique<runtime::DeviceConfig>(glowBackendName));
+    deviceConfigs.push_back(llvm::make_unique<runtime::DeviceConfig>(
+        getPyTorchLoaderSettings().glowBackendName));
   }
 
   hostManager_ =
       llvm::make_unique<runtime::HostManager>(std::move(deviceConfigs));
+}
+
+CachingGraphRunner *CachingGraphRunner::getGraphRunner() {
+  static auto runner_ =
+      std::unique_ptr<CachingGraphRunner>(new CachingGraphRunner());
+  return runner_.get();
 }
 } // namespace glow

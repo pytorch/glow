@@ -43,6 +43,11 @@ class PyTorchModelLoader {
       std::unordered_map<const torch::jit::Value *, glow::NodeValue>;
   ValueMap valueMap_;
 
+  /// Indices of stack inputs that were frozen during loading. This set is
+  /// optionally provided by the user of PyTorchModelLoader and will be returned
+  /// to them after loading is complete.
+  std::set<size_t> *frozenInputIndices_ = nullptr;
+
   /// Values in the MappingOfMemberFunctions map. These values contain the
   /// information necessary to load PyTorch nodes such as which
   /// PyTorchModelLoader method to use and which inputs should be considered as
@@ -121,12 +126,15 @@ private:
   /// Takes a glow::Function \p F, a jit::Graph \p subgraph to load, and a
   /// stack of \p inputs for the subgraph to be loaded. Parameter \p settings
   /// control the fusion details. Output parameters \p inputPlaceholders and
-  /// \p outputPlaceholders are filled out.
+  /// \p outputPlaceholders are filled out. \p frozenInputIndices is an optional
+  /// parameter that, if provided, will be filled with the set of stack indices
+  /// that were frozen during loading.
   PyTorchModelLoader(glow::Function &F, torch::jit::Graph &subgraph,
                      at::ArrayRef<torch::jit::IValue> &inputs,
                      std::vector<glow::Placeholder *> &inputPlaceholders,
                      std::vector<glow::Placeholder *> &outputPlaceholders,
-                     llvm::Error &error, const PyTorchLoaderSettings &settings);
+                     llvm::Error &error, const PyTorchLoaderSettings &settings,
+                     std::set<size_t> *frozenInputIndices);
 
   /// Save access to the mapping.
   static const MappingOfMemberFunctions &getSymbolsMapping();

@@ -17,10 +17,10 @@
 #ifndef GLOW_TORCH_GLOW_SRC_CACHINGGRAPHRUNNER_H
 #define GLOW_TORCH_GLOW_SRC_CACHINGGRAPHRUNNER_H
 
+#include "glow/Runtime/HostManager/HostManager.h"
+
 #include <torch/csrc/jit/custom_operator.h>
 #include <torch/csrc/jit/ir.h>
-
-#include "glow/Runtime/HostManager/HostManager.h"
 
 namespace glow {
 
@@ -33,10 +33,6 @@ class CachingGraphRunner {
 
     /// Name of the Glow function maintained by HostManager for this subgraph.
     std::string functionName;
-
-    /// The unique hash for the subgraph and input shapes represented by this
-    /// PerGlowGraphInfo.
-    size_t hash;
 
     /// The PyTorch node containing the subgraph that this PerGlowGraphInfo
     /// represents.
@@ -64,9 +60,9 @@ class CachingGraphRunner {
   llvm::Error runGraphImpl(const PerGlowGraphInfo &info,
                            torch::jit::Stack &stack);
 
-public:
   CachingGraphRunner();
 
+public:
   /// Given a PyTorch glow::FusionGroup Node \p node that contains a
   /// PyTorch subgraph and corresponding PyTorch Stack \p stack of inputs, run
   /// that subgraph on those inputs. If this is the first time this node has

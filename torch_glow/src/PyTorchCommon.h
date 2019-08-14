@@ -20,9 +20,6 @@
 #include <torch/csrc/jit/ir.h>
 
 namespace glow {
-
-class CachingGraphRunner;
-
 /// Various settings to be used by code that loads PyTorch models. There should
 /// only be one of these and it should be obtained by calling
 /// getPyTorchLoaderSettings().
@@ -33,6 +30,9 @@ struct PyTorchLoaderSettings {
   /// The PyTorch symbol used to identify the Node that contains PyTorch
   /// subgraphs that are compiled for running on Glow.
   bool weightFreezingEnabled = true;
+
+  /// Name of the Glow backend to use with CachingGraphRunner's HostManager.
+  std::string glowBackendName = "Interpreter";
 };
 
 /// \returns the PyTorchLoaderSettings singleton to be used throughout Glow's
