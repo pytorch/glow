@@ -35,7 +35,7 @@ def jitScriptVsGlow(f_torch, f_glow, *inputs):
 
 def test_reshape_basic():
 
-    @torch.jit.ScriptModule
+    @torch.jit.script
     def reshape_basic(x, y, z):
         # type: (Tensor, Tensor, Tuple[int, int]) -> Tensor
         a = x.add(y)
