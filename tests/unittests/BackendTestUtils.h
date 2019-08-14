@@ -74,7 +74,10 @@ DECLARE_STATELESS_BACKEND_TEST(BackendStatelessTest, std::tuple<std::string>);
 
 class BackendTest : public BackendStatelessTest {
 public:
-  BackendTest() : mod_(EE_.getModule()) { F_ = mod_.createFunction("main"); }
+  BackendTest(uint64_t deviceMemory = 0)
+      : EE_(getBackendName(), deviceMemory), mod_(EE_.getModule()) {
+    F_ = mod_.createFunction("main");
+  }
 
 protected:
   ExecutionEngine EE_{getBackendName()};

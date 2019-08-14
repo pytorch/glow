@@ -47,7 +47,7 @@ class ExecutionEngine final {
   /// this resets the ExecutionEngine.
   std::string backendName_ = "";
 
-  /// Size of device memory, if 0 device default is used.
+  /// Size of device memory in bytes, if 0 device default is used.
   uint64_t deviceMemory_{0};
 
   /// The HostManager for executing the compiled functions.
@@ -61,7 +61,10 @@ class ExecutionEngine final {
   void runInternal(ExecutionContext &context, llvm::StringRef name);
 
 public:
-  ExecutionEngine(llvm::StringRef backend = "Interpreter");
+  /// Constructor for an ExecutionEngine with \p backend and memory \p
+  /// deviceMemory in bytes.
+  ExecutionEngine(llvm::StringRef backend = "Interpreter",
+                  uint64_t deviceMemory = 0);
 
   ~ExecutionEngine();
 

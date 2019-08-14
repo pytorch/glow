@@ -7,19 +7,18 @@ GLOW_NODE_NAME = "glow::FusionGroup"
 SUBGRAPH_ATTR = "Subgraph"
 
 
-def jitVsGlow(f, *inputs, expected_fused_ops):
+def jitVsGlow(f, *inputs, expected_fused_ops, accept_all_ops=False):
     """
     Runs the given inputs *inputs on f both with and without lowering f to Glow,
     compares the results, and checks that ops in expected_fused_ops were indeed
     lowered to Glow.
     """
-    jitVsGlow_(f, f, *inputs, expected_fused_ops=expected_fused_ops)
+    jitVsGlow_(f, f, *inputs, expected_fused_ops=expected_fused_ops,
+               accept_all_ops=accept_all_ops)
 
 
-def jitVsGlow_(f_torch, f_glow, *inputs, expected_fused_ops):
-    assert (
-        expected_fused_ops is not None and len(expected_fused_ops) > 0
-    ), "Must pass non-empty list of ops that are expected to be fused"
+def jitVsGlow_(f_torch, f_glow, *inputs, expected_fused_ops=None,
+               accept_all_ops=False):
 
     with torch.no_grad():
         torch_glow.disableFusionPass()
@@ -50,7 +49,7 @@ def jitVsGlow_(f_torch, f_glow, *inputs, expected_fused_ops):
             if kind != GLOW_NODE_NAME:
                 # If the node is not a Glow fusion group, check that it is
                 # *not* in expected_fused_ops
-                assert kind not in expected_fused_ops, \
+                assert accept_all_ops or kind not in expected_fused_ops, \
                     "Expected {} to be fused".format(kind)
             else:
                 # If the node is a Glow fusion group, record which ops from
@@ -64,11 +63,11 @@ def jitVsGlow_(f_torch, f_glow, *inputs, expected_fused_ops):
                 for fused_node in glow_group.nodes():
                     fused_node_kind = fused_node.kind()
 
-                    if fused_node_kind in expected_fused_ops:
+                    if accept_all_ops or fused_node_kind in expected_fused_ops:
                         expected_fused_ops_seen.add(fused_node_kind)
 
         # If the sizes of expected_fused_ops and expected_fused_ops_seen are
         # different, some ops in expected_fused_ops are not in the graph at all
-        assert len(expected_fused_ops) == len(expected_fused_ops_seen), \
+        assert accept_all_ops or len(expected_fused_ops) == len(expected_fused_ops_seen), \
             "Expected all of expected_fused_ops to be in the graph"
         assert torch.allclose(torch_res, glow_res, atol=01e-6)

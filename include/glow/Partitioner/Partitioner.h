@@ -33,6 +33,9 @@ class Partitioner final : public PartitionerBase {
   /// has the largest memory size.
   Function *F_;
 
+  /// True if there are more than 1 type of backends.
+  bool multiBackendNames_;
+
   /// The cost model related to device.
   std::vector<DeviceInfo> deviceInfo_;
 
@@ -72,6 +75,13 @@ class Partitioner final : public PartitionerBase {
   /// update the memSize.
   static Function *selectRepFunc(Module *parent, uint64_t &memSize);
 
+  /// Initialization. Called in class constructor.
+  void init();
+
+  /// Verify the generated functions in module, and dump partition logs from \p
+  /// partitions and \p mapping.
+  void finalize(const DAGListTy &partitions, const NodeToFunctionMap &mapping);
+
   /// After getting the initial partitions, adjust the partitions to minimize
   /// communication and computation cost.
   void partitionsAdjust(NodeToFunctionMap &partitions,
@@ -96,13 +106,6 @@ class Partitioner final : public PartitionerBase {
   backendBasedPartition(FunctionToBackendNameMap &funcToBackend, Function *F,
                         std::vector<Backend *> &backends,
                         CompilationContext &cctx);
-
-  /// Performs a load balancing optimization pass to optimize for load
-  /// balance in addition to respecting memory constraints.
-  llvm::Error loadBalancedPartitioning(Function *F, DeviceIDTy numDevices,
-                                       uint64_t availableMemory,
-                                       llvm::StringRef backendName,
-                                       NodeToFunctionMap &mapping);
 
   /// If there is no need to do any partition, just generate the DAGNode based
   /// on current functions in this module for backend \p backendName found in \p
@@ -160,6 +163,16 @@ public:
   /// then based on cost models(memory usage and performance). \p cctx is used
   /// for function optimization. \returns the partition result or an error.
   llvm::Expected<DAGListTy> heterogeneousPartition(CompilationContext &cctx);
+
+  /// This partition approach is an experimental one. It tries to balance the
+  /// workloads of each accelerator/device in addition to respecting memory
+  /// constraints. \p numDevices is the minimal number of partition. That is,
+  /// after loadBalancedPartition, the network will be devided up into at lease
+  /// \p numDevices sub-networks. Now it is overwritten inside of
+  /// loadBalcnedPartition. But in the future, it can be manually defined by
+  /// users.
+  llvm::Expected<DAGListTy> loadBalancedPartition(CompilationContext &cctx,
+                                                  size_t numDevices = 0);
 
   /// Decompose each function in a module. Given the parameters, this function
   /// will choose different partition approches supported in this class:

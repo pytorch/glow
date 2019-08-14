@@ -13,7 +13,7 @@ link_directories(${PYTORCH_DIR}/lib)
 
 add_library(PyTorchModelLoader
                      PyTorchCommon.cpp
-                     FusingOptimizer.cpp
+                     GlowFuser.cpp
                      PyTorchModelLoader.cpp
                      CachingGraphRunner.cpp)
 target_compile_options(PyTorchModelLoader

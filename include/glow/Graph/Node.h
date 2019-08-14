@@ -49,13 +49,8 @@ class Node : public Named,
   friend llvm::ilist_traits<Node>;
 
 protected:
-  /// This is the maximum number of results that a node may have.
-  static constexpr unsigned maxNodeResno_ = 6;
-
   /// The output types for the results of the node.
-  std::array<TypeRef, maxNodeResno_> types_;
-  /// The number of results that the node has.
-  unsigned numRes_{0};
+  llvm::SmallVector<TypeRef, 6> types_;
   /// A nullable reference to some tensor value that may predicate the execution
   /// of the current node.
   NodeHandle predicate_;
@@ -80,7 +75,7 @@ public:
   bool hasPredicate() const;
 
   /// \returns the number of results that the node has.
-  unsigned getNumResults() const { return numRes_; }
+  unsigned getNumResults() const { return types_.size(); }
   /// \returns the \p idx result of the node.
   NodeValue getNthResult(unsigned idx);
   /// \returns the n'th result of the node.
