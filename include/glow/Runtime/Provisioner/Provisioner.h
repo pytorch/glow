@@ -42,7 +42,7 @@ public:
                         CompilationContext &cctx);
 
   /// Remove stored compiledFunction.
-  void removeFunction(llvm::StringRef name);
+  llvm::Error removeFunction(llvm::StringRef name);
 
 private:
   /// Pointer to backend used for compilation. This currently gets reset per
@@ -53,8 +53,19 @@ private:
   /// functions.
   std::unordered_map<std::string, std::unique_ptr<CompiledFunction>> functions_;
 
+  /// Set of active functions - these are functions that are currently being
+  /// compiled/added to devices.
+  std::set<std::string> activeFunctions_;
+
+  /// Mutex for functions_ and activeFunctions_ since add/remove can be called
+  /// from multiple threads simultaneously.
+  std::mutex functionsLock_;
+
   /// List of available DeviceManagers added during initialization.
   std::vector<DeviceManager *> devices_;
+
+  /// Helper function to cleanup a failed provision call.
+  void cleanupProvision(llvm::ArrayRef<std::string> names);
 };
 } // namespace runtime
 } // namespace glow

@@ -23,6 +23,8 @@
 
 #include <glog/logging.h>
 
+#include <atomic>
+
 using namespace glow;
 
 namespace {
@@ -104,7 +106,7 @@ static bool listContainsString(llvm::ArrayRef<std::string> strList,
 }
 
 /// Global pass counter used to identify each pass.
-static unsigned globalPassCounter = 0;
+static std::atomic<unsigned> globalPassCounter{0};
 
 } // namespace
 

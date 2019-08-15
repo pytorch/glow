@@ -61,32 +61,47 @@ llvm::Error Provisioner::provision(DAGListTy &networks, Module &module,
                                    CompilationContext &cctx) {
   // Walk the networks and group by logicalDeviceId.
   std::map<DeviceIDTy, std::vector<DAGNode *>> logicalDevices;
+  // List of functions being added.
+  std::vector<std::string> localActiveNames;
   // For each network visit all the partitions (nodes) and add the node to each
   // logical device it is assigned to.
-  for (auto &network : networks) {
-    for (auto &node : network.nodes) {
-      for (auto logical : node->logicalDevices) {
-        auto it = logicalDevices.find(logical);
-        if (it != logicalDevices.end()) {
-          it->second.push_back(node.get());
-        } else {
-          logicalDevices.emplace(logical, std::vector<DAGNode *>{node.get()});
+  {
+    std::lock_guard<std::mutex> networkLock(functionsLock_);
+    for (auto &network : networks) {
+      for (auto &node : network.nodes) {
+        //  Check to see if another thread is actively working on the same
+        //  networks.
+        if (activeFunctions_.find(node->name) != activeFunctions_.end()) {
+          for (auto &name : localActiveNames) {
+            activeFunctions_.erase(name);
+          }
+          return MAKE_ERR(GlowErr::ErrorCode::RUNTIME_NET_BUSY,
+                          llvm::formatv("Cannot add the network {0}, as it is "
+                                        "currently being provisioned.",
+                                        node->name)
+                              .str());
+        }
+        localActiveNames.push_back(node->name);
+        activeFunctions_.insert(node->name);
+        for (auto logical : node->logicalDevices) {
+          auto it = logicalDevices.find(logical);
+          if (it != logicalDevices.end()) {
+            it->second.push_back(node.get());
+          } else {
+            logicalDevices.emplace(logical, std::vector<DAGNode *>{node.get()});
+          }
         }
       }
     }
   }
   if (cctx.backendOpts.collectConstants) {
-    // @todo(nickg) must use VLOG_EVERY_N temporarily here due to old glog
-    // version.
-    VLOG_EVERY_N(1, 1000)
-        << "Warning: collectConstants is set in a Runtime compile, "
-           "ignoring it.";
+    VLOG(1) << "Warning: collectConstants is set in a Runtime compile, "
+               "ignoring it.";
   }
   if (cctx.backendOpts.backendHints.SRAMPrioritization.size() != 0 ||
       cctx.backendOpts.backendHints.executionUnits) {
-    VLOG_EVERY_N(1, 1000)
-        << "Warning: backendHints is set in a Runtime compile, "
-           "ignoring it.";
+    VLOG(1) << "Warning: backendHints is set in a Runtime compile, "
+               "ignoring it.";
   }
 
   // Set collectConstants to false, this is because the DeviceManager will
@@ -97,6 +112,8 @@ llvm::Error Provisioner::provision(DAGListTy &networks, Module &module,
   std::vector<std::pair<DeviceIDTy, uint64_t>> logicalDeviceSize;
   std::map<DeviceIDTy, std::string> logicalDeviceBackendName;
   std::map<DeviceIDTy, FunctionMapTy> functionMaps;
+  // Set of functions already compiled during this provisioning.
+  std::map<std::string, std::unique_ptr<CompiledFunction>> compiledFunctions;
   // Compile functions and calculate required memory for each logical device.
   for (auto &device : logicalDevices) {
     uint64_t totalMemory = 0;
@@ -105,8 +122,7 @@ llvm::Error Provisioner::provision(DAGListTy &networks, Module &module,
     for (auto &node : device.second) {
       // Only compile if we haven't compiled before. If we have previously
       // compiled the function reuse it.
-      auto it = functions_.find(node->name);
-      if (it == functions_.end()) {
+      if (compiledFunctions.find(node->name) == compiledFunctions.end()) {
         // Copy BackendOptions and add the compiler hints for this function.
         auto options = cctx.backendOpts;
         options.backendHints = node->backendHints;
@@ -115,23 +131,35 @@ llvm::Error Provisioner::provision(DAGListTy &networks, Module &module,
         for (size_t i = 0, e = backends_.size(); i < e; i++) {
           if (backends_[i]->getBackendName() == nodeBackendName) {
             auto compiledOrErr = backends_[i]->compile(function, options);
+            // Check to see if an error was encountered while compiling.
             if (!compiledOrErr) {
+              // If and error occured, clean up provisioning state and return
+              // the error.
+              cleanupProvision(localActiveNames);
               return compiledOrErr.takeError();
             }
             auto compiled = std::move(*compiledOrErr);
             node->runtimeBundle =
                 llvm::make_unique<RuntimeBundle>(compiled->getRuntimeBundle());
-            functions_.emplace(node->name, std::move(compiled));
+
+            compiledFunctions.emplace(node->name, std::move(compiled));
             break;
           }
         }
       }
-      functionMap.emplace(node->name, functions_[node->name].get());
+      functionMap.emplace(node->name, compiledFunctions[node->name].get());
       totalMemory += node->runtimeBundle->getConstantWeightSize();
     }
     logicalDeviceSize.push_back(std::make_pair(device.first, totalMemory));
     logicalDeviceBackendName[device.first] = nodeBackendName;
     functionMaps.emplace(device.first, functionMap);
+  }
+  {
+    // Move compiled functions from compiledFunctions to functions_.
+    std::lock_guard<std::mutex> functionsLock(functionsLock_);
+    for (auto &func : compiledFunctions) {
+      functions_.emplace(func.first, std::move(func.second));
+    }
   }
   // Sort by total size in descending order.
   std::sort(logicalDeviceSize.begin(), logicalDeviceSize.end(), sortMostMemory);
@@ -158,13 +186,15 @@ llvm::Error Provisioner::provision(DAGListTy &networks, Module &module,
       DeviceIDTy deviceID = deviceMemory[j].first;
       if (devices_[deviceID]->getBackendName() == backendName) {
         startPos[backendName] = j + 1;
-        RETURN_ERR_IF_NOT(
-            logicalDeviceSize[i].second < deviceMemory[j].second,
-            llvm::formatv("Not enough memory to provision functions "
-                          "onto devices. Need {0} bytes, have {1}.",
-                          logicalDeviceSize[i].second, deviceMemory[j].second)
-                .str());
-
+        if (logicalDeviceSize[i].second > deviceMemory[j].second) {
+          cleanupProvision(localActiveNames);
+          return MAKE_ERR(
+              GlowErr::ErrorCode::RUNTIME_OUT_OF_DEVICE_MEMORY,
+              llvm::formatv("Not enough memory to provision functions "
+                            "onto devices. Need {0} bytes, have {1}.",
+                            logicalDeviceSize[i].second, deviceMemory[j].second)
+                  .str());
+        }
         // Load functions on device.
         DeviceIDTy logicalID = logicalDeviceSize[i].first;
         std::promise<void> addPromise;
@@ -177,7 +207,11 @@ llvm::Error Provisioner::provision(DAGListTy &networks, Module &module,
               addPromise.set_value();
             });
         ready.wait();
-        RETURN_IF_ERR(*DCHECK_NOTNULL(addErr.get()));
+        DCHECK_NOTNULL(addErr.get());
+        if (*addErr.get()) {
+          cleanupProvision(localActiveNames);
+          return std::move(*addErr.get());
+        }
         // Set deviceID for each node added
         for (auto &node : logicalDevices[logicalID]) {
           node->deviceIDs.push_back(deviceID);
@@ -186,9 +220,28 @@ llvm::Error Provisioner::provision(DAGListTy &networks, Module &module,
       }
     }
   }
+  cleanupProvision(localActiveNames);
   return llvm::Error::success();
 };
 
-void Provisioner::removeFunction(llvm::StringRef name) {
+llvm::Error Provisioner::removeFunction(llvm::StringRef name) {
+  std::lock_guard<std::mutex> functionsLock(functionsLock_);
+  auto it = activeFunctions_.find(name);
+  if (it != activeFunctions_.end()) {
+    return MAKE_ERR(
+        GlowErr::ErrorCode::RUNTIME_NET_BUSY,
+        llvm::formatv("Could not remove network: {0} as it is currently "
+                      "being provisioned.",
+                      name)
+            .str());
+  }
   functions_.erase(name);
+  return llvm::Error::success();
+}
+
+void Provisioner::cleanupProvision(llvm::ArrayRef<std::string> names) {
+  std::lock_guard<std::mutex> functionLock(functionsLock_);
+  for (auto &name : names) {
+    activeFunctions_.erase(name);
+  }
 }
