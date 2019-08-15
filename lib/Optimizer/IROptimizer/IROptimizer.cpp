@@ -1509,6 +1509,12 @@ static void performDebugInstrumentation(IRFunction &M) {
       it = next;
       continue;
     }
+    // Don't instrument tensorview since it can lead to liveness verification
+    // failures if the tensorview happens before any writes to the tensor.
+    if (isa<TensorViewInst>(I)) {
+      it = next;
+      continue;
+    }
     auto instrName = I->getName();
     for (const auto &Op : I->getOperands()) {
       // Dump inputs of the current instruction before the instruction.
