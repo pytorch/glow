@@ -48,7 +48,7 @@ void IRBuilder::deallocateActiveInstrs() {
       continue;
     }
 
-    createDeallocActivationInst("dealloc", AA);
+    createDeallocActivationInst("dealloc." + AA->getName().str(), AA);
   }
 }
 
