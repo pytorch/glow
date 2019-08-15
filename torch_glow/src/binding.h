@@ -1,0 +1,3 @@
+namespace glow {
+  void integrateGlowPyTorchPass();
+}

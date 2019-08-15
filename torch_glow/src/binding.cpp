@@ -22,6 +22,7 @@
 #include "CachingGraphRunner.h"
 #include "PyTorchCommon.h"
 #include "PyTorchModelLoader.h"
+#include "binding.h"
 
 #include "glow/Graph/Graph.h"
 
