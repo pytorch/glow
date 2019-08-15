@@ -33,8 +33,10 @@ class IRGenVisitor;
 class FunctionPassPipeline;
 
 namespace runtime {
+
 class DeviceManager;
 struct DeviceConfig;
+
 } // namespace runtime
 
 // This is the interface that glow backends need to implement.

@@ -2,6 +2,7 @@ add_library(Habana
             Habana.cpp
             HabanaDeviceManager.cpp
             HabanaFactory.cpp
+            HabanaFunction.cpp
             HabanaUtils.cpp)
 
 target_include_directories(Habana
