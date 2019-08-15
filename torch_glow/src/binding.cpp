@@ -69,6 +69,12 @@ void registerPass() {
 }
 } // namespace
 
+// Integrate Glow PyTorch compilation pass.
+void integrateGlowPyTorchPass() {
+  registerGlowOp();
+  registerPass();
+}
+
 /// The torch_glow pybind11 module.
 PYBIND11_MODULE(_torch_glow, m) {
   registerGlowOp();
