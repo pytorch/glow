@@ -70,4 +70,6 @@ def jitVsGlow_(f_torch, f_glow, *inputs, expected_fused_ops=None,
         # different, some ops in expected_fused_ops are not in the graph at all
         assert accept_all_ops or len(expected_fused_ops) == len(expected_fused_ops_seen), \
             "Expected all of expected_fused_ops to be in the graph"
-        assert torch.allclose(torch_res, glow_res, atol=01e-6)
+        assert len(torch_res) == len(glow_res)
+        for i in range(len(torch_res)):
+            assert torch.allclose(torch_res[i], glow_res[i], atol=01e-6)

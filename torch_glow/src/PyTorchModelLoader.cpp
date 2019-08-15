@@ -19,11 +19,13 @@
 #include "glow/Support/Error.h"
 #include "glow/Support/Support.h"
 
+#include <ATen/ATen.h>
 #include <torch/csrc/jit/ir.h>
 
 namespace glow {
 
 namespace {
+
 /// \returns a corresponding Glow Type for a given PyTorch CompleteTensorType \p
 /// ptType.
 inline glow::Type ptTypeToGlowType(const at::CompleteTensorType &ptType) {
@@ -158,7 +160,7 @@ llvm::Error checkInputAndOutputSizes(const T &inputs, size_t inputsSize,
   return llvm::Error::success();
 }
 
-// Indexes of aten::_convolution inputs.
+/// Indexes of aten::_convolution inputs.
 struct ConvInputs {
   enum {
     input = 0, // NCHW
@@ -176,7 +178,7 @@ struct ConvInputs {
   };
 };
 
-// Indexes of aten::batch_norm inputs.
+/// Indexes of aten::batch_norm inputs.
 struct BNInputs {
   enum {
     input = 0, // NCHW
@@ -191,7 +193,7 @@ struct BNInputs {
   };
 };
 
-// Indexes of aten::avg_pool2d inputs.
+/// Indexes of aten::avg_pool2d inputs.
 struct AvgPoolInputs {
   enum {
     input = 0,
@@ -204,7 +206,7 @@ struct AvgPoolInputs {
   };
 };
 
-// Indexes of aten::max_pool2d inputs.
+/// Indexes of aten::max_pool2d inputs.
 struct MaxPoolInputs {
   enum {
     input = 0, // NCHW
@@ -216,7 +218,7 @@ struct MaxPoolInputs {
   };
 };
 
-// Indexes of aten::adaptive_avg_pool2d inputs.
+/// Indexes of aten::adaptive_avg_pool2d inputs.
 struct AdaptiveAvgPoolInputs {
   enum {
     input = 0, // NCHW
@@ -224,7 +226,7 @@ struct AdaptiveAvgPoolInputs {
   };
 };
 
-// Indexes of aten::linear inputs.
+/// Indexes of aten::linear inputs.
 struct LinearInputs {
   enum {
     input = 0,
@@ -233,7 +235,7 @@ struct LinearInputs {
   };
 };
 
-// Indexes of aten::prelu inputs.
+/// Indexes of aten::prelu inputs.
 struct PReluInputs {
   enum {
     input = 0,
@@ -241,7 +243,7 @@ struct PReluInputs {
   };
 };
 
-// Indexes of aten::softmax inputs.
+/// Indexes of aten::softmax inputs.
 struct SoftMaxInputs {
   enum {
     input = 0,
@@ -250,7 +252,7 @@ struct SoftMaxInputs {
   };
 };
 
-// Indexes of aten::flatten inputs.
+/// Indexes of aten::flatten inputs.
 struct FlattenInputs {
   enum {
     input = 0,
@@ -258,7 +260,41 @@ struct FlattenInputs {
     end_dim = 2,
   };
 };
+
+/// Indexes of aten::topk inputs.
+struct TopKInputs {
+  enum {
+    input = 0,
+    k = 1,
+    dim = 2,
+    largest = 3,
+    sorted = 4,
+  };
+};
 } // namespace
+
+c10::ScalarType PyTorchModelLoader::convertGlowType(glow::TypeRef ty) {
+  switch (ty->getElementType()) {
+  case ElemKind::FloatTy:
+    return at::kFloat;
+  case ElemKind::Float16Ty:
+    return at::kHalf;
+  case ElemKind::Int32ITy:
+    return at::kInt;
+  case ElemKind::Int64ITy:
+    return at::kLong;
+  case ElemKind::BoolTy:
+    return at::kBool;
+  case ElemKind::UInt8FusedQTy:
+  case ElemKind::UInt8FusedFP16QTy:
+  case ElemKind::Int8QTy:
+  case ElemKind::UInt8QTy:
+  case ElemKind::Int16QTy:
+  case ElemKind::Int32QTy:
+    LOG(DFATAL) << "Not supported yet.";
+    return at::kLong;
+  }
+}
 
 // static
 const PyTorchModelLoader::MappingOfMemberFunctions &
@@ -354,6 +390,14 @@ PyTorchModelLoader::getSymbolsMapping() {
         {
             SoftMaxInputs::dim,
             SoftMaxInputs::dtype,
+        }},
+       {{"aten::topk"},
+        &PyTorchModelLoader::loadTopK,
+        {
+            TopKInputs::k,
+            TopKInputs::dim,
+            TopKInputs::largest,
+            TopKInputs::sorted,
         }}});
 
   return symbolLoaderMapping;
@@ -1142,6 +1186,43 @@ llvm::Error PyTorchModelLoader::loadFlatten(const torch::jit::Node *ptNode) {
   auto xDim = glow::flattenCdr(in.dims(), startDim);
   auto *glowNode = F_.createReshape("flatten", in, {xDim.first, xDim.second});
   return addGlowNodeValue(outputs[0], glowNode);
+}
+
+llvm::Error PyTorchModelLoader::loadTopK(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 5, outputs, 2));
+
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input,
+                             getGlowNodeValue(inputs[TopKInputs::input]));
+
+  auto kHandle = glow::Handle<int32_t>::createInvalidHandle();
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      kHandle, getGlowConstantHandle<int32_t>(inputs[TopKInputs::k]));
+  RETURN_ERR_IF_NOT(kHandle.size() == 1, "k must be 1D vector.");
+  glow::unsigned_t k = static_cast<glow::unsigned_t>(kHandle.raw(0));
+
+  auto dimHandle = glow::Handle<int32_t>::createInvalidHandle();
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      dimHandle, getGlowConstantHandle<int32_t>(inputs[TopKInputs::dim]));
+  RETURN_ERR_IF_NOT(dimHandle.size() == 1, "dim must be 1D vector.");
+
+  auto largestHandle = glow::Handle<bool>::createInvalidHandle();
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      largestHandle, getGlowConstantHandle<bool>(inputs[TopKInputs::largest]));
+  RETURN_ERR_IF_NOT(largestHandle.size() == 1, "largest must be 1D vector.");
+
+  auto sortedHandle = glow::Handle<bool>::createInvalidHandle();
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      sortedHandle, getGlowConstantHandle<bool>(inputs[TopKInputs::sorted]));
+  RETURN_ERR_IF_NOT(sortedHandle.size() == 1, "sorted must be 1D vector.");
+
+  auto *glowNode = F_.createTopK("TopK", input, k);
+
+  RETURN_IF_ERR(addGlowNodeValue(outputs[0], glowNode->getValues()));
+  RETURN_IF_ERR(addGlowNodeValue(outputs[1], glowNode->getIndices()));
+  return llvm::Error::success();
 }
 
 llvm::Error PyTorchModelLoader::loadConstant(const torch::jit::Node *ptNode) {

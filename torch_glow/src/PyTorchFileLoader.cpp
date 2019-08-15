@@ -73,6 +73,7 @@ loadJitGraphToGlowFunction(torch::jit::Stack &stack, torch::jit::Graph &graph,
 
   // Remove from stack input parameters.
   torch::jit::drop(stack, numInputs);
+
   // Lookup placeholders for the output shapes.
   for (auto *ph : outputPlaceholders) {
     std::vector<int64_t> sizes;
@@ -80,7 +81,9 @@ loadJitGraphToGlowFunction(torch::jit::Stack &stack, torch::jit::Graph &graph,
       sizes.push_back(static_cast<int64_t>(size));
     }
     // Create an empty tensor with the correct shape.
-    auto ptT = at::empty(sizes);
+    auto ptT = at::empty(
+        sizes, at::TensorOptions().dtype(
+                   PyTorchModelLoader::convertGlowType(ph->getType())));
     auto var = torch::autograd::make_variable(ptT);
     // Add to stack output parameter.
     stack.push_back(at::IValue(var));

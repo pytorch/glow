@@ -34,6 +34,7 @@ llvm::Error CachingGraphRunner::runGraph(const torch::jit::Node *node,
   const char *const functionName = "PyTorchFunction";
 
   glow::Function *f = nullptr;
+  // Discard compiled function.
   executionEngine_.setBackendName(executionEngine_.getBackendName());
   auto &mod = executionEngine_.getModule();
   f = mod.createFunction(functionName);
@@ -43,9 +44,6 @@ llvm::Error CachingGraphRunner::runGraph(const torch::jit::Node *node,
   RETURN_IF_ERR(PyTorchModelLoader::loadJITGraph(
       *f, *graph, inputs, inputPlaceholders, outputPlaceholders,
       getPyTorchLoaderSettings()));
-
-  glow::CompilationContext cctx;
-  executionEngine_.compile(cctx);
 
   glow::PlaceholderBindings bindings;
   for (size_t i = 0; i < inputs.size(); ++i) {
@@ -61,15 +59,21 @@ llvm::Error CachingGraphRunner::runGraph(const torch::jit::Node *node,
     for (auto size : ph->dims()) {
       sizes.push_back(static_cast<int64_t>(size));
     }
-    auto ptT = at::empty(sizes);
+    auto ptT = at::empty(
+        sizes, at::TensorOptions().dtype(
+                   PyTorchModelLoader::convertGlowType(ph->getType())));
     glow::Tensor t(ptT.data_ptr(), ph->getType());
+
     outputs.push_back(std::move(ptT));
     bindings.insert(ph, std::move(t));
   }
 
+  glow::CompilationContext cctx;
+  executionEngine_.compile(cctx);
   executionEngine_.run(bindings);
 
   torch::jit::drop(stack, numInputs);
+
   for (auto &output : outputs) {
     auto var = torch::autograd::make_variable(output.toTensor());
     stack.push_back(at::IValue(var));
