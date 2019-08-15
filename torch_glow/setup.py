@@ -116,6 +116,7 @@ class cmake_build(setuptools.Command):
             cmake_args = [
                 CMAKE,
                 '-DC10_USE_GLOG=1',
+                '-DCMAKE_BUILD_RTTI=ON',
                 '-DGLOW_BUILD_PYTORCH_INTEGRATION=ON',
                 '-DBUILD_SHARED_LIBS=OFF',
                 '-DCMAKE_EXPORT_COMPILE_COMMANDS=ON',
