@@ -19,6 +19,11 @@
 #include "CachingGraphRunner.h"
 #include "PyTorchCommon.h"
 #include "PyTorchModelLoader.h"
+#include "TorchGlowTraining.h"
+#include <pybind11/pybind11.h>
+/// Required include files for a proper binding TorchGlowTrainingWrapper class.
+#include <pybind11/stl.h>
+#include <torch/csrc/utils/pybind.h>
 
 #include "glow/Graph/Graph.h"
 
@@ -45,4 +50,14 @@ PYBIND11_MODULE(_torch_glow, m) {
   /// Disable freezing weights as Constants in PyTorch subgraphs loaded in Glow.
   m.def("disableWeightFreezing",
         []() { getPyTorchLoaderSettings().weightFreezingEnabled = false; });
+
+  /// Binding wrapper class for TorchGlowTraining and its settings.
+  py::class_<TorchGlowTrainingWrapper>(m, "TorchGlowTrainingWrapper")
+      .def(py::init())
+      .def("init", &TorchGlowTrainingWrapper::init)
+      .def("train", &TorchGlowTrainingWrapper::train)
+      .def("save", &TorchGlowTrainingWrapper::save)
+      .def("settings", &TorchGlowTrainingWrapper::setPyTorchLoaderSettings)
+      .def("parameters", &TorchGlowTrainingWrapper::setONNXWriterParameters)
+      .def("config", &TorchGlowTrainingWrapper::setTrainingConfig);
 }

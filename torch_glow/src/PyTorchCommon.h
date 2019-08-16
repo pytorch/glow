@@ -58,9 +58,6 @@ void registerGlowFusionPass();
 /// registered.
 void registerGlowFusionOpAndPass(bool enableFusionPass = false);
 
-/// Manages a CachingGraphRunner singleton.
-CachingGraphRunner *getGraphRunner();
-
 } // namespace glow
 
 #endif // GLOW_TORCH_GLOW_SRC_COMMON_H
