@@ -28,12 +28,14 @@ namespace {
 
 /// \returns a corresponding Glow Type for a given PyTorch CompleteTensorType \p
 /// ptType.
-inline glow::Type ptTypeToGlowType(const c10::ProfiledTensorType &ptType) {
+inline glow::Type ptTypeToGlowType(const at::ProfiledTensorType &ptType) {
   // TODO: get correct ElemKind
   DCHECK_EQ(*ptType.scalarType(), at::kFloat)
       << "Only float type supported currently.";
   std::vector<size_t> dims;
-  for (auto &size : ptType.sizes().concrete_sizes().value()) {
+  // Make a copy of the return value, which is a temporary object.
+  auto v = ptType.sizes().concrete_sizes().value();
+  for (auto size : v) {
     dims.push_back(size);
   }
   return glow::Type(glow::ElemKind::FloatTy, dims);
