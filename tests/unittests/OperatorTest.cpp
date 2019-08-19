@@ -3109,7 +3109,7 @@ TEST_P(OperatorTest, IntBatchedArith) {
 }
 
 TEST_P(OperatorTest, convTest) {
-  ENABLED_BACKENDS(Interpreter, CPU, OpenCL, Habana);
+  ENABLED_BACKENDS(Interpreter, CPU, OpenCL);
   auto *input =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 3, 3, 1}, "input", false);
   auto IH = bindings_.allocate(input)->getHandle();
@@ -3140,6 +3140,45 @@ TEST_P(OperatorTest, convTest) {
   expected.getHandle() = {2, 3, 2, 2, 3, 2, 2, 3, 2};
 
   EXPECT_TRUE(expected.isEqual(*result));
+}
+
+TEST_P(OperatorTest, convTest_Float16) {
+  ENABLED_BACKENDS(Interpreter);
+  auto *input =
+      mod_.createPlaceholder(ElemKind::Float16Ty, {1, 3, 3, 1}, "input", false);
+  auto IH = bindings_.allocate(input)->getHandle<float16_t>();
+  IH = {1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 1.9};
+
+  auto filter = mod_.createPlaceholder(ElemKind::Float16Ty, {1, 3, 3, 1},
+                                       "filter", false);
+  auto FH = bindings_.allocate(filter)->getHandle<float16_t>();
+  FH = {0.25, 0.5, 0.25, 1, 1, 1, 0.25, 0.5, 0.25};
+
+  auto *zeroBias =
+      mod_.createPlaceholder(ElemKind::Float16Ty, {1}, "bias", false);
+  bindings_.allocate(zeroBias)->zero();
+
+  auto outTy = mod_.uniqueType(ElemKind::Float16Ty, {1, 3, 3, 1});
+
+  ConvolutionNode *CN =
+      F_->createConv("Conv", input, filter, zeroBias, outTy, 3, 1, 1, 1);
+  SaveNode *S = F_->createSave("save", CN);
+  bindings_.allocate(S->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  auto result = bindings_.get(S->getPlaceholder())->getHandle<float16_t>();
+
+  Tensor expected(outTy);
+  auto expectedH = expected.getHandle<float16_t>();
+  expectedH = {3.375, 5.102, 3.676, 5.051, 7.5, 5.449, 4.574, 6.898, 4.875};
+
+  for (size_t x = 0; x < 3; x++) {
+    for (size_t y = 0; y < 3; y++) {
+      EXPECT_NEAR(result.at({0, x, y, 0}), expectedH.at({0, x, y, 0}), 0.001);
+    }
+  }
 }
 
 template <size_t convDepth>
