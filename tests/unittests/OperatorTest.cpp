@@ -1074,6 +1074,130 @@ static void testBatchedReduceAdd(glow::PlaceholderBindings &bindings,
   EXPECT_TRUE(result->isEqual(expected));
 }
 
+/// Test that BatchedReduceAdd is correctly supported in FloatTy.
+TEST_P(OperatorTest, batchedReduceAdd_Float) {
+  testBatchedReduceAdd<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy);
+}
+
+/// Test that BatchedReduceAdd is correctly supported in Float16Ty.
+TEST_P(OperatorTest, batchedReduceAdd_Float16) {
+  ENABLED_BACKENDS(Interpreter);
+  testBatchedReduceAdd<float16_t>(bindings_, mod_, F_, EE_,
+                                  ElemKind::Float16Ty);
+}
+
+/// Test that BatchedReduceAdd works correctly reducing the outermost axis.
+TEST_P(OperatorTest, batchedReduceAdd_outerAxis) {
+  auto *batch =
+      mod_.createPlaceholder(ElemKind::FloatTy, {2, 2, 4}, "batch", false);
+  bindings_.allocate(batch)->getHandle<float>() = {10, 20, 30, 40, 1, 2, 3, 4,
+                                                   10, 20, 30, 40, 1, 2, 3, 4};
+
+  auto *R = F_->createBatchedReduceAdd("reduce.add", batch, /* axis */ 0);
+
+  auto *save = F_->createSave("save", R);
+  auto *result = bindings_.allocate(save->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  Tensor expected(ElemKind::FloatTy, {2, 4});
+  expected.getHandle<float>() = {20, 40, 60, 80, 2, 4, 6, 8};
+
+  EXPECT_TRUE(result->isEqual(expected));
+}
+
+/// Test that BatchedReduceAdd works correctly reducing an internal axis.
+TEST_P(OperatorTest, batchedReduceAdd_innerAxis) {
+  auto *batch =
+      mod_.createPlaceholder(ElemKind::FloatTy, {2, 2, 4}, "batch", false);
+  bindings_.allocate(batch)->getHandle<float>() = {10, 20, 30, 40, 1, 2, 3, 4,
+                                                   10, 20, 30, 40, 1, 2, 3, 4};
+
+  auto *R = F_->createBatchedReduceAdd("reduce.add", batch, /* axis */ 1);
+
+  auto *save = F_->createSave("save", R);
+  auto *result = bindings_.allocate(save->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  Tensor expected(ElemKind::FloatTy, {2, 4});
+  expected.getHandle<float>() = {11, 22, 33, 44, 11, 22, 33, 44};
+
+  EXPECT_TRUE(result->isEqual(expected));
+}
+
+/// Test that BatchedReduceAdd works correctly reducing the innermost axis.
+TEST_P(OperatorTest, batchedReduceAdd_lastAxis) {
+  auto *batch =
+      mod_.createPlaceholder(ElemKind::FloatTy, {2, 2, 4}, "batch", false);
+  bindings_.allocate(batch)->getHandle<float>() = {10, 20, 30, 40, 1, 2, 3, 4,
+                                                   10, 20, 30, 40, 1, 2, 3, 4};
+  auto *R = F_->createBatchedReduceAdd("reduce.add", batch, /* axis */ 2);
+
+  auto *save = F_->createSave("save", R);
+  auto *result = bindings_.allocate(save->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  Tensor expected(ElemKind::FloatTy, {2, 2});
+  expected.getHandle<float>() = {100, 10, 100, 10};
+
+  EXPECT_TRUE(result->isEqual(expected));
+}
+
+/// Test that BatchReducedAdd works on a 4D input.
+TEST_P(OperatorTest, batchedReduceAdd_4Dinput) {
+  auto *batch =
+      mod_.createPlaceholder(ElemKind::FloatTy, {2, 2, 2, 4}, "batch", false);
+  bindings_.allocate(batch)->getHandle<float>() = {
+      10, 20, 30, 40, 1, 2, 3, 4, 10, 20, 30, 40, 1, 2, 3, 4,
+      10, 20, 30, 40, 1, 2, 3, 4, 10, 20, 30, 40, 1, 2, 3, 4};
+
+  auto *R = F_->createBatchedReduceAdd("reduce.add", batch, /* axis */ 0);
+
+  auto *save = F_->createSave("save", R);
+  auto *result = bindings_.allocate(save->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  Tensor expected(ElemKind::FloatTy, {2, 2, 4});
+  expected.getHandle<float>() = {20, 40, 60, 80, 2, 4, 6, 8,
+                                 20, 40, 60, 80, 2, 4, 6, 8};
+
+  EXPECT_TRUE(result->isEqual(expected));
+}
+
+/// Test that BatchReducedAdd works on a 5D input.
+TEST_P(OperatorTest, batchedReduceAdd_5Dinput) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  auto *batch = mod_.createPlaceholder(ElemKind::FloatTy, {2, 2, 2, 2, 4},
+                                       "batch", false);
+  bindings_.allocate(batch)->getHandle<float>() = {
+      10, 20, 30, 40, 1, 2, 3, 4, 10, 20, 30, 40, 1, 2, 3, 4,
+      10, 20, 30, 40, 1, 2, 3, 4, 10, 20, 30, 40, 1, 2, 3, 4,
+      10, 20, 30, 40, 1, 2, 3, 4, 10, 20, 30, 40, 1, 2, 3, 4,
+      10, 20, 30, 40, 1, 2, 3, 4, 10, 20, 30, 40, 1, 2, 3, 4};
+
+  auto *R = F_->createBatchedReduceAdd("reduce.add", batch, /* axis */ 2);
+
+  auto *save = F_->createSave("save", R);
+  auto *result = bindings_.allocate(save->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  Tensor expected(ElemKind::FloatTy, {2, 2, 2, 4});
+  expected.getHandle<float>() = {20, 40, 60, 80, 2,  4,  6,  8,  20, 40, 60,
+                                 80, 2,  4,  6,  8,  20, 40, 60, 80, 2,  4,
+                                 6,  8,  20, 40, 60, 80, 2,  4,  6,  8};
+
+  EXPECT_TRUE(result->isEqual(expected));
+}
+
 /// Helper to test BatchedReduceMin using \p DTy.
 template <typename DataType>
 static void testBatchedReduceMin(glow::PlaceholderBindings &bindings,
@@ -1155,18 +1279,6 @@ TEST_P(OperatorTest, batchedReduceMinMultiAxis_Int64) {
   ENABLED_BACKENDS(Interpreter, CPU);
   testBatchedReduceMinMultiAxis<int64_t>(bindings_, mod_, F_, EE_,
                                          ElemKind::Int64ITy);
-}
-
-/// Test that BatchedReduceAdd is correctly supported in FloatTy.
-TEST_P(OperatorTest, batchedReduceAdd_Float) {
-  testBatchedReduceAdd<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy);
-}
-
-/// Test that BatchedReduceAdd is correctly supported in Float16Ty.
-TEST_P(OperatorTest, batchedReduceAdd_Float16) {
-  ENABLED_BACKENDS(Interpreter);
-  testBatchedReduceAdd<float16_t>(bindings_, mod_, F_, EE_,
-                                  ElemKind::Float16Ty);
 }
 
 /// Helper to test BatchedReduceZeroDimResult using \p DTy.

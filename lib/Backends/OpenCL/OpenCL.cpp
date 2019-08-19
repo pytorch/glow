@@ -934,6 +934,8 @@ llvm::Error OpenCLFunction::execute(ExecutionContext *context) {
       // index correctly into the output buffer. If the output has zero
       // dimensions store one slice of size 1 into destSliceSizes.
       auto destDims = BRA->getDest()->getType()->dims();
+      DCHECK(destDims.size() < 4 &&
+             "OpenCL BatchedReduceAdd supports max 3 output dimensions");
       std::vector<size_t> destDimsVec(destDims.begin(), destDims.end());
       if (destDims.empty()) {
         destDimsVec.emplace_back(1);
