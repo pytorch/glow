@@ -185,16 +185,16 @@ c10::optional<torch::jit::Node *> tryMerge(torch::jit::Node *consumer,
 }
 #undef REQ
 
-torch::jit::graph_node_list::iterator
+std::pair<torch::jit::graph_node_list::iterator, bool>
 getNewNode(torch::jit::Node *node, torch::jit::AliasDb &aliasDb,
            torch::jit::Block *block, isSupportFunc fn, at::Symbol kind) {
   auto node_inputs = sortReverseTopological(node->inputs(), block);
   for (auto input : node_inputs) {
     if (auto group = tryMerge(node, input->node(), aliasDb, fn, kind)) {
-      return group.value()->reverseIterator();
+      return {group.value()->reverseIterator(), true};
     }
   }
-  return ++node->reverseIterator();
+  return {++node->reverseIterator(), false};
 }
 
 void GlowCustomFuse(std::shared_ptr<torch::jit::Graph> graph, isSupportFunc fn,
@@ -202,9 +202,16 @@ void GlowCustomFuse(std::shared_ptr<torch::jit::Graph> graph, isSupportFunc fn,
   torch::jit::AliasDb aliasDb(graph);
   auto block = graph->block();
 
-  for (auto it = block->nodes().rbegin(); it != block->nodes().rend();) {
-    it = getNewNode(*it, aliasDb, block, fn, kind);
-  }
+  bool is_changed;
+  do {
+    is_changed = false;
+    for (auto it = block->nodes().rbegin(); it != block->nodes().rend();) {
+      bool is_changed_thisnode;
+      std::tie(it, is_changed_thisnode) =
+          getNewNode(*it, aliasDb, block, fn, kind);
+      is_changed |= is_changed_thisnode;
+    }
+  } while (is_changed);
   EliminateCommonSubexpression(graph);
   EliminateDeadCode(graph);
 }
