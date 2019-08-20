@@ -128,7 +128,7 @@ elif [[ "$CIRCLE_JOB" == "PYTORCH" ]]; then
     source venv/bin/activate
     git clone https://github.com/pytorch/pytorch.git --recursive
     cd pytorch
-    git checkout 3b5daef6dec7b541a74e33a9a0b0646941b0440d
+    git checkout 7f86fb8995d9990fe1eac5a18335523cb3da7f09
     pip install -r requirements.txt
     python setup.py install
     cd ${GLOW_DIR}
