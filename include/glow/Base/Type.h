@@ -17,8 +17,8 @@
 #define GLOW_BASE_TYPE_H
 
 #include "glow/Support/Compiler.h"
-
 #include "glow/Support/Float16.h"
+#include "glow/Support/Memory.h"
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
@@ -307,6 +307,15 @@ struct Type final {
   size_t sizes_[max_tensor_dimensions] = {
       0,
   };
+  /// Contains the strides for each dimension (in elements). The order should be
+  /// the same as in sizes_. In more details, suppose that the tensor is laid
+  /// out flat in memory, and some dimensions are aligned. strides_[i] is the
+  /// number of elements that needs to be skipped in order to reach the next
+  /// plane in the i-th dimension. For example, if the tensor has dimensions
+  /// [3, 5, 10] and alignments [3, 32, 1], the strides will be [162, 32, 1].
+  size_t strides_[max_tensor_dimensions] = {
+      0,
+  };
 
   /// Contains the number of dimensions used by the tensor.
   unsigned char numSizes_{0};
@@ -324,14 +333,33 @@ struct Type final {
        int32_t offset)
       : scale_(scale), offset_(offset), elementType_(elemTy) {
     assert(isQuantizedType() && "Only quantized types have a scale and offset");
-    initDims(dims);
+    ShapeVector alignments(dims.size(), 1);
+    initDims(dims, llvm::makeArrayRef(alignments));
   }
 
   /// Initialize a new non-quantized type.
   Type(ElemKind elemTy, llvm::ArrayRef<size_t> dims) : elementType_(elemTy) {
     assert(!isQuantizedType() &&
            "Can't initialize quantized types without scale and offset");
-    initDims(dims);
+    ShapeVector alignments(dims.size(), 1);
+    initDims(dims, llvm::makeArrayRef(alignments));
+  }
+
+  /// Initialize a new quantized type with \p scale and \p offset.
+  Type(ElemKind elemTy, llvm::ArrayRef<size_t> dims,
+       llvm::ArrayRef<size_t> alignments, float scale, int32_t offset)
+      : scale_(scale), offset_(offset), elementType_(elemTy) {
+    assert(isQuantizedType() && "Only quantized types have a scale and offset");
+    initDims(dims, alignments);
+  }
+
+  /// Initialize a new non-quantized type.
+  Type(ElemKind elemTy, llvm::ArrayRef<size_t> dims,
+       llvm::ArrayRef<size_t> alignments)
+      : elementType_(elemTy) {
+    assert(!isQuantizedType() &&
+           "Can't initialize quantized types without scale and offset");
+    initDims(dims, alignments);
   }
 
   /// Reshape existing type. This method takes care of quantized types.
@@ -340,6 +368,17 @@ struct Type final {
       return Type(T.getElementType(), dims, T.getScale(), T.getOffset());
     } else {
       return Type(T.getElementType(), dims);
+    }
+  }
+
+  /// Reshape existing type and change alignments.
+  static Type newShape(const Type &T, llvm::ArrayRef<size_t> dims,
+                       llvm::ArrayRef<size_t> alignments) {
+    if (T.isQuantizedType()) {
+      return Type(T.getElementType(), dims, alignments, T.getScale(),
+                  T.getOffset());
+    } else {
+      return Type(T.getElementType(), dims, alignments);
     }
   }
 
@@ -414,6 +453,13 @@ struct Type final {
       }
     }
 
+    // Strides must be the same.
+    for (size_t i = 0; i < numSizes_; i++) {
+      if (strides_[i] != other.strides_[i]) {
+        return false;
+      }
+    }
+
     // Compare the scale and offset of integers.
     if (isQuantizedType()) {
       if (scale_ != other.scale_ || offset_ != other.offset_) {
@@ -437,6 +483,9 @@ struct Type final {
 
   /// \returns the shape of the tensor.
   llvm::ArrayRef<size_t> dims() const { return {sizes_, numSizes_}; }
+
+  /// \returns the strides of the tensor.
+  llvm::ArrayRef<size_t> strides() const { return {strides_, numSizes_}; }
 
   /// \returns the number of elements in the tensor.
   size_t size() const {
@@ -510,7 +559,18 @@ struct Type final {
   unsigned getElementSize() const { return getElementSize(elementType_); }
 
   /// \returns the size in bytes for this Tensor.
-  size_t getSizeInBytes() const { return getElementSize() * size(); }
+  size_t getSizeInBytes() const {
+    size_t s = getElementSize();
+    for (unsigned char i = 0; i < numSizes_; i++) {
+      s = std::max(s, size_t(sizes_[i]) * getElementSize() * strides_[i]);
+    }
+    return s;
+  }
+
+  /// \returns the actual number of elements in the tensor taking striding into
+  /// account. Since size() does not take striding into account, size() is
+  /// always <= actualSize().
+  size_t actualSize() const { return getSizeInBytes() / getElementSize(); }
 
   /// \return the size of the element \p Ty.
   static unsigned getElementSize(ElemKind Ty) {
@@ -567,14 +627,36 @@ struct Type final {
 private:
   /// Setup the internals of type that store the dimensions. This method is
   /// used by the constructor.
-  void initDims(llvm::ArrayRef<size_t> dims) {
+  /// \param dims of the tensor (in elements).
+  /// \param alignments of the tensor (in bytes).
+  void initDims(llvm::ArrayRef<size_t> dims,
+                llvm::ArrayRef<size_t> alignments) {
     assert(dims.size() <= max_tensor_dimensions && "Too many dimensions.");
-    // Update the tensor sizes.
-    for (size_t i = 0, e = dims.size(); i < e; i++) {
+    assert(dims.size() == alignments.size() &&
+           "The number of dimensions and alignments should be the same");
+    // Update the tensor strides and sizes based on given dims and alignments.
+    // Sizes are simply assigned to dims. And strides are computed as partial
+    // product of dims, making sure that each dimension is aligned as required.
+    numSizes_ = dims.size();
+    if (numSizes_ > 0) {
+      // Stride of the last dimension is always 1.
+      assert(alignments[numSizes_ - 1] == 1 &&
+             "Last dimension must always be aligned.");
+      strides_[numSizes_ - 1] = 1;
+      sizes_[numSizes_ - 1] = dims[numSizes_ - 1];
+    }
+    for (int i = numSizes_ - 2; i >= 0; i--) {
+      size_t alignment = alignments[i];
+      if (alignment != 1) {
+        assert(alignment % getElementSize() == 0 &&
+               "Alignment should be a multiple of element size");
+        alignment /= getElementSize();
+      }
+      // All the strides (except for last one) depend on the previous dimension.
+      strides_[i] = alignedSize(dims[i + 1] * strides_[i + 1], alignment);
       assert(dims[i] > 0 && "Do not allow a dimension of zero.");
       sizes_[i] = dims[i];
     }
-    numSizes_ = dims.size();
   }
 };
 

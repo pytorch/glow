@@ -453,6 +453,11 @@ TypeRef Module::uniqueTypeWithNewShape(TypeRef T, llvm::ArrayRef<size_t> dims) {
   return uniqueType(Type::newShape(*T, dims));
 }
 
+TypeRef Module::uniqueTypeWithNewShape(TypeRef T, llvm::ArrayRef<size_t> dims,
+                                       llvm::ArrayRef<size_t> alignments) {
+  return uniqueType(Type::newShape(*T, dims, alignments));
+}
+
 TypeRef Module::uniqueType(const Type &T) {
   for (auto &tp : types_) {
     if (T.isEqual(tp)) {

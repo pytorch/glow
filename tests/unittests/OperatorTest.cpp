@@ -7090,7 +7090,10 @@ TEST_P(OperatorTest, SLSWithZeroLengths) {
             0, embedWidth - 1, mod.getPRNG());
         auto LH = bindings.allocate(lengths)->getHandle<int32_t>();
         LH.clear(0);
-        std::fill(LH.begin(), LH.begin() + 13, 20);
+        auto it = LH.begin();
+        for (int i = 0; i < 13; ++i, ++it) {
+          *it = 20;
+        }
 
         auto *R = F->createFusedRowwiseQuantizedSparseLengthsWeightedSum(
             "RQSLWS", data, weights, indices, lengths);
