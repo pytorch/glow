@@ -576,31 +576,6 @@ static void convTestHelper(std::string &filename,
   }
 }
 
-/// Test to ensure error handling for missing bias
-/// input is handled correctly. Remaining input is
-/// still sane to make sure it only fails for the
-/// intended case.
-TEST(onnx, importConvBiasFail) {
-
-  ExecutionEngine EE{};
-  auto &mod = EE.getModule();
-  Function *F = mod.createFunction("main");
-
-  std::string NetFilename(GLOW_DATA_PATH
-                          "tests/models/onnxModels/simpleConvBiasFail.onnxtxt");
-  
-  // Destroy the loader after the graph is loaded since the following execution
-  // will not depend on anyting from the loader.
-  {
-    Tensor data;
-    getNCHWData(&data, 1, 1, 3, 3);
-
-    EXPECT_DEATH(ONNXModelLoader(NetFilename, {"data"}, {&data.getType()}, *F),
-                 "");
-  }
-
-}
-
 /// Test loading conv op from a ONNX model.
 /// The input is N*C*H*W (1*1*3*3), the kernels is {2, 2},
 /// strides is {1, 1}, pads is {1, 1, 1, 1}, group is 1.
@@ -640,6 +615,29 @@ TEST(onnx, importConvAutoPadSameLower) {
   std::vector<size_t> expectedDims = {1, 1, 3, 3};
   std::vector<float> expectedValues = {2, 3, 5, 5, 10, 14, 11, 22, 26};
   convTestHelper(filename, expectedDims, expectedValues);
+}
+
+/// Test to ensure error handling for missing bias
+/// input is handled correctly. Remaining input is
+/// still sane to make sure it only fails for the
+/// intended case.
+TEST(onnx, importConvBiasFail) {
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string NetFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/simpleConvBiasFail.onnxtxt");
+
+  // Destroy the loader after the graph is loaded since the following execution
+  // will not depend on anyting from the loader.
+  {
+    Tensor data;
+    getNCHWData(&data, 1, 1, 3, 3);
+
+    EXPECT_DEATH(ONNXModelLoader(NetFilename, {"data"}, {&data.getType()}, *F),
+                 "");
+  }
 }
 
 /// Helper method to run the AveragePool operator test cases.
