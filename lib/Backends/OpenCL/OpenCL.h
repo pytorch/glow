@@ -94,8 +94,6 @@ class OpenCLFunction final : public CompiledFunction {
   /// would result in different programs.
   std::unordered_map<ProgramKey, cl_program, ProgramKeyHash> programsCache_;
 
-  /// Information about kernel launches.
-  std::vector<KernelLaunch> kernelLaunches_;
   /// is kernel level profiling (autoInstrumentation) enabled.
   bool kernelProfiling_{false};
   /// Manual trace events:
@@ -133,22 +131,25 @@ private:
   /// \returns number of copied bytes.
   uint64_t copyValueFromDevice(const Value *v,
                                runtime::OpenCLDeviceBindings *devBindings,
+                               std::vector<KernelLaunch> &kernelLaunches,
                                void *buf = nullptr);
   /// Copy value from the provided buffer to the device.
   /// \returns number of copied bytes.
   uint64_t copyValueToDevice(const Value *v,
                              runtime::OpenCLDeviceBindings *devBindings,
+                             std::vector<KernelLaunch> &kernelLaunches,
                              void *buf = nullptr);
   /// Fill the device \p buffer with a given \p value.
   /// \param len number of buffer elements to be filled by the \p value.
   /// Elements are considered to be of the type described by \p elemKind.
   void fillBuffer(cl_mem buffer, uint64_t start, uint64_t len, float value,
-                  ElemKind elemKind,
-                  runtime::OpenCLDeviceBindings *devBindings);
+                  ElemKind elemKind, runtime::OpenCLDeviceBindings *devBindings,
+                  std::vector<KernelLaunch> &kernelLaunches);
 
   /// Execution a convolution instruction which uses NCHW format.
   void executeNCHWConvolution(const ConvolutionInst *CC,
-                              ExecutionContext *executionContext);
+                              ExecutionContext *executionContext,
+                              std::vector<KernelLaunch> &kernelLaunches);
   /// Allocate a device buffer of required \p size.
   cl_mem allocDeviceBuffer(uint64_t size, cl_context clContext);
   /// Frees a device buffer.
@@ -174,14 +175,17 @@ private:
 
   /// Load inputs from \p bindings onto the device.
   void loadPlaceholders(PlaceholderBindings *bindings,
-                        runtime::OpenCLDeviceBindings *devBindings);
+                        runtime::OpenCLDeviceBindings *devBindings,
+                        std::vector<KernelLaunch> &kernelLaunches);
 
   /// Load outputs from the device into \p bindings.
   void updatePlaceholders(PlaceholderBindings *bindings,
-                          runtime::OpenCLDeviceBindings *devBindings);
+                          runtime::OpenCLDeviceBindings *devBindings,
+                          std::vector<KernelLaunch> &kernelLaunches);
 
   /// Read trace events out of this func and write them into /p bindings
-  void translateTraceEvents(ExecutionContext *context) const override;
+  void translateTraceEventsCL(ExecutionContext *context,
+                              std::vector<KernelLaunch> &kernelLaunches);
 };
 
 /// This is the OpenCL backend.

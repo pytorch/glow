@@ -419,7 +419,7 @@ void Loader::compile(CompilationContext &cctx) {
                    mainEntryName.empty() ? networkName : mainEntryName);
   } else {
     // Emit IR for the graph and compile it.
-    auto error = hostManager_->addNetwork(std::move(M_), cctx);
+    auto error = hostManager_->addNetwork(std::move(M_), cctx, true);
     EXIT_ON_ERR(std::move(error));
     // After partitioning, the original function may be removed. Need to update
     // F_.
