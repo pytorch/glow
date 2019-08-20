@@ -53,7 +53,7 @@ struct QuantizationTransform32To8 {
   int32_t transform(int32_t input) {
     // The operation x >> y is rounded down to negative infinity. To get to
     // round-nearest we add (1 << (shift - 1)) to the value prior to shifting.
-    int rtn = (1 << (post - 1));
+    int rtn = (post > 0) ? (1 << (post - 1)) : 0;
     return ((((input >> pre) * scale) + rtn) >> post) + offset;
   }
 };
@@ -118,6 +118,14 @@ enum Schema {
   /// version of the quantized type with an offset of zero:
   /// For example, int8 is [-128; 127] - (-128) == uint8 [0; 255] - 0
   SymmetricWithUnsigned,
+  /// Quantization schema with:
+  /// - range centered on 0 (symmetric): offset == 0.
+  /// - scale parameter is a power of 2: scale = 2^E where E is a signed
+  ///   exponent. Since the scale parameter is mostly subunitary, the
+  ///   exponent is mostly negative.
+  /// Since the scale parameter is stored as floating point, the values
+  /// of E which are exactly representable range from -126 to 127.
+  SymmetricWithPower2Scale,
 };
 
 /// Configuration for Quantization, passed into \ref quantizeFunction().
@@ -163,7 +171,9 @@ template <class SrcTy, class DestTy> DestTy clip(SrcTy in) {
 template <class DestTy = int8_t>
 inline DestTy quantize(float input, const TensorQuantizationParams &TQP) {
   float result = input / TQP.scale + TQP.offset;
-  return quantization::clip<int32_t, DestTy>((int32_t)nearbyintf(result));
+  // Note: use int64_t since casts of large values might be wrapped around
+  // before clipping, for example for result = 2147483648.00 (float).
+  return quantization::clip<int64_t, DestTy>((int64_t)nearbyintf(result));
 }
 
 /// Converts a quantized value (type eTy) to floating point based on the
@@ -346,6 +356,12 @@ void tensorFusedRowwiseQuantization(const Tensor &input, Tensor &output) {
     memcpy(currRowScaleOffsetPtr + sizeof(T), &finalOffset, sizeof(T));
   }
 }
+
+/// Verify if float is an exact power of 2 (mantissa is exactly 1.0).
+bool isFloatPowerOf2(float val);
+
+/// Get float 2's exponent.
+int getFloat2Exp(float val);
 
 } // namespace quantization
 } // namespace glow

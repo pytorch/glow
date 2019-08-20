@@ -102,9 +102,21 @@ void testSerialization(const std::vector<NodeQuantizationInfo> &expected) {
 }
 
 TEST(Quantization, Serialize) {
-  std::vector<NodeQuantizationInfo> expected{
-      {"first", {1, 10}}, {"second", {-1, 3}}, {"third", {-10, 30}}};
+  std::vector<NodeQuantizationInfo> expected{{"first", {1, 10}},
+                                             {"second", {-1, 3}},
+                                             {"third", {-10, 30}},
+                                             {"fourth", {0.1, -10}},
+                                             {"fifth", {0.123, -30}}};
+  testSerialization(expected);
+}
 
+TEST(Quantization, SerializePower2Scale) {
+  std::vector<NodeQuantizationInfo> expected{
+      {"pwr_neg_0", {1.0000000000f, 0}}, {"pwr_neg_1", {0.5000000000f, 0}},
+      {"pwr_neg_2", {0.2500000000f, 0}}, {"pwr_neg_3", {0.1250000000f, 0}},
+      {"pwr_neg_4", {0.0625000000f, 0}}, {"pwr_neg_5", {0.0312500000f, 0}},
+      {"pwr_neg_6", {0.0156250000f, 0}}, {"pwr_neg_7", {0.0078125000f, 0}},
+      {"pwr_neg_8", {0.0039062500f, 0}}, {"pwr_neg_9", {0.0019531250f, 0}}};
   testSerialization(expected);
 }
 
@@ -145,6 +157,34 @@ TEST(Quantization, quantScaleOffset) {
       auto TR = quantization::quantizeScaleOffset32To8(scale, 0);
       int32_t computed = TR.transform(sum32num);
 
+      EXPECT_NEAR(input, computed, 1);
+    }
+  }
+}
+
+TEST(Quantization, quantScaleOffsetPower2Scale) {
+  // Test different power of 2 scale values (from 2^-10 to 2^1).
+  float scales[] = {0.0009765625f, 0.0019531250f, 0.0039062500f, 0.0078125000f,
+                    0.0156250000f, 0.0312500000f, 0.0625000000f, 0.1250000000f,
+                    0.2500000000f, 0.5000000000f, 1.0000000000f, 2.0000000000f};
+
+  // Try all scale factors:
+  for (float scale : scales) {
+    // Try all legal integers within the range:
+    for (int8_t input = -128; input < 127; input++) {
+      int32_t sum32num = round(input / scale);
+      auto TR = quantization::quantizeScaleOffset32To8(scale, 0);
+      EXPECT_EQ(quantization::isFloatPowerOf2(scale), true);
+      EXPECT_EQ(TR.pre, 0);
+      int exp = quantization::getFloat2Exp(scale);
+      if (exp > 0) {
+        EXPECT_EQ(TR.scale, (int)scale);
+        EXPECT_EQ(TR.post, 0);
+      } else {
+        EXPECT_EQ(TR.scale, 1);
+        EXPECT_EQ(TR.post, -exp);
+      }
+      int32_t computed = TR.transform(sum32num);
       EXPECT_NEAR(input, computed, 1);
     }
   }
@@ -232,6 +272,18 @@ TEST(Quantization, quantizeTensorSymmetricUInt16) {
 TEST(Quantization, quantizeTensorSymmetricUInt32) {
   quantizeTensorTest<int32_t>(ElemKind::Int32QTy,
                               quantization::Schema::SymmetricWithUnsigned);
+}
+TEST(Quantization, quantizeTensorSymmetricPwr2Int8) {
+  quantizeTensorTest<int8_t>(ElemKind::Int8QTy,
+                             quantization::Schema::SymmetricWithPower2Scale);
+}
+TEST(Quantization, quantizeTensorSymmetricPwr2Int16) {
+  quantizeTensorTest<int16_t>(ElemKind::Int16QTy,
+                              quantization::Schema::SymmetricWithPower2Scale);
+}
+TEST(Quantization, quantizeTensorSymmetricPwr2Int32) {
+  quantizeTensorTest<int32_t>(ElemKind::Int32QTy,
+                              quantization::Schema::SymmetricWithPower2Scale);
 }
 
 /// Helper for quantizing a simple Conv with precision \p quantizationPrecision.
