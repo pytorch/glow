@@ -239,9 +239,12 @@ void compareAgainstInterpreter(
 /// Given some \p FTP representing a Function with a single SaveNode and its
 /// Tensor output, duplicate the Nodes in the Function and their Placeholder
 /// inputs given \p bindings \p parallelCount times. \returns a set of Tensor
-/// pointers for each output of the cloned Function.
+/// pointers for each output of the cloned Function. If the quantization node
+/// info found in \p cctx exists, then all of the node infos will be cloned
+/// accordingly with the names of the newly cloned nodes added to the Function.
 std::unordered_set<Tensor *> cloneFunInsideFun(FunctionTensorPair FTP,
                                                PlaceholderBindings *bindings,
+                                               CompilationContext &cctx,
                                                unsigned parallelCount);
 
 void inferConvNet(Tensor *inputs, Tensor *filter, Tensor *bias, Tensor *out,
