@@ -526,8 +526,7 @@ PyTorchModelLoader::loadValue(const torch::jit::Value *value) {
   RETURN_ERR_IF_NOT(value->isCompleteTensor(),
                     glow::strFormat("Value %s must have CompleteTensor type.",
                                     value->debugNameBase().c_str()));
-  auto glowType =
-      ptTypeToGlowType(*value->type()->expect<at::TensorType>());
+  auto glowType = ptTypeToGlowType(*value->type()->expect<at::TensorType>());
   glow::Placeholder *ph = F_.getParent()->createPlaceholder(
       &glowType, "input", /*isTrainable*/ false);
   RETURN_IF_ERR(addGlowNodeValue(value, ph->getOutput()));
