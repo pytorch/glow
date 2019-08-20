@@ -111,7 +111,8 @@ void IRGenVisitor::post(Node *parent, Node *N) {
     auto *inVal = valueForNode(RN->getInput());
     std::vector<size_t> offsets(inVal->getType()->dims().size(), 0);
     auto *TVI = builder_.createTensorViewInst(
-        "tensorview.reshape", inVal, RN->getResult().getType(), offsets);
+        "tensorview.reshape." + inVal->getName().str(), inVal,
+        RN->getResult().getType(), offsets);
     auto *dest = builder_.createAllocActivationInst("copy.reshape.res",
                                                     RN->getResult().getType());
     builder_.createCopyInst("copy.reshape", dest, TVI);
