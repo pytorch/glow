@@ -605,7 +605,7 @@ llvm::Error ONNXModelLoader::loadConv(const ONNX_NAMESPACE::NodeProto &op,
   if (op.input_size() > 2) {
     auto &biasTensorName = op.input(2);
     // Load the serialized bias vector.
-    bias = getConstantByNameOrNull(biasTensorName);
+    ASSIGN_VALUE_OR_RETURN_ERR(bias, getConstantByName(biasTensorName));
   }
 
   // If a serialized bias wasn't found then create a zero bias.

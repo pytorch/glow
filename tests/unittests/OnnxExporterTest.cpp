@@ -94,6 +94,7 @@ TEST(exporter, onnxModels) {
         name.find("castToFloat16.onnxtxt") != std::string::npos ||
         name.find("castToInt64.onnxtxt") != std::string::npos ||
         name.find("castToInt32.onnxtxt") != std::string::npos ||
+        name.find("simpleConvBiasFail.onnxtxt") != std::string::npos ||
         name.find("Where.onnxtxt") != std::string::npos ||
         name.find("constantOfShapeInt64Fail.onnxtxt") != std::string::npos) {
       // Ignore invalid ONNX files and graphs without nodes.
