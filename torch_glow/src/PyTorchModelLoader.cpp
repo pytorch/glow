@@ -26,9 +26,9 @@ namespace glow {
 
 namespace {
 
-/// \returns a corresponding Glow Type for a given PyTorch CompleteTensorType \p
+/// \returns a corresponding Glow Type for a given PyTorch TensorType \p
 /// ptType.
-inline glow::Type ptTypeToGlowType(const c10::ProfiledTensorType &ptType) {
+inline glow::Type ptTypeToGlowType(const c10::TensorType &ptType) {
   // TODO: get correct ElemKind
   DCHECK_EQ(*ptType.scalarType(), at::kFloat)
       << "Only float type supported currently.";
@@ -527,7 +527,7 @@ PyTorchModelLoader::loadValue(const torch::jit::Value *value) {
                     glow::strFormat("Value %s must have CompleteTensor type.",
                                     value->debugNameBase().c_str()));
   auto glowType =
-      ptTypeToGlowType(*value->type()->expect<at::ProfiledTensorType>());
+      ptTypeToGlowType(*value->type()->expect<at::TensorType>());
   glow::Placeholder *ph = F_.getParent()->createPlaceholder(
       &glowType, "input", /*isTrainable*/ false);
   RETURN_IF_ERR(addGlowNodeValue(value, ph->getOutput()));
