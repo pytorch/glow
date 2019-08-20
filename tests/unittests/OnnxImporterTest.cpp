@@ -594,8 +594,7 @@ TEST(onnx, importConvBiasFail) {
   {
     Tensor data;
     getNCHWData(&data, 1, 1, 3, 3);
-    //	Tensor data(ElemKind::FloatTy, {1, 3, 32, 32, 32});
-    //	ONNXModelLoader(NetFilename, {"data"}, {&data.getType()}, *F);
+
     EXPECT_DEATH(ONNXModelLoader(NetFilename, {"data"}, {&data.getType()}, *F),
                  "");
   }
