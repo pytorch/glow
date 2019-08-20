@@ -41,14 +41,14 @@ class HostManager final {
   /// NetworkData contains data about each network in HostManager that is needed
   /// by the runtime.
   struct NetworkData {
-    DAG dag;
+    DAG dag{};
     // Module that was used to create this network. Everything except
     // placeholders and types have been removed from it.
-    std::shared_ptr<Module> module;
+    std::shared_ptr<Module> module{nullptr};
 
     /// use an atomic refcount rather than just store a shared_ptr for thread
     /// safety.
-    std::atomic<size_t> refcount;
+    std::atomic<size_t> refcount{0};
   };
 
   /// Count of current in-flight networks being run. Atomic to allow
@@ -80,6 +80,13 @@ class HostManager final {
   /// The provisioner owns the compiledFunctions and handles loading functions
   /// onto the devices.
   std::unique_ptr<Provisioner> provisioner_;
+
+  /// Helper function to handle cleanup if an error occurs during addNetwork.
+  /// This must be called while holding the a lock on networkLock_.
+  void cleanupAddNetwork(llvm::ArrayRef<std::string> names);
+
+  /// Set of networks in the process of being added.
+  std::set<std::string> processingNetworks_;
 
 public:
   /// Default constructor.

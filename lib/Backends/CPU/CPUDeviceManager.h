@@ -19,6 +19,8 @@
 #include "glow/Backends/QueueBackedDeviceManager.h"
 #include "glow/Runtime/StatsExporter.h"
 
+#include <atomic>
+
 namespace glow {
 namespace runtime {
 
@@ -31,10 +33,10 @@ class CPUDeviceManager : public QueueBackedDeviceManager {
 
   /// Maximum available memory on the device, for CPU devices fix to some
   /// constant.
-  uint64_t maxMemoryBytes_{0};
+  std::atomic<uint64_t> maxMemoryBytes_{0};
 
   /// Amount of memory used by all models.
-  uint64_t usedMemoryBytes_{0};
+  std::atomic<uint64_t> usedMemoryBytes_{0};
 
   /// Static memory cost of the CPU Function.
   /// This is very arbitrary for the CPU backend.

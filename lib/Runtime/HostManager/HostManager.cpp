@@ -92,21 +92,34 @@ HostManager::init(std::vector<std::unique_ptr<DeviceConfig>> configs) {
 
 HostManager::~HostManager() { llvm::toString(clearHost()); }
 
+void HostManager::cleanupAddNetwork(llvm::ArrayRef<std::string> names) {
+  for (auto &name : names) {
+    processingNetworks_.erase(name);
+  }
+}
+
 llvm::Error HostManager::addNetwork(std::unique_ptr<Module> module,
                                     CompilationContext &cctx,
                                     bool saturateHost) {
-  std::lock_guard<std::mutex> networkLock(networkLock_);
-  auto functions = module->getFunctions();
-  for (auto &F : functions) {
-    std::string name = F->getName();
-    auto it = networks_.find(name);
-    if (it != networks_.end()) {
-      return MAKE_ERR(GlowErr::ErrorCode::RUNTIME_ERROR,
-                      "Failed to add network: already have a function called " +
-                          name);
+  std::vector<std::string> names;
+  {
+    std::lock_guard<std::mutex> networkLock(networkLock_);
+    auto functions = module->getFunctions();
+    for (auto &F : functions) {
+      std::string name = F->getName();
+      auto it = networks_.find(name);
+      if (it != networks_.end() ||
+          processingNetworks_.find(name) != processingNetworks_.end()) {
+        cleanupAddNetwork(names);
+        return MAKE_ERR(
+            GlowErr::ErrorCode::RUNTIME_ERROR,
+            "Failed to add network: already have a function called " + name);
+      }
+      // Add the network to processingNetworks_ so we know it's being worked on.
+      processingNetworks_.insert(name);
+      names.push_back(name);
     }
   }
-
   // Load backend-specific options if specified.
   if (!loadBackendSpecificOptionsOpt.empty()) {
     if (cctx.backendOpts.backendSpecificOpts.size() != 0) {
@@ -118,22 +131,40 @@ llvm::Error HostManager::addNetwork(std::unique_ptr<Module> module,
   }
 
   std::vector<DeviceInfo> deviceInfo;
-  for (auto &device : devices_) {
-    DeviceInfo info = device.second->getDeviceInfo();
-    info.availableMemory = device.second->getAvailableMemory();
-    info.backendName = device.second->getBackendName();
-    info.nonSupportedNodes = device.second->getParamByName("nonSupportedNodes");
-    info.supportedNodes = device.second->getParamByName("supportedNodes");
-    deviceInfo.push_back(info);
+  {
+    std::lock_guard<std::mutex> networkLock(networkLock_);
+    for (auto &device : devices_) {
+      DeviceInfo info = device.second->getDeviceInfo();
+      info.availableMemory = device.second->getAvailableMemory();
+      info.backendName = device.second->getBackendName();
+      info.nonSupportedNodes =
+          device.second->getParamByName("nonSupportedNodes");
+      info.supportedNodes = device.second->getParamByName("supportedNodes");
+      deviceInfo.push_back(info);
+    }
   }
   // Perform a round of target-independent graph optimizations. This helps the
   // partitioner to do its job more efficiently.
   for (Function *F : module->getFunctions()) {
-    RETURN_IF_ERR(optimizeFunctionBeforeLowering(F, cctx));
+    auto err = optimizeFunctionBeforeLowering(F, cctx);
+    if (err) {
+      {
+        std::lock_guard<std::mutex> networkLock(networkLock_);
+        cleanupAddNetwork(names);
+      }
+      return err;
+    }
   }
   Partitioner partitioner(module.get(), deviceInfo, saturateHost);
   DAGListTy nodeList;
-  ASSIGN_VALUE_OR_RETURN_ERR(nodeList, partitioner.partition(cctx));
+  auto result = partitioner.partition(cctx);
+  if (result) {
+    nodeList = std::move(result.get());
+  } else {
+    std::lock_guard<std::mutex> networkLock(networkLock_);
+    cleanupAddNetwork(names);
+    return result.takeError();
+  }
 
   if (cctx.precisionConfig.quantMode == QuantizationMode::Profile) {
     // Since for profiling the provisioner will be reset, we only allow one
@@ -141,9 +172,8 @@ llvm::Error HostManager::addNetwork(std::unique_ptr<Module> module,
     RETURN_ERR_IF_NOT(networks_.size() == 0,
                       "For quantization profiling flow, there can't be other "
                       "registered networks before this one");
-    // For profiling, we use CPU backend. Overwrite Provisioner and Executor to
-    // force the network is compiled and run in profilingBackend.
-    // backend.
+    // For profiling, we use CPU backend. Overwrite Provisioner and Executor
+    // to force the network is compiled and run in profilingBackend. backend.
     size_t devicesNum = devices_.size();
     for (size_t i = 0; i < devicesNum; i++) {
       auto name = devices_[i]->getDeviceConfig().name;
@@ -156,20 +186,29 @@ llvm::Error HostManager::addNetwork(std::unique_ptr<Module> module,
     executor_.reset(new ThreadPoolExecutor(devices_, config_.executorThreads));
   }
 
-  RETURN_IF_ERR(provisioner_->provision(nodeList, *module, cctx));
+  auto err = provisioner_->provision(nodeList, *module, cctx);
+  if (err) {
+    {
+      std::lock_guard<std::mutex> networkLock(networkLock_);
+      cleanupAddNetwork(names);
+    }
+    return err;
+  }
 
   // Clear constants contents from the module then put it in a
   // shared_ptr to be shared between all of the networks created from each
   // function in the module.
   module->strip();
   auto sharedModule = std::shared_ptr<Module>(std::move(module));
-
-  for (auto &node : nodeList) {
-    auto &networkData = networks_[(node.root)->name];
-    networkData.dag = std::move(node);
-    networkData.module = sharedModule;
+  {
+    std::lock_guard<std::mutex> networkLock(networkLock_);
+    for (auto &node : nodeList) {
+      auto &networkData = networks_[(node.root)->name];
+      networkData.dag = std::move(node);
+      networkData.module = sharedModule;
+    }
+    cleanupAddNetwork(names);
   }
-
   return llvm::Error::success();
 }
 
@@ -178,6 +217,16 @@ llvm::Error HostManager::removeNetwork(llvm::StringRef networkName) {
   auto networkIterator = networks_.find(networkName);
   if (networkIterator == networks_.end()) {
     return llvm::Error::success();
+  }
+
+  if (processingNetworks_.find(networkName) != processingNetworks_.end()) {
+    // Return an error, the network is in an incomplete state likely because
+    // it is still being added by a different call.
+    return MAKE_ERR(GlowErr::ErrorCode::RUNTIME_NET_BUSY,
+                    llvm::formatv("Cannot remove the network {0}, as it is "
+                                  "currently being modified.",
+                                  networkName)
+                        .str());
   }
 
   // Issue an error as there are outstanding runs for the network
@@ -206,7 +255,7 @@ llvm::Error HostManager::removeNetwork(llvm::StringRef networkName) {
       err.set(std::move(*DCHECK_NOTNULL(removeErr.get())));
     }
     // Also remove compiledFunction from Provisioner.
-    provisioner_->removeFunction(node->name);
+    err.set(provisioner_->removeFunction(node->name));
   }
   networks_.erase(networkIterator);
 
