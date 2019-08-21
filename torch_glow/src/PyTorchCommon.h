@@ -21,6 +21,8 @@
 
 namespace glow {
 
+class CachingGraphRunner;
+
 /// Various settings to be used by code that loads PyTorch models. There should
 /// only be one of these and it should be obtained by calling
 /// getPyTorchLoaderSettings().
@@ -44,6 +46,20 @@ const c10::Symbol &getGlowSymbol();
 /// Executes custom fuse pass for the given \p graph and \p fuseSymbol.
 void glowCustomFuse(std::shared_ptr<torch::jit::Graph> &graph,
                     at::Symbol fuseSymbol);
+
+/// Register the glow::FusionGroup operator.
+void registerGlowOp();
+
+/// Register the pass that fuses parts of the graph into a glow::FusionGroup.
+void registerGlowFusionPass();
+
+/// Convenience method to register the glow fusion op and pass. \p
+/// enableFusionPass can be used to enable the glow fusion pass once it's
+/// registered.
+void registerGlowFusionOpAndPass(bool enableFusionPass = false);
+
+/// Manages a CachingGraphRunner singleton.
+CachingGraphRunner *getGraphRunner();
 
 } // namespace glow
 
