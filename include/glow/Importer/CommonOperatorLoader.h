@@ -1010,6 +1010,26 @@ protected:
     return llvm::Error::success();
   }
 
+  // Loads Less operator. Internally it's a cmpLT Node.
+  llvm::Error loadLess(const OpType &op, const ArgumentDictionaryTy &dict) {
+    // Input Type.
+    NodeValue xNV;
+    ASSIGN_VALUE_OR_RETURN_ERR(xNV, getNodeValueByName(op.input(0)));
+    NodeValue yNV;
+    ASSIGN_VALUE_OR_RETURN_ERR(yNV, getNodeValueByName(op.input(1)));
+
+    std::string opName = loadOperatorName(op);
+
+    auto *xNode = xNV.getNode();
+    auto *yNode = yNV.getNode();
+
+    Node *N = G_.createNodeWithBroadcast<CmpLTNode>(opName, /* axis */ -1,
+                                                    xNode, yNode);
+
+    RETURN_IF_ERR(addNodeAsOutput(op, N));
+    return llvm::Error::success();
+  }
+
   using ProtobufLoader::ProtobufLoader;
 
   /// If operator type is supported, returns Expected<true> and creates new
@@ -1163,7 +1183,10 @@ protected:
       RETURN_IF_ERR(loadGatherRanges(typeName, op, dict));
       return true;
     }
-
+    if (typeName == "Less") {
+      RETURN_IF_ERR(loadLess(op, dict));
+      return true;
+    }
     return false;
   }
 

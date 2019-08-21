@@ -1319,6 +1319,13 @@ CmpLTENode *Function::createCmpLTE(llvm::StringRef name, NodeValue LHS,
   return addNode(new CmpLTENode(name, OT, LHS, RHS));
 }
 
+CmpLTNode *Function::createCmpLT(llvm::StringRef name, NodeValue LHS,
+                                 NodeValue RHS) {
+  assert(LHS.dims() == RHS.dims() && "Invalid operand shapes");
+  TypeRef OT = getParent()->uniqueType(ElemKind::BoolTy, LHS.dims());
+  return addNode(new CmpLTNode(name, OT, LHS, RHS));
+}
+
 CmpEQNode *Function::createCmpEQ(llvm::StringRef name, NodeValue LHS,
                                  NodeValue RHS) {
   assert(LHS.dims() == RHS.dims() && "Invalid operand shapes");
