@@ -206,6 +206,8 @@ protected:
                        ResultCBTy cb) override;
 };
 
+DeviceManager *createOCLDeviceManager(const DeviceConfig &config);
+
 } // namespace runtime
 } // namespace glow
 

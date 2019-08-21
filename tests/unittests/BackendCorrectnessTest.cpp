@@ -185,6 +185,11 @@ public:
     return backend_->compileIR(std::move(IR));
   }
   bool isOpSupported(const NodeInfo &NI) const override { return true; }
+
+  runtime::DeviceManager *
+  createDeviceManager(const runtime::DeviceConfig &deviceConfig) override {
+    return nullptr;
+  }
 };
 
 TEST_P(CPUOnly, dataParallelStackingTest) {

@@ -82,6 +82,8 @@ protected:
                        ResultCBTy cb) override;
 };
 
+DeviceManager *createCPUDeviceManager(const DeviceConfig &config);
+
 } // namespace runtime
 } // namespace glow
 

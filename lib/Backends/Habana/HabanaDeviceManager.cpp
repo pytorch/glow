@@ -39,7 +39,6 @@ static llvm::cl::opt<unsigned, /* ExternalStorage */ true> GlowHabanaMemoryOpt(
     llvm::cl::desc("Amount of DRAM to allocate per Habana device in kilobytes"),
     llvm::cl::location(GlowHabanaMemory));
 
-/// Factory function for creating a HabanaDeviceManager.
 DeviceManager *createHabanaDeviceManager(const DeviceConfig &config) {
   return new HabanaDeviceManager(config);
 }

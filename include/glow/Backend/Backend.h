@@ -32,6 +32,13 @@ class PlaceholderBindings;
 class IRGenVisitor;
 class FunctionPassPipeline;
 
+namespace runtime {
+
+class DeviceManager;
+struct DeviceConfig;
+
+} // namespace runtime
+
 // This is the interface that glow backends need to implement.
 class Backend {
 public:
@@ -113,6 +120,11 @@ public:
   }
 
   virtual size_t getTraceEventDataSize() const { return 0; }
+
+  /// Create device manager corresponding to the backend based on the
+  /// deviceConfig.
+  virtual runtime::DeviceManager *
+  createDeviceManager(const runtime::DeviceConfig &deviceConfig) = 0;
 
 protected:
   /// Parses the graph \F and builds a TraceInfo structure from any found

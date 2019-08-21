@@ -74,6 +74,11 @@ public:
     return backend_->compile(F, opts);
   }
 
+  runtime::DeviceManager *
+  createDeviceManager(const runtime::DeviceConfig &deviceConfig) override {
+    return nullptr;
+  }
+
   bool isOpSupported(const NodeInfo &NI) const override {
     if (NI.getKind() == Kinded::Kind::SoftMaxNodeKind ||
         NI.getKind() == Kinded::Kind::LocalResponseNormalizationNodeKind ||

@@ -16,6 +16,7 @@
 #ifndef GLOW_BACKENDS_INTERPRETER_INTERPRETER_H
 #define GLOW_BACKENDS_INTERPRETER_INTERPRETER_H
 
+#include "InterpreterDeviceManager.h"
 #include "InterpreterFunction.h"
 
 #include "glow/Backend/Backend.h"
@@ -56,6 +57,11 @@ public:
   static size_t getTraceEventDataSizeStatic() { return sizeof(uint64_t); }
   size_t getTraceEventDataSize() const override {
     return Interpreter::getTraceEventDataSizeStatic();
+  }
+
+  runtime::DeviceManager *
+  createDeviceManager(const runtime::DeviceConfig &deviceConfig) override {
+    return createInterpreterDeviceManager(deviceConfig);
   }
 };
 
