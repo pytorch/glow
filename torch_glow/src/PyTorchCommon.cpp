@@ -15,8 +15,12 @@
  */
 
 #include "PyTorchCommon.h"
+#include "CachingGraphRunner.h"
 #include "GlowFuser.h"
 #include "PyTorchModelLoader.h"
+
+#include <torch/csrc/jit/operator_options.h>
+#include <torch/csrc/jit/pass_manager.h>
 #include <torch/csrc/jit/passes/graph_fuser.h>
 
 namespace glow {
@@ -41,6 +45,45 @@ void glowCustomFuse(std::shared_ptr<torch::jit::Graph> &g,
   FuseLinear(g);
 
   GlowCustomFuse(g, PyTorchModelLoader::isNodeSupported, fuseSymbol);
+}
+
+CachingGraphRunner *getGraphRunner() {
+  static auto runner_ =
+      std::unique_ptr<CachingGraphRunner>(new CachingGraphRunner());
+  return runner_.get();
+}
+
+void registerGlowOp() {
+  auto options = c10::OperatorOptions();
+  options.setAliasAnalysis(at::AliasAnalysisKind::PURE);
+
+  torch::jit::RegisterOperators op({torch::jit::Operator(
+      getGlowSymbol(),
+      [](const torch::jit::Node *node) {
+        return [node](torch::jit::Stack &stack) {
+          llvm::Error err = getGraphRunner()->runGraph(node, stack);
+          if (static_cast<bool>(err)) {
+            // PyTorch framework expects an exception been thrown here.
+            throw std::invalid_argument(llvm::toString(std::move(err)));
+          }
+          return 0;
+        };
+      },
+      options)});
+}
+
+void registerGlowFusionPass() {
+  torch::jit::RegisterPass pass([](std::shared_ptr<torch::jit::Graph> &g) {
+    if (getPyTorchLoaderSettings().fusionPassEnabled) {
+      glow::glowCustomFuse(g, getGlowSymbol());
+    }
+  });
+}
+
+void registerGlowFusionOpAndPass(bool enableFusionPass) {
+  registerGlowOp();
+  registerGlowFusionPass();
+  getPyTorchLoaderSettings().fusionPassEnabled = enableFusionPass;
 }
 
 } // namespace glow
