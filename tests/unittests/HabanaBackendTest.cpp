@@ -1289,25 +1289,30 @@ static void fill(Tensor &T, int val) {
 }
 
 TEST_F(HabanaBackendTest, Copy) {
+  Tensor cref(ElemKind::FloatTy, {20});
+  Tensor c2ref(ElemKind::FloatTy, {20});
+  fill(cref, 1);
+  fill(c2ref, 21);
+
   auto *c = mod_.createConstant(ElemKind::FloatTy, {20}, "c");
   auto *p = mod_.createPlaceholder(ElemKind::FloatTy, {20}, "p", false);
   F_->createSave("s", c, p);
   auto &ct = c->getPayloadMutable();
   auto *pt = ctx_.allocate(p);
-  fill(ct, 1);
+  ct.assign(&cref);
 
   auto *c2 = mod_.createConstant(ElemKind::FloatTy, {20}, "c2");
   auto *p2 = mod_.createPlaceholder(ElemKind::FloatTy, {20}, "p2", false);
   F_->createSave("s2", c2, p2);
   auto &c2t = c2->getPayloadMutable();
   auto *p2t = ctx_.allocate(p2);
-  fill(c2t, 21);
+  c2t.assign(&c2ref);
 
   EE_.compile(CompilationMode::Infer);
   EE_.run(ctx_);
 
-  ASSERT_TRUE(ct.isEqual(*pt));
-  ASSERT_TRUE(c2t.isEqual(*p2t));
+  ASSERT_TRUE(cref.isEqual(*pt));
+  ASSERT_TRUE(c2ref.isEqual(*p2t));
 }
 
 TEST_F(HabanaBackendTest, CopyPlaceholder) {
