@@ -960,13 +960,14 @@ TEST_P(OperatorTest, matmul_ParCloneTest10) {
   auto *save = F_->createSave("save", R);
   auto *saveTensor = bindings_.allocate(save->getPlaceholder());
 
+  CompilationContext cctx;
   const unsigned parallelCount = 10;
   auto resultTensors = cloneFunInsideFun(std::make_pair(F_, saveTensor),
-                                         &bindings_, parallelCount);
+                                         &bindings_, cctx, parallelCount);
 
   EXPECT_EQ(resultTensors.size(), parallelCount);
 
-  EE_.compile(CompilationMode::Infer);
+  EE_.compile(cctx);
   EE_.run(bindings_);
 
   for (Tensor *T : resultTensors) {
