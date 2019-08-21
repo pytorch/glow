@@ -127,9 +127,16 @@ bool canMerge(torch::jit::Block *block, isSupportFunc fn) {
 
 #define REQ(cond, log_info)                                                    \
   if (!(cond)) {                                                               \
-    llvm::errs() << log_info;                                                  \
+    llvm::errs() << log_info << "\n";                                          \
     return c10::nullopt;                                                       \
   }
+
+// Check if a node is a known not-lowered operator, etc, a tensor generator.
+static bool isLogIgnoredOp(const std::string &op_name) {
+  static const std::unordered_set<std::string> white_list{"prim::GetAttr",
+                                                          "prim::Param"};
+  return white_list.count(op_name) > 0;
+}
 
 c10::optional<torch::jit::Node *> tryMerge(torch::jit::Node *consumer,
                                            torch::jit::Node *producer,
@@ -138,9 +145,10 @@ c10::optional<torch::jit::Node *> tryMerge(torch::jit::Node *consumer,
 
   std::string symbol_name_producer = producer->kind().toQualString();
   std::string symbol_name_consumer = consumer->kind().toQualString();
-  REQ(canMerge(producer, fn),
+  REQ(canMerge(producer, fn) || isLogIgnoredOp(symbol_name_producer),
       "Detected unknown node: " + symbol_name_producer + ".\n")
-  REQ(consumer->kind() == kind || canMerge(consumer, fn),
+  REQ(consumer->kind() == kind || canMerge(consumer, fn) ||
+          isLogIgnoredOp(symbol_name_consumer),
       "Detected unknown node: " + symbol_name_consumer + ".\n")
 
   // Alias checks
