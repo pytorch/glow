@@ -239,6 +239,34 @@ static size_t setKernelArgsForBuffers(cl_kernel kernel, const Instruction &I,
   return kernelArgIdx - 1;
 }
 
+/// \returns the preferred (intra) vector width for the given OpenCL \p device,
+/// and the given \p elementType.
+static unsigned getPreferredVectorWidth(cl_device_id device,
+                                        ElemKind elementType) {
+  cl_uint width;
+  cl_device_info paramName;
+  switch (elementType) {
+  case ElemKind::FloatTy:
+    paramName = CL_DEVICE_PREFERRED_VECTOR_WIDTH_FLOAT;
+    break;
+  case ElemKind::BoolTy:
+  case ElemKind::Int8QTy:
+    paramName = CL_DEVICE_PREFERRED_VECTOR_WIDTH_CHAR;
+    break;
+  case ElemKind::Int32QTy:
+    paramName = CL_DEVICE_PREFERRED_VECTOR_WIDTH_INT;
+    break;
+  case ElemKind::Int64ITy:
+    paramName = CL_DEVICE_PREFERRED_VECTOR_WIDTH_LONG;
+    break;
+  default:
+    LOG(FATAL) << "Unsupported vector data type: "
+               << Type::getElementName(elementType).str();
+  }
+  clGetDeviceInfo(device, paramName, sizeof(width), &width, NULL);
+  return width;
+}
+
 void OpenCLFunction::fillBuffer(cl_mem buffer, uint64_t start, uint64_t len,
                                 float value, ElemKind elemKind,
                                 runtime::OpenCLDeviceBindings *devBindings,
@@ -609,7 +637,9 @@ Error OpenCLFunction::execute(ExecutionContext *context) {
         // The check for quantization below is a temporary workaround until the
         // corresponding kernels are implemented for the quantized operations.
         if (!isQuantized) {
-          if (global % 16 == 0) {
+          if (getPreferredVectorWidth(deviceId, elemTy) == 1) {
+            // If the device prefers not to use vector data types, let's not.
+          } else if (global % 16 == 0) {
             // Start less kernels and let each kernel do more work using vector
             // instructions.
             global /= 16;
