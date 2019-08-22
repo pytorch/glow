@@ -124,7 +124,7 @@ public:
   /// Create device manager corresponding to the backend based on the
   /// deviceConfig.
   virtual runtime::DeviceManager *
-  createDeviceManager(const runtime::DeviceConfig &deviceConfig) = 0;
+  createDeviceManager(const runtime::DeviceConfig &deviceConfig);
 
 protected:
   /// Parses the graph \F and builds a TraceInfo structure from any found
