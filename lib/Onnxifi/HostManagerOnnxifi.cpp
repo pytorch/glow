@@ -25,6 +25,7 @@ namespace onnxifi {
 int32_t GlowNumDevices = 1;
 bool GlowDumpDebugTraces = false;
 bool GlowSaturateHost = false;
+bool GlowFP16 = false;
 
 static llvm::cl::opt<int32_t, true>
     GlowNumDevicesOpt("glow-num-devices",
@@ -62,6 +63,12 @@ void HostManagerBackend::runNetwork(const Graph *graph,
 
 onnxStatus HostManagerBackend::addNetwork(std::unique_ptr<Module> module) {
   CompilationContext cctx;
+  PrecisionConfiguration &precConfig = cctx.precisionConfig;
+
+  if (GlowFP16) {
+    precConfig.convertToFP16 = GlowFP16;
+    LOG(INFO) << "Conversion to fp16 enabled";
+  }
   auto err =
       hostManager_->addNetwork(std::move(module), cctx, GlowSaturateHost);
 
