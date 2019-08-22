@@ -958,6 +958,25 @@ int8_t libjit_element_cmp_lte_kernel_i8(size_t idx, const int8_t *LHS,
   return libjit_scale_i32i8(lhs, pre, post, scale, 0) <= rhs ? 1 : 0;
 }
 
+int8_t libjit_element_cmp_lt_kernel_f(size_t idx, const float *LHS,
+                                      const float *RHS) {
+  return LHS[idx] < RHS[idx] ? 1 : 0;
+}
+
+int8_t libjit_element_cmp_lt_kernel_i32(size_t idx, const int32_t *LHS,
+                                        const int32_t *RHS) {
+  return LHS[idx] < RHS[idx] ? 1 : 0;
+}
+
+int8_t libjit_element_cmp_lt_kernel_i8(size_t idx, const int8_t *LHS,
+                                       const int8_t *RHS, int32_t lhsOffset,
+                                       int32_t rhsOffset, int32_t pre,
+                                       int32_t post, int32_t scale) {
+  int32_t lhs = LHS[idx] - lhsOffset;
+  int32_t rhs = RHS[idx] - rhsOffset;
+  return libjit_scale_i32i8(lhs, pre, post, scale, 0) < rhs ? 1 : 0;
+}
+
 // tanh cannot be vectorized by LLVM yet. Therefore we use the following
 // formula instead: 1 - 2 / (exp(x * 2) + 1), which is also used by Caffe2 and
 // provides a good accuracy.

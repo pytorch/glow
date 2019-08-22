@@ -39,6 +39,9 @@ public:
   /// been seen then this first loads it as a Glow Function and compiles.
   /// \returns error of failure.
   llvm::Error runGraph(const torch::jit::Node *node, torch::jit::Stack &stack);
+
+  /// Manages a CachingGraphRunner singleton.
+  static CachingGraphRunner *getGraphRunner();
 };
 } // namespace glow
 

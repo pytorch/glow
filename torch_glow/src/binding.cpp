@@ -16,12 +16,14 @@
 
 #include <pybind11/pybind11.h>
 
-#include <torch/csrc/jit/operator_options.h>
-#include <torch/csrc/jit/pass_manager.h>
-
 #include "CachingGraphRunner.h"
 #include "PyTorchCommon.h"
 #include "PyTorchModelLoader.h"
+#include "TorchGlowTraining.h"
+#include <pybind11/pybind11.h>
+/// Required include files for a proper binding TorchGlowTrainingWrapper class.
+#include <pybind11/stl.h>
+#include <torch/csrc/utils/pybind.h>
 
 #include "glow/Graph/Graph.h"
 
@@ -29,50 +31,9 @@ namespace py = pybind11;
 
 using namespace glow;
 
-namespace {
-
-/// Manages a CachingGraphRunner singleton.
-CachingGraphRunner *getGraphRunner() {
-  static auto runner_ =
-      std::unique_ptr<CachingGraphRunner>(new CachingGraphRunner());
-  return runner_.get();
-}
-
-/// Register the glow::FusionGroup operator.
-void registerGlowOp() {
-  auto options = c10::OperatorOptions();
-  options.setAliasAnalysis(at::AliasAnalysisKind::PURE);
-
-  torch::jit::RegisterOperators op({torch::jit::Operator(
-      getGlowSymbol(),
-      [](const torch::jit::Node *node) {
-        return [node](torch::jit::Stack &stack) {
-          llvm::Error err = getGraphRunner()->runGraph(node, stack);
-          if (static_cast<bool>(err)) {
-            // PyTorch framework expects an exception been thrown here.
-            throw std::invalid_argument(llvm::toString(std::move(err)));
-          }
-          return 0;
-        };
-      },
-      options)});
-}
-
-/// Register the pass that fuses parts of the graph into
-/// a glow::FusionGroup
-void registerPass() {
-  torch::jit::RegisterPass pass([](std::shared_ptr<torch::jit::Graph> &g) {
-    if (getPyTorchLoaderSettings().fusionPassEnabled) {
-      glow::glowCustomFuse(g, getGlowSymbol());
-    }
-  });
-}
-} // namespace
-
 /// The torch_glow pybind11 module.
 PYBIND11_MODULE(_torch_glow, m) {
-  registerGlowOp();
-  registerPass();
+  registerGlowFusionOpAndPass();
 
   /// Enable compiling PyTorch subgraphs to Glow Functions.
   m.def("enableFusionPass",
@@ -89,4 +50,14 @@ PYBIND11_MODULE(_torch_glow, m) {
   /// Disable freezing weights as Constants in PyTorch subgraphs loaded in Glow.
   m.def("disableWeightFreezing",
         []() { getPyTorchLoaderSettings().weightFreezingEnabled = false; });
+
+  /// Binding wrapper class for TorchGlowTraining and its settings.
+  py::class_<TorchGlowTrainingWrapper>(m, "TorchGlowTrainingWrapper")
+      .def(py::init())
+      .def("init", &TorchGlowTrainingWrapper::init)
+      .def("train", &TorchGlowTrainingWrapper::train)
+      .def("save", &TorchGlowTrainingWrapper::save)
+      .def("settings", &TorchGlowTrainingWrapper::setPyTorchLoaderSettings)
+      .def("parameters", &TorchGlowTrainingWrapper::setONNXWriterParameters)
+      .def("config", &TorchGlowTrainingWrapper::setTrainingConfig);
 }

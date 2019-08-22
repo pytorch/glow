@@ -1108,6 +1108,7 @@ DEF_ALL_WRITER_NODE(SparseLengthsWeightedSum)
 // Glow nodes with default exporting algorithm.
 DEF_ALL_WRITER_NODE(CmpEQ)
 DEF_ALL_WRITER_NODE(CmpLTE)
+DEF_ALL_WRITER_NODE(CmpLT)
 DEF_ALL_WRITER_NODE(BatchedAdd)
 DEF_ALL_WRITER_NODE(Dequantize)
 DEF_ALL_WRITER_NODE(Regression)

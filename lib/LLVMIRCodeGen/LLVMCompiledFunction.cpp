@@ -94,12 +94,18 @@ llvm::Error LLVMCompiledFunction::execute(ExecutionContext *context) {
   auto *traceContext = context->getTraceContext();
   TRACE_EVENT_SCOPE_NAMED(traceContext, TraceLevel::RUNTIME,
                           "findJitmainSymbol", fjEvent);
-  auto sym = JIT_->findSymbol("jitmain");
-  DCHECK(sym) << "Unable to JIT the code!";
+  llvm::Expected<llvm::JITTargetAddress> address = NULL;
+  {
+    std::lock_guard<std::mutex> lock(JITLock_);
+    auto sym = JIT_->findSymbol("jitmain");
+
+    DCHECK(sym) << "Unable to JIT the code!";
+
+    address = sym.getAddress();
+  }
   using JitFuncType =
       void (*)(uint8_t * constantWeightVars, uint8_t * mutableWeightVars,
                uint8_t * activations);
-  auto address = sym.getAddress();
   if (address) {
     JitFuncType funcPtr = reinterpret_cast<JitFuncType>(address.get());
     TRACE_EVENT_SCOPE_END_NAMED(fjEvent);

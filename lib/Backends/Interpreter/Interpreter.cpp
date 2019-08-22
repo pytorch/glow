@@ -137,6 +137,13 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
                {CmpLTENode::ResultIdx}) &&
            (NI.getOutElemTy(CmpLTENode::ResultIdx) == ElemKind::BoolTy);
 
+  case Kinded::Kind::CmpLTNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind(
+               {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy,
+                ElemKind::Int32ITy, ElemKind::Int64ITy},
+               {}, {CmpLTNode::ResultIdx}) &&
+           (NI.getOutElemTy(CmpLTNode::ResultIdx) == ElemKind::BoolTy);
+
   case Kinded::Kind::IsNaNNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
                {ElemKind::FloatTy, ElemKind::Float16Ty}, {},

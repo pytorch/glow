@@ -29,8 +29,12 @@ except ImportError as e:
 print("torch version:", torch.__version__)
 print("torch location:", os.path.dirname(os.path.realpath(torch.__file__)))
 
+# Current setup.py file directory, i.e. glow/torch_glow.
 FILE_DIR = os.path.realpath(os.path.dirname(__file__))
+# Find the top directory with root Makefile, i.e. glow
 TOP_DIR = os.path.realpath(os.path.dirname(FILE_DIR))
+# Make build directory a subdirectory of FILE_DIR, i.e.
+# glow/build.
 CMAKE_BUILD_DIR = os.path.join(TOP_DIR, 'build')
 
 CMAKE = find_executable('cmake') or find_executable('cmake3')

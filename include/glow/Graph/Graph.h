@@ -696,6 +696,7 @@ public:
   ARITHMETIC_FUN_DECL(Max);
   ARITHMETIC_FUN_DECL(Min);
   ARITHMETIC_FUN_DECL(CmpLTE);
+  ARITHMETIC_FUN_DECL(CmpLT);
   ARITHMETIC_FUN_DECL(CmpEQ);
   ARITHMETIC_FUN_DECL(Pow);
 #undef ARITHMETIC_FUN_DECL
@@ -739,6 +740,17 @@ public:
     BROADCAST_FUNC_COMMON_CODE(3)
     return createSelect(name, inputs[1].getType(), inputs[0], inputs[1],
                         inputs[2]);
+  }
+
+  /// Template function that creates a node and normalizes its input shapes
+  /// with the use of BroadCast nodes. If axis is -1, it calculates it
+  /// automatically for multi directional broadcast.
+  template <class T, class... Args>
+  typename enable_if_same_t<T, CmpLTNode>::type *
+  createNodeWithBroadcast(const std::string &name, int axis,
+                          Args &&... inputArgs) {
+    BROADCAST_FUNC_COMMON_CODE(2)
+    return createCmpLT(name, inputs[0], inputs[1]);
   }
 
 #undef BROADCAST_FUNC_COMMON_CODE
