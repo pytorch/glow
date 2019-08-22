@@ -23,6 +23,7 @@
 #include <atomic>
 #include <map>
 #include <mutex>
+#include <queue>
 #include <unordered_map>
 #include <vector>
 
@@ -50,6 +51,37 @@ class HostManager final {
     /// safety.
     std::atomic<size_t> refcount{0};
   };
+  /// Container for inference requests waiting in the queue.
+  struct InferRequest {
+    /// Name of the network the requested run is for.
+    std::string networkName;
+
+    /// The execution context for the request.
+    std::unique_ptr<ExecutionContext> context;
+
+    /// The user provided callback to run after execution finishes.
+    ResultCBTy callback;
+
+    /// The specified priority for the run.
+    uint64_t priority;
+
+    /// The runtime generated ID for the run request.
+    uint64_t requestID;
+
+    // Define greater than operator to allow sorting in priority_heap for queue
+    // reqests. If priority is the same fall back to order of submission.
+    bool operator>(const InferRequest &inferReq) const {
+      if (priority == inferReq.priority) {
+        return requestID > inferReq.requestID;
+      }
+      return priority > inferReq.priority;
+    }
+    InferRequest(std::string networkName,
+                 std::unique_ptr<ExecutionContext> context, ResultCBTy callback,
+                 uint64_t priority, uint64_t requestID)
+        : networkName{networkName}, context{std::move(context)},
+          callback{callback}, priority{priority}, requestID{requestID} {}
+  };
 
   /// Count of current in-flight networks being run. Atomic to allow
   /// concurrency in runNetwork.
@@ -58,6 +90,12 @@ class HostManager final {
   /// Count of total requests, this is used as a run ID. Atomic to allow
   /// concurrency in runNetwork.
   std::atomic<size_t> totalRequestCount_{0};
+
+  /// Priority queue for queued requests. This is a min-heap so lowest value is
+  /// popped first.
+  std::priority_queue<InferRequest, std::vector<InferRequest>,
+                      std::greater<InferRequest>>
+      inferQueue_;
 
   /// Configuration parameters for this Runtime Host.
   const HostConfig config_{};
@@ -87,6 +125,9 @@ class HostManager final {
 
   /// Set of networks in the process of being added.
   std::set<std::string> processingNetworks_;
+
+  /// Method to dispatch a new run to the executor.
+  void dispatchNextRun();
 
 public:
   /// Default constructor.
@@ -131,9 +172,12 @@ public:
   /// Note: This method is intended to be thread-safe, it will be called
   /// concurrently from multiple threads.
   /// Returns -1 if networkName not found or too many active requests.
+  /// The parameter \p priority is used to indicate queueing priority, priority
+  /// is lowest number first and in case of a tie the request that was submitted
+  /// first will go first.
   RunIdentifierTy runNetwork(llvm::StringRef networkName,
                              std::unique_ptr<ExecutionContext> context,
-                             ResultCBTy callback);
+                             ResultCBTy callback, uint64_t priority = 0);
 
   /// A wrapper around runNetwork that provides a blocking interface for an
   /// inference request. Runs the network provided in \p networkName using \p

@@ -33,7 +33,7 @@ public:
       : Backend(backendName, useOnnx), hostManager_(hostManager) {}
 
   void runNetwork(const Graph *graph, std::unique_ptr<ExecutionContext> context,
-                  runtime::ResultCBTy callback) override;
+                  runtime::ResultCBTy callback, uint64_t priority = 0) override;
 
   onnxStatus addNetwork(std::unique_ptr<Module> module);
 

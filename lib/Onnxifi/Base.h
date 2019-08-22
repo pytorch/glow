@@ -63,7 +63,8 @@ public:
 
   virtual void runNetwork(const Graph *graph,
                           std::unique_ptr<ExecutionContext> context,
-                          runtime::ResultCBTy callback) {}
+                          runtime::ResultCBTy callback, uint64_t priority = 0) {
+  }
 
   virtual onnxStatus removeNetwork(const Graph *graph) {
     return ONNXIFI_STATUS_SUCCESS;
