@@ -585,6 +585,34 @@ bool AvgPoolNode::verify() const {
   }
 }
 
+bool AdaptiveAvgPoolGradNode::verify() const {
+  bool isValid = verifyInputAndGradInputTypes(getInput(),
+                                              getGradOfInputNamedInput(), this);
+  isValid &= verifyOutputAndGradOutputTypes(
+      getOriginalOutputForResult(), getGradOfOriginalOutputNamedResult(), this);
+
+  ShapeNHWC idim(getInput().getType()->dims());
+  ShapeNHWC odim(getOriginalOutputForResult().getType()->dims());
+
+  isValid &= expectCompareTrue(
+      "expected the same number of channels for input and output", odim.c,
+      idim.c, this);
+
+  isValid &= expectCompareTrue(
+      "expected the same number of batches for input and output", odim.n,
+      idim.n, this);
+
+  isValid &=
+      expectCompareTrue("height too small for averaging area", odim.h, idim.h,
+                        this, CompareOperatorLessEqual<size_t>());
+
+  isValid &=
+      expectCompareTrue("width too small for averaging area", odim.w, idim.w,
+                        this, CompareOperatorLessEqual<size_t>());
+
+  return isValid;
+}
+
 bool AdaptiveAvgPoolNode::verify() const {
   bool isValid = checkTypeIgnoreShape(getInput(), getResult(), this);
 

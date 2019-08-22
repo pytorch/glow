@@ -194,6 +194,20 @@ void IRGenVisitor::post(Node *parent, Node *N) {
     registerIR(PG->getGradOfInputNamedInput(), inG);
     break;
   }
+  case glow::Kinded::Kind::AdaptiveAvgPoolGradNodeKind: {
+    auto *PG = cast<AdaptiveAvgPoolGradNode>(N);
+
+    auto poolOut = PG->getOriginalOutputForResult();
+    auto *outW = valueForNode(poolOut);
+    auto *outG = valueForNode(PG->getGradOfOriginalOutputNamedResult());
+
+    auto *inG = builder_.createAllocActivationInst("pool.outG",
+                                                   PG->getInput().getType());
+
+    builder_.createAdaptiveAvgPoolGradInst(N->getName(), outW, outG, inG);
+    registerIR(PG->getGradOfInputNamedInput(), inG);
+    break;
+  }
   case glow::Kinded::Kind::SoftMaxGradNodeKind: {
     auto *SMG = cast<SoftMaxGradNode>(N);
     // Original inputs:

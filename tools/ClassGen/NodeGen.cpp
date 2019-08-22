@@ -160,6 +160,7 @@ int main(int argc, char **argv) {
   BB.newNode("AdaptiveAvgPool")
       .addInput("Input")
       .addResultFromCtorArg()
+      .addGradient()
       .setDocstring(
           "Performs an Adaptive Average Pool operation on the Input given");
 
