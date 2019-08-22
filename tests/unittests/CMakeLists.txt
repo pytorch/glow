@@ -411,6 +411,20 @@ target_link_libraries(PartitionerTest
                         TestMain)
 add_glow_test(PartitionerTest ${GLOW_BINARY_DIR}/tests/PartitionerTest --gtest_output=xml:PartitionerTest.xml)
 
+add_executable(PeerToPeerTest
+        PeerToPeerTest.cpp)
+target_link_libraries(PeerToPeerTest
+                      PRIVATE
+                        BackendTestUtils
+                        Graph
+                        IR
+                        ExecutionEngine
+                        Quantization
+                        GraphOptimizer
+                        gtest
+                        TestMain)
+add_glow_test(PeerToPeerTest ${GLOW_BINARY_DIR}/tests/PeerToPeerTest --gtest_output=xml:PeerToPeerTest.xml)
+
 add_executable(RecommendationSystemTest
                RecommendationSystemTest.cpp)
 target_link_libraries(RecommendationSystemTest

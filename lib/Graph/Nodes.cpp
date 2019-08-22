@@ -1728,6 +1728,12 @@ bool BatchBoxCoxNode::verify() const {
 
 bool ModuloNode::verify() const { return getDivisor() >= 1; }
 
+bool RecvReadyNode::verify() const { return true; }
+
+bool SendNode::verify() const { return true; }
+
+bool RecvNode::verify() const { return true; }
+
 //===----------------------------------------------------------------------===//
 //                     Node hashing support
 //===----------------------------------------------------------------------===//

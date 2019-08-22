@@ -155,6 +155,20 @@ public:
   /// \returns the DeviceInfo for this device containing peak limits for
   /// compute and bandwidths (used in partitioning).
   virtual DeviceInfo getDeviceInfo() const { return DeviceInfo(); }
+
+  virtual bool isPeerToPeerSupported() { return false; }
+
+  virtual llvm::Error setupRemotePeerToPeer(int64_t channelId,
+                                            DeviceManager *remote) {
+    return MAKE_ERR(GlowErr::ErrorCode::RUNTIME_ERROR,
+                    "Backend does not support peer-to-peer communication.");
+  }
+
+  virtual llvm::Error getRemotePeerToPeerAddress(int64_t channelId,
+                                                 Placeholder *remoteAddress) {
+    return MAKE_ERR(GlowErr::ErrorCode::RUNTIME_ERROR,
+                    "Backend does not support peer-to-peer communication.");
+  }
 };
 
 } // namespace runtime

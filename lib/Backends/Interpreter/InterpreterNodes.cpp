@@ -3714,3 +3714,34 @@ void BoundInterpreterFunction::fwdConvertToInst(const glow::ConvertToInst *I) {
 #undef CONVERT
   llvm_unreachable("Type not supported");
 }
+
+//===----------------------------------------------------------------------===//
+//                Instructions used by Peer-To-Peer
+//===----------------------------------------------------------------------===//
+void BoundInterpreterFunction::fwdRecvReadyInst(const glow::RecvReadyInst *I) {
+  // Allocates tensor memory for a tensor of type RemoteTensorTypeDescriptor
+  // corresponding to channelId
+  auto chId = I->getChannelId();
+  auto tensorDesc = I->getRemoteTensorTypeDescriptor();
+  memoryHelperPtr_->allocateTensor(chId, tensorDesc);
+  auto destH = getTensor(I->getRemoteAddress())->getHandle();
+  // In this implementation, the address is mapped to the channel ID,
+  // and obtained by the channel ID.
+  destH.raw(0) = chId;
+}
+
+void BoundInterpreterFunction::fwdSendInst(const glow::SendInst *I) {
+  Tensor *src = getTensor(I->getInput());
+  auto chId = I->getChannelId();
+  memoryHelperPtr_->sendTensor(chId, src);
+}
+
+void BoundInterpreterFunction::fwdRecvInst(const glow::RecvInst *I) {
+  auto chId = I->getChannelId();
+  // blocks until transfer is completed
+  while (!memoryHelperPtr_->getLocalStatus(chId)) {
+  };
+  Tensor *message = memoryHelperPtr_->getLocalTensor(chId);
+  Tensor *res = getTensor(I->getResult());
+  res->copyRawFrom(message);
+}

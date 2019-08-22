@@ -51,6 +51,7 @@ void InterpreterFunction::collectConstants(const Module *module) {
 
 llvm::Error InterpreterFunction::execute(ExecutionContext *context) {
   BoundInterpreterFunction boundFunc(constants_);
+  boundFunc.setMemoryHelper(memoryHelperPtr_);
   auto res = boundFunc.execute(F_.get(), context);
   {
     TRACE_EVENT_SCOPE(context, TraceLevel::RUNTIME, "processInstrumentation");

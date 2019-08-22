@@ -148,6 +148,8 @@ void InterpreterDeviceManager::runFunctionImpl(
   }
 
   CompiledFunction *func = funcIt->second;
+  auto ifunc = static_cast<InterpreterFunction *>(func);
+  ifunc->setMemoryHelper(memoryHelperPtr_);
 
   // Run that function.
   auto executeErr = func->execute(context.get());
@@ -157,6 +159,21 @@ void InterpreterDeviceManager::runFunctionImpl(
 
   // Fire the resultCB.
   resultCB(id, std::move(executeErr), std::move(context));
+}
+
+bool InterpreterDeviceManager::isPeerToPeerSupported() { return true; }
+
+llvm::Error
+InterpreterDeviceManager::setupRemotePeerToPeer(int64_t channelId,
+                                                DeviceManager *remote) {
+  auto idm = static_cast<InterpreterDeviceManager *>(remote);
+  memoryHelperPtr_->addRemoteReceiver(channelId, idm->memoryHelperPtr_.get());
+  return llvm::Error::success();
+}
+
+llvm::Error InterpreterDeviceManager::getRemotePeerToPeerAddress(
+    int64_t channelId, Placeholder *remoteAddress) {
+  return llvm::Error::success();
 }
 
 } // namespace runtime

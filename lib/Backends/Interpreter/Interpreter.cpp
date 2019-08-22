@@ -462,6 +462,10 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
            (NI.getOutElemTy(
                 CrossEntropyLossGradNode::GradOfInputNamedLabelsIdx) ==
             ElemKind::Int64ITy);
+  case Kinded::Kind::RecvReadyNodeKind:
+  case Kinded::Kind::SendNodeKind:
+  case Kinded::Kind::RecvNodeKind:
+    return true;
 
   default:
     return false;

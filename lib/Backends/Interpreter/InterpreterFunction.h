@@ -16,6 +16,7 @@
 #ifndef GLOW_BACKENDS_INTERPRETER_INTERPRETERFUNCTION_H
 #define GLOW_BACKENDS_INTERPRETER_INTERPRETERFUNCTION_H
 
+#include "InterpreterDeviceMemoryHelper.h"
 #include "glow/Backend/Backend.h"
 #include "glow/Backend/BackendUtils.h"
 #include "glow/Backend/CompiledFunction.h"
@@ -49,6 +50,9 @@ class InterpreterFunction final : public CompiledFunction {
   /// Maps Value.name to tensors for constants.
   std::unordered_map<std::string, Tensor *> constants_;
 
+  // std::shared_ptr<std::unordered_map<int64_t, Tensor *>> memoryHelperPtr_;
+  std::shared_ptr<InterpreterDeviceMemoryHelper> memoryHelperPtr_;
+
 public:
   InterpreterFunction(std::unique_ptr<IRFunction> F,
                       runtime::RuntimeBundle &&bundle);
@@ -72,6 +76,10 @@ public:
   virtual std::string getCompileBackendName() const override {
     return "Interpreter";
   }
+
+  void setMemoryHelper(std::shared_ptr<InterpreterDeviceMemoryHelper> mhp) {
+    memoryHelperPtr_ = std::move(mhp);
+  }
   ///@}
 };
 
@@ -86,6 +94,10 @@ class BoundInterpreterFunction {
   /// A reference to the constant map from the owning InterpreterFunction.
   const std::unordered_map<std::string, Tensor *> &constants_;
 
+  // std::shared_ptr<std::unordered_map<int64_t, Tensor *>> memoryHelperPtr_
+  std::shared_ptr<InterpreterDeviceMemoryHelper> memoryHelperPtr_;
+  ;
+
 public:
   explicit BoundInterpreterFunction(
       const std::unordered_map<std::string, Tensor *> &constants)
@@ -94,6 +106,10 @@ public:
   ~BoundInterpreterFunction();
 
   llvm::Error execute(IRFunction *F, ExecutionContext *context);
+
+  void setMemoryHelper(std::shared_ptr<InterpreterDeviceMemoryHelper> mhp) {
+    memoryHelperPtr_ = std::move(mhp);
+  }
 
 private:
   /// \returns a pointer to the tensor that is saved under \p v.

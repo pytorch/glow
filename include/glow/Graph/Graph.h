@@ -1253,6 +1253,16 @@ public:
                   const llvm::ArrayRef<NodeValue> inputs, unsigned batchSize,
                   unsigned hiddenSize, unsigned outputSize,
                   std::vector<NodeValue> &outputs);
+
+  RecvReadyNode *createRecvReady(llvm::StringRef name, unsigned_t channelId,
+                                 TypeRef remoteTensorTypeDescriptor);
+
+  SendNode *createSend(llvm::StringRef name, NodeValue input,
+                       NodeValue remoteAddress, unsigned_t channelId,
+                       TypeRef remoteTensorTypeDescriptor);
+
+  RecvNode *createRecv(llvm::StringRef name, NodeValue localAddress,
+                       unsigned_t channelId, TypeRef tensorTypeDescriptor);
   /// @}
 
   /// Create a TraceEvent in the runtime profile, which triggers collection of

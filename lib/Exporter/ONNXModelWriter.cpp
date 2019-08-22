@@ -1140,6 +1140,9 @@ DEF_ALL_WRITER_NODE(RowwiseQuantizedFullyConnected)
 DEF_ALL_WRITER_NODE(RowwiseQuantizedSparseLengthsWeightedSum)
 DEF_ALL_WRITER_NODE(FusedRowwiseQuantizedSparseLengthsSum)
 DEF_ALL_WRITER_NODE(FusedRowwiseQuantizedSparseLengthsWeightedSum)
+DEF_ALL_WRITER_NODE(RecvReady)
+DEF_ALL_WRITER_NODE(Send)
+DEF_ALL_WRITER_NODE(Recv)
 
 llvm::Error ONNXModelWriter::writeConvertTo(const ConvertToNode *node,
                                             GraphType &graph) {

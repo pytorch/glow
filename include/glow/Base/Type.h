@@ -290,6 +290,8 @@ enum class ElemKind : unsigned char {
   UInt4FusedFP16QTy,
   // Bool type (bool)
   BoolTy,
+  // Address type (int64_t or uint64_t?)
+  AddressTy,
 };
 
 /// \returns whether \p e is a quantized ElemKind.
@@ -548,6 +550,8 @@ struct Type final {
       return std::is_same<ElemTy, uint8_t>::value;
     case ElemKind::BoolTy:
       return std::is_same<ElemTy, bool>::value;
+    case ElemKind::AddressTy:
+      return std::is_same<ElemTy, int64_t>::value;
     }
     LOG(FATAL) << "Invalid type: " << getElementName(Ty).str();
   }
@@ -606,6 +610,8 @@ struct Type final {
       return sizeof(uint8_t);
     case ElemKind::BoolTy:
       return sizeof(bool);
+    case ElemKind::AddressTy:
+      return sizeof(int64_t);
     }
     LOG(FATAL) << "Invalid type: " << getElementName(Ty).str();
   }

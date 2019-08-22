@@ -2760,6 +2760,29 @@ void Function::createLSTM(PlaceholderBindings &bindings,
   }
 };
 
+RecvReadyNode *Function::createRecvReady(llvm::StringRef name,
+                                         unsigned_t channelId,
+                                         TypeRef remoteTensorTypeDescriptor) {
+  auto outTy = getParent()->uniqueType(ElemKind::AddressTy, {1});
+  return addNode(
+      new RecvReadyNode(name, outTy, channelId, remoteTensorTypeDescriptor));
+}
+
+SendNode *Function::createSend(llvm::StringRef name, NodeValue input,
+                               NodeValue remoteAddress, unsigned_t channelId,
+                               TypeRef remoteTensorTypeDescriptor) {
+  auto outTy = getParent()->uniqueType(*(input.getType()));
+  return addNode(new SendNode(name, outTy, input, remoteAddress, channelId,
+                              remoteTensorTypeDescriptor));
+}
+
+RecvNode *Function::createRecv(llvm::StringRef name, NodeValue localAddress,
+                               unsigned_t channelId,
+                               TypeRef tensorTypeDescriptor) {
+  return addNode(new RecvNode(name, tensorTypeDescriptor, localAddress,
+                              channelId, tensorTypeDescriptor));
+}
+
 TraceEventNode *Function::createTraceEvent(llvm::StringRef eventName,
                                            llvm::StringRef eventType,
                                            Node *data, unsigned index) {

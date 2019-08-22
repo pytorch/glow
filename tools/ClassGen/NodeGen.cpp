@@ -892,6 +892,39 @@ int main(int argc, char **argv) {
           "and Rescale nodes.");
 
   //===--------------------------------------------------------------------===//
+  //                Peer-To-Peer
+  //===--------------------------------------------------------------------===//
+
+  BB.newNode("RecvReady")
+      .addMember(MemberType::Unsigned, "ChannelId")
+      .addMember(MemberType::TypeRef, "RemoteTensorTypeDescriptor")
+      .addResultFromCtorArg("RemoteAddress")
+      .setHasSideEffects(true)
+      .setDocstring(
+          "Asignes device memory address for a following send operation "
+          "according to RemoteTensorTypeDescriptor.");
+
+  BB.newNode("Send")
+      .addInput("Input")
+      .addInput("RemoteAddress")
+      .addMember(MemberType::Unsigned, "ChannelId")
+      .addMember(MemberType::TypeRef, "RemoteTensorTypeDescriptor")
+      .addResultFromCtorArg()
+      .setHasSideEffects(true)
+      .setDocstring("Sends the input tensor to the provided remote-address "
+                    "according to RemoteTensorTypeDescriptor.");
+
+  BB.newNode("Recv")
+      .addInput("LocalAddress")
+      .addMember(MemberType::Unsigned, "ChannelId")
+      .addMember(MemberType::TypeRef, "TensorTypeDescriptor")
+      .addResultFromCtorArg()
+      .setHasSideEffects(true)
+      .setDocstring(
+          "Receives a transferred tensor to in the provided local address "
+          "according to TensorTypeDescriptor.");
+
+  //===--------------------------------------------------------------------===//
   //                Backend-Specific Nodes
   //===--------------------------------------------------------------------===//
 

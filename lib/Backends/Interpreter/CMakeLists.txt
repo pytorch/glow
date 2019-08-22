@@ -3,7 +3,8 @@ add_library(Interpreter
               InterpreterFunction.cpp
               InterpreterNodes.cpp
               InterpreterDeviceManager.cpp
-              InterpreterFactory.cpp)
+              InterpreterFactory.cpp
+              InterpreterDeviceMemoryHelper.cpp)
 target_link_libraries(Interpreter
                       PRIVATE
                         Backend

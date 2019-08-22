@@ -718,6 +718,34 @@ int main(int argc, char **argv) {
       .autoIRGen();
 
   //===--------------------------------------------------------------------===//
+  //                   Peer-To-Peer
+  //===--------------------------------------------------------------------===//
+
+  BB.newInstr("RecvReady")
+      .addOperand("RemoteAddress", OperandKind::Out)
+      .addMember(MemberType::Unsigned, "ChannelId")
+      .addMember(MemberType::TypeRef, "RemoteTensorTypeDescriptor")
+      .autoVerify(VerifyKind::NoVerify)
+      .autoIRGen();
+
+  BB.newInstr("Send")
+      .addOperand("Result", OperandKind::Out)
+      .addOperand("Input", OperandKind::In)
+      .addOperand("RemoteAddress", OperandKind::In)
+      .addMember(MemberType::Unsigned, "ChannelId")
+      .addMember(MemberType::TypeRef, "RemoteTensorTypeDescriptor")
+      .autoVerify(VerifyKind::NoVerify)
+      .autoIRGen();
+
+  BB.newInstr("Recv")
+      .addOperand("Result", OperandKind::Out)
+      .addOperand("LocalAddress", OperandKind::In)
+      .addMember(MemberType::Unsigned, "ChannelId")
+      .addMember(MemberType::TypeRef, "TensorTypeDescriptor")
+      .autoVerify(VerifyKind::NoVerify)
+      .autoIRGen();
+
+  //===--------------------------------------------------------------------===//
   //                Backend-Specific Instructions
   //===--------------------------------------------------------------------===//
 

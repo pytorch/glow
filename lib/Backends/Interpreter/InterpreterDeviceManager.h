@@ -16,8 +16,11 @@
 #ifndef GLOW_BACKENDS_INTERPRETER_INTERPRETERDEVICEMANAGER_H
 #define GLOW_BACKENDS_INTERPRETER_INTERPRETERDEVICEMANAGER_H
 
+#include "InterpreterDeviceMemoryHelper.h"
 #include "glow/Backends/QueueBackedDeviceManager.h"
 #include "glow/Runtime/StatsExporter.h"
+
+#include <unordered_map>
 
 namespace glow {
 namespace runtime {
@@ -33,6 +36,8 @@ class InterpreterDeviceManager : public QueueBackedDeviceManager {
   /// This is very arbitrary for the Interpreter backend.
   const uint64_t functionCost_{1};
 
+  std::shared_ptr<InterpreterDeviceMemoryHelper> memoryHelperPtr_;
+
   /// String constant for logging number of in-use devices.
   static constexpr const char *kDevicesUsedInterpreter =
       "glow.devices_used.interpreter";
@@ -42,6 +47,7 @@ public:
       : QueueBackedDeviceManager(config) {
     Stats()->incrementCounter(kDevicesUsedInterpreter);
     exportMemoryCounters();
+    memoryHelperPtr_ = std::make_shared<InterpreterDeviceMemoryHelper>();
   }
 
   ~InterpreterDeviceManager() override {
@@ -65,6 +71,10 @@ public:
   /// compute and bandwidths (used in partitioning).
   DeviceInfo getDeviceInfo() const override;
 
+  InterpreterDeviceMemoryHelper *getMemoryHelper() {
+    return memoryHelperPtr_.get();
+  }
+
 protected:
   void addNetworkImpl(const Module *module, FunctionMapTy functions,
                       ReadyCBTy cb) override;
@@ -73,6 +83,12 @@ protected:
   void runFunctionImpl(runtime::RunIdentifierTy id, std::string functionName,
                        std::unique_ptr<ExecutionContext> context,
                        ResultCBTy cb) override;
+
+  bool isPeerToPeerSupported() override;
+  llvm::Error setupRemotePeerToPeer(int64_t channelId,
+                                    DeviceManager *remote) override;
+  llvm::Error getRemotePeerToPeerAddress(int64_t channelId,
+                                         Placeholder *remoteAddress) override;
 };
 
 DeviceManager *createInterpreterDeviceManager(const DeviceConfig &config);
