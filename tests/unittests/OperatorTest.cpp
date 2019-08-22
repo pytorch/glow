@@ -70,6 +70,293 @@ static Tensor createTensorConditionallyQuantized(ElemKind T,
 }
 
 template <typename DataType>
+glow::Handle<bool>
+lessHelper(glow::PlaceholderBindings &bindings, glow::Module &mod,
+           glow::Function *F, glow::ExecutionEngine &EE, ElemKind DTy,
+           llvm::ArrayRef<DataType> xValues, llvm::ArrayRef<DataType> yValues,
+           llvm::ArrayRef<size_t> xDims, llvm::ArrayRef<size_t> yDims) {
+  auto *X = createPlaceholderConditionallyQuantized(mod, DTy, xDims, "X",
+                                                    /* isTrainable */ false);
+
+  auto *Y = createPlaceholderConditionallyQuantized(mod, DTy, yDims, "Y",
+                                                    /* isTrainable */ false);
+
+  bindings.allocate(llvm::dyn_cast<Placeholder>(X))->getHandle<DataType>() =
+      xValues;
+
+  bindings.allocate(llvm::dyn_cast<Placeholder>(Y))->getHandle<DataType>() =
+      yValues;
+
+  auto *cmpr =
+      F->createNodeWithBroadcast<CmpLTNode>("cmpLT", /* axis */ -1, X, Y);
+
+  auto *save = F->createSave("save", cmpr);
+  auto *saveAlloc = bindings.allocate(save->getPlaceholder());
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  return saveAlloc->getHandle<bool>();
+}
+
+TEST_P(OperatorTest, less_int8) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+
+  int8_t xValues[] = {3, 2, 3, 6, 4, 5, 6, 3, 7, 8, 9, 2, 3, 5, 7, 1,
+
+                      1, 2, 3, 6, 4, 5, 6, 3, 7, 8, 9, 2, 3, 5, 7, 1,
+
+                      1, 2, 3, 6, 4, 5, 6, 3, 7, 8, 9, 2, 3, 5, 7, 1,
+
+                      1, 2, 3, 6, 4, 5, 6, 3, 7, 8, 9, 2, 3, 5, 7, 1};
+
+  int8_t yValues[] = {3, 4, 5, 7, 2, 5, 0, 6, 4, 2, 1, 8, 5, 9, 2, 6,
+
+                      3, 4, 5, 7, 2, 1, 0, 6, 4, 2, 1, 8, 5, 9, 2, 6,
+
+                      3, 4, 5, 7, 2, 1, 0, 6, 4, 2, 1, 8, 5, 9, 2, 6,
+
+                      3, 4, 5, 7, 2, 1, 0, 6, 4, 2, 1, 8, 5, 9, 2, 6};
+
+  size_t xDims[] = {2, 2, 4, 4};
+  size_t yDims[] = {2, 2, 4, 4};
+
+  Handle<bool> saveH =
+      lessHelper<int8_t>(bindings_, mod_, F_, EE_, ElemKind::Int8QTy, xValues,
+                         yValues, xDims, yDims);
+
+  bool refResults[] = {
+      false, true,  true,  true, false, false, false, true,
+      false, false, false, true, true,  true,  false, true,
+
+      true,  true,  true,  true, false, false, false, true,
+      false, false, false, true, true,  true,  false, true,
+
+      true,  true,  true,  true, false, false, false, true,
+      false, false, false, true, true,  true,  false, true,
+
+      true,  true,  true,  true, false, false, false, true,
+      false, false, false, true, true,  true,  false, true,
+  };
+
+  int counter = 0;
+  for (size_t i = 0; i < saveH.dims()[0]; ++i) {
+    for (size_t j = 0; j < saveH.dims()[1]; ++j) {
+      for (size_t k = 0; k < saveH.dims()[2]; ++k) {
+        for (size_t f = 0; f < saveH.dims()[3]; ++f) {
+          EXPECT_FLOAT_EQ(refResults[counter++], saveH.at({i, j, k, f}));
+        }
+      }
+    }
+  }
+}
+
+TEST_P(OperatorTest, less_floatCases) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+
+  float xValues[] = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f};
+
+  float yValues[] = {5.0f, 4.0f, 3.0f, 2.0f, 1.0f};
+
+  size_t xDims[] = {5};
+  size_t yDims[] = {5};
+
+  Handle<bool> saveH =
+      lessHelper<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy, xValues,
+                        yValues, xDims, yDims);
+
+  bool refResults[] = {true, true, false, false, false};
+
+  int counter = 0;
+  for (size_t i = 0; i < saveH.dims()[0]; ++i) {
+    EXPECT_FLOAT_EQ(refResults[counter++], saveH.at({i}));
+  }
+}
+
+TEST_P(OperatorTest, less_float16Cases) {
+  ENABLED_BACKENDS(Interpreter);
+
+  float16 xValues[] = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f};
+
+  float16 yValues[] = {5.0f, 4.0f, 3.0f, 2.0f, 1.0f};
+
+  size_t xDims[] = {5};
+  size_t yDims[] = {5};
+
+  Handle<bool> saveH =
+      lessHelper<float16>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty,
+                          xValues, yValues, xDims, yDims);
+
+  bool refResults[] = {true, true, false, false, false};
+
+  int counter = 0;
+  for (size_t i = 0; i < saveH.dims()[0]; ++i) {
+    EXPECT_FLOAT_EQ(refResults[counter++], saveH.at({i}));
+  }
+}
+
+TEST_P(OperatorTest, less_int64Cases) {
+  ENABLED_BACKENDS(Interpreter);
+
+  int64_t xValues[] = {1, 2, 3, 4, 5};
+
+  int64_t yValues[] = {5, 4, 3, 2, 1};
+
+  size_t xDims[] = {5};
+  size_t yDims[] = {5};
+
+  Handle<bool> saveH =
+      lessHelper<int64_t>(bindings_, mod_, F_, EE_, ElemKind::Int64ITy, xValues,
+                          yValues, xDims, yDims);
+
+  bool refResults[] = {true, true, false, false, false};
+
+  int counter = 0;
+  for (size_t i = 0; i < saveH.dims()[0]; ++i) {
+    EXPECT_FLOAT_EQ(refResults[counter++], saveH.at({i}));
+  }
+}
+
+TEST_P(OperatorTest, less_float) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+
+  float xValues[] = {1.0f, 2.0f, 3.0f, 6.0f, 4.0f, 5.0f, 6.0f, 3.0f,
+                     7.0f, 8.0f, 9.0f, 2.0f, 3.0f, 5.0f, 7.0f, 1.0f,
+
+                     1.0f, 2.0f, 3.0f, 6.0f, 4.0f, 5.0f, 6.0f, 3.0f,
+                     7.0f, 8.0f, 9.0f, 2.0f, 3.0f, 5.0f, 7.0f, 1.0f,
+
+                     1.0f, 2.0f, 3.0f, 6.0f, 4.0f, 5.0f, 6.0f, 3.0f,
+                     7.0f, 8.0f, 9.0f, 2.0f, 3.0f, 5.0f, 7.0f, 1.0f,
+
+                     1.0f, 2.0f, 3.0f, 6.0f, 4.0f, 5.0f, 6.0f, 3.0f,
+                     7.0f, 8.0f, 9.0f, 2.0f, 3.0f, 5.0f, 7.0f, 1.0f};
+
+  float yValues[] = {3.0f, 4.0f, 5.0f, 7.0f, 2.0f, 1.0f, 0.0f, 6.0f,
+                     4.0f, 2.0f, 1.0f, 8.0f, 5.0f, 9.0f, 2.0f, 6.0f,
+
+                     3.0f, 4.0f, 5.0f, 7.0f, 2.0f, 1.0f, 0.0f, 6.0f,
+                     4.0f, 2.0f, 1.0f, 8.0f, 5.0f, 9.0f, 2.0f, 6.0f,
+
+                     3.0f, 4.0f, 5.0f, 7.0f, 2.0f, 1.0f, 0.0f, 6.0f,
+                     4.0f, 2.0f, 1.0f, 8.0f, 5.0f, 9.0f, 2.0f, 6.0f,
+
+                     3.0f, 4.0f, 5.0f, 7.0f, 2.0f, 1.0f, 0.0f, 6.0f,
+                     4.0f, 2.0f, 1.0f, 8.0f, 5.0f, 9.0f, 2.0f, 6.0f};
+
+  size_t xDims[] = {2, 2, 4, 4};
+  size_t yDims[] = {2, 2, 4, 4};
+
+  Handle<bool> saveH =
+      lessHelper<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy, xValues,
+                        yValues, xDims, yDims);
+
+  bool refResults[] = {
+      true,  true,  true,  true, false, false, false, true,
+      false, false, false, true, true,  true,  false, true,
+
+      true,  true,  true,  true, false, false, false, true,
+      false, false, false, true, true,  true,  false, true,
+
+      true,  true,  true,  true, false, false, false, true,
+      false, false, false, true, true,  true,  false, true,
+
+      true,  true,  true,  true, false, false, false, true,
+      false, false, false, true, true,  true,  false, true,
+  };
+
+  int counter = 0;
+  for (size_t i = 0; i < saveH.dims()[0]; ++i) {
+    for (size_t j = 0; j < saveH.dims()[1]; ++j) {
+      for (size_t k = 0; k < saveH.dims()[2]; ++k) {
+        for (size_t f = 0; f < saveH.dims()[3]; ++f) {
+          EXPECT_FLOAT_EQ(refResults[counter++], saveH.at({i, j, k, f}));
+        }
+      }
+    }
+  }
+}
+
+TEST_P(OperatorTest, less_broadcast_float) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+
+  float xValues[] = {1.0f, 2.0f, 3.0f, 6.0f, 4.0f, 5.0f, 6.0f, 3.0f,
+                     7.0f, 8.0f, 9.0f, 2.0f, 3.0f, 5.0f, 7.0f, 1.0f,
+
+                     1.0f, 2.0f, 3.0f, 6.0f, 4.0f, 5.0f, 6.0f, 3.0f,
+                     7.0f, 8.0f, 9.0f, 2.0f, 3.0f, 5.0f, 7.0f, 1.0f,
+
+                     1.0f, 2.0f, 3.0f, 6.0f, 4.0f, 5.0f, 6.0f, 3.0f,
+                     7.0f, 8.0f, 9.0f, 2.0f, 3.0f, 5.0f, 7.0f, 1.0f,
+
+                     1.0f, 2.0f, 3.0f, 6.0f, 4.0f, 5.0f, 6.0f, 3.0f,
+                     7.0f, 8.0f, 9.0f, 2.0f, 3.0f, 5.0f, 7.0f, 1.0f};
+
+  float yValues[] = {3.0f, 4.0f, 5.0f, 7.0f, 2.0f, 1.0f, 0.0f, 6.0f,
+                     4.0f, 2.0f, 1.0f, 8.0f, 5.0f, 9.0f, 2.0f, 6.0f,
+
+                     3.0f, 4.0f, 5.0f, 7.0f, 2.0f, 1.0f, 0.0f, 6.0f,
+                     4.0f, 2.0f, 1.0f, 8.0f, 5.0f, 9.0f, 2.0f, 6.0f};
+
+  size_t xDims[] = {2, 2, 4, 4};
+  size_t yDims[] = {1, 2, 4, 4};
+
+  Handle<bool> saveH =
+      lessHelper<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy, xValues,
+                        yValues, xDims, yDims);
+
+  bool refResults[] = {true,  true,  true,  true, false, false, false, true,
+                       false, false, false, true, true,  true,  false, true,
+
+                       true,  true,  true,  true, false, false, false, true,
+                       false, false, false, true, true,  true,  false, true,
+
+                       true,  true,  true,  true, false, false, false, true,
+                       false, false, false, true, true,  true,  false, true,
+
+                       true,  true,  true,  true, false, false, false, true,
+                       false, false, false, true, true,  true,  false, true};
+
+  int counter = 0;
+  for (size_t i = 0; i < saveH.dims()[0]; ++i) {
+    for (size_t j = 0; j < saveH.dims()[1]; ++j) {
+      for (size_t k = 0; k < saveH.dims()[2]; ++k) {
+        for (size_t f = 0; f < saveH.dims()[3]; ++f) {
+          EXPECT_FLOAT_EQ(refResults[counter++], saveH.at({i, j, k, f}));
+        }
+      }
+    }
+  }
+}
+
+TEST_P(OperatorTest, less_int32Cases) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+
+  int32_t xValues[] = {1, 2, 3, 4, 5};
+  int32_t yValues[] = {5, 4, 3, 2, 1};
+
+  size_t xDims[] = {1, 1, 1, 5};
+  size_t yDims[] = {1, 1, 1, 5};
+
+  Handle<bool> saveH =
+      lessHelper<int32_t>(bindings_, mod_, F_, EE_, ElemKind::Int32ITy, xValues,
+                          yValues, xDims, yDims);
+
+  bool refResults[] = {true, true, false, false, false};
+
+  int counter = 0;
+  for (size_t i = 0; i < saveH.dims()[0]; ++i) {
+    for (size_t j = 0; j < saveH.dims()[1]; ++j) {
+      for (size_t k = 0; k < saveH.dims()[2]; ++k) {
+        for (size_t f = 0; f < saveH.dims()[3]; ++f) {
+          EXPECT_FLOAT_EQ(refResults[counter++], saveH.at({i, j, k, f}));
+        }
+      }
+    }
+  }
+}
+
+template <typename DataType>
 glow::Handle<DataType>
 whereHelper(glow::PlaceholderBindings &bindings, glow::Module &mod,
             glow::Function *F, glow::ExecutionEngine &EE, ElemKind DTy,
@@ -960,13 +1247,14 @@ TEST_P(OperatorTest, matmul_ParCloneTest10) {
   auto *save = F_->createSave("save", R);
   auto *saveTensor = bindings_.allocate(save->getPlaceholder());
 
+  CompilationContext cctx;
   const unsigned parallelCount = 10;
   auto resultTensors = cloneFunInsideFun(std::make_pair(F_, saveTensor),
-                                         &bindings_, parallelCount);
+                                         &bindings_, cctx, parallelCount);
 
   EXPECT_EQ(resultTensors.size(), parallelCount);
 
-  EE_.compile(CompilationMode::Infer);
+  EE_.compile(cctx);
   EE_.run(bindings_);
 
   for (Tensor *T : resultTensors) {
@@ -1074,6 +1362,130 @@ static void testBatchedReduceAdd(glow::PlaceholderBindings &bindings,
   EXPECT_TRUE(result->isEqual(expected));
 }
 
+/// Test that BatchedReduceAdd is correctly supported in FloatTy.
+TEST_P(OperatorTest, batchedReduceAdd_Float) {
+  testBatchedReduceAdd<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy);
+}
+
+/// Test that BatchedReduceAdd is correctly supported in Float16Ty.
+TEST_P(OperatorTest, batchedReduceAdd_Float16) {
+  ENABLED_BACKENDS(Interpreter);
+  testBatchedReduceAdd<float16_t>(bindings_, mod_, F_, EE_,
+                                  ElemKind::Float16Ty);
+}
+
+/// Test that BatchedReduceAdd works correctly reducing the outermost axis.
+TEST_P(OperatorTest, batchedReduceAdd_outerAxis) {
+  auto *batch =
+      mod_.createPlaceholder(ElemKind::FloatTy, {2, 2, 4}, "batch", false);
+  bindings_.allocate(batch)->getHandle<float>() = {10, 20, 30, 40, 1, 2, 3, 4,
+                                                   10, 20, 30, 40, 1, 2, 3, 4};
+
+  auto *R = F_->createBatchedReduceAdd("reduce.add", batch, /* axis */ 0);
+
+  auto *save = F_->createSave("save", R);
+  auto *result = bindings_.allocate(save->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  Tensor expected(ElemKind::FloatTy, {2, 4});
+  expected.getHandle<float>() = {20, 40, 60, 80, 2, 4, 6, 8};
+
+  EXPECT_TRUE(result->isEqual(expected));
+}
+
+/// Test that BatchedReduceAdd works correctly reducing an internal axis.
+TEST_P(OperatorTest, batchedReduceAdd_innerAxis) {
+  auto *batch =
+      mod_.createPlaceholder(ElemKind::FloatTy, {2, 2, 4}, "batch", false);
+  bindings_.allocate(batch)->getHandle<float>() = {10, 20, 30, 40, 1, 2, 3, 4,
+                                                   10, 20, 30, 40, 1, 2, 3, 4};
+
+  auto *R = F_->createBatchedReduceAdd("reduce.add", batch, /* axis */ 1);
+
+  auto *save = F_->createSave("save", R);
+  auto *result = bindings_.allocate(save->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  Tensor expected(ElemKind::FloatTy, {2, 4});
+  expected.getHandle<float>() = {11, 22, 33, 44, 11, 22, 33, 44};
+
+  EXPECT_TRUE(result->isEqual(expected));
+}
+
+/// Test that BatchedReduceAdd works correctly reducing the innermost axis.
+TEST_P(OperatorTest, batchedReduceAdd_lastAxis) {
+  auto *batch =
+      mod_.createPlaceholder(ElemKind::FloatTy, {2, 2, 4}, "batch", false);
+  bindings_.allocate(batch)->getHandle<float>() = {10, 20, 30, 40, 1, 2, 3, 4,
+                                                   10, 20, 30, 40, 1, 2, 3, 4};
+  auto *R = F_->createBatchedReduceAdd("reduce.add", batch, /* axis */ 2);
+
+  auto *save = F_->createSave("save", R);
+  auto *result = bindings_.allocate(save->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  Tensor expected(ElemKind::FloatTy, {2, 2});
+  expected.getHandle<float>() = {100, 10, 100, 10};
+
+  EXPECT_TRUE(result->isEqual(expected));
+}
+
+/// Test that BatchReducedAdd works on a 4D input.
+TEST_P(OperatorTest, batchedReduceAdd_4Dinput) {
+  auto *batch =
+      mod_.createPlaceholder(ElemKind::FloatTy, {2, 2, 2, 4}, "batch", false);
+  bindings_.allocate(batch)->getHandle<float>() = {
+      10, 20, 30, 40, 1, 2, 3, 4, 10, 20, 30, 40, 1, 2, 3, 4,
+      10, 20, 30, 40, 1, 2, 3, 4, 10, 20, 30, 40, 1, 2, 3, 4};
+
+  auto *R = F_->createBatchedReduceAdd("reduce.add", batch, /* axis */ 0);
+
+  auto *save = F_->createSave("save", R);
+  auto *result = bindings_.allocate(save->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  Tensor expected(ElemKind::FloatTy, {2, 2, 4});
+  expected.getHandle<float>() = {20, 40, 60, 80, 2, 4, 6, 8,
+                                 20, 40, 60, 80, 2, 4, 6, 8};
+
+  EXPECT_TRUE(result->isEqual(expected));
+}
+
+/// Test that BatchReducedAdd works on a 5D input.
+TEST_P(OperatorTest, batchedReduceAdd_5Dinput) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  auto *batch = mod_.createPlaceholder(ElemKind::FloatTy, {2, 2, 2, 2, 4},
+                                       "batch", false);
+  bindings_.allocate(batch)->getHandle<float>() = {
+      10, 20, 30, 40, 1, 2, 3, 4, 10, 20, 30, 40, 1, 2, 3, 4,
+      10, 20, 30, 40, 1, 2, 3, 4, 10, 20, 30, 40, 1, 2, 3, 4,
+      10, 20, 30, 40, 1, 2, 3, 4, 10, 20, 30, 40, 1, 2, 3, 4,
+      10, 20, 30, 40, 1, 2, 3, 4, 10, 20, 30, 40, 1, 2, 3, 4};
+
+  auto *R = F_->createBatchedReduceAdd("reduce.add", batch, /* axis */ 2);
+
+  auto *save = F_->createSave("save", R);
+  auto *result = bindings_.allocate(save->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  Tensor expected(ElemKind::FloatTy, {2, 2, 2, 4});
+  expected.getHandle<float>() = {20, 40, 60, 80, 2,  4,  6,  8,  20, 40, 60,
+                                 80, 2,  4,  6,  8,  20, 40, 60, 80, 2,  4,
+                                 6,  8,  20, 40, 60, 80, 2,  4,  6,  8};
+
+  EXPECT_TRUE(result->isEqual(expected));
+}
+
 /// Helper to test BatchedReduceMin using \p DTy.
 template <typename DataType>
 static void testBatchedReduceMin(glow::PlaceholderBindings &bindings,
@@ -1155,18 +1567,6 @@ TEST_P(OperatorTest, batchedReduceMinMultiAxis_Int64) {
   ENABLED_BACKENDS(Interpreter, CPU);
   testBatchedReduceMinMultiAxis<int64_t>(bindings_, mod_, F_, EE_,
                                          ElemKind::Int64ITy);
-}
-
-/// Test that BatchedReduceAdd is correctly supported in FloatTy.
-TEST_P(OperatorTest, batchedReduceAdd_Float) {
-  testBatchedReduceAdd<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy);
-}
-
-/// Test that BatchedReduceAdd is correctly supported in Float16Ty.
-TEST_P(OperatorTest, batchedReduceAdd_Float16) {
-  ENABLED_BACKENDS(Interpreter);
-  testBatchedReduceAdd<float16_t>(bindings_, mod_, F_, EE_,
-                                  ElemKind::Float16Ty);
 }
 
 /// Helper to test BatchedReduceZeroDimResult using \p DTy.
@@ -3109,7 +3509,7 @@ TEST_P(OperatorTest, IntBatchedArith) {
 }
 
 TEST_P(OperatorTest, convTest) {
-  ENABLED_BACKENDS(Interpreter, CPU, OpenCL, Habana);
+  ENABLED_BACKENDS(Interpreter, CPU, OpenCL);
   auto *input =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 3, 3, 1}, "input", false);
   auto IH = bindings_.allocate(input)->getHandle();
@@ -3140,6 +3540,45 @@ TEST_P(OperatorTest, convTest) {
   expected.getHandle() = {2, 3, 2, 2, 3, 2, 2, 3, 2};
 
   EXPECT_TRUE(expected.isEqual(*result));
+}
+
+TEST_P(OperatorTest, convTest_Float16) {
+  ENABLED_BACKENDS(Interpreter);
+  auto *input =
+      mod_.createPlaceholder(ElemKind::Float16Ty, {1, 3, 3, 1}, "input", false);
+  auto IH = bindings_.allocate(input)->getHandle<float16_t>();
+  IH = {1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 1.9};
+
+  auto filter = mod_.createPlaceholder(ElemKind::Float16Ty, {1, 3, 3, 1},
+                                       "filter", false);
+  auto FH = bindings_.allocate(filter)->getHandle<float16_t>();
+  FH = {0.25, 0.5, 0.25, 1, 1, 1, 0.25, 0.5, 0.25};
+
+  auto *zeroBias =
+      mod_.createPlaceholder(ElemKind::Float16Ty, {1}, "bias", false);
+  bindings_.allocate(zeroBias)->zero();
+
+  auto outTy = mod_.uniqueType(ElemKind::Float16Ty, {1, 3, 3, 1});
+
+  ConvolutionNode *CN =
+      F_->createConv("Conv", input, filter, zeroBias, outTy, 3, 1, 1, 1);
+  SaveNode *S = F_->createSave("save", CN);
+  bindings_.allocate(S->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  auto result = bindings_.get(S->getPlaceholder())->getHandle<float16_t>();
+
+  Tensor expected(outTy);
+  auto expectedH = expected.getHandle<float16_t>();
+  expectedH = {3.375, 5.102, 3.676, 5.051, 7.5, 5.449, 4.574, 6.898, 4.875};
+
+  for (size_t x = 0; x < 3; x++) {
+    for (size_t y = 0; y < 3; y++) {
+      EXPECT_NEAR(result.at({0, x, y, 0}), expectedH.at({0, x, y, 0}), 0.001);
+    }
+  }
 }
 
 template <size_t convDepth>
@@ -6939,7 +7378,10 @@ TEST_P(OperatorTest, SLSWithZeroLengths) {
             0, embedWidth - 1, mod.getPRNG());
         auto LH = bindings.allocate(lengths)->getHandle<int32_t>();
         LH.clear(0);
-        std::fill(LH.begin(), LH.begin() + 13, 20);
+        auto it = LH.begin();
+        for (int i = 0; i < 13; ++i, ++it) {
+          *it = 20;
+        }
 
         auto *R = F->createFusedRowwiseQuantizedSparseLengthsWeightedSum(
             "RQSLWS", data, weights, indices, lengths);

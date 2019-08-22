@@ -1108,6 +1108,7 @@ DEF_ALL_WRITER_NODE(SparseLengthsWeightedSum)
 // Glow nodes with default exporting algorithm.
 DEF_ALL_WRITER_NODE(CmpEQ)
 DEF_ALL_WRITER_NODE(CmpLTE)
+DEF_ALL_WRITER_NODE(CmpLT)
 DEF_ALL_WRITER_NODE(BatchedAdd)
 DEF_ALL_WRITER_NODE(Dequantize)
 DEF_ALL_WRITER_NODE(Regression)
@@ -1153,8 +1154,10 @@ llvm::Error ONNXModelWriter::writeIntLookupTable(const IntLookupTableNode *node,
   NodeValue mapping = node->getMapping();
   if (Constant *c = llvm::dyn_cast<Constant>(mapping.getNode())) {
     auto handle = c->getHandle<int8_t>();
-    addValueAttribute(proto, "values",
-                      llvm::ArrayRef<int8_t>(handle.begin(), handle.end()));
+    auto begin = &handle.raw(0);
+    addValueAttribute(
+        proto, "values",
+        llvm::ArrayRef<int8_t>(begin, begin + handle.actualSize()));
   } else {
     RETURN_ERR("Mapping must be a constant type.");
   }

@@ -605,7 +605,7 @@ llvm::Error ONNXModelLoader::loadConv(const ONNX_NAMESPACE::NodeProto &op,
   if (op.input_size() > 2) {
     auto &biasTensorName = op.input(2);
     // Load the serialized bias vector.
-    bias = getConstantByNameOrNull(biasTensorName);
+    ASSIGN_VALUE_OR_RETURN_ERR(bias, getConstantByName(biasTensorName));
   }
 
   // If a serialized bias wasn't found then create a zero bias.
@@ -1087,8 +1087,10 @@ ONNXModelLoader::loadConstantOfShape(const ONNX_NAMESPACE::NodeProto &op,
                       "Input element type must be Int64ITy.");
     // Convert 1D tensor of int64_t into llvm::ArrayRef<size_t>.
     auto TH = in->getPayload().getHandle<int64_t>();
-    llvm::ArrayRef<size_t> outputDims = {(const size_t *)TH.begin(),
-                                         (const size_t *)TH.end()};
+    auto begin = &TH.raw(0);
+    auto end = begin + TH.actualSize();
+    llvm::ArrayRef<size_t> outputDims = {(const size_t *)begin,
+                                         (const size_t *)end};
 
     ty = G_.getParent()->uniqueType(T.getType().getElementType(), outputDims);
     switch (T.getType().getElementType()) {

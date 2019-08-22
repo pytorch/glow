@@ -31,10 +31,10 @@ class InterpreterDeviceManager : public QueueBackedDeviceManager {
 
   /// Maximum available memory on the device, for local devices fix to some
   /// constant.
-  uint64_t maxMemoryBytes_{0};
+  std::atomic<uint64_t> maxMemoryBytes_{0};
 
   /// Amount of memory used by all models.
-  uint64_t usedMemoryBytes_{0};
+  std::atomic<uint64_t> usedMemoryBytes_{0};
 
   /// Static memory cost of the InterpreterFunction.
   /// This is very arbitrary for the Interpreter backend.
@@ -80,6 +80,8 @@ protected:
                        std::unique_ptr<ExecutionContext> context,
                        ResultCBTy cb) override;
 };
+
+DeviceManager *createInterpreterDeviceManager(const DeviceConfig &config);
 
 } // namespace runtime
 } // namespace glow

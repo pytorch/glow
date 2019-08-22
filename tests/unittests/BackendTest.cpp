@@ -145,7 +145,7 @@ TEST(RuntimeBundle, BundleSymbolInfo) {
             glow::runtime::SymbolCategory::Activation);
   // Check that tensor views have the same label as their parent symbol. In this
   // case same as "input".
-  EXPECT_EQ(table.find("tensorview_reshape")->second.symbolCategory,
+  EXPECT_EQ(table.find("tensorview_reshape_in")->second.symbolCategory,
             glow::runtime::SymbolCategory::PlaceholderTensorView);
 
   // Check that placeholders and constants input/output flags are correctly set.
@@ -163,8 +163,8 @@ TEST(RuntimeBundle, BundleSymbolInfo) {
   EXPECT_EQ(table.find("fc_add_bias_res")->second.input, false);
   EXPECT_EQ(table.find("fc_add_bias_res")->second.output, false);
   // Check that tensor views are labelled correctly.
-  EXPECT_EQ(table.find("tensorview_reshape")->second.input, false);
-  EXPECT_EQ(table.find("tensorview_reshape")->second.output, false);
+  EXPECT_EQ(table.find("tensorview_reshape_in")->second.input, false);
+  EXPECT_EQ(table.find("tensorview_reshape_in")->second.output, false);
 }
 
 // Test if the placeholders are allocated contiguously as

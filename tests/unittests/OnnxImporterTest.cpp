@@ -617,6 +617,29 @@ TEST(onnx, importConvAutoPadSameLower) {
   convTestHelper(filename, expectedDims, expectedValues);
 }
 
+/// Test to ensure error handling for missing bias
+/// input is handled correctly. Remaining input is
+/// still sane to make sure it only fails for the
+/// intended case.
+TEST(onnx, importConvBiasFail) {
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string NetFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/simpleConvBiasFail.onnxtxt");
+
+  // Destroy the loader after the graph is loaded since the following execution
+  // will not depend on anyting from the loader.
+  {
+    Tensor data;
+    getNCHWData(&data, 1, 1, 3, 3);
+
+    EXPECT_DEATH(ONNXModelLoader(NetFilename, {"data"}, {&data.getType()}, *F),
+                 "");
+  }
+}
+
 /// Helper method to run the AveragePool operator test cases.
 /// \p filename contains the model .onnxtxt.
 /// \p expectedDims: output Tensor dimensions.
@@ -2387,4 +2410,35 @@ TEST(onnx, importWhere) {
   EXPECT_EQ(WHR->getResult().dims()[0], 4);
   EXPECT_EQ(WHR->getResult().dims()[1], 4);
   EXPECT_EQ(WHR->getResult().dims()[2], 4);
+}
+
+TEST(onnx, importLess) {
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/Less.onnxtxt");
+
+  Placeholder *out = nullptr;
+  {
+    Tensor X(ElemKind::FloatTy, {1, 4, 1});
+    Tensor Y(ElemKind::FloatTy, {4, 1, 1});
+    X.zero();
+    Y.zero();
+
+    ONNXModelLoader onnxLD(netFilename, {"X", "Y"},
+                           {&X.getType(), &Y.getType()}, *F);
+    out = EXIT_ON_ERR(onnxLD.getOutputByName("Out"));
+  }
+
+  auto *save = getSaveNodeFromDest(out);
+
+  CmpLTNode *CMPLT = llvm::dyn_cast<CmpLTNode>(save->getInput().getNode());
+
+  ASSERT_TRUE(CMPLT);
+  ASSERT_EQ(CMPLT->getResult().dims().size(), 3);
+  EXPECT_EQ(CMPLT->getResult().dims()[0], 4);
+  EXPECT_EQ(CMPLT->getResult().dims()[1], 4);
+  EXPECT_EQ(CMPLT->getResult().dims()[2], 1);
 }

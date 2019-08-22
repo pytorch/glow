@@ -81,4 +81,11 @@ llvm::Error CachingGraphRunner::runGraph(const torch::jit::Node *node,
 
   return llvm::Error::success();
 }
+
+CachingGraphRunner *CachingGraphRunner::getGraphRunner() {
+  static auto runner_ =
+      std::unique_ptr<CachingGraphRunner>(new CachingGraphRunner());
+  return runner_.get();
+}
+
 } // namespace glow

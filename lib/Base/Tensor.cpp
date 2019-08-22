@@ -380,7 +380,16 @@ void glow::genericTranspose(const Tensor *src, Tensor *dest,
 
   // Resize the tensor to the transposed shape.
   auto destType = Type::newShape(src->getType(), {newSizes, origDims.size()});
-  dest->reset(destType);
+  // genericTranspose function doesn't know how to set non-trivial strides and
+  // alignments and it cannot figure out the correct ones as it can be
+  // backend-specific. Therefore set the type to destType only if it is not set
+  // properly by the caller yet.
+  // Reset should be called anyways to allocate memory for the tensor.
+  if (dest->dims() != destType.dims()) {
+    dest->reset(destType);
+  } else {
+    dest->reset(dest->getType());
+  }
 
   switch (src->getElementType()) {
   case ElemKind::FloatTy: {

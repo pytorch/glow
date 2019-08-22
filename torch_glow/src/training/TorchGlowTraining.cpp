@@ -200,4 +200,56 @@ llvm::Error TorchGlowTraining::save(llvm::StringRef snapshotFile) {
   return err;
 }
 
+bool TorchGlowTrainingWrapper::init(const std::string &modelPath,
+                                    const std::vector<at::Tensor> &ptTensors,
+                                    const std::string &backend,
+                                    bool randomizeWeights) {
+  std::vector<torch::jit::IValue> ptInputs = {ptTensors.begin(),
+                                              ptTensors.end()};
+  return !errToBool(trainer_.init(
+      modelPath, ptInputs, backend, parameters_, settings_, config_,
+      randomizeWeights ? TorchGlowTraining::RandomizeWeights::YES
+                       : TorchGlowTraining::RandomizeWeights::NO));
+}
+
+bool TorchGlowTrainingWrapper::train(const at::Tensor &ptSamples,
+                                     const at::Tensor &ptLabels) {
+  // TODO
+  glow::Tensor glowSamples;
+  glow::Tensor glowLabels;
+
+  return !errToBool(trainer_.train(glowSamples, glowLabels));
+}
+
+bool TorchGlowTrainingWrapper::save(const std::string &snapshotFile) {
+  return !errToBool(trainer_.save(snapshotFile));
+}
+
+/// Helper functions for assigning settings/parameters/configs.
+/// Sets PyTorchLoaderSettings
+void TorchGlowTrainingWrapper::setPyTorchLoaderSettings(
+    bool enableFusionPass, bool enableWeightFreezing) {
+  settings_.fusionPassEnabled = enableFusionPass;
+  settings_.weightFreezingEnabled = enableWeightFreezing;
+}
+
+/// Sets ONNXWriterParameters
+void TorchGlowTrainingWrapper::setONNXWriterParameters(size_t irVersion,
+                                                       size_t opsetVersion) {
+  parameters_.irVersion = irVersion;
+  parameters_.opsetVersion = opsetVersion;
+}
+
+/// Sets TrainingConfig
+void TorchGlowTrainingWrapper::setTrainingConfig(float L1Decay, float L2Decay,
+                                                 float learningRate,
+                                                 float momentum,
+                                                 unsigned batchSize) {
+  config_.L1Decay = L1Decay;
+  config_.L2Decay = L2Decay;
+  config_.learningRate = learningRate;
+  config_.momentum = momentum;
+  config_.batchSize = batchSize;
+}
+
 } // namespace glow

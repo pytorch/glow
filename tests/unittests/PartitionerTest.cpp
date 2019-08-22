@@ -505,6 +505,11 @@ public:
   bool generateInst(Node *N, IRGenVisitor &irgen) const override {
     return false;
   }
+
+  runtime::DeviceManager *
+  createDeviceManager(const runtime::DeviceConfig &deviceConfig) override {
+    return nullptr;
+  }
 };
 
 class BackendWithoutSub : public MockBackend<Kinded::Kind::SubNodeKind> {

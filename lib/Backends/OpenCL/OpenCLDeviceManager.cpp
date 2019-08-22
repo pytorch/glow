@@ -46,6 +46,7 @@ extern llvm::cl::opt<bool> clDoProfile;
 
 namespace glow {
 namespace runtime {
+
 DeviceManager *createOCLDeviceManager(const DeviceConfig &config) {
   return new OpenCLDeviceManager(config);
 }

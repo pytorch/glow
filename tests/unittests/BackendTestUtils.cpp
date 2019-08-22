@@ -159,12 +159,6 @@ void compareAgainstInterpreter(llvm::StringRef backendName,
   FunctionTensorPair IFT = createAndInitFunction(iBindings, IEE);
   FunctionTensorPair BFT = createAndInitFunction(bBindings, BEE);
 
-  // Clone the Function inside itself many times if desired.
-  std::unordered_set<Tensor *> resultTensors =
-      cloneFunInsideFun(BFT, &bBindings, count);
-  assert(resultTensors.size() == count &&
-         "Should get the same number of Tensors back as count.");
-
   Function *IF = IFT.first;
 
   // Set up the configs for interpreter and backend. If one or both functions
@@ -178,6 +172,12 @@ void compareAgainstInterpreter(llvm::StringRef backendName,
   CompilationContext &cctxI = configs.first;
   CompilationContext &cctxB = configs.second;
 
+  // Clone the Function inside itself many times if desired.
+  std::unordered_set<Tensor *> resultTensors =
+      cloneFunInsideFun(BFT, &bBindings, cctxB, count);
+  assert(resultTensors.size() == count &&
+         "Should get the same number of Tensors back as count.");
+
   BEE.compile(cctxB);
   BEE.run(bBindings);
 
@@ -188,10 +188,19 @@ void compareAgainstInterpreter(llvm::StringRef backendName,
   for (Tensor *T : resultTensors) {
     EXPECT_TRUE(IFT.second->isEqual(*T, allowedError));
   }
+
+  // Additionally check that each of the results from the parallel cloned
+  // Functions are bitwise equal.
+  auto it = resultTensors.begin();
+  Tensor *firstResult = *it;
+  for (it++; it != resultTensors.end(); it++) {
+    EXPECT_TRUE(firstResult->isBitwiseEqual(**it));
+  }
 }
 
 std::unordered_set<Tensor *> cloneFunInsideFun(FunctionTensorPair FTP,
                                                PlaceholderBindings *bindings,
+                                               CompilationContext &cctx,
                                                unsigned count) {
   Function *origF = FTP.first;
 
@@ -253,6 +262,26 @@ std::unordered_set<Tensor *> cloneFunInsideFun(FunctionTensorPair FTP,
   }
   // Now erase the clone we used to copy in, as it's no longer needed.
   mod->eraseFunction(cloneF);
+
+  // Finally, duplicate all of the node quantization infos with the new expected
+  // clone's name so that the cloned copies will find the same quantization info
+  // as the original node if being quantized.
+  auto &origInfos = cctx.precisionConfig.quantConfig.infos;
+  origInfos.reserve(count * origInfos.size());
+  std::vector<NodeQuantizationInfo> newInfos;
+  newInfos.reserve((count - 1) * origInfos.size());
+  for (const auto &QI : origInfos) {
+    const size_t colonIdx = QI.nodeOutputName_.find(":");
+    assert(colonIdx != std::string::npos && "Name should always contain ':'");
+    for (size_t i = 1; i < count; i++) {
+      std::string newName(QI.nodeOutputName_);
+      // Cloned nodes end up with the original name plus the count number
+      // appended to their name due to uniquing. Replicate the same thing.
+      newName.insert(colonIdx, std::to_string(i));
+      newInfos.emplace_back(newName, QI.tensorQuantizationParams_);
+    }
+  }
+  origInfos.insert(origInfos.end(), newInfos.begin(), newInfos.end());
 
   return resultTensors;
 }

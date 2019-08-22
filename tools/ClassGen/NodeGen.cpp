@@ -333,6 +333,15 @@ int main(int argc, char **argv) {
       .setDocstring("Performs an element-wise equal comparison on the LHS and "
                     "RHS operands. Inputs must be integer.");
 
+  BB.newNode("CmpLT")
+      .addInput("LHS")
+      .addInput("RHS")
+      .addResultFromCtorArg()
+      .setDocstring(
+          "Compares X and Y element wise sets Dest[i] true if LHS[i] < "
+          "RHS[i] otherwise false. Final result is a mask consumed by "
+          "Select, ONNX Where, operator.");
+
   BB.newNode("Pow")
       .addInput("LHS")
       .addInput("RHS")
