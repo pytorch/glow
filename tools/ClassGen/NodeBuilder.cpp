@@ -175,16 +175,19 @@ NodeBuilder &NodeBuilder::addMember(MemberType type, const std::string &name) {
     typeInfo = &kVectorNodeValueTypeInfo;
   } else if (type == MemberType::Enum) {
     typeInfo = &kEnumTypeInfo;
+  } else if (type == MemberType::UserDefinedType) {
+    llvm_unreachable("addMember should be called with a MemberTypeInfo "
+                     "parameter in this case");
   } else {
     llvm_unreachable("Type not recognized");
   }
 
-  return addMember(typeInfo, name);
+  return addMember(*typeInfo, name);
 }
 
 void NodeBuilder::emitMemberForwardDecls(std::ostream &os) const {
   for (const auto &mem : members_) {
-    const std::string &forwardDecl = (mem.first)->forwardDecl;
+    const std::string &forwardDecl = (mem.first).forwardDecl;
     if (!forwardDecl.empty()) {
       os << forwardDecl << "\n";
     }
@@ -225,7 +228,7 @@ void NodeBuilder::emitCtor(std::ostream &os) const {
 
   // Extra class members:
   for (const auto &op : members_) {
-    os << ", " << getCtorArgTypename(op.first) << " " << op.second;
+    os << ", " << getCtorArgTypename(&op.first) << " " << op.second;
   }
 
   // Initialize the base clases:
@@ -244,7 +247,7 @@ void NodeBuilder::emitCtor(std::ostream &os) const {
 
   // Initialize the members:
   for (const auto &op : members_) {
-    if ((op.first)->type != MemberType::VectorNodeValue) {
+    if ((op.first).type != MemberType::VectorNodeValue) {
       os << ", " << op.second << "_(" << op.second << ")";
       continue;
     }
@@ -261,7 +264,7 @@ void NodeBuilder::emitCtor(std::ostream &os) const {
   }
 
   for (const auto &op : members_) {
-    if ((op.first)->type != MemberType::VectorNodeValue) {
+    if ((op.first).type != MemberType::VectorNodeValue) {
       continue;
     }
     os << "    " << op.second << "_.resize(" << op.second << ".size());\n";
@@ -293,7 +296,7 @@ void NodeBuilder::emitClassMembers(std::ostream &os) const {
     os << "  NodeHandle " << op << "_;\n";
   }
   for (const auto &op : members_) {
-    os << "  " << getStorageTypename(op.first) << " " << op.second << "_;\n";
+    os << "  " << getStorageTypename(&op.first) << " " << op.second << "_;\n";
   }
 }
 
@@ -323,7 +326,7 @@ void NodeBuilder::emitSettersGetters(std::ostream &os) const {
   }
 
   for (const auto &op : members_) {
-    emitMemberGetter(os, op.first, op.second);
+    emitMemberGetter(os, &op.first, op.second);
   }
 
   // Synthesize the 'classof' method that enables the non-rtti polymorphism.
@@ -347,7 +350,7 @@ void NodeBuilder::emitEdges(std::ostream &os) const {
   os << "\nunsigned " << name_ << "Node::getNumInputs() const {\n"
      << "  return " << nodeInputs_.size();
   for (const auto &op : members_) {
-    if ((op.first)->type != MemberType::VectorNodeValue) {
+    if ((op.first).type != MemberType::VectorNodeValue) {
       continue;
     }
     os << " + " << op.second << "_.size()";
@@ -362,7 +365,7 @@ void NodeBuilder::emitEdges(std::ostream &os) const {
   }
   os << "  idx -= " << nodeInputs_.size() << ";\n";
   for (const auto &op : members_) {
-    if ((op.first)->type != MemberType::VectorNodeValue) {
+    if ((op.first).type != MemberType::VectorNodeValue) {
       continue;
     }
     os << "  if (idx < " << op.second << "_.size()) { return \"" << op.second
@@ -377,7 +380,7 @@ void NodeBuilder::emitEdges(std::ostream &os) const {
   }
   os << "  idx -= " << nodeInputs_.size() << ";\n";
   for (const auto &op : members_) {
-    if ((op.first)->type != MemberType::VectorNodeValue) {
+    if ((op.first).type != MemberType::VectorNodeValue) {
       continue;
     }
     os << "  if (idx < " << op.second << "_.size()) { return " << op.second
@@ -393,7 +396,7 @@ void NodeBuilder::emitEdges(std::ostream &os) const {
   }
   os << "  idx -= " << nodeInputs_.size() << ";\n";
   for (const auto &op : members_) {
-    if ((op.first)->type != MemberType::VectorNodeValue) {
+    if ((op.first).type != MemberType::VectorNodeValue) {
       continue;
     }
     os << "  if (idx < " << op.second << "_.size()) { " << op.second
@@ -429,7 +432,7 @@ void NodeBuilder::emitPrettyPrinter(std::ostream &os) const {
 
   for (const auto &mem : members_) {
     // Don't try to print the node operands directly.
-    MemberType ty = (mem.first)->type;
+    MemberType ty = (mem.first).type;
     if (ty == MemberType::VectorNodeValue) {
       continue;
     }
@@ -445,7 +448,7 @@ void NodeBuilder::emitPrettyPrinter(std::ostream &os) const {
   os << "    .addParam(\"users\", getNumUsers());\n";
 
   for (const auto &mem : members_) {
-    if ((mem.first)->type != MemberType::VectorNodeValue) {
+    if ((mem.first).type != MemberType::VectorNodeValue) {
       continue;
     }
 
@@ -494,6 +497,9 @@ void NodeBuilder::emitCloner(std::ostream &os) const {
   os << ");\n}\n";
 }
 
+/// \returns true if a can be a part of a valid C/C++ identifier.
+static bool isIdentifierChar(char c) { return (c == '_' || isalnum(c)); }
+
 void NodeBuilder::emitEquator(std::ostream &os) const {
   os << "\nbool " << name_ << "Node::isEqual(const " << name_
      << "Node &other) const {\n  return true";
@@ -509,7 +515,19 @@ void NodeBuilder::emitEquator(std::ostream &os) const {
   os << " &&\n      predicate_ == other.predicate_";
 
   for (const auto &mem : members_) {
-    os << " &&\n      " << mem.second << "_ == other." << mem.second << "_";
+    // Use custom user-defined comparator functions if available.
+    std::string cmpFn = mem.first.cmpFn;
+    if (cmpFn.empty() || !isIdentifierChar(cmpFn.at(0))) {
+      if (cmpFn.empty()) {
+        // Default comparator is ==.
+        cmpFn = "==";
+      }
+      os << " &&\n      " << mem.second << "_ " << cmpFn << " other."
+         << mem.second << "_";
+    } else {
+      os << " &&\n      " << cmpFn << "(" << mem.second << "_, other."
+         << mem.second << "_)";
+    }
   }
 
   for (int i = 0, e = nodeOutputs_.size(); i < e; i++) {
@@ -543,7 +561,7 @@ void NodeBuilder::emitHasher(std::ostream &os) const {
     delim = ",";
   }
   for (const auto &mem : members_) {
-    auto ty = (mem.first)->type;
+    auto ty = (mem.first).type;
     if (ty == MemberType::Float) {
       os << delim << "\n      toBinary(" << mem.second << "_)";
     } else if (isFloatVectorType(ty)) {
@@ -584,7 +602,7 @@ void NodeBuilder::emitVisitor(std::ostream &os) const {
   }
 
   for (const auto &op : members_) {
-    if ((op.first)->type == MemberType::VectorNodeValue) {
+    if ((op.first).type == MemberType::VectorNodeValue) {
       os << "  for (auto &I : " << op.second
          << "_) { I.getNode()->visit(this, visitor); }\n";
     }

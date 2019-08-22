@@ -126,7 +126,7 @@ class NodeBuilder {
   /// argument is the name of the return type. Format: (type, name)
   std::vector<std::pair<std::string, std::string>> nodeOutputs_;
   /// A list of node members. Format: (type, name).
-  std::vector<std::pair<const MemberTypeInfo *, std::string>> members_;
+  std::vector<std::pair<MemberTypeInfo, std::string>> members_;
   /// The node enum cases.
   std::vector<std::string> enum_;
   /// A list of extra parameter that are declared in the node constructor. The
@@ -166,8 +166,23 @@ public:
   /// The name should start with a capital letter.
   /// For example: "Filter".
   NodeBuilder &addMember(MemberType type, const std::string &name);
-  NodeBuilder &addMember(const MemberTypeInfo *typeInfo,
-                         const std::string &name) {
+  /// Add a member to the node. Format type, name.
+  /// The name should start with a capital letter.
+  /// For example: "Filter".
+  /// If MemberTypeInfo refers to an external user-defined type, this type T
+  /// should satisfy the following requirements:
+  ///   * There should be a hash function with a signature like `llvm::hash_code
+  ///   hash_value(const T)` which takes T by value, by reference or as a
+  ///   pointer, depending on the intended use.
+  ///   * There should be a stream output operator with a signature like
+  ///   `llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const T);`, which
+  ///   takes T by value, by reference or as a pointer, depending on the
+  ///   intended use.
+  ///   * There should be a comparison operator `bool operator==(const T LHS,
+  ///   const T RHS)` (or a custom comparator function mentioned in
+  ///   MemberTypeInfo::cmpFn), which takes T by reference or by value depending
+  ///   on the intended use.
+  NodeBuilder &addMember(MemberTypeInfo typeInfo, const std::string &name) {
     members_.push_back({typeInfo, name});
     return *this;
   }
@@ -345,6 +360,11 @@ public:
   /// Nodes cpp file.
   void includeBackendSpecificVerification(const std::string &filename) {
     cStream << "\n#include \"" << filename << "\"\n";
+  }
+
+  /// Include header into the auto-generated Nodes include file.
+  void includeHeader(const std::string &filename) {
+    hStream << "\n#include \"" << filename << "\"\n";
   }
 };
 
