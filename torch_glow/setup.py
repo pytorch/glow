@@ -63,7 +63,7 @@ parser.add_argument(
     default=False,
     help="Run cmake")
 parser.add_argument(
-    "--release",
+    "--debug",
     action='store_true',
     default=False,
     help="Compile with debug on")
@@ -125,7 +125,7 @@ class cmake_build(setuptools.Command):
                 '-DBUILD_SHARED_LIBS=OFF',
                 '-DCMAKE_EXPORT_COMPILE_COMMANDS=ON',
                 '-DCMAKE_BUILD_TYPE={}'.format(
-                    'Release' if args.release else 'Debug'),
+                    'Debug' if args.debug else 'Release'),
                 '-DPYTHON_EXECUTABLE={}'.format(sys.executable),
                 # PyTorch cmake args
                 '-DPYTORCH_DIR={}'.format(

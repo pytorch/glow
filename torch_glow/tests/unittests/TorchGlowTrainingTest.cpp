@@ -23,7 +23,7 @@
 
 using namespace glow;
 
-TEST(TorchGlowTraining, Test) {
+TEST(TorchGlowTraining, DISABLED_Test) {
   const std::string fileName{GLOW_DATA_PATH
                              "tests/models/pytorchModels/resnet18.pt"};
   TorchGlowTraining trainer;
@@ -48,7 +48,7 @@ TEST(TorchGlowTraining, Test) {
   std::vector<size_t> sampleDims = {1, 3, 224, 224};
   Tensor samples(ElemKind::FloatTy, sampleDims);
 
-  std::vector<size_t> labelDims = {1, 1024};
+  std::vector<size_t> labelDims = {1, 1000};
   Tensor labels(ElemKind::Int64ITy, labelDims);
   EXPECT_FALSE(errToBool(trainer.train(samples, labels)));
 
