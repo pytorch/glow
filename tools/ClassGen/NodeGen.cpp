@@ -83,12 +83,19 @@ int main(int argc, char **argv) {
       .addMember(MemberType::Unsigned, "Group")
       .addMember(MemberType::Unsigned, "Dilation")
       .addMember(MemberType::Enum, "Layout")
+      .addMember(MemberType::Enum, "FusedActivation")
+      .addExtraMethod(
+          "bool hasFusedActivation() const;",
+          "bool ConvolutionNode::hasFusedActivation() const { return "
+          "getFusedActivation() != FusedActivation::NONE; }")
       .addResultFromCtorArg()
       .addGradient()
-      .setDocstring("Performs 2D Convolution using a given Input, Filter, and "
-                    "Bias tensors, as well as provided Kernels, Strides, Pads, "
-                    "Group and Dilation. Supported Layouts are defined in the "
-                    "ConvoltionLayout enum: NHWC and NCHW.");
+      .setDocstring(
+          "Performs 2D Convolution using a given Input, Filter, and "
+          "Bias tensors, as well as provided Kernels, Strides, Pads, "
+          "Group and Dilation. Supported Layouts are defined in the "
+          "ConvolutionLayout enum: NHWC and NCHW. Supported FusedActivations "
+          "are defined in the FusedActivation enum.");
 
   BB.newNode("ChannelwiseQuantizedConvolution")
       .addInput("Input")

@@ -284,6 +284,8 @@ void BoundInterpreterFunction::fwdConvolutionInstQuantizedImpl(
 void BoundInterpreterFunction::fwdConvolutionInst(const ConvolutionInst *I) {
   assert(I->getLayout() == NHWC &&
          "Glow Interpreter supports only NHWC Convolutions");
+  assert(I->getFusedActivation() == FusedActivation::NONE &&
+         "Glow Interpreter does not support fused Activations.");
   auto kernelSizes = I->getKernels();
   auto pads = I->getPads();
   auto strides = I->getStrides();

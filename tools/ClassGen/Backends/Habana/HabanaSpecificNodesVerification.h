@@ -20,7 +20,6 @@
 #include "glow/Graph/VerifierHelper.h"
 
 namespace {
-// TODO: consolidate convolution verification method in one place.
 static bool verifyConvolution(NodeValue src, NodeValue dest, NodeValue filter,
                               NodeValue bias,
                               llvm::ArrayRef<unsigned_t> kernels,
@@ -76,11 +75,6 @@ static bool verifyConvolution(NodeValue src, NodeValue dest, NodeValue filter,
 } // namespace
 
 bool HabanaFullyConnectedNode::verify() const { return true; }
-
-bool HabanaConvolutionNode::verify() const {
-  return verifyConvolution(getInput(), getResult(), getFilter(), getBias(),
-                           Kernels_, Strides_, Pads_, Group_);
-}
 
 bool HabanaConvolutionAddNode::verify() const {
   bool isValid =

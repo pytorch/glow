@@ -138,7 +138,7 @@ void IRGenVisitor::post(Node *parent, Node *N) {
     builder_.createConvolutionGradInst(
         N->getName(), input, filter, outGrad, inG, filterG, biasG,
         CG->getKernels(), CG->getStrides(), CG->getPads(), CG->getGroup(),
-        CG->getDilation(), CG->getLayout());
+        CG->getDilation(), CG->getLayout(), CG->getFusedActivation());
 
     registerIR(CG->getGradOfInputNamedInput(), inG);
     registerIR(CG->getGradOfInputNamedFilter(), filterG);

@@ -206,6 +206,9 @@ enum PaddingMode { CONSTANT = 0, REFLECT, EDGE };
 /// Convolution Layouts.
 enum ConvolutionLayout { NHWC = 0, NCHW };
 
+/// Activations fused into ConvolutionNode (not supported on all backends).
+enum FusedActivation { NONE = 0, RELU, TANH, SIGMOID };
+
 /// Support for hashing the Nodes. This is required for using
 /// llvm::hash_combine.
 class Node;
