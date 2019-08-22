@@ -101,10 +101,15 @@ public:
   /// Converts Glow type into ATen Tensor type.
   static c10::ScalarType convertGlowType(TypeRef ty);
 
+  /// Given a PyTorch ScalarType \p ty, \returns the corresponding
+  /// Glow::ElemKind.
+  static glow::ElemKind convertScalarType(c10::ScalarType ty);
+
   /// Takes a glow::Function \p F, a jit::Graph \p subgraph to load, and a
-  /// stack of \p inputs for the subgraph to be loaded. Parameter \p settings
-  /// control the fusion details. Output parameters \p inputPlaceholders and
-  /// \p outputPlaceholders are filled out. \returns error on failure
+  /// stack of \p inputs for the subgraph to be loaded. Parameter \p
+  /// settings control the fusion details. Output parameters \p
+  /// inputPlaceholders and \p outputPlaceholders are filled out. \returns
+  /// error on failure.
   static llvm::Error
   loadJITGraph(glow::Function &F, torch::jit::Graph &subgraph,
                at::ArrayRef<torch::jit::IValue> &inputs,
@@ -266,6 +271,18 @@ private:
   /// Load a PyTorch topK node.
   /// \returns error on failure.
   llvm::Error loadTopK(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch aten::size node.
+  /// \returns error on failure.
+  llvm::Error loadSize(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch prim::ListConstruct node.
+  /// \returns error on failure.
+  llvm::Error loadListConstruct(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch aten::reshape node.
+  /// \returns error on failure.
+  llvm::Error loadReshape(const torch::jit::Node *ptNode);
 };
 } // namespace glow
 

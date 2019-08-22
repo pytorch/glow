@@ -15,13 +15,14 @@
  */
 
 #include "PyTorchCommon.h"
+
 #include "CachingGraphRunner.h"
+#include "FuseLinear.h"
 #include "GlowFuser.h"
 #include "PyTorchModelLoader.h"
 
 #include <torch/csrc/jit/operator_options.h>
 #include <torch/csrc/jit/pass_manager.h>
-#include <torch/csrc/jit/passes/graph_fuser.h>
 
 namespace glow {
 

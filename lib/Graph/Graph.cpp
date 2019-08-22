@@ -945,8 +945,8 @@ Function::createSigmoidCrossEntropyWithLogits(llvm::StringRef name,
 ReshapeNode *Function::createReshape(llvm::StringRef name, NodeValue input,
                                      llvm::ArrayRef<size_t> shape) {
   auto TR = getParent()->uniqueTypeWithNewShape(input.getType(), shape);
-  assert(TR->size() == input.getType()->size() &&
-         "Reshape to a different size");
+  DCHECK_EQ(TR->size(), input.getType()->size())
+      << "Reshape to a different size";
   return addNode(new ReshapeNode(name, TR, input, shape.vec()));
 }
 
@@ -1298,7 +1298,8 @@ ModuloNode *Function::createModulo(llvm::StringRef name, NodeValue input,
   }                                                                            \
   NODE_NAME_##Node *Function::create##NODE_NAME_(                              \
       llvm::StringRef name, TypeRef T, NodeValue LHS, NodeValue RHS) {         \
-    assert(LHS.dims() == RHS.dims() && "Invalid operand shapes");              \
+    DCHECK(LHS.dims() == RHS.dims())                                           \
+        << "Invalid operand shapes " << LHS.dims() << " vs " << RHS.dims();    \
     TypeRef OT = getParent()->uniqueType(*T);                                  \
     return addNode(new NODE_NAME_##Node(name, OT, LHS, RHS));                  \
   }

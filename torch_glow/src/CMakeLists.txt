@@ -15,6 +15,7 @@ add_library(PyTorchModelLoader
                      CachingGraphRunner.cpp
                      GlowFuser.cpp
                      PyTorchCommon.cpp
+                     FuseLinear.cpp
                      PyTorchModelLoader.cpp)
 target_compile_options(PyTorchModelLoader
                       PRIVATE
