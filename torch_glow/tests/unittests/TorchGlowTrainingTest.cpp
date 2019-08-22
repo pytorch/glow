@@ -40,15 +40,15 @@ TEST(TorchGlowTraining, Test) {
   config.batchSize = 1;
 
   // TODO (after full fusion is available)
-  if (!errToBool(trainer.init(fileName, vec, "Interpreter", parameters,
-                              settings, config))) {
+  if (errToBool(trainer.init(fileName, vec, "Interpreter", parameters, settings,
+                             config))) {
     return;
   }
 
-  llvm::ArrayRef<size_t> sampleDims = {1, 3, 224, 224};
+  std::vector<size_t> sampleDims = {1, 3, 224, 224};
   Tensor samples(ElemKind::FloatTy, sampleDims);
 
-  llvm::ArrayRef<size_t> labelDims = {1, 1024};
+  std::vector<size_t> labelDims = {1, 1024};
   Tensor labels(ElemKind::Int64ITy, labelDims);
   EXPECT_FALSE(errToBool(trainer.train(samples, labels)));
 

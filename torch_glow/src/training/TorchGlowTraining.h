@@ -93,6 +93,45 @@ public:
   llvm::Error save(llvm::StringRef snapshotFile);
 };
 
+/// Wrapper class helps to integrate TorchGlowTraining class functionality into
+/// Python environment.
+class TorchGlowTrainingWrapper {
+  // Trainer itself.
+  TorchGlowTraining trainer_;
+  // Required settings/parameters/configs.
+  TorchGlowTraining::ONNXWriterParameters parameters_;
+  PyTorchLoaderSettings settings_;
+  TrainingConfig config_;
+
+public:
+  /// Initializes internal trainer by provided model \p modelPathPyTorch, inputs
+  /// \p ptTensors, \p backend type, and flag if weights should be randomized,
+  /// \returns false on a failure.
+  bool init(const std::string &modelPath,
+            const std::vector<at::Tensor> &ptTensors,
+            const std::string &backend, bool randomizeWeights);
+
+  /// Takes PyTorch \p ptSamples and \p ptLabels tensors and performs training,
+  /// \returns false on a failure.
+  bool train(const at::Tensor &ptSamples, const at::Tensor &ptLabels);
+
+  /// Saves Glow model into \p snapshotFile using ONNX format
+  /// \returns false on a failure.
+  bool save(const std::string &snapshotFile);
+
+  /// Helper functions for assigning settings/parameters/configs.
+  /// Sets PyTorchLoaderSettings.
+  void setPyTorchLoaderSettings(bool enableFusionPass,
+                                bool enableWeightFreezing);
+
+  /// Sets ONNXWriterParameters.
+  void setONNXWriterParameters(size_t irVersion, size_t opsetVersion);
+
+  /// Sets TrainingConfig.
+  void setTrainingConfig(float L1Decay, float L2Decay, float learningRate,
+                         float momentum, unsigned batchSize);
+};
+
 } // namespace glow
 
 #endif // GLOW_TORCH_GLOW_SRC_TRAINING_TORCHGLOWTRAINING_H
