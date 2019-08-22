@@ -945,8 +945,8 @@ Function::createSigmoidCrossEntropyWithLogits(llvm::StringRef name,
 ReshapeNode *Function::createReshape(llvm::StringRef name, NodeValue input,
                                      llvm::ArrayRef<size_t> shape) {
   auto TR = getParent()->uniqueTypeWithNewShape(input.getType(), shape);
-  assert(TR->size() == input.getType()->size() &&
-         "Reshape to a different size");
+  DCHECK_EQ(TR->size(), input.getType()->size())
+      << "Reshape to a different size";
   return addNode(new ReshapeNode(name, TR, input, shape.vec()));
 }
 
