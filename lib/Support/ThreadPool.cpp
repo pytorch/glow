@@ -38,31 +38,16 @@ void ThreadExecutor::stop(bool block) {
 }
 
 void ThreadExecutor::threadPoolWorkerMain() {
-  std::unique_lock<std::mutex> lock(workQueueMtx_, std::defer_lock);
-
-  while (!shouldStop_) {
-    // Lock the lock after processing a work item.
-    lock.lock();
-
-    // If work queue is empty, wait to be signalled when
-    // a work item is submitted.
-    while (workQueue_.empty() && !shouldStop_) {
-      queueNotEmpty_.wait(lock);
-    }
-
-    // If shouldStop_ was set to false while the thread
-    // was asleep, break out of the main loop.
+  while (true) {
+    std::unique_lock<std::mutex> lock(workQueueMtx_);
+    queueNotEmpty_.wait(lock,
+                        [&] { return !workQueue_.empty() || shouldStop_; });
     if (shouldStop_) {
       break;
     }
-
-    // Pop a work item from the queue, and make sure to unlock
-    // the lock before processing it.
     auto workItem = std::move(workQueue_.front());
     workQueue_.pop();
     lock.unlock();
-
-    // Process work item.
     workItem();
   }
 }
