@@ -260,6 +260,10 @@ private:
   /// \returns error on failure.
   llvm::Error loadMin(const torch::jit::Node *ptNode);
 
+  /// Load a PyTorch clamp node.
+  /// \returns error on failure.
+  llvm::Error loadClamp(const torch::jit::Node *ptNode);
+
   /// Load a PyTorch matmul (n x k) x (k x m) -> (n x m) node.
   /// \returns error on failure.
   llvm::Error loadMatMul(const torch::jit::Node *ptNode);

@@ -252,6 +252,15 @@ struct MaxPoolInputs {
   };
 };
 
+/// Indices of aten::clamp inputs.
+struct ClampInputs {
+  enum {
+    input = 0,
+    min = 1,
+    max = 2,
+  };
+};
+
 /// Indexes of aten::adaptive_avg_pool2d inputs.
 struct AdaptiveAvgPoolInputs {
   enum {
@@ -385,6 +394,12 @@ PyTorchModelLoader::getSymbolsMapping() {
        {{"aten::max"}, &PyTorchModelLoader::loadMax, {}},
        {{"aten::exp"}, &PyTorchModelLoader::loadExp, {}},
        {{"aten::sqrt", "aten::sqrt_"}, &PyTorchModelLoader::loadSqrt, {}},
+       {{"aten::clamp"},
+        &PyTorchModelLoader::loadClamp,
+        {
+            ClampInputs::min,
+            ClampInputs::max,
+        }},
        {{"aten::size"}, &PyTorchModelLoader::loadSize, {SizeInputs::dim}},
        // TODO: use -1 to freeze all inputs
        {{"prim::ListConstruct"}, &PyTorchModelLoader::loadListConstruct, {}},
@@ -1206,6 +1221,35 @@ llvm::Error PyTorchModelLoader::loadAvgPool2d(const torch::jit::Node *ptNode) {
       F_.createAvgPool("avgpool2d", input, kernels, strides, pads);
   glow::NodeValue output = ap->getResult();
   output = F_.createTranspose("avgpool2d_output_transposed", output, NHWC2NCHW);
+  return addGlowNodeValue(outputs[0], output);
+}
+
+llvm::Error PyTorchModelLoader::loadClamp(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 3, outputs, 1));
+
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input,
+                             getGlowNodeValue(inputs[ClampInputs::input]));
+
+  auto minHandle = glow::Handle<float>::createInvalidHandle();
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      minHandle, getGlowConstantHandle<float>(inputs[ClampInputs::min]));
+  RETURN_ERR_IF_NOT(
+      minHandle.size() == 1,
+      glow::strFormat("min size must be 1, got %lu", minHandle.size()));
+  auto min = minHandle.raw(0);
+
+  auto maxHandle = glow::Handle<float>::createInvalidHandle();
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      maxHandle, getGlowConstantHandle<float>(inputs[ClampInputs::max]));
+  RETURN_ERR_IF_NOT(
+      maxHandle.size() == 1,
+      glow::strFormat("max size must be 1, got %lu", maxHandle.size()));
+  auto max = maxHandle.raw(0);
+
+  auto output = F_.createClip("clip", input, min, max);
   return addGlowNodeValue(outputs[0], output);
 }
 
