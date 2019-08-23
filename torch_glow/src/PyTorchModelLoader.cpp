@@ -489,6 +489,8 @@ PyTorchModelLoader::createConstantPhReplacements(
   const auto inputs = ptNode->inputs();
   PyTorchModelLoader::ValueMap valueMapReplacements;
 
+  std::vector<size_t> frozenInputIndices;
+
   for (size_t i = 0; i < inputs.size(); i++) {
     // Skip inputs that are not marked as constant input values that should be
     // represented as Constants in Glow.
@@ -524,8 +526,14 @@ PyTorchModelLoader::createConstantPhReplacements(
            "Failed to create a Glow Constant from PyTorch input.");
 
     valueMapReplacements[inputs[i]] = glowConstant->getOutput();
+
+    frozenInputIndices.push_back(inputIndex);
   }
 
+  if (frozenInputIndices_) {
+    frozenInputIndices_->insert(frozenInputIndices.begin(),
+                                frozenInputIndices.end());
+  }
   return valueMapReplacements;
 }
 
@@ -1503,7 +1511,8 @@ llvm::Error PyTorchModelLoader::loadJITGraph(
   llvm::Error error = llvm::Error::success();
   MARK_ERR_CHECKED(error);
   PyTorchModelLoader loader(F, subgraph, inputs, inputPlaceholders,
-                            outputPlaceholders, error, settings);
+                            outputPlaceholders, error, settings,
+                            /*frozenInputIndices*/ nullptr);
   return error;
 }
 
@@ -1512,8 +1521,8 @@ PyTorchModelLoader::PyTorchModelLoader(
     at::ArrayRef<torch::jit::IValue> &inputs,
     std::vector<glow::Placeholder *> &inputPlaceholders,
     std::vector<glow::Placeholder *> &outputPlaceholders, llvm::Error &error,
-    const PyTorchLoaderSettings &settings)
-    : F_(F), inputs_(inputs) {
+    const PyTorchLoaderSettings &settings, std::set<size_t> *frozenInputIndices)
+    : F_(F), inputs_(inputs), frozenInputIndices_(frozenInputIndices) {
   auto subgraphInputValues = subgraph.inputs();
 
   if (inputs.size() != subgraphInputValues.size()) {

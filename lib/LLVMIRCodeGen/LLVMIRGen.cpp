@@ -1723,7 +1723,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     assert(CI->getLayout() == NHWC &&
            "Glow CPU Backend supports only NHWC Convolutions");
     assert(CI->getFusedActivation() == FusedActivation::NONE &&
-          "Glow CPU Backend does not support fused activations.");
+           "Glow CPU Backend does not support fused activations.");
     auto *dest = CI->getDest();
     auto *src = CI->getSrc();
     auto *filter = CI->getFilter();
