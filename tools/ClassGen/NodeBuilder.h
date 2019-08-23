@@ -32,87 +32,6 @@
 class Builder;
 class NodeBuilder;
 
-class EnumBuilder {
-  struct EnumCase {
-    // The name of the enum case (i.e. <enum type>::<enum case name>).
-    std::string name;
-    // The value of the enum case.
-    int value;
-    // The docstring for the enum case.
-    std::string doc;
-    // Whether or not the value for this case was explicitly defined.
-    bool definedWithValue;
-  };
-  ;
-
-  /// The name of the enum.
-  std::string name_;
-  /// The fully qualified name of the enum (i.e. with all enclosing namespaces).
-  std::string fullyQualifiedName_;
-  /// The containing namespaces for the enum.
-  std::vector<std::string> namespaces_;
-  /// The enum cases.
-  std::vector<EnumCase> enumCases_;
-  /// CPP file stream.
-  std::ofstream &cStream;
-  /// Specifies if this enum is backend specific. If true, a definition
-  /// will not be generated.
-  bool isBackendSpecific_{false};
-  /// Documentation string printed with the class definition.
-  std::string docstring_;
-  /// An integer value that is guaranteed to be unused by the enum at all times.
-  int unusedValue_{0};
-
-public:
-  /// Constructor.
-  EnumBuilder(std::ofstream &C, const std::string &name,
-              bool isBackendSpecific);
-
-  /// Delete copy constructor to force moves and ensure one destructor call.
-  EnumBuilder(const EnumBuilder &src) = delete;
-
-  /// Set the documentation string. Each line will be prepended with "/// ".
-  EnumBuilder &setDocstring(const std::string &docstring) {
-    docstring_ = docstring;
-    return *this;
-  }
-
-  /// Add a new enum case to the enumeration.
-  EnumBuilder &addEnumCase(const std::string &name,
-                           const std::string &doc = "");
-  EnumBuilder &addEnumCaseWithValue(const std::string &name, const int value,
-                                    const std::string &doc = "");
-
-  /// Get a MemberTypeInfo object describing the enum being built by this
-  /// builder instance.
-  MemberTypeInfo getMemberTypeInfo() const;
-
-  /// Destructor.
-  ~EnumBuilder();
-
-private:
-  /// Emit the opening of the namespace that contains the enum.
-  void emitNamespaceOpen(std::ostream &os) const;
-
-  /// Emit the closing of the namespace that contains the enum.
-  void emitNamespaceClose(std::ostream &os) const;
-
-  /// Emit the class-level documentation string, if any.
-  void emitDocstring(std::ostream &os) const;
-
-  /// Emit the forward declaration of the enum.
-  void emitForwardDecl(std::ostream &os) const;
-
-  /// Return the fully qualified name of the enum.
-  std::string getFullyQualifiedName() const { return fullyQualifiedName_; }
-
-  /// Emit the cases of the enum.
-  void emitEnumCases(std::ostream &os) const;
-
-  /// Emit the definition of the enum.
-  void emitEnumDefinition(std::ostream &os) const;
-};
-
 class NodeBuilder {
   /// The node name.
   std::string name_;
@@ -306,7 +225,6 @@ class Builder {
   std::ofstream &hStream;
   std::ofstream &cStream;
   std::ofstream &dStream;
-  std::vector<std::shared_ptr<EnumBuilder>> enumBuilders_;
 
 public:
   /// Create a new top-level builder that holds the three output streams that
@@ -333,22 +251,6 @@ public:
   NodeBuilder newBackendSpecificNode(const std::string &name) {
     const bool isBackendSpecific = true;
     return NodeBuilder(hStream, cStream, dStream, name, isBackendSpecific);
-  }
-
-  /// Declare a new enum and generate code for it.
-  EnumBuilder &newEnum(const std::string &name) {
-    const bool isBackendSpecific = false;
-    auto eb = std::make_shared<EnumBuilder>(cStream, name, isBackendSpecific);
-    enumBuilders_.emplace_back(eb);
-    return *eb;
-  }
-
-  /// Declare a new backend specific enum. This will NOT generate a definition.
-  EnumBuilder &newBackendSpecificEnum(const std::string &name) {
-    const bool isBackendSpecific = true;
-    auto eb = std::make_shared<EnumBuilder>(cStream, name, isBackendSpecific);
-    enumBuilders_.emplace_back(eb);
-    return *eb;
   }
 
   /// Declare the node in the def file but don't generate code for it.
