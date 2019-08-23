@@ -1018,6 +1018,56 @@ void BoundInterpreterFunction::fwdAdaptiveAvgPoolInst(
                             I->getSrc()->getElementType(), I);
 }
 
+void BoundInterpreterFunction::fwdAdaptiveAvgPoolGradInst(
+    const AdaptiveAvgPoolGradInst *I) {
+  auto inG = getWeightHandle(I->getSrcGrad());
+  auto outW = getWeightHandle(I->getDest());
+  auto outG = getWeightHandle(I->getDestGrad());
+
+  inG.clear();
+
+  ShapeNHWC odim(outW.dims());
+  ShapeNHWC idim(inG.dims());
+
+  const float gradCoefficient = 1. / (odim.h * odim.w);
+
+#define START_IND(a, b, c) (size_t) std::floor((float)((a) * (c)) / (b))
+#define END_IND(a, b, c) (size_t) std::ceil((float)(((a) + 1) * (c)) / (b))
+
+  // https://software.intel.com/en-us/daal-programming-guide-2d-average-pooling-backward-layer
+  // For each input in the batch:
+  for (size_t n = 0; n < odim.n; n++) {
+    // For each layer in the output tensor:
+    for (size_t z = 0; z < idim.c; z++) {
+      // For each value in the output tensor:
+      for (size_t ax = 0; ax < odim.h; ax++) {
+
+        size_t x = START_IND(ax, odim.h, idim.h);
+        size_t kH = END_IND(ax, odim.h, idim.h) - x;
+
+        for (size_t ay = 0; ay < odim.w; ay++) {
+
+          size_t y = START_IND(ay, odim.w, idim.w);
+          size_t kW = END_IND(ay, odim.w, idim.w) - y;
+
+          const float chainGrad = outG.at({n, ax, ay, z}) * gradCoefficient;
+
+          for (size_t fx = 0; fx < kH; fx++) {
+            for (size_t fy = 0; fy < kW; fy++) {
+              size_t ox = x + fx;
+              size_t oy = y + fy;
+
+              inG.at({n, ox, oy, z}) += chainGrad;
+            }
+          }
+        } // W
+      }   // H
+    }     // C
+  }       // N
+#undef START_IND
+#undef END_IND
+}
+
 void BoundInterpreterFunction::fwdMaxPoolWithArgmaxGradInst(
     const MaxPoolWithArgmaxGradInst *I) {
   auto inG = getWeightHandle(I->getSrcGrad());

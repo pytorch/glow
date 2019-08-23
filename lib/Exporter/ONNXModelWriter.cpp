@@ -1311,6 +1311,7 @@ DEF_UNSUPPORTED_NODE(BatchNormalizationGrad)
 DEF_UNSUPPORTED_NODE(SparseLengthsWeightedSumGrad)
 DEF_UNSUPPORTED_NODE(SigmoidCrossEntropyWithLogits)
 DEF_UNSUPPORTED_NODE(LocalResponseNormalizationGrad)
+DEF_UNSUPPORTED_NODE(AdaptiveAvgPoolGrad)
 
 #ifdef GLOW_WITH_CPU
 

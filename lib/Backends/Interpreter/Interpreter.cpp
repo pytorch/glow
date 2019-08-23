@@ -316,6 +316,7 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
 
   case Kinded::Kind::QuantizationProfileNodeKind:
   case Kinded::Kind::AvgPoolGradNodeKind:
+  case Kinded::Kind::AdaptiveAvgPoolGradNodeKind:
   case Kinded::Kind::LocalResponseNormalizationGradNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind({ElemKind::FloatTy});
 

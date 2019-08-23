@@ -159,7 +159,8 @@ int main(int argc, char **argv) {
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Src", OperandKind::In)
       .autoIRGen()
-      .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"});
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
+      .addGradientInstr({"Dest"}, {"Dest", "Src"});
 
   BB.newInstr("RowwiseQuantizedFullyConnected")
       .addOperand("Dest", OperandKind::Out)
