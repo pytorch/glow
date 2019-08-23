@@ -341,6 +341,8 @@ void OpenCLFunction::executeNCHWConvolution(
     std::vector<KernelLaunch> &kernelLaunches) {
   DCHECK(executionContext->getDeviceBindings())
       << "DeviceBindings must be set.";
+  DCHECK(CC->getFusedActivation() == FusedActivation::NONE)
+      << "OpenCL Backend does not support fused activations.";
   auto devBindings = static_cast<runtime::OpenCLDeviceBindings *>(
       executionContext->getDeviceBindings());
   auto input = CC->getSrc();

@@ -346,25 +346,6 @@ float getNodeComputeTime(const Node *node, const BackendInfo &backendInfo) {
     totalOps *= (inputChannels * 1.0 / nGroups);
     break;
   }
-#ifdef GLOW_WITH_HABANA
-  case Kinded::Kind::HabanaConvolutionNodeKind: {
-    auto *CN = llvm::dyn_cast<HabanaConvolutionNode>(node);
-    auto resultDims = CN->getResult().dims();
-    // Get the product of batch, output height, output dims, output channels
-    totalOps = resultDims[0];
-    for (size_t i = 1, e = resultDims.size(); i < e; i++) {
-      totalOps *= resultDims[i];
-    }
-    // Multiply in kernel height, kernel width
-    auto kernelDims = CN->getKernels();
-    totalOps *= kernelDims[0] * kernelDims[1];
-    // Multiply in input channels/groups
-    auto inputChannels = CN->getInput().dims()[1];
-    auto nGroups = CN->getGroup();
-    totalOps *= (inputChannels * 1.0 / nGroups);
-    break;
-  }
-#endif
   default:
     break;
   }

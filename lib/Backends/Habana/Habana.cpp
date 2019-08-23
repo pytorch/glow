@@ -749,12 +749,15 @@ HabanaBackend::compile(Function *F, const BackendOptions &opts) const {
       multiInputs.emplace_back(std::move(inputs));
       break;
     }
-    case Kinded::Kind::HabanaConvolutionNodeKind: {
-      auto *NI = llvm::cast<HabanaConvolutionNode>(&I);
+    case Kinded::Kind::ConvolutionNodeKind: {
+      auto *NI = llvm::cast<ConvolutionNode>(&I);
 
-      std::unique_ptr<synConvolutionParams> params = makeSynConvolutionParams(
-          NI->getKernels(), NI->getStrides(), NI->getPads(), NI->getGroup(),
-          NI->getDoRelu());
+      bool doRelu = (NI->getFusedActivation() == FusedActivation::RELU);
+      DCHECK(NI->getFusedActivation() == FusedActivation::NONE || doRelu);
+
+      std::unique_ptr<synConvolutionParams> params =
+          makeSynConvolutionParams(NI->getKernels(), NI->getStrides(),
+                                   NI->getPads(), NI->getGroup(), doRelu);
 
       chk(synSpatialConvolution(tensors[NI->getInput()].get(),
                                 tensors[NI->getFilter()].get(),
@@ -1092,7 +1095,6 @@ bool HabanaBackend::isOpSupported(const NodeInfo &NI) const {
     case Kinded::Kind::ConvolutionNodeKind:
     case Kinded::Kind::DivNodeKind:
     case Kinded::Kind::FullyConnectedNodeKind:
-    case Kinded::Kind::HabanaConvolutionNodeKind:
     case Kinded::Kind::HabanaConvolutionAddNodeKind:
     case Kinded::Kind::HabanaFullyConnectedNodeKind:
     case Kinded::Kind::MatMulNodeKind:
@@ -1264,7 +1266,7 @@ bool separateSlice(Function *F, SliceNode &slice) {
 }
 
 /// Fuse conv followed by relu into a single FusedConvRelu node.
-bool fuseConvRelu(Function *F, HabanaConvolutionNode &conv, ReluNode &relu) {
+bool fuseConvRelu(Function *F, ConvolutionNode &conv, ReluNode &relu) {
   // Convolution should have only a single use.
   if (!conv.getResult().hasOneUse()) {
     return false;
@@ -1272,10 +1274,11 @@ bool fuseConvRelu(Function *F, HabanaConvolutionNode &conv, ReluNode &relu) {
 
   auto fusedOpName =
       conv.getName().str() + "." + relu.getName().str() + ".fused";
-  auto *fusedNode = new HabanaConvolutionNode(
+  auto *fusedNode = new ConvolutionNode(
       fusedOpName, relu.getResult().getType(), conv.getInput(),
       conv.getFilter(), conv.getBias(), conv.getKernels(), conv.getStrides(),
-      conv.getPads(), conv.getGroup(), /*doRelu=*/true);
+      conv.getPads(), conv.getGroup(), conv.getDilation(), conv.getLayout(),
+      FusedActivation::RELU);
   F->addNode(fusedNode);
 
   relu.getResult().replaceAllUsesOfWith(fusedNode);
@@ -1306,19 +1309,21 @@ bool fuseConvAdd(Function *F, AddNode &add) {
   //           ^     -->    Node --> HabanaConvolutionAdd
   //           |
   // Node ------
-  auto *lhs = llvm::dyn_cast<HabanaConvolutionNode>(add.getLHS());
-  auto *rhs = llvm::dyn_cast<HabanaConvolutionNode>(add.getRHS());
+  auto *lhs = llvm::dyn_cast<ConvolutionNode>(add.getLHS());
+  auto *rhs = llvm::dyn_cast<ConvolutionNode>(add.getRHS());
 
   // Pick the Conv with only a single use (the Add) to fuse because
   // there is no output of the fused node that can provide only the
   // convolution output to other users.
-  HabanaConvolutionNode *singleUseConv;
+  ConvolutionNode *singleUseConv;
   NodeValue otherNode;
 
-  if (lhs && lhs->getResult().hasOneUse()) {
+  if (lhs && lhs->getResult().hasOneUse() &&
+      lhs->getFusedActivation() == FusedActivation::NONE) {
     singleUseConv = lhs;
     otherNode = add.getRHS();
-  } else if (rhs && rhs->getResult().hasOneUse()) {
+  } else if (rhs && rhs->getResult().hasOneUse() &&
+             rhs->getFusedActivation() == FusedActivation::NONE) {
     singleUseConv = rhs;
     otherNode = add.getLHS();
   } else {
@@ -1438,8 +1443,8 @@ bool HabanaBackend::transformPostLowering(Function *F,
 
     // Fuse Convolution followed by relu.
     if (auto *relu = llvm::dyn_cast<ReluNode>(&node)) {
-      if (auto *conv = llvm::dyn_cast<HabanaConvolutionNode>(
-              relu->getInput().getNode())) {
+      if (auto *conv =
+              llvm::dyn_cast<ConvolutionNode>(relu->getInput().getNode())) {
         changed |= fuseConvRelu(F, *conv, *relu);
         continue;
       } else if (auto *convAdd = llvm::dyn_cast<HabanaConvolutionAddNode>(
@@ -1475,16 +1480,19 @@ bool HabanaBackend::transformPostLowering(Function *F,
       }
     }
 
-    // Replace Conv with HabanaConv for better control over code generation.
+    // Transpose filter into order expected by Habana backend (HWCN)
     if (auto *conv = llvm::dyn_cast<ConvolutionNode>(&node)) {
-      // Transpose filter into order expected by Habana backend (HWCN)
+      if (conv->hasFusedActivation()) {
+        continue;
+      }
       auto *TF =
           F->createTranspose((conv->getName()).str() + ".filter.transpose",
                              conv->getFilter(), {1, 2, 3, 0});
-      auto *NC = F->addNode(new HabanaConvolutionNode(
+      auto *NC = F->addNode(new ConvolutionNode(
           conv->getName(), conv->getResult().getType(), conv->getInput(), TF,
           conv->getBias(), conv->getKernels(), conv->getStrides(),
-          conv->getPads(), conv->getGroup(), /*doRelu=*/false));
+          conv->getPads(), conv->getGroup(), conv->getDilation(),
+          conv->getLayout(), conv->getFusedActivation()));
       conv->getResult().replaceAllUsesOfWith(NC);
       changed = true;
       continue;

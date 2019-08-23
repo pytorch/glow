@@ -22,39 +22,75 @@
 
 namespace glow {
 
-llvm::Error CachingGraphRunner::runGraph(const torch::jit::Node *node,
-                                         torch::jit::Stack &stack) {
-  // If this is the first time this subgraph has been run then create a new
-  // GraphInfo object to store information about it.
+namespace {
+/// Returns a hash that represents a given PT subgraph represented by the PT
+/// node \p node and a set of tensor shape inputs to that subgraph from the \p
+/// stack.
+size_t getGraphHash(const torch::jit::Node *node,
+                    const torch::jit::Stack &stack) {
+  // TODO: Actually hash this using the node, stack values and shapes, etc.
+  // TODO: Remove cached graphs when corresponding JIT node is destroyed.
+  return reinterpret_cast<size_t>(node);
+}
 
+} // namespace
+
+llvm::Expected<CachingGraphRunner::PerGlowGraphInfo *>
+CachingGraphRunner::loadGraphImpl(const torch::jit::Node *node,
+                                  torch::jit::Stack &stack) {
   const std::shared_ptr<torch::jit::Graph> graph = node->g(at::attr::Subgraph);
-  const auto &graphInputs = graph->inputs();
-  const auto numInputs = graphInputs.size();
-  auto inputs = torch::jit::last(stack, numInputs);
-  const char *const functionName = "PyTorchFunction";
+  RETURN_ERR_IF_NOT(graph, "A subgraph couldn't be found for this node");
 
-  glow::Function *f = nullptr;
-  // Discard compiled function.
-  executionEngine_.setBackendName(executionEngine_.getBackendName());
-  auto &mod = executionEngine_.getModule();
-  f = mod.createFunction(functionName);
-  std::vector<glow::Placeholder *> inputPlaceholders;
-  std::vector<glow::Placeholder *> outputPlaceholders;
+  const auto &graphInputs = graph->inputs();
+  auto inputs = torch::jit::last(stack, graphInputs.size());
+
+  size_t hash = getGraphHash(node, stack);
+
+  // If we already have a Glow function compiled for this graph with and the
+  // given inputs then use that.
+  auto it = perGlowGraphInfoMap.find(hash);
+  if (it != perGlowGraphInfoMap.end()) {
+    return it->second.get();
+  }
+
+  auto info = llvm::make_unique<PerGlowGraphInfo>();
+  info->functionName = strFormat("PTFunction%lu", hash);
+  info->node = node;
+
+  std::unique_ptr<Module> module = llvm::make_unique<Module>();
+  Function *f = module->createFunction(info->functionName);
 
   RETURN_IF_ERR(PyTorchModelLoader::loadJITGraph(
-      *f, *graph, inputs, inputPlaceholders, outputPlaceholders,
+      *f, *graph, inputs, info->inputPlaceholders, info->outputPlaceholders,
       getPyTorchLoaderSettings()));
 
-  glow::PlaceholderBindings bindings;
-  for (size_t i = 0; i < inputs.size(); ++i) {
-    glow::Placeholder *ph = inputPlaceholders[i];
+  glow::CompilationContext cctx;
+
+  RETURN_IF_ERR(hostManager_->addNetwork(std::move(module), cctx));
+
+  perGlowGraphInfoMap[hash] = std::move(info);
+
+  return perGlowGraphInfoMap[hash].get();
+}
+
+llvm::Error CachingGraphRunner::runGraphImpl(const PerGlowGraphInfo &info,
+                                             torch::jit::Stack &stack) {
+  size_t numInputs = info.inputPlaceholders.size();
+
+  auto inputs = torch::jit::last(stack, numInputs);
+
+  std::unique_ptr<ExecutionContext> ctx = llvm::make_unique<ExecutionContext>();
+  auto *bindings = ctx->getPlaceholderBindings();
+
+  for (size_t i = 0; i < numInputs; ++i) {
+    glow::Placeholder *ph = info.inputPlaceholders[i];
     glow::TypeRef ty = ph->getType();
     glow::Tensor t(inputs[i].toTensor().data_ptr(), ty);
-    bindings.insert(ph, std::move(t));
+    bindings->insert(ph, std::move(t));
   }
 
   std::vector<at::IValue> outputs;
-  for (auto *ph : outputPlaceholders) {
+  for (auto *ph : info.outputPlaceholders) {
     std::vector<int64_t> sizes;
     for (auto size : ph->dims()) {
       sizes.push_back(static_cast<int64_t>(size));
@@ -65,12 +101,11 @@ llvm::Error CachingGraphRunner::runGraph(const torch::jit::Node *node,
     glow::Tensor t(ptT.data_ptr(), ph->getType());
 
     outputs.push_back(std::move(ptT));
-    bindings.insert(ph, std::move(t));
+    bindings->insert(ph, std::move(t));
   }
 
-  glow::CompilationContext cctx;
-  executionEngine_.compile(cctx);
-  executionEngine_.run(bindings);
+  auto err =
+      hostManager_->runNetworkBlocking(info.functionName, std::move(ctx));
 
   torch::jit::drop(stack, numInputs);
 
@@ -79,7 +114,27 @@ llvm::Error CachingGraphRunner::runGraph(const torch::jit::Node *node,
     stack.push_back(at::IValue(var));
   }
 
-  return llvm::Error::success();
+  return err;
+}
+
+llvm::Error CachingGraphRunner::runGraph(const torch::jit::Node *node,
+                                         torch::jit::Stack &stack) {
+  PerGlowGraphInfo *info;
+  ASSIGN_VALUE_OR_RETURN_ERR(info, loadGraphImpl(node, stack));
+  return runGraphImpl(*DCHECK_NOTNULL(info), stack);
+}
+
+CachingGraphRunner::CachingGraphRunner() {
+  constexpr size_t numGlowDevices = 1;
+
+  std::vector<std::unique_ptr<runtime::DeviceConfig>> deviceConfigs;
+  for (int i = 0; i < numGlowDevices; i++) {
+    deviceConfigs.push_back(llvm::make_unique<runtime::DeviceConfig>(
+        getPyTorchLoaderSettings().glowBackendName));
+  }
+
+  hostManager_ =
+      llvm::make_unique<runtime::HostManager>(std::move(deviceConfigs));
 }
 
 CachingGraphRunner *CachingGraphRunner::getGraphRunner() {
@@ -87,5 +142,4 @@ CachingGraphRunner *CachingGraphRunner::getGraphRunner() {
       std::unique_ptr<CachingGraphRunner>(new CachingGraphRunner());
   return runner_.get();
 }
-
 } // namespace glow

@@ -33,10 +33,10 @@ Node *convertConvToNCHWConv(ConvolutionNode *CN, Function *F) {
   auto outTy = F->getParent()->uniqueTypeWithNewShape(CN->getResult().getType(),
                                                       dimsNCHW);
 
-  auto *NC = F->addNode(
-      new ConvolutionNode(CN->getName(), outTy, NI, NF, CN->getBias(),
-                          CN->getKernels(), CN->getStrides(), CN->getPads(),
-                          CN->getGroup(), CN->getDilation(), NCHW));
+  auto *NC = F->addNode(new ConvolutionNode(
+      CN->getName(), outTy, NI, NF, CN->getBias(), CN->getKernels(),
+      CN->getStrides(), CN->getPads(), CN->getGroup(), CN->getDilation(), NCHW,
+      CN->getFusedActivation()));
   auto *NR = F->createTranspose("conv.result", NC, NCHW2NHWC);
 
   return NR;

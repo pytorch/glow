@@ -316,10 +316,62 @@ llvm::Error HostManager::runNetworkBlocking(llvm::StringRef networkName,
   return std::move(*DCHECK_NOTNULL(runErr.get()));
 }
 
+llvm::Error
+HostManager::runNetworkBlocking(llvm::StringRef networkName,
+                                std::unique_ptr<ExecutionContext> context) {
+  std::promise<void> runPromise;
+  auto fut = runPromise.get_future();
+  std::unique_ptr<llvm::Error> runErr;
+  runNetwork(
+      networkName, std::move(context),
+      [&runPromise, &runErr](runtime::RunIdentifierTy, llvm::Error err,
+                             std::unique_ptr<ExecutionContext> contextPtr) {
+        runErr = llvm::make_unique<llvm::Error>(std::move(err));
+        runPromise.set_value();
+      });
+
+  fut.wait();
+  return std::move(*DCHECK_NOTNULL(runErr.get()));
+}
+
+void HostManager::dispatchNextRun() {
+
+  std::lock_guard<std::mutex> networkLock(networkLock_);
+  if (inferQueue_.size()) {
+    // Get the next request, unfortunately priority_queue only
+    // provides a const ref to the top element, since we need to move
+    // it we first cast it to remove the const.
+    auto request = std::move(const_cast<InferRequest &>(inferQueue_.top()));
+    inferQueue_.pop();
+    executor_->run(
+        networks_[request.networkName].dag.root.get(),
+        std::move(request.context), request.requestID,
+        [this, callback = request.callback, name = request.networkName](
+            RunIdentifierTy runID, llvm::Error err,
+            std::unique_ptr<ExecutionContext> context) {
+          {
+            std::lock_guard<std::mutex> networkLock(networkLock_);
+            auto it = networks_.find(name);
+            if (it != networks_.end()) {
+              it->second.refcount--;
+            }
+          }
+          TRACE_EVENT_INSTANT(context->getTraceContext(), TraceLevel::RUNTIME,
+                              "finish_" + name);
+          callback(runID, std::move(err), std::move(context));
+          dispatchNextRun();
+        });
+  } else {
+    // Decrement the activeRequest counter so new requests can
+    // launched.
+    --activeRequestCount_;
+  }
+}
+
 RunIdentifierTy
 HostManager::runNetwork(llvm::StringRef networkName,
                         std::unique_ptr<ExecutionContext> context,
-                        ResultCBTy callback) {
+                        ResultCBTy callback, uint64_t priority) {
   DCHECK(callback != nullptr);
 
   TRACE_EVENT_SCOPE(context->getTraceContext(), TraceLevel::RUNTIME,
@@ -334,47 +386,43 @@ HostManager::runNetwork(llvm::StringRef networkName,
       network = &it->second;
       network->refcount++;
     }
+
+    if (network == nullptr) {
+      callback(
+          currentRun,
+          MAKE_ERR(GlowErr::ErrorCode::RUNTIME_NET_NOT_FOUND,
+                   llvm::formatv("Function {0} not found", networkName).str()),
+          std::move(context));
+      return currentRun;
+    }
+    // Setup the request
+    InferRequest queuedRequest(networkName, std::move(context), callback,
+                               priority, currentRun);
+    // Put the request in the queue.
+    auto queueSize = inferQueue_.size();
+    if (queueSize >= config_.maxQueueSize) {
+      // The queue is full, return an error.
+      network->refcount--;
+      callback(
+          currentRun,
+          MAKE_ERR(
+              GlowErr::ErrorCode::RUNTIME_REQUEST_REFUSED,
+              strFormat(
+                  "The number of allowed queued requests has been exceeded. "
+                  "queued requests: %lu allowed requests: %zu",
+                  queueSize, config_.maxQueueSize)),
+          std::move(context));
+      return currentRun;
+    }
+    inferQueue_.push(std::move(queuedRequest));
   }
 
-  if (network == nullptr) {
-    callback(
-        currentRun,
-        MAKE_ERR(GlowErr::ErrorCode::RUNTIME_NET_NOT_FOUND,
-                 llvm::formatv("Function {0} not found", networkName).str()),
-        std::move(context));
-    return currentRun;
-  }
-
+  // If we haven't reached maxActiveRequests kick off next request.
   size_t activeRequestCount = activeRequestCount_++;
-  if (activeRequestCount >= config_.maxActiveRequests) {
-    activeRequestCount_--;
-    network->refcount--;
-    callback(
-        currentRun,
-        MAKE_ERR(GlowErr::ErrorCode::RUNTIME_REQUEST_REFUSED,
-                 strFormat("The number of allowed requests has been exceeded. "
-                           "active requests: %lu allowed requests: %zu",
-                           activeRequestCount, config_.maxActiveRequests)),
-        std::move(context));
+  if (activeRequestCount < config_.maxActiveRequests) {
+    dispatchNextRun();
     return currentRun;
   }
-
-  executor_->run(networks_[networkName].dag.root.get(), std::move(context),
-                 currentRun,
-                 [this, callback, name = networkName.str()](
-                     RunIdentifierTy runID, llvm::Error err,
-                     std::unique_ptr<ExecutionContext> context) {
-                   {
-                     std::lock_guard<std::mutex> networkLock(networkLock_);
-                     auto it = networks_.find(name);
-                     if (it != networks_.end()) {
-                       it->second.refcount--;
-                     }
-                   }
-                   TRACE_EVENT_INSTANT(context->getTraceContext(),
-                                       TraceLevel::RUNTIME, "finish_" + name);
-                   callback(runID, std::move(err), std::move(context));
-                   --activeRequestCount_;
-                 });
+  activeRequestCount_--;
   return currentRun;
 }

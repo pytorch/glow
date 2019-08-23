@@ -683,7 +683,8 @@ ConvolutionNode *Function::createConv(
   assertConvDims(input, filter, bias, kernels, strides, pads, group);
   auto OT = getParent()->uniqueType(*outTy);
   return addNode(new ConvolutionNode(name, OT, input, filter, bias, kernels,
-                                     strides, pads, group, dilation, layout));
+                                     strides, pads, group, dilation, layout,
+                                     FusedActivation::NONE));
 }
 
 ConvolutionNode *Function::createConv(llvm::StringRef name, NodeValue input,
@@ -2176,7 +2177,8 @@ ConvolutionNode *Function::createConv(
   auto OT = getParent()->uniqueType(inputTy, outDims);
 
   return addNode(new ConvolutionNode(name, OT, input, filter, bias, kernels,
-                                     strides, pads, group, dilation, layout));
+                                     strides, pads, group, dilation, layout,
+                                     FusedActivation::NONE));
 }
 
 ConvolutionNode *Function::createConv(PlaceholderBindings &bindings,

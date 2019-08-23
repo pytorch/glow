@@ -329,3 +329,26 @@ TEST(GraphAutoGrad, checkGatherGrad3DIndexTest) {
   glow::differentiate(F, TC);
   EE.compile(CompilationMode::Train);
 }
+
+TEST(GraphAutoGrad, checkAdaptiveAvgPoolGradTest) {
+  ExecutionEngine EE;
+  TrainingConfig TC;
+  PlaceholderBindings Bindings;
+
+  auto &Mod = EE.getModule();
+  Function *F = Mod.createFunction("main");
+
+  auto *Data =
+      Mod.createPlaceholder(ElemKind::FloatTy, {1, 8, 4, 1}, "Data", false);
+
+  auto HandleData = Bindings.allocate(Data)->getHandle<float>();
+  HandleData.randomize(-3.0, 3.0, Mod.getPRNG());
+
+  auto outTy = Mod.uniqueType(ElemKind::FloatTy, {1, 3, 3, 1});
+  Node *A = F->createAdaptiveAvgPool("pool", Data, outTy);
+  auto *R = F->createSave("save", A);
+  Bindings.allocate(R->getPlaceholder());
+
+  glow::differentiate(F, TC);
+  EE.compile(CompilationMode::Train);
+}

@@ -93,6 +93,7 @@ Function *glow::differentiate(Function *F, const TrainingConfig &conf,
 
     CONVERT_TO_GRAD_NODE(ConvolutionNode)
     CONVERT_TO_GRAD_NODE(AvgPoolNode)
+    CONVERT_TO_GRAD_NODE(AdaptiveAvgPoolNode)
     CONVERT_TO_GRAD_NODE(FullyConnectedNode)
     CONVERT_TO_GRAD_NODE(LocalResponseNormalizationNode)
     CONVERT_TO_GRAD_NODE(SoftMaxNode)

@@ -24,8 +24,8 @@ target_link_libraries(PyTorchModelLoader
                       PRIVATE
                         torch
                         c10
-                        ExecutionEngine
                         Support
+                        HostManager
                         Graph
                         Importer)
 

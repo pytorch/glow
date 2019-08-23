@@ -96,9 +96,8 @@ void dispatchClassify(unsigned int id, HostManager *hostManager,
                       std::promise<void> &finished) {
   auto runid = hostManager->runNetwork(
       "resnet50" + std::to_string(id), std::move(context),
-      [id, path, &returned,
-       &finished](RunIdentifierTy, llvm::Error err,
-                  std::unique_ptr<ExecutionContext> context) {
+      [path, &returned, &finished](RunIdentifierTy runid, llvm::Error err,
+                                   std::unique_ptr<ExecutionContext> context) {
         EXIT_ON_ERR(std::move(err));
         auto *bindings = context->getPlaceholderBindings();
         size_t maxIdx =
@@ -108,7 +107,7 @@ void dispatchClassify(unsigned int id, HostManager *hostManager,
                 .second;
         // This output is verified by OutputCheck in tests so must be written to
         // stdout.
-        llvm::outs() << "(" << id << ") " << path << ": " << maxIdx << "\n";
+        llvm::outs() << "(" << runid << ") " << path << ": " << maxIdx << "\n";
 
         if (!tracePath.empty()) {
           std::lock_guard<std::mutex> l(eventLock);
