@@ -86,8 +86,8 @@ int main(int argc, char **argv) {
       .addMember(MemberType::VectorUnsigned, "Pads")
       .addMember(MemberType::Unsigned, "Group")
       .addMember(MemberType::Unsigned, "Dilation")
-      .addMember(MemberType::Unsigned, "Layout")
-      .addMember(MemberType::Unsigned, "FusedActivation")
+      .addMember(MEMBER_TYPE_INFO(ConvolutionLayout), "Layout")
+      .addMember(MEMBER_TYPE_INFO(FusedActivation), "FusedActivation")
       .autoIRGen()
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Src", "Filter"})
       .addGradientInstr({"Src", "Filter"}, {"Dest", "Src", "Filter", "Bias"});

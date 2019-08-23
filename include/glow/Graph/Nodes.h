@@ -209,6 +209,11 @@ enum ConvolutionLayout { NHWC = 0, NCHW };
 /// Activations fused into ConvolutionNode (not supported on all backends).
 enum FusedActivation { NONE = 0, RELU, TANH, SIGMOID };
 
+/// Define output operators.
+llvm::raw_ostream &operator<<(llvm::raw_ostream &os, ConvolutionLayout layout);
+llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
+                              FusedActivation fusedActivation);
+
 /// Support for hashing the Nodes. This is required for using
 /// llvm::hash_combine.
 class Node;
