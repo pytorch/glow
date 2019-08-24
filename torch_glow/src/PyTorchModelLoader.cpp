@@ -599,11 +599,9 @@ llvm::Expected<glow::Handle<T>> PyTorchModelLoader::getGlowConstantHandle(
 }
 
 llvm::Expected<glow::Placeholder *>
-PyTorchModelLoader::loadValue(const torch::jit::Value *value) {
-  RETURN_ERR_IF_NOT(value->isCompleteTensor(),
-                    glow::strFormat("Value %s must have CompleteTensor type.",
-                                    value->debugNameBase().c_str()));
-  auto glowType = ptTypeToGlowType(*value->type()->expect<at::TensorType>());
+PyTorchModelLoader::loadValue(const torch::jit::Value *value,
+                              const c10::TensorType &ptTensorType) {
+  auto glowType = ptTypeToGlowType(ptTensorType);
   glow::Placeholder *ph = F_.getParent()->createPlaceholder(
       &glowType, "input", /*isTrainable*/ false);
   RETURN_IF_ERR(addGlowNodeValue(value, ph->getOutput()));
@@ -1503,43 +1501,43 @@ PyTorchModelLoader::createGlowConstantFromIValue(
 
 /*static*/
 llvm::Error PyTorchModelLoader::loadJITGraph(
-    glow::Function &F, torch::jit::Graph &subgraph,
-    at::ArrayRef<torch::jit::IValue> &inputs,
+    glow::Function &F, const torch::jit::Graph &graph,
+    const at::ArrayRef<torch::jit::IValue> &inputs,
     std::vector<glow::Placeholder *> &inputPlaceholders,
     std::vector<glow::Placeholder *> &outputPlaceholders,
     const PyTorchLoaderSettings &settings) {
   llvm::Error error = llvm::Error::success();
   MARK_ERR_CHECKED(error);
-  PyTorchModelLoader loader(F, subgraph, inputs, inputPlaceholders,
+  PyTorchModelLoader loader(F, graph, inputs, inputPlaceholders,
                             outputPlaceholders, error, settings,
                             /*frozenInputIndices*/ nullptr);
   return error;
 }
 
 PyTorchModelLoader::PyTorchModelLoader(
-    glow::Function &F, torch::jit::Graph &subgraph,
-    at::ArrayRef<torch::jit::IValue> &inputs,
+    glow::Function &F, const torch::jit::Graph &graph,
+    const at::ArrayRef<torch::jit::IValue> &inputs,
     std::vector<glow::Placeholder *> &inputPlaceholders,
     std::vector<glow::Placeholder *> &outputPlaceholders, llvm::Error &error,
     const PyTorchLoaderSettings &settings, std::set<size_t> *frozenInputIndices)
     : F_(F), inputs_(inputs), frozenInputIndices_(frozenInputIndices) {
-  auto subgraphInputValues = subgraph.inputs();
+  auto graphInputValues = graph.inputs();
 
-  if (inputs.size() != subgraphInputValues.size()) {
+  if (inputs.size() != graphInputValues.size()) {
     error =
         MAKE_ERR(glow::strFormat("Number of Graph inputs %lu must match the "
                                  "number of provided inputs %lu.",
-                                 subgraphInputValues.size(), inputs.size()));
+                                 graphInputValues.size(), inputs.size()));
     return;
   }
 
-  for (size_t i = 0; i < subgraphInputValues.size(); ++i) {
-    torch::jit::Value *inputValue = subgraphInputValues[i];
+  for (size_t i = 0; i < graphInputValues.size(); ++i) {
+    const torch::jit::Value *inputValue = graphInputValues[i];
     const c10::IValue inputIValue = inputs.at(i);
     if (inputIValue.isTensor()) {
-      inputValue->inferTypeFrom(inputIValue.toTensor());
+      const auto ptTensorType = c10::TensorType::create(inputIValue.toTensor());
       glow::Placeholder *PH;
-      if (auto resOrErr = loadValue(inputValue)) {
+      if (auto resOrErr = loadValue(inputValue, *ptTensorType)) {
         PH = std::move(*resOrErr);
       } else {
         error = resOrErr.takeError();
@@ -1547,19 +1545,23 @@ PyTorchModelLoader::PyTorchModelLoader(
       }
       inputPlaceholders.push_back(PH);
       inputPlaceholdersReverseIndex_[PH] = i;
+    } else {
+      error = MAKE_ERR(
+          glow::strFormat("Only tensor input values are supported right now."));
+      return;
     }
   }
 
   bool weightFreezingEnabled = settings.weightFreezingEnabled;
 
   // Nodes are topologically sorted.
-  for (auto node : subgraph.nodes()) {
+  for (auto node : graph.nodes()) {
     if ((error = loadNode(node, weightFreezingEnabled))) {
       return;
     }
   }
 
-  for (torch::jit::Value *output : subgraph.outputs()) {
+  for (const torch::jit::Value *output : graph.outputs()) {
     glow::NodeValue outputNodeValue;
     if (auto resOrErr = getGlowNodeValue(output)) {
       outputNodeValue = std::move(*resOrErr);

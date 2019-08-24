@@ -25,7 +25,7 @@
 
 namespace glow {
 
-/// Loads PyTorch JIT IR subgraphs as a Glow Function.
+/// Loads PyTorch JIT IR graphs as a Glow Function.
 class PyTorchModelLoader {
   /// Glow Function created outside this class.
   glow::Function &F_;
@@ -36,7 +36,7 @@ class PyTorchModelLoader {
 
   /// The reference PyTorch inputs used for loading. This is required for shape
   /// information.
-  at::ArrayRef<torch::jit::IValue> &inputs_;
+  const at::ArrayRef<torch::jit::IValue> &inputs_;
 
   /// Mapping from PyTorch Values to Glow NodeValues created during loading.
   using ValueMap =
@@ -110,27 +110,27 @@ public:
   /// Glow::ElemKind.
   static glow::ElemKind convertScalarType(c10::ScalarType ty);
 
-  /// Takes a glow::Function \p F, a jit::Graph \p subgraph to load, and a
-  /// stack of \p inputs for the subgraph to be loaded. Parameter \p
+  /// Takes a glow::Function \p F, a jit::Graph \p graph to load, and a
+  /// stack of \p inputs for the graph to be loaded. Parameter \p
   /// settings control the fusion details. Output parameters \p
   /// inputPlaceholders and \p outputPlaceholders are filled out. \returns
   /// error on failure.
   static llvm::Error
-  loadJITGraph(glow::Function &F, torch::jit::Graph &subgraph,
-               at::ArrayRef<torch::jit::IValue> &inputs,
+  loadJITGraph(glow::Function &F, const torch::jit::Graph &graph,
+               const at::ArrayRef<torch::jit::IValue> &inputs,
                std::vector<glow::Placeholder *> &inputPlaceholders,
                std::vector<glow::Placeholder *> &outputPlaceholders,
                const PyTorchLoaderSettings &settings);
 
 private:
-  /// Takes a glow::Function \p F, a jit::Graph \p subgraph to load, and a
-  /// stack of \p inputs for the subgraph to be loaded. Parameter \p settings
+  /// Takes a glow::Function \p F, a jit::Graph \p graph to load, and a
+  /// stack of \p inputs for the graph to be loaded. Parameter \p settings
   /// control the fusion details. Output parameters \p inputPlaceholders and
   /// \p outputPlaceholders are filled out. \p frozenInputIndices is an optional
   /// parameter that, if provided, will be filled with the set of stack indices
   /// that were frozen during loading.
-  PyTorchModelLoader(glow::Function &F, torch::jit::Graph &subgraph,
-                     at::ArrayRef<torch::jit::IValue> &inputs,
+  PyTorchModelLoader(glow::Function &F, const torch::jit::Graph &graph,
+                     const at::ArrayRef<torch::jit::IValue> &inputs,
                      std::vector<glow::Placeholder *> &inputPlaceholders,
                      std::vector<glow::Placeholder *> &outputPlaceholders,
                      llvm::Error &error, const PyTorchLoaderSettings &settings,
@@ -176,8 +176,8 @@ private:
 
   /// Creates and \returns a new Glow Placeholder corresponding to the given
   /// PyTorch Value \p value.
-  llvm::Expected<glow::Placeholder *> loadValue(const torch::jit::Value *value);
-
+  llvm::Expected<glow::Placeholder *>
+  loadValue(const torch::jit::Value *value, const at::TensorType &ptTensorType);
   /// Load a given PyTorch Node \p ptNode. If \p weightFreezingEnabled then
   /// load inputs that have been marked as constInputs in
   /// MappingOfMemberFunctions as Constants instead of as Placeholders. \returns
