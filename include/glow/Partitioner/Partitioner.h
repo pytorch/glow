@@ -78,9 +78,11 @@ class Partitioner final : public PartitionerBase {
   /// Initialization. Called in class constructor.
   void init();
 
-  /// Verify the generated functions in module, and dump partition logs from \p
-  /// partitions and \p mapping.
-  void finalize(const DAGListTy &partitions, const NodeToFunctionMap &mapping);
+  /// Verify the generated functions in module, and \returns error if any
+  /// function is invalid. Dump partition logs from \p partitions and \p
+  /// mapping.
+  llvm::Error finalize(const DAGListTy &partitions,
+                       const NodeToFunctionMap &mapping);
 
   /// After getting the initial partitions, adjust the partitions to minimize
   /// communication and computation cost.
