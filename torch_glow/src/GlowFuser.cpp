@@ -65,21 +65,25 @@ c10::optional<torch::jit::Node *> tryMerge(torch::jit::Node *consumer,
 
   std::string symbol_name_producer = producer->kind().toQualString();
   std::string symbol_name_consumer = consumer->kind().toQualString();
-  REQ(canMerge(producer, fn) || isLogIgnoredOp(symbol_name_producer),
-      "Detected unknown node: " + symbol_name_producer + ".\n")
-  REQ(consumer->kind() == kind || canMerge(consumer, fn) ||
-          isLogIgnoredOp(symbol_name_consumer),
-      "Detected unknown node: " + symbol_name_consumer + ".\n")
+  isLogIgnoredOp(symbol_name_producer),
+      REQ(canMerge(producer, fn),
+          isLogIgnoredOp(symbol_name_producer)
+              ? ""
+              : "Detected unknown node: " + symbol_name_producer + ".\n")
+          REQ(consumer->kind() == kind || canMerge(consumer, fn),
+              isLogIgnoredOp(symbol_name_consumer)
+                  ? ""
+                  : "Detected unknown node: " + symbol_name_consumer + ".\n")
 
-  // Alias checks
-  // Requirement:
-  // - moveAfterTopologicallyValid(consumer, producer)
-  // - One of:
-  //   1) Both are in-place ops
-  //   2) Consumer is in-place, producer !hasInputWriters
-  //   3) Producer is in-place, consumer !hasOutputWriters
-  REQ(aliasDb.moveAfterTopologicallyValid(consumer, producer),
-      "Unable to move after topologically valid.");
+      // Alias checks
+      // Requirement:
+      // - moveAfterTopologicallyValid(consumer, producer)
+      // - One of:
+      //   1) Both are in-place ops
+      //   2) Consumer is in-place, producer !hasInputWriters
+      //   3) Producer is in-place, consumer !hasOutputWriters
+      REQ(aliasDb.moveAfterTopologicallyValid(consumer, producer),
+          "Unable to move after topologically valid.");
 
   // 1)
   if (!(aliasDb.isMutable(consumer) && aliasDb.isMutable(producer))) {
