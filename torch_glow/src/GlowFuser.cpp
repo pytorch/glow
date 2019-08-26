@@ -47,7 +47,7 @@ bool canMerge(torch::jit::Node *node, isSupportFunc fn) {
 
 #define REQ(cond, log_info)                                                    \
   if (!(cond)) {                                                               \
-    DLOG(ERROR) << log_info;                                                   \
+    DLOG(ERROR) << (log_info);                                                 \
     return c10::nullopt;                                                       \
   }
 
