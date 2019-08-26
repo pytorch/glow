@@ -500,6 +500,8 @@ public:
       return isEqualImpl<uint8_t>(other, allowedError, verbose);
     case ElemKind::UInt8FusedFP16QTy:
       return isEqualImpl<uint8_t>(other, allowedError, verbose);
+    case ElemKind::UInt4FusedFP16QTy:
+      return isEqualImpl<uint8_t>(other, allowedError, verbose);
     case ElemKind::BoolTy:
       return isEqualImpl<bool>(other, allowedError, verbose);
     }
