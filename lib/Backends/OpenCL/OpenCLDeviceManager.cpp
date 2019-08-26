@@ -237,6 +237,7 @@ llvm::Error OpenCLDeviceManager::init() {
   commandQueuePool_.setDevice(deviceId_);
 
   Stats()->incrementCounter(kDevicesUsedOpenCL);
+  exportMemoryCounters();
   return llvm::Error::success();
 }
 
@@ -244,6 +245,7 @@ OpenCLDeviceManager::~OpenCLDeviceManager() {
   clReleaseContext(context_);
   buffers_.clear();
   Stats()->incrementCounter(kDevicesUsedOpenCL, -1);
+  zeroMemoryCounters();
 }
 
 uint64_t OpenCLDeviceManager::getMaximumMemory() const {
@@ -364,6 +366,10 @@ void OpenCLDeviceManager::addNetworkImpl(const Module *module,
     DCHECK_LE(usedMemoryBytes_, maxMemoryBytes_);
     clReleaseCommandQueue(commands);
   }
+
+  // Export change in memory usage.
+  exportMemoryCounters();
+
   // Fire the ready CB.
   readyCB(module, llvm::Error::success());
 }
@@ -388,6 +394,7 @@ void OpenCLDeviceManager::evictNetworkImpl(std::string functionName,
                                functionName.c_str())));
     return;
   }
+  exportMemoryCounters();
   evictCB(functionName, llvm::Error::success());
 }
 

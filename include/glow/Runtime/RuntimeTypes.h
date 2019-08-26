@@ -144,6 +144,8 @@ struct DeviceConfig {
   const std::string backendName;
   /// A human readable name to identify the device.
   std::string name;
+  /// A runtime assigned id for the device. This is used for stats reporting.
+  unsigned deviceID{0};
   /// Device memory size in bytes.
   uint64_t deviceMemory = 0;
   /// A map of configuration parameters.

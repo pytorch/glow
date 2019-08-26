@@ -20,8 +20,10 @@
 #include "glow/ExecutionContext/ExecutionContext.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Runtime/RuntimeTypes.h"
+#include "glow/Runtime/StatsExporter.h"
 #include "glow/Support/Error.h"
 
+#include <atomic>
 #include <functional>
 #include <map>
 #include <string>
@@ -46,8 +48,39 @@ protected:
   /// Configuration object for the device.
   DeviceConfig config_;
 
+  /// String for logging available memory for the device.
+  const std::string availableMemoryKey_{"glow.device.available_memory.device"};
+
+  /// String for logging used memory for the device.
+  const std::string usedMemoryKey_{"glow.device.used_memory.device"};
+
+  /// Maximum available memory on the device.
+  std::atomic<uint64_t> maxMemoryBytes_{0};
+
+  /// Amount of memory used by all models.
+  std::atomic<uint64_t> usedMemoryBytes_{0};
+
+  /// Helper method to export memory usage counters.
+  void exportMemoryCounters() {
+    Stats()->setCounter(availableMemoryKey_,
+                        maxMemoryBytes_ - usedMemoryBytes_);
+    Stats()->setCounter(usedMemoryKey_, usedMemoryBytes_);
+  }
+
+  /// Helper method to zero out memory counters, used when a device is freed.
+  void zeroMemoryCounters() {
+    Stats()->setCounter(availableMemoryKey_, 0);
+    Stats()->setCounter(usedMemoryKey_, 0);
+  }
+
 public:
-  DeviceManager(const DeviceConfig &config) : config_(config) {}
+  DeviceManager(const DeviceConfig &config)
+      : config_(config),
+        availableMemoryKey_("glow.device.available_memory.device" +
+                            std::to_string(config_.deviceID)),
+        usedMemoryKey_("glow.device.used_memory.device" +
+                       std::to_string(config_.deviceID)),
+        maxMemoryBytes_(config_.getDeviceMemory(2000000000)) {}
   virtual ~DeviceManager() {}
 
   /// Create a device manager based on the device config \p config.

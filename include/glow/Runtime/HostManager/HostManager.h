@@ -116,6 +116,18 @@ class HostManager final {
   /// onto the devices.
   std::unique_ptr<Provisioner> provisioner_;
 
+  /// String const for logging total device memory usage.
+  static constexpr const char *kDeviceMemoryUsed =
+      "glow.devices.used_memory.total";
+
+  /// String const for logging total available device memory.
+  static constexpr const char *kDeviceMemoryAvailable =
+      "glow.devices.available_memory.total";
+
+  /// String const for logging total maximum device memory.
+  static constexpr const char *kDeviceMemoryMax =
+      "glow.devices.maximum_memory.total";
+
   /// Helper function to handle cleanup if an error occurs during addNetwork.
   /// This must be called while holding the a lock on networkLock_.
   void cleanupAddNetwork(llvm::ArrayRef<std::string> names);
@@ -125,6 +137,9 @@ class HostManager final {
 
   /// Method to dispatch a new run to the executor.
   void dispatchNextRun();
+
+  /// Method to calculate and export aggregate memory usage counters.
+  void exportMemoryCounters();
 
 public:
   /// Default constructor.

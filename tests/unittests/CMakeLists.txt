@@ -465,6 +465,7 @@ target_link_libraries(StatsExporterTest
                       PRIVATE
                         Backends
                         Runtime
+                        HostManager
                         gtest
                         TestMain
                         glog::glog)

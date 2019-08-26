@@ -106,6 +106,8 @@ void InterpreterDeviceManager::addNetworkImpl(const Module *module,
 
   assert(usedMemoryBytes_ <= maxMemoryBytes_);
 
+  // Export changes to memory use.
+  exportMemoryCounters();
   // Fire the ready CB.
   readyCB(module, llvm::Error::success());
 }
@@ -123,6 +125,7 @@ void InterpreterDeviceManager::evictNetworkImpl(std::string functionName,
                                functionName.c_str())));
     return;
   }
+  exportMemoryCounters();
   evictCB(functionName, llvm::Error::success());
 }
 
