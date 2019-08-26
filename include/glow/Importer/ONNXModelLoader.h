@@ -95,6 +95,10 @@ class ONNXModelLoader
   llvm::Error loadUnsqueeze(const ONNX_NAMESPACE::NodeProto &op,
                             const ArgumentDictionaryTy &dict);
 
+  /// Load ArgMax ONNX operator.
+  llvm::Error loadArgMax(const ONNX_NAMESPACE::NodeProto &op,
+                         const ArgumentDictionaryTy &dict);
+
   /// Load BatchNormalization ONNX operator.
   llvm::Error loadBatchNormalization(const ONNX_NAMESPACE::NodeProto &op,
                                      const ArgumentDictionaryTy &dict);

@@ -2296,6 +2296,87 @@ TEST(onnx, topK) {
       checkConstFoldedOutput(netFilename, {"scores"}, {&x}, {outputT, indexT}));
 }
 
+TEST(onnx, argMaxKeepDim) {
+  ExecutionEngine EE;
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/ArgMaxKeepDim.onnxtxt");
+
+  PlaceholderBindings bindings;
+  Placeholder *argmaxPH;
+  {
+    Tensor inT(ElemKind::FloatTy, {2, 3, 4, 5});
+
+    ONNXModelLoader onnxLD(netFilename, {"input"}, {&inT.getType()}, *F);
+    argmaxPH = EXIT_ON_ERR(onnxLD.getOutputByName("argmax_scores"));
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod, {"input"}, {&inT});
+  }
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  auto argmax = bindings.get(argmaxPH)->getHandle<int64_t>();
+  std::vector<size_t> expectedDims = {2, 3, 1, 5};
+  EXPECT_TRUE(argmax.dims().vec() == expectedDims);
+}
+
+TEST(onnx, argMaxNoKeepDim) {
+  ExecutionEngine EE;
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/ArgMaxNoKeepDim.onnxtxt");
+
+  PlaceholderBindings bindings;
+  Placeholder *argmaxPH;
+  {
+    Tensor inT(ElemKind::FloatTy, {2, 3, 4, 5});
+
+    ONNXModelLoader onnxLD(netFilename, {"input"}, {&inT.getType()}, *F);
+    argmaxPH = EXIT_ON_ERR(onnxLD.getOutputByName("argmax_scores"));
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod, {"input"}, {&inT});
+  }
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  auto argmax = bindings.get(argmaxPH)->getHandle<int64_t>();
+  std::vector<size_t> expectedDims = {2, 4, 5};
+  EXPECT_TRUE(argmax.dims().vec() == expectedDims);
+}
+
+TEST(onnx, argMaxDefault) {
+  ExecutionEngine EE;
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/ArgMaxDefault.onnxtxt");
+
+  PlaceholderBindings bindings;
+  Placeholder *argmaxPH;
+  {
+    Tensor inT(ElemKind::FloatTy, {2, 3, 4, 5});
+
+    ONNXModelLoader onnxLD(netFilename, {"input"}, {&inT.getType()}, *F);
+    argmaxPH = EXIT_ON_ERR(onnxLD.getOutputByName("argmax_scores"));
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod, {"input"}, {&inT});
+  }
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  auto argmax = bindings.get(argmaxPH)->getHandle<int64_t>();
+  std::vector<size_t> expectedDims = {1, 3, 4, 5};
+  EXPECT_TRUE(argmax.dims().vec() == expectedDims);
+}
+
 TEST(onnx, importMaxPoolWithArgmax) {
   ExecutionEngine EE;
   auto &mod = EE.getModule();

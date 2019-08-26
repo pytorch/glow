@@ -2267,6 +2267,92 @@ TEST_P(OperatorTest, TopK) {
   EXPECT_EQ(I.at({2, 0, 2}), 3);
 }
 
+template <typename DataType>
+static void testArgMaxKeepDim(glow::PlaceholderBindings &bindings,
+                              glow::Module &mod, glow::Function *F,
+                              glow::ExecutionEngine &EE, ElemKind DTy) {
+  auto *input = createPlaceholderConditionallyQuantized(mod, DTy, {2, 3, 2, 2},
+                                                        "input", false);
+  auto *argmax =
+      mod.createPlaceholder(ElemKind::Int64ITy, {1, 3, 2, 2}, "argmax", false);
+
+  bindings.allocate(input)->getHandle<DataType>() = {
+      11, 24, 33, 41, 15, 26, 37, 48, 12, 28, 31, 42,
+      13, 24, 35, 46, 12, 28, 39, 40, 11, 22, 33, 47};
+  bindings.allocate(argmax);
+
+  auto *AM = F->createArgMax("argmax", input, 0, true);
+  F->createSave("save.argmax", AM, argmax);
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  auto I = bindings.get(argmax)->getHandle<int64_t>();
+  EXPECT_EQ(I.raw(0), 1);
+  EXPECT_EQ(I.raw(1), 0);
+  EXPECT_EQ(I.raw(2), 1);
+  EXPECT_EQ(I.raw(3), 1);
+  EXPECT_EQ(I.raw(4), 0);
+  EXPECT_EQ(I.raw(5), 1);
+  EXPECT_EQ(I.raw(6), 1);
+  EXPECT_EQ(I.raw(7), 0);
+  EXPECT_EQ(I.raw(8), 0);
+  EXPECT_EQ(I.raw(9), 0);
+  EXPECT_EQ(I.raw(10), 1);
+  EXPECT_EQ(I.raw(11), 1);
+}
+
+TEST_P(OperatorTest, FloatArgMaxKeepDim) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  testArgMaxKeepDim<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy);
+}
+
+TEST_P(OperatorTest, QuantizedArgMaxKeepDim) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  testArgMaxKeepDim<int8_t>(bindings_, mod_, F_, EE_, ElemKind::Int8QTy);
+}
+
+template <typename DataType>
+static void testArgMaxNoKeepDim(glow::PlaceholderBindings &bindings,
+                                glow::Module &mod, glow::Function *F,
+                                glow::ExecutionEngine &EE, ElemKind DTy) {
+  auto *input = createPlaceholderConditionallyQuantized(mod, DTy, {2, 3, 2, 2},
+                                                        "input", false);
+  auto *argmax =
+      mod.createPlaceholder(ElemKind::Int64ITy, {2, 2, 2}, "argmax", false);
+
+  bindings.allocate(input)->getHandle<DataType>() = {
+      11, 24, 33, 41, 15, 26, 37, 48, 12, 28, 31, 42,
+      13, 24, 35, 46, 12, 28, 39, 40, 11, 22, 33, 47};
+  bindings.allocate(argmax);
+
+  auto *AM = F->createArgMax("argmax", input, 1, false);
+  F->createSave("save.argmax", AM, argmax);
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  auto I = bindings.get(argmax)->getHandle<int64_t>();
+  EXPECT_EQ(I.raw(0), 1);
+  EXPECT_EQ(I.raw(1), 2);
+  EXPECT_EQ(I.raw(2), 1);
+  EXPECT_EQ(I.raw(3), 1);
+  EXPECT_EQ(I.raw(4), 0);
+  EXPECT_EQ(I.raw(5), 1);
+  EXPECT_EQ(I.raw(6), 1);
+  EXPECT_EQ(I.raw(7), 2);
+}
+
+TEST_P(OperatorTest, FloatArgMaxNoKeepDim) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  testArgMaxNoKeepDim<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy);
+}
+
+TEST_P(OperatorTest, QuantizedArgMaxNoKeepDim) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  testArgMaxNoKeepDim<int8_t>(bindings_, mod_, F_, EE_, ElemKind::Int8QTy);
+}
+
 // Check that concatenating Nodes with multiple outputs works correctly.
 TEST_P(OperatorTest, ConcatTopK) {
   ENABLED_BACKENDS(Interpreter, CPU);

@@ -144,6 +144,14 @@ int main(int argc, char **argv) {
           "index corresponding to respective max element. Supported layouts "
           "are defined in the ConvolutionLayout enum: NHWC and NCHW.");
 
+  BB.newNode("ArgMax")
+      .addInput("Input")
+      .addMember(MemberType::Unsigned, "Axis")
+      .addMember(MemberType::Boolean, "KeepDims")
+      .addResultFromCtorArg("Argmax")
+      .setDocstring("Finds index of a maximum element along Axis."
+                    "If KeepDims is not true, the axis is removed from output");
+
   BB.newNode("AvgPool")
       .addInput("Input")
       .addMember(MemberType::VectorUnsigned, "Kernels")

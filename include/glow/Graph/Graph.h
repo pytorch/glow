@@ -631,6 +631,13 @@ public:
   Node *createChannelShuffle(llvm::StringRef name, NodeValue input,
                              size_t group, size_t kernel);
 
+  /// Computes the indices of the max elements of the input tensor along the
+  /// provided \p axis. The resulted tensor has the same rank as the input if \p
+  /// keepDims equal 1. If \p keepdims equals 0, the resulted tensor has the
+  /// reduced dimension pruned. The type of the output tensor is int64.
+  ArgMaxNode *createArgMax(llvm::StringRef name, NodeValue input,
+                           unsigned_t axis, bool keepDims);
+
   /// Removes single-dimensional entries from the shape of a tensor. The
   /// parameter \p axes is a list of positive integers, indicating the
   /// dimensions to squeeze. Impelmented as a single ReshapeNode. This is the

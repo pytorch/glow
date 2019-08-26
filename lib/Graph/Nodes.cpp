@@ -1340,6 +1340,36 @@ bool TopKNode::verify() const {
   return isValid;
 }
 
+bool ArgMaxNode::verify() const {
+  bool isValid = true;
+
+  // Check input type.
+  isValid &= checkType(getArgmax(),
+                       llvm::ArrayRef<ElemKind>({ElemKind::Int64ITy}), this);
+
+  isValid &= expectCompareTrue("Input must be a 4D tensor",
+                               getInput().dims().size(), size_t(4), this);
+
+  // Check expected output type.
+  bool keepdims = getKeepDims();
+  const unsigned_t axis = getAxis();
+
+  ShapeVector expDstDims;
+  auto srcDim = getInput().dims();
+  for (size_t i = 0; i < srcDim.size(); i++) {
+    if (i == axis) {
+      if (keepdims) {
+        expDstDims.push_back(1);
+      }
+    } else {
+      expDstDims.push_back(srcDim[i]);
+    }
+  }
+  isValid &= expectCompareTrue("Invalid output dims", getArgmax().dims(),
+                               llvm::makeArrayRef(expDstDims), this);
+  return isValid;
+}
+
 bool RowwiseQuantizedFullyConnectedNode::verify() const {
   auto src = getInput();
   auto weights = getWeights();
