@@ -22,7 +22,7 @@
 namespace glow {
 namespace onnxifi {
 
-int32_t GlowNumDevices = 1;
+int32_t GlowNumDevices = 0;
 bool GlowDumpDebugTraces = false;
 bool GlowSaturateHost = false;
 bool GlowFP16 = false;
@@ -45,8 +45,14 @@ static llvm::cl::opt<bool, true> GlowSaturateHostOpt(
 std::unique_ptr<runtime::HostManager>
 HostManagerBackend::createHostManager(llvm::StringRef backendName) {
   std::vector<std::unique_ptr<runtime::DeviceConfig>> configs;
-  for (int i = 0; i < GlowNumDevices; i++) {
-    configs.push_back(llvm::make_unique<runtime::DeviceConfig>(backendName));
+  // If GlowNumDevices is set specify that many devices, otherwise use all
+  // discovered devices.
+  if (GlowNumDevices) {
+    for (int i = 0; i < GlowNumDevices; i++) {
+      configs.push_back(llvm::make_unique<runtime::DeviceConfig>(backendName));
+    }
+  } else {
+    configs = runtime::DeviceManager::generateDeviceConfigs(backendName);
   }
   return llvm::make_unique<runtime::HostManager>(std::move(configs));
 }
