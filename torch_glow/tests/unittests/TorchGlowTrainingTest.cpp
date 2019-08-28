@@ -23,7 +23,7 @@
 
 using namespace glow;
 
-TEST(TorchGlowTraining, DISABLED_Test) {
+TEST(TorchGlowTraining, Test) {
   const std::string fileName{GLOW_DATA_PATH
                              "tests/models/pytorchModels/resnet18.pt"};
   TorchGlowTraining trainer;
@@ -31,8 +31,6 @@ TEST(TorchGlowTraining, DISABLED_Test) {
   auto emptyTensor = at::empty({1, 3, 224, 224});
   vec.push_back(torch::autograd::make_variable(emptyTensor));
   TorchGlowTraining::ONNXWriterParameters parameters;
-  PyTorchLoaderSettings settings;
-  settings.weightFreezingEnabled = false;
   TrainingConfig config;
   config.learningRate = 0.01;
   config.momentum = 0.9;
@@ -40,8 +38,8 @@ TEST(TorchGlowTraining, DISABLED_Test) {
   config.batchSize = 1;
 
   // TODO (after full fusion is available)
-  if (errToBool(trainer.init(fileName, vec, "Interpreter", parameters, settings,
-                             config))) {
+  if (errToBool(
+          trainer.init(fileName, vec, "Interpreter", parameters, config))) {
     return;
   }
 

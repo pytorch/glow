@@ -68,15 +68,15 @@ public:
   /// once init() -> repeatedly train() -> repeatedly save().
 
   /// Initializes internal Glow objects from \p modelFile file, uses provided
-  /// \p backend name, ONNX exporter \p parameters, \p inputs, \p settings,
-  /// and training configuration \p config for training algorithm, randomizes
-  /// weights according to the provided \p mode.
+  /// \p backend name, ONNX exporter \p parameters, \p inputs, \p config,
+  /// randomizes weights according to the provided \p mode.
   /// \returns error on failure.
-  llvm::Error
-  init(llvm::StringRef modelFile, std::vector<torch::jit::IValue> &inputs,
-       llvm::StringRef backend, const ONNXWriterParameters &parameters,
-       const PyTorchLoaderSettings &settings, const TrainingConfig &config,
-       RandomizeWeights mode = RandomizeWeights::AUTO);
+  llvm::Error init(llvm::StringRef modelFile,
+                   std::vector<torch::jit::IValue> &inputs,
+                   llvm::StringRef backend,
+                   const ONNXWriterParameters &parameters,
+                   const TrainingConfig &config,
+                   RandomizeWeights mode = RandomizeWeights::AUTO);
 
   /// Trains the loaded model from the provided \p samples and \p labels.
   /// Samples and labels must have the compatible dimensions and types.
@@ -100,7 +100,6 @@ class TorchGlowTrainingWrapper {
   TorchGlowTraining trainer_;
   // Required settings/parameters/configs.
   TorchGlowTraining::ONNXWriterParameters parameters_;
-  PyTorchLoaderSettings settings_;
   TrainingConfig config_;
 
 public:
@@ -118,11 +117,6 @@ public:
   /// Saves Glow model into \p snapshotFile using ONNX format
   /// \returns false on a failure.
   bool save(const std::string &snapshotFile);
-
-  /// Helper functions for assigning settings/parameters/configs.
-  /// Sets PyTorchLoaderSettings.
-  void setPyTorchLoaderSettings(bool enableFusionPass,
-                                bool enableWeightFreezing);
 
   /// Sets ONNXWriterParameters.
   void setONNXWriterParameters(size_t irVersion, size_t opsetVersion);

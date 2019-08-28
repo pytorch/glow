@@ -33,6 +33,9 @@ print("torch location:", os.path.dirname(os.path.realpath(torch.__file__)))
 FILE_DIR = os.path.realpath(os.path.dirname(__file__))
 # Find the top directory with root Makefile, i.e. glow
 TOP_DIR = os.path.realpath(os.path.dirname(FILE_DIR))
+
+os.environ['TOP_DIR'] = TOP_DIR
+
 # Make build directory a subdirectory of FILE_DIR, i.e.
 # glow/build.
 CMAKE_BUILD_DIR = os.path.join(TOP_DIR, 'build')
@@ -63,10 +66,10 @@ parser.add_argument(
     default=False,
     help="Run cmake")
 parser.add_argument(
-    "--debug",
+    "--release",
     action='store_true',
     default=False,
-    help="Compile with debug on")
+    help="Compile with release on")
 parser.add_argument(
     "--cmake_prefix_path",
     type=str,
@@ -125,7 +128,7 @@ class cmake_build(setuptools.Command):
                 '-DBUILD_SHARED_LIBS=OFF',
                 '-DCMAKE_EXPORT_COMPILE_COMMANDS=ON',
                 '-DCMAKE_BUILD_TYPE={}'.format(
-                    'Debug' if args.debug else 'Release'),
+                    'Release' if args.release else 'Debug'),
                 '-DPYTHON_EXECUTABLE={}'.format(sys.executable),
                 # PyTorch cmake args
                 '-DPYTORCH_DIR={}'.format(

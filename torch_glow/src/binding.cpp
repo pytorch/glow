@@ -56,7 +56,6 @@ PYBIND11_MODULE(_torch_glow, m) {
       .def("init", &TorchGlowTrainingWrapper::init)
       .def("train", &TorchGlowTrainingWrapper::train)
       .def("save", &TorchGlowTrainingWrapper::save)
-      .def("settings", &TorchGlowTrainingWrapper::setPyTorchLoaderSettings)
       .def("parameters", &TorchGlowTrainingWrapper::setONNXWriterParameters)
       .def("config", &TorchGlowTrainingWrapper::setTrainingConfig);
 }
