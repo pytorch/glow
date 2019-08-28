@@ -37,8 +37,8 @@ namespace yaml {
 /// point scale which is a power of 2. The code below is a workaround to
 /// overwrite the behavior of the YAML serializer to print all the digits.
 struct FloatWrapper {
-  float _val;
-  FloatWrapper(float val) : _val(val) {}
+  float val_;
+  FloatWrapper(float val) : val_(val) {}
 };
 
 template <> struct ScalarTraits<FloatWrapper> {
@@ -46,7 +46,7 @@ template <> struct ScalarTraits<FloatWrapper> {
                      llvm::raw_ostream &out) {
     // Print number with all the digits and without trailing 0's
     char buffer[200];
-    snprintf(buffer, sizeof(buffer), "%.126f", value._val);
+    snprintf(buffer, sizeof(buffer), "%.126f", value.val_);
     int n = strlen(buffer) - 1;
     while ((n > 0) && (buffer[n] == '0') && (buffer[n - 1] != '.')) {
       buffer[n--] = '\0';
@@ -54,7 +54,7 @@ template <> struct ScalarTraits<FloatWrapper> {
     out << buffer;
   }
   static StringRef input(StringRef scalar, void *ctxt, FloatWrapper &value) {
-    if (to_float(scalar, value._val))
+    if (to_float(scalar, value.val_))
       return StringRef();
     return "invalid floating point number";
   }
@@ -64,16 +64,16 @@ template <> struct ScalarTraits<FloatWrapper> {
 /// Mapping for NodeQuantizationInfo yaml serializer.
 template <> struct MappingTraits<glow::NodeQuantizationInfo> {
   struct FloatNormalized {
-    FloatNormalized(IO &io) : _val(0.0) {}
-    FloatNormalized(IO &, float &val) : _val(val) {}
-    float denormalize(IO &) { return _val._val; }
-    FloatWrapper _val;
+    FloatNormalized(IO &io) : val_(0.0) {}
+    FloatNormalized(IO &, float &val) : val_(val) {}
+    float denormalize(IO &) { return val_.val_; }
+    FloatWrapper val_;
   };
   static void mapping(IO &io, glow::NodeQuantizationInfo &info) {
     MappingNormalization<FloatNormalized, float> scale(
         io, info.tensorQuantizationParams_.scale);
     io.mapRequired("nodeOutputName", info.nodeOutputName_);
-    io.mapRequired("scale", scale->_val);
+    io.mapRequired("scale", scale->val_);
     io.mapRequired("offset", info.tensorQuantizationParams_.offset);
   }
 };

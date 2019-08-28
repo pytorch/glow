@@ -51,8 +51,9 @@ struct QuantizationTransform32To8 {
 
   /// \returns the scaled integer.
   int32_t transform(int32_t input) {
-    // The operation x >> y is rounded down to negative infinity. To get to
-    // round-nearest we add (1 << (shift - 1)) to the value prior to shifting.
+    // The operation x >> post is rounded down to negative infinity. To get to
+    // round-nearest we add (1 << (post - 1)) to the value prior to shifting.
+    // Rounding is performed only when shifting right (pos > 0).
     int rtn = (post > 0) ? (1 << (post - 1)) : 0;
     return ((((input >> pre) * scale) + rtn) >> post) + offset;
   }

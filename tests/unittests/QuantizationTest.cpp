@@ -1365,6 +1365,21 @@ TEST(Quantization, chooseQuantizationSymmetricWithUInt8) {
   EXPECT_NEAR(symmetricParams.scale, 16.0 / 255, 0.001);
 }
 
+/// Verify the SymmetricWithPower2Scale quantization schema.
+static void chooseQuantParamsPower2Scale(float min, float max, ElemKind qTy) {
+  auto quantParams = quantization::chooseQuantizationParams(
+      min, max, quantization::Schema::SymmetricWithPower2Scale, qTy);
+  EXPECT_EQ(quantParams.offset, 0);
+  EXPECT_TRUE(quantization::isFloatPowerOf2(quantParams.scale));
+}
+
+TEST(Quantization, chooseQuantizationSymmetricWithPower2Scale) {
+  chooseQuantParamsPower2Scale(-3.0, 6.0, ElemKind::Int8QTy);
+  chooseQuantParamsPower2Scale(0.0, 6.0, ElemKind::UInt8QTy);
+  chooseQuantParamsPower2Scale(3.0, 6.0, ElemKind::Int16QTy);
+  chooseQuantParamsPower2Scale(-6.0, 0.0, ElemKind::Int32QTy);
+}
+
 /// Check that LRN and Softmax are quantized.
 TEST(Quantization, quantizeSoftmaxAndLRN) {
   ExecutionEngine EE{};
