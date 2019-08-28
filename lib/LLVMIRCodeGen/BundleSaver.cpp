@@ -63,7 +63,7 @@ enum BundleApiType {
 };
 
 namespace {
-llvm::cl::OptionCategory loaderCat("Bundle Options");
+llvm::cl::OptionCategory bundleSaverCat("Bundle Options");
 
 llvm::cl::opt<BundleApiType> bundleApi(
     "bundle-api", llvm::cl::desc("Specify which bundle API to use."),
@@ -71,8 +71,51 @@ llvm::cl::opt<BundleApiType> bundleApi(
     llvm::cl::values(clEnumValN(BundleApiType::Dynamic, "dynamic",
                                 "Dynamic API"),
                      clEnumValN(BundleApiType::Static, "static", "Static API")),
-    llvm::cl::init(BundleApiType::Dynamic), llvm::cl::cat(loaderCat));
+    llvm::cl::init(BundleApiType::Dynamic), llvm::cl::cat(bundleSaverCat));
 } // namespace
+
+/// Header file common definitions for dynamic API.
+static const char *dynamicApiCommonDefines = R"(
+// Type describing a symbol table entry of a generated bundle.
+struct SymbolTableEntry {
+  // Name of a variable.
+  const char *name;
+  // Offset of the variable inside the memory area.
+  uint64_t offset;
+  // The number of elements inside this variable.
+  uint64_t size;
+  // Variable kind: 1 if it is a mutable variable, 0 otherwise.
+  char kind;
+};
+
+// Type describing the config of a generated bundle.
+struct BundleConfig {
+  // Size of the constant weight variables memory area.
+  uint64_t constantWeightVarsMemSize;
+  // Size of the mutable weight variables memory area.
+  uint64_t mutableWeightVarsMemSize;
+  // Size of the activations memory area.
+  uint64_t activationsMemSize;
+  // Alignment to be used for weights and activations.
+  uint64_t alignment;
+  // Number of symbols in the symbol table.
+  uint64_t numSymbols;
+  // Symbol table.
+  const SymbolTableEntry *symbolTable;
+};
+)";
+
+/// Header file common definitions for static API.
+static const char *staticApiCommonDefines = R"(
+// Memory alignment definition with given alignment size
+// for static allocation of memory.
+#define GLOW_MEM_ALIGN(size)  __attribute__((aligned(size)))
+
+// Macro function to get the absolute address of a
+// placeholder using the base address of the mutable
+// weight buffer and placeholder offset definition.
+#define GLOW_GET_ADDR(mutableBaseAddr, placeholderOff)  (((uint8_t*)(mutableBaseAddr)) + placeholderOff)
+)";
 
 /// Utility function to serialize a binary file to text file as a C array.
 static void serializeBinaryToText(llvm::StringRef binFileName,
@@ -166,45 +209,11 @@ void BundleSaver::saveHeader(llvm::StringRef headerFileName) {
       << "//                       Common definitions                       \n"
       << "// ---------------------------------------------------------------\n"
       << "#ifndef " << commonDefine << "\n"
-      << "#define " << commonDefine << "\n\n";
+      << "#define " << commonDefine << "\n";
   if (bundleApi == BundleApiType::Dynamic) {
-    headerFile
-        << "// Type describing a symbol table entry of a generated bundle.\n"
-        << "struct SymbolTableEntry {\n"
-        << "  // Name of a variable.\n"
-        << "  const char *name;\n"
-        << "  // Offset of the variable inside the memory area.\n"
-        << "  uint64_t offset;\n"
-        << "  // The number of elements inside this variable.\n"
-        << "  uint64_t size;\n"
-        << "  // Variable kind: 1 if it is a mutable variable, 0 otherwise.\n"
-        << "  char kind;\n"
-        << "};\n\n"
-        << "// Type describing the config of a generated bundle.\n"
-        << "struct BundleConfig {\n"
-        << "  // Size of the constant weight variables memory area.\n"
-        << "  uint64_t constantWeightVarsMemSize;\n"
-        << "  // Size of the mutable weight variables memory area.\n"
-        << "  uint64_t mutableWeightVarsMemSize;\n"
-        << "  // Size of the activations memory area.\n"
-        << "  uint64_t activationsMemSize;\n"
-        << "  // Alignment to be used for weights and activations.\n"
-        << "  uint64_t alignment;\n"
-        << "  // Number of symbols in the symbol table.\n"
-        << "  uint64_t numSymbols;\n"
-        << "  // Symbol table.\n"
-        << "  const SymbolTableEntry *symbolTable;\n"
-        << "};\n";
+    headerFile << dynamicApiCommonDefines;
   } else {
-    headerFile
-        << "// Memory alignment definition with given alignment size\n"
-        << "// for static allocation of memory.\n"
-        << "#define GLOW_MEM_ALIGN(size)  __attribute__((aligned(size)))\n\n"
-        << "// Macro function to get the absolute address of a\n"
-        << "// placeholder using the base address of the mutable\n"
-        << "// weight buffer and placeholder offset definition.\n"
-        << "#define GLOW_GET_ADDR(mutableBaseAddr, placeholderOff)  "
-        << "(((uint8_t*)(mutableBaseAddr)) + placeholderOff)\n";
+    headerFile << staticApiCommonDefines;
   }
   headerFile << "#endif\n\n";
 
