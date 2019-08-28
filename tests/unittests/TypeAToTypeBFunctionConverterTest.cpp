@@ -15,6 +15,7 @@
  */
 
 #include "glow/Converter/TypeAToTypeBFunctionConverter.h"
+#include "glow/Converter/Float16Converter.h"
 
 #include "glow/Backend/Backend.h"
 #include "glow/ExecutionEngine/ExecutionEngine.h"
@@ -1013,6 +1014,119 @@ TEST_P(AllBackends, convertExistingConversionToNoop) {
 
   EXPECT_EQ(addedConversion->getInput().getNode(), placeholder);
   EXPECT_EQ(placeholder->getElementType(), ElemKind::FloatTy);
+
+  EXPECT_TRUE(F->verify());
+}
+
+/// Test conversion of a FusedRowwiseQuantizedSparseLengthsWeightedSumNode to
+/// FP16, instead of creating it directly.
+TEST_P(AllBackends, convertFRWQSLWS) {
+  Module mod;
+  Function *F = mod.createFunction("test");
+  Tensor data(ElemKind::FloatTy, {3, 1});
+  data.getHandle() = {
+      2.0,
+      -0.5,
+      13,
+  };
+
+  Constant *weights = mod.createConstant(ElemKind::FloatTy, {8}, "weights");
+
+  Placeholder *indices =
+      mod.createPlaceholder(ElemKind::Int64ITy, {8}, "indices",
+                            /* isTrainable */ false);
+  Placeholder *lengths =
+      mod.createPlaceholder(ElemKind::Int32ITy, {4}, "lengths",
+                            /* isTrainable */ false);
+  auto *R = F->createFusedRowwiseQuantizedSparseLengthsWeightedSum(
+      "RQSLWS", data, weights, indices, lengths, ElemKind::FloatTy);
+  SaveNode *S = F->createSave("save", R);
+
+  size_t origSize = F->getNodes().size();
+
+  convertFunctionToFloat16(F, PrecisionConfiguration());
+
+  // Should have added convert nodes for the data, weights, and results.
+  EXPECT_EQ(F->getNodes().size(), origSize + 3);
+
+  auto *convertResult = llvm::dyn_cast<ConvertToNode>(S->getInput());
+  ASSERT_NE(convertResult, nullptr);
+  EXPECT_EQ(convertResult->getResult().getElementType(), ElemKind::FloatTy);
+
+  auto *SLWS =
+      llvm::dyn_cast<FusedRowwiseQuantizedSparseLengthsWeightedSumNode>(
+          convertResult->getInput());
+  ASSERT_NE(SLWS, nullptr);
+  EXPECT_EQ(SLWS->getResult().getElementType(), ElemKind::Float16Ty);
+
+  auto *convertData = llvm::dyn_cast<ConvertToNode>(SLWS->getData());
+  ASSERT_NE(convertData, nullptr);
+  EXPECT_EQ(convertData->getResult().getElementType(),
+            ElemKind::UInt8FusedFP16QTy);
+
+  auto *origData = llvm::dyn_cast<Constant>(convertData->getInput());
+  ASSERT_NE(origData, nullptr);
+  EXPECT_EQ(origData->getOutput().getElementType(), ElemKind::UInt8FusedQTy);
+
+  auto *convertWeights = llvm::dyn_cast<ConvertToNode>(SLWS->getWeights());
+  ASSERT_NE(convertWeights, nullptr);
+  EXPECT_EQ(convertWeights->getResult().getElementType(), ElemKind::Float16Ty);
+
+  auto *origWeights = llvm::dyn_cast<Constant>(convertWeights->getInput());
+  ASSERT_NE(origWeights, nullptr);
+  EXPECT_EQ(origWeights->getOutput().getElementType(), ElemKind::FloatTy);
+  EXPECT_EQ(weights, origWeights);
+
+  EXPECT_TRUE(F->verify());
+}
+
+/// Test skipping conversion of a
+/// FusedRowwiseQuantizedSparseLengthsWeightedSumNode to FP16.
+TEST_P(AllBackends, skipConvertingFRWQSLWS) {
+  Module mod;
+  Function *F = mod.createFunction("test");
+  Tensor data(ElemKind::FloatTy, {3, 1});
+  data.getHandle() = {
+      2.0,
+      -0.5,
+      13,
+  };
+
+  Constant *weights = mod.createConstant(ElemKind::FloatTy, {8}, "weights");
+
+  Placeholder *indices =
+      mod.createPlaceholder(ElemKind::Int64ITy, {8}, "indices",
+                            /* isTrainable */ false);
+  Placeholder *lengths =
+      mod.createPlaceholder(ElemKind::Int32ITy, {4}, "lengths",
+                            /* isTrainable */ false);
+  auto *R = F->createFusedRowwiseQuantizedSparseLengthsWeightedSum(
+      "RQSLWS", data, weights, indices, lengths, ElemKind::FloatTy);
+  SaveNode *S = F->createSave("save", R);
+
+  size_t origSize = F->getNodes().size();
+
+  PrecisionConfiguration precConfig;
+  precConfig.precisionModeKindSet.insert(
+      Kinded::Kind::FusedRowwiseQuantizedSparseLengthsWeightedSumNodeKind);
+  convertFunctionToFloat16(F, precConfig);
+
+  // Should have done nothing since we skipped its conversion. Check the
+  // Function is the same as before.
+  EXPECT_EQ(F->getNodes().size(), origSize);
+
+  auto *SLWS =
+      llvm::dyn_cast<FusedRowwiseQuantizedSparseLengthsWeightedSumNode>(
+          S->getInput());
+  ASSERT_EQ(SLWS, R);
+
+  auto *origData = llvm::dyn_cast<Constant>(SLWS->getData());
+  ASSERT_EQ(origData, R->getData().getNode());
+  EXPECT_EQ(origData->getOutput().getElementType(), ElemKind::UInt8FusedQTy);
+
+  auto *origWeights = llvm::dyn_cast<Constant>(SLWS->getWeights());
+  ASSERT_EQ(origWeights, weights);
+  EXPECT_EQ(origWeights->getOutput().getElementType(), ElemKind::FloatTy);
 
   EXPECT_TRUE(F->verify());
 }

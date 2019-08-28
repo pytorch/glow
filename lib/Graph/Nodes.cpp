@@ -553,10 +553,39 @@ bool Convolution3DGradNode::verify() const {
   return isValid;
 }
 
+/// \returns the number of columns of data from a fused \p type (i.e. not
+/// considering the columns for per row scale/offsets).
+static size_t getNumDataColumnsFromFused(TypeRef type) {
+  size_t n = type->dims()[1];
+  switch (type->getElementType()) {
+  case ElemKind::UInt8FusedQTy:
+    return n - 2 * sizeof(float);
+  case ElemKind::UInt8FusedFP16QTy:
+    return n - 2 * sizeof(float16_t);
+  default:
+    llvm_unreachable("Not supported Fused ElemKind");
+  }
+}
+
 bool ConvertToNode::verify() const {
-  bool isValid = checkSameShape(getInput(), getResult(), this);
   TypeRef srcTy = getInput().getType();
   TypeRef dstTy = getResult().getType();
+  const bool srcIsFused = isFusedQuantizedElemKind(srcTy->getElementType());
+  const bool dstIsFused = isFusedQuantizedElemKind(dstTy->getElementType());
+
+  bool isValid = expectCompareTrue(
+      "Conversion of src and dst with mismatched fused property is not yet "
+      "implemented",
+      (srcIsFused && dstIsFused) || (!srcIsFused && !dstIsFused), true, this);
+
+  if (srcIsFused && dstIsFused) {
+    size_t srcNumCols = getNumDataColumnsFromFused(srcTy);
+    size_t dstNumCols = getNumDataColumnsFromFused(dstTy);
+    return expectCompareTrue("Shapes of data for fused kinds do not match",
+                             srcNumCols, dstNumCols, this);
+  }
+
+  isValid &= checkSameShape(getInput(), getResult(), this);
   isValid &= expectCompareTrue(
       "Quantized conversion should use Dequantize, Quantize and Rescale",
       srcTy->isQuantizedType() || dstTy->isQuantizedType(), false, this);
@@ -1156,10 +1185,8 @@ static bool verifyFusedRowwiseQuantizedSparseLengthsSum(
       isFusedQuantizedElemKind(data.getType()->getElementType()), true, parent);
   size_t extraCols;
   if (data.getType()->getElementType() == ElemKind::UInt8FusedQTy) {
-    isValid &= checkType(result, ElemKind::FloatTy, parent);
     extraCols = 2 * sizeof(float);
   } else {
-    isValid &= checkType(result, ElemKind::Float16Ty, parent);
     extraCols = 2 * sizeof(float16_t);
   }
   if (useFP16Accumulation) {
@@ -1182,11 +1209,6 @@ static bool verifyFusedRowwiseQuantizedSparseLengthsSum(
                                result.dims().size(), size_t(2), parent);
 
   if (weights.getNode()) {
-    if (data.getType()->getElementType() == ElemKind::UInt8FusedQTy) {
-      isValid &= checkType(weights, ElemKind::FloatTy, parent);
-    } else {
-      isValid &= checkType(weights, ElemKind::Float16Ty, parent);
-    }
     isValid &= expectCompareTrue("Weights must be a 1D vector",
                                  weights.dims().size(), size_t(1), parent);
     isValid &= expectCompareTrue("Weights and Indices must have the same size",

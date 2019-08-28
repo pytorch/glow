@@ -13,6 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#include "BackendTestUtils.h"
 
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/Node.h"
@@ -2666,6 +2667,22 @@ TEST_F(GraphOptz, optimizeSameTypeConversions) {
   // into a different type.
   EXPECT_TRUE(llvm::isa<ConvertToNode>(save2->getInput()));
   EXPECT_EQ(save2->getInput(), NodeValue(conv2));
+}
+
+TEST_F(GraphOptz, optimizeConvertingBetweenFused) {
+  Constant *C =
+      createRandomFusedRowwiseQuantizedConstant(mod_, {5, 2}, "fused");
+  auto newOT = mod_.uniqueType(ElemKind::UInt8FusedFP16QTy, {5, 2}, 1.0, 0);
+  auto *CN = F_->createConvertTo("convert", C, newOT);
+  auto *SN = F_->createSave("save", CN);
+
+  ::glow::optimize(F_, CompilationMode::Infer);
+
+  // Convert should be eliminated and just the save of the Constant left.
+  EXPECT_EQ(F_->getNodes().size(), 1);
+  Constant *convertedC = llvm::dyn_cast<Constant>(SN->getInput());
+  ASSERT_TRUE(convertedC);
+  EXPECT_EQ(convertedC->getElementType(), ElemKind::UInt8FusedFP16QTy);
 }
 
 TEST_F(GraphOptz, dceBeforeOptimizeTranpose) {

@@ -582,8 +582,17 @@ public:
     }
   }
 
-  /// Convert each element of this tensor to \p newTy.
+  /// Convert each element of this tensor to \p newTy. Calls into
+  /// \ref getCopyConvertedToType() to do the conversion, and hence supports
+  /// converting between whatever ElemKinds it supports.
   void convertToType(ElemKind newTy);
+
+  /// \returns a copy of the Tensor but converted to \p newKind. Currently
+  /// supports conversion for:
+  /// - FloatTy to Float16Ty
+  /// - Float16Ty to FloatTy
+  /// - UInt8FusedQTy to UInt8FusedFP16QTy
+  Tensor getCopyConvertedToType(ElemKind newKind) const;
 
   /// Transpose the tensor \p src into the empty tensor \p dest. Shuffle the
   /// axis based on the list \p shuffle, where each element is the src index.

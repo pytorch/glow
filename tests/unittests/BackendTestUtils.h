@@ -323,6 +323,22 @@ void insertCompiledFunction(llvm::StringRef name, CompiledFunction *func,
 void runOnDevice(ExecutionContext &context, llvm::StringRef name,
                  runtime::DeviceManager *device);
 
+/// Returns a new Constant of type UInt8FusedQTy with fused rowwise
+/// quantization scales and offsets (i.e. the last 8 bytes of each row
+/// contains the scale and offset).
+Constant *createRandomFusedRowwiseQuantizedConstant(Module &mod,
+                                                    llvm::ArrayRef<size_t> dims,
+                                                    llvm::StringRef name,
+                                                    bool useFusedFP16 = false);
+
+/// Returns a new Constant, of the provided \p type and \p dims initialized
+/// with random data. If using floating point, then it is initialized via
+/// Xavier with filterSize equal to twice the number of elements in \p dims.
+/// Otherwise integer types are initialzed via their min and max values.
+Constant *createRandomizedConstant(Module &mod, TypeRef type,
+                                   llvm::ArrayRef<size_t> dims,
+                                   llvm::StringRef name);
+
 } // namespace glow
 
 #endif // GLOW_TESTS_BACKENDTESTUTILS_H
