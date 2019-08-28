@@ -1750,4 +1750,34 @@ llvm::hash_code hash_value(const glow::NodeValue &NV) {
 llvm::hash_code hash_value(const glow::NodeHandle &NV) {
   return llvm::hash_combine(NV.getNode(), NV.getResNo());
 }
+
+llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
+                              FusedActivation fusedActivation) {
+  switch (fusedActivation) {
+  case FusedActivation::NONE:
+    break;
+  case FusedActivation::RELU:
+    os << "RELU";
+    break;
+  case FusedActivation::SIGMOID:
+    os << "SIGMOID";
+    break;
+  case FusedActivation::TANH:
+    os << "TANH";
+    break;
+  }
+  return os;
+}
+
+llvm::raw_ostream &operator<<(llvm::raw_ostream &os, ConvolutionLayout layout) {
+  switch (layout) {
+  case ConvolutionLayout::NCHW:
+    os << "NCHW";
+    break;
+  case ConvolutionLayout::NHWC:
+    os << "NHWC";
+    break;
+  }
+  return os;
+}
 } // namespace glow
