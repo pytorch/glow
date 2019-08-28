@@ -3356,6 +3356,7 @@ TEST_P(OperatorStatelessTest, FP16ConvolutionDepth8) {
 }
 
 TEST_P(OperatorStatelessTest, ConvolutionDepth10_Int8_BiasInt8) {
+  ENABLED_BACKENDS(Interpreter, CPU);
   compareAgainstInterpreter(
       getBackendName(), createAndInitConvDepthTest<10>, ElemKind::FloatTy,
       ElemKind::Int8QTy, 0.03f, parCloneCountOpt, false,
@@ -3363,6 +3364,7 @@ TEST_P(OperatorStatelessTest, ConvolutionDepth10_Int8_BiasInt8) {
 }
 
 TEST_P(OperatorStatelessTest, ConvolutionDepth10_Int8_BiasInt32) {
+  ENABLED_BACKENDS(Interpreter, CPU);
   compareAgainstInterpreter(
       getBackendName(), createAndInitConvDepthTest<10>, ElemKind::FloatTy,
       ElemKind::Int8QTy, 0.03f, parCloneCountOpt, false,
@@ -3483,6 +3485,7 @@ TEST_P(OperatorStatelessTest, FC_Float16) {
 
 /// Test Int8 FullyConnected with Int8 bias.
 TEST_P(OperatorStatelessTest, FullyConnected_Int8_BiasInt8) {
+  ENABLED_BACKENDS(Interpreter, CPU);
   compareAgainstInterpreter(
       getBackendName(), createAndInitBasicFCTest, ElemKind::FloatTy,
       ElemKind::Int8QTy, 0.05f, parCloneCountOpt, false,
@@ -3491,6 +3494,7 @@ TEST_P(OperatorStatelessTest, FullyConnected_Int8_BiasInt8) {
 
 /// Test Int8 FullyConnected with Int32 bias.
 TEST_P(OperatorStatelessTest, FullyConnected_Int8_BiasInt32) {
+  ENABLED_BACKENDS(Interpreter, CPU);
   compareAgainstInterpreter(
       getBackendName(), createAndInitBasicFCTest, ElemKind::FloatTy,
       ElemKind::Int8QTy, 0.05f, parCloneCountOpt, false,
