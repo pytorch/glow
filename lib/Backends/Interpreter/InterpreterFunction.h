@@ -129,7 +129,8 @@ private:
 #define DEF_BACKEND_SPECIFIC_INSTR(CLASS, NAME)
 #include "glow/AutoGenInstr.def"
 
-  template <typename ElemTy, typename AccumulatorTy>
+  template <typename ElemTy, typename AccumulatorTy,
+            typename BiasElemTy = int32_t>
   void fwdConvolutionInstQuantizedImpl(Value *inV, Value *outV, Value *filterV,
                                        Value *biasV,
                                        llvm::ArrayRef<unsigned_t> kernelSizes,
@@ -145,7 +146,8 @@ private:
                                    llvm::ArrayRef<unsigned_t> pads,
                                    size_t group, size_t dilation);
 
-  template <typename ElemTy, typename AccumulatorTy>
+  template <typename ElemTy, typename AccumulatorTy,
+            typename BiasElemTy = int32_t>
   void fwdConvolution3DInstQuantizedImpl(Value *inV, Value *outV,
                                          Value *filterV, Value *biasV,
                                          llvm::ArrayRef<unsigned_t> kernelSizes,
@@ -174,6 +176,13 @@ private:
   void fwdMatMulInstQuantizedImpl(const glow::MatMulInst *I);
   template <typename ElemTy>
   void fwdMatMulInstFloatImpl(const glow::MatMulInst *I);
+
+  template <typename ElemTy, typename AccumulatorTy,
+            typename BiasElemTy = int32_t>
+  void fwdRowwiseQuantizedFullyConnectedInstImpl(Value *inV, Value *outV,
+                                                 Value *weightsV, Value *biasV,
+                                                 Value *scalesV,
+                                                 Value *offsetsV);
 
   void fwdElementAddInstI8Impl(const ElementAddInst *I);
   template <typename ElemTy>

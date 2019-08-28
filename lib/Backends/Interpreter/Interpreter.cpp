@@ -91,10 +91,14 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
 
   case Kinded::Kind::AvgPoolNodeKind:
   case Kinded::Kind::AdaptiveAvgPoolNodeKind:
-  case Kinded::Kind::MatMulNodeKind:
   case Kinded::Kind::BatchedReduceAddNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy});
+
+  case Kinded::Kind::MatMulNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind(
+        {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy,
+         ElemKind::Int16QTy});
 
   case Kinded::Kind::MaxPoolNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
@@ -161,7 +165,9 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
     return NI.allInputsAndOutputsHaveSameElemKind(
                {ElemKind::Int8QTy, ElemKind::Int16QTy},
                {ConvolutionNode::BiasIdx}) &&
-           (NI.getInElemTy(ConvolutionNode::BiasIdx) == ElemKind::Int32QTy);
+           (NI.getInElemTy(ConvolutionNode::BiasIdx) == ElemKind::Int8QTy ||
+            NI.getInElemTy(ConvolutionNode::BiasIdx) == ElemKind::Int16QTy ||
+            NI.getInElemTy(ConvolutionNode::BiasIdx) == ElemKind::Int32QTy);
 
   case Kinded::Kind::ChannelwiseQuantizedConvolutionNodeKind:
     return (NI.getInElemTy(ChannelwiseQuantizedConvolutionNode::InputIdx) ==
@@ -185,16 +191,20 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
     return NI.allInputsAndOutputsHaveSameElemKind(
                {ElemKind::Int8QTy, ElemKind::Int16QTy},
                {Convolution3DNode::BiasIdx}) &&
-           (NI.getInElemTy(Convolution3DNode::BiasIdx) == ElemKind::Int32QTy);
+           (NI.getInElemTy(Convolution3DNode::BiasIdx) == ElemKind::Int8QTy ||
+            NI.getInElemTy(Convolution3DNode::BiasIdx) == ElemKind::Int16QTy ||
+            NI.getInElemTy(Convolution3DNode::BiasIdx) == ElemKind::Int32QTy);
 
   case Kinded::Kind::BatchedAddNodeKind:
     if (!NI.getInTy(BatchedAddNode::BatchIdx)->isQuantizedType()) {
       return NI.allInputsAndOutputsHaveSameElemKind(
           {ElemKind::FloatTy, ElemKind::Float16Ty});
     }
-    return NI.allInputsAndOutputsHaveSameElemKind({ElemKind::Int8QTy},
-                                                  {BatchedAddNode::SliceIdx}) &&
+    return NI.allInputsAndOutputsHaveSameElemKind(
+               {ElemKind::Int8QTy, ElemKind::Int16QTy},
+               {BatchedAddNode::SliceIdx}) &&
            ((NI.getInElemTy(BatchedAddNode::SliceIdx) == ElemKind::Int8QTy) ||
+            (NI.getInElemTy(BatchedAddNode::SliceIdx) == ElemKind::Int16QTy) ||
             (NI.getInElemTy(BatchedAddNode::SliceIdx) == ElemKind::Int32QTy));
 
   case Kinded::Kind::RowwiseQuantizedFullyConnectedNodeKind:
@@ -207,7 +217,9 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
            (NI.getInElemTy(RowwiseQuantizedFullyConnectedNode::OffsetsIdx) ==
             ElemKind::Int32ITy) &&
            (NI.getInElemTy(RowwiseQuantizedFullyConnectedNode::BiasIdx) ==
-            ElemKind::Int32QTy) &&
+                ElemKind::Int8QTy ||
+            NI.getInElemTy(RowwiseQuantizedFullyConnectedNode::BiasIdx) ==
+                ElemKind::Int32QTy) &&
            (NI.getOutElemTy(RowwiseQuantizedFullyConnectedNode::ResultIdx) ==
             ElemKind::Int8QTy);
 

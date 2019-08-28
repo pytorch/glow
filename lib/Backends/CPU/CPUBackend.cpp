@@ -193,7 +193,8 @@ bool CPUBackend::isOpSupported(const NodeInfo &NI) const {
 
     return NI.allInputsAndOutputsHaveSameElemKind({ElemKind::Int8QTy},
                                                   {ConvolutionNode::BiasIdx}) &&
-           (NI.getInElemTy(ConvolutionNode::BiasIdx) == ElemKind::Int32QTy);
+           (NI.getInElemTy(ConvolutionNode::BiasIdx) == ElemKind::Int8QTy ||
+            NI.getInElemTy(ConvolutionNode::BiasIdx) == ElemKind::Int32QTy);
 
   case Kinded::Kind::BatchedAddNodeKind:
     if (!NI.getInTy(BatchedAddNode::BatchIdx)->isQuantizedType()) {
@@ -308,7 +309,9 @@ bool CPUBackend::isOpSupported(const NodeInfo &NI) const {
            (NI.getInElemTy(RowwiseQuantizedFullyConnectedNode::OffsetsIdx) ==
             ElemKind::Int32ITy) &&
            (NI.getInElemTy(RowwiseQuantizedFullyConnectedNode::BiasIdx) ==
-            ElemKind::Int32QTy) &&
+                ElemKind::Int8QTy ||
+            NI.getInElemTy(RowwiseQuantizedFullyConnectedNode::BiasIdx) ==
+                ElemKind::Int32QTy) &&
            (NI.getOutElemTy(RowwiseQuantizedFullyConnectedNode::ResultIdx) ==
             ElemKind::Int8QTy);
 
