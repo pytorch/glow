@@ -1131,7 +1131,7 @@ static void lowerNode(Function *F, Node *node, CompilationContext &cctx) {
   } else if (auto *RMN = dyn_cast<BatchedReduceMeanNode>(node)) {
     lowerBatchReduceMeanNode(F, cctx, *RMN);
   } else if (auto *CN = dyn_cast<ConvolutionNode>(node)) {
-    if (CN->getGroup() > 1) {
+    if (CN->getGroup() > 1 && CN->hasFusedActivation()) {
       lowerGroupConvolutionNode(F, cctx, *CN);
     }
   } else if (auto *B = dyn_cast<BucketizeNode>(node)) {

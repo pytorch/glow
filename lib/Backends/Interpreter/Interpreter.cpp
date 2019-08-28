@@ -70,6 +70,11 @@ Interpreter::compileIRWithoutConstants(std::unique_ptr<IRFunction> IR) const {
 
 bool Interpreter::isOpSupported(const NodeInfo &NI) const {
   switch (NI.getKind()) {
+  case Kinded::Kind::BatchedReduceMinNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind(
+        {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int32ITy,
+         ElemKind::Int64ITy});
+
   case Kinded::Kind::AddNodeKind:
   case Kinded::Kind::SubNodeKind:
   case Kinded::Kind::MulNodeKind:
@@ -96,6 +101,12 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
                {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy}, {},
                {MaxPoolNode::ArgmaxIdx}) &&
            (NI.getOutElemTy(MaxPoolNode::ArgmaxIdx) == ElemKind::Int64ITy);
+
+  case Kinded::Kind::ArgMaxNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind(
+               {ElemKind::FloatTy, ElemKind::Int8QTy}, {},
+               {ArgMaxNode::ArgmaxIdx}) &&
+           (NI.getOutElemTy(ArgMaxNode::ArgmaxIdx) == ElemKind::Int64ITy);
 
   case Kinded::Kind::PowNodeKind:
   case Kinded::Kind::LocalResponseNormalizationNodeKind:
@@ -131,6 +142,13 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
                {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy}, {},
                {CmpLTENode::ResultIdx}) &&
            (NI.getOutElemTy(CmpLTENode::ResultIdx) == ElemKind::BoolTy);
+
+  case Kinded::Kind::CmpLTNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind(
+               {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy,
+                ElemKind::Int32ITy, ElemKind::Int64ITy},
+               {}, {CmpLTNode::ResultIdx}) &&
+           (NI.getOutElemTy(CmpLTNode::ResultIdx) == ElemKind::BoolTy);
 
   case Kinded::Kind::IsNaNNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
@@ -304,6 +322,7 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
 
   case Kinded::Kind::QuantizationProfileNodeKind:
   case Kinded::Kind::AvgPoolGradNodeKind:
+  case Kinded::Kind::AdaptiveAvgPoolGradNodeKind:
   case Kinded::Kind::LocalResponseNormalizationGradNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind({ElemKind::FloatTy});
 

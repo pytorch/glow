@@ -74,7 +74,10 @@ DECLARE_STATELESS_BACKEND_TEST(BackendStatelessTest, std::tuple<std::string>);
 
 class BackendTest : public BackendStatelessTest {
 public:
-  BackendTest() : mod_(EE_.getModule()) { F_ = mod_.createFunction("main"); }
+  BackendTest(uint64_t deviceMemory = 0)
+      : EE_(getBackendName(), deviceMemory), mod_(EE_.getModule()) {
+    F_ = mod_.createFunction("main");
+  }
 
 protected:
   ExecutionEngine EE_{getBackendName()};
@@ -136,6 +139,11 @@ class MockBackend : public Backend {
   bool generateInst(Node *N, IRGenVisitor &irgen) const override {
     return false;
   }
+
+  runtime::DeviceManager *
+  createDeviceManager(const runtime::DeviceConfig &deviceConfig) override {
+    return nullptr;
+  }
 };
 
 /// MockBackendCustomIRGen used only for unit testing to test custom lowering
@@ -162,6 +170,11 @@ class MockBackendCustomIRGen : public Backend {
 
   bool isOpSupported(const NodeInfo &NI) const override { return false; }
 
+  runtime::DeviceManager *
+  createDeviceManager(const runtime::DeviceConfig &deviceConfig) override {
+    return nullptr;
+  }
+
   bool generateInst(Node *N, IRGenVisitor &irgen) const override {
     bool hasChanged = false;
     auto builder_ = irgen.getBuilder();
@@ -177,7 +190,8 @@ class MockBackendCustomIRGen : public Backend {
       auto *V = builder_->createConvolutionInst(
           "CustomConvolutionInstruction", Dest__, Src, Filter, Bias,
           CN__->getKernels(), CN__->getStrides(), CN__->getPads(),
-          CN__->getGroup(), CN__->getDilation(), CN__->getLayout());
+          CN__->getGroup(), CN__->getDilation(), CN__->getLayout(),
+          CN__->getFusedActivation());
       if (N->hasPredicate()) {
         V->setPredicate(irgen.valueForNode(N->getPredicate()));
       }
@@ -226,9 +240,12 @@ void compareAgainstInterpreter(
 /// Given some \p FTP representing a Function with a single SaveNode and its
 /// Tensor output, duplicate the Nodes in the Function and their Placeholder
 /// inputs given \p bindings \p parallelCount times. \returns a set of Tensor
-/// pointers for each output of the cloned Function.
+/// pointers for each output of the cloned Function. If the quantization node
+/// info found in \p cctx exists, then all of the node infos will be cloned
+/// accordingly with the names of the newly cloned nodes added to the Function.
 std::unordered_set<Tensor *> cloneFunInsideFun(FunctionTensorPair FTP,
                                                PlaceholderBindings *bindings,
+                                               CompilationContext &cctx,
                                                unsigned parallelCount);
 
 void inferConvNet(Tensor *inputs, Tensor *filter, Tensor *bias, Tensor *out,

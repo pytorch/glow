@@ -24,6 +24,7 @@
 #include "glow/Graph/Nodes.h"
 #include "glow/Graph/PlaceholderBindings.h"
 #include "glow/Graph/Utils.h"
+#include "glow/Graph/VerifierHelper.h"
 #include "glow/Optimizer/GraphOptimizer/FunctionPasses.h"
 #include "glow/Optimizer/GraphOptimizer/PassManager.h"
 #include "glow/Optimizer/GraphOptimizerPipeline/Pipeline.h"
@@ -1675,6 +1676,7 @@ bool TransposeConstants::run(Function *F, const CompilationContext &cctx) {
     // Transpose the value of C into NC.
     genericTranspose(&C->getPayload(), &NC->getPayloadMutable(),
                      TN->getShuffle());
+    NC->getPayloadMutable().setType(NC->getType());
     // Rewrite uses of TN to reference NC.
     TN->getResult().replaceAllUsesOfWith(NC);
     changed = true;
@@ -1880,6 +1882,17 @@ bool OptimizeTransposeIntoReshape::run(Function *F,
     auto inputNode = TR->getInput();
     auto inputDims = inputNode.dims();
     auto outputDims = TR->getResult().dims();
+    // The transformation is not possible if alignments different from 1 are
+    // used for any dimension.
+    if (!inputNode.getType()->isEqual(F->getParent()->uniqueTypeWithNewShape(
+            inputNode.getType(), inputDims))) {
+      continue;
+    }
+    if (!TR->getResult().getType()->isEqual(
+            F->getParent()->uniqueTypeWithNewShape(TR->getResult().getType(),
+                                                   outputDims))) {
+      continue;
+    }
     // Transpose moves no data if input/output dimensions match after they both
     // drop dimensions of size 1. E.g. transposing [1 5 1 15] into [5 15 1 1]
     // produces vectors (1, 3) for both dimensions so optimization is executed.
@@ -2933,8 +2946,7 @@ static void transformForPrecisionMode(const Backend &B, Function *F,
     LOG_SCOPE(F->getLogContext(), "TypeAToTypeBFunctionConverter::convert()")
 
     TypeAToTypeBFunctionConverter converter(*F, ElemKind::FloatTy,
-                                            ElemKind::Float16Ty,
-                                            &precConfig.precisionModeKindSet);
+                                            ElemKind::Float16Ty, precConfig);
     converter.convert();
   }
 }

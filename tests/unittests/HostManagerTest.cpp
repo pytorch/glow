@@ -68,7 +68,9 @@ llvm::Error addNetwork(HostManager *manager, std::string name) {
 void addAndRemoveNetwork(HostManager *manager, unsigned int functionNumber) {
   std::string name = "function" + std::to_string(functionNumber);
   errToBool(addNetwork(manager, name));
-  EXPECT_FALSE(errToBool(manager->removeNetwork(name)));
+  // Removal can return an error if the network is in the process of being
+  // added. That is fine we expect it in this test.
+  errToBool(manager->removeNetwork(name));
 }
 
 TEST_F(HostManagerTest, newHostManager) { createHostManager("CPU"); }
@@ -186,6 +188,7 @@ TEST_F(HostManagerTest, ConcurrentAddRemoveDuplicate) {
 TEST_F(HostManagerTest, ConfigureHostManager) {
   HostConfig config;
   config.maxActiveRequests = 1;
+  config.maxQueueSize = 0;
   auto hostManager = createHostManager("Interpreter", std::move(config));
 
   EXPECT_FALSE(errToBool(addNetwork(hostManager.get(), "main")));
@@ -203,7 +206,6 @@ TEST_F(HostManagerTest, ConfigureHostManager) {
                           [lock](RunIdentifierTy runID, llvm::Error err,
                                  std::unique_ptr<ExecutionContext> context_) {
                             errToBool(std::move(err));
-                            std::unique_lock<std::mutex> guard(*lock);
                           });
 
   hostManager->runNetwork(
@@ -212,8 +214,68 @@ TEST_F(HostManagerTest, ConfigureHostManager) {
                 std::unique_ptr<ExecutionContext> context_) {
         runErr = llvm::make_unique<llvm::Error>(std::move(err));
       });
-
+  guard.unlock();
   // Don't need a future, error CB called inline.
   EXPECT_TRUE(errToBool(std::move(*DCHECK_NOTNULL(runErr.get()))));
-  guard.unlock();
+}
+
+/// Test that the HostManager properly enqueues requests.
+TEST_F(HostManagerTest, QueueTest) {
+  HostConfig config;
+  // Setup the hostmanager to allow 1 active and 2 queued requests for a total
+  // of 3 requests in the system.
+  config.maxActiveRequests = 1;
+  auto hostManager = createHostManager("Interpreter", std::move(config));
+
+  EXPECT_FALSE(errToBool(addNetwork(hostManager.get(), "main")));
+
+  auto context = llvm::make_unique<ExecutionContext>();
+  auto context2 = llvm::make_unique<ExecutionContext>();
+  auto context3 = llvm::make_unique<ExecutionContext>();
+  auto context4 = llvm::make_unique<ExecutionContext>();
+  std::promise<unsigned> run1p, run2p, run3p, dispatched;
+  auto dispatchDone = dispatched.get_future();
+  auto run1f = run1p.get_future();
+  auto run2f = run2p.get_future();
+  auto run3f = run3p.get_future();
+  std::atomic<unsigned> counter{0};
+
+  // The first will go right to dispatch since there will be no inflight
+  // requests.
+  hostManager->runNetwork("main", std::move(context),
+                          [&run1p, &counter, &dispatchDone](
+                              RunIdentifierTy runID, llvm::Error err,
+                              std::unique_ptr<ExecutionContext> context) {
+                            EXIT_ON_ERR(std::move(err));
+                            run1p.set_value(counter++);
+                            dispatchDone.wait();
+                          });
+  // Set the priority of the second to 1.
+  hostManager->runNetwork(
+      "main", std::move(context2),
+      [&run2p, &counter](RunIdentifierTy runID, llvm::Error err,
+                         std::unique_ptr<ExecutionContext> context) {
+        EXIT_ON_ERR(std::move(err));
+        run2p.set_value(counter++);
+      },
+      1);
+
+  // Set the priority of the run3 to 0 so it should be first in the queue
+  // after run1.
+  hostManager->runNetwork(
+      "main", std::move(context3),
+      [&run3p, &counter](RunIdentifierTy runID, llvm::Error err,
+                         std::unique_ptr<ExecutionContext> context) {
+        EXIT_ON_ERR(std::move(err));
+        run3p.set_value(counter++);
+      },
+      0);
+  /// Wait for all three to finish.
+  dispatched.set_value(0);
+  auto res1 = run1f.get();
+  auto res2 = run2f.get();
+  auto res3 = run3f.get();
+  // Should expect them to finish in order: 1, 3, 2. Check atomic value
+  EXPECT_GT(res3, res1);
+  EXPECT_GT(res2, res3);
 }

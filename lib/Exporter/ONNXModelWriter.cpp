@@ -591,6 +591,16 @@ ONNXModelWriter::writeBatchedReduceAdd(const BatchedReduceAddNode *node,
 }
 
 llvm::Error
+ONNXModelWriter::writeBatchedReduceMin(const BatchedReduceMinNode *node,
+                                       GraphType &graph) {
+  auto *proto = graph.add_node();
+  // Find dictionary entries.
+  addValueAttribute(proto, "axes", node->getAxes());
+
+  return writeAllWithNode("ReduceMin", node, proto);
+}
+
+llvm::Error
 ONNXModelWriter::writeBatchNormalization(const BatchNormalizationNode *node,
                                          GraphType &graph) {
   auto *proto = graph.add_node();
@@ -718,6 +728,29 @@ llvm::Error ONNXModelWriter::writeTopK(const TopKNode *node, GraphType &graph) {
   RETURN_IF_ERR(writeAllWithNode("TopK", node, proto));
 
   proto->add_input("k");
+  return llvm::Error::success();
+}
+
+llvm::Error ONNXModelWriter::writeArgMax(const ArgMaxNode *node,
+                                         GraphType &graph) {
+  auto *proto = graph.add_node();
+
+  Tensor axis(ElemKind::Int64ITy, {1});
+  Tensor keepDims(ElemKind::BoolTy, {1});
+  auto axisH = axis.getHandle<int64_t>();
+  auto keepDimsH = keepDims.getHandle<int8_t>();
+  axisH.raw(0) = node->getAxis();
+  keepDimsH.raw(0) = node->getKeepDims();
+
+  auto *tensorProto = graph.add_initializer();
+  tensorProto->set_name("axis");
+  writeTensor(axis, tensorProto);
+
+  tensorProto = graph.add_initializer();
+  tensorProto->set_name("keepDims");
+  writeTensor(keepDims, tensorProto);
+  RETURN_IF_ERR(writeAllWithNode("ArgMax", node, proto));
+
   return llvm::Error::success();
 }
 
@@ -1098,6 +1131,7 @@ DEF_ALL_WRITER_NODE(SparseLengthsWeightedSum)
 // Glow nodes with default exporting algorithm.
 DEF_ALL_WRITER_NODE(CmpEQ)
 DEF_ALL_WRITER_NODE(CmpLTE)
+DEF_ALL_WRITER_NODE(CmpLT)
 DEF_ALL_WRITER_NODE(BatchedAdd)
 DEF_ALL_WRITER_NODE(Dequantize)
 DEF_ALL_WRITER_NODE(Regression)
@@ -1143,8 +1177,10 @@ llvm::Error ONNXModelWriter::writeIntLookupTable(const IntLookupTableNode *node,
   NodeValue mapping = node->getMapping();
   if (Constant *c = llvm::dyn_cast<Constant>(mapping.getNode())) {
     auto handle = c->getHandle<int8_t>();
-    addValueAttribute(proto, "values",
-                      llvm::ArrayRef<int8_t>(handle.begin(), handle.end()));
+    auto begin = &handle.raw(0);
+    addValueAttribute(
+        proto, "values",
+        llvm::ArrayRef<int8_t>(begin, begin + handle.actualSize()));
   } else {
     RETURN_ERR("Mapping must be a constant type.");
   }
@@ -1298,6 +1334,7 @@ DEF_UNSUPPORTED_NODE(BatchNormalizationGrad)
 DEF_UNSUPPORTED_NODE(SparseLengthsWeightedSumGrad)
 DEF_UNSUPPORTED_NODE(SigmoidCrossEntropyWithLogits)
 DEF_UNSUPPORTED_NODE(LocalResponseNormalizationGrad)
+DEF_UNSUPPORTED_NODE(AdaptiveAvgPoolGrad)
 
 #ifdef GLOW_WITH_CPU
 

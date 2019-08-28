@@ -18,6 +18,8 @@
 
 #include "glow/Backends/QueueBackedDeviceManager.h"
 
+#include <atomic>
+
 #if defined(__APPLE__) || defined(__MACOSX)
 #include "OpenCL/opencl.h"
 #else
@@ -128,11 +130,14 @@ class OpenCLDeviceManager : public QueueBackedDeviceManager {
   /// Compiled function list by name.
   FunctionMapTy functions_;
 
+  /// Map of function name to cl_program.
+  std::unordered_map<std::string, cl_program> programs_;
+
   /// Maximum available memory on the device.
-  uint64_t maxMemoryBytes_{0};
+  std::atomic<uint64_t> maxMemoryBytes_{0};
 
   /// Amount of memory used by all models.
-  uint64_t usedMemoryBytes_{0};
+  std::atomic<uint64_t> usedMemoryBytes_{0};
 
   /// CL compute device id.
   cl_device_id deviceId_;
@@ -200,6 +205,8 @@ protected:
                        std::unique_ptr<ExecutionContext> context,
                        ResultCBTy cb) override;
 };
+
+DeviceManager *createOCLDeviceManager(const DeviceConfig &config);
 
 } // namespace runtime
 } // namespace glow

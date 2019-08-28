@@ -16,7 +16,9 @@
 #ifndef GLOW_BACKENDS_HABANA_HABANADEVICEMANAGER_H
 #define GLOW_BACKENDS_HABANA_HABANADEVICEMANAGER_H
 
-#include "Habana.h"
+#include "HabanaFunction.h"
+#include "HabanaUtils.h"
+
 #include "glow/Backends/DeviceManager.h"
 #include "glow/Runtime/RuntimeTypes.h"
 #include "glow/Support/ThreadPool.h"
@@ -146,6 +148,9 @@ public:
   /// compute and bandwidths (used in partitioning).
   DeviceInfo getDeviceInfo() const override;
 };
+
+/// Factory function for creating a HabanaDeviceManager.
+DeviceManager *createHabanaDeviceManager(const DeviceConfig &config);
 
 } // namespace runtime
 } // namespace glow

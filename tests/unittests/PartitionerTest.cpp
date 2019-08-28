@@ -101,7 +101,6 @@ TEST_F(PartitionerTest, Basic1) {
   for (auto EE : engines) {
     auto mod = &EE->getModule();
     F_ = mod->createFunction("main");
-    constexpr float range = 2.0;
     auto *input =
         mod->createPlaceholder(ElemKind::FloatTy, {1, 32}, "input", false);
     auto *w1 = mod->createConstant(ElemKind::FloatTy, {32, 16}, "w1");
@@ -163,18 +162,17 @@ TEST_F(PartitionerTest, Basic1) {
       {3072, "Interpreter"}, {3072, "Interpreter"}, {3072, "Interpreter"}};
   Partitioner myPartitioner(&EEP.getModule(), devices, false, true);
   CompilationContext cctx;
-  auto err = myPartitioner.Partition(cctx);
-  EXPECT_FALSE(errToBool(std::move(err)));
-  DAGListTy dagList = std::move(myPartitioner.getPartitionResult());
+  auto dagList = myPartitioner.partition(cctx);
+  EXPECT_TRUE((bool)dagList);
   EXPECT_EQ(EEP.getModule().getFunctions().size(), 3);
-  EXPECT_EQ(dagList.size(), 1);
+  EXPECT_EQ(dagList->size(), 1);
   EXPECT_TRUE(checkSaveNode(EEP.getModule()));
 
   // Run the paritioned graph and compare the results.
   bindings_.clear();
   bindings_.allocate(EEP.getModule().getPlaceholders());
   EEP.compile(cctx);
-  for (auto it = dagList.begin(); it != dagList.end(); ++it) {
+  for (auto it = dagList->begin(); it != dagList->end(); ++it) {
     executeDAG((*it).root.get(), EEP.getModule(), bindings_,
                {bindings_.getPlaceholderByName("input")}, {&in}, &EEP);
     Tensor test = bindings_.get(bindings_.getPlaceholderByName("ret"))->clone();
@@ -251,14 +249,12 @@ TEST_F(PartitionerTest, Basic2) {
                                      {2048, "Interpreter"}};
   Partitioner myPartitioner(&EEP.getModule(), devices, /* saturateHost */ true);
   CompilationContext cctx;
-  auto err = myPartitioner.Partition(cctx);
-  EXPECT_FALSE(errToBool(std::move(err)));
-  DAGListTy dagList = std::move(myPartitioner.getPartitionResult());
+  auto dagList = myPartitioner.partition(cctx);
   EXPECT_EQ(EEP.getModule().getFunctions().size(), 2);
-  EXPECT_EQ(dagList.size(), 1);
+  EXPECT_EQ(dagList->size(), 1);
   ASSERT_TRUE(checkSaveNode(EEP.getModule()));
 
-  for (auto &dag : dagList) {
+  for (auto &dag : dagList.get()) {
     for (auto &node : dag.nodes) {
       // Since saturateHost is set true, in this case, there should be 2 copys
       // of the partitions.
@@ -270,7 +266,7 @@ TEST_F(PartitionerTest, Basic2) {
   bindings_.clear();
   bindings_.allocate(EEP.getModule().getPlaceholders());
   EEP.compile(cctx);
-  for (auto it = dagList.begin(); it != dagList.end(); ++it) {
+  for (auto it = dagList->begin(); it != dagList->end(); ++it) {
     updateInputPlaceholders(bindings_,
                             {bindings_.getPlaceholderByName("input"),
                              bindings_.getPlaceholderByName("input1")},
@@ -346,74 +342,61 @@ TEST_F(PartitionerTest, Error1) {
   std::vector<DeviceInfo> devices = {{2048, "Interpreter"}};
   Partitioner myPartitioner(&EEP.getModule(), devices);
   CompilationContext cctx;
-  auto err = myPartitioner.Partition(cctx);
-  EXPECT_TRUE(errToBool(std::move(err)));
+  auto dagList = myPartitioner.partition(cctx);
+  EXPECT_FALSE((bool)dagList);
 }
 
 /// This one tests the roofline computed with compute, memory and
 /// communication costs
 TEST_F(PartitionerTest, Basic1Roofline) {
-  ExecutionEngine EER, EEP;
+  ExecutionEngine EEP;
   constexpr float range = 2.0;
-  std::vector<ExecutionEngine *> engines{&EER, &EEP};
-  for (auto EE : engines) {
-    auto mod = &EE->getModule();
-    F_ = mod->createFunction("main");
-    auto *input =
-        mod->createPlaceholder(ElemKind::FloatTy, {1, 32}, "input", false);
-    auto *w1 = mod->createConstant(ElemKind::FloatTy, {32, 16}, "w1");
-    auto *b1 = mod->createConstant(ElemKind::FloatTy, {16}, "b1");
-    bindings_.allocate(input);
-    w1->getHandle<>().randomize(-range, range, mod->getPRNG());
-    b1->getHandle<>().randomize(-range, range, mod->getPRNG());
 
-    // Initial FC.
-    Node *I = F_->createFullyConnected("initial_fc", input, w1, b1);
-    I = F_->createSigmoid("initial_sigmoid", I);
+  auto mod = &EEP.getModule();
+  F_ = mod->createFunction("main");
+  auto *input =
+      mod->createPlaceholder(ElemKind::FloatTy, {1, 32}, "input", false);
+  auto *w1 = mod->createConstant(ElemKind::FloatTy, {32, 16}, "w1");
+  auto *b1 = mod->createConstant(ElemKind::FloatTy, {16}, "b1");
+  bindings_.allocate(input);
+  w1->getHandle<>().randomize(-range, range, mod->getPRNG());
+  b1->getHandle<>().randomize(-range, range, mod->getPRNG());
 
-    // Left branch.
-    auto *w2 = mod->createConstant(ElemKind::FloatTy, {16, 16}, "w2");
-    auto *b2 = mod->createConstant(ElemKind::FloatTy, {16}, "b2");
-    w2->getHandle<>().randomize(-range, range, mod->getPRNG());
-    b2->getHandle<>().randomize(-range, range, mod->getPRNG());
-    Node *L = F_->createFullyConnected("left_fc1", I, w2, b2);
-    L = F_->createSigmoid("left_sigmoid1", L);
-    auto *w3 = mod->createConstant(ElemKind::FloatTy, {16, 8}, "w3");
-    auto *b3 = mod->createConstant(ElemKind::FloatTy, {8}, "b3");
-    w3->getHandle<>().randomize(-range, range, mod->getPRNG());
-    b3->getHandle<>().randomize(-range, range, mod->getPRNG());
-    L = F_->createFullyConnected("left_fc2", L, w3, b3);
-    L = F_->createSigmoid("left_sigmoid2", L);
+  // Initial FC.
+  Node *I = F_->createFullyConnected("initial_fc", input, w1, b1);
+  I = F_->createSigmoid("initial_sigmoid", I);
 
-    // Right branch.
-    auto *w4 = mod->createConstant(ElemKind::FloatTy, {16, 16}, "w4");
-    auto *b4 = mod->createConstant(ElemKind::FloatTy, {16}, "b4");
-    w4->getHandle<>().randomize(-range, range, mod->getPRNG());
-    b4->getHandle<>().randomize(-range, range, mod->getPRNG());
-    Node *R = F_->createFullyConnected("right_fc1", I, w4, b4);
-    R = F_->createSigmoid("right_sigmoid1", R);
-    auto *w5 = mod->createConstant(ElemKind::FloatTy, {16, 8}, "w5");
-    auto *b5 = mod->createConstant(ElemKind::FloatTy, {8}, "b5");
-    w5->getHandle<>().randomize(-range, range, mod->getPRNG());
-    b5->getHandle<>().randomize(-range, range, mod->getPRNG());
-    R = F_->createFullyConnected("right_fc2", R, w5, b5);
-    R = F_->createSigmoid("right_sigmoid2", R);
+  // Left branch.
+  auto *w2 = mod->createConstant(ElemKind::FloatTy, {16, 16}, "w2");
+  auto *b2 = mod->createConstant(ElemKind::FloatTy, {16}, "b2");
+  w2->getHandle<>().randomize(-range, range, mod->getPRNG());
+  b2->getHandle<>().randomize(-range, range, mod->getPRNG());
+  Node *L = F_->createFullyConnected("left_fc1", I, w2, b2);
+  L = F_->createSigmoid("left_sigmoid1", L);
+  auto *w3 = mod->createConstant(ElemKind::FloatTy, {16, 8}, "w3");
+  auto *b3 = mod->createConstant(ElemKind::FloatTy, {8}, "b3");
+  w3->getHandle<>().randomize(-range, range, mod->getPRNG());
+  b3->getHandle<>().randomize(-range, range, mod->getPRNG());
+  L = F_->createFullyConnected("left_fc2", L, w3, b3);
+  L = F_->createSigmoid("left_sigmoid2", L);
 
-    // Join branches.
-    auto *mul = F_->createMul("mul", L, R);
-    F_->createSave("ret", mul);
-  }
+  // Right branch.
+  auto *w4 = mod->createConstant(ElemKind::FloatTy, {16, 16}, "w4");
+  auto *b4 = mod->createConstant(ElemKind::FloatTy, {16}, "b4");
+  w4->getHandle<>().randomize(-range, range, mod->getPRNG());
+  b4->getHandle<>().randomize(-range, range, mod->getPRNG());
+  Node *R = F_->createFullyConnected("right_fc1", I, w4, b4);
+  R = F_->createSigmoid("right_sigmoid1", R);
+  auto *w5 = mod->createConstant(ElemKind::FloatTy, {16, 8}, "w5");
+  auto *b5 = mod->createConstant(ElemKind::FloatTy, {8}, "b5");
+  w5->getHandle<>().randomize(-range, range, mod->getPRNG());
+  b5->getHandle<>().randomize(-range, range, mod->getPRNG());
+  R = F_->createFullyConnected("right_fc2", R, w5, b5);
+  R = F_->createSigmoid("right_sigmoid2", R);
 
-  // Infer using the un-partitioned graph.
-  Tensor in(ElemKind::FloatTy, {1, 32});
-  in.getHandle<>().randomize(-range, range, EER.getModule().getPRNG());
-
-  EER.compile(CompilationMode::Infer);
-  bindings_.clear();
-  bindings_.allocate(EER.getModule().getPlaceholders());
-  updateInputPlaceholders(bindings_, {bindings_.getPlaceholderByName("input")},
-                          {&in});
-  EER.run(bindings_);
+  // Join branches.
+  auto *mul = F_->createMul("mul", L, R);
+  F_->createSave("ret", mul);
 
   // Since the partitioner will look at all nodesin the function post
   // optimization and lowering, we need to do so here for the same list of
@@ -477,8 +460,8 @@ TEST_F(PartitionerTest, SelectRepFunc) {
                                     {1000000, "Interpreter"}});
 
   CompilationContext cctx;
-  auto err = myPartitioner.Partition(cctx);
-  EXPECT_FALSE(errToBool(std::move(err)));
+  auto dagList = myPartitioner.partition(cctx);
+  EXPECT_TRUE((bool)dagList);
 }
 
 /// Create a mock backend and rewrite the isOpSupported function
@@ -521,6 +504,11 @@ public:
 
   bool generateInst(Node *N, IRGenVisitor &irgen) const override {
     return false;
+  }
+
+  runtime::DeviceManager *
+  createDeviceManager(const runtime::DeviceConfig &deviceConfig) override {
+    return nullptr;
   }
 };
 
@@ -612,16 +600,14 @@ TEST_F(PartitionerTest, SimpleHeterogeneousPartitioning) {
   backends.emplace_back(&backendWithoutSub1);
   std::vector<DeviceInfo> devices = {
       {3072, "Interpreter"}, {3072, "Interpreter"}, {3072, "CPU"}};
-  auto partitioner =
-      Partitioner(&mod_, devices, backends, /* saturateHost */ true);
+  Partitioner partitioner(&mod_, devices, backends, /* saturateHost */ true);
   CompilationContext cctx;
-  auto err = partitioner.Partition(cctx);
-  EXPECT_FALSE(errToBool(std::move(err)));
-  DAGListTy dagList = std::move(partitioner.getPartitionResult());
+  auto dagList = partitioner.partition(cctx);
+  EXPECT_TRUE((bool)dagList);
   EXPECT_EQ(mod_.getFunctions().size(), 3);
-  EXPECT_EQ(dagList.size(), 1);
+  EXPECT_EQ(dagList->size(), 1);
   ASSERT_TRUE(checkSaveNode(mod_));
-  heterogeneousPartitionValidation(dagList, mod_);
+  heterogeneousPartitionValidation(dagList.get(), mod_);
 
   mod_.clear();
 }
@@ -634,15 +620,14 @@ TEST_F(PartitionerTest, heterogeneousPartitioningWithNonSupportedNodes) {
   std::vector<DeviceInfo> devices = {{3072, "Interpreter", "Mul"},
                                      {3072, "Interpreter", "Mul"},
                                      {3072, "CPU", "Sub"}};
-  auto partitioner = Partitioner(&mod_, devices);
+  Partitioner partitioner(&mod_, devices);
   CompilationContext cctx;
-  auto err = partitioner.Partition(cctx);
-  EXPECT_FALSE(errToBool(std::move(err)));
-  DAGListTy dagList = std::move(partitioner.getPartitionResult());
+  auto dagList = partitioner.partition(cctx);
+  EXPECT_TRUE((bool)dagList);
   EXPECT_EQ(mod_.getFunctions().size(), 3);
-  EXPECT_EQ(dagList.size(), 1);
+  EXPECT_EQ(dagList->size(), 1);
   ASSERT_TRUE(checkSaveNode(mod_));
-  heterogeneousPartitionValidation(dagList, mod_);
+  heterogeneousPartitionValidation(dagList.get(), mod_);
 
   mod_.clear();
 }
@@ -658,15 +643,14 @@ TEST_F(PartitionerTest, heterogeneousPartitioningWithSupportedNodes) {
       {3072, "Interpreter", "", "Sub,Add,Save"},
       {3072, "Interpreter", "", "Sub,Add,Save"},
       {3072, "CPU", "", "Mul,Add,Save"}};
-  auto partitioner = Partitioner(&mod_, devices);
+  Partitioner partitioner(&mod_, devices);
   CompilationContext cctx;
-  auto err = partitioner.Partition(cctx);
-  EXPECT_FALSE(errToBool(std::move(err)));
-  DAGListTy dagList = std::move(partitioner.getPartitionResult());
+  auto dagList = partitioner.partition(cctx);
+  EXPECT_TRUE((bool)dagList);
   EXPECT_EQ(mod_.getFunctions().size(), 3);
-  EXPECT_EQ(dagList.size(), 1);
+  EXPECT_EQ(dagList->size(), 1);
   ASSERT_TRUE(checkSaveNode(mod_));
-  heterogeneousPartitionValidation(dagList, mod_);
+  heterogeneousPartitionValidation(dagList.get(), mod_);
 
   mod_.clear();
 }
@@ -694,17 +678,16 @@ TEST_F(PartitionerTest, logicalIDTest0) {
                                      {1500, "Interpreter"}};
   // Create two backends which support different ops, then do the partition by
   // assigning the ops to the corresponding abackends.
-  auto partitioner = Partitioner(&mod_, devices, /* saturateHost */ true);
+  Partitioner partitioner(&mod_, devices, /* saturateHost */ true);
   CompilationContext cctx;
-  auto err = partitioner.Partition(cctx);
-  EXPECT_FALSE(errToBool(std::move(err)));
-  DAGListTy dagList = std::move(partitioner.getPartitionResult());
+  auto dagList = partitioner.partition(cctx);
+  EXPECT_TRUE((bool)dagList);
   // Check there are 3 partitions.
   EXPECT_EQ(mod_.getFunctions().size(), 3);
-  EXPECT_EQ(dagList.size(), 1);
+  EXPECT_EQ(dagList->size(), 1);
   ASSERT_TRUE(checkSaveNode(mod_));
 
-  for (auto &dag : dagList) {
+  for (auto &dag : dagList.get()) {
     // Check number of logical devices;
     llvm::SmallSet<DeviceIDTy, 4> usedID;
     for (auto &node : dag.nodes) {
@@ -729,17 +712,15 @@ TEST_F(PartitionerTest, logicalIDTest1) {
   backends.emplace_back(&backendWithoutMul1);
   backends.emplace_back(&backendWithoutSub1);
   std::vector<DeviceInfo> devices = {{3072, "Interpreter"}, {3072, "CPU"}};
-  auto partitioner =
-      Partitioner(&mod_, devices, backends, /* saturateHost */ true);
+  Partitioner partitioner(&mod_, devices, backends, /* saturateHost */ true);
   CompilationContext cctx;
-  auto err = partitioner.Partition(cctx);
-  EXPECT_FALSE(errToBool(std::move(err)));
-  DAGListTy dagList = std::move(partitioner.getPartitionResult());
+  auto dagList = partitioner.partition(cctx);
+  EXPECT_TRUE((bool)dagList);
   EXPECT_EQ(mod_.getFunctions().size(), 3);
-  EXPECT_EQ(dagList.size(), 1);
+  EXPECT_EQ(dagList->size(), 1);
   ASSERT_TRUE(checkSaveNode(mod_));
 
-  for (auto &dag : dagList) {
+  for (auto &dag : dagList.get()) {
     // Check number of logical devices;
     llvm::SmallSet<DeviceIDTy, 4> usedID;
     for (auto &node : dag.nodes) {
@@ -908,8 +889,69 @@ TEST_F(PartitionerTest, memoryUsageValidation1) {
                                      {500, "Interpreter"}};
   Partitioner myPartitioner(&mod_, devices);
   CompilationContext cctx;
-  auto err = myPartitioner.Partition(cctx);
-  EXPECT_TRUE(errToBool(std::move(err)));
+  auto dagList = myPartitioner.partition(cctx);
+  EXPECT_FALSE((bool)dagList);
+}
+
+/// This one test dagValidation in partitioner : p1->p2, p2->p1.
+TEST_F(PartitionerTest, dagValidation1) {
+  auto *input1 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {2, 10}, "input1", false);
+  auto *input2 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {2, 10}, "input2", false);
+  auto *input3 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {2, 10}, "input3", false);
+  auto *add1 = F_->createAdd("add1", input1, input2);
+  auto *add2 = F_->createAdd("add2", add1, input3);
+  auto *sub1 = F_->createSub("sub1", add1, add2);
+  F_->createSave("save", sub1);
+
+  std::vector<DeviceInfo> devices = {{3072, "Interpreter"},
+                                     {3072, "Interpreter"}};
+
+  // User-defined partition: p1->p2, p2->p1.
+  PartitionConfig partitionConfig;
+  partitionConfig.funcName = "main";
+  partitionConfig.numOfPartitions = 2;
+  partitionConfig.backendNames = {"Interpreter", "Interpreter"};
+  partitionConfig.partitionNames = {"p1", "p2"};
+  partitionConfig.nodeToPartition = {{"add2", 0}};
+  auto partitioner = Partitioner(&mod_, devices, false, false, partitionConfig);
+  CompilationContext cctx;
+  auto dagList = partitioner.partition(cctx);
+  EXPECT_FALSE((bool)dagList);
+}
+
+/// This one test dagValidation in partitioner: p0->p1, p1->p2, p2->p1.
+TEST_F(PartitionerTest, dagValidation2) {
+  auto *input1 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {2, 10}, "input1", false);
+  auto *input2 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {2, 10}, "input2", false);
+  auto *input3 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {2, 10}, "input3", false);
+  auto *input4 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {2, 10}, "input4", false);
+  auto *add0 = F_->createAdd("add0", input1, input2);
+  auto *add1 = F_->createAdd("add1", add0, input3);
+  auto *add2 = F_->createAdd("add2", add1, input4);
+  auto *sub1 = F_->createSub("sub1", add1, add2);
+  F_->createSave("save", sub1);
+
+  std::vector<DeviceInfo> devices = {
+      {3072, "Interpreter"}, {3072, "Interpreter"}, {3072, "Interpreter"}};
+
+  // User-defined partition: p0->p1, p1->p2, p2->p1.
+  PartitionConfig partitionConfig;
+  partitionConfig.funcName = "main";
+  partitionConfig.numOfPartitions = 3;
+  partitionConfig.backendNames = {"Interpreter", "Interpreter", "Interpreter"};
+  partitionConfig.partitionNames = {"p0", "p1", "p2"};
+  partitionConfig.nodeToPartition = {{"add0", 0}, {"add2", 2}};
+  auto partitioner = Partitioner(&mod_, devices, false, false, partitionConfig);
+  CompilationContext cctx;
+  auto dagList = partitioner.partition(cctx);
+  EXPECT_FALSE((bool)dagList);
 }
 
 /// This one tests partition from a user-defined config.
@@ -926,13 +968,125 @@ TEST_F(PartitionerTest, partitionFromConfig) {
   partitionConfig.backendNames = {"Interpreter", "CPU", "Interpreter"};
   partitionConfig.partitionNames = {"p1", "p2", "p3"};
   partitionConfig.nodeToPartition = {{"sub", 0}, {"mul", 1}};
-  auto partitioner = Partitioner(&mod_, devices, false, false, partitionConfig);
+  Partitioner partitioner(&mod_, devices, false, false, partitionConfig);
   CompilationContext cctx;
-  auto err = partitioner.Partition(cctx);
-  EXPECT_FALSE(errToBool(std::move(err)));
-  DAGListTy dagList = std::move(partitioner.getPartitionResult());
+  auto dagList = partitioner.partition(cctx);
+  EXPECT_TRUE((bool)dagList);
   EXPECT_EQ(mod_.getFunctions().size(), 3);
-  EXPECT_EQ(dagList.size(), 1);
+  EXPECT_EQ(dagList->size(), 1);
   ASSERT_TRUE(checkSaveNode(mod_));
-  heterogeneousPartitionValidation(dagList, mod_);
+  heterogeneousPartitionValidation(dagList.get(), mod_);
+}
+
+/// This one tests calling PartitionFromConfig directly.
+TEST_F(PartitionerTest, partitionFromConfigDirectCall) {
+  createSimpleModule(mod_);
+  std::vector<DeviceInfo> devices = {
+      {3072, "Interpreter"}, {3072, "Interpreter"}, {3072, "CPU"}};
+
+  // User-defined partition: 3 partitions (2 interpreter, 1 cpu), Mul nodes to
+  // CPU, others to Interpreter.
+  PartitionConfig partitionConfig;
+  partitionConfig.funcName = "test";
+  partitionConfig.numOfPartitions = 3;
+  partitionConfig.backendNames = {"Interpreter", "CPU", "Interpreter"};
+  partitionConfig.partitionNames = {"p1", "p2", "p3"};
+  partitionConfig.nodeToPartition = {{"sub", 0}, {"mul", 1}};
+  Partitioner partitioner(&mod_, devices);
+  CompilationContext cctx;
+  auto dagList = partitioner.partitionFromConfig(partitionConfig);
+  EXPECT_TRUE((bool)dagList);
+  EXPECT_EQ(mod_.getFunctions().size(), 3);
+  EXPECT_EQ(dagList->size(), 1);
+  ASSERT_TRUE(checkSaveNode(mod_));
+  heterogeneousPartitionValidation(dagList.get(), mod_);
+}
+
+/// This one test load-balanced partition flow.
+TEST_F(PartitionerTest, loadBalancedPartition) {
+  ExecutionEngine EER, EEP;
+  constexpr float range = 2.0;
+  std::vector<ExecutionEngine *> engines{&EER, &EEP};
+  // Since compiling modifies the module and partitioning modifies the function,
+  // setup two EEs with identical functions for validation.
+  for (auto EE : engines) {
+    auto mod = &EE->getModule();
+    F_ = mod->createFunction("main");
+    auto *input =
+        mod->createPlaceholder(ElemKind::FloatTy, {1, 32}, "input", false);
+    auto *w1 = mod->createConstant(ElemKind::FloatTy, {32, 16}, "w1");
+    auto *b1 = mod->createConstant(ElemKind::FloatTy, {16}, "b1");
+    bindings_.allocate(input);
+    w1->getHandle<>().randomize(-range, range, mod->getPRNG());
+    b1->getHandle<>().randomize(-range, range, mod->getPRNG());
+
+    // Initial FC.
+    Node *I = F_->createFullyConnected("initial_fc", input, w1, b1);
+    I = F_->createSigmoid("initial_sigmoid", I);
+
+    // Left branch.
+    auto *w2 = mod->createConstant(ElemKind::FloatTy, {16, 16}, "w2");
+    auto *b2 = mod->createConstant(ElemKind::FloatTy, {16}, "b2");
+    w2->getHandle<>().randomize(-range, range, mod->getPRNG());
+    b2->getHandle<>().randomize(-range, range, mod->getPRNG());
+    Node *L = F_->createFullyConnected("left_fc1", I, w2, b2);
+    L = F_->createSigmoid("left_sigmoid1", L);
+    auto *w3 = mod->createConstant(ElemKind::FloatTy, {16, 8}, "w3");
+    auto *b3 = mod->createConstant(ElemKind::FloatTy, {8}, "b3");
+    w3->getHandle<>().randomize(-range, range, mod->getPRNG());
+    b3->getHandle<>().randomize(-range, range, mod->getPRNG());
+    L = F_->createFullyConnected("left_fc2", L, w3, b3);
+    L = F_->createSigmoid("left_sigmoid2", L);
+
+    // Right branch.
+    auto *w4 = mod->createConstant(ElemKind::FloatTy, {16, 16}, "w4");
+    auto *b4 = mod->createConstant(ElemKind::FloatTy, {16}, "b4");
+    w4->getHandle<>().randomize(-range, range, mod->getPRNG());
+    b4->getHandle<>().randomize(-range, range, mod->getPRNG());
+    Node *R = F_->createFullyConnected("right_fc1", I, w4, b4);
+    R = F_->createSigmoid("right_sigmoid1", R);
+    auto *w5 = mod->createConstant(ElemKind::FloatTy, {16, 8}, "w5");
+    auto *b5 = mod->createConstant(ElemKind::FloatTy, {8}, "b5");
+    w5->getHandle<>().randomize(-range, range, mod->getPRNG());
+    b5->getHandle<>().randomize(-range, range, mod->getPRNG());
+    R = F_->createFullyConnected("right_fc2", R, w5, b5);
+    R = F_->createSigmoid("right_sigmoid2", R);
+
+    // Join branches.
+    auto *mul = F_->createMul("mul", L, R);
+    F_->createSave("ret", mul);
+  }
+
+  // Infer using the un-partitioned graph.
+  Tensor in(ElemKind::FloatTy, {1, 32});
+  in.getHandle<>().randomize(-range, range, EER.getModule().getPRNG());
+
+  EER.compile(CompilationMode::Infer);
+  bindings_.clear();
+  bindings_.allocate(EER.getModule().getPlaceholders());
+  updateInputPlaceholders(bindings_, {bindings_.getPlaceholderByName("input")},
+                          {&in});
+  EER.run(bindings_);
+  Tensor ref = bindings_.get(bindings_.getPlaceholderByName("ret"))->clone();
+
+  std::vector<DeviceInfo> devices = {
+      {3072, "Interpreter"}, {3072, "Interpreter"}, {3072, "Interpreter"}};
+  Partitioner myPartitioner(&EEP.getModule(), devices, false, true);
+  CompilationContext cctx;
+  auto dagList = myPartitioner.loadBalancedPartition(cctx);
+  EXPECT_TRUE((bool)dagList);
+  EXPECT_EQ(EEP.getModule().getFunctions().size(), 3);
+  EXPECT_EQ(dagList->size(), 1);
+  EXPECT_TRUE(checkSaveNode(EEP.getModule()));
+
+  // Run the paritioned graph and compare the results.
+  bindings_.clear();
+  bindings_.allocate(EEP.getModule().getPlaceholders());
+  EEP.compile(cctx);
+  for (auto it = dagList->begin(); it != dagList->end(); ++it) {
+    executeDAG((*it).root.get(), EEP.getModule(), bindings_,
+               {bindings_.getPlaceholderByName("input")}, {&in}, &EEP);
+    Tensor test = bindings_.get(bindings_.getPlaceholderByName("ret"))->clone();
+    EXPECT_TRUE(ref.isEqual(test));
+  }
 }

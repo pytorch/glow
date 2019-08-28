@@ -585,6 +585,34 @@ bool AvgPoolNode::verify() const {
   }
 }
 
+bool AdaptiveAvgPoolGradNode::verify() const {
+  bool isValid = verifyInputAndGradInputTypes(getInput(),
+                                              getGradOfInputNamedInput(), this);
+  isValid &= verifyOutputAndGradOutputTypes(
+      getOriginalOutputForResult(), getGradOfOriginalOutputNamedResult(), this);
+
+  ShapeNHWC idim(getInput().getType()->dims());
+  ShapeNHWC odim(getOriginalOutputForResult().getType()->dims());
+
+  isValid &= expectCompareTrue(
+      "expected the same number of channels for input and output", odim.c,
+      idim.c, this);
+
+  isValid &= expectCompareTrue(
+      "expected the same number of batches for input and output", odim.n,
+      idim.n, this);
+
+  isValid &=
+      expectCompareTrue("height too small for averaging area", odim.h, idim.h,
+                        this, CompareOperatorLessEqual<size_t>());
+
+  isValid &=
+      expectCompareTrue("width too small for averaging area", odim.w, idim.w,
+                        this, CompareOperatorLessEqual<size_t>());
+
+  return isValid;
+}
+
 bool AdaptiveAvgPoolNode::verify() const {
   bool isValid = checkTypeIgnoreShape(getInput(), getResult(), this);
 
@@ -1011,6 +1039,7 @@ VERIFY_ARITHMETIC(DivGrad);
   }
 
 VERIFY_CMP(CmpLTE)
+VERIFY_CMP(CmpLT)
 VERIFY_CMP(CmpEQ)
 #undef VERIFY_CMP
 
@@ -1046,6 +1075,15 @@ bool LengthsSumNode::verify() const {
 }
 
 bool BatchedReduceMeanNode::verify() const {
+  bool isValid = checkType(getResult(), getBatch().getElementType(), this);
+
+  isValid &=
+      expectCompareTrue("Invalid shape", getBatch().dims().size(), size_t(0),
+                        this, CompareOperatorGreaterThan<size_t>());
+  return isValid;
+}
+
+bool BatchedReduceMinNode::verify() const {
   bool isValid = checkType(getResult(), getBatch().getElementType(), this);
 
   isValid &=
@@ -1299,6 +1337,36 @@ bool TopKNode::verify() const {
   bool isValid = checkSameShape(getValues(), getIndices(), this);
   isValid &= checkNotQuantizedOrSameParams(getInput().getType(),
                                            getValues().getType(), this);
+  return isValid;
+}
+
+bool ArgMaxNode::verify() const {
+  bool isValid = true;
+
+  // Check input type.
+  isValid &= checkType(getArgmax(),
+                       llvm::ArrayRef<ElemKind>({ElemKind::Int64ITy}), this);
+
+  isValid &= expectCompareTrue("Input must be a 4D tensor",
+                               getInput().dims().size(), size_t(4), this);
+
+  // Check expected output type.
+  bool keepdims = getKeepDims();
+  const unsigned_t axis = getAxis();
+
+  ShapeVector expDstDims;
+  auto srcDim = getInput().dims();
+  for (size_t i = 0; i < srcDim.size(); i++) {
+    if (i == axis) {
+      if (keepdims) {
+        expDstDims.push_back(1);
+      }
+    } else {
+      expDstDims.push_back(srcDim[i]);
+    }
+  }
+  isValid &= expectCompareTrue("Invalid output dims", getArgmax().dims(),
+                               llvm::makeArrayRef(expDstDims), this);
   return isValid;
 }
 

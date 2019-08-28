@@ -58,4 +58,46 @@ memoryUsageValidation(const NodeToFunctionMap &partitions,
   }
   return llvm::Error::success();
 }
+
+/// \returns true if \p node contains no cycles. \p path contains the nodes in a
+/// path, and \p visited contains the nodes checked before.
+static bool isDAG(DAGNode *node, llvm::SmallSet<DAGNode *, 10> &path,
+                  llvm::SmallSet<DAGNode *, 10> &visited) {
+  if (!visited.count(node)) {
+    path.insert(node);
+    visited.insert(node);
+    for (size_t i = 0; i < node->children.size(); i++) {
+      auto child = node->children[i];
+      if (path.count(child)) {
+        // Cycle found.
+        return false;
+      }
+      if (!isDAG(child, path, visited)) {
+        return false;
+      }
+    }
+  }
+  if (path.count(node)) {
+    path.erase(node);
+  }
+  return true;
+}
+
+llvm::Error dagValidation(const DAG &dag) {
+  auto *root = dag.root.get();
+  llvm::SmallSet<DAGNode *, 10> path;
+  llvm::SmallSet<DAGNode *, 10> visited;
+  // For the first condition: root->children.size() > 0 -- When a dag is
+  // created, its root is a dummy node and other DAGNode without parents will be
+  // linked to this root. Therefore, root without any child means that each of
+  // the rest of DAGNodes has at least one parent. That is, a cycle exists.
+
+  RETURN_ERR_IF_NOT((root->children.size() > 0 && isDAG(root, path, visited)),
+                    "Invalid partition: a cycle is detected.");
+
+  // There should not be isolated nodes in partitions.
+  RETURN_ERR_IF_NOT((visited.size() == dag.nodes.size() + 1),
+                    "Invalid partition: isolated node is detected.");
+  return llvm::Error::success();
+}
 } // namespace glow

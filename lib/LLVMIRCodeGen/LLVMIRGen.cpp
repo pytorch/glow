@@ -1175,18 +1175,35 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
     ARITHMETIC_BINARY_OP_CASE(ElementPow, "element_pow");
 #undef ARITHMETIC_BINARY_OP_CASE
 
-  case Kinded::Kind::ElementCmpLTEInstKind: {
-    auto *CI = cast<ElementCmpLTEInst>(I);
-    auto *dest = CI->getDest();
-    auto *lhs = CI->getLHS();
-    auto *rhs = CI->getRHS();
+  case Kinded::Kind::ElementCmpLTEInstKind:
+  case Kinded::Kind::ElementCmpLTInstKind: {
+    Value *dest = nullptr;
+    Value *lhs = nullptr;
+    Value *rhs = nullptr;
+    std::string kernelName;
+
+    if (auto *CLTEI = dyn_cast<ElementCmpLTEInst>(I)) {
+      dest = CLTEI->getDest();
+      lhs = CLTEI->getLHS();
+      rhs = CLTEI->getRHS();
+      kernelName = "element_cmp_lte_kernel";
+    } else if (auto *CLTI = dyn_cast<ElementCmpLTInst>(I)) {
+      dest = CLTI->getDest();
+      lhs = CLTI->getLHS();
+      rhs = CLTI->getRHS();
+      kernelName = "element_cmp_lt_kernel";
+    } else {
+      llvm_unreachable(
+          "Missmatch between Instruction Kind and instruction instance.");
+    }
+
     auto *destPtr = emitBufferAddress(builder, dest, kernel, bufferToArgNum);
     auto *lhsPtr = emitBufferAddress(builder, lhs, kernel, bufferToArgNum);
     auto *rhsPtr = emitBufferAddress(builder, rhs, kernel, bufferToArgNum);
 
     // Need _kernel suffix since these operations are implemented as
     // "data-parallel" kernels in libjit.
-    auto *F = getFunction("element_cmp_lte_kernel", lhs->getElementType());
+    auto *F = getFunction(kernelName.c_str(), lhs->getElementType());
 
     if (lhs->getType()->isQuantizedType()) {
       auto *lhsTy = lhs->getType();
@@ -1665,10 +1682,48 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     break;
   }
 
+  case Kinded::Kind::BatchedReduceMinInstKind: {
+    auto *BR = cast<BatchedReduceMinInst>(I);
+    auto *dest = BR->getDest();
+    auto *batch = BR->getBatch();
+    auto axes = BR->getAxes();
+    auto *destPtr = emitValueAddress(builder, dest);
+    auto *batchPtr = emitValueAddress(builder, batch);
+
+    ShapeVector eBatchDims = expandDimsToMax(batch->dims());
+    ShapeVector eDestDims = eBatchDims;
+    for (int i = 0; i < axes.size(); i++) {
+      eDestDims[axes[i]] = 1;
+    }
+
+    auto *batchDims =
+        emitConstSizeTArray(builder, llvm::makeArrayRef(eBatchDims));
+    auto *destDims =
+        emitConstSizeTArray(builder, llvm::makeArrayRef(eDestDims));
+
+    if (((batch->getElementType() != ElemKind::FloatTy) &&
+         (batch->getElementType() != ElemKind::Int32ITy) &&
+         (batch->getElementType() != ElemKind::Int64ITy)) ||
+        (batch->getElementType() != dest->getElementType())) {
+      llvm_unreachable("Cannot get function for ReduceMin. ");
+    }
+
+    llvm::Function *F = getFunction("reducemin", batch->getElementType());
+    if (!batch->getType()->isQuantizedType()) {
+      auto *destSize = emitConstSizeT(builder, dest->size());
+
+      createCall(builder, F,
+                 {destPtr, batchPtr, destSize, destDims, batchDims});
+    }
+    break;
+  }
+
   case Kinded::Kind::ConvolutionInstKind: {
     auto *CI = cast<ConvolutionInst>(I);
     assert(CI->getLayout() == NHWC &&
            "Glow CPU Backend supports only NHWC Convolutions");
+    assert(CI->getFusedActivation() == FusedActivation::NONE &&
+           "Glow CPU Backend does not support fused activations.");
     auto *dest = CI->getDest();
     auto *src = CI->getSrc();
     auto *filter = CI->getFilter();
@@ -1942,6 +1997,22 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *F = getFunction("max_pool_argmax_grad", srcGrad->getElementType());
     createCall(builder, F,
                {srcGradPtr, destGradPtr, argmaxPtr, srcGradDims, destDims});
+    break;
+  }
+
+  case Kinded::Kind::ArgMaxInstKind: {
+    auto *AM = cast<ArgMaxInst>(I);
+    auto *argmax = AM->getArgmax();
+    auto *input = AM->getInput();
+    auto *argmaxPtr = emitValueAddress(builder, argmax);
+    auto *inputPtr = emitValueAddress(builder, input);
+
+    auto *srcDims = emitValueDims(builder, input);
+
+    auto *axis = emitConstSizeT(builder, AM->getAxis());
+
+    auto *F = getFunction("arg_max", input->getElementType());
+    createCall(builder, F, {inputPtr, argmaxPtr, srcDims, axis});
     break;
   }
 

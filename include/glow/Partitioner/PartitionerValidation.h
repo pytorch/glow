@@ -31,5 +31,10 @@ logicalDevicesValidation(const NodeToFunctionMap &partitions,
 llvm::Error
 memoryUsageValidation(const NodeToFunctionMap &partitions,
                       const std::map<std::string, BackendInfo> &backendMap);
+
+/// Check if the current partition is a valid DAG. This check can only be called
+/// after a real partition is created and the DAG is generated.
+llvm::Error dagValidation(const DAG &dag);
+
 } // namespace glow
 #endif // GLOW_PARTITIONER_PARTITIONERVALIDATION_H

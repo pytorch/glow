@@ -171,8 +171,10 @@ struct DeviceConfig {
 /// Options configuring Host components of the Runtime, such as the Partitioner
 /// and Executor.
 struct HostConfig {
-  /// Number of outstanding or concurrent networks before rate limiting.
-  size_t maxActiveRequests{100};
+  /// Number of outstanding or concurrent networks before queueing.
+  size_t maxActiveRequests{10};
+  /// Number of requests to queue up before refusing further requests.
+  size_t maxQueueSize{100};
   /// Number of threads to allocate to the Executor.
   size_t executorThreads{3};
 };

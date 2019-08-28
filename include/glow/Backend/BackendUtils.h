@@ -104,6 +104,14 @@ public:
                                        MemoryAllocator &placeholderAllocator,
                                        MemoryAllocator &activationsAllocator);
 
+  /// Computes offsets and total allocation for Constants, Placeholders, and
+  /// Activations to build runtime symbol table. \returns RuntimeBundle.
+  /// Constants and Placeholders are taken from \p F, and all Activations
+  /// required by each function in \p funcs are placed into the same
+  /// RuntimeBundle.
+  static runtime::RuntimeBundle
+  create(const Function &F, const std::vector<const IRFunction *> &funcs);
+
   /// Computes offsets and total allocations for Constants, Placeholders, and
   /// Activations to build runtime symbol table. \returns RuntimeBundle. Uses a
   /// single allocator \p allocator and allocates all buffers contiguously in

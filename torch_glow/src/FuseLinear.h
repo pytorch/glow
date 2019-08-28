@@ -14,14 +14,14 @@
  * limitations under the License.
  */
 
-#ifndef GLOW_TORCH_GLOW_SRC_FUSINGOPTIMIZER_H
-#define GLOW_TORCH_GLOW_SRC_FUSINGOPTIMIZER_H
+#ifndef GLOW_TORCH_GLOW_SRC_FUSE_LINEAR_H
+#define GLOW_TORCH_GLOW_SRC_FUSE_LINEAR_H
 
 #include <torch/csrc/jit/ir.h>
 
 namespace glow {
-
+/// Performs specific fusion for Linear operator.
 void FuseLinear(std::shared_ptr<torch::jit::Graph> &graph);
-}
+} // namespace glow
 
-#endif // GLOW_TORCH_GLOW_SRC_FUSINGOPTIMIZER_H
+#endif // GLOW_TORCH_GLOW_SRC_FUSE_LINEAR_H

@@ -20,7 +20,6 @@
 #include <torch/csrc/jit/ir.h>
 
 namespace glow {
-
 /// Various settings to be used by code that loads PyTorch models. There should
 /// only be one of these and it should be obtained by calling
 /// getPyTorchLoaderSettings().
@@ -31,6 +30,9 @@ struct PyTorchLoaderSettings {
   /// The PyTorch symbol used to identify the Node that contains PyTorch
   /// subgraphs that are compiled for running on Glow.
   bool weightFreezingEnabled = true;
+
+  /// Name of the Glow backend to use with CachingGraphRunner's HostManager.
+  std::string glowBackendName = "Interpreter";
 };
 
 /// \returns the PyTorchLoaderSettings singleton to be used throughout Glow's
@@ -40,6 +42,22 @@ PyTorchLoaderSettings &getPyTorchLoaderSettings();
 /// \returns the PyTorch symbol to be used for the PyTorch node which represents
 /// the subgraph that Glow will compile and run.
 const c10::Symbol &getGlowSymbol();
+
+/// Executes custom fuse pass for the given \p graph and \p fuseSymbol.
+void glowCustomFuse(std::shared_ptr<torch::jit::Graph> &graph,
+                    at::Symbol fuseSymbol);
+
+/// Register the glow::FusionGroup operator.
+void registerGlowOp();
+
+/// Register the pass that fuses parts of the graph into a glow::FusionGroup.
+void registerGlowFusionPass();
+
+/// Convenience method to register the glow fusion op and pass. \p
+/// enableFusionPass can be used to enable the glow fusion pass once it's
+/// registered.
+void registerGlowFusionOpAndPass(bool enableFusionPass = false);
+
 } // namespace glow
 
 #endif // GLOW_TORCH_GLOW_SRC_COMMON_H

@@ -15,6 +15,7 @@
  */
 
 #include "glow/Backend/Backend.h"
+#include "glow/Backends/DummyDeviceManager.h"
 
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/PlaceholderBindings.h"
@@ -23,6 +24,12 @@
 #include "glow/Optimizer/GraphOptimizerPipeline/Pipeline.h"
 
 using namespace glow;
+
+runtime::DeviceManager *
+Backend::createDeviceManager(const runtime::DeviceConfig &deviceConfig) {
+  LOG(ERROR) << "Warning: Creating a DummyDeviceManager.\n";
+  return new runtime::DummyDeviceManager(deviceConfig);
+}
 
 TraceInfo Backend::buildManualTraceInfo(Function *F) const {
   TraceInfo info(false, getTraceEventDataSize());

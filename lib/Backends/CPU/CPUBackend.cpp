@@ -44,6 +44,10 @@ bool CPUBackend::isOpSupported(const NodeInfo &NI) const {
   // Note: For brevity below, "X ==> Y, Z" signifes that Node X is IRGen'd into
   // Instructions Y and Z.
   switch (NI.getKind()) {
+  case Kinded::Kind::BatchedReduceMinNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind(
+        {ElemKind::FloatTy, ElemKind::Int32ITy, ElemKind::Int64ITy});
+
   case Kinded::Kind::AddNodeKind:
   case Kinded::Kind::SubNodeKind:
   case Kinded::Kind::MulNodeKind:
@@ -61,6 +65,12 @@ bool CPUBackend::isOpSupported(const NodeInfo &NI) const {
                {ElemKind::FloatTy, ElemKind::Int8QTy}, {},
                {MaxPoolNode::ArgmaxIdx}) &&
            (NI.getOutElemTy(MaxPoolNode::ArgmaxIdx) == ElemKind::Int64ITy);
+
+  case Kinded::Kind::ArgMaxNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind(
+               {ElemKind::FloatTy, ElemKind::Int8QTy}, {},
+               {ArgMaxNode::ArgmaxIdx}) &&
+           (NI.getOutElemTy(ArgMaxNode::ArgmaxIdx) == ElemKind::Int64ITy);
 
   case Kinded::Kind::SaveNodeKind:
   case Kinded::Kind::ReshapeNodeKind:
@@ -238,6 +248,12 @@ bool CPUBackend::isOpSupported(const NodeInfo &NI) const {
                {ElemKind::FloatTy, ElemKind::Int8QTy}, {},
                {CmpLTENode::ResultIdx}) &&
            (NI.getOutElemTy(CmpLTENode::ResultIdx) == ElemKind::BoolTy);
+
+  case Kinded::Kind::CmpLTNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind(
+               {ElemKind::FloatTy, ElemKind::Int8QTy, ElemKind::Int32ITy}, {},
+               {CmpLTNode::ResultIdx}) &&
+           (NI.getOutElemTy(CmpLTNode::ResultIdx) == ElemKind::BoolTy);
 
   case Kinded::Kind::IsNaNNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind({ElemKind::FloatTy}, {},

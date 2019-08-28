@@ -111,7 +111,8 @@ void IRGenVisitor::post(Node *parent, Node *N) {
     auto *inVal = valueForNode(RN->getInput());
     std::vector<size_t> offsets(inVal->getType()->dims().size(), 0);
     auto *TVI = builder_.createTensorViewInst(
-        "tensorview.reshape", inVal, RN->getResult().getType(), offsets);
+        "tensorview.reshape." + inVal->getName().str(), inVal,
+        RN->getResult().getType(), offsets);
     auto *dest = builder_.createAllocActivationInst("copy.reshape.res",
                                                     RN->getResult().getType());
     builder_.createCopyInst("copy.reshape", dest, TVI);
@@ -137,7 +138,7 @@ void IRGenVisitor::post(Node *parent, Node *N) {
     builder_.createConvolutionGradInst(
         N->getName(), input, filter, outGrad, inG, filterG, biasG,
         CG->getKernels(), CG->getStrides(), CG->getPads(), CG->getGroup(),
-        CG->getDilation(), CG->getLayout());
+        CG->getDilation(), CG->getLayout(), CG->getFusedActivation());
 
     registerIR(CG->getGradOfInputNamedInput(), inG);
     registerIR(CG->getGradOfInputNamedFilter(), filterG);
@@ -155,6 +156,14 @@ void IRGenVisitor::post(Node *parent, Node *N) {
     nodeToInstr_[N] = V;
     registerIR(P->getResult(), dest);
     registerIR(P->getArgmax(), argmax);
+    break;
+  }
+  case glow::Kinded::Kind::ArgMaxNodeKind: {
+    auto *P = cast<ArgMaxNode>(N);
+    auto *in = valueForNode(P->getInput());
+    auto *V = builder_.createArgMaxOp(N->getName(), in, P->getAxis(),
+                                      P->getKeepDims());
+    registerIR(P->getArgmax(), V->getArgmax());
     break;
   }
   case glow::Kinded::Kind::MaxPoolGradNodeKind: {
@@ -190,6 +199,20 @@ void IRGenVisitor::post(Node *parent, Node *N) {
     builder_.createAvgPoolGradInst(N->getName(), outW, outG, inG,
                                    PG->getKernels(), PG->getStrides(),
                                    PG->getPads(), PG->getLayout());
+    registerIR(PG->getGradOfInputNamedInput(), inG);
+    break;
+  }
+  case glow::Kinded::Kind::AdaptiveAvgPoolGradNodeKind: {
+    auto *PG = cast<AdaptiveAvgPoolGradNode>(N);
+
+    auto poolOut = PG->getOriginalOutputForResult();
+    auto *outW = valueForNode(poolOut);
+    auto *outG = valueForNode(PG->getGradOfOriginalOutputNamedResult());
+
+    auto *inG = builder_.createAllocActivationInst("pool.outG",
+                                                   PG->getInput().getType());
+
+    builder_.createAdaptiveAvgPoolGradInst(N->getName(), outW, outG, inG);
     registerIR(PG->getGradOfInputNamedInput(), inG);
     break;
   }

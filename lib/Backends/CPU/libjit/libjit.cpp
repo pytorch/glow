@@ -13,9 +13,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#include <algorithm>
 #include <assert.h>
 #include <chrono>
+#include <cmath>
 #include <math.h>
+#include <numeric>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -669,6 +672,45 @@ libjit_max_pool_argmax_generic(const T *inW, T *outW, int64_t *argmax,
 }
 
 template <typename T>
+static void libjit_arg_max_generic(const T *inW, int64_t *outW,
+                                   const size_t *inWdims, size_t axis) {
+
+  size_t a, b, c, d = 0;
+
+  size_t *dim[4];
+  dim[(axis + 1) % 4] = &a;
+  dim[(axis + 2) % 4] = &b;
+  dim[(axis + 3) % 4] = &c;
+  dim[axis] = &d;
+
+  size_t odim[4] = {inWdims[0], inWdims[1], inWdims[2], inWdims[3]};
+  odim[axis] = 1;
+
+  // Iterate over axes != argmax axis.
+  for (a = 0; a < inWdims[(axis + 1) % 4]; a++) {
+    for (b = 0; b < inWdims[(axis + 2) % 4]; b++) {
+      for (c = 0; c < inWdims[(axis + 3) % 4]; c++) {
+
+        T max = inW[libjit_getXYZW(inWdims, *dim[0], *dim[1], *dim[2], 0)];
+        int64_t maxi = 0;
+
+        // Iterate over argmax axis.
+        for (d = 0; d < inWdims[axis]; d++) {
+          T elem =
+              inW[libjit_getXYZW(inWdims, *dim[0], *dim[1], *dim[2], *dim[3])];
+          if (elem > max) {
+            max = elem;
+            maxi = d;
+          }
+        }
+        *dim[axis] = 0;
+        outW[libjit_getXYZW(odim, *dim[0], *dim[1], *dim[2], *dim[3])] = maxi;
+      }
+    }
+  }
+}
+
+template <typename T>
 static void libjit_batchedadd_quantized(int8_t *dest, const int8_t *batch,
                                         const T *slice, size_t numSlice,
                                         size_t sliceSize, int32_t destOffset,
@@ -758,6 +800,39 @@ libjit_space_to_depth_generic(const T *inPtr, T *outPtr, size_t blockSize,
 
           size_t inIndex = id + inDepth * (iw + inWidth * (ih + b * inHeight));
           outPtr[outIndex] = inPtr[inIndex];
+        }
+      }
+    }
+  }
+}
+/// The dimensions passed in here are pre-expanded in LLVMIRGen with 1s so that
+/// we can iterate over the shape here, regardless of the shape of the tensor.
+template <typename T>
+static void libjit_reducemin(T *dest, const T *batch, size_t destSize,
+                             const size_t *destDims, const size_t *batchDims,
+                             T init) {
+  for (size_t i = 0; i < destSize; i++) {
+    dest[i] = init;
+  }
+
+  unsigned int axis[6];
+  for (size_t i = 0; i < 6; i++) {
+    axis[i] = (destDims[i] > 1);
+  }
+
+  for (size_t x = 0, dx = 0; x < batchDims[0]; x++, dx += axis[0]) {
+    for (size_t y = 0, dy = 0; y < batchDims[1]; y++, dy += axis[1]) {
+      for (size_t z = 0, dz = 0; z < batchDims[2]; z++, dz += axis[2]) {
+        for (size_t w = 0, dw = 0; w < batchDims[3]; w++, dw += axis[3]) {
+          for (size_t q = 0, dq = 0; q < batchDims[4]; q++, dq += axis[4]) {
+            for (size_t r = 0, dr = 0; r < batchDims[5]; r++, dr += axis[5]) {
+              T fdest =
+                  dest[libjit_getXYZWQR(destDims, dx, dy, dz, dw, dq, dr)];
+              T fnew = batch[libjit_getXYZWQR(batchDims, x, y, z, w, q, r)];
+              dest[libjit_getXYZWQR(destDims, dx, dy, dz, dw, dq, dr)] =
+                  std::min(fdest, fnew);
+            }
+          }
         }
       }
     }
@@ -905,7 +980,7 @@ int8_t libjit_element_cmp_eq_kernel_u(size_t idx, const size_t *LHS,
 }
 
 int8_t libjit_element_is_nan_kernel_f(size_t idx, const float *input) {
-  return isnan(input[idx]) ? 1 : 0;
+  return std::isnan(input[idx]) ? 1 : 0;
 }
 
 int8_t libjit_element_cmp_lte_kernel_f(size_t idx, const float *LHS,
@@ -920,6 +995,25 @@ int8_t libjit_element_cmp_lte_kernel_i8(size_t idx, const int8_t *LHS,
   int32_t lhs = LHS[idx] - lhsOffset;
   int32_t rhs = RHS[idx] - rhsOffset;
   return libjit_scale_i32i8(lhs, pre, post, scale, 0) <= rhs ? 1 : 0;
+}
+
+int8_t libjit_element_cmp_lt_kernel_f(size_t idx, const float *LHS,
+                                      const float *RHS) {
+  return LHS[idx] < RHS[idx] ? 1 : 0;
+}
+
+int8_t libjit_element_cmp_lt_kernel_i32(size_t idx, const int32_t *LHS,
+                                        const int32_t *RHS) {
+  return LHS[idx] < RHS[idx] ? 1 : 0;
+}
+
+int8_t libjit_element_cmp_lt_kernel_i8(size_t idx, const int8_t *LHS,
+                                       const int8_t *RHS, int32_t lhsOffset,
+                                       int32_t rhsOffset, int32_t pre,
+                                       int32_t post, int32_t scale) {
+  int32_t lhs = LHS[idx] - lhsOffset;
+  int32_t rhs = RHS[idx] - rhsOffset;
+  return libjit_scale_i32i8(lhs, pre, post, scale, 0) < rhs ? 1 : 0;
 }
 
 // tanh cannot be vectorized by LLVM yet. Therefore we use the following
@@ -1031,6 +1125,24 @@ void libjit_batchedreduceadd_f(float *dest, const float *batch, size_t destSize,
                                     I[5])] +=
                   batch[libjit_getXYZWQR(batchDims, x, y, z, w, q, r)];
             }
+}
+
+void libjit_reducemin_f(float *dest, const float *batch, size_t destSize,
+                        const size_t *destDims, const size_t *batchDims) {
+  libjit_reducemin(dest, batch, destSize, destDims, batchDims,
+                   std::numeric_limits<float>::max());
+}
+
+void libjit_reducemin_i32(int32_t *dest, const int32_t *batch, size_t destSize,
+                          const size_t *destDims, const size_t *batchDims) {
+  libjit_reducemin(dest, batch, destSize, destDims, batchDims,
+                   std::numeric_limits<int32_t>::max());
+}
+
+void libjit_reducemin_u(int64_t *dest, const int64_t *batch, size_t destSize,
+                        const size_t *destDims, const size_t *batchDims) {
+  libjit_reducemin(dest, batch, destSize, destDims, batchDims,
+                   std::numeric_limits<int64_t>::max());
 }
 
 /// Same as the non-quantized version, the dimensions here are pre-expanded in
@@ -1467,6 +1579,16 @@ void libjit_max_pool_argmax_f(const float *inW, float *outW, int64_t *argmax,
                               size_t *kernels, size_t *strides, size_t *pads) {
   libjit_max_pool_argmax_generic(inW, outW, argmax, inWdims, outWdims, kernels,
                                  strides, pads);
+}
+
+void libjit_arg_max_i8(const int8_t *inW, int64_t *outW, const size_t *inWdims,
+                       size_t axis) {
+  libjit_arg_max_generic(inW, outW, inWdims, axis);
+}
+
+void libjit_arg_max_f(const float *inW, int64_t *outW, const size_t *inWdims,
+                      size_t axis) {
+  libjit_arg_max_generic(inW, outW, inWdims, axis);
 }
 
 void libjit_max_pool_argmax_grad_f(float *inG, const float *outG,

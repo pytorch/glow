@@ -28,6 +28,7 @@
 #include "llvm/ADT/StringRef.h"
 
 #include <functional>
+#include <numeric>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -344,11 +345,13 @@ protected:
     NodeValue in;
     ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
 
+    RETURN_ERR_IF_NOT(in.dims().size() >= 2, "SoftMax input dims must be >= 2");
+
     // We do not do training right now on loaded protos. C2 and ONNX do not even
     // have an option for a selected input anyway. So I am creating this as a
     // placeholder which goes unused during inference.
     auto selected = G_.getParent()->createConstant(
-        ElemKind::Int64ITy, {in.dims()[0], 1}, "selected");
+        ElemKind::Int64ITy, {in.dims()[0], in.dims()[1]}, "selected");
 
     // ONNX allows shapes like <N x 10 x 1 x 1 >. Flatten the inputs to the
     // softmax function. This is similar to a bitcast operation.
@@ -708,13 +711,20 @@ protected:
     return llvm::Error::success();
   }
 
-  llvm::Error loadReduceMeanOrSum(llvm::StringRef typeName, const OpType &op,
-                                  ArgumentDictionaryTy &dict) {
+  llvm::Error loadReduceOp(llvm::StringRef typeName, const OpType &op,
+                           ArgumentDictionaryTy &dict) {
     const std::string &opName = loadOperatorName(op);
     NodeValue in;
     ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
 
-    auto shapeAxes = getShape<unsigned_t>(dict["axes"]);
+    std::vector<unsigned_t> shapeAxes = {};
+    if (dict.count("axes")) {
+      shapeAxes = getShape<unsigned_t>(dict["axes"]);
+    } else {
+      shapeAxes.resize(in.dims().size());
+      std::iota(shapeAxes.begin(), shapeAxes.end(), 0);
+    }
+
     std::sort(shapeAxes.begin(), shapeAxes.end());
 
     llvm::ArrayRef<unsigned_t> axes(shapeAxes);
@@ -738,8 +748,12 @@ protected:
     NodeValue node;
     if (typeName == "ReduceMean") {
       node = G_.createBatchedReduceMean(opName, in, axes);
-    } else {
+    } else if (typeName == "ReduceSum") {
       node = G_.createBatchedReduceAdd(opName, in, axes);
+    } else if (typeName == "ReduceMin") {
+      node = G_.createBatchedReduceMin(opName, in, axes);
+    } else {
+      RETURN_ERR("Unsupported Reduce Op " + typeName.str());
     }
 
     // Our batched reduce add/mean does not keep the dim; reshape if necessary.
@@ -998,6 +1012,26 @@ protected:
     return llvm::Error::success();
   }
 
+  // Loads Less operator. Internally it's a cmpLT Node.
+  llvm::Error loadLess(const OpType &op, const ArgumentDictionaryTy &dict) {
+    // Input Type.
+    NodeValue xNV;
+    ASSIGN_VALUE_OR_RETURN_ERR(xNV, getNodeValueByName(op.input(0)));
+    NodeValue yNV;
+    ASSIGN_VALUE_OR_RETURN_ERR(yNV, getNodeValueByName(op.input(1)));
+
+    std::string opName = loadOperatorName(op);
+
+    auto *xNode = xNV.getNode();
+    auto *yNode = yNV.getNode();
+
+    Node *N = G_.createNodeWithBroadcast<CmpLTNode>(opName, /* axis */ -1,
+                                                    xNode, yNode);
+
+    RETURN_IF_ERR(addNodeAsOutput(op, N));
+    return llvm::Error::success();
+  }
+
   using ProtobufLoader::ProtobufLoader;
 
   /// If operator type is supported, returns Expected<true> and creates new
@@ -1086,8 +1120,9 @@ protected:
       RETURN_IF_ERR(loadTopK(op, dict));
       return true;
     }
-    if (typeName == "ReduceMean" || typeName == "ReduceSum") {
-      RETURN_IF_ERR(loadReduceMeanOrSum(typeName, op, dict));
+    if (typeName == "ReduceMean" || typeName == "ReduceSum" ||
+        typeName == "ReduceMin") {
+      RETURN_IF_ERR(loadReduceOp(typeName, op, dict));
       return true;
     }
     if (typeName == "BatchMatMul") {
@@ -1150,7 +1185,10 @@ protected:
       RETURN_IF_ERR(loadGatherRanges(typeName, op, dict));
       return true;
     }
-
+    if (typeName == "Less") {
+      RETURN_IF_ERR(loadLess(op, dict));
+      return true;
+    }
     return false;
   }
 

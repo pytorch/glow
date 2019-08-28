@@ -284,6 +284,8 @@ void BoundInterpreterFunction::fwdConvolutionInstQuantizedImpl(
 void BoundInterpreterFunction::fwdConvolutionInst(const ConvolutionInst *I) {
   assert(I->getLayout() == NHWC &&
          "Glow Interpreter supports only NHWC Convolutions");
+  assert(I->getFusedActivation() == FusedActivation::NONE &&
+         "Glow Interpreter does not support fused Activations.");
   auto kernelSizes = I->getKernels();
   auto pads = I->getPads();
   auto strides = I->getStrides();
@@ -1014,6 +1016,56 @@ void BoundInterpreterFunction::fwdAdaptiveAvgPoolInst(
 
   dispatchFloatingPointImpl(fwdAdaptiveAvgPoolInstFloatImpl,
                             I->getSrc()->getElementType(), I);
+}
+
+void BoundInterpreterFunction::fwdAdaptiveAvgPoolGradInst(
+    const AdaptiveAvgPoolGradInst *I) {
+  auto inG = getWeightHandle(I->getSrcGrad());
+  auto outW = getWeightHandle(I->getDest());
+  auto outG = getWeightHandle(I->getDestGrad());
+
+  inG.clear();
+
+  ShapeNHWC odim(outW.dims());
+  ShapeNHWC idim(inG.dims());
+
+  const float gradCoefficient = 1. / (odim.h * odim.w);
+
+#define START_IND(a, b, c) (size_t) std::floor((float)((a) * (c)) / (b))
+#define END_IND(a, b, c) (size_t) std::ceil((float)(((a) + 1) * (c)) / (b))
+
+  // https://software.intel.com/en-us/daal-programming-guide-2d-average-pooling-backward-layer
+  // For each input in the batch:
+  for (size_t n = 0; n < odim.n; n++) {
+    // For each layer in the output tensor:
+    for (size_t z = 0; z < idim.c; z++) {
+      // For each value in the output tensor:
+      for (size_t ax = 0; ax < odim.h; ax++) {
+
+        size_t x = START_IND(ax, odim.h, idim.h);
+        size_t kH = END_IND(ax, odim.h, idim.h) - x;
+
+        for (size_t ay = 0; ay < odim.w; ay++) {
+
+          size_t y = START_IND(ay, odim.w, idim.w);
+          size_t kW = END_IND(ay, odim.w, idim.w) - y;
+
+          const float chainGrad = outG.at({n, ax, ay, z}) * gradCoefficient;
+
+          for (size_t fx = 0; fx < kH; fx++) {
+            for (size_t fy = 0; fy < kW; fy++) {
+              size_t ox = x + fx;
+              size_t oy = y + fy;
+
+              inG.at({n, ox, oy, z}) += chainGrad;
+            }
+          }
+        } // W
+      }   // H
+    }     // C
+  }       // N
+#undef START_IND
+#undef END_IND
 }
 
 void BoundInterpreterFunction::fwdMaxPoolWithArgmaxGradInst(
@@ -2166,66 +2218,143 @@ void BoundInterpreterFunction::fwdElementMinInst(const ElementMinInst *I) {
                          I->getDest()->getElementType(), I);
 }
 
-template <typename ElemTy>
-void BoundInterpreterFunction::fwdElementCmpLTEInstFloatImpl(
-    const ElementCmpLTEInst *I) {
-  staticAssertFloatingPointType(ElemTy);
+template <typename ElemTy, typename ElemOffsetTy, typename ElemScaleTy,
+          typename CmpTy, typename InstCmpKind>
+void BoundInterpreterFunction::fwdElementCmpHelperImpl(
+    const InstCmpKind *I, std::function<bool(CmpTy LHS, CmpTy RHS)> cmpHelper) {
+  Value *lhsV = I->getLHS();
+  Value *rhsV = I->getRHS();
+  Value *outV = I->getDest();
 
-  auto outW = getWeightHandle<bool>(I->getDest());
-  auto lhsW = getWeightHandle<ElemTy>(I->getLHS());
-  auto rhsW = getWeightHandle<ElemTy>(I->getRHS());
-  for (size_t i = 0, e = outW.size(); i < e; i++) {
-    outW.raw(i) = lhsW.raw(i) <= rhsW.raw(i);
+  auto lhsH = getWeightHandle<ElemTy>(lhsV);
+  auto rhsH = getWeightHandle<ElemTy>(rhsV);
+  auto oH = getWeightHandle<bool>(outV);
+
+  ElemScaleTy lhsScale = 1.0f;
+  ElemScaleTy rhsScale = 1.0f;
+  ElemOffsetTy lhsOffset = 0;
+  ElemOffsetTy rhsOffset = 0;
+
+  auto lhsTy = lhsV->getType();
+  auto rhsTy = rhsV->getType();
+
+  if (lhsV->getType()->isQuantizedType()) {
+    lhsScale = lhsTy->getScale();
+    rhsScale = rhsTy->getScale();
+
+    lhsOffset = lhsTy->getOffset();
+    rhsOffset = rhsTy->getOffset();
   }
+
+  // For each layer in the batch:
+  for (size_t i = 0, e = oH.size(); i < e; i++) {
+    oH.raw(i) = cmpHelper(lhsScale * (lhsH.raw(i) - lhsOffset),
+                          rhsScale * (rhsH.raw(i) - rhsOffset));
+  }
+}
+
+template <typename ElemTy, typename ElemOffsetTy, typename ElemScaleTy,
+          typename CmpTy>
+void BoundInterpreterFunction::fwdElementCmpLTEInstImpl(
+    const ElementCmpLTEInst *I) {
+  auto cmpHelper = [](CmpTy LHS, CmpTy RHS) -> bool { return LHS <= RHS; };
+  fwdElementCmpHelperImpl<ElemTy, ElemOffsetTy, ElemScaleTy, CmpTy,
+                          ElementCmpLTEInst>(I, cmpHelper);
 }
 
 void BoundInterpreterFunction::fwdElementCmpLTEInst(
     const ElementCmpLTEInst *I) {
-  if (getTensor(I->getLHS())->getType().isQuantizedType()) {
-    auto lhsTy = I->getLHS()->getType();
-    auto rhsTy = I->getRHS()->getType();
+  auto *T = getTensor(I->getLHS());
 
-    float lhsScale = lhsTy->getScale();
-    float rhsScale = rhsTy->getScale();
-
-    int32_t lhsOffset = lhsTy->getOffset();
-    int32_t rhsOffset = rhsTy->getOffset();
-
-    auto outW = getWeightHandle<bool>(I->getDest());
-    auto lhsW = getWeightHandle<int8_t>(I->getLHS());
-    auto rhsW = getWeightHandle<int8_t>(I->getRHS());
-    for (size_t i = 0, e = outW.size(); i < e; i++) {
-      outW.raw(i) = lhsScale * (lhsW.raw(i) - lhsOffset) <=
-                    rhsScale * (rhsW.raw(i) - rhsOffset);
-    }
+  if (T->getType().isQuantizedType()) {
+    fwdElementCmpLTEInstImpl<int8_t, int32_t, float, int32_t>(I);
     return;
   }
 
-  dispatchFloatingPointImpl(fwdElementCmpLTEInstFloatImpl,
-                            I->getLHS()->getElementType(), I);
+  switch (T->getElementType()) {
+  case ElemKind::FloatTy:
+    fwdElementCmpLTEInstImpl<float, float, float>(I);
+    break;
+  case ElemKind::Float16Ty:
+    fwdElementCmpLTEInstImpl<float16_t, float16_t, float16_t>(I);
+    break;
+  case ElemKind::Int32ITy:
+    fwdElementCmpLTEInstImpl<int32_t, int32_t, float>(I);
+    break;
+  case ElemKind::Int64ITy:
+    fwdElementCmpLTEInstImpl<int64_t, int64_t, float>(I);
+    break;
+  default:
+    llvm_unreachable("Type is not supported");
+  }
 }
 
-template <typename ElemTy>
+template <typename ElemTy, typename ElemOffsetTy, typename ElemScaleTy,
+          typename CmpTy>
 void BoundInterpreterFunction::fwdElementCmpEQInstImpl(
     const ElementCmpEQInst *I) {
-  auto outW = getWeightHandle<bool>(I->getDest());
-  auto lhsW = getWeightHandle<ElemTy>(I->getLHS());
-  auto rhsW = getWeightHandle<ElemTy>(I->getRHS());
-  for (size_t i = 0, e = outW.size(); i < e; i++) {
-    outW.raw(i) = lhsW.raw(i) == rhsW.raw(i);
-  }
+  auto cmpHelper = [](CmpTy LHS, CmpTy RHS) -> bool { return LHS == RHS; };
+  fwdElementCmpHelperImpl<ElemTy, ElemOffsetTy, ElemScaleTy, CmpTy,
+                          ElementCmpEQInst>(I, cmpHelper);
 }
 
 void BoundInterpreterFunction::fwdElementCmpEQInst(const ElementCmpEQInst *I) {
   auto *T = getTensor(I->getLHS());
 
-  switch (T->getElementType()) {
-  case ElemKind::Int64ITy: {
-    fwdElementCmpEQInstImpl<int64_t>(I);
-    break;
+  if (T->getType().isQuantizedType()) {
+    fwdElementCmpEQInstImpl<int8_t, int32_t, float, int32_t>(I);
+    return;
   }
+
+  switch (T->getElementType()) {
+  case ElemKind::FloatTy:
+    fwdElementCmpEQInstImpl<float, float, float>(I);
+    break;
+  case ElemKind::Float16Ty:
+    fwdElementCmpEQInstImpl<float16_t, float16_t, float16_t>(I);
+    break;
+  case ElemKind::Int32ITy:
+    fwdElementCmpEQInstImpl<int32_t, int32_t, float>(I);
+    break;
+  case ElemKind::Int64ITy:
+    fwdElementCmpEQInstImpl<int64_t, int64_t, float>(I);
+    break;
   default:
-    dispatchFloatingPointImpl(fwdElementCmpEQInstImpl, T->getElementType(), I);
+    llvm_unreachable("Type is not supported");
+  }
+}
+
+template <typename ElemTy, typename ElemOffsetTy, typename ElemScaleTy,
+          typename CmpTy>
+void BoundInterpreterFunction::fwdElementCmpLTInstImpl(
+    const ElementCmpLTInst *I) {
+  auto cmpHelper = [](CmpTy LHS, CmpTy RHS) -> bool { return LHS < RHS; };
+  fwdElementCmpHelperImpl<ElemTy, ElemOffsetTy, ElemScaleTy, CmpTy,
+                          ElementCmpLTInst>(I, cmpHelper);
+}
+
+void BoundInterpreterFunction::fwdElementCmpLTInst(ElementCmpLTInst const *I) {
+  auto *T = getTensor(I->getLHS());
+  if (T->getType().isQuantizedType()) {
+    fwdElementCmpLTInstImpl<int8_t, int32_t, float, int32_t>(I);
+    return;
+  }
+
+  switch (T->getElementType()) {
+  case ElemKind::FloatTy:
+    fwdElementCmpLTInstImpl<float, float, float>(I);
+    break;
+  case ElemKind::Float16Ty:
+    fwdElementCmpLTInstImpl<float16_t, float16_t, float16_t>(I);
+    break;
+  case ElemKind::Int32ITy:
+    fwdElementCmpLTInstImpl<int32_t, int32_t, float>(I);
+    break;
+  case ElemKind::Int64ITy:
+    fwdElementCmpLTInstImpl<int64_t, int64_t, float>(I);
+    break;
+  default:
+    llvm_unreachable("Type is not supported");
   }
 }
 
@@ -2691,6 +2820,68 @@ void BoundInterpreterFunction::fwdBatchedReduceAddInst(
   dispatchFloatingPointImpl(fwdBatchedReduceAddInstFloatImpl,
                             batch->getElementType(), batch, dest, axis,
                             eBatchDims, eDestDims);
+}
+
+template <typename ElemTy>
+void BoundInterpreterFunction::fwdBatchedReduceMinInstImpl(
+    Value *batch, Value *dest, const ShapeVector &eBatchDims,
+    const ShapeVector &eDestDims, ElemTy max) {
+  static_assert(max_tensor_dimensions == 6,
+                "Loops below assume max_tensor_dimensions = 6.");
+  // Get unowned handles of the batch and dest with these new expanded dims.
+  auto eBatch = getTensor(batch)->getUnowned(eBatchDims);
+  auto eDest = getTensor(dest)->getUnowned(eDestDims);
+  auto eBatchH = eBatch.getHandle<ElemTy>();
+  auto eDestH = eDest.getHandle<ElemTy>();
+  eDestH.clear(max);
+
+  unsigned int axes[max_tensor_dimensions];
+  for (int i = 0; i < max_tensor_dimensions; i++) {
+    axes[i] = (eDestDims[i] > 1);
+  }
+
+  // We can use this loop for all shapes. Use the same indices for both the
+  // batch and dest, except for setting the axis index in the dest to 0.
+  for (size_t x = 0, dx = 0; x < eBatchDims[0]; x++, dx += axes[0]) {
+    for (size_t y = 0, dy = 0; y < eBatchDims[1]; y++, dy += axes[1]) {
+      for (size_t z = 0, dz = 0; z < eBatchDims[2]; z++, dz += axes[2]) {
+        for (size_t w = 0, dw = 0; w < eBatchDims[3]; w++, dw += axes[3]) {
+          for (size_t q = 0, dq = 0; q < eBatchDims[4]; q++, dq += axes[4]) {
+            for (size_t r = 0, dr = 0; r < eBatchDims[5]; r++, dr += axes[5]) {
+              size_t destIndices[] = {dx, dy, dz, dw, dq, dr};
+              size_t srcIndices[] = {x, y, z, w, q, r};
+              eDestH.at(destIndices) =
+                  eDestH.at(destIndices) < eBatchH.at(srcIndices)
+                      ? eDestH.at(destIndices)
+                      : eBatchH.at(srcIndices);
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+void BoundInterpreterFunction::fwdBatchedReduceMinInst(
+    const glow::BatchedReduceMinInst *I) {
+
+  auto *batch = I->getBatch();
+  auto *dest = I->getDest();
+  const auto axes = I->getAxes();
+
+  // Initialize both expanded batch and dest dims to the expanded batch
+  // dims. This allows us below to iterate over the tensor regardless of its
+  // shape using max_tensor_dimensions loops below.
+  ShapeVector eBatchDims = expandDimsToMax(batch->dims());
+  ShapeVector eDestDims = eBatchDims;
+  // Set the destination axes dimensions (the one we are reducing) to 1.
+  for (int i = 0; i < axes.size(); i++) {
+    eDestDims[axes[i]] = 1;
+  }
+
+  dispatchArithmeticImpl(fwdBatchedReduceMinInstImpl, batch->getElementType(),
+                         batch, dest, eBatchDims, eDestDims,
+                         std::numeric_limits<int32_t>::max());
 }
 
 template <typename ElemTy>
@@ -3317,6 +3508,48 @@ static void fwdTopK(Tensor *outW, Tensor *indW, Tensor *inW, size_t k) {
   }
 }
 
+template <typename T>
+static void fwdArgMax(Tensor *argmaxW, Tensor *inW, size_t axis) {
+  auto argmaxH = argmaxW->getHandle<int64_t>();
+  auto inH = inW->getHandle<T>();
+
+  auto idim = inW->dims();
+
+  size_t a, b, c, d = 0;
+
+  size_t *dim[4];
+  dim[(axis + 1) % 4] = &a;
+  dim[(axis + 2) % 4] = &b;
+  dim[(axis + 3) % 4] = &c;
+  dim[axis] = &d;
+
+  size_t odim[4] = {idim[0], idim[1], idim[2], idim[3]};
+  odim[axis] = 1;
+
+  for (a = 0; a < idim[(axis + 1) % 4]; a++) {
+    for (b = 0; b < idim[(axis + 2) % 4]; b++) {
+      for (c = 0; c < idim[(axis + 3) % 4]; c++) {
+
+        T max = inH.at({*dim[0], *dim[1], *dim[2], 0});
+        int64_t maxi = 0;
+
+        for (d = 0; d < idim[axis]; d++) {
+          T elem = inH.at({*dim[0], *dim[1], *dim[2], *dim[3]});
+          if (elem > max) {
+            max = elem;
+            maxi = d;
+          }
+        }
+        *dim[axis] = 0;
+        size_t ind = (*dim[0]) * odim[1] * odim[2] * odim[3] +
+                     (*dim[1]) * odim[2] * odim[3] + (*dim[2]) * odim[3] +
+                     (*dim[3]);
+        argmaxH.raw(ind) = maxi;
+      }
+    }
+  }
+}
+
 //===----------------------------------------------------------------------===//
 //                       Sorting operators
 //===----------------------------------------------------------------------===//
@@ -3333,6 +3566,19 @@ void BoundInterpreterFunction::fwdTopKInst(const TopKInst *I) {
   }
 
   dispatchFloatingPointImpl(fwdTopK, inW->getElementType(), outW, indW, inW, k);
+}
+
+void BoundInterpreterFunction::fwdArgMaxInst(const ArgMaxInst *I) {
+  auto argmaxW = getTensor(I->getArgmax());
+  auto inW = getTensor(I->getInput());
+  size_t axis = I->getAxis();
+
+  if (inW->getType().isQuantizedType()) {
+    dispatchQuantizedImpl(fwdArgMax, inW->getElementType(), argmaxW, inW, axis);
+    return;
+  }
+  dispatchFloatingPointImpl(fwdArgMax, inW->getElementType(), argmaxW, inW,
+                            axis);
 }
 
 //===----------------------------------------------------------------------===//
