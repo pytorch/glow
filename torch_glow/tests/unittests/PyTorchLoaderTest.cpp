@@ -49,6 +49,5 @@ TEST(ModelLoaderTest, Fusion) {
   llvm::Error err = glow::PyTorchFileLoader::loadPyTorchGraph(
       fileName, vec, *F, inputPlaceholders, outputPlaceholders, settings);
 
-  // TODO (after full fusion is available)
-  glow::errToBool(std::move(err));
+  EXPECT_FALSE(glow::errToBool(std::move(err)));
 }

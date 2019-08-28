@@ -26,41 +26,6 @@ namespace glow {
 
 namespace {
 
-/// \returns a corresponding Glow Type for a given PyTorch TensorType \p
-/// ptType.
-inline glow::Type ptTypeToGlowType(const c10::TensorType &ptType) {
-  // TODO: get correct ElemKind
-  DCHECK(ptType.scalarType().has_value())
-      << "TensorType has no associated scalar type.";
-
-  const auto concreteSizes = ptType.sizes().concrete_sizes().value();
-
-  std::vector<size_t> dims;
-  for (const auto &size : concreteSizes) {
-    dims.push_back(static_cast<size_t>(size));
-  }
-
-  return glow::Type(PyTorchModelLoader::convertScalarType(*ptType.scalarType()),
-                    dims);
-}
-
-/// \returns a Glow tensor with the same type and underlying data as the given
-/// PyTorch tensor \p ptT.
-llvm::Expected<glow::Tensor> ptTensorToGlowTensor(const at::Tensor &ptT) {
-  // TODO: get correct ElemKind.
-  DCHECK_EQ(ptT.scalar_type(), at::kFloat)
-      << "Only float tensors supported currently.";
-  std::vector<size_t> dims;
-  for (const auto d : ptT.sizes()) {
-    dims.push_back(d);
-  }
-
-  glow::Type ty(glow::ElemKind::FloatTy, dims);
-  glow::Tensor glowT(ptT.data_ptr(), &ty);
-
-  return glowT;
-}
-
 /// Downcast a double to a float.
 inline llvm::Expected<float> to32Bit(double val) {
   RETURN_ERR_IF_NOT(val <= std::numeric_limits<float>::max() ||
@@ -370,6 +335,29 @@ glow::ElemKind PyTorchModelLoader::convertScalarType(c10::ScalarType ty) {
     LOG(DFATAL) << "Not supported yet.";
     return ElemKind::Int64ITy;
   }
+}
+
+/// \returns a corresponding Glow Type for a given PyTorch TensorType \p
+/// ptType.
+glow::Type PyTorchModelLoader::ptTypeToGlowType(const c10::TensorType &ptType) {
+  DCHECK(ptType.scalarType().has_value())
+      << "TensorType has no associated scalar type.";
+  const auto concreteSizes = ptType.sizes().concrete_sizes().value();
+  std::vector<size_t> dims;
+  for (const auto &size : concreteSizes) {
+    dims.push_back(static_cast<size_t>(size));
+  }
+
+  auto scalarType = ptType.scalarType().value();
+  return glow::Type(PyTorchModelLoader::convertScalarType(scalarType), dims);
+}
+
+/// \returns a Glow tensor with the same type and underlying data as the given
+/// PyTorch tensor \p ptT.
+llvm::Expected<glow::Tensor>
+PyTorchModelLoader::ptTensorToGlowTensor(const at::Tensor &ptT) {
+  glow::Type ty = ptTypeToGlowType(*c10::TensorType::create(ptT));
+  return glow::Tensor(ptT.data_ptr(), &ty);
 }
 
 // static
@@ -998,12 +986,17 @@ llvm::Error PyTorchModelLoader::loadLinear(const torch::jit::Node *ptNode) {
   ASSIGN_VALUE_OR_RETURN_ERR(weights,
                              getGlowNodeValue(inputs[LinearInputs::weights]));
 
+  // Transpose weights before inputing into FC (TODO).
+  auto wDims = weights.dims();
+  std::vector<unsigned_t> shuffle{1, 0};
+  weights = F_.createTranspose("fc_weights_transposed", weights, shuffle);
+
   glow::NodeValue bias;
   if (hasGlowNodeValue(inputs[LinearInputs::bias])) {
     ASSIGN_VALUE_OR_RETURN_ERR(bias,
                                getGlowNodeValue(inputs[LinearInputs::bias]));
   } else {
-    glow::Tensor biasT(glow::ElemKind::FloatTy, {weights.dims()[0]});
+    glow::Tensor biasT(glow::ElemKind::FloatTy, {wDims[0]});
     biasT.zero();
     glow::Constant *biasConstant =
         F_.getParent()->createConstant("linear_bias", std::move(biasT));
@@ -1387,8 +1380,8 @@ llvm::Error PyTorchModelLoader::loadSoftMax(const torch::jit::Node *ptNode) {
             "Dtype parameter must have value torch::float(1), got %u", dtype));
   }
 
-  auto selected = F_.getParent()->createConstant(glow::ElemKind::Int64ITy,
-                                                 {in.dims()[0], 1}, "selected");
+  auto selected = F_.getParent()->createConstant(
+      glow::ElemKind::Int64ITy, {in.dims()[0], in.dims()[1]}, "selected");
 
   auto *FN = F_.createFlatten("reshapeInput", in, dim);
   auto *SM = F_.createSoftMax("SoftMax", FN, selected);

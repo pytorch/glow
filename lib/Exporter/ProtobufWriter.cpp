@@ -66,7 +66,7 @@ ProtobufWriter::writeModel(const ::google::protobuf::Message &modelProto,
       size_t size = modelProto.ByteSize();
       codedOutput.WriteVarint32(size);
       modelProto.SerializeToCodedStream(&codedOutput);
-      RETURN_ERR_IF_NOT(codedOutput.HadError(),
+      RETURN_ERR_IF_NOT(!codedOutput.HadError(),
                         "Can't write to the output file name",
                         GlowErr::ErrorCode::MODEL_WRITER_SERIALIZATION_ERROR);
     }

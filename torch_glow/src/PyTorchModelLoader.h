@@ -103,7 +103,7 @@ public:
   /// shape info that isn't yet available when this is run.
   static bool isNodeSupported(const torch::jit::Node *node);
 
-  /// Converts Glow type into ATen Tensor type.
+  /// Given a Glow type \p ty, \returns ATen Tensor type.
   static c10::ScalarType convertGlowType(TypeRef ty);
 
   /// Given a PyTorch ScalarType \p ty, \returns the corresponding
@@ -112,6 +112,16 @@ public:
 
   /// Takes a glow::Function \p F, a jit::Graph \p graph to load, and a
   /// stack of \p inputs for the graph to be loaded. Parameter \p
+  /// Given a ATen tensor type \p ptType, \returns Glow type Tensor type.
+  static glow::Type ptTypeToGlowType(const c10::TensorType &ptType);
+
+  /// \returns a Glow tensor with the same type and underlying data as the given
+  /// PyTorch tensor \p ptT.
+  static llvm::Expected<glow::Tensor>
+  ptTensorToGlowTensor(const at::Tensor &ptT);
+
+  /// Takes a glow::Function \p F, a jit::Graph \p subgraph to load, and a
+  /// stack of \p inputs for the subgraph to be loaded. Parameter \p
   /// settings control the fusion details. Output parameters \p
   /// inputPlaceholders and \p outputPlaceholders are filled out. \returns
   /// error on failure.

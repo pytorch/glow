@@ -16,6 +16,7 @@
 
 #include "TorchGlowTraining.h"
 #include "PyTorchFileLoader.h"
+#include "PyTorchModelLoader.h"
 #include "glow/Exporter/ONNXModelWriter.h"
 #include "glow/Importer/ONNXModelLoader.h"
 #include "glow/Optimizer/GraphOptimizer/TrainingPreparation.h"
@@ -70,12 +71,34 @@ llvm::Error TorchGlowTraining::init(llvm::StringRef modelFile,
   // Execution lambda helps to use compact Glow RETURN_* macros inside, and
   // have possibility to clean-up resources before leaving the function scope.
   auto setup = [&]() -> llvm::Error {
+    // Don't make constants from placeholders, it will crash training.
+    RETURN_ERR_IF_NOT(
+        !settings.weightFreezingEnabled,
+        "Cannot initialize training with weightFreezingEnabled set to true.");
     // Detect the proper loader.
     if (modelFile.endswith_lower(".pt")) {
       RETURN_IF_ERR(PyTorchFileLoader::loadPyTorchGraph(
           modelFile.str(), inputs, *F_, inputPHs_, outputPHs_, settings, true));
       if (mode == RandomizeWeights::AUTO) {
         mode = RandomizeWeights::YES;
+      }
+      // After fusion and replacing all inputs, weights, biases, etc. with
+      // placeholders, we lost the track of input placeholders. Let's find them.
+      // Get graph root node with all inputs.
+      inputPHs_.clear();
+      const auto &nodes = F_->getNodes();
+      const auto &root = *nodes.begin();
+      const unsigned n = root.getNumInputs();
+      RETURN_ERR_IF_NOT(
+          inputs.size() == n,
+          glow::strFormat("expected %lu inputs, got %u", inputs.size(), n));
+
+      for (unsigned b = 0; b < n; ++b) {
+        auto input = root.getNthInput(b);
+        Placeholder *PH = llvm::dyn_cast<Placeholder>(input.getNode());
+        RETURN_ERR_IF_NOT(PH,
+                          "Expected placeholder as input for the first node.");
+        inputPHs_.push_back(PH);
       }
     } else if (modelFile.endswith_lower(".onnx")) {
       llvm::Error err = llvm::Error::success();
@@ -84,6 +107,13 @@ llvm::Error TorchGlowTraining::init(llvm::StringRef modelFile,
       RETURN_IF_ERR(err);
       if (mode == RandomizeWeights::AUTO) {
         mode = RandomizeWeights::NO;
+      }
+
+      for (const auto &ph : loader.getInputVarsMapping()) {
+        inputPHs_.push_back(ph.second);
+      }
+      for (const auto &ph : loader.getOutputVarsMapping()) {
+        outputPHs_.push_back(ph.second);
       }
     } else {
       RETURN_ERR("Unrecognized file extension, expect *.pt or *.onnx.");
@@ -168,6 +198,7 @@ llvm::Error TorchGlowTraining::save(llvm::StringRef snapshotFile) {
   // Move placeholder tensors into constants.
   llvm::ArrayRef<Placeholder *> phs = {inputPHs_[0], outputPHs_[0]};
   std::list<std::pair<Placeholder *, Constant *>> cache;
+  // Move placeholder tensors into constants.
   for (auto &PH : F_->findPlaceholders()) {
     if (std::find(phs.begin(), phs.end(), PH) != phs.end()) {
       continue;
@@ -193,7 +224,7 @@ llvm::Error TorchGlowTraining::save(llvm::StringRef snapshotFile) {
 
     constant->getOutput().replaceAllUsesOfWith(PH, F_);
     // Don't make a tensor copy, just move it.
-    bindings_.insert(PH, std::move(constant->getPayloadMutable()));
+    *bindings_.get(PH) = std::move(constant->getPayloadMutable());
     engine_.getModule().eraseConstant(constant);
   }
 
@@ -214,11 +245,21 @@ bool TorchGlowTrainingWrapper::init(const std::string &modelPath,
 
 bool TorchGlowTrainingWrapper::train(const at::Tensor &ptSamples,
                                      const at::Tensor &ptLabels) {
-  // TODO
-  glow::Tensor glowSamples;
-  glow::Tensor glowLabels;
+  llvm::Expected<glow::Tensor> glowSamples =
+      PyTorchModelLoader::ptTensorToGlowTensor(ptSamples);
+  if (!glowSamples) {
+    errToBool(takeErr(std::move(glowSamples)));
+    return false;
+  }
 
-  return !errToBool(trainer_.train(glowSamples, glowLabels));
+  llvm::Expected<glow::Tensor> glowLabels =
+      PyTorchModelLoader::ptTensorToGlowTensor(ptLabels);
+  if (!glowLabels) {
+    errToBool(takeErr(std::move(glowLabels)));
+    return false;
+  }
+
+  return !errToBool(trainer_.train(glowSamples.get(), glowLabels.get()));
 }
 
 bool TorchGlowTrainingWrapper::save(const std::string &snapshotFile) {
