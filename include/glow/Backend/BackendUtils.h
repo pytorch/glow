@@ -149,6 +149,28 @@ public:
 };
 } // namespace runtime
 
+/// Generates a struct named has_\p METHOD_NAME that looks for a method called
+/// \p METHOD_NAME inside of ClassName with return type ReturnType
+#define CLASS_CONTAINS_METHOD(METHOD_NAME)                                     \
+  template <typename ClassName, typename ReturnType>                           \
+  struct has_##METHOD_NAME {                                                   \
+  private:                                                                     \
+    template <typename T>                                                      \
+    static constexpr auto check(T *) ->                                        \
+        typename std::is_same<decltype(std::declval<T>().METHOD_NAME()),       \
+                              ReturnType>::type;                               \
+    template <typename> static constexpr std::false_type check(...);           \
+    typedef decltype(check<ClassName>(0)) type;                                \
+                                                                               \
+  public:                                                                      \
+    static constexpr bool value = type::value;                                 \
+  };
+
+/// Use template meta-programming to check if typename ClassName contains
+/// getFusedActivation() method. Below Generates a struct named
+/// has_getFusedActivation that looks for said method.
+CLASS_CONTAINS_METHOD(getFusedActivation)
+
 /// If \p PH is an output placeholder in the Function \p F,
 /// \returns true.
 /// This is determined by checking if the PH has a user which uses the PH as an
@@ -172,6 +194,32 @@ bool isOutput(const Placeholder *PH, const IRFunction &F);
 /// This is determined by checking if the PH is always used as an @in parameter
 /// by the current function.
 bool isInput(const Placeholder *PH, const IRFunction &F);
+
+/// If \p N does not have fused activation \returns true
+template <typename T,
+          std::enable_if_t<!has_getFusedActivation<T, FusedActivation>::value,
+                           int> = 0>
+bool checkNoFusion(const T &N) {
+  return true;
+}
+
+/// If \p N does not have fused activation \returns true
+template <typename T,
+          std::enable_if_t<has_getFusedActivation<T, FusedActivation>::value,
+                           int> = 0>
+bool checkNoFusion(const T &N) {
+  if (N.getFusedActivation() != FusedActivation::NONE) {
+    report("Glow backend does not support fused Activations.");
+    return false;
+  }
+  return true;
+}
+
+/// If \p N does not have fused activation \returns true
+bool checkNoFusionForNode(const Node &N);
+
+/// If \p I does not have fused activation \returns true
+bool checkNoFusionForInstr(const Instruction &I);
 
 /// Contains information for placeholder during allocation.
 struct PlaceholderInputOutputInfo {

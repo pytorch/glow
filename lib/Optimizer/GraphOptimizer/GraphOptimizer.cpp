@@ -2900,26 +2900,6 @@ void glow::optimize(Function *F, CompilationMode mode) {
   optimize(F, cctx);
 }
 
-/// \returns an error if any nodes inside \p F are not supported by \p B.
-static llvm::Error checkAllNodesSupported(const Function &F, const Backend &B) {
-  bool allSupported = true;
-  for (const Node &N : F.getNodes()) {
-    if (!B.isOpSupported(N)) {
-      allSupported = false;
-      report("Unsupported node found while compiling Function " +
-             F.getName().str() + " for backend " + B.getBackendName() + ": " +
-             N.getDebugDesc());
-    }
-  }
-  if (!allSupported) {
-    return MAKE_ERR(GlowErr::ErrorCode::COMPILE_UNSUPPORTED_NODE_AFTER_OPTIMIZE,
-                    "Unsupported node(s) found after optimizing Function " +
-                        F.getName().str() + " for backend " +
-                        B.getBackendName());
-  }
-  return llvm::Error::success();
-}
-
 /// Helper function that may transform \p F given preferences of \p cctx and
 /// \p B. The specific transformations are done based on the
 /// PrecisionConfiguration found in \p cctx. This could include quantization,
@@ -3017,5 +2997,15 @@ llvm::Error glow::optimizeFunction(Function *F, const Backend &B,
     ::glow::optimize(F, cctx, B);
   }
 
-  return checkAllNodesSupported(*F, B);
+  // We start uinsg backend specific verification only after after some
+  // backend-specific nodes were introduced by transformPostLowering. We may
+  // want to change that in the future, for now I am mirroring the old behavior
+  // of checking the validity of the graph only at the end.
+  if (!B.verify(*F)) {
+    return MAKE_ERR(GlowErr::ErrorCode::COMPILE_UNSUPPORTED_NODE_AFTER_OPTIMIZE,
+                    "Unsupported node(s) found after optimizing Function " +
+                        F->getName().str() + " for backend " +
+                        B.getBackendName());
+  }
+  return llvm::Error::success();
 }

@@ -89,6 +89,10 @@ public:
     MODEL_WRITER_INVALID_FILENAME,
     // Model writer cannot serialize graph to the file.
     MODEL_WRITER_SERIALIZATION_ERROR,
+    // Compilation error; IR unsupported after generation.
+    COMPILE_UNSUPPORTED_IR_AFTER_GENERATE,
+    // Compilation error; IR unsupported after optimization.
+    COMPILE_UNSUPPORTED_IR_AFTER_OPTIMIZE,
   };
 
   /// GlowErr is not convertable to std::error_code. This is included for
@@ -164,6 +168,10 @@ private:
       return "MODEL_WRITER_INVALID_FILENAME";
     case ErrorCode::MODEL_WRITER_SERIALIZATION_ERROR:
       return "MODEL_WRITER_SERIALIZATION_ERROR";
+    case ErrorCode::COMPILE_UNSUPPORTED_IR_AFTER_GENERATE:
+      return "COMPILE_UNSUPPORTED_IR_AFTER_GENERATE";
+    case ErrorCode::COMPILE_UNSUPPORTED_IR_AFTER_OPTIMIZE:
+      return "COMPILE_UNSUPPORTED_IR_AFTER_OPTIMIZE";
     };
 
     llvm_unreachable("unsupported ErrorCode");

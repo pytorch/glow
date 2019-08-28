@@ -282,10 +282,6 @@ void BoundInterpreterFunction::fwdConvolutionInstQuantizedImpl(
 }
 
 void BoundInterpreterFunction::fwdConvolutionInst(const ConvolutionInst *I) {
-  assert(I->getLayout() == NHWC &&
-         "Glow Interpreter supports only NHWC Convolutions");
-  assert(I->getFusedActivation() == FusedActivation::NONE &&
-         "Glow Interpreter does not support fused Activations.");
   auto kernelSizes = I->getKernels();
   auto pads = I->getPads();
   auto strides = I->getStrides();
@@ -307,8 +303,6 @@ void BoundInterpreterFunction::fwdConvolutionInst(const ConvolutionInst *I) {
 
 void BoundInterpreterFunction::fwdConvolutionGradInst(
     const ConvolutionGradInst *I) {
-  assert(I->getLayout() == NHWC &&
-         "Glow Interpreter supports only NHWC Convolutions");
   auto inW = getWeightHandle(I->getSrc());
   auto inG = getWeightHandle(I->getSrcGrad());
   auto outG = getWeightHandle(I->getDestGrad());
@@ -593,8 +587,6 @@ void BoundInterpreterFunction::fwdConvolution3DGradInst(
 
 void BoundInterpreterFunction::fwdChannelwiseQuantizedConvolutionInst(
     const ChannelwiseQuantizedConvolutionInst *I) {
-  assert(I->getGroupwise() && "Non-groupwise not supported");
-
   using AccumulatorTy = int32_t;
 
   auto inW = getWeightHandle<int8_t>(I->getSrc());
@@ -759,7 +751,6 @@ static void fwdMaxPool(Tensor *inW, Tensor *outW, Tensor *argmaxW,
 }
 
 void BoundInterpreterFunction::fwdMaxPoolInst(const MaxPoolInst *I) {
-  assert(I->getLayout() == NHWC && "Glow Interpreter supports only NHWC Pools");
   auto inW = getTensor(I->getSrc());
   auto outW = getTensor(I->getDest());
 
@@ -777,7 +768,6 @@ void BoundInterpreterFunction::fwdMaxPoolInst(const MaxPoolInst *I) {
 
 void BoundInterpreterFunction::fwdMaxPoolWithArgmaxInst(
     const MaxPoolWithArgmaxInst *I) {
-  assert(I->getLayout() == NHWC && "Glow Interpreter supports only NHWC Pools");
   auto inW = getTensor(I->getSrc());
   auto outW = getTensor(I->getDest());
   auto argmaxW = getTensor(I->getArgmax());
@@ -896,7 +886,6 @@ void BoundInterpreterFunction::fwdAvgPoolInstI8Impl(const AvgPoolInst *I) {
 }
 
 void BoundInterpreterFunction::fwdAvgPoolInst(const AvgPoolInst *I) {
-  assert(I->getLayout() == NHWC && "Glow Interpreter supports only NHWC Pools");
   if (I->getSrc()->getType()->isQuantizedType()) {
     fwdAvgPoolInstI8Impl(I);
     return;
