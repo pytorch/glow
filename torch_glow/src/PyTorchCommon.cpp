@@ -72,7 +72,7 @@ void glowCustomFuse(std::shared_ptr<torch::jit::Graph> &g,
 
 void registerGlowOp() {
   auto options = c10::OperatorOptions();
-  options.setAliasAnalysis(at::AliasAnalysisKind::PURE);
+  options.setAliasAnalysis(at::AliasAnalysisKind::PURE_FUNCTION);
 
   torch::jit::RegisterOperators op({torch::jit::Operator(
       getGlowSymbol(),
