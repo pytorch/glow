@@ -1375,7 +1375,6 @@ static void chooseQuantParamsPower2Scale(float min, float max, ElemKind qTy) {
 
 TEST(Quantization, chooseQuantizationSymmetricWithPower2Scale) {
   chooseQuantParamsPower2Scale(-3.0, 6.0, ElemKind::Int8QTy);
-  chooseQuantParamsPower2Scale(0.0, 6.0, ElemKind::UInt8QTy);
   chooseQuantParamsPower2Scale(3.0, 6.0, ElemKind::Int16QTy);
   chooseQuantParamsPower2Scale(-6.0, 0.0, ElemKind::Int32QTy);
 }

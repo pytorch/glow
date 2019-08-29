@@ -302,6 +302,7 @@ TensorQuantizationParams chooseQuantizationParams(float min, float max,
       schema == quantization::Schema::SymmetricWithPower2Scale) {
     // Check which end saturates the output dynamic range earlier
     // and extend the other end to map the zero-point to quantized 0.
+    assert(qmin < 0 && "Symmetric schema incompatible with unsigned range");
     double rmin = min / (double)qmin;
     double rmax = max / (double)qmax;
     if (rmin > rmax) {
