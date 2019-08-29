@@ -126,14 +126,8 @@ Tensor tensor4BitsFusedRowwiseDequantization(const Tensor &input) {
   auto srcH = input.getHandle<uint8_t>();
   auto destH = output.getHandle<float>();
   for (size_t i = 0; i < input.dims()[0]; i++) {
-    const char *currRowScaleOffsetPtr = input.getUnsafePtr() +
-                                        (i + 1) * input.dims()[1] -
-                                        2 * sizeof(float16_t);
-    float16_t scale;
-    float16_t offset;
-    memcpy(&scale, currRowScaleOffsetPtr, sizeof(float16_t));
-    memcpy(&offset, currRowScaleOffsetPtr + sizeof(float16_t),
-           sizeof(float16_t));
+    float16_t scale, offset;
+    std::tie(scale, offset) = srcH.getFusedScaleOffsetFromRow<float16_t>(i);
     for (size_t j = 0; j < output.dims()[1]; j++) {
       bool isMSB = (j % 2 == 1);
       destH.at({i, j}) = dequantize4BitWithFloatOffset(

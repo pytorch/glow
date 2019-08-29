@@ -365,9 +365,6 @@ void tensorFusedRowwiseQuantization(const Tensor &input, Tensor &output) {
         "for 4-bits quantization.");
   }
 
-  const size_t outWidth = output.dims()[1];
-  char *dataBasePtr = output.getUnsafePtr();
-
   auto srcH = input.getHandle<float>();
   auto destH = output.getHandle<uint8_t>();
   for (size_t i = 0, e = input.dims()[0]; i < e; i++) {
@@ -422,12 +419,7 @@ void tensorFusedRowwiseQuantization(const Tensor &input, Tensor &output) {
     }
 
     // Now set the scale/offset at the end of each row.
-    T finalScale = static_cast<T>(scale);
-    T finalOffset = static_cast<T>(offset);
-    char *currRowScaleOffsetPtr =
-        dataBasePtr + (i + 1) * outWidth - 2 * sizeof(T);
-    memcpy(currRowScaleOffsetPtr, &finalScale, sizeof(T));
-    memcpy(currRowScaleOffsetPtr + sizeof(T), &finalOffset, sizeof(T));
+    destH.setFusedScaleOffsetInRow<T>(i, scale, offset);
   }
 }
 } // namespace quantization

@@ -3283,15 +3283,8 @@ void BoundInterpreterFunction::
       const float weight = static_cast<float>(WH.raw(curIdx));
       const size_t rowIdx = IH.raw(curIdx++);
       size_t offsetIn = rowIdx * inLineSize;
-      // Get the scale and offset from the row; go to the current row and offset
-      // into it up until the last 2*sizeof(T) bytes. Use memcpy to get the
-      // values out to avoid alignment issues.
-      const char *currRowScaleOffsetPtr =
-          data->getUnsafePtr() + offsetIn + inLineSize - 2 * sizeof(T);
-      T scale;
-      T offset;
-      memcpy(&scale, currRowScaleOffsetPtr, sizeof(T));
-      memcpy(&offset, currRowScaleOffsetPtr + sizeof(T), sizeof(T));
+      T scale, offset;
+      std::tie(scale, offset) = DH.getFusedScaleOffsetFromRow<T>(rowIdx);
       for (size_t k = 0; k < outLineSize; k++) {
         float d = quantization::dequantizeWithFloatOffset(
             DH.raw(offsetIn++), static_cast<float>(scale),

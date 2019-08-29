@@ -1160,19 +1160,6 @@ void runOnDevice(ExecutionContext &context, llvm::StringRef name,
   EXIT_ON_ERR(std::move(runErr));
 }
 
-/// Copies a predefined scale and offset into the current row given a pointer
-/// to the scale and offset \p currRowScaleOffsetPtr. Uses \p T as the
-/// datatype for the scale and offset.
-template <typename T>
-static void copyInScaleOffset(char *currRowScaleOffsetPtr) {
-  // Range (0, 255) -> (-0.1, 0.1)
-  T scale = 1.0f / 1275;
-  T offset = -0.1;
-
-  memcpy(currRowScaleOffsetPtr, &scale, sizeof(T));
-  memcpy(currRowScaleOffsetPtr + sizeof(T), &offset, sizeof(T));
-}
-
 Constant *createRandomizedConstant(Module &mod, TypeRef type,
                                    llvm::ArrayRef<size_t> dims,
                                    llvm::StringRef name) {
@@ -1220,17 +1207,15 @@ Constant *createRandomFusedRowwiseQuantizedConstant(Module &mod,
   Constant *c = createRandomizedConstant(
       mod, T, {dims[0], dims[1] + 2 * sizeScaleOffset}, name);
 
-  auto *dbP = c->getPayload().getUnsafePtr();
-  const size_t outWidth = c->dims()[1];
-  for (unsigned j = 0, e = c->dims()[0]; j < e; j++) {
-    // Now set the scale/offset at the end of each row.
-    char *currRowScaleOffsetPtr =
-        dbP + (j + 1) * outWidth - 2 * sizeScaleOffset;
-
+  // Range (0, 255) -> (-0.1, 0.1)
+  constexpr float scale = 1.0f / 1275;
+  constexpr float offset = -0.1;
+  auto cH = c->getPayload().getHandle<uint8_t>();
+  for (unsigned i = 0, e = c->dims()[0]; i < e; i++) {
     if (useFusedFP16) {
-      copyInScaleOffset<float16_t>(currRowScaleOffsetPtr);
+      cH.setFusedScaleOffsetInRow<float16_t>(i, scale, offset);
     } else {
-      copyInScaleOffset<float>(currRowScaleOffsetPtr);
+      cH.setFusedScaleOffsetInRow<float>(i, scale, offset);
     }
   }
 
