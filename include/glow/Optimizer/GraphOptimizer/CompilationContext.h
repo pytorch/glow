@@ -38,6 +38,9 @@ struct PrecisionConfiguration {
   /// Whether to convert the FloatTy to Float16Ty in the Function.
   bool convertToFP16{false};
 
+  /// Whether to clip out-of-range FP values to the min/max of fp16.
+  bool clipFP16{false};
+
   /// Used during Quantization and convertToFP16 to keep the original precision
   /// of specific node kinds (i.e. quantization/FP16 conversion would be skipped
   /// for any node kinds found here). Used during profiling to prevent nodes

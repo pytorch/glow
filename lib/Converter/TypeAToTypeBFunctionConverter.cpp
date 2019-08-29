@@ -59,7 +59,17 @@ Node *TypeAToTypeBFunctionConverter::createConversion(Function &function,
           (destTy->getElementType() == srcKind_ &&
            val.getType()->getElementType() == dstKind_)) &&
          "Unexpected conversion type");
-  return function.createConvertTo(val.getNode()->getName(), val, destTy);
+  NodeValue valOrClip = val;
+  if (precConfig_.clipFP16) {
+    assert((destTy->getElementType() == ElemKind::Float16Ty ||
+            val.getType()->getElementType() == ElemKind::Float16Ty) &&
+           "Unexpected conversion type");
+    constexpr float float16Max = 65504.0f;
+    constexpr float float16Min = -65504.0f;
+    valOrClip = function.createClip(val.getNode()->getName(), val, float16Min,
+                                    float16Max);
+  }
+  return function.createConvertTo(val.getNode()->getName(), valOrClip, destTy);
 }
 
 void TypeAToTypeBFunctionConverter::convertTensor(Tensor &tensor,

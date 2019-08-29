@@ -26,6 +26,7 @@ int32_t GlowNumDevices = 0;
 bool GlowDumpDebugTraces = false;
 bool GlowSaturateHost = false;
 bool GlowFP16 = false;
+bool GlowClipFP16 = false;
 
 static llvm::cl::opt<int32_t, true>
     GlowNumDevicesOpt("glow-num-devices",
@@ -76,6 +77,11 @@ onnxStatus HostManagerBackend::addNetwork(std::unique_ptr<Module> module) {
     precConfig.convertToFP16 = GlowFP16;
     LOG(INFO) << "Conversion to fp16 enabled";
   }
+  if (GlowClipFP16) {
+    precConfig.clipFP16 = GlowClipFP16;
+    LOG(INFO) << "Clipping to fp16 enabled";
+  }
+
   auto err =
       hostManager_->addNetwork(std::move(module), cctx, GlowSaturateHost);
 
