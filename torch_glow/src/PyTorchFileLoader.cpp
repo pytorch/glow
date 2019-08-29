@@ -110,7 +110,7 @@ evaluateModuleGraph(std::shared_ptr<torch::jit::script::Module> &module,
 struct RegisterCustomFusionPass {
   RegisterCustomFusionPass() {
     auto options = c10::OperatorOptions();
-    options.setAliasAnalysis(at::AliasAnalysisKind::PURE);
+    options.setAliasAnalysis(at::AliasAnalysisKind::PURE_FUNCTION);
     torch::jit::RegisterOperators op({torch::jit::Operator(
         getFusionSymbol(),
         [](const torch::jit::Node *node) {
