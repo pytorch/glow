@@ -74,8 +74,57 @@ llvm::cl::opt<BundleApiType> bundleApi(
     llvm::cl::init(BundleApiType::Dynamic), llvm::cl::cat(bundleSaverCat));
 } // namespace
 
+/// Header file string template.
+static const char *headerFileTemplate =
+    R"RAW(// Bundle API header file
+// Auto-generated file. Do not edit!
+#ifndef _GLOW_BUNDLE_%s_H
+#define _GLOW_BUNDLE_%s_H
+
+#include <stdint.h>
+
+// ---------------------------------------------------------------
+//                       Common definitions                       
+// ---------------------------------------------------------------
+#ifndef _GLOW_BUNDLE_COMMON_DEFS
+#define _GLOW_BUNDLE_COMMON_DEFS
+%s
+#endif
+
+// ---------------------------------------------------------------
+//                          Bundle API                            
+// ---------------------------------------------------------------
+%s
+// NOTE: Placeholders are allocated within the "mutableWeight"
+// buffer and are identified using an offset relative to base.
+// ---------------------------------------------------------------
+#ifdef __cplusplus
+extern "C" {
+#endif
+%s
+#ifdef __cplusplus
+}
+#endif
+#endif
+)RAW";
+
+/// Function to print the header file using the template.
+static void printHeader(llvm::StringRef headerFileName,
+                        llvm::StringRef bundleName,
+                        llvm::StringRef commonDefines,
+                        llvm::StringRef modelInfo, llvm::StringRef modelApi) {
+  std::error_code EC;
+  llvm::raw_fd_ostream headerFile(headerFileName, EC,
+                                  llvm::sys::fs::OpenFlags::F_Text);
+  CHECK(!EC) << "Could not open header file!";
+  headerFile << strFormat(headerFileTemplate, bundleName.upper().data(),
+                          bundleName.upper().data(), commonDefines.data(),
+                          modelInfo.data(), modelApi.data());
+  headerFile.close();
+}
+
 /// Header file common definitions for dynamic API.
-static const char *dynamicApiCommonDefines = R"(
+static const char *dynamicApiCommonDefines = R"RAW(
 // Type describing a symbol table entry of a generated bundle.
 struct SymbolTableEntry {
   // Name of a variable.
@@ -103,10 +152,10 @@ struct BundleConfig {
   // Symbol table.
   const SymbolTableEntry *symbolTable;
 };
-)";
+)RAW";
 
 /// Header file common definitions for static API.
-static const char *staticApiCommonDefines = R"(
+static const char *staticApiCommonDefines = R"RAW(
 // Memory alignment definition with given alignment size
 // for static allocation of memory.
 #define GLOW_MEM_ALIGN(size)  __attribute__((aligned(size)))
@@ -115,7 +164,7 @@ static const char *staticApiCommonDefines = R"(
 // placeholder using the base address of the mutable
 // weight buffer and placeholder offset definition.
 #define GLOW_GET_ADDR(mutableBaseAddr, placeholderOff)  (((uint8_t*)(mutableBaseAddr)) + placeholderOff)
-)";
+)RAW";
 
 /// Utility function to serialize a binary file to text file as a C array.
 static void serializeBinaryToText(llvm::StringRef binFileName,
@@ -182,123 +231,112 @@ void BundleSaver::saveWeights(llvm::StringRef weightsFileName) {
 }
 
 void BundleSaver::saveHeader(llvm::StringRef headerFileName) {
-  std::error_code EC;
-  llvm::raw_fd_ostream headerFile(headerFileName, EC,
-                                  llvm::sys::fs::OpenFlags::F_Text);
-  CHECK(!EC) << "Could not open header file!";
   auto bundleName = irgen_->getBundleName();
   auto bundleNameUpper = llvm::StringRef(bundleName).upper();
-  auto headerDefine = "_GLOW_BUNDLE_" + bundleNameUpper + "_H";
-  auto commonDefine = "_GLOW_BUNDLE_COMMON_DEFS";
   auto constMemSize = irgen_->getAllocationsInfo().constantWeightVarsMemSize_;
   auto mutableMemSize = irgen_->getAllocationsInfo().mutableWeightVarsMemSize_;
   auto activationsMemSize = irgen_->getAllocationsInfo().activationsMemSize_;
   auto memAlignSize = TensorAlignment;
   auto totMemSize = constMemSize + mutableMemSize + activationsMemSize;
 
-  // Print file header.
-  headerFile << "// Bundle API header file\n"
-             << "// Auto-generated file. Do not edit!\n"
-             << "#ifndef " << headerDefine << "\n"
-             << "#define " << headerDefine << "\n\n"
-             << "#include <stdint.h>\n\n";
+  // Format common bundle definitions.
+  auto commonDefines = (bundleApi == BundleApiType::Dynamic)
+                           ? dynamicApiCommonDefines
+                           : staticApiCommonDefines;
 
-  // Print common bundle definitions.
-  headerFile
-      << "// ---------------------------------------------------------------\n"
-      << "//                       Common definitions                       \n"
-      << "// ---------------------------------------------------------------\n"
-      << "#ifndef " << commonDefine << "\n"
-      << "#define " << commonDefine << "\n";
-  if (bundleApi == BundleApiType::Dynamic) {
-    headerFile << dynamicApiCommonDefines;
-  } else {
-    headerFile << staticApiCommonDefines;
-  }
-  headerFile << "#endif\n\n";
-
-  // Print model info.
-  unsigned phNameMaxLen = 0;
-  headerFile
-      << "// ---------------------------------------------------------------\n"
-      << "//                          Bundle API                            \n"
-      << "// ---------------------------------------------------------------\n"
-      << "// Model name: \"" << bundleName << "\"\n"
-      << "// Total data size: " << totMemSize << " (bytes)\n"
-      << "// Placeholders:\n"
-      << "//\n";
-  for (auto &v : F_->getGraph()->getParent()->getPlaceholders()) {
+  // Format model description.
+  std::string modelInfo = strFormat("// Model name: \"%s\"\n"
+                                    "// Total data size: %lu (bytes)\n"
+                                    "// Placeholders:\n",
+                                    bundleName.data(), totMemSize);
+  for (auto &v : F_->findPlaceholders()) {
     auto *w = cast<WeightVar>(F_->getWeightForNode(v));
+    // Get placeholder shape as string.
+    std::string shapeStr = "[";
+    auto dims = w->getType()->dims();
+    for (size_t idx = 0; idx < dims.size(); idx++) {
+      if (idx < dims.size() - 1) {
+        shapeStr += strFormat("%lu, ", dims[idx]);
+      } else {
+        shapeStr += strFormat("%lu]", dims[idx]);
+      }
+    }
+    // Get placeholder properties.
     auto name = w->getName();
     auto typeName = w->getType()->getElementName();
     auto sizeElem = w->getType()->size();
     auto sizeByte = w->getType()->getSizeInBytes();
-    auto addr = allocationsInfo_.allocatedAddress_[w];
-    headerFile << "//   Name: \"" << name << "\"\n"
-               << "//   Type: " << typeName << "\n"
-               << "//   Size: " << sizeElem << " (elements)\n"
-               << "//   Size: " << sizeByte << " (bytes)\n"
-               << "//   Offset: " << addr << " (bytes)\n"
-               << "//\n";
-    phNameMaxLen = name.size() > phNameMaxLen ? name.size() : phNameMaxLen;
+    auto offset = allocationsInfo_.allocatedAddress_[w];
+    modelInfo += strFormat("//\n"
+                           "//   Name: \"%s\"\n"
+                           "//   Type: %s\n"
+                           "//   Shape: %s\n"
+                           "//   Size: %zu (elements)\n"
+                           "//   Size: %zu (bytes)\n"
+                           "//   Offset: %lu (bytes)\n",
+                           name.data(), typeName.data(), shapeStr.c_str(),
+                           sizeElem, sizeByte, offset);
   }
-  headerFile
-      << "// NOTE: Placeholders are allocated within the \"mutableWeight\"\n"
-      << "// buffer and are identified using an offset relative to base.\n"
-      << "// ---------------------------------------------------------------\n";
+  modelInfo += "//";
 
-  // Print specific bundle declarations.
-  headerFile << "#ifdef __cplusplus\n"
-             << "extern \"C\" {\n"
-             << "#endif\n\n";
+  std::string modelApi = "\n";
   if (bundleApi == BundleApiType::Dynamic) {
     // Print bundle memory configuration.
-    headerFile << "// Bundle memory configuration (memory layout).\n"
-               << "extern BundleConfig " << bundleName << "_config;\n\n";
-    // Print bundle entry function.
-    headerFile << "// Bundle entry point (inference function).\n"
-               << "void " << bundleName << "("
-               << "uint8_t *constantWeight, "
-               << "uint8_t *mutableWeight, "
-               << "uint8_t *activations);\n\n";
+    modelApi += strFormat("// Bundle memory configuration (memory layout)\n"
+                          "extern BundleConfig %s_config;\n"
+                          "\n",
+                          bundleName.data());
+
   } else {
-    // Print placeholder address offsets.
-    headerFile
-        << "// Placeholder address offsets within mutable buffer (bytes)\n";
+    // Get placeholder names and offsets. Compute also the maximum placeholder
+    // name length for print purposes.
+    unsigned nameMaxLen = 0;
+    std::vector<std::pair<llvm::StringRef, unsigned>> nameAddrPairs;
     for (auto &v : F_->findPlaceholders()) {
       auto *w = cast<WeightVar>(F_->getWeightForNode(v));
       auto name = w->getName();
       auto addr = allocationsInfo_.allocatedAddress_[w];
-      headerFile << "#define " << bundleNameUpper << "_" << name
-                 << std::string(phNameMaxLen - name.size(), ' ') << "  " << addr
-                 << "\n";
+      nameMaxLen = name.size() > nameMaxLen ? name.size() : nameMaxLen;
+      nameAddrPairs.push_back(std::pair<llvm::StringRef, unsigned>(name, addr));
     }
-    headerFile << "\n";
-    // Print memory sizes.
-    headerFile << "// Memory sizes (bytes)\n"
-               << "#define " << bundleNameUpper << "_CONSTANT_MEM_SIZE     "
-               << constMemSize << "\n"
-               << "#define " << bundleNameUpper << "_MUTABLE_MEM_SIZE      "
-               << mutableMemSize << "\n"
-               << "#define " << bundleNameUpper << "_ACTIVATIONS_MEM_SIZE  "
-               << activationsMemSize << "\n\n"
-               << "// Memory alignment (bytes)\n"
-               << "#define " << bundleNameUpper << "_MEM_ALIGN  "
-               << memAlignSize << "\n\n";
-    // Print bundle entry function.
-    headerFile << "// Bundle entry point (inference function)\n"
-               << "void " << bundleName << "("
-               << "uint8_t *constantWeight, "
-               << "uint8_t *mutableWeight, "
-               << "uint8_t *activations);\n\n";
-  }
-  headerFile << "#ifdef __cplusplus\n"
-             << "}\n"
-             << "#endif\n";
 
-  // Print file footer.
-  headerFile << "#endif\n";
-  headerFile.close();
+    // Print placeholder address offsets.
+    modelApi +=
+        "// Placeholder address offsets within mutable buffer (bytes)\n";
+    for (auto &pair : nameAddrPairs) {
+      modelApi += strFormat(
+          "#define %s_%s%s  %u\n", bundleNameUpper.data(), pair.first.data(),
+          std::string(nameMaxLen - pair.first.size(), ' ').c_str(),
+          pair.second);
+    }
+    modelApi += "\n";
+
+    // Print memory sizes and memory alignment.
+    modelApi +=
+        strFormat("// Memory sizes (bytes)\n"
+                  "#define %s_CONSTANT_MEM_SIZE     %lu\n"
+                  "#define %s_MUTABLE_MEM_SIZE      %lu\n"
+                  "#define %s_ACTIVATIONS_MEM_SIZE  %lu\n"
+                  "\n"
+                  "// Memory alignment (bytes)\n"
+                  "#define %s_MEM_ALIGN  %d\n"
+                  "\n",
+                  bundleNameUpper.data(), constMemSize, bundleNameUpper.data(),
+                  mutableMemSize, bundleNameUpper.data(), activationsMemSize,
+                  bundleNameUpper.data(), memAlignSize);
+  }
+
+  // Print bundle entry function.
+  modelApi += strFormat("// Bundle entry point (inference function)\n"
+                        "void %s("
+                        "uint8_t *constantWeight, "
+                        "uint8_t *mutableWeight, "
+                        "uint8_t *activations"
+                        ");\n",
+                        bundleName.data());
+
+  // Print header file.
+  printHeader(headerFileName, bundleName, commonDefines, modelInfo, modelApi);
 }
 
 void BundleSaver::emitSymbolTable() {
