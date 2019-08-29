@@ -349,7 +349,7 @@ bool isInput(const Placeholder *PH,
   return false;
 }
 
-/// If \p N does not have fused activation \returns true
+/// If \p N does not have fused activation \returns true.
 bool checkNoFusionForNode(const Node &N) {
 #define DEF_NODE(CLASS, NAME)                                                  \
   case Kinded::Kind::CLASS##Kind: {                                            \
@@ -365,7 +365,7 @@ bool checkNoFusionForNode(const Node &N) {
   return true;
 }
 
-/// If \p I does not have fused activation \returns true
+/// If \p I does not have fused activation \returns true.
 bool checkNoFusionForInstr(const Instruction &I) {
 #define DEF_VALUE(CLASS, NAME)
 #define DEF_INSTR(CLASS, NAME)                                                 \

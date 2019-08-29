@@ -71,7 +71,7 @@ Additionally, there are virtual functions that backends can override:
 
 - `virtual bool verify(const IRFunction &IR) const;`
 
-  - Verifies that `IRFunction &IR` conforms to the backend-dependent graph constraints.
+  - Verifies that `IRFunction &IR` conforms to the backend-specific constraints.
 
 - `virtual bool shouldLower(const Node *N) const;`
 

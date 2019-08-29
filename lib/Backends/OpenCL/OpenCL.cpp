@@ -1905,6 +1905,7 @@ bool OCLBackend::isOpSupported(const NodeInfo &NI) const {
   }
 }
 
+/// If \p I got square shaped kernels and strides \returns true.
 template <class T> static bool checkSquare(const T &I) {
   ShapeHW kdim(I.getKernels());
   ShapeHW sdim(I.getStrides());
@@ -1920,6 +1921,9 @@ template <class T> static bool checkSquare(const T &I) {
 }
 
 bool OCLBackend::verify(const Function &F) const {
+  if (!F.verify()) {
+    return false;
+  }
   if (!checkAllNodesSupported(F)) {
     return false;
   }
@@ -1970,7 +1974,6 @@ bool OCLBackend::verify(const Function &F) const {
       }
       continue;
     }
-
     default:
       continue;
     }
@@ -2065,7 +2068,6 @@ bool OCLBackend::verify(const IRFunction &IR) const {
       }
       continue;
     }
-
     default:
       continue;
     }

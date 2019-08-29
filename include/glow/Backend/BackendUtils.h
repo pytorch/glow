@@ -150,7 +150,7 @@ public:
 } // namespace runtime
 
 /// Generates a struct named has_\p METHOD_NAME that looks for a method called
-/// \p METHOD_NAME inside of ClassName with return type ReturnType
+/// \p METHOD_NAME inside of ClassName with return type ReturnType.
 #define CLASS_CONTAINS_METHOD(METHOD_NAME)                                     \
   template <typename ClassName, typename ReturnType>                           \
   struct has_##METHOD_NAME {                                                   \
@@ -167,7 +167,7 @@ public:
   };
 
 /// Use template meta-programming to check if typename ClassName contains
-/// getFusedActivation() method. Below Generates a struct named
+/// getFusedActivation() method. Below generates a struct named
 /// has_getFusedActivation that looks for said method.
 CLASS_CONTAINS_METHOD(getFusedActivation)
 
@@ -195,30 +195,32 @@ bool isOutput(const Placeholder *PH, const IRFunction &F);
 /// by the current function.
 bool isInput(const Placeholder *PH, const IRFunction &F);
 
-/// If \p N does not have fused activation \returns true
+/// If \p N does not have fused activation \returns true.
 template <typename T,
           std::enable_if_t<!has_getFusedActivation<T, FusedActivation>::value,
                            int> = 0>
 bool checkNoFusion(const T &N) {
+  (void)N;
   return true;
 }
 
-/// If \p N does not have fused activation \returns true
+/// If \p N does not have fused activation \returns true.
 template <typename T,
           std::enable_if_t<has_getFusedActivation<T, FusedActivation>::value,
                            int> = 0>
 bool checkNoFusion(const T &N) {
   if (N.getFusedActivation() != FusedActivation::NONE) {
-    report("Glow backend does not support fused Activations.");
+    report("Glow backend does not support fused Activations for: " +
+           std::string(N.getKindName()));
     return false;
   }
   return true;
 }
 
-/// If \p N does not have fused activation \returns true
+/// If \p N does not have fused activation \returns true.
 bool checkNoFusionForNode(const Node &N);
 
-/// If \p I does not have fused activation \returns true
+/// If \p I does not have fused activation \returns true.
 bool checkNoFusionForInstr(const Instruction &I);
 
 /// Contains information for placeholder during allocation.

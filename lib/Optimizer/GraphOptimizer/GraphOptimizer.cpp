@@ -2878,7 +2878,7 @@ void glow::optimize(Function *F, CompilationContext &cctx, const Backend &B) {
   LOG_SCOPE(F->getLogContext(), "glow::optimize")
 
   FunctionPassManager FPM("TargetDependentGraphOptzFPM",
-                          B.getOptimizationPipeline());
+                          B.getOptimizationPipeline(), &B);
   FPM.run(F, cctx);
 }
 
@@ -2997,10 +2997,9 @@ llvm::Error glow::optimizeFunction(Function *F, const Backend &B,
     ::glow::optimize(F, cctx, B);
   }
 
-  // We start uinsg backend specific verification only after after some
-  // backend-specific nodes were introduced by transformPostLowering. We may
-  // want to change that in the future, for now I am mirroring the old behavior
-  // of checking the validity of the graph only at the end.
+  // We already started using backend specific verification when the function
+  // state became lowered. Do one more verification pass to make sure everything
+  // is in order and to bail if it is not.
   if (!B.verify(*F)) {
     return MAKE_ERR(GlowErr::ErrorCode::COMPILE_UNSUPPORTED_NODE_AFTER_OPTIMIZE,
                     "Unsupported node(s) found after optimizing Function " +

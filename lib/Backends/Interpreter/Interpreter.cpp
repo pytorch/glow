@@ -469,13 +469,14 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
 }
 
 /// Use template meta-programming to check if typename ClassName contains
-/// has_getLayout() method. Below Generates a struct named has_getLayout that
+/// has_getLayout() method. Below generates a struct named has_getLayout that
 /// looks for said method.
 CLASS_CONTAINS_METHOD(getLayout)
 
 template <typename T, std::enable_if_t<
                           !has_getLayout<T, ConvolutionLayout>::value, int> = 0>
 static bool checkLayout(const T &I) {
+  (void)I;
   return true;
 }
 
@@ -505,6 +506,9 @@ static bool checkLayoutForNode(const Node &N) {
 }
 
 bool Interpreter::verify(const Function &F) const {
+  if (!F.verify()) {
+    return false;
+  }
   if (!checkAllNodesSupported(F)) {
     return false;
   }
@@ -524,7 +528,6 @@ bool Interpreter::verify(const Function &F) const {
       }
       continue;
     }
-
     default:
       continue;
     }
@@ -566,7 +569,6 @@ bool Interpreter::verify(const IRFunction &IR) const {
       }
       continue;
     }
-
     default:
       continue;
     }

@@ -171,10 +171,13 @@ bool Backend::checkAllNodesSupported(const Function &F) const {
 }
 
 bool Backend::verify(const Function &F) const {
-  return checkAllNodesSupported(F);
+  return F.verify() && checkAllNodesSupported(F);
 }
 
-bool Backend::verify(const IRFunction &IR) const { return true; }
+bool Backend::verify(const IRFunction &IR) const {
+  (void)IR;
+  return true;
+}
 
 FunctionPassPipeline Backend::getOptimizationPipeline() const {
   return createDefaultGraphOptimizationPassPipeline();
