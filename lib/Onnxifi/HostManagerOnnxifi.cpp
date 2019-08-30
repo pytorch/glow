@@ -27,6 +27,7 @@ bool GlowDumpDebugTraces = false;
 bool GlowSaturateHost = false;
 bool GlowFP16 = false;
 bool GlowClipFP16 = false;
+bool GlowDumpGraph = false;
 
 static llvm::cl::opt<int32_t, true>
     GlowNumDevicesOpt("glow-num-devices",
