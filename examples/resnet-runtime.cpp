@@ -122,12 +122,13 @@ void dispatchClassify(unsigned int id, HostManager *hostManager,
   LOG(INFO) << "Started run ID: " << runid;
 }
 
-/// Run ResNet concurrently on the number CPU Devices provided by the user.
+/// Run ResNet concurrently on the number of devices provided by the user.
 int main(int argc, char **argv) {
   llvm::cl::ParseCommandLineOptions(
-      argc, argv, "Run ResNet concurrently on a fixed number of CPU devices");
+      argc, argv, "Run ResNet concurrently on a fixed number of devices");
 
-  LOG(INFO) << "Initializing " << numDevices << " CPU Devices on HostManager.";
+  LOG(INFO) << "Initializing " << numDevices << " " << backend
+            << " devices on HostManager.";
 
   std::vector<std::unique_ptr<DeviceConfig>> configs;
   for (unsigned int i = 0; i < numDevices; ++i) {
