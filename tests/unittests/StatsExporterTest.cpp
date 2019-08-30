@@ -120,13 +120,16 @@ TEST(StatsExporter, HostManager) {
     auto *pow = F->createPow("Pow", X, 2.0);
     F->createSave("save", pow);
 
+    const int64_t functionCost = X->getType()->getSizeInBytes();
+
     CompilationContext cctx;
     EXIT_ON_ERR(HM->addNetwork(std::move(module), cctx));
     // Currently the interpreter DM treats all added networks as size 1 byte so
     // expect to see 1 byte used.
-    EXPECT_EQ(MockStats.counters["glow.devices.used_memory.total"], 1);
+    EXPECT_EQ(MockStats.counters["glow.devices.used_memory.total"],
+              functionCost);
     EXPECT_EQ(MockStats.counters["glow.devices.available_memory.total"],
-              1999999999);
+              2000000000 - functionCost);
   }
   EXPECT_EQ(MockStats.counters["glow.devices_used.interpreter"], 0);
 }

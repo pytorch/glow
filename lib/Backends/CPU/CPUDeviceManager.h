@@ -31,10 +31,6 @@ class CPUDeviceManager : public QueueBackedDeviceManager {
   /// Compiled function list by name.
   FunctionMapTy functions_;
 
-  /// Static memory cost of the CPU Function.
-  /// This is very arbitrary for the CPU backend.
-  const uint64_t functionCost_{1};
-
   /// String constant for logging number of in-use devices.
   static constexpr const char *kDevicesUsedCPU = "glow.devices_used.cpu";
 
