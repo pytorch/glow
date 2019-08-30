@@ -2878,7 +2878,7 @@ void glow::optimize(Function *F, CompilationContext &cctx, const Backend &B) {
   LOG_SCOPE(F->getLogContext(), "glow::optimize")
 
   FunctionPassManager FPM("TargetDependentGraphOptzFPM",
-                          B.getOptimizationPipeline());
+                          B.getOptimizationPipeline(), &B);
   FPM.run(F, cctx);
 }
 
@@ -2898,26 +2898,6 @@ void glow::optimize(Function *F, CompilationMode mode) {
   CompilationContext cctx;
   cctx.compMode = mode;
   optimize(F, cctx);
-}
-
-/// \returns an error if any nodes inside \p F are not supported by \p B.
-static llvm::Error checkAllNodesSupported(const Function &F, const Backend &B) {
-  bool allSupported = true;
-  for (const Node &N : F.getNodes()) {
-    if (!B.isOpSupported(N)) {
-      allSupported = false;
-      report("Unsupported node found while compiling Function " +
-             F.getName().str() + " for backend " + B.getBackendName() + ": " +
-             N.getDebugDesc());
-    }
-  }
-  if (!allSupported) {
-    return MAKE_ERR(GlowErr::ErrorCode::COMPILE_UNSUPPORTED_NODE_AFTER_OPTIMIZE,
-                    "Unsupported node(s) found after optimizing Function " +
-                        F.getName().str() + " for backend " +
-                        B.getBackendName());
-  }
-  return llvm::Error::success();
 }
 
 /// Helper function that may transform \p F given preferences of \p cctx and
@@ -3017,5 +2997,14 @@ llvm::Error glow::optimizeFunction(Function *F, const Backend &B,
     ::glow::optimize(F, cctx, B);
   }
 
-  return checkAllNodesSupported(*F, B);
+  // We already started using backend specific verification when the function
+  // state became lowered. Do one more verification pass to make sure everything
+  // is in order and to bail if it is not.
+  if (!B.verify(*F)) {
+    return MAKE_ERR(GlowErr::ErrorCode::COMPILE_UNSUPPORTED_NODE_AFTER_OPTIMIZE,
+                    "Unsupported node(s) found after optimizing Function " +
+                        F->getName().str() + " for backend " +
+                        B.getBackendName());
+  }
+  return llvm::Error::success();
 }

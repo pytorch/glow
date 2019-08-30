@@ -22,6 +22,7 @@
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/Nodes.h"
 #include "glow/IR/IR.h"
+#include "glow/IR/Instrs.h"
 #include "glow/Optimizer/IROptimizer/IROptimizer.h"
 
 using namespace glow;
@@ -465,6 +466,114 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
   default:
     return false;
   }
+}
+
+/// Use template meta-programming to check if typename ClassName contains
+/// has_getLayout() method. Below generates a struct named has_getLayout that
+/// looks for said method.
+CLASS_CONTAINS_METHOD(getLayout)
+
+template <typename T, std::enable_if_t<
+                          !has_getLayout<T, ConvolutionLayout>::value, int> = 0>
+static bool checkLayout(const T &I) {
+  (void)I;
+  return true;
+}
+
+template <typename T,
+          std::enable_if_t<has_getLayout<T, ConvolutionLayout>::value, int> = 0>
+static bool checkLayout(const T &I) {
+  if (I.getLayout() != NHWC) {
+    report("Glow Interpreter supports only NHWC");
+    return false;
+  }
+  return true;
+}
+
+static bool checkLayoutForNode(const Node &N) {
+#define DEF_NODE(CLASS, NAME)                                                  \
+  case Kinded::Kind::CLASS##Kind: {                                            \
+    const CLASS *CI = llvm::cast<CLASS>(&N);                                   \
+    return checkLayout(*CI);                                                   \
+    break;                                                                     \
+  }
+  switch (N.getKind()) {
+#include "glow/AutoGenNodes.def"
+  default:
+    llvm_unreachable("Invalid instruction.");
+  }
+  return true;
+}
+
+bool Interpreter::verify(const Function &F) const {
+  if (!F.verify()) {
+    return false;
+  }
+  if (!checkAllNodesSupported(F)) {
+    return false;
+  }
+  for (const Node &N : F.getNodes()) {
+    if (!checkLayoutForNode(N)) {
+      return false;
+    }
+    if (!checkNoFusionForNode(N)) {
+      return false;
+    }
+    switch (N.getKind()) {
+    case Kinded::Kind::ChannelwiseQuantizedConvolutionNodeKind: {
+      auto *CQCI = llvm::cast<ChannelwiseQuantizedConvolutionNode>(&N);
+      if (!CQCI->getGroupwise()) {
+        report("Glow Interpreter does not support Non-groupwise variant");
+        return false;
+      }
+      continue;
+    }
+    default:
+      continue;
+    }
+  }
+  return true;
+}
+
+static bool checkLayoutForInstr(const Instruction &I) {
+#define DEF_VALUE(CLASS, NAME)
+#define DEF_INSTR(CLASS, NAME)                                                 \
+  case Kinded::Kind::CLASS##Kind: {                                            \
+    const CLASS *CI = llvm::cast<CLASS>(&I);                                   \
+    return checkLayout(*CI);                                                   \
+    break;                                                                     \
+  }
+#define DEF_BACKEND_SPECIFIC_INSTR(CLASS, NAME)
+  switch (I.getKind()) {
+#include "glow/AutoGenInstr.def"
+  default:
+    llvm_unreachable("Invalid instruction.");
+  }
+  return true;
+}
+
+bool Interpreter::verify(const IRFunction &IR) const {
+  for (const auto &I : IR.getInstrs()) {
+    if (!checkNoFusionForInstr(I)) {
+      return false;
+    }
+    if (!checkLayoutForInstr(I)) {
+      return false;
+    }
+    switch (I.getKind()) {
+    case Kinded::Kind::ChannelwiseQuantizedConvolutionInstKind: {
+      auto *CQCI = llvm::cast<ChannelwiseQuantizedConvolutionInst>(&I);
+      if (!CQCI->getGroupwise()) {
+        report("Glow Interpreter does not support Non-groupwise variant");
+        return false;
+      }
+      continue;
+    }
+    default:
+      continue;
+    }
+  }
+  return true;
 }
 
 bool Interpreter::shouldLower(const Node *N) const {

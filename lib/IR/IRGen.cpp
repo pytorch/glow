@@ -448,4 +448,11 @@ void IRFunction::generateIR(const Backend &B) {
   for (auto &N : ScheduledNodes) {
     N->visit(nullptr, &irgen);
   }
+
+  if (!B.verify(*this)) {
+    EXIT_ON_ERR(
+        MAKE_ERR(GlowErr::ErrorCode::COMPILE_UNSUPPORTED_IR_AFTER_GENERATE,
+                 "Unsupported instruction(s) found after generating IR " +
+                     getName().str() + " for backend " + B.getBackendName()));
+  }
 }

@@ -1647,6 +1647,12 @@ glow::generateAndOptimizeIR(Function *F, const Backend &B,
   auto IR = llvm::make_unique<IRFunction>(F);
   IR->generateIR(B);
   ::glow::optimize(*IR, shouldShareBuffers);
+  if (!B.verify(*IR)) {
+    EXIT_ON_ERR(MAKE_ERR(
+        GlowErr::ErrorCode::COMPILE_UNSUPPORTED_IR_AFTER_OPTIMIZE,
+        "Unsupported instruction(s) found after optimizing IR " +
+            IR->getName().str() + " for backend " + B.getBackendName()));
+  }
   return IR;
 }
 

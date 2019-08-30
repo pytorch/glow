@@ -213,6 +213,9 @@ public:
 
   bool isOpSupported(const NodeInfo &NI) const override;
 
+  bool verify(const Function &F) const override;
+  bool verify(const IRFunction &IR) const override;
+
   bool shouldLower(const Node *N) const override {
     // The group convolution is supported in OpenCL slow convolution kernel.
     if (N->getKind() == Kinded::Kind::ConvolutionNodeKind)

@@ -65,6 +65,14 @@ Additionally, there are virtual functions that backends can override:
     [below](#backend-specific-nodes-and-instructions-transformations) for more
     information.
 
+- `virtual bool verify(const Function &F) const;`
+
+  - Verifies that `Function &F` conforms to the backend-dependent graph constraints.
+
+- `virtual bool verify(const IRFunction &IR) const;`
+
+  - Verifies that `IRFunction &IR` conforms to the backend-specific constraints.
+
 - `virtual bool shouldLower(const Node *N) const;`
 
   - Allow the backend to prevent lowering for some `Node *N`. For example, if a

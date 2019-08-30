@@ -98,6 +98,29 @@ public:
   /// \returns whether the provided \p NI is supported by the backend.
   virtual bool isOpSupported(const NodeInfo &NI) const = 0;
 
+  /// \returns whether all nodes inside \p F are supported.
+  bool checkAllNodesSupported(const Function &F) const;
+
+  /// \returns whether the provided \p F conforms to the backend-dependent graph
+  /// constraints. Giving the backend an opportunity to check that everything
+  /// conforms to its specific restrictions by overriding this function. It is
+  /// highly recommended for backends to make their backend specific
+  /// verifications a super-set of target independent Function::verify() by
+  /// calling it in their overridden implementation. It is not a strict
+  /// requirement, of course, in case they diverge / the backend has a good
+  /// reason not to call Function::verify().
+  virtual bool verify(const Function &F) const;
+
+  /// \returns whether the provided \p IR conforms to the backend-dependent
+  /// graph constraints. Giving the backend an opportunity to check that
+  /// everything conforms to its specific restrictions by overriding this
+  /// function. It is highly recommended for backends to make their backend
+  /// specific verifications a super-set of target independent
+  /// IRFunction::verify() by calling it in their overridden implementation. It
+  /// is not a strict requirement, of course, in case they diverge / the backend
+  /// has a good reason not to call IRFunction::verify().
+  virtual bool verify(const IRFunction &IR) const;
+
   /// \returns true if the supplied Node \N should be lowered. By default, all
   /// Nodes are candidates for lowering.
   virtual bool shouldLower(const Node *N) const { return true; }
