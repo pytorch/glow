@@ -295,6 +295,8 @@ void glow::dumpAsciiImpl(const Tensor *T, llvm::raw_ostream &os) {
     return dumpAsciiGenericImpl(T->getHandle<uint8_t>(), os);
   case ElemKind::UInt8FusedFP16QTy:
     return dumpAsciiGenericImpl(T->getHandle<uint8_t>(), os);
+  case ElemKind::UInt4FusedFP16QTy:
+    return dumpAsciiGenericImpl(T->getHandle<uint8_t>(), os);
   case ElemKind::BoolTy:
     return dumpAsciiGenericImpl(T->getHandle<bool>(), os);
   }
@@ -324,6 +326,8 @@ void glow::dumpImpl(const Tensor *T, llvm::raw_ostream &os,
   case ElemKind::UInt8FusedQTy:
     return dumpGenericImpl(T->getHandle<uint8_t>(), os, maxNumElem);
   case ElemKind::UInt8FusedFP16QTy:
+    return dumpGenericImpl(T->getHandle<uint8_t>(), os, maxNumElem);
+  case ElemKind::UInt4FusedFP16QTy:
     return dumpGenericImpl(T->getHandle<uint8_t>(), os, maxNumElem);
   case ElemKind::BoolTy:
     return dumpGenericImpl(T->getHandle<bool>(), os, maxNumElem);
@@ -448,6 +452,9 @@ void glow::genericTranspose(const Tensor *src, Tensor *dest,
   case ElemKind::UInt8FusedFP16QTy: {
     llvm_unreachable("Transposing UInt8FusedFP16QTy is unsupported.");
   }
+  case ElemKind::UInt4FusedFP16QTy: {
+    llvm_unreachable("Transposing UInt4FusedFP16QTy is unsupported.");
+  }
   case ElemKind::BoolTy: {
     auto srcH = src->getHandle<bool>();
     auto destH = dest->getHandle<bool>();
@@ -524,6 +531,7 @@ void Tensor::init(InitKind init, float val, PseudoRNG &PRNG) {
   }
       FUSED_CASE(UInt8FusedQTy, float);
       FUSED_CASE(UInt8FusedFP16QTy, float16_t);
+      FUSED_CASE(UInt4FusedFP16QTy, float16_t);
 #undef FUSED_CASE
 
     case ElemKind::BoolTy: {

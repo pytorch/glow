@@ -311,6 +311,7 @@ c10::ScalarType PyTorchModelLoader::convertGlowType(glow::TypeRef ty) {
     return at::kBool;
   case ElemKind::UInt8FusedQTy:
   case ElemKind::UInt8FusedFP16QTy:
+  case ElemKind::UInt4FusedFP16QTy:
   case ElemKind::Int8QTy:
   case ElemKind::UInt8QTy:
   case ElemKind::Int16QTy:
