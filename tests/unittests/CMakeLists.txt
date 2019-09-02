@@ -320,7 +320,24 @@ target_link_libraries(MemoryAllocatorTest
                         TestMain)
 add_glow_test(MemoryAllocatorTest ${GLOW_BINARY_DIR}/tests/MemoryAllocatorTest --gtest_output=xml:MemoryAllocatorTest.xml)
 
+set(CAFFE2_MODELS_PATH ${GLOW_BINARY_DIR}/tests/models/caffe2Models)
+add_glow_test(ModelCompilerCaffe2Test
+              ${GLOW_BINARY_DIR}/bin/model-compiler
+                  -model=${CAFFE2_MODELS_PATH}/multiple_inputs_graph.pbtxt
+                  -model=${CAFFE2_MODELS_PATH}/empty_init_net.pbtxt
+                  -model-input=input1,float,[3,3]
+                  -model-input=input2,float,[3,3]
+                  -emit-bundle=.
+                  -backend=CPU
+                  -network-name=caffe2Graph)
 
+set(ONNX_MODELS_PATH ${GLOW_BINARY_DIR}/tests/models/onnxModels)
+add_glow_test(ModelCompilerONNXTest
+              ${GLOW_BINARY_DIR}/bin/model-compiler
+                  -model=${ONNX_MODELS_PATH}/multipleInputsGraph.onnxtxt
+                  -emit-bundle=.
+                  -backend=CPU
+                  -network-name=onnxGraph)
 
 if(GLOW_WITH_OPENCL)
   add_executable(OCLTest

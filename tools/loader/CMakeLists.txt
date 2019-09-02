@@ -48,3 +48,20 @@ target_link_libraries(model-runner
                         GraphOptimizer
                         Quantization
                         LLVMSupport)
+
+add_executable(model-compiler
+  Loader.cpp
+  ModelCompiler.cpp)
+
+target_link_libraries(model-compiler
+                      PRIVATE
+                        Backends
+                        Base
+                        Converter
+                        Graph
+                        HostManager
+                        Importer
+                        ExecutionEngine
+                        GraphOptimizer
+                        Quantization
+                        LLVMSupport)
