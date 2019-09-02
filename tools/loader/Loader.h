@@ -57,7 +57,7 @@ class Loader {
   /// Host Manager for running the model.
   std::unique_ptr<glow::runtime::HostManager> hostManager_;
   /// Backend used for saving bundle and quantization.
-  glow::Backend *backend_;
+  std::unique_ptr<glow::Backend> backend_;
   /// Function containing the model.
   Function *F_{nullptr};
   /// Module

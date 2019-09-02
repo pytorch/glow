@@ -493,7 +493,7 @@ Loader::Loader() {
                             ExecutionBackend);
 
   hostManager_ = llvm::make_unique<runtime::HostManager>(std::move(configs));
-  backend_ = createBackend(ExecutionBackend);
+  backend_ = std::unique_ptr<Backend>(createBackend(ExecutionBackend));
   F_ = M_->createFunction(modelPathOpt[0]);
   functionName_ = modelPathOpt[0];
 }
