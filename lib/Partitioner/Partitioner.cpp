@@ -75,14 +75,9 @@ void Partitioner::init() {
 Error Partitioner::finalize(const DAGListTy &partitions,
                             const NodeToFunctionMap &mapping) {
 
-  // Validate the functions after partitioning.
-  for (Function *subF : module_->getFunctions()) {
-    if (!subF->verify()) {
-      return MAKE_ERR(ErrorValue::ErrorCode::PARTITIONER_ERROR,
-                      "Conversion led to invalid function " +
-                          subF->getName().str());
-    }
-  }
+  // NOTE: Cannot validate the functions after partitioning here. The validation
+  // needs the backend specific verifier. Tensor layouts, for example, might
+  // have gone from canonical form to backend specific form.
 
   if (logPartition) {
     LOG(INFO) << "The number of partitions is : "

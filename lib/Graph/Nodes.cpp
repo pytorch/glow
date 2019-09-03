@@ -86,6 +86,7 @@ Node *Storage::clone() const { llvm_unreachable("Storage can't be cloned."); }
 std::string Constant::getDebugDesc() const {
   DescriptionBuilder db(getKindName());
   db.addParam("name", quote(getName()))
+      .addParam("layout", getLayout())
       .addParam("output", *getType())
       .addParam("users", getNumUsers());
   return db;
@@ -94,6 +95,7 @@ std::string Constant::getDebugDesc() const {
 std::string Placeholder::getDebugDesc() const {
   DescriptionBuilder db(getKindName());
   db.addParam("name", quote(getName()))
+      .addParam("layout", getLayout())
       .addParam("output", *getType())
       .addParam("users", getNumUsers())
       .addParam("trainable", isTraining());

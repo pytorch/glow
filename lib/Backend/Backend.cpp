@@ -19,6 +19,7 @@
 
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/PlaceholderBindings.h"
+#include "glow/Graph/TensorLayout.h"
 #include "glow/IR/Instrs.h"
 #include "glow/Optimizer/GraphOptimizer/CompilationContext.h"
 #include "glow/Optimizer/GraphOptimizerPipeline/Pipeline.h"
@@ -172,12 +173,16 @@ bool Backend::checkAllNodesSupported(const Function &F) const {
 }
 
 bool Backend::verify(const Function &F) const {
-  return F.verify() && checkAllNodesSupported(F);
+  return F.verify(this) && checkAllNodesSupported(F);
 }
 
 bool Backend::verify(const IRFunction &IR) const {
   (void)IR;
   return true;
+}
+
+TensorLayoutCommon &Backend::getTensorLayoutRequirements() const {
+  return CanonicalTensorLayout::getInstance();
 }
 
 FunctionPassPipeline Backend::getOptimizationPipeline() const {

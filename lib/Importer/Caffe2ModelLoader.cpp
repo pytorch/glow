@@ -333,7 +333,7 @@ Error Caffe2ModelLoader::loadConv(const caffe2::OperatorDef &op,
   // Caffe2 "Conv" op always stores the weight as CKRS.
   Tensor wT;
   w->getPayload().transpose(&wT, NCHW2NHWC);
-  w = G_.getParent()->createConstant(w->getName(), std::move(wT));
+  w = G_.getParent()->createConstant(w->getName(), std::move(wT), "NHWC");
 
   // The structure of the conv weights is: CRSK. We take the C, which is the
   // number of filters. We use this value to calculate the size of the bias
@@ -434,7 +434,7 @@ Error Caffe2ModelLoader::loadConvQuantized(const caffe2::OperatorDef &op,
   if (order != "NHWC") {
     Tensor wT;
     w->getPayload().transpose(&wT, NCHW2NHWC);
-    w = G_.getParent()->createConstant(w->getName(), std::move(wT));
+    w = G_.getParent()->createConstant(w->getName(), std::move(wT), "NHWC");
   }
 
   // The structure of the conv weights is: CRSK. We take the C, which is the

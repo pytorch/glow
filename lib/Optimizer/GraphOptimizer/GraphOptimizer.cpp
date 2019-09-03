@@ -23,6 +23,7 @@
 #include "glow/Graph/Node.h"
 #include "glow/Graph/Nodes.h"
 #include "glow/Graph/PlaceholderBindings.h"
+#include "glow/Graph/TensorLayout.h"
 #include "glow/Graph/Utils.h"
 #include "glow/Graph/VerifierHelper.h"
 #include "glow/Optimizer/GraphOptimizer/FunctionPasses.h"
@@ -287,7 +288,8 @@ static bool sinkTranposeBelowChannelShuffle(Function *F,
                               TR->getShuffle()[CS->getKernel()]);
 
   // Create a copy of sinkingTR and insert after newChannelShuffle.
-  auto *newTR = F->createTranspose(TR->getName(), newCS, TR->getShuffle());
+  auto *newTR = F->createTranspose(TR->getName(), newCS, TR->getShuffle(),
+                                   TR->getLayout());
 
   CS->getResult().replaceAllUsesOfWith(newTR);
 
@@ -320,7 +322,8 @@ bool SinkCode::run(Function *F, const CompilationContext &cctx) {
           BN->getMean(), BN->getVar(), newChannelIdx, BN->getEpsilon(),
           BN->getMomentum());
       NewBN->setPredicate(node->getPredicate());
-      auto *newTR = F->createTranspose(TR->getName(), NewBN, TR->getShuffle());
+      auto *newTR = F->createTranspose(TR->getName(), NewBN, TR->getShuffle(),
+                                       TR->getLayout());
       newTR->setPredicate(node->getPredicate());
 
       BN->getResult().replaceAllUsesOfWith(newTR);
@@ -342,7 +345,8 @@ bool SinkCode::run(Function *F, const CompilationContext &cctx) {
           RL->getResult().getType(), TR->getInput().dims());
       auto *NRL = F->createRELU(RL->getName(), TR->getInput(), reluOutTy);
       NRL->setPredicate(node->getPredicate());
-      auto *newTR = F->createTranspose(TR->getName(), NRL, TR->getShuffle());
+      auto *newTR = F->createTranspose(TR->getName(), NRL, TR->getShuffle(),
+                                       TR->getLayout());
       newTR->setPredicate(node->getPredicate());
       RL->getResult().replaceAllUsesOfWith(newTR);
       changed = true;
@@ -359,7 +363,8 @@ bool SinkCode::run(Function *F, const CompilationContext &cctx) {
 
       auto *NSI = F->createSigmoid(SI->getName(), TR->getInput());
       NSI->setPredicate(node->getPredicate());
-      auto *newTR = F->createTranspose(TR->getName(), NSI, TR->getShuffle());
+      auto *newTR = F->createTranspose(TR->getName(), NSI, TR->getShuffle(),
+                                       TR->getLayout());
       newTR->setPredicate(node->getPredicate());
       SI->getResult().replaceAllUsesOfWith(newTR);
       changed = true;
@@ -417,7 +422,8 @@ bool SinkCode::run(Function *F, const CompilationContext &cctx) {
 
       auto *NTN = F->createTanh(TN->getName(), TR->getInput());
       NTN->setPredicate(node->getPredicate());
-      auto *newTR = F->createTranspose(TR->getName(), NTN, TR->getShuffle());
+      auto *newTR = F->createTranspose(TR->getName(), NTN, TR->getShuffle(),
+                                       TR->getLayout());
       newTR->setPredicate(node->getPredicate());
       TN->getResult().replaceAllUsesOfWith(newTR);
       changed = true;
@@ -485,7 +491,8 @@ bool SinkCode::run(Function *F, const CompilationContext &cctx) {
               dyn_cast<SplatNode>(node->getNthInput(ArithmeticNode::LHSIdx));
           auto *NS = F->createSplat("splat", RTR->getInput().getType(),
                                     SN->getValue());
-          LTR = F->createTranspose("transpose", NS, RTR->getShuffle());
+          LTR = F->createTranspose("transpose", NS, RTR->getShuffle(),
+                                   RTR->getLayout());
           changed = true;
         } else if (isa<SplatNode>(node->getNthInput(ArithmeticNode::RHSIdx)) &&
                    LTR) {
@@ -494,7 +501,8 @@ bool SinkCode::run(Function *F, const CompilationContext &cctx) {
               dyn_cast<SplatNode>(node->getNthInput(ArithmeticNode::RHSIdx));
           auto *NS = F->createSplat("splat", LTR->getInput().getType(),
                                     SN->getValue());
-          RTR = F->createTranspose("transpose", NS, LTR->getShuffle());
+          RTR = F->createTranspose("transpose", NS, LTR->getShuffle(),
+                                   LTR->getLayout());
           changed = true;
         } else if (isa<Constant>(node->getNthInput(ArithmeticNode::LHSIdx)) &&
                    RTR) {
@@ -552,8 +560,8 @@ bool SinkCode::run(Function *F, const CompilationContext &cctx) {
 
       newAN->setPredicate(node->getPredicate());
       changed = true;
-      auto *newTR =
-          F->createTranspose(LTR->getName(), newAN, LTR->getShuffle());
+      auto *newTR = F->createTranspose(LTR->getName(), newAN, LTR->getShuffle(),
+                                       LTR->getLayout());
       newTR->setPredicate(node->getPredicate());
       node->getNthResult(ArithmeticNode::ResultIdx).replaceAllUsesOfWith(newTR);
     }
@@ -587,7 +595,8 @@ bool SinkCode::run(Function *F, const CompilationContext &cctx) {
           RQ->getResult().getType(), TR->getInput().getType()->dims());
       auto *newRQ =
           F->createRescaleQuantized(RQ->getName(), TR->getInput(), newRQType);
-      auto *newTR = F->createTranspose(TR->getName(), newRQ, TR->getShuffle());
+      auto *newTR = F->createTranspose(TR->getName(), newRQ, TR->getShuffle(),
+                                       TR->getLayout());
       RQ->getResult().replaceAllUsesOfWith(newTR);
       changed = true;
     }
@@ -646,8 +655,9 @@ bool SinkCode::run(Function *F, const CompilationContext &cctx) {
 
       auto *newCN = F->createConcat(CN->getName(), transVector, newChannelIdx);
       newCN->setPredicate(node->getPredicate());
-      auto *newTR = F->createTranspose(firstInput->getName(), newCN,
-                                       firstInput->getShuffle());
+      auto *newTR =
+          F->createTranspose(firstInput->getName(), newCN,
+                             firstInput->getShuffle(), firstInput->getLayout());
       newTR->setPredicate(node->getPredicate());
       CN->getResult().replaceAllUsesOfWith(newTR);
       changed = true;
@@ -933,7 +943,8 @@ bool MergeTransposeIntoMatMulOrFC::run(Function *F,
         F->getParent()->uniqueTypeWithNewShape(W->getType(), newShape);
 
     // New reordered weights.
-    auto *newW = F->getParent()->createConstant(W->getType(), W->getName());
+    auto *newW = F->getParent()->createConstant(W->getType(), W->getName(),
+                                                W->getLayout());
     Tensor reshapedSrc(W->getPayload().getUnsafePtr(), reshapedWTy);
     Tensor reshapedDst(newW->getPayload().getUnsafePtr(), reshapedNewWTy);
     reshapedSrc.transpose(&reshapedDst, shuffle);
@@ -1252,13 +1263,14 @@ bool OptimizeReduceMean::run(Function *F, const CompilationContext &cctx) {
       std::vector<unsigned_t> strides = {1, 1};
       std::vector<unsigned_t> pads = {0, 0, 0, 0};
 
+      // TODO: Fix bad assumption? See issue 3499, for now workaround it.
       // In Glow, AvgPool expects NHWC.
       auto *TR1 = F->createTranspose(
-          RM->getName().str() + ".transposeNCHW2NHWC", in, NCHW2NHWC);
+          RM->getName().str() + ".transposeNCHW2NHWC", in, NCHW2NHWC, "NHWC");
       auto *AP = F->createAvgPool(RM->getName().str() + ".avgPool", TR1,
                                   kernels, strides, pads);
       auto *TR2 = F->createTranspose(
-          RM->getName().str() + ".transposeNHWC2NCHW", AP, NHWC2NCHW);
+          RM->getName().str() + ".transposeNHWC2NCHW", AP, NHWC2NCHW, "NCHW");
 
       // AvgPool keeps original shape. Add reshape to match expected output.
       std::vector<size_t> shape = TR2->getResult().dims();
@@ -1298,7 +1310,8 @@ static Constant *getUniquelyUsedConstant(Module *M, Node &node) {
   }
 
   // If constant has more than one use, duplicate it and return the duplicate.
-  auto *NC = M->createConstant(constant->getType(), constant->getName());
+  auto *NC = M->createConstant(constant->getType(), constant->getName(),
+                               constant->getLayout());
   NC->getPayloadMutable().assign(&constant->getPayload());
   return NC;
 }
@@ -1594,8 +1607,11 @@ static NodeValue tryToOptimizeConcatOfRehapes(Function *F, ConcatNode *CN) {
     return NodeValue(nullptr);
   }
   auto *newCN = F->createConcat(CN->getName(), newConcatInputs, dim);
-  return F->createReshape(CN->getInputs().front().getNode()->getName(), newCN,
-                          CN->getResult().dims());
+  return F->createReshape(
+      CN->getInputs().front().getNode()->getName(), newCN,
+      CN->getResult().dims(),
+      CanonicalTensorLayout::getInstance().getNthResultLayoutRequirements(CN,
+                                                                          0));
 }
 
 /// Simplify concat node.
@@ -1796,8 +1812,8 @@ bool TransposeConstants::run(Function *F, const CompilationContext &cctx) {
       continue;
     }
     // Create a new Constant NC to hold the transposed result.
-    auto *NC =
-        F->getParent()->createConstant(TN->getResult().getType(), C->getName());
+    auto *NC = F->getParent()->createConstant(TN->getResult().getType(),
+                                              C->getName(), TN->getLayout());
     // Transpose the value of C into NC.
     genericTranspose(&C->getPayload(), &NC->getPayloadMutable(),
                      TN->getShuffle());
@@ -2059,7 +2075,8 @@ bool OptimizeTransposeIntoReshape::run(Function *F,
     if (inDims != outDims) {
       continue;
     }
-    auto *RS = F->createReshape(TR->getName(), inputNode, outputDims);
+    auto *RS =
+        F->createReshape(TR->getName(), inputNode, outputDims, TR->getLayout());
     TR->getResult().replaceAllUsesOfWith(RS);
     changed = true;
   }
@@ -2115,9 +2132,9 @@ bool OptimizeReshape::run(Function *F, const CompilationContext &cctx) {
     // Reshape(Reshape(x)) -> Reshape(x).
     auto *reshapeNodeInput = dyn_cast<ReshapeNode>(inputNode);
     if (reshapeNodeInput && reshapeNodeInput->hasOneUse()) {
-      auto *newReshape =
-          F->createReshape(reshapeNode->getName(), reshapeNodeInput->getInput(),
-                           reshapeNode->getResult().dims());
+      auto *newReshape = F->createReshape(
+          reshapeNode->getName(), reshapeNodeInput->getInput(),
+          reshapeNode->getResult().dims(), reshapeNode->getLayout());
       reshapeNode->getResult().replaceAllUsesOfWith(newReshape);
       changed = true;
       continue;
@@ -2128,8 +2145,11 @@ bool OptimizeReshape::run(Function *F, const CompilationContext &cctx) {
     auto *C = dyn_cast<Constant>(inputNode);
     if (C && C->hasOneUse()) {
       // Create a new Constant with the type of the reshape.
+      auto layout =
+          CanonicalTensorLayout::getInstance().getNthResultLayoutRequirements(
+              reshapeNode, ReshapeNode::ResultIndices::ResultIdx);
       auto *newC = F->getParent()->createConstant(
-          reshapeNode->getResult().getType(), C->getName());
+          reshapeNode->getResult().getType(), C->getName(), layout);
       // Create an unowned view of the original tensor with the correct shape,
       // and assign it to the new Constant.
       Tensor reshapedT = C->getPayload().getUnowned(reshapeNode->getDims());
@@ -2264,7 +2284,8 @@ static NodeValue convertConstant(Module &mod, Constant &constant,
     if (dstTy->getElementType() != ElemKind::UInt8FusedFP16QTy) {
       return NodeValue();
     }
-    auto *NC = mod.createConstant(dstTy, constant.getName());
+    auto *NC =
+        mod.createConstant(dstTy, constant.getName(), constant.getLayout());
     NC->getPayloadMutable() =
         tensor.getCopyConvertedToType(dstTy->getElementType());
     return NC->getOutput();
@@ -2520,8 +2541,9 @@ static bool sinkRescaleQuantizedNode(Function *F) {
         continue;
       }
 
-      auto *newReshape = F->createReshape(
-          reshape->getName(), rescale->getInput(), reshape->getResult().dims());
+      auto *newReshape =
+          F->createReshape(reshape->getName(), rescale->getInput(),
+                           reshape->getResult().dims(), reshape->getLayout());
       auto *newRescale = F->createRescaleQuantized(
           rescale->getName(), newReshape, reshape->getResult().getType());
       reshape->getResult().replaceAllUsesOfWith(newRescale);
@@ -2558,8 +2580,9 @@ static bool sinkRescaleQuantizedNode(Function *F) {
         continue;
       }
 
-      auto *newTranspose = F->createTranspose(
-          transpose->getName(), rescale->getInput(), transpose->getShuffle());
+      auto *newTranspose =
+          F->createTranspose(transpose->getName(), rescale->getInput(),
+                             transpose->getShuffle(), transpose->getLayout());
       auto rescaleOutTy = F->getParent()->uniqueTypeWithNewShape(
           rescale->getResult().getType(), transpose->getResult().dims());
       auto *newRescale = F->createRescaleQuantized(rescale->getName(),
@@ -2852,7 +2875,7 @@ void glow::convertPlaceholdersToConstants(Function *F,
     if (!tensor) {
       continue;
     }
-    auto *constant = M->createConstant(PH->getName(), *tensor);
+    auto *constant = M->createConstant(PH->getName(), *tensor, PH->getLayout());
     PH->getOutput().replaceAllUsesOfWith(constant, F);
   }
 }

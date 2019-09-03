@@ -73,6 +73,10 @@ Additionally, there are virtual functions that backends can override:
 
   - Verifies that `IRFunction &IR` conforms to the backend-specific constraints.
 
+- `virtual TensorLayoutCommon &getTensorLayoutRequirements() const;`
+
+  - Gets the backend-specific tensor layout requirements.
+
 - `virtual bool shouldLower(const Node *N) const;`
 
   - Allow the backend to prevent lowering for some `Node *N`. For example, if a
