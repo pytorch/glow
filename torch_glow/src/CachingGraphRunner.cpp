@@ -20,6 +20,7 @@
 
 #include "glow/Support/Support.h"
 
+#include <mutex>
 #include <torch/csrc/jit/argument_spec.h>
 #include <torch/csrc/utils/hash.h>
 
@@ -44,6 +45,10 @@ size_t CachingGraphRunner::computeGraphHash(
   return hash;
 }
 
+namespace {
+static std::mutex graphCacheMutex;
+}
+
 llvm::Expected<CachingGraphRunner::PerGlowGraphInfo *>
 CachingGraphRunner::loadImpl(torch::jit::Stack &stack) {
   const auto inputs = torch::jit::last(stack, graph_->inputs().size());
@@ -52,6 +57,7 @@ CachingGraphRunner::loadImpl(torch::jit::Stack &stack) {
 
   // If we already have a Glow function compiled for this graph with and the
   // given inputs then use that.
+  std::lock_guard<std::mutex> guard(graphCacheMutex);
   auto it = perGlowGraphInfoMap_.find(hash);
   if (it != perGlowGraphInfoMap_.end()) {
     return it->second.get();
