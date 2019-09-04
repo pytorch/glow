@@ -22,6 +22,7 @@
 #include "glow/Runtime/Executor/ThreadPoolExecutor.h"
 #include "glow/Runtime/Provisioner/Provisioner.h"
 #include "glow/Runtime/RuntimeTypes.h"
+#include "glow/Runtime/StatsExporter.h"
 #include "glow/Support/Support.h"
 
 #include "llvm/Support/CommandLine.h"
@@ -73,6 +74,7 @@ HostManager::init(std::vector<std::unique_ptr<DeviceConfig>> configs) {
   DeviceIDTy deviceCount = 0;
 
   for (auto &config : configs) {
+    config->deviceID = deviceCount;
     if (!config->hasName()) {
       config->name = "config" + std::to_string(deviceCount);
     }
@@ -86,16 +88,32 @@ HostManager::init(std::vector<std::unique_ptr<DeviceConfig>> configs) {
   }
   provisioner_.reset(new Provisioner(devices_));
   executor_.reset(new ThreadPoolExecutor(devices_, config_.executorThreads));
-
+  exportMemoryCounters();
   return llvm::Error::success();
 }
 
-HostManager::~HostManager() { llvm::toString(clearHost()); }
+void HostManager::exportMemoryCounters() {
+  uint64_t maxMem = 0;
+  uint64_t availableMem = 0;
+  for (auto &dev : devices_) {
+    maxMem += dev.second->getMaximumMemory();
+    availableMem += dev.second->getAvailableMemory();
+  }
+  Stats()->setCounter(kDeviceMemoryUsed, maxMem - availableMem);
+  Stats()->setCounter(kDeviceMemoryAvailable, availableMem);
+  Stats()->setCounter(kDeviceMemoryMax, maxMem);
+}
+
+HostManager::~HostManager() {
+  llvm::toString(clearHost());
+  exportMemoryCounters();
+}
 
 void HostManager::cleanupAddNetwork(llvm::ArrayRef<std::string> names) {
   for (auto &name : names) {
     processingNetworks_.erase(name);
   }
+  exportMemoryCounters();
 }
 
 llvm::Error HostManager::addNetwork(std::unique_ptr<Module> module,
@@ -258,7 +276,7 @@ llvm::Error HostManager::removeNetwork(llvm::StringRef networkName) {
     err.set(provisioner_->removeFunction(node->name));
   }
   networks_.erase(networkIterator);
-
+  exportMemoryCounters();
   return err.get();
 }
 
@@ -286,6 +304,10 @@ llvm::Error HostManager::clearHost() {
   for (auto &it : devices_) {
     errContainer.set(it.second->stop());
   }
+  // Zero out counters.
+  Stats()->setCounter(kDeviceMemoryUsed, 0);
+  Stats()->setCounter(kDeviceMemoryAvailable, 0);
+  Stats()->setCounter(kDeviceMemoryMax, 0);
 
   return errContainer.get();
 }

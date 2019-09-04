@@ -133,12 +133,6 @@ class OpenCLDeviceManager : public QueueBackedDeviceManager {
   /// Map of function name to cl_program.
   std::unordered_map<std::string, cl_program> programs_;
 
-  /// Maximum available memory on the device.
-  std::atomic<uint64_t> maxMemoryBytes_{0};
-
-  /// Amount of memory used by all models.
-  std::atomic<uint64_t> usedMemoryBytes_{0};
-
   /// CL compute device id.
   cl_device_id deviceId_;
   /// CL compute context.

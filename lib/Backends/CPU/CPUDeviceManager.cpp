@@ -108,6 +108,9 @@ void CPUDeviceManager::addNetworkImpl(const Module *module,
 
   assert(usedMemoryBytes_ <= maxMemoryBytes_);
 
+  // Export change in memory usage.
+  exportMemoryCounters();
+
   // Fire the ready CB.
   readyCB(module, llvm::Error::success());
 }
@@ -125,6 +128,9 @@ void CPUDeviceManager::evictNetworkImpl(std::string functionName,
                                functionName.c_str())));
     return;
   }
+  // Export change in memory usage.
+  exportMemoryCounters();
+
   evictCB(functionName, llvm::Error::success());
 }
 

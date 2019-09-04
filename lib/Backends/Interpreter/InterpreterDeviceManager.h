@@ -29,13 +29,6 @@ class InterpreterDeviceManager : public QueueBackedDeviceManager {
   /// Compiled function list by name.
   FunctionMapTy functions_;
 
-  /// Maximum available memory on the device, for local devices fix to some
-  /// constant.
-  std::atomic<uint64_t> maxMemoryBytes_{0};
-
-  /// Amount of memory used by all models.
-  std::atomic<uint64_t> usedMemoryBytes_{0};
-
   /// Static memory cost of the InterpreterFunction.
   /// This is very arbitrary for the Interpreter backend.
   const uint64_t functionCost_{1};
@@ -46,13 +39,14 @@ class InterpreterDeviceManager : public QueueBackedDeviceManager {
 
 public:
   explicit InterpreterDeviceManager(const DeviceConfig &config)
-      : QueueBackedDeviceManager(config),
-        maxMemoryBytes_(config_.getDeviceMemory(2000000000)) {
+      : QueueBackedDeviceManager(config) {
     Stats()->incrementCounter(kDevicesUsedInterpreter);
+    exportMemoryCounters();
   }
 
   ~InterpreterDeviceManager() override {
     Stats()->incrementCounter(kDevicesUsedInterpreter, -1);
+    zeroMemoryCounters();
   }
 
   /// Returns the amount of memory in bytes available on the device when no
