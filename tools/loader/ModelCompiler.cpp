@@ -42,12 +42,19 @@ llvm::cl::list<std::string> modelInputs(
         "   -model-input=<inputName1>,<inputType1>,<inputShape1>   \n"
         "   -model-input=<inputName2>,<inputType2>,<inputShape2>   \n"
         "   ....................................................   \n"
-        "For example we can can describe 2 inputs as:              \n"
+        "For quantized types the format is slightly different since\n"
+        "the scale and offset parameters should also be provided:  \n"
+        "   -model-input=<name>,<type>,<scale>,<offset>,<shape>    \n"
+        "For example we can can provide one or more inputs:        \n"
         "   -model-input=input_03_data,float,[1]                   \n"
         "   -model-input=data_bias,int32,[1,32,32]                 \n"
-        "The supported types are: float, float16, int32, int64 and \n"
-        "bool. \n"),
-    llvm::cl::value_desc("int"), llvm::cl::cat(modelCompilerCat));
+        "   -model-input=data,int8q,0.123,-13,[1,10]               \n"
+        "The supported types are:                                  \n"
+        "   - float, float16 (floating point types)                \n"
+        "   - int32, int64 (integer types)                         \n"
+        "   - int8q, int16q, int32q (integer quantized types)      \n"
+        "   - bool (logic type)\n"),
+    llvm::cl::value_desc("name,type,shape"), llvm::cl::cat(modelCompilerCat));
 
 } // namespace
 
@@ -55,15 +62,15 @@ llvm::cl::list<std::string> modelInputs(
 static void getModelInputs(std::vector<std::string> &inputNames,
                            std::vector<Type> &inputTypes) {
   for (const auto &str : modelInputs) {
-    // Split string. Expected format: <name>,<type>,<shape>.
-    auto strPairOne = llvm::StringRef(str).split(',');
-    auto strPairTwo = strPairOne.second.split(',');
-    llvm::StringRef name = strPairOne.first;
-    llvm::StringRef type = strPairTwo.first;
-    llvm::StringRef shape = strPairTwo.second;
+    // Split string. Expected format:
+    // - <name>,<type>,<shape> for non-quantized type.
+    // - <name>,<type>,<scale>,<offset>,<shape> for quantized type.
+    auto strPair = llvm::StringRef(str).split(',');
+    llvm::StringRef name = strPair.first;
+    strPair = strPair.second.split(',');
+    llvm::StringRef type = strPair.first;
     CHECK(name.size()) << "Model input name empty";
     CHECK(type.size()) << "Model input type empty";
-    CHECK(shape.size()) << "Model input shape empty";
 
     // Parse type string.
     ElemKind kind;
@@ -71,6 +78,12 @@ static void getModelInputs(std::vector<std::string> &inputNames,
       kind = ElemKind::FloatTy;
     } else if (type.equals("float16")) {
       kind = ElemKind::Float16Ty;
+    } else if (type.equals("int8q")) {
+      kind = ElemKind::Int8QTy;
+    } else if (type.equals("int16q")) {
+      kind = ElemKind::Int16QTy;
+    } else if (type.equals("int32q")) {
+      kind = ElemKind::Int32QTy;
     } else if (type.equals("int32")) {
       kind = ElemKind::Int32ITy;
     } else if (type.equals("int64")) {
@@ -79,10 +92,26 @@ static void getModelInputs(std::vector<std::string> &inputNames,
       kind = ElemKind::BoolTy;
     } else {
       LOG(FATAL) << strFormat("Model input type %s not supported",
-                              type.data());
+                              std::string(type).c_str());
+    }
+
+    // For quantized type get scale and offset.
+    double scale;
+    int32_t offset;
+    if (isQuantizedElemKind(kind)) {
+      strPair = strPair.second.split(',');
+      CHECK(strPair.first.size()) << "Model input scale empty";
+      CHECK(!strPair.first.getAsDouble(scale))
+          << "Model input scale parameter invalid";
+      strPair = strPair.second.split(',');
+      CHECK(strPair.first.size()) << "Model input offset empty";
+      CHECK(!strPair.first.getAsInteger(0, offset))
+          << "Model input offset parameter invalid";
     }
 
     // Parse shape string.
+    llvm::StringRef shape = strPair.second;
+    CHECK(shape.size()) << "Model input shape empty";
     ShapeVector dims;
     CHECK_EQ(shape.front(), '[') << "First shape char should be [";
     shape = shape.drop_front();
@@ -102,7 +131,11 @@ static void getModelInputs(std::vector<std::string> &inputNames,
 
     // Push data.
     inputNames.push_back(name);
-    inputTypes.push_back(Type(kind, dims));
+    if (isQuantizedElemKind(kind)) {
+      inputTypes.push_back(Type(kind, dims, (float)scale, offset));
+    } else {
+      inputTypes.push_back(Type(kind, dims));
+    }
   }
 }
 
@@ -131,7 +164,7 @@ int main(int argc, char **argv) {
     // must be provided explicitly.
     std::vector<const char *> inputNameRefs;
     std::vector<TypeRef> inputTypeRefs;
-    for (size_t idx = 0, e = inputNames.size(); idx < e; idx++)
+    for (size_t idx = 0, e = inputNames.size(); idx < e; idx++) {
       inputNameRefs.push_back(inputNames[idx].c_str());
       inputTypeRefs.push_back(&inputTypes[idx]);
     }

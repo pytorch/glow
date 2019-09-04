@@ -325,8 +325,8 @@ add_glow_test(ModelCompilerCaffe2Test
               ${GLOW_BINARY_DIR}/bin/model-compiler
                   -model=${CAFFE2_MODELS_PATH}/multiple_inputs_graph.pbtxt
                   -model=${CAFFE2_MODELS_PATH}/empty_init_net.pbtxt
-                  -model-input=input1,float,[3,3]
-                  -model-input=input2,float,[3,3]
+                  -model-input=input1,int8q,0.1,-13,[3,3]
+                  -model-input=input2,int8q,0.2,15,[3,3]
                   -emit-bundle=.
                   -backend=CPU
                   -network-name=caffe2Graph)
