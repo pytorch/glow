@@ -23,6 +23,8 @@
 
 #include <glog/logging.h>
 
+#include <atomic>
+
 using namespace glow;
 
 namespace {
@@ -104,7 +106,7 @@ static bool listContainsString(llvm::ArrayRef<std::string> strList,
 }
 
 /// Global pass counter used to identify each pass.
-static unsigned globalPassCounter = 0;
+static std::atomic<unsigned> globalPassCounter{0};
 
 } // namespace
 
@@ -134,7 +136,12 @@ bool FunctionPassManager::runPrePass(Function *F,
   }
   if (verifyBeforeAllPassesOpt ||
       listContainsString(verifyBeforePassesOpt, P.getName())) {
-    CHECK(F->verify());
+    if (backend_) {
+      // Do backend-specific verification.
+      CHECK(backend_->verify(*F));
+    } else {
+      CHECK(F->verify());
+    }
   }
   return false;
 }
@@ -154,7 +161,12 @@ bool FunctionPassManager::runPostPass(Function *F,
   }
   if (verifyAfterAllPassesOpt ||
       listContainsString(verifyAfterPassesOpt, P.getName())) {
-    CHECK(F->verify());
+    if (backend_) {
+      // Do backend-specific verification.
+      CHECK(backend_->verify(*F));
+    } else {
+      CHECK(F->verify());
+    }
   }
   return false;
 }

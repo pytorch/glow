@@ -68,15 +68,15 @@ public:
   /// once init() -> repeatedly train() -> repeatedly save().
 
   /// Initializes internal Glow objects from \p modelFile file, uses provided
-  /// \p backend name, ONNX exporter \p parameters, \p inputs, \p settings,
-  /// and training configuration \p config for training algorithm, randomizes
-  /// weights according to the provided \p mode.
+  /// \p backend name, ONNX exporter \p parameters, \p inputs, \p config,
+  /// randomizes weights according to the provided \p mode.
   /// \returns error on failure.
-  llvm::Error
-  init(llvm::StringRef modelFile, std::vector<torch::jit::IValue> &inputs,
-       llvm::StringRef backend, const ONNXWriterParameters &parameters,
-       const PyTorchLoaderSettings &settings, const TrainingConfig &config,
-       RandomizeWeights mode = RandomizeWeights::AUTO);
+  llvm::Error init(llvm::StringRef modelFile,
+                   std::vector<torch::jit::IValue> &inputs,
+                   llvm::StringRef backend,
+                   const ONNXWriterParameters &parameters,
+                   const TrainingConfig &config,
+                   RandomizeWeights mode = RandomizeWeights::AUTO);
 
   /// Trains the loaded model from the provided \p samples and \p labels.
   /// Samples and labels must have the compatible dimensions and types.
@@ -91,6 +91,39 @@ public:
   /// can continue to call train() method again.
   /// \returns error on failure.
   llvm::Error save(llvm::StringRef snapshotFile);
+};
+
+/// Wrapper class helps to integrate TorchGlowTraining class functionality into
+/// Python environment.
+class TorchGlowTrainingWrapper {
+  // Trainer itself.
+  TorchGlowTraining trainer_;
+  // Required settings/parameters/configs.
+  TorchGlowTraining::ONNXWriterParameters parameters_;
+  TrainingConfig config_;
+
+public:
+  /// Initializes internal trainer by provided model \p modelPathPyTorch, inputs
+  /// \p ptTensors, \p backend type, and flag if weights should be randomized,
+  /// \returns false on a failure.
+  bool init(const std::string &modelPath,
+            const std::vector<at::Tensor> &ptTensors,
+            const std::string &backend, bool randomizeWeights);
+
+  /// Takes PyTorch \p ptSamples and \p ptLabels tensors and performs training,
+  /// \returns false on a failure.
+  bool train(const at::Tensor &ptSamples, const at::Tensor &ptLabels);
+
+  /// Saves Glow model into \p snapshotFile using ONNX format
+  /// \returns false on a failure.
+  bool save(const std::string &snapshotFile);
+
+  /// Sets ONNXWriterParameters.
+  void setONNXWriterParameters(size_t irVersion, size_t opsetVersion);
+
+  /// Sets TrainingConfig.
+  void setTrainingConfig(float L1Decay, float L2Decay, float learningRate,
+                         float momentum, unsigned batchSize);
 };
 
 } // namespace glow

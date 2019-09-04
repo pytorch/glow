@@ -165,6 +165,7 @@ add_executable(GraphOptzTest
                GraphOptzTest.cpp)
 target_link_libraries(GraphOptzTest
                       PRIVATE
+                        BackendTestUtils
                         ExecutionEngine
                         Graph
                         IR

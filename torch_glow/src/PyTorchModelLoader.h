@@ -25,7 +25,7 @@
 
 namespace glow {
 
-/// Loads PyTorch JIT IR subgraphs as a Glow Function.
+/// Loads PyTorch JIT IR graphs as a Glow Function.
 class PyTorchModelLoader {
   /// Glow Function created outside this class.
   glow::Function &F_;
@@ -36,12 +36,20 @@ class PyTorchModelLoader {
 
   /// The reference PyTorch inputs used for loading. This is required for shape
   /// information.
-  at::ArrayRef<torch::jit::IValue> &inputs_;
+  const at::ArrayRef<torch::jit::IValue> &inputs_;
+
+  /// Flags if the memory of Constants of Tensor type should be copied.
+  const bool copyTensorMemory_;
 
   /// Mapping from PyTorch Values to Glow NodeValues created during loading.
   using ValueMap =
       std::unordered_map<const torch::jit::Value *, glow::NodeValue>;
   ValueMap valueMap_;
+
+  /// Indices of stack inputs that were frozen during loading. This set is
+  /// optionally provided by the user of PyTorchModelLoader and will be returned
+  /// to them after loading is complete.
+  std::set<size_t> *frozenInputIndices_ = nullptr;
 
   /// Values in the MappingOfMemberFunctions map. These values contain the
   /// information necessary to load PyTorch nodes such as which
@@ -98,30 +106,69 @@ public:
   /// shape info that isn't yet available when this is run.
   static bool isNodeSupported(const torch::jit::Node *node);
 
-  /// Converts Glow type into ATen Tensor type.
+  /// Given a Glow type \p ty, \returns ATen Tensor type.
   static c10::ScalarType convertGlowType(TypeRef ty);
 
+  /// Given a PyTorch ScalarType \p ty, \returns the corresponding
+  /// Glow::ElemKind.
+  static glow::ElemKind convertScalarType(c10::ScalarType ty);
+
+  /// Takes a glow::Function \p F, a jit::Graph \p graph to load, and a
+  /// stack of \p inputs for the graph to be loaded. Parameter \p
+  /// Given a ATen tensor type \p ptType, \returns Glow type Tensor type.
+  static glow::Type ptTypeToGlowType(const c10::TensorType &ptType);
+
+  /// \returns a Glow tensor with the same type and underlying data as the given
+  /// PyTorch tensor \p ptT performing memory copy if \p copy is set.
+  static llvm::Expected<glow::Tensor>
+  ptTensorToGlowTensor(const at::Tensor &ptT, bool copy);
+
   /// Takes a glow::Function \p F, a jit::Graph \p subgraph to load, and a
-  /// stack of \p inputs for the subgraph to be loaded. Parameter \p settings
-  /// control the fusion details. Output parameters \p inputPlaceholders and
-  /// \p outputPlaceholders are filled out. \returns error on failure
+  /// stack of \p inputs for the subgraph to be loaded. Parameter \p
+  /// settings control the fusion details. Output parameters \p
+  /// inputPlaceholders and \p outputPlaceholders are filled out. \returns
+  /// error on failure.
   static llvm::Error
-  loadJITGraph(glow::Function &F, torch::jit::Graph &subgraph,
-               at::ArrayRef<torch::jit::IValue> &inputs,
+  loadJITGraph(glow::Function &F, const torch::jit::Graph &graph,
+               const at::ArrayRef<torch::jit::IValue> &inputs,
                std::vector<glow::Placeholder *> &inputPlaceholders,
                std::vector<glow::Placeholder *> &outputPlaceholders,
                const PyTorchLoaderSettings &settings);
 
+  /// Takes a glow::Function \p F, a jit::Graph \p subgraph to load, \p inputs
+  /// as graph external inputs, and \parameters as known tensors. Output
+  /// parameters \p inputPlaceholders and \p outputPlaceholders are filled out.
+  /// \returns error on failure.
+  static llvm::Error
+  parseJITGraph(glow::Function &F, const torch::jit::Graph &graph,
+                const at::ArrayRef<torch::jit::IValue> &inputs,
+                const at::ArrayRef<at::Tensor> &parameters,
+                std::vector<glow::Placeholder *> &inputPlaceholders,
+                std::vector<glow::Placeholder *> &outputPlaceholders);
+
 private:
-  /// Takes a glow::Function \p F, a jit::Graph \p subgraph to load, and a
-  /// stack of \p inputs for the subgraph to be loaded. Parameter \p settings
+  /// Takes a glow::Function \p F, a jit::Graph \p graph to load, and a
+  /// stack of \p inputs for the graph to be loaded. Parameter \p settings
   /// control the fusion details. Output parameters \p inputPlaceholders and
-  /// \p outputPlaceholders are filled out.
-  PyTorchModelLoader(glow::Function &F, torch::jit::Graph &subgraph,
-                     at::ArrayRef<torch::jit::IValue> &inputs,
+  /// \p outputPlaceholders are filled out. \p frozenInputIndices is an optional
+  /// parameter that, if provided, will be filled with the set of stack indices
+  /// that were frozen during loading.
+  PyTorchModelLoader(glow::Function &F, const torch::jit::Graph &graph,
+                     const at::ArrayRef<torch::jit::IValue> &inputs,
                      std::vector<glow::Placeholder *> &inputPlaceholders,
                      std::vector<glow::Placeholder *> &outputPlaceholders,
-                     llvm::Error &error, const PyTorchLoaderSettings &settings);
+                     llvm::Error &error, const PyTorchLoaderSettings &settings,
+                     std::set<size_t> *frozenInputIndices);
+
+  /// Takes a glow::Function \p F, a jit::Graph \p graph to load, and a
+  /// graph \p inputs and placeholders \p parameters. Output parameters \p
+  /// inputPlaceholders and \p outputPlaceholders are filled out.
+  PyTorchModelLoader(glow::Function &F, const torch::jit::Graph &graph,
+                     const at::ArrayRef<torch::jit::IValue> &inputs,
+                     const at::ArrayRef<at::Tensor> &parameters,
+                     std::vector<glow::Placeholder *> &inputPlaceholders,
+                     std::vector<glow::Placeholder *> &outputPlaceholders,
+                     llvm::Error &error);
 
   /// Save access to the mapping.
   static const MappingOfMemberFunctions &getSymbolsMapping();
@@ -163,7 +210,14 @@ private:
 
   /// Creates and \returns a new Glow Placeholder corresponding to the given
   /// PyTorch Value \p value.
-  llvm::Expected<glow::Placeholder *> loadValue(const torch::jit::Value *value);
+  llvm::Expected<glow::Placeholder *> loadValue(const torch::jit::Value *value,
+                                                const at::Tensor &ptTensor);
+
+  /// Given a graph \p graph creates SaveNode(s) and fills output placeholders
+  /// \p PH. \returns error on failure.
+  llvm::Error createSaveNodeAndOutputPlaceholders(
+      const torch::jit::Graph &graph,
+      std::vector<glow::Placeholder *> &outputPlaceholders);
 
   /// Load a given PyTorch Node \p ptNode. If \p weightFreezingEnabled then
   /// load inputs that have been marked as constInputs in
@@ -247,6 +301,10 @@ private:
   /// \returns error on failure.
   llvm::Error loadMin(const torch::jit::Node *ptNode);
 
+  /// Load a PyTorch clamp node.
+  /// \returns error on failure.
+  llvm::Error loadClamp(const torch::jit::Node *ptNode);
+
   /// Load a PyTorch matmul (n x k) x (k x m) -> (n x m) node.
   /// \returns error on failure.
   llvm::Error loadMatMul(const torch::jit::Node *ptNode);
@@ -266,6 +324,26 @@ private:
   /// Load a PyTorch topK node.
   /// \returns error on failure.
   llvm::Error loadTopK(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch aten::size node.
+  /// \returns error on failure.
+  llvm::Error loadSize(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch prim::ListConstruct node.
+  /// \returns error on failure.
+  llvm::Error loadListConstruct(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch aten::reshape node.
+  /// \returns error on failure.
+  llvm::Error loadReshape(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch prim::NumToTensor node.
+  /// \returns error on failure.
+  llvm::Error loadNumToTensor(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch aten::Int node.
+  /// \returns error on failure.
+  llvm::Error loadInt(const torch::jit::Node *ptNode);
 };
 } // namespace glow
 

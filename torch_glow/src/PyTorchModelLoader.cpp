@@ -26,37 +26,6 @@ namespace glow {
 
 namespace {
 
-/// \returns a corresponding Glow Type for a given PyTorch CompleteTensorType \p
-/// ptType.
-/// TODO: switch to ProfiledTensorType
-inline glow::Type ptTypeToGlowType(const at::CompleteTensorType &ptType) {
-  // TODO: get correct ElemKind
-  DCHECK_EQ(ptType.scalarType(), at::kFloat)
-      << "Only float type supported currently.";
-  std::vector<size_t> dims;
-  for (auto &size : ptType.sizes()) {
-    dims.push_back(size);
-  }
-  return glow::Type(glow::ElemKind::FloatTy, dims);
-}
-
-/// \returns a Glow tensor with the same type and underlying data as the given
-/// PyTorch tensor \p ptT.
-llvm::Expected<glow::Tensor> ptTensorToGlowTensor(const at::Tensor &ptT) {
-  // TODO: get correct ElemKind.
-  DCHECK_EQ(ptT.scalar_type(), at::kFloat)
-      << "Only float tensors supported currently.";
-  std::vector<size_t> dims;
-  for (const auto d : ptT.sizes()) {
-    dims.push_back(d);
-  }
-
-  glow::Type ty(glow::ElemKind::FloatTy, dims);
-  glow::Tensor glowT(ptT.data_ptr(), &ty);
-
-  return glowT;
-}
-
 /// Downcast a double to a float.
 inline llvm::Expected<float> to32Bit(double val) {
   RETURN_ERR_IF_NOT(val <= std::numeric_limits<float>::max() ||
@@ -148,16 +117,45 @@ llvm::Error contractParamIfNeeded(const glow::Handle<T> &handle,
   return llvm::Error::success();
 }
 
-/// Given Node inputs and outputs, check the expected sizes.
+/// Given a handle to a Constant with only one element in it \p handle, puts
+/// that element in \p elem. \returns an error if anything went wrong.
+template <typename T, typename OutT>
+llvm::Error getSingleValueFromConstant(const glow::Handle<T> &handle,
+                                       OutT &elem) {
+  RETURN_ERR_IF_NOT(handle.size() == 1,
+                    glow::strFormat("Handle size must be equal to 1, got %lu.",
+                                    handle.size()));
+  elem = handle.raw(0);
+  return llvm::Error::success();
+}
+
+/// Given Node inputs and outputs, check the expected sizes. Negative size
+/// indicates that the size should be equal to or greater than that size (for
+/// example -2 means at least 2).
 template <typename T>
-llvm::Error checkInputAndOutputSizes(const T &inputs, size_t inputsSize,
-                                     const T &outputs, size_t outputsSize) {
-  RETURN_ERR_IF_NOT(inputs.size() == inputsSize,
-                    glow::strFormat("Expected number inputs %lu, got %lu.",
-                                    inputsSize, inputs.size()));
-  RETURN_ERR_IF_NOT(outputs.size() == outputsSize,
-                    glow::strFormat("Expected number outputs %lu, got %lu.",
-                                    outputsSize, outputs.size()));
+llvm::Error checkInputAndOutputSizes(const T &inputs, int64_t inputsSize,
+                                     const T &outputs, int64_t outputsSize) {
+  if (inputsSize >= 0) {
+    RETURN_ERR_IF_NOT(inputs.size() == inputsSize,
+                      glow::strFormat("Expected exactly %lu inputs, got %lu.",
+                                      (size_t)inputsSize, inputs.size()));
+  } else {
+    inputsSize = inputsSize * -1;
+    RETURN_ERR_IF_NOT(inputs.size() >= inputsSize,
+                      glow::strFormat("Expected at least %lu inputs, got %lu.",
+                                      (size_t)inputsSize, inputs.size()));
+  }
+
+  if (outputsSize >= 0) {
+    RETURN_ERR_IF_NOT(outputs.size() == outputsSize,
+                      glow::strFormat("Expected exactly %lu outputs, got %lu.",
+                                      (size_t)outputsSize, outputs.size()));
+  } else {
+    outputsSize = outputsSize * -1;
+    RETURN_ERR_IF_NOT(outputs.size() >= outputsSize,
+                      glow::strFormat("Expected at least %lu outputs, got %lu.",
+                                      (size_t)outputsSize, outputs.size()));
+  }
   return llvm::Error::success();
 }
 
@@ -219,6 +217,15 @@ struct MaxPoolInputs {
   };
 };
 
+/// Indices of aten::clamp inputs.
+struct ClampInputs {
+  enum {
+    input = 0,
+    min = 1,
+    max = 2,
+  };
+};
+
 /// Indexes of aten::adaptive_avg_pool2d inputs.
 struct AdaptiveAvgPoolInputs {
   enum {
@@ -272,6 +279,22 @@ struct TopKInputs {
     sorted = 4,
   };
 };
+
+/// Indexes of aten::size inputs.
+struct SizeInputs {
+  enum {
+    input = 0,
+    dim = 1,
+  };
+};
+
+/// Indexes of aten::reshape inputs.
+struct ReshapeInputs {
+  enum {
+    input = 0,
+    shape = 1,
+  };
+};
 } // namespace
 
 c10::ScalarType PyTorchModelLoader::convertGlowType(glow::TypeRef ty) {
@@ -288,6 +311,7 @@ c10::ScalarType PyTorchModelLoader::convertGlowType(glow::TypeRef ty) {
     return at::kBool;
   case ElemKind::UInt8FusedQTy:
   case ElemKind::UInt8FusedFP16QTy:
+  case ElemKind::UInt4FusedFP16QTy:
   case ElemKind::Int8QTy:
   case ElemKind::UInt8QTy:
   case ElemKind::Int16QTy:
@@ -295,6 +319,47 @@ c10::ScalarType PyTorchModelLoader::convertGlowType(glow::TypeRef ty) {
     LOG(DFATAL) << "Not supported yet.";
     return at::kLong;
   }
+}
+
+glow::ElemKind PyTorchModelLoader::convertScalarType(c10::ScalarType ty) {
+  if (ty == at::kFloat) {
+    return ElemKind::FloatTy;
+  } else if (ty == at::kHalf) {
+    return ElemKind::Float16Ty;
+  } else if (ty == at::kInt) {
+    return ElemKind::Int32ITy;
+  } else if (ty == at::kLong) {
+    return ElemKind::Int64ITy;
+  } else if (ty == at::kBool) {
+    return ElemKind::BoolTy;
+  } else {
+    LOG(DFATAL) << "Not supported yet.";
+    return ElemKind::Int64ITy;
+  }
+}
+
+/// \returns a corresponding Glow Type for a given PyTorch TensorType \p
+/// ptType.
+glow::Type PyTorchModelLoader::ptTypeToGlowType(const c10::TensorType &ptType) {
+  DCHECK(ptType.scalarType().has_value())
+      << "TensorType has no associated scalar type.";
+  const auto concreteSizes = ptType.sizes().concrete_sizes().value();
+  std::vector<size_t> dims;
+  for (const auto &size : concreteSizes) {
+    dims.push_back(static_cast<size_t>(size));
+  }
+
+  auto scalarType = ptType.scalarType().value();
+  return glow::Type(PyTorchModelLoader::convertScalarType(scalarType), dims);
+}
+
+/// \returns a Glow tensor with the same type and underlying data as the given
+/// PyTorch tensor \p ptT.
+llvm::Expected<glow::Tensor>
+PyTorchModelLoader::ptTensorToGlowTensor(const at::Tensor &ptT, bool copy) {
+  glow::Type ty = ptTypeToGlowType(*c10::TensorType::create(ptT));
+  glow::Tensor glowTensor(ptT.data_ptr(), &ty);
+  return copy ? glowTensor.clone() : std::move(glowTensor);
 }
 
 // static
@@ -306,19 +371,30 @@ PyTorchModelLoader::getSymbolsMapping() {
   /// instead of Placeholders.
   static auto symbolLoaderMapping = MappingOfMemberFunctions(
       {{{"prim::Constant"}, &PyTorchModelLoader::loadConstant, {}},
+       {{"prim::NumToTensor"}, &PyTorchModelLoader::loadNumToTensor, {}},
+       {{"aten::Int"}, &PyTorchModelLoader::loadInt, {}},
        {{"aten::mul", "aten::mul_"}, &PyTorchModelLoader::loadMul, {}},
        {{"aten::div", "aten::div_"}, &PyTorchModelLoader::loadDiv, {}},
        {{"aten::add", "aten::add_"}, &PyTorchModelLoader::loadAdd, {}},
+       {{"aten::sub", "aten::sub_"}, &PyTorchModelLoader::loadSub, {}},
        {{"aten::sigmoid", "aten::sigmoid_"},
         &PyTorchModelLoader::loadSigmoid,
         {}},
-       {{"aten::sub", "aten::sub_"}, &PyTorchModelLoader::loadSub, {}},
        {{"aten::relu", "aten::relu_"}, &PyTorchModelLoader::loadRelu, {}},
-       {{"aten::t, aten::t_"}, &PyTorchModelLoader::loadTranspose, {}},
+       {{"aten::t", "aten::t_"}, &PyTorchModelLoader::loadTranspose, {}},
        {{"aten::min"}, &PyTorchModelLoader::loadMin, {}},
        {{"aten::max"}, &PyTorchModelLoader::loadMax, {}},
        {{"aten::exp"}, &PyTorchModelLoader::loadExp, {}},
        {{"aten::sqrt", "aten::sqrt_"}, &PyTorchModelLoader::loadSqrt, {}},
+       {{"aten::clamp"},
+        &PyTorchModelLoader::loadClamp,
+        {
+            ClampInputs::min,
+            ClampInputs::max,
+        }},
+       {{"aten::size"}, &PyTorchModelLoader::loadSize, {SizeInputs::dim}},
+       // TODO: use -1 to freeze all inputs
+       {{"prim::ListConstruct"}, &PyTorchModelLoader::loadListConstruct, {}},
        {{"aten::reciprocal", "aten::reciprocal_"},
         &PyTorchModelLoader::loadReciprocal,
         {}},
@@ -328,6 +404,9 @@ PyTorchModelLoader::getSymbolsMapping() {
        {{"aten::linear"},
         &PyTorchModelLoader::loadLinear,
         {LinearInputs::weights, LinearInputs::bias}},
+       {{"aten::reshape"},
+        &PyTorchModelLoader::loadReshape,
+        {ReshapeInputs::shape}},
        {{"aten::_convolution"},
         &PyTorchModelLoader::loadConvolution,
         {
@@ -417,6 +496,8 @@ PyTorchModelLoader::createConstantPhReplacements(
   const auto inputs = ptNode->inputs();
   PyTorchModelLoader::ValueMap valueMapReplacements;
 
+  std::vector<size_t> frozenInputIndices;
+
   for (size_t i = 0; i < inputs.size(); i++) {
     // Skip inputs that are not marked as constant input values that should be
     // represented as Constants in Glow.
@@ -452,8 +533,14 @@ PyTorchModelLoader::createConstantPhReplacements(
            "Failed to create a Glow Constant from PyTorch input.");
 
     valueMapReplacements[inputs[i]] = glowConstant->getOutput();
+
+    frozenInputIndices.push_back(inputIndex);
   }
 
+  if (frozenInputIndices_) {
+    frozenInputIndices_->insert(frozenInputIndices.begin(),
+                                frozenInputIndices.end());
+  }
   return valueMapReplacements;
 }
 
@@ -519,12 +606,9 @@ llvm::Expected<glow::Handle<T>> PyTorchModelLoader::getGlowConstantHandle(
 }
 
 llvm::Expected<glow::Placeholder *>
-PyTorchModelLoader::loadValue(const torch::jit::Value *value) {
-  RETURN_ERR_IF_NOT(value->isCompleteTensor(),
-                    glow::strFormat("Value %s must have CompleteTensor type.",
-                                    value->debugNameBase().c_str()));
-  auto ptType = value->type()->cast<at::CompleteTensorType>();
-  auto glowType = ptTypeToGlowType(*ptType.get());
+PyTorchModelLoader::loadValue(const torch::jit::Value *value,
+                              const at::Tensor &ptTensor) {
+  auto glowType = ptTypeToGlowType(*c10::TensorType::create(ptTensor));
   glow::Placeholder *ph = F_.getParent()->createPlaceholder(
       &glowType, "input", /*isTrainable*/ false);
   RETURN_IF_ERR(addGlowNodeValue(value, ph->getOutput()));
@@ -629,6 +713,118 @@ llvm::Error PyTorchModelLoader::loadMax(const torch::jit::Node *ptNode) {
 
   glow::MaxNode *glowNode = F_.createMax("max", lhs, rhs);
   return addGlowNodeValue(outputs[0], glowNode->getResult());
+}
+
+llvm::Error PyTorchModelLoader::loadSize(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 2, outputs, 1));
+
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input,
+                             getGlowNodeValue(inputs[SizeInputs::input]));
+
+  // Index must be a Constant.
+  int32_t dim;
+  auto dimHandle = glow::Handle<int32_t>::createInvalidHandle();
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      dimHandle, getGlowConstantHandle<int32_t>(inputs[SizeInputs::dim]));
+  RETURN_IF_ERR(getSingleValueFromConstant(dimHandle, dim));
+
+  if (dim == -1) {
+    dim = input.dims().size() - 1;
+  }
+
+  // Index must a valid index of input.
+  RETURN_ERR_IF_NOT(input.dims().size() - 1 >= dim,
+                    strFormat("Trying to access the size of dim %d of a tensor "
+                              "with only %d dimensions",
+                              (int32_t)dim, (int32_t)input.dims().size()));
+
+  glow::Tensor sizeT(glow::ElemKind::Int32ITy, {1});
+  sizeT.getHandle<int32_t>().raw(0) = input.dims()[dim];
+  glow::Constant *sizeConstant =
+      F_.getParent()->createConstant("size_output", std::move(sizeT));
+
+  return addGlowNodeValue(outputs[0], sizeConstant);
+}
+
+llvm::Error
+PyTorchModelLoader::loadListConstruct(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  // Requires -1 because this requires at least one input.
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, -1, outputs, 1));
+
+  // Get the ElemKind of the first input to use for the whole list.
+  glow::NodeValue firstInput;
+  ASSIGN_VALUE_OR_RETURN_ERR(firstInput, getGlowNodeValue(inputs[0]));
+  glow::ElemKind elemKind = firstInput.getElementType();
+
+  RETURN_ERR_IF_NOT(elemKind == glow::ElemKind::Int32ITy,
+                    "Only int ListConstruct supported for now");
+
+  glow::Tensor listT(elemKind, {inputs.size()});
+  auto listHandle = listT.getHandle<int32_t>();
+
+  for (size_t i = 0; i < inputs.size(); ++i) {
+    auto elemHandle = glow::Handle<int32_t>::createInvalidHandle();
+    ASSIGN_VALUE_OR_RETURN_ERR(elemHandle,
+                               getGlowConstantHandle<int32_t>(inputs[i]));
+
+    int32_t elem;
+    RETURN_IF_ERR(getSingleValueFromConstant(elemHandle, elem));
+
+    listHandle.raw(i) = elem;
+  }
+
+  glow::Constant *listConstant =
+      F_.getParent()->createConstant("list_output", std::move(listT));
+
+  return addGlowNodeValue(outputs[0], listConstant);
+}
+
+llvm::Error PyTorchModelLoader::loadReshape(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 2, outputs, 1));
+
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input,
+                             getGlowNodeValue(inputs[ReshapeInputs::input]));
+
+  auto shapeHandle = glow::Handle<int32_t>::createInvalidHandle();
+  ASSIGN_VALUE_OR_RETURN_ERR(shapeHandle, getGlowConstantHandle<int32_t>(
+                                              inputs[ReshapeInputs::shape]));
+
+  int32_t totalDims = 1;
+  for (size_t dim : input.dims()) {
+    totalDims *= dim;
+  }
+
+  std::vector<size_t> glowShape;
+  for (size_t i = 0, e = shapeHandle.size(); i < e; ++i) {
+    int32_t dim = shapeHandle.raw(i);
+
+    RETURN_ERR_IF_NOT(dim >= 1 || dim == -1,
+                      "Only positive values and -1 allowed in shape");
+
+    if (dim == -1) {
+      RETURN_ERR_IF_NOT(i == e - 1,
+                        "-1 in shape only allowed in last position for now.");
+
+      dim = totalDims;
+    }
+
+    totalDims /= dim;
+
+    glowShape.push_back(dim);
+  }
+
+  RETURN_ERR_IF_NOT(totalDims == 1, "Expect reshape to preserve total size.");
+
+  return addGlowNodeValue(outputs[0],
+                          F_.createReshape("reshape", input, glowShape));
 }
 
 llvm::Error PyTorchModelLoader::loadRelu(const torch::jit::Node *ptNode) {
@@ -784,31 +980,39 @@ PyTorchModelLoader::loadConvolution(const torch::jit::Node *ptNode) {
 llvm::Error PyTorchModelLoader::loadLinear(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
-  assert(inputs.size() == 3);
-  assert(outputs.size() == 1);
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 3, outputs, 1));
+
   glow::NodeValue input;
   ASSIGN_VALUE_OR_RETURN_ERR(input,
                              getGlowNodeValue(inputs[LinearInputs::input]));
+
   glow::NodeValue weights;
   ASSIGN_VALUE_OR_RETURN_ERR(weights,
                              getGlowNodeValue(inputs[LinearInputs::weights]));
 
-  // Currently in Pytorch => Glow, we only translate t()+addmm(), t()+mm() and
-  // t()+matmul() to linear, Which means we need a transpose anyway, and also
-  // since addmm and mm only works for 2-D, we dont need to consider other
-  // transpose implementation.
-  auto *weights_t = F_.createTranspose("weights_t", weights, {1, 0});
-  auto *mul = F_.createMatMul("linear_mul", input, weights_t->getResult());
+  // Transpose weights before inputing into FC (TODO).
+  auto wDims = weights.dims();
+  std::vector<unsigned_t> shuffle{1, 0};
+  weights = F_.createTranspose("fc_weights_transposed", weights, shuffle);
 
+  glow::NodeValue bias;
   if (hasGlowNodeValue(inputs[LinearInputs::bias])) {
-    glow::NodeValue bias;
     ASSIGN_VALUE_OR_RETURN_ERR(bias,
                                getGlowNodeValue(inputs[LinearInputs::bias]));
-    auto *output = F_.createAdd("linear_add", mul->getResult(), bias);
-    return addGlowNodeValue(outputs[0], output->getResult());
   } else {
-    return addGlowNodeValue(outputs[0], mul->getResult());
+    glow::Tensor biasT(glow::ElemKind::FloatTy, {wDims[0]});
+    biasT.zero();
+    glow::Constant *biasConstant =
+        F_.getParent()->createConstant("linear_bias", std::move(biasT));
+    weights = biasConstant->getOutput();
   }
+
+  glow::TypeRef outTy = F_.getParent()->uniqueType(
+      glow::ElemKind::FloatTy, {input.dims()[0], bias.getType()->dims()[0]});
+
+  return addGlowNodeValue(
+      outputs[0],
+      F_.createFullyConnected("linear", input, weights, bias, outTy));
 }
 
 llvm::Error PyTorchModelLoader::loadBatchNorm(const torch::jit::Node *ptNode) {
@@ -1015,6 +1219,35 @@ llvm::Error PyTorchModelLoader::loadAvgPool2d(const torch::jit::Node *ptNode) {
   return addGlowNodeValue(outputs[0], output);
 }
 
+llvm::Error PyTorchModelLoader::loadClamp(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 3, outputs, 1));
+
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input,
+                             getGlowNodeValue(inputs[ClampInputs::input]));
+
+  auto minHandle = glow::Handle<float>::createInvalidHandle();
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      minHandle, getGlowConstantHandle<float>(inputs[ClampInputs::min]));
+  RETURN_ERR_IF_NOT(
+      minHandle.size() == 1,
+      glow::strFormat("min size must be 1, got %lu", minHandle.size()));
+  auto min = minHandle.raw(0);
+
+  auto maxHandle = glow::Handle<float>::createInvalidHandle();
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      maxHandle, getGlowConstantHandle<float>(inputs[ClampInputs::max]));
+  RETURN_ERR_IF_NOT(
+      maxHandle.size() == 1,
+      glow::strFormat("max size must be 1, got %lu", maxHandle.size()));
+  auto max = maxHandle.raw(0);
+
+  auto output = F_.createClip("clip", input, min, max);
+  return addGlowNodeValue(outputs[0], output);
+}
+
 llvm::Error
 PyTorchModelLoader::loadAdaptiveAvgPool2d(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
@@ -1151,8 +1384,8 @@ llvm::Error PyTorchModelLoader::loadSoftMax(const torch::jit::Node *ptNode) {
             "Dtype parameter must have value torch::float(1), got %u", dtype));
   }
 
-  auto selected = F_.getParent()->createConstant(glow::ElemKind::Int64ITy,
-                                                 {in.dims()[0], 1}, "selected");
+  auto selected = F_.getParent()->createConstant(
+      glow::ElemKind::Int64ITy, {in.dims()[0], in.dims()[1]}, "selected");
 
   auto *FN = F_.createFlatten("reshapeInput", in, dim);
   auto *SM = F_.createSoftMax("SoftMax", FN, selected);
@@ -1226,6 +1459,32 @@ llvm::Error PyTorchModelLoader::loadTopK(const torch::jit::Node *ptNode) {
   return llvm::Error::success();
 }
 
+llvm::Error
+PyTorchModelLoader::loadNumToTensor(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 1, outputs, 1));
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValue(inputs[0]));
+
+  return addGlowNodeValue(outputs[0], input);
+}
+
+llvm::Error PyTorchModelLoader::loadInt(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 1, outputs, 1));
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValue(inputs[0]));
+
+  auto inputHandle = glow::Handle<int32_t>::createInvalidHandle();
+  ASSIGN_VALUE_OR_RETURN_ERR(inputHandle,
+                             getGlowConstantHandle<int32_t>(inputs[0]));
+  RETURN_ERR_IF_NOT(inputHandle.size() == 1, "Int input must be 1D vector.");
+
+  return addGlowNodeValue(outputs[0], input);
+}
+
 llvm::Error PyTorchModelLoader::loadConstant(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
@@ -1296,7 +1555,7 @@ PyTorchModelLoader::createGlowConstantFromIValue(
     }
   } else if (iVal.isTensor()) {
     const at::Tensor &val = iVal.toTensor();
-    ASSIGN_VALUE_OR_RETURN_ERR(t, ptTensorToGlowTensor(val));
+    ASSIGN_VALUE_OR_RETURN_ERR(t, ptTensorToGlowTensor(val, copyTensorMemory_));
   } else if (iVal.isNone()) {
     // Nothing to do for None
     return nullptr;
@@ -1307,76 +1566,139 @@ PyTorchModelLoader::createGlowConstantFromIValue(
   return F_.getParent()->createConstant("constant", std::move(t));
 }
 
+llvm::Error PyTorchModelLoader::createSaveNodeAndOutputPlaceholders(
+    const torch::jit::Graph &graph,
+    std::vector<glow::Placeholder *> &outputPlaceholders) {
+  for (const torch::jit::Value *output : graph.outputs()) {
+    glow::NodeValue outputNodeValue;
+    ASSIGN_VALUE_OR_RETURN_ERR(outputNodeValue, getGlowNodeValue(output));
+    auto *save = F_.createSave("save", outputNodeValue);
+    outputPlaceholders.push_back(save->getPlaceholder());
+  }
+  return llvm::Error::success();
+}
+
 /*static*/
 llvm::Error PyTorchModelLoader::loadJITGraph(
-    glow::Function &F, torch::jit::Graph &subgraph,
-    at::ArrayRef<torch::jit::IValue> &inputs,
+    glow::Function &F, const torch::jit::Graph &graph,
+    const at::ArrayRef<torch::jit::IValue> &inputs,
     std::vector<glow::Placeholder *> &inputPlaceholders,
     std::vector<glow::Placeholder *> &outputPlaceholders,
     const PyTorchLoaderSettings &settings) {
   llvm::Error error = llvm::Error::success();
   MARK_ERR_CHECKED(error);
-  PyTorchModelLoader loader(F, subgraph, inputs, inputPlaceholders,
-                            outputPlaceholders, error, settings);
+  PyTorchModelLoader loader(F, graph, inputs, inputPlaceholders,
+                            outputPlaceholders, error, settings,
+                            /*frozenInputIndices*/ nullptr);
   return error;
 }
 
 PyTorchModelLoader::PyTorchModelLoader(
-    glow::Function &F, torch::jit::Graph &subgraph,
-    at::ArrayRef<torch::jit::IValue> &inputs,
+    glow::Function &F, const torch::jit::Graph &graph,
+    const at::ArrayRef<torch::jit::IValue> &inputs,
     std::vector<glow::Placeholder *> &inputPlaceholders,
     std::vector<glow::Placeholder *> &outputPlaceholders, llvm::Error &error,
-    const PyTorchLoaderSettings &settings)
-    : F_(F), inputs_(inputs) {
-  auto subgraphInputValues = subgraph.inputs();
+    const PyTorchLoaderSettings &settings, std::set<size_t> *frozenInputIndices)
+    : F_(F), inputs_(inputs), copyTensorMemory_(frozenInputIndices == nullptr),
+      frozenInputIndices_(frozenInputIndices) {
 
-  if (inputs.size() != subgraphInputValues.size()) {
-    error =
-        MAKE_ERR(glow::strFormat("Number of Graph inputs %lu must match the "
-                                 "number of provided inputs %lu.",
-                                 subgraphInputValues.size(), inputs.size()));
-    return;
-  }
+  auto setup = [&]() -> llvm::Error {
+    auto graphInputValues = graph.inputs();
 
-  for (size_t i = 0; i < subgraphInputValues.size(); ++i) {
-    torch::jit::Value *inputValue = subgraphInputValues[i];
-    const c10::IValue inputIValue = inputs.at(i);
-    if (inputIValue.isTensor()) {
-      inputValue->inferTypeFrom(inputIValue.toTensor());
-      glow::Placeholder *PH;
-      if (auto resOrErr = loadValue(inputValue)) {
-        PH = std::move(*resOrErr);
+    RETURN_ERR_IF_NOT(
+        inputs.size() == graphInputValues.size(),
+        glow::strFormat("Number of Graph inputs %lu must match the "
+                        "number of provided inputs %lu.",
+                        graphInputValues.size(), inputs.size()));
+
+    for (size_t i = 0; i < graphInputValues.size(); ++i) {
+      const torch::jit::Value *inputValue = graphInputValues[i];
+      const c10::IValue inputIValue = inputs.at(i);
+      if (inputIValue.isTensor()) {
+        glow::Placeholder *PH;
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            PH, loadValue(inputValue, inputIValue.toTensor()));
+        inputPlaceholders.push_back(PH);
+        inputPlaceholdersReverseIndex_[PH] = i;
       } else {
-        error = resOrErr.takeError();
-        return;
+        RETURN_ERR("Only tensor input values are supported right now.");
       }
-      inputPlaceholders.push_back(PH);
-      inputPlaceholdersReverseIndex_[PH] = i;
-    }
-  }
-
-  bool weightFreezingEnabled = settings.weightFreezingEnabled;
-
-  // Nodes are topologically sorted.
-  for (auto node : subgraph.nodes()) {
-    if ((error = loadNode(node, weightFreezingEnabled))) {
-      return;
-    }
-  }
-
-  for (torch::jit::Value *output : subgraph.outputs()) {
-    glow::NodeValue outputNodeValue;
-    if (auto resOrErr = getGlowNodeValue(output)) {
-      outputNodeValue = std::move(*resOrErr);
-    } else {
-      error = resOrErr.takeError();
-      return;
     }
 
-    auto *save = F_.createSave("save", outputNodeValue);
-    outputPlaceholders.push_back(save->getPlaceholder());
-  }
-  error = llvm::Error::success();
+    bool weightFreezingEnabled = settings.weightFreezingEnabled;
+
+    // Nodes are topologically sorted.
+    for (auto node : graph.nodes()) {
+      RETURN_IF_ERR(loadNode(node, weightFreezingEnabled));
+    }
+
+    return createSaveNodeAndOutputPlaceholders(graph, outputPlaceholders);
+  };
+
+  error = setup();
+}
+
+/*static*/
+llvm::Error PyTorchModelLoader::parseJITGraph(
+    glow::Function &F, const torch::jit::Graph &graph,
+    const at::ArrayRef<torch::jit::IValue> &inputs,
+    const at::ArrayRef<at::Tensor> &parameters,
+    std::vector<glow::Placeholder *> &inputPlaceholders,
+    std::vector<glow::Placeholder *> &outputPlaceholders) {
+  llvm::Error error = llvm::Error::success();
+  MARK_ERR_CHECKED(error);
+  PyTorchModelLoader loader(F, graph, inputs, parameters, inputPlaceholders,
+                            outputPlaceholders, error);
+  return error;
+}
+
+PyTorchModelLoader::PyTorchModelLoader(
+    glow::Function &F, const torch::jit::Graph &graph,
+    const at::ArrayRef<torch::jit::IValue> &inputs,
+    const at::ArrayRef<at::Tensor> &parameters,
+    std::vector<glow::Placeholder *> &inputPlaceholders,
+    std::vector<glow::Placeholder *> &outputPlaceholders, llvm::Error &error)
+    : F_(F), inputs_(inputs), copyTensorMemory_(true) {
+
+  auto setup = [&]() -> llvm::Error {
+    auto graphInputValues = graph.inputs();
+    RETURN_ERR_IF_NOT(
+        inputs.size() + parameters.size() == graphInputValues.size(),
+        glow::strFormat("Number of Graph inputs %lu must match the "
+                        "number of placeholders %lu + number of "
+                        "provided inputs %lu.",
+                        graphInputValues.size(), parameters.size(),
+                        inputs.size()));
+
+    size_t graphIdx = 0;
+    for (size_t i = 0; i < inputs.size(); ++i, ++graphIdx) {
+      const torch::jit::Value *inputValue = graphInputValues[graphIdx];
+      const c10::IValue inputIValue = inputs.at(i);
+      if (inputIValue.isTensor()) {
+        glow::Placeholder *PH;
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            PH, loadValue(inputValue, inputIValue.toTensor()));
+        inputPlaceholders.push_back(PH);
+      } else {
+        RETURN_ERR("Only tensor input values are supported right now.");
+      }
+    }
+
+    for (size_t i = 0; i < parameters.size(); ++i, ++graphIdx) {
+      const torch::jit::Value *inputValue = graphInputValues[graphIdx];
+      glow::Placeholder *PH;
+      ASSIGN_VALUE_OR_RETURN_ERR(PH, loadValue(inputValue, parameters.at(i)));
+    }
+
+    // Nodes are topologically sorted.
+    for (auto node : graph.nodes()) {
+      RETURN_IF_ERR(loadNode(node, false));
+    }
+
+    return createSaveNodeAndOutputPlaceholders(graph, outputPlaceholders);
+  };
+
+  error = setup();
 }
 
 } // namespace glow

@@ -605,7 +605,7 @@ llvm::Error ONNXModelLoader::loadConv(const ONNX_NAMESPACE::NodeProto &op,
   if (op.input_size() > 2) {
     auto &biasTensorName = op.input(2);
     // Load the serialized bias vector.
-    bias = getConstantByNameOrNull(biasTensorName);
+    ASSIGN_VALUE_OR_RETURN_ERR(bias, getConstantByName(biasTensorName));
   }
 
   // If a serialized bias wasn't found then create a zero bias.
@@ -705,6 +705,25 @@ llvm::Error ONNXModelLoader::loadPool(const ONNX_NAMESPACE::NodeProto &op,
     auto *N = G_.createTranspose(opName, NodeValue(node, idx), NHWC2NCHW);
     RETURN_IF_ERR(addNodeAsOutput(op, N));
   }
+  return llvm::Error::success();
+}
+
+llvm::Error ONNXModelLoader::loadArgMax(const ONNX_NAMESPACE::NodeProto &op,
+                                        const ArgumentDictionaryTy &dict) {
+  const std::string &opName = loadOperatorName(op);
+
+  NodeValue in;
+  ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
+  size_t axis = 0;
+  if (dict.count("axis")) {
+    ASSIGN_VALUE_OR_RETURN_ERR(axis, loadInt(dict.at("axis")));
+  }
+  bool keepDims = true;
+  if (dict.count("keepDims")) {
+    ASSIGN_VALUE_OR_RETURN_ERR(keepDims, loadInt(dict.at("keepDims")));
+  }
+  Node *node = G_.createArgMax(opName, in, axis, keepDims);
+  RETURN_IF_ERR(addNodeAsOutput(op, node));
   return llvm::Error::success();
 }
 
@@ -1087,8 +1106,10 @@ ONNXModelLoader::loadConstantOfShape(const ONNX_NAMESPACE::NodeProto &op,
                       "Input element type must be Int64ITy.");
     // Convert 1D tensor of int64_t into llvm::ArrayRef<size_t>.
     auto TH = in->getPayload().getHandle<int64_t>();
-    llvm::ArrayRef<size_t> outputDims = {(const size_t *)TH.begin(),
-                                         (const size_t *)TH.end()};
+    auto begin = &TH.raw(0);
+    auto end = begin + TH.actualSize();
+    llvm::ArrayRef<size_t> outputDims = {(const size_t *)begin,
+                                         (const size_t *)end};
 
     ty = G_.getParent()->uniqueType(T.getType().getElementType(), outputDims);
     switch (T.getType().getElementType()) {
@@ -1573,6 +1594,9 @@ llvm::Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
   }
   if (typeName == "Splat") {
     return loadSplat(op, dict);
+  }
+  if (typeName == "ArgMax") {
+    return loadArgMax(op, dict);
   }
 
   RETURN_ERR("Failed to load operator " + typeName + " .",

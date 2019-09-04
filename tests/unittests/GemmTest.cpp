@@ -61,28 +61,33 @@ void infer(Tensor *out, Tensor *lhs, Tensor *rhs) {
   out->assign(res);
 }
 
-TEST(Gemm, jitTest) {
+static void testGemm(size_t m, size_t n, size_t k) {
   PseudoRNG PRNG;
 
+  Tensor lhs(ElemKind::FloatTy, {m, k});
+  Tensor rhs(ElemKind::FloatTy, {k, n});
+  lhs.getHandle().randomize(-7.2, 8.3, PRNG);
+  rhs.getHandle().randomize(-6.3, 10.1, PRNG);
+  Tensor out1(ElemKind::FloatTy, {m, n});
+  Tensor out2(ElemKind::FloatTy, {m, n});
+
+  libjit_matmul_f((float *)out1.getUnsafePtr(), (float *)lhs.getUnsafePtr(),
+                  (float *)rhs.getUnsafePtr(), out1.dims().data(),
+                  lhs.dims().data(), rhs.dims().data());
+
+  infer(&out2, &lhs, &rhs);
+
+  EXPECT_TRUE(out1.isEqual(out2, 2e-2));
+}
+
+TEST(Gemm, Sweep) {
   for (size_t m : {1, 4, 5, 8}) {
     for (size_t n : {1, 16, 17, 1024}) {
       for (size_t k : {1, 3}) {
-        Tensor lhs(ElemKind::FloatTy, {m, k});
-        Tensor rhs(ElemKind::FloatTy, {k, n});
-        lhs.getHandle().randomize(-7.2, 8.3, PRNG);
-        rhs.getHandle().randomize(-6.3, 10.1, PRNG);
-        Tensor out1(ElemKind::FloatTy, {m, n});
-        Tensor out2(ElemKind::FloatTy, {m, n});
-
-        libjit_matmul_f((float *)out1.getUnsafePtr(),
-                        (float *)lhs.getUnsafePtr(),
-                        (float *)rhs.getUnsafePtr(), out1.dims().data(),
-                        lhs.dims().data(), rhs.dims().data());
-
-        infer(&out2, &lhs, &rhs);
-
-        EXPECT_TRUE(out1.isEqual(out2, 0.001));
+        testGemm(m, n, k);
       }
     }
   }
 }
+
+TEST(Gemm, Big) { testGemm(1, 1028, 32); }

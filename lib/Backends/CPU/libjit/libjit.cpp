@@ -672,6 +672,45 @@ libjit_max_pool_argmax_generic(const T *inW, T *outW, int64_t *argmax,
 }
 
 template <typename T>
+static void libjit_arg_max_generic(const T *inW, int64_t *outW,
+                                   const size_t *inWdims, size_t axis) {
+
+  size_t a, b, c, d = 0;
+
+  size_t *dim[4];
+  dim[(axis + 1) % 4] = &a;
+  dim[(axis + 2) % 4] = &b;
+  dim[(axis + 3) % 4] = &c;
+  dim[axis] = &d;
+
+  size_t odim[4] = {inWdims[0], inWdims[1], inWdims[2], inWdims[3]};
+  odim[axis] = 1;
+
+  // Iterate over axes != argmax axis.
+  for (a = 0; a < inWdims[(axis + 1) % 4]; a++) {
+    for (b = 0; b < inWdims[(axis + 2) % 4]; b++) {
+      for (c = 0; c < inWdims[(axis + 3) % 4]; c++) {
+
+        T max = inW[libjit_getXYZW(inWdims, *dim[0], *dim[1], *dim[2], 0)];
+        int64_t maxi = 0;
+
+        // Iterate over argmax axis.
+        for (d = 0; d < inWdims[axis]; d++) {
+          T elem =
+              inW[libjit_getXYZW(inWdims, *dim[0], *dim[1], *dim[2], *dim[3])];
+          if (elem > max) {
+            max = elem;
+            maxi = d;
+          }
+        }
+        *dim[axis] = 0;
+        outW[libjit_getXYZW(odim, *dim[0], *dim[1], *dim[2], *dim[3])] = maxi;
+      }
+    }
+  }
+}
+
+template <typename T>
 static void libjit_batchedadd_quantized(int8_t *dest, const int8_t *batch,
                                         const T *slice, size_t numSlice,
                                         size_t sliceSize, int32_t destOffset,
@@ -956,6 +995,25 @@ int8_t libjit_element_cmp_lte_kernel_i8(size_t idx, const int8_t *LHS,
   int32_t lhs = LHS[idx] - lhsOffset;
   int32_t rhs = RHS[idx] - rhsOffset;
   return libjit_scale_i32i8(lhs, pre, post, scale, 0) <= rhs ? 1 : 0;
+}
+
+int8_t libjit_element_cmp_lt_kernel_f(size_t idx, const float *LHS,
+                                      const float *RHS) {
+  return LHS[idx] < RHS[idx] ? 1 : 0;
+}
+
+int8_t libjit_element_cmp_lt_kernel_i32(size_t idx, const int32_t *LHS,
+                                        const int32_t *RHS) {
+  return LHS[idx] < RHS[idx] ? 1 : 0;
+}
+
+int8_t libjit_element_cmp_lt_kernel_i8(size_t idx, const int8_t *LHS,
+                                       const int8_t *RHS, int32_t lhsOffset,
+                                       int32_t rhsOffset, int32_t pre,
+                                       int32_t post, int32_t scale) {
+  int32_t lhs = LHS[idx] - lhsOffset;
+  int32_t rhs = RHS[idx] - rhsOffset;
+  return libjit_scale_i32i8(lhs, pre, post, scale, 0) < rhs ? 1 : 0;
 }
 
 // tanh cannot be vectorized by LLVM yet. Therefore we use the following
@@ -1521,6 +1579,16 @@ void libjit_max_pool_argmax_f(const float *inW, float *outW, int64_t *argmax,
                               size_t *kernels, size_t *strides, size_t *pads) {
   libjit_max_pool_argmax_generic(inW, outW, argmax, inWdims, outWdims, kernels,
                                  strides, pads);
+}
+
+void libjit_arg_max_i8(const int8_t *inW, int64_t *outW, const size_t *inWdims,
+                       size_t axis) {
+  libjit_arg_max_generic(inW, outW, inWdims, axis);
+}
+
+void libjit_arg_max_f(const float *inW, int64_t *outW, const size_t *inWdims,
+                      size_t axis) {
+  libjit_arg_max_generic(inW, outW, inWdims, axis);
 }
 
 void libjit_max_pool_argmax_grad_f(float *inG, const float *outG,

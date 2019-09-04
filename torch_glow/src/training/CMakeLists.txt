@@ -21,4 +21,5 @@ target_link_libraries(TorchGlowTraining
                         Importer)
 
 target_include_directories(TorchGlowTraining PUBLIC
-                            ${TORCH_GLOW}/src)
+                            ${TORCH_GLOW}/src
+                            ${PYTORCH_DIR}/include)

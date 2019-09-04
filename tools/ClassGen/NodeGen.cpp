@@ -37,6 +37,8 @@ int main(int argc, char **argv) {
   //                    Input/Output nodes
   //===--------------------------------------------------------------------===//
 
+  BB.includeHeader("glow/Graph/Nodes.h");
+
   BB.declareNode("Storage");
   BB.declareNode("Constant");
   BB.declareNode("Placeholder");
@@ -82,13 +84,20 @@ int main(int argc, char **argv) {
       .addMember(MemberType::VectorUnsigned, "Pads")
       .addMember(MemberType::Unsigned, "Group")
       .addMember(MemberType::Unsigned, "Dilation")
-      .addMember(MemberType::Enum, "Layout")
+      .addMember(MEMBER_TYPE_INFO(glow::ConvolutionLayout), "Layout")
+      .addMember(MEMBER_TYPE_INFO(glow::FusedActivation), "FusedActivation")
+      .addExtraMethod(
+          "bool hasFusedActivation() const;",
+          "bool ConvolutionNode::hasFusedActivation() const { return "
+          "getFusedActivation() != FusedActivation::NONE; }")
       .addResultFromCtorArg()
       .addGradient()
-      .setDocstring("Performs 2D Convolution using a given Input, Filter, and "
-                    "Bias tensors, as well as provided Kernels, Strides, Pads, "
-                    "Group and Dilation. Supported Layouts are defined in the "
-                    "ConvoltionLayout enum: NHWC and NCHW.");
+      .setDocstring(
+          "Performs 2D Convolution using a given Input, Filter, and "
+          "Bias tensors, as well as provided Kernels, Strides, Pads, "
+          "Group and Dilation. Supported Layouts are defined in the "
+          "ConvolutionLayout enum: NHWC and NCHW. Supported FusedActivations "
+          "are defined in the FusedActivation enum.");
 
   BB.newNode("ChannelwiseQuantizedConvolution")
       .addInput("Input")
@@ -137,6 +146,14 @@ int main(int argc, char **argv) {
           "index corresponding to respective max element. Supported layouts "
           "are defined in the ConvolutionLayout enum: NHWC and NCHW.");
 
+  BB.newNode("ArgMax")
+      .addInput("Input")
+      .addMember(MemberType::Unsigned, "Axis")
+      .addMember(MemberType::Boolean, "KeepDims")
+      .addResultFromCtorArg("Argmax")
+      .setDocstring("Finds index of a maximum element along Axis."
+                    "If KeepDims is not true, the axis is removed from output");
+
   BB.newNode("AvgPool")
       .addInput("Input")
       .addMember(MemberType::VectorUnsigned, "Kernels")
@@ -153,6 +170,7 @@ int main(int argc, char **argv) {
   BB.newNode("AdaptiveAvgPool")
       .addInput("Input")
       .addResultFromCtorArg()
+      .addGradient()
       .setDocstring(
           "Performs an Adaptive Average Pool operation on the Input given");
 
@@ -332,6 +350,15 @@ int main(int argc, char **argv) {
       .addResultFromCtorArg()
       .setDocstring("Performs an element-wise equal comparison on the LHS and "
                     "RHS operands. Inputs must be integer.");
+
+  BB.newNode("CmpLT")
+      .addInput("LHS")
+      .addInput("RHS")
+      .addResultFromCtorArg()
+      .setDocstring(
+          "Compares X and Y element wise sets Dest[i] true if LHS[i] < "
+          "RHS[i] otherwise false. Final result is a mask consumed by "
+          "Select, ONNX Where, operator.");
 
   BB.newNode("Pow")
       .addInput("LHS")

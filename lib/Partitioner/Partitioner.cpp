@@ -72,27 +72,36 @@ void Partitioner::init() {
   }
 }
 
-void Partitioner::finalize(const DAGListTy &partitions,
-                           const NodeToFunctionMap &mapping) {
-  auto funcList = module_->getFunctions();
-  if (logPartition) {
-    LOG(INFO) << "The number of partitions is : " << funcList.size()
-              << ", and the DAG is dumped into DAG.dot file.\n";
-    dumpDAG("DAG.dot", partitions);
+llvm::Error Partitioner::finalize(const DAGListTy &partitions,
+                                  const NodeToFunctionMap &mapping) {
+
+  // Validate the functions after partitioning.
+  for (Function *subF : module_->getFunctions()) {
+    RETURN_ERR_IF_NOT(subF->verify(),
+                      strFormat("Conversion led to invalid function: %s",
+                                subF->getName().str().data()));
   }
 
-  for (Function *subF : funcList) {
-    if (dumpPartition) {
-      subF->dumpDAG("partitionLogicalID" +
-                    std::to_string(mapping.getLogicalDeviceIDList(subF)[0]) +
-                    "__" + subF->getName().str() + "__" +
-                    mapping.getPartitionBackendName(subF) + ".dot");
-    }
-    DCHECK(subF->verify()) << "Conversion led to invalid function";
-  }
   if (logPartition) {
+    LOG(INFO) << "The number of partitions is : "
+              << module_->getFunctions().size()
+              << ", and the DAG is dumped into DAG.dot file.\n";
+    dumpDAG("DAG.dot", partitions);
     logPartitionInfo(mapping);
   }
+
+  // Dump the graph of each function after partitioning.
+  if (dumpPartition) {
+    for (const auto &node : partitions[0].nodes) {
+      Function *subF = module_->getFunction(node->name);
+      RETURN_ERR_IF_NOT(
+          subF, strFormat("Invalid function name %s.", node->name.data()));
+      subF->dumpDAG("partitionLogicalID" +
+                    std::to_string(node->logicalDevices[0]) + "__" +
+                    subF->getName().str() + "__" + node->backendName + ".dot");
+    }
+  }
+  return llvm::Error::success();
 }
 
 Partitioner::Partitioner(Module *parent, const std::vector<DeviceInfo> &devices,
@@ -408,6 +417,10 @@ llvm::Expected<DAGListTy> Partitioner::createDAGWithoutPartition(
     // Saturate the Host.
     saturateHost(1, partitions);
   }
+
+  NodeToFunctionMap mapping;
+  RETURN_IF_ERR(finalize(partitions, mapping));
+
   return std::move(partitions);
 }
 
@@ -579,7 +592,7 @@ Partitioner::loadBalancedPartition(CompilationContext &cctx,
     saturateHost(logicalDeviceID_, partitions);
   }
 
-  finalize(partitions, partitionMap);
+  RETURN_IF_ERR(finalize(partitions, partitionMap));
 
   return std::move(partitions);
 }
@@ -725,7 +738,7 @@ Partitioner::heterogeneousPartition(CompilationContext &cctx) {
     module_->eraseFunction(i->first);
   }
 
-  finalize(partitions, mapping);
+  RETURN_IF_ERR(finalize(partitions, mapping));
 
   return std::move(partitions);
 }
@@ -817,7 +830,7 @@ Partitioner::partitionFromConfig(const PartitionConfig &partitionConfig) {
     }
   }
 
-  finalize(partitions, partitionMap);
+  RETURN_IF_ERR(finalize(partitions, partitionMap));
 
   return std::move(partitions);
 }

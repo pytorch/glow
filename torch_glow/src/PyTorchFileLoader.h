@@ -37,19 +37,32 @@ public:
   loadPyTorchModel(const std::string &fileName,
                    std::shared_ptr<torch::jit::script::Module> &module);
 
-  /// Takes a model file \p fileName, loads optimized graph into Glow Function
-  /// \p F and input \p inputPlaceholders, output \p outputPlaceholders
-  /// placeholders, \returns error if any. Parameter \p settings
-  /// control the fusion details. Optionally method performs a sanity check if
-  /// \p sanityCheck is set.
+  /// Takes a model file \p fileName, loads optimized graph and a
+  /// stack of \p inputs into Glow Function \p F and fills out input \p
+  /// inputPlaceholders, output \p outputPlaceholders placeholders, \returns
+  /// error if any. Optionally method performs a sanity check if \p sanityCheck
+  /// is set.
   /// Method is thread safe, internally it uses local thread structures for
   /// executing custom fusion pass, registered globally. No other passes or
   /// other treads calling this method will be affected.
-  static llvm::Error loadPyTorchGraph(
-      const std::string &fileName, std::vector<torch::jit::IValue> &inputs,
-      glow::Function &F, std::vector<glow::Placeholder *> &inputPlaceholders,
-      std::vector<glow::Placeholder *> &outputPlaceholders,
-      const PyTorchLoaderSettings &settings, bool sanityCheck = true);
+  static llvm::Error
+  loadPyTorchGraph(const std::string &fileName,
+                   const std::vector<torch::jit::IValue> &inputs,
+                   glow::Function &F,
+                   std::vector<glow::Placeholder *> &inputPlaceholders,
+                   std::vector<glow::Placeholder *> &outputPlaceholders,
+                   bool sanityCheck = true);
+
+  /// Takes a model file \p fileName, loads optimized graph and a
+  /// stack of \p inputs into Glow Function \p F and fills out input \p
+  /// inputPlaceholders, output \p outputPlaceholders placeholders, \returns
+  /// error if any. Method is thread safe.
+  static llvm::Error
+  parsePyTorchGraph(const std::string &fileName,
+                    const std::vector<torch::jit::IValue> &inputs,
+                    glow::Function &F,
+                    std::vector<glow::Placeholder *> &inputPlaceholders,
+                    std::vector<glow::Placeholder *> &outputPlaceholders);
 };
 
 } // namespace glow

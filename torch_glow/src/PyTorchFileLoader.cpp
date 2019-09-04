@@ -15,6 +15,7 @@
  */
 
 #include "PyTorchFileLoader.h"
+#include "FuseLinear.h"
 #include "PyTorchModelLoader.h"
 #include "glow/Support/Error.h"
 #include "glow/Support/Support.h"
@@ -96,7 +97,7 @@ loadJitGraphToGlowFunction(torch::jit::Stack &stack, torch::jit::Graph &graph,
 /// Glow function is set.
 llvm::Error
 evaluateModuleGraph(std::shared_ptr<torch::jit::script::Module> &module,
-                    std::vector<torch::jit::IValue> &inputs) {
+                    const std::vector<torch::jit::IValue> &inputs) {
   try {
     module->forward(inputs);
   } catch (const std::exception &x) {
@@ -110,7 +111,7 @@ evaluateModuleGraph(std::shared_ptr<torch::jit::script::Module> &module,
 struct RegisterCustomFusionPass {
   RegisterCustomFusionPass() {
     auto options = c10::OperatorOptions();
-    options.setAliasAnalysis(at::AliasAnalysisKind::PURE);
+    options.setAliasAnalysis(at::AliasAnalysisKind::PURE_FUNCTION);
     torch::jit::RegisterOperators op({torch::jit::Operator(
         getFusionSymbol(),
         [](const torch::jit::Node *node) {
@@ -131,7 +132,8 @@ struct RegisterCustomFusionPass {
 
     torch::jit::RegisterPass pass([&](std::shared_ptr<torch::jit::Graph> &g) {
       // Trigger custom fusion pass only if local thread Glow Function is set.
-      if (localFusionInfo.function) {
+      if (localFusionInfo.settings &&
+          localFusionInfo.settings->fusionPassEnabled) {
         glowCustomFuse(g, getFusionSymbol());
       }
     });
@@ -155,12 +157,15 @@ llvm::Error PyTorchFileLoader::loadPyTorchModel(
 
 /*static*/
 llvm::Error PyTorchFileLoader::loadPyTorchGraph(
-    const std::string &fileName, std::vector<torch::jit::IValue> &inputs,
+    const std::string &fileName, const std::vector<torch::jit::IValue> &inputs,
     glow::Function &F, std::vector<glow::Placeholder *> &inputPlaceholders,
-    std::vector<glow::Placeholder *> &outputPlaceholders,
-    const PyTorchLoaderSettings &settings, bool sanityCheck) {
+    std::vector<glow::Placeholder *> &outputPlaceholders, bool sanityCheck) {
   // Register custom pass once.
   static RegisterCustomFusionPass fuser;
+
+  PyTorchLoaderSettings settings;
+  settings.fusionPassEnabled = true;
+  settings.weightFreezingEnabled = false;
 
   // Convert PyTorch model into JIT Module.
   std::shared_ptr<torch::jit::script::Module> module;
@@ -177,6 +182,27 @@ llvm::Error PyTorchFileLoader::loadPyTorchGraph(
   RETURN_IF_ERR(err);
 
   return sanityCheck ? performSanityCheck() : llvm::Error::success();
+}
+
+/*static*/
+llvm::Error PyTorchFileLoader::parsePyTorchGraph(
+    const std::string &fileName, const std::vector<torch::jit::IValue> &inputs,
+    glow::Function &F, std::vector<glow::Placeholder *> &inputPlaceholders,
+    std::vector<glow::Placeholder *> &outputPlaceholders) {
+
+  // Convert PyTorch model into JIT Module.
+  std::shared_ptr<torch::jit::script::Module> module;
+  RETURN_IF_ERR(PyTorchFileLoader::loadPyTorchModel(fileName, module));
+
+  auto method = module->get_method("forward");
+  auto graphAndTensors = method._lowered_graph();
+
+  FuseLinear(graphAndTensors.first);
+
+  // Parse JIT Graph and load into Glow Function.
+  return PyTorchModelLoader::parseJITGraph(
+      F, *graphAndTensors.first, inputs, graphAndTensors.second,
+      inputPlaceholders, outputPlaceholders);
 }
 
 // Sanity check, after "fusionSymbol" node, not other nodes should exist.

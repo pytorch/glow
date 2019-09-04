@@ -22,9 +22,11 @@
 namespace glow {
 namespace onnxifi {
 
-int32_t GlowNumDevices = 1;
+int32_t GlowNumDevices = 0;
 bool GlowDumpDebugTraces = false;
 bool GlowSaturateHost = false;
+bool GlowFP16 = false;
+bool GlowClipFP16 = false;
 
 static llvm::cl::opt<int32_t, true>
     GlowNumDevicesOpt("glow-num-devices",
@@ -44,24 +46,42 @@ static llvm::cl::opt<bool, true> GlowSaturateHostOpt(
 std::unique_ptr<runtime::HostManager>
 HostManagerBackend::createHostManager(llvm::StringRef backendName) {
   std::vector<std::unique_ptr<runtime::DeviceConfig>> configs;
-  for (int i = 0; i < GlowNumDevices; i++) {
-    configs.push_back(llvm::make_unique<runtime::DeviceConfig>(backendName));
+  // If GlowNumDevices is set specify that many devices, otherwise use all
+  // discovered devices.
+  if (GlowNumDevices) {
+    for (int i = 0; i < GlowNumDevices; i++) {
+      configs.push_back(llvm::make_unique<runtime::DeviceConfig>(backendName));
+    }
+  } else {
+    configs = runtime::DeviceManager::generateDeviceConfigs(backendName);
   }
   return llvm::make_unique<runtime::HostManager>(std::move(configs));
 }
 
 void HostManagerBackend::runNetwork(const Graph *graph,
                                     std::unique_ptr<ExecutionContext> context,
-                                    runtime::ResultCBTy callback) {
+                                    runtime::ResultCBTy callback,
+                                    uint64_t priority) {
   DCHECK(callback != nullptr);
 
   auto hostManagerGraph = static_cast<const HostManagerGraph *>(graph);
   hostManager_->runNetwork(hostManagerGraph->getName(), std::move(context),
-                           std::move(callback));
+                           std::move(callback), priority);
 }
 
 onnxStatus HostManagerBackend::addNetwork(std::unique_ptr<Module> module) {
   CompilationContext cctx;
+  PrecisionConfiguration &precConfig = cctx.precisionConfig;
+
+  if (GlowFP16) {
+    precConfig.convertToFP16 = GlowFP16;
+    LOG(INFO) << "Conversion to fp16 enabled";
+  }
+  if (GlowClipFP16) {
+    precConfig.clipFP16 = GlowClipFP16;
+    LOG(INFO) << "Clipping to fp16 enabled";
+  }
+
   auto err =
       hostManager_->addNetwork(std::move(module), cctx, GlowSaturateHost);
 

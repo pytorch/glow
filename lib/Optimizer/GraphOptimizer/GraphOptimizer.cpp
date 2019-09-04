@@ -17,13 +17,14 @@
 #include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
 
 #include "glow/Backend/Backend.h"
-#include "glow/Converter/TypeAToTypeBFunctionConverter.h"
+#include "glow/Converter/Float16Converter.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/Log.h"
 #include "glow/Graph/Node.h"
 #include "glow/Graph/Nodes.h"
 #include "glow/Graph/PlaceholderBindings.h"
 #include "glow/Graph/Utils.h"
+#include "glow/Graph/VerifierHelper.h"
 #include "glow/Optimizer/GraphOptimizer/FunctionPasses.h"
 #include "glow/Optimizer/GraphOptimizer/PassManager.h"
 #include "glow/Optimizer/GraphOptimizerPipeline/Pipeline.h"
@@ -1675,6 +1676,7 @@ bool TransposeConstants::run(Function *F, const CompilationContext &cctx) {
     // Transpose the value of C into NC.
     genericTranspose(&C->getPayload(), &NC->getPayloadMutable(),
                      TN->getShuffle());
+    NC->getPayloadMutable().setType(NC->getType());
     // Rewrite uses of TN to reference NC.
     TN->getResult().replaceAllUsesOfWith(NC);
     changed = true;
@@ -1880,6 +1882,17 @@ bool OptimizeTransposeIntoReshape::run(Function *F,
     auto inputNode = TR->getInput();
     auto inputDims = inputNode.dims();
     auto outputDims = TR->getResult().dims();
+    // The transformation is not possible if alignments different from 1 are
+    // used for any dimension.
+    if (!inputNode.getType()->isEqual(F->getParent()->uniqueTypeWithNewShape(
+            inputNode.getType(), inputDims))) {
+      continue;
+    }
+    if (!TR->getResult().getType()->isEqual(
+            F->getParent()->uniqueTypeWithNewShape(TR->getResult().getType(),
+                                                   outputDims))) {
+      continue;
+    }
     // Transpose moves no data if input/output dimensions match after they both
     // drop dimensions of size 1. E.g. transposing [1 5 1 15] into [5 15 1 1]
     // produces vectors (1, 3) for both dimensions so optimization is executed.
@@ -2081,6 +2094,16 @@ static NodeValue convertConstant(Module &mod, Constant &constant,
       // Plain conversion: {FloatTy, Float16Ty} -> Int64ITy.
       return NodeValue();
     }
+  case ElemKind::UInt8FusedQTy: {
+    if (dstTy->getElementType() != ElemKind::UInt8FusedFP16QTy) {
+      return NodeValue();
+    }
+    auto *NC = mod.createConstant(dstTy, constant.getName());
+    NC->getPayloadMutable() =
+        tensor.getCopyConvertedToType(dstTy->getElementType());
+    return NC->getOutput();
+  }
+
   default:
     // For now we don't see other quantize, dequantize, or rescale nodes
     // directly attached to constants.
@@ -2180,6 +2203,7 @@ bool OptimizeConversions::run(Function *F, const CompilationContext &cctx) {
       srcVal =
           convertConstant(mod, *llvm::cast<Constant>(conversionInput.getNode()),
                           dstVal.getType());
+      assert(srcVal.getNode() != nullptr && "Unhandled convertConstant case.");
       // Reset conversionInput because it may not be valid anymore.
       conversionInput = NodeValue();
       break;
@@ -2854,7 +2878,7 @@ void glow::optimize(Function *F, CompilationContext &cctx, const Backend &B) {
   LOG_SCOPE(F->getLogContext(), "glow::optimize")
 
   FunctionPassManager FPM("TargetDependentGraphOptzFPM",
-                          B.getOptimizationPipeline());
+                          B.getOptimizationPipeline(), &B);
   FPM.run(F, cctx);
 }
 
@@ -2874,26 +2898,6 @@ void glow::optimize(Function *F, CompilationMode mode) {
   CompilationContext cctx;
   cctx.compMode = mode;
   optimize(F, cctx);
-}
-
-/// \returns an error if any nodes inside \p F are not supported by \p B.
-static llvm::Error checkAllNodesSupported(const Function &F, const Backend &B) {
-  bool allSupported = true;
-  for (const Node &N : F.getNodes()) {
-    if (!B.isOpSupported(N)) {
-      allSupported = false;
-      report("Unsupported node found while compiling Function " +
-             F.getName().str() + " for backend " + B.getBackendName() + ": " +
-             N.getDebugDesc());
-    }
-  }
-  if (!allSupported) {
-    return MAKE_ERR(GlowErr::ErrorCode::COMPILE_UNSUPPORTED_NODE_AFTER_OPTIMIZE,
-                    "Unsupported node(s) found after optimizing Function " +
-                        F.getName().str() + " for backend " +
-                        B.getBackendName());
-  }
-  return llvm::Error::success();
 }
 
 /// Helper function that may transform \p F given preferences of \p cctx and
@@ -2930,11 +2934,8 @@ static void transformForPrecisionMode(const Backend &B, Function *F,
   }
 
   if (precConfig.convertToFP16) {
-    LOG_SCOPE(F->getLogContext(), "TypeAToTypeBFunctionConverter::convert()")
-
-    TypeAToTypeBFunctionConverter converter(*F, ElemKind::FloatTy,
-                                            ElemKind::Float16Ty, precConfig);
-    converter.convert();
+    LOG_SCOPE(F->getLogContext(), "glow::convertFunctionToFloat16")
+    convertFunctionToFloat16(F, precConfig);
   }
 }
 
@@ -2996,5 +2997,14 @@ llvm::Error glow::optimizeFunction(Function *F, const Backend &B,
     ::glow::optimize(F, cctx, B);
   }
 
-  return checkAllNodesSupported(*F, B);
+  // We already started using backend specific verification when the function
+  // state became lowered. Do one more verification pass to make sure everything
+  // is in order and to bail if it is not.
+  if (!B.verify(*F)) {
+    return MAKE_ERR(GlowErr::ErrorCode::COMPILE_UNSUPPORTED_NODE_AFTER_OPTIMIZE,
+                    "Unsupported node(s) found after optimizing Function " +
+                        F->getName().str() + " for backend " +
+                        B.getBackendName());
+  }
+  return llvm::Error::success();
 }

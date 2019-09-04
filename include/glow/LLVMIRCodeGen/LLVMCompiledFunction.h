@@ -53,6 +53,10 @@ protected:
   /// The LLVM JIT engine. The jit must be initialized after the ctor
   /// initializes the LLVM backends.
   std::unique_ptr<llvm::orc::GlowJIT> JIT_;
+
+  /// The JIT can be accessed from multiple threads but is not thread safe,
+  /// JITLock_ protects it.
+  std::mutex JITLock_;
 };
 } // end namespace glow
 

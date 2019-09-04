@@ -114,6 +114,30 @@ Tensor dequantizeTensor(const Tensor &tensor, ElemKind floatKind) {
   return tmp;
 }
 
+Tensor tensor4BitsFusedRowwiseDequantization(const Tensor &input) {
+  assert(input.dims().size() == 2 && "Input must be 2 dimensional.");
+  // The output tensor should have the same raw as input tensor. Since the
+  // quantized tensor is in the following format: | 4bit quantized data |
+  // float16_t scale | float16_t offset| The columns of dequantized float data
+  // should be (input.dims()[1] - 2*sizeof(float16_t)) * 2.
+  Tensor output(
+      ElemKind::FloatTy,
+      {input.dims()[0], (input.dims()[1] - 2 * sizeof(float16_t)) * 2});
+  auto srcH = input.getHandle<uint8_t>();
+  auto destH = output.getHandle<float>();
+  for (size_t i = 0; i < input.dims()[0]; i++) {
+    float16_t scale, offset;
+    std::tie(scale, offset) = srcH.getFusedScaleOffsetFromRow<float16_t>(i);
+    for (size_t j = 0; j < output.dims()[1]; j++) {
+      bool isMSB = (j % 2 == 1);
+      destH.at({i, j}) = dequantize4BitWithFloatOffset(
+          srcH.at({i, j / 2}), static_cast<float>(scale),
+          static_cast<float>(offset), isMSB);
+    }
+  }
+  return output;
+}
+
 QuantizationTransform32To8 quantizeScaleOffset32To8(float scale,
                                                     int32_t offset) {
   // In this function we compute an efficient way to convert signed 32-bit

@@ -92,21 +92,34 @@ HostManager::init(std::vector<std::unique_ptr<DeviceConfig>> configs) {
 
 HostManager::~HostManager() { llvm::toString(clearHost()); }
 
+void HostManager::cleanupAddNetwork(llvm::ArrayRef<std::string> names) {
+  for (auto &name : names) {
+    processingNetworks_.erase(name);
+  }
+}
+
 llvm::Error HostManager::addNetwork(std::unique_ptr<Module> module,
                                     CompilationContext &cctx,
                                     bool saturateHost) {
-  std::lock_guard<std::mutex> networkLock(networkLock_);
-  auto functions = module->getFunctions();
-  for (auto &F : functions) {
-    std::string name = F->getName();
-    auto it = networks_.find(name);
-    if (it != networks_.end()) {
-      return MAKE_ERR(GlowErr::ErrorCode::RUNTIME_ERROR,
-                      "Failed to add network: already have a function called " +
-                          name);
+  std::vector<std::string> names;
+  {
+    std::lock_guard<std::mutex> networkLock(networkLock_);
+    auto functions = module->getFunctions();
+    for (auto &F : functions) {
+      std::string name = F->getName();
+      auto it = networks_.find(name);
+      if (it != networks_.end() ||
+          processingNetworks_.find(name) != processingNetworks_.end()) {
+        cleanupAddNetwork(names);
+        return MAKE_ERR(
+            GlowErr::ErrorCode::RUNTIME_ERROR,
+            "Failed to add network: already have a function called " + name);
+      }
+      // Add the network to processingNetworks_ so we know it's being worked on.
+      processingNetworks_.insert(name);
+      names.push_back(name);
     }
   }
-
   // Load backend-specific options if specified.
   if (!loadBackendSpecificOptionsOpt.empty()) {
     if (cctx.backendOpts.backendSpecificOpts.size() != 0) {
@@ -118,22 +131,40 @@ llvm::Error HostManager::addNetwork(std::unique_ptr<Module> module,
   }
 
   std::vector<DeviceInfo> deviceInfo;
-  for (auto &device : devices_) {
-    DeviceInfo info = device.second->getDeviceInfo();
-    info.availableMemory = device.second->getAvailableMemory();
-    info.backendName = device.second->getBackendName();
-    info.nonSupportedNodes = device.second->getParamByName("nonSupportedNodes");
-    info.supportedNodes = device.second->getParamByName("supportedNodes");
-    deviceInfo.push_back(info);
+  {
+    std::lock_guard<std::mutex> networkLock(networkLock_);
+    for (auto &device : devices_) {
+      DeviceInfo info = device.second->getDeviceInfo();
+      info.availableMemory = device.second->getAvailableMemory();
+      info.backendName = device.second->getBackendName();
+      info.nonSupportedNodes =
+          device.second->getParamByName("nonSupportedNodes");
+      info.supportedNodes = device.second->getParamByName("supportedNodes");
+      deviceInfo.push_back(info);
+    }
   }
   // Perform a round of target-independent graph optimizations. This helps the
   // partitioner to do its job more efficiently.
   for (Function *F : module->getFunctions()) {
-    RETURN_IF_ERR(optimizeFunctionBeforeLowering(F, cctx));
+    auto err = optimizeFunctionBeforeLowering(F, cctx);
+    if (err) {
+      {
+        std::lock_guard<std::mutex> networkLock(networkLock_);
+        cleanupAddNetwork(names);
+      }
+      return err;
+    }
   }
   Partitioner partitioner(module.get(), deviceInfo, saturateHost);
   DAGListTy nodeList;
-  ASSIGN_VALUE_OR_RETURN_ERR(nodeList, partitioner.partition(cctx));
+  auto result = partitioner.partition(cctx);
+  if (result) {
+    nodeList = std::move(result.get());
+  } else {
+    std::lock_guard<std::mutex> networkLock(networkLock_);
+    cleanupAddNetwork(names);
+    return result.takeError();
+  }
 
   if (cctx.precisionConfig.quantMode == QuantizationMode::Profile) {
     // Since for profiling the provisioner will be reset, we only allow one
@@ -141,9 +172,8 @@ llvm::Error HostManager::addNetwork(std::unique_ptr<Module> module,
     RETURN_ERR_IF_NOT(networks_.size() == 0,
                       "For quantization profiling flow, there can't be other "
                       "registered networks before this one");
-    // For profiling, we use CPU backend. Overwrite Provisioner and Executor to
-    // force the network is compiled and run in profilingBackend.
-    // backend.
+    // For profiling, we use CPU backend. Overwrite Provisioner and Executor
+    // to force the network is compiled and run in profilingBackend. backend.
     size_t devicesNum = devices_.size();
     for (size_t i = 0; i < devicesNum; i++) {
       auto name = devices_[i]->getDeviceConfig().name;
@@ -156,20 +186,29 @@ llvm::Error HostManager::addNetwork(std::unique_ptr<Module> module,
     executor_.reset(new ThreadPoolExecutor(devices_, config_.executorThreads));
   }
 
-  RETURN_IF_ERR(provisioner_->provision(nodeList, *module, cctx));
+  auto err = provisioner_->provision(nodeList, *module, cctx);
+  if (err) {
+    {
+      std::lock_guard<std::mutex> networkLock(networkLock_);
+      cleanupAddNetwork(names);
+    }
+    return err;
+  }
 
   // Clear constants contents from the module then put it in a
   // shared_ptr to be shared between all of the networks created from each
   // function in the module.
   module->strip();
   auto sharedModule = std::shared_ptr<Module>(std::move(module));
-
-  for (auto &node : nodeList) {
-    auto &networkData = networks_[(node.root)->name];
-    networkData.dag = std::move(node);
-    networkData.module = sharedModule;
+  {
+    std::lock_guard<std::mutex> networkLock(networkLock_);
+    for (auto &node : nodeList) {
+      auto &networkData = networks_[(node.root)->name];
+      networkData.dag = std::move(node);
+      networkData.module = sharedModule;
+    }
+    cleanupAddNetwork(names);
   }
-
   return llvm::Error::success();
 }
 
@@ -178,6 +217,16 @@ llvm::Error HostManager::removeNetwork(llvm::StringRef networkName) {
   auto networkIterator = networks_.find(networkName);
   if (networkIterator == networks_.end()) {
     return llvm::Error::success();
+  }
+
+  if (processingNetworks_.find(networkName) != processingNetworks_.end()) {
+    // Return an error, the network is in an incomplete state likely because
+    // it is still being added by a different call.
+    return MAKE_ERR(GlowErr::ErrorCode::RUNTIME_NET_BUSY,
+                    llvm::formatv("Cannot remove the network {0}, as it is "
+                                  "currently being modified.",
+                                  networkName)
+                        .str());
   }
 
   // Issue an error as there are outstanding runs for the network
@@ -206,7 +255,7 @@ llvm::Error HostManager::removeNetwork(llvm::StringRef networkName) {
       err.set(std::move(*DCHECK_NOTNULL(removeErr.get())));
     }
     // Also remove compiledFunction from Provisioner.
-    provisioner_->removeFunction(node->name);
+    err.set(provisioner_->removeFunction(node->name));
   }
   networks_.erase(networkIterator);
 
@@ -267,10 +316,62 @@ llvm::Error HostManager::runNetworkBlocking(llvm::StringRef networkName,
   return std::move(*DCHECK_NOTNULL(runErr.get()));
 }
 
+llvm::Error
+HostManager::runNetworkBlocking(llvm::StringRef networkName,
+                                std::unique_ptr<ExecutionContext> context) {
+  std::promise<void> runPromise;
+  auto fut = runPromise.get_future();
+  std::unique_ptr<llvm::Error> runErr;
+  runNetwork(
+      networkName, std::move(context),
+      [&runPromise, &runErr](runtime::RunIdentifierTy, llvm::Error err,
+                             std::unique_ptr<ExecutionContext> contextPtr) {
+        runErr = llvm::make_unique<llvm::Error>(std::move(err));
+        runPromise.set_value();
+      });
+
+  fut.wait();
+  return std::move(*DCHECK_NOTNULL(runErr.get()));
+}
+
+void HostManager::dispatchNextRun() {
+
+  std::lock_guard<std::mutex> networkLock(networkLock_);
+  if (inferQueue_.size()) {
+    // Get the next request, unfortunately priority_queue only
+    // provides a const ref to the top element, since we need to move
+    // it we first cast it to remove the const.
+    auto request = std::move(const_cast<InferRequest &>(inferQueue_.top()));
+    inferQueue_.pop();
+    executor_->run(
+        networks_[request.networkName].dag.root.get(),
+        std::move(request.context), request.requestID,
+        [this, callback = request.callback, name = request.networkName](
+            RunIdentifierTy runID, llvm::Error err,
+            std::unique_ptr<ExecutionContext> context) {
+          {
+            std::lock_guard<std::mutex> networkLock(networkLock_);
+            auto it = networks_.find(name);
+            if (it != networks_.end()) {
+              it->second.refcount--;
+            }
+          }
+          TRACE_EVENT_INSTANT(context->getTraceContext(), TraceLevel::RUNTIME,
+                              "finish_" + name);
+          callback(runID, std::move(err), std::move(context));
+          dispatchNextRun();
+        });
+  } else {
+    // Decrement the activeRequest counter so new requests can
+    // launched.
+    --activeRequestCount_;
+  }
+}
+
 RunIdentifierTy
 HostManager::runNetwork(llvm::StringRef networkName,
                         std::unique_ptr<ExecutionContext> context,
-                        ResultCBTy callback) {
+                        ResultCBTy callback, uint64_t priority) {
   DCHECK(callback != nullptr);
 
   TRACE_EVENT_SCOPE(context->getTraceContext(), TraceLevel::RUNTIME,
@@ -285,47 +386,43 @@ HostManager::runNetwork(llvm::StringRef networkName,
       network = &it->second;
       network->refcount++;
     }
+
+    if (network == nullptr) {
+      callback(
+          currentRun,
+          MAKE_ERR(GlowErr::ErrorCode::RUNTIME_NET_NOT_FOUND,
+                   llvm::formatv("Function {0} not found", networkName).str()),
+          std::move(context));
+      return currentRun;
+    }
+    // Setup the request
+    InferRequest queuedRequest(networkName, std::move(context), callback,
+                               priority, currentRun);
+    // Put the request in the queue.
+    auto queueSize = inferQueue_.size();
+    if (queueSize >= config_.maxQueueSize) {
+      // The queue is full, return an error.
+      network->refcount--;
+      callback(
+          currentRun,
+          MAKE_ERR(
+              GlowErr::ErrorCode::RUNTIME_REQUEST_REFUSED,
+              strFormat(
+                  "The number of allowed queued requests has been exceeded. "
+                  "queued requests: %lu allowed requests: %zu",
+                  queueSize, config_.maxQueueSize)),
+          std::move(context));
+      return currentRun;
+    }
+    inferQueue_.push(std::move(queuedRequest));
   }
 
-  if (network == nullptr) {
-    callback(
-        currentRun,
-        MAKE_ERR(GlowErr::ErrorCode::RUNTIME_NET_NOT_FOUND,
-                 llvm::formatv("Function {0} not found", networkName).str()),
-        std::move(context));
-    return currentRun;
-  }
-
+  // If we haven't reached maxActiveRequests kick off next request.
   size_t activeRequestCount = activeRequestCount_++;
-  if (activeRequestCount >= config_.maxActiveRequests) {
-    activeRequestCount_--;
-    network->refcount--;
-    callback(
-        currentRun,
-        MAKE_ERR(GlowErr::ErrorCode::RUNTIME_REQUEST_REFUSED,
-                 strFormat("The number of allowed requests has been exceeded. "
-                           "active requests: %lu allowed requests: %zu",
-                           activeRequestCount, config_.maxActiveRequests)),
-        std::move(context));
+  if (activeRequestCount < config_.maxActiveRequests) {
+    dispatchNextRun();
     return currentRun;
   }
-
-  executor_->run(networks_[networkName].dag.root.get(), std::move(context),
-                 currentRun,
-                 [this, callback, name = networkName.str()](
-                     RunIdentifierTy runID, llvm::Error err,
-                     std::unique_ptr<ExecutionContext> context) {
-                   {
-                     std::lock_guard<std::mutex> networkLock(networkLock_);
-                     auto it = networks_.find(name);
-                     if (it != networks_.end()) {
-                       it->second.refcount--;
-                     }
-                   }
-                   TRACE_EVENT_INSTANT(context->getTraceContext(),
-                                       TraceLevel::RUNTIME, "finish_" + name);
-                   callback(runID, std::move(err), std::move(context));
-                   --activeRequestCount_;
-                 });
+  activeRequestCount_--;
   return currentRun;
 }

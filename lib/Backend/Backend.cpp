@@ -15,6 +15,7 @@
  */
 
 #include "glow/Backend/Backend.h"
+#include "glow/Backends/DummyDeviceManager.h"
 
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/PlaceholderBindings.h"
@@ -23,6 +24,12 @@
 #include "glow/Optimizer/GraphOptimizerPipeline/Pipeline.h"
 
 using namespace glow;
+
+runtime::DeviceManager *
+Backend::createDeviceManager(const runtime::DeviceConfig &deviceConfig) {
+  LOG(ERROR) << "Warning: Creating a DummyDeviceManager.\n";
+  return new runtime::DummyDeviceManager(deviceConfig);
+}
 
 TraceInfo Backend::buildManualTraceInfo(Function *F) const {
   TraceInfo info(false, getTraceEventDataSize());
@@ -148,6 +155,28 @@ void Backend::autoInstrument(TraceInfo &traceInfo, IRFunction *IR) const {
   }
 
   IR->pushInstr(new TraceEventInst("end_trace", backingWeight, index));
+}
+
+bool Backend::checkAllNodesSupported(const Function &F) const {
+  bool allSupported = true;
+  for (const Node &N : F.getNodes()) {
+    if (!isOpSupported(N)) {
+      allSupported = false;
+      report("Unsupported node found while compiling Function " +
+             F.getName().str() + " for backend " + getBackendName() + ": " +
+             N.getDebugDesc());
+    }
+  }
+  return allSupported;
+}
+
+bool Backend::verify(const Function &F) const {
+  return F.verify() && checkAllNodesSupported(F);
+}
+
+bool Backend::verify(const IRFunction &IR) const {
+  (void)IR;
+  return true;
 }
 
 FunctionPassPipeline Backend::getOptimizationPipeline() const {

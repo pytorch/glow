@@ -16,6 +16,8 @@
 #ifndef GLOW_BACKENDS_CPU_CPUBACKEND_H
 #define GLOW_BACKENDS_CPU_CPUBACKEND_H
 
+#include "CPUDeviceManager.h"
+
 #include "glow/Backend/Backend.h"
 #include "glow/Base/Tensor.h"
 #include "glow/LLVMIRCodeGen/LLVMBackend.h"
@@ -45,6 +47,11 @@ public:
   bool isOpSupported(const NodeInfo &NI) const override;
 
   bool shouldLower(const Node *N) const override;
+
+  runtime::DeviceManager *
+  createDeviceManager(const runtime::DeviceConfig &deviceConfig) override {
+    return createCPUDeviceManager(deviceConfig);
+  }
   /// @}
 
 public:

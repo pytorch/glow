@@ -139,6 +139,11 @@ class MockBackend : public Backend {
   bool generateInst(Node *N, IRGenVisitor &irgen) const override {
     return false;
   }
+
+  runtime::DeviceManager *
+  createDeviceManager(const runtime::DeviceConfig &deviceConfig) override {
+    return nullptr;
+  }
 };
 
 /// MockBackendCustomIRGen used only for unit testing to test custom lowering
@@ -165,6 +170,11 @@ class MockBackendCustomIRGen : public Backend {
 
   bool isOpSupported(const NodeInfo &NI) const override { return false; }
 
+  runtime::DeviceManager *
+  createDeviceManager(const runtime::DeviceConfig &deviceConfig) override {
+    return nullptr;
+  }
+
   bool generateInst(Node *N, IRGenVisitor &irgen) const override {
     bool hasChanged = false;
     auto builder_ = irgen.getBuilder();
@@ -180,7 +190,8 @@ class MockBackendCustomIRGen : public Backend {
       auto *V = builder_->createConvolutionInst(
           "CustomConvolutionInstruction", Dest__, Src, Filter, Bias,
           CN__->getKernels(), CN__->getStrides(), CN__->getPads(),
-          CN__->getGroup(), CN__->getDilation(), CN__->getLayout());
+          CN__->getGroup(), CN__->getDilation(), CN__->getLayout(),
+          CN__->getFusedActivation());
       if (N->hasPredicate()) {
         V->setPredicate(irgen.valueForNode(N->getPredicate()));
       }
@@ -229,9 +240,12 @@ void compareAgainstInterpreter(
 /// Given some \p FTP representing a Function with a single SaveNode and its
 /// Tensor output, duplicate the Nodes in the Function and their Placeholder
 /// inputs given \p bindings \p parallelCount times. \returns a set of Tensor
-/// pointers for each output of the cloned Function.
+/// pointers for each output of the cloned Function. If the quantization node
+/// info found in \p cctx exists, then all of the node infos will be cloned
+/// accordingly with the names of the newly cloned nodes added to the Function.
 std::unordered_set<Tensor *> cloneFunInsideFun(FunctionTensorPair FTP,
                                                PlaceholderBindings *bindings,
+                                               CompilationContext &cctx,
                                                unsigned parallelCount);
 
 void inferConvNet(Tensor *inputs, Tensor *filter, Tensor *bias, Tensor *out,
@@ -308,6 +322,22 @@ void insertCompiledFunction(llvm::StringRef name, CompiledFunction *func,
 /// ExecutionContext \p context on the specified DeviceManager \p device.
 void runOnDevice(ExecutionContext &context, llvm::StringRef name,
                  runtime::DeviceManager *device);
+
+/// Returns a new Constant of type UInt8FusedQTy with fused rowwise
+/// quantization scales and offsets (i.e. the last 8 bytes of each row
+/// contains the scale and offset).
+Constant *createRandomFusedRowwiseQuantizedConstant(Module &mod,
+                                                    llvm::ArrayRef<size_t> dims,
+                                                    llvm::StringRef name,
+                                                    bool useFusedFP16 = false);
+
+/// Returns a new Constant, of the provided \p type and \p dims initialized
+/// with random data. If using floating point, then it is initialized via
+/// Xavier with filterSize equal to twice the number of elements in \p dims.
+/// Otherwise integer types are initialzed via their min and max values.
+Constant *createRandomizedConstant(Module &mod, TypeRef type,
+                                   llvm::ArrayRef<size_t> dims,
+                                   llvm::StringRef name);
 
 } // namespace glow
 

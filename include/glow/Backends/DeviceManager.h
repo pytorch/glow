@@ -16,7 +16,6 @@
 #ifndef GLOW_BACKENDS_DEVICEMANAGER_H
 #define GLOW_BACKENDS_DEVICEMANAGER_H
 
-#include "glow/Backend/Backend.h"
 #include "glow/Backend/CompiledFunction.h"
 #include "glow/ExecutionContext/ExecutionContext.h"
 #include "glow/Graph/Graph.h"
@@ -56,6 +55,11 @@ public:
 
   /// Query the system for the number of devices of a specified kind.
   static unsigned numDevices(llvm::StringRef backendName);
+
+  /// Device discovery for a given backend kind. Returns a vector of configs for
+  /// all found devices.
+  static std::vector<std::unique_ptr<runtime::DeviceConfig>>
+  generateDeviceConfigs(llvm::StringRef backendName);
 
   /// Initialize the device.
   virtual llvm::Error init() { return llvm::Error::success(); }

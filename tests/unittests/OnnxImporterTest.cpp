@@ -617,6 +617,29 @@ TEST(onnx, importConvAutoPadSameLower) {
   convTestHelper(filename, expectedDims, expectedValues);
 }
 
+/// Test to ensure error handling for missing bias
+/// input is handled correctly. Remaining input is
+/// still sane to make sure it only fails for the
+/// intended case.
+TEST(onnx, importConvBiasFail) {
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string NetFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/simpleConvBiasFail.onnxtxt");
+
+  // Destroy the loader after the graph is loaded since the following execution
+  // will not depend on anyting from the loader.
+  {
+    Tensor data;
+    getNCHWData(&data, 1, 1, 3, 3);
+
+    EXPECT_DEATH(ONNXModelLoader(NetFilename, {"data"}, {&data.getType()}, *F),
+                 "");
+  }
+}
+
 /// Helper method to run the AveragePool operator test cases.
 /// \p filename contains the model .onnxtxt.
 /// \p expectedDims: output Tensor dimensions.
@@ -2273,6 +2296,87 @@ TEST(onnx, topK) {
       checkConstFoldedOutput(netFilename, {"scores"}, {&x}, {outputT, indexT}));
 }
 
+TEST(onnx, argMaxKeepDim) {
+  ExecutionEngine EE;
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/ArgMaxKeepDim.onnxtxt");
+
+  PlaceholderBindings bindings;
+  Placeholder *argmaxPH;
+  {
+    Tensor inT(ElemKind::FloatTy, {2, 3, 4, 5});
+
+    ONNXModelLoader onnxLD(netFilename, {"input"}, {&inT.getType()}, *F);
+    argmaxPH = EXIT_ON_ERR(onnxLD.getOutputByName("argmax_scores"));
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod, {"input"}, {&inT});
+  }
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  auto argmax = bindings.get(argmaxPH)->getHandle<int64_t>();
+  std::vector<size_t> expectedDims = {2, 3, 1, 5};
+  EXPECT_TRUE(argmax.dims().vec() == expectedDims);
+}
+
+TEST(onnx, argMaxNoKeepDim) {
+  ExecutionEngine EE;
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/ArgMaxNoKeepDim.onnxtxt");
+
+  PlaceholderBindings bindings;
+  Placeholder *argmaxPH;
+  {
+    Tensor inT(ElemKind::FloatTy, {2, 3, 4, 5});
+
+    ONNXModelLoader onnxLD(netFilename, {"input"}, {&inT.getType()}, *F);
+    argmaxPH = EXIT_ON_ERR(onnxLD.getOutputByName("argmax_scores"));
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod, {"input"}, {&inT});
+  }
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  auto argmax = bindings.get(argmaxPH)->getHandle<int64_t>();
+  std::vector<size_t> expectedDims = {2, 4, 5};
+  EXPECT_TRUE(argmax.dims().vec() == expectedDims);
+}
+
+TEST(onnx, argMaxDefault) {
+  ExecutionEngine EE;
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/ArgMaxDefault.onnxtxt");
+
+  PlaceholderBindings bindings;
+  Placeholder *argmaxPH;
+  {
+    Tensor inT(ElemKind::FloatTy, {2, 3, 4, 5});
+
+    ONNXModelLoader onnxLD(netFilename, {"input"}, {&inT.getType()}, *F);
+    argmaxPH = EXIT_ON_ERR(onnxLD.getOutputByName("argmax_scores"));
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod, {"input"}, {&inT});
+  }
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  auto argmax = bindings.get(argmaxPH)->getHandle<int64_t>();
+  std::vector<size_t> expectedDims = {1, 3, 4, 5};
+  EXPECT_TRUE(argmax.dims().vec() == expectedDims);
+}
+
 TEST(onnx, importMaxPoolWithArgmax) {
   ExecutionEngine EE;
   auto &mod = EE.getModule();
@@ -2387,4 +2491,35 @@ TEST(onnx, importWhere) {
   EXPECT_EQ(WHR->getResult().dims()[0], 4);
   EXPECT_EQ(WHR->getResult().dims()[1], 4);
   EXPECT_EQ(WHR->getResult().dims()[2], 4);
+}
+
+TEST(onnx, importLess) {
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/Less.onnxtxt");
+
+  Placeholder *out = nullptr;
+  {
+    Tensor X(ElemKind::FloatTy, {1, 4, 1});
+    Tensor Y(ElemKind::FloatTy, {4, 1, 1});
+    X.zero();
+    Y.zero();
+
+    ONNXModelLoader onnxLD(netFilename, {"X", "Y"},
+                           {&X.getType(), &Y.getType()}, *F);
+    out = EXIT_ON_ERR(onnxLD.getOutputByName("Out"));
+  }
+
+  auto *save = getSaveNodeFromDest(out);
+
+  CmpLTNode *CMPLT = llvm::dyn_cast<CmpLTNode>(save->getInput().getNode());
+
+  ASSERT_TRUE(CMPLT);
+  ASSERT_EQ(CMPLT->getResult().dims().size(), 3);
+  EXPECT_EQ(CMPLT->getResult().dims()[0], 4);
+  EXPECT_EQ(CMPLT->getResult().dims()[1], 4);
+  EXPECT_EQ(CMPLT->getResult().dims()[2], 1);
 }

@@ -66,6 +66,12 @@ bool CPUBackend::isOpSupported(const NodeInfo &NI) const {
                {MaxPoolNode::ArgmaxIdx}) &&
            (NI.getOutElemTy(MaxPoolNode::ArgmaxIdx) == ElemKind::Int64ITy);
 
+  case Kinded::Kind::ArgMaxNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind(
+               {ElemKind::FloatTy, ElemKind::Int8QTy}, {},
+               {ArgMaxNode::ArgmaxIdx}) &&
+           (NI.getOutElemTy(ArgMaxNode::ArgmaxIdx) == ElemKind::Int64ITy);
+
   case Kinded::Kind::SaveNodeKind:
   case Kinded::Kind::ReshapeNodeKind:
     // These are implemented via a Copy Instruction.
@@ -242,6 +248,12 @@ bool CPUBackend::isOpSupported(const NodeInfo &NI) const {
                {ElemKind::FloatTy, ElemKind::Int8QTy}, {},
                {CmpLTENode::ResultIdx}) &&
            (NI.getOutElemTy(CmpLTENode::ResultIdx) == ElemKind::BoolTy);
+
+  case Kinded::Kind::CmpLTNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind(
+               {ElemKind::FloatTy, ElemKind::Int8QTy, ElemKind::Int32ITy}, {},
+               {CmpLTNode::ResultIdx}) &&
+           (NI.getOutElemTy(CmpLTNode::ResultIdx) == ElemKind::BoolTy);
 
   case Kinded::Kind::IsNaNNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind({ElemKind::FloatTy}, {},

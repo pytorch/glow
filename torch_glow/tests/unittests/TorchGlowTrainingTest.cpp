@@ -31,8 +31,6 @@ TEST(TorchGlowTraining, Test) {
   auto emptyTensor = at::empty({1, 3, 224, 224});
   vec.push_back(torch::autograd::make_variable(emptyTensor));
   TorchGlowTraining::ONNXWriterParameters parameters;
-  PyTorchLoaderSettings settings;
-  settings.weightFreezingEnabled = false;
   TrainingConfig config;
   config.learningRate = 0.01;
   config.momentum = 0.9;
@@ -40,15 +38,15 @@ TEST(TorchGlowTraining, Test) {
   config.batchSize = 1;
 
   // TODO (after full fusion is available)
-  if (!errToBool(trainer.init(fileName, vec, "Interpreter", parameters,
-                              settings, config))) {
+  if (errToBool(
+          trainer.init(fileName, vec, "Interpreter", parameters, config))) {
     return;
   }
 
-  llvm::ArrayRef<size_t> sampleDims = {1, 3, 224, 224};
+  std::vector<size_t> sampleDims = {1, 3, 224, 224};
   Tensor samples(ElemKind::FloatTy, sampleDims);
 
-  llvm::ArrayRef<size_t> labelDims = {1, 1024};
+  std::vector<size_t> labelDims = {1, 1000};
   Tensor labels(ElemKind::Int64ITy, labelDims);
   EXPECT_FALSE(errToBool(trainer.train(samples, labels)));
 

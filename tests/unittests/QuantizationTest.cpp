@@ -74,6 +74,11 @@ public:
     return backend_->compile(F, opts);
   }
 
+  runtime::DeviceManager *
+  createDeviceManager(const runtime::DeviceConfig &deviceConfig) override {
+    return nullptr;
+  }
+
   bool isOpSupported(const NodeInfo &NI) const override {
     if (NI.getKind() == Kinded::Kind::SoftMaxNodeKind ||
         NI.getKind() == Kinded::Kind::LocalResponseNormalizationNodeKind ||
@@ -284,6 +289,32 @@ TEST(Quantization, quantizeTensorSymmetricPwr2Int16) {
 TEST(Quantization, quantizeTensorSymmetricPwr2Int32) {
   quantizeTensorTest<int32_t>(ElemKind::Int32QTy,
                               quantization::Schema::SymmetricWithPower2Scale);
+}
+
+/// Test 4-bit fused rowwise quantization.
+TEST(Quantization, fused4BitsRowwiseQuantizeTensor) {
+  // Create an FP32 tensor with 12 elements and initialize it with numbers from
+  // -3 to 3.
+  Tensor inputFP32(ElemKind::FloatTy, {2, 6});
+  Tensor dequantized(ElemKind::FloatTy, {2, 6});
+  Tensor quantized(ElemKind::UInt4FusedFP16QTy, {2, 7}, /* dummy scale */ 1.0,
+                   /* dummy offset */ 0);
+  Handle<float> inputH = inputFP32.getHandle<float>();
+  for (size_t i = 0; i < 2; i++) {
+    for (size_t j = 0; j < 6; j++) {
+      inputH.at({i, j}) = (i + j) * 1.0f - 3;
+    }
+  }
+
+  quantization::tensorFusedRowwiseQuantization<float16_t>(inputFP32, quantized);
+  dequantized = quantization::tensor4BitsFusedRowwiseDequantization(quantized);
+
+  Handle<float> dequantizedH = dequantized.getHandle<float>();
+  for (size_t i = 0; i < 2; i++) {
+    for (size_t j = 0; j < 6; j++) {
+      EXPECT_NEAR(inputH.at({i, j}), dequantizedH.at({i, j}), 0.02f);
+    }
+  }
 }
 
 /// Helper for quantizing a simple Conv with precision \p quantizationPrecision.
