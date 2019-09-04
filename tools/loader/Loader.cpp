@@ -85,7 +85,10 @@ llvm::cl::opt<quantization::Schema> quantizationSchema(
                    "Use symmetric ranges"),
         clEnumValN(quantization::Schema::SymmetricWithUnsigned,
                    "symmetric_with_uint8",
-                   "Use symmetric ranges with potentially uint8 ranges")),
+                   "Use symmetric ranges with potentially uint8 ranges"),
+        clEnumValN(quantization::Schema::SymmetricWithPower2Scale,
+                   "symmetric_with_power2_scale",
+                   "Use symmetric ranges with power of 2 scaling factor")),
     llvm::cl::init(quantization::Schema::Asymmetric), llvm::cl::cat(loaderCat));
 
 llvm::cl::opt<ElemKind> quantizationPrecision(

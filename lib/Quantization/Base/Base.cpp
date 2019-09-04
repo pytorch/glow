@@ -225,6 +225,27 @@ QuantizationTransform32To8 quantizeScaleOffset32To8(float scale,
   int preShift = 0;
   int postShift = 0;
 
+  // We treat first the particular case when scale is a power of 2 (2 ^ exp,
+  // where exp is a signed integer exponent). The operation is specialized as:
+  // - for positive 2's exponent:
+  //     x * scale + offset (pre = 0, post = 0, scale = (int)scale).
+  // - for negative 2's exponent:
+  //     x >> post + offset (pre = 0, post = -exp, scale = 1).
+  if (isFloatPowerOf2(scale)) {
+    int exp = getFloat2Exp(scale);
+    if (exp > 0) {
+      return QuantizationTransform32To8(0,                       // pre
+                                        0,                       // post
+                                        static_cast<int>(scale), // scale
+                                        offset);                 // offset
+    } else {
+      return QuantizationTransform32To8(0,       // pre
+                                        -exp,    // post
+                                        1,       // scale
+                                        offset); // offset
+    }
+  }
+
   // Calculate the post-shift value. It's always safe to increase scale as long
   // as it's below one, and it's always legal to shift at least 15 bits for
   // small scale values.
@@ -301,9 +322,11 @@ TensorQuantizationParams chooseQuantizationParams(float min, float max,
       schema = quantization::Schema::Symmetric;
     }
   }
-  if (schema == quantization::Schema::Symmetric) {
+  if (schema == quantization::Schema::Symmetric ||
+      schema == quantization::Schema::SymmetricWithPower2Scale) {
     // Check which end saturates the output dynamic range earlier
     // and extend the other end to map the zero-point to quantized 0.
+    assert(qmin < 0 && "Symmetric schema incompatible with unsigned range");
     double rmin = min / (double)qmin;
     double rmax = max / (double)qmax;
     if (rmin > rmax) {
@@ -362,6 +385,11 @@ TensorQuantizationParams chooseQuantizationParams(float min, float max,
     nudgedZeroPoint = static_cast<int32_t>(round(initialZeroPoint));
   }
 
+  // For SymmetricWithPower2Scale, round scale to nearest higher power of 2.
+  if (schema == quantization::Schema::SymmetricWithPower2Scale) {
+    scale = std::exp2(std::ceil(std::log2(scale)));
+  }
+
   TensorQuantizationParams result{static_cast<float>(scale), nudgedZeroPoint};
   // The only valid offset for symmetric quantization is 0.
   assert((result.offset == 0 || schema != quantization::Schema::Symmetric) &&
@@ -373,6 +401,17 @@ TensorQuantizationParams chooseQuantizationParams(float min, float max,
           schema != quantization::Schema::SymmetricWithUnsigned) &&
          "Symmetric quantization with unsigned should be centered on 0 or on "
          "-qmin");
+
+  // For SymmetricWithPower2Scale schema the offset should be 0.
+  assert((result.offset == 0 ||
+          schema != quantization::Schema::SymmetricWithPower2Scale) &&
+         "Symmetric quantization should be centered on 0");
+
+  // For SymmetricWithPower2Scale schema the scale should be a power of 2.
+  assert((isFloatPowerOf2(result.scale) ||
+          schema != quantization::Schema::SymmetricWithPower2Scale) &&
+         "Scale quantization parameter should be a power of 2");
+
   return result;
 }
 
@@ -400,6 +439,14 @@ std::vector<int8_t> createMapping(TypeRef inTy, TypeRef outTy,
 
   return mapping;
 }
+
+bool isFloatPowerOf2(float val) {
+  // frexp returns mantissa normalized in [0.5,1) so compare with 0.5.
+  int exp;
+  return (std::abs(std::frexp(val, &exp)) == 0.5);
+}
+
+int getFloat2Exp(float val) { return std::ilogb(val); }
 
 } // namespace quantization
 } // namespace glow
