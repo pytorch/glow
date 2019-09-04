@@ -54,8 +54,8 @@ llvm::cl::list<std::string> modelInputs(
 /// Parse the strings and get the model input names and types.
 static void getModelInputs(std::vector<std::string> &inputNames,
                            std::vector<Type> &inputTypes) {
-  for (auto str : modelInputs) {
-    // Split string
+  for (const auto &str : modelInputs) {
+    // Split string. Expected format: <name>,<type>,<shape>.
     auto strPairOne = llvm::StringRef(str).split(',');
     auto strPairTwo = strPairOne.second.split(',');
     llvm::StringRef name = strPairOne.first;
@@ -78,8 +78,8 @@ static void getModelInputs(std::vector<std::string> &inputNames,
     } else if (type.equals("bool")) {
       kind = ElemKind::BoolTy;
     } else {
-      CHECK(false) << strFormat("Model input type %s not supported",
-                                type.data());
+      LOG(FATAL) << strFormat("Model input type %s not supported",
+                              type.data());
     }
 
     // Parse shape string.
@@ -131,7 +131,7 @@ int main(int argc, char **argv) {
     // must be provided explicitly.
     std::vector<const char *> inputNameRefs;
     std::vector<TypeRef> inputTypeRefs;
-    for (size_t idx = 0; idx < inputNames.size(); idx++) {
+    for (size_t idx = 0, e = inputNames.size(); idx < e; idx++)
       inputNameRefs.push_back(inputNames[idx].c_str());
       inputTypeRefs.push_back(&inputTypes[idx]);
     }
