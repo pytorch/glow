@@ -7364,6 +7364,7 @@ TEST_P(OperatorTest,
 
   CompilationContext cctx;
   cctx.precisionConfig.convertToFP16 = true;
+  cctx.precisionConfig.convertFusedToFP16 = true;
   EE_.compile(cctx);
   EE_.run(bindings_);
 
