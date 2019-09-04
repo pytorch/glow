@@ -703,6 +703,8 @@ protected:
   void setupPrecisionConfig() {
     if (convertToFP16) {
       precConfig_.convertToFP16 = convertToFP16;
+      // For now always convert both or neither.
+      precConfig_.convertFusedToFP16 = convertToFP16;
       // Note: always do not convert RWQ-SLWS here. The creator itself for
       // precisionForNonDataSLWS already directly created the node with the
       // correct precision.

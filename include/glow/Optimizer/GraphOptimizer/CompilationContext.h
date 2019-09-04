@@ -38,6 +38,9 @@ struct PrecisionConfiguration {
   /// Whether to convert the FloatTy to Float16Ty in the Function.
   bool convertToFP16{false};
 
+  /// Whether to convert UInt8FusedQTy to UInt8FusedFP16QTy in the Function.
+  bool convertFusedToFP16{false};
+
   /// Whether to clip out-of-range FP values to the min/max of fp16.
   bool clipFP16{false};
 
