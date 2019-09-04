@@ -73,12 +73,23 @@ simply as:
   $model-compiler -model=<onnx-model-path> -backend=CPU -emit-bundle=<bundle-dir>
   ```
 - when using Caffe2 models the user must provide explicitly the description of the
-input tensors (which is not part of the model) using the following format:
+input tensors (which is not part of the model) using the `-model-input` option:
   ```
   $model-compiler -model=<caffe2-model-path> -backend=CPU -emit-bundle=<bundle-dir> \
       -model-input=<inputName1>,<inputType1>,<inputShape1> \
       -model-input=<inputName2>,<inputType2>,<inputShape2> \
       ...
+  ```
+  For quantized types the format of the `-model-input` is slightly different since the
+  scale and offset parameters should also be provided:
+  ```
+  -model-input=<name>,<type>,<scale>,<offset>,<shape>
+  ```
+  For example we can can provide one or more inputs with:
+  ```
+  -model-input=input_03_data,float,[1]
+  -model-input=data_bias,int32,[1,32,32]
+  -model-input=data,int8q,0.123,-13,[1,10]
   ```
 For more information about the options of the model-compiler type:
 ```

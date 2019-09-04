@@ -59,12 +59,12 @@ llvm::cl::list<std::string> modelInputs(
 } // namespace
 
 /// Parse the strings and get the model input names and types.
+/// The expected format is one of the following:
+/// <name>,<type>,<shape> for non-quantized types.
+/// <name>,<type>,<scale>,<offset>,<shape> for quantized types.
 static void getModelInputs(std::vector<std::string> &inputNames,
                            std::vector<Type> &inputTypes) {
   for (const auto &str : modelInputs) {
-    // Split string. Expected format:
-    // - <name>,<type>,<shape> for non-quantized type.
-    // - <name>,<type>,<scale>,<offset>,<shape> for quantized type.
     auto strPair = llvm::StringRef(str).split(',');
     llvm::StringRef name = strPair.first;
     strPair = strPair.second.split(',');
@@ -148,11 +148,6 @@ int main(int argc, char **argv) {
   // Initialize loader.
   Loader loader;
 
-  // Get model input names and types.
-  std::vector<std::string> inputNames;
-  std::vector<Type> inputTypes;
-  getModelInputs(inputNames, inputTypes);
-
   // Emit bundle flag should be true.
   CHECK(emittingBundle())
       << "Bundle output directory not provided. Use the -emit-bundle option!";
@@ -160,8 +155,11 @@ int main(int argc, char **argv) {
   // Create the model based on the input model format.
   std::unique_ptr<ProtobufLoader> LD;
   if (!loader.getCaffe2NetDescFilename().empty()) {
-    // For Caffe2 format the input placeholder names/types
-    // must be provided explicitly.
+    // For Caffe2 format the input placeholder names/types must be provided
+    // explicitly. Get model input names and types.
+    std::vector<std::string> inputNames;
+    std::vector<Type> inputTypes;
+    getModelInputs(inputNames, inputTypes);
     std::vector<const char *> inputNameRefs;
     std::vector<TypeRef> inputTypeRefs;
     for (size_t idx = 0, e = inputNames.size(); idx < e; idx++) {
