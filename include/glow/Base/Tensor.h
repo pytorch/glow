@@ -506,6 +506,8 @@ public:
       return isEqualImpl<bool>(other, allowedError, verbose);
     case ElemKind::AddressTy:
       return isEqualImpl<int64_t>(other, allowedError, verbose);
+    case ElemKind::UIntPtrTy:
+      return isEqualImpl<uintptr_t>(other, allowedError, verbose);
     }
 
     // This is to make compiler happy. It can never reach this point as switch

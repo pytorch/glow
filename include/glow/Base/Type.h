@@ -292,6 +292,8 @@ enum class ElemKind : unsigned char {
   BoolTy,
   // Address type (int64_t or uint64_t?)
   AddressTy,
+  // Unsigned integer type capable of holding a pointer (uintptr_t)
+  UIntPtrTy,
 };
 
 /// \returns whether \p e is a quantized ElemKind.
@@ -552,6 +554,8 @@ struct Type final {
       return std::is_same<ElemTy, bool>::value;
     case ElemKind::AddressTy:
       return std::is_same<ElemTy, int64_t>::value;
+    case ElemKind::UIntPtrTy:
+      return std::is_same<ElemTy, uintptr_t>::value;
     }
     LOG(FATAL) << "Invalid type: " << getElementName(Ty).str();
   }
@@ -612,6 +616,8 @@ struct Type final {
       return sizeof(bool);
     case ElemKind::AddressTy:
       return sizeof(int64_t);
+    case ElemKind::UIntPtrTy:
+      return sizeof(uintptr_t);
     }
     LOG(FATAL) << "Invalid type: " << getElementName(Ty).str();
   }

@@ -301,6 +301,8 @@ void glow::dumpAsciiImpl(const Tensor *T, llvm::raw_ostream &os) {
     return dumpAsciiGenericImpl(T->getHandle<bool>(), os);
   case ElemKind::AddressTy:
     return dumpAsciiGenericImpl(T->getHandle<int64_t>(), os);
+  case ElemKind::UIntPtrTy:
+    return dumpAsciiGenericImpl(T->getHandle<uintptr_t>(), os);
   }
 }
 
@@ -335,6 +337,8 @@ void glow::dumpImpl(const Tensor *T, llvm::raw_ostream &os,
     return dumpGenericImpl(T->getHandle<bool>(), os, maxNumElem);
   case ElemKind::AddressTy:
     return dumpGenericImpl(T->getHandle<int64_t>(), os, maxNumElem);
+  case ElemKind::UIntPtrTy:
+    return dumpGenericImpl(T->getHandle<uintptr_t>(), os, maxNumElem);
   }
 }
 
@@ -471,6 +475,12 @@ void glow::genericTranspose(const Tensor *src, Tensor *dest,
     transposeSelectImpl(srcH, destH, shuffle);
     return;
   }
+  case ElemKind::UIntPtrTy: {
+    auto srcH = src->getHandle<uintptr_t>();
+    auto destH = dest->getHandle<uintptr_t>();
+    transposeSelectImpl(srcH, destH, shuffle);
+    return;
+  }
   }
 }
 
@@ -546,6 +556,10 @@ void Tensor::init(InitKind init, float val, PseudoRNG &PRNG) {
 
     case ElemKind::BoolTy: {
       getHandle<bool>().clear(val);
+      break;
+    }
+    case ElemKind::UIntPtrTy: {
+      getHandle<uintptr_t>().clear(val);
       break;
     }
     }

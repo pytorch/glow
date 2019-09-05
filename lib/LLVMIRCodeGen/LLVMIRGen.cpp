@@ -251,7 +251,12 @@ llvm::Type *LLVMIRGen::getElementType(llvm::IRBuilder<> &builder,
     static_assert(sizeof(bool) == sizeof(int8_t),
                   "Bool is expected to be the same size as int8.");
     return builder.getInt8Ty();
+  case ElemKind::UIntPtrTy:
+    static_assert(sizeof(uintptr_t) == sizeof(int64_t),
+                  "uintptr_t is expected to be the same size as int64.");
+    return builder.getInt64Ty();
   }
+
   return nullptr;
 }
 
@@ -512,6 +517,8 @@ llvm::Value *LLVMIRGen::emitConst(llvm::IRBuilder<> &builder, float val,
     return builder.getInt8(static_cast<int8_t>(val));
   case ElemKind::BoolTy:
     return builder.getInt8(static_cast<int8_t>(val));
+  case ElemKind::UIntPtrTy:
+    llvm_unreachable("Not implemented");
   }
   llvm_unreachable("Unknown element type");
 }
