@@ -29,10 +29,6 @@ class InterpreterDeviceManager : public QueueBackedDeviceManager {
   /// Compiled function list by name.
   FunctionMapTy functions_;
 
-  /// Static memory cost of the InterpreterFunction.
-  /// This is very arbitrary for the Interpreter backend.
-  const uint64_t functionCost_{1};
-
   /// String constant for logging number of in-use devices.
   static constexpr const char *kDevicesUsedInterpreter =
       "glow.devices_used.interpreter";

@@ -54,9 +54,13 @@ std::unique_ptr<Module> makeBasicModule(std::string functionName = "main") {
                                           functionName + "_input", false);
   auto *output = module->createPlaceholder(ElemKind::FloatTy, {1},
                                            functionName + "_output", false);
-  auto *p = F->createTanh("tanh2", input);
-  F->createSave("ret", p, output);
+  auto *c =
+      module->createConstant(ElemKind::FloatTy, {1}, functionName + "_const");
+  auto *t = F->createTanh("tanh", input);
+  auto *m = F->createMax("max", c, t);
+  F->createSave("ret", m, output);
 
+  c->getPayloadMutable().getHandle().clear(0.25f);
   return module;
 }
 
@@ -116,7 +120,7 @@ TEST_P(DeviceManagerTest, Basic) {
   Tensor input1(ElemKind::FloatTy, {1});
   Tensor output1(ElemKind::FloatTy, {1});
   input1.getHandle().clear(0.5);
-  output1.getHandle().clear(std::tanh(0.5));
+  output1.getHandle().clear(std::max(std::tanh(0.5), 0.25));
 
   updateInputPlaceholders(*context->getPlaceholderBindings(),
                           {module->getPlaceholderByName("main_input")},
@@ -187,7 +191,7 @@ TEST_P(DeviceManagerTest, PartialTensorCopy) {
 
   Tensor output1(ElemKind::FloatTy, {1});
   input1.getHandle().clear(0.5);
-  output1.getHandle().clear(std::tanh(0.5));
+  output1.getHandle().clear(std::max(std::tanh(0.5), 0.25));
 
   context->getPlaceholderBindings()->insert(input, virtualPaddedInput);
   std::promise<std::unique_ptr<ExecutionContext>> runPromise;
@@ -208,7 +212,7 @@ TEST_P(DeviceManagerTest, PartialTensorCopy) {
   Tensor *result1 = context->getPlaceholderBindings()->get(
       module->getPlaceholderByName("main_output"));
   ASSERT_TRUE(result1);
-  EXPECT_FLOAT_EQ(result1->getHandle().at({0}), std::tanh(0.5));
+  EXPECT_FLOAT_EQ(result1->getHandle().at({0}), std::max(std::tanh(0.5), 0.25));
 }
 
 TEST_P(DeviceManagerTest, MultiRun) {
@@ -241,8 +245,8 @@ TEST_P(DeviceManagerTest, MultiRun) {
 
   Tensor output1(ElemKind::FloatTy, {1});
   Tensor output2(ElemKind::FloatTy, {1});
-  output1.getHandle().clear(std::tanh(2.0f));
-  output2.getHandle().clear(std::tanh(3.0f));
+  output1.getHandle().clear(std::max(std::tanh(2.0f), 0.25f));
+  output2.getHandle().clear(std::max(std::tanh(3.0f), 0.25f));
 
   updateInputPlaceholders(*context1->getPlaceholderBindings(),
                           {module->getPlaceholderByName("main_input")},
@@ -333,9 +337,9 @@ TEST_P(DeviceManagerTest, MultiFunction) {
   Tensor input(ElemKind::FloatTy, {1});
   input.getHandle().clear(0.5f);
   Tensor output1(ElemKind::FloatTy, {1});
-  output1.getHandle().clear(std::tanh(0.5f));
+  output1.getHandle().clear(std::max(std::tanh(0.5f), 0.25f));
   Tensor output2(ElemKind::FloatTy, {1});
-  output2.getHandle().clear(std::tanh(0.5f));
+  output2.getHandle().clear(std::max(std::tanh(0.5f), 0.25f));
 
   updateInputPlaceholders(*context1->getPlaceholderBindings(),
                           {module->getPlaceholderByName("func1_input")},
@@ -413,7 +417,7 @@ TEST_P(DeviceManagerTest, MultiModule) {
   Tensor input(ElemKind::FloatTy, {1});
   input.getHandle().clear(0.5f);
   Tensor output(ElemKind::FloatTy, {1});
-  output.getHandle().clear(std::tanh(0.5f));
+  output.getHandle().clear(std::max(std::tanh(0.5f), 0.25f));
 
   updateInputPlaceholders(*context1->getPlaceholderBindings(),
                           {module1->getPlaceholderByName("func1_input")},
@@ -514,9 +518,9 @@ TEST_P(DeviceManagerTest, ReuseModule) {
   Tensor input(ElemKind::FloatTy, {1});
   input.getHandle().clear(0.5f);
   Tensor output1(ElemKind::FloatTy, {1});
-  output1.getHandle().clear(std::tanh(0.5f));
+  output1.getHandle().clear(std::max(std::tanh(0.5f), 0.25f));
   Tensor output2(ElemKind::FloatTy, {1});
-  output2.getHandle().clear(std::tanh(0.5f));
+  output2.getHandle().clear(std::max(std::tanh(0.5f), 0.25f));
 
   updateInputPlaceholders(*context1->getPlaceholderBindings(),
                           {module->getPlaceholderByName("func1_input")},
@@ -582,21 +586,26 @@ TEST(DeviceManagerTest, AvailableMemory) {
   std::promise<const Module *> promise;
   std::future<const Module *> future;
 
+  auto module = makeBasicModule();
+  auto compiledFunctions = compileFunctions("CPU", module.get(), backing);
+
+  uint64_t expectedBytes{0};
+  for (const auto &f : backing) {
+    expectedBytes += f->getRuntimeBundle().getConstantWeightSize();
+  }
+
   auto config = DeviceConfig("CPU");
-  config.setDeviceMemory(1);
+  config.setDeviceMemory(expectedBytes);
   CPUDeviceManager cpuCoreDevice(config);
   ASSERT_FALSE(errToBool(cpuCoreDevice.init()));
 
-  uint64_t expectedBytes = 1;
   EXPECT_EQ(cpuCoreDevice.getMaximumMemory(), expectedBytes);
   EXPECT_EQ(cpuCoreDevice.getAvailableMemory(), expectedBytes);
   EXPECT_TRUE(cpuCoreDevice.isMemoryAvailable(expectedBytes));
   EXPECT_FALSE(cpuCoreDevice.isMemoryAvailable(expectedBytes + 1));
 
-  auto module = makeBasicModule();
   std::tie(promise, future) = getFutureHelper<const Module *>();
-  cpuCoreDevice.addNetwork(module.get(),
-                           compileFunctions("CPU", module.get(), backing),
+  cpuCoreDevice.addNetwork(module.get(), compiledFunctions,
                            [&promise](const Module *module, llvm::Error err) {
                              callbackHelper(promise, module, std::move(err));
                            });
@@ -692,7 +701,7 @@ TEST(DeviceManagerTest, DummyDeviceManager) {
   Tensor input1(ElemKind::FloatTy, {1});
   Tensor output1(ElemKind::FloatTy, {1});
   input1.getHandle().clear(0.5f);
-  output1.getHandle().clear(std::tanh(0.5f));
+  output1.getHandle().clear(std::max(std::tanh(0.5f), 0.25f));
 
   updateInputPlaceholders(*context1->getPlaceholderBindings(),
                           {module->getPlaceholderByName("main_input")},

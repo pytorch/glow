@@ -67,6 +67,8 @@ void InterpreterDeviceManager::addNetworkImpl(const Module *module,
                                               ReadyCBTy readyCB) {
   DCHECK(readyCB != nullptr);
 
+  uint64_t allFunctionsMemoryBytes{0};
+
   // First check for uniqueness of the function name.
   for (const auto &func : functions) {
     if (functions_.count(func.first) != 0) {
@@ -87,9 +89,12 @@ void InterpreterDeviceManager::addNetworkImpl(const Module *module,
                                    .str()));
       return;
     }
+
+    allFunctionsMemoryBytes +=
+        func.second->getRuntimeBundle().getConstantWeightSize();
   }
 
-  if (usedMemoryBytes_ + functionCost_ > maxMemoryBytes_) {
+  if (usedMemoryBytes_ + allFunctionsMemoryBytes > maxMemoryBytes_) {
     readyCB(module, MAKE_ERR(GlowErr::ErrorCode::RUNTIME_OUT_OF_DEVICE_MEMORY,
                              "Failed to add network: not enough memory"));
     return;
@@ -101,9 +106,9 @@ void InterpreterDeviceManager::addNetworkImpl(const Module *module,
       func.second->collectConstants(module);
     }
     functions_.emplace(func.first, func.second);
-    usedMemoryBytes_ += functionCost_; // TODO:: static moduleSize
   }
 
+  usedMemoryBytes_ += allFunctionsMemoryBytes;
   assert(usedMemoryBytes_ <= maxMemoryBytes_);
 
   // Export changes to memory use.
@@ -116,8 +121,11 @@ void InterpreterDeviceManager::evictNetworkImpl(std::string functionName,
                                                 EvictFunctionCBTy evictCB) {
   DCHECK(evictCB != nullptr);
 
-  if (functions_.erase(functionName)) {
-    usedMemoryBytes_ -= functionCost_; // TODO: static moduleSize
+  auto it = functions_.find(functionName);
+
+  if (it != functions_.end()) {
+    usedMemoryBytes_ -= it->second->getRuntimeBundle().getConstantWeightSize();
+    functions_.erase(it);
   } else {
     evictCB(functionName,
             MAKE_ERR(GlowErr::ErrorCode::RUNTIME_NET_NOT_FOUND,
