@@ -72,7 +72,7 @@ llvm::Error TorchGlowTraining::init(llvm::StringRef modelFile,
   auto setup = [&]() -> llvm::Error {
     // Detect the proper loader.
     if (modelFile.endswith_lower(".pt")) {
-      RETURN_IF_ERR(PyTorchFileLoader::parsePyTorchGraph(
+      RETURN_IF_ERR(PyTorchFileLoader::parsePyTorchGraphForOnnxTraining(
           modelFile.str(), inputs, *F_, inputPHs_, outputPHs_));
       if (mode == RandomizeWeights::AUTO) {
         mode = RandomizeWeights::YES;
@@ -229,21 +229,10 @@ bool TorchGlowTrainingWrapper::init(const std::string &modelPath,
 
 bool TorchGlowTrainingWrapper::train(const at::Tensor &ptSamples,
                                      const at::Tensor &ptLabels) {
-  llvm::Expected<glow::Tensor> glowSamples =
-      PyTorchModelLoader::ptTensorToGlowTensor(ptSamples, /*copy*/ false);
-  if (!glowSamples) {
-    errToBool(takeErr(std::move(glowSamples)));
-    return false;
-  }
+  glow::Tensor glowSamples = ptTensorToGlowTensor(ptSamples);
+  glow::Tensor glowLabels = ptTensorToGlowTensor(ptLabels);
 
-  llvm::Expected<glow::Tensor> glowLabels =
-      PyTorchModelLoader::ptTensorToGlowTensor(ptLabels, /*copy*/ false);
-  if (!glowLabels) {
-    errToBool(takeErr(std::move(glowLabels)));
-    return false;
-  }
-
-  return !errToBool(trainer_.train(glowSamples.get(), glowLabels.get()));
+  return !errToBool(trainer_.train(glowSamples, glowLabels));
 }
 
 bool TorchGlowTrainingWrapper::save(const std::string &snapshotFile) {

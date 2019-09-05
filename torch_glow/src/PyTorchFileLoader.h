@@ -57,12 +57,11 @@ public:
   /// stack of \p inputs into Glow Function \p F and fills out input \p
   /// inputPlaceholders, output \p outputPlaceholders placeholders, \returns
   /// error if any. Method is thread safe.
-  static llvm::Error
-  parsePyTorchGraph(const std::string &fileName,
-                    const std::vector<torch::jit::IValue> &inputs,
-                    glow::Function &F,
-                    std::vector<glow::Placeholder *> &inputPlaceholders,
-                    std::vector<glow::Placeholder *> &outputPlaceholders);
+  static llvm::Error parsePyTorchGraphForOnnxTraining(
+      const std::string &fileName,
+      const std::vector<torch::jit::IValue> &inputs, glow::Function &F,
+      std::vector<glow::Placeholder *> &inputPlaceholders,
+      std::vector<glow::Placeholder *> &outputPlaceholders);
 };
 
 } // namespace glow

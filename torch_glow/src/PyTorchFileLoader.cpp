@@ -77,14 +77,8 @@ loadJitGraphToGlowFunction(torch::jit::Stack &stack, torch::jit::Graph &graph,
 
   // Lookup placeholders for the output shapes.
   for (auto *ph : outputPlaceholders) {
-    std::vector<int64_t> sizes;
-    for (auto size : ph->dims()) {
-      sizes.push_back(static_cast<int64_t>(size));
-    }
     // Create an empty tensor with the correct shape.
-    auto ptT = at::empty(
-        sizes, at::TensorOptions().dtype(
-                   PyTorchModelLoader::convertGlowType(ph->getType())));
+    auto ptT = glowTypeToEmptyPTTensor(*ph->getType());
     auto var = torch::autograd::make_variable(ptT);
     // Add to stack output parameter.
     stack.push_back(at::IValue(var));
@@ -185,7 +179,7 @@ llvm::Error PyTorchFileLoader::loadPyTorchGraph(
 }
 
 /*static*/
-llvm::Error PyTorchFileLoader::parsePyTorchGraph(
+llvm::Error PyTorchFileLoader::parsePyTorchGraphForOnnxTraining(
     const std::string &fileName, const std::vector<torch::jit::IValue> &inputs,
     glow::Function &F, std::vector<glow::Placeholder *> &inputPlaceholders,
     std::vector<glow::Placeholder *> &outputPlaceholders) {
@@ -197,12 +191,18 @@ llvm::Error PyTorchFileLoader::parsePyTorchGraph(
   auto method = module->get_method("forward");
   auto graphAndTensors = method._lowered_graph();
 
+  std::vector<std::shared_ptr<c10::TensorType>> parameters;
+
+  for (const auto &ptTensor : graphAndTensors.second) {
+    parameters.push_back(c10::TensorType::create(ptTensor));
+  }
+
   FuseLinear(graphAndTensors.first);
 
   // Parse JIT Graph and load into Glow Function.
-  return PyTorchModelLoader::parseJITGraph(
-      F, *graphAndTensors.first, inputs, graphAndTensors.second,
-      inputPlaceholders, outputPlaceholders);
+  return PyTorchModelLoader::loadJITGraphForOnnxTraining(
+      F, *graphAndTensors.first, inputs, parameters, inputPlaceholders,
+      outputPlaceholders);
 }
 
 // Sanity check, after "fusionSymbol" node, not other nodes should exist.
