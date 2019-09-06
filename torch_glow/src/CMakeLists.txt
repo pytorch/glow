@@ -14,6 +14,7 @@ link_directories(${PYTORCH_DIR}/lib)
 add_library(PyTorchModelLoader
                      CachingGraphRunner.cpp
                      GlowFuser.cpp
+                     GlowIValue.cpp
                      PyTorchCommon.cpp
                      FuseLinear.cpp
                      PyTorchModelLoader.cpp)

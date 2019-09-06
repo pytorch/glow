@@ -46,6 +46,49 @@ runtime::HostManager *getHostManager() {
   return hostManager.get();
 }
 
+/// Given a Glow ElemKind \p ty, \returns a matching PyTorch ScalarType.
+c10::ScalarType elemKindToScalarType(glow::ElemKind ty) {
+  switch (ty) {
+  case ElemKind::FloatTy:
+    return at::kFloat;
+  case ElemKind::Float16Ty:
+    return at::kHalf;
+  case ElemKind::Int32ITy:
+    return at::kInt;
+  case ElemKind::Int64ITy:
+    return at::kLong;
+  case ElemKind::BoolTy:
+    return at::kBool;
+  case ElemKind::UInt8FusedQTy:
+  case ElemKind::UInt8FusedFP16QTy:
+  case ElemKind::UInt4FusedFP16QTy:
+  case ElemKind::Int8QTy:
+  case ElemKind::UInt8QTy:
+  case ElemKind::Int16QTy:
+  case ElemKind::Int32QTy:
+    LOG(DFATAL) << "Not supported yet.";
+    return at::kLong;
+  }
+}
+
+/// Given a PyTorch ScalarType \p ty, \returns a matching Glow ElemKind.
+glow::ElemKind scalarTypeToElemKind(c10::ScalarType ty) {
+  if (ty == at::kFloat) {
+    return ElemKind::FloatTy;
+  } else if (ty == at::kHalf) {
+    return ElemKind::Float16Ty;
+  } else if (ty == at::kInt) {
+    return ElemKind::Int32ITy;
+  } else if (ty == at::kLong) {
+    return ElemKind::Int64ITy;
+  } else if (ty == at::kBool) {
+    return ElemKind::BoolTy;
+  } else {
+    LOG(DFATAL) << "Not supported yet.";
+    return ElemKind::Int64ITy;
+  }
+}
+
 } // namespace
 
 PyTorchLoaderSettings &getPyTorchLoaderSettings() {
@@ -106,6 +149,34 @@ void registerGlowFusionOpAndPass(bool enableFusionPass) {
   registerGlowOp();
   registerGlowFusionPass();
   getPyTorchLoaderSettings().fusionPassEnabled = enableFusionPass;
+}
+
+glow::Type ptTypeToGlowType(const c10::TensorType &ptType) {
+  DCHECK(ptType.scalarType().has_value())
+      << "TensorType has no associated scalar type.";
+  const auto concreteSizes = ptType.sizes().concrete_sizes().value();
+  std::vector<size_t> dims;
+  for (const auto &size : concreteSizes) {
+    dims.push_back(static_cast<size_t>(size));
+  }
+
+  auto scalarType = ptType.scalarType().value();
+  return glow::Type(scalarTypeToElemKind(scalarType), dims);
+}
+
+at::Tensor glowTypeToEmptyPTTensor(const glow::Type &glowType) {
+  std::vector<int64_t> sizes;
+  for (const auto dim : glowType.dims()) {
+    sizes.push_back(dim);
+  }
+
+  return at::empty(sizes, at::TensorOptions().dtype(
+                              elemKindToScalarType(glowType.getElementType())));
+}
+
+glow::Tensor ptTensorToGlowTensor(const at::Tensor &ptTensor) {
+  auto glowType = ptTypeToGlowType(*c10::TensorType::create(ptTensor));
+  return glow::Tensor(ptTensor.data_ptr(), &glowType);
 }
 
 } // namespace glow

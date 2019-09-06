@@ -91,14 +91,20 @@ public:
     return k->getKind() == Kinded::Kind::ConstantKind;
   }
 
-  /// \returns a mutable reference to the payload tensor. If the payload tensor
-  /// is unowned then it will be converted to an owned copy before returning.
-  Tensor &getPayloadMutable() {
-    // If payload is unowned, make an owned copy of the payload for
-    // modification.
+  /// If payload is unowned, make an owned copy of the payload for
+  /// modification.
+  void ensureIsOwned() {
     if (payload_.isUnowned()) {
       payload_ = payload_.clone();
     }
+  }
+
+  /// \returns a mutable reference to the payload tensor. If the payload tensor
+  /// is unowned then it will be converted to an owned copy before returning.
+  Tensor &getPayloadMutable() {
+    /// Make sure the payload is owned before handing out a mutable reference.
+    ensureIsOwned();
+
     assert(!payload_.isUnowned() &&
            "Can only modify Constants with owned payloads");
     return payload_;

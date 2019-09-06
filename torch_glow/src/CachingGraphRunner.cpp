@@ -104,9 +104,9 @@ llvm::Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
     for (auto size : ph->dims()) {
       sizes.push_back(static_cast<int64_t>(size));
     }
-    auto ptT = at::empty(
-        sizes, at::TensorOptions().dtype(
-                   PyTorchModelLoader::convertGlowType(ph->getType())));
+
+    auto ptT = glowTypeToEmptyPTTensor(*ph->getType());
+
     glow::Tensor t(ptT.data_ptr(), ph->getType());
 
     outputs.push_back(std::move(ptT));

@@ -4,7 +4,10 @@ import torch
 import torch_glow
 import os
 
+import pytest
 
+
+@pytest.mark.skip(reason="Need something like EraseNumberTypes to re-enable")
 def test_init():
     """Basic init for training."""
 

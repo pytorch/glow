@@ -17,6 +17,9 @@
 #ifndef GLOW_TORCH_GLOW_SRC_COMMON_H
 #define GLOW_TORCH_GLOW_SRC_COMMON_H
 
+#include "glow/Base/Tensor.h"
+#include "glow/Base/Type.h"
+
 #include <torch/csrc/jit/ir.h>
 
 namespace glow {
@@ -57,6 +60,17 @@ void registerGlowFusionPass();
 /// enableFusionPass can be used to enable the glow fusion pass once it's
 /// registered.
 void registerGlowFusionOpAndPass(bool enableFusionPass = false);
+
+/// Given a PyTorch TensorType \p ptType, \returns a matching Glow Type.
+glow::Type ptTypeToGlowType(const c10::TensorType &ptType);
+
+/// Given a PyTorch Tensor \p ptTensor, \returns an unowned Glow Tensor with a
+/// matching type backed by the same memory as ptTensor.
+glow::Tensor ptTensorToGlowTensor(const at::Tensor &ptTensor);
+
+/// Given a Glow Type \p glowType, \returns an empty PyTorch Tensor with a
+/// matching type.
+at::Tensor glowTypeToEmptyPTTensor(const glow::Type &glowType);
 
 } // namespace glow
 
