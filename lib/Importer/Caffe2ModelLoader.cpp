@@ -607,6 +607,22 @@ llvm::Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     return llvm::Error::success();
   }
 
+  if (typeName == "Int8Relu") {
+    RETURN_ERR_IF_NOT(op.input_size() == 1, "Only one input is supported.");
+    NodeValue in;
+    ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
+    auto outDims = in.getType()->dims();
+    float yScale;
+    ASSIGN_VALUE_OR_RETURN_ERR(yScale, loadFloat(dict["Y_scale"]));
+    int yZeroPoint;
+    ASSIGN_VALUE_OR_RETURN_ERR(yZeroPoint, loadInt(dict["Y_zero_point"]));
+    auto outTy = G_.getParent()->uniqueType(ElemKind::Int8QTy, outDims, yScale,
+                                            yZeroPoint - OFFSETSHIFT);
+    auto *relu = G_.createRELU(opName, in, outTy);
+    RETURN_IF_ERR(addNodeAsOutput(op, relu));
+    return llvm::Error::success();
+  }
+
   if (typeName == "Int8Quantize") {
     RETURN_ERR_IF_NOT(dict.count("Y_zero_point"),
                       "missing zero point for quantized output type");
