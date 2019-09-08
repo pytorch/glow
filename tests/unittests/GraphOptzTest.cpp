@@ -531,6 +531,7 @@ public:
           ->getResult();
     }
     }
+    LOG(DFATAL) << "Cannot reach here.";
   }
 };
 

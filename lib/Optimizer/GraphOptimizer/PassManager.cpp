@@ -179,6 +179,7 @@ FunctionPassManager::createFunctionPass(FunctionPassID passID) {
     return llvm::make_unique<PASS_NAME>();
 #include "glow/Optimizer/GraphOptimizer/FunctionPasses.def"
   }
+  LOG(DFATAL) << "Cannot reach here.";
 }
 
 bool FunctionPassManager::runPass(const FunctionPassConfig &passConfig,

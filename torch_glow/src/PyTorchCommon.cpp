@@ -69,6 +69,7 @@ c10::ScalarType elemKindToScalarType(glow::ElemKind ty) {
     LOG(DFATAL) << "Not supported yet.";
     return at::kLong;
   }
+  LOG(DFATAL) << "Cannot reach here.";
 }
 
 /// Given a PyTorch ScalarType \p ty, \returns a matching Glow ElemKind.

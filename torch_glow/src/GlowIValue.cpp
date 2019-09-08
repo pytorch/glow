@@ -47,6 +47,7 @@ const char *GlowIValue::tagToStr(GlowIValue::Tag tag) {
   case GlowIValue::Tag::Tuple:
     return "Tuple";
   }
+  LOG(DFATAL) << "Cannot reach here.";
 }
 
 void GlowIValue::reset() {
