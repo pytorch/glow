@@ -69,9 +69,6 @@ FunctionPassPipeline glow::createDefaultGraphOptimizationPassPipeline() {
       // Perform Common Subexpression Elimination.
       {FunctionPassID::CSE},
 
-      // Perform vertical split for FC's weights and bias.
-      {FunctionPassID::VerticalFCWeightsSplit},
-
       // Optimize Concat nodes.
       {FunctionPassID::OptimizeConcatNodes},
 

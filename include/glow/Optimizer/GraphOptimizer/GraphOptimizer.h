@@ -85,6 +85,18 @@ std::vector<Constant *> constantFold(Node *N);
 llvm::Error executeConstantFunction(Backend &backend, Function &F,
                                     PlaceholderBindings &bindings,
                                     CompilationContext &cctx);
+
+/// Perform vertical split of FC weights in a given function.
+/// Optimization could facilitate parallel execution of FCs on multiple device
+/// cores.
+/// \returns true in case split took place.
+/// \param[in,out] F           function to optimize.
+/// \param[in]     numOfChunks number of chunks to split weights and bias into.
+/// \param[in]     minKToSplit minimum size of the second dimension of weights
+///                            when the split is applied.
+bool executeVerticalFCWeightsSplit(Function *F, unsigned numOfChunks,
+                                   unsigned minKToSplit);
+
 } // namespace glow
 
 #endif // GLOW_OPTIMIZER_GRAPHOPTIMIZER_GRAPHOPTIMIZER_H

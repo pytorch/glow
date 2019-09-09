@@ -1586,78 +1586,6 @@ static NodeValue simplifyConcatNode(Function *F, ConcatNode *CN) {
   return NodeValue(nullptr);
 }
 
-/// Perform vertical split of weights.
-/// This could facilitate parallel execution of FCs on multiple device cores.
-bool VerticalFCWeightsSplit::run(Function *F, const CompilationContext &cctx) {
-  LOG_SCOPE(F->getLogContext(), getName());
-
-  // These parameters should be tuned for a particular architecture.
-  // Make constants for now, provide mechanism of setting those
-  // based on the target backend. For now, if it's desired backend
-  // can decline performing this optimization.
-  constexpr int numOfChunks = 12;
-  constexpr int minKToSplit = 800;
-
-  bool changed = false;
-  for (auto &node : F->getNodes()) {
-    auto *FC = dyn_cast<FullyConnectedNode>(&node);
-    if (!FC) {
-      continue;
-    }
-
-    int K = FC->getWeights().dims()[1];
-    if (K < minKToSplit) {
-      continue;
-    }
-
-    auto input = FC->getInput();
-    auto weights = FC->getWeights();
-    auto bias = FC->getBias();
-
-    size_t elemPerChunk = (bias.dims()[0] + numOfChunks - 1) / numOfChunks;
-    size_t sliceStart = 0;
-    llvm::SmallVector<NodeValue, numOfChunks> fcs;
-
-    // Split weights across second dimension into numOfChunks pieces.
-    // Input dimension is [M;K] and kept untouched.
-    // Bias dimension is [N], split into chunks.
-    // Weight dimension is [K;N], split into numOfChunks chunks,
-    // [K;N/numOfChunks] each.
-    // Last chunk might require special handling in case
-    // N is not divisible by numOfChunks.
-    auto *fcType = F->getParent()->uniqueTypeWithNewShape(
-        FC->getResult().getType(), {FC->getResult().dims()[0], elemPerChunk});
-
-    for (int i = 0; i < numOfChunks; ++i) {
-      // Last chunk might need special handling if bias dimension
-      // is not divisible by numOfChunks.
-      if (i == numOfChunks - 1 && bias.dims()[0] % numOfChunks != 0) {
-        elemPerChunk = bias.dims()[0] - (numOfChunks - 1) * elemPerChunk;
-        fcType = F->getParent()->uniqueTypeWithNewShape(
-            FC->getResult().getType(),
-            {FC->getResult().dims()[0], elemPerChunk});
-      }
-
-      auto *weightSlice = F->createSlice(
-          "weight_slice." + weights.getNode()->getName().str(), weights,
-          {0, sliceStart}, {weights.dims()[0], sliceStart + elemPerChunk});
-      auto *biasSlice =
-          F->createSlice("bias_slice." + bias.getNode()->getName().str(), bias,
-                         {sliceStart}, {sliceStart + elemPerChunk});
-      fcs.push_back(F->createFullyConnected("fc_slice." + FC->getName().str(),
-                                            input, weightSlice->getResult(),
-                                            biasSlice->getResult(), fcType));
-      sliceStart += elemPerChunk;
-    }
-
-    auto *concat = F->createConcat("concat." + FC->getName().str(), fcs, 1);
-    FC->getResult().replaceAllUsesOfWith(concat);
-    changed = true;
-  }
-
-  return changed;
-}
-
 /// Optimize Concat nodes.
 bool OptimizeConcatNodes::run(Function *F, const CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), getName());
@@ -3082,4 +3010,72 @@ llvm::Error glow::optimizeFunction(Function *F, const Backend &B,
   }
 
   return checkAllNodesSupported(*F, B);
+}
+
+bool glow::executeVerticalFCWeightsSplit(Function *F, unsigned numOfChunks,
+                                         unsigned minKToSplit) {
+  DCHECK(numOfChunks > 0) << "numOfChunks must be a positive number, given: "
+                          << numOfChunks;
+  DCHECK(minKToSplit > 0) << "minKToSplit must be a positive number, given: "
+                          << minKToSplit;
+
+  bool changed = false;
+  for (auto &node : F->getNodes()) {
+    auto *FC = dyn_cast<FullyConnectedNode>(&node);
+    if (!FC) {
+      continue;
+    }
+
+    int K = FC->getWeights().dims()[1];
+    if (K < minKToSplit) {
+      continue;
+    }
+
+    auto input = FC->getInput();
+    auto weights = FC->getWeights();
+    auto bias = FC->getBias();
+
+    size_t elemPerChunk = (bias.dims()[0] + numOfChunks - 1) / numOfChunks;
+    size_t sliceStart = 0;
+    std::vector<NodeValue> fcs(numOfChunks);
+
+    // Split weights across second dimension into numOfChunks pieces.
+    // Input dimension is [M;K] and kept untouched.
+    // Bias dimension is [N], split into chunks.
+    // Weight dimension is [K;N], split into numOfChunks chunks,
+    // [K;N/numOfChunks] each.
+    // Last chunk might require special handling in case
+    // N is not divisible by numOfChunks.
+    auto *fcType = F->getParent()->uniqueTypeWithNewShape(
+        FC->getResult().getType(), {FC->getResult().dims()[0], elemPerChunk});
+
+    for (int i = 0; i < numOfChunks; ++i) {
+      // Last chunk might need special handling if bias dimension
+      // is not divisible by numOfChunks.
+      if (i == numOfChunks - 1 && bias.dims()[0] % numOfChunks != 0) {
+        elemPerChunk = bias.dims()[0] - (numOfChunks - 1) * elemPerChunk;
+        fcType = F->getParent()->uniqueTypeWithNewShape(
+            FC->getResult().getType(),
+            {FC->getResult().dims()[0], elemPerChunk});
+      }
+
+      auto *weightSlice = F->createSlice(
+          "weight_slice." + weights.getNode()->getName().str(), weights,
+          {0, sliceStart}, {weights.dims()[0], sliceStart + elemPerChunk});
+      auto *biasSlice =
+          F->createSlice("bias_slice." + bias.getNode()->getName().str(), bias,
+                         {sliceStart}, {sliceStart + elemPerChunk});
+      fcs[i] = F->createFullyConnected("fc_slice." + FC->getName().str(), input,
+                                       weightSlice->getResult(),
+                                       biasSlice->getResult(), fcType);
+      sliceStart += elemPerChunk;
+    }
+
+    auto *concat =
+        F->createConcat("concat." + FC->getName().str(), fcs, /*dimension*/ 1);
+    FC->getResult().replaceAllUsesOfWith(concat);
+    changed = true;
+  }
+
+  return changed;
 }
