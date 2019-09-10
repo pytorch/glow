@@ -3020,13 +3020,14 @@ bool glow::executeVerticalFCWeightsSplit(Function *F, unsigned numOfChunks,
                           << minKToSplit;
 
   bool changed = false;
-  for (auto &node : F->getNodes()) {
-    auto *FC = dyn_cast<FullyConnectedNode>(&node);
+  for (auto it = F->getNodes().begin(), e = F->getNodes().end(); it != e;
+       ++it) {
+    auto *FC = dyn_cast<FullyConnectedNode>(it);
     if (!FC) {
       continue;
     }
 
-    int K = FC->getWeights().dims()[1];
+    size_t K = FC->getWeights().dims()[1];
     if (K < minKToSplit) {
       continue;
     }
@@ -3049,7 +3050,7 @@ bool glow::executeVerticalFCWeightsSplit(Function *F, unsigned numOfChunks,
     auto *fcType = F->getParent()->uniqueTypeWithNewShape(
         FC->getResult().getType(), {FC->getResult().dims()[0], elemPerChunk});
 
-    for (int i = 0; i < numOfChunks; ++i) {
+    for (unsigned i = 0; i < numOfChunks; ++i) {
       // Last chunk might need special handling if bias dimension
       // is not divisible by numOfChunks.
       if (i == numOfChunks - 1 && bias.dims()[0] % numOfChunks != 0) {
