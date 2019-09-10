@@ -4543,6 +4543,12 @@ TEST_P(OperatorTest, sliceVectors_Int8) {
   testSliceVectors<int8_t>(bindings_, mod_, F_, EE_, ElemKind::Int8QTy);
 }
 
+/// Test slicing with Int32QTy.
+TEST_P(OperatorTest, sliceVectors_Int32) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  testSliceVectors<int32_t>(bindings_, mod_, F_, EE_, ElemKind::Int32QTy);
+}
+
 /// Helper to test SliceConcatVectors using \p DTy.
 template <typename DataType>
 static void testSliceConcatVectors(glow::PlaceholderBindings &bindings,
@@ -7880,6 +7886,13 @@ TEST_P(OperatorTest, sliceReshape_Float16) {
 TEST_P(OperatorTest, sliceReshape_Int8) {
   ENABLED_BACKENDS(Interpreter);
   testSliceReshape<int8_t>(bindings_, mod_, F_, EE_, ElemKind::Int8QTy);
+}
+
+/// Stack many slices/reshapes together. Some of these may be turned into
+/// tensor views stacked onto each other. Test in Int32QTy.
+TEST_P(OperatorTest, sliceReshape_Int32) {
+  ENABLED_BACKENDS(Interpreter);
+  testSliceReshape<int32_t>(bindings_, mod_, F_, EE_, ElemKind::Int32QTy);
 }
 
 /// Helper to test Flatten using \p DTy.

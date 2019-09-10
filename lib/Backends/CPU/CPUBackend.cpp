@@ -88,10 +88,12 @@ bool CPUBackend::isOpSupported(const NodeInfo &NI) const {
     return NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Int8QTy, ElemKind::Int64ITy,
          ElemKind::BoolTy});
-
-  case Kinded::Kind::DivNodeKind:
   case Kinded::Kind::SliceNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind(
+        {ElemKind::FloatTy, ElemKind::Int8QTy, ElemKind::Int32QTy,
+         ElemKind::Int64ITy});
   case Kinded::Kind::SpaceToDepthNodeKind:
+  case Kinded::Kind::DivNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Int8QTy, ElemKind::Int64ITy});
 

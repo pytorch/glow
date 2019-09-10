@@ -3008,3 +3008,72 @@ llvm::Error glow::optimizeFunction(Function *F, const Backend &B,
   }
   return llvm::Error::success();
 }
+
+bool glow::executeVerticalFCWeightsSplit(Function *F, unsigned numOfChunks,
+                                         unsigned minKToSplit) {
+  DCHECK(numOfChunks > 0) << "numOfChunks must be a positive number, given: "
+                          << numOfChunks;
+  DCHECK(minKToSplit > 0) << "minKToSplit must be a positive number, given: "
+                          << minKToSplit;
+
+  bool changed = false;
+  for (auto it = F->getNodes().begin(), e = F->getNodes().end(); it != e;
+       ++it) {
+    auto *FC = dyn_cast<FullyConnectedNode>(it);
+    if (!FC) {
+      continue;
+    }
+
+    size_t K = FC->getWeights().dims()[1];
+    if (K < minKToSplit) {
+      continue;
+    }
+
+    auto input = FC->getInput();
+    auto weights = FC->getWeights();
+    auto bias = FC->getBias();
+
+    size_t elemPerChunk = (bias.dims()[0] + numOfChunks - 1) / numOfChunks;
+    size_t sliceStart = 0;
+    std::vector<NodeValue> fcs(numOfChunks);
+
+    // Split weights across second dimension into numOfChunks pieces.
+    // Input dimension is [M;K] and kept untouched.
+    // Bias dimension is [N], split into chunks.
+    // Weight dimension is [K;N], split into numOfChunks chunks,
+    // [K;N/numOfChunks] each.
+    // Last chunk might require special handling in case
+    // N is not divisible by numOfChunks.
+    auto *fcType = F->getParent()->uniqueTypeWithNewShape(
+        FC->getResult().getType(), {FC->getResult().dims()[0], elemPerChunk});
+
+    for (unsigned i = 0; i < numOfChunks; ++i) {
+      // Last chunk might need special handling if bias dimension
+      // is not divisible by numOfChunks.
+      if (i == numOfChunks - 1 && bias.dims()[0] % numOfChunks != 0) {
+        elemPerChunk = bias.dims()[0] - (numOfChunks - 1) * elemPerChunk;
+        fcType = F->getParent()->uniqueTypeWithNewShape(
+            FC->getResult().getType(),
+            {FC->getResult().dims()[0], elemPerChunk});
+      }
+
+      auto *weightSlice = F->createSlice(
+          "weight_slice." + weights.getNode()->getName().str(), weights,
+          {0, sliceStart}, {weights.dims()[0], sliceStart + elemPerChunk});
+      auto *biasSlice =
+          F->createSlice("bias_slice." + bias.getNode()->getName().str(), bias,
+                         {sliceStart}, {sliceStart + elemPerChunk});
+      fcs[i] = F->createFullyConnected("fc_slice." + FC->getName().str(), input,
+                                       weightSlice->getResult(),
+                                       biasSlice->getResult(), fcType);
+      sliceStart += elemPerChunk;
+    }
+
+    auto *concat =
+        F->createConcat("concat." + FC->getName().str(), fcs, /*dimension*/ 1);
+    FC->getResult().replaceAllUsesOfWith(concat);
+    changed = true;
+  }
+
+  return changed;
+}

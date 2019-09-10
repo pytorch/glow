@@ -2935,3 +2935,49 @@ TEST_F(GraphOptz, constantFoldWholeFunction) {
   EXPECT_EQ(CH.at({1, 0}), 76.0f);
   EXPECT_EQ(CH.at({1, 1}), 76.0f);
 }
+
+/// Test Splitting FC into multiple FCs.
+TEST_F(GraphOptz, SplitFCIntoMultipleOps) {
+  auto *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {2, 32}, "input", false);
+  auto *weights =
+      mod_.createPlaceholder(ElemKind::FloatTy, {32, 850}, "weights", false);
+  auto *bias = mod_.createPlaceholder(ElemKind::FloatTy, {850}, "bias", false);
+  auto *output =
+      mod_.createPlaceholder(ElemKind::FloatTy, {2, 850}, "output", false);
+
+  auto *fc = F_->createFullyConnected("fc", input, weights, bias);
+  auto *save = F_->createSave("save", fc, output);
+
+  EXPECT_TRUE(::glow::executeVerticalFCWeightsSplit(F_, /*numOfChunks*/ 12,
+                                                    /*minKToSplit*/ 800));
+
+  // 24 Slices: 12 from bias and 12 from weights.
+  EXPECT_EQ(24, countNodeKind(F_, Kinded::Kind::SliceNodeKind));
+
+  EXPECT_EQ(1, countNodeKind(F_, Kinded::Kind::ConcatNodeKind));
+
+  // 12 newly created FCs + original FC.
+  EXPECT_EQ(13, countNodeKind(F_, Kinded::Kind::FullyConnectedNodeKind));
+
+  auto *concatNode = llvm::dyn_cast<ConcatNode>(save->getInput());
+  ASSERT_TRUE(concatNode);
+  // 12 FCs are connected to the concat node.
+  EXPECT_EQ(12, concatNode->getInputs().size());
+
+  // Check all splitted FCs.
+  for (unsigned i = 0; i < 12; ++i) {
+    auto *fc = llvm::dyn_cast<FullyConnectedNode>(concatNode->getNthInput(i));
+    ASSERT_TRUE(fc);
+    // 2 * 71 for first 11 FCs and last 2 * 69
+    if (i == 11) {
+      EXPECT_TRUE(fc->getResult().dims().equals({2, 69}));
+      EXPECT_TRUE(fc->getBias().dims().equals({69}));
+      EXPECT_TRUE(fc->getWeights().dims().equals({32, 69}));
+    } else {
+      EXPECT_TRUE(fc->getResult().dims().equals({2, 71}));
+      EXPECT_TRUE(fc->getBias().dims().equals({71}));
+      EXPECT_TRUE(fc->getWeights().dims().equals({32, 71}));
+    }
+  }
+}
