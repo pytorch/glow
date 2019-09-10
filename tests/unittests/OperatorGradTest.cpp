@@ -80,10 +80,8 @@ protected:
   PlaceholderBindings bindings_;
 };
 
-INSTANTIATE_TEST_CASE_P_FOR_BACKEND_TEST(OperatorGradTest, OperatorGradTest);
-
 TEST_P(OperatorGradTest, concat) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
 
   size_t numOutputElem = 4;
 
@@ -107,7 +105,7 @@ TEST_P(OperatorGradTest, concat) {
 }
 
 TEST_P(OperatorGradTest, fc) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
 
   auto *x = mod_.createPlaceholder(ElemKind::FloatTy, {1, 2}, "x", false);
   bindings_.allocate(x)->getHandle() = {1, 2};
@@ -132,3 +130,5 @@ TEST_P(OperatorGradTest, fc) {
   EXPECT_TRUE(expected.isEqual(*getGradTensor(varGrads, W)));
   // TODO: Add checks for grads of x and b.
 }
+
+INSTANTIATE_BACKEND_TEST(OperatorGradTest);

@@ -120,6 +120,7 @@ public:
 };
 
 TEST_P(TraceEventsTest, manualEvents) {
+  CHECK_IF_ENABLED();
   ExecutionContext context;
   context.setTraceContext(
       llvm::make_unique<TraceContext>(TraceLevel::OPERATOR));
@@ -169,6 +170,7 @@ TEST_P(TraceEventsTest, manualEvents) {
 }
 
 TEST_P(TraceEventsTest, incompleteCoverage) {
+  CHECK_IF_ENABLED();
   ExecutionContext context;
   context.setTraceContext(
       llvm::make_unique<TraceContext>(TraceLevel::OPERATOR));
@@ -213,6 +215,7 @@ TEST_P(TraceEventsTest, incompleteCoverage) {
 }
 
 TEST_P(TraceEventsTest, internalGap) {
+  CHECK_IF_ENABLED();
   ExecutionContext context;
   context.setTraceContext(
       llvm::make_unique<TraceContext>(TraceLevel::OPERATOR));
@@ -257,6 +260,7 @@ TEST_P(TraceEventsTest, internalGap) {
 }
 
 TEST_P(TraceEventsTest, automaticInstrumentation) {
+  CHECK_IF_ENABLED();
   ExecutionContext context;
   context.setTraceContext(
       llvm::make_unique<TraceContext>(TraceLevel::OPERATOR));
@@ -283,6 +287,7 @@ TEST_P(TraceEventsTest, automaticInstrumentation) {
 }
 
 TEST_P(TraceEventsTest, manualAndAutomatic) {
+  CHECK_IF_ENABLED();
   ExecutionContext context;
   context.setTraceContext(
       llvm::make_unique<TraceContext>(TraceLevel::OPERATOR));
@@ -330,6 +335,7 @@ TEST_P(TraceEventsTest, manualAndAutomatic) {
 /// Compile the same function twice with auto instrumentation on - ensure that
 /// instrumentation doesn't break future compiles.
 TEST_P(TraceEventsTest, twoCompiles) {
+  CHECK_IF_ENABLED();
   ExecutionContext context;
   context.setTraceContext(
       llvm::make_unique<TraceContext>(TraceLevel::OPERATOR));
@@ -404,6 +410,7 @@ TEST_P(TraceEventsTest, twoCompiles) {
 }
 
 TEST_P(TraceEventsTest, onlyTraceEvents) {
+  CHECK_IF_ENABLED();
   ExecutionContext context;
   context.setTraceContext(
       llvm::make_unique<TraceContext>(TraceLevel::OPERATOR));
@@ -444,6 +451,7 @@ TEST_P(TraceEventsTest, onlyTraceEvents) {
 }
 
 TEST_P(TraceEventsTest, multipleBackingTensors) {
+  CHECK_IF_ENABLED();
   ExecutionContext context;
   context.setTraceContext(
       llvm::make_unique<TraceContext>(TraceLevel::OPERATOR));
@@ -503,6 +511,7 @@ TEST_P(TraceEventsTest, multipleBackingTensors) {
 }
 
 TEST_P(TraceEventsTest, multipleRunsAreDistinct) {
+  CHECK_IF_ENABLED();
   ExecutionContext context;
   context.setTraceContext(
       llvm::make_unique<TraceContext>(TraceLevel::OPERATOR));
@@ -554,6 +563,7 @@ TEST_P(TraceEventsTest, multipleRunsAreDistinct) {
 }
 
 TEST_P(TraceEventsTest, deviceManagerEvents) {
+  CHECK_IF_ENABLED();
   ExecutionContext context;
   context.setTraceContext(
       llvm::make_unique<TraceContext>(TraceLevel::STANDARD));
@@ -582,6 +592,7 @@ TEST_P(TraceEventsTest, deviceManagerEvents) {
 
 /// Test that ScopedTraceBlocks can be nested.
 TEST(TraceEventsTest, nestedScopedEvents) {
+  CHECK_IF_ENABLED();
   ExecutionContext context;
   context.setTraceContext(
       llvm::make_unique<TraceContext>(TraceLevel::STANDARD));
@@ -621,6 +632,7 @@ TEST(TraceEventsTest, nestedScopedEvents) {
 
 /// Test that nesting scoped events work with the macro versions.
 TEST(TraceEventsTest, nestedScopedEventsMacro) {
+  CHECK_IF_ENABLED();
   ExecutionContext context;
   context.setTraceContext(
       llvm::make_unique<TraceContext>(TraceLevel::STANDARD));
@@ -661,6 +673,7 @@ TEST(TraceEventsTest, nestedScopedEventsMacro) {
 /// Test that terminating a scoped event logs final timestamp at the end, not at
 /// scope exit.
 TEST(TraceEventsTest, nestedScopedEventsTerm) {
+  CHECK_IF_ENABLED();
   ExecutionContext context;
   context.setTraceContext(
       llvm::make_unique<TraceContext>(TraceLevel::STANDARD));
@@ -710,6 +723,7 @@ TEST(TraceEventsTest, nestedScopedEventsTerm) {
 }
 
 TEST(TraceEventsTest, TraceLevels) {
+  CHECK_IF_ENABLED();
   std::array<TraceLevel, 4> levels = {TraceLevel::NONE, TraceLevel::REQUEST,
                                       TraceLevel::RUNTIME,
                                       TraceLevel::OPERATOR};
@@ -734,13 +748,4 @@ TEST(TraceEventsTest, TraceLevels) {
   ASSERT_EQ(context.getTraceEvents().size(), 2);
 }
 
-INSTANTIATE_TEST_CASE_P(Interpreter, TraceEventsTest,
-                        ::testing::Values("Interpreter"));
-
-#ifdef GLOW_WITH_CPU
-INSTANTIATE_TEST_CASE_P(JIT, TraceEventsTest, ::testing::Values("CPU"));
-#endif // GLOW_WITH_CPU
-
-#ifdef GLOW_WITH_OPENCL
-INSTANTIATE_TEST_CASE_P(OpenCL, TraceEventsTest, ::testing::Values("OpenCL"));
-#endif // GLOW_WITH_OPENCL
+INSTANTIATE_BACKEND_TEST(TraceEventsTest);

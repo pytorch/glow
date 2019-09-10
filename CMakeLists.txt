@@ -53,6 +53,8 @@ include(GlowExternalBackends)
 include(SanitizerSupport)
 include(CoverageSupport)
 include(DoxygenSupport)
+include(FindBackends)
+
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/cmake/modules/CMakeGraphVizOptions.cmake
                ${CMAKE_CURRENT_BINARY_DIR}/CMakeGraphVizOptions.cmake COPYONLY)
 
