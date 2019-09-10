@@ -34,7 +34,7 @@ namespace {
 llvm::cl::OptionCategory recSysTestCat("RecSys Category");
 
 llvm::cl::opt<unsigned> miniBatchOpt("mini-batch", llvm::cl::desc("Minibatch."),
-                                     llvm::cl::Optional, llvm::cl::init(16),
+                                     llvm::cl::Optional, llvm::cl::init(8),
                                      llvm::cl::cat(recSysTestCat));
 
 llvm::cl::opt<unsigned> embeddingDimOpt("embedding-dim",
