@@ -20,8 +20,25 @@
 
 #include "glow/Backend/BackendUtils.h"
 #include "glow/Backend/CompiledFunction.h"
+#include "glow/ExecutionContext/ExecutionContext.h"
 
 namespace glow {
+
+/// CPUDeviceBindings inherits from DeviceBindings, it contains per run
+/// device specific information used to run a compiled function on a specific
+/// device.
+struct CPUDeviceBindings : DeviceBindings {
+  CPUDeviceBindings(uint8_t *activationsBuffer, uint8_t *weightsBuffer)
+      : DeviceBindings("CPU"), deviceActivationsBuffer{activationsBuffer},
+        deviceWeightsBuffer{weightsBuffer} {}
+
+  ~CPUDeviceBindings() {}
+
+  /// TODO: determine if these are owned pointers! ==> should be freed in DTOR
+  uint8_t *deviceActivationsBuffer;
+  uint8_t *deviceWeightsBuffer;
+};
+
 /// A Glow IR function compiled using LLVM.
 class LLVMCompiledFunction : public CompiledFunction {
 public:

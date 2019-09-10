@@ -24,6 +24,33 @@
 namespace glow {
 namespace runtime {
 
+/// A class that contains an openCL device buffer. It frees the buffer when it
+/// is destroyed.
+class CPUBuffer {
+  /// The OpenCL buffer being stored.
+  uint8_t* activationsBuffer_;
+  uint8_t* weightsBuffer_;
+  /// Size of the buffer in bytes.
+  const size_t activationsSize_{0};
+  const size_t weightsSize_{0};
+
+public:
+  ~CPUBuffer();
+
+  CPUBuffer(uint8_t *activationsBuffer, size_t activationsSize,
+            uint8_t *weightsBuffer, size_t weightsSize)
+      : activationsBuffer_(activationsBuffer), weightsBuffer_(weightsBuffer),
+        activationsSize_(activationsSize), weightsSize_(weightsSize) {}
+
+  /// Returns the stored buffer.
+  uint8_t *getActivationsBuffer() { return activationsBuffer_; }
+  uint8_t *getWeightsBuffer() { return weightsBuffer_; }
+
+  /// Get size of buffer in bytes.
+  size_t getActivationsSize() { return activationsSize_; }
+  size_t getWeightsSize() { return weightsSize_; }
+};
+
 /// A class controlling a single CPU thread of execution driving the JIT
 /// backend. Many CPUFunctions may be added, but only one inference is executed
 /// at a time.
@@ -34,6 +61,9 @@ class CPUDeviceManager : public QueueBackedDeviceManager {
   /// Static memory cost of the CPU Function.
   /// This is very arbitrary for the CPU backend.
   const uint64_t functionCost_{1};
+
+  /// A map from function name to its memory buffer
+  std::map<std::string, std::unique_ptr<CPUBuffer>> buffers_;
 
   /// String constant for logging number of in-use devices.
   static constexpr const char *kDevicesUsedCPU = "glow.devices_used.cpu";

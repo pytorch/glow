@@ -39,6 +39,11 @@ DeviceManager *createCPUDeviceManager(const DeviceConfig &config) {
   return new CPUDeviceManager(config);
 }
 
+CPUBuffer::~CPUBuffer() {
+  alignedFree(activationsBuffer_);
+  alignedFree(weightsBuffer_);
+}
+
 uint64_t CPUDeviceManager::getMaximumMemory() const { return maxMemoryBytes_; }
 
 uint64_t CPUDeviceManager::getAvailableMemory() const {
@@ -104,6 +109,21 @@ void CPUDeviceManager::addNetworkImpl(const Module *module,
     }
     functions_.emplace(func.first, func.second);
     usedMemoryBytes_ += functionCost_; // TODO:: static moduleSize
+
+    auto &bundle = func.second->getRuntimeBundle();
+    uint8_t *activationsBuffer =
+        (uint8_t *)alignedAlloc(bundle.getActivationsSize(), TensorAlignment);
+    uint8_t *weightsBuffer =
+        (uint8_t *)alignedAlloc(bundle.getMutableWeightSize(), TensorAlignment);
+    if (!activationsBuffer || !weightsBuffer) {
+      readyCB(module, MAKE_ERR(GlowErr::ErrorCode::RUNTIME_OUT_OF_DEVICE_MEMORY,
+                               "Failed to add network: not enough memory"));
+    }
+    std::unique_ptr<CPUBuffer> deviceBuffer = llvm::make_unique<CPUBuffer>(
+        activationsBuffer, bundle.getActivationsSize(), weightsBuffer,
+        bundle.getMutableWeightSize());
+    buffers_.emplace(func.first, std::move(deviceBuffer));
+    // TODO: check if usedMemoryBytes_ should be updated according to buffers_
   }
 
   assert(usedMemoryBytes_ <= maxMemoryBytes_);
@@ -121,6 +141,8 @@ void CPUDeviceManager::evictNetworkImpl(std::string functionName,
 
   if (functions_.erase(functionName)) {
     usedMemoryBytes_ -= functionCost_; // TODO: static moduleSize
+
+    buffers_.erase(functionName); // Destroying device buffer
   } else {
     evictCB(functionName,
             MAKE_ERR(GlowErr::ErrorCode::RUNTIME_NET_NOT_FOUND,
@@ -128,6 +150,7 @@ void CPUDeviceManager::evictNetworkImpl(std::string functionName,
                                functionName.c_str())));
     return;
   }
+
   // Export change in memory usage.
   exportMemoryCounters();
 
@@ -153,6 +176,12 @@ void CPUDeviceManager::runFunctionImpl(
   }
 
   CompiledFunction *func = funcIt->second;
+
+  auto cpuBindings = llvm::make_unique<CPUDeviceBindings>(
+      buffers_[function]->getActivationsBuffer(),
+      buffers_[function]->getWeightsBuffer());
+
+  context->setDeviceBindings(std::move(cpuBindings));
 
   // Run that function.
   auto executeErr = func->execute(context.get());

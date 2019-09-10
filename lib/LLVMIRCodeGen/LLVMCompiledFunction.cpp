@@ -67,6 +67,13 @@ void LLVMCompiledFunction::updatePlaceholders(
 }
 
 llvm::Error LLVMCompiledFunction::execute(ExecutionContext *context) {
+
+  auto cpuBindings =
+      static_cast<CPUDeviceBindings *>(context->getDeviceBindings());
+  uint8_t *deviceActivationsBufferBaseAddress =
+      cpuBindings->deviceActivationsBuffer;
+  uint8_t *deviceWeightsBufferBaseAddress = cpuBindings->deviceWeightsBuffer;
+
   uint8_t *baseActivationsAddress{nullptr};
 
   /// Base address for Mutable weights memory block, Inputs and Outputs.
@@ -75,13 +82,11 @@ llvm::Error LLVMCompiledFunction::execute(ExecutionContext *context) {
   {
     TRACE_EVENT_SCOPE(context, TraceLevel::RUNTIME, "allocBuffers");
     if (runtimeBundle_.getActivationsSize() != 0) {
-      baseActivationsAddress = (uint8_t *)alignedAlloc(
-          runtimeBundle_.getActivationsSize(), TensorAlignment);
+      baseActivationsAddress = deviceActivationsBufferBaseAddress;
     }
 
     if (runtimeBundle_.getMutableWeightSize() != 0) {
-      baseMutableWeightVarsAddress = (uint8_t *)alignedAlloc(
-          runtimeBundle_.getMutableWeightSize(), TensorAlignment);
+      baseMutableWeightVarsAddress = deviceWeightsBufferBaseAddress;
     }
   }
 
@@ -120,12 +125,6 @@ llvm::Error LLVMCompiledFunction::execute(ExecutionContext *context) {
     TRACE_EVENT_SCOPE(context, TraceLevel::RUNTIME, "updatePlaceholders");
     updatePlaceholders(context->getPlaceholderBindings(),
                        baseMutableWeightVarsAddress);
-  }
-
-  {
-    TRACE_EVENT_SCOPE(context, TraceLevel::RUNTIME, "freeBuffers");
-    alignedFree(baseMutableWeightVarsAddress);
-    alignedFree(baseActivationsAddress);
   }
 
   {
