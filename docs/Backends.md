@@ -214,6 +214,31 @@ The `tools/ClassGen/Backends/CPU/CPUSpecificNodes.h` and
 `tools/ClassGen/Backends/CPU/CPUSpecificInstrs.h` files are included in
 `tools/ClassGen/NodeGen.cpp` and `tools/ClassGen/InstrGen.cpp`, respectively.
 
+#### Backend Parameterized Tests
+
+Glow provides several test suites that are parameterized by backend.  An
+example of such a suite is `tests/unittests/OperatorTest.cpp`, which defines
+small tests of Glow operators.  These tests can be executed against any backend
+to check compliance.
+
+These tests will only be run for a backend if a corresponding
+`lib/Backends/$BACKEND/tests` directory is found and contains a corresponding
+`${BACKEND}${TEST}.cpp` file containing a blacklist definition, e.g.:
+```
+std::set<std::string> glow::backendTestBlacklist = {};
+```
+
+This blacklist can be used to exclude any unsupported tests while a backend is
+a work-in-progress.  See the Interpreter and CPU backends for examples of
+setting up and using these tests.  To bootstrap a blacklist, we recommend using
+a simple shell script to check which tests already work:
+```
+for test in $(tests/ExampleBackendOperatorTest --gtest_list_tests); do
+  if ! tests/ExampleBackendOperatorTest --gtest_filter="$test" >& /dev/null; then
+    echo $test
+  fi
+done
+```
 
 #### External backends
 

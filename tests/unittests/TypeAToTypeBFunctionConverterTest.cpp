@@ -13,9 +13,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#include "BackendTestUtils.h"
 
-#include "glow/Converter/TypeAToTypeBFunctionConverter.h"
 #include "glow/Converter/Float16Converter.h"
+#include "glow/Converter/TypeAToTypeBFunctionConverter.h"
 
 #include "glow/Backend/Backend.h"
 #include "glow/ExecutionEngine/ExecutionEngine.h"
@@ -1249,13 +1250,4 @@ TEST_P(AllBackends, convertOnlyUInt8FusedQTy) {
   EXPECT_TRUE(F->verify());
 }
 
-INSTANTIATE_TEST_CASE_P(Interpreter, AllBackends,
-                        ::testing::Values("Interpreter"));
-
-#ifdef GLOW_WITH_CPU
-INSTANTIATE_TEST_CASE_P(CPU, AllBackends, ::testing::Values("CPU"));
-#endif // GLOW_WITH_CPU
-
-#ifdef GLOW_WITH_OPENCL
-INSTANTIATE_TEST_CASE_P(OpenCL, AllBackends, ::testing::Values("OpenCL"));
-#endif // GLOW_WITH_OPENCL
+INSTANTIATE_BACKEND_TEST(AllBackends);

@@ -13,6 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#include "BackendTestUtils.h"
 
 #include "glow/Backends/DeviceManager.h"
 #include "glow/Backends/DummyDeviceManager.h"
@@ -734,17 +735,4 @@ TEST(DeviceManagerTest, DummyDeviceManager) {
 
 #endif // GLOW_WITH_CPU
 
-INSTANTIATE_TEST_CASE_P(Interpreter, DeviceManagerTest,
-                        ::testing::Values("Interpreter"));
-
-#ifdef GLOW_WITH_CPU
-INSTANTIATE_TEST_CASE_P(CPU, DeviceManagerTest, ::testing::Values("CPU"));
-#endif // GLOW_WITH_CPU
-
-#ifdef GLOW_WITH_OPENCL
-INSTANTIATE_TEST_CASE_P(OpenCL, DeviceManagerTest, ::testing::Values("OpenCL"));
-#endif // GLOW_WITH_OPENCL
-
-#ifdef GLOW_WITH_HABANA
-INSTANTIATE_TEST_CASE_P(Habana, DeviceManagerTest, ::testing::Values("Habana"));
-#endif // GLOW_WITH_HABANA
+INSTANTIATE_BACKEND_TEST(DeviceManagerTest);

@@ -903,8 +903,6 @@ protected:
   }
 };
 
-INSTANTIATE_TEST_CASE_P_FOR_BACKEND_TEST(RecSys, RecommendationSystemTest);
-
 /// Standard Tests
 /// These tests have three options:
 ///   * quantizeSLWSData enables Int8 Fused Rowwise Quantization for the Sparse
@@ -924,7 +922,7 @@ INSTANTIATE_TEST_CASE_P_FOR_BACKEND_TEST(RecSys, RecommendationSystemTest);
 
 /// Everything in FP32.
 TEST_P(RecommendationSystemTest, RecSys_FP32) {
-  ENABLED_BACKENDS(CPU, Habana);
+  CHECK_IF_ENABLED();
 
   quantizeSLWSData = false;
   useFP16SLWS = false;
@@ -937,7 +935,7 @@ TEST_P(RecommendationSystemTest, RecSys_FP32) {
 
 /// Rowwise quantize the SLWS and FC; everything else in FP32.
 TEST_P(RecommendationSystemTest, RecSys_RWQuantized_SLWS_FC) {
-  ENABLED_BACKENDS(CPU);
+  CHECK_IF_ENABLED();
 
   quantizeSLWSData = true;
   useFP16SLWS = false;
@@ -950,7 +948,7 @@ TEST_P(RecommendationSystemTest, RecSys_RWQuantized_SLWS_FC) {
 
 /// Rowwise quantize the SLWS; everything else in FP32.
 TEST_P(RecommendationSystemTest, RecSys_RWQuantized_SLWS) {
-  ENABLED_BACKENDS(CPU, Habana);
+  CHECK_IF_ENABLED();
 
   quantizeSLWSData = true;
   useFP16SLWS = false;
@@ -963,7 +961,7 @@ TEST_P(RecommendationSystemTest, RecSys_RWQuantized_SLWS) {
 
 /// Rowwise quantize the SLWS and FC; everything else in FP16.
 TEST_P(RecommendationSystemTest, RecSys_RWQuantized_SLWS_FC_FP16) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
 
   quantizeSLWSData = true;
   useFP16SLWS = false;
@@ -976,7 +974,7 @@ TEST_P(RecommendationSystemTest, RecSys_RWQuantized_SLWS_FC_FP16) {
 
 /// Rowwise quantize the SLWS; everything else in FP16.
 TEST_P(RecommendationSystemTest, RecSys_RWQuantized_SLWS_FP16) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
 
   quantizeSLWSData = true;
   useFP16SLWS = false;
@@ -990,7 +988,7 @@ TEST_P(RecommendationSystemTest, RecSys_RWQuantized_SLWS_FP16) {
 /// Rowwise quantize the SLWS, with FP16 for scales/bias, and other
 /// inputs/outputs in FP16. Everything else in FP32.
 TEST_P(RecommendationSystemTest, RecSys_RWQuantizedFP16_SLWS) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
 
   quantizeSLWSData = true;
   useFP16SLWS = true;
@@ -1004,7 +1002,7 @@ TEST_P(RecommendationSystemTest, RecSys_RWQuantizedFP16_SLWS) {
 /// Rowwise quantize the SLWS, with FP16 for scales/bias, and other
 /// inputs/outputs in FP16, and use FP16 accumulation. Everything else in FP32.
 TEST_P(RecommendationSystemTest, RecSys_RWQuantizedFP16AccumFP16_SLWS) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
 
   quantizeSLWSData = true;
   useFP16SLWS = true;
@@ -1018,7 +1016,7 @@ TEST_P(RecommendationSystemTest, RecSys_RWQuantizedFP16AccumFP16_SLWS) {
 /// Rowwise quantize the SLWS, with FP16 for scales/bias, and other
 /// inputs/outputs in FP16. Everything else in FP16.
 TEST_P(RecommendationSystemTest, RecSys_RWQuantizedFP16_SLWS_FP16) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
 
   quantizeSLWSData = true;
   useFP16SLWS = true;
@@ -1032,7 +1030,7 @@ TEST_P(RecommendationSystemTest, RecSys_RWQuantizedFP16_SLWS_FP16) {
 /// Rowwise quantize the SLWS, with FP16 for scales/bias, and other
 /// inputs/outputs in FP16, and use FP16 accumulation. Everything else in FP16.
 TEST_P(RecommendationSystemTest, RecSys_RWQuantizedFP16AccumFP16_SLWS_FP16) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
 
   quantizeSLWSData = true;
   useFP16SLWS = true;
@@ -1049,7 +1047,7 @@ TEST_P(RecommendationSystemTest, RecSys_RWQuantizedFP16AccumFP16_SLWS_FP16) {
 /// for the partitioned and unpartitioned runs.
 
 TEST_P(RecommendationSystemTest, RecSys_FP32_Partitioned) {
-  ENABLED_BACKENDS(CPU, Habana);
+  CHECK_IF_ENABLED();
 
   quantizeSLWSData = false;
   useFP16SLWS = false;
@@ -1069,7 +1067,7 @@ TEST_P(RecommendationSystemTest, RecSys_FP32_Partitioned) {
 }
 
 TEST_P(RecommendationSystemTest, RecSys_Partitioned_RWQuantized_SLWS) {
-  ENABLED_BACKENDS(CPU, Habana);
+  CHECK_IF_ENABLED();
 
   quantizeSLWSData = true;
   useFP16SLWS = false;
@@ -1089,7 +1087,7 @@ TEST_P(RecommendationSystemTest, RecSys_Partitioned_RWQuantized_SLWS) {
 }
 
 TEST_P(RecommendationSystemTest, RecSys_Partitioned_RWQuantized_SLWS_FC) {
-  ENABLED_BACKENDS(CPU);
+  CHECK_IF_ENABLED();
 
   quantizeSLWSData = true;
   useFP16SLWS = false;
@@ -1103,7 +1101,7 @@ TEST_P(RecommendationSystemTest, RecSys_Partitioned_RWQuantized_SLWS_FC) {
 }
 
 TEST_P(RecommendationSystemTest, RecSys_Partitioned_RWQuantized_SLWS_FP16) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
 
   quantizeSLWSData = true;
   useFP16SLWS = false;
@@ -1117,7 +1115,7 @@ TEST_P(RecommendationSystemTest, RecSys_Partitioned_RWQuantized_SLWS_FP16) {
 }
 
 TEST_P(RecommendationSystemTest, RecSys_Partitioned_RWQuantized_SLWS_FC_FP16) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
 
   quantizeSLWSData = true;
   useFP16SLWS = false;
@@ -1134,7 +1132,7 @@ TEST_P(RecommendationSystemTest, RecSys_Partitioned_RWQuantized_SLWS_FC_FP16) {
 /// inputs/outputs in FP16. Everything else in FP32. Also run partitioned and
 /// compare results.
 TEST_P(RecommendationSystemTest, RecSys_Partitioned_RWQuantizedFP16_SLWS) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
 
   quantizeSLWSData = true;
   useFP16SLWS = true;
@@ -1158,7 +1156,7 @@ TEST_P(RecommendationSystemTest, RecSys_Partitioned_RWQuantizedFP16_SLWS) {
 /// Also run partitioned and compare results.
 TEST_P(RecommendationSystemTest,
        RecSys_Partitioned_RWQuantizedFP16AccumFP16_SLWS) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
 
   quantizeSLWSData = true;
   useFP16SLWS = true;
@@ -1175,7 +1173,7 @@ TEST_P(RecommendationSystemTest,
 /// inputs/outputs in FP16. Everything else in FP16. Also run partitioned and
 /// compare results.
 TEST_P(RecommendationSystemTest, RecSys_Partitioned_RWQuantizedFP16_SLWS_FP16) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
 
   quantizeSLWSData = true;
   useFP16SLWS = true;
@@ -1193,7 +1191,7 @@ TEST_P(RecommendationSystemTest, RecSys_Partitioned_RWQuantizedFP16_SLWS_FP16) {
 /// Also run partitioned and compare results.
 TEST_P(RecommendationSystemTest,
        RecSys_Partitioned_RWQuantizedFP16AccumFP16_SLWS_FP16) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
 
   quantizeSLWSData = true;
   useFP16SLWS = true;
@@ -1208,7 +1206,7 @@ TEST_P(RecommendationSystemTest,
 
 /// Test SLS independently, with no other layers being run.
 TEST_P(RecommendationSystemTest, RecSys_SLS_Only) {
-  ENABLED_BACKENDS(CPU, Habana);
+  CHECK_IF_ENABLED();
 
   quantizeSLWSData = true;
 
@@ -1220,7 +1218,7 @@ TEST_P(RecommendationSystemTest, RecSys_SLS_Only) {
 
 /// Test gathering weights for SLWS.
 TEST_P(RecommendationSystemTest, RecSys_FP32_Gather_Weights) {
-  ENABLED_BACKENDS(CPU);
+  CHECK_IF_ENABLED();
 
   quantizeSLWSData = false;
   useFP16SLWS = false;
@@ -1232,3 +1230,5 @@ TEST_P(RecommendationSystemTest, RecSys_FP32_Gather_Weights) {
 
   testRecSys();
 }
+
+INSTANTIATE_BACKEND_TEST(RecommendationSystemTest);
