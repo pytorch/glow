@@ -149,13 +149,13 @@ TEST_F(HabanaBackendTest, FuseConvRelu) {
   //   Placeholder ------
   //       |            |
   //       v            v
-  //     Conv         Conv
+  //   HabanaConv       Conv
   //       |            |
   //       v            v
   //     Save         Relu
 
   // Check that HabanaConv feeds into the Save.
-  auto *HCA = llvm::dyn_cast<ConvolutionNode>(SN->getInput());
+  auto *HCA = llvm::dyn_cast<HabanaConvolutionNode>(SN->getInput());
   ASSERT_TRUE(HCA);
 
   // Check that the inputs to the HabanaConvAdd are the same as the Conv
@@ -167,8 +167,8 @@ TEST_F(HabanaBackendTest, FuseConvRelu) {
   EXPECT_EQ(HCA->getPads(), CVN->getPads());
   EXPECT_EQ(HCA->getGroup(), CVN->getGroup());
 
-  // Check that the Relu is fused into the Conv.
-  EXPECT_EQ(HCA->getFusedActivation(), FusedActivation::RELU);
+  // Check that the doRelu parameter of the HabanaConvAdd is true.
+  EXPECT_TRUE(HCA->getDoRelu());
 
   // Dead code elimination.
   ::glow::optimize(F_, CompilationMode::Infer);
@@ -177,7 +177,7 @@ TEST_F(HabanaBackendTest, FuseConvRelu) {
   //   Placeholder
   //       |
   //       v
-  //     Conv
+  //   HabanaConv
   //       |
   //       v
   //     Save
@@ -401,6 +401,21 @@ TEST_F(HabanaBackendTest, ConvertFC) {
   backend.transformPostLowering(F_, cctx);
   ASSERT_TRUE(save);
   ASSERT_TRUE(llvm::isa<HabanaFullyConnectedNode>(save->getInput()));
+}
+
+TEST_F(HabanaBackendTest, ConvertConv) {
+  HabanaBackend backend;
+
+  Placeholder *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 10, 20, 3}, "input", false);
+  ConvolutionNode *conv = F_->createConv(ctx_, "conv", input, 3, 5, 1, 2, 1);
+  SaveNode *save = F_->createSave("save", conv);
+
+  CompilationContext cctx;
+  bool changed = backend.transformPostLowering(F_, cctx);
+  EXPECT_TRUE(changed);
+  ASSERT_TRUE(save);
+  ASSERT_TRUE(llvm::isa<HabanaConvolutionNode>(save->getInput()));
 }
 
 template <ElemKind kind, typename ElemTy>
