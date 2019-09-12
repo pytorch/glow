@@ -76,6 +76,11 @@ static bool verifyConvolution(NodeValue src, NodeValue dest, NodeValue filter,
 
 bool HabanaFullyConnectedNode::verify() const { return true; }
 
+bool HabanaConvolutionNode::verify() const {
+  return verifyConvolution(getInput(), getResult(), getFilter(), getBias(),
+                           Kernels_, Strides_, Pads_, Group_);
+}
+
 bool HabanaConvolutionAddNode::verify() const {
   bool isValid =
       verifyConvolution(getInput(), getResult(), getFilter(), getBias(),
