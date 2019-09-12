@@ -2566,3 +2566,44 @@ TEST(caffe2, importNames) {
                              {"sigmoid_test_input"}, {&input.getType()}, *F);
   EXPECT_TRUE(F->getNodeByName("sigmoid_test_output"));
 }
+
+TEST(caffe2, importSqr) {
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string NetDescFilename(
+      GLOW_DATA_PATH "tests/models/caffe2Models/sqr_predict_net.pbtxt");
+  std::string NetWeightFilename(
+      GLOW_DATA_PATH "tests/models/caffe2Models/empty_init_net.pbtxt");
+
+  Placeholder *output;
+  PlaceholderBindings bindings;
+
+  // Destroy the loader after the graph is loaded since the following execution
+  // will not depend on anything from the loader.
+  {
+    Tensor data(ElemKind::FloatTy, {4, 2});
+    Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"input"},
+                               {&data.getType()}, *F);
+    output = EXIT_ON_ERR(caffe2LD.getSingleOutput());
+
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod, {"input"}, {&data});
+  }
+
+  // High level check on the content of the graph. We should have
+  // save(pow(input, splat(2)))
+  EXPECT_EQ(F->getNodes().size(), 3);
+  auto *save = getSaveNodeFromDest(output);
+  ASSERT_TRUE(save);
+  auto *pow = llvm::dyn_cast<PowNode>(save->getInput().getNode());
+  ASSERT_TRUE(pow);
+  auto *input = llvm::dyn_cast<Placeholder>(pow->getLHS().getNode());
+  ASSERT_TRUE(input);
+  auto *splat = llvm::dyn_cast<SplatNode>(pow->getRHS().getNode());
+  ASSERT_TRUE(splat);
+  EXPECT_EQ(splat->getValue(), 2);
+
+  EE.compile(CompilationMode::Infer);
+}
