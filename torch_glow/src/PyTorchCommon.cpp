@@ -138,18 +138,18 @@ void registerGlowOp() {
       options)});
 }
 
-void registerGlowFusionPass() {
-  torch::jit::RegisterPass pass([](std::shared_ptr<torch::jit::Graph> &g) {
-    if (getPyTorchLoaderSettings().fusionPassEnabled) {
+void registerGlowFusionPass(std::function<bool()> enablePassFn) {
+  torch::jit::RegisterPass pass([enablePassFn = std::move(enablePassFn)](
+                                    std::shared_ptr<torch::jit::Graph> &g) {
+    if (enablePassFn()) {
       glow::glowCustomFuse(g, getGlowSymbol());
     }
   });
 }
 
-void registerGlowFusionOpAndPass(bool enableFusionPass) {
+void registerGlowFusionOpAndPass(std::function<bool()> enablePassFn) {
   registerGlowOp();
-  registerGlowFusionPass();
-  getPyTorchLoaderSettings().fusionPassEnabled = enableFusionPass;
+  registerGlowFusionPass(std::move(enablePassFn));
 }
 
 glow::Type ptTypeToGlowType(const c10::TensorType &ptType) {

@@ -32,7 +32,10 @@ using namespace glow;
 
 /// The torch_glow pybind11 module.
 PYBIND11_MODULE(_torch_glow, m) {
-  registerGlowFusionOpAndPass();
+  /// Register Glow op and FusionPass, enable the fusion pass if
+  /// fusionPassEnabled is set in PyTorchLoaderSettings.
+  registerGlowFusionOpAndPass(
+      []() { return getPyTorchLoaderSettings().fusionPassEnabled; });
 
   /// Enable compiling PyTorch subgraphs to Glow Functions.
   m.def("enableFusionPass",

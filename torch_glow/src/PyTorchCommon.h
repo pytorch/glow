@@ -53,13 +53,15 @@ void glowCustomFuse(std::shared_ptr<torch::jit::Graph> &graph,
 /// Register the glow::FusionGroup operator.
 void registerGlowOp();
 
-/// Register the pass that fuses parts of the graph into a glow::FusionGroup.
-void registerGlowFusionPass();
+/// Register the pass that fuses parts of the graph into a glow::FusionGroup. \p
+/// enablePassFn is used to enable/disable the glow fusion pass once it's
+/// registered.
+void registerGlowFusionPass(std::function<bool()> enablePassFn);
 
 /// Convenience method to register the glow fusion op and pass. \p
-/// enableFusionPass can be used to enable the glow fusion pass once it's
+/// enablePassFn is used to enable/disable the glow fusion pass once it's
 /// registered.
-void registerGlowFusionOpAndPass(bool enableFusionPass = false);
+void registerGlowFusionOpAndPass(std::function<bool()> enablePassFn);
 
 /// Given a PyTorch TensorType \p ptType, \returns a matching Glow Type.
 glow::Type ptTypeToGlowType(const c10::TensorType &ptType);
