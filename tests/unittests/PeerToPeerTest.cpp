@@ -25,15 +25,24 @@
 using namespace glow;
 using namespace glow::runtime;
 
-class PeerToPeerTest : public ::testing::TestWithParam<llvm::StringRef> {
+class PeerToPeerTestInterpreterOnly
+    : public ::testing::TestWithParam<llvm::StringRef> {
 public:
   void SetUp() override { backendName = GetParam(); }
 
   std::string backendName;
 };
 
-INSTANTIATE_TEST_CASE_P(Interpreter, PeerToPeerTest,
+class PeerToPeerTestCPUOnly : public ::testing::TestWithParam<llvm::StringRef> {
+public:
+  void SetUp() override { backendName = GetParam(); }
+
+  std::string backendName;
+};
+
+INSTANTIATE_TEST_CASE_P(Interpreter, PeerToPeerTestInterpreterOnly,
                         ::testing::Values("Interpreter"));
+INSTANTIATE_TEST_CASE_P(CPU, PeerToPeerTestCPUOnly, ::testing::Values("CPU"));
 
 std::unique_ptr<Module> createSenderModule(int64_t channel_id) {
   std::unique_ptr<Module> mod = llvm::make_unique<Module>();
@@ -59,6 +68,31 @@ std::unique_ptr<Module> createReceiverModule(int64_t channel_id) {
   auto *F1 = mod->createFunction("recv_func");
   auto *R = F1->createRecv("recv", RR, channel_id, inputType);
   F1->createSave("recv_save", R);
+  return mod;
+}
+
+std::unique_ptr<Module> createSenderModule2(int64_t channel_id) {
+  std::unique_ptr<Module> mod = llvm::make_unique<Module>();
+  auto *F = mod->createFunction("send_func");
+  auto *inputPH =
+      mod->createPlaceholder(ElemKind::FloatTy, {1}, "send_input", false);
+  auto *P = F->createPow("pow", inputPH, 2);
+  TypeRef inputType = mod->uniqueType(ElemKind::FloatTy, {1});
+  auto *remoteAddress =
+      mod->createPlaceholder(ElemKind::Int64ITy, {1}, "remoteAddress", false);
+  auto *Send = F->createSend("send", P, remoteAddress, channel_id, inputType);
+  F->createSave("send_save", Send);
+  return mod;
+}
+
+std::unique_ptr<Module> createReceiverModule2(int64_t channel_id) {
+  std::unique_ptr<Module> mod = llvm::make_unique<Module>();
+  auto *F = mod->createFunction("recv_func");
+  auto *inputPH =
+      mod->createPlaceholder(ElemKind::FloatTy, {1}, "recv_input", false);
+  inputPH->setIoPolicy(1);
+  auto *P = F->createPow("pow", inputPH, 2);
+  F->createSave("recv_save", P);
   return mod;
 }
 
@@ -94,7 +128,128 @@ void callbackHelper(std::promise<ResultType> &promise, ResultType res,
   promise.set_value(!errToBool(std::move(err)) ? std::move(res) : ResultType());
 }
 
-TEST_P(PeerToPeerTest, SendRecvSimple) {
+TEST_P(PeerToPeerTestCPUOnly, SendRecvSimple) {
+  auto sender = std::unique_ptr<DeviceManager>(
+      DeviceManager::createDeviceManager(DeviceConfig(backendName)));
+  auto receiver = std::unique_ptr<DeviceManager>(
+      DeviceManager::createDeviceManager(DeviceConfig(backendName)));
+  ASSERT_FALSE(errToBool(sender->init()));
+  ASSERT_FALSE(errToBool(receiver->init()));
+
+  int64_t channelId = 8;
+  auto sender_mod = createSenderModule2(channelId);
+  auto receiver_mod = createReceiverModule2(channelId);
+
+  // compile functions
+  std::vector<std::unique_ptr<CompiledFunction>> receiverBacking;
+  FunctionMapTy receiverFunctions =
+      compileFunctions(backendName, receiver_mod.get(), receiverBacking);
+  EXPECT_EQ(receiverBacking.size(), 1);
+
+  std::vector<std::unique_ptr<CompiledFunction>> senderBacking;
+  FunctionMapTy senderFunctions =
+      compileFunctions(backendName, sender_mod.get(), senderBacking);
+  EXPECT_EQ(senderBacking.size(), 1);
+
+  // add networks
+  std::promise<const Module *> recv_promise;
+  std::future<const Module *> recv_future;
+  std::tie(recv_promise, recv_future) = getFutureHelper<const Module *>();
+
+  receiver->addNetwork(receiver_mod.get(), std::move(receiverFunctions),
+                       [&recv_promise](const Module *module, llvm::Error err) {
+                         callbackHelper(recv_promise, module, std::move(err));
+                       });
+
+  recv_future.wait_for(std::chrono::seconds(2));
+  EXPECT_EQ(recv_future.get(), receiver_mod.get());
+
+  std::unique_ptr<ExecutionContext> recvContext =
+      llvm::make_unique<ExecutionContext>();
+  recvContext->getPlaceholderBindings()->allocate(
+      receiver_mod->getPlaceholders());
+
+  std::promise<const Module *> send_promise;
+  std::future<const Module *> send_future;
+  std::tie(send_promise, send_future) = getFutureHelper<const Module *>();
+
+  sender->addNetwork(sender_mod.get(), std::move(senderFunctions),
+                     [&send_promise](const Module *module, llvm::Error err) {
+                       callbackHelper(send_promise, module, std::move(err));
+                     });
+
+  send_future.wait_for(std::chrono::seconds(2));
+  EXPECT_EQ(send_future.get(), sender_mod.get());
+
+  std::unique_ptr<ExecutionContext> sendContext =
+      llvm::make_unique<ExecutionContext>();
+  sendContext->getPlaceholderBindings()->allocate(
+      sender_mod->getPlaceholders());
+
+  Tensor send_input(ElemKind::FloatTy, {1});
+  send_input.getHandle().clear(2.0f);
+
+  updateInputPlaceholders(*sendContext->getPlaceholderBindings(),
+                          {sender_mod->getPlaceholderByName("send_input")},
+                          {&send_input});
+
+  llvm::Expected<int64_t> remoteAddressVal =
+      receiver->getRemotePeerToPeerAddress(
+          channelId, recvContext->getPlaceholderBindings());
+  if (!remoteAddressVal) {
+    llvm::outs() << "null address";
+  }
+
+  Tensor remoteAddressT(ElemKind::Int64ITy, {1});
+  remoteAddressT.getHandle<uintptr_t>().clear(remoteAddressVal.get());
+  updateInputPlaceholders(*sendContext->getPlaceholderBindings(),
+                          {sender_mod->getPlaceholderByName("remoteAddress")},
+                          {&remoteAddressT});
+
+  // Run Send func
+  std::promise<std::unique_ptr<ExecutionContext>> runPromise1;
+  std::future<std::unique_ptr<ExecutionContext>> runFuture1;
+
+  std::tie(runPromise1, runFuture1) =
+      getFutureHelper<std::unique_ptr<ExecutionContext>>();
+  sender->runFunction(
+      "send_func", std::move(sendContext),
+      [&runPromise1](RunIdentifierTy, llvm::Error err,
+                     std::unique_ptr<ExecutionContext> context) {
+        callbackHelper(runPromise1, std::move(context), std::move(err));
+      });
+
+  runFuture1.wait_for(std::chrono::seconds(2));
+  sendContext = runFuture1.get();
+  ASSERT_TRUE(sendContext);
+
+  // Run Recv func
+  std::promise<std::unique_ptr<ExecutionContext>> runPromise2;
+  std::future<std::unique_ptr<ExecutionContext>> runFuture2;
+
+  std::tie(runPromise2, runFuture2) =
+      getFutureHelper<std::unique_ptr<ExecutionContext>>();
+  receiver->runFunction(
+      "recv_func", std::move(recvContext),
+      [&runPromise2](RunIdentifierTy, llvm::Error err,
+                     std::unique_ptr<ExecutionContext> context) {
+        callbackHelper(runPromise2, std::move(context), std::move(err));
+      });
+
+  runFuture2.wait_for(std::chrono::seconds(2));
+  recvContext = runFuture2.get();
+  ASSERT_TRUE(recvContext);
+
+  Tensor *result = recvContext->getPlaceholderBindings()->get(
+      receiver_mod->getPlaceholderByName("recv_save"));
+  ASSERT_TRUE(result);
+
+  Tensor output_ref(ElemKind::FloatTy, {1});
+  output_ref.getHandle().clear(4.0f * 4.0f);
+  EXPECT_TRUE(result->isEqual(output_ref));
+}
+
+TEST_P(PeerToPeerTestInterpreterOnly, SendRecvSimple) {
   auto sender = std::unique_ptr<DeviceManager>(
       DeviceManager::createDeviceManager(DeviceConfig(backendName)));
   auto receiver = std::unique_ptr<DeviceManager>(

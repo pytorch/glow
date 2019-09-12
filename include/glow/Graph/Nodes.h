@@ -134,6 +134,15 @@ class Placeholder : public Storage {
   /// Specifies if associated Tensors should be zeroed when allocated.
   bool allocZero_{false};
 
+  // Specifies the policy about loading the associated Tensor to the device,
+  // and reading it from the device:
+  // 0 - Input - always load, read on demand (i.e. for debug)
+  // 1 - Intermediate - do not load, read on demand
+  // 2 - IntermediateWithInit - load at init only, read on demand
+  // 3 - Output - do not load, always read
+  // 4 - InOut - always load, always read
+  int ioPolicy_{0};
+
 public:
   /// Create a new placeholder.
   Placeholder(llvm::StringRef name, TypeRef Ty, bool isTrainable)
@@ -148,6 +157,9 @@ public:
 
   /// \returns True if associated Tensors should be zeroed when allocated.
   bool allocZero() const { return allocZero_; }
+
+  int getIoPolicy() { return ioPolicy_; }
+  void setIoPolicy(int p) { ioPolicy_ = p; }
 
   /// Sets whether or not associated Tensors should be zeroed.
   void setAllocZero(bool on = true) { allocZero_ = on; }

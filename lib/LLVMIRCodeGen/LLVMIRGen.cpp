@@ -358,6 +358,9 @@ llvm::Value *LLVMIRGen::emitValueAddress(llvm::IRBuilder<> &builder,
   case ElemKind::BoolTy:
     T = llvm::Type::getInt8PtrTy(ctx_);
     break;
+  case ElemKind::UIntPtrTy:
+    T = llvm::Type::getInt64PtrTy(ctx_);
+    break;
   default:
     LOG(FATAL) << "Unsupported element type: "
                << Type::getElementName(val->getElementType()).str();
@@ -2554,6 +2557,19 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *dataPtr = emitValueAddress(builder, data);
     auto *F = getFunction("write_timestamp");
     createCall(builder, F, {dataPtr, offset});
+    break;
+  }
+
+  case Kinded::Kind::SendInstKind: {
+    auto *SI = llvm::cast<SendInst>(I);
+    auto *input = SI->getInput();
+    auto *numBytes =
+        emitConstSizeT(builder, input->getType()->getSizeInBytes());
+    auto *srcPtr = emitValueAddress(builder, input);
+    auto *remoteAddress = SI->getRemoteAddress();
+    auto *destPtr = emitValueAddress(builder, remoteAddress);
+    auto *F = getFunction("send");
+    createCall(builder, F, {destPtr, srcPtr, numBytes});
     break;
   }
 

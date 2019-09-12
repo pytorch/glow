@@ -164,8 +164,8 @@ public:
                     "Backend does not support peer-to-peer communication.");
   }
 
-  virtual llvm::Error getRemotePeerToPeerAddress(int64_t channelId,
-                                                 Placeholder *remoteAddress) {
+  virtual llvm::Expected<int64_t>
+  getRemotePeerToPeerAddress(int64_t channelId, PlaceholderBindings *bindings) {
     return MAKE_ERR(GlowErr::ErrorCode::RUNTIME_ERROR,
                     "Backend does not support peer-to-peer communication.");
   }

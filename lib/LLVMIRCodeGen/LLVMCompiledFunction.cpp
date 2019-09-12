@@ -44,7 +44,10 @@ void LLVMCompiledFunction::loadPlaceholders(
     auto addr = symbolInfo.offset;
     auto numBytes = PH.second->getUnpaddedSizeInBytes();
     // copy PH to allocated memory.
-    memcpy(baseMutableWeightVarsAddress + addr, payload, numBytes);
+    if (PH.first->getIoPolicy() == 0 || PH.first->getIoPolicy() == 2 ||
+        PH.first->getIoPolicy() == 4) {
+      memcpy(baseMutableWeightVarsAddress + addr, payload, numBytes);
+    }
   }
 }
 

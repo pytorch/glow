@@ -1969,6 +1969,11 @@ void libjit_write_timestamp(uint64_t *tensor, size_t offset) {
   memcpy(tensor + offset, &ts, sizeof(uint64_t));
 }
 
+void libjit_send(int64_t *dest, int64_t *src, size_t numBytes) {
+  uint8_t* destAddress = reinterpret_cast<uint8_t*>(*dest);
+  memcpy(destAddress, src, numBytes);
+}
+
 /// Update min/max values \p compInfo and histogram \p existingHistogram with
 /// data collected from tensor \p inputTensor.
 /// Note: code ported from Profile.cpp: generateTensorHistogram

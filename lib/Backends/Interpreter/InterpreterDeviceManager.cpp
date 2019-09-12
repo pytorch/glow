@@ -171,10 +171,6 @@ InterpreterDeviceManager::setupRemotePeerToPeer(int64_t channelId,
   return llvm::Error::success();
 }
 
-llvm::Error InterpreterDeviceManager::getRemotePeerToPeerAddress(
-    int64_t channelId, Placeholder *remoteAddress) {
-  return llvm::Error::success();
-}
 
 } // namespace runtime
 } // namespace glow

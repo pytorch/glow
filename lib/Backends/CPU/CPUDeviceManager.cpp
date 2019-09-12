@@ -192,5 +192,31 @@ void CPUDeviceManager::runFunctionImpl(
   // Fire the resultCB.
   resultCB(id, std::move(executeErr), std::move(context));
 }
+
+bool CPUDeviceManager::isPeerToPeerSupported() { return true; }
+
+llvm::Expected<int64_t>
+CPUDeviceManager::getRemotePeerToPeerAddress(int64_t channelId,
+                                             PlaceholderBindings *bindings) {
+  std::string function = "recv_func";
+  auto funcIt = functions_.find(function);
+  if (funcIt != functions_.end()) {
+    auto *baseAddress = buffers_[function]->getWeightsBuffer();
+    auto &bundle = funcIt->second->getRuntimeBundle();
+    auto &symbolTable = bundle.getSymbolTable();
+    auto *PH = bindings->getPlaceholderByName("recv_input");
+    auto it = symbolTable.find(PH->getName());
+    if (it == symbolTable.end()) {
+      llvm::outs() << "Did not find symbol\n";
+    }
+    auto symbolInfo = it->second;
+    auto addr = symbolInfo.offset;
+    int64_t res = reinterpret_cast<int64_t>(baseAddress + addr);
+    return res;
+  }
+  return MAKE_ERR(GlowErr::ErrorCode::RUNTIME_ERROR,
+                  "Failed to find remote address.");
+}
+
 } // namespace runtime
 } // namespace glow

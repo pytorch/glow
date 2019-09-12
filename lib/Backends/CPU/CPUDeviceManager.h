@@ -42,6 +42,8 @@ public:
       : activationsBuffer_(activationsBuffer), weightsBuffer_(weightsBuffer),
         activationsSize_(activationsSize), weightsSize_(weightsSize) {}
 
+  CPUBuffer* getBuffer() { return this; }
+
   /// Returns the stored buffer.
   uint8_t *getActivationsBuffer() { return activationsBuffer_; }
   uint8_t *getWeightsBuffer() { return weightsBuffer_; }
@@ -95,6 +97,11 @@ public:
   /// Returns the DeviceInfo for this device containing peak limits for
   /// compute and bandwidths (used in partitioning).
   DeviceInfo getDeviceInfo() const override;
+
+  bool isPeerToPeerSupported() override;
+  llvm::Expected<int64_t>
+  getRemotePeerToPeerAddress(int64_t channelId,
+                             PlaceholderBindings *bindings) override;
 
 protected:
   void addNetworkImpl(const Module *module, FunctionMapTy functions,

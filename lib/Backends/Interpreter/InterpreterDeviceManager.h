@@ -87,8 +87,6 @@ protected:
   bool isPeerToPeerSupported() override;
   llvm::Error setupRemotePeerToPeer(int64_t channelId,
                                     DeviceManager *remote) override;
-  llvm::Error getRemotePeerToPeerAddress(int64_t channelId,
-                                         Placeholder *remoteAddress) override;
 };
 
 DeviceManager *createInterpreterDeviceManager(const DeviceConfig &config);
