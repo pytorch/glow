@@ -1132,6 +1132,7 @@ void insertCompiledFunction(llvm::StringRef name, CompiledFunction *func,
   std::promise<void> addPromise;
   auto fut = addPromise.get_future();
   llvm::Error addErr = llvm::Error::success();
+  MARK_ERR_CHECKED(addErr);
   device->addNetwork(mod, std::move(functionMap),
                      [&addPromise, &addErr](const Module *, llvm::Error err) {
                        addErr = std::move(err);
@@ -1147,6 +1148,7 @@ void runOnDevice(ExecutionContext &context, llvm::StringRef name,
   std::promise<void> runPromise;
   auto fut = runPromise.get_future();
   llvm::Error runErr = llvm::Error::success();
+  MARK_ERR_CHECKED(runErr);
   device->runFunction(
       name, std::move(contextPtr),
       [&runPromise, &runErr](runtime::RunIdentifierTy, llvm::Error err,
