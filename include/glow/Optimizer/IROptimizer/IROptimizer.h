@@ -25,7 +25,8 @@ class Function;
 class Backend;
 
 /// Perform optimizations on the IR representation.
-void optimize(IRFunction &M, bool shouldShareBuffers);
+void optimize(IRFunction &M, bool shouldShareBuffers,
+              bool instrumentDebug = true);
 
 /// Helper to generate and optimize IR from given Function \p F. \p
 /// shouldShareBuffers signifies whether to use the share buffers optimization.

@@ -1663,7 +1663,8 @@ glow::generateAndOptimizeIR(Function *F, const Backend &B,
 }
 
 /// Perform optimizations on the IR representation.
-void glow::optimize(IRFunction &M, bool shouldShareBuffers) {
+void glow::optimize(IRFunction &M, bool shouldShareBuffers,
+                    bool instrumentDebug) {
   M.verify();
   if (!optimizeIR) {
     return;
@@ -1697,7 +1698,9 @@ void glow::optimize(IRFunction &M, bool shouldShareBuffers) {
   makeWeightsConst(M);
 
   // Perform a debug instrumentation if required.
-  performDebugInstrumentation(M);
+  // Check parameter to avoid instrumenting multiple times.
+  if (instrumentDebug)
+    performDebugInstrumentation(M);
 
   M.verify();
 
