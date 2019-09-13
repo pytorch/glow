@@ -59,6 +59,11 @@ public:
   /// \returns the backend name used to compile this function.
   virtual std::string getCompileBackendName() const = 0;
 
+  /// Once the compiledFunction is done being added to devices calling this
+  /// method will free any resources needed to load the network on the device
+  /// but not needed for running on the device.
+  virtual void freeCompilationResources(){};
+
 protected:
   /// Contains symbol offsets and allocation sizes.
   runtime::RuntimeBundle runtimeBundle_;
