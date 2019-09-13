@@ -40,6 +40,18 @@ DeviceManager *createCPUDeviceManager(const DeviceConfig &config) {
   return new CPUDeviceManager(config);
 }
 
+CPUBuffer::CPUBuffer(size_t activationsSize, size_t activations_alignment,
+                     size_t weightsSize, size_t weights_alignment) {
+  activationsBuffer_ =
+      (uint8_t *)alignedAlloc(activationsSize, activations_alignment);
+  weightsBuffer_ = (uint8_t *)alignedAlloc(weightsSize, weights_alignment);
+}
+
+CPUBuffer::~CPUBuffer() {
+  alignedFree(activationsBuffer_);
+  alignedFree(weightsBuffer_);
+}
+
 uint64_t CPUDeviceManager::getMaximumMemory() const { return maxMemoryBytes_; }
 
 uint64_t CPUDeviceManager::getAvailableMemory() const {
@@ -110,6 +122,12 @@ void CPUDeviceManager::addNetworkImpl(const Module *module,
       func.second->getRuntimeBundle().collectConstants(module);
     }
     functions_.emplace(func.first, func.second);
+
+    auto &bundle = func.second->getRuntimeBundle();
+    std::unique_ptr<CPUBuffer> deviceBuffer = llvm::make_unique<CPUBuffer>(
+        bundle.getActivationsSize(), TensorAlignment,
+        bundle.getMutableWeightSize(), TensorAlignment);
+    buffers_.emplace(func.first, std::move(deviceBuffer));
   }
 
   usedMemoryBytes_ += allFunctionsMemoryBytes;
@@ -130,6 +148,7 @@ void CPUDeviceManager::evictNetworkImpl(std::string functionName,
   if (it != functions_.end()) {
     usedMemoryBytes_ -= it->second->getRuntimeBundle().getConstantWeightSize();
     functions_.erase(it);
+    buffers_.erase(functionName);
   } else {
     evictCB(functionName,
             MAKE_ERR(ErrorValue::ErrorCode::RUNTIME_NET_NOT_FOUND,
@@ -162,6 +181,12 @@ void CPUDeviceManager::runFunctionImpl(
   }
 
   CompiledFunction *func = funcIt->second;
+
+  auto cpuBindings = llvm::make_unique<CPUDeviceBindings>(
+      buffers_[function]->getActivationsBuffer(),
+      buffers_[function]->getWeightsBuffer());
+
+  context->setDeviceBindings(std::move(cpuBindings));
 
   // Run that function.
   auto executeErr = func->execute(context.get());

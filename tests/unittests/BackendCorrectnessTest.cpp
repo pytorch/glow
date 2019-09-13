@@ -22,6 +22,7 @@
 #include "glow/IR/IR.h"
 #include "glow/IR/IRBuilder.h"
 #include "glow/IR/Instrs.h"
+#include "glow/LLVMIRCodeGen/LLVMCompiledFunction.h"
 #include "glow/Support/Random.h"
 
 #include "gtest/gtest.h"
@@ -258,7 +259,20 @@ TEST_P(BackendCorrectnessTest, dataParallelStackingTest) {
 
   MockCPUBackend backend;
   auto function = backend.compileIR(std::move(M));
+
+  auto &bundle = function->getRuntimeBundle();
+  uint8_t *activationsBuffer =
+      (uint8_t *)alignedAlloc(bundle.getActivationsSize(), TensorAlignment);
+  uint8_t *weightsBuffer =
+      (uint8_t *)alignedAlloc(bundle.getMutableWeightSize(), TensorAlignment);
+  auto cpuBindings =
+      llvm::make_unique<CPUDeviceBindings>(activationsBuffer, weightsBuffer);
+  ctx->setDeviceBindings(std::move(cpuBindings));
+
   ASSERT_FALSE(ERR_TO_BOOL(function->execute(ctx.get())));
+  alignedFree(activationsBuffer);
+  alignedFree(weightsBuffer);
+
   auto H = outputTensor->getHandle();
   EXPECT_EQ(H.at(0), 3);
   EXPECT_EQ(H.at(1), 4);
