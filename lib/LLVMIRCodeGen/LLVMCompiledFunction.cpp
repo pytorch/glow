@@ -100,8 +100,10 @@ llvm::Error LLVMCompiledFunction::execute(ExecutionContext *context) {
     auto sym = JIT_->findSymbol("jitmain");
 
     DCHECK(sym) << "Unable to JIT the code!";
-
-    address = sym.getAddress();
+    // We know address is success since we just made it. Mark it as checked.
+    if (address) {
+      address = sym.getAddress();
+    }
   }
   using JitFuncType =
       void (*)(uint8_t * constantWeightVars, uint8_t * mutableWeightVars,
