@@ -69,6 +69,8 @@ public:
     MODEL_LOADER_UNSUPPORTED_ONNX_VERSION,
     // Model loader encountered an invalid protobuf.
     MODEL_LOADER_INVALID_PROTOBUF,
+    // Partitioner error.
+    PARTITIONER_ERROR,
     // Runtime error, out of device memory.
     RUNTIME_ERROR,
     // Runtime error, out of device memory.
@@ -148,6 +150,8 @@ private:
       return "MODEL_LOADER_UNSUPPORTED_ONNX_VERSION";
     case ErrorCode::MODEL_LOADER_INVALID_PROTOBUF:
       return "MODEL_LOADER_INVALID_PROTOBUF";
+    case ErrorCode::PARTITIONER_ERROR:
+      return "PARTITIONER_ERROR";
     case ErrorCode::RUNTIME_ERROR:
       return "RUNTIME_ERROR";
     case ErrorCode::RUNTIME_OUT_OF_DEVICE_MEMORY:

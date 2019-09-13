@@ -250,6 +250,7 @@ TEST_F(PartitionerTest, Basic2) {
   Partitioner myPartitioner(&EEP.getModule(), devices, /* saturateHost */ true);
   CompilationContext cctx;
   auto dagList = myPartitioner.partition(cctx);
+  EXPECT_TRUE((bool)dagList);
   EXPECT_EQ(EEP.getModule().getFunctions().size(), 2);
   EXPECT_EQ(dagList->size(), 1);
   ASSERT_TRUE(checkSaveNode(EEP.getModule()));
@@ -343,7 +344,7 @@ TEST_F(PartitionerTest, Error1) {
   Partitioner myPartitioner(&EEP.getModule(), devices);
   CompilationContext cctx;
   auto dagList = myPartitioner.partition(cctx);
-  EXPECT_FALSE((bool)dagList);
+  EXPECT_TRUE(glow::errToBool(dagList.takeError()));
 }
 
 /// This one tests the roofline computed with compute, memory and
@@ -890,7 +891,7 @@ TEST_F(PartitionerTest, memoryUsageValidation1) {
   Partitioner myPartitioner(&mod_, devices);
   CompilationContext cctx;
   auto dagList = myPartitioner.partition(cctx);
-  EXPECT_FALSE((bool)dagList);
+  EXPECT_TRUE(glow::errToBool(dagList.takeError()));
 }
 
 /// This one test dagValidation in partitioner : p1->p2, p2->p1.
@@ -919,7 +920,7 @@ TEST_F(PartitionerTest, dagValidation1) {
   auto partitioner = Partitioner(&mod_, devices, false, false, partitionConfig);
   CompilationContext cctx;
   auto dagList = partitioner.partition(cctx);
-  EXPECT_FALSE((bool)dagList);
+  EXPECT_TRUE(glow::errToBool(dagList.takeError()));
 }
 
 /// This one test dagValidation in partitioner: p0->p1, p1->p2, p2->p1.
@@ -951,7 +952,7 @@ TEST_F(PartitionerTest, dagValidation2) {
   auto partitioner = Partitioner(&mod_, devices, false, false, partitionConfig);
   CompilationContext cctx;
   auto dagList = partitioner.partition(cctx);
-  EXPECT_FALSE((bool)dagList);
+  EXPECT_TRUE(glow::errToBool(dagList.takeError()));
 }
 
 /// This one tests partition from a user-defined config.
