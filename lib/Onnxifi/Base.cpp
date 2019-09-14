@@ -158,13 +158,13 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
 
     if (inOnnxTensorSize > inPhPtr->getType()->size()) {
       std::stringstream ss;
-      for (const auto i : inOnnxTensorDims) {
-        ss << i << ", ";
+      for (const auto j : inOnnxTensorDims) {
+        ss << j << ", ";
       }
       ss << " vs ";
       auto sizes = inPhPtr->getType()->dims();
-      for (const auto i : sizes) {
-        ss << i << ", ";
+      for (const auto j : sizes) {
+        ss << j << ", ";
       }
       LOG(ERROR) << "Input tensor is too large: " << inOnnxTensorSize << " vs "
                  << inPhPtr->getType()->size() << ": " << inOnnxTensor.name
