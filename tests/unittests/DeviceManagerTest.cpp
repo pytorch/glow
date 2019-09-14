@@ -292,6 +292,8 @@ TEST_P(DeviceManagerTest, MultiRun) {
 }
 
 TEST_P(DeviceManagerTest, MultiFunction) {
+  CHECK_IF_ENABLED();
+
   auto module = makeBasicModule("func1");
 
   std::unique_ptr<ExecutionContext> context1 =
