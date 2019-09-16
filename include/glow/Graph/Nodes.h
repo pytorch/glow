@@ -130,6 +130,21 @@ public:
   bool verify() const;
 };
 
+/// An enum representing the IO policy of the tensor associated with the
+/// placeholder.
+enum class IoPolicy : unsigned char {
+  // Always load, always read
+  InOut,
+  // Always load, read on demand (i.e. for debug)
+  Input,
+  // Do not load, read on demand
+  Intermediate,
+  // Load at init only, read on demand
+  IntermediateWithInit,
+  // Do not load, always read
+  Output,
+};
+
 /// Placeholder nodes are unbound-storage. The content tensors are attached to
 /// this node at runtime. Placeholders are used as inputs and output nodes to
 /// the network.
@@ -139,6 +154,10 @@ class Placeholder : public Storage {
 
   /// Specifies if associated Tensors should be zeroed when allocated.
   bool allocZero_{false};
+
+  // Specifies the policy about loading the associated Tensor to the device,
+  // and reading it from the device.
+  IoPolicy ioPolicy_{IoPolicy::InOut};
 
 public:
   /// Create a new placeholder.
@@ -154,6 +173,11 @@ public:
 
   /// \returns True if associated Tensors should be zeroed when allocated.
   bool allocZero() const { return allocZero_; }
+
+  /// gets ioPolicy
+  IoPolicy getIoPolicy() { return ioPolicy_; }
+  /// sets ioPolicy
+  void setIoPolicy(IoPolicy p) { ioPolicy_ = p; }
 
   /// Sets whether or not associated Tensors should be zeroed.
   void setAllocZero(bool on = true) { allocZero_ = on; }
