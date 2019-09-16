@@ -2210,6 +2210,57 @@ TEST_F(GraphOptz, mergeBANodes) {
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::BatchedAddNodeKind), 1);
 }
 
+// Check that we are able to replace
+// Add(I, tile(B)) with -> BatchedAdd(I, B).
+TEST_F(GraphOptz, FoldTileAddIntoBatchedAdd) {
+  auto *batch =
+      mod_.createPlaceholder(ElemKind::FloatTy, {3, 1, 2}, "batch", false);
+  auto *added = mod_.createConstant(ElemKind::FloatTy, {1, 1, 2}, "added");
+  auto *addedTiled = F_->createTile("addedTiled", added, 3, 0);
+  auto *add = F_->createAdd("add", batch, addedTiled);
+  auto *save = F_->createSave("save", add);
+  auto *output = save->getPlaceholder();
+
+  bindings_.allocate(batch)->getHandle() = {2, 2, 3, 3, 4, 4};
+  added->getPayloadMutable().getHandle() = {1, 1};
+  bindings_.allocate(output);
+
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::TileNodeKind), 1);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::AddNodeKind), 1);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::BatchedAddNodeKind), 0);
+
+  ASSERT_TRUE(F_->verify());
+  ::glow::optimize(F_, CompilationMode::Infer);
+  ASSERT_TRUE(F_->verify());
+
+  // Check that the Tile node and the Add node is replaced by
+  // a BatchedAdd node.
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::TileNodeKind), 0);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::AddNodeKind), 0);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::BatchedAddNodeKind), 1);
+
+  // Verify the correctness of the input to BatchedAdd operator.
+  // The correctness of BatchedAdd operator itself is verified
+  // by operator's unit tests.
+  Tensor expectedBatch(ElemKind::FloatTy, {3, 1, 2});
+  expectedBatch.getHandle() = {2, 2, 3, 3, 4, 4};
+  Tensor expectedSlice(ElemKind::FloatTy, {1, 2});
+  expectedSlice.getHandle() = {1, 1};
+  for (auto &node : F_->getNodes()) {
+    auto *recvdBANode = llvm::dyn_cast<BatchedAddNode>(&node);
+    if (!recvdBANode) {
+      continue;
+    }
+    auto *recvdBatch = llvm::dyn_cast<Placeholder>(recvdBANode->getBatch());
+    auto *recvdSlice = llvm::dyn_cast<Constant>(recvdBANode->getSlice());
+    EXPECT_TRUE(recvdBatch->dims().equals({3, 1, 2}));
+    EXPECT_TRUE(recvdSlice->dims().equals({1, 2}));
+    EXPECT_TRUE(bindings_.get(recvdBatch)->isEqual(expectedBatch));
+    EXPECT_TRUE(recvdSlice->getPayload().isEqual(expectedSlice));
+    break;
+  }
+}
+
 // Check that we are able to eliminate concat nodes.
 TEST_F(GraphOptz, concatElim) {
   Node *input =
