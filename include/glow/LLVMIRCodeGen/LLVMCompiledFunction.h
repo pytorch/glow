@@ -24,16 +24,21 @@
 
 namespace glow {
 
-/// CPUDeviceBindings inherits from DeviceBindings, it contains per run
+/// LLVMDeviceBindings inherits from DeviceBindings, it contains per run
 /// device specific information used to run a compiled function on a specific
 /// device.
-struct CPUDeviceBindings : DeviceBindings {
-  CPUDeviceBindings(uint8_t *activationsBuffer, uint8_t *weightsBuffer)
-      : DeviceBindings("CPU"), deviceActivationsBuffer{activationsBuffer},
+class LLVMDeviceBindings : public DeviceBindings {
+public:
+  LLVMDeviceBindings(std::string backend, uint8_t *activationsBuffer,
+                     uint8_t *weightsBuffer)
+      : DeviceBindings(backend), deviceActivationsBuffer{activationsBuffer},
         deviceWeightsBuffer{weightsBuffer} {}
 
-  ~CPUDeviceBindings() {}
+  ~LLVMDeviceBindings() {}
 
+  friend class LLVMCompiledFunction;
+
+protected:
   /// Non-owning pointers. Memory is owned by the device manager.
   uint8_t *deviceActivationsBuffer;
   uint8_t *deviceWeightsBuffer;

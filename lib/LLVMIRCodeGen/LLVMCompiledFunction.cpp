@@ -67,11 +67,11 @@ void LLVMCompiledFunction::updatePlaceholders(
 }
 
 Error LLVMCompiledFunction::execute(ExecutionContext *context) {
-  auto cpuBindings =
-      static_cast<CPUDeviceBindings *>(context->getDeviceBindings());
+  auto deviceBindings =
+      static_cast<LLVMDeviceBindings *>(context->getDeviceBindings());
   uint8_t *deviceActivationsBufferBaseAddress =
-      cpuBindings->deviceActivationsBuffer;
-  uint8_t *deviceWeightsBufferBaseAddress = cpuBindings->deviceWeightsBuffer;
+      deviceBindings->deviceActivationsBuffer;
+  uint8_t *deviceWeightsBufferBaseAddress = deviceBindings->deviceWeightsBuffer;
 
   uint8_t *baseActivationsAddress{nullptr};
 

@@ -24,6 +24,14 @@
 #include "glow/Backend/CompiledFunction.h"
 
 namespace glow {
+
+class CPUDeviceBindings final : public LLVMDeviceBindings {
+public:
+  CPUDeviceBindings(uint8_t *activationsBuffer, uint8_t *weightsBuffer);
+
+  ~CPUDeviceBindings();
+};
+
 /// A Glow IR function compiled for the CPU using LLVM.
 class CPUFunction final : public LLVMCompiledFunction {
 public:

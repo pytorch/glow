@@ -27,7 +27,7 @@ namespace runtime {
 /// A class that contains a CPU device buffer. It frees the buffer when it
 /// is destroyed.
 class CPUBuffer {
-  /// The OpenCL buffer being stored.
+  /// The buffers being stored.
   uint8_t *activationsBuffer_;
   uint8_t *weightsBuffer_;
   /// Size of the buffer in bytes.

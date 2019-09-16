@@ -42,9 +42,10 @@ DeviceManager *createCPUDeviceManager(const DeviceConfig &config) {
 
 CPUBuffer::CPUBuffer(size_t activationsSize, size_t activations_alignment,
                      size_t weightsSize, size_t weights_alignment) {
-  activationsBuffer_ =
-      (uint8_t *)alignedAlloc(activationsSize, activations_alignment);
-  weightsBuffer_ = (uint8_t *)alignedAlloc(weightsSize, weights_alignment);
+  activationsBuffer_ = static_cast<uint8_t *>(
+      alignedAlloc(activationsSize, activations_alignment));
+  weightsBuffer_ =
+      static_cast<uint8_t *>(alignedAlloc(weightsSize, weights_alignment));
 }
 
 CPUBuffer::~CPUBuffer() {
@@ -182,11 +183,11 @@ void CPUDeviceManager::runFunctionImpl(
 
   CompiledFunction *func = funcIt->second;
 
-  auto cpuBindings = llvm::make_unique<CPUDeviceBindings>(
+  auto deviceBindings = llvm::make_unique<CPUDeviceBindings>(
       buffers_[function]->getActivationsBuffer(),
       buffers_[function]->getWeightsBuffer());
 
-  context->setDeviceBindings(std::move(cpuBindings));
+  context->setDeviceBindings(std::move(deviceBindings));
 
   // Run that function.
   auto executeErr = func->execute(context.get());

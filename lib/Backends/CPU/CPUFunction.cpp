@@ -21,6 +21,12 @@
 
 using namespace glow;
 
+CPUDeviceBindings::CPUDeviceBindings(uint8_t *activationsBuffer,
+                                     uint8_t *weightsBuffer)
+    : LLVMDeviceBindings("CPU", activationsBuffer, weightsBuffer) {}
+
+CPUDeviceBindings::~CPUDeviceBindings() {}
+
 CPUFunction::CPUFunction(std::unique_ptr<llvm::orc::GlowJIT> JIT,
                          runtime::RuntimeBundle &&runtimeBundle)
     : LLVMCompiledFunction(std::move(JIT), std::move(runtimeBundle)) {}

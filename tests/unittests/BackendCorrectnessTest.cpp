@@ -197,6 +197,14 @@ public:
   }
 };
 
+class MockCPUDeviceBindings final : public LLVMDeviceBindings {
+public:
+  MockCPUDeviceBindings(uint8_t *activationsBuffer, uint8_t *weightsBuffer)
+      : LLVMDeviceBindings("CPU", activationsBuffer, weightsBuffer) {}
+
+  ~MockCPUDeviceBindings() {}
+};
+
 TEST_P(BackendCorrectnessTest, dataParallelStackingTest) {
   CHECK_IF_ENABLED();
   // Create an activation of size 3 and create two overlapping tensorviews of
@@ -265,9 +273,9 @@ TEST_P(BackendCorrectnessTest, dataParallelStackingTest) {
       (uint8_t *)alignedAlloc(bundle.getActivationsSize(), TensorAlignment);
   uint8_t *weightsBuffer =
       (uint8_t *)alignedAlloc(bundle.getMutableWeightSize(), TensorAlignment);
-  auto cpuBindings =
-      llvm::make_unique<CPUDeviceBindings>(activationsBuffer, weightsBuffer);
-  ctx->setDeviceBindings(std::move(cpuBindings));
+  auto deviceBindings = llvm::make_unique<MockCPUDeviceBindings>(
+      activationsBuffer, weightsBuffer);
+  ctx->setDeviceBindings(std::move(deviceBindings));
 
   ASSERT_FALSE(ERR_TO_BOOL(function->execute(ctx.get())));
   alignedFree(activationsBuffer);
