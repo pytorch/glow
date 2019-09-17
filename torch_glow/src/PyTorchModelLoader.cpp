@@ -25,6 +25,15 @@
 namespace glow {
 
 namespace {
+/// For the quantized PyTorch ops, the activations are quantized to uint_8.
+/// In Glow, the activations are quantized to int_8. Therefore, for the offset
+/// read from quantized pytorch model, we need to subtract 128(i.e. INT8_MIN) to
+/// make the activations becomes int8_t.
+/// For Glow: -128 <= orig_fp32/scale_1 + offset_1 <= 127
+/// For PyTorch: 0 <= orig_fp32/scale_2 + offset_2 <= 255
+/// Therefore, we can make scale_1 == scale_2, and offset_1 = offset2 - 128
+const int32_t OFFSETSHIFT = 128;
+
 /// Downcast a double to a float.
 Expected<float> to32Bit(double val) {
   RETURN_ERR_IF_NOT(val <= std::numeric_limits<float>::max() ||
@@ -347,6 +356,16 @@ struct AdaptiveAvgPoolInputs {
   };
 };
 
+/// Indexes of aten::quantize_linear inputs.
+struct QuantizeInputs {
+  enum {
+    input = 0,
+    scale = 1,
+    offset = 2,
+    dtype = 3,
+  };
+};
+
 /// Indexes of aten::linear inputs.
 struct LinearInputs {
   enum {
@@ -438,6 +457,10 @@ PyTorchModelLoader::getSymbolsMapping() {
             ClampInputs::min,
             ClampInputs::max,
         }},
+       {{"aten::quantize_linear"},
+        &PyTorchModelLoader::loadQuantize,
+        {QuantizeInputs::scale, QuantizeInputs::offset, QuantizeInputs::dtype}},
+       {{"aten::dequantize"}, &PyTorchModelLoader::loadDequantize, {}},
        {{"aten::size"}, &PyTorchModelLoader::loadSize, {SizeInputs::dim}},
        // TODO: use -1 to freeze all inputs
        {{"prim::ListConstruct"}, &PyTorchModelLoader::loadListConstruct, {}},
@@ -1161,6 +1184,57 @@ Error PyTorchModelLoader::loadBatchNorm(const torch::jit::Node *ptNode) {
       F_.createBatchNormalization("batchnorm", input, bias, weights, mean, var,
                                   channelIdx, epsilon, momentum);
   return addValueMapping(outputs[0], bn->getResult());
+}
+
+Error PyTorchModelLoader::loadQuantize(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 4, outputs, 1));
+
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      input, getGlowNodeValueForValue(inputs[QuantizeInputs::input]));
+
+  // scale
+  float outScale;
+  ASSIGN_VALUE_OR_RETURN_ERR(outScale, iValToDouble(getGlowIValueForValue(
+                                           inputs[QuantizeInputs::scale])));
+
+  // offset
+  int32_t outOffset;
+  ASSIGN_VALUE_OR_RETURN_ERR(outOffset, iValToInt(getGlowIValueForValue(
+                                            inputs[QuantizeInputs::offset])));
+
+  // dtype, we only support quantize to int8 for now
+  int32_t outDtype;
+  ASSIGN_VALUE_OR_RETURN_ERR(outDtype, iValToInt(getGlowIValueForValue(
+                                           inputs[QuantizeInputs::dtype])));
+
+  // Right now pytorch only has quint8 quantization support, therefore we only
+  // support uint8 as well.
+  RETURN_ERR_IF_NOT(outDtype == (int)at::ScalarType::QUInt8,
+                    "we only support to be quantized as uint8");
+
+  TypeRef inputType = input.getType();
+  auto outDims = inputType->dims();
+  auto outTy = F_.getParent()->uniqueType(ElemKind::Int8QTy, outDims, outScale,
+                                          outOffset - OFFSETSHIFT);
+
+  glow::QuantizeNode *qn = F_.createQuantize("quantize", input, outTy);
+
+  return addValueMapping(outputs[0], qn->getResult());
+}
+
+Error PyTorchModelLoader::loadDequantize(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 1, outputs, 1));
+
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
+
+  glow::DequantizeNode *dn = F_.createDequantize("dequantize", input);
+  return addValueMapping(outputs[0], dn->getResult());
 }
 
 Error PyTorchModelLoader::loadMaxPool2d(const torch::jit::Node *ptNode) {
