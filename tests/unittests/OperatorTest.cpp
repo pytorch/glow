@@ -1309,6 +1309,30 @@ TEST_P(OperatorTest, BroadcastedBatchMatMul) {
   EXPECT_NEAR(H.at({1, 2, 0}), -95, 0.001);
 }
 
+/// Test that the broadcasted batch mat mul operator works as expected when the
+/// RHS does not have to be tiled.
+TEST_P(OperatorTest, NonBroadcastedBatchMatMul) {
+  CHECK_IF_ENABLED();
+  auto *lhs =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 3, 2}, "lhs", false);
+  auto *rhs = mod_.createPlaceholder(ElemKind::FloatTy, {2, 1}, "rhs", false);
+  bindings_.allocate(lhs)->getHandle() = {1, 2, 3, 4, 5, 6};
+  bindings_.allocate(rhs)->getHandle() = {7, 10};
+
+  auto *R = F_->createBatchMatMul("BMM", lhs, rhs);
+
+  auto *save = F_->createSave("save", R);
+  auto *result = bindings_.allocate(save->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  auto H = result->getHandle();
+  EXPECT_NEAR(H.at({0, 0, 0}), 27, 0.001);
+  EXPECT_NEAR(H.at({0, 1, 0}), 61, 0.001);
+  EXPECT_NEAR(H.at({0, 2, 0}), 95, 0.001);
+}
+
 TEST_P(OperatorTest, ParallelBatchMatMul) {
   auto *lhs =
       mod_.createPlaceholder(ElemKind::FloatTy, {2, 3, 2}, "lhs", false);

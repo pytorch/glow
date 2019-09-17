@@ -1440,7 +1440,7 @@ BatchMatMulNode *Function::createBatchMatMul(llvm::StringRef name,
     RHS = createExpandDims(name.str() + ".reshapeRHS", RHS, {0});
   }
   // If necessary, Tile the RHS input so it matches the numBatches of LHS.
-  if (RHS.dims()[0] == 1) {
+  if (RHS.dims()[0] == 1 && LHS.dims()[0] != 1) {
     RHS = createTile(name.str() + ".tileRHS", RHS, LHS.dims()[0], /*axis */ 0);
   }
 
