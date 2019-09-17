@@ -365,7 +365,7 @@ struct QuantizedAddInputs {
     offset = 3,
   };
 };
-  
+
 /// Indexes of aten::quantize_linear inputs.
 struct QuantizeInputs {
   enum {
@@ -762,13 +762,13 @@ Error PyTorchModelLoader::loadQuantizedAdd(const torch::jit::Node *ptNode) {
       outOffset,
       iValToInt(getGlowIValueForValue(inputs[QuantizedAddInputs::offset])));
 
-  TypeRef inputType = input.getType();
+  TypeRef inputType = lhs.getType();
   auto outDims = inputType->dims();
   auto outTy = F_.getParent()->uniqueType(ElemKind::Int8QTy, outDims, outScale,
                                           outOffset - OFFSETSHIFT);
 
-  glow::QuantizedAddNode *qan = F_.createAdd("quantized_add", outTy, lhs, rhs);
-  return addValueMapping(outputs[0], glowNode->getResult());
+  glow::AddNode *qan = F_.createAdd("quantized_add", outTy, lhs, rhs);
+  return addValueMapping(outputs[0], qan->getResult());
 }
 
 Error PyTorchModelLoader::loadMul(const torch::jit::Node *ptNode) {
