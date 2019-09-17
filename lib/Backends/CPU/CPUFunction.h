@@ -33,7 +33,7 @@ public:
   /// \name CompiledFunction interface
   ///@{
   ~CPUFunction() override = default;
-  llvm::Error execute(ExecutionContext *context) override;
+  Error execute(ExecutionContext *context) override;
 
   /// \returns the backend used to compile this function.
   virtual std::string getCompileBackendName() const override { return "CPU"; }

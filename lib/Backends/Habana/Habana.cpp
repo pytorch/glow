@@ -24,6 +24,7 @@
 #include "synapse.h"
 
 #include "llvm/Support/FileSystem.h"
+#include "llvm/Support/FormatVariadic.h"
 
 #include <chrono>
 #include <glog/logging.h>
@@ -32,7 +33,7 @@
 using namespace glow;
 
 /// Get a path to a temporary file for the compiled recipe.
-static llvm::Expected<std::string> getRecipeFile() {
+static Expected<std::string> getRecipeFile() {
   llvm::SmallString<64> path;
   auto err = llvm::sys::fs::createTemporaryFile("glow", "recipe", path);
   RETURN_ERR_IF_NOT(
@@ -447,7 +448,7 @@ allocateGraphTensors(Function *F) {
   return tensors;
 }
 
-llvm::Expected<std::unique_ptr<CompiledFunction>>
+Expected<std::unique_ptr<CompiledFunction>>
 HabanaBackend::compile(Function *F, const BackendOptions &opts) const {
   chk(synCreateGraph(synDeviceGoya));
 
@@ -1070,7 +1071,7 @@ HabanaBackend::compile(Function *F, const BackendOptions &opts) const {
   LOG(INFO) << "Compilation took " << duration / 1000.0 << " [ms]";
   chk(synDestroyGraph());
 
-  return llvm::Expected<std::unique_ptr<CompiledFunction>>(
+  return Expected<std::unique_ptr<CompiledFunction>>(
       llvm::make_unique<HabanaFunction>(runtime::RuntimeBundle::create(*F),
                                         recipeName, F));
 }

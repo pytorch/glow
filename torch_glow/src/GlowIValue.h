@@ -98,45 +98,45 @@ public:
   bool isTuple() const;
 
   /// \returns Payload a glow Tensor or error if the tag is not Tensor.
-  llvm::Expected<Tensor *> toTensor();
+  Expected<Tensor *> toTensor();
 
   /// \returns Payload a Tensor* or error if the tag is not Tensor.
-  llvm::Expected<const Tensor *> toTensor() const;
+  Expected<const Tensor *> toTensor() const;
 
   /// \returns Payload a double or error if the tag is not Double.
-  llvm::Expected<double> toDouble() const;
+  Expected<double> toDouble() const;
 
   /// \returns Payload a int or error if the tag is not Int.
-  llvm::Expected<int64_t> toInt() const;
+  Expected<int64_t> toInt() const;
 
   /// \returns Payload a bool or error if the tag is not Bool.
-  llvm::Expected<bool> toBool() const;
+  Expected<bool> toBool() const;
 
   /// \returns Payload a vector of ints or error if the tag is not IntList.
-  llvm::Expected<std::vector<int64_t> *> toIntList();
+  Expected<std::vector<int64_t> *> toIntList();
 
   /// \returns Payload a vector of ints or error if the tag is not IntList.
-  llvm::Expected<const std::vector<int64_t> *> toIntList() const;
+  Expected<const std::vector<int64_t> *> toIntList() const;
 
   /// \returns Payload a vector of doubles or error if the tag is not
   /// DoubleList.
-  llvm::Expected<std::vector<double> *> toDoubleList();
+  Expected<std::vector<double> *> toDoubleList();
 
   /// \returns Payload a vector of doubles or error if the tag is not
   /// DoubleList.
-  llvm::Expected<const std::vector<double> *> toDoubleList() const;
+  Expected<const std::vector<double> *> toDoubleList() const;
 
   /// \returns Payload a vector of bools or error if the tag is not BoolList.
-  llvm::Expected<std::vector<bool> *> toBoolList();
+  Expected<std::vector<bool> *> toBoolList();
 
   /// \returns Payload a vector of bools or error if the tag is not BoolList.
-  llvm::Expected<const std::vector<bool> *> toBoolList() const;
+  Expected<const std::vector<bool> *> toBoolList() const;
 
   /// \returns Payload a vector of GlowIValues or error if the tag is not Tuple.
-  llvm::Expected<std::vector<GlowIValue> *> toTuple();
+  Expected<std::vector<GlowIValue> *> toTuple();
 
   /// \returns Payload a vector of GlowIValues or error if the tag is not Tuple.
-  llvm::Expected<const std::vector<GlowIValue> *> toTuple() const;
+  Expected<const std::vector<GlowIValue> *> toTuple() const;
 
   /// Set the tag to None.
   void fromNone();
@@ -166,7 +166,7 @@ public:
   void fromTuple(std::vector<GlowIValue> glowIValList);
 
   /// Given a PyTorch IValue \p ival, set the tag to the analogous Tag.
-  llvm::Error fromIValue(const at::IValue &ival);
+  Error fromIValue(const at::IValue &ival);
 };
 
 } // namespace glow

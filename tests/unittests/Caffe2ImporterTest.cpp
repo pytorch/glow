@@ -344,12 +344,12 @@ TEST(caffe2, maxPoolLegacyPadding) {
 
   Tensor inputs(ElemKind::FloatTy, {1, 3, 3, 1});
 
-  llvm::Error err(llvm::Error::success());
+  Error err(Error::success());
   Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"inputs"},
                              {&inputs.getType()}, *F, &err);
 
   // Test that the error is the expected one.
-  auto msg = llvm::toString(std::move(err));
+  auto msg = ERR_TO_STRING(std::move(err));
   ASSERT_NE(msg.find("MaxPool nodes with legacy caffe padding are "
                      "deprecated and not supported."),
             std::string::npos);

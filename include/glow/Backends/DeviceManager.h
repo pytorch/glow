@@ -32,11 +32,10 @@ namespace glow {
 namespace runtime {
 
 /// Callback signalling success/failure of evicting a function from a Device.
-using EvictFunctionCBTy =
-    std::function<void(std::string functionName, llvm::Error)>;
+using EvictFunctionCBTy = std::function<void(std::string functionName, Error)>;
 
 /// Callback signalling success/failure of loading a Module onto a device.
-using ReadyCBTy = std::function<void(const Module *, llvm::Error)>;
+using ReadyCBTy = std::function<void(const Module *, Error)>;
 
 /// Map of Function name -> CompiledFunction, used when loading a network onto a
 /// device.
@@ -95,7 +94,7 @@ public:
   generateDeviceConfigs(llvm::StringRef backendName);
 
   /// Initialize the device.
-  virtual llvm::Error init() { return llvm::Error::success(); }
+  virtual Error init() { return Error::success(); }
 
   /// Load the provided module into the device, readyCB will be called when
   /// ready to use.
@@ -108,8 +107,8 @@ public:
   /// up space on the device. \p evictCB will be called when the operation
   /// is completed or attempted and failed.
   virtual void evictNetwork(std::string functionName,
-                            EvictFunctionCBTy evictCB = [](std::string,
-                                                           llvm::Error) {}) = 0;
+                            EvictFunctionCBTy evictCB = [](std::string, Error) {
+                            }) = 0;
 
   /// Execute the named Function in an already provided network on the device.
   /// functionName must match the name of a function already added.
@@ -122,9 +121,7 @@ public:
               runtime::ResultCBTy resultCB) = 0;
 
   /// Stops execution and shuts down the Device.
-  virtual llvm::Error stop(bool block = true) {
-    return llvm::Error::success();
-  };
+  virtual Error stop(bool block = true) { return Error::success(); };
 
   /// \returns the name of backend that powers this Device.
   llvm::StringRef getBackendName() { return config_.backendName; }

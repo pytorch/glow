@@ -381,11 +381,11 @@ TEST_F(HabanaBackendTest, SetDeviceMemory) {
   configFull.setDeviceMemory(32768);
   // With no commandline or deviceConfig, the memory should be default 7 <<20.
   glow::runtime::HabanaDeviceManager device1(configEmpty, 1, 1);
-  llvm::Error err1 = device1.init();
+  Error err1 = device1.init();
   EXPECT_EQ(defaultMemory * 1024, device1.getMaximumMemory());
   // With only deviceConfig, the memory should be set by deviceConfig.
   glow::runtime::HabanaDeviceManager device2(configFull, 1, 1);
-  llvm::Error err2 = device2.init();
+  Error err2 = device2.init();
   EXPECT_EQ(32768, device2.getMaximumMemory());
 }
 
@@ -1535,8 +1535,8 @@ TEST_F(HabanaBackendTest, SingleFunctionMultiThreadMultiDevice) {
     deviceManager->addNetwork(
         &mod_, functions,
         [promise = addNetworkPromise](const Module * /*module*/,
-                                      llvm::Error err) mutable {
-          promise->set_value(errToBool(std::move(err)));
+                                      Error err) mutable {
+          promise->set_value(ERR_TO_BOOL(std::move(err)));
         });
   }
 
@@ -1586,9 +1586,9 @@ TEST_F(HabanaBackendTest, SingleFunctionMultiThreadMultiDevice) {
               functionName, std::move(inputExecutionContexts[j]),
               [&threadDonePromise, &completeIterations,
                expectedResultBindings = outputBindings[j]](
-                  RunIdentifierTy runId, llvm::Error err,
+                  RunIdentifierTy runId, Error err,
                   std::unique_ptr<ExecutionContext> resultContext) {
-                EXPECT_FALSE(errToBool(std::move(err)));
+                EXPECT_FALSE(ERR_TO_BOOL(std::move(err)));
                 EXPECT_TRUE(PlaceholderBindings::compare(
                     resultContext->getPlaceholderBindings(),
                     expectedResultBindings.get()));
@@ -1614,7 +1614,7 @@ TEST_F(HabanaBackendTest, SingleFunctionMultiThreadMultiDevice) {
 
   // Stop all devices.
   for (auto &deviceManager : deviceManagers) {
-    EXPECT_FALSE(errToBool(deviceManager->stop()));
+    EXPECT_FALSE(ERR_TO_BOOL(deviceManager->stop()));
   }
 }
 

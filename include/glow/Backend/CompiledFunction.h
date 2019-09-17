@@ -37,8 +37,8 @@ public:
   virtual ~CompiledFunction();
   /// Execute the network and allocate Placeholder memory with given
   /// \p bindings providing mapping between Placeholder and populated tensor.
-  /// \returns an llvm::Error if an error ocurred during execution.
-  virtual llvm::Error execute(ExecutionContext *context) = 0;
+  /// \returns an Error if an error ocurred during execution.
+  virtual Error execute(ExecutionContext *context) = 0;
 
   /// Getter for the runtimeBundle.
   runtime::RuntimeBundle &getRuntimeBundle() { return runtimeBundle_; }

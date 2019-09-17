@@ -419,6 +419,15 @@ add_glow_test(NAME UtilsTest
               COMMAND ${GLOW_BINARY_DIR}/tests/UtilsTest --gtest_output=xml:UtilsTest.xml
               WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
+add_executable(ErrorTest
+              ErrorTest.cpp)
+target_link_libraries(ErrorTest
+                     PRIVATE
+                       Support
+                       gtest
+                       TestMain)
+add_glow_test(ErrorTest ${GLOW_BINARY_DIR}/tests/ErrorTest --gtest_output=xml:ErrorTest.xml)
+
 LIST(APPEND UNOPT_TESTS true)
 add_custom_target(test_unopt ${UNOPT_TESTS}
                   WORKING_DIRECTORY ${CMAKE_BINARY_DIR})

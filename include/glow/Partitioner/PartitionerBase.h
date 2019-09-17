@@ -30,7 +30,7 @@ public:
 
   /// Decompose each function in a module. \p cctx is used in function
   /// optimization. \returns the partition result.
-  virtual llvm::Expected<DAGListTy> partition(CompilationContext &cctx) = 0;
+  virtual Expected<DAGListTy> partition(CompilationContext &cctx) = 0;
 
   /// Dump the partition result \p partitions to a dot file with name \p
   /// dotFilename. Since now all functions belong to a function family and they

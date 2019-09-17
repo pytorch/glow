@@ -47,7 +47,7 @@ onnxStatus Backend::checkGraphCompatibility(const void *onnxModel,
     // TODO: Use a more specific ONNXIFI error code here to denote what about
     // this operator is not supported (shape, type, etc).
     LOG(ERROR) << "Error when loading protobuf: "
-               << llvm::toString(loaderOrErr.takeError());
+               << ERR_TO_STRING(loaderOrErr.takeError());
     return ONNXIFI_STATUS_UNSUPPORTED_OPERATOR;
   }
 

@@ -38,10 +38,10 @@ public:
     backendName = GetParam();
     device.reset(DeviceManager::createDeviceManager(DeviceConfig(backendName)));
     ASSERT_TRUE(device.get());
-    ASSERT_FALSE(errToBool(device->init()));
+    ASSERT_FALSE(ERR_TO_BOOL(device->init()));
   }
 
-  void TearDown() override { EXPECT_FALSE(errToBool(device->stop())); }
+  void TearDown() override { EXPECT_FALSE(ERR_TO_BOOL(device->stop())); }
 
   std::string backendName;
   std::unique_ptr<DeviceManager> device{nullptr};
@@ -92,8 +92,9 @@ std::pair<std::promise<ResultType>, std::future<ResultType>> getFutureHelper() {
 
 template <typename ResultType>
 void callbackHelper(std::promise<ResultType> &promise, ResultType res,
-                    llvm::Error err) {
-  promise.set_value(!errToBool(std::move(err)) ? std::move(res) : ResultType());
+                    Error err) {
+  promise.set_value(!ERR_TO_BOOL(std::move(err)) ? std::move(res)
+                                                 : ResultType());
 }
 
 TEST_P(DeviceManagerTest, Basic) {
@@ -107,7 +108,7 @@ TEST_P(DeviceManagerTest, Basic) {
   std::tie(promise, future) = getFutureHelper<const Module *>();
 
   device->addNetwork(module.get(), std::move(functions),
-                     [&promise](const Module *module, llvm::Error err) {
+                     [&promise](const Module *module, Error err) {
                        callbackHelper(promise, module, std::move(err));
                      });
 
@@ -133,7 +134,7 @@ TEST_P(DeviceManagerTest, Basic) {
   std::tie(runPromise, runFuture) =
       getFutureHelper<std::unique_ptr<ExecutionContext>>();
   device->runFunction("main", std::move(context),
-                      [&runPromise](RunIdentifierTy, llvm::Error err,
+                      [&runPromise](RunIdentifierTy, Error err,
                                     std::unique_ptr<ExecutionContext> context) {
                         callbackHelper(runPromise, std::move(context),
                                        std::move(err));
@@ -174,7 +175,7 @@ TEST_P(DeviceManagerTest, PartialTensorCopy) {
   std::tie(promise, future) = getFutureHelper<const Module *>();
 
   device->addNetwork(module.get(), std::move(functions),
-                     [&promise](const Module *module, llvm::Error err) {
+                     [&promise](const Module *module, Error err) {
                        callbackHelper(promise, module, std::move(err));
                      });
 
@@ -201,7 +202,7 @@ TEST_P(DeviceManagerTest, PartialTensorCopy) {
   std::tie(runPromise, runFuture) =
       getFutureHelper<std::unique_ptr<ExecutionContext>>();
   device->runFunction("main", std::move(context),
-                      [&runPromise](RunIdentifierTy, llvm::Error err,
+                      [&runPromise](RunIdentifierTy, Error err,
                                     std::unique_ptr<ExecutionContext> context) {
                         callbackHelper(runPromise, std::move(context),
                                        std::move(err));
@@ -226,7 +227,7 @@ TEST_P(DeviceManagerTest, MultiRun) {
   std::future<const Module *> future;
   std::tie(promise, future) = getFutureHelper<const Module *>();
   device->addNetwork(module.get(), std::move(functions),
-                     [&promise](const Module *module, llvm::Error err) {
+                     [&promise](const Module *module, Error err) {
                        callbackHelper(promise, module, std::move(err));
                      });
   future.wait_for(std::chrono::seconds(2));
@@ -262,14 +263,14 @@ TEST_P(DeviceManagerTest, MultiRun) {
   std::tie(runP2, runF2) = getFutureHelper<std::unique_ptr<ExecutionContext>>();
 
   device->runFunction("main", std::move(context1),
-                      [&runP1](RunIdentifierTy, llvm::Error err,
+                      [&runP1](RunIdentifierTy, Error err,
                                std::unique_ptr<ExecutionContext> context) {
                         callbackHelper(runP1, std::move(context),
                                        std::move(err));
                       });
 
   device->runFunction("main", std::move(context2),
-                      [&runP2](RunIdentifierTy, llvm::Error err,
+                      [&runP2](RunIdentifierTy, Error err,
                                std::unique_ptr<ExecutionContext> context) {
                         callbackHelper(runP2, std::move(context),
                                        std::move(err));
@@ -331,7 +332,7 @@ TEST_P(DeviceManagerTest, MultiFunction) {
   std::future<const Module *> future;
   std::tie(promise, future) = getFutureHelper<const Module *>();
   device->addNetwork(module.get(), std::move(functions),
-                     [&promise](const Module *module, llvm::Error err) {
+                     [&promise](const Module *module, Error err) {
                        callbackHelper(promise, module, std::move(err));
                      });
   future.wait_for(std::chrono::seconds(2));
@@ -357,14 +358,14 @@ TEST_P(DeviceManagerTest, MultiFunction) {
   std::tie(runP2, runF2) = getFutureHelper<std::unique_ptr<ExecutionContext>>();
 
   device->runFunction("func1", std::move(context1),
-                      [&runP1](RunIdentifierTy, llvm::Error err,
+                      [&runP1](RunIdentifierTy, Error err,
                                std::unique_ptr<ExecutionContext> context) {
                         callbackHelper(runP1, std::move(context),
                                        std::move(err));
                       });
 
   device->runFunction("func2", std::move(context2),
-                      [&runP2](RunIdentifierTy, llvm::Error err,
+                      [&runP2](RunIdentifierTy, Error err,
                                std::unique_ptr<ExecutionContext> context) {
                         callbackHelper(runP2, std::move(context),
                                        std::move(err));
@@ -400,7 +401,7 @@ TEST_P(DeviceManagerTest, MultiModule) {
   std::future<const Module *> future;
   std::tie(promise, future) = getFutureHelper<const Module *>();
   device->addNetwork(module1.get(), std::move(functions1),
-                     [&promise](const Module *module, llvm::Error err) {
+                     [&promise](const Module *module, Error err) {
                        callbackHelper(promise, module, std::move(err));
                      });
   future.wait_for(std::chrono::seconds(2));
@@ -408,7 +409,7 @@ TEST_P(DeviceManagerTest, MultiModule) {
 
   std::tie(promise, future) = getFutureHelper<const Module *>();
   device->addNetwork(module2.get(), std::move(functions2),
-                     [&promise](const Module *module, llvm::Error err) {
+                     [&promise](const Module *module, Error err) {
                        callbackHelper(promise, module, std::move(err));
                      });
   future.wait_for(std::chrono::seconds(2));
@@ -439,14 +440,14 @@ TEST_P(DeviceManagerTest, MultiModule) {
   std::tie(runP2, runF2) = getFutureHelper<std::unique_ptr<ExecutionContext>>();
 
   device->runFunction("func1", std::move(context1),
-                      [&runP1](RunIdentifierTy, llvm::Error err,
+                      [&runP1](RunIdentifierTy, Error err,
                                std::unique_ptr<ExecutionContext> context) {
                         callbackHelper(runP1, std::move(context),
                                        std::move(err));
                       });
 
   device->runFunction("func2", std::move(context2),
-                      [&runP2](RunIdentifierTy, llvm::Error err,
+                      [&runP2](RunIdentifierTy, Error err,
                                std::unique_ptr<ExecutionContext> context) {
                         callbackHelper(runP2, std::move(context),
                                        std::move(err));
@@ -504,7 +505,7 @@ TEST_P(DeviceManagerTest, ReuseModule) {
   std::future<const Module *> future;
   std::tie(promise, future) = getFutureHelper<const Module *>();
   device->addNetwork(module.get(), std::move(functions),
-                     [&promise](const Module *module, llvm::Error err) {
+                     [&promise](const Module *module, Error err) {
                        callbackHelper(promise, module, std::move(err));
                      });
   future.wait_for(std::chrono::seconds(2));
@@ -512,7 +513,7 @@ TEST_P(DeviceManagerTest, ReuseModule) {
 
   std::tie(promise, future) = getFutureHelper<const Module *>();
   device->addNetwork(module.get(), std::move(functions2),
-                     [&promise](const Module *module, llvm::Error err) {
+                     [&promise](const Module *module, Error err) {
                        callbackHelper(promise, module, std::move(err));
                      });
   future.wait_for(std::chrono::seconds(2));
@@ -538,14 +539,14 @@ TEST_P(DeviceManagerTest, ReuseModule) {
   std::tie(runP2, runF2) = getFutureHelper<std::unique_ptr<ExecutionContext>>();
 
   device->runFunction("func1", std::move(context1),
-                      [&runP1](RunIdentifierTy, llvm::Error err,
+                      [&runP1](RunIdentifierTy, Error err,
                                std::unique_ptr<ExecutionContext> context) {
                         callbackHelper(runP1, std::move(context),
                                        std::move(err));
                       });
 
   device->runFunction("func2", std::move(context2),
-                      [&runP2](RunIdentifierTy, llvm::Error err,
+                      [&runP2](RunIdentifierTy, Error err,
                                std::unique_ptr<ExecutionContext> context) {
                         callbackHelper(runP2, std::move(context),
                                        std::move(err));
@@ -600,7 +601,7 @@ TEST(DeviceManagerTest, AvailableMemory) {
   auto config = DeviceConfig("CPU");
   config.setDeviceMemory(expectedBytes);
   CPUDeviceManager cpuCoreDevice(config);
-  ASSERT_FALSE(errToBool(cpuCoreDevice.init()));
+  ASSERT_FALSE(ERR_TO_BOOL(cpuCoreDevice.init()));
 
   EXPECT_EQ(cpuCoreDevice.getMaximumMemory(), expectedBytes);
   EXPECT_EQ(cpuCoreDevice.getAvailableMemory(), expectedBytes);
@@ -609,7 +610,7 @@ TEST(DeviceManagerTest, AvailableMemory) {
 
   std::tie(promise, future) = getFutureHelper<const Module *>();
   cpuCoreDevice.addNetwork(module.get(), compiledFunctions,
-                           [&promise](const Module *module, llvm::Error err) {
+                           [&promise](const Module *module, Error err) {
                              callbackHelper(promise, module, std::move(err));
                            });
 
@@ -626,7 +627,7 @@ TEST(DeviceManagerTest, AvailableMemory) {
   std::tie(promise, future) = getFutureHelper<const Module *>();
   cpuCoreDevice.addNetwork(module2.get(),
                            compileFunctions("CPU", module2.get(), backing),
-                           [&promise](const Module *module, llvm::Error err) {
+                           [&promise](const Module *module, Error err) {
                              callbackHelper(promise, module, std::move(err));
                            });
 
@@ -644,7 +645,7 @@ TEST(DeviceManagerTest, AvailableMemory) {
   std::future<std::string> evictFuture;
   std::tie(evictPromise, evictFuture) = getFutureHelper<std::string>();
   cpuCoreDevice.evictNetwork(
-      "main", [&evictPromise](std::string functionName, llvm::Error err) {
+      "main", [&evictPromise](std::string functionName, Error err) {
         callbackHelper(evictPromise, functionName, std::move(err));
       });
   evictFuture.wait_for(std::chrono::seconds(2));
@@ -654,7 +655,7 @@ TEST(DeviceManagerTest, AvailableMemory) {
   std::tie(promise, future) = getFutureHelper<const Module *>();
   cpuCoreDevice.addNetwork(module2.get(),
                            compileFunctions("CPU", module2.get(), backing),
-                           [&promise](const Module *module, llvm::Error err) {
+                           [&promise](const Module *module, Error err) {
                              callbackHelper(promise, module, std::move(err));
                            });
 
@@ -664,7 +665,7 @@ TEST(DeviceManagerTest, AvailableMemory) {
   EXPECT_EQ(cpuCoreDevice.getMaximumMemory(), expectedBytes);
   EXPECT_EQ(cpuCoreDevice.getAvailableMemory(), 0);
 
-  EXPECT_FALSE(errToBool(cpuCoreDevice.stop()));
+  EXPECT_FALSE(ERR_TO_BOOL(cpuCoreDevice.stop()));
 
   // Test CPU DeviceConfig.
   auto cpuConfigEmpty = DeviceConfig("CPU");
@@ -680,7 +681,7 @@ TEST(DeviceManagerTest, AvailableMemory) {
 
 TEST(DeviceManagerTest, DummyDeviceManager) {
   DummyDeviceManager deviceManager{DeviceConfig("Interpreter")};
-  ASSERT_FALSE(errToBool(deviceManager.init()));
+  ASSERT_FALSE(ERR_TO_BOOL(deviceManager.init()));
 
   auto module = makeBasicModule();
   std::vector<std::unique_ptr<CompiledFunction>> backing;
@@ -691,7 +692,7 @@ TEST(DeviceManagerTest, DummyDeviceManager) {
   std::future<const Module *> future;
   std::tie(promise, future) = getFutureHelper<const Module *>();
   deviceManager.addNetwork(module.get(), std::move(functions),
-                           [&promise](const Module *module, llvm::Error err) {
+                           [&promise](const Module *module, Error err) {
                              callbackHelper(promise, module, std::move(err));
                            });
   // no need to wait.
@@ -717,7 +718,7 @@ TEST(DeviceManagerTest, DummyDeviceManager) {
       getFutureHelper<std::unique_ptr<ExecutionContext>>();
   deviceManager.runFunction(
       "main", std::move(context1),
-      [&runPromise](RunIdentifierTy, llvm::Error err,
+      [&runPromise](RunIdentifierTy, Error err,
                     std::unique_ptr<ExecutionContext> context) {
         callbackHelper(runPromise, std::move(context), std::move(err));
       });
@@ -732,7 +733,7 @@ TEST(DeviceManagerTest, DummyDeviceManager) {
   ASSERT_TRUE(result);
   EXPECT_TRUE(result->isEqual(output1));
 
-  EXPECT_FALSE(errToBool(deviceManager.stop()));
+  EXPECT_FALSE(ERR_TO_BOOL(deviceManager.stop()));
 }
 
 #endif // GLOW_WITH_CPU

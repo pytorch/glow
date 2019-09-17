@@ -57,13 +57,12 @@ class CachingGraphRunner {
   /// info is returned immediately. Otherwise this loads the
   /// subgraph into the owned HostManager, creates a PerGlowGraphInfo which is
   /// cached for the given inputs, and then \returns this PerGlowGraphInfo.
-  llvm::Expected<PerGlowGraphInfo *> loadImpl(torch::jit::Stack &stack);
+  Expected<PerGlowGraphInfo *> loadImpl(torch::jit::Stack &stack);
 
   /// Given a PerGlowGraphInfo \p info for a subgraph that was previously
   /// loaded, this runs the Glow function that corresponds to that
   /// PerGlowGraphInfo in the shape of the inputs with the given \p stack.
-  llvm::Error runImpl(const PerGlowGraphInfo &info,
-                      torch::jit::Stack &stack) const;
+  Error runImpl(const PerGlowGraphInfo &info, torch::jit::Stack &stack) const;
 
   /// Given a \p stack of inputs, computes the hash for the inputs on the stack.
   size_t computeGraphHash(const c10::ArrayRef<c10::IValue> inputs) const;
@@ -78,7 +77,7 @@ public:
   /// those inputs. If this is the first time this PyTorch graph has been run
   /// with inputs matching the hash of those on the stack then this first loads
   /// it as a Glow Function and compiles. \returns error of failure.
-  llvm::Error run(torch::jit::Stack &stack);
+  Error run(torch::jit::Stack &stack);
 };
 } // namespace glow
 

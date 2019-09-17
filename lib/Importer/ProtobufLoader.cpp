@@ -72,7 +72,7 @@ Constant *ProtobufLoader::getConstantByNameOrNull(llvm::StringRef name) const {
   return res ? res : nullptr;
 }
 
-llvm::Expected<Constant *>
+Expected<Constant *>
 ProtobufLoader::getConstantByName(llvm::StringRef name) const {
   auto *ptr = getConstantByNameOrNull(name);
   RETURN_ERR_IF_NOT(
@@ -84,7 +84,7 @@ bool ProtobufLoader::hasConstantByName(llvm::StringRef name) const {
   return getConstantByNameOrNull(name) != nullptr;
 }
 
-llvm::Expected<Placeholder *>
+Expected<Placeholder *>
 ProtobufLoader::getOutputByName(llvm::StringRef name) const {
   auto it = outputVarsByName_.find(name);
   RETURN_ERR_IF_NOT(
@@ -104,7 +104,7 @@ ProtobufLoader::getNodeValueByNameOrNullNodeValue(llvm::StringRef name) const {
   return NodeValue(nullptr);
 }
 
-llvm::Expected<NodeValue>
+Expected<NodeValue>
 ProtobufLoader::getNodeValueByName(llvm::StringRef name) const {
   RETURN_ERR_IF_NOT(hasNodeByName(name),
                     llvm::Twine("No node under name ", name).str());
@@ -113,20 +113,20 @@ ProtobufLoader::getNodeValueByName(llvm::StringRef name) const {
   return node;
 }
 
-llvm::Error ProtobufLoader::createAndRegisterConstant(llvm::StringRef name,
-                                                      Tensor &&tensor) {
+Error ProtobufLoader::createAndRegisterConstant(llvm::StringRef name,
+                                                Tensor &&tensor) {
   auto it = nodeValueByName_.find(name);
   if (it != nodeValueByName_.end()) {
     if (llvm::dyn_cast<Placeholder>(it->second.getNode())) {
       // Placeholders take precedence over Constants.
-      return llvm::Error::success();
+      return Error::success();
     }
   }
   // Note: We do not support training from models loaded from protos, so
   // trainable is always set to false here.
   Constant *node = G_.getParent()->createConstant(name, std::move(tensor));
   nodeValueByName_[name] = node->getOutput();
-  return llvm::Error::success();
+  return Error::success();
 }
 
 void ProtobufLoader::deleteUnusedConstants() {
@@ -150,7 +150,7 @@ void ProtobufLoader::deleteUnusedConstants() {
   }
 }
 
-llvm::Expected<Placeholder *>
+Expected<Placeholder *>
 ProtobufLoader::createAndRegisterPlaceholder(llvm::StringRef name, TypeRef T) {
   RETURN_ERR_IF_NOT(
       !hasNodeByName(name),
@@ -166,7 +166,7 @@ bool ProtobufLoader::hasNodeByName(llvm::StringRef name) const {
 
 ProtobufLoader::ProtobufLoader(llvm::ArrayRef<const char *> tensorNames,
                                llvm::ArrayRef<TypeRef> types, Function &F,
-                               llvm::Error *errPtr)
+                               Error *errPtr)
     : G_(F) {
   // Verify that the version of the library that we linked against is
   // compatible with the version of the headers we compiled against.
@@ -177,9 +177,9 @@ ProtobufLoader::ProtobufLoader(llvm::ArrayRef<const char *> tensorNames,
     return;
   }
 
-  // Lambda to setup the ProtobufLoader and return any llvm::Errors that were
+  // Lambda to setup the ProtobufLoader and return any Errors that were
   // raised.
-  auto setup = [&]() -> llvm::Error {
+  auto setup = [&]() -> Error {
     RETURN_ERR_IF_NOT(tensorNames.size() == types.size(),
                       "Invalid initialization list");
     for (size_t i = 0, e = tensorNames.size(); i < e; i++) {
@@ -191,7 +191,7 @@ ProtobufLoader::ProtobufLoader(llvm::ArrayRef<const char *> tensorNames,
         return placeholderOrErr.takeError();
       }
     }
-    return llvm::Error::success();
+    return Error::success();
   };
 
   if (errPtr) {

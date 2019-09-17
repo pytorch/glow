@@ -28,7 +28,7 @@ TEST(ModelLoaderTest, Loader) {
   const std::string fileName{GLOW_DATA_PATH
                              "tests/models/pytorchModels/resnet18.pt"};
   std::shared_ptr<torch::jit::script::Module> module;
-  llvm::Error err = glow::PyTorchFileLoader::loadPyTorchModel(fileName, module);
+  glow::Error err = glow::PyTorchFileLoader::loadPyTorchModel(fileName, module);
   EXPECT_FALSE(err);
 }
 
@@ -45,10 +45,10 @@ TEST(ModelLoaderTest, Fusion) {
   std::vector<glow::Placeholder *> inputPlaceholders;
   std::vector<glow::Placeholder *> outputPlaceholders;
 
-  llvm::Error err = glow::PyTorchFileLoader::loadPyTorchGraph(
+  glow::Error err = glow::PyTorchFileLoader::loadPyTorchGraph(
       fileName, vec, *F, inputPlaceholders, outputPlaceholders);
 
-  EXPECT_FALSE(glow::errToBool(std::move(err)));
+  EXPECT_FALSE(ERR_TO_BOOL(std::move(err)));
 }
 
 TEST(ModelLoaderTest, DISABLED_Direct) {
@@ -64,8 +64,8 @@ TEST(ModelLoaderTest, DISABLED_Direct) {
   std::vector<glow::Placeholder *> inputPlaceholders;
   std::vector<glow::Placeholder *> outputPlaceholders;
 
-  llvm::Error err = glow::PyTorchFileLoader::parsePyTorchGraphForOnnxTraining(
+  glow::Error err = glow::PyTorchFileLoader::parsePyTorchGraphForOnnxTraining(
       fileName, vec, *F, inputPlaceholders, outputPlaceholders);
 
-  EXPECT_FALSE(glow::errToBool(std::move(err)));
+  EXPECT_FALSE(ERR_TO_BOOL(std::move(err)));
 }

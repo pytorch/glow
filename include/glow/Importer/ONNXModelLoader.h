@@ -41,7 +41,7 @@ class ONNXModelLoader
     : public CommonOperatorLoader<ONNX_NAMESPACE::NodeProto,
                                   ONNX_NAMESPACE::AttributeProto> {
   /// \returns True if the operator has broadcasting activated.
-  llvm::Expected<bool> getBroadcast(const ArgumentDictionaryTy &dict) override;
+  Expected<bool> getBroadcast(const ArgumentDictionaryTy &dict) override;
 
   /// \returns True if the operator with the name \p typeName has support for
   /// multidirectional broadcasting.
@@ -49,15 +49,15 @@ class ONNXModelLoader
 
   /// Converts a ONNX TensorProto DataType enum to the Glow element type.
   /// Supports only non quantized and signed types.
-  llvm::Expected<ElemKind>
+  Expected<ElemKind>
   convertTensorProtoDataType(ONNX_NAMESPACE::TensorProto_DataType t);
 
   /// Load the operator \p op into the network. This creates one or more nodes
   /// in the network. \returns Error if operator \p op cannot be loaded.
-  llvm::Error loadOperator(const ONNX_NAMESPACE::NodeProto &op);
+  Error loadOperator(const ONNX_NAMESPACE::NodeProto &op);
 
   /// \returns True if the operator\ op is successfully folded.
-  llvm::Expected<bool> foldOperator(const ONNX_NAMESPACE::NodeProto &op);
+  Expected<bool> foldOperator(const ONNX_NAMESPACE::NodeProto &op);
 
   /// ONNX model ir_version;
   size_t irVersion_;
@@ -66,204 +66,201 @@ class ONNXModelLoader
   size_t opsetVersion_;
 
   /// Load Constant ONNX operator.
-  llvm::Error loadConstant(const ONNX_NAMESPACE::NodeProto &op,
-                           const ArgumentDictionaryTy &dict);
+  Error loadConstant(const ONNX_NAMESPACE::NodeProto &op,
+                     const ArgumentDictionaryTy &dict);
 
   /// Load Slice ONNX operator.
-  llvm::Error loadSlice(const ONNX_NAMESPACE::NodeProto &op,
-                        const ArgumentDictionaryTy &dict);
+  Error loadSlice(const ONNX_NAMESPACE::NodeProto &op,
+                  const ArgumentDictionaryTy &dict);
 
   /// Load Conv ONNX operator.
-  llvm::Error loadConv(const ONNX_NAMESPACE::NodeProto &op,
-                       const ArgumentDictionaryTy &dict);
+  Error loadConv(const ONNX_NAMESPACE::NodeProto &op,
+                 const ArgumentDictionaryTy &dict);
 
   /// Load MaxPool or AveragePool ONNX operator. \p typeName is the name of the
   /// ONNX operator being loaded, either MaxPool or AveragePool.
-  llvm::Error loadPool(const ONNX_NAMESPACE::NodeProto &op,
-                       const ArgumentDictionaryTy &dict,
-                       llvm::StringRef typeName);
+  Error loadPool(const ONNX_NAMESPACE::NodeProto &op,
+                 const ArgumentDictionaryTy &dict, llvm::StringRef typeName);
 
   /// Load GlobalAveragePool ONNX operator.
-  llvm::Error loadGlobalAveragePool(const ONNX_NAMESPACE::NodeProto &op,
-                                    const ArgumentDictionaryTy &dict);
+  Error loadGlobalAveragePool(const ONNX_NAMESPACE::NodeProto &op,
+                              const ArgumentDictionaryTy &dict);
 
   /// Load Squeeze ONNX operator.
-  llvm::Error loadSqueeze(const ONNX_NAMESPACE::NodeProto &op,
-                          const ArgumentDictionaryTy &dict);
+  Error loadSqueeze(const ONNX_NAMESPACE::NodeProto &op,
+                    const ArgumentDictionaryTy &dict);
 
   /// Load Unsqueeze ONNX operator.
-  llvm::Error loadUnsqueeze(const ONNX_NAMESPACE::NodeProto &op,
-                            const ArgumentDictionaryTy &dict);
-
-  /// Load ArgMax ONNX operator.
-  llvm::Error loadArgMax(const ONNX_NAMESPACE::NodeProto &op,
-                         const ArgumentDictionaryTy &dict);
-
-  /// Load BatchNormalization ONNX operator.
-  llvm::Error loadBatchNormalization(const ONNX_NAMESPACE::NodeProto &op,
-                                     const ArgumentDictionaryTy &dict);
-
-  /// Load Concat ONNX operator.
-  llvm::Error loadConcat(const ONNX_NAMESPACE::NodeProto &op,
-                         const ArgumentDictionaryTy &dict);
-
-  /// Load FCTransposed ONNX operator.
-  llvm::Error loadFCTransposed(const ONNX_NAMESPACE::NodeProto &op,
-                               const ArgumentDictionaryTy &dict);
-
-  /// Load Gemm ONNX operator.
-  llvm::Error loadGemm(const ONNX_NAMESPACE::NodeProto &op,
-                       const ArgumentDictionaryTy &dict);
-
-  /// Load MatMul ONNX operator.
-  llvm::Error loadMatMul(const ONNX_NAMESPACE::NodeProto &op,
-                         const ArgumentDictionaryTy &dict);
-
-  /// Load Pad ONNX operator.
-  llvm::Error loadPad(const ONNX_NAMESPACE::NodeProto &op,
+  Error loadUnsqueeze(const ONNX_NAMESPACE::NodeProto &op,
                       const ArgumentDictionaryTy &dict);
 
-  /// Load Cast ONNX operator.
-  llvm::Error loadCast(const ONNX_NAMESPACE::NodeProto &op,
-                       const ArgumentDictionaryTy &dict);
+  /// Load ArgMax ONNX operator.
+  Error loadArgMax(const ONNX_NAMESPACE::NodeProto &op,
+                   const ArgumentDictionaryTy &dict);
 
-  /// Load LeakyRelu ONNX operator.
-  llvm::Error loadLeakyRelu(const ONNX_NAMESPACE::NodeProto &op,
-                            const ArgumentDictionaryTy &dict);
-
-  /// Load SpaceToDepth ONNX operator.
-  llvm::Error loadSpaceToDepth(const ONNX_NAMESPACE::NodeProto &op,
+  /// Load BatchNormalization ONNX operator.
+  Error loadBatchNormalization(const ONNX_NAMESPACE::NodeProto &op,
                                const ArgumentDictionaryTy &dict);
 
+  /// Load Concat ONNX operator.
+  Error loadConcat(const ONNX_NAMESPACE::NodeProto &op,
+                   const ArgumentDictionaryTy &dict);
+
+  /// Load FCTransposed ONNX operator.
+  Error loadFCTransposed(const ONNX_NAMESPACE::NodeProto &op,
+                         const ArgumentDictionaryTy &dict);
+
+  /// Load Gemm ONNX operator.
+  Error loadGemm(const ONNX_NAMESPACE::NodeProto &op,
+                 const ArgumentDictionaryTy &dict);
+
+  /// Load MatMul ONNX operator.
+  Error loadMatMul(const ONNX_NAMESPACE::NodeProto &op,
+                   const ArgumentDictionaryTy &dict);
+
+  /// Load Pad ONNX operator.
+  Error loadPad(const ONNX_NAMESPACE::NodeProto &op,
+                const ArgumentDictionaryTy &dict);
+
+  /// Load Cast ONNX operator.
+  Error loadCast(const ONNX_NAMESPACE::NodeProto &op,
+                 const ArgumentDictionaryTy &dict);
+
+  /// Load LeakyRelu ONNX operator.
+  Error loadLeakyRelu(const ONNX_NAMESPACE::NodeProto &op,
+                      const ArgumentDictionaryTy &dict);
+
+  /// Load SpaceToDepth ONNX operator.
+  Error loadSpaceToDepth(const ONNX_NAMESPACE::NodeProto &op,
+                         const ArgumentDictionaryTy &dict);
+
   /// Load ConstantOfShape ONNX operator.
-  llvm::Error loadConstantOfShape(const ONNX_NAMESPACE::NodeProto &op,
-                                  const ArgumentDictionaryTy &dict,
-                                  bool isSplat);
+  Error loadConstantOfShape(const ONNX_NAMESPACE::NodeProto &op,
+                            const ArgumentDictionaryTy &dict, bool isSplat);
 
   /// Load Tile ONNX operator.
-  llvm::Error loadTile(const ONNX_NAMESPACE::NodeProto &op,
-                       const ArgumentDictionaryTy &dict);
+  Error loadTile(const ONNX_NAMESPACE::NodeProto &op,
+                 const ArgumentDictionaryTy &dict);
 
   /// Load Where ONNX operator.
-  llvm::Error loadWhere(const ONNX_NAMESPACE::NodeProto &op,
-                        const ArgumentDictionaryTy &dict);
+  Error loadWhere(const ONNX_NAMESPACE::NodeProto &op,
+                  const ArgumentDictionaryTy &dict);
 
   /// Load Glow specific operators, not defined in ONNX format
   /// Load Glow CmpEQ operator.
-  llvm::Error loadCmpEQ(const ONNX_NAMESPACE::NodeProto &op,
-                        const ArgumentDictionaryTy &dict);
+  Error loadCmpEQ(const ONNX_NAMESPACE::NodeProto &op,
+                  const ArgumentDictionaryTy &dict);
 
   /// Load Glow CmpLTE operator.
-  llvm::Error loadCmpLTE(const ONNX_NAMESPACE::NodeProto &op,
-                         const ArgumentDictionaryTy &dict);
+  Error loadCmpLTE(const ONNX_NAMESPACE::NodeProto &op,
+                   const ArgumentDictionaryTy &dict);
 
   /// Load Glow Select operator.
-  llvm::Error loadSelect(const ONNX_NAMESPACE::NodeProto &op,
-                         const ArgumentDictionaryTy &dict);
+  Error loadSelect(const ONNX_NAMESPACE::NodeProto &op,
+                   const ArgumentDictionaryTy &dict);
 
   /// Load Glow Quantize operator.
-  llvm::Error loadQuantize(const ONNX_NAMESPACE::NodeProto &op,
-                           const ArgumentDictionaryTy &dict);
+  Error loadQuantize(const ONNX_NAMESPACE::NodeProto &op,
+                     const ArgumentDictionaryTy &dict);
 
   /// Load Glow ConvertTo operator.
-  llvm::Error loadConvertTo(const ONNX_NAMESPACE::NodeProto &op,
-                            const ArgumentDictionaryTy &dict);
+  Error loadConvertTo(const ONNX_NAMESPACE::NodeProto &op,
+                      const ArgumentDictionaryTy &dict);
 
   /// Load Glow Dequantize operator.
-  llvm::Error loadDequantize(const ONNX_NAMESPACE::NodeProto &op,
-                             const ArgumentDictionaryTy &dict);
+  Error loadDequantize(const ONNX_NAMESPACE::NodeProto &op,
+                       const ArgumentDictionaryTy &dict);
 
   /// Load Glow Regression operator.
-  llvm::Error loadRegression(const ONNX_NAMESPACE::NodeProto &op,
-                             const ArgumentDictionaryTy &dict);
+  Error loadRegression(const ONNX_NAMESPACE::NodeProto &op,
+                       const ArgumentDictionaryTy &dict);
 
   /// Load Glow BatchedAdd operator.
-  llvm::Error loadBatchedAdd(const ONNX_NAMESPACE::NodeProto &op,
-                             const ArgumentDictionaryTy &dict);
+  Error loadBatchedAdd(const ONNX_NAMESPACE::NodeProto &op,
+                       const ArgumentDictionaryTy &dict);
 
   /// Load Glow ScatterAssign operator.
-  llvm::Error loadScatterAssign(const ONNX_NAMESPACE::NodeProto &op,
-                                const ArgumentDictionaryTy &dict);
+  Error loadScatterAssign(const ONNX_NAMESPACE::NodeProto &op,
+                          const ArgumentDictionaryTy &dict);
 
   /// Load Glow IntLookupTable operator.
-  llvm::Error loadIntLookupTable(const ONNX_NAMESPACE::NodeProto &op,
-                                 const ArgumentDictionaryTy &dict);
+  Error loadIntLookupTable(const ONNX_NAMESPACE::NodeProto &op,
+                           const ArgumentDictionaryTy &dict);
 
   /// Load Glow LengthsRangeFill operator.
-  llvm::Error loadLengthsRangeFill(const ONNX_NAMESPACE::NodeProto &op,
-                                   const ArgumentDictionaryTy &dict);
+  Error loadLengthsRangeFill(const ONNX_NAMESPACE::NodeProto &op,
+                             const ArgumentDictionaryTy &dict);
 
   /// Load Glow RescaleQuantized operator.
-  llvm::Error loadRescaleQuantized(const ONNX_NAMESPACE::NodeProto &op,
-                                   const ArgumentDictionaryTy &dict);
+  Error loadRescaleQuantized(const ONNX_NAMESPACE::NodeProto &op,
+                             const ArgumentDictionaryTy &dict);
 
   /// Load Glow RowwiseQuantizedSparseLengthsWeightedSum operator.
-  llvm::Error loadRowwiseQuantizedSparseLengthsWeightedSum(
+  Error loadRowwiseQuantizedSparseLengthsWeightedSum(
       const ONNX_NAMESPACE::NodeProto &op, const ArgumentDictionaryTy &dict);
 
   /// Load Glow FusedRowwiseQuantizedSparseLengthsWeightedSum operator.
-  llvm::Error loadFusedRowwiseQuantizedSparseLengthsWeightedSum(
+  Error loadFusedRowwiseQuantizedSparseLengthsWeightedSum(
       const ONNX_NAMESPACE::NodeProto &op, const ArgumentDictionaryTy &dict);
 
   /// Load Glow RowwiseQuantizedFullyConnected operator.
-  llvm::Error
-  loadRowwiseQuantizedFullyConnected(const ONNX_NAMESPACE::NodeProto &op,
-                                     const ArgumentDictionaryTy &dict);
+  Error loadRowwiseQuantizedFullyConnected(const ONNX_NAMESPACE::NodeProto &op,
+                                           const ArgumentDictionaryTy &dict);
 
   /// Load Glow FullyConnected operator.
-  llvm::Error loadFullyConnected(const ONNX_NAMESPACE::NodeProto &op,
-                                 const ArgumentDictionaryTy &dict);
+  Error loadFullyConnected(const ONNX_NAMESPACE::NodeProto &op,
+                           const ArgumentDictionaryTy &dict);
 
   /// Load Glow Splat operator.
-  llvm::Error loadSplat(const ONNX_NAMESPACE::NodeProto &op,
-                        const ArgumentDictionaryTy &dict);
+  Error loadSplat(const ONNX_NAMESPACE::NodeProto &op,
+                  const ArgumentDictionaryTy &dict);
 
 protected:
   /// Load the network operators from the GraphProto.
   /// \returns Error if network cannot be loaded.
-  llvm::Error loadNetwork(ONNX_NAMESPACE::GraphProto &net);
+  Error loadNetwork(ONNX_NAMESPACE::GraphProto &net);
 
   /// Set the output nodes of the network \p net. Initializes the map from the
   /// names of the outputs to the save nodes that save each output.
   /// \returns Error if network cannot be loaded.
-  llvm::Error setOutputNodes(ONNX_NAMESPACE::GraphProto &net);
+  Error setOutputNodes(ONNX_NAMESPACE::GraphProto &net);
 
   /// Set ir verion and op version.
-  llvm::Error setVersion(ONNX_NAMESPACE::ModelProto MP);
+  Error setVersion(ONNX_NAMESPACE::ModelProto MP);
 
   /// \returns Expected<ModelProto> if a ModelProto can be loaded from the
   /// stream \p iStream.
-  static llvm::Expected<ONNX_NAMESPACE::ModelProto>
+  static Expected<ONNX_NAMESPACE::ModelProto>
   loadProto(google::protobuf::io::ZeroCopyInputStream &iStream);
 
   /// Load the network initializers from the GraphProto.
-  llvm::Error loadInitializers(ONNX_NAMESPACE::GraphProto &net);
+  Error loadInitializers(ONNX_NAMESPACE::GraphProto &net);
 
   /// Load the inputs from the GraphProto. If \p loadInputsAsPlaceholders is
   /// true then this will load each graph input as a placeholder otherwise it
   /// will create an empty tensor for each input.
-  llvm::Error loadInputs(ONNX_NAMESPACE::GraphProto &net,
-                         bool loadInputsAsPlaceholders);
+  Error loadInputs(ONNX_NAMESPACE::GraphProto &net,
+                   bool loadInputsAsPlaceholders);
 
   /// \returns Expected<ModelProto> if a ModelProto can be constructed from the
   /// contents of the file \p filename and Error otherwise.
   /// Loads ModelProto from the file containing serialized protobuf.
-  static llvm::Expected<ONNX_NAMESPACE::ModelProto>
+  static Expected<ONNX_NAMESPACE::ModelProto>
   loadProto(const std::string &filename);
 
   /// \returns Expected<ModelProto> if a ModelProto can be constructed from the
   /// in-memory serialized protobuf.
   /// Loads ModelProto from the in-memory serialized protobuf \p
   /// onnxModel with the model size \p onnxModelSize.
-  static llvm::Expected<ONNX_NAMESPACE::ModelProto>
-  loadProto(const void *onnxModel, size_t onnxModelSize);
+  static Expected<ONNX_NAMESPACE::ModelProto> loadProto(const void *onnxModel,
+                                                        size_t onnxModelSize);
 
   /// Checks that the inputs tensors are compatible with the inputs declared in
   /// the ONNX model. The input types in \p types match the list of names
   /// \p tensorNames.
-  llvm::Error checkInputs(ONNX_NAMESPACE::GraphProto &net,
-                          llvm::ArrayRef<const char *> tensorNames,
-                          llvm::ArrayRef<TypeRef> types);
+  Error checkInputs(ONNX_NAMESPACE::GraphProto &net,
+                    llvm::ArrayRef<const char *> tensorNames,
+                    llvm::ArrayRef<TypeRef> types);
 
   /// Creates a ONNX model loader to build \p F.
   /// Loads the ONNIXFI \p model from memory of \p modelSize size,
@@ -273,7 +270,7 @@ protected:
   /// parameter \p errPtr.
   ONNXModelLoader(const void *model, uint32_t modelSize, uint32_t weightsCount,
                   const onnxTensorDescriptorV1 *weightDescriptors, Function &F,
-                  bool loadInputsAsPlaceholders, llvm::Error *errPtr = nullptr);
+                  bool loadInputsAsPlaceholders, Error *errPtr = nullptr);
 
   friend class ONNXIFIModelLoader;
 
@@ -281,8 +278,8 @@ protected:
   /// \p loader is successful. The folding utility uses temporary
   /// loader \p tmpLoader, and associated temporary function \p F.
   template <class LoaderType, class OpType>
-  friend llvm::Error constantFoldInLoader(Function *F, LoaderType &tmpLoader,
-                                          LoaderType *loader, const OpType &op);
+  friend Error constantFoldInLoader(Function *F, LoaderType &tmpLoader,
+                                    LoaderType *loader, const OpType &op);
 
 public:
   /// \returns ONNX model ir_version;
@@ -294,7 +291,7 @@ public:
   /// Creates a ONNX model loader to build \p F.
   /// If \p errPtr is not null then if an error occurs it will get assigned
   /// there otherwise if an error occurs it will abort.
-  ONNXModelLoader(Function &F, llvm::Error *errPtr = nullptr);
+  ONNXModelLoader(Function &F, Error *errPtr = nullptr);
 
   /// Loads the ONNX model that's represented by a model description file,
   /// serialized in \p modelDescFilename and populates the network into \p F.
@@ -306,7 +303,7 @@ public:
   ONNXModelLoader(const std::string &modelDescFilename,
                   llvm::ArrayRef<const char *> tensorNames,
                   llvm::ArrayRef<TypeRef> types, Function &F,
-                  llvm::Error *errPtr = nullptr);
+                  Error *errPtr = nullptr);
 };
 
 } // namespace glow

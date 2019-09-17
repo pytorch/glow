@@ -82,7 +82,7 @@ TEST_F(ProvisionerTest, provisionDag) {
   Provisioner provisioner(devices);
   auto err = provisioner.provision(networks, *mod.get(), cctx);
   // Expect that there was no Error when provisioning
-  EXPECT_FALSE(errToBool(std::move(err)));
+  EXPECT_FALSE(ERR_TO_BOOL(std::move(err)));
 }
 
 TEST_F(ProvisionerTest, provisionDagFail) {
@@ -101,5 +101,5 @@ TEST_F(ProvisionerTest, provisionDagFail) {
   Provisioner provisioner(devices);
   auto err = provisioner.provision(networks, *mod.get(), cctx);
   // Expect that there was an Error when provisioning
-  EXPECT_TRUE(errToBool(std::move(err)));
+  EXPECT_TRUE(ERR_TO_BOOL(std::move(err)));
 }

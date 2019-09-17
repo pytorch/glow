@@ -31,7 +31,7 @@
 #include "glow/IR/Instrs.h"
 #include "gtest/gtest.h"
 
-/// Takes an llvm::Expected<T> \p rhsOrErrV, asserts that it is not an error,
+/// Takes an Expected<T> \p rhsOrErrV, asserts that it is not an error,
 /// and takes the value from rhsOrErrV and assigns it to \p lhs.
 #define ASSERT_AND_ASSIGN_VALUE(lhs, rhsOrErrV)                                \
   do {                                                                         \
@@ -132,21 +132,21 @@ TEST(OpenCLCorrectnessTest, SetDeviceMemory) {
   // This memory size can be limited by deviceConfig.
   // No setting at all, default memory size from OpenCL device info.
   OpenCLDeviceManager openCLDeviceDefault(openCLConfigEmpty);
-  llvm::Error err1 = openCLDeviceDefault.init();
-  ASSERT_FALSE(errToBool(std::move(err1)));
+  Error err1 = openCLDeviceDefault.init();
+  ASSERT_FALSE(ERR_TO_BOOL(std::move(err1)));
   uint64_t memSize = openCLDeviceDefault.getMaximumMemory();
   // If limited by deviceConfig.
   OpenCLDeviceManager openCLDeviceSetByDeviceConfig(openCLConfigFull);
-  llvm::Error err2 = openCLDeviceSetByDeviceConfig.init();
-  ASSERT_FALSE(errToBool(std::move(err2)));
+  Error err2 = openCLDeviceSetByDeviceConfig.init();
+  ASSERT_FALSE(ERR_TO_BOOL(std::move(err2)));
   EXPECT_EQ(openCLDeviceSetByDeviceConfig.getMaximumMemory(), 32768);
   // If devicConfig defines larger memory size than the OpenCL device info,
   // then fall back to default.
   auto openCLConfigLarger = DeviceConfig("OpenCL");
   openCLConfigLarger.setDeviceMemory(memSize + 10000);
   OpenCLDeviceManager openCLDeviceLarger(openCLConfigLarger);
-  llvm::Error err3 = openCLDeviceLarger.init();
-  ASSERT_FALSE(errToBool(std::move(err3)));
+  Error err3 = openCLDeviceLarger.init();
+  ASSERT_FALSE(ERR_TO_BOOL(std::move(err3)));
   EXPECT_EQ(openCLDeviceLarger.getMaximumMemory(), memSize);
 }
 
@@ -193,8 +193,9 @@ TEST_F(OpenCLCommandQueuePoolTest, ErrorWhenNotInitialized) {
   pool_.setContext(nullptr);
   pool_.setDevice(0);
 
-  // A request for a command queue should return an llvm::Error.
-  ASSERT_FALSE(pool_.requestCommandQueue());
+  // A request for a command queue should return an Error.
+  auto err = pool_.requestCommandQueue().takeError();
+  ASSERT_TRUE(ERR_TO_BOOL(std::move(err)));
 }
 
 /// Tests that the pool reuses queues.
@@ -203,7 +204,7 @@ TEST_F(OpenCLCommandQueuePoolTest, QueueReuse) {
   runtime::OpenCLCommandQueue queue;
 
   // Request a queue.
-  llvm::Expected<runtime::OpenCLCommandQueue> queueOrError =
+  Expected<runtime::OpenCLCommandQueue> queueOrError =
       pool_.requestCommandQueue(0);
   ASSERT_AND_ASSIGN_VALUE(queue, queueOrError);
   backingQueue1 = queue.backingQueue;
@@ -230,7 +231,7 @@ TEST_F(OpenCLCommandQueuePoolTest, NoQueueReuseWithDifferentProps) {
   runtime::OpenCLCommandQueue queue;
 
   // Request a queue.
-  llvm::Expected<runtime::OpenCLCommandQueue> queueOrError =
+  Expected<runtime::OpenCLCommandQueue> queueOrError =
       pool_.requestCommandQueue(0);
   ASSERT_AND_ASSIGN_VALUE(queue, queueOrError);
   backingQueue1 = queue.backingQueue;

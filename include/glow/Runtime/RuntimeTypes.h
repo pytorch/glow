@@ -42,7 +42,7 @@ using DeviceManagerMapTy = std::map<DeviceIDTy, std::unique_ptr<DeviceManager>>;
 
 /// Callback type used by HostManager and DeviceManager, used to pass results of
 /// an inference request back to the caller.
-using ResultCBTy = std::function<void(runtime::RunIdentifierTy, llvm::Error,
+using ResultCBTy = std::function<void(runtime::RunIdentifierTy, Error,
                                       std::unique_ptr<ExecutionContext>)>;
 
 /// Data structure that contains device constraint information for each device.
