@@ -451,7 +451,7 @@ void IRFunction::generateIR(const Backend &B) {
 
   if (!B.verify(*this)) {
     EXIT_ON_ERR(
-        MAKE_ERR(GlowErr::ErrorCode::COMPILE_UNSUPPORTED_IR_AFTER_GENERATE,
+        MAKE_ERR(ErrorValue::ErrorCode::COMPILE_UNSUPPORTED_IR_AFTER_GENERATE,
                  "Unsupported instruction(s) found after generating IR " +
                      getName().str() + " for backend " + B.getBackendName()));
   }

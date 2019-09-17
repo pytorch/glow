@@ -26,6 +26,7 @@
 #include "glow/Support/Support.h"
 
 #include "llvm/Support/CommandLine.h"
+#include "llvm/Support/FormatVariadic.h"
 
 #include <glog/logging.h>
 
@@ -50,7 +51,7 @@ HostManager::HostManager(const HostConfig &hostConfig) : config_(hostConfig) {}
 HostManager::HostManager(
     std::vector<std::unique_ptr<DeviceConfig>> deviceConfigs) {
   // TODO: move all initialization out of constructor.
-  TEMP_EXIT_ON_ERR(init(std::move(deviceConfigs)));
+  EXIT_ON_ERR(init(std::move(deviceConfigs)));
 }
 
 HostManager::HostManager(
@@ -58,19 +59,18 @@ HostManager::HostManager(
     const HostConfig &hostConfig)
     : config_(hostConfig) {
   // TODO: move all initialization out of constructor.
-  TEMP_EXIT_ON_ERR(init(std::move(deviceConfigs)));
+  EXIT_ON_ERR(init(std::move(deviceConfigs)));
 }
 
-llvm::Expected<DAG &> HostManager::getNetworkDAG(llvm::StringRef network) {
+Expected<DAG *> HostManager::getNetworkDAG(llvm::StringRef network) {
   auto it = networks_.find(network);
   if (it == networks_.end()) {
-    return MAKE_ERR(GlowErr::ErrorCode::RUNTIME_ERROR, "Network not found.");
+    return MAKE_ERR(ErrorValue::ErrorCode::RUNTIME_ERROR, "Network not found.");
   }
-  return it->second.dag;
+  return &it->second.dag;
 }
 
-llvm::Error
-HostManager::init(std::vector<std::unique_ptr<DeviceConfig>> configs) {
+Error HostManager::init(std::vector<std::unique_ptr<DeviceConfig>> configs) {
   DeviceIDTy deviceCount = 0;
 
   for (auto &config : configs) {
@@ -89,7 +89,7 @@ HostManager::init(std::vector<std::unique_ptr<DeviceConfig>> configs) {
   provisioner_.reset(new Provisioner(devices_));
   executor_.reset(new ThreadPoolExecutor(devices_, config_.executorThreads));
   exportMemoryCounters();
-  return llvm::Error::success();
+  return Error::success();
 }
 
 void HostManager::exportMemoryCounters() {
@@ -105,7 +105,7 @@ void HostManager::exportMemoryCounters() {
 }
 
 HostManager::~HostManager() {
-  llvm::toString(clearHost());
+  ERR_TO_VOID(clearHost());
   exportMemoryCounters();
 }
 
@@ -116,9 +116,8 @@ void HostManager::cleanupAddNetwork(llvm::ArrayRef<std::string> names) {
   exportMemoryCounters();
 }
 
-llvm::Error HostManager::addNetwork(std::unique_ptr<Module> module,
-                                    CompilationContext &cctx,
-                                    bool saturateHost) {
+Error HostManager::addNetwork(std::unique_ptr<Module> module,
+                              CompilationContext &cctx, bool saturateHost) {
   std::vector<std::string> names;
   {
     std::lock_guard<std::mutex> networkLock(networkLock_);
@@ -130,7 +129,7 @@ llvm::Error HostManager::addNetwork(std::unique_ptr<Module> module,
           processingNetworks_.find(name) != processingNetworks_.end()) {
         cleanupAddNetwork(names);
         return MAKE_ERR(
-            GlowErr::ErrorCode::RUNTIME_ERROR,
+            ErrorValue::ErrorCode::RUNTIME_ERROR,
             "Failed to add network: already have a function called " + name);
       }
       // Add the network to processingNetworks_ so we know it's being worked on.
@@ -188,7 +187,7 @@ llvm::Error HostManager::addNetwork(std::unique_ptr<Module> module,
     // Since for profiling the provisioner will be reset, we only allow one
     // network in one HM.
     if (networks_.size() > 0) {
-      return MAKE_ERR(GlowErr::ErrorCode::RUNTIME_ERROR,
+      return MAKE_ERR(ErrorValue::ErrorCode::RUNTIME_ERROR,
                       "For quantization profiling flow, there can't be other "
                       "registered networks before this one");
     }
@@ -229,20 +228,20 @@ llvm::Error HostManager::addNetwork(std::unique_ptr<Module> module,
     }
     cleanupAddNetwork(names);
   }
-  return llvm::Error::success();
+  return Error::success();
 }
 
-llvm::Error HostManager::removeNetwork(llvm::StringRef networkName) {
+Error HostManager::removeNetwork(llvm::StringRef networkName) {
   std::lock_guard<std::mutex> networkLock(networkLock_);
   auto networkIterator = networks_.find(networkName);
   if (networkIterator == networks_.end()) {
-    return llvm::Error::success();
+    return Error::success();
   }
 
   if (processingNetworks_.find(networkName) != processingNetworks_.end()) {
     // Return an error, the network is in an incomplete state likely because
     // it is still being added by a different call.
-    return MAKE_ERR(GlowErr::ErrorCode::RUNTIME_NET_BUSY,
+    return MAKE_ERR(ErrorValue::ErrorCode::RUNTIME_NET_BUSY,
                     llvm::formatv("Cannot remove the network {0}, as it is "
                                   "currently being modified.",
                                   networkName)
@@ -251,7 +250,7 @@ llvm::Error HostManager::removeNetwork(llvm::StringRef networkName) {
 
   // Issue an error as there are outstanding runs for the network
   if (networkIterator->second.refcount != 0) {
-    return MAKE_ERR(GlowErr::ErrorCode::RUNTIME_NET_BUSY,
+    return MAKE_ERR(ErrorValue::ErrorCode::RUNTIME_NET_BUSY,
                     llvm::formatv("Cannot remove the network {0}, as there are "
                                   "still outstanding runs",
                                   networkName)
@@ -264,11 +263,11 @@ llvm::Error HostManager::removeNetwork(llvm::StringRef networkName) {
     for (auto device : node->deviceIDs) {
       std::promise<void> removeNetwork;
       auto done = removeNetwork.get_future();
-      std::unique_ptr<llvm::Error> removeErr;
+      std::unique_ptr<Error> removeErr;
       devices_[device]->evictNetwork(
           node->name,
-          [&removeNetwork, &removeErr](std::string name, llvm::Error err) {
-            removeErr = llvm::make_unique<llvm::Error>(std::move(err));
+          [&removeNetwork, &removeErr](std::string name, Error err) {
+            removeErr = llvm::make_unique<Error>(std::move(err));
             removeNetwork.set_value();
           });
       done.get();
@@ -287,7 +286,7 @@ bool HostManager::networkAdded(llvm::StringRef networkName) {
   return networks_.find(networkName) != networks_.end();
 }
 
-llvm::Error HostManager::clearHost() {
+Error HostManager::clearHost() {
   // shutdown the executor, blocking on any current inflight and prevent new
   // requests from being serviced.
   executor_->shutdown();
@@ -314,17 +313,17 @@ llvm::Error HostManager::clearHost() {
   return errContainer.get();
 }
 
-llvm::Error HostManager::runNetworkBlocking(llvm::StringRef networkName,
-                                            PlaceholderBindings &bindings) {
+Error HostManager::runNetworkBlocking(llvm::StringRef networkName,
+                                      PlaceholderBindings &bindings) {
   std::unique_ptr<PlaceholderBindings> phBindings(&bindings);
   std::unique_ptr<ExecutionContext> context =
       llvm::make_unique<ExecutionContext>(std::move(phBindings));
   std::promise<void> runPromise;
   auto fut = runPromise.get_future();
-  std::unique_ptr<llvm::Error> runErr;
+  std::unique_ptr<Error> runErr;
   runNetwork(
       networkName, std::move(context),
-      [&runPromise, &runErr](runtime::RunIdentifierTy, llvm::Error err,
+      [&runPromise, &runErr](runtime::RunIdentifierTy, Error err,
                              std::unique_ptr<ExecutionContext> contextPtr) {
         // Don't delete ph bindings since they were created from a passed in
         // reference.
@@ -332,7 +331,7 @@ llvm::Error HostManager::runNetworkBlocking(llvm::StringRef networkName,
             contextPtr->movePlaceholderBindings();
         phBind.release();
 
-        runErr = llvm::make_unique<llvm::Error>(std::move(err));
+        runErr = llvm::make_unique<Error>(std::move(err));
         runPromise.set_value();
       });
 
@@ -340,17 +339,16 @@ llvm::Error HostManager::runNetworkBlocking(llvm::StringRef networkName,
   return std::move(*DCHECK_NOTNULL(runErr.get()));
 }
 
-llvm::Error
-HostManager::runNetworkBlocking(llvm::StringRef networkName,
-                                std::unique_ptr<ExecutionContext> context) {
+Error HostManager::runNetworkBlocking(
+    llvm::StringRef networkName, std::unique_ptr<ExecutionContext> context) {
   std::promise<void> runPromise;
   auto fut = runPromise.get_future();
-  std::unique_ptr<llvm::Error> runErr;
+  std::unique_ptr<Error> runErr;
   runNetwork(
       networkName, std::move(context),
-      [&runPromise, &runErr](runtime::RunIdentifierTy, llvm::Error err,
+      [&runPromise, &runErr](runtime::RunIdentifierTy, Error err,
                              std::unique_ptr<ExecutionContext> contextPtr) {
-        runErr = llvm::make_unique<llvm::Error>(std::move(err));
+        runErr = llvm::make_unique<Error>(std::move(err));
         runPromise.set_value();
       });
 
@@ -371,7 +369,7 @@ void HostManager::dispatchNextRun() {
         networks_[request.networkName].dag.root.get(),
         std::move(request.context), request.requestID,
         [this, callback = request.callback, name = request.networkName](
-            RunIdentifierTy runID, llvm::Error err,
+            RunIdentifierTy runID, Error err,
             std::unique_ptr<ExecutionContext> context) {
           {
             std::lock_guard<std::mutex> networkLock(networkLock_);
@@ -414,7 +412,7 @@ HostManager::runNetwork(llvm::StringRef networkName,
     if (network == nullptr) {
       callback(
           currentRun,
-          MAKE_ERR(GlowErr::ErrorCode::RUNTIME_NET_NOT_FOUND,
+          MAKE_ERR(ErrorValue::ErrorCode::RUNTIME_NET_NOT_FOUND,
                    llvm::formatv("Function {0} not found", networkName).str()),
           std::move(context));
       return currentRun;
@@ -430,7 +428,7 @@ HostManager::runNetwork(llvm::StringRef networkName,
       callback(
           currentRun,
           MAKE_ERR(
-              GlowErr::ErrorCode::RUNTIME_REQUEST_REFUSED,
+              ErrorValue::ErrorCode::RUNTIME_REQUEST_REFUSED,
               strFormat(
                   "The number of allowed queued requests has been exceeded. "
                   "queued requests: %lu allowed requests: %zu",

@@ -17,6 +17,7 @@
 #include "CPUFunction.h"
 
 #include "llvm/Support/CommandLine.h"
+#include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/raw_ostream.h"
 
 namespace glow {
@@ -97,8 +98,9 @@ void CPUDeviceManager::addNetworkImpl(const Module *module,
   }
 
   if (usedMemoryBytes_ + allFunctionsMemoryBytes > maxMemoryBytes_) {
-    readyCB(module, MAKE_ERR(GlowErr::ErrorCode::RUNTIME_OUT_OF_DEVICE_MEMORY,
-                             "Failed to add network: not enough memory"));
+    readyCB(module,
+            MAKE_ERR(ErrorValue::ErrorCode::RUNTIME_OUT_OF_DEVICE_MEMORY,
+                     "Failed to add network: not enough memory"));
     return;
   }
 
@@ -117,7 +119,7 @@ void CPUDeviceManager::addNetworkImpl(const Module *module,
   exportMemoryCounters();
 
   // Fire the ready CB.
-  readyCB(module, llvm::Error::success());
+  readyCB(module, Error::success());
 }
 
 void CPUDeviceManager::evictNetworkImpl(std::string functionName,
@@ -130,7 +132,7 @@ void CPUDeviceManager::evictNetworkImpl(std::string functionName,
     functions_.erase(it);
   } else {
     evictCB(functionName,
-            MAKE_ERR(GlowErr::ErrorCode::RUNTIME_NET_NOT_FOUND,
+            MAKE_ERR(ErrorValue::ErrorCode::RUNTIME_NET_NOT_FOUND,
                      strFormat("Could not find function with name %s to evict",
                                functionName.c_str())));
     return;
@@ -138,7 +140,7 @@ void CPUDeviceManager::evictNetworkImpl(std::string functionName,
   // Export change in memory usage.
   exportMemoryCounters();
 
-  evictCB(functionName, llvm::Error::success());
+  evictCB(functionName, Error::success());
 }
 
 void CPUDeviceManager::runFunctionImpl(
@@ -153,7 +155,7 @@ void CPUDeviceManager::runFunctionImpl(
     dmRun.addArg("reason", "function not found");
     TRACE_EVENT_SCOPE_END_NAMED(dmRun);
     resultCB(id,
-             MAKE_ERR(GlowErr::ErrorCode::RUNTIME_NET_NOT_FOUND,
+             MAKE_ERR(ErrorValue::ErrorCode::RUNTIME_NET_NOT_FOUND,
                       llvm::formatv("Function {0} not found", function).str()),
              std::move(context));
     return;

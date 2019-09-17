@@ -37,12 +37,12 @@ public:
   ///   1. Retrieves each node's Function from the provided \p module.
   ///   2. Compiles it using the provided CompilationContext \p cctx.
   ///   3. Assigns a device and calls addNetwork on the chosen device(s).
-  /// \returns a GlowErr indicating if the operation was a success.
-  llvm::Error provision(DAGListTy &networks, Module &module,
-                        CompilationContext &cctx);
+  /// \returns a Error indicating if the operation was a success.
+  Error provision(DAGListTy &networks, Module &module,
+                  CompilationContext &cctx);
 
   /// Remove stored compiledFunction.
-  llvm::Error removeFunction(llvm::StringRef name);
+  Error removeFunction(llvm::StringRef name);
 
 private:
   /// Pointer to backend used for compilation. This currently gets reset per

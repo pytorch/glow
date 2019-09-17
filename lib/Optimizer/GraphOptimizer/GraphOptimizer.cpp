@@ -2939,8 +2939,8 @@ static void transformForPrecisionMode(const Backend &B, Function *F,
   }
 }
 
-llvm::Error glow::optimizeFunctionBeforeLowering(Function *F,
-                                                 CompilationContext &cctx) {
+Error glow::optimizeFunctionBeforeLowering(Function *F,
+                                           CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), "glow::optimizeFunctionBeforeLowering")
 
   // Verify the function pre-optimization/lowering.
@@ -2959,13 +2959,13 @@ llvm::Error glow::optimizeFunctionBeforeLowering(Function *F,
 
   // Optimize the graph. Only runs optimizations that are target-independent.
   ::glow::optimize(F, cctx);
-  return llvm::Error::success();
+  return Error::success();
 }
 
 // NOTE: When updating this function, please also update the documentation in
 // docs/GraphOptimizationPipeline.md
-llvm::Error glow::optimizeFunction(Function *F, const Backend &B,
-                                   CompilationContext &cctx) {
+Error glow::optimizeFunction(Function *F, const Backend &B,
+                             CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), "glow::optimizeFunction")
 
   RETURN_IF_ERR(optimizeFunctionBeforeLowering(F, cctx));
@@ -3001,12 +3001,12 @@ llvm::Error glow::optimizeFunction(Function *F, const Backend &B,
   // state became lowered. Do one more verification pass to make sure everything
   // is in order and to bail if it is not.
   if (!B.verify(*F)) {
-    return MAKE_ERR(GlowErr::ErrorCode::COMPILE_UNSUPPORTED_NODE_AFTER_OPTIMIZE,
-                    "Unsupported node(s) found after optimizing Function " +
-                        F->getName().str() + " for backend " +
-                        B.getBackendName());
+    return MAKE_ERR(
+        ErrorValue::ErrorCode::COMPILE_UNSUPPORTED_NODE_AFTER_OPTIMIZE,
+        "Unsupported node(s) found after optimizing Function " +
+            F->getName().str() + " for backend " + B.getBackendName());
   }
-  return llvm::Error::success();
+  return Error::success();
 }
 
 bool glow::executeVerticalFCWeightsSplit(Function *F, unsigned numOfChunks,

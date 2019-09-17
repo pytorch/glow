@@ -18,7 +18,6 @@
 #define GLOW_TORCH_GLOW_SRC_PYTORCHMODELLOADER_H
 
 #include "PyTorchCommon.h"
-#include <llvm/Support/Error.h>
 #include <torch/csrc/jit/custom_operator.h>
 
 #include "GlowIValue.h"
@@ -70,13 +69,13 @@ public:
   ValueMapping(GlowIValue glowIValue);
 
   /// \returns the mapped NodeValue if one is mapped otherwise return an error.
-  llvm::Expected<NodeValue> getMappedNodeValue();
+  Expected<NodeValue> getMappedNodeValue();
 
   /// \returns the mapped GlowIValue if one is mapped otherwise return an error.
-  llvm::Expected<GlowIValue *> getMappedGlowIValue();
+  Expected<GlowIValue *> getMappedGlowIValue();
 
   /// \returns the mapped GlowIValue if one is mapped otherwise return an error.
-  llvm::Expected<const GlowIValue *> getMappedGlowIValue() const;
+  Expected<const GlowIValue *> getMappedGlowIValue() const;
 };
 
 /// Loads PyTorch JIT IR graphs as a Glow Function.
@@ -111,8 +110,7 @@ class PyTorchModelLoader {
   /// constants.
   struct MappingOfMemberFunctionsValue {
     /// The type of functions used to load PyTorch nodes in PyTorchModelLoader.
-    using LoadFn =
-        llvm::Error (PyTorchModelLoader::*)(const torch::jit::Node *);
+    using LoadFn = Error (PyTorchModelLoader::*)(const torch::jit::Node *);
 
     /// Symbols (as strings) that this mapping value is applicable to.
     const std::vector<const char *> symbols;
@@ -165,7 +163,7 @@ public:
   /// settings control the fusion details. Output parameters \p
   /// inputPlaceholders and \p outputPlaceholders are filled out. \returns
   /// error on failure.
-  static llvm::Error
+  static Error
   loadJITGraph(glow::Function &F, const torch::jit::Graph &graph,
                const at::ArrayRef<torch::jit::IValue> inputs,
                std::vector<glow::Placeholder *> &inputPlaceholders,
@@ -176,7 +174,7 @@ public:
   /// as graph external inputs, and \parameters as known tensors. Output
   /// parameters \p inputPlaceholders and \p outputPlaceholders are filled out.
   /// \returns error on failure.
-  static llvm::Error loadJITGraphForOnnxTraining(
+  static Error loadJITGraphForOnnxTraining(
       glow::Function &F, const torch::jit::Graph &graph,
       const at::ArrayRef<torch::jit::IValue> inputs,
       const at::ArrayRef<std::shared_ptr<c10::TensorType>> parameters,
@@ -194,7 +192,7 @@ private:
                      const at::ArrayRef<torch::jit::IValue> inputs,
                      std::vector<glow::Placeholder *> &inputPlaceholders,
                      std::vector<glow::Placeholder *> &outputPlaceholders,
-                     llvm::Error &error, const PyTorchLoaderSettings &settings,
+                     Error &error, const PyTorchLoaderSettings &settings,
                      std::set<size_t> *frozenInputIndices);
 
   /// Takes a glow::Function \p F, a jit::Graph \p graph to load, and a
@@ -206,7 +204,7 @@ private:
       const at::ArrayRef<torch::jit::IValue> inputs,
       const at::ArrayRef<std::shared_ptr<c10::TensorType>> parameters,
       std::vector<glow::Placeholder *> &inputPlaceholders,
-      std::vector<glow::Placeholder *> &outputPlaceholders, llvm::Error &error);
+      std::vector<glow::Placeholder *> &outputPlaceholders, Error &error);
 
   /// Save access to the mapping.
   static const MappingOfMemberFunctions &getSymbolsMapping();
@@ -215,17 +213,15 @@ private:
   /// \p nodeValue. Set \p wasFrozen to true if this comes from a from a frozen
   /// input.
   /// \returns error on failure.
-  llvm::Error addValueMapping(const torch::jit::Value *value,
-                              glow::NodeValue nodeValue,
-                              bool wasFrozen = false);
+  Error addValueMapping(const torch::jit::Value *value,
+                        glow::NodeValue nodeValue, bool wasFrozen = false);
 
   /// Add a new mapping from the PyTorch Value \p value to the GlowIValue
   /// \p glowIValue. Set \p wasFrozen to true if this comes from a from a frozen
   /// input.
   /// \returns error on failure.
-  llvm::Error addValueMapping(const torch::jit::Value *value,
-                              glow::GlowIValue glowIValue,
-                              bool wasFrozen = false);
+  Error addValueMapping(const torch::jit::Value *value,
+                        glow::GlowIValue glowIValue, bool wasFrozen = false);
 
   /// Remove any ValueMapping associated with \p value.
   void removeValueMapping(const torch::jit::Value *value);
@@ -241,11 +237,11 @@ private:
                              bool ignoreNones = false) const;
 
   /// Find the Glow NodeValue that maps to a given PyTorch value \p value.
-  llvm::Expected<glow::NodeValue>
+  Expected<glow::NodeValue>
   getGlowNodeValueForValue(const torch::jit::Value *value);
 
   /// Find the GlowIValue that maps to a given PyTorch value \p value.
-  llvm::Expected<glow::GlowIValue *>
+  Expected<glow::GlowIValue *>
   getGlowIValueForValue(const torch::jit::Value *value);
 
   /// For each Placeholder input to \p ptNode, if this input has been marked
@@ -253,122 +249,122 @@ private:
   /// create a glow Constant for that Placeholder with the iValue from the stack
   /// of inputs for this loader. \returns a ValueMap containing just these new
   /// Constants.
-  llvm::Error freezeWeights(const torch::jit::Node *ptNode);
+  Error freezeWeights(const torch::jit::Node *ptNode);
 
   /// Load a given PyTorch Node \p ptNode. \returns
   /// error on failure.
-  llvm::Error loadNode(const torch::jit::Node *ptNode);
+  Error loadNode(const torch::jit::Node *ptNode);
 
   /// Load a PyTorch Constant node as a Glow Constant.
   /// \returns error on failure.
-  llvm::Error loadConstant(const torch::jit::Node *ptNode);
+  Error loadConstant(const torch::jit::Node *ptNode);
 
   /// Load a PyTorch mul node.
   /// \returns error on failure.
-  llvm::Error loadMul(const torch::jit::Node *ptNode);
+  Error loadMul(const torch::jit::Node *ptNode);
 
   /// Load a PyTorch div node.
   /// \returns error on failure.
-  llvm::Error loadDiv(const torch::jit::Node *ptNode);
+  Error loadDiv(const torch::jit::Node *ptNode);
 
   /// Load a PyTorch add node.
   /// \returns error on failure.
-  llvm::Error loadAdd(const torch::jit::Node *ptNode);
+  Error loadAdd(const torch::jit::Node *ptNode);
 
   /// Load a PyTorch sub node.
   /// \returns error on failure.
-  llvm::Error loadSub(const torch::jit::Node *ptNode);
+  Error loadSub(const torch::jit::Node *ptNode);
 
   /// Load a PyTorch max node.
   /// \returns error on failure.
-  llvm::Error loadMax(const torch::jit::Node *ptNode);
+  Error loadMax(const torch::jit::Node *ptNode);
 
   /// Load a PyTorch relu node.
   /// \returns error on failure.
-  llvm::Error loadRelu(const torch::jit::Node *ptNode);
+  Error loadRelu(const torch::jit::Node *ptNode);
 
   /// Load a PyTorch exp node.
   /// \returns error on failure.
-  llvm::Error loadExp(const torch::jit::Node *ptNode);
+  Error loadExp(const torch::jit::Node *ptNode);
 
   /// Load a PyTorch sqrt node.
   /// \returns error on failure.
-  llvm::Error loadSqrt(const torch::jit::Node *ptNode);
+  Error loadSqrt(const torch::jit::Node *ptNode);
 
   /// Load a PyTorch reciprocal node.
-  llvm::Error loadReciprocal(const torch::jit::Node *ptNode);
+  Error loadReciprocal(const torch::jit::Node *ptNode);
 
   /// Load a PyTorch _convolution node.
   /// \returns error on failure.
-  llvm::Error loadConvolution(const torch::jit::Node *ptNode);
+  Error loadConvolution(const torch::jit::Node *ptNode);
 
   /// Load a PyTorch batch_norm node.
   /// \returns error on failure.
-  llvm::Error loadBatchNorm(const torch::jit::Node *ptNode);
+  Error loadBatchNorm(const torch::jit::Node *ptNode);
 
   /// Load a PyTorch max_pool2d node.
   /// \returns error on failure.
-  llvm::Error loadMaxPool2d(const torch::jit::Node *ptNode);
+  Error loadMaxPool2d(const torch::jit::Node *ptNode);
 
   /// Load a PyTorch sigmoid node.
   /// \returns error on failure.
-  llvm::Error loadSigmoid(const torch::jit::Node *ptNode);
+  Error loadSigmoid(const torch::jit::Node *ptNode);
 
   /// Load a PyTorch avg_pool2d node.
   /// \returns error on failure.
-  llvm::Error loadAvgPool2d(const torch::jit::Node *ptNode);
+  Error loadAvgPool2d(const torch::jit::Node *ptNode);
 
   /// Load a PyTorch adaptive_avg_pool2d node.
   /// \returns error on failure.
-  llvm::Error loadAdaptiveAvgPool2d(const torch::jit::Node *ptNode);
+  Error loadAdaptiveAvgPool2d(const torch::jit::Node *ptNode);
 
   /// Load a PyTorch t (transpose) node.
   /// \returns error on failure.
-  llvm::Error loadTranspose(const torch::jit::Node *ptNode);
+  Error loadTranspose(const torch::jit::Node *ptNode);
 
   /// Load a PyTorch aten::linear node.
   /// \returns error on failure.
-  llvm::Error loadLinear(const torch::jit::Node *ptNode);
+  Error loadLinear(const torch::jit::Node *ptNode);
 
   /// Load a PyTorch min node.
   /// \returns error on failure.
-  llvm::Error loadMin(const torch::jit::Node *ptNode);
+  Error loadMin(const torch::jit::Node *ptNode);
 
   /// Load a PyTorch clamp node.
   /// \returns error on failure.
-  llvm::Error loadClamp(const torch::jit::Node *ptNode);
+  Error loadClamp(const torch::jit::Node *ptNode);
 
   /// Load a PyTorch matmul (n x k) x (k x m) -> (n x m) node.
   /// \returns error on failure.
-  llvm::Error loadMatMul(const torch::jit::Node *ptNode);
+  Error loadMatMul(const torch::jit::Node *ptNode);
 
   /// Load a PyTorch prelu node.
   /// \returns error on failure.
-  llvm::Error loadPRelu(const torch::jit::Node *ptNode);
+  Error loadPRelu(const torch::jit::Node *ptNode);
 
   /// Load a PyTorch SoftMax node.
   /// \returns error on failure.
-  llvm::Error loadSoftMax(const torch::jit::Node *ptNode);
+  Error loadSoftMax(const torch::jit::Node *ptNode);
 
   /// Load a PyTorch flatten node.
   /// \returns error on failure.
-  llvm::Error loadFlatten(const torch::jit::Node *ptNode);
+  Error loadFlatten(const torch::jit::Node *ptNode);
 
   /// Load a PyTorch topK node.
   /// \returns error on failure.
-  llvm::Error loadTopK(const torch::jit::Node *ptNode);
+  Error loadTopK(const torch::jit::Node *ptNode);
 
   /// Load a PyTorch aten::size node.
   /// \returns error on failure.
-  llvm::Error loadSize(const torch::jit::Node *ptNode);
+  Error loadSize(const torch::jit::Node *ptNode);
 
   /// Load a PyTorch prim::ListConstruct node.
   /// \returns error on failure.
-  llvm::Error loadListConstruct(const torch::jit::Node *ptNode);
+  Error loadListConstruct(const torch::jit::Node *ptNode);
 
   /// Load a PyTorch aten::reshape node.
   /// \returns error on failure.
-  llvm::Error loadReshape(const torch::jit::Node *ptNode);
+  Error loadReshape(const torch::jit::Node *ptNode);
 };
 } // namespace glow
 

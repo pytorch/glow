@@ -110,67 +110,67 @@ bool GlowIValue::isTuple() const { return Tag::Tuple == tag_; }
                     strFormat("Expected GlowIValue with tag %s but found %s",  \
                               tagToStr((EXPECTED_TAG)), tagToStr(tag_)))
 
-llvm::Expected<Tensor *> GlowIValue::toTensor() {
+Expected<Tensor *> GlowIValue::toTensor() {
   ExpectTag(Tag::Tensor);
   return payload_.asTensor;
 }
 
-llvm::Expected<const Tensor *> GlowIValue::toTensor() const {
+Expected<const Tensor *> GlowIValue::toTensor() const {
   ExpectTag(Tag::Tensor);
   return payload_.asTensor;
 }
 
-llvm::Expected<double> GlowIValue::toDouble() const {
+Expected<double> GlowIValue::toDouble() const {
   ExpectTag(Tag::Double);
   return payload_.asDouble;
 }
 
-llvm::Expected<int64_t> GlowIValue::toInt() const {
+Expected<int64_t> GlowIValue::toInt() const {
   ExpectTag(Tag::Int);
   return payload_.asInt;
 }
 
-llvm::Expected<bool> GlowIValue::toBool() const {
+Expected<bool> GlowIValue::toBool() const {
   ExpectTag(Tag::Bool);
   return payload_.asBool;
 }
 
-llvm::Expected<std::vector<int64_t> *> GlowIValue::toIntList() {
+Expected<std::vector<int64_t> *> GlowIValue::toIntList() {
   ExpectTag(Tag::IntList);
   return payload_.asIntList;
 }
 
-llvm::Expected<const std::vector<int64_t> *> GlowIValue::toIntList() const {
+Expected<const std::vector<int64_t> *> GlowIValue::toIntList() const {
   ExpectTag(Tag::IntList);
   return payload_.asIntList;
 }
 
-llvm::Expected<std::vector<double> *> GlowIValue::toDoubleList() {
+Expected<std::vector<double> *> GlowIValue::toDoubleList() {
   ExpectTag(Tag::DoubleList);
   return payload_.asDoubleList;
 }
 
-llvm::Expected<const std::vector<double> *> GlowIValue::toDoubleList() const {
+Expected<const std::vector<double> *> GlowIValue::toDoubleList() const {
   ExpectTag(Tag::DoubleList);
   return payload_.asDoubleList;
 }
 
-llvm::Expected<std::vector<bool> *> GlowIValue::toBoolList() {
+Expected<std::vector<bool> *> GlowIValue::toBoolList() {
   ExpectTag(Tag::BoolList);
   return payload_.asBoolList;
 }
 
-llvm::Expected<const std::vector<bool> *> GlowIValue::toBoolList() const {
+Expected<const std::vector<bool> *> GlowIValue::toBoolList() const {
   ExpectTag(Tag::BoolList);
   return payload_.asBoolList;
 }
 
-llvm::Expected<std::vector<GlowIValue> *> GlowIValue::toTuple() {
+Expected<std::vector<GlowIValue> *> GlowIValue::toTuple() {
   ExpectTag(Tag::Tuple);
   return payload_.asTuple;
 }
 
-llvm::Expected<const std::vector<GlowIValue> *> GlowIValue::toTuple() const {
+Expected<const std::vector<GlowIValue> *> GlowIValue::toTuple() const {
   ExpectTag(Tag::Tuple);
   return payload_.asTuple;
 }
@@ -234,7 +234,7 @@ void GlowIValue::fromTuple(std::vector<GlowIValue> glowIValList) {
   std::swap(glowIValList, *payload_.asTuple);
 }
 
-llvm::Error GlowIValue::fromIValue(const at::IValue &ival) {
+Error GlowIValue::fromIValue(const at::IValue &ival) {
   reset();
   if (ival.isNone()) {
     fromNone();
@@ -272,7 +272,7 @@ llvm::Error GlowIValue::fromIValue(const at::IValue &ival) {
   } else {
     RETURN_ERR("Encountered unhandled IValue type");
   }
-  return llvm::Error::success();
+  return Error::success();
 }
 
 } // namespace glow

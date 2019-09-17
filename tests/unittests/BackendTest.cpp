@@ -132,8 +132,8 @@ TEST(RuntimeBundle, BundleSymbolInfo) {
   auto *qp = F->createQuantizationProfile(bindings, "qp", input);
 
   EE.compile(CompilationMode::Infer);
-  auto dag = EE.getDAG("main");
-  ASSERT_TRUE((bool)dag);
+  runtime::DAG *dag;
+  ASSIGN_VALUE_OR_FAIL_TEST(dag, EE.getDAG("main"));
   assert(dag->nodes.size() > 0 && "Empty DAG list");
   auto table = dag->nodes[0]->runtimeBundle->getSymbolTable();
   // Check that placeholders and constants are correctly labelled.
@@ -192,8 +192,8 @@ TEST(RuntimeBundle, ContiguousPlaceholder) {
   bindings.allocate(A);
   bindings.allocate(Ex);
   EE.compile(cctx);
-  auto dag = EE.getDAG("main");
-  ASSERT_TRUE((bool)dag);
+  runtime::DAG *dag;
+  ASSIGN_VALUE_OR_FAIL_TEST(dag, EE.getDAG("main"));
   auto &table = dag->nodes[0]->runtimeBundle->getSymbolTable();
 
   std::vector<glow::runtime::RuntimeSymbolInfo> tableContainer;
@@ -323,10 +323,9 @@ TEST_P(BackendExecTest, debugPrint) {
 
   std::promise<void> addPromise;
   auto fut = addPromise.get_future();
-  llvm::Error addErr = llvm::Error::success();
-  MARK_ERR_CHECKED(addErr);
+  Error addErr = Error::empty();
   device->addNetwork(&EE_.getModule(), std::move(functionMap),
-                     [&addPromise, &addErr](const Module *, llvm::Error err) {
+                     [&addPromise, &addErr](const Module *, Error err) {
                        addErr = std::move(err);
                        addPromise.set_value();
                      });
@@ -335,11 +334,10 @@ TEST_P(BackendExecTest, debugPrint) {
   // Run the function.
   std::promise<void> runPromise;
   fut = runPromise.get_future();
-  llvm::Error runErr = llvm::Error::success();
-  MARK_ERR_CHECKED(runErr);
+  Error runErr = Error::empty();
   device->runFunction(name, std::move(ctx),
                       [&runPromise, &runErr,
-                       &ctx](runtime::RunIdentifierTy, llvm::Error err,
+                       &ctx](runtime::RunIdentifierTy, Error err,
                              std::unique_ptr<ExecutionContext> contextPtr) {
                         ctx = std::move(contextPtr);
                         runErr = std::move(err);

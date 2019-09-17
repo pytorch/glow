@@ -26,16 +26,16 @@ namespace glow {
 
 namespace {
 /// Downcast a double to a float.
-llvm::Expected<float> to32Bit(double val) {
+Expected<float> to32Bit(double val) {
   RETURN_ERR_IF_NOT(val <= std::numeric_limits<float>::max() ||
                         val >= std::numeric_limits<float>::lowest(),
                     glow::strFormat("Value %f is out of limit.", val));
-  return llvm::Expected<float>(static_cast<float>(val));
+  return Expected<float>(static_cast<float>(val));
 }
 
-/// Unwrap a llvm::Expected and call to32Bit(double) or any contained return
+/// Unwrap a Expected and call to32Bit(double) or any contained return
 /// Error.
-llvm::Expected<float> to32Bit(llvm::Expected<double> expectedVal) {
+Expected<float> to32Bit(Expected<double> expectedVal) {
   if (expectedVal) {
     return to32Bit(*expectedVal);
   } else {
@@ -47,8 +47,8 @@ llvm::Expected<float> to32Bit(llvm::Expected<double> expectedVal) {
 /// of the GlowIValue in the case it's a IntList or Tuple of Ints checking there
 /// are exactly size elements or if the GlowIValue is an Int then it will
 /// replicate it size times then return that.
-llvm::Expected<std::vector<int64_t>>
-expandIntIValIfNeeded(const GlowIValue &glowIVal, size_t size) {
+Expected<std::vector<int64_t>> expandIntIValIfNeeded(const GlowIValue &glowIVal,
+                                                     size_t size) {
   // If the GlowIValue is a single int then make size copies of it.
   if (glowIVal.isInt()) {
     std::vector<int64_t> out;
@@ -97,11 +97,10 @@ expandIntIValIfNeeded(const GlowIValue &glowIVal, size_t size) {
   }
 }
 
-/// Unwrap llvm::Expected<GlowIValue *> and call
+/// Unwrap Expected<GlowIValue *> and call
 /// expandIntIValIfNeeded(GlowIValue), propagates any Errors.
-llvm::Expected<std::vector<int64_t>>
-expandIntIValIfNeeded(llvm::Expected<GlowIValue *> expectedGlowIVal,
-                      size_t size) {
+Expected<std::vector<int64_t>>
+expandIntIValIfNeeded(Expected<GlowIValue *> expectedGlowIVal, size_t size) {
   if (expectedGlowIVal) {
     return expandIntIValIfNeeded(**expectedGlowIVal, size);
   } else {
@@ -112,7 +111,7 @@ expandIntIValIfNeeded(llvm::Expected<GlowIValue *> expectedGlowIVal,
 /// Given a GlowIValue \p glowIVal, \returns if the GlowIValue is an Int return
 /// it's value, if it's a IntList or Tuple of Ints then check that all elements
 /// are the same then return the first one.
-llvm::Expected<int64_t> contractIntIValIfNeeded(const GlowIValue &glowIVal) {
+Expected<int64_t> contractIntIValIfNeeded(const GlowIValue &glowIVal) {
   if (glowIVal.isInt()) {
     return glowIVal.toInt();
   }
@@ -156,10 +155,10 @@ llvm::Expected<int64_t> contractIntIValIfNeeded(const GlowIValue &glowIVal) {
   }
 }
 
-/// Unwrap a llvm::Expected<GlowIValue *> \p expectedGlowIVal and call
+/// Unwrap a Expected<GlowIValue *> \p expectedGlowIVal and call
 /// contractIntIValIfNeeded(GlowIValue), propogate any Errors.
-llvm::Expected<int64_t>
-contractIntIValIfNeeded(llvm::Expected<GlowIValue *> expectedGlowIVal) {
+Expected<int64_t>
+contractIntIValIfNeeded(Expected<GlowIValue *> expectedGlowIVal) {
   if (expectedGlowIVal) {
     return contractIntIValIfNeeded(**expectedGlowIVal);
   } else {
@@ -167,9 +166,9 @@ contractIntIValIfNeeded(llvm::Expected<GlowIValue *> expectedGlowIVal) {
   }
 }
 
-/// Unwrap a llvm::Expected<GlowIValue *> \p expectedIVal and call toDouble,
+/// Unwrap a Expected<GlowIValue *> \p expectedIVal and call toDouble,
 /// propogate any Errors.
-llvm::Expected<double> iValToDouble(llvm::Expected<GlowIValue *> expectedIVal) {
+Expected<double> iValToDouble(Expected<GlowIValue *> expectedIVal) {
   if (expectedIVal) {
     return (*expectedIVal)->toDouble();
   } else {
@@ -177,9 +176,9 @@ llvm::Expected<double> iValToDouble(llvm::Expected<GlowIValue *> expectedIVal) {
   }
 }
 
-/// Unwrap a llvm::Expected<GlowIValue *> \p expectedIVal and call toInt,
+/// Unwrap a Expected<GlowIValue *> \p expectedIVal and call toInt,
 /// propogate any Errors.
-llvm::Expected<int64_t> iValToInt(llvm::Expected<GlowIValue *> expectedIVal) {
+Expected<int64_t> iValToInt(Expected<GlowIValue *> expectedIVal) {
   if (expectedIVal) {
     return (*expectedIVal)->toInt();
   } else {
@@ -187,9 +186,9 @@ llvm::Expected<int64_t> iValToInt(llvm::Expected<GlowIValue *> expectedIVal) {
   }
 }
 
-/// Unwrap a llvm::Expected<GlowIValue *> \p expectedIVal and call toBool,
+/// Unwrap a Expected<GlowIValue *> \p expectedIVal and call toBool,
 /// propogate any Errors.
-llvm::Expected<bool> iValToBool(llvm::Expected<GlowIValue *> expectedIVal) {
+Expected<bool> iValToBool(Expected<GlowIValue *> expectedIVal) {
   if (expectedIVal) {
     return (*expectedIVal)->toBool();
   } else {
@@ -197,10 +196,10 @@ llvm::Expected<bool> iValToBool(llvm::Expected<GlowIValue *> expectedIVal) {
   }
 }
 
-/// Unwrap a llvm::Expected<GlowIValue *> \p expectedIVal and call toIntList,
+/// Unwrap a Expected<GlowIValue *> \p expectedIVal and call toIntList,
 /// propogate any Errors.
-llvm::Expected<std::vector<int64_t> *>
-iValToIntList(llvm::Expected<GlowIValue *> expectedIVal) {
+Expected<std::vector<int64_t> *>
+iValToIntList(Expected<GlowIValue *> expectedIVal) {
   if (expectedIVal) {
     return (*expectedIVal)->toIntList();
   } else {
@@ -212,8 +211,8 @@ iValToIntList(llvm::Expected<GlowIValue *> expectedIVal) {
 /// indicates that the size should be equal to or greater than that size (for
 /// example -2 means at least 2).
 template <typename T>
-llvm::Error checkInputAndOutputSizes(const T &inputs, int64_t inputsSize,
-                                     const T &outputs, int64_t outputsSize) {
+Error checkInputAndOutputSizes(const T &inputs, int64_t inputsSize,
+                               const T &outputs, int64_t outputsSize) {
   if (inputsSize >= 0) {
     RETURN_ERR_IF_NOT(inputs.size() == inputsSize,
                       glow::strFormat("Expected exactly %lu inputs, got %lu.",
@@ -235,7 +234,7 @@ llvm::Error checkInputAndOutputSizes(const T &inputs, int64_t inputsSize,
                       glow::strFormat("Expected at least %lu outputs, got %lu.",
                                       (size_t)outputsSize, outputs.size()));
   }
-  return llvm::Error::success();
+  return Error::success();
 }
 
 /// Given a vector \p original containing elements of some type, \returns a
@@ -250,11 +249,11 @@ std::vector<T> castVector(const std::vector<OriginalT> &original) {
   return out;
 }
 
-/// Unwrap a llvm::Expected<std::vector<>> \p originalExpected and calls
+/// Unwrap a Expected<std::vector<>> \p originalExpected and calls
 /// castVector() with the contents, propagates any Errors.
 template <typename T, typename OriginalT>
-llvm::Expected<std::vector<T>>
-castVector(llvm::Expected<std::vector<OriginalT>> originalExpected) {
+Expected<std::vector<T>>
+castVector(Expected<std::vector<OriginalT>> originalExpected) {
   if (originalExpected) {
     return castVector<T>(*originalExpected);
   } else {
@@ -262,11 +261,10 @@ castVector(llvm::Expected<std::vector<OriginalT>> originalExpected) {
   }
 }
 
-/// Unwrap a llvm::Expected<OriginalT> \p originalExpected and calls
+/// Unwrap a Expected<OriginalT> \p originalExpected and calls
 /// static_cast() with the contents, propagates any Errors.
 template <typename T, typename OriginalT>
-llvm::Expected<T>
-static_cast_expected(llvm::Expected<OriginalT> originalExpected) {
+Expected<T> static_cast_expected(Expected<OriginalT> originalExpected) {
   if (originalExpected) {
     return static_cast<T>(*originalExpected);
   } else {
@@ -537,7 +535,7 @@ bool PyTorchModelLoader::isNodeSupported(const torch::jit::Node *ptNode) {
   return mapping.count(ptNode->kind()) != 0;
 }
 
-llvm::Error PyTorchModelLoader::freezeWeights(const torch::jit::Node *ptNode) {
+Error PyTorchModelLoader::freezeWeights(const torch::jit::Node *ptNode) {
   const auto &mapping = getSymbolsMapping();
   const auto it = mapping.find(ptNode->kind());
 
@@ -593,10 +591,10 @@ llvm::Error PyTorchModelLoader::freezeWeights(const torch::jit::Node *ptNode) {
       frozenInputIndices_->insert(inputIndex);
     }
   }
-  return llvm::Error::success();
+  return Error::success();
 }
 
-llvm::Error PyTorchModelLoader::loadNode(const torch::jit::Node *node) {
+Error PyTorchModelLoader::loadNode(const torch::jit::Node *node) {
   const auto &mapping = getSymbolsMapping();
   auto it = mapping.find(node->kind());
 
@@ -606,25 +604,25 @@ llvm::Error PyTorchModelLoader::loadNode(const torch::jit::Node *node) {
   return (this->*it->second.loadFn)(node);
 }
 
-llvm::Error PyTorchModelLoader::addValueMapping(const torch::jit::Value *value,
-                                                glow::NodeValue nodeValue,
-                                                bool wasFrozen) {
+Error PyTorchModelLoader::addValueMapping(const torch::jit::Value *value,
+                                          glow::NodeValue nodeValue,
+                                          bool wasFrozen) {
 
   ValueMapping mapping(std::move(nodeValue), wasFrozen);
   auto p = valueMap_.emplace(value, std::move(mapping));
 
   RETURN_ERR_IF_NOT(p.second, glow::strFormat("Value %s is already mapped",
                                               value->debugNameBase().c_str()));
-  return llvm::Error::success();
+  return Error::success();
 }
 
 void PyTorchModelLoader::removeValueMapping(const torch::jit::Value *value) {
   valueMap_.erase(value);
 }
 
-llvm::Error PyTorchModelLoader::addValueMapping(const torch::jit::Value *value,
-                                                glow::GlowIValue glowIValue,
-                                                bool wasFrozen) {
+Error PyTorchModelLoader::addValueMapping(const torch::jit::Value *value,
+                                          glow::GlowIValue glowIValue,
+                                          bool wasFrozen) {
   glow::Constant *glowConstant = nullptr;
   if (glowIValue.isTensor()) {
     glow::Tensor *t;
@@ -640,7 +638,7 @@ llvm::Error PyTorchModelLoader::addValueMapping(const torch::jit::Value *value,
                                       value->debugNameBase().c_str()));
   }
 
-  return llvm::Error::success();
+  return Error::success();
 }
 
 bool PyTorchModelLoader::hasGlowNodeValueForValue(
@@ -667,14 +665,14 @@ bool PyTorchModelLoader::hasGlowIValueForValue(const torch::jit::Value *value,
 
   if (ignoreNones) {
     // Already checked ValueMappingType above.
-    const auto *glowIVal = exitOnErr(it->second.getMappedGlowIValue());
+    const auto *glowIVal = EXIT_ON_ERR(it->second.getMappedGlowIValue());
     return !glowIVal->isNone();
   }
 
   return true;
 }
 
-llvm::Expected<glow::NodeValue>
+Expected<glow::NodeValue>
 PyTorchModelLoader::getGlowNodeValueForValue(const torch::jit::Value *value) {
   auto it = valueMap_.find(value);
   if (it == valueMap_.end()) {
@@ -690,7 +688,7 @@ PyTorchModelLoader::getGlowNodeValueForValue(const torch::jit::Value *value) {
   return mappingValue.getMappedNodeValue();
 }
 
-llvm::Expected<glow::GlowIValue *>
+Expected<glow::GlowIValue *>
 PyTorchModelLoader::getGlowIValueForValue(const torch::jit::Value *value) {
   auto it = valueMap_.find(value);
   if (it == valueMap_.end()) {
@@ -705,7 +703,7 @@ PyTorchModelLoader::getGlowIValueForValue(const torch::jit::Value *value) {
   return mappingValue.getMappedGlowIValue();
 }
 
-llvm::Error PyTorchModelLoader::loadMul(const torch::jit::Node *ptNode) {
+Error PyTorchModelLoader::loadMul(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
   RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 2, outputs, 1));
@@ -721,7 +719,7 @@ llvm::Error PyTorchModelLoader::loadMul(const torch::jit::Node *ptNode) {
   return addValueMapping(outputs[0], glowNode->getResult());
 }
 
-llvm::Error PyTorchModelLoader::loadDiv(const torch::jit::Node *ptNode) {
+Error PyTorchModelLoader::loadDiv(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
   RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 2, outputs, 1));
@@ -737,7 +735,7 @@ llvm::Error PyTorchModelLoader::loadDiv(const torch::jit::Node *ptNode) {
   return addValueMapping(outputs[0], glowNode->getResult());
 }
 
-llvm::Error PyTorchModelLoader::loadAdd(const torch::jit::Node *ptNode) {
+Error PyTorchModelLoader::loadAdd(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
   RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 3, outputs, 1));
@@ -759,7 +757,7 @@ llvm::Error PyTorchModelLoader::loadAdd(const torch::jit::Node *ptNode) {
   return addValueMapping(outputs[0], glowNode->getResult());
 }
 
-llvm::Error PyTorchModelLoader::loadSub(const torch::jit::Node *ptNode) {
+Error PyTorchModelLoader::loadSub(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
   RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 3, outputs, 1));
@@ -781,7 +779,7 @@ llvm::Error PyTorchModelLoader::loadSub(const torch::jit::Node *ptNode) {
   return addValueMapping(outputs[0], glowNode->getResult());
 }
 
-llvm::Error PyTorchModelLoader::loadMax(const torch::jit::Node *ptNode) {
+Error PyTorchModelLoader::loadMax(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
   RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 2, outputs, 1));
@@ -795,7 +793,7 @@ llvm::Error PyTorchModelLoader::loadMax(const torch::jit::Node *ptNode) {
   return addValueMapping(outputs[0], glowNode->getResult());
 }
 
-llvm::Error PyTorchModelLoader::loadSize(const torch::jit::Node *ptNode) {
+Error PyTorchModelLoader::loadSize(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
   RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 2, outputs, 1));
@@ -824,8 +822,7 @@ llvm::Error PyTorchModelLoader::loadSize(const torch::jit::Node *ptNode) {
   return addValueMapping(outputs[0], std::move(glowIVal));
 }
 
-llvm::Error
-PyTorchModelLoader::loadListConstruct(const torch::jit::Node *ptNode) {
+Error PyTorchModelLoader::loadListConstruct(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
   // Requires -1 because this requires at least one input.
@@ -871,7 +868,7 @@ PyTorchModelLoader::loadListConstruct(const torch::jit::Node *ptNode) {
   return addValueMapping(outputs[0], std::move(glowIVal));
 }
 
-llvm::Error PyTorchModelLoader::loadReshape(const torch::jit::Node *ptNode) {
+Error PyTorchModelLoader::loadReshape(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
   RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 2, outputs, 1));
@@ -914,7 +911,7 @@ llvm::Error PyTorchModelLoader::loadReshape(const torch::jit::Node *ptNode) {
                          F_.createReshape("reshape", input, glowShape));
 }
 
-llvm::Error PyTorchModelLoader::loadRelu(const torch::jit::Node *ptNode) {
+Error PyTorchModelLoader::loadRelu(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
   RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 1, outputs, 1));
@@ -926,7 +923,7 @@ llvm::Error PyTorchModelLoader::loadRelu(const torch::jit::Node *ptNode) {
   return addValueMapping(outputs[0], glowNode->getResult());
 }
 
-llvm::Error PyTorchModelLoader::loadExp(const torch::jit::Node *ptNode) {
+Error PyTorchModelLoader::loadExp(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
   RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 1, outputs, 1));
@@ -938,7 +935,7 @@ llvm::Error PyTorchModelLoader::loadExp(const torch::jit::Node *ptNode) {
   return addValueMapping(outputs[0], glowNode->getResult());
 }
 
-llvm::Error PyTorchModelLoader::loadSqrt(const torch::jit::Node *ptNode) {
+Error PyTorchModelLoader::loadSqrt(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
   RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 1, outputs, 1));
@@ -950,7 +947,7 @@ llvm::Error PyTorchModelLoader::loadSqrt(const torch::jit::Node *ptNode) {
   return addValueMapping(outputs[0], glowNode->getResult());
 }
 
-llvm::Error PyTorchModelLoader::loadSigmoid(const torch::jit::Node *ptNode) {
+Error PyTorchModelLoader::loadSigmoid(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
   RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 1, outputs, 1));
@@ -962,7 +959,7 @@ llvm::Error PyTorchModelLoader::loadSigmoid(const torch::jit::Node *ptNode) {
   return addValueMapping(outputs[0], glowNode->getResult());
 }
 
-llvm::Error PyTorchModelLoader::loadReciprocal(const torch::jit::Node *ptNode) {
+Error PyTorchModelLoader::loadReciprocal(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
   RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 1, outputs, 1));
@@ -973,8 +970,7 @@ llvm::Error PyTorchModelLoader::loadReciprocal(const torch::jit::Node *ptNode) {
   return addValueMapping(outputs[0], glowNode->getResult());
 }
 
-llvm::Error
-PyTorchModelLoader::loadConvolution(const torch::jit::Node *ptNode) {
+Error PyTorchModelLoader::loadConvolution(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
   RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 12, outputs, 1));
@@ -1057,7 +1053,7 @@ PyTorchModelLoader::loadConvolution(const torch::jit::Node *ptNode) {
   return addValueMapping(outputs[0], output->getResult());
 }
 
-llvm::Error PyTorchModelLoader::loadLinear(const torch::jit::Node *ptNode) {
+Error PyTorchModelLoader::loadLinear(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
   RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 3, outputs, 1));
@@ -1095,7 +1091,7 @@ llvm::Error PyTorchModelLoader::loadLinear(const torch::jit::Node *ptNode) {
       F_.createFullyConnected("linear", input, weights, bias, outTy));
 }
 
-llvm::Error PyTorchModelLoader::loadBatchNorm(const torch::jit::Node *ptNode) {
+Error PyTorchModelLoader::loadBatchNorm(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
   RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 9, outputs, 1));
@@ -1167,7 +1163,7 @@ llvm::Error PyTorchModelLoader::loadBatchNorm(const torch::jit::Node *ptNode) {
   return addValueMapping(outputs[0], bn->getResult());
 }
 
-llvm::Error PyTorchModelLoader::loadMaxPool2d(const torch::jit::Node *ptNode) {
+Error PyTorchModelLoader::loadMaxPool2d(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
   RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 6, outputs, 1));
@@ -1223,7 +1219,7 @@ llvm::Error PyTorchModelLoader::loadMaxPool2d(const torch::jit::Node *ptNode) {
   return addValueMapping(outputs[0], output);
 }
 
-llvm::Error PyTorchModelLoader::loadAvgPool2d(const torch::jit::Node *ptNode) {
+Error PyTorchModelLoader::loadAvgPool2d(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
   RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 7, outputs, 1));
@@ -1277,7 +1273,7 @@ llvm::Error PyTorchModelLoader::loadAvgPool2d(const torch::jit::Node *ptNode) {
   return addValueMapping(outputs[0], output);
 }
 
-llvm::Error PyTorchModelLoader::loadClamp(const torch::jit::Node *ptNode) {
+Error PyTorchModelLoader::loadClamp(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
   RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 3, outputs, 1));
@@ -1302,8 +1298,8 @@ llvm::Error PyTorchModelLoader::loadClamp(const torch::jit::Node *ptNode) {
   return addValueMapping(outputs[0], output);
 }
 
-llvm::Error
-PyTorchModelLoader::loadAdaptiveAvgPool2d(const torch::jit::Node *ptNode) {
+Error PyTorchModelLoader::loadAdaptiveAvgPool2d(
+    const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
   RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 2, outputs, 1));
@@ -1343,7 +1339,7 @@ PyTorchModelLoader::loadAdaptiveAvgPool2d(const torch::jit::Node *ptNode) {
   return addValueMapping(outputs[0], output);
 }
 
-llvm::Error PyTorchModelLoader::loadTranspose(const torch::jit::Node *ptNode) {
+Error PyTorchModelLoader::loadTranspose(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
   RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 1, outputs, 1));
@@ -1362,7 +1358,7 @@ llvm::Error PyTorchModelLoader::loadTranspose(const torch::jit::Node *ptNode) {
   return addValueMapping(outputs[0], output);
 }
 
-llvm::Error PyTorchModelLoader::loadMin(const torch::jit::Node *ptNode) {
+Error PyTorchModelLoader::loadMin(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
   RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 2, outputs, 1));
@@ -1376,7 +1372,7 @@ llvm::Error PyTorchModelLoader::loadMin(const torch::jit::Node *ptNode) {
   return addValueMapping(outputs[0], output);
 }
 
-llvm::Error PyTorchModelLoader::loadMatMul(const torch::jit::Node *ptNode) {
+Error PyTorchModelLoader::loadMatMul(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
   RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 2, outputs, 1));
@@ -1390,7 +1386,7 @@ llvm::Error PyTorchModelLoader::loadMatMul(const torch::jit::Node *ptNode) {
   return addValueMapping(outputs[0], glowNode);
 }
 
-llvm::Error PyTorchModelLoader::loadPRelu(const torch::jit::Node *ptNode) {
+Error PyTorchModelLoader::loadPRelu(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
   RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 2, outputs, 1));
@@ -1419,7 +1415,7 @@ llvm::Error PyTorchModelLoader::loadPRelu(const torch::jit::Node *ptNode) {
 }
 
 /// TODO: check Dtype is float (optional value).
-llvm::Error PyTorchModelLoader::loadSoftMax(const torch::jit::Node *ptNode) {
+Error PyTorchModelLoader::loadSoftMax(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
   RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 3, outputs, 1));
@@ -1443,7 +1439,7 @@ llvm::Error PyTorchModelLoader::loadSoftMax(const torch::jit::Node *ptNode) {
   return addValueMapping(outputs[0], glowNode);
 }
 
-llvm::Error PyTorchModelLoader::loadFlatten(const torch::jit::Node *ptNode) {
+Error PyTorchModelLoader::loadFlatten(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
   RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 3, outputs, 1));
@@ -1466,7 +1462,7 @@ llvm::Error PyTorchModelLoader::loadFlatten(const torch::jit::Node *ptNode) {
   return addValueMapping(outputs[0], glowNode);
 }
 
-llvm::Error PyTorchModelLoader::loadTopK(const torch::jit::Node *ptNode) {
+Error PyTorchModelLoader::loadTopK(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
   RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 5, outputs, 2));
@@ -1500,10 +1496,10 @@ llvm::Error PyTorchModelLoader::loadTopK(const torch::jit::Node *ptNode) {
 
   RETURN_IF_ERR(addValueMapping(outputs[0], glowNode->getValues()));
   RETURN_IF_ERR(addValueMapping(outputs[1], glowNode->getIndices()));
-  return llvm::Error::success();
+  return Error::success();
 }
 
-llvm::Error PyTorchModelLoader::loadConstant(const torch::jit::Node *ptNode) {
+Error PyTorchModelLoader::loadConstant(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
   RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 0, outputs, 1));
@@ -1522,19 +1518,19 @@ llvm::Error PyTorchModelLoader::loadConstant(const torch::jit::Node *ptNode) {
     std::vector<int64_t> *ints;
     ASSIGN_VALUE_OR_RETURN_ERR(ints, glowIVal.toIntList());
     if (ints->empty()) {
-      return llvm::Error::success();
+      return Error::success();
     }
   } else if (glowIVal.isDoubleList()) {
     std::vector<double> *doubles;
     ASSIGN_VALUE_OR_RETURN_ERR(doubles, glowIVal.toDoubleList());
     if (doubles->empty()) {
-      return llvm::Error::success();
+      return Error::success();
     }
   } else if (glowIVal.isBoolList()) {
     std::vector<bool> *bools;
     ASSIGN_VALUE_OR_RETURN_ERR(bools, glowIVal.toBoolList());
     if (bools->empty()) {
-      return llvm::Error::success();
+      return Error::success();
     }
   }
 
@@ -1551,18 +1547,17 @@ llvm::Error PyTorchModelLoader::loadConstant(const torch::jit::Node *ptNode) {
     RETURN_IF_ERR(addValueMapping(outputs[0], std::move(glowIVal)));
   }
 
-  return llvm::Error::success();
+  return Error::success();
 }
 
 /*static*/
-llvm::Error PyTorchModelLoader::loadJITGraph(
+Error PyTorchModelLoader::loadJITGraph(
     glow::Function &F, const torch::jit::Graph &graph,
     const at::ArrayRef<torch::jit::IValue> inputs,
     std::vector<glow::Placeholder *> &inputPlaceholders,
     std::vector<glow::Placeholder *> &outputPlaceholders,
     const PyTorchLoaderSettings &settings) {
-  llvm::Error error = llvm::Error::success();
-  MARK_ERR_CHECKED(error);
+  Error error = Error::empty();
   PyTorchModelLoader loader(F, graph, inputs, inputPlaceholders,
                             outputPlaceholders, error, settings,
                             /*frozenInputIndices*/ nullptr);
@@ -1573,11 +1568,11 @@ PyTorchModelLoader::PyTorchModelLoader(
     glow::Function &F, const torch::jit::Graph &graph,
     const at::ArrayRef<torch::jit::IValue> inputs,
     std::vector<glow::Placeholder *> &inputPlaceholders,
-    std::vector<glow::Placeholder *> &outputPlaceholders, llvm::Error &error,
+    std::vector<glow::Placeholder *> &outputPlaceholders, Error &error,
     const PyTorchLoaderSettings &settings, std::set<size_t> *frozenInputIndices)
     : F_(F), inputs_(inputs), frozenInputIndices_(frozenInputIndices),
       copyTensorMemory_(false) {
-  auto loadFn = [&]() -> llvm::Error {
+  auto loadFn = [&]() -> Error {
     auto graphInputValues = graph.inputs();
 
     RETURN_ERR_IF_NOT(
@@ -1629,21 +1624,20 @@ PyTorchModelLoader::PyTorchModelLoader(
       outputPlaceholders.push_back(save->getPlaceholder());
     }
 
-    return llvm::Error::success();
+    return Error::success();
   };
 
   error = loadFn();
 }
 
 /*static*/
-llvm::Error PyTorchModelLoader::loadJITGraphForOnnxTraining(
+Error PyTorchModelLoader::loadJITGraphForOnnxTraining(
     glow::Function &F, const torch::jit::Graph &graph,
     const at::ArrayRef<torch::jit::IValue> inputs,
     const at::ArrayRef<std::shared_ptr<c10::TensorType>> parameters,
     std::vector<glow::Placeholder *> &inputPlaceholders,
     std::vector<glow::Placeholder *> &outputPlaceholders) {
-  llvm::Error error = llvm::Error::success();
-  MARK_ERR_CHECKED(error);
+  Error error = Error::empty();
   PyTorchModelLoader loader(F, graph, inputs, parameters, inputPlaceholders,
                             outputPlaceholders, error);
   return error;
@@ -1654,10 +1648,10 @@ PyTorchModelLoader::PyTorchModelLoader(
     const at::ArrayRef<torch::jit::IValue> inputs,
     const at::ArrayRef<std::shared_ptr<c10::TensorType>> parameters,
     std::vector<glow::Placeholder *> &inputPlaceholders,
-    std::vector<glow::Placeholder *> &outputPlaceholders, llvm::Error &error)
+    std::vector<glow::Placeholder *> &outputPlaceholders, Error &error)
     : F_(F), inputs_(inputs), copyTensorMemory_(true) {
 
-  auto setup = [&]() -> llvm::Error {
+  auto setup = [&]() -> Error {
     auto graphInputValues = graph.inputs();
     RETURN_ERR_IF_NOT(
         inputs.size() + parameters.size() == graphInputValues.size(),
@@ -1713,7 +1707,7 @@ PyTorchModelLoader::PyTorchModelLoader(
       outputPlaceholders.push_back(save->getPlaceholder());
     }
 
-    return llvm::Error::success();
+    return Error::success();
   };
 
   error = setup();
@@ -1732,7 +1726,7 @@ ValueMapping::ValueMapping(GlowIValue glowIValue) {
   glowIValue_ = llvm::make_unique<GlowIValue>(std::move(glowIValue));
 }
 
-llvm::Expected<NodeValue> ValueMapping::getMappedNodeValue() {
+Expected<NodeValue> ValueMapping::getMappedNodeValue() {
   if (mappingType_ == ValueMappingType::IValue) {
     RETURN_ERR("ValueMapping doesn't contain a NodeValue");
   } else {
@@ -1740,7 +1734,7 @@ llvm::Expected<NodeValue> ValueMapping::getMappedNodeValue() {
   }
 }
 
-llvm::Expected<GlowIValue *> ValueMapping::getMappedGlowIValue() {
+Expected<GlowIValue *> ValueMapping::getMappedGlowIValue() {
   if (mappingType_ == ValueMappingType::IValue) {
     return glowIValue_.get();
   } else {
@@ -1748,7 +1742,7 @@ llvm::Expected<GlowIValue *> ValueMapping::getMappedGlowIValue() {
   }
 }
 
-llvm::Expected<const GlowIValue *> ValueMapping::getMappedGlowIValue() const {
+Expected<const GlowIValue *> ValueMapping::getMappedGlowIValue() const {
   if (mappingType_ == ValueMappingType::IValue) {
     return glowIValue_.get();
   } else {

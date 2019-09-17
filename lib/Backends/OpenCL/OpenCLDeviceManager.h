@@ -70,7 +70,7 @@ public:
   void setDevice(const cl_device_id device) { device_ = device; }
   /// Request a command queue from the pool that has the properties specified
   /// in \p properties.
-  llvm::Expected<OpenCLCommandQueue>
+  Expected<OpenCLCommandQueue>
   requestCommandQueue(cl_command_queue_properties properties = 0);
   /// Return the command queue \p queue to the pool.
   void returnCommandQueue(OpenCLCommandQueue &queue);
@@ -145,7 +145,7 @@ class OpenCLDeviceManager : public QueueBackedDeviceManager {
   std::map<std::string, std::shared_ptr<OpenCLBuffer>> buffers_;
 
   /// Allocate a device buffer of required \p size.
-  llvm::Expected<cl_mem> allocDeviceBuffer(uint64_t size);
+  Expected<cl_mem> allocDeviceBuffer(uint64_t size);
 
   /// Device name.
   std::string name_;
@@ -154,7 +154,7 @@ class OpenCLDeviceManager : public QueueBackedDeviceManager {
   OpenCLCommandQueuePool commandQueuePool_;
 
   /// Requests a command queue for the current run.
-  llvm::Expected<OpenCLCommandQueue>
+  Expected<OpenCLCommandQueue>
   requestRunCommandQueue(CompiledFunction *function);
 
   /// Returns a command queue.
@@ -165,11 +165,11 @@ public:
 
   ~OpenCLDeviceManager();
 
-  llvm::Error init() override;
+  Error init() override;
 
-  /// Parse config object provided at initialization \returns llvm::Error
+  /// Parse config object provided at initialization \returns Error
   /// indicating success/failure.
-  llvm::Error parseConfig();
+  Error parseConfig();
   /// Returns the amount of memory in bytes available on the device when no
   /// models are loaded.
   uint64_t getMaximumMemory() const override;

@@ -55,12 +55,12 @@ void TorchGlowTraining::clear() {
 
 TorchGlowTraining::~TorchGlowTraining() { clear(); }
 
-llvm::Error TorchGlowTraining::init(llvm::StringRef modelFile,
-                                    std::vector<torch::jit::IValue> &inputs,
-                                    llvm::StringRef backend,
-                                    const ONNXWriterParameters &parameters,
-                                    const TrainingConfig &config,
-                                    RandomizeWeights mode) {
+Error TorchGlowTraining::init(llvm::StringRef modelFile,
+                              std::vector<torch::jit::IValue> &inputs,
+                              llvm::StringRef backend,
+                              const ONNXWriterParameters &parameters,
+                              const TrainingConfig &config,
+                              RandomizeWeights mode) {
   // Clean up all previous allocations, if any.
   clear();
   // Initialize execution engine.
@@ -69,7 +69,7 @@ llvm::Error TorchGlowTraining::init(llvm::StringRef modelFile,
   F_ = engine_.getModule().createFunction("torch_glow_model");
   // Execution lambda helps to use compact Glow RETURN_* macros inside, and
   // have possibility to clean-up resources before leaving the function scope.
-  auto setup = [&]() -> llvm::Error {
+  auto setup = [&]() -> Error {
     // Detect the proper loader.
     if (modelFile.endswith_lower(".pt")) {
       RETURN_IF_ERR(PyTorchFileLoader::parsePyTorchGraphForOnnxTraining(
@@ -78,8 +78,7 @@ llvm::Error TorchGlowTraining::init(llvm::StringRef modelFile,
         mode = RandomizeWeights::YES;
       }
     } else if (modelFile.endswith_lower(".onnx")) {
-      llvm::Error err = llvm::Error::success();
-      MARK_ERR_CHECKED(err);
+      Error err = Error::empty();
       ONNXModelLoader loader(modelFile.str(), {}, {}, *F_, &err);
       RETURN_IF_ERR(err);
       if (mode == RandomizeWeights::AUTO) {
@@ -124,10 +123,10 @@ llvm::Error TorchGlowTraining::init(llvm::StringRef modelFile,
     TF_ = glow::differentiate(F_, config);
     engine_.compile(CompilationMode::Train);
 
-    return llvm::Error::success();
+    return Error::success();
   };
 
-  llvm::Error err = setup();
+  Error err = setup();
   if (err) {
     // On failure cleanup resources.
     clear();
@@ -135,11 +134,10 @@ llvm::Error TorchGlowTraining::init(llvm::StringRef modelFile,
   }
 
   parameters_ = parameters;
-  return llvm::Error::success();
+  return Error::success();
 }
 
-llvm::Error TorchGlowTraining::train(const Tensor &samples,
-                                     const Tensor &labels) {
+Error TorchGlowTraining::train(const Tensor &samples, const Tensor &labels) {
   RETURN_ERR_IF_NOT(TF_, "Class instance, wasn't properly initialized.");
   auto *input = bindings_.get(inputPHs_[0]);
   auto *label = bindings_.get(selectedPH_);
@@ -170,12 +168,11 @@ llvm::Error TorchGlowTraining::train(const Tensor &samples,
     engine_.run(bindings_, TFName);
   }
 #endif
-  return llvm::Error::success();
+  return Error::success();
 }
 
-llvm::Error TorchGlowTraining::save(llvm::StringRef snapshotFile) {
-  llvm::Error err = llvm::Error::success();
-  MARK_ERR_CHECKED(err);
+Error TorchGlowTraining::save(llvm::StringRef snapshotFile) {
+  Error err = Error::empty();
   // Detects output ONNX file format, text or binary.
   const bool textMode = snapshotFile.endswith_lower(".onnxtxt");
 
@@ -221,7 +218,7 @@ bool TorchGlowTrainingWrapper::init(const std::string &modelPath,
                                     bool randomizeWeights) {
   std::vector<torch::jit::IValue> ptInputs = {ptTensors.begin(),
                                               ptTensors.end()};
-  return !errToBool(trainer_.init(
+  return !ERR_TO_BOOL(trainer_.init(
       modelPath, ptInputs, backend, parameters_, config_,
       randomizeWeights ? TorchGlowTraining::RandomizeWeights::YES
                        : TorchGlowTraining::RandomizeWeights::NO));
@@ -232,11 +229,11 @@ bool TorchGlowTrainingWrapper::train(const at::Tensor &ptSamples,
   glow::Tensor glowSamples = ptTensorToGlowTensor(ptSamples);
   glow::Tensor glowLabels = ptTensorToGlowTensor(ptLabels);
 
-  return !errToBool(trainer_.train(glowSamples, glowLabels));
+  return !ERR_TO_BOOL(trainer_.train(glowSamples, glowLabels));
 }
 
 bool TorchGlowTrainingWrapper::save(const std::string &snapshotFile) {
-  return !errToBool(trainer_.save(snapshotFile));
+  return !ERR_TO_BOOL(trainer_.save(snapshotFile));
 }
 
 /// Sets ONNXWriterParameters

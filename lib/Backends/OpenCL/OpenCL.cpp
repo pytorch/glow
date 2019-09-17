@@ -548,7 +548,7 @@ static void topK(Tensor &outW, Tensor &indW, Tensor &inW, size_t k) {
   }
 }
 
-llvm::Error OpenCLFunction::execute(ExecutionContext *context) {
+Error OpenCLFunction::execute(ExecutionContext *context) {
   auto clBindings = static_cast<runtime::OpenCLDeviceBindings *>(
       context->getDeviceBindings());
 
@@ -1441,7 +1441,7 @@ llvm::Error OpenCLFunction::execute(ExecutionContext *context) {
     kernelLaunches.clear();
   }
 
-  return llvm::Error::success();
+  return Error::success();
 }
 
 uint64_t OpenCLFunction::copyValueToDevice(
@@ -1727,7 +1727,7 @@ OCLBackend::compileIR(std::unique_ptr<IRFunction> IR) const {
   return function;
 }
 
-llvm::Expected<std::unique_ptr<CompiledFunction>>
+Expected<std::unique_ptr<CompiledFunction>>
 OCLBackend::compile(Function *F, const BackendOptions &opts) const {
   TraceInfo traceInfo = buildManualTraceInfo(F);
 
@@ -1749,8 +1749,7 @@ OCLBackend::compile(Function *F, const BackendOptions &opts) const {
       llvm::make_unique<OpenCLFunction>(std::move(IR), std::move(bundle),
                                         std::move(traceInfo));
 
-  return llvm::Expected<std::unique_ptr<CompiledFunction>>(
-      std::move(compiledFunc));
+  return Expected<std::unique_ptr<CompiledFunction>>(std::move(compiledFunc));
 }
 
 bool OCLBackend::isOpSupported(const NodeInfo &NI) const {

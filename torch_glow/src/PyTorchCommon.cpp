@@ -126,11 +126,11 @@ void registerGlowOp() {
             std::make_shared<CachingGraphRunner>(graph.get(), getHostManager());
 
         return [graphRunner](torch::jit::Stack &stack) {
-          llvm::Error err = graphRunner->run(stack);
+          Error err = graphRunner->run(stack);
 
           if (static_cast<bool>(err)) {
             // PyTorch framework expects an exception been thrown here.
-            throw std::invalid_argument(llvm::toString(std::move(err)));
+            throw std::invalid_argument(ERR_TO_STRING(std::move(err)));
           }
           return 0;
         };

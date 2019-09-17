@@ -109,7 +109,7 @@ public:
   ///@{
   ~OpenCLFunction() override;
 
-  llvm::Error execute(ExecutionContext *context) override;
+  Error execute(ExecutionContext *context) override;
 
   /// Collects constants for runtime.
   void collectConstants(const Module *module) override;
@@ -205,7 +205,7 @@ public:
   std::unique_ptr<CompiledFunction>
   compileIR(std::unique_ptr<IRFunction> IR) const override;
 
-  llvm::Expected<std::unique_ptr<CompiledFunction>>
+  Expected<std::unique_ptr<CompiledFunction>>
   compile(Function *F, const BackendOptions &opts) const override;
 
   bool transformPostLowering(Function *F,

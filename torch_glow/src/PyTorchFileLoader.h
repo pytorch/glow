@@ -19,7 +19,7 @@
 
 #include "PyTorchCommon.h"
 #include "glow/Graph/Graph.h"
-#include "llvm/Support/Error.h"
+#include "glow/Support/Error.h"
 #include <torch/csrc/jit/import.h>
 
 namespace glow {
@@ -28,12 +28,12 @@ namespace glow {
 class PyTorchFileLoader {
   /// Performs sanity check making sure custom fuse pass succeeded as expected,
   /// \returns error otherwise.
-  static llvm::Error performSanityCheck();
+  static Error performSanityCheck();
 
 public:
   /// Takes a model file \p fileName, loads model into torch Module \p module,
   /// \returns error if any.
-  static llvm::Error
+  static Error
   loadPyTorchModel(const std::string &fileName,
                    std::shared_ptr<torch::jit::script::Module> &module);
 
@@ -45,7 +45,7 @@ public:
   /// Method is thread safe, internally it uses local thread structures for
   /// executing custom fusion pass, registered globally. No other passes or
   /// other treads calling this method will be affected.
-  static llvm::Error
+  static Error
   loadPyTorchGraph(const std::string &fileName,
                    const std::vector<torch::jit::IValue> &inputs,
                    glow::Function &F,
@@ -57,7 +57,7 @@ public:
   /// stack of \p inputs into Glow Function \p F and fills out input \p
   /// inputPlaceholders, output \p outputPlaceholders placeholders, \returns
   /// error if any. Method is thread safe.
-  static llvm::Error parsePyTorchGraphForOnnxTraining(
+  static Error parsePyTorchGraphForOnnxTraining(
       const std::string &fileName,
       const std::vector<torch::jit::IValue> &inputs, glow::Function &F,
       std::vector<glow::Placeholder *> &inputPlaceholders,

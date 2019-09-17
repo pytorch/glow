@@ -20,7 +20,6 @@
 #include "PyTorchCommon.h"
 #include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Graph/Graph.h"
-#include "llvm/Support/Error.h"
 #include <torch/csrc/jit/ir.h>
 
 namespace glow {
@@ -71,26 +70,24 @@ public:
   /// \p backend name, ONNX exporter \p parameters, \p inputs, \p config,
   /// randomizes weights according to the provided \p mode.
   /// \returns error on failure.
-  llvm::Error init(llvm::StringRef modelFile,
-                   std::vector<torch::jit::IValue> &inputs,
-                   llvm::StringRef backend,
-                   const ONNXWriterParameters &parameters,
-                   const TrainingConfig &config,
-                   RandomizeWeights mode = RandomizeWeights::AUTO);
+  Error init(llvm::StringRef modelFile, std::vector<torch::jit::IValue> &inputs,
+             llvm::StringRef backend, const ONNXWriterParameters &parameters,
+             const TrainingConfig &config,
+             RandomizeWeights mode = RandomizeWeights::AUTO);
 
   /// Trains the loaded model from the provided \p samples and \p labels.
   /// Samples and labels must have the compatible dimensions and types.
   /// Caller can provide one or more samples and correspondently labels.
   /// Method can be invoked as many times as required.
   /// \returns error in case of uninitiated model or invalid input parameters.
-  llvm::Error train(const Tensor &samples, const Tensor &labels);
+  Error train(const Tensor &samples, const Tensor &labels);
 
   /// Saves the trained model in ONNX (extended) format to the provided
   /// \p snapshotFile. It's safe to call this method any time after train()
   /// calls. Method leaves the internal trained weights unaffected, and caller
   /// can continue to call train() method again.
   /// \returns error on failure.
-  llvm::Error save(llvm::StringRef snapshotFile);
+  Error save(llvm::StringRef snapshotFile);
 };
 
 /// Wrapper class helps to integrate TorchGlowTraining class functionality into

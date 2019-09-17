@@ -154,7 +154,7 @@ int main(int argc, char **argv) {
 
   // Load ResNet model.
   llvm::outs() << "Loading resnet50 model.\n";
-  llvm::Error errPtr = llvm::Error::success();
+  Error errPtr = Error::success();
 
   // Loader has randomly initialized trainable weights.
   Caffe2ModelLoader loader(resnet50Path + "/predict_net.pbtxt",

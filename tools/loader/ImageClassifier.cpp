@@ -419,7 +419,7 @@ static void runInference(runtime::HostManager *hostManager, std::string name,
                          std::atomic<int> &dispatched) {
   hostManager->runNetwork(name, std::move(batch),
                           [&runPromise, &inflight, &dispatched, hostManager,
-                           name](runtime::RunIdentifierTy, llvm::Error err,
+                           name](runtime::RunIdentifierTy, Error err,
                                  std::unique_ptr<ExecutionContext> contextPtr) {
                             EXIT_ON_ERR(std::move(err));
                             // Kick off another run.

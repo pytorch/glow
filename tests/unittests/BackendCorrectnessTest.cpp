@@ -179,7 +179,7 @@ public:
 
   std::string getBackendName() const override { return "CPU"; }
 
-  llvm::Expected<std::unique_ptr<CompiledFunction>>
+  Expected<std::unique_ptr<CompiledFunction>>
   compile(Function *F, const BackendOptions &opts) const override {
     return backend_->compile(F, opts);
   }
@@ -258,7 +258,7 @@ TEST_P(BackendCorrectnessTest, dataParallelStackingTest) {
 
   MockCPUBackend backend;
   auto function = backend.compileIR(std::move(M));
-  ASSERT_FALSE(errToBool(function->execute(ctx.get())));
+  ASSERT_FALSE(ERR_TO_BOOL(function->execute(ctx.get())));
   auto H = outputTensor->getHandle();
   EXPECT_EQ(H.at(0), 3);
   EXPECT_EQ(H.at(1), 4);

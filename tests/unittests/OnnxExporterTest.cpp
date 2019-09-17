@@ -39,18 +39,18 @@ void testLoadAndSaveONNXModel(const std::string &name) {
   Function *F = mod.createFunction("main");
 
   size_t irVer = 0, opsetVer = 0;
-  llvm::Error err = llvm::Error::success();
+  Error err = Error::success();
   {
     ONNXModelLoader onnxLD(name, {}, {}, *F, &err);
     irVer = onnxLD.getIrVersion();
     opsetVer = onnxLD.getOpSetVersion();
   }
 
-  ASSERT_FALSE(handleErrors(std::move(err), [&name](const GlowErr &GE) {
+  if (err) {
     llvm::errs() << "ONNXModelLoader failed to load model: " << name << ": ";
-    GE.log(llvm::errs());
-    llvm::errs() << "\n";
-  }));
+    llvm::errs() << ERR_TO_STRING(std::move(err)) << "\n";
+    FAIL();
+  }
 
   llvm::SmallString<64> path;
   auto tempFileRes =

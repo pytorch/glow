@@ -96,7 +96,7 @@ void dispatchClassify(unsigned int id, HostManager *hostManager,
                       std::promise<void> &finished) {
   auto runid = hostManager->runNetwork(
       "resnet50" + std::to_string(id), std::move(context),
-      [path, &returned, &finished](RunIdentifierTy runid, llvm::Error err,
+      [path, &returned, &finished](RunIdentifierTy runid, Error err,
                                    std::unique_ptr<ExecutionContext> context) {
         EXIT_ON_ERR(std::move(err));
         auto *bindings = context->getPlaceholderBindings();

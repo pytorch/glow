@@ -22,17 +22,17 @@
 #include <synapse.h>
 
 namespace glow {
-/// Given a synStatus \p status, evaluates to llvm::Error::success() if status
-/// is synSuccess and evaluates to an llvm::Error otherwise.
+/// Given a synStatus \p status, evaluates to Error::success() if status
+/// is synSuccess and evaluates to an Error otherwise.
 #define chk_make_err(status)                                                   \
   status == synSuccess                                                         \
-      ? llvm::Error::success()                                                 \
+      ? Error::success()                                                       \
       : MAKE_ERR(                                                              \
             strFormat("Expected synStatus be synSuccess (%d), instead got %d", \
                       synSuccess, status))
 
-/// Given a synStatus \p status, returns an llvm::Error::success() if status is
-/// synSuccess and returns an llvm::Error otherwise.
+/// Given a synStatus \p status, returns an Error::success() if status is
+/// synSuccess and returns an Error otherwise.
 #define chk(status)                                                            \
   do {                                                                         \
     auto res = (status);                                                       \

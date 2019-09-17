@@ -142,16 +142,14 @@ class MockBackend : public Backend {
     MockFunction(runtime::RuntimeBundle &&bundle)
         : CompiledFunction(std::move(bundle)) {}
 
-    llvm::Error execute(ExecutionContext *) override {
-      return llvm::Error::success();
-    }
+    Error execute(ExecutionContext *) override { return Error::success(); }
 
     std::string getCompileBackendName() const override { return "Interpreter"; }
   };
 
   std::string getBackendName() const override { return "Interpreter"; }
 
-  llvm::Expected<std::unique_ptr<CompiledFunction>>
+  Expected<std::unique_ptr<CompiledFunction>>
   compile(Function *F, const BackendOptions &) const override {
     return llvm::make_unique<MockFunction>(runtime::RuntimeBundle::create(*F));
   }
@@ -176,16 +174,14 @@ class MockBackendCustomIRGen : public Backend {
     MockFunction(runtime::RuntimeBundle &&bundle)
         : CompiledFunction(std::move(bundle)) {}
 
-    llvm::Error execute(ExecutionContext *) override {
-      return llvm::Error::success();
-    }
+    Error execute(ExecutionContext *) override { return Error::success(); }
 
     std::string getCompileBackendName() const override { return "Interpreter"; }
   };
 
   std::string getBackendName() const override { return "Interpreter"; }
 
-  llvm::Expected<std::unique_ptr<CompiledFunction>>
+  Expected<std::unique_ptr<CompiledFunction>>
   compile(Function *F, const BackendOptions &) const override {
     return llvm::make_unique<MockFunction>(runtime::RuntimeBundle::create(*F));
   }

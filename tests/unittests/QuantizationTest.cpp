@@ -27,7 +27,6 @@
 #include "gtest/gtest.h"
 
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/FileSystem.h"
 
 namespace glow {
@@ -69,7 +68,7 @@ public:
 
   std::string getBackendName() const override { return "Interpreter"; }
 
-  llvm::Expected<std::unique_ptr<CompiledFunction>>
+  Expected<std::unique_ptr<CompiledFunction>>
   compile(Function *F, const BackendOptions &opts) const override {
     return backend_->compile(F, opts);
   }

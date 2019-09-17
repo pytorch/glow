@@ -66,7 +66,7 @@ void LLVMCompiledFunction::updatePlaceholders(
   }
 }
 
-llvm::Error LLVMCompiledFunction::execute(ExecutionContext *context) {
+Error LLVMCompiledFunction::execute(ExecutionContext *context) {
   uint8_t *baseActivationsAddress{nullptr};
 
   /// Base address for Mutable weights memory block, Inputs and Outputs.
@@ -94,7 +94,7 @@ llvm::Error LLVMCompiledFunction::execute(ExecutionContext *context) {
   auto *traceContext = context->getTraceContext();
   TRACE_EVENT_SCOPE_NAMED(traceContext, TraceLevel::RUNTIME,
                           "findJitmainSymbol", fjEvent);
-  llvm::Expected<llvm::JITTargetAddress> address = NULL;
+  Expected<llvm::JITTargetAddress> address = NULL;
   {
     std::lock_guard<std::mutex> lock(JITLock_);
     auto sym = JIT_->findSymbol("jitmain");
@@ -102,7 +102,14 @@ llvm::Error LLVMCompiledFunction::execute(ExecutionContext *context) {
     DCHECK(sym) << "Unable to JIT the code!";
     // We know address is success since we just made it. Mark it as checked.
     if (address) {
-      address = sym.getAddress();
+      auto addrOrLLVMError = sym.getAddress();
+      if (addrOrLLVMError) {
+        address = addrOrLLVMError.get();
+      } else {
+        address = MAKE_ERR(
+            strFormat("Failed to get address: %s",
+                      llvm::toString(addrOrLLVMError.takeError()).data()));
+      }
     }
   }
   using JitFuncType =
@@ -135,7 +142,7 @@ llvm::Error LLVMCompiledFunction::execute(ExecutionContext *context) {
     translateTraceEvents(context);
   }
 
-  return llvm::Error::success();
+  return Error::success();
 }
 
 void LLVMCompiledFunction::translateTraceEvents(

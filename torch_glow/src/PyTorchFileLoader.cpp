@@ -58,12 +58,11 @@ static at::Symbol getFusionSymbol() {
 static thread_local LocalFusionFunction localFusionInfo;
 
 /// Loads JIT Graph into Glow Function.
-llvm::Error
-loadJitGraphToGlowFunction(torch::jit::Stack &stack, torch::jit::Graph &graph,
-                           glow::Function &f,
-                           std::vector<glow::Placeholder *> &inputPlaceholders,
-                           std::vector<glow::Placeholder *> &outputPlaceholders,
-                           const PyTorchLoaderSettings &settings) {
+Error loadJitGraphToGlowFunction(
+    torch::jit::Stack &stack, torch::jit::Graph &graph, glow::Function &f,
+    std::vector<glow::Placeholder *> &inputPlaceholders,
+    std::vector<glow::Placeholder *> &outputPlaceholders,
+    const PyTorchLoaderSettings &settings) {
   const auto &graphInputs = graph.inputs();
   const auto numInputs = graphInputs.size();
   auto inputs = torch::jit::last(stack, numInputs);
@@ -84,20 +83,19 @@ loadJitGraphToGlowFunction(torch::jit::Stack &stack, torch::jit::Graph &graph,
     stack.push_back(at::IValue(var));
   }
 
-  return llvm::Error::success();
+  return Error::success();
 }
 
 /// Runs Module forward pass, triggers custom fusion pass if local thread
 /// Glow function is set.
-llvm::Error
-evaluateModuleGraph(std::shared_ptr<torch::jit::script::Module> &module,
-                    const std::vector<torch::jit::IValue> &inputs) {
+Error evaluateModuleGraph(std::shared_ptr<torch::jit::script::Module> &module,
+                          const std::vector<torch::jit::IValue> &inputs) {
   try {
     module->forward(inputs);
   } catch (const std::exception &x) {
     RETURN_ERR(x.what());
   }
-  return llvm::Error::success();
+  return Error::success();
 }
 
 /// Helper struct, which on constructor registers custom fusion pass
@@ -117,7 +115,7 @@ struct RegisterCustomFusionPass {
                 *localFusionInfo.inputPlaceholders,
                 *localFusionInfo.outputPlaceholders, *localFusionInfo.settings);
             if (static_cast<bool>(err)) {
-              throw std::invalid_argument(llvm::toString(std::move(err)));
+              throw std::invalid_argument(ERR_TO_STRING(std::move(err)));
             }
             return 0;
           };
@@ -136,7 +134,7 @@ struct RegisterCustomFusionPass {
 } // namespace
 
 /*static*/
-llvm::Error PyTorchFileLoader::loadPyTorchModel(
+Error PyTorchFileLoader::loadPyTorchModel(
     const std::string &fileName,
     std::shared_ptr<torch::jit::script::Module> &module) {
   try {
@@ -146,11 +144,11 @@ llvm::Error PyTorchFileLoader::loadPyTorchModel(
     RETURN_ERR(strFormat("Cannot load model from file: %s, , reason: %s",
                          fileName.c_str(), x.what()));
   }
-  return llvm::Error::success();
+  return Error::success();
 }
 
 /*static*/
-llvm::Error PyTorchFileLoader::loadPyTorchGraph(
+Error PyTorchFileLoader::loadPyTorchGraph(
     const std::string &fileName, const std::vector<torch::jit::IValue> &inputs,
     glow::Function &F, std::vector<glow::Placeholder *> &inputPlaceholders,
     std::vector<glow::Placeholder *> &outputPlaceholders, bool sanityCheck) {
@@ -175,11 +173,11 @@ llvm::Error PyTorchFileLoader::loadPyTorchGraph(
 
   RETURN_IF_ERR(err);
 
-  return sanityCheck ? performSanityCheck() : llvm::Error::success();
+  return sanityCheck ? performSanityCheck() : Error::success();
 }
 
 /*static*/
-llvm::Error PyTorchFileLoader::parsePyTorchGraphForOnnxTraining(
+Error PyTorchFileLoader::parsePyTorchGraphForOnnxTraining(
     const std::string &fileName, const std::vector<torch::jit::IValue> &inputs,
     glow::Function &F, std::vector<glow::Placeholder *> &inputPlaceholders,
     std::vector<glow::Placeholder *> &outputPlaceholders) {
@@ -207,7 +205,7 @@ llvm::Error PyTorchFileLoader::parsePyTorchGraphForOnnxTraining(
 
 // Sanity check, after "fusionSymbol" node, not other nodes should exist.
 /*static*/
-llvm::Error PyTorchFileLoader::performSanityCheck() {
+Error PyTorchFileLoader::performSanityCheck() {
   std::shared_ptr<torch::jit::Graph> subgraph =
       torch::jit::lastExecutedOptimizedGraph();
   size_t fusedNodes = 0, missedNodes = 0;
@@ -226,7 +224,7 @@ llvm::Error PyTorchFileLoader::performSanityCheck() {
       fusedNodes == 1 && missedNodes == 0,
       glow::strFormat("Fused optimized nodes: %lu, missing nodes: %lu",
                       fusedNodes, missedNodes));
-  return llvm::Error::success();
+  return Error::success();
 }
 
 } // namespace glow

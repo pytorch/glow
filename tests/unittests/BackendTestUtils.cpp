@@ -1131,10 +1131,9 @@ void insertCompiledFunction(llvm::StringRef name, CompiledFunction *func,
 
   std::promise<void> addPromise;
   auto fut = addPromise.get_future();
-  llvm::Error addErr = llvm::Error::success();
-  MARK_ERR_CHECKED(addErr);
+  Error addErr = Error::empty();
   device->addNetwork(mod, std::move(functionMap),
-                     [&addPromise, &addErr](const Module *, llvm::Error err) {
+                     [&addPromise, &addErr](const Module *, Error err) {
                        addErr = std::move(err);
                        addPromise.set_value();
                      });
@@ -1147,11 +1146,10 @@ void runOnDevice(ExecutionContext &context, llvm::StringRef name,
   std::unique_ptr<ExecutionContext> contextPtr(&context);
   std::promise<void> runPromise;
   auto fut = runPromise.get_future();
-  llvm::Error runErr = llvm::Error::success();
-  MARK_ERR_CHECKED(runErr);
+  Error runErr = Error::empty();
   device->runFunction(
       name, std::move(contextPtr),
-      [&runPromise, &runErr](runtime::RunIdentifierTy, llvm::Error err,
+      [&runPromise, &runErr](runtime::RunIdentifierTy, Error err,
                              std::unique_ptr<ExecutionContext> contextPtr) {
         // Don't delete context.
         contextPtr.release();

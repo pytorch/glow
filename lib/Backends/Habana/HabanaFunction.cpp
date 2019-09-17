@@ -30,7 +30,7 @@ HabanaIOBuffer::HabanaIOBuffer(
     const std::unordered_map<const Placeholder *, off_t> &offsets)
     : deviceId_(deviceId), buffer_(buffer), offsets_(offsets) {}
 
-llvm::Expected<uint8_t *> HabanaIOBuffer::get(const Placeholder *p) const {
+Expected<uint8_t *> HabanaIOBuffer::get(const Placeholder *p) const {
   RETURN_ERR_IF_NOT(offsets_.count(p) > 0, "Placeholder not in IO buffer!");
   return buffer_ + offsets_.find(p)->second;
 }
@@ -206,7 +206,7 @@ void HabanaFunction::findIOPlaceholders(Function *F) {
 }
 
 /// Retrieve and dump debug info about a topology.
-static llvm::Error dumpTopologyInfo(uint32_t deviceId, uint64_t topologyId) {
+static Error dumpTopologyInfo(uint32_t deviceId, uint64_t topologyId) {
   uint32_t numOfInputs;
   uint32_t numOfOutputs;
   uint32_t numOfIntermediates;
@@ -233,7 +233,7 @@ static llvm::Error dumpTopologyInfo(uint32_t deviceId, uint64_t topologyId) {
     VLOG(1) << "Topology intermediates: " << intermediateTensorNames[i];
   }
 
-  return llvm::Error::success();
+  return Error::success();
 }
 
 HabanaFunction::~HabanaFunction() {
@@ -243,7 +243,7 @@ HabanaFunction::~HabanaFunction() {
       << "Failed to remove file at " << recipeName_ << ".bin";
 }
 
-llvm::Error HabanaFunction::execute(ExecutionContext *context) {
+Error HabanaFunction::execute(ExecutionContext *context) {
   auto *tc = context->getTraceContext();
   TRACE_EVENT_SCOPE_NAMED(tc, TraceLevel::RUNTIME, "execute", exEvent);
   exEvent.addArg("recipe", recipeName_);
@@ -357,7 +357,7 @@ llvm::Error HabanaFunction::execute(ExecutionContext *context) {
   static_cast<HabanaBindings *>(context->getDeviceBindings())
       ->setHandle(HabanaWaitHandle(deviceId, handle, std::move(inputInfo),
                                    std::move(outputInfo)));
-  return llvm::Error::success();
+  return Error::success();
 }
 
 } // namespace glow

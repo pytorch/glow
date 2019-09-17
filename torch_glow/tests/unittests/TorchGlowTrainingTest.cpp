@@ -38,7 +38,7 @@ TEST(TorchGlowTraining, Test) {
   config.batchSize = 1;
 
   // TODO (after full fusion is available)
-  if (errToBool(
+  if (ERR_TO_BOOL(
           trainer.init(fileName, vec, "Interpreter", parameters, config))) {
     return;
   }
@@ -48,7 +48,7 @@ TEST(TorchGlowTraining, Test) {
 
   std::vector<size_t> labelDims = {1, 1000};
   Tensor labels(ElemKind::Int64ITy, labelDims);
-  EXPECT_FALSE(errToBool(trainer.train(samples, labels)));
+  EXPECT_FALSE(ERR_TO_BOOL(trainer.train(samples, labels)));
 
-  EXPECT_FALSE(errToBool(trainer.save("/tmp/test.onnx")));
+  EXPECT_FALSE(ERR_TO_BOOL(trainer.save("/tmp/test.onnx")));
 }
