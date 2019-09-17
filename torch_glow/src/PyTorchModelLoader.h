@@ -302,6 +302,14 @@ private:
   /// \returns error on failure.
   Error loadBatchNorm(const torch::jit::Node *ptNode);
 
+  /// Load a PyTorch quantize_linear node.
+  /// \returns error on failure.
+  Error loadQuantize(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch dequantize node.
+  /// \returns error on failure.
+  Error loadDequantize(const torch::jit::Node *ptNode);
+
   /// Load a PyTorch max_pool2d node.
   /// \returns error on failure.
   Error loadMaxPool2d(const torch::jit::Node *ptNode);
