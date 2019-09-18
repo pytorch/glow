@@ -75,4 +75,4 @@ def jitVsGlow_(f_torch, f_glow, *inputs, expected_fused_ops=None,
         # i.e using torch.randn, scale should be set between 1/128 and 1/256,
         # to make sure the result does not mismatch.
         for i in range(len(torch_res)):
-            assert torch.allclose(torch_res[i], glow_res[i], atol=01e-5)
+            assert torch.allclose(torch_res[i], glow_res[i], atol=01e-6)
