@@ -64,7 +64,7 @@ TEST_P(BackendCorrectnessTest, extract3Dtest) {
   Tensor out1;
   Tensor out2;
 
-  inferExtract3D(&inputs, &out1, "CPU");
+  inferExtract3D(&inputs, &out1, backendName_);
   inferExtract3D(&inputs, &out2, "Interpreter");
 
   EXPECT_TRUE(out1.isEqual(out2));
@@ -373,7 +373,8 @@ TEST_P(BackendCorrectnessTest, nonSquarePaddingConvTest) {
   CHECK_IF_ENABLED();
   Tensor out1;
   Tensor out2;
-  inferNonSquarePaddingConv(&out1, "CPU");
+
+  inferNonSquarePaddingConv(&out1, backendName_);
   inferNonSquarePaddingConv(&out2, "Interpreter");
 
   EXPECT_TRUE(out1.isEqual(out2));
@@ -382,9 +383,11 @@ TEST_P(BackendCorrectnessTest, nonSquarePaddingConvTest) {
 /// This non-square kernel test targets the DKKC8 optimization.
 TEST_P(BackendCorrectnessTest, nonSquareKernelConvTest) {
   CHECK_IF_ENABLED();
+
   Tensor out1;
   Tensor out2;
-  inferNonSquareKernelConv(&out1, "CPU");
+
+  inferNonSquareKernelConv(&out1, backendName_);
   inferNonSquareKernelConv(&out2, "Interpreter");
 
   EXPECT_TRUE(out1.isEqual(out2));
@@ -395,7 +398,7 @@ TEST_P(BackendCorrectnessTest, nonSquareStrideConvTest) {
   CHECK_IF_ENABLED();
   Tensor out1;
   Tensor out2;
-  inferNonSquareStrideConv(&out1, "CPU");
+  inferNonSquareStrideConv(&out1, backendName_);
   inferNonSquareStrideConv(&out2, "Interpreter");
 
   EXPECT_TRUE(out1.isEqual(out2));
@@ -406,7 +409,7 @@ TEST_P(BackendCorrectnessTest, convDKKC8Test) {
   CHECK_IF_ENABLED();
   Tensor out1;
   Tensor out2;
-  inferConvDKKC8(&out1, "CPU");
+  inferConvDKKC8(&out1, backendName_);
   inferConvDKKC8(&out2, "Interpreter");
   EXPECT_TRUE(out1.isEqual(out2));
 }
