@@ -11,7 +11,7 @@ def test_quantization_basic():
     # This only test if operator has been successfully projected
     # Calculating process in glow will be optimized
     def test_simple(a, b):
-        q = torch.nn.quantized.Quantize(1, 0, torch.quint8)
+        q = torch.nn.quantized.Quantize(0.3, 0, torch.quint8)
         dq = torch.nn.quantized.DeQuantize()
         return dq(torch.ops.quantized.add(q(a), q(b), scale=1.0, zero_point=0))
 
