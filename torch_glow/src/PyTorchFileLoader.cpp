@@ -186,6 +186,9 @@ Error PyTorchFileLoader::parsePyTorchGraphForOnnxTraining(
   std::shared_ptr<torch::jit::script::Module> module;
   RETURN_IF_ERR(PyTorchFileLoader::loadPyTorchModel(fileName, module));
 
+  // Disable gradient nodes generation.
+  at::NoGradGuard guard;
+
   auto method = module->get_method("forward");
   auto graphAndTensors = method._lowered_graph();
 
@@ -195,7 +198,7 @@ Error PyTorchFileLoader::parsePyTorchGraphForOnnxTraining(
     parameters.push_back(c10::TensorType::create(ptTensor));
   }
 
-  FuseLinear(graphAndTensors.first);
+  FuseKnownPatterns(graphAndTensors.first);
 
   // Parse JIT Graph and load into Glow Function.
   return PyTorchModelLoader::loadJITGraphForOnnxTraining(

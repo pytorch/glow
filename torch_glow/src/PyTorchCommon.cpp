@@ -23,6 +23,7 @@
 
 #include <torch/csrc/jit/operator_options.h>
 #include <torch/csrc/jit/pass_manager.h>
+#include <torch/csrc/jit/passes/subgraph_rewrite.h>
 
 namespace glow {
 
@@ -109,7 +110,7 @@ void glowCustomFuse(std::shared_ptr<torch::jit::Graph> &g,
   // Currently PyTorch does not have good support for aten:addmm when fusing
   // Therefore we use some pattern to translate all aten::addmm to
   // aten::linear before we fuse the whole graph.
-  FuseLinear(g);
+  FuseKnownPatterns(g);
 
   GlowCustomFuse(g, PyTorchModelLoader::isNodeSupported, fuseSymbol);
 }
@@ -178,6 +179,24 @@ at::Tensor glowTypeToEmptyPTTensor(const glow::Type &glowType) {
 glow::Tensor ptTensorToGlowTensor(const at::Tensor &ptTensor) {
   auto glowType = ptTypeToGlowType(*c10::TensorType::create(ptTensor));
   return glow::Tensor(ptTensor.data_ptr(), &glowType);
+}
+
+void FuseKnownPatterns(std::shared_ptr<torch::jit::Graph> &graph) {
+  FuseLinear(graph);
+
+  std::string originalPat = R"IR(
+graph(%input):
+  %res1 = prim::NumToTensor(%input)
+  %res2 = aten::Int(%res1)
+  return (%res2))IR";
+
+  std::string replacementPat = R"IR(
+graph(%input):
+  return (%input))IR";
+
+  torch::jit::SubgraphRewriter rewriter;
+  rewriter.RegisterRewritePattern(originalPat, replacementPat);
+  rewriter.runOnGraph(graph);
 }
 
 } // namespace glow
