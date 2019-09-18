@@ -25,10 +25,10 @@ def test_quantized_add():
     """Basic test of the PyTorch quantized::add Node on Glow."""
 
     def test_f(a, b):
-        q1 = torch.nn.quantized.Quantize(0.015, 5, torch.quint8)
-        q2 = torch.nn.quantized.Quantize(0.012, 10, torch.quint8)
+        q1 = torch.nn.quantized.Quantize(1/128, 5, torch.quint8)
+        q2 = torch.nn.quantized.Quantize(1/128, 10, torch.quint8)
         dq = torch.nn.quantized.DeQuantize()
-        return dq(torch.ops.quantized.add(q1(a), q2(b), scale=0.008, zero_point=3))
+        return dq(torch.ops.quantized.add(q1(a), q2(b), scale=1/128, zero_point=3))
 
     x = torch.randn([5, 5])
     y = torch.randn([5, 5])
