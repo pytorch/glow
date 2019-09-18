@@ -302,6 +302,10 @@ private:
   /// \returns error on failure.
   Error loadBatchNorm(const torch::jit::Node *ptNode);
 
+  /// Load a PyTorch quantization::add node.
+  /// \return error on failure.
+  Error loadQuantizedAdd(const torch::jit::Node *ptNode);
+
   /// Load a PyTorch quantize_linear node.
   /// \returns error on failure.
   Error loadQuantize(const torch::jit::Node *ptNode);

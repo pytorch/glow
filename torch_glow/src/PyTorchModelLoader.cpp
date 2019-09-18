@@ -356,6 +356,16 @@ struct AdaptiveAvgPoolInputs {
   };
 };
 
+/// Indexes of quantized::add inputs.
+struct QuantizedAddInputs {
+  enum {
+    lhs = 0,
+    rhs = 1,
+    scale = 2,
+    offset = 3,
+  };
+};
+
 /// Indexes of aten::quantize_linear inputs.
 struct QuantizeInputs {
   enum {
@@ -457,6 +467,9 @@ PyTorchModelLoader::getSymbolsMapping() {
             ClampInputs::min,
             ClampInputs::max,
         }},
+       {{"quantized::add"},
+        &PyTorchModelLoader::loadQuantizedAdd,
+        {QuantizedAddInputs::scale, QuantizedAddInputs::offset}},
        {{"aten::quantize_linear"},
         &PyTorchModelLoader::loadQuantize,
         {QuantizeInputs::scale, QuantizeInputs::offset, QuantizeInputs::dtype}},
@@ -724,6 +737,38 @@ PyTorchModelLoader::getGlowIValueForValue(const torch::jit::Value *value) {
                                value->debugNameBase().c_str()));
   }
   return mappingValue.getMappedGlowIValue();
+}
+
+Error PyTorchModelLoader::loadQuantizedAdd(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 4, outputs, 1));
+
+  glow::NodeValue lhs;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      lhs, getGlowNodeValueForValue(inputs[QuantizedAddInputs::lhs]));
+  glow::NodeValue rhs;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      rhs, getGlowNodeValueForValue(inputs[QuantizedAddInputs::rhs]));
+
+  // scale
+  float outScale;
+  ASSIGN_VALUE_OR_RETURN_ERR(outScale, iValToDouble(getGlowIValueForValue(
+                                           inputs[QuantizedAddInputs::scale])));
+
+  // offset
+  int32_t outOffset;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      outOffset,
+      iValToInt(getGlowIValueForValue(inputs[QuantizedAddInputs::offset])));
+
+  TypeRef inputType = lhs.getType();
+  auto outDims = inputType->dims();
+  auto outTy = F_.getParent()->uniqueType(ElemKind::Int8QTy, outDims, outScale,
+                                          outOffset - OFFSETSHIFT);
+
+  glow::AddNode *qan = F_.createAdd("quantized_add", outTy, lhs, rhs);
+  return addValueMapping(outputs[0], qan->getResult());
 }
 
 Error PyTorchModelLoader::loadMul(const torch::jit::Node *ptNode) {
