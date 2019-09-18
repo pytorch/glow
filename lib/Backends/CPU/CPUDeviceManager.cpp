@@ -42,15 +42,43 @@ DeviceManager *createCPUDeviceManager(const DeviceConfig &config) {
 
 CPUBuffer::CPUBuffer(size_t activationsSize, size_t activations_alignment,
                      size_t weightsSize, size_t weights_alignment) {
-  activationsBuffer_ = static_cast<uint8_t *>(
-      alignedAlloc(activationsSize, activations_alignment));
-  weightsBuffer_ =
-      static_cast<uint8_t *>(alignedAlloc(weightsSize, weights_alignment));
+  reqBuffers_.resize(kMaxRequestsSupported);
+  for (size_t i = 0; i < kMaxRequestsSupported; ++i) {
+    reqBuffers_[i].activationsBuffer_ = static_cast<uint8_t *>(
+        alignedAlloc(activationsSize, activations_alignment));
+    reqBuffers_[i].weightsBuffer_ =
+        static_cast<uint8_t *>(alignedAlloc(weightsSize, weights_alignment));
+  }
 }
 
 CPUBuffer::~CPUBuffer() {
-  alignedFree(activationsBuffer_);
-  alignedFree(weightsBuffer_);
+  for (auto &it : busyRequestBuffers_) {
+    freeRequestBuffer(it.first);
+  }
+
+  for (auto &it : reqBuffers_) {
+    alignedFree(it.activationsBuffer_);
+    alignedFree(it.weightsBuffer_);
+  }
+  reqBuffers_.clear();
+}
+
+void CPUBuffer::getUnownedRequestBuffer(RunIdentifierTy id,
+                                        uint8_t **activationsBuffer,
+                                        uint8_t **weightsBuffer) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  assert(reqBuffers_.size() > 0);
+  SingleRequestBuffer buffer = reqBuffers_.back();
+  busyRequestBuffers_.emplace(id, buffer);
+  *activationsBuffer = buffer.activationsBuffer_;
+  *weightsBuffer = buffer.weightsBuffer_;
+  reqBuffers_.pop_back();
+}
+
+void CPUBuffer::freeRequestBuffer(RunIdentifierTy id) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  reqBuffers_.emplace_back(busyRequestBuffers_.at(id));
+  busyRequestBuffers_.erase(id);
 }
 
 uint64_t CPUDeviceManager::getMaximumMemory() const { return maxMemoryBytes_; }
@@ -183,14 +211,21 @@ void CPUDeviceManager::runFunctionImpl(
 
   CompiledFunction *func = funcIt->second;
 
-  auto deviceBindings = llvm::make_unique<CPUDeviceBindings>(
-      buffers_[function]->getActivationsBuffer(),
-      buffers_[function]->getWeightsBuffer());
+  uint8_t *activationsBuffer = nullptr;
+  uint8_t *weightsBuffer = nullptr;
+  buffers_[function]->getUnownedRequestBuffer(id, &activationsBuffer,
+                                              &weightsBuffer);
+  auto deviceBindings =
+      llvm::make_unique<CPUDeviceBindings>(activationsBuffer, weightsBuffer);
 
   context->setDeviceBindings(std::move(deviceBindings));
 
   // Run that function.
   auto executeErr = func->execute(context.get());
+
+  // Once the compiled function returns, clear the device buffers for this
+  // request.
+  buffers_[function]->freeRequestBuffer(id);
 
   // End the TraceEvent early to avoid time in the CB.
   TRACE_EVENT_SCOPE_END_NAMED(dmRun);

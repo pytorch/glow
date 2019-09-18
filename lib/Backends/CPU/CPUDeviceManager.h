@@ -20,19 +20,32 @@
 #include "glow/Runtime/StatsExporter.h"
 
 #include <atomic>
+#include <mutex>
 
 namespace glow {
 namespace runtime {
 
 /// A class that contains a CPU device buffer. It frees the buffer when it
-/// is destroyed.
+/// is destroyed. A CPU device buffer is associated with a specific function
+/// name. It containts \p kMaxRequestsSupported specific buffers to handle
+/// multiple requests.
 class CPUBuffer {
-  /// The buffers being stored.
-  uint8_t *activationsBuffer_;
-  uint8_t *weightsBuffer_;
+
+  struct SingleRequestBuffer {
+    /// The buffers being stored.
+    uint8_t *activationsBuffer_;
+    uint8_t *weightsBuffer_;
+  };
+  std::vector<SingleRequestBuffer> reqBuffers_;
+  std::unordered_map<RunIdentifierTy, SingleRequestBuffer> busyRequestBuffers_;
+
+  static constexpr int kMaxRequestsSupported = 1;
+
   /// Size of the buffer in bytes.
   const size_t activationsSize_{0};
   const size_t weightsSize_{0};
+
+  std::mutex mutex_;
 
 public:
   CPUBuffer(size_t activationsSize, size_t activations_alignment,
@@ -40,13 +53,15 @@ public:
 
   ~CPUBuffer();
 
-  /// Returns the stored buffer.
-  uint8_t *getActivationsBuffer() { return activationsBuffer_; }
-  uint8_t *getWeightsBuffer() { return weightsBuffer_; }
+  void getUnownedRequestBuffer(RunIdentifierTy id, uint8_t **activationsBuffer,
+                               uint8_t **weightsBuffer);
+  void freeRequestBuffer(RunIdentifierTy id);
 
   /// Get size of buffer in bytes.
   size_t getActivationsSize() { return activationsSize_; }
   size_t getWeightsSize() { return weightsSize_; }
+
+  size_t getNumAvailableBuffers() { return reqBuffers_.size(); }
 };
 
 /// A class controlling a single CPU thread of execution driving the JIT
