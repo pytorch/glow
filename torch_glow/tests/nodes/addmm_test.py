@@ -4,21 +4,41 @@ import torch
 
 from tests.utils import jitVsGlow
 
-import pytest
 
+def test_addmm_basic():
+    """Basic test of the PyTorch addmm Node on Glow."""
 
-@pytest.mark.skip(reason="incompatible with linear fusion")
-def test_addmm():
+    def test_f(a, b, c):
+        return (a+a).addmm(b, c)
 
-    def test_f(M, aa, b, bias):
-        """Basic test of the PyTorch addmm Node on Glow."""
-        a = aa.t()
-        M1 = M.addmm(b, a)
-        return M1.add(bias)
-
-    x = torch.randn(6, 10)
+    x = torch.randn(6, 4)
     y = torch.randn(6, 10)
-    z = torch.randn(6, 6)
-    a = torch.randn(6, 6)
+    z = torch.randn(10, 4)
 
-    jitVsGlow(test_f, z, x, y, a, expected_fused_ops={"aten::linear"})
+    jitVsGlow(test_f, x, y, z, expected_fused_ops={"aten::addmm"})
+
+
+def test_addmm_broadcast():
+    """Test of the PyTorch addmm with broadcasting add on Glow."""
+
+    def test_f(a, b, c):
+        return (a+a).addmm(b, c)
+
+    x = torch.randn(4)
+    y = torch.randn(6, 10)
+    z = torch.randn(10, 4)
+
+    jitVsGlow(test_f, x, y, z, expected_fused_ops={"aten::addmm"})
+
+
+def test_addmm_broadcast_with_alpha_and_beta():
+    """Test of the PyTorch addmm with broadcasting add on Glow."""
+
+    def test_f(a, b, c):
+        return (a+a).addmm(b, c, alpha=2.0, beta=3.0)
+
+    x = torch.randn(4)
+    y = torch.randn(6, 10)
+    z = torch.randn(10, 4)
+
+    jitVsGlow(test_f, x, y, z, expected_fused_ops={"aten::addmm"})

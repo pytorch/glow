@@ -281,6 +281,103 @@ Expected<T> static_cast_expected(Expected<OriginalT> originalExpected) {
   }
 }
 
+/// Given the dimensions of two inputs of equal length and at least rank 3 \p
+/// lhsDims and \p rhsDims, \returns the broadcast for each dimension with the
+/// inner-most two dimensions set to 0 because they will not be broadcast for
+/// matmul. This is a helper for loading matmul.
+Expected<std::vector<size_t>>
+computeBroadcastedMatMulTargetDims(llvm::ArrayRef<size_t> lhsDims,
+                                   llvm::ArrayRef<size_t> rhsDims) {
+
+  size_t lhsRank = lhsDims.size();
+  size_t rhsRank = lhsDims.size();
+
+  RETURN_ERR_IF_NOT(
+      lhsRank == rhsRank,
+      "Both inputs must have the same rank to compute broadcast.");
+
+  RETURN_ERR_IF_NOT(lhsRank >= 3,
+                    "Inputs must have at least rank 3 to compute broadcast.");
+
+  std::vector<size_t> targetDims;
+
+  // Reverse both inputs dims.
+  auto lhsDimsRev = std::vector<size_t>(lhsDims.rbegin(), lhsDims.rend());
+  auto rhsDimsRev = std::vector<size_t>(rhsDims.rbegin(), rhsDims.rend());
+
+  // Insert 0 placeholders for the final two dims.
+  targetDims.push_back(0);
+  targetDims.push_back(0);
+
+  // Start at index 2 because we don't broadcast the inner-most dims (these are
+  // the first two dims in this case since these are reversed).
+  for (size_t i = 2; i < lhsRank; ++i) {
+    size_t lhsTarget = lhsDimsRev[i];
+    size_t rhsTarget = rhsDimsRev[i];
+
+    if (lhsTarget == rhsTarget || lhsTarget == 1 || rhsTarget == 1) {
+      targetDims.push_back(std::max(lhsTarget, rhsTarget));
+    } else {
+      return MAKE_ERR(strFormat("Cannot broadcast dim %d with %d",
+                                (int32_t)lhsTarget, (int32_t)rhsTarget));
+    }
+  }
+
+  // Reverse the dimensions back before return.
+  std::reverse(targetDims.begin(), targetDims.end());
+  return targetDims;
+}
+
+/// Given dims \p inputDims, returns an expansion of these dims to rank \p
+/// targetRank by prepending 1s. This is a helper for loading matmul.
+std::vector<size_t> getExpandDims(llvm::ArrayRef<size_t> inputDims,
+                                  size_t targetRank) {
+  DCHECK_LE(inputDims.size(), targetRank)
+      << "The rank of inputDims can't be expanded if it's already larger than "
+         "targetRank.";
+
+  std::vector<size_t> newShape;
+  for (size_t i = 0, e = targetRank - inputDims.size(); i < e; ++i) {
+    newShape.push_back(1);
+  }
+  for (size_t d : inputDims) {
+    newShape.push_back(d);
+  }
+  return newShape;
+}
+
+/// Given dims \p inputDims, \returns these dims contracted to rank \p by
+/// combining the outer most dimensions. This is a helper for loading matmul.
+std::vector<size_t> getContractDims(llvm::ArrayRef<size_t> inputDims,
+                                    size_t targetRank) {
+  size_t inputRank = inputDims.size();
+
+  DCHECK_GE(inputRank, targetRank)
+      << "Can't contract dims if there are less than targetRank to begin with.";
+
+  if (inputRank == targetRank) {
+    return inputDims;
+  }
+
+  std::vector<size_t> newShape;
+
+  size_t inputIndex = 0;
+
+  // Combine outer dimension into a single dimension.
+  newShape.push_back(1);
+  for (size_t i = 0, e = inputRank - (targetRank - 1); i < e;
+       ++i, ++inputIndex) {
+    newShape[0] *= inputDims[inputIndex];
+  }
+
+  // Copy the inner dimensions.
+  for (; inputIndex < inputRank; ++inputIndex) {
+    newShape.push_back(inputDims[inputIndex]);
+  }
+
+  return newShape;
+}
+
 /// Indexes of aten::_convolution inputs.
 struct ConvInputs {
   enum {
@@ -376,15 +473,6 @@ struct QuantizeInputs {
   };
 };
 
-/// Indexes of aten::linear inputs.
-struct LinearInputs {
-  enum {
-    input = 0,
-    weights = 1,
-    bias = 2,
-  };
-};
-
 /// Indexes of aten::prelu inputs.
 struct PReluInputs {
   enum {
@@ -437,6 +525,17 @@ struct ReshapeInputs {
     shape = 1,
   };
 };
+
+/// Indexes of aten::addmm inputs.
+struct AddMMInputs {
+  enum {
+    input = 0,
+    mat1 = 1,
+    mat2 = 2,
+    beta = 3,
+    alpha = 4,
+  };
+};
 } // namespace
 
 // static
@@ -483,9 +582,6 @@ PyTorchModelLoader::getSymbolsMapping() {
        {{"aten::adaptive_avg_pool2d"},
         &PyTorchModelLoader::loadAdaptiveAvgPool2d,
         {AdaptiveAvgPoolInputs::output_size}},
-       {{"aten::linear"},
-        &PyTorchModelLoader::loadLinear,
-        {LinearInputs::weights, LinearInputs::bias}},
        {{"aten::reshape"},
         &PyTorchModelLoader::loadReshape,
         {ReshapeInputs::shape}},
@@ -535,7 +631,14 @@ PyTorchModelLoader::getSymbolsMapping() {
             AvgPoolInputs::count_include_pad,
             AvgPoolInputs::divisor_override,
         }},
-       {{"aten::mm"}, &PyTorchModelLoader::loadMatMul, {}},
+       {{"aten::matmul"}, &PyTorchModelLoader::loadMatMul, {}},
+       {{"aten::mm"}, &PyTorchModelLoader::loadMM, {}},
+       {{"aten::addmm"},
+        &PyTorchModelLoader::loadAddMM,
+        {
+            AddMMInputs::alpha,
+            AddMMInputs::beta,
+        }},
        {{"aten::flatten"},
         &PyTorchModelLoader::loadFlatten,
         {
@@ -1121,44 +1224,6 @@ Error PyTorchModelLoader::loadConvolution(const torch::jit::Node *ptNode) {
   return addValueMapping(outputs[0], output->getResult());
 }
 
-Error PyTorchModelLoader::loadLinear(const torch::jit::Node *ptNode) {
-  auto inputs = ptNode->inputs();
-  auto outputs = ptNode->outputs();
-  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 3, outputs, 1));
-
-  glow::NodeValue input;
-  ASSIGN_VALUE_OR_RETURN_ERR(
-      input, getGlowNodeValueForValue(inputs[LinearInputs::input]));
-
-  glow::NodeValue weights;
-  ASSIGN_VALUE_OR_RETURN_ERR(
-      weights, getGlowNodeValueForValue(inputs[LinearInputs::weights]));
-
-  // Transpose weights before inputing into FC (TODO).
-  auto wDims = weights.dims();
-  std::vector<unsigned_t> shuffle{1, 0};
-  weights = F_.createTranspose("fc_weights_transposed", weights, shuffle);
-
-  glow::NodeValue bias;
-  if (hasGlowNodeValueForValue(inputs[LinearInputs::bias])) {
-    ASSIGN_VALUE_OR_RETURN_ERR(
-        bias, getGlowNodeValueForValue(inputs[LinearInputs::bias]));
-  } else {
-    glow::Tensor biasT(glow::ElemKind::FloatTy, {wDims[0]});
-    biasT.zero();
-    glow::Constant *biasConstant =
-        F_.getParent()->createConstant("linear_bias", std::move(biasT));
-    weights = biasConstant->getOutput();
-  }
-
-  glow::TypeRef outTy = F_.getParent()->uniqueType(
-      glow::ElemKind::FloatTy, {input.dims()[0], bias.getType()->dims()[0]});
-
-  return addValueMapping(
-      outputs[0],
-      F_.createFullyConnected("linear", input, weights, bias, outTy));
-}
-
 Error PyTorchModelLoader::loadBatchNorm(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
@@ -1501,8 +1566,203 @@ Error PyTorchModelLoader::loadMatMul(const torch::jit::Node *ptNode) {
   glow::NodeValue rhs;
   ASSIGN_VALUE_OR_RETURN_ERR(rhs, getGlowNodeValueForValue(inputs[1]));
 
-  auto *glowNode = F_.createMatMul("MatMul", lhs, rhs);
-  return addValueMapping(outputs[0], glowNode);
+  auto lhsRank = lhs.dims().size();
+  auto rhsRank = rhs.dims().size();
+
+  glow::NodeValue output;
+
+  if (lhsRank == 1 && rhsRank == 1) {
+    // NOTE: Only Glow's 2d dotproduct operator accumulates so we prepend
+    // 1 to dims to turn inputs into 2d.
+    lhs = F_.createReshape("reshape_matmul_lhs", lhs, {1, lhs.dims()[0]});
+    rhs = F_.createReshape("reshape_matmul_rhs", rhs, {1, rhs.dims()[0]});
+    output = F_.createDotProduct("dotprod", lhs, rhs);
+  } else if (lhsRank == 2 && rhsRank == 2) {
+    output = F_.createMatMul("matmul", lhs, rhs);
+  } else if (lhsRank == 1 && rhsRank == 2) {
+    // Prepend a 1 to lhs's shape if it's 1d.
+    lhs = F_.createReshape("reshape_matmul_lhs", lhs, {1, lhs.dims()[0]});
+    output = F_.createMatMul("matmul", lhs, rhs);
+    output = F_.createReshape("reshape_matmul_output", output, {rhs.dims()[1]});
+  } else if (lhsRank == 2 && rhsRank == 1) {
+    // Append a 1 to rhs's shape if it's 1d.
+    rhs = F_.createReshape("reshape_matmul_rhs", rhs, {rhs.dims()[0], 1});
+    output = F_.createMatMul("matmul", lhs, rhs);
+    output = F_.createReshape("reshape_matmul_output", output, {lhs.dims()[0]});
+  } else {
+    // Prepend a 1 to lhs or append 1 to rhs so that they are both at least
+    // rank 2.
+    const bool lhsPrepend = lhsRank == 1;
+    const bool rhsAppend = rhsRank == 1;
+    if (lhsPrepend) {
+      std::vector<size_t> newDims = lhs.dims();
+      newDims.insert(newDims.begin(), 1);
+      lhs = F_.createReshape("reshape_matmul_lhs", lhs, newDims);
+    }
+    if (rhsAppend) {
+      std::vector<size_t> newDims = rhs.dims();
+      newDims.push_back(1);
+      rhs = F_.createReshape("reshape_matmul_rhs", rhs, newDims);
+    }
+
+    // Reshape inputs to be the same size, pad outer dimensions with 1s.
+    size_t maxRank = std::max(lhsRank, rhsRank);
+    lhs = F_.createReshape("reshape_matmul_lhs", lhs,
+                           getExpandDims(lhs.dims(), maxRank));
+    rhs = F_.createReshape("reshape_matmul_rhs", rhs,
+                           getExpandDims(rhs.dims(), maxRank));
+
+    // Compute target dims template (0s for the innermost dimensions)
+    std::vector<size_t> targetDims;
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        targetDims, computeBroadcastedMatMulTargetDims(lhs.dims(), rhs.dims()));
+
+    // Compute the dimensions that lhs should be broadcast to.
+    auto lhsTargetDims = targetDims;
+    std::copy(lhs.dims().end() - 2, lhs.dims().end(), lhsTargetDims.end() - 2);
+
+    // Compute the dimensions that rhs should be broadcast to.
+    auto rhsTargetDims = targetDims;
+    std::copy(rhs.dims().end() - 2, rhs.dims().end(), rhsTargetDims.end() - 2);
+
+    // Compute the dimensions for the final output of batched matmul.
+    auto outputTargetDims = targetDims;
+    outputTargetDims[outputTargetDims.size() - 2] =
+        lhsTargetDims[lhsTargetDims.size() - 2];
+    outputTargetDims[outputTargetDims.size() - 1] =
+        rhsTargetDims[rhsTargetDims.size() - 1];
+
+    // Broadcast lhs and rhs so that they match their targetDims.
+    lhs = F_.createBroadcast("lhsBroadcast", lhs, lhsTargetDims, 0);
+    rhs = F_.createBroadcast("rhsBroadcast", rhs, rhsTargetDims, 0);
+
+    // Reshape both inputs to be rank 3 by collapsing their outer dimensions
+    // since BatchMatMul can only handle rank 3 inputs.
+    lhs = F_.createReshape("reshape_matmul_lhs", lhs,
+                           getContractDims(lhs.dims(), 3));
+    rhs = F_.createReshape("reshape_matmul_rhs", rhs,
+                           getContractDims(rhs.dims(), 3));
+
+    // Perform BatchMatMul
+    output = F_.createBatchMatMul("matmul", lhs, rhs);
+
+    // Reshape the output of BatchMatMul to expand the outer dimensions again.
+    output =
+        F_.createReshape("matmul_output_reshape", output, outputTargetDims);
+
+    // If a 1 was prepended to lhs or a 1 was appended to rhs at the beginning,
+    // undo that now.
+    if (lhsPrepend) {
+      std::vector<size_t> newDims(output.dims().begin(),
+                                  output.dims().end() - 2);
+      newDims.push_back(*(output.dims().end() - 1));
+      output = F_.createReshape("matmul_output_reshape", output, newDims);
+    }
+    if (rhsAppend) {
+      std::vector<size_t> newDims(output.dims().begin(),
+                                  output.dims().end() - 1);
+      output = F_.createReshape("matmul_output_reshape", output, newDims);
+    }
+  }
+
+  return addValueMapping(outputs[0], output);
+}
+
+Error PyTorchModelLoader::loadMM(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 2, outputs, 1));
+
+  glow::NodeValue lhs;
+  ASSIGN_VALUE_OR_RETURN_ERR(lhs, getGlowNodeValueForValue(inputs[0]));
+  glow::NodeValue rhs;
+  ASSIGN_VALUE_OR_RETURN_ERR(rhs, getGlowNodeValueForValue(inputs[1]));
+
+  // Check dimensions of inputs
+  if (lhs.dims().size() != 2 || rhs.dims().size() != 2) {
+    RETURN_ERR("aten::mm expects 2D matrices");
+  }
+
+  if (lhs.dims()[1] != rhs.dims()[0]) {
+    RETURN_ERR("aten::mm does not broadcast");
+  }
+
+  auto output = F_.createMatMul("mm", lhs, rhs)->getResult();
+  return addValueMapping(outputs[0], output);
+}
+
+Error PyTorchModelLoader::loadAddMM(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 5, outputs, 1));
+
+  auto getScalar = [&](const torch::jit::Value *val) -> Expected<float> {
+    if (!hasGlowIValueForValue(val)) {
+      return 1.0;
+    }
+
+    GlowIValue *ival;
+    ASSIGN_VALUE_OR_RETURN_ERR(ival, getGlowIValueForValue(val));
+
+    if (ival->isDouble()) {
+      return ival->toDouble();
+    } else if (ival->isInt()) {
+      return static_cast_expected<float>(ival->toInt());
+    } else if (ival->isNone()) {
+      return 1.0;
+    } else {
+      return MAKE_ERR("Unexpected scalar type");
+    }
+  };
+
+  float alpha;
+  ASSIGN_VALUE_OR_RETURN_ERR(alpha, getScalar(inputs[AddMMInputs::alpha]));
+
+  float beta;
+  ASSIGN_VALUE_OR_RETURN_ERR(beta, getScalar(inputs[AddMMInputs::beta]));
+
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      input, getGlowNodeValueForValue(inputs[AddMMInputs::input]));
+
+  if (beta != 1.0) {
+    glow::Tensor t(ElemKind::FloatTy, input.dims());
+    t.init(Tensor::InitKind::Broadcast, beta, F_.getParent()->getPRNG());
+    auto *constant = F_.getParent()->createConstant("beta", std::move(t));
+    input = F_.createMul("mul", constant, input)->getResult();
+  }
+
+  glow::NodeValue mat1;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      mat1, getGlowNodeValueForValue(inputs[AddMMInputs::mat1]));
+
+  glow::NodeValue mat2;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      mat2, getGlowNodeValueForValue(inputs[AddMMInputs::mat2]));
+
+  // Check dimensions of mat1 and mat2
+  if (mat1.dims().size() != 2 || mat2.dims().size() != 2) {
+    RETURN_ERR("aten::addmm expects 2D matrices");
+  }
+
+  if (mat1.dims()[1] != mat2.dims()[0]) {
+    RETURN_ERR("aten::addmm does not broadcast mat1 or mat2");
+  }
+
+  auto matmul = F_.createMatMul("mm", mat1, mat2)->getResult();
+
+  if (alpha != 1.0) {
+    glow::Tensor t(ElemKind::FloatTy, matmul.dims());
+    t.init(Tensor::InitKind::Broadcast, alpha, F_.getParent()->getPRNG());
+    auto *constant = F_.getParent()->createConstant("alpha", std::move(t));
+    matmul = F_.createMul("mul", constant, matmul)->getResult();
+  }
+
+  auto add = F_.createNodeWithBroadcast<glow::AddNode>("add", /*axis*/ -1,
+                                                       input, matmul)
+                 ->getResult();
+
+  return addValueMapping(outputs[0], add);
 }
 
 Error PyTorchModelLoader::loadPRelu(const torch::jit::Node *ptNode) {
