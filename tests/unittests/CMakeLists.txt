@@ -310,7 +310,14 @@ foreach(backend ${GLOW_BACKENDS})
   add_backend_test(TEST MLTest BACKEND "${backend}" UNOPT)
   add_backend_test(TEST OperatorGradTest BACKEND "${backend}" UNOPT)
   add_backend_test(TEST OperatorTest BACKEND "${backend}" UNOPT)
-  add_backend_test(TEST RecommendationSystemTest BACKEND "${backend}" EXPENSIVE PRIVATE Partitioner)
+  add_backend_test(TEST
+                   RecommendationSystemTest
+                   BACKEND
+                   "${backend}"
+                   EXPENSIVE
+                   PRIVATE
+                   Partitioner
+                   HostManager)
   add_backend_test(TEST TraceEventsTest BACKEND "${backend}" UNOPT)
   add_backend_test(TEST TypeAToTypeBFunctionConverterTest BACKEND "${backend}")
 endforeach()
