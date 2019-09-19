@@ -497,7 +497,11 @@ static ShapeVector getNewShapeWithoutAxes(llvm::ArrayRef<size_t> dims,
 Placeholder *Module::createPlaceholder(TypeRef T, llvm::StringRef name,
                                        bool isTrainable) {
   auto FT = uniqueType(*T);
-  return addPlaceholder(new Placeholder(name, FT, isTrainable));
+  auto *ph = new Placeholder(name, FT, isTrainable);
+  ph->setName(uniqueName(ph->getName(), uniqueVariableNames_));
+  placeholders_.push_back(ph);
+  logStorageCreation(functions_, ph);
+  return ph;
 }
 
 Placeholder *Module::createPlaceholder(ElemKind T, llvm::ArrayRef<size_t> dims,
@@ -572,13 +576,6 @@ Constant *Module::addConstant(Constant *V) {
   constants_.push_back(V);
   logStorageCreation(functions_, V);
   return V;
-}
-
-Placeholder *Module::addPlaceholder(Placeholder *ph) {
-  ph->setName(uniqueName(ph->getName(), uniqueVariableNames_));
-  placeholders_.push_back(ph);
-  logStorageCreation(functions_, ph);
-  return ph;
 }
 
 /// Check if the 'pads' array has the right size.
