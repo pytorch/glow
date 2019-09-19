@@ -2861,6 +2861,67 @@ bool FoldChannelShuffle::run(Function *F, const CompilationContext &cctx) {
   return changed;
 }
 
+// Fold Tile -> Add into BatchedAdd wherever applicable.
+bool FoldTileAddIntoBatchedAdd::run(Function *F,
+                                    const CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), getName());
+
+  bool changed = false;
+  for (const auto &node : F->getNodes()) {
+    const auto *addNode = dyn_cast<AddNode>(&node);
+    if (!addNode) {
+      continue;
+    }
+
+    NodeValue batchNode, addedNode;
+    const auto &LHS = addNode->getLHS();
+    const auto &RHS = addNode->getRHS();
+    const TileNode *tileNode = nullptr;
+
+    // Check if LHS is a tile.
+    if ((tileNode = dyn_cast<TileNode>(LHS))) {
+      batchNode = RHS;
+      addedNode = tileNode->getInput();
+    }
+    // Check if RHS is a tile.
+    else if ((tileNode = dyn_cast<TileNode>(RHS))) {
+      batchNode = LHS;
+      addedNode = tileNode->getInput();
+    }
+    // If neither LHS or RHS is a tile, nothing to do.
+    else {
+      continue;
+    }
+
+    // If the tiling of the added node is not along the 0th axis,
+    // 'Add' cannot be replaced with 'BatchedAdd'.
+    if (tileNode->getAxis() != 0) {
+      continue;
+    }
+
+    auto oldDims = addedNode.dims();
+    // If the 0th dimension of the added node is not 1,
+    // then reducing dimension via reshaping is more complicated.
+    // Hence, Add will not be replaced with BatchedAdd.
+    if (oldDims.size() == 0 || oldDims[0] != 1) {
+      continue;
+    }
+
+    // Reshape the added node to create a slice for the batched add
+    // such that its dim size is one less than that of the batch.
+    const auto newDims = oldDims.take_back(oldDims.size() - 1);
+    auto *slice = F->createReshape(tileNode->getName().str() + "_reshape",
+                                   addedNode, newDims);
+
+    // Create a new batched add node to replace existing add node.
+    auto *newBA = F->createBatchedAdd(addNode->getName().str() + "_batched_add",
+                                      batchNode, slice);
+    addNode->getResult().replaceAllUsesOfWith(newBA);
+    changed = true;
+  }
+  return changed;
+}
+
 void glow::fold(Function *F, CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), "glow::fold")
 
