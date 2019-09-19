@@ -28,11 +28,38 @@ using namespace glow;
 
 class GraphOptz : public ::testing::Test {
 public:
-  GraphOptz() { F_ = mod_.createFunction("main"); }
+  GraphOptz() : mod_(EE_.getModule()) { F_ = mod_.createFunction("main"); }
 
 protected:
-  Module mod_;
-  Function *F_;
+  void checkNumericalEquivalence() {
+    // Check that the function and its optimized complement exist.
+    EXPECT_TRUE(F_);
+    EXPECT_TRUE(optimizedF_);
+
+    // Clone bindings to use for original and optimized functions.
+    PlaceholderBindings originalBindings = bindings_.clone();
+    PlaceholderBindings optimizedBindings = bindings_.clone();
+
+    // Compile and run functions.
+    EE_.compile(CompilationMode::Infer);
+    EE_.run(originalBindings, F_->getName());
+    EE_.run(optimizedBindings, optimizedF_->getName());
+
+    // Compare outputs.
+    EXPECT_TRUE(
+        PlaceholderBindings::compare(&originalBindings, &optimizedBindings));
+  }
+
+  /// ExecutionEngine instance for running functions to check numerical
+  /// equivalence.
+  ExecutionEngine EE_;
+  /// A reference to the Module inside EE_.
+  Module &mod_;
+  /// The original Function for the test case.
+  Function *F_{nullptr};
+  /// The optimized Function for the test case.
+  Function *optimizedF_{nullptr};
+  /// The bindings used to check numerical equivalence for the test case.
   PlaceholderBindings bindings_;
 };
 
@@ -48,6 +75,13 @@ static unsigned countNodeKind(Function *F, Kinded::Kind kind) {
   }
 
   return count;
+}
+
+/// Optimize the function \p F. \returns the optimized function.
+static Function *optimizeFunction(Function *F) {
+  auto *G = F->clone(F->getName().str() + "_optimized");
+  ::glow::optimize(G, CompilationMode::Infer);
+  return G;
 }
 
 TEST_F(GraphOptz, DCE) {
@@ -664,7 +698,8 @@ TEST_F(GraphOptz, sinkTransposeBelowRescale) {
 
 TEST_F(GraphOptz, cancelTwoTransposes) {
   const size_t origDims[] = {1, 5, 10, 15};
-  Node *A = mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input", false);
+  Placeholder *A =
+      mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input", false);
   Node *T1 = F_->createTranspose("transpose", A, NCHW2NHWC);
   Node *T2 = F_->createTranspose("transpose", T1, NHWC2NCHW);
   ReluNode *K = F_->createRELU("relu", T2);
@@ -673,13 +708,25 @@ TEST_F(GraphOptz, cancelTwoTransposes) {
   EXPECT_EQ(K->getInput().dims(), llvm::makeArrayRef(origDims));
   EXPECT_EQ(F_->getNodes().size(), 4);
 
-  ::glow::optimize(F_, CompilationMode::Infer);
+  optimizedF_ = optimizeFunction(F_);
 
-  EXPECT_EQ(F_->getNodes().size(), 2);
+  EXPECT_EQ(optimizedF_->getNodes().size(), 2);
+
+  for (auto &N : optimizedF_->getNodes()) {
+    if (N.getKind() == Kinded::Kind::SaveNodeKind) {
+      save = llvm::dyn_cast<SaveNode>(&N);
+    }
+  }
+
   ReluNode *relu = llvm::dyn_cast<ReluNode>(save->getInput());
   ASSERT_TRUE(relu);
   EXPECT_EQ(relu->getResult().dims(), llvm::makeArrayRef(origDims));
   EXPECT_EQ(relu->getInput().getNode(), A);
+
+  bindings_.allocate(mod_.getPlaceholders());
+  bindings_.get(A)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
+
+  checkNumericalEquivalence();
 }
 
 /// Make sure the predicates don't get in the way of the
@@ -3000,7 +3047,8 @@ TEST_F(GraphOptz, SplitFCIntoMultipleOps) {
   auto *fc = F_->createFullyConnected("fc", input, weights, bias);
   auto *save = F_->createSave("save", fc, output);
 
-  EXPECT_TRUE(::glow::executeVerticalFCWeightsSplit(F_, /*numOfChunks*/ 12,
+  EXPECT_TRUE(::glow::executeVerticalFCWeightsSplit(F_,
+                                                    /*numOfChunks*/ 12,
                                                     /*minKToSplit*/ 800));
 
   // 24 Slices: 12 from bias and 12 from weights.
