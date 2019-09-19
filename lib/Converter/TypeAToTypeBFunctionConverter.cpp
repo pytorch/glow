@@ -59,17 +59,30 @@ Node *TypeAToTypeBFunctionConverter::createConversion(Function &function,
           (destTy->getElementType() == srcKind_ &&
            val.getType()->getElementType() == dstKind_)) &&
          "Unexpected conversion type");
-  NodeValue valOrClip = val;
+
   if (precConfig_.clipFP16) {
     assert((destTy->getElementType() == ElemKind::Float16Ty ||
             val.getType()->getElementType() == ElemKind::Float16Ty) &&
            "Unexpected conversion type");
     constexpr float float16Max = 65504.0f;
     constexpr float float16Min = -65504.0f;
-    valOrClip = function.createClip(val.getNode()->getName(), val, float16Min,
-                                    float16Max);
+
+    // If the input is fp32 and output is fp16, then we want to do the convert
+    // before the clip. This way the clip can execute in fp16 mode.
+    if (destTy->getElementType() == ElemKind::Float16Ty &&
+        val.getType()->getElementType() == ElemKind::FloatTy) {
+      auto convert =
+          function.createConvertTo(val.getNode()->getName(), val, destTy);
+      return function.createClip(val.getNode()->getName(), convert, float16Min,
+                                 float16Max);
+    } else {
+      auto clip = function.createClip(val.getNode()->getName(), val, float16Min,
+                                      float16Max);
+      return function.createConvertTo(val.getNode()->getName(), clip, destTy);
+    }
+  } else {
+    return function.createConvertTo(val.getNode()->getName(), val, destTy);
   }
-  return function.createConvertTo(val.getNode()->getName(), valOrClip, destTy);
 }
 
 void TypeAToTypeBFunctionConverter::convertTensor(Tensor &tensor,
