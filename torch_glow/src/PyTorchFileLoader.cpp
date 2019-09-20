@@ -106,7 +106,7 @@ struct RegisterCustomFusionPass {
     options.setAliasAnalysis(at::AliasAnalysisKind::PURE_FUNCTION);
     torch::jit::RegisterOperators op({torch::jit::Operator(
         getFusionSymbol(),
-        [](const torch::jit::Node *node) {
+        [](const torch::jit::Node *node) -> torch::jit::Operation {
           return [node](torch::jit::Stack &stack) {
             // Get JIT Graph.
             auto graph = node->g(at::attr::Subgraph);

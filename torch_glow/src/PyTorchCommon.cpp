@@ -121,7 +121,7 @@ void registerGlowOp() {
 
   torch::jit::RegisterOperators op({torch::jit::Operator(
       getGlowSymbol(),
-      [](const torch::jit::Node *node) {
+      [](const torch::jit::Node *node) -> torch::jit::Operation {
         std::shared_ptr<torch::jit::Graph> graph = node->g(at::attr::Subgraph);
         auto graphRunner =
             std::make_shared<CachingGraphRunner>(graph.get(), getHostManager());
