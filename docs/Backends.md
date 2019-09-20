@@ -126,7 +126,7 @@ Additionally, there are virtual functions that backends can override:
 compilation of a `Function`. Backends must implement their own derived class
 from `CompiledFunction`, which must be returned as a result of
 `Backend::compile()` or `Backend::compileWithoutConstants()` .
- `CompiledFunction` contains a single pure virtual function
+ `CompiledFunction` contains a pure virtual function
 that must be implemented: `virtual void execute();`. This function is
 responsible for copying inputs to the device from all input
 [Placeholders](https://github.com/pytorch/glow/blob/master/docs/IR.md#placeholders),
@@ -135,6 +135,8 @@ Placeholders. The `CompiledFunction` contains a [RuntimeBundle](#runtimebundle-h
 which contains the symbol information and mappings of inputs and outputs. Thus after the
 function returns, all Placeholders for the outputs of the function should have had
 their backing tensor updated.
+An optional method: `virtual void freeCompilationResources()` can be implemented to allow
+freeing resources that are no longer needed after the function has been loaded on a device.
 
 ### `RuntimeBundle` Helper Class
 

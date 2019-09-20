@@ -111,6 +111,8 @@ public:
 
   Error execute(ExecutionContext *context) override;
 
+  void freeCompilationResources() override;
+
   /// Collects constants for runtime.
   void collectConstants(const Module *module) override;
 

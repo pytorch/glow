@@ -222,7 +222,7 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
       }
     }
   }
-  cleanupProvision(localActiveNames);
+  cleanupProvision(localActiveNames, false);
   return Error::success();
 };
 
@@ -241,9 +241,17 @@ Error Provisioner::removeFunction(llvm::StringRef name) {
   return Error::success();
 }
 
-void Provisioner::cleanupProvision(llvm::ArrayRef<std::string> names) {
+void Provisioner::cleanupProvision(llvm::ArrayRef<std::string> names,
+                                   bool failure) {
   std::lock_guard<std::mutex> functionLock(functionsLock_);
   for (auto &name : names) {
     activeFunctions_.erase(name);
+    if (failure) {
+      // Remove any functions added before the failure.
+      functions_.erase(name);
+    } else {
+      // Free compilationResources from the compiledFunctions.
+      functions_[name]->freeCompilationResources();
+    }
   }
 }

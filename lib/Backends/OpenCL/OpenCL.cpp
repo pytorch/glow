@@ -124,6 +124,10 @@ OpenCLFunction::OpenCLFunction(std::unique_ptr<IRFunction> F,
   setTraceInfo(std::move(traceInfo));
 }
 
+void OpenCLFunction::freeCompilationResources() {
+  runtimeBundle_.freeConstants();
+}
+
 OpenCLFunction::~OpenCLFunction() {
   for (auto &kv : programsCache_) {
     auto prog = kv.second;

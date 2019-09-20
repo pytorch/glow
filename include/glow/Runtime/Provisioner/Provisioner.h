@@ -64,8 +64,10 @@ private:
   /// List of available DeviceManagers added during initialization.
   std::vector<DeviceManager *> devices_;
 
-  /// Helper function to cleanup a failed provision call.
-  void cleanupProvision(llvm::ArrayRef<std::string> names);
+  /// Helper function to cleanup a provision call. On a success free resources
+  /// that are no longer needed by the compiledFunctions. On failure free the
+  /// compiledFunctions that were created.
+  void cleanupProvision(llvm::ArrayRef<std::string> names, bool failure = true);
 };
 } // namespace runtime
 } // namespace glow
