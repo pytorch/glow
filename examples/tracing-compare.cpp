@@ -32,9 +32,9 @@ using namespace glow;
 using namespace glow::runtime;
 
 #if (GLOW_WITH_OPENCL)
-std::array<std::string, 3> supportedBackends{"CPU", "Interpreter", "OpenCL"};
+std::array<std::string, 3> supportedBackends{{"CPU", "Interpreter", "OpenCL"}};
 #else
-std::array<std::string, 2> supportedBackends{"CPU", "Interpreter"};
+std::array<std::string, 2> supportedBackends{{"CPU", "Interpreter"}};
 #endif
 
 namespace {

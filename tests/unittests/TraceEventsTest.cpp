@@ -724,9 +724,9 @@ TEST(TraceEventsTest, nestedScopedEventsTerm) {
 
 TEST(TraceEventsTest, TraceLevels) {
   CHECK_IF_ENABLED();
-  std::array<TraceLevel, 4> levels = {TraceLevel::NONE, TraceLevel::REQUEST,
-                                      TraceLevel::RUNTIME,
-                                      TraceLevel::OPERATOR};
+  std::array<TraceLevel, 4> levels = {{TraceLevel::NONE, TraceLevel::REQUEST,
+                                       TraceLevel::RUNTIME,
+                                       TraceLevel::OPERATOR}};
   for (auto L : levels) {
     TraceContext context(L);
     for (auto evl : levels) {
