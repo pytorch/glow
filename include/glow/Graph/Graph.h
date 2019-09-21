@@ -75,6 +75,9 @@ class Module final {
   /// Module log context that stores all logs related to this module.
   ModuleLogContext moduleLogCtx_;
 
+  /// Inserts the constant \p V to the list of constants.
+  Constant *addConstant(Constant *V);
+
 public:
   Module() = default;
 
@@ -84,12 +87,6 @@ public:
   /// names are legal C identifiers in the form: "[a-zA-Z_][a-zA-Z0-9_]*".
   static llvm::StringRef uniqueName(llvm::StringRef name,
                                     llvm::StringSet<> &stringTable);
-
-  /// Inserts the constant \p V to the list of constants.
-  Constant *addConstant(Constant *V);
-
-  /// Inserts the placeholder node \p ph to the list of variables.
-  Placeholder *addPlaceholder(Placeholder *ph);
 
   /// Return a pointer to a uniqued type \p T.
   TypeRef uniqueType(const Type &T);
