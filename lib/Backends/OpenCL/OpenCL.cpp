@@ -1074,13 +1074,13 @@ Error OpenCLFunction::execute(ExecutionContext *context) {
 
         setKernelArg(kernel, numArgs + 4, odim);
         setKernelArg(kernel, numArgs + 5, idim);
-        global = {odim.h, odim.w, odim.c};
+        global = {{odim.h, odim.w, odim.c}};
       } else {
         ShapeNHWC odim(PM->getDest()->getType()->dims());
         ShapeNHWC idim(PM->getSrc()->getType()->dims());
         setKernelArg(kernel, numArgs + 4, odim);
         setKernelArg(kernel, numArgs + 5, idim);
-        global = {odim.h, odim.w, odim.c};
+        global = {{odim.h, odim.w, odim.c}};
       }
 
       enqueueKernel(I.getName(), commands, kernel, deviceId, global,
@@ -1157,13 +1157,13 @@ Error OpenCLFunction::execute(ExecutionContext *context) {
 
         setKernelArg(kernel, numArgs + 4, odim);
         setKernelArg(kernel, numArgs + 5, idim);
-        global = {odim.h, odim.w, odim.c};
+        global = {{odim.h, odim.w, odim.c}};
       } else {
         ShapeNHWC odim(PA->getDest()->getType()->dims());
         ShapeNHWC idim(PA->getSrc()->getType()->dims());
         setKernelArg(kernel, numArgs + 4, odim);
         setKernelArg(kernel, numArgs + 5, idim);
-        global = {odim.h, odim.w, odim.c};
+        global = {{odim.h, odim.w, odim.c}};
       }
 
       if (isNCHW && isQuantized) {

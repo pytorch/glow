@@ -34,10 +34,10 @@ TEST_P(SparseLengthsSum, Big) {
   F_ = mod->createFunction("main");
   auto *interpMod = &interp.getModule();
   auto *G = interp.getModule().createFunction("main");
-  std::array<size_t, 13> dataRows = {
+  std::array<size_t, 13> dataRows = {{
       5000000, 5000000, 6000000, 8000000, 8000000, 8000000, 3000000,
       3000000, 1000000, 5000000, 8000000, 5000000, 1000000,
-  };
+  }};
 
   std::vector<Constant *> data;
   std::vector<Constant *> dataI;
