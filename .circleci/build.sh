@@ -67,7 +67,11 @@ else
     sudo apt-get install -y libpng-dev libgoogle-glog-dev
 fi
 
-# Install ninja, (newest version of) cmake and autopep8 through pip
+# Install cmake through apt-get
+sudo apt-get update
+sudo apt-get install cmake
+
+# Install ninja, (newest version of) autopep8 through pip
 sudo pip install ninja cmake autopep8
 hash cmake ninja
 
