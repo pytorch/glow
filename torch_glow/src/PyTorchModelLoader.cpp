@@ -366,7 +366,7 @@ struct QuantizedAddInputs {
   };
 };
 
-/// Indexes of aten::quantize_linear inputs.
+/// Indexes of aten::quantize_per_tensor inputs.
 struct QuantizeInputs {
   enum {
     input = 0,
@@ -470,7 +470,7 @@ PyTorchModelLoader::getSymbolsMapping() {
        {{"quantized::add"},
         &PyTorchModelLoader::loadQuantizedAdd,
         {QuantizedAddInputs::scale, QuantizedAddInputs::offset}},
-       {{"aten::quantize_linear"},
+       {{"aten::quantize_per_tensor"},
         &PyTorchModelLoader::loadQuantize,
         {QuantizeInputs::scale, QuantizeInputs::offset, QuantizeInputs::dtype}},
        {{"aten::dequantize"}, &PyTorchModelLoader::loadDequantize, {}},
