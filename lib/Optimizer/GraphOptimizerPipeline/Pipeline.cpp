@@ -37,6 +37,10 @@ FunctionPassPipeline glow::createDefaultGraphOptimizationPassPipeline() {
       // so try to optimize them out first.
       {FunctionPassID::OptimizeReshape},
 
+      // Eliminate no-op tiles, possibly unlocking more optimization
+      // opportunities.
+      {FunctionPassID::EliminateNoopTile},
+
       {FunctionPassID::TransposeConstants,
        ConvergenceMode::OnePass,
        {CompilationMode::Infer}},
