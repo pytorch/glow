@@ -68,10 +68,10 @@ else
 fi
 
 # Since we are using llvm-7 in these two branches, we cannot use pip install cmake
-if [[ "${CIRCLE_JOB}" == "PYTORCH" ] || [ "$CIRCLE_JOB" == "CHECK_CLANG_AND_PEP8_FORMAT" ]]; then
-	sudo apt-get install cmake
+if [ "${CIRCLE_JOB}" != "PYTORCH" ] && [ "${CIRCLE_JOB}" != "CHECK_CLANG_AND_PEP8_FORMAT" ]; then
+	sudo pip install cmake
 else
-    sudo pip install cmake
+	sudo apt-get install cmake
 fi
 
 # Install ninja, (newest version of) autopep8 through pip
