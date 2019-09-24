@@ -80,7 +80,7 @@ make
 cd ..
 
 # Install ninja, (newest version of) autopep8 through pip
-sudo pip install ninja autopep8 cmake
+sudo pip install ninja autopep8
 hash cmake ninja
 
 # Build glow
