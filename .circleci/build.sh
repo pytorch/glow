@@ -68,16 +68,18 @@ else
 fi
 
 # Install scikit-build for cmake
-sudo pip install scikit-build
+#sudo pip install scikit-build
+
+sudo apt-get install cmake
 
 # Install cmake 3.8.1
-sudo apt-get install build-essential
-wget http://www.cmake.org/files/v3.8/cmake-3.8.1.tar.gz
-tar xf cmake-3.8.1.tar.gz
-cd cmake-3.8.1
-./configure
-make
-cd ..
+#sudo apt-get install build-essential
+#wget http://www.cmake.org/files/v3.8/cmake-3.8.1.tar.gz
+#tar xf cmake-3.8.1.tar.gz
+#cd cmake-3.8.1
+#./configure
+#make
+#cd ..
 
 # Install ninja, (newest version of) autopep8 through pip
 sudo pip install ninja autopep8
