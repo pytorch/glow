@@ -72,9 +72,9 @@ sudo pip install scikit-build
 
 # Install cmake 3.8.1
 sudo apt-get install build-essential
-wget http://www.cmake.org/files/v3.12/cmake-3.12.1.tar.gz
-tar xf cmake-3.12.1.tar.gz
-cd cmake-3.12.1
+wget http://www.cmake.org/files/v3.8/cmake-3.8.1.tar.gz
+tar xf cmake-3.8.1.tar.gz
+cd cmake-3.8.1
 ./configure
 make
 cd ..
