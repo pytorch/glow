@@ -1314,6 +1314,13 @@ DEF_UNSUPPORTED_NODE(AdaptiveAvgPoolGrad)
 
 #ifdef GLOW_WITH_CPU
 
+Error ONNXModelWriter::writeClip(const ClipNode *node, GraphType &graph) {
+  auto *proto = graph.add_node();
+  addValueAttribute(proto, "min", node->getMin());
+  addValueAttribute(proto, "max", node->getMax());
+  return writeAllWithNode("Clip", node, proto);
+}
+
 Error ONNXModelWriter::writeCPUMaxSplat(const CPUMaxSplatNode *node,
                                         GraphType &graph) {
   auto *proto = graph.add_node();
