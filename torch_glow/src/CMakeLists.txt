@@ -17,6 +17,7 @@ add_library(PyTorchModelLoader
                      GlowIValue.cpp
                      PyTorchCommon.cpp
                      FuseLinear.cpp
+                     FusePrepack.cpp
                      PyTorchModelLoader.cpp)
 target_compile_options(PyTorchModelLoader
                       PRIVATE
