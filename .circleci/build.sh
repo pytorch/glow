@@ -70,8 +70,11 @@ fi
 # Install scikit-build for cmake
 #sudo pip install scikit-build
 
-sudo apt-get install cmake
-
+if [[ "${CIRCLE_JOB}" == "PYTORCH" ]]; then
+	sudo apt-get install cmake
+else
+    sudo pip install cmake
+fi
 # Install cmake 3.8.1
 #sudo apt-get install build-essential
 #wget http://www.cmake.org/files/v3.8/cmake-3.8.1.tar.gz
