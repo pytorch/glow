@@ -17,7 +17,7 @@ def test_quantized_add_zerooffset():
     y = torch.tensor([5, 6, 7, 8], dtype=torch.float32)
 
     jitVsGlow(test_f, x, y, expected_fused_ops={"quantized::add",
-                                                "aten::quantize_linear",
+                                                "aten::quantize_per_tensor",
                                                 "aten::dequantize"})
 
 
@@ -34,5 +34,5 @@ def test_quantized_add():
     y = torch.randn([5, 5])
 
     jitVsGlow(test_f, x, y, expected_fused_ops={"quantized::add",
-                                                "aten::quantize_linear",
+                                                "aten::quantize_per_tensor",
                                                 "aten::dequantize"})
