@@ -67,12 +67,11 @@ else
     sudo apt-get install -y libpng-dev libgoogle-glog-dev
 fi
 
-# Install cmake through apt-get
-sudo apt-get update
-sudo apt-get install cmake
+# Install scikit-build for cmake
+sudo pip install scikit-build
 
 # Install ninja, (newest version of) autopep8 through pip
-sudo pip install ninja autopep8
+sudo pip install ninja autopep8 cmake
 hash cmake ninja
 
 # Build glow
