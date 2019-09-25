@@ -2257,6 +2257,28 @@ TEST_F(GraphOptz, mergeBANodes) {
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::BatchedAddNodeKind), 1);
 }
 
+/// Check that TileNodes that tile something only once are eliminated.
+TEST_F(GraphOptz, eliminateNoopTile) {
+  auto *A = mod_.createPlaceholder(ElemKind::FloatTy, {3, 1, 2}, "A",
+                                   /*isTrainable=*/false);
+  auto *tile = F_->createTile("tile", A, /*tiles=*/1,
+                              /*axis=*/1);
+  auto *relu = F_->createRELU("relu", tile);
+  F_->createSave("save", relu);
+
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::TileNodeKind), 1);
+
+  optimizedF_ = optimizeFunction(F_);
+
+  // Check that the Tile node is eliminated.
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::TileNodeKind), 0);
+
+  bindings_.allocate(mod_.getPlaceholders());
+  bindings_.get(A)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
+
+  checkNumericalEquivalence();
+}
+
 // Check that we are able to replace
 // Add(I, tile(B)) with -> BatchedAdd(I, B).
 TEST_F(GraphOptz, FoldTileAddIntoBatchedAdd) {

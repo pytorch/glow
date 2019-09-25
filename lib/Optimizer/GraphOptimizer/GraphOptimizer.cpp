@@ -1918,6 +1918,23 @@ bool OptimizeTransposeIntoReshape::run(Function *F,
   return changed;
 }
 
+bool EliminateNoopTile::run(Function *F, const CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), getName());
+  bool changed = false;
+
+  for (auto &node : F->getNodes()) {
+    if (auto *tileNode = dyn_cast<TileNode>(&node)) {
+      // If the TileNode tiles only once, eliminate it.
+      if (tileNode->getCount() == 1) {
+        tileNode->getResult().replaceAllUsesOfWith(tileNode->getInput());
+        changed = true;
+      }
+    }
+  }
+
+  return changed;
+}
+
 /// Optimize reshape nodes.
 bool OptimizeReshape::run(Function *F, const CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), getName());
