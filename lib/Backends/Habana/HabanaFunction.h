@@ -46,8 +46,8 @@ public:
   HabanaIOBuffer &operator=(HabanaIOBuffer &&src) = delete;
 
   /// Get a pointer to the buffer at which to read/store Placeholder \p p.
-  /// \returns a GlowErr if an error occurred.
-  llvm::Expected<uint8_t *> get(const Placeholder *p) const;
+  /// \returns a Error if an error occurred.
+  Expected<uint8_t *> get(const Placeholder *p) const;
 
 private:
   /// The device that this buffer is located on.
@@ -201,7 +201,7 @@ public:
 
   const std::string &getRecipeName() const { return recipeName_; }
 
-  llvm::Error execute(ExecutionContext *context) override;
+  Error execute(ExecutionContext *context) override;
   ///@}
 
   /// \returns the backend used to compile this function.

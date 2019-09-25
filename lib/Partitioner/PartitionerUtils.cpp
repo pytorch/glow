@@ -346,6 +346,25 @@ float getNodeComputeTime(const Node *node, const BackendInfo &backendInfo) {
     totalOps *= (inputChannels * 1.0 / nGroups);
     break;
   }
+#ifdef GLOW_WITH_HABANA
+  case Kinded::Kind::HabanaConvolutionNodeKind: {
+    auto *CN = llvm::dyn_cast<HabanaConvolutionNode>(node);
+    auto resultDims = CN->getResult().dims();
+    // Get the product of batch, output height, output dims, output channels
+    totalOps = resultDims[0];
+    for (size_t i = 1, e = resultDims.size(); i < e; i++) {
+      totalOps *= resultDims[i];
+    }
+    // Multiply in kernel height, kernel width
+    auto kernelDims = CN->getKernels();
+    totalOps *= kernelDims[0] * kernelDims[1];
+    // Multiply in input channels/groups
+    auto inputChannels = CN->getInput().dims()[1];
+    auto nGroups = CN->getGroup();
+    totalOps *= (inputChannels * 1.0 / nGroups);
+    break;
+  }
+#endif
   default:
     break;
   }
@@ -495,8 +514,14 @@ void logPartitionInfo(const NodeToFunctionMap &partitions) {
               << "\t\t Name :\t" << subF->getName().str() << "\n"
               << "\t\t BackendKind :\t"
               << partitions.getPartitionBackendName(subF) << "\n"
-              << "\t\t Memory :\t"
+              << "\t\t total Memory :\t"
               << partitions.getGraphMemInfo(subF).getTotalMemSize() << "\n"
+              << "\t\t\t input size:\t"
+              << partitions.getGraphMemInfo(subF).inMemSize << "\n"
+              << "\t\t\t output size:\t"
+              << partitions.getGraphMemInfo(subF).outMemSize << "\n"
+              << "\t\t\t constant size:\t"
+              << partitions.getGraphMemInfo(subF).constMemSize << "\n"
               << "\t\t LogicalDeviceIDs :\t"
               << partitions.getLogicalDeviceIDList(subF)[0] << "\n";
   }

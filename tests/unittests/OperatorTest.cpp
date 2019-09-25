@@ -34,15 +34,10 @@ using namespace glow;
 
 class OperatorStatelessTest : public BackendStatelessTest {};
 
-INSTANTIATE_TEST_CASE_P_FOR_BACKEND_TEST(OperatorStatelessTest,
-                                         OperatorStatelessTest);
-
 class OperatorTest : public BackendTest {
 protected:
   PlaceholderBindings bindings_;
 };
-
-INSTANTIATE_TEST_CASE_P_FOR_BACKEND_TEST(OperatorTest, OperatorTest);
 
 /// Helper to create a Placeholder; if \p T is quantized, then it will include a
 /// dummy scale and offset, otherwise it will not.
@@ -100,7 +95,7 @@ lessHelper(glow::PlaceholderBindings &bindings, glow::Module &mod,
 }
 
 TEST_P(OperatorTest, less_int8) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
 
   int8_t xValues[] = {3, 2, 3, 6, 4, 5, 6, 3, 7, 8, 9, 2, 3, 5, 7, 1,
 
@@ -152,7 +147,7 @@ TEST_P(OperatorTest, less_int8) {
 }
 
 TEST_P(OperatorTest, less_floatCases) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
 
   float xValues[] = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f};
 
@@ -174,7 +169,7 @@ TEST_P(OperatorTest, less_floatCases) {
 }
 
 TEST_P(OperatorTest, less_float16Cases) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
 
   float16 xValues[] = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f};
 
@@ -196,7 +191,7 @@ TEST_P(OperatorTest, less_float16Cases) {
 }
 
 TEST_P(OperatorTest, less_int64Cases) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
 
   int64_t xValues[] = {1, 2, 3, 4, 5};
 
@@ -218,7 +213,7 @@ TEST_P(OperatorTest, less_int64Cases) {
 }
 
 TEST_P(OperatorTest, less_float) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
 
   float xValues[] = {1.0f, 2.0f, 3.0f, 6.0f, 4.0f, 5.0f, 6.0f, 3.0f,
                      7.0f, 8.0f, 9.0f, 2.0f, 3.0f, 5.0f, 7.0f, 1.0f,
@@ -278,7 +273,7 @@ TEST_P(OperatorTest, less_float) {
 }
 
 TEST_P(OperatorTest, less_broadcast_float) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
 
   float xValues[] = {1.0f, 2.0f, 3.0f, 6.0f, 4.0f, 5.0f, 6.0f, 3.0f,
                      7.0f, 8.0f, 9.0f, 2.0f, 3.0f, 5.0f, 7.0f, 1.0f,
@@ -330,7 +325,7 @@ TEST_P(OperatorTest, less_broadcast_float) {
 }
 
 TEST_P(OperatorTest, less_int32Cases) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
 
   int32_t xValues[] = {1, 2, 3, 4, 5};
   int32_t yValues[] = {5, 4, 3, 2, 1};
@@ -393,7 +388,7 @@ whereHelper(glow::PlaceholderBindings &bindings, glow::Module &mod,
 }
 
 TEST_P(OperatorTest, where_2d_broadcast_x_y_i8) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
   llvm::SmallVector<int8_t, 16> xValues = {3, 5, 7};
 
   llvm::SmallVector<int8_t, 16> yValues = {2, 4, 6};
@@ -422,7 +417,7 @@ TEST_P(OperatorTest, where_2d_broadcast_x_y_i8) {
 }
 
 TEST_P(OperatorTest, where_2d_wise_i8) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
   llvm::SmallVector<int8_t, 16> xValues = {
       1, 2, 3, 6, 4, 5, 6, 3, 7, 8, 9, 2, 3, 5, 7, 1,
 
@@ -474,7 +469,7 @@ TEST_P(OperatorTest, where_2d_wise_i8) {
 }
 
 TEST_P(OperatorTest, where_2d_wise_float) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
 
   llvm::SmallVector<float, 16> xValues = {
       1.0f, 2.0f, 3.0f, 6.0f, 4.0f, 5.0f, 6.0f, 3.0f,
@@ -539,7 +534,7 @@ TEST_P(OperatorTest, where_2d_wise_float) {
 }
 
 TEST_P(OperatorTest, where_row_wise_float) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
 
   llvm::SmallVector<bool, 4> cValues = {1, 1, 1, 0, 0, 1, 0, 0};
 
@@ -585,7 +580,7 @@ TEST_P(OperatorTest, where_row_wise_float) {
 }
 
 TEST_P(OperatorTest, where_element_wise_float) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
 
   llvm::SmallVector<size_t, 4> condDims = {1, 4, 4};
 
@@ -764,14 +759,14 @@ static void testSpaceToDepthBlock3(glow::PlaceholderBindings &bindings,
 /// Verify that the SpaceToDepth operator works correctly for int8. Block
 /// Size 3.
 TEST_P(OperatorTest, spaceToDepth_block3_int8) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
   testSpaceToDepthBlock3<int8_t>(bindings_, mod_, F_, EE_, ElemKind::Int8QTy);
 }
 
 /// Verify that the SpaceToDepth operator works correctly for Float. Block
 /// Size 3.
 TEST_P(OperatorTest, spaceToDepth_block3_Float) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
   testSpaceToDepthBlock3<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy);
 }
 
@@ -874,14 +869,14 @@ static void testSpaceToDepth(glow::PlaceholderBindings &bindings,
 /// Verify that the SpaceToDepth operator works correctly for int8. Block
 /// Size 2.
 TEST_P(OperatorTest, spaceToDepth_block2_int8) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
   testSpaceToDepth<int8_t>(bindings_, mod_, F_, EE_, ElemKind::Int8QTy);
 }
 
 /// Verify that the SpaceToDepth operator works correctly for Float. Block
 /// Size 2.
 TEST_P(OperatorTest, spaceToDepth_block2_Float) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
   testSpaceToDepth<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy);
 }
 
@@ -945,36 +940,36 @@ static void testResizeNearest(glow::PlaceholderBindings &bindings,
 
 /// Verify that the ResizeNearest operator works correctly for Float.
 TEST_P(OperatorTest, ResizeNearest_Float) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
   testResizeNearest<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy);
 }
 
 /// Verify that the ResizeNearest operator works correctly for Float16.
 TEST_P(OperatorTest, ResizeNearest_Float16) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
   testResizeNearest<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty);
 }
 
 /// Verify that the ResizeNearest operator works correctly for Int8Q.
 TEST_P(OperatorTest, ResizeNearest_Int8) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
   testResizeNearest<int8_t>(bindings_, mod_, F_, EE_, ElemKind::Int8QTy);
 }
 
 /// Verify that the ResizeNearest operator works correctly for Int16Q.
 TEST_P(OperatorTest, ResizeNearest_Int16) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
   testResizeNearest<int16_t>(bindings_, mod_, F_, EE_, ElemKind::Int16QTy);
 }
 
 /// Verify that the ResizeNearest operator works correctly for Int32Q.
 TEST_P(OperatorTest, ResizeNearest_Int32) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
   testResizeNearest<int32_t>(bindings_, mod_, F_, EE_, ElemKind::Int32QTy);
 }
 
 TEST_P(OperatorTest, pow) {
-  ENABLED_BACKENDS(Interpreter, CPU, OpenCL);
+  CHECK_IF_ENABLED();
 
   auto *X = mod_.createPlaceholder(ElemKind::FloatTy, {1, 1, 3}, "X", false);
   auto *Y = mod_.createPlaceholder(ElemKind::FloatTy, {2}, "Y", false);
@@ -1051,18 +1046,18 @@ static void testReplaceNaN(glow::PlaceholderBindings &bindings,
 
 /// Test that ReplaceNaN is correctly supported in FloatTy.
 TEST_P(OperatorTest, replaceNaN_Float) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
   testReplaceNaN<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy);
 }
 
 /// Test that ReplaceNaN is correctly supported in Float16Ty.
 TEST_P(OperatorTest, replaceNaN_Float16) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
   testReplaceNaN<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty);
 }
 
 TEST_P(OperatorTest, log) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
 
   auto *X = mod_.createPlaceholder(ElemKind::FloatTy, {6}, "X", false);
   auto XH = bindings_.allocate(X)->getHandle();
@@ -1150,18 +1145,18 @@ static void testLogit(glow::PlaceholderBindings &bindings, glow::Module &mod,
 
 /// Test the Logit operator using FloatTy.
 TEST_P(OperatorTest, Logit_Float) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
   testLogit<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy, 1E-5);
 }
 
 /// Test the Logit operator using Float16Ty.
 TEST_P(OperatorTest, Logit_Float16) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
   testLogit<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty, 0.002);
 }
 
 TEST_P(OperatorTest, CmpEQ) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
 
   auto *X = mod_.createPlaceholder(ElemKind::Int64ITy, {2, 7}, "X", false);
   bindings_.allocate(X)->getHandle<int64_t>() = {
@@ -1189,7 +1184,7 @@ TEST_P(OperatorTest, CmpEQ) {
 
 /// Check that the add operator works properly with FP16.
 TEST_P(OperatorTest, FP16Add) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
 
   PseudoRNG PRNG;
 
@@ -1267,7 +1262,7 @@ TEST_P(OperatorTest, matmul_ParCloneTest10) {
 
 /// Check that the matmul operator behaves correctly with FP16.
 TEST_P(OperatorTest, FP16Matmul) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
 
   auto *lhs = mod_.createPlaceholder(ElemKind::Float16Ty, {3, 2}, "lhs", false);
   auto *rhs = mod_.createPlaceholder(ElemKind::Float16Ty, {2, 1}, "rhs", false);
@@ -1312,6 +1307,30 @@ TEST_P(OperatorTest, BroadcastedBatchMatMul) {
   EXPECT_NEAR(H.at({1, 0, 0}), -27, 0.001);
   EXPECT_NEAR(H.at({1, 1, 0}), -61, 0.001);
   EXPECT_NEAR(H.at({1, 2, 0}), -95, 0.001);
+}
+
+/// Test that the broadcasted batch mat mul operator works as expected when the
+/// RHS does not have to be tiled.
+TEST_P(OperatorTest, NonBroadcastedBatchMatMul) {
+  CHECK_IF_ENABLED();
+  auto *lhs =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 3, 2}, "lhs", false);
+  auto *rhs = mod_.createPlaceholder(ElemKind::FloatTy, {2, 1}, "rhs", false);
+  bindings_.allocate(lhs)->getHandle() = {1, 2, 3, 4, 5, 6};
+  bindings_.allocate(rhs)->getHandle() = {7, 10};
+
+  auto *R = F_->createBatchMatMul("BMM", lhs, rhs);
+
+  auto *save = F_->createSave("save", R);
+  auto *result = bindings_.allocate(save->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  auto H = result->getHandle();
+  EXPECT_NEAR(H.at({0, 0, 0}), 27, 0.001);
+  EXPECT_NEAR(H.at({0, 1, 0}), 61, 0.001);
+  EXPECT_NEAR(H.at({0, 2, 0}), 95, 0.001);
 }
 
 TEST_P(OperatorTest, ParallelBatchMatMul) {
@@ -1369,7 +1388,7 @@ TEST_P(OperatorTest, batchedReduceAdd_Float) {
 
 /// Test that BatchedReduceAdd is correctly supported in Float16Ty.
 TEST_P(OperatorTest, batchedReduceAdd_Float16) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
   testBatchedReduceAdd<float16_t>(bindings_, mod_, F_, EE_,
                                   ElemKind::Float16Ty);
 }
@@ -1461,7 +1480,7 @@ TEST_P(OperatorTest, batchedReduceAdd_4Dinput) {
 
 /// Test that BatchReducedAdd works on a 5D input.
 TEST_P(OperatorTest, batchedReduceAdd_5Dinput) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
   auto *batch = mod_.createPlaceholder(ElemKind::FloatTy, {2, 2, 2, 2, 4},
                                        "batch", false);
   bindings_.allocate(batch)->getHandle<float>() = {
@@ -1532,39 +1551,39 @@ static void testBatchedReduceMinMultiAxis(glow::PlaceholderBindings &bindings,
 
 /// Test that BatchedReduceMin is correctly supported in FloatTy.
 TEST_P(OperatorTest, batchedReduceMin_Float) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
   testBatchedReduceMin<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy);
 }
 
 /// Test that BatchedReduceMin is correctly supported in Int32Ty.
 TEST_P(OperatorTest, batchedReduceMin_Int32) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
   testBatchedReduceMin<int32_t>(bindings_, mod_, F_, EE_, ElemKind::Int32ITy);
 }
 
 /// Test that BatchedReduceMin is correctly supported in Int64Ty.
 TEST_P(OperatorTest, batchedReduceMin_Int64) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
   testBatchedReduceMin<int64_t>(bindings_, mod_, F_, EE_, ElemKind::Int64ITy);
 }
 
 /// Test that BatchedReduceMin is correctly supported in FloatTy.
 TEST_P(OperatorTest, batchedReduceMinMultiAxis_Float) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
   testBatchedReduceMinMultiAxis<float>(bindings_, mod_, F_, EE_,
                                        ElemKind::FloatTy);
 }
 
 /// Test that BatchedReduceMin is correctly supported in Int32Ty.
 TEST_P(OperatorTest, batchedReduceMinMultiAxis_Int32) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
   testBatchedReduceMinMultiAxis<int32_t>(bindings_, mod_, F_, EE_,
                                          ElemKind::Int32ITy);
 }
 
 /// Test that BatchedReduceMin is correctly supported in Int64Ty.
 TEST_P(OperatorTest, batchedReduceMinMultiAxis_Int64) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
   testBatchedReduceMinMultiAxis<int64_t>(bindings_, mod_, F_, EE_,
                                          ElemKind::Int64ITy);
 }
@@ -1603,21 +1622,21 @@ static void testBatchedReduceZeroDimResult(glow::PlaceholderBindings &bindings,
 
 /// Test reduction down to a zero-dim tensor on FloatTy.
 TEST_P(OperatorTest, batchedReduceZeroDimResult_Float) {
-  ENABLED_BACKENDS(Interpreter, CPU, OpenCL);
+  CHECK_IF_ENABLED();
   testBatchedReduceZeroDimResult<float>(bindings_, mod_, F_, EE_,
                                         ElemKind::FloatTy);
 }
 
 /// Test reduction down to a zero-dim tensor on Float16Ty.
 TEST_P(OperatorTest, batchedReduceZeroDimResult_Float16) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
   testBatchedReduceZeroDimResult<float16_t>(bindings_, mod_, F_, EE_,
                                             ElemKind::Float16Ty);
 }
 
 /// Test reduction down to a zero-dim tensor on Int8QTy.
 TEST_P(OperatorTest, batchedReduceZeroDimResult_Int8) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
   testBatchedReduceZeroDimResult<int8_t>(bindings_, mod_, F_, EE_,
                                          ElemKind::Int8QTy);
 }
@@ -1659,27 +1678,27 @@ static void testBatchedReduceAddWithAxis(glow::PlaceholderBindings &bindings,
 
 /// Test that batchedReduceAddWithAxis is correctly supported in FloatTy.
 TEST_P(OperatorTest, batchedReduceAddWithAxis_Float) {
-  ENABLED_BACKENDS(Interpreter, CPU, OpenCL);
+  CHECK_IF_ENABLED();
   testBatchedReduceAddWithAxis<float>(bindings_, mod_, F_, EE_,
                                       ElemKind::FloatTy);
 }
 
 /// Test that batchedReduceAddWithAxis is correctly supported in Float16Ty.
 TEST_P(OperatorTest, batchedReduceAddWithAxis_Float16) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
   testBatchedReduceAddWithAxis<float16_t>(bindings_, mod_, F_, EE_,
                                           ElemKind::Float16Ty);
 }
 
 /// Test that batchedReduceAddWithAxis is correctly supported in Int8QTy.
 TEST_P(OperatorTest, batchedReduceAddWithAxis_Int8Q) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
   testBatchedReduceAddWithAxis<int8_t>(bindings_, mod_, F_, EE_,
                                        ElemKind::Int8QTy);
 }
 
 TEST_P(OperatorTest, batchedReduceAddQuantized) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
 
   auto BT = mod_.uniqueType(ElemKind::Int8QTy, {3, 8}, 0.5, 3);
   auto OT = mod_.uniqueType(ElemKind::Int8QTy, {8}, 2.0, -1);
@@ -1715,7 +1734,7 @@ TEST_P(OperatorTest, batchedReduceAddQuantized) {
 }
 
 TEST_P(OperatorTest, batchedReduceAddQuantizedWithAxis) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
 
   auto BT = mod_.uniqueType(ElemKind::Int8QTy, {2, 3, 4}, 0.5, 3);
   auto OT = mod_.uniqueType(ElemKind::Int8QTy, {2, 4}, 2.0, -1);
@@ -1773,7 +1792,7 @@ TEST_P(OperatorTest, batchedReduceMean) {
 }
 
 TEST_P(OperatorTest, batchedReduceMeanWithAxis) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
 
   auto *batch =
       mod_.createPlaceholder(ElemKind::FloatTy, {2, 3, 2}, "batch", false);
@@ -1796,7 +1815,7 @@ TEST_P(OperatorTest, batchedReduceMeanWithAxis) {
 }
 
 TEST_P(OperatorTest, batchedReduceMeanQuantized) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
 
   auto BT = mod_.uniqueType(ElemKind::Int8QTy, {3, 8}, 0.5, 3);
   auto OT = mod_.uniqueType(ElemKind::Int8QTy, {8}, 2.0, -1);
@@ -1832,7 +1851,7 @@ TEST_P(OperatorTest, batchedReduceMeanQuantized) {
 }
 
 TEST_P(OperatorTest, batchedReduceMeanQuantizedWithAxis) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
 
   auto BT = mod_.uniqueType(ElemKind::Int8QTy, {2, 3, 4}, 0.5, 3);
   auto OT = mod_.uniqueType(ElemKind::Int8QTy, {2, 4}, 2.0, -1);
@@ -1871,7 +1890,7 @@ TEST_P(OperatorTest, batchedReduceMeanQuantizedWithAxis) {
 
 /// Verify that batchedReduceMean optimization using AvgPool works correctly.
 TEST_P(OperatorTest, batchedReduceMeanUsingAvgPool) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
 
   std::vector<size_t> dims = {3, 20, 4, 8};
 
@@ -1906,7 +1925,7 @@ TEST_P(OperatorTest, batchedReduceMeanUsingAvgPool) {
 /// Verify that quantized batchedReduceMean optimization using AvgPool works
 /// correctly.
 TEST_P(OperatorTest, batchedReduceMeanUsingAvgPoolQuantized) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
 
   std::vector<size_t> dims = {2, 3, 3, 4};
 
@@ -1974,7 +1993,7 @@ TEST_P(OperatorTest, BatchedAdd) {
 
 /// Broadcast Tensor of shape (2,1,1) to (2,4,2) with axis 0.
 TEST_P(OperatorTest, broadcastSimple) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
 
   const size_t numDims_A = 3;
   const size_t dimY_A = 2;
@@ -2039,7 +2058,7 @@ TEST_P(OperatorTest, broadcastSimple) {
 
 /// Broadcast a Tensor of shape (2,1) to (3,2,4,2) with axis 1.
 TEST_P(OperatorTest, broadcast) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
 
   const size_t numDims_A = 4;
   const size_t dimX_A = 3;
@@ -2169,7 +2188,7 @@ TEST_P(OperatorTest, ReluSimple_Float) {
 
 /// Verify that the RELU operator works correctly for Float16.
 TEST_P(OperatorTest, ReluSimple_Float16) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
   testReluSimple<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty);
 }
 
@@ -2206,19 +2225,19 @@ static void testPReluSimple(glow::PlaceholderBindings &bindings,
 
 /// Verify that the PRELU operator works correctly for Float.
 TEST_P(OperatorTest, PReluSimple_Float) {
-  ENABLED_BACKENDS(Interpreter, CPU, OpenCL);
+  CHECK_IF_ENABLED();
   testPReluSimple<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy, 1E-32);
 }
 
 /// Verify that the PRELU operator works correctly for Float16.
 TEST_P(OperatorTest, PReluSimple_Float16) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
   testPReluSimple<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty,
                              1E-16);
 }
 
 TEST_P(OperatorTest, TopK) {
-  ENABLED_BACKENDS(Interpreter, CPU, OpenCL);
+  CHECK_IF_ENABLED();
 
   auto *inp =
       mod_.createPlaceholder(ElemKind::FloatTy, {3, 1, 5}, "input", false);
@@ -2303,12 +2322,12 @@ static void testArgMaxKeepDim(glow::PlaceholderBindings &bindings,
 }
 
 TEST_P(OperatorTest, FloatArgMaxKeepDim) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
   testArgMaxKeepDim<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy);
 }
 
 TEST_P(OperatorTest, QuantizedArgMaxKeepDim) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
   testArgMaxKeepDim<int8_t>(bindings_, mod_, F_, EE_, ElemKind::Int8QTy);
 }
 
@@ -2344,18 +2363,18 @@ static void testArgMaxNoKeepDim(glow::PlaceholderBindings &bindings,
 }
 
 TEST_P(OperatorTest, FloatArgMaxNoKeepDim) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
   testArgMaxNoKeepDim<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy);
 }
 
 TEST_P(OperatorTest, QuantizedArgMaxNoKeepDim) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
   testArgMaxNoKeepDim<int8_t>(bindings_, mod_, F_, EE_, ElemKind::Int8QTy);
 }
 
 // Check that concatenating Nodes with multiple outputs works correctly.
 TEST_P(OperatorTest, ConcatTopK) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
 
   auto *inp1 =
       mod_.createPlaceholder(ElemKind::FloatTy, {2, 1, 3}, "input", false);
@@ -2465,7 +2484,7 @@ TEST_P(OperatorTest, matmul2) {
 
 // Check the TopK operator for the special case of K=1.
 TEST_P(OperatorTest, TopK1) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
 
   auto *inp =
       mod_.createPlaceholder(ElemKind::FloatTy, {3, 1, 5}, "input", false);
@@ -2497,7 +2516,7 @@ TEST_P(OperatorTest, TopK1) {
 }
 
 TEST_P(OperatorTest, QuantizedTopK) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
 
   auto *INV = mod_.createPlaceholder(ElemKind::Int8QTy, {3, 1, 5}, 1.2, 5,
                                      "input", false);
@@ -2599,28 +2618,28 @@ static void gatherFloatInputTest(glow::PlaceholderBindings &bindings,
 
 /// Test that Gather works with Float data and Int32 indices.
 TEST_P(OperatorTest, GatherDataFloatIdxInt32) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
   gatherFloatInputTest<float, int32_t>(bindings_, mod_, F_, EE_,
                                        ElemKind::FloatTy, ElemKind::Int32ITy);
 }
 
 /// Test that Gather works with Float data and Int64 indices.
 TEST_P(OperatorTest, GatherDataFloatIdxInt64) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
   gatherFloatInputTest<float, int64_t>(bindings_, mod_, F_, EE_,
                                        ElemKind::FloatTy, ElemKind::Int64ITy);
 }
 
 /// Test that Gather works with Float16 data and Int32 indices.
 TEST_P(OperatorTest, GatherDataFloat16IdxInt32) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
   gatherFloatInputTest<float16_t, int32_t>(
       bindings_, mod_, F_, EE_, ElemKind::Float16Ty, ElemKind::Int32ITy);
 }
 
 /// Test that Gather works with Float16 data and Int64 indices.
 TEST_P(OperatorTest, GatherDataFloat16IdxInt64) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
   gatherFloatInputTest<float16_t, int64_t>(
       bindings_, mod_, F_, EE_, ElemKind::Float16Ty, ElemKind::Int64ITy);
 }
@@ -2684,13 +2703,13 @@ static void gatherInt8InputTest(glow::PlaceholderBindings &bindings,
 
 /// Test that Gather works with Int8 data and Int32 indices.
 TEST_P(OperatorTest, GatherDataInt8IdxInt32) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
   gatherInt8InputTest<int32_t>(bindings_, mod_, F_, EE_, ElemKind::Int32ITy);
 }
 
 /// Test that Gather works with Int8 data and Int64 indices.
 TEST_P(OperatorTest, GatherDataInt8IdxInt64) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
   gatherInt8InputTest<int64_t>(bindings_, mod_, F_, EE_, ElemKind::Int64ITy);
 }
 
@@ -2744,56 +2763,56 @@ void gatherRangesTest(glow::PlaceholderBindings &bindings_, glow::Module &mod_,
 
 /// Test GatherRanges with Int64 data and Int32 indices.
 TEST_P(OperatorTest, GatherRangesDataInt64IdxInt32) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
   gatherRangesTest<int64_t, int32_t>(bindings_, mod_, F_, EE_,
                                      ElemKind::Int64ITy, ElemKind::Int32ITy);
 }
 
 /// Test GatherRanges with Int64 data and Int64 indices.
 TEST_P(OperatorTest, GatherRangesDataInt64IdxInt64) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
   gatherRangesTest<int64_t, int64_t>(bindings_, mod_, F_, EE_,
                                      ElemKind::Int64ITy, ElemKind::Int64ITy);
 }
 
 /// Test GatherRanges with Float data and Int32 indices.
 TEST_P(OperatorTest, GatherRangesDataFloatIdxInt32) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
   gatherRangesTest<float, int32_t>(bindings_, mod_, F_, EE_, ElemKind::FloatTy,
                                    ElemKind::Int32ITy);
 }
 
 /// Test GatherRanges with Float data and Int64 indices.
 TEST_P(OperatorTest, GatherRangesDataFloatIdxInt64) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
   gatherRangesTest<float, int64_t>(bindings_, mod_, F_, EE_, ElemKind::FloatTy,
                                    ElemKind::Int64ITy);
 }
 
 /// Test GatherRanges with Float16 data and Int32 indices.
 TEST_P(OperatorTest, GatherRangesDataFloat16IdxInt32) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
   gatherRangesTest<float16_t, int32_t>(bindings_, mod_, F_, EE_,
                                        ElemKind::Float16Ty, ElemKind::Int32ITy);
 }
 
 /// Test GatherRanges with Float16 data and Int64 indices.
 TEST_P(OperatorTest, GatherRangesDataFloat16IdxInt64) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
   gatherRangesTest<float16_t, int64_t>(bindings_, mod_, F_, EE_,
                                        ElemKind::Float16Ty, ElemKind::Int64ITy);
 }
 
 /// Test GatherRanges with Int8Q data and Int32 indices.
 TEST_P(OperatorTest, GatherRangesDataInt8QIdxInt32) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
   gatherRangesTest<int8_t, int32_t>(bindings_, mod_, F_, EE_, ElemKind::Int8QTy,
                                     ElemKind::Int32ITy);
 }
 
 /// Test GatherRanges with Int8Q data and Int64 indices.
 TEST_P(OperatorTest, GatherRangesDataInt8QIdxInt64) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
   gatherRangesTest<int8_t, int64_t>(bindings_, mod_, F_, EE_, ElemKind::Int8QTy,
                                     ElemKind::Int64ITy);
 }
@@ -2802,7 +2821,7 @@ TEST_P(OperatorTest, GatherRangesDataInt8QIdxInt64) {
 /// is correct for tensors with 2 dimensions.
 /// Note: This assumes that Tensor::transpose is correct.
 TEST_P(OperatorTest, Transpose2Dims) {
-  ENABLED_BACKENDS(Interpreter, CPU, OpenCL);
+  CHECK_IF_ENABLED();
 
   auto *A = mod_.createPlaceholder(ElemKind::FloatTy, {20, 13}, "A", false);
   bindings_.allocate(A)->getHandle().randomize(-3.0, 3.0, mod_.getPRNG());
@@ -2821,7 +2840,7 @@ TEST_P(OperatorTest, Transpose2Dims) {
 
 /// Check that transpose is supported for FP16.
 TEST_P(OperatorTest, FP16Transpose2Dims) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
 
   auto *A = mod_.createPlaceholder(ElemKind::Float16Ty, {20, 13}, "A", false);
   bindings_.allocate(A)->getHandle<float16_t>().randomize(-3.0, 3.0,
@@ -2841,7 +2860,7 @@ TEST_P(OperatorTest, FP16Transpose2Dims) {
 
 /// Check that transpose is supported for BoolTy.
 TEST_P(OperatorTest, BoolTranspose2Dims) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
 
   auto *A = mod_.createPlaceholder(ElemKind::BoolTy, {20, 13}, "A", false);
   bindings_.allocate(A)->getHandle<bool>().randomize(0, 1, mod_.getPRNG());
@@ -2917,19 +2936,19 @@ TEST_P(OperatorTest, Transpose3Dims_Float) {
 
 /// Test Transpose3Dims with Float16.
 TEST_P(OperatorTest, Transpose3Dims_Float16) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
   testTranspose3Dims<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty);
 }
 
 /// Test Transpose3Dims with Int8.
 TEST_P(OperatorTest, Transpose3Dims_Int8) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
   testTranspose3Dims<int8_t>(bindings_, mod_, F_, EE_, ElemKind::Int8QTy);
 }
 
 /// Test that Transpose optimization into Reshape yields expected results.
 TEST_P(OperatorTest, TransposeIntoReshapeOptim) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
   auto *batch =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 3, 2, 4}, "batch", false);
   auto IH = bindings_.allocate(batch)->getHandle();
@@ -2956,7 +2975,7 @@ TEST_P(OperatorTest, TransposeIntoReshapeOptim) {
 
 /// Check that gather on Int64ITy/size_t works.
 TEST_P(OperatorTest, GatherSizeT) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
 
   /*
     DATA  = [
@@ -3025,7 +3044,7 @@ TEST_P(OperatorTest, GatherSizeT) {
 }
 
 TEST_P(OperatorTest, BatchedGather) {
-  ENABLED_BACKENDS(Interpreter, CPU, OpenCL);
+  CHECK_IF_ENABLED();
 
   /*
    DATA  = [
@@ -3073,7 +3092,7 @@ TEST_P(OperatorTest, BatchedGather) {
 }
 
 TEST_P(OperatorTest, ScatterData) {
-  ENABLED_BACKENDS(Interpreter, CPU, OpenCL);
+  CHECK_IF_ENABLED();
 
   auto *data = mod_.createPlaceholder(ElemKind::FloatTy, {5, 2}, "data", false);
   auto *indices =
@@ -3108,7 +3127,7 @@ TEST_P(OperatorTest, ScatterData) {
 }
 
 TEST_P(OperatorTest, ScatterDataQuantized) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
 
   auto *data = mod_.createPlaceholder(ElemKind::FloatTy, {5, 2}, "data", false);
   auto *indices =
@@ -3152,7 +3171,7 @@ TEST_P(OperatorTest, ScatterDataQuantized) {
 }
 
 TEST_P(OperatorTest, ScatterDataNDimensionalSimple) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
 
   // Data = {{1,2},{3,4},{5,6}}
   // Slices = {-3,-4}
@@ -3188,7 +3207,7 @@ TEST_P(OperatorTest, ScatterDataNDimensionalSimple) {
 }
 
 TEST_P(OperatorTest, ScatterDataNDimensional) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
 
   // In tensor 2x4x4x3, make two updates with 2-dimensional slices by
   // 2-dimensional indices:
@@ -3261,7 +3280,7 @@ TEST_P(OperatorTest, ScatterDataNDimensional) {
 }
 
 TEST_P(OperatorTest, ScatterAddQuantized) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
 
   auto *data = mod_.createPlaceholder(ElemKind::FloatTy, {5, 2}, "data", false);
   auto *indices =
@@ -3306,7 +3325,7 @@ TEST_P(OperatorTest, ScatterAddQuantized) {
 }
 
 TEST_P(OperatorTest, ScatterAddNDimensionalSimple) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
   // Test that scatter addition works.
   // Data = {{1,2},{3,4},{5,6}}
   // Slices = {-3,-4}
@@ -3345,7 +3364,7 @@ TEST_P(OperatorTest, ScatterAddNDimensionalSimple) {
 }
 
 TEST_P(OperatorTest, ScatterAddNDimensionalDuplicatingIndices) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
   // Test that scatter addition with duplicating indices works.
   // Data = {{1,2},{3,4},{5,6}}
   // Slices = {-3,-4,-3,-4}
@@ -3410,7 +3429,7 @@ COMPARE_ARITH_FUN(Min)
 
 #define COMPARE_ARITH_FLOAT_VS_INT8(_OP_NAME_, ...)                            \
   TEST_P(OperatorStatelessTest, Basic##_OP_NAME_##NetFloatVsInt8) {            \
-    ENABLED_BACKENDS(__VA_ARGS__);                                             \
+    CHECK_IF_ENABLED();                                                        \
     compareAgainstInterpreter(                                                 \
         getBackendName(), createAndInitBasic##_OP_NAME_##Test,                 \
         ElemKind::FloatTy, ElemKind::Int8QTy, 0.025f, parCloneCountOpt);       \
@@ -3425,7 +3444,7 @@ COMPARE_ARITH_FLOAT_VS_INT8(Min, Interpreter, CPU, OpenCL)
 
 #define COMPARE_ARITH_FLOAT_VS_FLOAT16(_OP_NAME_, ...)                         \
   TEST_P(OperatorStatelessTest, Basic##_OP_NAME_##NetFloatVsFloat16) {         \
-    ENABLED_BACKENDS(__VA_ARGS__);                                             \
+    CHECK_IF_ENABLED();                                                        \
     compareAgainstInterpreter(                                                 \
         getBackendName(), createAndInitBasic##_OP_NAME_##Test,                 \
         ElemKind::FloatTy, ElemKind::Float16Ty, 0.01f, parCloneCountOpt);      \
@@ -3471,7 +3490,7 @@ COMPARE_ARITH_FLOAT_VS_FLOAT16(Min, Interpreter)
 
 #define ARITH_FUNC_TEST_TYPED(_OP_NAME_, _DATA_TYPE_, _ELEM_KIND_)             \
   TEST_P(OperatorTest, Arith##_OP_NAME_##_##_DATA_TYPE_) {                     \
-    ENABLED_BACKENDS(Interpreter);                                             \
+    CHECK_IF_ENABLED();                                                        \
     testArithmetic##_OP_NAME_##Impl<_DATA_TYPE_>(bindings_, mod_, F_, EE_,     \
                                                  _ELEM_KIND_);                 \
   }
@@ -3493,7 +3512,7 @@ ARITH_FUNC_TEST(Min, std::min, )
 #undef ARITH_FUNC_TEST
 
 TEST_P(OperatorTest, IntMatMul) {
-  ENABLED_BACKENDS(Interpreter, CPU, OpenCL);
+  CHECK_IF_ENABLED();
 
   // The scaling factor 1.4x was carefully selected to make sure we don't
   // overflow or underflow the calculation.
@@ -3545,7 +3564,7 @@ TEST_P(OperatorTest, IntMatMul) {
 }
 
 TEST_P(OperatorTest, IntBatchedArith) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
 
   TypeRef resTy = mod_.uniqueType(ElemKind::Int8QTy, {1, 3, 3}, 0.10, 1.0);
   TypeRef lhsTy = mod_.uniqueType(ElemKind::Int8QTy, {1, 3, 3}, 0.11, 4.0);
@@ -3595,7 +3614,7 @@ TEST_P(OperatorTest, IntBatchedArith) {
 }
 
 TEST_P(OperatorTest, convTest) {
-  ENABLED_BACKENDS(Interpreter, CPU, OpenCL);
+  CHECK_IF_ENABLED();
   auto *input =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 3, 3, 1}, "input", false);
   auto IH = bindings_.allocate(input)->getHandle();
@@ -3629,7 +3648,7 @@ TEST_P(OperatorTest, convTest) {
 }
 
 TEST_P(OperatorTest, convTest_Float16) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
   auto *input =
       mod_.createPlaceholder(ElemKind::Float16Ty, {1, 3, 3, 1}, "input", false);
   auto IH = bindings_.allocate(input)->getHandle<float16_t>();
@@ -3691,39 +3710,41 @@ createAndInitConvDepthTest(glow::PlaceholderBindings &bindings,
 }
 
 TEST_P(OperatorStatelessTest, Int8ConvolutionDepth10) {
+  CHECK_IF_ENABLED();
   compareAgainstInterpreter(getBackendName(), createAndInitConvDepthTest<10>,
                             ElemKind::FloatTy, ElemKind::Int8QTy, 0.045f,
                             parCloneCountOpt);
 }
 
 TEST_P(OperatorStatelessTest, Int16ConvolutionDepth10) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
   compareAgainstInterpreter(getBackendName(), createAndInitConvDepthTest<10>,
                             ElemKind::FloatTy, ElemKind::Int16QTy, 0.03f,
                             parCloneCountOpt);
 }
 
 TEST_P(OperatorStatelessTest, Int8ConvolutionDepth8) {
+  CHECK_IF_ENABLED();
   compareAgainstInterpreter(getBackendName(), createAndInitConvDepthTest<8>,
                             ElemKind::FloatTy, ElemKind::Int8QTy, 0.03f,
                             parCloneCountOpt);
 }
 TEST_P(OperatorStatelessTest, Int16ConvolutionDepth8) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
   compareAgainstInterpreter(getBackendName(), createAndInitConvDepthTest<8>,
                             ElemKind::FloatTy, ElemKind::Int16QTy, 0.03f,
                             parCloneCountOpt);
 }
 
 TEST_P(OperatorStatelessTest, FP16ConvolutionDepth10) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
   compareAgainstInterpreter(getBackendName(), createAndInitConvDepthTest<10>,
                             ElemKind::FloatTy, ElemKind::Float16Ty, 0.015f,
                             parCloneCountOpt);
 }
 
 TEST_P(OperatorStatelessTest, FP16ConvolutionDepth8) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
   compareAgainstInterpreter(getBackendName(), createAndInitConvDepthTest<8>,
                             ElemKind::FloatTy, ElemKind::Float16Ty, 0.015f,
                             parCloneCountOpt);
@@ -3751,7 +3772,7 @@ createAndInitBasicConcatTest(glow::PlaceholderBindings &bindings,
 }
 
 TEST_P(OperatorStatelessTest, IntConcat) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
   compareAgainstInterpreter(getBackendName(), createAndInitBasicConcatTest,
                             ElemKind::FloatTy, ElemKind::Int8QTy, 0.05f,
                             parCloneCountOpt);
@@ -3819,14 +3840,14 @@ TEST_P(OperatorStatelessTest, IntFC) {
 
 /// Test FC with Float16.
 TEST_P(OperatorStatelessTest, FC_Float16) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
   compareAgainstInterpreter(getBackendName(), createAndInitBasicFCTest,
                             ElemKind::FloatTy, ElemKind::Float16Ty, 0.02f,
                             parCloneCountOpt);
 }
 
 TEST_P(OperatorTest, EntropyLossTest) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
 
   auto *P = mod_.createPlaceholder(ElemKind::FloatTy, {2, 3}, "P", false);
   auto *Y = mod_.createPlaceholder(ElemKind::Int64ITy, {2}, "Y", false);
@@ -3846,7 +3867,7 @@ TEST_P(OperatorTest, EntropyLossTest) {
 
 /// Check that the max operator works properly with FP16.
 TEST_P(OperatorTest, FP16Max) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
 
   PseudoRNG PRNG;
 
@@ -3903,7 +3924,7 @@ TEST_P(OperatorTest, RescaleNode) {
 }
 
 TEST_P(OperatorTest, QuantizedArithmeticRescaled) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
 
   const size_t len = 100;
 
@@ -4028,14 +4049,14 @@ createAndInitTransposeNet(glow::PlaceholderBindings &bindings,
 }
 
 TEST_P(OperatorStatelessTest, QuantizedTranspose) {
-  ENABLED_BACKENDS(Interpreter, CPU, OpenCL);
+  CHECK_IF_ENABLED();
   compareAgainstInterpreter(getBackendName(), createAndInitTransposeNet,
                             ElemKind::FloatTy, ElemKind::Int8QTy, 0.0045f,
                             parCloneCountOpt);
 }
 
 TEST_P(OperatorTest, QuantizedArithmeticUnrescaled) {
-  ENABLED_BACKENDS(Interpreter, CPU, OpenCL);
+  CHECK_IF_ENABLED();
 
   const size_t len = 1000;
 
@@ -4123,7 +4144,7 @@ TEST_P(OperatorTest, QuantizedArithmeticUnrescaled) {
 }
 
 TEST_P(OperatorTest, QuantizedCmpLTEAndSelect) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
 
   // In this test we check the correctness of the quantized
   // less-than-or-equal-to comparison operator.
@@ -4230,7 +4251,7 @@ TEST_P(OperatorTest, TestQuantizedRescaleSequence) {
 }
 
 TEST_P(OperatorTest, FCGradientCheck) {
-  ENABLED_BACKENDS(Interpreter, CPU, OpenCL);
+  CHECK_IF_ENABLED();
 
   // Create net representing A*X+Y=B, where X and Y are trainable, while
   // A and B are fixed. Record gradients for X and Y after 3 steps and compare
@@ -4323,37 +4344,37 @@ static void testConcatVectors(glow::PlaceholderBindings &bindings,
 
 /// Test concatenating vectors that are Int64ITy.
 TEST_P(OperatorTest, concatVectors_Int64) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
   testConcatVectors<int64_t>(bindings_, mod_, F_, EE_, ElemKind::Int64ITy);
 }
 
 /// Test concatenating vectors that are Int32ITy.
 TEST_P(OperatorTest, concatVectors_Int32) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
   testConcatVectors<int32_t>(bindings_, mod_, F_, EE_, ElemKind::Int32ITy);
 }
 
 /// Test concatenating vectors that are Int8Qty.
 TEST_P(OperatorTest, concatVectors_Int8) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
   testConcatVectors<int8_t>(bindings_, mod_, F_, EE_, ElemKind::Int8QTy);
 }
 
 /// Test concatenating vectors that are BoolTy.
 TEST_P(OperatorTest, concatVectors_Bool) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
   testConcatVectors<bool>(bindings_, mod_, F_, EE_, ElemKind::BoolTy);
 }
 
 /// Test concatenating vectors that are FloatTy.
 TEST_P(OperatorTest, concatVectors_Float) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
   testConcatVectors<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy);
 }
 
 /// Test concatenating vectors that are Float16Ty.
 TEST_P(OperatorTest, concatVectors_Float16) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
   testConcatVectors<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty);
 }
 
@@ -4411,7 +4432,7 @@ static void testConcatVectorsRepeated(glow::PlaceholderBindings &bindings,
 /// intended to verify that IRGen to InsertTensor instructions with axis/count
 /// works correctly. Testing Int64ITy data.
 TEST_P(OperatorTest, concatVectorsRepeated_Int64) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
   testConcatVectorsRepeated<int64_t>(bindings_, mod_, F_, EE_,
                                      ElemKind::Int64ITy);
 }
@@ -4420,7 +4441,7 @@ TEST_P(OperatorTest, concatVectorsRepeated_Int64) {
 /// intended to verify that IRGen to InsertTensor instructions with axis/count
 /// works correctly. Testing Int32ITy data.
 TEST_P(OperatorTest, concatVectorsRepeated_Int32) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
   testConcatVectorsRepeated<int32_t>(bindings_, mod_, F_, EE_,
                                      ElemKind::Int32ITy);
 }
@@ -4429,7 +4450,7 @@ TEST_P(OperatorTest, concatVectorsRepeated_Int32) {
 /// intended to verify that IRGen to InsertTensor instructions with axis/count
 /// works correctly. Testing Int8QTy data.
 TEST_P(OperatorTest, concatVectorsRepeated_Int8) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
   testConcatVectorsRepeated<int8_t>(bindings_, mod_, F_, EE_,
                                     ElemKind::Int8QTy);
 }
@@ -4438,7 +4459,7 @@ TEST_P(OperatorTest, concatVectorsRepeated_Int8) {
 /// intended to verify that IRGen to InsertTensor instructions with axis/count
 /// works correctly. Testing BoolTy data.
 TEST_P(OperatorTest, concatVectorsRepeated_Bool) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
   testConcatVectorsRepeated<bool>(bindings_, mod_, F_, EE_, ElemKind::BoolTy);
 }
 
@@ -4446,7 +4467,7 @@ TEST_P(OperatorTest, concatVectorsRepeated_Bool) {
 /// intended to verify that IRGen to InsertTensor instructions with axis/count
 /// works correctly. Testing FloatTy data.
 TEST_P(OperatorTest, concatVectorsRepeated_Float) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
   testConcatVectorsRepeated<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy);
 }
 
@@ -4454,7 +4475,7 @@ TEST_P(OperatorTest, concatVectorsRepeated_Float) {
 /// intended to verify that IRGen to InsertTensor instructions with axis/count
 /// works correctly. Testing Float16Ty data.
 TEST_P(OperatorTest, concatVectorsRepeated_Float16) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
   testConcatVectorsRepeated<float16_t>(bindings_, mod_, F_, EE_,
                                        ElemKind::Float16Ty);
 }
@@ -4521,26 +4542,32 @@ static void testSliceVectors(glow::PlaceholderBindings &bindings,
 
 /// Test slicing with Int64ITy.
 TEST_P(OperatorTest, sliceVectors_Int64) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
   testSliceVectors<int64_t>(bindings_, mod_, F_, EE_, ElemKind::Int64ITy);
 }
 
 /// Test slicing with FloatTy.
 TEST_P(OperatorTest, sliceVectors_Float) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
   testSliceVectors<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy);
 }
 
 /// Test slicing with Float16Ty.
 TEST_P(OperatorTest, sliceVectors_Float16) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
   testSliceVectors<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty);
 }
 
 /// Test slicing with Int8QTy.
 TEST_P(OperatorTest, sliceVectors_Int8) {
-  ENABLED_BACKENDS(Interpreter, CPU, OpenCL);
+  CHECK_IF_ENABLED();
   testSliceVectors<int8_t>(bindings_, mod_, F_, EE_, ElemKind::Int8QTy);
+}
+
+/// Test slicing with Int32QTy.
+TEST_P(OperatorTest, sliceVectors_Int32) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  testSliceVectors<int32_t>(bindings_, mod_, F_, EE_, ElemKind::Int32QTy);
 }
 
 /// Helper to test SliceConcatVectors using \p DTy.
@@ -4597,31 +4624,31 @@ static void testSliceConcatVectors(glow::PlaceholderBindings &bindings,
 
 /// Test a combination of slicing and concating, in Int64ITy.
 TEST_P(OperatorTest, sliceConcatVectors_Int64) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
   testSliceConcatVectors<int64_t>(bindings_, mod_, F_, EE_, ElemKind::Int64ITy);
 }
 
 /// Test a combination of slicing and concating, in Int8QTy.
 TEST_P(OperatorTest, sliceConcatVectors_Int8) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
   testSliceConcatVectors<int8_t>(bindings_, mod_, F_, EE_, ElemKind::Int8QTy);
 }
 
 /// Test a combination of slicing and concating, in FloatTy.
 TEST_P(OperatorTest, sliceConcatVectors_Float) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
   testSliceConcatVectors<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy);
 }
 
 /// Test a combination of slicing and concating, in Float16Ty.
 TEST_P(OperatorTest, sliceConcatVectors_Float16) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
   testSliceConcatVectors<float16_t>(bindings_, mod_, F_, EE_,
                                     ElemKind::Float16Ty);
 }
 
 TEST_P(OperatorTest, Tile) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
 
   F_->setName("concatVectors");
 
@@ -4667,7 +4694,7 @@ TEST_P(OperatorTest, Tile) {
 }
 
 TEST_P(OperatorTest, QuantizedTile) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
 
   F_->setName("concatVectors");
 
@@ -4722,7 +4749,7 @@ TEST_P(OperatorTest, QuantizedTile) {
 }
 
 TEST_P(OperatorTest, Clip) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
 
   auto *X = mod_.createPlaceholder(ElemKind::FloatTy, {5, 5}, "X", false);
   auto xHandle = bindings_.allocate(X)->getHandle();
@@ -4751,7 +4778,7 @@ TEST_P(OperatorTest, Clip) {
 }
 
 TEST_P(OperatorTest, simpleCmpSelectPredication) {
-  ENABLED_BACKENDS(Interpreter, CPU, OpenCL);
+  CHECK_IF_ENABLED();
 
   // A simple test that checks predication of some values using the
   // compare-select pair of instructions. Keep doubling some values
@@ -4832,7 +4859,7 @@ TEST_P(OperatorTest, simplePredication) {
 }
 
 TEST_P(OperatorTest, ChannelShuffle) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
 
   auto *inputs =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 12, 1, 1}, "inputs", false);
@@ -4855,7 +4882,7 @@ TEST_P(OperatorTest, ChannelShuffle) {
 }
 
 TEST_P(OperatorTest, Squeeze) {
-  ENABLED_BACKENDS(Interpreter, CPU, OpenCL);
+  CHECK_IF_ENABLED();
 
   auto *inputs =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 2, 1, 5}, "inputs", false);
@@ -4970,21 +4997,21 @@ static void testExpandDims(glow::PlaceholderBindings &bindings,
 /// Check that the expand dims operator works, which is implemented with a
 /// reshape, in FloatTy.
 TEST_P(OperatorTest, ExpandDims_Float) {
-  ENABLED_BACKENDS(Interpreter, CPU, OpenCL);
+  CHECK_IF_ENABLED();
   testExpandDims<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy);
 }
 
 /// Check that the expand dims operator works, which is implemented with a
 /// reshape, in Float16Ty.
 TEST_P(OperatorTest, ExpandDims_Float16) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
   testExpandDims<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty);
 }
 
 /// Check that the expand dims operator works, which is implemented with a
 /// reshape, in Int8QTy.
 TEST_P(OperatorTest, ExpandDims_Int8) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
   testExpandDims<int8_t>(bindings_, mod_, F_, EE_, ElemKind::Int8QTy);
 }
 
@@ -5036,24 +5063,24 @@ static void testSplit(glow::PlaceholderBindings &bindings, glow::Module &mod,
 
 /// Test that Split is correctly supported in FloatTy.
 TEST_P(OperatorTest, Split_Float) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
   testSplit<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy);
 }
 
 /// Test that Split is correctly supported in Float16Ty.
 TEST_P(OperatorTest, Split_Float16) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
   testSplit<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty);
 }
 
 /// Test that Split is correctly supported in Int8QTy.
 TEST_P(OperatorTest, Split_Int8) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
   testSplit<int8_t>(bindings_, mod_, F_, EE_, ElemKind::Int8QTy);
 }
 
 TEST_P(OperatorTest, IntRelu) {
-  ENABLED_BACKENDS(Interpreter, CPU, OpenCL)
+  CHECK_IF_ENABLED();
 
   const float splatValue = 10;
   const float scale = 1.0;
@@ -5108,7 +5135,7 @@ TEST_P(OperatorTest, IntSplat) {
 }
 
 TEST_P(OperatorTest, Fp16Splat) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
 
   const float splatValue = 10;
   const size_t size = 3;
@@ -5128,7 +5155,7 @@ TEST_P(OperatorTest, Fp16Splat) {
 }
 
 TEST_P(OperatorTest, GroupConvolution) {
-  ENABLED_BACKENDS(Interpreter, CPU, OpenCL);
+  CHECK_IF_ENABLED();
 
   auto *input =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 2, 1, 8}, "input", false);
@@ -5182,7 +5209,7 @@ TEST_P(OperatorTest, GroupConvolution) {
 /// Test the functionality of groupwise quantized convolution expressed using
 /// ChannelwiseQuantizedConvNode.
 TEST_P(OperatorTest, GroupwiseQuantizedConvolution) {
-  ENABLED_BACKENDS(Interpreter, CPU, OpenCL);
+  CHECK_IF_ENABLED();
 
   constexpr size_t groups = 2;
 
@@ -5255,7 +5282,7 @@ TEST_P(OperatorTest, GroupwiseQuantizedConvolution) {
 }
 
 TEST_P(OperatorTest, DilatedConvolution) {
-  ENABLED_BACKENDS(Interpreter, CPU, OpenCL);
+  CHECK_IF_ENABLED();
 
   auto *input =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 4, 1, 1}, "input", false);
@@ -5298,7 +5325,7 @@ TEST_P(OperatorTest, DilatedConvolution) {
 }
 
 TEST_P(OperatorTest, GroupDilatedConvolution) {
-  ENABLED_BACKENDS(Interpreter, CPU, OpenCL);
+  CHECK_IF_ENABLED();
 
   auto *input =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 4, 4, 2}, "input", false);
@@ -5378,7 +5405,7 @@ TEST_P(OperatorTest, GroupDilatedConvolution) {
 /// Test Conv3D with group size of 2 to make sure that group 3d convolution
 /// works as expected.
 TEST_P(OperatorTest, GroupConv3D) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
 
   auto *input = mod_.createPlaceholder(ElemKind::FloatTy, {1, 2, 1, 2, 8},
                                        "input", false);
@@ -5450,7 +5477,7 @@ TEST_P(OperatorTest, GroupConv3D) {
 /// the same as the first one's after-padding input. All other parameters of
 /// the two convs are the same.
 TEST_P(OperatorTest, NonSquarePaddingConvolution) {
-  ENABLED_BACKENDS(Interpreter, CPU, OpenCL);
+  CHECK_IF_ENABLED();
 
   auto *input =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 4, 4, 1}, "input", false);
@@ -5513,7 +5540,7 @@ TEST_P(OperatorTest, NonSquarePaddingConvolution) {
 /// the same as the first one's after-padding input. All other parameters of
 /// the two conv3Ds are the same.
 TEST_P(OperatorTest, NonCubicPaddingConv3D) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
 
   auto *input = mod_.createPlaceholder(ElemKind::FloatTy, {1, 4, 4, 4, 1},
                                        "input", false);
@@ -5586,7 +5613,7 @@ TEST_P(OperatorTest, NonCubicPaddingConv3D) {
 /// is the same as the first one's after-padding input. All other parameters
 /// of the two convs are the same.
 TEST_P(OperatorTest, NonSquarePaddingAveragePool) {
-  ENABLED_BACKENDS(Interpreter, CPU, OpenCL);
+  CHECK_IF_ENABLED();
 
   auto *input =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 4, 4, 1}, "input", false);
@@ -5626,7 +5653,7 @@ TEST_P(OperatorTest, NonSquarePaddingAveragePool) {
 /// is the same as the first one's after-padding input. All other parameters
 /// of the two convs are the same.
 TEST_P(OperatorTest, NonSquarePaddingMaxPool) {
-  ENABLED_BACKENDS(Interpreter, CPU, OpenCL);
+  CHECK_IF_ENABLED();
 
   auto *input =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 4, 4, 1}, "input", false);
@@ -5664,7 +5691,7 @@ TEST_P(OperatorTest, NonSquarePaddingMaxPool) {
 }
 
 TEST_P(OperatorTest, FP16AvgPool) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
 
   auto *input =
       mod_.createPlaceholder(ElemKind::Float16Ty, {1, 3, 3, 1}, "input", false);
@@ -5722,7 +5749,7 @@ TEST_P(OperatorTest, Int8AvgPool) {
 
 /// Verify that the AdaptiveAvgPool operator works correctly.
 TEST_P(OperatorTest, AdaptiveAvgPool) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
   auto *input =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 4, 4, 1}, "input", false);
   bindings_.allocate(input)->getHandle() = {
@@ -5744,7 +5771,7 @@ TEST_P(OperatorTest, AdaptiveAvgPool) {
 
 /// Verify that the AdaptiveAvgPool operator works correctly with fp16.
 TEST_P(OperatorTest, FP16AdaptiveAvgPool) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
   auto *input =
       mod_.createPlaceholder(ElemKind::Float16Ty, {1, 4, 4, 1}, "input", false);
   bindings_.allocate(input)->getHandle<float16_t>() = {
@@ -5765,7 +5792,7 @@ TEST_P(OperatorTest, FP16AdaptiveAvgPool) {
 
 /// Verify that the AdaptiveAvgPool operator works correctly with int8.
 TEST_P(OperatorTest, Int8AdaptiveAvgPool) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
   auto *input = mod_.createPlaceholder(ElemKind::Int8QTy, {1, 4, 4, 1}, 1, 0,
                                        "input", false);
   bindings_.allocate(input)->getHandle<int8_t>() = {
@@ -5787,7 +5814,7 @@ TEST_P(OperatorTest, Int8AdaptiveAvgPool) {
 /// Verify that the AdaptiveAvgPool operator works correctly with non-square
 /// inputs and outputs.
 TEST_P(OperatorTest, AdaptiveAvgPoolNonSquare) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
   auto *input =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 5, 3, 1}, "input", false);
   bindings_.allocate(input)->getHandle() = {0., 1., 2.,  3.,  4.,  5.,  6., 7.,
@@ -5825,7 +5852,7 @@ TEST_P(OperatorTest, MaxPool) {
 }
 
 TEST_P(OperatorTest, FP16MaxPool) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
 
   auto *input =
       mod_.createPlaceholder(ElemKind::Float16Ty, {1, 3, 3, 1}, "input", false);
@@ -5911,12 +5938,12 @@ static void testMaxPoolWithArgmax(glow::PlaceholderBindings &bindings,
 }
 
 TEST_P(OperatorTest, FloatMaxPoolWithArgmax) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
   testMaxPoolWithArgmax<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy);
 }
 
 TEST_P(OperatorTest, QuantizedMaxPoolWithArgmax) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
   testMaxPoolWithArgmax<int8_t>(bindings_, mod_, F_, EE_, ElemKind::Int8QTy);
 }
 
@@ -5968,26 +5995,26 @@ testMaxPoolWithArgmaxTransposed(glow::PlaceholderBindings &bindings,
 }
 
 TEST_P(OperatorTest, FloatMaxPoolWithArgmaxTransposed) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
   testMaxPoolWithArgmaxTransposed<float>(bindings_, mod_, F_, EE_,
                                          ElemKind::FloatTy);
 }
 
 TEST_P(OperatorTest, QuantizedMaxPoolWithArgmaxTransposed) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
   testMaxPoolWithArgmaxTransposed<int8_t>(bindings_, mod_, F_, EE_,
                                           ElemKind::Int8QTy);
 }
 
 TEST_P(OperatorStatelessTest, Int8Tanh) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
   compareAgainstInterpreter(getBackendName(), createAndInitBasicTanhTest,
                             ElemKind::FloatTy, ElemKind::Int8QTy, 0.005f,
                             parCloneCountOpt);
 }
 
 TEST_P(OperatorStatelessTest, Tanh_Float16) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
   compareAgainstInterpreter(getBackendName(), createAndInitBasicTanhTest,
                             ElemKind::FloatTy, ElemKind::Float16Ty, 0.001f,
                             parCloneCountOpt);
@@ -6016,7 +6043,7 @@ TEST_P(OperatorTest, Tanh) {
 }
 
 TEST_P(OperatorStatelessTest, Exp_Float16) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
   compareAgainstInterpreter(getBackendName(), createAndInitBasicExpTest,
                             ElemKind::FloatTy, ElemKind::Float16Ty, 0.005f,
                             parCloneCountOpt);
@@ -6024,7 +6051,7 @@ TEST_P(OperatorStatelessTest, Exp_Float16) {
 
 /// Verify that the Exp operator works correctly.
 TEST_P(OperatorTest, Exp) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
   constexpr size_t size = 10;
   auto *input =
       mod_.createPlaceholder(ElemKind::FloatTy, {size}, "input", false);
@@ -6047,7 +6074,7 @@ TEST_P(OperatorTest, Exp) {
 
 /// Verify that a quantized Log works correctly.
 TEST_P(OperatorStatelessTest, Int8Log) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
   compareAgainstInterpreter(getBackendName(), createAndInitBasicLogTest,
                             ElemKind::FloatTy, ElemKind::Int8QTy, 0.1f,
                             parCloneCountOpt);
@@ -6055,7 +6082,7 @@ TEST_P(OperatorStatelessTest, Int8Log) {
 
 /// Check Non-square kernel for conv.
 TEST_P(OperatorTest, NonSquareKernelConvolution) {
-  ENABLED_BACKENDS(Interpreter, CPU, OpenCL);
+  CHECK_IF_ENABLED();
 
   auto *input =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 4, 4, 1}, "input", false);
@@ -6094,7 +6121,7 @@ TEST_P(OperatorTest, NonSquareKernelConvolution) {
 
 /// Check Non-cubic kernel for conv3D.
 TEST_P(OperatorTest, NonCubicKernelConv3D) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
 
   auto *input = mod_.createPlaceholder(ElemKind::FloatTy, {1, 4, 4, 4, 1},
                                        "input", false);
@@ -6148,7 +6175,7 @@ TEST_P(OperatorTest, NonCubicKernelConv3D) {
 
 /// Check Non-cubic kernel for conv3D with quantized input, filters, and bias.
 TEST_P(OperatorTest, NonCubicKernelConv3DQuantized) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
 
   auto *input = mod_.createPlaceholder(ElemKind::FloatTy, {1, 4, 4, 4, 1},
                                        "input", false);
@@ -6222,7 +6249,7 @@ TEST_P(OperatorTest, NonCubicKernelConv3DQuantized) {
 
 /// Check Non-square kernel for AveragePool.
 TEST_P(OperatorTest, NonSquareKernelAveragePool) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
 
   auto *input =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 4, 4, 1}, "input", false);
@@ -6245,7 +6272,7 @@ TEST_P(OperatorTest, NonSquareKernelAveragePool) {
 
 /// Check Non-square kernel for MaxPool.
 TEST_P(OperatorTest, NonSquareKernelMaxPool) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
 
   auto *input =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 4, 4, 1}, "input", false);
@@ -6268,7 +6295,7 @@ TEST_P(OperatorTest, NonSquareKernelMaxPool) {
 
 /// Check Non-square stride for conv.
 TEST_P(OperatorTest, NonSquareStrideConvolution) {
-  ENABLED_BACKENDS(Interpreter, CPU, OpenCL);
+  CHECK_IF_ENABLED();
 
   auto *input =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 4, 4, 1}, "input", false);
@@ -6307,7 +6334,7 @@ TEST_P(OperatorTest, NonSquareStrideConvolution) {
 
 /// Check Non-cubic stride for conv3D.
 TEST_P(OperatorTest, NonCubicStrideConv3D) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
 
   auto *input = mod_.createPlaceholder(ElemKind::FloatTy, {1, 4, 4, 4, 1},
                                        "input", false);
@@ -6359,7 +6386,7 @@ TEST_P(OperatorTest, NonCubicStrideConv3D) {
 
 /// Check Non-square stride for AveragePool.
 TEST_P(OperatorTest, NonSquareStrideAveragePool) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
 
   auto *input =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 4, 4, 1}, "input", false);
@@ -6382,7 +6409,7 @@ TEST_P(OperatorTest, NonSquareStrideAveragePool) {
 
 /// Check Non-square stride for MaxPool.
 TEST_P(OperatorTest, NonSquareStrideMaxPool) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
 
   auto *input =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 4, 4, 1}, "input", false);
@@ -6404,7 +6431,7 @@ TEST_P(OperatorTest, NonSquareStrideMaxPool) {
 }
 
 TEST_P(OperatorTest, SigmoidOverflow) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
 
   auto *input = mod_.createPlaceholder(ElemKind::FloatTy, {2}, "input", false);
   auto IH = bindings_.allocate(input)->getHandle();
@@ -6424,7 +6451,7 @@ TEST_P(OperatorTest, SigmoidOverflow) {
 }
 
 TEST_P(OperatorStatelessTest, Int8Sigmoid) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
   compareAgainstInterpreter(getBackendName(), createAndInitBasicSigmoidTest,
                             ElemKind::FloatTy, ElemKind::Int8QTy, 0.005f,
                             parCloneCountOpt);
@@ -6459,7 +6486,7 @@ TEST_P(OperatorTest, BatchAdd) {
 
 /// Check that the batch add operator works properly for FP16.
 TEST_P(OperatorTest, FP16BatchAdd) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
 
   PseudoRNG PRNG;
 
@@ -6487,7 +6514,7 @@ TEST_P(OperatorTest, FP16BatchAdd) {
 }
 
 TEST_P(OperatorTest, BroadcastAdd2x) {
-  ENABLED_BACKENDS(Interpreter, CPU, OpenCL, Habana);
+  CHECK_IF_ENABLED();
 
   auto *input =
       mod_.createPlaceholder(ElemKind::FloatTy, {10, 1}, "input", false);
@@ -6536,18 +6563,18 @@ static void testSigmoid(glow::PlaceholderBindings &bindings, glow::Module &mod,
 
 /// Verify that the Sigmoid operator works correctly with FloatTy.
 TEST_P(OperatorTest, Sigmoid_Float) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
   testSigmoid<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy);
 }
 
 /// Verify that the Sigmoid operator works correctly with Float16Ty.
 TEST_P(OperatorTest, Sigmoid_Float16) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
   testSigmoid<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty);
 }
 
 TEST_P(OperatorTest, IntLookupTable) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
 
   constexpr size_t size = 6;
   auto *input =
@@ -6630,7 +6657,7 @@ TEST_P(OperatorTest, testBatchAdd_Float) {
 
 /// Check that the sequence of extract-batchedadd-concat works.
 TEST_P(OperatorTest, testBatchAdd_Float16) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
   testBatchAdd<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty);
 }
 
@@ -6691,7 +6718,7 @@ static void quantizedBatchAdd(ExecutionEngine &EE,
 
 /// Tests quantized batched-add arithmetic.
 TEST_P(OperatorTest, testQuantizedBatchAdd) {
-  ENABLED_BACKENDS(Interpreter, CPU, OpenCL);
+  CHECK_IF_ENABLED();
   // Test Int8QTy Slice.
   quantizedBatchAdd(EE_, bindings_, ElemKind::Int8QTy);
   // Test Int32QTy Slice.
@@ -6699,7 +6726,7 @@ TEST_P(OperatorTest, testQuantizedBatchAdd) {
 }
 
 TEST_P(OperatorTest, LengthsSum) {
-  ENABLED_BACKENDS(Interpreter, CPU, Habana);
+  CHECK_IF_ENABLED();
 
   /*
     DATA  = [
@@ -6796,18 +6823,18 @@ static void testSLS(glow::PlaceholderBindings &bindings, glow::Module &mod,
 
 /// Test that SLS is correctly supported in FloatTy.
 TEST_P(OperatorTest, SparseLengthsSum_Float) {
-  ENABLED_BACKENDS(Interpreter, CPU, OpenCL, Habana);
+  CHECK_IF_ENABLED();
   testSLS<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy, 0.0001);
 }
 
 /// Test that SLS is correctly supported in Float16Ty.
 TEST_P(OperatorTest, SparseLengthsSum_Float16) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
   testSLS<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty, 0.002);
 }
 
 TEST_P(OperatorTest, SparseLengthsSumI8) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
 
   /*
     DATA  = [
@@ -6921,34 +6948,34 @@ static void testSLWS(glow::PlaceholderBindings &bindings, glow::Module &mod,
 
 /// Test that SLWS is correctly supported in FloatTy in 1D.
 TEST_P(OperatorTest, SparseLengthsWeightedSum_1D_Float) {
-  ENABLED_BACKENDS(Interpreter, CPU, OpenCL);
+  CHECK_IF_ENABLED();
   testSLWS<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy, 0.0001,
                   /* ndims */ 1);
 }
 
 /// Test that SLWS is correctly supported in FloatTy in 2D.
 TEST_P(OperatorTest, SparseLengthsWeightedSum_2D_Float) {
-  ENABLED_BACKENDS(Interpreter, CPU, OpenCL, Habana);
+  CHECK_IF_ENABLED();
   testSLWS<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy, 0.0001,
                   /* ndims */ 2);
 }
 
 /// Test that SLWS is correctly supported in Float16Ty in 1D.
 TEST_P(OperatorTest, SparseLengthsWeightedSum_1D_Float16) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
   testSLWS<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty, 0.0001,
                       /* ndims */ 1);
 }
 
 /// Test that SLWS is correctly supported in Float16Ty in 2D.
 TEST_P(OperatorTest, SparseLengthsWeightedSum_2D_Float16) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
   testSLWS<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty, 0.0001,
                       /* ndims */ 2);
 }
 
 TEST_P(OperatorTest, SparseLengthsWeightedSumI8) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
 
   /*
     DATA  =   [4, -1, 26]
@@ -7069,7 +7096,7 @@ static void testRowwiseQuantizedSparseLengthsWeightedSum(
 
 /// Test RWQ-SLWS with Float Weights, Scales, Offsets, and Output.
 TEST_P(OperatorTest, RowwiseQuantizedSparseLengthsWeightedSum_Float) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
   testRowwiseQuantizedSparseLengthsWeightedSum<float>(bindings_, mod_, F_, EE_,
                                                       ElemKind::FloatTy, 0.01);
 }
@@ -7078,7 +7105,7 @@ TEST_P(OperatorTest, RowwiseQuantizedSparseLengthsWeightedSum_Float) {
 /// accumulation.
 TEST_P(OperatorTest,
        RowwiseQuantizedSparseLengthsWeightedSum_Float16_AccumFloat) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
   testRowwiseQuantizedSparseLengthsWeightedSum<float16_t>(
       bindings_, mod_, F_, EE_, ElemKind::Float16Ty, 0.02,
       /* useFP16Accumulation */ false);
@@ -7088,7 +7115,7 @@ TEST_P(OperatorTest,
 /// Float16 accumulation.
 TEST_P(OperatorTest,
        RowwiseQuantizedSparseLengthsWeightedSum_Float16_AccumFloat16) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
   testRowwiseQuantizedSparseLengthsWeightedSum<float16_t>(
       bindings_, mod_, F_, EE_, ElemKind::Float16Ty, 0.02,
       /* useFP16Accumulation */ true);
@@ -7153,7 +7180,7 @@ static void testRowwiseQuantizedSparseLengthsSum(
 
 /// Test RWQ-SLS with Float Weights, Scales, Offsets, and Output.
 TEST_P(OperatorTest, RowwiseQuantizedSparseLengthsSum_Float) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
   testRowwiseQuantizedSparseLengthsSum<float>(bindings_, mod_, F_, EE_,
                                               ElemKind::FloatTy, 0.025);
 }
@@ -7161,7 +7188,7 @@ TEST_P(OperatorTest, RowwiseQuantizedSparseLengthsSum_Float) {
 /// Test RWQ-SLS with Float16 Weights, Scales, Offsets, and Output. Uses
 /// Float accumulation.
 TEST_P(OperatorTest, RowwiseQuantizedSparseLengthsSum_Float16_AccumFloat) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
   testRowwiseQuantizedSparseLengthsSum<float16_t>(
       bindings_, mod_, F_, EE_, ElemKind::Float16Ty, 0.025,
       /* useFP16Accumulation */ false);
@@ -7170,14 +7197,14 @@ TEST_P(OperatorTest, RowwiseQuantizedSparseLengthsSum_Float16_AccumFloat) {
 /// Test RWQ-SLS with Float16 Weights, Scales, Offsets, and Output. Uses
 /// Float16 accumulation.
 TEST_P(OperatorTest, RowwiseQuantizedSparseLengthsSum_Float16_AccumFloat16) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
   testRowwiseQuantizedSparseLengthsSum<float16_t>(
       bindings_, mod_, F_, EE_, ElemKind::Float16Ty, 0.025,
       /* useFP16Accumulation */ true);
 }
 
 TEST_P(OperatorTest, RepeatedSLSWithPartialTensors) {
-  ENABLED_BACKENDS(Habana);
+  CHECK_IF_ENABLED();
 
   constexpr size_t embeddingRows = 1275;
   constexpr size_t numLengths = 20;
@@ -7295,7 +7322,7 @@ static void testFusedRowwiseQuantizedSparseLengthsWeightedSum(
 
 /// Test Fused-RWQ-SLWS in Float.
 TEST_P(OperatorTest, FusedRowwiseQuantizedSparseLengthsWeightedSum_Float) {
-  ENABLED_BACKENDS(Interpreter, CPU, Habana);
+  CHECK_IF_ENABLED();
   testFusedRowwiseQuantizedSparseLengthsWeightedSum<float>(
       bindings_, mod_, F_, EE_, ElemKind::FloatTy, 0.01);
 }
@@ -7303,7 +7330,7 @@ TEST_P(OperatorTest, FusedRowwiseQuantizedSparseLengthsWeightedSum_Float) {
 /// Test Fused-RWQ-SLWS in Float16. Uses Float accumulation.
 TEST_P(OperatorTest,
        FusedRowwiseQuantizedSparseLengthsWeightedSum_Float16_AccumFloat) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
   testFusedRowwiseQuantizedSparseLengthsWeightedSum<float16_t>(
       bindings_, mod_, F_, EE_, ElemKind::Float16Ty, 0.02,
       /* useFP16Accumulation */ false);
@@ -7312,10 +7339,72 @@ TEST_P(OperatorTest,
 /// Test Fused-RWQ-SLWS in Float16. Uses Float16 accumulation.
 TEST_P(OperatorTest,
        FusedRowwiseQuantizedSparseLengthsWeightedSum_Float16_AccumFloat16) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
   testFusedRowwiseQuantizedSparseLengthsWeightedSum<float16_t>(
       bindings_, mod_, F_, EE_, ElemKind::Float16Ty, 0.02,
       /* useFP16Accumulation */ true);
+}
+
+TEST_P(OperatorTest,
+       FusedRowwiseQuantizedSparseLengthsWeightedSum_ConvertedFloat16) {
+  CHECK_IF_ENABLED();
+  /*
+    DATA  =   [[2.0, -0.5, 13]]
+    WEIGHTS = [3, 1, 0, 0, 0, 0, 2, -0.5]
+    INDICES = [1, 0, 2, 0, 1, 2, 2, 0]
+    LENGTHS = [3, 0, 3, 2]
+    OUTPUT =  [[0.5, 0, 0, 25]]
+  */
+  Tensor data(ElemKind::FloatTy, {3, 1});
+  data.getHandle() = {
+      2.0,
+      -0.5,
+      13,
+  };
+
+  Constant *weights = mod_.createConstant(ElemKind::FloatTy, {8}, "weights");
+  weights->getPayloadMutable().getHandle<float>() = {
+      3., 1., 0., 0., 0., 0., 2., -0.5,
+  };
+
+  Placeholder *indices =
+      mod_.createPlaceholder(ElemKind::Int64ITy, {8}, "indices",
+                             /* isTrainable */ false);
+  Placeholder *lengths =
+      mod_.createPlaceholder(ElemKind::Int32ITy, {4}, "lengths",
+                             /* isTrainable */ false);
+
+  bindings_.allocate(indices)->getHandle<int64_t>() = {
+      1, 0, 2, 0, 1, 2, 2, 0,
+  };
+  bindings_.allocate(lengths)->getHandle<int32_t>() = {
+      3,
+      0,
+      3,
+      2,
+  };
+
+  auto *R = F_->createFusedRowwiseQuantizedSparseLengthsWeightedSum(
+      "RQSLWS", data, weights, indices, lengths);
+  SaveNode *S = F_->createSave("save", R);
+  bindings_.allocate(S->getPlaceholder());
+
+  CompilationContext cctx;
+  cctx.precisionConfig.convertToFP16 = true;
+  cctx.precisionConfig.convertFusedToFP16 = true;
+  EE_.compile(cctx);
+  EE_.run(bindings_);
+
+  Tensor &result = *bindings_.get(S->getPlaceholder());
+  Tensor expected(ElemKind::FloatTy, {4, 1});
+  expected.getHandle<float>() = {
+      0.5,
+      0,
+      0,
+      25,
+  };
+
+  EXPECT_TRUE(expected.isEqual(result, 0.02));
 }
 
 /// Helper to test FusedRowwiseQuantizedSparseLengthsSum using \p DTy.
@@ -7376,14 +7465,14 @@ static void testFusedRowwiseQuantizedSparseLengthsSum(
 
 /// Test Fused-RWQ-SLS in Float.
 TEST_P(OperatorTest, FusedRowwiseQuantizedSparseLengthsSum_Float) {
-  ENABLED_BACKENDS(Interpreter, CPU, Habana);
+  CHECK_IF_ENABLED();
   testFusedRowwiseQuantizedSparseLengthsSum<float>(bindings_, mod_, F_, EE_,
                                                    ElemKind::FloatTy, 0.025);
 }
 
 /// Test Fused-RWQ-SLS in Float16. Uses Float accumulation.
 TEST_P(OperatorTest, FusedRowwiseQuantizedSparseLengthsSum_Float16_AccumFloat) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
   testFusedRowwiseQuantizedSparseLengthsSum<float16_t>(
       bindings_, mod_, F_, EE_, ElemKind::Float16Ty, 0.025,
       /* useFP16Accumulation */ false);
@@ -7392,7 +7481,7 @@ TEST_P(OperatorTest, FusedRowwiseQuantizedSparseLengthsSum_Float16_AccumFloat) {
 /// Test Fused-RWQ-SLS in Float16. Uses Float16 accumulation.
 TEST_P(OperatorTest,
        FusedRowwiseQuantizedSparseLengthsSum_Float16_AccumFloat16) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
   testFusedRowwiseQuantizedSparseLengthsSum<float16_t>(
       bindings_, mod_, F_, EE_, ElemKind::Float16Ty, 0.025,
       /* useFP16Accumulation */ true);
@@ -7443,7 +7532,7 @@ TEST_P(OperatorTest, ConstantSLS) {
 
 /// Test SLS when some "lengths" inputs are zero.
 TEST_P(OperatorTest, SLSWithZeroLengths) {
-  ENABLED_BACKENDS(CPU, Habana);
+  CHECK_IF_ENABLED();
 
   compareAgainstInterpreter(
       getBackendName(),
@@ -7479,7 +7568,7 @@ TEST_P(OperatorTest, SLSWithZeroLengths) {
 }
 
 TEST_P(OperatorTest, SparseToDense) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
 
   // Create and initialize inputs. Make input 3D to make sure
   // multidimensional values are handled properly.
@@ -7529,7 +7618,7 @@ TEST_P(OperatorTest, SparseToDense) {
 }
 
 TEST_P(OperatorTest, SparseToDenseMask1) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
 
   /*
     INDICES = [4, 42, 13, 0, 100, 13]
@@ -7572,7 +7661,7 @@ TEST_P(OperatorTest, SparseToDenseMask1) {
 }
 
 TEST_P(OperatorTest, SparseToDenseMask2) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
 
   /*
     INDICES = [300, 100, 101, 299]
@@ -7618,7 +7707,7 @@ TEST_P(OperatorTest, SparseToDenseMask2) {
 }
 
 TEST_P(OperatorTest, FP16Reshape) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
 
   auto *A = mod_.createPlaceholder(ElemKind::Float16Ty, {20, 13}, "A", false);
   auto inputHandle = bindings_.allocate(A)->getHandle<float16_t>();
@@ -7694,7 +7783,7 @@ TEST_P(OperatorTest, ReshapeInt) {
 
 /// Verify that the Select operator works correctly.
 TEST_P(OperatorTest, Select) {
-  ENABLED_BACKENDS(Interpreter, CPU, OpenCL);
+  CHECK_IF_ENABLED();
 
   auto *A = mod_.createPlaceholder(ElemKind::BoolTy, {5}, "A", false);
   bindings_.allocate(A)->getHandle<bool>() = {false, true, true, false, false};
@@ -7720,7 +7809,7 @@ TEST_P(OperatorTest, Select) {
 
 /// Verify that the CmpLTE operator works correctly.
 TEST_P(OperatorTest, CmpLTE) {
-  ENABLED_BACKENDS(Interpreter, CPU, OpenCL);
+  CHECK_IF_ENABLED();
 
   Constant *A = mod_.createConstant(ElemKind::FloatTy, {5}, "A");
   Constant *B = mod_.createConstant(ElemKind::FloatTy, {5}, "B");
@@ -7809,15 +7898,22 @@ TEST_P(OperatorTest, sliceReshape_Float) {
 /// Stack many slices/reshapes together. Some of these may be turned into
 /// tensor views stacked onto each other. Test in Float16Ty.
 TEST_P(OperatorTest, sliceReshape_Float16) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
   testSliceReshape<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty);
 }
 
 /// Stack many slices/reshapes together. Some of these may be turned into
 /// tensor views stacked onto each other. Test in Int8QTy.
 TEST_P(OperatorTest, sliceReshape_Int8) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
   testSliceReshape<int8_t>(bindings_, mod_, F_, EE_, ElemKind::Int8QTy);
+}
+
+/// Stack many slices/reshapes together. Some of these may be turned into
+/// tensor views stacked onto each other. Test in Int32QTy.
+TEST_P(OperatorTest, sliceReshape_Int32) {
+  ENABLED_BACKENDS(Interpreter);
+  testSliceReshape<int32_t>(bindings_, mod_, F_, EE_, ElemKind::Int32QTy);
 }
 
 /// Helper to test Flatten using \p DTy.
@@ -7927,20 +8023,20 @@ TEST_P(OperatorTest, Flatten_FloatTy) {
 /// Check that the flatten operator produces 2D tensors of the right
 /// dimensions, using Float16Ty.
 TEST_P(OperatorTest, Flatten_Float16Ty) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
   testFlatten<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty);
 }
 
 /// Check that the flatten operator produces 2D tensors of the right
 /// dimensions, using Int8QTy.
 TEST_P(OperatorTest, Flatten_Int8) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
   testFlatten<int8_t>(bindings_, mod_, F_, EE_, ElemKind::Int8QTy);
 }
 
 /// Check that div on Int64ITy/size_t works.
 TEST_P(OperatorTest, DivSizeT) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
 
   auto *LHS = mod_.createPlaceholder(ElemKind::Int64ITy, {3, 2}, "LHS", false);
   auto *RHS = mod_.createPlaceholder(ElemKind::Int64ITy, {3, 2}, "RHS", false);
@@ -7968,7 +8064,7 @@ TEST_P(OperatorTest, DivSizeT) {
 }
 
 TEST_P(OperatorTest, SigmoidCrossEntropyWithLogits) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
 
   /*
     LOGITS  = [
@@ -8027,7 +8123,7 @@ TEST_P(OperatorTest, SigmoidCrossEntropyWithLogits) {
 
 /// Test the InsertTensor node works correctly.
 TEST_P(OperatorTest, insertTensorTest) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
 
   // 0 0 0 0 0 0
   // 0 0 0 0 0 0
@@ -8094,7 +8190,7 @@ createAndInitBasicRowwiseFCTest(glow::PlaceholderBindings &bindings,
 
 /// Test RowwiseQuantizedFullyConnected Node.
 TEST_P(OperatorStatelessTest, rowwiseQuantizedFCTest) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
   compareAgainstInterpreter(getBackendName(), createAndInitBasicRowwiseFCTest,
                             ElemKind::FloatTy, ElemKind::Int8QTy, 0.06f,
                             parCloneCountOpt,
@@ -8103,7 +8199,7 @@ TEST_P(OperatorStatelessTest, rowwiseQuantizedFCTest) {
 
 /// Test RowwiseQuantizedFullyConnected Node with Symmetric quantization.
 TEST_P(OperatorStatelessTest, rowwiseQuantizedFCTestSymmetric) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
   compareAgainstInterpreter(
       getBackendName(), createAndInitBasicRowwiseFCTest, ElemKind::FloatTy,
       ElemKind::Int8QTy, 0.07f, parCloneCountOpt,
@@ -8161,7 +8257,7 @@ createAndInitBasicSLWSTest(glow::PlaceholderBindings &bindings,
 
 /// Test RowwiseQuantizedSLWS Node.
 TEST_P(OperatorStatelessTest, rowwiseQuantizedSLWSTest) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
   compareAgainstInterpreter(getBackendName(), createAndInitBasicSLWSTest,
                             ElemKind::FloatTy, ElemKind::Int8QTy, 0.01f,
                             parCloneCountOpt,
@@ -8182,7 +8278,7 @@ static SaveNode *setupBucketNode(Function *F, PlaceholderBindings &bindings,
 
 /// Check the correctness of the bucketize operator.
 TEST_P(OperatorTest, Bucketize) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
 
   auto *input1 =
       mod_.createPlaceholder(ElemKind::FloatTy, {3}, "input1", false);
@@ -8217,7 +8313,7 @@ TEST_P(OperatorTest, Bucketize) {
 /// The semantic of SoftMax is
 /// res_i = exp(input_i) / (exp(input_0) + ... + exp(input_N)).
 TEST_P(OperatorTest, SoftMax) {
-  ENABLED_BACKENDS(Interpreter, CPU, OpenCL);
+  CHECK_IF_ENABLED();
 
   auto *input =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 6}, "input", false);
@@ -8245,7 +8341,7 @@ TEST_P(OperatorTest, SoftMax) {
 /// Check that the softmax operator works properly with FP16.
 /// See the test that check the SoftMax operator for more details.
 TEST_P(OperatorTest, FP16SoftMax) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
 
   auto *input =
       mod_.createPlaceholder(ElemKind::Float16Ty, {1, 6}, "input", false);
@@ -8296,16 +8392,16 @@ TEST_P(OperatorTest, QuantizeSimpleInt8) {
   quantizeSimpleTest(bindings_, mod_, F_, EE_, ElemKind::Int8QTy);
 }
 TEST_P(OperatorTest, QuantizeSimpleInt16) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
   quantizeSimpleTest(bindings_, mod_, F_, EE_, ElemKind::Int16QTy);
 }
 TEST_P(OperatorTest, QuantizeSimpleInt32) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
   quantizeSimpleTest(bindings_, mod_, F_, EE_, ElemKind::Int32QTy);
 }
 
 TEST_P(OperatorTest, LengthsToRanges) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
 
   /*
     LENGTHS = [1, 3, 0, 2]
@@ -8334,7 +8430,7 @@ TEST_P(OperatorTest, LengthsToRanges) {
 
 /// Test that LengthsRangeFill works.
 TEST_P(OperatorTest, LengthsRangeFill) {
-  ENABLED_BACKENDS(Interpreter, CPU, Habana);
+  CHECK_IF_ENABLED();
 
   /*
     LENGTHS = [4, 3, 1]
@@ -8399,37 +8495,37 @@ void batchOneHotTest(glow::PlaceholderBindings &bindings, glow::Module &mod,
 
 /// Test BatchOneHot with Float data and Int32 Lengths.
 TEST_P(OperatorTest, BatchOneHotDataFloat) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
   batchOneHotTest<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy);
 }
 
 /// Test BatchOneHot with Float16 data and Int32 Lengths
 TEST_P(OperatorTest, BatchOneHotDataFloat16) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
   batchOneHotTest<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty);
 }
 
 /// Test BatchOneHot with Int64 data and Int32 Lengths.
 TEST_P(OperatorTest, BatchOneHotDataInt64) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
   batchOneHotTest<int64_t>(bindings_, mod_, F_, EE_, ElemKind::Int64ITy);
 }
 
 /// Test BatchOneHot with Int32 data and Int32 Lengths.
 TEST_P(OperatorTest, BatchOneHotDataInt32) {
-  ENABLED_BACKENDS(Interpreter, Habana);
+  CHECK_IF_ENABLED();
   batchOneHotTest<int32_t>(bindings_, mod_, F_, EE_, ElemKind::Int32ITy);
 }
 
 /// Test BatchOneHot with Int8 data and Int32 Lengths.
 TEST_P(OperatorTest, BatchOneHotDataInt8) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
   batchOneHotTest<int8_t>(bindings_, mod_, F_, EE_, ElemKind::Int8QTy);
 }
 
 /// Modulo with Int64 Tensors with SignFollowDivisor off.
 TEST_P(OperatorTest, ModuloInt64NoSignFollow) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
 
   auto *src = mod_.createPlaceholder(ElemKind::Int64ITy, {3, 5}, "src", false);
   auto srcH = bindings_.allocate(src)->getHandle<int64_t>();
@@ -8459,7 +8555,7 @@ TEST_P(OperatorTest, ModuloInt64NoSignFollow) {
 
 /// Modulo with Int64 Tensors with SignFollowDivisor on.
 TEST_P(OperatorTest, ModuloInt64SignFollow) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
 
   auto *src = mod_.createPlaceholder(ElemKind::Int64ITy, {3, 5}, "src", false);
   auto srcH = bindings_.allocate(src)->getHandle<int64_t>();
@@ -8489,7 +8585,7 @@ TEST_P(OperatorTest, ModuloInt64SignFollow) {
 
 /// Modulo with Int32 Tensors with SignFollowDivisor off.
 TEST_P(OperatorTest, ModuloInt32NoSignFollow) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
 #define TENSORTYPE int32_t
   auto *src = mod_.createPlaceholder(ElemKind::Int32ITy, {3, 5}, "src", false);
   auto srcH = bindings_.allocate(src)->getHandle<int32_t>();
@@ -8519,7 +8615,7 @@ TEST_P(OperatorTest, ModuloInt32NoSignFollow) {
 
 /// Modulo with Int32 Tensors with SignFollowDivisor off.
 TEST_P(OperatorTest, ModuloInt32SignFollow) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
 
   auto *src = mod_.createPlaceholder(ElemKind::Int32ITy, {3, 5}, "src", false);
   auto srcH = bindings_.allocate(src)->getHandle<int32_t>();
@@ -8598,19 +8694,20 @@ TEST_P(OperatorTest, dotProduct1D_Float) {
 
 /// Test a DotProduct operator with 1D inputs, using Float16Ty.
 TEST_P(OperatorTest, dotProduct1D_Float16) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
   testDotProduct1D<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty);
 }
 
 /// Test a DotProduct operator with 1D inputs, using Int8Ty.
 TEST_P(OperatorTest, dotProduct1D_Int8) {
+  CHECK_IF_ENABLED();
   testDotProduct1D<int8_t>(bindings_, mod_, F_, EE_, ElemKind::Int8QTy);
 }
 
 // Test an ElementwiseLinear operator with both axis = 0 and axis = 1
 // arguments.
 TEST_P(OperatorTest, elementwiseLinear) {
-  ENABLED_BACKENDS(Interpreter, CPU, OpenCL);
+  CHECK_IF_ENABLED();
 
   constexpr std::size_t kRows = 10;
   constexpr std::size_t kCols = 20;
@@ -8723,19 +8820,19 @@ static void testDotProduct2D(glow::PlaceholderBindings &bindings,
 
 // Test a DotProduct operator with 2D inputs, using FloatTy.
 TEST_P(OperatorTest, dotProduct2D_Float) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
   testDotProduct2D<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy);
 }
 
 // Test a DotProduct operator with 2D inputs, using Float16Ty.
 TEST_P(OperatorTest, dotProduct2D_Float16) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
   testDotProduct2D<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty);
 }
 
 // Test a DotProduct operator with 2D inputs, using Int8QTy.
 TEST_P(OperatorTest, dotProduct2D_Int8) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
   testDotProduct2D<int8_t>(bindings_, mod_, F_, EE_, ElemKind::Int8QTy);
 }
 
@@ -8811,13 +8908,13 @@ static void testBatchBoxCox(glow::PlaceholderBindings &bindings,
 
 /// Test that the BatchBoxCox operator works as expected in FloatTy.
 TEST_P(OperatorTest, BatchBoxCox_Float) {
-  ENABLED_BACKENDS(Interpreter, Habana);
+  CHECK_IF_ENABLED();
   testBatchBoxCox<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy, 0.001f);
 }
 
 /// Test that the BatchBoxCox operator works as expected in Float16Ty.
 TEST_P(OperatorTest, BatchBoxCox_Float16) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
   testBatchBoxCox<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty,
                              0.01f);
 }
@@ -8900,7 +8997,7 @@ static void testConvertTo(glow::PlaceholderBindings &bindings_,
 /// Test that ConvertTo operator casts correctly from one type to another.
 #define TEST_CONVERT_TO(T_FROM, T_TO, DTY_FROM, DTY_TO)                        \
   TEST_P(OperatorTest, ConvertFrom_##DTY_FROM##_To_##DTY_TO) {                 \
-    ENABLED_BACKENDS(Interpreter);                                             \
+    CHECK_IF_ENABLED();                                                        \
     testConvertTo<T_FROM, T_TO>(bindings_, mod_, F_, EE_, ElemKind::DTY_FROM,  \
                                 ElemKind::DTY_TO);                             \
   }
@@ -8963,7 +9060,7 @@ static void testConvertToAndBack(glow::PlaceholderBindings &bindings_,
 /// Test that ConvertTo operator casts correctly from one type to another.
 #define TEST_CAST_2WAYS(T_FROM, T_TO, DTY_FROM, DTY_TO, NOOP_CAST)             \
   TEST_P(OperatorTest, ConvertFrom_##DTY_FROM##_To_##DTY_TO##_AndBack) {       \
-    ENABLED_BACKENDS(Interpreter);                                             \
+    CHECK_IF_ENABLED();                                                        \
     testConvertToAndBack<T_FROM, T_TO>(bindings_, mod_, F_, EE_,               \
                                        ElemKind::DTY_FROM, ElemKind::DTY_TO,   \
                                        NOOP_CAST);                             \
@@ -8988,4 +9085,5 @@ TEST_CAST_2WAYS(int64_t, int64_t, Int64ITy, Int64ITy, /* castIsNoOp */ true)
 
 #undef TEST_CAST_2WAYS
 
-#undef ENABLED_BACKENDS
+INSTANTIATE_BACKEND_TEST(OperatorStatelessTest);
+INSTANTIATE_BACKEND_TEST(OperatorTest);

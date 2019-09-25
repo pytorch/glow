@@ -22,14 +22,13 @@
 
 namespace glow {
 
-llvm::Expected<std::unique_ptr<ONNXIFIModelLoader>> ONNXIFIModelLoader::parse(
+Expected<std::unique_ptr<ONNXIFIModelLoader>> ONNXIFIModelLoader::parse(
     const void *model, uint32_t modelSize, uint32_t weightsCount,
     const onnxTensorDescriptorV1 *weightDescriptors, Function &F,
     bool loadInputsAsPlaceholders, bool use_onnx) {
 
   std::unique_ptr<ONNXIFIModelLoader> loader(new ONNXIFIModelLoader());
-  llvm::Error loaderConstructionErr = llvm::Error::success();
-  MARK_ERR_CHECKED(loaderConstructionErr);
+  Error loaderConstructionErr = Error::empty();
 
   if (use_onnx) {
     std::unique_ptr<ONNXModelLoader> onnxLoader(new ONNXModelLoader(
@@ -52,6 +51,6 @@ llvm::Expected<std::unique_ptr<ONNXIFIModelLoader>> ONNXIFIModelLoader::parse(
     loader->core_ = std::move(c2Loader);
   }
 
-  return llvm::Expected<std::unique_ptr<ONNXIFIModelLoader>>(std::move(loader));
+  return Expected<std::unique_ptr<ONNXIFIModelLoader>>(std::move(loader));
 }
 } // namespace glow

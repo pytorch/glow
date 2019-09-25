@@ -282,10 +282,6 @@ void BoundInterpreterFunction::fwdConvolutionInstQuantizedImpl(
 }
 
 void BoundInterpreterFunction::fwdConvolutionInst(const ConvolutionInst *I) {
-  assert(I->getLayout() == NHWC &&
-         "Glow Interpreter supports only NHWC Convolutions");
-  assert(I->getFusedActivation() == FusedActivation::NONE &&
-         "Glow Interpreter does not support fused Activations.");
   auto kernelSizes = I->getKernels();
   auto pads = I->getPads();
   auto strides = I->getStrides();
@@ -307,8 +303,6 @@ void BoundInterpreterFunction::fwdConvolutionInst(const ConvolutionInst *I) {
 
 void BoundInterpreterFunction::fwdConvolutionGradInst(
     const ConvolutionGradInst *I) {
-  assert(I->getLayout() == NHWC &&
-         "Glow Interpreter supports only NHWC Convolutions");
   auto inW = getWeightHandle(I->getSrc());
   auto inG = getWeightHandle(I->getSrcGrad());
   auto outG = getWeightHandle(I->getDestGrad());
@@ -593,8 +587,6 @@ void BoundInterpreterFunction::fwdConvolution3DGradInst(
 
 void BoundInterpreterFunction::fwdChannelwiseQuantizedConvolutionInst(
     const ChannelwiseQuantizedConvolutionInst *I) {
-  assert(I->getGroupwise() && "Non-groupwise not supported");
-
   using AccumulatorTy = int32_t;
 
   auto inW = getWeightHandle<int8_t>(I->getSrc());
@@ -759,7 +751,6 @@ static void fwdMaxPool(Tensor *inW, Tensor *outW, Tensor *argmaxW,
 }
 
 void BoundInterpreterFunction::fwdMaxPoolInst(const MaxPoolInst *I) {
-  assert(I->getLayout() == NHWC && "Glow Interpreter supports only NHWC Pools");
   auto inW = getTensor(I->getSrc());
   auto outW = getTensor(I->getDest());
 
@@ -777,7 +768,6 @@ void BoundInterpreterFunction::fwdMaxPoolInst(const MaxPoolInst *I) {
 
 void BoundInterpreterFunction::fwdMaxPoolWithArgmaxInst(
     const MaxPoolWithArgmaxInst *I) {
-  assert(I->getLayout() == NHWC && "Glow Interpreter supports only NHWC Pools");
   auto inW = getTensor(I->getSrc());
   auto outW = getTensor(I->getDest());
   auto argmaxW = getTensor(I->getArgmax());
@@ -896,7 +886,6 @@ void BoundInterpreterFunction::fwdAvgPoolInstI8Impl(const AvgPoolInst *I) {
 }
 
 void BoundInterpreterFunction::fwdAvgPoolInst(const AvgPoolInst *I) {
-  assert(I->getLayout() == NHWC && "Glow Interpreter supports only NHWC Pools");
   if (I->getSrc()->getType()->isQuantizedType()) {
     fwdAvgPoolInstI8Impl(I);
     return;
@@ -1391,7 +1380,8 @@ void BoundInterpreterFunction::fwdExtractTensorInst(
   TYPED_INSERT(int64_t, ElemKind::Int64ITy);
   TYPED_INSERT(float, ElemKind::FloatTy);
   TYPED_INSERT(float16_t, ElemKind::Float16Ty);
-  TYPED_INSERT(int8_t, ElemKind::Int8QTy)
+  TYPED_INSERT(int8_t, ElemKind::Int8QTy);
+  TYPED_INSERT(int32_t, ElemKind::Int32QTy);
 #undef TYPED_INSERT
 
   llvm_unreachable("Unsupported tensor type");
@@ -3294,15 +3284,8 @@ void BoundInterpreterFunction::
       const float weight = static_cast<float>(WH.raw(curIdx));
       const size_t rowIdx = IH.raw(curIdx++);
       size_t offsetIn = rowIdx * inLineSize;
-      // Get the scale and offset from the row; go to the current row and offset
-      // into it up until the last 2*sizeof(T) bytes. Use memcpy to get the
-      // values out to avoid alignment issues.
-      const char *currRowScaleOffsetPtr =
-          data->getUnsafePtr() + offsetIn + inLineSize - 2 * sizeof(T);
-      T scale;
-      T offset;
-      memcpy(&scale, currRowScaleOffsetPtr, sizeof(T));
-      memcpy(&offset, currRowScaleOffsetPtr + sizeof(T), sizeof(T));
+      T scale, offset;
+      std::tie(scale, offset) = DH.getFusedScaleOffsetFromRow<T>(rowIdx);
       for (size_t k = 0; k < outLineSize; k++) {
         float d = quantization::dequantizeWithFloatOffset(
             DH.raw(offsetIn++), static_cast<float>(scale),

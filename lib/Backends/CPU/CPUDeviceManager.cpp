@@ -17,6 +17,7 @@
 #include "CPUFunction.h"
 
 #include "llvm/Support/CommandLine.h"
+#include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/raw_ostream.h"
 
 namespace glow {
@@ -66,6 +67,8 @@ void CPUDeviceManager::addNetworkImpl(const Module *module,
                                       ReadyCBTy readyCB) {
   DCHECK(readyCB != nullptr);
 
+  uint64_t allFunctionsMemoryBytes{0};
+
   // First check for uniqueness of the function name.
   for (const auto &func : functions) {
     if (functions_.count(func.first) != 0) {
@@ -89,11 +92,15 @@ void CPUDeviceManager::addNetworkImpl(const Module *module,
                   .str()));
       return;
     }
+
+    allFunctionsMemoryBytes +=
+        func.second->getRuntimeBundle().getConstantWeightSize();
   }
 
-  if (usedMemoryBytes_ + functionCost_ > maxMemoryBytes_) {
-    readyCB(module, MAKE_ERR(GlowErr::ErrorCode::RUNTIME_OUT_OF_DEVICE_MEMORY,
-                             "Failed to add network: not enough memory"));
+  if (usedMemoryBytes_ + allFunctionsMemoryBytes > maxMemoryBytes_) {
+    readyCB(module,
+            MAKE_ERR(ErrorValue::ErrorCode::RUNTIME_OUT_OF_DEVICE_MEMORY,
+                     "Failed to add network: not enough memory"));
     return;
   }
 
@@ -103,29 +110,37 @@ void CPUDeviceManager::addNetworkImpl(const Module *module,
       func.second->getRuntimeBundle().collectConstants(module);
     }
     functions_.emplace(func.first, func.second);
-    usedMemoryBytes_ += functionCost_; // TODO:: static moduleSize
   }
 
+  usedMemoryBytes_ += allFunctionsMemoryBytes;
   assert(usedMemoryBytes_ <= maxMemoryBytes_);
 
+  // Export change in memory usage.
+  exportMemoryCounters();
+
   // Fire the ready CB.
-  readyCB(module, llvm::Error::success());
+  readyCB(module, Error::success());
 }
 
 void CPUDeviceManager::evictNetworkImpl(std::string functionName,
                                         EvictFunctionCBTy evictCB) {
   DCHECK(evictCB != nullptr);
 
-  if (functions_.erase(functionName)) {
-    usedMemoryBytes_ -= functionCost_; // TODO: static moduleSize
+  auto it = functions_.find(functionName);
+  if (it != functions_.end()) {
+    usedMemoryBytes_ -= it->second->getRuntimeBundle().getConstantWeightSize();
+    functions_.erase(it);
   } else {
     evictCB(functionName,
-            MAKE_ERR(GlowErr::ErrorCode::RUNTIME_NET_NOT_FOUND,
+            MAKE_ERR(ErrorValue::ErrorCode::RUNTIME_NET_NOT_FOUND,
                      strFormat("Could not find function with name %s to evict",
                                functionName.c_str())));
     return;
   }
-  evictCB(functionName, llvm::Error::success());
+  // Export change in memory usage.
+  exportMemoryCounters();
+
+  evictCB(functionName, Error::success());
 }
 
 void CPUDeviceManager::runFunctionImpl(
@@ -140,7 +155,7 @@ void CPUDeviceManager::runFunctionImpl(
     dmRun.addArg("reason", "function not found");
     TRACE_EVENT_SCOPE_END_NAMED(dmRun);
     resultCB(id,
-             MAKE_ERR(GlowErr::ErrorCode::RUNTIME_NET_NOT_FOUND,
+             MAKE_ERR(ErrorValue::ErrorCode::RUNTIME_NET_NOT_FOUND,
                       llvm::formatv("Function {0} not found", function).str()),
              std::move(context));
     return;

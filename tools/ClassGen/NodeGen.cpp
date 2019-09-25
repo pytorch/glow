@@ -37,6 +37,8 @@ int main(int argc, char **argv) {
   //                    Input/Output nodes
   //===--------------------------------------------------------------------===//
 
+  BB.includeHeader("glow/Graph/Nodes.h");
+
   BB.declareNode("Storage");
   BB.declareNode("Constant");
   BB.declareNode("Placeholder");
@@ -82,8 +84,8 @@ int main(int argc, char **argv) {
       .addMember(MemberType::VectorUnsigned, "Pads")
       .addMember(MemberType::Unsigned, "Group")
       .addMember(MemberType::Unsigned, "Dilation")
-      .addMember(MemberType::Enum, "Layout")
-      .addMember(MemberType::Enum, "FusedActivation")
+      .addMember(MEMBER_TYPE_INFO(glow::ConvolutionLayout), "Layout")
+      .addMember(MEMBER_TYPE_INFO(glow::FusedActivation), "FusedActivation")
       .addExtraMethod(
           "bool hasFusedActivation() const;",
           "bool ConvolutionNode::hasFusedActivation() const { return "
@@ -333,6 +335,13 @@ int main(int argc, char **argv) {
       .addInput("RHS")
       .addResultFromCtorArg()
       .setDocstring("Performs Min on the LHS and RHS operands.");
+
+  BB.newNode("Clip")
+      .addInput("Input")
+      .addMember(MemberType::Float, "Min")
+      .addMember(MemberType::Float, "Max")
+      .addResultFromCtorArg()
+      .setDocstring("Clip range of inputs to lie in [Min, Max].");
 
   BB.newNode("CmpLTE")
       .addInput("LHS")

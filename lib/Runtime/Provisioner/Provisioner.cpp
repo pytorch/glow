@@ -20,6 +20,8 @@
 #include "glow/Graph/Graph.h"
 #include "glow/Support/Debug.h"
 
+#include "llvm/Support/FormatVariadic.h"
+
 #include <future>
 #include <map>
 #include <queue>
@@ -57,8 +59,8 @@ Provisioner::Provisioner(DeviceManagerMapTy &devices) {
   }
 }
 
-llvm::Error Provisioner::provision(DAGListTy &networks, Module &module,
-                                   CompilationContext &cctx) {
+Error Provisioner::provision(DAGListTy &networks, Module &module,
+                             CompilationContext &cctx) {
   // Walk the networks and group by logicalDeviceId.
   std::map<DeviceIDTy, std::vector<DAGNode *>> logicalDevices;
   // List of functions being added.
@@ -75,7 +77,7 @@ llvm::Error Provisioner::provision(DAGListTy &networks, Module &module,
           for (auto &name : localActiveNames) {
             activeFunctions_.erase(name);
           }
-          return MAKE_ERR(GlowErr::ErrorCode::RUNTIME_NET_BUSY,
+          return MAKE_ERR(ErrorValue::ErrorCode::RUNTIME_NET_BUSY,
                           llvm::formatv("Cannot add the network {0}, as it is "
                                         "currently being provisioned.",
                                         node->name)
@@ -189,7 +191,7 @@ llvm::Error Provisioner::provision(DAGListTy &networks, Module &module,
         if (logicalDeviceSize[i].second > deviceMemory[j].second) {
           cleanupProvision(localActiveNames);
           return MAKE_ERR(
-              GlowErr::ErrorCode::RUNTIME_OUT_OF_DEVICE_MEMORY,
+              ErrorValue::ErrorCode::RUNTIME_OUT_OF_DEVICE_MEMORY,
               llvm::formatv("Not enough memory to provision functions "
                             "onto devices. Need {0} bytes, have {1}.",
                             logicalDeviceSize[i].second, deviceMemory[j].second)
@@ -199,11 +201,11 @@ llvm::Error Provisioner::provision(DAGListTy &networks, Module &module,
         DeviceIDTy logicalID = logicalDeviceSize[i].first;
         std::promise<void> addPromise;
         auto ready = addPromise.get_future();
-        std::unique_ptr<llvm::Error> addErr;
+        std::unique_ptr<Error> addErr;
         devices_[deviceID]->addNetwork(
             &module, functionMaps[logicalID],
-            [&addErr, &addPromise](const Module *, llvm::Error err) {
-              addErr = llvm::make_unique<llvm::Error>(std::move(err));
+            [&addErr, &addPromise](const Module *, Error err) {
+              addErr = llvm::make_unique<Error>(std::move(err));
               addPromise.set_value();
             });
         ready.wait();
@@ -220,28 +222,36 @@ llvm::Error Provisioner::provision(DAGListTy &networks, Module &module,
       }
     }
   }
-  cleanupProvision(localActiveNames);
-  return llvm::Error::success();
+  cleanupProvision(localActiveNames, false);
+  return Error::success();
 };
 
-llvm::Error Provisioner::removeFunction(llvm::StringRef name) {
+Error Provisioner::removeFunction(llvm::StringRef name) {
   std::lock_guard<std::mutex> functionsLock(functionsLock_);
   auto it = activeFunctions_.find(name);
   if (it != activeFunctions_.end()) {
     return MAKE_ERR(
-        GlowErr::ErrorCode::RUNTIME_NET_BUSY,
+        ErrorValue::ErrorCode::RUNTIME_NET_BUSY,
         llvm::formatv("Could not remove network: {0} as it is currently "
                       "being provisioned.",
                       name)
             .str());
   }
   functions_.erase(name);
-  return llvm::Error::success();
+  return Error::success();
 }
 
-void Provisioner::cleanupProvision(llvm::ArrayRef<std::string> names) {
+void Provisioner::cleanupProvision(llvm::ArrayRef<std::string> names,
+                                   bool failure) {
   std::lock_guard<std::mutex> functionLock(functionsLock_);
   for (auto &name : names) {
     activeFunctions_.erase(name);
+    if (failure) {
+      // Remove any functions added before the failure.
+      functions_.erase(name);
+    } else {
+      // Free compilationResources from the compiledFunctions.
+      functions_[name]->freeCompilationResources();
+    }
   }
 }

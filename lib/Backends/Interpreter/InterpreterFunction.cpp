@@ -49,7 +49,7 @@ void InterpreterFunction::collectConstants(const Module *module) {
   }
 }
 
-llvm::Error InterpreterFunction::execute(ExecutionContext *context) {
+Error InterpreterFunction::execute(ExecutionContext *context) {
   BoundInterpreterFunction boundFunc(constants_);
   auto res = boundFunc.execute(F_.get(), context);
   {
@@ -177,8 +177,8 @@ void BoundInterpreterFunction::deleteTensor(const Value *v) {
   tensors_.erase(it);
 }
 
-llvm::Error BoundInterpreterFunction::execute(IRFunction *F,
-                                              ExecutionContext *context) {
+Error BoundInterpreterFunction::execute(IRFunction *F,
+                                        ExecutionContext *context) {
   {
     TRACE_EVENT_SCOPE(context, TraceLevel::RUNTIME, "registerTensors");
 
@@ -238,5 +238,5 @@ llvm::Error BoundInterpreterFunction::execute(IRFunction *F,
     }
   }
 
-  return llvm::Error::success();
+  return Error::success();
 }

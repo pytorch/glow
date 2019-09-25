@@ -124,6 +124,10 @@ OpenCLFunction::OpenCLFunction(std::unique_ptr<IRFunction> F,
   setTraceInfo(std::move(traceInfo));
 }
 
+void OpenCLFunction::freeCompilationResources() {
+  runtimeBundle_.freeConstants();
+}
+
 OpenCLFunction::~OpenCLFunction() {
   for (auto &kv : programsCache_) {
     auto prog = kv.second;
@@ -235,6 +239,34 @@ static size_t setKernelArgsForBuffers(cl_kernel kernel, const Instruction &I,
   return kernelArgIdx - 1;
 }
 
+/// \returns the preferred (intra) vector width for the given OpenCL \p device,
+/// and the given \p elementType.
+static unsigned getPreferredVectorWidth(cl_device_id device,
+                                        ElemKind elementType) {
+  cl_uint width;
+  cl_device_info paramName;
+  switch (elementType) {
+  case ElemKind::FloatTy:
+    paramName = CL_DEVICE_PREFERRED_VECTOR_WIDTH_FLOAT;
+    break;
+  case ElemKind::BoolTy:
+  case ElemKind::Int8QTy:
+    paramName = CL_DEVICE_PREFERRED_VECTOR_WIDTH_CHAR;
+    break;
+  case ElemKind::Int32QTy:
+    paramName = CL_DEVICE_PREFERRED_VECTOR_WIDTH_INT;
+    break;
+  case ElemKind::Int64ITy:
+    paramName = CL_DEVICE_PREFERRED_VECTOR_WIDTH_LONG;
+    break;
+  default:
+    LOG(FATAL) << "Unsupported vector data type: "
+               << Type::getElementName(elementType).str();
+  }
+  clGetDeviceInfo(device, paramName, sizeof(width), &width, NULL);
+  return width;
+}
+
 void OpenCLFunction::fillBuffer(cl_mem buffer, uint64_t start, uint64_t len,
                                 float value, ElemKind elemKind,
                                 runtime::OpenCLDeviceBindings *devBindings,
@@ -341,8 +373,6 @@ void OpenCLFunction::executeNCHWConvolution(
     std::vector<KernelLaunch> &kernelLaunches) {
   DCHECK(executionContext->getDeviceBindings())
       << "DeviceBindings must be set.";
-  DCHECK(CC->getFusedActivation() == FusedActivation::NONE)
-      << "OpenCL Backend does not support fused activations.";
   auto devBindings = static_cast<runtime::OpenCLDeviceBindings *>(
       executionContext->getDeviceBindings());
   auto input = CC->getSrc();
@@ -550,7 +580,7 @@ static void topK(Tensor &outW, Tensor &indW, Tensor &inW, size_t k) {
   }
 }
 
-llvm::Error OpenCLFunction::execute(ExecutionContext *context) {
+Error OpenCLFunction::execute(ExecutionContext *context) {
   auto clBindings = static_cast<runtime::OpenCLDeviceBindings *>(
       context->getDeviceBindings());
 
@@ -607,7 +637,9 @@ llvm::Error OpenCLFunction::execute(ExecutionContext *context) {
         // The check for quantization below is a temporary workaround until the
         // corresponding kernels are implemented for the quantized operations.
         if (!isQuantized) {
-          if (global % 16 == 0) {
+          if (getPreferredVectorWidth(deviceId, elemTy) == 1) {
+            // If the device prefers not to use vector data types, let's not.
+          } else if (global % 16 == 0) {
             // Start less kernels and let each kernel do more work using vector
             // instructions.
             global /= 16;
@@ -940,8 +972,6 @@ llvm::Error OpenCLFunction::execute(ExecutionContext *context) {
       // index correctly into the output buffer. If the output has zero
       // dimensions store one slice of size 1 into destSliceSizes.
       auto destDims = BRA->getDest()->getType()->dims();
-      DCHECK(destDims.size() < 4 &&
-             "OpenCL BatchedReduceAdd supports max 3 output dimensions");
       std::vector<size_t> destDimsVec(destDims.begin(), destDims.end());
       if (destDims.empty()) {
         destDimsVec.emplace_back(1);
@@ -1010,7 +1040,6 @@ llvm::Error OpenCLFunction::execute(ExecutionContext *context) {
 
     if (auto *CG = dyn_cast<ConvolutionGradInst>(&I)) {
       auto *src = CG->getSrc();
-      auto *filter = CG->getFilter();
       auto *destGrad = CG->getDestGrad();
       auto *srcGrad = CG->getSrcGrad();
       auto *filterGrad = CG->getFilterGrad();
@@ -1044,10 +1073,6 @@ llvm::Error OpenCLFunction::execute(ExecutionContext *context) {
                  biasGrad->size(), 0, biasGrad->getElementType(), clBindings,
                  kernelLaunches);
 
-      (void)filter;
-      DCHECK(filter->dims() == filterGrad->dims()) << "Dims should be the same";
-      DCHECK(src->dims() == srcGrad->dims()) << "Dims should be the same";
-
       enqueueKernel(I.getName(), commands, kernel, deviceId,
                     {destGradDim.h, destGradDim.w, destGradDim.c},
                     kernelLaunches);
@@ -1066,9 +1091,7 @@ llvm::Error OpenCLFunction::execute(ExecutionContext *context) {
       auto numArgs = setKernelArgsForBuffers(kernel, I, 1, runtimeBundle_);
 
       ShapeHW kdim(PM->getKernels());
-      DCHECK(kdim.isSquare()) << "Only square kernel is supported";
       ShapeHW sdim(PM->getStrides());
-      DCHECK(sdim.isSquare()) << "Only square stride is supported";
       setKernelArg<cl_uint>(kernel, numArgs + 1, kdim.height);
       setKernelArg<cl_uint>(kernel, numArgs + 2, sdim.height);
       auto pads = PaddingTLBR(PM->getPads());
@@ -1081,13 +1104,13 @@ llvm::Error OpenCLFunction::execute(ExecutionContext *context) {
 
         setKernelArg(kernel, numArgs + 4, odim);
         setKernelArg(kernel, numArgs + 5, idim);
-        global = {odim.h, odim.w, odim.c};
+        global = {{odim.h, odim.w, odim.c}};
       } else {
         ShapeNHWC odim(PM->getDest()->getType()->dims());
         ShapeNHWC idim(PM->getSrc()->getType()->dims());
         setKernelArg(kernel, numArgs + 4, odim);
         setKernelArg(kernel, numArgs + 5, idim);
-        global = {odim.h, odim.w, odim.c};
+        global = {{odim.h, odim.w, odim.c}};
       }
 
       enqueueKernel(I.getName(), commands, kernel, deviceId, global,
@@ -1106,9 +1129,7 @@ llvm::Error OpenCLFunction::execute(ExecutionContext *context) {
       auto idim = ShapeNHWC(PM->getSrc()->getType()->dims());
       auto pads = PaddingTLBR(PM->getPads());
       ShapeHW kdim(PM->getKernels());
-      DCHECK(kdim.isSquare()) << "Only square kernel is supported";
       ShapeHW sdim(PM->getStrides());
-      DCHECK(sdim.isSquare()) << "Only square stride is supported";
       setKernelArg<cl_uint>(kernel, numArgs + 1, kdim.height);
       setKernelArg<cl_uint>(kernel, numArgs + 2, sdim.height);
       setKernelArg(kernel, numArgs + 3, pads);
@@ -1129,17 +1150,12 @@ llvm::Error OpenCLFunction::execute(ExecutionContext *context) {
       auto srcGradDim = ShapeNHWC(PMG->getSrcGrad()->dims());
       auto pads = PaddingTLBR(PMG->getPads());
       ShapeHW kdim(PMG->getKernels());
-      DCHECK(kdim.isSquare()) << "Only square kernel is supported";
       ShapeHW sdim(PMG->getStrides());
-      DCHECK(sdim.isSquare()) << "Only square stride is supported";
       setKernelArg<cl_uint>(kernel, numArgs + 1, kdim.height);
       setKernelArg<cl_uint>(kernel, numArgs + 2, sdim.height);
       setKernelArg(kernel, numArgs + 3, pads);
       setKernelArg(kernel, numArgs + 4, srcGradDim);
       setKernelArg(kernel, numArgs + 5, destGradDim);
-
-      DCHECK_EQ(srcGradDim.n, destGradDim.n) << "batch size is wrong";
-      DCHECK_EQ(srcGradDim.c, destGradDim.c) << "depth size is wrong";
 
       enqueueKernel(I.getName(), commands, kernel, deviceId, {srcGradDim.n},
                     kernelLaunches);
@@ -1158,9 +1174,7 @@ llvm::Error OpenCLFunction::execute(ExecutionContext *context) {
       auto numArgs = setKernelArgsForBuffers(kernel, I, 1, runtimeBundle_);
 
       ShapeHW kdim(PA->getKernels());
-      DCHECK(kdim.isSquare()) << "Only square kernel is supported";
       ShapeHW sdim(PA->getStrides());
-      DCHECK(sdim.isSquare()) << "Only square stride is supported";
       setKernelArg<cl_uint>(kernel, numArgs + 1, kdim.height);
       setKernelArg<cl_uint>(kernel, numArgs + 2, sdim.height);
       auto pads = PaddingTLBR(PA->getPads());
@@ -1173,13 +1187,13 @@ llvm::Error OpenCLFunction::execute(ExecutionContext *context) {
 
         setKernelArg(kernel, numArgs + 4, odim);
         setKernelArg(kernel, numArgs + 5, idim);
-        global = {odim.h, odim.w, odim.c};
+        global = {{odim.h, odim.w, odim.c}};
       } else {
         ShapeNHWC odim(PA->getDest()->getType()->dims());
         ShapeNHWC idim(PA->getSrc()->getType()->dims());
         setKernelArg(kernel, numArgs + 4, odim);
         setKernelArg(kernel, numArgs + 5, idim);
-        global = {odim.h, odim.w, odim.c};
+        global = {{odim.h, odim.w, odim.c}};
       }
 
       if (isNCHW && isQuantized) {
@@ -1262,10 +1276,6 @@ llvm::Error OpenCLFunction::execute(ExecutionContext *context) {
 
       auto *data = GI->getData();
 
-      DCHECK(data->getElementType() == ElemKind::FloatTy)
-          << "At the moment only floats are supported, unsupported type: "
-          << Type::getElementName(data->getElementType()).str();
-
       TypeRef dataType = data->getType();
       size_t numIndices = GI->getIndices()->size();
 
@@ -1292,9 +1302,6 @@ llvm::Error OpenCLFunction::execute(ExecutionContext *context) {
     }
 
     if (auto *SDI = dyn_cast<ScatterDataInst>(&I)) {
-      assert(!SDI->getCumulative() && "Cumulative assign not supported!");
-      assert(SDI->getIndices()->dims()[1] == 1 &&
-             "Only one-dimensional indices are supported!");
       cl_kernel kernel = createKernel(kernelName, program);
       setKernelArg(kernel, 0, deviceBuffer);
       auto numArgs = setKernelArgsForBuffers(kernel, I, 1, runtimeBundle_);
@@ -1468,7 +1475,7 @@ llvm::Error OpenCLFunction::execute(ExecutionContext *context) {
     kernelLaunches.clear();
   }
 
-  return llvm::Error::success();
+  return Error::success();
 }
 
 uint64_t OpenCLFunction::copyValueToDevice(
@@ -1754,7 +1761,7 @@ OCLBackend::compileIR(std::unique_ptr<IRFunction> IR) const {
   return function;
 }
 
-llvm::Expected<std::unique_ptr<CompiledFunction>>
+Expected<std::unique_ptr<CompiledFunction>>
 OCLBackend::compile(Function *F, const BackendOptions &opts) const {
   TraceInfo traceInfo = buildManualTraceInfo(F);
 
@@ -1776,8 +1783,7 @@ OCLBackend::compile(Function *F, const BackendOptions &opts) const {
       llvm::make_unique<OpenCLFunction>(std::move(IR), std::move(bundle),
                                         std::move(traceInfo));
 
-  return llvm::Expected<std::unique_ptr<CompiledFunction>>(
-      std::move(compiledFunc));
+  return Expected<std::unique_ptr<CompiledFunction>>(std::move(compiledFunc));
 }
 
 bool OCLBackend::isOpSupported(const NodeInfo &NI) const {
@@ -1930,6 +1936,176 @@ bool OCLBackend::isOpSupported(const NodeInfo &NI) const {
   default:
     return false;
   }
+}
+
+/// If \p I got square shaped kernels and strides \returns true.
+template <class T> static bool checkSquare(const T &I) {
+  ShapeHW kdim(I.getKernels());
+  ShapeHW sdim(I.getStrides());
+  if (!kdim.isSquare()) {
+    report("Only square kernel is supported");
+    return false;
+  }
+  if (!sdim.isSquare()) {
+    report("Only square stride is supported");
+    return false;
+  }
+  return true;
+}
+
+bool OCLBackend::verify(const Function &F) const {
+  if (!F.verify()) {
+    return false;
+  }
+  if (!checkAllNodesSupported(F)) {
+    return false;
+  }
+  for (const Node &N : F.getNodes()) {
+    if (!checkNoFusionForNode(N)) {
+      return false;
+    }
+    switch (N.getKind()) {
+    case Kinded::Kind::ScatterDataNodeKind: {
+      auto *SD = llvm::cast<ScatterDataNode>(&N);
+      if (SD->getCumulative()) {
+        report("Cumulative assign not supported!");
+        return false;
+      }
+      if (SD->getIndices().dims()[1] != 1) {
+        report("Only one-dimensional indices are supported");
+        return false;
+      }
+      continue;
+    }
+    case Kinded::Kind::OCLBatchedReduceAddNodeKind: {
+      auto *BRA = llvm::cast<OCLBatchedReduceAddNode>(&N);
+      auto destDims = BRA->getResult().getType()->dims();
+      if (destDims.size() > 3) {
+        report("OpenCL BatchedReduceAdd supports max 3 output dimensions");
+        return false;
+      }
+      continue;
+    }
+    case Kinded::Kind::MaxPoolNodeKind: {
+      auto *MP = llvm::cast<MaxPoolNode>(&N);
+      if (!checkSquare(*MP)) {
+        return false;
+      }
+      continue;
+    }
+    case Kinded::Kind::MaxPoolGradNodeKind: {
+      auto *MPG = llvm::cast<MaxPoolGradNode>(&N);
+      if (!checkSquare(*MPG)) {
+        return false;
+      }
+      continue;
+    }
+    case Kinded::Kind::AvgPoolNodeKind: {
+      auto *AP = llvm::cast<AvgPoolNode>(&N);
+      if (!checkSquare(*AP)) {
+        return false;
+      }
+      continue;
+    }
+    default:
+      continue;
+    }
+  }
+  return true;
+}
+
+bool OCLBackend::verify(const IRFunction &IR) const {
+  for (const auto &I : IR.getInstrs()) {
+    if (!checkNoFusionForInstr(I)) {
+      return false;
+    }
+    switch (I.getKind()) {
+    case Kinded::Kind::ScatterDataInstKind: {
+      auto *SD = llvm::cast<ScatterDataInst>(&I);
+      if (SD->getCumulative()) {
+        report("Cumulative assign not supported!");
+        return false;
+      }
+      if (SD->getIndices()->dims()[1] != 1) {
+        report("Only one-dimensional indices are supported");
+        return false;
+      }
+      continue;
+    }
+    case Kinded::Kind::OCLBatchedReduceAddInstKind: {
+      auto *BRA = llvm::cast<OCLBatchedReduceAddInst>(&I);
+      auto destDims = BRA->getDest()->getType()->dims();
+      if (destDims.size() > 3) {
+        report("OpenCL BatchedReduceAdd supports max 3 output dimensions");
+        return false;
+      }
+      continue;
+    }
+    case Kinded::Kind::ConvolutionGradInstKind: {
+      auto *CG = llvm::cast<ConvolutionGradInst>(&I);
+      auto *src = CG->getSrc();
+      auto *filter = CG->getFilter();
+      auto *srcGrad = CG->getSrcGrad();
+      auto *filterGrad = CG->getFilterGrad();
+      if (filter->dims() != filterGrad->dims() ||
+          src->dims() != srcGrad->dims()) {
+        report("Dims should be the same");
+        return false;
+      }
+      continue;
+    }
+    case Kinded::Kind::MaxPoolInstKind: {
+      auto *MP = llvm::cast<MaxPoolInst>(&I);
+      if (!checkSquare(*MP)) {
+        return false;
+      }
+      continue;
+    }
+    case Kinded::Kind::MaxPoolWithArgmaxInstKind: {
+      auto *MPWA = llvm::cast<MaxPoolWithArgmaxInst>(&I);
+      if (!checkSquare(*MPWA)) {
+        return false;
+      }
+      continue;
+    }
+    case Kinded::Kind::MaxPoolWithArgmaxGradInstKind: {
+      auto *MPWAG = llvm::cast<MaxPoolWithArgmaxGradInst>(&I);
+      if (!checkSquare(*MPWAG)) {
+        return false;
+      }
+      auto destGradDim = ShapeNHWC(MPWAG->getDestGrad()->dims());
+      auto srcGradDim = ShapeNHWC(MPWAG->getSrcGrad()->dims());
+      if (srcGradDim.n != destGradDim.n) {
+        report("batch size is wrong");
+        return false;
+      }
+      if (srcGradDim.c != destGradDim.c) {
+        report("depth size is wrong");
+        return false;
+      }
+      continue;
+    }
+    case Kinded::Kind::AvgPoolInstKind: {
+      auto *AP = llvm::cast<AvgPoolInst>(&I);
+      if (!checkSquare(*AP)) {
+        return false;
+      }
+      continue;
+    }
+    case Kinded::Kind::GatherInstKind: {
+      auto *G = llvm::cast<GatherInst>(&I);
+      auto *data = G->getData();
+      if (data->getElementType() != ElemKind::FloatTy) {
+        report("Gather: At the moment only floats are supported");
+        return false;
+      }
+      continue;
+    }
+    default:
+      continue;
+    }
+  }
+  return true;
 }
 
 TraceInfo OCLBackend::buildManualTraceInfo(Function *F) const {

@@ -23,7 +23,7 @@ namespace glow {
 
 /// Convert regular convolution nodes (that use NHWC) into a backend-specific
 /// convolution nodes using NCHW.
-Node *convertConvToNCHWConv(ConvolutionNode *CN, Function *F) {
+inline Node *convertConvToNCHWConv(ConvolutionNode *CN, Function *F) {
   // Convert filter and input from NHWC (Glow's default) into NCHW.
   auto *NI = F->createTranspose("conv.input", CN->getInput(), NHWC2NCHW);
   auto *NF = F->createTranspose("conv.filter", CN->getFilter(), NHWC2NCHW);
@@ -44,7 +44,7 @@ Node *convertConvToNCHWConv(ConvolutionNode *CN, Function *F) {
 
 /// Convert regular pool nodes (that use NHWC) into backend-specific nodes using
 /// NCHW.
-Node *convertMaxPoolToNCHWPool(MaxPoolNode *PN, Function *F) {
+inline Node *convertMaxPoolToNCHWPool(MaxPoolNode *PN, Function *F) {
   // Convert input from NHWC (Glow's default) into NCHW.
   auto *NI = F->createTranspose("maxpool.input", PN->getInput(), NHWC2NCHW);
 
@@ -63,7 +63,7 @@ Node *convertMaxPoolToNCHWPool(MaxPoolNode *PN, Function *F) {
   return NR;
 }
 
-Node *convertAvgPoolToNCHWPool(AvgPoolNode *PN, Function *F) {
+inline Node *convertAvgPoolToNCHWPool(AvgPoolNode *PN, Function *F) {
   // Convert input from NHWC (Glow's default) into NCHW.
   auto *NI = F->createTranspose("maxpool.input", PN->getInput(), NHWC2NCHW);
 

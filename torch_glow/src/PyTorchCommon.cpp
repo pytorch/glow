@@ -18,11 +18,13 @@
 
 #include "CachingGraphRunner.h"
 #include "FuseLinear.h"
+#include "FusePrepack.h"
 #include "GlowFuser.h"
 #include "PyTorchModelLoader.h"
 
 #include <torch/csrc/jit/operator_options.h>
 #include <torch/csrc/jit/pass_manager.h>
+#include <torch/csrc/jit/passes/subgraph_rewrite.h>
 
 namespace glow {
 
@@ -46,6 +48,50 @@ runtime::HostManager *getHostManager() {
   return hostManager.get();
 }
 
+/// Given a Glow ElemKind \p ty, \returns a matching PyTorch ScalarType.
+c10::ScalarType elemKindToScalarType(glow::ElemKind ty) {
+  switch (ty) {
+  case ElemKind::FloatTy:
+    return at::kFloat;
+  case ElemKind::Float16Ty:
+    return at::kHalf;
+  case ElemKind::Int32ITy:
+    return at::kInt;
+  case ElemKind::Int64ITy:
+    return at::kLong;
+  case ElemKind::BoolTy:
+    return at::kBool;
+  case ElemKind::UInt8FusedQTy:
+  case ElemKind::UInt8FusedFP16QTy:
+  case ElemKind::UInt4FusedFP16QTy:
+  case ElemKind::Int8QTy:
+  case ElemKind::UInt8QTy:
+  case ElemKind::Int16QTy:
+  case ElemKind::Int32QTy:
+    LOG(DFATAL) << "Not supported yet.";
+    return at::kLong;
+  }
+  LOG(DFATAL) << "Cannot reach here.";
+}
+
+/// Given a PyTorch ScalarType \p ty, \returns a matching Glow ElemKind.
+glow::ElemKind scalarTypeToElemKind(c10::ScalarType ty) {
+  if (ty == at::kFloat) {
+    return ElemKind::FloatTy;
+  } else if (ty == at::kHalf) {
+    return ElemKind::Float16Ty;
+  } else if (ty == at::kInt) {
+    return ElemKind::Int32ITy;
+  } else if (ty == at::kLong) {
+    return ElemKind::Int64ITy;
+  } else if (ty == at::kBool) {
+    return ElemKind::BoolTy;
+  } else {
+    LOG(DFATAL) << "Not supported yet.";
+    return ElemKind::Int64ITy;
+  }
+}
+
 } // namespace
 
 PyTorchLoaderSettings &getPyTorchLoaderSettings() {
@@ -65,28 +111,28 @@ void glowCustomFuse(std::shared_ptr<torch::jit::Graph> &g,
   // Currently PyTorch does not have good support for aten:addmm when fusing
   // Therefore we use some pattern to translate all aten::addmm to
   // aten::linear before we fuse the whole graph.
-  FuseLinear(g);
+  FuseKnownPatterns(g);
 
   GlowCustomFuse(g, PyTorchModelLoader::isNodeSupported, fuseSymbol);
 }
 
 void registerGlowOp() {
   auto options = c10::OperatorOptions();
-  options.setAliasAnalysis(at::AliasAnalysisKind::PURE);
+  options.setAliasAnalysis(at::AliasAnalysisKind::PURE_FUNCTION);
 
   torch::jit::RegisterOperators op({torch::jit::Operator(
       getGlowSymbol(),
-      [](const torch::jit::Node *node) {
+      [](const torch::jit::Node *node) -> torch::jit::Operation {
         std::shared_ptr<torch::jit::Graph> graph = node->g(at::attr::Subgraph);
         auto graphRunner =
             std::make_shared<CachingGraphRunner>(graph.get(), getHostManager());
 
         return [graphRunner](torch::jit::Stack &stack) {
-          llvm::Error err = graphRunner->run(stack);
+          Error err = graphRunner->run(stack);
 
           if (static_cast<bool>(err)) {
             // PyTorch framework expects an exception been thrown here.
-            throw std::invalid_argument(llvm::toString(std::move(err)));
+            throw std::invalid_argument(ERR_TO_STRING(std::move(err)));
           }
           return 0;
         };
@@ -94,18 +140,65 @@ void registerGlowOp() {
       options)});
 }
 
-void registerGlowFusionPass() {
-  torch::jit::RegisterPass pass([](std::shared_ptr<torch::jit::Graph> &g) {
-    if (getPyTorchLoaderSettings().fusionPassEnabled) {
+void registerGlowFusionPass(std::function<bool()> enablePassFn) {
+  torch::jit::RegisterPass pass([enablePassFn = std::move(enablePassFn)](
+                                    std::shared_ptr<torch::jit::Graph> &g) {
+    if (enablePassFn()) {
       glow::glowCustomFuse(g, getGlowSymbol());
     }
   });
 }
 
-void registerGlowFusionOpAndPass(bool enableFusionPass) {
+void registerGlowFusionOpAndPass(std::function<bool()> enablePassFn) {
   registerGlowOp();
-  registerGlowFusionPass();
-  getPyTorchLoaderSettings().fusionPassEnabled = enableFusionPass;
+  registerGlowFusionPass(std::move(enablePassFn));
+}
+
+glow::Type ptTypeToGlowType(const c10::TensorType &ptType) {
+  DCHECK(ptType.scalarType().has_value())
+      << "TensorType has no associated scalar type.";
+  const auto concreteSizes = ptType.sizes().concrete_sizes().value();
+  std::vector<size_t> dims;
+  for (const auto &size : concreteSizes) {
+    dims.push_back(static_cast<size_t>(size));
+  }
+
+  auto scalarType = ptType.scalarType().value();
+  return glow::Type(scalarTypeToElemKind(scalarType), dims);
+}
+
+at::Tensor glowTypeToEmptyPTTensor(const glow::Type &glowType) {
+  std::vector<int64_t> sizes;
+  for (const auto dim : glowType.dims()) {
+    sizes.push_back(dim);
+  }
+
+  return at::empty(sizes, at::TensorOptions().dtype(
+                              elemKindToScalarType(glowType.getElementType())));
+}
+
+glow::Tensor ptTensorToGlowTensor(const at::Tensor &ptTensor) {
+  auto glowType = ptTypeToGlowType(*c10::TensorType::create(ptTensor));
+  return glow::Tensor(ptTensor.data_ptr(), &glowType);
+}
+
+void FuseKnownPatterns(std::shared_ptr<torch::jit::Graph> &graph) {
+  FuseLinear(graph);
+  FuseConvPrepack(graph);
+
+  std::string originalPat = R"IR(
+graph(%input):
+  %res1 = prim::NumToTensor(%input)
+  %res2 = aten::Int(%res1)
+  return (%res2))IR";
+
+  std::string replacementPat = R"IR(
+graph(%input):
+  return (%input))IR";
+
+  torch::jit::SubgraphRewriter rewriter;
+  rewriter.RegisterRewritePattern(originalPat, replacementPat);
+  rewriter.runOnGraph(graph);
 }
 
 } // namespace glow

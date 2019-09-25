@@ -113,6 +113,28 @@ static const auto all_backends = ::testing::Values(
   if (!isEnabledBackend({__VA_ARGS__}))                                        \
     return;
 
+/// Blacklist of tests for the current backend under test.
+extern std::set<std::string> backendTestBlacklist;
+
+/// Stringify a macro def.
+#define BACKEND_TO_STR(X) #X
+
+/// Intermediate layer of macros to make expansion of defs work correctly.
+#define INSTANTIATE_TEST_INTERNAL(B, T)                                        \
+  INSTANTIATE_TEST_CASE_P(B, T, ::testing::Values(BACKEND_TO_STR(B)));
+
+/// Instantate a test suite for the backend specified by GLOW_TEST_BACKEND.
+/// Usually this macro will be defined by the build system, to avoid tightly
+/// coupling the existing set of backends to the source.
+#define INSTANTIATE_BACKEND_TEST(T)                                            \
+  INSTANTIATE_TEST_INTERNAL(GLOW_TEST_BACKEND, T);
+
+/// Helper macro to check the current test against the blacklist.
+#define CHECK_IF_ENABLED()                                                     \
+  if (backendTestBlacklist.count(                                              \
+          ::testing::UnitTest::GetInstance()->current_test_info()->name()))    \
+    return;
+
 /// MockBackend used only for unit testing.
 class MockBackend : public Backend {
   class MockFunction : public CompiledFunction {
@@ -120,16 +142,14 @@ class MockBackend : public Backend {
     MockFunction(runtime::RuntimeBundle &&bundle)
         : CompiledFunction(std::move(bundle)) {}
 
-    llvm::Error execute(ExecutionContext *) override {
-      return llvm::Error::success();
-    }
+    Error execute(ExecutionContext *) override { return Error::success(); }
 
     std::string getCompileBackendName() const override { return "Interpreter"; }
   };
 
   std::string getBackendName() const override { return "Interpreter"; }
 
-  llvm::Expected<std::unique_ptr<CompiledFunction>>
+  Expected<std::unique_ptr<CompiledFunction>>
   compile(Function *F, const BackendOptions &) const override {
     return llvm::make_unique<MockFunction>(runtime::RuntimeBundle::create(*F));
   }
@@ -154,16 +174,14 @@ class MockBackendCustomIRGen : public Backend {
     MockFunction(runtime::RuntimeBundle &&bundle)
         : CompiledFunction(std::move(bundle)) {}
 
-    llvm::Error execute(ExecutionContext *) override {
-      return llvm::Error::success();
-    }
+    Error execute(ExecutionContext *) override { return Error::success(); }
 
     std::string getCompileBackendName() const override { return "Interpreter"; }
   };
 
   std::string getBackendName() const override { return "Interpreter"; }
 
-  llvm::Expected<std::unique_ptr<CompiledFunction>>
+  Expected<std::unique_ptr<CompiledFunction>>
   compile(Function *F, const BackendOptions &) const override {
     return llvm::make_unique<MockFunction>(runtime::RuntimeBundle::create(*F));
   }
@@ -322,6 +340,22 @@ void insertCompiledFunction(llvm::StringRef name, CompiledFunction *func,
 /// ExecutionContext \p context on the specified DeviceManager \p device.
 void runOnDevice(ExecutionContext &context, llvm::StringRef name,
                  runtime::DeviceManager *device);
+
+/// Returns a new Constant of type UInt8FusedQTy with fused rowwise
+/// quantization scales and offsets (i.e. the last 8 bytes of each row
+/// contains the scale and offset).
+Constant *createRandomFusedRowwiseQuantizedConstant(Module &mod,
+                                                    llvm::ArrayRef<size_t> dims,
+                                                    llvm::StringRef name,
+                                                    bool useFusedFP16 = false);
+
+/// Returns a new Constant, of the provided \p type and \p dims initialized
+/// with random data. If using floating point, then it is initialized via
+/// Xavier with filterSize equal to twice the number of elements in \p dims.
+/// Otherwise integer types are initialzed via their min and max values.
+Constant *createRandomizedConstant(Module &mod, TypeRef type,
+                                   llvm::ArrayRef<size_t> dims,
+                                   llvm::StringRef name);
 
 } // namespace glow
 

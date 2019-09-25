@@ -30,7 +30,7 @@ public:
 
   /// \name CompiledFunction interface
   ///@{
-  virtual llvm::Error execute(ExecutionContext *context) override;
+  virtual Error execute(ExecutionContext *context) override;
 
   virtual void collectConstants(const Module *module) override;
 

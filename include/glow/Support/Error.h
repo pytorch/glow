@@ -16,40 +16,219 @@
 #ifndef GLOW_SUPPORT_ERROR_H
 #define GLOW_SUPPORT_ERROR_H
 
+#include <cassert>
+#include <memory>
 #include <mutex>
 #include <type_traits>
 
-#include "llvm/Support/Error.h"
-#include "llvm/Support/FormatVariadic.h"
-
 #include <glog/logging.h>
 
+/// NOTE: please only use code and macros that resides outside of the detail
+/// namespace in Error.h and Error.cpp so as to preserve a layer of
+/// abstraction between Error/Expected types and the specific classes that
+/// implement them.
+
 namespace glow {
-/// NOTE This should not be used directly, instead use EXIT_ON_ERR or
-/// TEMP_EXIT_ON_ERR. Callable that takes an llvm::Error or llvm::Expected<T>
-/// and exits the program if the Error is not equivalent llvm::Error::success()
-/// or the Expected<T> contains an error that is not equivalent
-/// llvm::Error::success()
-/// TODO: replace this with a function that will print file and
-/// line numbers also.
-extern llvm::ExitOnError exitOnErr;
+/// Consumes an Error \p err and \returns true iff the error contained an
+/// ErrorValue. Calls the log method on ErrorValue if the optional argument \p
+/// log is passed.
+#define ERR_TO_BOOL(...)                                                       \
+  (glow::detail::errorToBool(__FILE__, __LINE__, __VA_ARGS__))
 
-/// Is true_type only if applied to llvm::Error or a descendant.
+/// Consumes an Error \p err and \returns "success" if it does not contain an
+/// ErrorValue or the result of calling the log() if it does.
+#define ERR_TO_STRING(err) (glow::detail::errorToString((err)))
+
+/// Consumes an Error \p err. Calls the log method on the ErrorValue if the
+/// optional argument \p log is passed.
+#define ERR_TO_VOID(...)                                                       \
+  (glow::detail::errorToVoid(__FILE__, __LINE__, __VA_ARGS__))
+
+/// Unwraps the T from within an Expected<T>. If the Expected<T> contains
+/// an ErrorValue, the program will exit.
+#define EXIT_ON_ERR(...)                                                       \
+  (glow::detail::exitOnError(__FILE__, __LINE__, __VA_ARGS__))
+
+/// A temporary placeholder for EXIT_ON_ERR. This should be used only during
+/// refactoring to temporarily place an EXIT_ON_ERR and should eventually be
+/// replaced with either an actual EXIT_ON_ERR or code that will propogate
+/// potential errors up the stack.
+#define TEMP_EXIT_ON_ERR(...) (EXIT_ON_ERR(__VA_ARGS__))
+
+/// Makes a new Error.
+#define MAKE_ERR(...) glow::detail::makeError(__FILE__, __LINE__, __VA_ARGS__)
+
+/// Makes a new Error and \returns that Error.
+#define RETURN_ERR(...)                                                        \
+  do {                                                                         \
+    return MAKE_ERR(__VA_ARGS__);                                              \
+  } while (0)
+
+/// Takes an Expected<T> \p rhsOrErr and if it is an Error then returns
+/// it, otherwise takes the value from rhsOrErr and assigns it to \p lhs.
+#define ASSIGN_VALUE_OR_RETURN_ERR(lhs, rhsOrErr)                              \
+  do {                                                                         \
+    auto rhsOrErrV = (rhsOrErr);                                               \
+    static_assert(glow::detail::IsExpected<decltype(rhsOrErrV)>(),             \
+                  "Expected value to be a Expected");                          \
+    if (rhsOrErrV) {                                                           \
+      lhs = std::move(rhsOrErrV.get());                                        \
+    } else {                                                                   \
+      return rhsOrErrV.takeError();                                            \
+    }                                                                          \
+  } while (0)
+
+/// Takes an Expected<T> \p rhsOrErr and if it is an Error then calls FAIL()
+/// otherwise takes the value from rhsOrErr and assigns it to \p lhs.
+#define ASSIGN_VALUE_OR_FAIL_TEST(lhs, rhsOrErr)                               \
+  do {                                                                         \
+    auto rhsOrErrV = (rhsOrErr);                                               \
+    static_assert(glow::detail::IsExpected<decltype(rhsOrErrV)>(),             \
+                  "Expected value to be a Expected");                          \
+    if (rhsOrErrV) {                                                           \
+      lhs = std::move(rhsOrErrV.get());                                        \
+    } else {                                                                   \
+      FAIL() << errorToString(rhsOrErr.takeError());                           \
+    }                                                                          \
+  } while (0)
+
+/// Takes an Error and returns it if it's not success.
+// TODO: extend this to work with Expected as well.
+#define RETURN_IF_ERR(err)                                                     \
+  do {                                                                         \
+    if (auto errV = std::forward<Error>(err)) {                                \
+      static_assert(glow::detail::IsError<decltype(errV)>::value,              \
+                    "Expected value to be a Error");                           \
+      return std::forward<Error>(errV);                                        \
+    }                                                                          \
+  } while (0)
+
+/// Takes an Error and if it contains an ErrorValue then calls FAIL().
+#define FAIL_TEST_IF_ERR(err)                                                  \
+  do {                                                                         \
+    if (auto errV = std::forward<Error>(err)) {                                \
+      static_assert(glow::detail::IsError<decltype(errV)>::value,              \
+                    "Expected value to be a Error");                           \
+      FAIL() << errorToString(std::move(errV));                                \
+    }                                                                          \
+  } while (0)
+
+/// Takes a predicate \p and if it is false then creates a new Error
+/// and returns it.
+#define RETURN_ERR_IF_NOT(p, ...)                                              \
+  do {                                                                         \
+    if (!(p)) {                                                                \
+      RETURN_ERR(__VA_ARGS__);                                                 \
+    }                                                                          \
+  } while (0)
+
+/// Forward declarations.
+namespace detail {
+class GlowError;
+class GlowErrorSuccess;
+class GlowErrorEmpty;
+class GlowErrorValue;
+template <typename T> class GlowExpected;
+} // namespace detail
+
+/// Type aliases to decouple Error and Expected from underlying implementation.
+using Error = detail::GlowError;
+using ErrorSuccess = detail::GlowErrorSuccess;
+using ErrorEmpty = detail::GlowErrorEmpty;
+using ErrorValue = detail::GlowErrorValue;
+template <typename T> using Expected = detail::GlowExpected<T>;
+
+/// NOTE: detail namespace contains code that should not be used outside of
+/// Error.h and Error.cpp. Please instead use types and macros defined above.
+namespace detail {
+/// enableCheckingErrors is used to enable assertions that every Error and
+/// Expected has its status checked before it is destroyed. This should be
+/// enabled in debug builds but turned off otherwise.
+#ifndef NDEBUG
+static constexpr bool enableCheckingErrors = true;
+#else
+static constexpr bool enableCheckingErrors = false;
+#endif
+
+/// Is true_type only if applied to Error or a descendant.
+template <typename T> struct IsError : public std::is_base_of<GlowError, T> {};
+
+/// Is true_type only if applied to Expected.
+template <typename> struct IsExpected : public std::false_type {};
 template <typename T>
-struct IsLLVMError : public std::is_base_of<llvm::Error, T> {};
+struct IsExpected<GlowExpected<T>> : public std::true_type {};
 
-/// Is true_type only if applied to llvm::Expected.
-template <typename> struct IsLLVMExpected : public std::false_type {};
-template <typename T>
-struct IsLLVMExpected<llvm::Expected<T>> : public std::true_type {};
+/// CheckState<DoChecks> is a common base class for Error and Expected that
+/// tracks whether their state has been checked or not if DoChecks is true
+/// and otherwise it does nothing and has no members so as to not take extra
+/// space. This is used to ensure that all Errors and Expecteds are checked
+/// before they are destroyed.
+template <bool DoChecks> class CheckState;
 
-/// Represents errors in Glow. GlowErr track the file name and line number of
-/// where they were created as well as a textual message and/or a error code to
-/// help identify the type of error the occurred programtically.
-class GlowErr final : public llvm::ErrorInfo<GlowErr> {
+/// Specialization of CheckState with checking enabled.
+template <> class CheckState<true> {
+  /// Whether or not the a check has occurred.
+  bool checked_ = false;
+
 public:
-  /// Used by ErrorInfo::classID.
-  static const uint8_t ID;
+  /// Set the state of checked.
+  inline void setChecked(bool checked) { checked_ = checked; }
+
+  /// Asserts that the state has been checked.
+  inline void ensureChecked() const {
+    assert(checked_ && "Unchecked Error or Expected");
+  }
+  CheckState() : checked_(false) {}
+
+  /// Destructor that is used to ensure that base classes have been checked.
+  ~CheckState() { ensureChecked(); }
+};
+
+/// Specialization of CheckState with checking disabled.
+template <> class CheckState<false> {
+public:
+  inline void setChecked(bool checked) {}
+  inline void ensureChecked() const {}
+};
+
+/// Opaque is an aligned opaque container for some type T. It holds a T in-situ
+/// but will not destroy it automatically when the Opaque is destroyed but
+/// instead only when the destroy() method is called.
+template <typename T> class Opaque {
+private:
+  alignas(T) char payload_[sizeof(T)];
+
+public:
+  /// Sets the value within this Opaque container.
+  void set(T t) { new (payload_) T(std::forward<T>(t)); }
+
+  /// Gets the value within this Opaque container.
+  T &get() { return *reinterpret_cast<T *>(payload_); }
+
+  /// Gets the value within this Opaque container.
+  const T &get() const { return *reinterpret_cast<T *>(payload_); }
+
+  /// Call the destructor of the value in this container.
+  void destroy() { get().~T(); }
+};
+
+/// This method is the only way to destroy an Error \p error and mark it as
+/// checked when it contains an ErrorValue. It \returns the contained
+/// ErrorValue.
+/// NOTE: This method should not be used directly, use one of the methods that
+/// calls this.
+std::unique_ptr<GlowErrorValue> takeErrorValue(GlowError error);
+
+/// Takes an Error \p error and asserts that it does not contain an ErrorValue.
+/// Uses \p fileName and \p lineNumber for logging.
+void exitOnError(const char *fileName, size_t lineNumber, GlowError error);
+
+/// ErrorValue contains information about an error that occurs at runtime. It is
+/// not used directly but instead is passed around inside of the Error and
+/// Expected containers. It should only be constructed using the makeError
+/// method.
+class GlowErrorValue final {
+public:
   /// An enumeration of error codes representing various possible errors that
   /// could occur.
   /// NOTE: when updating this enum, also update ErrorCodeToString function
@@ -69,6 +248,8 @@ public:
     MODEL_LOADER_UNSUPPORTED_ONNX_VERSION,
     // Model loader encountered an invalid protobuf.
     MODEL_LOADER_INVALID_PROTOBUF,
+    // Partitioner error.
+    PARTITIONER_ERROR,
     // Runtime error, out of device memory.
     RUNTIME_ERROR,
     // Runtime error, out of device memory.
@@ -89,85 +270,46 @@ public:
     MODEL_WRITER_INVALID_FILENAME,
     // Model writer cannot serialize graph to the file.
     MODEL_WRITER_SERIALIZATION_ERROR,
+    // Compilation error; IR unsupported after generation.
+    COMPILE_UNSUPPORTED_IR_AFTER_GENERATE,
+    // Compilation error; IR unsupported after optimization.
+    COMPILE_UNSUPPORTED_IR_AFTER_OPTIMIZE,
   };
 
-  /// GlowErr is not convertable to std::error_code. This is included for
-  /// compatiblity with ErrorInfo.
-  virtual std::error_code convertToErrorCode() const override {
-    return llvm::inconvertibleErrorCode();
-  }
-
-  /// Log to \p OS relevant error information including the file name and
-  /// line number the GlowErr was created on as well as the message and/or error
-  /// code the GlowErr was created with.
-  void log(llvm::raw_ostream &OS) const override {
-    OS << "location: " << fileName_ << ":" << lineNumber_;
+  /// Log to \p os relevant error information including the file name and
+  /// line number the ErrorValue was created on as well as the message and/or
+  /// error code the ErrorValue was created with.
+  template <typename StreamT> void log(StreamT &os) const {
+    os << "location: " << fileName_ << ":" << lineNumber_;
     if (ec_ != ErrorCode::UNKNOWN) {
-      OS << " error code: " << errorCodeToString(ec_);
+      os << " error code: " << errorCodeToString(ec_);
     }
     if (!message_.empty()) {
-      OS << " message: " << message_;
+      os << " message: " << message_;
     }
   }
 
-  GlowErr(llvm::StringRef fileName, size_t lineNumber, llvm::StringRef message,
-          ErrorCode ec)
+  std::string logToString() const;
+
+  GlowErrorValue(const char *fileName, size_t lineNumber, std::string message,
+                 ErrorCode ec)
       : lineNumber_(lineNumber), fileName_(fileName), message_(message),
         ec_(ec) {}
 
-  GlowErr(llvm::StringRef fileName, size_t lineNumber, ErrorCode ec,
-          llvm::StringRef message)
+  GlowErrorValue(const char *fileName, size_t lineNumber, ErrorCode ec,
+                 std::string message)
       : lineNumber_(lineNumber), fileName_(fileName), message_(message),
         ec_(ec) {}
 
-  GlowErr(llvm::StringRef fileName, size_t lineNumber, ErrorCode ec)
+  GlowErrorValue(const char *fileName, size_t lineNumber, ErrorCode ec)
       : lineNumber_(lineNumber), fileName_(fileName), ec_(ec) {}
 
-  GlowErr(llvm::StringRef fileName, size_t lineNumber, llvm::StringRef message)
+  GlowErrorValue(const char *fileName, size_t lineNumber, std::string message)
       : lineNumber_(lineNumber), fileName_(fileName), message_(message) {}
 
 private:
   /// Convert ErrorCode values to string.
-  static std::string errorCodeToString(const ErrorCode &ec) {
-    switch (ec) {
-    case ErrorCode::UNKNOWN:
-      return "UNKNOWN";
-    case ErrorCode::MODEL_LOADER_UNSUPPORTED_SHAPE:
-      return "MODEL_LOADER_UNSUPPORTED_SHAPE";
-    case ErrorCode::MODEL_LOADER_UNSUPPORTED_OPERATOR:
-      return "MODEL_LOADER_UNSUPPORTED_OPERATOR";
-    case ErrorCode::MODEL_LOADER_UNSUPPORTED_ATTRIBUTE:
-      return "MODEL_LOADER_UNSUPPORTED_ATTRIBUTE";
-    case ErrorCode::MODEL_LOADER_UNSUPPORTED_DATATYPE:
-      return "MODEL_LOADER_UNSUPPORTED_DATATYPE";
-    case ErrorCode::MODEL_LOADER_UNSUPPORTED_ONNX_VERSION:
-      return "MODEL_LOADER_UNSUPPORTED_ONNX_VERSION";
-    case ErrorCode::MODEL_LOADER_INVALID_PROTOBUF:
-      return "MODEL_LOADER_INVALID_PROTOBUF";
-    case ErrorCode::RUNTIME_ERROR:
-      return "RUNTIME_ERROR";
-    case ErrorCode::RUNTIME_OUT_OF_DEVICE_MEMORY:
-      return "RUNTIME_OUT_OF_DEVICE_MEMORY";
-    case ErrorCode::RUNTIME_NET_NOT_FOUND:
-      return "RUNTIME_NET_NOT_FOUND";
-    case ErrorCode::RUNTIME_REQUEST_REFUSED:
-      return "RUNTIME_REQUEST_REFUSED";
-    case ErrorCode::RUNTIME_DEVICE_NOT_FOUND:
-      return "RUNTIME_DEVICE_NOT_FOUND";
-    case ErrorCode::RUNTIME_NET_BUSY:
-      return "RUNTIME_NET_BUSY";
-    case ErrorCode::COMPILE_UNSUPPORTED_NODE_AFTER_OPTIMIZE:
-      return "COMPILE_UNSUPPORTED_NODE_AFTER_OPTIMIZE";
-    case ErrorCode::COMPILE_CONTEXT_MALFORMED:
-      return "COMPILE_CONTEXT_MALFORMED";
-    case ErrorCode::MODEL_WRITER_INVALID_FILENAME:
-      return "MODEL_WRITER_INVALID_FILENAME";
-    case ErrorCode::MODEL_WRITER_SERIALIZATION_ERROR:
-      return "MODEL_WRITER_SERIALIZATION_ERROR";
-    };
-
-    llvm_unreachable("unsupported ErrorCode");
-  }
+  static std::string errorCodeToString(const ErrorCode &ec);
 
   /// The line number the error was generated on.
   size_t lineNumber_;
@@ -179,128 +321,439 @@ private:
   ErrorCode ec_ = ErrorCode::UNKNOWN;
 };
 
-/// Marks the Error \p err as as checked. \returns true if it contains an
-/// error value and prints the message in the error value, returns false
-/// otherwise.
-inline bool errToBool(llvm::Error err) {
-  if (static_cast<bool>(err)) {
-    LOG(ERROR) << "Converting error to boolean: "
-               << llvm::toString(std::move(err));
-    return true;
-  }
-  return false;
+/// Overload for operator<< for logging an ErrorValue \p errorValue to a stream
+/// \p os.
+template <typename StreamT>
+StreamT &operator<<(StreamT &os, const GlowErrorValue &errorValue) {
+  errorValue.log(os);
+  return os;
 }
 
-template <typename T> llvm::Error takeErr(llvm::Expected<T> e) {
-  if (!bool(e)) {
-    return e.takeError();
+/// Error is a container for pointers to ErrorValues. If an ErrorValue is
+/// contained Error ensures that it is checked before being destroyed.
+class GlowError : protected detail::CheckState<detail::enableCheckingErrors> {
+  template <typename T> friend class GlowExpected;
+  friend std::unique_ptr<GlowErrorValue> detail::takeErrorValue(GlowError);
+
+  /// Pointer to ErrorValue managed by this Error. Can be null if no error
+  /// occurred. Use getters and setters defined below to access this since they
+  /// also will modify the CheckState.
+  std::unique_ptr<GlowErrorValue> errorValue_;
+
+  /// \return true if an ErrorValue is contained.
+  inline bool hasErrorValue() const { return nullptr != errorValue_; }
+
+  /// Sets the value of errorValue_ to \p errorValue ensuring not to overwrite
+  /// any previously contained ErrorValues that were unchecked. This is skipped
+  /// however if \p skipCheck is passed.
+  /// NOTE: skipCheck should only be used by constructors.
+  inline void setErrorValue(std::unique_ptr<GlowErrorValue> errorValue,
+                            bool skipCheck = false) {
+    // Can't overwrite an existing error unless we say not to check.
+    if (skipCheck) {
+      assert(errorValue_ == nullptr &&
+             "Trying to skip state check on an Error that "
+             "contains an ErrorValue is a bug because this should only happen "
+             "in a constructor and then no ErrorValue should be contained.");
+    } else {
+      ensureChecked();
+    }
+
+    errorValue_ = std::move(errorValue);
+    setChecked(false);
+  }
+
+  /// \returns the contents of errorValue_ by moving them. Marks the Error as
+  /// checked no matter what.
+  /// NOTE: This is the only way to mark an Error that contains an ErrorValue as
+  /// checked.
+  inline std::unique_ptr<GlowErrorValue> takeErrorValue() {
+    setChecked(true);
+    return std::move(errorValue_);
+  }
+
+protected:
+  /// Construct a new empty Error.
+  explicit GlowError() { setErrorValue(nullptr, /*skipCheck*/ true); }
+
+public:
+  /// Construct an Error from an ErrorValue \p errorValue.
+  GlowError(std::unique_ptr<GlowErrorValue> errorValue) {
+    assert(errorValue &&
+           "Cannot construct an Error from a null ErrorValue ptr");
+    setErrorValue(std::move(errorValue), /*skipCheck*/ true);
+  }
+
+  /// Move construct an Error from another Error \p other.
+  GlowError(GlowError &&other) {
+    setErrorValue(std::move(other.errorValue_), /*skipCheck*/ true);
+    other.setChecked(true);
+  }
+
+  /// Construct an Error from an ErrorEmpty \p other. This is a special case
+  /// constructor that will mark the constructed Error as being checked. This
+  /// should only be used for creating Errors that will be passed into things
+  /// like fallible constructors of other classes to be written to.
+  GlowError(GlowErrorEmpty &&other);
+
+  /// Move assign Error from another Error \p other.
+  GlowError &operator=(GlowError &&other) {
+    setErrorValue(std::move(other.errorValue_));
+    other.setChecked(true);
+    return *this;
+  }
+
+  /// Create an Error not containing an ErrorValue that is signifies success
+  /// instead of failure of an operation.
+  /// NOTE: this Error must still be checked before being destroyed.
+  static GlowErrorSuccess success();
+
+  /// Create an empty Error that is signifies that an operation has not yet
+  /// occurred. This should only be used when another Error will be assigned to
+  /// this Error for example when calling a fallible constructor that takes an
+  /// Error reference as a parameter.
+  /// NOTE: this Error is considered to be "pre-checked" and therefore can be
+  /// destroyed at any time.
+  static GlowErrorEmpty empty();
+
+  // Disable copying Errors.
+  GlowError(const GlowError &) = delete;
+  GlowError &operator=(const GlowError &) = delete;
+
+  /// Overload of operator bool() that \returns true if no ErrorValue is
+  /// contained contained.
+  /// NOTE: This marks the Error as checked only if an ErrorValue is contained.
+  /// If an ErrorValue is contained then that ErrorValue must be handled in
+  /// order to mark as checked.
+  explicit operator bool() {
+    // Only mark as checked when there isn't an ErrorValue contained.
+    bool hasError = hasErrorValue();
+    if (!hasError) {
+      setChecked(true);
+    }
+    return hasError;
+  }
+};
+
+/// ErrorSuccess is a special Error that is used to mark the absents of an
+/// error. It shouldn't be constructed directly but instead using
+/// Error::success().
+class GlowErrorSuccess final : public GlowError {};
+
+/// See declaration in Error for details.
+inline GlowErrorSuccess GlowError::success() { return GlowErrorSuccess(); }
+
+/// ErrorSuccess is a special Error that is used to contain the future state of
+/// a fallible process that hasn't yet occurred. It shouldn't be
+/// constructed directly but instead using Error::empty(). See comments on
+/// Error::empty() method for more details.
+class GlowErrorEmpty final : public GlowError {};
+
+/// See declaration in Error for details.
+inline GlowErrorEmpty GlowError::empty() { return GlowErrorEmpty(); }
+
+/// Expected is a templated container for either a value of type T or an
+/// ErrorValue. It is used for fallible processes that may return either a value
+/// or encounter an error. Expected ensures that its state has been checked for
+/// errors before destruction.
+template <typename T>
+class GlowExpected final
+    : protected detail::CheckState<detail::enableCheckingErrors> {
+  template <typename TT>
+  friend TT detail::exitOnError(const char *fileName, size_t lineNumber,
+                                GlowExpected<TT> expected);
+
+  /// Union type between ErrorValue and T. Holds both in Opaque containers so
+  /// that lifetime management is manual and tied to the lifetime of Expected.
+  union Payload {
+    detail::Opaque<std::unique_ptr<GlowErrorValue>> asErrorValue;
+    detail::Opaque<T> asValue;
+  };
+
+  /// A union that contains either an ErrorValue if an error occurred
+  /// or a value of type T.
+  Payload payload_;
+
+  /// Whether or not payload_ contains an Error. Expected cannot be constructed
+  /// from ErrorSuccess so if an ErrorValue is contained it is a legitimate
+  /// Error.
+  bool isError_;
+
+  /// Getter for isError_.
+  inline bool getIsError() const { return isError_; }
+
+  /// Setter for isError_.
+  inline void setIsError(bool isError) { isError_ = isError; }
+
+  /// Asserts that an ErrorValue is contained not a Value.
+  inline void ensureError() {
+    assert(getIsError() && "Trying to get an ErrorValue of an Expected that "
+                           "doesn't contain an ErrorValue");
+  }
+
+  /// Asserts that a Value is contained not an ErrorValue
+  inline void ensureValue() {
+    assert(
+        !getIsError() &&
+        "Trying to get a Value of an Expected that doesn't contain an Value");
+  }
+
+  /// Setter for payload_ that inserts an ErrorValue \p errorValue. If \p
+  /// skipCheck is true then don't check that the current payload has been
+  /// checked before setting otherwise do check.
+  /// NOTE: Only constructors of Expected should use skipCheck.
+  inline void setErrorValue(std::unique_ptr<GlowErrorValue> errorValue,
+                            bool skipCheck = false) {
+    if (!skipCheck) {
+      ensureChecked();
+    }
+    setIsError(true);
+    return payload_.asErrorValue.set(std::move(errorValue));
+  }
+
+  /// Getter for payload_ to retrieve an ErrorValue. Ensures that an ErrorValue
+  /// is contained and that it has been checked.
+  inline GlowErrorValue *getErrorValue() {
+    ensureError();
+    ensureChecked();
+    return payload_.asErrorValue.get().get();
+  }
+
+  /// Getter for payload_ to retrieve an ErrorValue. Ensures that an ErrorValue
+  /// is contained and that it has been checked.
+  inline const GlowErrorValue *getErrorValue() const {
+    ensureError();
+    ensureChecked();
+    return payload_.asErrorValue.get().get();
+  }
+
+  /// \returns the ErrorValue contents of payload_ by moving them. Marks the
+  /// Expected as checked no matter what.
+  /// NOTE: This is the only way to mark an Expected that contains an ErrorValue
+  /// as checked.
+  inline std::unique_ptr<GlowErrorValue> takeErrorValue() {
+    ensureError();
+    setChecked(true);
+    return std::move(payload_.asErrorValue.get());
+  }
+
+  /// Sets payload_ with a value of type T \p value. If \p skipCheck is true
+  /// then don't check that the current payload has been checked before setting
+  /// otherwise do check.
+  /// NOTE: Only constructors of Expected should use skipCheck.
+  inline void setValue(T value, bool skipCheck = false) {
+    static_assert(!std::is_reference<T>::value,
+                  "Expected has not been equipped to hold references yet.");
+
+    if (!skipCheck) {
+      ensureChecked();
+    }
+    setIsError(false);
+    return payload_.asValue.set(std::move(value));
+  }
+
+  /// \returns a value T contained in payload_. Ensures that value is contained
+  /// by payload_ and that it has been checked already.
+  inline T *getValue() {
+    ensureValue();
+    ensureChecked();
+    return &payload_.asValue.get();
+  }
+
+  /// \returns a value T contained in payload_. Ensures that value is contained
+  /// by payload_ and that it has been checked already.
+  inline const T *getValue() const {
+    ensureValue();
+    ensureChecked();
+    return &payload_.asValue.get();
+  }
+
+  /// \returns the value contents of payload_ by moving them. Marks the Expected
+  /// as checked no matter what.
+  inline T takeValue() {
+    ensureValue();
+    setChecked(true);
+    return std::move(payload_.asValue.get());
+  }
+
+public:
+  /// Construct an Expected from an Error. The error must contain an ErrorValue.
+  /// Marks the Error as checked.
+  GlowExpected(GlowError error) {
+    assert(error.hasErrorValue() &&
+           "Must have an ErrorValue to construct an Expected from an Error");
+    setErrorValue(std::move(error.takeErrorValue()), /*skipCheck*/ true);
+  }
+
+  /// Disallow construction of Expected from ErrorSuccess and ErrorEmpty.
+  GlowExpected(GlowErrorSuccess) = delete;
+  GlowExpected(GlowErrorEmpty) = delete;
+
+  /// Move construct Expected<T> from a value of type OtherT as long as OtherT
+  /// is convertible to T.
+  template <typename OtherT>
+  GlowExpected(
+      OtherT &&other,
+      typename std::enable_if<std::is_convertible<OtherT, T>::value>::type * =
+          nullptr) {
+    setValue(std::forward<OtherT>(other), /*skipCheck*/ true);
+  }
+
+  /// Move construct Expected<T> from another Expected<T>.
+  GlowExpected(GlowExpected &&other) {
+    if (other.getIsError()) {
+      setErrorValue(std::move(other.takeErrorValue()),
+                    /*skipCheck*/ true);
+    } else {
+      setValue(std::move(other.takeValue()), /*skipCheck*/ true);
+    }
+  }
+
+  /// Move construct Expected<T> from Expected<OtherT> as long as OtherT is
+  /// convertible to T.
+  template <typename OtherT>
+  GlowExpected(
+      GlowExpected<OtherT> &&other,
+      typename std::enable_if<std::is_convertible<OtherT, T>::value>::type * =
+          nullptr) {
+    if (other.getIsError()) {
+      setErrorValue(std::move(other.takeErrorValue()),
+                    /*skipCheck*/ true);
+    } else {
+      setValue(std::move(other.takeValue()), /*skipCheck*/ true);
+    }
+  }
+
+  /// Move assign Expected<T> from another Expected<T>.
+  GlowExpected &operator=(GlowExpected &&other) {
+    if (other.getIsError()) {
+      setErrorValue(std::move(other.takeErrorValue()));
+    } else {
+      setValue(std::move(other.takeValue()));
+    }
+    return *this;
+  }
+
+  /// Destructor for Expected, manually destroys the constents of payload_.
+  ~GlowExpected() {
+    if (getIsError()) {
+      payload_.asErrorValue.destroy();
+    } else {
+      payload_.asValue.destroy();
+    }
+  }
+
+  /// Overload for operator bool that returns true if no ErrorValue is
+  /// contained. Marks the state as checked if no ErrorValue is contained.
+  explicit operator bool() {
+    bool isError = getIsError();
+    if (!isError) {
+      setChecked(true);
+    }
+    return !isError;
+  }
+
+  /// Get a reference to a value contained by payload_.
+  T &get() { return *getValue(); }
+
+  /// Get a const reference to a value contained by payload_.
+  const T &get() const { return *getValue(); }
+
+  /// Construct and \returns an Error and takes ownership of any ErrorValue in
+  /// payload_. If no ErrorValue is in payload_ then return Error::success().
+  /// Marks the Exected as checked no matter what.
+  GlowError takeError() {
+    if (getIsError()) {
+      return GlowError(takeErrorValue());
+    }
+    setChecked(true);
+    return GlowError::success();
+  }
+
+  T *operator->() { return getValue(); }
+
+  const T *operator->() const { return getValue(); }
+
+  T &operator*() { return *getValue(); }
+
+  const T &operator*() const { return *getValue(); }
+};
+
+/// Given an Expected<T>, asserts that it contains a value T and \returns it. If
+/// an ErrorValue is contained in the expected then logs this along with \p
+/// fileName and \p lineNumber and aborts.
+template <typename T>
+T exitOnError(const char *fileName, size_t lineNumber,
+              GlowExpected<T> expected) {
+  if (expected) {
+    return expected.takeValue();
   } else {
-    return llvm::Error::success();
+    auto error = expected.takeError();
+    std::unique_ptr<GlowErrorValue> errorValue =
+        detail::takeErrorValue(std::move(error));
+    assert(errorValue != nullptr && "Expected should have a non-null "
+                                    "ErrorValue if bool(expected) is false");
+    LOG(FATAL) << "exitOnError(Expected<T>) at " << fileName << ":"
+               << lineNumber
+               << " got an unexpected ErrorValue: " << (*errorValue);
   }
 }
 
-/// This class holds an llvm::Error provided via the add method. If an Error is
+/// Constructs an ErrorValue from \p args then wraps and \returns it in an
+/// Error.
+/// NOTE: this should not be used directly, use macros defined at the top of
+/// Error.h instead.
+template <typename... Args> GlowError makeError(Args &&... args) {
+  auto errorValue = std::unique_ptr<GlowErrorValue>(
+      new GlowErrorValue(std::forward<Args>(args)...));
+  return GlowError(std::move(errorValue));
+}
+
+/// Given an Error \p error, destroys the Error and returns true if an
+/// ErrorValue was contained. Logs if \p log is true and uses \p fileName and \p
+/// lineNumber for additional logging information.
+/// NOTE: this should not be used directly, use macros defined at the top of
+/// Error.h instead.
+bool errorToBool(const char *fileName, size_t lineNumber, GlowError error,
+                 bool log = true);
+
+/// Given an Error \p error, destroys the Error and returns a string that is the
+/// result of calling log() on the ErrorValue it contained if any and "success"
+/// otherwise.
+/// NOTE: this should not be used directly, use macros defined at the top of
+/// Error.h instead.
+std::string errorToString(GlowError error);
+
+/// Given an Error \p error, destroys the Error. Logs if \p log is true and uses
+/// \p fileName and \p lineNumber for additional logging information.
+/// NOTE: this should not be used directly, use macros defined at the top of
+/// Error.h instead.
+void errorToVoid(const char *fileName, size_t lineNumber, GlowError error,
+                 bool log = true);
+} // namespace detail
+
+/// This class holds an Error provided via the add method. If an Error is
 /// added when the class already holds an Error, it will discard the new Error
 /// in favor of the original one. All methods in OneErrOnly are thread-safe.
 class OneErrOnly {
-  llvm::Error err_ = llvm::Error::success();
+  Error err_ = Error::success();
   std::mutex m_;
 
 public:
-  /// Add a new llvm::Error \p err to be stored. If an existing Error has
+  /// Add a new Error \p err to be stored. If an existing Error has
   /// already been added then the contents of the new error will be logged and
   /// the new err will be discarded. \returns true if \p err was stored and
   /// \returns false otherwise. If \p err is an empty Error then does nothing
   /// and \returns false;
-  bool set(llvm::Error err);
+  bool set(Error err);
 
-  /// \returns the stored llvm:Error clearing out the storage of the class.
-  llvm::Error get();
+  /// \returns the stored Error clearing out the storage of the class.
+  Error get();
 
   /// \returns true if contains an Error and false otherwise.
   bool containsErr();
 };
 
 } // end namespace glow
-
-/// Unwraps the T from within an llvm::Expected<T>. If the Expected<T> contains
-/// an error, the program will exit.
-#define EXIT_ON_ERR(...) (glow::exitOnErr(__VA_ARGS__))
-
-/// A temporary placeholder for EXIT_ON_ERR. This should be used only during
-/// refactoring to temporarily place an EXIT_ON_ERR and should eventually be
-/// replaced with either an actual EXIT_ON_ERR or code that will propogate
-/// potential errors up the stack.
-#define TEMP_EXIT_ON_ERR(...) (EXIT_ON_ERR(__VA_ARGS__))
-
-/// Make a new GlowErr.
-#define MAKE_ERR(...)                                                          \
-  llvm::make_error<glow::GlowErr>(__FILE__, __LINE__, __VA_ARGS__)
-
-/// Makes a new GlowErr and returns it.
-#define RETURN_ERR(...)                                                        \
-  do {                                                                         \
-    return MAKE_ERR(__VA_ARGS__);                                              \
-  } while (0)
-
-/// Takes an llvm::Expected<T> \p lhsOrErr and if it is an Error then returns
-/// it, otherwise takes the value from lhsOrErr and assigns it to \p rhs.
-#define ASSIGN_VALUE_OR_RETURN_ERR(rhs, lhsOrErr)                              \
-  do {                                                                         \
-    auto lhsOrErrV = (lhsOrErr);                                               \
-    static_assert(glow::IsLLVMExpected<decltype(lhsOrErrV)>(),                 \
-                  "Expected value to be a llvm::Expected");                    \
-    if (lhsOrErrV) {                                                           \
-      rhs = std::move(lhsOrErrV.get());                                        \
-    } else {                                                                   \
-      return lhsOrErrV.takeError();                                            \
-    }                                                                          \
-  } while (0)
-
-/// Takes an llvm::Expected<T> \p lhsOrErr and if it is an Error then returns
-/// false, otherwise takes the value from lhsOrErr and assigns it to \p rhs.
-#define ASSIGN_VALUE_OR_RETURN_FALSE(rhs, lhsOrErr)                            \
-  do {                                                                         \
-    auto lhsOrErrV = (lhsOrErr);                                               \
-    static_assert(glow::IsLLVMExpected<decltype(lhsOrErrV)>(),                 \
-                  "Expected value to be a llvm::Expected");                    \
-    if (lhsOrErrV) {                                                           \
-      rhs = std::move(lhsOrErrV.get());                                        \
-    } else {                                                                   \
-      return false;                                                            \
-    }                                                                          \
-  } while (0)
-
-/// Takes an llvm::Error and returns it if it's not success.
-// TODO: extend this to work with llvm::Expected as well.
-#define RETURN_IF_ERR(err)                                                     \
-  do {                                                                         \
-    if (auto errV = std::forward<llvm::Error>(err)) {                          \
-      static_assert(glow::IsLLVMError<decltype(errV)>::value,                  \
-                    "Expected value to be a llvm::Error");                     \
-      return std::forward<llvm::Error>(errV);                                  \
-    }                                                                          \
-  } while (0)
-
-/// Takes a predicate \p and if it is false then creates a new GlowErr
-/// and returns it.
-#define RETURN_ERR_IF_NOT(p, ...)                                              \
-  do {                                                                         \
-    if (!(p)) {                                                                \
-      RETURN_ERR(__VA_ARGS__);                                                 \
-    }                                                                          \
-  } while (0)
-
-/// Marks the given llvm::Error as checked as long as it's value is equal to
-/// llvm::Error::success(). This macro should be used as little as possible but
-/// but is useful for example for creating dummy Errors that can be passed into
-/// fallible constructor by reference to be filled in the event an Error occurs.
-#define MARK_ERR_CHECKED(err)                                                  \
-  do {                                                                         \
-    bool success = !(err);                                                     \
-    (void)success;                                                             \
-    assert(success && "MARK_ERR_CHECKED should not be called on an "           \
-                      "llvm::Error that contains an actual error.");           \
-  } while (0)
 
 #endif // GLOW_SUPPORT_ERROR_H

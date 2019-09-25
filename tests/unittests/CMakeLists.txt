@@ -8,7 +8,9 @@ target_link_libraries(TestMain
 add_library(BackendTestUtils
             BackendTestUtils.cpp)
 target_link_libraries(BackendTestUtils
-                      PRIVATE
+                      PUBLIC
+                        Backend
+                        Backends
                         Base
                         Converter
                         ExecutionEngine
@@ -20,40 +22,6 @@ target_link_libraries(BackendTestUtils
                         gtest)
 
 # Test executables, sorted alphabetically.
-
-add_executable(BackendCorrectnessTest
-               BackendCorrectnessTest.cpp)
-target_link_libraries(BackendCorrectnessTest
-                      PRIVATE
-                        Backends
-                        BackendTestUtils
-                        Graph
-                        IR
-                        ExecutionEngine
-                        Quantization
-                        Support
-                        gtest
-                        TestMain)
-add_glow_test(BackendCorrectnessTest
-              ${GLOW_BINARY_DIR}/tests/BackendCorrectnessTest
-                  --gtest_output=xml:BackendCorrectnessTest.xml)
-LIST(APPEND UNOPT_TESTS ./tests/BackendCorrectnessTest -optimize-ir=false &&)
-
-add_executable(BackendTest
-               BackendTest.cpp)
-target_link_libraries(BackendTest
-                      PRIVATE
-                        Backends
-                        HostManager
-                        Graph
-                        IR
-                        ExecutionEngine
-                        gtest
-                        TestMain)
-add_glow_test(BackendTest
-              ${GLOW_BINARY_DIR}/tests/BackendTest
-                  --gtest_output=xml:BackendTest.xml)
-LIST(APPEND UNOPT_TESTS ./tests/BackendTest -optimize-ir=false &&)
 
 add_executable(BasicIRTest
                BasicIRTest.cpp)
@@ -100,22 +68,6 @@ add_glow_test(NAME Caffe2ImporterTest
               COMMAND ${GLOW_BINARY_DIR}/tests/Caffe2ImporterTest
                   --gtest_output=xml:Caffe2ImporterTest.xml
               WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
-
-add_executable(DeviceManagerTest
-               DeviceManagerTest.cpp)
-target_link_libraries(DeviceManagerTest
-                      PRIVATE
-                        Backend
-                        Backends
-                        Graph
-                        IR
-                        ExecutionEngine
-                        GraphOptimizer
-                        gtest
-                        TestMain)
-add_glow_test(DeviceManagerTest
-              ${GLOW_BINARY_DIR}/tests/DeviceManagerTest
-                  --gtest_output=xml:DeviceManagerTest.xml)
 
 add_executable(ThreadPoolExecutorTest
         ThreadPoolExecutorTest.cpp)
@@ -171,21 +123,6 @@ add_glow_test(NAME GlowOnnxifiManagerTest
                   --gtest_output=xml:GlowOnnxifiManagerTest.xml
               WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
-add_executable(GradCheckTest
-               GradCheckTest.cpp)
-target_link_libraries(GradCheckTest
-                      PRIVATE
-                        Base
-                        ExecutionEngine
-                        Graph
-                        IR
-                        gtest
-                        TestMain)
-add_glow_test(GradCheckTest
-              ${GLOW_BINARY_DIR}/tests/GradCheckTest
-                  --gtest_output=xml:GradCheckTest.xml)
-LIST(APPEND UNOPT_TESTS ./tests/GradCheckTest -optimize-ir=false &&)
-
 add_executable(GraphGradTest
                GraphGradTest.cpp)
 target_link_libraries(GraphGradTest
@@ -204,6 +141,7 @@ add_executable(GraphOptzTest
                GraphOptzTest.cpp)
 target_link_libraries(GraphOptzTest
                       PRIVATE
+                        BackendTestUtils
                         ExecutionEngine
                         Graph
                         IR
@@ -244,9 +182,9 @@ add_glow_test(GraphTest
 LIST(APPEND UNOPT_TESTS ./tests/GraphTest -optimize-ir=false &&)
 
 if(GLOW_WITH_HABANA)
-  add_executable(HabanaBackendTest
-                 HabanaBackendTest.cpp)
-  target_link_libraries(HabanaBackendTest
+  add_executable(HabanaGlowTest
+                 HabanaGlowTest.cpp)
+  target_link_libraries(HabanaGlowTest
                         PRIVATE
                           Backends
                           ExecutionEngine
@@ -254,11 +192,8 @@ if(GLOW_WITH_HABANA)
                           GraphOptimizer
                           gtest
                           TestMain)
-  target_include_directories(HabanaBackendTest
-                             PRIVATE "${SYNAPSE_INCLUDE_DIR}")
-  add_glow_test(HabanaBackendTest
-                ${GLOW_BINARY_DIR}/tests/HabanaBackendTest
-                    --gtest_output=xml:HabanaBackendTest.xml)
+  target_include_directories(HabanaGlowTest PRIVATE "${SYNAPSE_INCLUDE_DIR}")
+  add_glow_test(HabanaGlowTest ${GLOW_BINARY_DIR}/tests/HabanaGlowTest --gtest_output=xml:HabanaGlowTest.xml)
 
   add_executable(HabanaTest
           HabanaTest.cpp)
@@ -356,20 +291,6 @@ if(GLOW_WITH_CPU)
                     --gtest_output=xml:LLVMIRGenTest.xml)
 endif()
 
-add_executable(MLTest
-        MLTest.cpp)
-target_link_libraries(MLTest
-        PRIVATE
-        Graph
-        IR
-        ExecutionEngine
-        Quantization
-        gtest
-        TestMain)
-add_glow_test(MLTest
-              ${GLOW_BINARY_DIR}/tests/MLTest --gtest_output=xml:MLTest.xml)
-LIST(APPEND UNOPT_TESTS ./tests/MLTest -optimize-ir=false &&)
-
 add_executable(MemoryAllocatorTest
                MemoryAllocatorTest.cpp)
 target_link_libraries(MemoryAllocatorTest
@@ -433,36 +354,27 @@ add_glow_test(NAME OnnxExporterTest
                   --gtest_output=xml:OnnxExporterTest.xml
               WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
-add_executable(OperatorGradTest
-        OperatorGradTest.cpp)
-target_link_libraries(OperatorGradTest
-                      PRIVATE
-                        Base
-                        ExecutionEngine
-                        Graph
-                        gtest
-                        TestMain)
-add_glow_test(OperatorGradTest
-              ${GLOW_BINARY_DIR}/tests/OperatorGradTest
-                  --gtest_output=xml:OperatorGradTest.xml)
-LIST(APPEND UNOPT_TESTS ./tests/OperatorGradTest -optimize-ir=false &&)
-
-add_executable(OperatorTest
-        OperatorTest.cpp)
-target_link_libraries(OperatorTest
-                      PRIVATE
-                        BackendTestUtils
-                        Graph
-                        IR
-                        ExecutionEngine
-                        Quantization
-                        GraphOptimizer
-                        gtest
-                        TestMain)
-add_glow_test(OperatorTest
-              ${GLOW_BINARY_DIR}/tests/OperatorTest
-                  --gtest_output=xml:OperatorTest.xml)
-LIST(APPEND UNOPT_TESTS ./tests/OperatorTest -optimize-ir=false &&)
+# Loop through all backends present in lib/Backends (see FindBackends.cmake)
+# and instantiate a backend-parameterized test for each of them.
+foreach(backend ${GLOW_BACKENDS})
+  add_backend_test(TEST BackendCorrectnessTest BACKEND "${backend}" UNOPT PRIVATE IR Backend Backends)
+  add_backend_test(TEST BackendTest BACKEND "${backend}" UNOPT PRIVATE Backend HostManager)
+  add_backend_test(TEST DeviceManagerTest BACKEND "${backend}")
+  add_backend_test(TEST GradCheckTest BACKEND "${backend}" UNOPT)
+  add_backend_test(TEST MLTest BACKEND "${backend}" UNOPT)
+  add_backend_test(TEST OperatorGradTest BACKEND "${backend}" UNOPT)
+  add_backend_test(TEST OperatorTest BACKEND "${backend}" UNOPT)
+  add_backend_test(TEST
+                   RecommendationSystemTest
+                   BACKEND
+                   "${backend}"
+                   EXPENSIVE
+                   PRIVATE
+                   Partitioner
+                   HostManager)
+  add_backend_test(TEST TraceEventsTest BACKEND "${backend}" UNOPT)
+  add_backend_test(TEST TypeAToTypeBFunctionConverterTest BACKEND "${backend}")
+endforeach()
 
 add_executable(PartitionerTest
                PartitionerTest.cpp)
@@ -480,24 +392,6 @@ target_link_libraries(PartitionerTest
 add_glow_test(PartitionerTest
               ${GLOW_BINARY_DIR}/tests/PartitionerTest
                   --gtest_output=xml:PartitionerTest.xml)
-
-add_executable(RecommendationSystemTest
-               RecommendationSystemTest.cpp)
-target_link_libraries(RecommendationSystemTest
-                      PRIVATE
-                        BackendTestUtils
-                        Converter
-                        Graph
-                        IR
-                        ExecutionContext
-                        ExecutionEngine
-                        Quantization
-                        Partitioner
-                        gtest
-                        TestMain)
-add_glow_test(EXPENSIVE RecommendationSystemTest
-              ${GLOW_BINARY_DIR}/tests/RecommendationSystemTest
-                  --gtest_output=xml:RecommendationSystemTest.xml)
 
 if(GLOW_WITH_CPU)
   add_executable(ProvisionerTest
@@ -541,6 +435,7 @@ target_link_libraries(StatsExporterTest
                       PRIVATE
                         Backends
                         Runtime
+                        HostManager
                         gtest
                         TestMain
                         glog::glog)
@@ -583,37 +478,6 @@ add_glow_test(ThreadPoolTest
               ${GLOW_BINARY_DIR}/tests/ThreadPoolTest
                   --gtest_output=xml:ThreadPoolTest.xml)
 
-add_executable(TraceEventsTest
-               TraceEventsTest.cpp)
-target_link_libraries(TraceEventsTest
-                      PRIVATE
-                        Backends
-                        Graph
-                        IR
-                        ExecutionEngine
-                        BackendTestUtils
-                        GraphOptimizer
-                        gtest
-                        TestMain)
-add_glow_test(TraceEventsTest
-              ${GLOW_BINARY_DIR}/tests/TraceEventsTest
-                  --gtest_output=xml:TraceEventsTest.xml)
-LIST(APPEND UNOPT_TESTS ./tests/TraceEventsTest -optimize-ir=false &&)
-
-add_executable(TypeAToTypeBFunctionConverterTest
-               TypeAToTypeBFunctionConverterTest.cpp)
-target_link_libraries(TypeAToTypeBFunctionConverterTest
-                      PRIVATE
-                        Converter
-                        ExecutionEngine
-                        Graph
-                        GraphOptimizer
-                        gtest
-                        TestMain)
-add_glow_test(TypeAToTypeBFunctionConverterTest
-              ${GLOW_BINARY_DIR}/tests/TypeAToTypeBFunctionConverterTest
-                  --gtest_output=xml:TypeAToTypeBFunctionConverterTest.xml)
-
 add_executable(UtilsTest
                StrCheck.cpp
                SupportTest.cpp
@@ -630,6 +494,15 @@ add_glow_test(NAME UtilsTest
               COMMAND ${GLOW_BINARY_DIR}/tests/UtilsTest
                   --gtest_output=xml:UtilsTest.xml
               WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+add_executable(ErrorTest
+              ErrorTest.cpp)
+target_link_libraries(ErrorTest
+                     PRIVATE
+                       Support
+                       gtest
+                       TestMain)
+add_glow_test(ErrorTest ${GLOW_BINARY_DIR}/tests/ErrorTest --gtest_output=xml:ErrorTest.xml)
 
 LIST(APPEND UNOPT_TESTS true)
 add_custom_target(test_unopt ${UNOPT_TESTS}

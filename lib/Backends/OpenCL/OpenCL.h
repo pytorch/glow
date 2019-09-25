@@ -109,7 +109,9 @@ public:
   ///@{
   ~OpenCLFunction() override;
 
-  llvm::Error execute(ExecutionContext *context) override;
+  Error execute(ExecutionContext *context) override;
+
+  void freeCompilationResources() override;
 
   /// Collects constants for runtime.
   void collectConstants(const Module *module) override;
@@ -205,13 +207,16 @@ public:
   std::unique_ptr<CompiledFunction>
   compileIR(std::unique_ptr<IRFunction> IR) const override;
 
-  llvm::Expected<std::unique_ptr<CompiledFunction>>
+  Expected<std::unique_ptr<CompiledFunction>>
   compile(Function *F, const BackendOptions &opts) const override;
 
   bool transformPostLowering(Function *F,
                              CompilationContext &cctx) const override;
 
   bool isOpSupported(const NodeInfo &NI) const override;
+
+  bool verify(const Function &F) const override;
+  bool verify(const IRFunction &IR) const override;
 
   bool shouldLower(const Node *N) const override {
     // The group convolution is supported in OpenCL slow convolution kernel.

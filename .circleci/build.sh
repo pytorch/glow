@@ -67,8 +67,15 @@ else
     sudo apt-get install -y libpng-dev libgoogle-glog-dev
 fi
 
-# Install ninja, (newest version of) cmake and autopep8 through pip
-sudo pip install ninja cmake autopep8
+# Since we are using llvm-7 in these two branches, we cannot use pip install cmake
+if [ "${CIRCLE_JOB}" != "PYTORCH" ] && [ "${CIRCLE_JOB}" != "CHECK_CLANG_AND_PEP8_FORMAT" ]; then
+	sudo pip install cmake
+else
+	sudo apt-get install cmake
+fi
+
+# Install ninja, (newest version of) autopep8 through pip
+sudo pip install ninja autopep8
 hash cmake ninja
 
 # Build glow

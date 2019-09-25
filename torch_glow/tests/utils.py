@@ -71,5 +71,8 @@ def jitVsGlow_(f_torch, f_glow, *inputs, expected_fused_ops=None,
         assert accept_all_ops or len(expected_fused_ops) == len(expected_fused_ops_seen), \
             "Expected all of expected_fused_ops to be in the graph"
         assert len(torch_res) == len(glow_res)
+        # When testing quantized operators and generating data between [0, 1]
+        # i.e using torch.randn, scale should be set between 1/128 and 1/256,
+        # to make sure the result does not mismatch.
         for i in range(len(torch_res)):
             assert torch.allclose(torch_res[i], glow_res[i], atol=01e-6)

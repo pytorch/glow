@@ -245,6 +245,8 @@ llvm::Type *LLVMIRGen::getElementType(llvm::IRBuilder<> &builder,
     return builder.getInt8Ty();
   case ElemKind::UInt8FusedFP16QTy:
     return builder.getInt8Ty();
+  case ElemKind::UInt4FusedFP16QTy:
+    return builder.getInt8Ty();
   case ElemKind::BoolTy:
     static_assert(sizeof(bool) == sizeof(int8_t),
                   "Bool is expected to be the same size as int8.");
@@ -343,6 +345,9 @@ llvm::Value *LLVMIRGen::emitValueAddress(llvm::IRBuilder<> &builder,
     T = llvm::Type::getInt8PtrTy(ctx_);
     break;
   case ElemKind::UInt8FusedFP16QTy:
+    T = llvm::Type::getInt8PtrTy(ctx_);
+    break;
+  case ElemKind::UInt4FusedFP16QTy:
     T = llvm::Type::getInt8PtrTy(ctx_);
     break;
   case ElemKind::BoolTy:
@@ -502,6 +507,8 @@ llvm::Value *LLVMIRGen::emitConst(llvm::IRBuilder<> &builder, float val,
   case ElemKind::UInt8FusedQTy:
     return builder.getInt8(static_cast<int8_t>(val));
   case ElemKind::UInt8FusedFP16QTy:
+    return builder.getInt8(static_cast<int8_t>(val));
+  case ElemKind::UInt4FusedFP16QTy:
     return builder.getInt8(static_cast<int8_t>(val));
   case ElemKind::BoolTy:
     return builder.getInt8(static_cast<int8_t>(val));

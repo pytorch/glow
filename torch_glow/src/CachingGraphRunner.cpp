@@ -20,6 +20,7 @@
 
 #include "glow/Support/Support.h"
 
+#include <mutex>
 #include <torch/csrc/jit/argument_spec.h>
 #include <torch/csrc/utils/hash.h>
 
@@ -44,7 +45,11 @@ size_t CachingGraphRunner::computeGraphHash(
   return hash;
 }
 
-llvm::Expected<CachingGraphRunner::PerGlowGraphInfo *>
+namespace {
+static std::mutex graphCacheMutex;
+}
+
+Expected<CachingGraphRunner::PerGlowGraphInfo *>
 CachingGraphRunner::loadImpl(torch::jit::Stack &stack) {
   const auto inputs = torch::jit::last(stack, graph_->inputs().size());
 
@@ -52,6 +57,7 @@ CachingGraphRunner::loadImpl(torch::jit::Stack &stack) {
 
   // If we already have a Glow function compiled for this graph with and the
   // given inputs then use that.
+  std::lock_guard<std::mutex> guard(graphCacheMutex);
   auto it = perGlowGraphInfoMap_.find(hash);
   if (it != perGlowGraphInfoMap_.end()) {
     return it->second.get();
@@ -76,8 +82,8 @@ CachingGraphRunner::loadImpl(torch::jit::Stack &stack) {
   return perGlowGraphInfoMap_[hash].get();
 }
 
-llvm::Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
-                                        torch::jit::Stack &stack) const {
+Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
+                                  torch::jit::Stack &stack) const {
   size_t numInputs = info.inputPlaceholders.size();
 
   const auto inputs = torch::jit::last(stack, numInputs);
@@ -98,9 +104,9 @@ llvm::Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
     for (auto size : ph->dims()) {
       sizes.push_back(static_cast<int64_t>(size));
     }
-    auto ptT = at::empty(
-        sizes, at::TensorOptions().dtype(
-                   PyTorchModelLoader::convertGlowType(ph->getType())));
+
+    auto ptT = glowTypeToEmptyPTTensor(*ph->getType());
+
     glow::Tensor t(ptT.data_ptr(), ph->getType());
 
     outputs.push_back(std::move(ptT));
@@ -120,7 +126,7 @@ llvm::Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
   return err;
 }
 
-llvm::Error CachingGraphRunner::run(torch::jit::Stack &stack) {
+Error CachingGraphRunner::run(torch::jit::Stack &stack) {
   PerGlowGraphInfo *info;
   ASSIGN_VALUE_OR_RETURN_ERR(info, loadImpl(stack));
   return runImpl(*DCHECK_NOTNULL(info), stack);
@@ -133,7 +139,7 @@ CachingGraphRunner::CachingGraphRunner(torch::jit::Graph *graph,
 CachingGraphRunner::~CachingGraphRunner() {
   // Remove Glow functions saved in HostManager when being destroyed.
   for (auto &kv : perGlowGraphInfoMap_) {
-    glow::errToBool(hostManager_->removeNetwork(kv.second->functionName));
+    ERR_TO_BOOL(hostManager_->removeNetwork(kv.second->functionName));
   }
 }
 

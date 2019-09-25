@@ -17,6 +17,9 @@
 #ifndef GLOW_TORCH_GLOW_SRC_COMMON_H
 #define GLOW_TORCH_GLOW_SRC_COMMON_H
 
+#include "glow/Base/Tensor.h"
+#include "glow/Base/Type.h"
+
 #include <torch/csrc/jit/ir.h>
 
 namespace glow {
@@ -50,13 +53,29 @@ void glowCustomFuse(std::shared_ptr<torch::jit::Graph> &graph,
 /// Register the glow::FusionGroup operator.
 void registerGlowOp();
 
-/// Register the pass that fuses parts of the graph into a glow::FusionGroup.
-void registerGlowFusionPass();
+/// Register the pass that fuses parts of the graph into a glow::FusionGroup. \p
+/// enablePassFn is used to enable/disable the glow fusion pass once it's
+/// registered.
+void registerGlowFusionPass(std::function<bool()> enablePassFn);
 
 /// Convenience method to register the glow fusion op and pass. \p
-/// enableFusionPass can be used to enable the glow fusion pass once it's
+/// enablePassFn is used to enable/disable the glow fusion pass once it's
 /// registered.
-void registerGlowFusionOpAndPass(bool enableFusionPass = false);
+void registerGlowFusionOpAndPass(std::function<bool()> enablePassFn);
+
+/// Given a PyTorch TensorType \p ptType, \returns a matching Glow Type.
+glow::Type ptTypeToGlowType(const c10::TensorType &ptType);
+
+/// Given a PyTorch Tensor \p ptTensor, \returns an unowned Glow Tensor with a
+/// matching type backed by the same memory as ptTensor.
+glow::Tensor ptTensorToGlowTensor(const at::Tensor &ptTensor);
+
+/// Given a Glow Type \p glowType, \returns an empty PyTorch Tensor with a
+/// matching type.
+at::Tensor glowTypeToEmptyPTTensor(const glow::Type &glowType);
+
+/// Fuse known sets of operators into compact ones.
+void FuseKnownPatterns(std::shared_ptr<torch::jit::Graph> &graph);
 
 } // namespace glow
 

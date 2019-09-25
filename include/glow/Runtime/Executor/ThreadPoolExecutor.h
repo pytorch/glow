@@ -80,14 +80,14 @@ private:
 
   /// Handle the result returned asynchronously by the DeviceManager.
   /// \p executionState is tracks the state of the run that the node that
-  /// finished executing belongs to, \p err is the llvm::Error returned by the
+  /// finished executing belongs to, \p err is the Error returned by the
   /// DeviceManager, \p ctx is the ExecutionContext that contains the outputs
   /// produced by \p node during the run.
   ///
   /// The main purpose of this function is to help move computation off of the
   /// DeviceManager thread pool on onto the one owned by this class.
   void handleDeviceManagerResult(std::shared_ptr<ExecutionState> executionState,
-                                 llvm::Error err,
+                                 Error err,
                                  std::unique_ptr<ExecutionContext> ctx,
                                  const DAGNode *node);
 

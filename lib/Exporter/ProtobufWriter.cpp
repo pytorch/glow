@@ -21,7 +21,7 @@
 namespace glow {
 
 ProtobufWriter::ProtobufWriter(const std::string &modelFilename, Function &F,
-                               llvm::Error *errPtr)
+                               Error *errPtr)
     : G_(F) {
   // Verify that the version of the library that we linked against is
   // compatible with the version of the headers we compiled against.
@@ -32,14 +32,14 @@ ProtobufWriter::ProtobufWriter(const std::string &modelFilename, Function &F,
     return;
   }
 
-  // Lambda to setup the ProtobufWriter and return any llvm::Errors that were
+  // Lambda to setup the ProtobufWriter and return any Errors that were
   // raised.
-  auto setup = [&]() -> llvm::Error {
+  auto setup = [&]() -> Error {
     // Try to open file for write
     ff_.open(modelFilename, std::ios::out | std::ios::trunc | std::ios::binary);
     RETURN_ERR_IF_NOT(ff_, "Can't find the output file name: " + modelFilename,
-                      GlowErr::ErrorCode::MODEL_WRITER_INVALID_FILENAME);
-    return llvm::Error::success();
+                      ErrorValue::ErrorCode::MODEL_WRITER_INVALID_FILENAME);
+    return Error::success();
   };
 
   if (errPtr) {
@@ -49,9 +49,8 @@ ProtobufWriter::ProtobufWriter(const std::string &modelFilename, Function &F,
   }
 }
 
-llvm::Error
-ProtobufWriter::writeModel(const ::google::protobuf::Message &modelProto,
-                           bool textMode) {
+Error ProtobufWriter::writeModel(const ::google::protobuf::Message &modelProto,
+                                 bool textMode) {
   {
     ::google::protobuf::io::OstreamOutputStream zeroCopyOutput(&ff_);
     // Write the content.
@@ -59,21 +58,21 @@ ProtobufWriter::writeModel(const ::google::protobuf::Message &modelProto,
       RETURN_ERR_IF_NOT(
           google::protobuf::TextFormat::Print(modelProto, &zeroCopyOutput),
           "Can't write to the output file name",
-          GlowErr::ErrorCode::MODEL_WRITER_SERIALIZATION_ERROR);
+          ErrorValue::ErrorCode::MODEL_WRITER_SERIALIZATION_ERROR);
     } else {
       ::google::protobuf::io::CodedOutputStream codedOutput(&zeroCopyOutput);
       // Write the size.
       size_t size = modelProto.ByteSize();
       codedOutput.WriteVarint32(size);
       modelProto.SerializeToCodedStream(&codedOutput);
-      RETURN_ERR_IF_NOT(!codedOutput.HadError(),
-                        "Can't write to the output file name",
-                        GlowErr::ErrorCode::MODEL_WRITER_SERIALIZATION_ERROR);
+      RETURN_ERR_IF_NOT(
+          !codedOutput.HadError(), "Can't write to the output file name",
+          ErrorValue::ErrorCode::MODEL_WRITER_SERIALIZATION_ERROR);
     }
   }
   ff_.flush();
   ff_.close();
-  return llvm::Error::success();
+  return Error::success();
 }
 
 } // namespace glow
