@@ -732,7 +732,7 @@ int main(int argc, char **argv) {
   }
 
   if (!tracePath.empty()) {
-    traceContext->dump(tracePath, basename(argv[0]));
+    traceContext->dump(tracePath, "ImageClassifier");
   }
 
   return numErrors;
