@@ -18,6 +18,7 @@
 
 #include "CachingGraphRunner.h"
 #include "FuseLinear.h"
+#include "FusePrepack.h"
 #include "GlowFuser.h"
 #include "PyTorchModelLoader.h"
 
@@ -183,6 +184,7 @@ glow::Tensor ptTensorToGlowTensor(const at::Tensor &ptTensor) {
 
 void FuseKnownPatterns(std::shared_ptr<torch::jit::Graph> &graph) {
   FuseLinear(graph);
+  FuseConvPrepack(graph);
 
   std::string originalPat = R"IR(
 graph(%input):
