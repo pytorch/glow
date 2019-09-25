@@ -9,7 +9,8 @@ def test_quantized_relu():
     """Basic test of the PyTorch quantized::relu Node on Glow."""
 
     def test_f(a):
-        q = torch.nn.quantized.Quantize(1/128, 3, torch.quint8)
+        q = torch.nn.quantized.Quantize(
+            scale=1.0/128, zero_point=3, dtype=torch.quint8)
         dq = torch.nn.quantized.DeQuantize()
         re = torch.nn.quantized.ReLU()
         return dq(re(q(a)))
