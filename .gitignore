@@ -26,3 +26,4 @@ externalbackends/*/
 .vim/
 .idea/
 .ccls-cache/
+.clangd/
