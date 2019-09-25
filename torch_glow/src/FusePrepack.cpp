@@ -25,7 +25,7 @@ namespace glow {
 /// JIT back to quantized::unpacked_conv2d since we dont have
 /// quantized::conv_prepack in glow. However regular packed conv's
 /// implementation in glow is still needed.
-void FuseConvPrepack(std::shared_ptr<torch::jit::Graph> &graph) {
+void fuseConvPrepack(std::shared_ptr<torch::jit::Graph> &graph) {
   std::string convPrepackPattern = R"IR(
 graph(%input, %w, %b, %4, %5, %6, %7, %8, %9, %10, %11, %12):
   %prepacked_weight = quantized::conv_prepacked(%w, %b, %4, %5, %6, %7)
@@ -41,5 +41,24 @@ graph(%input, %w, %b, %4, %5, %6, %7, %8, %9, %10, %11, %12):
   torch::jit::SubgraphRewriter convToUnpackedConv;
   convToUnpackedConv.RegisterRewritePattern(convPrepackPattern, convFused);
   convToUnpackedConv.runOnGraph(graph);
+}
+
+void fuseLinearPrepack(std::shared_ptr<torch::jit::Graph> &graph) {
+  std::string beforePattern = R"IR(
+graph(%input, %weights, %bias, %scale, %zero_point):
+  %packed_params = quantized::linear_prepack(%weights, %bias)
+  %res = quantized::linear(%input, %packed_params, %scale, %zero_point)
+  return (%res))IR";
+
+  std::string afterPattern = R"IR(
+graph(%input, %weights, %bias, %scale, %zero_point):
+  %res = glow::unpacked_quantized_linear(%input, %weights, %bias, %scale, %zero_point)
+  return (%res))IR";
+
+  // Replace linear_prepack + quantized::linear to
+  // glow::unpacked_quantized_linear
+  torch::jit::SubgraphRewriter rewriter;
+  rewriter.RegisterRewritePattern(beforePattern, afterPattern);
+  rewriter.runOnGraph(graph);
 }
 } // namespace glow

@@ -43,6 +43,24 @@ std::unique_ptr<runtime::HostManager> buildHostManager() {
   return llvm::make_unique<runtime::HostManager>(std::move(deviceConfigs));
 }
 
+/// Registers an operator with symbol \p opName but with no implementation.
+/// Dummy operators can be used by glow-specific fusion passes prior to loading
+/// a glow graph in order to eliminate intermediate values that are unnecessary
+/// to Glow such as those created by quantization packing nodes.
+static void registerDummyOperator(const char *opName) {
+  auto options = c10::OperatorOptions();
+  options.setAliasAnalysis(at::AliasAnalysisKind::PURE_FUNCTION);
+
+  torch::jit::RegisterOperators op({torch::jit::Operator(
+      at::Symbol::fromQualString(opName),
+      [](const torch::jit::Node *node) -> torch::jit::Operation {
+        LOG(FATAL) << "Operator \"" << (*node)
+                   << "\" has no implementation and is meant only as a "
+                      "placeholder while fusing ops to run with Glow";
+      },
+      options)});
+}
+
 } // namespace
 
 /// \returns the HostManager singleton used to run all PyTorch graphs in Glow.
@@ -122,16 +140,16 @@ const c10::Symbol &getGlowSymbol() {
 
 void glowCustomFuse(std::shared_ptr<torch::jit::Graph> &g,
                     at::Symbol fuseSymbol) {
-  // Fuse all linear operators
-  // Currently PyTorch does not have good support for aten:addmm when fusing
-  // Therefore we use some pattern to translate all aten::addmm to
-  // aten::linear before we fuse the whole graph.
-  FuseKnownPatterns(g);
+
+  fuseKnownPatterns(g);
 
   GlowCustomFuse(g, PyTorchModelLoader::isNodeSupported, fuseSymbol);
 }
 
 void registerGlowOp(const c10::Symbol &symbol) {
+  // Register dummy nodes used by custom fusers.
+  registerDummyOperator("glow::unpacked_quantized_linear");
+
   auto options = c10::OperatorOptions();
   options.setAliasAnalysis(at::AliasAnalysisKind::PURE_FUNCTION);
 
@@ -213,8 +231,9 @@ glow::Tensor ptTensorToGlowTensor(const at::Tensor &ptTensor) {
   return glow::Tensor(ptTensor.data_ptr(), &glowType);
 }
 
-void FuseKnownPatterns(std::shared_ptr<torch::jit::Graph> &graph) {
-  FuseConvPrepack(graph);
+void fuseKnownPatterns(std::shared_ptr<torch::jit::Graph> &graph) {
+  fuseConvPrepack(graph);
+  fuseLinearPrepack(graph);
 
   std::string originalPat = R"IR(
 graph(%input):

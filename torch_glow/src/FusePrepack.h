@@ -20,8 +20,13 @@
 #include <torch/csrc/jit/ir.h>
 
 namespace glow {
-/// Performs specific fusion for Linear operator.
-void FuseConvPrepack(std::shared_ptr<torch::jit::Graph> &graph);
+/// Fuse weight packing operation into quantized convolution op thus skipping
+/// weight packing.
+void fuseConvPrepack(std::shared_ptr<torch::jit::Graph> &graph);
+
+/// Fuse weight packing operation into quantized linear op thus skipping
+/// weight packing.
+void fuseLinearPrepack(std::shared_ptr<torch::jit::Graph> &graph);
 } // namespace glow
 
 #endif // GLOW_TORCH_GLOW_SRC_FUSE_PREPACK_H

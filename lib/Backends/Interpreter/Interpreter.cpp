@@ -343,11 +343,13 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
     return ((NI.getInElemTy(QuantizeNode::InputIdx) == ElemKind::FloatTy) ||
             (NI.getInElemTy(QuantizeNode::InputIdx) == ElemKind::Float16Ty)) &&
            ((NI.getOutElemTy(QuantizeNode::ResultIdx) == ElemKind::Int8QTy) ||
+            (NI.getOutElemTy(QuantizeNode::ResultIdx) == ElemKind::UInt8QTy) ||
             (NI.getOutElemTy(QuantizeNode::ResultIdx) == ElemKind::Int16QTy) ||
             (NI.getOutElemTy(QuantizeNode::ResultIdx) == ElemKind::Int32QTy));
 
   case Kinded::Kind::DequantizeNodeKind:
     return ((NI.getInElemTy(DequantizeNode::InputIdx) == ElemKind::Int8QTy) ||
+            (NI.getInElemTy(DequantizeNode::InputIdx) == ElemKind::UInt8QTy) ||
             (NI.getInElemTy(DequantizeNode::InputIdx) == ElemKind::Int16QTy) ||
             (NI.getInElemTy(DequantizeNode::InputIdx) == ElemKind::Int32QTy)) &&
            ((NI.getOutElemTy(DequantizeNode::ResultIdx) == ElemKind::FloatTy) ||
