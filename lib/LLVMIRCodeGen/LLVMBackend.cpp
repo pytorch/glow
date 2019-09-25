@@ -54,6 +54,7 @@ LLVMBackend::LLVMBackend() {
   arch_ = llvmArch;
   target_ = llvmTarget;
   cpu_ = llvmCPU;
+  codeModel_ = llvm::CodeModel::Model::Large;
 }
 
 /// Emit the entry point for JIT called "jitmain".
@@ -110,7 +111,7 @@ LLVMBackend::compileIRWithoutConstants(IRFunction *IR) const {
   llvm::SmallVector<std::string, 8> targetFeatures(llvmTargetFeatures.begin(),
                                                    llvmTargetFeatures.end());
   irgen->initTargetMachine(getTarget(), getArch(), getCPU(), targetFeatures,
-                           llvm::CodeModel::Model::Large);
+                           getCodeModel());
   irgen->initCodeGen();
   // Perform the address assignment for activations and WeightVars.
 
