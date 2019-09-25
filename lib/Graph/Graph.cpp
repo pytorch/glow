@@ -2104,11 +2104,7 @@ Node *Function::createBatchBoxCox(llvm::StringRef name, NodeValue data,
 
 Node *Function::createClip(llvm::StringRef name, NodeValue input, float min,
                            float max) {
-  auto *minSplat = createSplat(name.str() + ".minSplat", input.getType(), min);
-  auto *minClipped = createMax(name.str() + ".minClip", input, minSplat);
-  auto *maxSplat = createSplat(name.str() + ".maxSplat", input.getType(), max);
-  auto result = createMin(name.str(), minClipped, maxSplat);
-  return result;
+  return addNode(new ClipNode(name, input.getType(), input, min, max));
 }
 
 //===----------------------------------------------------------------------===//

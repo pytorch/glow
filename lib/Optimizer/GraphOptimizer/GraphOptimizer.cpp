@@ -3065,6 +3065,10 @@ Error glow::optimizeFunction(Function *F, const Backend &B,
   // instrument with profiling nodes. This must be done after lowering.
   transformForPrecisionMode(B, F, cctx);
 
+  // Lower once more, in case precision transform has introduced operators that
+  // need to be lowered, e.g., Clip.
+  ::glow::lower(F, cctx, &B);
+
   // Optimize the graph again, but given the backend's preferred pipeline.
   ::glow::optimize(F, cctx, B);
 

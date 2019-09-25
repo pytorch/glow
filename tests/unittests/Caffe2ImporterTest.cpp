@@ -1095,19 +1095,13 @@ TEST(caffe2, importClip) {
     updateInputPlaceholdersByName(bindings, &mod, {"inputs_0"}, {&inputs_0});
   }
 
-  EXPECT_EQ(F->getNodes().size(), 5);
+  EXPECT_EQ(F->getNodes().size(), 2);
   auto *saveNode = getSaveNodeFromDest(output);
-  auto *minNode = llvm::dyn_cast<MinNode>(saveNode->getInput().getNode());
-  ASSERT_TRUE(minNode);
-  auto *maxNode = llvm::dyn_cast<MaxNode>(minNode->getLHS().getNode());
-  ASSERT_TRUE(maxNode);
-  auto *maxSplatNode = llvm::dyn_cast<SplatNode>(minNode->getRHS().getNode());
-  ASSERT_TRUE(maxSplatNode);
-  EXPECT_EQ(maxSplatNode->getValue(), 60.0);
-  auto *minSplatNode = llvm::dyn_cast<SplatNode>(maxNode->getRHS().getNode());
-  ASSERT_TRUE(minSplatNode);
-  EXPECT_EQ(minSplatNode->getValue(), 20.0);
-  auto *inputNode = llvm::dyn_cast<Placeholder>(maxNode->getLHS().getNode());
+  auto *clipNode = llvm::dyn_cast<ClipNode>(saveNode->getInput().getNode());
+  ASSERT_TRUE(clipNode);
+  EXPECT_EQ(clipNode->getMax(), 60.0);
+  EXPECT_EQ(clipNode->getMin(), 20.0);
+  auto *inputNode = llvm::dyn_cast<Placeholder>(clipNode->getInput());
   ASSERT_EQ(inputNode, mod.getPlaceholderByName("inputs_0"));
   // We have one input and one output.
   EXPECT_EQ(mod.getPlaceholders().size(), 2);
@@ -1139,19 +1133,12 @@ TEST(caffe2, importClipDefault) {
     bindings.allocate(mod.getPlaceholders());
     updateInputPlaceholdersByName(bindings, &mod, {"inputs_0"}, {&inputs_0});
   }
-  EXPECT_EQ(F->getNodes().size(), 5);
+  EXPECT_EQ(F->getNodes().size(), 2);
   auto *saveNode = getSaveNodeFromDest(output);
-  auto *minNode = llvm::dyn_cast<MinNode>(saveNode->getInput().getNode());
-  ASSERT_TRUE(minNode);
-  auto *maxNode = llvm::dyn_cast<MaxNode>(minNode->getLHS().getNode());
-  ASSERT_TRUE(maxNode);
-  auto *maxSplatNode = llvm::dyn_cast<SplatNode>(minNode->getRHS().getNode());
-  ASSERT_TRUE(maxSplatNode);
-  EXPECT_EQ(maxSplatNode->getValue(), std::numeric_limits<float>::max());
-  auto *minSplatNode = llvm::dyn_cast<SplatNode>(maxNode->getRHS().getNode());
-  ASSERT_TRUE(minSplatNode);
-  EXPECT_EQ(minSplatNode->getValue(), std::numeric_limits<float>::lowest());
-  auto *inputNode = llvm::dyn_cast<Placeholder>(maxNode->getLHS().getNode());
+  auto *clipNode = llvm::dyn_cast<ClipNode>(saveNode->getInput().getNode());
+  EXPECT_EQ(clipNode->getMax(), std::numeric_limits<float>::max());
+  EXPECT_EQ(clipNode->getMin(), std::numeric_limits<float>::lowest());
+  auto *inputNode = llvm::dyn_cast<Placeholder>(clipNode->getInput().getNode());
   ASSERT_EQ(inputNode, mod.getPlaceholderByName("inputs_0"));
   // We have one input and one output.
   EXPECT_EQ(mod.getPlaceholders().size(), 2);
@@ -1444,7 +1431,7 @@ TEST(caffe2, Logit) {
   // High level checks on the content of the graph.
   // We have 1 Clip (1 Splat, 1 Max, 1 Splat, 1 Min),
   // 1 Splat, 1 Sub, 1 Div, 1 Log, and 1 Output.
-  EXPECT_EQ(F->getNodes().size(), 9);
+  EXPECT_EQ(F->getNodes().size(), 6);
 
   // Graph has one input and one output.
   EXPECT_EQ(mod.getPlaceholders().size(), 2);

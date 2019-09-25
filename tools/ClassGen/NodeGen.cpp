@@ -336,6 +336,13 @@ int main(int argc, char **argv) {
       .addResultFromCtorArg()
       .setDocstring("Performs Min on the LHS and RHS operands.");
 
+  BB.newNode("Clip")
+      .addInput("Input")
+      .addMember(MemberType::Float, "Min")
+      .addMember(MemberType::Float, "Max")
+      .addResultFromCtorArg()
+      .setDocstring("Clip range of inputs to lie in [Min, Max].");
+
   BB.newNode("CmpLTE")
       .addInput("LHS")
       .addInput("RHS")
