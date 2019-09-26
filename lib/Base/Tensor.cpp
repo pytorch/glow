@@ -16,6 +16,8 @@
 
 #include "glow/Base/Tensor.h"
 
+#include "glow/Base/Type.h"
+
 #include "llvm/Support/NativeFormatting.h"
 #include "llvm/Support/raw_ostream.h"
 #include <glog/logging.h>
@@ -293,6 +295,8 @@ void glow::dumpAsciiImpl(const Tensor *T, llvm::raw_ostream &os) {
     return dumpAsciiGenericImpl(T->getHandle<uint8_t>(), os);
   case ElemKind::UInt8FusedFP16QTy:
     return dumpAsciiGenericImpl(T->getHandle<uint8_t>(), os);
+  case ElemKind::UInt4FusedFP16QTy:
+    return dumpAsciiGenericImpl(T->getHandle<uint8_t>(), os);
   case ElemKind::BoolTy:
     return dumpAsciiGenericImpl(T->getHandle<bool>(), os);
   }
@@ -322,6 +326,8 @@ void glow::dumpImpl(const Tensor *T, llvm::raw_ostream &os,
   case ElemKind::UInt8FusedQTy:
     return dumpGenericImpl(T->getHandle<uint8_t>(), os, maxNumElem);
   case ElemKind::UInt8FusedFP16QTy:
+    return dumpGenericImpl(T->getHandle<uint8_t>(), os, maxNumElem);
+  case ElemKind::UInt4FusedFP16QTy:
     return dumpGenericImpl(T->getHandle<uint8_t>(), os, maxNumElem);
   case ElemKind::BoolTy:
     return dumpGenericImpl(T->getHandle<bool>(), os, maxNumElem);
@@ -446,6 +452,9 @@ void glow::genericTranspose(const Tensor *src, Tensor *dest,
   case ElemKind::UInt8FusedFP16QTy: {
     llvm_unreachable("Transposing UInt8FusedFP16QTy is unsupported.");
   }
+  case ElemKind::UInt4FusedFP16QTy: {
+    llvm_unreachable("Transposing UInt4FusedFP16QTy is unsupported.");
+  }
   case ElemKind::BoolTy: {
     auto srcH = src->getHandle<bool>();
     auto destH = dest->getHandle<bool>();
@@ -522,6 +531,7 @@ void Tensor::init(InitKind init, float val, PseudoRNG &PRNG) {
   }
       FUSED_CASE(UInt8FusedQTy, float);
       FUSED_CASE(UInt8FusedFP16QTy, float16_t);
+      FUSED_CASE(UInt4FusedFP16QTy, float16_t);
 #undef FUSED_CASE
 
     case ElemKind::BoolTy: {
@@ -552,20 +562,60 @@ void Tensor::init(InitKind init, float val, PseudoRNG &PRNG) {
 }
 
 void Tensor::convertToType(ElemKind newTy) {
-  Tensor tmp(newTy, dims());
-  switch (newTy) {
-  case ElemKind::Float16Ty:
-    assert(getElementType() == ElemKind::FloatTy && "Cast not implemented");
-    tmp.copyWithCast<float16_t, float>(this);
-    break;
-  case ElemKind::FloatTy:
-    assert(getElementType() == ElemKind::Float16Ty && "Cast not implemented");
-    tmp.copyWithCast<float, float16_t>(this);
-    break;
-  default:
-    llvm_unreachable("Type not supported");
+  *this = this->getCopyConvertedToType(newTy);
+}
+
+Tensor Tensor::getCopyConvertedToType(ElemKind newKind) const {
+  const ElemKind origKind = getElementType();
+  DCHECK((origKind == ElemKind::FloatTy && newKind == ElemKind::Float16Ty) ||
+         (origKind == ElemKind::Float16Ty && newKind == ElemKind::FloatTy) ||
+         (origKind == ElemKind::UInt8FusedQTy &&
+          newKind == ElemKind::UInt8FusedFP16QTy))
+      << "Conversion from " << Type::getElementName(origKind).str() << " to "
+      << Type::getElementName(newKind).str() << " is not yet implemented";
+
+  if (!isQuantizedElemKind(newKind)) {
+    Tensor tmp(newKind, dims());
+    switch (newKind) {
+    case ElemKind::Float16Ty:
+      tmp.copyWithCast<float16_t, float>(this);
+      break;
+
+    case ElemKind::FloatTy:
+      tmp.copyWithCast<float, float16_t>(this);
+      break;
+
+    default:
+      llvm_unreachable("Type not supported");
+    }
+    return tmp;
   }
-  *this = std::move(tmp);
+
+  // Handle Fused conversion. Currently only supports UInt8FusedQTy ->
+  // UInt8FusedFP16QTy.
+  DCHECK(origKind == ElemKind::UInt8FusedQTy && dims().size() == 2)
+      << "UInt8FusedQTy must be 2 dimensional.";
+  Tensor tmp(newKind,
+             {dims()[0], dims()[1] - 2 * (sizeof(float) - sizeof(float16_t))},
+             1.0, 0);
+
+  const size_t dstWidth = tmp.dims()[1];
+  auto srcH = getHandle<uint8_t>();
+  auto dstH = tmp.getHandle<uint8_t>();
+  for (size_t i = 0, e = dims()[0]; i < e; i++) {
+    // Copy the scale/offset from src to dst.
+    float scale, offset;
+    std::tie(scale, offset) = srcH.getFusedScaleOffsetFromRow<float>(i);
+    dstH.setFusedScaleOffsetInRow<float16_t>(i, static_cast<float16_t>(scale),
+                                             static_cast<float16_t>(offset));
+
+    // Copy over the row's uint8 data from src to dst; scales and offsets were
+    // already copied over above.
+    for (size_t j = 0, f = dstWidth - 2 * sizeof(float16_t); j < f; j++) {
+      dstH.at({i, j}) = srcH.at({i, j});
+    }
+  }
+  return tmp;
 }
 
 size_t Tensor::getUnpaddedSizeInBytes() const {

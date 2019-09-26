@@ -111,7 +111,7 @@ void setUpDeviceManagerCommon(
   deviceManager =
       std::unique_ptr<DeviceManager>(DeviceManager::createDeviceManager(
           DeviceConfig(backend->getBackendName())));
-  bool error = errToBool(deviceManager->init());
+  bool error = ERR_TO_BOOL(deviceManager->init());
 
   if (error) {
     state.SkipWithError("Unable to set up DeviceManager - failed to "
@@ -135,10 +135,10 @@ void setUpDeviceManagerCommon(
   // Add all compiled functions to the DeviceManager instance.
   std::promise<bool> promise;
   std::future<bool> future = promise.get_future();
-  deviceManager->addNetwork(
-      mod.get(), funcs, [&promise](const Module * /*mod*/, llvm::Error err) {
-        promise.set_value(errToBool(std::move(err)));
-      });
+  deviceManager->addNetwork(mod.get(), funcs,
+                            [&promise](const Module * /*mod*/, Error err) {
+                              promise.set_value(ERR_TO_BOOL(std::move(err)));
+                            });
   future.wait();
   error = future.get();
 
@@ -166,8 +166,8 @@ void tearDownDeviceManagerCommon(
     std::promise<bool> promise;
     std::future<bool> future = promise.get_future();
     deviceManager->evictNetwork(
-        func.first, [&promise](std::string /*name*/, llvm::Error err) {
-          promise.set_value(errToBool(std::move(err)));
+        func.first, [&promise](std::string /*name*/, Error err) {
+          promise.set_value(ERR_TO_BOOL(std::move(err)));
         });
     future.wait();
     bool error = future.get();
@@ -181,7 +181,7 @@ void tearDownDeviceManagerCommon(
   deviceManagerFunctions.clear();
 
   // Stop the device.
-  bool error = errToBool(deviceManager->stop());
+  bool error = ERR_TO_BOOL(deviceManager->stop());
   if (error) {
     state.SkipWithError("Unable to tear down DeviceManager - failed to stop "
                         "DeviceManager!");
@@ -306,7 +306,7 @@ protected:
 
     // Add the module to the HostManager instance.
     CompilationContext cctx;
-    bool error = errToBool(hostManager_->addNetwork(std::move(mod), cctx));
+    bool error = ERR_TO_BOOL(hostManager_->addNetwork(std::move(mod), cctx));
     if (error) {
       state.SkipWithError("Unable to set up host manager - failed to add "
                           "module!");
@@ -322,7 +322,7 @@ protected:
     }
 
     // Clear all networks and stop all devices.
-    bool error = errToBool(hostManager_->clearHost());
+    bool error = ERR_TO_BOOL(hostManager_->clearHost());
     if (error) {
       state.SkipWithError(
           "Unable to tear down host manager - failed to clear host!");
@@ -344,8 +344,7 @@ protected:
         std::future<void> future = promise.get_future();
         hostManager_->runNetwork(
             function, std::move(ctx),
-            [&promise, &ctx](runtime::RunIdentifierTy /*runId*/,
-                             llvm::Error /*err*/,
+            [&promise, &ctx](runtime::RunIdentifierTy /*runId*/, Error /*err*/,
                              std::unique_ptr<ExecutionContext> result) {
               ctx = std::move(result);
               promise.set_value();
@@ -446,8 +445,7 @@ protected:
       std::future<void> future = promise.get_future();
       executor_->run(
           (dag_->root).get(), std::move(ctx), /*runId=*/0,
-          [&promise, &ctx](runtime::RunIdentifierTy /*runId*/,
-                           llvm::Error /*err*/,
+          [&promise, &ctx](runtime::RunIdentifierTy /*runId*/, Error /*err*/,
                            std::unique_ptr<ExecutionContext> result) {
             ctx = std::move(result);
             promise.set_value();
@@ -510,8 +508,7 @@ protected:
         std::future<void> future = promise.get_future();
         deviceManager_->runFunction(
             func.first, std::move(ctx),
-            [&promise, &ctx](runtime::RunIdentifierTy /*runId*/,
-                             llvm::Error /*err*/,
+            [&promise, &ctx](runtime::RunIdentifierTy /*runId*/, Error /*err*/,
                              std::unique_ptr<ExecutionContext> result) {
               ctx = std::move(result);
               promise.set_value();

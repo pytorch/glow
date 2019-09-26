@@ -565,10 +565,39 @@ bool Convolution3DGradNode::verify() const {
   return isValid;
 }
 
+/// \returns the number of columns of data from a fused \p type (i.e. not
+/// considering the columns for per row scale/offsets).
+static size_t getNumDataColumnsFromFused(TypeRef type) {
+  size_t n = type->dims()[1];
+  switch (type->getElementType()) {
+  case ElemKind::UInt8FusedQTy:
+    return n - 2 * sizeof(float);
+  case ElemKind::UInt8FusedFP16QTy:
+    return n - 2 * sizeof(float16_t);
+  default:
+    llvm_unreachable("Not supported Fused ElemKind");
+  }
+}
+
 bool ConvertToNode::verify() const {
-  bool isValid = checkSameShape(getInput(), getResult(), this);
   TypeRef srcTy = getInput().getType();
   TypeRef dstTy = getResult().getType();
+  const bool srcIsFused = isFusedQuantizedElemKind(srcTy->getElementType());
+  const bool dstIsFused = isFusedQuantizedElemKind(dstTy->getElementType());
+
+  bool isValid = expectCompareTrue(
+      "Conversion of src and dst with mismatched fused property is not yet "
+      "implemented",
+      (srcIsFused && dstIsFused) || (!srcIsFused && !dstIsFused), true, this);
+
+  if (srcIsFused && dstIsFused) {
+    size_t srcNumCols = getNumDataColumnsFromFused(srcTy);
+    size_t dstNumCols = getNumDataColumnsFromFused(dstTy);
+    return expectCompareTrue("Shapes of data for fused kinds do not match",
+                             srcNumCols, dstNumCols, this);
+  }
+
+  isValid &= checkSameShape(getInput(), getResult(), this);
   isValid &= expectCompareTrue(
       "Quantized conversion should use Dequantize, Quantize and Rescale",
       srcTy->isQuantizedType() || dstTy->isQuantizedType(), false, this);
@@ -595,6 +624,34 @@ bool AvgPoolNode::verify() const {
     return verifyPool<ShapeNCHW>(getInput(), getResult(), Kernels_, Strides_,
                                  Pads_);
   }
+}
+
+bool AdaptiveAvgPoolGradNode::verify() const {
+  bool isValid = verifyInputAndGradInputTypes(getInput(),
+                                              getGradOfInputNamedInput(), this);
+  isValid &= verifyOutputAndGradOutputTypes(
+      getOriginalOutputForResult(), getGradOfOriginalOutputNamedResult(), this);
+
+  ShapeNHWC idim(getInput().getType()->dims());
+  ShapeNHWC odim(getOriginalOutputForResult().getType()->dims());
+
+  isValid &= expectCompareTrue(
+      "expected the same number of channels for input and output", odim.c,
+      idim.c, this);
+
+  isValid &= expectCompareTrue(
+      "expected the same number of batches for input and output", odim.n,
+      idim.n, this);
+
+  isValid &=
+      expectCompareTrue("height too small for averaging area", odim.h, idim.h,
+                        this, CompareOperatorLessEqual<size_t>());
+
+  isValid &=
+      expectCompareTrue("width too small for averaging area", odim.w, idim.w,
+                        this, CompareOperatorLessEqual<size_t>());
+
+  return isValid;
 }
 
 bool AdaptiveAvgPoolNode::verify() const {
@@ -836,6 +893,10 @@ bool SplatNode::verify() const { return true; }
 
 bool TraceEventNode::verify() const { return true; }
 
+bool ClipNode::verify() const {
+  return checkSameType(getInput(), getResult(), this);
+}
+
 bool InsertTensorNode::verify() const {
   auto dest = getBig();
   auto src = getSmall();
@@ -1023,6 +1084,7 @@ VERIFY_ARITHMETIC(DivGrad);
   }
 
 VERIFY_CMP(CmpLTE)
+VERIFY_CMP(CmpLT)
 VERIFY_CMP(CmpEQ)
 #undef VERIFY_CMP
 
@@ -1139,10 +1201,8 @@ static bool verifyFusedRowwiseQuantizedSparseLengthsSum(
       isFusedQuantizedElemKind(data.getType()->getElementType()), true, parent);
   size_t extraCols;
   if (data.getType()->getElementType() == ElemKind::UInt8FusedQTy) {
-    isValid &= checkType(result, ElemKind::FloatTy, parent);
     extraCols = 2 * sizeof(float);
   } else {
-    isValid &= checkType(result, ElemKind::Float16Ty, parent);
     extraCols = 2 * sizeof(float16_t);
   }
   if (useFP16Accumulation) {
@@ -1165,11 +1225,6 @@ static bool verifyFusedRowwiseQuantizedSparseLengthsSum(
                                result.dims().size(), size_t(2), parent);
 
   if (weights.getNode()) {
-    if (data.getType()->getElementType() == ElemKind::UInt8FusedQTy) {
-      isValid &= checkType(weights, ElemKind::FloatTy, parent);
-    } else {
-      isValid &= checkType(weights, ElemKind::Float16Ty, parent);
-    }
     isValid &= expectCompareTrue("Weights must be a 1D vector",
                                  weights.dims().size(), size_t(1), parent);
     isValid &= expectCompareTrue("Weights and Indices must have the same size",
@@ -1320,6 +1375,36 @@ bool TopKNode::verify() const {
   bool isValid = checkSameShape(getValues(), getIndices(), this);
   isValid &= checkNotQuantizedOrSameParams(getInput().getType(),
                                            getValues().getType(), this);
+  return isValid;
+}
+
+bool ArgMaxNode::verify() const {
+  bool isValid = true;
+
+  // Check input type.
+  isValid &= checkType(getArgmax(),
+                       llvm::ArrayRef<ElemKind>({ElemKind::Int64ITy}), this);
+
+  isValid &= expectCompareTrue("Input must be a 4D tensor",
+                               getInput().dims().size(), size_t(4), this);
+
+  // Check expected output type.
+  bool keepdims = getKeepDims();
+  const unsigned_t axis = getAxis();
+
+  ShapeVector expDstDims;
+  auto srcDim = getInput().dims();
+  for (size_t i = 0; i < srcDim.size(); i++) {
+    if (i == axis) {
+      if (keepdims) {
+        expDstDims.push_back(1);
+      }
+    } else {
+      expDstDims.push_back(srcDim[i]);
+    }
+  }
+  isValid &= expectCompareTrue("Invalid output dims", getArgmax().dims(),
+                               llvm::makeArrayRef(expDstDims), this);
   return isValid;
 }
 
@@ -1702,5 +1787,35 @@ llvm::hash_code hash_value(const glow::NodeValue &NV) {
 
 llvm::hash_code hash_value(const glow::NodeHandle &NV) {
   return llvm::hash_combine(NV.getNode(), NV.getResNo());
+}
+
+llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
+                              FusedActivation fusedActivation) {
+  switch (fusedActivation) {
+  case FusedActivation::NONE:
+    break;
+  case FusedActivation::RELU:
+    os << "RELU";
+    break;
+  case FusedActivation::SIGMOID:
+    os << "SIGMOID";
+    break;
+  case FusedActivation::TANH:
+    os << "TANH";
+    break;
+  }
+  return os;
+}
+
+llvm::raw_ostream &operator<<(llvm::raw_ostream &os, ConvolutionLayout layout) {
+  switch (layout) {
+  case ConvolutionLayout::NCHW:
+    os << "NCHW";
+    break;
+  case ConvolutionLayout::NHWC:
+    os << "NHWC";
+    break;
+  }
+  return os;
 }
 } // namespace glow

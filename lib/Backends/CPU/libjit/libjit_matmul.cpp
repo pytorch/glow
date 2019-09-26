@@ -117,7 +117,7 @@ void libjit_matmul_zdot(size_t k, const float *a, size_t lda, const float *b,
 template <size_t regsA>
 void pack_matrix_a(size_t m, size_t k, const float *a, size_t lda,
                    float *a_to) {
-  for (size_t i = 0; i < m - mr + 1; i += mr) {
+  for (int i = 0; i < int(m) - mr + 1; i += mr) {
     for (size_t j = 0; j < k; j++) {
       const float *a_ij_pntr = &A(i, j);
       for (size_t ai = 0; ai < regsA; ai++) {

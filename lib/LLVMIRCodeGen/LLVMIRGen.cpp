@@ -245,6 +245,8 @@ llvm::Type *LLVMIRGen::getElementType(llvm::IRBuilder<> &builder,
     return builder.getInt8Ty();
   case ElemKind::UInt8FusedFP16QTy:
     return builder.getInt8Ty();
+  case ElemKind::UInt4FusedFP16QTy:
+    return builder.getInt8Ty();
   case ElemKind::BoolTy:
     static_assert(sizeof(bool) == sizeof(int8_t),
                   "Bool is expected to be the same size as int8.");
@@ -343,6 +345,9 @@ llvm::Value *LLVMIRGen::emitValueAddress(llvm::IRBuilder<> &builder,
     T = llvm::Type::getInt8PtrTy(ctx_);
     break;
   case ElemKind::UInt8FusedFP16QTy:
+    T = llvm::Type::getInt8PtrTy(ctx_);
+    break;
+  case ElemKind::UInt4FusedFP16QTy:
     T = llvm::Type::getInt8PtrTy(ctx_);
     break;
   case ElemKind::BoolTy:
@@ -502,6 +507,8 @@ llvm::Value *LLVMIRGen::emitConst(llvm::IRBuilder<> &builder, float val,
   case ElemKind::UInt8FusedQTy:
     return builder.getInt8(static_cast<int8_t>(val));
   case ElemKind::UInt8FusedFP16QTy:
+    return builder.getInt8(static_cast<int8_t>(val));
+  case ElemKind::UInt4FusedFP16QTy:
     return builder.getInt8(static_cast<int8_t>(val));
   case ElemKind::BoolTy:
     return builder.getInt8(static_cast<int8_t>(val));
@@ -1175,18 +1182,35 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
     ARITHMETIC_BINARY_OP_CASE(ElementPow, "element_pow");
 #undef ARITHMETIC_BINARY_OP_CASE
 
-  case Kinded::Kind::ElementCmpLTEInstKind: {
-    auto *CI = cast<ElementCmpLTEInst>(I);
-    auto *dest = CI->getDest();
-    auto *lhs = CI->getLHS();
-    auto *rhs = CI->getRHS();
+  case Kinded::Kind::ElementCmpLTEInstKind:
+  case Kinded::Kind::ElementCmpLTInstKind: {
+    Value *dest = nullptr;
+    Value *lhs = nullptr;
+    Value *rhs = nullptr;
+    std::string kernelName;
+
+    if (auto *CLTEI = dyn_cast<ElementCmpLTEInst>(I)) {
+      dest = CLTEI->getDest();
+      lhs = CLTEI->getLHS();
+      rhs = CLTEI->getRHS();
+      kernelName = "element_cmp_lte_kernel";
+    } else if (auto *CLTI = dyn_cast<ElementCmpLTInst>(I)) {
+      dest = CLTI->getDest();
+      lhs = CLTI->getLHS();
+      rhs = CLTI->getRHS();
+      kernelName = "element_cmp_lt_kernel";
+    } else {
+      llvm_unreachable(
+          "Missmatch between Instruction Kind and instruction instance.");
+    }
+
     auto *destPtr = emitBufferAddress(builder, dest, kernel, bufferToArgNum);
     auto *lhsPtr = emitBufferAddress(builder, lhs, kernel, bufferToArgNum);
     auto *rhsPtr = emitBufferAddress(builder, rhs, kernel, bufferToArgNum);
 
     // Need _kernel suffix since these operations are implemented as
     // "data-parallel" kernels in libjit.
-    auto *F = getFunction("element_cmp_lte_kernel", lhs->getElementType());
+    auto *F = getFunction(kernelName.c_str(), lhs->getElementType());
 
     if (lhs->getType()->isQuantizedType()) {
       auto *lhsTy = lhs->getType();
@@ -1716,6 +1740,8 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *CI = cast<ConvolutionInst>(I);
     assert(CI->getLayout() == NHWC &&
            "Glow CPU Backend supports only NHWC Convolutions");
+    assert(CI->getFusedActivation() == FusedActivation::NONE &&
+           "Glow CPU Backend does not support fused activations.");
     auto *dest = CI->getDest();
     auto *src = CI->getSrc();
     auto *filter = CI->getFilter();
@@ -2000,6 +2026,22 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *F = getFunction("max_pool_argmax_grad", srcGrad->getElementType());
     createCall(builder, F,
                {srcGradPtr, destGradPtr, argmaxPtr, srcGradDims, destDims});
+    break;
+  }
+
+  case Kinded::Kind::ArgMaxInstKind: {
+    auto *AM = cast<ArgMaxInst>(I);
+    auto *argmax = AM->getArgmax();
+    auto *input = AM->getInput();
+    auto *argmaxPtr = emitValueAddress(builder, argmax);
+    auto *inputPtr = emitValueAddress(builder, input);
+
+    auto *srcDims = emitValueDims(builder, input);
+
+    auto *axis = emitConstSizeT(builder, AM->getAxis());
+
+    auto *F = getFunction("arg_max", input->getElementType());
+    createCall(builder, F, {inputPtr, argmaxPtr, srcDims, axis});
     break;
   }
 

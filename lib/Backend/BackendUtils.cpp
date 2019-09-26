@@ -349,6 +349,45 @@ bool isInput(const Placeholder *PH,
   return false;
 }
 
+/// If \p N does not have fused activation \returns true.
+bool checkNoFusionForNode(const Node &N) {
+#define DEF_NODE(CLASS, NAME)                                                  \
+  case Kinded::Kind::CLASS##Kind: {                                            \
+    const CLASS *CI = llvm::cast<CLASS>(&N);                                   \
+    return checkNoFusion(*CI);                                                 \
+    break;                                                                     \
+  }
+  switch (N.getKind()) {
+#include "glow/AutoGenNodes.def"
+  default:
+    llvm_unreachable("Invalid node.");
+  }
+  return true;
+}
+
+/// If \p I does not have fused activation \returns true.
+bool checkNoFusionForInstr(const Instruction &I) {
+#define DEF_VALUE(CLASS, NAME)
+#define DEF_INSTR(CLASS, NAME)                                                 \
+  case Kinded::Kind::CLASS##Kind: {                                            \
+    const CLASS *CI = llvm::cast<CLASS>(&I);                                   \
+    return checkNoFusion(*CI);                                                 \
+    break;                                                                     \
+  }
+#define DEF_BACKEND_SPECIFIC_INSTR(CLASS, NAME)                                \
+  case Kinded::Kind::CLASS##Kind: {                                            \
+    const CLASS *CI = llvm::cast<CLASS>(&I);                                   \
+    return checkNoFusion(*CI);                                                 \
+    break;                                                                     \
+  }
+  switch (I.getKind()) {
+#include "glow/AutoGenInstr.def"
+  default:
+    llvm_unreachable("Invalid instruction.");
+  }
+  return true;
+}
+
 template <typename FUN, typename ARR>
 ContiguousPlaceholders getContiguousPlaceHolder(const ARR &holders,
                                                 const FUN &F) {

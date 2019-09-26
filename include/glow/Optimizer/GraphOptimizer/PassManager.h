@@ -16,6 +16,8 @@
 #ifndef GLOW_OPTIMIZER_GRAPHOPTIMIZER_PASSMANAGER_H
 #define GLOW_OPTIMIZER_GRAPHOPTIMIZER_PASSMANAGER_H
 
+#include "glow/Backend/Backend.h"
+
 #include "glow/Optimizer/GraphOptimizer/CompilationContext.h"
 #include "glow/Optimizer/GraphOptimizer/FunctionPass.h"
 #include "glow/Optimizer/GraphOptimizer/FunctionPasses.h"
@@ -33,6 +35,9 @@ class FunctionPassManager : public Named {
 private:
   /// The pipeline of passes to run.
   FunctionPassPipeline pipeline_;
+
+  /// The Backend we have for backend-specific verification.
+  const Backend *backend_;
 
   /// The index of the current pass being executed in the pipeline.
   size_t passIdx_ = 0;
@@ -55,8 +60,9 @@ private:
                const CompilationContext &cctx);
 
 public:
-  FunctionPassManager(llvm::StringRef name, FunctionPassPipeline pipeline)
-      : Named(name), pipeline_(pipeline), passIdx_(0) {}
+  FunctionPassManager(llvm::StringRef name, FunctionPassPipeline pipeline,
+                      const Backend *backend = nullptr)
+      : Named(name), pipeline_(pipeline), backend_(backend), passIdx_(0) {}
   ~FunctionPassManager() = default;
 
   /// Run the FunctionPassPipeline given the \ref pipeline_ and

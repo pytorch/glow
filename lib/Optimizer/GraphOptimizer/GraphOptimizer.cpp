@@ -17,7 +17,7 @@
 #include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
 
 #include "glow/Backend/Backend.h"
-#include "glow/Converter/TypeAToTypeBFunctionConverter.h"
+#include "glow/Converter/Float16Converter.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/Log.h"
 #include "glow/Graph/Node.h"
@@ -1918,6 +1918,23 @@ bool OptimizeTransposeIntoReshape::run(Function *F,
   return changed;
 }
 
+bool EliminateNoopTile::run(Function *F, const CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), getName());
+  bool changed = false;
+
+  for (auto &node : F->getNodes()) {
+    if (auto *tileNode = dyn_cast<TileNode>(&node)) {
+      // If the TileNode tiles only once, eliminate it.
+      if (tileNode->getCount() == 1) {
+        tileNode->getResult().replaceAllUsesOfWith(tileNode->getInput());
+        changed = true;
+      }
+    }
+  }
+
+  return changed;
+}
+
 /// Optimize reshape nodes.
 bool OptimizeReshape::run(Function *F, const CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), getName());
@@ -2094,6 +2111,16 @@ static NodeValue convertConstant(Module &mod, Constant &constant,
       // Plain conversion: {FloatTy, Float16Ty} -> Int64ITy.
       return NodeValue();
     }
+  case ElemKind::UInt8FusedQTy: {
+    if (dstTy->getElementType() != ElemKind::UInt8FusedFP16QTy) {
+      return NodeValue();
+    }
+    auto *NC = mod.createConstant(dstTy, constant.getName());
+    NC->getPayloadMutable() =
+        tensor.getCopyConvertedToType(dstTy->getElementType());
+    return NC->getOutput();
+  }
+
   default:
     // For now we don't see other quantize, dequantize, or rescale nodes
     // directly attached to constants.
@@ -2193,6 +2220,7 @@ bool OptimizeConversions::run(Function *F, const CompilationContext &cctx) {
       srcVal =
           convertConstant(mod, *llvm::cast<Constant>(conversionInput.getNode()),
                           dstVal.getType());
+      assert(srcVal.getNode() != nullptr && "Unhandled convertConstant case.");
       // Reset conversionInput because it may not be valid anymore.
       conversionInput = NodeValue();
       break;
@@ -2850,6 +2878,67 @@ bool FoldChannelShuffle::run(Function *F, const CompilationContext &cctx) {
   return changed;
 }
 
+// Fold Tile -> Add into BatchedAdd wherever applicable.
+bool FoldTileAddIntoBatchedAdd::run(Function *F,
+                                    const CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), getName());
+
+  bool changed = false;
+  for (const auto &node : F->getNodes()) {
+    const auto *addNode = dyn_cast<AddNode>(&node);
+    if (!addNode) {
+      continue;
+    }
+
+    NodeValue batchNode, addedNode;
+    const auto &LHS = addNode->getLHS();
+    const auto &RHS = addNode->getRHS();
+    const TileNode *tileNode = nullptr;
+
+    // Check if LHS is a tile.
+    if ((tileNode = dyn_cast<TileNode>(LHS))) {
+      batchNode = RHS;
+      addedNode = tileNode->getInput();
+    }
+    // Check if RHS is a tile.
+    else if ((tileNode = dyn_cast<TileNode>(RHS))) {
+      batchNode = LHS;
+      addedNode = tileNode->getInput();
+    }
+    // If neither LHS or RHS is a tile, nothing to do.
+    else {
+      continue;
+    }
+
+    // If the tiling of the added node is not along the 0th axis,
+    // 'Add' cannot be replaced with 'BatchedAdd'.
+    if (tileNode->getAxis() != 0) {
+      continue;
+    }
+
+    auto oldDims = addedNode.dims();
+    // If the 0th dimension of the added node is not 1,
+    // then reducing dimension via reshaping is more complicated.
+    // Hence, Add will not be replaced with BatchedAdd.
+    if (oldDims.size() == 0 || oldDims[0] != 1) {
+      continue;
+    }
+
+    // Reshape the added node to create a slice for the batched add
+    // such that its dim size is one less than that of the batch.
+    const auto newDims = oldDims.take_back(oldDims.size() - 1);
+    auto *slice = F->createReshape(tileNode->getName().str() + "_reshape",
+                                   addedNode, newDims);
+
+    // Create a new batched add node to replace existing add node.
+    auto *newBA = F->createBatchedAdd(addNode->getName().str() + "_batched_add",
+                                      batchNode, slice);
+    addNode->getResult().replaceAllUsesOfWith(newBA);
+    changed = true;
+  }
+  return changed;
+}
+
 void glow::fold(Function *F, CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), "glow::fold")
 
@@ -2867,7 +2956,7 @@ void glow::optimize(Function *F, CompilationContext &cctx, const Backend &B) {
   LOG_SCOPE(F->getLogContext(), "glow::optimize")
 
   FunctionPassManager FPM("TargetDependentGraphOptzFPM",
-                          B.getOptimizationPipeline());
+                          B.getOptimizationPipeline(), &B);
   FPM.run(F, cctx);
 }
 
@@ -2887,26 +2976,6 @@ void glow::optimize(Function *F, CompilationMode mode) {
   CompilationContext cctx;
   cctx.compMode = mode;
   optimize(F, cctx);
-}
-
-/// \returns an error if any nodes inside \p F are not supported by \p B.
-static llvm::Error checkAllNodesSupported(const Function &F, const Backend &B) {
-  bool allSupported = true;
-  for (const Node &N : F.getNodes()) {
-    if (!B.isOpSupported(N)) {
-      allSupported = false;
-      report("Unsupported node found while compiling Function " +
-             F.getName().str() + " for backend " + B.getBackendName() + ": " +
-             N.getDebugDesc());
-    }
-  }
-  if (!allSupported) {
-    return MAKE_ERR(GlowErr::ErrorCode::COMPILE_UNSUPPORTED_NODE_AFTER_OPTIMIZE,
-                    "Unsupported node(s) found after optimizing Function " +
-                        F.getName().str() + " for backend " +
-                        B.getBackendName());
-  }
-  return llvm::Error::success();
 }
 
 /// Helper function that may transform \p F given preferences of \p cctx and
@@ -2943,16 +3012,13 @@ static void transformForPrecisionMode(const Backend &B, Function *F,
   }
 
   if (precConfig.convertToFP16) {
-    LOG_SCOPE(F->getLogContext(), "TypeAToTypeBFunctionConverter::convert()")
-
-    TypeAToTypeBFunctionConverter converter(*F, ElemKind::FloatTy,
-                                            ElemKind::Float16Ty, precConfig);
-    converter.convert();
+    LOG_SCOPE(F->getLogContext(), "glow::convertFunctionToFloat16")
+    convertFunctionToFloat16(F, precConfig);
   }
 }
 
-llvm::Error glow::optimizeFunctionBeforeLowering(Function *F,
-                                                 CompilationContext &cctx) {
+Error glow::optimizeFunctionBeforeLowering(Function *F,
+                                           CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), "glow::optimizeFunctionBeforeLowering")
 
   // Verify the function pre-optimization/lowering.
@@ -2971,13 +3037,13 @@ llvm::Error glow::optimizeFunctionBeforeLowering(Function *F,
 
   // Optimize the graph. Only runs optimizations that are target-independent.
   ::glow::optimize(F, cctx);
-  return llvm::Error::success();
+  return Error::success();
 }
 
 // NOTE: When updating this function, please also update the documentation in
 // docs/GraphOptimizationPipeline.md
-llvm::Error glow::optimizeFunction(Function *F, const Backend &B,
-                                   CompilationContext &cctx) {
+Error glow::optimizeFunction(Function *F, const Backend &B,
+                             CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), "glow::optimizeFunction")
 
   RETURN_IF_ERR(optimizeFunctionBeforeLowering(F, cctx));
@@ -2999,6 +3065,10 @@ llvm::Error glow::optimizeFunction(Function *F, const Backend &B,
   // instrument with profiling nodes. This must be done after lowering.
   transformForPrecisionMode(B, F, cctx);
 
+  // Lower once more, in case precision transform has introduced operators that
+  // need to be lowered, e.g., Clip.
+  ::glow::lower(F, cctx, &B);
+
   // Optimize the graph again, but given the backend's preferred pipeline.
   ::glow::optimize(F, cctx, B);
 
@@ -3009,5 +3079,83 @@ llvm::Error glow::optimizeFunction(Function *F, const Backend &B,
     ::glow::optimize(F, cctx, B);
   }
 
-  return checkAllNodesSupported(*F, B);
+  // We already started using backend specific verification when the function
+  // state became lowered. Do one more verification pass to make sure everything
+  // is in order and to bail if it is not.
+  if (!B.verify(*F)) {
+    return MAKE_ERR(
+        ErrorValue::ErrorCode::COMPILE_UNSUPPORTED_NODE_AFTER_OPTIMIZE,
+        "Unsupported node(s) found after optimizing Function " +
+            F->getName().str() + " for backend " + B.getBackendName());
+  }
+  return Error::success();
+}
+
+bool glow::executeVerticalFCWeightsSplit(Function *F, unsigned numOfChunks,
+                                         unsigned minKToSplit) {
+  DCHECK(numOfChunks > 0) << "numOfChunks must be a positive number, given: "
+                          << numOfChunks;
+  DCHECK(minKToSplit > 0) << "minKToSplit must be a positive number, given: "
+                          << minKToSplit;
+
+  bool changed = false;
+  for (auto it = F->getNodes().begin(), e = F->getNodes().end(); it != e;
+       ++it) {
+    auto *FC = dyn_cast<FullyConnectedNode>(it);
+    if (!FC) {
+      continue;
+    }
+
+    size_t K = FC->getWeights().dims()[1];
+    if (K < minKToSplit) {
+      continue;
+    }
+
+    auto input = FC->getInput();
+    auto weights = FC->getWeights();
+    auto bias = FC->getBias();
+
+    size_t elemPerChunk = (bias.dims()[0] + numOfChunks - 1) / numOfChunks;
+    size_t sliceStart = 0;
+    std::vector<NodeValue> fcs(numOfChunks);
+
+    // Split weights across second dimension into numOfChunks pieces.
+    // Input dimension is [M;K] and kept untouched.
+    // Bias dimension is [N], split into chunks.
+    // Weight dimension is [K;N], split into numOfChunks chunks,
+    // [K;N/numOfChunks] each.
+    // Last chunk might require special handling in case
+    // N is not divisible by numOfChunks.
+    auto *fcType = F->getParent()->uniqueTypeWithNewShape(
+        FC->getResult().getType(), {FC->getResult().dims()[0], elemPerChunk});
+
+    for (unsigned i = 0; i < numOfChunks; ++i) {
+      // Last chunk might need special handling if bias dimension
+      // is not divisible by numOfChunks.
+      if (i == numOfChunks - 1 && bias.dims()[0] % numOfChunks != 0) {
+        elemPerChunk = bias.dims()[0] - (numOfChunks - 1) * elemPerChunk;
+        fcType = F->getParent()->uniqueTypeWithNewShape(
+            FC->getResult().getType(),
+            {FC->getResult().dims()[0], elemPerChunk});
+      }
+
+      auto *weightSlice = F->createSlice(
+          "weight_slice." + weights.getNode()->getName().str(), weights,
+          {0, sliceStart}, {weights.dims()[0], sliceStart + elemPerChunk});
+      auto *biasSlice =
+          F->createSlice("bias_slice." + bias.getNode()->getName().str(), bias,
+                         {sliceStart}, {sliceStart + elemPerChunk});
+      fcs[i] = F->createFullyConnected("fc_slice." + FC->getName().str(), input,
+                                       weightSlice->getResult(),
+                                       biasSlice->getResult(), fcType);
+      sliceStart += elemPerChunk;
+    }
+
+    auto *concat =
+        F->createConcat("concat." + FC->getName().str(), fcs, /*dimension*/ 1);
+    FC->getResult().replaceAllUsesOfWith(concat);
+    changed = true;
+  }
+
+  return changed;
 }

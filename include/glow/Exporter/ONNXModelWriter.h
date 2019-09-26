@@ -55,12 +55,12 @@ class ONNXModelWriter : public CommonOperatorWriter<ONNX_TRAITS> {
                                          ValueInfoType *valueProto);
   /// Writes all inputs and outputs with operator name \p opName from give Node
   /// \p node into protobuf \p proto.
-  static llvm::Error writeAllWithNode(const std::string &opName,
-                                      const Node *node, NodeType *proto);
+  static Error writeAllWithNode(const std::string &opName, const Node *node,
+                                NodeType *proto);
   /// Writes all inputs and outputs with operator name \p opName from give Node
   /// \p node into created node protobuf using \p graph.
-  static llvm::Error writeAll(const std::string &opName, const Node *node,
-                              GraphType &graph);
+  static Error writeAll(const std::string &opName, const Node *node,
+                        GraphType &graph);
   // Finds if uses of \p node have node with the provided \p kind.
   static bool hasUsesOfKind(const Node *node, Kinded::Kind kind);
 
@@ -76,18 +76,18 @@ public:
   /// there otherwise if an error occurs it will abort.
   ONNXModelWriter(const std::string &modelFilename, Function &F,
                   size_t irVersion, size_t opsetVersion,
-                  llvm::Error *errPtr = nullptr, bool textMode = false);
+                  Error *errPtr = nullptr, bool textMode = false);
 
 private:
   /// \returns error for the unexpected node kind.
-  static llvm::Error writeUnexpectedKind(const Node *node) {
+  static Error writeUnexpectedKind(const Node *node) {
     RETURN_ERR(strFormat("Glow can not export node %s, unsupported kind: %s.",
                          node->getName().str().c_str(), node->getKindName()));
   }
 
   /// Declares the overriden all pure virtual methods, declared in base class.
 #define DEF_NODE(CLASS, NAME)                                                  \
-  llvm::Error write##NAME(const CLASS *, GraphType &) override;
+  Error write##NAME(const CLASS *, GraphType &) override;
 #include "glow/AutoGenNodes.def"
 };
 

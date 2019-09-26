@@ -29,15 +29,14 @@ protected:
   /// Declare pure virtual methods, one per each node kind.
   /// Derived class must to implement all of it.
 #define DEF_NODE(CLASS, NAME)                                                  \
-  virtual llvm::Error write##NAME(const CLASS *node,                           \
-                                  typename Traits::GraphProto &graph) = 0;
+  virtual Error write##NAME(const CLASS *node,                                 \
+                            typename Traits::GraphProto &graph) = 0;
 #include "glow/AutoGenNodes.def"
 
   /// Function invokes the correspondent virtual method according to \p node
   /// type to serialize node information into \p graph (protobuf), reports
-  /// visited intermediate nodes through \p reporter, \returns llvm::Error.
-  llvm::Error writeOperator(const Node *node,
-                            typename Traits::GraphProto &graph) {
+  /// visited intermediate nodes through \p reporter, \returns Error.
+  Error writeOperator(const Node *node, typename Traits::GraphProto &graph) {
     switch (node->getKind()) {
 #define DEF_NODE(CLASS, NAME)                                                  \
   case glow::Kinded::Kind::CLASS##Kind:                                        \
@@ -46,7 +45,7 @@ protected:
     default:
       llvm_unreachable(
           "Not reachable, values and instructions are not handled here");
-      return llvm::Error::success();
+      return Error::success();
     }
   }
 

@@ -22,11 +22,12 @@
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/Nodes.h"
 #include "glow/IR/IR.h"
+#include "glow/IR/Instrs.h"
 #include "glow/Optimizer/IROptimizer/IROptimizer.h"
 
 using namespace glow;
 
-llvm::Expected<std::unique_ptr<CompiledFunction>>
+Expected<std::unique_ptr<CompiledFunction>>
 Interpreter::compile(Function *F, const BackendOptions &opts) const {
   TraceInfo traceInfo = buildManualTraceInfo(F);
   auto IR = generateAndOptimizeIR(F, *this, shouldShareBuffers());
@@ -43,8 +44,7 @@ Interpreter::compile(Function *F, const BackendOptions &opts) const {
   }
 
   compiledFunc->setTraceInfo(std::move(traceInfo));
-  return llvm::Expected<std::unique_ptr<CompiledFunction>>(
-      std::move(compiledFunc));
+  return Expected<std::unique_ptr<CompiledFunction>>(std::move(compiledFunc));
 }
 
 std::unique_ptr<CompiledFunction>
@@ -106,6 +106,12 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
                {MaxPoolNode::ArgmaxIdx}) &&
            (NI.getOutElemTy(MaxPoolNode::ArgmaxIdx) == ElemKind::Int64ITy);
 
+  case Kinded::Kind::ArgMaxNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind(
+               {ElemKind::FloatTy, ElemKind::Int8QTy}, {},
+               {ArgMaxNode::ArgmaxIdx}) &&
+           (NI.getOutElemTy(ArgMaxNode::ArgmaxIdx) == ElemKind::Int64ITy);
+
   case Kinded::Kind::PowNodeKind:
   case Kinded::Kind::LocalResponseNormalizationNodeKind:
   case Kinded::Kind::LogNodeKind:
@@ -114,9 +120,11 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::SigmoidNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Float16Ty});
-
-  case Kinded::Kind::DivNodeKind:
   case Kinded::Kind::SliceNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind(
+        {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy,
+         ElemKind::Int32QTy, ElemKind::Int64ITy});
+  case Kinded::Kind::DivNodeKind:
   case Kinded::Kind::SpaceToDepthNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy,
@@ -140,6 +148,13 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
                {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy}, {},
                {CmpLTENode::ResultIdx}) &&
            (NI.getOutElemTy(CmpLTENode::ResultIdx) == ElemKind::BoolTy);
+
+  case Kinded::Kind::CmpLTNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind(
+               {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy,
+                ElemKind::Int32ITy, ElemKind::Int64ITy},
+               {}, {CmpLTNode::ResultIdx}) &&
+           (NI.getOutElemTy(CmpLTNode::ResultIdx) == ElemKind::BoolTy);
 
   case Kinded::Kind::IsNaNNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
@@ -321,6 +336,7 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
 
   case Kinded::Kind::QuantizationProfileNodeKind:
   case Kinded::Kind::AvgPoolGradNodeKind:
+  case Kinded::Kind::AdaptiveAvgPoolGradNodeKind:
   case Kinded::Kind::LocalResponseNormalizationGradNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind({ElemKind::FloatTy});
 
@@ -463,6 +479,114 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
   default:
     return false;
   }
+}
+
+/// Use template meta-programming to check if typename ClassName contains
+/// has_getLayout() method. Below generates a struct named has_getLayout that
+/// looks for said method.
+CLASS_CONTAINS_METHOD(getLayout)
+
+template <typename T, std::enable_if_t<
+                          !has_getLayout<T, ConvolutionLayout>::value, int> = 0>
+static bool checkLayout(const T &I) {
+  (void)I;
+  return true;
+}
+
+template <typename T,
+          std::enable_if_t<has_getLayout<T, ConvolutionLayout>::value, int> = 0>
+static bool checkLayout(const T &I) {
+  if (I.getLayout() != NHWC) {
+    report("Glow Interpreter supports only NHWC");
+    return false;
+  }
+  return true;
+}
+
+static bool checkLayoutForNode(const Node &N) {
+#define DEF_NODE(CLASS, NAME)                                                  \
+  case Kinded::Kind::CLASS##Kind: {                                            \
+    const CLASS *CI = llvm::cast<CLASS>(&N);                                   \
+    return checkLayout(*CI);                                                   \
+    break;                                                                     \
+  }
+  switch (N.getKind()) {
+#include "glow/AutoGenNodes.def"
+  default:
+    llvm_unreachable("Invalid instruction.");
+  }
+  return true;
+}
+
+bool Interpreter::verify(const Function &F) const {
+  if (!F.verify()) {
+    return false;
+  }
+  if (!checkAllNodesSupported(F)) {
+    return false;
+  }
+  for (const Node &N : F.getNodes()) {
+    if (!checkLayoutForNode(N)) {
+      return false;
+    }
+    if (!checkNoFusionForNode(N)) {
+      return false;
+    }
+    switch (N.getKind()) {
+    case Kinded::Kind::ChannelwiseQuantizedConvolutionNodeKind: {
+      auto *CQCI = llvm::cast<ChannelwiseQuantizedConvolutionNode>(&N);
+      if (!CQCI->getGroupwise()) {
+        report("Glow Interpreter does not support Non-groupwise variant");
+        return false;
+      }
+      continue;
+    }
+    default:
+      continue;
+    }
+  }
+  return true;
+}
+
+static bool checkLayoutForInstr(const Instruction &I) {
+#define DEF_VALUE(CLASS, NAME)
+#define DEF_INSTR(CLASS, NAME)                                                 \
+  case Kinded::Kind::CLASS##Kind: {                                            \
+    const CLASS *CI = llvm::cast<CLASS>(&I);                                   \
+    return checkLayout(*CI);                                                   \
+    break;                                                                     \
+  }
+#define DEF_BACKEND_SPECIFIC_INSTR(CLASS, NAME)
+  switch (I.getKind()) {
+#include "glow/AutoGenInstr.def"
+  default:
+    llvm_unreachable("Invalid instruction.");
+  }
+  return true;
+}
+
+bool Interpreter::verify(const IRFunction &IR) const {
+  for (const auto &I : IR.getInstrs()) {
+    if (!checkNoFusionForInstr(I)) {
+      return false;
+    }
+    if (!checkLayoutForInstr(I)) {
+      return false;
+    }
+    switch (I.getKind()) {
+    case Kinded::Kind::ChannelwiseQuantizedConvolutionInstKind: {
+      auto *CQCI = llvm::cast<ChannelwiseQuantizedConvolutionInst>(&I);
+      if (!CQCI->getGroupwise()) {
+        report("Glow Interpreter does not support Non-groupwise variant");
+        return false;
+      }
+      continue;
+    }
+    default:
+      continue;
+    }
+  }
+  return true;
 }
 
 bool Interpreter::shouldLower(const Node *N) const {

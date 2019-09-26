@@ -93,6 +93,7 @@ Function *glow::differentiate(Function *F, const TrainingConfig &conf,
 
     CONVERT_TO_GRAD_NODE(ConvolutionNode)
     CONVERT_TO_GRAD_NODE(AvgPoolNode)
+    CONVERT_TO_GRAD_NODE(AdaptiveAvgPoolNode)
     CONVERT_TO_GRAD_NODE(FullyConnectedNode)
     CONVERT_TO_GRAD_NODE(LocalResponseNormalizationNode)
     CONVERT_TO_GRAD_NODE(SoftMaxNode)
@@ -140,6 +141,38 @@ Function *glow::differentiate(Function *F, const TrainingConfig &conf,
                                 inputW.getType()->dims());
       toAppend.push_back(X);
       map.addGradient(RN->getInput(), X);
+      continue;
+    }
+
+    if (N->getKind() == Kind::TileNodeKind) {
+      TileNode *TN = cast<TileNode>(N);
+      NodeValue outputG = map.getGradient(TN->getResult());
+
+      // To compute the gradient with respect to the input of the TileNode, all
+      // of the slices in outputG corresponding to the tiled slices in the
+      // forward pass need to be added together. This is achieved by reshaping
+      // outputG to replace the tiling axis with {numTiles, tileDim}, and then
+      // performing a BatchedReduceAdd on the axis with numTiles elements. For
+      // example, if the tile creates a {n,x,h,w} output with a {n,c,h,w}
+      // input where x = c * numTiles, then the {n,x,h,w} gradient with respect
+      // to the output is reshaped to {n, numTiles, c, h, w} so that
+      // BatchedReduceAddNode eliminates the numTiles axis and produces a
+      // {n,c,h,w} output.
+      auto *TNInputType = TN->getInput().getType();
+      std::vector<size_t> BRAInputDims{TNInputType->dims()};
+      BRAInputDims.insert(BRAInputDims.begin() + TN->getAxis(), TN->getCount());
+      auto *BRAInputType =
+          F->getParent()->uniqueTypeWithNewShape(TNInputType, BRAInputDims);
+
+      auto *RN = new ReshapeNode(TN->getName().str() + ".grad.reshape",
+                                 BRAInputType, outputG, BRAInputType->dims());
+      auto *BRA =
+          new BatchedReduceAddNode(TN->getName().str() + ".grad.bra",
+                                   TN->getInput().getType(), RN, TN->getAxis());
+
+      toAppend.push_back(RN);
+      toAppend.push_back(BRA);
+      map.addGradient(TN->getInput(), BRA);
       continue;
     }
 

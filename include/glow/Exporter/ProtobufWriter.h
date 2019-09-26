@@ -32,8 +32,8 @@ protected:
   /// Output file stream.
   std::ofstream ff_;
 
-  llvm::Error writeModel(const ::google::protobuf::Message &modelProto,
-                         bool textMode = false);
+  Error writeModel(const ::google::protobuf::Message &modelProto,
+                   bool textMode = false);
 
 public:
   /// Constructs new ProtobufWriter object. It will write protopuf messages into
@@ -41,7 +41,7 @@ public:
   /// If \p errPtr is not null then if an error occurs it will get assigned
   /// there otherwise if an error occurs it will abort.
   ProtobufWriter(const std::string &modelFilename, Function &F,
-                 llvm::Error *errPtr = nullptr);
+                 Error *errPtr = nullptr);
 };
 
 } // namespace glow

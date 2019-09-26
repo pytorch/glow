@@ -92,7 +92,7 @@ public:
   void clear();
 
   /// \returns the DAG for the specified \p network.
-  llvm::Expected<runtime::DAG &> getDAG(llvm::StringRef network) {
+  Expected<runtime::DAG *> getDAG(llvm::StringRef network) {
     return hostManager_->getNetworkDAG(network);
   }
 

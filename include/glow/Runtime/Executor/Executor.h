@@ -23,12 +23,7 @@
 #include <memory>
 
 namespace glow {
-
-class PlaceholderBindings;
-
 namespace runtime {
-
-class DeviceManager;
 
 /// This is an interface to an executor that can run and results the results of
 /// a partitioned graph.

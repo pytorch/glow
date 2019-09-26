@@ -12,10 +12,12 @@ message(STATUS "Using pytorch dir ${PYTORCH_DIR}")
 link_directories(${PYTORCH_DIR}/lib)
 
 add_library(PyTorchModelLoader
-                     PyTorchCommon.cpp
+                     CachingGraphRunner.cpp
                      GlowFuser.cpp
-                     PyTorchModelLoader.cpp
-                     CachingGraphRunner.cpp)
+                     GlowIValue.cpp
+                     PyTorchCommon.cpp
+                     FusePrepack.cpp
+                     PyTorchModelLoader.cpp)
 target_compile_options(PyTorchModelLoader
                       PRIVATE
                         -frtti -fexceptions -DC10_USE_GLOG)
@@ -24,10 +26,9 @@ target_link_libraries(PyTorchModelLoader
                         torch
                         c10
                         Support
-                        ExecutionEngine
+                        HostManager
                         Graph
-                        Importer
-                        Backends)
+                        Importer)
 
 add_library(PyTorchFileLoader
                      PyTorchFileLoader.cpp)
@@ -47,6 +48,8 @@ target_compile_options(_torch_glow
 target_link_libraries(_torch_glow
                       PRIVATE
                         PyTorchModelLoader
+                        TorchGlowTraining
+                        Backends
                         pybind11)
 
 target_include_directories(PyTorchModelLoader PUBLIC
@@ -56,6 +59,7 @@ target_include_directories(PyTorchFileLoader PUBLIC
                             ${PYTORCH_DIR}/include)
 
 target_include_directories(_torch_glow PUBLIC
-                            ${PYTORCH_DIR}/include)
+                            ${PYTORCH_DIR}/include
+                            ${TORCH_GLOW}/src/training)
 
 add_subdirectory(training)

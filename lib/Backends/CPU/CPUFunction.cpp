@@ -25,6 +25,6 @@ CPUFunction::CPUFunction(std::unique_ptr<llvm::orc::GlowJIT> JIT,
                          runtime::RuntimeBundle &&runtimeBundle)
     : LLVMCompiledFunction(std::move(JIT), std::move(runtimeBundle)) {}
 
-llvm::Error CPUFunction::execute(ExecutionContext *context) {
+Error CPUFunction::execute(ExecutionContext *context) {
   return LLVMCompiledFunction::execute(context);
 }

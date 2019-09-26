@@ -78,9 +78,10 @@ class Partitioner final : public PartitionerBase {
   /// Initialization. Called in class constructor.
   void init();
 
-  /// Verify the generated functions in module, and dump partition logs from \p
-  /// partitions and \p mapping.
-  void finalize(const DAGListTy &partitions, const NodeToFunctionMap &mapping);
+  /// Verify the generated functions in module, and \returns error if any
+  /// function is invalid. Dump partition logs from \p partitions and \p
+  /// mapping.
+  Error finalize(const DAGListTy &partitions, const NodeToFunctionMap &mapping);
 
   /// After getting the initial partitions, adjust the partitions to minimize
   /// communication and computation cost.
@@ -102,7 +103,7 @@ class Partitioner final : public PartitionerBase {
   /// Partition a function \p F based on backends \p backends. \returns the
   /// final partition result(or an err) and a map between partitions and backend
   /// names. \p cctx is used for functions optimization.
-  llvm::Expected<DAGListTy>
+  Expected<DAGListTy>
   backendBasedPartition(FunctionToBackendNameMap &funcToBackend, Function *F,
                         std::vector<Backend *> &backends,
                         CompilationContext &cctx);
@@ -111,7 +112,7 @@ class Partitioner final : public PartitionerBase {
   /// on current functions in this module for backend \p backendName found in \p
   /// backendMap. \p cctx is used for function optimization. \returns the
   /// partition result or an error.
-  llvm::Expected<DAGListTy>
+  Expected<DAGListTy>
   createDAGWithoutPartition(llvm::StringRef backendName,
                             std::map<std::string, BackendInfo> &backendMap,
                             CompilationContext &cctx);
@@ -148,7 +149,7 @@ public:
 
   /// Based on \p partitionConfig passed into Partitioner, do user-defined
   /// partition.
-  llvm::Expected<DAGListTy>
+  Expected<DAGListTy>
   partitionFromConfig(const PartitionConfig &partitionConfig);
 
   /// This partition approach is used in Glow Quantization Profiling flow. The
@@ -156,13 +157,12 @@ public:
   /// backends. Then each sub-function will be compiled and run in CPU backend
   /// for profiling. \p cctx is used for function optimization. \returns the
   /// partition result or an error.
-  llvm::Expected<DAGListTy>
-  quantizationProfilingPartition(CompilationContext &cctx);
+  Expected<DAGListTy> quantizationProfilingPartition(CompilationContext &cctx);
 
   /// This partition approch first do the partition based on backend types, and
   /// then based on cost models(memory usage and performance). \p cctx is used
   /// for function optimization. \returns the partition result or an error.
-  llvm::Expected<DAGListTy> heterogeneousPartition(CompilationContext &cctx);
+  Expected<DAGListTy> heterogeneousPartition(CompilationContext &cctx);
 
   /// This partition approach is an experimental one. It tries to balance the
   /// workloads of each accelerator/device in addition to respecting memory
@@ -171,15 +171,15 @@ public:
   /// \p numDevices sub-networks. Now it is overwritten inside of
   /// loadBalcnedPartition. But in the future, it can be manually defined by
   /// users.
-  llvm::Expected<DAGListTy> loadBalancedPartition(CompilationContext &cctx,
-                                                  size_t numDevices = 0);
+  Expected<DAGListTy> loadBalancedPartition(CompilationContext &cctx,
+                                            size_t numDevices = 0);
 
   /// Decompose each function in a module. Given the parameters, this function
   /// will choose different partition approches supported in this class:
   /// heterogeneous partition, user-defined partition or quantization profiling.
   /// \p cctx is used for function optimization. \returns the partition result
   /// or an error.
-  llvm::Expected<DAGListTy> partition(CompilationContext &cctx) override;
+  Expected<DAGListTy> partition(CompilationContext &cctx) override;
 };
 } // namespace glow
 #endif // GLOW_PARTITIONER_PARTITIONER_H

@@ -86,7 +86,7 @@ Here we describe the API for `glow::optimizeFunction()` and how to use it in
 different modes.
 
 ```
-llvm::Error glow::optimizeFunction(Function *F, const Backend &B,
+Error glow::optimizeFunction(Function *F, const Backend &B,
                                    CompilationContext &cctx);
 ```
 

@@ -20,7 +20,6 @@
 #include "glow/Graph/VerifierHelper.h"
 
 namespace {
-// TODO: consolidate convolution verification method in one place.
 static bool verifyConvolution(NodeValue src, NodeValue dest, NodeValue filter,
                               NodeValue bias,
                               llvm::ArrayRef<unsigned_t> kernels,

@@ -165,7 +165,7 @@ evaluateConstantOperation(Backend &backend, CompilationContext &cctx, Node *C) {
 
 /// Check if function \p F consists of constant operations only.
 LLVM_ATTRIBUTE_USED
-llvm::Error verifyConstantFunction(Backend &backend, Function &F) {
+Error verifyConstantFunction(Backend &backend, Function &F) {
   // Perform the checks in DEBUG builds only.
   for (auto &N : F.getNodes()) {
     // Saving results is fine.
@@ -187,7 +187,7 @@ llvm::Error verifyConstantFunction(Backend &backend, Function &F) {
     }
     RETURN_ERR("Expected constant operation");
   }
-  return llvm::Error::success();
+  return Error::success();
 }
 
 /// Perform a compile-time constant folding of the node \p N using the provided
@@ -205,16 +205,16 @@ std::vector<Constant *> constantFoldNodeImpl(Backend &backend, Node *N) {
 
 } // namespace
 
-llvm::Error glow::executeConstantFunction(Backend &backend, Function &F,
-                                          PlaceholderBindings &bindings,
-                                          CompilationContext &cctx) {
+Error glow::executeConstantFunction(Backend &backend, Function &F,
+                                    PlaceholderBindings &bindings,
+                                    CompilationContext &cctx) {
 // Perform the checks in DEBUG builds only.
 #ifndef NDEBUG
   RETURN_IF_ERR(verifyConstantFunction(backend, F));
 #endif
   auto compiledF = compile(backend, F, cctx);
   run(backend, *compiledF, bindings);
-  return llvm::Error::success();
+  return Error::success();
 }
 
 /// Perform constant folding in the function \p F . Any non-trivial node (i.e.

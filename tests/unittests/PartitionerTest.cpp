@@ -163,7 +163,7 @@ TEST_F(PartitionerTest, Basic1) {
   Partitioner myPartitioner(&EEP.getModule(), devices, false, true);
   CompilationContext cctx;
   auto dagList = myPartitioner.partition(cctx);
-  EXPECT_TRUE((bool)dagList);
+  ASSERT_TRUE((bool)dagList);
   EXPECT_EQ(EEP.getModule().getFunctions().size(), 3);
   EXPECT_EQ(dagList->size(), 1);
   EXPECT_TRUE(checkSaveNode(EEP.getModule()));
@@ -249,12 +249,13 @@ TEST_F(PartitionerTest, Basic2) {
                                      {2048, "Interpreter"}};
   Partitioner myPartitioner(&EEP.getModule(), devices, /* saturateHost */ true);
   CompilationContext cctx;
-  auto dagList = myPartitioner.partition(cctx);
+  runtime::DAGListTy dagList;
+  ASSIGN_VALUE_OR_FAIL_TEST(dagList, myPartitioner.partition(cctx));
   EXPECT_EQ(EEP.getModule().getFunctions().size(), 2);
-  EXPECT_EQ(dagList->size(), 1);
+  EXPECT_EQ(dagList.size(), 1);
   ASSERT_TRUE(checkSaveNode(EEP.getModule()));
 
-  for (auto &dag : dagList.get()) {
+  for (auto &dag : dagList) {
     for (auto &node : dag.nodes) {
       // Since saturateHost is set true, in this case, there should be 2 copys
       // of the partitions.
@@ -266,7 +267,7 @@ TEST_F(PartitionerTest, Basic2) {
   bindings_.clear();
   bindings_.allocate(EEP.getModule().getPlaceholders());
   EEP.compile(cctx);
-  for (auto it = dagList->begin(); it != dagList->end(); ++it) {
+  for (auto it = dagList.begin(); it != dagList.end(); ++it) {
     updateInputPlaceholders(bindings_,
                             {bindings_.getPlaceholderByName("input"),
                              bindings_.getPlaceholderByName("input1")},
@@ -343,7 +344,7 @@ TEST_F(PartitionerTest, Error1) {
   Partitioner myPartitioner(&EEP.getModule(), devices);
   CompilationContext cctx;
   auto dagList = myPartitioner.partition(cctx);
-  EXPECT_FALSE((bool)dagList);
+  EXPECT_TRUE(ERR_TO_BOOL(dagList.takeError()));
 }
 
 /// This one tests the roofline computed with compute, memory and
@@ -461,7 +462,7 @@ TEST_F(PartitionerTest, SelectRepFunc) {
 
   CompilationContext cctx;
   auto dagList = myPartitioner.partition(cctx);
-  EXPECT_TRUE((bool)dagList);
+  ASSERT_TRUE((bool)dagList);
 }
 
 /// Create a mock backend and rewrite the isOpSupported function
@@ -476,9 +477,7 @@ public:
     MockFunction(llvm::StringRef backendName, runtime::RuntimeBundle &&bundle)
         : CompiledFunction(std::move(bundle)), backendName(backendName) {}
 
-    llvm::Error execute(ExecutionContext *) override {
-      return llvm::Error::success();
-    }
+    Error execute(ExecutionContext *) override { return Error::success(); }
 
     std::string getCompileBackendName() const override { return backendName; }
 
@@ -487,7 +486,7 @@ public:
 
   std::string getBackendName() const override { return backendName; }
 
-  llvm::Expected<std::unique_ptr<CompiledFunction>>
+  Expected<std::unique_ptr<CompiledFunction>>
   compile(Function *F, const BackendOptions &opts) const override {
     return llvm::make_unique<MockFunction>(backendName,
                                            runtime::RuntimeBundle::create(*F));
@@ -603,7 +602,7 @@ TEST_F(PartitionerTest, SimpleHeterogeneousPartitioning) {
   Partitioner partitioner(&mod_, devices, backends, /* saturateHost */ true);
   CompilationContext cctx;
   auto dagList = partitioner.partition(cctx);
-  EXPECT_TRUE((bool)dagList);
+  ASSERT_TRUE((bool)dagList);
   EXPECT_EQ(mod_.getFunctions().size(), 3);
   EXPECT_EQ(dagList->size(), 1);
   ASSERT_TRUE(checkSaveNode(mod_));
@@ -623,7 +622,7 @@ TEST_F(PartitionerTest, heterogeneousPartitioningWithNonSupportedNodes) {
   Partitioner partitioner(&mod_, devices);
   CompilationContext cctx;
   auto dagList = partitioner.partition(cctx);
-  EXPECT_TRUE((bool)dagList);
+  ASSERT_TRUE((bool)dagList);
   EXPECT_EQ(mod_.getFunctions().size(), 3);
   EXPECT_EQ(dagList->size(), 1);
   ASSERT_TRUE(checkSaveNode(mod_));
@@ -646,7 +645,7 @@ TEST_F(PartitionerTest, heterogeneousPartitioningWithSupportedNodes) {
   Partitioner partitioner(&mod_, devices);
   CompilationContext cctx;
   auto dagList = partitioner.partition(cctx);
-  EXPECT_TRUE((bool)dagList);
+  ASSERT_TRUE((bool)dagList);
   EXPECT_EQ(mod_.getFunctions().size(), 3);
   EXPECT_EQ(dagList->size(), 1);
   ASSERT_TRUE(checkSaveNode(mod_));
@@ -681,7 +680,7 @@ TEST_F(PartitionerTest, logicalIDTest0) {
   Partitioner partitioner(&mod_, devices, /* saturateHost */ true);
   CompilationContext cctx;
   auto dagList = partitioner.partition(cctx);
-  EXPECT_TRUE((bool)dagList);
+  ASSERT_TRUE((bool)dagList);
   // Check there are 3 partitions.
   EXPECT_EQ(mod_.getFunctions().size(), 3);
   EXPECT_EQ(dagList->size(), 1);
@@ -715,7 +714,7 @@ TEST_F(PartitionerTest, logicalIDTest1) {
   Partitioner partitioner(&mod_, devices, backends, /* saturateHost */ true);
   CompilationContext cctx;
   auto dagList = partitioner.partition(cctx);
-  EXPECT_TRUE((bool)dagList);
+  ASSERT_TRUE((bool)dagList);
   EXPECT_EQ(mod_.getFunctions().size(), 3);
   EXPECT_EQ(dagList->size(), 1);
   ASSERT_TRUE(checkSaveNode(mod_));
@@ -890,7 +889,7 @@ TEST_F(PartitionerTest, memoryUsageValidation1) {
   Partitioner myPartitioner(&mod_, devices);
   CompilationContext cctx;
   auto dagList = myPartitioner.partition(cctx);
-  EXPECT_FALSE((bool)dagList);
+  EXPECT_TRUE(ERR_TO_BOOL(dagList.takeError()));
 }
 
 /// This one test dagValidation in partitioner : p1->p2, p2->p1.
@@ -919,7 +918,7 @@ TEST_F(PartitionerTest, dagValidation1) {
   auto partitioner = Partitioner(&mod_, devices, false, false, partitionConfig);
   CompilationContext cctx;
   auto dagList = partitioner.partition(cctx);
-  EXPECT_FALSE((bool)dagList);
+  EXPECT_TRUE(ERR_TO_BOOL(dagList.takeError()));
 }
 
 /// This one test dagValidation in partitioner: p0->p1, p1->p2, p2->p1.
@@ -951,7 +950,7 @@ TEST_F(PartitionerTest, dagValidation2) {
   auto partitioner = Partitioner(&mod_, devices, false, false, partitionConfig);
   CompilationContext cctx;
   auto dagList = partitioner.partition(cctx);
-  EXPECT_FALSE((bool)dagList);
+  EXPECT_TRUE(ERR_TO_BOOL(dagList.takeError()));
 }
 
 /// This one tests partition from a user-defined config.
@@ -971,7 +970,7 @@ TEST_F(PartitionerTest, partitionFromConfig) {
   Partitioner partitioner(&mod_, devices, false, false, partitionConfig);
   CompilationContext cctx;
   auto dagList = partitioner.partition(cctx);
-  EXPECT_TRUE((bool)dagList);
+  ASSERT_TRUE((bool)dagList);
   EXPECT_EQ(mod_.getFunctions().size(), 3);
   EXPECT_EQ(dagList->size(), 1);
   ASSERT_TRUE(checkSaveNode(mod_));
@@ -995,7 +994,7 @@ TEST_F(PartitionerTest, partitionFromConfigDirectCall) {
   Partitioner partitioner(&mod_, devices);
   CompilationContext cctx;
   auto dagList = partitioner.partitionFromConfig(partitionConfig);
-  EXPECT_TRUE((bool)dagList);
+  ASSERT_TRUE((bool)dagList);
   EXPECT_EQ(mod_.getFunctions().size(), 3);
   EXPECT_EQ(dagList->size(), 1);
   ASSERT_TRUE(checkSaveNode(mod_));
@@ -1074,7 +1073,7 @@ TEST_F(PartitionerTest, loadBalancedPartition) {
   Partitioner myPartitioner(&EEP.getModule(), devices, false, true);
   CompilationContext cctx;
   auto dagList = myPartitioner.loadBalancedPartition(cctx);
-  EXPECT_TRUE((bool)dagList);
+  ASSERT_TRUE((bool)dagList);
   EXPECT_EQ(EEP.getModule().getFunctions().size(), 3);
   EXPECT_EQ(dagList->size(), 1);
   EXPECT_TRUE(checkSaveNode(EEP.getModule()));

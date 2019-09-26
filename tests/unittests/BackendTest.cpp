@@ -13,6 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#include "BackendTestUtils.h"
 
 #include "glow/Backend/BackendUtils.h"
 #include "glow/ExecutionEngine/ExecutionEngine.h"
@@ -37,7 +38,7 @@ enum class PlaceholderType {
   NonePlaceholder = 3
 };
 
-class BackendTest : public ::testing::TestWithParam<std::string> {
+class BackendExecTest : public ::testing::TestWithParam<std::string> {
 public:
   ExecutionEngine EE_{GetParam()};
 };
@@ -131,8 +132,8 @@ TEST(RuntimeBundle, BundleSymbolInfo) {
   auto *qp = F->createQuantizationProfile(bindings, "qp", input);
 
   EE.compile(CompilationMode::Infer);
-  auto dag = EE.getDAG("main");
-  ASSERT_TRUE((bool)dag);
+  runtime::DAG *dag;
+  ASSIGN_VALUE_OR_FAIL_TEST(dag, EE.getDAG("main"));
   assert(dag->nodes.size() > 0 && "Empty DAG list");
   auto table = dag->nodes[0]->runtimeBundle->getSymbolTable();
   // Check that placeholders and constants are correctly labelled.
@@ -191,8 +192,8 @@ TEST(RuntimeBundle, ContiguousPlaceholder) {
   bindings.allocate(A);
   bindings.allocate(Ex);
   EE.compile(cctx);
-  auto dag = EE.getDAG("main");
-  ASSERT_TRUE((bool)dag);
+  runtime::DAG *dag;
+  ASSIGN_VALUE_OR_FAIL_TEST(dag, EE.getDAG("main"));
   auto &table = dag->nodes[0]->runtimeBundle->getSymbolTable();
 
   std::vector<glow::runtime::RuntimeSymbolInfo> tableContainer;
@@ -245,7 +246,7 @@ TEST(RuntimeBundle, ContiguousPlaceholder) {
   EXPECT_EQ(flag, true);
 }
 
-TEST_P(BackendTest, simpleInference) {
+TEST_P(BackendExecTest, simpleInference) {
   Tensor inputs(ElemKind::FloatTy, {1, 32, 32, 3});
   PlaceholderBindings bindings;
 
@@ -288,7 +289,7 @@ TEST_P(BackendTest, simpleInference) {
 /// Test that the DebugPrint instruction works correctly for the backend. Note
 /// that the backend being tested must inherit from BackendUsingGlowIR and
 /// implement the compileIR() function for this test to work.
-TEST_P(BackendTest, debugPrint) {
+TEST_P(BackendExecTest, debugPrint) {
   Tensor input{0.0, 1.0, 2.0, 3.0};
   auto &mod = EE_.getModule();
   auto ctx = llvm::make_unique<ExecutionContext>();
@@ -322,10 +323,9 @@ TEST_P(BackendTest, debugPrint) {
 
   std::promise<void> addPromise;
   auto fut = addPromise.get_future();
-  llvm::Error addErr = llvm::Error::success();
-  MARK_ERR_CHECKED(addErr);
+  Error addErr = Error::empty();
   device->addNetwork(&EE_.getModule(), std::move(functionMap),
-                     [&addPromise, &addErr](const Module *, llvm::Error err) {
+                     [&addPromise, &addErr](const Module *, Error err) {
                        addErr = std::move(err);
                        addPromise.set_value();
                      });
@@ -334,11 +334,10 @@ TEST_P(BackendTest, debugPrint) {
   // Run the function.
   std::promise<void> runPromise;
   fut = runPromise.get_future();
-  llvm::Error runErr = llvm::Error::success();
-  MARK_ERR_CHECKED(runErr);
+  Error runErr = Error::empty();
   device->runFunction(name, std::move(ctx),
                       [&runPromise, &runErr,
-                       &ctx](runtime::RunIdentifierTy, llvm::Error err,
+                       &ctx](runtime::RunIdentifierTy, Error err,
                              std::unique_ptr<ExecutionContext> contextPtr) {
                         ctx = std::move(contextPtr);
                         runErr = std::move(err);
@@ -350,7 +349,7 @@ TEST_P(BackendTest, debugPrint) {
 
 /// Test the compile method on the backend completes without error when
 /// collectConstants is false.
-TEST_P(BackendTest, CompileWithoutConstants) {
+TEST_P(BackendExecTest, CompileWithoutConstants) {
   Module mod;
   PlaceholderBindings bindings;
   Function *F = mod.createFunction("main");
@@ -368,7 +367,7 @@ TEST_P(BackendTest, CompileWithoutConstants) {
 
 /// Test that the runtimeBundle includes only symbols from its function and not
 /// the whole module.
-TEST_P(BackendTest, BundleFunctionSymbolsOnly) {
+TEST_P(BackendExecTest, BundleFunctionSymbolsOnly) {
   Module mod;
   PlaceholderBindings bindings;
   Function *F = mod.createFunction("main");
@@ -398,7 +397,7 @@ TEST_P(BackendTest, BundleFunctionSymbolsOnly) {
 }
 
 /// Test that a shared constant is in the bundle of both functions.
-TEST_P(BackendTest, BundleSharedConstant) {
+TEST_P(BackendExecTest, BundleSharedConstant) {
   Module mod;
   PlaceholderBindings bindings;
   Function *F = mod.createFunction("main");
@@ -426,7 +425,7 @@ TEST_P(BackendTest, BundleSharedConstant) {
 }
 
 /// Test compiling a vector of functions completes without error.
-TEST_P(BackendTest, compileVectorOfFunctions) {
+TEST_P(BackendExecTest, compileVectorOfFunctions) {
   Module mod;
   std::vector<Function *> functions;
   for (unsigned int i = 0; i < 3; i++) {
@@ -446,7 +445,7 @@ TEST_P(BackendTest, compileVectorOfFunctions) {
 /// This test checks that we can compile a function without depending on the
 /// graph representation. We compile some function and then delete the function.
 /// Later we execute the code and check that things work.
-TEST_P(BackendTest, decoupleCodegenFromGraph) {
+TEST_P(BackendExecTest, decoupleCodegenFromGraph) {
   auto &mod = EE_.getModule();
   PlaceholderBindings bindings;
 
@@ -475,7 +474,7 @@ TEST_P(BackendTest, decoupleCodegenFromGraph) {
 
 /// Check that we can pass information to the execution engine using Placeholder
 /// variables and read it back using Save nodes (in variables).
-TEST_P(BackendTest, simplePlaceholderValue) {
+TEST_P(BackendExecTest, simplePlaceholderValue) {
   Tensor data{99.0, 35.0, 2.0, 3.0};
   auto &mod = EE_.getModule();
   Function *F = mod.createFunction("main");
@@ -491,7 +490,7 @@ TEST_P(BackendTest, simplePlaceholderValue) {
 
 /// Add and compile a network, then add and compile another so that the first
 /// CompiledFunction does not know about every Placeholder in the module.
-TEST_P(BackendTest, compileThenAddNetwork) {
+TEST_P(BackendExecTest, compileThenAddNetwork) {
   PlaceholderBindings bindings1, bindings2;
 
   auto &mod = EE_.getModule();
@@ -603,19 +602,8 @@ TEST(PlaceholderBindings, basicPlaceholderBindingsTest) {
   EXPECT_EQ(nullptr, C.getFirstUnallocated(mod.getPlaceholders()));
 }
 
-INSTANTIATE_TEST_CASE_P(Interpreter, BackendTest,
-                        ::testing::Values("Interpreter"));
-
-#ifdef GLOW_WITH_CPU
-INSTANTIATE_TEST_CASE_P(JIT, BackendTest, ::testing::Values("CPU"));
-#endif // GLOW_WITH_CPU
-
-#ifdef GLOW_WITH_OPENCL
-INSTANTIATE_TEST_CASE_P(OpenCL, BackendTest, ::testing::Values("OpenCL"));
-#endif // GLOW_WITH_OPENCL
-
 /// Check if the dump function works for Type.
-TEST(BackendTest, dumpType) {
+TEST(BackendExecTest, dumpType) {
   Module mod;
   TypeRef tyA = mod.uniqueType(ElemKind::FloatTy, {1, 32, 32, 3});
   std::string storage;
@@ -626,3 +614,5 @@ TEST(BackendTest, dumpType) {
   EXPECT_EQ(mesA, expectA);
   EXPECT_EQ(mesA, os.str());
 }
+
+INSTANTIATE_BACKEND_TEST(BackendTest);
