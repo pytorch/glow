@@ -2186,6 +2186,31 @@ static bool isValueChangingCast(TypeRef srcTy, TypeRef destTy) {
   return false;
 }
 
+/// Optimize away redundant ClipNodes.
+/// We basically turn "Clip(Clip(Clip(A)))" to "Clip(A)".
+bool OptimizeClips::run(Function *F, const CompilationContext &cctx) {
+  int clipsEliminated = 0;
+  for (Node &node : F->getNodes()) {
+    ClipNode *clip = dyn_cast<ClipNode>(&node);
+    if (!clip) {
+      continue;
+    }
+    float min = clip->getMin();
+    float max = clip->getMax();
+    if (auto *clipPrev = dyn_cast<ClipNode>(clip->getInput().getNode())) {
+      float minPrev = clipPrev->getMin();
+      float maxPrev = clipPrev->getMax();
+      auto *newClip =
+          F->createClip(clipPrev->getName(), clipPrev->getInput().getNode(),
+                        std::max(minPrev, min), std::min(maxPrev, max));
+      clip->getResult().replaceAllUsesOfWith(newClip);
+      ++clipsEliminated;
+    }
+  }
+
+  return clipsEliminated;
+}
+
 /// Optimize away ConvertToNode.
 /// This basically turns "conversion(conversion A to B) to C"
 /// into noop if all of the conditions below are met:
@@ -3014,6 +3039,9 @@ static void transformForPrecisionMode(const Backend &B, Function *F,
   if (precConfig.convertToFP16) {
     LOG_SCOPE(F->getLogContext(), "glow::convertFunctionToFloat16")
     convertFunctionToFloat16(F, precConfig);
+    FunctionPassManager FPM("FP16GraphOptzFPM",
+                            createFP16GraphOptimizationPassPipeline());
+    FPM.run(F, cctx);
   }
 }
 

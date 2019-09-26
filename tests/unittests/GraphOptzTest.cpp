@@ -84,6 +84,30 @@ static Function *optimizeFunction(Function *F) {
   return G;
 }
 
+TEST_F(GraphOptz, OptimizeClipFunnel) {
+  Node *A =
+      mod_.createPlaceholder(ElemKind::FloatTy, {100, 16}, "input", false);
+  Node *K = A;
+  float min = 0.0;
+  float max = 1000.0;
+  for (int i = 0; i < 10; ++i) {
+    min += 1.0;
+    max -= 1.0;
+    K = F_->createClip("clip", K, min, max);
+  }
+  F_->createSave("ret", K);
+
+  EXPECT_EQ(F_->getNodes().size(), 11);
+
+  ::glow::optimize(F_, CompilationMode::Infer);
+  EXPECT_EQ(F_->getNodes().size(), 2);
+  Node *newClip = A->getUsers().begin()->getUser();
+  EXPECT_TRUE(llvm::isa<ClipNode>(newClip));
+  ClipNode *c = llvm::dyn_cast<ClipNode>(newClip);
+  EXPECT_EQ(min, c->getMin());
+  EXPECT_EQ(max, c->getMax());
+}
+
 TEST_F(GraphOptz, DCE) {
   Node *K = mod_.createPlaceholder(ElemKind::FloatTy, {4, 320, 200, 3}, "input",
                                    false);
