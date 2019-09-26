@@ -2789,6 +2789,31 @@ TEST_F(GraphOptz, ConvertPlaceholdersToConstants) {
   EXPECT_TRUE(llvm::isa<Placeholder>(save3->getInput()));
 }
 
+TEST_F(GraphOptz, optimizeConversion_i8_i32_i16) {
+  auto qt = [&](ElemKind k) { return mod_.uniqueType(k, {1}, 1.0, 0); };
+  auto *i8 = qt(ElemKind::Int8QTy);
+  auto *i16 = qt(ElemKind::Int16QTy);
+  auto *i32 = qt(ElemKind::Int32QTy);
+
+  auto *A = mod_.createPlaceholder(i8, "A", false);
+  auto *B = F_->createConvertTo("B", A, i32);
+  auto *C = F_->createConvertTo("C", B, i16);
+  auto *S = F_->createSave("S", C);
+
+  ::glow::optimize(F_, CompilationMode::Infer);
+
+  // The i32 cast is optimized away.
+  EXPECT_EQ(F_->getNodes().size(), 2);
+
+  // The save node is fed by an i16 cast.
+  auto *C2 = llvm::dyn_cast<ConvertToNode>(S->getInput());
+  ASSERT_TRUE(C2);
+  EXPECT_TRUE(C2->getResult().getElementType() == ElemKind::Int16QTy);
+
+  // The cast node input is a placeholder.
+  EXPECT_TRUE(llvm::isa<Placeholder>(C2->getInput()));
+}
+
 TEST_F(GraphOptz, optimizeSameTypeConversions) {
   auto *input1 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "input1", true);
   auto *input2 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "input2", true);
