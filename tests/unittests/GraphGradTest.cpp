@@ -232,6 +232,23 @@ TEST(GraphAutoGrad, checkMatMulGradTest) {
   EE.compile(CompilationMode::Train);
 }
 
+// Check that we can differentiate functions that use Tile.
+TEST(GraphAutoGrad, checkTileGradTest) {
+  ExecutionEngine EE;
+  TrainingConfig TC;
+
+  auto &Mod = EE.getModule();
+  Function *F = Mod.createFunction("main");
+
+  auto *A = Mod.createPlaceholder(ElemKind::FloatTy, {10, 10}, "A", false);
+  auto *Tile = F->createTile("tile", A, /*tiles=*/5, /*axis=*/1);
+
+  F->createSave("save", Tile);
+
+  glow::differentiate(F, TC);
+  EE.compile(CompilationMode::Train);
+}
+
 /// Check that we can differentiate functions that use BatchedReduceAddNode.
 TEST(GraphAutoGrad, checkBatchedReduceAddGradTest) {
   ExecutionEngine EE;

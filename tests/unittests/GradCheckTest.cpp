@@ -257,6 +257,41 @@ TEST_P(GradCheck, gradientCheckMatMul) {
                    &Inputs, &Outputs, 0.001, 0.01);
 }
 
+TEST_P(GradCheck, gradientCheckTile) {
+  CHECK_IF_ENABLED();
+  PlaceholderBindings Bindings;
+  Placeholder *A, *Exp;
+  SaveNode *Result;
+
+  constexpr size_t N{2}, C{3}, H{4}, W{5};
+  constexpr size_t NumTiles{5};
+
+  for (auto *EE : engines_) {
+    auto &Mod = EE->getModule();
+    Function *F = Mod.createFunction("main");
+
+    A = Mod.createPlaceholder(ElemKind::FloatTy, {N, C, H, W}, "A",
+                              /*isTrainable=*/false);
+    Exp = Mod.createPlaceholder(ElemKind::FloatTy, {N, NumTiles * C, H, W},
+                                "Exp", /*isTrainable=*/false);
+    auto *Tile = F->createTile("tile", A, NumTiles, /*axis=*/1, Exp->getType());
+    auto *Reg = F->createRegression("reg", Tile, Exp);
+    Result = F->createSave("save", Reg);
+  }
+
+  Tensor Inputs(ElemKind::FloatTy, A->getType()->dims());
+  Tensor Outputs(ElemKind::FloatTy, Exp->getType()->dims());
+
+  auto InputsH = Inputs.getHandle<>();
+  auto OutputsH = Outputs.getHandle<>();
+  auto &Mod = EET_.getModule();
+  InputsH.randomize(-1, 1, Mod.getPRNG());
+  OutputsH.randomize(-1, 1, Mod.getPRNG());
+
+  performGradCheck(EET_, EEI_, Bindings, Result->getPlaceholder(), A, Exp,
+                   &Inputs, &Outputs, 0.001, 0.01);
+}
+
 TEST_P(GradCheck, gradientCheckBatchedReduceAddAxis0) {
   CHECK_IF_ENABLED();
   PlaceholderBindings Bindings;
