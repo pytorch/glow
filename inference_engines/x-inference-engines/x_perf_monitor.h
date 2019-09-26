@@ -23,34 +23,32 @@
 
 #ifdef ENABLE_PERF_MONITORING
 
+#include <asm/unistd.h>
+#include <linux/perf_event.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <unistd.h>
-#include <stdint.h>
-#include <linux/perf_event.h>
-#include <asm/unistd.h>
 
 /// Performance monitor statistics
-struct PerfStatistics
-{
-    /// Number of CPU cycles it took to run inference
-    long long num_cpu_cycles;
-    /// Number of cases processed (i.e. batch size)
-    size_t num_cases;
-    /// The size of constant weights
-    size_t const_weights_size;
+struct PerfStatistics {
+  /// Number of CPU cycles it took to run inference
+  long long num_cpu_cycles;
+  /// Number of cases processed (i.e. batch size)
+  size_t num_cases;
+  /// The size of constant weights
+  size_t const_weights_size;
 };
 
 /// The performance data
-struct PerfData
-{
-    /// Performance statistics
-    struct PerfStatistics ps;
-    /// Performance event attributes (which performance events to monitor)
-    struct perf_event_attr pe;
-    /// Whether performance should be monitored
-    int do_perf_monitoring;
-    /// Performance event reader file descriptor
-    int fd;
+struct PerfData {
+  /// Performance statistics
+  struct PerfStatistics ps;
+  /// Performance event attributes (which performance events to monitor)
+  struct perf_event_attr pe;
+  /// Whether performance should be monitored
+  int do_perf_monitoring;
+  /// Performance event reader file descriptor
+  int fd;
 };
 
 /// Initialize performance data \p pd.
@@ -68,7 +66,8 @@ int resume_perf_monitoring(struct PerfData *pd);
 /// Reset performance statistics specified in \p pd
 int reset_perf_statistics(struct PerfData *pd);
 
-/// Read performance statistics from the file specified by the file descriptor in \pd
+/// Read performance statistics from the file specified by the file descriptor
+/// in \pd
 int read_perf_statistics(struct PerfData *pd);
 
 #endif // ENABLE_PERF_MONITORING
