@@ -1,16 +1,21 @@
-/** Copyright 2019 Xperi Corporation.
+/**
+ * Copyright (c) 2017-present, Facebook, Inc.
  *
- * Licensed under the Apache License, Version 2.0 (the "License”); 
+ * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at 
+ * You may obtain a copy of the License at
  *
- * http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ */
+
+/**
+ * Contributed by Xperi Corporation on August 13, 2019
  */
 
 #include "Loader.h"
@@ -34,6 +39,9 @@
 #include <queue>
 #include <sstream>
 
+using namespace glow;
+
+namespace {
 llvm::cl::OptionCategory inputLoaderCat("Input Loader Options");
 
 llvm::cl::opt<std::string> modelInputName(
@@ -89,51 +97,64 @@ llvm::cl::opt<bool> writeOutput(
     llvm::cl::desc(
         "Write output of the inference (only applicable when not building a bundle."),
     llvm::cl::cat(inputLoaderCat));
+} // unnamed namespace
 
-static std::unique_ptr<glow::ProtobufLoader> 
-createProtobufLoader(glow::Loader &loader, const glow::TypeRef inputType)
+/// Creates and \returns the ProtobufLoader given \p loader and the
+/// \p inputType.
+static std::unique_ptr<ProtobufLoader> createProtobufLoader(Loader &loader, const TypeRef inputType)
 {
-    std::unique_ptr<glow::ProtobufLoader> ptbLoader{};
+    std::unique_ptr<ProtobufLoader> ptbLoader;
     const bool caffe2Model{!loader.getCaffe2NetDescFilename().empty()};
 
-    if (caffe2Model)
-        ptbLoader.reset(new glow::Caffe2ModelLoader(
+    if (caffe2Model) {
+        ptbLoader.reset(new Caffe2ModelLoader(
             loader.getCaffe2NetDescFilename(), loader.getCaffe2NetWeightFilename(),
             {modelInputName.c_str()}, {inputType}, *loader.getFunction()));
-    else
-        ptbLoader.reset(new glow::ONNXModelLoader(loader.getOnnxModelFilename(), {modelInputName.c_str()},
+    }
+    else {
+        ptbLoader.reset(new ONNXModelLoader(loader.getOnnxModelFilename(), {modelInputName.c_str()},
             {inputType}, *loader.getFunction()));
+    }
 
     return ptbLoader;
 }
 
-static std::pair<glow::Placeholder *, std::unordered_map<std::string, glow::Tensor *>>
-buildNetwork(glow::Loader &loader, const glow::TypeRef inputType, glow::PlaceholderBindings &ioBindings)
+/// Builds the network and \returns a pair of the form (input placeholder ptr, (output name, output tensor ptr)).
+/// \p loader - the loader
+/// \p inputType - the input type
+/// \p ioBindings - a reference to the placeholder bindings (allocated in this function)
+static std::pair<Placeholder *, std::unordered_map<std::string, Tensor *>> 
+buildNetwork(Loader &loader, const TypeRef inputType, PlaceholderBindings &ioBindings)
 {
-    std::unique_ptr<glow::ProtobufLoader> LD{};
+    std::unique_ptr<ProtobufLoader> LD;
     const char *inputName{modelInputName.c_str()};
-    glow::Placeholder *inputPH{};
-    glow::Placeholder *outputPH{};
-    glow::Tensor *outputTensor{};
-    std::pair<glow::Placeholder *, std::unordered_map<std::string, glow::Tensor *>> ret{};
+    Placeholder *inputPH;
+    Placeholder *outputPH;
+    Tensor *outputTensor;
+    std::pair<Placeholder *, std::unordered_map<std::string, Tensor *>> ret;
 
+    // Create the protobuf loader and allocate io bindings.
     LD = createProtobufLoader(loader, inputType);
     (void) ioBindings.allocate(loader.getModule()->getPlaceholders());
 
+    // Convert to Fp16 if required.
     if (convertInAndOutToFp16) {
-        glow::PrecisionConfiguration precConfig;
-        glow::TypeAToTypeBFunctionConverter converter(
-            *loader.getFunction(), glow::ElemKind::FloatTy,
-            glow::ElemKind::Float16Ty, precConfig);
+        PrecisionConfiguration precConfig;
+        TypeAToTypeBFunctionConverter converter(
+            *loader.getFunction(), ElemKind::FloatTy,
+            ElemKind::Float16Ty, precConfig);
         for (auto *placeholder : loader.getModule()->getPlaceholders())
             converter.convertPlaceholder(*placeholder, &ioBindings);
     }
 
+    // Compile the network
     loader.compile(ioBindings);
 
-    inputPH = llvm::cast<glow::Placeholder>(EXIT_ON_ERR(LD->getNodeValueByName(inputName)));
+    // Grab the input placeholder
+    inputPH = llvm::cast<Placeholder>(EXIT_ON_ERR(LD->getNodeValueByName(inputName)));
     ret.first = inputPH;
 
+    // Grab all output placeholders by name/tensor
     for (const std::string &name : outputTensorNames) {
         outputPH = EXIT_ON_ERR(LD->getOutputByName(name));
         outputTensor = ioBindings.get(outputPH);
@@ -143,11 +164,17 @@ buildNetwork(glow::Loader &loader, const glow::TypeRef inputType, glow::Placehol
     return ret;
 }
 
-static void
-gatherFiles(std::vector<std::string> &files)
+/// Gathers input from the files specified (either a single file containing one input file 
+/// name per line, or multiple input files)
+/// \p files - a reference of type std::vector<std::string> that contains the gathered input filenames.
+static void gatherFiles(std::vector<std::string> &files)
 {
-    for (auto file : inputFilenames)
+    // Grab any files specified on the command line as positional arguments.
+    for (auto file : inputFilenames) {
         files.push_back(file);
+    }
+    // If a file with input file names was specified, read the input file names from
+    // the specified file.
     if (inputFileList.size() != 0) {
         std::ifstream fstrm{inputFileList};
         if (!fstrm) {
@@ -155,7 +182,7 @@ gatherFiles(std::vector<std::string> &files)
             exit(1);
         }
 
-        std::string file{};
+        std::string file;
         while (std::getline(fstrm, file)) {
             files.push_back(file);
             std::ifstream check{file};
@@ -167,8 +194,8 @@ gatherFiles(std::vector<std::string> &files)
     }
 }
 
-static void
-loadInputData(const std::string &file, std::vector<char> &inputData, std::size_t size)
+/// Loads input data of size \p size from a given \p file into \p inputData.
+static void loadInputData(const std::string &file, std::vector<char> &inputData, std::size_t size)
 {
     std::ifstream inputFile(file.c_str(), std::ios::binary);
     inputFile.seekg(0, std::ios::end);
@@ -182,22 +209,32 @@ loadInputData(const std::string &file, std::vector<char> &inputData, std::size_t
     inputFile.read(inputData.data(), size);
 }
 
-static void
-runInference(glow::Loader &loader,
-             glow::PlaceholderBindings &ioBindings, 
-             std::pair<glow::Placeholder *, std::unordered_map<std::string, glow::Tensor *>> &ioPlaceholders,
+/// Run inference given the created \p loader, \p ioBindings, and \p ioPlaceholders.
+/// \p inputData - the vector containing our input data (as raw bytes)
+/// \p outputData - a pair of the form (output tensor name, (output bytes, output size))
+static void runInference(Loader &loader,
+             PlaceholderBindings &ioBindings, 
+             std::pair<Placeholder *, std::unordered_map<std::string, Tensor *>> &ioPlaceholders,
              const std::vector<char> &inputData,
              std::unordered_map<std::string, std::pair<std::vector<char>, std::size_t>> &outputData)
 {
-    glow::Tensor *inputT = ioBindings.get(ioPlaceholders.first);
+    // Grab a pointer to the input tensor from the placeholders
+    Tensor *inputT = ioBindings.get(ioPlaceholders.first);
 
+    // Copy the raw input data from inputData into the input tensor.
     std::memcpy(inputT->getUnsafePtr(), inputData.data(), inputData.size());
 
-    if (convertInAndOutToFp16)
-        inputT->convertToType(glow::ElemKind::Float16Ty);
+    // If we must first convert to Fp16, do so.
+    if (convertInAndOutToFp16) {
+        inputT->convertToType(ElemKind::Float16Ty);
+    }
 
+    // Finally, run inference. The input data is already stored inside the input tensor,
+    // inside the ioBindings. The batch size is 1.
     loader.runInference(ioBindings, 1);
 
+    // Finally, store our output - we may have multiple output tensors, so sort the output
+    // into the correct named output bins. 
     for (auto &keyval : ioPlaceholders.second) {
         outputData.insert(std::make_pair(keyval.first, std::make_pair(std::vector<char>{}, 0)));
         outputData[keyval.first].first.reserve(ioPlaceholders.second[keyval.first]->getSizeInBytes());
@@ -207,14 +244,15 @@ runInference(glow::Loader &loader,
     }
 }
 
-static void
-writeOutputData(const std::unordered_map<std::string, std::pair<std::vector<char>, std::size_t>> &outputData, 
+/// Write out \p outputData into \p file.
+static void writeOutputData(const std::unordered_map<std::string, std::pair<std::vector<char>, std::size_t>> &outputData, 
                 const std::string &file)
 {
     if (writeOutput) {
-        std::ofstream outputFile{};
-        std::string name{};
+        std::ofstream outputFile;
+        std::string name;
 
+        // The output file is formated as [input file name].[output tensor name].out.dat
         for (auto &keyval : outputData) {
             name = file;
             name += ".";
@@ -232,33 +270,32 @@ writeOutputData(const std::unordered_map<std::string, std::pair<std::vector<char
     }
 }
 
-int 
-main(int argc, char **argv)
+int main(int argc, char **argv)
 {
-    glow::PlaceholderBindings ioBindings{};                        // IO Bindings
-    std::pair<glow::Placeholder *,
-              std::unordered_map<std::string, glow::Tensor *>>
-        ioPlaceholders{};                                         // first = input placeholder,
-                                                                  // second = <output name, output tensor>
+    PlaceholderBindings ioBindings; // IO Bindings
+    std::pair<Placeholder *, std::unordered_map<std::string, Tensor *>> ioPlaceholders; // first = input placeholder,
+                                                                                        // second = <output name, output tensor>
 
     // This must be called before a loader instance is created.
-    glow::parseCommandLine(argc, argv);
-    glow::Loader loader{};
+    parseCommandLine(argc, argv);
+    Loader loader;
 
-    std::vector<std::size_t> dims{};
-    std::vector<char> inputData{};
-    std::vector<std::string> files{};
-    glow::Tensor inputT{};
+    std::vector<std::size_t> dims;
+    std::vector<char> inputData;
+    std::vector<std::string> files;
+    Tensor inputT;
 
-    for (auto dim : inputTensorDimensions)
+    for (auto dim : inputTensorDimensions) {
         dims.push_back(dim);
+    }
 
-    inputT.reset(glow::ElemKind::FloatTy, dims);
+    inputT.reset(ElemKind::FloatTy, dims);
     ioPlaceholders = buildNetwork(loader, &inputT.getType(), ioBindings);
 
-    if (glow::emittingBundle()) {
-        if (!inputFileList.empty() || inputFilenames.size() != 0)
+    if (emittingBundle()) {
+        if (!inputFileList.empty() || inputFilenames.size() != 0) {
             llvm::errs() << "WARNING: input files specification has no effect when emitting bundle.\n";
+        }
         return 0;
     }
 
@@ -287,7 +324,7 @@ main(int argc, char **argv)
         // a byte array; it also carries information about its size. So
         // first = name
         // second = <byte array, array size>.
-        std::unordered_map<std::string, std::pair<std::vector<char>, std::size_t>> outputData{};
+        std::unordered_map<std::string, std::pair<std::vector<char>, std::size_t>> outputData;
 
         // Reads input from file to the inputData vector, of max size = the capacity of
         // the input tensor.
@@ -299,8 +336,9 @@ main(int argc, char **argv)
     }
 
     // Are we profiling? If so, spit out the profile.
-    if (glow::profilingGraph())
+    if (profilingGraph()) {
         loader.generateAndSerializeQuantizationInfos(ioBindings);
+    }
 
     return 0;
 }

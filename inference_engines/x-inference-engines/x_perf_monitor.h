@@ -1,16 +1,21 @@
-/** Copyright 2019 Xperi Corporation.
+/**
+ * Copyright (c) 2017-present, Facebook, Inc.
  *
- * Licensed under the Apache License, Version 2.0 (the "License”); 
+ * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at 
+ * You may obtain a copy of the License at
  *
- * http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ */
+
+/**
+ * Contributed by Xperi Corporation on August 13, 2019
  */
 
 #ifndef X_PERF_MONITOR_H
@@ -24,27 +29,47 @@
 #include <linux/perf_event.h>
 #include <asm/unistd.h>
 
+/// Performance monitor statistics
 struct PerfStatistics
 {
+    /// Number of CPU cycles it took to run inference
     long long num_cpu_cycles;
+    /// Number of cases processed (i.e. batch size)
     size_t num_cases;
+    /// The size of constant weights
     size_t const_weights_size;
 };
 
+/// The performance data
 struct PerfData
 {
+    /// Performance statistics
     struct PerfStatistics ps;
+    /// Performance event attributes (which performance events to monitor)
     struct perf_event_attr pe;
+    /// Whether performance should be monitored
     int do_perf_monitoring;
+    /// Performance event reader file descriptor
     int fd;
 };
 
+/// Initialize performance data \p pd.
 int init_perf_monitoring(struct PerfData *pd);
+
+/// Stop performance monitoring of events specified in \p pd
 int stop_perf_monitoring(struct PerfData *pd);
+
+/// Pause performance monitoring of events specified in \p pd
 int pause_perf_monitoring(struct PerfData *pd);
+
+/// Resume performance monitoring of events specified in \p pd
 int resume_perf_monitoring(struct PerfData *pd);
+
+/// Reset performance statistics specified in \p pd
 int reset_perf_statistics(struct PerfData *pd);
+
+/// Read performance statistics from the file specified by the file descriptor in \pd
 int read_perf_statistics(struct PerfData *pd);
 
-#endif
-#endif
+#endif // ENABLE_PERF_MONITORING
+#endif // X_PERF_MONITOR_H
