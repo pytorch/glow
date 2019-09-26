@@ -19,6 +19,8 @@
 #include "glow/Backends/QueueBackedDeviceManager.h"
 #include "glow/Runtime/StatsExporter.h"
 
+#include <atomic>
+
 namespace glow {
 namespace runtime {
 
@@ -29,29 +31,19 @@ class CPUDeviceManager : public QueueBackedDeviceManager {
   /// Compiled function list by name.
   FunctionMapTy functions_;
 
-  /// Maximum available memory on the device, for CPU devices fix to some
-  /// constant.
-  uint64_t maxMemoryBytes_{0};
-
-  /// Amount of memory used by all models.
-  uint64_t usedMemoryBytes_{0};
-
-  /// Static memory cost of the CPU Function.
-  /// This is very arbitrary for the CPU backend.
-  const uint64_t functionCost_{1};
-
   /// String constant for logging number of in-use devices.
   static constexpr const char *kDevicesUsedCPU = "glow.devices_used.cpu";
 
 public:
   explicit CPUDeviceManager(const DeviceConfig &config)
-      : QueueBackedDeviceManager(config),
-        maxMemoryBytes_(config_.getDeviceMemory(2000000000)) {
+      : QueueBackedDeviceManager(config) {
     Stats()->incrementCounter(kDevicesUsedCPU);
+    exportMemoryCounters();
   }
 
   ~CPUDeviceManager() override {
     Stats()->incrementCounter(kDevicesUsedCPU, -1);
+    zeroMemoryCounters();
   }
 
   /// Returns the amount of memory in bytes available on the device when no
@@ -79,6 +71,8 @@ protected:
                        std::unique_ptr<ExecutionContext> context,
                        ResultCBTy cb) override;
 };
+
+DeviceManager *createCPUDeviceManager(const DeviceConfig &config);
 
 } // namespace runtime
 } // namespace glow

@@ -294,6 +294,11 @@ protected:
       if (val.getElementType() == ElemKind::FloatTy) {
         needsQuantization = true;
         if (!quantizationParamsExist(val)) {
+          CHECK(!assertAllNodesQuantized_)
+              << "Quantization parameters did not exist for an input NodeValue "
+                 "that should have been quantized; input number "
+              << idx << " of node:\n"
+              << node.getDebugDesc();
           return false;
         }
       }
@@ -305,6 +310,11 @@ protected:
       if (val.getElementType() == ElemKind::FloatTy) {
         needsQuantization = true;
         if (!quantizationParamsExist(val)) {
+          CHECK(!assertAllNodesQuantized_)
+              << "Quantization parameters did not exist for a result of a Node "
+                 "that should have been quantized; result number "
+              << idx << " of node:\n"
+              << node.getDebugDesc();
           return false;
         }
       }

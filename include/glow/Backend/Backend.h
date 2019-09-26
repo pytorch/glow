@@ -32,6 +32,13 @@ class PlaceholderBindings;
 class IRGenVisitor;
 class FunctionPassPipeline;
 
+namespace runtime {
+
+class DeviceManager;
+struct DeviceConfig;
+
+} // namespace runtime
+
 // This is the interface that glow backends need to implement.
 class Backend {
 public:
@@ -44,7 +51,7 @@ public:
   /// Generate code for a vector of functions, \p functions. All compilations
   /// use the same settings provided by \p opts. This allows the compiler to
   /// support shared constants between functions.
-  virtual llvm::Expected<std::vector<std::unique_ptr<CompiledFunction>>>
+  virtual Expected<std::vector<std::unique_ptr<CompiledFunction>>>
   compileFunctions(llvm::ArrayRef<Function *> functions,
                    BackendOptions &opts) const {
     std::vector<std::unique_ptr<CompiledFunction>> compiledFunctions;
@@ -55,18 +62,18 @@ public:
         return resOrErr.takeError();
       }
     }
-    return llvm::Expected<std::vector<std::unique_ptr<CompiledFunction>>>(
+    return Expected<std::vector<std::unique_ptr<CompiledFunction>>>(
         std::move(compiledFunctions));
   }
 
-  virtual llvm::Expected<std::unique_ptr<CompiledFunction>>
+  virtual Expected<std::unique_ptr<CompiledFunction>>
   compile(Function *F) const {
     BackendOptions opts;
     return compile(F, opts);
   }
 
   /// Generate code for input function \param F given settings in \p opts.
-  virtual llvm::Expected<std::unique_ptr<CompiledFunction>>
+  virtual Expected<std::unique_ptr<CompiledFunction>>
   compile(Function *F, const BackendOptions &opts) const = 0;
 
   /// Save the bundle for \p F for a later standalone execution in \p outputDir
@@ -91,6 +98,29 @@ public:
   /// \returns whether the provided \p NI is supported by the backend.
   virtual bool isOpSupported(const NodeInfo &NI) const = 0;
 
+  /// \returns whether all nodes inside \p F are supported.
+  bool checkAllNodesSupported(const Function &F) const;
+
+  /// \returns whether the provided \p F conforms to the backend-dependent graph
+  /// constraints. Giving the backend an opportunity to check that everything
+  /// conforms to its specific restrictions by overriding this function. It is
+  /// highly recommended for backends to make their backend specific
+  /// verifications a super-set of target independent Function::verify() by
+  /// calling it in their overridden implementation. It is not a strict
+  /// requirement, of course, in case they diverge / the backend has a good
+  /// reason not to call Function::verify().
+  virtual bool verify(const Function &F) const;
+
+  /// \returns whether the provided \p IR conforms to the backend-dependent
+  /// graph constraints. Giving the backend an opportunity to check that
+  /// everything conforms to its specific restrictions by overriding this
+  /// function. It is highly recommended for backends to make their backend
+  /// specific verifications a super-set of target independent
+  /// IRFunction::verify() by calling it in their overridden implementation. It
+  /// is not a strict requirement, of course, in case they diverge / the backend
+  /// has a good reason not to call IRFunction::verify().
+  virtual bool verify(const IRFunction &IR) const;
+
   /// \returns true if the supplied Node \N should be lowered. By default, all
   /// Nodes are candidates for lowering.
   virtual bool shouldLower(const Node *N) const { return true; }
@@ -113,6 +143,11 @@ public:
   }
 
   virtual size_t getTraceEventDataSize() const { return 0; }
+
+  /// Create device manager corresponding to the backend based on the
+  /// deviceConfig.
+  virtual runtime::DeviceManager *
+  createDeviceManager(const runtime::DeviceConfig &deviceConfig);
 
 protected:
   /// Parses the graph \F and builds a TraceInfo structure from any found

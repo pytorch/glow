@@ -13,6 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#include "BackendTestUtils.h"
 
 #include "glow/Base/Tensor.h"
 #include "glow/ExecutionEngine/ExecutionEngine.h"
@@ -27,7 +28,7 @@
 using namespace glow;
 using llvm::cast;
 
-class GradCheckBase : public ::testing::TestWithParam<std::string> {
+class GradCheck : public ::testing::TestWithParam<std::string> {
 public:
   ExecutionEngine EET_{GetParam()};
   ExecutionEngine EEI_{GetParam()};
@@ -37,9 +38,6 @@ public:
     engines_.push_back(&EET_);
   }
 };
-
-class InterpreterGrad : public GradCheckBase {};
-class GradCheck : public GradCheckBase {};
 
 /// \returns the regression loss for the tensor \p X with regard to \p Y.
 float computeL2Loss(Tensor *X, Tensor *Y) {
@@ -187,7 +185,8 @@ void performGradCheck(ExecutionEngine &EET, ExecutionEngine &EEI,
   EXPECT_FALSE(allZeroGradients);
 }
 
-TEST_P(InterpreterGrad, gradientCheckConcat) {
+TEST_P(GradCheck, gradientCheckConcat) {
+  CHECK_IF_ENABLED();
   PlaceholderBindings bindings;
   Placeholder *A, *Exp, *B;
   SaveNode *result;
@@ -221,7 +220,8 @@ TEST_P(InterpreterGrad, gradientCheckConcat) {
                    &inputs, &outputs, 0.001, 0.01);
 }
 
-TEST_P(InterpreterGrad, gradientCheckMatMul) {
+TEST_P(GradCheck, gradientCheckMatMul) {
+  CHECK_IF_ENABLED();
   PlaceholderBindings Bindings;
   Placeholder *A, *Exp, *B;
   SaveNode *Result;
@@ -257,7 +257,43 @@ TEST_P(InterpreterGrad, gradientCheckMatMul) {
                    &Inputs, &Outputs, 0.001, 0.01);
 }
 
-TEST_P(InterpreterGrad, gradientCheckBatchedReduceAddAxis0) {
+TEST_P(GradCheck, gradientCheckTile) {
+  CHECK_IF_ENABLED();
+  PlaceholderBindings Bindings;
+  Placeholder *A, *Exp;
+  SaveNode *Result;
+
+  constexpr size_t N{2}, C{3}, H{4}, W{5};
+  constexpr size_t NumTiles{5};
+
+  for (auto *EE : engines_) {
+    auto &Mod = EE->getModule();
+    Function *F = Mod.createFunction("main");
+
+    A = Mod.createPlaceholder(ElemKind::FloatTy, {N, C, H, W}, "A",
+                              /*isTrainable=*/false);
+    Exp = Mod.createPlaceholder(ElemKind::FloatTy, {N, NumTiles * C, H, W},
+                                "Exp", /*isTrainable=*/false);
+    auto *Tile = F->createTile("tile", A, NumTiles, /*axis=*/1, Exp->getType());
+    auto *Reg = F->createRegression("reg", Tile, Exp);
+    Result = F->createSave("save", Reg);
+  }
+
+  Tensor Inputs(ElemKind::FloatTy, A->getType()->dims());
+  Tensor Outputs(ElemKind::FloatTy, Exp->getType()->dims());
+
+  auto InputsH = Inputs.getHandle<>();
+  auto OutputsH = Outputs.getHandle<>();
+  auto &Mod = EET_.getModule();
+  InputsH.randomize(-1, 1, Mod.getPRNG());
+  OutputsH.randomize(-1, 1, Mod.getPRNG());
+
+  performGradCheck(EET_, EEI_, Bindings, Result->getPlaceholder(), A, Exp,
+                   &Inputs, &Outputs, 0.001, 0.01);
+}
+
+TEST_P(GradCheck, gradientCheckBatchedReduceAddAxis0) {
+  CHECK_IF_ENABLED();
   PlaceholderBindings Bindings;
   Placeholder *A, *Exp;
   SaveNode *Result;
@@ -293,7 +329,8 @@ TEST_P(InterpreterGrad, gradientCheckBatchedReduceAddAxis0) {
                    &Inputs, &Outputs, 0.001, 0.01);
 }
 
-TEST_P(InterpreterGrad, gradientCheckBatchedReduceAddAxis1) {
+TEST_P(GradCheck, gradientCheckBatchedReduceAddAxis1) {
+  CHECK_IF_ENABLED();
   PlaceholderBindings Bindings;
   size_t NumRows = 3;
   size_t BatchSize = 4;
@@ -329,7 +366,8 @@ TEST_P(InterpreterGrad, gradientCheckBatchedReduceAddAxis1) {
                    &Inputs, &Outputs, 0.001, 0.01);
 }
 
-TEST_P(InterpreterGrad, gradientCheckGatherVec) {
+TEST_P(GradCheck, gradientCheckGatherVec) {
+  CHECK_IF_ENABLED();
   PlaceholderBindings Bindings;
   Placeholder *A, *Exp;
   SaveNode *Result;
@@ -361,7 +399,8 @@ TEST_P(InterpreterGrad, gradientCheckGatherVec) {
                    &Inputs, &Outputs, 0.001, 0.01);
 }
 
-TEST_P(InterpreterGrad, gradientCheckGatherDim) {
+TEST_P(GradCheck, gradientCheckGatherDim) {
+  CHECK_IF_ENABLED();
   PlaceholderBindings Bindings;
   Placeholder *A, *Exp;
   SaveNode *Result;
@@ -432,14 +471,17 @@ static void gradientCheckGroupConv(size_t depth, size_t group,
 }
 
 TEST_P(GradCheck, gradientCheckConv) {
+  CHECK_IF_ENABLED();
   gradientCheckGroupConv(1, 1, EET_, EEI_);
 }
 
 TEST_P(GradCheck, gradientCheckDepthwiseConv) {
+  CHECK_IF_ENABLED();
   gradientCheckGroupConv(4, 4, EET_, EEI_);
 }
 
 TEST_P(GradCheck, gradientCheckGroupConv) {
+  CHECK_IF_ENABLED();
   gradientCheckGroupConv(4, 2, EET_, EEI_);
 }
 
@@ -482,10 +524,12 @@ static void gradientCheckDilatedConv(size_t depth, size_t group,
 }
 
 TEST_P(GradCheck, gradientCheckDilatedConv) {
+  CHECK_IF_ENABLED();
   gradientCheckDilatedConv(1, 1, 2, EET_, EEI_);
 }
 
-TEST_P(InterpreterGrad, gradientCheckAvgPool) {
+TEST_P(GradCheck, gradientCheckAvgPool) {
+  CHECK_IF_ENABLED();
   PlaceholderBindings bindings;
   size_t numDim = 10;
   size_t numOutputElem = 10;
@@ -520,7 +564,45 @@ TEST_P(InterpreterGrad, gradientCheckAvgPool) {
                    &inputs, &outputs, 0.001, 0.004);
 }
 
-TEST_P(InterpreterGrad, gradientCheckBatchNorm) {
+TEST_P(GradCheck, gradientCheckAdaptiveAvgPool) {
+  CHECK_IF_ENABLED();
+  PlaceholderBindings bindings;
+  size_t numDim = 10;
+  size_t numOutputElem = 10;
+  Placeholder *A, *Exp;
+  SaveNode *result;
+  for (auto *EE : engines_) {
+    auto &mod = EE->getModule();
+    bindings.clear();
+    Function *F = mod.createFunction("main");
+    A = mod.createPlaceholder(ElemKind::FloatTy, {1, numDim, numDim, 1}, "A",
+                              false);
+    Exp = mod.createPlaceholder(ElemKind::FloatTy, {1, numOutputElem}, "Exp",
+                                false);
+
+    auto outTy = mod.uniqueType(ElemKind::FloatTy, {1, 3, 3, 1});
+    Node *O = F->createAdaptiveAvgPool("pool", A, outTy);
+    O = F->createTanh("tanh", O);
+    O = F->createFullyConnected(bindings, "fc", O, numOutputElem);
+    O = F->createRegression("reg", O, Exp);
+    result = F->createSave("ret", O);
+  }
+
+  Tensor inputs(ElemKind::FloatTy, {1, numDim, numDim, 1});
+  Tensor outputs(ElemKind::FloatTy, {1, numOutputElem});
+
+  auto inputsH = inputs.getHandle<>();
+  auto outputsH = outputs.getHandle<>();
+  auto &mod = EET_.getModule();
+  inputsH.initXavier(1, mod.getPRNG());
+  outputsH.initXavier(1, mod.getPRNG());
+
+  performGradCheck(EET_, EEI_, bindings, result->getPlaceholder(), A, Exp,
+                   &inputs, &outputs, 0.001, 0.005);
+}
+
+TEST_P(GradCheck, gradientCheckBatchNorm) {
+  CHECK_IF_ENABLED();
   PlaceholderBindings bindings;
   size_t numDim = 5;
   size_t numOutputElem = numDim * numDim * 3;
@@ -558,7 +640,8 @@ TEST_P(InterpreterGrad, gradientCheckBatchNorm) {
                    &inputs, &outputs, 0.001, 0.004);
 }
 
-TEST_P(InterpreterGrad, gradientCheckArithmeticDiv) {
+TEST_P(GradCheck, gradientCheckArithmeticDiv) {
+  CHECK_IF_ENABLED();
   // The test creates a net: A / B = Exp. Where A is trainable weight,
   // B and Exp are external data (initialized randomly once). SGD will find
   // correct value for A, and then gradient check will be performed.
@@ -594,7 +677,8 @@ TEST_P(InterpreterGrad, gradientCheckArithmeticDiv) {
                    &BValues, &ExpValues, 0.0001, 0.001);
 }
 
-TEST_P(InterpreterGrad, gradientCheckArithmetic) {
+TEST_P(GradCheck, gradientCheckArithmetic) {
+  CHECK_IF_ENABLED();
   PlaceholderBindings bindings;
   size_t numDim = 20;
   Placeholder *A, *Exp;
@@ -639,7 +723,8 @@ TEST_P(InterpreterGrad, gradientCheckArithmetic) {
                    &inputs, &outputs, 0.01, 0.004);
 }
 
-TEST_P(InterpreterGrad, gradientCheckFCConcatTanh) {
+TEST_P(GradCheck, gradientCheckFCConcatTanh) {
+  CHECK_IF_ENABLED();
   // Using the same gradient check test setup as gradientCheck_FC_Concat_RELU
   PlaceholderBindings bindings;
   size_t numInputElem = 20;
@@ -672,7 +757,8 @@ TEST_P(InterpreterGrad, gradientCheckFCConcatTanh) {
                    &inputs, &outputs, 0.0001, 0.001);
 }
 
-TEST_P(InterpreterGrad, gradientCheckFC) {
+TEST_P(GradCheck, gradientCheckFC) {
+  CHECK_IF_ENABLED();
   PlaceholderBindings bindings;
   size_t numInputElem = 20;
   size_t numOutputElem = 10;
@@ -704,7 +790,8 @@ TEST_P(InterpreterGrad, gradientCheckFC) {
                    &inputs, &outputs, 0.0001, 0.0001);
 }
 
-TEST_P(InterpreterGrad, gradientCheckSigmoid) {
+TEST_P(GradCheck, gradientCheckSigmoid) {
+  CHECK_IF_ENABLED();
   PlaceholderBindings bindings;
   size_t numInputElem = 20;
   size_t numOutputElem = 20;
@@ -735,7 +822,8 @@ TEST_P(InterpreterGrad, gradientCheckSigmoid) {
                    &inputs, &outputs, 0.001, 0.01);
 }
 
-TEST_P(InterpreterGrad, gradientCheckRelu) {
+TEST_P(GradCheck, gradientCheckRelu) {
+  CHECK_IF_ENABLED();
   PlaceholderBindings bindings;
   size_t numInputElem = 20;
   size_t numOutputElem = 20;
@@ -766,7 +854,8 @@ TEST_P(InterpreterGrad, gradientCheckRelu) {
                    &inputs, &outputs, 0.001, 0.01);
 }
 
-TEST_P(InterpreterGrad, gradientCheckTranspose) {
+TEST_P(GradCheck, gradientCheckTranspose) {
+  CHECK_IF_ENABLED();
   // Using the same gradient check test setup as gradientCheck_FC_Concat_RELU
   PlaceholderBindings bindings;
   size_t numOutputElem = 10;
@@ -798,7 +887,8 @@ TEST_P(InterpreterGrad, gradientCheckTranspose) {
                    &inputs, &outputs, 0.0001, 0.001);
 }
 
-TEST_P(InterpreterGrad, gradientCheckCrossEntropyLoss) {
+TEST_P(GradCheck, gradientCheckCrossEntropyLoss) {
+  CHECK_IF_ENABLED();
   const size_t batchSize = 6;
   const int testSamples = 5;
   const float stepSize = 1e-4;
@@ -865,12 +955,4 @@ TEST_P(InterpreterGrad, gradientCheckCrossEntropyLoss) {
   }
 }
 
-INSTANTIATE_TEST_CASE_P(Interpreter, InterpreterGrad,
-                        ::testing::Values("Interpreter"));
-
-INSTANTIATE_TEST_CASE_P(Interpreter, GradCheck,
-                        ::testing::Values("Interpreter"));
-
-#ifdef GLOW_WITH_CPU
-INSTANTIATE_TEST_CASE_P(JIT, GradCheck, ::testing::Values("CPU"));
-#endif // GLOW_WITH_CPU
+INSTANTIATE_BACKEND_TEST(GradCheck);

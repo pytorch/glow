@@ -28,11 +28,52 @@
 namespace llvm {
 namespace yaml {
 
+/// The default behavior of YAML is to serialize floating point numbers
+/// using the "%g" format specifier which is not guaranteed to print all
+/// the decimals. During a round-trip (serialize, deserialize) decimals
+/// might be lost and hence precision is lost. Although this might not be
+/// critical for some quantization schema, for "SymmetricWithPower2Scale"
+/// the round-trip must preserve the exact representation of the floating
+/// point scale which is a power of 2. The code below is a workaround to
+/// overwrite the behavior of the YAML serializer to print all the digits.
+struct FloatWrapper {
+  float val_;
+  FloatWrapper(float val) : val_(val) {}
+};
+
+template <> struct ScalarTraits<FloatWrapper> {
+  static void output(const FloatWrapper &value, void *ctxt,
+                     llvm::raw_ostream &out) {
+    // Print number with all the digits and without trailing 0's
+    char buffer[200];
+    snprintf(buffer, sizeof(buffer), "%.126f", value.val_);
+    int n = strlen(buffer) - 1;
+    while ((n > 0) && (buffer[n] == '0') && (buffer[n - 1] != '.')) {
+      buffer[n--] = '\0';
+    }
+    out << buffer;
+  }
+  static StringRef input(StringRef scalar, void *ctxt, FloatWrapper &value) {
+    if (to_float(scalar, value.val_))
+      return StringRef();
+    return "invalid floating point number";
+  }
+  static QuotingType mustQuote(StringRef) { return QuotingType::None; }
+};
+
 /// Mapping for NodeQuantizationInfo yaml serializer.
 template <> struct MappingTraits<glow::NodeQuantizationInfo> {
+  struct FloatNormalized {
+    FloatNormalized(IO &io) : val_(0.0) {}
+    FloatNormalized(IO &, float &val) : val_(val) {}
+    float denormalize(IO &) { return val_.val_; }
+    FloatWrapper val_;
+  };
   static void mapping(IO &io, glow::NodeQuantizationInfo &info) {
+    MappingNormalization<FloatNormalized, float> scale(
+        io, info.tensorQuantizationParams_.scale);
     io.mapRequired("nodeOutputName", info.nodeOutputName_);
-    io.mapRequired("scale", info.tensorQuantizationParams_.scale);
+    io.mapRequired("scale", scale->val_);
     io.mapRequired("offset", info.tensorQuantizationParams_.offset);
   }
 };

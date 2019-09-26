@@ -37,7 +37,7 @@ void InstrBuilder::emitCtor(std::ostream &os) const {
 
   // Extra class members:
   for (const auto &op : members_) {
-    os << ", " << getStorageTypename(op.first) << " " << op.second;
+    os << ", " << getStorageTypename(&op.first) << " " << op.second;
   }
 
   // Initialize the base clases:
@@ -76,8 +76,8 @@ void InstrBuilder::emitIRBuilderMethods(std::ostream &osH,
 
   // Extra class members:
   for (const auto &op : members_) {
-    osH << ", " << getStorageTypename(op.first) << " " << op.second;
-    osB << ", " << getStorageTypename(op.first) << " " << op.second;
+    osH << ", " << getStorageTypename(&op.first) << " " << op.second;
+    osB << ", " << getStorageTypename(&op.first) << " " << op.second;
   }
 
   osH << ");\n";
@@ -128,7 +128,7 @@ void InstrBuilder::emitProperties(std::ostream &os) const {
 void InstrBuilder::emitClassMembers(std::ostream &os) const {
   // Emit class members:
   for (const auto &op : members_) {
-    os << "  " << getStorageTypename(op.first) << " " << op.second << "_;\n";
+    os << "  " << getStorageTypename(&op.first) << " " << op.second << "_;\n";
   }
 }
 
@@ -139,7 +139,8 @@ void InstrBuilder::emitOperandGetter(std::ostream &os, const std::string &name,
      << ").first; }\n";
 }
 
-void InstrBuilder::emitMemberGetter(std::ostream &os, MemberType type,
+void InstrBuilder::emitMemberGetter(std::ostream &os,
+                                    const MemberTypeInfo *type,
                                     const std::string &name) const {
   // Synthesize the general getter.
   auto returnTypeStr = getReturnTypename(type);
@@ -155,7 +156,7 @@ void InstrBuilder::emitSettersGetters(std::ostream &os) const {
   }
 
   for (const auto &op : members_) {
-    emitMemberGetter(os, op.first, op.second);
+    emitMemberGetter(os, &op.first, op.second);
   }
 
   // Synthesize the 'classof' method that enables the non-rtti polymorphism.
@@ -416,4 +417,44 @@ void InstrBuilder::emitAutoIRGen(std::ostream &os) const {
   os << "  nodeToInstr_[N] = V;\n";
   os << "  break;\n";
   os << "}\n";
+}
+
+InstrBuilder &InstrBuilder::addMember(MemberType type,
+                                      const std::string &name) {
+  MemberTypeInfo *typeInfo = nullptr;
+
+  if (type == MemberType::TypeRef) {
+    typeInfo = &kTypeRefTypeInfo;
+  } else if (type == MemberType::Float) {
+    typeInfo = &kFloatTypeInfo;
+  } else if (type == MemberType::Unsigned) {
+    typeInfo = &kUnsignedTypeInfo;
+  } else if (type == MemberType::Boolean) {
+    typeInfo = &kBooleanTypeInfo;
+  } else if (type == MemberType::Int64) {
+    typeInfo = &kInt64TypeInfo;
+  } else if (type == MemberType::String) {
+    typeInfo = &kStringTypeInfo;
+  } else if (type == MemberType::VectorFloat) {
+    typeInfo = &kVectorFloatTypeInfo;
+  } else if (type == MemberType::VectorUnsigned) {
+    typeInfo = &kVectorUnsignedTypeInfo;
+  } else if (type == MemberType::VectorInt64) {
+    typeInfo = &kVectorInt64TypeInfo;
+  } else if (type == MemberType::VectorSigned) {
+    typeInfo = &kVectorSignedTypeInfo;
+  } else if (type == MemberType::VectorSizeT) {
+    typeInfo = &kVectorSizeTTypeInfo;
+  } else if (type == MemberType::VectorNodeValue) {
+    typeInfo = &kVectorNodeValueTypeInfo;
+  } else if (type == MemberType::Enum) {
+    typeInfo = &kEnumTypeInfo;
+  } else if (type == MemberType::UserDefinedType) {
+    llvm_unreachable("addMember should be called with a MemberTypeInfo "
+                     "parameter in this case");
+  } else {
+    llvm_unreachable("Type not recognized");
+  }
+
+  return addMember(*typeInfo, name);
 }

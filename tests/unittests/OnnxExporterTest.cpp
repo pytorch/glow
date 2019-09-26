@@ -39,18 +39,18 @@ void testLoadAndSaveONNXModel(const std::string &name) {
   Function *F = mod.createFunction("main");
 
   size_t irVer = 0, opsetVer = 0;
-  llvm::Error err = llvm::Error::success();
+  Error err = Error::success();
   {
     ONNXModelLoader onnxLD(name, {}, {}, *F, &err);
     irVer = onnxLD.getIrVersion();
     opsetVer = onnxLD.getOpSetVersion();
   }
 
-  ASSERT_FALSE(handleErrors(std::move(err), [&name](const GlowErr &GE) {
+  if (err) {
     llvm::errs() << "ONNXModelLoader failed to load model: " << name << ": ";
-    GE.log(llvm::errs());
-    llvm::errs() << "\n";
-  }));
+    llvm::errs() << ERR_TO_STRING(std::move(err)) << "\n";
+    FAIL();
+  }
 
   llvm::SmallString<64> path;
   auto tempFileRes =
@@ -94,8 +94,13 @@ TEST(exporter, onnxModels) {
         name.find("castToFloat16.onnxtxt") != std::string::npos ||
         name.find("castToInt64.onnxtxt") != std::string::npos ||
         name.find("castToInt32.onnxtxt") != std::string::npos ||
+        name.find("simpleConvBiasFail.onnxtxt") != std::string::npos ||
         name.find("Where.onnxtxt") != std::string::npos ||
-        name.find("constantOfShapeInt64Fail.onnxtxt") != std::string::npos) {
+        name.find("constantOfShapeInt64Fail.onnxtxt") != std::string::npos ||
+        name.find("ArgMaxDefault.onnxtxt") != std::string::npos ||
+        name.find("ArgMaxKeepDim.onnxtxt") != std::string::npos ||
+        name.find("ArgMaxNoKeepDim.onnxtxt") != std::string::npos ||
+        name.find("Less.onnxtxt") != std::string::npos) {
       // Ignore invalid ONNX files and graphs without nodes.
       llvm::outs() << "Ignore invalid input files: " << name << "\n";
       continue;

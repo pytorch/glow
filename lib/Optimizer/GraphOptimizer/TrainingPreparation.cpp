@@ -75,10 +75,9 @@ TensorInitializer getDefaultTensorInitializer() {
   return defaultTensorInitializer;
 }
 
-llvm::Error prepareFunctionForTraining(Function *F,
-                                       PlaceholderBindings &bindings,
-                                       Placeholder *&selected,
-                                       TensorInitializer &&initializer) {
+Error prepareFunctionForTraining(Function *F, PlaceholderBindings &bindings,
+                                 Placeholder *&selected,
+                                 TensorInitializer &&initializer) {
 
   auto &nodes = F->getNodes();
 
@@ -129,6 +128,6 @@ llvm::Error prepareFunctionForTraining(Function *F,
     }
   }
 
-  return llvm::Error::success();
+  return Error::success();
 }
 } // namespace glow

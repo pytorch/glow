@@ -42,7 +42,7 @@ using DeviceManagerMapTy = std::map<DeviceIDTy, std::unique_ptr<DeviceManager>>;
 
 /// Callback type used by HostManager and DeviceManager, used to pass results of
 /// an inference request back to the caller.
-using ResultCBTy = std::function<void(runtime::RunIdentifierTy, llvm::Error,
+using ResultCBTy = std::function<void(runtime::RunIdentifierTy, Error,
                                       std::unique_ptr<ExecutionContext>)>;
 
 /// Data structure that contains device constraint information for each device.
@@ -144,6 +144,8 @@ struct DeviceConfig {
   const std::string backendName;
   /// A human readable name to identify the device.
   std::string name;
+  /// A runtime assigned id for the device. This is used for stats reporting.
+  unsigned deviceID{0};
   /// Device memory size in bytes.
   uint64_t deviceMemory = 0;
   /// A map of configuration parameters.
@@ -171,8 +173,10 @@ struct DeviceConfig {
 /// Options configuring Host components of the Runtime, such as the Partitioner
 /// and Executor.
 struct HostConfig {
-  /// Number of outstanding or concurrent networks before rate limiting.
-  size_t maxActiveRequests{100};
+  /// Number of outstanding or concurrent networks before queueing.
+  size_t maxActiveRequests{10};
+  /// Number of requests to queue up before refusing further requests.
+  size_t maxQueueSize{100};
   /// Number of threads to allocate to the Executor.
   size_t executorThreads{3};
 };

@@ -27,6 +27,7 @@
 
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/CommandLine.h"
+#include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/raw_ostream.h"
 
 #define DEBUG_TYPE "opencl"
@@ -46,6 +47,7 @@ extern llvm::cl::opt<bool> clDoProfile;
 
 namespace glow {
 namespace runtime {
+
 DeviceManager *createOCLDeviceManager(const DeviceConfig &config) {
   return new OpenCLDeviceManager(config);
 }
@@ -55,12 +57,12 @@ OpenCLBuffer::~OpenCLBuffer() { clReleaseMemObject(buffer_); }
 } // namespace glow
 
 /// Helper method to parse a string parameter to an unsigned. \returns
-/// llvm::Expected with either the value or an error.
-static llvm::Expected<unsigned> parseInputAsUnsigned(std::string input) {
+/// Expected with either the value or an error.
+static Expected<unsigned> parseInputAsUnsigned(std::string input) {
   char *end;
   auto parsed = strtol(input.c_str(), &end, 10);
   if (end == input.c_str() || *end != '\0') {
-    return MAKE_ERR(GlowErr::ErrorCode::RUNTIME_ERROR,
+    return MAKE_ERR(ErrorValue::ErrorCode::RUNTIME_ERROR,
                     "Invalid input expected integer got: " + input);
   }
   return parsed;
@@ -82,7 +84,7 @@ OpenCLCommandQueuePool::~OpenCLCommandQueuePool() {
   }
 }
 
-llvm::Expected<OpenCLCommandQueue> OpenCLCommandQueuePool::requestCommandQueue(
+Expected<OpenCLCommandQueue> OpenCLCommandQueuePool::requestCommandQueue(
     cl_command_queue_properties properties) {
   OpenCLCommandQueue ret;
   // Get the vector that has queues with the desired properties.
@@ -137,7 +139,7 @@ unsigned OpenCLCommandQueuePool::getNumQueuesAvailableForProperties(
   return it != queuesAvailableByProps_.end() ? it->second : 0;
 }
 
-llvm::Expected<cl_mem> OpenCLDeviceManager::allocDeviceBuffer(uint64_t size) {
+Expected<cl_mem> OpenCLDeviceManager::allocDeviceBuffer(uint64_t size) {
   const uint64_t alignment = 128;
   // Always allocate buffers properly aligned to hold values of any type.
   size = alignedSize(size, alignment);
@@ -149,7 +151,7 @@ llvm::Expected<cl_mem> OpenCLDeviceManager::allocDeviceBuffer(uint64_t size) {
 OpenCLDeviceManager::OpenCLDeviceManager(const DeviceConfig &config)
     : QueueBackedDeviceManager(config) {}
 
-llvm::Error OpenCLDeviceManager::parseConfig() {
+Error OpenCLDeviceManager::parseConfig() {
   auto it = config_.parameters.find("deviceId");
   unsigned value;
   if (it != config_.parameters.end()) {
@@ -168,15 +170,15 @@ llvm::Error OpenCLDeviceManager::parseConfig() {
     } else if (it->second == "false") {
       clDoProfile = false;
     } else {
-      return MAKE_ERR(GlowErr::ErrorCode::RUNTIME_ERROR,
+      return MAKE_ERR(ErrorValue::ErrorCode::RUNTIME_ERROR,
                       "Invalid input expected true or false got: " +
                           it->second);
     }
   }
-  return llvm::Error::success();
+  return Error::success();
 }
 
-llvm::Error OpenCLDeviceManager::init() {
+Error OpenCLDeviceManager::init() {
   // The OpenCL Backend defines three command line options: doProfile, deviceId,
   // and platformId. If the parameter is not provided we use the CL
   // options from the OpenCl Backend.
@@ -236,13 +238,15 @@ llvm::Error OpenCLDeviceManager::init() {
   commandQueuePool_.setDevice(deviceId_);
 
   Stats()->incrementCounter(kDevicesUsedOpenCL);
-  return llvm::Error::success();
+  exportMemoryCounters();
+  return Error::success();
 }
 
 OpenCLDeviceManager::~OpenCLDeviceManager() {
   clReleaseContext(context_);
   buffers_.clear();
   Stats()->incrementCounter(kDevicesUsedOpenCL, -1);
+  zeroMemoryCounters();
 }
 
 uint64_t OpenCLDeviceManager::getMaximumMemory() const {
@@ -293,8 +297,9 @@ void OpenCLDeviceManager::addNetworkImpl(const Module *module,
     if (usedMemoryBytes_ + sizeInBytes > maxMemoryBytes_) {
       // Free the constants.
       bundle.freeConstants();
-      readyCB(module, MAKE_ERR(GlowErr::ErrorCode::RUNTIME_OUT_OF_DEVICE_MEMORY,
-                               "Failed to add network: not enough memory"));
+      readyCB(module,
+              MAKE_ERR(ErrorValue::ErrorCode::RUNTIME_OUT_OF_DEVICE_MEMORY,
+                       "Failed to add network: not enough memory"));
       return;
     }
 
@@ -306,7 +311,7 @@ void OpenCLDeviceManager::addNetworkImpl(const Module *module,
     if (!commands) {
       readyCB(module,
               MAKE_ERR(
-                  GlowErr::ErrorCode::RUNTIME_OUT_OF_DEVICE_MEMORY,
+                  ErrorValue::ErrorCode::RUNTIME_OUT_OF_DEVICE_MEMORY,
                   "Failed to add network: could not create CL command queue."));
       return;
     }
@@ -363,8 +368,12 @@ void OpenCLDeviceManager::addNetworkImpl(const Module *module,
     DCHECK_LE(usedMemoryBytes_, maxMemoryBytes_);
     clReleaseCommandQueue(commands);
   }
+
+  // Export change in memory usage.
+  exportMemoryCounters();
+
   // Fire the ready CB.
-  readyCB(module, llvm::Error::success());
+  readyCB(module, Error::success());
 }
 
 void OpenCLDeviceManager::evictNetworkImpl(std::string functionName,
@@ -382,15 +391,16 @@ void OpenCLDeviceManager::evictNetworkImpl(std::string functionName,
     }
   } else {
     evictCB(functionName,
-            MAKE_ERR(GlowErr::ErrorCode::RUNTIME_NET_NOT_FOUND,
+            MAKE_ERR(ErrorValue::ErrorCode::RUNTIME_NET_NOT_FOUND,
                      strFormat("Could not find function with name %s to evict",
                                functionName.c_str())));
     return;
   }
-  evictCB(functionName, llvm::Error::success());
+  exportMemoryCounters();
+  evictCB(functionName, Error::success());
 }
 
-llvm::Expected<OpenCLCommandQueue>
+Expected<OpenCLCommandQueue>
 OpenCLDeviceManager::requestRunCommandQueue(CompiledFunction *function) {
   auto traceInfo = function->getTraceInfo();
   cl_command_queue_properties props =
@@ -414,7 +424,7 @@ void OpenCLDeviceManager::runFunctionImpl(
     dmRun.addArg("reason", "function not found");
     TRACE_EVENT_SCOPE_END_NAMED(dmRun);
     resultCB(id,
-             MAKE_ERR(GlowErr::ErrorCode::RUNTIME_NET_NOT_FOUND,
+             MAKE_ERR(ErrorValue::ErrorCode::RUNTIME_NET_NOT_FOUND,
                       llvm::formatv("Function {} not found", function).str()),
              std::move(context));
     return;

@@ -16,7 +16,9 @@
 #ifndef GLOW_BACKENDS_HABANA_HABANADEVICEMANAGER_H
 #define GLOW_BACKENDS_HABANA_HABANADEVICEMANAGER_H
 
-#include "Habana.h"
+#include "HabanaFunction.h"
+#include "HabanaUtils.h"
+
 #include "glow/Backends/DeviceManager.h"
 #include "glow/Runtime/RuntimeTypes.h"
 #include "glow/Support/ThreadPool.h"
@@ -111,7 +113,7 @@ class HabanaDeviceManager : public DeviceManager {
   /// Update the totalMemory_ and freeMemory_ counts for the device based once
   /// per-function memory estimates. This function is not thread safe and should
   /// only be invoked while holding synapseLock.
-  llvm::Error updateMemoryUsage();
+  Error updateMemoryUsage();
 
 public:
   /// Constructor.
@@ -124,7 +126,7 @@ public:
 
   /// See DeviceManager and QueueBackedDeviceManager for the documentation of
   /// the interface below.
-  llvm::Error init() override;
+  Error init() override;
 
   void addNetwork(const Module *module, FunctionMapTy functions,
                   ReadyCBTy readyCB) override;
@@ -136,7 +138,7 @@ public:
                               std::unique_ptr<ExecutionContext> ctx,
                               runtime::ResultCBTy resultCB) override;
 
-  llvm::Error stop(bool block) override;
+  Error stop(bool block) override;
 
   uint64_t getMaximumMemory() const override;
   uint64_t getAvailableMemory() const override;
@@ -146,6 +148,9 @@ public:
   /// compute and bandwidths (used in partitioning).
   DeviceInfo getDeviceInfo() const override;
 };
+
+/// Factory function for creating a HabanaDeviceManager.
+DeviceManager *createHabanaDeviceManager(const DeviceConfig &config);
 
 } // namespace runtime
 } // namespace glow

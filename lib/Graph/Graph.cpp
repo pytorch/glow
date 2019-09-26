@@ -453,6 +453,11 @@ TypeRef Module::uniqueTypeWithNewShape(TypeRef T, llvm::ArrayRef<size_t> dims) {
   return uniqueType(Type::newShape(*T, dims));
 }
 
+TypeRef Module::uniqueTypeWithNewShape(TypeRef T, llvm::ArrayRef<size_t> dims,
+                                       llvm::ArrayRef<size_t> alignments) {
+  return uniqueType(Type::newShape(*T, dims, alignments));
+}
+
 TypeRef Module::uniqueType(const Type &T) {
   for (auto &tp : types_) {
     if (T.isEqual(tp)) {
@@ -492,7 +497,11 @@ static ShapeVector getNewShapeWithoutAxes(llvm::ArrayRef<size_t> dims,
 Placeholder *Module::createPlaceholder(TypeRef T, llvm::StringRef name,
                                        bool isTrainable) {
   auto FT = uniqueType(*T);
-  return addPlaceholder(new Placeholder(name, FT, isTrainable));
+  auto *ph = new Placeholder(name, FT, isTrainable);
+  ph->setName(uniqueName(ph->getName(), uniqueVariableNames_));
+  placeholders_.push_back(ph);
+  logStorageCreation(functions_, ph);
+  return ph;
 }
 
 Placeholder *Module::createPlaceholder(ElemKind T, llvm::ArrayRef<size_t> dims,
@@ -567,13 +576,6 @@ Constant *Module::addConstant(Constant *V) {
   constants_.push_back(V);
   logStorageCreation(functions_, V);
   return V;
-}
-
-Placeholder *Module::addPlaceholder(Placeholder *ph) {
-  ph->setName(uniqueName(ph->getName(), uniqueVariableNames_));
-  placeholders_.push_back(ph);
-  logStorageCreation(functions_, ph);
-  return ph;
 }
 
 /// Check if the 'pads' array has the right size.
@@ -678,7 +680,8 @@ ConvolutionNode *Function::createConv(
   assertConvDims(input, filter, bias, kernels, strides, pads, group);
   auto OT = getParent()->uniqueType(*outTy);
   return addNode(new ConvolutionNode(name, OT, input, filter, bias, kernels,
-                                     strides, pads, group, dilation, layout));
+                                     strides, pads, group, dilation, layout,
+                                     FusedActivation::NONE));
 }
 
 ConvolutionNode *Function::createConv(llvm::StringRef name, NodeValue input,
@@ -940,8 +943,8 @@ Function::createSigmoidCrossEntropyWithLogits(llvm::StringRef name,
 ReshapeNode *Function::createReshape(llvm::StringRef name, NodeValue input,
                                      llvm::ArrayRef<size_t> shape) {
   auto TR = getParent()->uniqueTypeWithNewShape(input.getType(), shape);
-  assert(TR->size() == input.getType()->size() &&
-         "Reshape to a different size");
+  DCHECK_EQ(TR->size(), input.getType()->size())
+      << "Reshape to a different size";
   return addNode(new ReshapeNode(name, TR, input, shape.vec()));
 }
 
@@ -1293,7 +1296,8 @@ ModuloNode *Function::createModulo(llvm::StringRef name, NodeValue input,
   }                                                                            \
   NODE_NAME_##Node *Function::create##NODE_NAME_(                              \
       llvm::StringRef name, TypeRef T, NodeValue LHS, NodeValue RHS) {         \
-    assert(LHS.dims() == RHS.dims() && "Invalid operand shapes");              \
+    DCHECK(LHS.dims() == RHS.dims())                                           \
+        << "Invalid operand shapes " << LHS.dims() << " vs " << RHS.dims();    \
     TypeRef OT = getParent()->uniqueType(*T);                                  \
     return addNode(new NODE_NAME_##Node(name, OT, LHS, RHS));                  \
   }
@@ -1312,6 +1316,13 @@ CmpLTENode *Function::createCmpLTE(llvm::StringRef name, NodeValue LHS,
   assert(LHS.dims() == RHS.dims() && "Invalid operand shapes");
   TypeRef OT = getParent()->uniqueType(ElemKind::BoolTy, LHS.dims());
   return addNode(new CmpLTENode(name, OT, LHS, RHS));
+}
+
+CmpLTNode *Function::createCmpLT(llvm::StringRef name, NodeValue LHS,
+                                 NodeValue RHS) {
+  assert(LHS.dims() == RHS.dims() && "Invalid operand shapes");
+  TypeRef OT = getParent()->uniqueType(ElemKind::BoolTy, LHS.dims());
+  return addNode(new CmpLTNode(name, OT, LHS, RHS));
 }
 
 CmpEQNode *Function::createCmpEQ(llvm::StringRef name, NodeValue LHS,
@@ -1426,7 +1437,7 @@ BatchMatMulNode *Function::createBatchMatMul(llvm::StringRef name,
     RHS = createExpandDims(name.str() + ".reshapeRHS", RHS, {0});
   }
   // If necessary, Tile the RHS input so it matches the numBatches of LHS.
-  if (RHS.dims()[0] == 1) {
+  if (RHS.dims()[0] == 1 && LHS.dims()[0] != 1) {
     RHS = createTile(name.str() + ".tileRHS", RHS, LHS.dims()[0], /*axis */ 0);
   }
 
@@ -1899,6 +1910,21 @@ TopKNode *Function::createTopK(llvm::StringRef name, NodeValue input,
       k));
 }
 
+ArgMaxNode *Function::createArgMax(llvm::StringRef name, NodeValue input,
+                                   unsigned_t axis, bool keepDims) {
+  auto inDims = input.dims();
+  ShapeVector newDims;
+  for (size_t i = 0, e = inDims.size(); i < e; i++) {
+    if (i == axis && !keepDims) {
+      continue;
+    } else {
+      newDims.push_back(i == axis ? 1 : inDims[i]);
+    }
+  }
+  auto TR = getParent()->uniqueType(ElemKind::Int64ITy, newDims);
+  return addNode(new ArgMaxNode(name, TR, input, axis, keepDims));
+}
+
 GatherNode *Function::createGather(llvm::StringRef name, NodeValue data,
                                    NodeValue indices, unsigned_t batchDims) {
 
@@ -2078,11 +2104,7 @@ Node *Function::createBatchBoxCox(llvm::StringRef name, NodeValue data,
 
 Node *Function::createClip(llvm::StringRef name, NodeValue input, float min,
                            float max) {
-  auto *minSplat = createSplat(name.str() + ".minSplat", input.getType(), min);
-  auto *minClipped = createMax(name.str() + ".minClip", input, minSplat);
-  auto *maxSplat = createSplat(name.str() + ".maxSplat", input.getType(), max);
-  auto result = createMin(name.str(), minClipped, maxSplat);
-  return result;
+  return addNode(new ClipNode(name, input.getType(), input, min, max));
 }
 
 //===----------------------------------------------------------------------===//
@@ -2163,7 +2185,8 @@ ConvolutionNode *Function::createConv(
   auto OT = getParent()->uniqueType(inputTy, outDims);
 
   return addNode(new ConvolutionNode(name, OT, input, filter, bias, kernels,
-                                     strides, pads, group, dilation, layout));
+                                     strides, pads, group, dilation, layout,
+                                     FusedActivation::NONE));
 }
 
 ConvolutionNode *Function::createConv(PlaceholderBindings &bindings,

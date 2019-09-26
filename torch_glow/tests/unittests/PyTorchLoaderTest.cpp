@@ -18,25 +18,21 @@
 #include "PyTorchModelLoader.h"
 #include "glow/Support/Error.h"
 
-#include "llvm/Support/CommandLine.h"
-#include "llvm/Support/Signals.h"
 #include <gtest/gtest.h>
 
 #ifndef GLOW_DATA_PATH
 #define GLOW_DATA_PATH
 #endif
 
-// TODO - use TEST() macro
-void torchModelLoaderTestLoader() {
+TEST(ModelLoaderTest, Loader) {
   const std::string fileName{GLOW_DATA_PATH
                              "tests/models/pytorchModels/resnet18.pt"};
   std::shared_ptr<torch::jit::script::Module> module;
-  llvm::Error err = glow::PyTorchFileLoader::loadPyTorchModel(fileName, module);
+  glow::Error err = glow::PyTorchFileLoader::loadPyTorchModel(fileName, module);
   EXPECT_FALSE(err);
 }
 
-// TODO - use TEST() macro
-void torchModelLoaderTestFusion() {
+TEST(ModelLoaderTest, Fusion) {
   const std::string fileName{GLOW_DATA_PATH
                              "tests/models/pytorchModels/resnet18.pt"};
 
@@ -48,21 +44,28 @@ void torchModelLoaderTestFusion() {
 
   std::vector<glow::Placeholder *> inputPlaceholders;
   std::vector<glow::Placeholder *> outputPlaceholders;
-  glow::PyTorchLoaderSettings settings;
 
-  llvm::Error err = glow::PyTorchFileLoader::loadPyTorchGraph(
-      fileName, vec, *F, inputPlaceholders, outputPlaceholders, settings);
+  glow::Error err = glow::PyTorchFileLoader::loadPyTorchGraph(
+      fileName, vec, *F, inputPlaceholders, outputPlaceholders);
 
-  glow::errToBool(std::move(err));
+  EXPECT_FALSE(ERR_TO_BOOL(std::move(err)));
 }
 
-/// Add main explicitly, because for PyTorch we need compile with flags:
-/// -frtti -fexceptions
-int main(int argc, char **argv) {
-  ::testing::InitGoogleTest(&argc, argv);
-  llvm::sys::PrintStackTraceOnErrorSignal(argv[0]);
-  llvm::cl::ParseCommandLineOptions(argc, argv);
-  torchModelLoaderTestLoader();
-  torchModelLoaderTestFusion();
-  return RUN_ALL_TESTS();
+TEST(ModelLoaderTest, DISABLED_Direct) {
+  const std::string fileName{GLOW_DATA_PATH
+                             "tests/models/pytorchModels/resnet18.pt"};
+
+  glow::Module mod;
+  auto *F = mod.createFunction("GlowFunction");
+  std::vector<torch::jit::IValue> vec;
+  auto emptyTensor = at::empty({1, 3, 224, 224});
+  vec.push_back(torch::autograd::make_variable(emptyTensor));
+
+  std::vector<glow::Placeholder *> inputPlaceholders;
+  std::vector<glow::Placeholder *> outputPlaceholders;
+
+  glow::Error err = glow::PyTorchFileLoader::parsePyTorchGraphForOnnxTraining(
+      fileName, vec, *F, inputPlaceholders, outputPlaceholders);
+
+  EXPECT_FALSE(ERR_TO_BOOL(std::move(err)));
 }

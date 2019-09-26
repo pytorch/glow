@@ -27,7 +27,6 @@
 #include "gtest/gtest.h"
 
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/FileSystem.h"
 
 namespace glow {
@@ -69,9 +68,14 @@ public:
 
   std::string getBackendName() const override { return "Interpreter"; }
 
-  llvm::Expected<std::unique_ptr<CompiledFunction>>
+  Expected<std::unique_ptr<CompiledFunction>>
   compile(Function *F, const BackendOptions &opts) const override {
     return backend_->compile(F, opts);
+  }
+
+  runtime::DeviceManager *
+  createDeviceManager(const runtime::DeviceConfig &deviceConfig) override {
+    return nullptr;
   }
 
   bool isOpSupported(const NodeInfo &NI) const override {
@@ -102,9 +106,21 @@ void testSerialization(const std::vector<NodeQuantizationInfo> &expected) {
 }
 
 TEST(Quantization, Serialize) {
-  std::vector<NodeQuantizationInfo> expected{
-      {"first", {1, 10}}, {"second", {-1, 3}}, {"third", {-10, 30}}};
+  std::vector<NodeQuantizationInfo> expected{{"first", {1, 10}},
+                                             {"second", {-1, 3}},
+                                             {"third", {-10, 30}},
+                                             {"fourth", {0.1, -10}},
+                                             {"fifth", {0.123, -30}}};
+  testSerialization(expected);
+}
 
+TEST(Quantization, SerializePower2Scale) {
+  std::vector<NodeQuantizationInfo> expected{
+      {"pwr_neg_0", {1.0000000000f, 0}}, {"pwr_neg_1", {0.5000000000f, 0}},
+      {"pwr_neg_2", {0.2500000000f, 0}}, {"pwr_neg_3", {0.1250000000f, 0}},
+      {"pwr_neg_4", {0.0625000000f, 0}}, {"pwr_neg_5", {0.0312500000f, 0}},
+      {"pwr_neg_6", {0.0156250000f, 0}}, {"pwr_neg_7", {0.0078125000f, 0}},
+      {"pwr_neg_8", {0.0039062500f, 0}}, {"pwr_neg_9", {0.0019531250f, 0}}};
   testSerialization(expected);
 }
 
@@ -145,6 +161,34 @@ TEST(Quantization, quantScaleOffset) {
       auto TR = quantization::quantizeScaleOffset32To8(scale, 0);
       int32_t computed = TR.transform(sum32num);
 
+      EXPECT_NEAR(input, computed, 1);
+    }
+  }
+}
+
+TEST(Quantization, quantScaleOffsetPower2Scale) {
+  // Test different power of 2 scale values (from 2^-10 to 2^1).
+  float scales[] = {0.0009765625f, 0.0019531250f, 0.0039062500f, 0.0078125000f,
+                    0.0156250000f, 0.0312500000f, 0.0625000000f, 0.1250000000f,
+                    0.2500000000f, 0.5000000000f, 1.0000000000f, 2.0000000000f};
+
+  // Try all scale factors:
+  for (float scale : scales) {
+    // Try all legal integers within the range:
+    for (int8_t input = -128; input < 127; input++) {
+      int32_t sum32num = round(input / scale);
+      auto TR = quantization::quantizeScaleOffset32To8(scale, 0);
+      EXPECT_EQ(quantization::isFloatPowerOf2(scale), true);
+      EXPECT_EQ(TR.pre, 0);
+      int exp = quantization::getFloat2Exp(scale);
+      if (exp > 0) {
+        EXPECT_EQ(TR.scale, (int)scale);
+        EXPECT_EQ(TR.post, 0);
+      } else {
+        EXPECT_EQ(TR.scale, 1);
+        EXPECT_EQ(TR.post, -exp);
+      }
+      int32_t computed = TR.transform(sum32num);
       EXPECT_NEAR(input, computed, 1);
     }
   }
@@ -232,6 +276,44 @@ TEST(Quantization, quantizeTensorSymmetricUInt16) {
 TEST(Quantization, quantizeTensorSymmetricUInt32) {
   quantizeTensorTest<int32_t>(ElemKind::Int32QTy,
                               quantization::Schema::SymmetricWithUnsigned);
+}
+TEST(Quantization, quantizeTensorSymmetricPwr2Int8) {
+  quantizeTensorTest<int8_t>(ElemKind::Int8QTy,
+                             quantization::Schema::SymmetricWithPower2Scale);
+}
+TEST(Quantization, quantizeTensorSymmetricPwr2Int16) {
+  quantizeTensorTest<int16_t>(ElemKind::Int16QTy,
+                              quantization::Schema::SymmetricWithPower2Scale);
+}
+TEST(Quantization, quantizeTensorSymmetricPwr2Int32) {
+  quantizeTensorTest<int32_t>(ElemKind::Int32QTy,
+                              quantization::Schema::SymmetricWithPower2Scale);
+}
+
+/// Test 4-bit fused rowwise quantization.
+TEST(Quantization, fused4BitsRowwiseQuantizeTensor) {
+  // Create an FP32 tensor with 12 elements and initialize it with numbers from
+  // -3 to 3.
+  Tensor inputFP32(ElemKind::FloatTy, {2, 6});
+  Tensor dequantized(ElemKind::FloatTy, {2, 6});
+  Tensor quantized(ElemKind::UInt4FusedFP16QTy, {2, 7}, /* dummy scale */ 1.0,
+                   /* dummy offset */ 0);
+  Handle<float> inputH = inputFP32.getHandle<float>();
+  for (size_t i = 0; i < 2; i++) {
+    for (size_t j = 0; j < 6; j++) {
+      inputH.at({i, j}) = (i + j) * 1.0f - 3;
+    }
+  }
+
+  quantization::tensorFusedRowwiseQuantization<float16_t>(inputFP32, quantized);
+  dequantized = quantization::tensor4BitsFusedRowwiseDequantization(quantized);
+
+  Handle<float> dequantizedH = dequantized.getHandle<float>();
+  for (size_t i = 0; i < 2; i++) {
+    for (size_t j = 0; j < 6; j++) {
+      EXPECT_NEAR(inputH.at({i, j}), dequantizedH.at({i, j}), 0.02f);
+    }
+  }
 }
 
 /// Helper for quantizing a simple Conv with precision \p quantizationPrecision.
@@ -1311,6 +1393,20 @@ TEST(Quantization, chooseQuantizationSymmetricWithUInt8) {
       -8.0, -2.0, quantization::Schema::SymmetricWithUnsigned);
   EXPECT_EQ(symmetricParams.offset, 0);
   EXPECT_NEAR(symmetricParams.scale, 16.0 / 255, 0.001);
+}
+
+/// Verify the SymmetricWithPower2Scale quantization schema.
+static void chooseQuantParamsPower2Scale(float min, float max, ElemKind qTy) {
+  auto quantParams = quantization::chooseQuantizationParams(
+      min, max, quantization::Schema::SymmetricWithPower2Scale, qTy);
+  EXPECT_EQ(quantParams.offset, 0);
+  EXPECT_TRUE(quantization::isFloatPowerOf2(quantParams.scale));
+}
+
+TEST(Quantization, chooseQuantizationSymmetricWithPower2Scale) {
+  chooseQuantParamsPower2Scale(-3.0, 6.0, ElemKind::Int8QTy);
+  chooseQuantParamsPower2Scale(3.0, 6.0, ElemKind::Int16QTy);
+  chooseQuantParamsPower2Scale(-6.0, 0.0, ElemKind::Int32QTy);
 }
 
 /// Check that LRN and Softmax are quantized.

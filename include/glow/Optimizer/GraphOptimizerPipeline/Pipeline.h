@@ -130,6 +130,9 @@ public:
 /// \returns the default, target-independent graph optimization pipeline
 FunctionPassPipeline createDefaultGraphOptimizationPassPipeline();
 
+/// \returns the fp16 specific optimization pipeline
+FunctionPassPipeline createFP16GraphOptimizationPassPipeline();
+
 /// \returns the default fold pipeline.
 FunctionPassPipeline createDefaultFoldPassPipeline();
 

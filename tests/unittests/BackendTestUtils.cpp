@@ -159,12 +159,6 @@ void compareAgainstInterpreter(llvm::StringRef backendName,
   FunctionTensorPair IFT = createAndInitFunction(iBindings, IEE);
   FunctionTensorPair BFT = createAndInitFunction(bBindings, BEE);
 
-  // Clone the Function inside itself many times if desired.
-  std::unordered_set<Tensor *> resultTensors =
-      cloneFunInsideFun(BFT, &bBindings, count);
-  assert(resultTensors.size() == count &&
-         "Should get the same number of Tensors back as count.");
-
   Function *IF = IFT.first;
 
   // Set up the configs for interpreter and backend. If one or both functions
@@ -178,6 +172,12 @@ void compareAgainstInterpreter(llvm::StringRef backendName,
   CompilationContext &cctxI = configs.first;
   CompilationContext &cctxB = configs.second;
 
+  // Clone the Function inside itself many times if desired.
+  std::unordered_set<Tensor *> resultTensors =
+      cloneFunInsideFun(BFT, &bBindings, cctxB, count);
+  assert(resultTensors.size() == count &&
+         "Should get the same number of Tensors back as count.");
+
   BEE.compile(cctxB);
   BEE.run(bBindings);
 
@@ -188,10 +188,19 @@ void compareAgainstInterpreter(llvm::StringRef backendName,
   for (Tensor *T : resultTensors) {
     EXPECT_TRUE(IFT.second->isEqual(*T, allowedError));
   }
+
+  // Additionally check that each of the results from the parallel cloned
+  // Functions are bitwise equal.
+  auto it = resultTensors.begin();
+  Tensor *firstResult = *it;
+  for (it++; it != resultTensors.end(); it++) {
+    EXPECT_TRUE(firstResult->isBitwiseEqual(**it));
+  }
 }
 
 std::unordered_set<Tensor *> cloneFunInsideFun(FunctionTensorPair FTP,
                                                PlaceholderBindings *bindings,
+                                               CompilationContext &cctx,
                                                unsigned count) {
   Function *origF = FTP.first;
 
@@ -253,6 +262,26 @@ std::unordered_set<Tensor *> cloneFunInsideFun(FunctionTensorPair FTP,
   }
   // Now erase the clone we used to copy in, as it's no longer needed.
   mod->eraseFunction(cloneF);
+
+  // Finally, duplicate all of the node quantization infos with the new expected
+  // clone's name so that the cloned copies will find the same quantization info
+  // as the original node if being quantized.
+  auto &origInfos = cctx.precisionConfig.quantConfig.infos;
+  origInfos.reserve(count * origInfos.size());
+  std::vector<NodeQuantizationInfo> newInfos;
+  newInfos.reserve((count - 1) * origInfos.size());
+  for (const auto &QI : origInfos) {
+    const size_t colonIdx = QI.nodeOutputName_.find(":");
+    assert(colonIdx != std::string::npos && "Name should always contain ':'");
+    for (size_t i = 1; i < count; i++) {
+      std::string newName(QI.nodeOutputName_);
+      // Cloned nodes end up with the original name plus the count number
+      // appended to their name due to uniquing. Replicate the same thing.
+      newName.insert(colonIdx, std::to_string(i));
+      newInfos.emplace_back(newName, QI.tensorQuantizationParams_);
+    }
+  }
+  origInfos.insert(origInfos.end(), newInfos.begin(), newInfos.end());
 
   return resultTensors;
 }
@@ -1102,9 +1131,9 @@ void insertCompiledFunction(llvm::StringRef name, CompiledFunction *func,
 
   std::promise<void> addPromise;
   auto fut = addPromise.get_future();
-  llvm::Error addErr = llvm::Error::success();
+  Error addErr = Error::empty();
   device->addNetwork(mod, std::move(functionMap),
-                     [&addPromise, &addErr](const Module *, llvm::Error err) {
+                     [&addPromise, &addErr](const Module *, Error err) {
                        addErr = std::move(err);
                        addPromise.set_value();
                      });
@@ -1117,10 +1146,10 @@ void runOnDevice(ExecutionContext &context, llvm::StringRef name,
   std::unique_ptr<ExecutionContext> contextPtr(&context);
   std::promise<void> runPromise;
   auto fut = runPromise.get_future();
-  llvm::Error runErr = llvm::Error::success();
+  Error runErr = Error::empty();
   device->runFunction(
       name, std::move(contextPtr),
-      [&runPromise, &runErr](runtime::RunIdentifierTy, llvm::Error err,
+      [&runPromise, &runErr](runtime::RunIdentifierTy, Error err,
                              std::unique_ptr<ExecutionContext> contextPtr) {
         // Don't delete context.
         contextPtr.release();
@@ -1129,6 +1158,68 @@ void runOnDevice(ExecutionContext &context, llvm::StringRef name,
       });
   fut.wait();
   EXIT_ON_ERR(std::move(runErr));
+}
+
+Constant *createRandomizedConstant(Module &mod, TypeRef type,
+                                   llvm::ArrayRef<size_t> dims,
+                                   llvm::StringRef name) {
+  auto *c = mod.createConstant(mod.uniqueTypeWithNewShape(type, dims), name);
+
+  switch (type->getElementType()) {
+  case ElemKind::FloatTy: {
+    c->getHandle<float>().initXavier(c->getType()->size() * 2, mod.getPRNG());
+    break;
+  }
+  case ElemKind::Float16Ty: {
+    c->getHandle<float16_t>().initXavier(c->getType()->size() * 2,
+                                         mod.getPRNG());
+    break;
+  }
+  case ElemKind::Int32QTy: {
+    c->getHandle<int32_t>().randomize(INT32_MIN, INT32_MAX, mod.getPRNG());
+    break;
+  }
+  case ElemKind::Int8QTy: {
+    c->getHandle<int8_t>().randomize(INT8_MIN, INT8_MAX, mod.getPRNG());
+    break;
+  }
+  case ElemKind::UInt8FusedQTy:
+  case ElemKind::UInt8FusedFP16QTy: {
+    c->getHandle<uint8_t>().randomize(UINT8_MIN, UINT8_MAX, mod.getPRNG());
+    break;
+  }
+  default:
+    LOG(FATAL) << "Unsupported type: " << type->getElementName().str();
+  }
+
+  return c;
+}
+
+Constant *createRandomFusedRowwiseQuantizedConstant(Module &mod,
+                                                    llvm::ArrayRef<size_t> dims,
+                                                    llvm::StringRef name,
+                                                    bool useFusedFP16) {
+  auto T = mod.uniqueType(
+      (useFusedFP16 ? ElemKind::UInt8FusedFP16QTy : ElemKind::UInt8FusedQTy),
+      {1}, 1, 0);
+  const size_t sizeScaleOffset =
+      useFusedFP16 ? sizeof(float16_t) : sizeof(float);
+  Constant *c = createRandomizedConstant(
+      mod, T, {dims[0], dims[1] + 2 * sizeScaleOffset}, name);
+
+  // Range (0, 255) -> (-0.1, 0.1)
+  constexpr float scale = 1.0f / 1275;
+  constexpr float offset = -0.1;
+  auto cH = c->getPayload().getHandle<uint8_t>();
+  for (unsigned i = 0, e = c->dims()[0]; i < e; i++) {
+    if (useFusedFP16) {
+      cH.setFusedScaleOffsetInRow<float16_t>(i, scale, offset);
+    } else {
+      cH.setFusedScaleOffsetInRow<float>(i, scale, offset);
+    }
+  }
+
+  return c;
 }
 
 } // namespace glow

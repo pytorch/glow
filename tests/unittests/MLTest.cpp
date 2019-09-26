@@ -13,6 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#include "BackendTestUtils.h"
 
 #include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Graph/Graph.h"
@@ -41,11 +42,11 @@ public:
   }
 };
 
-class InterpreterAndCPU : public TestRunnerBase {};
 class MLTest : public TestRunnerBase {};
 
 /// Use placeholders (and not variables) to learn the square root of two.
 TEST_P(MLTest, learnSqrt2Placeholder) {
+  CHECK_IF_ENABLED();
   TrainingConfig TC;
   PlaceholderBindings bindings;
 
@@ -84,6 +85,7 @@ TEST_P(MLTest, learnSqrt2Placeholder) {
 }
 
 TEST_P(MLTest, trainASimpleNetwork) {
+  CHECK_IF_ENABLED();
   TrainingConfig TC;
   PlaceholderBindings bindings;
 
@@ -151,6 +153,7 @@ TEST_P(MLTest, trainASimpleNetwork) {
 }
 
 TEST_P(MLTest, simpleRegression) {
+  CHECK_IF_ENABLED();
   TrainingConfig TC;
   PlaceholderBindings trainingBindings, inferBindings;
 
@@ -223,6 +226,7 @@ TEST_P(MLTest, simpleRegression) {
 }
 
 TEST_P(MLTest, learnXor) {
+  CHECK_IF_ENABLED();
   TrainingConfig TC;
   PlaceholderBindings trainingBindings, inferBindings;
 
@@ -307,6 +311,7 @@ TEST_P(MLTest, learnXor) {
 
 /// Learn the logarithmic function.
 TEST_P(MLTest, learnLog) {
+  CHECK_IF_ENABLED();
   TrainingConfig TC;
   PlaceholderBindings inferBindings, trainingBindings;
 
@@ -427,6 +432,7 @@ void generateCircleData(Tensor &coordinates, Tensor &labels, PseudoRNG &PRNG) {
 /// Example from:
 /// http://cs.stanford.edu/people/karpathy/convnetjs/demo/classify2d.html
 TEST_P(MLTest, circle) {
+  CHECK_IF_ENABLED();
   TrainingConfig TC;
   PlaceholderBindings trainingBindings, inferBindings;
 
@@ -535,6 +541,7 @@ TEST_P(MLTest, circle) {
 }
 
 TEST_P(MLTest, learnSingleValueConcat) {
+  CHECK_IF_ENABLED();
   unsigned width = 6;
   PlaceholderBindings inferBindings, trainingBindings;
 
@@ -738,13 +745,23 @@ void testRNNCell(TCellGenerator cell) {
   }
 };
 
-TEST_P(MLTest, trainASimpleRNN) { testRNNCell(buildRNN); };
+TEST_P(MLTest, trainASimpleRNN) {
+  CHECK_IF_ENABLED();
+  testRNNCell(buildRNN);
+};
 
-TEST_P(MLTest, trainGRU) { testRNNCell(buildGRU); };
+TEST_P(MLTest, trainGRU) {
+  CHECK_IF_ENABLED();
+  testRNNCell(buildGRU);
+};
 
-TEST_P(MLTest, trainLSTM) { testRNNCell(buildLSTM); };
+TEST_P(MLTest, trainLSTM) {
+  CHECK_IF_ENABLED();
+  testRNNCell(buildLSTM);
+};
 
 TEST_P(MLTest, trainSimpleLinearRegression) {
+  CHECK_IF_ENABLED();
   TrainingConfig TC;
   PlaceholderBindings bindings;
 
@@ -837,6 +854,7 @@ void generatePlayerData(Tensor &players, Tensor &labels,
 // Given a player's height and weight, classify them as a basketball or
 // soccer player.
 TEST_P(MLTest, classifyPlayerSport) {
+  CHECK_IF_ENABLED();
   const unsigned numTrainPlayers = 200;
   const size_t numFeatures = 2;
   const size_t numClasses = 2;
@@ -912,6 +930,7 @@ TEST_P(MLTest, classifyPlayerSport) {
 }
 
 TEST_P(MLTest, learnSinus) {
+  CHECK_IF_ENABLED();
   TrainingConfig TC;
   PlaceholderBindings trainingBindings, inferBindings;
 
@@ -1000,6 +1019,7 @@ TEST_P(MLTest, learnSinus) {
 }
 
 TEST_P(MLTest, nonLinearClassifier) {
+  CHECK_IF_ENABLED();
   // Test non-linear classification on a set of 2d points. Generate x and y in
   // (-1, 1) and classify according to XOR of the sign bit.
   unsigned batchSize = 46;
@@ -1103,7 +1123,8 @@ static void generateImageData(Tensor &images, Tensor &labels, PseudoRNG &PRNG) {
 /// Test the convolutional layer.
 /// Use a simple convnet to learn two classes of images: Line and Cross.
 /// This test checks the results of the quantized network.
-TEST_P(InterpreterAndCPU, convNetForImageRecognition) {
+TEST_P(MLTest, convNetForImageRecognition) {
+  CHECK_IF_ENABLED();
   EET_.setBackendName("Interpreter");
   ExecutionEngine EEP{"Interpreter"};
   engines_.emplace(engines_.begin(), &EEP);
@@ -1235,7 +1256,8 @@ static void generateRegressionTestData(Tensor &images, Tensor &labels,
 
 /// This is the "Where's Waldo" test. We place a pixel in a tensor and the
 /// network reports the coordinate of the pixel.
-TEST_P(InterpreterAndCPU, testFindPixelRegression) {
+TEST_P(MLTest, testFindPixelRegression) {
+  CHECK_IF_ENABLED();
   EET_.setBackendName("Interpreter");
   ExecutionEngine EEP{"Interpreter"};
   engines_.emplace(engines_.begin(), &EEP);
@@ -1438,6 +1460,7 @@ static void generateMatrixRotationRecognitionData(Tensor &matricesA,
 }
 
 TEST_P(MLTest, matrixRotationRecognition) {
+  CHECK_IF_ENABLED();
   TrainingConfig TC;
   TC.learningRate = 0.15;
   TC.batchSize = 17;
@@ -1539,6 +1562,7 @@ TEST_P(MLTest, matrixRotationRecognition) {
 /// Simple test case that learns the embedding table for a
 /// SparseLengthsWeightedSum operator.
 TEST_P(MLTest, learnSparseLengthsWeightedSumEmbeddings) {
+  CHECK_IF_ENABLED();
   TrainingConfig TC;
   TC.learningRate = 0.3;
   TC.batchSize = 1;
@@ -1632,6 +1656,7 @@ TEST_P(MLTest, learnSparseLengthsWeightedSumEmbeddings) {
 /// Simple test case that learns the weights for a
 /// SparseLengthsWeightedSum operator.
 TEST_P(MLTest, learnSparseLengthsWeightedSumWeights) {
+  CHECK_IF_ENABLED();
   TrainingConfig TC;
   TC.learningRate = 0.001;
   TC.batchSize = 1;
@@ -1720,17 +1745,4 @@ TEST_P(MLTest, learnSparseLengthsWeightedSumWeights) {
   }
 }
 
-INSTANTIATE_TEST_CASE_P(Interpreter, MLTest, ::testing::Values("Interpreter"));
-#ifdef GLOW_WITH_CPU
-INSTANTIATE_TEST_CASE_P(JIT, MLTest, ::testing::Values("CPU"));
-#endif // GLOW_WITH_CPU
-
-#ifdef GLOW_WITH_OPENCL
-INSTANTIATE_TEST_CASE_P(OpenCL, MLTest, ::testing::Values("OpenCL"));
-#endif // GLOW_WITH_OPENCL
-
-INSTANTIATE_TEST_CASE_P(Interpreter, InterpreterAndCPU,
-                        ::testing::Values("Interpreter"));
-#ifdef GLOW_WITH_CPU
-INSTANTIATE_TEST_CASE_P(JIT, InterpreterAndCPU, ::testing::Values("CPU"));
-#endif // GLOW_WITH_CPU
+INSTANTIATE_BACKEND_TEST(MLTest);

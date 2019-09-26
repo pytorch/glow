@@ -22,6 +22,20 @@
 
 using namespace glow;
 
+TEST(Tensor, iteration) {
+  auto content = {1.2f, 12.1f, 51.0f, 1515.2f};
+  Tensor T = content;
+
+  auto H = T.getHandle<float>();
+
+  std::vector<float> elems;
+  for (auto e : H) {
+    elems.push_back(e);
+  }
+
+  EXPECT_TRUE(elems == std::vector<float>(content));
+}
+
 TEST(Tensor, init) {
   Tensor T = {1.2f, 12.1f, 51.0f, 1515.2f};
 
@@ -814,6 +828,20 @@ TEST(ZeroDimensionalTensor, transpose) {
   EXPECT_TRUE(T.isEqual(TT));
 }
 
+TEST(ZeroDimensionalTensor, iterate) {
+  Tensor T(ElemKind::Int64ITy, {});
+  T.getHandle<int64_t>() = {15};
+
+  auto TH = T.getHandle<int64_t>();
+  std::vector<int64_t> elems;
+  for (auto e : TH) {
+    elems.push_back(e);
+  }
+
+  EXPECT_EQ(elems.size(), 1);
+  EXPECT_EQ(elems[0], 15);
+}
+
 TEST(Type, compare) {
   Type T1(ElemKind::FloatTy, {});
   Type T2(ElemKind::FloatTy, {});
@@ -846,6 +874,8 @@ static void testInitZeroFused(ElemKind fusedKind, float allowedError) {
   auto TH = T.getHandle<uint8_t>();
   auto *TData = reinterpret_cast<uint8_t *>(T.getUnsafePtr());
   TH.clear(127);
+  auto rowLength = TH.getElementPtr({1, 0});
+  auto width = TH.dims()[1];
 
   // Now set the scale/offset of each row. Set the scale to 0.1 so that we are
   // multiplying by 10 when calculating zero. Offset is dependent on each row.
@@ -853,7 +883,7 @@ static void testInitZeroFused(ElemKind fusedKind, float allowedError) {
   for (size_t i = 0; i < 10; i++) {
     const ScaleOffsetT offset = -(i + 0.7);
     uint8_t *scaleOffsetPtr =
-        &TData[(i + 1) * numTotalColumns] - 2 * sizeof(ScaleOffsetT);
+        &TData[i * rowLength] + width - 2 * sizeof(ScaleOffsetT);
     memcpy(scaleOffsetPtr, &scaleForAllRows, sizeof(ScaleOffsetT));
     memcpy(scaleOffsetPtr + sizeof(ScaleOffsetT), &offset,
            sizeof(ScaleOffsetT));
@@ -870,7 +900,7 @@ static void testInitZeroFused(ElemKind fusedKind, float allowedError) {
   // the same as expected (untouched by initializing to zero).
   for (size_t i = 0; i < 10; i++) {
     uint8_t *scaleOffsetPtr =
-        &TData[(i + 1) * numTotalColumns] - 2 * sizeof(ScaleOffsetT);
+        &TData[i * rowLength] + width - 2 * sizeof(ScaleOffsetT);
     ScaleOffsetT scale, offset;
     memcpy(&scale, scaleOffsetPtr, sizeof(ScaleOffsetT));
     memcpy(&offset, scaleOffsetPtr + sizeof(ScaleOffsetT),
@@ -964,8 +994,39 @@ TEST(Tensor, randomizeFused_Float) {
 }
 
 /// Test randomizing a Fused tensor with Float16 scale/offsets.
-TEST(Tensor, randomizeFused_Foat16) {
+TEST(Tensor, randomizeFused_Float16) {
   testRandomizeFused(ElemKind::UInt8FusedFP16QTy);
+}
+
+/// Check that getting and setting fused tensors works correctly.
+template <typename ScaleOffsetT>
+static void testGetSetFusedScaleOffset(ElemKind fusedKind) {
+  Tensor T(fusedKind, {10, 10}, 1.0, 0);
+  auto TH = T.getHandle<uint8_t>();
+  for (size_t i = 0; i < 10; i++) {
+    TH.setFusedScaleOffsetInRow<ScaleOffsetT>(i, i, i);
+  }
+  for (size_t i = 0; i < 10; i++) {
+    ScaleOffsetT scale, offset;
+    std::tie(scale, offset) = TH.getFusedScaleOffsetFromRow<ScaleOffsetT>(i);
+    EXPECT_EQ(scale, (ScaleOffsetT)i);
+    EXPECT_EQ(offset, (ScaleOffsetT)i);
+  }
+}
+
+/// Test getting and setting fused scales and offsets from UInt8FusedQTy.
+TEST(Tensor, GetFusedScaleOffset_UInt8FusedQTy) {
+  testGetSetFusedScaleOffset<float>(ElemKind::UInt8FusedQTy);
+}
+
+/// Test getting and setting fused scales and offsets from UInt8FusedFP16QTy.
+TEST(Tensor, GetFusedScaleOffset_UInt8FusedFP16QTy) {
+  testGetSetFusedScaleOffset<float16_t>(ElemKind::UInt8FusedFP16QTy);
+}
+
+/// Test getting and setting fused scales and offsets from UInt4FusedFP16QTy.
+TEST(Tensor, GetFusedScaleOffset_UInt4FusedFP16QTy) {
+  testGetSetFusedScaleOffset<float16_t>(ElemKind::UInt4FusedFP16QTy);
 }
 
 /// Check if dump functions work for Tensor
@@ -1020,4 +1081,109 @@ TEST(Tensor, unpaddedSize) {
   auto copy = moved.getUnowned(moved.dims());
   EXPECT_EQ(copy.getUnpaddedSizeInBytes(), bytes);
   EXPECT_EQ(copy.getSizeInBytes(), paddedBytes);
+}
+
+TEST(CustomAlignedTensor, sizes) {
+  Type T(ElemKind::FloatTy, {2, 2, 1}, {12, 8, 1});
+  Tensor aligned(T);
+
+  // EXPECT_EQ(aligned.size(), 4);
+  // EXPECT_EQ(aligned.actualSize(), 12);
+}
+
+TEST(CustomAlignedTensor, iteration) {
+  Type T(ElemKind::FloatTy, {2, 2, 1}, {12, 8, 1});
+  Tensor aligned(T);
+
+  auto H = aligned.getHandle<float>();
+
+  std::vector<float> content = {13.5f, -3.3f, 4.2f, 33.0f};
+  H.at({0, 0, 0}) = content[0];
+  H.at({0, 1, 0}) = content[1];
+  H.at({1, 0, 0}) = content[2];
+  H.at({1, 1, 0}) = content[3];
+
+  std::vector<float> elems;
+  for (auto e : H) {
+    elems.push_back(e);
+  }
+
+  EXPECT_TRUE(elems == content);
+}
+
+TEST(CustomAlignedTensor, raw) {
+  Type T(ElemKind::FloatTy, {2, 2, 1}, {12, 8, 1});
+  Tensor aligned(T);
+  aligned.zero();
+
+  auto H = aligned.getHandle<float>();
+
+  std::vector<float> content{13.5f, -3.3f, 4.2f, 33.0f};
+  H.at({0, 0, 0}) = content[0];
+  H.at({0, 1, 0}) = content[1];
+  H.at({1, 0, 0}) = content[2];
+  H.at({1, 1, 0}) = content[3];
+
+  std::vector<float> elems;
+  for (size_t i = 0; i < 12; i++) {
+    elems.push_back(H.raw(i));
+  }
+
+  std::vector<float> alignedContent = {
+      13.5, 0, -3.3, 0, 0, 0, 4.2, 0, 33, 0, 0, 0,
+  };
+
+  EXPECT_TRUE(elems == alignedContent);
+}
+
+TEST(CustomAlignedTensor, getUnowned) {
+  Type T(ElemKind::FloatTy, {2, 2, 1}, {12, 8, 1});
+  Tensor aligned(T);
+
+  auto H = aligned.getHandle<float>();
+  // Fill everything including pads with 1.0
+  for (size_t i = 0; i < 12; i++) {
+    H.raw(i) = 1.0;
+  }
+
+  std::vector<float> content{13.5f, -3.3f, 4.2f, 33.0f};
+  H.at({0, 0, 0}) = content[0];
+  H.at({0, 1, 0}) = content[1];
+  H.at({1, 0, 0}) = content[2];
+  H.at({1, 1, 0}) = content[3];
+
+  Tensor UO = aligned.getUnowned({1, 2, 2}, {1, 1, 0});
+  EXPECT_EQ(UO.size(), 4);
+  EXPECT_EQ(UO.actualSize(), 4);
+  EXPECT_EQ(UO.getHandle<float>().at({0, 0, 0}), 33);
+  EXPECT_EQ(UO.getHandle<float>().at({0, 0, 1}), 1);
+  EXPECT_EQ(UO.getHandle<float>().at({0, 1, 0}), 1);
+  EXPECT_EQ(UO.getHandle<float>().at({0, 1, 1}), 1);
+  EXPECT_EQ(UO.getHandle<float>().raw(0), 33);
+  EXPECT_EQ(UO.getHandle<float>().raw(1), 1);
+  EXPECT_EQ(UO.getHandle<float>().raw(2), 1);
+  EXPECT_EQ(UO.getHandle<float>().raw(3), 1);
+}
+
+TEST(CustomAlignedTensor, getDimForPtr) {
+  Type T(ElemKind::FloatTy, {2, 2, 1}, {12, 8, 1});
+  Tensor aligned(T);
+
+  auto H = aligned.getHandle<float>();
+
+  EXPECT_EQ(H.getDimForPtr(0, 0), 0);
+  EXPECT_EQ(H.getDimForPtr(1, 0), 0);
+  EXPECT_EQ(H.getDimForPtr(2, 0), 0);
+
+  EXPECT_EQ(H.getDimForPtr(0, 1), 0);
+  EXPECT_EQ(H.getDimForPtr(1, 1), 1);
+  EXPECT_EQ(H.getDimForPtr(2, 1), 0);
+
+  EXPECT_EQ(H.getDimForPtr(0, 2), 1);
+  EXPECT_EQ(H.getDimForPtr(1, 2), 0);
+  EXPECT_EQ(H.getDimForPtr(2, 2), 0);
+
+  EXPECT_EQ(H.getDimForPtr(0, 3), 1);
+  EXPECT_EQ(H.getDimForPtr(1, 3), 1);
+  EXPECT_EQ(H.getDimForPtr(2, 3), 0);
 }

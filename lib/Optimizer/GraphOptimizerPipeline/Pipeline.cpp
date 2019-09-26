@@ -37,6 +37,10 @@ FunctionPassPipeline glow::createDefaultGraphOptimizationPassPipeline() {
       // so try to optimize them out first.
       {FunctionPassID::OptimizeReshape},
 
+      // Eliminate no-op tiles, possibly unlocking more optimization
+      // opportunities.
+      {FunctionPassID::EliminateNoopTile},
+
       {FunctionPassID::TransposeConstants,
        ConvergenceMode::OnePass,
        {CompilationMode::Infer}},
@@ -49,6 +53,9 @@ FunctionPassPipeline glow::createDefaultGraphOptimizationPassPipeline() {
 
       // Merge multiple matmul nodes into a single large matmul.
       {FunctionPassID::MergeMatMul},
+
+      // Fold Tile followed by Add into BatchedAdd.
+      {FunctionPassID::FoldTileAddIntoBatchedAdd},
 
       // Merge multiple batched adds into a larger batched add.
       {FunctionPassID::MergeBatchedAdd},
@@ -84,6 +91,9 @@ FunctionPassPipeline glow::createDefaultGraphOptimizationPassPipeline() {
       // Optimize away intermediate type conversions.
       {FunctionPassID::OptimizeConversions},
 
+      // Optimize away intermediate consecutive Clips.
+      {FunctionPassID::OptimizeClips},
+
       // Optimize quantization related operators.
       {FunctionPassID::OptimizeQuantization, ConvergenceMode::UntilFixedPoint},
 
@@ -95,6 +105,16 @@ FunctionPassPipeline glow::createDefaultGraphOptimizationPassPipeline() {
 
       // Perform a round of Dead Code Elimination to cleanup the final pass.
       getDCEPassConfig(),
+  };
+}
+
+FunctionPassPipeline glow::createFP16GraphOptimizationPassPipeline() {
+  return {
+      // Optimize away intermediate type conversions.
+      {FunctionPassID::OptimizeConversions},
+
+      // Optimize away intermediate consecutive Clips.
+      {FunctionPassID::OptimizeClips},
   };
 }
 
@@ -128,6 +148,7 @@ llvm::StringRef glow::getNameOfPass(FunctionPassID passID) {
     return #PASS_NAME;
 #include "glow/Optimizer/GraphOptimizer/FunctionPasses.def"
   }
+  LOG(DFATAL) << "Cannot reach here.";
 }
 
 static constexpr char const *tab = "  ";

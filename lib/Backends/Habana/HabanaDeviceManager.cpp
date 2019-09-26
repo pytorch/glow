@@ -19,6 +19,7 @@
 #include "glow/Runtime/StatsExporter.h"
 
 #include "llvm/Support/CommandLine.h"
+#include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/raw_ostream.h"
 
 #include "synapse.h"
@@ -39,7 +40,6 @@ static llvm::cl::opt<unsigned, /* ExternalStorage */ true> GlowHabanaMemoryOpt(
     llvm::cl::desc("Amount of DRAM to allocate per Habana device in kilobytes"),
     llvm::cl::location(GlowHabanaMemory));
 
-/// Factory function for creating a HabanaDeviceManager.
 DeviceManager *createHabanaDeviceManager(const DeviceConfig &config) {
   return new HabanaDeviceManager(config);
 }
@@ -78,7 +78,7 @@ HabanaDeviceManager::~HabanaDeviceManager() {
   }
 }
 
-llvm::Error HabanaDeviceManager::init() {
+Error HabanaDeviceManager::init() {
   std::lock_guard<std::mutex> lock(synapseMtx_);
 
   // If this is the first HabanaDeviceManager to be created, initialize the
@@ -112,10 +112,10 @@ llvm::Error HabanaDeviceManager::init() {
     RETURN_ERR("Failed to create HabanaDeviceManager thread pools");
   }
 
-  return llvm::Error::success();
+  return Error::success();
 }
 
-llvm::Error HabanaDeviceManager::updateMemoryUsage() {
+Error HabanaDeviceManager::updateMemoryUsage() {
   // TODO: Use synGetMemInfo once implemented.
 
   // Use GlowHabanaMemory if it is defined from GFLAGS or llvm params,
@@ -136,7 +136,7 @@ llvm::Error HabanaDeviceManager::updateMemoryUsage() {
     freeMemory_ -= runtimeBundle.getMutableWeightSize();
   }
 
-  return llvm::Error::success();
+  return Error::success();
 }
 
 void HabanaDeviceManager::addNetwork(const Module *module,
@@ -215,7 +215,7 @@ void HabanaDeviceManager::addNetwork(const Module *module,
     return;
   }
 
-  readyCB(module, llvm::Error::success());
+  readyCB(module, Error::success());
 }
 
 void HabanaDeviceManager::evictNetwork(std::string functionName,
@@ -273,7 +273,7 @@ void HabanaDeviceManager::evictNetwork(std::string functionName,
     return;
   }
 
-  evictCB(functionName, llvm::Error::success());
+  evictCB(functionName, Error::success());
 }
 
 void HabanaDeviceManager::runFunctionImpl(RunIdentifierTy runId,
@@ -419,7 +419,7 @@ void HabanaDeviceManager::runFunctionImpl(RunIdentifierTy runId,
 
       // Return the IO buffer to the IO buffer pool.
       ioBufferPool->put(std::move(ioBuffer));
-      resultCB(runId, llvm::Error::success(), std::move(ctx));
+      resultCB(runId, Error::success(), std::move(ctx));
     }
   });
 }
@@ -440,10 +440,10 @@ HabanaDeviceManager::runFunction(std::string functionName,
   return runId;
 }
 
-llvm::Error HabanaDeviceManager::stop(bool block) {
+Error HabanaDeviceManager::stop(bool block) {
   runPool_->stop(block);
   waitPool_->stop(block);
-  return llvm::Error::success();
+  return Error::success();
 }
 
 uint64_t HabanaDeviceManager::getMaximumMemory() const { return totalMemory_; }

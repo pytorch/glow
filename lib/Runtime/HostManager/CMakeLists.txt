@@ -5,8 +5,9 @@ target_link_libraries(HostManager
                       PRIVATE
                         Backends
                         Base
+                        Executor
                         Graph
                         GraphOptimizer
                         Partitioner
                         Provisioner
-                        Executor)
+                        Runtime)

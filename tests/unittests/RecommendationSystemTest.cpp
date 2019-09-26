@@ -22,11 +22,14 @@
 
 #include <algorithm>
 #include <cmath>
+#include <future>
 #include <random>
 
 #include "gtest/gtest.h"
 
 #include "llvm/Support/CommandLine.h"
+
+constexpr size_t MAX_MEMORY = 64e+9;
 
 using namespace glow;
 
@@ -34,8 +37,12 @@ namespace {
 llvm::cl::OptionCategory recSysTestCat("RecSys Category");
 
 llvm::cl::opt<unsigned> miniBatchOpt("mini-batch", llvm::cl::desc("Minibatch."),
-                                     llvm::cl::Optional, llvm::cl::init(16),
+                                     llvm::cl::Optional, llvm::cl::init(8),
                                      llvm::cl::cat(recSysTestCat));
+
+llvm::cl::opt<unsigned> concurrentReqestsOpt(
+    "concurrent-count", llvm::cl::desc("Number of concurrent requests."),
+    llvm::cl::Optional, llvm::cl::init(1), llvm::cl::cat(recSysTestCat));
 
 llvm::cl::opt<unsigned> embeddingDimOpt("embedding-dim",
                                         llvm::cl::desc("Embedding dim."),
@@ -154,6 +161,62 @@ static size_t sumOfElements(Handle<int32_t> H) {
   return sum;
 }
 
+/// Helper method to wrap dispatching an inference request to a Hostmanager as
+/// a synchronous interface. If concurrentReqestsOpt is set it will duplicate
+/// the request to send multiple requests concurrently.
+static void dispatchInference(HostManager *hostManager,
+                              ExecutionContext &context) {
+  // If additional requests are desired, setup additional contexts.
+  std::vector<std::unique_ptr<ExecutionContext>> contexts;
+  std::unique_ptr<ExecutionContext> originalContextPtr(&context);
+  contexts.push_back(std::move(originalContextPtr));
+  if (concurrentReqestsOpt > 1) {
+    // Clone the placeholder bindings into a new executionContext.
+    for (unsigned i = 0, max = concurrentReqestsOpt - 1; i < max; i++) {
+      std::unique_ptr<ExecutionContext> newContext =
+          llvm::make_unique<ExecutionContext>(
+              llvm::make_unique<PlaceholderBindings>(
+                  context.getPlaceholderBindings()->clone()));
+      contexts.push_back(std::move(newContext));
+    }
+  }
+  std::vector<std::promise<void>> promises(concurrentReqestsOpt);
+  std::vector<std::future<void>> futures;
+  for (auto &promise : promises) {
+    futures.push_back(promise.get_future());
+  }
+  for (unsigned i = 0; i < concurrentReqestsOpt; i++) {
+    hostManager->runNetwork("main", std::move(contexts[i]),
+                            [&contexts, &promises,
+                             i](runtime::RunIdentifierTy, Error err,
+                                std::unique_ptr<ExecutionContext> contextPtr) {
+                              contexts[i] = std::move(contextPtr);
+                              // Expect no errors.
+                              EXIT_ON_ERR(std::move(err));
+                              promises[i].set_value();
+                            });
+  }
+
+  for (auto &future : futures) {
+    future.wait();
+  }
+  // Release the original context passed in by reference so we don't free it.
+  contexts[0].release();
+}
+
+/// Helper function to generate deviceConfigs for HostManager initialization.
+static std::vector<std::unique_ptr<runtime::DeviceConfig>>
+generateDeviceConfigs(llvm::StringRef backendName, unsigned numDevices,
+                      size_t memorySize) {
+  std::vector<std::unique_ptr<runtime::DeviceConfig>> configs;
+  for (unsigned i = 0; i < numDevices; i++) {
+    auto deviceConfig = llvm::make_unique<DeviceConfig>(backendName);
+    deviceConfig->setDeviceMemory(memorySize);
+    configs.push_back(std::move(deviceConfig));
+  }
+  return configs;
+}
+
 /// Tests a simplified Recommendation System model.
 ///
 /// The RecSys model has four components:
@@ -195,7 +258,7 @@ static size_t sumOfElements(Handle<int32_t> H) {
 ///
 class RecommendationSystemTest : public BackendTest {
 public:
-  RecommendationSystemTest() : BackendTest(/* deviceMemory */ 64e+9) {}
+  RecommendationSystemTest() : BackendTest(/* deviceMemory */ MAX_MEMORY) {}
 
 protected:
   ExecutionContext context_;
@@ -314,7 +377,6 @@ protected:
   }
 
   void TearDown() override {
-    EE_.clear();
     resultTensor = nullptr;
     bindings_->clear();
 
@@ -349,89 +411,6 @@ protected:
                     testName.c_str(), testCaseName.c_str());
       traceContext->dump(traceFileName);
     }
-  }
-
-  /// Returns a new Constant, of the provided \p type and \p dims initialized
-  /// with random data. If using floating point, then it is initialized via
-  /// Xavier with filterSize equal to twice the number of elements in \p dims.
-  /// Otherwise integer types are initialzed via their min and max values.
-  static Constant *createRandomizedConstant(Module &mod, TypeRef type,
-                                            llvm::ArrayRef<size_t> dims,
-                                            llvm::StringRef name) {
-    auto *c = mod.createConstant(mod.uniqueTypeWithNewShape(type, dims), name);
-
-    switch (type->getElementType()) {
-    case ElemKind::FloatTy: {
-      c->getHandle<float>().initXavier(c->getType()->size() * 2, mod.getPRNG());
-      break;
-    }
-    case ElemKind::Float16Ty: {
-      c->getHandle<float16_t>().initXavier(c->getType()->size() * 2,
-                                           mod.getPRNG());
-      break;
-    }
-    case ElemKind::Int32QTy: {
-      c->getHandle<int32_t>().randomize(INT32_MIN, INT32_MAX, mod.getPRNG());
-      break;
-    }
-    case ElemKind::Int8QTy: {
-      c->getHandle<int8_t>().randomize(INT8_MIN, INT8_MAX, mod.getPRNG());
-      break;
-    }
-    case ElemKind::UInt8FusedQTy:
-    case ElemKind::UInt8FusedFP16QTy: {
-      c->getHandle<uint8_t>().randomize(UINT8_MIN, UINT8_MAX, mod.getPRNG());
-      break;
-    }
-    default:
-      LOG(FATAL) << "Unsupported type: " << type->getElementName().str();
-    }
-
-    return c;
-  }
-
-  /// Copies a predefined scale and offset into the current row given a pointer
-  /// to the scale and offset \p currRowScaleOffsetPtr. Uses \p T as the
-  /// datatype for the scale and offset.
-  template <typename T>
-  static void copyInScaleOffset(char *currRowScaleOffsetPtr) {
-    // Range (0, 255) -> (-0.1, 0.1)
-    T scale = 1.0f / 1275;
-    T offset = -0.1;
-
-    memcpy(currRowScaleOffsetPtr, &scale, sizeof(T));
-    memcpy(currRowScaleOffsetPtr + sizeof(T), &offset, sizeof(T));
-  }
-
-  /// Returns a new Constant of type UInt8FusedQTy with fused rowwise
-  /// quantization scales and offsets (i.e. the last 8 bytes of each row
-  /// contains the scale and offset).
-  static Constant *createRandomFusedRowwiseQuantizedConstant(
-      Module &mod, llvm::ArrayRef<size_t> dims, llvm::StringRef name,
-      bool useFP16SLWS) {
-    auto T = mod.uniqueType(
-        (useFP16SLWS ? ElemKind::UInt8FusedFP16QTy : ElemKind::UInt8FusedQTy),
-        {1}, 1, 0);
-    const size_t sizeScaleOffset =
-        useFP16SLWS ? sizeof(float16_t) : sizeof(float);
-    Constant *c = createRandomizedConstant(
-        mod, T, {dims[0], dims[1] + 2 * sizeScaleOffset}, name);
-
-    auto *dbP = c->getPayload().getUnsafePtr();
-    const size_t outWidth = c->dims()[1];
-    for (unsigned j = 0, e = c->dims()[0]; j < e; j++) {
-      // Now set the scale/offset at the end of each row.
-      char *currRowScaleOffsetPtr =
-          dbP + (j + 1) * outWidth - 2 * sizeScaleOffset;
-
-      if (useFP16SLWS) {
-        copyInScaleOffset<float16_t>(currRowScaleOffsetPtr);
-      } else {
-        copyInScaleOffset<float>(currRowScaleOffsetPtr);
-      }
-    }
-
-    return c;
   }
 
   /// Creates a Multi-layer perceptron network consisting of start & end FCs
@@ -786,6 +765,8 @@ protected:
   void setupPrecisionConfig() {
     if (convertToFP16) {
       precConfig_.convertToFP16 = convertToFP16;
+      // For now always convert both or neither.
+      precConfig_.convertFusedToFP16 = convertToFP16;
       // Note: always do not convert RWQ-SLWS here. The creator itself for
       // precisionForNonDataSLWS already directly created the node with the
       // correct precision.
@@ -803,9 +784,10 @@ protected:
     setupPrecisionConfig();
 
     // Generate the network.
-    auto *mod = &EE_.getModule();
-    resultTensor =
-        createSimpleRecSysGraph(*mod, *bindings_, F_, tableSizes, embeddingDim);
+    std::unique_ptr<Module> mod(new Module);
+    F_ = mod->createFunction("main");
+    resultTensor = createSimpleRecSysGraph(*mod.get(), *bindings_, F_,
+                                           tableSizes, embeddingDim);
 
     Placeholder *concatPH = nullptr;
     if (checkConcat) {
@@ -814,13 +796,17 @@ protected:
       auto *saveConcat = F_->createSave("after_concat_data", CN);
       concatPH = saveConcat->getPlaceholder();
     }
+    auto configs = generateDeviceConfigs(getBackendName(), 1, MAX_MEMORY);
+    std::unique_ptr<HostManager> hostManager(
+        new HostManager(std::move(configs)));
 
     CompilationContext cctx;
     cctx.precisionConfig = precConfig_;
-    EE_.compile(cctx);
+    EXIT_ON_ERR(hostManager->addNetwork(std::move(mod), cctx));
 
     // Run graph
-    EE_.run(context_);
+    ExecutionContext context2{};
+    dispatchInference(hostManager.get(), context_);
 
     // NaNs are a sign of something gone wrong. Always verify there aren't any
     // in the result.
@@ -850,60 +836,34 @@ protected:
       }
     }
 
-    // Clear the EE to free memory up for other runs to compare against.
-    EE_.clear();
-
     // Compare against interpreter if we're not executing already on it.
     if (getBackendName() != "Interpreter") {
       compareAgainstInterpreter();
     }
   }
 
-  /// Execute a graph of functions based on the given DAG.
-  void executeDAG(ExecutionEngine &partitionedEE, DAGNode *G,
-                  ExecutionContext &context, CompilationContext &cctx) {
-    std::vector<DAGNode *> exeList;
-    int endPt = 0;
-    int curPt = 0;
-    // The first node is always the dummy node.
-    exeList.push_back(G);
-    endPt++;
-    // All the functions are in the module, compile them all at once.
-    partitionedEE.compile(cctx);
-
-    while (curPt < endPt) {
-      DAGNode *dag = exeList.at(curPt);
-      // The root in a G is always a dummy function.
-      if (curPt > 0) {
-        updateInputPlaceholders(*context.getPlaceholderBindings(), {}, {});
-        partitionedEE.run(context, dag->name);
-      }
-      for (unsigned int i = 0, e = dag->children.size(); i < e; i++) {
-        exeList.push_back(dag->children.at(i));
-        endPt++;
-      }
-      curPt++;
-    }
-  }
-
   /// Run on the Interpreter and compare the result to previous result.
   void compareAgainstInterpreter() {
     ExecutionContext contextI;
-    // Set device memory to 64GB to prevent partitioning. We are using the
-    // Interpreter's result just as a reference result to compare against.
-    ExecutionEngine IEE("Interpreter", 64e+9);
-    auto *modI = &IEE.getModule();
+    // Create a new module for the interpreter run.
+    std::unique_ptr<Module> modI(new Module);
     auto *IF = modI->createFunction("main");
     PlaceholderBindings *bindingsI = contextI.getPlaceholderBindings();
     Tensor *resultIT = createSimpleRecSysGraph(*modI, *bindingsI, IF,
                                                tableSizes, embeddingDim);
     bindingsI->allocate(modI->getPlaceholders());
 
+    // Set device memory to 64GB to prevent partitioning. We are using the
+    // Interpreter's result just as a reference result to compare against.
+    auto configs = generateDeviceConfigs("Interpreter", 1, MAX_MEMORY);
+    std::unique_ptr<HostManager> hostManager(
+        new HostManager(std::move(configs)));
+
     // Use the same precision transformation for compilation.
     CompilationContext cctx;
     cctx.precisionConfig = precConfig_;
-    IEE.compile(cctx);
-    IEE.run(contextI);
+    EXIT_ON_ERR(hostManager->addNetwork(std::move(modI), cctx));
+    dispatchInference(hostManager.get(), contextI);
 
     assert(resultTensor && "Must run and set resultTensor before comparing "
                            "against the intepreter.");
@@ -915,57 +875,58 @@ protected:
                              ExecutionContext &context) {
     // Result tensors are reused below, so create a local copy.
     Tensor referenceResultT = resultTensor->clone();
+    // Generate configs and create a new HostManager for testing partitioning.
+    auto configs = generateDeviceConfigs(getBackendName(), numDevices, memSize);
+    std::unique_ptr<HostManager> hostManager(
+        new HostManager(std::move(configs)));
 
-    // Separate EE for testing a partitioned RecSys. Note that we set a high
-    // device memory here separate from memSize; memSize is used to do the
-    // partitioning directly via the partitioner, and then we use the
-    // partitionedEE here to just execute, so avoid any secondary partitioning.
-    ExecutionEngine partitionedEE(getBackendName(), /* deviceMemory */ 64e+9);
-    PlaceholderBindings pBindings;
-
-    auto *pMod = &partitionedEE.getModule();
-    auto *pFunc = pMod->createFunction("main");
-    createSimpleRecSysGraph(*pMod, pBindings, pFunc, tableSizes, embeddingDim);
+    // Create a new module and placeholderBindings to run on the partitioning
+    // HostManager.
+    PlaceholderBindings bindingsP;
+    std::unique_ptr<Module> modP(new Module);
+    // Since HostManager consumed the uniquePtr we grab a raw pointer to the
+    // module so we can verify partitioning.
+    Module *rawModule = modP.get();
+    auto *funcP = modP->createFunction("main");
+    createSimpleRecSysGraph(*modP, bindingsP, funcP, tableSizes, embeddingDim);
 
     assert(memSize > 0 && "Must set partitionerPerDeviceMemCapacity > 0.");
     assert(numDevices > 0 && "Must set partitionerNumDevices > 0.");
-    auto backendName = partitionedEE.getBackendName();
     std::cout << numDevices << " devices of size " << memSize << "\n";
-    std::vector<DeviceInfo> devices(numDevices, {memSize, backendName});
-    Partitioner myPartitioner(pMod, devices);
     // Use the same precision transformation for compilation.
     CompilationContext cctx;
     cctx.precisionConfig = precConfig_;
-    auto myList = myPartitioner.partition(cctx);
-    ASSERT_TRUE((bool)myList);
-    std::cout << "Partitions = " << pMod->getFunctions().size() << std::endl;
-    ASSERT_LE(pMod->getFunctions().size(), numDevices);
-    ASSERT_EQ(myList->size(), 1);
-    DAG &dag = myList->front();
+    EXIT_ON_ERR(hostManager->addNetwork(std::move(modP), cctx));
+    std::cout << "Partitions = " << rawModule->getFunctions().size()
+              << std::endl;
+    ASSERT_LE(rawModule->getFunctions().size(), numDevices);
 
     // Run the partitioned graph and compare the results.
     auto &bindings = *context.getPlaceholderBindings();
     bindings.clear();
-    bindings.allocate(pMod->getPlaceholders());
-    pBindings.allocate(pMod->getPlaceholders());
-    for (auto PH : pBindings.pairs()) {
-      pBindings.copyToTarget(PH.first->getName(), bindings);
+    bindings.allocate(rawModule->getPlaceholders());
+    bindingsP.allocate(rawModule->getPlaceholders());
+    for (auto PH : bindingsP.pairs()) {
+      bindingsP.copyToTarget(PH.first->getName(), bindings);
     }
-    executeDAG(partitionedEE, dag.root.get(), context, cctx);
+
+    dispatchInference(hostManager.get(), context);
+
     Tensor *resultTensorP = bindings.get(bindings.getPlaceholderByName("save"));
     EXPECT_TRUE(referenceResultT.isEqual(*resultTensorP));
   }
 
   /// Test SparseLengthsSum independently.
   void testSLSQuant() {
-    auto *mod = &EE_.getModule();
+    std::unique_ptr<Module> mod(new Module);
+    F_ = mod->createFunction("main");
     std::vector<Placeholder *> sparseLengths(1);
     sparseLengths[0] =
         mod->createPlaceholder(ElemKind::Int32ITy, {miniBatch}, "SL0", false);
 
     std::vector<NodeValue> embeddings(sparseLengths.size());
-    createSparseEmbeddings(*mod, *bindings_, F_, sparseLengths, tableSizes,
-                           embeddingDim, embeddings);
+    createSparseEmbeddings(*mod.get(), *bindings_, F_, sparseLengths,
+                           tableSizes, embeddingDim, embeddings);
 
     auto *save = F_->createSave("save", embeddings[0]);
     Tensor *resultTensorLocal = bindings_->allocate(save->getPlaceholder());
@@ -973,18 +934,19 @@ protected:
     // Use the same precision transformation for compilation.
     CompilationContext cctx;
     cctx.precisionConfig = precConfig_;
-    EE_.compile(cctx);
+    auto configs = generateDeviceConfigs(getBackendName(), 1, MAX_MEMORY);
+    std::unique_ptr<HostManager> hostManager(
+        new HostManager(std::move(configs)));
+    EXIT_ON_ERR(hostManager->addNetwork(std::move(mod), cctx));
 
-    // Run graph
-    EE_.run(context_);
+    // Run graph.
+    dispatchInference(hostManager.get(), context_);
 
     // TODO: for now we only check the output dimension, contents are ignored
     EXPECT_EQ(resultTensorLocal->size(), miniBatch * embeddingDim);
     resultTensorLocal->getHandle().dump();
   }
 };
-
-INSTANTIATE_TEST_CASE_P_FOR_BACKEND_TEST(RecSys, RecommendationSystemTest);
 
 /// Standard Tests
 /// These tests have three options:
@@ -1005,7 +967,7 @@ INSTANTIATE_TEST_CASE_P_FOR_BACKEND_TEST(RecSys, RecommendationSystemTest);
 
 /// Everything in FP32.
 TEST_P(RecommendationSystemTest, RecSys_FP32) {
-  ENABLED_BACKENDS(CPU, Habana);
+  CHECK_IF_ENABLED();
 
   quantizeSLWSData = false;
   useFP16SLWS = false;
@@ -1018,7 +980,7 @@ TEST_P(RecommendationSystemTest, RecSys_FP32) {
 
 /// Rowwise quantize the SLWS and FC; everything else in FP32.
 TEST_P(RecommendationSystemTest, RecSys_RWQuantized_SLWS_FC) {
-  ENABLED_BACKENDS(CPU);
+  CHECK_IF_ENABLED();
 
   quantizeSLWSData = true;
   useFP16SLWS = false;
@@ -1031,7 +993,7 @@ TEST_P(RecommendationSystemTest, RecSys_RWQuantized_SLWS_FC) {
 
 /// Rowwise quantize the SLWS; everything else in FP32.
 TEST_P(RecommendationSystemTest, RecSys_RWQuantized_SLWS) {
-  ENABLED_BACKENDS(CPU, Habana);
+  CHECK_IF_ENABLED();
 
   quantizeSLWSData = true;
   useFP16SLWS = false;
@@ -1044,7 +1006,7 @@ TEST_P(RecommendationSystemTest, RecSys_RWQuantized_SLWS) {
 
 /// Rowwise quantize the SLWS and FC; everything else in FP16.
 TEST_P(RecommendationSystemTest, RecSys_RWQuantized_SLWS_FC_FP16) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
 
   quantizeSLWSData = true;
   useFP16SLWS = false;
@@ -1057,7 +1019,7 @@ TEST_P(RecommendationSystemTest, RecSys_RWQuantized_SLWS_FC_FP16) {
 
 /// Rowwise quantize the SLWS; everything else in FP16.
 TEST_P(RecommendationSystemTest, RecSys_RWQuantized_SLWS_FP16) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
 
   quantizeSLWSData = true;
   useFP16SLWS = false;
@@ -1071,7 +1033,7 @@ TEST_P(RecommendationSystemTest, RecSys_RWQuantized_SLWS_FP16) {
 /// Rowwise quantize the SLWS, with FP16 for scales/bias, and other
 /// inputs/outputs in FP16. Everything else in FP32.
 TEST_P(RecommendationSystemTest, RecSys_RWQuantizedFP16_SLWS) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
 
   quantizeSLWSData = true;
   useFP16SLWS = true;
@@ -1085,7 +1047,7 @@ TEST_P(RecommendationSystemTest, RecSys_RWQuantizedFP16_SLWS) {
 /// Rowwise quantize the SLWS, with FP16 for scales/bias, and other
 /// inputs/outputs in FP16, and use FP16 accumulation. Everything else in FP32.
 TEST_P(RecommendationSystemTest, RecSys_RWQuantizedFP16AccumFP16_SLWS) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
 
   quantizeSLWSData = true;
   useFP16SLWS = true;
@@ -1099,7 +1061,7 @@ TEST_P(RecommendationSystemTest, RecSys_RWQuantizedFP16AccumFP16_SLWS) {
 /// Rowwise quantize the SLWS, with FP16 for scales/bias, and other
 /// inputs/outputs in FP16. Everything else in FP16.
 TEST_P(RecommendationSystemTest, RecSys_RWQuantizedFP16_SLWS_FP16) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
 
   quantizeSLWSData = true;
   useFP16SLWS = true;
@@ -1113,7 +1075,7 @@ TEST_P(RecommendationSystemTest, RecSys_RWQuantizedFP16_SLWS_FP16) {
 /// Rowwise quantize the SLWS, with FP16 for scales/bias, and other
 /// inputs/outputs in FP16, and use FP16 accumulation. Everything else in FP16.
 TEST_P(RecommendationSystemTest, RecSys_RWQuantizedFP16AccumFP16_SLWS_FP16) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
 
   quantizeSLWSData = true;
   useFP16SLWS = true;
@@ -1130,7 +1092,7 @@ TEST_P(RecommendationSystemTest, RecSys_RWQuantizedFP16AccumFP16_SLWS_FP16) {
 /// for the partitioned and unpartitioned runs.
 
 TEST_P(RecommendationSystemTest, RecSys_FP32_Partitioned) {
-  ENABLED_BACKENDS(CPU, Habana);
+  CHECK_IF_ENABLED();
 
   quantizeSLWSData = false;
   useFP16SLWS = false;
@@ -1150,7 +1112,7 @@ TEST_P(RecommendationSystemTest, RecSys_FP32_Partitioned) {
 }
 
 TEST_P(RecommendationSystemTest, RecSys_Partitioned_RWQuantized_SLWS) {
-  ENABLED_BACKENDS(CPU, Habana);
+  CHECK_IF_ENABLED();
 
   quantizeSLWSData = true;
   useFP16SLWS = false;
@@ -1170,7 +1132,7 @@ TEST_P(RecommendationSystemTest, RecSys_Partitioned_RWQuantized_SLWS) {
 }
 
 TEST_P(RecommendationSystemTest, RecSys_Partitioned_RWQuantized_SLWS_FC) {
-  ENABLED_BACKENDS(CPU);
+  CHECK_IF_ENABLED();
 
   quantizeSLWSData = true;
   useFP16SLWS = false;
@@ -1184,7 +1146,7 @@ TEST_P(RecommendationSystemTest, RecSys_Partitioned_RWQuantized_SLWS_FC) {
 }
 
 TEST_P(RecommendationSystemTest, RecSys_Partitioned_RWQuantized_SLWS_FP16) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
 
   quantizeSLWSData = true;
   useFP16SLWS = false;
@@ -1198,7 +1160,7 @@ TEST_P(RecommendationSystemTest, RecSys_Partitioned_RWQuantized_SLWS_FP16) {
 }
 
 TEST_P(RecommendationSystemTest, RecSys_Partitioned_RWQuantized_SLWS_FC_FP16) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
 
   quantizeSLWSData = true;
   useFP16SLWS = false;
@@ -1215,7 +1177,7 @@ TEST_P(RecommendationSystemTest, RecSys_Partitioned_RWQuantized_SLWS_FC_FP16) {
 /// inputs/outputs in FP16. Everything else in FP32. Also run partitioned and
 /// compare results.
 TEST_P(RecommendationSystemTest, RecSys_Partitioned_RWQuantizedFP16_SLWS) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
 
   quantizeSLWSData = true;
   useFP16SLWS = true;
@@ -1239,7 +1201,7 @@ TEST_P(RecommendationSystemTest, RecSys_Partitioned_RWQuantizedFP16_SLWS) {
 /// Also run partitioned and compare results.
 TEST_P(RecommendationSystemTest,
        RecSys_Partitioned_RWQuantizedFP16AccumFP16_SLWS) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
 
   quantizeSLWSData = true;
   useFP16SLWS = true;
@@ -1256,7 +1218,7 @@ TEST_P(RecommendationSystemTest,
 /// inputs/outputs in FP16. Everything else in FP16. Also run partitioned and
 /// compare results.
 TEST_P(RecommendationSystemTest, RecSys_Partitioned_RWQuantizedFP16_SLWS_FP16) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
 
   quantizeSLWSData = true;
   useFP16SLWS = true;
@@ -1274,7 +1236,7 @@ TEST_P(RecommendationSystemTest, RecSys_Partitioned_RWQuantizedFP16_SLWS_FP16) {
 /// Also run partitioned and compare results.
 TEST_P(RecommendationSystemTest,
        RecSys_Partitioned_RWQuantizedFP16AccumFP16_SLWS_FP16) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
 
   quantizeSLWSData = true;
   useFP16SLWS = true;
@@ -1289,7 +1251,7 @@ TEST_P(RecommendationSystemTest,
 
 /// Test SLS independently, with no other layers being run.
 TEST_P(RecommendationSystemTest, RecSys_SLS_Only) {
-  ENABLED_BACKENDS(CPU, Habana);
+  CHECK_IF_ENABLED();
 
   quantizeSLWSData = true;
 
@@ -1301,7 +1263,7 @@ TEST_P(RecommendationSystemTest, RecSys_SLS_Only) {
 
 /// Test gathering weights for SLWS.
 TEST_P(RecommendationSystemTest, RecSys_FP32_Gather_Weights) {
-  ENABLED_BACKENDS(CPU);
+  CHECK_IF_ENABLED();
 
   quantizeSLWSData = false;
   useFP16SLWS = false;
@@ -1313,3 +1275,5 @@ TEST_P(RecommendationSystemTest, RecSys_FP32_Gather_Weights) {
 
   testRecSys();
 }
+
+INSTANTIATE_BACKEND_TEST(RecommendationSystemTest);

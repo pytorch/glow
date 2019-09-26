@@ -344,12 +344,12 @@ TEST(caffe2, maxPoolLegacyPadding) {
 
   Tensor inputs(ElemKind::FloatTy, {1, 3, 3, 1});
 
-  llvm::Error err(llvm::Error::success());
+  Error err(Error::success());
   Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"inputs"},
                              {&inputs.getType()}, *F, &err);
 
   // Test that the error is the expected one.
-  auto msg = llvm::toString(std::move(err));
+  auto msg = ERR_TO_STRING(std::move(err));
   ASSERT_NE(msg.find("MaxPool nodes with legacy caffe padding are "
                      "deprecated and not supported."),
             std::string::npos);
@@ -1095,19 +1095,13 @@ TEST(caffe2, importClip) {
     updateInputPlaceholdersByName(bindings, &mod, {"inputs_0"}, {&inputs_0});
   }
 
-  EXPECT_EQ(F->getNodes().size(), 5);
+  EXPECT_EQ(F->getNodes().size(), 2);
   auto *saveNode = getSaveNodeFromDest(output);
-  auto *minNode = llvm::dyn_cast<MinNode>(saveNode->getInput().getNode());
-  ASSERT_TRUE(minNode);
-  auto *maxNode = llvm::dyn_cast<MaxNode>(minNode->getLHS().getNode());
-  ASSERT_TRUE(maxNode);
-  auto *maxSplatNode = llvm::dyn_cast<SplatNode>(minNode->getRHS().getNode());
-  ASSERT_TRUE(maxSplatNode);
-  EXPECT_EQ(maxSplatNode->getValue(), 60.0);
-  auto *minSplatNode = llvm::dyn_cast<SplatNode>(maxNode->getRHS().getNode());
-  ASSERT_TRUE(minSplatNode);
-  EXPECT_EQ(minSplatNode->getValue(), 20.0);
-  auto *inputNode = llvm::dyn_cast<Placeholder>(maxNode->getLHS().getNode());
+  auto *clipNode = llvm::dyn_cast<ClipNode>(saveNode->getInput().getNode());
+  ASSERT_TRUE(clipNode);
+  EXPECT_EQ(clipNode->getMax(), 60.0);
+  EXPECT_EQ(clipNode->getMin(), 20.0);
+  auto *inputNode = llvm::dyn_cast<Placeholder>(clipNode->getInput());
   ASSERT_EQ(inputNode, mod.getPlaceholderByName("inputs_0"));
   // We have one input and one output.
   EXPECT_EQ(mod.getPlaceholders().size(), 2);
@@ -1139,19 +1133,12 @@ TEST(caffe2, importClipDefault) {
     bindings.allocate(mod.getPlaceholders());
     updateInputPlaceholdersByName(bindings, &mod, {"inputs_0"}, {&inputs_0});
   }
-  EXPECT_EQ(F->getNodes().size(), 5);
+  EXPECT_EQ(F->getNodes().size(), 2);
   auto *saveNode = getSaveNodeFromDest(output);
-  auto *minNode = llvm::dyn_cast<MinNode>(saveNode->getInput().getNode());
-  ASSERT_TRUE(minNode);
-  auto *maxNode = llvm::dyn_cast<MaxNode>(minNode->getLHS().getNode());
-  ASSERT_TRUE(maxNode);
-  auto *maxSplatNode = llvm::dyn_cast<SplatNode>(minNode->getRHS().getNode());
-  ASSERT_TRUE(maxSplatNode);
-  EXPECT_EQ(maxSplatNode->getValue(), std::numeric_limits<float>::max());
-  auto *minSplatNode = llvm::dyn_cast<SplatNode>(maxNode->getRHS().getNode());
-  ASSERT_TRUE(minSplatNode);
-  EXPECT_EQ(minSplatNode->getValue(), std::numeric_limits<float>::lowest());
-  auto *inputNode = llvm::dyn_cast<Placeholder>(maxNode->getLHS().getNode());
+  auto *clipNode = llvm::dyn_cast<ClipNode>(saveNode->getInput().getNode());
+  EXPECT_EQ(clipNode->getMax(), std::numeric_limits<float>::max());
+  EXPECT_EQ(clipNode->getMin(), std::numeric_limits<float>::lowest());
+  auto *inputNode = llvm::dyn_cast<Placeholder>(clipNode->getInput().getNode());
   ASSERT_EQ(inputNode, mod.getPlaceholderByName("inputs_0"));
   // We have one input and one output.
   EXPECT_EQ(mod.getPlaceholders().size(), 2);
@@ -1444,7 +1431,7 @@ TEST(caffe2, Logit) {
   // High level checks on the content of the graph.
   // We have 1 Clip (1 Splat, 1 Max, 1 Splat, 1 Min),
   // 1 Splat, 1 Sub, 1 Div, 1 Log, and 1 Output.
-  EXPECT_EQ(F->getNodes().size(), 9);
+  EXPECT_EQ(F->getNodes().size(), 6);
 
   // Graph has one input and one output.
   EXPECT_EQ(mod.getPlaceholders().size(), 2);
@@ -2565,4 +2552,45 @@ TEST(caffe2, importNames) {
   Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename,
                              {"sigmoid_test_input"}, {&input.getType()}, *F);
   EXPECT_TRUE(F->getNodeByName("sigmoid_test_output"));
+}
+
+TEST(caffe2, importSqr) {
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string NetDescFilename(
+      GLOW_DATA_PATH "tests/models/caffe2Models/sqr_predict_net.pbtxt");
+  std::string NetWeightFilename(
+      GLOW_DATA_PATH "tests/models/caffe2Models/empty_init_net.pbtxt");
+
+  Placeholder *output;
+  PlaceholderBindings bindings;
+
+  // Destroy the loader after the graph is loaded since the following execution
+  // will not depend on anything from the loader.
+  {
+    Tensor data(ElemKind::FloatTy, {4, 2});
+    Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"input"},
+                               {&data.getType()}, *F);
+    output = EXIT_ON_ERR(caffe2LD.getSingleOutput());
+
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod, {"input"}, {&data});
+  }
+
+  // High level check on the content of the graph. We should have
+  // save(pow(input, splat(2)))
+  EXPECT_EQ(F->getNodes().size(), 3);
+  auto *save = getSaveNodeFromDest(output);
+  ASSERT_TRUE(save);
+  auto *pow = llvm::dyn_cast<PowNode>(save->getInput().getNode());
+  ASSERT_TRUE(pow);
+  auto *input = llvm::dyn_cast<Placeholder>(pow->getLHS().getNode());
+  ASSERT_TRUE(input);
+  auto *splat = llvm::dyn_cast<SplatNode>(pow->getRHS().getNode());
+  ASSERT_TRUE(splat);
+  EXPECT_EQ(splat->getValue(), 2);
+
+  EE.compile(CompilationMode::Infer);
 }

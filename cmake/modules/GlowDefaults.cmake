@@ -31,7 +31,11 @@ if(MSVC OR CMAKE_CXX_SIMULATE_ID STREQUAL "MSVC")
   set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /STACK:4194304")
 else()
   include(CheckCXXCompilerFlag)
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wnon-virtual-dtor -fno-exceptions -fno-rtti")
+  if(CMAKE_BUILD_RTTI STREQUAL "ON")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wnon-virtual-dtor -fno-exceptions")
+  else()
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wnon-virtual-dtor -fno-exceptions -fno-rtti")
+  endif()
   set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -fno-omit-frame-pointer -O0")
   set(FAST_MATH_FLAGS "-ffast-math -fno-finite-math-only")
   CHECK_CXX_COMPILER_FLAG("-Wno-psabi" HAS_W_NO_PSABI)
@@ -55,7 +59,7 @@ endif()
 # linker does not clean unused objects.
 function(make_whole_archive DST SRC)
   get_target_property(__src_target_type ${SRC} TYPE)
-  
+
   # Depending on the type of the source library, we will set up the
   # link command for the specific SRC library.
   if (${__src_target_type} STREQUAL "STATIC_LIBRARY")

@@ -381,11 +381,11 @@ TEST_F(HabanaBackendTest, SetDeviceMemory) {
   configFull.setDeviceMemory(32768);
   // With no commandline or deviceConfig, the memory should be default 7 <<20.
   glow::runtime::HabanaDeviceManager device1(configEmpty, 1, 1);
-  llvm::Error err1 = device1.init();
+  Error err1 = device1.init();
   EXPECT_EQ(defaultMemory * 1024, device1.getMaximumMemory());
   // With only deviceConfig, the memory should be set by deviceConfig.
   glow::runtime::HabanaDeviceManager device2(configFull, 1, 1);
-  llvm::Error err2 = device2.init();
+  Error err2 = device2.init();
   EXPECT_EQ(32768, device2.getMaximumMemory());
 }
 
@@ -1289,25 +1289,30 @@ static void fill(Tensor &T, int val) {
 }
 
 TEST_F(HabanaBackendTest, Copy) {
+  Tensor cref(ElemKind::FloatTy, {20});
+  Tensor c2ref(ElemKind::FloatTy, {20});
+  fill(cref, 1);
+  fill(c2ref, 21);
+
   auto *c = mod_.createConstant(ElemKind::FloatTy, {20}, "c");
   auto *p = mod_.createPlaceholder(ElemKind::FloatTy, {20}, "p", false);
   F_->createSave("s", c, p);
   auto &ct = c->getPayloadMutable();
   auto *pt = ctx_.allocate(p);
-  fill(ct, 1);
+  ct.assign(&cref);
 
   auto *c2 = mod_.createConstant(ElemKind::FloatTy, {20}, "c2");
   auto *p2 = mod_.createPlaceholder(ElemKind::FloatTy, {20}, "p2", false);
   F_->createSave("s2", c2, p2);
   auto &c2t = c2->getPayloadMutable();
   auto *p2t = ctx_.allocate(p2);
-  fill(c2t, 21);
+  c2t.assign(&c2ref);
 
   EE_.compile(CompilationMode::Infer);
   EE_.run(ctx_);
 
-  ASSERT_TRUE(ct.isEqual(*pt));
-  ASSERT_TRUE(c2t.isEqual(*p2t));
+  ASSERT_TRUE(cref.isEqual(*pt));
+  ASSERT_TRUE(c2ref.isEqual(*p2t));
 }
 
 TEST_F(HabanaBackendTest, CopyPlaceholder) {
@@ -1530,8 +1535,8 @@ TEST_F(HabanaBackendTest, SingleFunctionMultiThreadMultiDevice) {
     deviceManager->addNetwork(
         &mod_, functions,
         [promise = addNetworkPromise](const Module * /*module*/,
-                                      llvm::Error err) mutable {
-          promise->set_value(errToBool(std::move(err)));
+                                      Error err) mutable {
+          promise->set_value(ERR_TO_BOOL(std::move(err)));
         });
   }
 
@@ -1581,9 +1586,9 @@ TEST_F(HabanaBackendTest, SingleFunctionMultiThreadMultiDevice) {
               functionName, std::move(inputExecutionContexts[j]),
               [&threadDonePromise, &completeIterations,
                expectedResultBindings = outputBindings[j]](
-                  RunIdentifierTy runId, llvm::Error err,
+                  RunIdentifierTy runId, Error err,
                   std::unique_ptr<ExecutionContext> resultContext) {
-                EXPECT_FALSE(errToBool(std::move(err)));
+                EXPECT_FALSE(ERR_TO_BOOL(std::move(err)));
                 EXPECT_TRUE(PlaceholderBindings::compare(
                     resultContext->getPlaceholderBindings(),
                     expectedResultBindings.get()));
@@ -1609,7 +1614,7 @@ TEST_F(HabanaBackendTest, SingleFunctionMultiThreadMultiDevice) {
 
   // Stop all devices.
   for (auto &deviceManager : deviceManagers) {
-    EXPECT_FALSE(errToBool(deviceManager->stop()));
+    EXPECT_FALSE(ERR_TO_BOOL(deviceManager->stop()));
   }
 }
 

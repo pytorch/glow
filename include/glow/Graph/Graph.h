@@ -75,6 +75,9 @@ class Module final {
   /// Module log context that stores all logs related to this module.
   ModuleLogContext moduleLogCtx_;
 
+  /// Inserts the constant \p V to the list of constants.
+  Constant *addConstant(Constant *V);
+
 public:
   Module() = default;
 
@@ -84,12 +87,6 @@ public:
   /// names are legal C identifiers in the form: "[a-zA-Z_][a-zA-Z0-9_]*".
   static llvm::StringRef uniqueName(llvm::StringRef name,
                                     llvm::StringSet<> &stringTable);
-
-  /// Inserts the constant \p V to the list of constants.
-  Constant *addConstant(Constant *V);
-
-  /// Inserts the placeholder node \p ph to the list of variables.
-  Placeholder *addPlaceholder(Placeholder *ph);
 
   /// Return a pointer to a uniqued type \p T.
   TypeRef uniqueType(const Type &T);
@@ -104,6 +101,11 @@ public:
   /// Return a pointer to a uniqued type \p T.
   /// The new type is identical to \p T, with a new shape \p dims.
   TypeRef uniqueTypeWithNewShape(TypeRef T, llvm::ArrayRef<size_t> dims);
+
+  /// The new type is identical to \p T, with a new shape \p dims and new \p
+  /// alignments.
+  TypeRef uniqueTypeWithNewShape(TypeRef T, llvm::ArrayRef<size_t> dims,
+                                 llvm::ArrayRef<size_t> alignments);
 
   /// Return the void type.
   TypeRef getVoidTy();
@@ -626,6 +628,13 @@ public:
   Node *createChannelShuffle(llvm::StringRef name, NodeValue input,
                              size_t group, size_t kernel);
 
+  /// Computes the indices of the max elements of the input tensor along the
+  /// provided \p axis. The resulted tensor has the same rank as the input if \p
+  /// keepDims equal 1. If \p keepdims equals 0, the resulted tensor has the
+  /// reduced dimension pruned. The type of the output tensor is int64.
+  ArgMaxNode *createArgMax(llvm::StringRef name, NodeValue input,
+                           unsigned_t axis, bool keepDims);
+
   /// Removes single-dimensional entries from the shape of a tensor. The
   /// parameter \p axes is a list of positive integers, indicating the
   /// dimensions to squeeze. Impelmented as a single ReshapeNode. This is the
@@ -691,6 +700,7 @@ public:
   ARITHMETIC_FUN_DECL(Max);
   ARITHMETIC_FUN_DECL(Min);
   ARITHMETIC_FUN_DECL(CmpLTE);
+  ARITHMETIC_FUN_DECL(CmpLT);
   ARITHMETIC_FUN_DECL(CmpEQ);
   ARITHMETIC_FUN_DECL(Pow);
 #undef ARITHMETIC_FUN_DECL
@@ -734,6 +744,17 @@ public:
     BROADCAST_FUNC_COMMON_CODE(3)
     return createSelect(name, inputs[1].getType(), inputs[0], inputs[1],
                         inputs[2]);
+  }
+
+  /// Template function that creates a node and normalizes its input shapes
+  /// with the use of BroadCast nodes. If axis is -1, it calculates it
+  /// automatically for multi directional broadcast.
+  template <class T, class... Args>
+  typename enable_if_same_t<T, CmpLTNode>::type *
+  createNodeWithBroadcast(const std::string &name, int axis,
+                          Args &&... inputArgs) {
+    BROADCAST_FUNC_COMMON_CODE(2)
+    return createCmpLT(name, inputs[0], inputs[1]);
   }
 
 #undef BROADCAST_FUNC_COMMON_CODE
