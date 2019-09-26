@@ -16,7 +16,6 @@ add_library(PyTorchModelLoader
                      GlowFuser.cpp
                      GlowIValue.cpp
                      PyTorchCommon.cpp
-                     FuseLinear.cpp
                      FusePrepack.cpp
                      PyTorchModelLoader.cpp)
 target_compile_options(PyTorchModelLoader

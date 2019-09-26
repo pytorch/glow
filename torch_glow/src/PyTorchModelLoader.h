@@ -334,10 +334,6 @@ private:
   /// \returns error on failure.
   Error loadTranspose(const torch::jit::Node *ptNode);
 
-  /// Load a PyTorch aten::linear node.
-  /// \returns error on failure.
-  Error loadLinear(const torch::jit::Node *ptNode);
-
   /// Load a PyTorch min node.
   /// \returns error on failure.
   Error loadMin(const torch::jit::Node *ptNode);
@@ -345,10 +341,6 @@ private:
   /// Load a PyTorch clamp node.
   /// \returns error on failure.
   Error loadClamp(const torch::jit::Node *ptNode);
-
-  /// Load a PyTorch matmul (n x k) x (k x m) -> (n x m) node.
-  /// \returns error on failure.
-  Error loadMatMul(const torch::jit::Node *ptNode);
 
   /// Load a PyTorch prelu node.
   /// \returns error on failure.
@@ -377,6 +369,18 @@ private:
   /// Load a PyTorch aten::reshape node.
   /// \returns error on failure.
   Error loadReshape(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch aten::mm node.
+  /// \returns error on failure.
+  Error loadMM(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch aten::addmm node.
+  /// \returns error on failure.
+  Error loadAddMM(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch aten::matmul node.
+  /// \returns error on failure.
+  Error loadMatMul(const torch::jit::Node *ptNode);
 };
 } // namespace glow
 

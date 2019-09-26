@@ -462,6 +462,7 @@ class GlowExpected final
   template <typename TT>
   friend TT detail::exitOnError(const char *fileName, size_t lineNumber,
                                 GlowExpected<TT> expected);
+  template <typename OtherT> friend class GlowExpected;
 
   /// Union type between ErrorValue and T. Holds both in Opaque containers so
   /// that lifetime management is manual and tied to the lifetime of Expected.

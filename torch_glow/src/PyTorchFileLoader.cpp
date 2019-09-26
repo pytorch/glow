@@ -15,7 +15,6 @@
  */
 
 #include "PyTorchFileLoader.h"
-#include "FuseLinear.h"
 #include "PyTorchModelLoader.h"
 #include "glow/Support/Error.h"
 #include "glow/Support/Support.h"
