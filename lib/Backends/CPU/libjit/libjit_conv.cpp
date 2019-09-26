@@ -518,7 +518,7 @@ void libjit_convolution_f(float *outW, const float *inW, const float *filterW,
   }           // For each N, the sample in the batch.
 }
 
-void libjit_convolution_i32_i8(
+void libjit_convolution_i8_i32(
     int8_t *outW, const int8_t *inW, const int8_t *filterW,
     const int32_t *biasW, const size_t *outWdims, const size_t *inWdims,
     const size_t *filterWdims, const size_t *biasWdims,

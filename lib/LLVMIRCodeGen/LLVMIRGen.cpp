@@ -1548,16 +1548,15 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *biasOffset = emitConstI32(builder, bOffset);
 
     llvm::Function *F = nullptr;
-    switch (RWQFC->getBias()->getElementType()) {
-    case ElemKind::Int8QTy:
-      F = getFunction("rowwise_quantized_fc_i8", dest->getElementType());
-      break;
-    case ElemKind::Int32QTy:
-      F = getFunction("rowwise_quantized_fc_i32", dest->getElementType());
-      break;
-    default:
-      LOG(FATAL)
-          << "Unsupported bias type for RowwiseQuantizedFullyConnectedInst";
+    if ((dest->getElementType() == ElemKind::Int8QTy) &&
+        (bias->getElementType() == ElemKind::Int8QTy)) {
+      F = getFunction("rowwise_quantized_fc_i8_i8");
+    } else if ((dest->getElementType() == ElemKind::Int8QTy) &&
+               (bias->getElementType() == ElemKind::Int32QTy)) {
+      F = getFunction("rowwise_quantized_fc_i8_i32");
+    } else {
+      LOG(FATAL) << "Unsupported element/bias type for "
+                    "RowwiseQuantizedFullyConnectedInst";
     }
 
     createCall(builder, F,
@@ -1783,15 +1782,14 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
       auto *outScale = emitConstI32(builder, outScaleParam.scale);
 
       llvm::Function *F = nullptr;
-      switch (bias->getElementType()) {
-      case ElemKind::Int8QTy:
-        F = getFunction("convolution_i8", dest->getElementType());
-        break;
-      case ElemKind::Int32QTy:
-        F = getFunction("convolution_i32", dest->getElementType());
-        break;
-      default:
-        LOG(FATAL) << "Unsupported bias type for ConvolutionInst";
+      if ((dest->getElementType() == ElemKind::Int8QTy) &&
+          (bias->getElementType() == ElemKind::Int8QTy)) {
+        F = getFunction("convolution_i8_i8");
+      } else if ((dest->getElementType() == ElemKind::Int8QTy) &&
+                 (bias->getElementType() == ElemKind::Int32QTy)) {
+        F = getFunction("convolution_i8_i32");
+      } else {
+        LOG(FATAL) << "Unsupported element/bias type for ConvolutionInst";
       }
 
       createCall(builder, F,

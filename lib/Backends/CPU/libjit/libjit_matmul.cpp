@@ -344,7 +344,7 @@ void libjit_matmul_i8(int8_t *outW, const int8_t *lhsW, const int8_t *rhsW,
 }
 
 /// Rowwise quantized FullyConnected with int8 precision and int32 bias.
-void libjit_rowwise_quantized_fc_i32_i8(
+void libjit_rowwise_quantized_fc_i8_i32(
     int8_t *outW, const int8_t *inW, const int8_t *weightsW,
     const int32_t *biasW, const int32_t *weightsOffsets, const int32_t *biasPre,
     const int32_t *biasPost, const int32_t *biasScale, const int32_t *outPre,

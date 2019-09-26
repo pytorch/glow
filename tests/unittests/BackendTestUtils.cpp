@@ -73,8 +73,12 @@ static Placeholder *createQuantizedPlaceholder(Module &mod,
   return P;
 }
 
-/// Clone, profile, and run \p origF given the \p bindings and \p EE. \returns
-/// the quantization parameters from the profile given the specified \p schema.
+/// Create and initialize a function using the argument \p createAndInitFunction
+/// then run the function in profiling mode to get the quantization parameters
+/// by using the specified quantization schema \p schema, the given element
+/// precision \p quantizationPrecision and the given bias precision
+/// \p quantizationPrecisionBias. \returns the quantization parameters for all
+/// the function nodes.
 static std::vector<NodeQuantizationInfo> profileAndGetNodeQuantizationInfo(
     CreateAndInitFunction createAndInitFunction, quantization::Schema schema,
     ElemKind quantizationPrecision, ElemKind quantizationPrecisionBias) {
