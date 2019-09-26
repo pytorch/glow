@@ -514,8 +514,14 @@ void logPartitionInfo(const NodeToFunctionMap &partitions) {
               << "\t\t Name :\t" << subF->getName().str() << "\n"
               << "\t\t BackendKind :\t"
               << partitions.getPartitionBackendName(subF) << "\n"
-              << "\t\t Memory :\t"
+              << "\t\t total Memory :\t"
               << partitions.getGraphMemInfo(subF).getTotalMemSize() << "\n"
+              << "\t\t\t input size:\t"
+              << partitions.getGraphMemInfo(subF).inMemSize << "\n"
+              << "\t\t\t output size:\t"
+              << partitions.getGraphMemInfo(subF).outMemSize << "\n"
+              << "\t\t\t constant size:\t"
+              << partitions.getGraphMemInfo(subF).constMemSize << "\n"
               << "\t\t LogicalDeviceIDs :\t"
               << partitions.getLogicalDeviceIDList(subF)[0] << "\n";
   }

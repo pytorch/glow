@@ -20,7 +20,6 @@
 #include "glow/Graph/Nodes.h"
 
 #include "llvm/Support/Casting.h"
-#include "llvm/Support/Error.h"
 
 #include "google/protobuf/io/coded_stream.h"
 #include "google/protobuf/io/zero_copy_stream_impl.h"
@@ -39,7 +38,7 @@ namespace {
 /// Creates tensor \p T from the input \p in. Note, there is no data associated
 /// with the Tensor. This method makes sure that the tensor is created with the
 /// proper shape and element type.
-llvm::Error setTensorType(const ONNX_NAMESPACE::TypeProto &in, Tensor *T) {
+Error setTensorType(const ONNX_NAMESPACE::TypeProto &in, Tensor *T) {
   std::vector<size_t> dim;
   for (auto d : in.tensor_type().shape().dim()) {
     dim.push_back(d.dim_value());
@@ -47,15 +46,15 @@ llvm::Error setTensorType(const ONNX_NAMESPACE::TypeProto &in, Tensor *T) {
 
   if (in.tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto::FLOAT) {
     T->reset(ElemKind::FloatTy, dim);
-    return llvm::Error::success();
+    return Error::success();
   } else if (in.tensor_type().elem_type() ==
              ONNX_NAMESPACE::TensorProto::INT64) {
     T->reset(ElemKind::Int64ITy, dim);
-    return llvm::Error::success();
+    return Error::success();
   } else if (in.tensor_type().elem_type() ==
              ONNX_NAMESPACE::TensorProto::INT32) {
     T->reset(ElemKind::Int32ITy, dim);
-    return llvm::Error::success();
+    return Error::success();
   } else {
     RETURN_ERR("Only float and index tensors are supported");
   }
@@ -75,8 +74,8 @@ loadArgumentMap(const ONNX_NAMESPACE::NodeProto &op) {
   return dict;
 }
 
-llvm::Error ONNXModelLoader::loadInputs(ONNX_NAMESPACE::GraphProto &net,
-                                        bool loadInputsAsPlaceholders) {
+Error ONNXModelLoader::loadInputs(ONNX_NAMESPACE::GraphProto &net,
+                                  bool loadInputsAsPlaceholders) {
   for (const auto &in : net.input()) {
     // Skip static weights.
     if (getConstantByNameOrNull(in.name())) {
@@ -97,11 +96,10 @@ llvm::Error ONNXModelLoader::loadInputs(ONNX_NAMESPACE::GraphProto &net,
       RETURN_IF_ERR(createAndRegisterConstant(in.name(), std::move(T)));
     }
   }
-  return llvm::Error::success();
+  return Error::success();
 }
 
-llvm::Expected<bool>
-ONNXModelLoader::getBroadcast(const ArgumentDictionaryTy &dict) {
+Expected<bool> ONNXModelLoader::getBroadcast(const ArgumentDictionaryTy &dict) {
   // Starting with opset 7, broadcasting is implicit and doesn't require any
   // attribute.
   if (opsetVersion_ > 6) {
@@ -129,7 +127,7 @@ bool ONNXModelLoader::hasMultidirectionalBroadcast(
   return false;
 }
 
-llvm::Expected<ElemKind> ONNXModelLoader::convertTensorProtoDataType(
+Expected<ElemKind> ONNXModelLoader::convertTensorProtoDataType(
     ONNX_NAMESPACE::TensorProto_DataType t) {
   switch (t) {
   case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
@@ -145,13 +143,13 @@ llvm::Expected<ElemKind> ONNXModelLoader::convertTensorProtoDataType(
   RETURN_ERR("Non supported ONNX type");
 }
 
-llvm::Error ONNXModelLoader::setVersion(ONNX_NAMESPACE::ModelProto MP) {
+Error ONNXModelLoader::setVersion(ONNX_NAMESPACE::ModelProto MP) {
   irVersion_ = MP.ir_version();
   opsetVersion_ = 0;
   RETURN_ERR_IF_NOT(
       irVersion_ >= 3,
       "This ONNX model with ir_version < 3 is too old to be supported.",
-      GlowErr::ErrorCode::MODEL_LOADER_UNSUPPORTED_ONNX_VERSION);
+      ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_ONNX_VERSION);
   for (const auto &imp : MP.opset_import()) {
     if (!imp.has_domain() || imp.domain() == "") {
       opsetVersion_ = imp.version();
@@ -160,10 +158,10 @@ llvm::Error ONNXModelLoader::setVersion(ONNX_NAMESPACE::ModelProto MP) {
   }
   RETURN_ERR_IF_NOT(opsetVersion_ > 0,
                     "The opset of this ONNX model is not supported.");
-  return llvm::Error::success();
+  return Error::success();
 }
 
-llvm::Expected<ONNX_NAMESPACE::ModelProto>
+Expected<ONNX_NAMESPACE::ModelProto>
 ONNXModelLoader::loadProto(google::protobuf::io::ZeroCopyInputStream &iStream) {
   // Construct and configure a Coded Input Stream
   google::protobuf::io::CodedInputStream codedStream(&iStream);
@@ -173,23 +171,23 @@ ONNXModelLoader::loadProto(google::protobuf::io::ZeroCopyInputStream &iStream) {
   ONNX_NAMESPACE::ModelProto MP;
   bool parseNet = MP.ParseFromCodedStream(&codedStream);
   RETURN_ERR_IF_NOT(parseNet, "Failed to parse ModelProto",
-                    GlowErr::ErrorCode::MODEL_LOADER_INVALID_PROTOBUF);
+                    ErrorValue::ErrorCode::MODEL_LOADER_INVALID_PROTOBUF);
   return MP;
 }
 
-llvm::Expected<ONNX_NAMESPACE::ModelProto>
+Expected<ONNX_NAMESPACE::ModelProto>
 ONNXModelLoader::loadProto(const void *onnxModel, size_t onnxModelSize) {
   google::protobuf::io::ArrayInputStream arrayStream(onnxModel, onnxModelSize);
   return loadProto(arrayStream);
 }
 
-llvm::Expected<ONNX_NAMESPACE::ModelProto>
+Expected<ONNX_NAMESPACE::ModelProto>
 ONNXModelLoader::loadProto(const std::string &filename) {
   std::ifstream ff(filename, std::ios::in | std::ios::binary);
   RETURN_ERR_IF_NOT(ff,
                     strFormat("Can't find the model or network files for %s.",
                               filename.c_str()),
-                    GlowErr::ErrorCode::MODEL_LOADER_INVALID_PROTOBUF);
+                    ErrorValue::ErrorCode::MODEL_LOADER_INVALID_PROTOBUF);
 
   // TODO: intend to find a way to reuse the following function later
   // for the text format onnx model:
@@ -202,7 +200,7 @@ ONNXModelLoader::loadProto(const std::string &filename) {
     bool parseNet = google::protobuf::TextFormat::ParseFromString(str, &MP);
 
     RETURN_ERR_IF_NOT(parseNet, "Failed to parse ModelProto",
-                      GlowErr::ErrorCode::MODEL_LOADER_INVALID_PROTOBUF);
+                      ErrorValue::ErrorCode::MODEL_LOADER_INVALID_PROTOBUF);
     return MP;
   }
 
@@ -219,10 +217,10 @@ using Pads = std::vector<unsigned_t>;
 /// \p kdim : kernel sizes (HW)
 /// \p sdim: stride sizes (HW)
 /// \p idim: input sizes (HW)
-llvm::Expected<Pads> getPads(const ArgumentDictionaryTy &dict,
-                             llvm::ArrayRef<unsigned_t> kdim,
-                             llvm::ArrayRef<unsigned_t> sdim,
-                             llvm::ArrayRef<unsigned_t> idim) {
+Expected<Pads> getPads(const ArgumentDictionaryTy &dict,
+                       llvm::ArrayRef<unsigned_t> kdim,
+                       llvm::ArrayRef<unsigned_t> sdim,
+                       llvm::ArrayRef<unsigned_t> idim) {
   if (dict.count("pads")) {
     return getShape<unsigned_t>(dict.at("pads"));
   }
@@ -270,8 +268,7 @@ llvm::Expected<Pads> getPads(const ArgumentDictionaryTy &dict,
 }
 
 /// Loads tensor \p T from the input \p in.
-static llvm::Error loadTensor(const ONNX_NAMESPACE::TensorProto &in,
-                              Tensor *T) {
+static Error loadTensor(const ONNX_NAMESPACE::TensorProto &in, Tensor *T) {
   std::vector<size_t> dim;
   for (auto d : in.dims()) {
     dim.push_back(d);
@@ -291,7 +288,7 @@ static llvm::Error loadTensor(const ONNX_NAMESPACE::TensorProto &in,
       inStream.read(T->getUnsafePtr(), T->size() * sizeof(float));
     } else {
       RETURN_ERR("Unsupported Tensor format.",
-                 GlowErr::ErrorCode::MODEL_LOADER_UNSUPPORTED_DATATYPE);
+                 ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_DATATYPE);
     }
   } else if (in.data_type() == ONNX_NAMESPACE::TensorProto::INT64) {
     T->reset(ElemKind::Int64ITy, dim);
@@ -307,7 +304,7 @@ static llvm::Error loadTensor(const ONNX_NAMESPACE::TensorProto &in,
       inStream.read(T->getUnsafePtr(), T->size() * sizeof(int64_t));
     } else {
       RETURN_ERR("Unsupported Tensor format.",
-                 GlowErr::ErrorCode::MODEL_LOADER_UNSUPPORTED_DATATYPE);
+                 ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_DATATYPE);
     }
   } else if (in.data_type() == ONNX_NAMESPACE::TensorProto::INT32) {
     // There are few cases when we will have int32 tensors. For example, the
@@ -325,7 +322,7 @@ static llvm::Error loadTensor(const ONNX_NAMESPACE::TensorProto &in,
       inStream.read(T->getUnsafePtr(), T->size() * sizeof(int32_t));
     } else {
       RETURN_ERR("Unsupported Tensor format.",
-                 GlowErr::ErrorCode::MODEL_LOADER_UNSUPPORTED_DATATYPE);
+                 ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_DATATYPE);
     }
   } else if (in.data_type() == ONNX_NAMESPACE::TensorProto::BOOL) {
     T->reset(ElemKind::BoolTy, dim);
@@ -334,17 +331,17 @@ static llvm::Error loadTensor(const ONNX_NAMESPACE::TensorProto &in,
       inStream.read(T->getUnsafePtr(), T->size() * sizeof(bool));
     } else {
       RETURN_ERR("Unsupported Tensor format.",
-                 GlowErr::ErrorCode::MODEL_LOADER_UNSUPPORTED_DATATYPE);
+                 ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_DATATYPE);
     }
   } else {
     RETURN_ERR("Only float and index tensors are supported",
-               GlowErr::ErrorCode::MODEL_LOADER_UNSUPPORTED_DATATYPE);
+               ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_DATATYPE);
   }
-  return llvm::Error::success();
+  return Error::success();
 }
 
-llvm::Error ONNXModelLoader::loadConstant(const ONNX_NAMESPACE::NodeProto &op,
-                                          const ArgumentDictionaryTy &dict) {
+Error ONNXModelLoader::loadConstant(const ONNX_NAMESPACE::NodeProto &op,
+                                    const ArgumentDictionaryTy &dict) {
   /*
     output: "Parameter6"
     name: "Parameter6"
@@ -373,19 +370,19 @@ llvm::Error ONNXModelLoader::loadConstant(const ONNX_NAMESPACE::NodeProto &op,
   // If the tensor is pre-populated by the user of this class then we don't
   // need to allocate a new tensor.
   if (getConstantByNameOrNull(name)) {
-    return llvm::Error::success();
+    return Error::success();
   }
 
   RETURN_ERR_IF_NOT(dict.at("value")->type() ==
                         ONNX_NAMESPACE::AttributeProto::TENSOR,
                     "Only Tensor type constants are supported.",
-                    GlowErr::ErrorCode::MODEL_LOADER_UNSUPPORTED_DATATYPE);
+                    ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_DATATYPE);
 
   Tensor T;
   RETURN_IF_ERR(loadTensor(dict.at("value")->t(), &T));
   RETURN_IF_ERR(createAndRegisterConstant(name, std::move(T)));
 
-  return llvm::Error::success();
+  return Error::success();
 }
 
 /// Retrieves data from a constant Tensor and stores it in a vector.
@@ -397,8 +394,8 @@ static void helperSetter(Constant *constT, std::vector<ssize_t> &vec) {
   }
 }
 
-llvm::Error ONNXModelLoader::loadSlice(const ONNX_NAMESPACE::NodeProto &op,
-                                       const ArgumentDictionaryTy &dict) {
+Error ONNXModelLoader::loadSlice(const ONNX_NAMESPACE::NodeProto &op,
+                                 const ArgumentDictionaryTy &dict) {
   const std::string &opName = loadOperatorName(op);
   NodeValue data;
   ASSIGN_VALUE_OR_RETURN_ERR(data, getNodeValueByName(op.input(0)));
@@ -535,11 +532,11 @@ llvm::Error ONNXModelLoader::loadSlice(const ONNX_NAMESPACE::NodeProto &op,
   Node *SN = G_.createSlice(opName, data, newStarts, newEnds);
   RETURN_IF_ERR(addNodeAsOutput(op, SN));
 
-  return llvm::Error::success();
+  return Error::success();
 }
 
-llvm::Error ONNXModelLoader::loadConv(const ONNX_NAMESPACE::NodeProto &op,
-                                      const ArgumentDictionaryTy &dict) {
+Error ONNXModelLoader::loadConv(const ONNX_NAMESPACE::NodeProto &op,
+                                const ArgumentDictionaryTy &dict) {
   const std::string &opName = loadOperatorName(op);
   // Load the attributes
   std::vector<unsigned_t> strides(2, 1);
@@ -641,12 +638,12 @@ llvm::Error ONNXModelLoader::loadConv(const ONNX_NAMESPACE::NodeProto &op,
   auto *N = G_.createTranspose(opName, node, NHWC2NCHW);
   RETURN_IF_ERR(addNodeAsOutput(op, N));
 
-  return llvm::Error::success();
+  return Error::success();
 }
 
-llvm::Error ONNXModelLoader::loadPool(const ONNX_NAMESPACE::NodeProto &op,
-                                      const ArgumentDictionaryTy &dict,
-                                      llvm::StringRef typeName) {
+Error ONNXModelLoader::loadPool(const ONNX_NAMESPACE::NodeProto &op,
+                                const ArgumentDictionaryTy &dict,
+                                llvm::StringRef typeName) {
   const std::string &opName = loadOperatorName(op);
 
   // Load the inputs:
@@ -661,7 +658,7 @@ llvm::Error ONNXModelLoader::loadPool(const ONNX_NAMESPACE::NodeProto &op,
   if (in.dims().size() != 4 || kernels.size() != 2) {
     // Glow only handles 2D pooling currently.
     RETURN_ERR("Glow only handles 2D pooling currently.",
-               GlowErr::ErrorCode::MODEL_LOADER_UNSUPPORTED_SHAPE);
+               ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_SHAPE);
   }
 
   auto *tr = G_.createTranspose(opName, in, NCHW2NHWC);
@@ -686,7 +683,7 @@ llvm::Error ONNXModelLoader::loadPool(const ONNX_NAMESPACE::NodeProto &op,
   if (op.output_size() > 1) {
     if (typeName != "MaxPool") {
       RETURN_ERR("Argmax output is only supported for MaxPool!",
-                 GlowErr::ErrorCode::MODEL_LOADER_UNSUPPORTED_OPERATOR);
+                 ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_OPERATOR);
     }
 
     node = G_.createMaxPool(opName, tr, kernels, strides, pads);
@@ -705,12 +702,30 @@ llvm::Error ONNXModelLoader::loadPool(const ONNX_NAMESPACE::NodeProto &op,
     auto *N = G_.createTranspose(opName, NodeValue(node, idx), NHWC2NCHW);
     RETURN_IF_ERR(addNodeAsOutput(op, N));
   }
-  return llvm::Error::success();
+  return Error::success();
 }
 
-llvm::Error
-ONNXModelLoader::loadGlobalAveragePool(const ONNX_NAMESPACE::NodeProto &op,
-                                       const ArgumentDictionaryTy &dict) {
+Error ONNXModelLoader::loadArgMax(const ONNX_NAMESPACE::NodeProto &op,
+                                  const ArgumentDictionaryTy &dict) {
+  const std::string &opName = loadOperatorName(op);
+
+  NodeValue in;
+  ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
+  size_t axis = 0;
+  if (dict.count("axis")) {
+    ASSIGN_VALUE_OR_RETURN_ERR(axis, loadInt(dict.at("axis")));
+  }
+  bool keepDims = true;
+  if (dict.count("keepDims")) {
+    ASSIGN_VALUE_OR_RETURN_ERR(keepDims, loadInt(dict.at("keepDims")));
+  }
+  Node *node = G_.createArgMax(opName, in, axis, keepDims);
+  RETURN_IF_ERR(addNodeAsOutput(op, node));
+  return Error::success();
+}
+
+Error ONNXModelLoader::loadGlobalAveragePool(
+    const ONNX_NAMESPACE::NodeProto &op, const ArgumentDictionaryTy &dict) {
   const std::string &opName = loadOperatorName(op);
 
   // Load the inputs:
@@ -733,11 +748,11 @@ ONNXModelLoader::loadGlobalAveragePool(const ONNX_NAMESPACE::NodeProto &op,
   Node *node = G_.createAvgPool(opName, tr, kernels, strides, pads);
   auto *N = G_.createTranspose(opName, node, NHWC2NCHW);
   RETURN_IF_ERR(addNodeAsOutput(op, N));
-  return llvm::Error::success();
+  return Error::success();
 }
 
-llvm::Error ONNXModelLoader::loadSqueeze(const ONNX_NAMESPACE::NodeProto &op,
-                                         const ArgumentDictionaryTy &dict) {
+Error ONNXModelLoader::loadSqueeze(const ONNX_NAMESPACE::NodeProto &op,
+                                   const ArgumentDictionaryTy &dict) {
   const std::string &opName = loadOperatorName(op);
 
   NodeValue in;
@@ -745,11 +760,11 @@ llvm::Error ONNXModelLoader::loadSqueeze(const ONNX_NAMESPACE::NodeProto &op,
   auto axes = getShape(dict.at("axes"));
   Node *node = G_.createSqueeze(opName, in, axes);
   RETURN_IF_ERR(addNodeAsOutput(op, node));
-  return llvm::Error::success();
+  return Error::success();
 }
 
-llvm::Error ONNXModelLoader::loadUnsqueeze(const ONNX_NAMESPACE::NodeProto &op,
-                                           const ArgumentDictionaryTy &dict) {
+Error ONNXModelLoader::loadUnsqueeze(const ONNX_NAMESPACE::NodeProto &op,
+                                     const ArgumentDictionaryTy &dict) {
   const std::string &opName = loadOperatorName(op);
 
   NodeValue in;
@@ -757,12 +772,11 @@ llvm::Error ONNXModelLoader::loadUnsqueeze(const ONNX_NAMESPACE::NodeProto &op,
   auto axes = getShape(dict.at("axes"));
   Node *node = G_.createExpandDims(opName, in, axes);
   RETURN_IF_ERR(addNodeAsOutput(op, node));
-  return llvm::Error::success();
+  return Error::success();
 }
 
-llvm::Error
-ONNXModelLoader::loadBatchNormalization(const ONNX_NAMESPACE::NodeProto &op,
-                                        const ArgumentDictionaryTy &dict) {
+Error ONNXModelLoader::loadBatchNormalization(
+    const ONNX_NAMESPACE::NodeProto &op, const ArgumentDictionaryTy &dict) {
   const std::string &opName = loadOperatorName(op);
 
   NodeValue in;
@@ -792,11 +806,11 @@ ONNXModelLoader::loadBatchNormalization(const ONNX_NAMESPACE::NodeProto &op,
   // the non supported features are actually requested by the ONNX model.
   RETURN_IF_ERR(addNodeAsOutput(op, node, 1));
 
-  return llvm::Error::success();
+  return Error::success();
 }
 
-llvm::Error ONNXModelLoader::loadConcat(const ONNX_NAMESPACE::NodeProto &op,
-                                        const ArgumentDictionaryTy &dict) {
+Error ONNXModelLoader::loadConcat(const ONNX_NAMESPACE::NodeProto &op,
+                                  const ArgumentDictionaryTy &dict) {
   const std::string &opName = loadOperatorName(op);
 
   const unsigned numInputs = op.input_size();
@@ -813,12 +827,11 @@ llvm::Error ONNXModelLoader::loadConcat(const ONNX_NAMESPACE::NodeProto &op,
   Node *node = G_.createConcat(opName, inputs, axis);
 
   RETURN_IF_ERR(addNodeAsOutput(op, node));
-  return llvm::Error::success();
+  return Error::success();
 }
 
-llvm::Error
-ONNXModelLoader::loadFCTransposed(const ONNX_NAMESPACE::NodeProto &op,
-                                  const ArgumentDictionaryTy &dict) {
+Error ONNXModelLoader::loadFCTransposed(const ONNX_NAMESPACE::NodeProto &op,
+                                        const ArgumentDictionaryTy &dict) {
   const std::string &opName = loadOperatorName(op);
 
   NodeValue in;
@@ -854,11 +867,11 @@ ONNXModelLoader::loadFCTransposed(const ONNX_NAMESPACE::NodeProto &op,
   auto *node = G_.createFullyConnected(opName, in, W, B);
 
   RETURN_IF_ERR(addNodeAsOutput(op, node));
-  return llvm::Error::success();
+  return Error::success();
 }
 
-llvm::Error ONNXModelLoader::loadGemm(const ONNX_NAMESPACE::NodeProto &op,
-                                      const ArgumentDictionaryTy &dict) {
+Error ONNXModelLoader::loadGemm(const ONNX_NAMESPACE::NodeProto &op,
+                                const ArgumentDictionaryTy &dict) {
   const std::string &opName = loadOperatorName(op);
 
   NodeValue A;
@@ -893,11 +906,11 @@ llvm::Error ONNXModelLoader::loadGemm(const ONNX_NAMESPACE::NodeProto &op,
 
   Node *node = G_.createAdd(opName, mul, C);
   RETURN_IF_ERR(addNodeAsOutput(op, node));
-  return llvm::Error::success();
+  return Error::success();
 }
 
-llvm::Error ONNXModelLoader::loadMatMul(const ONNX_NAMESPACE::NodeProto &op,
-                                        const ArgumentDictionaryTy &dict) {
+Error ONNXModelLoader::loadMatMul(const ONNX_NAMESPACE::NodeProto &op,
+                                  const ArgumentDictionaryTy &dict) {
   const std::string &opName = loadOperatorName(op);
 
   NodeValue LHS;
@@ -907,11 +920,11 @@ llvm::Error ONNXModelLoader::loadMatMul(const ONNX_NAMESPACE::NodeProto &op,
 
   Node *node = G_.createMatMul(opName, LHS, RHS);
   RETURN_IF_ERR(addNodeAsOutput(op, node));
-  return llvm::Error::success();
+  return Error::success();
 }
 
-llvm::Error ONNXModelLoader::loadLeakyRelu(const ONNX_NAMESPACE::NodeProto &op,
-                                           const ArgumentDictionaryTy &dict) {
+Error ONNXModelLoader::loadLeakyRelu(const ONNX_NAMESPACE::NodeProto &op,
+                                     const ArgumentDictionaryTy &dict) {
   // Input Type.
   NodeValue input;
   ASSIGN_VALUE_OR_RETURN_ERR(input, getNodeValueByName(op.input(0)));
@@ -937,11 +950,11 @@ llvm::Error ONNXModelLoader::loadLeakyRelu(const ONNX_NAMESPACE::NodeProto &op,
 
   RETURN_IF_ERR(addNodeAsOutput(op, N));
 
-  return llvm::Error::success();
+  return Error::success();
 }
 
-llvm::Error ONNXModelLoader::loadPad(const ONNX_NAMESPACE::NodeProto &op,
-                                     const ArgumentDictionaryTy &dict) {
+Error ONNXModelLoader::loadPad(const ONNX_NAMESPACE::NodeProto &op,
+                               const ArgumentDictionaryTy &dict) {
   const std::string &opName = loadOperatorName(op);
 
   // Input
@@ -963,7 +976,7 @@ llvm::Error ONNXModelLoader::loadPad(const ONNX_NAMESPACE::NodeProto &op,
       mode = PaddingMode::EDGE;
     } else {
       RETURN_ERR("Pad: Invalid mode",
-                 GlowErr::ErrorCode::MODEL_LOADER_UNSUPPORTED_ATTRIBUTE);
+                 ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_ATTRIBUTE);
     }
   }
   float value = 0.f; // Default
@@ -993,11 +1006,11 @@ llvm::Error ONNXModelLoader::loadPad(const ONNX_NAMESPACE::NodeProto &op,
   Node *N = G_.createPad(opName, input, outTy, mode, pads, value);
   RETURN_IF_ERR(addNodeAsOutput(op, N));
 
-  return llvm::Error::success();
+  return Error::success();
 }
 
-llvm::Error ONNXModelLoader::loadCast(const ONNX_NAMESPACE::NodeProto &op,
-                                      const ArgumentDictionaryTy &dict) {
+Error ONNXModelLoader::loadCast(const ONNX_NAMESPACE::NodeProto &op,
+                                const ArgumentDictionaryTy &dict) {
   const std::string &opName = loadOperatorName(op);
 
   // Input type
@@ -1013,7 +1026,7 @@ llvm::Error ONNXModelLoader::loadCast(const ONNX_NAMESPACE::NodeProto &op,
   RETURN_ERR_IF_NOT(
       ONNX_NAMESPACE::TensorProto_DataType_IsValid(toONNXTypeValue),
       "Cast: invalid target type",
-      GlowErr::ErrorCode::MODEL_LOADER_INVALID_PROTOBUF);
+      ErrorValue::ErrorCode::MODEL_LOADER_INVALID_PROTOBUF);
   ASSIGN_VALUE_OR_RETURN_ERR(
       targetKind, convertTensorProtoDataType(
                       ONNX_NAMESPACE::TensorProto_DataType(toONNXTypeValue)));
@@ -1027,12 +1040,11 @@ llvm::Error ONNXModelLoader::loadCast(const ONNX_NAMESPACE::NodeProto &op,
   Node *N = G_.createConvertTo(opName, input, targetKind);
   RETURN_IF_ERR(addNodeAsOutput(op, N));
 
-  return llvm::Error::success();
+  return Error::success();
 }
 
-llvm::Error
-ONNXModelLoader::loadSpaceToDepth(const ONNX_NAMESPACE::NodeProto &op,
-                                  const ArgumentDictionaryTy &dict) {
+Error ONNXModelLoader::loadSpaceToDepth(const ONNX_NAMESPACE::NodeProto &op,
+                                        const ArgumentDictionaryTy &dict) {
 
   // Input Type
   NodeValue input;
@@ -1053,13 +1065,12 @@ ONNXModelLoader::loadSpaceToDepth(const ONNX_NAMESPACE::NodeProto &op,
 
   RETURN_IF_ERR(addNodeAsOutput(op, N));
 
-  return llvm::Error::success();
+  return Error::success();
 }
 
-llvm::Error
-ONNXModelLoader::loadConstantOfShape(const ONNX_NAMESPACE::NodeProto &op,
-                                     const ArgumentDictionaryTy &dict,
-                                     bool isSplat) {
+Error ONNXModelLoader::loadConstantOfShape(const ONNX_NAMESPACE::NodeProto &op,
+                                           const ArgumentDictionaryTy &dict,
+                                           bool isSplat) {
   Tensor T(ElemKind::FloatTy, {1});
   T.getHandle().raw(0) = 0.0;
 
@@ -1120,11 +1131,11 @@ ONNXModelLoader::loadConstantOfShape(const ONNX_NAMESPACE::NodeProto &op,
     SN = G_.createSplat(loadOperatorName(op), ty, T.getHandle().raw(0));
   }
   RETURN_IF_ERR(addNodeAsOutput(op, SN));
-  return llvm::Error::success();
+  return Error::success();
 }
 
-llvm::Error ONNXModelLoader::loadTile(const ONNX_NAMESPACE::NodeProto &op,
-                                      const ArgumentDictionaryTy &dict) {
+Error ONNXModelLoader::loadTile(const ONNX_NAMESPACE::NodeProto &op,
+                                const ArgumentDictionaryTy &dict) {
   const std::string &opName = loadOperatorName(op);
   NodeValue in, repeats;
   ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
@@ -1151,10 +1162,10 @@ llvm::Error ONNXModelLoader::loadTile(const ONNX_NAMESPACE::NodeProto &op,
   }
 
   RETURN_IF_ERR(addNodeAsOutput(op, N));
-  return llvm::Error::success();
+  return Error::success();
 }
 
-llvm::Expected<bool>
+Expected<bool>
 ONNXModelLoader::foldOperator(const ONNX_NAMESPACE::NodeProto &op) {
   const unsigned numInputs = op.input_size();
   const std::string &typeName = op.op_type();
@@ -1175,15 +1186,15 @@ ONNXModelLoader::foldOperator(const ONNX_NAMESPACE::NodeProto &op) {
   Function *tmpF = G_.getParent()->createFunction("eval_const_fold__");
   ONNXModelLoader tmpLoader(*tmpF);
   tmpLoader.opsetVersion_ = opsetVersion_;
-  bool foldStatus = !errToBool(
+  bool foldStatus = !ERR_TO_BOOL(
       constantFoldInLoader<ONNXModelLoader, ONNX_NAMESPACE::NodeProto>(
           tmpF, tmpLoader, this, op));
   G_.getParent()->eraseFunction(tmpF);
   return foldStatus;
 }
 
-llvm::Error ONNXModelLoader::loadWhere(const ONNX_NAMESPACE::NodeProto &op,
-                                       const ArgumentDictionaryTy &dict) {
+Error ONNXModelLoader::loadWhere(const ONNX_NAMESPACE::NodeProto &op,
+                                 const ArgumentDictionaryTy &dict) {
   NodeValue cNV;
   ASSIGN_VALUE_OR_RETURN_ERR(cNV, getNodeValueByName(op.input(0)));
   NodeValue xNV;
@@ -1198,11 +1209,11 @@ llvm::Error ONNXModelLoader::loadWhere(const ONNX_NAMESPACE::NodeProto &op,
   Node *N = G_.createNodeWithBroadcast<SelectNode>(opName, -1, cNV, xNV, yNV);
 
   RETURN_IF_ERR(addNodeAsOutput(op, N));
-  return llvm::Error::success();
+  return Error::success();
 }
 
-llvm::Error ONNXModelLoader::loadCmpEQ(const ONNX_NAMESPACE::NodeProto &op,
-                                       const ArgumentDictionaryTy &dict) {
+Error ONNXModelLoader::loadCmpEQ(const ONNX_NAMESPACE::NodeProto &op,
+                                 const ArgumentDictionaryTy &dict) {
   NodeValue LHS;
   ASSIGN_VALUE_OR_RETURN_ERR(LHS, getNodeValueByName(op.input(0)));
   NodeValue RHS;
@@ -1211,11 +1222,11 @@ llvm::Error ONNXModelLoader::loadCmpEQ(const ONNX_NAMESPACE::NodeProto &op,
   Node *N = G_.createCmpEQ(loadOperatorName(op), LHS, RHS);
 
   RETURN_IF_ERR(addNodeAsOutput(op, N));
-  return llvm::Error::success();
+  return Error::success();
 }
 
-llvm::Error ONNXModelLoader::loadCmpLTE(const ONNX_NAMESPACE::NodeProto &op,
-                                        const ArgumentDictionaryTy &dict) {
+Error ONNXModelLoader::loadCmpLTE(const ONNX_NAMESPACE::NodeProto &op,
+                                  const ArgumentDictionaryTy &dict) {
   NodeValue LHS;
   ASSIGN_VALUE_OR_RETURN_ERR(LHS, getNodeValueByName(op.input(0)));
   NodeValue RHS;
@@ -1224,11 +1235,11 @@ llvm::Error ONNXModelLoader::loadCmpLTE(const ONNX_NAMESPACE::NodeProto &op,
   Node *N = G_.createCmpLTE(loadOperatorName(op), LHS, RHS);
 
   RETURN_IF_ERR(addNodeAsOutput(op, N));
-  return llvm::Error::success();
+  return Error::success();
 }
 
-llvm::Error ONNXModelLoader::loadSelect(const ONNX_NAMESPACE::NodeProto &op,
-                                        const ArgumentDictionaryTy &dict) {
+Error ONNXModelLoader::loadSelect(const ONNX_NAMESPACE::NodeProto &op,
+                                  const ArgumentDictionaryTy &dict) {
   NodeValue Cond;
   ASSIGN_VALUE_OR_RETURN_ERR(Cond, getNodeValueByName(op.input(0)));
   NodeValue LHS;
@@ -1242,11 +1253,11 @@ llvm::Error ONNXModelLoader::loadSelect(const ONNX_NAMESPACE::NodeProto &op,
   Node *N = G_.createSelect(loadOperatorName(op), outTy, Cond, LHS, RHS);
 
   RETURN_IF_ERR(addNodeAsOutput(op, N));
-  return llvm::Error::success();
+  return Error::success();
 }
 
-llvm::Error ONNXModelLoader::loadQuantize(const ONNX_NAMESPACE::NodeProto &op,
-                                          const ArgumentDictionaryTy &dict) {
+Error ONNXModelLoader::loadQuantize(const ONNX_NAMESPACE::NodeProto &op,
+                                    const ArgumentDictionaryTy &dict) {
   NodeValue in;
   ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
   float scale;
@@ -1260,11 +1271,11 @@ llvm::Error ONNXModelLoader::loadQuantize(const ONNX_NAMESPACE::NodeProto &op,
   Node *N = G_.createQuantize(loadOperatorName(op), in, outTy);
 
   RETURN_IF_ERR(addNodeAsOutput(op, N));
-  return llvm::Error::success();
+  return Error::success();
 }
 
-llvm::Error ONNXModelLoader::loadConvertTo(const ONNX_NAMESPACE::NodeProto &op,
-                                           const ArgumentDictionaryTy &dict) {
+Error ONNXModelLoader::loadConvertTo(const ONNX_NAMESPACE::NodeProto &op,
+                                     const ArgumentDictionaryTy &dict) {
   NodeValue in;
   ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
 
@@ -1274,22 +1285,22 @@ llvm::Error ONNXModelLoader::loadConvertTo(const ONNX_NAMESPACE::NodeProto &op,
   Node *N = G_.createConvertTo(loadOperatorName(op), in, outTy);
 
   RETURN_IF_ERR(addNodeAsOutput(op, N));
-  return llvm::Error::success();
+  return Error::success();
 }
 
-llvm::Error ONNXModelLoader::loadDequantize(const ONNX_NAMESPACE::NodeProto &op,
-                                            const ArgumentDictionaryTy &dict) {
+Error ONNXModelLoader::loadDequantize(const ONNX_NAMESPACE::NodeProto &op,
+                                      const ArgumentDictionaryTy &dict) {
   NodeValue in;
   ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
 
   Node *N = G_.createDequantize(loadOperatorName(op), in);
 
   RETURN_IF_ERR(addNodeAsOutput(op, N));
-  return llvm::Error::success();
+  return Error::success();
 }
 
-llvm::Error ONNXModelLoader::loadRegression(const ONNX_NAMESPACE::NodeProto &op,
-                                            const ArgumentDictionaryTy &dict) {
+Error ONNXModelLoader::loadRegression(const ONNX_NAMESPACE::NodeProto &op,
+                                      const ArgumentDictionaryTy &dict) {
   NodeValue in;
   ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
   NodeValue expected;
@@ -1298,11 +1309,11 @@ llvm::Error ONNXModelLoader::loadRegression(const ONNX_NAMESPACE::NodeProto &op,
   Node *N = G_.createRegression(loadOperatorName(op), in, expected);
 
   RETURN_IF_ERR(addNodeAsOutput(op, N));
-  return llvm::Error::success();
+  return Error::success();
 }
 
-llvm::Error ONNXModelLoader::loadBatchedAdd(const ONNX_NAMESPACE::NodeProto &op,
-                                            const ArgumentDictionaryTy &dict) {
+Error ONNXModelLoader::loadBatchedAdd(const ONNX_NAMESPACE::NodeProto &op,
+                                      const ArgumentDictionaryTy &dict) {
   NodeValue batch;
   ASSIGN_VALUE_OR_RETURN_ERR(batch, getNodeValueByName(op.input(0)));
   NodeValue sample;
@@ -1311,12 +1322,11 @@ llvm::Error ONNXModelLoader::loadBatchedAdd(const ONNX_NAMESPACE::NodeProto &op,
   Node *N = G_.createBatchedAdd(loadOperatorName(op), batch, sample);
 
   RETURN_IF_ERR(addNodeAsOutput(op, N));
-  return llvm::Error::success();
+  return Error::success();
 }
 
-llvm::Error
-ONNXModelLoader::loadScatterAssign(const ONNX_NAMESPACE::NodeProto &op,
-                                   const ArgumentDictionaryTy &dict) {
+Error ONNXModelLoader::loadScatterAssign(const ONNX_NAMESPACE::NodeProto &op,
+                                         const ArgumentDictionaryTy &dict) {
   NodeValue data;
   ASSIGN_VALUE_OR_RETURN_ERR(data, getNodeValueByName(op.input(0)));
   NodeValue indices;
@@ -1327,12 +1337,11 @@ ONNXModelLoader::loadScatterAssign(const ONNX_NAMESPACE::NodeProto &op,
   Node *N = G_.createScatterData(loadOperatorName(op), data, indices, slices);
 
   RETURN_IF_ERR(addNodeAsOutput(op, N));
-  return llvm::Error::success();
+  return Error::success();
 }
 
-llvm::Error
-ONNXModelLoader::loadIntLookupTable(const ONNX_NAMESPACE::NodeProto &op,
-                                    const ArgumentDictionaryTy &dict) {
+Error ONNXModelLoader::loadIntLookupTable(const ONNX_NAMESPACE::NodeProto &op,
+                                          const ArgumentDictionaryTy &dict) {
   NodeValue in;
   ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
 
@@ -1343,12 +1352,11 @@ ONNXModelLoader::loadIntLookupTable(const ONNX_NAMESPACE::NodeProto &op,
   Node *N = G_.createIntLookupTable(loadOperatorName(op), in, values, outTy);
 
   RETURN_IF_ERR(addNodeAsOutput(op, N));
-  return llvm::Error::success();
+  return Error::success();
 }
 
-llvm::Error
-ONNXModelLoader::loadLengthsRangeFill(const ONNX_NAMESPACE::NodeProto &op,
-                                      const ArgumentDictionaryTy &dict) {
+Error ONNXModelLoader::loadLengthsRangeFill(const ONNX_NAMESPACE::NodeProto &op,
+                                            const ArgumentDictionaryTy &dict) {
   NodeValue lengths;
   ASSIGN_VALUE_OR_RETURN_ERR(lengths, getNodeValueByName(op.input(0)));
   unsigned_t size;
@@ -1357,12 +1365,11 @@ ONNXModelLoader::loadLengthsRangeFill(const ONNX_NAMESPACE::NodeProto &op,
   Node *N = G_.createLengthsRangeFill(loadOperatorName(op), lengths, size);
 
   RETURN_IF_ERR(addNodeAsOutput(op, N));
-  return llvm::Error::success();
+  return Error::success();
 }
 
-llvm::Error
-ONNXModelLoader::loadRescaleQuantized(const ONNX_NAMESPACE::NodeProto &op,
-                                      const ArgumentDictionaryTy &dict) {
+Error ONNXModelLoader::loadRescaleQuantized(const ONNX_NAMESPACE::NodeProto &op,
+                                            const ArgumentDictionaryTy &dict) {
   NodeValue in;
   ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
   float scale;
@@ -1377,10 +1384,10 @@ ONNXModelLoader::loadRescaleQuantized(const ONNX_NAMESPACE::NodeProto &op,
   Node *N = G_.createRescaleQuantized(loadOperatorName(op), in, outTy);
 
   RETURN_IF_ERR(addNodeAsOutput(op, N));
-  return llvm::Error::success();
+  return Error::success();
 }
 
-llvm::Error ONNXModelLoader::loadRowwiseQuantizedSparseLengthsWeightedSum(
+Error ONNXModelLoader::loadRowwiseQuantizedSparseLengthsWeightedSum(
     const ONNX_NAMESPACE::NodeProto &op, const ArgumentDictionaryTy &dict) {
   Constant *data;
   ASSIGN_VALUE_OR_RETURN_ERR(data, getConstantByName(op.input(0)));
@@ -1399,10 +1406,10 @@ llvm::Error ONNXModelLoader::loadRowwiseQuantizedSparseLengthsWeightedSum(
       loadOperatorName(op), data, scales, offsets, weights, indices, lengths);
 
   RETURN_IF_ERR(addNodeAsOutput(op, N));
-  return llvm::Error::success();
+  return Error::success();
 }
 
-llvm::Error ONNXModelLoader::loadFusedRowwiseQuantizedSparseLengthsWeightedSum(
+Error ONNXModelLoader::loadFusedRowwiseQuantizedSparseLengthsWeightedSum(
     const ONNX_NAMESPACE::NodeProto &op, const ArgumentDictionaryTy &dict) {
   NodeValue data;
   ASSIGN_VALUE_OR_RETURN_ERR(data, getNodeValueByName(op.input(0)));
@@ -1417,12 +1424,11 @@ llvm::Error ONNXModelLoader::loadFusedRowwiseQuantizedSparseLengthsWeightedSum(
       loadOperatorName(op), data, weights, indices, lengths);
 
   RETURN_IF_ERR(addNodeAsOutput(op, N));
-  return llvm::Error::success();
+  return Error::success();
 }
 
-llvm::Error
-ONNXModelLoader::loadFullyConnected(const ONNX_NAMESPACE::NodeProto &op,
-                                    const ArgumentDictionaryTy &dict) {
+Error ONNXModelLoader::loadFullyConnected(const ONNX_NAMESPACE::NodeProto &op,
+                                          const ArgumentDictionaryTy &dict) {
   NodeValue in;
   ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
   Constant *W;
@@ -1438,21 +1444,21 @@ ONNXModelLoader::loadFullyConnected(const ONNX_NAMESPACE::NodeProto &op,
   Node *N = G_.createFullyConnected(loadOperatorName(op), in, W, B, axis);
 
   RETURN_IF_ERR(addNodeAsOutput(op, N));
-  return llvm::Error::success();
+  return Error::success();
 }
 
-llvm::Error ONNXModelLoader::loadSplat(const ONNX_NAMESPACE::NodeProto &op,
-                                       const ArgumentDictionaryTy &dict) {
+Error ONNXModelLoader::loadSplat(const ONNX_NAMESPACE::NodeProto &op,
+                                 const ArgumentDictionaryTy &dict) {
   return loadConstantOfShape(op, dict, true /* isSplat */);
 }
 
-llvm::Error ONNXModelLoader::loadRowwiseQuantizedFullyConnected(
+Error ONNXModelLoader::loadRowwiseQuantizedFullyConnected(
     const ONNX_NAMESPACE::NodeProto &op, const ArgumentDictionaryTy &dict) {
   // TODO
   RETURN_ERR("Not implemented.");
 }
 
-llvm::Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
+Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
   ArgumentDictionaryTy dict = loadArgumentMap(op);
   const std::string &typeName = op.op_type();
 
@@ -1461,7 +1467,7 @@ llvm::Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
   ASSIGN_VALUE_OR_RETURN_ERR(tryLoadCommonOperatorResult,
                              tryLoadCommonOperator(typeName, op, dict));
   if (tryLoadCommonOperatorResult) {
-    return llvm::Error::success();
+    return Error::success();
   }
 
   if (typeName == "Constant") {
@@ -1576,22 +1582,25 @@ llvm::Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
   if (typeName == "Splat") {
     return loadSplat(op, dict);
   }
+  if (typeName == "ArgMax") {
+    return loadArgMax(op, dict);
+  }
 
   RETURN_ERR("Failed to load operator " + typeName + " .",
-             GlowErr::ErrorCode::MODEL_LOADER_UNSUPPORTED_OPERATOR);
+             ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_OPERATOR);
 }
 
-llvm::Error ONNXModelLoader::loadInitializers(ONNX_NAMESPACE::GraphProto &net) {
+Error ONNXModelLoader::loadInitializers(ONNX_NAMESPACE::GraphProto &net) {
   // Load the network initializaers:
   for (const auto &in : net.initializer()) {
     Tensor T;
     RETURN_IF_ERR(loadTensor(in, &T));
     RETURN_IF_ERR(createAndRegisterConstant(in.name(), std::move(T)));
   }
-  return llvm::Error::success();
+  return Error::success();
 }
 
-llvm::Error ONNXModelLoader::setOutputNodes(ONNX_NAMESPACE::GraphProto &net) {
+Error ONNXModelLoader::setOutputNodes(ONNX_NAMESPACE::GraphProto &net) {
   if (net.output_size() == 0) {
     RETURN_ERR("Net output size must be greater than 0");
   }
@@ -1604,10 +1613,10 @@ llvm::Error ONNXModelLoader::setOutputNodes(ONNX_NAMESPACE::GraphProto &net) {
     outputVarsByName_[outputName] = SN->getPlaceholder();
   }
 
-  return llvm::Error::success();
+  return Error::success();
 }
 
-llvm::Error ONNXModelLoader::loadNetwork(ONNX_NAMESPACE::GraphProto &net) {
+Error ONNXModelLoader::loadNetwork(ONNX_NAMESPACE::GraphProto &net) {
   /// Load the network operators:
   for (int i = 0; i < net.node_size(); i++) {
     auto &op = net.node(i);
@@ -1621,18 +1630,17 @@ llvm::Error ONNXModelLoader::loadNetwork(ONNX_NAMESPACE::GraphProto &net) {
     RETURN_IF_ERR(loadOperator(op));
   }
 
-  return llvm::Error::success();
+  return Error::success();
 }
 
-ONNXModelLoader::ONNXModelLoader(Function &F, llvm::Error *errPtr)
+ONNXModelLoader::ONNXModelLoader(Function &F, Error *errPtr)
     : CommonOperatorLoader({}, {}, F, errPtr) {
   deleteUnusedConstants();
 }
 
-llvm::Error
-ONNXModelLoader::checkInputs(ONNX_NAMESPACE::GraphProto &net,
-                             llvm::ArrayRef<const char *> tensorNames,
-                             llvm::ArrayRef<TypeRef> types) {
+Error ONNXModelLoader::checkInputs(ONNX_NAMESPACE::GraphProto &net,
+                                   llvm::ArrayRef<const char *> tensorNames,
+                                   llvm::ArrayRef<TypeRef> types) {
   for (size_t i = 0; i < tensorNames.size(); i++) {
     // Look if a corresponding input exists.
     for (int j = 0; j < net.input_size(); j++) {
@@ -1658,22 +1666,22 @@ ONNXModelLoader::checkInputs(ONNX_NAMESPACE::GraphProto &net,
       }
     }
   }
-  return llvm::Error::success();
+  return Error::success();
 }
 
 ONNXModelLoader::ONNXModelLoader(const std::string &modelDescFilename,
                                  llvm::ArrayRef<const char *> tensorNames,
                                  llvm::ArrayRef<TypeRef> types, Function &F,
-                                 llvm::Error *errPtr)
+                                 Error *errPtr)
     : CommonOperatorLoader(tensorNames, types, F, errPtr) {
   // if errPtr already contains an error then don't continue with constructor
   if (errPtr && *errPtr) {
     return;
   }
 
-  // Lambda to setup the ONNXModelLoader and return any llvm::Errors that were
+  // Lambda to setup the ONNXModelLoader and return any Errors that were
   // raised.
-  auto setup = [&]() -> llvm::Error {
+  auto setup = [&]() -> Error {
     // The ONNX model that we are deserializing.
     ONNX_NAMESPACE::ModelProto modelDef;
     ASSIGN_VALUE_OR_RETURN_ERR(modelDef, loadProto(modelDescFilename));
@@ -1698,7 +1706,7 @@ ONNXModelLoader::ONNXModelLoader(const std::string &modelDescFilename,
 
     deleteUnusedConstants();
 
-    return llvm::Error::success();
+    return Error::success();
   };
 
   if (errPtr) {
@@ -1711,16 +1719,16 @@ ONNXModelLoader::ONNXModelLoader(const std::string &modelDescFilename,
 ONNXModelLoader::ONNXModelLoader(
     const void *model, uint32_t modelSize, uint32_t weightsCount,
     const onnxTensorDescriptorV1 *weightDescriptors, Function &F,
-    bool loadInputsAsPlaceholders, llvm::Error *errPtr)
+    bool loadInputsAsPlaceholders, Error *errPtr)
     : CommonOperatorLoader({}, {}, F, errPtr) {
   // if errPtr already contains an error then don't continue with constructor
   if (errPtr && *errPtr) {
     return;
   }
 
-  // Lambda to setup the ONNXModelLoader and return any llvm::Errors that were
+  // Lambda to setup the ONNXModelLoader and return any Errors that were
   // raised.
-  auto setup = [&]() -> llvm::Error {
+  auto setup = [&]() -> Error {
     ONNX_NAMESPACE::ModelProto modelDef;
     ASSIGN_VALUE_OR_RETURN_ERR(modelDef, loadProto(model, modelSize));
 
@@ -1740,7 +1748,7 @@ ONNXModelLoader::ONNXModelLoader(
 
     deleteUnusedConstants();
 
-    return llvm::Error::success();
+    return Error::success();
   };
 
   if (errPtr) {

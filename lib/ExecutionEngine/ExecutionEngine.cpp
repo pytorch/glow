@@ -104,11 +104,10 @@ void ExecutionEngine::runInternal(ExecutionContext &context,
   std::unique_ptr<ExecutionContext> contextPtr(&context);
   std::promise<void> runPromise;
   auto fut = runPromise.get_future();
-  llvm::Error runErr = llvm::Error::success();
-  MARK_ERR_CHECKED(runErr);
+  Error runErr = Error::empty();
   hostManager_->runNetwork(
       name, std::move(contextPtr),
-      [&runPromise, &runErr](runtime::RunIdentifierTy, llvm::Error err,
+      [&runPromise, &runErr](runtime::RunIdentifierTy, Error err,
                              std::unique_ptr<ExecutionContext> contextPtr) {
         // Don't delete context.
         contextPtr.release();

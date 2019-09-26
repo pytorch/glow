@@ -8,7 +8,7 @@ Glow now supports Heterogeneous Partition to address this problem. Given a netwo
 
 #### Design
 The figure below shows the Heterogeneous Partition flow: a network(i.e. Glow function) is first divided up into sub-networks based on backend types and then each sub-network is divided up based on given cost model. 
-![](HeterogeneousPartition.png)
+<img src="HeterogeneousPartition.png" width="50%">
 
 For Backend-Based-Partition : If a node/operator is only supported by backend A, it will be assigned to A. If a node is supported by both backends A and B, Glow chooses the one with higher priority. In addition, users can define backend-support/backend-unsupport op list. This feature allows users to run one network cross different type of backends. E.g. users can choose any node running on their accelorator and the rest running on CPU.
 
@@ -24,29 +24,46 @@ Glow also supports user-defined partition. This feature gives user the full cont
 
 ### Partition Debuggability
 
-The partition log can be dumpped when the llvm option  ```-log-partition=true ``` is enabled. The log contains the dot file of the final DAG and the info of each part, as the following example shows.
+The partition log can be dumpped when the llvm option  ```-log-partition=true ``` is enabled. If ```-dump-partition=true``` is enabled, the graph of each sub-network will be dumpped into a list of dot files. The log contains the dot file of the final DAG, the info of each part and a list of dot files for sub-networks, as the following example shows.
 ```
 [ RUN      ] PartitionerTest.SimpleHeterogeneousPartitioning
 WARNING: Logging before InitGoogleLogging() is written to STDERR
-I0620 15:42:56.381662 262399424 Partitioner.cpp:1029] The number of partitions is : 3, and the DAG is dumped into DAG.dot file.
-I0620 15:42:56.382202 262399424 Partitioner.cpp:57] Writing dotty graph for DAG after graph partitioning: DAG.dot
-I0620 15:42:56.382833 262399424 Partitioner.cpp:1038]        Partition 0:
-                       Name :   test_part1_part1
-                       BackendKind :      Interpreter
-                       Memory :      192
-                       LogicalDeviceIDs :    1
-I0620 15:42:56.382870 262399424 Partitioner.cpp:1038]               Partition 1:
-                       Name :   test_part2_part1
-                       BackendKind :      CPU
-                       Memory :      192
-                       LogicalDeviceIDs :    0
-I0620 15:42:56.382890 262399424 Partitioner.cpp:1038]               Partition 2:
-                       Name :   test_part3_part1
-                       BackendKind :      Interpreter
-                       Memory :      256
-                       LogicalDeviceIDs :	1
+I0828 15:55:28.063619 378844608 Partitioner.cpp:79] The number of partitions is : 3, and the DAG is dumped into DAG.dot file.
+I0828 15:55:28.064260 378844608 PartitionerBase.cpp:171] Writing dotty graph for DAG after graph partitioning: DAG.dot
+Writing dotty graph for Function to: partitionLogicalID1__test_part1_part1__Interpreter.dot
+Writing dotty graph for Function to: partitionLogicalID0__test_part2_part1__CPU.dot
+Writing dotty graph for Function to: partitionLogicalID1__test_part3_part1__Interpreter.dot
+I0828 15:55:28.065464 378844608 PartitionerUtils.cpp:494]	 Partition 0:
+      		       Name :	test_part1_part1
+		       BackendKind :	Interpreter
+		       total Memory :	192
+		       	     input size:	128
+			     output size:	64
+			     constant size:	0
+		       LogicalDeviceIDs :	1
+I0828 15:55:28.065485 378844608 PartitionerUtils.cpp:494] 	 Partition 1:
+      		       Name :	test_part2_part1
+		       BackendKind :	CPU
+		       total Memory :	192
+		       	     input size:	128
+		       	     output size:	64
+			     constant size:	0
+		       LogicalDeviceIDs :	0
+I0828 15:55:28.065495 378844608 PartitionerUtils.cpp:494] 	  Partition 2:
+      		       Name :	test_part3_part1
+		       BackendKind :	Interpreter
+		       total Memory :	256
+		       	     input size:	192
+		       	     output size:	64
+		       	     constant size:	0
+	 	       LogicalDeviceIDs :	1
+[       OK ] PartitionerTest.SimpleHeterogeneousPartitioning (3 ms)
 ```
 
 The figure below shows the genereated DAG:
 
-![](DAG_example.png)
+<img src="DAG_example.png" width="60%">
+
+The figures below shows the graph of each each sub-network after partitioning.
+
+<img src="partition1.png" width="30%"> <img src="partition2.png" width="30%"> <img src="partition3.png" width="30%">

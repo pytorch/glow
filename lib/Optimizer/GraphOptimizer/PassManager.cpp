@@ -136,7 +136,12 @@ bool FunctionPassManager::runPrePass(Function *F,
   }
   if (verifyBeforeAllPassesOpt ||
       listContainsString(verifyBeforePassesOpt, P.getName())) {
-    CHECK(F->verify());
+    if (backend_) {
+      // Do backend-specific verification.
+      CHECK(backend_->verify(*F));
+    } else {
+      CHECK(F->verify());
+    }
   }
   return false;
 }
@@ -156,7 +161,12 @@ bool FunctionPassManager::runPostPass(Function *F,
   }
   if (verifyAfterAllPassesOpt ||
       listContainsString(verifyAfterPassesOpt, P.getName())) {
-    CHECK(F->verify());
+    if (backend_) {
+      // Do backend-specific verification.
+      CHECK(backend_->verify(*F));
+    } else {
+      CHECK(F->verify());
+    }
   }
   return false;
 }
@@ -169,6 +179,7 @@ FunctionPassManager::createFunctionPass(FunctionPassID passID) {
     return llvm::make_unique<PASS_NAME>();
 #include "glow/Optimizer/GraphOptimizer/FunctionPasses.def"
   }
+  LOG(DFATAL) << "Cannot reach here.";
 }
 
 bool FunctionPassManager::runPass(const FunctionPassConfig &passConfig,

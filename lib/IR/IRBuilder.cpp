@@ -96,6 +96,25 @@ MaxPoolWithArgmaxInst *IRBuilder::createMaxPoolWithArgmaxOp(
                                      strides, pads, layout);
 }
 
+ArgMaxInst *IRBuilder::createArgMaxOp(llvm::StringRef name, Value *input,
+                                      unsigned_t axis, bool keepDims) {
+  auto idim = input->dims();
+
+  ShapeVector odim;
+  for (size_t i = 0, e = 4; i < e; i++) {
+    if (i == axis && !keepDims) {
+      continue;
+    } else {
+      odim.push_back(i == axis ? 1 : idim[i]);
+    }
+  }
+
+  // Allocate storage for flattened NCHW index of max element.
+  Value *argmax = createAllocActivationInst(name.str() + ".argmax",
+                                            ElemKind::Int64ITy, odim);
+  return createArgMaxInst(name, argmax, input, axis, keepDims);
+}
+
 AvgPoolInst *IRBuilder::createAvgPoolOp(Value *input,
                                         llvm::ArrayRef<unsigned_t> kernels,
                                         llvm::ArrayRef<unsigned_t> strides,

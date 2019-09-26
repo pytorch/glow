@@ -207,6 +207,12 @@ void PartitionerBase::dumpDAG(llvm::StringRef dotFilename,
     auto *node = nodes[i];
     for (size_t j = 0; j < node->children.size(); j++) {
       auto child = node->children[j];
+      if (node->name.compare(child->name) == 0) {
+        // If a network is too small to be partitioned, the dummy node's name
+        // and its child (i.e. the original network) share the same name. The
+        // edge will create loop. So in this case, this edge just be ignored.
+        continue;
+      }
       myfile << "\"" << escapeDottyString(node->name) << "\""
              << " -> "
              << "\"" << escapeDottyString(child->name) << "\""

@@ -63,15 +63,13 @@ void profileQuantization(PlaceholderBindings &bindings, Function *F);
 /// Optimize the Function \p F given compilation options \p cctx for Backend \B.
 /// \returns success if all nodes in the final resulting optimized Function are
 /// supported by \p B; if not, this represents a compiler error.
-llvm::Error optimizeFunction(Function *F, const Backend &B,
-                             CompilationContext &cctx);
+Error optimizeFunction(Function *F, const Backend &B, CompilationContext &cctx);
 
 /// Optimize the Function \p F given compilation options \p cctx performing
 /// backend-independent optimizations that can be done before lowering.
 /// \returns success if there were no compiler errors; if not, this represents a
 /// compiler error.
-llvm::Error optimizeFunctionBeforeLowering(Function *F,
-                                           CompilationContext &cctx);
+Error optimizeFunctionBeforeLowering(Function *F, CompilationContext &cctx);
 
 /// Perform a compile-time constant folding of the node \p N.
 /// \returns list of constants which are the result of the constant-folding.
@@ -82,9 +80,21 @@ std::vector<Constant *> constantFold(Node *N);
 /// Execute function \p F by the \p backend using the provided \p bindings and
 /// the compilation context \p cctx.
 /// \returns error if function is not a constant function.
-llvm::Error executeConstantFunction(Backend &backend, Function &F,
-                                    PlaceholderBindings &bindings,
-                                    CompilationContext &cctx);
+Error executeConstantFunction(Backend &backend, Function &F,
+                              PlaceholderBindings &bindings,
+                              CompilationContext &cctx);
+
+/// Perform vertical split of FC weights in a given function.
+/// Optimization could facilitate parallel execution of FCs on multiple device
+/// cores.
+/// \returns true in case split took place.
+/// \param[in,out] F           function to optimize.
+/// \param[in]     numOfChunks number of chunks to split weights and bias into.
+/// \param[in]     minKToSplit minimum size of the second dimension of weights
+///                            when the split is applied.
+bool executeVerticalFCWeightsSplit(Function *F, unsigned numOfChunks,
+                                   unsigned minKToSplit);
+
 } // namespace glow
 
 #endif // GLOW_OPTIMIZER_GRAPHOPTIMIZER_GRAPHOPTIMIZER_H

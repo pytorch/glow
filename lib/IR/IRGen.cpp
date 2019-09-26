@@ -138,7 +138,7 @@ void IRGenVisitor::post(Node *parent, Node *N) {
     builder_.createConvolutionGradInst(
         N->getName(), input, filter, outGrad, inG, filterG, biasG,
         CG->getKernels(), CG->getStrides(), CG->getPads(), CG->getGroup(),
-        CG->getDilation(), CG->getLayout());
+        CG->getDilation(), CG->getLayout(), CG->getFusedActivation());
 
     registerIR(CG->getGradOfInputNamedInput(), inG);
     registerIR(CG->getGradOfInputNamedFilter(), filterG);
@@ -156,6 +156,14 @@ void IRGenVisitor::post(Node *parent, Node *N) {
     nodeToInstr_[N] = V;
     registerIR(P->getResult(), dest);
     registerIR(P->getArgmax(), argmax);
+    break;
+  }
+  case glow::Kinded::Kind::ArgMaxNodeKind: {
+    auto *P = cast<ArgMaxNode>(N);
+    auto *in = valueForNode(P->getInput());
+    auto *V = builder_.createArgMaxOp(N->getName(), in, P->getAxis(),
+                                      P->getKeepDims());
+    registerIR(P->getArgmax(), V->getArgmax());
     break;
   }
   case glow::Kinded::Kind::MaxPoolGradNodeKind: {
@@ -191,6 +199,20 @@ void IRGenVisitor::post(Node *parent, Node *N) {
     builder_.createAvgPoolGradInst(N->getName(), outW, outG, inG,
                                    PG->getKernels(), PG->getStrides(),
                                    PG->getPads(), PG->getLayout());
+    registerIR(PG->getGradOfInputNamedInput(), inG);
+    break;
+  }
+  case glow::Kinded::Kind::AdaptiveAvgPoolGradNodeKind: {
+    auto *PG = cast<AdaptiveAvgPoolGradNode>(N);
+
+    auto poolOut = PG->getOriginalOutputForResult();
+    auto *outW = valueForNode(poolOut);
+    auto *outG = valueForNode(PG->getGradOfOriginalOutputNamedResult());
+
+    auto *inG = builder_.createAllocActivationInst("pool.outG",
+                                                   PG->getInput().getType());
+
+    builder_.createAdaptiveAvgPoolGradInst(N->getName(), outW, outG, inG);
     registerIR(PG->getGradOfInputNamedInput(), inG);
     break;
   }
@@ -425,5 +447,12 @@ void IRFunction::generateIR(const Backend &B) {
 
   for (auto &N : ScheduledNodes) {
     N->visit(nullptr, &irgen);
+  }
+
+  if (!B.verify(*this)) {
+    EXIT_ON_ERR(
+        MAKE_ERR(ErrorValue::ErrorCode::COMPILE_UNSUPPORTED_IR_AFTER_GENERATE,
+                 "Unsupported instruction(s) found after generating IR " +
+                     getName().str() + " for backend " + B.getBackendName()));
   }
 }

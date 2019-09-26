@@ -232,6 +232,23 @@ TEST(GraphAutoGrad, checkMatMulGradTest) {
   EE.compile(CompilationMode::Train);
 }
 
+// Check that we can differentiate functions that use Tile.
+TEST(GraphAutoGrad, checkTileGradTest) {
+  ExecutionEngine EE;
+  TrainingConfig TC;
+
+  auto &Mod = EE.getModule();
+  Function *F = Mod.createFunction("main");
+
+  auto *A = Mod.createPlaceholder(ElemKind::FloatTy, {10, 10}, "A", false);
+  auto *Tile = F->createTile("tile", A, /*tiles=*/5, /*axis=*/1);
+
+  F->createSave("save", Tile);
+
+  glow::differentiate(F, TC);
+  EE.compile(CompilationMode::Train);
+}
+
 /// Check that we can differentiate functions that use BatchedReduceAddNode.
 TEST(GraphAutoGrad, checkBatchedReduceAddGradTest) {
   ExecutionEngine EE;
@@ -324,6 +341,29 @@ TEST(GraphAutoGrad, checkGatherGrad3DIndexTest) {
 
   auto *G = F->createGather("gather", Data, Indices, 0 /*batchDims*/);
   auto *R = F->createSave("save", G);
+  Bindings.allocate(R->getPlaceholder());
+
+  glow::differentiate(F, TC);
+  EE.compile(CompilationMode::Train);
+}
+
+TEST(GraphAutoGrad, checkAdaptiveAvgPoolGradTest) {
+  ExecutionEngine EE;
+  TrainingConfig TC;
+  PlaceholderBindings Bindings;
+
+  auto &Mod = EE.getModule();
+  Function *F = Mod.createFunction("main");
+
+  auto *Data =
+      Mod.createPlaceholder(ElemKind::FloatTy, {1, 8, 4, 1}, "Data", false);
+
+  auto HandleData = Bindings.allocate(Data)->getHandle<float>();
+  HandleData.randomize(-3.0, 3.0, Mod.getPRNG());
+
+  auto outTy = Mod.uniqueType(ElemKind::FloatTy, {1, 3, 3, 1});
+  Node *A = F->createAdaptiveAvgPool("pool", Data, outTy);
+  auto *R = F->createSave("save", A);
   Bindings.allocate(R->getPlaceholder());
 
   glow::differentiate(F, TC);

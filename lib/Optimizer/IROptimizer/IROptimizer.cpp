@@ -1509,6 +1509,12 @@ static void performDebugInstrumentation(IRFunction &M) {
       it = next;
       continue;
     }
+    // Don't instrument tensorview since it can lead to liveness verification
+    // failures if the tensorview happens before any writes to the tensor.
+    if (isa<TensorViewInst>(I)) {
+      it = next;
+      continue;
+    }
     auto instrName = I->getName();
     for (const auto &Op : I->getOperands()) {
       // Dump inputs of the current instruction before the instruction.
@@ -1647,6 +1653,12 @@ glow::generateAndOptimizeIR(Function *F, const Backend &B,
   auto IR = llvm::make_unique<IRFunction>(F);
   IR->generateIR(B);
   ::glow::optimize(*IR, shouldShareBuffers);
+  if (!B.verify(*IR)) {
+    EXIT_ON_ERR(MAKE_ERR(
+        ErrorValue::ErrorCode::COMPILE_UNSUPPORTED_IR_AFTER_OPTIMIZE,
+        "Unsupported instruction(s) found after optimizing IR " +
+            IR->getName().str() + " for backend " + B.getBackendName()));
+  }
   return IR;
 }
 

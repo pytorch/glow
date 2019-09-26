@@ -37,6 +37,8 @@ class LLVMBackend : public BackendUsingGlowIR {
   std::string arch_;
   /// Cpu used by this backend.
   std::string cpu_;
+  /// Code model used by this backend.
+  llvm::CodeModel::Model codeModel_;
 
 public:
   LLVMBackend();
@@ -52,6 +54,12 @@ public:
   llvm::StringRef getCPU() const { return cpu_; }
   /// Sets cpu used by this backend.
   void setCPU(llvm::StringRef cpu) { cpu_ = cpu; }
+  /// \returns code model used by this backend.
+  llvm::CodeModel::Model getCodeModel() const { return codeModel_; }
+  /// Sets code model used by this backend.
+  void setCodeModel(llvm::CodeModel::Model codeModel) {
+    codeModel_ = codeModel;
+  }
   /// @name Backend methods.
   /// This is the implementation of the Backend interface.
   ///@{
@@ -63,7 +71,7 @@ public:
   virtual std::unique_ptr<CompiledFunction>
   compileIRWithoutConstants(IRFunction *IR) const;
 
-  virtual llvm::Expected<std::unique_ptr<CompiledFunction>>
+  virtual Expected<std::unique_ptr<CompiledFunction>>
   compile(Function *F, const BackendOptions &opts) const override;
 
   virtual void save(Function *F, llvm::StringRef outputDir,

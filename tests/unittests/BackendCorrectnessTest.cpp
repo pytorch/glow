@@ -36,9 +36,8 @@ protected:
   std::string backendName_{GetParam()};
 };
 
-class CPUOnly : public BackendCorrectnessTest {};
-
 TEST_P(BackendCorrectnessTest, convTest) {
+  CHECK_IF_ENABLED();
   PseudoRNG PRNG;
   Tensor inputs(ElemKind::FloatTy, {20, 41, 32, 6});
   Tensor kernel(ElemKind::FloatTy, {10, 5, 5, 6});
@@ -57,7 +56,8 @@ TEST_P(BackendCorrectnessTest, convTest) {
   EXPECT_TRUE(out1.isEqual(out2));
 }
 
-TEST_P(CPUOnly, extract3Dtest) {
+TEST_P(BackendCorrectnessTest, extract3Dtest) {
+  CHECK_IF_ENABLED();
   PseudoRNG PRNG;
   Tensor inputs(ElemKind::FloatTy, {5, 100, 100});
   inputs.getHandle().initXavier(1, PRNG);
@@ -70,7 +70,8 @@ TEST_P(CPUOnly, extract3Dtest) {
   EXPECT_TRUE(out1.isEqual(out2));
 }
 
-TEST_P(CPUOnly, quantizedConvTest) {
+TEST_P(BackendCorrectnessTest, quantizedConvTest) {
+  CHECK_IF_ENABLED();
   PseudoRNG PRNG;
   Tensor inputs(ElemKind::Int8QTy, {20, 41, 32, 6}, 0.025, -7);
   Tensor kernel(ElemKind::Int8QTy, {10, 5, 5, 6}, 0.003, 3);
@@ -90,6 +91,7 @@ TEST_P(CPUOnly, quantizedConvTest) {
 }
 
 TEST_P(BackendCorrectnessTest, convGradTest) {
+  CHECK_IF_ENABLED();
   PseudoRNG PRNG;
   Tensor inputs(ElemKind::FloatTy, {9, 8, 5, 4});
   Tensor kernel1(ElemKind::FloatTy, {3, 5, 3, 4});
@@ -121,7 +123,8 @@ TEST_P(BackendCorrectnessTest, convGradTest) {
   EXPECT_TRUE(out1.isEqual(out2));
 }
 
-TEST_P(CPUOnly, localResponseNormalizationTest) {
+TEST_P(BackendCorrectnessTest, localResponseNormalizationTest) {
+  CHECK_IF_ENABLED();
   PseudoRNG PRNG;
   Tensor inputs(ElemKind::FloatTy, {8, 15, 13, 30});
   inputs.getHandle().initXavier(1, PRNG);
@@ -134,7 +137,8 @@ TEST_P(CPUOnly, localResponseNormalizationTest) {
   EXPECT_TRUE(out1.isEqual(out2));
 }
 
-TEST_P(CPUOnly, localResponseNormalizationGradTest) {
+TEST_P(BackendCorrectnessTest, localResponseNormalizationGradTest) {
+  CHECK_IF_ENABLED();
   PseudoRNG PRNG;
   Tensor inputs(ElemKind::FloatTy, {5, 4, 7, 3});
   Tensor weights(ElemKind::FloatTy, {84, 180});
@@ -175,7 +179,7 @@ public:
 
   std::string getBackendName() const override { return "CPU"; }
 
-  llvm::Expected<std::unique_ptr<CompiledFunction>>
+  Expected<std::unique_ptr<CompiledFunction>>
   compile(Function *F, const BackendOptions &opts) const override {
     return backend_->compile(F, opts);
   }
@@ -192,7 +196,8 @@ public:
   }
 };
 
-TEST_P(CPUOnly, dataParallelStackingTest) {
+TEST_P(BackendCorrectnessTest, dataParallelStackingTest) {
+  CHECK_IF_ENABLED();
   // Create an activation of size 3 and create two overlapping tensorviews of
   // this activation. Perform data-parallel instructions involving those
   // tensorviews. The backend's logic for the creation of stacked kernels should
@@ -253,13 +258,14 @@ TEST_P(CPUOnly, dataParallelStackingTest) {
 
   MockCPUBackend backend;
   auto function = backend.compileIR(std::move(M));
-  ASSERT_FALSE(errToBool(function->execute(ctx.get())));
+  ASSERT_FALSE(ERR_TO_BOOL(function->execute(ctx.get())));
   auto H = outputTensor->getHandle();
   EXPECT_EQ(H.at(0), 3);
   EXPECT_EQ(H.at(1), 4);
 }
 
-TEST_P(CPUOnly, AvgPoolGradTest) {
+TEST_P(BackendCorrectnessTest, AvgPoolGradTest) {
+  CHECK_IF_ENABLED();
   PseudoRNG PRNG;
   Tensor inputs(ElemKind::FloatTy, {5, 7, 6, 3});
   Tensor weights(ElemKind::FloatTy, {126, 72});
@@ -288,6 +294,7 @@ TEST_P(CPUOnly, AvgPoolGradTest) {
 }
 
 TEST_P(BackendCorrectnessTest, MaxPoolGradTest) {
+  CHECK_IF_ENABLED();
   PseudoRNG PRNG;
   Tensor inputs(ElemKind::FloatTy, {4, 8, 7, 2});
   Tensor weights(ElemKind::FloatTy, {112, 84});
@@ -315,7 +322,8 @@ TEST_P(BackendCorrectnessTest, MaxPoolGradTest) {
   EXPECT_TRUE(out1.isEqual(out2));
 }
 
-TEST_P(CPUOnly, intLookupTable) {
+TEST_P(BackendCorrectnessTest, intLookupTable) {
+  CHECK_IF_ENABLED();
   PseudoRNG PRNG;
   constexpr size_t inputSize = 100;
   Tensor inputs(ElemKind::Int8QTy, {inputSize}, 0.8, 4);
@@ -335,6 +343,7 @@ TEST_P(CPUOnly, intLookupTable) {
 }
 
 TEST_P(BackendCorrectnessTest, smallConv) {
+  CHECK_IF_ENABLED();
   Tensor input(ElemKind::FloatTy, {1, 3, 3, 32});
   input.getHandle().clear(0.2);
   Tensor out1;
@@ -347,7 +356,8 @@ TEST_P(BackendCorrectnessTest, smallConv) {
 }
 
 /// This test targets the DKKC8 optimization.
-TEST_P(CPUOnly, groupConvTest) {
+TEST_P(BackendCorrectnessTest, groupConvTest) {
+  CHECK_IF_ENABLED();
   std::array<size_t, 4> S{{1, 2, 1, 128}};
   llvm::ArrayRef<size_t> shape(S);
   Tensor out1(ElemKind::FloatTy, shape);
@@ -359,7 +369,8 @@ TEST_P(CPUOnly, groupConvTest) {
 }
 
 /// This test targets the DKKC8 optimization.
-TEST_P(CPUOnly, nonSquarePaddingConvTest) {
+TEST_P(BackendCorrectnessTest, nonSquarePaddingConvTest) {
+  CHECK_IF_ENABLED();
   Tensor out1;
   Tensor out2;
   inferNonSquarePaddingConv(&out1, "CPU");
@@ -369,7 +380,8 @@ TEST_P(CPUOnly, nonSquarePaddingConvTest) {
 }
 
 /// This non-square kernel test targets the DKKC8 optimization.
-TEST_P(CPUOnly, nonSquareKernelConvTest) {
+TEST_P(BackendCorrectnessTest, nonSquareKernelConvTest) {
+  CHECK_IF_ENABLED();
   Tensor out1;
   Tensor out2;
   inferNonSquareKernelConv(&out1, "CPU");
@@ -379,7 +391,8 @@ TEST_P(CPUOnly, nonSquareKernelConvTest) {
 }
 
 /// This non-square stride test targets the DKKC8 optimization.
-TEST_P(CPUOnly, nonSquareStrideConvTest) {
+TEST_P(BackendCorrectnessTest, nonSquareStrideConvTest) {
+  CHECK_IF_ENABLED();
   Tensor out1;
   Tensor out2;
   inferNonSquareStrideConv(&out1, "CPU");
@@ -389,7 +402,8 @@ TEST_P(CPUOnly, nonSquareStrideConvTest) {
 }
 
 /// This test targets the DKKC8 opt correctionimization.
-TEST_P(CPUOnly, convDKKC8Test) {
+TEST_P(BackendCorrectnessTest, convDKKC8Test) {
+  CHECK_IF_ENABLED();
   Tensor out1;
   Tensor out2;
   inferConvDKKC8(&out1, "CPU");
@@ -398,6 +412,7 @@ TEST_P(CPUOnly, convDKKC8Test) {
 }
 
 TEST_P(BackendCorrectnessTest, softmaxGradTest) {
+  CHECK_IF_ENABLED();
   PseudoRNG PRNG;
   std::array<size_t, 2> S{{8, 23}};
   llvm::ArrayRef<size_t> shape(S);
@@ -422,6 +437,7 @@ TEST_P(BackendCorrectnessTest, softmaxGradTest) {
 }
 
 TEST_P(BackendCorrectnessTest, convOps) {
+  CHECK_IF_ENABLED();
   PseudoRNG PRNG;
   // Construct networks with a different convolution depth.
   for (auto depth : {4, 64, 128}) {
@@ -438,18 +454,21 @@ TEST_P(BackendCorrectnessTest, convOps) {
 }
 
 TEST_P(BackendCorrectnessTest, basicFCNet) {
+  CHECK_IF_ENABLED();
   compareAgainstInterpreter(GetParam(), createAndInitBasicFCNet,
                             ElemKind::FloatTy, ElemKind::FloatTy, 0.0004f,
                             parCloneCountOpt);
 }
 
 TEST_P(BackendCorrectnessTest, basicFCNetQuantized) {
+  CHECK_IF_ENABLED();
   compareAgainstInterpreter(GetParam(), createAndInitBasicFCNet,
                             ElemKind::Int8QTy, ElemKind::Int8QTy, 0.0001f,
                             parCloneCountOpt);
 }
 
-TEST_P(CPUOnly, complexNet1) {
+TEST_P(BackendCorrectnessTest, complexNet1) {
+  CHECK_IF_ENABLED();
   PseudoRNG PRNG;
   std::array<size_t, 4> S{{8, 7, 14, 11}};
   llvm::ArrayRef<size_t> shape(S);
@@ -472,6 +491,7 @@ TEST_P(CPUOnly, complexNet1) {
 }
 
 TEST_P(BackendCorrectnessTest, tinyResnet) {
+  CHECK_IF_ENABLED();
   PseudoRNG PRNG;
   Tensor input(ElemKind::FloatTy, {1, 7, 7, 64});
   input.getHandle().randomize(0, 1.0, PRNG);
@@ -499,7 +519,8 @@ TEST_P(BackendCorrectnessTest, tinyResnet) {
 }
 
 // Test MaxSplat transformation in CPU backend.
-TEST_P(CPUOnly, maxSplatTest) {
+TEST_P(BackendCorrectnessTest, maxSplatTest) {
+  CHECK_IF_ENABLED();
   PseudoRNG PRNG;
   Tensor input(ElemKind::Int8QTy, {5, 5}, 0.001, -10);
   input.getHandle<int8_t>().randomize(-128, 127, PRNG);
@@ -511,12 +532,4 @@ TEST_P(CPUOnly, maxSplatTest) {
   EXPECT_TRUE(out1.isEqual(out2));
 }
 
-#ifdef GLOW_WITH_CPU
-INSTANTIATE_TEST_CASE_P(CPU, BackendCorrectnessTest, ::testing::Values("CPU"));
-INSTANTIATE_TEST_CASE_P(CPU, CPUOnly, ::testing::Values("CPU"));
-#endif // GLOW_WITH_CPU
-
-#ifdef GLOW_WITH_OPENCL
-INSTANTIATE_TEST_CASE_P(OpenCL, BackendCorrectnessTest,
-                        ::testing::Values("OpenCL"));
-#endif // GLOW_WITH_OPENCL
+INSTANTIATE_BACKEND_TEST(BackendCorrectnessTest);

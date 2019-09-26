@@ -86,7 +86,8 @@ int main(int argc, char **argv) {
       .addMember(MemberType::VectorUnsigned, "Pads")
       .addMember(MemberType::Unsigned, "Group")
       .addMember(MemberType::Unsigned, "Dilation")
-      .addMember(MemberType::Unsigned, "Layout")
+      .addMember(MEMBER_TYPE_INFO(ConvolutionLayout), "Layout")
+      .addMember(MEMBER_TYPE_INFO(FusedActivation), "FusedActivation")
       .autoIRGen()
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Src", "Filter"})
       .addGradientInstr({"Src", "Filter"}, {"Dest", "Src", "Filter", "Bias"});
@@ -154,11 +155,19 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
       .addGradientInstr({"Dest"}, {"Dest", "Src"});
 
+  BB.newInstr("ArgMax")
+      .addOperand("Argmax", OperandKind::Out)
+      .addOperand("Input", OperandKind::In)
+      .addMember(MemberType::Unsigned, "Axis")
+      .addMember(MemberType::Boolean, "KeepDims")
+      .autoVerify(VerifyKind::NoVerify);
+
   BB.newInstr("AdaptiveAvgPool")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Src", OperandKind::In)
       .autoIRGen()
-      .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"});
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
+      .addGradientInstr({"Dest"}, {"Dest", "Src"});
 
   BB.newInstr("RowwiseQuantizedFullyConnected")
       .addOperand("Dest", OperandKind::Out)
@@ -442,6 +451,16 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::SameShape, {"Dest", "LHS"})
       .autoVerify(VerifyKind::SameElementType, {"Dest", "ElemKind::BoolTy"})
       .autoIRGen("CmpEQ");
+
+  BB.newInstr("ElementCmpLT")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("LHS", OperandKind::In)
+      .addOperand("RHS", OperandKind::In)
+      .dataParallel()
+      .autoVerify(VerifyKind::SameShape, {"Dest", "LHS", "RHS"})
+      .autoVerify(VerifyKind::SameShape, {"LHS", "RHS"})
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "ElemKind::BoolTy"})
+      .autoIRGen("CmpLT");
 
   BB.newInstr("ElementIsNaN")
       .addOperand("Dest", OperandKind::Out)

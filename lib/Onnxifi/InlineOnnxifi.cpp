@@ -48,7 +48,7 @@ InlineGraph::initGraph(const void *onnxModel, size_t onnxModelSize,
   function_ = executionEngine_.getModule().createFunction("function");
 
   std::unique_ptr<ONNXIFIModelLoader> loader =
-      TEMP_EXIT_ON_ERR(ONNXIFIModelLoader::parse(
+      EXIT_ON_ERR(ONNXIFIModelLoader::parse(
           onnxModel, onnxModelSize, weightCount, weightDescriptors, *function_,
           true /*loadInputsAsPlaceholders*/, backendPtr_->getUseOnnx()));
 

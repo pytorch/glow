@@ -38,7 +38,7 @@ TensorInitializer getDefaultTensorInitializer();
 
 /// Function takes glow::Function \p F, \p bindings, \p selected placeholder,
 // and \p initializer for the input weights.
-llvm::Error prepareFunctionForTraining(
+Error prepareFunctionForTraining(
     Function *F, PlaceholderBindings &bindings, Placeholder *&selected,
     TensorInitializer &&initializer = getDefaultTensorInitializer());
 } // namespace glow

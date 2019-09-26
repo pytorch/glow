@@ -130,7 +130,22 @@ llvm::cl::list<unsigned> expectedMatchingLabels(
     llvm::cl::desc("The comma delimited list of the matching lables"),
     llvm::cl::value_desc("int"), llvm::cl::ZeroOrMore, llvm::cl::CommaSeparated,
     llvm::cl::cat(imageLoaderCat));
-} // namespace
+
+llvm::cl::opt<std::string> tracePath("trace-path",
+                                     llvm::cl::desc("Write trace logs to disk"),
+                                     llvm::cl::init(""),
+                                     llvm::cl::cat(imageLoaderCat));
+
+llvm::cl::opt<bool>
+    autoInstrument("auto-instrument",
+                   llvm::cl::desc("Add instrumentation for operator tracing"),
+                   llvm::cl::Optional, llvm::cl::init(false),
+                   llvm::cl::cat(imageLoaderCat));
+
+std::mutex eventLock;
+std::unique_ptr<TraceContext> traceContext;
+
+} // unnamed namespace
 
 /// Write a prompt to stdout asking for filenames for classification. Read in
 /// those filenames and add them to \p filenames. \p filenames is cleared before
@@ -224,7 +239,9 @@ buildAndCompileAndGetInAndOutPair(Loader &loader, PlaceholderBindings &bindings,
 
   // Compile the model, and perform quantization/emit a bundle/dump debug info
   // if requested from command line.
-  loader.compile(bindings);
+  CompilationContext cctx{&bindings};
+  cctx.backendOpts.autoInstrument = autoInstrument;
+  loader.compile(cctx);
 
   // The image name that the model expects must be passed on the command line.
   const char *inputName = modelInputName.c_str();
@@ -417,22 +434,28 @@ static void runInference(runtime::HostManager *hostManager, std::string name,
                          std::promise<void> &runPromise,
                          std::atomic<unsigned> &inflight,
                          std::atomic<int> &dispatched) {
-  hostManager->runNetwork(name, std::move(batch),
-                          [&runPromise, &inflight, &dispatched, hostManager,
-                           name](runtime::RunIdentifierTy, llvm::Error err,
-                                 std::unique_ptr<ExecutionContext> contextPtr) {
-                            EXIT_ON_ERR(std::move(err));
-                            // Kick off another run.
-                            if (dispatched.fetch_sub(1) > 0) {
-                              inflight++;
-                              runInference(hostManager, name,
-                                           std::move(contextPtr), runPromise,
-                                           inflight, dispatched);
-                            }
-                            if (--inflight == 0) {
-                              runPromise.set_value();
-                            }
-                          });
+  hostManager->runNetwork(
+      name, std::move(batch),
+      [&runPromise, &inflight, &dispatched, hostManager,
+       name](runtime::RunIdentifierTy, Error err,
+             std::unique_ptr<ExecutionContext> contextPtr) {
+        EXIT_ON_ERR(std::move(err));
+        if (!tracePath.empty()) {
+          std::lock_guard<std::mutex> l(eventLock);
+          // Merge this run's TraceEvents into the global
+          // TraceContext.
+          traceContext->merge(contextPtr->getTraceContext());
+        }
+        // Kick off another run.
+        if (dispatched.fetch_sub(1) > 0) {
+          inflight++;
+          runInference(hostManager, name, std::move(contextPtr), runPromise,
+                       inflight, dispatched);
+        }
+        if (--inflight == 0) {
+          runPromise.set_value();
+        }
+      });
 }
 
 /// Run the requested number of benchmark requests \p requestCount through the
@@ -472,6 +495,8 @@ setupContextPool(Placeholder *outputPH, Placeholder *inputImagePH,
   // Setup pool of inference requests to be run.
   for (unsigned i = 0; i < iterations; i++) {
     auto newContext = llvm::make_unique<ExecutionContext>();
+    newContext->setTraceContext(
+        llvm::make_unique<TraceContext>(TraceLevel::STANDARD));
     auto ph = newContext->getPlaceholderBindings();
     ph->insert(inputImagePH, Tensor(inputImageData.getType()));
     ph->allocate(outputPH);
@@ -517,6 +542,15 @@ int main(int argc, char **argv) {
 
   CHECK(!(streamInputFilenamesMode && emittingBundle()))
       << "Cannot emit a bundle and also stream inputs.";
+
+  // If tracing is enabled, create a TraceContext to merge each runs events
+  // into.
+  if (!tracePath.empty()) {
+    traceContext = llvm::make_unique<TraceContext>(TraceLevel::STANDARD);
+    if (!iterationsOpt) {
+      iterationsOpt = 1;
+    }
+  }
 
   // Mini-batch mode.
   const bool miniBatchMode = miniBatch > 0;
@@ -695,6 +729,10 @@ int main(int argc, char **argv) {
     if (t.joinable()) {
       t.join();
     }
+  }
+
+  if (!tracePath.empty()) {
+    traceContext->dump(tracePath, "ImageClassifier");
   }
 
   return numErrors;

@@ -20,6 +20,21 @@
 #include <string>
 #include <unordered_map>
 
+/// Define a MemberTypeInfo for the type T. The definition of type T does not
+/// need to be known when compiling the NodeGen.cpp, but it should be known when
+/// compiling the generated files. T can be a simple type like CustomType or
+/// have a more complex form like e.g. CustomType * or CustomType &.
+#define MEMBER_TYPE_INFO(T)                                                    \
+  MemberTypeInfo { MemberType::UserDefinedType, #T, #T, #T, "" }
+
+/// Define a MemberTypeInfo for the type T that uses a custom comparator instead
+/// of ==. The definition of type T does not need to be known when compiling the
+/// NodeGen.cpp, but it should be known when compiling the generated files. T
+/// can be a simple type like CustomType or have a more complex form like e.g.
+/// CustomType * or CustomType &.
+#define MEMBER_TYPE_INFO_WITH_CMP(T, CMP_FN)                                   \
+  MemberTypeInfo { MemberType::UserDefinedType, #T, #T, #T, "", CMP_FN }
+
 enum class MemberType : unsigned {
   TypeRef,
   Float,
@@ -34,16 +49,25 @@ enum class MemberType : unsigned {
   VectorSizeT,
   VectorNodeValue,
   Enum,
+  UserDefinedType,
 };
 
 /// This struct encapsulates all of the information NodeBuilder needs about the
 /// type of a member in order to generate a cloner, hasher, equator, etc.
 struct MemberTypeInfo {
+  /// Kind of the member type.
   MemberType type;
+  /// Type to be used when this member type is returned.
   std::string returnTypename;
+  /// Type to be used for storing members of this type.
   std::string storageTypename;
+  /// Type to be used when providing this member type as a constructor arguments
+  /// of a node.
   std::string ctorArgTypename;
+  /// Forward declaration of this member type.
   std::string forwardDecl;
+  /// Comparator function to be used for comparing members of this type.
+  std::string cmpFn = "==";
 };
 
 /// These are instances of MemberTypeInfo for commonly used types.
@@ -87,6 +111,7 @@ inline const char *getReturnTypename(MemberType type) {
                                "llvm::ArrayRef<int64_t>",
                                "llvm::ArrayRef<size_t>",
                                "NodeValueArrayRef",
+                               nullptr,
                                nullptr};
   return returnTypes[(int)type];
 }
@@ -104,6 +129,7 @@ inline const char *getStorageTypename(MemberType type) {
                                 "std::vector<int64_t>",
                                 "std::vector<size_t>",
                                 "std::vector<NodeHandle>",
+                                nullptr,
                                 nullptr};
   return storageTypes[(int)type];
 }
@@ -121,6 +147,7 @@ inline const char *getCtorArgTypename(MemberType type) {
                                 "std::vector<int64_t>",
                                 "std::vector<size_t>",
                                 "std::vector<NodeValue>",
+                                nullptr,
                                 nullptr};
   return ctorArgTypes[(int)type];
 }
