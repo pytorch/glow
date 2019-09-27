@@ -3833,6 +3833,7 @@ createAndInitBasicFCTest(glow::PlaceholderBindings &bindings,
 }
 
 TEST_P(OperatorStatelessTest, IntFC) {
+  CHECK_IF_ENABLED();
   compareAgainstInterpreter(getBackendName(), createAndInitBasicFCTest,
                             ElemKind::FloatTy, ElemKind::Int8QTy, 0.05f,
                             parCloneCountOpt);
@@ -3894,6 +3895,8 @@ TEST_P(OperatorTest, FP16Max) {
 }
 
 TEST_P(OperatorTest, RescaleNode) {
+  CHECK_IF_ENABLED();
+
   // Check the outputs of the RescaleQuantized operation.
   auto *input = mod_.createPlaceholder(ElemKind::Int8QTy, {4, 10}, 0.4, -3,
                                        "input", false);
@@ -5729,6 +5732,8 @@ TEST_P(OperatorTest, AvgPool) {
 }
 
 TEST_P(OperatorTest, Int8AvgPool) {
+  CHECK_IF_ENABLED();
+
   auto *input = mod_.createPlaceholder(ElemKind::Int8QTy, {1, 3, 3, 1}, 1, 0,
                                        "input", false);
   bindings_.allocate(input)->getHandle<int8_t>() = {0, 1, 2, 3, 4, 5, 6, 7, 8};
@@ -5872,6 +5877,8 @@ TEST_P(OperatorTest, FP16MaxPool) {
 }
 
 TEST_P(OperatorTest, Int8MaxPool) {
+  CHECK_IF_ENABLED();
+
   auto *input = mod_.createPlaceholder(ElemKind::Int8QTy, {1, 3, 3, 1}, 1, 0,
                                        "input", false);
   bindings_.allocate(input)->getHandle<int8_t>() = {0, 1, 2, 3, 4, 5, 6, 7, 8};
