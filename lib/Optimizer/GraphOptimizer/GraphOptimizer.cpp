@@ -2674,19 +2674,30 @@ bool TransposeConstants::run(Function *F, const CompilationContext &cctx) {
     if (!TN) {
       continue;
     }
-    auto *C = dyn_cast<Constant>(TN->getInput());
-    if (!C) {
+    auto *Q = dyn_cast<QuantizeNode>(TN->getInput());
+    auto *C = dyn_cast<Constant>(Q ? Q->getInput() : TN->getInput());
+    if (!C || (Q && !Q->hasOneUse())) {
       continue;
     }
     // Create a new Constant NC to hold the transposed result.
-    auto *NC = F->getParent()->createConstant(TN->getResult().getType(),
-                                              C->getName(), TN->getLayout());
+    auto cTy = F->getParent()->uniqueTypeWithNewShape(C->getType(),
+                                                      TN->getResult().dims());
+    auto *NC =
+        F->getParent()->createConstant(cTy, C->getName(), TN->getLayout());
     // Transpose the value of C into NC.
     genericTranspose(&C->getPayload(), &NC->getPayloadMutable(),
                      TN->getShuffle());
     NC->getPayloadMutable().setType(NC->getType());
-    // Rewrite uses of TN to reference NC.
-    TN->getResult().replaceAllUsesOfWith(NC);
+    // Create a new transposed Quantize, if needed.
+    NodeValue NN(NC);
+    if (Q) {
+      auto qTy = F->getParent()->uniqueTypeWithNewShape(
+          Q->getResult().getType(), TN->getResult().dims());
+      auto *NQ = F->createQuantize(Q->getName(), NC, qTy);
+      NN = NodeValue(NQ);
+    }
+    // Rewrite uses of TN to reference NC or NQ.
+    TN->getResult().replaceAllUsesOfWith(NN);
     changed = true;
   }
   return changed;
