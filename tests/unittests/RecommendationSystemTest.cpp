@@ -174,8 +174,8 @@ static void dispatchInference(HostManager *hostManager,
     // Clone the placeholder bindings into a new executionContext.
     for (unsigned i = 0, max = concurrentReqestsOpt - 1; i < max; i++) {
       std::unique_ptr<ExecutionContext> newContext =
-          llvm::make_unique<ExecutionContext>(
-              llvm::make_unique<PlaceholderBindings>(
+          glow::make_unique<ExecutionContext>(
+              glow::make_unique<PlaceholderBindings>(
                   context.getPlaceholderBindings()->clone()));
       contexts.push_back(std::move(newContext));
     }
@@ -210,7 +210,7 @@ generateDeviceConfigs(llvm::StringRef backendName, unsigned numDevices,
                       size_t memorySize) {
   std::vector<std::unique_ptr<runtime::DeviceConfig>> configs;
   for (unsigned i = 0; i < numDevices; i++) {
-    auto deviceConfig = llvm::make_unique<DeviceConfig>(backendName);
+    auto deviceConfig = glow::make_unique<DeviceConfig>(backendName);
     deviceConfig->setDeviceMemory(memorySize);
     configs.push_back(std::move(deviceConfig));
   }
@@ -365,7 +365,7 @@ protected:
     // Create TraceContext if trace file path is provided.
     if (!traceDir.empty()) {
       context_.setTraceContext(
-          llvm::make_unique<TraceContext>(TraceEvent::TraceLevel::STANDARD));
+          glow::make_unique<TraceContext>(TraceEvent::TraceLevel::STANDARD));
     }
 
     // If device memory capacity is unset via command line, use 8MB by default.

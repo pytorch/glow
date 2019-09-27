@@ -214,7 +214,7 @@ void LLVMIRGen::initCodeGen() {
 
   // Setup the entry basic block and initialize the IR builder.
   llvm::BasicBlock *entry_bb = llvm::BasicBlock::Create(ctx_, "entry", func);
-  builder_ = llvm::make_unique<llvm::IRBuilder<>>(entry_bb);
+  builder_ = glow::make_unique<llvm::IRBuilder<>>(entry_bb);
 
   // Initialize the debug information emission.
   initDebugInfo();

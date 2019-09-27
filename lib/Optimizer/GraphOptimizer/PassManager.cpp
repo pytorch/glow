@@ -176,7 +176,7 @@ FunctionPassManager::createFunctionPass(FunctionPassID passID) {
   switch (passID) {
 #define FUN_PASS(PASS_NAME)                                                    \
   case (FunctionPassID::PASS_NAME):                                            \
-    return llvm::make_unique<PASS_NAME>();
+    return glow::make_unique<PASS_NAME>();
 #include "glow/Optimizer/GraphOptimizer/FunctionPasses.def"
   }
   LOG(DFATAL) << "Cannot reach here.";

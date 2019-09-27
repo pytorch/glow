@@ -142,7 +142,7 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
             }
             auto compiled = std::move(*compiledOrErr);
             node->runtimeBundle =
-                llvm::make_unique<RuntimeBundle>(compiled->getRuntimeBundle());
+                glow::make_unique<RuntimeBundle>(compiled->getRuntimeBundle());
 
             compiledFunctions.emplace(node->name, std::move(compiled));
             break;
@@ -205,7 +205,7 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
         devices_[deviceID]->addNetwork(
             &module, functionMaps[logicalID],
             [&addErr, &addPromise](const Module *, Error err) {
-              addErr = llvm::make_unique<Error>(std::move(err));
+              addErr = glow::make_unique<Error>(std::move(err));
               addPromise.set_value();
             });
         ready.wait();

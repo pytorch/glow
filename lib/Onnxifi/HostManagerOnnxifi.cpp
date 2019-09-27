@@ -50,12 +50,12 @@ HostManagerBackend::createHostManager(llvm::StringRef backendName) {
   // discovered devices.
   if (GlowNumDevices) {
     for (int i = 0; i < GlowNumDevices; i++) {
-      configs.push_back(llvm::make_unique<runtime::DeviceConfig>(backendName));
+      configs.push_back(glow::make_unique<runtime::DeviceConfig>(backendName));
     }
   } else {
     configs = runtime::DeviceManager::generateDeviceConfigs(backendName);
   }
-  return llvm::make_unique<runtime::HostManager>(std::move(configs));
+  return glow::make_unique<runtime::HostManager>(std::move(configs));
 }
 
 void HostManagerBackend::runNetwork(const Graph *graph,
@@ -110,7 +110,7 @@ HostManagerGraph::initGraph(const void *onnxModel, size_t onnxModelSize,
 
   netName_ = strFormat("onnxifi_function_%lu", makeUniqueGraphId());
 
-  std::unique_ptr<Module> module = llvm::make_unique<Module>();
+  std::unique_ptr<Module> module = glow::make_unique<Module>();
   Function *function = module->createFunction(netName_);
 
   // TODO: make better error reporting.

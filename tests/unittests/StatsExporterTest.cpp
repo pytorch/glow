@@ -102,11 +102,11 @@ TEST(StatsExporter, HostManager) {
   EXPECT_EQ(MockStats.counters.count("glow.devices.available_memory.total"), 0);
   EXPECT_EQ(MockStats.counters.count("glow.devices.maximum_memory.total"), 0);
   {
-    auto deviceConfig = llvm::make_unique<DeviceConfig>("Interpreter");
+    auto deviceConfig = glow::make_unique<DeviceConfig>("Interpreter");
     std::vector<std::unique_ptr<DeviceConfig>> configs;
     configs.push_back(std::move(deviceConfig));
     std::unique_ptr<HostManager> HM =
-        llvm::make_unique<HostManager>(std::move(configs), HostConfig());
+        glow::make_unique<HostManager>(std::move(configs), HostConfig());
     EXPECT_EQ(MockStats.counters["glow.devices.used_memory.total"], 0);
     EXPECT_EQ(MockStats.counters["glow.devices.available_memory.total"],
               2000000000);
@@ -114,7 +114,7 @@ TEST(StatsExporter, HostManager) {
               2000000000);
 
     // Add a network so the memory used value is non-zero.
-    std::unique_ptr<Module> module = llvm::make_unique<Module>();
+    std::unique_ptr<Module> module = glow::make_unique<Module>();
     Function *F = module->createFunction("main");
     auto *X = module->createConstant(ElemKind::FloatTy, {1024, 1024}, "X");
     auto *pow = F->createPow("Pow", X, 2.0);

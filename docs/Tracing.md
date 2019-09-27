@@ -111,7 +111,7 @@ Then, to examine the events emitted for a particular run create a TraceContext w
 
 ```
 ExecutionContext ctx;
-ctx.setTraceContext(llvm::make_unique<TraceContext>(TraceLevel::STANDARD));
+ctx.setTraceContext(glow::make_unique<TraceContext>(TraceLevel::STANDARD));
 
 // Run the compiled Function as usual
 executionEngine.run(ctx);

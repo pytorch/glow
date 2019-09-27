@@ -405,11 +405,11 @@ Expected<DAGListTy> Partitioner::createDAGWithoutPartition(
       auto backend = backendMap[backendName].backend;
       RETURN_IF_ERR(::glow::optimizeFunction(F, *backend, cctx));
     }
-    std::unique_ptr<DAGNode> DAG0 = llvm::make_unique<DAGNode>();
+    std::unique_ptr<DAGNode> DAG0 = glow::make_unique<DAGNode>();
     DAG0->logicalDevices = {0};
     DAG0->name = F->getName();
     DAG0->module = module_;
-    std::unique_ptr<DAGNode> DAG1 = llvm::make_unique<DAGNode>();
+    std::unique_ptr<DAGNode> DAG1 = glow::make_unique<DAGNode>();
     DAG1->logicalDevices = {0};
     DAG1->name = F->getName();
     DAG1->backendName = backendName;

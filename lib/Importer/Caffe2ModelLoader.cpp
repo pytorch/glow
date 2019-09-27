@@ -83,7 +83,7 @@ createAndSetTensorType(const caffe2::TensorProto &in) {
   }
 
   LoadWeightResult result;
-  result.t = llvm::make_unique<Tensor>();
+  result.t = glow::make_unique<Tensor>();
 
   if (in.data_type() == caffe2::TensorProto::FLOAT) {
     result.t->reset(ElemKind::FloatTy, dim);
@@ -130,7 +130,7 @@ createAndSetTensorType(const caffe2::QTensorProto &in) {
                     "Found a different number of biases and scales");
 
   LoadWeightResult result;
-  result.t = llvm::make_unique<Tensor>();
+  result.t = glow::make_unique<Tensor>();
 
   float scale = 1.0;
   int32_t offset = 0;
@@ -143,9 +143,9 @@ createAndSetTensorType(const caffe2::QTensorProto &in) {
     scale = in.scales(0);
     offset = in.biases(0);
   } else {
-    result.scales = llvm::make_unique<Tensor>(ElemKind::FloatTy,
+    result.scales = glow::make_unique<Tensor>(ElemKind::FloatTy,
                                               llvm::makeArrayRef({qparams}));
-    result.offsets = llvm::make_unique<Tensor>(ElemKind::Int32ITy,
+    result.offsets = glow::make_unique<Tensor>(ElemKind::Int32ITy,
                                                llvm::makeArrayRef({qparams}));
 
     auto scalesH = result.scales->getHandle<float>();

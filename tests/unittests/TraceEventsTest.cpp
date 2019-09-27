@@ -123,7 +123,7 @@ TEST_P(TraceEventsTest, manualEvents) {
   CHECK_IF_ENABLED();
   ExecutionContext context;
   context.setTraceContext(
-      llvm::make_unique<TraceContext>(TraceLevel::OPERATOR));
+      glow::make_unique<TraceContext>(TraceLevel::OPERATOR));
 
   size_t numEvents = 4;
   auto *eventData = createEventPlaceholder(numEvents);
@@ -173,7 +173,7 @@ TEST_P(TraceEventsTest, incompleteCoverage) {
   CHECK_IF_ENABLED();
   ExecutionContext context;
   context.setTraceContext(
-      llvm::make_unique<TraceContext>(TraceLevel::OPERATOR));
+      glow::make_unique<TraceContext>(TraceLevel::OPERATOR));
 
   size_t numEvents = 2;
   auto *eventData = createEventPlaceholder(numEvents);
@@ -218,7 +218,7 @@ TEST_P(TraceEventsTest, internalGap) {
   CHECK_IF_ENABLED();
   ExecutionContext context;
   context.setTraceContext(
-      llvm::make_unique<TraceContext>(TraceLevel::OPERATOR));
+      glow::make_unique<TraceContext>(TraceLevel::OPERATOR));
 
   size_t numEvents = 2;
   auto *eventData = createEventPlaceholder(numEvents);
@@ -263,7 +263,7 @@ TEST_P(TraceEventsTest, automaticInstrumentation) {
   CHECK_IF_ENABLED();
   ExecutionContext context;
   context.setTraceContext(
-      llvm::make_unique<TraceContext>(TraceLevel::OPERATOR));
+      glow::make_unique<TraceContext>(TraceLevel::OPERATOR));
 
   auto n = part_one(F, context);
   n = part_two(F, context, n);
@@ -290,7 +290,7 @@ TEST_P(TraceEventsTest, manualAndAutomatic) {
   CHECK_IF_ENABLED();
   ExecutionContext context;
   context.setTraceContext(
-      llvm::make_unique<TraceContext>(TraceLevel::OPERATOR));
+      glow::make_unique<TraceContext>(TraceLevel::OPERATOR));
 
   size_t numEvents = 4;
   auto *eventData = createEventPlaceholder(numEvents);
@@ -338,7 +338,7 @@ TEST_P(TraceEventsTest, twoCompiles) {
   CHECK_IF_ENABLED();
   ExecutionContext context;
   context.setTraceContext(
-      llvm::make_unique<TraceContext>(TraceLevel::OPERATOR));
+      glow::make_unique<TraceContext>(TraceLevel::OPERATOR));
 
   size_t numEvents = 4;
   auto *eventData = createEventPlaceholder(numEvents);
@@ -353,7 +353,7 @@ TEST_P(TraceEventsTest, twoCompiles) {
 
   ExecutionContext context2{context.clone()};
   context2.setTraceContext(
-      llvm::make_unique<TraceContext>(TraceLevel::OPERATOR));
+      glow::make_unique<TraceContext>(TraceLevel::OPERATOR));
 
   context.getPlaceholderBindings()->allocate(EE_.getModule().getPlaceholders());
 
@@ -366,7 +366,7 @@ TEST_P(TraceEventsTest, twoCompiles) {
 
   std::string name = F->getName();
   auto config =
-      llvm::make_unique<runtime::DeviceConfig>(backend->getBackendName());
+      glow::make_unique<runtime::DeviceConfig>(backend->getBackendName());
   std::unique_ptr<runtime::DeviceManager> device(
       runtime::DeviceManager::createDeviceManager(*config));
   EXIT_ON_ERR(device->init());
@@ -413,7 +413,7 @@ TEST_P(TraceEventsTest, onlyTraceEvents) {
   CHECK_IF_ENABLED();
   ExecutionContext context;
   context.setTraceContext(
-      llvm::make_unique<TraceContext>(TraceLevel::OPERATOR));
+      glow::make_unique<TraceContext>(TraceLevel::OPERATOR));
 
   size_t numEvents = 16;
   auto *eventData = createEventPlaceholder(numEvents);
@@ -454,7 +454,7 @@ TEST_P(TraceEventsTest, multipleBackingTensors) {
   CHECK_IF_ENABLED();
   ExecutionContext context;
   context.setTraceContext(
-      llvm::make_unique<TraceContext>(TraceLevel::OPERATOR));
+      glow::make_unique<TraceContext>(TraceLevel::OPERATOR));
 
   size_t numEvents = 6;
   auto *eventData1 = createEventPlaceholder(3);
@@ -514,7 +514,7 @@ TEST_P(TraceEventsTest, multipleRunsAreDistinct) {
   CHECK_IF_ENABLED();
   ExecutionContext context;
   context.setTraceContext(
-      llvm::make_unique<TraceContext>(TraceLevel::OPERATOR));
+      glow::make_unique<TraceContext>(TraceLevel::OPERATOR));
 
   size_t numEvents = 4;
   auto *eventData = createEventPlaceholder(numEvents);
@@ -542,7 +542,7 @@ TEST_P(TraceEventsTest, multipleRunsAreDistinct) {
 
   ExecutionContext context2{context.clone()};
   context2.setTraceContext(
-      llvm::make_unique<TraceContext>(TraceLevel::OPERATOR));
+      glow::make_unique<TraceContext>(TraceLevel::OPERATOR));
 
   // run twice
   EE_.run(context);
@@ -566,7 +566,7 @@ TEST_P(TraceEventsTest, deviceManagerEvents) {
   CHECK_IF_ENABLED();
   ExecutionContext context;
   context.setTraceContext(
-      llvm::make_unique<TraceContext>(TraceLevel::STANDARD));
+      glow::make_unique<TraceContext>(TraceLevel::STANDARD));
 
   auto n = part_one(F, context);
   n = part_two(F, context, n);
@@ -595,7 +595,7 @@ TEST(TraceEventsTest, nestedScopedEvents) {
   CHECK_IF_ENABLED();
   ExecutionContext context;
   context.setTraceContext(
-      llvm::make_unique<TraceContext>(TraceLevel::STANDARD));
+      glow::make_unique<TraceContext>(TraceLevel::STANDARD));
 
   TraceContext *tc = context.getTraceContext();
 
@@ -635,7 +635,7 @@ TEST(TraceEventsTest, nestedScopedEventsMacro) {
   CHECK_IF_ENABLED();
   ExecutionContext context;
   context.setTraceContext(
-      llvm::make_unique<TraceContext>(TraceLevel::STANDARD));
+      glow::make_unique<TraceContext>(TraceLevel::STANDARD));
 
   TraceContext *tc = context.getTraceContext();
 
@@ -676,7 +676,7 @@ TEST(TraceEventsTest, nestedScopedEventsTerm) {
   CHECK_IF_ENABLED();
   ExecutionContext context;
   context.setTraceContext(
-      llvm::make_unique<TraceContext>(TraceLevel::STANDARD));
+      glow::make_unique<TraceContext>(TraceLevel::STANDARD));
 
   TraceContext *tc = context.getTraceContext();
 

@@ -1650,7 +1650,7 @@ void performPeepholeOptimizations(IRFunction &M) {
 std::unique_ptr<IRFunction>
 glow::generateAndOptimizeIR(Function *F, const Backend &B,
                             bool shouldShareBuffers) {
-  auto IR = llvm::make_unique<IRFunction>(F);
+  auto IR = glow::make_unique<IRFunction>(F);
   IR->generateIR(B);
   ::glow::optimize(*IR, shouldShareBuffers);
   if (!B.verify(*IR)) {

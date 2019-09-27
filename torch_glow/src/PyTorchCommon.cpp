@@ -34,11 +34,11 @@ std::unique_ptr<runtime::HostManager> buildHostManager() {
 
   std::vector<std::unique_ptr<runtime::DeviceConfig>> deviceConfigs;
   for (int i = 0; i < numGlowDevices; i++) {
-    deviceConfigs.push_back(llvm::make_unique<runtime::DeviceConfig>(
+    deviceConfigs.push_back(glow::make_unique<runtime::DeviceConfig>(
         getPyTorchLoaderSettings().glowBackendName));
   }
 
-  return llvm::make_unique<runtime::HostManager>(std::move(deviceConfigs));
+  return glow::make_unique<runtime::HostManager>(std::move(deviceConfigs));
 }
 
 /// \returns the HostManager singleton used to run all PyTorch graphs in Glow.

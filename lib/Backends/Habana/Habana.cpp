@@ -260,7 +260,7 @@ public:
 static std::unique_ptr<synConvolutionParams> makeSynConvolutionParams(
     llvm::ArrayRef<unsigned_t> kernel, llvm::ArrayRef<unsigned_t> stride,
     llvm::ArrayRef<unsigned_t> pad, unsigned_t groups, bool doRelu) {
-  auto params = llvm::make_unique<synConvolutionParams>();
+  auto params = glow::make_unique<synConvolutionParams>();
 
   // Kernel
   params->kH = kernel[0];
@@ -288,7 +288,7 @@ static std::unique_ptr<ns_SpatialReduction::Params>
 makeSynPoolParams(llvm::ArrayRef<unsigned_t> kernel,
                   llvm::ArrayRef<unsigned_t> stride,
                   llvm::ArrayRef<unsigned_t> pad) {
-  auto params = llvm::make_unique<ns_SpatialReduction::Params>();
+  auto params = glow::make_unique<ns_SpatialReduction::Params>();
 
   // Kernel
   params->kernel_w = kernel[0];
@@ -310,7 +310,7 @@ makeSynPoolParams(llvm::ArrayRef<unsigned_t> kernel,
 
 static std::unique_ptr<synTransposeParams>
 makeSynTransposeParams(llvm::ArrayRef<unsigned_t> shuffle) {
-  auto params = llvm::make_unique<synTransposeParams>();
+  auto params = glow::make_unique<synTransposeParams>();
 
   params->tensorDim = shuffle.size();
 
@@ -329,7 +329,7 @@ makeSynTransposeParams(llvm::ArrayRef<unsigned_t> shuffle) {
 static std::unique_ptr<synSliceAxisParams>
 makeSynSliceAxisParams(unsigned axis, unsigned axes, unsigned outputAxisSize,
                        unsigned axisOffset) {
-  auto params = llvm::make_unique<synSliceAxisParams>();
+  auto params = glow::make_unique<synSliceAxisParams>();
 
   // The axis complement must be taken since Habana's axes in reverse order
   // compared to Glow.
@@ -342,7 +342,7 @@ makeSynSliceAxisParams(unsigned axis, unsigned axes, unsigned outputAxisSize,
 
 static std::unique_ptr<ns_LrnKernel::Params>
 makeLrnParams(float alpha, float beta, float knorm, int halfWindowSize) {
-  auto params = llvm::make_unique<ns_LrnKernel::Params>();
+  auto params = glow::make_unique<ns_LrnKernel::Params>();
   params->alpha = alpha;
   params->beta = beta;
   params->knorm = knorm;
@@ -352,20 +352,20 @@ makeLrnParams(float alpha, float beta, float knorm, int halfWindowSize) {
 
 static std::unique_ptr<ns_ConstantKernel::Params>
 makeConstantParams(float value) {
-  auto params = llvm::make_unique<ns_ConstantKernel::Params>();
+  auto params = glow::make_unique<ns_ConstantKernel::Params>();
   params->constant.f = value;
   return params;
 }
 
 static std::unique_ptr<ns_FullyConnected::Params> makeFCFPParams(bool isRelu) {
-  auto params = llvm::make_unique<ns_FullyConnected::Params>();
+  auto params = glow::make_unique<ns_FullyConnected::Params>();
   params->is_relu = isRelu;
   return params;
 }
 
 static std::unique_ptr<ns_TileKernel::Params> makeTileParams(unsigned count,
                                                              unsigned axis) {
-  auto params = llvm::make_unique<ns_TileKernel::Params>();
+  auto params = glow::make_unique<ns_TileKernel::Params>();
 
   // The repeat member of ns_TileKernel::Params has an explicit size of 4.
   for (size_t i = 0; i < 4; ++i) {
@@ -382,11 +382,11 @@ static std::unique_ptr<ns_TileKernel::Params> makeTileParams(unsigned count,
 
 static std::unique_ptr<unsigned> makeConcatParams(unsigned axis,
                                                   unsigned axes) {
-  return llvm::make_unique<unsigned>(axes - axis - 1);
+  return glow::make_unique<unsigned>(axes - axis - 1);
 }
 
 static std::unique_ptr<ns_Softmax::Params> makeSoftmaxParams() {
-  auto params = llvm::make_unique<ns_Softmax::Params>();
+  auto params = glow::make_unique<ns_Softmax::Params>();
   params->dim = 0;
   return params;
 }
@@ -488,7 +488,7 @@ HabanaBackend::compile(Function *F, const BackendOptions &opts) const {
       auto *NI = llvm::cast<HabanaFullyConnectedNode>(&I);
 
       if (NI->getInput().getType()->isQuantizedType()) {
-        auto params = llvm::make_unique<synFCParams>();
+        auto params = glow::make_unique<synFCParams>();
         params->activation.reluEnable = NI->getDoRelu();
         chk(synFullyConnected(
             tensors[NI->getInput()].get(), tensors[NI->getWeights()].get(),
@@ -562,7 +562,7 @@ HabanaBackend::compile(Function *F, const BackendOptions &opts) const {
     }
     case Kinded::Kind::BatchedReduceAddNodeKind: {
       auto *RA = llvm::cast<BatchedReduceAddNode>(&I);
-      auto params = llvm::make_unique<ns_Reduction::Params>();
+      auto params = glow::make_unique<ns_Reduction::Params>();
       params->reductionDimension =
           RA->getBatch().dims().size() - RA->getAxis() - 1;
 
@@ -713,7 +713,7 @@ HabanaBackend::compile(Function *F, const BackendOptions &opts) const {
         // Let GEMM run on MME via FullyConnected node.
         // MME only runs on quantized types, e.g., int8 or int16.
         // The default params are OK - don't transpose A and B
-        auto params = llvm::make_unique<synGEMMParams>();
+        auto params = glow::make_unique<synGEMMParams>();
         std::vector<synTensor> inputs;
         inputs.push_back(tensors[MI->getLHS()].get());
         inputs.push_back(tensors[MI->getRHS()].get());
@@ -1021,7 +1021,7 @@ HabanaBackend::compile(Function *F, const BackendOptions &opts) const {
       std::vector<synTensor> inputs = {tensors[gather->getData()].get(),
                                        tensors[gather->getIndices()].get()};
 
-      auto params = llvm::make_unique<ns_GatherKernel::Params>();
+      auto params = glow::make_unique<ns_GatherKernel::Params>();
       params->axis =
           gather->getData().dims().size() - gather->getBatchDims() - 1;
 
@@ -1041,7 +1041,7 @@ HabanaBackend::compile(Function *F, const BackendOptions &opts) const {
           tensors[BBC->getLambda1()].get(),
           tensors[BBC->getLambda2()].get(),
       };
-      auto params = llvm::make_unique<float>(BBC->getEpsilon());
+      auto params = glow::make_unique<float>(BBC->getEpsilon());
       chk(synCreateGenericNode(
           inputs.data(), &tensors[BBC].get(), inputs.size(), 1, params.get(),
           "batch_box_cox_f32", BBC->getName().data(), nullptr, nullptr));
@@ -1072,7 +1072,7 @@ HabanaBackend::compile(Function *F, const BackendOptions &opts) const {
   chk(synDestroyGraph());
 
   return Expected<std::unique_ptr<CompiledFunction>>(
-      llvm::make_unique<HabanaFunction>(runtime::RuntimeBundle::create(*F),
+      glow::make_unique<HabanaFunction>(runtime::RuntimeBundle::create(*F),
                                         recipeName, F));
 }
 

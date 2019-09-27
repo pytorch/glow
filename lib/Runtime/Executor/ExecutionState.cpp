@@ -49,11 +49,11 @@ void ExecutionState::init() {
     nodeParentsDone_[node] = 0;
 
     // Make an (empty) input context for the node.
-    auto nodeInputCtx = llvm::make_unique<ExecutionContext>();
+    auto nodeInputCtx = glow::make_unique<ExecutionContext>();
 
     if (resultTraceContext) {
       nodeInputCtx->setTraceContext(
-          llvm::make_unique<TraceContext>(resultTraceContext->getTraceLevel()));
+          glow::make_unique<TraceContext>(resultTraceContext->getTraceLevel()));
     }
 
     auto nodeInputPhBindings = nodeInputCtx->getPlaceholderBindings();

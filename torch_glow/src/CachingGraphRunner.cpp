@@ -63,10 +63,10 @@ CachingGraphRunner::loadImpl(torch::jit::Stack &stack) {
     return it->second.get();
   }
 
-  auto info = llvm::make_unique<PerGlowGraphInfo>();
+  auto info = glow::make_unique<PerGlowGraphInfo>();
   info->functionName = strFormat("PTFunction%lu", hash);
 
-  std::unique_ptr<Module> module = llvm::make_unique<Module>();
+  std::unique_ptr<Module> module = glow::make_unique<Module>();
   Function *f = module->createFunction(info->functionName);
 
   RETURN_IF_ERR(PyTorchModelLoader::loadJITGraph(
@@ -88,7 +88,7 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
 
   const auto inputs = torch::jit::last(stack, numInputs);
 
-  std::unique_ptr<ExecutionContext> ctx = llvm::make_unique<ExecutionContext>();
+  std::unique_ptr<ExecutionContext> ctx = glow::make_unique<ExecutionContext>();
   auto *bindings = ctx->getPlaceholderBindings();
 
   for (size_t i = 0; i < numInputs; ++i) {

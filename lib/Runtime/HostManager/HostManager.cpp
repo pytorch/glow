@@ -196,7 +196,7 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
     size_t devicesNum = devices_.size();
     for (size_t i = 0; i < devicesNum; i++) {
       auto name = devices_[i]->getDeviceConfig().name;
-      auto config = llvm::make_unique<DeviceConfig>(profilingBackend, name);
+      auto config = glow::make_unique<DeviceConfig>(profilingBackend, name);
       devices_[i] = std::unique_ptr<DeviceManager>(
           DeviceManager::createDeviceManager(*config));
       RETURN_IF_ERR(devices_[i]->init());
@@ -267,7 +267,7 @@ Error HostManager::removeNetwork(llvm::StringRef networkName) {
       devices_[device]->evictNetwork(
           node->name,
           [&removeNetwork, &removeErr](std::string name, Error err) {
-            removeErr = llvm::make_unique<Error>(std::move(err));
+            removeErr = glow::make_unique<Error>(std::move(err));
             removeNetwork.set_value();
           });
       done.get();
@@ -317,7 +317,7 @@ Error HostManager::runNetworkBlocking(llvm::StringRef networkName,
                                       PlaceholderBindings &bindings) {
   std::unique_ptr<PlaceholderBindings> phBindings(&bindings);
   std::unique_ptr<ExecutionContext> context =
-      llvm::make_unique<ExecutionContext>(std::move(phBindings));
+      glow::make_unique<ExecutionContext>(std::move(phBindings));
   std::promise<void> runPromise;
   auto fut = runPromise.get_future();
   std::unique_ptr<Error> runErr;
@@ -331,7 +331,7 @@ Error HostManager::runNetworkBlocking(llvm::StringRef networkName,
             contextPtr->movePlaceholderBindings();
         phBind.release();
 
-        runErr = llvm::make_unique<Error>(std::move(err));
+        runErr = glow::make_unique<Error>(std::move(err));
         runPromise.set_value();
       });
 
@@ -348,7 +348,7 @@ Error HostManager::runNetworkBlocking(
       networkName, std::move(context),
       [&runPromise, &runErr](runtime::RunIdentifierTy, Error err,
                              std::unique_ptr<ExecutionContext> contextPtr) {
-        runErr = llvm::make_unique<Error>(std::move(err));
+        runErr = glow::make_unique<Error>(std::move(err));
         runPromise.set_value();
       });
 

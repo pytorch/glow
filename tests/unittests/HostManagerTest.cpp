@@ -29,7 +29,7 @@ using DAGNodePairTy = std::pair<std::vector<std::unique_ptr<DAGNode>>,
 
 class HostManagerTest : public ::testing::Test {};
 std::unique_ptr<Module> setupModule(unsigned functionCount) {
-  std::unique_ptr<Module> module = llvm::make_unique<Module>();
+  std::unique_ptr<Module> module = glow::make_unique<Module>();
   for (unsigned int i = 0; i < functionCount; i++) {
     Function *F = module->createFunction("function" + std::to_string(i));
     auto *X = module->createPlaceholder(ElemKind::FloatTy, {3},
@@ -44,15 +44,15 @@ std::unique_ptr<HostManager>
 createHostManager(llvm::StringRef backendName,
                   HostConfig hostConfig = HostConfig()) {
   std::vector<std::unique_ptr<DeviceConfig>> configs;
-  auto deviceConfig = llvm::make_unique<DeviceConfig>(backendName);
+  auto deviceConfig = glow::make_unique<DeviceConfig>(backendName);
   configs.push_back(std::move(deviceConfig));
   std::unique_ptr<HostManager> hostManager =
-      llvm::make_unique<HostManager>(std::move(configs), hostConfig);
+      glow::make_unique<HostManager>(std::move(configs), hostConfig);
   return hostManager;
 }
 
 Error addNetwork(HostManager *manager, std::string name) {
-  std::unique_ptr<Module> module = llvm::make_unique<Module>();
+  std::unique_ptr<Module> module = glow::make_unique<Module>();
   Function *F = module->createFunction(name);
   auto *X =
       module->createPlaceholder(ElemKind::FloatTy, {3}, "X_" + name, false);
@@ -83,9 +83,9 @@ TEST_F(HostManagerTest, addNetwork) {
 }
 
 TEST_F(HostManagerTest, runNetwork) {
-  std::unique_ptr<Module> module = llvm::make_unique<Module>();
+  std::unique_ptr<Module> module = glow::make_unique<Module>();
   std::unique_ptr<ExecutionContext> context =
-      llvm::make_unique<ExecutionContext>();
+      glow::make_unique<ExecutionContext>();
 
   Function *F = module->createFunction("main");
   auto *X = module->createPlaceholder(ElemKind::FloatTy, {3}, "X", false);
@@ -113,7 +113,7 @@ TEST_F(HostManagerTest, runNetwork) {
                             EXPECT_NEAR(HX.at({1}), 4, 1E-5);
                             EXPECT_NEAR(HX.at({2}), 9, 1E-5);
                             context = std::move(context_);
-                            runErr = llvm::make_unique<Error>(std::move(err));
+                            runErr = glow::make_unique<Error>(std::move(err));
                             runNetwork.set_value();
                           });
 
@@ -133,7 +133,7 @@ TEST_F(HostManagerTest, runNetwork) {
                             EXPECT_NEAR(HX.at({0}), 1, 1E-5);
                             EXPECT_NEAR(HX.at({1}), 4, 1E-5);
                             EXPECT_NEAR(HX.at({2}), 9, 1E-5);
-                            runErr = llvm::make_unique<Error>(std::move(err));
+                            runErr = glow::make_unique<Error>(std::move(err));
                             newRun.set_value();
                           });
 
@@ -191,8 +191,8 @@ TEST_F(HostManagerTest, ConfigureHostManager) {
 
   EXPECT_FALSE(ERR_TO_BOOL(addNetwork(hostManager.get(), "main")));
 
-  auto context = llvm::make_unique<ExecutionContext>();
-  auto context2 = llvm::make_unique<ExecutionContext>();
+  auto context = glow::make_unique<ExecutionContext>();
+  auto context2 = glow::make_unique<ExecutionContext>();
 
   std::unique_ptr<Error> runErr;
 
@@ -210,7 +210,7 @@ TEST_F(HostManagerTest, ConfigureHostManager) {
       "main", std::move(context2),
       [&runErr](RunIdentifierTy runID, Error err,
                 std::unique_ptr<ExecutionContext> context_) {
-        runErr = llvm::make_unique<Error>(std::move(err));
+        runErr = glow::make_unique<Error>(std::move(err));
       });
   guard.unlock();
   // Don't need a future, error CB called inline.
@@ -227,10 +227,10 @@ TEST_F(HostManagerTest, QueueTest) {
 
   EXPECT_FALSE(ERR_TO_BOOL(addNetwork(hostManager.get(), "main")));
 
-  auto context = llvm::make_unique<ExecutionContext>();
-  auto context2 = llvm::make_unique<ExecutionContext>();
-  auto context3 = llvm::make_unique<ExecutionContext>();
-  auto context4 = llvm::make_unique<ExecutionContext>();
+  auto context = glow::make_unique<ExecutionContext>();
+  auto context2 = glow::make_unique<ExecutionContext>();
+  auto context3 = glow::make_unique<ExecutionContext>();
+  auto context4 = glow::make_unique<ExecutionContext>();
   std::promise<unsigned> run1p, run2p, run3p, dispatched;
   auto dispatchDone = dispatched.get_future();
   auto run1f = run1p.get_future();

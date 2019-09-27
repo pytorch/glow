@@ -132,17 +132,17 @@ int main(int argc, char **argv) {
 
   std::vector<std::unique_ptr<DeviceConfig>> configs;
   for (unsigned int i = 0; i < numDevices; ++i) {
-    auto config = llvm::make_unique<DeviceConfig>(backend);
+    auto config = glow::make_unique<DeviceConfig>(backend);
     configs.push_back(std::move(config));
   }
 
   std::unique_ptr<HostManager> hostManager =
-      llvm::make_unique<HostManager>(std::move(configs));
+      glow::make_unique<HostManager>(std::move(configs));
 
   // If tracing is enabled, create a TraceContext to merge each runs events
   // into.
   if (!tracePath.empty()) {
-    traceContext = llvm::make_unique<TraceContext>(TraceLevel::STANDARD);
+    traceContext = glow::make_unique<TraceContext>(TraceLevel::STANDARD);
   }
 
   // Load model, create a context, and add to HostManager.
@@ -152,7 +152,7 @@ int main(int argc, char **argv) {
   Placeholder *input;
   PlaceholderList phList;
 
-  std::unique_ptr<Module> module = llvm::make_unique<Module>();
+  std::unique_ptr<Module> module = glow::make_unique<Module>();
   TypeRef inputType = module->uniqueType(ElemKind::FloatTy, inputShape);
   input = loadResnet50Model(inputType, module.get(), 0);
   phList = module->getPlaceholders();
@@ -194,9 +194,9 @@ int main(int argc, char **argv) {
         path, ImageNormalizationMode::k0to1, ImageChannelOrder::BGR,
         ImageLayout::NCHW, imagenetNormMean, imagenetNormStd);
     std::unique_ptr<ExecutionContext> context =
-        llvm::make_unique<ExecutionContext>();
+        glow::make_unique<ExecutionContext>();
     context->setTraceContext(
-        llvm::make_unique<TraceContext>(TraceLevel::STANDARD));
+        glow::make_unique<TraceContext>(TraceLevel::STANDARD));
 
     context->getPlaceholderBindings()->allocate(phList);
     Tensor batch = image.getUnowned(inputShape);

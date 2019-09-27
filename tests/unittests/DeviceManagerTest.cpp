@@ -48,7 +48,7 @@ public:
 };
 
 std::unique_ptr<Module> makeBasicModule(std::string functionName = "main") {
-  std::unique_ptr<Module> module = llvm::make_unique<Module>();
+  std::unique_ptr<Module> module = glow::make_unique<Module>();
 
   Function *F = module->createFunction(functionName);
   auto *input = module->createPlaceholder(ElemKind::FloatTy, {1},
@@ -116,7 +116,7 @@ TEST_P(DeviceManagerTest, Basic) {
   EXPECT_EQ(future.get(), module.get());
 
   std::unique_ptr<ExecutionContext> context =
-      llvm::make_unique<ExecutionContext>();
+      glow::make_unique<ExecutionContext>();
   context->getPlaceholderBindings()->allocate(module->getPlaceholders());
 
   Tensor input1(ElemKind::FloatTy, {1});
@@ -155,7 +155,7 @@ TEST_P(DeviceManagerTest, PartialTensorCopy) {
   if (backendName == "Habana") {
     return;
   }
-  std::unique_ptr<Module> module = llvm::make_unique<Module>();
+  std::unique_ptr<Module> module = glow::make_unique<Module>();
 
   // Create function of batch size 2.
   Function *F = module->createFunction("main");
@@ -183,7 +183,7 @@ TEST_P(DeviceManagerTest, PartialTensorCopy) {
   EXPECT_EQ(future.get(), module.get());
 
   std::unique_ptr<ExecutionContext> context =
-      llvm::make_unique<ExecutionContext>();
+      glow::make_unique<ExecutionContext>();
   context->getPlaceholderBindings()->allocate(output);
 
   Tensor input1(ElemKind::FloatTy, {1});
@@ -234,9 +234,9 @@ TEST_P(DeviceManagerTest, MultiRun) {
   EXPECT_EQ(future.get(), module.get());
 
   std::unique_ptr<ExecutionContext> context1 =
-      llvm::make_unique<ExecutionContext>();
+      glow::make_unique<ExecutionContext>();
   std::unique_ptr<ExecutionContext> context2 =
-      llvm::make_unique<ExecutionContext>();
+      glow::make_unique<ExecutionContext>();
   context1->getPlaceholderBindings()->allocate(module->getPlaceholders());
   context2->getPlaceholderBindings()->allocate(module->getPlaceholders());
 
@@ -298,9 +298,9 @@ TEST_P(DeviceManagerTest, MultiFunction) {
   auto module = makeBasicModule("func1");
 
   std::unique_ptr<ExecutionContext> context1 =
-      llvm::make_unique<ExecutionContext>();
+      glow::make_unique<ExecutionContext>();
   std::unique_ptr<ExecutionContext> context2 =
-      llvm::make_unique<ExecutionContext>();
+      glow::make_unique<ExecutionContext>();
   context1->getPlaceholderBindings()->allocate(module->getPlaceholders());
 
   Function *F = module->createFunction("func2");
@@ -416,7 +416,7 @@ TEST_P(DeviceManagerTest, MultiModule) {
   EXPECT_EQ(future.get(), module2.get());
 
   std::unique_ptr<ExecutionContext> context1 =
-      llvm::make_unique<ExecutionContext>();
+      glow::make_unique<ExecutionContext>();
   context1->getPlaceholderBindings()->allocate(module1->getPlaceholders());
   Tensor input(ElemKind::FloatTy, {1});
   input.getHandle().clear(0.5f);
@@ -428,7 +428,7 @@ TEST_P(DeviceManagerTest, MultiModule) {
                           {&input});
 
   std::unique_ptr<ExecutionContext> context2 =
-      llvm::make_unique<ExecutionContext>();
+      glow::make_unique<ExecutionContext>();
   context2->getPlaceholderBindings()->allocate(module2->getPlaceholders());
   updateInputPlaceholders(*context2->getPlaceholderBindings(),
                           {module2->getPlaceholderByName("func2_input")},
@@ -474,9 +474,9 @@ TEST_P(DeviceManagerTest, ReuseModule) {
   auto module = makeBasicModule("func1");
 
   std::unique_ptr<ExecutionContext> context1 =
-      llvm::make_unique<ExecutionContext>();
+      glow::make_unique<ExecutionContext>();
   std::unique_ptr<ExecutionContext> context2 =
-      llvm::make_unique<ExecutionContext>();
+      glow::make_unique<ExecutionContext>();
   context1->getPlaceholderBindings()->allocate(module->getPlaceholders());
 
   Function *F = module->createFunction("func2");
@@ -699,7 +699,7 @@ TEST(DeviceManagerTest, DummyDeviceManager) {
   EXPECT_EQ(future.get(), module.get());
 
   std::unique_ptr<ExecutionContext> context1 =
-      llvm::make_unique<ExecutionContext>();
+      glow::make_unique<ExecutionContext>();
   context1->getPlaceholderBindings()->allocate(module->getPlaceholders());
 
   Tensor input1(ElemKind::FloatTy, {1});

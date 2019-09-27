@@ -342,7 +342,7 @@ generateDeviceConfigs(std::string &loadDeviceConfigsFile,
     // If there is no device config file, use numDevices to generate the
     // configs.
     for (unsigned int i = 0; i < numDevices; ++i) {
-      auto config = llvm::make_unique<runtime::DeviceConfig>(backendName);
+      auto config = glow::make_unique<runtime::DeviceConfig>(backendName);
       configs.push_back(std::move(config));
     }
   } else {
@@ -353,7 +353,7 @@ generateDeviceConfigs(std::string &loadDeviceConfigsFile,
       auto backendName = lists[i].backendName_;
       auto name = lists[i].name_;
       auto parameters = getBackendParams(lists[i].parameters_.str);
-      auto config = llvm::make_unique<runtime::DeviceConfig>(backendName, name,
+      auto config = glow::make_unique<runtime::DeviceConfig>(backendName, name,
                                                              parameters);
       configs.push_back(std::move(config));
     }
@@ -495,7 +495,7 @@ Loader::Loader() {
       generateDeviceConfigs(loadDeviceConfigsFileOpt, numDevices,
                             ExecutionBackend);
 
-  hostManager_ = llvm::make_unique<runtime::HostManager>(std::move(configs));
+  hostManager_ = glow::make_unique<runtime::HostManager>(std::move(configs));
   backend_ = createBackend(ExecutionBackend);
   F_ = M_->createFunction(modelPathOpt[0]);
   functionName_ = modelPathOpt[0];

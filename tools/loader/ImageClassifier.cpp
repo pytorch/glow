@@ -494,9 +494,9 @@ setupContextPool(Placeholder *outputPH, Placeholder *inputImagePH,
       miniBatch ? std::min(int(poolSize), int(iterationsOpt / miniBatch)) : 1;
   // Setup pool of inference requests to be run.
   for (unsigned i = 0; i < iterations; i++) {
-    auto newContext = llvm::make_unique<ExecutionContext>();
+    auto newContext = glow::make_unique<ExecutionContext>();
     newContext->setTraceContext(
-        llvm::make_unique<TraceContext>(TraceLevel::STANDARD));
+        glow::make_unique<TraceContext>(TraceLevel::STANDARD));
     auto ph = newContext->getPlaceholderBindings();
     ph->insert(inputImagePH, Tensor(inputImageData.getType()));
     ph->allocate(outputPH);
@@ -546,7 +546,7 @@ int main(int argc, char **argv) {
   // If tracing is enabled, create a TraceContext to merge each runs events
   // into.
   if (!tracePath.empty()) {
-    traceContext = llvm::make_unique<TraceContext>(TraceLevel::STANDARD);
+    traceContext = glow::make_unique<TraceContext>(TraceLevel::STANDARD);
     if (!iterationsOpt) {
       iterationsOpt = 1;
     }
