@@ -3553,6 +3553,37 @@ TEST_F(GraphOptz, ReshapeConstantOneUse) {
   EXPECT_TRUE(V->getType()->dims().equals(reshape2));
 }
 
+/// Test that reshape node is merged into Constant in a sequence
+/// Reshape(Quantize(Constant)).
+TEST_F(GraphOptz, ReshapeQuantizeConstant) {
+  const dim_t shape[] = {10, 20};
+  const dim_t newShape[] = {200, 1};
+
+  auto *qTy = mod_.uniqueType(ElemKind::Int8QTy, shape, 0.2, 0);
+
+  auto *input =
+      F_->getParent()->createConstant(ElemKind::FloatTy, shape, "input");
+  auto *Q = F_->createQuantize("quantize", input, qTy);
+  auto *R = F_->createReshape("reshape", Q, newShape);
+  auto *S = F_->createSave("ret", R);
+
+  // Skip ConstantFolding as it would have the same result as this opt.
+  CompilationContext cctx;
+  cctx.optimizationOpts.enableConstantFolding = false;
+
+  EXPECT_EQ(F_->getNodes().size(), 3);
+  ::glow::optimize(F_, cctx);
+  EXPECT_EQ(F_->getNodes().size(), 2);
+
+  // Constant and Quantize should have new shape.
+  auto *newQ = llvm::dyn_cast<QuantizeNode>(S->getInput());
+  ASSERT_TRUE(newQ);
+  EXPECT_TRUE(newQ->getResult().dims().equals(newShape));
+  auto *newC = llvm::dyn_cast<Constant>(newQ->getInput());
+  ASSERT_TRUE(newC);
+  EXPECT_TRUE(newC->getType()->dims().equals(newShape));
+}
+
 /// Test that Transpose is optimized into Reshape when it moves no data.
 TEST_F(GraphOptz, transposeIntoReshapeOptim) {
   auto *batch =

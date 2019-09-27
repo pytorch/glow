@@ -3040,19 +3040,31 @@ bool OptimizeReshape::run(Function *F, const CompilationContext &cctx) {
       changed = true;
       continue;
     }
-    // Reshape(Constant) -> Constant'.
-    if (auto *C = dyn_cast<Constant>(inputNode)) {
-      // Create a new Constant with the type of the reshape.
+    // Reshape(Constant) -> Constant' or
+    // Reshape(Quantize(Constant)) -> Quantize'(Constant').
+    auto *Q = dyn_cast<QuantizeNode>(inputNode);
+    auto *C = dyn_cast<Constant>(Q ? Q->getInput() : inputNode);
+    if (C && (!Q || Q->hasOneUse())) {
+      // Create a new Constant with the dims of the reshape.
       auto layout =
           CanonicalTensorLayout::getInstance().getNthResultLayoutRequirements(
               reshapeNode, ReshapeNode::ResultIndices::ResultIdx);
-      auto *newC = F->getParent()->createConstant(
-          reshapeNode->getResult().getType(), C->getName(), layout);
+      auto cTy = F->getParent()->uniqueTypeWithNewShape(
+          C->getType(), reshapeNode->getResult().dims());
+      auto *newC = F->getParent()->createConstant(cTy, C->getName(), layout);
       // Create an unowned view of the original tensor with the correct shape,
       // and assign it to the new Constant.
       Tensor reshapedT = C->getPayload().getUnowned(reshapeNode->getDims());
       newC->assign(&reshapedT);
-      reshapeNode->getResult().replaceAllUsesOfWith(newC);
+      // Create a new Quantize with the dims of the reshape, if needed.
+      NodeValue newN(newC);
+      if (Q) {
+        auto qTy = F->getParent()->uniqueTypeWithNewShape(
+            Q->getResult().getType(), reshapeNode->getResult().dims());
+        auto *newQ = F->createQuantize(Q->getName(), newC, qTy);
+        newN = NodeValue(newQ);
+      }
+      reshapeNode->getResult().replaceAllUsesOfWith(newN);
       changed = true;
       continue;
     }
