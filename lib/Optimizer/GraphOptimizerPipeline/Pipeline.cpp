@@ -197,3 +197,18 @@ void FunctionPassPipeline::dump(llvm::raw_ostream &os) const {
     os << "}\n";
   }
 }
+
+bool FunctionPassPipeline::removeFirstInstanceOfPass(FunctionPassID FPID) {
+  for (auto it = begin(); it != end(); it++) {
+    if (it->getFunctionPassID() == FPID) {
+      erase(it);
+      return true;
+    }
+  }
+  return false;
+}
+
+void FunctionPassPipeline::removeAllInstancesOfPass(FunctionPassID FPID) {
+  while (removeFirstInstanceOfPass(FPID)) {
+  }
+}

@@ -98,6 +98,10 @@ class FunctionPassPipeline : private llvm::SmallVector<FunctionPassConfig, 64> {
 private:
   using ParentImpl = llvm::SmallVectorImpl<FunctionPassConfig>;
 
+  /// Removes the first instance of a pass with ID \p FPID. \returns whether an
+  /// instance of the pass was successfully found and removed.
+  bool removeFirstInstanceOfPass(FunctionPassID FPID);
+
 public:
   FunctionPassPipeline() = default;
 
@@ -122,6 +126,9 @@ public:
 
   /// Push a new \p FPC to the end of the pipeline.
   void pushBack(FunctionPassConfig FPC) { push_back(FPC); }
+
+  /// Removes all instances of a pass with ID \p FPID.
+  void removeAllInstancesOfPass(FunctionPassID FPID);
 
   /// Dump a textual representation of the pipeline to \p os.
   void dump(llvm::raw_ostream &os = llvm::outs()) const;
