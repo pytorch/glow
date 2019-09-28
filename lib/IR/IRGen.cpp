@@ -189,14 +189,16 @@ void IRGenVisitor::post(Node *parent, Node *N) {
   case glow::Kinded::Kind::AvgPoolGradNodeKind: {
     auto *PG = cast<AvgPoolGradNode>(N);
 
+    auto poolIn = PG->getInput();
     auto poolOut = PG->getOriginalOutputForResult();
+    auto *inW = valueForNode(poolIn);
     auto *outW = valueForNode(poolOut);
     auto *outG = valueForNode(PG->getGradOfOriginalOutputNamedResult());
 
     auto *inG = builder_.createAllocActivationInst("pool.outG",
                                                    PG->getInput().getType());
 
-    builder_.createAvgPoolGradInst(N->getName(), outW, outG, inG,
+    builder_.createAvgPoolGradInst(N->getName(), outW, inW, outG, inG,
                                    PG->getKernels(), PG->getStrides(),
                                    PG->getPads(), PG->getLayout());
     registerIR(PG->getGradOfInputNamedInput(), inG);
