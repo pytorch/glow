@@ -153,7 +153,7 @@ int main(int argc, char **argv) {
       .addMember(MemberType::Unsigned, "Layout")
       .autoIRGen()
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
-      .addGradientInstr({"Dest"}, {"Dest", "Src"});
+      .addGradientInstr({"Dest", "Src"}, {"Dest", "Src"});
 
   BB.newInstr("ArgMax")
       .addOperand("Argmax", OperandKind::Out)
