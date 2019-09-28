@@ -232,6 +232,26 @@ TEST(GraphAutoGrad, checkMatMulGradTest) {
   EE.compile(CompilationMode::Train);
 }
 
+/// Check that we can differentiate functions that use BatchMatMul.
+TEST(GraphAutoGrad, checkBatchMatMulGradTest) {
+  ExecutionEngine EE;
+  TrainingConfig TC;
+
+  auto &Mod = EE.getModule();
+  Function *F = Mod.createFunction("main");
+
+  auto *A = Mod.createPlaceholder(ElemKind::FloatTy, {5, 20, 13}, "A",
+                                  /*isTrainable=*/false);
+  auto *B = Mod.createPlaceholder(ElemKind::FloatTy, {13, 30}, "B",
+                                  /*isTrainable=*/false);
+  auto *BatchMatMul = F->createBatchMatMul("batchMatMul", A, B);
+
+  F->createSave("save", BatchMatMul);
+
+  glow::differentiate(F, TC);
+  EE.compile(CompilationMode::Train);
+}
+
 // Check that we can differentiate functions that use Tile.
 TEST(GraphAutoGrad, checkTileGradTest) {
   ExecutionEngine EE;

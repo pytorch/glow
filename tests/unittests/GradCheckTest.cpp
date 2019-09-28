@@ -257,6 +257,47 @@ TEST_P(GradCheck, gradientCheckMatMul) {
                    &Inputs, &Outputs, 0.001, 0.01);
 }
 
+TEST_P(GradCheck, gradientCheckBatchMatMul) {
+  CHECK_IF_ENABLED();
+  PlaceholderBindings Bindings;
+  Placeholder *A, *Exp, *B;
+  SaveNode *Result;
+
+  constexpr size_t BatchSize{4}, P{5}, Q{6}, R{7};
+
+  for (auto *EE : engines_) {
+    auto &Mod = EE->getModule();
+    Bindings.clear();
+    Function *F = Mod.createFunction("main");
+
+    A = Mod.createPlaceholder(ElemKind::FloatTy, {BatchSize, P, Q}, "A",
+                              /*isTrainable=*/false);
+    B = Mod.createPlaceholder(ElemKind::FloatTy, {BatchSize, Q, R}, "B",
+                              /*isTrainable=*/false);
+
+    Exp = Mod.createPlaceholder(ElemKind::FloatTy, {BatchSize, P, R}, "exp",
+                                /*isTrainable=*/false);
+    auto HandleB = Bindings.allocate(B)->getHandle<float>();
+    HandleB.randomize(-1, 1, Mod.getPRNG());
+    Node *MM = F->createBatchMatMul("batchMatmul", A, B);
+    auto *Reg = F->createRegression("reg", MM, Exp);
+    Result = F->createSave("save", Reg);
+  }
+
+  Tensor Inputs(ElemKind::FloatTy, {{BatchSize, P, Q}});
+  Tensor Outputs(ElemKind::FloatTy, {{BatchSize, P, R}});
+
+  auto InputsH = Inputs.getHandle<>();
+  auto OutputsH = Outputs.getHandle<>();
+  auto &Mod = EET_.getModule();
+
+  InputsH.randomize(-1, 1, Mod.getPRNG());
+  OutputsH.randomize(-1, 1, Mod.getPRNG());
+
+  performGradCheck(EET_, EEI_, Bindings, Result->getPlaceholder(), A, Exp,
+                   &Inputs, &Outputs, 0.001, 0.01);
+}
+
 TEST_P(GradCheck, gradientCheckTile) {
   CHECK_IF_ENABLED();
   PlaceholderBindings Bindings;
