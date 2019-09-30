@@ -3427,34 +3427,34 @@ COMPARE_ARITH_FUN(Max)
 COMPARE_ARITH_FUN(Min)
 #undef COMPARE_ARITH_FUN
 
-#define COMPARE_ARITH_FLOAT_VS_INT8(_OP_NAME_, ...)                            \
+#define COMPARE_ARITH_FLOAT_VS_INT8(_OP_NAME_)                                 \
   TEST_P(OperatorStatelessTest, Basic##_OP_NAME_##NetFloatVsInt8) {            \
     CHECK_IF_ENABLED();                                                        \
     compareAgainstInterpreter(                                                 \
         getBackendName(), createAndInitBasic##_OP_NAME_##Test,                 \
         ElemKind::FloatTy, ElemKind::Int8QTy, 0.025f, parCloneCountOpt);       \
   }
-COMPARE_ARITH_FLOAT_VS_INT8(Add, Interpreter, CPU, OpenCL)
-COMPARE_ARITH_FLOAT_VS_INT8(Sub, Interpreter, CPU, OpenCL)
-COMPARE_ARITH_FLOAT_VS_INT8(Mul, Interpreter, CPU, OpenCL)
-COMPARE_ARITH_FLOAT_VS_INT8(Div, Interpreter)
-COMPARE_ARITH_FLOAT_VS_INT8(Max, Interpreter, CPU, OpenCL)
-COMPARE_ARITH_FLOAT_VS_INT8(Min, Interpreter, CPU, OpenCL)
+COMPARE_ARITH_FLOAT_VS_INT8(Add)
+COMPARE_ARITH_FLOAT_VS_INT8(Sub)
+COMPARE_ARITH_FLOAT_VS_INT8(Mul)
+COMPARE_ARITH_FLOAT_VS_INT8(Div)
+COMPARE_ARITH_FLOAT_VS_INT8(Max)
+COMPARE_ARITH_FLOAT_VS_INT8(Min)
 #undef COMPARE_ARITH_FLOAT_VS_INT8
 
-#define COMPARE_ARITH_FLOAT_VS_FLOAT16(_OP_NAME_, ...)                         \
+#define COMPARE_ARITH_FLOAT_VS_FLOAT16(_OP_NAME_)                              \
   TEST_P(OperatorStatelessTest, Basic##_OP_NAME_##NetFloatVsFloat16) {         \
     CHECK_IF_ENABLED();                                                        \
     compareAgainstInterpreter(                                                 \
         getBackendName(), createAndInitBasic##_OP_NAME_##Test,                 \
         ElemKind::FloatTy, ElemKind::Float16Ty, 0.01f, parCloneCountOpt);      \
   }
-COMPARE_ARITH_FLOAT_VS_FLOAT16(Add, Interpreter)
-COMPARE_ARITH_FLOAT_VS_FLOAT16(Sub, Interpreter)
-COMPARE_ARITH_FLOAT_VS_FLOAT16(Mul, Interpreter)
-COMPARE_ARITH_FLOAT_VS_FLOAT16(Div, Interpreter)
-COMPARE_ARITH_FLOAT_VS_FLOAT16(Max, Interpreter)
-COMPARE_ARITH_FLOAT_VS_FLOAT16(Min, Interpreter)
+COMPARE_ARITH_FLOAT_VS_FLOAT16(Add)
+COMPARE_ARITH_FLOAT_VS_FLOAT16(Sub)
+COMPARE_ARITH_FLOAT_VS_FLOAT16(Mul)
+COMPARE_ARITH_FLOAT_VS_FLOAT16(Div)
+COMPARE_ARITH_FLOAT_VS_FLOAT16(Max)
+COMPARE_ARITH_FLOAT_VS_FLOAT16(Min)
 #undef COMPARE_ARITH_FLOAT_VS_FLOAT16
 
 #define ARITH_FUN_IMPL(_OP_NAME_, _REFERENCE_FUNCTION_, _PARENTHESES_)         \
