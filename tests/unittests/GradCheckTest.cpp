@@ -580,19 +580,20 @@ TEST_P(GradCheck, gradientCheckAvgPool) {
     auto &mod = EE->getModule();
     bindings.clear();
     Function *F = mod.createFunction("main");
-    A = mod.createPlaceholder(ElemKind::FloatTy, {1, numDim, numDim, 1}, "A",
+    A = mod.createPlaceholder(ElemKind::FloatTy, {1, numDim, numDim, 2}, "A",
                               false);
     Exp = mod.createPlaceholder(ElemKind::FloatTy, {1, numOutputElem}, "Exp",
                                 false);
 
     Node *O = F->createAvgPool("pool", A, 3, 3, 1);
     O = F->createTanh("tanh", O);
+    O = F->createSlice("slice", O, {0, 0, 0, 0}, {1, 4, 4, 1});
     O = F->createFullyConnected(bindings, "fc", O, numOutputElem);
     O = F->createRegression("reg", O, Exp);
     result = F->createSave("ret", O);
   }
 
-  Tensor inputs(ElemKind::FloatTy, {1, numDim, numDim, 1});
+  Tensor inputs(ElemKind::FloatTy, {1, numDim, numDim, 2});
   Tensor outputs(ElemKind::FloatTy, {1, numOutputElem});
 
   auto inputsH = inputs.getHandle<>();
@@ -616,19 +617,20 @@ TEST_P(GradCheck, gradientCheckMaxPool) {
     auto &mod = EE->getModule();
     bindings.clear();
     Function *F = mod.createFunction("main");
-    A = mod.createPlaceholder(ElemKind::FloatTy, {1, numDim, numDim, 1}, "A",
+    A = mod.createPlaceholder(ElemKind::FloatTy, {1, numDim, numDim, 2}, "A",
                               false);
     Exp = mod.createPlaceholder(ElemKind::FloatTy, {1, numOutputElem}, "Exp",
                                 false);
 
     MaxPoolNode *P = F->createMaxPool("pool", A, 3, 3, 1);
     Node *O = F->createTanh("tanh", P->getResult());
+    O = F->createSlice("slice", O, {0, 0, 0, 0}, {1, 4, 4, 1});
     O = F->createFullyConnected(bindings, "fc", O, numOutputElem);
     O = F->createRegression("reg", O, Exp);
     result = F->createSave("ret", O);
   }
 
-  Tensor inputs(ElemKind::FloatTy, {1, numDim, numDim, 1});
+  Tensor inputs(ElemKind::FloatTy, {1, numDim, numDim, 2});
   Tensor outputs(ElemKind::FloatTy, {1, numOutputElem});
 
   auto inputsH = inputs.getHandle<>();
