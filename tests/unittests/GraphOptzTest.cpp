@@ -846,7 +846,8 @@ TEST_F(GraphOptz, mergeNonInverseTransposes) {
   const size_t origDims[] = {1, 5, 10, 15};
   const size_t finalDims[] = {5, 1, 15, 10};
 
-  Node *A = mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input", false);
+  Placeholder *A =
+      mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input", false);
   TransposeNode *T1 = F_->createTranspose("transpose", A, {0, 3, 2, 1});
   TransposeNode *T2 = F_->createTranspose("transpose", T1, {0, 2, 3, 1});
   TransposeNode *T3 = F_->createTranspose("transpose", T2, {1, 0, 3, 2});
@@ -863,15 +864,25 @@ TEST_F(GraphOptz, mergeNonInverseTransposes) {
 
   EXPECT_EQ(F_->getNodes().size(), 5);
 
-  ::glow::optimize(F_, CompilationMode::Infer);
-
+  optimizedF_ = optimizeFunction(F_);
+  // Find save node in the optimized graph.
+  for (auto &N : optimizedF_->getNodes()) {
+    if (N.getKind() == Kinded::Kind::SaveNodeKind) {
+      save = llvm::dyn_cast<SaveNode>(&N);
+    }
+  }
+  // Get the last transpose node in the optimized graph.
   auto *TR = llvm::dyn_cast<TransposeNode>(save->getInput());
   ASSERT_NE(TR, nullptr);
 
-  EXPECT_EQ(F_->getNodes().size(), 2);
+  EXPECT_EQ(optimizedF_->getNodes().size(), 2);
   EXPECT_EQ(TR->getResult().dims(), llvm::makeArrayRef(finalDims));
   EXPECT_EQ(A->getNthResult(0).dims(), llvm::makeArrayRef(origDims));
   EXPECT_EQ(TR->getInput().getNode(), A);
+
+  bindings_.allocate(mod_.getPlaceholders());
+  bindings_.get(A)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
+  checkNumericalEquivalence();
 }
 
 TEST_F(GraphOptz, sinkTransposeBelowArithmeticNodes) {
