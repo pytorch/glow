@@ -1349,20 +1349,28 @@ TEST_F(GraphOptz, ArithmeticIdentitiesOne) {
   SplatNode *one = F_->createSplat("one", input->getType(), 1.);
   DivNode *div = F_->createDiv("div", input, one);
   MulNode *mul = F_->createMul("mul", div, one);
-  SaveNode *SN = F_->createSave("ret", mul);
+  F_->createSave("ret", mul);
 
   // Splat, Div, Mul, Save.
   EXPECT_EQ(F_->getNodes().size(), 4);
-
-  ::glow::optimize(F_, CompilationMode::Infer);
+  // Save optimized function for future comparision
+  optimizedF_ = optimizeFunction(F_);
 
   // The expression evaluates to "I", so Save is only node left.
-  EXPECT_EQ(F_->getNodes().size(), 1);
-  ASSERT_TRUE(std::find_if(F_->getNodes().begin(), F_->getNodes().end(),
-                           IsSameNodeAddress(SN)) != F_->getNodes().end());
+  EXPECT_EQ(optimizedF_->getNodes().size(), 1);
+  SaveNode *SN = (SaveNode *)optimizedF_->getNodeByName("ret");
+  ASSERT_TRUE(std::find_if(optimizedF_->getNodes().begin(),
+                           optimizedF_->getNodes().end(),
+                           IsSameNodeAddress(SN)) !=
+              optimizedF_->getNodes().end());
 
   // Save node should just save the input.
   EXPECT_TRUE(SN->getInput().getNode() == input);
+
+  bindings_.allocate(mod_.getPlaceholders());
+  bindings_.get(input)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
+
+  checkNumericalEquivalence();
 }
 
 /// Reverse the intrusive list of nodes. This custom implementation is required,
