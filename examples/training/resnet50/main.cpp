@@ -73,10 +73,9 @@ llvm::cl::opt<std::string> executionBackend(
     llvm::cl::Optional, llvm::cl::init("Interpreter"), llvm::cl::cat(category));
 
 /// Finds the maximum value and its index within \p N range.
-size_t findMaxIndex(const Tensor &t, size_t range) {
-  auto handle = t.getHandle();
+template <typename H> size_t findMaxIndex(const H &handle, size_t range) {
   size_t ret{0};
-  float maxVal{handle.raw(0)};
+  auto maxVal{handle.raw(0)};
   for (size_t c = 1; c < range; ++c) {
     auto val = handle.raw(c);
     if (maxVal <= val) {
@@ -224,8 +223,8 @@ int main(int argc, char **argv) {
       EE.run(bindings, tfName);
       timer.stopTimer();
 
-      auto correct = findMaxIndex(labels, 10);
-      auto guess = findMaxIndex(*result, 10);
+      auto correct = findMaxIndex(labels.getHandle<int64_t>(), 10);
+      auto guess = findMaxIndex(result->getHandle(), 10);
       score += guess == correct;
       ++total;
     }
