@@ -18,9 +18,9 @@
 #include <future>
 #include <random>
 
+#include "Bench.h"
 #include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
-#include "glow/glow/tests/benchmark/Bench.h"
 
 using namespace glow;
 
@@ -39,7 +39,6 @@ class GemmBench : public Benchmark {
 
   /// Dimensions expressed in libjit's format.
   size_t aDims[2];
-  size_t bDims[2];
   size_t cDims[2];
   size_t numLayers_;
   PlaceholderBindings bindings_;
@@ -53,7 +52,7 @@ public:
   GemmBench(size_t m, size_t n, size_t k, size_t numLayers_,
             size_t asyncLaunchSize_, size_t numCores_, const char *backendStr_,
             const char *dtypeStr_)
-      : aDims{m, k}, bDims{k, n}, cDims{m, n}, numLayers_(numLayers_),
+      : aDims{m, k}, cDims{m, n}, numLayers_(numLayers_),
         asyncLaunchSize_(asyncLaunchSize_), numCores_(numCores_),
         backendStr_(backendStr_), dtypeStr_(dtypeStr_) {}
 
