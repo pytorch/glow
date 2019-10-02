@@ -587,7 +587,6 @@ TEST_P(GradCheck, gradientCheckAvgPool) {
 
     Node *O = F->createAvgPool("pool", A, 3, 3, 1);
     O = F->createTanh("tanh", O);
-    O = F->createSlice("slice", O, {0, 0, 0, 0}, {1, 4, 4, 1});
     O = F->createFullyConnected(bindings, "fc", O, numOutputElem);
     O = F->createRegression("reg", O, Exp);
     result = F->createSave("ret", O);
@@ -624,7 +623,6 @@ TEST_P(GradCheck, gradientCheckMaxPool) {
 
     MaxPoolNode *P = F->createMaxPool("pool", A, 3, 3, 1);
     Node *O = F->createTanh("tanh", P->getResult());
-    O = F->createSlice("slice", O, {0, 0, 0, 0}, {1, 4, 4, 1});
     O = F->createFullyConnected(bindings, "fc", O, numOutputElem);
     O = F->createRegression("reg", O, Exp);
     result = F->createSave("ret", O);
