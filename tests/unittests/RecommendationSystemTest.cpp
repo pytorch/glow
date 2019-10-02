@@ -204,19 +204,6 @@ static void dispatchInference(HostManager *hostManager,
   contexts[0].release();
 }
 
-/// Helper function to generate deviceConfigs for HostManager initialization.
-static std::vector<std::unique_ptr<runtime::DeviceConfig>>
-generateDeviceConfigs(llvm::StringRef backendName, unsigned numDevices,
-                      size_t memorySize) {
-  std::vector<std::unique_ptr<runtime::DeviceConfig>> configs;
-  for (unsigned i = 0; i < numDevices; i++) {
-    auto deviceConfig = llvm::make_unique<DeviceConfig>(backendName);
-    deviceConfig->setDeviceMemory(memorySize);
-    configs.push_back(std::move(deviceConfig));
-  }
-  return configs;
-}
-
 /// Tests a simplified Recommendation System model.
 ///
 /// The RecSys model has four components:
@@ -796,7 +783,8 @@ protected:
       auto *saveConcat = F_->createSave("after_concat_data", CN);
       concatPH = saveConcat->getPlaceholder();
     }
-    auto configs = generateDeviceConfigs(getBackendName(), 1, MAX_MEMORY);
+    auto configs =
+        runtime::generateDeviceConfigs(1, getBackendName(), MAX_MEMORY);
     std::unique_ptr<HostManager> hostManager(
         new HostManager(std::move(configs)));
 
@@ -855,7 +843,7 @@ protected:
 
     // Set device memory to 64GB to prevent partitioning. We are using the
     // Interpreter's result just as a reference result to compare against.
-    auto configs = generateDeviceConfigs("Interpreter", 1, MAX_MEMORY);
+    auto configs = generateDeviceConfigs(1, "Interpreter", MAX_MEMORY);
     std::unique_ptr<HostManager> hostManager(
         new HostManager(std::move(configs)));
 
@@ -876,7 +864,7 @@ protected:
     // Result tensors are reused below, so create a local copy.
     Tensor referenceResultT = resultTensor->clone();
     // Generate configs and create a new HostManager for testing partitioning.
-    auto configs = generateDeviceConfigs(getBackendName(), numDevices, memSize);
+    auto configs = generateDeviceConfigs(numDevices, getBackendName(), memSize);
     std::unique_ptr<HostManager> hostManager(
         new HostManager(std::move(configs)));
 
@@ -934,7 +922,7 @@ protected:
     // Use the same precision transformation for compilation.
     CompilationContext cctx;
     cctx.precisionConfig = precConfig_;
-    auto configs = generateDeviceConfigs(getBackendName(), 1, MAX_MEMORY);
+    auto configs = generateDeviceConfigs(1, getBackendName(), MAX_MEMORY);
     std::unique_ptr<HostManager> hostManager(
         new HostManager(std::move(configs)));
     EXIT_ON_ERR(hostManager->addNetwork(std::move(mod), cctx));
