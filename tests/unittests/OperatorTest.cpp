@@ -1211,6 +1211,8 @@ TEST_P(OperatorTest, FP16Add) {
 }
 
 TEST_P(OperatorTest, matmul) {
+  CHECK_IF_ENABLED();
+
   auto *lhs = mod_.createPlaceholder(ElemKind::FloatTy, {3, 2}, "lhs", false);
   auto *rhs = mod_.createPlaceholder(ElemKind::FloatTy, {2, 1}, "rhs", false);
   bindings_.allocate(lhs)->getHandle() = {1, 2, 3, 4, 5, 6};
@@ -1232,6 +1234,8 @@ TEST_P(OperatorTest, matmul) {
 
 /// Test that cloneFunInsideFun works correctly with matmuls.
 TEST_P(OperatorTest, matmul_ParCloneTest10) {
+  CHECK_IF_ENABLED();
+
   auto *lhs = mod_.createPlaceholder(ElemKind::FloatTy, {3, 2}, "lhs", false);
   auto *rhs = mod_.createPlaceholder(ElemKind::FloatTy, {2, 1}, "rhs", false);
   bindings_.allocate(lhs)->getHandle() = {1, 2, 3, 4, 5, 6};
@@ -1285,6 +1289,8 @@ TEST_P(OperatorTest, FP16Matmul) {
 
 /// Test that the broadcasted batch mat mul operator works as expected.
 TEST_P(OperatorTest, BroadcastedBatchMatMul) {
+  CHECK_IF_ENABLED();
+
   auto *lhs =
       mod_.createPlaceholder(ElemKind::FloatTy, {2, 3, 2}, "lhs", false);
   auto *rhs = mod_.createPlaceholder(ElemKind::FloatTy, {2, 1}, "rhs", false);
@@ -1334,6 +1340,8 @@ TEST_P(OperatorTest, NonBroadcastedBatchMatMul) {
 }
 
 TEST_P(OperatorTest, ParallelBatchMatMul) {
+  CHECK_IF_ENABLED();
+
   auto *lhs =
       mod_.createPlaceholder(ElemKind::FloatTy, {2, 3, 2}, "lhs", false);
   auto *rhs =
@@ -1383,6 +1391,8 @@ static void testBatchedReduceAdd(glow::PlaceholderBindings &bindings,
 
 /// Test that BatchedReduceAdd is correctly supported in FloatTy.
 TEST_P(OperatorTest, batchedReduceAdd_Float) {
+  CHECK_IF_ENABLED();
+
   testBatchedReduceAdd<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy);
 }
 
@@ -1395,6 +1405,8 @@ TEST_P(OperatorTest, batchedReduceAdd_Float16) {
 
 /// Test that BatchedReduceAdd works correctly reducing the outermost axis.
 TEST_P(OperatorTest, batchedReduceAdd_outerAxis) {
+  CHECK_IF_ENABLED();
+
   auto *batch =
       mod_.createPlaceholder(ElemKind::FloatTy, {2, 2, 4}, "batch", false);
   bindings_.allocate(batch)->getHandle<float>() = {10, 20, 30, 40, 1, 2, 3, 4,
@@ -1416,6 +1428,8 @@ TEST_P(OperatorTest, batchedReduceAdd_outerAxis) {
 
 /// Test that BatchedReduceAdd works correctly reducing an internal axis.
 TEST_P(OperatorTest, batchedReduceAdd_innerAxis) {
+  CHECK_IF_ENABLED();
+
   auto *batch =
       mod_.createPlaceholder(ElemKind::FloatTy, {2, 2, 4}, "batch", false);
   bindings_.allocate(batch)->getHandle<float>() = {10, 20, 30, 40, 1, 2, 3, 4,
@@ -1437,6 +1451,8 @@ TEST_P(OperatorTest, batchedReduceAdd_innerAxis) {
 
 /// Test that BatchedReduceAdd works correctly reducing the innermost axis.
 TEST_P(OperatorTest, batchedReduceAdd_lastAxis) {
+  CHECK_IF_ENABLED();
+
   auto *batch =
       mod_.createPlaceholder(ElemKind::FloatTy, {2, 2, 4}, "batch", false);
   bindings_.allocate(batch)->getHandle<float>() = {10, 20, 30, 40, 1, 2, 3, 4,
@@ -1457,6 +1473,8 @@ TEST_P(OperatorTest, batchedReduceAdd_lastAxis) {
 
 /// Test that BatchReducedAdd works on a 4D input.
 TEST_P(OperatorTest, batchedReduceAdd_4Dinput) {
+  CHECK_IF_ENABLED();
+
   auto *batch =
       mod_.createPlaceholder(ElemKind::FloatTy, {2, 2, 2, 4}, "batch", false);
   bindings_.allocate(batch)->getHandle<float>() = {
@@ -1772,6 +1790,8 @@ TEST_P(OperatorTest, batchedReduceAddQuantizedWithAxis) {
 }
 
 TEST_P(OperatorTest, batchedReduceMean) {
+  CHECK_IF_ENABLED();
+
   auto *batch =
       mod_.createPlaceholder(ElemKind::FloatTy, {2, 4}, "batch", false);
   bindings_.allocate(batch)->getHandle() = {10, 20, 30, 40, 1, 2, 3, 4};
@@ -1964,6 +1984,8 @@ TEST_P(OperatorTest, batchedReduceMeanUsingAvgPoolQuantized) {
 
 /// Test that the BatchedAdd operator works.
 TEST_P(OperatorTest, BatchedAdd) {
+  CHECK_IF_ENABLED();
+
   auto *batch =
       mod_.createPlaceholder(ElemKind::FloatTy, {2, 3, 3}, "batch", false);
   auto *added =
@@ -2125,6 +2147,8 @@ TEST_P(OperatorTest, broadcast) {
 
 /// Perform a simple weighted sum.
 TEST_P(OperatorTest, weightedSum) {
+  CHECK_IF_ENABLED();
+
   // Create the data.
   auto *A = mod_.createPlaceholder(ElemKind::FloatTy, {2, 2}, "A", false);
   bindings_.allocate(A)->getHandle() = {1.0, 2.0, 3.0, 4.0};
@@ -2183,6 +2207,8 @@ static void testReluSimple(glow::PlaceholderBindings &bindings,
 
 /// Verify that the RELU operator works correctly for Float.
 TEST_P(OperatorTest, ReluSimple_Float) {
+  CHECK_IF_ENABLED();
+
   testReluSimple<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy);
 }
 
@@ -2432,6 +2458,8 @@ TEST_P(OperatorTest, ConcatTopK) {
 
 // Check that matrix multiplication works well on some predefined values.
 TEST_P(OperatorTest, matmul2) {
+  CHECK_IF_ENABLED();
+
   auto *inp0 =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 2}, "input0", false);
   auto *inp1 =
@@ -2931,6 +2959,7 @@ static void testTranspose3Dims(glow::PlaceholderBindings &bindings,
 
 /// Test Transpose3Dims with Float.
 TEST_P(OperatorTest, Transpose3Dims_Float) {
+  CHECK_IF_ENABLED();
   testTranspose3Dims<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy);
 }
 
@@ -3432,7 +3461,7 @@ COMPARE_ARITH_FUN(Min)
     CHECK_IF_ENABLED();                                                        \
     compareAgainstInterpreter(                                                 \
         getBackendName(), createAndInitBasic##_OP_NAME_##Test,                 \
-        ElemKind::FloatTy, ElemKind::Int8QTy, 0.025f, parCloneCountOpt);       \
+        ElemKind::FloatTy, ElemKind::Int8QTy, 0.035f, parCloneCountOpt);       \
   }
 COMPARE_ARITH_FLOAT_VS_INT8(Add)
 COMPARE_ARITH_FLOAT_VS_INT8(Sub)
@@ -3779,6 +3808,8 @@ TEST_P(OperatorStatelessTest, IntConcat) {
 }
 
 TEST_P(OperatorTest, FCWithFlatten) {
+  CHECK_IF_ENABLED();
+
   auto *input =
       mod_.createPlaceholder(ElemKind::FloatTy, {2, 1, 3}, "input", false);
   Constant *weights = mod_.createConstant(ElemKind::FloatTy, {3, 4}, "weights");
@@ -4212,6 +4243,8 @@ TEST_P(OperatorTest, QuantizedCmpLTEAndSelect) {
 }
 
 TEST_P(OperatorTest, TestQuantizedRescaleSequence) {
+  CHECK_IF_ENABLED();
+
   const size_t len = 100;
 
   auto *A = mod_.createPlaceholder(ElemKind::FloatTy, {len}, "A", false);
@@ -4569,7 +4602,7 @@ TEST_P(OperatorTest, sliceVectors_Int8) {
 
 /// Test slicing with Int32QTy.
 TEST_P(OperatorTest, sliceVectors_Int32) {
-  ENABLED_BACKENDS(Interpreter, CPU);
+  CHECK_IF_ENABLED();
   testSliceVectors<int32_t>(bindings_, mod_, F_, EE_, ElemKind::Int32QTy);
 }
 
@@ -4830,6 +4863,8 @@ TEST_P(OperatorTest, simpleCmpSelectPredication) {
 }
 
 TEST_P(OperatorTest, simplePredication) {
+  CHECK_IF_ENABLED();
+
   auto *inputs =
       mod_.createPlaceholder(ElemKind::FloatTy, {10, 10, 10}, "inputs", false);
   auto *counters =
@@ -5117,6 +5152,8 @@ TEST_P(OperatorTest, IntRelu) {
 }
 
 TEST_P(OperatorTest, IntSplat) {
+  CHECK_IF_ENABLED();
+
   const float splatValue = 10;
   const float scale = 1.0;
   const int32_t offset = 5;
@@ -5715,6 +5752,8 @@ TEST_P(OperatorTest, FP16AvgPool) {
 
 /// Verify that the AvgPool operator works correctly.
 TEST_P(OperatorTest, AvgPool) {
+  CHECK_IF_ENABLED();
+
   auto *input =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 3, 3, 1}, "input", false);
   bindings_.allocate(input)->getHandle() = {0., 1., 2., 3., 4., 5., 6., 7., 8.};
@@ -5840,6 +5879,8 @@ TEST_P(OperatorTest, AdaptiveAvgPoolNonSquare) {
 }
 
 TEST_P(OperatorTest, MaxPool) {
+  CHECK_IF_ENABLED();
+
   auto *input =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 3, 3, 1}, "input", false);
   bindings_.allocate(input)->getHandle() = {0., 1., 2., 3., 4., 5., 6., 7., 8.};
@@ -6029,6 +6070,8 @@ TEST_P(OperatorStatelessTest, Tanh_Float16) {
 
 /// Verify that the Tanh operator works correctly.
 TEST_P(OperatorTest, Tanh) {
+  CHECK_IF_ENABLED();
+
   constexpr size_t size = 10;
   auto *input =
       mod_.createPlaceholder(ElemKind::FloatTy, {size}, "input", false);
@@ -6466,6 +6509,8 @@ TEST_P(OperatorStatelessTest, Int8Sigmoid) {
 
 /// Check that the batch add operator works properly.
 TEST_P(OperatorTest, BatchAdd) {
+  CHECK_IF_ENABLED();
+
   PseudoRNG PRNG;
 
   auto *input =
@@ -6659,6 +6704,7 @@ static void testBatchAdd(glow::PlaceholderBindings &bindings, glow::Module &mod,
 
 /// Check that the sequence of extract-batchedadd-concat works.
 TEST_P(OperatorTest, testBatchAdd_Float) {
+  CHECK_IF_ENABLED();
   testBatchAdd<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy);
 }
 
@@ -7496,6 +7542,8 @@ TEST_P(OperatorTest,
 
 /// Test SLS when some input tensors are constants.
 TEST_P(OperatorTest, ConstantSLS) {
+  CHECK_IF_ENABLED();
+
   auto *data = mod_.createConstant(ElemKind::FloatTy, {1024, 32}, "data");
   auto *indices = mod_.createConstant(ElemKind::Int64ITy, {314}, "indices");
   auto *lengths = mod_.createConstant(ElemKind::Int32ITy, {20}, "lengths");
@@ -7737,6 +7785,8 @@ TEST_P(OperatorTest, FP16Reshape) {
 
 /// Verify that the Reshape operator works correctly.
 TEST_P(OperatorTest, Reshape) {
+  CHECK_IF_ENABLED();
+
   auto *A = mod_.createPlaceholder(ElemKind::FloatTy, {5, 7}, "A", false);
   auto inputHandle = bindings_.allocate(A)->getHandle();
   inputHandle.randomize(-3.0, 3.0, mod_.getPRNG());
@@ -7763,6 +7813,8 @@ TEST_P(OperatorTest, Reshape) {
 
 /// Verify that the Reshape operator works correctly with Int64ITy..
 TEST_P(OperatorTest, ReshapeInt) {
+  CHECK_IF_ENABLED();
+
   auto *A = mod_.createPlaceholder(ElemKind::Int64ITy, {5, 7}, "A", false);
   auto inputHandle = bindings_.allocate(A)->getHandle<int64_t>();
   inputHandle.randomize<int64_t>(0, 100, mod_.getPRNG());
@@ -7899,6 +7951,8 @@ static void testSliceReshape(glow::PlaceholderBindings &bindings,
 /// Stack many slices/reshapes together. Some of these may be turned into
 /// tensor views stacked onto each other. Test in FloatTy.
 TEST_P(OperatorTest, sliceReshape_Float) {
+  CHECK_IF_ENABLED();
+
   testSliceReshape<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy);
 }
 
@@ -7919,7 +7973,7 @@ TEST_P(OperatorTest, sliceReshape_Int8) {
 /// Stack many slices/reshapes together. Some of these may be turned into
 /// tensor views stacked onto each other. Test in Int32QTy.
 TEST_P(OperatorTest, sliceReshape_Int32) {
-  ENABLED_BACKENDS(Interpreter);
+  CHECK_IF_ENABLED();
   testSliceReshape<int32_t>(bindings_, mod_, F_, EE_, ElemKind::Int32QTy);
 }
 
@@ -8024,6 +8078,7 @@ static void testFlatten(glow::PlaceholderBindings &bindings, glow::Module &mod,
 /// Check that the flatten operator produces 2D tensors of the right
 /// dimensions, using FloatTy.
 TEST_P(OperatorTest, Flatten_FloatTy) {
+  CHECK_IF_ENABLED();
   testFlatten<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy);
 }
 
@@ -8396,6 +8451,7 @@ static void quantizeSimpleTest(glow::PlaceholderBindings &bindings_,
 }
 
 TEST_P(OperatorTest, QuantizeSimpleInt8) {
+  CHECK_IF_ENABLED();
   quantizeSimpleTest(bindings_, mod_, F_, EE_, ElemKind::Int8QTy);
 }
 TEST_P(OperatorTest, QuantizeSimpleInt16) {
@@ -8696,6 +8752,7 @@ static void testDotProduct1D(glow::PlaceholderBindings &bindings,
 
 /// Test a DotProduct operator with 1D inputs, using FloatTy.
 TEST_P(OperatorTest, dotProduct1D_Float) {
+  CHECK_IF_ENABLED();
   testDotProduct1D<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy);
 }
 
@@ -8929,6 +8986,7 @@ TEST_P(OperatorTest, BatchBoxCox_Float16) {
 /// Test that Arithmetic ops work.
 #define TEST_ARITH_OP_FLOAT(OP_NAME_, OP_)                                     \
   TEST_P(OperatorTest, OP_NAME_##ArithFloatTest) {                             \
+    CHECK_IF_ENABLED();                                                        \
     constexpr size_t size = 50;                                                \
     auto *A = mod_.createPlaceholder(ElemKind::FloatTy, {size}, "A", false);   \
     auto *B = mod_.createPlaceholder(ElemKind::FloatTy, {size}, "B", false);   \
