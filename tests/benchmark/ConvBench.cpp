@@ -139,7 +139,8 @@ int main() {
                   continue;
                 ConvBench b(inputBatch, inputEdgeSize, inputChannels,
                             filterMultiplier, kernelSize, stride, pad, group);
-                auto time = bench(&b, reps);
+                auto times = bench(&b, reps);
+                double time = *(std::min_element(times.begin(), times.end()));
                 printf("%zu, %zu, %zu, %zu, %zu, %zu, %zu, %zu, %f\n",
                        inputBatch, inputEdgeSize, inputChannels,
                        filterMultiplier, kernelSize, stride, pad, group, time);
