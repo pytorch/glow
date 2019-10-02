@@ -3026,9 +3026,14 @@ TEST_F(GraphOptz, nopRelu) {
   auto *relu = F_->createRELU("relu", in);
   F_->createSave("save", relu);
 
-  ::glow::optimize(F_, CompilationMode::Infer);
+  optimizedF_ = optimizeFunction(F_);
 
-  EXPECT_EQ(F_->getNodes().size(), 1);
+  EXPECT_EQ(optimizedF_->getNodes().size(), 1);
+
+  bindings_.allocate(mod_.getPlaceholders());
+  bindings_.get(in)->getHandle<int8_t>().randomize(-4, 4, mod_.getPRNG());
+
+  checkNumericalEquivalence();
 }
 
 template <typename ElemTy>
