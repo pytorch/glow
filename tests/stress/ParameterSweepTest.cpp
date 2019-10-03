@@ -35,7 +35,7 @@ using llvm::cast;
 
 /// This matches the signature that is used for the parameterized tests here,
 /// i.e. those passing three parameters via a single ::testing::Combine() into
-/// INSTANTIATE_TEST_CASE_P_FOR_BACKEND_COMBINED_TEST().
+/// GLOW_INSTANTIATE_TEST_SUITE_P_FOR_BACKEND_COMBINED_TEST().
 using ThreeIntTupleConfig = std::tuple<std::string, std::tuple<int, int, int>>;
 using FourIntTupleConfig =
     std::tuple<std::string, std::tuple<int, int, int, int>>;
@@ -104,7 +104,7 @@ static void testParamSweepConv(ThreeIntTupleConfig config,
 
 DECLARE_STATELESS_BACKEND_TEST(ConvSweepTest, ThreeIntTupleConfig);
 
-INSTANTIATE_TEST_CASE_P_FOR_BACKEND_COMBINED_TEST(
+GLOW_INSTANTIATE_TEST_SUITE_P_FOR_BACKEND_COMBINED_TEST(
     SweepTest, ConvSweepTest,
     ::testing::Combine(/* size */ ::testing::Values(5, 7, 15),
                        /* depth */ ::testing::Values(8, 64),
@@ -181,7 +181,7 @@ static void testParamSweepBatchMatMul(ThreeIntTupleConfig config,
 
 DECLARE_STATELESS_BACKEND_TEST(BatchMatMulSweepTest, ThreeIntTupleConfig);
 
-INSTANTIATE_TEST_CASE_P_FOR_BACKEND_COMBINED_TEST(
+GLOW_INSTANTIATE_TEST_SUITE_P_FOR_BACKEND_COMBINED_TEST(
     SweepTest, BatchMatMulSweepTest,
     ::testing::Combine(/* N */ ::testing::Values(1, 4, 16, 24),
                        /* A */ ::testing::Range(10, 16),
@@ -257,7 +257,7 @@ static void testParamSweepFC(ThreeIntTupleConfig config,
 
 DECLARE_STATELESS_BACKEND_TEST(FCSweepTest, ThreeIntTupleConfig);
 
-INSTANTIATE_TEST_CASE_P_FOR_BACKEND_COMBINED_TEST(
+GLOW_INSTANTIATE_TEST_SUITE_P_FOR_BACKEND_COMBINED_TEST(
     SweepTest, FCSweepTest,
     ::testing::Combine(
         /* A */ ::testing::Values(1, 4, 16, 64),
@@ -348,7 +348,7 @@ static void testParamSweepConcat(FourIntTupleConfig config,
 
 DECLARE_STATELESS_BACKEND_TEST(ConcatSweepTest, FourIntTupleConfig);
 
-INSTANTIATE_TEST_CASE_P_FOR_BACKEND_COMBINED_TEST(
+GLOW_INSTANTIATE_TEST_SUITE_P_FOR_BACKEND_COMBINED_TEST(
     SweepTest, ConcatSweepTest,
     ::testing::Combine(/* numInputs */ ::testing::Values(1, 2, 4, 8, 16, 32, 64,
                                                          128, 192, 256),
@@ -488,7 +488,7 @@ static void testParamSweepSLWS(ThreeIntTupleConfig config,
 
 DECLARE_STATELESS_BACKEND_TEST(SLWSSweepTest, ThreeIntTupleConfig);
 
-INSTANTIATE_TEST_CASE_P_FOR_BACKEND_COMBINED_TEST(
+GLOW_INSTANTIATE_TEST_SUITE_P_FOR_BACKEND_COMBINED_TEST(
     SweepTest, SLWSSweepTest,
     ::testing::Combine(
         /* embeddingRows */ ::testing::Values(100, 1000, 10000, 100000),

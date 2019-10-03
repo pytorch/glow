@@ -2389,36 +2389,39 @@ TEST(Quantization, QuantizationZeroUsersResult) {
   EXPECT_TRUE(qTK->getValues().getType()->isQuantizedType());
 }
 
-INSTANTIATE_TEST_CASE_P(Interpreter, Quantization,
-                        ::testing::Values("Interpreter"));
+GLOW_INSTANTIATE_TEST_SUITE_P(Interpreter, Quantization,
+                              ::testing::Values("Interpreter"));
 
 #ifdef GLOW_WITH_CPU
-INSTANTIATE_TEST_CASE_P(CPU, Quantization, ::testing::Values("CPU"));
+GLOW_INSTANTIATE_TEST_SUITE_P(CPU, Quantization, ::testing::Values("CPU"));
 
-INSTANTIATE_TEST_CASE_P(
+GLOW_INSTANTIATE_TEST_SUITE_P(
     InterpAndCPUProfAndQuant, Operator,
     ::testing::Combine(::testing::Values("Interpreter", "CPU"),
                        ::testing::Values("Interpreter", "CPU")));
 
-INSTANTIATE_TEST_CASE_P(
+GLOW_INSTANTIATE_TEST_SUITE_P(
     InterpAndCPUProfAndQuant, InterpAndCPU,
     ::testing::Combine(::testing::Values("Interpreter", "CPU"),
                        ::testing::Values("Interpreter", "CPU")));
 
 #else
-INSTANTIATE_TEST_CASE_P(InterpreterProfAndQuant, Operator,
-                        ::testing::Combine(::testing::Values("Interpreter"),
-                                           ::testing::Values("Interpreter")));
+GLOW_INSTANTIATE_TEST_SUITE_P(
+    InterpreterProfAndQuant, Operator,
+    ::testing::Combine(::testing::Values("Interpreter"),
+                       ::testing::Values("Interpreter")));
 
-INSTANTIATE_TEST_CASE_P(Interpreter, InterpAndCPU,
-                        ::testing::Combine(::testing::Values("Interpreter"),
-                                           ::testing::Values("Interpreter")));
+GLOW_INSTANTIATE_TEST_SUITE_P(
+    Interpreter, InterpAndCPU,
+    ::testing::Combine(::testing::Values("Interpreter"),
+                       ::testing::Values("Interpreter")));
 #endif // GLOW_WITH_CPU
 
 #ifdef GLOW_WITH_OPENCL
-INSTANTIATE_TEST_CASE_P(InterpProfOpenCLQuant, Operator,
-                        ::testing::Combine(::testing::Values("Interpreter"),
-                                           ::testing::Values("OpenCL")));
+GLOW_INSTANTIATE_TEST_SUITE_P(
+    InterpProfOpenCLQuant, Operator,
+    ::testing::Combine(::testing::Values("Interpreter"),
+                       ::testing::Values("OpenCL")));
 #endif // GLOW_WITH_OPENCL
 
 } // namespace glow

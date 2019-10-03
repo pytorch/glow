@@ -33,6 +33,14 @@ namespace glow {
 
 extern unsigned parCloneCountOpt;
 
+// INSTANTIATE_TEST_CASE_P is deprecated in gtest v1.10.0. For now use it still
+// internally.
+#if FACEBOOK_INTERNAL
+#define GLOW_INSTANTIATE_TEST_SUITE_P INSTANTIATE_TEST_CASE_P
+#else
+#define GLOW_INSTANTIATE_TEST_SUITE_P INSTANTIATE_TEST_SUITE_P
+#endif /* FACEBOOK_INTERNAL */
+
 // A test harness to enable a test case for specific backends. A test suite
 // should subclass this and instantiate it as follows:
 //
@@ -40,7 +48,7 @@ extern unsigned parCloneCountOpt;
 //   ...
 // };
 //
-// INSTANTIATE_TEST_CASE_P_FOR_BACKEND_TEST(Prefix, OperationTest);
+// GLOW_INSTANTIATE_TEST_SUITE_P_FOR_BACKEND_TEST(Prefix, OperationTest);
 //
 // A test case is defined using TEST_P(), and ENABLED_BACKENDS() can be used
 // to whitelist certain backends for the test. The absence of ENABLED_BACKENDS()
@@ -98,20 +106,20 @@ static const auto all_backends = ::testing::Values(
     "Interpreter");
 
 // Instantiate parameterized test suite with all available backends.
-#define INSTANTIATE_TEST_CASE_P_FOR_BACKEND_TEST(prefix, test_case_name)       \
-  INSTANTIATE_TEST_CASE_P(prefix, test_case_name, all_backends)
+#define GLOW_INSTANTIATE_TEST_SUITE_P_FOR_BACKEND_TEST(prefix, test_case_name) \
+  GLOW_INSTANTIATE_TEST_SUITE_P(prefix, test_case_name, all_backends)
 
 // Instantiate parameterized test suite with all available backends.
-#define INSTANTIATE_TEST_CASE_P_FOR_BACKEND_COMBINED_TEST(                     \
+#define GLOW_INSTANTIATE_TEST_SUITE_P_FOR_BACKEND_COMBINED_TEST(               \
     prefix, test_case_name, combine)                                           \
-  INSTANTIATE_TEST_CASE_P(prefix, test_case_name,                              \
-                          ::testing::Combine(all_backends, combine))
+  GLOW_INSTANTIATE_TEST_SUITE_P(prefix, test_case_name,                        \
+                                ::testing::Combine(all_backends, combine))
 
 // TODO: Replace return for GTEST_SKIP() so that skipped tests are
 // correctly reported once the macro gets available.
 #define ENABLED_BACKENDS(...)                                                  \
   if (!isEnabledBackend({__VA_ARGS__}))                                        \
-    return;
+    GTEST_SKIP();
 
 /// Blacklist of tests for the current backend under test.
 extern std::set<std::string> backendTestBlacklist;
@@ -121,7 +129,7 @@ extern std::set<std::string> backendTestBlacklist;
 
 /// Intermediate layer of macros to make expansion of defs work correctly.
 #define INSTANTIATE_TEST_INTERNAL(B, T)                                        \
-  INSTANTIATE_TEST_CASE_P(B, T, ::testing::Values(BACKEND_TO_STR(B)));
+  GLOW_INSTANTIATE_TEST_SUITE_P(B, T, ::testing::Values(BACKEND_TO_STR(B)));
 
 /// Instantate a test suite for the backend specified by GLOW_TEST_BACKEND.
 /// Usually this macro will be defined by the build system, to avoid tightly
@@ -133,7 +141,7 @@ extern std::set<std::string> backendTestBlacklist;
 #define CHECK_IF_ENABLED()                                                     \
   if (backendTestBlacklist.count(                                              \
           ::testing::UnitTest::GetInstance()->current_test_info()->name()))    \
-    return;
+    GTEST_SKIP();
 
 /// MockBackend used only for unit testing.
 class MockBackend : public Backend {
