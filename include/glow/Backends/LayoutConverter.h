@@ -80,6 +80,25 @@ inline Node *convertAvgPoolToNCHWPool(AvgPoolNode *PN, Function *F) {
   return NR;
 }
 
+inline Node *convertAvgPoolGradToNCHWPool(AvgPoolGradNode *PGN, Function *F) {
+  // Convert inputs from NHWC (Glow's default) into NCHW.
+  auto *NI =
+      F->createTranspose("avgpoolgrad.input", PGN->getInput(), NHWC2NCHW);
+  auto *NO = F->createTranspose("avgpoolgrad.output",
+                                PGN->getOriginalOutputForResult(), NHWC2NCHW);
+  auto *NG =
+      F->createTranspose("avgpoolgrad.outputgrad",
+                         PGN->getGradOfOriginalOutputNamedResult(), NHWC2NCHW);
+
+  auto *NPGN = F->addNode(
+      new AvgPoolGradNode(PGN->getName(), NI, NO, NG, PGN->getKernels(),
+                          PGN->getStrides(), PGN->getPads(), NCHW));
+  auto *NR = F->createTranspose("avgpoolgrad.result",
+                                NPGN->getGradOfInputNamedInput(), NCHW2NHWC);
+
+  return NR;
+}
+
 } // namespace glow
 
 #endif // GLOW_BACKENDS_LAYOUTCONVERTER_H
