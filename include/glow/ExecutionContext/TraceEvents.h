@@ -213,10 +213,11 @@ public:
   void dump(llvm::StringRef filename, const std::string &processName = "");
 
   /// Moves all TraceEvents and thread names in \p other into this context.
+  /// This will clear in the input TraceContext.
   void merge(TraceContext *other);
 
   /// Moves all TraceEvents and thread names in \p other into this context.
-  /// This version is destructive of the other TraceContext.
+  /// This will clear in the input TraceContext.
   void merge(std::unique_ptr<TraceContext> other) { merge(other.get()); }
 };
 
