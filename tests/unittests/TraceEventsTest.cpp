@@ -143,6 +143,11 @@ public:
       const std::vector<TraceEvent> &traceEvents,
       const std::vector<std::pair<std::string, std::string>> &expected) {
 
+    const auto &backend = GetParam();
+    if (backend != "Interpreter" && backend != "CPU") {
+      return;
+    }
+
     auto map_element = [](const std::map<std::string, std::string> &m,
                           const std::string &k) {
       return m.find(k) == m.end() ? std::string() : m.find(k)->second;
