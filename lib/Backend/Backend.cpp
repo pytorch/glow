@@ -143,8 +143,9 @@ void Backend::autoInstrument(TraceInfo &traceInfo, IRFunction *IR) const {
 
     auto instName = I.getName();
 
-    // Start a new event.
-    traceInfo.add(backingPH, index, index + 1, instName);
+    // Start a new event
+    traceInfo.add(backingPH, index, index + 1, instName, std::string(),
+                  Kinded::getKindName(I.getKind()));
 
     it = instructions.insert(it, new TraceEventInst(instName.str() + "_trace",
                                                     backingWeight, index++));
