@@ -1120,6 +1120,13 @@ DEF_ALL_WRITER_NODE(RowwiseQuantizedSparseLengthsWeightedSum)
 DEF_ALL_WRITER_NODE(FusedRowwiseQuantizedSparseLengthsSum)
 DEF_ALL_WRITER_NODE(FusedRowwiseQuantizedSparseLengthsWeightedSum)
 
+Error ONNXModelWriter::writeClip(const ClipNode *node, GraphType &graph) {
+  auto *proto = graph.add_node();
+  addValueAttribute(proto, "min", node->getMin());
+  addValueAttribute(proto, "max", node->getMax());
+  return writeAllWithNode("Clip", node, proto);
+}
+
 Error ONNXModelWriter::writeConvertTo(const ConvertToNode *node,
                                       GraphType &graph) {
   auto *proto = graph.add_node();
@@ -1313,13 +1320,6 @@ DEF_UNSUPPORTED_NODE(LocalResponseNormalizationGrad)
 DEF_UNSUPPORTED_NODE(AdaptiveAvgPoolGrad)
 
 #ifdef GLOW_WITH_CPU
-
-Error ONNXModelWriter::writeClip(const ClipNode *node, GraphType &graph) {
-  auto *proto = graph.add_node();
-  addValueAttribute(proto, "min", node->getMin());
-  addValueAttribute(proto, "max", node->getMax());
-  return writeAllWithNode("Clip", node, proto);
-}
 
 Error ONNXModelWriter::writeCPUMaxSplat(const CPUMaxSplatNode *node,
                                         GraphType &graph) {
