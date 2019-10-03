@@ -908,17 +908,13 @@ public:
   /// Returns reference to a meaningful data element. This method does not
   /// address padding elements.
   ElemTy &at(llvm::ArrayRef<size_t> indices) {
-    assert(tensor_->isInBounds(indices));
     size_t index = getElementPtr(indices);
-    assert(index < actualSize() && "Out of bounds");
     auto *data = tensor_->getRawDataPointer<ElemTy>();
     return data[index];
   }
 
   const ElemTy &at(llvm::ArrayRef<size_t> indices) const {
-    assert(tensor_->isInBounds(indices));
     size_t index = getElementPtr(indices);
-    assert(index < actualSize() && "Out of bounds");
     auto *data = tensor_->getRawDataPointer<ElemTy>();
     return data[index];
   }
@@ -926,7 +922,6 @@ public:
   /// \returns the element at offset \p idx without any size calculations.
   /// The returned element can be a pad element.
   ElemTy &raw(size_t index) {
-    assert(index < actualSize() && "Out of bounds");
     auto *data = tensor_->getRawDataPointer<ElemTy>();
     return data[index];
   }
@@ -934,7 +929,6 @@ public:
   /// \returns the element at offset \p idx without any size calculations.
   /// The returned element can be a pad element.
   const ElemTy &raw(size_t index) const {
-    assert(index < actualSize() && "Out of bounds");
     auto *data = tensor_->getRawDataPointer<ElemTy>();
     return data[index];
   }
