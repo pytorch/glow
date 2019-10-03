@@ -1700,7 +1700,8 @@ void OpenCLFunction::translateTraceEventsCL(
         auto timestamp = (timeEnd / 1000) + tsOffset;
 
         handle.at({ev->startIndex, 0}) = timestamp;
-        traceEvents.push_back({ev->name, timestamp, ev->type, tid});
+        traceEvents.push_back(
+            {ev->name, timestamp, ev->type, tid, {{"kind", ev->kind}}});
       }
     } else {
       // Duration should be usec.
