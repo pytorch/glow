@@ -180,5 +180,10 @@ bool Backend::verify(const IRFunction &IR) const {
 }
 
 FunctionPassPipeline Backend::getOptimizationPipeline() const {
-  return createDefaultGraphOptimizationPassPipeline();
+  auto p = createDefaultGraphOptimizationPassPipeline();
+  // Fold Tile followed by Add into BatchedAdd. Currently this is not part of
+  // the default pipeline to avoid issues with some backends. If backends do not
+  // want this opt then they should override getOptimizationPipeline().
+  p.pushFront({FunctionPassID::FoldTileAddIntoBatchedAdd});
+  return p;
 };

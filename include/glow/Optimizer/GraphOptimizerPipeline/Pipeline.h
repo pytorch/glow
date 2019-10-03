@@ -127,6 +127,9 @@ public:
   /// Push a new \p FPC to the end of the pipeline.
   void pushBack(FunctionPassConfig FPC) { push_back(FPC); }
 
+  /// Push a new \p FPC to the start of the pipeline.
+  void pushFront(FunctionPassConfig FPC) { insert(begin(), FPC); }
+
   /// Removes all instances of a pass with ID \p FPID.
   void removeAllInstancesOfPass(FunctionPassID FPID);
 
