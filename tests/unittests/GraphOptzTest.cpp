@@ -2342,7 +2342,14 @@ TEST_F(GraphOptz, FoldTileAddIntoBatchedAdd) {
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::BatchedAddNodeKind), 0);
 
   ASSERT_TRUE(F_->verify());
-  ::glow::optimize(F_, CompilationMode::Infer);
+
+  // Currently the FoldTileAddIntoBatchedAdd opt which we're testing here is not
+  // part of the default optimization pipeline. Create a local version of the
+  // pipeline with that pass included.
+  auto p = createDefaultGraphOptimizationPassPipeline();
+  p.pushFront({FunctionPassID::FoldTileAddIntoBatchedAdd});
+  FunctionPassManager FPM("opt", p);
+  FPM.run(F_, CompilationContext());
   ASSERT_TRUE(F_->verify());
 
   // Check that the Tile node and the Add node is replaced by
@@ -2364,7 +2371,9 @@ TEST_F(GraphOptz, FoldTileAddIntoBatchedAdd) {
       continue;
     }
     auto *recvdBatch = llvm::dyn_cast<Placeholder>(recvdBANode->getBatch());
+    ASSERT_TRUE(recvdBatch);
     auto *recvdSlice = llvm::dyn_cast<Constant>(recvdBANode->getSlice());
+    ASSERT_TRUE(recvdSlice);
     EXPECT_TRUE(recvdBatch->dims().equals({3, 1, 2}));
     EXPECT_TRUE(recvdSlice->dims().equals({1, 2}));
     EXPECT_TRUE(bindings_.get(recvdBatch)->isEqual(expectedBatch));
