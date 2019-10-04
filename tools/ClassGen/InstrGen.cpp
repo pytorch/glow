@@ -529,6 +529,16 @@ int main(int argc, char **argv) {
   //===--------------------------------------------------------------------===//
   //                Non-linearities
   //===--------------------------------------------------------------------===//
+  BB.newInstr("Relu")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .inplaceOperand({
+          "Dest",
+          "Src",
+      })
+      .dataParallel()
+      .autoVerify(VerifyKind::SameType, {"Dest", "Src"})
+      .autoIRGen();
 
   BB.newInstr("Sigmoid")
       .addOperand("Dest", OperandKind::Out)
@@ -538,8 +548,7 @@ int main(int argc, char **argv) {
           "Src",
       })
       .dataParallel()
-      .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
-      .autoVerify(VerifyKind::SameShape, {"Dest", "Src"})
+      .autoVerify(VerifyKind::SameType, {"Dest", "Src"})
       .autoIRGen();
 
   BB.newInstr("Tanh")
@@ -550,8 +559,7 @@ int main(int argc, char **argv) {
           "Src",
       })
       .dataParallel()
-      .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
-      .autoVerify(VerifyKind::SameShape, {"Dest", "Src"})
+      .autoVerify(VerifyKind::SameType, {"Dest", "Src"})
       .autoIRGen();
 
   //===--------------------------------------------------------------------===//
