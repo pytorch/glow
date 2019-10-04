@@ -42,9 +42,11 @@ inline Node *convertConvToNCHWConv(ConvolutionNode *CN, Function *F) {
   return NR;
 }
 
-/// Convert regular pool nodes (that use NHWC) into backend-specific nodes using
-/// NCHW.
-inline Node *convertMaxPoolToNCHWPool(MaxPoolNode *PN, Function *F) {
+/// Convert regular max pool nodes (that use NHWC) into backend-specific nodes
+/// using NCHW. \returns a pair containing the new MaxPool result and argmax
+/// that the result and argmax of the original MaxPool should be replaced with.
+inline std::pair<Node *, Node *> convertMaxPoolToNCHWPool(MaxPoolNode *PN,
+                                                          Function *F) {
   // Convert input from NHWC (Glow's default) into NCHW.
   auto *NI = F->createTranspose("maxpool.input", PN->getInput(), NHWC2NCHW);
 
@@ -55,12 +57,13 @@ inline Node *convertMaxPoolToNCHWPool(MaxPoolNode *PN, Function *F) {
   auto AMT = F->getParent()->uniqueTypeWithNewShape(PN->getArgmax().getType(),
                                                     dimsNCHW);
 
-  auto *NPN = F->addNode(new MaxPoolNode(PN->getName(), outTy, AMT, NI,
-                                         PN->getKernels(), PN->getStrides(),
-                                         PN->getPads(), NCHW));
-  auto *NR = F->createTranspose("maxpool.result", NPN->getResult(), NCHW2NHWC);
+  auto *MPN = new MaxPoolNode(PN->getName(), outTy, AMT, NI, PN->getKernels(),
+                              PN->getStrides(), PN->getPads(), NCHW);
+  F->addNode(MPN);
+  auto *NR = F->createTranspose("maxpool.result", MPN->getResult(), NCHW2NHWC);
+  auto *NA = F->createTranspose("maxpool.argmax", MPN->getArgmax(), NCHW2NHWC);
 
-  return NR;
+  return std::make_pair(NR, NA);
 }
 
 inline Node *convertAvgPoolToNCHWPool(AvgPoolNode *PN, Function *F) {
