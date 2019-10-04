@@ -25,6 +25,9 @@
 
 #include <glog/logging.h>
 
+/// Options.
+extern llvm::cl::OptionCategory loaderCat;
+
 /// Timer option used to indicate if inferences should be timed -time.
 extern llvm::cl::opt<bool> timeOpt;
 /// Iterations used to indicate the number of iterations to run an inferece
@@ -44,6 +47,27 @@ bool profilingGraph();
 
 /// Parse/verify command line parameters.
 void parseCommandLine(int argc, char **argv);
+
+/// Loader extension interface from which to derive in order to extend the
+/// Loader driver object.
+class Loader;
+class ProtobufLoader;
+
+class LoaderExtension {
+public:
+  /// Called once after ONNX or Caffe2 model loading.
+  virtual void postModelLoad(Loader &, PlaceholderBindings &, ProtobufLoader &,
+                             size_t compilationBatchSize) = 0;
+  /// Called once at the beginning of the mini-batch inference.
+  virtual void inferInitMiniBatch(Loader &, PlaceholderBindings &,
+                                  size_t minibatchIndex,
+                                  size_t minibatchSize) = 0;
+  /// Called once after the completion of the mini-batch inference.
+  virtual void inferEndMiniBatch(Loader &, PlaceholderBindings &,
+                                 size_t minibatchIndex,
+                                 size_t minibatchSize) = 0;
+  virtual ~LoaderExtension() {}
+};
 
 /// Driver class for loading, compiling, and running inference for ONNX and
 /// Caffe2 models.
@@ -69,6 +93,8 @@ class Loader {
   /// that were replaced by the NodeValue (whose output name is the key) that
   /// replaced them.
   LoweredInfoMap loweredMap_;
+  /// List of Loader owned extension objects.
+  std::vector<std::unique_ptr<LoaderExtension>> loaderExtensionList_;
 
 public:
   /// Getter for the hostManager, this can be useful for calling into the
@@ -140,6 +166,18 @@ public:
   /// potentially holds a TraceContext. This method allows obtaining TraceEvents
   /// from the run.
   void runInference(ExecutionContext *context, size_t batchSize = 1);
+
+  /// Register a loader extension.
+  Loader &registerExtension(std::unique_ptr<LoaderExtension> ext);
+  /// Called once after ONNX or Caffe2 model loading.
+  void postModelLoad(PlaceholderBindings &bindings, ProtobufLoader &protoLoader,
+                     size_t compilationBatchSize);
+  /// Called at the beginning of each mini-batch inference.
+  void inferInitMiniBatch(PlaceholderBindings &bindings, size_t minibatchIndex,
+                          size_t minibatchSize);
+  /// Called after the completion of each mini-batch inference.
+  void inferEndMiniBatch(PlaceholderBindings &, size_t minibatchIndex,
+                         size_t minibatchSize);
 
   /// Generates and serializes the quantization infos after gathering a profile
   /// by running inference one or more times. \p bindings

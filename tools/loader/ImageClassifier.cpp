@@ -234,6 +234,7 @@ static std::pair<Placeholder *, Placeholder *>
 buildAndCompileAndGetInAndOutPair(Loader &loader, PlaceholderBindings &bindings,
                                   TypeRef inputImageType) {
   auto LD = createProtobufLoader(loader, inputImageType);
+  loader.postModelLoad(bindings, *LD.get(), inputImageType->dims()[0]);
 
   // Allocate tensors to back all inputs and outputs.
   bindings.allocate(loader.getModule()->getPlaceholders());
@@ -542,6 +543,20 @@ setupContextPool(Placeholder *outputPH, Placeholder *inputImagePH,
   return contexts;
 }
 
+/// This function is a placeholder for registering Loader extensions to the
+/// loader. A loader extension in an instance of a loader extension class that
+/// must derive from class LoaderExtension. Any number of loader extensions
+/// can be registered to the Loader.
+static void registerLoaderExtensions(Loader &loader) {
+  // Example :
+  // class myLoaderExtension : public LoaderExtension {
+  //    // implement pure virtuel methods of class LoaderExtension.
+  // };
+  // loader.registerExtension(
+  //   std::unique_ptr<LoaderExtension>(new myLoaderExtension()));
+  (void)loader;
+}
+
 int main(int argc, char **argv) {
   // Verify/initialize command line parameters, and then loader initializes
   // the ExecutionEngine and Function.
@@ -613,6 +628,10 @@ int main(int argc, char **argv) {
           glow::make_unique<TraceContext>(TraceLevel::STANDARD));
     }
     Loader loader;
+
+    // Register Loader extensions.
+    registerLoaderExtensions(loader);
+
     // Used to make sure we only compile once, and run only once if not
     // streaming.
     bool isFirstRun = true;
@@ -689,6 +708,11 @@ int main(int argc, char **argv) {
       if (iterationsOpt) {
         break;
       }
+
+      // Minibatch inference initialization of loader extensions
+      loader.inferInitMiniBatch(bindings, miniBatchIndex - miniBatch,
+                                miniBatch);
+
       // About to run inference, so update the input image Placeholder's backing
       // Tensor with inputImageData.
       updateInputPlaceholders(bindings, {inputImagePH}, {&inputImageData});
@@ -707,6 +731,9 @@ int main(int argc, char **argv) {
         numErrors += processAndPrintResults(bindings.get(outputPH),
                                             inputImageBatchFilenames);
       }
+
+      // Minibatch inference initialization of loader extensions
+      loader.inferEndMiniBatch(bindings, miniBatchIndex - miniBatch, miniBatch);
     }
 
     if (iterationsOpt) {
