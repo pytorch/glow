@@ -133,7 +133,7 @@ int main(int argc, char **argv) {
       .addMember(MemberType::VectorUnsigned, "Pads")
       .addMember(MemberType::Unsigned, "Layout")
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
-      .addGradientInstr({"Dest", "Argmax"}, {"Dest", "Src"});
+      .addGradientInstr({"Dest", "Src", "Argmax"}, {"Dest", "Src"});
 
   BB.newInstr("MaxPool")
       .addOperand("Dest", OperandKind::Out)
