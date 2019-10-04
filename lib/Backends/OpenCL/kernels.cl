@@ -1322,11 +1322,13 @@ __kernel void maxpoolwithargmaxgradK(__global float *dest,
 }
 
 __kernel void maxpoolwithargmaxgradW(__global void *mem, cl_uint32_t dest,
-                                     cl_uint32_t argmax, cl_uint32_t destGrad,
-                                     cl_uint32_t srcGrad,
+                                     cl_uint32_t src, cl_uint32_t argmax,
+                                     cl_uint32_t destGrad, cl_uint32_t srcGrad,
                                      cl_uint32_t kernelSize, cl_uint32_t stride,
                                      PaddingTLBR pads, ShapeNHWC srcGradDim,
                                      ShapeNHWC destDim) {
+  // src operand is present on the instruction but not needed by the OpenCL
+  // kernel.
   maxpoolwithargmaxgradK(&mem[dest], &mem[argmax], &mem[destGrad],
                          &mem[srcGrad], kernelSize, stride, pads, srcGradDim,
                          destDim);
