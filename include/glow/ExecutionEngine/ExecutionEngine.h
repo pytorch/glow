@@ -164,6 +164,16 @@ void runBatch(ExecutionEngine &EE, PlaceholderBindings &bindings,
               llvm::ArrayRef<Placeholder *> ph, llvm::ArrayRef<Tensor *> inputs,
               llvm::StringRef name = "");
 
+/// Runs \p numMinibatchRuns iterations of the compiled function called \p name.
+/// The method updates a global counter and future invocations of this method
+/// continue running iterations of the batch at the next available slice.
+/// The provided callback function \p cb is invoked on each sample.
+void evalBatch(
+    ExecutionEngine &EE, PlaceholderBindings &bindings, size_t numMinibatchRuns,
+    size_t &sampleCounter, Placeholder *inputPH, Placeholder *outputPH,
+    Tensor &samplesInput, Tensor &labelsInput, llvm::StringRef name,
+    std::function<void(const Tensor &sampleIn, const Tensor &sampleOut,
+                       const Tensor &label, size_t sampleIndex)> &&cb);
 } // namespace glow
 
 #endif // GLOW_EXECUTIONENGINE_EXECUTIONENGINE_H
