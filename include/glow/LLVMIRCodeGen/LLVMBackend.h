@@ -39,6 +39,8 @@ class LLVMBackend : public BackendUsingGlowIR {
   std::string cpu_;
   /// Code model used by this backend.
   llvm::CodeModel::Model codeModel_;
+  /// Relocation model used by this backend.
+  llvm::Reloc::Model relocModel_;
 
 public:
   LLVMBackend();
@@ -59,6 +61,12 @@ public:
   /// Sets code model used by this backend.
   void setCodeModel(llvm::CodeModel::Model codeModel) {
     codeModel_ = codeModel;
+  }
+  /// \returns relocation model used by this backend.
+  llvm::Reloc::Model getRelocModel() const { return relocModel_; }
+  // Sets Relocation Model used by this backend
+  void setRelocModel(llvm::Reloc::Model relocModel) {
+    relocModel_ = relocModel;
   }
   /// @name Backend methods.
   /// This is the implementation of the Backend interface.

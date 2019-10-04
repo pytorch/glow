@@ -254,7 +254,7 @@ public:
   initTargetMachine(llvm::StringRef target, llvm::StringRef arch,
                     llvm::StringRef cpu,
                     const llvm::SmallVectorImpl<std::string> &targetFeatures,
-                    llvm::CodeModel::Model CM);
+                    llvm::CodeModel::Model CM, llvm::Reloc::Model relocModel);
 
   /// Emit LLVM-IR for the instruction \p I, using the builder \p builder.
   /// Derived classes may want to override this function to implement a

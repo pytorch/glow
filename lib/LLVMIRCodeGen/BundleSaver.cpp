@@ -287,10 +287,12 @@ void BundleSaver::save(llvm::StringRef target, llvm::StringRef arch,
                        llvm::StringRef cpu,
                        const llvm::SmallVectorImpl<std::string> &targetFeatures,
                        llvm::StringRef outputDir, llvm::StringRef bundleName,
-                       llvm::StringRef mainEnryName) {
+                       llvm::StringRef mainEnryName,
+                       llvm::CodeModel::Model codeModel,
+                       llvm::Reloc::Model relocModel) {
   // Object files generation works properly only in small mode.
-  irgen_->initTargetMachine(target, arch, cpu, targetFeatures,
-                            llvm::CodeModel::Model::Small);
+  irgen_->initTargetMachine(target, arch, cpu, targetFeatures, codeModel,
+                            relocModel);
   irgen_->setOutputDir(outputDir);
   irgen_->setBundleName(bundleName);
   irgen_->setMainEntryName(mainEnryName);

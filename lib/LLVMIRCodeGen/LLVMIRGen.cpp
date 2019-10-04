@@ -54,15 +54,6 @@ llvm::cl::opt<bool>
     emitDebugInfo("g", llvm::cl::desc("Emit debug information for debuggers"),
                   llvm::cl::init(false), llvm::cl::cat(getLLVMBackendCat()));
 
-llvm::cl::opt<llvm::Reloc::Model> relocModel(
-    "relocation-model",
-    llvm::cl::desc(
-        "Specify which relocation model to use on the target machine"),
-    llvm::cl::values(
-        clEnumValN(llvm::Reloc::Static, "static", "Non-relocatable code"),
-        clEnumValN(llvm::Reloc::PIC_, "pic", "Position independent code")),
-    llvm::cl::init(llvm::Reloc::Static), llvm::cl::cat(getLLVMBackendCat()));
-
 /// Limitation of number of arguments for `emitDataParallelKernel`.
 constexpr static size_t kArgLimit = 64;
 
@@ -106,7 +97,7 @@ LLVMIRGen::LLVMIRGen(const IRFunction *F, AllocationsInfo &allocationsInfo,
 void LLVMIRGen::initTargetMachine(
     llvm::StringRef target, llvm::StringRef arch, llvm::StringRef cpu,
     const llvm::SmallVectorImpl<std::string> &targetFeatures,
-    llvm::CodeModel::Model codeModel) {
+    llvm::CodeModel::Model codeModel, llvm::Reloc::Model relocModel) {
   llvm::InitializeAllTargets();
   llvm::InitializeAllTargetMCs();
   llvm::InitializeAllAsmPrinters();

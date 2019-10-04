@@ -55,7 +55,8 @@ public:
   void save(llvm::StringRef target, llvm::StringRef arch, llvm::StringRef cpu,
             const llvm::SmallVectorImpl<std::string> &targetFeatures,
             llvm::StringRef outputDir, llvm::StringRef bundleName,
-            llvm::StringRef mainEntryName);
+            llvm::StringRef mainEntryName, llvm::CodeModel::Model codeModel,
+            llvm::Reloc::Model relocModel);
 };
 
 } // namespace glow
