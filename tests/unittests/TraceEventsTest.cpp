@@ -816,4 +816,31 @@ TEST(TraceEventsTest, TraceLevels) {
   ASSERT_EQ(context.getTraceEvents().size(), 2);
 }
 
+TEST(TraceEventsTest, MergeEvents) {
+  auto tc1 = llvm::make_unique<TraceContext>(TraceLevel::STANDARD);
+  auto tc2 = llvm::make_unique<TraceContext>(TraceLevel::STANDARD);
+
+  TRACE_EVENT_BEGIN(tc1, TraceLevel::RUNTIME, "ev1");
+  TRACE_EVENT_END(tc1, TraceLevel::RUNTIME, "ev1");
+
+  ASSERT_EQ(tc1->getTraceEvents().size(), 2);
+  ASSERT_EQ(tc2->getTraceEvents().size(), 0);
+
+  tc2->merge(tc1.get());
+
+  ASSERT_EQ(tc1->getTraceEvents().size(), 0);
+  ASSERT_EQ(tc2->getTraceEvents().size(), 2);
+
+  TRACE_EVENT_BEGIN(tc1, TraceLevel::RUNTIME, "ev2");
+  TRACE_EVENT_END(tc1, TraceLevel::RUNTIME, "ev2");
+
+  ASSERT_EQ(tc1->getTraceEvents().size(), 2);
+  ASSERT_EQ(tc2->getTraceEvents().size(), 2);
+
+  tc2->merge(tc1.get());
+
+  ASSERT_EQ(tc1->getTraceEvents().size(), 0);
+  ASSERT_EQ(tc2->getTraceEvents().size(), 4);
+}
+
 INSTANTIATE_BACKEND_TEST(TraceEventsTest);

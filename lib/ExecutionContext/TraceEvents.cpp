@@ -167,6 +167,7 @@ void TraceContext::merge(TraceContext *other) {
   auto &newEvents = other->getTraceEvents();
   std::move(newEvents.begin(), newEvents.end(),
             std::back_inserter(getTraceEvents()));
+  newEvents.clear();
   auto &names = other->getThreadNames();
   threadNames_.insert(names.begin(), names.end());
   names.clear();
