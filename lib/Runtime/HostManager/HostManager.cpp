@@ -46,6 +46,13 @@ llvm::cl::opt<std::string> loadBackendSpecificOptionsOpt(
     llvm::cl::cat(hostManagerCat));
 } // namespace
 
+/// The device configs file used for Runtime.
+llvm::cl::opt<std::string> loadDeviceConfigsFileOpt(
+    "load-device-configs",
+    llvm::cl::desc("Load device configs used in Runtime"),
+    llvm::cl::value_desc("configs.yaml"), llvm::cl::Optional,
+    llvm::cl::cat(hostManagerCat));
+
 HostManager::HostManager(const HostConfig &hostConfig) : config_(hostConfig) {}
 
 HostManager::HostManager(
@@ -447,4 +454,60 @@ HostManager::runNetwork(llvm::StringRef networkName,
   }
   activeRequestCount_--;
   return currentRun;
+}
+
+/// Helper to get the parameters in DeviceConfig from \p str. The \p str has
+/// multiple lines, and each line with this format : "str1" : "str2".
+static llvm::StringMap<std::string> getBackendParams(std::string &str) {
+  llvm::StringMap<std::string> ret{};
+  std::string s;
+  std::istringstream f(str.c_str());
+  while (getline(f, s, '\n')) {
+    // Abstract the mapping from each line's string:
+    // ""str1" : "str2"" => ret["str1"] = "str2";
+    size_t pos1, pos2, pos3, pos4;
+    pos1 = s.find('"');
+    assert(pos1 != std::string::npos && "invalid string format");
+    pos2 = s.find('"', pos1 + 1);
+    assert(pos2 != std::string::npos && "invalid string format");
+    pos3 = s.find('"', pos2 + 1);
+    assert(pos3 != std::string::npos && "invalid string format");
+    pos4 = s.find('"', pos3 + 1);
+    assert(pos4 != std::string::npos && "invalid string format");
+    ret[s.substr(pos1 + 1, pos2 - pos1 - 1)] =
+        s.substr(pos3 + 1, pos4 - pos3 - 1);
+  }
+  return ret;
+}
+
+/// If the device config file \p loadDeviceDoncfigsFile available, load \p
+/// configs from the file. Otherwise, create \p numDevices number of devices
+/// based on \p backendName.
+std::vector<std::unique_ptr<runtime::DeviceConfig>>
+runtime::generateDeviceConfigs(unsigned int numDevices,
+                               llvm::StringRef backendName, size_t memSize) {
+  std::vector<std::unique_ptr<runtime::DeviceConfig>> configs;
+  if (loadDeviceConfigsFileOpt.empty()) {
+    // If there is no device config file, use numDevices to generate the
+    // configs.
+    for (unsigned int i = 0; i < numDevices; ++i) {
+      auto config = llvm::make_unique<runtime::DeviceConfig>(backendName);
+      config->setDeviceMemory(memSize);
+      configs.push_back(std::move(config));
+    }
+  } else {
+    // Get the configs from the config file.
+    std::vector<DeviceConfigHelper> lists;
+    lists = deserializeDeviceConfigFromYaml(loadDeviceConfigsFileOpt);
+    for (unsigned int i = 0; i < lists.size(); ++i) {
+      std::string configBackendName = lists[i].backendName_;
+      std::string name = lists[i].name_;
+      auto parameters = getBackendParams(lists[i].parameters_.str);
+      auto config = llvm::make_unique<runtime::DeviceConfig>(backendName, name,
+                                                             parameters);
+      config->setDeviceMemory(memSize);
+      configs.push_back(std::move(config));
+    }
+  }
+  return configs;
 }
