@@ -555,9 +555,6 @@ int main(int argc, char **argv) {
   // into.
   if (!tracePath.empty()) {
     traceContext = llvm::make_unique<TraceContext>(TraceLevel::STANDARD);
-    if (!iterationsOpt) {
-      iterationsOpt = 1;
-    }
   }
 
   // Mini-batch mode.
@@ -579,7 +576,13 @@ int main(int argc, char **argv) {
 
   // Process a set of minibatches with indices [startIndex, endIndex).
   auto processImageRange = [&](size_t startIndex, size_t endIndex) {
-    PlaceholderBindings bindings;
+    std::unique_ptr<ExecutionContext> exContext =
+        llvm::make_unique<ExecutionContext>();
+    PlaceholderBindings &bindings = *exContext->getPlaceholderBindings();
+    if (traceContext) {
+      exContext->setTraceContext(
+          llvm::make_unique<TraceContext>(TraceLevel::STANDARD));
+    }
     Loader loader;
     // Used to make sure we only compile once, and run only once if not
     // streaming.
@@ -659,7 +662,11 @@ int main(int argc, char **argv) {
 
       // Perform the inference execution, updating SMT.
       auto batchSize = inputImageData.dims()[0];
-      loader.runInference(bindings, batchSize);
+      loader.runInference(exContext.get(), batchSize);
+      if (traceContext) {
+        traceContext->merge(exContext->getTraceContext());
+      }
+
       // Print the top-k results from the output Softmax tensor.
       {
         std::lock_guard<std::mutex> lock(ioMu);

@@ -33,6 +33,7 @@
 #include "llvm/Support/Timer.h"
 #include "llvm/Support/raw_ostream.h"
 
+#include <future>
 #include <sstream>
 
 using namespace glow;
@@ -392,6 +393,41 @@ void Loader::runInference(PlaceholderBindings &bindings, size_t batchSize) {
   for (unsigned i = 0; i < iterations; i++) {
     auto runErr = hostManager_->runNetworkBlocking(modelPathOpt[0], bindings);
     EXIT_ON_ERR(std::move(runErr));
+  }
+  if (timeOpt) {
+    timer.stopTimer();
+    llvm::outs() << llvm::formatv("Wall time per item (s): {0:f4}\n",
+
+                                  timer.getTotalTime().getWallTime() /
+                                      iterations / batchSize);
+  }
+}
+
+void Loader::runInference(ExecutionContext *context, size_t batchSize) {
+  std::unique_ptr<ExecutionContext> contextP(context);
+
+  unsigned iterations = iterationsOpt == 0 ? 1 : iterationsOpt;
+  llvm::Timer timer("Infer", "Infer");
+  if (timeOpt) {
+    timer.startTimer();
+  }
+
+  for (unsigned i = 0; i < iterations; i++) {
+    std::promise<void> runPromise;
+    auto fut = runPromise.get_future();
+    std::unique_ptr<Error> runErr;
+    hostManager_->runNetwork(
+        modelPathOpt[0], std::move(contextP),
+        [&runPromise, &runErr](runtime::RunIdentifierTy, Error err,
+                               std::unique_ptr<ExecutionContext> contextPtr) {
+          // Don't really delete context since we don't own it.
+          contextPtr.release();
+
+          runErr = llvm::make_unique<Error>(std::move(err));
+          runPromise.set_value();
+        });
+    fut.wait();
+    EXIT_ON_ERR(std::move(*DCHECK_NOTNULL(runErr.get())));
   }
   if (timeOpt) {
     timer.stopTimer();
