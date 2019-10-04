@@ -165,6 +165,13 @@ int main(int argc, char *argv[]) {
   GemmParallelBench b(m, n, numLayers, asyncLaunches, numCores, backendStr,
                       dtypeStr);
   auto times = bench(&b, reps);
+  for (auto t : times) {
+    printf(
+        "BenchResult,GemmParallelBench,SW,%4zu,%4zu,%4zu,%4zu,%4zu,%4zu,%s,%s,%"
+        "2.6lf,%5.2lf\n",
+        m, n, numLayers, reps, asyncLaunches, numCores, backendStr, dtypeStr,
+        t / asyncLaunches, b.gflops() * asyncLaunches / t);
+  }
   double min = *(std::min_element(times.begin(), times.end()));
   size_t midElt = times.size() / 2;
   std::nth_element(times.begin(), times.begin() + midElt, times.end());
