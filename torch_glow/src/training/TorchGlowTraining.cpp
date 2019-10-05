@@ -67,6 +67,7 @@ Error TorchGlowTraining::init(llvm::StringRef modelFile,
   engine_.setBackendName(backend);
   // Create glow Function, only one object will be in module.
   F_ = engine_.getModule().createFunction("torch_glow_model");
+
   // Execution lambda helps to use compact Glow RETURN_* macros inside, and
   // have possibility to clean-up resources before leaving the function scope.
   auto setup = [&]() -> Error {
@@ -103,7 +104,6 @@ Error TorchGlowTraining::init(llvm::StringRef modelFile,
                                       outputPHs_.size()));
 
     // Initialization succeeded, prepare for training.
-    bindings_.allocate(engine_.getModule().getPlaceholders());
     TensorInitializer initializer;
     switch (mode) {
     case RandomizeWeights::AUTO:
@@ -119,9 +119,11 @@ Error TorchGlowTraining::init(llvm::StringRef modelFile,
 
     RETURN_IF_ERR(glow::prepareFunctionForTraining(F_, bindings_, selectedPH_,
                                                    std::move(initializer)));
-
     TF_ = glow::differentiate(F_, config);
+
     engine_.compile(CompilationMode::Train);
+
+    bindings_.allocate(engine_.getModule().getPlaceholders());
 
     return Error::success();
   };
@@ -155,7 +157,6 @@ Error TorchGlowTraining::train(const Tensor &samples, const Tensor &labels) {
 
     RETURN_ERR("Invalid samples/labels dimensions: " + sink.str());
   }
-
 #ifdef NDEBUG
   /// Enable only in release mode.
   auto TFName = TF_->getName();
@@ -165,8 +166,11 @@ Error TorchGlowTraining::train(const Tensor &samples, const Tensor &labels) {
             : input->copySlice(&samples, e);
     isSlice ? label->copyConsecutiveSlices(&labels, e)
             : label->copySlice(&labels, e);
+
     engine_.run(bindings_, TFName);
   }
+#else
+  llvm::errs() << "NB!!! Training has been skipped, run Release mode.\n";
 #endif
   return Error::success();
 }

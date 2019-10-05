@@ -177,7 +177,7 @@ public:
   static Error loadJITGraphForOnnxTraining(
       glow::Function &F, const torch::jit::Graph &graph,
       const at::ArrayRef<torch::jit::IValue> inputs,
-      const at::ArrayRef<std::shared_ptr<c10::TensorType>> parameters,
+      const std::vector<at::Tensor> &parameters,
       std::vector<glow::Placeholder *> &inputPlaceholders,
       std::vector<glow::Placeholder *> &outputPlaceholders);
 
@@ -199,12 +199,12 @@ private:
   /// graph \p inputs and placeholders \p parameters. Output parameters \p
   /// inputPlaceholders and \p outputPlaceholders are filled out.
   /// This is only used by loadJITGraphForOnnxTraining.
-  PyTorchModelLoader(
-      glow::Function &F, const torch::jit::Graph &graph,
-      const at::ArrayRef<torch::jit::IValue> inputs,
-      const at::ArrayRef<std::shared_ptr<c10::TensorType>> parameters,
-      std::vector<glow::Placeholder *> &inputPlaceholders,
-      std::vector<glow::Placeholder *> &outputPlaceholders, Error &error);
+  PyTorchModelLoader(glow::Function &F, const torch::jit::Graph &graph,
+                     const at::ArrayRef<torch::jit::IValue> inputs,
+                     const std::vector<at::Tensor> &parameters,
+                     std::vector<glow::Placeholder *> &inputPlaceholders,
+                     std::vector<glow::Placeholder *> &outputPlaceholders,
+                     Error &error);
 
   /// Save access to the mapping.
   static const MappingOfMemberFunctions &getSymbolsMapping();
