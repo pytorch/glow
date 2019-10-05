@@ -45,13 +45,25 @@ class AddBench : public Benchmark {
   size_t asyncLaunchSize_;
   size_t numCores_;
   const char *backendStr_;
-  const char *dtypeStr_;
+  ElemKind dtype_;
+  size_t elementSize_;
 
 public:
   AddBench(size_t n_, size_t numLayers_, size_t asyncLaunchSize_,
            size_t numCores_, const char *backendStr_, const char *dtypeStr_)
       : n_(n_), numLayers_(numLayers_), asyncLaunchSize_(asyncLaunchSize_),
-        numCores_(numCores_), backendStr_(backendStr_), dtypeStr_(dtypeStr_) {}
+        numCores_(numCores_), backendStr_(backendStr_) {
+
+    dtype_ = ElemKind::Float16Ty;
+    elementSize_ = 2;
+    if (std::string(dtypeStr_) == "Float16") {
+      dtype_ = ElemKind::Float16Ty;
+      elementSize_ = 2;
+    } else if (std::string(dtypeStr_) == "Float32") {
+      dtype_ = ElemKind::FloatTy;
+      elementSize_ = 4;
+    }
+  }
 
   void setup() override {
 
@@ -68,24 +80,17 @@ public:
     std::unique_ptr<Module> mod(new Module);
     auto fn = mod->createFunction("singleNode");
 
-    ElemKind dtype = ElemKind::Float16Ty;
-    if (std::string(dtypeStr_) == "Float16") {
-      dtype = ElemKind::Float16Ty;
-    } else if (std::string(dtypeStr_) == "Float32") {
-      dtype = ElemKind::FloatTy;
-    }
-
     std::vector<Placeholder *> A(numCores_);
     std::vector<Placeholder *> B(numCores_);
     std::vector<Placeholder *> output(numCores_);
     std::vector<Node *> cur(numCores_);
     for (size_t core = 0; core < numCores_; core++) {
-      A[core] = mod->createPlaceholder(dtype, {n_}, "A" + std::to_string(core),
+      A[core] = mod->createPlaceholder(dtype_, {n_}, "A" + std::to_string(core),
                                        false);
-      B[core] = mod->createPlaceholder(dtype, {n_}, "B" + std::to_string(core),
+      B[core] = mod->createPlaceholder(dtype_, {n_}, "B" + std::to_string(core),
                                        false);
       output[core] = mod->createPlaceholder(
-          dtype, {n_}, "output" + std::to_string(core), false);
+          dtype_, {n_}, "output" + std::to_string(core), false);
       cur[core] = A[core];
     }
 
@@ -127,7 +132,8 @@ public:
 
   void teardown() override {}
 
-  double gbytes() const { return 2.0 * n_ * (numLayers_ + 2) / 1e9; }
+  // Two inputs per layer and one output
+  double gbytes() const { return elementSize_ * n_ * (3 * numLayers_) / 1e9; }
 };
 
 int main(int argc, char *argv[]) {
