@@ -1452,6 +1452,61 @@ Error ONNXModelLoader::loadSplat(const ONNX_NAMESPACE::NodeProto &op,
   return loadConstantOfShape(op, dict, true /* isSplat */);
 }
 
+Error ONNXModelLoader::loadInsertTensor(const ONNX_NAMESPACE::NodeProto &op,
+                                        const ArgumentDictionaryTy &dict) {
+  NodeValue big;
+  ASSIGN_VALUE_OR_RETURN_ERR(big, getNodeValueByName(op.input(0)));
+  NodeValue small;
+  ASSIGN_VALUE_OR_RETURN_ERR(small, getNodeValueByName(op.input(1)));
+
+  auto start = getShape<size_t>(dict.at("start"));
+
+  unsigned_t count = 1;
+  if (dict.count("count")) {
+    ASSIGN_VALUE_OR_RETURN_ERR(count, loadInt(dict.at("count")));
+  }
+
+  unsigned_t axis = 0;
+  if (dict.count("axis")) {
+    ASSIGN_VALUE_OR_RETURN_ERR(axis, loadInt(dict.at("axis")));
+  }
+
+  Node *N = G_.createInsertTensor(loadOperatorName(op), big, small, start,
+                                  count, axis);
+
+  RETURN_IF_ERR(addNodeAsOutput(op, N));
+  return Error::success();
+}
+
+Error ONNXModelLoader::loadAdaptiveAvgPool(const ONNX_NAMESPACE::NodeProto &op,
+                                           const ArgumentDictionaryTy &dict) {
+  // Glow expects inputs to be in NHWC but ONNX keeps them in NCHW so we
+  // transpose them.
+  NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getNodeValueByName(op.input(0)));
+
+  input = G_.createTranspose("adaptive_avg_pool2d_input_transposed", input,
+                             NCHW2NHWC);
+
+  // OutputSize defaults to size of input if not provided.
+  std::vector<size_t> outputSize;
+  if (dict.count("output_size")) {
+    outputSize = getShape<size_t>(dict.at("output_size"));
+  } else {
+    outputSize = {input.dims()[2], input.dims()[3]};
+  }
+
+  auto idim = glow::ShapeNHWC(input.dims());
+  auto outTy = G_.getParent()->uniqueTypeWithNewShape(
+      input.getType(), {idim.n, outputSize[0], outputSize[1], idim.c});
+
+  Node *N = G_.createAdaptiveAvgPool("adaptive_avg_pool2d", input, outTy);
+  N = G_.createTranspose("adaptive_avg_pool2d_output_transposed", N, NHWC2NCHW);
+
+  RETURN_IF_ERR(addNodeAsOutput(op, N));
+  return Error::success();
+}
+
 Error ONNXModelLoader::loadRowwiseQuantizedFullyConnected(
     const ONNX_NAMESPACE::NodeProto &op, const ArgumentDictionaryTy &dict) {
   // TODO
@@ -1582,8 +1637,14 @@ Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
   if (typeName == "Splat") {
     return loadSplat(op, dict);
   }
+  if (typeName == "InsertTensor") {
+    return loadInsertTensor(op, dict);
+  }
   if (typeName == "ArgMax") {
     return loadArgMax(op, dict);
+  }
+  if (typeName == "AdaptiveAvgPool") {
+    return loadAdaptiveAvgPool(op, dict);
   }
 
   RETURN_ERR("Failed to load operator " + typeName + " .",

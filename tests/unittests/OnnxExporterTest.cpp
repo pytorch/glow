@@ -39,16 +39,15 @@ void testLoadAndSaveONNXModel(const std::string &name) {
   Function *F = mod.createFunction("main");
 
   size_t irVer = 0, opsetVer = 0;
-  Error err = Error::success();
+  Error err = Error::empty();
   {
     ONNXModelLoader onnxLD(name, {}, {}, *F, &err);
     irVer = onnxLD.getIrVersion();
     opsetVer = onnxLD.getOpSetVersion();
   }
 
-  if (err) {
+  if (ERR_TO_BOOL(std::move(err))) {
     llvm::errs() << "ONNXModelLoader failed to load model: " << name << ": ";
-    llvm::errs() << ERR_TO_STRING(std::move(err)) << "\n";
     FAIL();
   }
 
@@ -59,19 +58,21 @@ void testLoadAndSaveONNXModel(const std::string &name) {
   EXPECT_EQ(tempFileRes.value(), 0);
 
   std::string outputFilename(path.c_str());
+  err = Error::empty();
   { ONNXModelWriter onnxWR(outputFilename, *F, irVer, opsetVer, &err, true); }
 
-  if (err) {
+  if (ERR_TO_BOOL(std::move(err))) {
     llvm::errs() << "ONNXModelWriter failed to write model: " << name << ".\n";
     llvm::sys::fs::remove(outputFilename);
-    EXPECT_FALSE(err);
+    FAIL();
   }
 
   Function *R = mod.createFunction("reload");
+  err = Error::empty();
   { ONNXModelLoader onnxLD(outputFilename, {}, {}, *R, &err); }
-  llvm::sys::fs::remove(outputFilename);
-  EXPECT_FALSE(err) << "ONNXModelLoader failed to reload model: "
-                    << outputFilename;
+  // llvm::sys::fs::remove(outputFilename);
+  EXPECT_FALSE(ERR_TO_BOOL(std::move(err)))
+      << "ONNXModelLoader failed to reload model: " << outputFilename;
 }
 } // namespace
 

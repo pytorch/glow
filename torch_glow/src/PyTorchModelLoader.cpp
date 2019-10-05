@@ -1808,8 +1808,8 @@ Error PyTorchModelLoader::loadSoftMax(const torch::jit::Node *ptNode) {
       dim, static_cast_expected<glow::unsigned_t>(
                iValToInt(getGlowIValueForValue(inputs[SoftMaxInputs::dim]))));
 
-  auto selected = F_.getParent()->createConstant(
-      glow::ElemKind::Int64ITy, {in.dims()[0], in.dims()[1]}, "selected");
+  auto selected = F_.getParent()->createConstant(glow::ElemKind::Int64ITy,
+                                                 {in.dims()[0], 1}, "selected");
 
   auto *FN = F_.createFlatten("reshapeInput", in, dim);
   auto *SM = F_.createSoftMax("SoftMax", FN, selected);
@@ -2013,7 +2013,7 @@ PyTorchModelLoader::PyTorchModelLoader(
 Error PyTorchModelLoader::loadJITGraphForOnnxTraining(
     glow::Function &F, const torch::jit::Graph &graph,
     const at::ArrayRef<torch::jit::IValue> inputs,
-    const at::ArrayRef<std::shared_ptr<c10::TensorType>> parameters,
+    const std::vector<at::Tensor> &parameters,
     std::vector<glow::Placeholder *> &inputPlaceholders,
     std::vector<glow::Placeholder *> &outputPlaceholders) {
   Error error = Error::empty();
@@ -2025,7 +2025,7 @@ Error PyTorchModelLoader::loadJITGraphForOnnxTraining(
 PyTorchModelLoader::PyTorchModelLoader(
     glow::Function &F, const torch::jit::Graph &graph,
     const at::ArrayRef<torch::jit::IValue> inputs,
-    const at::ArrayRef<std::shared_ptr<c10::TensorType>> parameters,
+    const std::vector<at::Tensor> &parameters,
     std::vector<glow::Placeholder *> &inputPlaceholders,
     std::vector<glow::Placeholder *> &outputPlaceholders, Error &error)
     : F_(F), inputs_(inputs), copyTensorMemory_(true) {
@@ -2064,11 +2064,12 @@ PyTorchModelLoader::PyTorchModelLoader(
     // Create Glow Placeholders for training parameters (don't put them in
     // inputPlaceholders though).
     for (size_t i = 0; i < parameters.size(); ++i, ++graphIdx) {
-      auto glowType = ptTypeToGlowType(*parameters[i]);
-      glow::Placeholder *ph = F_.getParent()->createPlaceholder(
-          &glowType, "parameter", /*isTrainable*/ false);
+      glow::Constant *C = F_.getParent()->createConstant(
+          "parameter", ptTensorToGlowTensor(parameters[i]));
+      C->ensureIsOwned();
+
       RETURN_IF_ERR(
-          addValueMapping(graphInputValues[graphIdx], ph->getOutput()));
+          addValueMapping(graphInputValues[graphIdx], C->getOutput()));
     }
 
     // Nodes are topologically sorted. Don't do any weight freezing first.

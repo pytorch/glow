@@ -189,20 +189,15 @@ Error PyTorchFileLoader::parsePyTorchGraphForOnnxTraining(
   at::NoGradGuard guard;
 
   auto method = module->get_method("forward");
+  // std::pair<std::shared_ptr<Graph>, std::vector<at::Tensor>>
   auto graphAndTensors = method._lowered_graph();
-
-  std::vector<std::shared_ptr<c10::TensorType>> parameters;
-
-  for (const auto &ptTensor : graphAndTensors.second) {
-    parameters.push_back(c10::TensorType::create(ptTensor));
-  }
 
   FuseKnownPatterns(graphAndTensors.first);
 
   // Parse JIT Graph and load into Glow Function.
   return PyTorchModelLoader::loadJITGraphForOnnxTraining(
-      F, *graphAndTensors.first, inputs, parameters, inputPlaceholders,
-      outputPlaceholders);
+      F, *graphAndTensors.first, inputs, graphAndTensors.second,
+      inputPlaceholders, outputPlaceholders);
 }
 
 // Sanity check, after "fusionSymbol" node, not other nodes should exist.
