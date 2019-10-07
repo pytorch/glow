@@ -112,19 +112,19 @@ GLOW_INSTANTIATE_TEST_SUITE_P_FOR_BACKEND_COMBINED_TEST(
 
 /// Compare backend against the interpreter in Float.
 TEST_P(ConvSweepTest, ConvTest_Float) {
-  ENABLED_BACKENDS(CPU, OpenCL);
+  ENABLED_BACKENDS(CPU, OpenCL, NNPI);
   testParamSweepConv(GetParam(), ElemKind::FloatTy, ElemKind::FloatTy, 0.0001f);
 }
 
 /// Compare backend against the interpreter in Int8.
 TEST_P(ConvSweepTest, ConvTest_Int8) {
-  ENABLED_BACKENDS(Interpreter, CPU, OpenCL);
+  ENABLED_BACKENDS(Interpreter, CPU, OpenCL, NNPI);
   testParamSweepConv(GetParam(), ElemKind::FloatTy, ElemKind::Int8QTy, 0.045f);
 }
 
 /// Compare backend against the interpreter in FP16.
 TEST_P(ConvSweepTest, ConvTest_Float16) {
-  ENABLED_BACKENDS(Interpreter);
+  ENABLED_BACKENDS(Interpreter, NNPI);
   testParamSweepConv(GetParam(), ElemKind::FloatTy, ElemKind::Float16Ty,
                      0.005f);
 }
@@ -189,21 +189,21 @@ GLOW_INSTANTIATE_TEST_SUITE_P_FOR_BACKEND_COMBINED_TEST(
 
 /// Compare backend against the interpreter in Float.
 TEST_P(BatchMatMulSweepTest, BatchMatMulTest_Float) {
-  ENABLED_BACKENDS(CPU, OpenCL);
+  ENABLED_BACKENDS(CPU, OpenCL, NNPI);
   testParamSweepBatchMatMul(GetParam(), ElemKind::FloatTy, ElemKind::FloatTy,
                             0.0001f);
 }
 
 /// Compare backend against the interpreter in Int8.
 TEST_P(BatchMatMulSweepTest, BatchMatMulTest_Int8) {
-  ENABLED_BACKENDS(Interpreter, CPU, OpenCL);
+  ENABLED_BACKENDS(Interpreter, CPU, OpenCL, NNPI);
   testParamSweepBatchMatMul(GetParam(), ElemKind::FloatTy, ElemKind::Int8QTy,
                             0.06f);
 }
 
 /// Compare backend against the interpreter in FP16.
 TEST_P(BatchMatMulSweepTest, BatchMatMulTest_Float16) {
-  ENABLED_BACKENDS(Interpreter);
+  ENABLED_BACKENDS(Interpreter, NNPI);
   testParamSweepBatchMatMul(GetParam(), ElemKind::FloatTy, ElemKind::Float16Ty,
                             0.005f);
 }
@@ -266,20 +266,20 @@ GLOW_INSTANTIATE_TEST_SUITE_P_FOR_BACKEND_COMBINED_TEST(
 
 /// Compare backend against the interpreter in Float.
 TEST_P(FCSweepTest, FCTest_Float) {
-  ENABLED_BACKENDS(CPU, OpenCL);
+  ENABLED_BACKENDS(CPU, OpenCL, NNPI);
   testParamSweepFC(GetParam(), ElemKind::FloatTy, ElemKind::FloatTy, 0.0001f);
 }
 
 /// Compare backend against the interpreter in Int8.
 TEST_P(FCSweepTest, FCTest_Int8) {
-  ENABLED_BACKENDS(Interpreter, CPU, OpenCL);
+  ENABLED_BACKENDS(Interpreter, CPU, OpenCL, NNPI);
   testParamSweepFC(GetParam(), ElemKind::FloatTy, ElemKind::Int8QTy, 0.065f);
 }
 
 /// Compare backend against the interpreter in FP16.
 TEST_P(FCSweepTest, FCTest_Float16) {
-  ENABLED_BACKENDS(Interpreter);
-  testParamSweepFC(GetParam(), ElemKind::FloatTy, ElemKind::Float16Ty, 0.004f);
+  ENABLED_BACKENDS(Interpreter, NNPI);
+  testParamSweepFC(GetParam(), ElemKind::FloatTy, ElemKind::Float16Ty, 0.005f);
 }
 
 //===--------------------------------------------------------------------===//
@@ -358,7 +358,7 @@ GLOW_INSTANTIATE_TEST_SUITE_P_FOR_BACKEND_COMBINED_TEST(
 
 /// Compare backend against the interpreter in Float.
 TEST_P(ConcatSweepTest, ConcatTest_Float) {
-  ENABLED_BACKENDS(CPU, OpenCL);
+  ENABLED_BACKENDS(CPU, OpenCL, NNPI);
   testParamSweepConcat(GetParam(), ElemKind::FloatTy, ElemKind::FloatTy, 0.0f);
 }
 
@@ -367,7 +367,7 @@ TEST_P(ConcatSweepTest, ConcatTest_Float) {
 /// quantize/dequantize the input/result anyway, so the comparison wouldn't be
 /// purely on data movement.
 TEST_P(ConcatSweepTest, ConcatTest_Int8) {
-  ENABLED_BACKENDS(Interpreter, CPU, OpenCL);
+  ENABLED_BACKENDS(Interpreter, CPU, OpenCL, NNPI);
   testParamSweepConcat(GetParam(), ElemKind::FloatTy, ElemKind::Int8QTy,
                        0.002f);
 }
@@ -377,7 +377,7 @@ TEST_P(ConcatSweepTest, ConcatTest_Int8) {
 /// down/up convert the input/result anyway, so the comparison wouldn't be
 /// purely on data movement.
 TEST_P(ConcatSweepTest, ConcatTest_Float16) {
-  ENABLED_BACKENDS(Interpreter);
+  ENABLED_BACKENDS(Interpreter, NNPI);
   testParamSweepConcat(GetParam(), ElemKind::FloatTy, ElemKind::Float16Ty,
                        0.0001f);
 }
@@ -497,7 +497,7 @@ GLOW_INSTANTIATE_TEST_SUITE_P_FOR_BACKEND_COMBINED_TEST(
 
 /// Compare backend against the interpreter.
 TEST_P(SLWSSweepTest, SLWS_Float) {
-  ENABLED_BACKENDS(CPU);
+  ENABLED_BACKENDS(CPU, NNPI);
   testParamSweepSLWS(GetParam(), ElemKind::FloatTy, ElemKind::FloatTy,
                      0.000001f,
                      /* rowwiseQuantize */ false,
@@ -507,7 +507,7 @@ TEST_P(SLWSSweepTest, SLWS_Float) {
 
 /// Compare backend against the interpreter in Float.
 TEST_P(SLWSSweepTest, RWQSLWS_Float) {
-  ENABLED_BACKENDS(CPU);
+  ENABLED_BACKENDS(CPU, NNPI);
   testParamSweepSLWS(GetParam(), ElemKind::FloatTy, ElemKind::FloatTy,
                      0.000001f,
                      /* rowwiseQuantize */ true,
@@ -517,7 +517,7 @@ TEST_P(SLWSSweepTest, RWQSLWS_Float) {
 
 /// Compare backend against the interpreter in Float.
 TEST_P(SLWSSweepTest, FRWQSLWS_Float) {
-  ENABLED_BACKENDS(CPU);
+  ENABLED_BACKENDS(CPU, NNPI);
   testParamSweepSLWS(GetParam(), ElemKind::FloatTy, ElemKind::FloatTy,
                      0.000001f,
                      /* rowwiseQuantize */ true,
@@ -529,7 +529,7 @@ TEST_P(SLWSSweepTest, FRWQSLWS_Float) {
 TEST_P(SLWSSweepTest, RWQSLWS_Float16) {
   // Note: not currently enabled for any open-source backends, as only the
   // Interpreter supports this.
-  ENABLED_BACKENDS();
+  ENABLED_BACKENDS(NNPI);
   testParamSweepSLWS(GetParam(), ElemKind::FloatTy, ElemKind::FloatTy,
                      0.000001f,
                      /* rowwiseQuantize */ true,
@@ -541,7 +541,7 @@ TEST_P(SLWSSweepTest, RWQSLWS_Float16) {
 TEST_P(SLWSSweepTest, FRWQSLWS_Float16) {
   // Note: not currently enabled for any open-source backends, as only the
   // Interpreter supports this.
-  ENABLED_BACKENDS();
+  ENABLED_BACKENDS(NNPI);
   testParamSweepSLWS(GetParam(), ElemKind::FloatTy, ElemKind::FloatTy,
                      0.000001f,
                      /* rowwiseQuantize */ true,
@@ -553,7 +553,7 @@ TEST_P(SLWSSweepTest, FRWQSLWS_Float16) {
 TEST_P(SLWSSweepTest, RWQSLWS_Float16_AccumFloat16) {
   // Note: not currently enabled for any open-source backends, as only the
   // Interpreter supports this.
-  ENABLED_BACKENDS();
+  ENABLED_BACKENDS(NNPI);
   testParamSweepSLWS(GetParam(), ElemKind::FloatTy, ElemKind::FloatTy,
                      0.000001f,
                      /* rowwiseQuantize */ true,
@@ -565,7 +565,7 @@ TEST_P(SLWSSweepTest, RWQSLWS_Float16_AccumFloat16) {
 TEST_P(SLWSSweepTest, FRWQSLWS_Float16_AccumFloat16) {
   // Note: not currently enabled for any open-source backends, as only the
   // Interpreter supports this.
-  ENABLED_BACKENDS();
+  ENABLED_BACKENDS(NNPI);
   testParamSweepSLWS(GetParam(), ElemKind::FloatTy, ElemKind::FloatTy,
                      0.000001f,
                      /* rowwiseQuantize */ true,

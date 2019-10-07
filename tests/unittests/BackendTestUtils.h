@@ -71,6 +71,7 @@ extern unsigned parCloneCountOpt;
     const std::string CPU = "CPU";                                             \
     const std::string OpenCL = "OpenCL";                                       \
     const std::string Habana = "Habana";                                       \
+    const std::string NNPI = "NNPI";                                           \
                                                                                \
   public:                                                                      \
     std::string getBackendName() { return std::get<0>(GetParam()); }           \
@@ -94,6 +95,9 @@ protected:
 };
 
 static const auto all_backends = ::testing::Values(
+#ifdef GLOW_WITH_NNPI
+    "NNPI",
+#endif // GLOW_WITH_NNPI
 #ifdef GLOW_WITH_CPU
     "CPU",
 #endif // GLOW_WITH_CPU
