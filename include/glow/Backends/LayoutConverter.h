@@ -66,6 +66,30 @@ inline std::pair<Node *, Node *> convertMaxPoolToNCHWPool(MaxPoolNode *PN,
   return std::make_pair(NR, NA);
 }
 
+inline Node *convertMaxPoolGradToNCHWPool(MaxPoolGradNode *PGN, Function *F) {
+  // Convert inputs from NHWC (Glow's default) into NCHW.
+  auto *NI =
+      F->createTranspose("maxpoolgrad.input", PGN->getInput(), NHWC2NCHW);
+  auto *NOR = F->createTranspose("maxpoolgrad.output",
+                                 PGN->getOriginalOutputForResult(), NHWC2NCHW);
+  auto *NGR =
+      F->createTranspose("maxpoolgrad.outputgrad",
+                         PGN->getGradOfOriginalOutputNamedResult(), NHWC2NCHW);
+  auto *NOA = F->createTranspose("maxpoolgrad.argmax",
+                                 PGN->getOriginalOutputForArgmax(), NHWC2NCHW);
+  auto *NGA =
+      F->createTranspose("maxpoolgrad.argmaxgrad",
+                         PGN->getGradOfOriginalOutputNamedArgmax(), NHWC2NCHW);
+
+  auto *NPGN = F->addNode(new MaxPoolGradNode(
+      PGN->getName(), NI, NOR, NGR, NOA, NGA, PGN->getKernels(),
+      PGN->getStrides(), PGN->getPads(), NCHW));
+  auto *NR = F->createTranspose("maxpoolgrad.result",
+                                NPGN->getGradOfInputNamedInput(), NCHW2NHWC);
+
+  return NR;
+}
+
 inline Node *convertAvgPoolToNCHWPool(AvgPoolNode *PN, Function *F) {
   // Convert input from NHWC (Glow's default) into NCHW.
   auto *NI = F->createTranspose("maxpool.input", PN->getInput(), NHWC2NCHW);
