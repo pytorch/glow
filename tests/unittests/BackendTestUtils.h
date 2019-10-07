@@ -124,6 +124,9 @@ static const auto all_backends = ::testing::Values(
 /// Blacklist of tests for the current backend under test.
 extern std::set<std::string> backendTestBlacklist;
 
+/// Bool for whether to use symmetric quantization for rowwise-quantized FCs.
+extern bool useSymmetricRowwiseQuantFC;
+
 /// Stringify a macro def.
 #define BACKEND_TO_STR(X) #X
 

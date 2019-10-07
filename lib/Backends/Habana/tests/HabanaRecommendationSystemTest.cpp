@@ -34,3 +34,5 @@ std::set<std::string> glow::backendTestBlacklist = {
     "RecSys_Partitioned_RWQuantizedFP16AccumFP16_SLWS_FP16/0",
     "RecSys_FP32_Gather_Weights/0",
 };
+
+bool glow::useSymmetricRowwiseQuantFC = false;
