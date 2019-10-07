@@ -855,7 +855,7 @@ protected:
 
     assert(resultTensor && "Must run and set resultTensor before comparing "
                            "against the intepreter.");
-    EXPECT_TRUE(resultIT->isEqual(*resultTensor));
+    EXPECT_TRUE(resultIT->isEqual(*resultTensor, 0.005));
   }
 
   /// Create partitions to run and compare results.
