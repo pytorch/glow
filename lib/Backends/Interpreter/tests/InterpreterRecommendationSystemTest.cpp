@@ -18,3 +18,5 @@
 using namespace glow;
 
 std::set<std::string> glow::backendTestBlacklist = {};
+
+bool glow::useSymmetricRowwiseQuantFC = false;

@@ -116,12 +116,6 @@ llvm::cl::opt<unsigned> numDevicesOpt(
     "num-devices", llvm::cl::desc("Number of devices to use for partitioning."),
     llvm::cl::Optional, llvm::cl::init(6), llvm::cl::cat(recSysTestCat));
 
-llvm::cl::opt<bool> useSymmetricRowwiseQuantFCOpt(
-    "use-symmetric-rowwise-quant-fc",
-    llvm::cl::desc(
-        "Whether to use Symmetric quantization with FCs. Default is false."),
-    llvm::cl::Optional, llvm::cl::init(false), llvm::cl::cat(recSysTestCat));
-
 llvm::cl::opt<std::string> traceDir(
     "trace-dir",
     llvm::cl::desc("Directory used to store Glow trace events files. If not "
@@ -505,7 +499,7 @@ protected:
         mod, internalTypeF, {inputDim, firstIntDim}, "initial_weight");
 
     // Output is size {MB, intermediatDim}
-    quantization::Schema rowwiseQuantSchema = useSymmetricRowwiseQuantFCOpt
+    quantization::Schema rowwiseQuantSchema = useSymmetricRowwiseQuantFC
                                                   ? quantization::Symmetric
                                                   : quantization::Asymmetric;
     Node *initial_layer = F_->createRowwiseQuantizedFullyConnected(
