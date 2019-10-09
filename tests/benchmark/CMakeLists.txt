@@ -8,6 +8,15 @@ target_link_libraries(AddBench
                         HostManager
                         CPURuntimeNative)
 
+add_executable(SLSBench
+               SLSBench.cpp)
+target_link_libraries(SLSBench
+                      PRIVATE
+                        ExecutionEngine
+                        Graph
+                        HostManager
+                        CPURuntimeNative)
+
 add_executable(ConvBench
                ConvBench.cpp)
 target_link_libraries(ConvBench
