@@ -1,3 +1,5 @@
+add_subdirectory(ClassGen)
+
 if("${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang")
   set(CLANG_BIN ${CMAKE_CXX_COMPILER})
 else()
