@@ -78,6 +78,17 @@ public:
   Expected<const GlowIValue *> getMappedGlowIValue() const;
 };
 
+// Input's shape and type
+struct InputMeta {
+  c10::ScalarType type;
+  std::vector<size_t> dims;
+
+  InputMeta(c10::ScalarType type_, std::vector<size_t> &&dims_) {
+    type = type_;
+    dims = dims_;
+  }
+};
+
 /// Loads PyTorch JIT IR graphs as a Glow Function.
 class PyTorchModelLoader {
   /// Glow Function created outside this class.
@@ -154,7 +165,7 @@ public:
   /// Returns whether or not a PyTorch node is supported.
   /// NOTE: For now this is just an enumeration of all type of PyTorch nodes
   /// that the loader knows about but doesn't really guarantee that loading
-  /// will succeed because determining this requires more informations such as
+  /// will succeed because determining this requires more information such as
   /// shape info that isn't yet available when this is run.
   static bool isNodeSupported(const torch::jit::Node *ptNode);
 
@@ -165,10 +176,11 @@ public:
   /// error on failure.
   static Error
   loadJITGraph(glow::Function &F, const torch::jit::Graph &graph,
-               const at::ArrayRef<torch::jit::IValue> inputs,
                std::vector<glow::Placeholder *> &inputPlaceholders,
                std::vector<glow::Placeholder *> &outputPlaceholders,
-               const PyTorchLoaderSettings &settings);
+               const PyTorchLoaderSettings &settings,
+               const at::ArrayRef<torch::jit::IValue> inputs,
+               const std::vector<InputMeta> &inputMeta);
 
   /// Takes a glow::Function \p F, a jit::Graph \p subgraph to load, \p inputs
   /// as graph external inputs, and \parameters as known tensors. Output
@@ -189,22 +201,23 @@ private:
   /// parameter that, if provided, will be filled with the set of stack indices
   /// that were frozen during loading.
   PyTorchModelLoader(glow::Function &F, const torch::jit::Graph &graph,
-                     const at::ArrayRef<torch::jit::IValue> inputs,
                      std::vector<glow::Placeholder *> &inputPlaceholders,
                      std::vector<glow::Placeholder *> &outputPlaceholders,
                      Error &error, const PyTorchLoaderSettings &settings,
-                     std::set<size_t> *frozenInputIndices);
+                     std::set<size_t> *frozenInputIndices,
+                     const at::ArrayRef<torch::jit::IValue> inputs,
+                     const std::vector<InputMeta> &inputMeta = {});
 
   /// Takes a glow::Function \p F, a jit::Graph \p graph to load, and a
   /// graph \p inputs and placeholders \p parameters. Output parameters \p
   /// inputPlaceholders and \p outputPlaceholders are filled out.
   /// This is only used by loadJITGraphForOnnxTraining.
   PyTorchModelLoader(glow::Function &F, const torch::jit::Graph &graph,
-                     const at::ArrayRef<torch::jit::IValue> inputs,
                      const std::vector<at::Tensor> &parameters,
                      std::vector<glow::Placeholder *> &inputPlaceholders,
                      std::vector<glow::Placeholder *> &outputPlaceholders,
-                     Error &error);
+                     Error &error,
+                     const at::ArrayRef<torch::jit::IValue> inputs);
 
   /// Save access to the mapping.
   static const MappingOfMemberFunctions &getSymbolsMapping();
@@ -382,6 +395,7 @@ private:
   /// \returns error on failure.
   Error loadMatMul(const torch::jit::Node *ptNode);
 };
+
 } // namespace glow
 
 #endif // GLOW_TORCH_GLOW_SRC_PYTORCHMODELLOADER_H

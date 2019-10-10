@@ -68,7 +68,7 @@ Error loadJitGraphToGlowFunction(
 
   // Load JIT Graph into Glow Function.
   RETURN_IF_ERR(PyTorchModelLoader::loadJITGraph(
-      f, graph, inputs, inputPlaceholders, outputPlaceholders, settings));
+      f, graph, inputPlaceholders, outputPlaceholders, settings, inputs, {}));
 
   // Remove from stack input parameters.
   torch::jit::drop(stack, numInputs);

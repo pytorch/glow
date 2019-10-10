@@ -16,8 +16,6 @@
 
 #include "CachingGraphRunner.h"
 
-#include "PyTorchModelLoader.h"
-
 #include "glow/Support/Support.h"
 
 #include <mutex>
@@ -63,15 +61,15 @@ CachingGraphRunner::loadImpl(torch::jit::Stack &stack) {
     return it->second.get();
   }
 
-  auto info = llvm::make_unique<PerGlowGraphInfo>();
+  auto info = std::make_shared<PerGlowGraphInfo>();
   info->functionName = strFormat("PTFunction%lu", hash);
 
   std::unique_ptr<Module> module = llvm::make_unique<Module>();
   Function *f = module->createFunction(info->functionName);
 
   RETURN_IF_ERR(PyTorchModelLoader::loadJITGraph(
-      *f, *graph_, inputs, info->inputPlaceholders, info->outputPlaceholders,
-      getPyTorchLoaderSettings()));
+      *f, *graph_, info->inputPlaceholders, info->outputPlaceholders,
+      getPyTorchLoaderSettings(), inputs, {}));
 
   glow::CompilationContext cctx;
 
@@ -85,7 +83,6 @@ CachingGraphRunner::loadImpl(torch::jit::Stack &stack) {
 Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
                                   torch::jit::Stack &stack) const {
   size_t numInputs = info.inputPlaceholders.size();
-
   const auto inputs = torch::jit::last(stack, numInputs);
 
   std::unique_ptr<ExecutionContext> ctx = llvm::make_unique<ExecutionContext>();
@@ -132,6 +129,81 @@ Error CachingGraphRunner::run(torch::jit::Stack &stack) {
   return runImpl(*DCHECK_NOTNULL(info), stack);
 }
 
+Error CachingGraphRunner::run(const std::string &key,
+                              torch::jit::Stack &stack) {
+  std::shared_ptr<PerGlowGraphInfo> info;
+  {
+    std::lock_guard<std::mutex> guard(graphCacheMutex);
+    auto it = glowGraphInfoMap.find(key);
+    if (it == glowGraphInfoMap.end()) {
+      return MAKE_ERR(
+          strFormat("Key: %s not found in glowGraphInfoMap!", key.c_str()));
+    }
+    info = it->second;
+  }
+  return runImpl(*DCHECK_NOTNULL(info.get()), stack);
+}
+
+Error CachingGraphRunner::CompileModule(const torch::jit::script::Module &m,
+                                        const std::vector<InputMeta> &inputMeta,
+                                        const std::string &opname) {
+  if (hostManager_ == nullptr) {
+    return MAKE_ERR("Host manager is null!");
+  }
+  const std::string name = "glow::" + m.name().qualifiedName();
+
+  std::lock_guard<std::mutex> guard(graphCacheMutex);
+  // Currently only support one method per module
+  auto it = glowGraphInfoMap.find(name);
+  if (it != glowGraphInfoMap.end()) {
+    // Already compiled
+    return Error::success();
+  }
+
+  auto info = std::make_shared<PerGlowGraphInfo>();
+  info->functionName = strFormat("PTFunction%s", name.c_str());
+
+  auto methods = m.get_methods();
+  if (methods.size() != 1) {
+    return MAKE_ERR("Currently only support one method each module!");
+  }
+
+  std::shared_ptr<torch::jit::Graph> g = nullptr;
+  // XXX: Here we assume the fusion node is a top level node. This constraint
+  // can be relaxed if needed.
+  for (auto node : methods[0].function().graph()->nodes()) {
+    if (node->kind().toQualString() == opname) {
+      if (!node->hasAttribute(torch::jit::attr::Subgraph)) {
+        return MAKE_ERR("Fusion node should have a subgraph!");
+      }
+      g = node->g(torch::jit::attr::Subgraph);
+    }
+  }
+  if (!g) {
+    return MAKE_ERR("No fusion node found");
+  }
+  std::unique_ptr<Module> glowModule = llvm::make_unique<Module>();
+  Function *f = glowModule->createFunction(info->functionName);
+
+  RETURN_IF_ERR(PyTorchModelLoader::loadJITGraph(
+      *f, *g, info->inputPlaceholders, info->outputPlaceholders,
+      getPyTorchLoaderSettings(), {}, inputMeta));
+
+  glow::CompilationContext cctx;
+
+  RETURN_IF_ERR(hostManager_->addNetwork(std::move(glowModule), cctx));
+  glowGraphInfoMap[name] = std::move(info);
+  return Error::success();
+}
+
+CachingGraphRunner *CachingGraphRunner::getCachingGraphRunner() {
+  static CachingGraphRunner runner = CachingGraphRunner();
+  return &runner;
+}
+
+CachingGraphRunner::CachingGraphRunner()
+    : hostManager_(glow::getHostManager()) {}
+
 CachingGraphRunner::CachingGraphRunner(torch::jit::Graph *graph,
                                        runtime::HostManager *hostManager)
     : graph_(graph), hostManager_(hostManager) {}
@@ -139,6 +211,9 @@ CachingGraphRunner::CachingGraphRunner(torch::jit::Graph *graph,
 CachingGraphRunner::~CachingGraphRunner() {
   // Remove Glow functions saved in HostManager when being destroyed.
   for (auto &kv : perGlowGraphInfoMap_) {
+    ERR_TO_BOOL(hostManager_->removeNetwork(kv.second->functionName));
+  }
+  for (auto &kv : glowGraphInfoMap) {
     ERR_TO_BOOL(hostManager_->removeNetwork(kv.second->functionName));
   }
 }

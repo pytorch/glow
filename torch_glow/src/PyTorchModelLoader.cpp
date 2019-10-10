@@ -15,6 +15,7 @@
  */
 
 #include "PyTorchModelLoader.h"
+#include "PyTorchCommon.h"
 
 #include "glow/Support/Error.h"
 #include "glow/Support/Support.h"
@@ -1932,30 +1933,33 @@ Error PyTorchModelLoader::loadConstant(const torch::jit::Node *ptNode) {
 /*static*/
 Error PyTorchModelLoader::loadJITGraph(
     glow::Function &F, const torch::jit::Graph &graph,
-    const at::ArrayRef<torch::jit::IValue> inputs,
     std::vector<glow::Placeholder *> &inputPlaceholders,
     std::vector<glow::Placeholder *> &outputPlaceholders,
-    const PyTorchLoaderSettings &settings) {
+    const PyTorchLoaderSettings &settings,
+    const at::ArrayRef<torch::jit::IValue> inputs,
+    const std::vector<InputMeta> &inputMeta) {
   Error error = Error::empty();
-  PyTorchModelLoader loader(F, graph, inputs, inputPlaceholders,
-                            outputPlaceholders, error, settings,
-                            /*frozenInputIndices*/ nullptr);
+  PyTorchModelLoader loader(F, graph, inputPlaceholders, outputPlaceholders,
+                            error, settings,
+                            /*frozenInputIndices*/ nullptr, inputs, inputMeta);
   return error;
 }
 
 PyTorchModelLoader::PyTorchModelLoader(
     glow::Function &F, const torch::jit::Graph &graph,
-    const at::ArrayRef<torch::jit::IValue> inputs,
     std::vector<glow::Placeholder *> &inputPlaceholders,
     std::vector<glow::Placeholder *> &outputPlaceholders, Error &error,
-    const PyTorchLoaderSettings &settings, std::set<size_t> *frozenInputIndices)
+    const PyTorchLoaderSettings &settings, std::set<size_t> *frozenInputIndices,
+    const at::ArrayRef<torch::jit::IValue> inputs,
+    const std::vector<InputMeta> &inputMeta)
     : F_(F), inputs_(inputs), frozenInputIndices_(frozenInputIndices),
       copyTensorMemory_(false) {
   auto loadFn = [&]() -> Error {
     auto graphInputValues = graph.inputs();
 
     RETURN_ERR_IF_NOT(
-        inputs.size() == graphInputValues.size(),
+        inputs.size() == graphInputValues.size() ||
+            inputMeta.size() == graphInputValues.size(),
         glow::strFormat("Number of Graph inputs %lu must match the "
                         "number of provided inputs %lu.",
                         graphInputValues.size(), inputs.size()));
@@ -1963,19 +1967,39 @@ PyTorchModelLoader::PyTorchModelLoader(
     // Create Glow Placeholders for inputs.
     for (size_t i = 0; i < graphInputValues.size(); ++i) {
       const torch::jit::Value *inputValue = graphInputValues[i];
-      const c10::IValue inputIValue = inputs.at(i);
-      GlowIValue glowIVal;
-      RETURN_IF_ERR(glowIVal.fromIValue(inputIValue));
-      if (glowIVal.isTensor()) {
-        glow::Tensor *t;
-        ASSIGN_VALUE_OR_RETURN_ERR(t, glowIVal.toTensor());
-        glow::Placeholder *ph = F_.getParent()->createPlaceholder(
-            &t->getType(), "input", /*isTrainable*/ false);
+      glow::Placeholder *ph;
+
+      if (!inputMeta.empty()) {
+        if (inputValue->type()->kind() == c10::TypeKind::TensorType) {
+          glow::Type t(scalarTypeToElemKind(inputMeta[i].type),
+                       inputMeta[i].dims);
+          // ASSIGN_VALUE_OR_RETURN_ERR(t, glowIVal.toTensor());
+          ph = F_.getParent()->createPlaceholder(&t, "input",
+                                                 /*isTrainable*/ false);
+        } else {
+          // Here we assume it's scalar type
+          glow::Type t(typeKindToElemKind(inputValue->type()->kind()), {});
+          ph = F_.getParent()->createPlaceholder(&t, "input", false);
+        }
         RETURN_IF_ERR(addValueMapping(inputValue, ph->getOutput()));
         inputPlaceholders.push_back(ph);
         inputPlaceholdersReverseIndex_[ph] = i;
       } else {
-        RETURN_IF_ERR(addValueMapping(inputValue, std::move(glowIVal)));
+        const c10::IValue inputIValue = inputs.at(i);
+        GlowIValue glowIVal;
+        RETURN_IF_ERR(glowIVal.fromIValue(inputIValue));
+        if (glowIVal.isTensor()) {
+          glow::Tensor *t;
+          ASSIGN_VALUE_OR_RETURN_ERR(t, glowIVal.toTensor());
+          // ASSIGN_VALUE_OR_RETURN_ERR(t, glowIVal.toTensor());
+          ph = F_.getParent()->createPlaceholder(&t->getType(), "input",
+                                                 /*isTrainable*/ false);
+          RETURN_IF_ERR(addValueMapping(inputValue, ph->getOutput()));
+          inputPlaceholders.push_back(ph);
+          inputPlaceholdersReverseIndex_[ph] = i;
+        } else {
+          RETURN_IF_ERR(addValueMapping(inputValue, std::move(glowIVal)));
+        }
       }
     }
 
@@ -2017,17 +2041,17 @@ Error PyTorchModelLoader::loadJITGraphForOnnxTraining(
     std::vector<glow::Placeholder *> &inputPlaceholders,
     std::vector<glow::Placeholder *> &outputPlaceholders) {
   Error error = Error::empty();
-  PyTorchModelLoader loader(F, graph, inputs, parameters, inputPlaceholders,
-                            outputPlaceholders, error);
+  PyTorchModelLoader loader(F, graph, parameters, inputPlaceholders,
+                            outputPlaceholders, error, inputs);
   return error;
 }
 
 PyTorchModelLoader::PyTorchModelLoader(
     glow::Function &F, const torch::jit::Graph &graph,
-    const at::ArrayRef<torch::jit::IValue> inputs,
     const std::vector<at::Tensor> &parameters,
     std::vector<glow::Placeholder *> &inputPlaceholders,
-    std::vector<glow::Placeholder *> &outputPlaceholders, Error &error)
+    std::vector<glow::Placeholder *> &outputPlaceholders, Error &error,
+    const at::ArrayRef<torch::jit::IValue> inputs)
     : F_(F), inputs_(inputs), copyTensorMemory_(true) {
 
   auto setup = [&]() -> Error {

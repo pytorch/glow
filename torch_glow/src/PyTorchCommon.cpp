@@ -27,6 +27,8 @@
 
 namespace glow {
 
+bool GlowCompilePyTorchModule = false;
+
 namespace {
 /// Builds and \returns a HostManager instance.
 std::unique_ptr<runtime::HostManager> buildHostManager() {
@@ -40,6 +42,8 @@ std::unique_ptr<runtime::HostManager> buildHostManager() {
 
   return llvm::make_unique<runtime::HostManager>(std::move(deviceConfigs));
 }
+
+} // namespace
 
 /// \returns the HostManager singleton used to run all PyTorch graphs in Glow.
 runtime::HostManager *getHostManager() {
@@ -91,7 +95,19 @@ glow::ElemKind scalarTypeToElemKind(c10::ScalarType ty) {
   }
 }
 
-} // namespace
+/// Given a c10 typekind \p ty, \returns a matching Glow ElemKind.
+ElemKind typeKindToElemKind(c10::TypeKind ty) {
+  if (ty == c10::TypeKind::FloatType) {
+    return ElemKind::FloatTy;
+  } else if (ty == c10::TypeKind::IntType) {
+    return ElemKind::Int32ITy;
+  } else if (ty == c10::TypeKind::BoolType) {
+    return ElemKind::BoolTy;
+  } else {
+    LOG(DFATAL) << "Not supported yet.";
+    return ElemKind::Int64ITy;
+  }
+}
 
 PyTorchLoaderSettings &getPyTorchLoaderSettings() {
   static PyTorchLoaderSettings settings;
@@ -115,26 +131,42 @@ void glowCustomFuse(std::shared_ptr<torch::jit::Graph> &g,
   GlowCustomFuse(g, PyTorchModelLoader::isNodeSupported, fuseSymbol);
 }
 
-void registerGlowOp() {
+void registerGlowOp(const c10::Symbol &symbol) {
   auto options = c10::OperatorOptions();
   options.setAliasAnalysis(at::AliasAnalysisKind::PURE_FUNCTION);
 
   torch::jit::RegisterOperators op({torch::jit::Operator(
-      getGlowSymbol(),
+      symbol,
       [](const torch::jit::Node *node) -> torch::jit::Operation {
-        std::shared_ptr<torch::jit::Graph> graph = node->g(at::attr::Subgraph);
-        auto graphRunner =
-            std::make_shared<CachingGraphRunner>(graph.get(), getHostManager());
+        if (GlowCompilePyTorchModule) {
+          std::string key = node->kind().toQualString();
+          auto graphRunner = glow::CachingGraphRunner::getCachingGraphRunner();
 
-        return [graphRunner](torch::jit::Stack &stack) {
-          Error err = graphRunner->run(stack);
+          return [graphRunner, key](torch::jit::Stack &stack) {
+            Error err = graphRunner->run(key, stack);
 
-          if (static_cast<bool>(err)) {
-            // PyTorch framework expects an exception been thrown here.
-            throw std::invalid_argument(ERR_TO_STRING(std::move(err)));
-          }
-          return 0;
-        };
+            if (static_cast<bool>(err)) {
+              // PyTorch framework expects an exception been thrown here.
+              throw std::invalid_argument(ERR_TO_STRING(std::move(err)));
+            }
+            return 0;
+          };
+        } else {
+          std::shared_ptr<torch::jit::Graph> graph =
+              node->g(at::attr::Subgraph);
+          auto graphRunner = std::make_shared<CachingGraphRunner>(
+              graph.get(), getHostManager());
+
+          return [graphRunner](torch::jit::Stack &stack) {
+            Error err = graphRunner->run(stack);
+
+            if (static_cast<bool>(err)) {
+              // PyTorch framework expects an exception been thrown here.
+              throw std::invalid_argument(ERR_TO_STRING(std::move(err)));
+            }
+            return 0;
+          };
+        }
       },
       options)});
 }
@@ -149,7 +181,7 @@ void registerGlowFusionPass(std::function<bool()> enablePassFn) {
 }
 
 void registerGlowFusionOpAndPass(std::function<bool()> enablePassFn) {
-  registerGlowOp();
+  registerGlowOp(getGlowSymbol());
   registerGlowFusionPass(std::move(enablePassFn));
 }
 
