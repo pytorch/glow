@@ -487,7 +487,7 @@ std::vector<std::unique_ptr<runtime::DeviceConfig>>
 runtime::generateDeviceConfigs(unsigned int numDevices,
                                llvm::StringRef backendName, size_t memSize) {
   std::vector<std::unique_ptr<runtime::DeviceConfig>> configs;
-  if (loadDeviceConfigsFileOpt.empty()) {
+  if (!loadDeviceConfigsFromFile(configs, memSize)) {
     // If there is no device config file, use numDevices to generate the
     // configs.
     for (unsigned int i = 0; i < numDevices; ++i) {
@@ -495,19 +495,27 @@ runtime::generateDeviceConfigs(unsigned int numDevices,
       config->setDeviceMemory(memSize);
       configs.push_back(std::move(config));
     }
-  } else {
-    // Get the configs from the config file.
-    std::vector<DeviceConfigHelper> lists;
-    lists = deserializeDeviceConfigFromYaml(loadDeviceConfigsFileOpt);
-    for (unsigned int i = 0; i < lists.size(); ++i) {
-      std::string configBackendName = lists[i].backendName_;
-      std::string name = lists[i].name_;
-      auto parameters = getBackendParams(lists[i].parameters_.str);
-      auto config = llvm::make_unique<runtime::DeviceConfig>(backendName, name,
-                                                             parameters);
-      config->setDeviceMemory(memSize);
-      configs.push_back(std::move(config));
-    }
   }
   return configs;
+}
+
+bool runtime::loadDeviceConfigsFromFile(
+    std::vector<std::unique_ptr<runtime::DeviceConfig>> &configs,
+    size_t memSize) {
+  if (loadDeviceConfigsFileOpt.empty()) {
+    return false;
+  }
+
+  std::vector<DeviceConfigHelper> lists;
+  lists = deserializeDeviceConfigFromYaml(loadDeviceConfigsFileOpt);
+  for (unsigned int i = 0; i < lists.size(); ++i) {
+    std::string configBackendName = lists[i].backendName_;
+    std::string name = lists[i].name_;
+    auto parameters = getBackendParams(lists[i].parameters_.str);
+    auto config = llvm::make_unique<runtime::DeviceConfig>(configBackendName,
+                                                           name, parameters);
+    config->setDeviceMemory(memSize);
+    configs.push_back(std::move(config));
+  }
+  return true;
 }
