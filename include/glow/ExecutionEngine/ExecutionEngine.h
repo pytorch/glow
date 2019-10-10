@@ -50,6 +50,9 @@ class ExecutionEngine final {
   /// Size of device memory in bytes, if 0 device default is used.
   uint64_t deviceMemory_{0};
 
+  /// Whether to ignore the user-specified DeviceConfig.
+  bool ignoreUserDeviceConfig_{false};
+
   /// The HostManager for executing the compiled functions.
   std::unique_ptr<runtime::HostManager> hostManager_;
 
@@ -62,9 +65,11 @@ class ExecutionEngine final {
 
 public:
   /// Constructor for an ExecutionEngine with \p backend and memory \p
-  /// deviceMemory in bytes.
+  /// deviceMemory in bytes. If \p ignoreUserDeviceConfig then user device
+  /// configs will be ignored.
   ExecutionEngine(llvm::StringRef backend = "Interpreter",
-                  uint64_t deviceMemory = 0);
+                  uint64_t deviceMemory = 0,
+                  bool ignoreUserDeviceConfig = false);
 
   ~ExecutionEngine();
 
