@@ -507,6 +507,8 @@ protected:
                           outputTy->getScale(), outputTy->getOffset());        \
       auto *rescale = function_.createRescaleQuantized(                        \
           input.getNode()->getName(), input, argOutTy);                        \
+      function_.getLogContext()->logNodeInputChange(*N, N->getNthInput(idx),   \
+                                                    rescale);                  \
       N->setNthInput(idx++, rescale);                                          \
     }                                                                          \
     break;                                                                     \
@@ -548,6 +550,10 @@ protected:
       auto *rescale =
           function_.createRescaleQuantized(node.getName(), val, outTy);
       quantizedNode = rescale;
+
+      function_.getLogContext()->logNodeInputChange(
+          *dequantize, dequantize->getNthInput(DequantizeNode::InputIdx),
+          rescale);
       dequantize->setNthInput(DequantizeNode::InputIdx, rescale);
       break;
     }
@@ -612,7 +618,7 @@ protected:
           dequantize->getName(), outNum)] = {outTy->getScale(),
                                              outTy->getOffset()};
     }
-  }
+  } // namespace
 
   void convertTensor(Tensor &tensor, TypeRef destTy) override {
     assert(tensor.getElementType() == ElemKind::FloatTy &&
@@ -834,7 +840,7 @@ public:
     cleanUp();
     assert(function_.verify() && "Conversion led to invalid function");
   }
-};
+}; // namespace
 
 } // namespace
 

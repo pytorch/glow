@@ -22,65 +22,115 @@
 #include <string>
 #include <vector>
 
+namespace llvm {
+class raw_fd_ostream;
+}
+
 namespace glow {
 
+class Module;
 class Function;
-
 class Node;
 
 struct NodeValue;
 
-/// A class for logging all module related logs.
-class ModuleLogContext {
-private:
-  /// A vector that keeps track of all constant/placeholder changes of this
-  /// module.
-  std::vector<std::string> moduleLogContents_;
+struct LogEvent {
+  std::string name;
+  LogEvent *parent{nullptr};
+  std::vector<LogEvent *> children;
 
-public:
-  /// Add content into the contents vector.
-  void addModuleLogContent(llvm::StringRef logContent);
+  LogEvent(llvm::StringRef n) : name(n) {}
 
-  /// Getter that returns the module log contents.
-  std::vector<std::string> &getModuleLog() { return moduleLogContents_; }
+  virtual ~LogEvent() {
+    for (auto *c : children) {
+      delete c;
+    }
+  }
+
+  void pushEvent(LogEvent *e) {
+    e->parent = this;
+    children.push_back(e);
+  }
+
+  /// writes this Event and all children to the provided stream.
+  /// \returns true if anything was written.
+  virtual bool dump(llvm::raw_fd_ostream &ostream);
+
+  virtual bool dumpChildren(llvm::raw_fd_ostream &ostream);
+
+  /// \returns true if this even will not log to the stream.
+  virtual bool silent() { return false; }
+
+  virtual LogEvent *clone();
+};
+
+// A special LogEvent for Scope enclosing events.
+struct LogScope : public LogEvent {
+  LogScope(llvm::StringRef name) : LogEvent(name) {}
+  virtual ~LogScope(){};
+  bool dump(llvm::raw_fd_ostream &ostream) override;
+  bool silent() override;
+  LogEvent *clone() override;
+};
+
+struct LogCreate : public LogEvent {
+  std::string kindName;
+  std::vector<std::string> inputs;
+
+  LogCreate(const Node *node);
+  LogCreate(llvm::StringRef n, llvm::StringRef k, std::vector<std::string> &i);
+  virtual ~LogCreate(){};
+
+  bool dump(llvm::raw_fd_ostream &ostream) override;
+  LogEvent *clone() override;
+};
+
+struct LogDelete : public LogEvent {
+  std::string kindName;
+
+  LogDelete(const Node *node);
+  LogDelete(llvm::StringRef n, llvm::StringRef k);
+  virtual ~LogDelete(){};
+
+  bool dump(llvm::raw_fd_ostream &ostream) override;
+  LogEvent *clone() override;
+};
+
+struct LogInputChange : public LogEvent {
+  std::string kindName;
+  std::string beforeName;
+  std::string afterName;
+
+  LogInputChange(const Node *user, const NodeValue &before,
+                 const NodeValue &after);
+  LogInputChange(llvm::StringRef n, llvm::StringRef k, llvm::StringRef b,
+                 llvm::StringRef a);
+
+  bool dump(llvm::raw_fd_ostream &ostream) override;
+  LogEvent *clone() override;
 };
 
 /// A class for logging all compilation related activities.
 class LogContext final {
 private:
-  /// A vector that keeps track of all log contents of a function.
-  std::vector<std::string> logContents_;
-
-  /// A vector that keeps track of current compilation scopes.
-  std::vector<std::string> logScopes_;
-
-  /// A string that represents the current full scope name.
-  std::string currentFullScope_;
-
-  /// A pointer to the function that has the LogContext.
-  Function *parent_ = nullptr;
+  LogScope topScope_{"Init"};
+  LogEvent *currentScope_{nullptr};
+  Module *parent_;
 
 public:
-  LogContext();
+  LogContext(Module *parent);
 
-  /// Load module log context into this function's log context.
-  void loadModuleLogContext();
+  /// Add a new event to the log.
+  void pushEvent(LogEvent *ev);
 
-  /// Add content into the contents vector.
-  void addLogContent(llvm::StringRef logContent);
-
-  /// Add a scope into the scope vector.
+  /// Add a new scope.
   void pushLogScope(llvm::StringRef scopeName);
-
-  /// Getter that returns the current full scope name.
-  llvm::StringRef getFullScopeName() { return currentFullScope_; }
 
   /// Pops out the most recently added scope.
   void popLogScope();
 
-  void setParent(Function *parent) { parent_ = parent; }
-
-  /// Dumps the log into a file named after the given \p funcName.
+  /// Dumps the log in JSON format into the logfile (configured by command line
+  /// option). /p funcName currently unused.
   void dumpLog(llvm::StringRef funcName);
 
   /// Logs the node creation. Also logs into Module log context if \p
@@ -98,10 +148,8 @@ public:
   void logNodeInputChange(const Node &user, const NodeValue &prevOprVal,
                           const NodeValue &newOprVal);
 
-private:
-  /// Add log metadata which includes version number and latest commit's info
-  /// (hash, date).
-  void addLogMetaData();
+  /// Get a deep cloned copy of the top level scope of this LogContext.
+  LogEvent *getClonedScope();
 };
 
 /// Logs a new log scope.
