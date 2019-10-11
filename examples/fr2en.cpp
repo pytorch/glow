@@ -388,7 +388,10 @@ void Model::translate(const std::vector<std::string> &batch) {
 
       if (i)
         std::cout << ' ';
-      std::cout << en_.index2word_[wordIdx];
+      if (en_.index2word_.size() > (wordIdx))
+        std::cout << en_.index2word_[wordIdx];
+      else
+        std::cout << "[" << wordIdx << "]";
     }
     std::cout << "\n\n";
   }
