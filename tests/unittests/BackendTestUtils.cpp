@@ -136,7 +136,9 @@ setupInterpAndBackendConfigs(
   }
 
   precConfigI.convertToFP16 = interpElemKind == ElemKind::Float16Ty;
+  precConfigI.convertFusedToFP16 = interpElemKind == ElemKind::Float16Ty;
   precConfigB.convertToFP16 = backendElemKind == ElemKind::Float16Ty;
+  precConfigB.convertFusedToFP16 = backendElemKind == ElemKind::Float16Ty;
 
   return std::make_pair(cctxI, cctxB);
 }

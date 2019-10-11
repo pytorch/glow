@@ -7702,6 +7702,91 @@ TEST_P(OperatorTest, SLSWithZeroLengths) {
       ElemKind::FloatTy, ElemKind::FloatTy);
 }
 
+/// Helper to create an SLS test with all zero lengths, with and without fused
+/// rowwise quantization based on \p useRowwiseQuantization.
+static FunctionTensorPair
+createAndInitZeroLengthsSLSTest(glow::PlaceholderBindings &bindings,
+                                glow::ExecutionEngine &EE,
+                                bool useRowwiseQuantization) {
+  auto &mod = EE.getModule();
+  auto *F = mod.createFunction("main");
+  constexpr size_t embedWidth = 1000;
+  auto dataTy = mod.uniqueType(ElemKind::FloatTy, {embedWidth, 8});
+  Tensor data(dataTy);
+  data.getHandle().randomize(-1, 1, mod.getPRNG());
+  Constant *weights = mod.createConstant(ElemKind::FloatTy, {3000}, "weights");
+  weights->getPayloadMutable().getHandle().clear(1.0f);
+  auto *indices =
+      mod.createPlaceholder(ElemKind::Int64ITy, {3000}, "indices", false);
+  auto *lengths =
+      mod.createPlaceholder(ElemKind::Int32ITy, {1000}, "lengths", false);
+  bindings.allocate(indices)->getHandle<int64_t>().randomize(0, embedWidth - 1,
+                                                             mod.getPRNG());
+  auto LH = bindings.allocate(lengths)->getHandle<int32_t>();
+  LH.clear(0);
+
+  Node *R = nullptr;
+  if (useRowwiseQuantization) {
+    R = F->createFusedRowwiseQuantizedSparseLengthsWeightedSum(
+        "RQSLWS", data, weights, indices, lengths);
+  } else {
+    Placeholder *dataP =
+        mod.createPlaceholder(dataTy, "data", /* isTrainable */ false);
+    bindings.insert(dataP, std::move(data));
+    R = F->createSparseLengthsWeightedSum("SLWS", dataP, weights, indices,
+                                          lengths);
+  }
+  auto *S = F->createSave("save", R);
+  auto *res = bindings.allocate(S->getPlaceholder());
+  return std::make_pair(F, res);
+}
+
+/// Test Fused RWQ-SLS when all "lengths" inputs are zero in FloatTy.
+TEST_P(OperatorTest, FusedRWQSLSAllZeroLengths_Float) {
+  CHECK_IF_ENABLED();
+
+  compareAgainstInterpreter(
+      getBackendName(),
+      std::bind(createAndInitZeroLengthsSLSTest, std::placeholders::_1,
+                std::placeholders::_2, /* useRowwiseQuantization */ true),
+      ElemKind::FloatTy, ElemKind::FloatTy);
+}
+
+/// Test Fused RWQ-SLS when all "lengths" inputs are zero in Float16Ty.
+TEST_P(OperatorTest, FusedRWQSLSAllZeroLengths_Float16) {
+  CHECK_IF_ENABLED();
+
+  compareAgainstInterpreter(
+      getBackendName(),
+      std::bind(createAndInitZeroLengthsSLSTest, std::placeholders::_1,
+                std::placeholders::_2, /* useRowwiseQuantization */ true),
+
+      ElemKind::Float16Ty, ElemKind::Float16Ty);
+}
+
+/// Test SLS when all "lengths" inputs are zero in FloatTy.
+TEST_P(OperatorTest, SLSAllZeroLengths_Float) {
+  CHECK_IF_ENABLED();
+
+  compareAgainstInterpreter(
+      getBackendName(),
+      std::bind(createAndInitZeroLengthsSLSTest, std::placeholders::_1,
+                std::placeholders::_2, /* useRowwiseQuantization */ false),
+      ElemKind::FloatTy, ElemKind::FloatTy);
+}
+
+/// Test SLS when all "lengths" inputs are zero in Float16Ty.
+TEST_P(OperatorTest, SLSAllZeroLengths_Float16) {
+  CHECK_IF_ENABLED();
+
+  compareAgainstInterpreter(
+      getBackendName(),
+      std::bind(createAndInitZeroLengthsSLSTest, std::placeholders::_1,
+                std::placeholders::_2, /* useRowwiseQuantization */ false),
+
+      ElemKind::Float16Ty, ElemKind::Float16Ty);
+}
+
 TEST_P(OperatorTest, SparseToDense) {
   CHECK_IF_ENABLED();
 
