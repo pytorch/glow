@@ -26,7 +26,7 @@
 #include <string.h>
 #include <unistd.h>
 
-#include "xInference_lib.h"
+#include "x_inference_lib.h"
 
 #ifndef X_USE_DYNAMIC
 
