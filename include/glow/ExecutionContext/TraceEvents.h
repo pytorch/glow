@@ -121,6 +121,7 @@ struct TraceInfo {
 
     // additional info per backend. May not be present.
     std::string context;
+    std::string kind;
   };
 
   std::map<Placeholder *, std::vector<Event>> events;
@@ -137,9 +138,10 @@ struct TraceInfo {
 
   /// Add data for a Complete TraceEvent.
   void add(Placeholder *PH, size_t startIndex, size_t endIndex,
-           std::string name, std::string context = "") {
+           std::string name, std::string context = "", std::string kind = "") {
     events[PH].push_back({startIndex, endIndex, std::move(name),
-                          TraceEvent::CompleteType, std::move(context)});
+                          TraceEvent::CompleteType, std::move(context),
+                          std::move(kind)});
   }
 };
 
@@ -211,10 +213,11 @@ public:
   void dump(llvm::StringRef filename, const std::string &processName = "");
 
   /// Moves all TraceEvents and thread names in \p other into this context.
+  /// This will clear in the input TraceContext.
   void merge(TraceContext *other);
 
   /// Moves all TraceEvents and thread names in \p other into this context.
-  /// This version is destructive of the other TraceContext.
+  /// This will clear in the input TraceContext.
   void merge(std::unique_ptr<TraceContext> other) { merge(other.get()); }
 };
 

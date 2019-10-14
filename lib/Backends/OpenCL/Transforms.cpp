@@ -65,8 +65,8 @@ bool OCLBackend::transformPostLowering(Function *F,
         continue;
       }
 
-      auto *NR = convertMaxPoolToNCHWPool(PMN, F);
-      PMN->getResult().replaceAllUsesOfWith(NR);
+      auto results = convertMaxPoolToNCHWPool(PMN, F);
+      PMN->getResult().replaceAllUsesOfWith(results.first);
       changed = true;
       continue;
     }

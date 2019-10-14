@@ -174,7 +174,8 @@ TEST_P(SparseLengthsSum, Big) {
   }
 }
 
-INSTANTIATE_TEST_CASE_P_FOR_BACKEND_TEST(SparseLengthsSum, SparseLengthsSum);
+GLOW_INSTANTIATE_TEST_SUITE_P_FOR_BACKEND_TEST(SparseLengthsSum,
+                                               SparseLengthsSum);
 
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);

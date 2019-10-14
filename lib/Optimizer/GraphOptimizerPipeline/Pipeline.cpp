@@ -54,9 +54,6 @@ FunctionPassPipeline glow::createDefaultGraphOptimizationPassPipeline() {
       // Merge multiple matmul nodes into a single large matmul.
       {FunctionPassID::MergeMatMul},
 
-      // Fold Tile followed by Add into BatchedAdd.
-      {FunctionPassID::FoldTileAddIntoBatchedAdd},
-
       // Merge multiple batched adds into a larger batched add.
       {FunctionPassID::MergeBatchedAdd},
 
@@ -195,5 +192,20 @@ void FunctionPassPipeline::dump(llvm::raw_ostream &os) const {
     os << "FunctionPassIdx " << i << ": {\n";
     passConfig.dump(os);
     os << "}\n";
+  }
+}
+
+bool FunctionPassPipeline::removeFirstInstanceOfPass(FunctionPassID FPID) {
+  for (auto it = begin(); it != end(); it++) {
+    if (it->getFunctionPassID() == FPID) {
+      erase(it);
+      return true;
+    }
+  }
+  return false;
+}
+
+void FunctionPassPipeline::removeAllInstancesOfPass(FunctionPassID FPID) {
+  while (removeFirstInstanceOfPass(FPID)) {
   }
 }

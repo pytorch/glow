@@ -45,7 +45,7 @@ class GlowJIT {
 private:
   TargetMachine &TM_;
   const DataLayout DL_;
-#if FACEBOOK_INTERNAL && LLVM_VERSION_PATCH < 20181009
+#if FACEBOOK_INTERNAL && LLVM_VERSION_MAJOR < 8
   SymbolStringPool SSP_;
   ExecutionSession ES_;
   std::shared_ptr<SymbolResolver> resolver_;

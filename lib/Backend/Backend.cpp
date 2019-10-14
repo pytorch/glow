@@ -143,8 +143,9 @@ void Backend::autoInstrument(TraceInfo &traceInfo, IRFunction *IR) const {
 
     auto instName = I.getName();
 
-    // Start a new event.
-    traceInfo.add(backingPH, index, index + 1, instName);
+    // Start a new event
+    traceInfo.add(backingPH, index, index + 1, instName, std::string(),
+                  Kinded::getKindName(I.getKind()));
 
     it = instructions.insert(it, new TraceEventInst(instName.str() + "_trace",
                                                     backingWeight, index++));
@@ -180,5 +181,10 @@ bool Backend::verify(const IRFunction &IR) const {
 }
 
 FunctionPassPipeline Backend::getOptimizationPipeline() const {
-  return createDefaultGraphOptimizationPassPipeline();
+  auto p = createDefaultGraphOptimizationPassPipeline();
+  // Fold Tile followed by Add into BatchedAdd. Currently this is not part of
+  // the default pipeline to avoid issues with some backends. If backends do not
+  // want this opt then they should override getOptimizationPipeline().
+  p.pushFront({FunctionPassID::FoldTileAddIntoBatchedAdd});
+  return p;
 };

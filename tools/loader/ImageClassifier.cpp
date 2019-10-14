@@ -64,7 +64,7 @@ llvm::cl::opt<unsigned> miniBatch(
         "Size of mini-batches. Split the input image list into a set of "
         "mini-batches. The input model is compiled for an input tensor batch "
         "size equal to the specified mini-batch size and mini-batches of "
-        "images are inferred separatly. The number of input images must be a "
+        "images are inferred separately. The number of input images must be a "
         "multiple of the mini-batch size. By default, splitting the input "
         "image list into mini-batches is deactivated."),
     llvm::cl::Optional, llvm::cl::init(0), llvm::cl::cat(imageLoaderCat));
@@ -141,6 +141,12 @@ llvm::cl::opt<bool>
                    llvm::cl::desc("Add instrumentation for operator tracing"),
                    llvm::cl::Optional, llvm::cl::init(false),
                    llvm::cl::cat(imageLoaderCat));
+
+llvm::cl::opt<unsigned>
+    warmup("warmup",
+           llvm::cl::desc("How many passes to do to warm everything up"),
+           llvm::cl::init(0), llvm::cl::value_desc("W"),
+           llvm::cl::cat(imageLoaderCat));
 
 std::mutex eventLock;
 std::unique_ptr<TraceContext> traceContext;
@@ -428,19 +434,19 @@ static void parseInputImageList(const std::string &inputImageListFile) {
 /// Run inference request on HostManager. This method builds a runNetwork
 /// request for the \p hostManager, this is a recursive call, in the callback
 /// provided to the HostManager this function can call itself if the desired
-/// number of requests has not yet been dispatched.
+/// number of warmups and requests has not yet been dispatched.
 static void runInference(runtime::HostManager *hostManager, std::string name,
                          std::unique_ptr<ExecutionContext> batch,
                          std::promise<void> &runPromise,
                          std::atomic<unsigned> &inflight,
-                         std::atomic<int> &dispatched) {
+                         std::atomic<int> &dispatched, unsigned warmUp) {
   hostManager->runNetwork(
       name, std::move(batch),
-      [&runPromise, &inflight, &dispatched, hostManager,
-       name](runtime::RunIdentifierTy, Error err,
-             std::unique_ptr<ExecutionContext> contextPtr) {
+      [&runPromise, &inflight, &dispatched, hostManager, name,
+       warmUp](runtime::RunIdentifierTy, Error err,
+               std::unique_ptr<ExecutionContext> contextPtr) {
         EXIT_ON_ERR(std::move(err));
-        if (!tracePath.empty()) {
+        if (!warmUp && !tracePath.empty()) {
           std::lock_guard<std::mutex> l(eventLock);
           // Merge this run's TraceEvents into the global
           // TraceContext.
@@ -450,7 +456,7 @@ static void runInference(runtime::HostManager *hostManager, std::string name,
         if (dispatched.fetch_sub(1) > 0) {
           inflight++;
           runInference(hostManager, name, std::move(contextPtr), runPromise,
-                       inflight, dispatched);
+                       inflight, dispatched, warmUp > 0 ? warmUp - 1 : 0);
         }
         if (--inflight == 0) {
           runPromise.set_value();
@@ -458,16 +464,18 @@ static void runInference(runtime::HostManager *hostManager, std::string name,
       });
 }
 
-/// Run the requested number of benchmark requests \p requestCount through the
-/// HostManager from the \p loader using the provided context pool \p contexts
+/// Run the requested number of benchmark requests \p requestCount prepended by
+/// \p warmUp cycles
+// through the HostManager from the \p loader using the provided context pool \p
+// contexts
 /// and wait for all runs to complete.
 static void
 runBenchmark(std::string name, Loader &loader,
              std::vector<std::unique_ptr<ExecutionContext>> contexts,
-             unsigned requestCount) {
+             unsigned requestCount, unsigned warmUp) {
   runtime::HostManager *hostManager = loader.getHostManager();
   std::atomic<unsigned> inflight(0);
-  std::atomic<int> dispatched(requestCount);
+  std::atomic<int> dispatched(requestCount + warmUp * contexts.size());
   std::promise<void> runPromise;
   auto fut = runPromise.get_future();
 
@@ -477,7 +485,7 @@ runBenchmark(std::string name, Loader &loader,
     inflight++;
     dispatched--;
     runInference(hostManager, name, std::move(batch), runPromise, inflight,
-                 dispatched);
+                 dispatched, warmUp);
   }
   // Wait for all to finish.
   fut.wait();
@@ -547,9 +555,6 @@ int main(int argc, char **argv) {
   // into.
   if (!tracePath.empty()) {
     traceContext = llvm::make_unique<TraceContext>(TraceLevel::STANDARD);
-    if (!iterationsOpt) {
-      iterationsOpt = 1;
-    }
   }
 
   // Mini-batch mode.
@@ -571,7 +576,13 @@ int main(int argc, char **argv) {
 
   // Process a set of minibatches with indices [startIndex, endIndex).
   auto processImageRange = [&](size_t startIndex, size_t endIndex) {
-    PlaceholderBindings bindings;
+    std::unique_ptr<ExecutionContext> exContext =
+        llvm::make_unique<ExecutionContext>();
+    PlaceholderBindings &bindings = *exContext->getPlaceholderBindings();
+    if (traceContext) {
+      exContext->setTraceContext(
+          llvm::make_unique<TraceContext>(TraceLevel::STANDARD));
+    }
     Loader loader;
     // Used to make sure we only compile once, and run only once if not
     // streaming.
@@ -651,7 +662,11 @@ int main(int argc, char **argv) {
 
       // Perform the inference execution, updating SMT.
       auto batchSize = inputImageData.dims()[0];
-      loader.runInference(bindings, batchSize);
+      loader.runInference(exContext.get(), batchSize);
+      if (traceContext) {
+        traceContext->merge(exContext->getTraceContext());
+      }
+
       // Print the top-k results from the output Softmax tensor.
       {
         std::lock_guard<std::mutex> lock(ioMu);
@@ -671,12 +686,12 @@ int main(int argc, char **argv) {
         timer.startTimer();
       }
       unsigned requestCount = miniBatch ? iterationsOpt / miniBatch : 1;
-      runBenchmark(name, loader, std::move(contexts), requestCount);
+      runBenchmark(name, loader, std::move(contexts), requestCount, warmup);
       if (timeOpt) {
         timer.stopTimer();
         llvm::outs() << llvm::formatv("Wall time per item (s): {0:f4}\n",
                                       timer.getTotalTime().getWallTime() /
-                                          iterationsOpt);
+                                          (iterationsOpt + warmup));
       }
     }
 

@@ -73,10 +73,9 @@ llvm::cl::opt<std::string> executionBackend(
     llvm::cl::Optional, llvm::cl::init("Interpreter"), llvm::cl::cat(category));
 
 /// Finds the maximum value and its index within \p N range.
-size_t findMaxIndex(const Tensor &t, size_t range) {
-  auto handle = t.getHandle();
+template <typename H> size_t findMaxIndex(const H &handle, size_t range) {
   size_t ret{0};
-  float maxVal{handle.raw(0)};
+  auto maxVal{handle.raw(0)};
   for (size_t c = 1; c < range; ++c) {
     auto val = handle.raw(c);
     if (maxVal <= val) {
@@ -110,13 +109,14 @@ void loadImagesAndLabels(Tensor &images, Tensor &labels) {
   float scale = 1. / 255.0;
   float bias = 0;
   images.zero();
+  labels.zero();
 
   /// CIFAR image dimensions are 32x32, ResNet50 expects 224x224.
   /// Simple scaling would be one CIFAR image copied to the center area with
   /// offset 96 pixels
   constexpr unsigned imageOffset = 96;
   for (unsigned n = 0; n < CIFAR_NUM_IMAGES; ++n) {
-    labelsH.at({n, 0}) = dbInput.get();
+    labelsH.at({n, static_cast<unsigned long>(dbInput.get())}) = 1;
     // ResNet50 model got trained in NCHW format.
     for (unsigned c = 0; c < IMAGE_COLORS; ++c) {
       auto bgrc = IMAGE_COLORS - 1 - c;
@@ -143,7 +143,7 @@ int main(int argc, char **argv) {
                                           IMAGE_HEIGHT, IMAGE_WIDTH};
   llvm::ArrayRef<size_t> initImagesDims = {1, IMAGE_COLORS, IMAGE_HEIGHT,
                                            IMAGE_WIDTH};
-  llvm::ArrayRef<size_t> allLabelsDims = {CIFAR_NUM_IMAGES, 1};
+  llvm::ArrayRef<size_t> allLabelsDims = {CIFAR_NUM_IMAGES, 1000};
 
   ExecutionEngine EE(executionBackend);
   auto &mod = EE.getModule();
@@ -207,7 +207,6 @@ int main(int argc, char **argv) {
 
   llvm::Timer timer("Training", "Training");
 
-  auto labelsH = labels.getHandle<int64_t>();
   for (size_t e = 0; e < numEpochs; ++e) {
     llvm::outs() << "Training - epoch #" << e << " from total " << numEpochs
                  << "\n";
@@ -224,8 +223,8 @@ int main(int argc, char **argv) {
       EE.run(bindings, tfName);
       timer.stopTimer();
 
-      int64_t correct = labelsH.at({i, 0});
-      auto guess = findMaxIndex(*result, 10);
+      auto correct = findMaxIndex(labels.getHandle<int64_t>(), 10);
+      auto guess = findMaxIndex(result->getHandle(), 10);
       score += guess == correct;
       ++total;
     }

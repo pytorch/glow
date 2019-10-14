@@ -213,6 +213,22 @@ public:
 
   ~HostManager();
 };
+
+/// If the device config file specified in loadDeviceConfigsFileOpt is
+/// available, load \p configs from the file. Otherwise, create \p numDevices
+/// number of devices based on \p backendName.
+std::vector<std::unique_ptr<runtime::DeviceConfig>>
+generateDeviceConfigs(unsigned int numDevices, llvm::StringRef backendName,
+                      size_t memSize = 0);
+
+/// Attempts to load user-specified DeviceConfigs file
+/// \ref loadDeviceConfigsFileOpt. If the path exists then \p configs will be
+/// loaded with DeviceConfigs given that file and \p memSize, and the function
+/// \returns true. Otherwise \returns false with \p configs untouched.
+bool loadDeviceConfigsFromFile(
+    std::vector<std::unique_ptr<runtime::DeviceConfig>> &configs,
+    size_t memSize);
+
 } // namespace runtime
 } // namespace glow
 #endif // GLOW_RUNTIME_HOSTMANAGERR_HOSTMANAGER_H

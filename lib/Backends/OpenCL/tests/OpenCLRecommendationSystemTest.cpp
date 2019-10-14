@@ -38,3 +38,5 @@ std::set<std::string> glow::backendTestBlacklist = {
     "RecSys_Partitioned_RWQuantized_SLWS_FC_FP16/0",
     "RecSys_RWQuantized_SLWS_FC_FP16/0",
 };
+
+bool glow::useSymmetricRowwiseQuantFC = false;

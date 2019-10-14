@@ -108,6 +108,68 @@ public:
     }
   }
 
+  // In the function below we're trying to compare auto instrumented trace
+  // output with optimized model graph. Since the code generation may make
+  // further changes to the graph representation we limit checking to a set of
+  // convolution / maxpool / cpumaxsplat kinds which are never changed.
+  std::set<std::string> checkedKinds = {"convolution", "maxpool",
+                                        "cpumaxsplat"};
+
+  template <class ExecutionEngineTy>
+  std::vector<std::pair<std::string, std::string>>
+  prepareKindsForComparison(ExecutionEngineTy &ExecutionEngine) {
+    std::vector<std::pair<std::string, std::string>> expectedKinds;
+    for (auto &i :
+         ExecutionEngine.getModule().getFunctions().front()->getNodes()) {
+      std::string kind(Kinded::getKindName(i.getKind()));
+      std::transform(kind.begin(), kind.end(), kind.begin(),
+                     [](unsigned char c) { return std::tolower(c); });
+      if (checkedKinds.find(kind) != checkedKinds.end()) {
+        std::string name(i.getName());
+        // Let's remove all digits at the end of name since the code generation
+        // may create new nodes with names consisting of existing node names
+        // and additional numeric indexes
+        while (!name.empty() && std::isdigit(name.back())) {
+          name.pop_back();
+        }
+        expectedKinds.emplace_back(name, kind);
+      }
+    }
+    std::sort(expectedKinds.begin(), expectedKinds.end());
+    return expectedKinds;
+  }
+
+  void checkEventMetadata(
+      const std::vector<TraceEvent> &traceEvents,
+      const std::vector<std::pair<std::string, std::string>> &expected) {
+
+    const auto &backend = GetParam();
+    if (backend != "Interpreter" && backend != "CPU") {
+      return;
+    }
+
+    auto map_element = [](const std::map<std::string, std::string> &m,
+                          const std::string &k) {
+      return m.find(k) == m.end() ? std::string() : m.find(k)->second;
+    };
+    std::vector<std::pair<std::string, std::string>> events_for_checking;
+    for (auto &i : traceEvents) {
+      std::string kind = map_element(i.args, "kind");
+      if (checkedKinds.find(kind) != checkedKinds.end()) {
+        std::string name(i.name);
+        // Let's remove all digits at the end of the name since the code
+        // generation may create new nodes with names consisting of existing
+        // node names and additional numeric indexes
+        while (!name.empty() && std::isdigit(name.back())) {
+          name.pop_back();
+        }
+        events_for_checking.emplace_back(name, kind);
+      }
+    }
+    std::sort(events_for_checking.begin(), events_for_checking.end());
+    ASSERT_EQ(expected, events_for_checking);
+  }
+
   // Check timestamps are non-zero and monotonically increasing.
   void checkEventTimestamps(const std::vector<TraceEvent> &traceEvents) {
     uint64_t last = 0;
@@ -276,6 +338,8 @@ TEST_P(TraceEventsTest, automaticInstrumentation) {
   cctx.backendOpts.autoInstrument = true;
   EE_.compile(cctx);
 
+  auto expectedKinds = prepareKindsForComparison(EE_);
+
   updateInputPlaceholders(*context.getPlaceholderBindings(), {inputPH},
                           {&inputs});
   EE_.run(context);
@@ -283,6 +347,7 @@ TEST_P(TraceEventsTest, automaticInstrumentation) {
   auto &traceEvents = context.getTraceContext()->getTraceEvents();
 
   ASSERT_GT(traceEvents.size(), 0);
+  checkEventMetadata(traceEvents, expectedKinds);
   checkEventTimestamps(traceEvents);
 }
 
@@ -314,6 +379,8 @@ TEST_P(TraceEventsTest, manualAndAutomatic) {
   cctx.backendOpts.autoInstrument = true;
   EE_.compile(cctx);
 
+  auto expectedKinds = prepareKindsForComparison(EE_);
+
   updateInputPlaceholders(*context.getPlaceholderBindings(), {inputPH},
                           {&inputs});
   EE_.run(context);
@@ -330,6 +397,7 @@ TEST_P(TraceEventsTest, manualAndAutomatic) {
     }
   }
   ASSERT_EQ(manualEvents, numEvents);
+  checkEventMetadata(traceEvents, expectedKinds);
 }
 
 /// Compile the same function twice with auto instrumentation on - ensure that
@@ -746,6 +814,33 @@ TEST(TraceEventsTest, TraceLevels) {
     context.logTraceEvent("event", evl);
   }
   ASSERT_EQ(context.getTraceEvents().size(), 2);
+}
+
+TEST(TraceEventsTest, MergeEvents) {
+  auto tc1 = llvm::make_unique<TraceContext>(TraceLevel::STANDARD);
+  auto tc2 = llvm::make_unique<TraceContext>(TraceLevel::STANDARD);
+
+  TRACE_EVENT_BEGIN(tc1, TraceLevel::RUNTIME, "ev1");
+  TRACE_EVENT_END(tc1, TraceLevel::RUNTIME, "ev1");
+
+  ASSERT_EQ(tc1->getTraceEvents().size(), 2);
+  ASSERT_EQ(tc2->getTraceEvents().size(), 0);
+
+  tc2->merge(tc1.get());
+
+  ASSERT_EQ(tc1->getTraceEvents().size(), 0);
+  ASSERT_EQ(tc2->getTraceEvents().size(), 2);
+
+  TRACE_EVENT_BEGIN(tc1, TraceLevel::RUNTIME, "ev2");
+  TRACE_EVENT_END(tc1, TraceLevel::RUNTIME, "ev2");
+
+  ASSERT_EQ(tc1->getTraceEvents().size(), 2);
+  ASSERT_EQ(tc2->getTraceEvents().size(), 2);
+
+  tc2->merge(tc1.get());
+
+  ASSERT_EQ(tc1->getTraceEvents().size(), 0);
+  ASSERT_EQ(tc2->getTraceEvents().size(), 4);
 }
 
 INSTANTIATE_BACKEND_TEST(TraceEventsTest);

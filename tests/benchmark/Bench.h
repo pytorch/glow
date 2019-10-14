@@ -19,6 +19,8 @@
 #include <algorithm>
 #include <chrono>
 #include <limits>
+#include <tuple>
+#include <vector>
 
 namespace glow {
 
@@ -31,19 +33,19 @@ public:
   virtual void teardown() = 0;
 };
 
-/// Run a benchmark \p reps times and report the best execution time.
-double bench(Benchmark *b, size_t reps) {
-  double best = std::numeric_limits<double>::max();
+/// Run a benchmark \p reps times and return the execution times
+std::vector<double> bench(Benchmark *b, size_t reps) {
+  std::vector<double> times(reps);
   b->setup();
   for (size_t i = 0; i < reps; i++) {
     auto start = std::chrono::high_resolution_clock::now();
     b->run();
     auto end = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration<double>(end - start).count();
-    best = std::min(best, duration);
+    times[i] = duration;
   }
   b->teardown();
-  return best;
+  return times;
 }
 
 } // namespace glow
