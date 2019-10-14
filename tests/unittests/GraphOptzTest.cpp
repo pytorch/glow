@@ -1315,6 +1315,13 @@ TEST_F(GraphOptz, ZeroArithmetic) {
   EXPECT_EQ(F_->getNodes().size(), 1);
 
   EXPECT_EQ(O->getInput().getNode(), input);
+
+  optimizedF_ = optimizeFunction(F_);
+
+  bindings_.allocate(mod_.getPlaceholders());
+  bindings_.get(input)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
+
+  checkNumericalEquivalence();
 }
 
 /// A test that verifies that arithmetic simplification works correctly when
