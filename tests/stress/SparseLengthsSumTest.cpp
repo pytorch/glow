@@ -26,7 +26,7 @@ using namespace glow;
 class SparseLengthsSum : public BackendTest {};
 
 TEST_P(SparseLengthsSum, Big) {
-  ENABLED_BACKENDS(CPU, Habana);
+  ENABLED_BACKENDS(CPU, Habana, NNPI);
   ExecutionEngine interp{};
   interp.setDeviceMemory(10000000000);
   EE_.setDeviceMemory(10000000000);
@@ -35,8 +35,19 @@ TEST_P(SparseLengthsSum, Big) {
   auto *interpMod = &interp.getModule();
   auto *G = interp.getModule().createFunction("main");
   std::array<size_t, 13> dataRows = {{
-      5000000, 5000000, 6000000, 8000000, 8000000, 8000000, 3000000,
-      3000000, 1000000, 5000000, 8000000, 5000000, 1000000,
+      5000000,
+      5000000,
+      6000000,
+      8000000,
+      8000000,
+      8000000,
+      3000000,
+      3000000,
+      1000000,
+      5000000,
+      8000000,
+      5000000,
+      1000000,
   }};
 
   std::vector<Constant *> data;

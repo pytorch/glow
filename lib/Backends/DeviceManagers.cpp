@@ -63,6 +63,27 @@ unsigned numCPUDevices() { return std::thread::hardware_concurrency(); }
 unsigned numCPUDevices() { return 0; }
 #endif
 
+#if defined(GLOW_WITH_NNPI)
+unsigned numNNPIDevices() {
+  // TODO: unify with numHabanaDevices. copy-pasta with a different device name
+  std::ifstream devices("/proc/bus/pci/devices");
+  std::string device;
+  unsigned count = 0;
+  while (std::getline(devices, device)) {
+    if (device.find("sph_pcie") != std::string::npos) {
+      count++;
+    }
+  }
+  if (count > 0) {
+    return count;
+  }
+  // Todo
+  return 1; // Fall back to emulator since GLOW_NNPI is set. This feels hacky.
+}
+#else
+unsigned numNNPIDevices() { return 0; }
+#endif
+
 #if defined(GLOW_WITH_HABANA)
 unsigned numHabanaDevices() {
   std::ifstream devices("/proc/bus/pci/devices");
@@ -97,6 +118,9 @@ unsigned DeviceManager::numDevices(llvm::StringRef backendName) {
   }
   if (backendName == "OpenCL") {
     return numOpenCLDevices();
+  }
+  if (backendName == "NNPI") {
+    return numNNPIDevices();
   }
   return 0;
 }
