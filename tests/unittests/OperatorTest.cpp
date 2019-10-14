@@ -7460,6 +7460,86 @@ TEST_P(OperatorTest,
   EXPECT_TRUE(expected.isEqual(result, 0.02));
 }
 
+TEST_P(
+    OperatorTest,
+    FusedRowwiseQuantizedSparseLengthsWeightedSum_ConvertedFloat16_back_to_back) {
+  CHECK_IF_ENABLED();
+  /*
+    DATA  =   [[2.0, -0.5, 13]]
+    WEIGHTS = [1]
+    INDICES = [0]
+    LENGTHS = [0, 0, 0, 1] and then [1, 0, 0, 0]
+    OUTPUT =  [[0, 0, 0, 0.2]] and then [[2.0, 0, 0, 0]]
+  */
+  Tensor data(ElemKind::FloatTy, {3, 1});
+  data.getHandle() = {
+      2.0,
+      -0.5,
+      13,
+  };
+
+  Constant *weights = mod_.createConstant(ElemKind::FloatTy, {1}, "weights");
+  weights->getPayloadMutable().getHandle<float>() = {1.};
+
+  Placeholder *indices =
+      mod_.createPlaceholder(ElemKind::Int64ITy, {1}, "indices",
+                             /* isTrainable */ false);
+  Placeholder *lengths =
+      mod_.createPlaceholder(ElemKind::Int32ITy, {4}, "lengths",
+                             /* isTrainable */ false);
+
+  bindings_.allocate(indices)->getHandle<int64_t>() = {
+      0,
+  };
+  bindings_.allocate(lengths)->getHandle<int32_t>() = {
+      0,
+      0,
+      0,
+      1,
+  };
+
+  auto *R = F_->createFusedRowwiseQuantizedSparseLengthsWeightedSum(
+      "RQSLWS", data, weights, indices, lengths);
+  SaveNode *S = F_->createSave("save", R);
+  bindings_.allocate(S->getPlaceholder());
+
+  CompilationContext cctx;
+  cctx.precisionConfig.convertToFP16 = true;
+  cctx.precisionConfig.convertFusedToFP16 = true;
+  EE_.compile(cctx);
+  EE_.run(bindings_);
+
+  Tensor &result = *bindings_.get(S->getPlaceholder());
+  Tensor expected(ElemKind::FloatTy, {4, 1});
+  expected.getHandle<float>() = {
+      0,
+      0,
+      0,
+      2.0,
+  };
+
+  EXPECT_TRUE(expected.isEqual(result, 0.02));
+
+  // Send another inference
+  bindings_.get(lengths)->getHandle<int32_t>() = {
+      1,
+      0,
+      0,
+      0,
+  };
+  EE_.run(bindings_);
+
+  Tensor &result1 = *bindings_.get(S->getPlaceholder());
+  Tensor expected1(ElemKind::FloatTy, {4, 1});
+  expected1.getHandle<float>() = {
+      2.0,
+      0,
+      0,
+      0,
+  };
+  EXPECT_TRUE(expected1.isEqual(result1, 0.02));
+}
+
 /// Helper to test FusedRowwiseQuantizedSparseLengthsSum using \p DTy.
 template <typename DataType>
 static void testFusedRowwiseQuantizedSparseLengthsSum(

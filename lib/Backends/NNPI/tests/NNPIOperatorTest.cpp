@@ -142,6 +142,8 @@ struct EmulatorOnlyTests {
           "ConvertFrom_Int64ITy_To_FloatTy/0",
           "ConvertFrom_Int64ITy_To_FloatTy_AndBack/0",
           "Exp/0",
+          "FusedRowwiseQuantizedSparseLengthsWeightedSum_ConvertedFloat16_back_"
+          "to_back/0",
           "MaxPool/0",
           "NonSquareKernelAveragePool/0",
           "NonSquareKernelConvolution/0",
