@@ -43,16 +43,16 @@ static struct PerfData globalPD;
 #endif // ENABLE_PERF_MONITORING
 
 static uint8_t *initConstantWeights(const char *wfname,
-                                      const struct BundleConfig *bundleConfig);
+                                    const struct BundleConfig *bundleConfig);
 static uint8_t *initMutableWeights(const struct BundleConfig *bundleConfig);
 static uint8_t *initActivations(const struct BundleConfig *bundleConfig);
-static int getIOOffsets(const struct NetworkData *networkData,
-                          size_t *inOffset, size_t *outOffset);
+static int getIOOffsets(const struct NetworkData *networkData, size_t *inOffset,
+                        size_t *outOffset);
 
 static void *mallocAligned(uint64_t alignment, size_t size);
 
 int initRuntimeData(const struct NetworkData *networkData,
-                      struct RuntimeData *runtimeData) {
+                    struct RuntimeData *runtimeData) {
   uint8_t *result = NULL;
   int retval = X_FAILURE;
 
@@ -76,7 +76,7 @@ int initRuntimeData(const struct NetworkData *networkData,
 #endif // ENABLE_PERF_MONITORING
 
   result = initConstantWeights(networkData->weightsFileName,
-                                 networkData->bundleConfig);
+                               networkData->bundleConfig);
   if (result != NULL) {
     runtimeData->constWeights = result;
 
@@ -99,7 +99,7 @@ int initRuntimeData(const struct NetworkData *networkData,
 
         // Where are the input and output tensors located?
         retval = getIOOffsets(networkData, &(runtimeData->inputOffset),
-                                &(runtimeData->outputOffset));
+                              &(runtimeData->outputOffset));
       }
     }
   }
@@ -171,7 +171,7 @@ void cleanupIO(struct InferenceIO *iio) {
 }
 
 void runInference(const struct InferenceIO *iio,
-                   struct RuntimeData *runtimeData) {
+                  struct RuntimeData *runtimeData) {
   size_t batchCounter;
   size_t currentInputOffset;
   size_t currentOutputOffset;
@@ -202,8 +202,8 @@ void runInference(const struct InferenceIO *iio,
        // Call our inference function on the input data. Pass in locations of
        // constant weights, mutable weights (inputs/outputs), and activations.
     (runtimeData->inferenceFunc)(runtimeData->constWeights,
-                                   runtimeData->mutWeights,
-                                   runtimeData->activations);
+                                 runtimeData->mutWeights,
+                                 runtimeData->activations);
 #ifdef ENABLE_PERF_MONITORING
     if (runtimeData->doPerfMonitoring) {
       (void)pausePerfMonitoring(&globalPD);
@@ -230,7 +230,7 @@ void runInference(const struct InferenceIO *iio,
 /// \p bundleConfig - The bundle config structure
 /// \returns Pointer to the constant weights on success, NULL on failure.
 uint8_t *initConstantWeights(const char *wfname,
-                               const struct BundleConfig *bundleConfig) {
+                             const struct BundleConfig *bundleConfig) {
   size_t size = 0;
   int fd = 0;
   off_t fileOffset = 0;
@@ -303,14 +303,14 @@ uint8_t *initConstantWeights(const char *wfname,
 /// \returns Valid pointer on success, NULL on failure.
 uint8_t *initMutableWeights(const struct BundleConfig *bundleConfig) {
   return mallocAligned(bundleConfig->alignment,
-                        bundleConfig->mutWeightVarsMemsize);
+                       bundleConfig->mutWeightVarsMemsize);
 }
 
 /// Initialize activations -- simply allocates the memory.
 /// \returns Valid pointer on success, NULL on failure.
 uint8_t *initActivations(const struct BundleConfig *bundleConfig) {
   return mallocAligned(bundleConfig->alignment,
-                        bundleConfig->activationMemsize);
+                       bundleConfig->activationMemsize);
 }
 
 /// Performs aligned memory allocation.
@@ -340,7 +340,7 @@ void *mallocAligned(uint64_t alignment, size_t size) {
 /// size_t*) \returns X_SUCCESS on success, X_FAILURE on failure (inOffset and
 /// outOffset are not valid)
 int getIOOffsets(const struct NetworkData *networkData, size_t *inOffset,
-                   size_t *outOffset) {
+                 size_t *outOffset) {
   int retval;
   bool foundIn = false;
   bool foundOut = false;
@@ -353,8 +353,7 @@ int getIOOffsets(const struct NetworkData *networkData, size_t *inOffset,
 
   // Look for the input and the output tensors, and grab their offsets. The
   // lookup is done by tensor name.
-  for (symbolIndex = 0;
-       symbolIndex < networkData->bundleConfig->numSymbols;
+  for (symbolIndex = 0; symbolIndex < networkData->bundleConfig->numSymbols;
        ++symbolIndex) {
     if (strncmp(networkData->inputTensorName,
                 networkData->bundleConfig->symbols[symbolIndex].name,

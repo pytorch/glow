@@ -144,13 +144,13 @@ static void initArguments(struct Arguments *arguments);
 static int computeArguments(struct Arguments *arguments);
 static void cleanupArguments(struct Arguments *arguments);
 static int retreiveAndLoadInput(struct InferenceIO *inferenceIO,
-                                   const struct Arguments *arguments);
+                                const struct Arguments *arguments);
 static int retreiveAndStoreOutput(struct InferenceIO *inferenceIO,
-                                     const struct Arguments *arguments);
+                                  const struct Arguments *arguments);
 
 #ifdef ENABLE_PERF_MONITORING
 static void reportPerformance(const struct PerfStatistics *ps,
-                               const char *filename);
+                              const char *filename);
 #endif // ENABLE_PERF_MONITORING
 
 static struct argp argp = {options, parseOpt, argsDoc, doc};
@@ -379,8 +379,7 @@ int computeArguments(struct Arguments *arguments) {
     fprintf(stderr, "ERROR: -m option must be specified.\n");
     return X_FAILURE;
   }
-  sprintf(arguments->bundleConfigName, "%s_%s", arguments->modelName,
-          "config");
+  sprintf(arguments->bundleConfigName, "%s_%s", arguments->modelName, "config");
 #endif // X_USE_DYNAMIC
 
   if (arguments->inType == NULL || arguments->outType == NULL) {
@@ -396,8 +395,7 @@ int computeArguments(struct Arguments *arguments) {
   } else if (strncmp(arguments->inType, "I8", 3) == 0) {
     inTensorTypeSize = 1;
   } else {
-    fprintf(stderr, "ERROR: Invalid input tensor type %s\n",
-            arguments->inType);
+    fprintf(stderr, "ERROR: Invalid input tensor type %s\n", arguments->inType);
     return X_FAILURE;
   }
 
@@ -476,15 +474,13 @@ int computeArguments(struct Arguments *arguments) {
 }
 
 /// Currently the same as initArguments().
-void cleanupArguments(struct Arguments *arguments) {
-  initArguments(arguments);
-}
+void cleanupArguments(struct Arguments *arguments) { initArguments(arguments); }
 
 /// Read input from the input file held in \p arguments, and load it into \p
 /// inferenceIO for inference. \returns X_SUCCESS on success, X_FAILURE on
 /// failure.
 int retreiveAndLoadInput(struct InferenceIO *inferenceIO,
-                            const struct Arguments *arguments) {
+                         const struct Arguments *arguments) {
   const size_t size = arguments->batch * arguments->inTensorSize;
   size_t bytesTotal;
   int bytesRead;
@@ -523,7 +519,7 @@ int retreiveAndLoadInput(struct InferenceIO *inferenceIO,
 /// whose name is stored in \p arguments. \returns X_SUCCESS on success,
 /// X_FAILURE on failure.
 int retreiveAndStoreOutput(struct InferenceIO *inferenceIO,
-                              const struct Arguments *arguments) {
+                           const struct Arguments *arguments) {
   const size_t size = arguments->batch * arguments->outTensorSize;
   size_t bytesTotal;
   int bytesWritten;

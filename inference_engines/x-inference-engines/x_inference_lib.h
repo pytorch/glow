@@ -116,7 +116,7 @@ struct NetworkData {
 /// Initialize runtime data \p runtimeData given the network metadata \p
 /// networkData. \returns X_SUCCESS on success, X_FAILURE on failure.
 int initRuntimeData(const struct NetworkData *networkData,
-                      struct RuntimeData *runtimeData);
+                    struct RuntimeData *runtimeData);
 
 /// Initialize inference IO metadata given pointers to the IO memory \p inMMap
 /// and \p outMMap. \p inMMap may be null, then memory is allocated (and
@@ -137,6 +137,6 @@ void cleanupIO(struct InferenceIO *io);
 /// Run the inference given Inference IO \p iio and the runtime data \p
 /// runtimeData.
 void runInference(const struct InferenceIO *iio,
-                   struct RuntimeData *runtimeData);
+                  struct RuntimeData *runtimeData);
 
 #endif // X_INFERENCE_LIB_H
