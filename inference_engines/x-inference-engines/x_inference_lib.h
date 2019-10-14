@@ -46,34 +46,34 @@ struct SymbolTableEntry {
 
 /// The Glow bundle config structure.
 struct BundleConfig {
-  uint64_t const_weight_vars_memsize;
-  uint64_t mut_weight_vars_memsize;
-  uint64_t activation_memsize;
+  uint64_t constWeightVarsMemsize;
+  uint64_t mutWeightVarsMemsize;
+  uint64_t activationMemsize;
   uint64_t alignment;
-  uint64_t num_symbols;
+  uint64_t numSymbols;
   const struct SymbolTableEntry *symbols;
 };
 
 /// The runtime data structure.
 struct RuntimeData {
   /// Pointer to the location of constant weights in memory.
-  uint8_t *const_weights;
+  uint8_t *constWeights;
   /// Pointer to the location of mutable weights in memory.
-  uint8_t *mut_weights;
+  uint8_t *mutWeights;
   /// Pointer to the location of activations in memory.
   uint8_t *activations;
   /// The inference function
-  InferenceFunctionPtr_t inference_func;
+  InferenceFunctionPtr_t inferenceFunc;
   /// Offset of the input tensor in memory
-  size_t input_offset;
+  size_t inputOffset;
   /// Offset of the output tensor in memory
-  size_t output_offset;
+  size_t outputOffset;
 
 #ifdef ENABLE_PERF_MONITORING
   /// Performance statistics
   struct PerfStatistics ps;
   /// Should we monitor performance?
-  int do_perf_monitoring;
+  int doPerfMonitoring;
 #endif // ENABLE_PERF_MONITORING
 };
 
@@ -85,58 +85,58 @@ struct InferenceIO {
   void *output;
   /// Should input memory be deallocated (yes if we allocated it, no if we were
   /// passed a pointer to a previously allocated region)
-  int cleanup_input;
+  int cleanupInput;
   /// Should output memory be deallocated (yes if we allocated it, no if we were
   /// passed a pointer to a previously allocated region)
-  int cleanup_output;
+  int cleanupOutput;
   /// Input data length
-  size_t in_len;
+  size_t inLen;
   /// Output data length
-  size_t out_len;
+  size_t outLen;
   /// Batch size
-  size_t batch_size;
+  size_t batchSize;
 };
 
 /// Network metadata
 struct NetworkData {
   /// The Glow bundle config
-  struct BundleConfig *bundle_config;
+  struct BundleConfig *bundleConfig;
   /// Name of the input tensor
-  char *input_tensor_name;
+  char *inputTensorName;
   /// Name of the output tensor
-  char *output_tensor_name;
+  char *outputTensorName;
   /// Name of the weights file
-  char *weights_file_name;
+  char *weightsFileName;
   /// Inference function
-  InferenceFunctionPtr_t inference_function;
+  InferenceFunctionPtr_t inferenceFunction;
   /// Should we monitor performance?
-  int do_perf_monitoring;
+  int doPerfMonitoring;
 };
 
-/// Initialize runtime data \p runtime_data given the network metadata \p
-/// network_data. \returns X_SUCCESS on success, X_FAILURE on failure.
-int init_runtime_data(const struct NetworkData *network_data,
-                      struct RuntimeData *runtime_data);
+/// Initialize runtime data \p runtimeData given the network metadata \p
+/// networkData. \returns X_SUCCESS on success, X_FAILURE on failure.
+int initRuntimeData(const struct NetworkData *networkData,
+                      struct RuntimeData *runtimeData);
 
-/// Initialize inference IO metadata given pointers to the IO memory \p in_mmap
-/// and \p out_mmap. \p in_mmap may be null, then memory is allocated (and
-/// deallocated when done). \p out_mmap may be null, then memory is allocated
-/// (and deallocated when done). If \p in_mmap and \p out_mmap are not null, IO
+/// Initialize inference IO metadata given pointers to the IO memory \p inMMap
+/// and \p outMMap. \p inMMap may be null, then memory is allocated (and
+/// deallocated when done). \p outMMap may be null, then memory is allocated
+/// (and deallocated when done). If \p inMMap and \p outMMap are not null, IO
 /// memory is not allocated/deallocated. returns X_SUCCESS on success, X_FAILURE
 /// on failure.
-int init_io(struct InferenceIO *iio, void *in_mmap, void *out_mmap);
+int initIO(struct InferenceIO *iio, void *inMMap, void *outMMap);
 
-/// Clean up the runtime data \p runtime_data, which ammounts to deallocating
+/// Clean up the runtime data \p runtimeData, which ammounts to deallocating
 /// allocated resources.
-void cleanup_runtime_data(struct RuntimeData *runtime_data);
+void cleanupRuntimeData(struct RuntimeData *runtimeData);
 
 /// Clean up inference IO \p io, which ammounts to deallocating allocated
 /// resources.
-void cleanup_io(struct InferenceIO *io);
+void cleanupIO(struct InferenceIO *io);
 
 /// Run the inference given Inference IO \p iio and the runtime data \p
-/// runtime_data.
-void run_inference(const struct InferenceIO *iio,
-                   struct RuntimeData *runtime_data);
+/// runtimeData.
+void runInference(const struct InferenceIO *iio,
+                   struct RuntimeData *runtimeData);
 
 #endif // X_INFERENCE_LIB_H

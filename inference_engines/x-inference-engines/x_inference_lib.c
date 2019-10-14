@@ -39,35 +39,35 @@
 #include "x_inference_lib.h"
 
 #ifdef ENABLE_PERF_MONITORING
-static struct PerfData global_pd;
+static struct PerfData globalPD;
 #endif // ENABLE_PERF_MONITORING
 
-static uint8_t *init_constant_weights(const char *wfname,
-                                      const struct BundleConfig *bundle_config);
-static uint8_t *init_mutable_weights(const struct BundleConfig *bundle_config);
-static uint8_t *init_activations(const struct BundleConfig *bundle_config);
-static int get_io_offsets(const struct NetworkData *network_data,
-                          size_t *in_offset, size_t *out_offset);
+static uint8_t *initConstantWeights(const char *wfname,
+                                      const struct BundleConfig *bundleConfig);
+static uint8_t *initMutableWeights(const struct BundleConfig *bundleConfig);
+static uint8_t *initActivations(const struct BundleConfig *bundleConfig);
+static int getIOOffsets(const struct NetworkData *networkData,
+                          size_t *inOffset, size_t *outOffset);
 
-static void *malloc_aligned(uint64_t alignment, size_t size);
+static void *mallocAligned(uint64_t alignment, size_t size);
 
-int init_runtime_data(const struct NetworkData *network_data,
-                      struct RuntimeData *runtime_data) {
+int initRuntimeData(const struct NetworkData *networkData,
+                      struct RuntimeData *runtimeData) {
   uint8_t *result = NULL;
   int retval = X_FAILURE;
 
-  (void)memset(runtime_data, 0x0, sizeof(struct RuntimeData));
+  (void)memset(runtimeData, 0x0, sizeof(struct RuntimeData));
 
 // If performance monitoring is enabled, make sure to correctly clear/initialize
 // the corresponding runtime data.
 #ifdef ENABLE_PERF_MONITORING
-  runtime_data->do_perf_monitoring = network_data->do_perf_monitoring;
-  if (runtime_data->do_perf_monitoring) {
-    (void)memset(&(runtime_data->ps), 0x0, sizeof(struct PerfStatistics));
-    (void)memset(&global_pd, 0x0, sizeof(struct PerfData));
+  runtimeData->doPerfMonitoring = networkData->doPerfMonitoring;
+  if (runtimeData->doPerfMonitoring) {
+    (void)memset(&(runtimeData->ps), 0x0, sizeof(struct PerfStatistics));
+    (void)memset(&globalPD, 0x0, sizeof(struct PerfData));
 
     // Initialize performance monitor.
-    retval = init_perf_monitoring(&global_pd);
+    retval = initPerfMonitoring(&globalPD);
     if (retval == -1) {
       perror("ERROR: unable to initialize perf event");
       return X_FAILURE;
@@ -75,31 +75,31 @@ int init_runtime_data(const struct NetworkData *network_data,
   }
 #endif // ENABLE_PERF_MONITORING
 
-  result = init_constant_weights(network_data->weights_file_name,
-                                 network_data->bundle_config);
+  result = initConstantWeights(networkData->weightsFileName,
+                                 networkData->bundleConfig);
   if (result != NULL) {
-    runtime_data->const_weights = result;
+    runtimeData->constWeights = result;
 
 // If performance monitoring is enabled, report total weights size as part of
 // the monitoring.
 #ifdef ENABLE_PERF_MONITORING
-    if (runtime_data->do_perf_monitoring) {
-      global_pd.ps.const_weights_size =
-          network_data->bundle_config->const_weight_vars_memsize;
+    if (runtimeData->doPerfMonitoring) {
+      globalPD.ps.constWeightsSize =
+          networkData->bundleConfig->constWeightVarsMemsize;
     }
 #endif // ENABLE_PERF_MONITORING
        // Cascaded initialization of mutable weights->activations->get offsets.
-    result = init_mutable_weights(network_data->bundle_config);
+    result = initMutableWeights(networkData->bundleConfig);
     if (result != NULL) {
-      runtime_data->mut_weights = result;
-      result = init_activations(network_data->bundle_config);
+      runtimeData->mutWeights = result;
+      result = initActivations(networkData->bundleConfig);
       if (result != NULL) {
-        runtime_data->activations = result;
-        runtime_data->inference_func = network_data->inference_function;
+        runtimeData->activations = result;
+        runtimeData->inferenceFunc = networkData->inferenceFunction;
 
         // Where are the input and output tensors located?
-        retval = get_io_offsets(network_data, &(runtime_data->input_offset),
-                                &(runtime_data->output_offset));
+        retval = getIOOffsets(networkData, &(runtimeData->inputOffset),
+                                &(runtimeData->outputOffset));
       }
     }
   }
@@ -107,29 +107,29 @@ int init_runtime_data(const struct NetworkData *network_data,
   return retval;
 }
 
-int init_io(struct InferenceIO *iio, void *in_mmap, void *out_mmap) {
+int initIO(struct InferenceIO *iio, void *inMMap, void *outMMap) {
   int retval = X_FAILURE;
 
   // If memory-mapped input is passed, we don't need to allocate memory
   // for input. Otherwise, allocate and require cleanup later.
-  if (in_mmap != NULL) {
-    iio->input = in_mmap;
-    iio->cleanup_input = 0;
+  if (inMMap != NULL) {
+    iio->input = inMMap;
+    iio->cleanupInput = 0;
   } else {
-    iio->input = malloc(iio->batch_size * iio->in_len);
-    iio->cleanup_input = 1;
+    iio->input = malloc(iio->batchSize * iio->inLen);
+    iio->cleanupInput = 1;
   }
 
   // If memory-mapped output is passed, we don't need to allocate memory
   // for output. Otherwise, allocate and require cleanup later. This should only
   // be done if we have non-null input.
   if (iio->input != NULL) {
-    if (out_mmap != NULL) {
-      iio->output = out_mmap;
-      iio->cleanup_output = 0;
+    if (outMMap != NULL) {
+      iio->output = outMMap;
+      iio->cleanupOutput = 0;
     } else {
-      iio->output = malloc(iio->batch_size * iio->out_len);
-      iio->cleanup_output = 1;
+      iio->output = malloc(iio->batchSize * iio->outLen);
+      iio->cleanupOutput = 1;
     }
 
     if (iio->output != NULL) {
@@ -142,27 +142,27 @@ int init_io(struct InferenceIO *iio, void *in_mmap, void *out_mmap) {
   return retval;
 }
 
-void cleanup_runtime_data(struct RuntimeData *runtime_data) {
-  free(runtime_data->activations);
-  free(runtime_data->const_weights);
-  free(runtime_data->mut_weights);
+void cleanupRuntimeData(struct RuntimeData *runtimeData) {
+  free(runtimeData->activations);
+  free(runtimeData->constWeights);
+  free(runtimeData->mutWeights);
 
-  runtime_data->activations = NULL;
-  runtime_data->const_weights = NULL;
-  runtime_data->mut_weights = NULL;
+  runtimeData->activations = NULL;
+  runtimeData->constWeights = NULL;
+  runtimeData->mutWeights = NULL;
 
 #ifdef ENABLE_PERF_MONITORING
-  if (runtime_data->do_perf_monitoring) {
-    (void)stop_perf_monitoring(&global_pd);
+  if (runtimeData->doPerfMonitoring) {
+    (void)stopPerfMonitoring(&globalPD);
   }
 #endif // ENABLE_PERF_MONITORING
 }
 
-void cleanup_io(struct InferenceIO *iio) {
-  if (iio->cleanup_input) {
+void cleanupIO(struct InferenceIO *iio) {
+  if (iio->cleanupInput) {
     free(iio->input);
   }
-  if (iio->cleanup_output) {
+  if (iio->cleanupOutput) {
     free(iio->output);
   }
 
@@ -170,74 +170,74 @@ void cleanup_io(struct InferenceIO *iio) {
   iio->output = NULL;
 }
 
-void run_inference(const struct InferenceIO *iio,
-                   struct RuntimeData *runtime_data) {
-  size_t batch_counter;
-  size_t current_input_offset;
-  size_t current_output_offset;
+void runInference(const struct InferenceIO *iio,
+                   struct RuntimeData *runtimeData) {
+  size_t batchCounter;
+  size_t currentInputOffset;
+  size_t currentOutputOffset;
 
-  if (iio->batch_size == 0) {
+  if (iio->batchSize == 0) {
     return;
   }
 
-  current_input_offset = 0;
-  current_output_offset = 0;
+  currentInputOffset = 0;
+  currentOutputOffset = 0;
 
 #ifdef ENABLE_PERF_MONITORING
-  if (runtime_data->do_perf_monitoring) {
-    global_pd.ps.num_cases = iio->batch_size;
+  if (runtimeData->doPerfMonitoring) {
+    globalPD.ps.numCases = iio->batchSize;
   }
 #endif // ENABLE_PERF_MONITORING
 
-  for (batch_counter = 0; batch_counter < iio->batch_size; ++batch_counter) {
+  for (batchCounter = 0; batchCounter < iio->batchSize; ++batchCounter) {
     // Store the next input into the correct mutable weights location.
-    (void)memcpy(runtime_data->mut_weights + runtime_data->input_offset,
-                 iio->input + current_input_offset, iio->in_len);
+    (void)memcpy(runtimeData->mutWeights + runtimeData->inputOffset,
+                 iio->input + currentInputOffset, iio->inLen);
 
 #ifdef ENABLE_PERF_MONITORING
-    if (runtime_data->do_perf_monitoring) {
-      (void)resume_perf_monitoring(&global_pd);
+    if (runtimeData->doPerfMonitoring) {
+      (void)resumePerfMonitoring(&globalPD);
     }
 #endif // ENABLE_PERF_MONITORING
        // Call our inference function on the input data. Pass in locations of
        // constant weights, mutable weights (inputs/outputs), and activations.
-    (runtime_data->inference_func)(runtime_data->const_weights,
-                                   runtime_data->mut_weights,
-                                   runtime_data->activations);
+    (runtimeData->inferenceFunc)(runtimeData->constWeights,
+                                   runtimeData->mutWeights,
+                                   runtimeData->activations);
 #ifdef ENABLE_PERF_MONITORING
-    if (runtime_data->do_perf_monitoring) {
-      (void)pause_perf_monitoring(&global_pd);
-      (void)read_perf_statistics(&global_pd);
-      (void)memcpy(&(runtime_data->ps), &(global_pd.ps),
+    if (runtimeData->doPerfMonitoring) {
+      (void)pausePerfMonitoring(&globalPD);
+      (void)readPerfStatistics(&globalPD);
+      (void)memcpy(&(runtimeData->ps), &(globalPD.ps),
                    sizeof(struct PerfStatistics));
     }
 #endif // ENABLE_PERF_MONITORING
 
     // Store the current output into the correct output location.
-    (void)memcpy(iio->output + current_output_offset,
-                 runtime_data->mut_weights + runtime_data->output_offset,
-                 iio->out_len);
+    (void)memcpy(iio->output + currentOutputOffset,
+                 runtimeData->mutWeights + runtimeData->outputOffset,
+                 iio->outLen);
 
     // Advance the input/output pointers to the next position of the next input
     // in the batch, and the corresponding output.
-    current_input_offset += iio->in_len;
-    current_output_offset += iio->out_len;
+    currentInputOffset += iio->inLen;
+    currentOutputOffset += iio->outLen;
   }
 }
 
 /// Initialize constant weights with the data from the weights file.
 /// \p wfname - Constant weights file name.
-/// \p bundle_config - The bundle config structure
+/// \p bundleConfig - The bundle config structure
 /// \returns Pointer to the constant weights on success, NULL on failure.
-uint8_t *init_constant_weights(const char *wfname,
-                               const struct BundleConfig *bundle_config) {
+uint8_t *initConstantWeights(const char *wfname,
+                               const struct BundleConfig *bundleConfig) {
   size_t size = 0;
   int fd = 0;
-  off_t file_offset = 0;
+  off_t fileOffset = 0;
   uint8_t *retval = NULL;
   uint8_t *buffer = NULL;
-  int bytes_read = 0;
-  size_t bytes_total = 0;
+  int bytesRead = 0;
+  size_t bytesTotal = 0;
 
   fd = open(wfname, O_RDONLY);
   if (fd == -1) {
@@ -245,41 +245,41 @@ uint8_t *init_constant_weights(const char *wfname,
     return NULL;
   }
 
-  file_offset = lseek(fd, 0, SEEK_END);
-  if (file_offset == -1) {
+  fileOffset = lseek(fd, 0, SEEK_END);
+  if (fileOffset == -1) {
     perror("Error processing weights file");
   } else {
     // Make sure the weights file is of expected size!
-    size = (size_t)(file_offset);
-    if (size != bundle_config->const_weight_vars_memsize) {
+    size = (size_t)(fileOffset);
+    if (size != bundleConfig->constWeightVarsMemsize) {
       fprintf(stderr,
               "Unexpected file size (%zd) does not match expected (%llu)\n",
-              size, bundle_config->const_weight_vars_memsize);
+              size, bundleConfig->constWeightVarsMemsize);
 
       (void)close(fd);
       return NULL;
     }
 
-    file_offset = lseek(fd, 0, SEEK_SET);
-    if (file_offset == -1) {
+    fileOffset = lseek(fd, 0, SEEK_SET);
+    if (fileOffset == -1) {
       perror("Error processing weights file");
 
       (void)close(fd);
       return NULL;
     }
 
-    retval = malloc_aligned(bundle_config->alignment, size);
+    retval = mallocAligned(bundleConfig->alignment, size);
     buffer = retval;
     // Read in the weights.
     if (retval != NULL) {
-      while (bytes_total < size) {
-        bytes_read = read(fd, buffer, size - bytes_total);
-        bytes_total += bytes_read;
+      while (bytesTotal < size) {
+        bytesRead = read(fd, buffer, size - bytesTotal);
+        bytesTotal += bytesRead;
 
-        if (bytes_read <= 0) {
-          if (bytes_read == -1) {
+        if (bytesRead <= 0) {
+          if (bytesRead == -1) {
             perror("Error reading weights file");
-          } else if (bytes_read == 0) {
+          } else if (bytesRead == 0) {
             fprintf(stderr,
                     "Error reading weights file: EOF reached too early\n");
           }
@@ -289,7 +289,7 @@ uint8_t *init_constant_weights(const char *wfname,
           break;
         }
 
-        buffer += bytes_read;
+        buffer += bytesRead;
       }
     } else
       perror("Error allocating memory for weights");
@@ -301,23 +301,23 @@ uint8_t *init_constant_weights(const char *wfname,
 
 /// Initialize mutable weights -- simply allocates the memory.
 /// \returns Valid pointer on success, NULL on failure.
-uint8_t *init_mutable_weights(const struct BundleConfig *bundle_config) {
-  return malloc_aligned(bundle_config->alignment,
-                        bundle_config->mut_weight_vars_memsize);
+uint8_t *initMutableWeights(const struct BundleConfig *bundleConfig) {
+  return mallocAligned(bundleConfig->alignment,
+                        bundleConfig->mutWeightVarsMemsize);
 }
 
 /// Initialize activations -- simply allocates the memory.
 /// \returns Valid pointer on success, NULL on failure.
-uint8_t *init_activations(const struct BundleConfig *bundle_config) {
-  return malloc_aligned(bundle_config->alignment,
-                        bundle_config->activation_memsize);
+uint8_t *initActivations(const struct BundleConfig *bundleConfig) {
+  return mallocAligned(bundleConfig->alignment,
+                        bundleConfig->activationMemsize);
 }
 
 /// Performs aligned memory allocation.
 /// \p alignment - alignment requirement
 /// \p size - size of memory block to allocate
 /// \returns Valid pointer on success, NULL on failure.
-void *malloc_aligned(uint64_t alignment, size_t size) {
+void *mallocAligned(uint64_t alignment, size_t size) {
   int result = 0;
   void *retval = NULL;
 
@@ -334,51 +334,51 @@ void *malloc_aligned(uint64_t alignment, size_t size) {
 }
 
 /// Retreive input/output offsets.
-/// \p network_data - Pointer to the NetworkData structure holding metadata for
-/// the network. \p in_offset - Output for the input offset (pointer of type
-/// size_t*) \p out_offset - Output for the output offset (pointer of type
-/// size_t*) \returns X_SUCCESS on success, X_FAILURE on failure (in_offset and
-/// out_offset are not valid)
-int get_io_offsets(const struct NetworkData *network_data, size_t *in_offset,
-                   size_t *out_offset) {
+/// \p networkData - Pointer to the NetworkData structure holding metadata for
+/// the network. \p inOffset - Output for the input offset (pointer of type
+/// size_t*) \p outOffset - Output for the output offset (pointer of type
+/// size_t*) \returns X_SUCCESS on success, X_FAILURE on failure (inOffset and
+/// outOffset are not valid)
+int getIOOffsets(const struct NetworkData *networkData, size_t *inOffset,
+                   size_t *outOffset) {
   int retval;
-  bool found_in = false;
-  bool found_out = false;
-  size_t symbol_index;
-  size_t input_name_len;
-  size_t output_name_len;
+  bool foundIn = false;
+  bool foundOut = false;
+  size_t symbolIndex;
+  size_t inputNameLen;
+  size_t outputNameLen;
 
-  input_name_len = strlen(network_data->input_tensor_name);
-  output_name_len = strlen(network_data->output_tensor_name);
+  inputNameLen = strlen(networkData->inputTensorName);
+  outputNameLen = strlen(networkData->outputTensorName);
 
   // Look for the input and the output tensors, and grab their offsets. The
   // lookup is done by tensor name.
-  for (symbol_index = 0;
-       symbol_index < network_data->bundle_config->num_symbols;
-       ++symbol_index) {
-    if (strncmp(network_data->input_tensor_name,
-                network_data->bundle_config->symbols[symbol_index].name,
-                input_name_len) == 0) {
-      *in_offset = network_data->bundle_config->symbols[symbol_index].offset;
-      found_in = true;
+  for (symbolIndex = 0;
+       symbolIndex < networkData->bundleConfig->numSymbols;
+       ++symbolIndex) {
+    if (strncmp(networkData->inputTensorName,
+                networkData->bundleConfig->symbols[symbolIndex].name,
+                inputNameLen) == 0) {
+      *inOffset = networkData->bundleConfig->symbols[symbolIndex].offset;
+      foundIn = true;
 
-      if (found_out) {
+      if (foundOut) {
         break;
       }
     }
-    if (strncmp(network_data->output_tensor_name,
-                network_data->bundle_config->symbols[symbol_index].name,
-                output_name_len) == 0) {
-      *out_offset = network_data->bundle_config->symbols[symbol_index].offset;
-      found_out = true;
+    if (strncmp(networkData->outputTensorName,
+                networkData->bundleConfig->symbols[symbolIndex].name,
+                outputNameLen) == 0) {
+      *outOffset = networkData->bundleConfig->symbols[symbolIndex].offset;
+      foundOut = true;
 
-      if (found_in) {
+      if (foundIn) {
         break;
       }
     }
   }
 
-  if (!found_in || !found_out) {
+  if (!foundIn || !foundOut) {
     retval = X_FAILURE;
   } else {
     retval = X_SUCCESS;

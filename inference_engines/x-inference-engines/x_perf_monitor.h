@@ -32,11 +32,11 @@
 /// Performance monitor statistics
 struct PerfStatistics {
   /// Number of CPU cycles it took to run inference
-  long long num_cpu_cycles;
+  long long numCPUCycles;
   /// Number of cases processed (i.e. batch size)
-  size_t num_cases;
+  size_t numCases;
   /// The size of constant weights
-  size_t const_weights_size;
+  size_t constWeightsSize;
 };
 
 /// The performance data
@@ -46,29 +46,29 @@ struct PerfData {
   /// Performance event attributes (which performance events to monitor)
   struct perf_event_attr pe;
   /// Whether performance should be monitored
-  int do_perf_monitoring;
+  int doPerfMonitoring;
   /// Performance event reader file descriptor
   int fd;
 };
 
 /// Initialize performance data \p pd.
-int init_perf_monitoring(struct PerfData *pd);
+int initPerfMonitoring(struct PerfData *pd);
 
 /// Stop performance monitoring of events specified in \p pd
-int stop_perf_monitoring(struct PerfData *pd);
+int stopPerfMonitoring(struct PerfData *pd);
 
 /// Pause performance monitoring of events specified in \p pd
-int pause_perf_monitoring(struct PerfData *pd);
+int pausePerfMonitoring(struct PerfData *pd);
 
 /// Resume performance monitoring of events specified in \p pd
-int resume_perf_monitoring(struct PerfData *pd);
+int resumePerfMonitoring(struct PerfData *pd);
 
 /// Reset performance statistics specified in \p pd
-int reset_perf_statistics(struct PerfData *pd);
+int resetPerfStatistics(struct PerfData *pd);
 
 /// Read performance statistics from the file specified by the file descriptor
 /// in \pd
-int read_perf_statistics(struct PerfData *pd);
+int readPerfStatistics(struct PerfData *pd);
 
 #endif // ENABLE_PERF_MONITORING
 #endif // X_PERF_MONITOR_H

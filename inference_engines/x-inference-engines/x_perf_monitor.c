@@ -25,7 +25,7 @@
 
 #include "x_perf_monitor.h"
 
-int init_perf_monitoring(struct PerfData *pd) {
+int initPerfMonitoring(struct PerfData *pd) {
   int ret;
 
   memset(pd, 0x0, sizeof(struct PerfData));
@@ -43,7 +43,7 @@ int init_perf_monitoring(struct PerfData *pd) {
   return ret;
 }
 
-int stop_perf_monitoring(struct PerfData *pd) {
+int stopPerfMonitoring(struct PerfData *pd) {
   if (pd->fd >= 0) {
     close(pd->fd);
   }
@@ -51,7 +51,7 @@ int stop_perf_monitoring(struct PerfData *pd) {
   return 0;
 }
 
-int pause_perf_monitoring(struct PerfData *pd) {
+int pausePerfMonitoring(struct PerfData *pd) {
   if (pd->fd >= 0) {
     ioctl(pd->fd, PERF_EVENT_IOC_DISABLE, 0);
   } else {
@@ -61,7 +61,7 @@ int pause_perf_monitoring(struct PerfData *pd) {
   return 0;
 }
 
-int resume_perf_monitoring(struct PerfData *pd) {
+int resumePerfMonitoring(struct PerfData *pd) {
   if (pd->fd >= 0) {
     ioctl(pd->fd, PERF_EVENT_IOC_ENABLE, 0);
   } else {
@@ -71,9 +71,9 @@ int resume_perf_monitoring(struct PerfData *pd) {
   return 0;
 }
 
-int reset_perf_statistics(struct PerfData *pd) {
+int resetPerfStatistics(struct PerfData *pd) {
   if (pd->fd >= 0) {
-    pd->ps.num_cpu_cycles = 0;
+    pd->ps.numCPUCycles = 0;
     ioctl(pd->fd, PERF_EVENT_IOC_RESET, 0);
   } else {
     return pd->fd;
@@ -82,11 +82,11 @@ int reset_perf_statistics(struct PerfData *pd) {
   return 0;
 }
 
-int read_perf_statistics(struct PerfData *pd) {
+int readPerfStatistics(struct PerfData *pd) {
   int ret = -1;
 
   if (pd->fd >= 0) {
-    ret = read(pd->fd, &(pd->ps.num_cpu_cycles), sizeof(pd->ps.num_cpu_cycles));
+    ret = read(pd->fd, &(pd->ps.numCPUCycles), sizeof(pd->ps.numCPUCycles));
   }
 
   return ret;

@@ -26,7 +26,7 @@
 #include <string.h>
 #include <unistd.h>
 
-#include "x_inference_lib.h"
+#include "xInference_lib.h"
 
 #ifndef X_USE_DYNAMIC
 
@@ -42,8 +42,8 @@ extern void X_MODEL_NAME(uint8_t *, uint8_t *, uint8_t *);
 
 #endif // X_USE_DYNAMIC
 
-const char *argp_program_version = "x-infer v0.01";
-const char *argp_program_bug_address =
+const char *argpProgramVersion = "x-infer v0.01";
+const char *argpProgramBugAddress =
     "Github Pytorch Glow repository at https://github.com/pytorch/glow";
 const char doc[] =
     "\n                    Generic Inference Engine                         \n"
@@ -82,7 +82,7 @@ const char doc[] =
 #endif // ENABLE_PERF_MONITORING
 
     "\n\nShort and long form options are: ";
-const char args_doc[] =
+const char argsDoc[] =
 #ifdef X_USE_DYNAMIC
     "[BUNDLE FILENAME] "
 #endif // X_USE_DYNAMIC
@@ -115,215 +115,215 @@ const struct argp_option options[] = {
 
     {0}};
 
-struct arguments {
+struct Arguments {
 #ifdef X_USE_DYNAMIC
-  char *bundle_file;
-  char bundle_config_name[135];
-  char *model_name;
+  char *bundleFile;
+  char bundleConfigName[135];
+  char *modelName;
 #endif // X_USE_DYNAMIC
 #ifdef ENABLE_PERF_MONITORING
-  int perf_monitor;
-  char *perf_log_file;
+  int perfMonitor;
+  char *perfLogFile;
 #endif // ENABLE_PERF_MONITORING
-  char *weights_file;
-  char *out_file;
-  char *in_file;
-  char *in_type;
-  char *out_type;
-  char *in_len;
-  char *out_len;
-  char *in_name;
-  char *out_name;
-  size_t in_tensor_size;
-  size_t out_tensor_size;
+  char *weightsFile;
+  char *outFile;
+  char *inFile;
+  char *inType;
+  char *outType;
+  char *inLen;
+  char *outLen;
+  char *inName;
+  char *outName;
+  size_t inTensorSize;
+  size_t outTensorSize;
   size_t batch;
 };
 
-static error_t parse_opt(int key, char *arg, struct argp_state *state);
-static void init_arguments(struct arguments *arguments);
-static int compute_arguments(struct arguments *arguments);
-static void cleanup_arguments(struct arguments *arguments);
-static int retreive_and_load_input(struct InferenceIO *inference_io,
-                                   const struct arguments *arguments);
-static int retreive_and_store_output(struct InferenceIO *inference_io,
-                                     const struct arguments *arguments);
+static error_t parseOpt(int key, char *arg, struct argp_state *state);
+static void initArguments(struct Arguments *arguments);
+static int computeArguments(struct Arguments *arguments);
+static void cleanupArguments(struct Arguments *arguments);
+static int retreiveAndLoadInput(struct InferenceIO *inferenceIO,
+                                   const struct Arguments *arguments);
+static int retreiveAndStoreOutput(struct InferenceIO *inferenceIO,
+                                     const struct Arguments *arguments);
 
 #ifdef ENABLE_PERF_MONITORING
-static void report_performance(const struct PerfStatistics *ps,
+static void reportPerformance(const struct PerfStatistics *ps,
                                const char *filename);
 #endif // ENABLE_PERF_MONITORING
 
-static struct argp argp = {options, parse_opt, args_doc, doc};
+static struct argp argp = {options, parseOpt, argsDoc, doc};
 
 int main(int argc, char **argv) {
-  struct arguments arguments;
-  struct NetworkData network_data;
-  struct RuntimeData runtime_data;
-  struct InferenceIO inference_io;
+  struct Arguments arguments;
+  struct NetworkData networkData;
+  struct RuntimeData runtimeData;
+  struct InferenceIO inferenceIO;
   int retval;
 
 // Using dynamic loading? If so, will load with dload.
 #ifdef X_USE_DYNAMIC
-  struct BundleConfig *x_config;
-  InferenceFunctionPtr_t x_infer;
-  void *dl_handle;
+  struct BundleConfig *xConfig;
+  InferenceFunctionPtr_t xInfer;
+  void *dlHandle;
 #endif // X_USE_DYNAMIC
 
-  init_arguments(&arguments);
+  initArguments(&arguments);
   retval = argp_parse(&argp, argc, argv, 0, 0, &arguments);
   if (retval != X_SUCCESS) {
     fprintf(stderr, "ERROR: Invalid arguments. Use --help for help.");
-    cleanup_arguments(&arguments);
+    cleanupArguments(&arguments);
     exit(retval);
   }
 
-  retval = compute_arguments(&arguments);
+  retval = computeArguments(&arguments);
   if (retval != X_SUCCESS) {
-    cleanup_arguments(&arguments);
+    cleanupArguments(&arguments);
     exit(retval);
   }
 
 #ifdef X_USE_DYNAMIC
   // Load the bundle...
-  dl_handle = dlopen(arguments.bundle_file, RTLD_NOW);
-  if (dl_handle == NULL) {
-    fprintf(stderr, "ERROR: Cannot load bundle %s: %s\n", arguments.bundle_file,
+  dlHandle = dlopen(arguments.bundleFile, RTLD_NOW);
+  if (dlHandle == NULL) {
+    fprintf(stderr, "ERROR: Cannot load bundle %s: %s\n", arguments.bundleFile,
             dlerror());
-    cleanup_arguments(&arguments);
+    cleanupArguments(&arguments);
     exit(X_FAILURE);
   }
 
-  x_config = dlsym(dl_handle, arguments.bundle_config_name);
+  xConfig = dlsym(dlHandle, arguments.bundleConfigName);
   if (dlerror() != NULL) {
     fprintf(stderr,
             "ERROR: Cannot load bundle config structure %s from %s: %s.\n",
-            arguments.bundle_config_name, arguments.bundle_file, dlerror());
-    cleanup_arguments(&arguments);
+            arguments.bundleConfigName, arguments.bundleFile, dlerror());
+    cleanupArguments(&arguments);
     exit(X_FAILURE);
   }
 
-  x_infer = dlsym(dl_handle, arguments.model_name);
+  xInfer = dlsym(dlHandle, arguments.modelName);
   if (dlerror() != NULL) {
     fprintf(stderr, "ERROR: Cannot load model %s from %s: %s.\n",
-            arguments.model_name, arguments.bundle_file, dlerror());
-    cleanup_arguments(&arguments);
+            arguments.modelName, arguments.bundleFile, dlerror());
+    cleanupArguments(&arguments);
     exit(X_FAILURE);
   }
 #endif // X_USE_DYFNAMIC
 
   // Load the network data...
 #ifdef X_USE_DYNAMIC
-  network_data.bundle_config = x_config;
-  network_data.inference_function = x_infer;
+  networkData.bundleConfig = xConfig;
+  networkData.inferenceFunction = xInfer;
 #else
   // Not loading dynamically - so build the symbol names from the #define's.
-  network_data.bundle_config = &BUILD_SYMBOL_NAME(X_MODEL_NAME, config);
-  network_data.inference_function = X_MODEL_NAME;
+  networkData.bundleConfig = &BUILD_SYMBOL_NAME(X_MODEL_NAME, config);
+  networkData.inferenceFunction = X_MODEL_NAME;
 #endif // X_USE_DYNAMIC
 
-  network_data.input_tensor_name = arguments.in_name;
-  network_data.output_tensor_name = arguments.out_name;
-  network_data.weights_file_name = arguments.weights_file;
+  networkData.inputTensorName = arguments.inName;
+  networkData.outputTensorName = arguments.outName;
+  networkData.weightsFileName = arguments.weightsFile;
 #ifdef ENABLE_PERF_MONITORING
-  network_data.do_perf_monitoring = arguments.perf_monitor;
+  networkData.doPerfMonitoring = arguments.perfMonitor;
 #endif // ENABLE_PERF_MONITORING
 
   // Initialize the runtime data...
-  retval = init_runtime_data(&network_data, &runtime_data);
+  retval = initRuntimeData(&networkData, &runtimeData);
   if (retval != X_SUCCESS) {
     fprintf(stderr, "ERROR: Could not initialize data. Exiting!\n");
-    cleanup_runtime_data(&runtime_data);
-    cleanup_arguments(&arguments);
+    cleanupRuntimeData(&runtimeData);
+    cleanupArguments(&arguments);
     exit(retval);
   }
 
   // Initialize the IO struct...
-  inference_io.in_len = arguments.in_tensor_size;
-  inference_io.out_len = arguments.out_tensor_size;
-  inference_io.batch_size = arguments.batch;
+  inferenceIO.inLen = arguments.inTensorSize;
+  inferenceIO.outLen = arguments.outTensorSize;
+  inferenceIO.batchSize = arguments.batch;
 
-  retval = init_io(&inference_io, NULL, NULL);
+  retval = initIO(&inferenceIO, NULL, NULL);
   if (retval != X_SUCCESS) {
     fprintf(stderr, "ERROR: Could not initialize IO. Exiting!\n");
-    cleanup_runtime_data(&runtime_data);
-    cleanup_io(&inference_io);
-    cleanup_arguments(&arguments);
+    cleanupRuntimeData(&runtimeData);
+    cleanupIO(&inferenceIO);
+    cleanupArguments(&arguments);
     exit(retval);
   }
 
-  retval = retreive_and_load_input(&inference_io, &arguments);
+  retval = retreiveAndLoadInput(&inferenceIO, &arguments);
   if (retval != X_SUCCESS) {
-    cleanup_runtime_data(&runtime_data);
-    cleanup_io(&inference_io);
-    cleanup_arguments(&arguments);
+    cleanupRuntimeData(&runtimeData);
+    cleanupIO(&inferenceIO);
+    cleanupArguments(&arguments);
     exit(retval);
   }
 
-  run_inference(&inference_io, &runtime_data);
+  runInference(&inferenceIO, &runtimeData);
 
-  retval = retreive_and_store_output(&inference_io, &arguments);
+  retval = retreiveAndStoreOutput(&inferenceIO, &arguments);
   if (retval != X_SUCCESS) {
-    cleanup_runtime_data(&runtime_data);
-    cleanup_io(&inference_io);
-    cleanup_arguments(&arguments);
+    cleanupRuntimeData(&runtimeData);
+    cleanupIO(&inferenceIO);
+    cleanupArguments(&arguments);
     exit(retval);
   }
 
 #ifdef ENABLE_PERF_MONITORING
-  if (runtime_data.do_perf_monitoring) {
-    report_performance(&(runtime_data.ps), arguments.perf_log_file);
+  if (runtimeData.doPerfMonitoring) {
+    reportPerformance(&(runtimeData.ps), arguments.perfLogFile);
   }
 #endif // ENABLE_PERF_MONITORING
 
   // Finally, don't forget to clean up...
-  cleanup_runtime_data(&runtime_data);
-  cleanup_io(&inference_io);
-  cleanup_arguments(&arguments);
+  cleanupRuntimeData(&runtimeData);
+  cleanupIO(&inferenceIO);
+  cleanupArguments(&arguments);
 
   exit(0);
 }
 
 /// Parses command line options given the short form \p key, its argument \p
 /// arg, and the arg_state \p state
-error_t parse_opt(int key, char *arg, struct argp_state *state) {
-  struct arguments *arguments = state->input;
+error_t parseOpt(int key, char *arg, struct argp_state *state) {
+  struct Arguments *arguments = state->input;
 
   switch (key) {
   case 'o':
-    arguments->out_file = arg;
+    arguments->outFile = arg;
     break;
   case 'i':
-    arguments->in_file = arg;
+    arguments->inFile = arg;
     break;
   case 't':
-    arguments->in_type = arg;
+    arguments->inType = arg;
     break;
   case 'T':
-    arguments->out_type = arg;
+    arguments->outType = arg;
     break;
   case 'l':
-    arguments->in_len = arg;
+    arguments->inLen = arg;
     break;
   case 'L':
-    arguments->out_len = arg;
+    arguments->outLen = arg;
     break;
   case 'n':
-    arguments->in_name = arg;
+    arguments->inName = arg;
     break;
   case 'N':
-    arguments->out_name = arg;
+    arguments->outName = arg;
     break;
 #ifdef ENABLE_PERF_MONITORING
   case 'p':
-    arguments->perf_monitor = 1;
+    arguments->perfMonitor = 1;
     break;
   case 'P':
-    arguments->perf_log_file = arg;
+    arguments->perfLogFile = arg;
     break;
 #endif // ENABLE_PERF_MONITORING
 #ifdef X_USE_DYNAMIC
   case 'm':
-    arguments->model_name = arg;
+    arguments->modelName = arg;
     break;
 #endif // X_USE_DYNAMIC
   case ARGP_KEY_ARG:
@@ -332,15 +332,15 @@ error_t parse_opt(int key, char *arg, struct argp_state *state) {
       argp_usage(state);
     }
     if (state->arg_num == 1) {
-      arguments->weights_file = arg;
+      arguments->weightsFile = arg;
     } else {
-      arguments->bundle_file = arg;
+      arguments->bundleFile = arg;
     }
 #else
     if (state->arg_num >= 2) {
       argp_usage(state);
     }
-    arguments->weights_file = arg;
+    arguments->weightsFile = arg;
 #endif // X_USE_DYNAMIC
     break;
   case ARGP_KEY_END:
@@ -360,152 +360,152 @@ error_t parse_opt(int key, char *arg, struct argp_state *state) {
 }
 
 /// Clear the memory for argument values \p arguments.
-void init_arguments(struct arguments *arguments) {
-  memset(arguments, 0x0, sizeof(struct arguments));
+void initArguments(struct Arguments *arguments) {
+  memset(arguments, 0x0, sizeof(struct Arguments));
 }
 
 /// Initialize argument values \p arguments based on the passed arguments.
-int compute_arguments(struct arguments *arguments) {
+int computeArguments(struct Arguments *arguments) {
   int fd;
-  off_t file_offset;
-  size_t input_size;
-  size_t in_tensor_type_size;
-  size_t out_tensor_type_size;
-  long in_tensor_len;
-  long out_tensor_len;
+  off_t fileOffset;
+  size_t inputSize;
+  size_t inTensorTypeSize;
+  size_t outTensorTypeSize;
+  long inTensorLen;
+  long outTensorLen;
 
 #ifdef X_USE_DYNAMIC
-  if (arguments->model_name == NULL) {
+  if (arguments->modelName == NULL) {
     fprintf(stderr, "ERROR: -m option must be specified.\n");
     return X_FAILURE;
   }
-  sprintf(arguments->bundle_config_name, "%s_%s", arguments->model_name,
+  sprintf(arguments->bundleConfigName, "%s_%s", arguments->modelName,
           "config");
 #endif // X_USE_DYNAMIC
 
-  if (arguments->in_type == NULL || arguments->out_type == NULL) {
+  if (arguments->inType == NULL || arguments->outType == NULL) {
     fprintf(stderr, "ERROR: -t and -T must be specified.\n");
     return X_FAILURE;
   }
 
-  if (strncmp(arguments->in_type, "F32", 4) == 0) {
-    in_tensor_type_size = 4;
-  } else if (strncmp(arguments->in_type, "F16", 4) == 0 ||
-             strncmp(arguments->in_type, "I16", 4) == 0) {
-    in_tensor_type_size = 2;
-  } else if (strncmp(arguments->in_type, "I8", 3) == 0) {
-    in_tensor_type_size = 1;
+  if (strncmp(arguments->inType, "F32", 4) == 0) {
+    inTensorTypeSize = 4;
+  } else if (strncmp(arguments->inType, "F16", 4) == 0 ||
+             strncmp(arguments->inType, "I16", 4) == 0) {
+    inTensorTypeSize = 2;
+  } else if (strncmp(arguments->inType, "I8", 3) == 0) {
+    inTensorTypeSize = 1;
   } else {
     fprintf(stderr, "ERROR: Invalid input tensor type %s\n",
-            arguments->in_type);
+            arguments->inType);
     return X_FAILURE;
   }
 
-  if (strncmp(arguments->out_type, "F32", 4) == 0) {
-    out_tensor_type_size = 4;
-  } else if (strncmp(arguments->out_type, "F16", 4) == 0 ||
-             strncmp(arguments->out_type, "I16", 4) == 0) {
-    out_tensor_type_size = 2;
-  } else if (strncmp(arguments->out_type, "I8", 3) == 0) {
-    out_tensor_type_size = 1;
+  if (strncmp(arguments->outType, "F32", 4) == 0) {
+    outTensorTypeSize = 4;
+  } else if (strncmp(arguments->outType, "F16", 4) == 0 ||
+             strncmp(arguments->outType, "I16", 4) == 0) {
+    outTensorTypeSize = 2;
+  } else if (strncmp(arguments->outType, "I8", 3) == 0) {
+    outTensorTypeSize = 1;
   } else {
     fprintf(stderr, "ERROR: Invalid output tensor type %s\n",
-            arguments->out_type);
+            arguments->outType);
     return X_FAILURE;
   }
 
-  if (arguments->in_len == NULL || arguments->out_len == NULL) {
+  if (arguments->inLen == NULL || arguments->outLen == NULL) {
     fprintf(stderr, "ERROR: -l and -L options must be specified.\n");
     return X_FAILURE;
   }
 
-  in_tensor_len = atol(arguments->in_len);
-  out_tensor_len = atol(arguments->out_len);
-  if (in_tensor_len <= 0) {
-    fprintf(stderr, "ERROR: Invalid -l value: %s.\n", arguments->in_len);
+  inTensorLen = atol(arguments->inLen);
+  outTensorLen = atol(arguments->outLen);
+  if (inTensorLen <= 0) {
+    fprintf(stderr, "ERROR: Invalid -l value: %s.\n", arguments->inLen);
     return X_FAILURE;
   }
-  if (out_tensor_len <= 0) {
-    fprintf(stderr, "ERROR: Invalid -L value: %s.\n", arguments->out_len);
+  if (outTensorLen <= 0) {
+    fprintf(stderr, "ERROR: Invalid -L value: %s.\n", arguments->outLen);
     return X_FAILURE;
   }
 
-  arguments->in_tensor_size = (size_t)(in_tensor_len)*in_tensor_type_size;
-  arguments->out_tensor_size = (size_t)(out_tensor_len)*out_tensor_type_size;
+  arguments->inTensorSize = (size_t)(inTensorLen)*inTensorTypeSize;
+  arguments->outTensorSize = (size_t)(outTensorLen)*outTensorTypeSize;
 
-  if (arguments->in_name == NULL || arguments->out_name == NULL) {
+  if (arguments->inName == NULL || arguments->outName == NULL) {
     fprintf(stderr, "ERROR: both -n and -N options must be specified.\n");
     return X_FAILURE;
   }
 
-  if (arguments->in_file == NULL) {
+  if (arguments->inFile == NULL) {
     fprintf(stderr, "ERROR: -i option must be specified.\n");
     return X_FAILURE;
   }
 
-  if (arguments->out_file == NULL) {
+  if (arguments->outFile == NULL) {
     fprintf(stderr, "ERROR: -o option must be specified.\n");
     return X_FAILURE;
   }
 
-  fd = open(arguments->in_file, O_RDONLY);
+  fd = open(arguments->inFile, O_RDONLY);
   if (fd == -1) {
     perror("ERROR: Could not process input file");
     return X_FAILURE;
   }
 
-  file_offset = lseek(fd, 0, SEEK_END);
-  if (file_offset == -1) {
+  fileOffset = lseek(fd, 0, SEEK_END);
+  if (fileOffset == -1) {
     perror("ERRPR: Could not process input file");
     (void)close(fd);
     return X_FAILURE;
   }
-  input_size = (size_t)(file_offset);
+  inputSize = (size_t)(fileOffset);
 
-  if (input_size % arguments->in_tensor_size != 0) {
+  if (inputSize % arguments->inTensorSize != 0) {
     fprintf(stderr,
             "ERROR: Input file size (%zu bytes) is not a multiple of input "
             "tensor size (%zu bytes).\n",
-            input_size, arguments->in_tensor_size);
+            inputSize, arguments->inTensorSize);
     return X_FAILURE;
   }
 
-  arguments->batch = input_size / arguments->in_tensor_size;
+  arguments->batch = inputSize / arguments->inTensorSize;
 
   return X_SUCCESS;
 }
 
-/// Currently the same as init_arguments().
-void cleanup_arguments(struct arguments *arguments) {
-  init_arguments(arguments);
+/// Currently the same as initArguments().
+void cleanupArguments(struct Arguments *arguments) {
+  initArguments(arguments);
 }
 
 /// Read input from the input file held in \p arguments, and load it into \p
-/// inference_io for inference. \returns X_SUCCESS on success, X_FAILURE on
+/// inferenceIO for inference. \returns X_SUCCESS on success, X_FAILURE on
 /// failure.
-int retreive_and_load_input(struct InferenceIO *inference_io,
-                            const struct arguments *arguments) {
-  const size_t size = arguments->batch * arguments->in_tensor_size;
-  size_t bytes_total;
-  int bytes_read;
+int retreiveAndLoadInput(struct InferenceIO *inferenceIO,
+                            const struct Arguments *arguments) {
+  const size_t size = arguments->batch * arguments->inTensorSize;
+  size_t bytesTotal;
+  int bytesRead;
   int fd;
   int retval = X_SUCCESS;
 
-  fd = open(arguments->in_file, O_RDONLY);
+  fd = open(arguments->inFile, O_RDONLY);
   if (fd == -1) {
     perror("ERROR: Could not process input file");
     return X_FAILURE;
   }
 
-  bytes_total = 0;
-  while (bytes_total < size) {
-    bytes_read = read(fd, inference_io->input, size - bytes_total);
-    bytes_total += bytes_read;
+  bytesTotal = 0;
+  while (bytesTotal < size) {
+    bytesRead = read(fd, inferenceIO->input, size - bytesTotal);
+    bytesTotal += bytesRead;
 
-    if (bytes_read <= 0) {
-      if (bytes_read == -1) {
+    if (bytesRead <= 0) {
+      if (bytesRead == -1) {
         perror("ERROR: Could not read input file");
-      } else if (bytes_read == 0) {
+      } else if (bytesRead == 0) {
         fprintf(stderr,
                 "ERROR: Could not read input file - EOF reached too early.\n");
       }
@@ -519,32 +519,32 @@ int retreive_and_load_input(struct InferenceIO *inference_io,
   return retval;
 }
 
-/// Retreives output held in \p inference_io and writes it to the output file
+/// Retreives output held in \p inferenceIO and writes it to the output file
 /// whose name is stored in \p arguments. \returns X_SUCCESS on success,
 /// X_FAILURE on failure.
-int retreive_and_store_output(struct InferenceIO *inference_io,
-                              const struct arguments *arguments) {
-  const size_t size = arguments->batch * arguments->out_tensor_size;
-  size_t bytes_total;
-  int bytes_written;
+int retreiveAndStoreOutput(struct InferenceIO *inferenceIO,
+                              const struct Arguments *arguments) {
+  const size_t size = arguments->batch * arguments->outTensorSize;
+  size_t bytesTotal;
+  int bytesWritten;
   uint8_t *buffer;
   int fd;
   int retval = X_SUCCESS;
 
-  fd = open(arguments->out_file, O_CREAT | O_WRONLY, S_IRUSR | S_IWUSR);
+  fd = open(arguments->outFile, O_CREAT | O_WRONLY, S_IRUSR | S_IWUSR);
   if (fd == -1) {
     perror("ERROR: Could not open output file");
     return X_FAILURE;
   }
 
-  bytes_total = 0;
-  buffer = inference_io->output;
-  while (bytes_total < size) {
-    bytes_written = write(fd, buffer, size - bytes_total);
-    bytes_total += bytes_written;
+  bytesTotal = 0;
+  buffer = inferenceIO->output;
+  while (bytesTotal < size) {
+    bytesWritten = write(fd, buffer, size - bytesTotal);
+    bytesTotal += bytesWritten;
 
-    if (bytes_written <= 0) {
-      if (bytes_written == -1) {
+    if (bytesWritten <= 0) {
+      if (bytesWritten == -1) {
         perror("ERROR: Could not write to output file");
         retval = X_FAILURE;
         break;
@@ -552,13 +552,13 @@ int retreive_and_store_output(struct InferenceIO *inference_io,
       // Technically, the device could be busy. We'll then retry indefinitely.
       // Is this the best option? This is really architecture dependent. In most
       // sane scenarios, this should never happen with regular files.
-      else if (bytes_written == 0) {
+      else if (bytesWritten == 0) {
         fprintf(stderr,
                 "WARNING: Wrote 0 bytes (is device busy? will retry).\n");
       }
     }
 
-    buffer += bytes_written;
+    buffer += bytesWritten;
   }
   (void)close(fd);
 
@@ -566,18 +566,18 @@ int retreive_and_store_output(struct InferenceIO *inference_io,
 }
 
 #ifdef ENABLE_PERF_MONITORING
-void report_performance(const struct PerfStatistics *ps, const char *filename) {
+void reportPerformance(const struct PerfStatistics *ps, const char *filename) {
   int fd;
-  const size_t output_buffer_size = 512;
-  char buffer[output_buffer_size] = {0};
-  int bytes_written;
-  size_t bytes_total;
+  const size_t outputBufferSize = 512;
+  char buffer[outputBufferSize] = {0};
+  int bytesWritten;
+  size_t bytesTotal;
 
-  snprintf(buffer, output_buffer_size,
+  snprintf(buffer, outputBufferSize,
            "\nConstant weights size       : %zd bytes\n"
            "Number of cases             : %zd\n"
            "Number of CPU cycles (x1-e6): %f\n\n",
-           ps->const_weights_size, ps->num_cases, ps->num_cpu_cycles / 1.0e6);
+           ps->constWeightsSize, ps->numCases, ps->numCPUCycles / 1.0e6);
 
   if (filename != NULL) {
     fd = open(filename, O_CREAT | O_WRONLY, S_IRUSR | S_IWUSR);
@@ -589,16 +589,16 @@ void report_performance(const struct PerfStatistics *ps, const char *filename) {
     fd = STDOUT_FILENO;
   }
 
-  bytes_total = 0;
-  while (bytes_total < output_buffer_size) {
-    bytes_written = write(fd, buffer, output_buffer_size - bytes_total);
-    bytes_total += bytes_written;
+  bytesTotal = 0;
+  while (bytesTotal < outputBufferSize) {
+    bytesWritten = write(fd, buffer, outputBufferSize - bytesTotal);
+    bytesTotal += bytesWritten;
 
-    if (bytes_written <= 0) {
-      if (bytes_written == -1) {
+    if (bytesWritten <= 0) {
+      if (bytesWritten == -1) {
         perror("ERROR: Could not write to perf log file");
         break;
-      } else if (bytes_written == 0) {
+      } else if (bytesWritten == 0) {
         fprintf(stderr,
                 "WARNING: Wrote 0 bytes (is device busy? will retry).\n");
       }
