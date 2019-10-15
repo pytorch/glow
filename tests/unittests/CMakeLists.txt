@@ -335,7 +335,12 @@ target_link_libraries(PartitionerTest
                         Partitioner
                         gtest
                         TestMain)
-add_glow_test(PartitionerTest ${GLOW_BINARY_DIR}/tests/PartitionerTest --gtest_output=xml:PartitionerTest.xml)
+
+# There are multiple test cases in PartitionerTest that work only with CPU
+# backend built-in.
+if(GLOW_WITH_CPU)
+  add_glow_test(PartitionerTest ${GLOW_BINARY_DIR}/tests/PartitionerTest --gtest_output=xml:PartitionerTest.xml)
+endif()
 
 if(GLOW_WITH_CPU)
   add_executable(ProvisionerTest

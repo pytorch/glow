@@ -308,15 +308,15 @@ static void getMaxLocalWorkgroupSize(cl_kernel kernel, cl_device_id device,
   // constraints:
   size_t totalWorkPrevDims = 1;
   for (int i = 0, e = global.size(); i < e; i++) {
-    local[i] = L;
+    local[i] = std::min(L, WIS[i]);
+    local[i] = std::min(local[i], WGS / totalWorkPrevDims);
 
-    while (global[i] % local[i] || L % local[i] || local[i] > WIS[i] ||
-           local[i] * totalWorkPrevDims > WGS) {
+    while (global[i] % local[i] || L % local[i]) {
       local[i]--;
     }
 
     // Remember how much work we are doing in this dimension. Use it to make
-    // sure that the next dimenstions don't exceed the total allowed workgroup
+    // sure that the next dimensions don't exceed the total allowed workgroup
     // size.
     totalWorkPrevDims *= local[i];
   }
