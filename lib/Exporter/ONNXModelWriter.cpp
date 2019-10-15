@@ -1564,10 +1564,9 @@ Error ONNXModelWriter::writeOCLBatchedReduceAdd(
 
 #ifdef GLOW_WITH_NNPI
 Error ONNXModelWriter::writeNNPICustomDSP(glow::NNPICustomDSPNode const *,
-                                          glow_onnx::GraphProto &graph) {
+                                          GraphType &graph) {
   return MAKE_ERR("Unsupported Op for ONNX");
 }
-
 #endif // GLOW_WITH_NNPI
 
 } // namespace glow
