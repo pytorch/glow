@@ -446,11 +446,15 @@ static void runInference(runtime::HostManager *hostManager, std::string name,
        warmUp](runtime::RunIdentifierTy, Error err,
                std::unique_ptr<ExecutionContext> contextPtr) {
         EXIT_ON_ERR(std::move(err));
-        if (!warmUp && !tracePath.empty()) {
-          std::lock_guard<std::mutex> l(eventLock);
-          // Merge this run's TraceEvents into the global
-          // TraceContext.
-          traceContext->merge(contextPtr->getTraceContext());
+        if (!tracePath.empty()) {
+          if (!warmUp) {
+            std::lock_guard<std::mutex> l(eventLock);
+            // Merge this run's TraceEvents into the global
+            // TraceContext.
+            traceContext->merge(contextPtr->getTraceContext());
+          } else {
+            contextPtr->getTraceContext()->getTraceEvents().clear();
+          }
         }
         // Kick off another run.
         if (dispatched.fetch_sub(1) > 0) {
