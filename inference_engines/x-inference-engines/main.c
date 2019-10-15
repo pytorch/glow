@@ -569,7 +569,7 @@ void reportPerformance(const struct PerfStatistics *ps, const char *filename) {
   int bytesWritten;
   size_t bytesTotal;
 
-  (void) memset(buffer, 0x0, sizeof(buffer));
+  memset(buffer, 0x0, sizeof(buffer));
 
   snprintf(buffer, outputBufferSize,
            "\nConstant weights size       : %zd bytes\n"
