@@ -110,7 +110,7 @@ glow::ElemKind scalarTypeToElemKind(c10::ScalarType ty) {
   } else if (ty == at::kQInt8) {
     return ElemKind::Int8QTy;
   } else {
-    LOG(DFATAL) << ty << "Not supported yet.";
+    LOG(DFATAL) << ty << " Not supported yet.";
     return ElemKind::Int64ITy;
   }
 }
