@@ -498,7 +498,7 @@ Placeholder *Module::createPlaceholder(TypeRef T, llvm::StringRef name,
                                        bool isTrainable) {
   auto FT = uniqueType(*T);
   auto *ph = new Placeholder(name, FT, isTrainable);
-  ph->setName(uniqueName(ph->getName(), uniqueVariableNames_));
+  ph->setName(uniqueName(ph->getName(), usedNodeNames_, usedStorageNames_));
   placeholders_.push_back(ph);
   logStorageCreation(functions_, ph);
   return ph;
@@ -545,33 +545,49 @@ Constant *Module::createConstant(llvm::StringRef name, Tensor &&tensor) {
   return addConstant(new Constant(name, std::move(tensor)));
 }
 
-llvm::StringRef Module::uniqueName(llvm::StringRef name,
-                                   llvm::StringSet<> &stringTable) {
-  std::string legalName = legalizeName(name);
-
-  auto it = stringTable.insert(legalName);
-  if (it.second) {
-    // This name is already unique!
-    return it.first->first();
+std::string Module::getPrefix(llvm::StringRef name) {
+  std::string prefix = name;
+  size_t delim = name.rfind("__");
+  if (delim != std::string::npos &&
+      std::all_of(name.begin() + (delim + 2), name.end(),
+                  [](unsigned char c) { return std::isdigit(c); })) {
+    prefix = prefix.substr(0, delim);
   }
+  return prefix;
+}
 
-  for (unsigned i = 1; i < 10000; i++) {
-    auto suffix = std::to_string(i);
-
-    auto it = stringTable.insert(legalName + suffix);
+llvm::StringRef Module::uniqueName(llvm::StringRef name,
+                                   const llvm::StringSet<> &stringTable,
+                                   llvm::StringSet<> &updateTable) {
+  std::string legalName = legalizeName(name);
+  if (stringTable.find(legalName) == stringTable.end()) {
+    auto it = updateTable.insert(legalName);
     if (it.second) {
-      // Found a unique name!
       return it.first->first();
     }
   }
 
+  std::string prefix = Module::getPrefix(legalName);
+  for (unsigned i = 1; i < 10000; i++) {
+    auto suffix = std::to_string(i);
+    std::string fullName = prefix + "__" + suffix;
+    if (stringTable.find(fullName) != stringTable.end()) {
+      continue;
+    }
+
+    auto it = updateTable.insert(fullName);
+    if (it.second) {
+      return it.first->first();
+    }
+  }
   llvm_unreachable("Unable to find a unique a name.");
 }
 
 Constant *Module::addConstant(Constant *V) {
-  V->setName(uniqueName(V->getName(), uniqueVariableNames_));
-  // Replace the Constant's output type with the equivalent unique type for this
-  // Module to maintain the invariant that each type in the Module is unique.
+  V->setName(uniqueName(V->getName(), usedNodeNames_, usedStorageNames_));
+  // Replace the Constant's output type with the equivalent unique type for
+  // this Module to maintain the invariant that each type in the Module is
+  // unique.
   V->setType(Constant::ResultIndices::OutputIdx, uniqueType(*V->getType()));
   constants_.push_back(V);
   logStorageCreation(functions_, V);
@@ -651,7 +667,6 @@ static void assertConv3DDims(NodeValue input, NodeValue filter, NodeValue bias,
                              llvm::ArrayRef<unsigned_t> strides,
                              llvm::ArrayRef<unsigned_t> pads,
                              unsigned_t group) {
-
   ShapeNHWDC idim(input.dims());
   ShapeHWD kdim(kernels);
   (void)kdim;
@@ -853,9 +868,9 @@ Function::createRowwiseQuantizedFullyConnected(llvm::StringRef name,
   if (transposeWeight) {
     // This happens when the RowwiseQuantizedFullyConnected node is converted
     // from a quantized FullyConnected node in Glow's quantization procedure.
-    // Since in FC, the weights is stored as transposed (i.e. I * W + B), but in
-    // RowwiseQuantizedFullyConnected, the weights is stored as it is (i.e. I *
-    // W(T) + B).
+    // Since in FC, the weights is stored as transposed (i.e. I * W + B), but
+    // in RowwiseQuantizedFullyConnected, the weights is stored as it is (i.e.
+    // I * W(T) + B).
     weights->getPayloadMutable().transpose(&wt, {1, 0});
   } else {
     wt.assign(&(weights->getPayload()));
@@ -1124,7 +1139,6 @@ SliceNode *Function::createSlice(llvm::StringRef name, NodeValue input,
 SliceNode *Function::createSlice(llvm::StringRef name, NodeValue input,
                                  llvm::ArrayRef<size_t> begin,
                                  llvm::ArrayRef<size_t> end) {
-
   std::vector<size_t> beginV, shape;
   auto dims = input.dims();
   assert(begin.size() == end.size() && "Begin and End dimensions should match");
@@ -1432,7 +1446,8 @@ BatchMatMulNode *Function::createBatchMatMul(llvm::StringRef name,
   assert((numDimsRHS == 2 || numDimsRHS == 3) &&
          "RHS must be 2 or 3 dimensional.");
 
-  // If necessary, expand the RHS input to be 3D by adding initial leading dim.
+  // If necessary, expand the RHS input to be 3D by adding initial leading
+  // dim.
   if (numDimsRHS == 2) {
     RHS = createExpandDims(name.str() + ".reshapeRHS", RHS, {0});
   }
@@ -1461,7 +1476,6 @@ BatchedReduceAddNode *
 Function::createBatchedReduceAdd(llvm::StringRef name, TypeRef outTy,
                                  NodeValue batch,
                                  llvm::ArrayRef<unsigned_t> axes) {
-
   assert(axes.size() == 1 && "Only supporting single reduction for now.");
   auto axis = axes[0];
 
@@ -1495,7 +1509,6 @@ Function::createBatchedReduceMean(llvm::StringRef name, TypeRef outTy,
 BatchedReduceMeanNode *
 Function::createBatchedReduceMean(llvm::StringRef name, NodeValue batch,
                                   llvm::ArrayRef<unsigned_t> axes) {
-
   // Create new shape with specified dimensions either reduced or removed.
   auto outDims = getNewShapeWithoutAxes(batch.dims(), axes);
   auto OT = getParent()->uniqueType(batch.getType()->getElementType(), outDims);
@@ -1660,8 +1673,9 @@ static TypeRef getOutputTypeOfFusedRowwiseQuantizedSLS(
     const llvm::ArrayRef<size_t> &lengthsDims, ElemKind scaleOffsetKind) {
   ShapeVector outDims(inDims.begin(), inDims.end());
   outDims[0] = lengthsDims[0];
-  // The output column count is the same as the input column count, but without
-  // the extra bytes for the fused scale/offset, as the output is not fused.
+  // The output column count is the same as the input column count, but
+  // without the extra bytes for the fused scale/offset, as the output is not
+  // fused.
   outDims[1] -=
       2 * ((scaleOffsetKind == ElemKind::FloatTy) ? sizeof(float)
                                                   : sizeof(float16_t));
@@ -1794,8 +1808,8 @@ SparseToDenseMaskNode *Function::createSparseToDenseMask(
 
 SaveNode *Function::createSave(llvm::StringRef name, NodeValue input) {
   auto *dest = getParent()->createPlaceholder(input.getType(), name, false);
-
-  return addNode(new SaveNode(name, input, dest));
+  std::string nodeName = (name + "_save").str();
+  return addNode(new SaveNode(nodeName, input, dest));
 }
 
 SaveNode *Function::createSave(llvm::StringRef name, NodeValue input,
@@ -1927,7 +1941,6 @@ ArgMaxNode *Function::createArgMax(llvm::StringRef name, NodeValue input,
 
 GatherNode *Function::createGather(llvm::StringRef name, NodeValue data,
                                    NodeValue indices, unsigned_t batchDims) {
-
   auto dDims = data.dims();
   auto iDims = indices.dims();
   assert(dDims.size() > batchDims);
@@ -1988,7 +2001,6 @@ ResizeNearestNode *Function::createResizeNearest(llvm::StringRef name,
                                                  NodeValue input,
                                                  float heightScale,
                                                  float widthScale) {
-
   auto inputDim = input.dims();
   DCHECK_EQ(inputDim.size(), 4)
       << "Dimension size: " << inputDim.size() << ", size of 4 is expected.";
@@ -3245,7 +3257,6 @@ Node *glow::recursiveClone(Function *newF, Node *node, NodeMap &currToNew) {
 }
 
 namespace glow {
-
 llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const Module &mod) {
   mod.dump(os);
   return os;

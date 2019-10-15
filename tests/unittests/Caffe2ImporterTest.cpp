@@ -789,7 +789,7 @@ TEST(caffe2, FC) {
   // Check the numerical values of the weights and biases.
   {
     // NOTE: this is weights1 because the weights constant was transposed
-    const Constant *constant = mod.getConstantByName("weights1");
+    const Constant *constant = mod.getConstantByName("weights__1");
     ASSERT_TRUE(constant);
     const Tensor &weights = constant->getPayload();
     const std::vector<size_t> expectedDimensions = {3, 4};

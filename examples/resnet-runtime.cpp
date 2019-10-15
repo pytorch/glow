@@ -101,7 +101,7 @@ void dispatchClassify(unsigned int id, HostManager *hostManager,
         EXIT_ON_ERR(std::move(err));
         auto *bindings = context->getPlaceholderBindings();
         size_t maxIdx =
-            bindings->get(bindings->getPlaceholderByName("save_gpu_0_softmax"))
+            bindings->get(bindings->getPlaceholderByName("gpu_0_softmax__1"))
                 ->getHandle()
                 .minMaxArg()
                 .second;

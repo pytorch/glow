@@ -1457,7 +1457,7 @@ TEST_F(GraphOptz, ArithmeticIdentitiesOne) {
   SplatNode *one = F_->createSplat("one", input->getType(), 1.);
   DivNode *div = F_->createDiv("div", input, one);
   MulNode *mul = F_->createMul("mul", div, one);
-  F_->createSave("ret", mul);
+  SaveNode *save = F_->createSave("ret", mul);
 
   // Splat, Div, Mul, Save.
   EXPECT_EQ(F_->getNodes().size(), 4);
@@ -1466,11 +1466,13 @@ TEST_F(GraphOptz, ArithmeticIdentitiesOne) {
 
   // The expression evaluates to "I", so Save is only node left.
   EXPECT_EQ(optimizedF_->getNodes().size(), 1);
-  SaveNode *SN = (SaveNode *)optimizedF_->getNodeByName("ret");
+  SaveNode *SN =
+      llvm::dyn_cast<SaveNode>(optimizedF_->getNodeByName(save->getName()));
   ASSERT_TRUE(std::find_if(optimizedF_->getNodes().begin(),
                            optimizedF_->getNodes().end(),
                            IsSameNodeAddress(SN)) !=
               optimizedF_->getNodes().end());
+  ASSERT_NE(SN, nullptr);
 
   // Save node should just save the input.
   EXPECT_TRUE(SN->getInput().getNode() == input);
@@ -1824,8 +1826,9 @@ TEST_F(GraphOptz, mergeRescaleIntoDequantize) {
 
   // Only 2 nodes should remain (Dequantize -> Save)
   EXPECT_EQ(F_->getNodes().size(), 2);
+
   // Check the graph structure
-  auto *SN = F_->getNodeByName("ret");
+  auto *SN = F_->getNodeByName("ret_save");
   EXPECT_NE(nullptr, SN);
   auto *S = llvm::dyn_cast<SaveNode>(SN);
   EXPECT_NE(nullptr, S);

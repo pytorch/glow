@@ -222,7 +222,7 @@ uint8_t activations[LENET_MNIST_ACTIVATIONS_MEM_SIZE];
 uint8_t *inputAddr = GLOW_GET_ADDR(mutableWeight, LENET_MNIST_data);
 
 /// Bundle output data absolute address.
-uint8_t *outputAddr = GLOW_GET_ADDR(mutableWeight, LENET_MNIST_save_softmax);
+uint8_t *outputAddr = GLOW_GET_ADDR(mutableWeight, LENET_MNIST_softmax__1);
 
 /// Copy the pre-processed images into the mutable region of the bundle.
 static void initInputImages() {

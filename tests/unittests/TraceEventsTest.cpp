@@ -125,13 +125,10 @@ public:
       std::transform(kind.begin(), kind.end(), kind.begin(),
                      [](unsigned char c) { return std::tolower(c); });
       if (checkedKinds.find(kind) != checkedKinds.end()) {
-        std::string name(i.getName());
+        std::string name(Module::getPrefix(i.getName()));
         // Let's remove all digits at the end of name since the code generation
         // may create new nodes with names consisting of existing node names
         // and additional numeric indexes
-        while (!name.empty() && std::isdigit(name.back())) {
-          name.pop_back();
-        }
         expectedKinds.emplace_back(name, kind);
       }
     }
@@ -156,13 +153,10 @@ public:
     for (auto &i : traceEvents) {
       std::string kind = map_element(i.args, "kind");
       if (checkedKinds.find(kind) != checkedKinds.end()) {
-        std::string name(i.name);
+        std::string name(Module::getPrefix(i.name));
         // Let's remove all digits at the end of the name since the code
         // generation may create new nodes with names consisting of existing
         // node names and additional numeric indexes
-        while (!name.empty() && std::isdigit(name.back())) {
-          name.pop_back();
-        }
         events_for_checking.emplace_back(name, kind);
       }
     }

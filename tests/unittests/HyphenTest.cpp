@@ -382,9 +382,9 @@ TEST(HyphenTest, network) {
   EE2.compile(CompilationMode::Train);
   // Copy the trained weights from the CPU run.
   net.bindings_.copyToTarget("bias", netInterpreter.bindings_);
-  net.bindings_.copyToTarget("bias1", netInterpreter.bindings_);
+  net.bindings_.copyToTarget("bias__1", netInterpreter.bindings_);
   net.bindings_.copyToTarget("weights", netInterpreter.bindings_);
-  net.bindings_.copyToTarget("weights1", netInterpreter.bindings_);
+  net.bindings_.copyToTarget("weights__1", netInterpreter.bindings_);
 
   EXPECT_EQ(netInterpreter.inferenceErrors(EE2, fName, inputs, hyphens, TC), 0);
 }

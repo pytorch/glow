@@ -300,7 +300,7 @@ public:
   /// \returns a unique legal name that's based on the string \p name.  Legal
   /// names are legal C identifiers in the form: "[a-zA-Z_][a-zA-Z0-9_]*".
   llvm::StringRef uniqueName(llvm::StringRef name) {
-    return Module::uniqueName(name, stringTable_);
+    return Module::uniqueName(name, stringTable_, stringTable_);
   }
 
   /// Verify the correctness of the function.

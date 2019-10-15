@@ -62,9 +62,12 @@ class Module final {
   /// A uniqued list of types. Types in this list can be equated by comparing
   /// their addresses.
   TypesList types_{};
-  /// Stores a list of unique variable names that were used by the module at
+  /// Stores a list of unique Storage names that were used by the module at
   /// some point.
-  llvm::StringSet<> uniqueVariableNames_{};
+  llvm::StringSet<> usedStorageNames_{};
+  /// Stores a list of node names that were used by Functions of this module at
+  /// some point.
+  llvm::StringSet<> usedNodeNames_{};
   /// A list of constants that the Module owns.
   ConstList constants_;
   /// A list of placeholder nodes that the Module owns.
@@ -78,15 +81,30 @@ class Module final {
   /// Inserts the constant \p V to the list of constants.
   Constant *addConstant(Constant *V);
 
+  friend class Function;
+
 public:
   Module() = default;
 
   ~Module();
 
+  /// \returns the prefix part of the provided \p name. E.g. for an input
+  /// of "relu__2" returns "relu".
+  static std::string getPrefix(llvm::StringRef name);
+
   /// \returns unique legal name that's based on the string \p name. Legal
   /// names are legal C identifiers in the form: "[a-zA-Z_][a-zA-Z0-9_]*".
+  /// The name may not be in \p stringTable or \p updateTable and will be
+  /// inserted into \p updateTable.
   static llvm::StringRef uniqueName(llvm::StringRef name,
-                                    llvm::StringSet<> &stringTable);
+                                    const llvm::StringSet<> &stringTable,
+                                    llvm::StringSet<> &updateTable);
+
+  /// Registers a name as used by some Node in this module.
+  void registerNodeName(llvm::StringRef name) {
+    // Don't care if it's already in the set.
+    usedNodeNames_.insert(name);
+  }
 
   /// Return a pointer to a uniqued type \p T.
   TypeRef uniqueType(const Type &T);
@@ -133,7 +151,7 @@ public:
   /// is often unsafe.
   void erasePlaceholder(PlaceholderList::iterator I);
 
-  /// \returns a pointer to the first variable with the name \p name or nullptr
+  /// \returns a pointer to the first Constant with the name \p name or nullptr
   /// if no node has this name.
   Constant *getConstantByName(llvm::StringRef name) const;
 
@@ -151,7 +169,7 @@ public:
   /// nullptr if no placeholder has this name.
   Placeholder *getPlaceholderByName(llvm::StringRef name) const;
 
-  /// @name High-level Variable builders.
+  /// @name High-level Storage builders.
   ///@{
 
   Placeholder *createPlaceholder(ElemKind T, llvm::ArrayRef<size_t> dims,
@@ -206,7 +224,7 @@ public:
   /// Erase all of the functions from the module.
   void eraseFunctions();
 
-  /// Erase all the functions, variables, etc.
+  /// Erase all the functions, Placeholders, Constants, etc.
   void clear();
 
   /// Strips payloads from constants. This is useful when
@@ -309,7 +327,9 @@ public:
 
   /// Inserts the node \p N to the list of nodes, and returns the inserted node.
   template <class NodeTy> NodeTy *addNode(NodeTy *N) {
-    N->setName(Module::uniqueName(N->getName(), uniqueNodeNames_));
+    N->setName(Module::uniqueName(N->getName(), parent_->usedStorageNames_,
+                                  uniqueNodeNames_));
+    parent_->registerNodeName(N->getName());
     nodes_.push_back(N);
 
     // Log the node creation.
@@ -322,7 +342,9 @@ public:
   /// to the current Function, and also unique its name.
   void takeOwnershipOfNode(Node *N) {
     N->getParent()->getNodes().remove(N);
-    N->setName(Module::uniqueName(N->getName(), uniqueNodeNames_));
+    N->setName(Module::uniqueName(N->getName(), parent_->usedStorageNames_,
+                                  uniqueNodeNames_));
+    parent_->registerNodeName(N->getName());
     nodes_.push_back(N);
   }
 

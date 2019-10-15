@@ -145,7 +145,9 @@ void findOutputNames(const Node *node,
   for (const auto &use : node->getUsers()) {
     const auto *user = use.getUser();
     if (user->getKind() == Kinded::Kind::SaveNodeKind) {
-      callback(user->getName());
+      // Use the associated placeholder's name.
+      const SaveNode *SN = llvm::cast<SaveNode>(user);
+      callback(SN->getPlaceholder()->getName());
 
       unsigned resNo = 0;
       for (unsigned b = 0, e = user->getNumInputs(); b < e; ++b) {
@@ -201,7 +203,8 @@ bool outputKindToProto(Kinded::Kind kind, const Node *node,
     const auto *user = use.getUser();
     if (user->getKind() == Kinded::Kind::SaveNodeKind) {
       found = true;
-      proto->add_output(user->getName());
+      const SaveNode *SN = llvm::cast<SaveNode>(user);
+      proto->add_output(SN->getPlaceholder()->getName());
       break;
     } else if (user->getKind() == kind) {
       found = true;
