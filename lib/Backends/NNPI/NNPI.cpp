@@ -16,6 +16,7 @@
 #include "NNPI.h"
 #include "NNPICompiledFunction.h"
 #include "NNPIDeviceManager.h"
+#include "glow/Exporter/ONNXModelWriter.h"
 #include "glow/Graph/Nodes.h"
 #include "glow/Optimizer/GraphOptimizerPipeline/Pipeline.h"
 
@@ -25,6 +26,7 @@ namespace glow {
 namespace onnxifi {
 
 bool GlowDumpGraph = false;
+bool GlowSaveModel = false;
 
 } // namespace onnxifi
 } // namespace glow
@@ -312,6 +314,16 @@ NNPIBackend::compile(Function *F, const BackendOptions &opts) const {
     std::string fname = "Graph_" + F->getName().str() + ".dot";
     LOG(INFO) << "Dumping net to " << fname;
     F->dumpDAG(fname);
+  }
+  if (glow::onnxifi::GlowSaveModel) {
+    std::string fname = F->getName().str() + ".onnx";
+    LOG(INFO) << "Saving model to " << fname;
+    Error err = Error::empty();
+    { ONNXModelWriter onnxWR(fname, *F, 0, 0, &err, false); }
+    if (ERR_TO_BOOL(std::move(err))) {
+      llvm::errs() << "ONNXModelWriter failed to write model: " << fname
+                   << ".\n";
+    }
   }
   std::unique_ptr<NNPICompiledFunction> compiledFunc =
       llvm::make_unique<NNPICompiledFunction>(F);
