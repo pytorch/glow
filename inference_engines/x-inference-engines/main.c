@@ -565,9 +565,11 @@ int retreiveAndStoreOutput(struct InferenceIO *inferenceIO,
 void reportPerformance(const struct PerfStatistics *ps, const char *filename) {
   int fd;
   const size_t outputBufferSize = 512;
-  char buffer[outputBufferSize] = {0};
+  char buffer[outputBufferSize];
   int bytesWritten;
   size_t bytesTotal;
+
+  (void) memset(buffer, 0x0, sizeof(buffer));
 
   snprintf(buffer, outputBufferSize,
            "\nConstant weights size       : %zd bytes\n"
