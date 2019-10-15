@@ -729,13 +729,7 @@ int main(int argc, char **argv) {
   //                Backend-Specific Instructions
   //===--------------------------------------------------------------------===//
 
-#include "Backends/CPU/CPUSpecificInstrs.h"
-#include "Backends/OpenCL/OpenCLSpecificInstrs.h"
-  // Add here external backend specific instructions headers.
-  // Example:
-  // #ifdef GLOW_WITH_<NAME>
-  // #include "<Name>/ClassGen/<Name>SpecificInstrs.h"
-  // #endif
+#include "glow/InstrGenIncludes.h"
 
   return 0;
 }

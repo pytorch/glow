@@ -1,3 +1,5 @@
+add_subdirectory(ClassGen)
+
 add_library(Habana
             Habana.cpp
             HabanaDeviceManager.cpp

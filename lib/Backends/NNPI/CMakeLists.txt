@@ -28,6 +28,8 @@ message(STATUS "[NNPI] NNPI_INF_API_DIR            = ${NNPI_INF_API_DIR}")
 message(STATUS "[NNPI] NNPI_INF_LIB_DIR            = ${NNPI_INF_LIB_DIR}")
 message(STATUS "[NNPI] GLOW_BINARY_DIR             = ${GLOW_BINARY_DIR}")
 
+add_subdirectory(ClassGen)
+
 include_directories(
     ${NNPI_API_DIR}
     ${NNPI_INF_API_DIR}

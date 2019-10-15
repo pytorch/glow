@@ -902,15 +902,7 @@ int main(int argc, char **argv) {
   //                Backend-Specific Nodes
   //===--------------------------------------------------------------------===//
 
-#include "Backends/CPU/CPUSpecificNodes.h"
-#include "Backends/OpenCL/OpenCLSpecificNodes.h"
-#include "Backends/NNPI/NNPISpecificNodes.h"
-#include "Backends/Habana/HabanaSpecificNodes.h"
-  // Add here external backend specific node headers.
-  // Example:
-  // #ifdef GLOW_WITH_<NAME>
-  // #include "<Name>/ClassGen/<Name>SpecificNodes.h"
-  // #endif
+#include "glow/NodeGenIncludes.h"
 
   return 0;
 }
