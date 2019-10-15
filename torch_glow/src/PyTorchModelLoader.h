@@ -182,6 +182,13 @@ public:
                const at::ArrayRef<torch::jit::IValue> inputs,
                const std::vector<InputMeta> &inputMeta);
 
+  /// Given a FunctionSchema \p schema and IValues \p inputs, \returns
+  /// InputMetas describing the output shapes expected if a JIT node with the
+  /// given schema and inputs were to be lowered to Glow.
+  static Expected<InputMeta>
+  computeOutputShapes(const c10::FunctionSchema &schema,
+                      const std::vector<c10::IValue> &inputs);
+
   /// Takes a glow::Function \p F, a jit::Graph \p subgraph to load, \p inputs
   /// as graph external inputs, and \parameters as known tensors. Output
   /// parameters \p inputPlaceholders and \p outputPlaceholders are filled out.

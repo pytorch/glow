@@ -2045,6 +2045,33 @@ Error PyTorchModelLoader::loadConstant(const torch::jit::Node *ptNode) {
 }
 
 /*static*/
+Expected<std::vector<InputMeta>>
+computeOutputShapes(const c10::FunctionSchema &schema,
+                    const std::vector<c10::IValue> &inputs) {
+  torch::jit::Graph graph;
+  auto symbol = torch::jit::Symbol::fromQualString(schema.name());
+  auto node = graph.create(symbol, schema.returns().size());
+  node = graph.insertNode(node);
+
+  std::vector<glow::Placeholder *> inputPHs;
+  std::vector<glow::Placeholder *> outputPHs;
+
+  glow::Module module;
+  Function *f = module.createFunction("f");
+
+  RETURN_IF_ERR(PyTorchModelLoader::loadJITGraph(
+      *f, graph, inputPHs, outputPHs, getPyTorchLoaderSettings(), inputs, {}));
+
+  std::vector<InputMeta> outputMetas;
+  for (const auto &output : outputPHs) {
+    outputMetas.emplace_back(elemKindToScalarType(output->getElementType()),
+                             output->dims());
+  }
+
+  return outputMetas;
+}
+
+/*static*/
 Error PyTorchModelLoader::loadJITGraph(
     glow::Function &F, const torch::jit::Graph &graph,
     std::vector<glow::Placeholder *> &inputPlaceholders,
