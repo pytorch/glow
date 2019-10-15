@@ -192,7 +192,7 @@ Error PyTorchFileLoader::parsePyTorchGraphForOnnxTraining(
   // std::pair<std::shared_ptr<Graph>, std::vector<at::Tensor>>
   auto graphAndTensors = method._lowered_graph();
 
-  FuseKnownPatterns(graphAndTensors.first);
+  fuseKnownPatterns(graphAndTensors.first);
 
   // Parse JIT Graph and load into Glow Function.
   return PyTorchModelLoader::loadJITGraphForOnnxTraining(

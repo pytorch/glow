@@ -319,6 +319,10 @@ private:
   /// \return error on failure.
   Error loadQuantizedAdd(const torch::jit::Node *ptNode);
 
+  /// Load a glow::unpacked_quantized_linear node.
+  /// \return error on failure.
+  Error loadQuantizedLinear(const torch::jit::Node *ptNode);
+
   /// Load a PyTorch quantize_linear node.
   /// \returns error on failure.
   Error loadQuantize(const torch::jit::Node *ptNode);
@@ -394,6 +398,12 @@ private:
   /// Load a PyTorch aten::matmul node.
   /// \returns error on failure.
   Error loadMatMul(const torch::jit::Node *ptNode);
+
+  /// Rescale a uint8 NodeValue \p input to the equivalent int8 NodeValue.
+  glow::NodeValue rescaleUIntToInt(glow::NodeValue input);
+
+  /// Rescale a int8 NodeValue \p input to the equivalent uint8 NodeValue.
+  glow::NodeValue rescaleIntToUint(glow::NodeValue input);
 };
 
 } // namespace glow

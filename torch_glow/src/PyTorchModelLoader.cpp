@@ -464,6 +464,17 @@ struct QuantizedAddInputs {
   };
 };
 
+/// Indexes of glow::unpacked_quantized_linear inputs.
+struct QuantizedLinearInputs {
+  enum {
+    input = 0,
+    weight = 1,
+    bias = 2,
+    scale = 3,
+    zero_point = 4,
+  };
+};
+
 /// Indexes of aten::quantize_per_tensor inputs.
 struct QuantizeInputs {
   enum {
@@ -570,6 +581,14 @@ PyTorchModelLoader::getSymbolsMapping() {
        {{"quantized::add"},
         &PyTorchModelLoader::loadQuantizedAdd,
         {QuantizedAddInputs::scale, QuantizedAddInputs::offset}},
+       {{"glow::unpacked_quantized_linear"},
+        &PyTorchModelLoader::loadQuantizedLinear,
+        {
+            QuantizedLinearInputs::weight,
+            QuantizedLinearInputs::bias,
+            QuantizedLinearInputs::scale,
+            QuantizedLinearInputs::zero_point,
+        }},
        {{"aten::quantize_per_tensor"},
         &PyTorchModelLoader::loadQuantize,
         {QuantizeInputs::scale, QuantizeInputs::offset, QuantizeInputs::dtype}},
@@ -843,6 +862,34 @@ PyTorchModelLoader::getGlowIValueForValue(const torch::jit::Value *value) {
   return mappingValue.getMappedGlowIValue();
 }
 
+glow::NodeValue PyTorchModelLoader::rescaleUIntToInt(glow::NodeValue input) {
+  auto *inputTy = input.getType();
+  if (inputTy->getElementType() == ElemKind::UInt8QTy) {
+    auto dqInput = F_.createDequantize("dequantize", input);
+    auto *outputTy = F_.getParent()->uniqueType(
+        ElemKind::Int8QTy, inputTy->dims(), inputTy->getScale(),
+        inputTy->getOffset() - OFFSETSHIFT);
+    auto *qOut = F_.createQuantize("quantize", dqInput, outputTy);
+    return qOut->getResult();
+  } else {
+    return input;
+  }
+}
+
+glow::NodeValue PyTorchModelLoader::rescaleIntToUint(glow::NodeValue input) {
+  auto *inputTy = input.getType();
+  if (inputTy->getElementType() == ElemKind::Int8QTy) {
+    auto dqInput = F_.createDequantize("dequantize", input);
+    auto *outputTy = F_.getParent()->uniqueType(
+        ElemKind::UInt8QTy, inputTy->dims(), inputTy->getScale(),
+        inputTy->getOffset() + OFFSETSHIFT);
+    auto *qOut = F_.createQuantize("quantize", dqInput, outputTy);
+    return qOut->getResult();
+  } else {
+    return input;
+  }
+}
+
 Error PyTorchModelLoader::loadQuantizedAdd(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
@@ -854,6 +901,9 @@ Error PyTorchModelLoader::loadQuantizedAdd(const torch::jit::Node *ptNode) {
   glow::NodeValue rhs;
   ASSIGN_VALUE_OR_RETURN_ERR(
       rhs, getGlowNodeValueForValue(inputs[QuantizedAddInputs::rhs]));
+
+  lhs = rescaleUIntToInt(lhs);
+  rhs = rescaleUIntToInt(rhs);
 
   // scale
   float outScale;
@@ -871,8 +921,64 @@ Error PyTorchModelLoader::loadQuantizedAdd(const torch::jit::Node *ptNode) {
   auto outTy = F_.getParent()->uniqueType(ElemKind::Int8QTy, outDims, outScale,
                                           outOffset - OFFSETSHIFT);
 
-  glow::AddNode *qan = F_.createAdd("quantized_add", outTy, lhs, rhs);
-  return addValueMapping(outputs[0], qan->getResult());
+  glow::AddNode *qadd = F_.createAdd("quantized_add", outTy, lhs, rhs);
+  auto output = rescaleIntToUint(qadd->getResult());
+  return addValueMapping(outputs[0], output);
+}
+
+Error PyTorchModelLoader::loadQuantizedLinear(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 5, outputs, 1));
+
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      input, getGlowNodeValueForValue(inputs[QuantizedLinearInputs::input]));
+  input = rescaleUIntToInt(input);
+
+  glow::NodeValue weight;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      weight, getGlowNodeValueForValue(inputs[QuantizedLinearInputs::weight]));
+  weight = rescaleUIntToInt(weight);
+
+  RETURN_ERR_IF_NOT(weight.dims().size() == 2, "Expected 2d Linear weights");
+
+  weight = F_.createTranspose("weight_transpose", weight, {1, 0});
+
+  float outScale;
+  ASSIGN_VALUE_OR_RETURN_ERR(outScale,
+                             to32Bit(iValToDouble(getGlowIValueForValue(
+                                 inputs[QuantizedLinearInputs::scale]))));
+
+  int64_t outZeroPoint;
+  ASSIGN_VALUE_OR_RETURN_ERR(outZeroPoint,
+                             iValToInt(getGlowIValueForValue(
+                                 inputs[QuantizedLinearInputs::zero_point])));
+
+  auto outTy = F_.getParent()->uniqueType(ElemKind::Int8QTy,
+                                          {input.dims()[0], weight.dims()[1]},
+                                          outScale, outZeroPoint - OFFSETSHIFT);
+
+  glow::NodeValue bias;
+  if (hasGlowNodeValueForValue(inputs[QuantizedLinearInputs::bias])) {
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        bias, getGlowNodeValueForValue(inputs[QuantizedLinearInputs::bias]));
+  } else {
+    glow::Tensor biasT(glow::ElemKind::FloatTy, {weight.dims()[1]});
+    biasT.zero();
+    glow::Constant *biasConstant = F_.getParent()->createConstant(
+        "quantized_linear_bias", std::move(biasT));
+    bias = biasConstant->getOutput();
+  }
+
+  auto biasType =
+      F_.getParent()->uniqueType(glow::ElemKind::Int32QTy, bias.dims(), 1.0, 0);
+
+  bias = F_.createQuantize("quantize_bias", bias, biasType);
+
+  auto fc = F_.createFullyConnected("quantized_fc", input, weight, bias, outTy);
+
+  return addValueMapping(outputs[0], rescaleIntToUint(fc->getResult()));
 }
 
 Error PyTorchModelLoader::loadMul(const torch::jit::Node *ptNode) {
@@ -1090,9 +1196,10 @@ Error PyTorchModelLoader::loadRelu(const torch::jit::Node *ptNode) {
 
   glow::NodeValue input;
   ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
+  input = rescaleUIntToInt(input);
 
   glow::ReluNode *glowNode = F_.createRELU("relu", input);
-  return addValueMapping(outputs[0], glowNode->getResult());
+  return addValueMapping(outputs[0], rescaleIntToUint(glowNode->getResult()));
 }
 
 Error PyTorchModelLoader::loadExp(const torch::jit::Node *ptNode) {
@@ -1308,8 +1415,9 @@ Error PyTorchModelLoader::loadQuantize(const torch::jit::Node *ptNode) {
 
   // scale
   float outScale;
-  ASSIGN_VALUE_OR_RETURN_ERR(outScale, iValToDouble(getGlowIValueForValue(
-                                           inputs[QuantizeInputs::scale])));
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      outScale, to32Bit(iValToDouble(
+                    getGlowIValueForValue(inputs[QuantizeInputs::scale]))));
 
   // offset
   int32_t outOffset;
@@ -1321,15 +1429,19 @@ Error PyTorchModelLoader::loadQuantize(const torch::jit::Node *ptNode) {
   ASSIGN_VALUE_OR_RETURN_ERR(outDtype, iValToInt(getGlowIValueForValue(
                                            inputs[QuantizeInputs::dtype])));
 
-  // Right now pytorch only has quint8 quantization support, therefore we only
-  // support uint8 as well.
-  RETURN_ERR_IF_NOT(outDtype == (int)at::ScalarType::QUInt8,
-                    "we only support to be quantized as uint8");
-
-  TypeRef inputType = input.getType();
+  glow::TypeRef inputType = input.getType();
   auto outDims = inputType->dims();
-  auto outTy = F_.getParent()->uniqueType(ElemKind::Int8QTy, outDims, outScale,
-                                          outOffset - OFFSETSHIFT);
+
+  glow::TypeRef outTy;
+  if (outDtype == (int32_t)at::ScalarType::QUInt8) {
+    outTy = F_.getParent()->uniqueType(ElemKind::UInt8QTy, outDims, outScale,
+                                       outOffset);
+  } else if (outDtype == (int32_t)at::ScalarType::QInt8) {
+    outTy = F_.getParent()->uniqueType(ElemKind::Int8QTy, outDims, outScale,
+                                       outOffset);
+  } else {
+    return MAKE_ERR("Quantize only supports QUInt8 and QInt8");
+  }
 
   glow::QuantizeNode *qn = F_.createQuantize("quantize", input, outTy);
 
@@ -1356,6 +1468,8 @@ Error PyTorchModelLoader::loadMaxPool2d(const torch::jit::Node *ptNode) {
   glow::NodeValue input;
   ASSIGN_VALUE_OR_RETURN_ERR(
       input, getGlowNodeValueForValue(inputs[MaxPoolInputs::input]));
+  input = rescaleUIntToInt(input);
+
   input = F_.createTranspose("maxpool2d_input_transposed", input, NCHW2NHWC);
 
   std::vector<glow::unsigned_t> kernels;
@@ -1386,9 +1500,8 @@ Error PyTorchModelLoader::loadMaxPool2d(const torch::jit::Node *ptNode) {
   ASSIGN_VALUE_OR_RETURN_ERR(
       dilation, contractIntIValIfNeeded(
                     getGlowIValueForValue(inputs[MaxPoolInputs::dilation])));
-  RETURN_ERR_IF_NOT(
-      dilation == 1,
-      "Dilation value must be equal to 1, maxpool dilation not yet supported.");
+  RETURN_ERR_IF_NOT(dilation == 1, "Dilation value must be equal to 1, "
+                                   "maxpool dilation not yet supported.");
 
   // Glow doesn't support maxpool ceil mode.
   bool ceilMode;
@@ -1401,7 +1514,7 @@ Error PyTorchModelLoader::loadMaxPool2d(const torch::jit::Node *ptNode) {
       F_.createMaxPool("maxpool2d", input, kernels, strides, pads);
   glow::NodeValue output = mp->getResult();
   output = F_.createTranspose("maxpool2d_output_transposed", output, NHWC2NCHW);
-  return addValueMapping(outputs[0], output);
+  return addValueMapping(outputs[0], rescaleIntToUint(output));
 }
 
 Error PyTorchModelLoader::loadAvgPool2d(const torch::jit::Node *ptNode) {
@@ -1412,6 +1525,7 @@ Error PyTorchModelLoader::loadAvgPool2d(const torch::jit::Node *ptNode) {
   glow::NodeValue input;
   ASSIGN_VALUE_OR_RETURN_ERR(
       input, getGlowNodeValueForValue(inputs[AvgPoolInputs::input]));
+  input = rescaleUIntToInt(input);
   input = F_.createTranspose("avgpool2d_input_transposed", input, NCHW2NHWC);
 
   std::vector<glow::unsigned_t> kernels;
@@ -1455,7 +1569,7 @@ Error PyTorchModelLoader::loadAvgPool2d(const torch::jit::Node *ptNode) {
       F_.createAvgPool("avgpool2d", input, kernels, strides, pads);
   glow::NodeValue output = ap->getResult();
   output = F_.createTranspose("avgpool2d_output_transposed", output, NHWC2NCHW);
-  return addValueMapping(outputs[0], output);
+  return addValueMapping(outputs[0], rescaleIntToUint(output));
 }
 
 Error PyTorchModelLoader::loadClamp(const torch::jit::Node *ptNode) {

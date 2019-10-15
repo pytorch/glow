@@ -88,7 +88,7 @@ glow::Tensor ptTensorToGlowTensor(const at::Tensor &ptTensor);
 at::Tensor glowTypeToEmptyPTTensor(const glow::Type &glowType);
 
 /// Fuse known sets of operators into compact ones.
-void FuseKnownPatterns(std::shared_ptr<torch::jit::Graph> &graph);
+void fuseKnownPatterns(std::shared_ptr<torch::jit::Graph> &graph);
 
 } // namespace glow
 
