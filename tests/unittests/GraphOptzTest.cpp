@@ -85,7 +85,7 @@ static Function *optimizeFunction(Function *F) {
 }
 
 TEST_F(GraphOptz, OptimizeClipFunnel) {
-  Node *A =
+  auto *A =
       mod_.createPlaceholder(ElemKind::FloatTy, {100, 16}, "input", false);
   Node *K = A;
   float min = 0.0;
@@ -99,13 +99,25 @@ TEST_F(GraphOptz, OptimizeClipFunnel) {
 
   EXPECT_EQ(F_->getNodes().size(), 11);
 
-  ::glow::optimize(F_, CompilationMode::Infer);
-  EXPECT_EQ(F_->getNodes().size(), 2);
-  Node *newClip = A->getUsers().begin()->getUser();
+  optimizedF_ = optimizeFunction(F_);
+  EXPECT_EQ(optimizedF_->getNodes().size(), 2);
+
+  // Find clip node in the optimized graph.
+  Node *newClip = A;
+  for (auto &N : optimizedF_->getNodes()) {
+    if (N.getKind() == Kinded::Kind::ClipNodeKind) {
+      newClip = llvm::dyn_cast<ClipNode>(&N);
+    }
+  }
   EXPECT_TRUE(llvm::isa<ClipNode>(newClip));
   ClipNode *c = llvm::dyn_cast<ClipNode>(newClip);
   EXPECT_EQ(min, c->getMin());
   EXPECT_EQ(max, c->getMax());
+
+  bindings_.allocate(mod_.getPlaceholders());
+  bindings_.get(A)->getHandle().randomize(-1000, 1000, mod_.getPRNG());
+  bindings_.get(A)->getHandle().raw(0) = -1000;
+  checkNumericalEquivalence();
 }
 
 TEST_F(GraphOptz, DCE) {
