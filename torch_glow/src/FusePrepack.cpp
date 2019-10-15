@@ -28,16 +28,16 @@ namespace glow {
 void fuseConvPrepack(std::shared_ptr<torch::jit::Graph> &graph) {
   std::string convPrepackPattern = R"IR(
 graph(%input, %w, %b, %4, %5, %6, %7, %8, %9, %10, %11, %12):
-  %prepacked_weight = quantized::conv_prepacked(%w, %b, %4, %5, %6, %7)
+  %prepacked_weight = quantized::conv_prepack(%w, %b, %4, %5, %6, %7)
   %res = quantized::conv2d(%input, %prepacked_weight, %8, %9, %10, %7, %11, %12)
   return (%res))IR";
 
   std::string convFused = R"IR(
 graph(%input, %w, %b, %4, %5, %6, %7, %8, %9, %10, %11, %12):
-  %res = quantized::unpacked_conv2d(%input, %w, %b, %8, %9, %10, %7, %11, %12)
+  %res = glow::unpacked_quantized_conv2d(%input, %w, %b, %8, %9, %10, %7, %11, %12)
   return (%res))IR";
 
-  // Replace conv_prepack + conv2d to unpacked_conv2d
+  // Replace conv_prepack + conv2d to unpacked_quantized_conv2d
   torch::jit::SubgraphRewriter convToUnpackedConv;
   convToUnpackedConv.RegisterRewritePattern(convPrepackPattern, convFused);
   convToUnpackedConv.runOnGraph(graph);
