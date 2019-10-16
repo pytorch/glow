@@ -289,4 +289,8 @@ std::set<std::string> glow::backendTestBlacklist = {
     "Int8ConvolutionDepth10/0",
     "Int8ConvolutionDepth8/0",
     "dotProduct1D_Int8/0",
+    "SLSAllZeroLengths_Float/0",
+    "SLSAllZeroLengths_Float16/0",
+    "FusedRWQSLSAllZeroLengths_Float/0",
+    "FusedRWQSLSAllZeroLengths_Float16/0",
 };

@@ -177,6 +177,10 @@ else()
   include_directories(${GLOW_THIRDPARTY_DIR}/fp16/include)
 endif()
 
+add_library(Miniz
+  ${GLOW_THIRDPARTY_DIR}/miniz-2.0.8/miniz.c)
+target_include_directories(Miniz PUBLIC ${GLOW_THIRDPARTY_DIR}/miniz-2.0.8)
+
 add_subdirectory(lib)
 add_subdirectory(tools)
 

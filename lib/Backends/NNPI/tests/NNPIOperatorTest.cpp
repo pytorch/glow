@@ -156,6 +156,10 @@ struct EmulatorOnlyTests {
           "TopK/0",
           "TopK1/0",
           "TransposeIntoReshapeOptim/0",
+          "FusedRWQSLSAllZeroLengths_Float/0",
+          "FusedRWQSLSAllZeroLengths_Float16/0",
+          "SLSAllZeroLengths_Float/0",
+          "SLSAllZeroLengths_Float16/0",
       });
     }
   }
