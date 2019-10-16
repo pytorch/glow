@@ -30,6 +30,7 @@ namespace {
 /// In Glow, the activations are quantized to int_8. Therefore, for the offset
 /// read from quantized pytorch model, we need to subtract 128(i.e. INT8_MIN) to
 /// make the activations becomes int8_t.
+
 /// For Glow: -128 <= orig_fp32/scale_1 + offset_1 <= 127
 /// For PyTorch: 0 <= orig_fp32/scale_2 + offset_2 <= 255
 /// Therefore, we can make scale_1 == scale_2, and offset_1 = offset2 - 128
@@ -1574,7 +1575,7 @@ Error PyTorchModelLoader::loadQuantizedConvUnpacked(
   glow::TransposeNode *output = F_.createTranspose(
       "qconv_output_transposed", qconv->getResult(), NHWC2NCHW);
 
-  return addValueMapping(outputs[0], output->getResult());
+  return addValueMapping(outputs[0], rescaleIntToUint(output->getResult()));
 }
 
 Error PyTorchModelLoader::loadMaxPool2d(const torch::jit::Node *ptNode) {
