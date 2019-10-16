@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2017-present, Facebook, Inc.
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -1139,6 +1139,11 @@ void BoundInterpreterFunction::fwdAvgPoolGradInst(const AvgPoolGradInst *I) {
 //===----------------------------------------------------------------------===//
 //                       Activation functions
 //===----------------------------------------------------------------------===//
+
+void BoundInterpreterFunction::fwdReluInst(const ReluInst *) {
+  DCHECK(!"Found ReluInst but Relu is lowered on Interpreter");
+}
+
 template <typename ElemTy>
 void BoundInterpreterFunction::fwdSigmoidInstFloatImpl(const SigmoidInst *I) {
   staticAssertFloatingPointType(ElemTy);

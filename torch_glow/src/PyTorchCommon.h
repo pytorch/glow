@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2017-present, Facebook, Inc.
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,9 +20,13 @@
 #include "glow/Base/Tensor.h"
 #include "glow/Base/Type.h"
 
+#include "glow/Runtime/HostManager/HostManager.h"
+
 #include <torch/csrc/jit/ir.h>
 
 namespace glow {
+
+extern bool GlowCompilePyTorchModule;
 /// Various settings to be used by code that loads PyTorch models. There should
 /// only be one of these and it should be obtained by calling
 /// getPyTorchLoaderSettings().
@@ -38,9 +42,18 @@ struct PyTorchLoaderSettings {
   std::string glowBackendName = "Interpreter";
 };
 
+/// Given a PyTorch ScalarType \p ty, \returns a matching Glow ElemKind.
+ElemKind scalarTypeToElemKind(c10::ScalarType ty);
+
+/// Given a c10 typekind \p ty, \returns a matching Glow ElemKind.
+ElemKind typeKindToElemKind(c10::TypeKind ty);
+
 /// \returns the PyTorchLoaderSettings singleton to be used throughout Glow's
 /// PyTorch model loading code.
 PyTorchLoaderSettings &getPyTorchLoaderSettings();
+
+/// \returns the HostManager singleton used to run all PyTorch graphs in Glow.
+runtime::HostManager *getHostManager();
 
 /// \returns the PyTorch symbol to be used for the PyTorch node which represents
 /// the subgraph that Glow will compile and run.
@@ -51,7 +64,7 @@ void glowCustomFuse(std::shared_ptr<torch::jit::Graph> &graph,
                     at::Symbol fuseSymbol);
 
 /// Register the glow::FusionGroup operator.
-void registerGlowOp();
+void registerGlowOp(const c10::Symbol &symbol);
 
 /// Register the pass that fuses parts of the graph into a glow::FusionGroup. \p
 /// enablePassFn is used to enable/disable the glow fusion pass once it's
@@ -75,7 +88,7 @@ glow::Tensor ptTensorToGlowTensor(const at::Tensor &ptTensor);
 at::Tensor glowTypeToEmptyPTTensor(const glow::Type &glowType);
 
 /// Fuse known sets of operators into compact ones.
-void FuseKnownPatterns(std::shared_ptr<torch::jit::Graph> &graph);
+void fuseKnownPatterns(std::shared_ptr<torch::jit::Graph> &graph);
 
 } // namespace glow
 

@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2017-present, Facebook, Inc.
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -167,6 +167,7 @@ void TraceContext::merge(TraceContext *other) {
   auto &newEvents = other->getTraceEvents();
   std::move(newEvents.begin(), newEvents.end(),
             std::back_inserter(getTraceEvents()));
+  newEvents.clear();
   auto &names = other->getThreadNames();
   threadNames_.insert(names.begin(), names.end());
   names.clear();

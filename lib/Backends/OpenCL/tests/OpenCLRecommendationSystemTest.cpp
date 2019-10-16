@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2017-present, Facebook, Inc.
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -38,3 +38,5 @@ std::set<std::string> glow::backendTestBlacklist = {
     "RecSys_Partitioned_RWQuantized_SLWS_FC_FP16/0",
     "RecSys_RWQuantized_SLWS_FC_FP16/0",
 };
+
+bool glow::useSymmetricRowwiseQuantFC = false;

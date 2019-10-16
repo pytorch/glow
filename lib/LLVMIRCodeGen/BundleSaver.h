@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2017-present, Facebook, Inc.
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -57,7 +57,8 @@ public:
   void save(llvm::StringRef target, llvm::StringRef arch, llvm::StringRef cpu,
             const llvm::SmallVectorImpl<std::string> &targetFeatures,
             llvm::StringRef outputDir, llvm::StringRef bundleName,
-            llvm::StringRef mainEntryName);
+            llvm::StringRef mainEntryName, llvm::CodeModel::Model codeModel,
+            llvm::Reloc::Model relocModel);
 };
 
 } // namespace glow

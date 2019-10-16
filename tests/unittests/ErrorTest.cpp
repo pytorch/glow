@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2017-present, Facebook, Inc.
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -141,4 +141,15 @@ TEST(Error, EmptyErrors) {
   f();
 
   EXPECT_TRUE(ERR_TO_BOOL(std::move(err)));
+}
+
+TEST(Error, ExpectedConversion) {
+  auto foo = []() -> Expected<int32_t> { return 42; };
+
+  auto bar = [&]() -> Expected<int64_t> { return foo(); };
+
+  int64_t barRes;
+  ASSIGN_VALUE_OR_FAIL_TEST(barRes, bar());
+
+  EXPECT_EQ(barRes, 42);
 }

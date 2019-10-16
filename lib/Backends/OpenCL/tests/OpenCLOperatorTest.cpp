@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2017-present, Facebook, Inc.
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -122,6 +122,8 @@ std::set<std::string> glow::backendTestBlacklist = {
     "concatVectorsRepeated_Int32/0",
     "concatVectorsRepeated_Bool/0",
     "concatVectorsRepeated_Float16/0",
+    "sliceReshape_Int32/0",
+    "sliceVectors_Int32/0",
     "sliceVectors_Int64/0",
     "sliceVectors_Float16/0",
     "sliceConcatVectors_Int64/0",
@@ -168,6 +170,8 @@ std::set<std::string> glow::backendTestBlacklist = {
     "FusedRowwiseQuantizedSparseLengthsWeightedSum_Float16_AccumFloat/0",
     "FusedRowwiseQuantizedSparseLengthsWeightedSum_Float16_AccumFloat16/0",
     "FusedRowwiseQuantizedSparseLengthsWeightedSum_ConvertedFloat16/0",
+    "FusedRowwiseQuantizedSparseLengthsWeightedSum_ConvertedFloat16_back_to_"
+    "back/0",
     "FusedRowwiseQuantizedSparseLengthsSum_Float/0",
     "FusedRowwiseQuantizedSparseLengthsSum_Float16_AccumFloat/0",
     "FusedRowwiseQuantizedSparseLengthsSum_Float16_AccumFloat16/0",

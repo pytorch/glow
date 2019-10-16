@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2018-present, Facebook, Inc.
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -1246,6 +1246,42 @@ TEST_P(AllBackends, convertOnlyUInt8FusedQTy) {
   auto *origWeights = llvm::dyn_cast<Constant>(SLWS->getWeights());
   ASSERT_EQ(origWeights, weights);
   EXPECT_EQ(origWeights->getOutput().getElementType(), ElemKind::FloatTy);
+
+  EXPECT_TRUE(F->verify());
+}
+
+// Test that we don't insert Clips around non-numeric nodes.
+TEST_P(AllBackends, convertWithoutClipAroundNonNumericNodes) {
+  Module mod;
+  Function *F = mod.createFunction("test");
+  const size_t dims[] = {1, 5, 10, 15};
+  const size_t dimsReshape[] = {10, 10, 15};
+  Node *I0 = mod.createPlaceholder(ElemKind::FloatTy, dims, "i0", false);
+  Node *I1 = mod.createPlaceholder(ElemKind::FloatTy, dims, "i1", false);
+  Node *I2 = mod.createPlaceholder(ElemKind::Int32ITy, {2, 2, 2}, "i2", false);
+  Node *CN = F->createConcat("concat", {I0, I1}, 1);
+  Node *R = F->createReshape("reshape", CN, dimsReshape);
+  Node *S = F->createSlice("slice", R, {0, 0, 0}, {5, 5, 5});
+  Node *G = F->createGather("gather", S, I2);
+  F->createSave("ret", G);
+
+  PrecisionConfiguration precConfig;
+  precConfig.convertToFP16 = true;
+  precConfig.clipFP16 = true;
+  convertFunctionToFloat16(F, precConfig);
+
+  int numClips = 0;
+  int numConvertTos = 0;
+  for (auto &n : F->getNodes()) {
+    if (n.getKind() == Kinded::Kind::ClipNodeKind) {
+      ++numClips;
+    } else if (n.getKind() == Kinded::Kind::ConvertToNodeKind) {
+      ++numConvertTos;
+    }
+  }
+
+  EXPECT_EQ(9, numConvertTos);
+  EXPECT_EQ(0, numClips);
 
   EXPECT_TRUE(F->verify());
 }

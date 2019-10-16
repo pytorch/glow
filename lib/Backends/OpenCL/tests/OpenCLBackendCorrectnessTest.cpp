@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2017-present, Facebook, Inc.
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,6 +18,8 @@
 using namespace glow;
 
 std::set<std::string> glow::backendTestBlacklist = {
+    // Requires the CPU target due to the use of MockCPUBackend.
+    "dataParallelStackingTest/0",
     "localResponseNormalizationTest/0",
     "localResponseNormalizationGradTest/0",
     "AvgPoolGradTest/0",

@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2017-present, Facebook, Inc.
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -902,14 +902,7 @@ int main(int argc, char **argv) {
   //                Backend-Specific Nodes
   //===--------------------------------------------------------------------===//
 
-#include "Backends/CPU/CPUSpecificNodes.h"
-#include "Backends/OpenCL/OpenCLSpecificNodes.h"
-#include "Backends/Habana/HabanaSpecificNodes.h"
-  // Add here external backend specific node headers.
-  // Example:
-  // #ifdef GLOW_WITH_<NAME>
-  // #include "<Name>/ClassGen/<Name>SpecificNodes.h"
-  // #endif
+#include "glow/NodeGenIncludes.h"
 
   return 0;
 }

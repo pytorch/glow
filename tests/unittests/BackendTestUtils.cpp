@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2017-present, Facebook, Inc.
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -80,7 +80,9 @@ profileAndGetNodeQuantizationInfo(CreateAndInitFunction createAndInitFunction,
                                   quantization::Schema schema) {
   LoweredInfoMap loweredMapForProf;
   PlaceholderBindings pBindings;
-  ExecutionEngine PEE{"Interpreter"};
+  // Note: deviceMemory = 0 is a signal to use the defaultMemory.
+  ExecutionEngine PEE{"Interpreter", /* deviceMemory */ 0,
+                      /* ignoreUserDeviceConfig */ true};
   createAndInitFunction(pBindings, PEE);
   CompilationContext cctx{&pBindings, &loweredMapForProf};
   cctx.precisionConfig.quantMode = QuantizationMode::Profile;
@@ -146,7 +148,9 @@ void compareAgainstInterpreter(llvm::StringRef backendName,
                                ElemKind backendElemKind, float allowedError,
                                unsigned count, bool enableRowwiseQuantization,
                                quantization::Schema schema) {
-  ExecutionEngine IEE{"Interpreter"};
+  // Note: deviceMemory = 0 is a signal to use the defaultMemory.
+  ExecutionEngine IEE{"Interpreter", /* deviceMemory */ 0,
+                      /* ignoreUserDeviceConfig */ true};
   ExecutionEngine BEE{backendName};
   PlaceholderBindings iBindings, bBindings;
 

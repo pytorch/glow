@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2018-present, Facebook, Inc.
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -93,10 +93,10 @@ protected:
   virtual bool canConvert(const Node &node) const;
 
   /// Create a conversion with \p val as input and \p destTy as the destination
-  /// type in \p function. In other words, creates something like cast val to
-  /// destTy.
-  virtual Node *createConversion(Function &function, NodeValue &val,
-                                 TypeRef destTy) = 0;
+  /// type in \p function, given \p node. In other words, creates something like
+  /// cast val to destTy.
+  virtual Node *createConversion(Function &function, const Node &node,
+                                 NodeValue &val, TypeRef destTy) = 0;
 
   /// Given a \p conversion, get its output value.
   /// The default implementation returns the zero-th result.

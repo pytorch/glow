@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# Copyright (c) 2017-present, Facebook, Inc.
+# Copyright (c) Glow Contributors. See CONTRIBUTORS file.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -28,7 +28,7 @@ print_usage() {
 }
 
 fix_format() {
-  find lib tests/unittests/ tools/ include examples torch_glow \
+  find lib tests/unittests/ tools/ include examples torch_glow inference_engines \
     -name \*.h -print0 \
     -o -name \*.hpp -print0 \
     -o -name \*.c -print0 \

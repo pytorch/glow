@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-present, Facebook, Inc.
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,6 +26,7 @@ int32_t GlowNumDevices = 0;
 bool GlowDumpDebugTraces = false;
 bool GlowSaturateHost = false;
 bool GlowFP16 = false;
+bool GlowFusedScaleOffsetFP16 = false;
 bool GlowClipFP16 = false;
 
 static llvm::cl::opt<int32_t, true>
@@ -76,6 +77,10 @@ onnxStatus HostManagerBackend::addNetwork(std::unique_ptr<Module> module) {
   if (GlowFP16) {
     precConfig.convertToFP16 = GlowFP16;
     LOG(INFO) << "Conversion to fp16 enabled";
+  }
+  if (GlowFusedScaleOffsetFP16) {
+    precConfig.convertFusedToFP16 = GlowFusedScaleOffsetFP16;
+    LOG(INFO) << "Conversion of fused scales/offsets to fp16 enabled";
   }
   if (GlowClipFP16) {
     precConfig.clipFP16 = GlowClipFP16;

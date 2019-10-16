@@ -43,6 +43,9 @@ def jitVsGlow_(f_torch, f_glow, *inputs, expected_fused_ops=None,
 
         expected_fused_ops_seen = set()
 
+        # Whether or not at least one node was fused to Glow.
+        nodes_were_fused = False
+
         # Check that ops that were *not* fused are *not* in expected_fused_ops
         for node in glow_graph.nodes():
             kind = node.kind()
@@ -61,18 +64,27 @@ def jitVsGlow_(f_torch, f_glow, *inputs, expected_fused_ops=None,
                 # Put all nodes that are in the group and in expected_fused_ops
                 # into expected_fused_ops_seen
                 for fused_node in glow_group.nodes():
+                    nodes_were_fused = True
                     fused_node_kind = fused_node.kind()
 
                     if accept_all_ops or fused_node_kind in expected_fused_ops:
                         expected_fused_ops_seen.add(fused_node_kind)
 
+        assert nodes_were_fused, "Expected some nodes to be fused to Glow"
+
         # If the sizes of expected_fused_ops and expected_fused_ops_seen are
         # different, some ops in expected_fused_ops are not in the graph at all
         assert accept_all_ops or len(expected_fused_ops) == len(expected_fused_ops_seen), \
             "Expected all of expected_fused_ops to be in the graph"
-        assert len(torch_res) == len(glow_res)
-        # When testing quantized operators and generating data between [0, 1]
-        # i.e using torch.randn, scale should be set between 1/128 and 1/256,
-        # to make sure the result does not mismatch.
-        for i in range(len(torch_res)):
-            assert torch.allclose(torch_res[i], glow_res[i], atol=01e-6)
+
+        if isinstance(torch_res, tuple) or isinstance(glow_res, tuple):
+            assert isinstance(torch_res, tuple) and isinstance(glow_res, tuple)
+            assert len(torch_res) == len(glow_res)
+            for i in range(len(torch_res)):
+                assert torch.allclose(torch_res[i], glow_res[i], atol=01e-6)
+        else:
+            is_all_close = torch.allclose(torch_res, glow_res, atol=01e-6)
+            if not is_all_close:
+                print("torch_res\n", torch_res)
+                print("glow_res\n", glow_res)
+            assert is_all_close

@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2017-present, Facebook, Inc.
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -95,7 +95,7 @@ public:
 
 GlowJIT::GlowJIT(llvm::TargetMachine &TM)
     : TM_(TM), DL_(TM_.createDataLayout()),
-#if FACEBOOK_INTERNAL && LLVM_VERSION_PATCH < 20181009
+#if FACEBOOK_INTERNAL && LLVM_VERSION_MAJOR < 8
       ES_(SSP_),
       resolver_(createLegacyLookupResolver(
           [this](const std::string &Name) -> JITSymbol {

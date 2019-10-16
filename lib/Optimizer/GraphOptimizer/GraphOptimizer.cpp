@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2017-present, Facebook, Inc.
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -2186,85 +2186,75 @@ static bool isValueChangingCast(TypeRef srcTy, TypeRef destTy) {
   return false;
 }
 
+/// Optimize away redundant ClipNodes.
+/// We basically turn "Clip(Clip(Clip(A)))" to "Clip(A)".
+bool OptimizeClips::run(Function *F, const CompilationContext &cctx) {
+  int clipsEliminated = 0;
+  for (Node &node : F->getNodes()) {
+    ClipNode *clip = dyn_cast<ClipNode>(&node);
+    if (!clip) {
+      continue;
+    }
+    float min = clip->getMin();
+    float max = clip->getMax();
+    if (auto *clipPrev = dyn_cast<ClipNode>(clip->getInput().getNode())) {
+      float minPrev = clipPrev->getMin();
+      float maxPrev = clipPrev->getMax();
+      auto *newClip =
+          F->createClip(clipPrev->getName(), clipPrev->getInput().getNode(),
+                        std::max(minPrev, min), std::min(maxPrev, max));
+      clip->getResult().replaceAllUsesOfWith(newClip);
+      ++clipsEliminated;
+    }
+  }
+
+  return clipsEliminated;
+}
+
 /// Optimize away ConvertToNode.
 /// This basically turns "conversion(conversion A to B) to C"
 /// into noop if all of the conditions below are met:
 ///  - the type of A and C are the same;
 ///  - A->B is not a FP-to-Int conversion;
 ///  - A->B is not a narrowing conversion.
-///
-/// TODO: We can also optimize int16 -> int64 -> int32 into int16 -> int32.
 bool OptimizeConversions::run(Function *F, const CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), getName());
+
   bool changed = false;
-  llvm::SmallVector<Node *, 8> conversions;
-
   for (auto &node : F->getNodes()) {
-    if (isa<ConvertToNode>(&node)) {
-      conversions.push_back(&node);
-    }
-  }
+    if (auto *CN = llvm::dyn_cast<ConvertToNode>(&node)) {
 
-  llvm::SmallPtrSet<Node *, 8> deadConversions;
-  Module &mod = *F->getParent();
-  for (Node *node : conversions) {
-    if (deadConversions.count(node)) {
-      continue;
-    }
-    ConvertToNode &conversion = *cast<ConvertToNode>(node);
-    NodeValue conversionInput = conversion.getInput();
-    NodeValue dstVal = conversion.getResult();
-    NodeValue srcVal;
-    switch (conversionInput.getNode()->getKind()) {
-    case Kinded::Kind::ConstantKind:
-      srcVal =
-          convertConstant(mod, *llvm::cast<Constant>(conversionInput.getNode()),
-                          dstVal.getType());
-      assert(srcVal.getNode() != nullptr && "Unhandled convertConstant case.");
-      // Reset conversionInput because it may not be valid anymore.
-      conversionInput = NodeValue();
-      break;
-    case Kinded::Kind::ConvertToNodeKind:
-      // So we have "conversion(conversion srcVal to tmpVal) to dstVal".
-      // If the type of srcVal is equal to the type of dstVal, we can replace
-      // the uses of dstVal with srcVal.
-      srcVal = cast<ConvertToNode>(conversionInput.getNode())->getInput();
-      break;
-    default:
-      break;
-    }
-    // If it is a conversion between the same types, it can be eliminated.
-    if (srcVal == NodeValue() &&
-        conversionInput.getType() == dstVal.getType()) {
-      srcVal = conversionInput;
-    }
-    // Check if we found a suitable new source for dstVal.
-    if (srcVal == NodeValue() || srcVal.getType() != dstVal.getType()) {
-      continue;
-    }
-    // For non-constant conversions, make extra checks.
-    if (conversionInput != NodeValue()) {
-      if (isValueChangingCast(srcVal.getType(), conversionInput.getType())) {
+      // Eliminate no-op conversion.
+      if (CN->getInput().getType() == CN->getResult().getType()) {
+        CN->getResult().replaceAllUsesOfWith(CN->getInput());
+        changed = true;
         continue;
       }
-    }
 
-    // Use srcVal instead of dstVal.
-    dstVal.replaceAllUsesOfWith(srcVal, F);
-    changed = true;
-    bool inserted = deadConversions.insert(dstVal.getNode()).second;
-    (void)inserted;
-    assert(inserted && "Conversion was already dead");
-    if (conversionInput != NodeValue() && conversionInput.hasOneUse()) {
-      // The only user of conversionInput is outVal.
-      // This conversion is now dead too.
-      inserted = deadConversions.insert(conversionInput.getNode()).second;
-      (void)inserted;
-      assert(inserted && "Conversion was already dead");
+      // Perform conversion of constants.
+      if (auto *BN = llvm::dyn_cast<Constant>(CN->getInput())) {
+        auto newConst =
+            convertConstant(*F->getParent(), *BN, CN->getResult().getType());
+        CN->getResult().replaceAllUsesOfWith(newConst, F);
+        changed = true;
+        continue;
+      }
+
+      // Simplify a chain of conversions A -> B -> C to A -> C, unless A -> B
+      // is a narrowing cast.
+      if (auto *BN = llvm::dyn_cast<ConvertToNode>(CN->getInput())) {
+        auto AN = BN->getInput();
+
+        // Do not optimize away narrowing casts.
+        if (!isValueChangingCast(AN.getType(), BN->getResult().getType())) {
+          auto *newCast =
+              F->createConvertTo(CN->getName(), AN, CN->getResult().getType());
+          CN->getResult().replaceAllUsesOfWith(newCast);
+          changed = true;
+          continue;
+        }
+      }
     }
-  }
-  for (Node *conversion : deadConversions) {
-    F->eraseNode(conversion);
   }
   return changed;
 }
@@ -3014,6 +3004,9 @@ static void transformForPrecisionMode(const Backend &B, Function *F,
   if (precConfig.convertToFP16) {
     LOG_SCOPE(F->getLogContext(), "glow::convertFunctionToFloat16")
     convertFunctionToFloat16(F, precConfig);
+    FunctionPassManager FPM("FP16GraphOptzFPM",
+                            createFP16GraphOptimizationPassPipeline());
+    FPM.run(F, cctx);
   }
 }
 
