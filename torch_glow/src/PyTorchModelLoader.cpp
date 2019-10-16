@@ -1522,7 +1522,7 @@ Error PyTorchModelLoader::loadQuantizedConvUnpacked(
     bias = biasConstant->getOutput();
   }
   auto biasType =
-      F_.getParent()->uniqueType(glow::ElemKind::Int32QTy, bias.dims(), 1.0, 0);
+      F_.getParent()->uniqueType(glow::ElemKind::Int32QTy, bias.dims(), input.getType()->getScale() * weights.getType()->getScale(), 0);
   bias = F_.createQuantize("quantize_bias", bias, biasType);
 
   std::vector<glow::unsigned_t> strides;
