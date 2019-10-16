@@ -465,7 +465,7 @@ struct QuantizedUnpackedConv2dInputs {
     dilation = 5,
     group = 6,
     scale = 7,
-    offset = 8,
+    zero_point = 8,
   };
 };
 
@@ -475,7 +475,7 @@ struct QuantizedAddInputs {
     lhs = 0,
     rhs = 1,
     scale = 2,
-    offset = 3,
+    zero_point = 3,
   };
 };
 
@@ -495,7 +495,7 @@ struct QuantizeInputs {
   enum {
     input = 0,
     scale = 1,
-    offset = 2,
+    zero_point = 2,
     dtype = 3,
   };
 };
@@ -595,7 +595,7 @@ PyTorchModelLoader::getSymbolsMapping() {
         }},
        {{"quantized::add"},
         &PyTorchModelLoader::loadQuantizedAdd,
-        {QuantizedAddInputs::scale, QuantizedAddInputs::offset}},
+        {QuantizedAddInputs::scale, QuantizedAddInputs::zero_point}},
        {{"glow::unpacked_quantized_conv2d"},
         &PyTorchModelLoader::loadQuantizedConvUnpacked,
         {QuantizedUnpackedConv2dInputs::stride,
@@ -603,7 +603,7 @@ PyTorchModelLoader::getSymbolsMapping() {
          QuantizedUnpackedConv2dInputs::dilation,
          QuantizedUnpackedConv2dInputs::group,
          QuantizedUnpackedConv2dInputs::scale,
-         QuantizedUnpackedConv2dInputs::offset}},
+         QuantizedUnpackedConv2dInputs::zero_point}},
        {{"glow::unpacked_quantized_linear"},
         &PyTorchModelLoader::loadQuantizedLinear,
         {
@@ -614,7 +614,7 @@ PyTorchModelLoader::getSymbolsMapping() {
         }},
        {{"aten::quantize_per_tensor"},
         &PyTorchModelLoader::loadQuantize,
-        {QuantizeInputs::scale, QuantizeInputs::offset, QuantizeInputs::dtype}},
+        {QuantizeInputs::scale, QuantizeInputs::zero_point, QuantizeInputs::dtype}},
        {{"aten::dequantize"}, &PyTorchModelLoader::loadDequantize, {}},
        {{"aten::size"}, &PyTorchModelLoader::loadSize, {SizeInputs::dim}},
        // TODO: use -1 to freeze all inputs
@@ -933,11 +933,11 @@ Error PyTorchModelLoader::loadQuantizedAdd(const torch::jit::Node *ptNode) {
   ASSIGN_VALUE_OR_RETURN_ERR(outScale, iValToDouble(getGlowIValueForValue(
                                            inputs[QuantizedAddInputs::scale])));
 
-  // offset
+  // zero_point
   int32_t outOffset;
   ASSIGN_VALUE_OR_RETURN_ERR(
       outOffset,
-      iValToInt(getGlowIValueForValue(inputs[QuantizedAddInputs::offset])));
+      iValToInt(getGlowIValueForValue(inputs[QuantizedAddInputs::zero_point])));
 
   TypeRef inputType = lhs.getType();
   auto outDims = inputType->dims();
@@ -1442,10 +1442,10 @@ Error PyTorchModelLoader::loadQuantize(const torch::jit::Node *ptNode) {
       outScale, to32Bit(iValToDouble(
                     getGlowIValueForValue(inputs[QuantizeInputs::scale]))));
 
-  // offset
+  // zero_point
   int32_t outOffset;
   ASSIGN_VALUE_OR_RETURN_ERR(outOffset, iValToInt(getGlowIValueForValue(
-                                            inputs[QuantizeInputs::offset])));
+                                            inputs[QuantizeInputs::zero_point])));
 
   // dtype, we only support quantize to int8 for now
   int32_t outDtype;
@@ -1556,7 +1556,7 @@ Error PyTorchModelLoader::loadQuantizedConvUnpacked(
   int32_t outOffset;
   ASSIGN_VALUE_OR_RETURN_ERR(
       outOffset, iValToInt(getGlowIValueForValue(
-                     inputs[QuantizedUnpackedConv2dInputs::offset])));
+                     inputs[QuantizedUnpackedConv2dInputs::zero_point])));
 
   std::vector<glow::unsigned_t> kernels = {
       static_cast<glow::unsigned_t>(weightsShape.h),
