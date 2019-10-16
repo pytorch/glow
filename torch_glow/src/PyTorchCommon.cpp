@@ -233,7 +233,8 @@ glow::Tensor ptTensorToGlowTensor(const at::Tensor &ptTensor) {
 
   glow::Type glowType;
   if (ptTensor.is_quantized()) {
-    glowType = glow::Type(glowElemKind, dims, ptTensor.q_scale(), ptTensor.q_zero_point());
+    glowType = glow::Type(glowElemKind, dims, ptTensor.q_scale(),
+                          ptTensor.q_zero_point());
   } else {
     glowType = glow::Type(glowElemKind, dims);
   }

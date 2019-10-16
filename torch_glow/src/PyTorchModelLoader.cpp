@@ -615,7 +615,8 @@ PyTorchModelLoader::getSymbolsMapping() {
         }},
        {{"aten::quantize_per_tensor"},
         &PyTorchModelLoader::loadQuantize,
-        {QuantizeInputs::scale, QuantizeInputs::zero_point, QuantizeInputs::dtype}},
+        {QuantizeInputs::scale, QuantizeInputs::zero_point,
+         QuantizeInputs::dtype}},
        {{"aten::dequantize"}, &PyTorchModelLoader::loadDequantize, {}},
        {{"aten::size"}, &PyTorchModelLoader::loadSize, {SizeInputs::dim}},
        // TODO: use -1 to freeze all inputs
@@ -1445,8 +1446,9 @@ Error PyTorchModelLoader::loadQuantize(const torch::jit::Node *ptNode) {
 
   // zero_point
   int32_t outOffset;
-  ASSIGN_VALUE_OR_RETURN_ERR(outOffset, iValToInt(getGlowIValueForValue(
-                                            inputs[QuantizeInputs::zero_point])));
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      outOffset,
+      iValToInt(getGlowIValueForValue(inputs[QuantizeInputs::zero_point])));
 
   // dtype, we only support quantize to int8 for now
   int32_t outDtype;
