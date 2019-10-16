@@ -107,8 +107,10 @@ glow::ElemKind scalarTypeToElemKind(c10::ScalarType ty) {
     return ElemKind::Int64ITy;
   } else if (ty == at::kBool) {
     return ElemKind::BoolTy;
+  } else if (ty == at::kQInt8) {
+    return ElemKind::Int8QTy;
   } else {
-    LOG(DFATAL) << "Not supported yet.";
+    LOG(DFATAL) << ty << " Not supported yet.";
     return ElemKind::Int64ITy;
   }
 }
@@ -203,19 +205,6 @@ void registerGlowFusionOpAndPass(std::function<bool()> enablePassFn) {
   registerGlowFusionPass(std::move(enablePassFn));
 }
 
-glow::Type ptTypeToGlowType(const c10::TensorType &ptType) {
-  DCHECK(ptType.scalarType().has_value())
-      << "TensorType has no associated scalar type.";
-  const auto concreteSizes = ptType.sizes().concrete_sizes().value();
-  std::vector<size_t> dims;
-  for (const auto &size : concreteSizes) {
-    dims.push_back(static_cast<size_t>(size));
-  }
-
-  auto scalarType = ptType.scalarType().value();
-  return glow::Type(scalarTypeToElemKind(scalarType), dims);
-}
-
 at::Tensor glowTypeToEmptyPTTensor(const glow::Type &glowType) {
   std::vector<int64_t> sizes;
   for (const auto dim : glowType.dims()) {
@@ -227,7 +216,26 @@ at::Tensor glowTypeToEmptyPTTensor(const glow::Type &glowType) {
 }
 
 glow::Tensor ptTensorToGlowTensor(const at::Tensor &ptTensor) {
-  auto glowType = ptTypeToGlowType(*c10::TensorType::create(ptTensor));
+  auto ptType = *c10::TensorType::create(ptTensor);
+
+  DCHECK(ptType.scalarType().has_value())
+      << "TensorType has no associated scalar type.";
+  const auto concreteSizes = ptType.sizes().concrete_sizes().value();
+  std::vector<size_t> dims;
+  for (const auto &size : concreteSizes) {
+    dims.push_back(static_cast<size_t>(size));
+  }
+
+  auto scalarType = ptType.scalarType().value();
+  auto glowElemKind = scalarTypeToElemKind(scalarType);
+
+  glow::Type glowType;
+  if (ptTensor.is_quantized()) {
+    glowType = glow::Type(glowElemKind, dims, ptTensor.q_scale(),
+                          ptTensor.q_zero_point());
+  } else {
+    glowType = glow::Type(glowElemKind, dims);
+  }
   return glow::Tensor(ptTensor.data_ptr(), &glowType);
 }
 
