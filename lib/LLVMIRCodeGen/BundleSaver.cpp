@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2017-present, Facebook, Inc.
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -174,7 +174,7 @@ void BundleSaver::produceBundle(llvm::StringRef outputDir) {
     llvm::legacy::PassManager PM;
     auto &TM = irgen_->getTargetMachine();
 
-#if FACEBOOK_INTERNAL && LLVM_VERSION_PATCH < 20181009
+#if FACEBOOK_INTERNAL && LLVM_VERSION_MAJOR < 8
     TM.addPassesToEmitFile(
         PM, outputFile, llvm::TargetMachine::CodeGenFileType::CGFT_ObjectFile);
 #else
@@ -287,10 +287,12 @@ void BundleSaver::save(llvm::StringRef target, llvm::StringRef arch,
                        llvm::StringRef cpu,
                        const llvm::SmallVectorImpl<std::string> &targetFeatures,
                        llvm::StringRef outputDir, llvm::StringRef bundleName,
-                       llvm::StringRef mainEnryName) {
+                       llvm::StringRef mainEnryName,
+                       llvm::CodeModel::Model codeModel,
+                       llvm::Reloc::Model relocModel) {
   // Object files generation works properly only in small mode.
-  irgen_->initTargetMachine(target, arch, cpu, targetFeatures,
-                            llvm::CodeModel::Model::Small);
+  irgen_->initTargetMachine(target, arch, cpu, targetFeatures, codeModel,
+                            relocModel);
   irgen_->setOutputDir(outputDir);
   irgen_->setBundleName(bundleName);
   irgen_->setMainEntryName(mainEnryName);

@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2017-present, Facebook, Inc.
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -27,4 +27,4 @@ std::set<std::string> glow::backendTestBlacklist = {
     "gradientCheckFCConcatTanh/0",    "gradientCheckFC/0",
     "gradientCheckSigmoid/0",         "gradientCheckRelu/0",
     "gradientCheckTranspose/0",       "gradientCheckCrossEntropyLoss/0",
-};
+    "gradientCheckMaxPool/0",         "gradientCheckTile/0"};

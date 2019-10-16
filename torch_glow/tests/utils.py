@@ -83,4 +83,8 @@ def jitVsGlow_(f_torch, f_glow, *inputs, expected_fused_ops=None,
             for i in range(len(torch_res)):
                 assert torch.allclose(torch_res[i], glow_res[i], atol=01e-6)
         else:
-            torch.allclose(torch_res, glow_res, atol=01e-6)
+            is_all_close = torch.allclose(torch_res, glow_res, atol=01e-6)
+            if not is_all_close:
+                print("torch_res\n", torch_res)
+                print("glow_res\n", glow_res)
+            assert is_all_close

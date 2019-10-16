@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2017-present, Facebook, Inc.
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -179,14 +179,16 @@ void LLVMCompiledFunction::translateTraceEvents(
                backingTensor->getUnsafePtr() +
                    (event.endIndex * traceInfo.dataSize),
                traceInfo.dataSize);
-        traceEvents.push_back({event.name, start, end - start, tid});
+        traceEvents.push_back(
+            {event.name, start, end - start, tid, {{"kind", event.kind}}});
       } else {
         uint64_t ts{0};
         memcpy(&ts,
                backingTensor->getUnsafePtr() +
                    (event.startIndex * traceInfo.dataSize),
                traceInfo.dataSize);
-        traceEvents.push_back({event.name, ts, event.type, tid});
+        traceEvents.push_back(
+            {event.name, ts, event.type, tid, {{"kind", event.kind}}});
       }
     }
   }

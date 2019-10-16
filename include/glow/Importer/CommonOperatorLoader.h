@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2017-present, Facebook, Inc.
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -345,11 +345,9 @@ protected:
 
     RETURN_ERR_IF_NOT(in.dims().size() >= 2, "SoftMax input dims must be >= 2");
 
-    // We do not do training right now on loaded protos. C2 and ONNX do not even
-    // have an option for a selected input anyway. So I am creating this as a
-    // placeholder which goes unused during inference.
+    // Create a constant to store labels to be used in SoftMaxGradNode.
     auto selected = G_.getParent()->createConstant(
-        ElemKind::Int64ITy, {in.dims()[0], in.dims()[1]}, "selected");
+        ElemKind::Int64ITy, {in.dims()[0], 1}, "selected");
 
     // ONNX allows shapes like <N x 10 x 1 x 1 >. Flatten the inputs to the
     // softmax function. This is similar to a bitcast operation.

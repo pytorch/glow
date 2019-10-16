@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2017-present, Facebook, Inc.
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -68,7 +68,7 @@ Error loadJitGraphToGlowFunction(
 
   // Load JIT Graph into Glow Function.
   RETURN_IF_ERR(PyTorchModelLoader::loadJITGraph(
-      f, graph, inputs, inputPlaceholders, outputPlaceholders, settings));
+      f, graph, inputPlaceholders, outputPlaceholders, settings, inputs, {}));
 
   // Remove from stack input parameters.
   torch::jit::drop(stack, numInputs);
@@ -189,20 +189,15 @@ Error PyTorchFileLoader::parsePyTorchGraphForOnnxTraining(
   at::NoGradGuard guard;
 
   auto method = module->get_method("forward");
+  // std::pair<std::shared_ptr<Graph>, std::vector<at::Tensor>>
   auto graphAndTensors = method._lowered_graph();
 
-  std::vector<std::shared_ptr<c10::TensorType>> parameters;
-
-  for (const auto &ptTensor : graphAndTensors.second) {
-    parameters.push_back(c10::TensorType::create(ptTensor));
-  }
-
-  FuseKnownPatterns(graphAndTensors.first);
+  fuseKnownPatterns(graphAndTensors.first);
 
   // Parse JIT Graph and load into Glow Function.
   return PyTorchModelLoader::loadJITGraphForOnnxTraining(
-      F, *graphAndTensors.first, inputs, parameters, inputPlaceholders,
-      outputPlaceholders);
+      F, *graphAndTensors.first, inputs, graphAndTensors.second,
+      inputPlaceholders, outputPlaceholders);
 }
 
 // Sanity check, after "fusionSymbol" node, not other nodes should exist.

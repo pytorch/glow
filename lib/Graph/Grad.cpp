@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2017-present, Facebook, Inc.
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -292,6 +292,32 @@ Function *glow::differentiate(Function *F, const TrainingConfig &conf,
       // Grad for RHS = transpose(LHS) x outputG.
       auto *GradRHS =
           new MatMulNode(MMN->getInputName(1), InputRHS.getType(), LT, OutputG);
+
+      toAppend.push_back(GradLHS);
+      map.addGradient(InputLHS, GradLHS);
+      toAppend.push_back(GradRHS);
+      map.addGradient(InputRHS, GradRHS);
+      continue;
+    }
+
+    if (N->getKind() == Kind::BatchMatMulNodeKind) {
+      BatchMatMulNode *BMMN = cast<BatchMatMulNode>(N);
+      // Get gradient.
+      NodeValue OutputG = map.getGradient(BMMN->getResult());
+
+      // The implementation below is a batched version of the gradient
+      // computation for MatMul.
+      NodeValue InputLHS = BMMN->getLHS();
+      NodeValue InputRHS = BMMN->getRHS();
+      auto *LT = G->createTranspose("lhs.T", InputLHS, {0, 2, 1});
+      auto *RT = G->createTranspose("rhs.T", InputRHS, {0, 2, 1});
+
+      // Grad for LHS = outputG x transpose(RHS).
+      auto *GradLHS = new BatchMatMulNode(BMMN->getInputName(0),
+                                          InputLHS.getType(), OutputG, RT);
+      // Grad for RHS = transpose(LHS) x outputG.
+      auto *GradRHS = new BatchMatMulNode(BMMN->getInputName(1),
+                                          InputRHS.getType(), LT, OutputG);
 
       toAppend.push_back(GradLHS);
       map.addGradient(InputLHS, GradLHS);

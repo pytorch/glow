@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2017-present, Facebook, Inc.
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -45,7 +45,7 @@ class GlowJIT {
 private:
   TargetMachine &TM_;
   const DataLayout DL_;
-#if FACEBOOK_INTERNAL && LLVM_VERSION_PATCH < 20181009
+#if FACEBOOK_INTERNAL && LLVM_VERSION_MAJOR < 8
   SymbolStringPool SSP_;
   ExecutionSession ES_;
   std::shared_ptr<SymbolResolver> resolver_;

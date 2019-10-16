@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2017-present, Facebook, Inc.
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -254,7 +254,7 @@ public:
   initTargetMachine(llvm::StringRef target, llvm::StringRef arch,
                     llvm::StringRef cpu,
                     const llvm::SmallVectorImpl<std::string> &targetFeatures,
-                    llvm::CodeModel::Model CM);
+                    llvm::CodeModel::Model CM, llvm::Reloc::Model relocModel);
 
   /// Emit LLVM-IR for the instruction \p I, using the builder \p builder.
   /// Derived classes may want to override this function to implement a

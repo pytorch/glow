@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2017-present, Facebook, Inc.
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -308,15 +308,15 @@ static void getMaxLocalWorkgroupSize(cl_kernel kernel, cl_device_id device,
   // constraints:
   size_t totalWorkPrevDims = 1;
   for (int i = 0, e = global.size(); i < e; i++) {
-    local[i] = L;
+    local[i] = std::min(L, WIS[i]);
+    local[i] = std::min(local[i], WGS / totalWorkPrevDims);
 
-    while (global[i] % local[i] || L % local[i] || local[i] > WIS[i] ||
-           local[i] * totalWorkPrevDims > WGS) {
+    while (global[i] % local[i] || L % local[i]) {
       local[i]--;
     }
 
     // Remember how much work we are doing in this dimension. Use it to make
-    // sure that the next dimenstions don't exceed the total allowed workgroup
+    // sure that the next dimensions don't exceed the total allowed workgroup
     // size.
     totalWorkPrevDims *= local[i];
   }
@@ -1700,7 +1700,8 @@ void OpenCLFunction::translateTraceEventsCL(
         auto timestamp = (timeEnd / 1000) + tsOffset;
 
         handle.at({ev->startIndex, 0}) = timestamp;
-        traceEvents.push_back({ev->name, timestamp, ev->type, tid});
+        traceEvents.push_back(
+            {ev->name, timestamp, ev->type, tid, {{"kind", ev->kind}}});
       }
     } else {
       // Duration should be usec.

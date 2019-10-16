@@ -1,6 +1,5 @@
-/**
- * Copyright (c) 2017-present, Facebook, Inc.
- *
+/*
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -14,6 +13,10 @@
  * limitations under the License.
  */
 
-#ifdef GLOW_WITH_OPENCL
+#include "tests/unittests/BackendTestUtils.h"
 
-#endif // GLOW_WITH_OPENCL
+using namespace glow;
+
+std::set<std::string> glow::backendTestBlacklist = {};
+
+bool glow::useSymmetricRowwiseQuantFC = true;

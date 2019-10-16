@@ -173,9 +173,15 @@ above `CPUMaxSplat` pattern.
 #### Backend-Specific Nodes and Instructions
 
 A backend may create its own custom Nodes and Instructions which it can insert
-into the IR. This is done via [ClassGen](ClassGen.md) and included in
-`tools/ClassGen/NodeGen.cpp`. For example, the CPU Backend defines `CPUMaxSplat`
-in `tools/ClassGen/Backends/CPU/CPUSpecificNodes.h`:
+into the IR. This is done via [ClassGen](ClassGen.md) and implicitly included in
+`tools/ClassGen/NodeGen.cpp` and `tools/ClassGen/InstrGen.cpp`.
+These new nodes and instructions should be defined
+inside the backend sub-directory, in files
+`lib/Backends/<BackendName>/ClassGen/<BackendName>SpecificNodes.h` and 
+`lib/Backends/<BackendName>/ClassGen/<BackendName>SpecificInstrs.h`:
+
+For example, the CPU Backend defines `CPUMaxSplat`
+in `lib/Backends/CPU/ClassGen/CPUSpecificNodes.h`:
 
 ```cpp
 BB.newBackendSpecificNode("CPUMaxSplat")
@@ -189,7 +195,7 @@ During `transformPostLowering()`, this `CPUMaxSplat` node replaces the
 aforementioned pattern. However, there must be a corresponding instruction for
 this Node to be lowered to during the IRGen phase. Thus, we need a corresponding
 backend-specific CPUMaxSplat instruction, defined in
-`tools/ClassGen/Backends/CPU/CPUSpecificInstrs.h`:
+`lib/Backends/CPU/ClassGen/CPUSpecificInstrs.h`:
 
 ```
 BB.newBackendSpecificInstr("CPUMaxSplat")
@@ -212,8 +218,8 @@ other node or instruction defined in `tools/ClassGen/NodeGen.cpp` or
 definition includes the `dataParallel()` property, allowing for data parallel
 optimizations to take place.
 
-The `tools/ClassGen/Backends/CPU/CPUSpecificNodes.h` and
-`tools/ClassGen/Backends/CPU/CPUSpecificInstrs.h` files are included in
+The `lib/Backends/CPU/ClassGen/CPUSpecificNodes.h` and
+`lib/Backends/CPU/ClassGen/CPUSpecificInstrs.h` files are implicitly included in
 `tools/ClassGen/NodeGen.cpp` and `tools/ClassGen/InstrGen.cpp`, respectively.
 
 #### Backend Parameterized Tests

@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2017-present, Facebook, Inc.
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -46,7 +46,7 @@ TEST(TorchGlowTraining, Test) {
   std::vector<size_t> sampleDims = {1, 3, 224, 224};
   Tensor samples(ElemKind::FloatTy, sampleDims);
 
-  std::vector<size_t> labelDims = {1, 1000};
+  std::vector<size_t> labelDims = {1, 1};
   Tensor labels(ElemKind::Int64ITy, labelDims);
   EXPECT_FALSE(ERR_TO_BOOL(trainer.train(samples, labels)));
 

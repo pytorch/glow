@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2017-present, Facebook, Inc.
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -33,6 +33,7 @@
 #include "llvm/Support/Timer.h"
 #include "llvm/Support/raw_ostream.h"
 
+#include <future>
 #include <sstream>
 
 using namespace glow;
@@ -187,13 +188,6 @@ llvm::cl::opt<bool> assertAllNodesQuantizedOpt(
         "whitelist node kinds that are allowed to be left unquantized."),
     llvm::cl::init(false), llvm::cl::cat(loaderCat));
 
-/// The device configs file used for Runtime.
-llvm::cl::opt<std::string> loadDeviceConfigsFileOpt(
-    "load-device-configs",
-    llvm::cl::desc("Load device configs used in Runtime"),
-    llvm::cl::value_desc("profile.yaml"), llvm::cl::Optional,
-    llvm::cl::cat(loaderCat));
-
 /// Name of the network being bundled.
 llvm::cl::opt<std::string> networkName(
     "network-name",
@@ -317,60 +311,6 @@ void glow::parseCommandLine(int argc, char **argv) {
   }
 }
 
-/// Helper to get the parameters in DeviceConfig from \p str. The \p str has
-/// multiple lines, and each line with this format : "str1" : "str2".
-static llvm::StringMap<std::string> getBackendParams(std::string &str) {
-  llvm::StringMap<std::string> ret{};
-  std::string s;
-  std::istringstream f(str.c_str());
-  while (getline(f, s, '\n')) {
-    // Abstract the mapping from each line's string:
-    // ""str1" : "str2"" => ret["str1"] = "str2";
-    size_t pos1, pos2, pos3, pos4;
-    pos1 = s.find('"');
-    assert(pos1 != std::string::npos && "invalid string format");
-    pos2 = s.find('"', pos1 + 1);
-    assert(pos2 != std::string::npos && "invalid string format");
-    pos3 = s.find('"', pos2 + 1);
-    assert(pos3 != std::string::npos && "invalid string format");
-    pos4 = s.find('"', pos3 + 1);
-    assert(pos4 != std::string::npos && "invalid string format");
-    ret[s.substr(pos1 + 1, pos2 - pos1 - 1)] =
-        s.substr(pos3 + 1, pos4 - pos3 - 1);
-  }
-  return ret;
-}
-
-/// If the device config file \p loadDeviceDoncfigsFile available, load \p
-/// configs from the file. Otherwise, create \p numDevices number of devices
-/// based on \p backendName.
-static std::vector<std::unique_ptr<runtime::DeviceConfig>>
-generateDeviceConfigs(std::string &loadDeviceConfigsFile,
-                      unsigned int numDevices, llvm::StringRef backendName) {
-  std::vector<std::unique_ptr<runtime::DeviceConfig>> configs;
-  if (loadDeviceConfigsFile.empty()) {
-    // If there is no device config file, use numDevices to generate the
-    // configs.
-    for (unsigned int i = 0; i < numDevices; ++i) {
-      auto config = llvm::make_unique<runtime::DeviceConfig>(backendName);
-      configs.push_back(std::move(config));
-    }
-  } else {
-    // Get the configs from the config file.
-    std::vector<DeviceConfigHelper> lists;
-    lists = deserializeDeviceConfigFromYaml(loadDeviceConfigsFile);
-    for (unsigned int i = 0; i < lists.size(); ++i) {
-      auto backendName = lists[i].backendName_;
-      auto name = lists[i].name_;
-      auto parameters = getBackendParams(lists[i].parameters_.str);
-      auto config = llvm::make_unique<runtime::DeviceConfig>(backendName, name,
-                                                             parameters);
-      configs.push_back(std::move(config));
-    }
-  }
-  return configs;
-}
-
 void Loader::compile(PlaceholderBindings &bindings) {
   CompilationContext cctx{&bindings};
   compile(cctx);
@@ -468,6 +408,41 @@ void Loader::runInference(PlaceholderBindings &bindings, size_t batchSize) {
   if (timeOpt) {
     timer.stopTimer();
     llvm::outs() << llvm::formatv("Wall time per item (s): {0:f4}\n",
+
+                                  timer.getTotalTime().getWallTime() /
+                                      iterations / batchSize);
+  }
+}
+
+void Loader::runInference(ExecutionContext *context, size_t batchSize) {
+  std::unique_ptr<ExecutionContext> contextP(context);
+
+  unsigned iterations = iterationsOpt == 0 ? 1 : iterationsOpt;
+  llvm::Timer timer("Infer", "Infer");
+  if (timeOpt) {
+    timer.startTimer();
+  }
+
+  for (unsigned i = 0; i < iterations; i++) {
+    std::promise<void> runPromise;
+    auto fut = runPromise.get_future();
+    std::unique_ptr<Error> runErr;
+    hostManager_->runNetwork(
+        modelPathOpt[0], std::move(contextP),
+        [&runPromise, &runErr](runtime::RunIdentifierTy, Error err,
+                               std::unique_ptr<ExecutionContext> contextPtr) {
+          // Don't really delete context since we don't own it.
+          contextPtr.release();
+
+          runErr = llvm::make_unique<Error>(std::move(err));
+          runPromise.set_value();
+        });
+    fut.wait();
+    EXIT_ON_ERR(std::move(*DCHECK_NOTNULL(runErr.get())));
+  }
+  if (timeOpt) {
+    timer.stopTimer();
+    llvm::outs() << llvm::formatv("Wall time per item (s): {0:f4}\n",
                                   timer.getTotalTime().getWallTime() /
                                       iterations / batchSize);
   }
@@ -503,8 +478,7 @@ Loader::Loader() {
   M_.reset(new Module);
 
   std::vector<std::unique_ptr<runtime::DeviceConfig>> configs =
-      generateDeviceConfigs(loadDeviceConfigsFileOpt, numDevices,
-                            ExecutionBackend);
+      runtime::generateDeviceConfigs(numDevices, ExecutionBackend);
 
   hostManager_ = llvm::make_unique<runtime::HostManager>(std::move(configs));
   backend_ = createBackend(ExecutionBackend);

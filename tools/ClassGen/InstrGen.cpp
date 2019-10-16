@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2017-present, Facebook, Inc.
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -133,7 +133,7 @@ int main(int argc, char **argv) {
       .addMember(MemberType::VectorUnsigned, "Pads")
       .addMember(MemberType::Unsigned, "Layout")
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
-      .addGradientInstr({"Dest", "Argmax"}, {"Dest", "Src"});
+      .addGradientInstr({"Dest", "Src", "Argmax"}, {"Dest", "Src"});
 
   BB.newInstr("MaxPool")
       .addOperand("Dest", OperandKind::Out)
@@ -153,7 +153,7 @@ int main(int argc, char **argv) {
       .addMember(MemberType::Unsigned, "Layout")
       .autoIRGen()
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
-      .addGradientInstr({"Dest"}, {"Dest", "Src"});
+      .addGradientInstr({"Dest", "Src"}, {"Dest", "Src"});
 
   BB.newInstr("ArgMax")
       .addOperand("Argmax", OperandKind::Out)
@@ -529,6 +529,16 @@ int main(int argc, char **argv) {
   //===--------------------------------------------------------------------===//
   //                Non-linearities
   //===--------------------------------------------------------------------===//
+  BB.newInstr("Relu")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .inplaceOperand({
+          "Dest",
+          "Src",
+      })
+      .dataParallel()
+      .autoVerify(VerifyKind::SameType, {"Dest", "Src"})
+      .autoIRGen();
 
   BB.newInstr("Sigmoid")
       .addOperand("Dest", OperandKind::Out)
@@ -538,8 +548,7 @@ int main(int argc, char **argv) {
           "Src",
       })
       .dataParallel()
-      .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
-      .autoVerify(VerifyKind::SameShape, {"Dest", "Src"})
+      .autoVerify(VerifyKind::SameType, {"Dest", "Src"})
       .autoIRGen();
 
   BB.newInstr("Tanh")
@@ -550,8 +559,7 @@ int main(int argc, char **argv) {
           "Src",
       })
       .dataParallel()
-      .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
-      .autoVerify(VerifyKind::SameShape, {"Dest", "Src"})
+      .autoVerify(VerifyKind::SameType, {"Dest", "Src"})
       .autoIRGen();
 
   //===--------------------------------------------------------------------===//
@@ -721,13 +729,7 @@ int main(int argc, char **argv) {
   //                Backend-Specific Instructions
   //===--------------------------------------------------------------------===//
 
-#include "Backends/CPU/CPUSpecificInstrs.h"
-#include "Backends/OpenCL/OpenCLSpecificInstrs.h"
-  // Add here external backend specific instructions headers.
-  // Example:
-  // #ifdef GLOW_WITH_<NAME>
-  // #include "<Name>/ClassGen/<Name>SpecificInstrs.h"
-  // #endif
+#include "glow/InstrGenIncludes.h"
 
   return 0;
 }

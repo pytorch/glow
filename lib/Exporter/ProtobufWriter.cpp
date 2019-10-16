@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2017-present, Facebook, Inc.
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -61,9 +61,6 @@ Error ProtobufWriter::writeModel(const ::google::protobuf::Message &modelProto,
           ErrorValue::ErrorCode::MODEL_WRITER_SERIALIZATION_ERROR);
     } else {
       ::google::protobuf::io::CodedOutputStream codedOutput(&zeroCopyOutput);
-      // Write the size.
-      size_t size = modelProto.ByteSize();
-      codedOutput.WriteVarint32(size);
       modelProto.SerializeToCodedStream(&codedOutput);
       RETURN_ERR_IF_NOT(
           !codedOutput.HadError(), "Can't write to the output file name",

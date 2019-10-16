@@ -1,3 +1,5 @@
+add_subdirectory(ClassGen)
+
 if("${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang")
   set(CLANG_BIN ${CMAKE_CXX_COMPILER})
 else()
@@ -24,7 +26,19 @@ set(CPURunttimeCompilationOptions
       -fno-finite-math-only
       -g0
       -emit-llvm
-      -O0)
+      -O0
+
+      # When building for a custom target, use this as an example of how to
+      # set up cross-compilation correctly. Then, when building bundles,
+      # do not forget to specify the -target= option with the same target
+      # string. Also, when building bundles, specify the -llvm-compiler option
+      # together with -llvm-compiler-opt to specify custom compilation flags for
+      # cross-compilation.
+
+      # --sysroot=/usr/arm-linux-gnueabihf/
+      # -target armv7-neon-linux-gnueabihf
+      # -I/usr/arm-linux-gnueabihf/include/c++/7.4.0/arm-linux-gnueabihf/
+      )
 
 set(libjit_files "libjit;libjit_conv;libjit_matmul")
 

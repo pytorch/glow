@@ -13,20 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#include "tests/unittests/BackendTestUtils.h"
 
-#ifdef GLOW_WITH_OPENCL
+using namespace glow;
 
-BB.newBackendSpecificInstr("OCLBatchedReduceAdd")
-    .addOperand("Dest", OperandKind::Out)
-    .addOperand("Src", OperandKind::In)
-    .addOperand("DestSliceSizes", OperandKind::In)
-    .addOperand("SrcSliceSizes", OperandKind::In)
-    .addMember(MemberType::Unsigned, "Axis")
-    .addMember(MemberType::Unsigned, "AxisSrcSliceSize")
-    .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
-    .autoIRGen();
-
-BB.includeBackendSpecificVerification(
-    "glow/OpenCLSpecificInstrsVerification.h");
-
-#endif // GLOW_WITH_CPU
+std::set<std::string> glow::backendTestBlacklist = {};

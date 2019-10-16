@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2017-present, Facebook, Inc.
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -32,6 +32,7 @@ class AttributeProto;
 class NodeProto;
 class GraphProto;
 class ModelProto;
+class TensorProto;
 } // namespace ONNX_NAMESPACE
 
 namespace glow {
@@ -214,6 +215,14 @@ class ONNXModelLoader
   /// Load Glow Splat operator.
   Error loadSplat(const ONNX_NAMESPACE::NodeProto &op,
                   const ArgumentDictionaryTy &dict);
+
+  /// Load Glow InsertTensor operator.
+  Error loadInsertTensor(const ONNX_NAMESPACE::NodeProto &op,
+                         const ArgumentDictionaryTy &dict);
+
+  /// Load AdaptiveAvgPool Glow operator.
+  Error loadAdaptiveAvgPool(const ONNX_NAMESPACE::NodeProto &op,
+                            const ArgumentDictionaryTy &dict);
 
 protected:
   /// Load the network operators from the GraphProto.

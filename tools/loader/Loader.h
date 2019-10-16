@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2017-present, Facebook, Inc.
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -109,6 +109,11 @@ public:
   /// binds specific placeholders to concrete tensors. The concrete
   /// tensors include quantization profile guided information.
   void runInference(PlaceholderBindings &bindings, size_t batchSize = 1);
+
+  /// Runs inference, \p context binds both Tensors to Placeholders and
+  /// potentially holds a TraceContext. This method allows obtaining TraceEvents
+  /// from the run.
+  void runInference(ExecutionContext *context, size_t batchSize = 1);
 
   /// Generates and serializes the quantization infos after gathering a profile
   /// by running inference one or more times. \p bindings

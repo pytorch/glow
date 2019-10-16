@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2017-present, Facebook, Inc.
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -55,6 +55,7 @@ LLVMBackend::LLVMBackend() {
   target_ = llvmTarget;
   cpu_ = llvmCPU;
   codeModel_ = llvm::CodeModel::Model::Large;
+  relocModel_ = llvm::Reloc::Model::Static;
 }
 
 /// Emit the entry point for JIT called "jitmain".
@@ -111,7 +112,7 @@ LLVMBackend::compileIRWithoutConstants(IRFunction *IR) const {
   llvm::SmallVector<std::string, 8> targetFeatures(llvmTargetFeatures.begin(),
                                                    llvmTargetFeatures.end());
   irgen->initTargetMachine(getTarget(), getArch(), getCPU(), targetFeatures,
-                           getCodeModel());
+                           getCodeModel(), getRelocModel());
   irgen->initCodeGen();
   // Perform the address assignment for activations and WeightVars.
 
@@ -160,5 +161,5 @@ void LLVMBackend::save(Function *F, llvm::StringRef outputDir,
   auto IR = generateAndOptimizeIR(F, *this, shouldShareBuffers());
   BundleSaver(IR.get(), *this)
       .save(getTarget(), getArch(), getCPU(), targetFeatures, outputDir,
-            bundleName, mainEntryName);
+            bundleName, mainEntryName, getCodeModel(), getRelocModel());
 }

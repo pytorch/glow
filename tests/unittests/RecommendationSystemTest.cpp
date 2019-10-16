@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2017-present, Facebook, Inc.
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -116,12 +116,6 @@ llvm::cl::opt<unsigned> numDevicesOpt(
     "num-devices", llvm::cl::desc("Number of devices to use for partitioning."),
     llvm::cl::Optional, llvm::cl::init(6), llvm::cl::cat(recSysTestCat));
 
-llvm::cl::opt<bool> useSymmetricRowwiseQuantFCOpt(
-    "use-symmetric-rowwise-quant-fc",
-    llvm::cl::desc(
-        "Whether to use Symmetric quantization with FCs. Default is false."),
-    llvm::cl::Optional, llvm::cl::init(false), llvm::cl::cat(recSysTestCat));
-
 llvm::cl::opt<std::string> traceDir(
     "trace-dir",
     llvm::cl::desc("Directory used to store Glow trace events files. If not "
@@ -202,19 +196,6 @@ static void dispatchInference(HostManager *hostManager,
   }
   // Release the original context passed in by reference so we don't free it.
   contexts[0].release();
-}
-
-/// Helper function to generate deviceConfigs for HostManager initialization.
-static std::vector<std::unique_ptr<runtime::DeviceConfig>>
-generateDeviceConfigs(llvm::StringRef backendName, unsigned numDevices,
-                      size_t memorySize) {
-  std::vector<std::unique_ptr<runtime::DeviceConfig>> configs;
-  for (unsigned i = 0; i < numDevices; i++) {
-    auto deviceConfig = llvm::make_unique<DeviceConfig>(backendName);
-    deviceConfig->setDeviceMemory(memorySize);
-    configs.push_back(std::move(deviceConfig));
-  }
-  return configs;
 }
 
 /// Tests a simplified Recommendation System model.
@@ -518,7 +499,7 @@ protected:
         mod, internalTypeF, {inputDim, firstIntDim}, "initial_weight");
 
     // Output is size {MB, intermediatDim}
-    quantization::Schema rowwiseQuantSchema = useSymmetricRowwiseQuantFCOpt
+    quantization::Schema rowwiseQuantSchema = useSymmetricRowwiseQuantFC
                                                   ? quantization::Symmetric
                                                   : quantization::Asymmetric;
     Node *initial_layer = F_->createRowwiseQuantizedFullyConnected(
@@ -796,7 +777,8 @@ protected:
       auto *saveConcat = F_->createSave("after_concat_data", CN);
       concatPH = saveConcat->getPlaceholder();
     }
-    auto configs = generateDeviceConfigs(getBackendName(), 1, MAX_MEMORY);
+    auto configs =
+        runtime::generateDeviceConfigs(1, getBackendName(), MAX_MEMORY);
     std::unique_ptr<HostManager> hostManager(
         new HostManager(std::move(configs)));
 
@@ -855,7 +837,7 @@ protected:
 
     // Set device memory to 64GB to prevent partitioning. We are using the
     // Interpreter's result just as a reference result to compare against.
-    auto configs = generateDeviceConfigs("Interpreter", 1, MAX_MEMORY);
+    auto configs = generateDeviceConfigs(1, "Interpreter", MAX_MEMORY);
     std::unique_ptr<HostManager> hostManager(
         new HostManager(std::move(configs)));
 
@@ -867,7 +849,7 @@ protected:
 
     assert(resultTensor && "Must run and set resultTensor before comparing "
                            "against the intepreter.");
-    EXPECT_TRUE(resultIT->isEqual(*resultTensor));
+    EXPECT_TRUE(resultIT->isEqual(*resultTensor, 0.005));
   }
 
   /// Create partitions to run and compare results.
@@ -876,7 +858,7 @@ protected:
     // Result tensors are reused below, so create a local copy.
     Tensor referenceResultT = resultTensor->clone();
     // Generate configs and create a new HostManager for testing partitioning.
-    auto configs = generateDeviceConfigs(getBackendName(), numDevices, memSize);
+    auto configs = generateDeviceConfigs(numDevices, getBackendName(), memSize);
     std::unique_ptr<HostManager> hostManager(
         new HostManager(std::move(configs)));
 
@@ -934,7 +916,7 @@ protected:
     // Use the same precision transformation for compilation.
     CompilationContext cctx;
     cctx.precisionConfig = precConfig_;
-    auto configs = generateDeviceConfigs(getBackendName(), 1, MAX_MEMORY);
+    auto configs = generateDeviceConfigs(1, getBackendName(), MAX_MEMORY);
     std::unique_ptr<HostManager> hostManager(
         new HostManager(std::move(configs)));
     EXIT_ON_ERR(hostManager->addNetwork(std::move(mod), cctx));

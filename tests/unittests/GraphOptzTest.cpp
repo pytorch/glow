@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2017-present, Facebook, Inc.
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -82,6 +82,42 @@ static Function *optimizeFunction(Function *F) {
   auto *G = F->clone(F->getName().str() + "_optimized");
   ::glow::optimize(G, CompilationMode::Infer);
   return G;
+}
+
+TEST_F(GraphOptz, OptimizeClipFunnel) {
+  auto *A =
+      mod_.createPlaceholder(ElemKind::FloatTy, {100, 16}, "input", false);
+  Node *K = A;
+  float min = 0.0;
+  float max = 1000.0;
+  for (int i = 0; i < 10; ++i) {
+    min += 1.0;
+    max -= 1.0;
+    K = F_->createClip("clip", K, min, max);
+  }
+  F_->createSave("ret", K);
+
+  EXPECT_EQ(F_->getNodes().size(), 11);
+
+  optimizedF_ = optimizeFunction(F_);
+  EXPECT_EQ(optimizedF_->getNodes().size(), 2);
+
+  // Find clip node in the optimized graph.
+  Node *newClip = A;
+  for (auto &N : optimizedF_->getNodes()) {
+    if (N.getKind() == Kinded::Kind::ClipNodeKind) {
+      newClip = llvm::dyn_cast<ClipNode>(&N);
+    }
+  }
+  EXPECT_TRUE(llvm::isa<ClipNode>(newClip));
+  ClipNode *c = llvm::dyn_cast<ClipNode>(newClip);
+  EXPECT_EQ(min, c->getMin());
+  EXPECT_EQ(max, c->getMax());
+
+  bindings_.allocate(mod_.getPlaceholders());
+  bindings_.get(A)->getHandle().randomize(-1000, 1000, mod_.getPRNG());
+  bindings_.get(A)->getHandle().raw(0) = -1000;
+  checkNumericalEquivalence();
 }
 
 TEST_F(GraphOptz, DCE) {
@@ -648,7 +684,7 @@ TEST_P(GraphOptzSinkTransposeBelowParametrized,
   EXPECT_EQ(F_->getNodes().size(), 3);
 }
 
-INSTANTIATE_TEST_CASE_P(
+GLOW_INSTANTIATE_TEST_SUITE_P(
     TestSinkTranspose, GraphOptzSinkTransposeBelowParametrized,
     ::testing::Values(TestSinkTransposeNodesKind::BatchNormalization,
                       TestSinkTransposeNodesKind::Relu,
@@ -822,7 +858,8 @@ TEST_F(GraphOptz, mergeNonInverseTransposes) {
   const size_t origDims[] = {1, 5, 10, 15};
   const size_t finalDims[] = {5, 1, 15, 10};
 
-  Node *A = mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input", false);
+  Placeholder *A =
+      mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input", false);
   TransposeNode *T1 = F_->createTranspose("transpose", A, {0, 3, 2, 1});
   TransposeNode *T2 = F_->createTranspose("transpose", T1, {0, 2, 3, 1});
   TransposeNode *T3 = F_->createTranspose("transpose", T2, {1, 0, 3, 2});
@@ -839,15 +876,25 @@ TEST_F(GraphOptz, mergeNonInverseTransposes) {
 
   EXPECT_EQ(F_->getNodes().size(), 5);
 
-  ::glow::optimize(F_, CompilationMode::Infer);
-
+  optimizedF_ = optimizeFunction(F_);
+  // Find save node in the optimized graph.
+  for (auto &N : optimizedF_->getNodes()) {
+    if (N.getKind() == Kinded::Kind::SaveNodeKind) {
+      save = llvm::dyn_cast<SaveNode>(&N);
+    }
+  }
+  // Get the last transpose node in the optimized graph.
   auto *TR = llvm::dyn_cast<TransposeNode>(save->getInput());
   ASSERT_NE(TR, nullptr);
 
-  EXPECT_EQ(F_->getNodes().size(), 2);
+  EXPECT_EQ(optimizedF_->getNodes().size(), 2);
   EXPECT_EQ(TR->getResult().dims(), llvm::makeArrayRef(finalDims));
   EXPECT_EQ(A->getNthResult(0).dims(), llvm::makeArrayRef(origDims));
   EXPECT_EQ(TR->getInput().getNode(), A);
+
+  bindings_.allocate(mod_.getPlaceholders());
+  bindings_.get(A)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
+  checkNumericalEquivalence();
 }
 
 TEST_F(GraphOptz, sinkTransposeBelowArithmeticNodes) {
@@ -1280,6 +1327,13 @@ TEST_F(GraphOptz, ZeroArithmetic) {
   EXPECT_EQ(F_->getNodes().size(), 1);
 
   EXPECT_EQ(O->getInput().getNode(), input);
+
+  optimizedF_ = optimizeFunction(F_);
+
+  bindings_.allocate(mod_.getPlaceholders());
+  bindings_.get(input)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
+
+  checkNumericalEquivalence();
 }
 
 /// A test that verifies that arithmetic simplification works correctly when
@@ -1325,20 +1379,28 @@ TEST_F(GraphOptz, ArithmeticIdentitiesOne) {
   SplatNode *one = F_->createSplat("one", input->getType(), 1.);
   DivNode *div = F_->createDiv("div", input, one);
   MulNode *mul = F_->createMul("mul", div, one);
-  SaveNode *SN = F_->createSave("ret", mul);
+  F_->createSave("ret", mul);
 
   // Splat, Div, Mul, Save.
   EXPECT_EQ(F_->getNodes().size(), 4);
-
-  ::glow::optimize(F_, CompilationMode::Infer);
+  // Save optimized function for future comparision
+  optimizedF_ = optimizeFunction(F_);
 
   // The expression evaluates to "I", so Save is only node left.
-  EXPECT_EQ(F_->getNodes().size(), 1);
-  ASSERT_TRUE(std::find_if(F_->getNodes().begin(), F_->getNodes().end(),
-                           IsSameNodeAddress(SN)) != F_->getNodes().end());
+  EXPECT_EQ(optimizedF_->getNodes().size(), 1);
+  SaveNode *SN = (SaveNode *)optimizedF_->getNodeByName("ret");
+  ASSERT_TRUE(std::find_if(optimizedF_->getNodes().begin(),
+                           optimizedF_->getNodes().end(),
+                           IsSameNodeAddress(SN)) !=
+              optimizedF_->getNodes().end());
 
   // Save node should just save the input.
   EXPECT_TRUE(SN->getInput().getNode() == input);
+
+  bindings_.allocate(mod_.getPlaceholders());
+  bindings_.get(input)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
+
+  checkNumericalEquivalence();
 }
 
 /// Reverse the intrusive list of nodes. This custom implementation is required,
@@ -2299,7 +2361,14 @@ TEST_F(GraphOptz, FoldTileAddIntoBatchedAdd) {
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::BatchedAddNodeKind), 0);
 
   ASSERT_TRUE(F_->verify());
-  ::glow::optimize(F_, CompilationMode::Infer);
+
+  // Currently the FoldTileAddIntoBatchedAdd opt which we're testing here is not
+  // part of the default optimization pipeline. Create a local version of the
+  // pipeline with that pass included.
+  auto p = createDefaultGraphOptimizationPassPipeline();
+  p.pushFront({FunctionPassID::FoldTileAddIntoBatchedAdd});
+  FunctionPassManager FPM("opt", p);
+  FPM.run(F_, CompilationContext());
   ASSERT_TRUE(F_->verify());
 
   // Check that the Tile node and the Add node is replaced by
@@ -2321,7 +2390,9 @@ TEST_F(GraphOptz, FoldTileAddIntoBatchedAdd) {
       continue;
     }
     auto *recvdBatch = llvm::dyn_cast<Placeholder>(recvdBANode->getBatch());
+    ASSERT_TRUE(recvdBatch);
     auto *recvdSlice = llvm::dyn_cast<Constant>(recvdBANode->getSlice());
+    ASSERT_TRUE(recvdSlice);
     EXPECT_TRUE(recvdBatch->dims().equals({3, 1, 2}));
     EXPECT_TRUE(recvdSlice->dims().equals({1, 2}));
     EXPECT_TRUE(bindings_.get(recvdBatch)->isEqual(expectedBatch));
@@ -2765,6 +2836,31 @@ TEST_F(GraphOptz, ConvertPlaceholdersToConstants) {
   EXPECT_TRUE(llvm::isa<Placeholder>(save3->getInput()));
 }
 
+TEST_F(GraphOptz, optimizeConversion_i8_i32_i16) {
+  auto qt = [&](ElemKind k) { return mod_.uniqueType(k, {1}, 1.0, 0); };
+  auto *i8 = qt(ElemKind::Int8QTy);
+  auto *i16 = qt(ElemKind::Int16QTy);
+  auto *i32 = qt(ElemKind::Int32QTy);
+
+  auto *A = mod_.createPlaceholder(i8, "A", false);
+  auto *B = F_->createConvertTo("B", A, i32);
+  auto *C = F_->createConvertTo("C", B, i16);
+  auto *S = F_->createSave("S", C);
+
+  ::glow::optimize(F_, CompilationMode::Infer);
+
+  // The i32 cast is optimized away.
+  EXPECT_EQ(F_->getNodes().size(), 2);
+
+  // The save node is fed by an i16 cast.
+  auto *C2 = llvm::dyn_cast<ConvertToNode>(S->getInput());
+  ASSERT_TRUE(C2);
+  EXPECT_TRUE(C2->getResult().getElementType() == ElemKind::Int16QTy);
+
+  // The cast node input is a placeholder.
+  EXPECT_TRUE(llvm::isa<Placeholder>(C2->getInput()));
+}
+
 TEST_F(GraphOptz, optimizeSameTypeConversions) {
   auto *input1 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "input1", true);
   auto *input2 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "input2", true);
@@ -2958,9 +3054,14 @@ TEST_F(GraphOptz, nopRelu) {
   auto *relu = F_->createRELU("relu", in);
   F_->createSave("save", relu);
 
-  ::glow::optimize(F_, CompilationMode::Infer);
+  optimizedF_ = optimizeFunction(F_);
 
-  EXPECT_EQ(F_->getNodes().size(), 1);
+  EXPECT_EQ(optimizedF_->getNodes().size(), 1);
+
+  bindings_.allocate(mod_.getPlaceholders());
+  bindings_.get(in)->getHandle<int8_t>().randomize(-4, 4, mod_.getPRNG());
+
+  checkNumericalEquivalence();
 }
 
 template <typename ElemTy>

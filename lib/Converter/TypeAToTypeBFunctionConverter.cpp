@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2018-present, Facebook, Inc.
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -52,6 +52,7 @@ TypeAToTypeBFunctionConverter::getTargetTypeForInput(const Node &use,
 }
 
 Node *TypeAToTypeBFunctionConverter::createConversion(Function &function,
+                                                      const Node &node,
                                                       NodeValue &val,
                                                       TypeRef destTy) {
   assert(((destTy->getElementType() == dstKind_ &&
@@ -60,7 +61,21 @@ Node *TypeAToTypeBFunctionConverter::createConversion(Function &function,
            val.getType()->getElementType() == dstKind_)) &&
          "Unexpected conversion type");
 
-  if (precConfig_.clipFP16) {
+  bool needClip = precConfig_.clipFP16;
+  if (needClip) {
+    switch (node.getKind()) {
+    case Kinded::Kind::ConcatNodeKind:
+    case Kinded::Kind::GatherNodeKind:
+    case Kinded::Kind::ReshapeNodeKind:
+    case Kinded::Kind::SliceNodeKind:
+    case Kinded::Kind::TransposeNodeKind:
+      needClip = false;
+      break;
+    default:
+      break;
+    }
+  }
+  if (needClip) {
     assert((destTy->getElementType() == ElemKind::Float16Ty ||
             val.getType()->getElementType() == ElemKind::Float16Ty) &&
            "Unexpected conversion type");
