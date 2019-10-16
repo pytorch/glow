@@ -207,35 +207,6 @@ void registerGlowFusionOpAndPass(std::function<bool()> enablePassFn) {
   registerGlowFusionPass(std::move(enablePassFn));
 }
 
-glow::Type ptTypeToGlowType(const c10::TensorType &ptType) {
-  DCHECK(ptType.scalarType().has_value())
-      << "TensorType has no associated scalar type.";
-  const auto concreteSizes = ptType.sizes().concrete_sizes().value();
-  std::vector<size_t> dims;
-  for (const auto &size : concreteSizes) {
-    dims.push_back(static_cast<size_t>(size));
-  }
-
-  auto scalarType = ptType.scalarType().value();
-  auto glowElemKind = scalarTypeToElemKind(scalarType);
-  return glow::Type(glowElemKind, dims);
-}
-
-glow::Type ptQTypeToGlowQType(const c10::TensorType &ptType, const float &scale,
-                              const int32_t &zero_point) {
-  DCHECK(ptType.scalarType().has_value())
-      << "TensorType has no associated scalar type.";
-  const auto concreteSizes = ptType.sizes().concrete_sizes().value();
-  std::vector<size_t> dims;
-  for (const auto &size : concreteSizes) {
-    dims.push_back(static_cast<size_t>(size));
-  }
-
-  auto scalarType = ptType.scalarType().value();
-  auto glowElemKind = scalarTypeToElemKind(scalarType);
-  return glow::Type(glowElemKind, dims, scale, zero_point);
-}
-
 at::Tensor glowTypeToEmptyPTTensor(const glow::Type &glowType) {
   std::vector<int64_t> sizes;
   for (const auto dim : glowType.dims()) {
@@ -248,14 +219,25 @@ at::Tensor glowTypeToEmptyPTTensor(const glow::Type &glowType) {
 
 glow::Tensor ptTensorToGlowTensor(const at::Tensor &ptTensor) {
   auto ptType = *c10::TensorType::create(ptTensor);
-  if (ptTensor.is_quantized()) {
-    auto glowType =
-        ptQTypeToGlowQType(ptType, ptTensor.q_scale(), ptTensor.q_zero_point());
-    return glow::Tensor(ptTensor.data_ptr(), &glowType);
-  } else {
-    auto glowType = ptTypeToGlowType(ptType);
-    return glow::Tensor(ptTensor.data_ptr(), &glowType);
+
+  DCHECK(ptType.scalarType().has_value())
+      << "TensorType has no associated scalar type.";
+  const auto concreteSizes = ptType.sizes().concrete_sizes().value();
+  std::vector<size_t> dims;
+  for (const auto &size : concreteSizes) {
+    dims.push_back(static_cast<size_t>(size));
   }
+
+  auto scalarType = ptType.scalarType().value();
+  auto glowElemKind = scalarTypeToElemKind(scalarType);
+
+  glow::Type glowType;
+  if (ptTensor.is_quantized()) {
+    glowType = glow::Type(glowElemKind, dims, ptTensor.q_scale(), ptTensor.q_zero_point());
+  } else {
+    glowType = glow::Type(glowElemKind, dims);
+  }
+  return glow::Tensor(ptTensor.data_ptr(), &glowType);
 }
 
 void fuseKnownPatterns(std::shared_ptr<torch::jit::Graph> &graph) {

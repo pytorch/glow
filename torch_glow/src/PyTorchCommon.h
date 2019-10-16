@@ -76,9 +76,6 @@ void registerGlowFusionPass(std::function<bool()> enablePassFn);
 /// registered.
 void registerGlowFusionOpAndPass(std::function<bool()> enablePassFn);
 
-/// Given a PyTorch TensorType \p ptType, \returns a matching Glow Type.
-glow::Type ptTypeToGlowType(const c10::TensorType &ptType);
-
 /// Given a PyTorch Tensor \p ptTensor, \returns an unowned Glow Tensor with a
 /// matching type backed by the same memory as ptTensor.
 glow::Tensor ptTensorToGlowTensor(const at::Tensor &ptTensor);
