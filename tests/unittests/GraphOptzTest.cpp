@@ -193,7 +193,7 @@ TEST_F(GraphOptz, liveCodeNotEliminated) {
 }
 
 TEST_F(GraphOptz, optimizeBatchNormAfterConv) {
-  Node *A =
+  auto *A =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 10, 20, 3}, "A", false);
   Node *CV = F_->createConv(bindings_, "conv", A, 16, 5, 1, 2, 1);
   Node *BN =
@@ -201,17 +201,22 @@ TEST_F(GraphOptz, optimizeBatchNormAfterConv) {
   F_->createSave("ret", BN);
 
   EXPECT_EQ(F_->getNodes().size(), 3);
-
   ::glow::convertPlaceholdersToConstants(F_, bindings_, {});
-  ::glow::optimize(F_, CompilationMode::Infer);
-  EXPECT_EQ(F_->getNodes().size(), 2);
+  optimizedF_ = optimizeFunction(F_);
+  EXPECT_EQ(optimizedF_->getNodes().size(), 2);
 
-  ASSERT_EQ(A->getNumUsers(), 1);
-  Node *newCV = A->getUsers().begin()->getUser();
+  ASSERT_EQ(A->getNumUsers(), 2);
+  Node *newCV = std::find_if_not(A->getUsers().begin(), A->getUsers().end(),
+                                 [CV](auto &it) { return it.getUser() == CV; })
+                    ->getUser();
   EXPECT_TRUE(llvm::isa<ConvolutionNode>(newCV));
   ASSERT_EQ(newCV->getNumUsers(), 1);
   Node *save = newCV->getUsers().begin()->getUser();
   EXPECT_TRUE(llvm::isa<SaveNode>(save));
+
+  bindings_.allocate(mod_.getPlaceholders());
+  bindings_.get(A)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
+  checkNumericalEquivalence();
 }
 
 /// Verify that the Conv-BatchNorm merging optimization is not impacted by
