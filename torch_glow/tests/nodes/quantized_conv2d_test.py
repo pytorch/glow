@@ -25,8 +25,13 @@ def test_quantized_conv2d():
 
     x = torch.tensor([[[[5., 6.], [7., 8.]]]])
     w = torch.tensor([[[[1., 2.], [3., 4.]]]])
-    b = torch.zeros(1)
+    b_zero = torch.zeros(1)
+    b = torch.randn(1)
 
     jitVsGlow(test_f, x, w, b, expected_fused_ops={"aten::quantize_per_tensor",
+                                                   "glow::unpacked_quantized_conv2d",
+                                                   "aten::dequantize"})
+
+    jitVsGlow(test_f, x, w, b_zero, expected_fused_ops={"aten::quantize_per_tensor",
                                                    "glow::unpacked_quantized_conv2d",
                                                    "aten::dequantize"})
