@@ -3,7 +3,7 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 import torch
 
 from tests.utils import jitVsGlow
-
+import pytest
 
 def test_quantized_conv2d():
     """Basic test of the PyTorch quantized::relu Node on Glow."""
@@ -33,5 +33,21 @@ def test_quantized_conv2d():
                                                    "aten::dequantize"})
 
     jitVsGlow(test_f, x, w, b_zero, expected_fused_ops={"aten::quantize_per_tensor",
+                                                   "glow::unpacked_quantized_conv2d",
+                                                   "aten::dequantize"})
+
+@pytest.mark.skip(reason="accuracy between glow&ytorch")
+def test_quantized_conv2d_nonfunctional():
+    """Basic test of the PyTorch quantized::relu Node on Glow."""
+
+    def test_f(a):
+        q = torch.nn.quantized.Quantize(1/16, 0, torch.quint8)
+        dq = torch.nn.quantized.DeQuantize()
+        conv = torch.nn.quantized.Conv2d(1, 1, [2, 2])
+        return dq(conv(q(a)))
+
+    x = torch.tensor([[[[5., 6.], [7., 8.]]]])
+
+    jitVsGlow(test_f, x, expected_fused_ops={"aten::quantize_per_tensor",
                                                    "glow::unpacked_quantized_conv2d",
                                                    "aten::dequantize"})
