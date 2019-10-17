@@ -786,8 +786,8 @@ TEST(TraceEventsTest, nestedScopedEventsTerm) {
 
 TEST(TraceEventsTest, TraceLevels) {
   CHECK_IF_ENABLED();
-  std::array<TraceLevel, 4> levels = {{TraceLevel::NONE, TraceLevel::REQUEST,
-                                       TraceLevel::RUNTIME,
+  std::array<TraceLevel, 5> levels = {{TraceLevel::NONE, TraceLevel::REQUEST,
+                                       TraceLevel::RUNTIME, TraceLevel::COPY,
                                        TraceLevel::OPERATOR}};
   for (auto L : levels) {
     TraceContext context(L);
@@ -807,7 +807,7 @@ TEST(TraceEventsTest, TraceLevels) {
   for (auto evl : levels) {
     context.logTraceEvent("event", evl);
   }
-  ASSERT_EQ(context.getTraceEvents().size(), 2);
+  ASSERT_EQ(context.getTraceEvents().size(), 4);
 }
 
 TEST(TraceEventsTest, MergeEvents) {

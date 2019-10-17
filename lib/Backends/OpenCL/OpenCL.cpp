@@ -1549,8 +1549,7 @@ void OpenCLFunction::loadPlaceholders(
         /* event */ kernelProfiling_ ? &event : nullptr);
     CHECK_EQ(err, CL_SUCCESS) << "Unable to copy data to the device";
     if (kernelProfiling_) {
-      kernelLaunches.emplace_back(KernelLaunch("copyConstantsToDevice",
-                                               "copyConstantsToDevice", event));
+      kernelLaunches.emplace_back("(H2D) Constants", "copy", event);
     }
     // Do it!
     clFinish(devBindings->commandQueue);
@@ -1577,8 +1576,8 @@ void OpenCLFunction::loadPlaceholders(
         /* event */ kernelProfiling_ ? &event : nullptr);
     CHECK_EQ(err, CL_SUCCESS) << "Unable to copy data to the device";
     if (kernelProfiling_) {
-      kernelLaunches.emplace_back(
-          KernelLaunch("copyInputsToDevice", "copyInputsToDevice", event));
+      std::string name = ("(H2D) " + PH.first->getName()).str();
+      kernelLaunches.emplace_back(name, "copy", event);
     }
   }
   // Do it!
@@ -1609,8 +1608,8 @@ void OpenCLFunction::updatePlaceholders(
         /* event */ kernelProfiling_ ? &event : nullptr);
     CHECK_EQ(err, CL_SUCCESS) << "Unable to copy data from the device";
     if (kernelProfiling_) {
-      kernelLaunches.emplace_back(KernelLaunch("copyOutputsFromDevice",
-                                               "copyOutputsFromDevice", event));
+      std::string name = ("(D2H) " + PH.first->getName()).str();
+      kernelLaunches.emplace_back(name, "copy", event);
     }
   }
   // Do it!
@@ -1700,8 +1699,12 @@ void OpenCLFunction::translateTraceEventsCL(
         auto timestamp = (timeEnd / 1000) + tsOffset;
 
         handle.at({ev->startIndex, 0}) = timestamp;
-        traceEvents.push_back(
-            {ev->name, timestamp, ev->type, tid, {{"kind", ev->kind}}});
+        traceEvents.push_back({ev->name,
+                               TraceLevel::DEBUG,
+                               timestamp,
+                               ev->type,
+                               tid,
+                               {{"kind", ev->kind}}});
       }
     } else {
       // Duration should be usec.
@@ -1709,7 +1712,11 @@ void OpenCLFunction::translateTraceEventsCL(
       // Convert into usec and move into steady_clock domain.
       auto startUs = (timeStart / 1000) + tsOffset;
 
-      traceEvents.push_back({name, startUs, duration, tid, {{"type", type}}});
+      TraceLevel level =
+          (type == "copy") ? TraceLevel::COPY : TraceLevel::OPERATOR;
+
+      traceEvents.push_back(
+          {name, level, startUs, duration, tid, {{"type", type}}});
     }
 
     if (clDoProfile) {
