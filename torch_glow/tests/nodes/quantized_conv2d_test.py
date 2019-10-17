@@ -7,7 +7,7 @@ import pytest
 
 
 def test_quantized_conv2d():
-    """Basic test of the PyTorch quantized::relu Node on Glow."""
+    """Basic test of the PyTorch quantized onv2d Node on Glow."""
 
     def test_f(a, w, b):
         qu = torch.nn.quantized.Quantize(1/16, 0, torch.quint8)
@@ -40,7 +40,8 @@ def test_quantized_conv2d():
 
 @pytest.mark.skip(reason="accuracy between glow&ytorch")
 def test_quantized_conv2d_nonfunctional():
-    """Basic test of the PyTorch quantized::relu Node on Glow."""
+    """Basic test of the PyTorch quantized conv2d Node with external quantized
+    input on Glow."""
 
     def test_f(a):
         q = torch.nn.quantized.Quantize(1/16, 0, torch.quint8)
