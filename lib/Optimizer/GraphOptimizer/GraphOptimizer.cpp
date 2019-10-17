@@ -77,6 +77,56 @@ static bool shouldDeleteConstants(Function *F) {
   return true;
 }
 
+/// Helper that \returns the shuffle that inverts \p shuffle. For example, if
+/// \p shuffle is {3, 0, 1, 2}, then this function returns {1, 2, 3, 0}.
+static llvm::SmallVector<unsigned_t, max_tensor_dimensions>
+invertShuffle(llvm::ArrayRef<unsigned_t> shuffle) {
+  llvm::SmallVector<unsigned_t, max_tensor_dimensions> invertedShuffle;
+  invertedShuffle.resize(shuffle.size());
+
+  for (size_t i = 0; i < shuffle.size(); ++i) {
+    invertedShuffle[shuffle[i]] = i;
+  }
+
+  return invertedShuffle;
+}
+
+/// Add a TranposeNode after \p C in \p F that has the same shuffle as \p TR.
+/// This funcion assumes that the type of \p C and the output type of \p TR are
+/// the same. \returns the newly added TransposeNode.
+static TransposeNode *insertMatchingTransposeAfterConstant(Function *F,
+                                                           Constant *C,
+                                                           TransposeNode *TR) {
+  auto *CT = C->getOutput().getType();
+  auto *TRT = TR->getResult().getType();
+  DCHECK(CT->isEqual(TRT));
+
+  auto &T = C->getPayload();
+
+  // In order for a new Transpose node with the same shuffle as TR to
+  // be created at the output of the Constant, a new Constant should
+  // created that has the same type as the input to TR.
+  auto *NC = F->getParent()->createConstant(TR->getInput().getType(),
+                                            C->getName().str() + ".transposed");
+
+  // The payload of the original Constant C has the same type as the
+  // output of TR. In order to preserve correctness, this payload must
+  // be transposed using the inverse of the shuffle of TR and stored
+  // into the payload of the new Constant.
+  //
+  // Another way to think of this is that we are inserting two
+  // Transposes that are inverses of each other back to back after the original
+  // Constant. The shuffle of the second Transpose must match that of TR.
+  // In order to preserve correctness, the shuffle
+  // of the first Transpose must be the inverse of that shuffle of the
+  // second Transpose. The statement below statically computes this
+  // first Transpose.
+  T.transpose(&NC->getPayloadMutable(), invertShuffle(TR->getShuffle()));
+
+  // Create Transpose on the LHS that has the same shuffle as TR.
+  return F->createTranspose("transpose", NC, TR->getShuffle());
+}
+
 bool EmptyPass::run(Function *F, const CompilationContext &cctx) {
   return false;
 }
@@ -427,7 +477,8 @@ bool SinkCode::run(Function *F, const CompilationContext &cctx) {
 
       if (!LTR || !RTR) {
         // If one of the sides is a splat, it can be seen as
-        // transpose (splat').
+        // transpose (splat'). Similarly, if one of the sides is a Constant,
+        // it can be seen as tranpose (Constant').
         if (isa<SplatNode>(node->getNthInput(ArithmeticNode::LHSIdx)) && RTR) {
           // Build splat' for LHS.
           auto *SN =
@@ -444,6 +495,18 @@ bool SinkCode::run(Function *F, const CompilationContext &cctx) {
           auto *NS = F->createSplat("splat", LTR->getInput().getType(),
                                     SN->getValue());
           RTR = F->createTranspose("transpose", NS, LTR->getShuffle());
+          changed = true;
+        } else if (isa<Constant>(node->getNthInput(ArithmeticNode::LHSIdx)) &&
+                   RTR) {
+          // Build Constant' for for LHS.
+          auto *C = cast<Constant>(node->getNthInput(ArithmeticNode::LHSIdx));
+          LTR = insertMatchingTransposeAfterConstant(F, C, RTR);
+          changed = true;
+        } else if (isa<Constant>(node->getNthInput(ArithmeticNode::RHSIdx)) &&
+                   LTR) {
+          // Build Constant' for for RHS.
+          auto *C = cast<Constant>(node->getNthInput(ArithmeticNode::RHSIdx));
+          RTR = insertMatchingTransposeAfterConstant(F, C, LTR);
           changed = true;
         } else {
           continue;

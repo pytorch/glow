@@ -928,6 +928,84 @@ TEST_F(GraphOptz, sinkTransposeBelowArithmeticNodes) {
   EXPECT_EQ(F_->getNodes().size(), 3);
 }
 
+/// Check that Transpose node is sunk below arithmetic nodes when one of the
+/// operands is a Constant.
+TEST_F(GraphOptz, sinkTransposeBelowArithmeticNodesWithConstantOperand) {
+  const size_t origDims[] = {1, 5, 10, 15};
+  const size_t transposedDims[] = {1, 15, 5, 10};
+
+  // Create one subgraph in which the Constant is the LHS operand of the Add.
+  Constant *C1 = mod_.createConstant(ElemKind::FloatTy, transposedDims, "C1");
+  // Initialize the payload before optimization so that it can be copied to the
+  // new Constant that will be created by the GraphOptimizer.
+  C1->getHandle().randomize(-1, 1, mod_.getPRNG());
+
+  auto *P1 = mod_.createPlaceholder(ElemKind::FloatTy, origDims, "P1", false);
+  auto *T1 = F_->createTranspose("T1", P1, NHWC2NCHW);
+  auto *A1 = F_->createAdd("A1", C1, T1);
+  SaveNode *S1 = F_->createSave("S1", A1);
+
+  // Create one subgraph in which the Constnat is the RHS operand of the Add.
+  Constant *C2 = mod_.createConstant(ElemKind::FloatTy, transposedDims, "C2");
+  // Initialize the payload before optimization so that it can be copied to the
+  // new Constant that will be created by the GraphOptimizer.
+  C2->getHandle().randomize(-1, 1, mod_.getPRNG());
+
+  auto *P2 = mod_.createPlaceholder(ElemKind::FloatTy, origDims, "P2", false);
+  auto *T2 = F_->createTranspose("T2", P2, NHWC2NCHW);
+  auto *A2 = F_->createAdd("A2", T2, C2);
+  SaveNode *S2 = F_->createSave("S2", A2);
+
+  EXPECT_EQ(F_->getNodes().size(), 6);
+
+  optimizedF_ = optimizeFunction(F_);
+
+  // Find the SaveNodes of the optimized graph.
+  for (auto &N : optimizedF_->getNodes()) {
+    if (N.getKind() == Kinded::Kind::SaveNodeKind) {
+      if (N.getName() == S1->getName()) {
+        S1 = llvm::dyn_cast<SaveNode>(&N);
+      }
+
+      if (N.getName() == S2->getName()) {
+        S2 = llvm::dyn_cast<SaveNode>(&N);
+      }
+    }
+  }
+
+  // Expecting Transpose->Output rather than Add->Output.
+  auto *transpose = llvm::dyn_cast<TransposeNode>(S1->getInput());
+  ASSERT_NE(transpose, nullptr);
+  auto *add = llvm::dyn_cast<AddNode>(transpose->getInput());
+  ASSERT_TRUE(add);
+  // Check that the dimensions of the input and output of the add have been
+  // updated to compensate the absence of transpose.
+  EXPECT_EQ(add->getResult().dims(), llvm::makeArrayRef(origDims));
+  EXPECT_EQ(add->getRHS().dims(), llvm::makeArrayRef(origDims));
+  EXPECT_EQ(add->getLHS().dims(), llvm::makeArrayRef(origDims));
+  EXPECT_EQ(add->getRHS().getNode(), P1);
+
+  // Repeat checks for other subgraph.
+  transpose = llvm::dyn_cast<TransposeNode>(S2->getInput());
+  ASSERT_NE(transpose, nullptr);
+  add = llvm::dyn_cast<AddNode>(transpose->getInput());
+  ASSERT_TRUE(add);
+  EXPECT_EQ(add->getResult().dims(), llvm::makeArrayRef(origDims));
+  EXPECT_EQ(add->getRHS().dims(), llvm::makeArrayRef(origDims));
+  EXPECT_EQ(add->getLHS().dims(), llvm::makeArrayRef(origDims));
+  EXPECT_EQ(add->getLHS().getNode(), P2);
+
+  EXPECT_EQ(optimizedF_->getNodes().size(), 6);
+
+  // Check that the original and optimized functions are numerically equivalent.
+  // This indirectly checks that the Constant has been transposed properly.
+  bindings_.allocate(mod_.getPlaceholders());
+  bindings_.get(P1)->getHandle().randomize(-1, 1, mod_.getPRNG());
+  bindings_.get(P2)->getHandle().randomize(-1, 1, mod_.getPRNG());
+
+  checkNumericalEquivalence();
+}
+
 /// Check that the predicates are properly preserved while doing
 /// the add(transpose, transpose) => transpose(add).
 TEST_F(GraphOptz, sinkTransposeBelowArithmeticNodesWithPredicate) {
