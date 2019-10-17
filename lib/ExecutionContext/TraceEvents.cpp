@@ -70,7 +70,11 @@ void TraceEvent::dumpTraceEvents(
     writeMetadataHelper(file, "thread_name", nameMap.first, nameMap.second);
   }
 
+  bool first{true};
   for (const auto &event : events) {
+    file << (first ? "" : ",\n");
+    first = false;
+
     file << "{\"name\": \"" << event.name;
     file << "\", \"cat\": \"glow\",";
     file << "\"ph\": \"" << event.type;
@@ -84,18 +88,18 @@ void TraceEvent::dumpTraceEvents(
 
     if (!event.args.empty()) {
       file << ", \"args\": {";
-      bool first{true};
+      bool firstArg{true};
       for (auto &pair : event.args) {
         // Start with a comma unless it's the first item in the list.
-        file << (first ? "" : ", ");
-        first = false;
+        file << (firstArg ? "" : ", ");
+        firstArg = false;
         file << "\"" << pair.first << "\" : \"" << pair.second << "\"";
       }
       file << "}";
     }
-    file << "},\n";
+    file << "}";
   }
-  // Skip the ending bracket since that is allowed.
+  file << "\n]";
   file.close();
 }
 
