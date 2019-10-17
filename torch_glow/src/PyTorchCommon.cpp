@@ -149,6 +149,7 @@ void glowCustomFuse(std::shared_ptr<torch::jit::Graph> &g,
 void registerGlowOp(const c10::Symbol &symbol) {
   // Register dummy nodes used by custom fusers.
   registerDummyOperator("glow::unpacked_quantized_linear");
+  registerDummyOperator("glow::unpacked_quantized_conv2d");
 
   auto options = c10::OperatorOptions();
   options.setAliasAnalysis(at::AliasAnalysisKind::PURE_FUNCTION);

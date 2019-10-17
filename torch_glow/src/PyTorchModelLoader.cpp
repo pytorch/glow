@@ -30,6 +30,7 @@ namespace {
 /// In Glow, the activations are quantized to int_8. Therefore, for the offset
 /// read from quantized pytorch model, we need to subtract 128(i.e. INT8_MIN) to
 /// make the activations becomes int8_t.
+
 /// For Glow: -128 <= orig_fp32/scale_1 + offset_1 <= 127
 /// For PyTorch: 0 <= orig_fp32/scale_2 + offset_2 <= 255
 /// Therefore, we can make scale_1 == scale_2, and offset_1 = offset2 - 128
@@ -454,13 +455,28 @@ struct AdaptiveAvgPoolInputs {
   };
 };
 
+/// Indexes of glow::unpacked_quantized_conv2d inputs.
+struct QuantizedUnpackedConv2dInputs {
+  enum {
+    input = 0, // NCHW
+    weights = 1,
+    bias = 2,
+    stride = 3,
+    padding = 4,
+    dilation = 5,
+    group = 6,
+    scale = 7,
+    zero_point = 8,
+  };
+};
+
 /// Indexes of quantized::add inputs.
 struct QuantizedAddInputs {
   enum {
     lhs = 0,
     rhs = 1,
     scale = 2,
-    offset = 3,
+    zero_point = 3,
   };
 };
 
@@ -480,7 +496,7 @@ struct QuantizeInputs {
   enum {
     input = 0,
     scale = 1,
-    offset = 2,
+    zero_point = 2,
     dtype = 3,
   };
 };
@@ -580,7 +596,15 @@ PyTorchModelLoader::getSymbolsMapping() {
         }},
        {{"quantized::add"},
         &PyTorchModelLoader::loadQuantizedAdd,
-        {QuantizedAddInputs::scale, QuantizedAddInputs::offset}},
+        {QuantizedAddInputs::scale, QuantizedAddInputs::zero_point}},
+       {{"glow::unpacked_quantized_conv2d"},
+        &PyTorchModelLoader::loadQuantizedConvUnpacked,
+        {QuantizedUnpackedConv2dInputs::stride,
+         QuantizedUnpackedConv2dInputs::padding,
+         QuantizedUnpackedConv2dInputs::dilation,
+         QuantizedUnpackedConv2dInputs::group,
+         QuantizedUnpackedConv2dInputs::scale,
+         QuantizedUnpackedConv2dInputs::zero_point}},
        {{"glow::unpacked_quantized_linear"},
         &PyTorchModelLoader::loadQuantizedLinear,
         {
@@ -591,7 +615,8 @@ PyTorchModelLoader::getSymbolsMapping() {
         }},
        {{"aten::quantize_per_tensor"},
         &PyTorchModelLoader::loadQuantize,
-        {QuantizeInputs::scale, QuantizeInputs::offset, QuantizeInputs::dtype}},
+        {QuantizeInputs::scale, QuantizeInputs::zero_point,
+         QuantizeInputs::dtype}},
        {{"aten::dequantize"}, &PyTorchModelLoader::loadDequantize, {}},
        {{"aten::size"}, &PyTorchModelLoader::loadSize, {SizeInputs::dim}},
        // TODO: use -1 to freeze all inputs
@@ -910,11 +935,11 @@ Error PyTorchModelLoader::loadQuantizedAdd(const torch::jit::Node *ptNode) {
   ASSIGN_VALUE_OR_RETURN_ERR(outScale, iValToDouble(getGlowIValueForValue(
                                            inputs[QuantizedAddInputs::scale])));
 
-  // offset
+  // zero_point
   int32_t outOffset;
   ASSIGN_VALUE_OR_RETURN_ERR(
       outOffset,
-      iValToInt(getGlowIValueForValue(inputs[QuantizedAddInputs::offset])));
+      iValToInt(getGlowIValueForValue(inputs[QuantizedAddInputs::zero_point])));
 
   TypeRef inputType = lhs.getType();
   auto outDims = inputType->dims();
@@ -1419,10 +1444,11 @@ Error PyTorchModelLoader::loadQuantize(const torch::jit::Node *ptNode) {
       outScale, to32Bit(iValToDouble(
                     getGlowIValueForValue(inputs[QuantizeInputs::scale]))));
 
-  // offset
+  // zero_point
   int32_t outOffset;
-  ASSIGN_VALUE_OR_RETURN_ERR(outOffset, iValToInt(getGlowIValueForValue(
-                                            inputs[QuantizeInputs::offset])));
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      outOffset,
+      iValToInt(getGlowIValueForValue(inputs[QuantizeInputs::zero_point])));
 
   // dtype, we only support quantize to int8 for now
   int32_t outDtype;
@@ -1458,6 +1484,101 @@ Error PyTorchModelLoader::loadDequantize(const torch::jit::Node *ptNode) {
 
   glow::DequantizeNode *dn = F_.createDequantize("dequantize", input);
   return addValueMapping(outputs[0], dn->getResult());
+}
+
+Error PyTorchModelLoader::loadQuantizedConvUnpacked(
+    const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 9, outputs, 1));
+
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      input,
+      getGlowNodeValueForValue(inputs[QuantizedUnpackedConv2dInputs::input]));
+  input = rescaleUIntToInt(input);
+
+  input = F_.createTranspose("qconv_input_transposed", input, NCHW2NHWC);
+  glow::ShapeNHWC inputShape(input.dims());
+
+  glow::NodeValue weights;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      weights,
+      getGlowNodeValueForValue(inputs[QuantizedUnpackedConv2dInputs::weights]));
+  weights = rescaleUIntToInt(weights);
+  weights = F_.createTranspose("qconv_weights_tranposed", weights, NCHW2NHWC);
+  glow::ShapeNHWC weightsShape(weights.dims());
+
+  glow::NodeValue bias;
+  if (hasGlowNodeValueForValue(inputs[QuantizedUnpackedConv2dInputs::bias])) {
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        bias,
+        getGlowNodeValueForValue(inputs[QuantizedUnpackedConv2dInputs::bias]));
+  } else {
+    glow::Tensor biasT(glow::ElemKind::FloatTy, {weightsShape.n});
+    biasT.zero();
+    glow::Constant *biasConstant =
+        F_.getParent()->createConstant("qconv_bias", std::move(biasT));
+    bias = biasConstant->getOutput();
+  }
+  auto biasType = F_.getParent()->uniqueType(
+      glow::ElemKind::Int32QTy, bias.dims(),
+      input.getType()->getScale() * weights.getType()->getScale(), 0);
+  bias = F_.createQuantize("quantize_bias", bias, biasType);
+
+  std::vector<glow::unsigned_t> strides;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      strides,
+      castVector<glow::unsigned_t>(expandIntIValIfNeeded(
+          getGlowIValueForValue(inputs[QuantizedUnpackedConv2dInputs::stride]),
+          2)));
+
+  glow::unsigned_t pad;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      pad, static_cast_expected<glow::unsigned_t>(
+               contractIntIValIfNeeded(getGlowIValueForValue(
+                   inputs[QuantizedUnpackedConv2dInputs::padding]))));
+  std::vector<glow::unsigned_t> pads = {pad, pad, pad, pad};
+
+  glow::unsigned_t dilation;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      dilation, static_cast_expected<glow::unsigned_t>(
+                    contractIntIValIfNeeded(getGlowIValueForValue(
+                        inputs[QuantizedUnpackedConv2dInputs::dilation]))));
+
+  glow::unsigned_t groups;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      groups,
+      static_cast_expected<glow::unsigned_t>(iValToInt(getGlowIValueForValue(
+          inputs[QuantizedUnpackedConv2dInputs::group]))));
+
+  float outScale;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      outScale, iValToDouble(getGlowIValueForValue(
+                    inputs[QuantizedUnpackedConv2dInputs::scale])));
+
+  int32_t outOffset;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      outOffset, iValToInt(getGlowIValueForValue(
+                     inputs[QuantizedUnpackedConv2dInputs::zero_point])));
+
+  std::vector<glow::unsigned_t> kernels = {
+      static_cast<glow::unsigned_t>(weightsShape.h),
+      static_cast<glow::unsigned_t>(weightsShape.w)};
+  auto outSz = glow::calculateConvPoolOutputDims(
+      inputShape.h, inputShape.w, kernels, strides, pads, dilation);
+  std::array<size_t, 4> outDims = {
+      {input.dims()[0], outSz.first, outSz.second, weightsShape.n}};
+  glow::TypeRef outTy = F_.getParent()->uniqueType(
+      glow::ElemKind::Int8QTy, outDims, outScale, outOffset);
+
+  glow::ConvolutionNode *qconv =
+      F_.createConv("qconv", input, weights, bias, outTy, kernels, strides,
+                    pads, groups, dilation);
+  glow::TransposeNode *output = F_.createTranspose(
+      "qconv_output_transposed", qconv->getResult(), NHWC2NCHW);
+
+  return addValueMapping(outputs[0], rescaleIntToUint(output->getResult()));
 }
 
 Error PyTorchModelLoader::loadMaxPool2d(const torch::jit::Node *ptNode) {

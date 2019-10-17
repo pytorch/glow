@@ -315,15 +315,19 @@ private:
   /// \returns error on failure.
   Error loadBatchNorm(const torch::jit::Node *ptNode);
 
-  /// Load a PyTorch quantization::add node.
+  /// Load a PyTorch quantized::add node.
   /// \return error on failure.
   Error loadQuantizedAdd(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch glow::unpacked_quantized_conv node.
+  // \return error on failure.
+  Error loadQuantizedConvUnpacked(const torch::jit::Node *ptNode);
 
   /// Load a glow::unpacked_quantized_linear node.
   /// \return error on failure.
   Error loadQuantizedLinear(const torch::jit::Node *ptNode);
 
-  /// Load a PyTorch quantize_linear node.
+  /// Load a PyTorch quantize_per_tensor node.
   /// \returns error on failure.
   Error loadQuantize(const torch::jit::Node *ptNode);
 
