@@ -43,6 +43,152 @@ using llvm::cast;
 using llvm::dyn_cast;
 using llvm::isa;
 
+enum BundleApiType {
+  /// Dynamic bundle API (default) with the following features:
+  /// - the weights are exported in a binary file which are assumed
+  ///   to be loaded dynamically at run-time.
+  /// - the memory layout information (bundle configuration) is only
+  ///   available at run-time and therefore allows ONLY dynamic memory
+  ///   allocaton.
+  Dynamic,
+  /// Static bundle API with the following features:
+  /// - the weights are exported in a binary file but and also in a
+  ///   text file (C array format) suitable to include at compile-time.
+  /// - the memory layout information (bundle configuration) is available
+  ///   at compile-time through macros printed in the header file and thus
+  ///   allows also static memory allocation.
+  /// - this API is suitable for low end devices with no file system or OS
+  ///   (bare-metal).
+  Static,
+};
+
+namespace {
+llvm::cl::OptionCategory bundleSaverCat("Bundle Options");
+
+llvm::cl::opt<BundleApiType> bundleApi(
+    "bundle-api", llvm::cl::desc("Specify which bundle API to use."),
+    llvm::cl::Optional,
+    llvm::cl::values(clEnumValN(BundleApiType::Dynamic, "dynamic",
+                                "Dynamic API"),
+                     clEnumValN(BundleApiType::Static, "static", "Static API")),
+    llvm::cl::init(BundleApiType::Dynamic), llvm::cl::cat(bundleSaverCat));
+} // namespace
+
+/// Header file string template.
+static const char *headerFileTemplate =
+    R"RAW(// Bundle API header file
+// Auto-generated file. Do not edit!
+#ifndef _GLOW_BUNDLE_%s_H
+#define _GLOW_BUNDLE_%s_H
+
+#include <stdint.h>
+
+// ---------------------------------------------------------------
+//                       Common definitions                       
+// ---------------------------------------------------------------
+#ifndef _GLOW_BUNDLE_COMMON_DEFS
+#define _GLOW_BUNDLE_COMMON_DEFS
+%s
+#endif
+
+// ---------------------------------------------------------------
+//                          Bundle API                            
+// ---------------------------------------------------------------
+%s
+// NOTE: Placeholders are allocated within the "mutableWeight"
+// buffer and are identified using an offset relative to base.
+// ---------------------------------------------------------------
+#ifdef __cplusplus
+extern "C" {
+#endif
+%s
+#ifdef __cplusplus
+}
+#endif
+#endif
+)RAW";
+
+/// Function to print the header file using the template.
+static void printHeader(llvm::StringRef headerFileName,
+                        llvm::StringRef bundleName,
+                        llvm::StringRef commonDefines,
+                        llvm::StringRef modelInfo, llvm::StringRef modelApi) {
+  std::error_code EC;
+  llvm::raw_fd_ostream headerFile(headerFileName, EC,
+                                  llvm::sys::fs::OpenFlags::F_Text);
+  CHECK(!EC) << "Could not open header file!";
+  headerFile << strFormat(headerFileTemplate, bundleName.upper().data(),
+                          bundleName.upper().data(), commonDefines.data(),
+                          modelInfo.data(), modelApi.data());
+  headerFile.close();
+}
+
+/// Header file common definitions for dynamic API.
+static const char *dynamicApiCommonDefines = R"RAW(
+// Type describing a symbol table entry of a generated bundle.
+struct SymbolTableEntry {
+  // Name of a variable.
+  const char *name;
+  // Offset of the variable inside the memory area.
+  uint64_t offset;
+  // The number of elements inside this variable.
+  uint64_t size;
+  // Variable kind: 1 if it is a mutable variable, 0 otherwise.
+  char kind;
+};
+
+// Type describing the config of a generated bundle.
+struct BundleConfig {
+  // Size of the constant weight variables memory area.
+  uint64_t constantWeightVarsMemSize;
+  // Size of the mutable weight variables memory area.
+  uint64_t mutableWeightVarsMemSize;
+  // Size of the activations memory area.
+  uint64_t activationsMemSize;
+  // Alignment to be used for weights and activations.
+  uint64_t alignment;
+  // Number of symbols in the symbol table.
+  uint64_t numSymbols;
+  // Symbol table.
+  const SymbolTableEntry *symbolTable;
+};
+)RAW";
+
+/// Header file common definitions for static API.
+static const char *staticApiCommonDefines = R"RAW(
+// Memory alignment definition with given alignment size
+// for static allocation of memory.
+#define GLOW_MEM_ALIGN(size)  __attribute__((aligned(size)))
+
+// Macro function to get the absolute address of a
+// placeholder using the base address of the mutable
+// weight buffer and placeholder offset definition.
+#define GLOW_GET_ADDR(mutableBaseAddr, placeholderOff)  (((uint8_t*)(mutableBaseAddr)) + placeholderOff)
+)RAW";
+
+/// Utility function to serialize a binary file to text file as a C array.
+static void serializeBinaryToText(llvm::StringRef binFileName,
+                                  llvm::StringRef txtFileName) {
+  FILE *inpFile = fopen(binFileName.str().c_str(), "rb");
+  CHECK(inpFile) << "Could not open binary input file: " << binFileName.str();
+  FILE *outFile = fopen(txtFileName.str().c_str(), "w");
+  CHECK(outFile) << "Could not open text output file: " << txtFileName.str();
+  const size_t numBytesPerLine = 20;
+  for (size_t i = 0;; i++) {
+    int ch = fgetc(inpFile);
+    if (ch == EOF) {
+      break;
+    }
+    fprintf(outFile, " 0X%02X,", ch);
+    if ((i % numBytesPerLine) == (numBytesPerLine - 1)) {
+      fprintf(outFile, "\n");
+    }
+  }
+  fprintf(outFile, "\n");
+  fclose(inpFile);
+  fclose(outFile);
+}
+
 BundleSaver::BundleSaver(const IRFunction *F, const LLVMBackend &llvmBackend)
     : F_(F), irgen_(llvmBackend.createIRGen(F_, allocationsInfo_)) {}
 
@@ -82,6 +228,115 @@ void BundleSaver::saveWeights(llvm::StringRef weightsFileName) {
     weightsFile.write(0);
   }
   weightsFile.close();
+}
+
+void BundleSaver::saveHeader(llvm::StringRef headerFileName) {
+  auto bundleName = irgen_->getBundleName();
+  auto bundleNameUpper = llvm::StringRef(bundleName).upper();
+  auto constMemSize = irgen_->getAllocationsInfo().constantWeightVarsMemSize_;
+  auto mutableMemSize = irgen_->getAllocationsInfo().mutableWeightVarsMemSize_;
+  auto activationsMemSize = irgen_->getAllocationsInfo().activationsMemSize_;
+  auto memAlignSize = TensorAlignment;
+  auto totMemSize = constMemSize + mutableMemSize + activationsMemSize;
+
+  // Format common bundle definitions.
+  auto commonDefines = (bundleApi == BundleApiType::Dynamic)
+                           ? dynamicApiCommonDefines
+                           : staticApiCommonDefines;
+
+  // Format model description.
+  std::string modelInfo = strFormat("// Model name: \"%s\"\n"
+                                    "// Total data size: %lu (bytes)\n"
+                                    "// Placeholders:\n",
+                                    bundleName.data(), totMemSize);
+  for (auto &v : F_->findPlaceholders()) {
+    auto *w = cast<WeightVar>(F_->getWeightForNode(v));
+    // Get placeholder shape as string.
+    std::string shapeStr = "[";
+    auto dims = w->getType()->dims();
+    for (size_t idx = 0; idx < dims.size(); idx++) {
+      if (idx < dims.size() - 1) {
+        shapeStr += strFormat("%lu, ", dims[idx]);
+      } else {
+        shapeStr += strFormat("%lu]", dims[idx]);
+      }
+    }
+    // Get placeholder properties.
+    auto name = w->getName();
+    auto typeName = w->getType()->getElementName();
+    auto sizeElem = w->getType()->size();
+    auto sizeByte = w->getType()->getSizeInBytes();
+    auto offset = allocationsInfo_.allocatedAddress_[w];
+    modelInfo += strFormat("//\n"
+                           "//   Name: \"%s\"\n"
+                           "//   Type: %s\n"
+                           "//   Shape: %s\n"
+                           "//   Size: %zu (elements)\n"
+                           "//   Size: %zu (bytes)\n"
+                           "//   Offset: %lu (bytes)\n",
+                           name.data(), typeName.data(), shapeStr.c_str(),
+                           sizeElem, sizeByte, offset);
+  }
+  modelInfo += "//";
+
+  std::string modelApi = "\n";
+  if (bundleApi == BundleApiType::Dynamic) {
+    // Print bundle memory configuration.
+    modelApi += strFormat("// Bundle memory configuration (memory layout)\n"
+                          "extern BundleConfig %s_config;\n"
+                          "\n",
+                          bundleName.data());
+
+  } else {
+    // Get placeholder names and offsets. Compute also the maximum placeholder
+    // name length for print purposes.
+    unsigned nameMaxLen = 0;
+    std::vector<std::pair<llvm::StringRef, unsigned>> nameAddrPairs;
+    for (auto &v : F_->findPlaceholders()) {
+      auto *w = cast<WeightVar>(F_->getWeightForNode(v));
+      auto name = w->getName();
+      auto addr = allocationsInfo_.allocatedAddress_[w];
+      nameMaxLen = name.size() > nameMaxLen ? name.size() : nameMaxLen;
+      nameAddrPairs.push_back(std::pair<llvm::StringRef, unsigned>(name, addr));
+    }
+
+    // Print placeholder address offsets.
+    modelApi +=
+        "// Placeholder address offsets within mutable buffer (bytes)\n";
+    for (auto &pair : nameAddrPairs) {
+      modelApi += strFormat(
+          "#define %s_%s%s  %u\n", bundleNameUpper.data(), pair.first.data(),
+          std::string(nameMaxLen - pair.first.size(), ' ').c_str(),
+          pair.second);
+    }
+    modelApi += "\n";
+
+    // Print memory sizes and memory alignment.
+    modelApi +=
+        strFormat("// Memory sizes (bytes)\n"
+                  "#define %s_CONSTANT_MEM_SIZE     %lu\n"
+                  "#define %s_MUTABLE_MEM_SIZE      %lu\n"
+                  "#define %s_ACTIVATIONS_MEM_SIZE  %lu\n"
+                  "\n"
+                  "// Memory alignment (bytes)\n"
+                  "#define %s_MEM_ALIGN  %d\n"
+                  "\n",
+                  bundleNameUpper.data(), constMemSize, bundleNameUpper.data(),
+                  mutableMemSize, bundleNameUpper.data(), activationsMemSize,
+                  bundleNameUpper.data(), memAlignSize);
+  }
+
+  // Print bundle entry function.
+  modelApi += strFormat("// Bundle entry point (inference function)\n"
+                        "void %s("
+                        "uint8_t *constantWeight, "
+                        "uint8_t *mutableWeight, "
+                        "uint8_t *activations"
+                        ");\n",
+                        bundleName.data());
+
+  // Print header file.
+  printHeader(headerFileName, bundleName, commonDefines, modelInfo, modelApi);
 }
 
 void BundleSaver::emitSymbolTable() {
@@ -132,20 +387,25 @@ void BundleSaver::emitSymbolTable() {
 }
 
 void BundleSaver::produceBundle(llvm::StringRef outputDir) {
-  // Emit the symbol table for weight variables.
-  emitSymbolTable();
-  // Emit the config for the bundle.
-  emitBundleConfig();
+  // Emit symbol table and bundle config only for dynamic API
+  if (bundleApi == BundleApiType::Dynamic) {
+    // Emit the symbol table for weight variables.
+    emitSymbolTable();
+    // Emit the config for the bundle.
+    emitBundleConfig();
+  }
 
   auto &M = irgen_->getModule();
   auto bundleName = irgen_->getBundleName();
   std::string extension = (llvmCompiler.empty()) ? ".o" : ".bc";
   auto bundleCodeOutput = (outputDir + "/" + bundleName + extension).str();
   auto bundleWeightsOutput = (outputDir + "/" + bundleName + ".weights").str();
+  auto bundleHeaderOutput = (outputDir + "/" + bundleName + ".h").str();
   DEBUG_GLOW(llvm::dbgs() << "Producing a bundle:\n"
                           << "bundle name: " << bundleName << "\n"
                           << "bundle code: " << bundleCodeOutput << "\n"
-                          << "bundle weights:" << bundleWeightsOutput << "\n");
+                          << "bundle weights:" << bundleWeightsOutput << "\n"
+                          << "header file: " << bundleHeaderOutput << "\n");
   llvm::StringRef fileName = bundleCodeOutput;
   std::error_code EC;
   llvm::raw_fd_ostream outputFile(fileName, EC, llvm::sys::fs::F_None);
@@ -188,6 +448,13 @@ void BundleSaver::produceBundle(llvm::StringRef outputDir) {
   outputFile.close();
   // Output weights.
   saveWeights(bundleWeightsOutput);
+  // Header file.
+  saveHeader(bundleHeaderOutput);
+  // Save weights also in text format for Static API.
+  if (bundleApi == BundleApiType::Static) {
+    auto bundleWeightsTxtOut = (outputDir + "/" + bundleName + ".inc").str();
+    serializeBinaryToText(bundleWeightsOutput, bundleWeightsTxtOut);
+  }
 }
 
 /// Emit the entry function for the bundle. It simply calls the main entry of
@@ -287,7 +554,7 @@ void BundleSaver::save(llvm::StringRef target, llvm::StringRef arch,
                        llvm::StringRef cpu,
                        const llvm::SmallVectorImpl<std::string> &targetFeatures,
                        llvm::StringRef outputDir, llvm::StringRef bundleName,
-                       llvm::StringRef mainEnryName,
+                       llvm::StringRef mainEntryName,
                        llvm::CodeModel::Model codeModel,
                        llvm::Reloc::Model relocModel) {
   // Object files generation works properly only in small mode.
@@ -295,7 +562,7 @@ void BundleSaver::save(llvm::StringRef target, llvm::StringRef arch,
                             relocModel);
   irgen_->setOutputDir(outputDir);
   irgen_->setBundleName(bundleName);
-  irgen_->setMainEntryName(mainEnryName);
+  irgen_->setMainEntryName(mainEntryName);
   irgen_->initCodeGen();
   // Perform the address assignment for activations and WeightVars.
   performBundleMemoryAllocation();
