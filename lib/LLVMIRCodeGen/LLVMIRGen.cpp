@@ -57,8 +57,8 @@ llvm::cl::opt<bool>
 /// Limitation of number of arguments for `emitDataParallelKernel`.
 constexpr static size_t kArgLimit = 64;
 
-/// Generate the LLVM MAttr list of attributes.
-static llvm::SmallVector<std::string, 0> getMachineAttributes() {
+/// Generate the LLVM machine attribute list for the host.
+static llvm::SmallVector<std::string, 0> getHostMachineAttributes() {
   llvm::SmallVector<std::string, 0> result;
   llvm::StringMap<bool> hostFeatures;
   if (llvm::sys::getHostCPUFeatures(hostFeatures)) {
@@ -102,18 +102,22 @@ void LLVMIRGen::initTargetMachine(
   llvm::InitializeAllTargetMCs();
   llvm::InitializeAllAsmPrinters();
   llvm::InitializeAllAsmParsers();
+  llvm::TargetOptions targetOpts;
+  targetOpts.FloatABIType = floatABI;
 
   if (target.empty()) {
     TM_.reset(llvm::EngineBuilder()
                   .setCodeModel(codeModel)
                   .setRelocationModel(relocModel)
+                  .setTargetOptions(targetOpts)
                   .selectTarget(llvm::Triple(), arch, getHostCpuName(),
-                                getMachineAttributes()));
+                                getHostMachineAttributes()));
   } else {
     TM_.reset(
         llvm::EngineBuilder()
             .setCodeModel(codeModel)
             .setRelocationModel(relocModel)
+            .setTargetOptions(targetOpts)
             .selectTarget(llvm::Triple(target), arch, cpu, targetFeatures));
   }
   assert(TM_ && "Could not initialize the target machine");

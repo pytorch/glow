@@ -18,6 +18,7 @@
 #define GLOW_LLVMIRCODEGEN_COMMANDLINE_H
 
 #include "llvm/Support/CommandLine.h"
+#include "llvm/Target/TargetOptions.h"
 
 llvm::cl::OptionCategory &getLLVMBackendCat();
 
@@ -27,18 +28,29 @@ llvm::cl::OptionCategory &getLLVMBackendCat();
 
 /// Target to be used by the LLVMBackend. Used as -target=targetA.
 extern llvm::cl::opt<std::string> llvmTarget;
+
 /// Architecture to be used by the LLVMBackend. Used as -march=archA.
 extern llvm::cl::opt<std::string> llvmArch;
+
 /// CPU to be used by the LLVMBackend. Used as -mcpu=cpuA.
 extern llvm::cl::opt<std::string> llvmCPU;
+
 /// Target and CPU features to be used by the LLVMBackend. The features should
 /// be comma-separated and prefixed with +.
 /// Used as  -target-feature=+featureA,+featureB.
 extern llvm::cl::list<std::string> llvmTargetFeatures;
-//// External LLVM compiler (e.g. llc) to use for compiling LLVM bitcode into
+
+/// Alias for the LLVM Machine attributes.
+extern llvm::cl::alias llvmMAttr;
+
+/// External LLVM compiler (e.g. llc) to use for compiling LLVM bitcode into
 /// machine code.
 extern llvm::cl::opt<std::string> llvmCompiler;
+
 /// Set of options to pass to the external LLVM compiler.
 extern llvm::cl::list<std::string> llvmCompilerOptions;
+
+/// Option to set float ABI. Used as -float-abi=<abi-type>.
+extern llvm::cl::opt<llvm::FloatABI::ABIType> floatABI;
 
 #endif // GLOW_LLVMIRCODEGEN_COMMANDLINE_H
