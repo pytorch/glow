@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2017-present, Facebook, Inc.
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -108,6 +108,68 @@ public:
     }
   }
 
+  // In the function below we're trying to compare auto instrumented trace
+  // output with optimized model graph. Since the code generation may make
+  // further changes to the graph representation we limit checking to a set of
+  // convolution / maxpool / cpumaxsplat kinds which are never changed.
+  std::set<std::string> checkedKinds = {"convolution", "maxpool",
+                                        "cpumaxsplat"};
+
+  template <class ExecutionEngineTy>
+  std::vector<std::pair<std::string, std::string>>
+  prepareKindsForComparison(ExecutionEngineTy &ExecutionEngine) {
+    std::vector<std::pair<std::string, std::string>> expectedKinds;
+    for (auto &i :
+         ExecutionEngine.getModule().getFunctions().front()->getNodes()) {
+      std::string kind(Kinded::getKindName(i.getKind()));
+      std::transform(kind.begin(), kind.end(), kind.begin(),
+                     [](unsigned char c) { return std::tolower(c); });
+      if (checkedKinds.find(kind) != checkedKinds.end()) {
+        std::string name(i.getName());
+        // Let's remove all digits at the end of name since the code generation
+        // may create new nodes with names consisting of existing node names
+        // and additional numeric indexes
+        while (!name.empty() && std::isdigit(name.back())) {
+          name.pop_back();
+        }
+        expectedKinds.emplace_back(name, kind);
+      }
+    }
+    std::sort(expectedKinds.begin(), expectedKinds.end());
+    return expectedKinds;
+  }
+
+  void checkEventMetadata(
+      const std::vector<TraceEvent> &traceEvents,
+      const std::vector<std::pair<std::string, std::string>> &expected) {
+
+    const auto &backend = GetParam();
+    if (backend != "Interpreter" && backend != "CPU") {
+      return;
+    }
+
+    auto map_element = [](const std::map<std::string, std::string> &m,
+                          const std::string &k) {
+      return m.find(k) == m.end() ? std::string() : m.find(k)->second;
+    };
+    std::vector<std::pair<std::string, std::string>> events_for_checking;
+    for (auto &i : traceEvents) {
+      std::string kind = map_element(i.args, "kind");
+      if (checkedKinds.find(kind) != checkedKinds.end()) {
+        std::string name(i.name);
+        // Let's remove all digits at the end of the name since the code
+        // generation may create new nodes with names consisting of existing
+        // node names and additional numeric indexes
+        while (!name.empty() && std::isdigit(name.back())) {
+          name.pop_back();
+        }
+        events_for_checking.emplace_back(name, kind);
+      }
+    }
+    std::sort(events_for_checking.begin(), events_for_checking.end());
+    ASSERT_EQ(expected, events_for_checking);
+  }
+
   // Check timestamps are non-zero and monotonically increasing.
   void checkEventTimestamps(const std::vector<TraceEvent> &traceEvents) {
     uint64_t last = 0;
@@ -120,6 +182,7 @@ public:
 };
 
 TEST_P(TraceEventsTest, manualEvents) {
+  CHECK_IF_ENABLED();
   ExecutionContext context;
   context.setTraceContext(
       llvm::make_unique<TraceContext>(TraceLevel::OPERATOR));
@@ -169,6 +232,7 @@ TEST_P(TraceEventsTest, manualEvents) {
 }
 
 TEST_P(TraceEventsTest, incompleteCoverage) {
+  CHECK_IF_ENABLED();
   ExecutionContext context;
   context.setTraceContext(
       llvm::make_unique<TraceContext>(TraceLevel::OPERATOR));
@@ -213,6 +277,7 @@ TEST_P(TraceEventsTest, incompleteCoverage) {
 }
 
 TEST_P(TraceEventsTest, internalGap) {
+  CHECK_IF_ENABLED();
   ExecutionContext context;
   context.setTraceContext(
       llvm::make_unique<TraceContext>(TraceLevel::OPERATOR));
@@ -257,6 +322,7 @@ TEST_P(TraceEventsTest, internalGap) {
 }
 
 TEST_P(TraceEventsTest, automaticInstrumentation) {
+  CHECK_IF_ENABLED();
   ExecutionContext context;
   context.setTraceContext(
       llvm::make_unique<TraceContext>(TraceLevel::OPERATOR));
@@ -272,6 +338,8 @@ TEST_P(TraceEventsTest, automaticInstrumentation) {
   cctx.backendOpts.autoInstrument = true;
   EE_.compile(cctx);
 
+  auto expectedKinds = prepareKindsForComparison(EE_);
+
   updateInputPlaceholders(*context.getPlaceholderBindings(), {inputPH},
                           {&inputs});
   EE_.run(context);
@@ -279,10 +347,12 @@ TEST_P(TraceEventsTest, automaticInstrumentation) {
   auto &traceEvents = context.getTraceContext()->getTraceEvents();
 
   ASSERT_GT(traceEvents.size(), 0);
+  checkEventMetadata(traceEvents, expectedKinds);
   checkEventTimestamps(traceEvents);
 }
 
 TEST_P(TraceEventsTest, manualAndAutomatic) {
+  CHECK_IF_ENABLED();
   ExecutionContext context;
   context.setTraceContext(
       llvm::make_unique<TraceContext>(TraceLevel::OPERATOR));
@@ -309,6 +379,8 @@ TEST_P(TraceEventsTest, manualAndAutomatic) {
   cctx.backendOpts.autoInstrument = true;
   EE_.compile(cctx);
 
+  auto expectedKinds = prepareKindsForComparison(EE_);
+
   updateInputPlaceholders(*context.getPlaceholderBindings(), {inputPH},
                           {&inputs});
   EE_.run(context);
@@ -325,11 +397,13 @@ TEST_P(TraceEventsTest, manualAndAutomatic) {
     }
   }
   ASSERT_EQ(manualEvents, numEvents);
+  checkEventMetadata(traceEvents, expectedKinds);
 }
 
 /// Compile the same function twice with auto instrumentation on - ensure that
 /// instrumentation doesn't break future compiles.
 TEST_P(TraceEventsTest, twoCompiles) {
+  CHECK_IF_ENABLED();
   ExecutionContext context;
   context.setTraceContext(
       llvm::make_unique<TraceContext>(TraceLevel::OPERATOR));
@@ -404,6 +478,7 @@ TEST_P(TraceEventsTest, twoCompiles) {
 }
 
 TEST_P(TraceEventsTest, onlyTraceEvents) {
+  CHECK_IF_ENABLED();
   ExecutionContext context;
   context.setTraceContext(
       llvm::make_unique<TraceContext>(TraceLevel::OPERATOR));
@@ -444,6 +519,7 @@ TEST_P(TraceEventsTest, onlyTraceEvents) {
 }
 
 TEST_P(TraceEventsTest, multipleBackingTensors) {
+  CHECK_IF_ENABLED();
   ExecutionContext context;
   context.setTraceContext(
       llvm::make_unique<TraceContext>(TraceLevel::OPERATOR));
@@ -503,6 +579,7 @@ TEST_P(TraceEventsTest, multipleBackingTensors) {
 }
 
 TEST_P(TraceEventsTest, multipleRunsAreDistinct) {
+  CHECK_IF_ENABLED();
   ExecutionContext context;
   context.setTraceContext(
       llvm::make_unique<TraceContext>(TraceLevel::OPERATOR));
@@ -554,6 +631,7 @@ TEST_P(TraceEventsTest, multipleRunsAreDistinct) {
 }
 
 TEST_P(TraceEventsTest, deviceManagerEvents) {
+  CHECK_IF_ENABLED();
   ExecutionContext context;
   context.setTraceContext(
       llvm::make_unique<TraceContext>(TraceLevel::STANDARD));
@@ -582,6 +660,7 @@ TEST_P(TraceEventsTest, deviceManagerEvents) {
 
 /// Test that ScopedTraceBlocks can be nested.
 TEST(TraceEventsTest, nestedScopedEvents) {
+  CHECK_IF_ENABLED();
   ExecutionContext context;
   context.setTraceContext(
       llvm::make_unique<TraceContext>(TraceLevel::STANDARD));
@@ -621,6 +700,7 @@ TEST(TraceEventsTest, nestedScopedEvents) {
 
 /// Test that nesting scoped events work with the macro versions.
 TEST(TraceEventsTest, nestedScopedEventsMacro) {
+  CHECK_IF_ENABLED();
   ExecutionContext context;
   context.setTraceContext(
       llvm::make_unique<TraceContext>(TraceLevel::STANDARD));
@@ -661,6 +741,7 @@ TEST(TraceEventsTest, nestedScopedEventsMacro) {
 /// Test that terminating a scoped event logs final timestamp at the end, not at
 /// scope exit.
 TEST(TraceEventsTest, nestedScopedEventsTerm) {
+  CHECK_IF_ENABLED();
   ExecutionContext context;
   context.setTraceContext(
       llvm::make_unique<TraceContext>(TraceLevel::STANDARD));
@@ -710,9 +791,10 @@ TEST(TraceEventsTest, nestedScopedEventsTerm) {
 }
 
 TEST(TraceEventsTest, TraceLevels) {
-  std::array<TraceLevel, 4> levels = {TraceLevel::NONE, TraceLevel::REQUEST,
-                                      TraceLevel::RUNTIME,
-                                      TraceLevel::OPERATOR};
+  CHECK_IF_ENABLED();
+  std::array<TraceLevel, 4> levels = {{TraceLevel::NONE, TraceLevel::REQUEST,
+                                       TraceLevel::RUNTIME,
+                                       TraceLevel::OPERATOR}};
   for (auto L : levels) {
     TraceContext context(L);
     for (auto evl : levels) {
@@ -734,13 +816,31 @@ TEST(TraceEventsTest, TraceLevels) {
   ASSERT_EQ(context.getTraceEvents().size(), 2);
 }
 
-INSTANTIATE_TEST_CASE_P(Interpreter, TraceEventsTest,
-                        ::testing::Values("Interpreter"));
+TEST(TraceEventsTest, MergeEvents) {
+  auto tc1 = llvm::make_unique<TraceContext>(TraceLevel::STANDARD);
+  auto tc2 = llvm::make_unique<TraceContext>(TraceLevel::STANDARD);
 
-#ifdef GLOW_WITH_CPU
-INSTANTIATE_TEST_CASE_P(JIT, TraceEventsTest, ::testing::Values("CPU"));
-#endif // GLOW_WITH_CPU
+  TRACE_EVENT_BEGIN(tc1, TraceLevel::RUNTIME, "ev1");
+  TRACE_EVENT_END(tc1, TraceLevel::RUNTIME, "ev1");
 
-#ifdef GLOW_WITH_OPENCL
-INSTANTIATE_TEST_CASE_P(OpenCL, TraceEventsTest, ::testing::Values("OpenCL"));
-#endif // GLOW_WITH_OPENCL
+  ASSERT_EQ(tc1->getTraceEvents().size(), 2);
+  ASSERT_EQ(tc2->getTraceEvents().size(), 0);
+
+  tc2->merge(tc1.get());
+
+  ASSERT_EQ(tc1->getTraceEvents().size(), 0);
+  ASSERT_EQ(tc2->getTraceEvents().size(), 2);
+
+  TRACE_EVENT_BEGIN(tc1, TraceLevel::RUNTIME, "ev2");
+  TRACE_EVENT_END(tc1, TraceLevel::RUNTIME, "ev2");
+
+  ASSERT_EQ(tc1->getTraceEvents().size(), 2);
+  ASSERT_EQ(tc2->getTraceEvents().size(), 2);
+
+  tc2->merge(tc1.get());
+
+  ASSERT_EQ(tc1->getTraceEvents().size(), 0);
+  ASSERT_EQ(tc2->getTraceEvents().size(), 4);
+}
+
+INSTANTIATE_BACKEND_TEST(TraceEventsTest);

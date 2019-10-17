@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2017-present, Facebook, Inc.
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -34,12 +34,14 @@ FUN_PASS(CSE)
 FUN_PASS(OptimizeSliceOfSplat)
 FUN_PASS(OptimizeTransposeIntoReshape)
 FUN_PASS(OptimizeReshape)
+FUN_PASS(EliminateNoopTile)
+FUN_PASS(OptimizeClips)
 FUN_PASS(OptimizeConversions)
 FUN_PASS(OptimizeQuantization)
 FUN_PASS(FoldLeakyRelu)
 FUN_PASS(FoldChannelShuffle)
 FUN_PASS(ConstantFold)
-
+FUN_PASS(FoldTileAddIntoBatchedAdd)
 
 // NOTE: This pass must be last; it's used to count the total number of passes.
 FUN_PASS(EmptyPass)

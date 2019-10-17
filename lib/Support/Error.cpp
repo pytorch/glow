@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2017-present, Facebook, Inc.
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,13 +16,10 @@
 
 #include "glow/Support/Error.h"
 
+#include <sstream>
+
 namespace glow {
-llvm::ExitOnError exitOnErr("Encountered an error, exiting.\n");
-
-/// ID used by llvm::ErrorInfo::isA's dynamic typing.
-uint8_t const GlowErr::ID = 0;
-
-bool OneErrOnly::set(llvm::Error err) {
+bool OneErrOnly::set(Error err) {
   // Don't do anything in the case of empty Error.
   if (!err) {
     return false;
@@ -37,12 +34,12 @@ bool OneErrOnly::set(llvm::Error err) {
     // No update happening so don't need the lock any more.
     lock.unlock();
     LOG(ERROR) << "OneErrOnly already has an Error, discarding new Error: "
-               << llvm::toString(std::move(err));
+               << errorToString(std::move(err));
     return false;
   }
 }
 
-llvm::Error OneErrOnly::get() {
+Error OneErrOnly::get() {
   std::unique_lock<std::mutex> lock(m_);
   auto err = std::move(err_);
   return err;
@@ -52,4 +49,110 @@ bool OneErrOnly::containsErr() {
   std::unique_lock<std::mutex> lock(m_);
   return static_cast<bool>(err_);
 }
+
+namespace detail {
+std::string GlowErrorValue::logToString() const {
+  std::stringstream ss;
+  log(ss);
+  return ss.str();
+}
+
+std::string GlowErrorValue::errorCodeToString(const ErrorCode &ec) {
+  switch (ec) {
+  case ErrorCode::UNKNOWN:
+    return "UNKNOWN";
+  case ErrorCode::MODEL_LOADER_UNSUPPORTED_SHAPE:
+    return "MODEL_LOADER_UNSUPPORTED_SHAPE";
+  case ErrorCode::MODEL_LOADER_UNSUPPORTED_OPERATOR:
+    return "MODEL_LOADER_UNSUPPORTED_OPERATOR";
+  case ErrorCode::MODEL_LOADER_UNSUPPORTED_ATTRIBUTE:
+    return "MODEL_LOADER_UNSUPPORTED_ATTRIBUTE";
+  case ErrorCode::MODEL_LOADER_UNSUPPORTED_DATATYPE:
+    return "MODEL_LOADER_UNSUPPORTED_DATATYPE";
+  case ErrorCode::MODEL_LOADER_UNSUPPORTED_ONNX_VERSION:
+    return "MODEL_LOADER_UNSUPPORTED_ONNX_VERSION";
+  case ErrorCode::MODEL_LOADER_INVALID_PROTOBUF:
+    return "MODEL_LOADER_INVALID_PROTOBUF";
+  case ErrorCode::PARTITIONER_ERROR:
+    return "PARTITIONER_ERROR";
+  case ErrorCode::RUNTIME_ERROR:
+    return "RUNTIME_ERROR";
+  case ErrorCode::RUNTIME_OUT_OF_DEVICE_MEMORY:
+    return "RUNTIME_OUT_OF_DEVICE_MEMORY";
+  case ErrorCode::RUNTIME_NET_NOT_FOUND:
+    return "RUNTIME_NET_NOT_FOUND";
+  case ErrorCode::RUNTIME_REQUEST_REFUSED:
+    return "RUNTIME_REQUEST_REFUSED";
+  case ErrorCode::RUNTIME_DEVICE_NOT_FOUND:
+    return "RUNTIME_DEVICE_NOT_FOUND";
+  case ErrorCode::RUNTIME_NET_BUSY:
+    return "RUNTIME_NET_BUSY";
+  case ErrorCode::COMPILE_UNSUPPORTED_NODE_AFTER_OPTIMIZE:
+    return "COMPILE_UNSUPPORTED_NODE_AFTER_OPTIMIZE";
+  case ErrorCode::COMPILE_CONTEXT_MALFORMED:
+    return "COMPILE_CONTEXT_MALFORMED";
+  case ErrorCode::MODEL_WRITER_INVALID_FILENAME:
+    return "MODEL_WRITER_INVALID_FILENAME";
+  case ErrorCode::MODEL_WRITER_SERIALIZATION_ERROR:
+    return "MODEL_WRITER_SERIALIZATION_ERROR";
+  case ErrorCode::COMPILE_UNSUPPORTED_IR_AFTER_GENERATE:
+    return "COMPILE_UNSUPPORTED_IR_AFTER_GENERATE";
+  case ErrorCode::COMPILE_UNSUPPORTED_IR_AFTER_OPTIMIZE:
+    return "COMPILE_UNSUPPORTED_IR_AFTER_OPTIMIZE";
+  };
+  LOG(FATAL) << "Unsupported ErrorCode";
+}
+
+std::unique_ptr<GlowErrorValue> takeErrorValue(GlowError error) {
+  return error.takeErrorValue();
+}
+
+void exitOnError(const char *fileName, size_t lineNumber, GlowError error) {
+  if (error) {
+    std::unique_ptr<GlowErrorValue> errorValue =
+        detail::takeErrorValue(std::move(error));
+    assert(errorValue != nullptr &&
+           "Error should have a non-null ErrorValue if bool(error) is true");
+    LOG(FATAL) << "exitOnError(Error) at " << fileName << ":" << lineNumber
+               << " got an unexpected ErrorValue: " << (*errorValue);
+  }
+}
+
+bool errorToBool(const char *fileName, size_t lineNumber, GlowError error,
+                 bool log) {
+  std::unique_ptr<GlowErrorValue> errorValue =
+      detail::takeErrorValue(std::move(error));
+  if (errorValue) {
+    if (log) {
+      LOG(ERROR) << "Converting Error to bool at " << fileName << ":"
+                 << lineNumber << ": " << (*errorValue);
+    }
+    return true;
+  } else {
+    return false;
+  }
+}
+
+std::string errorToString(GlowError error) {
+  std::unique_ptr<GlowErrorValue> errorValue =
+      detail::takeErrorValue(std::move(error));
+  if (errorValue) {
+    return errorValue->logToString();
+  } else {
+    return "success";
+  }
+}
+
+void errorToVoid(const char *fileName, size_t lineNumber, GlowError error,
+                 bool log) {
+  errorToBool(fileName, lineNumber, std::move(error), log);
+}
+
+GlowError::GlowError(GlowErrorEmpty &&other) {
+  setErrorValue(std::move(other.errorValue_), /*skipCheck*/ true);
+  setChecked(true);
+  other.setChecked(true);
+}
+
+} // namespace detail
 } // namespace glow

@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2017-present, Facebook, Inc.
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -124,6 +124,10 @@ OpenCLFunction::OpenCLFunction(std::unique_ptr<IRFunction> F,
   setTraceInfo(std::move(traceInfo));
 }
 
+void OpenCLFunction::freeCompilationResources() {
+  runtimeBundle_.freeConstants();
+}
+
 OpenCLFunction::~OpenCLFunction() {
   for (auto &kv : programsCache_) {
     auto prog = kv.second;
@@ -235,6 +239,34 @@ static size_t setKernelArgsForBuffers(cl_kernel kernel, const Instruction &I,
   return kernelArgIdx - 1;
 }
 
+/// \returns the preferred (intra) vector width for the given OpenCL \p device,
+/// and the given \p elementType.
+static unsigned getPreferredVectorWidth(cl_device_id device,
+                                        ElemKind elementType) {
+  cl_uint width;
+  cl_device_info paramName;
+  switch (elementType) {
+  case ElemKind::FloatTy:
+    paramName = CL_DEVICE_PREFERRED_VECTOR_WIDTH_FLOAT;
+    break;
+  case ElemKind::BoolTy:
+  case ElemKind::Int8QTy:
+    paramName = CL_DEVICE_PREFERRED_VECTOR_WIDTH_CHAR;
+    break;
+  case ElemKind::Int32QTy:
+    paramName = CL_DEVICE_PREFERRED_VECTOR_WIDTH_INT;
+    break;
+  case ElemKind::Int64ITy:
+    paramName = CL_DEVICE_PREFERRED_VECTOR_WIDTH_LONG;
+    break;
+  default:
+    LOG(FATAL) << "Unsupported vector data type: "
+               << Type::getElementName(elementType).str();
+  }
+  clGetDeviceInfo(device, paramName, sizeof(width), &width, NULL);
+  return width;
+}
+
 void OpenCLFunction::fillBuffer(cl_mem buffer, uint64_t start, uint64_t len,
                                 float value, ElemKind elemKind,
                                 runtime::OpenCLDeviceBindings *devBindings,
@@ -276,15 +308,15 @@ static void getMaxLocalWorkgroupSize(cl_kernel kernel, cl_device_id device,
   // constraints:
   size_t totalWorkPrevDims = 1;
   for (int i = 0, e = global.size(); i < e; i++) {
-    local[i] = L;
+    local[i] = std::min(L, WIS[i]);
+    local[i] = std::min(local[i], WGS / totalWorkPrevDims);
 
-    while (global[i] % local[i] || L % local[i] || local[i] > WIS[i] ||
-           local[i] * totalWorkPrevDims > WGS) {
+    while (global[i] % local[i] || L % local[i]) {
       local[i]--;
     }
 
     // Remember how much work we are doing in this dimension. Use it to make
-    // sure that the next dimenstions don't exceed the total allowed workgroup
+    // sure that the next dimensions don't exceed the total allowed workgroup
     // size.
     totalWorkPrevDims *= local[i];
   }
@@ -548,7 +580,7 @@ static void topK(Tensor &outW, Tensor &indW, Tensor &inW, size_t k) {
   }
 }
 
-llvm::Error OpenCLFunction::execute(ExecutionContext *context) {
+Error OpenCLFunction::execute(ExecutionContext *context) {
   auto clBindings = static_cast<runtime::OpenCLDeviceBindings *>(
       context->getDeviceBindings());
 
@@ -605,7 +637,9 @@ llvm::Error OpenCLFunction::execute(ExecutionContext *context) {
         // The check for quantization below is a temporary workaround until the
         // corresponding kernels are implemented for the quantized operations.
         if (!isQuantized) {
-          if (global % 16 == 0) {
+          if (getPreferredVectorWidth(deviceId, elemTy) == 1) {
+            // If the device prefers not to use vector data types, let's not.
+          } else if (global % 16 == 0) {
             // Start less kernels and let each kernel do more work using vector
             // instructions.
             global /= 16;
@@ -1070,13 +1104,13 @@ llvm::Error OpenCLFunction::execute(ExecutionContext *context) {
 
         setKernelArg(kernel, numArgs + 4, odim);
         setKernelArg(kernel, numArgs + 5, idim);
-        global = {odim.h, odim.w, odim.c};
+        global = {{odim.h, odim.w, odim.c}};
       } else {
         ShapeNHWC odim(PM->getDest()->getType()->dims());
         ShapeNHWC idim(PM->getSrc()->getType()->dims());
         setKernelArg(kernel, numArgs + 4, odim);
         setKernelArg(kernel, numArgs + 5, idim);
-        global = {odim.h, odim.w, odim.c};
+        global = {{odim.h, odim.w, odim.c}};
       }
 
       enqueueKernel(I.getName(), commands, kernel, deviceId, global,
@@ -1153,13 +1187,13 @@ llvm::Error OpenCLFunction::execute(ExecutionContext *context) {
 
         setKernelArg(kernel, numArgs + 4, odim);
         setKernelArg(kernel, numArgs + 5, idim);
-        global = {odim.h, odim.w, odim.c};
+        global = {{odim.h, odim.w, odim.c}};
       } else {
         ShapeNHWC odim(PA->getDest()->getType()->dims());
         ShapeNHWC idim(PA->getSrc()->getType()->dims());
         setKernelArg(kernel, numArgs + 4, odim);
         setKernelArg(kernel, numArgs + 5, idim);
-        global = {odim.h, odim.w, odim.c};
+        global = {{odim.h, odim.w, odim.c}};
       }
 
       if (isNCHW && isQuantized) {
@@ -1441,7 +1475,7 @@ llvm::Error OpenCLFunction::execute(ExecutionContext *context) {
     kernelLaunches.clear();
   }
 
-  return llvm::Error::success();
+  return Error::success();
 }
 
 uint64_t OpenCLFunction::copyValueToDevice(
@@ -1666,7 +1700,8 @@ void OpenCLFunction::translateTraceEventsCL(
         auto timestamp = (timeEnd / 1000) + tsOffset;
 
         handle.at({ev->startIndex, 0}) = timestamp;
-        traceEvents.push_back({ev->name, timestamp, ev->type, tid});
+        traceEvents.push_back(
+            {ev->name, timestamp, ev->type, tid, {{"kind", ev->kind}}});
       }
     } else {
       // Duration should be usec.
@@ -1727,7 +1762,7 @@ OCLBackend::compileIR(std::unique_ptr<IRFunction> IR) const {
   return function;
 }
 
-llvm::Expected<std::unique_ptr<CompiledFunction>>
+Expected<std::unique_ptr<CompiledFunction>>
 OCLBackend::compile(Function *F, const BackendOptions &opts) const {
   TraceInfo traceInfo = buildManualTraceInfo(F);
 
@@ -1749,8 +1784,7 @@ OCLBackend::compile(Function *F, const BackendOptions &opts) const {
       llvm::make_unique<OpenCLFunction>(std::move(IR), std::move(bundle),
                                         std::move(traceInfo));
 
-  return llvm::Expected<std::unique_ptr<CompiledFunction>>(
-      std::move(compiledFunc));
+  return Expected<std::unique_ptr<CompiledFunction>>(std::move(compiledFunc));
 }
 
 bool OCLBackend::isOpSupported(const NodeInfo &NI) const {

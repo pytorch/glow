@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2017-present, Facebook, Inc.
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -500,6 +500,8 @@ public:
       return isEqualImpl<uint8_t>(other, allowedError, verbose);
     case ElemKind::UInt8FusedFP16QTy:
       return isEqualImpl<uint8_t>(other, allowedError, verbose);
+    case ElemKind::UInt4FusedFP16QTy:
+      return isEqualImpl<uint8_t>(other, allowedError, verbose);
     case ElemKind::BoolTy:
       return isEqualImpl<bool>(other, allowedError, verbose);
     }
@@ -906,17 +908,13 @@ public:
   /// Returns reference to a meaningful data element. This method does not
   /// address padding elements.
   ElemTy &at(llvm::ArrayRef<size_t> indices) {
-    assert(tensor_->isInBounds(indices));
     size_t index = getElementPtr(indices);
-    assert(index < actualSize() && "Out of bounds");
     auto *data = tensor_->getRawDataPointer<ElemTy>();
     return data[index];
   }
 
   const ElemTy &at(llvm::ArrayRef<size_t> indices) const {
-    assert(tensor_->isInBounds(indices));
     size_t index = getElementPtr(indices);
-    assert(index < actualSize() && "Out of bounds");
     auto *data = tensor_->getRawDataPointer<ElemTy>();
     return data[index];
   }
@@ -924,7 +922,6 @@ public:
   /// \returns the element at offset \p idx without any size calculations.
   /// The returned element can be a pad element.
   ElemTy &raw(size_t index) {
-    assert(index < actualSize() && "Out of bounds");
     auto *data = tensor_->getRawDataPointer<ElemTy>();
     return data[index];
   }
@@ -932,7 +929,6 @@ public:
   /// \returns the element at offset \p idx without any size calculations.
   /// The returned element can be a pad element.
   const ElemTy &raw(size_t index) const {
-    assert(index < actualSize() && "Out of bounds");
     auto *data = tensor_->getRawDataPointer<ElemTy>();
     return data[index];
   }
@@ -1190,6 +1186,29 @@ public:
                       /* axis */ 0, 0);
   }
 
+  /// \returns a pair of the scale and offset from a row \p rowIdx of a
+  /// FusedRowwiseQuantized Tensor.
+  template <typename T>
+  std::pair<T, T> getFusedScaleOffsetFromRow(size_t rowIdx) {
+    ElemTy *rowScaleOffsetPtr = getFusedRowScaleOffsetPtr<T>(rowIdx);
+    T scale;
+    T offset;
+    memcpy(&scale, rowScaleOffsetPtr, sizeof(T));
+    memcpy(&offset, rowScaleOffsetPtr + sizeof(T), sizeof(T));
+    return std::make_pair(scale, offset);
+  }
+
+  /// Sets the \p scale and \p offset to a row \p rowIdx of a
+  /// FusedRowwiseQuantized Tensor.
+  template <typename T>
+  void setFusedScaleOffsetInRow(size_t rowIdx, T scale, T offset) {
+    ElemTy *rowScaleOffsetPtr = getFusedRowScaleOffsetPtr<T>(rowIdx);
+    T finalScale = static_cast<T>(scale);
+    T finalOffset = static_cast<T>(offset);
+    memcpy(rowScaleOffsetPtr, &finalScale, sizeof(T));
+    memcpy(rowScaleOffsetPtr + sizeof(T), &finalOffset, sizeof(T));
+  }
+
 private:
   /// Concats or splits tensors.
   /// This method concats or extracts a slice from a tensor.
@@ -1235,6 +1254,31 @@ private:
                           axis, d + 1);
       }
     }
+  }
+
+  /// Given a Fused tensor, \returns a pointer to the scale and offset with type
+  /// \p T of a row \p rowIdx.
+  template <typename T> ElemTy *getFusedRowScaleOffsetPtr(size_t rowIdx) {
+    switch (getElementType()) {
+    case ElemKind::UInt8FusedQTy: {
+      constexpr auto isFloat = std::is_same<float, T>::value;
+      DCHECK(isFloat) << "Expected float scale/offset";
+      break;
+    }
+    case ElemKind::UInt4FusedFP16QTy:
+    case ElemKind::UInt8FusedFP16QTy: {
+      constexpr auto isFloat16 = std::is_same<float16_t, T>::value;
+      DCHECK(isFloat16) << "Expected float16_t scale/offset";
+      break;
+    }
+    default:
+      llvm_unreachable("Must be used with Tensor of supported Fused ElemKind");
+    }
+
+    static_assert(std::is_same<uint8_t, ElemTy>::value,
+                  "Handle of current Fused tensors expected to be uint8_t.");
+    const size_t colIdx = dims()[1] - 2 * sizeof(T);
+    return &at({rowIdx, colIdx});
   }
 };
 

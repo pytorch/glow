@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2017-present, Facebook, Inc.
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,7 +28,7 @@ TEST(ModelLoaderTest, Loader) {
   const std::string fileName{GLOW_DATA_PATH
                              "tests/models/pytorchModels/resnet18.pt"};
   std::shared_ptr<torch::jit::script::Module> module;
-  llvm::Error err = glow::PyTorchFileLoader::loadPyTorchModel(fileName, module);
+  glow::Error err = glow::PyTorchFileLoader::loadPyTorchModel(fileName, module);
   EXPECT_FALSE(err);
 }
 
@@ -44,10 +44,28 @@ TEST(ModelLoaderTest, Fusion) {
 
   std::vector<glow::Placeholder *> inputPlaceholders;
   std::vector<glow::Placeholder *> outputPlaceholders;
-  glow::PyTorchLoaderSettings settings;
 
-  llvm::Error err = glow::PyTorchFileLoader::loadPyTorchGraph(
-      fileName, vec, *F, inputPlaceholders, outputPlaceholders, settings);
+  glow::Error err = glow::PyTorchFileLoader::loadPyTorchGraph(
+      fileName, vec, *F, inputPlaceholders, outputPlaceholders);
 
-  EXPECT_FALSE(glow::errToBool(std::move(err)));
+  EXPECT_FALSE(ERR_TO_BOOL(std::move(err)));
+}
+
+TEST(ModelLoaderTest, DISABLED_Direct) {
+  const std::string fileName{GLOW_DATA_PATH
+                             "tests/models/pytorchModels/resnet18.pt"};
+
+  glow::Module mod;
+  auto *F = mod.createFunction("GlowFunction");
+  std::vector<torch::jit::IValue> vec;
+  auto emptyTensor = at::empty({1, 3, 224, 224});
+  vec.push_back(torch::autograd::make_variable(emptyTensor));
+
+  std::vector<glow::Placeholder *> inputPlaceholders;
+  std::vector<glow::Placeholder *> outputPlaceholders;
+
+  glow::Error err = glow::PyTorchFileLoader::parsePyTorchGraphForOnnxTraining(
+      fileName, vec, *F, inputPlaceholders, outputPlaceholders);
+
+  EXPECT_FALSE(ERR_TO_BOOL(std::move(err)));
 }

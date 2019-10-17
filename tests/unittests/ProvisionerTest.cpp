@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2017-present, Facebook, Inc.
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -82,7 +82,7 @@ TEST_F(ProvisionerTest, provisionDag) {
   Provisioner provisioner(devices);
   auto err = provisioner.provision(networks, *mod.get(), cctx);
   // Expect that there was no Error when provisioning
-  EXPECT_FALSE(errToBool(std::move(err)));
+  EXPECT_FALSE(ERR_TO_BOOL(std::move(err)));
 }
 
 TEST_F(ProvisionerTest, provisionDagFail) {
@@ -101,5 +101,5 @@ TEST_F(ProvisionerTest, provisionDagFail) {
   Provisioner provisioner(devices);
   auto err = provisioner.provision(networks, *mod.get(), cctx);
   // Expect that there was an Error when provisioning
-  EXPECT_TRUE(errToBool(std::move(err)));
+  EXPECT_TRUE(ERR_TO_BOOL(std::move(err)));
 }

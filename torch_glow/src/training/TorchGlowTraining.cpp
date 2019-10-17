@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2017-present, Facebook, Inc.
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -36,7 +36,7 @@ bool isValidSamplesForSingleInput(const Tensor &input, const Tensor &samples) {
 /// Checks if \p samples Tensor contains multiple training examples with the
 /// correct shape, matching \p input.
 bool isValidSamplesForSliceInput(const Tensor &input, const Tensor &samples) {
-  return input.dims().size() > 1 &&
+  return input.dims().size() > 1 && samples.dims().size() > 1 &&
          input.dims().slice(1) == samples.dims().slice(1) &&
          input.getElementType() == samples.getElementType();
 }
@@ -55,54 +55,31 @@ void TorchGlowTraining::clear() {
 
 TorchGlowTraining::~TorchGlowTraining() { clear(); }
 
-llvm::Error TorchGlowTraining::init(llvm::StringRef modelFile,
-                                    std::vector<torch::jit::IValue> &inputs,
-                                    llvm::StringRef backend,
-                                    const ONNXWriterParameters &parameters,
-                                    const PyTorchLoaderSettings &settings,
-                                    const TrainingConfig &config,
-                                    RandomizeWeights mode) {
+Error TorchGlowTraining::init(llvm::StringRef modelFile,
+                              std::vector<torch::jit::IValue> &inputs,
+                              llvm::StringRef backend,
+                              const ONNXWriterParameters &parameters,
+                              const TrainingConfig &config,
+                              RandomizeWeights mode) {
   // Clean up all previous allocations, if any.
   clear();
   // Initialize execution engine.
   engine_.setBackendName(backend);
   // Create glow Function, only one object will be in module.
   F_ = engine_.getModule().createFunction("torch_glow_model");
+
   // Execution lambda helps to use compact Glow RETURN_* macros inside, and
   // have possibility to clean-up resources before leaving the function scope.
-  auto setup = [&]() -> llvm::Error {
-    // Don't make constants from placeholders, it will crash training.
-    RETURN_ERR_IF_NOT(
-        !settings.weightFreezingEnabled,
-        "Cannot initialize training with weightFreezingEnabled set to true.");
+  auto setup = [&]() -> Error {
     // Detect the proper loader.
     if (modelFile.endswith_lower(".pt")) {
-      RETURN_IF_ERR(PyTorchFileLoader::loadPyTorchGraph(
-          modelFile.str(), inputs, *F_, inputPHs_, outputPHs_, settings, true));
+      RETURN_IF_ERR(PyTorchFileLoader::parsePyTorchGraphForOnnxTraining(
+          modelFile.str(), inputs, *F_, inputPHs_, outputPHs_));
       if (mode == RandomizeWeights::AUTO) {
         mode = RandomizeWeights::YES;
       }
-      // After fusion and replacing all inputs, weights, biases, etc. with
-      // placeholders, we lost the track of input placeholders. Let's find them.
-      // Get graph root node with all inputs.
-      inputPHs_.clear();
-      const auto &nodes = F_->getNodes();
-      const auto &root = *nodes.begin();
-      const unsigned n = root.getNumInputs();
-      RETURN_ERR_IF_NOT(
-          inputs.size() == n,
-          glow::strFormat("expected %lu inputs, got %u", inputs.size(), n));
-
-      for (unsigned b = 0; b < n; ++b) {
-        auto input = root.getNthInput(b);
-        Placeholder *PH = llvm::dyn_cast<Placeholder>(input.getNode());
-        RETURN_ERR_IF_NOT(PH,
-                          "Expected placeholder as input for the first node.");
-        inputPHs_.push_back(PH);
-      }
     } else if (modelFile.endswith_lower(".onnx")) {
-      llvm::Error err = llvm::Error::success();
-      MARK_ERR_CHECKED(err);
+      Error err = Error::empty();
       ONNXModelLoader loader(modelFile.str(), {}, {}, *F_, &err);
       RETURN_IF_ERR(err);
       if (mode == RandomizeWeights::AUTO) {
@@ -127,7 +104,6 @@ llvm::Error TorchGlowTraining::init(llvm::StringRef modelFile,
                                       outputPHs_.size()));
 
     // Initialization succeeded, prepare for training.
-    bindings_.allocate(engine_.getModule().getPlaceholders());
     TensorInitializer initializer;
     switch (mode) {
     case RandomizeWeights::AUTO:
@@ -143,14 +119,16 @@ llvm::Error TorchGlowTraining::init(llvm::StringRef modelFile,
 
     RETURN_IF_ERR(glow::prepareFunctionForTraining(F_, bindings_, selectedPH_,
                                                    std::move(initializer)));
-
     TF_ = glow::differentiate(F_, config);
+
     engine_.compile(CompilationMode::Train);
 
-    return llvm::Error::success();
+    bindings_.allocate(engine_.getModule().getPlaceholders());
+
+    return Error::success();
   };
 
-  llvm::Error err = setup();
+  Error err = setup();
   if (err) {
     // On failure cleanup resources.
     clear();
@@ -158,15 +136,13 @@ llvm::Error TorchGlowTraining::init(llvm::StringRef modelFile,
   }
 
   parameters_ = parameters;
-  return llvm::Error::success();
+  return Error::success();
 }
 
-llvm::Error TorchGlowTraining::train(const Tensor &samples,
-                                     const Tensor &labels) {
+Error TorchGlowTraining::train(const Tensor &samples, const Tensor &labels) {
   RETURN_ERR_IF_NOT(TF_, "Class instance, wasn't properly initialized.");
   auto *input = bindings_.get(inputPHs_[0]);
   auto *label = bindings_.get(selectedPH_);
-  auto TFName = TF_->getName();
 
   // Sanity check.
   const bool isSlice = isValidSamplesForSliceInput(*input, samples) &&
@@ -174,29 +150,38 @@ llvm::Error TorchGlowTraining::train(const Tensor &samples,
 
   if (!isSlice && (!isValidSamplesForSingleInput(*input, samples) ||
                    !isValidSamplesForSingleInput(*label, labels))) {
-    RETURN_ERR("Invalid samples/labels dimensions.");
-  }
+    std::string O;
+    llvm::raw_string_ostream sink(O);
+    sink << "input: " << input->getType() << ", samples: " << samples.getType()
+         << ", label: " << label->getType() << ", labels: " << labels.getType();
 
+    RETURN_ERR("Invalid samples/labels dimensions: " + sink.str());
+  }
+#ifdef NDEBUG
+  /// Enable only in release mode.
+  auto TFName = TF_->getName();
   size_t numEpochs = samples.dims()[0] / input->dims()[0];
   for (size_t e = 0; e < numEpochs; ++e) {
     isSlice ? input->copyConsecutiveSlices(&samples, e)
             : input->copySlice(&samples, e);
     isSlice ? label->copyConsecutiveSlices(&labels, e)
             : label->copySlice(&labels, e);
+
     engine_.run(bindings_, TFName);
   }
-
-  return llvm::Error::success();
+#else
+  llvm::errs() << "NB!!! Training has been skipped, run Release mode.\n";
+#endif
+  return Error::success();
 }
 
-llvm::Error TorchGlowTraining::save(llvm::StringRef snapshotFile) {
-  llvm::Error err = llvm::Error::success();
-  MARK_ERR_CHECKED(err);
+Error TorchGlowTraining::save(llvm::StringRef snapshotFile) {
+  Error err = Error::empty();
   // Detects output ONNX file format, text or binary.
   const bool textMode = snapshotFile.endswith_lower(".onnxtxt");
 
   // Move placeholder tensors into constants.
-  llvm::ArrayRef<Placeholder *> phs = {inputPHs_[0], outputPHs_[0]};
+  std::vector<Placeholder *> phs = {inputPHs_[0], outputPHs_[0]};
   std::list<std::pair<Placeholder *, Constant *>> cache;
   // Move placeholder tensors into constants.
   for (auto &PH : F_->findPlaceholders()) {
@@ -237,41 +222,22 @@ bool TorchGlowTrainingWrapper::init(const std::string &modelPath,
                                     bool randomizeWeights) {
   std::vector<torch::jit::IValue> ptInputs = {ptTensors.begin(),
                                               ptTensors.end()};
-  return !errToBool(trainer_.init(
-      modelPath, ptInputs, backend, parameters_, settings_, config_,
+  return !ERR_TO_BOOL(trainer_.init(
+      modelPath, ptInputs, backend, parameters_, config_,
       randomizeWeights ? TorchGlowTraining::RandomizeWeights::YES
                        : TorchGlowTraining::RandomizeWeights::NO));
 }
 
 bool TorchGlowTrainingWrapper::train(const at::Tensor &ptSamples,
                                      const at::Tensor &ptLabels) {
-  llvm::Expected<glow::Tensor> glowSamples =
-      PyTorchModelLoader::ptTensorToGlowTensor(ptSamples);
-  if (!glowSamples) {
-    errToBool(takeErr(std::move(glowSamples)));
-    return false;
-  }
+  glow::Tensor glowSamples = ptTensorToGlowTensor(ptSamples);
+  glow::Tensor glowLabels = ptTensorToGlowTensor(ptLabels);
 
-  llvm::Expected<glow::Tensor> glowLabels =
-      PyTorchModelLoader::ptTensorToGlowTensor(ptLabels);
-  if (!glowLabels) {
-    errToBool(takeErr(std::move(glowLabels)));
-    return false;
-  }
-
-  return !errToBool(trainer_.train(glowSamples.get(), glowLabels.get()));
+  return !ERR_TO_BOOL(trainer_.train(glowSamples, glowLabels));
 }
 
 bool TorchGlowTrainingWrapper::save(const std::string &snapshotFile) {
-  return !errToBool(trainer_.save(snapshotFile));
-}
-
-/// Helper functions for assigning settings/parameters/configs.
-/// Sets PyTorchLoaderSettings
-void TorchGlowTrainingWrapper::setPyTorchLoaderSettings(
-    bool enableFusionPass, bool enableWeightFreezing) {
-  settings_.fusionPassEnabled = enableFusionPass;
-  settings_.weightFreezingEnabled = enableWeightFreezing;
+  return !ERR_TO_BOOL(trainer_.save(snapshotFile));
 }
 
 /// Sets ONNXWriterParameters

@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2017-present, Facebook, Inc.
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,6 +24,7 @@
 #include "synapse.h"
 
 #include "llvm/Support/FileSystem.h"
+#include "llvm/Support/FormatVariadic.h"
 
 #include <chrono>
 #include <glog/logging.h>
@@ -32,7 +33,7 @@
 using namespace glow;
 
 /// Get a path to a temporary file for the compiled recipe.
-static llvm::Expected<std::string> getRecipeFile() {
+static Expected<std::string> getRecipeFile() {
   llvm::SmallString<64> path;
   auto err = llvm::sys::fs::createTemporaryFile("glow", "recipe", path);
   RETURN_ERR_IF_NOT(
@@ -447,7 +448,7 @@ allocateGraphTensors(Function *F) {
   return tensors;
 }
 
-llvm::Expected<std::unique_ptr<CompiledFunction>>
+Expected<std::unique_ptr<CompiledFunction>>
 HabanaBackend::compile(Function *F, const BackendOptions &opts) const {
   chk(synCreateGraph(synDeviceGoya));
 
@@ -749,15 +750,12 @@ HabanaBackend::compile(Function *F, const BackendOptions &opts) const {
       multiInputs.emplace_back(std::move(inputs));
       break;
     }
-    case Kinded::Kind::ConvolutionNodeKind: {
-      auto *NI = llvm::cast<ConvolutionNode>(&I);
+    case Kinded::Kind::HabanaConvolutionNodeKind: {
+      auto *NI = llvm::cast<HabanaConvolutionNode>(&I);
 
-      bool doRelu = (NI->getFusedActivation() == FusedActivation::RELU);
-      DCHECK(NI->getFusedActivation() == FusedActivation::NONE || doRelu);
-
-      std::unique_ptr<synConvolutionParams> params =
-          makeSynConvolutionParams(NI->getKernels(), NI->getStrides(),
-                                   NI->getPads(), NI->getGroup(), doRelu);
+      std::unique_ptr<synConvolutionParams> params = makeSynConvolutionParams(
+          NI->getKernels(), NI->getStrides(), NI->getPads(), NI->getGroup(),
+          NI->getDoRelu());
 
       chk(synSpatialConvolution(tensors[NI->getInput()].get(),
                                 tensors[NI->getFilter()].get(),
@@ -1073,7 +1071,7 @@ HabanaBackend::compile(Function *F, const BackendOptions &opts) const {
   LOG(INFO) << "Compilation took " << duration / 1000.0 << " [ms]";
   chk(synDestroyGraph());
 
-  return llvm::Expected<std::unique_ptr<CompiledFunction>>(
+  return Expected<std::unique_ptr<CompiledFunction>>(
       llvm::make_unique<HabanaFunction>(runtime::RuntimeBundle::create(*F),
                                         recipeName, F));
 }
@@ -1095,6 +1093,7 @@ bool HabanaBackend::isOpSupported(const NodeInfo &NI) const {
     case Kinded::Kind::ConvolutionNodeKind:
     case Kinded::Kind::DivNodeKind:
     case Kinded::Kind::FullyConnectedNodeKind:
+    case Kinded::Kind::HabanaConvolutionNodeKind:
     case Kinded::Kind::HabanaConvolutionAddNodeKind:
     case Kinded::Kind::HabanaFullyConnectedNodeKind:
     case Kinded::Kind::MatMulNodeKind:
@@ -1266,7 +1265,7 @@ bool separateSlice(Function *F, SliceNode &slice) {
 }
 
 /// Fuse conv followed by relu into a single FusedConvRelu node.
-bool fuseConvRelu(Function *F, ConvolutionNode &conv, ReluNode &relu) {
+bool fuseConvRelu(Function *F, HabanaConvolutionNode &conv, ReluNode &relu) {
   // Convolution should have only a single use.
   if (!conv.getResult().hasOneUse()) {
     return false;
@@ -1274,11 +1273,10 @@ bool fuseConvRelu(Function *F, ConvolutionNode &conv, ReluNode &relu) {
 
   auto fusedOpName =
       conv.getName().str() + "." + relu.getName().str() + ".fused";
-  auto *fusedNode = new ConvolutionNode(
+  auto *fusedNode = new HabanaConvolutionNode(
       fusedOpName, relu.getResult().getType(), conv.getInput(),
       conv.getFilter(), conv.getBias(), conv.getKernels(), conv.getStrides(),
-      conv.getPads(), conv.getGroup(), conv.getDilation(), conv.getLayout(),
-      FusedActivation::RELU);
+      conv.getPads(), conv.getGroup(), /*doRelu=*/true);
   F->addNode(fusedNode);
 
   relu.getResult().replaceAllUsesOfWith(fusedNode);
@@ -1309,21 +1307,19 @@ bool fuseConvAdd(Function *F, AddNode &add) {
   //           ^     -->    Node --> HabanaConvolutionAdd
   //           |
   // Node ------
-  auto *lhs = llvm::dyn_cast<ConvolutionNode>(add.getLHS());
-  auto *rhs = llvm::dyn_cast<ConvolutionNode>(add.getRHS());
+  auto *lhs = llvm::dyn_cast<HabanaConvolutionNode>(add.getLHS());
+  auto *rhs = llvm::dyn_cast<HabanaConvolutionNode>(add.getRHS());
 
   // Pick the Conv with only a single use (the Add) to fuse because
   // there is no output of the fused node that can provide only the
   // convolution output to other users.
-  ConvolutionNode *singleUseConv;
+  HabanaConvolutionNode *singleUseConv;
   NodeValue otherNode;
 
-  if (lhs && lhs->getResult().hasOneUse() &&
-      lhs->getFusedActivation() == FusedActivation::NONE) {
+  if (lhs && lhs->getResult().hasOneUse()) {
     singleUseConv = lhs;
     otherNode = add.getRHS();
-  } else if (rhs && rhs->getResult().hasOneUse() &&
-             rhs->getFusedActivation() == FusedActivation::NONE) {
+  } else if (rhs && rhs->getResult().hasOneUse()) {
     singleUseConv = rhs;
     otherNode = add.getLHS();
   } else {
@@ -1443,8 +1439,8 @@ bool HabanaBackend::transformPostLowering(Function *F,
 
     // Fuse Convolution followed by relu.
     if (auto *relu = llvm::dyn_cast<ReluNode>(&node)) {
-      if (auto *conv =
-              llvm::dyn_cast<ConvolutionNode>(relu->getInput().getNode())) {
+      if (auto *conv = llvm::dyn_cast<HabanaConvolutionNode>(
+              relu->getInput().getNode())) {
         changed |= fuseConvRelu(F, *conv, *relu);
         continue;
       } else if (auto *convAdd = llvm::dyn_cast<HabanaConvolutionAddNode>(
@@ -1480,19 +1476,16 @@ bool HabanaBackend::transformPostLowering(Function *F,
       }
     }
 
-    // Transpose filter into order expected by Habana backend (HWCN)
+    // Replace Conv with HabanaConv for better control over code generation.
     if (auto *conv = llvm::dyn_cast<ConvolutionNode>(&node)) {
-      if (conv->hasFusedActivation()) {
-        continue;
-      }
+      // Transpose filter into order expected by Habana backend (HWCN)
       auto *TF =
           F->createTranspose((conv->getName()).str() + ".filter.transpose",
                              conv->getFilter(), {1, 2, 3, 0});
-      auto *NC = F->addNode(new ConvolutionNode(
+      auto *NC = F->addNode(new HabanaConvolutionNode(
           conv->getName(), conv->getResult().getType(), conv->getInput(), TF,
           conv->getBias(), conv->getKernels(), conv->getStrides(),
-          conv->getPads(), conv->getGroup(), conv->getDilation(),
-          conv->getLayout(), conv->getFusedActivation()));
+          conv->getPads(), conv->getGroup(), /*doRelu=*/false));
       conv->getResult().replaceAllUsesOfWith(NC);
       changed = true;
       continue;

@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2017-present, Facebook, Inc.
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -98,6 +98,10 @@ class FunctionPassPipeline : private llvm::SmallVector<FunctionPassConfig, 64> {
 private:
   using ParentImpl = llvm::SmallVectorImpl<FunctionPassConfig>;
 
+  /// Removes the first instance of a pass with ID \p FPID. \returns whether an
+  /// instance of the pass was successfully found and removed.
+  bool removeFirstInstanceOfPass(FunctionPassID FPID);
+
 public:
   FunctionPassPipeline() = default;
 
@@ -123,12 +127,21 @@ public:
   /// Push a new \p FPC to the end of the pipeline.
   void pushBack(FunctionPassConfig FPC) { push_back(FPC); }
 
+  /// Push a new \p FPC to the start of the pipeline.
+  void pushFront(FunctionPassConfig FPC) { insert(begin(), FPC); }
+
+  /// Removes all instances of a pass with ID \p FPID.
+  void removeAllInstancesOfPass(FunctionPassID FPID);
+
   /// Dump a textual representation of the pipeline to \p os.
   void dump(llvm::raw_ostream &os = llvm::outs()) const;
 };
 
 /// \returns the default, target-independent graph optimization pipeline
 FunctionPassPipeline createDefaultGraphOptimizationPassPipeline();
+
+/// \returns the fp16 specific optimization pipeline
+FunctionPassPipeline createFP16GraphOptimizationPassPipeline();
 
 /// \returns the default fold pipeline.
 FunctionPassPipeline createDefaultFoldPassPipeline();

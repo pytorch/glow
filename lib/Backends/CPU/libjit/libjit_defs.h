@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2017-present, Facebook, Inc.
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -111,8 +111,9 @@ inline int8_t libjit_clip(int32_t val) {
 /// See QuantizationTransform32To8 for more details.
 inline int32_t libjit_scale_i32i8(int32_t input, int32_t pre, int32_t post,
                                   int32_t scale, int32_t offset) {
-  // The operation x >> y is rounded down to negative infinity. To get to
-  // round-nearest we add (1 << (shift - 1)) to the value prior to shifting.
+  // The operation x >> post is rounded down to negative infinity. To get to
+  // round-nearest we add (1 << (post - 1)) to the value prior to shifting.
+  // Rounding is performed only when shifting right (pos > 0).
   int rtn = (post > 0) ? (1 << (post - 1)) : 0;
 
   // NOTICE: If your tests are failing because of signed integer overflow then

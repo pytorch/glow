@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2017-present, Facebook, Inc.
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -59,20 +59,19 @@ std::string unexpectedNodeErrorMessage(const T &node, llvm::StringRef message) {
 }
 
 /// Reads a single integer.
-template <typename T> static llvm::Expected<int> loadInt(const T *arg) {
+template <typename T> static Expected<int> loadInt(const T *arg) {
   RETURN_ERR_IF_NOT(arg->has_i(), "Node has no Int value");
   return arg->i();
 }
 
 /// Reads a single float.
-template <typename T> static llvm::Expected<float> loadFloat(const T *arg) {
+template <typename T> static Expected<float> loadFloat(const T *arg) {
   RETURN_ERR_IF_NOT(arg->has_f(), "Node has no float value");
   return arg->f();
 }
 
 /// Reads a single string.
-template <typename T>
-static llvm::Expected<const std::string &> loadStr(const T *arg) {
+template <typename T> static Expected<std::string> loadStr(const T *arg) {
   RETURN_ERR_IF_NOT(arg->has_s(), "Node has no str value");
   return arg->s();
 }
@@ -130,12 +129,12 @@ protected:
   /// under the name \p name. If an existing Placeholder is already registered
   /// under the same name then the tensor is thrown out and no new Constant
   /// is created.
-  llvm::Error createAndRegisterConstant(llvm::StringRef name, Tensor &&tensor);
+  Error createAndRegisterConstant(llvm::StringRef name, Tensor &&tensor);
 
   /// Create a new Placeholder of type \p T, and register it
   /// under the name \p name. \returns The newly created placeholder.
-  llvm::Expected<Placeholder *>
-  createAndRegisterPlaceholder(llvm::StringRef name, TypeRef T);
+  Expected<Placeholder *> createAndRegisterPlaceholder(llvm::StringRef name,
+                                                       TypeRef T);
 
   /// \returns the NodeValue that was registered with the name \p name or
   /// a nullptr wrapped in a NodeValue if no node has been registered with this
@@ -146,10 +145,10 @@ protected:
   /// no Constant has been registered with this name.
   Constant *getConstantByNameOrNull(llvm::StringRef name) const;
 
-  /// \returns an llvm::Expected of the Constant registered with the given \p
+  /// \returns an Expected of the Constant registered with the given \p
   /// name and returns and Error if no Constant has been registered with this
   /// name.
-  llvm::Expected<Constant *> getConstantByName(llvm::StringRef name) const;
+  Expected<Constant *> getConstantByName(llvm::StringRef name) const;
 
   /// \returns whether or not a Constant has been registered with the given \p
   /// name.
@@ -158,7 +157,7 @@ protected:
 public:
   /// \returns the NodeValue that was registered with the name \p name.
   /// \pre hasNodeByName(name)
-  llvm::Expected<NodeValue> getNodeValueByName(llvm::StringRef name) const;
+  Expected<NodeValue> getNodeValueByName(llvm::StringRef name) const;
 
   /// \returns True if the node that's registered using \p name exists.
   bool hasNodeByName(llvm::StringRef name) const;
@@ -170,7 +169,7 @@ public:
   /// occurs it will abort.
   ProtobufLoader(llvm::ArrayRef<const char *> tensorNames,
                  llvm::ArrayRef<TypeRef> types, Function &F,
-                 llvm::Error *errPtr = nullptr);
+                 Error *errPtr = nullptr);
 
   ProtobufLoader(const ProtobufLoader &other) = delete;
   ProtobufLoader &operator=(const ProtobufLoader &) = delete;
@@ -190,7 +189,7 @@ public:
   /// that there is only one output, returns Error otherwise. For image
   /// classification, this single final output is usually the result of the
   /// last softmax or regression layer.
-  llvm::Expected<Placeholder *> getSingleOutput() {
+  Expected<Placeholder *> getSingleOutput() {
     RETURN_ERR_IF_NOT(outputVarsByName_.size() == 1,
                       "There must be only one output.");
     return outputVarsByName_.begin()->second;
@@ -198,7 +197,7 @@ public:
 
   /// \returns the Placeholder for the external output with \p name.
   /// \pre outputVarsByName_.find(name) != outputVarsByName_.end()
-  llvm::Expected<Placeholder *> getOutputByName(llvm::StringRef name) const;
+  Expected<Placeholder *> getOutputByName(llvm::StringRef name) const;
 
   /// \returns True if the operator with name \p typeName having input node
   /// list as \p inputs is constant foldable.
@@ -210,8 +209,8 @@ public:
 /// \p loader is successful. The folding utility uses temporary
 /// loader \p tmpLoader, and associated temporary function \p F.
 template <class LoaderType, class OpType>
-llvm::Error constantFoldInLoader(Function *F, LoaderType &tmpLoader,
-                                 LoaderType *loader, const OpType &op) {
+Error constantFoldInLoader(Function *F, LoaderType &tmpLoader,
+                           LoaderType *loader, const OpType &op) {
   PlaceholderBindings bindings;
   std::vector<Tensor *> outTensors;
   Module *mod = F->getParent();
@@ -252,7 +251,7 @@ llvm::Error constantFoldInLoader(Function *F, LoaderType &tmpLoader,
                                                     std::move(*outTensors[i])));
   }
 
-  return llvm::Error::success();
+  return Error::success();
 }
 
 } // namespace glow

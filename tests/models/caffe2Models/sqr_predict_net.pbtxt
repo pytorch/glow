@@ -1,0 +1,9 @@
+name: "square"
+op {
+  input: "input"
+  output: "result"
+  name: ""
+  type: "Sqr"
+}
+external_input: "inputs"
+external_output: "result"

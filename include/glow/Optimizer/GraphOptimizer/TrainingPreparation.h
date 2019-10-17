@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2017-present, Facebook, Inc.
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -38,7 +38,7 @@ TensorInitializer getDefaultTensorInitializer();
 
 /// Function takes glow::Function \p F, \p bindings, \p selected placeholder,
 // and \p initializer for the input weights.
-llvm::Error prepareFunctionForTraining(
+Error prepareFunctionForTraining(
     Function *F, PlaceholderBindings &bindings, Placeholder *&selected,
     TensorInitializer &&initializer = getDefaultTensorInitializer());
 } // namespace glow

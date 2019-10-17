@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2017-present, Facebook, Inc.
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -36,6 +36,10 @@ FunctionPassPipeline glow::createDefaultGraphOptimizationPassPipeline() {
       // triggering,
       // so try to optimize them out first.
       {FunctionPassID::OptimizeReshape},
+
+      // Eliminate no-op tiles, possibly unlocking more optimization
+      // opportunities.
+      {FunctionPassID::EliminateNoopTile},
 
       {FunctionPassID::TransposeConstants,
        ConvergenceMode::OnePass,
@@ -84,6 +88,9 @@ FunctionPassPipeline glow::createDefaultGraphOptimizationPassPipeline() {
       // Optimize away intermediate type conversions.
       {FunctionPassID::OptimizeConversions},
 
+      // Optimize away intermediate consecutive Clips.
+      {FunctionPassID::OptimizeClips},
+
       // Optimize quantization related operators.
       {FunctionPassID::OptimizeQuantization, ConvergenceMode::UntilFixedPoint},
 
@@ -95,6 +102,16 @@ FunctionPassPipeline glow::createDefaultGraphOptimizationPassPipeline() {
 
       // Perform a round of Dead Code Elimination to cleanup the final pass.
       getDCEPassConfig(),
+  };
+}
+
+FunctionPassPipeline glow::createFP16GraphOptimizationPassPipeline() {
+  return {
+      // Optimize away intermediate type conversions.
+      {FunctionPassID::OptimizeConversions},
+
+      // Optimize away intermediate consecutive Clips.
+      {FunctionPassID::OptimizeClips},
   };
 }
 
@@ -128,6 +145,7 @@ llvm::StringRef glow::getNameOfPass(FunctionPassID passID) {
     return #PASS_NAME;
 #include "glow/Optimizer/GraphOptimizer/FunctionPasses.def"
   }
+  LOG(DFATAL) << "Cannot reach here.";
 }
 
 static constexpr char const *tab = "  ";
@@ -174,5 +192,20 @@ void FunctionPassPipeline::dump(llvm::raw_ostream &os) const {
     os << "FunctionPassIdx " << i << ": {\n";
     passConfig.dump(os);
     os << "}\n";
+  }
+}
+
+bool FunctionPassPipeline::removeFirstInstanceOfPass(FunctionPassID FPID) {
+  for (auto it = begin(); it != end(); it++) {
+    if (it->getFunctionPassID() == FPID) {
+      erase(it);
+      return true;
+    }
+  }
+  return false;
+}
+
+void FunctionPassPipeline::removeAllInstancesOfPass(FunctionPassID FPID) {
+  while (removeFirstInstanceOfPass(FPID)) {
   }
 }

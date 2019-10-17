@@ -1,3 +1,5 @@
+add_subdirectory(ClassGen)
+
 set(OpenCL_DIR ${CMAKE_BINARY_DIR}/glow/OpenCL)
 
 add_custom_command(

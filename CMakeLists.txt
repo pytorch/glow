@@ -8,6 +8,7 @@ enable_testing()
 option(GLOW_WITH_CPU "Build the LLVM-based JIT CPU backend" ON)
 option(GLOW_WITH_LLVMIRCODEGEN "Build the LLVM-based code generation library" ON)
 option(GLOW_WITH_OPENCL "Build the OpenCL backend" OFF)
+option(GLOW_WITH_NNPI "Build the NNPI backend" OFF)
 option(GLOW_WITH_HABANA "Build the Habana backend" OFF)
 option(GLOW_BUILD_EXAMPLES "Build the examples" ON)
 option(GLOW_BUILD_PYTORCH_INTEGRATION "Build integration for PyTorch" OFF)
@@ -53,6 +54,8 @@ include(GlowExternalBackends)
 include(SanitizerSupport)
 include(CoverageSupport)
 include(DoxygenSupport)
+include(FindBackends)
+
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/cmake/modules/CMakeGraphVizOptions.cmake
                ${CMAKE_CURRENT_BINARY_DIR}/CMakeGraphVizOptions.cmake COPYONLY)
 
@@ -113,6 +116,10 @@ if (GLOW_WITH_OPENCL)
   find_package(OpenCL REQUIRED)
 endif ()
 
+if(GLOW_WITH_NNPI)
+  add_definitions(-DGLOW_WITH_NNPI=1)
+endif()
+
 if (GLOW_WITH_HABANA)
   add_definitions(-DGLOW_WITH_HABANA=1)
 
@@ -169,6 +176,10 @@ if(NOT EXISTS "${GLOW_THIRDPARTY_DIR}/fp16")
 else()
   include_directories(${GLOW_THIRDPARTY_DIR}/fp16/include)
 endif()
+
+add_library(Miniz
+  ${GLOW_THIRDPARTY_DIR}/miniz-2.0.8/miniz.c)
+target_include_directories(Miniz PUBLIC ${GLOW_THIRDPARTY_DIR}/miniz-2.0.8)
 
 add_subdirectory(lib)
 add_subdirectory(tools)

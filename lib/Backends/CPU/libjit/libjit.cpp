@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2017-present, Facebook, Inc.
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -1872,6 +1872,14 @@ void libjit_extract_tensor_i8(int8_t *tensor, int8_t *slice, size_t *offset,
                               size_t *tensorDim, size_t *sliceDim,
                               size_t numDimsTensor, size_t numDimsSlice,
                               size_t offsetDim) {
+  libjit_extract_tensor(tensor, slice, offset, tensorDim, sliceDim,
+                        numDimsTensor, numDimsSlice, offsetDim);
+}
+
+void libjit_extract_tensor_i32(int32_t *tensor, int32_t *slice, size_t *offset,
+                               size_t *tensorDim, size_t *sliceDim,
+                               size_t numDimsTensor, size_t numDimsSlice,
+                               size_t offsetDim) {
   libjit_extract_tensor(tensor, slice, offset, tensorDim, sliceDim,
                         numDimsTensor, numDimsSlice, offsetDim);
 }

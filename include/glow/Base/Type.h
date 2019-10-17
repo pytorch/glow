@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2017-present, Facebook, Inc.
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -285,6 +285,9 @@ enum class ElemKind : unsigned char {
   UInt8FusedQTy,
   // 8-bit quantized type with fused FP16 scale/offset (uint8_t)
   UInt8FusedFP16QTy,
+  // 4-bit quantized type with fused FP16 scale/offset (uint8_t, each byte
+  // represents 2 4-bit quantized data)
+  UInt4FusedFP16QTy,
   // Bool type (bool)
   BoolTy,
 };
@@ -293,12 +296,14 @@ enum class ElemKind : unsigned char {
 inline bool isQuantizedElemKind(ElemKind e) {
   return e == ElemKind::Int8QTy || e == ElemKind::UInt8QTy ||
          e == ElemKind::Int16QTy || e == ElemKind::Int32QTy ||
-         e == ElemKind::UInt8FusedQTy || e == ElemKind::UInt8FusedFP16QTy;
+         e == ElemKind::UInt8FusedQTy || e == ElemKind::UInt8FusedFP16QTy ||
+         e == ElemKind::UInt4FusedFP16QTy;
 }
 
 /// \returns whether \p e is a fused quantized ElemKind.
 inline bool isFusedQuantizedElemKind(ElemKind e) {
-  return e == ElemKind::UInt8FusedQTy || e == ElemKind::UInt8FusedFP16QTy;
+  return e == ElemKind::UInt8FusedQTy || e == ElemKind::UInt8FusedFP16QTy ||
+         e == ElemKind::UInt4FusedFP16QTy;
 }
 
 /// A class that represents a type of a tensor.
@@ -539,6 +544,8 @@ struct Type final {
       return std::is_same<ElemTy, uint8_t>::value;
     case ElemKind::UInt8FusedFP16QTy:
       return std::is_same<ElemTy, uint8_t>::value;
+    case ElemKind::UInt4FusedFP16QTy:
+      return std::is_same<ElemTy, uint8_t>::value;
     case ElemKind::BoolTy:
       return std::is_same<ElemTy, bool>::value;
     }
@@ -594,6 +601,8 @@ struct Type final {
     case ElemKind::UInt8FusedQTy:
       return sizeof(uint8_t);
     case ElemKind::UInt8FusedFP16QTy:
+      return sizeof(uint8_t);
+    case ElemKind::UInt4FusedFP16QTy:
       return sizeof(uint8_t);
     case ElemKind::BoolTy:
       return sizeof(bool);

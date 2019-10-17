@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2017-present, Facebook, Inc.
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -66,7 +66,7 @@ void LLVMCompiledFunction::updatePlaceholders(
   }
 }
 
-llvm::Error LLVMCompiledFunction::execute(ExecutionContext *context) {
+Error LLVMCompiledFunction::execute(ExecutionContext *context) {
   uint8_t *baseActivationsAddress{nullptr};
 
   /// Base address for Mutable weights memory block, Inputs and Outputs.
@@ -94,14 +94,23 @@ llvm::Error LLVMCompiledFunction::execute(ExecutionContext *context) {
   auto *traceContext = context->getTraceContext();
   TRACE_EVENT_SCOPE_NAMED(traceContext, TraceLevel::RUNTIME,
                           "findJitmainSymbol", fjEvent);
-  llvm::Expected<llvm::JITTargetAddress> address = NULL;
+  Expected<llvm::JITTargetAddress> address = NULL;
   {
     std::lock_guard<std::mutex> lock(JITLock_);
     auto sym = JIT_->findSymbol("jitmain");
 
     DCHECK(sym) << "Unable to JIT the code!";
-
-    address = sym.getAddress();
+    // We know address is success since we just made it. Mark it as checked.
+    if (address) {
+      auto addrOrLLVMError = sym.getAddress();
+      if (addrOrLLVMError) {
+        address = addrOrLLVMError.get();
+      } else {
+        address = MAKE_ERR(
+            strFormat("Failed to get address: %s",
+                      llvm::toString(addrOrLLVMError.takeError()).data()));
+      }
+    }
   }
   using JitFuncType =
       void (*)(uint8_t * constantWeightVars, uint8_t * mutableWeightVars,
@@ -133,7 +142,7 @@ llvm::Error LLVMCompiledFunction::execute(ExecutionContext *context) {
     translateTraceEvents(context);
   }
 
-  return llvm::Error::success();
+  return Error::success();
 }
 
 void LLVMCompiledFunction::translateTraceEvents(
@@ -170,14 +179,16 @@ void LLVMCompiledFunction::translateTraceEvents(
                backingTensor->getUnsafePtr() +
                    (event.endIndex * traceInfo.dataSize),
                traceInfo.dataSize);
-        traceEvents.push_back({event.name, start, end - start, tid});
+        traceEvents.push_back(
+            {event.name, start, end - start, tid, {{"kind", event.kind}}});
       } else {
         uint64_t ts{0};
         memcpy(&ts,
                backingTensor->getUnsafePtr() +
                    (event.startIndex * traceInfo.dataSize),
                traceInfo.dataSize);
-        traceEvents.push_back({event.name, ts, event.type, tid});
+        traceEvents.push_back(
+            {event.name, ts, event.type, tid, {{"kind", event.kind}}});
       }
     }
   }

@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2017-present, Facebook, Inc.
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -32,20 +32,19 @@ using namespace glow;
 using namespace std;
 
 /// Loads onnxtxt model file \p filename and \returns ModelProto object.
-llvm::Expected<ONNX_NAMESPACE::ModelProto>
-loadProto(const std::string &filename) {
+Expected<ONNX_NAMESPACE::ModelProto> loadProto(const std::string &filename) {
   std::ifstream ff(filename, std::ios::in | std::ios::binary);
   RETURN_ERR_IF_NOT(ff,
                     strFormat("Can't find the model or network files for %s.",
                               filename.c_str()),
-                    GlowErr::ErrorCode::MODEL_LOADER_INVALID_PROTOBUF);
+                    ErrorValue::ErrorCode::MODEL_LOADER_INVALID_PROTOBUF);
   if (filename.find(".onnxtxt") != std::string::npos) {
     std::string str((std::istreambuf_iterator<char>(ff)),
                     std::istreambuf_iterator<char>());
     ONNX_NAMESPACE::ModelProto MP;
     bool parseNet = google::protobuf::TextFormat::ParseFromString(str, &MP);
     RETURN_ERR_IF_NOT(parseNet, "Failed to parse ModelProto",
-                      GlowErr::ErrorCode::MODEL_LOADER_INVALID_PROTOBUF);
+                      ErrorValue::ErrorCode::MODEL_LOADER_INVALID_PROTOBUF);
     return MP;
   }
   RETURN_ERR("Can't load proto file");
@@ -53,11 +52,11 @@ loadProto(const std::string &filename) {
 
 /// Saves ModelProto object \p model as onnxtxt model file \p filename
 /// and \returns true if successful.
-llvm::Expected<bool> saveProto(const std::string &filename,
-                               ONNX_NAMESPACE::ModelProto &model) {
+Expected<bool> saveProto(const std::string &filename,
+                         ONNX_NAMESPACE::ModelProto &model) {
   std::ofstream ff(filename, std::ios::out);
   RETURN_ERR_IF_NOT(ff, "Can't write the proto file.",
-                    GlowErr::ErrorCode::RUNTIME_ERROR);
+                    ErrorValue::ErrorCode::RUNTIME_ERROR);
   if (filename.find(".onnxtxt") != std::string::npos) {
     std::string onnx_message = model.DebugString();
     ff << onnx_message;
@@ -71,14 +70,14 @@ llvm::Expected<bool> saveProto(const std::string &filename,
 /// Replaces placeholders with names \p tensorNames in model proto object \p
 /// model with initializers of same  name and values specified in input tensor
 /// array \p tensors and \returns true if successful.
-llvm::Expected<bool>
+Expected<bool>
 replacePlaceholderWithConstant(ONNX_NAMESPACE::ModelProto &model,
                                llvm::ArrayRef<const char *> tensorNames,
                                llvm::ArrayRef<Tensor *> tensors) {
   ONNX_NAMESPACE::NodeProto np;
   ONNX_NAMESPACE::GraphProto *gp = model.mutable_graph();
   RETURN_ERR_IF_NOT(gp, "Can't get mutable graph.",
-                    GlowErr::ErrorCode::RUNTIME_ERROR);
+                    ErrorValue::ErrorCode::RUNTIME_ERROR);
   for (size_t i = 0; i < tensorNames.size(); i++) {
     for (int j = 0; j < gp->input_size(); j++) {
       ONNX_NAMESPACE::ValueInfoProto *valueInfo = gp->mutable_input(j);
@@ -127,21 +126,20 @@ replacePlaceholderWithConstant(ONNX_NAMESPACE::ModelProto &model,
 /// by replacing input tensors with name \p tensorNames, and values \p tensors
 /// and then checking against expected output expectedTensors. \returns true
 /// if the test completes without error.
-bool checkConstFoldedOutput(std::string NetFilename,
-                            llvm::ArrayRef<const char *> tensorNames,
-                            llvm::ArrayRef<Tensor *> tensors,
-                            llvm::ArrayRef<Tensor *> expectedTensors) {
+Error checkConstFoldedOutput(std::string NetFilename,
+                             llvm::ArrayRef<const char *> tensorNames,
+                             llvm::ArrayRef<Tensor *> tensors,
+                             llvm::ArrayRef<Tensor *> expectedTensors) {
   ONNX_NAMESPACE::ModelProto modelDef;
   llvm::SmallVector<char, 64> resultPath;
   llvm::sys::fs::createTemporaryFile("dummy", "onnxtxt", resultPath);
   std::string netFilename(resultPath.begin(), resultPath.end());
 
-  ASSIGN_VALUE_OR_RETURN_FALSE(modelDef, loadProto(NetFilename));
+  ASSIGN_VALUE_OR_RETURN_ERR(modelDef, loadProto(NetFilename));
   // Replace placeholders in the original onnx model with constants.
-  if (!replacePlaceholderWithConstant(modelDef, tensorNames, tensors))
-    return false;
-  if (!saveProto(netFilename, modelDef))
-    return false;
+  RETURN_IF_ERR(replacePlaceholderWithConstant(modelDef, tensorNames, tensors)
+                    .takeError());
+  RETURN_IF_ERR(saveProto(netFilename, modelDef).takeError());
   setConstantFoldLoaderOpsFlag(true);
 
   // It is expected that loading will fold the whole graph and output
@@ -156,15 +154,13 @@ bool checkConstFoldedOutput(std::string NetFilename,
   // match the expectedTensors passed in.
   for (int i = 0; i < modelDef.graph().output_size(); i++) {
     NodeValue NV;
-    ASSIGN_VALUE_OR_RETURN_FALSE(
+    ASSIGN_VALUE_OR_RETURN_ERR(
         NV, onnxLD.getNodeValueByName(modelDef.graph().output(i).name()));
     auto *constOut = llvm::dyn_cast<Constant>(NV.getNode());
-    if (!constOut) {
-      return false;
-    }
+    RETURN_ERR_IF_NOT(constOut, "Failed cast to Constant");
     EXPECT_TRUE(expectedTensors[i]->isEqual(constOut->getPayload()));
   }
-  return true;
+  return Error::success();
 }
 
 template <class OpType>
@@ -252,8 +248,8 @@ importArithMultiBroadcastTest(std::string fileName,
     EXPECT_FLOAT_EQ(result.raw(i), expectedValues[i]);
   }
   // Constant Folding Test.
-  EXPECT_TRUE(checkConstFoldedOutput(NetFilename, {"data"}, {&data},
-                                     {bindings.get(graphOutputVar)}));
+  FAIL_TEST_IF_ERR(checkConstFoldedOutput(NetFilename, {"data"}, {&data},
+                                          {bindings.get(graphOutputVar)}));
 }
 
 /// Test loading LeakyRelu op from an ONNX model.
@@ -471,8 +467,8 @@ static void testImportPRelu(std::string filename,
   }
 
   // Constant Folding Test.
-  EXPECT_TRUE(checkConstFoldedOutput(NetFileName, {"data"}, {&data},
-                                     {bindings.get(graphOutputVar)}));
+  FAIL_TEST_IF_ERR(checkConstFoldedOutput(NetFileName, {"data"}, {&data},
+                                          {bindings.get(graphOutputVar)}));
 }
 
 TEST(onnx, importPreluSlopeHasSameShape) {
@@ -696,8 +692,8 @@ static void averagePoolTestHelper(std::string &filename,
   }
 
   // Constant Folding Test.
-  EXPECT_TRUE(checkConstFoldedOutput(NetFilename, {"x"}, {&data},
-                                     {bindings.get(graphOutputVar)}));
+  FAIL_TEST_IF_ERR(checkConstFoldedOutput(NetFilename, {"x"}, {&data},
+                                          {bindings.get(graphOutputVar)}));
 }
 
 /// Test loading AveragePool op from a ONNX model.
@@ -785,7 +781,7 @@ TEST(onnx, reduceMean4Dto3D) {
   }
 
   // Constant Folding Test.
-  EXPECT_TRUE(
+  FAIL_TEST_IF_ERR(
       checkConstFoldedOutput(netFilename, {"x"}, {&x}, {bindings.get(output)}));
 }
 
@@ -829,7 +825,7 @@ TEST(onnx, reduceMean4Dto4D) {
   }
 
   // Constant Folding Test.
-  EXPECT_TRUE(
+  FAIL_TEST_IF_ERR(
       checkConstFoldedOutput(netFilename, {"x"}, {&x}, {bindings.get(output)}));
 }
 
@@ -869,7 +865,7 @@ TEST(onnx, reduceSum4D) {
     EXPECT_FLOAT_EQ(result.raw(i), expectedValues[i]);
   }
   // Constant Folding Test.
-  EXPECT_TRUE(
+  FAIL_TEST_IF_ERR(
       checkConstFoldedOutput(netFilename, {"x"}, {&x}, {bindings.get(output)}));
 }
 
@@ -916,7 +912,7 @@ TEST(onnx, reduceMean2AvgPoolKeepDims) {
     EXPECT_FLOAT_EQ(result.raw(i), expectedValues[i]);
   }
   // Constant Folding Test.
-  EXPECT_TRUE(
+  FAIL_TEST_IF_ERR(
       checkConstFoldedOutput(netFilename, {"x"}, {&x}, {bindings.get(output)}));
 }
 
@@ -965,7 +961,7 @@ TEST(onnx, reduceMean2AvgPoolNoKeepDims) {
   }
 
   // Constant Folding Test.
-  EXPECT_TRUE(
+  FAIL_TEST_IF_ERR(
       checkConstFoldedOutput(netFilename, {"x"}, {&x}, {bindings.get(output)}));
 }
 
@@ -1156,7 +1152,7 @@ TEST(onnx, importClip) {
   }
 
   // Constant Folding Test.
-  EXPECT_TRUE(
+  FAIL_TEST_IF_ERR(
       checkConstFoldedOutput(netFilename, {"x"}, {&x}, {bindings.get(output)}));
 }
 
@@ -1224,9 +1220,9 @@ TEST(onnx, importBatchMatMul) {
     }
   }
   // Constant Folding Test.
-  EXPECT_TRUE(checkConstFoldedOutput(netFilename, {"inputs_0", "inputs_1"},
-                                     {&inputs_0, &inputs_1},
-                                     {bindings.get(output)}));
+  FAIL_TEST_IF_ERR(checkConstFoldedOutput(netFilename, {"inputs_0", "inputs_1"},
+                                          {&inputs_0, &inputs_1},
+                                          {bindings.get(output)}));
 }
 
 /// Test loading BatchBoxCox op from an ONNX model.
@@ -1305,7 +1301,7 @@ TEST(onnx, importBatchBoxCox) {
   }
 
   // Constant Folding Test.
-  EXPECT_TRUE(checkConstFoldedOutput(
+  FAIL_TEST_IF_ERR(checkConstFoldedOutput(
       netFilename, {"data", "lambda1", "lambda2"}, {&data, &lambda1, &lambda2},
       {bindings.get(output)}));
 }
@@ -1397,8 +1393,9 @@ TEST(onnx, importSumN) {
   }
 
   // Constant Folding Test.
-  EXPECT_TRUE(checkConstFoldedOutput(netFilename, {"i0", "i1", "i2"},
-                                     {&i0, &i1, &i2}, {bindings.get(output)}));
+  FAIL_TEST_IF_ERR(checkConstFoldedOutput(netFilename, {"i0", "i1", "i2"},
+                                          {&i0, &i1, &i2},
+                                          {bindings.get(output)}));
 }
 
 /// Test loading Sum with one input and one output
@@ -1442,7 +1439,7 @@ TEST(onnx, importSum1) {
   ASSERT_TRUE(llvm::isa<Placeholder>(save->getInput().getNode()));
 
   // Constant Folding Test.
-  EXPECT_TRUE(
+  FAIL_TEST_IF_ERR(
       checkConstFoldedOutput(netFilename, {"x"}, {&x}, {bindings.get(output)}));
 }
 
@@ -1871,8 +1868,8 @@ static void importSliceTest(std::string fileName, const char *inputName,
   }
 
   // Constant Folding Test.
-  EXPECT_TRUE(checkConstFoldedOutput(NetFilename, {inputName}, {&data},
-                                     {bindings.get(graphOutputVar)}));
+  FAIL_TEST_IF_ERR(checkConstFoldedOutput(NetFilename, {inputName}, {&data},
+                                          {bindings.get(graphOutputVar)}));
 }
 
 TEST(onnx, importSliceDynamicNoAxes) {
@@ -2022,10 +2019,9 @@ static void importPad(std::string fileName, const char *inputName,
     getNCHWData(&data, inputShape[0], inputShape[1], inputShape[2],
                 inputShape[3]);
     if (expectLoadError) {
-      llvm::Error err = llvm::Error::success();
-      MARK_ERR_CHECKED(err);
+      Error err = Error::empty();
       ONNXModelLoader(NetFilename, {inputName}, {&data.getType()}, *F, &err);
-      EXPECT_TRUE(errToBool(std::move(err)));
+      EXPECT_TRUE(ERR_TO_BOOL(std::move(err)));
       return;
     }
     ONNXModelLoader onnxLD(NetFilename, {inputName}, {&data.getType()}, *F);
@@ -2202,8 +2198,8 @@ TEST(onnx, shape) {
   }
 
   // Constant Folding Test.
-  EXPECT_TRUE(checkConstFoldedOutput(netFilename, {"input"}, {&x},
-                                     {bindings.get(output)}));
+  FAIL_TEST_IF_ERR(checkConstFoldedOutput(netFilename, {"input"}, {&x},
+                                          {bindings.get(output)}));
 }
 
 TEST(onnx, tile) {
@@ -2292,7 +2288,7 @@ TEST(onnx, topK) {
   }
 
   // Constant Folding Test.
-  EXPECT_TRUE(
+  FAIL_TEST_IF_ERR(
       checkConstFoldedOutput(netFilename, {"scores"}, {&x}, {outputT, indexT}));
 }
 

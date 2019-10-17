@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2017-present, Facebook, Inc.
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -37,8 +37,8 @@ public:
   virtual ~CompiledFunction();
   /// Execute the network and allocate Placeholder memory with given
   /// \p bindings providing mapping between Placeholder and populated tensor.
-  /// \returns an llvm::Error if an error ocurred during execution.
-  virtual llvm::Error execute(ExecutionContext *context) = 0;
+  /// \returns an Error if an error ocurred during execution.
+  virtual Error execute(ExecutionContext *context) = 0;
 
   /// Getter for the runtimeBundle.
   runtime::RuntimeBundle &getRuntimeBundle() { return runtimeBundle_; }
@@ -58,6 +58,11 @@ public:
 
   /// \returns the backend name used to compile this function.
   virtual std::string getCompileBackendName() const = 0;
+
+  /// Once the compiledFunction is done being added to devices calling this
+  /// method will free any resources needed to load the network on the device
+  /// but not needed for running on the device.
+  virtual void freeCompilationResources(){};
 
 protected:
   /// Contains symbol offsets and allocation sizes.

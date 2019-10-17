@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2017-present, Facebook, Inc.
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,19 +22,19 @@ namespace glow {
 /// Check if \p partitions satisfies number of physical devices restriction.
 /// I.e. check if the number of logical devices is less than the given
 /// physical devices.
-llvm::Error
-logicalDevicesValidation(const NodeToFunctionMap &partitions,
-                         const std::map<std::string, BackendInfo> &backendMap);
+Error logicalDevicesValidation(
+    const NodeToFunctionMap &partitions,
+    const std::map<std::string, BackendInfo> &backendMap);
 
 /// Check if the memory usage of each partition meets the physical device
 /// memory restriction.
-llvm::Error
-memoryUsageValidation(const NodeToFunctionMap &partitions,
-                      const std::map<std::string, BackendInfo> &backendMap);
+Error memoryUsageValidation(
+    const NodeToFunctionMap &partitions,
+    const std::map<std::string, BackendInfo> &backendMap);
 
 /// Check if the current partition is a valid DAG. This check can only be called
 /// after a real partition is created and the DAG is generated.
-llvm::Error dagValidation(const DAG &dag);
+Error dagValidation(const DAG &dag);
 
 } // namespace glow
 #endif // GLOW_PARTITIONER_PARTITIONERVALIDATION_H

@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2017-present, Facebook, Inc.
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -994,8 +994,39 @@ TEST(Tensor, randomizeFused_Float) {
 }
 
 /// Test randomizing a Fused tensor with Float16 scale/offsets.
-TEST(Tensor, randomizeFused_Foat16) {
+TEST(Tensor, randomizeFused_Float16) {
   testRandomizeFused(ElemKind::UInt8FusedFP16QTy);
+}
+
+/// Check that getting and setting fused tensors works correctly.
+template <typename ScaleOffsetT>
+static void testGetSetFusedScaleOffset(ElemKind fusedKind) {
+  Tensor T(fusedKind, {10, 10}, 1.0, 0);
+  auto TH = T.getHandle<uint8_t>();
+  for (size_t i = 0; i < 10; i++) {
+    TH.setFusedScaleOffsetInRow<ScaleOffsetT>(i, i, i);
+  }
+  for (size_t i = 0; i < 10; i++) {
+    ScaleOffsetT scale, offset;
+    std::tie(scale, offset) = TH.getFusedScaleOffsetFromRow<ScaleOffsetT>(i);
+    EXPECT_EQ(scale, (ScaleOffsetT)i);
+    EXPECT_EQ(offset, (ScaleOffsetT)i);
+  }
+}
+
+/// Test getting and setting fused scales and offsets from UInt8FusedQTy.
+TEST(Tensor, GetFusedScaleOffset_UInt8FusedQTy) {
+  testGetSetFusedScaleOffset<float>(ElemKind::UInt8FusedQTy);
+}
+
+/// Test getting and setting fused scales and offsets from UInt8FusedFP16QTy.
+TEST(Tensor, GetFusedScaleOffset_UInt8FusedFP16QTy) {
+  testGetSetFusedScaleOffset<float16_t>(ElemKind::UInt8FusedFP16QTy);
+}
+
+/// Test getting and setting fused scales and offsets from UInt4FusedFP16QTy.
+TEST(Tensor, GetFusedScaleOffset_UInt4FusedFP16QTy) {
+  testGetSetFusedScaleOffset<float16_t>(ElemKind::UInt4FusedFP16QTy);
 }
 
 /// Check if dump functions work for Tensor

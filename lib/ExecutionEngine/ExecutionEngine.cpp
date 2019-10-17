@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2017-present, Facebook, Inc.
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -27,8 +27,10 @@
 
 using namespace glow;
 
-ExecutionEngine::ExecutionEngine(llvm::StringRef backend, uint64_t deviceMemory)
-    : deviceMemory_(deviceMemory) {
+ExecutionEngine::ExecutionEngine(llvm::StringRef backend, uint64_t deviceMemory,
+                                 bool ignoreUserDeviceConfig)
+    : deviceMemory_(deviceMemory),
+      ignoreUserDeviceConfig_(ignoreUserDeviceConfig) {
   setBackendName(backend);
 }
 
@@ -45,11 +47,21 @@ void ExecutionEngine::setBackendName(llvm::StringRef backend) {
   }
 
   std::vector<std::unique_ptr<runtime::DeviceConfig>> configs;
-  auto config = llvm::make_unique<runtime::DeviceConfig>(backend);
-  if (deviceMemory_) {
-    config->setDeviceMemory(deviceMemory_);
+  if (!ignoreUserDeviceConfig_ &&
+      loadDeviceConfigsFromFile(configs, deviceMemory_)) {
+    // Loaded from file, so verify that there is just a single device configured
+    // and that it matches the expected backend name.
+    CHECK_EQ(configs.size(), 1)
+        << "Expected a single device for the ExecutionEngine";
+    CHECK(backend.str() == configs[0]->backendName)
+        << "Expected backend name to match the ExecutionEngine";
+  } else {
+    auto config = llvm::make_unique<runtime::DeviceConfig>(backend);
+    if (deviceMemory_) {
+      config->setDeviceMemory(deviceMemory_);
+    }
+    configs.push_back(std::move(config));
   }
-  configs.push_back(std::move(config));
   hostManager_ = llvm::make_unique<runtime::HostManager>(std::move(configs));
 }
 
@@ -104,11 +116,10 @@ void ExecutionEngine::runInternal(ExecutionContext &context,
   std::unique_ptr<ExecutionContext> contextPtr(&context);
   std::promise<void> runPromise;
   auto fut = runPromise.get_future();
-  llvm::Error runErr = llvm::Error::success();
-  MARK_ERR_CHECKED(runErr);
+  Error runErr = Error::empty();
   hostManager_->runNetwork(
       name, std::move(contextPtr),
-      [&runPromise, &runErr](runtime::RunIdentifierTy, llvm::Error err,
+      [&runPromise, &runErr](runtime::RunIdentifierTy, Error err,
                              std::unique_ptr<ExecutionContext> contextPtr) {
         // Don't delete context.
         contextPtr.release();

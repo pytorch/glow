@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2017-present, Facebook, Inc.
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,7 +19,7 @@
 
 #include "PyTorchCommon.h"
 #include "glow/Graph/Graph.h"
-#include "llvm/Support/Error.h"
+#include "glow/Support/Error.h"
 #include <torch/csrc/jit/import.h>
 
 namespace glow {
@@ -28,28 +28,40 @@ namespace glow {
 class PyTorchFileLoader {
   /// Performs sanity check making sure custom fuse pass succeeded as expected,
   /// \returns error otherwise.
-  static llvm::Error performSanityCheck();
+  static Error performSanityCheck();
 
 public:
   /// Takes a model file \p fileName, loads model into torch Module \p module,
   /// \returns error if any.
-  static llvm::Error
+  static Error
   loadPyTorchModel(const std::string &fileName,
                    std::shared_ptr<torch::jit::script::Module> &module);
 
-  /// Takes a model file \p fileName, loads optimized graph into Glow Function
-  /// \p F and input \p inputPlaceholders, output \p outputPlaceholders
-  /// placeholders, \returns error if any. Parameter \p settings
-  /// control the fusion details. Optionally method performs a sanity check if
-  /// \p sanityCheck is set.
+  /// Takes a model file \p fileName, loads optimized graph and a
+  /// stack of \p inputs into Glow Function \p F and fills out input \p
+  /// inputPlaceholders, output \p outputPlaceholders placeholders, \returns
+  /// error if any. Optionally method performs a sanity check if \p sanityCheck
+  /// is set.
   /// Method is thread safe, internally it uses local thread structures for
   /// executing custom fusion pass, registered globally. No other passes or
   /// other treads calling this method will be affected.
-  static llvm::Error loadPyTorchGraph(
-      const std::string &fileName, std::vector<torch::jit::IValue> &inputs,
-      glow::Function &F, std::vector<glow::Placeholder *> &inputPlaceholders,
-      std::vector<glow::Placeholder *> &outputPlaceholders,
-      const PyTorchLoaderSettings &settings, bool sanityCheck = true);
+  static Error
+  loadPyTorchGraph(const std::string &fileName,
+                   const std::vector<torch::jit::IValue> &inputs,
+                   glow::Function &F,
+                   std::vector<glow::Placeholder *> &inputPlaceholders,
+                   std::vector<glow::Placeholder *> &outputPlaceholders,
+                   bool sanityCheck = true);
+
+  /// Takes a model file \p fileName, loads optimized graph and a
+  /// stack of \p inputs into Glow Function \p F and fills out input \p
+  /// inputPlaceholders, output \p outputPlaceholders placeholders, \returns
+  /// error if any. Method is thread safe.
+  static Error parsePyTorchGraphForOnnxTraining(
+      const std::string &fileName,
+      const std::vector<torch::jit::IValue> &inputs, glow::Function &F,
+      std::vector<glow::Placeholder *> &inputPlaceholders,
+      std::vector<glow::Placeholder *> &outputPlaceholders);
 };
 
 } // namespace glow

@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2017-present, Facebook, Inc.
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -35,7 +35,7 @@ using llvm::cast;
 
 /// This matches the signature that is used for the parameterized tests here,
 /// i.e. those passing three parameters via a single ::testing::Combine() into
-/// INSTANTIATE_TEST_CASE_P_FOR_BACKEND_COMBINED_TEST().
+/// GLOW_INSTANTIATE_TEST_SUITE_P_FOR_BACKEND_COMBINED_TEST().
 using ThreeIntTupleConfig = std::tuple<std::string, std::tuple<int, int, int>>;
 using FourIntTupleConfig =
     std::tuple<std::string, std::tuple<int, int, int, int>>;
@@ -104,7 +104,7 @@ static void testParamSweepConv(ThreeIntTupleConfig config,
 
 DECLARE_STATELESS_BACKEND_TEST(ConvSweepTest, ThreeIntTupleConfig);
 
-INSTANTIATE_TEST_CASE_P_FOR_BACKEND_COMBINED_TEST(
+GLOW_INSTANTIATE_TEST_SUITE_P_FOR_BACKEND_COMBINED_TEST(
     SweepTest, ConvSweepTest,
     ::testing::Combine(/* size */ ::testing::Values(5, 7, 15),
                        /* depth */ ::testing::Values(8, 64),
@@ -112,19 +112,19 @@ INSTANTIATE_TEST_CASE_P_FOR_BACKEND_COMBINED_TEST(
 
 /// Compare backend against the interpreter in Float.
 TEST_P(ConvSweepTest, ConvTest_Float) {
-  ENABLED_BACKENDS(CPU, OpenCL);
+  ENABLED_BACKENDS(CPU, OpenCL, NNPI);
   testParamSweepConv(GetParam(), ElemKind::FloatTy, ElemKind::FloatTy, 0.0001f);
 }
 
 /// Compare backend against the interpreter in Int8.
 TEST_P(ConvSweepTest, ConvTest_Int8) {
-  ENABLED_BACKENDS(Interpreter, CPU, OpenCL);
+  ENABLED_BACKENDS(Interpreter, CPU, OpenCL, NNPI);
   testParamSweepConv(GetParam(), ElemKind::FloatTy, ElemKind::Int8QTy, 0.045f);
 }
 
 /// Compare backend against the interpreter in FP16.
 TEST_P(ConvSweepTest, ConvTest_Float16) {
-  ENABLED_BACKENDS(Interpreter);
+  ENABLED_BACKENDS(Interpreter, NNPI);
   testParamSweepConv(GetParam(), ElemKind::FloatTy, ElemKind::Float16Ty,
                      0.005f);
 }
@@ -181,7 +181,7 @@ static void testParamSweepBatchMatMul(ThreeIntTupleConfig config,
 
 DECLARE_STATELESS_BACKEND_TEST(BatchMatMulSweepTest, ThreeIntTupleConfig);
 
-INSTANTIATE_TEST_CASE_P_FOR_BACKEND_COMBINED_TEST(
+GLOW_INSTANTIATE_TEST_SUITE_P_FOR_BACKEND_COMBINED_TEST(
     SweepTest, BatchMatMulSweepTest,
     ::testing::Combine(/* N */ ::testing::Values(1, 4, 16, 24),
                        /* A */ ::testing::Range(10, 16),
@@ -189,21 +189,21 @@ INSTANTIATE_TEST_CASE_P_FOR_BACKEND_COMBINED_TEST(
 
 /// Compare backend against the interpreter in Float.
 TEST_P(BatchMatMulSweepTest, BatchMatMulTest_Float) {
-  ENABLED_BACKENDS(CPU, OpenCL);
+  ENABLED_BACKENDS(CPU, OpenCL, NNPI);
   testParamSweepBatchMatMul(GetParam(), ElemKind::FloatTy, ElemKind::FloatTy,
                             0.0001f);
 }
 
 /// Compare backend against the interpreter in Int8.
 TEST_P(BatchMatMulSweepTest, BatchMatMulTest_Int8) {
-  ENABLED_BACKENDS(Interpreter, CPU, OpenCL);
+  ENABLED_BACKENDS(Interpreter, CPU, OpenCL, NNPI);
   testParamSweepBatchMatMul(GetParam(), ElemKind::FloatTy, ElemKind::Int8QTy,
                             0.06f);
 }
 
 /// Compare backend against the interpreter in FP16.
 TEST_P(BatchMatMulSweepTest, BatchMatMulTest_Float16) {
-  ENABLED_BACKENDS(Interpreter);
+  ENABLED_BACKENDS(Interpreter, NNPI);
   testParamSweepBatchMatMul(GetParam(), ElemKind::FloatTy, ElemKind::Float16Ty,
                             0.005f);
 }
@@ -257,7 +257,7 @@ static void testParamSweepFC(ThreeIntTupleConfig config,
 
 DECLARE_STATELESS_BACKEND_TEST(FCSweepTest, ThreeIntTupleConfig);
 
-INSTANTIATE_TEST_CASE_P_FOR_BACKEND_COMBINED_TEST(
+GLOW_INSTANTIATE_TEST_SUITE_P_FOR_BACKEND_COMBINED_TEST(
     SweepTest, FCSweepTest,
     ::testing::Combine(
         /* A */ ::testing::Values(1, 4, 16, 64),
@@ -266,20 +266,20 @@ INSTANTIATE_TEST_CASE_P_FOR_BACKEND_COMBINED_TEST(
 
 /// Compare backend against the interpreter in Float.
 TEST_P(FCSweepTest, FCTest_Float) {
-  ENABLED_BACKENDS(CPU, OpenCL);
+  ENABLED_BACKENDS(CPU, OpenCL, NNPI);
   testParamSweepFC(GetParam(), ElemKind::FloatTy, ElemKind::FloatTy, 0.0001f);
 }
 
 /// Compare backend against the interpreter in Int8.
 TEST_P(FCSweepTest, FCTest_Int8) {
-  ENABLED_BACKENDS(Interpreter, CPU, OpenCL);
+  ENABLED_BACKENDS(Interpreter, CPU, OpenCL, NNPI);
   testParamSweepFC(GetParam(), ElemKind::FloatTy, ElemKind::Int8QTy, 0.065f);
 }
 
 /// Compare backend against the interpreter in FP16.
 TEST_P(FCSweepTest, FCTest_Float16) {
-  ENABLED_BACKENDS(Interpreter);
-  testParamSweepFC(GetParam(), ElemKind::FloatTy, ElemKind::Float16Ty, 0.004f);
+  ENABLED_BACKENDS(Interpreter, NNPI);
+  testParamSweepFC(GetParam(), ElemKind::FloatTy, ElemKind::Float16Ty, 0.005f);
 }
 
 //===--------------------------------------------------------------------===//
@@ -348,7 +348,7 @@ static void testParamSweepConcat(FourIntTupleConfig config,
 
 DECLARE_STATELESS_BACKEND_TEST(ConcatSweepTest, FourIntTupleConfig);
 
-INSTANTIATE_TEST_CASE_P_FOR_BACKEND_COMBINED_TEST(
+GLOW_INSTANTIATE_TEST_SUITE_P_FOR_BACKEND_COMBINED_TEST(
     SweepTest, ConcatSweepTest,
     ::testing::Combine(/* numInputs */ ::testing::Values(1, 2, 4, 8, 16, 32, 64,
                                                          128, 192, 256),
@@ -358,7 +358,7 @@ INSTANTIATE_TEST_CASE_P_FOR_BACKEND_COMBINED_TEST(
 
 /// Compare backend against the interpreter in Float.
 TEST_P(ConcatSweepTest, ConcatTest_Float) {
-  ENABLED_BACKENDS(CPU, OpenCL);
+  ENABLED_BACKENDS(CPU, OpenCL, NNPI);
   testParamSweepConcat(GetParam(), ElemKind::FloatTy, ElemKind::FloatTy, 0.0f);
 }
 
@@ -367,7 +367,7 @@ TEST_P(ConcatSweepTest, ConcatTest_Float) {
 /// quantize/dequantize the input/result anyway, so the comparison wouldn't be
 /// purely on data movement.
 TEST_P(ConcatSweepTest, ConcatTest_Int8) {
-  ENABLED_BACKENDS(Interpreter, CPU, OpenCL);
+  ENABLED_BACKENDS(Interpreter, CPU, OpenCL, NNPI);
   testParamSweepConcat(GetParam(), ElemKind::FloatTy, ElemKind::Int8QTy,
                        0.002f);
 }
@@ -377,7 +377,7 @@ TEST_P(ConcatSweepTest, ConcatTest_Int8) {
 /// down/up convert the input/result anyway, so the comparison wouldn't be
 /// purely on data movement.
 TEST_P(ConcatSweepTest, ConcatTest_Float16) {
-  ENABLED_BACKENDS(Interpreter);
+  ENABLED_BACKENDS(Interpreter, NNPI);
   testParamSweepConcat(GetParam(), ElemKind::FloatTy, ElemKind::Float16Ty,
                        0.0001f);
 }
@@ -488,7 +488,7 @@ static void testParamSweepSLWS(ThreeIntTupleConfig config,
 
 DECLARE_STATELESS_BACKEND_TEST(SLWSSweepTest, ThreeIntTupleConfig);
 
-INSTANTIATE_TEST_CASE_P_FOR_BACKEND_COMBINED_TEST(
+GLOW_INSTANTIATE_TEST_SUITE_P_FOR_BACKEND_COMBINED_TEST(
     SweepTest, SLWSSweepTest,
     ::testing::Combine(
         /* embeddingRows */ ::testing::Values(100, 1000, 10000, 100000),
@@ -497,7 +497,7 @@ INSTANTIATE_TEST_CASE_P_FOR_BACKEND_COMBINED_TEST(
 
 /// Compare backend against the interpreter.
 TEST_P(SLWSSweepTest, SLWS_Float) {
-  ENABLED_BACKENDS(CPU);
+  ENABLED_BACKENDS(CPU, NNPI);
   testParamSweepSLWS(GetParam(), ElemKind::FloatTy, ElemKind::FloatTy,
                      0.000001f,
                      /* rowwiseQuantize */ false,
@@ -507,7 +507,7 @@ TEST_P(SLWSSweepTest, SLWS_Float) {
 
 /// Compare backend against the interpreter in Float.
 TEST_P(SLWSSweepTest, RWQSLWS_Float) {
-  ENABLED_BACKENDS(CPU);
+  ENABLED_BACKENDS(CPU, NNPI);
   testParamSweepSLWS(GetParam(), ElemKind::FloatTy, ElemKind::FloatTy,
                      0.000001f,
                      /* rowwiseQuantize */ true,
@@ -517,7 +517,7 @@ TEST_P(SLWSSweepTest, RWQSLWS_Float) {
 
 /// Compare backend against the interpreter in Float.
 TEST_P(SLWSSweepTest, FRWQSLWS_Float) {
-  ENABLED_BACKENDS(CPU);
+  ENABLED_BACKENDS(CPU, NNPI);
   testParamSweepSLWS(GetParam(), ElemKind::FloatTy, ElemKind::FloatTy,
                      0.000001f,
                      /* rowwiseQuantize */ true,
@@ -529,7 +529,7 @@ TEST_P(SLWSSweepTest, FRWQSLWS_Float) {
 TEST_P(SLWSSweepTest, RWQSLWS_Float16) {
   // Note: not currently enabled for any open-source backends, as only the
   // Interpreter supports this.
-  ENABLED_BACKENDS();
+  ENABLED_BACKENDS(NNPI);
   testParamSweepSLWS(GetParam(), ElemKind::FloatTy, ElemKind::FloatTy,
                      0.000001f,
                      /* rowwiseQuantize */ true,
@@ -541,7 +541,7 @@ TEST_P(SLWSSweepTest, RWQSLWS_Float16) {
 TEST_P(SLWSSweepTest, FRWQSLWS_Float16) {
   // Note: not currently enabled for any open-source backends, as only the
   // Interpreter supports this.
-  ENABLED_BACKENDS();
+  ENABLED_BACKENDS(NNPI);
   testParamSweepSLWS(GetParam(), ElemKind::FloatTy, ElemKind::FloatTy,
                      0.000001f,
                      /* rowwiseQuantize */ true,
@@ -553,7 +553,7 @@ TEST_P(SLWSSweepTest, FRWQSLWS_Float16) {
 TEST_P(SLWSSweepTest, RWQSLWS_Float16_AccumFloat16) {
   // Note: not currently enabled for any open-source backends, as only the
   // Interpreter supports this.
-  ENABLED_BACKENDS();
+  ENABLED_BACKENDS(NNPI);
   testParamSweepSLWS(GetParam(), ElemKind::FloatTy, ElemKind::FloatTy,
                      0.000001f,
                      /* rowwiseQuantize */ true,
@@ -565,7 +565,7 @@ TEST_P(SLWSSweepTest, RWQSLWS_Float16_AccumFloat16) {
 TEST_P(SLWSSweepTest, FRWQSLWS_Float16_AccumFloat16) {
   // Note: not currently enabled for any open-source backends, as only the
   // Interpreter supports this.
-  ENABLED_BACKENDS();
+  ENABLED_BACKENDS(NNPI);
   testParamSweepSLWS(GetParam(), ElemKind::FloatTy, ElemKind::FloatTy,
                      0.000001f,
                      /* rowwiseQuantize */ true,

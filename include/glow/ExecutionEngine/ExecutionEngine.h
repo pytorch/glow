@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2017-present, Facebook, Inc.
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -50,6 +50,9 @@ class ExecutionEngine final {
   /// Size of device memory in bytes, if 0 device default is used.
   uint64_t deviceMemory_{0};
 
+  /// Whether to ignore the user-specified DeviceConfig.
+  bool ignoreUserDeviceConfig_{false};
+
   /// The HostManager for executing the compiled functions.
   std::unique_ptr<runtime::HostManager> hostManager_;
 
@@ -62,9 +65,11 @@ class ExecutionEngine final {
 
 public:
   /// Constructor for an ExecutionEngine with \p backend and memory \p
-  /// deviceMemory in bytes.
+  /// deviceMemory in bytes. If \p ignoreUserDeviceConfig then user device
+  /// configs will be ignored.
   ExecutionEngine(llvm::StringRef backend = "Interpreter",
-                  uint64_t deviceMemory = 0);
+                  uint64_t deviceMemory = 0,
+                  bool ignoreUserDeviceConfig = false);
 
   ~ExecutionEngine();
 
@@ -92,7 +97,7 @@ public:
   void clear();
 
   /// \returns the DAG for the specified \p network.
-  llvm::Expected<runtime::DAG &> getDAG(llvm::StringRef network) {
+  Expected<runtime::DAG *> getDAG(llvm::StringRef network) {
     return hostManager_->getNetworkDAG(network);
   }
 

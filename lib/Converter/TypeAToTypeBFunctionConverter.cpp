@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2018-present, Facebook, Inc.
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -52,6 +52,7 @@ TypeAToTypeBFunctionConverter::getTargetTypeForInput(const Node &use,
 }
 
 Node *TypeAToTypeBFunctionConverter::createConversion(Function &function,
+                                                      const Node &node,
                                                       NodeValue &val,
                                                       TypeRef destTy) {
   assert(((destTy->getElementType() == dstKind_ &&
@@ -59,17 +60,44 @@ Node *TypeAToTypeBFunctionConverter::createConversion(Function &function,
           (destTy->getElementType() == srcKind_ &&
            val.getType()->getElementType() == dstKind_)) &&
          "Unexpected conversion type");
-  NodeValue valOrClip = val;
-  if (precConfig_.clipFP16) {
+
+  bool needClip = precConfig_.clipFP16;
+  if (needClip) {
+    switch (node.getKind()) {
+    case Kinded::Kind::ConcatNodeKind:
+    case Kinded::Kind::GatherNodeKind:
+    case Kinded::Kind::ReshapeNodeKind:
+    case Kinded::Kind::SliceNodeKind:
+    case Kinded::Kind::TransposeNodeKind:
+      needClip = false;
+      break;
+    default:
+      break;
+    }
+  }
+  if (needClip) {
     assert((destTy->getElementType() == ElemKind::Float16Ty ||
             val.getType()->getElementType() == ElemKind::Float16Ty) &&
            "Unexpected conversion type");
     constexpr float float16Max = 65504.0f;
     constexpr float float16Min = -65504.0f;
-    valOrClip = function.createClip(val.getNode()->getName(), val, float16Min,
-                                    float16Max);
+
+    // If the input is fp32 and output is fp16, then we want to do the convert
+    // before the clip. This way the clip can execute in fp16 mode.
+    if (destTy->getElementType() == ElemKind::Float16Ty &&
+        val.getType()->getElementType() == ElemKind::FloatTy) {
+      auto convert =
+          function.createConvertTo(val.getNode()->getName(), val, destTy);
+      return function.createClip(val.getNode()->getName(), convert, float16Min,
+                                 float16Max);
+    } else {
+      auto clip = function.createClip(val.getNode()->getName(), val, float16Min,
+                                      float16Max);
+      return function.createConvertTo(val.getNode()->getName(), clip, destTy);
+    }
+  } else {
+    return function.createConvertTo(val.getNode()->getName(), val, destTy);
   }
-  return function.createConvertTo(val.getNode()->getName(), valOrClip, destTy);
 }
 
 void TypeAToTypeBFunctionConverter::convertTensor(Tensor &tensor,

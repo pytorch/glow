@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-present, Facebook, Inc.
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -47,7 +47,7 @@ onnxStatus Backend::checkGraphCompatibility(const void *onnxModel,
     // TODO: Use a more specific ONNXIFI error code here to denote what about
     // this operator is not supported (shape, type, etc).
     LOG(ERROR) << "Error when loading protobuf: "
-               << llvm::toString(loaderOrErr.takeError());
+               << ERR_TO_STRING(loaderOrErr.takeError());
     return ONNXIFI_STATUS_UNSUPPORTED_OPERATOR;
   }
 
@@ -157,8 +157,18 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
     }
 
     if (inOnnxTensorSize > inPhPtr->getType()->size()) {
+      std::stringstream ss;
+      for (const auto j : inOnnxTensorDims) {
+        ss << j << ", ";
+      }
+      ss << " vs ";
+      auto sizes = inPhPtr->getType()->dims();
+      for (const auto j : sizes) {
+        ss << j << ", ";
+      }
       LOG(ERROR) << "Input tensor is too large: " << inOnnxTensorSize << " vs "
-                 << inPhPtr->getType()->size() << ": " << inOnnxTensor.name;
+                 << inPhPtr->getType()->size() << ": " << inOnnxTensor.name
+                 << ", shape: " << ss.str();
       return ONNXIFI_STATUS_INVALID_SHAPE;
     }
 

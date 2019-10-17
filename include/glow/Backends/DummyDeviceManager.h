@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2017-present, Facebook, Inc.
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@
 
 #include "glow/Backends/DeviceManager.h"
 #include "glow/Runtime/RuntimeTypes.h"
+#include "llvm/Support/FormatVariadic.h"
 
 #include <atomic>
 
@@ -55,7 +56,7 @@ public:
         callback(
             module,
             MAKE_ERR(
-                GlowErr::ErrorCode::RUNTIME_NET_NOT_FOUND,
+                ErrorValue::ErrorCode::RUNTIME_NET_NOT_FOUND,
                 llvm::formatv("Function {0} not found", func.first).str()));
         return;
       }
@@ -69,7 +70,7 @@ public:
     }
 
     // Fire the ready CB.
-    callback(module, llvm::Error::success());
+    callback(module, Error::success());
   }
 
   /// Remove (and delete) the provided function, freeing
@@ -77,7 +78,7 @@ public:
   void evictNetwork(std::string functionName,
                     EvictFunctionCBTy evictCB) override {
     functions_.erase(functionName);
-    evictCB(functionName, llvm::Error::success());
+    evictCB(functionName, Error::success());
   }
 
   /// Execute the named Function in an already provided network on the device.
@@ -92,7 +93,7 @@ public:
     if (funcIt == functions_.end()) {
       callback(
           0,
-          MAKE_ERR(GlowErr::ErrorCode::RUNTIME_NET_NOT_FOUND,
+          MAKE_ERR(ErrorValue::ErrorCode::RUNTIME_NET_NOT_FOUND,
                    llvm::formatv("Function {0} not found", functionName).str()),
           std::move(context));
       return 0;

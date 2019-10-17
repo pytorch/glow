@@ -49,6 +49,23 @@ target_link_libraries(model-runner
                         Quantization
                         LLVMSupport)
 
+add_executable(x-model-builder
+  Loader.cpp
+  XModelBuilder.cpp)
+
+target_link_libraries(x-model-builder
+                      PRIVATE
+                        Backends
+                        Base
+                        Converter
+                        Graph
+                        HostManager
+                        Importer
+                        ExecutionEngine
+                        GraphOptimizer
+                        Quantization
+                        LLVMSupport)
+
 add_executable(model-compiler
   Loader.cpp
   ModelCompiler.cpp)

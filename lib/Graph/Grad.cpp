@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2017-present, Facebook, Inc.
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -144,6 +144,38 @@ Function *glow::differentiate(Function *F, const TrainingConfig &conf,
       continue;
     }
 
+    if (N->getKind() == Kind::TileNodeKind) {
+      TileNode *TN = cast<TileNode>(N);
+      NodeValue outputG = map.getGradient(TN->getResult());
+
+      // To compute the gradient with respect to the input of the TileNode, all
+      // of the slices in outputG corresponding to the tiled slices in the
+      // forward pass need to be added together. This is achieved by reshaping
+      // outputG to replace the tiling axis with {numTiles, tileDim}, and then
+      // performing a BatchedReduceAdd on the axis with numTiles elements. For
+      // example, if the tile creates a {n,x,h,w} output with a {n,c,h,w}
+      // input where x = c * numTiles, then the {n,x,h,w} gradient with respect
+      // to the output is reshaped to {n, numTiles, c, h, w} so that
+      // BatchedReduceAddNode eliminates the numTiles axis and produces a
+      // {n,c,h,w} output.
+      auto *TNInputType = TN->getInput().getType();
+      std::vector<size_t> BRAInputDims{TNInputType->dims()};
+      BRAInputDims.insert(BRAInputDims.begin() + TN->getAxis(), TN->getCount());
+      auto *BRAInputType =
+          F->getParent()->uniqueTypeWithNewShape(TNInputType, BRAInputDims);
+
+      auto *RN = new ReshapeNode(TN->getName().str() + ".grad.reshape",
+                                 BRAInputType, outputG, BRAInputType->dims());
+      auto *BRA =
+          new BatchedReduceAddNode(TN->getName().str() + ".grad.bra",
+                                   TN->getInput().getType(), RN, TN->getAxis());
+
+      toAppend.push_back(RN);
+      toAppend.push_back(BRA);
+      map.addGradient(TN->getInput(), BRA);
+      continue;
+    }
+
     if (N->getKind() == Kind::ConvertToNodeKind) {
       auto *RN = cast<ConvertToNode>(N);
       NodeValue outputG = map.getGradient(RN->getResult());
@@ -260,6 +292,32 @@ Function *glow::differentiate(Function *F, const TrainingConfig &conf,
       // Grad for RHS = transpose(LHS) x outputG.
       auto *GradRHS =
           new MatMulNode(MMN->getInputName(1), InputRHS.getType(), LT, OutputG);
+
+      toAppend.push_back(GradLHS);
+      map.addGradient(InputLHS, GradLHS);
+      toAppend.push_back(GradRHS);
+      map.addGradient(InputRHS, GradRHS);
+      continue;
+    }
+
+    if (N->getKind() == Kind::BatchMatMulNodeKind) {
+      BatchMatMulNode *BMMN = cast<BatchMatMulNode>(N);
+      // Get gradient.
+      NodeValue OutputG = map.getGradient(BMMN->getResult());
+
+      // The implementation below is a batched version of the gradient
+      // computation for MatMul.
+      NodeValue InputLHS = BMMN->getLHS();
+      NodeValue InputRHS = BMMN->getRHS();
+      auto *LT = G->createTranspose("lhs.T", InputLHS, {0, 2, 1});
+      auto *RT = G->createTranspose("rhs.T", InputRHS, {0, 2, 1});
+
+      // Grad for LHS = outputG x transpose(RHS).
+      auto *GradLHS = new BatchMatMulNode(BMMN->getInputName(0),
+                                          InputLHS.getType(), OutputG, RT);
+      // Grad for RHS = transpose(LHS) x outputG.
+      auto *GradRHS = new BatchMatMulNode(BMMN->getInputName(1),
+                                          InputRHS.getType(), LT, OutputG);
 
       toAppend.push_back(GradLHS);
       map.addGradient(InputLHS, GradLHS);

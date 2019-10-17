@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2017-present, Facebook, Inc.
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -31,29 +31,19 @@ class CPUDeviceManager : public QueueBackedDeviceManager {
   /// Compiled function list by name.
   FunctionMapTy functions_;
 
-  /// Maximum available memory on the device, for CPU devices fix to some
-  /// constant.
-  std::atomic<uint64_t> maxMemoryBytes_{0};
-
-  /// Amount of memory used by all models.
-  std::atomic<uint64_t> usedMemoryBytes_{0};
-
-  /// Static memory cost of the CPU Function.
-  /// This is very arbitrary for the CPU backend.
-  const uint64_t functionCost_{1};
-
   /// String constant for logging number of in-use devices.
   static constexpr const char *kDevicesUsedCPU = "glow.devices_used.cpu";
 
 public:
   explicit CPUDeviceManager(const DeviceConfig &config)
-      : QueueBackedDeviceManager(config),
-        maxMemoryBytes_(config_.getDeviceMemory(2000000000)) {
+      : QueueBackedDeviceManager(config) {
     Stats()->incrementCounter(kDevicesUsedCPU);
+    exportMemoryCounters();
   }
 
   ~CPUDeviceManager() override {
     Stats()->incrementCounter(kDevicesUsedCPU, -1);
+    zeroMemoryCounters();
   }
 
   /// Returns the amount of memory in bytes available on the device when no

@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2017-present, Facebook, Inc.
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -378,8 +378,8 @@ protected:
   ///
   /// \pre One of t\p val's type and \p destTy must be FloatTy and
   ///      the other must be a quantized type.
-  Node *createConversion(Function &function, NodeValue &val,
-                         TypeRef destTy) override {
+  Node *createConversion(Function &function, const Node & /* unused */,
+                         NodeValue &val, TypeRef destTy) override {
     assert((&function == &function_) &&
            "Trying to add quantize/dequantize conversion to a function other "
            "than the function being quantized.");

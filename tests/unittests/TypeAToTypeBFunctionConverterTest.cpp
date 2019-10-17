@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2018-present, Facebook, Inc.
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,9 +13,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#include "BackendTestUtils.h"
 
-#include "glow/Converter/TypeAToTypeBFunctionConverter.h"
 #include "glow/Converter/Float16Converter.h"
+#include "glow/Converter/TypeAToTypeBFunctionConverter.h"
 
 #include "glow/Backend/Backend.h"
 #include "glow/ExecutionEngine/ExecutionEngine.h"
@@ -1044,7 +1045,10 @@ TEST_P(AllBackends, convertFRWQSLWS) {
 
   size_t origSize = F->getNodes().size();
 
-  convertFunctionToFloat16(F, PrecisionConfiguration());
+  PrecisionConfiguration precConfig;
+  precConfig.convertToFP16 = true;
+  precConfig.convertFusedToFP16 = true;
+  convertFunctionToFloat16(F, precConfig);
 
   // Should have added convert nodes for the data, weights, and results.
   EXPECT_EQ(F->getNodes().size(), origSize + 3);
@@ -1107,6 +1111,8 @@ TEST_P(AllBackends, skipConvertingFRWQSLWS) {
   size_t origSize = F->getNodes().size();
 
   PrecisionConfiguration precConfig;
+  precConfig.convertToFP16 = true;
+  precConfig.convertFusedToFP16 = true;
   precConfig.precisionModeKindSet.insert(
       Kinded::Kind::FusedRowwiseQuantizedSparseLengthsWeightedSumNodeKind);
   convertFunctionToFloat16(F, precConfig);
@@ -1131,13 +1137,153 @@ TEST_P(AllBackends, skipConvertingFRWQSLWS) {
   EXPECT_TRUE(F->verify());
 }
 
-INSTANTIATE_TEST_CASE_P(Interpreter, AllBackends,
-                        ::testing::Values("Interpreter"));
+/// Test conversion of only Float16Ty inputs of Node and not UInt8FusedQTy.
+TEST_P(AllBackends, convertOnlyFloat16Ty) {
+  Module mod;
+  Function *F = mod.createFunction("test");
+  Tensor data(ElemKind::FloatTy, {3, 1});
+  data.getHandle() = {
+      2.0,
+      -0.5,
+      13,
+  };
 
-#ifdef GLOW_WITH_CPU
-INSTANTIATE_TEST_CASE_P(CPU, AllBackends, ::testing::Values("CPU"));
-#endif // GLOW_WITH_CPU
+  Constant *weights = mod.createConstant(ElemKind::FloatTy, {8}, "weights");
 
-#ifdef GLOW_WITH_OPENCL
-INSTANTIATE_TEST_CASE_P(OpenCL, AllBackends, ::testing::Values("OpenCL"));
-#endif // GLOW_WITH_OPENCL
+  Placeholder *indices =
+      mod.createPlaceholder(ElemKind::Int64ITy, {8}, "indices",
+                            /* isTrainable */ false);
+  Placeholder *lengths =
+      mod.createPlaceholder(ElemKind::Int32ITy, {4}, "lengths",
+                            /* isTrainable */ false);
+  auto *R = F->createFusedRowwiseQuantizedSparseLengthsWeightedSum(
+      "RQSLWS", data, weights, indices, lengths, ElemKind::FloatTy);
+  SaveNode *S = F->createSave("save", R);
+
+  size_t origSize = F->getNodes().size();
+
+  PrecisionConfiguration precConfig;
+  precConfig.convertToFP16 = true;
+  precConfig.convertFusedToFP16 = false;
+  convertFunctionToFloat16(F, precConfig);
+
+  // Should have added convert nodes for the weights and results.
+  EXPECT_EQ(F->getNodes().size(), origSize + 2);
+
+  auto *convertResult = llvm::dyn_cast<ConvertToNode>(S->getInput());
+  ASSERT_NE(convertResult, nullptr);
+  EXPECT_EQ(convertResult->getResult().getElementType(), ElemKind::FloatTy);
+
+  auto *SLWS =
+      llvm::dyn_cast<FusedRowwiseQuantizedSparseLengthsWeightedSumNode>(
+          convertResult->getInput());
+  ASSERT_NE(SLWS, nullptr);
+  EXPECT_EQ(SLWS->getResult().getElementType(), ElemKind::Float16Ty);
+
+  auto *origData = llvm::dyn_cast<Constant>(SLWS->getData());
+  ASSERT_NE(origData, nullptr);
+  EXPECT_EQ(origData->getOutput().getElementType(), ElemKind::UInt8FusedQTy);
+
+  auto *convertWeights = llvm::dyn_cast<ConvertToNode>(SLWS->getWeights());
+  ASSERT_NE(convertWeights, nullptr);
+  EXPECT_EQ(convertWeights->getResult().getElementType(), ElemKind::Float16Ty);
+
+  auto *origWeights = llvm::dyn_cast<Constant>(convertWeights->getInput());
+  ASSERT_NE(origWeights, nullptr);
+  EXPECT_EQ(origWeights->getOutput().getElementType(), ElemKind::FloatTy);
+  EXPECT_EQ(weights, origWeights);
+
+  EXPECT_TRUE(F->verify());
+}
+
+/// Test conversion of only UInt8FusedQTy inputs of Node and not Float16Ty.
+TEST_P(AllBackends, convertOnlyUInt8FusedQTy) {
+  Module mod;
+  Function *F = mod.createFunction("test");
+  Tensor data(ElemKind::FloatTy, {3, 1});
+  data.getHandle() = {
+      2.0,
+      -0.5,
+      13,
+  };
+
+  Constant *weights = mod.createConstant(ElemKind::FloatTy, {8}, "weights");
+
+  Placeholder *indices =
+      mod.createPlaceholder(ElemKind::Int64ITy, {8}, "indices",
+                            /* isTrainable */ false);
+  Placeholder *lengths =
+      mod.createPlaceholder(ElemKind::Int32ITy, {4}, "lengths",
+                            /* isTrainable */ false);
+  auto *R = F->createFusedRowwiseQuantizedSparseLengthsWeightedSum(
+      "RQSLWS", data, weights, indices, lengths, ElemKind::FloatTy);
+  SaveNode *S = F->createSave("save", R);
+
+  size_t origSize = F->getNodes().size();
+
+  PrecisionConfiguration precConfig;
+  precConfig.convertToFP16 = false;
+  precConfig.convertFusedToFP16 = true;
+  convertFunctionToFloat16(F, precConfig);
+
+  // Should have added a convert nodes for the data.
+  EXPECT_EQ(F->getNodes().size(), origSize + 1);
+
+  auto *SLWS =
+      llvm::dyn_cast<FusedRowwiseQuantizedSparseLengthsWeightedSumNode>(
+          S->getInput());
+  ASSERT_EQ(SLWS, R);
+
+  auto *convertData = llvm::dyn_cast<ConvertToNode>(SLWS->getData());
+  ASSERT_NE(convertData, nullptr);
+  EXPECT_EQ(convertData->getResult().getElementType(),
+            ElemKind::UInt8FusedFP16QTy);
+
+  auto *origData = llvm::dyn_cast<Constant>(convertData->getInput());
+  ASSERT_NE(origData, nullptr);
+  EXPECT_EQ(origData->getOutput().getElementType(), ElemKind::UInt8FusedQTy);
+
+  auto *origWeights = llvm::dyn_cast<Constant>(SLWS->getWeights());
+  ASSERT_EQ(origWeights, weights);
+  EXPECT_EQ(origWeights->getOutput().getElementType(), ElemKind::FloatTy);
+
+  EXPECT_TRUE(F->verify());
+}
+
+// Test that we don't insert Clips around non-numeric nodes.
+TEST_P(AllBackends, convertWithoutClipAroundNonNumericNodes) {
+  Module mod;
+  Function *F = mod.createFunction("test");
+  const size_t dims[] = {1, 5, 10, 15};
+  const size_t dimsReshape[] = {10, 10, 15};
+  Node *I0 = mod.createPlaceholder(ElemKind::FloatTy, dims, "i0", false);
+  Node *I1 = mod.createPlaceholder(ElemKind::FloatTy, dims, "i1", false);
+  Node *I2 = mod.createPlaceholder(ElemKind::Int32ITy, {2, 2, 2}, "i2", false);
+  Node *CN = F->createConcat("concat", {I0, I1}, 1);
+  Node *R = F->createReshape("reshape", CN, dimsReshape);
+  Node *S = F->createSlice("slice", R, {0, 0, 0}, {5, 5, 5});
+  Node *G = F->createGather("gather", S, I2);
+  F->createSave("ret", G);
+
+  PrecisionConfiguration precConfig;
+  precConfig.convertToFP16 = true;
+  precConfig.clipFP16 = true;
+  convertFunctionToFloat16(F, precConfig);
+
+  int numClips = 0;
+  int numConvertTos = 0;
+  for (auto &n : F->getNodes()) {
+    if (n.getKind() == Kinded::Kind::ClipNodeKind) {
+      ++numClips;
+    } else if (n.getKind() == Kinded::Kind::ConvertToNodeKind) {
+      ++numConvertTos;
+    }
+  }
+
+  EXPECT_EQ(9, numConvertTos);
+  EXPECT_EQ(0, numClips);
+
+  EXPECT_TRUE(F->verify());
+}
+
+INSTANTIATE_BACKEND_TEST(AllBackends);

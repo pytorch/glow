@@ -126,7 +126,7 @@ Additionally, there are virtual functions that backends can override:
 compilation of a `Function`. Backends must implement their own derived class
 from `CompiledFunction`, which must be returned as a result of
 `Backend::compile()` or `Backend::compileWithoutConstants()` .
- `CompiledFunction` contains a single pure virtual function
+ `CompiledFunction` contains a pure virtual function
 that must be implemented: `virtual void execute();`. This function is
 responsible for copying inputs to the device from all input
 [Placeholders](https://github.com/pytorch/glow/blob/master/docs/IR.md#placeholders),
@@ -135,6 +135,8 @@ Placeholders. The `CompiledFunction` contains a [RuntimeBundle](#runtimebundle-h
 which contains the symbol information and mappings of inputs and outputs. Thus after the
 function returns, all Placeholders for the outputs of the function should have had
 their backing tensor updated.
+An optional method: `virtual void freeCompilationResources()` can be implemented to allow
+freeing resources that are no longer needed after the function has been loaded on a device.
 
 ### `RuntimeBundle` Helper Class
 
@@ -171,9 +173,15 @@ above `CPUMaxSplat` pattern.
 #### Backend-Specific Nodes and Instructions
 
 A backend may create its own custom Nodes and Instructions which it can insert
-into the IR. This is done via [ClassGen](ClassGen.md) and included in
-`tools/ClassGen/NodeGen.cpp`. For example, the CPU Backend defines `CPUMaxSplat`
-in `tools/ClassGen/Backends/CPU/CPUSpecificNodes.h`:
+into the IR. This is done via [ClassGen](ClassGen.md) and implicitly included in
+`tools/ClassGen/NodeGen.cpp` and `tools/ClassGen/InstrGen.cpp`.
+These new nodes and instructions should be defined
+inside the backend sub-directory, in files
+`lib/Backends/<BackendName>/ClassGen/<BackendName>SpecificNodes.h` and 
+`lib/Backends/<BackendName>/ClassGen/<BackendName>SpecificInstrs.h`:
+
+For example, the CPU Backend defines `CPUMaxSplat`
+in `lib/Backends/CPU/ClassGen/CPUSpecificNodes.h`:
 
 ```cpp
 BB.newBackendSpecificNode("CPUMaxSplat")
@@ -187,7 +195,7 @@ During `transformPostLowering()`, this `CPUMaxSplat` node replaces the
 aforementioned pattern. However, there must be a corresponding instruction for
 this Node to be lowered to during the IRGen phase. Thus, we need a corresponding
 backend-specific CPUMaxSplat instruction, defined in
-`tools/ClassGen/Backends/CPU/CPUSpecificInstrs.h`:
+`lib/Backends/CPU/ClassGen/CPUSpecificInstrs.h`:
 
 ```
 BB.newBackendSpecificInstr("CPUMaxSplat")
@@ -210,10 +218,35 @@ other node or instruction defined in `tools/ClassGen/NodeGen.cpp` or
 definition includes the `dataParallel()` property, allowing for data parallel
 optimizations to take place.
 
-The `tools/ClassGen/Backends/CPU/CPUSpecificNodes.h` and
-`tools/ClassGen/Backends/CPU/CPUSpecificInstrs.h` files are included in
+The `lib/Backends/CPU/ClassGen/CPUSpecificNodes.h` and
+`lib/Backends/CPU/ClassGen/CPUSpecificInstrs.h` files are implicitly included in
 `tools/ClassGen/NodeGen.cpp` and `tools/ClassGen/InstrGen.cpp`, respectively.
 
+#### Backend Parameterized Tests
+
+Glow provides several test suites that are parameterized by backend.  An
+example of such a suite is `tests/unittests/OperatorTest.cpp`, which defines
+small tests of Glow operators.  These tests can be executed against any backend
+to check compliance.
+
+These tests will only be run for a backend if a corresponding
+`lib/Backends/$BACKEND/tests` directory is found and contains a corresponding
+`${BACKEND}${TEST}.cpp` file containing a blacklist definition, e.g.:
+```
+std::set<std::string> glow::backendTestBlacklist = {};
+```
+
+This blacklist can be used to exclude any unsupported tests while a backend is
+a work-in-progress.  See the Interpreter and CPU backends for examples of
+setting up and using these tests.  To bootstrap a blacklist, we recommend using
+a simple shell script to check which tests already work:
+```
+for test in $(tests/ExampleBackendOperatorTest --gtest_list_tests); do
+  if ! tests/ExampleBackendOperatorTest --gtest_filter="$test" >& /dev/null; then
+    echo $test
+  fi
+done
+```
 
 #### External backends
 

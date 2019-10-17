@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2017-present, Facebook, Inc.
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,9 +17,16 @@
 #ifndef GLOW_TORCH_GLOW_SRC_COMMON_H
 #define GLOW_TORCH_GLOW_SRC_COMMON_H
 
+#include "glow/Base/Tensor.h"
+#include "glow/Base/Type.h"
+
+#include "glow/Runtime/HostManager/HostManager.h"
+
 #include <torch/csrc/jit/ir.h>
 
 namespace glow {
+
+extern bool GlowCompilePyTorchModule;
 /// Various settings to be used by code that loads PyTorch models. There should
 /// only be one of these and it should be obtained by calling
 /// getPyTorchLoaderSettings().
@@ -35,9 +42,18 @@ struct PyTorchLoaderSettings {
   std::string glowBackendName = "Interpreter";
 };
 
+/// Given a PyTorch ScalarType \p ty, \returns a matching Glow ElemKind.
+ElemKind scalarTypeToElemKind(c10::ScalarType ty);
+
+/// Given a c10 typekind \p ty, \returns a matching Glow ElemKind.
+ElemKind typeKindToElemKind(c10::TypeKind ty);
+
 /// \returns the PyTorchLoaderSettings singleton to be used throughout Glow's
 /// PyTorch model loading code.
 PyTorchLoaderSettings &getPyTorchLoaderSettings();
+
+/// \returns the HostManager singleton used to run all PyTorch graphs in Glow.
+runtime::HostManager *getHostManager();
 
 /// \returns the PyTorch symbol to be used for the PyTorch node which represents
 /// the subgraph that Glow will compile and run.
@@ -48,15 +64,31 @@ void glowCustomFuse(std::shared_ptr<torch::jit::Graph> &graph,
                     at::Symbol fuseSymbol);
 
 /// Register the glow::FusionGroup operator.
-void registerGlowOp();
+void registerGlowOp(const c10::Symbol &symbol);
 
-/// Register the pass that fuses parts of the graph into a glow::FusionGroup.
-void registerGlowFusionPass();
+/// Register the pass that fuses parts of the graph into a glow::FusionGroup. \p
+/// enablePassFn is used to enable/disable the glow fusion pass once it's
+/// registered.
+void registerGlowFusionPass(std::function<bool()> enablePassFn);
 
 /// Convenience method to register the glow fusion op and pass. \p
-/// enableFusionPass can be used to enable the glow fusion pass once it's
+/// enablePassFn is used to enable/disable the glow fusion pass once it's
 /// registered.
-void registerGlowFusionOpAndPass(bool enableFusionPass = false);
+void registerGlowFusionOpAndPass(std::function<bool()> enablePassFn);
+
+/// Given a PyTorch TensorType \p ptType, \returns a matching Glow Type.
+glow::Type ptTypeToGlowType(const c10::TensorType &ptType);
+
+/// Given a PyTorch Tensor \p ptTensor, \returns an unowned Glow Tensor with a
+/// matching type backed by the same memory as ptTensor.
+glow::Tensor ptTensorToGlowTensor(const at::Tensor &ptTensor);
+
+/// Given a Glow Type \p glowType, \returns an empty PyTorch Tensor with a
+/// matching type.
+at::Tensor glowTypeToEmptyPTTensor(const glow::Type &glowType);
+
+/// Fuse known sets of operators into compact ones.
+void fuseKnownPatterns(std::shared_ptr<torch::jit::Graph> &graph);
 
 } // namespace glow
 

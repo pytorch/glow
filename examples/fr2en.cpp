@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2017-present, Facebook, Inc.
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -388,7 +388,10 @@ void Model::translate(const std::vector<std::string> &batch) {
 
       if (i)
         std::cout << ' ';
-      std::cout << en_.index2word_[wordIdx];
+      if (en_.index2word_.size() > (wordIdx))
+        std::cout << en_.index2word_[wordIdx];
+      else
+        std::cout << "[" << wordIdx << "]";
     }
     std::cout << "\n\n";
   }

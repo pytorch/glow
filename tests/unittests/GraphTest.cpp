@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2017-present, Facebook, Inc.
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -895,9 +895,6 @@ TEST(Graph, parentLink) {
   // Even when we create them from a module...
   Constant *V2 = mod.createConstant(V->getType(), "V2");
   EXPECT_EQ(V2->getParent(), nullptr);
-  // Or add them to a module.
-  mod.addConstant(V);
-  EXPECT_EQ(V->getParent(), nullptr);
 
   Function *F = mod.createFunction("main");
 
@@ -927,6 +924,35 @@ TEST(Graph, parentLink) {
   // cleaned at the end of the test.
   F->addNode(clonedAddNode);
   EXPECT_EQ(clonedAddNode->getParent(), F);
+
+  delete V;
+}
+
+/// Check that verification can detect that Storage nodes are being used by
+/// Functions in a Module that doesn't own the Storage nodes.
+TEST(Graph, moduleLink) {
+  ExecutionEngine EEA, EEB;
+
+  auto &modA = EEA.getModule();
+  auto &modB = EEB.getModule();
+
+  auto *FA = modA.createFunction("FA");
+  auto *FB = modB.createFunction("FB");
+
+  auto *C = modA.createConstant(ElemKind::FloatTy, {1}, "C");
+  auto *P = modA.createPlaceholder(ElemKind::FloatTy, {1}, "P", false);
+
+  auto *AA = FA->createAdd("AA", C, P);
+  FA->createSave("SA", AA);
+
+  // These nodes use Storage nodes that reside in modA
+  auto *AB = FB->createAdd("AB", C, P);
+  FB->createSave("SB", AB);
+
+  EXPECT_TRUE(modA.verify());
+  EXPECT_FALSE(
+      modB.verify()); // Module::verify calls Function::verify on all functions
+                      // within the module, so this should fail
 }
 
 /// Check that Cmp nodes are created with proper output types.

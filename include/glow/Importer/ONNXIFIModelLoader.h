@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2017-present, Facebook, Inc.
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -52,7 +52,7 @@ public:
   /// provided such as when the graph being loaded is actually a small patch of
   /// a larger graph because the graph inputs in this case may represent
   /// internal values for the larger graph.
-  static llvm::Expected<std::unique_ptr<ONNXIFIModelLoader>>
+  static Expected<std::unique_ptr<ONNXIFIModelLoader>>
   parse(const void *onnxModel, uint32_t onnxModelSize, uint32_t weightsCount,
         const onnxTensorDescriptorV1 *weightDescriptors, Function &F,
         bool loadInputsAsPlaceholders = true, bool use_onnx = true);

@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2017-present, Facebook, Inc.
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -227,6 +227,43 @@ TEST(GraphAutoGrad, checkMatMulGradTest) {
   auto *MatMul = F->createMatMul("matMul", A, B);
   auto *R = F->createSave("save", MatMul);
   Bindings.allocate(R->getPlaceholder());
+
+  glow::differentiate(F, TC);
+  EE.compile(CompilationMode::Train);
+}
+
+/// Check that we can differentiate functions that use BatchMatMul.
+TEST(GraphAutoGrad, checkBatchMatMulGradTest) {
+  ExecutionEngine EE;
+  TrainingConfig TC;
+
+  auto &Mod = EE.getModule();
+  Function *F = Mod.createFunction("main");
+
+  auto *A = Mod.createPlaceholder(ElemKind::FloatTy, {5, 20, 13}, "A",
+                                  /*isTrainable=*/false);
+  auto *B = Mod.createPlaceholder(ElemKind::FloatTy, {13, 30}, "B",
+                                  /*isTrainable=*/false);
+  auto *BatchMatMul = F->createBatchMatMul("batchMatMul", A, B);
+
+  F->createSave("save", BatchMatMul);
+
+  glow::differentiate(F, TC);
+  EE.compile(CompilationMode::Train);
+}
+
+// Check that we can differentiate functions that use Tile.
+TEST(GraphAutoGrad, checkTileGradTest) {
+  ExecutionEngine EE;
+  TrainingConfig TC;
+
+  auto &Mod = EE.getModule();
+  Function *F = Mod.createFunction("main");
+
+  auto *A = Mod.createPlaceholder(ElemKind::FloatTy, {10, 10}, "A", false);
+  auto *Tile = F->createTile("tile", A, /*tiles=*/5, /*axis=*/1);
+
+  F->createSave("save", Tile);
 
   glow::differentiate(F, TC);
   EE.compile(CompilationMode::Train);

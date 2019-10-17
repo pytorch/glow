@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2017-present, Facebook, Inc.
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -42,7 +42,7 @@ using DeviceManagerMapTy = std::map<DeviceIDTy, std::unique_ptr<DeviceManager>>;
 
 /// Callback type used by HostManager and DeviceManager, used to pass results of
 /// an inference request back to the caller.
-using ResultCBTy = std::function<void(runtime::RunIdentifierTy, llvm::Error,
+using ResultCBTy = std::function<void(runtime::RunIdentifierTy, Error,
                                       std::unique_ptr<ExecutionContext>)>;
 
 /// Data structure that contains device constraint information for each device.
@@ -144,6 +144,8 @@ struct DeviceConfig {
   const std::string backendName;
   /// A human readable name to identify the device.
   std::string name;
+  /// A runtime assigned id for the device. This is used for stats reporting.
+  unsigned deviceID{0};
   /// Device memory size in bytes.
   uint64_t deviceMemory = 0;
   /// A map of configuration parameters.

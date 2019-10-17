@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2017-present, Facebook, Inc.
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -51,9 +51,10 @@ struct QuantizationTransform32To8 {
 
   /// \returns the scaled integer.
   int32_t transform(int32_t input) {
-    // The operation x >> y is rounded down to negative infinity. To get to
-    // round-nearest we add (1 << (shift - 1)) to the value prior to shifting.
-    int rtn = (1 << (post - 1));
+    // The operation x >> post is rounded down to negative infinity. To get to
+    // round-nearest we add (1 << (post - 1)) to the value prior to shifting.
+    // Rounding is performed only when shifting right (pos > 0).
+    int rtn = (post > 0) ? (1 << (post - 1)) : 0;
     return ((((input >> pre) * scale) + rtn) >> post) + offset;
   }
 };
@@ -118,6 +119,14 @@ enum Schema {
   /// version of the quantized type with an offset of zero:
   /// For example, int8 is [-128; 127] - (-128) == uint8 [0; 255] - 0
   SymmetricWithUnsigned,
+  /// Quantization schema with:
+  /// - range centered on 0 (symmetric): offset == 0.
+  /// - scale parameter is a power of 2: scale = 2^E where E is a signed
+  ///   exponent. Since the scale parameter is mostly subunitary, the
+  ///   exponent is mostly negative.
+  /// Since the scale parameter is stored as floating point, the values
+  /// of E which are exactly representable range from -126 to 127.
+  SymmetricWithPower2Scale,
 };
 
 /// Configuration for Quantization, passed into \ref quantizeFunction().
@@ -163,7 +172,9 @@ template <class SrcTy, class DestTy> DestTy clip(SrcTy in) {
 template <class DestTy = int8_t>
 inline DestTy quantize(float input, const TensorQuantizationParams &TQP) {
   float result = input / TQP.scale + TQP.offset;
-  return quantization::clip<int32_t, DestTy>((int32_t)nearbyintf(result));
+  // Note: use int64_t since casts of large values might be wrapped around
+  // before clipping, for example for result = 2147483648.00 (float).
+  return quantization::clip<int64_t, DestTy>((int64_t)nearbyintf(result));
 }
 
 /// Converts a quantized value (type eTy) to floating point based on the
@@ -186,6 +197,15 @@ inline DestTy quantizeWithFloatOffset(float input, float scale, float offset) {
   return static_cast<DestTy>(d);
 }
 
+/// Converts floating point value \p input to 4-bit quantization based on the
+/// quantization parameters \p scale and \p offset.
+inline uint8_t quantize4BitsWithFloatOffset(float input, float scale,
+                                            float offset) {
+  uint8_t d =
+      std::max(0, std::min(static_cast<int>((input - offset) / scale), 15));
+  return d;
+}
+
 /// Converts a quantized value (type eTy) to floating point based on the
 /// quantization parameters \p scale and \p offset. If the input type is int8_t,
 /// then an offset of 128 is added to convert to uint8_t.
@@ -198,6 +218,18 @@ inline float dequantizeWithFloatOffset(eTy input, float scale, float offset) {
   return (d * scale) + offset;
 }
 
+/// Converts a 4-bit quantized value, which is stored in \p input (MSB if \p
+/// isMSB is true, otherwise LSB), to floating point based on the quantization
+/// parameters \p scale and \p offset.
+inline float dequantize4BitWithFloatOffset(uint8_t input, float scale,
+                                           float offset, bool isMSB) {
+  if (isMSB) {
+    input >>= 4;
+  }
+  input &= 0x0f;
+  return (input * scale) + offset;
+}
+
 /// Converts a floating point \p tensor to quantized tensor based on the
 /// quantization parameters \p TQP and \p Ty.
 Tensor quantizeTensor(const Tensor &tensor, const TensorQuantizationParams &TQP,
@@ -206,6 +238,10 @@ Tensor quantizeTensor(const Tensor &tensor, const TensorQuantizationParams &TQP,
 /// Converts quantized tensor \p tensor to floating point tensor of type \p Ty
 /// floatKind.
 Tensor dequantizeTensor(const Tensor &tensor, ElemKind floatKind);
+
+/// Dequantize 4-bit fused quantized tensor \p input. \returns the float type
+/// output.
+Tensor tensor4BitsFusedRowwiseDequantization(const Tensor &input);
 
 /// Convert the floating point quantization parameters \p scale and \p offset
 /// into the integer sequence of:
@@ -293,24 +329,52 @@ void tensorRowwiseQuantization(const Tensor &input, Tensor &output,
 }
 
 /// Fused-rowwise quantize the tensor \p input. Scales and offsets are generated
-/// from each row of \p input. \p output is tensor of the same shape as input
-/// but with extra columns for storing fused scales. Template parameter \p T
-/// represents the datatype used for storing the scale and offset in the row.
+/// from each row of \p input. This function supports 8-bits quantization (i.e.
+/// each quantized data uses 8 bits) and 4-bits quantization(i.e. each quantized
+/// data uses 4 bits).
+/// For 8-bits quantization, \p output is tensor of the same shape as input but
+/// with extra columns for storing fused scales. Template parameter \p T
+/// represents the datatype used for storing the scale and offset in the row
+/// |   .... int8 data ...    |   scale   |  offset   |
+/// |num_of_input_columns * 1B| sizeof(T) | sizeof(T) |
+/// For 4-bits quantization, in \p output, 1 byte will contain 2 quantized data.
+/// Template parameter \p T here must be float16_t.
+/// |   .... int4 data ...       | scale | offset |
+/// |num_of_input_columns * 0.5B |  2B   |   2B   |
 /// \pre input.dims().size() == 2
 /// \pre output.dims().size() == 2
+/// For 8-bits quantization:
 /// \pre input.dims()[1] + 2 * sizeof(T) == output.dims()[1]
+/// For 4-bits quantization:
+/// \pre input.dims()[1] % 2 == 0
+/// \pre input.dims()[1] / 2 + 2 * sizeof(T) == output.dims()[1]
 template <typename T>
 void tensorFusedRowwiseQuantization(const Tensor &input, Tensor &output) {
   // We are fusing the scale and offset onto the end of each row. Thus input and
   // output must both be 2 dimensional, with output having 2*sizeof(T) extra
   // columns for the scale and offset.
+  auto outputType = output.getElementType();
   assert(input.dims().size() == 2 && output.dims().size() == 2 &&
          "Input and output must be 2 dimensional.");
-  assert(input.dims()[1] + 2 * sizeof(T) == output.dims()[1] &&
-         "Output must have 2*sizeof(T) more columns than input.");
-
-  const size_t outWidth = output.dims()[1];
-  char *dataBasePtr = output.getUnsafePtr();
+  if (outputType == ElemKind::UInt8FusedFP16QTy ||
+      outputType == ElemKind::UInt8FusedQTy) {
+    assert(input.dims()[1] + 2 * sizeof(T) == output.dims()[1] &&
+           "Output must have 2*sizeof(T) more columns than input for 8-bits "
+           "quantization.");
+  } else if (outputType == ElemKind::UInt4FusedFP16QTy) {
+    constexpr bool scaleIsFP16 = std::is_same<float16_t, T>::value;
+    (void)scaleIsFP16;
+    assert(scaleIsFP16 && "Only float16_t scale and offset are supported "
+                          "in 4-bit fused quantization");
+    assert(
+        input.dims()[1] % 2 == 0 &&
+        "4-bits fused quantization only works for the number of input column "
+        "a multiple of 2");
+    assert(
+        input.dims()[1] / 2 + 2 * sizeof(T) == output.dims()[1] &&
+        "Output must have 2*sizeof(T) more columns than half of input columns "
+        "for 4-bits quantization.");
+  }
 
   auto srcH = input.getHandle<float>();
   auto destH = output.getHandle<uint8_t>();
@@ -324,28 +388,57 @@ void tensorFusedRowwiseQuantization(const Tensor &input, Tensor &output) {
     min = std::min(min, 0.0f);
     max = std::max(max, 0.0f);
 
+    float range;
+    switch (outputType) {
+    case ElemKind::UInt8FusedQTy:
+    case ElemKind::UInt8FusedFP16QTy:
+      range = 255.0;
+      break;
+    case ElemKind::UInt4FusedFP16QTy:
+      range = 15.0;
+      break;
+    default:
+      llvm_unreachable("Not yet supported");
+    }
+
     // This matches the Caffe2 implementation for FloatToRowwiseQuantized8BitsOp
     // found in operators/lengths_reducer_rowwise_8bit_ops.h.
     constexpr float kEqualityThreshold = 1e-10f;
     const float scale = ((max - min) < kEqualityThreshold)
                             ? 1.0
-                            : ((double)max - (double)min) / 255.0;
+                            : ((double)max - (double)min) / range;
     const float offset = min;
 
     for (size_t j = 0, f = input.dims()[1]; j < f; j++) {
-      destH.at({i, j}) = quantization::quantizeWithFloatOffset<uint8_t>(
-          srcH.at({i, j}), scale, offset);
+      if (outputType == ElemKind::UInt8FusedFP16QTy ||
+          outputType == ElemKind::UInt8FusedQTy) {
+        destH.at({i, j}) = quantization::quantizeWithFloatOffset<uint8_t>(
+            srcH.at({i, j}), scale, offset);
+      } else if (outputType == ElemKind::UInt4FusedFP16QTy) {
+        uint8_t quantized = quantization::quantize4BitsWithFloatOffset(
+            srcH.at({i, j}), scale, offset);
+        if (j % 2 == 0) {
+          // Even columns use LSB 4-bit.
+          destH.at({i, j / 2}) = quantized;
+        } else {
+          // Odd columns use MSB 4-bit.
+          destH.at({i, j / 2}) |= quantized << 4;
+        }
+      } else {
+        llvm_unreachable("Not yet supported");
+      }
     }
 
     // Now set the scale/offset at the end of each row.
-    T finalScale = static_cast<T>(scale);
-    T finalOffset = static_cast<T>(offset);
-    char *currRowScaleOffsetPtr =
-        dataBasePtr + (i + 1) * outWidth - 2 * sizeof(T);
-    memcpy(currRowScaleOffsetPtr, &finalScale, sizeof(T));
-    memcpy(currRowScaleOffsetPtr + sizeof(T), &finalOffset, sizeof(T));
+    destH.setFusedScaleOffsetInRow<T>(i, scale, offset);
   }
 }
+
+/// Verify if float is an exact power of 2 (mantissa is exactly 1.0).
+bool isFloatPowerOf2(float val);
+
+/// Get float 2's exponent.
+int getFloat2Exp(float val);
 
 } // namespace quantization
 } // namespace glow

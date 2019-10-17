@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2017-present, Facebook, Inc.
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -1086,6 +1086,20 @@ static void lowerBatchBoxCoxNode(Function *F, CompilationContext &cctx,
   replaceAllUsesOfWith(cctx.loweredInfoMap, BBCN.getResult(), select);
 }
 
+static void lowerClipNode(Function *F, CompilationContext &cctx,
+                          const ClipNode &CN) {
+  auto const &name = CN.getName();
+  auto min = CN.getMin();
+  auto max = CN.getMax();
+  auto type = CN.getResult().getType();
+  auto *minSplat = F->createSplat(name.str() + ".minSplat", type, min);
+  auto *minClipped =
+      F->createMax(name.str() + ".minClip", CN.getInput(), minSplat);
+  auto *maxSplat = F->createSplat(name.str() + ".maxSplat", type, max);
+  auto result = F->createMin(name.str(), minClipped, maxSplat);
+  replaceAllUsesOfWith(cctx.loweredInfoMap, CN.getResult(), result);
+}
+
 /// Lowers \p node given Function \p. \p cctx contains a mapping of loweredMap
 /// that will log the lowering info of what was replaced by what via output
 /// names.
@@ -1153,6 +1167,8 @@ static void lowerNode(Function *F, Node *node, CompilationContext &cctx) {
     lowerFusedRowwiseQuantizedSparseLengthsSumNode(F, cctx, *FQSLSN);
   } else if (auto *BBCN = dyn_cast<BatchBoxCoxNode>(node)) {
     lowerBatchBoxCoxNode(F, cctx, *BBCN);
+  } else if (auto *CN = dyn_cast<ClipNode>(node)) {
+    lowerClipNode(F, cctx, *CN);
   }
 }
 

@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2017-present, Facebook, Inc.
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -116,6 +116,18 @@ class HostManager final {
   /// onto the devices.
   std::unique_ptr<Provisioner> provisioner_;
 
+  /// String const for logging total device memory usage.
+  static constexpr const char *kDeviceMemoryUsed =
+      "glow.devices.used_memory.total";
+
+  /// String const for logging total available device memory.
+  static constexpr const char *kDeviceMemoryAvailable =
+      "glow.devices.available_memory.total";
+
+  /// String const for logging total maximum device memory.
+  static constexpr const char *kDeviceMemoryMax =
+      "glow.devices.maximum_memory.total";
+
   /// Helper function to handle cleanup if an error occurs during addNetwork.
   /// This must be called while holding the a lock on networkLock_.
   void cleanupAddNetwork(llvm::ArrayRef<std::string> names);
@@ -125,6 +137,9 @@ class HostManager final {
 
   /// Method to dispatch a new run to the executor.
   void dispatchNextRun();
+
+  /// Method to calculate and export aggregate memory usage counters.
+  void exportMemoryCounters();
 
 public:
   /// Default constructor.
@@ -143,24 +158,24 @@ public:
   /// Adds the network to the host and does the necessary setup work. This
   /// includes partitioning, provisioning, compiling and initializing
   /// backends. Additionally DAGs are created for each function and stored in
-  /// networks_. \returns an llvm::Error containing the results of the
+  /// networks_. \returns an Error containing the results of the
   /// operation. This function consumes the \p module so any pointers to data
   /// contained within the module should be considered invalid. The function is
   /// optimized based on \p cctx. If \p saturateHost is set to true the
   /// HostManager will try to use all available devices on the host.
-  llvm::Error addNetwork(std::unique_ptr<Module> module,
-                         CompilationContext &cctx, bool saturateHost = false);
+  Error addNetwork(std::unique_ptr<Module> module, CompilationContext &cctx,
+                   bool saturateHost = false);
 
   /// Given \p networkName removes that network from the host. This also
   /// removes the network from any backends setup to execute it.
-  /// \returns an llvm::Error indicating success or failure of the operation.
-  llvm::Error removeNetwork(llvm::StringRef networkName);
+  /// \returns an Error indicating success or failure of the operation.
+  Error removeNetwork(llvm::StringRef networkName);
 
   /// Returns true if \p networkName is already added to the host.
   bool networkAdded(llvm::StringRef networkName);
 
   /// Removes all networks from the host, and stops execution on all devices.
-  llvm::Error clearHost();
+  Error clearHost();
 
   /// Runs the network specified by \p networkName using
   /// the provided \p context, returns a runIdentifier which refers to the
@@ -178,26 +193,42 @@ public:
 
   /// A wrapper around runNetwork that provides a blocking interface for an
   /// inference request. Runs the network provided in \p networkName using \p
-  /// context. \returns an llvm::Error indicating success or failure.
-  llvm::Error runNetworkBlocking(llvm::StringRef networkName,
-                                 std::unique_ptr<ExecutionContext> context);
+  /// context. \returns an Error indicating success or failure.
+  Error runNetworkBlocking(llvm::StringRef networkName,
+                           std::unique_ptr<ExecutionContext> context);
 
   /// A wrapper around runNetwork that provides a blocking interface for an
   /// inference request. Runs the network provided in \p networkName using \p
-  /// bindings for placeholder bindings. \returns an llvm::Error indicating
+  /// bindings for placeholder bindings. \returns an Error indicating
   /// success or failure.
-  llvm::Error runNetworkBlocking(llvm::StringRef networkName,
-                                 PlaceholderBindings &bindings);
+  Error runNetworkBlocking(llvm::StringRef networkName,
+                           PlaceholderBindings &bindings);
 
   /// Initialize the HostManager with the given \p configs creating one
   /// DeviceManager for each config listed.
-  llvm::Error init(std::vector<std::unique_ptr<DeviceConfig>> configs);
+  Error init(std::vector<std::unique_ptr<DeviceConfig>> configs);
 
   /// Get the network DAG for \p network if it exists.
-  llvm::Expected<DAG &> getNetworkDAG(llvm::StringRef network);
+  Expected<DAG *> getNetworkDAG(llvm::StringRef network);
 
   ~HostManager();
 };
+
+/// If the device config file specified in loadDeviceConfigsFileOpt is
+/// available, load \p configs from the file. Otherwise, create \p numDevices
+/// number of devices based on \p backendName.
+std::vector<std::unique_ptr<runtime::DeviceConfig>>
+generateDeviceConfigs(unsigned int numDevices, llvm::StringRef backendName,
+                      size_t memSize = 0);
+
+/// Attempts to load user-specified DeviceConfigs file
+/// \ref loadDeviceConfigsFileOpt. If the path exists then \p configs will be
+/// loaded with DeviceConfigs given that file and \p memSize, and the function
+/// \returns true. Otherwise \returns false with \p configs untouched.
+bool loadDeviceConfigsFromFile(
+    std::vector<std::unique_ptr<runtime::DeviceConfig>> &configs,
+    size_t memSize);
+
 } // namespace runtime
 } // namespace glow
 #endif // GLOW_RUNTIME_HOSTMANAGERR_HOSTMANAGER_H

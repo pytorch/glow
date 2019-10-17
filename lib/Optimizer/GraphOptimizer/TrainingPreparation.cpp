@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2017-present, Facebook, Inc.
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -75,10 +75,9 @@ TensorInitializer getDefaultTensorInitializer() {
   return defaultTensorInitializer;
 }
 
-llvm::Error prepareFunctionForTraining(Function *F,
-                                       PlaceholderBindings &bindings,
-                                       Placeholder *&selected,
-                                       TensorInitializer &&initializer) {
+Error prepareFunctionForTraining(Function *F, PlaceholderBindings &bindings,
+                                 Placeholder *&selected,
+                                 TensorInitializer &&initializer) {
 
   auto &nodes = F->getNodes();
 
@@ -129,6 +128,6 @@ llvm::Error prepareFunctionForTraining(Function *F,
     }
   }
 
-  return llvm::Error::success();
+  return Error::success();
 }
 } // namespace glow

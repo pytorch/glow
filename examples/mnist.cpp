@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2017-present, Facebook, Inc.
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -256,8 +256,7 @@ void testMNISTLoadAndTraining() {
       inferMod.uniqueType(glow::ElemKind::FloatTy, {minibatchSize, 1, 28, 28});
   const char *inputName = "data";
 
-  llvm::Error errPtr = llvm::Error::success();
-  MARK_ERR_CHECKED(errPtr);
+  Error errPtr = Error::empty();
   // Load and compile LeNet MNIST model.
   glow::Caffe2ModelLoader loader("lenet_mnist/predict_net.pb",
                                  "lenet_mnist/init_net.pb", {inputName},

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-present, Facebook, Inc.
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,6 +26,7 @@ int32_t GlowNumDevices = 0;
 bool GlowDumpDebugTraces = false;
 bool GlowSaturateHost = false;
 bool GlowFP16 = false;
+bool GlowFusedScaleOffsetFP16 = false;
 bool GlowClipFP16 = false;
 
 static llvm::cl::opt<int32_t, true>
@@ -77,6 +78,10 @@ onnxStatus HostManagerBackend::addNetwork(std::unique_ptr<Module> module) {
     precConfig.convertToFP16 = GlowFP16;
     LOG(INFO) << "Conversion to fp16 enabled";
   }
+  if (GlowFusedScaleOffsetFP16) {
+    precConfig.convertFusedToFP16 = GlowFusedScaleOffsetFP16;
+    LOG(INFO) << "Conversion of fused scales/offsets to fp16 enabled";
+  }
   if (GlowClipFP16) {
     precConfig.clipFP16 = GlowClipFP16;
     LOG(INFO) << "Clipping to fp16 enabled";
@@ -85,7 +90,7 @@ onnxStatus HostManagerBackend::addNetwork(std::unique_ptr<Module> module) {
   auto err =
       hostManager_->addNetwork(std::move(module), cctx, GlowSaturateHost);
 
-  if (errToBool(std::move(err))) {
+  if (ERR_TO_BOOL(std::move(err))) {
     return ONNXIFI_STATUS_INTERNAL_ERROR;
   }
 
@@ -96,7 +101,7 @@ onnxStatus HostManagerBackend::removeNetwork(const Graph *graph) {
   auto hostManagerGraph = static_cast<const HostManagerGraph *>(graph);
   auto error = hostManager_->removeNetwork(hostManagerGraph->getName());
 
-  if (errorToBool(std::move(error))) {
+  if (ERR_TO_BOOL(std::move(error))) {
     return ONNXIFI_STATUS_INTERNAL_ERROR;
   }
 
@@ -115,7 +120,7 @@ HostManagerGraph::initGraph(const void *onnxModel, size_t onnxModelSize,
 
   // TODO: make better error reporting.
   std::unique_ptr<ONNXIFIModelLoader> loader =
-      TEMP_EXIT_ON_ERR(ONNXIFIModelLoader::parse(
+      EXIT_ON_ERR(ONNXIFIModelLoader::parse(
           onnxModel, onnxModelSize, weightCount, weightDescriptors, *function,
           true /*loadInputsAsPlaceholders*/, backendPtr_->getUseOnnx()));
 
@@ -136,14 +141,13 @@ onnxStatus HostManagerGraph::run(std::unique_ptr<ExecutionContext> ctx,
                                  onnxTraceEventList *traceEvents) {
   backendPtr_->runNetwork(
       this, std::move(ctx),
-      [outputEvent, traceEvents](runtime::RunIdentifierTy runId,
-                                 llvm::Error err,
+      [outputEvent, traceEvents](runtime::RunIdentifierTy runId, Error err,
                                  std::unique_ptr<ExecutionContext> ctx) {
         TRACE_EVENT_SCOPE(ctx->getTraceContext(), TraceLevel::RUNTIME,
                           "Onnxifi::callback");
-        // If an Error occurred then log it in errToBool and signal the output
+        // If an Error occurred then log it in ERR_TO_BOOL and signal the output
         // event.
-        if (errToBool(std::move(err))) {
+        if (ERR_TO_BOOL(std::move(err))) {
           outputEvent->signal(ONNXIFI_STATUS_INTERNAL_ERROR);
           return;
         }

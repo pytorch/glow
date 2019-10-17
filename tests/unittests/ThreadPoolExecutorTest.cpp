@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2017-present, Facebook, Inc.
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -55,12 +55,12 @@ public:
     if (!resultMap_.erase(functionName)) {
       evictCB(
           functionName,
-          MAKE_ERR(GlowErr::ErrorCode::RUNTIME_NET_NOT_FOUND,
+          MAKE_ERR(ErrorValue::ErrorCode::RUNTIME_NET_NOT_FOUND,
                    strFormat("Could not find function with name %s to evict",
                              functionName.c_str())));
       return;
     }
-    evictCB(functionName, llvm::Error::success());
+    evictCB(functionName, Error::success());
   }
 
   /// Look up the previously registered response for \p functionName and
@@ -107,7 +107,7 @@ public:
     }
 
     if (successResult) {
-      resultCB(runId, llvm::Error::success(), std::move(context));
+      resultCB(runId, Error::success(), std::move(context));
     } else {
       resultCB(runId, MAKE_ERR("An error occurred"), std::move(context));
     }
@@ -239,11 +239,11 @@ public:
     std::future<bool> future = promise.get_future();
     executor_->run(root_.get(), std::move(inputContext_), runId_,
                    [&promise, &executorRunId, &executorOutputContext](
-                       RunIdentifierTy runId, llvm::Error err,
+                       RunIdentifierTy runId, Error err,
                        std::unique_ptr<ExecutionContext> context) {
                      executorRunId = runId;
                      executorOutputContext = std::move(context);
-                     promise.set_value(errToBool(std::move(err)));
+                     promise.set_value(ERR_TO_BOOL(std::move(err)));
                    });
 
     bool runSuccess = !future.get();
@@ -642,18 +642,18 @@ TEST_F(ThreadPoolExecutorTest, EmptyDAG) {
   // Call Executor::run().
   std::promise<void> promise;
   std::future<void> future = promise.get_future();
-  std::unique_ptr<llvm::Error> runErr;
+  std::unique_ptr<Error> runErr;
   executor_->run(nullptr, std::move(testContext), testRunId,
                  [&runErr, &promise, &executorRunId, &executorOutputContext](
-                     RunIdentifierTy runId, llvm::Error err,
+                     RunIdentifierTy runId, Error err,
                      std::unique_ptr<ExecutionContext> context) {
                    executorRunId = runId;
                    executorOutputContext = std::move(context);
-                   runErr = llvm::make_unique<llvm::Error>(std::move(err));
+                   runErr = llvm::make_unique<Error>(std::move(err));
                    promise.set_value();
                  });
 
-  EXPECT_FALSE(errToBool(std::move(*DCHECK_NOTNULL(runErr.get()))));
+  EXPECT_FALSE(ERR_TO_BOOL(std::move(*DCHECK_NOTNULL(runErr.get()))));
 
   EXPECT_EQ(executorRunId, testRunId);
 

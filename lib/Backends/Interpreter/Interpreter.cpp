@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2017-present, Facebook, Inc.
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -27,7 +27,7 @@
 
 using namespace glow;
 
-llvm::Expected<std::unique_ptr<CompiledFunction>>
+Expected<std::unique_ptr<CompiledFunction>>
 Interpreter::compile(Function *F, const BackendOptions &opts) const {
   TraceInfo traceInfo = buildManualTraceInfo(F);
   auto IR = generateAndOptimizeIR(F, *this, shouldShareBuffers());
@@ -44,8 +44,7 @@ Interpreter::compile(Function *F, const BackendOptions &opts) const {
   }
 
   compiledFunc->setTraceInfo(std::move(traceInfo));
-  return llvm::Expected<std::unique_ptr<CompiledFunction>>(
-      std::move(compiledFunc));
+  return Expected<std::unique_ptr<CompiledFunction>>(std::move(compiledFunc));
 }
 
 std::unique_ptr<CompiledFunction>
@@ -117,9 +116,11 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::SigmoidNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Float16Ty});
-
-  case Kinded::Kind::DivNodeKind:
   case Kinded::Kind::SliceNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind(
+        {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy,
+         ElemKind::Int32QTy, ElemKind::Int64ITy});
+  case Kinded::Kind::DivNodeKind:
   case Kinded::Kind::SpaceToDepthNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy,
@@ -342,11 +343,13 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
     return ((NI.getInElemTy(QuantizeNode::InputIdx) == ElemKind::FloatTy) ||
             (NI.getInElemTy(QuantizeNode::InputIdx) == ElemKind::Float16Ty)) &&
            ((NI.getOutElemTy(QuantizeNode::ResultIdx) == ElemKind::Int8QTy) ||
+            (NI.getOutElemTy(QuantizeNode::ResultIdx) == ElemKind::UInt8QTy) ||
             (NI.getOutElemTy(QuantizeNode::ResultIdx) == ElemKind::Int16QTy) ||
             (NI.getOutElemTy(QuantizeNode::ResultIdx) == ElemKind::Int32QTy));
 
   case Kinded::Kind::DequantizeNodeKind:
     return ((NI.getInElemTy(DequantizeNode::InputIdx) == ElemKind::Int8QTy) ||
+            (NI.getInElemTy(DequantizeNode::InputIdx) == ElemKind::UInt8QTy) ||
             (NI.getInElemTy(DequantizeNode::InputIdx) == ElemKind::Int16QTy) ||
             (NI.getInElemTy(DequantizeNode::InputIdx) == ElemKind::Int32QTy)) &&
            ((NI.getOutElemTy(DequantizeNode::ResultIdx) == ElemKind::FloatTy) ||

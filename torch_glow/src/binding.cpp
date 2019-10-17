@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2017-present, Facebook, Inc.
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -32,7 +32,10 @@ using namespace glow;
 
 /// The torch_glow pybind11 module.
 PYBIND11_MODULE(_torch_glow, m) {
-  registerGlowFusionOpAndPass();
+  /// Register Glow op and FusionPass, enable the fusion pass if
+  /// fusionPassEnabled is set in PyTorchLoaderSettings.
+  registerGlowFusionOpAndPass(
+      []() { return getPyTorchLoaderSettings().fusionPassEnabled; });
 
   /// Enable compiling PyTorch subgraphs to Glow Functions.
   m.def("enableFusionPass",
@@ -56,7 +59,6 @@ PYBIND11_MODULE(_torch_glow, m) {
       .def("init", &TorchGlowTrainingWrapper::init)
       .def("train", &TorchGlowTrainingWrapper::train)
       .def("save", &TorchGlowTrainingWrapper::save)
-      .def("settings", &TorchGlowTrainingWrapper::setPyTorchLoaderSettings)
       .def("parameters", &TorchGlowTrainingWrapper::setONNXWriterParameters)
       .def("config", &TorchGlowTrainingWrapper::setTrainingConfig);
 }

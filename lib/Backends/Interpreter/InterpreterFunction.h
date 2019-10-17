@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2017-present, Facebook, Inc.
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -57,7 +57,7 @@ public:
   ///@{
   ~InterpreterFunction() override;
 
-  llvm::Error execute(ExecutionContext *context) override;
+  Error execute(ExecutionContext *context) override;
 
   /// Collects constants for runtime.
   void collectConstants(const Module *module) override;
@@ -93,7 +93,7 @@ public:
 
   ~BoundInterpreterFunction();
 
-  llvm::Error execute(IRFunction *F, ExecutionContext *context);
+  Error execute(IRFunction *F, ExecutionContext *context);
 
 private:
   /// \returns a pointer to the tensor that is saved under \p v.

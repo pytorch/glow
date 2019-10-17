@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2017-present, Facebook, Inc.
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -66,13 +66,20 @@ convertFusedRowwiseQuantizedInputs(Function *F,
 
 void glow::convertFunctionToFloat16(Function *F,
                                     const PrecisionConfiguration &precConfig) {
+  DCHECK(precConfig.convertToFP16 || precConfig.convertFusedToFP16)
+      << "Expected to convert at least one of FloatTy or UInt8FusedQTy.";
+
   // Convert FloatTy to Float16Ty.
   TypeAToTypeBFunctionConverter converter(*F, ElemKind::FloatTy,
                                           ElemKind::Float16Ty, precConfig);
-  converter.convert();
+  if (precConfig.convertToFP16) {
+    converter.convert();
+  }
 
   // Now we want to additionally convert all nodes with inputs in UInt8FusedQTy
   // to UInt8FusedFP16QTy. This does not fit cleanly into the
   // TypeAToTypeBFunctionConverter, so write a custom pass to do so.
-  convertFusedRowwiseQuantizedInputs(F, precConfig);
+  if (precConfig.convertFusedToFP16) {
+    convertFusedRowwiseQuantizedInputs(F, precConfig);
+  }
 }

@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2018-present, Facebook, Inc.
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -102,7 +102,7 @@ void FunctionConverter::convertOutputs(Node &node) {
       // a save node, we actually have to convert the input.
       if (saveNode && saveNode->getOutput() == val) {
         NodeValue input = saveNode->getInput();
-        Node *conversion = createConversion(*parent, input, targetTy);
+        Node *conversion = createConversion(*parent, node, input, targetTy);
         saveNode->setNthInput(SaveNode::InputIdx,
                               getConversionOutput(*conversion));
         continue;
@@ -112,7 +112,7 @@ void FunctionConverter::convertOutputs(Node &node) {
       auto conversionValIt = functionAndValToConversion.find(functionAndVal);
       if (conversionValIt == functionAndValToConversion.end()) {
         // Create the conversion.
-        Node *conversion = createConversion(*parent, val, origTy);
+        Node *conversion = createConversion(*parent, node, val, origTy);
         // "conversion" uses val so after this call,
         // we will get a use of conversion inside conversion.
         NodeValue conversionVal = getConversionOutput(*conversion);
@@ -152,7 +152,7 @@ void FunctionConverter::convertInputs(Node &node) {
     assert(targetTy->dims() == val.getType()->dims() &&
            "Conversion does not preserve shape");
     // Create the conversion.
-    Node *conversion = createConversion(function_, val, targetTy);
+    Node *conversion = createConversion(function_, node, val, targetTy);
     node.setNthInput(idx, getConversionOutput(*conversion));
   }
 }

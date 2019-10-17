@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2017-present, Facebook, Inc.
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -37,11 +37,11 @@ public:
       : DeviceManager(config), workThread_(1) {}
 
   virtual ~QueueBackedDeviceManager() {
-    llvm::toString(stop(true)); // will join workThread_
+    ERR_TO_VOID(stop(true)); // will join workThread_
   }
 
   /// Initialize the device.
-  llvm::Error init() override { return llvm::Error::success(); }
+  Error init() override { return Error::success(); }
 
   /// Load the provided module into the device, readyCB will be called when
   /// ready to use
@@ -81,9 +81,9 @@ public:
   }
 
   /// Stops execution and shuts down the Device.
-  llvm::Error stop(bool block = true) override {
+  Error stop(bool block = true) override {
     workThread_.stop(block);
-    return llvm::Error::success();
+    return Error::success();
   }
 
 protected:

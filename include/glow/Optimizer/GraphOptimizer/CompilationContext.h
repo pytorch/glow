@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2017-present, Facebook, Inc.
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -37,6 +37,9 @@ struct PrecisionConfiguration {
 
   /// Whether to convert the FloatTy to Float16Ty in the Function.
   bool convertToFP16{false};
+
+  /// Whether to convert UInt8FusedQTy to UInt8FusedFP16QTy in the Function.
+  bool convertFusedToFP16{false};
 
   /// Whether to clip out-of-range FP values to the min/max of fp16.
   bool clipFP16{false};
@@ -93,7 +96,7 @@ struct CompilationContext {
 
   /// \returns an error if the CompilationContext is malformed for whatever
   /// configuration it is set up for, otherwise returns success.
-  llvm::Error verify() const {
+  Error verify() const {
     RETURN_ERR_IF_NOT(!precisionConfig.useSetAsWhitelist ||
                           precisionConfig.convertToFP16,
                       "Can only use the precisionModeKindSet as a whitelist in "
@@ -101,21 +104,22 @@ struct CompilationContext {
 
     switch (precisionConfig.quantMode) {
     case QuantizationMode::Profile:
-      RETURN_ERR_IF_NOT(bindings, GlowErr::ErrorCode::COMPILE_CONTEXT_MALFORMED,
+      RETURN_ERR_IF_NOT(bindings,
+                        ErrorValue::ErrorCode::COMPILE_CONTEXT_MALFORMED,
                         "In Profiling mode, but bindings was not set.\n");
 
       RETURN_ERR_IF_NOT(loweredInfoMap,
-                        GlowErr::ErrorCode::COMPILE_CONTEXT_MALFORMED,
+                        ErrorValue::ErrorCode::COMPILE_CONTEXT_MALFORMED,
                         "In Profiling mode, but loweredInfoMap was not set.\n");
 
       RETURN_ERR_IF_NOT(!precisionConfig.convertToFP16,
-                        GlowErr::ErrorCode::COMPILE_CONTEXT_MALFORMED,
+                        ErrorValue::ErrorCode::COMPILE_CONTEXT_MALFORMED,
                         "Converting to FP16 while profiling is unsupported.\n");
       break;
 
     case QuantizationMode::Quantize:
       RETURN_ERR_IF_NOT(
-          loweredInfoMap, GlowErr::ErrorCode::COMPILE_CONTEXT_MALFORMED,
+          loweredInfoMap, ErrorValue::ErrorCode::COMPILE_CONTEXT_MALFORMED,
           "In Quantization mode, but loweredInfoMap was not set.\n");
       break;
 
@@ -123,7 +127,7 @@ struct CompilationContext {
       break;
     }
 
-    return llvm::Error::success();
+    return Error::success();
   }
 };
 

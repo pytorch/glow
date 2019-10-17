@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2017-present, Facebook, Inc.
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -138,20 +138,57 @@ const Node *unwindBroadcastInput(const TileNode *tile,
 }
 
 /// Writes all outputs from Node \p node to protobuf \p proto.
-void outputsToProto(const Node *node, ONNX_NAMESPACE::NodeProto *proto) {
+void findOutputNames(const Node *node,
+                     std::function<void(const std::string &name)> &&callback) {
+  // Check if user is SaveNode
+  std::set<unsigned> saveResNo;
   for (const auto &use : node->getUsers()) {
     const auto *user = use.getUser();
     if (user->getKind() == Kinded::Kind::SaveNodeKind) {
-      proto->add_output(user->getName());
-    } else {
-      // Find the user input that matches input node parameter.
+      callback(user->getName());
+
+      unsigned resNo = 0;
       for (unsigned b = 0, e = user->getNumInputs(); b < e; ++b) {
-        auto *UIN = user->getNthInput(b).getNode();
-        if (UIN == node) {
-          proto->add_output(UIN->getName());
+        auto UNV = user->getNthInput(b);
+        if (node == UNV.getNode()) {
+          resNo = UNV.getResNo();
           break;
         }
       }
+
+      saveResNo.insert(resNo);
+    }
+  }
+
+  // write the other outputs, if any
+  for (unsigned b = 0, e = node->getNumResults(); b < e; ++b) {
+    if (saveResNo.count(b)) {
+      continue;
+    }
+    if (b == 0) {
+      callback(node->getName());
+    } else {
+      callback(node->getName().str() + "_out_" + std::to_string(b));
+    }
+  }
+}
+
+/// Writes all outputs from Node \p node to protobuf \p proto.
+void outputsToProto(const Node *node, ONNX_NAMESPACE::NodeProto *proto) {
+  findOutputNames(node,
+                  [&](const std::string &name) { proto->add_output(name); });
+}
+
+/// Writes all inputs from Node \p node to protobuf \p proto.
+void inputsToProto(const Node *node, ONNX_NAMESPACE::NodeProto *proto) {
+  for (unsigned b = 0, e = node->getNumInputs(); b < e; ++b) {
+    const auto NV = node->getNthInput(b);
+    auto resNo = NV.getResNo();
+    auto name = NV.getNode()->getName();
+    if (resNo) {
+      proto->add_input(name.str() + "_out_" + std::to_string(b));
+    } else {
+      proto->add_input(name);
     }
   }
 }
@@ -163,7 +200,9 @@ bool outputKindToProto(Kinded::Kind kind, const Node *node,
   for (const auto &use : node->getUsers()) {
     const auto *user = use.getUser();
     if (user->getKind() == Kinded::Kind::SaveNodeKind) {
+      found = true;
       proto->add_output(user->getName());
+      break;
     } else if (user->getKind() == kind) {
       found = true;
       outputsToProto(user, proto);
@@ -172,57 +211,75 @@ bool outputKindToProto(Kinded::Kind kind, const Node *node,
   return found;
 }
 
-/// Writes all inputs from Node \p node to protobuf \p proto.
-void inputsToProto(const Node *node, ONNX_NAMESPACE::NodeProto *proto) {
-  for (unsigned b = 0, e = node->getNumInputs(); b < e; ++b) {
-    proto->add_input(node->getNthInput(b).getNode()->getName());
-  }
-}
-
 /// Writes MatMul operators from Node \p node into
 /// provided graph protobuf \p graph, optionally reports intermediate nodes as
 /// visited, signaling that such nodes must be ignored,
 /// \returns error.
 template <typename T>
-llvm::Error writeMatMulKind(const T *node, ONNX_TRAITS::GraphProto &graph,
-                            ReportedNodes &reporter) {
+Error writeMatMulKind(const T *node, ONNX_TRAITS::GraphProto &graph,
+                      ReportedNodes &reporter) {
   auto *proto = graph.add_node();
   proto->set_name(node->getName());
   proto->set_op_type("MatMul");
 
-  // Check if LHS/RHS are Transpose node.
   Node *LHS = node->getLHS().getNode();
-  TransposeNode *TLHS = llvm::dyn_cast<TransposeNode>(LHS);
-  if (TLHS) {
-    proto->add_input(TLHS->getInput().getNode()->getName());
-    addValueAttribute(proto, "trans_a", 1U);
-    reporter.insert(TLHS);
-  } else {
-    proto->add_input(LHS->getName());
-  }
-
+  proto->add_input(LHS->getName());
   Node *RHS = node->getRHS().getNode();
-  TransposeNode *TRHS = llvm::dyn_cast<TransposeNode>(RHS);
-  if (TRHS) {
-    proto->add_input(TRHS->getInput().getNode()->getName());
-    addValueAttribute(proto, "trans_b", 1U);
-    reporter.insert(TRHS);
-  } else {
-    proto->add_input(RHS->getName());
-  }
+  proto->add_input(RHS->getName());
 
   outputsToProto(node, proto);
-  return llvm::Error::success();
+  return Error::success();
 }
 
+// Creates a Transpose Node as the Result of the \p node.
+// Reuses given \p proto pointer and create a new proto adding it to \p graph.
+template <typename T>
+void writeTransposeResult(const T *node, ONNX_NAMESPACE::NodeProto *&proto,
+                          ONNX_TRAITS::GraphProto &graph) {
+  // Add dictionary entries.
+  std::vector<unsigned_t> shuffle(NCHW2NHWC);
+  llvm::ArrayRef<unsigned_t> container(shuffle);
+  addValueAttribute(proto, "perm", container);
+  // Re-use proto for Transpose node.
+  auto newName = node->getName().str() + "_out_transpose";
+  proto->set_name(newName);
+  proto->set_op_type("Transpose");
+  proto->add_input(newName);
+
+  proto->add_output(node->getName());
+
+  // T node proto.
+  proto = graph.add_node();
+  proto->add_output(newName);
+}
+
+// Creates a Transpose Node as the Input \p input of the \p node.
+// Reuses given \p proto pointer and create a new proto adding it to \p graph.
+void writeTransposeInput(const Node *node, const Node *input,
+                         ONNX_NAMESPACE::NodeProto *proto,
+                         ONNX_TRAITS::GraphProto &graph) {
+  // Write "mirror" Transform input, i.e. NHWC2NCHW
+  auto newName =
+      node->getName().str() + "_" + input->getName().str() + "_in_transpose";
+  auto *transformProto = graph.add_node();
+  transformProto->set_name(newName);
+  transformProto->set_op_type("Transpose");
+
+  // Add dictionary entries.
+  std::vector<unsigned_t> shuffle(NHWC2NCHW);
+  llvm::ArrayRef<unsigned_t> container(shuffle);
+  addValueAttribute(transformProto, "perm", container);
+  transformProto->add_input(input->getName());
+  transformProto->add_output(newName);
+  proto->add_input(newName);
+}
 /// Writes Arithmetic operators with name \p opName from Node \p node into
 /// provided graph protobuf \p graph, optionally reports intermediate nodes as
 /// visited, signaling that such nodes must be ignored,
 /// \returns error.
 template <typename T>
-llvm::Error writeArithmetic(const std::string &opName, const T *node,
-                            ONNX_TRAITS::GraphProto &graph,
-                            ReportedNodes &reporter) {
+Error writeArithmetic(const std::string &opName, const T *node,
+                      ONNX_TRAITS::GraphProto &graph, ReportedNodes &reporter) {
   auto *proto = graph.add_node();
   proto->set_name(node->getName());
   proto->set_op_type(opName);
@@ -290,7 +347,7 @@ llvm::Error writeArithmetic(const std::string &opName, const T *node,
     addValueAttribute(proto, "broadcast", 1UL);
   }
 
-  return llvm::Error::success();
+  return Error::success();
 }
 
 void tensorShapeFromInput(const std::string &name, TypeRef ty,
@@ -307,11 +364,81 @@ void tensorShapeFromInput(const std::string &name, TypeRef ty,
   }
 }
 
+/// Creates the list Nodes in the reverse order of the required order for ONNX.
+class ReverseGraphWalker {
+  /// A post-order list of nodes.
+  std::vector<const Node *> reverseOrder_;
+  /// A set of visited nodes.
+  std::unordered_set<const Node *> visited_;
+
+  void visit(Function &F) {
+    // Write constants first, even they should be placed at the end of the list,
+    // we can visit them first, cause they will be written into ONNX
+    // initializers, not nodes.
+    for (const auto *V : F.getParent()->getConstants()) {
+      reverseOrder_.push_back(V);
+      visited_.insert(V);
+    }
+    // Start visiting all root nodes, i.e. nodes that do not have any users.
+    for (auto &N : F.getNodes()) {
+      if (N.getNumUsers() == 0) {
+        visitRecursively(&N);
+      }
+    }
+  }
+
+  void visitRecursively(const Node *N) {
+    // Check is node has been visited already.
+    if (visited_.count(N)) {
+      return;
+    }
+
+    if (N->getKind() == Kinded::Kind::PlaceholderKind) {
+      // For Placeholder don't visit uses.
+      visited_.insert(N);
+      reverseOrder_.push_back(N);
+      return;
+    }
+
+    // First visit all users, if any.
+    for (const auto &use : N->getUsers()) {
+      const auto *UN = use.getUser();
+      // Check vacancy.
+      if (visited_.count(UN)) {
+        continue;
+      }
+
+      visitRecursively(UN);
+
+      if (!visited_.count(UN)) {
+        visited_.insert(UN);
+        reverseOrder_.push_back(UN);
+      }
+    }
+
+    // Visit current node, if it's still vacant.
+    if (!visited_.count(N)) {
+      visited_.insert(N);
+      reverseOrder_.push_back(N);
+    }
+
+    // And then visit inputs of the current node.
+    for (unsigned b = 0, e = N->getNumInputs(); b < e; ++b) {
+      visitRecursively(N->getNthInput(b).getNode());
+    }
+  }
+
+public:
+  explicit ReverseGraphWalker(Function &F) { visit(F); }
+
+  llvm::ArrayRef<const Node *> getNodes() const { return reverseOrder_; }
+};
+
 } // namespace
 
 ONNXModelWriter::ONNXModelWriter(const std::string &modelFilename, Function &F,
                                  size_t irVersion, size_t opsetVersion,
-                                 llvm::Error *errPtr, bool textMode)
+                                 Error *errPtr, bool textMode)
     : CommonOperatorWriter(modelFilename, F, errPtr),
       opsetVersion_(opsetVersion) {
   // If errPtr already contains an error then don't continue with constructor.
@@ -319,9 +446,9 @@ ONNXModelWriter::ONNXModelWriter(const std::string &modelFilename, Function &F,
     return;
   }
 
-  // Lambda to setup the ONNXModelWriter and return any llvm::Errors that were
+  // Lambda to setup the ONNXModelWriter and return any Errors that were
   // raised.
-  auto setup = [&]() -> llvm::Error {
+  auto setup = [&]() -> Error {
     // Loop through all nodes, output Graph to Model protobuf.
     ONNX_NAMESPACE::ModelProto modelProto;
     modelProto.set_ir_version(irVersion);
@@ -336,8 +463,9 @@ ONNXModelWriter::ONNXModelWriter(const std::string &modelFilename, Function &F,
     // except the case when placeholder has use as SaveNode.
     // Otherwise call common operators method or special operators and write
     // protobuf inputs from node inputs and protobuf outputs from uses.
-    GraphPreOrderVisitor visitor(G_);
-    for (const auto *N : visitor.getPreOrder()) {
+
+    ReverseGraphWalker visitor(G_);
+    for (const auto *N : visitor.getNodes()) {
       if (reportedNodes_.count(N)) {
         continue;
       }
@@ -400,6 +528,7 @@ ONNXModelWriter::convertType(const Type &glowType) {
     return TensorType::INT8;
   case ElemKind::UInt8FusedQTy:
   case ElemKind::UInt8FusedFP16QTy:
+  case ElemKind::UInt4FusedFP16QTy:
   case ElemKind::UInt8QTy:
     return TensorType::UINT8;
   case ElemKind::Int16QTy:
@@ -412,6 +541,7 @@ ONNXModelWriter::convertType(const Type &glowType) {
   case ElemKind::BoolTy:
     return TensorType::BOOL;
   }
+  LOG(DFATAL) << "Cannot reach here.";
 }
 
 void ONNXModelWriter::writeTensor(const Tensor &T, TensorType *out) {
@@ -422,7 +552,7 @@ void ONNXModelWriter::writeTensor(const Tensor &T, TensorType *out) {
     out->add_dims(dims[b]);
   }
 
-  out->set_raw_data(std::string(T.getUnsafePtr(), type.getSizeInBytes()));
+  out->set_raw_data(T.getUnsafePtr(), type.getSizeInBytes());
 }
 
 void ONNXModelWriter::tensorShapeFromPlaceholder(const Placeholder *PH,
@@ -430,18 +560,17 @@ void ONNXModelWriter::tensorShapeFromPlaceholder(const Placeholder *PH,
   tensorShapeFromInput(PH->getName(), PH->getType(), valueProto);
 }
 
-llvm::Error ONNXModelWriter::writeAllWithNode(const std::string &opName,
-                                              const Node *node,
-                                              NodeType *proto) {
+Error ONNXModelWriter::writeAllWithNode(const std::string &opName,
+                                        const Node *node, NodeType *proto) {
   proto->set_name(node->getName());
   proto->set_op_type(opName);
   inputsToProto(node, proto);
   outputsToProto(node, proto);
-  return llvm::Error::success();
+  return Error::success();
 }
 
-llvm::Error ONNXModelWriter::writeAll(const std::string &opName,
-                                      const Node *node, GraphType &graph) {
+Error ONNXModelWriter::writeAll(const std::string &opName, const Node *node,
+                                GraphType &graph) {
   return writeAllWithNode(opName, node, graph.add_node());
 }
 
@@ -457,7 +586,7 @@ bool ONNXModelWriter::hasUsesOfKind(const Node *node, Kinded::Kind kind) {
 //===-----------------------------------------------------------------===//
 //                    Operators Supported by ONNX
 //===-----------------------------------------------------------------===//
-llvm::Error ONNXModelWriter::writePad(const PadNode *node, GraphType &graph) {
+Error ONNXModelWriter::writePad(const PadNode *node, GraphType &graph) {
   auto *proto = graph.add_node();
   // Add dictionary entries.
   switch (node->getMode()) {
@@ -472,7 +601,7 @@ llvm::Error ONNXModelWriter::writePad(const PadNode *node, GraphType &graph) {
     break;
   default:
     RETURN_ERR("Pad: Invalid mode",
-               GlowErr::ErrorCode::MODEL_WRITER_SERIALIZATION_ERROR);
+               ErrorValue::ErrorCode::MODEL_WRITER_SERIALIZATION_ERROR);
   }
 
   addValueAttribute(proto, "pads", node->getPads());
@@ -484,8 +613,7 @@ llvm::Error ONNXModelWriter::writePad(const PadNode *node, GraphType &graph) {
   return writeAllWithNode("Pad", node, proto);
 }
 
-llvm::Error ONNXModelWriter::writeConcat(const ConcatNode *node,
-                                         GraphType &graph) {
+Error ONNXModelWriter::writeConcat(const ConcatNode *node, GraphType &graph) {
   auto *proto = graph.add_node();
   // Add dictionary entries.
   addValueAttribute(proto, "axis", node->getDim());
@@ -493,15 +621,15 @@ llvm::Error ONNXModelWriter::writeConcat(const ConcatNode *node,
   return writeAllWithNode("Concat", node, proto);
 }
 
-llvm::Error ONNXModelWriter::writeTranspose(const TransposeNode *node,
-                                            GraphType &graph) {
+Error ONNXModelWriter::writeTranspose(const TransposeNode *node,
+                                      GraphType &graph) {
   // Some nodes create transpose for outputs.
   auto *input = node->getInput().getNode();
   if (llvm::dyn_cast<ConvolutionNode>(input) ||
       llvm::dyn_cast<AvgPoolNode>(input) ||
       llvm::dyn_cast<MaxPoolNode>(input) ||
       llvm::dyn_cast<SpaceToDepthNode>(input)) {
-    return llvm::Error::success();
+    return Error::success();
   }
 
   auto *proto = graph.add_node();
@@ -511,10 +639,28 @@ llvm::Error ONNXModelWriter::writeTranspose(const TransposeNode *node,
   return writeAllWithNode("Transpose", node, proto);
 }
 
-llvm::Error ONNXModelWriter::writeConvolution(const ConvolutionNode *node,
-                                              GraphType &graph) {
+Error ONNXModelWriter::writeConvolution(const ConvolutionNode *node,
+                                        GraphType &graph) {
+  // Loading convolution creates a sandwich with Transpose nodes for Input,
+  // Weights, and Result. The lowering algorithm can remove Transpose nodes and
+  // replace one set of nodes with another ones. When saving a graph to ONNX
+  // format, keep in mind that when it will be loaded again a Transpose nodes
+  // sandwich will be created again. The steps will be:
+  // Remove Transpose nodes for Input and Weights, if such Transpose are not
+  // found (they are supposed to be NCHW2NHWC then create a "mirror"
+  // Transpose, i.e. NHWC2NCHW for correspondent Input or/and Weights.
+  // The similar algorithm will be applied for Result. If Transpose NHWC2NCHW
+  // node is found for Result user then remove it, otherwise create a "mirror"
+  // Transpose, i.e. NCHW2NHWC.
   assert(node->getLayout() == NHWC && "can only write NHWC Convolutions");
   auto *proto = graph.add_node();
+
+  // Use the output of transpose node.
+  if (!outputKindToProto(Kinded::Kind::TransposeNodeKind, node, proto)) {
+    // Apparently Result Transpose has been removed, add NCHW2NHWC Transpose.
+    writeTransposeResult(node, proto, graph);
+  }
+
   // Add dictionary entries.
   addValueAttribute(proto, "strides", node->getStrides());
   addValueAttribute(proto, "pads", node->getPads());
@@ -526,15 +672,23 @@ llvm::Error ONNXModelWriter::writeConvolution(const ConvolutionNode *node,
   const Node *input = node->getInput().getNode();
   if (const TransposeNode *TN = llvm::dyn_cast<TransposeNode>(input)) {
     proto->add_input(TN->getInput().getNode()->getName());
+    reportedNodes_.insert(TN);
+  } else if (const ReshapeNode *RSN = llvm::dyn_cast<ReshapeNode>(input)) {
+    proto->add_input(RSN->getInput().getNode()->getName());
+    reportedNodes_.insert(RSN);
   } else {
-    proto->add_input(input->getName());
+    writeTransposeInput(node, input, proto, graph);
   }
 
   const Node *filter = node->getFilter().getNode();
   if (const TransposeNode *TN = llvm::dyn_cast<TransposeNode>(filter)) {
     proto->add_input(TN->getInput().getNode()->getName());
+    reportedNodes_.insert(TN);
+  } else if (const ReshapeNode *RSN = llvm::dyn_cast<ReshapeNode>(filter)) {
+    proto->add_input(RSN->getInput().getNode()->getName());
+    reportedNodes_.insert(RSN);
   } else {
-    proto->add_input(filter->getName());
+    writeTransposeInput(node, filter, proto, graph);
   }
 
   proto->add_input(node->getBias().getNode()->getName());
@@ -542,15 +696,11 @@ llvm::Error ONNXModelWriter::writeConvolution(const ConvolutionNode *node,
   proto->set_name(node->getName());
   proto->set_op_type("Conv");
 
-  // Use the output of transpose node.
-  outputKindToProto(Kinded::Kind::TransposeNodeKind, node, proto);
-
-  return llvm::Error::success();
+  return Error::success();
 }
 
-llvm::Error
-ONNXModelWriter::writeBatchedReduceMean(const BatchedReduceMeanNode *node,
-                                        GraphType &graph) {
+Error ONNXModelWriter::writeBatchedReduceMean(const BatchedReduceMeanNode *node,
+                                              GraphType &graph) {
   auto *proto = graph.add_node();
   // Add dictionary entries.
   addValueAttribute(proto, "axes", node->getAxes());
@@ -563,14 +713,15 @@ ONNXModelWriter::writeBatchedReduceMean(const BatchedReduceMeanNode *node,
   if (outputKindToProto(Kinded::Kind::ReshapeNodeKind, node, proto)) {
     // Add dictionary entries.
     addValueAttribute(proto, "keepdims", 1);
+  } else {
+    outputsToProto(node, proto);
   }
 
-  return llvm::Error::success();
+  return Error::success();
 }
 
-llvm::Error
-ONNXModelWriter::writeBatchedReduceAdd(const BatchedReduceAddNode *node,
-                                       GraphType &graph) {
+Error ONNXModelWriter::writeBatchedReduceAdd(const BatchedReduceAddNode *node,
+                                             GraphType &graph) {
   auto *proto = graph.add_node();
   // Add dictionary entries.
   unsigned_t axis = node->getAxis();
@@ -585,14 +736,15 @@ ONNXModelWriter::writeBatchedReduceAdd(const BatchedReduceAddNode *node,
   if (outputKindToProto(Kinded::Kind::ReshapeNodeKind, node, proto)) {
     // Add dictionary entries.
     addValueAttribute(proto, "keepdims", 1);
+  } else {
+    outputsToProto(node, proto);
   }
 
-  return llvm::Error::success();
+  return Error::success();
 }
 
-llvm::Error
-ONNXModelWriter::writeBatchedReduceMin(const BatchedReduceMinNode *node,
-                                       GraphType &graph) {
+Error ONNXModelWriter::writeBatchedReduceMin(const BatchedReduceMinNode *node,
+                                             GraphType &graph) {
   auto *proto = graph.add_node();
   // Find dictionary entries.
   addValueAttribute(proto, "axes", node->getAxes());
@@ -600,9 +752,8 @@ ONNXModelWriter::writeBatchedReduceMin(const BatchedReduceMinNode *node,
   return writeAllWithNode("ReduceMin", node, proto);
 }
 
-llvm::Error
-ONNXModelWriter::writeBatchNormalization(const BatchNormalizationNode *node,
-                                         GraphType &graph) {
+Error ONNXModelWriter::writeBatchNormalization(
+    const BatchNormalizationNode *node, GraphType &graph) {
   auto *proto = graph.add_node();
   // Add dictionary entries.
   addValueAttribute(proto, "epsilon", node->getEpsilon());
@@ -618,12 +769,11 @@ ONNXModelWriter::writeBatchNormalization(const BatchNormalizationNode *node,
   proto->add_input(node->getVar().getNode()->getName());
 
   outputsToProto(node, proto);
-  return llvm::Error::success();
+  return Error::success();
 }
 
-llvm::Error
-ONNXModelWriter::writeMeanVarNormalization(const MeanVarNormalizationNode *node,
-                                           GraphType &graph) {
+Error ONNXModelWriter::writeMeanVarNormalization(
+    const MeanVarNormalizationNode *node, GraphType &graph) {
   auto *proto = graph.add_node();
   // Add dictionary entries.
   addValueAttribute(proto, "channel", node->getChannelIdx());
@@ -634,11 +784,10 @@ ONNXModelWriter::writeMeanVarNormalization(const MeanVarNormalizationNode *node,
 
   inputsToProto(node, proto);
   outputsToProto(node, proto);
-  return llvm::Error::success();
+  return Error::success();
 }
 
-llvm::Error ONNXModelWriter::writeSlice(const SliceNode *node,
-                                        GraphType &graph) {
+Error ONNXModelWriter::writeSlice(const SliceNode *node, GraphType &graph) {
   auto *proto = graph.add_node();
   // Add dictionary entries.
   auto starts = node->getStart();
@@ -681,10 +830,10 @@ llvm::Error ONNXModelWriter::writeSlice(const SliceNode *node,
       attrEnds->add_ints(outs[b] + starts[b]);
     }
   }
-  return llvm::Error::success();
+  return Error::success();
 }
 
-llvm::Error ONNXModelWriter::writePow(const PowNode *node, GraphType &graph) {
+Error ONNXModelWriter::writePow(const PowNode *node, GraphType &graph) {
   auto *proto = graph.add_node();
   proto->set_name(node->getName());
   proto->add_input(node->getLHS().getNode()->getName());
@@ -711,10 +860,10 @@ llvm::Error ONNXModelWriter::writePow(const PowNode *node, GraphType &graph) {
   }
 
   reportedNodes_.insert(RHSN);
-  return llvm::Error::success();
+  return Error::success();
 }
 
-llvm::Error ONNXModelWriter::writeTopK(const TopKNode *node, GraphType &graph) {
+Error ONNXModelWriter::writeTopK(const TopKNode *node, GraphType &graph) {
   auto *proto = graph.add_node();
 
   Tensor scalar(ElemKind::Int64ITy, {1});
@@ -728,11 +877,10 @@ llvm::Error ONNXModelWriter::writeTopK(const TopKNode *node, GraphType &graph) {
   RETURN_IF_ERR(writeAllWithNode("TopK", node, proto));
 
   proto->add_input("k");
-  return llvm::Error::success();
+  return Error::success();
 }
 
-llvm::Error ONNXModelWriter::writeArgMax(const ArgMaxNode *node,
-                                         GraphType &graph) {
+Error ONNXModelWriter::writeArgMax(const ArgMaxNode *node, GraphType &graph) {
   auto *proto = graph.add_node();
 
   Tensor axis(ElemKind::Int64ITy, {1});
@@ -751,11 +899,10 @@ llvm::Error ONNXModelWriter::writeArgMax(const ArgMaxNode *node,
   writeTensor(keepDims, tensorProto);
   RETURN_IF_ERR(writeAllWithNode("ArgMax", node, proto));
 
-  return llvm::Error::success();
+  return Error::success();
 }
 
-llvm::Error ONNXModelWriter::writePRelu(const PReluNode *node,
-                                        GraphType &graph) {
+Error ONNXModelWriter::writePRelu(const PReluNode *node, GraphType &graph) {
   auto *proto = graph.add_node();
   proto->set_name(node->getName());
   proto->set_op_type("PRelu");
@@ -782,11 +929,10 @@ llvm::Error ONNXModelWriter::writePRelu(const PReluNode *node,
   }
 
   outputsToProto(node, proto);
-  return llvm::Error::success();
+  return Error::success();
 }
 
-llvm::Error ONNXModelWriter::writeGather(const GatherNode *node,
-                                         GraphType &graph) {
+Error ONNXModelWriter::writeGather(const GatherNode *node, GraphType &graph) {
   auto *proto = graph.add_node();
   // Add dictionary entries.
   auto batchDims = node->getBatchDims();
@@ -799,25 +945,23 @@ llvm::Error ONNXModelWriter::writeGather(const GatherNode *node,
   }
 }
 
-llvm::Error ONNXModelWriter::writeMatMul(const MatMulNode *node,
-                                         GraphType &graph) {
+Error ONNXModelWriter::writeMatMul(const MatMulNode *node, GraphType &graph) {
   return writeMatMulKind(node, graph, reportedNodes_);
 }
 
-llvm::Error ONNXModelWriter::writeBatchMatMul(const BatchMatMulNode *node,
-                                              GraphType &graph) {
+Error ONNXModelWriter::writeBatchMatMul(const BatchMatMulNode *node,
+                                        GraphType &graph) {
   return writeMatMulKind(node, graph, reportedNodes_);
 }
 
-llvm::Error ONNXModelWriter::writeReshape(const ReshapeNode *node,
-                                          GraphType &graph) {
+Error ONNXModelWriter::writeReshape(const ReshapeNode *node, GraphType &graph) {
   // ReduceMean/ReduceSum nodes create reshape for the output.
   // Therefore check if this reshape has BatchedReduceMean/BatchedReduceAdd
   // node as input.
   const Node *input = node->getInput().getNode();
   if (llvm::dyn_cast<BatchedReduceMeanNode>(input) ||
       llvm::dyn_cast<BatchedReduceAddNode>(input)) {
-    return llvm::Error::success();
+    return Error::success();
   }
 
   auto *proto = graph.add_node();
@@ -828,8 +972,8 @@ llvm::Error ONNXModelWriter::writeReshape(const ReshapeNode *node,
   return writeAllWithNode("Reshape", node, proto);
 }
 
-llvm::Error ONNXModelWriter::writeBucketize(const BucketizeNode *node,
-                                            GraphType &graph) {
+Error ONNXModelWriter::writeBucketize(const BucketizeNode *node,
+                                      GraphType &graph) {
   auto *proto = graph.add_node();
   // Add dictionary entries.
   addValueAttribute(proto, "boundaries", node->getBoundaries());
@@ -837,8 +981,8 @@ llvm::Error ONNXModelWriter::writeBucketize(const BucketizeNode *node,
   return writeAllWithNode("Bucketize", node, proto);
 }
 
-llvm::Error ONNXModelWriter::writeResizeNearest(const ResizeNearestNode *node,
-                                                GraphType &graph) {
+Error ONNXModelWriter::writeResizeNearest(const ResizeNearestNode *node,
+                                          GraphType &graph) {
   auto *proto = graph.add_node();
   // Find dictionary entries.
   addValueAttribute(proto, "height_scale", node->getHeightScale());
@@ -847,19 +991,21 @@ llvm::Error ONNXModelWriter::writeResizeNearest(const ResizeNearestNode *node,
   return writeAllWithNode(node->getName(), node, proto);
 }
 
-llvm::Error ONNXModelWriter::writeSoftMax(const SoftMaxNode *node,
-                                          GraphType &graph) {
+Error ONNXModelWriter::writeSoftMax(const SoftMaxNode *node, GraphType &graph) {
   auto *proto = graph.add_node();
   proto->set_name(node->getName());
   proto->set_op_type("Softmax");
   outputsToProto(node, proto);
   // Find input from Reshape node
   proto->add_input(node->getInput().getNode()->getName());
-  return llvm::Error::success();
+
+  // Mark selected input as visited.
+  reportedNodes_.insert(node->getSelected().getNode());
+  return Error::success();
 }
 
-llvm::Error ONNXModelWriter::writeReplaceNaN(const ReplaceNaNNode *node,
-                                             GraphType &graph) {
+Error ONNXModelWriter::writeReplaceNaN(const ReplaceNaNNode *node,
+                                       GraphType &graph) {
   auto *proto = graph.add_node();
   // Add dictionary entries.
   float value = node->getValue();
@@ -869,8 +1015,8 @@ llvm::Error ONNXModelWriter::writeReplaceNaN(const ReplaceNaNNode *node,
   return writeAllWithNode("ReplaceNaN", node, proto);
 }
 
-llvm::Error ONNXModelWriter::writeGatherRanges(const GatherRangesNode *node,
-                                               GraphType &graph) {
+Error ONNXModelWriter::writeGatherRanges(const GatherRangesNode *node,
+                                         GraphType &graph) {
   auto *proto = graph.add_node();
   // Add dictionary entries.
   addValueAttribute(proto, "maxOutputSize", node->getOutput().dims()[0]);
@@ -878,9 +1024,8 @@ llvm::Error ONNXModelWriter::writeGatherRanges(const GatherRangesNode *node,
   return writeAllWithNode("GatherRanges", node, proto);
 }
 
-llvm::Error
-ONNXModelWriter::writeSparseToDenseMask(const SparseToDenseMaskNode *node,
-                                        GraphType &graph) {
+Error ONNXModelWriter::writeSparseToDenseMask(const SparseToDenseMaskNode *node,
+                                              GraphType &graph) {
   auto *proto = graph.add_node();
   // Add dictionary entries.
   addValueAttribute(proto, "mask", node->getMask());
@@ -888,19 +1033,39 @@ ONNXModelWriter::writeSparseToDenseMask(const SparseToDenseMaskNode *node,
   return writeAllWithNode("SparseToDenseMask", node, proto);
 }
 
-llvm::Error
-ONNXModelWriter::writeAdaptiveAvgPool(const AdaptiveAvgPoolNode *node,
-                                      GraphType &graph) {
+Error ONNXModelWriter::writeAdaptiveAvgPool(const AdaptiveAvgPoolNode *node,
+                                            GraphType &graph) {
   auto *proto = graph.add_node();
 
+  // Use the output of transpose node.
+  if (!outputKindToProto(Kinded::Kind::TransposeNodeKind, node, proto)) {
+    // Apparently Result Transpose has been removed, add NCHW2NHWC Transpose.
+    writeTransposeResult(node, proto, graph);
+  }
+
+  // Add dictionary entries.
   const auto outShape = ShapeNHWC(node->getResult().dims());
   std::vector<size_t> output_size{outShape.h, outShape.w};
   addValueAttribute(proto, "output_size", llvm::makeArrayRef(output_size));
 
-  return writeAllWithNode("AdaptiveAvgPool", node, proto);
+  const Node *input = node->getInput().getNode();
+  if (const TransposeNode *TN = llvm::dyn_cast<TransposeNode>(input)) {
+    proto->add_input(TN->getInput().getNode()->getName());
+    reportedNodes_.insert(TN);
+  } else if (const ReshapeNode *RSN = llvm::dyn_cast<ReshapeNode>(input)) {
+    proto->add_input(RSN->getInput().getNode()->getName());
+    reportedNodes_.insert(RSN);
+  } else {
+    writeTransposeInput(node, input, proto, graph);
+  }
+
+  proto->set_name(node->getName());
+  proto->set_op_type("AdaptiveAvgPool");
+
+  return Error::success();
 }
 
-llvm::Error ONNXModelWriter::writeLocalResponseNormalization(
+Error ONNXModelWriter::writeLocalResponseNormalization(
     const LocalResponseNormalizationNode *node, GraphType &graph) {
   auto *proto = graph.add_node();
   proto->set_name(node->getName());
@@ -920,11 +1085,11 @@ llvm::Error ONNXModelWriter::writeLocalResponseNormalization(
   addValueAttribute(proto, "beta", node->getBeta());
   addValueAttribute(proto, "bias", node->getK());
 
-  return llvm::Error::success();
+  return Error::success();
 }
 
-llvm::Error ONNXModelWriter::writeBatchBoxCox(const BatchBoxCoxNode *node,
-                                              GraphType &graph) {
+Error ONNXModelWriter::writeBatchBoxCox(const BatchBoxCoxNode *node,
+                                        GraphType &graph) {
   auto *proto = graph.add_node();
   addValueAttribute(proto, "epsilon", node->getEpsilon());
   return writeAllWithNode("BatchBoxCox", node, proto);
@@ -933,8 +1098,7 @@ llvm::Error ONNXModelWriter::writeBatchBoxCox(const BatchBoxCoxNode *node,
 //===-----------------------------------------------------------------===//
 //                    Operators Supported by Glow only
 //===-----------------------------------------------------------------===//
-llvm::Error ONNXModelWriter::writeModulo(const ModuloNode *node,
-                                         GraphType &graph) {
+Error ONNXModelWriter::writeModulo(const ModuloNode *node, GraphType &graph) {
   auto *proto = graph.add_node();
   // Add dictionary entries.
   addValueAttribute(proto, "divisor", node->getDivisor());
@@ -946,45 +1110,61 @@ llvm::Error ONNXModelWriter::writeModulo(const ModuloNode *node,
 
 namespace {
 template <typename T>
-void writePool(const T *node, ONNX_NAMESPACE::NodeProto *proto) {
+void writePool(const T *node, const std::string &op,
+               ONNX_TRAITS::GraphProto &graph, ReportedNodes &reporter) {
+  // Loading pools creates a sandwich with Transpose nodes for Input
+  // and Result. The lowering algorithm can remove Transpose nodes and
+  // replace one set of nodes with another ones. When saving a graph to ONNX
+  // format, keep in mind that when it will be loaded again a Transpose nodes
+  // sandwich will be created again. The steps will be:
+  // Remove Transpose node for Input, if such Transpose is not
+  // found (they are supposed to be NCHW2NHWC then create a "mirror"
+  // Transpose, i.e. NHWC2NCHW for correspondent Input or/and Weights.
+  // The similar algorithm will be applied for Result. If Transpose NHWC2NCHW
+  // node is found for Result user then remove it, otherwise create a "mirror"
+  // Transpose, i.e. NCHW2NHWC.
   assert(node->getLayout() == NHWC && "can only write NHWC Pools");
+  auto *proto = graph.add_node();
+
+  // Use the output of transpose node.
+  if (!outputKindToProto(Kinded::Kind::TransposeNodeKind, node, proto)) {
+    // Apparently Result Transpose has been removed, add NCHW2NHWC Transpose.
+    writeTransposeResult(node, proto, graph);
+  }
+
   // Add dictionary entries.
   addValueAttribute(proto, "kernel_shape", node->getKernels());
   addValueAttribute(proto, "strides", node->getStrides());
   addValueAttribute(proto, "pads", node->getPads());
 
-  proto->set_name(node->getName());
-
   const Node *input = node->getInput().getNode();
   if (const TransposeNode *TN = llvm::dyn_cast<TransposeNode>(input)) {
     proto->add_input(TN->getInput().getNode()->getName());
+    reporter.insert(TN);
+  } else if (const ReshapeNode *RSN = llvm::dyn_cast<ReshapeNode>(input)) {
+    proto->add_input(RSN->getInput().getNode()->getName());
+    reporter.insert(RSN);
   } else {
-    proto->add_input(input->getName());
+    writeTransposeInput(node, input, proto, graph);
   }
 
-  // Use the output of transpose node, if any.
-  outputKindToProto(Kinded::Kind::TransposeNodeKind, node, proto);
+  proto->set_name(node->getName());
+  proto->set_op_type(op);
 }
 } // namespace
 
-llvm::Error ONNXModelWriter::writeAvgPool(const AvgPoolNode *node,
-                                          GraphType &graph) {
-  auto *proto = graph.add_node();
-  proto->set_op_type("AveragePool");
-  writePool(node, proto);
-  return llvm::Error::success();
+Error ONNXModelWriter::writeAvgPool(const AvgPoolNode *node, GraphType &graph) {
+  writePool(node, "AveragePool", graph, reportedNodes_);
+  return Error::success();
 }
 
-llvm::Error ONNXModelWriter::writeMaxPool(const MaxPoolNode *node,
-                                          GraphType &graph) {
-  auto *proto = graph.add_node();
-  proto->set_op_type("MaxPool");
-  writePool(node, proto);
-  return llvm::Error::success();
+Error ONNXModelWriter::writeMaxPool(const MaxPoolNode *node, GraphType &graph) {
+  writePool(node, "MaxPool", graph, reportedNodes_);
+  return Error::success();
 }
 
-llvm::Error ONNXModelWriter::writeConvolution3D(const Convolution3DNode *node,
-                                                GraphType &graph) {
+Error ONNXModelWriter::writeConvolution3D(const Convolution3DNode *node,
+                                          GraphType &graph) {
   auto *proto = graph.add_node();
   // Add dictionary entries.
   addValueAttribute(proto, "kernel_shape", node->getKernels());
@@ -995,8 +1175,8 @@ llvm::Error ONNXModelWriter::writeConvolution3D(const Convolution3DNode *node,
   return writeAllWithNode("Convolution3D", node, proto);
 }
 
-llvm::Error ONNXModelWriter::writeSpaceToDepth(const SpaceToDepthNode *node,
-                                               GraphType &graph) {
+Error ONNXModelWriter::writeSpaceToDepth(const SpaceToDepthNode *node,
+                                         GraphType &graph) {
   auto *proto = graph.add_node();
 
   // Find input from Transpose node
@@ -1013,12 +1193,14 @@ llvm::Error ONNXModelWriter::writeSpaceToDepth(const SpaceToDepthNode *node,
   addValueAttribute(proto, "blocksize", node->getBlockSize());
 
   // Use the output of transpose node, if any.
-  outputKindToProto(Kinded::Kind::TransposeNodeKind, node, proto);
-  return llvm::Error::success();
+  if (!outputKindToProto(Kinded::Kind::TransposeNodeKind, node, proto)) {
+    outputsToProto(node, proto);
+  }
+  return Error::success();
 }
 
-llvm::Error ONNXModelWriter::writeChannelShuffle(const ChannelShuffleNode *node,
-                                                 GraphType &graph) {
+Error ONNXModelWriter::writeChannelShuffle(const ChannelShuffleNode *node,
+                                           GraphType &graph) {
   auto *proto = graph.add_node();
   // Add dictionary entries.
   addValueAttribute(proto, "group", node->getGroup());
@@ -1027,9 +1209,8 @@ llvm::Error ONNXModelWriter::writeChannelShuffle(const ChannelShuffleNode *node,
   return writeAllWithNode("ChannelShuffle", node, proto);
 }
 
-llvm::Error
-ONNXModelWriter::writeQuantizationProfile(const QuantizationProfileNode *node,
-                                          GraphType &graph) {
+Error ONNXModelWriter::writeQuantizationProfile(
+    const QuantizationProfileNode *node, GraphType &graph) {
   auto *proto = graph.add_node();
   // Add dictionary entries.
   addValueAttribute(proto, "name", node->getProfiledNodeName());
@@ -1038,8 +1219,8 @@ ONNXModelWriter::writeQuantizationProfile(const QuantizationProfileNode *node,
   return writeAllWithNode("QuantizationProfile", node, proto);
 }
 
-llvm::Error ONNXModelWriter::writeTraceEvent(const TraceEventNode *node,
-                                             GraphType &graph) {
+Error ONNXModelWriter::writeTraceEvent(const TraceEventNode *node,
+                                       GraphType &graph) {
   auto *proto = graph.add_node();
   // Add dictionary entries.
   addValueAttribute(proto, "name", node->getEventName());
@@ -1049,8 +1230,8 @@ llvm::Error ONNXModelWriter::writeTraceEvent(const TraceEventNode *node,
   return writeAllWithNode("TraceEvent", node, proto);
 }
 
-llvm::Error ONNXModelWriter::writeInsertTensor(const InsertTensorNode *node,
-                                               GraphType &graph) {
+Error ONNXModelWriter::writeInsertTensor(const InsertTensorNode *node,
+                                         GraphType &graph) {
   auto *proto = graph.add_node();
   // Add dictionary entries.
   addValueAttribute(proto, "start", node->getStart());
@@ -1060,7 +1241,7 @@ llvm::Error ONNXModelWriter::writeInsertTensor(const InsertTensorNode *node,
   return writeAllWithNode("InsertTensor", node, proto);
 }
 
-llvm::Error ONNXModelWriter::writeChannelwiseQuantizedConvolution(
+Error ONNXModelWriter::writeChannelwiseQuantizedConvolution(
     const ChannelwiseQuantizedConvolutionNode *node, GraphType &graph) {
   auto *proto = graph.add_node();
   // Add dictionary entries.
@@ -1073,10 +1254,8 @@ llvm::Error ONNXModelWriter::writeChannelwiseQuantizedConvolution(
   return writeAllWithNode("ChannelwiseQuantizedConvolution", node, proto);
 }
 
-llvm::Error ONNXModelWriter::writeSplat(const SplatNode *node,
-                                        GraphType &graph) {
-  auto *proto = graph.add_node();
-  // Convert value to tensor with result shape
+Error ONNXModelWriter::writeSplat(const SplatNode *node, GraphType &graph) {
+  // Conversion a scalar to a tensor is required.
   Tensor tensor(ElemKind::FloatTy, node->getResult().dims());
   auto handle = tensor.getHandle<>();
   float value = node->getValue();
@@ -1084,38 +1263,43 @@ llvm::Error ONNXModelWriter::writeSplat(const SplatNode *node,
     handle.raw(b) = value;
   }
 
-  // Add dictionary entries.
-  addValueAttribute(proto, "value", tensor);
+  auto *tensorProto = graph.add_initializer();
 
-  return writeAllWithNode("Splat", node, proto);
+  findOutputNames(
+      node, [&](const std::string &name) { tensorProto->set_name(name); });
+
+  writeTensor(tensor, tensorProto);
+  reportedNodes_.insert(node);
+
+  return Error::success();
 }
 
-llvm::Error ONNXModelWriter::writeAdd(const AddNode *node, GraphType &graph) {
+Error ONNXModelWriter::writeAdd(const AddNode *node, GraphType &graph) {
   return writeArithmetic("Add", node, graph, reportedNodes_);
 }
 
-llvm::Error ONNXModelWriter::writeDiv(const DivNode *node, GraphType &graph) {
+Error ONNXModelWriter::writeDiv(const DivNode *node, GraphType &graph) {
   return writeArithmetic("Div", node, graph, reportedNodes_);
 }
 
-llvm::Error ONNXModelWriter::writeMul(const MulNode *node, GraphType &graph) {
+Error ONNXModelWriter::writeMul(const MulNode *node, GraphType &graph) {
   return writeArithmetic("Mul", node, graph, reportedNodes_);
 }
 
-llvm::Error ONNXModelWriter::writeSub(const SubNode *node, GraphType &graph) {
+Error ONNXModelWriter::writeSub(const SubNode *node, GraphType &graph) {
   return writeArithmetic("Sub", node, graph, reportedNodes_);
 }
 
 // Default exporting algorithm.
 #define DEF_ALL_WRITER_NODE(NAME)                                              \
-  llvm::Error ONNXModelWriter::write##NAME(const NAME##Node *node,             \
-                                           GraphType &graph) {                 \
+  Error ONNXModelWriter::write##NAME(const NAME##Node *node,                   \
+                                     GraphType &graph) {                       \
     return writeAll(#NAME, node, graph);                                       \
   }
 
 // ONNX nodes with default exporting algorithm.
-DEF_ALL_WRITER_NODE(Max)
 DEF_ALL_WRITER_NODE(Min)
+DEF_ALL_WRITER_NODE(Max)
 DEF_ALL_WRITER_NODE(Log)
 DEF_ALL_WRITER_NODE(Exp)
 DEF_ALL_WRITER_NODE(Relu)
@@ -1140,8 +1324,15 @@ DEF_ALL_WRITER_NODE(RowwiseQuantizedSparseLengthsWeightedSum)
 DEF_ALL_WRITER_NODE(FusedRowwiseQuantizedSparseLengthsSum)
 DEF_ALL_WRITER_NODE(FusedRowwiseQuantizedSparseLengthsWeightedSum)
 
-llvm::Error ONNXModelWriter::writeConvertTo(const ConvertToNode *node,
-                                            GraphType &graph) {
+Error ONNXModelWriter::writeClip(const ClipNode *node, GraphType &graph) {
+  auto *proto = graph.add_node();
+  addValueAttribute(proto, "min", node->getMin());
+  addValueAttribute(proto, "max", node->getMax());
+  return writeAllWithNode("Clip", node, proto);
+}
+
+Error ONNXModelWriter::writeConvertTo(const ConvertToNode *node,
+                                      GraphType &graph) {
   auto *proto = graph.add_node();
   // Add dictionary entries.
   addValueAttribute(proto, "shape", node->getResult().dims());
@@ -1149,8 +1340,7 @@ llvm::Error ONNXModelWriter::writeConvertTo(const ConvertToNode *node,
   return writeAllWithNode("ConvertTo", node, proto);
 }
 
-llvm::Error ONNXModelWriter::writeSelect(const SelectNode *node,
-                                         GraphType &graph) {
+Error ONNXModelWriter::writeSelect(const SelectNode *node, GraphType &graph) {
   auto *proto = graph.add_node();
   // Add dictionary entries.
   addValueAttribute(proto, "shape", node->getResult().dims());
@@ -1158,8 +1348,8 @@ llvm::Error ONNXModelWriter::writeSelect(const SelectNode *node,
   return writeAllWithNode("Select", node, proto);
 }
 
-llvm::Error ONNXModelWriter::writeQuantize(const QuantizeNode *node,
-                                           GraphType &graph) {
+Error ONNXModelWriter::writeQuantize(const QuantizeNode *node,
+                                     GraphType &graph) {
   auto *proto = graph.add_node();
   auto outTy = node->getResult().getType();
   // Add dictionary entries.
@@ -1169,8 +1359,8 @@ llvm::Error ONNXModelWriter::writeQuantize(const QuantizeNode *node,
   return writeAllWithNode("Quantize", node, proto);
 }
 
-llvm::Error ONNXModelWriter::writeIntLookupTable(const IntLookupTableNode *node,
-                                                 GraphType &graph) {
+Error ONNXModelWriter::writeIntLookupTable(const IntLookupTableNode *node,
+                                           GraphType &graph) {
   auto *proto = graph.add_node();
   // Add dictionary entries.
   addValueAttribute(proto, "shape", node->getResult().dims());
@@ -1188,9 +1378,8 @@ llvm::Error ONNXModelWriter::writeIntLookupTable(const IntLookupTableNode *node,
   return writeAllWithNode("IntLookupTable", node, proto);
 }
 
-llvm::Error
-ONNXModelWriter::writeLengthsRangeFill(const LengthsRangeFillNode *node,
-                                       GraphType &graph) {
+Error ONNXModelWriter::writeLengthsRangeFill(const LengthsRangeFillNode *node,
+                                             GraphType &graph) {
   auto *proto = graph.add_node();
   // Add dictionary entries.
   addValueAttribute(proto, "size", node->getResult().dims()[0]);
@@ -1198,9 +1387,8 @@ ONNXModelWriter::writeLengthsRangeFill(const LengthsRangeFillNode *node,
   return writeAllWithNode("LengthsRangeFill", node, proto);
 }
 
-llvm::Error
-ONNXModelWriter::writeRescaleQuantized(const RescaleQuantizedNode *node,
-                                       GraphType &graph) {
+Error ONNXModelWriter::writeRescaleQuantized(const RescaleQuantizedNode *node,
+                                             GraphType &graph) {
   auto *proto = graph.add_node();
   auto outTy = node->getResult().getType();
   // Add dictionary entries.
@@ -1210,8 +1398,8 @@ ONNXModelWriter::writeRescaleQuantized(const RescaleQuantizedNode *node,
   return writeAllWithNode("RescaleQuantized", node, proto);
 }
 
-llvm::Error ONNXModelWriter::writeFullyConnected(const FullyConnectedNode *node,
-                                                 GraphType &graph) {
+Error ONNXModelWriter::writeFullyConnected(const FullyConnectedNode *node,
+                                           GraphType &graph) {
   auto *proto = graph.add_node();
   proto->set_name(node->getName());
   proto->set_op_type("FCTransposed");
@@ -1228,11 +1416,11 @@ llvm::Error ONNXModelWriter::writeFullyConnected(const FullyConnectedNode *node,
   proto->add_input(node->getWeights().getNode()->getName());
   proto->add_input(node->getBias().getNode()->getName());
   outputsToProto(node, proto);
-  return llvm::Error::success();
+  return Error::success();
 }
 
-llvm::Error ONNXModelWriter::writeSparseToDense(const SparseToDenseNode *node,
-                                                GraphType &graph) {
+Error ONNXModelWriter::writeSparseToDense(const SparseToDenseNode *node,
+                                          GraphType &graph) {
   auto *proto = graph.add_node();
 
   RETURN_IF_ERR(writeAllWithNode("SparseToDense", node, proto));
@@ -1248,10 +1436,10 @@ llvm::Error ONNXModelWriter::writeSparseToDense(const SparseToDenseNode *node,
   auto *inputProto = graph.add_input();
   tensorShapeFromInput("dataToInferDim", outTy, inputProto);
   proto->add_input("dataToInferDim");
-  return llvm::Error::success();
+  return Error::success();
 }
 
-llvm::Error ONNXModelWriter::writeTile(const TileNode *node, GraphType &graph) {
+Error ONNXModelWriter::writeTile(const TileNode *node, GraphType &graph) {
   auto *proto = graph.add_node();
 
   // unwind Tile
@@ -1269,7 +1457,7 @@ llvm::Error ONNXModelWriter::writeTile(const TileNode *node, GraphType &graph) {
   auto *indices = graph.add_node();
   indices->set_name("Constant");
   indices->set_op_type("Constant");
-  indices->add_output("indices");
+  indices->add_output(tile->getName().str() + "_indices");
 
   unsigned_t numDims = tile->getInput().dims().size();
 
@@ -1285,14 +1473,14 @@ llvm::Error ONNXModelWriter::writeTile(const TileNode *node, GraphType &graph) {
   // Add Tensor type attribute.
   addValueAttribute(indices, "value", oneDimTensor);
   // Add indices as input to the Tile node
-  proto->add_input("indices");
+  proto->add_input(tile->getName().str() + "_indices");
 
-  return llvm::Error::success();
+  return Error::success();
 }
 
 // Unsupported for export Glow nodes.
 #define DEF_UNSUPPORTED_STORAGE(NAME)                                          \
-  llvm::Error ONNXModelWriter::write##NAME(const NAME *node, GraphType &) {    \
+  Error ONNXModelWriter::write##NAME(const NAME *node, GraphType &) {          \
     return writeUnexpectedKind(node);                                          \
   }
 
@@ -1303,8 +1491,7 @@ DEF_UNSUPPORTED_STORAGE(Storage)
 
 // Unsupported for export Glow nodes.
 #define DEF_UNSUPPORTED_NODE(NAME)                                             \
-  llvm::Error ONNXModelWriter::write##NAME(const NAME##Node *node,             \
-                                           GraphType &) {                      \
+  Error ONNXModelWriter::write##NAME(const NAME##Node *node, GraphType &) {    \
     return writeUnexpectedKind(node);                                          \
   }
 
@@ -1338,8 +1525,8 @@ DEF_UNSUPPORTED_NODE(AdaptiveAvgPoolGrad)
 
 #ifdef GLOW_WITH_CPU
 
-llvm::Error ONNXModelWriter::writeCPUMaxSplat(const CPUMaxSplatNode *node,
-                                              GraphType &graph) {
+Error ONNXModelWriter::writeCPUMaxSplat(const CPUMaxSplatNode *node,
+                                        GraphType &graph) {
   auto *proto = graph.add_node();
   // Add dictionary entries.
   addValueAttribute(proto, "value", node->getSplatValue());
@@ -1347,8 +1534,8 @@ llvm::Error ONNXModelWriter::writeCPUMaxSplat(const CPUMaxSplatNode *node,
   return writeAllWithNode("CPUMaxSplat", node, proto);
 }
 
-llvm::Error ONNXModelWriter::writeCPUConvDKKC8(const CPUConvDKKC8Node *node,
-                                               GraphType &graph) {
+Error ONNXModelWriter::writeCPUConvDKKC8(const CPUConvDKKC8Node *node,
+                                         GraphType &graph) {
   auto *proto = graph.add_node();
   // Add dictionary entries.
   addValueAttribute(proto, "kernel_shape", node->getKernels());
@@ -1363,9 +1550,8 @@ llvm::Error ONNXModelWriter::writeCPUConvDKKC8(const CPUConvDKKC8Node *node,
 
 #ifdef GLOW_WITH_OPENCL
 
-llvm::Error
-ONNXModelWriter::writeOCLBatchedReduceAdd(const OCLBatchedReduceAddNode *node,
-                                          GraphType &graph) {
+Error ONNXModelWriter::writeOCLBatchedReduceAdd(
+    const OCLBatchedReduceAddNode *node, GraphType &graph) {
   auto *proto = graph.add_node();
   // Add dictionary entries.
   addValueAttribute(proto, "axis", node->getAxis());
@@ -1375,4 +1561,12 @@ ONNXModelWriter::writeOCLBatchedReduceAdd(const OCLBatchedReduceAddNode *node,
 }
 
 #endif // GLOW_WITH_OPENCL
+
+#ifdef GLOW_WITH_NNPI
+Error ONNXModelWriter::writeNNPICustomDSP(glow::NNPICustomDSPNode const *,
+                                          GraphType &graph) {
+  return MAKE_ERR("Unsupported Op for ONNX");
+}
+#endif // GLOW_WITH_NNPI
+
 } // namespace glow

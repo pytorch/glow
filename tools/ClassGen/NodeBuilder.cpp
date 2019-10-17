@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2017-present, Facebook, Inc.
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -323,10 +323,12 @@ void NodeBuilder::emitPrettyPrinter(std::ostream &os) const {
     }
 
     // Make sure that inputs are properly indexed.
+    os << "  {\n";
     os << "  unsigned mIndex = 0;\n";
     os << "  for (const auto &II : get" << mem.second << "()) {\n"
        << "    db.addParam(\"" << mem.second
        << "\"+std::to_string(mIndex++), *II.getType());\n"
+       << "  }\n"
        << "  }\n";
   }
 

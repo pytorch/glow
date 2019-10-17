@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2017-present, Facebook, Inc.
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -169,7 +169,9 @@ void IRGenVisitor::post(Node *parent, Node *N) {
   case glow::Kinded::Kind::MaxPoolGradNodeKind: {
     auto *PG = cast<MaxPoolGradNode>(N);
 
+    auto poolIn = PG->getInput();
     auto poolOut = PG->getOriginalOutputForResult();
+    auto *inW = valueForNode(poolIn);
     auto *outW = valueForNode(poolOut);
     auto *outG = valueForNode(PG->getGradOfOriginalOutputNamedResult());
 
@@ -181,7 +183,7 @@ void IRGenVisitor::post(Node *parent, Node *N) {
     auto *PI = cast<MaxPoolWithArgmaxInst>(nodeToInstr_[poolOut.getNode()]);
 
     builder_.createMaxPoolWithArgmaxGradInst(
-        N->getName(), outW, PI->getArgmax(), outG, inG, PG->getKernels(),
+        N->getName(), outW, inW, PI->getArgmax(), outG, inG, PG->getKernels(),
         PG->getStrides(), PG->getPads(), PG->getLayout());
     registerIR(PG->getGradOfInputNamedInput(), inG);
     break;
@@ -189,14 +191,16 @@ void IRGenVisitor::post(Node *parent, Node *N) {
   case glow::Kinded::Kind::AvgPoolGradNodeKind: {
     auto *PG = cast<AvgPoolGradNode>(N);
 
+    auto poolIn = PG->getInput();
     auto poolOut = PG->getOriginalOutputForResult();
+    auto *inW = valueForNode(poolIn);
     auto *outW = valueForNode(poolOut);
     auto *outG = valueForNode(PG->getGradOfOriginalOutputNamedResult());
 
     auto *inG = builder_.createAllocActivationInst("pool.outG",
                                                    PG->getInput().getType());
 
-    builder_.createAvgPoolGradInst(N->getName(), outW, outG, inG,
+    builder_.createAvgPoolGradInst(N->getName(), outW, inW, outG, inG,
                                    PG->getKernels(), PG->getStrides(),
                                    PG->getPads(), PG->getLayout());
     registerIR(PG->getGradOfInputNamedInput(), inG);
@@ -451,7 +455,7 @@ void IRFunction::generateIR(const Backend &B) {
 
   if (!B.verify(*this)) {
     EXIT_ON_ERR(
-        MAKE_ERR(GlowErr::ErrorCode::COMPILE_UNSUPPORTED_IR_AFTER_GENERATE,
+        MAKE_ERR(ErrorValue::ErrorCode::COMPILE_UNSUPPORTED_IR_AFTER_GENERATE,
                  "Unsupported instruction(s) found after generating IR " +
                      getName().str() + " for backend " + B.getBackendName()));
   }

@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2017-present, Facebook, Inc.
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -37,12 +37,12 @@ public:
   ///   1. Retrieves each node's Function from the provided \p module.
   ///   2. Compiles it using the provided CompilationContext \p cctx.
   ///   3. Assigns a device and calls addNetwork on the chosen device(s).
-  /// \returns a GlowErr indicating if the operation was a success.
-  llvm::Error provision(DAGListTy &networks, Module &module,
-                        CompilationContext &cctx);
+  /// \returns a Error indicating if the operation was a success.
+  Error provision(DAGListTy &networks, Module &module,
+                  CompilationContext &cctx);
 
   /// Remove stored compiledFunction.
-  llvm::Error removeFunction(llvm::StringRef name);
+  Error removeFunction(llvm::StringRef name);
 
 private:
   /// Pointer to backend used for compilation. This currently gets reset per
@@ -64,8 +64,10 @@ private:
   /// List of available DeviceManagers added during initialization.
   std::vector<DeviceManager *> devices_;
 
-  /// Helper function to cleanup a failed provision call.
-  void cleanupProvision(llvm::ArrayRef<std::string> names);
+  /// Helper function to cleanup a provision call. On a success free resources
+  /// that are no longer needed by the compiledFunctions. On failure free the
+  /// compiledFunctions that were created.
+  void cleanupProvision(llvm::ArrayRef<std::string> names, bool failure = true);
 };
 } // namespace runtime
 } // namespace glow

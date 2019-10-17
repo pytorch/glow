@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2017-present, Facebook, Inc.
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -295,6 +295,8 @@ void glow::dumpAsciiImpl(const Tensor *T, llvm::raw_ostream &os) {
     return dumpAsciiGenericImpl(T->getHandle<uint8_t>(), os);
   case ElemKind::UInt8FusedFP16QTy:
     return dumpAsciiGenericImpl(T->getHandle<uint8_t>(), os);
+  case ElemKind::UInt4FusedFP16QTy:
+    return dumpAsciiGenericImpl(T->getHandle<uint8_t>(), os);
   case ElemKind::BoolTy:
     return dumpAsciiGenericImpl(T->getHandle<bool>(), os);
   }
@@ -324,6 +326,8 @@ void glow::dumpImpl(const Tensor *T, llvm::raw_ostream &os,
   case ElemKind::UInt8FusedQTy:
     return dumpGenericImpl(T->getHandle<uint8_t>(), os, maxNumElem);
   case ElemKind::UInt8FusedFP16QTy:
+    return dumpGenericImpl(T->getHandle<uint8_t>(), os, maxNumElem);
+  case ElemKind::UInt4FusedFP16QTy:
     return dumpGenericImpl(T->getHandle<uint8_t>(), os, maxNumElem);
   case ElemKind::BoolTy:
     return dumpGenericImpl(T->getHandle<bool>(), os, maxNumElem);
@@ -448,6 +452,9 @@ void glow::genericTranspose(const Tensor *src, Tensor *dest,
   case ElemKind::UInt8FusedFP16QTy: {
     llvm_unreachable("Transposing UInt8FusedFP16QTy is unsupported.");
   }
+  case ElemKind::UInt4FusedFP16QTy: {
+    llvm_unreachable("Transposing UInt4FusedFP16QTy is unsupported.");
+  }
   case ElemKind::BoolTy: {
     auto srcH = src->getHandle<bool>();
     auto destH = dest->getHandle<bool>();
@@ -524,6 +531,7 @@ void Tensor::init(InitKind init, float val, PseudoRNG &PRNG) {
   }
       FUSED_CASE(UInt8FusedQTy, float);
       FUSED_CASE(UInt8FusedFP16QTy, float16_t);
+      FUSED_CASE(UInt4FusedFP16QTy, float16_t);
 #undef FUSED_CASE
 
     case ElemKind::BoolTy: {
@@ -591,28 +599,15 @@ Tensor Tensor::getCopyConvertedToType(ElemKind newKind) const {
              {dims()[0], dims()[1] - 2 * (sizeof(float) - sizeof(float16_t))},
              1.0, 0);
 
-  const size_t srcWidth = dims()[1];
   const size_t dstWidth = tmp.dims()[1];
-  auto *srcData = reinterpret_cast<uint8_t *>(getUnsafePtr());
-  auto *dstData = reinterpret_cast<uint8_t *>(tmp.getUnsafePtr());
   auto srcH = getHandle<uint8_t>();
   auto dstH = tmp.getHandle<uint8_t>();
   for (size_t i = 0, e = dims()[0]; i < e; i++) {
-    // Get the src's scale/offset for the row.
-    uint8_t *srcScaleOffsetPtr =
-        &srcData[(i + 1) * srcWidth] - 2 * sizeof(float);
-    float srcScale, srcOffset;
-    memcpy(&srcScale, srcScaleOffsetPtr, sizeof(float));
-    memcpy(&srcOffset, srcScaleOffsetPtr + sizeof(float), sizeof(float));
-
-    // Convert scale/offset to FP16 and copy only those to dst.
-    float16_t dstScale = static_cast<float16_t>(srcScale);
-    float16_t dstOffset = static_cast<float16_t>(srcOffset);
-    uint8_t *dstScaleOffsetPtr =
-        &dstData[(i + 1) * dstWidth] - 2 * sizeof(float16_t);
-    memcpy(dstScaleOffsetPtr, &dstScale, sizeof(float16_t));
-    memcpy(dstScaleOffsetPtr + sizeof(float16_t), &dstOffset,
-           sizeof(float16_t));
+    // Copy the scale/offset from src to dst.
+    float scale, offset;
+    std::tie(scale, offset) = srcH.getFusedScaleOffsetFromRow<float>(i);
+    dstH.setFusedScaleOffsetInRow<float16_t>(i, static_cast<float16_t>(scale),
+                                             static_cast<float16_t>(offset));
 
     // Copy over the row's uint8 data from src to dst; scales and offsets were
     // already copied over above.

@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2017-present, Facebook, Inc.
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -32,9 +32,9 @@ using namespace glow;
 using namespace glow::runtime;
 
 #if (GLOW_WITH_OPENCL)
-std::array<std::string, 3> supportedBackends{"CPU", "Interpreter", "OpenCL"};
+std::array<std::string, 3> supportedBackends{{"CPU", "Interpreter", "OpenCL"}};
 #else
-std::array<std::string, 2> supportedBackends{"CPU", "Interpreter"};
+std::array<std::string, 2> supportedBackends{{"CPU", "Interpreter"}};
 #endif
 
 namespace {
@@ -90,18 +90,16 @@ std::future<void> addToDevice(unsigned int id, DeviceManager *device,
   auto compilePromise = std::make_shared<std::promise<void>>();
   auto future = compilePromise->get_future();
 
-  device->addNetwork(&module, functions,
-                     [compilePromise, id](const Module *, llvm::Error err) {
-                       if (err) {
-                         llvm::errs() << "Failed to compile model for device "
-                                      << id << ".\n";
-                         EXIT_ON_ERR(std::move(err));
-                       } else {
-                         llvm::outs()
-                             << "Successfully added to Device " << id << ".\n";
-                       }
-                       compilePromise->set_value();
-                     });
+  device->addNetwork(
+      &module, functions, [compilePromise, id](const Module *, Error err) {
+        if (err) {
+          llvm::errs() << "Failed to compile model for device " << id << ".\n";
+          EXIT_ON_ERR(std::move(err));
+        } else {
+          llvm::outs() << "Successfully added to Device " << id << ".\n";
+        }
+        compilePromise->set_value();
+      });
 
   return future;
 }
@@ -157,7 +155,7 @@ int main(int argc, char **argv) {
 
     devices[i]->runFunction(
         "resnet50", std::move(context),
-        [&promises, i](RunIdentifierTy, llvm::Error err,
+        [&promises, i](RunIdentifierTy, Error err,
                        std::unique_ptr<ExecutionContext> context) {
           EXIT_ON_ERR(std::move(err));
           promises[i].set_value(std::move(context));

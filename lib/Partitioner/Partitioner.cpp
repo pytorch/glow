@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2017-present, Facebook, Inc.
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -72,14 +72,16 @@ void Partitioner::init() {
   }
 }
 
-llvm::Error Partitioner::finalize(const DAGListTy &partitions,
-                                  const NodeToFunctionMap &mapping) {
+Error Partitioner::finalize(const DAGListTy &partitions,
+                            const NodeToFunctionMap &mapping) {
 
   // Validate the functions after partitioning.
   for (Function *subF : module_->getFunctions()) {
-    RETURN_ERR_IF_NOT(subF->verify(),
-                      strFormat("Conversion led to invalid function: %s",
-                                subF->getName().str().data()));
+    if (!subF->verify()) {
+      return MAKE_ERR(ErrorValue::ErrorCode::PARTITIONER_ERROR,
+                      "Conversion led to invalid function " +
+                          subF->getName().str());
+    }
   }
 
   if (logPartition) {
@@ -94,14 +96,16 @@ llvm::Error Partitioner::finalize(const DAGListTy &partitions,
   if (dumpPartition) {
     for (const auto &node : partitions[0].nodes) {
       Function *subF = module_->getFunction(node->name);
-      RETURN_ERR_IF_NOT(
-          subF, strFormat("Invalid function name %s.", node->name.data()));
+      if (!subF) {
+        return MAKE_ERR(ErrorValue::ErrorCode::PARTITIONER_ERROR,
+                        "Invalid function name " + node->name);
+      }
       subF->dumpDAG("partitionLogicalID" +
                     std::to_string(node->logicalDevices[0]) + "__" +
                     subF->getName().str() + "__" + node->backendName + ".dot");
     }
   }
-  return llvm::Error::success();
+  return Error::success();
 }
 
 Partitioner::Partitioner(Module *parent, const std::vector<DeviceInfo> &devices,
@@ -244,7 +248,7 @@ void Partitioner::saturateHost(unsigned logicalDeviceCount,
   }
 }
 
-llvm::Expected<DAGListTy> Partitioner::backendBasedPartition(
+Expected<DAGListTy> Partitioner::backendBasedPartition(
     FunctionToBackendNameMap &funcToBackend, Function *F,
     std::vector<Backend *> &backends, CompilationContext &cctx) {
   NodeToFunctionMap mapping;
@@ -284,8 +288,10 @@ llvm::Expected<DAGListTy> Partitioner::backendBasedPartition(
         break;
       }
     }
-    RETURN_ERR_IF_NOT(nodeToBackendName.find(&N) != nodeToBackendName.end(),
+    if (nodeToBackendName.find(&N) == nodeToBackendName.end()) {
+      return MAKE_ERR(ErrorValue::ErrorCode::PARTITIONER_ERROR,
                       "Node is not supported by any of the provided backends");
+    }
   }
 
   BFSLevel bfs = getBFSLevel(F);
@@ -390,7 +396,7 @@ void Partitioner::genBackendMap(
   }
 }
 
-llvm::Expected<DAGListTy> Partitioner::createDAGWithoutPartition(
+Expected<DAGListTy> Partitioner::createDAGWithoutPartition(
     llvm::StringRef backendName, std::map<std::string, BackendInfo> &backendMap,
     CompilationContext &cctx) {
   DAGListTy partitions;
@@ -424,14 +430,15 @@ llvm::Expected<DAGListTy> Partitioner::createDAGWithoutPartition(
   return std::move(partitions);
 }
 
-llvm::Expected<DAGListTy>
-Partitioner::loadBalancedPartition(CompilationContext &cctx,
-                                   size_t numDevices) {
-  RETURN_ERR_IF_NOT(
-      module_->getFunctions().size() == 1,
-      strFormat("Invalid : %lu functions in a module. Now in load-balanced "
-                "partition flow, the module can only contain 1 function",
-                module_->getFunctions().size()));
+Expected<DAGListTy> Partitioner::loadBalancedPartition(CompilationContext &cctx,
+                                                       size_t numDevices) {
+  if (module_->getFunctions().size() != 1) {
+    return MAKE_ERR(
+        ErrorValue::ErrorCode::PARTITIONER_ERROR,
+        strFormat("Invalid : %lu functions in a module. Now in load-balanced "
+                  "partition flow, the module can only contain 1 function",
+                  module_->getFunctions().size()));
+  }
 
   if (multiBackendNames_) {
     VLOG(1) << "For multi backend types, load-balanced partition can't be "
@@ -570,8 +577,10 @@ Partitioner::loadBalancedPartition(CompilationContext &cctx,
       }
 
       // Throw error if we were not able to put this node into any partition
-      RETURN_ERR_IF_NOT(curPartition < numDevices,
+      if (curPartition >= numDevices) {
+        return MAKE_ERR(ErrorValue::ErrorCode::PARTITIONER_ERROR,
                         "Load balance partition error");
+      }
     }
   }
   for (size_t i = 0; i < numDevices; i++) {
@@ -597,16 +606,18 @@ Partitioner::loadBalancedPartition(CompilationContext &cctx,
   return std::move(partitions);
 }
 
-llvm::Expected<DAGListTy>
+Expected<DAGListTy>
 Partitioner::quantizationProfilingPartition(CompilationContext &cctx) {
   // For quantization profiling flow, currently we assume there is only 1
   // function in a module.
-  RETURN_ERR_IF_NOT(
-      module_->getFunctions().size() == 1,
-      strFormat(
-          "Invalid : %lu functions in a module. In quantization profiling "
-          "partition flow, the module can only contain 1 function",
-          module_->getFunctions().size()));
+  if (module_->getFunctions().size() != 1) {
+    return MAKE_ERR(
+        ErrorValue::ErrorCode::PARTITIONER_ERROR,
+        strFormat(
+            "Invalid : %lu functions in a module. In quantization profiling "
+            "partition flow, the module can only contain 1 function",
+            module_->getFunctions().size()));
+  }
 
   // Quantization profiling flow is run under CPU backend, so we don't really
   // need the concrete partition. The backendBasedPartition is necessary since
@@ -635,7 +646,7 @@ Partitioner::quantizationProfilingPartition(CompilationContext &cctx) {
   return std::move(partitions);
 }
 
-llvm::Expected<DAGListTy>
+Expected<DAGListTy>
 Partitioner::heterogeneousPartition(CompilationContext &cctx) {
   DAGListTy partitions;
   // Prepare the mapping between BackendName and BackendInfo.
@@ -668,19 +679,24 @@ Partitioner::heterogeneousPartition(CompilationContext &cctx) {
     }
     // NOTE: the following error detection will be removed once multi-functions
     // in a module is supported.
-    RETURN_ERR_IF_NOT(
-        module_->getFunctions().size() == 1,
-        strFormat("Invalid : %lu functions in a module. Now in heterogeneous "
-                  "partition flow, the module can only contain 1 function",
-                  module_->getFunctions().size()));
+    if (module_->getFunctions().size() != 1) {
+      return MAKE_ERR(
+          ErrorValue::ErrorCode::PARTITIONER_ERROR,
+          strFormat("Invalid : %lu functions in a module. Now in heterogeneous "
+                    "partition flow, the module can only contain 1 function",
+                    module_->getFunctions().size()));
+    }
   } else {
     // NOTE: the following error detection will be removed once multi-functions
     // in a module is supported.
-    RETURN_ERR_IF_NOT(
-        module_->getFunctions().size() == 1,
-        strFormat("Invalid : %lu functions in a module. Now in heterogeneous "
-                  "partition flow, the module can only contain 1 function",
-                  module_->getFunctions().size()));
+    if (module_->getFunctions().size() != 1) {
+      return MAKE_ERR(
+          ErrorValue::ErrorCode::PARTITIONER_ERROR,
+          strFormat(
+              "Invalid : %lu functions in a module. Now in heterogeneous partition\
+ flow, the module can only contain 1 function",
+              module_->getFunctions().size()));
+    }
     ASSIGN_VALUE_OR_RETURN_ERR(
         partitions, backendBasedPartition(funcToBackend, F_, backends, cctx));
     module_->eraseFunction(F_);
@@ -743,15 +759,18 @@ Partitioner::heterogeneousPartition(CompilationContext &cctx) {
   return std::move(partitions);
 }
 
-llvm::Expected<DAGListTy>
+Expected<DAGListTy>
 Partitioner::partitionFromConfig(const PartitionConfig &partitionConfig) {
   DAGListTy partitions;
   // Prepare the mapping between BackendName and BackendInfo.
   std::vector<Backend *> backends;
   genBackendMap(backendMap_, backendHolder, backends);
   Function *F = module_->getFunction(partitionConfig.funcName);
-  RETURN_ERR_IF_NOT(F, strFormat("Can't find function %s in current module.",
-                                 F->getName().str().data()));
+  if (!F) {
+    return MAKE_ERR(ErrorValue::ErrorCode::PARTITIONER_ERROR,
+                    strFormat("Can't find function %s in current module.",
+                              F->getName().str().data()));
+  }
 
   DCHECK(
       partitionConfig.numOfPartitions == partitionConfig.backendNames.size() &&
@@ -835,7 +854,7 @@ Partitioner::partitionFromConfig(const PartitionConfig &partitionConfig) {
   return std::move(partitions);
 }
 
-llvm::Expected<DAGListTy> Partitioner::partition(CompilationContext &cctx) {
+Expected<DAGListTy> Partitioner::partition(CompilationContext &cctx) {
   if (partitionConfig_.enabled()) {
     // Call user-defined partition flow.
     return partitionFromConfig(partitionConfig_);

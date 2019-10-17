@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2017-present, Facebook, Inc.
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -880,6 +880,10 @@ bool ChannelShuffleNode::verify() const {
 bool SplatNode::verify() const { return true; }
 
 bool TraceEventNode::verify() const { return true; }
+
+bool ClipNode::verify() const {
+  return checkSameType(getInput(), getResult(), this);
+}
 
 bool InsertTensorNode::verify() const {
   auto dest = getBig();

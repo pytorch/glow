@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2017-present, Facebook, Inc.
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -30,7 +30,7 @@ public:
 
   /// Decompose each function in a module. \p cctx is used in function
   /// optimization. \returns the partition result.
-  virtual llvm::Expected<DAGListTy> partition(CompilationContext &cctx) = 0;
+  virtual Expected<DAGListTy> partition(CompilationContext &cctx) = 0;
 
   /// Dump the partition result \p partitions to a dot file with name \p
   /// dotFilename. Since now all functions belong to a function family and they

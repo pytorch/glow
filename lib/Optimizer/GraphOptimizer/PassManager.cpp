@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2017-present, Facebook, Inc.
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -179,6 +179,7 @@ FunctionPassManager::createFunctionPass(FunctionPassID passID) {
     return llvm::make_unique<PASS_NAME>();
 #include "glow/Optimizer/GraphOptimizer/FunctionPasses.def"
   }
+  LOG(DFATAL) << "Cannot reach here.";
 }
 
 bool FunctionPassManager::runPass(const FunctionPassConfig &passConfig,

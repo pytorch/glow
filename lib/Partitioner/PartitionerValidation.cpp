@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2017-present, Facebook, Inc.
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,10 +15,12 @@
  */
 #include "glow/Partitioner/PartitionerValidation.h"
 
+#include "llvm/Support/FormatVariadic.h"
+
 namespace glow {
-llvm::Error
-logicalDevicesValidation(const NodeToFunctionMap &partitions,
-                         const std::map<std::string, BackendInfo> &backendMap) {
+Error logicalDevicesValidation(
+    const NodeToFunctionMap &partitions,
+    const std::map<std::string, BackendInfo> &backendMap) {
   std::map<std::string, std::set<DeviceIDTy>> partitionsNum;
   for (auto &func : partitions.getPartitions()) {
     auto backendName = partitions.getPartitionBackendName(func);
@@ -38,12 +40,12 @@ logicalDevicesValidation(const NodeToFunctionMap &partitions,
                       partitionsNum[backendName].size())
             .str());
   }
-  return llvm::Error::success();
+  return Error::success();
 }
 
-llvm::Error
-memoryUsageValidation(const NodeToFunctionMap &partitions,
-                      const std::map<std::string, BackendInfo> &backendMap) {
+Error memoryUsageValidation(
+    const NodeToFunctionMap &partitions,
+    const std::map<std::string, BackendInfo> &backendMap) {
   for (auto &func : partitions.getPartitions()) {
     auto backendName = partitions.getPartitionBackendName(func);
     auto usedMemSize = partitions.getGraphMemInfo(func).getTotalMemSize();
@@ -56,7 +58,7 @@ memoryUsageValidation(const NodeToFunctionMap &partitions,
             usedMemSize, availableMemSize, backendName)
             .str());
   }
-  return llvm::Error::success();
+  return Error::success();
 }
 
 /// \returns true if \p node contains no cycles. \p path contains the nodes in a
@@ -83,7 +85,7 @@ static bool isDAG(DAGNode *node, llvm::SmallSet<DAGNode *, 10> &path,
   return true;
 }
 
-llvm::Error dagValidation(const DAG &dag) {
+Error dagValidation(const DAG &dag) {
   auto *root = dag.root.get();
   llvm::SmallSet<DAGNode *, 10> path;
   llvm::SmallSet<DAGNode *, 10> visited;
@@ -98,6 +100,6 @@ llvm::Error dagValidation(const DAG &dag) {
   // There should not be isolated nodes in partitions.
   RETURN_ERR_IF_NOT((visited.size() == dag.nodes.size() + 1),
                     "Invalid partition: isolated node is detected.");
-  return llvm::Error::success();
+  return Error::success();
 }
 } // namespace glow

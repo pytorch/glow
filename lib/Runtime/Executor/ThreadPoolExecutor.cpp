@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2017-present, Facebook, Inc.
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -79,7 +79,7 @@ void ThreadPoolExecutor::run(const DAGNode *root,
   // Don't process new requests if the executor is shutting down.
   if (shuttingDown_) {
     cb(runId,
-       MAKE_ERR(GlowErr::ErrorCode::RUNTIME_REQUEST_REFUSED,
+       MAKE_ERR(ErrorValue::ErrorCode::RUNTIME_REQUEST_REFUSED,
                 "ThreadPoolExecutor is shutting down"),
        std::move(context));
     return;
@@ -88,7 +88,7 @@ void ThreadPoolExecutor::run(const DAGNode *root,
   // If list of roots is empty, there is nothing to do. Give back the
   // bindings so the caller can reuse it.
   if (!root) {
-    cb(runId, llvm::Error::success(), std::move(context));
+    cb(runId, Error::success(), std::move(context));
     return;
   }
 
@@ -134,7 +134,7 @@ void ThreadPoolExecutor::executeDAGNode(
   if (deviceManagerIt == deviceManagers_.end()) {
     // Mark the node as no longer executing.
     executionState->getErrorContainer().set(
-        MAKE_ERR(GlowErr::ErrorCode::RUNTIME_DEVICE_NOT_FOUND,
+        MAKE_ERR(ErrorValue::ErrorCode::RUNTIME_DEVICE_NOT_FOUND,
                  "Cannot find the DeviceManager specified."));
     executionState->decrementInflightNodes();
     inflightBarrier_.decrement();
@@ -151,7 +151,7 @@ void ThreadPoolExecutor::executeDAGNode(
   deviceManager->runFunction(
       node->name, std::move(nodeCtx),
       [this, executionState,
-       node](RunIdentifierTy id, llvm::Error err,
+       node](RunIdentifierTy id, Error err,
              std::unique_ptr<ExecutionContext> resultCtx) {
         // Immediately move the handling of the result onto this run's executor
         // to avoid doing work on the DeviceManager thread.
@@ -165,7 +165,7 @@ void ThreadPoolExecutor::executeDAGNode(
 }
 
 void ThreadPoolExecutor::handleDeviceManagerResult(
-    std::shared_ptr<ExecutionState> executionState, llvm::Error err,
+    std::shared_ptr<ExecutionState> executionState, Error err,
     std::unique_ptr<ExecutionContext> ctx, const DAGNode *node) {
 
   // If executionState is null, that means that the object was deleted
