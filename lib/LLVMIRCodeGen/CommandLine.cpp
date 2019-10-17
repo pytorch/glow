@@ -18,20 +18,25 @@
 
 llvm::cl::OptionCategory &getLLVMBackendCat() {
   static llvm::cl::OptionCategory cpuBackendCat("Glow CPU Backend Options");
-
   return cpuBackendCat;
 }
 
 llvm::cl::opt<std::string> llvmTarget("target",
                                       llvm::cl::desc("LLVM target to be used"));
+
 llvm::cl::opt<std::string>
     llvmArch("march", llvm::cl::desc("LLVM architecture to be used"));
+
 llvm::cl::opt<std::string> llvmCPU("mcpu",
                                    llvm::cl::desc("LLVM CPU to be used"));
+
 llvm::cl::list<std::string>
     llvmTargetFeatures("target-feature",
                        llvm::cl::desc("LLVM target/CPU features to be used"),
                        llvm::cl::CommaSeparated, llvm::cl::ZeroOrMore);
+
+llvm::cl::alias llvmMAttr("mattr", llvm::cl::desc("Alias for -target-feature"),
+                          llvm::cl::aliasopt(llvmTargetFeatures));
 
 llvm::cl::opt<std::string>
     llvmCompiler("llvm-compiler",
@@ -42,3 +47,13 @@ llvm::cl::list<std::string> llvmCompilerOptions(
     "llvm-compiler-opt",
     llvm::cl::desc("Options to pass to the external LLVM compiler"),
     llvm::cl::ZeroOrMore);
+
+llvm::cl::opt<llvm::FloatABI::ABIType>
+    floatABI("float-abi", llvm::cl::desc("Option to set float ABI type"),
+             llvm::cl::values(clEnumValN(llvm::FloatABI::Default, "default",
+                                         "Default float ABI type"),
+                              clEnumValN(llvm::FloatABI::Soft, "soft",
+                                         "Soft float ABI (softfp)"),
+                              clEnumValN(llvm::FloatABI::Hard, "hard",
+                                         "Hard float ABI (hardfp)")),
+             llvm::cl::init(llvm::FloatABI::Default));

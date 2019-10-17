@@ -440,11 +440,12 @@ static void runInference(runtime::HostManager *hostManager, std::string name,
                          std::promise<void> &runPromise,
                          std::atomic<unsigned> &inflight,
                          std::atomic<int> &dispatched, unsigned warmUp) {
+  auto start = TraceEvent::now();
   hostManager->runNetwork(
       name, std::move(batch),
-      [&runPromise, &inflight, &dispatched, hostManager, name,
-       warmUp](runtime::RunIdentifierTy, Error err,
-               std::unique_ptr<ExecutionContext> contextPtr) {
+      [&runPromise, &inflight, &dispatched, hostManager, name, warmUp,
+       start](runtime::RunIdentifierTy, Error err,
+              std::unique_ptr<ExecutionContext> contextPtr) {
         EXIT_ON_ERR(std::move(err));
         if (!tracePath.empty()) {
           if (!warmUp) {
@@ -452,6 +453,8 @@ static void runInference(runtime::HostManager *hostManager, std::string name,
             // Merge this run's TraceEvents into the global
             // TraceContext.
             traceContext->merge(contextPtr->getTraceContext());
+            traceContext->logCompleteTraceEvent("inference_e2e",
+                                                TraceLevel::RUNTIME, start, {});
           } else {
             contextPtr->getTraceContext()->getTraceEvents().clear();
           }

@@ -23,10 +23,10 @@ target_link_libraries(LeNetMnistBundle ${BUNDLE_OUTPUT_DIRECTORY}/lenet_mnist.o 
 add_dependencies(LeNetMnistBundle LeNetMnistBundleMain LeNetMnistBundleNet)
 
 # Quantized
-add_executable(QuantizedLeNetMnistBundle $<TARGET_OBJECTS:LeNetMnistBundleMain>)
+add_executable(QuantizedLeNetMnistBundle $<TARGET_OBJECTS:QuantizedLeNetMnistBundleMain>)
 set_target_properties(QuantizedLeNetMnistBundle PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${QUANTIZED_BUNDLE_OUTPUT_DIRECTORY})
 target_link_libraries(QuantizedLeNetMnistBundle ${QUANTIZED_BUNDLE_OUTPUT_DIRECTORY}/lenet_mnist.o png)
-add_dependencies(QuantizedLeNetMnistBundle LeNetMnistBundleMain QuantizedLeNetMnistBundleNet)
+add_dependencies(QuantizedLeNetMnistBundle QuantizedLeNetMnistBundleMain QuantizedLeNetMnistBundleNet)
 
 # Glow Bundles
 # ============
@@ -37,7 +37,7 @@ add_custom_command(
   COMMAND
     image-classifier ${IMAGES}/3_1020.png -g -i=0to1
     -m=${LENET_MNIST_BUNDLE_DIR}/lenet_mnist -model-input-name=${MODEL_INPUT_NAME}
-    -backend=CPU -emit-bundle ${BUNDLE_OUTPUT_DIRECTORY}
+    -backend=CPU -emit-bundle ${BUNDLE_OUTPUT_DIRECTORY} -bundle-api=static
   DEPENDS
     image-classifier LeNetMnistBundleDir
 )
@@ -63,7 +63,7 @@ add_custom_command(
   COMMAND
     image-classifier ${IMAGES}/3_1020.png -g -i=0to1 -load-profile=profile.yml
     -m=${LENET_MNIST_BUNDLE_DIR}/lenet_mnist -model-input-name=${MODEL_INPUT_NAME}
-    -backend=CPU -emit-bundle ${QUANTIZED_BUNDLE_OUTPUT_DIRECTORY}
+    -backend=CPU -emit-bundle ${QUANTIZED_BUNDLE_OUTPUT_DIRECTORY} -bundle-api=static
   DEPENDS
   image-classifier LeNetMnistBundleDir
 )
@@ -71,9 +71,17 @@ add_custom_target(QuantizedLeNetMnistBundleNet DEPENDS ${QUANTIZED_BUNDLE_OUTPUT
 
 # Other
 # =====
-# Driver program with main function
+# Driver program with main function for regular bundle
 add_library(LeNetMnistBundleMain OBJECT main.cpp)
 target_compile_options(LeNetMnistBundleMain PRIVATE -std=c++11 -g)
+target_include_directories(LeNetMnistBundleMain PUBLIC ${BUNDLE_OUTPUT_DIRECTORY})
+add_dependencies(LeNetMnistBundleMain LeNetMnistBundleNet)
+
+# Driver program with main function for quantized bundle
+add_library(QuantizedLeNetMnistBundleMain OBJECT main.cpp)
+target_compile_options(QuantizedLeNetMnistBundleMain PRIVATE -std=c++11 -g)
+target_include_directories(QuantizedLeNetMnistBundleMain PUBLIC ${QUANTIZED_BUNDLE_OUTPUT_DIRECTORY})
+add_dependencies(QuantizedLeNetMnistBundleMain QuantizedLeNetMnistBundleNet)
 
 # Network structure and weight files
 foreach(file ${LENET_MNIST_NET_FILES})

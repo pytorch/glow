@@ -23,10 +23,10 @@ target_link_libraries(ResNet50Bundle ${BUNDLE_OUTPUT_DIRECTORY}/resnet50.o png)
 add_dependencies(ResNet50Bundle ResNet50BundleMain ResNet50BundleNet)
 
 # Quantized
-add_executable(QuantizedResNet50Bundle $<TARGET_OBJECTS:ResNet50BundleMain>)
+add_executable(QuantizedResNet50Bundle $<TARGET_OBJECTS:QuantizedResNet50BundleMain>)
 set_target_properties(QuantizedResNet50Bundle PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${QUANTIZED_BUNDLE_OUTPUT_DIRECTORY})
 target_link_libraries(QuantizedResNet50Bundle ${QUANTIZED_BUNDLE_OUTPUT_DIRECTORY}/resnet50.o png)
-add_dependencies(QuantizedResNet50Bundle ResNet50BundleMain QuantizedResNet50BundleNet)
+add_dependencies(QuantizedResNet50Bundle QuantizedResNet50BundleMain QuantizedResNet50BundleNet)
 
 # Glow Bundles
 # ============
@@ -71,9 +71,17 @@ add_custom_target(QuantizedResNet50BundleNet DEPENDS ${QUANTIZED_BUNDLE_OUTPUT_D
 
 # Other
 # =====
-# Driver program with main function
+# Driver program with main function for regular bundle
 add_library(ResNet50BundleMain OBJECT main.cpp)
 target_compile_options(ResNet50BundleMain PRIVATE -std=c++11 -g)
+target_include_directories(ResNet50BundleMain PUBLIC ${BUNDLE_OUTPUT_DIRECTORY})
+add_dependencies(ResNet50BundleMain ResNet50BundleNet)
+
+# Driver program with main function for quantized bundle
+add_library(QuantizedResNet50BundleMain OBJECT main.cpp)
+target_compile_options(QuantizedResNet50BundleMain PRIVATE -std=c++11 -g)
+target_include_directories(QuantizedResNet50BundleMain PUBLIC ${QUANTIZED_BUNDLE_OUTPUT_DIRECTORY})
+add_dependencies(QuantizedResNet50BundleMain QuantizedResNet50BundleNet)
 
 # Network structure and weight files
 foreach(file ${RESNET50_NET_FILES})
