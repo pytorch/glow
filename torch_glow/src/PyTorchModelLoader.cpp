@@ -437,6 +437,14 @@ struct MaxPoolInputs {
   };
 };
 
+/// Indices of aten::Pow inputs.
+struct PowInputs {
+  enum {
+    input = 0,
+    exponent = 1,
+  };
+};
+
 /// Indices of aten::clamp inputs.
 struct ClampInputs {
   enum {
@@ -571,7 +579,11 @@ PyTorchModelLoader::getSymbolsMapping() {
        {{"aten::min"}, &PyTorchModelLoader::loadMin, {}},
        {{"aten::max"}, &PyTorchModelLoader::loadMax, {}},
        {{"aten::exp"}, &PyTorchModelLoader::loadExp, {}},
-       {{"aten::pow"}, &PyTorchModelLoader::loadPow, {}},
+       {{"aten::pow"},
+        &PyTorchModelLoader::loadPow,
+        {
+            PowInputs::exponent,
+        }},
        {{"aten::sqrt", "aten::sqrt_"}, &PyTorchModelLoader::loadSqrt, {}},
        {{"aten::clamp"},
         &PyTorchModelLoader::loadClamp,
@@ -1226,7 +1238,7 @@ Error PyTorchModelLoader::loadPow(const torch::jit::Node *ptNode) {
   // NB: exponent may also be a Tensor. Will support if needed.
   float exponent;
   ASSIGN_VALUE_OR_RETURN_ERR(exponent,
-    iValToDouble(getGlowIValueForValue(inputs[1])));
+                             iValToDouble(getGlowIValueForValue(inputs[1])));
 
   glow::PowNode *glowNode = F_.createPow("pow", input, exponent);
   return addValueMapping(outputs[0], glowNode->getResult());

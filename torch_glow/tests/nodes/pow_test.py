@@ -1,8 +1,6 @@
-from __future__ import absolute_import, division, print_function, unicode_literals
-
 import torch
-import torch_glow
 from tests.utils import jitVsGlow
+
 
 def test_pow_basic():
     """Test of the PyTorch pow Node on Glow."""
