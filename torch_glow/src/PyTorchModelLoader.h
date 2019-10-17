@@ -300,6 +300,10 @@ private:
   /// \returns error on failure.
   Error loadExp(const torch::jit::Node *ptNode);
 
+  /// Load a PyTorch pow node.
+  /// \returns error on failure.
+  Error loadPow(const torch::jit::Node *ptNode);
+
   /// Load a PyTorch sqrt node.
   /// \returns error on failure.
   Error loadSqrt(const torch::jit::Node *ptNode);
