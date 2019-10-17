@@ -571,6 +571,7 @@ PyTorchModelLoader::getSymbolsMapping() {
        {{"aten::min"}, &PyTorchModelLoader::loadMin, {}},
        {{"aten::max"}, &PyTorchModelLoader::loadMax, {}},
        {{"aten::exp"}, &PyTorchModelLoader::loadExp, {}},
+       {{"aten::pow"}, &PyTorchModelLoader::loadPow, {}},
        {{"aten::sqrt", "aten::sqrt_"}, &PyTorchModelLoader::loadSqrt, {}},
        {{"aten::clamp"},
         &PyTorchModelLoader::loadClamp,
@@ -1211,6 +1212,23 @@ Error PyTorchModelLoader::loadExp(const torch::jit::Node *ptNode) {
   ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
 
   glow::ExpNode *glowNode = F_.createExp("exp", input);
+  return addValueMapping(outputs[0], glowNode->getResult());
+}
+
+Error PyTorchModelLoader::loadPow(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 2, outputs, 1));
+
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
+
+  // NB: exponent may also be a Tensor. Will support if needed.
+  float exponent;
+  ASSIGN_VALUE_OR_RETURN_ERR(exponent,
+    iValToDouble(getGlowIValueForValue(inputs[1])));
+
+  glow::PowNode *glowNode = F_.createPow("pow", input, exponent);
   return addValueMapping(outputs[0], glowNode->getResult());
 }
 
