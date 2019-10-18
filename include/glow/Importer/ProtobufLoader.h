@@ -77,7 +77,7 @@ template <typename T> static Expected<std::string> loadStr(const T *arg) {
 }
 
 /// Load the 'shape' record into a vector of sizes.
-template <typename ElemTy = size_t, typename AttrType>
+template <typename ElemTy = dim_t, typename AttrType>
 std::vector<ElemTy> getShape(const AttrType *arg) {
   std::vector<ElemTy> dim;
   for (auto i : arg->ints()) {
@@ -217,7 +217,7 @@ Error constantFoldInLoader(Function *F, LoaderType &tmpLoader,
 
   // Register the constant inputs to the current op with the constant folding
   // loader.
-  for (unsigned i = 0; i < op.input_size(); i++) {
+  for (unsigned i = 0; i < (dim_t)op.input_size(); i++) {
     Constant *tmpConst = mod->getConstantByName(op.input(i));
     RETURN_ERR_IF_NOT(tmpConst, "No constant found");
     tmpLoader.nodeValueByName_[op.input(i)] = tmpConst->getOutput();

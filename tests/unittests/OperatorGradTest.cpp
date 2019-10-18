@@ -83,7 +83,7 @@ protected:
 TEST_P(OperatorGradTest, concat) {
   CHECK_IF_ENABLED();
 
-  size_t numOutputElem = 4;
+  dim_t numOutputElem = 4;
 
   auto *A = mod_.createPlaceholder(ElemKind::FloatTy, {1, numOutputElem / 2},
                                    "A", false);

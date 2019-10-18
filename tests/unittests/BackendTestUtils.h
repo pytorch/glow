@@ -295,7 +295,7 @@ void inferConvNet(Tensor *inputs, Tensor *filter, Tensor *bias, Tensor *out,
 
 void trainConvNet(Tensor *inputs, Tensor *kernel1, Tensor *bias1,
                   Tensor *kernel2, Tensor *bias2, Tensor *selected,
-                  llvm::ArrayRef<size_t> shape1, llvm::ArrayRef<size_t> shape2,
+                  llvm::ArrayRef<dim_t> shape1, llvm::ArrayRef<dim_t> shape2,
                   Tensor *out, llvm::StringRef kind);
 
 void inferLocalResponseNormalizationNet(Tensor *inputs, Tensor *out,
@@ -303,17 +303,17 @@ void inferLocalResponseNormalizationNet(Tensor *inputs, Tensor *out,
 
 void trainLocalResponseNormalizationNet(Tensor *inputs, Tensor *weights,
                                         Tensor *bias, Tensor *selected,
-                                        llvm::ArrayRef<size_t> shape1,
-                                        llvm::ArrayRef<size_t> shape2,
+                                        llvm::ArrayRef<dim_t> shape1,
+                                        llvm::ArrayRef<dim_t> shape2,
                                         Tensor *out, llvm::StringRef kind);
 void trainAvgPoolNet(Tensor *inputs, Tensor *weights, Tensor *bias,
-                     Tensor *selected, llvm::ArrayRef<size_t> shape1,
-                     llvm::ArrayRef<size_t> shape2, Tensor *out,
+                     Tensor *selected, llvm::ArrayRef<dim_t> shape1,
+                     llvm::ArrayRef<dim_t> shape2, Tensor *out,
                      llvm::StringRef kind);
 
 void trainMaxPoolNet(Tensor *inputs, Tensor *weights, Tensor *bias,
-                     Tensor *selected, llvm::ArrayRef<size_t> shape1,
-                     llvm::ArrayRef<size_t> shape2, Tensor *out,
+                     Tensor *selected, llvm::ArrayRef<dim_t> shape1,
+                     llvm::ArrayRef<dim_t> shape2, Tensor *out,
                      llvm::StringRef kind);
 
 void inferIntLookupTableNet(Tensor *input, Tensor *out,
@@ -369,7 +369,7 @@ void runOnDevice(ExecutionContext &context, llvm::StringRef name,
 /// quantization scales and offsets (i.e. the last 8 bytes of each row
 /// contains the scale and offset).
 Constant *createRandomFusedRowwiseQuantizedConstant(Module &mod,
-                                                    llvm::ArrayRef<size_t> dims,
+                                                    llvm::ArrayRef<dim_t> dims,
                                                     llvm::StringRef name,
                                                     bool useFusedFP16 = false);
 
@@ -378,7 +378,7 @@ Constant *createRandomFusedRowwiseQuantizedConstant(Module &mod,
 /// Xavier with filterSize equal to twice the number of elements in \p dims.
 /// Otherwise integer types are initialzed via their min and max values.
 Constant *createRandomizedConstant(Module &mod, TypeRef type,
-                                   llvm::ArrayRef<size_t> dims,
+                                   llvm::ArrayRef<dim_t> dims,
                                    llvm::StringRef name);
 
 /// Helper method to wrap dispatching an inference on function \p fname request

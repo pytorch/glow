@@ -185,7 +185,8 @@ void InstrBuilder::emitPrettyPrinter(std::ostream &os) const {
 
 std::string getOpElementType(const std::string &name) {
   const std::string elemKindPrefix = "ElemKind::";
-  if (name.substr(0, elemKindPrefix.size()) == elemKindPrefix) {
+  if (name == "IndexElemKind" ||
+      name.substr(0, elemKindPrefix.size()) == elemKindPrefix) {
     return name;
   }
   return "get" + name + "()->getElementType()";
@@ -445,6 +446,8 @@ InstrBuilder &InstrBuilder::addMember(MemberType type,
     typeInfo = &kVectorSignedTypeInfo;
   } else if (type == MemberType::VectorSizeT) {
     typeInfo = &kVectorSizeTTypeInfo;
+  } else if (type == MemberType::VectorDimT) {
+    typeInfo = &kVectorDimTTypeInfo;
   } else if (type == MemberType::VectorNodeValue) {
     typeInfo = &kVectorNodeValueTypeInfo;
   } else if (type == MemberType::Enum) {

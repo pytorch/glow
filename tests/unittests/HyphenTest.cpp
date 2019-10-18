@@ -139,11 +139,11 @@ TEST(HyphenTest, mapLetter) {
 /// Map a 6-letter window of a word to an input tensor using a one-hot encoding.
 ///
 /// The tensor must be N x 6 x 27: batch x position x letter.
-static void mapLetterWindow(const string &window, size_t idx,
+static void mapLetterWindow(const string &window, dim_t idx,
                             Handle<float> tensor) {
   EXPECT_EQ(window.size(), 6);
-  for (size_t row = 0; row < 6; row++) {
-    size_t col = mapLetter(window[row]);
+  for (dim_t row = 0; row < 6; row++) {
+    dim_t col = mapLetter(window[row]);
     tensor.at({idx, row, col}) = 1;
   }
 }
@@ -265,7 +265,7 @@ struct HyphenNetwork {
   HyphenNetwork(Module &mod, TrainingConfig &conf)
       : input_(mod.createPlaceholder(ElemKind::FloatTy, {conf.batchSize, 6, 27},
                                      "input", false)),
-        expected_(mod.createPlaceholder(ElemKind::Int64ITy, {conf.batchSize, 1},
+        expected_(mod.createPlaceholder(IndexElemKind, {conf.batchSize, 1},
                                         "expected", false)),
         infer_(mod.createFunction("infer")), result_(nullptr), train_(nullptr) {
     bindings_.allocate(input_);
@@ -286,14 +286,14 @@ struct HyphenNetwork {
   unsigned inferenceErrors(ExecutionEngine &EE, llvm::StringRef fName,
                            Tensor &inputs, const vector<bool> &hyphens,
                            TrainingConfig &TC) {
-    auto batchSize = TC.batchSize;
-    auto numSamples = inputs.dims()[0];
+    dim_t batchSize = TC.batchSize;
+    dim_t numSamples = inputs.dims()[0];
     EXPECT_LE(batchSize, numSamples);
     auto resultHandle =
         bindings_.get(bindings_.getPlaceholderByName("result"))->getHandle<>();
     unsigned errors = 0;
 
-    for (size_t bi = 0; bi < numSamples; bi += batchSize) {
+    for (dim_t bi = 0; bi < numSamples; bi += batchSize) {
       // Get a batch-sized slice of inputs and run them through the inference
       // function. Do a bit of overlapping if the batch size doesn't divide the
       // number of samples.
@@ -305,7 +305,7 @@ struct HyphenNetwork {
       EE.run(bindings_, fName);
 
       // Check each output in the batch.
-      for (size_t i = 0; i != batchSize; i++) {
+      for (dim_t i = 0; i != batchSize; i++) {
         // Note that the two softmax outputs always sum to 1, so we only look at
         // one.
         float value = resultHandle.at({i, 1});
@@ -345,11 +345,11 @@ TEST(HyphenTest, network) {
 
   // Convert words and hyphens to a tensor representation.
   Tensor inputs(ElemKind::FloatTy, {numSamples, 6, 27});
-  Tensor expected(ElemKind::Int64ITy, {numSamples, 1});
+  Tensor expected(IndexElemKind, {numSamples, 1});
   inputs.zero();
   auto inputHandle = inputs.getHandle<float>();
-  auto expectedHandle = expected.getHandle<int64_t>();
-  for (size_t i = 0; i != numSamples; i++) {
+  auto expectedHandle = expected.getHandle<sdim_t>();
+  for (dim_t i = 0; i != numSamples; i++) {
     mapLetterWindow(words[i], i, inputHandle);
     expectedHandle.at({i, 0}) = hyphens[i];
   }

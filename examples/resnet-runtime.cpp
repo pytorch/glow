@@ -147,7 +147,7 @@ int main(int argc, char **argv) {
 
   // Load model, create a context, and add to HostManager.
 
-  std::vector<size_t> inputShape{1, 3, 224, 224};
+  std::vector<dim_t> inputShape{1, 3, 224, 224};
 
   Placeholder *input;
   PlaceholderList phList;

@@ -33,7 +33,7 @@ HookedFunction glow::hookOutput(Function *F, Node *node) {
   std::list<Placeholder *> placeholders;
 
   for (unsigned i = 0; i < hooked->getNumResults(); ++i) {
-    auto *save = newF->createSave(llvm::formatv("hook_save_{}", i).str(),
+    auto *save = newF->createSave(llvm::formatv("hook_save_{0}", i).str(),
                                   hooked->getNthResult(i));
     saves.emplace_back(save);
     placeholders.emplace_back(save->getPlaceholder());

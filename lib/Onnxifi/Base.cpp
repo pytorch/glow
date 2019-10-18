@@ -164,7 +164,7 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
 
     auto &inPhPtr = inPhIt->getValue();
 
-    std::vector<size_t> inOnnxTensorDims(inOnnxTensor.dimensions);
+    std::vector<dim_t> inOnnxTensorDims(inOnnxTensor.dimensions);
     size_t inOnnxTensorSize = 1;
     for (unsigned j = 0; j < inOnnxTensor.dimensions; ++j) {
       inOnnxTensorDims[j] = inOnnxTensor.shape[j];
@@ -275,8 +275,8 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
     auto &outPhPtr = outPhIt->getValue();
 
     // Compute the total size of the onnxifi tensor.
-    std::vector<size_t> outOnnxTensorDims(outOnnxTensor.dimensions);
-    size_t outOnnxTensorSize = 1;
+    std::vector<dim_t> outOnnxTensorDims(outOnnxTensor.dimensions);
+    dim_t outOnnxTensorSize = 1;
     for (unsigned j = 0; j < outOnnxTensor.dimensions; ++j) {
       outOnnxTensorDims[j] = outOnnxTensor.shape[j];
       outOnnxTensorSize *= outOnnxTensorDims[j];

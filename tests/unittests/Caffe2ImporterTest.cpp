@@ -26,7 +26,7 @@
 using namespace glow;
 /// Test loading of Elementwise Unary Ops floating point.
 static void testEltwiseUnaryOpFloat(std::string fileName,
-                                    llvm::ArrayRef<size_t> inputShape,
+                                    llvm::ArrayRef<dim_t> inputShape,
                                     std::string input_name, float delta,
                                     const std::function<float(float)> &op) {
   ExecutionEngine EE{};
@@ -96,7 +96,7 @@ TEST(caffe2, importConv) {
 
   EE.run(bindings);
   auto result = res->getHandle();
-  std::vector<size_t> expectedDims = {1, 1, 4, 4};
+  std::vector<dim_t> expectedDims = {1, 1, 4, 4};
   std::vector<float> expectedValues = {2,  3,  5,  4,  5, 10, 14, 9,
                                        11, 22, 26, 15, 8, 15, 17, 10};
   EXPECT_TRUE(result.dims().vec() == expectedDims);
@@ -155,7 +155,7 @@ TEST(caffe2, importConvRelu) {
 
   EE.run(bindings);
   auto result = res->getHandle();
-  std::vector<size_t> expectedDims = {1, 1, 4, 4};
+  std::vector<dim_t> expectedDims = {1, 1, 4, 4};
   std::vector<float> expectedValues = {2,  3,  5,  4,  5, 10, 14, 9,
                                        11, 22, 26, 15, 8, 15, 17, 10};
   EXPECT_TRUE(result.dims().vec() == expectedDims);
@@ -527,7 +527,7 @@ TEST(caffe2, concatAddAxis) {
   }
 
   // Check that the shape of the output matches what Caffe2 expects.
-  std::vector<size_t> expectedDims = {10, 3, 7};
+  std::vector<dim_t> expectedDims = {10, 3, 7};
   EXPECT_TRUE(output->dims().vec() == expectedDims);
 
   auto res = bindings.get(output);
@@ -555,12 +555,12 @@ TEST(caffe2, concatAddAxis) {
   // Check that the output matches the concatenation of
   // all the inputs.
   Tensor *inputs[] = {&inputs_0, &inputs_1, &inputs_2};
-  for (size_t i = 0; i < 3; ++i) {
+  for (dim_t i = 0; i < 3; ++i) {
     const auto inputsHandle = inputs[i]->getHandle();
     ASSERT_TRUE(llvm::isa<Placeholder>(concat->getInputs()[i]));
 
-    for (size_t row = 0; row < 10; ++row) {
-      for (size_t column = 0; column < 7; ++column) {
+    for (dim_t row = 0; row < 10; ++row) {
+      for (dim_t column = 0; column < 7; ++column) {
         EXPECT_FLOAT_EQ(result.at({row, i, column}),
                         inputsHandle.at({row, column}));
       }
@@ -603,7 +603,7 @@ TEST(caffe2, concat) {
   }
 
   // Check that the shape of the output matches what Caffe2 expects.
-  std::vector<size_t> expectedDims = {10, 24};
+  std::vector<dim_t> expectedDims = {10, 24};
   EXPECT_TRUE(output->dims().vec() == expectedDims);
 
   bindings.allocate(mod.getPlaceholders());
@@ -630,14 +630,14 @@ TEST(caffe2, concat) {
   // Check that the output matches the concatenation of
   // all the inputs.
   Tensor *inputs[] = {&inputs_0, &inputs_1, &inputs_2};
-  size_t columnsChecked = 0;
+  dim_t columnsChecked = 0;
   for (size_t i = 0; i < 3; ++i) {
     const auto inputsHandle = inputs[i]->getHandle();
     ASSERT_TRUE(llvm::isa<Placeholder>(concat->getInputs()[i]));
 
-    size_t currentColumnWidth = inputs[i]->dims()[1];
-    for (size_t row = 0; row < 10; ++row) {
-      for (size_t column = 0; column < currentColumnWidth; ++column) {
+    dim_t currentColumnWidth = inputs[i]->dims()[1];
+    for (dim_t row = 0; row < 10; ++row) {
+      for (dim_t column = 0; column < currentColumnWidth; ++column) {
         EXPECT_FLOAT_EQ(result.at({row, columnsChecked + column}),
                         inputsHandle.at({row, column}));
       }
@@ -672,7 +672,7 @@ TEST(caffe2, batchedMatmulRHS) {
   }
 
   // Check that the shape of the output matches what Caffe2 expects.
-  std::vector<size_t> expectedDims = {3, 10, 10};
+  std::vector<dim_t> expectedDims = {3, 10, 10};
   EXPECT_TRUE(output->dims().vec() == expectedDims);
   // High level check on the content of the graph.
   // We have 1 transpose, 1 matmul, 1 save, and 2 reshapes.
@@ -684,7 +684,7 @@ TEST(caffe2, batchedMatmulRHS) {
   auto *saveNode = getSaveNodeFromDest(output);
   auto *BMMN = llvm::dyn_cast<BatchMatMulNode>(saveNode->getInput().getNode());
   ASSERT_TRUE(BMMN);
-  const size_t batchMatmulDims[] = {3, 10, 10};
+  const dim_t batchMatmulDims[] = {3, 10, 10};
   EXPECT_EQ(BMMN->getResult().dims(), llvm::makeArrayRef(batchMatmulDims));
   EXPECT_TRUE(llvm::isa<Placeholder>(BMMN->getLHS()));
   auto *tileRHS = llvm::dyn_cast<TileNode>(BMMN->getRHS());
@@ -739,11 +739,11 @@ TEST(caffe2, parallelBatchedMatmulRHS) {
   auto *BMMN = llvm::dyn_cast<BatchMatMulNode>(saveNode->getInput());
   ASSERT_TRUE(BMMN);
 
-  const size_t lhsDims[] = {3, 10, 7};
+  const dim_t lhsDims[] = {3, 10, 7};
   EXPECT_EQ(BMMN->getLHS().dims(), llvm::makeArrayRef(lhsDims));
-  const size_t rhsDims[] = {3, 7, 10};
+  const dim_t rhsDims[] = {3, 7, 10};
   EXPECT_EQ(BMMN->getRHS().dims(), llvm::makeArrayRef(rhsDims));
-  const size_t resultDims[] = {3, 10, 10};
+  const dim_t resultDims[] = {3, 10, 10};
   EXPECT_EQ(BMMN->getResult().dims(), llvm::makeArrayRef(resultDims));
 
   // We don't actually check that the output is correct, because this
@@ -792,7 +792,7 @@ TEST(caffe2, FC) {
     const Constant *constant = mod.getConstantByName("weights__1");
     ASSERT_TRUE(constant);
     const Tensor &weights = constant->getPayload();
-    const std::vector<size_t> expectedDimensions = {3, 4};
+    const std::vector<dim_t> expectedDimensions = {3, 4};
     const std::vector<float> expectedValues = {1.0f, 4.0f, 7.0f, 10.0f, //
                                                2.0f, 5.0f, 8.0f, 11.0f, //
                                                3.0f, 6.0f, 9.0f, 12.0f};
@@ -808,7 +808,7 @@ TEST(caffe2, FC) {
     const Constant *constant = mod.getConstantByName("bias");
     ASSERT_TRUE(constant);
     const Tensor &bias = constant->getPayload();
-    const std::vector<size_t> expectedDimensions = {4};
+    const std::vector<dim_t> expectedDimensions = {4};
     const std::vector<float> expectedValues = {0.1f, 0.2f, 0.3f, 0.4f};
     EXPECT_EQ(expectedDimensions, bias.dims().vec());
     ASSERT_EQ(expectedValues.size(), bias.size());
@@ -854,7 +854,7 @@ TEST(caffe2, FCWithFlatten) {
   EXPECT_EQ(F->getNodes().size(), 4);
 
   auto finalShape = output->getType()->dims();
-  std::vector<size_t> expectedOutput{1, 1, 1, 9190};
+  std::vector<dim_t> expectedOutput{1, 1, 1, 9190};
   EXPECT_EQ(finalShape, llvm::makeArrayRef(expectedOutput));
 
   auto *saveNode = getSaveNodeFromDest(output);
@@ -914,7 +914,7 @@ TEST(caffe2, FCTransposed) {
     const Constant *constant = mod.getConstantByName("weights");
     ASSERT_TRUE(constant);
     const Tensor &weights = constant->getPayload();
-    const std::vector<size_t> expectedDimensions = {3, 4};
+    const std::vector<dim_t> expectedDimensions = {3, 4};
     const std::vector<float> expectedValues = {1.0f, 4.0f, 7.0f, 10.0f, //
                                                2.0f, 5.0f, 8.0f, 11.0f, //
                                                3.0f, 6.0f, 9.0f, 12.0f};
@@ -930,7 +930,7 @@ TEST(caffe2, FCTransposed) {
     const Constant *constant = mod.getConstantByName("bias");
     ASSERT_TRUE(constant);
     const Tensor &bias = constant->getPayload();
-    const std::vector<size_t> expectedDimensions = {4};
+    const std::vector<dim_t> expectedDimensions = {4};
     const std::vector<float> expectedValues = {0.1f, 0.2f, 0.3f, 0.4f};
     EXPECT_EQ(expectedDimensions, bias.dims().vec());
     ASSERT_EQ(expectedValues.size(), bias.size());
@@ -977,7 +977,7 @@ TEST(caffe2, FCTransposedWithFlatten) {
   EXPECT_EQ(F->getNodes().size(), 4);
 
   auto finalShape = output->getType()->dims();
-  std::vector<size_t> expectedOutput{1, 1, 1, 9190};
+  std::vector<dim_t> expectedOutput{1, 1, 1, 9190};
   EXPECT_EQ(finalShape, llvm::makeArrayRef(expectedOutput));
 
   auto *saveNode = getSaveNodeFromDest(output);
@@ -1170,7 +1170,7 @@ TEST(caffe2, replaceNaN) {
   }
 
   // Check that the shape of the output matches the input.
-  std::vector<size_t> expectedDims = {10, 10};
+  std::vector<dim_t> expectedDims = {10, 10};
   EXPECT_TRUE(output->dims().vec() == expectedDims);
 
   // High level checks on the content of the graph.
@@ -1425,7 +1425,7 @@ TEST(caffe2, Logit) {
   }
 
   // Check that the shape of the output matches what Caffe2 expects.
-  std::vector<size_t> expectedDims = {kDataSize};
+  std::vector<dim_t> expectedDims = {kDataSize};
   EXPECT_EQ(output->dims().vec(), expectedDims);
 
   // High level checks on the content of the graph.
@@ -1456,7 +1456,7 @@ TEST(caffe2, sparseToDense) {
   constexpr size_t kMaxIndex = 20;
   constexpr size_t kRows = 10;
   constexpr size_t kCols = 5;
-  Tensor indices(ElemKind::Int64ITy, {kNumIndices});
+  Tensor indices(IndexElemKind, {kNumIndices});
   Tensor values(ElemKind::FloatTy, {kNumIndices, kRows, kCols});
   Tensor dataToInferDim(ElemKind::FloatTy, {kMaxIndex, kRows, kCols});
 
@@ -1504,7 +1504,7 @@ TEST(caffe2, SparseToDenseMask) {
   Placeholder *output;
   PlaceholderBindings bindings;
 
-  Tensor indices(ElemKind::Int64ITy, {4});
+  Tensor indices(IndexElemKind, {4});
   Tensor values(ElemKind::FloatTy, {4, 10, 20, 30});
   Tensor defaultValue(ElemKind::FloatTy, {10, 20, 30});
 
@@ -1569,7 +1569,7 @@ TEST(caffe2, testNCHW2NHWC) {
 
   // Check output shape.
   auto res = bindings.get(output);
-  std::vector<size_t> expectedDims = {1, 3, 4, 2};
+  std::vector<dim_t> expectedDims = {1, 3, 4, 2};
   EXPECT_TRUE(res->getHandle<float>().dims().vec() == expectedDims);
 
   // High level check on the content of the graph. We have 1 transpose and 1
@@ -1614,7 +1614,7 @@ TEST(caffe2, lengthsSum) {
   }
 
   // Check that the shape of the output matches that of the expected output.
-  std::vector<size_t> expectedShape{5, 2, 3};
+  std::vector<dim_t> expectedShape{5, 2, 3};
   EXPECT_TRUE(output->dims().vec() == expectedShape);
 
   // High level checks on the content of the graph.
@@ -1691,7 +1691,7 @@ TEST(caffe2, gatherConstantFoldingAndReshape) {
   EE.run(bindings);
 
   auto result = bindings.get(output)->getHandle();
-  std::vector<size_t> expectedDims = {1, 4, 3, 2};
+  std::vector<dim_t> expectedDims = {1, 4, 3, 2};
   EXPECT_TRUE(result.dims().vec() == expectedDims);
 }
 /// Test loading a LengthsRangeFill op.
@@ -1769,7 +1769,7 @@ TEST(caffe2, tensorFillsTest) {
   ASSERT_TRUE(tensorStringToUInt8Fill);
 
   // All fills in fill_test_init_net.pbtxt use shape {2, 2}.
-  const std::vector<size_t> expectedDims = {2, 2};
+  const std::vector<dim_t> expectedDims = {2, 2};
   ASSERT_TRUE(tensorFillFloat->dims().equals(expectedDims));
   ASSERT_TRUE(tensorIntFill->dims().equals(expectedDims));
   ASSERT_TRUE(tensorInt64Fill->dims().equals(expectedDims));
@@ -1894,7 +1894,7 @@ TEST(caffe2, elementwiseLinear) {
   }
 
   // Check that the shape of the output matches that of the input.
-  std::vector<size_t> expectedDims = {10, 5};
+  std::vector<dim_t> expectedDims = {10, 5};
   EXPECT_TRUE(output->dims().vec() == expectedDims);
 
   // High level checks on the content of the graph.
@@ -1974,7 +1974,7 @@ TEST(caffe2, elementwiseLinearUnspecifiedAxis) {
   }
 
   // Check that the shape of the output matches that of the input.
-  std::vector<size_t> expectedDims = {5, 10};
+  std::vector<dim_t> expectedDims = {5, 10};
   EXPECT_TRUE(output->dims().vec() == expectedDims);
 
   // High level checks on the content of the graph.
@@ -2052,7 +2052,7 @@ TEST(caffe2, SparseLengthsWeightedSum8BitsRowwise) {
   Placeholder *output, *indices, *lengths;
   PlaceholderBindings bindings;
 
-  TypeRef indicesType = F->getParent()->uniqueType(ElemKind::Int64ITy, {8});
+  TypeRef indicesType = F->getParent()->uniqueType(IndexElemKind, {8});
   TypeRef lengthsType = F->getParent()->uniqueType(ElemKind::Int32ITy, {4});
 
   // Destroy the loader after the graph is loaded since the following execution
@@ -2072,7 +2072,7 @@ TEST(caffe2, SparseLengthsWeightedSum8BitsRowwise) {
   ASSERT_TRUE(indices);
   ASSERT_TRUE(lengths);
 
-  bindings.allocate(indices)->getHandle<int64_t>() = {
+  bindings.allocate(indices)->getHandle<sdim_t>() = {
       1, 0, 2, 0, 1, 2, 2, 0,
   };
   bindings.allocate(lengths)->getHandle<int32_t>() = {
@@ -2157,7 +2157,7 @@ TEST(caffe2, SparseLengthsSum8BitsRowwise) {
   Placeholder *output, *indices, *lengths;
   PlaceholderBindings bindings;
 
-  TypeRef indicesType = F->getParent()->uniqueType(ElemKind::Int64ITy, {8});
+  TypeRef indicesType = F->getParent()->uniqueType(IndexElemKind, {8});
   TypeRef lengthsType = F->getParent()->uniqueType(ElemKind::Int32ITy, {5});
 
   // Destroy the loader after the graph is loaded since the following execution
@@ -2177,7 +2177,7 @@ TEST(caffe2, SparseLengthsSum8BitsRowwise) {
   ASSERT_TRUE(indices);
   ASSERT_TRUE(lengths);
 
-  bindings.allocate(indices)->getHandle<int64_t>() = {
+  bindings.allocate(indices)->getHandle<sdim_t>() = {
       2, 0, 1, 2, 0, 0, 0, 0,
   };
   bindings.allocate(lengths)->getHandle<int32_t>() = {
@@ -2248,7 +2248,7 @@ TEST(caffe2, SparseLengthsWeightedSumFused8BitRowwise) {
   Placeholder *output, *indices, *lengths;
   PlaceholderBindings bindings;
 
-  TypeRef indicesType = F->getParent()->uniqueType(ElemKind::Int64ITy, {8});
+  TypeRef indicesType = F->getParent()->uniqueType(IndexElemKind, {8});
   TypeRef lengthsType = F->getParent()->uniqueType(ElemKind::Int32ITy, {4});
 
   // Destroy the loader after the graph is loaded since the following execution
@@ -2268,7 +2268,7 @@ TEST(caffe2, SparseLengthsWeightedSumFused8BitRowwise) {
   ASSERT_TRUE(indices);
   ASSERT_TRUE(lengths);
 
-  bindings.allocate(indices)->getHandle<int64_t>() = {
+  bindings.allocate(indices)->getHandle<sdim_t>() = {
       1, 0, 2, 0, 1, 2, 2, 0,
   };
   bindings.allocate(lengths)->getHandle<int32_t>() = {
@@ -2353,7 +2353,7 @@ TEST(caffe2, SparseLengthsSumFused8BitRowwise) {
   Placeholder *output, *indices, *lengths;
   PlaceholderBindings bindings;
 
-  TypeRef indicesType = F->getParent()->uniqueType(ElemKind::Int64ITy, {8});
+  TypeRef indicesType = F->getParent()->uniqueType(IndexElemKind, {8});
   TypeRef lengthsType = F->getParent()->uniqueType(ElemKind::Int32ITy, {5});
 
   // Destroy the loader after the graph is loaded since the following execution
@@ -2373,7 +2373,7 @@ TEST(caffe2, SparseLengthsSumFused8BitRowwise) {
   ASSERT_TRUE(indices);
   ASSERT_TRUE(lengths);
 
-  bindings.allocate(indices)->getHandle<int64_t>() = {
+  bindings.allocate(indices)->getHandle<sdim_t>() = {
       2, 0, 1, 2, 0, 0, 0, 0,
   };
   bindings.allocate(lengths)->getHandle<int32_t>() = {

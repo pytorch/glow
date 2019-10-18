@@ -74,7 +74,7 @@ namespace {
 /// proper shape and element type.
 Expected<LoadWeightResult>
 createAndSetTensorType(const caffe2::TensorProto &in) {
-  std::vector<size_t> dim;
+  std::vector<dim_t> dim;
   for (auto d : in.dims()) {
     if (d == 0) {
       RETURN_ERR("0 dimemsion is not supported");
@@ -110,7 +110,7 @@ createAndSetTensorType(const caffe2::TensorProto &in) {
 
 Expected<LoadWeightResult>
 createAndSetTensorType(const caffe2::QTensorProto &in) {
-  std::vector<size_t> dim;
+  std::vector<dim_t> dim;
   for (auto d : in.dims()) {
     if (d == 0) {
       RETURN_ERR("0 dimemsion qtensor is not supported");
@@ -122,7 +122,7 @@ createAndSetTensorType(const caffe2::QTensorProto &in) {
     RETURN_ERR("axis must be 1");
   }
 
-  size_t qparams = static_cast<size_t>(in.scales().size());
+  dim_t qparams = static_cast<dim_t>(in.scales().size());
 
   RETURN_ERR_IF_NOT(qparams > 0, "No qparams found");
 
@@ -338,7 +338,7 @@ Error Caffe2ModelLoader::loadConv(const caffe2::OperatorDef &op,
   // The structure of the conv weights is: CRSK. We take the C, which is the
   // number of filters. We use this value to calculate the size of the bias
   // if it is not specified.
-  size_t depth = w->dims()[0];
+  dim_t depth = w->dims()[0];
 
   // We expect the input to be NHWC.
   NodeValue finalIn;
@@ -354,7 +354,7 @@ Error Caffe2ModelLoader::loadConv(const caffe2::OperatorDef &op,
   ShapeNHWC idim = ShapeNHWC(finalInType->dims());
   auto outSz = calculateConvPoolOutputDims(idim.h, idim.w, kernels, strides,
                                            pads, dilation);
-  std::array<size_t, 4> outDims = {{idim.n, outSz.first, outSz.second, depth}};
+  std::array<dim_t, 4> outDims = {{idim.n, outSz.first, outSz.second, depth}};
 
   // Try to find a loaded bias constant.
   Constant *bias = nullptr;
@@ -440,7 +440,7 @@ Error Caffe2ModelLoader::loadConvQuantized(const caffe2::OperatorDef &op,
   // The structure of the conv weights is: CRSK. We take the C, which is the
   // number of filters. We use this value to calculate the size of the bias
   // if it is not specified.
-  size_t depth = w->dims()[0];
+  dim_t depth = w->dims()[0];
 
   // We expect the input to be NHWC.
   NodeValue finalIn;
@@ -456,7 +456,7 @@ Error Caffe2ModelLoader::loadConvQuantized(const caffe2::OperatorDef &op,
   ShapeNHWC idim = ShapeNHWC(finalInType->dims());
   auto outSz = calculateConvPoolOutputDims(idim.h, idim.w, kernels, strides,
                                            pads, dilation);
-  std::array<size_t, 4> outDims = {{idim.n, outSz.first, outSz.second, depth}};
+  std::array<dim_t, 4> outDims = {{idim.n, outSz.first, outSz.second, depth}};
 
   TypeRef outTy;
 
@@ -707,7 +707,7 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
       ShapeNHWC idim = ShapeNHWC(finalInType->dims());
       auto outSz =
           calculateConvPoolOutputDims(idim.h, idim.w, kernels, strides, pads);
-      std::array<size_t, 4> outDims = {
+      std::array<dim_t, 4> outDims = {
           {idim.n, outSz.first, outSz.second, idim.c}};
       if (typeName == "Int8MaxPool") {
         // Int8Maxpool output quantization should be same as the input, so
@@ -835,7 +835,7 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     if (addAxis) {
       // When add axis is used, this means we have to add a new dimension
       // before the axis, instead of merging on the axis.
-      std::vector<size_t> outputDims = inputs[0].dims();
+      std::vector<dim_t> outputDims = inputs[0].dims();
       for (const auto &input : inputs) {
         RETURN_ERR_IF_NOT(
             outputDims[channel] == input.dims()[channel],
@@ -944,12 +944,12 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     // If number of original input dims is greater than 2, expand the output
     // dims back with the same axis.
     if (axis != 1) {
-      llvm::SmallVector<size_t, max_tensor_dimensions> reshapeDims;
+      llvm::SmallVector<dim_t, max_tensor_dimensions> reshapeDims;
       size_t totalReshapeSize = 1;
       for (size_t i = 0; i < axis; ++i) {
         auto d = originalInputDims[i];
         reshapeDims.push_back(d);
-        totalReshapeSize *= static_cast<size_t>(d);
+        totalReshapeSize *= static_cast<dim_t>(d);
       }
 
       size_t finalDim = typeName == "FCTransposed" ? wDims.second : wDims.first;
@@ -1086,7 +1086,7 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     auto starts = getShape<ssize_t>(dict["starts"]);
     auto ends = getShape<ssize_t>(dict["ends"]);
 
-    std::vector<size_t> newStarts, newEnds;
+    std::vector<dim_t> newStarts, newEnds;
     RETURN_ERR_IF_NOT(starts.size() == ends.size(),
                       "Slice starts and ends must be the same size.");
     for (size_t i = 0; i < starts.size(); i++) {
@@ -1257,7 +1257,7 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
                                getNodeValueByName(op.input(lengthsIdx)));
     Constant *dataC = llvm::dyn_cast<Constant>(data);
 
-    const size_t numRows = data.dims()[0];
+    const dim_t numRows = data.dims()[0];
 
     // Make sure all the shapes make sense.
     RETURN_ERR_IF_NOT(lengths.dims().size() == 1, "lengths must be a vector.");
@@ -1312,7 +1312,7 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
       auto dataScalesH = dataScales->getHandle<float>();
       auto dataOffsetsH = dataOffsets->getHandle<float>();
       auto scalesBiasesH = scalesBiasesC->getHandle<float>();
-      for (size_t i = 0, e = numRows; i < e; i++) {
+      for (dim_t i = 0, e = numRows; i < e; i++) {
         dataScalesH.at({i}) = scalesBiasesH.at({i, 0});
         dataOffsetsH.at({i}) = scalesBiasesH.at({i, 1});
       }
@@ -1485,7 +1485,7 @@ Error Caffe2ModelLoader::loadNetwork(caffe2::NetDef &net) {
 
 /// Fills \p T with data from \p values.
 template <typename ElemTy, typename RangeTy>
-static Error fillTensor(Tensor &T, ElemKind kind, llvm::ArrayRef<size_t> dim,
+static Error fillTensor(Tensor &T, ElemKind kind, llvm::ArrayRef<dim_t> dim,
                         RangeTy values) {
   T.reset(kind, dim);
   auto TH = T.getHandle<ElemTy>();
@@ -1586,7 +1586,7 @@ Error Caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
           pos == T.size(),
           strFormat("The number of serialized values (%li) does not "
                     "match the size of the tensor (%li).",
-                    pos, T.size()));
+                    pos, (size_t)T.size()));
       RETURN_IF_ERR(createAndRegisterConstant(o, std::move(T)));
     }
     return Error::success();
@@ -1659,7 +1659,7 @@ Error Caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
           i == T.size(),
           strFormat("The number of serialized values (%li) does not "
                     "match the size of the tensor (%li).",
-                    i, T.size()));
+                    i, (size_t)T.size()));
 
       RETURN_IF_ERR(createAndRegisterConstant(o, std::move(T)));
     }
@@ -1690,7 +1690,7 @@ Error Caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
 
     // The shape is set either the shape argument, or from another input
     // tensor. Shape takes priority over input.
-    std::vector<size_t> dims;
+    std::vector<dim_t> dims;
     if (dict.count("shape")) {
       dims = getShape(dict["shape"]);
     } else {

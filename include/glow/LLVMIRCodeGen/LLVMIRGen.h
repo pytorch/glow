@@ -188,6 +188,8 @@ protected:
   llvm::Value *emitConstI1(llvm::IRBuilder<> &builder, bool val);
   /// Generates LLVM IR that materializes the constant \p val.
   llvm::Value *emitConstSizeT(llvm::IRBuilder<> &builder, size_t val);
+  /// Generates LLVM IR that materializes the constant \p val.
+  llvm::Value *emitConstDimT(llvm::IRBuilder<> &builder, dim_t val);
   /// Generates LLVM IR that materializes the constant \p val as a constant of
   /// the type specified by \p kind.
   llvm::Value *emitConst(llvm::IRBuilder<> &builder, float val,
@@ -197,6 +199,12 @@ protected:
   template <typename T>
   llvm::Value *emitConstSizeTArray(llvm::IRBuilder<> &builder,
                                    llvm::ArrayRef<T> vals);
+
+  /// Generates LLVM IR that materializes the constant array \p vals. Note that
+  /// it will cast non-dim_t types T into dim_t.
+  template <typename T>
+  llvm::Value *emitConstDimTArray(llvm::IRBuilder<> &builder,
+                                  llvm::ArrayRef<T> vals);
 
   /// Generates LLVM IR that materializes the constant array \p vals. Elements
   /// of vals have the type \p elemTy.

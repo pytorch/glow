@@ -153,7 +153,7 @@ static void encodeString(const llvm::StringRef sentence,
   }
 
   // Note: the model expects the input sentence to be in reverse order.
-  size_t i = 0;
+  dim_t i = 0;
   for (auto it = encodedWords.rbegin(); it != encodedWords.rend(); it++, i++) {
     // The batch size is 1 for inference models.
     IH.at({i, /* batchSize */ 0}) = *it;
@@ -180,9 +180,9 @@ static bool loadNextInputTranslationText(Tensor *encoderInputs) {
 /// model \p outputTokenBeamList, \p outputScoreBeamList, and \p
 /// outputPrevIndexBeamList. A translation is made up of a vector of tokens
 /// which must be converted back to words from via the destination dictionary.
-static std::vector<size_t> getBestTranslation(Tensor *outputTokenBeamList,
-                                              Tensor *outputScoreBeamList,
-                                              Tensor *outputPrevIndexBeamList) {
+static std::vector<dim_t> getBestTranslation(Tensor *outputTokenBeamList,
+                                             Tensor *outputScoreBeamList,
+                                             Tensor *outputPrevIndexBeamList) {
   // Get handles to all the outputs from the model run.
   auto tokenBeamListH = outputTokenBeamList->getHandle<int64_t>();
   auto scoreBeamListH = outputScoreBeamList->getHandle<float>();
@@ -191,18 +191,18 @@ static std::vector<size_t> getBestTranslation(Tensor *outputTokenBeamList,
   // This pair represents the ending position of a translation in the beam
   // search grid. The first index corresponds to the length (column index), the
   // second index corresponds to the position in the beam (row index).
-  std::pair<size_t, size_t> bestPosition = std::make_pair(0, 0);
+  std::pair<dim_t, dim_t> bestPosition = std::make_pair(0, 0);
   float bestScore = std::numeric_limits<float>::max();
 
   // Keep track of whether the current hypothesis of best translation has
   // already ended.
   std::vector<bool> prevHypoIsFinished(beamSizeOpt, false);
   std::vector<bool> currentHypoIsFinished(beamSizeOpt, false);
-  for (size_t lengthIndex = 0; lengthIndex < maxOutputLenOpt; ++lengthIndex) {
-    for (size_t hypoIndex = 0; hypoIndex < beamSizeOpt; ++hypoIndex) {
+  for (dim_t lengthIndex = 0; lengthIndex < maxOutputLenOpt; ++lengthIndex) {
+    for (dim_t hypoIndex = 0; hypoIndex < beamSizeOpt; ++hypoIndex) {
       // If the current hypothesis was already scored and compared to the best,
       // we can skip it and move onto the next one.
-      size_t prevIndex = prevIndexBeamListH.at({lengthIndex, hypoIndex});
+      dim_t prevIndex = prevIndexBeamListH.at({lengthIndex, hypoIndex});
       currentHypoIsFinished[hypoIndex] = prevHypoIsFinished[prevIndex];
       if (currentHypoIsFinished[hypoIndex]) {
         continue;
@@ -240,9 +240,9 @@ static std::vector<size_t> getBestTranslation(Tensor *outputTokenBeamList,
 
   // Generate the best translation given the end state. Use the previous index
   // beam list to find the next word to add to the translation.
-  std::vector<size_t> output;
-  size_t lengthIndex = bestPosition.first;
-  size_t hypoIndex = bestPosition.second;
+  std::vector<dim_t> output;
+  dim_t lengthIndex = bestPosition.first;
+  dim_t hypoIndex = bestPosition.second;
   while (lengthIndex > 0) {
     output.emplace_back(tokenBeamListH.at({lengthIndex, hypoIndex}));
     hypoIndex = prevIndexBeamListH.at({lengthIndex, hypoIndex});
@@ -267,7 +267,7 @@ static std::vector<size_t> getBestTranslation(Tensor *outputTokenBeamList,
 static void processAndPrintDecodedTranslation(Tensor *outputTokenBeamList,
                                               Tensor *outputScoreBeamList,
                                               Tensor *outputPrevIndexBeamList) {
-  std::vector<size_t> translationTokens = getBestTranslation(
+  std::vector<dim_t> translationTokens = getBestTranslation(
       outputTokenBeamList, outputScoreBeamList, outputPrevIndexBeamList);
 
   // Use the dest dictionary to convert tokens to words, and print it.

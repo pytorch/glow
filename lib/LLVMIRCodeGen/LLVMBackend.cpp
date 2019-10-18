@@ -69,7 +69,7 @@ LLVMBackend::LLVMBackend() {}
 /// Function has the following API:
 ///   void jitmain(uint8_t *baseConstantWeightVars,
 ///                uint8_t *baseInOutWeightVars,
-///                nuint8_t *baseActivations);
+///                uint8_t *baseActivations);
 void LLVMBackend::emitJitMain(LLVMIRGen &irgen) const {
   AllocationsInfo &allocationsInfo = irgen.getAllocationsInfo();
   llvm::Type *voidTy = llvm::Type::getVoidTy(irgen.getLLVMContext());

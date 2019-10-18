@@ -109,8 +109,8 @@ std::string Placeholder::getDebugDesc() const {
 static bool verifyConvFilter(const Node *parent, NodeValue filter,
                              const ShapeNHWC &idim, const ShapeNHWC &odim,
                              const ShapeHW &kdim, unsigned_t group) {
-  const size_t filterDims[] = {odim.c, kdim.height, kdim.width,
-                               idim.c / (size_t)group};
+  const dim_t filterDims[] = {odim.c, kdim.height, kdim.width,
+                              idim.c / (dim_t)group};
   return expectCompareTrue("Invalid filter dimensions",
                            filter.getType()->dims(),
                            llvm::makeArrayRef(filterDims), parent);
@@ -119,8 +119,8 @@ static bool verifyConvFilter(const Node *parent, NodeValue filter,
 static bool verifyConvFilter(const Node *parent, NodeValue filter,
                              const ShapeNCHW &idim, const ShapeNCHW &odim,
                              const ShapeHW &kdim, unsigned_t group) {
-  const size_t filterDims[] = {odim.c, idim.c / (size_t)group, kdim.height,
-                               kdim.width};
+  const dim_t filterDims[] = {odim.c, idim.c / (dim_t)group, kdim.height,
+                              kdim.width};
 
   return expectCompareTrue("Invalid filter dimensions",
                            filter.getType()->dims(),
@@ -157,12 +157,12 @@ static bool verifyConvolution(NodeValue src, NodeValue dest, NodeValue filter,
   ShapeHW kdim(kernels);
   isValid &= expectCompareTrue("buffer height too small for selected stride",
                                idim.h + pdim.top + pdim.bottom, kdim.height,
-                               parent, CompareOperatorGreaterEqual<size_t>());
+                               parent, CompareOperatorGreaterEqual<dim_t>());
   isValid &= expectCompareTrue("buffer width too small for selected stride",
                                idim.w + pdim.left + pdim.right, kdim.width,
-                               parent, CompareOperatorGreaterEqual<size_t>());
+                               parent, CompareOperatorGreaterEqual<dim_t>());
   isValid &= expectCompareTrue("channels number must be divisible by groups",
-                               idim.c % group, size_t(0), parent);
+                               idim.c % group, dim_t(0), parent);
 
   auto outSz = calculateConvPoolOutputDims(idim.h, idim.w, kernels, strides,
                                            pads, dilation);
@@ -173,11 +173,12 @@ static bool verifyConvolution(NodeValue src, NodeValue dest, NodeValue filter,
   isValid &= expectCompareTrue("Invalid output dimension W", odim.w,
                                outSz.second, parent);
   isValid &= expectCompareTrue("Invalid output dimension C", odim.c % group,
-                               size_t(0), parent);
+                               dim_t(0), parent);
 
   isValid &= verifyConvFilter(parent, filter, idim, odim, kdim, group);
 
-  const size_t biasDims[] = {odim.c};
+  const dim_t biasDims[] = {odim.c};
+
   isValid &=
       expectCompareTrue("Invalid bias dimensions", bias.getType()->dims(),
                         llvm::makeArrayRef(biasDims), parent);
@@ -212,15 +213,15 @@ static bool verifyConvolution3D(NodeValue src, NodeValue dest, NodeValue filter,
   ShapeHWD kdim(kernels);
   isValid &= expectCompareTrue("buffer height too small for selected stride",
                                idim.h + pdim.top + pdim.bottom, kdim.height,
-                               parent, CompareOperatorGreaterEqual<size_t>());
+                               parent, CompareOperatorGreaterEqual<dim_t>());
   isValid &= expectCompareTrue("buffer width too small for selected stride",
                                idim.w + pdim.left + pdim.right, kdim.width,
-                               parent, CompareOperatorGreaterEqual<size_t>());
+                               parent, CompareOperatorGreaterEqual<dim_t>());
   isValid &= expectCompareTrue("buffer time too small for selected stride",
                                idim.d + pdim.near + pdim.far, kdim.depth,
-                               parent, CompareOperatorGreaterEqual<size_t>());
+                               parent, CompareOperatorGreaterEqual<dim_t>());
   isValid &= expectCompareTrue("channels number must be divisible by groups",
-                               idim.c % group, size_t(0), parent);
+                               idim.c % group, dim_t(0), parent);
 
   auto outSz = calculate3DConvPoolOutputDims(idim.h, idim.w, idim.d, kernels,
                                              strides, pads);
@@ -233,14 +234,14 @@ static bool verifyConvolution3D(NodeValue src, NodeValue dest, NodeValue filter,
   isValid &= expectCompareTrue("Invalid output dimension D", odim.d,
                                outSz.depth, parent);
   isValid &= expectCompareTrue("Invalid output dimension C", odim.c % group,
-                               size_t(0), parent);
+                               dim_t(0), parent);
 
-  const size_t filterDims[] = {odim.c, kdim.height, kdim.width, kdim.depth,
-                               idim.c / (size_t)group};
+  const dim_t filterDims[] = {odim.c, kdim.height, kdim.width, kdim.depth,
+                              idim.c / group};
   isValid &=
       expectCompareTrue("Invalid filter dimensions", filter.getType()->dims(),
                         llvm::makeArrayRef(filterDims), parent);
-  const size_t biasDims[] = {odim.c};
+  const dim_t biasDims[] = {odim.c};
   isValid &=
       expectCompareTrue("Invalid bias dimensions", bias.getType()->dims(),
                         llvm::makeArrayRef(biasDims), parent);
@@ -287,10 +288,10 @@ static bool verifyPool(NodeValue src, NodeValue dest,
   bool isValid =
       expectCompareTrue("buffer height too small for selected stride",
                         idim.h + pdim.top + pdim.bottom, kdim.height, parent,
-                        CompareOperatorGreaterEqual<size_t>());
+                        CompareOperatorGreaterEqual<dim_t>());
   isValid &= expectCompareTrue("buffer width too small for selected stride",
                                idim.w + pdim.left + pdim.right, kdim.width,
-                               parent, CompareOperatorGreaterEqual<size_t>());
+                               parent, CompareOperatorGreaterEqual<dim_t>());
 
   auto outSz =
       calculateConvPoolOutputDims(idim.h, idim.w, kernels, strides, pads);
@@ -318,9 +319,9 @@ static bool verifyBatchNormalization(NodeValue src, NodeValue dest,
   bool isValid = checkSameType(dest, src, parent);
 
   // Figure out how many channels are in the tensor.
-  size_t channels = src.dims()[channel];
+  dim_t channels = src.dims()[channel];
 
-  const size_t expArray[] = {channels};
+  const dim_t expArray[] = {channels};
   auto exp = llvm::makeArrayRef(expArray);
   isValid &= expectCompareTrue("Invalid bias dimension", bias.getType()->dims(),
                                exp, parent);
@@ -415,7 +416,7 @@ static bool verifyRegression(NodeValue src, NodeValue dest,
 static bool verifySparseLengthsSum(NodeValue dest, NodeValue data,
                                    NodeValue indices, NodeValue lengths) {
   bool isValid = checkType(dest, data.getElementType(), dest.getNode());
-  isValid &= checkType(indices, ElemKind::Int64ITy, dest.getNode());
+  isValid &= checkType(indices, IndexElemKind, dest.getNode());
   isValid &= checkType(lengths, ElemKind::Int32ITy, dest.getNode());
   isValid &=
       expectCompareTrue("Indices must be a 1D vector", indices.dims().size(),
@@ -431,7 +432,7 @@ static bool verifySparseLengthsWeightedSum(NodeValue dest, NodeValue data,
                                            NodeValue lengths) {
   bool isValid = checkType(dest, data.getElementType(), dest.getNode());
   isValid &= checkType(weights, data.getElementType(), dest.getNode());
-  isValid &= checkType(indices, ElemKind::Int64ITy, dest.getNode());
+  isValid &= checkType(indices, IndexElemKind, dest.getNode());
   isValid &= checkType(lengths, ElemKind::Int32ITy, dest.getNode());
   isValid &=
       expectCompareTrue("Indices must be a 1D vector", indices.dims().size(),
@@ -454,8 +455,8 @@ static bool verifyEmbeddingBag(NodeValue dest, NodeValue data,
                                NodeValue offsets) {
   bool isValid = checkType(dest, data.getElementType(), dest.getNode());
   isValid &= checkType(weights, data.getElementType(), dest.getNode());
-  isValid &= checkType(indices, ElemKind::Int64ITy, dest.getNode());
-  isValid &= checkType(offsets, ElemKind::Int64ITy, dest.getNode());
+  isValid &= checkType(indices, IndexElemKind, dest.getNode());
+  isValid &= checkType(offsets, IndexElemKind, dest.getNode());
   isValid &=
       expectCompareTrue("Indices must be a 1D vector", indices.dims().size(),
                         size_t(1), dest.getNode());
@@ -520,10 +521,10 @@ bool ChannelwiseQuantizedConvolutionNode::verify() const {
   // check qparam sizes
   isValid &=
       expectCompareTrue("There must be one filter offset qparam per group",
-                        getOffsets().dims()[0], size_t(getGroup()), this);
+                        getOffsets().dims()[0], dim_t(getGroup()), this);
   isValid &=
       expectCompareTrue("There must be one filter scale qparam per group",
-                        getScales().dims()[0], size_t(getGroup()), this);
+                        getScales().dims()[0], dim_t(getGroup()), this);
   return isValid;
 }
 
@@ -668,13 +669,11 @@ bool AdaptiveAvgPoolGradNode::verify() const {
       "expected the same number of batches for input and output", odim.n,
       idim.n, this);
 
-  isValid &=
-      expectCompareTrue("height too small for averaging area", odim.h, idim.h,
-                        this, CompareOperatorLessEqual<size_t>());
+  isValid &= expectCompareTrue("height too small for averaging area", odim.h,
+                               idim.h, this, CompareOperatorLessEqual<dim_t>());
 
-  isValid &=
-      expectCompareTrue("width too small for averaging area", odim.w, idim.w,
-                        this, CompareOperatorLessEqual<size_t>());
+  isValid &= expectCompareTrue("width too small for averaging area", odim.w,
+                               idim.w, this, CompareOperatorLessEqual<dim_t>());
 
   return isValid;
 }
@@ -705,11 +704,11 @@ bool AdaptiveAvgPoolNode::verify() const {
 
   isValid &= expectCompareTrue(
       "Output should not have more height than the input", inTy->dims()[1],
-      outTy->dims()[1], this, CompareOperatorGreaterEqual<size_t>());
+      outTy->dims()[1], this, CompareOperatorGreaterEqual<dim_t>());
 
   isValid &= expectCompareTrue(
       "Output should not have more width than the input", inTy->dims()[2],
-      outTy->dims()[2], this, CompareOperatorGreaterEqual<size_t>());
+      outTy->dims()[2], this, CompareOperatorGreaterEqual<dim_t>());
 
   return isValid;
 }
@@ -789,10 +788,10 @@ bool BatchMatMulNode::verify() const {
   isValid &= expectCompareTrue("Result must have same batch size as inputs.",
                                LHS.dims()[0], dest.dims()[0], this);
 
-  const size_t numBatches = LHS.dims()[0];
-  const size_t N = LHS.dims()[1];
-  const size_t M = LHS.dims()[2];
-  const size_t P = RHS.dims()[2];
+  const dim_t numBatches = LHS.dims()[0];
+  const dim_t N = LHS.dims()[1];
+  const dim_t M = LHS.dims()[2];
+  const dim_t P = RHS.dims()[2];
   isValid &= expectCompareTrue("Inputs have invalid dimensions.", RHS.dims()[1],
                                M, this);
   isValid &= expectCompareTrue("Result has invalid dimensions given inputs.",
@@ -926,14 +925,14 @@ bool InsertTensorNode::verify() const {
   auto dest = getBig();
   auto src = getSmall();
   auto offsets = getStart();
-  size_t numDims = dest.dims().size();
-  size_t axis = getAxis();
-  size_t count = getCount();
+  dim_t numDims = dest.dims().size();
+  dim_t axis = getAxis();
+  dim_t count = getCount();
 
   bool isValid = expectCompareTrue("Invalid number of dimensions", numDims,
-                                   src.dims().size(), this);
+                                   (dim_t)src.dims().size(), this);
   isValid &= expectCompareTrue("Invalid number of dimensions for offsets",
-                               numDims, offsets.size(), this);
+                               numDims, (dim_t)offsets.size(), this);
 
   if (!isValid) {
     // The following loop may be out-of-bound if the previous
@@ -960,18 +959,18 @@ bool InsertTensorNode::verify() const {
     msg = "out of bounds for index " + msg;
     isValid &= expectCompareTrue(msg.c_str(), src.dims()[i] + offsets[i],
                                  dest.dims()[i], this,
-                                 CompareOperatorLessEqual<size_t>());
+                                 CompareOperatorLessEqual<dim_t>());
   }
 
-  isValid &= expectCompareTrue("Invalid axis", axis, src.dims().size(), this,
-                               CompareOperatorLessEqual<size_t>());
-  for (size_t i = 0; i < src.dims().size(); i++) {
-    size_t mul = (i == axis) ? count : 1;
+  isValid &= expectCompareTrue("Invalid axis", axis, (dim_t)src.dims().size(),
+                               this, CompareOperatorLessEqual<dim_t>());
+  for (dim_t i = 0; i < src.dims().size(); i++) {
+    dim_t mul = (i == axis) ? count : 1;
     std::string msg = std::to_string(i);
     msg = "Small does not fit inside Big for index " + msg;
     isValid &=
         expectCompareTrue(msg.c_str(), src.dims()[i] * mul, dest.dims()[i],
-                          this, CompareOperatorLessEqual<size_t>());
+                          this, CompareOperatorLessEqual<dim_t>());
   }
   return isValid;
 }
@@ -997,7 +996,7 @@ bool SliceNode::verify() const {
     msg = "out of bounds for index " + msg;
     isValid &= expectCompareTrue(msg.c_str(), dest.dims()[i] + offsets[i],
                                  src.dims()[i], this,
-                                 CompareOperatorLessEqual<size_t>());
+                                 CompareOperatorLessEqual<dim_t>());
   }
   isValid &= checkNotQuantizedOrSameParams(dest.getType(), src.getType(), this);
   return isValid;
@@ -1012,8 +1011,8 @@ bool TileNode::verify() const {
   bool isValid = expectCompareTrue("Invalid axis", axis, src.dims().size(),
                                    this, CompareOperatorLessEqual<size_t>());
 
-  for (size_t i = 0; i < src.dims().size(); i++) {
-    size_t mul = (i == axis) ? count : 1;
+  for (dim_t i = 0; i < src.dims().size(); i++) {
+    dim_t mul = (i == axis) ? count : 1;
     std::string msg = std::to_string(i);
     msg = "Incorrect output shape for dim " + msg;
     isValid &= expectCompareTrue(msg.c_str(), src.dims()[i] * mul,
@@ -1276,7 +1275,7 @@ static bool verifyFusedRowwiseQuantizedSparseLengthsSum(
   bool isValid = expectCompareTrue(
       "Input data must be Fused Quantized type",
       isFusedQuantizedElemKind(data.getType()->getElementType()), true, parent);
-  size_t extraCols;
+  dim_t extraCols;
   if (data.getType()->getElementType() == ElemKind::UInt8FusedQTy) {
     extraCols = 2 * sizeof(float);
   } else {
@@ -1287,7 +1286,7 @@ static bool verifyFusedRowwiseQuantizedSparseLengthsSum(
         "Only use FP16 accumulation with FP16 version of RWQ-SLWS.",
         result.getType()->getElementType(), ElemKind::Float16Ty, parent);
   }
-  isValid &= checkType(indices, ElemKind::Int64ITy, parent);
+  isValid &= checkType(indices, IndexElemKind, parent);
   isValid &= checkType(lengths, ElemKind::Int32ITy, parent);
   isValid &= expectCompareTrue("Indices must be a 1D vector",
                                indices.dims().size(), size_t(1), parent);
@@ -1297,7 +1296,7 @@ static bool verifyFusedRowwiseQuantizedSparseLengthsSum(
                                data.dims().size(), size_t(2), parent);
   isValid &= expectCompareTrue("Data must have extra columns for scale/offset.",
                                data.dims()[1], extraCols, parent,
-                               CompareOperatorGreaterEqual<size_t>());
+                               CompareOperatorGreaterEqual<dim_t>());
   isValid &= expectCompareTrue("Result must be 2 dimensional.",
                                result.dims().size(), size_t(2), parent);
 
@@ -1313,7 +1312,7 @@ static bool verifyFusedRowwiseQuantizedSparseLengthsSum(
   if (isValid) {
     // If using 4-bit quantization for embeddings then the input is packed into
     // two elements per byte.
-    size_t finalSize = result.dims()[1];
+    dim_t finalSize = result.dims()[1];
     if (data.getType()->getElementType() == ElemKind::UInt4FusedFP16QTy) {
       finalSize /= 2;
     }
@@ -1354,7 +1353,7 @@ bool LengthsToRangesNode::verify() const {
       "Lengths and Ranges must have the same outer dimensions",
       getResult().dims()[0], getLengths().dims()[0], this);
   isValid &= expectCompareTrue("Inner dimension of Ranges must be 2",
-                               getResult().dims()[1], size_t(2), this);
+                               getResult().dims()[1], dim_t(2), this);
   return isValid;
 }
 
@@ -1370,7 +1369,7 @@ bool LengthsRangeFillNode::verify() const {
 
 bool SparseToDenseNode::verify() const {
   bool isValid = checkType(getResult(), getValues().getElementType(), this);
-  isValid &= checkType(getIndices(), ElemKind::Int64ITy, this);
+  isValid &= checkType(getIndices(), IndexElemKind, this);
   isValid &= expectCompareTrue("Indices must be a 1D vector",
                                getIndices().dims().size(), size_t(1), this);
   isValid &=
@@ -1382,7 +1381,7 @@ bool SparseToDenseNode::verify() const {
 bool SparseToDenseMaskNode::verify() const {
   bool isValid = checkType(getResult(), getValues().getElementType(), this);
   isValid &= checkType(getResult(), getDefaultValue().getElementType(), this);
-  isValid &= checkType(getIndices(), ElemKind::Int64ITy, this);
+  isValid &= checkType(getIndices(), IndexElemKind, this);
   isValid &= checkType(getLengths(), ElemKind::Int32ITy, this);
   isValid &= expectCompareTrue("Indices must be a 1D vector",
                                getIndices().dims().size(), size_t(1), this);
@@ -1411,7 +1410,7 @@ bool QuantizationProfileNode::verify() const {
                         getComputationInfo().dims().size(), size_t(1), this);
   isValid &= expectCompareTrue(
       "Computation info should contain Min and Max value only",
-      getComputationInfo().dims()[0], size_t(2), this);
+      getComputationInfo().dims()[0], (dim_t)(2), this);
   return isValid;
 }
 
@@ -1426,7 +1425,7 @@ bool IntLookupTableNode::verify() const {
                                getMapping().dims().size(), size_t(1), this);
   isValid &= expectCompareTrue(
       "Mapping should cover whole quantized range", getMapping().dims()[0],
-      (size_t)(256 * getResult().getType()->getElementSize()), this);
+      (dim_t)(256 * getResult().getType()->getElementSize()), this);
   return isValid;
 }
 
@@ -1471,8 +1470,8 @@ bool ArgMaxNode::verify() const {
   bool isValid = true;
 
   // Check input type.
-  isValid &= checkType(getArgmax(),
-                       llvm::ArrayRef<ElemKind>({ElemKind::Int64ITy}), this);
+  isValid &=
+      checkType(getArgmax(), llvm::ArrayRef<ElemKind>({IndexElemKind}), this);
 
   isValid &= expectCompareTrue("Input must be a 4D tensor",
                                getInput().dims().size(), size_t(4), this);
@@ -1554,7 +1553,7 @@ bool GatherRangesNode::verify() const {
   isValid &= expectCompareTrue("Ranges must be 3D", getRanges().dims().size(),
                                size_t(3), this);
   isValid &= expectCompareTrue("Last dimension of Ranges must be equal to 2",
-                               getRanges().dims()[2], size_t(2), this);
+                               getRanges().dims()[2], dim_t(2), this);
   isValid &= expectCompareTrue("Output must be 1D", getOutput().dims().size(),
                                size_t(1), this);
   isValid &= expectCompareTrue("Lengths must be 1D", getLengths().dims().size(),
@@ -1668,10 +1667,10 @@ bool ResizeNearestNode::verify() const {
                                outputDims[0], this);
   isValid &= expectCompareTrue(
       "Unexpected output height",
-      size_t(std::floor(inputDims[1] * getHeightScale())), outputDims[1], this);
+      dim_t(std::floor(inputDims[1] * getHeightScale())), outputDims[1], this);
   isValid &= expectCompareTrue(
       "Unexpected output width",
-      size_t(std::floor(inputDims[2] * getWidthScale())), outputDims[2], this);
+      dim_t(std::floor(inputDims[2] * getWidthScale())), outputDims[2], this);
   isValid &=
       expectCompareTrue("Invalid height scale", getHeightScale(), float(0.0),
                         this, CompareOperatorGreaterThan<float>());

@@ -160,7 +160,7 @@ Function *glow::differentiate(Function *F, const TrainingConfig &conf,
       // BatchedReduceAddNode eliminates the numTiles axis and produces a
       // {n,c,h,w} output.
       auto *TNInputType = TN->getInput().getType();
-      std::vector<size_t> BRAInputDims{TNInputType->dims()};
+      std::vector<dim_t> BRAInputDims{TNInputType->dims()};
       BRAInputDims.insert(BRAInputDims.begin() + TN->getAxis(), TN->getCount());
       auto *BRAInputType =
           F->getParent()->uniqueTypeWithNewShape(TNInputType, BRAInputDims);
@@ -233,7 +233,7 @@ Function *glow::differentiate(Function *F, const TrainingConfig &conf,
       NodeValue outputG = map.getGradient(CC->getResult());
 
       // We start extracting the shape at (0,0, ... ).
-      std::vector<size_t> offsets(CC->getResult().dims().size(), 0);
+      std::vector<dim_t> offsets(CC->getResult().dims().size(), 0);
       unsigned_t dim = CC->getDim();
       for (auto &N : inputs) {
         auto *X = new SliceNode("extract", N.getType(), outputG, offsets);
@@ -347,7 +347,7 @@ Function *glow::differentiate(Function *F, const TrainingConfig &conf,
       // repeating OutputG batch times.
       auto Axis = BRA->getAxis();
       // Copy input dimensions first.
-      std::vector<size_t> Dims{Input.dims()};
+      std::vector<dim_t> Dims{Input.dims()};
       // Then set to 1 dimension size on axis.
       Dims[Axis] = 1;
       auto *RSN = G->createReshape("reshape.grad", OutputG, Dims);
@@ -369,7 +369,7 @@ Function *glow::differentiate(Function *F, const TrainingConfig &conf,
       NodeValue Indices = GN->getIndices();
 
       // Reshape indices into a two-dimensional Tensor (Vector).
-      std::vector<size_t> IndicesDims{Indices.getType()->size(), 1};
+      std::vector<dim_t> IndicesDims{Indices.getType()->size(), 1};
       auto *RI = G->createReshape("reshape.indices.grad", Indices, IndicesDims);
 
       // Reshape Gradient into N-k dimension, where k is Index dimensions,
@@ -378,8 +378,8 @@ Function *glow::differentiate(Function *F, const TrainingConfig &conf,
       auto K = Indices.dims().size();
       if (K != 1) {
         const auto &OrgDims = OutputG.dims();
-        std::vector<size_t> GDims{OrgDims.begin() + K - 1, OrgDims.end()};
-        for (size_t k = 0; k < K - 1; ++k) {
+        std::vector<dim_t> GDims{OrgDims.begin() + K - 1, OrgDims.end()};
+        for (dim_t k = 0; k < K - 1; ++k) {
           GDims[0] *= OrgDims[k];
         }
         RG = G->createReshape("reshape.output.grad", OutputG, GDims);

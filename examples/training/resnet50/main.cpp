@@ -119,7 +119,7 @@ void loadImagesAndLabels(Tensor &images, Tensor &labels) {
     labelsH.at({n, 0}) = static_cast<unsigned long>(dbInput.get());
     // ResNet50 model got trained in NCHW format.
     for (unsigned c = 0; c < IMAGE_COLORS; ++c) {
-      auto bgrc = IMAGE_COLORS - 1 - c;
+      dim_t bgrc = IMAGE_COLORS - 1 - c;
       for (unsigned h = 0; h < 32; ++h) {
         for (unsigned w = 0; w < 32; ++w) {
           // ResNet BGR color space vs CIFAR RGB.
@@ -139,11 +139,11 @@ int main(int argc, char **argv) {
                                     " ResNet50 Training Example\n\n");
 
   // We expect the input to be NCHW.
-  std::vector<size_t> allImagesDims = {CIFAR_NUM_IMAGES, IMAGE_COLORS,
-                                       IMAGE_HEIGHT, IMAGE_WIDTH};
-  std::vector<size_t> initImagesDims = {1, IMAGE_COLORS, IMAGE_HEIGHT,
-                                        IMAGE_WIDTH};
-  std::vector<size_t> allLabelsDims = {CIFAR_NUM_IMAGES, 1};
+  std::vector<dim_t> allImagesDims = {CIFAR_NUM_IMAGES, IMAGE_COLORS,
+                                      IMAGE_HEIGHT, IMAGE_WIDTH};
+  std::vector<dim_t> initImagesDims = {1, IMAGE_COLORS, IMAGE_HEIGHT,
+                                       IMAGE_WIDTH};
+  std::vector<dim_t> allLabelsDims = {CIFAR_NUM_IMAGES, 1};
 
   ExecutionEngine EE(executionBackend);
   auto &mod = EE.getModule();
@@ -201,7 +201,7 @@ int main(int argc, char **argv) {
   // These tensors allocate memory for all images and labels prepared for
   // training.
   Tensor images(ElemKind::FloatTy, allImagesDims);
-  Tensor labels(ElemKind::Int64ITy, allLabelsDims);
+  Tensor labels(IndexElemKind, allLabelsDims);
 
   loadImagesAndLabels(images, labels);
 
@@ -223,7 +223,7 @@ int main(int argc, char **argv) {
       EE.run(bindings, tfName);
       timer.stopTimer();
 
-      auto correct = labels.getHandle<int64_t>().raw(0);
+      auto correct = labels.getHandle<sdim_t>().raw(0);
       auto guess = findMaxIndex(result->getHandle(), 10);
       score += guess == correct;
       ++total;

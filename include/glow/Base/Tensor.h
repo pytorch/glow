@@ -47,7 +47,7 @@ void genericTranspose(const Tensor *src, Tensor *dest,
 /// currDims expanded with dimension = 1 until the maximum tensor dimension is
 /// reached. The number of elements in the input dims is the same as in the
 /// returned dims. For example, input {2,1,4} would result in {2,1,4,1,1,1}.
-ShapeVector expandDimsToMax(llvm::ArrayRef<size_t> currDims);
+ShapeVector expandDimsToMax(llvm::ArrayRef<dim_t> currDims);
 
 namespace runtime {
 class DeviceManager;
@@ -176,7 +176,7 @@ public:
   ElemKind getElementType() const { return type_.getElementType(); }
 
   /// \returns True if the coordinate is within the array.
-  bool isInBounds(llvm::ArrayRef<size_t> indices) const {
+  bool isInBounds(llvm::ArrayRef<dim_t> indices) const {
     assert(type_.numSizes_ == indices.size() && "Invalid number of indices");
     for (size_t i = 0u, e = indices.size(); i < e; i++) {
       if (indices[i] >= type_.sizes_[i]) {
@@ -258,16 +258,16 @@ public:
   }
 
   /// \returns the shape of the tensor.
-  llvm::ArrayRef<size_t> dims() const { return type_.dims(); }
+  llvm::ArrayRef<dim_t> dims() const { return type_.dims(); }
 
   /// \returns the number of real meaningful elements in the tensor. Does not
   /// take strides into account.
-  size_t size() const { return type_.size(); }
+  dim_t size() const { return type_.size(); }
 
   /// \returns the actual number of elements in the tensor taking striding into
   /// account. Since size() does not take striding into account, size() is
   /// always <= actualSize().
-  size_t actualSize() const { return type_.actualSize(); }
+  dim_t actualSize() const { return type_.actualSize(); }
 
   /// \returns the number of bytes required to store the tensor.
   uint64_t getSizeInBytes() const { return type_.getSizeInBytes(); }
@@ -281,7 +281,7 @@ public:
 
   /// Initialize from a list of float literals.
   Tensor(const std::initializer_list<float> &vec) {
-    reset(ElemKind::FloatTy, {vec.size()});
+    reset(ElemKind::FloatTy, {(dim_t)vec.size()});
     auto *data = getRawDataPointer<float>();
     int i = 0;
     for (auto &f : vec) {
@@ -301,7 +301,7 @@ public:
   }
 
   /// Allocate and initialize a float new tensor.
-  Tensor(ElemKind elemTy, llvm::ArrayRef<size_t> dims)
+  Tensor(ElemKind elemTy, llvm::ArrayRef<dim_t> dims)
       : data_(nullptr), type_(elemTy, dims), isUnowned_{false} {
     reset(elemTy, dims);
   }
@@ -318,7 +318,7 @@ public:
   }
 
   /// Allocate and initialize a new integer tensor with \p scale and \p offset.
-  Tensor(ElemKind elemTy, llvm::ArrayRef<size_t> dims, float scale,
+  Tensor(ElemKind elemTy, llvm::ArrayRef<dim_t> dims, float scale,
          int32_t offset)
       : data_(nullptr), type_(elemTy, dims, scale, offset), isUnowned_{false} {
     reset(type_);
@@ -348,8 +348,8 @@ public:
   /// The lifetime of the returned unowned tensor should be always within
   /// the lifetime of its parent tensor, i.e. the unowned tensor should not
   /// outlive its parent tensor.
-  Tensor getUnowned(llvm::ArrayRef<size_t> dims,
-                    llvm::ArrayRef<size_t> offsets = {}) const {
+  Tensor getUnowned(llvm::ArrayRef<dim_t> dims,
+                    llvm::ArrayRef<dim_t> offsets = {}) const {
     Tensor unownedTensor;
 
     auto *firstElemPtr = getData();
@@ -390,8 +390,8 @@ public:
   /// tensor but having different dimensions \p dims. \p offsets represents an
   /// optional offset into the tensor representing the location of the first
   /// element to start a subview from.
-  Tensor getOwnedSlice(llvm::ArrayRef<size_t> dims,
-                       llvm::ArrayRef<size_t> offsets = {}) const {
+  Tensor getOwnedSlice(llvm::ArrayRef<dim_t> dims,
+                       llvm::ArrayRef<dim_t> offsets = {}) const {
     assert(!isDeviceResident() && "Tensor must reside on host to access data.");
     return getUnowned(dims, offsets).clone();
   }
@@ -400,12 +400,12 @@ public:
   /// \p other.
   void reset(const Tensor *other) { reset(other->getType()); }
 
-  void reset(ElemKind elemTy, llvm::ArrayRef<size_t> shape) {
+  void reset(ElemKind elemTy, llvm::ArrayRef<dim_t> shape) {
     Type t(elemTy, shape);
     reset(t);
   }
 
-  void reset(ElemKind elemTy, llvm::ArrayRef<size_t> shape, float scale,
+  void reset(ElemKind elemTy, llvm::ArrayRef<dim_t> shape, float scale,
              int32_t offset) {
     Type t(elemTy, shape, scale, offset);
     reset(t);
@@ -839,8 +839,8 @@ class HandleIterator
   /// incremented. Only valid elements can be accessed.
   /// 0 <= idx_ <= handle_->size()
   HandleTy handle_;
-  llvm::ArrayRef<size_t> sizes_;
-  size_t idx_;
+  llvm::ArrayRef<dim_t> sizes_;
+  dim_t idx_;
   /// Holds true if the underlying tensor has non-trivial alignment (i.e. not 1)
   bool isAligned_;
 
@@ -891,7 +891,7 @@ public:
     if (!isAligned_) {
       return handle_->raw(idx_);
     }
-    std::vector<size_t> indices(sizes_.size(), 0);
+    std::vector<dim_t> indices(sizes_.size(), 0);
     size_t rem = idx_;
     for (int i = static_cast<int>(sizes_.size()) - 1; i >= 0; i--) {
       indices[i] = rem % sizes_[i];
@@ -919,11 +919,11 @@ template <class ElemTy> class Handle final {
 
   /// Contains the multiplication of the sizes from current position to end.
   /// For example, for index (w,z,y,z):  [x * y * z, y * z, z, 1]
-  size_t sizeIntegral_[max_tensor_dimensions] = {
+  dim_t sizeIntegral_[max_tensor_dimensions] = {
       0,
   };
 
-  size_t sizes_[max_tensor_dimensions] = {
+  dim_t sizes_[max_tensor_dimensions] = {
       0,
   };
 
@@ -962,7 +962,7 @@ public:
   /// the list of indices may be incomplete. This method provides access to
   /// padding elements, meaning that it's possible to get an index pointing at
   /// data, added to meet alignment requirements.
-  size_t getElementPtr(llvm::ArrayRef<size_t> indices) const {
+  size_t getElementPtr(llvm::ArrayRef<dim_t> indices) const {
     assert(indices.size() <= numDims_ && "Invalid number of indices");
     // The loop below can be rewritten using std::inner_product. Unfortunately
     // std::inner_product does not optimize very well and loops that use this
@@ -1015,19 +1015,19 @@ public:
     const_end_ = HandleIterator<ElemTy, true>::end(this);
   }
 
-  llvm::ArrayRef<size_t> dims() const {
-    return llvm::ArrayRef<size_t>(sizes_, numDims_);
+  llvm::ArrayRef<dim_t> dims() const {
+    return llvm::ArrayRef<dim_t>(sizes_, numDims_);
   }
 
   /// \returns the number of elements in the whole tensor.
-  size_t size() const { return tensor_->size(); }
+  dim_t size() const { return tensor_->size(); }
 
   /// \returns the actual number of elements in the tensor taking striding into
   /// account. Since size() does not take striding into account, size() is
   /// always <= actualSize().
-  size_t actualSize() const { return tensor_->actualSize(); }
+  dim_t actualSize() const { return tensor_->actualSize(); }
 
-  bool isInBounds(llvm::ArrayRef<size_t> indices) const {
+  bool isInBounds(llvm::ArrayRef<dim_t> indices) const {
     return tensor_->isInBounds(indices);
   }
 
@@ -1035,13 +1035,13 @@ public:
 
   /// Returns reference to a meaningful data element. This method does not
   /// address padding elements.
-  ElemTy &at(llvm::ArrayRef<size_t> indices) {
+  ElemTy &at(llvm::ArrayRef<dim_t> indices) {
     size_t index = getElementPtr(indices);
     auto *data = tensor_->getRawDataPointer<ElemTy>();
     return data[index];
   }
 
-  const ElemTy &at(llvm::ArrayRef<size_t> indices) const {
+  const ElemTy &at(llvm::ArrayRef<dim_t> indices) const {
     size_t index = getElementPtr(indices);
     auto *data = tensor_->getRawDataPointer<ElemTy>();
     return data[index];
@@ -1118,7 +1118,7 @@ public:
 
   /// \returns the raw indices of a min and max values from the tensor.
   /// In case of multiple min or max, the smallest index is returned.
-  std::pair<size_t, size_t> minMaxArg() const {
+  std::pair<dim_t, dim_t> minMaxArg() const {
     ElemTy max = raw(0);
     ElemTy min = raw(0);
 
@@ -1147,16 +1147,16 @@ public:
   assert(dims().size() == 2 && "Fused tensor must be 2-dimensional.");         \
   assert(dims()[1] > 2 * sizeof(DATA_TYPE) &&                                  \
          "Fused tensor must have space for scale/offset.");                    \
-  const size_t dataWidth = dims()[1];                                          \
-  const size_t alignedLength = tensor_->getType().strides()[0];                \
+  const dim_t dataWidth = dims()[1];                                           \
+  const dim_t alignedLength = tensor_->getType().strides()[0];                 \
   auto *data = reinterpret_cast<uint8_t *>(tensor_->getUnsafePtr());           \
-  for (size_t i = 0, e = dims()[0]; i < e; i++) {                              \
+  for (dim_t i = 0, e = dims()[0]; i < e; i++) {                               \
     uint8_t *scaleOffsetPtr =                                                  \
         data + i * alignedLength + dataWidth - 2 * sizeof(DATA_TYPE);          \
     DATA_TYPE scale, offset;                                                   \
     memcpy(&scale, scaleOffsetPtr, sizeof(DATA_TYPE));                         \
     memcpy(&offset, scaleOffsetPtr + sizeof(DATA_TYPE), sizeof(DATA_TYPE));    \
-    for (size_t j = 0, e = dataWidth - 2 * sizeof(DATA_TYPE); j < e; j++) {    \
+    for (dim_t j = 0, e = dataWidth - 2 * sizeof(DATA_TYPE); j < e; j++) {     \
       float currVal = (at({i, j}) * (float)scale) + (float)offset;             \
       if (std::abs(currVal) > allowedError) {                                  \
         return false;                                                          \
@@ -1238,8 +1238,8 @@ public:
     assert(dims().size() == 2 && "Fused tensor must be 2-dimensional.");       \
     assert(dims()[1] > 2 * sizeof(DATA_TYPE) &&                                \
            "Fused tensor must have space for scale/offset.");                  \
-    for (size_t i = 0, e = dims()[0]; i < e; i++) {                            \
-      for (size_t j = 0, f = dims()[1] - 2 * sizeof(DATA_TYPE); j < f; j++) {  \
+    for (dim_t i = 0, e = dims()[0]; i < e; i++) {                             \
+      for (dim_t j = 0, f = dims()[1] - 2 * sizeof(DATA_TYPE); j < f; j++) {   \
         at({i, j}) = dist(PRNG);                                               \
       }                                                                        \
     }                                                                          \
@@ -1294,7 +1294,7 @@ public:
   /// where O is the offset vector, assuming \p count = 1. For \p count > 1, the
   /// same Tensor is copied \p count times along the provided \p axis. The
   /// tensors must be of the right dimensions.
-  void insertTensors(Handle<ElemTy> &slice, llvm::ArrayRef<size_t> offset,
+  void insertTensors(Handle<ElemTy> &slice, llvm::ArrayRef<dim_t> offset,
                      size_t count = 1, size_t axis = 0) {
     auto sliceCoor = slice.dims().vec();
     auto fusedCoor = dims().vec();
@@ -1307,7 +1307,7 @@ public:
   /// copying into the cell at coordinate {d_0, d_1, ... d_n} a value from the
   /// tensor at {d_0 + O_0, d_1 + O_1, ... d_n + O_n}, where O is the offset
   /// vector. The tensors must be of the right dimensions.
-  void extractTensors(Handle<ElemTy> &slice, llvm::ArrayRef<size_t> offset) {
+  void extractTensors(Handle<ElemTy> &slice, llvm::ArrayRef<dim_t> offset) {
     auto sliceCoor = slice.dims().vec();
     auto fusedCoor = dims().vec();
     insertTensorsImpl(sliceCoor, fusedCoor, slice, false, offset, /* count */ 1,
@@ -1317,7 +1317,7 @@ public:
   /// \returns a pair of the scale and offset from a row \p rowIdx of a
   /// FusedRowwiseQuantized Tensor.
   template <typename T>
-  std::pair<T, T> getFusedScaleOffsetFromRow(size_t rowIdx) {
+  std::pair<T, T> getFusedScaleOffsetFromRow(dim_t rowIdx) {
     ElemTy *rowScaleOffsetPtr = getFusedRowScaleOffsetPtr<T>(rowIdx);
     T scale;
     T offset;
@@ -1329,7 +1329,7 @@ public:
   /// Sets the \p scale and \p offset to a row \p rowIdx of a
   /// FusedRowwiseQuantized Tensor.
   template <typename T>
-  void setFusedScaleOffsetInRow(size_t rowIdx, T scale, T offset) {
+  void setFusedScaleOffsetInRow(dim_t rowIdx, T scale, T offset) {
     ElemTy *rowScaleOffsetPtr = getFusedRowScaleOffsetPtr<T>(rowIdx);
     T finalScale = static_cast<T>(scale);
     T finalOffset = static_cast<T>(offset);
@@ -1350,10 +1350,10 @@ private:
   /// data is copied from \p fused to \p slice. \p count and \p axis are used in
   /// conjunction for inserting the same tensor \p count times along the \p
   /// axis.
-  void insertTensorsImpl(llvm::MutableArrayRef<size_t> sliceCoor,
-                         llvm::MutableArrayRef<size_t> fusedCoor,
+  void insertTensorsImpl(llvm::MutableArrayRef<dim_t> sliceCoor,
+                         llvm::MutableArrayRef<dim_t> fusedCoor,
                          Handle<ElemTy> &slice, bool isInsert,
-                         llvm::ArrayRef<size_t> offset, size_t count,
+                         llvm::ArrayRef<dim_t> offset, size_t count,
                          size_t axis, unsigned d) {
     bool isDone = (d == slice.dims().size());
 
@@ -1386,7 +1386,7 @@ private:
 
   /// Given a Fused tensor, \returns a pointer to the scale and offset with type
   /// \p T of a row \p rowIdx.
-  template <typename T> ElemTy *getFusedRowScaleOffsetPtr(size_t rowIdx) {
+  template <typename T> ElemTy *getFusedRowScaleOffsetPtr(dim_t rowIdx) {
     switch (getElementType()) {
     case ElemKind::UInt8FusedQTy: {
       constexpr auto isFloat = std::is_same<float, T>::value;
@@ -1405,7 +1405,7 @@ private:
 
     static_assert(std::is_same<uint8_t, ElemTy>::value,
                   "Handle of current Fused tensors expected to be uint8_t.");
-    const size_t colIdx = dims()[1] - 2 * sizeof(T);
+    const dim_t colIdx = dims()[1] - 2 * sizeof(T);
     return &at({rowIdx, colIdx});
   }
 };

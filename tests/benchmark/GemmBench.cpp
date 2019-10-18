@@ -30,21 +30,21 @@ using namespace glow;
  */
 class GemmBench : public Benchmark {
   /// Dimensions expressed in libjit's format.
-  size_t m_;
-  size_t n_;
-  size_t k_;
-  size_t numLayers_;
+  dim_t m_;
+  dim_t n_;
+  dim_t k_;
+  dim_t numLayers_;
   PlaceholderBindings bindings_;
   std::unique_ptr<runtime::HostManager> hostManager_;
-  size_t asyncLaunchSize_;
-  size_t numSplits_;
+  dim_t asyncLaunchSize_;
+  dim_t numSplits_;
   const char *backendStr_;
   const char *dtypeStr_;
   const char *devId_;
 
 public:
-  GemmBench(size_t m_, size_t n_, size_t k_, size_t numLayers_,
-            size_t asyncLaunchSize_, size_t numSplits_, const char *backendStr_,
+  GemmBench(dim_t m_, dim_t n_, dim_t k_, dim_t numLayers_,
+            dim_t asyncLaunchSize_, dim_t numSplits_, const char *backendStr_,
             const char *dtypeStr_, const char *devId_ = nullptr)
       : m_(m_), n_(n_), k_(k_), numLayers_(numLayers_),
         asyncLaunchSize_(asyncLaunchSize_), numSplits_(numSplits_),

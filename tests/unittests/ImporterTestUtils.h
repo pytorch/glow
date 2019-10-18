@@ -33,7 +33,7 @@ namespace glow {
 ///         +---+---+---+
 ///         | 6 | 7 | 8 |
 ///         +---+---+---+
-void getNCHWData(Tensor *result, size_t n, size_t c, size_t h, size_t w) {
+void getNCHWData(Tensor *result, dim_t n, dim_t c, dim_t h, dim_t w) {
   result->reset(ElemKind::FloatTy, {n, c, h, w});
   auto RH = result->getHandle<>();
   for (size_t i = 0, e = n * c * h * w; i < e; i++)

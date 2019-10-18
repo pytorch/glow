@@ -174,7 +174,7 @@ public:
   /// Methods that forward to the result type (that must be valid):
   /// @{
   ElemKind getElementType(unsigned resNo) const;
-  llvm::ArrayRef<size_t> dims(unsigned resNo) const;
+  llvm::ArrayRef<dim_t> dims(unsigned resNo) const;
   /// @}
 
 protected:

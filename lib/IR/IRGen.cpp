@@ -109,7 +109,7 @@ void IRGenVisitor::post(Node *parent, Node *N) {
     auto *RN = cast<ReshapeNode>(N);
 
     auto *inVal = valueForNode(RN->getInput());
-    std::vector<size_t> offsets(inVal->getType()->dims().size(), 0);
+    std::vector<dim_t> offsets(inVal->getType()->dims().size(), 0);
     auto *TVI = builder_.createTensorViewInst(
         "tensorview.reshape." + inVal->getName().str(), inVal,
         RN->getResult().getType(), offsets);
@@ -273,7 +273,7 @@ void IRGenVisitor::post(Node *parent, Node *N) {
     auto inputs = CC->getInputs();
 
     // We start inserting to the shape at (0,0, ... ).
-    std::vector<size_t> offsets(CC->getResult().dims().size(), 0);
+    std::vector<dim_t> offsets(CC->getResult().dims().size(), 0);
     unsigned dim = CC->getDim();
 
     for (size_t i = 0, e = inputs.size(); i < e;) {
