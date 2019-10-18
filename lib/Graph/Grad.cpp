@@ -267,7 +267,11 @@ Function *glow::differentiate(Function *F, const TrainingConfig &conf,
 
       // Replace the BN's mean and variance with the new mean and variance
       // calculated from MVN.
+      BN->getParent()->getLogContext()->logNodeInputChange(
+          *BN, BN->getNthInput(BatchNormalizationNode::MeanIdx), mean);
       BN->setNthInput(BatchNormalizationNode::MeanIdx, mean);
+      BN->getParent()->getLogContext()->logNodeInputChange(
+          *BN, BN->getNthInput(BatchNormalizationNode::VarIdx), var);
       BN->setNthInput(BatchNormalizationNode::VarIdx, var);
 
       toAppend.push_back(BN->getGrad(map));

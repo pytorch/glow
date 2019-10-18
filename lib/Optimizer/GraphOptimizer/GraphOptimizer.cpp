@@ -1306,9 +1306,13 @@ bool normalizeWeights(Module *M, ConvolutionNode &CV,
 
   // Set the new filter and bias on CV if necessary.
   if (filterC != CV.getFilter().getNode()) {
+    CV.getParent()->getLogContext()->logNodeInputChange(
+        CV, CV.getNthInput(ConvolutionNode::FilterIdx), filterC);
     CV.setNthInput(ConvolutionNode::FilterIdx, filterC);
   }
   if (cbiasC != CV.getBias().getNode()) {
+    CV.getParent()->getLogContext()->logNodeInputChange(
+        CV, CV.getNthInput(ConvolutionNode::BiasIdx), cbiasC);
     CV.setNthInput(ConvolutionNode::BiasIdx, cbiasC);
   }
 

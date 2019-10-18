@@ -19,12 +19,16 @@ from typing import List, Dict, Tuple
 import typing
 import sqlite3
 import os
+import json
 
 # Maintaining all nodes
-NODES_MAP: Dict["NodeNameAndKind", "Node"] = {}
+NODES_MAP: Dict[str, "Node"] = {}
 
 # Scope stack
 SCOPE_STACK: List[str] = []
+
+# Scope related information
+scopeID = 0
 
 
 class NodeNameAndKind(typing.NamedTuple):
@@ -57,6 +61,9 @@ class Node:
         self.inputs_: List[NodeValue] = []
         self.users_: Dict["Node", int] = {}
 
+    def __repr__(self):
+        return self.name_
+
     def get_kind_name(self) -> str:
         """Gets the kind name. """
 
@@ -66,6 +73,10 @@ class Node:
         """Gets the node name. """
 
         return self.name_
+
+    def getNodeNameAndKind(self) -> NodeNameAndKind:
+        """Gets the Name+Kind tuple. """
+        return (self.name_, self.kindName_)
 
     def get_inputs(self) -> List[NodeValue]:
         """Gets the input node. """
@@ -87,10 +98,10 @@ class Node:
     def remove_user(self, u: "Node") -> None:
         """Removes one use from the given user."""
 
-        assert u in self.users_
-        self.users_[u] -= 1
-        if self.users_[u] == 0:
-            del self.users_[u]
+        if u in self.users_:
+            self.users_[u] -= 1
+            if self.users_[u] == 0:
+                del self.users_[u]
 
     def has_no_uses(self) -> bool:
         """Returns True if the node has no uses."""
@@ -212,7 +223,7 @@ class DottyPrinter:
         for node in self.nodesMap_.values():
             for nodeInput in node.get_inputs():
                 i = nodeInput[0]
-                if (i.get_kind_name(), i.get_name()) not in self.nodesMap_:
+                if i.get_name() not in self.nodesMap_:
                     print(i.get_kind_name(), i.get_name())
                 edgeStr = self.get_unique_vertex_name(i) + ":Outputs -> "
                 edgeStr += self.get_unique_vertex_name(node) + ":Inputs"
@@ -387,7 +398,7 @@ def init_db(sqliteFile: str) -> sqlite3.Connection:
 
 
 def process(
-    logLines: List[str], dumpPhases: List[str], conn: sqlite3.Connection
+    log: Dict, dumpPhases: List[str], conn: sqlite3.Connection
 ) -> None:
     """Process all the log lines.
 
@@ -398,22 +409,6 @@ def process(
         dumpPhases: List[str]. The phase at which to dump the DAG.
         conn: sqlite3.Connection. The connection to a sqlite3 database that will store all the transformation in the compilation lop.
     """
-
-    # Regular expression patterns
-    pCreate = re.compile(
-        r"^.*\[FULL.*SCOPE:(.*)\].*CREATE.*\{.*\(Kind:(.*),.*Name:(.*)\).*<==(.*)\}$"
-    )
-    pInputs = re.compile(r"\([^\(\)]*\)")
-    pOneInput = re.compile(r"^\(Kind:(.*),.*Name:(.*),.*ResNo:(.*)\)$")
-    pChange = re.compile(
-        r"^.*\[FULL.*SCOPE:(.*)\].*NODE_INPUT_CHANGE.*\{.*User\(Kind:(.*),.*Name:(.*)\).*::.*PrevOprValue(.*)->.*NewOprValue(.*)\}$"
-    )
-    pOpr = re.compile(r"^\(.*Kind:(.*),.*Name:(.*),.*ResNo:(.*)\)$")
-    pDelete = re.compile(
-        r"^.*\[FULL.*SCOPE:(.*)\].*DELETE.*\(Kind:(.*),.*Name:(.*)\).*}$"
-    )
-    pEnter = re.compile(r"^ENTERSCOPE:(.*)$")
-    pExit = re.compile(r"^EXITSCOPE:(.*)$")
 
     # DB related vars
     cursor = conn.cursor()
@@ -428,265 +423,188 @@ def process(
     }
     transID = 0
 
-    # Scope related information
-    scopeID = 0
+    def process_create(event: Dict) -> None:
+        global scopeID
+        createdNode = Node(event["kind"], event["create"])
+        createdNode.set_scope_of_creation(SCOPE_STACK[-1])
+        NODES_MAP[createdNode.get_name()] = createdNode
+        cursor.execute(
+            """INSERT INTO Log_Node VALUES (
+              ?,
+              ?,
+              ?,
+              ?
+              )""",
+            (event["create"], event["kind"], scopeID, -1),
+        )
+        cursor.execute(
+            """INSERT INTO Log_Node_Operation VALUES (
+              ?,
+              'CREATE',
+              ?,
+              ?
+              )""",
+            (scopeID, event["create"], event["kind"]),
+        )
+        if len(event["inputs"]) == 0:
+            # there's no node input for Splat
+            assert event["kind"] in (
+                "Splat",
+                "Constant",
+                "Placeholder",
+            ), "This node kind shouldn't have any inputs."
+        for i in event["inputs"]:
+            name, resNo = i.split(":", 1)
+            if name in NODES_MAP:
+                inputNode = NODES_MAP[name]
+                createdNode.set_input(NodeValue(inputNode, resNo))
+                inputNode.add_user(createdNode)
 
-    for ln in logLines:
-        # Process CREATE statement
-        if "CREATE" in ln:
-            m = re.match(pCreate, ln)
-            if m:
-                g = m.groups()
-                # Create the node with given kind and name
-                scopeName = g[0]
-                kindName = g[1].replace(" ", "")
-                nodeName = g[2].replace(" ", "")
-                createdNode = Node(kindName, nodeName)
-                createdNode.set_scope_of_creation(scopeName)
-                NODES_MAP[NodeNameAndKind(kindName, nodeName)] = createdNode
+        if recordTransformation:
+            addedNodes.append(createdNode)
 
-                # Update node creation in database
-                cursor.execute(
-                    """INSERT INTO Log_Node VALUES (
-                        ?,
-                        ?,
-                        ?,
-                        ?
-                        )""",
-                    (nodeName, kindName, scopeID, -1),
-                )
-                cursor.execute(
-                    """INSERT INTO Log_Node_Operation VALUES (
-                        ?,
-                        'CREATE',
-                        ?,
-                        ?
-                        )""",
-                    (scopeID, nodeName, kindName),
-                )
+    def process_delete(event: Dict) -> None:
+        global scopeID
+        deletedNode = NODES_MAP[event["delete"]]
+        for inputNode in deletedNode.inputs_:
+            i = inputNode[0]
+            i.remove_user(deletedNode)
+        del NODES_MAP[deletedNode.get_name()]
 
-                # Set the inputs of the created node
-                inputs = re.findall(pInputs, g[3])
-                if len(inputs) == 0:
-                    # there's no node input for Splat
-                    assert kindName in (
-                        "Splat",
-                        "Constant",
-                        "Placeholder",
-                    ), "This node kind shouldn't have any inputs."
-                for i in inputs:
-                    mi = re.match(pOneInput, i)
-                    if mi:
-                        gi = mi.groups()
-                        inputNodeKind, inputNodeName, inputNodeResno = [
-                            x.replace(" ", "") for x in gi[:3]
-                        ]
-                        assert (
-                            inputNodeKind,
-                            inputNodeName,
-                        ) in NODES_MAP, "Input nodes must already exist in node graph."
-                        # (node, resno)
-                        inputNode = NODES_MAP[
-                            NodeNameAndKind(inputNodeKind, inputNodeName)
-                        ]
-                        createdNode.set_input(
-                            NodeValue(inputNode, inputNodeResno))
-                        inputNode.add_user(createdNode)
+        cursor.execute(
+            """UPDATE Log_Node
+              SET delete_scope_id=?
+              WHERE node_name=?
+              """,
+            (scopeID, event["delete"]),
+        )
+        cursor.execute(
+            """INSERT INTO Log_Node_Operation VALUES (
+              ?,
+              'DELETE',
+              ?,
+              ?
+              )""",
+            (scopeID, event["delete"], event["kind"]),
+        )
 
-                # Record nodes transformation
-                if recordTransformation:
-                    addedNodes.append(createdNode)
+    def process_input_change(event: Dict) -> None:
+        changedNode = NODES_MAP[event["input_change"]]
+        # Don't touch the line of node input changing into null, it only happened
+        # in module destructor.
+        if event["after"] == "NONE":
+            return
 
-        # Process NODE_INPUT_CHANGE statement
-        elif "NODE_INPUT_CHANGE" in ln:
-            m = re.match(pChange, ln)
-            if m:
-                g = m.groups()
-                scopeName, kindName, nodeName = [
-                    x.replace(" ", "") for x in g[:3]]
-                assert (
-                    kindName,
-                    nodeName,
-                ) in NODES_MAP, "This node must already exist in node graph."
-                changedNode = NODES_MAP[NodeNameAndKind(kindName, nodeName)]
+        prevNodeName, prevResNo = event["before"].split(":", 1)
+        newNodeName, newResNo = event["after"].split(":", 1)
 
-                # Don't touch the line of node input changing into null, it only happened
-                # in module destructor.
-                if "null" in g[4]:
-                    continue
+        prevNode = NODES_MAP[prevNodeName]
+        newNode = NODES_MAP[newNodeName]
 
-                mPrev = re.match(pOpr, g[3].replace(" ", ""))
-                mNew = re.match(pOpr, g[4].replace(" ", ""))
+        # change the input of changedNode
+        changedNode.replace_input(
+            NodeValue(
+                prevNode, prevResNo), NodeValue(
+                newNode, newResNo)
+        )
+        prevNode.remove_user(changedNode)
+        newNode.add_user(changedNode)
 
-                # Previous operand
-                prevNodeKind, prevNodeName, prevNodeResno = mPrev.groups()[:3]
-                assert (
-                    prevNodeKind,
-                    prevNodeName,
-                ) in NODES_MAP, "Node's operand must already exist in node graph."
-                prevNode = NODES_MAP[NodeNameAndKind(
-                    prevNodeKind, prevNodeName)]
-
-                # New operand
-                newNodeKind, newNodeName, newNodeResno = mNew.groups()[:3]
-                assert (
-                    newNodeKind,
-                    newNodeName,
-                ) in NODES_MAP, "Node's operand must already exist in node graph."
-                newNode = NODES_MAP[NodeNameAndKind(newNodeKind, newNodeName)]
-
-                # change the input of changedNode
-                changedNode.replace_input(
-                    NodeValue(
-                        prevNode, prevNodeResno), NodeValue(
-                        newNode, newNodeResno)
-                )
-                prevNode.remove_user(changedNode)
-                newNode.add_user(changedNode)
-
-                # Record nodes transformation
-                if recordTransformation:
-                    if prevNode.has_no_uses():
-                        replacedNodes = find_all_replaced_nodes(prevNode)
-                        store_transformation_into_DB(
-                            transID,
-                            changedNode,
-                            addedNodes,
-                            replacedNodes,
-                            cursor,
-                            scopeName,
-                        )
-
-                        transID += 1
-                        addedNodes = []
-                        replacedNodes = []
-
-        # Process DELETE statement
-        elif "DELETE" in ln:
-            m = re.match(pDelete, ln)
-            # Deleted node
-            if m:
-                g = m.groups()
-                scopeName, kindName, nodeName = [
-                    x.replace(" ", "") for x in g[:3]]
-                assert (
-                    kindName,
-                    nodeName,
-                ) in NODES_MAP, "Deleted node must already exist in node graph."
-                deletedNode = NODES_MAP[NodeNameAndKind(kindName, nodeName)]
-                if not deletedNode.has_no_uses():
-                    assert "Destructor" in ln or scopeName == ""
-                for inputNode in deletedNode.inputs_:
-                    i = inputNode[0]
-                    i.remove_user(deletedNode)
-                del NODES_MAP[NodeNameAndKind(kindName, nodeName)]
-
-                # Update node deletion in database
-                cursor.execute(
-                    """UPDATE Log_Node
-                        SET delete_scope_id=?
-                        WHERE node_name=?
-                        """,
-                    (scopeID, nodeName),
-                )
-                cursor.execute(
-                    """INSERT INTO Log_Node_Operation VALUES (
-                        ?,
-                        'DELETE',
-                        ?,
-                        ?
-                        )""",
-                    (scopeID, nodeName, kindName),
+        # Record nodes transformation
+        if recordTransformation:
+            if prevNode.has_no_uses():
+                replacedNodes = find_all_replaced_nodes(prevNode)
+                store_transformation_into_DB(
+                    transID,
+                    changedNode,
+                    addedNodes,
+                    replacedNodes,
+                    cursor,
+                    scopeName,
                 )
 
-        # Process ENTER SCOPE statement
-        elif "ENTER SCOPE:" in ln:
-            ln = ln.replace("=", "").replace(" ", "")
-            m = re.match(pEnter, ln)
-            if m:
-                scopeID += 1
-                fullScopeName = m.groups()[0]
-                lastScopeName = fullScopeName.split("->")[-1]
-                if "::" in lastScopeName:
-                    lastScopeName = lastScopeName.split("::")[-1]
-                if lastScopeName in dumpPhases:
-                    dump_dag(f"before_{lastScopeName}_{scopeID}")
-                if str(scopeID) in dumpPhases:
-                    dump_dag(f"phase_{scopeID}")
-                SCOPE_STACK.append(lastScopeName)
+                transID += 1
+                addedNodes = []
+                replacedNodes = []
 
-                # Start recording transformations.
-                if (
-                    lastScopeName in stopRecordTranformationNames
-                    and len(SCOPE_STACK) == 1
-                ):
-                    recordTransformation = True
+    def process_scope(scopeName: str, phase: List) -> None:
+        global scopeID
+        if "::" in scopeName:
+            scopeName = scopeName.split("::", 1)[-1]
+        scopeID += 1
 
-                # Update scope entrance in database
-                cursor.execute(
-                    """INSERT INTO Log_Scope VALUES (
-                        ?,
-                        ?,
-                        ?
-                        )""",
-                    (scopeID,
-                     "ENTER " + lastScopeName,
-                     "ENTER " + fullScopeName),
-                )
+        if scopeName in dumpPhases:
+            dump_dag(f"before_{scopeName}_{scopeID}")
+        if str(scopeID) in dumpPhases:
+            dump_dag(f"phase_{scopedID}")
+        SCOPE_STACK.append(scopeName)
 
-        # Process EXIT SCOPE statement
-        elif "EXIT SCOPE:" in ln:
-            ln = ln.replace("=", "").replace(" ", "")
-            m = re.match(pExit, ln)
-            if m:
-                scopeID += 1
-                fullScopeName = m.groups()[0]
-                lastScopeName = fullScopeName.split("->")[-1]
-                if "::" in lastScopeName:
-                    lastScopeName = lastScopeName.split("::")[-1]
-                assert (
-                    lastScopeName == SCOPE_STACK[-1]
-                ), "Exited scope must be same as the top of scope stack."
-                if lastScopeName in dumpPhases:
-                    dump_dag(f"after_{lastScopeName}_{scopeID}")
-                if str(scopeID) in dumpPhases:
-                    dump_dag(f"phase_{scopeID}")
-                SCOPE_STACK.pop()
+        # Start recording transformations.
+        if (
+            scopeName in stopRecordTranformationNames
+            and len(SCOPE_STACK) == 2
+        ):
+            recordTransformation = True
 
+        # Update scope entrance in database
+        cursor.execute(
+            """INSERT INTO Log_Scope VALUES (
+              ?,
+              ?,
+              ?
+              )""",
+            (scopeID,
+             "ENTER " + scopeName,
+             "ENTER " + scopeName),
+        )
+
+        for ev in phase:
+            if "create" in ev:
+                process_create(ev)
+            elif "delete" in ev:
+                process_delete(ev)
+            elif "input_change" in ev:
+                process_input_change(ev)
+            else:
+                name, scope = list(ev.items())[0]
+                process_scope(name, scope)
                 # Stop recording transformations.
                 if (
-                    lastScopeName in stopRecordTranformationNames
-                    and len(SCOPE_STACK) == 0
+                    scopeName in stopRecordTranformationNames
+                    and len(SCOPE_STACK) == 1
                 ):
                     recordTransformation = False
 
                 # Update scope exit in database
                 cursor.execute(
                     """INSERT INTO Log_Scope VALUES (
-                        ?,
-                        ?,
-                        ?
-                        )""",
-                    (scopeID, "EXIT " + lastScopeName, "EXIT " + fullScopeName),
+                  ?,
+                  ?,
+                  ?
+                  )""",
+                    (scopeID, "EXIT " + scopeName, "EXIT " + name),
                 )
 
-    # Update scope db
-    cursor.execute(
-        """INSERT INTO Log_Scope VALUES (
-                        0,
-                        'MODULE LOADER',
-                        'MODULE LOADER'
-                        )"""
-    )
+        scopeID += 1
+
+        if scopeName in dumpPhases:
+            dump_dag(f"after_{scopeName}_{scopeID}")
+        if str(scopeID) in dumpPhases:
+            dump_dag(f"phase_{scopedID}")
+        SCOPE_STACK.pop()
+
+    print("Log Version:", log["version"])
+
+    process_scope("MODULE LOADER", log["passes"])
 
     conn.commit()
 
 
 def main():
     dbFile, logFile, dumpPhases = parse_args()
-    lines = filter(lambda x: len(x) > 0, open(logFile).readlines())
+    log = json.load(open(logFile))
     with init_db(dbFile) as conn:
-        process(lines, dumpPhases, conn)
+        process(log, dumpPhases, conn)
     return
 
 

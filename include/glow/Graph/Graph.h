@@ -76,7 +76,7 @@ class Module final {
   PseudoRNG PRNG_;
 
   /// Module log context that stores all logs related to this module.
-  ModuleLogContext moduleLogCtx_;
+  LogContext moduleLogCtx_{nullptr};
 
   /// Inserts the constant \p V to the list of constants.
   Constant *addConstant(Constant *V);
@@ -239,7 +239,7 @@ public:
   uint64_t getConstantsSize();
 
   /// \Returns the module log context.
-  ModuleLogContext &getModuleLogContext() { return moduleLogCtx_; };
+  LogContext *getModuleLogContext() { return &moduleLogCtx_; };
 
   // Don't copy or move this class around.
   // The destructor will wipe the functions leaving
@@ -274,9 +274,8 @@ class Function final : public Named {
 public:
   Function(Module *parent, llvm::StringRef Name = {})
       : Named(Name), parent_(parent), state_(FunctionState::FuncCreated) {
-    logCtx_ = std::make_shared<LogContext>();
-    logCtx_->setParent(this);
-    logCtx_->loadModuleLogContext();
+    logCtx_ = std::make_shared<LogContext>(parent);
+    logCtx_->pushEvent(parent->getModuleLogContext()->getClonedScope());
   }
 
   ~Function();
