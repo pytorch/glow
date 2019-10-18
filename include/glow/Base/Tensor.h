@@ -48,6 +48,20 @@ void genericTranspose(const Tensor *src, Tensor *dest,
 /// returned dims. For example, input {2,1,4} would result in {2,1,4,1,1,1}.
 ShapeVector expandDimsToMax(llvm::ArrayRef<size_t> currDims);
 
+namespace runtime {
+class DeviceManager;
+}
+
+struct DeviceResidencyInfo {
+  runtime::DeviceManager *deviceManager{nullptr};
+  void *context{nullptr};
+
+  void clear() {
+    deviceManager = nullptr;
+    context = nullptr;
+  }
+};
+
 /// A class that represents a contiguous n-dimensional array (a tensor).
 class Tensor final {
 public:
@@ -56,6 +70,11 @@ public:
     Zero,      // The tensor is initialized to zero.
     Broadcast, // Broadcast a single value to all elements.
     Xavier,    // Init the tensor with random values using the Xavier method.
+  };
+
+  enum class TensorResidency {
+    Host,
+    Device,
   };
 
 private:
@@ -71,6 +90,12 @@ private:
   /// The TensorPool that is managing this Tensor (if any).
   TensorPool *tensorPool_{nullptr};
 
+  /// The residency status of the tensor.
+  TensorResidency tensorResidency_{TensorResidency::Host};
+
+  /// The device residency info accosiated with the tensor.
+  DeviceResidencyInfo residency_;
+
   /// Size in bytes of the unpadded region memory. This is useful  communicating
   /// the actual size of the data, this allows for copying only inputs and not
   /// padding to the device.
@@ -82,6 +107,24 @@ private:
   char *getData() const { return data_; }
 
 public:
+  /// \returns true if tensor data is stored on a device
+  bool isDeviceResident() const {
+    return tensorResidency_ == TensorResidency::Host;
+  }
+
+  // Sets DeviceResidencyInfo in the Tensor.
+  void setDeviceResidency(const DeviceResidencyInfo &info) {
+    residency_ = info;
+  }
+
+  /// \returns the DeviceResidencyInfo associated with this Tensor
+  const DeviceResidencyInfo &getDeviceResidency() const { return residency_; }
+
+  /// Clears DeviceResidencyInfo.
+  /// Note that this does not affect the associated DeviceManager or device
+  /// memory.
+  void clearDeviceResidency() { residency_.clear(); }
+
   /// \returns true if it is an unowned tensor.
   bool isUnowned() const { return isUnowned_; }
 
