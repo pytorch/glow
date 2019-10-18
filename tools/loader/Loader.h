@@ -57,7 +57,7 @@ class Loader {
   /// Host Manager for running the model.
   std::unique_ptr<glow::runtime::HostManager> hostManager_;
   /// Backend used for saving bundle and quantization.
-  glow::Backend *backend_;
+  std::unique_ptr<glow::Backend> backend_;
   /// Function containing the model.
   Function *F_{nullptr};
   /// Module
@@ -94,6 +94,12 @@ public:
   /// Getter for the model path, expected to be a directory.
   /// \pre (modelPathOpt.size() == 1)
   static llvm::StringRef getModelOptDir();
+
+  /// Get the description of the model inputs provided through the command
+  /// line interface to the Loader by providing separately the names in the
+  /// vector \p inputNames and the input types in the vector \p inputTypes.
+  static void getModelInputs(std::vector<std::string> &inputNames,
+                             std::vector<Type> &inputTypes);
 
   /// Compiles the Function F_. Handles quantization, emitting bundles, and
   /// dumping debug information. \p bindings bind specific

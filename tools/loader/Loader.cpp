@@ -63,6 +63,36 @@ llvm::cl::alias modelPathAOpt("m", llvm::cl::desc("Alias for -model"),
                               llvm::cl::aliasopt(modelPathOpt),
                               llvm::cl::cat(loaderCat));
 
+llvm::cl::list<std::string> modelInputsOpt(
+    "model-input", llvm::cl::ZeroOrMore,
+    llvm::cl::desc(
+        " For ONNX models the inputs of the graph can be inferred   \n"
+        " automatically and hence this option is not mandatory.     \n"
+        " For Caffe2 models the graph definition does not contain   \n"
+        " the description of the inputs and hence must be provided  \n"
+        " explicitly using this option. One or more model inputs    \n"
+        " are provided using the following format:                  \n"
+        "    -model-input=<inputName1>,<inputType1>,<inputShape1>   \n"
+        "    -model-input=<inputName2>,<inputType2>,<inputShape2>   \n"
+        "    ....................................................   \n"
+        " For quantized types the format is slightly different since\n"
+        " the scale and offset parameters should also be provided:  \n"
+        "    -model-input=<name>,<type>,<scale>,<offset>,<shape>    \n"
+        " For example we can can provide one or more inputs:        \n"
+        "    -model-input=input_03_data,float,[1]                   \n"
+        "    -model-input=data_bias,int32,[1,32,32]                 \n"
+        "    -model-input=data,int8q,0.123,-13,[1,10]               \n"
+        " If only the name is provided, the default type is 'float' \n"
+        " and the default shape is '[1]':                           \n"
+        "    -model-input=<inputName1>                              \n"
+        " The supported types are:                                  \n"
+        "    - float, float16 (floating point types)                \n"
+        "    - int32, int64 (integer types)                         \n"
+        "    - int8q, int16q, int32q (integer quantized types)      \n"
+        "    - bool (logic type)\n"),
+    llvm::cl::value_desc("name,[type,[scale,offset],shape]"),
+    llvm::cl::cat(loaderCat));
+
 llvm::cl::opt<bool>
     verbose("verbose",
             llvm::cl::desc("Specify whether to run with verbose output"),
@@ -229,6 +259,104 @@ llvm::StringRef Loader::getModelOptDir() {
          llvm::sys::fs::is_directory(*modelPathOpt.begin()) &&
          "Model path must be a single directory.");
   return modelPathOpt[0];
+}
+
+/// Parse the 'modelInputsOpt' option and get the model input names and types.
+/// The expected format is one of the following:
+/// - <name> (default type is 'float', default shape is '[1]')
+/// - <name>,<type>,<shape> for non-quantized types.
+/// - <name>,<type>,<scale>,<offset>,<shape> for quantized types.
+void Loader::getModelInputs(std::vector<std::string> &inputNames,
+                            std::vector<Type> &inputTypes) {
+  for (const auto &str : modelInputsOpt) {
+    // Parse name.
+    auto strPair = llvm::StringRef(str).split(',');
+    llvm::StringRef name = strPair.first;
+    CHECK(name.size()) << "Model input name empty";
+
+    // Verify name is unique and add to vector.
+    for (const auto &nameIter : inputNames) {
+      if (name.equals(nameIter)) {
+        LOG(FATAL) << strFormat("Model input name \"%s\" is not unique. Check "
+                                "the graph definition for the input names.",
+                                std::string(name).c_str());
+      }
+    }
+    inputNames.push_back(name);
+
+    // If only the name is provided, use the default type and shape.
+    if (strPair.second.size() == 0) {
+      inputTypes.push_back(Type(ElemKind::FloatTy, {1}));
+      continue;
+    }
+
+    // Parse type.
+    strPair = strPair.second.split(',');
+    llvm::StringRef type = strPair.first;
+    CHECK(type.size()) << "Model input type empty";
+    ElemKind kind;
+    if (type.equals("float")) {
+      kind = ElemKind::FloatTy;
+    } else if (type.equals("float16")) {
+      kind = ElemKind::Float16Ty;
+    } else if (type.equals("int8q")) {
+      kind = ElemKind::Int8QTy;
+    } else if (type.equals("int16q")) {
+      kind = ElemKind::Int16QTy;
+    } else if (type.equals("int32q")) {
+      kind = ElemKind::Int32QTy;
+    } else if (type.equals("int32")) {
+      kind = ElemKind::Int32ITy;
+    } else if (type.equals("int64")) {
+      kind = ElemKind::Int64ITy;
+    } else if (type.equals("bool")) {
+      kind = ElemKind::BoolTy;
+    } else {
+      LOG(FATAL) << strFormat("Model input type \"%s\" not supported",
+                              std::string(type).c_str());
+    }
+
+    // For quantized type get scale and offset.
+    double scale;
+    int32_t offset;
+    if (isQuantizedElemKind(kind)) {
+      strPair = strPair.second.split(',');
+      CHECK(strPair.first.size()) << "Model input scale empty";
+      CHECK(!strPair.first.getAsDouble(scale))
+          << "Model input scale parameter invalid";
+      strPair = strPair.second.split(',');
+      CHECK(strPair.first.size()) << "Model input offset empty";
+      CHECK(!strPair.first.getAsInteger(0, offset))
+          << "Model input offset parameter invalid";
+    }
+
+    // Parse shape string.
+    llvm::StringRef shape = strPair.second;
+    CHECK(shape.size()) << "Model input shape empty";
+    ShapeVector dims;
+    CHECK_EQ(shape.front(), '[') << "First shape char should be [";
+    shape = shape.drop_front();
+    CHECK_EQ(shape.back(), ']') << "First shape char should be ]";
+    shape = shape.drop_back();
+    CHECK(shape.size()) << "Model input shape empty";
+    size_t val;
+    while (shape.contains(',')) {
+      auto splitRes = shape.split(',');
+      CHECK(!splitRes.first.getAsInteger(0, val))
+          << "Model input shape integer invalid";
+      dims.push_back(val);
+      shape = splitRes.second;
+    }
+    CHECK(!shape.getAsInteger(0, val)) << "Model input shape integer invalid";
+    dims.push_back(val);
+
+    // Build type and add to vector.
+    if (isQuantizedElemKind(kind)) {
+      inputTypes.push_back(Type(kind, dims, (float)scale, offset));
+    } else {
+      inputTypes.push_back(Type(kind, dims));
+    }
+  }
 }
 
 bool glow::emittingBundle() { return !emitBundle.empty(); }
@@ -470,7 +598,7 @@ Loader::Loader() {
       runtime::generateDeviceConfigs(numDevices, ExecutionBackend);
 
   hostManager_ = llvm::make_unique<runtime::HostManager>(std::move(configs));
-  backend_ = createBackend(ExecutionBackend);
+  backend_ = std::unique_ptr<Backend>(createBackend(ExecutionBackend));
   F_ = M_->createFunction(modelPathOpt[0]);
   functionName_ = modelPathOpt[0];
 }

@@ -62,6 +62,40 @@ This option supports two modes:
 The second generated file is named `<network_name>.weights` and
 contains the weights required to run the compiled model.
 
+Another tool is the `model-compiler` which is used to compile a model into a bundle.
+This tool is more generic (is not tied just to image classification applications)
+and can compile models with any number of inputs. There is a difference when using
+this tool with ONNX or Caffe2 models:
+- when using ONNX models the tool can infer automatically the inputs of the model
+since the description of the input tensors is part of the model. We can use this tool
+simply as: 
+  ```
+  $model-compiler -model=<onnx-model-path> -backend=CPU -emit-bundle=<bundle-dir>
+  ```
+- when using Caffe2 models the user must provide explicitly the description of the
+input tensors (which is not part of the model) using the `-model-input` option:
+  ```
+  $model-compiler -model=<caffe2-model-path> -backend=CPU -emit-bundle=<bundle-dir> \
+      -model-input=<inputName1>,<inputType1>,<inputShape1> \
+      -model-input=<inputName2>,<inputType2>,<inputShape2> \
+      ...
+  ```
+  For quantized types the format of the `-model-input` is slightly different since the
+  scale and offset parameters should also be provided:
+  ```
+  -model-input=<name>,<type>,<scale>,<offset>,<shape>
+  ```
+  For example we can can provide one or more inputs with:
+  ```
+  -model-input=input_03_data,float,[1]
+  -model-input=data_bias,int32,[1,32,32]
+  -model-input=data,int8q,0.123,-13,[1,10]
+  ```
+For more information about the options of the model-compiler type:
+```
+$model-compiler -help
+```
+
 ## APIs exposed by bundles
 
 This section describes the APIs that the CPU bundle exposes. Other targets may

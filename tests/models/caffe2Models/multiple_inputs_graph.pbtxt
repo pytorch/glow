@@ -1,0 +1,10 @@
+name: "test-multiple-inputs"
+op {
+  type: "Add"
+  input: "input1"
+  input: "input2"
+  output: "output"
+}
+external_input: "input1"
+external_input: "input2"
+external_output: "output"
