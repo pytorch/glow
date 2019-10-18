@@ -142,7 +142,11 @@ static bool verifyConvolution(NodeValue src, NodeValue dest, NodeValue filter,
     }
     // Quantization type check.
     if (src.getElementType() == ElemKind::Int8QTy) {
-      isValid &= checkType(bias, ElemKind::Int32QTy, parent);
+      isValid &=
+          expectCompareTrue("Bias type should be Int8 or Int32 for Conv",
+                            bias.getElementType() == ElemKind::Int8QTy ||
+                                bias.getElementType() == ElemKind::Int32QTy,
+                            true, parent);
     }
   }
   Shape idim(src.getType()->dims());
@@ -194,7 +198,11 @@ static bool verifyConvolution3D(NodeValue src, NodeValue dest, NodeValue filter,
   }
   // Quantization type check.
   if (src.getElementType() == ElemKind::Int8QTy) {
-    isValid &= checkType(bias, ElemKind::Int32QTy, parent);
+    isValid &=
+        expectCompareTrue("Bias type should be Int8 or Int32 for Conv3D",
+                          bias.getElementType() == ElemKind::Int8QTy ||
+                              bias.getElementType() == ElemKind::Int32QTy,
+                          true, parent);
   }
   ShapeNHWDC idim(src.getType()->dims());
   ShapeNHWDC odim(dest.getType()->dims());
@@ -254,7 +262,11 @@ static bool verifyFullyConnected(NodeValue src, NodeValue weights,
                                weights.dims()[1], dest.dims()[1], parent);
 
   if (src.getElementType() == ElemKind::Int8QTy) {
-    isValid &= checkType(bias, ElemKind::Int32QTy, parent);
+    isValid &=
+        expectCompareTrue("Bias type should be Int8 or Int32 for FC",
+                          bias.getElementType() == ElemKind::Int8QTy ||
+                              bias.getElementType() == ElemKind::Int32QTy,
+                          true, parent);
   }
   return isValid;
 }

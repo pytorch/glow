@@ -3779,6 +3779,42 @@ TEST_P(OperatorStatelessTest, FP16ConvolutionDepth8) {
                             parCloneCountOpt);
 }
 
+TEST_P(OperatorStatelessTest, ConvolutionDepth10_Int8_BiasInt8) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  compareAgainstInterpreter(
+      getBackendName(), createAndInitConvDepthTest<10>, ElemKind::FloatTy,
+      ElemKind::Int8QTy, 0.03f, parCloneCountOpt,
+      /* enableRowwiseQuantization */ false, quantization::Schema::Asymmetric,
+      ElemKind::Int8QTy);
+}
+
+TEST_P(OperatorStatelessTest, ConvolutionDepth10_Int8_BiasInt32) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  compareAgainstInterpreter(
+      getBackendName(), createAndInitConvDepthTest<10>, ElemKind::FloatTy,
+      ElemKind::Int8QTy, 0.03f, parCloneCountOpt,
+      /* enableRowwiseQuantization */ false, quantization::Schema::Asymmetric,
+      ElemKind::Int32QTy);
+}
+
+TEST_P(OperatorStatelessTest, ConvolutionDepth10_Int16_BiasInt16) {
+  ENABLED_BACKENDS(Interpreter);
+  compareAgainstInterpreter(
+      getBackendName(), createAndInitConvDepthTest<10>, ElemKind::FloatTy,
+      ElemKind::Int16QTy, 0.0003f, parCloneCountOpt,
+      /* enableRowwiseQuantization */ false, quantization::Schema::Asymmetric,
+      ElemKind::Int16QTy);
+}
+
+TEST_P(OperatorStatelessTest, ConvolutionDepth10_Int16_BiasInt32) {
+  ENABLED_BACKENDS(Interpreter);
+  compareAgainstInterpreter(
+      getBackendName(), createAndInitConvDepthTest<10>, ElemKind::FloatTy,
+      ElemKind::Int16QTy, 0.0003f, parCloneCountOpt,
+      /* enableRowwiseQuantization */ false, quantization::Schema::Asymmetric,
+      ElemKind::Int32QTy);
+}
+
 static FunctionTensorPair
 createAndInitBasicConcatTest(glow::PlaceholderBindings &bindings,
                              glow::ExecutionEngine &EE) {
@@ -3876,6 +3912,46 @@ TEST_P(OperatorStatelessTest, FC_Float16) {
   compareAgainstInterpreter(getBackendName(), createAndInitBasicFCTest,
                             ElemKind::FloatTy, ElemKind::Float16Ty, 0.02f,
                             parCloneCountOpt);
+}
+
+/// Test Int8 FullyConnected with Int8 bias.
+TEST_P(OperatorStatelessTest, FullyConnected_Int8_BiasInt8) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  compareAgainstInterpreter(
+      getBackendName(), createAndInitBasicFCTest, ElemKind::FloatTy,
+      ElemKind::Int8QTy, 0.05f, parCloneCountOpt,
+      /* enableRowwiseQuantization */ false, quantization::Schema::Asymmetric,
+      ElemKind::Int8QTy);
+}
+
+/// Test Int8 FullyConnected with Int32 bias.
+TEST_P(OperatorStatelessTest, FullyConnected_Int8_BiasInt32) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  compareAgainstInterpreter(
+      getBackendName(), createAndInitBasicFCTest, ElemKind::FloatTy,
+      ElemKind::Int8QTy, 0.05f, parCloneCountOpt,
+      /* enableRowwiseQuantization */ false, quantization::Schema::Asymmetric,
+      ElemKind::Int32QTy);
+}
+
+/// Test Int16 FullyConnected with Int16 bias.
+TEST_P(OperatorStatelessTest, FullyConnected_Int16_BiasInt16) {
+  ENABLED_BACKENDS(Interpreter);
+  compareAgainstInterpreter(
+      getBackendName(), createAndInitBasicFCTest, ElemKind::FloatTy,
+      ElemKind::Int16QTy, 0.0005f, parCloneCountOpt,
+      /* enableRowwiseQuantization */ false, quantization::Schema::Asymmetric,
+      ElemKind::Int16QTy);
+}
+
+/// Test Int16 FullyConnected with Int32 bias.
+TEST_P(OperatorStatelessTest, FullyConnected_Int16_BiasInt32) {
+  ENABLED_BACKENDS(Interpreter);
+  compareAgainstInterpreter(
+      getBackendName(), createAndInitBasicFCTest, ElemKind::FloatTy,
+      ElemKind::Int16QTy, 0.0005f, parCloneCountOpt,
+      /* enableRowwiseQuantization */ false, quantization::Schema::Asymmetric,
+      ElemKind::Int32QTy);
 }
 
 TEST_P(OperatorTest, EntropyLossTest) {
@@ -6297,6 +6373,100 @@ TEST_P(OperatorTest, NonCubicKernelConv3DQuantized) {
   }
 }
 
+/// Test for quantized Convolution3D.
+static void Conv3DQuantizedTest(glow::PlaceholderBindings &bindings,
+                                glow::Module &mod, glow::Function *F,
+                                glow::ExecutionEngine &EE, ElemKind elemKind,
+                                ElemKind biaselemKind) {
+  // Create floating-point network.
+  auto *input =
+      mod.createPlaceholder(ElemKind::FloatTy, {1, 4, 4, 4, 1}, "input", false);
+  auto *filter = mod.createPlaceholder(ElemKind::FloatTy, {1, 1, 2, 3, 1},
+                                       "filter", false);
+  auto *bias = mod.createPlaceholder(ElemKind::FloatTy, {1}, "bias", false);
+  auto outTy = mod.uniqueType(ElemKind::FloatTy, {1, 4, 3, 2, 1});
+  Convolution3DNode *conv3d =
+      F->createConv3D("Conv3D", input, filter, bias, outTy, {1, 2, 3},
+                      {1, 1, 1}, {0, 0, 0, 0, 0, 0}, 1);
+  SaveNode *save = F->createSave("save", conv3d);
+
+  // Quantized types.
+  auto inputTQP = quantization::chooseQuantizationParams(
+      -1.0, 1.0, quantization::Schema::Asymmetric, elemKind);
+  auto filterTQP = quantization::chooseQuantizationParams(
+      -1.0, 1.0, quantization::Schema::Asymmetric, elemKind);
+  auto biasTQP = quantization::chooseQuantizationParams(
+      -1.0, 1.0, quantization::Schema::Asymmetric, biaselemKind);
+  auto outputTQP = quantization::chooseQuantizationParams(
+      -4.0, 4.0, quantization::Schema::Asymmetric, elemKind);
+
+  // Create quantized network.
+  auto inputQTy = mod.uniqueType(elemKind, {1, 4, 4, 4, 1}, inputTQP.scale,
+                                 inputTQP.offset);
+  auto filterQTy = mod.uniqueType(elemKind, {1, 1, 2, 3, 1}, filterTQP.scale,
+                                  filterTQP.offset);
+  auto biasQTy =
+      mod.uniqueType(biaselemKind, {1}, biasTQP.scale, biasTQP.offset);
+  auto outQTy = mod.uniqueType(elemKind, {1, 4, 3, 2, 1}, outputTQP.scale,
+                               outputTQP.offset);
+  QuantizeNode *inputQ = F->createQuantize("inputQ", input, inputQTy);
+  QuantizeNode *filterQ = F->createQuantize("filterQ", filter, filterQTy);
+  QuantizeNode *biasQ = F->createQuantize("biasQ", bias, biasQTy);
+  Convolution3DNode *conv3dQ =
+      F->createConv3D("Conv3DQ", inputQ, filterQ, biasQ, outQTy, {1, 2, 3},
+                      {1, 1, 1}, {0, 0, 0, 0, 0, 0}, 1);
+  DequantizeNode *deQ = F->createDequantize("deQ", conv3dQ);
+  SaveNode *saveQ = F->createSave("saveQ", deQ);
+
+  // Allocate placeholders.
+  bindings.allocate(input)->getHandle().randomize(-1.0, 1.0, mod.getPRNG());
+  bindings.allocate(filter)->getHandle().randomize(-1.0, 1.0, mod.getPRNG());
+  bindings.allocate(bias)->getHandle().randomize(-1.0, 1.0, mod.getPRNG());
+  bindings.allocate(save->getPlaceholder());
+  bindings.allocate(saveQ->getPlaceholder());
+
+  // Run network.
+  ::glow::convertPlaceholdersToConstants(
+      F, bindings, {input, save->getPlaceholder(), saveQ->getPlaceholder()});
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  // Compare.
+  Tensor &res = *bindings.get(save->getPlaceholder());
+  Tensor &resQ = *bindings.get(saveQ->getPlaceholder());
+  for (size_t i = 0; i < res.size(); i++) {
+    EXPECT_NEAR(res.getHandle().raw(i), resQ.getHandle().raw(i), 0.03);
+  }
+}
+
+/// Test Int8 Conv3D with Int8 bias.
+TEST_P(OperatorTest, Conv3DQuantizedTest_Int8_BiasInt8) {
+  ENABLED_BACKENDS(Interpreter);
+  Conv3DQuantizedTest(bindings_, mod_, F_, EE_, ElemKind::Int8QTy,
+                      ElemKind::Int8QTy);
+}
+
+/// Test Int8 Conv3D with Int32 bias.
+TEST_P(OperatorTest, Conv3DQuantizedTest_Int8_BiasInt32) {
+  ENABLED_BACKENDS(Interpreter);
+  Conv3DQuantizedTest(bindings_, mod_, F_, EE_, ElemKind::Int8QTy,
+                      ElemKind::Int32QTy);
+}
+
+/// Test Int16 Conv3D with Int16 bias.
+TEST_P(OperatorTest, Conv3DQuantizedTest_Int16_BiasInt16) {
+  ENABLED_BACKENDS(Interpreter);
+  Conv3DQuantizedTest(bindings_, mod_, F_, EE_, ElemKind::Int16QTy,
+                      ElemKind::Int16QTy);
+}
+
+/// Test Int16 Conv3D with Int32 bias.
+TEST_P(OperatorTest, Conv3DQuantizedTest_Int16_BiasInt32) {
+  ENABLED_BACKENDS(Interpreter);
+  Conv3DQuantizedTest(bindings_, mod_, F_, EE_, ElemKind::Int16QTy,
+                      ElemKind::Int32QTy);
+}
+
 /// Check Non-square kernel for AveragePool.
 TEST_P(OperatorTest, NonSquareKernelAveragePool) {
   CHECK_IF_ENABLED();
@@ -8415,13 +8585,24 @@ createAndInitBasicRowwiseFCTest(glow::PlaceholderBindings &bindings,
   return std::make_pair(F, resultTensor);
 }
 
-/// Test RowwiseQuantizedFullyConnected Node.
-TEST_P(OperatorStatelessTest, rowwiseQuantizedFCTest) {
-  CHECK_IF_ENABLED();
-  compareAgainstInterpreter(getBackendName(), createAndInitBasicRowwiseFCTest,
-                            ElemKind::FloatTy, ElemKind::Int8QTy, 0.06f,
-                            parCloneCountOpt,
-                            /* enableRowwiseQuantization */ true);
+/// Test Int8 RowwiseQuantizedFullyConnected Node with Int8 bias.
+TEST_P(OperatorStatelessTest, rowwiseQuantizedFCTest_Int8_BiasInt8) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  compareAgainstInterpreter(
+      getBackendName(), createAndInitBasicRowwiseFCTest, ElemKind::FloatTy,
+      ElemKind::Int8QTy, 0.06f, parCloneCountOpt,
+      /* enableRowwiseQuantization */ true, quantization::Schema::Asymmetric,
+      ElemKind::Int8QTy);
+}
+
+/// Test Int8 RowwiseQuantizedFullyConnected Node with Int32 bias.
+TEST_P(OperatorStatelessTest, rowwiseQuantizedFCTest_Int8_BiasInt32) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  compareAgainstInterpreter(
+      getBackendName(), createAndInitBasicRowwiseFCTest, ElemKind::FloatTy,
+      ElemKind::Int8QTy, 0.06f, parCloneCountOpt,
+      /* enableRowwiseQuantization */ true, quantization::Schema::Asymmetric,
+      ElemKind::Int32QTy);
 }
 
 /// Test RowwiseQuantizedFullyConnected Node with Symmetric quantization.

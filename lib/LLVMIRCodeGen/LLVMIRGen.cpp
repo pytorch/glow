@@ -1566,7 +1566,17 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *srcOffset = emitConstI32(builder, src->getType()->getOffset());
     auto *biasOffset = emitConstI32(builder, bOffset);
 
-    auto *F = getFunction("rowwise_quantized_fc", dest->getElementType());
+    llvm::Function *F = nullptr;
+    if ((dest->getElementType() == ElemKind::Int8QTy) &&
+        (bias->getElementType() == ElemKind::Int8QTy)) {
+      F = getFunction("rowwise_quantized_fc_i8_i8");
+    } else if ((dest->getElementType() == ElemKind::Int8QTy) &&
+               (bias->getElementType() == ElemKind::Int32QTy)) {
+      F = getFunction("rowwise_quantized_fc_i8_i32");
+    } else {
+      LOG(FATAL) << "Unsupported element/bias type for "
+                    "RowwiseQuantizedFullyConnectedInst";
+    }
 
     createCall(builder, F,
                {destPtr, srcPtr, weightsPtr, biasPtr, weightsOffsetsPtr,
@@ -1746,8 +1756,6 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *group = emitConstSizeT(builder, CI->getGroup());
     auto *dilation = emitConstSizeT(builder, CI->getDilation());
 
-    const char *kernelName = "convolution";
-
     auto destDepth = dest->dims()[3];
 
     // Try to 'block' the convolution on the 'depth' dimension. We will process
@@ -1763,8 +1771,6 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     }
 
     auto *unrollD = emitConstI32(builder, unrollDFactor);
-
-    auto *F = getFunction(kernelName, dest->getElementType());
 
     if (src->getType()->isQuantizedType()) {
       auto *destTy = dest->getType();
@@ -1796,6 +1802,17 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
       auto *outPost = emitConstI32(builder, outScaleParam.post);
       auto *outScale = emitConstI32(builder, outScaleParam.scale);
 
+      llvm::Function *F = nullptr;
+      if ((dest->getElementType() == ElemKind::Int8QTy) &&
+          (bias->getElementType() == ElemKind::Int8QTy)) {
+        F = getFunction("convolution_i8_i8");
+      } else if ((dest->getElementType() == ElemKind::Int8QTy) &&
+                 (bias->getElementType() == ElemKind::Int32QTy)) {
+        F = getFunction("convolution_i8_i32");
+      } else {
+        LOG(FATAL) << "Unsupported element/bias type for ConvolutionInst";
+      }
+
       createCall(builder, F,
                  {destPtr,    srcPtr,     filterPtr,  biasPtr,   destDims,
                   srcDims,    filterDims, biasDims,   kernels,   strides,
@@ -1803,6 +1820,9 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
                   biasOffset, biasPre,    biasPost,   biasScale, outPre,
                   outPost,    outScale,   unrollD,    dilation});
     } else {
+
+      auto *F = getFunction("convolution", dest->getElementType());
+
       createCall(builder, F,
                  {destPtr, srcPtr, filterPtr, biasPtr, destDims, srcDims,
                   filterDims, biasDims, kernels, strides, pads, group, unrollD,

@@ -262,13 +262,15 @@ using CreateAndInitFunction =
 /// nodes that support it. \p schema represents the quantization schema to use,
 /// if applicable. \p parallelCount represents the number of times to clone the
 /// Function inside itself, so that testing can be done on architectures that
-/// have parallel compute engines.
+/// have parallel compute engines. The bias is quantized using the precision
+/// \p biasElemKind.
 void compareAgainstInterpreter(
     llvm::StringRef backendName, CreateAndInitFunction createAndInitFunction,
     ElemKind interpElemKind, ElemKind backendElemKind,
     float allowedError = 0.0001, unsigned parallelCount = 1,
     bool enableRowwiseQuantization = false,
-    quantization::Schema schema = quantization::Schema::Asymmetric);
+    quantization::Schema schema = quantization::Schema::Asymmetric,
+    ElemKind biasElemKind = ElemKind::Int32QTy);
 
 /// Given some \p FTP representing a Function with a single SaveNode and its
 /// Tensor output, duplicate the Nodes in the Function and their Placeholder

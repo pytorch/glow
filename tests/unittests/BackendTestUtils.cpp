@@ -73,11 +73,15 @@ static Placeholder *createQuantizedPlaceholder(Module &mod,
   return P;
 }
 
-/// Clone, profile, and run \p origF given the \p bindings and \p EE. \returns
-/// the quantization parameters from the profile given the specified \p schema.
-static std::vector<NodeQuantizationInfo>
-profileAndGetNodeQuantizationInfo(CreateAndInitFunction createAndInitFunction,
-                                  quantization::Schema schema) {
+/// Create and initialize a function using the argument \p createAndInitFunction
+/// then run the function in profiling mode to get the quantization parameters
+/// by using the specified quantization schema \p schema, the given element
+/// precision \p quantizationPrecision and the given bias precision
+/// \p quantizationPrecisionBias. \returns the quantization parameters for all
+/// the function nodes.
+static std::vector<NodeQuantizationInfo> profileAndGetNodeQuantizationInfo(
+    CreateAndInitFunction createAndInitFunction, quantization::Schema schema,
+    ElemKind quantizationPrecision, ElemKind quantizationPrecisionBias) {
   LoweredInfoMap loweredMapForProf;
   PlaceholderBindings pBindings;
   // Note: deviceMemory = 0 is a signal to use the defaultMemory.
@@ -92,7 +96,7 @@ profileAndGetNodeQuantizationInfo(CreateAndInitFunction createAndInitFunction,
   // deleted as part of the Partitioner quantization flow.
   return quantization::generateNodeQuantizationInfos(
       pBindings, PEE.getModule().getFunctions().front(), loweredMapForProf,
-      schema);
+      schema, quantizationPrecision, quantizationPrecisionBias);
 }
 
 /// Helper that sets up and \returns a pair of configs for both interpreter and
@@ -103,7 +107,7 @@ setupInterpAndBackendConfigs(
     LoweredInfoMap &ILIM, PlaceholderBindings &bBindings, LoweredInfoMap &BLIM,
     ElemKind interpElemKind, ElemKind backendElemKind,
     quantization::Schema schema, bool enableRowwiseQuantization,
-    CreateAndInitFunction createAndInitFunction) {
+    CreateAndInitFunction createAndInitFunction, ElemKind biasElemKind) {
   CompilationContext cctxI{&iBindings, &ILIM};
   CompilationContext cctxB{&bBindings, &BLIM};
   PrecisionConfiguration &precConfigI = cctxI.precisionConfig;
@@ -113,25 +117,32 @@ setupInterpAndBackendConfigs(
       isQuantizedElemKind(backendElemKind)) {
     // If either interp or backend need to be quantized then we need to profile
     // and get quantization infos.
-    auto NQIS =
-        profileAndGetNodeQuantizationInfo(createAndInitFunction, schema);
-
     if (isQuantizedElemKind(interpElemKind)) {
+
+      auto NQII = profileAndGetNodeQuantizationInfo(
+          createAndInitFunction, schema, interpElemKind, biasElemKind);
+
       precConfigI.quantMode = QuantizationMode::Quantize;
-      precConfigI.quantConfig.infos = NQIS;
+      precConfigI.quantConfig.infos = NQII;
       precConfigI.quantConfig.enableRowwise = enableRowwiseQuantization;
       precConfigI.quantConfig.schema = schema;
       precConfigI.quantConfig.precision = interpElemKind;
       precConfigI.quantConfig.assertAllNodesQuantized = true;
+      precConfigI.quantConfig.precisionBias = biasElemKind;
     }
 
     if (isQuantizedElemKind(backendElemKind)) {
+
+      auto NQIB = profileAndGetNodeQuantizationInfo(
+          createAndInitFunction, schema, backendElemKind, biasElemKind);
+
       precConfigB.quantMode = QuantizationMode::Quantize;
-      precConfigB.quantConfig.infos = NQIS;
+      precConfigB.quantConfig.infos = NQIB;
       precConfigB.quantConfig.enableRowwise = enableRowwiseQuantization;
       precConfigB.quantConfig.schema = schema;
       precConfigB.quantConfig.precision = backendElemKind;
       precConfigB.quantConfig.assertAllNodesQuantized = true;
+      precConfigB.quantConfig.precisionBias = biasElemKind;
     }
   }
 
@@ -149,7 +160,8 @@ void compareAgainstInterpreter(llvm::StringRef backendName,
                                ElemKind interpElemKind,
                                ElemKind backendElemKind, float allowedError,
                                unsigned count, bool enableRowwiseQuantization,
-                               quantization::Schema schema) {
+                               quantization::Schema schema,
+                               ElemKind biasElemKind) {
   // Note: deviceMemory = 0 is a signal to use the defaultMemory.
   ExecutionEngine IEE{"Interpreter", /* deviceMemory */ 0,
                       /* ignoreUserDeviceConfig */ true};
@@ -173,8 +185,8 @@ void compareAgainstInterpreter(llvm::StringRef backendName,
   LoweredInfoMap ILIM, BLIM;
   auto configs = setupInterpAndBackendConfigs(
       IF, IEE, iBindings, ILIM, bBindings, BLIM, interpElemKind,
-      backendElemKind, schema, enableRowwiseQuantization,
-      createAndInitFunction);
+      backendElemKind, schema, enableRowwiseQuantization, createAndInitFunction,
+      biasElemKind);
   CompilationContext &cctxI = configs.first;
   CompilationContext &cctxB = configs.second;
 

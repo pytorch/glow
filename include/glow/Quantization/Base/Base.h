@@ -153,6 +153,10 @@ struct QuantizationConfiguration {
   /// doNotQuantizeKinds will skip this check and not cause an abort.
   bool assertAllNodesQuantized{false};
 
+  /// Precision used for bias quantization for Convolution and FullyConnected.
+  /// This allows specializing the bias quantization. Default is int32.
+  ElemKind precisionBias{ElemKind::Int32QTy};
+
   QuantizationConfiguration() = default;
   QuantizationConfiguration(llvm::ArrayRef<NodeQuantizationInfo> i)
       : infos(i) {}

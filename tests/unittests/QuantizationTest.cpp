@@ -316,8 +316,119 @@ TEST(Quantization, fused4BitsRowwiseQuantizeTensor) {
   }
 }
 
-/// Helper for quantizing a simple Conv with precision \p quantizationPrecision.
-static void quantizeSimpleConvGraph(ElemKind quantizationPrecision) {
+/// When quantizing a scalar the quantization should not lose precision: the
+/// quantize->dequantize pair applied to a float scalar should preserve the
+/// value (up to the precision lost by dividing/multiplying with the scale).
+void quantizeScalarTest(float val, ElemKind qTy, quantization::Schema schema) {
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+  PlaceholderBindings bindings;
+
+  // Choose quantization parameters
+  auto TQP = quantization::chooseQuantizationParams(val, val, schema, qTy);
+
+  // Create quantize/dequantize network for a single float value
+  auto *input = mod.createPlaceholder(ElemKind::FloatTy, {1}, "val", false);
+  auto inputQTy = mod.uniqueType(qTy, {1}, TQP.scale, TQP.offset);
+  QuantizeNode *quant = F->createQuantize("quant", input, inputQTy);
+  DequantizeNode *dequant = F->createDequantize("dequant", quant);
+  SaveNode *save = F->createSave("save", dequant);
+
+  // Allocate placeholders, set input, run, get output
+  auto inpH = bindings.allocate(input)->getHandle();
+  auto outH = bindings.allocate(save->getPlaceholder())->getHandle();
+  inpH.at({0}) = val;
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+  float outVal = outH.raw(0);
+  EXPECT_NEAR(val, outVal, 0.0000000001);
+}
+
+TEST(Quantization, quantizeScalarTestInt8) {
+  quantizeScalarTest(0.0, ElemKind::Int8QTy, quantization::Schema::Asymmetric);
+  quantizeScalarTest(0.0, ElemKind::Int8QTy, quantization::Schema::Symmetric);
+  quantizeScalarTest(0.0, ElemKind::Int8QTy,
+                     quantization::Schema::SymmetricWithUnsigned);
+  quantizeScalarTest(1.3, ElemKind::Int8QTy, quantization::Schema::Asymmetric);
+  quantizeScalarTest(1.3, ElemKind::Int8QTy, quantization::Schema::Symmetric);
+  quantizeScalarTest(1.3, ElemKind::Int8QTy,
+                     quantization::Schema::SymmetricWithUnsigned);
+  quantizeScalarTest(-1.3, ElemKind::Int8QTy, quantization::Schema::Asymmetric);
+  quantizeScalarTest(-1.3, ElemKind::Int8QTy, quantization::Schema::Symmetric);
+  quantizeScalarTest(-1.3, ElemKind::Int8QTy,
+                     quantization::Schema::SymmetricWithUnsigned);
+}
+
+TEST(Quantization, quantizeScalarTestInt16) {
+  quantizeScalarTest(0.0, ElemKind::Int16QTy, quantization::Schema::Asymmetric);
+  quantizeScalarTest(0.0, ElemKind::Int16QTy, quantization::Schema::Symmetric);
+  quantizeScalarTest(0.0, ElemKind::Int16QTy,
+                     quantization::Schema::SymmetricWithUnsigned);
+  quantizeScalarTest(1.3, ElemKind::Int16QTy, quantization::Schema::Asymmetric);
+  quantizeScalarTest(1.3, ElemKind::Int16QTy, quantization::Schema::Symmetric);
+  quantizeScalarTest(1.3, ElemKind::Int16QTy,
+                     quantization::Schema::SymmetricWithUnsigned);
+  quantizeScalarTest(-1.3, ElemKind::Int16QTy,
+                     quantization::Schema::Asymmetric);
+  quantizeScalarTest(-1.3, ElemKind::Int16QTy, quantization::Schema::Symmetric);
+  quantizeScalarTest(-1.3, ElemKind::Int16QTy,
+                     quantization::Schema::SymmetricWithUnsigned);
+}
+
+TEST(Quantization, quantizeScalarTestInt32) {
+  quantizeScalarTest(0.0, ElemKind::Int32QTy, quantization::Schema::Asymmetric);
+  quantizeScalarTest(0.0, ElemKind::Int32QTy, quantization::Schema::Symmetric);
+  quantizeScalarTest(0.0, ElemKind::Int32QTy,
+                     quantization::Schema::SymmetricWithUnsigned);
+  quantizeScalarTest(1.3, ElemKind::Int32QTy, quantization::Schema::Asymmetric);
+  quantizeScalarTest(1.3, ElemKind::Int32QTy, quantization::Schema::Symmetric);
+  quantizeScalarTest(1.3, ElemKind::Int32QTy,
+                     quantization::Schema::SymmetricWithUnsigned);
+  quantizeScalarTest(-1.3, ElemKind::Int32QTy,
+                     quantization::Schema::Asymmetric);
+  quantizeScalarTest(-1.3, ElemKind::Int32QTy, quantization::Schema::Symmetric);
+  quantizeScalarTest(-1.3, ElemKind::Int32QTy,
+                     quantization::Schema::SymmetricWithUnsigned);
+}
+
+/// Check corner case when bias is quantized as int32 with unconstrained
+/// scale and offset parameters and used within a subtraction bias - biasOffset
+/// which is expected to be within int32 limits.
+static void quantizeBiasInt32CornerCaseTest(float val) {
+  // Choose bias quantization parameters
+  float biasF = val;
+  auto biasTQP = quantization::chooseQuantizationParams(
+      biasF, biasF, quantization::Schema::Asymmetric, ElemKind::Int32QTy);
+
+  // Quantize the tensor.
+  Tensor biasTF(ElemKind::FloatTy, {1});
+  biasTF.getHandle<float>().at({0}) = biasF;
+  auto biasTQ =
+      quantization::quantizeTensor(biasTF, biasTQP, ElemKind::Int32QTy);
+  int32_t biasQ = biasTQ.getHandle<int32_t>().at({0});
+  int32_t biasOffset = biasTQP.offset;
+
+  // Compute difference and check against int32 limits.
+  int64_t diff = ((int64_t)biasQ) - ((int64_t)biasOffset);
+  EXPECT_TRUE(std::numeric_limits<int32_t>::min() <= diff);
+  EXPECT_TRUE(diff <= std::numeric_limits<int32_t>::max());
+}
+
+TEST(Quantization, quantizeBiasInt32CornerCaseTests) {
+  quantizeBiasInt32CornerCaseTest(0.0);
+  quantizeBiasInt32CornerCaseTest(0.3);
+  quantizeBiasInt32CornerCaseTest(-0.3);
+  quantizeBiasInt32CornerCaseTest(0.0000003);
+  quantizeBiasInt32CornerCaseTest(-0.0000003);
+  quantizeBiasInt32CornerCaseTest(30000000.0);
+  quantizeBiasInt32CornerCaseTest(-30000000.0);
+}
+
+/// Helper for quantizing a simple Conv with precision \p quantizationPrecision
+/// while the bias is quantized using \p quantizationPrecisionBias.
+static void quantizeSimpleConvGraph(ElemKind quantizationPrecision,
+                                    ElemKind quantizationPrecisionBias) {
   ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
@@ -348,6 +459,7 @@ static void quantizeSimpleConvGraph(ElemKind quantizationPrecision) {
   }};
 
   quantConfig.precision = quantizationPrecision;
+  quantConfig.precisionBias = quantizationPrecisionBias;
   quantConfig.assertAllNodesQuantized = true;
   std::unique_ptr<Backend> backend(createBackend(EE.getBackendName()));
   quantization::quantizeFunction(F, quantConfig, *backend);
@@ -357,14 +469,26 @@ static void quantizeSimpleConvGraph(ElemKind quantizationPrecision) {
   EE.run(bindings);
 }
 
-/// Test that a simple Conv graph can be quantized in Int8QTy.
-TEST(Quantization, int8QuantizeGraph) {
-  quantizeSimpleConvGraph(ElemKind::Int8QTy);
+/// Test that a simple Conv graph can be quantized in Int8QTy and Int8QTy bias.
+TEST(Quantization, QuantizeGraph_Int8_BiasInt8) {
+  quantizeSimpleConvGraph(ElemKind::Int8QTy, ElemKind::Int8QTy);
 }
 
-/// Test that a simple Conv graph can be quantized in Int16QTy.
-TEST(Quantization, int16QuantizeGraph) {
-  quantizeSimpleConvGraph(ElemKind::Int16QTy);
+/// Test that a simple Conv graph can be quantized in Int8QTy and Int32QTy bias.
+TEST(Quantization, QuantizeGraph_Int8_BiasInt32) {
+  quantizeSimpleConvGraph(ElemKind::Int8QTy, ElemKind::Int32QTy);
+}
+
+/// Test that a simple Conv graph can be quantized in Int16QTy and Int16QTy
+/// bias.
+TEST(Quantization, QuantizeGraph_Int16_BiasInt16) {
+  quantizeSimpleConvGraph(ElemKind::Int16QTy, ElemKind::Int16QTy);
+}
+
+/// Test that a simple Conv graph can be quantized in Int16QTy and Int32QTy
+/// bias.
+TEST(Quantization, QuantizeGraph_Int16_BiasInt32) {
+  quantizeSimpleConvGraph(ElemKind::Int16QTy, ElemKind::Int32QTy);
 }
 
 /// Test that when a node is quantized before its users are quantized then the
@@ -426,12 +550,14 @@ TEST(Quantization, TestQuantizedInputBeforeQuantizedNode) {
 }
 
 /// Test enabling RowwiseQuantizedFullyConnected in Glow quantization
-/// procuedure. A FC can be quantized and converted to a
+/// procedure. A FC can be quantized and converted to a
 /// RowwiseQuantizedFullyConnected if:
 /// 1. The weights of FC is constant;
 /// 2. Use -enable-rowwise option or set enableRowwise param in
 /// quantization::quantizeFunction to true. In unittest, the later one is used.
-TEST(Quantization, enableRowwiseQuantizedFullyConnected) {
+static void
+enableRowwiseQuantizedFullyConnected(ElemKind quantizationPrecision,
+                                     ElemKind quantizationPrecisionBias) {
   ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
@@ -478,6 +604,8 @@ TEST(Quantization, enableRowwiseQuantizedFullyConnected) {
        {0.6f, 0}},
   }};
 
+  quantConfig.precision = quantizationPrecision;
+  quantConfig.precisionBias = quantizationPrecisionBias;
   quantConfig.enableRowwise = true;
   quantConfig.assertAllNodesQuantized = true;
   quantization::quantizeFunction(F, quantConfig, *backend, loweredMapForQuant);
@@ -507,6 +635,14 @@ TEST(Quantization, enableRowwiseQuantizedFullyConnected) {
   EE.compile(CompilationMode::Infer);
 
   EE.run(bindings);
+}
+
+TEST(Quantization, enableRowwiseQuantizedFullyConnected_Int8_BiasInt8) {
+  enableRowwiseQuantizedFullyConnected(ElemKind::Int8QTy, ElemKind::Int8QTy);
+}
+
+TEST(Quantization, enableRowwiseQuantizedFullyConnected_Int8_BiasInt32) {
+  enableRowwiseQuantizedFullyConnected(ElemKind::Int8QTy, ElemKind::Int32QTy);
 }
 
 /// Test enabling RowwiseQuantizedFullyConnected with Symmetric quantization.
@@ -2226,9 +2362,18 @@ static void testProfileQuantizationOfFC(bool expectLoweredFC,
               FCQI->Offset());
 
     EXPECT_EQ(quantRowwiseFC->getBias().getElementType(), ElemKind::Int32QTy);
-    EXPECT_EQ(quantRowwiseFC->getBias().getType()->getScale(),
-              FCWQI->Scale() * FCIQI->Scale());
-    EXPECT_EQ(quantRowwiseFC->getBias().getType()->getOffset(), 0);
+    // Bias scale was changed with the product inputScale * weightsScale only
+    // if the product was larger.
+    if (FCWQI->Scale() * FCIQI->Scale() > FCBQI->Scale()) {
+      EXPECT_EQ(quantRowwiseFC->getBias().getType()->getScale(),
+                FCWQI->Scale() * FCIQI->Scale());
+      EXPECT_EQ(quantRowwiseFC->getBias().getType()->getOffset(), 0);
+    } else {
+      EXPECT_EQ(quantRowwiseFC->getBias().getType()->getScale(),
+                FCBQI->Scale());
+      EXPECT_EQ(quantRowwiseFC->getBias().getType()->getOffset(),
+                FCBQI->Offset());
+    }
   } else if (expectLoweredFC) {
     ASSERT_FALSE(quantFC);
     ASSERT_FALSE(quantRowwiseFC);
@@ -2242,9 +2387,16 @@ static void testProfileQuantizationOfFC(bool expectLoweredFC,
     EXPECT_EQ(quantBA->getResult().getType()->getOffset(), BAQI->Offset());
 
     EXPECT_EQ(quantBA->getSlice().getElementType(), ElemKind::Int32QTy);
-    EXPECT_EQ(quantBA->getSlice().getType()->getScale(),
-              FCWQI->Scale() * FCIQI->Scale());
-    EXPECT_EQ(quantBA->getSlice().getType()->getOffset(), 0);
+    // Bias scale was changed with the product inputScale * weightsScale only
+    // if the product was larger.
+    if (FCWQI->Scale() * FCIQI->Scale() > FCBQI->Scale()) {
+      EXPECT_EQ(quantBA->getSlice().getType()->getScale(),
+                FCWQI->Scale() * FCIQI->Scale());
+      EXPECT_EQ(quantBA->getSlice().getType()->getOffset(), 0);
+    } else {
+      EXPECT_EQ(quantBA->getSlice().getType()->getScale(), FCBQI->Scale());
+      EXPECT_EQ(quantBA->getSlice().getType()->getOffset(), FCBQI->Offset());
+    }
   } else {
     ASSERT_FALSE(quantRowwiseFC);
 
@@ -2256,9 +2408,16 @@ static void testProfileQuantizationOfFC(bool expectLoweredFC,
     ASSERT_FALSE(quantBA);
 
     EXPECT_EQ(quantFC->getBias().getElementType(), ElemKind::Int32QTy);
-    EXPECT_EQ(quantFC->getBias().getType()->getScale(),
-              FCWQI->Scale() * FCIQI->Scale());
-    EXPECT_EQ(quantFC->getBias().getType()->getOffset(), 0);
+    // Bias scale was changed with the product inputScale * weightsScale only
+    // if the product was larger.
+    if (FCWQI->Scale() * FCIQI->Scale() > FCBQI->Scale()) {
+      EXPECT_EQ(quantFC->getBias().getType()->getScale(),
+                FCWQI->Scale() * FCIQI->Scale());
+      EXPECT_EQ(quantFC->getBias().getType()->getOffset(), 0);
+    } else {
+      EXPECT_EQ(quantFC->getBias().getType()->getScale(), FCBQI->Scale());
+      EXPECT_EQ(quantFC->getBias().getType()->getOffset(), FCBQI->Offset());
+    }
   }
 }
 

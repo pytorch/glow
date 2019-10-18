@@ -131,6 +131,16 @@ llvm::cl::opt<ElemKind> quantizationPrecision(
         clEnumValN(ElemKind::Int16QTy, "Int16", "Use Int16 quantization")),
     llvm::cl::init(ElemKind::Int8QTy), llvm::cl::cat(loaderCat));
 
+llvm::cl::opt<ElemKind> quantizationPrecisionBias(
+    "quantization-precision-bias",
+    llvm::cl::desc("Specify which quantization precision to use for bias "
+                   "of Convolution and Fully Connected nodes."),
+    llvm::cl::Optional,
+    llvm::cl::values(
+        clEnumValN(ElemKind::Int8QTy, "Int8", "Use Int8 bias quantization"),
+        clEnumValN(ElemKind::Int32QTy, "Int32", "Use Int32 bias quantization")),
+    llvm::cl::init(ElemKind::Int32QTy), llvm::cl::cat(loaderCat));
+
 llvm::cl::opt<std::string> loadProfileFileOpt(
     "load-profile",
     llvm::cl::desc("Load quantization profile file and quantize the graph"),
@@ -474,6 +484,7 @@ void Loader::compile(CompilationContext &cctx) {
     precConfig.quantConfig.schema = quantizationSchema;
     precConfig.quantConfig.enableRowwise = enableRowwiseOpt;
     precConfig.quantConfig.assertAllNodesQuantized = assertAllNodesQuantizedOpt;
+    precConfig.quantConfig.precisionBias = quantizationPrecisionBias;
   }
 
   precConfig.convertToFP16 = convertToFP16;
@@ -572,9 +583,9 @@ void Loader::generateAndSerializeQuantizationInfos(
   std::vector<NodeQuantizationInfo> QI;
   for (auto F : getModule()->getFunctions()) {
     std::vector<NodeQuantizationInfo> tmp =
-        quantization::generateNodeQuantizationInfos(bindings, F, loweredMap_,
-                                                    quantizationSchema,
-                                                    quantizationPrecision);
+        quantization::generateNodeQuantizationInfos(
+            bindings, F, loweredMap_, quantizationSchema, quantizationPrecision,
+            quantizationPrecisionBias);
     QI.insert(QI.end(), tmp.begin(), tmp.end());
   }
   serializeToYaml(dumpProfileFileOpt, QI);

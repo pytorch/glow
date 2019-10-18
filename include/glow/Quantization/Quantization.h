@@ -36,11 +36,13 @@ namespace quantization {
 /// bindings. \p loweredMap maps from the NodeOutputName of a NodeValue which
 /// was lowered to a vector of the original NodeOutputNames which it replaced;
 /// this map is used to generate infos for the original unlowered NodeValues
-/// which no longer exist in \p F.
+/// which no longer exist in \p F. The quantization precision for the bias of
+/// Convolution and FullyConnected is given by \p quantizationPrecisionBias.
 std::vector<NodeQuantizationInfo> generateNodeQuantizationInfos(
     PlaceholderBindings &bindings, const Function *F,
     const LoweredInfoMap &loweredMap = {}, Schema schema = Schema::Asymmetric,
-    ElemKind quantizationPrecision = ElemKind::Int8QTy);
+    ElemKind quantizationPrecision = ElemKind::Int8QTy,
+    ElemKind quantizationPrecisionBias = ElemKind::Int32QTy);
 
 /// Quantizes the function \p F into an unoptimized partially quantized function
 /// based on configuration from \p quantConfig. This method converts to integer

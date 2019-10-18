@@ -140,6 +140,29 @@ static Node *replaceQuantizedSigmoidWithLookupTable(Function &F,
   return rescaleOutputNode;
 }
 
+/// \returns whether BatchedAddNode \p baN was originally lowered from a
+/// FullyConnectedNode based on the given \p loweredMap.
+static bool isBAFromLoweredFC(const BatchedAddNode *baN,
+                              const LoweredInfoMap &loweredMap) {
+  // Look for the set of NodeNameAndKinds corresponding to the
+  // BatchedAdd. If one exists, this means it was lowered.
+  auto it = loweredMap.find(NodeQuantizationInfo::generateNodeOutputName(
+      baN->getName(), BatchedAddNode::ResultIdx));
+  if (it == loweredMap.end()) {
+    return false;
+  }
+
+  // Look through the set looking to see if the BatchedAdd was lowered
+  // from a FullyConnectedNode.
+  auto &set = it->getValue();
+  for (auto i = set.begin(), e = set.end(); i != e; ++i) {
+    if (i->getKind() == glow::Kinded::Kind::FullyConnectedNodeKind) {
+      return true;
+    }
+  }
+  return false;
+}
+
 /// This class produces a quantized function based on a provided profile.
 class FunctionQuantizer : public FunctionConverter {
 protected:
@@ -192,53 +215,72 @@ protected:
            "Missing quantization params for a node");
 
     const TensorQuantizationParams &TQP = valTQPIt->second;
-    // Bias of a conv or fc op is quantized to int32.
-    // As it is already represented as int32, there is no need to
-    // have non 0 offset. It also make sense to keep offset equal to 0 for
-    // performance reasons.
+
+    // Bias quantization is specialized for Convolution and Fully Connected:
+    // - for int32 bias quantization: since the dynamic range of int32 is
+    //   large we can force symmetric quantization (offset = 0) and also choose
+    //   the scale parameter as bias_scale = input_scale * weights_scale. Both
+    //   improve the performance of the implementation: no offset subtraction
+    //   while also biasPre = 0, biasPost = 0, biasScale = 1. We must verify
+    //   that by changing the bias scale we don`t saturate the data.
+    // - for int8/int16 bias quantization: the dynamic range is small so we will
+    //   keep the original quantization profile parameters (scale & offset).
+    auto getBiasType = [&](TypeRef inputTy, TypeRef weightsTy) -> TypeRef {
+      // If bias is int8/int16, use original TQP params.
+      if (quantizationPrecisionBias_ == ElemKind::Int8QTy ||
+          quantizationPrecisionBias_ == ElemKind::Int16QTy) {
+        return mod_.uniqueType(quantizationPrecisionBias_, val.dims(),
+                               TQP.scale, TQP.offset);
+      }
+      // If bias is int32 we try to impose scaleBias = scaleInput * scaleWeights
+      // but only if the resulting scale is larger than the true scale (obtained
+      // by the profiling procedure). If we use a smaller scale we will saturate
+      // the bias (this would mostly occur for int16 input and int16 weights).
+      float scaleInput = inputTy->getScale();
+      float scaleWeights = weightsTy->getScale();
+      if (scaleInput * scaleWeights > TQP.scale) {
+        return mod_.uniqueType(quantizationPrecisionBias_, val.dims(),
+                               scaleInput * scaleWeights, 0);
+      } else {
+        return mod_.uniqueType(quantizationPrecisionBias_, val.dims(),
+                               TQP.scale, TQP.offset);
+      }
+    };
+
     if (use.getKind() == glow::Kinded::Kind::ConvolutionNodeKind &&
         idx == ConvolutionNode::BiasIdx) {
-      // For bias of a conv op, it is quantized to int32. Also, we should make
-      // sure its scale should be (scale of input) * (scale of weights).
-
       // Get the input and weights types. This ensures the types will be
       // quantized. This is often the case when calling into this function from
       // canConvert(), as we have not yet converted the inputs.
-      TypeRef inputTy = getTargetTypeForInput(use, ConvolutionNode::InputIdx);
-      TypeRef weightsTy =
-          getTargetTypeForInput(use, ConvolutionNode::FilterIdx);
-
-      float scaleInput = inputTy->getScale();
-      float scaleWeights = weightsTy->getScale();
-
-      return mod_.uniqueType(ElemKind::Int32QTy, val.dims(),
-                             scaleInput * scaleWeights, 0);
+      return getBiasType(
+          getTargetTypeForInput(use, ConvolutionNode::InputIdx),
+          getTargetTypeForInput(use, ConvolutionNode::FilterIdx));
+    } else if (use.getKind() == glow::Kinded::Kind::Convolution3DNodeKind &&
+               idx == Convolution3DNode::BiasIdx) {
+      // Get the input and weights types. This ensures the types will be
+      // quantized. This is often the case when calling into this function from
+      // canConvert(), as we have not yet converted the inputs.
+      return getBiasType(
+          getTargetTypeForInput(use, Convolution3DNode::InputIdx),
+          getTargetTypeForInput(use, Convolution3DNode::FilterIdx));
     } else if (use.getKind() == glow::Kinded::Kind::FullyConnectedNodeKind &&
                idx == FullyConnectedNode::BiasIdx) {
       // Get the input and weights types. This ensures the types will be
       // quantized. This is often the case when calling into this function from
       // canConvert(), as we have not yet converted the inputs.
-      TypeRef inputTy =
-          getTargetTypeForInput(use, FullyConnectedNode::InputIdx);
-      TypeRef weightsTy =
-          getTargetTypeForInput(use, FullyConnectedNode::WeightsIdx);
-
-      float scaleInput = inputTy->getScale();
-      float scaleWeights = weightsTy->getScale();
-      return mod_.uniqueType(ElemKind::Int32QTy, val.dims(),
-                             scaleInput * scaleWeights, 0);
+      return getBiasType(
+          getTargetTypeForInput(use, FullyConnectedNode::InputIdx),
+          getTargetTypeForInput(use, FullyConnectedNode::WeightsIdx));
     } else if (use.getKind() == glow::Kinded::Kind::BatchedAddNodeKind &&
                idx == BatchedAddNode::SliceIdx) {
-      // Check if this BatchedAdd was lowered from a FullyConnectedNode. If so
-      // then we need to calculate the Int32QTy scale/offset and use that
-      // instead of Int8QTy.
+      // Check if this BatchedAdd was lowered from a FullyConnectedNode.
       const auto *baN = llvm::cast<BatchedAddNode>(&use);
-      if (isBAFromLoweredFC(baN)) {
-        NodeValue batch = baN->getBatch();
+      if (isBAFromLoweredFC(baN, loweredMap_)) {
         // If it came from a FullyConnected node then we need to backtrack to
         // the matrix multiplication to calculate the new scale for the batched
         // add slice. Slice must be a MatMul if this was lowered from a
         // FullyConnected. Batch may have already been quantized.
+        NodeValue batch = baN->getBatch();
         assert(
             (llvm::isa<MatMulNode>(batch) || llvm::isa<QuantizeNode>(batch)) &&
             "Batch must be either a MatMul or a Quantize.");
@@ -249,11 +291,8 @@ protected:
                  "MM must be input of BA if lowered from FC.");
           MM = llvm::cast<MatMulNode>(QN->getInput());
         }
-
-        float scaleInput = getTargetTypeForOutput(MM->getLHS())->getScale();
-        float scaleWeights = getTargetTypeForOutput(MM->getRHS())->getScale();
-        return mod_.uniqueType(ElemKind::Int32QTy, val.dims(),
-                               scaleInput * scaleWeights, 0);
+        return getBiasType(getTargetTypeForOutput(MM->getLHS()),
+                           getTargetTypeForOutput(MM->getRHS()));
       }
     }
     return mod_.uniqueType(quantizationPrecision_, val.dims(), TQP.scale,
@@ -655,28 +694,9 @@ private:
   /// Used for debugging if we expect all nodes to be quantized by the
   /// quantizer.
   bool assertAllNodesQuantized_;
-
-  /// \returns whether BatchedAddNode \p baN was originally lowered from a
-  /// FullyConnectedNode based on loweredMap_.
-  bool isBAFromLoweredFC(const BatchedAddNode *baN) const {
-    // Look for the set of NodeNameAndKinds corresponding to the
-    // BatchedAdd. If one exists, this means it was lowered.
-    auto it = loweredMap_.find(NodeQuantizationInfo::generateNodeOutputName(
-        baN->getName(), BatchedAddNode::ResultIdx));
-    if (it == loweredMap_.end()) {
-      return false;
-    }
-
-    // Look through the set looking to see if the BatchedAdd was lowered
-    // from a FullyConnectedNode.
-    auto &set = it->getValue();
-    for (auto i = set.begin(), e = set.end(); i != e; ++i) {
-      if (i->getKind() == glow::Kinded::Kind::FullyConnectedNodeKind) {
-        return true;
-      }
-    }
-    return false;
-  }
+  /// Precision used for bias quantization for Convolution and FullyConnected.
+  /// This allows specializing the bias quantization.
+  const ElemKind quantizationPrecisionBias_;
 
 public:
   /// Creates a function quantizer for \p F using the quantization
@@ -691,11 +711,13 @@ public:
                     ElemKind quantizationPrecision,
                     const KindSet &doNotQuantizeKinds,
                     const LoweredInfoMap &loweredMap,
-                    bool assertAllNodesQuantized)
+                    bool assertAllNodesQuantized,
+                    ElemKind quantizationPrecisionBias)
       : FunctionConverter(F), mod_(*F.getParent()), B_(B), schema_(schema),
         quantizationPrecision_(quantizationPrecision),
         doNotQuantizeKinds_(doNotQuantizeKinds), loweredMap_(loweredMap),
-        assertAllNodesQuantized_(assertAllNodesQuantized) {
+        assertAllNodesQuantized_(assertAllNodesQuantized),
+        quantizationPrecisionBias_(quantizationPrecisionBias) {
     // Build a mapping between node name and TensorQuantizatonParams.
     for (const auto &quantizationInfo : quantizationInfos) {
       nodeToTQP_.emplace(quantizationInfo.nodeOutputName_,
@@ -747,7 +769,7 @@ public:
         result = fcN->getResult();
       } else if (const auto *baN =
                      llvm::dyn_cast<BatchedAddNode>(Q->getInput())) {
-        if (isBAFromLoweredFC(baN)) {
+        if (isBAFromLoweredFC(baN, loweredMap_)) {
           foundFC = true;
           NodeValue batch = baN->getBatch();
 
@@ -879,7 +901,8 @@ findAndInsertLoweredInfos(llvm::StringRef currName,
 std::vector<NodeQuantizationInfo>
 generateNodeQuantizationInfos(PlaceholderBindings &bindings, const Function *F,
                               const LoweredInfoMap &loweredMap, Schema schema,
-                              ElemKind quantizationPrecision) {
+                              ElemKind quantizationPrecision,
+                              ElemKind quantizationPrecisionBias) {
   std::vector<NodeQuantizationInfo> quantizationInfos;
 
   for (auto &node : F->getNodes()) {
@@ -896,11 +919,53 @@ generateNodeQuantizationInfos(PlaceholderBindings &bindings, const Function *F,
       std::string fullOutputName = NodeQuantizationInfo::generateNodeOutputName(
           QPN->getProfiledNodeName(), QPN->getProfiledOutputNumber());
 
+      ElemKind qPrec = quantizationPrecision;
+
+      // During profiling, for a given node, the TQP params must be computed
+      // according to the target precision used during actual quantization.
+      // The code below reflects the same logic as the one used in the function
+      // FunctionQuantizer::getTargetTypeForInput for specializing the bias
+      // quantization precision.
+      // TODO: For better clarity and to remove logic duplication this code
+      // should be coupled tighter with the logic used in FunctionQuantizer.
+      NodeValue profNode = QPN->getInput();
+      for (const auto &use : profNode.getUsers()) {
+        const auto *user = use.getUser();
+        if ((user->getKind() == glow::Kinded::Kind::ConvolutionNodeKind) &&
+            (user->getNthInput(ConvolutionNode::BiasIdx) == profNode)) {
+          // Found bias for ConvolutionNode.
+          qPrec = quantizationPrecisionBias;
+          continue;
+        }
+        if ((user->getKind() == glow::Kinded::Kind::Convolution3DNodeKind) &&
+            (user->getNthInput(Convolution3DNode::BiasIdx) == profNode)) {
+          // Found bias for Convolution3DNode.
+          qPrec = quantizationPrecisionBias;
+          continue;
+        }
+        if ((user->getKind() == glow::Kinded::Kind::FullyConnectedNodeKind) &&
+            (user->getNthInput(FullyConnectedNode::BiasIdx) == profNode)) {
+          // Found bias for FullyConnectedNode.
+          qPrec = quantizationPrecisionBias;
+          continue;
+        }
+        if ((user->getKind() == glow::Kinded::Kind::BatchedAddNodeKind) &&
+            (user->getNthInput(BatchedAddNode::SliceIdx) == profNode)) {
+          // Find out if this BatchAddNode was lowered from FullyConnectedNode.
+          const auto *baN = llvm::cast<BatchedAddNode>(user);
+          if (isBAFromLoweredFC(baN, loweredMap)) {
+            // Found bias for lowered FullyConnectedNode.
+            qPrec = quantizationPrecisionBias;
+            continue;
+          }
+        }
+      }
+
       // TODO: Ideally tensor quantization params should be calculated
       // based on the histogram distribution. Use simplistic approach for now.
       (void)histogram;
       TensorQuantizationParams TQP =
-          chooseQuantizationParams(min, max, schema, quantizationPrecision);
+          chooseQuantizationParams(min, max, schema, qPrec);
 
       quantizationInfos.emplace_back(fullOutputName, TQP);
 
@@ -925,7 +990,8 @@ void quantizeFunction(Function *F, const QuantizationConfiguration &quantConfig,
 
   FunctionQuantizer quantizer(*F, B, quantConfig.schema, quantConfig.infos,
                               quantConfig.precision, doNotQuantizeKinds,
-                              loweredMap, quantConfig.assertAllNodesQuantized);
+                              loweredMap, quantConfig.assertAllNodesQuantized,
+                              quantConfig.precisionBias);
   quantizer.convert();
   if (quantConfig.enableRowwise) {
     quantizer.enableRowwise();

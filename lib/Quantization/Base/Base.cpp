@@ -291,8 +291,20 @@ TensorQuantizationParams chooseQuantizationParams(float min, float max,
     break;
   }
   case ElemKind::Int32QTy: {
-    qmin = std::numeric_limits<int32_t>::min();
-    qmax = std::numeric_limits<int32_t>::max();
+    // A corner case is when quantizing the bias tensor which is later used in
+    // arithmetic computations as (int32)(bias[idx] - biasOffset) (e.g. in the
+    // LIBJIT function "libjit_scale_i32i8"). To avoid overflow we must restrict
+    // the quantization range such that the subtraction result fits int32. Since
+    // both bias[idx] and biasOffset are within the range [qmin, qmax] we will
+    // impose: min(int32) <= qmin - qmax and qmax - qmin <= max(int32). In other
+    // words we will restrict the quantized dynamic range to int31. Furthermore,
+    // since scale is computed as scale = (max - min) / (qmax - qmin) where
+    // (qmax - qmin) is large (~2^31) the scale computation has large errors.
+    // We will further limit the quantized range to int30 (one extra bit) in
+    // order for the computed scale to provide safe quantization within the
+    // intended range.
+    qmin = std::numeric_limits<int32_t>::min() >> 2;
+    qmax = std::numeric_limits<int32_t>::max() >> 2;
     break;
   }
   default:

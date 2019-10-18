@@ -97,6 +97,23 @@ using namespace glow;
     llvm_unreachable("Type is not supported");                                 \
   }
 
+#define dispatchQuantizedWithAccumulationAndBiasImpl(functionName, elemTy,     \
+                                                     biasElemType, ...)        \
+  if (elemTy == ElemKind::Int8QTy && biasElemType == ElemKind::Int8QTy) {      \
+    functionName<int8_t, int32_t, int8_t>(__VA_ARGS__);                        \
+  } else if (elemTy == ElemKind::Int8QTy &&                                    \
+             biasElemType == ElemKind::Int32QTy) {                             \
+    functionName<int8_t, int32_t, int32_t>(__VA_ARGS__);                       \
+  } else if (elemTy == ElemKind::Int16QTy &&                                   \
+             biasElemType == ElemKind::Int16QTy) {                             \
+    functionName<int16_t, int64_t, int16_t>(__VA_ARGS__);                      \
+  } else if (elemTy == ElemKind::Int16QTy &&                                   \
+             biasElemType == ElemKind::Int32QTy) {                             \
+    functionName<int16_t, int64_t, int32_t>(__VA_ARGS__);                      \
+  } else {                                                                     \
+    llvm_unreachable("Type is not supported");                                 \
+  }
+
 #define staticAssertFloatingPointType(ElemTy)                                  \
   static_assert(                                                               \
       std::is_floating_point<ElemTy>::value ||                                 \
@@ -185,8 +202,7 @@ void BoundInterpreterFunction::fwdConvolutionInstFloatImpl(
 }
 
 /// This is the quantized implementation of Convolution.
-/// For bias, we support int32 quantization.
-template <typename ElemTy, typename AccumulatorTy>
+template <typename ElemTy, typename AccumulatorTy, typename BiasElemTy>
 void BoundInterpreterFunction::fwdConvolutionInstQuantizedImpl(
     Value *inV, Value *outV, Value *filterV, Value *biasV,
     llvm::ArrayRef<unsigned_t> kernelSizes, llvm::ArrayRef<unsigned_t> strides,
@@ -194,7 +210,7 @@ void BoundInterpreterFunction::fwdConvolutionInstQuantizedImpl(
   auto inW = getWeightHandle<ElemTy>(inV);
   auto outW = getWeightHandle<ElemTy>(outV);
   auto filterW = getWeightHandle<ElemTy>(filterV);
-  auto biasW = getWeightHandle<int32_t>(biasV);
+  auto biasW = getWeightHandle<BiasElemTy>(biasV);
 
   ShapeNHWC odim(outW.dims());
   ShapeNHWC idim(inW.dims());
@@ -268,7 +284,7 @@ void BoundInterpreterFunction::fwdConvolutionInstQuantizedImpl(
             AccumulatorTy B = std::round(float(biasW.at({d}) - biasOffset) *
                                          (biasScale / matMulScale));
 
-            // Add the bias:
+            // Add the bias.
             sum += B;
 
             // Scale the result back to the expected destination scale.
@@ -288,10 +304,11 @@ void BoundInterpreterFunction::fwdConvolutionInst(const ConvolutionInst *I) {
   size_t group = I->getGroup();
 
   if (I->getSrc()->getType()->isQuantizedType()) {
-    dispatchQuantizedWithAccumulationImpl(
+    dispatchQuantizedWithAccumulationAndBiasImpl(
         fwdConvolutionInstQuantizedImpl, I->getSrc()->getElementType(),
-        I->getSrc(), I->getDest(), I->getFilter(), I->getBias(), kernelSizes,
-        strides, pads, group, I->getDilation());
+        I->getBias()->getElementType(), I->getSrc(), I->getDest(),
+        I->getFilter(), I->getBias(), kernelSizes, strides, pads, group,
+        I->getDilation());
     return;
   }
 
@@ -452,8 +469,7 @@ void BoundInterpreterFunction::fwdConvolution3DInstFloatImpl(
 }
 
 /// This is the quantized implementation of Convolution3D.
-/// For bias, we support int32 quantization.
-template <typename ElemTy, typename AccumulatorTy>
+template <typename ElemTy, typename AccumulatorTy, typename BiasElemTy>
 void BoundInterpreterFunction::fwdConvolution3DInstQuantizedImpl(
     Value *inV, Value *outV, Value *filterV, Value *biasV,
     llvm::ArrayRef<unsigned_t> kernelSizes, llvm::ArrayRef<unsigned_t> strides,
@@ -461,7 +477,7 @@ void BoundInterpreterFunction::fwdConvolution3DInstQuantizedImpl(
   auto inW = getWeightHandle<ElemTy>(inV);
   auto outW = getWeightHandle<ElemTy>(outV);
   auto filterW = getWeightHandle<ElemTy>(filterV);
-  auto biasW = getWeightHandle<int32_t>(biasV);
+  auto biasW = getWeightHandle<BiasElemTy>(biasV);
 
   ShapeNHWDC odim(outW.dims());
   ShapeNHWDC idim(inW.dims());
@@ -565,10 +581,10 @@ void BoundInterpreterFunction::fwdConvolution3DInst(
   size_t group = I->getGroup();
 
   if (I->getSrc()->getType()->isQuantizedType()) {
-    dispatchQuantizedWithAccumulationImpl(
+    dispatchQuantizedWithAccumulationAndBiasImpl(
         fwdConvolution3DInstQuantizedImpl, I->getSrc()->getElementType(),
-        I->getSrc(), I->getDest(), I->getFilter(), I->getBias(), kernelSizes,
-        strides, pads, group);
+        I->getBias()->getElementType(), I->getSrc(), I->getDest(),
+        I->getFilter(), I->getBias(), kernelSizes, strides, pads, group);
     return;
   }
 
@@ -2584,14 +2600,16 @@ void BoundInterpreterFunction::fwdMatMulInst(const glow::MatMulInst *I) {
 //===----------------------------------------------------------------------===//
 //                       Row-wise quantized FC
 //===----------------------------------------------------------------------===//
-void BoundInterpreterFunction::fwdRowwiseQuantizedFullyConnectedInst(
-    const RowwiseQuantizedFullyConnectedInst *I) {
-  auto inW = getWeightHandle<int8_t>(I->getSrc());
-  auto outW = getWeightHandle<int8_t>(I->getDest());
-  auto weightsW = getWeightHandle<int8_t>(I->getWeights());
-  auto biasW = getWeightHandle<int32_t>(I->getBias());
-  auto scalesW = getWeightHandle<float>(I->getScales());
-  auto offsetsW = getWeightHandle<int32_t>(I->getOffsets());
+template <typename ElemTy, typename AccumulatorTy, typename BiasElemTy>
+void BoundInterpreterFunction::fwdRowwiseQuantizedFullyConnectedInstImpl(
+    Value *inV, Value *outV, Value *weightsV, Value *biasV, Value *scalesV,
+    Value *offsetsV) {
+  auto inW = getWeightHandle<ElemTy>(inV);
+  auto outW = getWeightHandle<ElemTy>(outV);
+  auto weightsW = getWeightHandle<ElemTy>(weightsV);
+  auto biasW = getWeightHandle<BiasElemTy>(biasV);
+  auto scalesW = getWeightHandle<float>(scalesV);
+  auto offsetsW = getWeightHandle<int32_t>(offsetsV);
   ShapeHW idim(inW.dims());
   ShapeHW odim(outW.dims());
   auto inTy = inW.getType();
@@ -2607,30 +2625,43 @@ void BoundInterpreterFunction::fwdRowwiseQuantizedFullyConnectedInst(
   for (size_t i = 0; i < idim.height; i++) {
     for (size_t j = 0; j < odim.width; j++) {
       float matMulScale = scalesW.raw(j) * inScale;
-      int32_t sum = 0;
+      AccumulatorTy sum = 0;
       for (size_t k = 0; k < idim.width; k++) {
-        int32_t W = weightsW.at({j, k});
-        int32_t A = inW.at({i, k});
+        AccumulatorTy W = weightsW.at({j, k});
+        AccumulatorTy A = inW.at({i, k});
         sum += (W - offsetsW.raw(j)) * (A - inOffset);
       }
-      int32_t B = std::round(float(biasW.at({j}) - biasOffset) *
-                             (biasScale / matMulScale));
+
+      // Scale the bias to match the scale of the matrix multiplication.
+      AccumulatorTy B = std::round(float(biasW.at({j}) - biasOffset) *
+                                   (biasScale / matMulScale));
+
+      // Add the bias.
       sum += B;
+
       // Scale the result back to the expected destination scale.
-      outW.at({i, j}) = quantization::clip<int32_t, int8_t>(
+      outW.at({i, j}) = quantization::clip<AccumulatorTy, ElemTy>(
           std::round(float(sum) * (matMulScale / outScale) + outOffset));
     }
   }
 }
 
+void BoundInterpreterFunction::fwdRowwiseQuantizedFullyConnectedInst(
+    const RowwiseQuantizedFullyConnectedInst *I) {
+  dispatchQuantizedWithAccumulationAndBiasImpl(
+      fwdRowwiseQuantizedFullyConnectedInstImpl, I->getSrc()->getElementType(),
+      I->getBias()->getElementType(), I->getSrc(), I->getDest(),
+      I->getWeights(), I->getBias(), I->getScales(), I->getOffsets());
+}
+
 //===----------------------------------------------------------------------===//
 //                       Batched operations
 //===----------------------------------------------------------------------===//
-template <class T>
+template <typename ElemTy, typename AccumulatorTy, typename SliceElemTy>
 static void fwdBatchedAdd(Tensor *batch, Tensor *slice, Tensor *dest) {
-  auto batchH = batch->getHandle<int8_t>();
-  auto sliceH = slice->getHandle<T>();
-  auto destH = dest->getHandle<int8_t>();
+  auto batchH = batch->getHandle<ElemTy>();
+  auto sliceH = slice->getHandle<SliceElemTy>();
+  auto destH = dest->getHandle<ElemTy>();
 
   auto batchTy = batch->getType();
   auto sliceTy = slice->getType();
@@ -2654,18 +2685,18 @@ static void fwdBatchedAdd(Tensor *batch, Tensor *slice, Tensor *dest) {
 
     // For each element in the slice.
     for (size_t i = 0; i < bdim.second; i++) {
-      int32_t batchVal = batchH.raw(base + i);
-      int32_t sliceVal = sliceH.raw(i);
+      AccumulatorTy batchVal = batchH.raw(base + i);
+      AccumulatorTy sliceVal = sliceH.raw(i);
       // We increase the size of the integer up to 16 bits for more accurate
       // arithmetic.
       const float largeScale = float(1) / (1 << 15);
       // Scale both sides from 8-bit to 16-bits.
-      int32_t B =
+      AccumulatorTy B =
           std::round(float(batchVal - batchOffset) * (batchScale / largeScale));
-      int32_t S =
+      AccumulatorTy S =
           std::round(float(sliceVal - sliceOffset) * (sliceScale / largeScale));
-      int32_t R = B + S;
-      destH.raw(base + i) = quantization::clip<int32_t, int8_t>(
+      AccumulatorTy R = B + S;
+      destH.raw(base + i) = quantization::clip<AccumulatorTy, ElemTy>(
           std::round(float(R) * (largeScale / destScale) + destOffset));
     }
   }
@@ -2698,9 +2729,10 @@ void BoundInterpreterFunction::fwdBatchedAddInstFloatImpl(
 void BoundInterpreterFunction::fwdBatchedAddInst(
     const glow::BatchedAddInst *I) {
   if (getTensor(I->getBatch())->getType().isQuantizedType()) {
-    dispatchQuantizedImpl(fwdBatchedAdd, I->getSlice()->getElementType(),
-                          getTensor(I->getBatch()), getTensor(I->getSlice()),
-                          getTensor(I->getDest()));
+    dispatchQuantizedWithAccumulationAndBiasImpl(
+        fwdBatchedAdd, I->getBatch()->getElementType(),
+        I->getSlice()->getElementType(), getTensor(I->getBatch()),
+        getTensor(I->getSlice()), getTensor(I->getDest()));
     return;
   }
   dispatchFloatingPointImpl(fwdBatchedAddInstFloatImpl,
