@@ -16,8 +16,6 @@
 #ifndef GLOW_BACKENDS_OPENCL_OPENCL_H
 #define GLOW_BACKENDS_OPENCL_OPENCL_H
 
-#include "OpenCLDeviceManager.h"
-
 #include "glow/Backend/Backend.h"
 #include "glow/Backend/BackendUtils.h"
 #include "glow/Backend/CompiledFunction.h"
@@ -73,6 +71,9 @@ static void addIntOption(std::vector<std::string> &options,
   options.push_back("-D" + name + "=" + std::to_string(value));
 }
 
+using ManualEventMap =
+    std::map<std::string, std::pair<Placeholder *, const TraceInfo::Event *>>;
+
 /// A Glow IR function compiled for OpenCL.
 class OpenCLFunction final : public CompiledFunction {
   /// A helper type representing a key for the program's cache.
@@ -97,8 +98,7 @@ class OpenCLFunction final : public CompiledFunction {
   /// is kernel level profiling (autoInstrumentation) enabled.
   bool kernelProfiling_{false};
   /// Manual trace events:
-  std::map<std::string, std::pair<Placeholder *, const TraceInfo::Event *>>
-      manualTraceEvents_;
+  ManualEventMap manualTraceEvents_;
 
 public:
   /// Ctor.
@@ -128,30 +128,31 @@ public:
                            const std::vector<std::string> &options,
                            cl_command_queue queue);
 
+  /// Returns metadata about manual TraceEvents defined in this function.
+  ManualEventMap &getManualTraceEvents() { return manualTraceEvents_; }
+
 private:
   /// Copy the value from a device to a provided buffer.
   /// \returns number of copied bytes.
   uint64_t copyValueFromDevice(const Value *v,
                                runtime::OpenCLDeviceBindings *devBindings,
-                               std::vector<KernelLaunch> &kernelLaunches,
                                void *buf = nullptr);
   /// Copy value from the provided buffer to the device.
   /// \returns number of copied bytes.
   uint64_t copyValueToDevice(const Value *v,
                              runtime::OpenCLDeviceBindings *devBindings,
-                             std::vector<KernelLaunch> &kernelLaunches,
                              void *buf = nullptr);
   /// Fill the device \p buffer with a given \p value.
   /// \param len number of buffer elements to be filled by the \p value.
   /// Elements are considered to be of the type described by \p elemKind.
   void fillBuffer(cl_mem buffer, uint64_t start, uint64_t len, float value,
-                  ElemKind elemKind, runtime::OpenCLDeviceBindings *devBindings,
-                  std::vector<KernelLaunch> &kernelLaunches);
+                  ElemKind elemKind,
+                  runtime::OpenCLDeviceBindings *devBindings);
 
   /// Execution a convolution instruction which uses NCHW format.
   void executeNCHWConvolution(const ConvolutionInst *CC,
                               ExecutionContext *executionContext,
-                              std::vector<KernelLaunch> &kernelLaunches);
+                              runtime::OpenCLDeviceBindings *devBindings);
   /// Allocate a device buffer of required \p size.
   cl_mem allocDeviceBuffer(uint64_t size, cl_context clContext);
   /// Frees a device buffer.
@@ -175,19 +176,13 @@ private:
                      llvm::ArrayRef<size_t> local,
                      std::vector<KernelLaunch> &kernelLaunches);
 
-  /// Load inputs from \p bindings onto the device.
-  void loadPlaceholders(PlaceholderBindings *bindings,
-                        runtime::OpenCLDeviceBindings *devBindings,
-                        std::vector<KernelLaunch> &kernelLaunches);
-
   /// Load outputs from the device into \p bindings.
   void updatePlaceholders(PlaceholderBindings *bindings,
-                          runtime::OpenCLDeviceBindings *devBindings,
-                          std::vector<KernelLaunch> &kernelLaunches);
+                          runtime::OpenCLDeviceBindings *devBindings);
 
   /// Read trace events out of this func and write them into /p bindings
   void translateTraceEventsCL(ExecutionContext *context,
-                              std::vector<KernelLaunch> &kernelLaunches);
+                              runtime::OpenCLDeviceBindings *devBindings);
 };
 
 /// This is the OpenCL backend.
@@ -229,9 +224,7 @@ public:
   size_t getTraceEventDataSize() const override { return sizeof(uint64_t); }
 
   runtime::DeviceManager *
-  createDeviceManager(const runtime::DeviceConfig &deviceConfig) override {
-    return createOCLDeviceManager(deviceConfig);
-  }
+  createDeviceManager(const runtime::DeviceConfig &deviceConfig) override;
 
 private:
   /// Parses the graph \F and builds a TraceInfo structure from any found
@@ -273,6 +266,9 @@ struct OpenCLDeviceBindings : DeviceBindings {
 
   /// CL program which was compiled at addNetwork.
   cl_program program;
+
+  /// A list of kernels and their associated events.
+  std::vector<KernelLaunch> kernelLaunches;
 };
 } // namespace runtime
 } // namespace glow

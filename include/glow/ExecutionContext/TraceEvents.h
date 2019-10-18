@@ -169,6 +169,7 @@ class TraceContext {
 
 public:
   TraceContext(TraceLevel level) : traceLevel_(level) {}
+  TraceContext(int level) : traceLevel_((TraceLevel)level) {}
 
   /// \returns TraceEvents for the last run.
   std::vector<TraceEvent> &getTraceEvents() { return traceEvents_; }

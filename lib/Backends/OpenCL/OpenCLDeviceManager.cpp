@@ -24,9 +24,12 @@
 #include "OpenCL.h"
 
 #include "glow/Runtime/StatsExporter.h"
+#include "glow/Support/Debug.h"
 
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/CommandLine.h"
+#include "llvm/Support/Debug.h"
+#include "llvm/Support/Format.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -153,7 +156,7 @@ OpenCLDeviceManager::OpenCLDeviceManager(const DeviceConfig &config)
 
 Error OpenCLDeviceManager::parseConfig() {
   auto it = config_.parameters.find("deviceId");
-  unsigned value;
+  unsigned value{0};
   if (it != config_.parameters.end()) {
     ASSIGN_VALUE_OR_RETURN_ERR(value, parseInputAsUnsigned(it->second));
     clDeviceId = value;
@@ -214,6 +217,7 @@ Error OpenCLDeviceManager::init() {
   if (err != CL_SUCCESS) {
     RETURN_ERR("clGetDeviceIDs Failed");
   }
+
   deviceId_ = devices[clDeviceId];
   context_ = clCreateContext(nullptr, 1, &deviceId_, nullptr, nullptr, nullptr);
   if (!context_) {
@@ -239,6 +243,7 @@ Error OpenCLDeviceManager::init() {
 
   Stats()->incrementCounter(kDevicesUsedOpenCL);
   exportMemoryCounters();
+
   return Error::success();
 }
 
@@ -280,13 +285,11 @@ void OpenCLDeviceManager::addNetworkImpl(const Module *module,
     }
 
     if (func.second->getCompileBackendName() != "OpenCL") {
-      readyCB(
-          module,
-          MAKE_ERR(
-              llvm::formatv(
-                  "Failed to add network: function {} is not a OpenCL Function",
-                  func.first)
-                  .str()));
+      readyCB(module,
+              MAKE_ERR(llvm::formatv("Failed to add network: function {} is "
+                                     "not a OpenCL Function",
+                                     func.first)
+                           .str()));
     }
 
     auto &bundle = func.second->getRuntimeBundle();
@@ -335,7 +338,8 @@ void OpenCLDeviceManager::addNetworkImpl(const Module *module,
       err = clEnqueueWriteBuffer(
           commands, buffer->getBuffer(), /* blocking_write */ CL_FALSE,
           valueOffset, sizeInBytes, buf, /* num_events_in_wait_list */ 0,
-          /* event_list */ nullptr, /* event */ doProfile_ ? &event : nullptr);
+          /* event_list */ nullptr,
+          /* event */ doProfile_ ? &event : nullptr);
       if (err != CL_SUCCESS) {
         readyCB(module, MAKE_ERR("Unable to copy data to the device"));
         return;
@@ -345,8 +349,8 @@ void OpenCLDeviceManager::addNetworkImpl(const Module *module,
     usedMemoryBytes_ += sizeInBytes;
     // Compile the CL program.
     // Add to the function name lookup map.
-    // Add shared pointer to the buffer to buffers. This way the buffer will be
-    // freed after the last reference is removed.
+    // Add shared pointer to the buffer to buffers. This way the buffer will
+    // be freed after the last reference is removed.
 
     // Configure the kernels by providing the size of size_t on the host size.
     // This is required to e.g. properly pass struct parameters of types like
@@ -412,6 +416,205 @@ void OpenCLDeviceManager::returnRunCommandQueue(OpenCLCommandQueue &queue) {
   commandQueuePool_.returnCommandQueue(queue);
 }
 
+void OpenCLDeviceManager::copyInputsToDevice(
+    const RuntimeBundle &runtimeBundle, ExecutionContext *context,
+    runtime::OpenCLDeviceBindings *devBindings) {
+  TRACE_EVENT_SCOPE(context->getTraceContext(), TraceLevel::RUNTIME,
+                    "copyInputsToDevice");
+  bool profilingEnabled =
+      context->getTraceContext() &&
+      (context->getTraceContext()->getTraceLevel() & TraceLevel::COPY);
+
+  auto &symbolTable = runtimeBundle.getSymbolTable();
+  for (auto PH : context->getPlaceholderBindings()->pairs()) {
+    auto it = symbolTable.find(PH.first->getName());
+    if (it == symbolTable.end()) {
+      continue;
+    }
+    auto symbolInfo = it->second;
+    auto addr = symbolInfo.offset;
+    auto numBytes = PH.second->getUnpaddedSizeInBytes();
+    // Issue a non-blocking command to copy the buffer to the device.
+    auto buf = PH.second->getUnsafePtr();
+    cl_event event{nullptr};
+
+    cl_int err = clEnqueueWriteBuffer(
+        devBindings->commandQueue, devBindings->deviceBuffer,
+        /* blocking_write */ CL_FALSE, addr, numBytes, buf,
+        /* num_events_in_wait_list */ 0,
+        /* event_list */ nullptr,
+        /* event */ profilingEnabled ? &event : nullptr);
+    CHECK_EQ(err, CL_SUCCESS) << "Unable to copy data to the device";
+    if (profilingEnabled) {
+      std::string name = ("(H2D) " + PH.first->getName()).str();
+      devBindings->kernelLaunches.emplace_back(name, "copy", event);
+    }
+  }
+  // Do it!
+  clFinish(devBindings->commandQueue);
+}
+
+void OpenCLDeviceManager::copyOutputsFromDevice(
+    const RuntimeBundle &runtimeBundle, ExecutionContext *context,
+    runtime::OpenCLDeviceBindings *devBindings) {
+  TRACE_EVENT_SCOPE(context->getTraceContext(), TraceLevel::RUNTIME,
+                    "copyOutputsFromDevice");
+  bool profilingEnabled =
+      context->getTraceContext() &&
+      (context->getTraceContext()->getTraceLevel() & TraceLevel::COPY);
+  auto &symbolTable = runtimeBundle.getSymbolTable();
+  for (auto PH : context->getPlaceholderBindings()->pairs()) {
+    auto it = symbolTable.find(PH.first->getName());
+    if (it == symbolTable.end()) {
+      continue;
+    }
+    auto symbolInfo = it->second;
+    auto addr = symbolInfo.offset;
+    auto numBytes = PH.second->getUnpaddedSizeInBytes();
+    // Issue a non-blocking command to copy the buffer to the device.
+    auto buf = PH.second->getUnsafePtr();
+    cl_event event{nullptr};
+
+    cl_int err = clEnqueueReadBuffer(
+        devBindings->commandQueue, devBindings->deviceBuffer,
+        /* blocking_read */ CL_FALSE, addr, numBytes, buf,
+        /* num_events_in_wait_list */ 0,
+        /* event_list */ nullptr,
+        /* event */ profilingEnabled ? &event : nullptr);
+    CHECK_EQ(err, CL_SUCCESS) << "Unable to copy data from the device";
+    if (profilingEnabled) {
+      std::string name = ("(D2H) " + PH.first->getName()).str();
+      devBindings->kernelLaunches.emplace_back(name, "copy", event);
+    }
+  }
+  // Do it!
+  clFinish(devBindings->commandQueue);
+}
+
+void OpenCLDeviceManager::translateTraceEvents(
+    ManualEventMap &manualTraceEvents, ExecutionContext *context,
+    runtime::OpenCLDeviceBindings *devBindings) {
+  if (context->getTraceContext() == nullptr) {
+    return;
+  }
+
+  TRACE_EVENT_SCOPE(context->getTraceContext(), TraceLevel::RUNTIME,
+                    "processInstrumentation");
+  cl_ulong total = 0;
+
+  // The device uses a different clock domain, so we'll assume that the last
+  // timestamp and now are close and get the difference between the two
+  // timestamps, which we can use to pull event timestamps in to the
+  // steady_clock domain.
+  // TODO: synchronize clocks better, this can be off the thread was yielded
+  // since getting the timestamp in updatePlaceholders.
+  int64_t tsOffset = std::chrono::duration_cast<std::chrono::microseconds>(
+                         std::chrono::steady_clock().now().time_since_epoch())
+                         .count();
+
+  if (!devBindings->kernelLaunches.empty()) {
+    auto &event = devBindings->kernelLaunches.back().event_;
+    cl_ulong time_end;
+    clGetEventProfilingInfo(event, CL_PROFILING_COMMAND_END, sizeof(time_end),
+                            &time_end, NULL);
+
+    // Get the difference between the last event's end and the tsOffset
+    // timestamp.
+    tsOffset -= (time_end / 1000);
+  }
+
+  std::unordered_map<std::string, cl_ulong> kernelToDuration;
+  auto &traceEvents = context->getTraceContext()->getTraceEvents();
+  int tid = TraceEvent::getThreadId();
+  std::vector<cl_ulong> manualTimestamps;
+
+  for (auto &kl : devBindings->kernelLaunches) {
+    auto &event = kl.event_;
+    if (event == nullptr) {
+      continue;
+    }
+    clWaitForEvents(1, &event);
+
+    auto &name = kl.name_;
+    auto &type = kl.type_;
+    DCHECK(!name.empty()) << "Kernel name cannot be empty";
+    cl_ulong timeStart;
+    cl_ulong timeEnd;
+
+    clGetEventProfilingInfo(event, CL_PROFILING_COMMAND_START,
+                            sizeof(timeStart), &timeStart, NULL);
+    clGetEventProfilingInfo(event, CL_PROFILING_COMMAND_END, sizeof(timeEnd),
+                            &timeEnd, NULL);
+
+    if (type == "checkpoint") {
+      const auto &it = manualTraceEvents.find(name);
+      if (it == manualTraceEvents.end()) {
+        DEBUG_GLOW(llvm::dbgs() << "warning: found manual trace event (" << name
+                                << ") with no metadata (OCL)\n");
+      } else {
+        auto handle = context->getPlaceholderBindings()
+                          ->get(it->second.first)
+                          ->getHandle<int64_t>();
+        const TraceInfo::Event *ev = it->second.second;
+
+        // Convert into usec and move into steady_clock domain.
+        auto timestamp = (timeEnd / 1000) + tsOffset;
+
+        handle.at({ev->startIndex, 0}) = timestamp;
+        traceEvents.push_back({ev->name,
+                               TraceLevel::DEBUG,
+                               timestamp,
+                               ev->type,
+                               tid,
+                               {{"kind", ev->kind}}});
+      }
+    } else {
+      // Duration should be usec.
+      auto duration = (timeEnd - timeStart) / 1000;
+      // Convert into usec and move into steady_clock domain.
+      auto startUs = (timeStart / 1000) + tsOffset;
+
+      TraceLevel level =
+          (type == "copy") ? TraceLevel::COPY : TraceLevel::OPERATOR;
+
+      traceEvents.push_back(
+          {name, level, startUs, duration, tid, {{"type", type}}});
+    }
+
+    if (clDoProfile) {
+      // Duration (in nanoseconds).
+      double duration = timeEnd - timeStart;
+      kernelToDuration[type] += duration;
+      total += duration;
+      LOG(INFO) << "OpenCl execution time for a launch of kernel " << type
+                << strFormat(" is: %0.3f milliseconds\n", duration / 1000000.0);
+    }
+  }
+
+  if (!clDoProfile) {
+    return;
+  }
+  llvm::outs() << llvm::format(
+      "OpenCl total execution time is: %0.3f milliseconds \n",
+      total / 1000000.0);
+
+  // Build a sorted list of kernel durations.
+  std::vector<std::pair<cl_ulong, std::string>> sortedKernelDurations;
+  sortedKernelDurations.reserve(kernelToDuration.size());
+  for (auto kv : kernelToDuration) {
+    sortedKernelDurations.push_back(std::make_pair(kv.second, kv.first));
+  }
+  std::sort(sortedKernelDurations.begin(), sortedKernelDurations.end());
+
+  llvm::outs() << "\n\nSummary information per kernel:\n";
+  for (auto k : sortedKernelDurations) {
+    llvm::outs() << "OpenCl total execution time for kernel " << k.second
+                 << llvm::format(" is: %0.3f milliseconds (%lu%%)\n",
+                                 k.first / 1000000.0,
+                                 (unsigned long)(k.first * 100 / total));
+  }
+}
+
 void OpenCLDeviceManager::runFunctionImpl(
     RunIdentifierTy id, std::string function,
     std::unique_ptr<ExecutionContext> context, ResultCBTy resultCB) {
@@ -430,32 +633,53 @@ void OpenCLDeviceManager::runFunctionImpl(
     return;
   }
 
-  CompiledFunction *func = funcIt->second;
+  OpenCLFunction *func = static_cast<OpenCLFunction *>(funcIt->second);
 
-  TRACE_EVENT_SCOPE(context->getTraceContext(), TraceEvent::TraceLevel::RUNTIME,
-                    "requestRunCommandQueue");
   // Get a command queue for this run.
   OpenCLCommandQueue queue;
-  auto queueOrError = requestRunCommandQueue(func);
+  {
+    TRACE_EVENT_SCOPE(context->getTraceContext(),
+                      TraceEvent::TraceLevel::RUNTIME,
+                      "requestRunCommandQueue");
+    auto queueOrError = requestRunCommandQueue(func);
 
-  if (queueOrError) {
-    queue = std::move(queueOrError.get());
-  } else {
-    resultCB(id, queueOrError.takeError(), std::move(context));
+    if (queueOrError) {
+      queue = std::move(queueOrError.get());
+    } else {
+      TRACE_EVENT_SCOPE_END();
+      resultCB(id, queueOrError.takeError(), std::move(context));
+    }
   }
-
-  TRACE_EVENT_SCOPE_END();
-  // Create and set deviceBindings for call. This contains all the state needed
-  // for the function to run on a device.
+  // Create and set deviceBindings for call. This contains all the state
+  // needed for the function to run on a device.
   auto program = programs_[function];
   auto clBindings = llvm::make_unique<runtime::OpenCLDeviceBindings>(
       buffers_[function]->getBuffer(), queue.backingQueue, deviceId_, context_,
       program);
 
-  context->setDeviceBindings(std::move(clBindings));
+  // Copy inputs to the device.
+  copyInputsToDevice(func->getRuntimeBundle(), context.get(), clBindings.get());
 
   // Run that function.
+  context->setDeviceBindings(std::move(clBindings));
   auto executeErr = func->execute(context.get());
+
+  auto devBindings = static_cast<runtime::OpenCLDeviceBindings *>(
+      context->getDeviceBindings());
+  copyOutputsFromDevice(func->getRuntimeBundle(), context.get(), devBindings);
+
+  // Output profiling information.
+  translateTraceEvents(func->getManualTraceEvents(), context.get(),
+                       devBindings);
+
+  {
+    TRACE_EVENT_SCOPE(context->getTraceContext(), TraceLevel::RUNTIME,
+                      "releaseKernels");
+    for (auto &kl : devBindings->kernelLaunches) {
+      clReleaseKernel(kl.kernel_);
+    }
+    devBindings->kernelLaunches.clear();
+  }
 
   // Return the command queue.
   returnRunCommandQueue(queue);
