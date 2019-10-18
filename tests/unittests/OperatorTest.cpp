@@ -3784,8 +3784,8 @@ TEST_P(OperatorStatelessTest, ConvolutionDepth10_Int8_BiasInt8) {
   compareAgainstInterpreter(
       getBackendName(), createAndInitConvDepthTest<10>, ElemKind::FloatTy,
       ElemKind::Int8QTy, 0.03f, parCloneCountOpt,
-      /* enableRowwiseQuantization */ false,
-      quantization::Schema::Asymmetric, ElemKind::Int8QTy);
+      /* enableRowwiseQuantization */ false, quantization::Schema::Asymmetric,
+      ElemKind::Int8QTy);
 }
 
 TEST_P(OperatorStatelessTest, ConvolutionDepth10_Int8_BiasInt32) {
@@ -3793,8 +3793,8 @@ TEST_P(OperatorStatelessTest, ConvolutionDepth10_Int8_BiasInt32) {
   compareAgainstInterpreter(
       getBackendName(), createAndInitConvDepthTest<10>, ElemKind::FloatTy,
       ElemKind::Int8QTy, 0.03f, parCloneCountOpt,
-      /* enableRowwiseQuantization */ false,
-      quantization::Schema::Asymmetric, ElemKind::Int32QTy);
+      /* enableRowwiseQuantization */ false, quantization::Schema::Asymmetric,
+      ElemKind::Int32QTy);
 }
 
 TEST_P(OperatorStatelessTest, ConvolutionDepth10_Int16_BiasInt16) {
@@ -3802,8 +3802,8 @@ TEST_P(OperatorStatelessTest, ConvolutionDepth10_Int16_BiasInt16) {
   compareAgainstInterpreter(
       getBackendName(), createAndInitConvDepthTest<10>, ElemKind::FloatTy,
       ElemKind::Int16QTy, 0.0003f, parCloneCountOpt,
-      /* enableRowwiseQuantization */ false,
-      quantization::Schema::Asymmetric, ElemKind::Int16QTy);
+      /* enableRowwiseQuantization */ false, quantization::Schema::Asymmetric,
+      ElemKind::Int16QTy);
 }
 
 TEST_P(OperatorStatelessTest, ConvolutionDepth10_Int16_BiasInt32) {
@@ -3811,8 +3811,8 @@ TEST_P(OperatorStatelessTest, ConvolutionDepth10_Int16_BiasInt32) {
   compareAgainstInterpreter(
       getBackendName(), createAndInitConvDepthTest<10>, ElemKind::FloatTy,
       ElemKind::Int16QTy, 0.0003f, parCloneCountOpt,
-      /* enableRowwiseQuantization */ false,
-      quantization::Schema::Asymmetric, ElemKind::Int32QTy);
+      /* enableRowwiseQuantization */ false, quantization::Schema::Asymmetric,
+      ElemKind::Int32QTy);
 }
 
 static FunctionTensorPair
@@ -3920,8 +3920,8 @@ TEST_P(OperatorStatelessTest, FullyConnected_Int8_BiasInt8) {
   compareAgainstInterpreter(
       getBackendName(), createAndInitBasicFCTest, ElemKind::FloatTy,
       ElemKind::Int8QTy, 0.05f, parCloneCountOpt,
-      /* enableRowwiseQuantization */ false,
-      quantization::Schema::Asymmetric, ElemKind::Int8QTy);
+      /* enableRowwiseQuantization */ false, quantization::Schema::Asymmetric,
+      ElemKind::Int8QTy);
 }
 
 /// Test Int8 FullyConnected with Int32 bias.
@@ -3930,8 +3930,8 @@ TEST_P(OperatorStatelessTest, FullyConnected_Int8_BiasInt32) {
   compareAgainstInterpreter(
       getBackendName(), createAndInitBasicFCTest, ElemKind::FloatTy,
       ElemKind::Int8QTy, 0.05f, parCloneCountOpt,
-      /* enableRowwiseQuantization */ false,
-      quantization::Schema::Asymmetric, ElemKind::Int32QTy);
+      /* enableRowwiseQuantization */ false, quantization::Schema::Asymmetric,
+      ElemKind::Int32QTy);
 }
 
 /// Test Int16 FullyConnected with Int16 bias.
@@ -3940,8 +3940,8 @@ TEST_P(OperatorStatelessTest, FullyConnected_Int16_BiasInt16) {
   compareAgainstInterpreter(
       getBackendName(), createAndInitBasicFCTest, ElemKind::FloatTy,
       ElemKind::Int16QTy, 0.0005f, parCloneCountOpt,
-      /* enableRowwiseQuantization */ false,
-      quantization::Schema::Asymmetric, ElemKind::Int16QTy);
+      /* enableRowwiseQuantization */ false, quantization::Schema::Asymmetric,
+      ElemKind::Int16QTy);
 }
 
 /// Test Int16 FullyConnected with Int32 bias.
@@ -3950,8 +3950,8 @@ TEST_P(OperatorStatelessTest, FullyConnected_Int16_BiasInt32) {
   compareAgainstInterpreter(
       getBackendName(), createAndInitBasicFCTest, ElemKind::FloatTy,
       ElemKind::Int16QTy, 0.0005f, parCloneCountOpt,
-      /* enableRowwiseQuantization */ false,
-      quantization::Schema::Asymmetric, ElemKind::Int32QTy);
+      /* enableRowwiseQuantization */ false, quantization::Schema::Asymmetric,
+      ElemKind::Int32QTy);
 }
 
 TEST_P(OperatorTest, EntropyLossTest) {
