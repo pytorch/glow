@@ -928,16 +928,19 @@ generateNodeQuantizationInfos(PlaceholderBindings &bindings, const Function *F,
             (user->getNthInput(ConvolutionNode::BiasIdx) == profNode)) {
           // Found bias for ConvolutionNode.
           qPrec = quantizationPrecisionBias;
+          continue;
         }
         if ((user->getKind() == glow::Kinded::Kind::Convolution3DNodeKind) &&
             (user->getNthInput(Convolution3DNode::BiasIdx) == profNode)) {
           // Found bias for Convolution3DNode.
           qPrec = quantizationPrecisionBias;
+          continue;
         }
         if ((user->getKind() == glow::Kinded::Kind::FullyConnectedNodeKind) &&
             (user->getNthInput(FullyConnectedNode::BiasIdx) == profNode)) {
           // Found bias for FullyConnectedNode.
           qPrec = quantizationPrecisionBias;
+          continue;
         }
         if ((user->getKind() == glow::Kinded::Kind::BatchedAddNodeKind) &&
             (user->getNthInput(BatchedAddNode::SliceIdx) == profNode)) {
@@ -946,6 +949,7 @@ generateNodeQuantizationInfos(PlaceholderBindings &bindings, const Function *F,
           if (isBAFromLoweredFC(baN, loweredMap)) {
             // Found bias for lowered FullyConnectedNode.
             qPrec = quantizationPrecisionBias;
+            continue;
           }
         }
       }
