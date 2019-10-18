@@ -273,7 +273,7 @@ void BundleSaver::saveHeader(llvm::StringRef headerFileName) {
                            "//   Shape: %s\n"
                            "//   Size: %zu (elements)\n"
                            "//   Size: %zu (bytes)\n"
-                           "//   Offset: %lu (bytes)\n",
+                           "//   Offset: %llu (bytes)\n",
                            name.data(), typeName.data(), shapeStr.c_str(),
                            sizeElem, sizeByte, offset);
   }
