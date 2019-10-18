@@ -36,10 +36,11 @@ struct TraceEvent {
     NONE = 0x00,     // No trace events.
     REQUEST = 0x01,  // Request timing events only.
     RUNTIME = 0x02,  // Glow runtime events only.
-    OPERATOR = 0x04, // Backend operator instrumentation only.
-    DEBUG = 0x08,    // Full debug events with extra information.
-    STANDARD =
-        RUNTIME | OPERATOR, // Glow runtime events and backend operator events.
+    COPY = 0x04,     // Memory copies and DMA.
+    OPERATOR = 0x08, // Backend operator instrumentation only.
+    DEBUG = 0x10,    // Full debug events with extra information.
+    STANDARD = REQUEST | RUNTIME | COPY |
+               OPERATOR, // Glow runtime events and backend operator events.
   };
 
   /// Event Types.
@@ -67,31 +68,37 @@ struct TraceEvent {
   /// Duration of the event (for Complete events).
   uint64_t duration{0};
 
+  /// The type/verbosity of this event.
+  TraceLevel level{NONE};
+
   /// Arbitrary TraceEvent arguments (from spec).
   std::map<std::string, std::string> args;
 
-  TraceEvent(llvm::StringRef n, uint64_t ts, char c, int t)
-      : name(n), timestamp(ts), type(c), tid(t) {}
+  TraceEvent(llvm::StringRef n, TraceLevel l, uint64_t ts, char c, int t)
+      : name(n), timestamp(ts), type(c), tid(t), level(l) {}
 
-  TraceEvent(llvm::StringRef n, uint64_t ts, char c, int t,
+  TraceEvent(llvm::StringRef n, TraceLevel l, uint64_t ts, char c, int t,
              std::map<std::string, std::string> a)
-      : name(n), timestamp(ts), type(c), tid(t), args(a) {}
+      : name(n), timestamp(ts), type(c), tid(t), level(l), args(a) {}
 
-  TraceEvent(llvm::StringRef n, uint64_t ts, uint64_t dur, int t,
+  TraceEvent(llvm::StringRef n, TraceLevel l, uint64_t ts, uint64_t dur, int t,
              std::map<std::string, std::string> a = {})
       : name(n), timestamp(ts), type(CompleteType), tid(t), duration(dur),
-        args(a) {}
+        level(l), args(a) {}
 
   static void
   dumpTraceEvents(std::vector<TraceEvent> &events, llvm::StringRef filename,
                   const std::string &processName = "",
                   const std::map<int, std::string> &threadNames = {});
 
-  // Return the current time in microseconds in the timestamp domain.
+  /// Return the current time in microseconds in the timestamp domain.
   static uint64_t now();
 
-  // Returns a unique id associated with the current thread.
+  /// Returns a unique id associated with the current thread.
   static size_t getThreadId();
+
+  /// Returns a string representation of the provided \p level.
+  static llvm::StringRef traceLevelToString(TraceLevel level);
 };
 
 using TraceLevel = TraceEvent::TraceLevel;

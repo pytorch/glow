@@ -24,8 +24,8 @@
 
 namespace glow {
 
-void writeMetadataHelper(std::ofstream &file, llvm::StringRef type, int id,
-                         llvm::StringRef name) {
+void writeMetadataHelper(llvm::raw_fd_ostream &file, llvm::StringRef type,
+                         int id, llvm::StringRef name) {
   file << "{\"cat\": \"__metadata\", \"ph\":\"" << TraceEvent::MetadataType
        << "\", \"ts\":0, \"pid\":0, \"tid\":" << id << ", \"name\":\""
        << type.str() << "\", \"args\": {\"name\":\"" << name.str()
@@ -52,10 +52,11 @@ void TraceEvent::dumpTraceEvents(
 
   auto process = processName.empty() ? "glow" : processName;
 
-  std::ofstream file(filename);
+  std::error_code EC;
+  llvm::raw_fd_ostream file(filename, EC);
 
   // Print an error message if the output stream can't be created.
-  if (!file.is_open()) {
+  if (EC) {
     llvm::errs() << "Unable to open file " << filename << "\n";
     return;
   }
@@ -76,7 +77,7 @@ void TraceEvent::dumpTraceEvents(
     first = false;
 
     file << "{\"name\": \"" << event.name;
-    file << "\", \"cat\": \"glow\",";
+    file << "\", \"cat\": \"" << traceLevelToString(event.level) << "\",";
     file << "\"ph\": \"" << event.type;
     file << "\", \"ts\": " << event.timestamp;
     file << ", \"pid\": 0";
@@ -115,6 +116,27 @@ size_t TraceEvent::getThreadId() {
   return id;
 }
 
+llvm::StringRef TraceEvent::traceLevelToString(TraceLevel level) {
+  switch (level) {
+  case NONE:
+    return "None";
+  case REQUEST:
+    return "Request";
+  case RUNTIME:
+    return "Runtime";
+  case COPY:
+    return "Copy";
+  case OPERATOR:
+    return "Operator";
+  case DEBUG:
+    return "Debug";
+  case STANDARD:
+    return "Standard";
+  }
+
+  return "Unknown";
+}
+
 void TraceContext::logTraceEvent(
     llvm::StringRef name, TraceLevel level, char type,
     std::map<std::string, std::string> additionalAttributes) {
@@ -129,7 +151,7 @@ void TraceContext::logTraceEvent(
     return;
   }
 
-  TraceEvent ev(name, timestamp, type, TraceEvent::getThreadId(),
+  TraceEvent ev(name, level, timestamp, type, TraceEvent::getThreadId(),
                 std::move(additionalAttributes));
   {
     std::lock_guard<std::mutex> l(lock_);
@@ -144,7 +166,7 @@ void TraceContext::logCompleteTraceEvent(
     return;
   }
 
-  TraceEvent ev(name, startTimestamp, TraceEvent::now() - startTimestamp,
+  TraceEvent ev(name, level, startTimestamp, TraceEvent::now() - startTimestamp,
                 TraceEvent::getThreadId(), std::move(additionalAttributes));
   {
     std::lock_guard<std::mutex> l(lock_);
