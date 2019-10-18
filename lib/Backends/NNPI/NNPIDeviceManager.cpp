@@ -85,6 +85,11 @@ Error NNPIDeviceManager::init() {
   LOG_IF_NOT_RETURN_LLVMERROR(device_ == NNPI_INVALID_NNPIHANDLE,
                               "Bad NNPI device");
 
+  NNPITransformerInfo info;
+  CHECK_EQ(nnpiTransformerGetInfo(&info), NNPI_NO_ERROR);
+  LOG(INFO) << "NNPI Transformer Version " << info.majorVersion << "."
+            << info.minorVersion << "." << info.patchVersion;
+
   if (UseInferenceAPI()) {
     // Create NNPI adapter.
     LOG_NNPI_INF_ERROR_RETURN_LLVMERROR(nnpiAdapterCreate(nullptr, &adapter_),
