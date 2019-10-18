@@ -262,6 +262,8 @@ public:
     RUNTIME_DEVICE_NOT_FOUND,
     // Runtime error, network busy to perform any operation on it.
     RUNTIME_NET_BUSY,
+    // Device error, not supported.
+    DEVICE_FEATURE_NOT_SUPPORTED,
     // Compilation error; node unsupported after optimizations.
     COMPILE_UNSUPPORTED_NODE_AFTER_OPTIMIZE,
     // Compilation error; Compilation context not correctly setup.

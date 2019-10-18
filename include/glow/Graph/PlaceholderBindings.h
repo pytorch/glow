@@ -114,6 +114,13 @@ public:
   /// PlaceholderBindings.
   uint64_t getDataSize() const;
 
+  /// Copies all Device Resident Tensors back to the host.
+  void ensureOnHost() {
+    for (auto &ph : pairs()) {
+      ph.second->ensureOnHost();
+    }
+  }
+
   PlaceholderBindings() = default;
 
   /// Construct the PlaceholderBindings with an initial mapping between \p

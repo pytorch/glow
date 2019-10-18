@@ -193,6 +193,9 @@ NNPIDeviceManager::runFunction(std::string functionName,
                                runtime::ResultCBTy resultCB) {
   RunIdentifierTy runId = runIdentifier_++;
 
+  /// NNPI DeviceManager doesn't support Device Resident Tensors.
+  ctx->getPlaceholderBindings()->ensureOnHost();
+
   // Get thread env.
   auto infEnv = inferenceEnvs_.find(functionName);
   if (infEnv == inferenceEnvs_.end()) {

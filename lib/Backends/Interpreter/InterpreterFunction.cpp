@@ -192,6 +192,8 @@ Error BoundInterpreterFunction::execute(IRFunction *F,
                                         ExecutionContext *context) {
   {
     TRACE_EVENT_SCOPE(context, TraceLevel::RUNTIME, "registerTensors");
+    // Make sure all referenced tensors are on the host.
+    context->getPlaceholderBindings()->ensureOnHost();
 
     // Find all virtually padded tensors so they can be replaced.
     std::vector<Placeholder *> virtualPadded;
