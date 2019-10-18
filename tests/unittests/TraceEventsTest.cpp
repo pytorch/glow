@@ -207,7 +207,6 @@ TEST_P(TraceEventsTest, manualEvents) {
   EE_.run(context);
 
   auto &traceEvents = context.getTraceContext()->getTraceEvents();
-
   ASSERT_EQ(traceEvents.size(), numEvents);
   checkEventMetadata(traceEvents, {{"first half", 'B'},
                                    {"first half", 'E'},
@@ -627,8 +626,8 @@ TEST_P(TraceEventsTest, multipleRunsAreDistinct) {
 TEST_P(TraceEventsTest, deviceManagerEvents) {
   CHECK_IF_ENABLED();
   ExecutionContext context;
-  context.setTraceContext(
-      llvm::make_unique<TraceContext>(TraceLevel::STANDARD));
+  context.setTraceContext(llvm::make_unique<TraceContext>(
+      TraceLevel::RUNTIME | TraceLevel::OPERATOR));
 
   auto n = part_one(F, context);
   n = part_two(F, context, n);
@@ -656,8 +655,8 @@ TEST_P(TraceEventsTest, deviceManagerEvents) {
 TEST(TraceEventsTest, nestedScopedEvents) {
   CHECK_IF_ENABLED();
   ExecutionContext context;
-  context.setTraceContext(
-      llvm::make_unique<TraceContext>(TraceLevel::STANDARD));
+  context.setTraceContext(llvm::make_unique<TraceContext>(
+      TraceLevel::RUNTIME | TraceLevel::OPERATOR));
 
   TraceContext *tc = context.getTraceContext();
 
@@ -696,8 +695,8 @@ TEST(TraceEventsTest, nestedScopedEvents) {
 TEST(TraceEventsTest, nestedScopedEventsMacro) {
   CHECK_IF_ENABLED();
   ExecutionContext context;
-  context.setTraceContext(
-      llvm::make_unique<TraceContext>(TraceLevel::STANDARD));
+  context.setTraceContext(llvm::make_unique<TraceContext>(
+      TraceLevel::RUNTIME | TraceLevel::OPERATOR));
 
   TraceContext *tc = context.getTraceContext();
 
@@ -737,8 +736,8 @@ TEST(TraceEventsTest, nestedScopedEventsMacro) {
 TEST(TraceEventsTest, nestedScopedEventsTerm) {
   CHECK_IF_ENABLED();
   ExecutionContext context;
-  context.setTraceContext(
-      llvm::make_unique<TraceContext>(TraceLevel::STANDARD));
+  context.setTraceContext(llvm::make_unique<TraceContext>(
+      TraceLevel::RUNTIME | TraceLevel::OPERATOR));
 
   TraceContext *tc = context.getTraceContext();
 
@@ -811,8 +810,10 @@ TEST(TraceEventsTest, TraceLevels) {
 }
 
 TEST(TraceEventsTest, MergeEvents) {
-  auto tc1 = llvm::make_unique<TraceContext>(TraceLevel::STANDARD);
-  auto tc2 = llvm::make_unique<TraceContext>(TraceLevel::STANDARD);
+  auto tc1 = llvm::make_unique<TraceContext>(TraceLevel::RUNTIME |
+                                             TraceLevel::OPERATOR);
+  auto tc2 = llvm::make_unique<TraceContext>(TraceLevel::RUNTIME |
+                                             TraceLevel::OPERATOR);
 
   TRACE_EVENT_BEGIN(tc1, TraceLevel::RUNTIME, "ev1");
   TRACE_EVENT_END(tc1, TraceLevel::RUNTIME, "ev1");

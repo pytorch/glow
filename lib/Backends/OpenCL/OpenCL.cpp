@@ -21,6 +21,7 @@
 #define CL_USE_DEPRECATED_OPENCL_1_2_APIS
 
 #include "OpenCL.h"
+#include "OpenCLDeviceManager.h"
 
 #include "glow/Backend/BackendUtils.h"
 #include "glow/CodeGen/MemoryAllocator.h"
@@ -269,15 +270,15 @@ static unsigned getPreferredVectorWidth(cl_device_id device,
 
 void OpenCLFunction::fillBuffer(cl_mem buffer, uint64_t start, uint64_t len,
                                 float value, ElemKind elemKind,
-                                runtime::OpenCLDeviceBindings *devBindings,
-                                std::vector<KernelLaunch> &kernelLaunches) {
+                                runtime::OpenCLDeviceBindings *devBindings) {
   auto kernel =
       createKernel(getKernelName("splat", elemKind), devBindings->program);
   setKernelArg(kernel, 0, buffer);
   setKernelArg<cl_uint>(kernel, 1, start);
   setKernelArg(kernel, 2, value);
   enqueueKernel("splat", devBindings->commandQueue, kernel,
-                devBindings->deviceId, {(size_t)len}, kernelLaunches);
+                devBindings->deviceId, {(size_t)len},
+                devBindings->kernelLaunches);
 }
 
 /// \returns the max local workgroup size for each dimension, under the
@@ -370,11 +371,7 @@ void OpenCLFunction::enqueueKernel(llvm::StringRef name,
 
 void OpenCLFunction::executeNCHWConvolution(
     const ConvolutionInst *CC, ExecutionContext *executionContext,
-    std::vector<KernelLaunch> &kernelLaunches) {
-  DCHECK(executionContext->getDeviceBindings())
-      << "DeviceBindings must be set.";
-  auto devBindings = static_cast<runtime::OpenCLDeviceBindings *>(
-      executionContext->getDeviceBindings());
+    runtime::OpenCLDeviceBindings *devBindings) {
   auto input = CC->getSrc();
   auto output = CC->getDest();
   auto bias = CC->getBias();
@@ -544,7 +541,8 @@ void OpenCLFunction::executeNCHWConvolution(
                                 idim.n * group};
 
   enqueueKernel(CC->getName(), devBindings->commandQueue, kernel,
-                devBindings->deviceId, global, local, kernelLaunches);
+                devBindings->deviceId, global, local,
+                devBindings->kernelLaunches);
 }
 
 /// This method is copied from InterpreterNodes.cpp. Please be aware that
@@ -588,15 +586,9 @@ Error OpenCLFunction::execute(ExecutionContext *context) {
   auto deviceId = clBindings->deviceId;
   auto commands = clBindings->commandQueue;
   auto program = clBindings->program;
-  std::vector<KernelLaunch> kernelLaunches;
+  std::vector<KernelLaunch> &kernelLaunches = clBindings->kernelLaunches;
 
   kernelProfiling_ = clDoProfile || getTraceInfo().autoInstrumented;
-
-  {
-    TRACE_EVENT_SCOPE(context, TraceLevel::RUNTIME, "loadPlaceholders");
-    loadPlaceholders(context->getPlaceholderBindings(), clBindings,
-                     kernelLaunches);
-  }
 
   TRACE_EVENT_SCOPE_NAMED(context, TraceLevel::RUNTIME, "enqueueKernels",
                           enqueueEvent);
@@ -993,7 +985,7 @@ Error OpenCLFunction::execute(ExecutionContext *context) {
 
     if (auto *CC = dyn_cast<ConvolutionInst>(&I)) {
       if (CC->getLayout() == NCHW) {
-        executeNCHWConvolution(CC, context, kernelLaunches);
+        executeNCHWConvolution(CC, context, clBindings);
         continue;
       }
 
@@ -1064,14 +1056,12 @@ Error OpenCLFunction::execute(ExecutionContext *context) {
       setKernelArg(kernel, numArgs + 8, filterGradDim);
       // Zero memory for the output buffers.
       fillBuffer(deviceBuffer, runtimeBundle_.getValueOffset(srcGrad),
-                 srcGrad->size(), 0, srcGrad->getElementType(), clBindings,
-                 kernelLaunches);
+                 srcGrad->size(), 0, srcGrad->getElementType(), clBindings);
       fillBuffer(deviceBuffer, runtimeBundle_.getValueOffset(filterGrad),
                  filterGrad->size(), 0, filterGrad->getElementType(),
-                 clBindings, kernelLaunches);
+                 clBindings);
       fillBuffer(deviceBuffer, runtimeBundle_.getValueOffset(biasGrad),
-                 biasGrad->size(), 0, biasGrad->getElementType(), clBindings,
-                 kernelLaunches);
+                 biasGrad->size(), 0, biasGrad->getElementType(), clBindings);
 
       enqueueKernel(I.getName(), commands, kernel, deviceId,
                     {destGradDim.h, destGradDim.w, destGradDim.c},
@@ -1333,8 +1323,7 @@ Error OpenCLFunction::execute(ExecutionContext *context) {
       // it.
       auto *dest = SLWS->getDest();
       fillBuffer(deviceBuffer, runtimeBundle_.getValueOffset(dest),
-                 dest->size(), 0, dest->getElementType(), clBindings,
-                 kernelLaunches);
+                 dest->size(), 0, dest->getElementType(), clBindings);
 
       // Get the number of segments. The output for each segment will be
       // computed in parallel by setting the global size equal to the number of
@@ -1369,8 +1358,7 @@ Error OpenCLFunction::execute(ExecutionContext *context) {
       // into it.
       auto *dataGrad = SLWSG->getDataGrad();
       fillBuffer(deviceBuffer, runtimeBundle_.getValueOffset(dataGrad),
-                 dataGrad->size(), 0, dataGrad->getElementType(), clBindings,
-                 kernelLaunches);
+                 dataGrad->size(), 0, dataGrad->getElementType(), clBindings);
 
       // Enqueue the kernel. Set the global size to 1 so that all segments are
       // processed sequentially to avoid two kernel instances accumulating into
@@ -1387,7 +1375,7 @@ Error OpenCLFunction::execute(ExecutionContext *context) {
       // Allocate a temporary tensor to hold the value.
       Tensor T(V->getType());
       // Load the current value of the variable into host memory.
-      copyValueFromDevice(V, clBindings, kernelLaunches, T.getUnsafePtr());
+      copyValueFromDevice(V, clBindings, T.getUnsafePtr());
       clFinish(commands);
       llvm::outs() << I.getName() << ": ";
       // Dump the content of a value.
@@ -1431,8 +1419,7 @@ Error OpenCLFunction::execute(ExecutionContext *context) {
       Tensor srcT(srcDev->getType());
       size_t k = TK->getK();
 
-      copyValueFromDevice(srcDev, clBindings, kernelLaunches,
-                          srcT.getUnsafePtr());
+      copyValueFromDevice(srcDev, clBindings, srcT.getUnsafePtr());
       clFinish(commands);
 
       if (isQuantized) {
@@ -1440,10 +1427,8 @@ Error OpenCLFunction::execute(ExecutionContext *context) {
       } else {
         topK<float>(destT, indT, srcT, k);
       }
-      copyValueToDevice(destDev, clBindings, kernelLaunches,
-                        destT.getUnsafePtr());
-      copyValueToDevice(indDev, clBindings, kernelLaunches,
-                        indT.getUnsafePtr());
+      copyValueToDevice(destDev, clBindings, destT.getUnsafePtr());
+      copyValueToDevice(indDev, clBindings, indT.getUnsafePtr());
       clFinish(commands);
       continue;
     }
@@ -1455,32 +1440,11 @@ Error OpenCLFunction::execute(ExecutionContext *context) {
 
   clFinish(commands);
 
-  {
-    TRACE_EVENT_SCOPE(context, TraceLevel::RUNTIME, "updatePlaceholders");
-    updatePlaceholders(context->getPlaceholderBindings(), clBindings,
-                       kernelLaunches);
-  }
-
-  {
-    TRACE_EVENT_SCOPE(context, TraceLevel::RUNTIME, "processInstrumentation");
-    // Output profiling information.
-    translateTraceEventsCL(context, kernelLaunches);
-  }
-
-  {
-    TRACE_EVENT_SCOPE(context, TraceLevel::RUNTIME, "releaseKernels");
-    for (auto &kl : kernelLaunches) {
-      clReleaseKernel(kl.kernel_);
-    }
-    kernelLaunches.clear();
-  }
-
   return Error::success();
 }
 
 uint64_t OpenCLFunction::copyValueToDevice(
-    const Value *v, runtime::OpenCLDeviceBindings *devBindings,
-    std::vector<KernelLaunch> &kernelLaunches, void *buf) {
+    const Value *v, runtime::OpenCLDeviceBindings *devBindings, void *buf) {
   uint64_t copiedBytes = 0;
   auto symbolInfo = runtimeBundle_.getSymbolInfo(v);
   size_t sizeInBytes = v->getType()->getSizeInBytes();
@@ -1496,8 +1460,8 @@ uint64_t OpenCLFunction::copyValueToDevice(
         /* event */ kernelProfiling_ ? &event : nullptr);
     CHECK_EQ(err, CL_SUCCESS) << "Unable to copy data to the device";
     if (kernelProfiling_) {
-      kernelLaunches.emplace_back(
-          KernelLaunch("copyValueToDevice", "copyValueToDevice", event));
+      devBindings->kernelLaunches.emplace_back(
+          KernelLaunch("copyValueToDevice", "copy", event));
     }
     copiedBytes += sizeInBytes;
   }
@@ -1505,8 +1469,7 @@ uint64_t OpenCLFunction::copyValueToDevice(
 }
 
 uint64_t OpenCLFunction::copyValueFromDevice(
-    const Value *v, runtime::OpenCLDeviceBindings *devBindings,
-    std::vector<KernelLaunch> &kernelLaunches, void *buf) {
+    const Value *v, runtime::OpenCLDeviceBindings *devBindings, void *buf) {
   uint64_t copiedBytes = 0;
   auto symbolInfo = runtimeBundle_.getSymbolInfo(v);
   size_t sizeInBytes = v->getType()->getSizeInBytes();
@@ -1524,96 +1487,12 @@ uint64_t OpenCLFunction::copyValueFromDevice(
     DEBUG_GLOW(llvm::dbgs()
                << "Copied the value from device: " << v->getName() << "\n");
     if (kernelProfiling_) {
-      kernelLaunches.emplace_back(
+      devBindings->kernelLaunches.emplace_back(
           KernelLaunch("copyValueFromDevice", "copyValueFromDevice", event));
     }
     copiedBytes += sizeInBytes;
   }
   return copiedBytes;
-}
-
-void OpenCLFunction::loadPlaceholders(
-    PlaceholderBindings *bindings, runtime::OpenCLDeviceBindings *devBindings,
-    std::vector<KernelLaunch> &kernelLaunches) {
-  size_t sizeInBytes = runtimeBundle_.getConstantWeightSize();
-  if (runtimeBundle_.getConstants()) {
-    // Issue a non-blocking command to copy the buffer to the device.
-    auto buf = runtimeBundle_.getConstants();
-    size_t valueOffset = 0;
-    cl_event event{nullptr};
-    cl_int err = clEnqueueWriteBuffer(
-        devBindings->commandQueue, devBindings->deviceBuffer,
-        /* blocking_write */ CL_FALSE, valueOffset, sizeInBytes, buf,
-        /* num_events_in_wait_list */ 0,
-        /* event_list */ nullptr,
-        /* event */ kernelProfiling_ ? &event : nullptr);
-    CHECK_EQ(err, CL_SUCCESS) << "Unable to copy data to the device";
-    if (kernelProfiling_) {
-      kernelLaunches.emplace_back("(H2D) Constants", "copy", event);
-    }
-    // Do it!
-    clFinish(devBindings->commandQueue);
-  }
-
-  auto &symbolTable = runtimeBundle_.getSymbolTable();
-  for (auto PH : bindings->pairs()) {
-    auto it = symbolTable.find(PH.first->getName());
-    if (it == symbolTable.end()) {
-      continue;
-    }
-    auto symbolInfo = it->second;
-    auto addr = symbolInfo.offset;
-    auto numBytes = PH.second->getUnpaddedSizeInBytes();
-    // Issue a non-blocking command to copy the buffer to the device.
-    auto buf = PH.second->getUnsafePtr();
-    cl_event event{nullptr};
-
-    cl_int err = clEnqueueWriteBuffer(
-        devBindings->commandQueue, devBindings->deviceBuffer,
-        /* blocking_write */ CL_FALSE, addr, numBytes, buf,
-        /* num_events_in_wait_list */ 0,
-        /* event_list */ nullptr,
-        /* event */ kernelProfiling_ ? &event : nullptr);
-    CHECK_EQ(err, CL_SUCCESS) << "Unable to copy data to the device";
-    if (kernelProfiling_) {
-      std::string name = ("(H2D) " + PH.first->getName()).str();
-      kernelLaunches.emplace_back(name, "copy", event);
-    }
-  }
-  // Do it!
-  clFinish(devBindings->commandQueue);
-}
-
-void OpenCLFunction::updatePlaceholders(
-    PlaceholderBindings *bindings, runtime::OpenCLDeviceBindings *devBindings,
-    std::vector<KernelLaunch> &kernelLaunches) {
-  auto &symbolTable = runtimeBundle_.getSymbolTable();
-  for (auto PH : bindings->pairs()) {
-    auto it = symbolTable.find(PH.first->getName());
-    if (it == symbolTable.end()) {
-      continue;
-    }
-    auto symbolInfo = it->second;
-    auto addr = symbolInfo.offset;
-    auto numBytes = PH.second->getUnpaddedSizeInBytes();
-    // Issue a non-blocking command to copy the buffer to the device.
-    auto buf = PH.second->getUnsafePtr();
-    cl_event event{nullptr};
-
-    cl_int err = clEnqueueReadBuffer(
-        devBindings->commandQueue, devBindings->deviceBuffer,
-        /* blocking_read */ CL_FALSE, addr, numBytes, buf,
-        /* num_events_in_wait_list */ 0,
-        /* event_list */ nullptr,
-        /* event */ kernelProfiling_ ? &event : nullptr);
-    CHECK_EQ(err, CL_SUCCESS) << "Unable to copy data from the device";
-    if (kernelProfiling_) {
-      std::string name = ("(D2H) " + PH.first->getName()).str();
-      kernelLaunches.emplace_back(name, "copy", event);
-    }
-  }
-  // Do it!
-  clFinish(devBindings->commandQueue);
 }
 
 cl_mem OpenCLFunction::allocDeviceBuffer(uint64_t size, cl_context clContext) {
@@ -1630,127 +1509,6 @@ void OpenCLFunction::freeDeviceBuffer(cl_mem buf) { clReleaseMemObject(buf); }
 
 void OpenCLFunction::collectConstants(const Module *module) {
   runtimeBundle_.collectConstants(module);
-}
-
-void OpenCLFunction::translateTraceEventsCL(
-    ExecutionContext *context, std::vector<KernelLaunch> &kernelLaunches) {
-  if (context->getTraceContext() == nullptr ||
-      (!getTraceInfo().enabled && !clDoProfile)) {
-    return;
-  }
-  cl_ulong total = 0;
-
-  // The device uses a different clock domain, so we'll assume that the last
-  // timestamp and now are close and get the difference between the two
-  // timestamps, which we can use to pull event timestamps in to the
-  // steady_clock domain.
-  // TODO: synchronize clocks better, this can be off the thread was yielded
-  // since getting the timestamp in updatePlaceholders.
-  int64_t tsOffset = std::chrono::duration_cast<std::chrono::microseconds>(
-                         std::chrono::steady_clock().now().time_since_epoch())
-                         .count();
-
-  if (!kernelLaunches.empty()) {
-    auto &event = kernelLaunches.back().event_;
-    cl_ulong time_end;
-    clGetEventProfilingInfo(event, CL_PROFILING_COMMAND_END, sizeof(time_end),
-                            &time_end, NULL);
-
-    // Get the difference between the last event's end and the tsOffset
-    // timestamp.
-    tsOffset -= (time_end / 1000);
-  }
-
-  std::unordered_map<std::string, cl_ulong> kernelToDuration;
-  auto &traceEvents = context->getTraceContext()->getTraceEvents();
-  int tid = TraceEvent::getThreadId();
-  std::vector<cl_ulong> manualTimestamps;
-
-  for (auto &kl : kernelLaunches) {
-    auto &event = kl.event_;
-    if (event == nullptr) {
-      continue;
-    }
-    clWaitForEvents(1, &event);
-
-    auto &name = kl.name_;
-    auto &type = kl.type_;
-    DCHECK(!name.empty()) << "Kernel name cannot be empty";
-    cl_ulong timeStart;
-    cl_ulong timeEnd;
-
-    clGetEventProfilingInfo(event, CL_PROFILING_COMMAND_START,
-                            sizeof(timeStart), &timeStart, NULL);
-    clGetEventProfilingInfo(event, CL_PROFILING_COMMAND_END, sizeof(timeEnd),
-                            &timeEnd, NULL);
-
-    if (type == "checkpoint") {
-      const auto &it = manualTraceEvents_.find(name);
-      if (it == manualTraceEvents_.end()) {
-        DEBUG_GLOW(llvm::dbgs() << "warning: found manual trace event (" << name
-                                << ") with no metadata (OCL)\n");
-      } else {
-        auto handle = context->getPlaceholderBindings()
-                          ->get(it->second.first)
-                          ->getHandle<int64_t>();
-        const TraceInfo::Event *ev = it->second.second;
-
-        // Convert into usec and move into steady_clock domain.
-        auto timestamp = (timeEnd / 1000) + tsOffset;
-
-        handle.at({ev->startIndex, 0}) = timestamp;
-        traceEvents.push_back({ev->name,
-                               TraceLevel::DEBUG,
-                               timestamp,
-                               ev->type,
-                               tid,
-                               {{"kind", ev->kind}}});
-      }
-    } else {
-      // Duration should be usec.
-      auto duration = (timeEnd - timeStart) / 1000;
-      // Convert into usec and move into steady_clock domain.
-      auto startUs = (timeStart / 1000) + tsOffset;
-
-      TraceLevel level =
-          (type == "copy") ? TraceLevel::COPY : TraceLevel::OPERATOR;
-
-      traceEvents.push_back(
-          {name, level, startUs, duration, tid, {{"type", type}}});
-    }
-
-    if (clDoProfile) {
-      // Duration (in nanoseconds).
-      double duration = timeEnd - timeStart;
-      kernelToDuration[type] += duration;
-      total += duration;
-      LOG(INFO) << "OpenCl execution time for a launch of kernel " << type
-                << strFormat(" is: %0.3f milliseconds\n", duration / 1000000.0);
-    }
-  }
-
-  if (!clDoProfile) {
-    return;
-  }
-  llvm::outs() << format(
-      "OpenCl total execution time is: %0.3f milliseconds \n",
-      total / 1000000.0);
-
-  // Build a sorted list of kernel durations.
-  std::vector<std::pair<cl_ulong, std::string>> sortedKernelDurations;
-  sortedKernelDurations.reserve(kernelToDuration.size());
-  for (auto kv : kernelToDuration) {
-    sortedKernelDurations.push_back(std::make_pair(kv.second, kv.first));
-  }
-  std::sort(sortedKernelDurations.begin(), sortedKernelDurations.end());
-
-  llvm::outs() << "\n\nSummary information per kernel:\n";
-  for (auto k : sortedKernelDurations) {
-    llvm::outs() << "OpenCl total execution time for kernel " << k.second
-                 << format(" is: %0.3f milliseconds (%lu%%)\n",
-                           k.first / 1000000.0,
-                           (unsigned long)(k.first * 100 / total));
-  }
 }
 
 std::unique_ptr<CompiledFunction>
@@ -2114,6 +1872,11 @@ bool OCLBackend::verify(const IRFunction &IR) const {
     }
   }
   return true;
+}
+
+runtime::DeviceManager *
+OCLBackend::createDeviceManager(const runtime::DeviceConfig &deviceConfig) {
+  return createOCLDeviceManager(deviceConfig);
 }
 
 TraceInfo OCLBackend::buildManualTraceInfo(Function *F) const {

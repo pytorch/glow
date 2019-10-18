@@ -17,6 +17,7 @@
 #define GLOW_BACKENDS_OPENCL_OPENCLDEVICEMANAGER_H
 
 #include "glow/Backends/QueueBackedDeviceManager.h"
+#include "lib/Backends/OpenCL/OpenCL.h"
 
 #include <atomic>
 
@@ -198,6 +199,22 @@ protected:
   void runFunctionImpl(runtime::RunIdentifierTy id, std::string functionName,
                        std::unique_ptr<ExecutionContext> context,
                        ResultCBTy cb) override;
+
+  /// Load inputs from \p context onto the device.
+  void copyInputsToDevice(const RuntimeBundle &runtimeBundle,
+                          ExecutionContext *context,
+                          runtime::OpenCLDeviceBindings *devBindings);
+
+  /// Copy back results from the device to the host.
+  void copyOutputsFromDevice(const RuntimeBundle &runtimeBundle,
+                             ExecutionContext *context,
+                             runtime::OpenCLDeviceBindings *devBindings);
+
+  /// Get profiling information for each kernelLaunch. This must happen after
+  /// copyOutputsFromDevice.
+  void translateTraceEvents(ManualEventMap &manualTraceEvents,
+                            ExecutionContext *context,
+                            runtime::OpenCLDeviceBindings *devBindings);
 };
 
 DeviceManager *createOCLDeviceManager(const DeviceConfig &config);
