@@ -1472,7 +1472,9 @@ Error Caffe2ModelLoader::loadNetwork(caffe2::NetDef &net) {
     auto &outputName = net.external_output(i);
     NodeValue r;
     ASSIGN_VALUE_OR_RETURN_ERR(r, getNodeValueByName(outputName));
-    auto *SN = G_.createSave("save_" + outputName, r);
+    auto *PH =
+        G_.getParent()->createPlaceholder(r.getType(), outputName, false);
+    auto *SN = G_.createSave("save_" + outputName, r, PH);
     outputVarsByName_[outputName] = SN->getPlaceholder();
   }
   return Error::success();

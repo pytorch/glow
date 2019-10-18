@@ -103,7 +103,7 @@ template <typename T> std::string loadOperatorName(const T &op) {
     return op.name();
   }
   if (op.output_size() > 0) {
-    return op.output(0);
+    return op.op_type() + "_" + op.output(0);
   }
   return op.op_type();
 }
@@ -232,7 +232,9 @@ Error constantFoldInLoader(Function *F, LoaderType &tmpLoader,
     const auto &outputName = op.output(i);
     NodeValue r;
     ASSIGN_VALUE_OR_RETURN_ERR(r, tmpLoader.getNodeValueByName(outputName));
-    SaveNode *SN = F->createSave("save_" + outputName, r);
+    Placeholder *PH =
+        F->getParent()->createPlaceholder(r.getType(), outputName, false);
+    SaveNode *SN = F->createSave("save_" + outputName, r, PH);
     auto *result = bindings.allocate(SN->getPlaceholder());
     outTensors.push_back(result);
   }

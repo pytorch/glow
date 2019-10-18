@@ -300,7 +300,7 @@ static uint8_t *allocateMutableWeightVars(const BundleConfig &config) {
 static void dumpInferenceResults(const BundleConfig &config,
                                  uint8_t *mutableWeightVars) {
   const SymbolTableEntry &outputWeights =
-      getMutableWeightVar(config, "save_gpu_0_softmax");
+      getMutableWeightVar(config, "gpu_0_softmax__1");
   int maxIdx = 0;
   float maxValue = 0;
   float *results = (float *)(mutableWeightVars + outputWeights.offset);

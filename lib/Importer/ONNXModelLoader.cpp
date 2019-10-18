@@ -1670,7 +1670,10 @@ Error ONNXModelLoader::setOutputNodes(ONNX_NAMESPACE::GraphProto &net) {
     const auto &outputName = net.output(i).name();
     NodeValue r;
     ASSIGN_VALUE_OR_RETURN_ERR(r, getNodeValueByName(outputName));
-    SaveNode *SN = G_.createSave("save_" + outputName, r);
+
+    Placeholder *placeholder =
+        G_.getParent()->createPlaceholder(r.getType(), outputName, false);
+    SaveNode *SN = G_.createSave("save_" + outputName, r, placeholder);
     outputVarsByName_[outputName] = SN->getPlaceholder();
   }
 

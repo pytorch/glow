@@ -102,7 +102,9 @@ void PlaceholderBindings::insert(Placeholder *P, Tensor *T) {
 void PlaceholderBindings::copyToTarget(llvm::StringRef name,
                                        PlaceholderBindings &dst) {
   auto *srcPH = this->getPlaceholderByName(name);
+  DCHECK(srcPH) << name.str() << " does not exist in source";
   auto *dstPH = dst.getPlaceholderByName(name);
+  DCHECK(dstPH) << name.str() << " does not exist in destination";
   dst.erase(dstPH);
   dst.insert(dstPH, this->get(srcPH)->clone());
 }

@@ -414,7 +414,7 @@ TEST(Quantization, TestQuantizedInputBeforeQuantizedNode) {
 
   // Now we verify that the SliceNode was in fact quantized.
   {
-    auto *saveNode = llvm::dyn_cast<SaveNode>(F->getNodeByName("ret"));
+    auto *saveNode = llvm::dyn_cast<SaveNode>(F->getNodeByName(S->getName()));
     ASSERT_TRUE(saveNode);
     auto *deqNode =
         llvm::dyn_cast<DequantizeNode>(saveNode->getInput().getNode());
@@ -483,7 +483,7 @@ TEST(Quantization, enableRowwiseQuantizedFullyConnected) {
   quantization::quantizeFunction(F, quantConfig, *backend, loweredMapForQuant);
 
   // Check the graph structure after quantization.
-  auto *saveNode = llvm::dyn_cast<SaveNode>(F->getNodeByName("ret"));
+  auto *saveNode = llvm::dyn_cast<SaveNode>(F->getNodeByName(S->getName()));
   ASSERT_TRUE(saveNode);
   auto *deqNode =
       llvm::dyn_cast<DequantizeNode>(saveNode->getInput().getNode());
@@ -581,7 +581,7 @@ TEST(Quantization, enableRowwiseQuantizedFullyConnectedSymmetric) {
   quantization::quantizeFunction(F, quantConfig, *backend, loweredMapForQuant);
 
   // Check the graph structure after quantization.
-  auto *saveNode = llvm::dyn_cast<SaveNode>(F->getNodeByName("save"));
+  auto *saveNode = llvm::dyn_cast<SaveNode>(F->getNodeByName(res->getName()));
   ASSERT_TRUE(saveNode);
   auto *deqNode =
       llvm::dyn_cast<DequantizeNode>(saveNode->getInput().getNode());
@@ -658,7 +658,7 @@ TEST(Quantization, enableRowwiseQuantizedSLWS) {
   EE.compile(CompilationMode::Infer);
 
   // Check the graph structure after quantization.
-  auto *saveNode = llvm::dyn_cast<SaveNode>(F->getNodeByName("save"));
+  auto *saveNode = llvm::dyn_cast<SaveNode>(F->getNodeByName(res->getName()));
   ASSERT_TRUE(saveNode);
   auto *FRWQSLWS =
       llvm::dyn_cast<FusedRowwiseQuantizedSparseLengthsWeightedSumNode>(
@@ -678,7 +678,7 @@ TEST(Quantization, quantizeReLU) {
   auto *input = mod.createPlaceholder(ElemKind::FloatTy, {1, 3}, "input", true);
   auto *relu = F->createRELU("ReLU", input);
   PlaceholderBindings bindings;
-  F->createSave("ret", relu);
+  auto *ret = F->createSave("ret", relu);
   // Make sure that offset quantization parameter of ReLU is set
   // such that it produces non-negative floating point range.
   quantization::QuantizationConfiguration quantConfig{
@@ -690,7 +690,7 @@ TEST(Quantization, quantizeReLU) {
   quantization::quantizeFunction(F, quantConfig, *backend);
   EE.compile(CompilationMode::Infer);
 
-  auto *save = llvm::cast<SaveNode>(F->getNodeByName("ret"));
+  auto *save = llvm::cast<SaveNode>(F->getNodeByName(ret->getName()));
   ASSERT_TRUE(llvm::isa<DequantizeNode>(save->getInput().getNode()));
   auto *dequantize = llvm::cast<DequantizeNode>(save->getInput().getNode());
   ASSERT_TRUE(llvm::isa<MaxNode>(dequantize->getInput().getNode()));
@@ -712,7 +712,7 @@ TEST(Quantization, quantizeLookupTables) {
   auto *LN = F->createLog("log", input);
   auto *SN = F->createSigmoid("sigmoid", LN);
   auto *TN = F->createTanh("tanh", SN);
-  F->createSave("ret", TN);
+  auto *ret = F->createSave("ret", TN);
 
   quantization::QuantizationConfiguration quantConfig{
       {{NodeQuantizationInfo::generateNodeOutputName(input->getName()),
@@ -731,7 +731,7 @@ TEST(Quantization, quantizeLookupTables) {
   // Note: The scales/offsets used below are those expected based on
   // Sigmoid/Tanh requirements, or on the input values for the Log.
 
-  auto *save = llvm::cast<SaveNode>(F->getNodeByName("ret"));
+  auto *save = llvm::cast<SaveNode>(F->getNodeByName(ret->getName()));
   auto *dequantizeTanh =
       llvm::dyn_cast<DequantizeNode>(save->getInput().getNode());
   ASSERT_TRUE(dequantizeTanh);
@@ -778,7 +778,7 @@ TEST(Quantization, quantizeWithoutLookupTables) {
   auto *LN = F->createLog("log", input);
   auto *SN = F->createSigmoid("sigmoid", LN);
   auto *TN = F->createTanh("tanh", SN);
-  F->createSave("ret", TN);
+  auto *ret = F->createSave("ret", TN);
 
   quantization::QuantizationConfiguration quantConfig{
       {{NodeQuantizationInfo::generateNodeOutputName(input->getName()),
@@ -793,7 +793,7 @@ TEST(Quantization, quantizeWithoutLookupTables) {
   quantization::quantizeFunction(F, quantConfig, *backend);
   optimize(F, CompilationMode::Infer);
 
-  auto *save = llvm::cast<SaveNode>(F->getNodeByName("ret"));
+  auto *save = llvm::cast<SaveNode>(F->getNodeByName(ret->getName()));
   auto *dequantize = llvm::dyn_cast<DequantizeNode>(save->getInput().getNode());
   ASSERT_TRUE(dequantize);
   auto *tanh = llvm::dyn_cast<TanhNode>(dequantize->getInput());
@@ -2325,7 +2325,8 @@ TEST(Quantization, CheckAssertQuantization) {
     // the Interpreter does not support Int16QTy ReLU.
     quantization::quantizeFunction(QF, quantConfig, *backend);
 
-    auto *saveNode = llvm::dyn_cast<SaveNode>(QF->getNodeByName("ret"));
+    auto *saveNode =
+        llvm::dyn_cast<SaveNode>(QF->getNodeByName(save->getName()));
     ASSERT_TRUE(saveNode);
     auto *reluNode = llvm::dyn_cast<ReluNode>(saveNode->getInput().getNode());
     ASSERT_TRUE(reluNode);
@@ -2344,7 +2345,8 @@ TEST(Quantization, CheckAssertQuantization) {
     quantization::quantizeFunction(QF, quantConfig, *backend,
                                    /* loweredMap */ {}, doNotQuantizeKinds);
 
-    auto *saveNode = llvm::dyn_cast<SaveNode>(QF->getNodeByName("ret"));
+    auto *saveNode =
+        llvm::dyn_cast<SaveNode>(QF->getNodeByName(save->getName()));
     ASSERT_TRUE(saveNode);
     auto *reluNode = llvm::dyn_cast<ReluNode>(saveNode->getInput().getNode());
     ASSERT_TRUE(reluNode);
@@ -2382,7 +2384,7 @@ TEST(Quantization, QuantizationZeroUsersResult) {
   std::unique_ptr<Backend> backend(createBackend(EE.getBackendName()));
   quantization::quantizeFunction(F, quantConfig, *backend);
 
-  auto *qSN = llvm::dyn_cast<SaveNode>(F->getNodeByName("save_indices"));
+  auto *qSN = llvm::dyn_cast<SaveNode>(F->getNodeByName(SN->getName()));
   ASSERT_TRUE(qSN);
   auto *qTK = llvm::dyn_cast<TopKNode>(qSN->getInput().getNode());
   ASSERT_TRUE(qTK);

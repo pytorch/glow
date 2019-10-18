@@ -137,7 +137,7 @@ TEST(RuntimeBundle, BundleSymbolInfo) {
   assert(dag->nodes.size() > 0 && "Empty DAG list");
   auto table = dag->nodes[0]->runtimeBundle->getSymbolTable();
   // Check that placeholders and constants are correctly labelled.
-  EXPECT_EQ(table.find(S->getName())->second.symbolCategory,
+  EXPECT_EQ(table.find(S->getPlaceholder()->getName())->second.symbolCategory,
             glow::runtime::SymbolCategory::Placeholder);
   EXPECT_EQ(table.find(ex->getName())->second.symbolCategory,
             glow::runtime::SymbolCategory::Constant);
@@ -150,8 +150,8 @@ TEST(RuntimeBundle, BundleSymbolInfo) {
             glow::runtime::SymbolCategory::PlaceholderTensorView);
 
   // Check that placeholders and constants input/output flags are correctly set.
-  EXPECT_EQ(table.find(S->getName())->second.input, false);
-  EXPECT_EQ(table.find(S->getName())->second.output, true);
+  EXPECT_EQ(table.find(S->getPlaceholder()->getName())->second.input, false);
+  EXPECT_EQ(table.find(S->getPlaceholder()->getName())->second.output, true);
   EXPECT_EQ(table.find(ex->getName())->second.input, false);
   EXPECT_EQ(table.find(ex->getName())->second.output, false);
   EXPECT_EQ(table.find(input->getName())->second.input, true);
