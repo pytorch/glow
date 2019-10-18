@@ -16,7 +16,9 @@
 
 #include "glow/ExecutionContext/TraceEvents.h"
 #include "glow/ExecutionContext/ExecutionContext.h"
+#include "glow/Support/ThreadPool.h"
 
+#include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/raw_ostream.h"
 
 #include <atomic>
@@ -68,7 +70,9 @@ void TraceEvent::dumpTraceEvents(
 
   /// And thread name metadata.
   for (const auto &nameMap : threadNames) {
-    writeMetadataHelper(file, "thread_name", nameMap.first, nameMap.second);
+    writeMetadataHelper(
+        file, "thread_name", nameMap.first,
+        llvm::formatv("{0}: {1}", nameMap.first, nameMap.second).str());
   }
 
   bool first{true};
@@ -110,12 +114,6 @@ uint64_t TraceEvent::now() {
       .count();
 }
 
-size_t TraceEvent::getThreadId() {
-  static std::atomic<std::size_t> thread_idx{0};
-  thread_local std::size_t id = thread_idx++;
-  return id;
-}
-
 llvm::StringRef TraceEvent::traceLevelToString(TraceLevel level) {
   switch (level) {
   case NONE:
@@ -151,7 +149,7 @@ void TraceContext::logTraceEvent(
     return;
   }
 
-  TraceEvent ev(name, level, timestamp, type, TraceEvent::getThreadId(),
+  TraceEvent ev(name, level, timestamp, type, threads::getThreadId(),
                 std::move(additionalAttributes));
   {
     std::lock_guard<std::mutex> l(lock_);
@@ -167,7 +165,7 @@ void TraceContext::logCompleteTraceEvent(
   }
 
   TraceEvent ev(name, level, startTimestamp, TraceEvent::now() - startTimestamp,
-                TraceEvent::getThreadId(), std::move(additionalAttributes));
+                threads::getThreadId(), std::move(additionalAttributes));
   {
     std::lock_guard<std::mutex> l(lock_);
     traceEvents_.push_back(std::move(ev));
@@ -179,7 +177,7 @@ void TraceContext::setThreadName(int tid, llvm::StringRef name) {
 }
 
 void TraceContext::setThreadName(llvm::StringRef name) {
-  setThreadName(TraceEvent::getThreadId(), name);
+  setThreadName(threads::getThreadId(), name);
 }
 
 void TraceContext::dump(llvm::StringRef filename,

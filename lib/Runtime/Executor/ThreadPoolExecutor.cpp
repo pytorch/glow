@@ -23,6 +23,7 @@
 #include <queue>
 #include <unordered_set>
 
+#include "llvm/Support/FormatVariadic.h"
 #include <glog/logging.h>
 
 namespace glow {
@@ -58,6 +59,10 @@ void InflightBarrier::wait() {
   cv_.wait(lock, [&] { return count_ == 0; });
 }
 
+ThreadPoolExecutor::ThreadPoolExecutor(const DeviceManagerMapTy &deviceManagers,
+                                       unsigned numWorkers)
+    : threadPool_(numWorkers), deviceManagers_(deviceManagers) {}
+
 void ThreadPoolExecutor::shutdown() {
   // Prevent more requests from being processed.
   shuttingDown_ = true;
@@ -75,6 +80,12 @@ void ThreadPoolExecutor::run(const DAGNode *root,
 
   TRACE_EVENT_SCOPE(context->getTraceContext(), TraceLevel::RUNTIME,
                     "ThreadPoolExecutor::run");
+
+  if (context->getTraceContext()) {
+    for (auto id : threadPool_.getThreadIds()) {
+      context->getTraceContext()->setThreadName(id, "ThreadPoolExecutor");
+    }
+  }
 
   // Don't process new requests if the executor is shutting down.
   if (shuttingDown_) {

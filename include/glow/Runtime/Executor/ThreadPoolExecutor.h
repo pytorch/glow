@@ -60,8 +60,7 @@ class ThreadPoolExecutor final : public Executor {
 public:
   /// Constructor.
   explicit ThreadPoolExecutor(const DeviceManagerMapTy &deviceManagers,
-                              unsigned numWorkers = kNumWorkers)
-      : threadPool_(numWorkers), deviceManagers_(deviceManagers) {}
+                              unsigned numWorkers = kNumWorkers);
 
   /// See Executor::run. A particular invocation is specified completely by
   /// the triple (roots, bindings, runId).

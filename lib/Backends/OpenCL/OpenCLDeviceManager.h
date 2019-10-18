@@ -161,6 +161,9 @@ class OpenCLDeviceManager : public QueueBackedDeviceManager {
   /// Returns a command queue.
   void returnRunCommandQueue(OpenCLCommandQueue &queue);
 
+  /// The TID of the device (for TraceEvents);
+  int deviceTid_{-1};
+
 public:
   OpenCLDeviceManager(const DeviceConfig &config);
 
