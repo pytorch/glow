@@ -345,7 +345,7 @@ TEST_F(GraphOptz, optimizeBatchNormAfterConvWithReshapeConst) {
 /// Check that the batch normalization optimization is
 /// not blocked by predicates and that it preserves them.
 TEST_F(GraphOptz, optimizeBatchNormAfterConvWithPred) {
-  Node *A =
+  auto *A =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 10, 20, 3}, "A", false);
   Node *pred1 =
       mod_.createPlaceholder(ElemKind::FloatTy, {1}, "predicate", false);
@@ -372,6 +372,11 @@ TEST_F(GraphOptz, optimizeBatchNormAfterConvWithPred) {
   ASSERT_EQ(newCV->getNumUsers(), 1);
   Node *save = newCV->getUsers().begin()->getUser();
   EXPECT_TRUE(llvm::isa<SaveNode>(save));
+
+  optimizedF_ = optimizeFunction(F_);
+  bindings_.allocate(mod_.getPlaceholders());
+  bindings_.get(A)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
+  checkNumericalEquivalence();
 }
 
 /// Check CSE will not merge two nodes that have all the same inputs but
