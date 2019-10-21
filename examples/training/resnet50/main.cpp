@@ -116,7 +116,7 @@ void loadImagesAndLabels(Tensor &images, Tensor &labels) {
   /// offset 96 pixels
   constexpr unsigned imageOffset = 96;
   for (unsigned n = 0; n < CIFAR_NUM_IMAGES; ++n) {
-    labelsH.at({n, static_cast<unsigned long>(dbInput.get())}) = 1;
+    labelsH.at({n, 0}) = static_cast<unsigned long>(dbInput.get());
     // ResNet50 model got trained in NCHW format.
     for (unsigned c = 0; c < IMAGE_COLORS; ++c) {
       auto bgrc = IMAGE_COLORS - 1 - c;
@@ -139,11 +139,11 @@ int main(int argc, char **argv) {
                                     " ResNet50 Training Example\n\n");
 
   // We expect the input to be NCHW.
-  llvm::ArrayRef<size_t> allImagesDims = {CIFAR_NUM_IMAGES, IMAGE_COLORS,
-                                          IMAGE_HEIGHT, IMAGE_WIDTH};
-  llvm::ArrayRef<size_t> initImagesDims = {1, IMAGE_COLORS, IMAGE_HEIGHT,
-                                           IMAGE_WIDTH};
-  llvm::ArrayRef<size_t> allLabelsDims = {CIFAR_NUM_IMAGES, 1000};
+  std::vector<size_t> allImagesDims = {CIFAR_NUM_IMAGES, IMAGE_COLORS,
+                                       IMAGE_HEIGHT, IMAGE_WIDTH};
+  std::vector<size_t> initImagesDims = {1, IMAGE_COLORS, IMAGE_HEIGHT,
+                                        IMAGE_WIDTH};
+  std::vector<size_t> allLabelsDims = {CIFAR_NUM_IMAGES, 1};
 
   ExecutionEngine EE(executionBackend);
   auto &mod = EE.getModule();
@@ -154,14 +154,14 @@ int main(int argc, char **argv) {
 
   // Load ResNet model.
   llvm::outs() << "Loading resnet50 model.\n";
-  Error errPtr = Error::success();
+  Error error = Error::empty();
 
   // Loader has randomly initialized trainable weights.
   Caffe2ModelLoader loader(resnet50Path + "/predict_net.pbtxt",
                            resnet50Path + "/init_net.pb", {inputName},
-                           {inputType}, *F, &errPtr);
+                           {inputType}, *F, &error);
 
-  if (errPtr) {
+  if (ERR_TO_BOOL(std::move(error))) {
     llvm::errs() << "Loader failed to load resnet50 model from path: "
                  << resnet50Path << "\n";
     return -1;
@@ -177,7 +177,7 @@ int main(int argc, char **argv) {
   bindings.allocate(mod.getPlaceholders());
 
   Placeholder *selected{nullptr};
-  if ((errPtr = glow::prepareFunctionForTraining(F, bindings, selected))) {
+  if (ERR_TO_BOOL(glow::prepareFunctionForTraining(F, bindings, selected))) {
     return -1;
   }
 
@@ -223,7 +223,7 @@ int main(int argc, char **argv) {
       EE.run(bindings, tfName);
       timer.stopTimer();
 
-      auto correct = findMaxIndex(labels.getHandle<int64_t>(), 10);
+      auto correct = labels.getHandle<int64_t>().raw(0);
       auto guess = findMaxIndex(result->getHandle(), 10);
       score += guess == correct;
       ++total;
