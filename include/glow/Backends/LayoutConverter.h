@@ -21,6 +21,32 @@
 
 namespace glow {
 
+/// Convert regular ConvolutionGradNode that uses NHWC into a
+/// ConvolutionGradNode that uses NCHW.
+inline std::tuple<NodeValue, NodeValue, NodeValue>
+convertConvGradToNCHWConvGrad(ConvolutionGradNode *CGN, Function *F) {
+  auto *NI = F->createTranspose("convgrad.input", CGN->getInput(), NHWC2NCHW);
+  auto *NF = F->createTranspose("convgrad.filter", CGN->getFilter(), NHWC2NCHW);
+
+  auto *NR = F->createTranspose("convgrad.output",
+                                CGN->getOriginalOutputForResult(), NHWC2NCHW);
+  auto *NGR =
+      F->createTranspose("convgrad.outputgrad",
+                         CGN->getGradOfOriginalOutputNamedResult(), NHWC2NCHW);
+
+  auto *NCGN = F->addNode(new ConvolutionGradNode(
+      CGN->getName(), NI, NF, CGN->getBias(), NR, NGR, CGN->getKernels(),
+      CGN->getStrides(), CGN->getPads(), CGN->getGroup(), CGN->getDilation(),
+      NCHW, glow::FusedActivation::NONE));
+  auto *NGI = F->createTranspose("convgrad.inputgrad",
+                                 NCGN->getGradOfInputNamedInput(), NCHW2NHWC);
+  auto *NGF = F->createTranspose("convgrad.inputgrad",
+                                 NCGN->getGradOfInputNamedFilter(), NCHW2NHWC);
+
+  return std::make_tuple<NodeValue, NodeValue, NodeValue>(
+      NGI->getResult(), NGF->getResult(), NCGN->getGradOfInputNamedBias());
+}
+
 /// Convert regular convolution nodes (that use NHWC) into a backend-specific
 /// convolution nodes using NCHW.
 inline Node *convertConvToNCHWConv(ConvolutionNode *CN, Function *F) {
