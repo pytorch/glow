@@ -256,6 +256,7 @@ std::set<std::string> glow::backendTestBlacklist = {
     "Select/0",
     "SigmoidCrossEntropyWithLogits/0",
     "Sigmoid_Float16/0",
+    "SigmoidSweep/0",
     "simpleCmpSelectPredication/0",
     "sliceConcatVectors_Float16/0",
     "sliceConcatVectors_Int64/0",
