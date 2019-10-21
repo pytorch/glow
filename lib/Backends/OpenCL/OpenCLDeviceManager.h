@@ -16,8 +16,8 @@
 #ifndef GLOW_BACKENDS_OPENCL_OPENCLDEVICEMANAGER_H
 #define GLOW_BACKENDS_OPENCL_OPENCLDEVICEMANAGER_H
 
+#include "OpenCL.h"
 #include "glow/Backends/QueueBackedDeviceManager.h"
-#include "lib/Backends/OpenCL/OpenCL.h"
 
 #include <atomic>
 
