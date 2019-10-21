@@ -21,6 +21,7 @@
 #include <ATen/core/grad_mode.h>
 #include <torch/csrc/jit/operator_options.h>
 #include <torch/csrc/jit/pass_manager.h>
+#include <torch/csrc/jit/passes/lower_graph.h>
 
 namespace glow {
 
@@ -189,8 +190,8 @@ Error PyTorchFileLoader::parsePyTorchGraphForOnnxTraining(
   at::NoGradGuard guard;
 
   auto method = module->get_method("forward");
-  // std::pair<std::shared_ptr<Graph>, std::vector<at::Tensor>>
-  auto graphAndTensors = method._lowered_graph();
+  auto graphAndTensors =
+      torch::jit::LowerGraph(*method.graph(), module->module_object());
 
   fuseKnownPatterns(graphAndTensors.first);
 
