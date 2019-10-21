@@ -38,7 +38,7 @@ def test_quantized_conv2d():
                                                         "aten::dequantize"})
 
 
-@pytest.mark.skip(reason="accuracy between glow&ytorch")
+@pytest.mark.skip(reason="accuracy between glow & pytorch")
 def test_quantized_conv2d_nonfunctional():
     """Basic test of the PyTorch quantized conv2d Node with external quantized
     input on Glow."""
