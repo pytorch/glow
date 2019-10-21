@@ -517,6 +517,17 @@ struct PReluInputs {
   };
 };
 
+/// Indexes of aten::slice inputs.
+struct SliceInputs {
+  enum {
+    input = 0,
+    dim = 1,
+    start = 2,
+    end = 3,
+    step = 4,
+  };
+};
+
 /// Indexes of aten::softmax inputs.
 struct SoftMaxInputs {
   enum {
@@ -707,6 +718,14 @@ PyTorchModelLoader::getSymbolsMapping() {
         &PyTorchModelLoader::loadPRelu,
         {
             PReluInputs::weight,
+        }},
+       {{"aten::slice"},
+        &PyTorchModelLoader::loadSlice,
+        {
+            SliceInputs::dim,
+            SliceInputs::start,
+            SliceInputs::end,
+            SliceInputs::step,
         }},
        {{"aten::softmax"},
         &PyTorchModelLoader::loadSoftMax,
@@ -2056,6 +2075,43 @@ Error PyTorchModelLoader::loadPRelu(const torch::jit::Node *ptNode) {
   int axis = targetDim.size() - weight.dims().size();
   auto *slope = F_.createBroadcast("broadcast", weight, targetDim, axis);
   auto *glowNode = F_.createPRELU("prelu", in, slope);
+  return addValueMapping(outputs[0], glowNode);
+}
+
+Error PyTorchModelLoader::loadSlice(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 5, outputs, 1));
+
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      input, getGlowNodeValueForValue(inputs[SliceInputs::input]));
+
+  int64_t dim, start, end, step = 1;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      dim, iValToInt(getGlowIValueForValue(inputs[SliceInputs::dim])));
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      start, iValToInt(getGlowIValueForValue(inputs[SliceInputs::start])));
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      end, iValToInt(getGlowIValueForValue(inputs[SliceInputs::end])));
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      step, iValToInt(getGlowIValueForValue(inputs[SliceInputs::step])));
+
+  RETURN_ERR_IF_NOT(step == 1, "loadSlice only supports step == 1");
+  int dimsSize = input.dims().size();
+  std::vector<size_t> begins(dimsSize);
+  std::vector<size_t> ends(dimsSize);
+
+  for (int i = 0; i < dimsSize; ++i) {
+    if (i == dim) {
+      begins[i] = start;
+      ends[i] = end > input.dims()[i] ? input.dims()[i] : end;
+    } else {
+      begins[i] = 0;
+      ends[i] = input.dims()[i];
+    }
+  }
+  auto *glowNode = F_.createSlice("sliceOutput", input, begins, ends);
   return addValueMapping(outputs[0], glowNode);
 }
 
