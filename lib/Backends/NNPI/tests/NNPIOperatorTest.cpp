@@ -97,6 +97,7 @@ std::set<std::string> glow::backendTestBlacklist = {
     "spaceToDepth_block2_int8/0",
     "spaceToDepth_block3_Float/0",
     "spaceToDepth_block3_int8/0",
+    "SigmoidSweep/0",
     "SparseToDense/0",
     "SparseToDenseMask1/0",
     "SparseToDenseMask2/0",
