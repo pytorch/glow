@@ -179,7 +179,7 @@ Tensor *PlaceholderBindings::allocate(Placeholder *P) {
   return T;
 }
 
-unsigned PlaceholderBindings::allocate(std::list<Placeholder *> &lst) {
+unsigned PlaceholderBindings::allocate(const std::list<Placeholder *> &lst) {
   unsigned allocated = 0;
   // For each placeholder in the list:
   for (Placeholder *P : lst) {
@@ -195,8 +195,8 @@ unsigned PlaceholderBindings::allocate(std::list<Placeholder *> &lst) {
   return allocated;
 }
 
-Placeholder *
-PlaceholderBindings::getFirstUnallocated(std::list<Placeholder *> &lst) const {
+Placeholder *PlaceholderBindings::getFirstUnallocated(
+    const std::list<Placeholder *> &lst) const {
   // For each placeholder in the list:
   for (Placeholder *P : lst) {
     // If we found an unallocated placeholder then return it.

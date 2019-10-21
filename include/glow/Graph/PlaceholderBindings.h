@@ -85,12 +85,12 @@ public:
   /// Allocates zero-initialized backing tensors to all placeholders in \p lst
   /// that are not currently allocated in the bindings.
   /// \returns the number of tensors that were allocated.
-  unsigned allocate(std::list<Placeholder *> &lst);
+  unsigned allocate(const std::list<Placeholder *> &lst);
 
   /// \returns the first placeholder in \p list that is not allocated by this
   /// bindings. This method returns null if all placeholders in the list are
   /// allocated.
-  Placeholder *getFirstUnallocated(std::list<Placeholder *> &lst) const;
+  Placeholder *getFirstUnallocated(const std::list<Placeholder *> &lst) const;
 
   /// \returns True if \p P is a registered Placeholder.
   size_t count(Placeholder *P) const;
