@@ -371,6 +371,10 @@ private:
   /// \returns error on failure.
   Error loadPRelu(const torch::jit::Node *ptNode);
 
+  /// Load a PyTorch slice node.
+  /// \returns error on failure.
+  Error loadSlice(const torch::jit::Node *ptNode);
+
   /// Load a PyTorch SoftMax node.
   /// \returns error on failure.
   Error loadSoftMax(const torch::jit::Node *ptNode);
