@@ -6098,7 +6098,7 @@ static float16_t eval_lut_func(float x) {
   if (bin_calc >= float16_t(256)) { // CHANGE TO TABLE SIZE-1
     return float16_t(1);
   }
-  uint32_t bin = (uint32_t)floor(bin_calc);
+  uint32_t bin = (uint32_t)floor((float)bin_calc);
   float16_t bin_x = a + delta * float16_t(bin);
   float16_t p = (x - (float)bin_x) * (float)one_delta;
   return float16_t(lut[bin + 1]) * p + (float16_t(1) - p) * float16_t(lut[bin]);
