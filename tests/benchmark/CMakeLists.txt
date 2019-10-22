@@ -50,6 +50,17 @@ target_link_libraries(BatchGemmBench
                       PRIVATE
                         ExecutionEngine
                         Graph
+                        GraphOptimizer
+                        HostManager
+                        CPURuntimeNative)
+
+add_executable(TransposeBench
+               TransposeBench.cpp)
+target_link_libraries(TransposeBench
+                      PRIVATE
+                        ExecutionEngine
+                        Graph
+                        GraphOptimizer
                         HostManager
                         CPURuntimeNative)
 
