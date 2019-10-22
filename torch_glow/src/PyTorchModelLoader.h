@@ -359,7 +359,7 @@ private:
   /// \returns error on failure.
   Error loadTranspose(const torch::jit::Node *ptNode);
 
-  /// Load a PyTorch t (transpose) node.
+  /// Load a PyTorch mean node.
   /// \returns error on failure.
   Error loadMean(const torch::jit::Node *ptNode);
 
