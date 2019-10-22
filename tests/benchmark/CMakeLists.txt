@@ -44,6 +44,15 @@ target_link_libraries(GemmParallelBench
                         HostManager
                         CPURuntimeNative)
 
+add_executable(BatchGemmBench
+               BatchGemmBench.cpp)
+target_link_libraries(BatchGemmBench
+                      PRIVATE
+                        ExecutionEngine
+                        Graph
+                        HostManager
+                        CPURuntimeNative)
+
 add_executable(RuntimeBench
                RuntimeBench.cpp)
 target_include_directories(RuntimeBench
