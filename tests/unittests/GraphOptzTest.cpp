@@ -614,7 +614,7 @@ TEST_P(GraphOptzSinkTransposeBelowParametrized,
        TestSinkTransposeForDifferentCases) {
   const size_t origDims[] = {1, 5, 10, 15};
   const size_t transposedDims[] = {1, 15, 5, 10};
-  auto *A = mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input", false);
+  Placeholder *A = mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input", false);
   Node *T = F_->createTranspose("transpose", A, NHWC2NCHW);
   auto IN = getNodeFromInput(GetParam(), T);
   SaveNode *O = F_->createSave("ret", IN);
