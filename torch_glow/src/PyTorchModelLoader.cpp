@@ -398,6 +398,16 @@ struct ConvInputs {
   };
 };
 
+/// Indexes of aten::mean inputs.
+struct MeanInputs {
+  enum {
+    input = 0,
+    axis = 1,
+    keepdims = 2,
+    output = 3,
+  };
+};
+
 /// Indexes of aten::batch_norm inputs.
 struct BNInputs {
   enum {
@@ -606,6 +616,9 @@ PyTorchModelLoader::getSymbolsMapping() {
        {{"aten::min"}, &PyTorchModelLoader::loadMin, {}},
        {{"aten::max"}, &PyTorchModelLoader::loadMax, {}},
        {{"aten::exp"}, &PyTorchModelLoader::loadExp, {}},
+       {{"aten::mean"},
+        &PyTorchModelLoader::loadMean,
+        {MeanInputs::axis, MeanInputs::keepdims, MeanInputs::output}},
        {{"aten::pow"},
         &PyTorchModelLoader::loadPow,
         {
@@ -1839,6 +1852,42 @@ Error PyTorchModelLoader::loadMin(const torch::jit::Node *ptNode) {
 
   auto output = F_.createMin("min", lhs, rhs);
   return addValueMapping(outputs[0], output);
+}
+
+Error PyTorchModelLoader::loadMean(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, -2, outputs, 1));
+
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      input, getGlowNodeValueForValue(inputs[MeanInputs::input]));
+
+  std::vector<int64_t> *axis;
+  if (hasGlowIValueForValue(inputs[MeanInputs::axis],
+                            /*ignoreNones*/ true)) {
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        axis, iValToIntList(getGlowIValueForValue(inputs[MeanInputs::axis])));
+    std::sort(axis->begin(), axis->end(), std::greater<int64_t>());
+    for (auto i : *axis) {
+      input = F_.createBatchedReduceMean("mean", input, i);
+    }
+  } else {
+    for (int i = input.dims().size() - 1; i >= 0; i--) {
+      input = F_.createBatchedReduceMean("mean", input, i);
+    }
+  }
+
+  if (hasGlowIValueForValue(inputs[MeanInputs::keepdims])) {
+    bool keepdims;
+    ASSIGN_VALUE_OR_RETURN_ERR(keepdims, iValToBool(getGlowIValueForValue(
+                                             inputs[MeanInputs::keepdims])));
+    if (keepdims == true) {
+      RETURN_ERR("We don't currently support keeping dims");
+    }
+  }
+
+  return addValueMapping(outputs[0], input);
 }
 
 Error PyTorchModelLoader::loadMatMul(const torch::jit::Node *ptNode) {
