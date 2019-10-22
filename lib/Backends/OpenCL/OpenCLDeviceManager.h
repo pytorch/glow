@@ -122,6 +122,17 @@ public:
   size_t getSize() { return size_; }
 };
 
+struct OpenCLDeviceTransferContext {
+
+  OpenCLDeviceTransferContext(cl_mem buffer, size_t addrOffset)
+      : tensorBuffer(buffer), offset(addrOffset) {}
+
+  OpenCLDeviceTransferContext() = delete;
+
+  cl_mem tensorBuffer;
+  size_t offset;
+};
+
 /// A class controlling a single OpenCL device. Many OpenCLFunctions may be
 /// added, but only one inference is executed at a time.
 class OpenCLDeviceManager : public QueueBackedDeviceManager {
@@ -164,6 +175,11 @@ class OpenCLDeviceManager : public QueueBackedDeviceManager {
   /// The TID of the device (for TraceEvents);
   int deviceTid_{-1};
 
+  // Transfers a tensor between 2 buffers on this device
+  bool transferTensorOnThisDevice(
+      Tensor &tensor, OpenCLDeviceTransferContext *sourceTransferContext,
+      OpenCLDeviceTransferContext *targetTransferContext, bool releaseBuffer);
+
 public:
   OpenCLDeviceManager(const DeviceConfig &config);
 
@@ -185,6 +201,18 @@ public:
   /// device. This is not a promise as memory cost could vary due to alignment,
   /// etc.
   bool isMemoryAvailable(uint64_t estimate) const override;
+
+  /// Copies the contents of \p tensor from the host to the \p location address
+  /// on this device. Updates the tensor residency info.
+  bool transferToDevice(Tensor &tensor, void *locationContext) override;
+
+  /// Copies the device buffer associated with \p tensor to the host.
+  /// The tensor must be resident on this device. If \p release is true, frees
+  /// the device memory. Updates the tensor residency info.
+  bool transferFromDevice(Tensor &tensor, bool release = true) override;
+
+  /// Releases the device buffer associated with \p tensor.
+  bool releaseDeviceTensor(void *locationContext) override;
 
 protected:
   /// Adds functions to the device. Calls to this are serialized so concurrency

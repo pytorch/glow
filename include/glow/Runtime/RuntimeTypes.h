@@ -150,6 +150,9 @@ struct DeviceConfig {
   uint64_t deviceMemory = 0;
   /// A map of configuration parameters.
   llvm::StringMap<std::string> parameters{};
+  /// True to always copy output device tensors to host at the end of a function
+  /// run.
+  bool copyDeviceTensorsToHost{false};
 
   DeviceConfig(llvm::StringRef backendName) : backendName(backendName) {}
   DeviceConfig(llvm::StringRef backendName, llvm::StringRef name)

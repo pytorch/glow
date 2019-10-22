@@ -428,6 +428,7 @@ TEST_P(TraceEventsTest, twoCompiles) {
   std::string name = F->getName();
   auto config =
       llvm::make_unique<runtime::DeviceConfig>(backend->getBackendName());
+  config->copyDeviceTensorsToHost = true;
   std::unique_ptr<runtime::DeviceManager> device(
       runtime::DeviceManager::createDeviceManager(*config));
   EXIT_ON_ERR(device->init());

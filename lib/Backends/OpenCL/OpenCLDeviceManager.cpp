@@ -430,9 +430,6 @@ void OpenCLDeviceManager::copyInputsToDevice(
     runtime::OpenCLDeviceBindings *devBindings) {
   TRACE_EVENT_SCOPE(context->getTraceContext(), TraceLevel::RUNTIME,
                     "copyInputsToDevice");
-  bool profilingEnabled =
-      context->getTraceContext() &&
-      (context->getTraceContext()->getTraceLevel() & TraceLevel::COPY);
 
   auto &symbolTable = runtimeBundle.getSymbolTable();
   for (auto PH : context->getPlaceholderBindings()->pairs()) {
@@ -442,25 +439,44 @@ void OpenCLDeviceManager::copyInputsToDevice(
     }
     auto symbolInfo = it->second;
     auto addr = symbolInfo.offset;
-    auto numBytes = PH.second->getUnpaddedSizeInBytes();
-    // Issue a non-blocking command to copy the buffer to the device.
-    auto buf = PH.second->getUnsafePtr();
-    cl_event event{nullptr};
-
-    cl_int err = clEnqueueWriteBuffer(
-        devBindings->commandQueue, devBindings->deviceBuffer,
-        /* blocking_write */ CL_FALSE, addr, numBytes, buf,
-        /* num_events_in_wait_list */ 0,
-        /* event_list */ nullptr,
-        /* event */ profilingEnabled ? &event : nullptr);
-    CHECK_EQ(err, CL_SUCCESS) << "Unable to copy data to the device";
-    if (profilingEnabled) {
-      std::string name = ("(H2D) " + PH.first->getName()).str();
-      devBindings->kernelLaunches.emplace_back(name, "copy", event);
+    auto *tensor = PH.second;
+    // If the tensor is a host tensor --> assign a tensor buffer and copy to
+    // the device.
+    if (!tensor->isDeviceResident()) {
+      // Host tensor --> copy to device in the corresponding offset in
+      // contiguous memory.
+      OpenCLDeviceTransferContext *transferContext =
+          new OpenCLDeviceTransferContext(devBindings->deviceBuffer, addr);
+      transferToDevice(*tensor, transferContext);
+    } else { // Tensor is device resident
+      // If the tensor resides on this device, copy on the device.
+      // else: transter tensor to this device via the host
+      if (tensor->getDeviceManager() == this) {
+        // Workaround OpenCL function contiguous memory buffer:
+        // Compiled function uses contiguous buffer. Tensors are copied from
+        // contiguous memory to a separate buffer on function complete, and from
+        // the separate buffer to the next function contiguous memory when its
+        // inputs are loaded.
+        OpenCLDeviceTransferContext *targetTransferContext =
+            new OpenCLDeviceTransferContext(devBindings->deviceBuffer, addr);
+        OpenCLDeviceTransferContext *sourceTransferContext =
+            static_cast<OpenCLDeviceTransferContext *>(
+                tensor->getLocationContext());
+        transferTensorOnThisDevice(*tensor, sourceTransferContext,
+                                   targetTransferContext,
+                                   /*release source tensor buffer*/ true);
+        // new context was allocated, free the old one
+        delete sourceTransferContext;
+      } else {
+        tensor->getDeviceManager()->transferFromDevice(
+            *tensor,
+            /*free device buffer*/ true);
+        OpenCLDeviceTransferContext *transferContext =
+            new OpenCLDeviceTransferContext(devBindings->deviceBuffer, addr);
+        transferToDevice(*tensor, transferContext);
+      }
     }
   }
-  // Do it!
-  clFinish(devBindings->commandQueue);
 }
 
 void OpenCLDeviceManager::copyOutputsFromDevice(
@@ -468,36 +484,40 @@ void OpenCLDeviceManager::copyOutputsFromDevice(
     runtime::OpenCLDeviceBindings *devBindings) {
   TRACE_EVENT_SCOPE(context->getTraceContext(), TraceLevel::RUNTIME,
                     "copyOutputsFromDevice");
-  bool profilingEnabled =
-      context->getTraceContext() &&
-      (context->getTraceContext()->getTraceLevel() & TraceLevel::COPY);
+
   auto &symbolTable = runtimeBundle.getSymbolTable();
   for (auto PH : context->getPlaceholderBindings()->pairs()) {
     auto it = symbolTable.find(PH.first->getName());
     if (it == symbolTable.end()) {
       continue;
     }
-    auto symbolInfo = it->second;
-    auto addr = symbolInfo.offset;
     auto numBytes = PH.second->getUnpaddedSizeInBytes();
-    // Issue a non-blocking command to copy the buffer to the device.
-    auto buf = PH.second->getUnsafePtr();
-    cl_event event{nullptr};
-
-    cl_int err = clEnqueueReadBuffer(
-        devBindings->commandQueue, devBindings->deviceBuffer,
-        /* blocking_read */ CL_FALSE, addr, numBytes, buf,
-        /* num_events_in_wait_list */ 0,
-        /* event_list */ nullptr,
-        /* event */ profilingEnabled ? &event : nullptr);
-    CHECK_EQ(err, CL_SUCCESS) << "Unable to copy data from the device";
-    if (profilingEnabled) {
-      std::string name = ("(D2H) " + PH.first->getName()).str();
-      devBindings->kernelLaunches.emplace_back(name, "copy", event);
+    auto *tensor = PH.second;
+    // If the tensor is a device tensor --> copy back to host
+    CHECK(tensor->isDeviceResident())
+        << "Output tensor must be device resident.";
+    if (tensor->isDeviceResident()) {
+      if (config_.copyDeviceTensorsToHost) {
+        transferFromDevice(*tensor,
+                           /*release tensor buffer*/ false);
+      } else {
+        // Leave on device, copy to a separate devie buffer
+        cl_mem deviceBuffer;
+        auto autoDeviceBufferOrErr = allocDeviceBuffer(numBytes);
+        CHECK(autoDeviceBufferOrErr) << "Unable to allocate buffer on device";
+        deviceBuffer = *autoDeviceBufferOrErr;
+        OpenCLDeviceTransferContext *targetTransferContext =
+            new OpenCLDeviceTransferContext(deviceBuffer, 0);
+        OpenCLDeviceTransferContext *sourceTransferContext =
+            static_cast<OpenCLDeviceTransferContext *>(
+                tensor->getLocationContext());
+        transferTensorOnThisDevice(*tensor, sourceTransferContext,
+                                   targetTransferContext,
+                                   /*do not release source buffer*/ false);
+        delete sourceTransferContext;
+      }
     }
   }
-  // Do it!
-  clFinish(devBindings->commandQueue);
 }
 
 void OpenCLDeviceManager::translateTraceEvents(
@@ -563,6 +583,16 @@ void OpenCLDeviceManager::translateTraceEvents(
         DEBUG_GLOW(llvm::dbgs() << "warning: found manual trace event (" << name
                                 << ") with no metadata (OCL)\n");
       } else {
+        // Tensor data is about to be accessed on host:
+        // 1) Ensure tensor resides on the host
+        // 2) Set data
+        if (context->getPlaceholderBindings()
+                ->get(it->second.first)
+                ->isDeviceResident()) {
+          transferFromDevice(
+              *(context->getPlaceholderBindings()->get(it->second.first)),
+              /* release deivce memory*/ true);
+        }
         auto handle = context->getPlaceholderBindings()
                           ->get(it->second.first)
                           ->getHandle<int64_t>();
@@ -700,4 +730,106 @@ void OpenCLDeviceManager::runFunctionImpl(
 
   // Fire the resultCB.
   resultCB(id, std::move(executeErr), std::move(context));
+}
+
+bool OpenCLDeviceManager::transferToDevice(Tensor &tensor, void *context) {
+  runtime::OpenCLDeviceTransferContext *ctx =
+      static_cast<runtime::OpenCLDeviceTransferContext *>(context);
+
+  OpenCLCommandQueue queue;
+  cl_command_queue_properties props =
+      clDoProfile ? CL_QUEUE_PROFILING_ENABLE : 0;
+  auto queueOrError = commandQueuePool_.requestCommandQueue(props);
+  CHECK(queueOrError) << "Unable to get command queue from pool.";
+  queue = std::move(queueOrError.get());
+
+  // Copy to contiguous device buffer memory with offset 'addr'
+  cl_int err = clEnqueueWriteBuffer(queue.backingQueue, ctx->tensorBuffer,
+                                    /* blocking_write */ CL_FALSE, ctx->offset,
+                                    tensor.getUnpaddedSizeInBytes(),
+                                    tensor.getUnsafePtr(),
+                                    /* num_events_in_wait_list */ 0,
+                                    /* event_list */ nullptr,
+                                    /* event */ nullptr);
+
+  CHECK_EQ(err, CL_SUCCESS) << "Unable to copy data to the device";
+  clFinish(queue.backingQueue);
+  commandQueuePool_.returnCommandQueue(queue);
+
+  tensor.moveToDevice((DeviceManager *)this, context);
+  return true;
+}
+
+/// Copies the device buffer associated with \p tensor to the host.
+/// The tensor must be resident on this device. If \p release is true, frees
+/// the device memory. Updates the tensor residency info.
+bool OpenCLDeviceManager::transferFromDevice(Tensor &tensor, bool release) {
+  // auto info = tensor.getDeviceResidencyInfo();
+  runtime::OpenCLDeviceTransferContext *ctx =
+      static_cast<runtime::OpenCLDeviceTransferContext *>(
+          tensor.getLocationContext());
+
+  OpenCLCommandQueue queue;
+  cl_command_queue_properties props =
+      clDoProfile ? CL_QUEUE_PROFILING_ENABLE : 0;
+  auto queueOrError = commandQueuePool_.requestCommandQueue(props);
+  CHECK(queueOrError) << "Unable to get command queue from pool.";
+  queue = std::move(queueOrError.get());
+
+  cl_int err = clEnqueueReadBuffer(queue.backingQueue, ctx->tensorBuffer,
+                                   /* blocking_read */ CL_FALSE, ctx->offset,
+                                   tensor.getUnpaddedSizeInBytes(),
+                                   tensor.getUnsafePtr(),
+                                   /* num_events_in_wait_list */ 0,
+                                   /* event_list */ nullptr,
+                                   /* event */ nullptr);
+  CHECK_EQ(err, CL_SUCCESS) << "Unable to copy data from the device";
+
+  clFinish(queue.backingQueue);
+  commandQueuePool_.returnCommandQueue(queue);
+
+  if (release) {
+    releaseDeviceTensor(tensor.getLocationContext());
+  }
+  tensor.clearDeviceResidency();
+  delete ctx;
+  return true;
+}
+
+bool OpenCLDeviceManager::transferTensorOnThisDevice(
+    Tensor &tensor, OpenCLDeviceTransferContext *sourceTransferContext,
+    OpenCLDeviceTransferContext *targetTransferContext, bool releaseBuffer) {
+  OpenCLCommandQueue queue;
+  cl_command_queue_properties props =
+      clDoProfile ? CL_QUEUE_PROFILING_ENABLE : 0;
+  auto queueOrError = commandQueuePool_.requestCommandQueue(props);
+  CHECK(queueOrError) << "Unable to get command queue from pool.";
+  queue = std::move(queueOrError.get());
+
+  cl_int err = clEnqueueCopyBuffer(
+      queue.backingQueue, sourceTransferContext->tensorBuffer,
+      targetTransferContext->tensorBuffer, sourceTransferContext->offset,
+      targetTransferContext->offset, tensor.getUnpaddedSizeInBytes(),
+      /* num_events_in_wait_list */ 0,
+      /* event_list */ nullptr,
+      /* event */ nullptr);
+  CHECK_EQ(err, CL_SUCCESS) << "Unable to copy data from the device";
+
+  clFinish(queue.backingQueue);
+  commandQueuePool_.returnCommandQueue(queue);
+
+  if (releaseBuffer) {
+    // release temporary cl_mem buffer
+    releaseDeviceTensor((void *)sourceTransferContext);
+  }
+  tensor.moveToDevice((DeviceManager *)this, targetTransferContext);
+  return true;
+}
+
+/// Releases the device buffer associated with \p tensor.
+bool OpenCLDeviceManager::releaseDeviceTensor(void *locationContext) {
+  runtime::OpenCLDeviceTransferContext *ctx =
+      static_cast<runtime::OpenCLDeviceTransferContext *>(locationContext);
+  clReleaseMemObject(ctx->tensorBuffer);
+  return true;
 }

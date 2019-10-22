@@ -20,6 +20,7 @@
 #include <cassert>
 #include <vector>
 
+#include "glow/Base/DeviceTensorTransferManager.h"
 #include "glow/Base/Type.h"
 #include "glow/Support/Compiler.h"
 #include "glow/Support/Memory.h"
@@ -52,14 +53,58 @@ namespace runtime {
 class DeviceManager;
 }
 
-struct DeviceResidencyInfo {
-  runtime::DeviceManager *deviceManager{nullptr};
-  void *context{nullptr};
+class DeviceResidencyInfo final {
+  enum class TensorResidency {
+    Host,
+    Device,
+  };
+
+  /// The residency status of the tensor.
+  TensorResidency tensorResidency_{TensorResidency::Host};
+  // A pointer to the device manager of the device on which the tensor
+  // resides.
+  runtime::DeviceManager *deviceManager_{nullptr};
+  // A pointer to a context structure, containing the required info to access
+  // tensor data and perform transfers.
+  void *locationContext_{nullptr};
+
+public:
+  DeviceResidencyInfo()
+      : tensorResidency_(TensorResidency::Host), deviceManager_(nullptr),
+        locationContext_(nullptr) {}
+
+  // Move ctor.
+  DeviceResidencyInfo(DeviceResidencyInfo &&other) = delete;
+
+  /// Move assignment operator.
+  DeviceResidencyInfo &operator=(DeviceResidencyInfo &&other) = delete;
+
+  ~DeviceResidencyInfo() {
+    // If a tensor is device resident, let its device manager free the device
+    // buffer.
+    if (isDeviceResident()) {
+      ((DeviceTensorTransferManager *)deviceManager_)
+          ->releaseDeviceTensor(locationContext_);
+    }
+  }
 
   void clear() {
-    deviceManager = nullptr;
-    context = nullptr;
+    deviceManager_ = nullptr;
+    locationContext_ = nullptr;
+    tensorResidency_ = TensorResidency::Host;
   }
+
+  bool isDeviceResident() const {
+    assert((tensorResidency_ == TensorResidency::Host || deviceManager_) &&
+           "Device resident tensor must have an assigned device manager.");
+    return tensorResidency_ == TensorResidency::Device;
+  }
+
+  runtime::DeviceManager *getDeviceManager() { return deviceManager_; }
+
+  void *getLocationContext() { return locationContext_; }
+
+  friend class Tensor;
 };
 
 /// A class that represents a contiguous n-dimensional array (a tensor).
@@ -70,11 +115,6 @@ public:
     Zero,      // The tensor is initialized to zero.
     Broadcast, // Broadcast a single value to all elements.
     Xavier,    // Init the tensor with random values using the Xavier method.
-  };
-
-  enum class TensorResidency {
-    Host,
-    Device,
   };
 
 private:
@@ -90,11 +130,9 @@ private:
   /// The TensorPool that is managing this Tensor (if any).
   TensorPool *tensorPool_{nullptr};
 
-  /// The residency status of the tensor.
-  TensorResidency tensorResidency_{TensorResidency::Host};
-
   /// The device residency info accosiated with the tensor.
-  DeviceResidencyInfo residency_;
+  std::shared_ptr<DeviceResidencyInfo> residencyInfoP_{
+      new DeviceResidencyInfo()};
 
   /// Size in bytes of the unpadded region memory. This is useful  communicating
   /// the actual size of the data, this allows for copying only inputs and not
@@ -108,22 +146,39 @@ private:
 
 public:
   /// \returns true if tensor data is stored on a device
-  bool isDeviceResident() const {
-    return tensorResidency_ == TensorResidency::Host;
+  bool isDeviceResident() const { return residencyInfoP_->isDeviceResident(); }
+
+  // Update device residency info with new device manager and context
+  void moveToDevice(runtime::DeviceManager *deviceManager,
+                    void *locationContext) {
+    residencyInfoP_->deviceManager_ = deviceManager;
+    residencyInfoP_->locationContext_ = locationContext;
+    residencyInfoP_->tensorResidency_ =
+        DeviceResidencyInfo::TensorResidency::Device;
   }
 
-  // Sets DeviceResidencyInfo in the Tensor.
-  void setDeviceResidency(const DeviceResidencyInfo &info) {
-    residency_ = info;
+  /// \returns the pointer to the device manager where the tensor resides.
+  runtime::DeviceManager *getDeviceManager() {
+    assert(residencyInfoP_->isDeviceResident() &&
+           "Tensor must be device resident");
+    return residencyInfoP_->getDeviceManager();
   }
 
-  /// \returns the DeviceResidencyInfo associated with this Tensor
-  const DeviceResidencyInfo &getDeviceResidency() const { return residency_; }
+  /// \returns the pointer to the location context of where the tensor resides.
+  void *getLocationContext() {
+    assert(residencyInfoP_->isDeviceResident() &&
+           "Tensor must be device resident");
+    return residencyInfoP_->getLocationContext();
+  }
 
   /// Clears DeviceResidencyInfo.
   /// Note that this does not affect the associated DeviceManager or device
   /// memory.
-  void clearDeviceResidency() { residency_.clear(); }
+  void clearDeviceResidency() {
+    assert(residencyInfoP_->isDeviceResident() &&
+           "Tensor must be device resident");
+    residencyInfoP_->clear();
+  }
 
   /// \returns true if it is an unowned tensor.
   bool isUnowned() const { return isUnowned_; }
@@ -341,7 +396,7 @@ public:
     unownedTensor.isUnowned_ = true;
     unownedTensor.type_ = Type::newShape(getType(), dims);
     unownedTensor.unpaddedSize_ = unpaddedSize_;
-
+    unownedTensor.residencyInfoP_ = residencyInfoP_;
     if (offsets.size() == 0) {
       assert(actualSize() == unownedTensor.actualSize() &&
              "The size of the unowned tensor "
@@ -433,6 +488,7 @@ public:
     std::swap(isUnowned_, other.isUnowned_);
     std::swap(tensorPool_, other.tensorPool_);
     std::swap(unpaddedSize_, other.unpaddedSize_);
+    std::swap(residencyInfoP_, other.residencyInfoP_);
   }
 
   /// Move assignment operator.
@@ -442,6 +498,7 @@ public:
     std::swap(isUnowned_, other.isUnowned_);
     std::swap(tensorPool_, other.tensorPool_);
     std::swap(unpaddedSize_, other.unpaddedSize_);
+    std::swap(residencyInfoP_, other.residencyInfoP_);
     return *this;
   }
 

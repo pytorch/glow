@@ -215,6 +215,8 @@ public:
   /// Get the network DAG for \p network if it exists.
   Expected<DAG *> getNetworkDAG(llvm::StringRef network);
 
+  void ensureOutputsAvailable(ExecutionContext &context);
+
   ~HostManager();
 };
 

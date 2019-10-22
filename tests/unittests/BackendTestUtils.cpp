@@ -200,6 +200,9 @@ void dispatchInference(const std::string &fname,
   for (auto &future : futures) {
     future.wait();
   }
+  for (unsigned i = 0; i < concurrentRequestsOpt; i++) {
+    hostManager->ensureOutputsAvailable(*contexts[i].get());
+  }
   // Release the original context passed in by reference so we don't free it.
   contexts[0].release();
 }

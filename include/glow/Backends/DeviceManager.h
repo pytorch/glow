@@ -17,6 +17,7 @@
 #define GLOW_BACKENDS_DEVICEMANAGER_H
 
 #include "glow/Backend/CompiledFunction.h"
+#include "glow/Base/DeviceTensorTransferManager.h"
 #include "glow/ExecutionContext/ExecutionContext.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Runtime/RuntimeTypes.h"
@@ -42,7 +43,7 @@ using ReadyCBTy = std::function<void(const Module *, Error)>;
 using FunctionMapTy = std::map<std::string, CompiledFunction *>;
 
 /// Interface managing a specific instance of a device.
-class DeviceManager {
+class DeviceManager : public DeviceTensorTransferManager {
 protected:
   /// Configuration object for the device.
   DeviceConfig config_;
@@ -153,23 +154,23 @@ public:
   /// compute and bandwidths (used in partitioning).
   virtual DeviceInfo getDeviceInfo() const { return DeviceInfo(); }
 
-  /// Copies the contents of \p tensor from the host to the \p location address
-  /// on this device. Updates the tensor residency info.
-  virtual bool transferToDevice(Tensor &tensor, void *location) {
+  /// Copies the contents of \p tensor from the host to the \p location
+  /// address on this device. Updates the tensor residency info.
+  virtual bool transferToDevice(Tensor &tensor, void *locationContext) {
     DCHECK("Not Implemented");
     return false;
   }
 
   /// Copies the device buffer associated with \p tensor to the host.
-  /// The tensor must be resident on this device. If \p release is true, frees
-  /// the device memory. Updates the tensor residency info.
+  /// The tensor must be resident on this device. If \p release is true,
+  /// frees the device memory. Updates the tensor residency info.
   virtual bool transferFromDevice(Tensor &tensor, bool release = true) {
     DCHECK("Not Implemented");
     return false;
   }
 
   /// Releases the device buffer associated with \p tensor.
-  virtual bool releaseDeviceTensor(Tensor &tensor) {
+  virtual bool releaseDeviceTensor(void *locationContext) {
     DCHECK("Not Implemented");
     return false;
   }

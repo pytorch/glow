@@ -36,7 +36,9 @@ class DeviceManagerTest : public ::testing::TestWithParam<std::string> {
 public:
   void SetUp() override {
     backendName = GetParam();
-    device.reset(DeviceManager::createDeviceManager(DeviceConfig(backendName)));
+    DeviceConfig config(backendName);
+    config.copyDeviceTensorsToHost = true;
+    device.reset(DeviceManager::createDeviceManager(config));
     ASSERT_TRUE(device.get());
     ASSERT_FALSE(ERR_TO_BOOL(device->init()));
   }

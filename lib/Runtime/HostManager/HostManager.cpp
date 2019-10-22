@@ -480,6 +480,15 @@ void HostManager::updateExecutionStats(
                                 1000000 / duration);
 }
 
+void HostManager::ensureOutputsAvailable(ExecutionContext &context) {
+  for (auto &PH : context.getPlaceholderBindings()->pairs()) {
+    if (PH.second->isDeviceResident()) {
+      DCHECK_NOTNULL(PH.second->getDeviceManager());
+      PH.second->getDeviceManager()->transferFromDevice(*PH.second);
+    }
+  }
+}
+
 /// Helper to get the parameters in DeviceConfig from \p str. The \p str has
 /// multiple lines, and each line with this format : "str1" : "str2".
 static llvm::StringMap<std::string> getBackendParams(std::string &str) {
