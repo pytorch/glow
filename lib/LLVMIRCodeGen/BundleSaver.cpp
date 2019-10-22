@@ -84,7 +84,7 @@ static const char *headerFileTemplate =
 #include <stdint.h>
 
 // ---------------------------------------------------------------
-//                       Common definitions                       
+//                       Common definitions
 // ---------------------------------------------------------------
 #ifndef _GLOW_BUNDLE_COMMON_DEFS
 #define _GLOW_BUNDLE_COMMON_DEFS
@@ -92,7 +92,7 @@ static const char *headerFileTemplate =
 #endif
 
 // ---------------------------------------------------------------
-//                          Bundle API                            
+//                          Bundle API
 // ---------------------------------------------------------------
 %s
 // NOTE: Placeholders are allocated within the "mutableWeight"
@@ -275,7 +275,7 @@ void BundleSaver::saveHeader(llvm::StringRef headerFileName) {
                            "//   Size: %zu (bytes)\n"
                            "//   Offset: %lu (bytes)\n",
                            name.data(), typeName.data(), shapeStr.c_str(),
-                           sizeElem, sizeByte, offset);
+                           sizeElem, sizeByte, (unsigned long)offset);
   }
   modelInfo += "//";
 
