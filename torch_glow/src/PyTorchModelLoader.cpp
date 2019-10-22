@@ -616,7 +616,9 @@ PyTorchModelLoader::getSymbolsMapping() {
        {{"aten::min"}, &PyTorchModelLoader::loadMin, {}},
        {{"aten::max"}, &PyTorchModelLoader::loadMax, {}},
        {{"aten::exp"}, &PyTorchModelLoader::loadExp, {}},
-       {{"aten::mean"}, &PyTorchModelLoader::loadMean, {MeanInputs::axis}},
+       {{"aten::mean"},
+        &PyTorchModelLoader::loadMean,
+        {MeanInputs::axis, MeanInputs::keepdims, MeanInputs::output}},
        {{"aten::pow"},
         &PyTorchModelLoader::loadPow,
         {
