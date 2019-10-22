@@ -6125,12 +6125,12 @@ static void testSigmoidFp16Sweep(glow::PlaceholderBindings &bindings,
   auto *input = mod.createPlaceholder(ElemKind::FloatTy, {N}, "input", false);
   auto inputH = bindings.allocate(input)->getHandle();
 
-  constexpr float range_start = -15;
-  constexpr float range_end = 15;
-  constexpr float delta = (range_end - range_start) / N;
+  constexpr float rangeStart = -15;
+  constexpr float rangeEnd = 15;
+  constexpr float delta = (rangeEnd - rangeStart) / N;
 
   for (size_t i = 0; i < N; i++) {
-    inputH.raw(i) = range_start + i * delta;
+    inputH.raw(i) = rangeStart + i * delta;
   }
 
   auto *sigmoid = F->createSigmoid("Sigmoid", input);
@@ -6148,28 +6148,95 @@ static void testSigmoidFp16Sweep(glow::PlaceholderBindings &bindings,
   int count = 0;
 
   for (size_t i = 0; i < N; i++) {
-    float input_v = inputH.at({i});
-    float ref = refSigmoidFp16(input_v);
-    float ref_lut = refSigmoidFp16LUT(input_v);
+    float inputV = inputH.at({i});
+    float refIdeal = refSigmoidFp16(inputV);
+    float refLut = refSigmoidFp16LUT(inputV);
     float output = resultH.at({i});
-    float diff = fabs(output - ref_lut);
+    float diff = fabs(output - refLut);
 
     if (diff > 1e-6) {
       count++;
     }
 
-    llvm::outs() << i << " " << input_v << " NNPI:" << output << " ref:" << ref
-                 << " ref_lut:" << ref_lut << " diff:" << diff << "\n";
+    llvm::outs() << "Sigmoid " << i << " " << inputV << " Backend:" << output
+                 << " ref_ideal:" << refIdeal << " ref_lut:" << refLut
+                 << " diff:" << diff << "\n";
   }
   llvm::outs().flush();
 
   EXPECT_EQ(count, 0);
 }
 
-TEST_P(OperatorTest, SigmoidSweep) {
+TEST_P(OperatorTest, SigmoidSweep_Float16) {
   CHECK_IF_ENABLED();
 
   testSigmoidFp16Sweep(bindings_, mod_, F_, EE_);
+}
+
+/// Reference ideal tanh implementation. Computes an fp32 tanh
+/// and casts the result to FP16, no denorms
+static float16_t refTanHFp16(float x) {
+  float res = (exp(2 * x) - 1) / (exp(2 * x) + 1);
+  if (fabs(res) < 6e-5) {
+    res = 0.0;
+  }
+  return (float16_t)res;
+}
+
+/// Test to verify that the tanh implementation is close to the ideal one
+/// Does a sweep of -15,15 and prints the outputs of the NNPI implementation
+/// compared to the ideal tanh in fp16.
+static void testTanHFp16Sweep(glow::PlaceholderBindings &bindings,
+                              glow::Module &mod, glow::Function *F,
+                              glow::ExecutionEngine &EE) {
+  constexpr size_t N = 100;
+  auto *input = mod.createPlaceholder(ElemKind::FloatTy, {N}, "input", false);
+  auto inputH = bindings.allocate(input)->getHandle();
+
+  constexpr float rangeStart = -15;
+  constexpr float rangeEnd = 15;
+  constexpr float delta = (rangeEnd - rangeStart) / N;
+
+  for (size_t i = 0; i < N; i++) {
+    inputH.raw(i) = rangeStart + i * delta;
+  }
+
+  auto *sigmoid = F->createTanh("TanH", input);
+  auto *save = F->createSave("Save", sigmoid);
+  auto *resultTensor = bindings.allocate(save->getPlaceholder());
+
+  CompilationContext cctx;
+  cctx.precisionConfig.convertToFP16 = true;
+  cctx.precisionConfig.convertFusedToFP16 = true;
+
+  EE.compile(cctx);
+  EE.run(bindings);
+
+  auto resultH = resultTensor->getHandle();
+  int count = 0;
+
+  for (size_t i = 0; i < N; i++) {
+    float inputV = inputH.at({i});
+    float refIdeal = refTanHFp16(inputV);
+    float output = resultH.at({i});
+    float diff = fabs(output - refIdeal);
+
+    if (diff > 1e-6) {
+      count++;
+    }
+
+    llvm::outs() << "TanH " << i << " " << inputV << " Backend:" << output
+                 << " ref_ideal:" << refIdeal << " diff:" << diff << "\n";
+  }
+  llvm::outs().flush();
+
+  EXPECT_EQ(count, 0);
+}
+
+TEST_P(OperatorTest, TanHSweep_Float16) {
+  CHECK_IF_ENABLED();
+
+  testTanHFp16Sweep(bindings_, mod_, F_, EE_);
 }
 
 template <typename DataType>
