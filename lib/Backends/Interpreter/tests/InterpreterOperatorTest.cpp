@@ -18,5 +18,6 @@
 using namespace glow;
 
 std::set<std::string> glow::backendTestBlacklist = {
-    "SigmoidSweep/0",
+    "SigmoidSweep_Float16/0",
+    "TanHSweep_Float16/0",
 };
