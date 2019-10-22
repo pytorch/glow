@@ -612,6 +612,7 @@ PyTorchModelLoader::getSymbolsMapping() {
         &PyTorchModelLoader::loadSigmoid,
         {}},
        {{"aten::relu", "aten::relu_"}, &PyTorchModelLoader::loadRelu, {}},
+       {{"aten::tanh", "aten::tanh_"}, &PyTorchModelLoader::loadTanh, {}},
        {{"aten::t", "aten::t_"}, &PyTorchModelLoader::loadTranspose, {}},
        {{"aten::min"}, &PyTorchModelLoader::loadMin, {}},
        {{"aten::max"}, &PyTorchModelLoader::loadMax, {}},
@@ -1272,6 +1273,18 @@ Error PyTorchModelLoader::loadRelu(const torch::jit::Node *ptNode) {
 
   glow::ReluNode *glowNode = F_.createRELU("relu", input);
   return addValueMapping(outputs[0], rescaleIntToUint(glowNode->getResult()));
+}
+
+Error PyTorchModelLoader::loadTanh(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 1, outputs, 1));
+
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
+
+  glow::TanhNode *glowNode = F_.createTanh("tanh", input);
+  return addValueMapping(outputs[0], glowNode->getResult());
 }
 
 Error PyTorchModelLoader::loadExp(const torch::jit::Node *ptNode) {
