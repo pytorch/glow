@@ -6035,17 +6035,14 @@ COMPARE_UNARY_OP_FUN(Sigmoid, 10, -10.0F, 10.0F)
 #undef COMPARE_UNARY_OP_FUN
 
 /// Reference ideal sigmoid implementation. Computes an fp32 sigmoid
-/// and casts the result to FP16, no denorms
+/// and casts the result to FP16.
 static float16_t refSigmoidFp16(float x) {
-
   float res = 1 / (1 + exp(-x));
-  if (res < 6e-5) {
-    res = 0.0;
-  }
+
   return (float16_t)res;
 }
 
-/// LUT Sigmoid reference implementation
+/// LUT Sigmoid reference implementation.
 constexpr std::array<float, 257> sig_lut = {
     0.0000454, 0.0000491, 0.0000531, 0.0000574, 0.0000620, 0.0000671, 0.0000725,
     0.0000784, 0.0000848, 0.0000917, 0.0000991, 0.0001072, 0.0001159, 0.0001253,
@@ -6104,7 +6101,7 @@ static float16_t eval_lut_func(float x) {
   return float16_t(lut[bin + 1]) * p + (float16_t(1) - p) * float16_t(lut[bin]);
 }
 
-/// Mirrored LUT implementation
+/// Mirrored LUT implementation.
 static float16_t refSigmoidFp16LUT(float x) {
   if (x <= 0) {
     return eval_lut_func(x);
@@ -6125,8 +6122,8 @@ static void testSigmoidFp16Sweep(glow::PlaceholderBindings &bindings,
   auto *input = mod.createPlaceholder(ElemKind::FloatTy, {N}, "input", false);
   auto inputH = bindings.allocate(input)->getHandle();
 
-  constexpr float rangeStart = -15;
-  constexpr float rangeEnd = 15;
+  constexpr float rangeStart = -20;
+  constexpr float rangeEnd = 20;
   constexpr float delta = (rangeEnd - rangeStart) / N;
 
   for (size_t i = 0; i < N; i++) {
