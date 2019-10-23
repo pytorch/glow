@@ -625,7 +625,7 @@ TEST_P(GraphOptzSinkTransposeBelowParametrized,
   optimizedF_ = optimizeFunction(F_);
   O = llvm::dyn_cast<SaveNode>(std::find_if(
       optimizedF_->getNodes().begin(), optimizedF_->getNodes().end(),
-      [](auto &N) { return N.getKind() == Kinded::Kind::SaveNodeKind; }));
+      [](const auto &N) { return N.getKind() == Kinded::Kind::SaveNodeKind; }));
 
   // Expecting Transpose->Output rather than N->Output.
   auto *transpose = llvm::dyn_cast<TransposeNode>(O->getInput());
