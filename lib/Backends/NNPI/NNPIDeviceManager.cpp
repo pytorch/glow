@@ -48,7 +48,7 @@ std::atomic<RunIdentifierTy> NNPIDeviceManager::runIdentifier_;
 NNPIDeviceManager::NNPIDeviceManager(const DeviceConfig &config,
                                      unsigned numInferenceWorkers)
     : DeviceManager(config), numWorkersPerFunction_(numInferenceWorkers),
-      deviceId_(0), adapter_(NNPI_INVALID_NNPIHANDLE),
+      deviceId_(config_.deviceID), adapter_(NNPI_INVALID_NNPIHANDLE),
       device_(NNPI_INVALID_NNPIHANDLE) {
   auto it = config_.parameters.find("DeviceID");
   if (it != config_.parameters.end()) {

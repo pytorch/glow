@@ -493,6 +493,7 @@ runtime::generateDeviceConfigs(unsigned int numDevices,
     for (unsigned int i = 0; i < numDevices; ++i) {
       auto config = llvm::make_unique<runtime::DeviceConfig>(backendName);
       config->setDeviceMemory(memSize);
+      config->deviceID = i;
       configs.push_back(std::move(config));
     }
   }

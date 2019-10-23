@@ -114,7 +114,7 @@ llvm::cl::opt<unsigned> deviceMemCapacityOpt(
 
 llvm::cl::opt<unsigned> numDevicesOpt(
     "num-devices", llvm::cl::desc("Number of devices to use for partitioning."),
-    llvm::cl::Optional, llvm::cl::init(6), llvm::cl::cat(recSysTestCat));
+    llvm::cl::Optional, llvm::cl::init(2), llvm::cl::cat(recSysTestCat));
 
 llvm::cl::opt<std::string> traceDir(
     "trace-dir",
@@ -349,10 +349,10 @@ protected:
           llvm::make_unique<TraceContext>(TraceEvent::TraceLevel::STANDARD));
     }
 
-    // If device memory capacity is unset via command line, use 8MB by default.
+    // If device memory capacity is unset via command line, use 32MB by default.
     deviceMemCapacity =
         (int64_t)1024 *
-        ((deviceMemCapacityOpt != 0) ? deviceMemCapacityOpt : 1024 * 8);
+        ((deviceMemCapacityOpt != 0) ? deviceMemCapacityOpt : 1024 * 32);
 
     numDevices = numDevicesOpt;
   }
