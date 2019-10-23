@@ -257,6 +257,12 @@ private:
   Expected<glow::GlowIValue *>
   getGlowIValueForValue(const torch::jit::Value *value);
 
+  /// Rescale a uint8 NodeValue \p input to the equivalent int8 NodeValue.
+  glow::NodeValue rescaleUIntToInt(glow::NodeValue input);
+
+  /// Rescale a int8 NodeValue \p input to the equivalent uint8 NodeValue.
+  glow::NodeValue rescaleIntToUint(glow::NodeValue input);
+
   /// For each Placeholder input to \p ptNode, if this input has been marked
   /// as being an input that should be frozen in MappingOfMemberFunctions,
   /// create a glow Constant for that Placeholder with the iValue from the stack
@@ -415,11 +421,9 @@ private:
   /// \returns error on failure.
   Error loadMatMul(const torch::jit::Node *ptNode);
 
-  /// Rescale a uint8 NodeValue \p input to the equivalent int8 NodeValue.
-  glow::NodeValue rescaleUIntToInt(glow::NodeValue input);
-
-  /// Rescale a int8 NodeValue \p input to the equivalent uint8 NodeValue.
-  glow::NodeValue rescaleIntToUint(glow::NodeValue input);
+  /// Load a PyTorch aten::bmm node.
+  /// \returns error on failure.
+  Error loadBmm(const torch::jit::Node *ptNode);
 };
 
 } // namespace glow

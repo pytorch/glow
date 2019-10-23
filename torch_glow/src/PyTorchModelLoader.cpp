@@ -715,6 +715,7 @@ PyTorchModelLoader::getSymbolsMapping() {
         }},
        {{"aten::matmul"}, &PyTorchModelLoader::loadMatMul, {}},
        {{"aten::mm"}, &PyTorchModelLoader::loadMM, {}},
+       {{"aten::bmm"}, &PyTorchModelLoader::loadBmm, {}},
        {{"aten::addmm"},
         &PyTorchModelLoader::loadAddMM,
         {
@@ -2022,6 +2023,29 @@ Error PyTorchModelLoader::loadMM(const torch::jit::Node *ptNode) {
   }
 
   auto output = F_.createMatMul("mm", lhs, rhs)->getResult();
+  return addValueMapping(outputs[0], output);
+}
+
+Error PyTorchModelLoader::loadBmm(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 2, outputs, 1));
+
+  glow::NodeValue lhs;
+  ASSIGN_VALUE_OR_RETURN_ERR(lhs, getGlowNodeValueForValue(inputs[0]));
+  glow::NodeValue rhs;
+  ASSIGN_VALUE_OR_RETURN_ERR(rhs, getGlowNodeValueForValue(inputs[1]));
+
+  // Check dimensions of inputs
+  if (lhs.dims().size() != 3 || rhs.dims().size() != 3) {
+    RETURN_ERR("aten::bmm expects 3D tensors");
+  }
+
+  if (lhs.dims()[2] != rhs.dims()[1]) {
+    RETURN_ERR("aten::bmm does not broadcast");
+  }
+
+  auto output = F_.createBatchMatMul("bmm", lhs, rhs)->getResult();
   return addValueMapping(outputs[0], output);
 }
 
