@@ -18,6 +18,7 @@
 #include "glow/Graph/PlaceholderBindings.h"
 #include "glow/Support/Compiler.h"
 #include "glow/Support/Memory.h"
+#include "glow/Support/ThreadPool.h"
 
 using namespace glow;
 
@@ -160,7 +161,7 @@ void LLVMCompiledFunction::translateTraceEvents(
 
   PlaceholderBindings *bindings = context->getPlaceholderBindings();
 
-  int tid = TraceEvent::getThreadId();
+  int tid = threads::getThreadId();
   for (auto &backing : traceInfo.events) {
     Tensor *backingTensor = bindings->get(backing.first);
     DCHECK(backingTensor) << "Could not get backing tensor for Placeholder: "

@@ -150,6 +150,9 @@ void CPUDeviceManager::runFunctionImpl(
 
   TRACE_EVENT_SCOPE_NAMED(context->getTraceContext(), TraceLevel::RUNTIME,
                           "DeviceManager::run", dmRun);
+  if (context->getTraceContext()) {
+    context->getTraceContext()->setThreadName("CPU DeviceManager");
+  }
   auto funcIt = functions_.find(function);
   if (funcIt == functions_.end()) {
     dmRun.addArg("reason", "function not found");

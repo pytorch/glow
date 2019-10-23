@@ -17,6 +17,17 @@
 
 namespace glow {
 
+namespace threads {
+
+static std::atomic<std::size_t> thread_idx{0};
+size_t getThreadId() {
+  thread_local std::size_t id = thread_idx++;
+  return id;
+}
+
+size_t createThreadId() { return thread_idx++; }
+} // namespace threads
+
 ThreadExecutor::ThreadExecutor()
     : shouldStop_(false), worker_([this]() { threadPoolWorkerMain(); }) {}
 
@@ -82,6 +93,11 @@ ThreadPool::ThreadPool(unsigned numWorkers) {
   workers_.reserve(kNumWorkers);
   for (unsigned i = 0; i < numWorkers; i++) {
     workers_.push_back(new ThreadExecutor());
+    size_t threadId{0};
+    workers_.back()
+        ->submit([&threadId] { threadId = threads::getThreadId(); })
+        .wait();
+    threadIds_.insert(threadId);
   }
 }
 

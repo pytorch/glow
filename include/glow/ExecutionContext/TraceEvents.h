@@ -94,9 +94,6 @@ struct TraceEvent {
   /// Return the current time in microseconds in the timestamp domain.
   static uint64_t now();
 
-  /// Returns a unique id associated with the current thread.
-  static size_t getThreadId();
-
   /// Returns a string representation of the provided \p level.
   static llvm::StringRef traceLevelToString(TraceLevel level);
 };
@@ -210,7 +207,7 @@ public:
   void setThreadName(int tid, llvm::StringRef name);
 
   /// Sets the human readable \p name for the current thread (by
-  /// TraceEvent::getThreadId()).
+  /// threads::getThreadId()).
   void setThreadName(llvm::StringRef name);
 
   /// \returns the list of human readable thread names.
