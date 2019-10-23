@@ -320,3 +320,25 @@ TEST(MemAlloc, testGetMemorySize) {
   MemoryAllocator MA2("test1", 102);
   EXPECT_EQ(MA2.getMemorySize(), 102);
 }
+
+TEST(MemAlloc, testAlignment) {
+  MemoryAllocator MA1("test1", 1024, 128);
+  MemoryAllocator MA2("test2", 1024, 256);
+
+  void *handle0 = reinterpret_cast<void *>(0);
+  void *handle1 = reinterpret_cast<void *>(1);
+  void *handle2 = reinterpret_cast<void *>(2);
+  void *handle3 = reinterpret_cast<void *>(3);
+
+  // Both allocators start at zero.
+  auto p0 = MA1.allocate(10, handle0);
+  auto p1 = MA2.allocate(10, handle1);
+  EXPECT_EQ(p0, 0);
+  EXPECT_EQ(p1, 0);
+
+  // Second allocation starts at the alignment boundary.
+  auto p2 = MA1.allocate(10, handle2);
+  auto p3 = MA2.allocate(10, handle3);
+  EXPECT_EQ(p2, 128);
+  EXPECT_EQ(p3, 256);
+}
