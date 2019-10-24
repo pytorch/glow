@@ -51,7 +51,9 @@ HostManagerBackend::createHostManager(llvm::StringRef backendName) {
   // discovered devices.
   if (GlowNumDevices) {
     for (int i = 0; i < GlowNumDevices; i++) {
-      configs.push_back(llvm::make_unique<runtime::DeviceConfig>(backendName));
+      auto config = llvm::make_unique<runtime::DeviceConfig>(backendName);
+      config->deviceID = i;
+      configs.push_back(std::move(config));
     }
   } else {
     configs = runtime::DeviceManager::generateDeviceConfigs(backendName);
