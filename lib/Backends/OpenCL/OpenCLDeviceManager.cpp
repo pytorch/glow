@@ -244,6 +244,15 @@ Error OpenCLDeviceManager::init() {
   Stats()->incrementCounter(kDevicesUsedOpenCL);
   exportMemoryCounters();
 
+  threads::getThreadId();
+  workThread_.submit([this] {
+    /// Prime thread ids for this device.
+    threads::getThreadId();
+    /// It looks nicer if the host thread is before the device thread, so
+    /// prevent reordering.
+    std::atomic_signal_fence(std::memory_order_seq_cst);
+    deviceTid_ = threads::createThreadId();
+  });
   return Error::success();
 }
 
@@ -502,6 +511,9 @@ void OpenCLDeviceManager::translateTraceEvents(
                     "processInstrumentation");
   cl_ulong total = 0;
 
+  context->getTraceContext()->setThreadName("OCL DeviceManager");
+  context->getTraceContext()->setThreadName(deviceTid_, "OCL Device");
+
   // The device uses a different clock domain, so we'll assume that the last
   // timestamp and now are close and get the difference between the two
   // timestamps, which we can use to pull event timestamps in to the
@@ -525,7 +537,6 @@ void OpenCLDeviceManager::translateTraceEvents(
 
   std::unordered_map<std::string, cl_ulong> kernelToDuration;
   auto &traceEvents = context->getTraceContext()->getTraceEvents();
-  int tid = TraceEvent::getThreadId();
   std::vector<cl_ulong> manualTimestamps;
 
   for (auto &kl : devBindings->kernelLaunches) {
@@ -565,7 +576,7 @@ void OpenCLDeviceManager::translateTraceEvents(
                                TraceLevel::DEBUG,
                                timestamp,
                                ev->type,
-                               tid,
+                               deviceTid_,
                                {{"kind", ev->kind}}});
       }
     } else {
@@ -578,7 +589,7 @@ void OpenCLDeviceManager::translateTraceEvents(
           (type == "copy") ? TraceLevel::COPY : TraceLevel::OPERATOR;
 
       traceEvents.push_back(
-          {name, level, startUs, duration, tid, {{"type", type}}});
+          {name, level, startUs, duration, deviceTid_, {{"type", type}}});
     }
 
     if (clDoProfile) {

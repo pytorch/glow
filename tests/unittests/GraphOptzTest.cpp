@@ -406,29 +406,41 @@ TEST_F(GraphOptz, cseRespectsPredicates) {
 }
 
 TEST_F(GraphOptz, optimizeBatchNormAfterConvButConvReused) {
-  Node *A =
+  Placeholder *A =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 10, 20, 3}, "A", false);
   Node *CV = F_->createConv(bindings_, "conv", A, 16, 5, 1, 2, 1);
   Node *BN =
       F_->createBatchNormalization(bindings_, "batch", CV, 3, 0.0001, 0.9);
-  SaveNode *ret = F_->createSave("ret", BN);
-  SaveNode *convSave = F_->createSave("convSave", CV);
+  F_->createSave("ret", BN);
+  F_->createSave("convSave", CV);
 
   EXPECT_EQ(F_->getNodes().size(), 4);
-
-  ::glow::optimize(F_, CompilationMode::Infer);
+  optimizedF_ = optimizeFunction(F_);
   // Make sure the structure of the graph did not change, since the convolution
   // node is used more than once.
-  EXPECT_EQ(F_->getNodes().size(), 4);
-  EXPECT_TRUE(llvm::isa<ConvolutionNode>(convSave->getInput()));
-  ConvolutionNode *conv = llvm::dyn_cast<ConvolutionNode>(convSave->getInput());
-  EXPECT_EQ(conv, CV);
-  EXPECT_TRUE(llvm::isa<BatchNormalizationNode>(ret->getInput()));
+  EXPECT_EQ(optimizedF_->getNodes().size(), 4);
+  auto convIt =
+      std::find_if(optimizedF_->getNodes().begin(),
+                   optimizedF_->getNodes().end(), [](const Node &node) -> bool {
+                     return llvm::isa<ConvolutionNode>(node);
+                   });
+  ASSERT_NE(convIt, optimizedF_->getNodes().end());
+  auto batchNormIt =
+      std::find_if(optimizedF_->getNodes().begin(),
+                   optimizedF_->getNodes().end(), [](const Node &node) -> bool {
+                     return (llvm::isa<BatchNormalizationNode>(node));
+                   });
+  ConvolutionNode *conv = llvm::dyn_cast<ConvolutionNode>(convIt);
   BatchNormalizationNode *batchNorm =
-      llvm::dyn_cast<BatchNormalizationNode>(ret->getInput());
-  EXPECT_EQ(batchNorm, BN);
-  EXPECT_EQ(batchNorm->getInput().getNode(), CV);
+      llvm::dyn_cast<BatchNormalizationNode>(batchNormIt);
+
+  EXPECT_EQ(*conv, *CV);
+  EXPECT_EQ(batchNorm->getInput().getNode(), conv);
   EXPECT_EQ(conv->getInput().getNode(), A);
+
+  bindings_.allocate(mod_.getPlaceholders());
+  bindings_.get(A)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
+  checkNumericalEquivalence();
 }
 
 TEST_F(GraphOptz, optimizeBatchNormAfterConvButVarReused) {

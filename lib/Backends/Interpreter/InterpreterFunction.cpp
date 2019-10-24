@@ -19,6 +19,7 @@
 #include "glow/IR/IR.h"
 #include "glow/IR/IRUtils.h"
 #include "glow/IR/Instrs.h"
+#include "glow/Support/ThreadPool.h"
 
 #include "llvm/Support/Casting.h"
 
@@ -74,7 +75,7 @@ void InterpreterFunction::translateTraceEvents(
 
   PlaceholderBindings *bindings = context->getPlaceholderBindings();
 
-  int tid = TraceEvent::getThreadId();
+  int tid = threads::getThreadId();
   auto &traceEvents = traceContext->getTraceEvents();
   for (auto &backing : traceInfo.events) {
     Tensor *backingTensor = bindings->get(backing.first);

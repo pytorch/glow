@@ -17,9 +17,9 @@
 
 BB.newNode("NNPICustomDSP")
     .addMember(MemberType::VectorNodeValue, "Inputs")
-    .addResultFromCtorArg()                     // for now use single output
-    .addInput("KernelParams")                   // paramsblob
-    .addMember(MemberType::Int64, "WalkConfig") // NNPIWalkConfig*
+    .addResultFromCtorArg()   // for now use single output
+    .addInput("KernelParams") // paramsblob
+    .addInput("WalkConfig")   // NNPIWalkConfig
     .addMember(MemberType::Unsigned, "PrivateAreaSize")
     .addMember(MemberType::String, "KernelName")
     .addMember(MemberType::Int64, "ICERefCallback") // NNPIDspIceRefCallback*

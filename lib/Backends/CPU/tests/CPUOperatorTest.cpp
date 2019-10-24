@@ -154,5 +154,6 @@ std::set<std::string> glow::backendTestBlacklist = {
     "rowwiseQuantizedSLWSTest/0",
     "SLSAllZeroLengths_Float16/0",
     "FusedRWQSLSAllZeroLengths_Float16/0",
-    "SigmoidSweep/0",
+    "SigmoidSweep_Float16/0",
+    "TanHSweep_Float16/0",
 };

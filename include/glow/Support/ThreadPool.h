@@ -22,10 +22,20 @@
 #include <future>
 #include <mutex>
 #include <queue>
+#include <set>
 #include <thread>
 #include <vector>
 
 namespace glow {
+
+namespace threads {
+/// Returns a unique id associated with the current thread.
+size_t getThreadId();
+
+/// Returns a unique id associated with a new virtual thread (i.e. a device
+/// tid).
+size_t createThreadId();
+} // namespace threads
 
 #ifdef WIN32
 /// A copyable wrapper for a lambda function that has non-copyable objects in
@@ -160,6 +170,8 @@ public:
     return promise->get_future();
   }
 
+  const std::set<size_t> &getThreadIds() { return threadIds_; }
+
 private:
   /// The default number of workers in the thread pool (overridable).
   constexpr static unsigned kNumWorkers = 10;
@@ -171,6 +183,9 @@ private:
 
   /// Round robin index for the next work thread.
   std::atomic<size_t> nextWorker_{0};
+
+  /// Thread Ids and associated names owned by this ThreadPool.
+  std::set<size_t> threadIds_;
 };
 } // namespace glow
 
