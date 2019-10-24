@@ -33,7 +33,7 @@
 
 namespace glow {
 
-llvm::cl::OptionCategory operatorTestCat("OperatorTest Category");
+llvm::cl::OptionCategory backendTestUtilsCat("BackendTestUtils Category");
 
 unsigned parCloneCountOpt;
 llvm::cl::opt<unsigned, /* ExternalStorage */ true> parCloneCountI(
@@ -43,7 +43,14 @@ llvm::cl::opt<unsigned, /* ExternalStorage */ true> parCloneCountI(
         "different backends. This option is not used by all unit "
         "tests; for now you must check the test to see if so."),
     llvm::cl::location(parCloneCountOpt), llvm::cl::Optional, llvm::cl::init(1),
-    llvm::cl::cat(operatorTestCat));
+    llvm::cl::cat(backendTestUtilsCat));
+
+bool runDisabledTests;
+llvm::cl::opt<bool, /* ExternalStorage */ true> runDisabledTestsI(
+    "run-disabled-tests",
+    llvm::cl::desc("If set, disabled tests will not be skipped."),
+    llvm::cl::location(runDisabledTests), llvm::cl::Optional,
+    llvm::cl::init(false), llvm::cl::cat(backendTestUtilsCat));
 
 using llvm::cast;
 

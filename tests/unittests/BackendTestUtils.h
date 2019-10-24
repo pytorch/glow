@@ -81,6 +81,9 @@ extern unsigned parCloneCountOpt;
 /// parameterized across many other values, e.g. those in ParameterSweepTest.
 DECLARE_STATELESS_BACKEND_TEST(BackendStatelessTest, std::tuple<std::string>);
 
+/// Whether to ignore the blacklist and run disabled tests.
+extern bool runDisabledTests;
+
 class BackendTest : public BackendStatelessTest {
 public:
   BackendTest(uint64_t deviceMemory = 0)
@@ -122,7 +125,7 @@ static const auto all_backends = ::testing::Values(
 // TODO: Replace return for GTEST_SKIP() so that skipped tests are
 // correctly reported once the macro gets available.
 #define ENABLED_BACKENDS(...)                                                  \
-  if (!isEnabledBackend({__VA_ARGS__}))                                        \
+  if (!runDisabledTests && !isEnabledBackend({__VA_ARGS__}))                   \
     GTEST_SKIP();
 
 /// Blacklist of tests for the current backend under test.
@@ -146,7 +149,8 @@ extern bool useSymmetricRowwiseQuantFC;
 
 /// Helper macro to check the current test against the blacklist.
 #define CHECK_IF_ENABLED()                                                     \
-  if (backendTestBlacklist.count(                                              \
+  if (!runDisabledTests &&                                                     \
+      backendTestBlacklist.count(                                              \
           ::testing::UnitTest::GetInstance()->current_test_info()->name()))    \
     GTEST_SKIP();
 
