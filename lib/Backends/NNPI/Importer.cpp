@@ -1545,12 +1545,19 @@ public:
     LOG_AND_RETURN_IF_NOT(ERROR, kpConstant, "Kernel Params must be constant",
                           NNPI_INVALID_PARAM);
 
+    const auto *wcConstant =
+        glowDSP->getParent()->getParent()->getConstantByName(
+            glowDSP->getWalkConfig().getNode()->getName());
+    LOG_AND_RETURN_IF_NOT(ERROR, wcConstant, "Walk Config must be constant",
+                          NNPI_INVALID_PARAM);
+
     const Tensor *kpTensor = &kpConstant->getPayload();
+    const Tensor *wcTensor = &wcConstant->getPayload();
     auto res = nnpiNetworkAddCustomDspOp(
         importer.getNetwork(), glowDSP->getName().begin(), inputs, numInputs,
         outputs, numOutputs, kpTensor->getUnsafePtr(),
         kpTensor->getSizeInBytes(),
-        reinterpret_cast<const NNPIWalkConfig *>(glowDSP->getWalkConfig()),
+        reinterpret_cast<const NNPIWalkConfig *>(wcTensor->getUnsafePtr()),
         glowDSP->getPrivateAreaSize(), glowDSP->getKernelName().c_str(),
         reinterpret_cast<const NNPICustomDspIceRefCallback>(
             glowDSP->getICERefCallback()));
