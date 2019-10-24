@@ -26,7 +26,6 @@ std::set<std::string> glow::backendTestBlacklist = {
     "batchedReduceMinMultiAxis_Float/0",
     "batchedReduceMinMultiAxis_Int32/0",
     "batchedReduceMinMultiAxis_Int64/0",
-    "batchedReduceMeanUsingAvgPoolQuantized/0",
     "concatVectors_Bool/0",
     "concatVectorsRepeated_Bool/0",
     "ConvertFrom_Float16Ty_To_Int32ITy/0",
