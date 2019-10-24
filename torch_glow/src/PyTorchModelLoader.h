@@ -417,6 +417,10 @@ private:
   /// \returns error on failure.
   Error loadAddMM(const torch::jit::Node *ptNode);
 
+  /// Load a prim::constantChunk node.
+  /// \returns error on failure.
+  Error loadConstantChunk(const torch::jit::Node *ptNode);
+
   /// Load a PyTorch aten::matmul node.
   /// \returns error on failure.
   Error loadMatMul(const torch::jit::Node *ptNode);

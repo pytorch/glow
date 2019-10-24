@@ -754,7 +754,8 @@ PyTorchModelLoader::getSymbolsMapping() {
             TopKInputs::dim,
             TopKInputs::largest,
             TopKInputs::sorted,
-        }}});
+        }},
+       {{"prim::ConstantChunk"}, &PyTorchModelLoader::loadConstantChunk, {}}});
 
   return symbolLoaderMapping;
 }
@@ -2270,6 +2271,45 @@ Error PyTorchModelLoader::loadTopK(const torch::jit::Node *ptNode) {
 
   RETURN_IF_ERR(addValueMapping(outputs[0], glowNode->getValues()));
   RETURN_IF_ERR(addValueMapping(outputs[1], glowNode->getIndices()));
+  return Error::success();
+}
+
+Error PyTorchModelLoader::loadConstantChunk(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 1, outputs, -1));
+
+  int64_t chunks = ptNode->i(at::attr::chunks);
+  int64_t dim = ptNode->i(at::attr::dim);
+
+  RETURN_ERR_IF_NOT(chunks > 0, "There needs to be at least one chunk!");
+  RETURN_ERR_IF_NOT(chunks == outputs.size(),
+                    "Chunks must be equal to outputs.size()!");
+
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
+
+  size_t dimsSize = input.dims().size();
+  std::vector<size_t> begins(dimsSize);
+  std::vector<size_t> ends(dimsSize);
+  for (int i = 0; i < dimsSize; ++i) {
+    begins[i] = 0;
+    ends[i] = input.dims()[i];
+  }
+
+  // We can do this because chunks == output size. Otherwise this may not be
+  // correct.
+  size_t cur = 0;
+  size_t end = input.dims()[dim];
+  size_t step = ((end - cur) + (chunks - 1)) / chunks;
+
+  for (int i = 0; i < outputs.size(); ++i) {
+    begins[dim] = cur;
+    cur = cur + step > end ? end : cur + step;
+    ends[dim] = cur;
+    RETURN_IF_ERR(addValueMapping(
+        outputs[i], F_.createSlice("FusedChunkOut", input, begins, ends)));
+  }
   return Error::success();
 }
 
