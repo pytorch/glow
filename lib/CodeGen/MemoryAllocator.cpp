@@ -16,7 +16,6 @@
 
 #include "glow/CodeGen/MemoryAllocator.h"
 #include "glow/Support/Debug.h"
-#include "glow/Support/Memory.h"
 
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
@@ -45,7 +44,7 @@ const uint64_t MemoryAllocator::npos = -1;
 
 uint64_t MemoryAllocator::allocate(uint64_t size, Handle handle) {
   // Always allocate buffers properly aligned to hold values of any type.
-  uint64_t segmentSize = alignedSize(size, TensorAlignment);
+  uint64_t segmentSize = alignedSize(size, alignment_);
   uint64_t prev = 0;
   for (auto it = allocations_.begin(), e = allocations_.end(); it != e; it++) {
     if (it->begin_ - prev >= segmentSize) {
@@ -74,7 +73,7 @@ void MemoryAllocator::evictFirstFit(uint64_t size,
                                     const std::set<Handle> &mustNotEvict,
                                     std::vector<Handle> &evicted) {
   // Use the first fit strategy to evict allocated blocks.
-  size = alignedSize(size, TensorAlignment);
+  size = alignedSize(size, alignment_);
   bool hasSeenNonEvicted{false};
   uint64_t startAddress = 0;
   uint64_t begin = 0;

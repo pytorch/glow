@@ -23,6 +23,8 @@
 #include <unordered_map>
 #include <vector>
 
+#include "glow/Support/Memory.h"
+
 namespace glow {
 
 /// A POD struct that represents a single half-open allocation [start .. end).
@@ -57,8 +59,9 @@ public:
   /// A reserved value to mark invalid allocation.
   static const uint64_t npos;
 
-  explicit MemoryAllocator(const std::string &name, uint64_t poolSize)
-      : name_(name), poolSize_(poolSize) {}
+  explicit MemoryAllocator(const std::string &name, uint64_t poolSize,
+                           size_t alignment = TensorAlignment)
+      : name_(name), poolSize_(poolSize), alignment_{alignment} {}
 
   void reset() {
     maxMemoryAllocated_ = 0;
@@ -123,6 +126,9 @@ public:
   /// into.
   uint64_t getMemorySize() const { return poolSize_; }
 
+  /// \returns the alignment boundary used to align segments.
+  size_t getAlignment() const { return alignment_; }
+
   /// \returns the name of the memory region.
   const std::string &getName() const { return name_; }
 
@@ -135,6 +141,8 @@ private:
   uint64_t poolSize_;
   /// This is the high water mark for the allocated memory.
   uint64_t maxMemoryAllocated_{0};
+  /// The alignment boundary for each segment allocation.
+  size_t alignment_;
   /// Maps allocated addresses to the currently associated handles.
   std::unordered_map<uint64_t, Handle> addrToHandle_;
   /// Maps handles to the allocation information about the memory block
