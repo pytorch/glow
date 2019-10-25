@@ -136,7 +136,7 @@ elif [[ "$CIRCLE_JOB" == "PYTORCH" ]]; then
     git clone https://github.com/pytorch/pytorch.git --recursive
     cd pytorch
     pip install -r requirements.txt
-    python setup.py install
+    BUILD_TEST=0 BUILD_CAFFE2_OPS=0 python setup.py install
     cd ${GLOW_DIR}
     cd build
 elif [[ "$CIRCLE_JOB" == "OPENCL" ]]; then
