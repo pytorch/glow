@@ -158,6 +158,10 @@ protected:
 
   /// An object pool for tensors, to share allocations.
   TensorPool tensorPool_;
+
+private:
+  /// inference dump counter
+  std::atomic<size_t> ioDumpCounter_{0};
 };
 
 typedef Graph *GraphPtr;
