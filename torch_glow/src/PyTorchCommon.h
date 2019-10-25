@@ -38,6 +38,9 @@ struct PyTorchLoaderSettings {
   /// subgraphs that are compiled for running on Glow.
   bool weightFreezingEnabled = true;
 
+  /// Dump Glow dot graph to file after model loading is finished.
+  bool dumpGlowDag = false;
+
   /// Name of the Glow backend to use with CachingGraphRunner's HostManager.
   std::string glowBackendName = "Interpreter";
 };
