@@ -16,9 +16,11 @@
 
 #include "glow/Exporter/ONNXModelWriter.h"
 #include "glow/Graph/Utils.h"
+#include "glow/Support/ZipUtils.h"
+
+#include "miniz.h"
 
 namespace glow {
-
 namespace {
 template <bool IsInteger, typename T> struct AttributeAssigner {
   static void assign(ONNX_NAMESPACE::AttributeProto *attr, const T &container);
@@ -436,14 +438,13 @@ public:
 
   llvm::ArrayRef<const Node *> getNodes() const { return reverseOrder_; }
 };
-
 } // namespace
 
 ONNXModelWriter::ONNXModelWriter(const std::string &modelFilename, Function &F,
                                  size_t irVersion, size_t opsetVersion,
-                                 Error *errPtr, bool textMode)
+                                 Error *errPtr, bool textMode, bool zipMode)
     : CommonOperatorWriter(modelFilename, F, errPtr),
-      opsetVersion_(opsetVersion) {
+      opsetVersion_(opsetVersion), zipMode_(zipMode) {
   // If errPtr already contains an error then don't continue with constructor.
   if (errPtr && *errPtr) {
     return;
@@ -487,7 +488,7 @@ ONNXModelWriter::ONNXModelWriter(const std::string &modelFilename, Function &F,
       } else if (kind == Kinded::Kind::ConstantKind) {
         // Write global initializer, output tensor bytes.
         const auto *C = llvm::cast<Constant>(N);
-        auto *tensorProto = graphProto->add_initializer();
+        auto *tensorProto = addInitializer(*graphProto);
         tensorProto->set_name(C->getName());
         writeTensor(C->getPayload(), tensorProto);
       } else if (kind == Kinded::Kind::SaveNodeKind) {
@@ -510,13 +511,53 @@ ONNXModelWriter::ONNXModelWriter(const std::string &modelFilename, Function &F,
       nodes->SwapElements(i, n - i - 1);
     }
 
-    return writeModel(modelProto, textMode);
+    if (zipMode_) {
+      const bool compressed = false;
+      ZipWriter zip(&ff_, F.getName());
+      std::stringstream ss;
+      ss << initializers_.size() << "\n";
+      zip.writeRecord("weights", ss.str().c_str(), ss.str().size(), compressed);
+      std::string largeBuffer;
+      int i = 0;
+      // This part is probably quite inefficient as we are deserializing the
+      // protobuf to a char buffer and then put it to zip stream. I didn't dig
+      // enough to see if we can deserialize it into zip stream directly.
+      for (const auto &t : initializers_) {
+        std::stringstream nm;
+        nm << "weight_" << i++;
+        t.SerializeToString(&largeBuffer);
+        zip.writeRecord(nm.str(), largeBuffer.c_str(), largeBuffer.size(),
+                        compressed);
+      }
+      if (textMode) {
+        google::protobuf::TextFormat::PrintToString(modelProto, &largeBuffer);
+      } else {
+        modelProto.SerializeToString(&largeBuffer);
+      }
+      zip.writeRecord("model", largeBuffer.c_str(), largeBuffer.size(),
+                      compressed);
+      zip.writeEndOfFile();
+      ff_.flush();
+      ff_.close();
+      return Error::success();
+    } else {
+      return writeModel(modelProto, textMode);
+    }
   };
 
   if (errPtr) {
     *errPtr = setup();
   } else {
     EXIT_ON_ERR(setup());
+  }
+}
+
+ONNXModelWriter::TensorType *ONNXModelWriter::addInitializer(GraphType &g) {
+  if (zipMode_) {
+    initializers_.emplace_back();
+    return &initializers_.back();
+  } else {
+    return g.add_initializer();
   }
 }
 
@@ -811,12 +852,12 @@ Error ONNXModelWriter::writeSlice(const SliceNode *node, GraphType &graph) {
       handleEnds.raw(b) = outs[b] + starts[b];
     }
 
-    auto *tensorProto = graph.add_initializer();
+    auto *tensorProto = addInitializer(graph);
     tensorProto->set_name(node->getName().str() + "_starts");
     writeTensor(oneDimTensorStarts, tensorProto);
     proto->add_input(node->getName().str() + "_starts");
 
-    tensorProto = graph.add_initializer();
+    tensorProto = addInitializer(graph);
     tensorProto->set_name(node->getName().str() + "_ends");
     writeTensor(oneDimTensorEnds, tensorProto);
     proto->add_input(node->getName().str() + "_ends");
@@ -873,7 +914,7 @@ Error ONNXModelWriter::writeTopK(const TopKNode *node, GraphType &graph) {
   auto handle = scalar.getHandle<int64_t>();
   handle.raw(0) = node->getK();
 
-  auto *tensorProto = graph.add_initializer();
+  auto *tensorProto = addInitializer(graph);
   tensorProto->set_name("k");
   writeTensor(scalar, tensorProto);
 
@@ -893,11 +934,11 @@ Error ONNXModelWriter::writeArgMax(const ArgMaxNode *node, GraphType &graph) {
   axisH.raw(0) = node->getAxis();
   keepDimsH.raw(0) = node->getKeepDims();
 
-  auto *tensorProto = graph.add_initializer();
+  auto *tensorProto = addInitializer(graph);
   tensorProto->set_name("axis");
   writeTensor(axis, tensorProto);
 
-  tensorProto = graph.add_initializer();
+  tensorProto = addInitializer(graph);
   tensorProto->set_name("keepDims");
   writeTensor(keepDims, tensorProto);
   RETURN_IF_ERR(writeAllWithNode("ArgMax", node, proto));
@@ -919,7 +960,7 @@ Error ONNXModelWriter::writePRelu(const PReluNode *node, GraphType &graph) {
   if (const SplatNode *SN = llvm::dyn_cast<SplatNode>(slope)) {
     // Conversion a scalar to a tensor is required.
     Tensor scalar = {SN->getValue()};
-    auto *tensorProto = graph.add_initializer();
+    auto *tensorProto = addInitializer(graph);
     tensorProto->set_name(SN->getName());
     writeTensor(scalar, tensorProto);
     proto->add_input(SN->getName());
@@ -1266,7 +1307,7 @@ Error ONNXModelWriter::writeSplat(const SplatNode *node, GraphType &graph) {
     handle.raw(b) = value;
   }
 
-  auto *tensorProto = graph.add_initializer();
+  auto *tensorProto = addInitializer(graph);
 
   findOutputNames(
       node, [&](const std::string &name) { tensorProto->set_name(name); });

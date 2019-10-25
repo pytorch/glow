@@ -48,7 +48,6 @@ target_link_libraries(Importer
                         Graph
                         GraphOptimizer
                         LLVMSupport
-                        Miniz
                         Support)
 target_link_libraries(Importer PUBLIC onnx_proto ${PROTOBUF_LIBRARY})
 

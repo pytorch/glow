@@ -312,7 +312,7 @@ public:
   ONNXModelLoader(const std::string &modelDescFilename,
                   llvm::ArrayRef<const char *> tensorNames,
                   llvm::ArrayRef<TypeRef> types, Function &F,
-                  Error *errPtr = nullptr);
+                  Error *errPtr = nullptr, bool zipMode = false);
 };
 
 } // namespace glow
