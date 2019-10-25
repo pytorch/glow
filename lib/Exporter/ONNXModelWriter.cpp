@@ -1613,4 +1613,19 @@ Error ONNXModelWriter::writeNNPICustomDSP(glow::NNPICustomDSPNode const *,
 }
 #endif // GLOW_WITH_NNPI
 
+#ifdef GLOW_WITH_HABANA
+Error ONNXModelWriter::writeHabanaFullyConnected(
+    glow::HabanaFullyConnectedNode const *, GraphType &graph) {
+  return MAKE_ERR("Unsupported Op for ONNX");
+}
+Error ONNXModelWriter::writeHabanaConvolution(
+    glow::HabanaConvolutionNode const *, GraphType &graph) {
+  return MAKE_ERR("Unsupported Op for ONNX");
+}
+Error ONNXModelWriter::writeHabanaConvolutionAdd(
+    glow::HabanaConvolutionAddNode const *, GraphType &graph) {
+  return MAKE_ERR("Unsupported Op for ONNX");
+}
+#endif // GLOW_WITH_HABANA
+
 } // namespace glow

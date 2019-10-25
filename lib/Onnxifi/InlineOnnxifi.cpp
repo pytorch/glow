@@ -26,6 +26,8 @@
 namespace glow {
 namespace onnxifi {
 
+extern bool GlowSaveOnnxifiModel;
+
 namespace {
 std::string getProfileFile(llvm::StringRef hash) {
   return strFormat("/tmp/glow-profile-%s.yaml", hash.str().c_str());
@@ -54,6 +56,9 @@ InlineGraph::initGraph(const void *onnxModel, size_t onnxModelSize,
 
   onnxInputToPlaceholder_ = loader->getInputVarsMapping();
   onnxOutputToPlaceholder_ = loader->getOutputVarsMapping();
+  if (GlowSaveOnnxifiModel) {
+    saveOnnxifiModel(function_);
+  }
 
   computeModelHash(onnxModel, onnxModelSize, modelHash_);
   optimize(function_, CompilationMode::Infer);

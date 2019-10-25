@@ -162,6 +162,9 @@ protected:
 
 typedef Graph *GraphPtr;
 
+/// Save the Function from ONNXIFI to a file
+void saveOnnxifiModel(Function *F);
+
 } // namespace onnxifi
 } // namespace glow
 

@@ -22,6 +22,8 @@
 namespace glow {
 namespace onnxifi {
 
+extern bool GlowSaveOnnxifiModel;
+;
 int32_t GlowNumDevices = 0;
 bool GlowDumpDebugTraces = false;
 bool GlowSaturateHost = false;
@@ -132,6 +134,10 @@ HostManagerGraph::initGraph(const void *onnxModel, size_t onnxModelSize,
   // Make sure the pool is ready to go.
   for (auto &obj : onnxInputToPlaceholder_) {
     tensorPool_.reserve(obj.second->getType(), 10);
+  }
+
+  if (GlowSaveOnnxifiModel) {
+    saveOnnxifiModel(function);
   }
 
   return static_cast<HostManagerBackend *>(backendPtr_)
