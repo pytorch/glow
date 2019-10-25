@@ -15,6 +15,5 @@ target_link_libraries(Exporter
                         Graph
                         Importer
                         LLVMSupport
-                        Miniz
                         Support)
 target_link_libraries(Exporter PUBLIC onnx_proto ${PROTOBUF_LIBRARY})

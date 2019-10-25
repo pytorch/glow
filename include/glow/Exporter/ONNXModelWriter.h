@@ -25,6 +25,7 @@
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
 
+#include <list>
 #include <string>
 
 /// ONNX traits for protobuf types.
@@ -50,6 +51,11 @@ class ONNXModelWriter : public CommonOperatorWriter<ONNX_TRAITS> {
   size_t opsetVersion_;
   /// Keeps the track of already visited or processed nodes.
   ReportedNodes reportedNodes_;
+  /// Whether we use zip mode or not
+  bool zipMode_;
+  /// A dedicated list of initializers in case the tensors get too big and don't
+  /// fit into the model.
+  std::list<TensorType> initializers_;
   /// Writes tensor shape from placeholder \p PH into protpbuf \p valueProto.
   static void tensorShapeFromPlaceholder(const Placeholder *PH,
                                          ValueInfoType *valueProto);
@@ -61,8 +67,12 @@ class ONNXModelWriter : public CommonOperatorWriter<ONNX_TRAITS> {
   /// \p node into created node protobuf using \p graph.
   static Error writeAll(const std::string &opName, const Node *node,
                         GraphType &graph);
-  // Finds if uses of \p node have node with the provided \p kind.
+  /// Finds if uses of \p node have node with the provided \p kind.
   static bool hasUsesOfKind(const Node *node, Kinded::Kind kind);
+
+  /// Add an initializer. Depending on \ref zipMode_, it will add directly to
+  /// the \p graph or to a separate list.
+  TensorType *addInitializer(GraphType &graph);
 
 public:
   /// Converts \p glowType to \p protoType.
@@ -73,10 +83,14 @@ public:
   /// Creates an ONNX model writer to serialize \p F graph into file
   /// \p modelFilename, writing \p irVersion and \p opsetVersion.
   /// If \p errPtr is not null then if an error occurs it will get assigned
-  /// there otherwise if an error occurs it will abort.
+  /// there otherwise if an error occurs it will abort. It also supports
+  /// serialization with text format or binary format depending on \p textMode.
+  /// If \p zipMode is true, it will save weights into individual TensorProto
+  /// file along with the model file and package them into a zip file.
   ONNXModelWriter(const std::string &modelFilename, Function &F,
                   size_t irVersion, size_t opsetVersion,
-                  Error *errPtr = nullptr, bool textMode = false);
+                  Error *errPtr = nullptr, bool textMode = false,
+                  bool zipMode = false);
 
 private:
   /// \returns error for the unexpected node kind.

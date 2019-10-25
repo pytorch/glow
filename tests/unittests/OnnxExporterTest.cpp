@@ -33,7 +33,7 @@ namespace {
 /// Loads model from ONNX format file \p name into glow Function.
 /// On success exports glow graph to the output file in "extended" ONNX format,
 /// i.e. some glow operators don't have presentation in vanilla ONNX standard.
-void testLoadAndSaveONNXModel(const std::string &name) {
+void testLoadAndSaveONNXModel(const std::string &name, bool zipMode) {
   ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
@@ -52,14 +52,17 @@ void testLoadAndSaveONNXModel(const std::string &name) {
   }
 
   llvm::SmallString<64> path;
-  auto tempFileRes =
-      llvm::sys::fs::createTemporaryFile("exporter", ".output.onnxtxt", path);
+  auto tempFileRes = llvm::sys::fs::createTemporaryFile(
+      "exporter", zipMode ? ".output.zip" : ".output.onnxtxt", path);
 
   EXPECT_EQ(tempFileRes.value(), 0);
 
   std::string outputFilename(path.c_str());
   err = Error::empty();
-  { ONNXModelWriter onnxWR(outputFilename, *F, irVer, opsetVer, &err, true); }
+  {
+    ONNXModelWriter onnxWR(outputFilename, *F, irVer, opsetVer, &err, !zipMode,
+                           zipMode);
+  }
 
   if (ERR_TO_BOOL(std::move(err))) {
     llvm::errs() << "ONNXModelWriter failed to write model: " << name << ".\n";
@@ -69,7 +72,7 @@ void testLoadAndSaveONNXModel(const std::string &name) {
 
   Function *R = mod.createFunction("reload");
   err = Error::empty();
-  { ONNXModelLoader onnxLD(outputFilename, {}, {}, *R, &err); }
+  { ONNXModelLoader onnxLD(outputFilename, {}, {}, *R, &err, zipMode); }
   // llvm::sys::fs::remove(outputFilename);
   EXPECT_FALSE(ERR_TO_BOOL(std::move(err)))
       << "ONNXModelLoader failed to reload model: " << outputFilename;
@@ -119,6 +122,7 @@ TEST(exporter, onnxModels) {
       continue;
     }
 
-    testLoadAndSaveONNXModel(dirIt->path());
+    testLoadAndSaveONNXModel(dirIt->path(), /* zipMode */ true);
+    testLoadAndSaveONNXModel(dirIt->path(), /* zipMode */ false);
   }
 }

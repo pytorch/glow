@@ -18,6 +18,7 @@
 #include "glow/Base/Tensor.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/Nodes.h"
+#include "glow/Support/ZipUtils.h"
 
 #include "llvm/Support/Casting.h"
 
@@ -59,6 +60,7 @@ Error setTensorType(const ONNX_NAMESPACE::TypeProto &in, Tensor *T) {
     RETURN_ERR("Only float and index tensors are supported");
   }
 }
+
 } // namespace
 
 using ArgumentDictionaryTy =
@@ -1736,7 +1738,7 @@ Error ONNXModelLoader::checkInputs(ONNX_NAMESPACE::GraphProto &net,
 ONNXModelLoader::ONNXModelLoader(const std::string &modelDescFilename,
                                  llvm::ArrayRef<const char *> tensorNames,
                                  llvm::ArrayRef<TypeRef> types, Function &F,
-                                 Error *errPtr)
+                                 Error *errPtr, bool zipMode)
     : CommonOperatorLoader(tensorNames, types, F, errPtr) {
   // if errPtr already contains an error then don't continue with constructor
   if (errPtr && *errPtr) {
@@ -1748,7 +1750,24 @@ ONNXModelLoader::ONNXModelLoader(const std::string &modelDescFilename,
   auto setup = [&]() -> Error {
     // The ONNX model that we are deserializing.
     ONNX_NAMESPACE::ModelProto modelDef;
-    ASSIGN_VALUE_OR_RETURN_ERR(modelDef, loadProto(modelDescFilename));
+    if (zipMode) {
+      ZipReader zip(modelDescFilename);
+      std::string buffer;
+      buffer = zip.getRecord("model");
+      modelDef.ParseFromString(buffer);
+      size_t numWeights = 0;
+      auto numWeightsStr = zip.getRecord("weights");
+      numWeights = atoi(numWeightsStr.c_str());
+      for (size_t i = 0; i < numWeights; ++i) {
+        std::stringstream ss;
+        ss << "weight_" << i;
+        buffer = zip.getRecord(ss.str());
+        auto *t = modelDef.mutable_graph()->add_initializer();
+        t->ParseFromString(buffer);
+      }
+    } else {
+      ASSIGN_VALUE_OR_RETURN_ERR(modelDef, loadProto(modelDescFilename));
+    }
 
     RETURN_IF_ERR(setVersion(modelDef));
 

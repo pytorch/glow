@@ -316,10 +316,11 @@ NNPIBackend::compile(Function *F, const BackendOptions &opts) const {
     F->dumpDAG(fname);
   }
   if (glow::onnxifi::GlowSaveModel) {
-    std::string fname = F->getName().str() + ".onnx";
+    std::string fname = F->getName().str() + ".zip";
     LOG(INFO) << "Saving model to " << fname;
     Error err = Error::empty();
-    { ONNXModelWriter onnxWR(fname, *F, 0, 0, &err, false); }
+    constexpr size_t kIrVer = 7, kOpsetVer = 10;
+    { ONNXModelWriter onnxWR(fname, *F, kIrVer, kOpsetVer, &err, false, true); }
     if (ERR_TO_BOOL(std::move(err))) {
       llvm::errs() << "ONNXModelWriter failed to write model: " << fname
                    << ".\n";
