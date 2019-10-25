@@ -378,6 +378,13 @@ Constant *createRandomizedConstant(Module &mod, TypeRef type,
                                    llvm::ArrayRef<size_t> dims,
                                    llvm::StringRef name);
 
+/// Helper method to wrap dispatching an inference on function \p fname request
+/// to a \p Hostmanager as a synchronous interface. If \p concurrentRequestsOpt
+/// is set it will duplicate the request to send multiple requests concurrently.
+void dispatchInference(const std::string &fname,
+                       runtime::HostManager *hostManager,
+                       ExecutionContext &context,
+                       unsigned concurrentRequestsOpt);
 } // namespace glow
 
 #endif // GLOW_TESTS_BACKENDTESTUTILS_H

@@ -21,6 +21,15 @@ target_link_libraries(BackendTestUtils
                         LLVMSupport
                         gtest)
 
+# Repro binary
+add_executable(Repro
+               Repro.cpp)
+target_link_libraries(Repro
+                      PRIVATE
+                        BackendTestUtils
+                        HostManager
+                        Importer)
+
 # Test executables, sorted alphabetically.
 
 add_executable(BasicIRTest
