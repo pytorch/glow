@@ -634,7 +634,7 @@ TEST_P(GraphOptzSinkTransposeBelowParametrized,
        TestSinkTransposeForDifferentCases) {
   const size_t origDims[] = {1, 5, 10, 15};
   const size_t transposedDims[] = {1, 15, 5, 10};
-  Node *A = mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input", false);
+  auto *A = mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input", false);
   Node *T = F_->createTranspose("transpose", A, NHWC2NCHW);
   auto IN = getNodeFromInput(GetParam(), T);
   SaveNode *O = F_->createSave("ret", IN);
@@ -642,7 +642,10 @@ TEST_P(GraphOptzSinkTransposeBelowParametrized,
   EXPECT_EQ(F_->getNodes().size(), 3);
   EXPECT_EQ(IN.dims(), llvm::makeArrayRef(transposedDims));
 
-  ::glow::optimize(F_, CompilationMode::Infer);
+  optimizedF_ = optimizeFunction(F_);
+  O = llvm::dyn_cast<SaveNode>(std::find_if(
+      optimizedF_->getNodes().begin(), optimizedF_->getNodes().end(),
+      [](const auto &N) { return N.getKind() == Kinded::Kind::SaveNodeKind; }));
 
   // Expecting Transpose->Output rather than N->Output.
   auto *transpose = llvm::dyn_cast<TransposeNode>(O->getInput());
@@ -660,6 +663,10 @@ TEST_P(GraphOptzSinkTransposeBelowParametrized,
   EXPECT_EQ(transpose->getInput().dims(), llvm::makeArrayRef(origDims));
   EXPECT_EQ(N->getNthInput(0).dims(), llvm::makeArrayRef(origDims));
   EXPECT_EQ(F_->getNodes().size(), 3);
+
+  bindings_.allocate(mod_.getPlaceholders());
+  bindings_.get(A)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
+  checkNumericalEquivalence();
 }
 
 TEST_P(GraphOptzSinkTransposeBelowParametrized,
