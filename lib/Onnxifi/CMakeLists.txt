@@ -20,6 +20,7 @@ target_link_libraries(onnxifi-glow-lib
                         Backends
                         ExecutionContext
                         ExecutionEngine
+                        Exporter
                         Graph
                         HostManager
                         Importer
@@ -31,6 +32,7 @@ target_link_libraries(onnxifi-glow
                         Backends
                         ExecutionContext
                         ExecutionEngine
+                        Exporter
                         Graph
                         HostManager
                         Importer
