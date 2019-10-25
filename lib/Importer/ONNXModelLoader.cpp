@@ -76,6 +76,79 @@ loadArgumentMap(const ONNX_NAMESPACE::NodeProto &op) {
   return dict;
 }
 
+/// Loads tensor \p T from the input \p in.
+Error glow::loadTensor(const ONNX_NAMESPACE::TensorProto &in, Tensor *T) {
+  std::vector<size_t> dim;
+  for (auto d : in.dims()) {
+    dim.push_back(d);
+  }
+
+  if (in.data_type() == ONNX_NAMESPACE::TensorProto::FLOAT) {
+    T->reset(ElemKind::FloatTy, dim);
+
+    if (in.float_data_size() > 0) {
+      auto TH = T->getHandle<>();
+      size_t i = 0;
+      for (auto f : in.float_data()) {
+        TH.raw(i++) = f;
+      }
+    } else if (in.has_raw_data()) {
+      std::istringstream inStream(in.raw_data(), std::stringstream::binary);
+      inStream.read(T->getUnsafePtr(), T->size() * sizeof(float));
+    } else {
+      RETURN_ERR("Unsupported Tensor format.",
+                 ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_DATATYPE);
+    }
+  } else if (in.data_type() == ONNX_NAMESPACE::TensorProto::INT64) {
+    T->reset(ElemKind::Int64ITy, dim);
+
+    if (in.int64_data_size() > 0) {
+      auto TH = T->getHandle<int64_t>();
+      size_t i = 0;
+      for (auto f : in.int64_data()) {
+        TH.raw(i++) = f;
+      }
+    } else if (in.has_raw_data()) {
+      std::istringstream inStream(in.raw_data(), std::stringstream::binary);
+      inStream.read(T->getUnsafePtr(), T->size() * sizeof(int64_t));
+    } else {
+      RETURN_ERR("Unsupported Tensor format.",
+                 ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_DATATYPE);
+    }
+  } else if (in.data_type() == ONNX_NAMESPACE::TensorProto::INT32) {
+    // There are few cases when we will have int32 tensors. For example, the
+    // second output of Concat from Caffe2 concat op is int32
+    T->reset(ElemKind::Int32ITy, dim);
+
+    if (in.int32_data_size() > 0) {
+      auto TH = T->getHandle<int32_t>();
+      size_t i = 0;
+      for (auto f : in.int32_data()) {
+        TH.raw(i++) = f;
+      }
+    } else if (in.has_raw_data()) {
+      std::istringstream inStream(in.raw_data(), std::stringstream::binary);
+      inStream.read(T->getUnsafePtr(), T->size() * sizeof(int32_t));
+    } else {
+      RETURN_ERR("Unsupported Tensor format.",
+                 ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_DATATYPE);
+    }
+  } else if (in.data_type() == ONNX_NAMESPACE::TensorProto::BOOL) {
+    T->reset(ElemKind::BoolTy, dim);
+    if (in.has_raw_data()) {
+      std::istringstream inStream(in.raw_data(), std::stringstream::binary);
+      inStream.read(T->getUnsafePtr(), T->size() * sizeof(bool));
+    } else {
+      RETURN_ERR("Unsupported Tensor format.",
+                 ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_DATATYPE);
+    }
+  } else {
+    RETURN_ERR("Only float and index tensors are supported",
+               ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_DATATYPE);
+  }
+  return Error::success();
+}
+
 Error ONNXModelLoader::loadInputs(ONNX_NAMESPACE::GraphProto &net,
                                   bool loadInputsAsPlaceholders) {
   for (const auto &in : net.input()) {
@@ -267,79 +340,6 @@ Expected<Pads> getPads(const ArgumentDictionaryTy &dict,
   }
   // Return default value 0 for pads.
   return Pads({0, 0, 0, 0});
-}
-
-/// Loads tensor \p T from the input \p in.
-static Error loadTensor(const ONNX_NAMESPACE::TensorProto &in, Tensor *T) {
-  std::vector<size_t> dim;
-  for (auto d : in.dims()) {
-    dim.push_back(d);
-  }
-
-  if (in.data_type() == ONNX_NAMESPACE::TensorProto::FLOAT) {
-    T->reset(ElemKind::FloatTy, dim);
-
-    if (in.float_data_size() > 0) {
-      auto TH = T->getHandle<>();
-      size_t i = 0;
-      for (auto f : in.float_data()) {
-        TH.raw(i++) = f;
-      }
-    } else if (in.has_raw_data()) {
-      std::istringstream inStream(in.raw_data(), std::stringstream::binary);
-      inStream.read(T->getUnsafePtr(), T->size() * sizeof(float));
-    } else {
-      RETURN_ERR("Unsupported Tensor format.",
-                 ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_DATATYPE);
-    }
-  } else if (in.data_type() == ONNX_NAMESPACE::TensorProto::INT64) {
-    T->reset(ElemKind::Int64ITy, dim);
-
-    if (in.int64_data_size() > 0) {
-      auto TH = T->getHandle<int64_t>();
-      size_t i = 0;
-      for (auto f : in.int64_data()) {
-        TH.raw(i++) = f;
-      }
-    } else if (in.has_raw_data()) {
-      std::istringstream inStream(in.raw_data(), std::stringstream::binary);
-      inStream.read(T->getUnsafePtr(), T->size() * sizeof(int64_t));
-    } else {
-      RETURN_ERR("Unsupported Tensor format.",
-                 ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_DATATYPE);
-    }
-  } else if (in.data_type() == ONNX_NAMESPACE::TensorProto::INT32) {
-    // There are few cases when we will have int32 tensors. For example, the
-    // second output of Concat from Caffe2 concat op is int32
-    T->reset(ElemKind::Int32ITy, dim);
-
-    if (in.int32_data_size() > 0) {
-      auto TH = T->getHandle<int32_t>();
-      size_t i = 0;
-      for (auto f : in.int32_data()) {
-        TH.raw(i++) = f;
-      }
-    } else if (in.has_raw_data()) {
-      std::istringstream inStream(in.raw_data(), std::stringstream::binary);
-      inStream.read(T->getUnsafePtr(), T->size() * sizeof(int32_t));
-    } else {
-      RETURN_ERR("Unsupported Tensor format.",
-                 ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_DATATYPE);
-    }
-  } else if (in.data_type() == ONNX_NAMESPACE::TensorProto::BOOL) {
-    T->reset(ElemKind::BoolTy, dim);
-    if (in.has_raw_data()) {
-      std::istringstream inStream(in.raw_data(), std::stringstream::binary);
-      inStream.read(T->getUnsafePtr(), T->size() * sizeof(bool));
-    } else {
-      RETURN_ERR("Unsupported Tensor format.",
-                 ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_DATATYPE);
-    }
-  } else {
-    RETURN_ERR("Only float and index tensors are supported",
-               ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_DATATYPE);
-  }
-  return Error::success();
 }
 
 Error ONNXModelLoader::loadConstant(const ONNX_NAMESPACE::NodeProto &op,

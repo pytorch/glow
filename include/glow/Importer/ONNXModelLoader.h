@@ -37,6 +37,9 @@ class TensorProto;
 
 namespace glow {
 
+/// Loads tensor \p T from the input \p in.
+Error loadTensor(const ONNX_NAMESPACE::TensorProto &in, Tensor *T);
+
 /// Loads ONNX models.
 class ONNXModelLoader
     : public CommonOperatorLoader<ONNX_NAMESPACE::NodeProto,
