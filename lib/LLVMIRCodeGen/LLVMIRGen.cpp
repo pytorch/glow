@@ -212,6 +212,10 @@ void LLVMIRGen::initCodeGen() {
   llvm::BasicBlock *entry_bb =
       llvm::BasicBlock::Create(getLLVMContext(), "entry", func);
   builder_ = llvm::make_unique<llvm::IRBuilder<>>(entry_bb);
+  // Terminate the function with a return instruction.
+  auto *ret = builder_->CreateRetVoid();
+  // Emit all the code before the retrun instruction.
+  builder_->SetInsertPoint(ret);
 
   // Initialize the debug information emission.
   initDebugInfo();
@@ -253,13 +257,9 @@ llvm::Type *LLVMIRGen::getElementType(llvm::IRBuilder<> &builder,
 }
 
 void LLVMIRGen::performCodeGen() {
-  auto *func = builder_->GetInsertBlock()->getParent();
   loadBaseAddresses(*builder_);
 
   generateLLVMIRForModule(*builder_);
-
-  // Terminate the function.
-  builder_->CreateRetVoid();
 
   if (dumpIR) {
     llvm::outs() << "LLVM module before optimizations:\n";
