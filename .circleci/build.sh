@@ -133,7 +133,7 @@ elif [[ "$CIRCLE_JOB" == "PYTORCH" ]]; then
     cd /tmp
     python3.6 -m virtualenv venv
     source venv/bin/activate
-    git clone https://github.com/pytorch/pytorch.git --recursive
+    git clone https://github.com/pytorch/pytorch.git --recursive --depth 1
     cd pytorch
     pip install -r requirements.txt
     BUILD_BINARY=OFF BUILD_TEST=0 BUILD_CAFFE2_OPS=0 python setup.py install
