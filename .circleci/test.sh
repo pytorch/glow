@@ -48,9 +48,15 @@ run_and_check_resnet50_bundle() {
 
 run_pytorch_tests() {
     cd "${GLOW_SRC}/torch_glow"
+    if hash sccache 2>/dev/null; then
+      export PATH="/tmp/sccache:$PATH"
+    fi
     source /tmp/venv/bin/activate
     python "${GLOW_SRC}/torch_glow/setup.py" test --run_cmake
     cd -
+    if hash sccache 2>/dev/null; then
+      sccache --show-stats
+    fi
 }
 
 # Run unit tests and bundle tests.

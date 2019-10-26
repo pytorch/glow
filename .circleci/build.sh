@@ -83,16 +83,15 @@ GLOW_DIR=$PWD
 cd ${GLOW_DIR}
 mkdir build && cd build
 
-if [[ "${CIRCLE_JOB}" == "PYTORCH" ]]; then
-    CMAKE_ARGS=("-DCMAKE_CXX_COMPILER=/usr/bin/clang++-7")
-    CMAKE_ARGS+=("-DCMAKE_C_COMPILER=/usr/bin/clang-7")
-else
-    CMAKE_ARGS=("-DCMAKE_CXX_COMPILER=/usr/bin/clang++-8")
+CMAKE_ARGS=()
+# PYTORCH build are directly using the sccache wrappers
+if [[ "${CIRCLE_JOB}" != "PYTORCH" ]]; then
+    CMAKE_ARGS+=("-DCMAKE_CXX_COMPILER=/usr/bin/clang++-8")
     CMAKE_ARGS+=("-DCMAKE_C_COMPILER=/usr/bin/clang-8")
+    CMAKE_ARGS+=("-DCMAKE_CXX_COMPILER_LAUNCHER=sccache")
+    CMAKE_ARGS+=("-DCMAKE_C_COMPILER_LAUNCHER=sccache")
 fi
 
-CMAKE_ARGS+=("-DCMAKE_CXX_COMPILER_LAUNCHER=sccache")
-CMAKE_ARGS+=("-DCMAKE_C_COMPILER_LAUNCHER=sccache")
 CMAKE_ARGS+=("-DCMAKE_CXX_FLAGS=-Werror")
 CMAKE_ARGS+=("-DGLOW_WITH_CPU=ON")
 CMAKE_ARGS+=("-DGLOW_WITH_HABANA=OFF")
@@ -133,10 +132,10 @@ elif [[ "$CIRCLE_JOB" == "PYTORCH" ]]; then
     cd /tmp
     python3.6 -m virtualenv venv
     source venv/bin/activate
-    git clone https://github.com/pytorch/pytorch.git --recursive
+    git clone https://github.com/pytorch/pytorch.git --recursive --depth 1
     cd pytorch
     pip install -r requirements.txt
-    python setup.py install
+    BUILD_BINARY=OFF BUILD_TEST=0 BUILD_CAFFE2_OPS=0 python setup.py install
     cd ${GLOW_DIR}
     cd build
 elif [[ "$CIRCLE_JOB" == "OPENCL" ]]; then
@@ -149,12 +148,12 @@ else
     fi
 fi
 
-if [ "${CIRCLE_JOB}" != "COVERAGE" ] && [ "${CIRCLE_JOB}" != "CHECK_CLANG_AND_PEP8_FORMAT" ]; then
+if [ "${CIRCLE_JOB}" != "COVERAGE" ] && [ "${CIRCLE_JOB}" != "CHECK_CLANG_AND_PEP8_FORMAT" ] && [ "${CIRCLE_JOB}" != "PYTORCH" ]; then
     cmake -GNinja ${CMAKE_ARGS[*]} ../
     ninja
+fi
 
-    # Report sccache hit/miss stats
-    if hash sccache 2>/dev/null; then
-        sccache --show-stats
-    fi
+# Report sccache hit/miss stats
+if hash sccache 2>/dev/null; then
+    sccache --show-stats
 fi

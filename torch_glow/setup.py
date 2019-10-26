@@ -125,6 +125,7 @@ class cmake_build(setuptools.Command):
                 '-DC10_USE_GLOG=1',
                 '-DCMAKE_BUILD_RTTI=ON',
                 '-DGLOW_BUILD_PYTORCH_INTEGRATION=ON',
+                '-DGLOW_BUILD_EXAMPLES=OFF',
                 '-DBUILD_SHARED_LIBS=OFF',
                 '-DCMAKE_EXPORT_COMPILE_COMMANDS=ON',
                 '-DCMAKE_BUILD_TYPE={}'.format(
