@@ -281,7 +281,7 @@ public:
                                       glow::ElemKind elemTy);
   /// Optimize the function \p F and the module that owns it. Use the target
   /// information from the \p TM target machine.
-  virtual void optimizeLLVMModule(llvm::Function *F, llvm::TargetMachine &TM);
+  virtual void optimizeLLVMModule(llvm::Module *M, llvm::TargetMachine &TM);
   /// Performs specialization of operations based on constant parameters.
   virtual void performSpecialization();
   /// \returns allocations info.

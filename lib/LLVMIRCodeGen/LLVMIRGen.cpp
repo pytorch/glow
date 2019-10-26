@@ -279,7 +279,7 @@ void LLVMIRGen::performCodeGen() {
   }
 
   // Optimize the module.
-  optimizeLLVMModule(func, getTargetMachine());
+  optimizeLLVMModule(&getModule(), getTargetMachine());
 
   // Generate debug information.
   generateDebugInfo();
