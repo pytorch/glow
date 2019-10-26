@@ -148,12 +148,12 @@ else
     fi
 fi
 
-if [ "${CIRCLE_JOB}" != "COVERAGE" ] && [ "${CIRCLE_JOB}" != "CHECK_CLANG_AND_PEP8_FORMAT" ]; then
+if [ "${CIRCLE_JOB}" != "COVERAGE" ] && [ "${CIRCLE_JOB}" != "CHECK_CLANG_AND_PEP8_FORMAT" ] && [ "${CIRCLE_JOB}" != "PYTORCH" ]; then
     cmake -GNinja ${CMAKE_ARGS[*]} ../
     ninja
+fi
 
-    # Report sccache hit/miss stats
-    if hash sccache 2>/dev/null; then
-        sccache --show-stats
-    fi
+# Report sccache hit/miss stats
+if hash sccache 2>/dev/null; then
+    sccache --show-stats
 fi
