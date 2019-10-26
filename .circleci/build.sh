@@ -83,16 +83,15 @@ GLOW_DIR=$PWD
 cd ${GLOW_DIR}
 mkdir build && cd build
 
-if [[ "${CIRCLE_JOB}" == "PYTORCH" ]]; then
-    CMAKE_ARGS=("-DCMAKE_CXX_COMPILER=/usr/bin/clang++-7")
-    CMAKE_ARGS+=("-DCMAKE_C_COMPILER=/usr/bin/clang-7")
-else
-    CMAKE_ARGS=("-DCMAKE_CXX_COMPILER=/usr/bin/clang++-8")
+CMAKE_ARGS=()
+# PYTORCH build are directly using the sccache wrappers
+if [[ "${CIRCLE_JOB}" != "PYTORCH" ]]; then
+    CMAKE_ARGS+=("-DCMAKE_CXX_COMPILER=/usr/bin/clang++-8")
     CMAKE_ARGS+=("-DCMAKE_C_COMPILER=/usr/bin/clang-8")
+    CMAKE_ARGS+=("-DCMAKE_CXX_COMPILER_LAUNCHER=sccache")
+    CMAKE_ARGS+=("-DCMAKE_C_COMPILER_LAUNCHER=sccache")
 fi
 
-CMAKE_ARGS+=("-DCMAKE_CXX_COMPILER_LAUNCHER=sccache")
-CMAKE_ARGS+=("-DCMAKE_C_COMPILER_LAUNCHER=sccache")
 CMAKE_ARGS+=("-DCMAKE_CXX_FLAGS=-Werror")
 CMAKE_ARGS+=("-DGLOW_WITH_CPU=ON")
 CMAKE_ARGS+=("-DGLOW_WITH_HABANA=OFF")
