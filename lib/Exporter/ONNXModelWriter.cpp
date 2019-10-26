@@ -218,14 +218,14 @@ bool outputKindToProto(Kinded::Kind kind, const Node *node,
 
 /// Writes MatMul operators from Node \p node into
 /// provided graph protobuf \p graph, optionally reports intermediate nodes as
-/// visited, signaling that such nodes must be ignored,
-/// \returns error.
+/// visited, signaling that such nodes must be ignored, Depending on \p
+/// nodeKind, we can write either MatMul or BatchMatMul. \returns error.
 template <typename T>
 Error writeMatMulKind(const T *node, ONNX_TRAITS::GraphProto &graph,
-                      ReportedNodes &reporter) {
+                      const std::string &nodeKind) {
   auto *proto = graph.add_node();
   proto->set_name(node->getName());
-  proto->set_op_type("MatMul");
+  proto->set_op_type(nodeKind);
 
   Node *LHS = node->getLHS().getNode();
   proto->add_input(LHS->getName());
@@ -762,6 +762,7 @@ Error ONNXModelWriter::writeBatchedReduceMean(const BatchedReduceMeanNode *node,
     // Add dictionary entries.
     addValueAttribute(proto, "keepdims", 1);
   } else {
+    addValueAttribute(proto, "keepdims", 0);
     outputsToProto(node, proto);
   }
 
@@ -785,6 +786,7 @@ Error ONNXModelWriter::writeBatchedReduceAdd(const BatchedReduceAddNode *node,
     // Add dictionary entries.
     addValueAttribute(proto, "keepdims", 1);
   } else {
+    addValueAttribute(proto, "keepdims", 0);
     outputsToProto(node, proto);
   }
 
@@ -839,7 +841,7 @@ Error ONNXModelWriter::writeSlice(const SliceNode *node, GraphType &graph) {
   auto *proto = graph.add_node();
   // Add dictionary entries.
   auto starts = node->getStart();
-  auto outs = node->getInput().dims();
+  auto outs = node->getResult().dims();
   RETURN_ERR_IF_NOT(starts.size() == outs.size(),
                     "Mismatch starts and result dimensions.");
 
@@ -897,6 +899,8 @@ Error ONNXModelWriter::writePow(const PowNode *node, GraphType &graph) {
       proto->set_op_type("Sqrt");
     } else if (value == -1.0f) {
       proto->set_op_type("Reciprocal");
+    } else if (value == 2.0f) {
+      proto->set_op_type("Sqr");
     } else {
       RETURN_ERR("Splat Node Value is invalid.");
     }
@@ -994,12 +998,17 @@ Error ONNXModelWriter::writeGather(const GatherNode *node, GraphType &graph) {
 }
 
 Error ONNXModelWriter::writeMatMul(const MatMulNode *node, GraphType &graph) {
-  return writeMatMulKind(node, graph, reportedNodes_);
+  return writeMatMulKind(node, graph, "MatMul");
 }
 
 Error ONNXModelWriter::writeBatchMatMul(const BatchMatMulNode *node,
                                         GraphType &graph) {
-  return writeMatMulKind(node, graph, reportedNodes_);
+  auto dimSize = node->getLHS().dims().size();
+  if (dimSize == 2) {
+    return writeMatMulKind(node, graph, "MatMul");
+  } else {
+    return writeMatMulKind(node, graph, "BatchMatMul");
+  }
 }
 
 Error ONNXModelWriter::writeReshape(const ReshapeNode *node, GraphType &graph) {
@@ -1450,17 +1459,12 @@ Error ONNXModelWriter::writeFullyConnected(const FullyConnectedNode *node,
                                            GraphType &graph) {
   auto *proto = graph.add_node();
   proto->set_name(node->getName());
-  proto->set_op_type("FCTransposed");
+  proto->set_op_type("FullyConnected");
 
-  const auto *input = node->getInput().getNode();
-
-  if (const auto *reshape = llvm::dyn_cast<ReshapeNode>(input)) {
-    proto->add_input(reshape->getInput().getNode()->getName());
-    reportedNodes_.insert(reshape);
-  } else {
-    proto->add_input(input->getName());
+  if (node->getInput().dims().size() != 2) {
+    RETURN_ERR("Don't support input dim other than 2");
   }
-
+  proto->add_input(node->getInput().getNode()->getName());
   proto->add_input(node->getWeights().getNode()->getName());
   proto->add_input(node->getBias().getNode()->getName());
   outputsToProto(node, proto);
