@@ -207,6 +207,11 @@ class ONNXModelLoader
   Error loadFusedRowwiseQuantizedSparseLengthsWeightedSum(
       const ONNX_NAMESPACE::NodeProto &op, const ArgumentDictionaryTy &dict);
 
+  /// Load Glow FusedRowwiseQuantizedSparseLengthsSum operator.
+  Error
+  loadFusedRowwiseQuantizedSparseLengthsSum(const ONNX_NAMESPACE::NodeProto &op,
+                                            const ArgumentDictionaryTy &dict);
+
   /// Load Glow RowwiseQuantizedFullyConnected operator.
   Error loadRowwiseQuantizedFullyConnected(const ONNX_NAMESPACE::NodeProto &op,
                                            const ArgumentDictionaryTy &dict);

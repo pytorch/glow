@@ -1445,6 +1445,24 @@ Error ONNXModelLoader::loadFusedRowwiseQuantizedSparseLengthsWeightedSum(
   return Error::success();
 }
 
+Error ONNXModelLoader::loadFusedRowwiseQuantizedSparseLengthsSum(
+    const ONNX_NAMESPACE::NodeProto &op,
+    const ArgumentDictionaryTy & /* unused */) {
+  NodeValue data;
+  ASSIGN_VALUE_OR_RETURN_ERR(data, getNodeValueByName(op.input(0)));
+  NodeValue indices;
+  ASSIGN_VALUE_OR_RETURN_ERR(indices, getNodeValueByName(op.input(1)));
+  NodeValue lengths;
+  ASSIGN_VALUE_OR_RETURN_ERR(lengths, getNodeValueByName(op.input(2)));
+
+  Constant *dataC = llvm::dyn_cast<Constant>(data);
+  Node *N = G_.createFusedRowwiseQuantizedSparseLengthsSum(
+      loadOperatorName(op), dataC, indices, lengths);
+
+  RETURN_IF_ERR(addNodeAsOutput(op, N));
+  return Error::success();
+}
+
 Error ONNXModelLoader::loadFullyConnected(const ONNX_NAMESPACE::NodeProto &op,
                                           const ArgumentDictionaryTy &dict) {
   NodeValue in;
@@ -1646,6 +1664,9 @@ Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
   if (typeName == "FusedRowwiseQuantizedSparseLengthsWeightedSum") {
     return loadFusedRowwiseQuantizedSparseLengthsWeightedSum(op, dict);
   }
+  if (typeName == "FusedRowwiseQuantizedSparseLengthsSum") {
+    return loadFusedRowwiseQuantizedSparseLengthsSum(op, dict);
+  }
   if (typeName == "FullyConnected") {
     return loadFullyConnected(op, dict);
   }
@@ -1670,7 +1691,7 @@ Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
 }
 
 Error ONNXModelLoader::loadInitializers(ONNX_NAMESPACE::GraphProto &net) {
-  // Load the network initializaers:
+  // Load the network initializers:
   for (const auto &in : net.initializer()) {
     Tensor T;
     RETURN_IF_ERR(loadTensor(in, &T));

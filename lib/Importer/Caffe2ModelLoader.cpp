@@ -1222,14 +1222,6 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     return Error::success();
   }
 
-  if (typeName == "Sqr") {
-    NodeValue in;
-    ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
-    auto *pow = G_.createPow(opName, in, /* exp */ 2);
-    RETURN_IF_ERR(addNodeAsOutput(op, pow));
-    return Error::success();
-  }
-
   if (typeName == "SparseLengthsWeightedSum8BitsRowwise" ||
       typeName == "SparseLengthsSum8BitsRowwise" ||
       typeName == "SparseLengthsWeightedSumFused8BitRowwise" ||
