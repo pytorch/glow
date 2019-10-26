@@ -296,6 +296,16 @@ protected:
     return Error::success();
   }
 
+  /// Loads Sqr operator, given its protobuf representation and parsed args.
+  Error loadSqr(const OpType &op, ArgumentDictionaryTy &dict) {
+    const std::string &opName = loadOperatorName(op);
+    NodeValue in;
+    ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
+    auto *R = G_.createPow(opName, in, 2.0f);
+    RETURN_IF_ERR(addNodeAsOutput(op, R));
+    return Error::success();
+  }
+
   /// Loads Reciprocal operator, given its protobuf representation and parsed
   /// args.
   Error loadReciprocal(const OpType &op, ArgumentDictionaryTy &dict) {
@@ -1059,6 +1069,10 @@ protected:
     }
     if (typeName == "Sqrt") {
       RETURN_IF_ERR(loadSqrt(op, dict));
+      return true;
+    }
+    if (typeName == "Sqr") {
+      RETURN_IF_ERR(loadSqr(op, dict));
       return true;
     }
     if (typeName == "Reciprocal") {

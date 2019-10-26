@@ -26,6 +26,7 @@
 namespace glow {
 namespace onnxifi {
 bool GlowSaveOnnxifiModel = false;
+bool GlowSaveOnnxifiIO = false;
 
 extern bool GlowDumpDebugTraces;
 
@@ -37,7 +38,7 @@ void saveOnnxifiModel(Function *F) {
   std::string fname = F->getName().str() + ".zip";
   LOG(INFO) << "Saving model to " << fname;
   Error err = Error::empty();
-  constexpr size_t kIrVer = 7, kOpsetVer = 10;
+  constexpr size_t kIrVer = 7, kOpsetVer = 9;
   { ONNXModelWriter onnxWR(fname, *F, kIrVer, kOpsetVer, &err, false, true); }
   if (ERR_TO_BOOL(std::move(err))) {
     LOG(ERROR) << "ONNXModelWriter failed to write model: " << fname;
@@ -219,6 +220,27 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
     }
   }
 
+  size_t seq = 0;
+  if (GlowSaveOnnxifiIO) {
+    seq = ioDumpCounter_++;
+    std::stringstream ss;
+    ss << "input_" << seq << ".onnx";
+    std::ofstream of(ss.str(), std::ios::binary);
+    if (!of) {
+      LOG(ERROR) << "Cannot create input file " << ss.str();
+    } else {
+      ONNX_NAMESPACE::GraphProto inputG;
+      for (const auto &p : ctx->getPlaceholderBindings()->pairs()) {
+        auto *t = inputG.add_initializer();
+        ONNXModelWriter::writeTensor(*p.second, t);
+        t->set_name(p.first->getName());
+      }
+      std::string buffer;
+      inputG.SerializeToString(&buffer);
+      of << buffer;
+    }
+  }
+
   TRACE_EVENT_SCOPE_END_NAMED(aiEvent);
   TRACE_EVENT_SCOPE_NAMED(traceContext, TraceLevel::RUNTIME,
                           "setOnnxifiOutputs", soEvent);
@@ -258,7 +280,36 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
   }
   TRACE_EVENT_SCOPE_END_NAMED(soEvent);
 
-  return run(std::move(ctx), outputEvent, traceEvents);
+  auto ret = run(std::move(ctx), outputEvent, traceEvents);
+  if (GlowSaveOnnxifiIO) {
+    // We need to wait for the execution to finish in order to extract output
+    // values.
+    outputEvent->wait();
+    std::stringstream ss;
+    ss << "output_" << seq << ".onnx";
+    std::ofstream of(ss.str(), std::ios::binary);
+    if (!of) {
+      LOG(ERROR) << "Cannot create output file " << ss.str();
+    } else {
+      ONNX_NAMESPACE::GraphProto inputG;
+      for (unsigned i = 0; i < outputsCount; ++i) {
+        const auto &outOnnxTensor = outputDescriptors[i];
+        auto *outOnnxBuffer = reinterpret_cast<void *>(outOnnxTensor.buffer);
+        auto outPhIt = onnxOutputToPlaceholder_.find(outOnnxTensor.name);
+        CHECK(outPhIt != onnxOutputToPlaceholder_.end());
+        auto &outPhPtr = outPhIt->getValue();
+        Tensor outputTensor(outOnnxBuffer, outPhPtr->getType());
+        auto *t = inputG.add_initializer();
+        ONNXModelWriter::writeTensor(outputTensor, t);
+        t->set_name(outPhPtr->getName());
+      }
+      std::string buffer;
+      inputG.SerializeToString(&buffer);
+      of << buffer;
+    }
+  }
+
+  return ret;
 }
 
 void Graph::setTraceEvents(onnxTraceEventList *traceEvents,

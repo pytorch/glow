@@ -37,6 +37,9 @@ class TensorProto;
 
 namespace glow {
 
+/// Loads tensor \p T from the input \p in.
+Error loadTensor(const ONNX_NAMESPACE::TensorProto &in, Tensor *T);
+
 /// Loads ONNX models.
 class ONNXModelLoader
     : public CommonOperatorLoader<ONNX_NAMESPACE::NodeProto,
@@ -203,6 +206,11 @@ class ONNXModelLoader
   /// Load Glow FusedRowwiseQuantizedSparseLengthsWeightedSum operator.
   Error loadFusedRowwiseQuantizedSparseLengthsWeightedSum(
       const ONNX_NAMESPACE::NodeProto &op, const ArgumentDictionaryTy &dict);
+
+  /// Load Glow FusedRowwiseQuantizedSparseLengthsSum operator.
+  Error
+  loadFusedRowwiseQuantizedSparseLengthsSum(const ONNX_NAMESPACE::NodeProto &op,
+                                            const ArgumentDictionaryTy &dict);
 
   /// Load Glow RowwiseQuantizedFullyConnected operator.
   Error loadRowwiseQuantizedFullyConnected(const ONNX_NAMESPACE::NodeProto &op,

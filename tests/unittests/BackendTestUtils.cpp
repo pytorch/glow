@@ -162,6 +162,48 @@ setupInterpAndBackendConfigs(
 }
 } // namespace
 
+void dispatchInference(const std::string &fname,
+                       runtime::HostManager *hostManager,
+                       ExecutionContext &context,
+                       unsigned concurrentRequestsOpt) {
+  // If additional requests are desired, setup additional contexts.
+  std::vector<std::unique_ptr<ExecutionContext>> contexts;
+  std::unique_ptr<ExecutionContext> originalContextPtr(&context);
+  contexts.push_back(std::move(originalContextPtr));
+  if (concurrentRequestsOpt > 1) {
+    // Clone the placeholder bindings into a new executionContext.
+    for (unsigned i = 0, max = concurrentRequestsOpt - 1; i < max; i++) {
+      std::unique_ptr<ExecutionContext> newContext =
+          llvm::make_unique<ExecutionContext>(
+              llvm::make_unique<PlaceholderBindings>(
+                  context.getPlaceholderBindings()->clone()));
+      contexts.push_back(std::move(newContext));
+    }
+  }
+  std::vector<std::promise<void>> promises(concurrentRequestsOpt);
+  std::vector<std::future<void>> futures;
+  for (auto &promise : promises) {
+    futures.push_back(promise.get_future());
+  }
+  for (unsigned i = 0; i < concurrentRequestsOpt; i++) {
+    hostManager->runNetwork(fname, std::move(contexts[i]),
+                            [&contexts, &promises,
+                             i](runtime::RunIdentifierTy, Error err,
+                                std::unique_ptr<ExecutionContext> contextPtr) {
+                              contexts[i] = std::move(contextPtr);
+                              // Expect no errors.
+                              EXIT_ON_ERR(std::move(err));
+                              promises[i].set_value();
+                            });
+  }
+
+  for (auto &future : futures) {
+    future.wait();
+  }
+  // Release the original context passed in by reference so we don't free it.
+  contexts[0].release();
+}
+
 void compareAgainstInterpreter(llvm::StringRef backendName,
                                CreateAndInitFunction createAndInitFunction,
                                ElemKind interpElemKind,

@@ -155,49 +155,6 @@ static size_t sumOfElements(Handle<int32_t> H) {
   return sum;
 }
 
-/// Helper method to wrap dispatching an inference request to a Hostmanager as
-/// a synchronous interface. If concurrentReqestsOpt is set it will duplicate
-/// the request to send multiple requests concurrently.
-static void dispatchInference(HostManager *hostManager,
-                              ExecutionContext &context) {
-  // If additional requests are desired, setup additional contexts.
-  std::vector<std::unique_ptr<ExecutionContext>> contexts;
-  std::unique_ptr<ExecutionContext> originalContextPtr(&context);
-  contexts.push_back(std::move(originalContextPtr));
-  if (concurrentReqestsOpt > 1) {
-    // Clone the placeholder bindings into a new executionContext.
-    for (unsigned i = 0, max = concurrentReqestsOpt - 1; i < max; i++) {
-      std::unique_ptr<ExecutionContext> newContext =
-          llvm::make_unique<ExecutionContext>(
-              llvm::make_unique<PlaceholderBindings>(
-                  context.getPlaceholderBindings()->clone()));
-      contexts.push_back(std::move(newContext));
-    }
-  }
-  std::vector<std::promise<void>> promises(concurrentReqestsOpt);
-  std::vector<std::future<void>> futures;
-  for (auto &promise : promises) {
-    futures.push_back(promise.get_future());
-  }
-  for (unsigned i = 0; i < concurrentReqestsOpt; i++) {
-    hostManager->runNetwork("main", std::move(contexts[i]),
-                            [&contexts, &promises,
-                             i](runtime::RunIdentifierTy, Error err,
-                                std::unique_ptr<ExecutionContext> contextPtr) {
-                              contexts[i] = std::move(contextPtr);
-                              // Expect no errors.
-                              EXIT_ON_ERR(std::move(err));
-                              promises[i].set_value();
-                            });
-  }
-
-  for (auto &future : futures) {
-    future.wait();
-  }
-  // Release the original context passed in by reference so we don't free it.
-  contexts[0].release();
-}
-
 /// Tests a simplified Recommendation System model.
 ///
 /// The RecSys model has four components:
@@ -788,7 +745,8 @@ protected:
 
     // Run graph
     ExecutionContext context2{};
-    dispatchInference(hostManager.get(), context_);
+    dispatchInference("main", hostManager.get(), context_,
+                      concurrentReqestsOpt);
 
     // NaNs are a sign of something gone wrong. Always verify there aren't any
     // in the result.
@@ -845,7 +803,8 @@ protected:
     CompilationContext cctx;
     cctx.precisionConfig = precConfig_;
     EXIT_ON_ERR(hostManager->addNetwork(std::move(modI), cctx));
-    dispatchInference(hostManager.get(), contextI);
+    dispatchInference("main", hostManager.get(), contextI,
+                      concurrentReqestsOpt);
 
     assert(resultTensor && "Must run and set resultTensor before comparing "
                            "against the intepreter.");
@@ -892,7 +851,7 @@ protected:
       bindingsP.copyToTarget(PH.first->getName(), bindings);
     }
 
-    dispatchInference(hostManager.get(), context);
+    dispatchInference("main", hostManager.get(), context, concurrentReqestsOpt);
 
     Tensor *resultTensorP = bindings.get(bindings.getPlaceholderByName("save"));
     EXPECT_TRUE(referenceResultT.isEqual(*resultTensorP));
@@ -922,7 +881,8 @@ protected:
     EXIT_ON_ERR(hostManager->addNetwork(std::move(mod), cctx));
 
     // Run graph.
-    dispatchInference(hostManager.get(), context_);
+    dispatchInference("main", hostManager.get(), context_,
+                      concurrentReqestsOpt);
 
     // TODO: for now we only check the output dimension, contents are ignored
     EXPECT_EQ(resultTensorLocal->size(), miniBatch * embeddingDim);
