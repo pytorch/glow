@@ -597,6 +597,10 @@ void ONNXModelWriter::writeTensor(const Tensor &T, TensorType *out) {
   }
 
   out->set_raw_data(T.getUnsafePtr(), type.getSizeInBytes());
+
+  if (type.isQuantizedType()) {
+    out->set_doc_string(type.getElementName());
+  }
 }
 
 void ONNXModelWriter::tensorShapeFromPlaceholder(const Placeholder *PH,

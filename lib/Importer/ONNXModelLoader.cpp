@@ -133,6 +133,22 @@ Error glow::loadTensor(const ONNX_NAMESPACE::TensorProto &in, Tensor *T) {
       RETURN_ERR("Unsupported Tensor format.",
                  ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_DATATYPE);
     }
+  } else if (in.data_type() == ONNX_NAMESPACE::TensorProto::UINT8) {
+    const auto &elementType = in.doc_string();
+    if (elementType == Type::getElementName(ElemKind::UInt8FusedQTy)) {
+      T->reset(ElemKind::UInt8FusedQTy, dim, 0.0, 0);
+    } else {
+      RETURN_ERR("Unsupported Tensor element type " + elementType,
+                 ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_DATATYPE);
+    }
+
+    if (in.has_raw_data()) {
+      std::istringstream inStream(in.raw_data(), std::stringstream::binary);
+      inStream.read(T->getUnsafePtr(), T->size() * sizeof(uint8_t));
+    } else {
+      RETURN_ERR("Unsupported Tensor format.",
+                 ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_DATATYPE);
+    }
   } else if (in.data_type() == ONNX_NAMESPACE::TensorProto::BOOL) {
     T->reset(ElemKind::BoolTy, dim);
     if (in.has_raw_data()) {
