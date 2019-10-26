@@ -284,8 +284,6 @@ void LLVMIRGen::performCodeGen() {
   // Generate debug information.
   generateDebugInfo();
 
-  // And pass the ownership to the JIT.
-
   if (dumpIR) {
     llvm::outs() << "LLVM module after optimizations:\n";
     llmodule_->print(llvm::outs(), nullptr);
@@ -736,7 +734,7 @@ void LLVMIRGen::emitDataParallelKernel(
     // If adding the buffers of current instruction might make the total number
     // of unique buffer exceed `kArgLimit`, we need to emit the kernel and start
     // over. Note the "might" as this method is pessimistic, because number of
-    // buffers from current instructure might not be unique. Trade-off here is
+    // buffers from current instruction might not be unique. Trade-off here is
     // that the algorithm is cleaner and in practice, if we over-estimate the
     // argument size by several, it does not matter too much.
     if (argTypes.size() + I->getOperands().size() > kArgLimit) {

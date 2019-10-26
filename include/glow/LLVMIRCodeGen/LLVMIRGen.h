@@ -85,7 +85,7 @@ protected:
   /// \param builder IRBuilder to be used for the LLVM IR code emission.
   /// \param bundle set of instructions to be emitted as a data-parallel kernel.
   /// \param argType types of arguments for the data-parallel kernel.
-  /// \bufferToArgNum mapping from a buffer to its argument number in the
+  /// \param bufferToArgNum mapping from a buffer to its argument number in the
   /// data-parallel kernel.
   /// \param buffers buffers used by the data-parallel kernel.
   virtual void
