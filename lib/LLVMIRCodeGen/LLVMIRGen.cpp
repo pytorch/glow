@@ -182,7 +182,7 @@ static void registerEmptyDiagHandler(llvm::LLVMContext &ctx) {
 void LLVMIRGen::initCodeGen() {
   instrNumbering_.reset(new InstructionNumbering(*F_));
   // Load the jit library as a new module.
-  llmodule_ = loadStandardLibrary(&ctx_, "libjit.bc", libjitBC_);
+  llmodule_ = loadStandardLibrary(&getLLVMContext(), "libjit.bc", libjitBC_);
   CHECK(llmodule_.get()) << "Unable to load the JIT library.";
 
   // By default, LLVM would emit some diagnostics, remarks, etc. It is fine for
@@ -190,26 +190,32 @@ void LLVMIRGen::initCodeGen() {
   // providing a dummy diagnostics handler, that does not emit anything.
   // In particular, this allows us to get rid of the annoying "cannot vectorize"
   // warnings.
-  registerEmptyDiagHandler(ctx_);
+  registerEmptyDiagHandler(getLLVMContext());
 
   // Assign the target information to the module.
   llmodule_->setDataLayout(getTargetMachine().createDataLayout());
 
   // Create the entry function into the LLVM module.
-  auto int8PtrTy = llvm::Type::getInt8PtrTy(ctx_);
-  auto sizeTPtrTy = llvm::Type::getIntNPtrTy(ctx_, getLibjitSizeTWidth());
+  auto int8PtrTy = llvm::Type::getInt8PtrTy(getLLVMContext());
+  auto sizeTPtrTy =
+      llvm::Type::getIntNPtrTy(getLLVMContext(), getLibjitSizeTWidth());
   // The entry point has the following API:
   // void entry(uint8_t *baseConstantWeightVars, uint8_t
   // *baseInoutWeightVars, uint8_t *baseActivations, size_t *offsets);
-  llvm::Type *voidTy = llvm::Type::getVoidTy(ctx_);
+  llvm::Type *voidTy = llvm::Type::getVoidTy(getLLVMContext());
   llvm::FunctionType *jitFuncTy = llvm::FunctionType::get(
       voidTy, {int8PtrTy, int8PtrTy, int8PtrTy, sizeTPtrTy}, false);
   auto *func = llvm::Function::Create(
       jitFuncTy, llvm::Function::ExternalLinkage, "main", llmodule_.get());
 
   // Setup the entry basic block and initialize the IR builder.
-  llvm::BasicBlock *entry_bb = llvm::BasicBlock::Create(ctx_, "entry", func);
+  llvm::BasicBlock *entry_bb =
+      llvm::BasicBlock::Create(getLLVMContext(), "entry", func);
   builder_ = llvm::make_unique<llvm::IRBuilder<>>(entry_bb);
+  // Terminate the function with a return instruction.
+  auto *ret = builder_->CreateRetVoid();
+  // Emit all the code before the retrun instruction.
+  builder_->SetInsertPoint(ret);
 
   // Initialize the debug information emission.
   initDebugInfo();
@@ -251,13 +257,9 @@ llvm::Type *LLVMIRGen::getElementType(llvm::IRBuilder<> &builder,
 }
 
 void LLVMIRGen::performCodeGen() {
-  auto *func = builder_->GetInsertBlock()->getParent();
   loadBaseAddresses(*builder_);
 
   generateLLVMIRForModule(*builder_);
-
-  // Terminate the function.
-  builder_->CreateRetVoid();
 
   if (dumpIR) {
     llvm::outs() << "LLVM module before optimizations:\n";
@@ -277,12 +279,10 @@ void LLVMIRGen::performCodeGen() {
   }
 
   // Optimize the module.
-  optimizeLLVMModule(func, getTargetMachine());
+  optimizeLLVMModule(&getModule(), getTargetMachine());
 
   // Generate debug information.
   generateDebugInfo();
-
-  // And pass the ownership to the JIT.
 
   if (dumpIR) {
     llvm::outs() << "LLVM module after optimizations:\n";
@@ -316,37 +316,37 @@ llvm::Value *LLVMIRGen::emitValueAddress(llvm::IRBuilder<> &builder,
 
   switch (val->getElementType()) {
   case ElemKind::FloatTy:
-    T = llvm::Type::getFloatPtrTy(ctx_);
+    T = llvm::Type::getFloatPtrTy(getLLVMContext());
     break;
   case ElemKind::Int8QTy:
-    T = llvm::Type::getInt8PtrTy(ctx_);
+    T = llvm::Type::getInt8PtrTy(getLLVMContext());
     break;
   case ElemKind::UInt8QTy:
-    T = llvm::Type::getInt8PtrTy(ctx_);
+    T = llvm::Type::getInt8PtrTy(getLLVMContext());
     break;
   case ElemKind::Int16QTy:
-    T = llvm::Type::getInt16PtrTy(ctx_);
+    T = llvm::Type::getInt16PtrTy(getLLVMContext());
     break;
   case ElemKind::Int32QTy:
-    T = llvm::Type::getInt32PtrTy(ctx_);
+    T = llvm::Type::getInt32PtrTy(getLLVMContext());
     break;
   case ElemKind::Int64ITy:
-    T = llvm::Type::getInt64PtrTy(ctx_);
+    T = llvm::Type::getInt64PtrTy(getLLVMContext());
     break;
   case ElemKind::Int32ITy:
-    T = llvm::Type::getInt32PtrTy(ctx_);
+    T = llvm::Type::getInt32PtrTy(getLLVMContext());
     break;
   case ElemKind::UInt8FusedQTy:
-    T = llvm::Type::getInt8PtrTy(ctx_);
+    T = llvm::Type::getInt8PtrTy(getLLVMContext());
     break;
   case ElemKind::UInt8FusedFP16QTy:
-    T = llvm::Type::getInt8PtrTy(ctx_);
+    T = llvm::Type::getInt8PtrTy(getLLVMContext());
     break;
   case ElemKind::UInt4FusedFP16QTy:
-    T = llvm::Type::getInt8PtrTy(ctx_);
+    T = llvm::Type::getInt8PtrTy(getLLVMContext());
     break;
   case ElemKind::BoolTy:
-    T = llvm::Type::getInt8PtrTy(ctx_);
+    T = llvm::Type::getInt8PtrTy(getLLVMContext());
     break;
   default:
     LOG(FATAL) << "Unsupported element type: "
@@ -461,7 +461,7 @@ llvm::Value *LLVMIRGen::emitValueSize(llvm::IRBuilder<> &builder,
 }
 
 llvm::Value *LLVMIRGen::emitConstF32(llvm::IRBuilder<> &builder, float val) {
-  return llvm::ConstantFP::get(llvm::Type::getFloatTy(ctx_), val);
+  return llvm::ConstantFP::get(llvm::Type::getFloatTy(getLLVMContext()), val);
 }
 
 llvm::Value *LLVMIRGen::emitConstI32(llvm::IRBuilder<> &builder, int32_t val) {
@@ -484,7 +484,7 @@ llvm::Value *LLVMIRGen::emitConst(llvm::IRBuilder<> &builder, float val,
                                   glow::ElemKind kind) {
   switch (kind) {
   case ElemKind::FloatTy:
-    return llvm::ConstantFP::get(llvm::Type::getFloatTy(ctx_), val);
+    return llvm::ConstantFP::get(llvm::Type::getFloatTy(getLLVMContext()), val);
   case ElemKind::Float16Ty:
     llvm_unreachable("Not implemented");
   case ElemKind::Int64ITy:
@@ -514,7 +514,7 @@ llvm::Value *LLVMIRGen::emitConst(llvm::IRBuilder<> &builder, float val,
 llvm::Value *LLVMIRGen::emitStringConst(llvm::IRBuilder<> &builder,
                                         llvm::StringRef str) {
   llvm::Constant *constStrArray =
-      llvm::ConstantDataArray::getString(ctx_, str, true);
+      llvm::ConstantDataArray::getString(getLLVMContext(), str, true);
   llvm::GlobalVariable *gvarStr = new llvm::GlobalVariable(
       *llmodule_, constStrArray->getType(), true,
       llvm::GlobalValue::PrivateLinkage, constStrArray, ".str");
@@ -659,7 +659,7 @@ void LLVMIRGen::emitDataParallelKernelImpl(
     return;
   }
   // Create stacked kernel function type.
-  llvm::Type *voidTy = llvm::Type::getVoidTy(ctx_);
+  llvm::Type *voidTy = llvm::Type::getVoidTy(getLLVMContext());
   llvm::FunctionType *kernelFuncTy =
       llvm::FunctionType::get(voidTy, argTypes, false);
   auto *kernelFunc =
@@ -673,13 +673,13 @@ void LLVMIRGen::emitDataParallelKernelImpl(
 
   // Create the entry BB.
   llvm::BasicBlock *entryBB =
-      llvm::BasicBlock::Create(ctx_, "entry", kernelFunc);
+      llvm::BasicBlock::Create(getLLVMContext(), "entry", kernelFunc);
   llvm::IRBuilder<> kernelBuilder(entryBB);
   // Number of tensor elements.
   auto *numElements =
       emitValueSize(kernelBuilder, bundle[0]->getOperand(0).first);
   // Create a loop inside the stacked kernel function being generated.
-  auto loopBBs = createLoop(kernelBuilder, ctx_, numElements);
+  auto loopBBs = createLoop(kernelBuilder, getLLVMContext(), numElements);
 
   // Get the index parameter of the loop.
   // This is the PHI node of the BB.
@@ -734,7 +734,7 @@ void LLVMIRGen::emitDataParallelKernel(
     // If adding the buffers of current instruction might make the total number
     // of unique buffer exceed `kArgLimit`, we need to emit the kernel and start
     // over. Note the "might" as this method is pessimistic, because number of
-    // buffers from current instructure might not be unique. Trade-off here is
+    // buffers from current instruction might not be unique. Trade-off here is
     // that the algorithm is cleaner and in practice, if we over-estimate the
     // argument size by several, it does not matter too much.
     if (argTypes.size() + I->getOperands().size() > kArgLimit) {

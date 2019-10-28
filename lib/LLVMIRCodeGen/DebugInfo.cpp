@@ -42,7 +42,8 @@ void LLVMIRGen::setCurrentDebugLocation(llvm::IRBuilder<> &builder,
     return;
   auto instrNum = instrNumbering_->getInstrNumber(I);
   auto DILoc = llvm::DILocation::get(
-      ctx_, dbgInfo_.mainFileFirstInstrLineNo_ + instrNum, 0, dbgInfo_.mainF_);
+      getLLVMContext(), dbgInfo_.mainFileFirstInstrLineNo_ + instrNum, 0,
+      dbgInfo_.mainF_);
   llvm::DebugLoc loc(DILoc);
   builder.SetCurrentDebugLocation(loc);
 }
@@ -130,7 +131,8 @@ void LLVMIRGen::generateFunctionDebugInfo(llvm::Function *F) {
     for (auto &I : BB) {
       if (I.getDebugLoc())
         continue;
-      I.setDebugLoc(llvm::DebugLoc(llvm::DILocation::get(ctx_, 0, 0, scope)));
+      I.setDebugLoc(
+          llvm::DebugLoc(llvm::DILocation::get(getLLVMContext(), 0, 0, scope)));
     }
   }
 }
@@ -327,9 +329,9 @@ void LLVMIRGen::emitDebugGlobalVariableForValue(const Value *val) {
   auto dbgElemTy = getDebugType(*builder_, getElementType(*builder_, val));
   llvm::SmallVector<llvm::Metadata *, 8> subranges;
   for (auto dim : dims) {
-    subranges.push_back(llvm::DISubrange::get(ctx_, dim));
+    subranges.push_back(llvm::DISubrange::get(getLLVMContext(), dim));
   }
-  auto subscripts = llvm::MDTuple::get(ctx_, subranges);
+  auto subscripts = llvm::MDTuple::get(getLLVMContext(), subranges);
   auto dbgArrayTy = DIBuilder_->createArrayType(
       ty->getSizeInBytes() * 8, sizeof(float), dbgElemTy, subscripts);
 
@@ -416,7 +418,8 @@ void LLVMIRGen::generateDebugInfo() {
         if (I.getDebugLoc() &&
             I.getDebugLoc()->getScope()->getName() != F.getName())
           continue;
-        I.setDebugLoc(llvm::DebugLoc(llvm::DILocation::get(ctx_, 0, 0, scope)));
+        I.setDebugLoc(llvm::DebugLoc(
+            llvm::DILocation::get(getLLVMContext(), 0, 0, scope)));
       }
     }
   }
