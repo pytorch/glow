@@ -330,3 +330,16 @@ FunctionPassPipeline NNPIBackend::getOptimizationPipeline() const {
 
   return pipeline;
 }
+
+bool NNPIBackend::transformPostLowering(Function *F,
+                                        CompilationContext &cctx) const {
+  LOG_SCOPE(F->getLogContext(), "NNPIBackend::transformPostLowering");
+
+  bool changed = false;
+
+#if FACEBOOK_INTERNAL
+  changed |= transformPrivate(F, cctx);
+#endif /* FACEBOOK_INTERNAL */
+
+  return changed;
+}
