@@ -143,6 +143,10 @@ class Placeholder : public Storage {
   /// Specifies if associated Tensors should be zeroed when allocated.
   bool allocZero_{false};
 
+  /// Specifies if this is a static placeholder, this means it is set once
+  /// before the first network run and will be reused by following runs.
+  bool isStatic_{false};
+
 public:
   /// Create a new placeholder.
   Placeholder(llvm::StringRef name, TypeRef Ty, bool isTrainable)
@@ -157,6 +161,12 @@ public:
 
   /// \returns True if associated Tensors should be zeroed when allocated.
   bool allocZero() const { return allocZero_; }
+
+  /// Update the isStatic_ field.
+  void setStatic(bool isStatic) { isStatic_ = isStatic; }
+
+  /// Get the status of the isStatic_ flag.
+  bool isStatic() const { return isStatic_; }
 
   /// Sets whether or not associated Tensors should be zeroed.
   void setAllocZero(bool on = true) { allocZero_ = on; }

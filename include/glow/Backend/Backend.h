@@ -136,6 +136,11 @@ public:
   /// inputs that can have variable size (e.g., embedding indices).
   virtual bool supportsPartialTensors() const { return false; }
 
+  /// \returns true if the Backend supports static Placeholders. This means
+  /// an input can be treated as a placeholder that can be reused on the device
+  /// for multiple requests.
+  virtual bool supportsStaticPlaceholders() const { return false; }
+
   /// \returns true if Backend generated Instruction for Node \p N,
   /// using IRGenVisitor \p irgen.
   virtual bool generateInst(Node *N, IRGenVisitor &irgen) const {
