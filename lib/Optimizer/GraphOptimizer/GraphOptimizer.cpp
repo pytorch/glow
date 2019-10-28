@@ -1101,8 +1101,24 @@ static bool findSlicesThatSpanInput(llvm::ArrayRef<SliceNode *> input,
 
     // For each slice:
     for (SliceNode *SN : input) {
-      // Ignore slices of invalid types.
-      if (lastSlice->getResult().getType() != SN->getResult().getType()) {
+      // Ignore slices of invalid types. Ignore shapes for now, that's checked
+      // next while ignoring the axis dimension.
+      if (!lastSlice->getResult().getType()->isEqual(
+              *SN->getResult().getType(),
+              /* allowDifferentShape */ true)) {
+        continue;
+      }
+
+      // Check if shapes match except for the axis dimension.
+      bool skip = false;
+      for (size_t i = 0, e = lastSlice->getResult().dims().size(); i < e; ++i) {
+        if (i != dimension &&
+            lastSlice->getResult().dims()[i] != SN->getResult().dims()[i]) {
+          skip = true;
+          break;
+        }
+      }
+      if (skip) {
         continue;
       }
 
@@ -1653,6 +1669,43 @@ static NodeValue simplifyConcatNode(Function *F, ConcatNode *CN) {
   return NodeValue(nullptr);
 }
 
+/// If all of the outputs of \p CN are essentially piped from the inputs of the
+/// concat (i.e. same shape, axis, order) then we can get rid of the slices and
+/// concat. \returns true if this optimization is successful and changes the
+/// Function.
+static bool combineConcatSlices(ConcatNode *CN) {
+  auto inputsToCN = CN->getInputs();
+  std::vector<SliceNode *> slices;
+  std::vector<SliceNode *> orderedSlices;
+  for (auto &user : CN->getUsers()) {
+    if (SliceNode *SN = dyn_cast<SliceNode>(user.getUser())) {
+      slices.push_back(SN);
+    }
+  }
+
+  // Check if the slices span the input value.
+  bool found = findSlicesThatSpanInput(slices, CN->getDim(), orderedSlices);
+  if (!found || orderedSlices.size() != slices.size() ||
+      orderedSlices.size() != inputsToCN.size()) {
+    return false;
+  }
+
+  // Now verify that all of the inputs to CN have the same shape as all of the
+  // slices for the result of CN.
+  for (size_t i = 0, e = orderedSlices.size(); i < e; ++i) {
+    if (orderedSlices[i]->getResult().dims() != inputsToCN[i].dims()) {
+      return false;
+    }
+  }
+
+  // We can now replace all of the inputs to the concat to the result of
+  // each slice.
+  for (size_t i = 0, e = inputsToCN.size(); i < e; ++i) {
+    orderedSlices[i]->getResult().replaceAllUsesOfWith(inputsToCN[i]);
+  }
+  return true;
+}
+
 /// Optimize Concat nodes.
 bool OptimizeConcatNodes::run(Function *F, const CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), getName());
@@ -1666,11 +1719,16 @@ bool OptimizeConcatNodes::run(Function *F, const CompilationContext &cctx) {
       continue;
     }
     NodeValue newCN = simplifyConcatNode(F, CN);
-    if (!newCN.getNode()) {
+    if (newCN.getNode()) {
+      CN->getResult().replaceAllUsesOfWith(newCN);
+      changed = true;
       continue;
     }
-    CN->getResult().replaceAllUsesOfWith(newCN);
-    changed = true;
+
+    if (combineConcatSlices(CN)) {
+      changed = true;
+      continue;
+    }
   }
   return changed;
 }
