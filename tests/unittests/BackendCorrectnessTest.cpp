@@ -411,7 +411,7 @@ TEST_P(BackendCorrectnessTest, convDKKC8Test) {
   Tensor out2;
   inferConvDKKC8(&out1, backendName_);
   inferConvDKKC8(&out2, "Interpreter");
-  EXPECT_TRUE(out1.isEqual(out2));
+  EXPECT_TRUE(out1.isEqual(out2, 0.00013));
 }
 
 TEST_P(BackendCorrectnessTest, softmaxGradTest) {
