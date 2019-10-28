@@ -25,6 +25,7 @@ namespace glow {
 namespace onnxifi {
 
 bool GlowDumpGraph = false;
+bool GlowDisableNNPITransforms = false;
 
 } // namespace onnxifi
 } // namespace glow
@@ -334,6 +335,10 @@ FunctionPassPipeline NNPIBackend::getOptimizationPipeline() const {
 bool NNPIBackend::transformPostLowering(Function *F,
                                         CompilationContext &cctx) const {
   LOG_SCOPE(F->getLogContext(), "NNPIBackend::transformPostLowering");
+
+  if (glow::onnxifi::GlowDisableNNPITransforms) {
+    return false;
+  }
 
   bool changed = false;
 
