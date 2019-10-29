@@ -428,6 +428,10 @@ private:
   /// Load a PyTorch aten::bmm node.
   /// \returns error on failure.
   Error loadBmm(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch aten::tanh node.
+  /// \returns error on failure.
+  Error loadTanh(const torch::jit::Node *ptNode);
 };
 
 } // namespace glow
