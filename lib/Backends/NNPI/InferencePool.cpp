@@ -59,6 +59,11 @@ InferenceThreadEnv::~InferenceThreadEnv() {
 bool InferenceThreadEnv::execute(RunIdentifierTy runId,
                                  std::unique_ptr<ExecutionContext> ctx,
                                  runtime::ResultCBTy resultCB) {
+  TRACE_EVENT_SCOPE(ctx->getTraceContext(), TraceLevel::REQUEST, "execute");
+  if (ctx->getTraceContext()) {
+    ctx->getTraceContext()->setThreadName("InferenceThreadEnv");
+  }
+
   // Pre inference input preparation.
   PlaceholderBindings &bindings = *ctx->getPlaceholderBindings();
   ioTensors_.clear();
@@ -105,128 +110,137 @@ bool InferenceThreadEnv::execute(RunIdentifierTy runId,
     }
   }
 
-  if (UseInferenceAPI()) {
-    // Copy data to host resource and preprocess int64.
-    // Queue copy commands.
-    // For every input: lock host, copy data (+convert), unlock.
-    LOG_AND_RETURN_IF_NOT(ERROR, hostInputs_.size() == rawInputs_.size(),
-                          "Bad inputs", false);
-    for (size_t i = 0, e = hostInputs_.size(); i < e; i++) {
-      void *pHostInput(nullptr);
-
-      // Lock input host resource.
-      LOG_NNPI_INF_ERROR_RETURN_FALSE(
-          nnpiHostResourceLock(hostInputs_[i].handle, NNPI_LOCK_FOR_WRITE,
-                               UINT32_MAX, &pHostInput),
-          "Failed to lock host resource");
-      LOG_AND_RETURN_IF_NOT(ERROR, pHostInput, "Bad input", false);
-
-      LOG_AND_RETURN_IF_NOT(ERROR, ioTensors_.count(hostInputs_[i].name),
-                            "Input not found", false);
-      auto *t = ioTensors_.at(hostInputs_[i].name);
-
-      size_t bufferSize = t->size() * t->getType().getElementSize();
-      if (t->getElementType() == glow::ElemKind::Int64ITy) {
-        bufferSize /= 2;
-      }
-      std::memcpy(pHostInput, rawInputs_[i], bufferSize);
-
-      // Unlock host resource.
-      LOG_NNPI_INF_ERROR_RETURN_FALSE(
-          nnpiHostResourceUnlock(hostInputs_[i].handle),
-          "Failed to unlock host resource");
-    }
-
-    // Queue copy commands.
-    for (auto &cmd : inputCopyCmds_) {
-      LOG_NNPI_INF_ERROR_RETURN_FALSE(nnpiCopyCommandQueue(cmd, 0),
-                                      "Failed to queue copy command");
-    }
-  }
-
-  // Inference.
-  if (UseInferenceAPI()) {
-    LOG_NNPI_INF_ERROR_RETURN_FALSE(nnpiInferCommandQueue(inferCmd_, 0),
-                                    "Failed to queue infer command");
-    for (auto &cmd : outputCopyCmds_) {
-      LOG_NNPI_INF_ERROR_RETURN_FALSE(nnpiCopyCommandQueue(cmd, 0),
-                                      "Failed to queue copy command");
-    }
-  } else if (!UseIceT()) {
-    // Infer on ice-ref.
-    LOG_NNPI_ERROR_RETURN_FALSE(
-        nnpiNetworkInferOnHost(nnpiNetwork_, &(rawInputs_[0]),
-                               rawInputs_.size(), &(rawOutputs_[0]),
-                               rawOutputs_.size(), &compilationConfig_,
-                               NNPI_INVALID_NNPIHANDLE),
-        "Failed NNPI infer (ICE-Ref)");
-
-    // Convert outputs.
-    size_t currOut = 0;
-    for (auto &out : netOutputs_) {
-      LOG_AND_RETURN_IF_NOT(ERROR, ioTensors_.count(out.first),
-                            "Output not found", false);
-      auto *t = ioTensors_.at(out.first);
-
-      switch (t->getElementType()) {
-      case glow::ElemKind::Int64ITy: {
-        // Convert int32 outputs to size_t.
-        int64_t *pOutput = reinterpret_cast<int64_t *>(t->getUnsafePtr());
-        int32_t *tmp = reinterpret_cast<int32_t *>(rawOutputs_[currOut]);
-        for (size_t i = 0, e = t->size(); i < e; i++) {
-          pOutput[i] = static_cast<int64_t>(tmp[i]);
-        }
-      } break;
-      default:; // Do nothing.
-      }
-      currOut++;
-    }
-  } else //! UseInferenceAPI && UseIceT.
   {
-    for (auto &out : netOutputs_) {
-      LOG_AND_RETURN_IF_NOT(ERROR, ioTensors_.count(out.first),
-                            "Output not found", false);
-      auto *t = ioTensors_.at(out.first);
-      t->zero();
+    TRACE_EVENT_SCOPE(ctx->getTraceContext(), TraceLevel::REQUEST,
+                      UseInferenceAPI() ? "queuing" : "running");
+    if (UseInferenceAPI()) {
+      // Copy data to host resource and preprocess int64.
+      // Queue copy commands.
+      // For every input: lock host, copy data (+convert), unlock.
+      LOG_AND_RETURN_IF_NOT(ERROR, hostInputs_.size() == rawInputs_.size(),
+                            "Bad inputs", false);
+      for (size_t i = 0, e = hostInputs_.size(); i < e; i++) {
+        void *pHostInput(nullptr);
+
+        // Lock input host resource.
+        LOG_NNPI_INF_ERROR_RETURN_FALSE(
+            nnpiHostResourceLock(hostInputs_[i].handle, NNPI_LOCK_FOR_WRITE,
+                                 UINT32_MAX, &pHostInput),
+            "Failed to lock host resource");
+        LOG_AND_RETURN_IF_NOT(ERROR, pHostInput, "Bad input", false);
+
+        LOG_AND_RETURN_IF_NOT(ERROR, ioTensors_.count(hostInputs_[i].name),
+                              "Input not found", false);
+        auto *t = ioTensors_.at(hostInputs_[i].name);
+
+        size_t bufferSize = t->size() * t->getType().getElementSize();
+        if (t->getElementType() == glow::ElemKind::Int64ITy) {
+          bufferSize /= 2;
+        }
+        std::memcpy(pHostInput, rawInputs_[i], bufferSize);
+
+        // Unlock host resource.
+        LOG_NNPI_INF_ERROR_RETURN_FALSE(
+            nnpiHostResourceUnlock(hostInputs_[i].handle),
+            "Failed to unlock host resource");
+      }
+
+      // Queue copy commands.
+      for (auto &cmd : inputCopyCmds_) {
+        LOG_NNPI_INF_ERROR_RETURN_FALSE(nnpiCopyCommandQueue(cmd, 0),
+                                        "Failed to queue copy command");
+      }
+    }
+
+    // Inference.
+    if (UseInferenceAPI()) {
+      LOG_NNPI_INF_ERROR_RETURN_FALSE(nnpiInferCommandQueue(inferCmd_, 0),
+                                      "Failed to queue infer command");
+      for (auto &cmd : outputCopyCmds_) {
+        LOG_NNPI_INF_ERROR_RETURN_FALSE(nnpiCopyCommandQueue(cmd, 0),
+                                        "Failed to queue copy command");
+      }
+    } else if (!UseIceT()) {
+      // Infer on ice-ref.
+      LOG_NNPI_ERROR_RETURN_FALSE(
+          nnpiNetworkInferOnHost(nnpiNetwork_, &(rawInputs_[0]),
+                                 rawInputs_.size(), &(rawOutputs_[0]),
+                                 rawOutputs_.size(), &compilationConfig_,
+                                 NNPI_INVALID_NNPIHANDLE),
+          "Failed NNPI infer (ICE-Ref)");
+
+      // Convert outputs.
+      size_t currOut = 0;
+      for (auto &out : netOutputs_) {
+        LOG_AND_RETURN_IF_NOT(ERROR, ioTensors_.count(out.first),
+                              "Output not found", false);
+        auto *t = ioTensors_.at(out.first);
+
+        switch (t->getElementType()) {
+        case glow::ElemKind::Int64ITy: {
+          // Convert int32 outputs to size_t.
+          int64_t *pOutput = reinterpret_cast<int64_t *>(t->getUnsafePtr());
+          int32_t *tmp = reinterpret_cast<int32_t *>(rawOutputs_[currOut]);
+          for (size_t i = 0, e = t->size(); i < e; i++) {
+            pOutput[i] = static_cast<int64_t>(tmp[i]);
+          }
+        } break;
+        default:; // Do nothing.
+        }
+        currOut++;
+      }
+    } else //! UseInferenceAPI && UseIceT.
+    {
+      for (auto &out : netOutputs_) {
+        LOG_AND_RETURN_IF_NOT(ERROR, ioTensors_.count(out.first),
+                              "Output not found", false);
+        auto *t = ioTensors_.at(out.first);
+        t->zero();
+      }
     }
   }
 
-  // Post inference output handling.
-  if (UseInferenceAPI()) {
-    // For every output, lock and copy data (+convert), unlock
-    // then copy to output tensors.
-    LOG_AND_RETURN_IF_NOT(ERROR, hostOutputs_.size() == rawOutputs_.size(),
-                          "Bad outputs", false);
-    for (size_t i = 0, e = hostOutputs_.size(); i < e; i++) {
-      void *pHostOutput(nullptr);
+  {
+    TRACE_EVENT_SCOPE(ctx->getTraceContext(), TraceLevel::REQUEST,
+                      UseInferenceAPI() ? "running on device"
+                                        : "copying output");
+    // Post inference output handling.
+    if (UseInferenceAPI()) {
+      // For every output, lock and copy data (+convert), unlock
+      // then copy to output tensors.
+      LOG_AND_RETURN_IF_NOT(ERROR, hostOutputs_.size() == rawOutputs_.size(),
+                            "Bad outputs", false);
+      for (size_t i = 0, e = hostOutputs_.size(); i < e; i++) {
+        void *pHostOutput(nullptr);
 
-      // Lock output host resource.
-      LOG_NNPI_INF_ERROR_RETURN_FALSE(
-          nnpiHostResourceLock(hostOutputs_[i].handle, NNPI_LOCK_FOR_READ,
-                               UINT32_MAX, &pHostOutput),
-          "Failed to lock host resource");
-      LOG_AND_RETURN_IF_NOT(ERROR, pHostOutput, "Bad output", false);
+        // Lock output host resource.
+        LOG_NNPI_INF_ERROR_RETURN_FALSE(
+            nnpiHostResourceLock(hostOutputs_[i].handle, NNPI_LOCK_FOR_READ,
+                                 UINT32_MAX, &pHostOutput),
+            "Failed to lock host resource");
+        LOG_AND_RETURN_IF_NOT(ERROR, pHostOutput, "Bad output", false);
 
-      // Copy data to output tensor.
-      LOG_AND_RETURN_IF_NOT(ERROR, ioTensors_.count(hostOutputs_[i].name),
-                            "Can't find output", false);
-      auto *t = ioTensors_.at(hostOutputs_[i].name);
-      size_t bufferSize = t->size() * t->getType().getElementSize();
+        // Copy data to output tensor.
+        LOG_AND_RETURN_IF_NOT(ERROR, ioTensors_.count(hostOutputs_[i].name),
+                              "Can't find output", false);
+        auto *t = ioTensors_.at(hostOutputs_[i].name);
+        size_t bufferSize = t->size() * t->getType().getElementSize();
 
-      if (t->getElementType() == glow::ElemKind::Int64ITy) {
-        int64_t *pOutput = reinterpret_cast<int64_t *>(t->getUnsafePtr());
-        int32_t *tmp = reinterpret_cast<int32_t *>(pHostOutput);
-        for (size_t i = 0, e = t->size(); i < e; i++) {
-          pOutput[i] = static_cast<int64_t>(tmp[i]);
+        if (t->getElementType() == glow::ElemKind::Int64ITy) {
+          int64_t *pOutput = reinterpret_cast<int64_t *>(t->getUnsafePtr());
+          int32_t *tmp = reinterpret_cast<int32_t *>(pHostOutput);
+          for (size_t i2 = 0, e2 = t->size(); i2 < e2; i2++) {
+            pOutput[i2] = static_cast<int64_t>(tmp[i2]);
+          }
+        } else {
+          std::memcpy(t->getUnsafePtr(), pHostOutput, bufferSize);
         }
-      } else {
-        std::memcpy(t->getUnsafePtr(), pHostOutput, bufferSize);
-      }
 
-      // Unlock host resource.
-      LOG_NNPI_INF_ERROR_RETURN_FALSE(
-          nnpiHostResourceUnlock(hostOutputs_[i].handle),
-          "Failed to unlock host resource");
+        // Unlock host resource.
+        LOG_NNPI_INF_ERROR_RETURN_FALSE(
+            nnpiHostResourceUnlock(hostOutputs_[i].handle),
+            "Failed to unlock host resource");
+      }
     }
   }
 
@@ -237,6 +251,8 @@ bool InferenceThreadEnv::execute(RunIdentifierTy runId,
   rawInputs_.clear();
   rawOutputs_.clear();
   ioTensors_.clear();
+
+  TRACE_EVENT_SCOPE_END(); // we move context in the line below
 
   // Invoke CB.
   resultCB(runId, Error::success(), std::move(ctx));
