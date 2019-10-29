@@ -142,6 +142,13 @@ llvm::cl::opt<bool>
                    llvm::cl::Optional, llvm::cl::init(false),
                    llvm::cl::cat(imageLoaderCat));
 
+llvm::cl::opt<unsigned> traceLevel(
+    "trace-level",
+    llvm::cl::desc(
+        "Set tracing level (bit-field, see TraceEvents.h for details)"),
+    llvm::cl::Optional, llvm::cl::init((unsigned)TraceLevel::STANDARD),
+    llvm::cl::cat(imageLoaderCat));
+
 llvm::cl::opt<unsigned>
     warmup("warmup",
            llvm::cl::desc("How many passes to do to warm everything up"),
@@ -450,11 +457,14 @@ static void runInference(runtime::HostManager *hostManager, std::string name,
         if (!tracePath.empty()) {
           if (!warmUp) {
             std::lock_guard<std::mutex> l(eventLock);
+            // Temporary (AIBench relies on inference_e2e metric)
+            // Later we switch AIBench to the metric from
+            // HostManager::dispatchNextRun()
+            traceContext->logCompleteTraceEvent("inference_e2e",
+                                                TraceLevel::RUNTIME, start);
             // Merge this run's TraceEvents into the global
             // TraceContext.
             traceContext->merge(contextPtr->getTraceContext());
-            traceContext->logCompleteTraceEvent("inference_e2e",
-                                                TraceLevel::RUNTIME, start, {});
           } else {
             contextPtr->getTraceContext()->getTraceEvents().clear();
           }
@@ -510,8 +520,7 @@ setupContextPool(Placeholder *outputPH, Placeholder *inputImagePH,
   // Setup pool of inference requests to be run.
   for (unsigned i = 0; i < iterations; i++) {
     auto newContext = llvm::make_unique<ExecutionContext>();
-    newContext->setTraceContext(
-        llvm::make_unique<TraceContext>(TraceLevel::STANDARD));
+    newContext->setTraceContext(llvm::make_unique<TraceContext>(traceLevel));
     auto ph = newContext->getPlaceholderBindings();
     ph->insert(inputImagePH, Tensor(inputImageData.getType()));
     ph->allocate(outputPH);

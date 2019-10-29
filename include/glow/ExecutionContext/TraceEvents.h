@@ -17,6 +17,7 @@
 #define GLOW_BACKENDS_TRACEEVENTS_H
 
 #include "glow/Graph/Nodes.h"
+#include "glow/Support/ThreadPool.h"
 #include "llvm/ADT/DenseMap.h"
 
 #include <map>
@@ -48,6 +49,8 @@ struct TraceEvent {
   static constexpr auto EndType = 'E';
   static constexpr auto InstantType = 'I';
   static constexpr auto CompleteType = 'X';
+  static constexpr auto AsyncBeginType = 'b';
+  static constexpr auto AsyncEndType = 'e';
   /// MetadataType is used for the thread name mapping.
   static constexpr auto MetadataType = 'M';
 
@@ -68,23 +71,27 @@ struct TraceEvent {
   /// Duration of the event (for Complete events).
   uint64_t duration{0};
 
+  /// Async event id (-1 == no id)
+  int id{-1};
+
   /// The type/verbosity of this event.
   TraceLevel level{NONE};
 
   /// Arbitrary TraceEvent arguments (from spec).
   std::map<std::string, std::string> args;
 
-  TraceEvent(llvm::StringRef n, TraceLevel l, uint64_t ts, char c, int t)
-      : name(n), timestamp(ts), type(c), tid(t), level(l) {}
+  TraceEvent(llvm::StringRef n, TraceLevel l, uint64_t ts, char c, int t,
+             int d = -1)
+      : name(n), timestamp(ts), type(c), tid(t), id(d), level(l) {}
 
   TraceEvent(llvm::StringRef n, TraceLevel l, uint64_t ts, char c, int t,
-             std::map<std::string, std::string> a)
-      : name(n), timestamp(ts), type(c), tid(t), level(l), args(a) {}
+             std::map<std::string, std::string> a, int d = -1)
+      : name(n), timestamp(ts), type(c), tid(t), id(d), level(l), args(a) {}
 
   TraceEvent(llvm::StringRef n, TraceLevel l, uint64_t ts, uint64_t dur, int t,
-             std::map<std::string, std::string> a = {})
+             std::map<std::string, std::string> a = {}, int d = -1)
       : name(n), timestamp(ts), type(CompleteType), tid(t), duration(dur),
-        level(l), args(a) {}
+        id(d), level(l), args(a) {}
 
   static void
   dumpTraceEvents(std::vector<TraceEvent> &events, llvm::StringRef filename,
@@ -184,24 +191,32 @@ public:
   bool shouldLog(TraceLevel level) { return (traceLevel_ & level) != 0; }
 
   /// Logs a new TraceEvent at the current time with the given \p name, \p
-  /// type and optionally additional attributes.
+  /// type and optionally additional attributes and threadId.
   void
   logTraceEvent(llvm::StringRef name, TraceLevel level,
                 char type = TraceEvent::InstantType,
-                std::map<std::string, std::string> additionalAttributes = {});
+                std::map<std::string, std::string> additionalAttributes = {},
+                size_t tid = threads::getThreadId(), int id = -1);
 
-  // Logs a new TraceEvent at the provided \p timestamp, with the given \p
-  // name, \p type and optionally additional attributes.
+  /// Logs a new TraceEvent at the provided \p timestamp, with the given \p
+  /// name, \p type and optionally additional attributes.
   void
   logTraceEvent(llvm::StringRef name, TraceLevel level, char type,
                 uint64_t timestamp,
-                std::map<std::string, std::string> additionalAttributes = {});
+                std::map<std::string, std::string> additionalAttributes = {},
+                size_t tid = threads::getThreadId(), int id = -1);
+
+  /// Check if event should be logged and then log pre-created TraceEvent
+  void logTraceEvent(TraceEvent &&ev);
 
   /// Logs a new TraceEvent with the Complete event type, the start time is
   /// provided and uses the current time to determine duration.
   void logCompleteTraceEvent(
       llvm::StringRef name, TraceLevel level, uint64_t startTimestamp,
       std::map<std::string, std::string> additionalAttributes = {});
+  void logCompleteTraceEvent(
+      llvm::StringRef name, TraceLevel level, uint64_t startTimestamp,
+      std::map<std::string, std::string> additionalAttributes, size_t tid);
 
   /// Sets the human readable \p name for thread \tid.
   void setThreadName(int tid, llvm::StringRef name);
@@ -251,6 +266,24 @@ public:
 #define TRACE_EVENT_LOG(ctx, level, name, type, ts)                            \
   if (ctx) {                                                                   \
     ctx->logTraceEvent(name, level, type, ts);                                 \
+  }
+
+/// Logs a new TraceEvent with the provided type and timestamp.
+#define TRACE_EVENT_LOG_ID(ctx, level, name, type, ts, id)                     \
+  if (ctx) {                                                                   \
+    ctx->logTraceEvent(name, level, type, ts, {}, threads::getThreadId(), id); \
+  }
+
+/// Create TraceEvent, don't log it
+#define TRACE_EVENT_CREATE(variable, level, name, type, id)                    \
+  TraceEvent variable(name, level, TraceEvent::now(), type,                    \
+                      threads::getThreadId(), {}, id)
+
+/// Logs a pre-created TraceEvent
+#define TRACE_EVENT_LOG_PRE_CREATED(ctx, ev)                                   \
+  if (ctx) {                                                                   \
+    ev.tid = threads::getThreadId();                                           \
+    ctx->logTraceEvent(std::move(ev));                                         \
   }
 
 /// Logs a new TraceEvent which begins and ends in the current scope block.
