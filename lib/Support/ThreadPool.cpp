@@ -20,12 +20,14 @@ namespace glow {
 namespace threads {
 
 static std::atomic<std::size_t> thread_idx{0};
+
 size_t getThreadId() {
   thread_local std::size_t id = thread_idx++;
   return id;
 }
 
 size_t createThreadId() { return thread_idx++; }
+
 } // namespace threads
 
 ThreadExecutor::ThreadExecutor()

@@ -364,20 +364,25 @@ Error HostManager::runNetworkBlocking(
 }
 
 void HostManager::dispatchNextRun() {
-
   std::lock_guard<std::mutex> networkLock(networkLock_);
   if (inferQueue_.size()) {
     // Get the next request, unfortunately priority_queue only
     // provides a const ref to the top element, since we need to move
     // it we first cast it to remove the const.
     auto request = std::move(const_cast<InferRequest &>(inferQueue_.top()));
+    int requestId = static_cast<int>(request.requestID);
     inferQueue_.pop();
+    TRACE_EVENT_CREATE(beginTraceEvent, TraceLevel::REQUEST,
+                       "network_execution_e2e", TraceEvent::AsyncBeginType,
+                       requestId);
+    auto startTime = TraceEvent::now();
     executor_->run(
         networks_[request.networkName].dag.root.get(),
         std::move(request.context), request.requestID,
-        [this, callback = request.callback, name = request.networkName](
+        [this, callback = request.callback, name = request.networkName,
+         startTime, requestId, beginTraceEvent = std::move(beginTraceEvent)](
             RunIdentifierTy runID, Error err,
-            std::unique_ptr<ExecutionContext> context) {
+            std::unique_ptr<ExecutionContext> context) mutable {
           {
             std::lock_guard<std::mutex> networkLock(networkLock_);
             auto it = networks_.find(name);
@@ -385,8 +390,12 @@ void HostManager::dispatchNextRun() {
               it->second.refcount--;
             }
           }
-          TRACE_EVENT_INSTANT(context->getTraceContext(), TraceLevel::RUNTIME,
-                              "finish_" + name);
+          TRACE_EVENT_LOG_PRE_CREATED(context->getTraceContext(),
+                                      beginTraceEvent);
+          TRACE_EVENT_LOG_ID(context->getTraceContext(), TraceLevel::REQUEST,
+                             "network_execution_e2e", TraceEvent::AsyncEndType,
+                             TraceEvent::now(), requestId);
+          updateExecutionStats(startTime, context);
           callback(runID, std::move(err), std::move(context));
           dispatchNextRun();
         });
@@ -457,6 +466,18 @@ HostManager::runNetwork(llvm::StringRef networkName,
   }
   activeRequestCount_--;
   return currentRun;
+}
+
+/// Helper to update execution stats
+void HostManager::updateExecutionStats(
+    uint64_t startTime, std::unique_ptr<ExecutionContext> &context) {
+  auto duration = TraceEvent::now() - startTime;
+  auto stats = glow::Stats();
+  stats->addTimeSeriesValue("network_execution_e2e", duration);
+  stats->incrementCounter("network_execution");
+  stats->addTimeSeriesValue("network_execution_throughput",
+                            context->getPlaceholderBindings()->getDataSize() *
+                                1000000 / duration);
 }
 
 /// Helper to get the parameters in DeviceConfig from \p str. The \p str has

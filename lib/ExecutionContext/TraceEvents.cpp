@@ -91,6 +91,10 @@ void TraceEvent::dumpTraceEvents(
       file << ", \"dur\": " << event.duration;
     }
 
+    if (event.id != -1) {
+      file << ", \"id\": \"" << event.id << "\"";
+    }
+
     if (!event.args.empty()) {
       file << ", \"args\": {";
       bool firstArg{true};
@@ -137,35 +141,53 @@ llvm::StringRef TraceEvent::traceLevelToString(TraceLevel level) {
 
 void TraceContext::logTraceEvent(
     llvm::StringRef name, TraceLevel level, char type,
-    std::map<std::string, std::string> additionalAttributes) {
+    std::map<std::string, std::string> additionalAttributes, size_t tid,
+    int id) {
   logTraceEvent(name, level, type, TraceEvent::now(),
-                std::move(additionalAttributes));
+                std::move(additionalAttributes), tid, id);
 }
 
 void TraceContext::logTraceEvent(
     llvm::StringRef name, TraceLevel level, char type, uint64_t timestamp,
-    std::map<std::string, std::string> additionalAttributes) {
+    std::map<std::string, std::string> additionalAttributes, size_t tid,
+    int id) {
   if (!shouldLog(level)) {
     return;
   }
 
-  TraceEvent ev(name, level, timestamp, type, threads::getThreadId(),
-                std::move(additionalAttributes));
+  TraceEvent ev(name, level, timestamp, type, tid,
+                std::move(additionalAttributes), id);
   {
     std::lock_guard<std::mutex> l(lock_);
     traceEvents_.push_back(std::move(ev));
   }
 }
 
+void TraceContext::logTraceEvent(TraceEvent &&ev) {
+  if (!shouldLog(ev.level)) {
+    return;
+  }
+  std::lock_guard<std::mutex> l(lock_);
+  traceEvents_.push_back(std::move(ev));
+}
+
 void TraceContext::logCompleteTraceEvent(
     llvm::StringRef name, TraceLevel level, uint64_t startTimestamp,
     std::map<std::string, std::string> additionalAttributes) {
+  this->logCompleteTraceEvent(name, level, startTimestamp,
+                              std::move(additionalAttributes),
+                              threads::getThreadId());
+}
+
+void TraceContext::logCompleteTraceEvent(
+    llvm::StringRef name, TraceLevel level, uint64_t startTimestamp,
+    std::map<std::string, std::string> additionalAttributes, size_t tid) {
   if (!shouldLog(level)) {
     return;
   }
 
   TraceEvent ev(name, level, startTimestamp, TraceEvent::now() - startTimestamp,
-                threads::getThreadId(), std::move(additionalAttributes));
+                tid, std::move(additionalAttributes));
   {
     std::lock_guard<std::mutex> l(lock_);
     traceEvents_.push_back(std::move(ev));
@@ -173,6 +195,7 @@ void TraceContext::logCompleteTraceEvent(
 }
 
 void TraceContext::setThreadName(int tid, llvm::StringRef name) {
+  std::lock_guard<std::mutex> l(lock_);
   threadNames_[tid] = name;
 }
 
