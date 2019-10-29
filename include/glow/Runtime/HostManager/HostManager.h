@@ -141,6 +141,10 @@ class HostManager final {
   /// Method to calculate and export aggregate memory usage counters.
   void exportMemoryCounters();
 
+  /// Execution stats update
+  static void updateExecutionStats(uint64_t startTime,
+                                   std::unique_ptr<ExecutionContext> &context);
+
 public:
   /// Default constructor.
   HostManager() = default;
