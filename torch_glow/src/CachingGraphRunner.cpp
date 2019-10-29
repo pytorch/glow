@@ -62,7 +62,7 @@ CachingGraphRunner::loadImpl(torch::jit::Stack &stack) {
   }
 
   auto info = std::make_shared<PerGlowGraphInfo>();
-  info->functionName = strFormat("PTFunction%lu", hash);
+  info->functionName = strFormat("pt_function_%lu", hash);
 
   std::unique_ptr<Module> module = llvm::make_unique<Module>();
   Function *f = module->createFunction(info->functionName);

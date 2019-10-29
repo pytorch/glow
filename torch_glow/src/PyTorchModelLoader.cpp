@@ -2461,6 +2461,10 @@ PyTorchModelLoader::PyTorchModelLoader(
       outputPlaceholders.push_back(save->getPlaceholder());
     }
 
+    if (settings.dumpGlowDag) {
+      F_.dumpDAG(strFormat("%s.dot", F_.getName().data()));
+    }
+
     return Error::success();
   };
 
