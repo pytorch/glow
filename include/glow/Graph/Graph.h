@@ -936,14 +936,14 @@ public:
   /// Creates and \returns a node of \p name, performing the SparseLengthsSum
   /// operation, using fused rowwise quantization for the input \p data wherein
   /// the scales and offsets are fused inline with each row of data. \p data
-  /// must be ElemKind::UInt8FusedQTy. Gathers slices of the outer-most
-  /// dimension of data indexed by the \p indices vector, and then accumulates
-  /// them into len(\p lengths) entries: first Lengths[0] slices are aggregated
-  /// to Result[0], next Lengths[1] slices are aggregated to Result[1], etc.
-  /// I.e. sum(Lengths) must be equal to len(Indices). \p precision represents
-  /// what precision to use for Scale, Offset, and Result. If
-  /// \p useFP16Accumulation, then internal arithmetic will use FP16
-  /// accumulation; otherwise defaults to FP32.
+  /// must be of a fused ElemKind. Gathers slices of the outer-most dimension of
+  /// data indexed by the \p indices vector, and then accumulates them into
+  /// len(\p lengths) entries: first Lengths[0] slices are aggregated to
+  /// Result[0], next Lengths[1] slices are aggregated to Result[1], etc.  I.e.
+  /// sum(Lengths) must be equal to len(Indices). \p precision represents what
+  /// precision to use for Scale, Offset, and Result. If \p useFP16Accumulation,
+  /// then internal arithmetic will use FP16 accumulation; otherwise defaults to
+  /// FP32.
   FusedRowwiseQuantizedSparseLengthsSumNode *
   createFusedRowwiseQuantizedSparseLengthsSum(
       llvm::StringRef name, Constant *data, NodeValue indices,
@@ -952,10 +952,13 @@ public:
 
   /// Same as \ref createFusedRowwiseQuantizedSparseLengthsSum(), but expects
   /// float input \p data, which is rowwise-quantized and fused internally.
+  /// \p fusedElemKind represents the element kind to use for the final fused
+  /// rowwise-quantized data.
   FusedRowwiseQuantizedSparseLengthsSumNode *
   createFusedRowwiseQuantizedSparseLengthsSum(
       llvm::StringRef name, Tensor &data, NodeValue indices, NodeValue lengths,
-      ElemKind precision = ElemKind::FloatTy, bool useFP16Accumulation = false);
+      ElemKind precision = ElemKind::FloatTy, bool useFP16Accumulation = false,
+      ElemKind fusedElemKind = ElemKind::UInt8FusedQTy);
 
   /// Same as \ref createFusedRowwiseQuantizedSparseLengthsSum(), but i-th slice
   /// is multiplied by weights[i]. len(weights) must be equal to len(indices).
@@ -967,12 +970,14 @@ public:
 
   /// Same as \ref createFusedRowwiseQuantizedSparseLengthsWeightedSum(), but
   /// expects float input \p data, which is rowwise-quantized and fused
-  /// internally.
+  /// internally. \p fusedElemKind represents the element kind to use for the
+  /// final fused rowwise-quantized data.
   FusedRowwiseQuantizedSparseLengthsWeightedSumNode *
   createFusedRowwiseQuantizedSparseLengthsWeightedSum(
       llvm::StringRef name, Tensor &data, NodeValue weights, NodeValue indices,
       NodeValue lengths, ElemKind precision = ElemKind::FloatTy,
-      bool useFP16Accumulation = false);
+      bool useFP16Accumulation = false,
+      ElemKind fusedElemKind = ElemKind::UInt8FusedQTy);
 
   /// Given a vector of segment lengths, calculates offsets of each segment and
   /// packs them next to the lengths. For the input vector of length N the

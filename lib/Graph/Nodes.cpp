@@ -1264,10 +1264,16 @@ static bool verifyFusedRowwiseQuantizedSparseLengthsSum(
   // Wrap this in isValid to prevent potential segfault if the result is
   // incorrectly shaped.
   if (isValid) {
+    // If using 4-bit quantization for embeddings then the input is packed into
+    // two elements per byte.
+    size_t finalSize = result.dims()[1];
+    if (data.getType()->getElementType() == ElemKind::UInt4FusedFP16QTy) {
+      finalSize /= 2;
+    }
     isValid &=
         expectCompareTrue("Result output shape should have second dim without "
                           "extra columns from scale/offset in Data.",
-                          result.dims()[1] + extraCols, data.dims()[1], parent);
+                          finalSize + extraCols, data.dims()[1], parent);
   }
   return isValid;
 }
