@@ -16,14 +16,24 @@
 
 #include "GlowFuser.h"
 
+#include "FuseKnownPatterns.h"
+#include "PyTorchCommon.h"
+#include "PyTorchModelLoader.h"
+#include "Registration.h"
+
 #include <glog/logging.h>
+
+#include <torch/csrc/jit/custom_operator.h>
 #include <torch/csrc/jit/passes/alias_analysis.h>
 #include <torch/csrc/jit/passes/common_subexpression_elimination.h>
 #include <torch/csrc/jit/passes/dead_code_elimination.h>
+#include <torch/csrc/jit/passes/subgraph_rewrite.h>
 #include <torch/csrc/jit/passes/utils/subgraph_utils.h>
 
 namespace glow {
 namespace {
+using isSupportFunc = std::function<bool(torch::jit::Node *)>;
+
 torch::jit::value_list
 sortReverseTopological(at::ArrayRef<torch::jit::Value *> inputs,
                        torch::jit::Block *block) {
@@ -126,10 +136,9 @@ getNewNode(torch::jit::Node *node, torch::jit::AliasDb &aliasDb,
   }
   return {++node->reverseIterator(), false};
 }
-} // namespace
 
-void GlowCustomFuse(std::shared_ptr<torch::jit::Graph> graph, isSupportFunc fn,
-                    at::Symbol kind) {
+void fuseJITNodesToGlow(std::shared_ptr<torch::jit::Graph> graph,
+                        isSupportFunc fn, at::Symbol kind) {
   torch::jit::AliasDb aliasDb(graph);
   auto block = graph->block();
 
@@ -145,6 +154,26 @@ void GlowCustomFuse(std::shared_ptr<torch::jit::Graph> graph, isSupportFunc fn,
   } while (is_changed);
   EliminateCommonSubexpression(graph);
   EliminateDeadCode(graph);
+}
+
+} // namespace
+
+void glowCustomFuse(std::shared_ptr<torch::jit::Graph> graph) {
+  auto symbol = getGlowSymbol();
+
+  static std::once_flag onceFlag;
+  std::call_once(onceFlag, [&symbol]() { registerGlowOp(symbol); });
+
+  glowCustomFuse(graph, symbol);
+}
+
+void glowCustomFuse(std::shared_ptr<torch::jit::Graph> graph, at::Symbol kind) {
+  // Prepare the graph by fusing known patterns for the model loader.
+  // TODO: this should be done only on Glow subgraphs to avoid modifying parts
+  // of the graph that Glow will not be running.
+  fuseKnownPatterns(graph);
+
+  fuseJITNodesToGlow(graph, PyTorchModelLoader::isNodeSupported, kind);
 }
 
 } // namespace glow

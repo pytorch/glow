@@ -56,28 +56,11 @@ ElemKind typeKindToElemKind(c10::TypeKind ty);
 PyTorchLoaderSettings &getPyTorchLoaderSettings();
 
 /// \returns the HostManager singleton used to run all PyTorch graphs in Glow.
-runtime::HostManager *getHostManager();
+std::shared_ptr<runtime::HostManager> getHostManager();
 
 /// \returns the PyTorch symbol to be used for the PyTorch node which represents
 /// the subgraph that Glow will compile and run.
 const c10::Symbol &getGlowSymbol();
-
-/// Executes custom fuse pass for the given \p graph and \p fuseSymbol.
-void glowCustomFuse(std::shared_ptr<torch::jit::Graph> &graph,
-                    at::Symbol fuseSymbol);
-
-/// Register the glow::FusionGroup operator.
-void registerGlowOp(const c10::Symbol &symbol);
-
-/// Register the pass that fuses parts of the graph into a glow::FusionGroup. \p
-/// enablePassFn is used to enable/disable the glow fusion pass once it's
-/// registered.
-void registerGlowFusionPass(std::function<bool()> enablePassFn);
-
-/// Convenience method to register the glow fusion op and pass. \p
-/// enablePassFn is used to enable/disable the glow fusion pass once it's
-/// registered.
-void registerGlowFusionOpAndPass(std::function<bool()> enablePassFn);
 
 /// Given a PyTorch TensorType \p ptType, \returns a matching Glow Type.
 glow::Type ptTypeToGlowType(const c10::TensorType &ptType);
@@ -89,9 +72,6 @@ glow::Tensor ptTensorToGlowTensor(const at::Tensor &ptTensor);
 /// Given a Glow Type \p glowType, \returns an empty PyTorch Tensor with a
 /// matching type.
 at::Tensor glowTypeToEmptyPTTensor(const glow::Type &glowType);
-
-/// Fuse known sets of operators into compact ones.
-void fuseKnownPatterns(std::shared_ptr<torch::jit::Graph> &graph);
 
 } // namespace glow
 

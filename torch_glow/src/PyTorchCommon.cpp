@@ -17,7 +17,6 @@
 #include "PyTorchCommon.h"
 
 #include "CachingGraphRunner.h"
-#include "FusePrepack.h"
 #include "GlowFuser.h"
 #include "PyTorchModelLoader.h"
 
@@ -43,30 +42,12 @@ std::unique_ptr<runtime::HostManager> buildHostManager() {
   return llvm::make_unique<runtime::HostManager>(std::move(deviceConfigs));
 }
 
-/// Registers an operator with symbol \p opName but with no implementation.
-/// Dummy operators can be used by glow-specific fusion passes prior to loading
-/// a glow graph in order to eliminate intermediate values that are unnecessary
-/// to Glow such as those created by quantization packing nodes.
-static void registerDummyOperator(const char *opName) {
-  auto options = c10::OperatorOptions();
-  options.setAliasAnalysis(at::AliasAnalysisKind::PURE_FUNCTION);
-
-  torch::jit::RegisterOperators op({torch::jit::Operator(
-      at::Symbol::fromQualString(opName),
-      [](const torch::jit::Node *node) -> torch::jit::Operation {
-        LOG(FATAL) << "Operator \"" << (*node)
-                   << "\" has no implementation and is meant only as a "
-                      "placeholder while fusing ops to run with Glow";
-      },
-      options)});
-}
-
 } // namespace
 
 /// \returns the HostManager singleton used to run all PyTorch graphs in Glow.
-runtime::HostManager *getHostManager() {
-  static std::unique_ptr<runtime::HostManager> hostManager = buildHostManager();
-  return hostManager.get();
+std::shared_ptr<runtime::HostManager> getHostManager() {
+  static std::shared_ptr<runtime::HostManager> hostManager = buildHostManager();
+  return hostManager;
 }
 
 /// Given a Glow ElemKind \p ty, \returns a matching PyTorch ScalarType.
@@ -138,72 +119,6 @@ const c10::Symbol &getGlowSymbol() {
   return glowSymbol;
 }
 
-void glowCustomFuse(std::shared_ptr<torch::jit::Graph> &g,
-                    at::Symbol fuseSymbol) {
-
-  fuseKnownPatterns(g);
-
-  GlowCustomFuse(g, PyTorchModelLoader::isNodeSupported, fuseSymbol);
-}
-
-void registerGlowOp(const c10::Symbol &symbol) {
-  // Register dummy nodes used by custom fusers.
-  registerDummyOperator("glow::unpacked_quantized_linear");
-  registerDummyOperator("glow::unpacked_quantized_conv2d");
-
-  auto options = c10::OperatorOptions();
-  options.setAliasAnalysis(at::AliasAnalysisKind::PURE_FUNCTION);
-
-  torch::jit::RegisterOperators op({torch::jit::Operator(
-      symbol,
-      [](const torch::jit::Node *node) -> torch::jit::Operation {
-        if (GlowCompilePyTorchModule) {
-          std::string key = node->kind().toQualString();
-          auto graphRunner = glow::CachingGraphRunner::getCachingGraphRunner();
-
-          return [graphRunner, key](torch::jit::Stack &stack) {
-            Error err = graphRunner->run(key, stack);
-
-            if (static_cast<bool>(err)) {
-              // PyTorch framework expects an exception been thrown here.
-              throw std::invalid_argument(ERR_TO_STRING(std::move(err)));
-            }
-            return 0;
-          };
-        } else {
-          std::shared_ptr<torch::jit::Graph> graph =
-              node->g(at::attr::Subgraph);
-          auto graphRunner = std::make_shared<CachingGraphRunner>(
-              graph.get(), getHostManager());
-
-          return [graphRunner](torch::jit::Stack &stack) {
-            Error err = graphRunner->run(stack);
-
-            if (static_cast<bool>(err)) {
-              // PyTorch framework expects an exception been thrown here.
-              throw std::invalid_argument(ERR_TO_STRING(std::move(err)));
-            }
-            return 0;
-          };
-        }
-      },
-      options)});
-}
-
-void registerGlowFusionPass(std::function<bool()> enablePassFn) {
-  torch::jit::RegisterPass pass([enablePassFn = std::move(enablePassFn)](
-                                    std::shared_ptr<torch::jit::Graph> &g) {
-    if (enablePassFn()) {
-      glow::glowCustomFuse(g, getGlowSymbol());
-    }
-  });
-}
-
-void registerGlowFusionOpAndPass(std::function<bool()> enablePassFn) {
-  registerGlowOp(getGlowSymbol());
-  registerGlowFusionPass(std::move(enablePassFn));
-}
-
 glow::Type ptTypeToGlowType(const c10::TensorType &ptType) {
   DCHECK(ptType.scalarType().has_value())
       << "TensorType has no associated scalar type.";
@@ -230,25 +145,6 @@ at::Tensor glowTypeToEmptyPTTensor(const glow::Type &glowType) {
 glow::Tensor ptTensorToGlowTensor(const at::Tensor &ptTensor) {
   auto glowType = ptTypeToGlowType(*c10::TensorType::create(ptTensor));
   return glow::Tensor(ptTensor.data_ptr(), &glowType);
-}
-
-void fuseKnownPatterns(std::shared_ptr<torch::jit::Graph> &graph) {
-  fuseConvPrepack(graph);
-  fuseLinearPrepack(graph);
-
-  std::string originalPat = R"IR(
-graph(%input):
-  %res1 = prim::NumToTensor(%input)
-  %res2 = aten::Int(%res1)
-  return (%res2))IR";
-
-  std::string replacementPat = R"IR(
-graph(%input):
-  return (%input))IR";
-
-  torch::jit::SubgraphRewriter rewriter;
-  rewriter.RegisterRewritePattern(originalPat, replacementPat);
-  rewriter.runOnGraph(graph);
 }
 
 } // namespace glow
