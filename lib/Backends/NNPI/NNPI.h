@@ -45,7 +45,17 @@ public:
 
   runtime::DeviceManager *
   createDeviceManager(const runtime::DeviceConfig &deviceConfig) override;
+
+  bool transformPostLowering(Function *F,
+                             CompilationContext &cctx) const override;
   /// @}
+
+#if FACEBOOK_INTERNAL
+private:
+  /// Performs FB-private transformations on \p F given \p cctx.
+  /// \returns whether \p F is modified.
+  bool transformPrivate(Function *F, CompilationContext &cctx) const;
+#endif /* FACEBOOK_INTERNAL */
 };
 
 Backend *createNNPIBackend(const runtime::DeviceConfig &deviceConfig);
