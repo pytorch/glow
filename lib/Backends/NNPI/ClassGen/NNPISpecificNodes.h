@@ -26,6 +26,6 @@ BB.newNode("NNPICustomDSP")
     .setDocstring("This is an experimental NNPI-specific node representing a "
                   "custom DSP op");
 
-BB.includeBackendSpecificVerification("glow/NNPISpecificNodesVerification.h");
+BB.includeBackendSpecificVerification("NNPISpecificNodesVerification.h");
 
 #endif // GLOW_WITH_NNPI

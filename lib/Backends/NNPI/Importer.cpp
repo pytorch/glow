@@ -38,20 +38,36 @@ static std::string nodeValueName(const glow::NodeValue &nv) {
          std::to_string(nv.getResNo());
 }
 
-std::map<std::string, std::string> NNPIEnvVariables::vars_;
 std::string NNPIEnvVariables::getVarString(const std::string &varName) {
+  static std::map<std::string, std::string> vars;
   LOG_AND_RETURN_IF_NOT(ERROR, varName.length(), "Can't search empty string",
                         "");
-  if (vars_.count(varName) == 0) {
+  if (vars.count(varName) == 0) {
     char *pEnvVar = getenv(varName.c_str());
-    vars_[varName] = pEnvVar ? std::string(pEnvVar) : std::string();
+    vars[varName] = pEnvVar ? std::string(pEnvVar) : std::string();
   }
-  return vars_.at(varName);
+  return vars.at(varName);
 }
 
 bool NNPIEnvVariables::getVarBool(const std::string &varName) {
   auto var = getVarString(varName);
   return (var == std::string("1"));
+}
+
+int NNPIEnvVariables::getVarInt(const std::string &varName, int defaultNumber) {
+  auto var = getVarString(varName);
+  if (var.empty() || std::find_if(var.begin(), var.end(), [](char c) {
+                       return !std::isdigit(c);
+                     }) != var.end()) {
+    return defaultNumber;
+  }
+  return std::stoi(var);
+}
+
+NNPI_LOG_LEVEL NNPIEnvVariables::getVarLogLevel(const std::string &varName,
+                                                NNPI_LOG_LEVEL defaultLevel) {
+  return static_cast<NNPI_LOG_LEVEL>(
+      getVarInt(varName, static_cast<int>(defaultLevel)));
 }
 
 glow::NNPIImporter::NNPIImporter()
@@ -730,6 +746,25 @@ public:
   }
 };
 
+class PReluNodeImporter : public INNPINodeImporter {
+public:
+  NNPIErrorCode importNode(Node *n, NNPIImporter &importer) override {
+    auto *glowPRelu = llvm::dyn_cast<PReluNode>(n);
+    LOG_AND_RETURN_IF_NOT(ERROR, glowPRelu, "Bad node type",
+                          NNPI_INVALID_PARAM);
+
+    importer.setUsedTensors({nodeValueName(glowPRelu->getInput()),
+                             nodeValueName(glowPRelu->getSlope())},
+                            {nodeValueName(glowPRelu->getResult())});
+
+    return nnpiNetworkAddPReluOp(importer.getNetwork(),
+                                 glowPRelu->getName().begin(),
+                                 nodeValueName(glowPRelu->getInput()).c_str(),
+                                 nodeValueName(glowPRelu->getResult()).c_str(),
+                                 nodeValueName(glowPRelu->getSlope()).c_str());
+  }
+};
+
 template <class EltwiseNodeType, NNPI_ELTWISE_TYPE eltwiseType>
 class BinaryEltwiseNodeImporter : public INNPINodeImporter {
 public:
@@ -815,10 +850,11 @@ public:
   }
 };
 
+template <class MatMulNodeType>
 class MatMulNodeImporter : public INNPINodeImporter {
 public:
   NNPIErrorCode importNode(Node *n, NNPIImporter &importer) override {
-    auto *glowMatMul = llvm::dyn_cast<MatMulNode>(n);
+    auto *glowMatMul = llvm::dyn_cast<MatMulNodeType>(n);
     LOG_AND_RETURN_IF_NOT(ERROR, glowMatMul, "Bad node type",
                           NNPI_INVALID_PARAM);
 
@@ -1024,10 +1060,11 @@ public:
   }
 };
 
-class ReduceMeanNodeImporter : public INNPINodeImporter {
+template <class ReduceNodeType, NNPI_REDUCE_TYPE reduceType>
+class ReduceMultAxesNodeImporter : public INNPINodeImporter {
 public:
   NNPIErrorCode importNode(Node *n, NNPIImporter &importer) override {
-    auto *glowReduce = llvm::dyn_cast<BatchedReduceMeanNode>(n);
+    auto *glowReduce = llvm::dyn_cast<ReduceNodeType>(n);
     LOG_AND_RETURN_IF_NOT(ERROR, glowReduce, "Bad node type",
                           NNPI_INVALID_PARAM);
 
@@ -1040,8 +1077,7 @@ public:
     return nnpiNetworkAddReduceOp(
         importer.getNetwork(), glowReduce->getName().begin(),
         nodeValueName(glowReduce->getBatch()).c_str(),
-        nodeValueName(glowReduce->getResult()).c_str(), NNPI_REDUCE_MEAN, &axis,
-        1);
+        nodeValueName(glowReduce->getResult()).c_str(), reduceType, &axis, 1);
   }
 };
 
@@ -1597,6 +1633,7 @@ const std::map<std::string, INNPINodeImporter *> NNPIImporter::nodeImporters_ =
         {"SoftMax", new SoftMaxNodeImporter()},
         {"Save", new SaveNodeImporter()},
         {"Relu", new ReluNodeImporter()},
+        {"PRelu", new PReluNodeImporter()},
         {"Exp",
          new UnaryEltwiseNodeImporter<glow::ExpNode, NNPI_ELTWISE_EXP>()},
         {"Max",
@@ -1625,7 +1662,8 @@ const std::map<std::string, INNPINodeImporter *> NNPIImporter::nodeImporters_ =
         {"Dequantize", new ConvertNodeImporter<DequantizeNode>()},
         {"RescaleQuantized", new ConvertNodeImporter<RescaleQuantizedNode>()},
         {"ConvertTo", new ConvertNodeImporter<ConvertToNode>()},
-        {"MatMul", new MatMulNodeImporter()},
+        {"MatMul", new MatMulNodeImporter<MatMulNode>()},
+        {"BatchMatMul", new MatMulNodeImporter<BatchMatMulNode>()},
         {"Slice", new SliceNodeImporter()},
         {"Sigmoid", new SigmoidNodeImporter()},
         {"Tanh", new TanhNodeImporter()},
@@ -1635,7 +1673,12 @@ const std::map<std::string, INNPINodeImporter *> NNPIImporter::nodeImporters_ =
         {"BatchedReduceAdd", new ReduceAddNodeImporter()},
         {"Log", new LogNodeImporter()},
         {"TopK", new TopkNodeImporter()},
-        {"BatchedReduceMean", new ReduceMeanNodeImporter()},
+        {"BatchedReduceMean",
+         new ReduceMultAxesNodeImporter<glow::BatchedReduceMeanNode,
+                                        NNPI_REDUCE_MEAN>()},
+        {"BatchedReduceMin",
+         new ReduceMultAxesNodeImporter<glow::BatchedReduceMinNode,
+                                        NNPI_REDUCE_MIN>()},
         {"Splat", new SplatNodeImporter()},
         {"SparseLengthsWeightedSum", new SLWSNodeImporter()},
         {"Select", new SelectNodeImporter()},

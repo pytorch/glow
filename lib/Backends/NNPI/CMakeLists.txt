@@ -13,26 +13,70 @@
 
 cmake_minimum_required (VERSION 3.3)
 
-if (NOT DEFINED NNPI_API_DIR OR NOT DEFINED NNPI_LIB_DIR)
-    message(FATAL_ERROR "Missing NNPI Transformer Dirs")
+if(DEFINED NNPI_COLLECT_MEM_USAGE)
+    set (NNPI_MEM_PROFILING ${NNPI_COLLECT_MEM_USAGE})
+else()
+    set (NNPI_MEM_PROFILING 0)
+endif()
+add_definitions("-DNNPI_COLLECT_MEM_USAGE=${NNPI_MEM_PROFILING}")
+
+if (DEFINED NNPI_LIB_DIR)
+    set(NNPI_LIB_SEARCH_PATH ${NNPI_LIB_DIR})
+else()
+    set(NNPI_LIB_SEARCH_PATH "/opt/intel_nnpi/lib/")
+endif()
+
+if (DEFINED NNPI_INF_LIB_DIR)
+    set(NNPI_INF_LIB_SEARCH_PATH ${NNPI_INF_LIB_DIR})
+else()
+    set(NNPI_INF_LIB_SEARCH_PATH "/opt/intel_nnpi/lib/")
+endif()
+
+if (DEFINED NNPI_API_DIR)
+    set(NNPI_API_SEARCH_PATH ${NNPI_API_DIR})
+else()
+    set(NNPI_API_SEARCH_PATH "/opt/intel_nnpi/include/")
+endif()
+
+if (DEFINED NNPI_INF_API_DIR)
+    set(NNPI_INF_API_SEARCH_PATH ${NNPI_INF_API_DIR})
+else()
+    set(NNPI_INF_API_SEARCH_PATH "/opt/intel_nnpi/include/")
+endif()
+
+find_library(NNPI_TRANSFORMER_LIB nnpi_transformer ${NNPI_LIB_SEARCH_PATH})
+if(NOT NNPI_TRANSFORMER_LIB)
+  message(FATAL_ERROR "nnpi_transformer library not found at ${NNPI_LIB_SEARCH_PATH}")
+endif()
+
+find_library(NNPI_INFERENCE_LIB nnpi_inference ${NNPI_INF_LIB_SEARCH_PATH})
+if(NOT NNPI_INFERENCE_LIB)
+  message(FATAL_ERROR "nnpi_inference library not found at ${NNPI_INF_LIB_SEARCH_PATH}")
+endif()
+
+find_path(NNPI_TRANSFORMER_API nnpi_transformer.h ${NNPI_API_DIR})
+if(NOT NNPI_TRANSFORMER_API)
+  message(FATAL_ERROR "nnpi_transformer include files not found at ${NNPI_API_DIR}")
+endif()
+
+find_path(NNPI_INFERENCE_API nnpi_inference.h ${NNPI_INF_API_DIR})
+if(NOT NNPI_INFERENCE_API)
+  message(FATAL_ERROR "nnpi_inference include files  not found at ${NNPI_INF_LIB_DIR}")
 endif()
 
 message(STATUS "[NNPI] NNPI_API_DIR                = ${NNPI_API_DIR}")
-message(STATUS "[NNPI] NNPI_LIB_DIR                = ${NNPI_LIB_DIR}")
-
-if (NOT DEFINED NNPI_INF_API_DIR OR NOT DEFINED NNPI_INF_LIB_DIR)
-    message(FATAL_ERROR "Missing NNPI Inference Dirs")
-endif()
+message(STATUS "[NNPI] NNPI_LIB_DIR                = ${NNPI_TRANSFORMER_LIB}")
 
 message(STATUS "[NNPI] NNPI_INF_API_DIR            = ${NNPI_INF_API_DIR}")
-message(STATUS "[NNPI] NNPI_INF_LIB_DIR            = ${NNPI_INF_LIB_DIR}")
+message(STATUS "[NNPI] NNPI_INF_LIB_DIR            = ${NNPI_INFERENCE_LIB}")
 message(STATUS "[NNPI] GLOW_BINARY_DIR             = ${GLOW_BINARY_DIR}")
+message(STATUS "[NNPI] NNPI_COLLECT_MEM_USAGE      = ${NNPI_MEM_PROFILING}")
 
 add_subdirectory(ClassGen)
 
 include_directories(
-    ${NNPI_API_DIR}
-    ${NNPI_INF_API_DIR}
+    ${NNPI_TRANSFORMER_API}
+    ${NNPI_INFERENCE_API}
 )
 
 add_library(NNPI
@@ -43,6 +87,7 @@ add_library(NNPI
     NNPIDeviceManager.cpp
     NNPIFactory.cpp
     BlockStream.cpp
+    NNPIMessageLogger.cpp
 )
 
 target_link_libraries(NNPI
@@ -53,8 +98,9 @@ target_link_libraries(NNPI
                       CodeGen
                       IR
                       Support
-                      ${NNPI_LIB_DIR}/libnnpi_transformer.so
-                      ${NNPI_INF_LIB_DIR}/libnnpi_inference.so
+                      ${NNPI_TRANSFORMER_LIB}
+                      ${NNPI_INFERENCE_LIB}
 )
 
 set(linked_backends ${linked_backends} NNPI PARENT_SCOPE)
+

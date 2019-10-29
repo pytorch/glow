@@ -128,9 +128,12 @@ class NNPIEnvVariables {
 public:
   static std::string getVarString(const std::string &varName);
   static bool getVarBool(const std::string &varName);
+  static int getVarInt(const std::string &varName, int defaultNumber);
+  static NNPI_LOG_LEVEL getVarLogLevel(const std::string &varName,
+                                       NNPI_LOG_LEVEL defaultLevel);
 
 private:
-  static std::map<std::string, std::string> vars_;
+  NNPIEnvVariables() = default;
 };
 
 inline std::string ICETFilename() {

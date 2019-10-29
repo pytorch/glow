@@ -26,6 +26,7 @@
 #include "llvm/Support/raw_ostream.h"
 
 #include "DebugMacros.h"
+#include "glow/Support/Error.h"
 
 namespace glow {
 namespace runtime {

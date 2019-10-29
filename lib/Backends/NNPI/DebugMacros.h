@@ -22,9 +22,7 @@
 #include <glog/logging.h>
 
 // Macro for memory instrumentation.
-// Created separately from DBG macro for easy enabling independently.
-#ifndef NDEBUG
-#ifdef COLLECT_MEM_USAGE
+#if NNPI_COLLECT_MEM_USAGE
 #include <atomic>
 #include <fstream>
 #include <iostream>
@@ -60,12 +58,9 @@ static std::atomic<double> dbg_mem_usage_last_rss_value(0.0);
     dbg_mem_usage_last_rss_value = rssInput;                                   \
   }
 #warning "####       DBG_MEM_USAGE ENABLED        #####"
-#else // Not COLLECT_MEM_USAGE
+#else // Not NNPI_COLLECT_MEM_USAGE
 #define DBG_MEM_USAGE(msg)
-#endif // COLLECT_MEM_USAGE
-#else  // NDEBUG
-#define DBG_MEM_USAGE(msg)
-#endif // NDEBUG
+#endif // NNPI_COLLECT_MEM_USAGE
 
 /// Macro for debug prints.
 #ifndef NDEBUG
@@ -194,6 +189,30 @@ static std::atomic<double> dbg_mem_usage_last_rss_value(0.0);
     LOG_IF(ERROR, !res) << msg;                                                \
     if (!res)                                                                  \
       RETURN_ERR(msg);                                                         \
+  }
+
+#define LOG_AND_FAIL_CALLBACK_IF_NOT(loglevel, exp, msg, runId, ctx, callback) \
+  {                                                                            \
+    bool res = (exp);                                                          \
+    LOG_IF(loglevel, !res) << msg;                                             \
+    if (!res) {                                                                \
+      callback(runId, MAKE_ERR(msg), std::move(ctx));                          \
+      return;                                                                  \
+    }                                                                          \
+  }
+
+#define LOG_AND_CALLBACK_NNPI_INF_ERROR(exp, msg, runId, ctx, callback)        \
+  {                                                                            \
+    NNPIInferenceErrorCode res = (exp);                                        \
+    bool nnpiOK = (res == NNPI_INF_NO_ERROR);                                  \
+    LOG_AND_FAIL_CALLBACK_IF_NOT(ERROR, nnpiOK, msg, runId, ctx, callback);    \
+  }
+
+#define LOG_AND_CALLBACK_NNPI_ERROR(exp, msg, runId, ctx, callback)            \
+  {                                                                            \
+    NNPIErrorCode res = (exp);                                                 \
+    bool nnpiOK = (res == NNPI_NO_ERROR);                                      \
+    LOG_AND_FAIL_CALLBACK_IF_NOT(ERROR, nnpiOK, msg, runId, ctx, callback);    \
   }
 
 #endif // GLOW_NNPI_DEBUG_MACROS_H
