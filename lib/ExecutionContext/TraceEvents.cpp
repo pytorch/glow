@@ -44,13 +44,13 @@ void TraceEvent::dumpTraceEvents(
   // Chrome trace UI has a bug with complete events which are ordered later in
   // the json than an event they completely enclose, so sort the list of events
   // by start time and duration.
-  std::sort(events.begin(), events.end(),
-            [](const TraceEvent &a, const TraceEvent &b) {
-              if (a.timestamp == b.timestamp) {
-                return a.duration > b.duration;
-              }
-              return a.timestamp < b.timestamp;
-            });
+  std::stable_sort(events.begin(), events.end(),
+                   [](const TraceEvent &a, const TraceEvent &b) {
+                     if (a.timestamp == b.timestamp) {
+                       return a.duration > b.duration;
+                     }
+                     return a.timestamp < b.timestamp;
+                   });
 
   auto process = processName.empty() ? "glow" : processName;
 
