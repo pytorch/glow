@@ -17,7 +17,7 @@
 #include <pybind11/pybind11.h>
 
 #include "PyTorchCommon.h"
-#include "PyTorchModelLoader.h"
+#include "Registration.h"
 #include "TorchGlowTraining.h"
 #include <pybind11/pybind11.h>
 /// Required include files for a proper binding TorchGlowTrainingWrapper class.

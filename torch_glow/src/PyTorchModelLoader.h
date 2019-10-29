@@ -18,7 +18,6 @@
 #define GLOW_TORCH_GLOW_SRC_PYTORCHMODELLOADER_H
 
 #include "PyTorchCommon.h"
-#include <torch/csrc/jit/custom_operator.h>
 
 #include "GlowIValue.h"
 

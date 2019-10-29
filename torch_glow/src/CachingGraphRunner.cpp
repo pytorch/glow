@@ -43,10 +43,6 @@ size_t CachingGraphRunner::computeGraphHash(
   return hash;
 }
 
-namespace {
-static std::mutex graphCacheMutex;
-}
-
 Expected<CachingGraphRunner::PerGlowGraphInfo *>
 CachingGraphRunner::loadImpl(torch::jit::Stack &stack) {
   const auto inputs = torch::jit::last(stack, graph_->inputs().size());
@@ -55,7 +51,6 @@ CachingGraphRunner::loadImpl(torch::jit::Stack &stack) {
 
   // If we already have a Glow function compiled for this graph with and the
   // given inputs then use that.
-  std::lock_guard<std::mutex> guard(graphCacheMutex);
   auto it = perGlowGraphInfoMap_.find(hash);
   if (it != perGlowGraphInfoMap_.end()) {
     return it->second.get();
@@ -82,17 +77,27 @@ CachingGraphRunner::loadImpl(torch::jit::Stack &stack) {
 
 Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
                                   torch::jit::Stack &stack) const {
-  size_t numInputs = info.inputPlaceholders.size();
+  size_t numInputs = graph_->inputs().size();
   const auto inputs = torch::jit::last(stack, numInputs);
 
   std::unique_ptr<ExecutionContext> ctx = llvm::make_unique<ExecutionContext>();
   auto *bindings = ctx->getPlaceholderBindings();
 
-  for (size_t i = 0; i < numInputs; ++i) {
-    glow::Placeholder *ph = info.inputPlaceholders[i];
-    glow::TypeRef ty = ph->getType();
-    glow::Tensor t(inputs[i].toTensor().data_ptr(), ty);
-    bindings->insert(ph, std::move(t));
+  // We only hold placeholders for tensor inputs so indexing them is different
+  // than indexing all inputs.
+  size_t placeholderI = 0;
+  for (const auto &input : inputs) {
+    if (input.isTensor()) {
+      glow::Placeholder *ph = info.inputPlaceholders[placeholderI++];
+      glow::TypeRef ty = ph->getType();
+      glow::Tensor t(input.toTensor().data_ptr(), ty);
+      bindings->insert(ph, std::move(t));
+    } else if (input.isObject()) {
+      // Objects are only used for loading attributes at compile time.
+      continue;
+    } else {
+      return MAKE_ERR("Only Tensor and Object IValue inputs are accepted");
+    }
   }
 
   std::vector<at::IValue> outputs;
@@ -129,91 +134,20 @@ Error CachingGraphRunner::run(torch::jit::Stack &stack) {
   return runImpl(*DCHECK_NOTNULL(info), stack);
 }
 
-Error CachingGraphRunner::run(const std::string &key,
-                              torch::jit::Stack &stack) {
-  std::shared_ptr<PerGlowGraphInfo> info;
-  {
-    std::lock_guard<std::mutex> guard(graphCacheMutex);
-    auto it = glowGraphInfoMap.find(key);
-    if (it == glowGraphInfoMap.end()) {
-      return MAKE_ERR(
-          strFormat("Key: %s not found in glowGraphInfoMap!", key.c_str()));
-    }
-    info = it->second;
-  }
-  return runImpl(*DCHECK_NOTNULL(info.get()), stack);
-}
-
-Error CachingGraphRunner::CompileModule(const torch::jit::script::Module &m,
-                                        const std::vector<InputMeta> &inputMeta,
-                                        const std::string &opname) {
-  if (hostManager_ == nullptr) {
-    return MAKE_ERR("Host manager is null!");
-  }
-  const std::string name = "glow::" + m.name().qualifiedName();
-
-  std::lock_guard<std::mutex> guard(graphCacheMutex);
-  // Currently only support one method per module
-  auto it = glowGraphInfoMap.find(name);
-  if (it != glowGraphInfoMap.end()) {
-    // Already compiled
-    return Error::success();
-  }
-
-  auto info = std::make_shared<PerGlowGraphInfo>();
-  info->functionName = strFormat("PTFunction%s", name.c_str());
-
-  auto methods = m.get_methods();
-  if (methods.size() != 1) {
-    return MAKE_ERR("Currently only support one method each module!");
-  }
-
-  std::shared_ptr<torch::jit::Graph> g = nullptr;
-  // XXX: Here we assume the fusion node is a top level node. This constraint
-  // can be relaxed if needed.
-  for (auto node : methods[0].function().graph()->nodes()) {
-    if (node->kind().toQualString() == opname) {
-      if (!node->hasAttribute(torch::jit::attr::Subgraph)) {
-        return MAKE_ERR("Fusion node should have a subgraph!");
-      }
-      g = node->g(torch::jit::attr::Subgraph);
-    }
-  }
-  if (!g) {
-    return MAKE_ERR("No fusion node found");
-  }
-  std::unique_ptr<Module> glowModule = llvm::make_unique<Module>();
-  Function *f = glowModule->createFunction(info->functionName);
-
-  RETURN_IF_ERR(PyTorchModelLoader::loadJITGraph(
-      *f, *g, info->inputPlaceholders, info->outputPlaceholders,
-      getPyTorchLoaderSettings(), {}, inputMeta));
-
-  glow::CompilationContext cctx;
-
-  RETURN_IF_ERR(hostManager_->addNetwork(std::move(glowModule), cctx));
-  glowGraphInfoMap[name] = std::move(info);
+Error CachingGraphRunner::warmCache(const std::vector<InputMeta> &inputMeta) {
+  // TODO: implement caching based on input metas. For now this is an
+  // opmtimization.
   return Error::success();
 }
 
-CachingGraphRunner *CachingGraphRunner::getCachingGraphRunner() {
-  static CachingGraphRunner runner = CachingGraphRunner();
-  return &runner;
-}
-
-CachingGraphRunner::CachingGraphRunner()
-    : hostManager_(glow::getHostManager()) {}
-
-CachingGraphRunner::CachingGraphRunner(torch::jit::Graph *graph,
-                                       runtime::HostManager *hostManager)
+CachingGraphRunner::CachingGraphRunner(
+    std::shared_ptr<torch::jit::Graph> graph,
+    std::shared_ptr<runtime::HostManager> hostManager)
     : graph_(graph), hostManager_(hostManager) {}
 
 CachingGraphRunner::~CachingGraphRunner() {
   // Remove Glow functions saved in HostManager when being destroyed.
   for (auto &kv : perGlowGraphInfoMap_) {
-    ERR_TO_BOOL(hostManager_->removeNetwork(kv.second->functionName));
-  }
-  for (auto &kv : glowGraphInfoMap) {
     ERR_TO_BOOL(hostManager_->removeNetwork(kv.second->functionName));
   }
 }

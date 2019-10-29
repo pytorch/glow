@@ -14,19 +14,14 @@
  * limitations under the License.
  */
 
-#ifndef GLOW_TORCH_GLOW_SRC_FUSE_PREPACK_H
-#define GLOW_TORCH_GLOW_SRC_FUSE_PREPACK_H
+#ifndef GLOW_TORCH_GLOW_SRC_FUSE_KNOWN_PATERNS_H
+#define GLOW_TORCH_GLOW_SRC_FUSE_KNOWN_PATERNS_H
 
 #include <torch/csrc/jit/ir.h>
 
 namespace glow {
-/// Fuse weight packing operation into quantized convolution op thus skipping
-/// weight packing.
-void fuseConvPrepack(std::shared_ptr<torch::jit::Graph> &graph);
-
-/// Fuse weight packing operation into quantized linear op thus skipping
-/// weight packing.
-void fuseLinearPrepack(std::shared_ptr<torch::jit::Graph> &graph);
+/// Fuse known node patterns in \p graph to assist the PyTorchModelLoader.
+void fuseKnownPatterns(std::shared_ptr<torch::jit::Graph> &graph);
 } // namespace glow
 
-#endif // GLOW_TORCH_GLOW_SRC_FUSE_PREPACK_H
+#endif // GLOW_TORCH_GLOW_SRC_FUSE_KNOWN_PATERNS_H

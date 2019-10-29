@@ -20,10 +20,14 @@
 #include <torch/csrc/jit/ir.h>
 
 namespace glow {
-typedef std::function<bool(torch::jit::Node *)> isSupportFunc;
+/// Fuse nodes in \p graph that are supported by glow into a subgraph in a node
+/// with symbol \p kind. NOTE: kind must be registered with jit before calling
+/// this function.
+void glowCustomFuse(std::shared_ptr<torch::jit::Graph> graph, at::Symbol kind);
 
-void GlowCustomFuse(std::shared_ptr<torch::jit::Graph> graph, isSupportFunc fn,
-                    at::Symbol kind);
+/// Fuse nodes in \p graph that are supported by glow into a subgraph in a glow
+/// fusion group node.
+void glowCustomFuse(std::shared_ptr<torch::jit::Graph> graph);
 } // namespace glow
 
 #endif // GLOW_TORCH_GLOW_SRC_GLOW_FUSER_H

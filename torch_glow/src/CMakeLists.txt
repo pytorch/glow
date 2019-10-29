@@ -14,9 +14,10 @@ link_directories(${PYTORCH_DIR}/lib)
 add_library(PyTorchModelLoader
                      CachingGraphRunner.cpp
                      GlowFuser.cpp
+                     FuseKnownPatterns.cpp
                      GlowIValue.cpp
                      PyTorchCommon.cpp
-                     FusePrepack.cpp
+                     Registration.cpp
                      PyTorchModelLoader.cpp)
 target_compile_options(PyTorchModelLoader
                       PRIVATE

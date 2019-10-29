@@ -15,10 +15,16 @@
  */
 
 #include "PyTorchFileLoader.h"
+
+#include "FuseKnownPatterns.h"
+#include "GlowFuser.h"
 #include "PyTorchModelLoader.h"
+
 #include "glow/Support/Error.h"
 #include "glow/Support/Support.h"
+
 #include <ATen/core/grad_mode.h>
+#include <torch/csrc/jit/custom_operator.h>
 #include <torch/csrc/jit/operator_options.h>
 #include <torch/csrc/jit/pass_manager.h>
 #include <torch/csrc/jit/passes/lower_graph.h>
