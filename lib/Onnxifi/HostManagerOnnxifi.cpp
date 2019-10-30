@@ -112,10 +112,9 @@ onnxStatus HostManagerBackend::removeNetwork(const Graph *graph) {
   return ONNXIFI_STATUS_SUCCESS;
 }
 
-onnxStatus
-HostManagerGraph::initGraph(const void *onnxModel, size_t onnxModelSize,
-                            uint32_t weightCount,
-                            const onnxTensorDescriptorV1 *weightDescriptors) {
+onnxStatus HostManagerGraph::initGraph(
+    const void *onnxModel, size_t onnxModelSize, uint32_t weightCount,
+    const onnxTensorDescriptorV1 *weightDescriptors, void * /* unused */) {
 
   netName_ = strFormat("onnxifi_function_%lu", makeUniqueGraphId());
 

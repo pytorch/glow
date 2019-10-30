@@ -43,10 +43,9 @@ void computeModelHash(const void *onnxModel, size_t onnxModelSize,
 }
 } // namespace
 
-onnxStatus
-InlineGraph::initGraph(const void *onnxModel, size_t onnxModelSize,
-                       uint32_t weightCount,
-                       const onnxTensorDescriptorV1 *weightDescriptors) {
+onnxStatus InlineGraph::initGraph(
+    const void *onnxModel, size_t onnxModelSize, uint32_t weightCount,
+    const onnxTensorDescriptorV1 *weightDescriptors, void *deferedBlobReader) {
   function_ = executionEngine_.getModule().createFunction("function");
 
   std::unique_ptr<ONNXIFIModelLoader> loader =
