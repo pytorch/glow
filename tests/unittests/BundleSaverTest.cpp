@@ -30,16 +30,47 @@ TEST(BundleSaver, testAPI) {
   Module M;
   Function *F = M.createFunction("F");
 
-  // Create a simple graph
+  // Create a simple graph.
   Node *inputPH = M.createPlaceholder(ElemKind::FloatTy, {1}, "input", false);
   Node *addConst = M.createConstant(ElemKind::FloatTy, {1}, "const");
   Node *addNode = F->createAdd("add", inputPH, addConst);
   F->createSave("output", addNode);
 
-  // Save bundle
+  // Save bundle.
   llvm::StringRef outputDir = ".";
   llvm::StringRef bundleName = "testBundle";
   llvm::StringRef mainEntryName = "testMainEntry";
   std::unique_ptr<Backend> backend(createBackend("CPU"));
   backend->save(F, outputDir, bundleName, mainEntryName);
+}
+
+TEST(BundleSaver, testSaveMultipleFunctions) {
+  Module M;
+
+  Node *addConst = M.createConstant(ElemKind::FloatTy, {1}, "const");
+  // Create a simple graph.
+  Function *F1 = M.createFunction("F1");
+  Node *inputPH1 = M.createPlaceholder(ElemKind::FloatTy, {1}, "input1", false);
+  Node *addConst1 = M.createConstant(ElemKind::FloatTy, {1}, "const1");
+  Node *addNode11 = F1->createAdd("add", inputPH1, addConst);
+  Node *addNode12 = F1->createAdd("add", addNode11, addConst1);
+  F1->createSave("output", addNode12);
+
+  // Create a simple graph.
+  Function *F2 = M.createFunction("F2");
+  Node *inputPH2 = M.createPlaceholder(ElemKind::FloatTy, {1}, "input2", false);
+  Node *addConst2 = M.createConstant(ElemKind::FloatTy, {1}, "const2");
+  Node *addNode21 = F2->createAdd("add", inputPH2, addConst);
+  Node *addNode22 = F2->createAdd("add", addNode21, addConst2);
+  F2->createSave("output", addNode22);
+
+  // Save a bundle with multiple functions.
+  llvm::StringRef outputDir = ".";
+  llvm::StringRef bundleName = "testBundle";
+  std::unique_ptr<Backend> backend(
+      reinterpret_cast<Backend *>(createBackend("CPU")));
+  std::vector<BundleEntry> bundleEntries;
+  bundleEntries.emplace_back(BundleEntry{"testMainEntry1", F1});
+  bundleEntries.emplace_back(BundleEntry{"testMainEntry2", F2});
+  backend->saveFunctions(bundleEntries, outputDir, bundleName);
 }
