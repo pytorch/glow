@@ -217,6 +217,7 @@ public:
   /// Set the content of the tensor to zero. If \p resetFusedScalesOffsets, then
   /// fused scales/offsets will be set to 1.0/0.0 as well.
   void zero(bool resetFusedScalesOffsets = false) {
+    assert(!isDeviceResident() && "Tensor must reside on host to access data.");
     size_t size = actualSize();
     // Quantized tensors should go to their offset.
     switch (type_.getElementType()) {
@@ -419,6 +420,7 @@ public:
   /// element to start a subview from.
   Tensor getOwnedSlice(llvm::ArrayRef<size_t> dims,
                        llvm::ArrayRef<size_t> offsets = {}) const {
+    assert(!isDeviceResident() && "Tensor must reside on host to access data.");
     return getUnowned(dims, offsets).clone();
   }
 
@@ -439,6 +441,7 @@ public:
 
   /// Assigns a new shape to the tensor and allocates a new buffer.
   void reset(const Type &T) {
+    assert(!isDeviceResident() && "Tensor must reside on host to access data.");
     // If the new size is identical to the allocated size then there is no need
     // to re-allocate the buffer.
     if (type_ == T && getData()) {
@@ -613,6 +616,7 @@ public:
 
   /// Update the content and type of the tensor from the tensor \p t.
   void assign(const Tensor *t) {
+    assert(!isDeviceResident() && "Tensor must reside on host to access data.");
     assert(this != t && "Copying to self");
     reset(t);
     size_t bufferSize = type_.getSizeInBytes();
@@ -621,6 +625,7 @@ public:
 
   /// Update the raw data of the tensor from the tensor \p t.
   void copyRawFrom(const Tensor *t) {
+    assert(!isDeviceResident() && "Tensor must reside on host to access data.");
     assert(this != t && "Copying to self");
     assert(actualSize() == t->actualSize());
     assert(getElementType() == t->getElementType() && "Invalid element type");
@@ -631,6 +636,7 @@ public:
   /// Update the content of the tensor with a slice from tensor \p t. A slice
   /// is one index from the first dimension of the tensor.
   void copySlice(const Tensor *t, size_t slice) {
+    assert(!isDeviceResident() && "Tensor must reside on host to access data.");
     auto dim = t->dims().slice(1);
     (void)dim;
     assert(dim == dims() && "Invalid slice size");
@@ -646,6 +652,7 @@ public:
   /// The copying operation may overlap the end of the tensor \p t one or more
   /// times. This means that the data in the input tensor may be duplicated.
   void copyConsecutiveSlices(const Tensor *t, size_t startSliceIdx) {
+    assert(!isDeviceResident() && "Tensor must reside on host to access data.");
     auto onceSliceDim = t->dims().slice(1);
     (void)onceSliceDim;
     assert(onceSliceDim == dims().slice(1) && "Invalid slice size");
@@ -671,6 +678,7 @@ public:
   /// and cast them to DestElemType in this.
   template <typename DestElemType, typename SrcElemType>
   void copyWithCast(const Tensor *t) {
+    assert(!isDeviceResident() && "Tensor must reside on host to access data.");
     static_assert(!std::is_same<DestElemType, SrcElemType>::value,
                   "Use copyRawFrom instead");
     assert(this != t && "Copying to self");
@@ -699,11 +707,13 @@ public:
   /// Transpose the tensor \p src into the empty tensor \p dest. Shuffle the
   /// axis based on the list \p shuffle, where each element is the src index.
   void transpose(Tensor *dest, llvm::ArrayRef<unsigned_t> shuffle) const {
+    assert(!isDeviceResident() && "Tensor must reside on host to access data.");
     genericTranspose(this, dest, shuffle);
   }
 
   /// Create a new copy of the current tensor.
   Tensor clone() const {
+    assert(!isDeviceResident() && "Tensor must reside on host to access data.");
     Tensor slice;
     slice.assign(this);
     return slice;
@@ -723,12 +733,14 @@ public:
 private:
   /// \returns a pointer to the raw data, of type \p ElemTy.
   template <class ElemTy> ElemTy *getRawDataPointer() {
+    assert(!isDeviceResident() && "Tensor must reside on host to access data.");
     assert(type_.isType<ElemTy>() && "Asking for the wrong ptr type.");
     return reinterpret_cast<ElemTy *>(data_);
   }
 
   /// \returns a const pointer to the raw data, of type \p ElemTy.
   template <class ElemTy> const ElemTy *getRawDataPointer() const {
+    assert(!isDeviceResident() && "Tensor must reside on host to access data.");
     assert(type_.isType<ElemTy>() && "Asking for the wrong ptr type.");
     return reinterpret_cast<const ElemTy *>(data_);
   }
@@ -736,6 +748,7 @@ private:
   template <class ElemTy>
   bool isEqualImpl(const Tensor &other, float allowedError,
                    bool verbose) const {
+    assert(!isDeviceResident() && "Tensor must reside on host to access data.");
     auto const *myData = getRawDataPointer<ElemTy>();
     auto const *otherData = other.getRawDataPointer<ElemTy>();
     double maxFoundError = 0.0;
@@ -768,6 +781,7 @@ private:
   }
 
   bool isBitwiseEqualImpl(const Tensor &other) const {
+    assert(!isDeviceResident() && "Tensor must reside on host to access data.");
     auto const *myData = getUnsafePtr();
     auto const *otherData = other.getUnsafePtr();
     for (size_t i = 0, e = getSizeInBytes(); i < e; i++) {
@@ -1383,11 +1397,13 @@ private:
 };
 
 template <class ElemTy> Handle<ElemTy> Tensor::getHandle() & {
+  assert(!isDeviceResident() && "Tensor must reside on host to access data.");
   assert(type_.isType<ElemTy>() && "Getting a handle to the wrong type.");
   return Handle<ElemTy>(this);
 }
 
 template <class ElemTy> const Handle<ElemTy> Tensor::getHandle() const & {
+  assert(!isDeviceResident() && "Tensor must reside on host to access data.");
   assert(type_.isType<ElemTy>() && "Getting a handle to the wrong type.");
   return Handle<ElemTy>(const_cast<Tensor *>(this));
 }
