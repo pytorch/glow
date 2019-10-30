@@ -441,8 +441,9 @@ struct Type final {
     return std::make_pair(lowFloat, highFloat);
   }
 
-  /// \returns true if \p other is the same type.
-  bool isEqual(const Type &other) const {
+  /// \returns true if \p other is the same type. If \p allowDifferentShape then
+  /// shapes will not be considered as part of the equal comparison.
+  bool isEqual(const Type &other, bool allowDifferentShape = false) const {
     // Element type must be the same.
     if (elementType_ != other.elementType_) {
       return false;
@@ -452,9 +453,11 @@ struct Type final {
       return false;
     }
     // Sizes must be the same.
-    for (size_t i = 0; i < numSizes_; i++) {
-      if (sizes_[i] != other.sizes_[i]) {
-        return false;
+    if (!allowDifferentShape) {
+      for (size_t i = 0; i < numSizes_; i++) {
+        if (sizes_[i] != other.sizes_[i]) {
+          return false;
+        }
       }
     }
 

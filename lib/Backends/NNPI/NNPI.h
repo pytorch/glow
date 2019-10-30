@@ -48,11 +48,21 @@ public:
 
   runtime::DeviceManager *
   createDeviceManager(const runtime::DeviceConfig &deviceConfig) override;
+
+  bool transformPostLowering(Function *F,
+                             CompilationContext &cctx) const override;
   /// @}
+
 private:
   // NNPIMessageLogger is a global mechanism that initializes the NNPI log
   // stream output handler.
   static const NNPIMessageLogger &loggerConfig_;
+
+#if FACEBOOK_INTERNAL
+  /// Performs FB-private transformations on \p F given \p cctx.
+  /// \returns whether \p F is modified.
+  bool transformPrivate(Function *F, CompilationContext &cctx) const;
+#endif /* FACEBOOK_INTERNAL */
 };
 
 Backend *createNNPIBackend(const runtime::DeviceConfig &deviceConfig);

@@ -20,7 +20,6 @@
 #include "PyTorchModelLoader.h"
 #include "glow/Runtime/HostManager/HostManager.h"
 
-#include <torch/csrc/jit/custom_operator.h>
 #include <torch/csrc/jit/ir.h>
 
 #include <torch/csrc/jit/import.h>
@@ -44,15 +43,10 @@ class CachingGraphRunner {
 
   /// The PyTorch JIT Graph that this CachingGraphRunner caches Glow functions
   /// for.
-  torch::jit::Graph *graph_ = nullptr;
+  std::shared_ptr<torch::jit::Graph> graph_;
 
   /// The HostManager used to store and run Glow graphs.
-  runtime::HostManager *hostManager_ = nullptr;
-
-  // Mapping from module name to PerGlowGraphInfo. Here we assume one method
-  // each module, which should be the common case for accelerator modules.
-  std::unordered_map<std::string, std::shared_ptr<PerGlowGraphInfo>>
-      glowGraphInfoMap;
+  std::shared_ptr<runtime::HostManager> hostManager_;
 
   /// Mapping from hash of PyTorch inputs to PerGlowGraphInfo for the Glow
   /// function that will run inputs matching that hash.
@@ -76,23 +70,19 @@ class CachingGraphRunner {
   size_t computeGraphHash(const c10::ArrayRef<c10::IValue> inputs) const;
 
 public:
-  CachingGraphRunner(torch::jit::Graph *graph,
-                     runtime::HostManager *hostManager);
-  CachingGraphRunner();
+  CachingGraphRunner(std::shared_ptr<torch::jit::Graph> graph,
+                     std::shared_ptr<runtime::HostManager> hostManager);
 
   ~CachingGraphRunner();
-
-  static CachingGraphRunner *getCachingGraphRunner();
 
   /// Given a PyTorch Stack \p stack of inputs, run he stored PyTorch graph on
   /// those inputs. If this is the first time this PyTorch graph has been run
   /// with inputs matching the hash of those on the stack then this first loads
   /// it as a Glow Function and compiles. \returns error of failure.
   Error run(torch::jit::Stack &stack);
-  Error run(const std::string &key, torch::jit::Stack &stack);
-  Error CompileModule(const torch::jit::script::Module &module,
-                      const std::vector<InputMeta> &inputMeta,
-                      const std::string &opname);
+
+  // Warm up the cache by compiling a Glow function for the inputs in \p stack.
+  Error warmCache(const std::vector<InputMeta> &inputMeta);
 };
 
 } // namespace glow

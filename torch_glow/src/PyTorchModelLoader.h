@@ -18,7 +18,6 @@
 #define GLOW_TORCH_GLOW_SRC_PYTORCHMODELLOADER_H
 
 #include "PyTorchCommon.h"
-#include <torch/csrc/jit/custom_operator.h>
 
 #include "GlowIValue.h"
 
@@ -428,6 +427,10 @@ private:
   /// Load a PyTorch aten::bmm node.
   /// \returns error on failure.
   Error loadBmm(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch aten::tanh node.
+  /// \returns error on failure.
+  Error loadTanh(const torch::jit::Node *ptNode);
 };
 
 } // namespace glow

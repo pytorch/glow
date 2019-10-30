@@ -17,7 +17,7 @@
 #include <pybind11/pybind11.h>
 
 #include "PyTorchCommon.h"
-#include "PyTorchModelLoader.h"
+#include "Registration.h"
 #include "TorchGlowTraining.h"
 #include <pybind11/pybind11.h>
 /// Required include files for a proper binding TorchGlowTrainingWrapper class.
@@ -52,6 +52,14 @@ PYBIND11_MODULE(_torch_glow, m) {
   /// Disable freezing weights as Constants in PyTorch subgraphs loaded in Glow.
   m.def("disableWeightFreezing",
         []() { getPyTorchLoaderSettings().weightFreezingEnabled = false; });
+
+  /// Enable dumping Glow DAG to file after model loading finishes.
+  m.def("enableDumpGlowDag",
+        []() { getPyTorchLoaderSettings().dumpGlowDag = true; });
+
+  /// Disable dumping Glow DAG to file after model loading finishes.
+  m.def("disableDumpGlowDag",
+        []() { getPyTorchLoaderSettings().dumpGlowDag = false; });
 
   /// Binding wrapper class for TorchGlowTraining and its settings.
   py::class_<TorchGlowTrainingWrapper>(m, "TorchGlowTrainingWrapper")

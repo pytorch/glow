@@ -5427,6 +5427,8 @@ TEST_P(OperatorTest, DilatedConvolution) {
   SaveNode *S = F_->createSave("save", CN);
   bindings_.allocate(S->getPlaceholder());
 
+  ::glow::convertPlaceholdersToConstants(F_, bindings_,
+                                         {input, S->getPlaceholder()});
   EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
 

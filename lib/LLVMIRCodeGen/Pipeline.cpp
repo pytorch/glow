@@ -63,9 +63,7 @@ bool LLVMIRGen::preserveSymbol(const llvm::GlobalValue &GV) {
   return true;
 }
 
-void LLVMIRGen::optimizeLLVMModule(llvm::Function *F, llvm::TargetMachine &TM) {
-  auto *M = F->getParent();
-
+void LLVMIRGen::optimizeLLVMModule(llvm::Module *M, llvm::TargetMachine &TM) {
   // Make all of the definitions from libjit and unnamed symbols internal and
   // optimizable. Everything else should be preserved as is.
   auto preserveSymbolCallback = [&](const llvm::GlobalValue &GV) -> bool {
