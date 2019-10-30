@@ -56,7 +56,7 @@ public:
 
   Function *getFunction() const { return F; }
 
-  Tensor *hookAndRun(llvm::StringRef name) {
+  std::list<Tensor *> hookAndRun(llvm::StringRef name) {
     EEI.setBackendName(EEI.getBackendName());
     inferBindings.clear();
     auto modI = &EEI.getModule();
@@ -70,11 +70,16 @@ public:
       auto iPH = inferBindings.getPlaceholderByName(PH.first->getName());
       inferBindings.get(iPH)->assign(PH.second);
     }
-    auto *out = inferBindings.get(hook.output);
+
+    std::list<Tensor *> outs;
+    for (const auto &P : hook.outputs) {
+      outs.emplace_back(inferBindings.get(P));
+    }
+
     auto fName = hook.function->getName();
     EEI.compile(CompilationMode::Infer);
     EEI.run(inferBindings, fName);
-    return out;
+    return outs;
   }
 };
 
@@ -99,22 +104,30 @@ int main() {
       continue;
     }
     llvm::errs() << "Verifying layer: " << node.getName() << "\n";
-    auto *interpOut = interp.hookAndRun(node.getName());
-    auto *cpuOut = cpu.hookAndRun(node.getName());
-    if (!interpOut->isEqual(*cpuOut)) {
-      llvm::errs() << "Results differ\n";
-      dumpImpl(interpOut);
-      dumpImpl(cpuOut);
-      auto IH = interpOut->getHandle<>();
-      auto CH = cpuOut->getHandle<>();
-      for (size_t i = 0, e = interpOut->size(); i < e; i++) {
-        auto diff = std::abs(IH.raw(i) - CH.raw(i));
-        if (diff > 0.0001) {
-          llvm::errs() << llvm::format(
-              "Index: %zu, Interp: %f, CPU: %f, diff: %f\n", i, IH.raw(i),
-              CH.raw(i), diff);
+    auto interpOuts = interp.hookAndRun(node.getName());
+    auto cpuOuts = cpu.hookAndRun(node.getName());
+
+    if (interpOuts.size() == cpuOuts.size()) {
+      auto interpOutIt = interpOuts.begin(), interpOutEnd = interpOuts.end();
+      auto cpuOutIt = cpuOuts.begin(), cpuOutEnd = cpuOuts.end();
+
+      while (interpOutIt != interpOutEnd && cpuOutIt != cpuOutEnd) {
+        auto *interpOut = *interpOutIt;
+        auto *cpuOut = *cpuOutIt;
+
+        if (!interpOut->isEqual(*cpuOut)) {
+          llvm::errs() << "Results differ\n";
+          dumpImpl(interpOut);
+          dumpImpl(cpuOut);
         }
+
+        ++interpOutIt;
+        ++cpuOutIt;
       }
+    } else {
+      llvm::errs()
+          << "Backends produced different number of results using hook at "
+          << node.getName() << "\n";
     }
   }
 

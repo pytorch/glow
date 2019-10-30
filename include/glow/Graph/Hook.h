@@ -17,6 +17,7 @@
 #define GLOW_GRAPH_HOOK_H
 
 #include "llvm/ADT/StringRef.h"
+#include <list>
 
 namespace glow {
 
@@ -27,8 +28,8 @@ class SaveNode;
 
 struct HookedFunction {
   Function *function;
-  SaveNode *save;
-  Placeholder *output;
+  std::list<SaveNode *> saves;
+  std::list<Placeholder *> outputs;
 };
 
 HookedFunction hookOutput(Function *F, Node *node);
