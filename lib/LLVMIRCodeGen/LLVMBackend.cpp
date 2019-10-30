@@ -115,13 +115,14 @@ LLVMBackend::compileIRWithoutConstants(IRFunction *IR) const {
   irgen->initTargetMachine(getTarget(), getArch(), getCPU(), targetFeatures,
                            getCodeModel(), getRelocModel());
   irgen->initCodeGen();
+  irgen->setIRFunction(IR);
   // Perform the address assignment for activations and WeightVars.
-
   allocateJITMemory(IR, irgen->getAllocationsInfo());
-  // Create the jitmain function to be invoked by JIT.
-  emitJitMain(*irgen);
   // Emit the code for the body of the entry function.
   irgen->performCodeGen();
+  // Create the jitmain function to be invoked by JIT.
+  emitJitMain(*irgen);
+  irgen->finishCodeGen();
   // Hand over the module to JIT for the machine code generation.
   auto JIT = glow::make_unique<llvm::orc::GlowJIT>(irgen->getTargetMachine());
   JIT->addModule(irgen->borrowModule());
