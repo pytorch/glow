@@ -58,7 +58,8 @@ public:
   static size_t makeUniqueGraphId();
 
   /// Init Glow graph based on the ONNX model \p onnxModel and
-  /// static trained weights \p weightDescriptors. Weights can be read in later by a \p deferedBlobReader.
+  /// static trained weights \p weightDescriptors. Weights can be read in later
+  /// by a \p deferedBlobReader.
   onnxStatus initGraph(const void *onnxModel, size_t onnxModelSize,
                        uint32_t weightCount,
                        const onnxTensorDescriptorV1 *weightDescriptors,
