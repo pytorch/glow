@@ -314,7 +314,12 @@ private:
   Error loadSqrt(const torch::jit::Node *ptNode);
 
   /// Load a PyTorch reciprocal node.
+  /// \returns error on failure.
   Error loadReciprocal(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch cat node.
+  /// \returns error on failure.
+  Error loadFusedConcat(const torch::jit::Node *ptNode);
 
   /// Load a PyTorch _convolution node.
   /// \returns error on failure.

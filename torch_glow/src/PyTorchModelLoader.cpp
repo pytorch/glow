@@ -617,6 +617,7 @@ PyTorchModelLoader::getSymbolsMapping() {
        {{"aten::min"}, &PyTorchModelLoader::loadMin, {}},
        {{"aten::max"}, &PyTorchModelLoader::loadMax, {}},
        {{"aten::exp"}, &PyTorchModelLoader::loadExp, {}},
+       {{"prim::FusedConcat"}, &PyTorchModelLoader::loadFusedConcat, {}},
        {{"aten::mean"},
         &PyTorchModelLoader::loadMean,
         {MeanInputs::axis, MeanInputs::keepdims, MeanInputs::output}},
@@ -1217,6 +1218,24 @@ Error PyTorchModelLoader::loadListConstruct(const torch::jit::Node *ptNode) {
   }
 
   return addValueMapping(outputs[0], std::move(glowIVal));
+}
+
+Error PyTorchModelLoader::loadFusedConcat(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  // Concat op require at least 2 inputs to be concated.
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, -2, outputs, 1));
+
+  std::vector<glow::NodeValue> input;
+  for (int i = 0; i < inputs.size(); i++) {
+    glow::NodeValue tmpInput;
+    ASSIGN_VALUE_OR_RETURN_ERR(tmpInput, getGlowNodeValueForValue(inputs[i]));
+    input.push_back(std::move(tmpInput));
+  }
+
+  int64_t dim = ptNode->i(at::attr::dim);
+
+  return addValueMapping(outputs[0], F_.createConcat("concat", input, dim));
 }
 
 Error PyTorchModelLoader::loadReshape(const torch::jit::Node *ptNode) {

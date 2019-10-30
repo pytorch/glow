@@ -101,6 +101,56 @@ void registerDummyOperator(const char *opName) {
       },
       options)});
 }
+
+/// To judge if we can fuse the current node into a prim::FusedConcat.
+bool isFusableConcatNode(torch::jit::Node *node) {
+  if (node->kind() != at::aten::cat ||
+      !node->is_constant(torch::jit::attr::dim)) {
+    return false;
+  }
+
+  auto inputNode = node->namedInput(torch::jit::attr::tensors)->node();
+  if (inputNode->kind() != at::prim::ListConstruct) {
+    return false;
+  }
+  if (inputNode->output()->uses().size() > 1) {
+    return false;
+  }
+
+  return true;
+}
+
+/// Add one prim::FusedConcat before current node.
+/// The current node and the list construct node before it will become dead
+/// node.
+torch::jit::Node *createFusedConcat(torch::jit::Node *node) {
+  AT_ASSERT(node->kind() == at::aten::cat);
+  torch::jit::Graph *graph = node->owningGraph();
+  torch::jit::Node *inputNode =
+      node->namedInput(torch::jit::attr::tensors)->node();
+  int64_t dim = node->get<int64_t>(torch::jit::attr::dim).value();
+
+  torch::jit::Node *fusedConcatNode =
+      graph->create(at::prim::FusedConcat, inputNode->inputs())
+          ->i_(torch::jit::attr::dim, dim);
+  fusedConcatNode->insertBefore(inputNode);
+  fusedConcatNode->output()->copyMetadata(node->output());
+  node->output()->replaceAllUsesWith(fusedConcatNode->output());
+
+  return inputNode;
+}
+
+/// Fuse PyTorch ListConstruct and Concat node intp prim::FusedConcat node
+void fuseConcat(std::shared_ptr<torch::jit::Graph> &graph) {
+  auto block = graph->block();
+  for (auto it = block->nodes().rbegin(); it != block->nodes().rend(); it++) {
+    if (isFusableConcatNode(*it)) {
+      // Here we relay on EliminateDeadCode to remove useless node in graph
+      // and we dont remove them directly
+      createFusedConcat(*it);
+    }
+  }
+}
 } // namespace
 
 void fuseKnownPatterns(std::shared_ptr<torch::jit::Graph> &graph) {
@@ -111,8 +161,11 @@ void fuseKnownPatterns(std::shared_ptr<torch::jit::Graph> &graph) {
     registerDummyOperator("glow::unpacked_quantized_conv2d");
   });
 
+  fuseConcat(graph);
   fuseConvPrepack(graph);
   fuseLinearPrepack(graph);
   fuseNumToTensorToNum(graph);
+  EliminateCommonSubexpression(graph);
+  EliminateDeadCode(graph);
 }
 } // namespace glow

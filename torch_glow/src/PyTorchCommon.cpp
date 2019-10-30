@@ -146,5 +146,4 @@ glow::Tensor ptTensorToGlowTensor(const at::Tensor &ptTensor) {
   auto glowType = ptTypeToGlowType(*c10::TensorType::create(ptTensor));
   return glow::Tensor(ptTensor.data_ptr(), &glowType);
 }
-
 } // namespace glow
