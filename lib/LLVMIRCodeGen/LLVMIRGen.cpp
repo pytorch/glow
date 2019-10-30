@@ -258,6 +258,7 @@ void LLVMIRGen::performCodeGen() {
   builder_->SetInsertPoint(ret);
 
   instrNumbering_.reset(new InstructionNumbering(*F_));
+  generateFunctionDebugInfo();
   loadBaseAddresses(*builder_);
   generateLLVMIRForModule(*builder_);
 }
@@ -283,7 +284,7 @@ void LLVMIRGen::finishCodeGen() {
   optimizeLLVMModule(&getModule(), getTargetMachine());
 
   // Generate debug information.
-  generateDebugInfo();
+  generateModuleDebugInfo();
 
   if (dumpIR) {
     llvm::outs() << "LLVM module after optimizations:\n";

@@ -26,7 +26,7 @@
 #include "llvm/IR/Verifier.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Path.h"
-#include <sstream>
+#include <fstream>
 
 using namespace glow;
 using llvm::cast;
@@ -41,9 +41,14 @@ void LLVMIRGen::setCurrentDebugLocation(llvm::IRBuilder<> &builder,
   if (!emitDebugInfo)
     return;
   auto instrNum = instrNumbering_->getInstrNumber(I);
+  // Get current function.
+  llvm::Function *F = builder.GetInsertPoint()->getParent()->getParent();
+  // Get a debug scope for the current function.
+  auto *DIFunction = getOrCreateFunctionDebugInfo(F, dbgInfo_.mainFile_,
+                                                  dbgInfo_.mainFile_, 0);
   auto DILoc = llvm::DILocation::get(
       getLLVMContext(), dbgInfo_.mainFileFirstInstrLineNo_ + instrNum, 0,
-      dbgInfo_.mainF_);
+      DIFunction);
   llvm::DebugLoc loc(DILoc);
   builder.SetCurrentDebugLocation(loc);
 }
@@ -81,21 +86,33 @@ llvm::DIType *LLVMIRGen::getDebugType(llvm::IRBuilder<> &builder,
 void LLVMIRGen::generateFunctionDebugInfo(llvm::Function *F) {
   if (!emitDebugInfo)
     return;
-  assert(F->getSubprogram() == nullptr && "Function has debug info already");
   // First, generate a DISubprogram for the function.
   auto *DIFunction = getOrCreateFunctionDebugInfo(F, dbgInfo_.mainFile_,
                                                   dbgInfo_.mainFile_, 0);
   size_t lineNo = 0;
   auto file = dbgInfo_.mainFile_;
   auto *currentScope = DIFunction;
+  lineNo = dbgInfo_.mainFileFirstInstrLineNo_;
   // Find the insertion poisition for debug instructions.
   llvm::IRBuilder<> builder(&F->getEntryBlock());
   if (!F->getEntryBlock().empty()) {
+    llvm::DebugLoc debugLoc;
+    // Find first instruction with non-empty debug loc.
+    for (const auto &BB : *F) {
+      for (const auto &I : BB) {
+        if (I.getDebugLoc()) {
+          debugLoc = I.getDebugLoc();
+          break;
+        }
+      }
+    }
     // Insert before the first instruction in the entry block.
     builder.SetInsertPoint(&F->getEntryBlock().front());
+    if (!debugLoc) {
+      debugLoc = llvm::DebugLoc::get(lineNo, 0, currentScope);
+    }
+    builder.SetCurrentDebugLocation(debugLoc);
   }
-  llvm::DebugLoc DL;
-  builder.SetCurrentDebugLocation(DL);
   // Create debug information for the arguments, so that a debugger can expect
   // their values.
   for (unsigned i = 0, e = F->arg_size(); i != e; ++i) {
@@ -121,18 +138,22 @@ void LLVMIRGen::generateFunctionDebugInfo(llvm::Function *F) {
   }
   DIBuilder_->finalizeSubprogram(F->getSubprogram());
   llvm::DIScope *scope = F->getSubprogram();
+  if (!scope) {
+    return;
+  }
   // Add debug locations to all instructions inside the functions which have
   // debug information. This is required for the proper emission of the debug
   // information into object files. If debug locations are missing, LLVM would
   // not emit such information like e.g. types of function parameters, etc.
+  llvm::DebugLoc debugLoc;
   for (auto &BB : *F) {
-    if (!scope)
-      continue;
     for (auto &I : BB) {
-      if (I.getDebugLoc())
+      if (I.getDebugLoc()) {
+        debugLoc = I.getDebugLoc();
         continue;
-      I.setDebugLoc(
-          llvm::DebugLoc(llvm::DILocation::get(getLLVMContext(), 0, 0, scope)));
+      }
+      // Use last seen debug location.
+      I.setDebugLoc(debugLoc);
     }
   }
 }
@@ -188,8 +209,12 @@ LLVMIRGen::getOrCreateFunctionDebugInfo(llvm::Function *F, llvm::DIScope *scope,
 /// different memory areas.
 static void initBaseAddressesOfMemoryAreas(DebugInfo &dbgInfo,
                                            llvm::IRBuilder<> &builder,
-                                           llvm::Module &M) {
-  auto *main = M.getFunction("main");
+                                           llvm::Module &M,
+                                           llvm::Function *mainF) {
+  if (!mainF) {
+    return;
+  }
+  auto *main = mainF;
   // Initialize the names of base address variables.
   // Only 3 memory areas are currently supported: constant weights, mutable
   // weights and activations. If more memory areas are introduced, the assert
@@ -251,54 +276,20 @@ void LLVMIRGen::initDebugInfo() {
   llmodule_->addModuleFlag(llvm::Module::Override, "Dwarf Version", 4);
   llmodule_->addModuleFlag(llvm::Module::Override, "PIC Level", 2);
 
-  // Store the base addresses into global variables to enable access to weights
-  // and activations inside the debugger.
-  auto *main = getModule().getFunction("main");
-
-  // Init global variables holding base address of different memory areas.
-  initBaseAddressesOfMemoryAreas(dbgInfo_, *builder_, getModule());
-
   // Construct the DIBuilder.
   DIBuilder_ = glow::make_unique<llvm::DIBuilder>(getModule());
 
-  // Create a textual representation of the IR for the main function.
-  // First store the textual IR into a string.
-  std::string irContent;
-  llvm::raw_string_ostream irfileContent(irContent);
-  F_->dump(irfileContent);
-  irfileContent.str();
-
-  // Write the IR into a file.
-  std::error_code EC;
+  // Remove the old content of the Glow IR file.
   // The name of the file for the IR, without a path.
-  auto irfileName = getMainEntryName() + ".glow";
+  auto irfileName = getBundleName().str() + ".glow";
   // Use the absolute path, so that a debugger can always find a file.
   llvm::SmallVector<char, 128> path(getOutputDir().begin(),
                                     getOutputDir().end());
-  EC = llvm::sys::fs::make_absolute(path);
+  std::error_code EC = llvm::sys::fs::make_absolute(path);
   assert(!EC && "Could not create absolute path for a file");
   auto irfileFullPath = (path + "/" + irfileName).str();
-  llvm::raw_fd_ostream irfile(irfileFullPath, EC,
-                              llvm::sys::fs::OpenFlags::F_Text);
-  assert(!EC && "Error opening output file");
-  irfile << irContent;
-  irfile.close();
-
-  // Find out the line number of the first IR instruction. It is required to
-  // enable stepping in the debugger.
-  std::istringstream in(irContent);
-  std::string s;
-  size_t lineNo = 0;
-  while (getline(in, s)) {
-    lineNo++;
-    // The first IR instruction comes right after the line "code {".
-    if (s.substr(0, 6) == "code {") {
-      dbgInfo_.mainFileFirstInstrLineNo_ = lineNo + 1;
-      break;
-    }
-  }
-  assert(dbgInfo_.mainFileFirstInstrLineNo_ &&
-         "No IR code was found in the textual IR representation");
+  EC = llvm::sys::fs::remove(irfileFullPath);
+  assert(!EC && "Could not remove the Glow IR file");
 
   // Create the debug information for the current file. It does not create a
   // real file. It is just a file name and path used for the debug locations.
@@ -311,10 +302,62 @@ void LLVMIRGen::initDebugInfo() {
       llvm::DICompileUnit::DebugEmissionKind::FullDebug,
       /* SplitDebugInlining */ true,
       /* DebugInfoForProfiling */ true);
+}
+
+void LLVMIRGen::generateFunctionDebugInfo() {
+  if (!emitDebugInfo) {
+    return;
+  }
+  // Init global variables holding base address of different memory areas.
+  initBaseAddressesOfMemoryAreas(dbgInfo_, *builder_, getModule(),
+                                 getLLVMFunction());
+
+  // Create a textual representation of the IR for the main function.
+  // First store the textual IR into a string.
+  std::string irContent;
+  llvm::raw_string_ostream irfileContent(irContent);
+  F_->dump(irfileContent);
+  irfileContent.str();
+
+  // Write the IR into a file.
+  std::error_code EC;
+  // The name of the file for the IR, without a path.
+  auto irfileName = getBundleName().str() + ".glow";
+  // Use the absolute path, so that a debugger can always find a file.
+  llvm::SmallVector<char, 128> path(getOutputDir().begin(),
+                                    getOutputDir().end());
+  EC = llvm::sys::fs::make_absolute(path);
+  assert(!EC && "Could not create absolute path for a file");
+  auto irfileFullPath = (path + "/" + irfileName).str();
+  llvm::raw_fd_ostream irfile(irfileFullPath, EC,
+                              llvm::sys::fs::OpenFlags::F_Text |
+                                  llvm::sys::fs::OpenFlags::F_Append);
+  assert(!EC && "Error opening output file");
+  irfile << irContent;
+  irfile.close();
+
+  // Find out the line number of the first IR instruction. It is required to
+  // enable stepping in the debugger.
+  std::ifstream in(irfileFullPath);
+  std::string s;
+  size_t lineNo = 0;
+  // Find the last code section, because this is the section for the last bundle
+  // entry.
+  while (getline(in, s)) {
+    lineNo++;
+    // The first IR instruction comes right after the line "code {".
+    if (s.substr(0, 6) == "code {") {
+      dbgInfo_.mainFileFirstInstrLineNo_ = lineNo + 1;
+    }
+  }
+  assert(dbgInfo_.mainFileFirstInstrLineNo_ &&
+         "No IR code was found in the textual IR representation");
 
   // Create the debug info for the main function.
+  auto *main = getLLVMFunction();
   dbgInfo_.mainF_ = main ? getOrCreateFunctionDebugInfo(
-                               main, dbgInfo_.mainFile_, dbgInfo_.mainFile_, 0)
+                               main, dbgInfo_.mainFile_, dbgInfo_.mainFile_,
+                               dbgInfo_.mainFileFirstInstrLineNo_)
                          : nullptr;
 }
 
@@ -384,7 +427,7 @@ void LLVMIRGen::emitDebugGlobalVariableForValue(const Value *val) {
   baseAddress->addDebugInfo(DIgv);
 }
 
-void LLVMIRGen::generateDebugInfo() {
+void LLVMIRGen::generateModuleDebugInfo() {
   if (!emitDebugInfo)
     return;
 
@@ -411,6 +454,9 @@ void LLVMIRGen::generateDebugInfo() {
     llvm::DIScope *scope = F.getSubprogram();
     if (!scope)
       continue;
+    size_t lineNo = dbgInfo_.mainFileFirstInstrLineNo_;
+    llvm::DebugLoc debugLoc(
+        llvm::DILocation::get(getLLVMContext(), lineNo, 0, scope));
     for (auto &BB : F) {
       for (auto &I : BB) {
         // Do not update debug locations that are not belonging to the current
@@ -418,8 +464,13 @@ void LLVMIRGen::generateDebugInfo() {
         if (I.getDebugLoc() &&
             I.getDebugLoc()->getScope()->getName() != F.getName())
           continue;
-        I.setDebugLoc(llvm::DebugLoc(
-            llvm::DILocation::get(getLLVMContext(), 0, 0, scope)));
+        // Do not update existing debug information in the current scope.
+        if (I.getDebugLoc()) {
+          // Use the last seen debug location in the current scope.
+          debugLoc = I.getDebugLoc();
+          continue;
+        }
+        I.setDebugLoc(debugLoc);
       }
     }
   }

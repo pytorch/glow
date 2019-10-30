@@ -211,8 +211,10 @@ protected:
   llvm::DIType *getDebugType(llvm::IRBuilder<> &builder, llvm::Type *ty);
   /// Init the generation of debug information.
   virtual void initDebugInfo();
-  /// Generate debug information.
-  virtual void generateDebugInfo();
+  /// Generate debug information for the current function.
+  virtual void generateFunctionDebugInfo();
+  /// Generate debug information for the whole module.
+  virtual void generateModuleDebugInfo();
   /// Set the debug location for the \p builder, so that it corresponds to the
   /// instruction \p I in the textual representation of the Glow IR.
   void setCurrentDebugLocation(llvm::IRBuilder<> &builder,
