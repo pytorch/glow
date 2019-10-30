@@ -36,7 +36,7 @@ class Tensor;
 class Constant;
 class Instruction;
 class WeightVar;
-struct AllocationsInfo;
+class AllocationsInfo;
 
 /// Different kinds of memory areas used by the emitted LLVM function.
 /// The order is important. It should match the order of base addresses

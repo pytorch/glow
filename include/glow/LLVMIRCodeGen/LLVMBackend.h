@@ -26,7 +26,7 @@
 
 namespace glow {
 
-struct AllocationsInfo;
+class AllocationsInfo;
 class PlaceholderBindings;
 class LLVMIRGen;
 

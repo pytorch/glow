@@ -16,6 +16,7 @@
 #ifndef GLOW_LLVMIRCODEGEN_ALLOCATIONSINFO_H
 #define GLOW_LLVMIRCODEGEN_ALLOCATIONSINFO_H
 
+#include "glow/CodeGen/MemoryAllocator.h"
 #include "glow/Graph/Nodes.h"
 #include "llvm/IR/Module.h"
 
@@ -34,17 +35,18 @@ class RuntimeBundle;
 
 /// Information about allocations for activations, constant weight variables
 /// and mutable weight variables.
-struct AllocationsInfo {
+class AllocationsInfo {
+public:
   /// Different kinds of values that need to be allocated.
   enum class ValueKind { ConstantWeight, MutableWeight, Activation };
   using KindAndNumber = std::pair<ValueKind, size_t>;
   /// Map Values in the module to their numbers.
-  llvm::DenseMap<const Value *, KindAndNumber> valueNumbers_;
+  llvm::DenseMap<const Kinded *, KindAndNumber> valueNumbers_;
   /// To get the offset of a given value simply use
   /// numberOffsets_[valueNumbers_[v]]
 
   /// Maps Values in the module to their offsets.
-  llvm::DenseMap<const Value *, uint64_t> allocatedAddress_;
+  llvm::DenseMap<const Kinded *, uint64_t> allocatedAddress_;
   /// Amount of memory to be allocated for constant WeightVars.
   size_t constantWeightVarsMemSize_{0};
   /// Amount of memory to be allocated for mutable WeightVars.
@@ -53,8 +55,12 @@ struct AllocationsInfo {
   size_t activationsMemSize_{0};
   /// Base address of stored constant weights.
   uint8_t *baseConstantWeightVarsStore_{nullptr};
-  /// Base address of constant weights.
 
+  /// Ctor.
+  AllocationsInfo()
+      : constantWeightVarsAllocator("ConstantWeights", 0),
+        mutableWeightVarsAllocator("MutableWeights", 0),
+        activationsAllocator("Activations", 0) {}
   /// Assign offsets to all of the variables in the module \p M and to the
   /// placeholders.
   void allocateWeightVars(const IRFunction *F);
@@ -71,6 +77,17 @@ struct AllocationsInfo {
   /// Number all allocations and weight variables by assigning them unique
   /// numbers.
   void numberValues(const IRFunction *F);
+
+private:
+  /// Index to be used for a new value.
+  size_t valueIdx_{0};
+  /// Use two different allocators, because constant weights and mutable weights
+  /// may use different memory blocks.
+  MemoryAllocator constantWeightVarsAllocator;
+  MemoryAllocator mutableWeightVarsAllocator;
+  /// Use a memory allocator with no upper bound on how much memory we can
+  /// allocate.
+  MemoryAllocator activationsAllocator;
 };
 
 } // namespace glow
