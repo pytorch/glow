@@ -22,7 +22,7 @@ And all factories must be linked to the Backends library, see
 ### `Backend` Abstract Class
 
 All backends in Glow derive from the [abstract base class
-`Backend`](https://github.com/pytorch/glow/blob/master/include/glow/Backends/Backend.h). There
+`Backend`](https://github.com/pytorch/glow/blob/master/include/glow/Backend/Backend.h). There
 are two pure virtual functions all backends must implement:
 
 - `virtual std::unique_ptr<CompiledFunction> compile(Function *F) const;`
