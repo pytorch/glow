@@ -194,7 +194,7 @@ inline float dequantize(eTy input, const TensorQuantizationParams &TQP) {
 /// then an offset of 128 is substracted to convert to int8_t.
 template <class DestTy>
 inline DestTy quantizeWithFloatOffset(float input, float scale, float offset) {
-  uint8_t d = static_cast<uint8_t>((input - offset) / scale);
+  uint8_t d = static_cast<uint8_t>(std::round((input - offset) / scale));
   if (std::is_same<int8_t, DestTy>::value) {
     d -= 128;
   }
@@ -205,8 +205,8 @@ inline DestTy quantizeWithFloatOffset(float input, float scale, float offset) {
 /// quantization parameters \p scale and \p offset.
 inline uint8_t quantize4BitsWithFloatOffset(float input, float scale,
                                             float offset) {
-  uint8_t d =
-      std::max(0, std::min(static_cast<int>((input - offset) / scale), 15));
+  uint8_t d = std::max(
+      0, std::min(static_cast<int>(std::round((input - offset) / scale)), 15));
   return d;
 }
 
