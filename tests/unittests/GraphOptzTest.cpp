@@ -84,6 +84,15 @@ static Function *optimizeFunction(Function *F) {
   return G;
 }
 
+/// \returns the first node in a function which has the specificied name.
+template <typename NodeT = Node>
+static const NodeT *findFunctionNodeByName(const Function *F,
+                                           const llvm::StringRef name) {
+  return llvm::dyn_cast<NodeT>(
+      std::find_if(F->getNodes().begin(), F->getNodes().end(),
+                   [=](auto &N) { return N.getName() == name; }));
+}
+
 TEST_F(GraphOptz, OptimizeClipFunnel) {
   auto *A =
       mod_.createPlaceholder(ElemKind::FloatTy, {100, 16}, "input", false);
@@ -452,40 +461,44 @@ TEST_F(GraphOptz, optimizeBatchNormAfterConvButConvReused) {
 }
 
 TEST_F(GraphOptz, optimizeBatchNormAfterConvButVarReused) {
-  Node *A =
+  auto *A =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 10, 20, 3}, "A", false);
-  auto *filter =
-      mod_.createPlaceholder(ElemKind::FloatTy, {16, 5, 5, 3}, "filter", true);
-  auto *bias = mod_.createPlaceholder(ElemKind::FloatTy, {16}, "bias", true);
 
-  ConvolutionNode *CV = F_->createConv(
-      "conv", A, filter, bias,
-      mod_.uniqueType(ElemKind::FloatTy, {1, 10, 20, 16}), 5, 1, 2, 1);
-  auto *beta = mod_.createPlaceholder(ElemKind::FloatTy, {16}, "beta", true);
-  auto *gamma = mod_.createPlaceholder(ElemKind::FloatTy, {16}, "gamma", true);
-
-  auto *mean = mod_.createPlaceholder(ElemKind::FloatTy, {16}, "mean", false);
-  auto *var = mod_.createPlaceholder(ElemKind::FloatTy, {16}, "var", false);
-
-  Node *BN = F_->createBatchNormalization("batch", CV, beta, gamma, mean, var,
-                                          3, 0.0001, 0.9);
-  SaveNode *ret = F_->createSave("ret", BN);
-  SaveNode *filterSave = F_->createSave("filterSave", CV->getFilter());
+  ConvolutionNode *CV = F_->createConv(bindings_, "conv", A, 16, 5, 1, 2, 1);
+  Node *BN =
+      F_->createBatchNormalization(bindings_, "batch", CV, 3, 0.0001, 0.9);
+  auto *retSaveNode = F_->createSave("ret", BN);
+  auto *filterSaveNode = F_->createSave("filter", CV->getFilter());
 
   EXPECT_EQ(F_->getNodes().size(), 4);
+  optimizedF_ = optimizeFunction(F_);
+  ASSERT_EQ(A->getNumUsers(), 2);
 
-  ::glow::optimize(F_, CompilationMode::Infer);
+  auto *optimizedF_ret =
+      findFunctionNodeByName<SaveNode>(optimizedF_, retSaveNode->getName());
+  auto *optimizedF_filterSave =
+      findFunctionNodeByName<SaveNode>(optimizedF_, filterSaveNode->getName());
+
   // Make sure the structure of the graph did not change.
-  EXPECT_EQ(F_->getNodes().size(), 4);
-  EXPECT_TRUE(llvm::isa<Placeholder>(filterSave->getInput()));
-  auto *varFilter = llvm::dyn_cast<Placeholder>(filterSave->getInput());
+  EXPECT_EQ(optimizedF_->getNodes().size(), 4);
+  EXPECT_TRUE(llvm::isa<Placeholder>(optimizedF_filterSave->getInput()));
+  auto *varFilter =
+      llvm::dyn_cast<Placeholder>(optimizedF_filterSave->getInput());
   EXPECT_EQ(varFilter, CV->getFilter());
-  EXPECT_TRUE(llvm::isa<BatchNormalizationNode>(ret->getInput()));
+  EXPECT_TRUE(llvm::isa<BatchNormalizationNode>(optimizedF_ret->getInput()));
+
   BatchNormalizationNode *batchNorm =
-      llvm::dyn_cast<BatchNormalizationNode>(ret->getInput());
-  EXPECT_EQ(batchNorm, BN);
-  EXPECT_TRUE(batchNorm && batchNorm->getInput() &&
-              batchNorm->getInput().getNode() == CV);
+      llvm::dyn_cast<BatchNormalizationNode>(optimizedF_ret->getInput());
+  ASSERT_TRUE(batchNorm);
+  auto *newCVNode =
+      llvm::dyn_cast<ConvolutionNode>(batchNorm->getInput().getNode());
+  ASSERT_TRUE(newCVNode);
+  EXPECT_EQ(newCVNode->getInput().getNode(), CV->getInput().getNode());
+  EXPECT_EQ(newCVNode->getInput().getNode(), A);
+
+  bindings_.allocate(mod_.getPlaceholders());
+  bindings_.get(A)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
+  checkNumericalEquivalence();
 }
 
 TEST_F(GraphOptz, transposeConstant) {
