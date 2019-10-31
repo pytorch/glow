@@ -30,6 +30,37 @@ llvm::cl::opt<std::string>
 llvm::cl::opt<std::string> llvmCPU("mcpu",
                                    llvm::cl::desc("LLVM CPU to be used"));
 
+llvm::cl::opt<llvm::CodeModel::Model> llvmCodeModel(
+    "code-model",
+    llvm::cl::desc("Specify which code model to use on the target machine"),
+    llvm::cl::values(
+        clEnumValN(llvm::CodeModel::Model::Small, "small", "Small code model"),
+        clEnumValN(llvm::CodeModel::Model::Medium, "medium",
+                   "Medium code model"),
+        clEnumValN(llvm::CodeModel::Model::Large, "large", "Large code model")),
+    llvm::cl::init(llvm::CodeModel::Model::Large),
+    llvm::cl::cat(getLLVMBackendCat()));
+
+llvm::cl::opt<llvm::CodeModel::Model> llvmBundleCodeModel(
+    "bundle-code-model",
+    llvm::cl::desc("Specify which code model to use for a bundle"),
+    llvm::cl::values(
+        clEnumValN(llvm::CodeModel::Model::Small, "small", "Small code model"),
+        clEnumValN(llvm::CodeModel::Model::Medium, "medium",
+                   "Medium code model"),
+        clEnumValN(llvm::CodeModel::Model::Large, "large", "Large code model")),
+    llvm::cl::init(llvm::CodeModel::Model::Small),
+    llvm::cl::cat(getLLVMBackendCat()));
+
+llvm::cl::opt<llvm::Reloc::Model> llvmRelocModel(
+    "relocation-model",
+    llvm::cl::desc(
+        "Specify which relocation model to use on the target machine"),
+    llvm::cl::values(
+        clEnumValN(llvm::Reloc::Static, "static", "Non-relocatable code"),
+        clEnumValN(llvm::Reloc::PIC_, "pic", "Position independent code")),
+    llvm::cl::init(llvm::Reloc::Static), llvm::cl::cat(getLLVMBackendCat()));
+
 llvm::cl::list<std::string>
     llvmTargetFeatures("target-feature",
                        llvm::cl::desc("LLVM target/CPU features to be used"),
