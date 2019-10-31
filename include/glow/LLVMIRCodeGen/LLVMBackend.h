@@ -39,6 +39,8 @@ class LLVMBackend : public BackendUsingGlowIR {
   std::string cpu_;
   /// Code model used by this backend.
   llvm::CodeModel::Model codeModel_;
+  /// Code model used by this backend for bundles.
+  llvm::CodeModel::Model bundleCodeModel_;
   /// Relocation model used by this backend.
   llvm::Reloc::Model relocModel_;
 
@@ -62,9 +64,15 @@ public:
   void setCodeModel(llvm::CodeModel::Model codeModel) {
     codeModel_ = codeModel;
   }
+  /// \returns code model used by this backend for bundles.
+  llvm::CodeModel::Model getBundleCodeModel() const { return bundleCodeModel_; }
+  /// Sets code model used by this backend for bundles.
+  void setBundleCodeModel(llvm::CodeModel::Model codeModel) {
+    bundleCodeModel_ = codeModel;
+  }
   /// \returns relocation model used by this backend.
   llvm::Reloc::Model getRelocModel() const { return relocModel_; }
-  // Sets Relocation Model used by this backend
+  /// Sets relocation model used by this backend.
   void setRelocModel(llvm::Reloc::Model relocModel) {
     relocModel_ = relocModel;
   }

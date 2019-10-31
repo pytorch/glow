@@ -17,6 +17,7 @@
 #ifndef GLOW_LLVMIRCODEGEN_COMMANDLINE_H
 #define GLOW_LLVMIRCODEGEN_COMMANDLINE_H
 
+#include "llvm/Support/CodeGen.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Target/TargetOptions.h"
 
@@ -34,6 +35,15 @@ extern llvm::cl::opt<std::string> llvmArch;
 
 /// CPU to be used by the LLVMBackend. Used as -mcpu=cpuA.
 extern llvm::cl::opt<std::string> llvmCPU;
+
+/// Code model to be used by the LLVMBackend.
+extern llvm::cl::opt<llvm::CodeModel::Model> llvmCodeModel;
+
+/// Code model to be used by the LLVMBackend to produce bundles.
+extern llvm::cl::opt<llvm::CodeModel::Model> llvmBundleCodeModel;
+
+/// Relocation model to be used by the LLVMBackend.
+extern llvm::cl::opt<llvm::Reloc::Model> llvmRelocModel;
 
 /// Target and CPU features to be used by the LLVMBackend. The features should
 /// be comma-separated and prefixed with +.

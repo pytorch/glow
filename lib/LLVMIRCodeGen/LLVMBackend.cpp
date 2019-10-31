@@ -54,8 +54,9 @@ LLVMBackend::LLVMBackend() {
   arch_ = llvmArch;
   target_ = llvmTarget;
   cpu_ = llvmCPU;
-  codeModel_ = llvm::CodeModel::Model::Large;
-  relocModel_ = llvm::Reloc::Model::Static;
+  codeModel_ = llvmCodeModel;
+  bundleCodeModel_ = llvmBundleCodeModel;
+  relocModel_ = llvmRelocModel;
 }
 
 /// Emit the entry point for JIT called "jitmain".
@@ -161,5 +162,5 @@ void LLVMBackend::save(Function *F, llvm::StringRef outputDir,
   auto IR = generateAndOptimizeIR(F, *this, shouldShareBuffers());
   BundleSaver(IR.get(), *this)
       .save(getTarget(), getArch(), getCPU(), targetFeatures, outputDir,
-            bundleName, mainEntryName, getCodeModel(), getRelocModel());
+            bundleName, mainEntryName, getBundleCodeModel(), getRelocModel());
 }
