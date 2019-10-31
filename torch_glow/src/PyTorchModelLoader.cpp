@@ -777,8 +777,15 @@ PyTorchModelLoader::getSymbolsMapping() {
 
 // static
 bool PyTorchModelLoader::isNodeSupported(const torch::jit::Node *ptNode) {
+  const auto kind = ptNode->kind();
+
+  // Special case for prim::GetAttr, it's loaded separately from other ops.
+  if (kind == torch::jit::prim::GetAttr) {
+    return true;
+  }
+
   const auto &mapping = getSymbolsMapping();
-  return mapping.count(ptNode->kind()) != 0;
+  return mapping.count(kind) != 0;
 }
 
 Error PyTorchModelLoader::freezeWeights(const torch::jit::Node *ptNode) {
@@ -840,14 +847,27 @@ Error PyTorchModelLoader::freezeWeights(const torch::jit::Node *ptNode) {
   return Error::success();
 }
 
-Error PyTorchModelLoader::loadNode(const torch::jit::Node *node) {
+Error PyTorchModelLoader::loadNodes(const torch::jit::Graph &graph) {
   const auto &mapping = getSymbolsMapping();
-  auto it = mapping.find(node->kind());
 
-  RETURN_ERR_IF_NOT(it != mapping.end(),
-                    glow::strFormat("Node kind %s is not supported by Glow",
-                                    node->kind().toDisplayString()));
-  return (this->*it->second.loadFn)(node);
+  // Nodes are topologically sorted.
+  for (const auto &node : graph.nodes()) {
+    const auto kind = node->kind();
+
+    // prim::GetAttr is loaded separately.
+    if (kind == torch::jit::prim::GetAttr) {
+      continue;
+    }
+
+    auto it = mapping.find(kind);
+
+    RETURN_ERR_IF_NOT(it != mapping.end(),
+                      glow::strFormat("Node kind %s is not supported by Glow",
+                                      node->kind().toDisplayString()));
+    RETURN_IF_ERR((this->*it->second.loadFn)(node));
+  }
+
+  return Error::success();
 }
 
 Error PyTorchModelLoader::addValueMapping(const torch::jit::Value *value,
@@ -2447,6 +2467,82 @@ Error PyTorchModelLoader::loadConstant(const torch::jit::Node *ptNode) {
   return Error::success();
 }
 
+Error PyTorchModelLoader::loadAttributes(
+    const torch::jit::Graph &graph,
+    const at::ArrayRef<torch::jit::IValue> inputs) {
+
+  // Map from the Value in the Graph of an ivalue::Object to the Object and a
+  // string representing it's place in the module hierarchy.
+  std::unordered_map<const torch::jit::Value *,
+                     std::pair<const c10::ivalue::Object *, std::string>>
+      objectTree;
+
+  // Load graph inputs that are Objects.
+  auto graphInputValues = graph.inputs();
+  for (size_t i = 0; i < inputs.size(); ++i) {
+    const auto &input = inputs[i];
+    if (!input.isObject()) {
+      continue;
+    }
+
+    const auto &object = input.toObjectRef();
+
+    objectTree[graphInputValues[i]] =
+        std::make_pair(&object, object.type()->str().c_str());
+  }
+
+  // Load prim::GetAttr nodes.
+  for (const auto &node : graph.nodes()) {
+    if (node->kind() != torch::jit::prim::GetAttr) {
+      continue;
+    }
+
+    RETURN_IF_ERR(
+        checkInputAndOutputSizes(node->inputs(), 1, node->outputs(), 1));
+
+    const auto *inputValue = node->input();
+    const auto *outputValue = node->output();
+
+    RETURN_ERR_IF_NOT(objectTree.count(inputValue),
+                      "Missing input for prim::getAttr");
+
+    const auto &parent = objectTree.at(inputValue);
+    const auto *parentObject = parent.first;
+
+    const auto attrName = node->s(torch::jit::attr::name);
+    const auto ival = parentObject->getAttr(attrName);
+
+    // Concatenation of names of Objects and fields referenced in the Module
+    // tree.
+    const auto &nameHierarchy = parent.second;
+    const auto newNameHierarchy =
+        strFormat("%s_%s", nameHierarchy.c_str(), attrName.c_str());
+
+    if (ival.isObject()) {
+      objectTree[outputValue] =
+          std::make_pair(&ival.toObjectRef(), newNameHierarchy);
+      continue;
+    } else if (ival.isTensor()) {
+      const auto &ptTensor = ival.toTensor();
+      auto glowTensor = ptTensorToGlowTensor(ptTensor);
+
+      glow::Constant *glowConstant = F_.getParent()->createConstant(
+          newNameHierarchy, std::move(glowTensor));
+
+      if (copyTensorMemory_) {
+        glowConstant->ensureIsOwned();
+      }
+      RETURN_IF_ERR(addValueMapping(outputValue, glowConstant->getOutput()));
+    } else {
+      GlowIValue glowIVal;
+      RETURN_IF_ERR(glowIVal.fromIValue(ival));
+      RETURN_IF_ERR(addValueMapping(outputValue, std::move(glowIVal)));
+    }
+  }
+
+  return Error::success();
+}
+
 /*static*/
 Error PyTorchModelLoader::loadJITGraph(
     glow::Function &F, const torch::jit::Graph &graph,
@@ -2490,7 +2586,6 @@ PyTorchModelLoader::PyTorchModelLoader(
         if (inputValue->type()->kind() == c10::TypeKind::TensorType) {
           glow::Type t(scalarTypeToElemKind(inputMeta[i].type),
                        inputMeta[i].dims);
-          // ASSIGN_VALUE_OR_RETURN_ERR(t, glowIVal.toTensor());
           ph = F_.getParent()->createPlaceholder(&t, "input",
                                                  /*isTrainable*/ false);
         } else {
@@ -2503,12 +2598,15 @@ PyTorchModelLoader::PyTorchModelLoader(
         inputPlaceholdersReverseIndex_[ph] = i;
       } else {
         const c10::IValue inputIValue = inputs.at(i);
+        // Objects will be used to load model parameters.
+        if (inputIValue.isObject()) {
+          continue;
+        }
         GlowIValue glowIVal;
         RETURN_IF_ERR(glowIVal.fromIValue(inputIValue));
         if (glowIVal.isTensor()) {
           glow::Tensor *t;
           ASSIGN_VALUE_OR_RETURN_ERR(t, glowIVal.toTensor());
-          // ASSIGN_VALUE_OR_RETURN_ERR(t, glowIVal.toTensor());
           ph = F_.getParent()->createPlaceholder(&t->getType(), "input",
                                                  /*isTrainable*/ false);
           RETURN_IF_ERR(addValueMapping(inputValue, ph->getOutput()));
@@ -2520,19 +2618,9 @@ PyTorchModelLoader::PyTorchModelLoader(
       }
     }
 
-    // If weight freezing is enabled then freeze all weights. This is done
-    // before any nodes are loaded so all nodes see either frozen or unfrozen
-    // view of inputs in case any input is shared.
-    if (settings.weightFreezingEnabled) {
-      for (const auto &node : graph.nodes()) {
-        RETURN_IF_ERR(freezeWeights(node));
-      }
-    }
+    RETURN_IF_ERR(loadAttributes(graph, inputs));
 
-    // Nodes are topologically sorted.
-    for (const auto &node : graph.nodes()) {
-      RETURN_IF_ERR(loadNode(node));
-    }
+    RETURN_IF_ERR(loadNodes(graph));
 
     // Create Glow Placeholders for outputs.
     for (const torch::jit::Value *output : graph.outputs()) {
@@ -2617,10 +2705,7 @@ PyTorchModelLoader::PyTorchModelLoader(
           addValueMapping(graphInputValues[graphIdx], C->getOutput()));
     }
 
-    // Nodes are topologically sorted. Don't do any weight freezing first.
-    for (const auto &node : graph.nodes()) {
-      RETURN_IF_ERR(loadNode(node));
-    }
+    RETURN_IF_ERR(loadNodes(graph));
 
     // Create Glow Placeholders for outputs.
     for (const torch::jit::Value *output : graph.outputs()) {
