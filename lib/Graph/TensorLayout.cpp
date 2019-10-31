@@ -141,25 +141,27 @@ void TensorLayoutDescription::parse(llvm::StringRef text) {
   numDims_ = idx;
 }
 
-void TensorLayoutDescription::parseCustomExtensions(llvm::StringRef text,
+void TensorLayoutDescription::parseCustomExtensions(llvm::StringRef &text,
                                                     unsigned idx) {
   char curr = '[';
+  dims_[idx].append("[");
   for (curr = text.front(); curr != ']' && !text.empty(); curr = text.front()) {
+    dims_[idx].append(std::string(1, curr));
     text = text.drop_front();
   }
   assert(curr == ']' && "Expected closing ']' bracket.");
   text = text.drop_front();
-  dims_[idx].append("[]");
+  dims_[idx].append("]");
 }
 
-void TensorLayoutDescription::parseOfficialExtensions(llvm::StringRef text,
+void TensorLayoutDescription::parseOfficialExtensions(llvm::StringRef &text,
                                                       unsigned idx) {
   // Only alignment so far - very simple parser:
   if (!text.consume_front("a=")) {
     llvm_unreachable("Unsupported layout extension.");
   }
   size_t align;
-  if (!text.consumeInteger(10, align)) {
+  if (text.consumeInteger(10, align)) {
     llvm_unreachable("Expected alignment info.");
   }
   if (!text.consume_front("]")) {

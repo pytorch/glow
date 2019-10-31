@@ -98,14 +98,14 @@ public:
 protected:
   /// parse helper: get the custom extensions information. the default, virtual,
   /// implementation just ignores all the data until the end token.
-  virtual void parseCustomExtensions(llvm::StringRef text, unsigned idx);
+  virtual void parseCustomExtensions(llvm::StringRef &text, unsigned idx);
 
 private:
   /// Constructor helper: Parses the  serialized string.
   void parse(llvm::StringRef text);
 
   /// parse helper: get the official extensions information.
-  void parseOfficialExtensions(llvm::StringRef text, unsigned idx);
+  void parseOfficialExtensions(llvm::StringRef &text, unsigned idx);
 };
 
 /// Interface for finding out layout requirements.
