@@ -165,6 +165,10 @@ struct Model {
     }
 
     EE_.compile(cctx);
+
+    // After compilation, the original function may be removed/replaced. Need to
+    // update F_.
+    F_ = EE_.getModule().getFunctions().front();
   }
 
 private:
