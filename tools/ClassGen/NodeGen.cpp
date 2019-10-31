@@ -484,6 +484,23 @@ int main(int argc, char **argv) {
                     "Weights[0] * Slice(0) + Weights[1] * Slice(1) + ... "
                     "It implies that len(Weights) == len(Indices).");
 
+  BB.newNode("SparseLengthsWeightedSumOffsets")
+      .addInput("Data")
+      .addInput("Weights")
+      .addInput("Indices")
+      .addInput("Offsets")
+      .addResultFromCtorArg()
+      .setDocstring(
+          "Gathers slices of the outer-most dimension of Data "
+          "indexed by Indices vector, and then accumulates them into "
+          "len(Offsets) entries: first slice between Offsets[0] and Offsets[1] "
+          "(or total length if there's only one elem in Offsets) are "
+          "aggregated to Result[0], etc. I.e. largest offset must be "
+          "less than or equal to len(Indices). Before doing aggregation, each "
+          "individual slice is scaled by its weight: Result[0] = "
+          "Weights[0] * Slice(0) + Weights[1] * Slice(1) + ... "
+          "It implies that len(Weights) == len(Indices).");
+
   BB.newNode("RowwiseQuantizedSparseLengthsWeightedSum")
       .addInput("Data")
       .addInput("Scales")

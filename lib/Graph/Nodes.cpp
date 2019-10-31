@@ -447,6 +447,31 @@ static bool verifySparseLengthsWeightedSum(NodeValue dest, NodeValue data,
   return isValid;
 }
 
+static bool verifySparseLengthsWeightedSumOffsets(NodeValue dest,
+                                                  NodeValue data,
+                                                  NodeValue weights,
+                                                  NodeValue indices,
+                                                  NodeValue offsets) {
+  bool isValid = checkType(dest, data.getElementType(), dest.getNode());
+  isValid &= checkType(weights, data.getElementType(), dest.getNode());
+  isValid &= checkType(indices, ElemKind::Int64ITy, dest.getNode());
+  isValid &= checkType(offsets, ElemKind::Int64ITy, dest.getNode());
+  isValid &=
+      expectCompareTrue("Indices must be a 1D vector", indices.dims().size(),
+                        size_t(1), dest.getNode());
+  isValid &=
+      expectCompareTrue("Offsets must be a 1D vector", offsets.dims().size(),
+                        size_t(1), dest.getNode());
+  isValid &=
+      expectCompareTrue("Weights must be a 1D vector", weights.dims().size(),
+                        size_t(1), dest.getNode());
+
+  isValid &=
+      expectCompareTrue("Weights and Indices must have the same size",
+                        weights.dims()[0], indices.dims()[0], dest.getNode());
+  return isValid;
+}
+
 bool PadNode::verify() const {
   // Pad is currently only supported for constant padding.
   return expectCompareTrue("only the 'constant' mode is currrently supported",
@@ -1161,6 +1186,11 @@ bool SparseLengthsWeightedSumGradNode::verify() const {
   isValid &= checkSameType(getGradOfInputNamedIndices(), getIndices(), this);
   isValid &= checkSameType(getGradOfInputNamedLengths(), getLengths(), this);
   return isValid;
+}
+
+bool SparseLengthsWeightedSumOffsetsNode::verify() const {
+  return verifySparseLengthsWeightedSumOffsets(
+      getResult(), getData(), getWeights(), getIndices(), getOffsets());
 }
 
 bool RowwiseQuantizedSparseLengthsWeightedSumNode::verify() const {

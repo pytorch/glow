@@ -265,6 +265,16 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
            (NI.getInElemTy(SparseLengthsWeightedSumNode::LengthsIdx) ==
             ElemKind::Int32ITy);
 
+  case Kinded::Kind::SparseLengthsWeightedSumOffsetsNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind(
+               {ElemKind::FloatTy, ElemKind::Float16Ty},
+               {SparseLengthsWeightedSumOffsetsNode::IndicesIdx,
+                SparseLengthsWeightedSumOffsetsNode::OffsetsIdx}) &&
+           (NI.getInElemTy(SparseLengthsWeightedSumOffsetsNode::IndicesIdx) ==
+            ElemKind::Int64ITy) &&
+           (NI.getInElemTy(SparseLengthsWeightedSumOffsetsNode::OffsetsIdx) ==
+            ElemKind::Int64ITy);
+
   case Kinded::Kind::SparseLengthsWeightedSumGradNodeKind:
     // GradOfInputNamedIndicesIdx and GradOfInputNamedLengthsIdx do not need to
     // be checked because they are not used.

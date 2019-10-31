@@ -2437,6 +2437,29 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     break;
   }
 
+  case Kinded::Kind::SparseLengthsWeightedSumOffsetsInstKind: {
+    auto *SI = cast<SparseLengthsWeightedSumOffsetsInst>(I);
+    auto *dest = SI->getDest();
+    auto *data = SI->getData();
+    auto *weights = SI->getWeights();
+    auto *indices = SI->getIndices();
+    auto *offsets = SI->getOffsets();
+    auto *destPtr = emitValueAddress(builder, dest);
+    auto *dataPtr = emitValueAddress(builder, data);
+    auto *weightsPtr = emitValueAddress(builder, weights);
+    auto *indicesPtr = emitValueAddress(builder, indices);
+    auto *offsetsPtr = emitValueAddress(builder, offsets);
+    auto *segments = emitConstSizeT(builder, offsets->dims()[0]);
+    auto *totalLength = emitConstSizeT(builder, indices->dims()[0]);
+    auto *lineSize = emitConstSizeT(builder, data->size() / data->dims()[0]);
+    auto *F = getFunction("sparse_lengths_weighted_sum_offsets",
+                          dest->getElementType());
+    createCall(builder, F,
+               {destPtr, dataPtr, weightsPtr, indicesPtr, offsetsPtr, segments,
+                lineSize, totalLength});
+    break;
+  }
+
   case Kinded::Kind::SparseLengthsWeightedSumGradInstKind: {
     auto *SI = cast<SparseLengthsWeightedSumGradInst>(I);
     auto *destGrad = SI->getDestGrad();

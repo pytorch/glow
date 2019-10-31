@@ -3211,6 +3211,52 @@ void BoundInterpreterFunction::fwdSparseLengthsWeightedSumGradInst(
   }
 }
 
+template <typename ElemTy>
+void BoundInterpreterFunction::fwdSparseLengthsWeightedSumOffsetsInstFloatImpl(
+    const SparseLengthsWeightedSumOffsetsInst *I) {
+  staticAssertFloatingPointType(ElemTy);
+
+  auto out = getTensor(I->getDest());
+  auto data = getTensor(I->getData());
+  auto weights = getTensor(I->getWeights());
+  auto indices = getTensor(I->getIndices());
+  auto offsets = getTensor(I->getOffsets());
+
+  out->zero();
+
+  auto IH = indices->getHandle<int64_t>();
+  auto OFFH = offsets->getHandle<int64_t>();
+
+  size_t segments = offsets->dims()[0];
+  size_t totalLength = indices->dims()[0];
+
+  size_t lineSize = data->size() / data->dims()[0];
+
+  auto DH = data->getHandle<ElemTy>();
+  auto WH = weights->getHandle<ElemTy>();
+  auto OH = out->getHandle<ElemTy>();
+
+  size_t curIdx = 0;
+  for (size_t i = 0; i < segments; i++) {
+    size_t start = OFFH.raw(i);
+    size_t end = i == segments - 1 ? totalLength : OFFH.raw(i + 1);
+    for (size_t j = start; j < end; j++) {
+      ElemTy weight = WH.raw(curIdx);
+      size_t offsetIn = IH.raw(curIdx++) * lineSize;
+      size_t offsetOut = i * lineSize;
+      for (size_t k = 0; k < lineSize; k++) {
+        OH.raw(offsetOut++) += DH.raw(offsetIn++) * weight;
+      }
+    }
+  }
+}
+
+void BoundInterpreterFunction::fwdSparseLengthsWeightedSumOffsetsInst(
+    const SparseLengthsWeightedSumOffsetsInst *I) {
+  dispatchFloatingPointImpl(fwdSparseLengthsWeightedSumOffsetsInstFloatImpl,
+                            I->getData()->getElementType(), I);
+}
+
 template <typename T, typename AccumT>
 void BoundInterpreterFunction::fwdRowwiseQuantizedSparseLengthsWeightedSumImpl(
     const RowwiseQuantizedSparseLengthsWeightedSumInst *I) {

@@ -102,6 +102,10 @@ std::set<std::string> glow::backendTestBlacklist = {
     "SparseToDenseMask2/0",
     "testQuantizedBatchAdd/0",
     "TanHSweep_Float16/0",
+    "SparseLengthsWeightedSumOffsets_1D_Float/0",
+    "SparseLengthsWeightedSumOffsets_1D_Float16/0",
+    "SparseLengthsWeightedSumOffsets_2D_Float/0",
+    "SparseLengthsWeightedSumOffsets_2D_Float16/0",
 };
 
 struct EmulatorOnlyTests {

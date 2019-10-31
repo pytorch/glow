@@ -292,6 +292,10 @@ private:
       const SparseLengthsWeightedSumInst *I);
 
   template <typename ElemTy>
+  void fwdSparseLengthsWeightedSumOffsetsInstFloatImpl(
+      const SparseLengthsWeightedSumOffsetsInst *I);
+
+  template <typename ElemTy>
   void fwdSparseToDenseInstFloatImpl(const SparseToDenseInst *I);
 
   template <class eTy>

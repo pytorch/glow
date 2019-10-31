@@ -84,6 +84,8 @@ std::set<std::string> glow::backendTestBlacklist = {
     "SparseLengthsSumI8/0",
     "SparseLengthsWeightedSum_1D_Float16/0",
     "SparseLengthsWeightedSum_2D_Float16/0",
+    "SparseLengthsWeightedSumOffsets_1D_Float16/0",
+    "SparseLengthsWeightedSumOffsets_2D_Float16/0",
     "SparseLengthsWeightedSumI8/0",
     "RowwiseQuantizedSparseLengthsWeightedSum_Float16_AccumFloat/0",
     "RowwiseQuantizedSparseLengthsWeightedSum_Float16_AccumFloat16/0",
