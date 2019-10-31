@@ -119,7 +119,7 @@ TEST_P(ConvSweepTest, ConvTest_Float) {
 /// Compare backend against the interpreter in Int8.
 TEST_P(ConvSweepTest, ConvTest_Int8) {
   ENABLED_BACKENDS(Interpreter, CPU, OpenCL, NNPI);
-  testParamSweepConv(GetParam(), ElemKind::FloatTy, ElemKind::Int8QTy, 0.045f);
+  testParamSweepConv(GetParam(), ElemKind::FloatTy, ElemKind::Int8QTy, 0.07f);
 }
 
 /// Compare backend against the interpreter in FP16.
@@ -198,7 +198,7 @@ TEST_P(BatchMatMulSweepTest, BatchMatMulTest_Float) {
 TEST_P(BatchMatMulSweepTest, BatchMatMulTest_Int8) {
   ENABLED_BACKENDS(Interpreter, CPU, OpenCL, NNPI);
   testParamSweepBatchMatMul(GetParam(), ElemKind::FloatTy, ElemKind::Int8QTy,
-                            0.06f);
+                            0.095f);
 }
 
 /// Compare backend against the interpreter in FP16.
@@ -273,7 +273,7 @@ TEST_P(FCSweepTest, FCTest_Float) {
 /// Compare backend against the interpreter in Int8.
 TEST_P(FCSweepTest, FCTest_Int8) {
   ENABLED_BACKENDS(Interpreter, CPU, OpenCL, NNPI);
-  testParamSweepFC(GetParam(), ElemKind::FloatTy, ElemKind::Int8QTy, 0.065f);
+  testParamSweepFC(GetParam(), ElemKind::FloatTy, ElemKind::Int8QTy, 0.07f);
 }
 
 /// Compare backend against the interpreter in FP16.
