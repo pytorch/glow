@@ -1538,7 +1538,11 @@ static void performDebugInstrumentation(IRFunction &M) {
         name += ".";
         name += I->getKindName();
         auto *dumpInstr = new DebugPrintInst(name, Op.first);
-        M.insertInstruction(&*next, dumpInstr);
+        if (next == e) {
+          M.insertInstruction(dumpInstr);
+        } else {
+          M.insertInstruction(&*next, dumpInstr);
+        }
       }
     }
     it = next;
