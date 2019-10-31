@@ -199,6 +199,55 @@ void glow::runBatch(ExecutionEngine &EE, PlaceholderBindings &bindings,
   }
 }
 
+void glow::evalBatch(
+    ExecutionEngine &EE, PlaceholderBindings &bindings, size_t numMinibatchRuns,
+    size_t &sampleCounter, Placeholder *inputPH, Placeholder *outputPH,
+    Tensor &samplesInput, Tensor &labelsInput, llvm::StringRef name,
+    std::function<void(const Tensor &sampleIn, const Tensor &sampleOut,
+                       const Tensor &label, size_t sampleIndex)> &&cb) {
+  // The number of samples in a minibatch (a single function run)
+  size_t minibatchSize = inputPH->getType()->dims()[0];
+
+  assert(samplesInput.dims()[0] == labelsInput.dims()[0] &&
+         "The number of sample inputs does not match the number of labels");
+
+  auto LIH = labelsInput.getHandle<int64_t>();
+
+  // For each iteration in the batch:
+  for (size_t j = 0; j < numMinibatchRuns; j++) {
+    assert(inputPH && "Invalid value");
+    auto *backingTensor = bindings.get(inputPH);
+    assert(backingTensor && "Can't find the backing tensor");
+    auto dim = samplesInput.dims();
+    assert(backingTensor->dims().drop_front() == dim.drop_front() &&
+           "Invalid slice size");
+    // Extract the n'th slice, that must be a tensor.
+    size_t slc = sampleCounter % dim[0];
+    // Pick up one slice from the input tensors, and load it into the
+    // corresponding network Placeholder.
+    backingTensor->copyConsecutiveSlices(&samplesInput, slc);
+
+    // Run the network.
+    if (name == "") {
+      EE.run(bindings);
+    } else {
+      EE.run(bindings, name);
+    }
+
+    for (unsigned i = 0; i < minibatchSize; i++) {
+      auto sampleInputTensor = backingTensor->getHandle().extractSlice(i);
+      auto sampleOutputTensor =
+          bindings.get(outputPH)->getHandle().extractSlice(i);
+      // If index is out of bounds of samples/labels first dimension, it is
+      // wrapped around to be consistent with "copyConsecutiveSlices".
+      auto labelTensor = LIH.extractSlice((sampleCounter + i) % dim[0]);
+
+      cb(sampleInputTensor, sampleOutputTensor, labelTensor, sampleCounter + i);
+    }
+    sampleCounter += minibatchSize;
+  }
+}
+
 void ExecutionEngine::compile(CompilationMode mode) {
   CompilationContext cctx;
   cctx.compMode = mode;

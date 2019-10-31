@@ -158,45 +158,35 @@ void validateModel(ExecutionEngine &EE, PlaceholderBindings &bindings,
   ::glow::convertPlaceholdersToConstants(F, bindings, {inputPH, outputPH});
   EE.compile(CompilationMode::Infer);
 
-  auto LIH = labelInputs.getHandle<int64_t>();
-
-  // Check how many examples out of eighty previously unseen digits we can
-  // classify correctly.
-  int rightAnswer = 0;
-  auto fname = F->getName();
-
-  for (int iter = numIterations; iter < numIterations + 10; iter++) {
-    bindings.get(inputPH)->copyConsecutiveSlices(&imageInputs,
-                                                 minibatchSize * iter);
-    EE.run(bindings, fname);
-
-    for (unsigned i = 0; i < minibatchSize; i++) {
-      auto T = bindings.get(outputPH)->getHandle().extractSlice(i);
-      int64_t guess = T.getHandle().minMaxArg().second;
-
-      int64_t correct = LIH.at({minibatchSize * iter + i, 0});
-      rightAnswer += (guess == correct);
-
-      if (iter == numIterations) {
-        llvm::outs() << "MNIST Input";
-        auto I = bindings.get(inputPH)->getHandle().extractSlice(i);
-        if (transpose) {
-          Tensor IT;
-          // Transpose back to the ASCII printable format.
-          // CHW -> HWC.
-          I.transpose(&IT, {1, 2, 0});
-          IT.getHandle().dumpAscii();
-        } else {
-          I.getHandle().dumpAscii();
-        }
-        llvm::outs() << "Expected: " << correct << " Guessed: " << guess
-                     << "\n";
-
-        T.getHandle<>().dump();
-        llvm::outs() << "\n-------------\n";
-      }
-    }
-  }
+  size_t rightAnswer = 0;
+  size_t offset = numIterations * minibatchSize;
+  size_t sampleCounter = offset;
+  size_t iterations = 10;
+  std::vector<Tensor> estimates;
+  evalBatch(EE, bindings, iterations, sampleCounter, inputPH, outputPH,
+            imageInputs, labelInputs, F->getName(),
+            [&](const Tensor &sampleIn, const Tensor &sampleOut,
+                const Tensor &label, size_t sampleIndex) {
+              auto correct = label.getHandle<int64_t>().at({0, 0});
+              auto guess = sampleOut.getHandle().minMaxArg().second;
+              rightAnswer += (guess == correct);
+              if (sampleIndex < offset + minibatchSize) {
+                llvm::outs() << "MNIST Input";
+                if (transpose) {
+                  Tensor IT;
+                  // Transpose back to the ASCII printable format.
+                  // CHW -> HWC.
+                  sampleIn.transpose(&IT, {1, 2, 0});
+                  IT.getHandle().dumpAscii();
+                } else {
+                  sampleIn.getHandle().dumpAscii();
+                }
+                llvm::outs() << " Expected: " << correct
+                             << " Guessed: " << guess << "\n";
+                sampleOut.getHandle<>().dump();
+                llvm::outs() << "\n-------------\n";
+              }
+            });
 
   llvm::outs() << "Results: guessed/total:" << rightAnswer << "/"
                << minibatchSize * 10 << "\n";
