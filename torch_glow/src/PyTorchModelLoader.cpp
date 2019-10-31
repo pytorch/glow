@@ -488,6 +488,16 @@ struct QuantizedUnpackedConv2dInputs {
   };
 };
 
+/// Indexes of quantized::add_relu inputs.
+struct QuantizedAddReluInputs {
+  enum {
+    lhs = 0,
+    rhs = 1,
+    scale = 2,
+    zero_point = 3,
+  };
+};
+
 /// Indexes of quantized::add inputs.
 struct QuantizedAddInputs {
   enum {
@@ -636,6 +646,9 @@ PyTorchModelLoader::getSymbolsMapping() {
        {{"quantized::add"},
         &PyTorchModelLoader::loadQuantizedAdd,
         {QuantizedAddInputs::scale, QuantizedAddInputs::zero_point}},
+       {{"quantized::add_relu"},
+        &PyTorchModelLoader::loadQuantizedAddRelu,
+        {QuantizedAddReluInputs::scale, QuantizedAddReluInputs::zero_point}},
        {{"glow::unpacked_quantized_conv2d"},
         &PyTorchModelLoader::loadQuantizedConvUnpacked,
         {QuantizedUnpackedConv2dInputs::stride,
@@ -997,6 +1010,44 @@ Error PyTorchModelLoader::loadQuantizedAdd(const torch::jit::Node *ptNode) {
 
   glow::AddNode *qadd = F_.createAdd("quantized_add", outTy, lhs, rhs);
   auto output = rescaleIntToUint(qadd->getResult());
+  return addValueMapping(outputs[0], output);
+}
+
+Error PyTorchModelLoader::loadQuantizedAddRelu(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 4, outputs, 1));
+
+  glow::NodeValue lhs;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      lhs, getGlowNodeValueForValue(inputs[QuantizedAddReluInputs::lhs]));
+  glow::NodeValue rhs;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      rhs, getGlowNodeValueForValue(inputs[QuantizedAddReluInputs::rhs]));
+
+  lhs = rescaleUIntToInt(lhs);
+  rhs = rescaleUIntToInt(rhs);
+
+  // scale
+  float outScale;
+  ASSIGN_VALUE_OR_RETURN_ERR(outScale,
+                             iValToDouble(getGlowIValueForValue(
+                                 inputs[QuantizedAddReluInputs::scale])));
+
+  // zero_point
+  int32_t outOffset;
+  ASSIGN_VALUE_OR_RETURN_ERR(outOffset,
+                             iValToInt(getGlowIValueForValue(
+                                 inputs[QuantizedAddReluInputs::zero_point])));
+
+  TypeRef inputType = lhs.getType();
+  auto outDims = inputType->dims();
+  auto outTy = F_.getParent()->uniqueType(ElemKind::Int8QTy, outDims, outScale,
+                                          outOffset - OFFSETSHIFT);
+
+  glow::AddNode *qadd = F_.createAdd("quantized_add", outTy, lhs, rhs);
+  glow::ReluNode *qrelu = F_.createRELU("quantized_relu", qadd);
+  auto output = rescaleIntToUint(qrelu->getResult());
   return addValueMapping(outputs[0], output);
 }
 
