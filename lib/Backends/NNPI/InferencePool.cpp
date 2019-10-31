@@ -83,8 +83,9 @@ void InferenceThreadEnv::execute(RunIdentifierTy runId,
     case glow::ElemKind::Int64ITy: {
       // Convert int64_t tensors to int32.
       int64_t *pInput = reinterpret_cast<int64_t *>(t->getUnsafePtr());
-      int32_t *tmp = new int32_t[t->size()];
-      for (size_t i = 0, e = t->size(); i < e; i++) {
+      const size_t unpaddedSize = t->getUnpaddedSizeInBytes() / sizeof(int64_t);
+      int32_t *tmp = new int32_t[unpaddedSize];
+      for (size_t i = 0; i < unpaddedSize; i++) {
         tmp[i] = static_cast<int32_t>(pInput[i]);
       }
       rawInputs_.push_back(tmp);
@@ -103,7 +104,7 @@ void InferenceThreadEnv::execute(RunIdentifierTy runId,
     switch (t->getElementType()) {
     case glow::ElemKind::Int64ITy: {
       // Create int32 buffer for size_t tensors.
-      int32_t *tmp = new int32_t[t->size()];
+      int32_t *tmp = new int32_t[t->getUnpaddedSizeInBytes() / sizeof(int64_t)];
       rawOutputs_.push_back(tmp);
       tmpBuffers_.insert(tmp);
     } break;
