@@ -1363,6 +1363,25 @@ void libjit_sparse_lengths_weighted_sum_f(float *dest, float *data,
   }
 }
 
+void libjit_sparse_lengths_weighted_sum_offsets_f(
+    float *dest, float *data, float *weights, size_t *indices, int64_t *offsets,
+    size_t segments, size_t lineSize, size_t totalLength) {
+  memset(dest, 0, segments * lineSize * sizeof(float));
+  size_t curIndex = 0;
+  for (size_t i = 0; i < segments; i++) {
+    int64_t start = offsets[i];
+    int64_t end = i == segments - 1 ? totalLength : offsets[i + 1];
+    for (int64_t j = start; j < end; j++) {
+      float weight = weights[curIndex];
+      size_t line = indices[curIndex];
+      for (size_t k = 0; k < lineSize; k++) {
+        dest[i * lineSize + k] += weight * data[line * lineSize + k];
+      }
+      curIndex++;
+    }
+  }
+}
+
 void libjit_sparse_lengths_weighted_sum_grad_f(
     const float *destGrad, float *dataGrad, float *weightsGrad,
     const float *data, const float *weights, const size_t *indices,

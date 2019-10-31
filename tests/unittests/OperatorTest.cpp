@@ -7458,6 +7458,96 @@ TEST_P(OperatorTest, SparseLengthsWeightedSumI8) {
   EXPECT_TRUE(expected.isEqual(result));
 }
 
+/// Test SparseLengthsWeightedSumOffsets with an N-dimension embedding table.
+template <typename DataType>
+static void testSLWSO(glow::PlaceholderBindings &bindings, glow::Module &mod,
+                      glow::Function *F, glow::ExecutionEngine &EE,
+                      ElemKind DTy, float allowedError, size_t ndims) {
+  /*
+    DATA  =   [[2.0, -0.5, 13]]
+    WEIGHTS = [3, 1, 0, 0, 0, 0, 2, -0.5]
+    INDICES = [1, 0, 2, 0, 1, 2, 2, 0]
+    OFFSETS = [0, 3, 3, 6]
+    OUTPUT =  [0.5, 0, 0, 25]
+  */
+  ShapeVector idims(ndims, 1);
+  ShapeVector odims(ndims, 1);
+  idims[0] = 3;
+  odims[0] = 4;
+
+  auto *data = mod.createPlaceholder(DTy, idims, "data", false);
+  auto *weights = mod.createPlaceholder(DTy, {8}, "weights", false);
+  auto *indices =
+      mod.createPlaceholder(ElemKind::Int64ITy, {8}, "indices", false);
+  auto *offsets =
+      mod.createPlaceholder(ElemKind::Int64ITy, {4}, "offsets", false);
+
+  bindings.allocate(data)->getHandle<DataType>() = {
+      2.0,
+      -0.5,
+      13,
+  };
+  bindings.allocate(weights)->getHandle<DataType>() = {
+      3, 1, 0, 0, 0, 0, 2, -0.5,
+  };
+  bindings.allocate(indices)->getHandle<int64_t>() = {
+      1, 0, 2, 0, 1, 2, 2, 0,
+  };
+  bindings.allocate(offsets)->getHandle<int64_t>() = {
+      0,
+      3,
+      3,
+      6,
+  };
+
+  auto *R = F->createSparseLengthsWeightedSumOffsets("SLWSO", data, weights,
+                                                     indices, offsets);
+  auto *S = F->createSave("save", R);
+  bindings.allocate(S->getPlaceholder());
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  Tensor &result = *bindings.get(S->getPlaceholder());
+  Tensor expected(DTy, odims);
+  expected.getHandle<DataType>() = {
+      0.5,
+      0,
+      0,
+      25,
+  };
+
+  EXPECT_TRUE(expected.isEqual(result, allowedError));
+}
+
+/// Test that SLWSO is correctly supported in FloatTy in 1D.
+TEST_P(OperatorTest, SparseLengthsWeightedSumOffsets_1D_Float) {
+  CHECK_IF_ENABLED();
+  testSLWSO<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy, 0.0001,
+                   /* ndims */ 1);
+}
+
+/// Test that SLWSO is correctly supported in FloatTy in 2D.
+TEST_P(OperatorTest, SparseLengthsWeightedSumOffsets_2D_Float) {
+  CHECK_IF_ENABLED();
+  testSLWSO<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy, 0.0001,
+                   /* ndims */ 2);
+}
+
+/// Test that SLWSO is correctly supported in Float16Ty in 1D.
+TEST_P(OperatorTest, SparseLengthsWeightedSumOffsets_1D_Float16) {
+  CHECK_IF_ENABLED();
+  testSLWSO<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty, 0.0001,
+                       /* ndims */ 1);
+}
+
+/// Test that SLWSO is correctly supported in Float16Ty in 2D.
+TEST_P(OperatorTest, SparseLengthsWeightedSumOffsets_2D_Float16) {
+  CHECK_IF_ENABLED();
+  testSLWSO<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty, 0.0001,
+                       /* ndims */ 2);
+}
+
 /// Helper to test RowwiseQuantizedSparseLengthsWeightedSum using \p DTy.
 template <typename DataType>
 static void testRowwiseQuantizedSparseLengthsWeightedSum(

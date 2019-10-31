@@ -299,6 +299,20 @@ int main(int argc, char **argv) {
       .addGradientInstr({"Data", "Weights", "Indices", "Lengths"},
                         {"Dest", "Data", "Weights"});
 
+  BB.newInstr("SparseLengthsWeightedSumOffsets")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Data", OperandKind::In)
+      .addOperand("Weights", OperandKind::In)
+      .addOperand("Indices", OperandKind::In)
+      .addOperand("Offsets", OperandKind::In)
+      .autoIRGen()
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "Data", "Weights"})
+      .autoVerify(VerifyKind::SameElementType,
+                  {"Indices", "ElemKind::Int64ITy"})
+      .autoVerify(VerifyKind::SameElementType,
+                  {"Offsets", "ElemKind::Int64ITy"})
+      .autoVerify(VerifyKind::SameShape, {"Weights", "Indices"});
+
   BB.newInstr("RowwiseQuantizedSparseLengthsWeightedSum")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Data", OperandKind::In)
