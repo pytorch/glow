@@ -85,6 +85,11 @@ class CommonOperatorLoader : public ProtobufLoader {
       dims.push_back(in.shape[i]);
     }
 
+    // TODO(garret): create cached placeholder if in.isOffline is 1
+    if (in.isOffline) {
+      RETURN_ERR(strFormat("Cannot handle offline tensor %s yet", in.name));
+    }
+
     // Load unquantized tensor.
     if (in.quantizationParams == 0) {
       if (in.dataType == ONNXIFI_DATATYPE_FLOAT32) {

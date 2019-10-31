@@ -31,10 +31,12 @@ public:
       : Graph(backendPtr), quantizationMode_(quantizationMode) {}
 
   /// Init Glow graph based on the ONNX model \p onnxModel and
-  /// static trained weights \p weightDescriptors.
-  onnxStatus
-  initGraph(const void *onnxModel, size_t onnxModelSize, uint32_t weightCount,
-            const onnxTensorDescriptorV1 *weightDescriptors) override;
+  /// static trained weights \p weightDescriptors. Weights can be read in later
+  /// by a \p deferedBlobReader.
+  onnxStatus initGraph(const void *onnxModel, size_t onnxModelSize,
+                       uint32_t weightCount,
+                       const onnxTensorDescriptorV1 *weightDescriptors,
+                       void *deferedBlobReader) override;
 
   onnxStatus run(std::unique_ptr<ExecutionContext> ctx, EventPtr outputEvent,
                  onnxTraceEventList *traceEvents) override;
