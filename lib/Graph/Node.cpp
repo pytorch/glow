@@ -205,6 +205,17 @@ bool Node::hasSideEffects() const {
   }
 }
 
+bool Node::isDataParallel() const {
+  switch (getKind()) {
+#define DEF_NODE(CLASS, NAME)                                                  \
+  case glow::Kinded::Kind::CLASS##Kind:                                        \
+    return static_cast<const CLASS *>(this)->isDataParallel();
+#include "glow/AutoGenNodes.def"
+  default:
+    llvm_unreachable("Unhandled node");
+  }
+}
+
 // NOTE: This is used in conjunction with assuming the 1st input is LHS, and 2nd
 // input is RHS, and 1st result is Result.
 bool Node::isArithmetic() const {
