@@ -545,6 +545,31 @@ Constant *Module::createConstant(llvm::StringRef name, Tensor &&tensor) {
   return addConstant(new Constant(name, std::move(tensor)));
 }
 
+Constant *Module::createConstantSlice(llvm::StringRef name, Constant *constant,
+                                      llvm::ArrayRef<size_t> offset,
+                                      llvm::ArrayRef<size_t> dims) {
+  assert(constant->dims().size() == offset.size() &&
+         "Constant dims size must match slice offset size!");
+  assert(constant->dims().size() == dims.size() &&
+         "Constant dims size must match slice dims size!");
+  ElemKind constElemKind = constant->getOutput().getElementType();
+  Tensor slice(constElemKind, dims);
+#define CONST_SLICE_TYPED_DEF(TY, TYPEKIND)                                    \
+  if (constElemKind == TYPEKIND) {                                             \
+    auto IH = constant->getPayload().getHandle<TY>();                          \
+    auto OH = slice.getHandle<TY>();                                           \
+    IH.extractTensors(OH, offset);                                             \
+    return createConstant(name, slice);                                        \
+  }
+  CONST_SLICE_TYPED_DEF(int64_t, ElemKind::Int64ITy);
+  CONST_SLICE_TYPED_DEF(float, ElemKind::FloatTy);
+  CONST_SLICE_TYPED_DEF(float16_t, ElemKind::Float16Ty);
+  CONST_SLICE_TYPED_DEF(int8_t, ElemKind::Int8QTy);
+  CONST_SLICE_TYPED_DEF(int32_t, ElemKind::Int32QTy);
+#undef CONST_SLICE_TYPED_DEF
+  llvm_unreachable("Constant type not supported");
+}
+
 std::string Module::getPrefix(llvm::StringRef name) {
   std::string prefix = name;
   size_t delim = name.rfind("__");
@@ -818,6 +843,17 @@ FullyConnectedNode *Function::createFullyConnected(llvm::StringRef name,
   TypeRef T = input.getType();
   TypeRef OT = getParent()->uniqueTypeWithNewShape(
       T, {input.dims()[0], B->getType()->dims()[0]});
+
+  return createFullyConnected(name, input, W, B, OT, axis);
+}
+
+FullyConnectedNode *Function::createFullyConnected(llvm::StringRef name,
+                                                   NodeValue input, NodeValue W,
+                                                   NodeValue B,
+                                                   unsigned_t axis) {
+  TypeRef T = input.getType();
+  TypeRef OT =
+      getParent()->uniqueTypeWithNewShape(T, {input.dims()[0], B.dims()[0]});
 
   return createFullyConnected(name, input, W, B, OT, axis);
 }

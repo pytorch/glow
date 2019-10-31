@@ -196,6 +196,13 @@ public:
 
   ///@}
 
+  /// Creates a new constant in the graph with the given \p name by slicing an
+  /// existing \p constant using the given \p offset and \p dims. \returns the
+  /// newly created constant.
+  Constant *createConstantSlice(llvm::StringRef name, Constant *constant,
+                                llvm::ArrayRef<size_t> offset,
+                                llvm::ArrayRef<size_t> dims);
+
   /// Verify the correctness of the Module.
   /// \returns true when the function is valid. False otherwise.
   bool verify() const;
@@ -488,6 +495,14 @@ public:
   FullyConnectedNode *createFullyConnected(llvm::StringRef name,
                                            NodeValue input, Storage *W,
                                            Storage *B, unsigned_t axis = 1);
+
+  /// Creates and \returns a FullyConnectedNode with \p name, \p input, weights
+  /// \p W, bias \p B. If \p input is not 2 dimensional then it is flattened
+  /// along \p axis. Note, output type and outputDepth are inferred based on
+  /// the input types.
+  FullyConnectedNode *createFullyConnected(llvm::StringRef name,
+                                           NodeValue input, NodeValue W,
+                                           NodeValue B, unsigned_t axis = 1);
 
   /// Creates and \returns a FullyConnectedNode with \p name, \p input, weights
   /// \p W, bias \p B, and \p outTy. If \p input is not 2 dimensional then it is

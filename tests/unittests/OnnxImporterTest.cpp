@@ -2519,3 +2519,71 @@ TEST(onnx, importLess) {
   EXPECT_EQ(CMPLT->getResult().dims()[1], 4);
   EXPECT_EQ(CMPLT->getResult().dims()[2], 1);
 }
+
+/// Test loading LSTM from a ONNX model. The ONNX model already computes
+/// the error compared to a PyTorch reference implementation.
+static void importLSTM(std::string fileName) {
+  ExecutionEngine EE;
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  PlaceholderBindings bindings;
+  {
+    ONNXModelLoader onnxLD(fileName, {}, {}, *F);
+    bindings.allocate(mod.getPlaceholders());
+  }
+
+  // Search LSTM state placeholders and set to 0.
+  Placeholder *Y_h_ph = nullptr;
+  Placeholder *Y_c_ph = nullptr;
+  for (const auto &ph : mod.getPlaceholders()) {
+    if (llvm::StringRef(ph->getName()).endswith("Y_h"))
+      Y_h_ph = ph;
+    if (llvm::StringRef(ph->getName()).endswith("Y_c"))
+      Y_c_ph = ph;
+  }
+  EXPECT_TRUE(Y_h_ph);
+  EXPECT_TRUE(Y_c_ph);
+  bindings.get(Y_h_ph)->zero();
+  bindings.get(Y_c_ph)->zero();
+
+  // Compile and run.
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  // Verify LSTM error.
+  Placeholder *Y_err_ph = mod.getPlaceholderByName("Y_err");
+  EXPECT_TRUE(Y_err_ph);
+  auto err = bindings.get(Y_err_ph)->getHandle();
+  for (size_t idx = 0; idx < Y_err_ph->getType()->size(); idx++) {
+    EXPECT_TRUE(std::abs(err.raw(idx)) < 1e-6);
+  }
+}
+
+TEST(onnx, importLSTMForward) {
+  importLSTM(GLOW_DATA_PATH "tests/models/onnxModels/lstmForward.onnxtxt");
+}
+
+TEST(onnx, importLSTMReverse) {
+  importLSTM(GLOW_DATA_PATH "tests/models/onnxModels/lstmReverse.onnxtxt");
+}
+
+TEST(onnx, importLSTMBidirectional) {
+  importLSTM(GLOW_DATA_PATH
+             "tests/models/onnxModels/lstmBidirectional.onnxtxt");
+}
+
+TEST(onnx, importLSTMForwardNoBias) {
+  importLSTM(GLOW_DATA_PATH
+             "tests/models/onnxModels/lstmForwardNoBias.onnxtxt");
+}
+
+TEST(onnx, importLSTMForwardNoState) {
+  importLSTM(GLOW_DATA_PATH
+             "tests/models/onnxModels/lstmForwardNoState.onnxtxt");
+}
+
+TEST(onnx, importLSTMForwardWithPeephole) {
+  importLSTM(GLOW_DATA_PATH
+             "tests/models/onnxModels/lstmForwardWithPeephole.onnxtxt");
+}
