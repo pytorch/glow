@@ -17,6 +17,7 @@
 #include "PyTorchModelLoader.h"
 #include "PyTorchCommon.h"
 
+#include "glow/Quantization/Base/Base.h"
 #include "glow/Support/Error.h"
 #include "glow/Support/Support.h"
 
@@ -876,6 +877,11 @@ Error PyTorchModelLoader::loadNodes(const torch::jit::Graph &graph) {
     RETURN_ERR_IF_NOT(it != mapping.end(),
                       glow::strFormat("Node kind %s is not supported by Glow",
                                       node->kind().toDisplayString()));
+
+    // TODO: once we have weight unpacking for quantized parameters we can
+    // totally remove this.
+    RETURN_IF_ERR(freezeWeights(node));
+
     RETURN_IF_ERR((this->*it->second.loadFn)(node));
   }
 
@@ -1116,6 +1122,7 @@ Error PyTorchModelLoader::loadQuantizedLinear(const torch::jit::Node *ptNode) {
                                           {input.dims()[0], weight.dims()[1]},
                                           outScale, outZeroPoint - OFFSETSHIFT);
 
+  // Get bias or create a zero bias if no bias is found.
   glow::NodeValue bias;
   if (hasGlowNodeValueForValue(inputs[QuantizedLinearInputs::bias])) {
     ASSIGN_VALUE_OR_RETURN_ERR(
@@ -1128,8 +1135,19 @@ Error PyTorchModelLoader::loadQuantizedLinear(const torch::jit::Node *ptNode) {
     bias = biasConstant->getOutput();
   }
 
-  auto biasType =
-      F_.getParent()->uniqueType(glow::ElemKind::Int32QTy, bias.dims(), 1.0, 0);
+  // Choose bias quantization params and quantize it.
+  glow::Constant *biasConstant = llvm::dyn_cast<glow::Constant>(bias.getNode());
+  RETURN_ERR_IF_NOT(biasConstant, "quantized::linear bias must be constant");
+  const auto biasHandle = biasConstant->getPayload().getHandle<float>();
+  const auto biasMinMaxIdx = biasHandle.minMaxArg();
+
+  const auto biasQParams = chooseQuantizationParams(
+      biasHandle.raw(biasMinMaxIdx.first), biasHandle.raw(biasMinMaxIdx.second),
+      glow::quantization::Schema::Asymmetric, glow::ElemKind::Int32QTy);
+
+  const auto biasType =
+      F_.getParent()->uniqueType(glow::ElemKind::Int32QTy, bias.dims(),
+                                 biasQParams.scale, biasQParams.offset);
 
   bias = F_.createQuantize("quantize_bias", bias, biasType);
 
