@@ -166,7 +166,7 @@ public:
   std::string getNthResultLayoutRequirements(const Node *node,
                                              size_t n) override;
 
-  /// \returns true of the node does not care about layout.
+  /// \returns true of the node accepts any layout.
   bool acceptsAnyLayout(const Node *node) const;
 };
 

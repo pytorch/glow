@@ -310,49 +310,6 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const Node *node) {
   node->dump(os);
   return os;
 }
-
-bool isDataParallel(const Node *node) {
-  switch (node->getKind()) {
-  case Kinded::Kind::CmpEQNodeKind:
-  case Kinded::Kind::CmpLTNodeKind:
-  case Kinded::Kind::CmpLTENodeKind:
-  case Kinded::Kind::IsNaNNodeKind:
-  case Kinded::Kind::SelectNodeKind:
-  case Kinded::Kind::AddNodeKind:
-  case Kinded::Kind::SubNodeKind:
-  case Kinded::Kind::MulNodeKind:
-  case Kinded::Kind::DivNodeKind:
-  case Kinded::Kind::MaxNodeKind:
-  case Kinded::Kind::MinNodeKind:
-  case Kinded::Kind::PowNodeKind:
-  case Kinded::Kind::LogNodeKind:
-  case Kinded::Kind::ExpNodeKind:
-  case Kinded::Kind::ConcatNodeKind:
-  case Kinded::Kind::ReluNodeKind:
-  case Kinded::Kind::ReluGradNodeKind:
-  case Kinded::Kind::PReluNodeKind:
-  case Kinded::Kind::TanhNodeKind:
-  case Kinded::Kind::TanhGradNodeKind:
-  case Kinded::Kind::SigmoidNodeKind:
-  case Kinded::Kind::SigmoidGradNodeKind:
-  case Kinded::Kind::SaveNodeKind:
-  case Kinded::Kind::ModuloNodeKind:
-  case Kinded::Kind::IntLookupTableNodeKind:
-  case Kinded::Kind::QuantizeNodeKind:
-  case Kinded::Kind::DequantizeNodeKind:
-  case Kinded::Kind::RescaleQuantizedNodeKind:
-  case Kinded::Kind::BatchedReduceMeanNodeKind:
-  case Kinded::Kind::BatchedAddNodeKind:
-  case Kinded::Kind::BatchedReduceMinNodeKind:
-  case Kinded::Kind::BatchNormalizationNodeKind:
-  case Kinded::Kind::BatchNormalizationGradNodeKind:
-  case Kinded::Kind::ReshapeNodeKind: {
-    return true;
-  }
-  default:
-    return false;
-  }
-}
 } // namespace glow
 
 //===----------------------------------------------------------------------===//

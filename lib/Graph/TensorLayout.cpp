@@ -537,5 +537,21 @@ std::string CanonicalTensorLayout::getDefaultNDLayout(unsigned dims) const {
 }
 
 bool CanonicalTensorLayout::acceptsAnyLayout(const Node *node) const {
-  return isDataParallel(node);
+  if (node->isDataParallel()) {
+    return true;
+  }
+  // In the canonical representation, some nodes are layout agnostic even if
+  // they are not necessarily data parallel:
+  switch (node->getKind()) {
+  case Kinded::Kind::ConcatNodeKind:
+  case Kinded::Kind::BatchedReduceMeanNodeKind:
+  case Kinded::Kind::BatchedAddNodeKind:
+  case Kinded::Kind::BatchedReduceMinNodeKind:
+  case Kinded::Kind::BatchNormalizationNodeKind:
+  case Kinded::Kind::BatchNormalizationGradNodeKind:
+  case Kinded::Kind::ReshapeNodeKind: {
+    return true;
+  }
+  default: { return false; }
+  }
 }

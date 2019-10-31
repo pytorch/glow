@@ -390,9 +390,6 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const Node &node);
 
 llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const Node *node);
 
-/// \returns True if this node is data parallel.
-bool isDataParallel(const Node *node);
-
 /// Helper to get the Kind of a Node (e.g. Kinded::Kind::AddNodeKind) given its
 /// \p nodeName (e.g. Add).
 inline Kinded::Kind getKindFromNodeName(llvm::StringRef nodeName) {
