@@ -333,6 +333,10 @@ private:
   /// \return error on failure.
   Error loadQuantizedAdd(const torch::jit::Node *ptNode);
 
+  /// Load a PyTorch quantized::add_relu node.
+  /// \return error on failure.
+  Error loadQuantizedAddRelu(const torch::jit::Node *ptNode);
+
   /// Load a PyTorch glow::unpacked_quantized_conv node.
   // \return error on failure.
   Error loadQuantizedConvUnpacked(const torch::jit::Node *ptNode);
