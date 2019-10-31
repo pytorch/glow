@@ -269,9 +269,18 @@ private:
   /// Constants.
   Error freezeWeights(const torch::jit::Node *ptNode);
 
-  /// Load a given PyTorch Node \p ptNode. \returns
-  /// error on failure.
-  Error loadNode(const torch::jit::Node *ptNode);
+  /// Load all PyTorch prim::GetAttr nodes in \p graph. This method uses the
+  /// PyTorch Module hierarchy to map Values for all outputs of prim::GetAttr
+  /// nodes. If the output type of a prim::GetAttr is a tensor, this will load
+  /// it as a Glow constant, if it's an ivalue::Object it is ignored, and if
+  /// it's any other kind of IValue, it is loaded as a GlowIvalue for use during
+  /// the rest of model loading. \returns error on failure.
+  Error loadAttributes(const torch::jit::Graph &graph,
+                       const at::ArrayRef<torch::jit::IValue> inputs);
+
+  /// Load each PyTorch Node in the Graph \p graph.
+  /// \returns error on failure.
+  Error loadNodes(const torch::jit::Graph &graph);
 
   /// Load a PyTorch Constant node as a Glow Constant.
   /// \returns error on failure.
