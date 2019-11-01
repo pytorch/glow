@@ -273,7 +273,7 @@ TEST_F(GraphOptz, optimizeBatchNormAfterConvMultiple) {
 }
 
 TEST_F(GraphOptz, optimizeBatchNormAfterConvFP16) {
-  Node *A =
+  auto *A =
       mod_.createPlaceholder(ElemKind::Float16Ty, {1, 10, 20, 3}, "A", false);
   Node *CV = F_->createConv(bindings_, "conv", A, 16, 5, 1, 2, 1);
   Node *BN =
@@ -282,16 +282,30 @@ TEST_F(GraphOptz, optimizeBatchNormAfterConvFP16) {
 
   EXPECT_EQ(F_->getNodes().size(), 3);
 
+  optimizedF_ = F_->clone(F_->getName().str() + "_optimized");
   ::glow::convertPlaceholdersToConstants(F_, bindings_, {});
-  ::glow::optimize(F_, CompilationMode::Infer);
-  EXPECT_EQ(F_->getNodes().size(), 2);
+  ::glow::convertPlaceholdersToConstants(optimizedF_, bindings_, {});
+  ::glow::optimize(optimizedF_, CompilationMode::Infer);
 
-  ASSERT_EQ(A->getNumUsers(), 1);
-  Node *newCV = A->getUsers().begin()->getUser();
-  EXPECT_TRUE(llvm::isa<ConvolutionNode>(newCV));
-  ASSERT_EQ(newCV->getNumUsers(), 1);
-  Node *save = newCV->getUsers().begin()->getUser();
-  EXPECT_TRUE(llvm::isa<SaveNode>(save));
+  EXPECT_EQ(optimizedF_->getNodes().size(), 2);
+
+  ASSERT_EQ(A->getNumUsers(), 2);
+
+  bool optimizedPathExists{false};
+  for (const auto &path : A->getUsers()) {
+    auto cv = path.getUser();
+    EXPECT_TRUE(llvm::isa<ConvolutionNode>(cv));
+    ASSERT_EQ(cv->getNumUsers(), 1);
+    auto next = cv->getUsers().begin()->getUser();
+    optimizedPathExists |= llvm::isa<SaveNode>(next);
+  }
+
+  EXPECT_TRUE(optimizedPathExists);
+
+  bindings_.allocate(A)->getHandle<float16_t>().randomize(-1.0, 1.0,
+                                                          mod_.getPRNG());
+
+  checkNumericalEquivalence();
 }
 
 /// Check that transpose constant folding is done before BatchNorm optimization,
