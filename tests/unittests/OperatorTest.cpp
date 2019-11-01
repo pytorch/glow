@@ -7723,6 +7723,9 @@ TEST_P(OperatorTest, RowwiseQuantizedSparseLengthsSum_Float16_AccumFloat16) {
 TEST_P(OperatorTest, RepeatedSLSWithPartialTensors) {
   CHECK_IF_ENABLED();
 
+  // This test is only meaningful if the backend supports partial tensors.
+  ASSERT_TRUE(EE_.getBackend().supportsPartialTensors());
+
   constexpr size_t embeddingRows = 1275;
   constexpr size_t numLengths = 20;
   constexpr size_t maxIndices = 20000;

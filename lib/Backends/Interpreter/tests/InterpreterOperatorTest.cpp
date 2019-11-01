@@ -18,6 +18,7 @@
 using namespace glow;
 
 std::set<std::string> glow::backendTestBlacklist = {
+    "RepeatedSLSWithPartialTensors/0",
     "SigmoidSweep_Float16/0",
     "TanHSweep_Float16/0",
 };
