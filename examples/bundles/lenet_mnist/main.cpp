@@ -207,7 +207,7 @@ void parseCommandLineOptions(int argc, char **argv) {
 /// initialize.
 GLOW_MEM_ALIGN(LENET_MNIST_MEM_ALIGN)
 uint8_t constantWeight[LENET_MNIST_CONSTANT_MEM_SIZE] = {
-#include "lenet_mnist.inc"
+#include "lenet_mnist.weights.txt"
 };
 
 /// Statically allocate memory for mutable weights (model input/output data).

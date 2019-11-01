@@ -42,7 +42,7 @@ $image-classifier image.png -image-mode=0to1 -m=resnet50 -model-input-name=gpu_0
 The command above would compile the neural network model described by the files
 `init_net.pb` and `predict_net.pb` located in the `network_model_directory_name`
 directory and generate a bundle consisting of two files in the directory
-`output_directory_name`, `<network_name>.o` and `<network_name>.weights` where
+`output_directory_name`, `<network_name>.o` and `<network_name>.weights.bin` where
 `<network_name>` is by default equals to the last directory in the model path,
 i.e., `resnet50` in that case, and can be changed using
 `-network-name=<network_name>`.
@@ -59,7 +59,7 @@ This option supports two modes:
 - `static`: (Default) Produce non-relocatable code.
 - `pic`: Produce position independent code.
 
-The second generated file is named `<network_name>.weights` and
+The second generated file is named `<network_name>.weights.bin` and
 contains the weights required to run the compiled model.
 
 Another tool is the `model-compiler` which is used to compile a model into a bundle.
@@ -169,7 +169,7 @@ generally need to do the following:
 * You need to allocate the memory for constant weights variables,
 mutable weights variables (i.e. inputs and outputs) and activations based on the
 memory area sizes provided by `<network_name>_config`.
-* You need to load the content of the auto-generated `network_model_name.weights`
+* You need to load the content of the auto-generated `network_model_name.weights.bin`
 file into the constant weights variables memory area.
 * And need to initialize the mutable weights area with inputs (e.g. image data)
 * And finally, you need to invoke the `<network_name>` function with 3
@@ -193,12 +193,12 @@ The CMakeLists.txt provides the following targets:
   The concrete command line looks like this:
   `image-classifier tests/images/imagenet/cat_285.png -image-mode=0to1 -m=resnet50 -model-input-name=gpu_0/data -backend=CPU -emit-bundle <build_dir>`
   It reads the network model from `resnet50` and generates the `resnet50.o`
-  and `resnet50.weights` files into the `build_dir` directory.
+  and `resnet50.weights.bin` files into the `build_dir` directory.
 * `ResNet50BundleMain`:  it compiles the `main.cpp` file, which is the main file of the project.
   This source file gives a good idea about how to interface with an auto-generated bundle.
   It contains the code for interfacing with the auto-generated bundle.
   *  It allocated the memory areas based on their memory sizes provided in `resnet50_config`.
-  *  Then it loads the weights from the auto-generated `resnet50.weights` file.
+  *  Then it loads the weights from the auto-generated `resnet50.weights.bin` file.
   *  It loads the input image, pre-processes it and puts it into the mutable weight variables
      memory area.
   *  Once everything is setup, it invokes the compiled network model by calling the

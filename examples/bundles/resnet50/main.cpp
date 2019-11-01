@@ -343,7 +343,7 @@ int main(int argc, char **argv) {
   parseCommandLineOptions(argc, argv);
   // Allocate and initialize constant and mutable weights.
   uint8_t *constantWeightVarsAddr =
-      initConstantWeights("resnet50.weights", resnet50_config);
+      initConstantWeights("resnet50.weights.bin", resnet50_config);
   uint8_t *mutableWeightVarsAddr = initMutableWeightVars(resnet50_config);
   uint8_t *activationsAddr = initActivations(resnet50_config);
 
