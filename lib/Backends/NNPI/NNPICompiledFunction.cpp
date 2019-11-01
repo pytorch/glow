@@ -94,6 +94,7 @@ Error NNPICompiledFunction::compile(Function *F, const BackendOptions &opts) {
       LOG_NNPI_ERROR_RETURN_LLVMERROR(
           nnpiNetworkCompileToStream(network_, &config_, &outFileStream, NULL),
           "Failed NNPI Compile");
+
       DBG_MEM_USAGE("NNPICompiledFunction done compile <<");
     } else // Compile to file.
     {
@@ -101,12 +102,24 @@ Error NNPICompiledFunction::compile(Function *F, const BackendOptions &opts) {
           nnpiNetworkCompileToFile(network_, &config_, filename.c_str(), NULL),
           "Failed NNPI Compile");
     }
+    if (UseInferenceAPI()) {
+      DBG_MEM_USAGE("NNPICompiledFunction destroy network");
+      // NNPINetwork is not needed anymore on the inferfence api path.
+      // Once the complied stream is loaded, query on the network can be done
+      // using the host network instead.
+      LOG_NNPI_ERROR(nnpiNetworkDestroy(network_),
+                     "Failed NNPI Network Destroy");
+      network_ = NNPI_INVALID_NNPIHANDLE;
+      DBG_MEM_USAGE("NNPICompiledFunction destroy network done");
+    }
   }
   return Error::success();
 }
 
 NNPICompiledFunction::~NNPICompiledFunction() {
-  LOG_NNPI_ERROR(nnpiNetworkDestroy(network_), "Failed NNPI Network Destroy");
+  if (network_ != NNPI_INVALID_NNPIHANDLE) {
+    LOG_NNPI_ERROR(nnpiNetworkDestroy(network_), "Failed NNPI Network Destroy");
+  }
 }
 
 BlockStream &NNPICompiledFunction::lockCompiledStream() {

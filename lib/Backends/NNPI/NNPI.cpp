@@ -16,6 +16,7 @@
 #include "NNPI.h"
 #include "NNPICompiledFunction.h"
 #include "NNPIDeviceManager.h"
+#include "NNPIMessageLogger.h"
 #include "glow/Graph/Nodes.h"
 #include "glow/Optimizer/GraphOptimizerPipeline/Pipeline.h"
 
@@ -29,6 +30,10 @@ bool GlowDisableNNPITransforms = false;
 
 } // namespace onnxifi
 } // namespace glow
+
+// Load NNPI message logger configuration.
+const NNPIMessageLogger &NNPIBackend::loggerConfig_ =
+    NNPIMessageLogger::getInstance();
 
 bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
   switch (NI.getKind()) {
@@ -48,6 +53,7 @@ bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::MatMulNodeKind:
   case Kinded::Kind::BatchedReduceAddNodeKind:
   case Kinded::Kind::BatchedReduceMeanNodeKind:
+  case Kinded::Kind::BatchedReduceMinNodeKind:
   case Kinded::Kind::LocalResponseNormalizationNodeKind:
   case Kinded::Kind::AvgPoolNodeKind:
   case Kinded::Kind::BatchedAddNodeKind:
@@ -59,6 +65,11 @@ bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
     return NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy,
          ElemKind::Int32ITy, ElemKind::Int64ITy});
+
+  case Kinded::Kind::BatchMatMulNodeKind:
+  case Kinded::Kind::PReluNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind(
+        {ElemKind::Int8QTy, ElemKind::Float16Ty});
 
   case Kinded::Kind::DivNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
@@ -278,7 +289,8 @@ bool NNPIBackend::shouldLower(const Node *N) const {
   switch (N->getKind()) {
   case Kinded::Kind::ClipNodeKind: {
     const ClipNode *CN = llvm::cast<ClipNode>(N);
-    if (CN->getResult().getElementType() != ElemKind::Float16Ty) {
+    if (CN->getResult().getElementType() != ElemKind::Float16Ty &&
+        CN->getResult().getElementType() != ElemKind::Int8QTy) {
       return true;
     }
     return false;
@@ -294,7 +306,13 @@ bool NNPIBackend::shouldLower(const Node *N) const {
   case Kinded::Kind::ReplaceNaNNodeKind:
   case Kinded::Kind::LocalResponseNormalizationNodeKind:
   case Kinded::Kind::BatchedReduceMeanNodeKind:
+  case Kinded::Kind::BatchedReduceMinNodeKind:
     return false;
+  case Kinded::Kind::BatchMatMulNodeKind:
+  case Kinded::Kind::PReluNodeKind: {
+    NodeInfo NI(*N);
+    return NI.allInputsAndOutputsHaveSameElemKind({ElemKind::FloatTy});
+  }
   default:
     return true;
     break;

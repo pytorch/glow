@@ -48,12 +48,14 @@ class InferenceThreadEnv {
   std::vector<NamedResource> hostInputs_, hostOutputs_, deviceInputs_,
       deviceOutputs_;
   std::vector<NNPICopyCommand> inputCopyCmds_, outputCopyCmds_;
+  std::vector<NNPICopyCommandConfig> inputCopyCmdConfigs_,
+      outputCopyCmdConfigs_;
   std::vector<void *> rawInputs_, rawOutputs_;
   std::set<int32_t *> tmpBuffers_; // Used for int64 tensors.
 public:
   InferenceThreadEnv();
   ~InferenceThreadEnv();
-  bool execute(RunIdentifierTy runId, std::unique_ptr<ExecutionContext> ctx,
+  void execute(RunIdentifierTy runId, std::unique_ptr<ExecutionContext> ctx,
                runtime::ResultCBTy resultCB);
   bool init(
       // For ICE-Ref path.

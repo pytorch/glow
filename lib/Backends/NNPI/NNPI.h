@@ -19,6 +19,9 @@
 #include "glow/Backend/Backend.h"
 
 namespace glow {
+// Forward declaration of NNPI Message Logger configuration class.
+class NNPIMessageLogger;
+
 /// This is the Intel Neural-Network Processor for Inference (NNPI) backend.
 
 class NNPIBackend final : public Backend {
@@ -40,7 +43,7 @@ public:
   bool isOpSupported(const NodeInfo &NI) const override;
   bool shouldLower(const Node *N) const override;
   bool shouldShareBuffers() const override { return false; }
-
+  bool supportsPartialTensors() const override { return false; }
   FunctionPassPipeline getOptimizationPipeline() const override;
 
   runtime::DeviceManager *
@@ -50,8 +53,12 @@ public:
                              CompilationContext &cctx) const override;
   /// @}
 
-#if FACEBOOK_INTERNAL
 private:
+  // NNPIMessageLogger is a global mechanism that initializes the NNPI log
+  // stream output handler.
+  static const NNPIMessageLogger &loggerConfig_;
+
+#if FACEBOOK_INTERNAL
   /// Performs FB-private transformations on \p F given \p cctx.
   /// \returns whether \p F is modified.
   bool transformPrivate(Function *F, CompilationContext &cctx) const;
