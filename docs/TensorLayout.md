@@ -21,124 +21,57 @@ For operations that do have layout requirements, Glow has an easily extendable
 string-based layout field. This allows backends to override Glow's default
 requirements without the hassle of creating a custom, backend-specific, node.
 
-The [class `TensorLayoutDescription`](https://github.com/pytorch/glow/blob/master/include/glow/Base/TensorLayoutUtils.h)
-represents the expected layout of tensors in Glow.
-It contains the following methods:
+Glow's string-based layout format is encoded as follows:
 
-- `bool isSameLayout(const TensorLayoutDescription &rhs) const`
-	- Returns true if both tensor layouts are the same.
-- `bool isSatisfiedBy(TypeRef ty, const TensorLayoutDescription *srcLayout) const`
-	- Returns true if the type `ty` satisfies the current layout.
-	- If `srcLayout` is provided, the verification is more complete,
-as it is taken into consideration, for example: the number of dimensions in
-`srcLayout` needs to match that of the current tensor.
-- `const TensorDimensionDescription &getNthDimDescription(size_t n) const`
-	- Given a dimension number `n`, Returns its description.
-- `const TensorDimensionDescription &getDimDescription(char name) const`
-	- Given a dimension name `name, Returns its description.
-- `llvm::ArrayRef<TensorDimensionDescription> getDims() const`
-	- Returns the description of all dimensions.
-- `size_t getNumDims()`
-	- Returns the number of dimensions.
-- `llvm::StringRef getLayoutName() const`
-	- Returns a string representing the name of the current tensor layout.
-- `bool isAnyLayout()`
-	- Returns true if the layout is "any" for all dimensions.
+1. A mandatory one character representing the current dimension. Either an  alphabetic letter or `*` (any layout).
+2. An optional token for the start of the current dimension's information: `[`.
+3. An optional namespace identifier for non-standard information, such as tiling, followed by `:`. Must have `[` from 2. in place. following said identifier, all subsequent data is considered as a "black box" until `]` is encountered.
+4. Given that we have `[` from 2. in place, the closing bracket `]` for it.
+5. Optionally go back to 2.
 
-It contains an array of [struct `TensorDimensionDescription`](https://github.com/pytorch/glow/blob/master/include/glow/Base/TensorLayoutUtils.h),
-One for each dimension of the tensor.
-The struct contains the following fields:
-
-- `size_t alignment`
-	- Expected alignment of the current dimension.
-- `uint8_t order`
-	- Expected order of the current dimension.
-- `char name`
-	- Expected name of the current dimension.
-
-As an example, lets assume we want to create the array-of-structs for Glow's
-backend-agnostic `NHWC` layout, it should look as follows:
-
-```
-static TensorDimensionDescription dimsNHWC[] = {
-    {.alignment = 1, .order = 0, .name = 'N'},
-    {.alignment = 1, .order = 1, .name = 'H'},
-    {.alignment = 1, .order = 2, .name = 'W'},
-    {.alignment = 1, .order = 3, .name = 'C'},
-};
-```
-
-The `alignment` field has been set to `1` for all dimensions because
-we do not have an alignment requirement pre-lowering.
-
-Given the `N` dimension, for example, we set the `order` value to `0`
-indicating that it is the first dimension of tensor.
-
-To help indicate its purpose, number of samples, we give it the name `N`.
-
-Since some operations can take any layout, giving we use the `*` character
-to annotate a dimension as wild.
-
-As such, the description of a four dimensional tensor for a data parallel
-operation would look as follows:
-
-```
-static TensorDimensionDescription dims4D[] = {
-    {.alignment = 1, .order = 0, .name = '*'},
-    {.alignment = 1, .order = 1, .name = '*'},
-    {.alignment = 1, .order = 2, .name = '*'},
-    {.alignment = 1, .order = 3, .name = '*'},
-};
-```
-
-It is *highly* recommended to explicitly pass the expected layout for any operation
-that is not data parallel.
-It is not, however, a strict requirement: if it is not provided the
-operation will be constructed with `*` layout.
-
-This is done for connivence and backward compatibility's sake. If the layouts
-are dropped the default verifier will assume the operation will produce an
-output is in the Glow's default format (i.e. `NHWC`).
-
-This does mean the verifier *might* fail if some operations have been annotated
-with `NCHW` while others are left as a wildcard. In a release build, if
-verifications are disabled, and assuming the graph is valid even if not
-correctly annotated, this will not cause a correctness issue on an
-Interpreter backend. This is not guaranteed on backends that use this (invalid)
-information for their backend-specific lowering and/or optimization.
-
-Another thing to note is that most optimization passes in Glow do not take
-a backend as an input, they might, however, be called post lowering. Layout
-verification will catch any (layout-requiring) transformation that breaks
-correctness due to implicitly assuming a canonical layout post-lowering.
-If a transformation requires Glow's canonical layout, it is its responsibility
-to verify that assumption.
+As an example for this encoding, here's how we add alignment information,
+which is an officially supported extension, thus not requiring a namespace,
+followed by a backend-specific extension:
+`N[a=32][namespace_for_unsupported:<bla>]HWC` would represent 4-D tensor wherein
+`N` needs an alignment of 32 + some closed-backend requirements we don't know about.
+`HWC` have no layout restrictions.
+	
 
 ## Layout Requirements Interface
 
 Backends in Glow *may* derive from [base class `TensorLayoutCommon`](https://github.com/pytorch/glow/blob/master/include/glow/Graph/TensorLayout.h).
 Which includes the following virtual methods they can override:
 
-- `virtual TensorLayoutDescription getDefaultNDLayout(unsigned dims) const`
+- `virtual std::string getDefaultNDLayout(unsigned dims) const`
 
   - This helper function takes a `unsigned dims` and returns the (current) default n-D layout.
 
-- `virtual TensorLayoutDescription getNthInputLayoutRequirements(const Node *node, size_t n) const`
+- `virtual std::string getNthInputLayoutRequirements(const Node *node, size_t n)`
 
   - This function takes an operator `Node *node` and returns the layout requirements of the Nth input `n`.
 
-- `virtual TensorLayoutDescription getNthResultLayoutRequirements(const Node *node, size_t n) const`
+- `virtual std::string getNthResultLayoutRequirements(const Node *node, size_t n)`
 
   - This function takes an operator `Node *node` and returns the layout requirements of the Nth result `n`.
+
+- ```
+virtual bool isSatisfiedBy(TypeRef ty,
+                               const TensorLayoutDescription &destLayout,
+                               const TensorLayoutDescription *srcLayout) const
+	- This function checks if `ty` satisfies `destLayout` layout requirements, if `srcLayout` is provided for `ty`, take that into account.
 
 - `virtual std::array<TensorLayoutDescription, max_tensor_dimensions + 1> &getLayoutsForDims() const`
 
   - This helper function returns an array of predefined layouts for all dimensions from `0-D` to Glow's max tensor layout dimension.
 
+- `bool isEnabled() const`
+	- Indicates whatever checking for layout requirements is enabled or not. default is off.
+
 An example of why backends may want to override such methods can be seen in the `OpenCL` backend:
-`OpenCL` Convolutions are more efficient in `NCHW` format, as such, we may lower a `ConvolutionNode`
+Convolutions are more efficient in `NCHW` format, as such, we may lower a `ConvolutionNode`
 into a `NHWC` to `NCHW` transpose + convolution.
-The `OpenCL` verifier should expect `NCHW` for the input/output of the convolution instead of `NHWC`. 
+The `OpenCL` verifier should expect `NCHW` for the input/output of the convolution instead of `NHWC`.
+`OpenCL` opts-in to post-lowering verifications.
 
 ## Canonical Tensor Layout
 
@@ -148,16 +81,16 @@ This allows us to verify the graph after every transformation and may expose `Gr
 [class `CanonicalTensorLayout`](https://github.com/pytorch/glow/blob/master/include/glow/Graph/TensorLayout.h)
 derives from `TensorLayoutCommon` and overrides the following functions:
 
-- `virtual TensorLayoutDescription getDefaultNDLayout(unsigned dims) const`
+- `std::string getDefaultNDLayout(unsigned dims) const`
 
   - Overrides the default `4-D` layout from "any" into `NHWC`
 
-- `virtual TensorLayoutDescription getNthInputLayoutRequirements(const Node *node, size_t n) const`
+- `std::string getNthInputLayoutRequirements(const Node *node, size_t n)`
 
   - This function takes an operator `Node *node` and returns the layout requirements of the Nth input `n`.
   - It returns Common layout constraints, for example, the input of `TransposeNode` is the same as layout of operation's result producing it.
 
-- `virtual TensorLayoutDescription getNthResultLayoutRequirements(const Node *node, size_t n) const`
+- `std::string getNthResultLayoutRequirements(const Node *node, size_t n)`
 
   - This function takes an operator `Node *node` and returns the layout requirements of the Nth result `n`.
   - It returns Common layout constraints, for example, `ConvolutionNode` should be in `NHWC` format.
@@ -260,7 +193,7 @@ this situation considerably:
 
 - The backend would return this information and Glow core could insert all the required layout transformations
 
-- The transformations can also be optimized "fore free": Glow currently optimizes `TransposeNode`:
+- The transformations can also be optimized "for free": Glow currently optimizes `TransposeNode`:
  - Multiple transposes can be combined into one
  - Opposite transposes can eliminate each other
 
