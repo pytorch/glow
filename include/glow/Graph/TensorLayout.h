@@ -16,7 +16,6 @@
 #ifndef GLOW_GRAPH_TENSORLAYOUT_H
 #define GLOW_GRAPH_TENSORLAYOUT_H
 
-#include <array>
 #include <memory>
 #include <string>
 
@@ -73,9 +72,9 @@ class TensorLayoutDescription {
 public:
   virtual ~TensorLayoutDescription() = default;
   /// Constructs this helper class from a serialized string representation.
-  TensorLayoutDescription(std::string text);
+  TensorLayoutDescription(const std::string &layoutStr);
   /// Constructs this helper class from an array of strings representing each
-  /// individual / pre-seperated dimension.
+  /// individual / pre-separated dimension.
   TensorLayoutDescription(llvm::ArrayRef<std::string> dims);
   /// \returns the alignment of a dimension \p n.
   size_t getAlignment(size_t n) const;
@@ -128,8 +127,7 @@ public:
                              const TensorLayoutDescription *srcLayout) const;
 
   /// \return layouts for all tensor dimensions.
-  virtual std::array<TensorLayoutDescription, max_tensor_dimensions + 1> &
-  getLayoutsForDims() const;
+  virtual llvm::ArrayRef<TensorLayoutDescription> getLayoutsForDims() const;
 
   /// \returns true if layout equirement verification is enabled.
   bool isEnabled() const { return enabled_; }
@@ -159,6 +157,12 @@ public:
   std::string getDefaultNDLayout(unsigned dims) const override;
 
   /// \returns layout requirements of the Nth input \p n of a Node \p node.
+  /// NOTE: Certain nodes are layout agnostic. Others expect their
+  /// inputs/outputs to have a canonical format. For some layout agnostic nodes
+  /// we need to look at the layout of their inputs to determine the layout of
+  /// their outputs, e.g. a batch norm. node, in the canonical representation,
+  /// accepts any input layout such as NCHW or NHWC, but, the output is a
+  /// propoagation of said layout.
   std::string getNthInputLayoutRequirements(const Node *node,
                                             size_t n) override;
 

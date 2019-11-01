@@ -114,8 +114,8 @@ void run(Backend &backend, CompiledFunction &compiledF,
   context.movePlaceholderBindings().release();
 }
 
-static bool isCanonical(const NodeValue &RN, Backend &backend, Node *clonedC,
-                        size_t idx) {
+static bool isCanonicalLayout(const NodeValue &RN, Backend &backend,
+                              Node *clonedC, size_t idx) {
   auto resultLayoutStr =
       backend.getTensorLayoutRequirements().getNthResultLayoutRequirements(
           clonedC, idx);
@@ -130,9 +130,10 @@ static bool isCanonical(const NodeValue &RN, Backend &backend, Node *clonedC,
   return true;
 }
 
-static void
-bailOnNonCanLayout(Function *constEvaluationF, Module &mod,
-                   const llvm::SmallVectorImpl<SaveNode *> &savedResults) {
+// Bail on constant folding post-lowering for backends that break assumptions.
+static void bailOnNonCanonicalLayout(
+    Function *constEvaluationF, Module &mod,
+    const llvm::SmallVectorImpl<SaveNode *> &savedResults) {
   // Some results may be in a non-canonical format post-lowering.
   // For example, if we are trying to constant fold an OpenCL 'Reshape' that
   // has NCHW layout. We cannot transpose it back to canonical layout for
@@ -174,8 +175,8 @@ evaluateConstantOperation(Backend &backend, CompilationContext &cctx, Node *C) {
   for (size_t idx = 0, e = clonedC->getNumResults(); idx < e; ++idx) {
     auto RN = clonedC->getNthResult(idx);
     auto *SN = constEvaluationF->createSave(clonedC->getName(), RN);
-    if (!isCanonical(RN, backend, clonedC, idx)) {
-      bailOnNonCanLayout(constEvaluationF, mod, savedResults);
+    if (!isCanonicalLayout(RN, backend, clonedC, idx)) {
+      bailOnNonCanonicalLayout(constEvaluationF, mod, savedResults);
       return {};
     }
     savedResults.emplace_back(SN);

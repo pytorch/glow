@@ -498,7 +498,7 @@ static ShapeVector getNewShapeWithoutAxes(llvm::ArrayRef<size_t> dims,
 
 Placeholder *Module::createPlaceholder(TypeRef T, llvm::StringRef name,
                                        bool isTrainable,
-                                       const std::string layout) {
+                                       const std::string &layout) {
   auto FT = uniqueType(*T);
   auto *ph = new Placeholder(name, FT, isTrainable, layout);
   ph->setName(uniqueName(ph->getName(), usedNodeNames_, usedStorageNames_));
@@ -509,7 +509,7 @@ Placeholder *Module::createPlaceholder(TypeRef T, llvm::StringRef name,
 
 Placeholder *Module::createPlaceholder(ElemKind T, llvm::ArrayRef<size_t> dims,
                                        llvm::StringRef name, bool isTrainable,
-                                       const std::string layout) {
+                                       const std::string &layout) {
   auto FT = uniqueType(T, dims);
   return createPlaceholder(FT, name, isTrainable, layout);
 }
@@ -517,20 +517,20 @@ Placeholder *Module::createPlaceholder(ElemKind T, llvm::ArrayRef<size_t> dims,
 Placeholder *Module::createPlaceholder(ElemKind T, llvm::ArrayRef<size_t> dims,
                                        float scale, int32_t offset,
                                        llvm::StringRef name, bool isTrainable,
-                                       const std::string layout) {
+                                       const std::string &layout) {
   auto FT = uniqueType(T, dims, scale, offset);
   return createPlaceholder(FT, name, isTrainable, layout);
 }
 
 Constant *Module::createConstant(TypeRef T, llvm::StringRef name,
-                                 const std::string layout) {
+                                 const std::string &layout) {
   auto FT = uniqueType(*T);
   return addConstant(new Constant(name, FT, layout));
 }
 
 Constant *Module::createConstant(ElemKind T, llvm::ArrayRef<size_t> dims,
                                  llvm::StringRef name,
-                                 const std::string layout) {
+                                 const std::string &layout) {
   auto FT = uniqueType(T, dims);
   return createConstant(FT, name, layout);
 }
@@ -538,20 +538,20 @@ Constant *Module::createConstant(ElemKind T, llvm::ArrayRef<size_t> dims,
 Constant *Module::createConstant(ElemKind T, llvm::ArrayRef<size_t> dims,
                                  float scale, int32_t offset,
                                  llvm::StringRef name,
-                                 const std::string layout) {
+                                 const std::string &layout) {
   auto FT = uniqueType(T, dims, scale, offset);
   return createConstant(FT, name, layout);
 }
 
 Constant *Module::createConstant(llvm::StringRef name, const Tensor &tensor,
-                                 const std::string layout) {
+                                 const std::string &layout) {
   auto *V = createConstant(&tensor.getType(), name, layout);
   V->assign(&tensor);
   return V;
 }
 
 Constant *Module::createConstant(llvm::StringRef name, Tensor &&tensor,
-                                 const std::string layout) {
+                                 const std::string &layout) {
   return addConstant(new Constant(name, std::move(tensor), layout));
 }
 
@@ -976,7 +976,7 @@ ReshapeNode *Function::createReshape(llvm::StringRef name, NodeValue input,
 
 TransposeNode *Function::createTranspose(llvm::StringRef name, NodeValue input,
                                          llvm::ArrayRef<unsigned_t> shuffle,
-                                         llvm::StringRef layout) {
+                                         const std::string &layout) {
   ShapeVector shape;
   auto dims = input.dims();
   for (size_t i = 0; i < dims.size(); i++) {
@@ -991,20 +991,21 @@ TransposeNode *Function::createTranspose(llvm::StringRef name, NodeValue input,
                       targetShuffle.begin());
   };
 
-  if (layout == ANY_LAYOUT) {
+  auto currLayout = layout;
+  if (currLayout == ANY_LAYOUT) {
     // If layout got a default value, change it based on shuffle:
     // TODO: remove the shuffle and replace it with layout.
     if (compareShuffle(NCHW2NHWC) || compareShuffle(HWCN2NHWC)) {
-      layout = "NHWC";
+      currLayout = "NHWC";
     } else if (compareShuffle(NHWC2NCHW)) {
-      layout = "NCHW";
+      currLayout = "NCHW";
     } else if (compareShuffle(NHWC2HWNC)) {
-      layout = "HWNC";
+      currLayout = "HWNC";
     }
   }
 
   auto NT = getParent()->uniqueTypeWithNewShape(input.getType(), shape);
-  return addNode(new TransposeNode(name, NT, input, shuffle.vec(), layout));
+  return addNode(new TransposeNode(name, NT, input, shuffle.vec(), currLayout));
 }
 
 Node *Function::createBroadcast(llvm::StringRef name, NodeValue input,

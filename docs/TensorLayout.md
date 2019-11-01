@@ -33,9 +33,21 @@ As an example for this encoding, here's how we add alignment information,
 which is an officially supported extension, thus not requiring a namespace,
 followed by a backend-specific extension:
 `N[a=32][namespace_for_unsupported:<bla>]HWC` would represent 4-D tensor wherein
-`N` needs an alignment of 32 + some closed-backend requirements we don't know about.
+`N` needs an alignment of 32 + some private backends' requirements we don't know about.
 `HWC` have no layout restrictions.
-	
+We can, of course, combine "any" dimensions in there, for example: `N[a=32]*H*[a=64]`
+would represent "any" for the second dimension with no restrictions whatsoever while
+we have an alignment restriction of 64 on the 4th.
+
+Notes:
+
+1. For each dimension, the identifier can be either a single english alphabet letter,
+either upper or lower case, or the star symbol.
+2. We assume that a single letter is enough for each dimension,
+it makes parsing easier and avoids adding delimiters in the serialized format,
+however, we do have a constructor that (theoretically) accepts multi-letter dimensions.
+If we decide to expand the current support,
+we will need to add delimiters to the serialized form.
 
 ## Layout Requirements Interface
 
@@ -83,7 +95,7 @@ derives from `TensorLayoutCommon` and overrides the following functions:
 
 - `std::string getDefaultNDLayout(unsigned dims) const`
 
-  - Overrides the default `4-D` layout from "any" into `NHWC`
+  - Overrides the default `n-D` layout from "any" into something else, e.g. 4-D any into `NHWC`.
 
 - `std::string getNthInputLayoutRequirements(const Node *node, size_t n)`
 
@@ -104,6 +116,10 @@ storage. For example, a Placeholder may need to be in `NHWC` format for a
 this a hard requirement, especially since the canonical layout may accept
 anything for certain tensors (e.g. `1-D` tensor), as such, we introduce the
 notion of `ANY_LAYOUT` and initialize them with this wildcard by default.
+Note, that loaders have the ability to specify the layout based on network
+description, e.g. they might accept either `NCHW` or `NHWC` as an input for
+operator, and they can propagate that information to Glow.
+
 
 ## Related Work
 

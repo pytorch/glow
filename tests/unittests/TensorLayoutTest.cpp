@@ -142,4 +142,21 @@ TEST_P(TensorLayoutTest, parseTestCustom) {
   EXPECT_EQ(custom.getAlignment(3), 64);
 }
 
+// Check TensorLayoutDescription's parser with star dims.
+TEST_P(TensorLayoutTest, parseTestStar) {
+  CHECK_IF_ENABLED();
+
+  TensorLayoutDescription custom("N[a=32]*H*[a=64]");
+  EXPECT_FALSE(custom.isAnyLayout());
+  EXPECT_EQ(custom.getNumDims(), 4);
+  EXPECT_EQ(custom.getDims()[0], "N[a=32]");
+  EXPECT_EQ(custom.getDims()[1], "*");
+  EXPECT_EQ(custom.getDims()[2], "H");
+  EXPECT_EQ(custom.getDims()[3], "*[a=64]");
+  EXPECT_EQ(custom.getAlignment(0), 32);
+  EXPECT_EQ(custom.getAlignment(1), 1);
+  EXPECT_EQ(custom.getAlignment(2), 1);
+  EXPECT_EQ(custom.getAlignment(3), 64);
+}
+
 INSTANTIATE_BACKEND_TEST(TensorLayoutTest);

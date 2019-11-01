@@ -18,6 +18,8 @@
 #include <memory>
 #include <sstream>
 
+#include <glog/logging.h>
+
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/TensorLayout.h"
 #include "glow/Graph/VerifierHelper.h"
@@ -77,13 +79,13 @@ bool glow::verifyLayouts(const Function &F, TensorLayoutCommon &TLC,
   return isValid;
 }
 
-TensorLayoutDescription::TensorLayoutDescription(std::string text) {
-  if (text.empty()) {
+TensorLayoutDescription::TensorLayoutDescription(const std::string &layoutStr) {
+  if (layoutStr.empty()) {
     // 0-D output
     numDims_ = 0;
     return;
   }
-  parse(text);
+  parse(layoutStr);
 }
 
 static bool isCustomExtension(llvm::StringRef text) {
@@ -110,11 +112,22 @@ static bool isCustomExtension(llvm::StringRef text) {
 // Example: N[a=32][namespace_for_unsupported:<bla>]HWC would represent 4-D
 // tensor wherein N needs an alignment of 32 + some closed-backend requirements
 // we don't know about. HWC have no restrictions.
+// NOTES:
+// 1. For each dimension, the identifier can be either a single english alphabet
+// letter, either upper or lower case, or the star symbol.
+// 2. We assume that a single letter is enough for each dimension, it makes
+// parsing easier and avoids adding delimiters in the serialized format,
+// however, we do have a constructor that (theoretically) accepts multi-letter
+// dimensions. If we decide to expand the current support, we will need to add
+// delimiters to the serialized form.
 void TensorLayoutDescription::parse(llvm::StringRef text) {
   unsigned idx = 0;
   while (!text.empty()) {
     char curr = text.front();
     text = text.drop_front();
+    if (curr == '\0' || isblank(curr)) {
+      continue;
+    }
     switch (curr) {
     case '[': {
       assert(idx > 0 && "Expected at least one parsed entry.");
@@ -126,8 +139,9 @@ void TensorLayoutDescription::parse(llvm::StringRef text) {
       break;
     }
     default: {
-      assert(isalpha(curr) ||
-             curr == '*' && "Expected an alphabetic letter or '*'.");
+      DCHECK(isalpha(curr) || curr == '*')
+          << "Expected an alphabetic letter or '*'., got: " << curr
+          << " in string: " << text.str();
       std::string currStr(1, curr);
       dims_[idx].append(currStr);
       serializedLayout_.append(dims_[idx]);
@@ -137,7 +151,6 @@ void TensorLayoutDescription::parse(llvm::StringRef text) {
     }
     }
   }
-  assert(idx > 0 && "Expected at least one parsed entry.");
   numDims_ = idx;
 }
 
@@ -310,9 +323,8 @@ static TensorLayoutDescription layout5D(dims5D);
 static TensorLayoutDescription layout6D(dims6D);
 
 /// Glow layouts for any specific number of dimensions.
-static std::array<TensorLayoutDescription, max_tensor_dimensions + 1>
-    layoutsForDims = {
-        layout0D, layout1D, layout2D, layout3D, layout4D, layout5D, layout6D,
+static TensorLayoutDescription layoutsForDims[] = {
+    layout0D, layout1D, layout2D, layout3D, layout4D, layout5D, layout6D,
 };
 
 TensorLayoutCommon::TensorLayoutCommon() : enabled_(false) {
@@ -335,9 +347,9 @@ TensorLayoutCommon::~TensorLayoutCommon() {
   }
 }
 
-std::array<TensorLayoutDescription, max_tensor_dimensions + 1> &
+llvm::ArrayRef<TensorLayoutDescription>
 TensorLayoutCommon::getLayoutsForDims() const {
-  return layoutsForDims;
+  return llvm::makeArrayRef(layoutsForDims);
 }
 
 static TensorLayoutDescription *
@@ -353,6 +365,11 @@ getLayoutFromName(const std::string &name,
   }
   // Add new layout to map:
   auto *ret = new TensorLayoutDescription(name);
+  if (ret->getNumDims() == 0) {
+    // empty / any layout.
+    delete ret;
+    ret = nullptr;
+  }
   layoutNameToLayoutDescription.insert(std::make_pair(name, ret));
   return ret;
 }
@@ -536,12 +553,7 @@ std::string CanonicalTensorLayout::getDefaultNDLayout(unsigned dims) const {
   return TensorLayoutCommon::getDefaultNDLayout(dims);
 }
 
-bool CanonicalTensorLayout::acceptsAnyLayout(const Node *node) const {
-  if (node->isDataParallel()) {
-    return true;
-  }
-  // In the canonical representation, some nodes are layout agnostic even if
-  // they are not necessarily data parallel:
+static bool acceptsAnyInputLayout(const glow::Node *node) {
   switch (node->getKind()) {
   case Kinded::Kind::ConcatNodeKind:
   case Kinded::Kind::BatchedReduceMeanNodeKind:
@@ -549,9 +561,20 @@ bool CanonicalTensorLayout::acceptsAnyLayout(const Node *node) const {
   case Kinded::Kind::BatchedReduceMinNodeKind:
   case Kinded::Kind::BatchNormalizationNodeKind:
   case Kinded::Kind::BatchNormalizationGradNodeKind:
-  case Kinded::Kind::ReshapeNodeKind: {
+  case Kinded::Kind::ReshapeNodeKind:
+  case Kinded::Kind::MeanVarNormalizationNodeKind:
+  case Kinded::Kind::SGDNodeKind: {
     return true;
   }
   default: { return false; }
   }
+}
+
+bool CanonicalTensorLayout::acceptsAnyLayout(const Node *node) const {
+  if (node->isDataParallel()) {
+    return true;
+  }
+  // In the canonical representation, some nodes are input layout agnostic even
+  // if they are not necessarily data parallel:
+  return acceptsAnyInputLayout(node);
 }

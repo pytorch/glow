@@ -177,33 +177,33 @@ public:
 
   Placeholder *createPlaceholder(ElemKind T, llvm::ArrayRef<size_t> dims,
                                  llvm::StringRef name, bool isTrainable,
-                                 const std::string layout = ANY_LAYOUT);
+                                 const std::string &layout = ANY_LAYOUT);
 
   Placeholder *createPlaceholder(TypeRef T, llvm::StringRef name,
                                  bool isTrainable,
-                                 const std::string layout = ANY_LAYOUT);
+                                 const std::string &layout = ANY_LAYOUT);
 
   Placeholder *createPlaceholder(ElemKind T, llvm::ArrayRef<size_t> dims,
                                  float scale, int32_t offset,
                                  llvm::StringRef name, bool isTrainable,
-                                 const std::string layout = ANY_LAYOUT);
+                                 const std::string &layout = ANY_LAYOUT);
 
   Constant *createConstant(TypeRef T, llvm::StringRef name,
-                           const std::string layout = ANY_LAYOUT);
+                           const std::string &layout = ANY_LAYOUT);
 
   Constant *createConstant(ElemKind T, llvm::ArrayRef<size_t> dims,
                            llvm::StringRef name,
-                           const std::string layout = ANY_LAYOUT);
+                           const std::string &layout = ANY_LAYOUT);
 
   Constant *createConstant(ElemKind T, llvm::ArrayRef<size_t> dims, float scale,
                            int32_t offset, llvm::StringRef name,
-                           const std::string layout = ANY_LAYOUT);
+                           const std::string &layout = ANY_LAYOUT);
 
   Constant *createConstant(llvm::StringRef name, const Tensor &tensor,
-                           const std::string layout = ANY_LAYOUT);
+                           const std::string &layout = ANY_LAYOUT);
 
   Constant *createConstant(llvm::StringRef name, Tensor &&tensor,
-                           const std::string layout = ANY_LAYOUT);
+                           const std::string &layout = ANY_LAYOUT);
 
   ///@}
 
@@ -617,7 +617,7 @@ public:
 
   TransposeNode *createTranspose(llvm::StringRef name, NodeValue input,
                                  llvm::ArrayRef<unsigned_t> shuffle,
-                                 llvm::StringRef layout = ANY_LAYOUT);
+                                 const std::string &layout = ANY_LAYOUT);
 
   /// Create a series of nodes that implement a Broadcast operation. The \p
   /// input Tensor is broadcasted based on \p newShape and along the \p axis,
