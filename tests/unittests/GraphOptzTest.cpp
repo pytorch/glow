@@ -1417,6 +1417,37 @@ TEST_F(GraphOptz, SliceOfSplatNode) {
   EXPECT_TRUE(CN->getResult().getType()->dims().equals({94, 73, 35}));
 }
 
+/// Test Clip(Splat(args)) -> Splat(args').
+TEST_F(GraphOptz, ClipOfSplatNode) {
+  Type T(ElemKind::FloatTy, {10, 10});
+  SplatNode *splat = F_->createSplat("zero", &T, 5);
+  ClipNode *clipMin = F_->createClip("clip", splat, 10, 15);
+  ClipNode *clipMax = F_->createClip("clip", splat, 0, 2);
+  ClipNode *clipSame = F_->createClip("clip", splat, 0, 10);
+  SaveNode *saveMin = F_->createSave("saveMin", clipMin);
+  SaveNode *saveMax = F_->createSave("saveMax", clipMax);
+  SaveNode *saveSame = F_->createSave("saveSame", clipSame);
+
+  // Start with one splat, three clips, three saves.
+  EXPECT_EQ(F_->getNodes().size(), 7);
+
+  ::glow::optimize(F_, CompilationMode::Infer);
+
+  // We will end up with three Splats and three saves.
+  EXPECT_EQ(F_->getNodes().size(), 6);
+
+  SplatNode *splatMin = llvm::dyn_cast<SplatNode>(saveMin->getInput());
+  ASSERT_TRUE(splatMin);
+  EXPECT_EQ(splatMin->getValue(), 10);
+
+  SplatNode *splatMax = llvm::dyn_cast<SplatNode>(saveMax->getInput());
+  ASSERT_TRUE(splatMax);
+  EXPECT_EQ(splatMax->getValue(), 2);
+
+  ASSERT_EQ(saveSame->getInput().getNode(), splat);
+  EXPECT_EQ(splat->getValue(), 5);
+}
+
 TEST_F(GraphOptz, ZeroArithmetic) {
   // Tests the identities: [0 + X = X] [0 * X = 0] [0 / X = 0] [ X - 0 = X]
 
