@@ -125,13 +125,17 @@ void LLVMIRGen::initTargetMachine(
 
 llvm::StringRef LLVMIRGen::getBundleName() const { return bundleName_; }
 
-void LLVMIRGen::setBundleName(const std::string &name) { bundleName_ = name; }
-
-std::string LLVMIRGen::getMainEntryName() const {
-  return mainEntryName_.empty() ? "main" : mainEntryName_;
+void LLVMIRGen::setBundleName(const std::string &name) {
+    bundleName_ = legalizeName(name);
 }
 
-void LLVMIRGen::setMainEntryName(std::string name) { mainEntryName_ = name; }
+std::string LLVMIRGen::getMainEntryName() const {
+  return mainEntryName_;
+}
+
+void LLVMIRGen::setMainEntryName(std::string name) {
+        mainEntryName_ = name.empty() ? "main" : legalizeName(name);
+}
 
 /// Load base addresses of different memory areas so that they can be easily
 /// reused during codegen.
