@@ -44,6 +44,9 @@ public:
   /// Remove stored compiledFunction.
   Error removeFunction(llvm::StringRef name);
 
+  /// \returns a reference to the backend at index \p i.
+  Backend &getBackend(size_t i = 0) const;
+
 private:
   /// Pointer to backend used for compilation. This currently gets reset per
   /// device to ensure the correct backed per device.

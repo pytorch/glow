@@ -215,6 +215,10 @@ public:
   /// Get the network DAG for \p network if it exists.
   Expected<DAG *> getNetworkDAG(llvm::StringRef network);
 
+  /// \returns a reference to the backend at index \p i owned by the
+  /// Provisioner.
+  Backend &getBackend(size_t i = 0) const;
+
   ~HostManager();
 };
 

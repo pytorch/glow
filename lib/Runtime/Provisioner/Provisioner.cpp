@@ -226,6 +226,11 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
   return Error::success();
 };
 
+Backend &Provisioner::getBackend(size_t i) const {
+  assert(i < backends_.size() && "Invalid index into Backends vector");
+  return *backends_[i];
+}
+
 Error Provisioner::removeFunction(llvm::StringRef name) {
   std::lock_guard<std::mutex> functionsLock(functionsLock_);
   auto it = activeFunctions_.find(name);

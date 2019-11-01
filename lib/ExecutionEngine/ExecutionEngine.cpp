@@ -263,3 +263,7 @@ void ExecutionEngine::compile(CompilationContext &cctx) {
 
   EXIT_ON_ERR(hostManager_->addNetwork(std::move(module_), cctx));
 }
+
+Backend &ExecutionEngine::getBackend() const {
+  return hostManager_->getBackend(0);
+}
