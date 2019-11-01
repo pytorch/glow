@@ -306,6 +306,15 @@ inline bool isFusedQuantizedElemKind(ElemKind e) {
          e == ElemKind::UInt4FusedFP16QTy;
 }
 
+/// \returns the scale and offset ElemKind used by the fused ElemKind \p e.
+inline ElemKind getScaleOffsetElemKindFromFused(ElemKind e) {
+  assert(isFusedQuantizedElemKind(e) && "Must pass Fused ElemKind.");
+  if (e == ElemKind::UInt8FusedQTy) {
+    return ElemKind::FloatTy;
+  }
+  return ElemKind::Float16Ty;
+}
+
 /// A class that represents a type of a tensor.
 struct Type final {
   /// Contains the dimensions (sizes) of the tensor. Ex: [sx, sy, sz, ...].

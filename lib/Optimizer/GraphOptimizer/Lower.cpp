@@ -1010,13 +1010,13 @@ static void lowerSparseLengthsSumNode(Function *F, CompilationContext &cctx,
 static void lowerFusedRowwiseQuantizedSparseLengthsSumNode(
     Function *F, CompilationContext &cctx,
     const FusedRowwiseQuantizedSparseLengthsSumNode &FRQSLSN) {
-  ElemKind precision = FRQSLSN.getResult().getType()->getElementType();
-  auto ty =
-      F->getParent()->uniqueType(precision, {FRQSLSN.getIndices().dims()[0]});
+  auto ty = F->getParent()->uniqueType(
+      FRQSLSN.getResult().getType()->getElementType(),
+      {FRQSLSN.getIndices().dims()[0]});
   auto *ones = F->createSplat(FRQSLSN.getName().str() + ".ones", ty, 1.0);
   auto *FRQSLWSN = F->createFusedRowwiseQuantizedSparseLengthsWeightedSum(
       FRQSLSN.getName().str(), FRQSLSN.getData(), ones, FRQSLSN.getIndices(),
-      FRQSLSN.getLengths(), precision);
+      FRQSLSN.getLengths());
 
   replaceAllUsesOfWith(cctx.loweredInfoMap, FRQSLSN.getResult(), FRQSLWSN);
 }

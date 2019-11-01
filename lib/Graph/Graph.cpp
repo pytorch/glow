@@ -1709,7 +1709,7 @@ getOutputTypeOfFusedRowwiseQuantizedSLS(Function *F, NodeValue data,
 FusedRowwiseQuantizedSparseLengthsWeightedSumNode *
 Function::createFusedRowwiseQuantizedSparseLengthsWeightedSum(
     llvm::StringRef name, NodeValue data, NodeValue weights, NodeValue indices,
-    NodeValue lengths, ElemKind precision, bool useFP16Accumulation) {
+    NodeValue lengths, bool useFP16Accumulation) {
   auto outTy =
       getOutputTypeOfFusedRowwiseQuantizedSLS(this, data, lengths.dims());
   return addNode(new FusedRowwiseQuantizedSparseLengthsWeightedSumNode(
@@ -1719,7 +1719,7 @@ Function::createFusedRowwiseQuantizedSparseLengthsWeightedSum(
 FusedRowwiseQuantizedSparseLengthsSumNode *
 Function::createFusedRowwiseQuantizedSparseLengthsSum(
     llvm::StringRef name, Constant *data, NodeValue indices, NodeValue lengths,
-    ElemKind precision, bool useFP16Accumulation) {
+    bool useFP16Accumulation) {
   auto outTy =
       getOutputTypeOfFusedRowwiseQuantizedSLS(this, data, lengths.dims());
   return addNode(new FusedRowwiseQuantizedSparseLengthsSumNode(
@@ -1780,24 +1780,23 @@ static Constant *quantizeDataForFusedRowwiseQuantizedSparseLengthsWeightedSum(
 FusedRowwiseQuantizedSparseLengthsWeightedSumNode *
 Function::createFusedRowwiseQuantizedSparseLengthsWeightedSum(
     llvm::StringRef name, Tensor &data, NodeValue weights, NodeValue indices,
-    NodeValue lengths, ElemKind precision, bool useFP16Accumulation,
-    ElemKind fusedElemKind) {
+    NodeValue lengths, ElemKind fusedElemKind, bool useFP16Accumulation) {
   Constant *rwqData =
       quantizeDataForFusedRowwiseQuantizedSparseLengthsWeightedSum(
           this, data, fusedElemKind);
   return createFusedRowwiseQuantizedSparseLengthsWeightedSum(
-      name, rwqData, weights, indices, lengths, precision, useFP16Accumulation);
+      name, rwqData, weights, indices, lengths, useFP16Accumulation);
 }
 
 FusedRowwiseQuantizedSparseLengthsSumNode *
 Function::createFusedRowwiseQuantizedSparseLengthsSum(
     llvm::StringRef name, Tensor &data, NodeValue indices, NodeValue lengths,
-    ElemKind precision, bool useFP16Accumulation, ElemKind fusedElemKind) {
+    ElemKind fusedElemKind, bool useFP16Accumulation) {
   Constant *rwqData =
       quantizeDataForFusedRowwiseQuantizedSparseLengthsWeightedSum(
           this, data, fusedElemKind);
   return this->createFusedRowwiseQuantizedSparseLengthsSum(
-      name, rwqData, indices, lengths, precision, useFP16Accumulation);
+      name, rwqData, indices, lengths, useFP16Accumulation);
 }
 
 LengthsToRangesNode *Function::createLengthsToRanges(llvm::StringRef name,

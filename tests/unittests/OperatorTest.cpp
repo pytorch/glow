@@ -7779,8 +7779,8 @@ TEST_P(OperatorTest, RepeatedSLSWithPartialTensors) {
 template <typename DataType>
 static void testFusedRowwiseQuantizedSparseLengthsWeightedSum(
     glow::PlaceholderBindings &bindings, glow::Module &mod, glow::Function *F,
-    glow::ExecutionEngine &EE, ElemKind DTy, ElemKind fusedDTy,
-    float allowedError, bool useFP16Accumulation = false) {
+    glow::ExecutionEngine &EE, ElemKind fusedDTy, float allowedError,
+    bool useFP16Accumulation = false) {
   /*
     DATA  =   [[2.0, -0.5, 13]]
     WEIGHTS = [3, 1, 0, 0, 0, 0, 2, -0.5]
@@ -7788,6 +7788,9 @@ static void testFusedRowwiseQuantizedSparseLengthsWeightedSum(
     LENGTHS = [3, 0, 3, 2]
     OUTPUT =  [[0.5, 0, 0, 25]]
   */
+  const bool fusedData = isFusedQuantizedElemKind(fusedDTy);
+  const ElemKind DTy =
+      fusedData ? getScaleOffsetElemKindFromFused(fusedDTy) : fusedDTy;
   Tensor data(ElemKind::FloatTy, {3, 1});
   data.getHandle() = {
       2.0,
@@ -7818,8 +7821,7 @@ static void testFusedRowwiseQuantizedSparseLengthsWeightedSum(
   };
 
   auto *R = F->createFusedRowwiseQuantizedSparseLengthsWeightedSum(
-      "RQSLWS", data, weights, indices, lengths, DTy, useFP16Accumulation,
-      fusedDTy);
+      "RQSLWS", data, weights, indices, lengths, fusedDTy, useFP16Accumulation);
   SaveNode *S = F->createSave("save", R);
   bindings.allocate(S->getPlaceholder());
 
@@ -7842,8 +7844,7 @@ static void testFusedRowwiseQuantizedSparseLengthsWeightedSum(
 TEST_P(OperatorTest, FusedRowwiseQuantizedSparseLengthsWeightedSum_Float) {
   CHECK_IF_ENABLED();
   testFusedRowwiseQuantizedSparseLengthsWeightedSum<float>(
-      bindings_, mod_, F_, EE_, ElemKind::FloatTy, ElemKind::UInt8FusedQTy,
-      0.0001);
+      bindings_, mod_, F_, EE_, ElemKind::UInt8FusedQTy, 0.0001);
 }
 
 /// Test Fused-RWQ-SLWS in Float16. Uses Float accumulation.
@@ -7851,8 +7852,7 @@ TEST_P(OperatorTest,
        FusedRowwiseQuantizedSparseLengthsWeightedSum_Float16_AccumFloat) {
   CHECK_IF_ENABLED();
   testFusedRowwiseQuantizedSparseLengthsWeightedSum<float16_t>(
-      bindings_, mod_, F_, EE_, ElemKind::Float16Ty,
-      ElemKind::UInt8FusedFP16QTy, 0.0001,
+      bindings_, mod_, F_, EE_, ElemKind::UInt8FusedFP16QTy, 0.0001,
       /* useFP16Accumulation */ false);
 }
 
@@ -7861,8 +7861,7 @@ TEST_P(OperatorTest,
        FusedRowwiseQuantizedSparseLengthsWeightedSum_Float16_AccumFloat16) {
   CHECK_IF_ENABLED();
   testFusedRowwiseQuantizedSparseLengthsWeightedSum<float16_t>(
-      bindings_, mod_, F_, EE_, ElemKind::Float16Ty,
-      ElemKind::UInt8FusedFP16QTy, 0.0001,
+      bindings_, mod_, F_, EE_, ElemKind::UInt8FusedFP16QTy, 0.0001,
       /* useFP16Accumulation */ true);
 }
 
@@ -8077,12 +8076,12 @@ TEST_P(
   }
 }
 
-/// Helper to test FusedRowwiseQuantizedSparseLengthsSum using \p DTy.
+/// Helper to test FusedRowwiseQuantizedSparseLengthsSum using \p fusedDTy.
 template <typename DataType>
 static void testFusedRowwiseQuantizedSparseLengthsSum(
     glow::PlaceholderBindings &bindings, glow::Module &mod, glow::Function *F,
-    glow::ExecutionEngine &EE, ElemKind DTy, ElemKind fusedDTy,
-    float allowedError, bool useFP16Accumulation = false) {
+    glow::ExecutionEngine &EE, ElemKind fusedDTy, float allowedError,
+    bool useFP16Accumulation = false) {
   /*
     DATA  = [
         [1.0, 1.2],
@@ -8099,6 +8098,10 @@ static void testFusedRowwiseQuantizedSparseLengthsSum(
         [3.0, 3.6],
     ]
   */
+  const bool fusedData = isFusedQuantizedElemKind(fusedDTy);
+  const ElemKind DTy =
+      fusedData ? getScaleOffsetElemKindFromFused(fusedDTy) : fusedDTy;
+
   Tensor data(ElemKind::FloatTy, {3, 2});
   data.getHandle() = {
       1.0f, 1.2f, 2.3f, 3.4f, 4.5f, 5.7f,
@@ -8117,7 +8120,7 @@ static void testFusedRowwiseQuantizedSparseLengthsSum(
   };
 
   auto *R = F->createFusedRowwiseQuantizedSparseLengthsSum(
-      "RQSLWS", data, indices, lengths, DTy, useFP16Accumulation, fusedDTy);
+      "RQSLWS", data, indices, lengths, fusedDTy, useFP16Accumulation);
   SaveNode *S = F->createSave("save", R);
   bindings.allocate(S->getPlaceholder());
 
@@ -8137,16 +8140,14 @@ static void testFusedRowwiseQuantizedSparseLengthsSum(
 TEST_P(OperatorTest, FusedRowwiseQuantizedSparseLengthsSum_Float) {
   CHECK_IF_ENABLED();
   testFusedRowwiseQuantizedSparseLengthsSum<float>(
-      bindings_, mod_, F_, EE_, ElemKind::FloatTy, ElemKind::UInt8FusedQTy,
-      0.015);
+      bindings_, mod_, F_, EE_, ElemKind::UInt8FusedQTy, 0.015);
 }
 
 /// Test Fused-RWQ-SLS in Float16. Uses Float accumulation.
 TEST_P(OperatorTest, FusedRowwiseQuantizedSparseLengthsSum_Float16_AccumFloat) {
   CHECK_IF_ENABLED();
   testFusedRowwiseQuantizedSparseLengthsSum<float16_t>(
-      bindings_, mod_, F_, EE_, ElemKind::Float16Ty,
-      ElemKind::UInt8FusedFP16QTy, 0.02,
+      bindings_, mod_, F_, EE_, ElemKind::UInt8FusedFP16QTy, 0.02,
       /* useFP16Accumulation */ false);
 }
 
@@ -8155,8 +8156,7 @@ TEST_P(OperatorTest,
        FusedRowwiseQuantizedSparseLengthsSum_Float16_AccumFloat16) {
   CHECK_IF_ENABLED();
   testFusedRowwiseQuantizedSparseLengthsSum<float16_t>(
-      bindings_, mod_, F_, EE_, ElemKind::Float16Ty,
-      ElemKind::UInt8FusedFP16QTy, 0.02,
+      bindings_, mod_, F_, EE_, ElemKind::UInt8FusedFP16QTy, 0.02,
       /* useFP16Accumulation */ true);
 }
 
@@ -8166,8 +8166,7 @@ TEST_P(OperatorTest,
        FusedRowwiseQuantizedSparseLengthsSum_Fused4Bit_Float16_AccumFloat16) {
   CHECK_IF_ENABLED();
   testFusedRowwiseQuantizedSparseLengthsSum<float16_t>(
-      bindings_, mod_, F_, EE_, ElemKind::Float16Ty,
-      ElemKind::UInt4FusedFP16QTy, 0.15,
+      bindings_, mod_, F_, EE_, ElemKind::UInt4FusedFP16QTy, 0.15,
       /* useFP16Accumulation */ true);
 }
 
@@ -8176,8 +8175,8 @@ TEST_P(OperatorTest,
 template <typename DataType>
 static void testSLWSTwoColumn(glow::PlaceholderBindings &bindings,
                               glow::Module &mod, glow::Function *F,
-                              glow::ExecutionEngine &EE, ElemKind DTy,
-                              ElemKind dataDTy, float allowedError,
+                              glow::ExecutionEngine &EE, ElemKind dataDTy,
+                              float allowedError,
                               bool useFP16Accumulation = false) {
   /*
     DATA  = [
@@ -8197,6 +8196,8 @@ static void testSLWSTwoColumn(glow::PlaceholderBindings &bindings,
     ]
   */
   const bool fusedData = isFusedQuantizedElemKind(dataDTy);
+  const ElemKind DTy =
+      fusedData ? getScaleOffsetElemKindFromFused(dataDTy) : dataDTy;
 
   Tensor data(fusedData ? ElemKind::FloatTy : DTy, {3, 2});
 #define floatData                                                              \
@@ -8227,8 +8228,8 @@ static void testSLWSTwoColumn(glow::PlaceholderBindings &bindings,
   Node *SLWS = nullptr;
   if (fusedData) {
     SLWS = F->createFusedRowwiseQuantizedSparseLengthsWeightedSum(
-        "RQSLWS", data, weights, indices, lengths, DTy, useFP16Accumulation,
-        dataDTy);
+        "RQSLWS", data, weights, indices, lengths, dataDTy,
+        useFP16Accumulation);
   } else {
     Placeholder *dataP =
         mod.createPlaceholder(&data.getType(), "data", /* isTrainable */ false);
@@ -8243,7 +8244,6 @@ static void testSLWSTwoColumn(glow::PlaceholderBindings &bindings,
   EE.run(bindings);
 
   Tensor &result = *bindings.get(S->getPlaceholder());
-  result.dump();
   Tensor expected(DTy, {5, 2});
   expected.getHandle<DataType>() = {
       3.5, 4.5, 0.0, 0.0, 5.7, 7.95, -1.5, -1.8, -0.5, -0.6,
@@ -8255,29 +8255,28 @@ static void testSLWSTwoColumn(glow::PlaceholderBindings &bindings,
 /// Test SLWS in Float.
 TEST_P(OperatorTest, SLWSTwoColumn_Float) {
   CHECK_IF_ENABLED();
-  testSLWSTwoColumn<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy,
-                           ElemKind::FloatTy, 0.0001);
+  testSLWSTwoColumn<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy, 0.0001);
 }
 
 /// Test SLWS in Float16.
 TEST_P(OperatorTest, SLWSTwoColumn_Float16_AccumFloat) {
   CHECK_IF_ENABLED();
   testSLWSTwoColumn<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty,
-                               ElemKind::Float16Ty, 0.005,
+                               0.005,
                                /* useFP16Accumulation */ false);
 }
 
 /// Test Fused-RWQ-SLWS in Float.
 TEST_P(OperatorTest, FusedRowwiseQuantizedSLWSTwoColumn_Float) {
   CHECK_IF_ENABLED();
-  testSLWSTwoColumn<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy,
-                           ElemKind::UInt8FusedQTy, 0.015);
+  testSLWSTwoColumn<float>(bindings_, mod_, F_, EE_, ElemKind::UInt8FusedQTy,
+                           0.015);
 }
 
 /// Test Fused-RWQ-SLWS in Float16. Uses Float accumulation.
 TEST_P(OperatorTest, FusedRowwiseQuantizedSLWSTwoColumn_Float16_AccumFloat) {
   CHECK_IF_ENABLED();
-  testSLWSTwoColumn<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty,
+  testSLWSTwoColumn<float16_t>(bindings_, mod_, F_, EE_,
                                ElemKind::UInt8FusedFP16QTy, 0.015,
                                /* useFP16Accumulation */ false);
 }
@@ -8285,7 +8284,7 @@ TEST_P(OperatorTest, FusedRowwiseQuantizedSLWSTwoColumn_Float16_AccumFloat) {
 /// Test Fused-RWQ-SLWS in Float16. Uses Float16 accumulation.
 TEST_P(OperatorTest, FusedRowwiseQuantizedSLWSTwoColumn_Float16_AccumFloat16) {
   CHECK_IF_ENABLED();
-  testSLWSTwoColumn<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty,
+  testSLWSTwoColumn<float16_t>(bindings_, mod_, F_, EE_,
                                ElemKind::UInt8FusedFP16QTy, 0.015,
                                /* useFP16Accumulation */ true);
 }
@@ -8295,7 +8294,7 @@ TEST_P(OperatorTest, FusedRowwiseQuantizedSLWSTwoColumn_Float16_AccumFloat16) {
 TEST_P(OperatorTest,
        FusedRowwiseQuantizedSLWSTwoColumn_Fused4Bit_Float16_AccumFloat16) {
   CHECK_IF_ENABLED();
-  testSLWSTwoColumn<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty,
+  testSLWSTwoColumn<float16_t>(bindings_, mod_, F_, EE_,
                                ElemKind::UInt4FusedFP16QTy, 0.1,
                                /* useFP16Accumulation */ true);
 }

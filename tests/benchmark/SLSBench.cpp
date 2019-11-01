@@ -43,6 +43,7 @@ class SLSBench : public Benchmark {
   size_t numSLSNodes_;
   const char *backendStr_;
   ElemKind dtype_;
+  ElemKind fusedDtype_;
   size_t elementSize_;
 
 public:
@@ -55,15 +56,17 @@ public:
         numElementsPerRow_(numElementsPerRow_),
         asyncLaunchSize_(asyncLaunchSize_), numSLSNodes_(numSLSNodes_),
         backendStr_(backendStr_) {
-
-    dtype_ = ElemKind::Float16Ty;
     elementSize_ = 2;
     if (std::string(dtypeStr_) == "Float16") {
       dtype_ = ElemKind::Float16Ty;
+      fusedDtype_ = ElemKind::UInt8FusedFP16QTy;
       elementSize_ = 2;
     } else if (std::string(dtypeStr_) == "Float32") {
       dtype_ = ElemKind::FloatTy;
+      fusedDtype_ = ElemKind::UInt8FusedQTy;
       elementSize_ = 4;
+    } else {
+      llvm_unreachable("Unhandled ElemKind.");
     }
   }
 
@@ -135,7 +138,7 @@ public:
 
       auto *R = fn->createFusedRowwiseQuantizedSparseLengthsWeightedSum(
           "RQSLWS_" + std::to_string(slsNodeId), data, weights[slsNodeId],
-          indices[slsNodeId], lengths[slsNodeId], dtype_, false);
+          indices[slsNodeId], lengths[slsNodeId], fusedDtype_, false);
 
       S[slsNodeId] = fn->createSave("save_" + std::to_string(slsNodeId), R);
 
