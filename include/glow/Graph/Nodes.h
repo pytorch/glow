@@ -51,6 +51,7 @@ public:
   NodeValue getNthInput(unsigned idx);
   llvm::StringRef getOutputName(unsigned idx) const;
   bool hasSideEffects() const;
+  bool isDataParallel() const { return false; }
   Node *clone() const;
   /// @}
 
@@ -121,6 +122,8 @@ public:
 
   void setPayloadType(TypeRef ty) { payload_.setType(ty); }
 
+  bool isDataParallel() const { return false; }
+
   std::string getDebugDesc() const;
 
   llvm::hash_code getHash() const;
@@ -161,6 +164,8 @@ public:
   static bool classof(const Kinded *k) {
     return k->getKind() == Kinded::Kind::PlaceholderKind;
   }
+
+  bool isDataParallel() const { return false; }
 
   std::string getDebugDesc() const;
 
