@@ -143,6 +143,8 @@ struct EmulatorOnlyTests {
           "Exp/0",
           "FloatArgMaxKeepDim/0",
           "FloatArgMaxNoKeepDim/0",
+          "FusedRowwiseQuantizedSparseLengthsWeightedSum_ConvertedFloat16_back_"
+          "to_back2/0",
           "GroupDilatedConvolution/0",
           "less_int32Cases/0",
           "less_int64Cases/0",

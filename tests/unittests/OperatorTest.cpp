@@ -8004,6 +8004,75 @@ TEST_P(
   EXPECT_TRUE(expected1.isEqual(result1, 0.02));
 }
 
+TEST_P(
+    OperatorTest,
+    FusedRowwiseQuantizedSparseLengthsWeightedSum_ConvertedFloat16_back_to_back2) {
+  CHECK_IF_ENABLED();
+
+  Tensor data(ElemKind::FloatTy, {10000, 64});
+  data.getHandle().randomize(-1, 1, mod_.getPRNG());
+
+  Placeholder *weights =
+      mod_.createPlaceholder(ElemKind::FloatTy, {10000}, "weights",
+                             /* isTrainable */ false);
+
+  Placeholder *indices =
+      mod_.createPlaceholder(ElemKind::Int64ITy, {10000}, "indices",
+                             /* isTrainable */ false);
+  Placeholder *lengths =
+      mod_.createPlaceholder(ElemKind::Int32ITy, {32}, "lengths",
+                             /* isTrainable */ false);
+
+  Tensor *wT = bindings_.allocate(weights);
+  wT->zero();
+  wT->getHandle<float>().at({0}) = 4.18067;
+
+  Tensor *iT = bindings_.allocate(indices);
+  iT->zero();
+  iT->getHandle<int64_t>().at({0}) = 4124;
+
+  bindings_.allocate(lengths)->getHandle<int32_t>() = {
+      0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+      0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0};
+
+  auto *R = F_->createFusedRowwiseQuantizedSparseLengthsWeightedSum(
+      "RQSLWS", data, weights, indices, lengths);
+  SaveNode *S = F_->createSave("save", R);
+  bindings_.allocate(S->getPlaceholder());
+
+  CompilationContext cctx;
+  cctx.precisionConfig.convertToFP16 = true;
+  cctx.precisionConfig.convertFusedToFP16 = true;
+  EE_.compile(cctx);
+  EE_.run(bindings_);
+
+  // This is the result for the first inference. We expect the result in the
+  // second last row or raw location 30 * 64 to 31 * 64 -1. The rest of the rows
+  // should be all 0.
+  Tensor &result = *bindings_.get(S->getPlaceholder());
+
+  // Send another inference
+  result.zero();
+  // set new indices.
+  iT = bindings_.get(indices);
+  iT->zero();
+  iT->getHandle<int64_t>().at({0}) = 1256;
+  // set new lengths.
+  bindings_.get(lengths)->getHandle<int32_t>() = {
+      0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0,
+      0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+
+  };
+  EE_.run(bindings_);
+
+  // We now expect the second to last row to be all 0.
+  Tensor &result1 = *bindings_.get(S->getPlaceholder());
+  float *d = reinterpret_cast<float *>(result1.getUnsafePtr());
+  for (size_t i = 30 * 64; i < 31 * 64; ++i) {
+    EXPECT_EQ(0, d[i]);
+  }
+}
+
 /// Helper to test FusedRowwiseQuantizedSparseLengthsSum using \p DTy.
 template <typename DataType>
 static void testFusedRowwiseQuantizedSparseLengthsSum(
