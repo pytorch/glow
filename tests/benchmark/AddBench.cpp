@@ -32,10 +32,6 @@ using namespace glow;
  * chained together in multiple layers.
  */
 class AddBench : public Benchmark {
-  /// Matrices.
-  std::vector<float> a;
-  std::vector<float> b;
-  std::vector<float> c;
 
   /// Dimensions expressed in libjit's format.
   size_t n_;
@@ -72,10 +68,6 @@ public:
     auto config = llvm::make_unique<runtime::DeviceConfig>(backendStr_);
     configs.push_back(std::move(config));
     hostManager_ = llvm::make_unique<runtime::HostManager>(std::move(configs));
-
-    a.resize(n_);
-    b.resize(n_);
-    c.resize(n_);
 
     std::unique_ptr<Module> mod(new Module);
     auto fn = mod->createFunction("singleNode");

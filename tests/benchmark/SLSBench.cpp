@@ -91,7 +91,7 @@ public:
 
     for (int slsNodeId = 0; slsNodeId < numSLSNodes_; slsNodeId++) {
       Tensor data(ElemKind::FloatTy, {numTableEntries_, numElementsPerRow_});
-      data.getHandle().randomize(0.0f, 1.0f, mod->getPRNG());
+      data.getHandle().clear(1.0f);
 
       weights[slsNodeId] =
           mod->createPlaceholder(dtype_, {numIndicesPerBatch_ * batchSize_},
