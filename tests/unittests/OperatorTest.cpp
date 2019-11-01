@@ -7614,8 +7614,8 @@ static void testRowwiseQuantizedSparseLengthsWeightedSum(
 /// Test RWQ-SLWS with Float Weights, Scales, Offsets, and Output.
 TEST_P(OperatorTest, RowwiseQuantizedSparseLengthsWeightedSum_Float) {
   CHECK_IF_ENABLED();
-  testRowwiseQuantizedSparseLengthsWeightedSum<float>(bindings_, mod_, F_, EE_,
-                                                      ElemKind::FloatTy, 0.01);
+  testRowwiseQuantizedSparseLengthsWeightedSum<float>(
+      bindings_, mod_, F_, EE_, ElemKind::FloatTy, 0.0001);
 }
 
 /// Test RWQ-SLWS with Float16 Weights, Scales, Offsets, and Output. Uses Float
@@ -7624,7 +7624,7 @@ TEST_P(OperatorTest,
        RowwiseQuantizedSparseLengthsWeightedSum_Float16_AccumFloat) {
   CHECK_IF_ENABLED();
   testRowwiseQuantizedSparseLengthsWeightedSum<float16_t>(
-      bindings_, mod_, F_, EE_, ElemKind::Float16Ty, 0.02,
+      bindings_, mod_, F_, EE_, ElemKind::Float16Ty, 0.0001,
       /* useFP16Accumulation */ false);
 }
 
@@ -7634,7 +7634,7 @@ TEST_P(OperatorTest,
        RowwiseQuantizedSparseLengthsWeightedSum_Float16_AccumFloat16) {
   CHECK_IF_ENABLED();
   testRowwiseQuantizedSparseLengthsWeightedSum<float16_t>(
-      bindings_, mod_, F_, EE_, ElemKind::Float16Ty, 0.02,
+      bindings_, mod_, F_, EE_, ElemKind::Float16Ty, 0.0001,
       /* useFP16Accumulation */ true);
 }
 
@@ -7699,7 +7699,7 @@ static void testRowwiseQuantizedSparseLengthsSum(
 TEST_P(OperatorTest, RowwiseQuantizedSparseLengthsSum_Float) {
   CHECK_IF_ENABLED();
   testRowwiseQuantizedSparseLengthsSum<float>(bindings_, mod_, F_, EE_,
-                                              ElemKind::FloatTy, 0.025);
+                                              ElemKind::FloatTy, 0.015);
 }
 
 /// Test RWQ-SLS with Float16 Weights, Scales, Offsets, and Output. Uses
@@ -7707,7 +7707,7 @@ TEST_P(OperatorTest, RowwiseQuantizedSparseLengthsSum_Float) {
 TEST_P(OperatorTest, RowwiseQuantizedSparseLengthsSum_Float16_AccumFloat) {
   CHECK_IF_ENABLED();
   testRowwiseQuantizedSparseLengthsSum<float16_t>(
-      bindings_, mod_, F_, EE_, ElemKind::Float16Ty, 0.025,
+      bindings_, mod_, F_, EE_, ElemKind::Float16Ty, 0.02,
       /* useFP16Accumulation */ false);
 }
 
@@ -7716,7 +7716,7 @@ TEST_P(OperatorTest, RowwiseQuantizedSparseLengthsSum_Float16_AccumFloat) {
 TEST_P(OperatorTest, RowwiseQuantizedSparseLengthsSum_Float16_AccumFloat16) {
   CHECK_IF_ENABLED();
   testRowwiseQuantizedSparseLengthsSum<float16_t>(
-      bindings_, mod_, F_, EE_, ElemKind::Float16Ty, 0.025,
+      bindings_, mod_, F_, EE_, ElemKind::Float16Ty, 0.02,
       /* useFP16Accumulation */ true);
 }
 
@@ -7841,7 +7841,7 @@ static void testFusedRowwiseQuantizedSparseLengthsWeightedSum(
 TEST_P(OperatorTest, FusedRowwiseQuantizedSparseLengthsWeightedSum_Float) {
   CHECK_IF_ENABLED();
   testFusedRowwiseQuantizedSparseLengthsWeightedSum<float>(
-      bindings_, mod_, F_, EE_, ElemKind::FloatTy, 0.01);
+      bindings_, mod_, F_, EE_, ElemKind::FloatTy, 0.0001);
 }
 
 /// Test Fused-RWQ-SLWS in Float16. Uses Float accumulation.
@@ -7849,7 +7849,7 @@ TEST_P(OperatorTest,
        FusedRowwiseQuantizedSparseLengthsWeightedSum_Float16_AccumFloat) {
   CHECK_IF_ENABLED();
   testFusedRowwiseQuantizedSparseLengthsWeightedSum<float16_t>(
-      bindings_, mod_, F_, EE_, ElemKind::Float16Ty, 0.02,
+      bindings_, mod_, F_, EE_, ElemKind::Float16Ty, 0.0001,
       /* useFP16Accumulation */ false);
 }
 
@@ -7858,7 +7858,7 @@ TEST_P(OperatorTest,
        FusedRowwiseQuantizedSparseLengthsWeightedSum_Float16_AccumFloat16) {
   CHECK_IF_ENABLED();
   testFusedRowwiseQuantizedSparseLengthsWeightedSum<float16_t>(
-      bindings_, mod_, F_, EE_, ElemKind::Float16Ty, 0.02,
+      bindings_, mod_, F_, EE_, ElemKind::Float16Ty, 0.0001,
       /* useFP16Accumulation */ true);
 }
 
@@ -8064,14 +8064,14 @@ static void testFusedRowwiseQuantizedSparseLengthsSum(
 TEST_P(OperatorTest, FusedRowwiseQuantizedSparseLengthsSum_Float) {
   CHECK_IF_ENABLED();
   testFusedRowwiseQuantizedSparseLengthsSum<float>(bindings_, mod_, F_, EE_,
-                                                   ElemKind::FloatTy, 0.025);
+                                                   ElemKind::FloatTy, 0.015);
 }
 
 /// Test Fused-RWQ-SLS in Float16. Uses Float accumulation.
 TEST_P(OperatorTest, FusedRowwiseQuantizedSparseLengthsSum_Float16_AccumFloat) {
   CHECK_IF_ENABLED();
   testFusedRowwiseQuantizedSparseLengthsSum<float16_t>(
-      bindings_, mod_, F_, EE_, ElemKind::Float16Ty, 0.025,
+      bindings_, mod_, F_, EE_, ElemKind::Float16Ty, 0.02,
       /* useFP16Accumulation */ false);
 }
 
@@ -8080,7 +8080,7 @@ TEST_P(OperatorTest,
        FusedRowwiseQuantizedSparseLengthsSum_Float16_AccumFloat16) {
   CHECK_IF_ENABLED();
   testFusedRowwiseQuantizedSparseLengthsSum<float16_t>(
-      bindings_, mod_, F_, EE_, ElemKind::Float16Ty, 0.025,
+      bindings_, mod_, F_, EE_, ElemKind::Float16Ty, 0.02,
       /* useFP16Accumulation */ true);
 }
 
