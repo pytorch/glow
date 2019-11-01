@@ -48,6 +48,21 @@ std::vector<double> bench(Benchmark *b, size_t reps) {
   return times;
 }
 
+std::vector<size_t> getBatchSizePerCore(size_t batchSize, size_t numCores) {
+  std::vector<size_t> batchSizePerCore(numCores);
+  for (size_t core = 0; core < numCores; core++) {
+    size_t perCore = (batchSize + numCores - 1) / numCores;
+    size_t startIdx = core * perCore;
+    size_t endIdx = (core + 1) * perCore;
+    if (startIdx > batchSize)
+      startIdx = batchSize;
+    if (endIdx > batchSize)
+      endIdx = batchSize;
+    batchSizePerCore[core] = (endIdx - startIdx);
+  }
+  return batchSizePerCore;
+}
+
 } // namespace glow
 
 #endif // GLOW_TESTS_BENCHMARK_H
