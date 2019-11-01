@@ -2128,8 +2128,8 @@ Node *Function::createBatchBoxCox(llvm::StringRef name, NodeValue data,
   return addNode(new BatchBoxCoxNode(name, data, lambda1, lambda2, epsilon));
 }
 
-Node *Function::createClip(llvm::StringRef name, NodeValue input, float min,
-                           float max) {
+ClipNode *Function::createClip(llvm::StringRef name, NodeValue input, float min,
+                               float max) {
   return addNode(new ClipNode(name, input.getType(), input, min, max));
 }
 

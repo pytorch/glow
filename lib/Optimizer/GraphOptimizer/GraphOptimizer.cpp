@@ -1970,25 +1970,49 @@ bool CSE::run(Function *F, const CompilationContext &cctx) {
   return changed;
 }
 
-/// Eliminate SliceNode when the input is SplatNode.
-/// Slice(Splat(args)) -> Splat(args')
-bool OptimizeSliceOfSplat::run(Function *F, const CompilationContext &cctx) {
+/// Fold Nodes into SplatNodes.
+bool OptimizeSplat::run(Function *F, const CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), getName());
   bool changed = false;
-  for (auto &node : F->getNodes()) {
-    auto *sliceNode = dyn_cast<SliceNode>(&node);
-    if (!sliceNode) {
+  for (Node &node : F->getNodes()) {
+    // Slice(Splat(args)) -> Splat(args')
+    if (SliceNode *sliceNode = dyn_cast<SliceNode>(&node)) {
+      SplatNode *splatNode = dyn_cast<SplatNode>(sliceNode->getInput());
+      if (!splatNode) {
+        continue;
+      }
+      SplatNode *newSplatNode =
+          F->createSplat(sliceNode->getName(), sliceNode->getResult().getType(),
+                         splatNode->getValue());
+      sliceNode->getResult().replaceAllUsesOfWith(newSplatNode);
+      changed = true;
       continue;
     }
-    auto *splatNode = dyn_cast<SplatNode>(sliceNode->getInput());
-    if (!splatNode) {
+
+    // Clip(Splat(args)) -> Splat(args')
+    if (ClipNode *clipNode = dyn_cast<ClipNode>(&node)) {
+      SplatNode *splatNode = dyn_cast<SplatNode>(clipNode->getInput());
+      if (!splatNode) {
+        continue;
+      }
+      const float newSplatVal =
+          std::min(std::max(splatNode->getValue(), clipNode->getMin()),
+                   clipNode->getMax());
+
+      SplatNode *newSplatNode = nullptr;
+      if (newSplatVal == splatNode->getValue()) {
+        // No need to crate a new Splat.
+        newSplatNode = splatNode;
+      } else {
+        newSplatNode = F->createSplat(
+            splatNode->getName().str() + clipNode->getName().str(),
+            splatNode->getResult().getType(), newSplatVal);
+      }
+
+      clipNode->getResult().replaceAllUsesOfWith(newSplatNode->getResult());
+      changed = true;
       continue;
     }
-    auto *newSplatNode =
-        F->createSplat(sliceNode->getName(), sliceNode->getResult().getType(),
-                       splatNode->getValue());
-    sliceNode->getResult().replaceAllUsesOfWith(newSplatNode);
-    changed = true;
   }
   return changed;
 }
