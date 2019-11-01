@@ -90,6 +90,8 @@ public:
     }
 
     for (size_t core = 0; core < numCores_; core++) {
+      if (batchSizePerCore[core] == 0)
+        continue;
       // for each context, add input bindings
       for (int i = 0; i < asyncLaunchSize_; i++) {
         if (dtype_ == ElemKind::FloatTy) {
