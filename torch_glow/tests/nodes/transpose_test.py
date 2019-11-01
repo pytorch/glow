@@ -5,8 +5,8 @@ import torch
 from tests.utils import jitVsGlow
 
 
-def test_transpose_2d():
-    """Test of PyTorch t (transpose) on Glow with 2d inputs."""
+def test_t_2d():
+    """Test of PyTorch aten::t on Glow with 2d inputs."""
 
     def test_f(a):
         b = a + a
@@ -17,8 +17,8 @@ def test_transpose_2d():
     jitVsGlow(test_f, x, expected_fused_ops={"aten::t"})
 
 
-def test_transpose_1d():
-    """Test of PyTorch t (transpose) on Glow with 1d inputs."""
+def test_t_1d():
+    """Test of PyTorch aten::t on Glow with 1d inputs."""
 
     def test_f(a):
         b = a + a
@@ -29,8 +29,8 @@ def test_transpose_1d():
     jitVsGlow(test_f, x, expected_fused_ops={"aten::t"})
 
 
-def test_transpose_inplace():
-    """Test of PyTorch t_ (in place transpose) on Glow."""
+def test_t_inplace():
+    """Test of PyTorch aten::t_ (in place t) on Glow."""
 
     def test_f(a):
         b = a + a
@@ -39,3 +39,27 @@ def test_transpose_inplace():
     x = torch.randn(7, 4)
 
     jitVsGlow(test_f, x, expected_fused_ops={"aten::t_"})
+
+
+def test_transpose():
+    """Test of PyTorch aten::transpose on Glow."""
+
+    def test_f(a):
+        b = a + a
+        return b.transpose(1, 2)
+
+    x = torch.randn(2, 3, 4)
+
+    jitVsGlow(test_f, x, expected_fused_ops={"aten::transpose"})
+
+
+def test_transpose_inplace():
+    """Test of PyTorch aten::transpose on Glow."""
+
+    def test_f(a):
+        b = a + a
+        return b.transpose_(1, 2)
+
+    x = torch.randn(2, 3, 4)
+
+    jitVsGlow(test_f, x, expected_fused_ops={"aten::transpose_"})

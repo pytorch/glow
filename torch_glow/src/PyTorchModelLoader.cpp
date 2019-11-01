@@ -603,6 +603,15 @@ struct AddMMInputs {
     alpha = 4,
   };
 };
+
+/// Indexes of aten::transpose inputs.
+struct TransposeInputs {
+  enum {
+    input = 0,
+    dim0 = 1,
+    dim1 = 2,
+  };
+};
 } // namespace
 
 // static
@@ -623,7 +632,10 @@ PyTorchModelLoader::getSymbolsMapping() {
         {}},
        {{"aten::relu", "aten::relu_"}, &PyTorchModelLoader::loadRelu, {}},
        {{"aten::tanh", "aten::tanh_"}, &PyTorchModelLoader::loadTanh, {}},
-       {{"aten::t", "aten::t_"}, &PyTorchModelLoader::loadTranspose, {}},
+       {{"aten::t", "aten::t_"}, &PyTorchModelLoader::loadT, {}},
+       {{"aten::transpose", "aten::transpose_"},
+        &PyTorchModelLoader::loadTranspose,
+        {}},
        {{"aten::min"}, &PyTorchModelLoader::loadMin, {}},
        {{"aten::max"}, &PyTorchModelLoader::loadMax, {}},
        {{"aten::exp"}, &PyTorchModelLoader::loadExp, {}},
@@ -1447,7 +1459,7 @@ Error PyTorchModelLoader::loadConvolution(const torch::jit::Node *ptNode) {
   RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 12, outputs, 1));
 
   // Glow expects conv inputs to be in NHWC but PyTorch keeps them in NCHW so
-  // we tranpose them.
+  // we transpose them.
   glow::NodeValue input;
   ASSIGN_VALUE_OR_RETURN_ERR(
       input, getGlowNodeValueForValue(inputs[ConvInputs::input]));
@@ -1456,7 +1468,7 @@ Error PyTorchModelLoader::loadConvolution(const torch::jit::Node *ptNode) {
   glow::ShapeNHWC inputShape(input.dims());
 
   // Glow expects conv weights to be in CRSK but PyTorch keeps them in CKRS
-  // so we tranpose them. C - output_depth, R - filter_height, S -
+  // so we transpose them. C - output_depth, R - filter_height, S -
   // filter_width, K - input_depth.
   glow::NodeValue weights;
   ASSIGN_VALUE_OR_RETURN_ERR(
@@ -1673,7 +1685,7 @@ Error PyTorchModelLoader::loadQuantizedConvUnpacked(
       weights,
       getGlowNodeValueForValue(inputs[QuantizedUnpackedConv2dInputs::weights]));
   weights = rescaleUIntToInt(weights);
-  weights = F_.createTranspose("qconv_weights_tranposed", weights, NCHW2NHWC);
+  weights = F_.createTranspose("qconv_weights_transposed", weights, NCHW2NHWC);
   glow::ShapeNHWC weightsShape(weights.dims());
 
   glow::NodeValue bias;
@@ -1892,7 +1904,7 @@ Error PyTorchModelLoader::loadAdaptiveAvgPool2d(
   RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 2, outputs, 1));
 
   // Glow expects inputs to be in NHWC but PyTorch keeps them in NCHW so we
-  // tranpose them.
+  // transpose them.
   glow::NodeValue input;
   ASSIGN_VALUE_OR_RETURN_ERR(
       input, getGlowNodeValueForValue(inputs[AdaptiveAvgPoolInputs::input]));
@@ -1926,7 +1938,7 @@ Error PyTorchModelLoader::loadAdaptiveAvgPool2d(
   return addValueMapping(outputs[0], output);
 }
 
-Error PyTorchModelLoader::loadTranspose(const torch::jit::Node *ptNode) {
+Error PyTorchModelLoader::loadT(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
   RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 1, outputs, 1));
@@ -1943,6 +1955,32 @@ Error PyTorchModelLoader::loadTranspose(const torch::jit::Node *ptNode) {
     RETURN_ERR("Transpose requires input to have rank <= 2");
   }
   return addValueMapping(outputs[0], output);
+}
+
+Error PyTorchModelLoader::loadTranspose(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 3, outputs, 1));
+
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      input, getGlowNodeValueForValue(inputs[TransposeInputs::input]));
+
+  int64_t dim0;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      dim0, iValToInt(getGlowIValueForValue(inputs[TransposeInputs::dim0])));
+
+  int64_t dim1;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      dim1, iValToInt(getGlowIValueForValue(inputs[TransposeInputs::dim1])));
+
+  std::vector<glow::unsigned_t> shuffle(input.dims().size());
+  std::iota(shuffle.begin(), shuffle.end(), 0);
+  std::swap(shuffle[dim0], shuffle[dim1]);
+
+  auto *output = F_.createTranspose("transpose", input, shuffle);
+
+  return addValueMapping(outputs[0], output->getResult());
 }
 
 Error PyTorchModelLoader::loadMin(const torch::jit::Node *ptNode) {

@@ -378,7 +378,11 @@ private:
   /// \returns error on failure.
   Error loadAdaptiveAvgPool2d(const torch::jit::Node *ptNode);
 
-  /// Load a PyTorch t (transpose) node.
+  /// Load a PyTorch aten::t (transpose) node.
+  /// \returns error on failure.
+  Error loadT(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch aten::transpose node.
   /// \returns error on failure.
   Error loadTranspose(const torch::jit::Node *ptNode);
 
