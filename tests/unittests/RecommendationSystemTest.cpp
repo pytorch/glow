@@ -514,9 +514,6 @@ protected:
                               std::vector<NodeValue> &embeddings) {
     auto internalTypeF = mod.uniqueType(ElemKind::FloatTy, {1});
 
-    const ElemKind precisionForSLWS =
-        useFP16SLWS ? ElemKind::Float16Ty : ElemKind::FloatTy;
-
     for (unsigned int i = 0; i < lengths.size(); i++) {
       fillStableRandomIndex(
           bindings_.allocate(lengths[i])->getHandle<int32_t>(), 2011,
@@ -536,7 +533,7 @@ protected:
             useFP16SLWS);
         embeddings[i] = F_->createFusedRowwiseQuantizedSparseLengthsSum(
             "RQSLWS" + std::to_string(i), data, indices, lengths[i],
-            precisionForSLWS, useFP16AccumSLWS);
+            useFP16AccumSLWS);
         // Convert back to Float if we used Float16 here. Optimizer will
         // eliminate if necessary.
         if (useFP16SLWS) {
@@ -562,9 +559,6 @@ protected:
       llvm::ArrayRef<Placeholder *> lengths, llvm::ArrayRef<size_t> tableSizes,
       size_t embeddingDim, std::vector<NodeValue> &embeddings,
       uint32_t weightsSize = 1000) {
-    const ElemKind precisionForSLWS =
-        useFP16SLWS ? ElemKind::Float16Ty : ElemKind::FloatTy;
-
     for (size_t i = 0; i < lengths.size(); i++) {
       fillStableRandomIndex(
           bindings_.allocate(lengths[i])->getHandle<int32_t>(), 2011,
@@ -600,7 +594,7 @@ protected:
             useFP16SLWS);
         embeddings[i] = F_->createFusedRowwiseQuantizedSparseLengthsWeightedSum(
             "RQSLWS" + std::to_string(i), data, weights, indices, lengths[i],
-            precisionForSLWS, useFP16AccumSLWS);
+            useFP16AccumSLWS);
         // Convert back to Float if we used Float16 here. Optimizer will
         // eliminate if necessary.
         if (useFP16SLWS) {

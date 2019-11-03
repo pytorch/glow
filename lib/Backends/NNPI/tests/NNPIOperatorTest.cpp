@@ -47,6 +47,8 @@ std::set<std::string> glow::backendTestBlacklist = {
     "FullyConnected_Int16_BiasInt16/0",
     "FullyConnected_Int16_BiasInt32/0",
     "FullyConnected_Int8_BiasInt8/0",
+    "FusedRowwiseQuantizedSLWSTwoColumn_Fused4Bit_Float16_AccumFloat16/0",
+    "FusedRowwiseQuantizedSparseLengthsSum_Fused4Bit_Float16_AccumFloat16/0",
     "GroupConv3D/0",
     "GroupwiseQuantizedConvolution/0",
     "insertTensorTest/0",

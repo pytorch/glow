@@ -441,12 +441,14 @@ static FunctionTensorPair createAndInitSLWSNet(
     SLWS = F->createSparseLengthsWeightedSum("SLWS", embeddingC, weights,
                                              indices, lengths);
   } else {
-    const ElemKind precision = FP16 ? ElemKind::Float16Ty : ElemKind::FloatTy;
     if (fused) {
+      const ElemKind precision =
+          FP16 ? ElemKind::UInt8FusedFP16QTy : ElemKind::UInt8FusedQTy;
       SLWS = F->createFusedRowwiseQuantizedSparseLengthsWeightedSum(
           "FRQSLWS", embeddingT, weights, indices, lengths, precision,
           accumFP16);
     } else {
+      const ElemKind precision = FP16 ? ElemKind::Float16Ty : ElemKind::FloatTy;
       SLWS = F->createRowwiseQuantizedSparseLengthsWeightedSum(
           "RQSLWS", embeddingT, weights, indices, lengths,
           quantization::Schema::Asymmetric, precision, accumFP16);

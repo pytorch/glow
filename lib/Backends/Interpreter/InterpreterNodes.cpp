@@ -3353,7 +3353,9 @@ void BoundInterpreterFunction::
   assert(totalLength <= indices->dims()[0] &&
          "sum(Lengths) must be equal to len(Indices)");
 
-  const size_t inLineSize = data->size() / data->dims()[0];
+  const bool using4BitQuantization =
+      data->getType().getElementType() == ElemKind::UInt4FusedFP16QTy;
+
   const size_t outLineSize = out->size() / out->dims()[0];
 
   auto DH = data->getHandle<uint8_t>();
@@ -3366,13 +3368,20 @@ void BoundInterpreterFunction::
     for (size_t j = 0, e = LH.raw(i); j < e; j++) {
       const float weight = static_cast<float>(WH.raw(curIdx));
       const size_t rowIdx = IH.raw(curIdx++);
-      size_t offsetIn = rowIdx * inLineSize;
       T scale, offset;
       std::tie(scale, offset) = DH.getFusedScaleOffsetFromRow<T>(rowIdx);
       for (size_t k = 0; k < outLineSize; k++) {
-        float d = quantization::dequantizeWithFloatOffset(
-            DH.raw(offsetIn++), static_cast<float>(scale),
-            static_cast<float>(offset));
+        float d = 0.0f;
+        if (!using4BitQuantization) {
+          d = quantization::dequantizeWithFloatOffset(
+              DH.at({rowIdx, k}), static_cast<float>(scale),
+              static_cast<float>(offset));
+        } else {
+          const bool isMSB = (k % 2 == 1);
+          d = quantization::dequantize4BitWithFloatOffset(
+              DH.at({rowIdx, k / 2}), static_cast<float>(scale),
+              static_cast<float>(offset), isMSB);
+        }
         accum[k] += d * weight;
       }
     }

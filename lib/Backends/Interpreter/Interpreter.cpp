@@ -306,32 +306,35 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
                 RowwiseQuantizedSparseLengthsWeightedSumNode::LengthsIdx) ==
             ElemKind::Int32ITy);
 
-  case Kinded::Kind::FusedRowwiseQuantizedSparseLengthsWeightedSumNodeKind:
+  case Kinded::Kind::FusedRowwiseQuantizedSparseLengthsWeightedSumNodeKind: {
     if (NI.getInElemTy(
-            FusedRowwiseQuantizedSparseLengthsWeightedSumNode::DataIdx) ==
-        ElemKind::UInt8FusedFP16QTy) {
+            FusedRowwiseQuantizedSparseLengthsWeightedSumNode::IndicesIdx) !=
+            ElemKind::Int64ITy ||
+        NI.getInElemTy(
+            FusedRowwiseQuantizedSparseLengthsWeightedSumNode::LengthsIdx) !=
+            ElemKind::Int32ITy) {
+      return false;
+    }
+
+    switch (NI.getInElemTy(
+        FusedRowwiseQuantizedSparseLengthsWeightedSumNode::DataIdx)) {
+    case ElemKind::UInt4FusedFP16QTy:
+    case ElemKind::UInt8FusedFP16QTy:
       return (NI.getInElemTy(FusedRowwiseQuantizedSparseLengthsWeightedSumNode::
                                  WeightsIdx) == ElemKind::Float16Ty) &&
-             (NI.getInElemTy(FusedRowwiseQuantizedSparseLengthsWeightedSumNode::
-                                 IndicesIdx) == ElemKind::Int64ITy) &&
-             (NI.getInElemTy(FusedRowwiseQuantizedSparseLengthsWeightedSumNode::
-                                 LengthsIdx) == ElemKind::Int32ITy) &&
              (NI.getOutElemTy(
                   FusedRowwiseQuantizedSparseLengthsWeightedSumNode::
                       ResultIdx) == ElemKind::Float16Ty);
+    case ElemKind::UInt8FusedQTy:
+      return (NI.getInElemTy(FusedRowwiseQuantizedSparseLengthsWeightedSumNode::
+                                 WeightsIdx) == ElemKind::FloatTy) &&
+             (NI.getOutElemTy(
+                  FusedRowwiseQuantizedSparseLengthsWeightedSumNode::
+                      ResultIdx) == ElemKind::FloatTy);
+    default:
+      return false;
     }
-    return (NI.getInElemTy(
-                FusedRowwiseQuantizedSparseLengthsWeightedSumNode::DataIdx) ==
-            ElemKind::UInt8FusedQTy) &&
-           (NI.getInElemTy(FusedRowwiseQuantizedSparseLengthsWeightedSumNode::
-                               WeightsIdx) == ElemKind::FloatTy) &&
-           (NI.getInElemTy(FusedRowwiseQuantizedSparseLengthsWeightedSumNode::
-                               IndicesIdx) == ElemKind::Int64ITy) &&
-           (NI.getInElemTy(FusedRowwiseQuantizedSparseLengthsWeightedSumNode::
-                               LengthsIdx) == ElemKind::Int32ITy) &&
-           (NI.getOutElemTy(
-                FusedRowwiseQuantizedSparseLengthsWeightedSumNode::ResultIdx) ==
-            ElemKind::FloatTy);
+  }
 
   case Kinded::Kind::LengthsRangeFillNodeKind:
   case Kinded::Kind::LengthsToRangesNodeKind:
