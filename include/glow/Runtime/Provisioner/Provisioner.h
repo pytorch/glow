@@ -45,12 +45,11 @@ public:
   Error removeFunction(llvm::StringRef name);
 
 private:
-  /// Pointer to backend used for compilation. This currently gets reset per
-  /// device to ensure the correct backed per device.
-  std::vector<std::unique_ptr<Backend>> backends_;
+  /// Map of backends for all devices, one backend per device type.
+  std::unordered_map<std::string, std::unique_ptr<Backend>> backends_;
 
-  /// Map of compiledFunction unique pointers. This maintains ownership of the
-  /// functions.
+  /// Map of compiledFunction unique pointers. This maintains
+  /// ownership of the functions.
   std::unordered_map<std::string, std::unique_ptr<CompiledFunction>> functions_;
 
   /// Set of active functions - these are functions that are currently being
@@ -64,10 +63,32 @@ private:
   /// List of available DeviceManagers added during initialization.
   std::vector<DeviceManager *> devices_;
 
-  /// Helper function to cleanup a provision call. On a success free resources
-  /// that are no longer needed by the compiledFunctions. On failure free the
+  /// Helper function to cleanup a provision call. On failure free the
   /// compiledFunctions that were created.
   void cleanupProvision(llvm::ArrayRef<std::string> names, bool failure = true);
+
+  /// Helper function to parse the DAG and generate logicalDevices.
+  std::map<DeviceIDTy, std::vector<DAGNode *>>
+  generateLogicalDevices(const DAGListTy &networks);
+
+  /// Helper method to check that new networks don't collide with another
+  /// network currently being added. Note: This cannot be called under a lock on
+  /// functionsLock_ as it acquires a lock internally.
+  Error checkActiveNetworks(const DAGListTy &networks,
+                            std::vector<std::string> &localActiveNames);
+
+  /// This function pairs logical devices with phsyical devices, it sorts both
+  /// sets of devices by available memory and attempts to find pairings for all
+  /// of then. The output is a map between logicalDevice and PhysicalDevice.
+  /// Requires a vector of DeviceID:memorySize pairs \p logicalDeviceSize, \p
+  /// deviceMemoryMap a mapping from backendName to a list of device:memorySize
+  /// pairs for all devices of the specified backend, and \p logicalDevices a
+  /// map of logicalIDs to all associated DAGNodes.
+  Expected<std::map<DeviceIDTy, DeviceIDTy>> generateDeviceAssignments(
+      const std::vector<std::pair<DeviceIDTy, uint64_t>> &logicalDeviceSize,
+      std::map<std::string, std::vector<std::pair<DeviceIDTy, uint64_t>>>
+          &deviceMemoryMap,
+      std::map<DeviceIDTy, std::vector<DAGNode *>> &logicalDevices);
 };
 } // namespace runtime
 } // namespace glow

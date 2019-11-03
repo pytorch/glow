@@ -99,6 +99,8 @@ struct DAGNode {
   /// Runtime bundle containing all the symbol information for this network at
   /// runtime.
   std::unique_ptr<RuntimeBundle> runtimeBundle;
+  /// Size of constants and placeholders used by the function.
+  uint64_t size{0};
 
   /// Backend Hints object, this is populated by the Partitioner and is used
   /// to communicated hints to the compiler, like SRAM pinning and resource

@@ -60,6 +60,7 @@ DAGListTy PartitionerBase::doPartitioning(llvm::StringRef funcName,
       subDAG->name = subF->getName();
       subDAG->logicalDevices = mapping.getLogicalDeviceIDList(subF);
       subDAG->backendName = mapping.getPartitionBackendName(subF);
+      subDAG->size = mapping.getGraphMemInfo(subF).getTotalMemSize();
       funcDAG[subF] = subDAG.get();
       nodes.push_back(std::move(subDAG));
     }
@@ -103,6 +104,7 @@ DAGListTy PartitionerBase::doPartitioning(llvm::StringRef funcName,
           subDAG->name = inputF->getName();
           subDAG->logicalDevices = mapping.getLogicalDeviceIDList(inputF);
           subDAG->backendName = mapping.getPartitionBackendName(inputF);
+          subDAG->size = mapping.getGraphMemInfo(inputF).getTotalMemSize();
           funcDAG[inputF] = subDAG.get();
           nodes.push_back(std::move(subDAG));
         }
