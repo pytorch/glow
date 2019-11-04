@@ -71,7 +71,7 @@ llvm::cl::opt<BundleApiType> bundleApi(
     llvm::cl::values(clEnumValN(BundleApiType::Dynamic, "dynamic",
                                 "Dynamic API"),
                      clEnumValN(BundleApiType::Static, "static", "Static API")),
-    llvm::cl::init(BundleApiType::Dynamic), llvm::cl::cat(bundleSaverCat));
+    llvm::cl::init(BundleApiType::Static), llvm::cl::cat(bundleSaverCat));
 } // namespace
 
 /// Header file string template.
