@@ -1725,6 +1725,45 @@ void libjit_avg_pool_f(const float *inW, float *outW, const size_t *inWdims,
   }       // N
 }
 
+void libjit_adaptive_avg_pool_f(const float *inW, float *outW,
+                                const size_t *inWdims, const size_t *outWdims) {
+// https://github.com/pytorch/pytorch/blob/master/aten/src/ATen/native/AdaptiveAveragePooling.cpp
+#define START_IND(a, b, c) (size_t) std::floor((float)((a) * (c)) / (b))
+#define END_IND(a, b, c) (size_t) std::ceil((float)(((a) + 1) * (c)) / (b))
+
+  // For each input in the batch:
+  for (size_t n = 0; n < outWdims[0]; n++) {
+    // For each layer in the output tensor:
+    for (size_t z = 0; z < inWdims[3]; z++) {
+      // For each value in the output tensor:
+      for (size_t ax = 0; ax < outWdims[1]; ax++) {
+
+        size_t x = START_IND(ax, outWdims[1], inWdims[1]);
+        size_t kH = END_IND(ax, outWdims[1], inWdims[1]) - x;
+
+        for (size_t ay = 0; ay < outWdims[2]; ay++) {
+
+          size_t y = START_IND(ay, outWdims[2], inWdims[2]);
+          size_t kW = END_IND(ay, outWdims[2], inWdims[2]) - y;
+
+          float sum = 0;
+          for (size_t fx = 0; fx < kH; fx++) {
+            for (size_t fy = 0; fy < kW; fy++) {
+              size_t ox = x + fx;
+              size_t oy = y + fy;
+
+              sum += inW[libjit_getXYZW(inWdims, n, ox, oy, z)];
+            }
+          }
+          outW[libjit_getXYZW(outWdims, n, ax, ay, z)] = (sum / kW / kH);
+        } // W
+      }   // H
+    }     // C
+  }       // N
+#undef START_IND
+#undef END_IND
+}
+
 void libjit_avg_pool_grad_f(float *inG, const float *outG,
                             const size_t *inGdims, const size_t *outWdims,
                             size_t *kernels, size_t *strides, size_t *pads) {

@@ -2083,6 +2083,22 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     }
   }
 
+  case Kinded::Kind::AdaptiveAvgPoolInstKind: {
+    auto *PA = cast<AdaptiveAvgPoolInst>(I);
+
+    auto *dest = PA->getDest();
+    auto *src = PA->getSrc();
+    auto *destPtr = emitValueAddress(builder, dest);
+    auto *srcPtr = emitValueAddress(builder, src);
+
+    auto *destDims = emitValueDims(builder, dest);
+    auto *srcDims = emitValueDims(builder, src);
+
+    auto *F = getFunction("adaptive_avg_pool", dest->getElementType());
+    createCall(builder, F, {srcPtr, destPtr, srcDims, destDims});
+    break;
+  }
+
   case Kinded::Kind::AvgPoolGradInstKind: {
     auto *PAG = cast<AvgPoolGradInst>(I);
     auto *srcGrad = PAG->getSrcGrad();
