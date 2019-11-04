@@ -328,7 +328,7 @@ TEST_F(GraphOptz, optimizeBatchNormAfterConvWithTransposedWeights) {
   // Initialize to ensure that constant tensors are not optimized out.
   bindings_.allocate(filter)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
   bindings_.allocate(bias)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
-  
+
   EXPECT_EQ(F_->getNodes().size(), 4);
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::BatchNormalizationNodeKind), 1);
 
@@ -336,6 +336,7 @@ TEST_F(GraphOptz, optimizeBatchNormAfterConvWithTransposedWeights) {
   ::glow::convertPlaceholdersToConstants(F_, bindings_, {input});
   ::glow::convertPlaceholdersToConstants(optimizedF_, bindings_, {input});
   ::glow::optimize(optimizedF_, CompilationMode::Infer);
+
   EXPECT_EQ(optimizedF_->getNodes().size(), 2);
   EXPECT_EQ(
       countNodeKind(optimizedF_, Kinded::Kind::BatchNormalizationNodeKind), 0);
