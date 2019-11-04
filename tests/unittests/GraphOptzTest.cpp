@@ -337,8 +337,8 @@ TEST_F(GraphOptz, optimizeBatchNormAfterConvWithTransposedWeights) {
   ::glow::convertPlaceholdersToConstants(optimizedF_, bindings_, {input});
   ::glow::optimize(optimizedF_, CompilationMode::Infer);
   EXPECT_EQ(optimizedF_->getNodes().size(), 2);
-   EXPECT_EQ(
-       countNodeKind(optimizedF_, Kinded::Kind::BatchNormalizationNodeKind), 0);
+  EXPECT_EQ(
+      countNodeKind(optimizedF_, Kinded::Kind::BatchNormalizationNodeKind), 0);
 
   bindings_.allocate(input)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
   checkNumericalEquivalence();
