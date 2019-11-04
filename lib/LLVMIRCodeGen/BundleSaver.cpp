@@ -71,7 +71,7 @@ llvm::cl::opt<BundleApiType> bundleApi(
     llvm::cl::values(clEnumValN(BundleApiType::Dynamic, "dynamic",
                                 "Dynamic API"),
                      clEnumValN(BundleApiType::Static, "static", "Static API")),
-    llvm::cl::init(BundleApiType::Dynamic), llvm::cl::cat(bundleSaverCat));
+    llvm::cl::init(BundleApiType::Static), llvm::cl::cat(bundleSaverCat));
 } // namespace
 
 /// Header file string template.
@@ -399,12 +399,13 @@ void BundleSaver::produceBundle(llvm::StringRef outputDir) {
   auto bundleName = irgen_->getBundleName();
   std::string extension = (llvmCompiler.empty()) ? ".o" : ".bc";
   auto bundleCodeOutput = (outputDir + "/" + bundleName + extension).str();
-  auto bundleWeightsOutput = (outputDir + "/" + bundleName + ".weights").str();
+  auto bundleWeightsBinOut =
+      (outputDir + "/" + bundleName + ".weights.bin").str();
   auto bundleHeaderOutput = (outputDir + "/" + bundleName + ".h").str();
   DEBUG_GLOW(llvm::dbgs() << "Producing a bundle:\n"
                           << "bundle name: " << bundleName << "\n"
                           << "bundle code: " << bundleCodeOutput << "\n"
-                          << "bundle weights:" << bundleWeightsOutput << "\n"
+                          << "bundle weights:" << bundleWeightsBinOut << "\n"
                           << "header file: " << bundleHeaderOutput << "\n");
   llvm::StringRef fileName = bundleCodeOutput;
   std::error_code EC;
@@ -447,13 +448,14 @@ void BundleSaver::produceBundle(llvm::StringRef outputDir) {
   }
   outputFile.close();
   // Output weights.
-  saveWeights(bundleWeightsOutput);
+  saveWeights(bundleWeightsBinOut);
   // Header file.
   saveHeader(bundleHeaderOutput);
   // Save weights also in text format for Static API.
   if (bundleApi == BundleApiType::Static) {
-    auto bundleWeightsTxtOut = (outputDir + "/" + bundleName + ".inc").str();
-    serializeBinaryToText(bundleWeightsOutput, bundleWeightsTxtOut);
+    auto bundleWeightsTxtOut =
+        (outputDir + "/" + bundleName + ".weights.txt").str();
+    serializeBinaryToText(bundleWeightsBinOut, bundleWeightsTxtOut);
   }
 }
 
