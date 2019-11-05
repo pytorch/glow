@@ -328,12 +328,21 @@ TEST_F(GraphOptz, optimizeBatchNormAfterConvWithTransposedWeights) {
   // Initialize to ensure that constant tensors are not optimized out.
   bindings_.allocate(filter)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
   bindings_.allocate(bias)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
-  ::glow::convertPlaceholdersToConstants(F_, bindings_, {input});
 
   EXPECT_EQ(F_->getNodes().size(), 4);
-  ::glow::optimize(F_, CompilationMode::Infer);
-  EXPECT_EQ(F_->getNodes().size(), 2);
-  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::BatchNormalizationNodeKind), 0);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::BatchNormalizationNodeKind), 1);
+
+  optimizedF_ = F_->clone(F_->getName().str() + "_optimized");
+  ::glow::convertPlaceholdersToConstants(F_, bindings_, {input});
+  ::glow::convertPlaceholdersToConstants(optimizedF_, bindings_, {input});
+  ::glow::optimize(optimizedF_, CompilationMode::Infer);
+
+  EXPECT_EQ(optimizedF_->getNodes().size(), 2);
+  EXPECT_EQ(
+      countNodeKind(optimizedF_, Kinded::Kind::BatchNormalizationNodeKind), 0);
+
+  bindings_.allocate(input)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
+  checkNumericalEquivalence();
 }
 
 /// Check that reshape constant folding is done before BatchNorm optimization,
