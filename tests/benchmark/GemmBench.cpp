@@ -25,35 +25,28 @@
 using namespace glow;
 
 /*
- * Benchmark an (m x k) * (k x n) = (m x n) matrix multiplication.
- * There are a number of parallel FC nodes which are created, one per core.
- * Each core handles n/num_cores columns of the weight matrix. Then these are
- * chained together in multiple layers. After each layer, output tensor
- * is concatenated into one tensor for consumption in the next layer.
+ * Benchmark an (m x k) * (k x n) = (m x n) matrix multiplication,
+ * chained together in multiple layers.
  */
 class GemmBench : public Benchmark {
-  /// Matrices.
-  std::vector<float> a;
-  std::vector<float> b;
-  std::vector<float> c;
-
   /// Dimensions expressed in libjit's format.
-  size_t aDims[2];
-  size_t cDims[2];
+  size_t m_;
+  size_t n_;
+  size_t k_;
   size_t numLayers_;
   PlaceholderBindings bindings_;
   std::unique_ptr<runtime::HostManager> hostManager_;
   size_t asyncLaunchSize_;
-  size_t numCores_;
+  size_t numSplits_;
   const char *backendStr_;
   const char *dtypeStr_;
 
 public:
-  GemmBench(size_t m, size_t n, size_t k, size_t numLayers_,
-            size_t asyncLaunchSize_, size_t numCores_, const char *backendStr_,
+  GemmBench(size_t m_, size_t n_, size_t k_, size_t numLayers_,
+            size_t asyncLaunchSize_, size_t numSplits_, const char *backendStr_,
             const char *dtypeStr_)
-      : aDims{m, k}, cDims{m, n}, numLayers_(numLayers_),
-        asyncLaunchSize_(asyncLaunchSize_), numCores_(numCores_),
+      : m_(m_), n_(n_), k_(k_), numLayers_(numLayers_),
+        asyncLaunchSize_(asyncLaunchSize_), numSplits_(numSplits_),
         backendStr_(backendStr_), dtypeStr_(dtypeStr_) {}
 
   void setup() override {
@@ -62,13 +55,6 @@ public:
     std::vector<std::unique_ptr<runtime::DeviceConfig>> configs;
     configs.push_back(llvm::make_unique<runtime::DeviceConfig>(backendStr_));
     hostManager_ = llvm::make_unique<runtime::HostManager>(std::move(configs));
-
-    size_t m = cDims[0];
-    size_t n = cDims[1];
-    size_t k = aDims[1];
-    a.resize(m * k);
-    b.resize(k * n);
-    c.resize(m * n);
 
     std::unique_ptr<Module> mod(new Module);
     auto fn = mod->createFunction("singleNode");
@@ -79,36 +65,35 @@ public:
       dtype = ElemKind::FloatTy;
     }
 
-    auto *input = mod->createPlaceholder(dtype, {m, k}, "input", false);
-    auto *output = mod->createPlaceholder(dtype, {m, n}, "output", false);
+    auto *input = mod->createPlaceholder(dtype, {m_, k_}, "input", false);
+    auto *output = mod->createPlaceholder(dtype, {m_, n_}, "output", false);
     Node *cur = input;
-    std::vector<Placeholder *> weights(numCores_);
-    std::vector<Placeholder *> bias(numCores_);
-    std::vector<Node *> fc(numCores_);
-    Node *concat;
     for (size_t layer = 0; layer < numLayers_; layer++) {
-      for (size_t core = 0; core < numCores_; core++) {
-        weights[core] = mod->createPlaceholder(
-            dtype, {k, n / numCores_}, "weights" + std::to_string(core), false);
-        bias[core] = mod->createPlaceholder(
-            dtype, {n / numCores_}, "bias" + std::to_string(core), false);
-        bindings_.allocate(weights[core])->getHandle<float16_t>().clear(0);
-        bindings_.allocate(bias[core])->getHandle<float16_t>().clear(32);
-        fc[core] = fn->createFullyConnected("fc" + std::to_string(core) + "_" +
-                                                std::to_string(layer),
-                                            cur, weights[core], bias[core]);
-      }
+      Placeholder *weights;
+      Placeholder *bias;
+      Node *fc;
+      weights = mod->createPlaceholder(
+          dtype, {k_, n_}, "weights" + std::to_string(layer), false);
+      bias = mod->createPlaceholder(dtype, {n_}, "bias" + std::to_string(layer),
+                                    false);
 
-      std::vector<NodeValue> fcNv;
-      for (auto _fc : fc) {
-        fcNv.push_back(_fc);
+      if (std::string(dtypeStr_) == "Float16") {
+        bindings_.allocate(weights)->getHandle<float16_t>().clear(0);
+        bindings_.allocate(bias)->getHandle<float16_t>().clear(32);
+      } else if (std::string(dtypeStr_) == "Float32") {
+        bindings_.allocate(weights)->getHandle<float>().clear(0);
+        bindings_.allocate(bias)->getHandle<float>().clear(32);
       }
-      concat = fn->createConcat("concat_" + std::to_string(layer), fcNv, 1);
-      cur = concat;
+      fc = fn->createFullyConnected("fc_" + std::to_string(layer), cur, weights,
+                                    bias);
+      cur = fc;
     }
     fn->createSave("save1", cur, output);
 
     ::glow::convertPlaceholdersToConstants(fn, bindings_, {input, output});
+
+    // Split weights
+    executeVerticalFCWeightsSplit(fn, numSplits_, n_);
 
     CompilationContext ctx;
     hostManager_->addNetwork(std::move(mod), ctx);
@@ -135,9 +120,7 @@ public:
 
   void teardown() override {}
 
-  double gflops() const {
-    return 2.0 * cDims[0] * cDims[1] * aDims[1] * numLayers_ / 1e9;
-  }
+  double gflops() const { return 2.0 * m_ * n_ * k_ * numLayers_ / 1e9; }
 };
 
 int main(int argc, char *argv[]) {
@@ -148,18 +131,18 @@ int main(int argc, char *argv[]) {
   size_t numLayers = atoi(argv[4]);
   size_t reps = atoi(argv[5]);
   size_t asyncLaunches = atoi(argv[6]);
-  size_t numCores = atoi(argv[7]);
+  size_t numSplits = atoi(argv[7]);
   const char *backendStr = argv[8];
   const char *dtypeStr = argv[9];
-  GemmBench b(m, n, k, numLayers, asyncLaunches, numCores, backendStr,
+  GemmBench b(m, n, k, numLayers, asyncLaunches, numSplits, backendStr,
               dtypeStr);
   auto times = bench(&b, reps);
   for (auto t : times) {
     printf(
         "BenchResult,GemmBench,SW,%4zu,%4zu,%4zu,%4zu,%4zu,%4zu,%4zu,%s,%s,%2."
         "6lf,%5.2lf\n",
-        m, n, k, numLayers, reps, asyncLaunches, numCores, backendStr, dtypeStr,
-        t / asyncLaunches, b.gflops() * asyncLaunches / t);
+        m, n, k, numLayers, reps, asyncLaunches, numSplits, backendStr,
+        dtypeStr, t / asyncLaunches, b.gflops() * asyncLaunches / t);
   }
   double min = *(std::min_element(times.begin(), times.end()));
   size_t midElt = times.size() / 2;
@@ -170,7 +153,7 @@ int main(int argc, char *argv[]) {
   printf(
       "BenchSummary,GemmBench,SW,%4zu,%4zu,%4zu,%4zu,%4zu,%4zu,%4zu,%s,%s,%2."
       "6lf,%2.6lf,%5.2lf, %5.2lf\n",
-      m, n, k, numLayers, reps, asyncLaunches, numCores, backendStr, dtypeStr,
+      m, n, k, numLayers, reps, asyncLaunches, numSplits, backendStr, dtypeStr,
       median_runtime, min_runtime, b.gflops() / median_runtime,
       b.gflops() / min_runtime);
 }
