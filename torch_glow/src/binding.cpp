@@ -75,6 +75,25 @@ PYBIND11_MODULE(_torch_glow, m) {
   m.def("clearFusionBlacklist",
         []() { getPyTorchLoaderSettings().opBlacklist.clear(); });
 
+  /// Set the active HostManager to one that owns 1 of type \p backendName.
+  m.def("setGlowBackend", [](const std::string &glowBackendName) {
+    setHostManager(glowBackendName);
+  });
+
+  /// Set the active HostManager to one that owns \p numDevices of type
+  /// \p backendName.
+  m.def("setGlowBackend",
+        [](const std::string &glowBackendName, size_t numDevices) {
+          setHostManager(glowBackendName, numDevices);
+        });
+
+  /// \returns the name of the device backend used by the active HostManager.
+  m.def("getGlowBackendName", []() { return getBackendName(); });
+
+  /// \returns the quantity of the device backends used by the active
+  /// HostManager.
+  m.def("getGlowBackendNumDevices", []() { return getBackendNumDevices(); });
+
   /// Binding wrapper class for TorchGlowTraining and its settings.
   py::class_<TorchGlowTrainingWrapper>(m, "TorchGlowTrainingWrapper")
       .def(py::init())

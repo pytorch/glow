@@ -29,25 +29,58 @@ namespace glow {
 bool GlowCompilePyTorchModule = false;
 
 namespace {
-/// Builds and \returns a HostManager instance.
-std::unique_ptr<runtime::HostManager> buildHostManager() {
-  constexpr size_t numGlowDevices = 1;
+/// GlowBackendState stores the currently active Glow HostManager that will
+/// be used to run the subgraphs lowered to Glow. It also contains information
+/// about the number and type of backend devices owned by the HostManager.
+struct GlowBackendState {
+  std::shared_ptr<runtime::HostManager> hostManager;
+  std::string backendName;
+  size_t numDevices = 0;
+};
 
-  std::vector<std::unique_ptr<runtime::DeviceConfig>> deviceConfigs;
-  for (int i = 0; i < numGlowDevices; i++) {
-    deviceConfigs.push_back(llvm::make_unique<runtime::DeviceConfig>(
-        getPyTorchLoaderSettings().glowBackendName));
-  }
-
-  return llvm::make_unique<runtime::HostManager>(std::move(deviceConfigs));
+/// Meyers singleton for GlowBackendState.
+GlowBackendState *getGlowBackendState() {
+  static GlowBackendState state_;
+  return &state_;
 }
 
 } // namespace
 
-/// \returns the HostManager singleton used to run all PyTorch graphs in Glow.
 std::shared_ptr<runtime::HostManager> getHostManager() {
-  static std::shared_ptr<runtime::HostManager> hostManager = buildHostManager();
+  auto hostManager = getGlowBackendState()->hostManager;
+  // If no HostManager has been set, use Glow's Interpreter.
+  if (!hostManager) {
+    setHostManager("Interpreter");
+    hostManager = getGlowBackendState()->hostManager;
+  }
   return hostManager;
+}
+
+const std::string &getBackendName() {
+  return getGlowBackendState()->backendName;
+}
+
+size_t getBackendNumDevices() { return getGlowBackendState()->numDevices; }
+
+void setHostManager(const std::string &backendName, size_t numDevices) {
+  auto *state = getGlowBackendState();
+
+  // Don't create a new identical HostManager.
+  if (state->backendName == backendName && state->numDevices == numDevices) {
+    return;
+  }
+
+  state->backendName = backendName;
+  state->numDevices = numDevices;
+
+  std::vector<std::unique_ptr<runtime::DeviceConfig>> deviceConfigs;
+  for (int i = 0; i < numDevices; i++) {
+    deviceConfigs.push_back(
+        llvm::make_unique<runtime::DeviceConfig>(backendName));
+  }
+
+  state->hostManager =
+      std::make_shared<runtime::HostManager>(std::move(deviceConfigs));
 }
 
 /// Given a Glow ElemKind \p ty, \returns a matching PyTorch ScalarType.
