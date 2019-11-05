@@ -41,6 +41,10 @@ struct PyTorchLoaderSettings {
   /// Dump Glow dot graph to file after model loading is finished.
   bool dumpGlowDag = false;
 
+  /// A list of symbols for nodes that will be ignored by the Glow fuser and
+  /// thus will not be fused to Glow.
+  std::unordered_set<torch::jit::Symbol> opBlacklist;
+
   /// Name of the Glow backend to use with CachingGraphRunner's HostManager.
   std::string glowBackendName = "Interpreter";
 };

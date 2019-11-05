@@ -61,6 +61,20 @@ PYBIND11_MODULE(_torch_glow, m) {
   m.def("disableDumpGlowDag",
         []() { getPyTorchLoaderSettings().dumpGlowDag = false; });
 
+  /// Add all of the symbols in \p blacklist to the fusion blacklist so that
+  /// nodes with these symbols will not be fused to Glow.
+  m.def("setFusionBlacklist", [](const std::vector<std::string> &blacklist) {
+    auto &bl = getPyTorchLoaderSettings().opBlacklist;
+    bl.clear();
+    for (const auto &kind : blacklist) {
+      bl.insert(torch::jit::Symbol::fromQualString(kind));
+    }
+  });
+
+  /// Clear the fusion blacklist.
+  m.def("clearFusionBlacklist",
+        []() { getPyTorchLoaderSettings().opBlacklist.clear(); });
+
   /// Binding wrapper class for TorchGlowTraining and its settings.
   py::class_<TorchGlowTrainingWrapper>(m, "TorchGlowTrainingWrapper")
       .def(py::init())

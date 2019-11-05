@@ -168,12 +168,23 @@ void glowCustomFuse(std::shared_ptr<torch::jit::Graph> graph) {
 }
 
 void glowCustomFuse(std::shared_ptr<torch::jit::Graph> graph, at::Symbol kind) {
+  auto blacklist = getPyTorchLoaderSettings().opBlacklist;
+  auto nodeSupportedFn =
+      [bl = std::move(blacklist)](const torch::jit::Node *ptNode) {
+        if (bl.count(ptNode->kind())) {
+          std::cout << "Skipping black list op kind: "
+                    << ptNode->kind().toQualString() << std::endl;
+          return false;
+        }
+        return PyTorchModelLoader::isNodeSupported(ptNode);
+      };
+
   // Prepare the graph by fusing known patterns for the model loader.
   // TODO: this should be done only on Glow subgraphs to avoid modifying parts
   // of the graph that Glow will not be running.
   fuseKnownPatterns(graph);
 
-  fuseJITNodesToGlow(graph, PyTorchModelLoader::isNodeSupported, kind);
+  fuseJITNodesToGlow(graph, nodeSupportedFn, kind);
 }
 
 } // namespace glow
