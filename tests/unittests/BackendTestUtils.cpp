@@ -84,21 +84,28 @@ static Placeholder *createQuantizedPlaceholder(Module &mod,
 /// then run the function in profiling mode to get the quantization parameters
 /// by using the specified quantization schema \p schema, the given element
 /// precision \p quantizationPrecision and the given bias precision
-/// \p quantizationPrecisionBias. \returns the quantization parameters for all
-/// the function nodes.
+/// \p quantizationPrecisionBias. \p count represents the number of times to
+/// clone the Function inside itself before profiling. \returns the quantization
+/// parameters for all the function nodes.
 static std::vector<NodeQuantizationInfo> profileAndGetNodeQuantizationInfo(
     CreateAndInitFunction createAndInitFunction, quantization::Schema schema,
-    ElemKind quantizationPrecision, ElemKind quantizationPrecisionBias) {
+    ElemKind quantizationPrecision, ElemKind quantizationPrecisionBias,
+    unsigned count) {
   LoweredInfoMap loweredMapForProf;
   PlaceholderBindings pBindings;
   // Note: deviceMemory = 0 is a signal to use the defaultMemory.
   ExecutionEngine PEE{"Interpreter", /* deviceMemory */ 0,
                       /* ignoreUserDeviceConfig */ true};
-  createAndInitFunction(pBindings, PEE);
+  auto FT = createAndInitFunction(pBindings, PEE);
   CompilationContext cctx{&pBindings, &loweredMapForProf};
+
+  // Clone the number of times as requested to match the Function that will be
+  // quantized.
+  cloneFunInsideFun(FT, &pBindings, cctx, count);
   cctx.precisionConfig.quantMode = QuantizationMode::Profile;
   PEE.compile(cctx);
   PEE.run(pBindings);
+
   // We get the new function using front() because the original function was
   // deleted as part of the Partitioner quantization flow.
   return quantization::generateNodeQuantizationInfos(
@@ -114,7 +121,8 @@ setupInterpAndBackendConfigs(
     LoweredInfoMap &ILIM, PlaceholderBindings &bBindings, LoweredInfoMap &BLIM,
     ElemKind interpElemKind, ElemKind backendElemKind,
     quantization::Schema schema, bool enableRowwiseQuantization,
-    CreateAndInitFunction createAndInitFunction, ElemKind biasElemKind) {
+    CreateAndInitFunction createAndInitFunction, ElemKind biasElemKind,
+    unsigned count) {
   CompilationContext cctxI{&iBindings, &ILIM};
   CompilationContext cctxB{&bBindings, &BLIM};
   PrecisionConfiguration &precConfigI = cctxI.precisionConfig;
@@ -125,9 +133,11 @@ setupInterpAndBackendConfigs(
     // If either interp or backend need to be quantized then we need to profile
     // and get quantization infos.
     if (isQuantizedElemKind(interpElemKind)) {
-
+      // Note: We only do parallel cloning for the backend, so always use count
+      // of 1 here.
       auto NQII = profileAndGetNodeQuantizationInfo(
-          createAndInitFunction, schema, interpElemKind, biasElemKind);
+          createAndInitFunction, schema, interpElemKind, biasElemKind,
+          /* count */ 1);
 
       precConfigI.quantMode = QuantizationMode::Quantize;
       precConfigI.quantConfig.infos = NQII;
@@ -139,9 +149,10 @@ setupInterpAndBackendConfigs(
     }
 
     if (isQuantizedElemKind(backendElemKind)) {
-
+      // Always clone count times here. This matches the Function the backend
+      // will quantize.
       auto NQIB = profileAndGetNodeQuantizationInfo(
-          createAndInitFunction, schema, backendElemKind, biasElemKind);
+          createAndInitFunction, schema, backendElemKind, biasElemKind, count);
 
       precConfigB.quantMode = QuantizationMode::Quantize;
       precConfigB.quantConfig.infos = NQIB;
@@ -235,7 +246,7 @@ void compareAgainstInterpreter(llvm::StringRef backendName,
   auto configs = setupInterpAndBackendConfigs(
       IF, IEE, iBindings, ILIM, bBindings, BLIM, interpElemKind,
       backendElemKind, schema, enableRowwiseQuantization, createAndInitFunction,
-      biasElemKind);
+      biasElemKind, count);
   CompilationContext &cctxI = configs.first;
   CompilationContext &cctxB = configs.second;
 

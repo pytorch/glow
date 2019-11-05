@@ -206,6 +206,7 @@ std::set<std::string> glow::backendTestBlacklist = {
     "BatchOneHotDataInt64/0",
     "BatchOneHotDataInt32/0",
     "BatchOneHotDataInt8/0",
+    "matmulQuantized_InterpCompareParClone/0",
     "ModuloInt64NoSignFollow/0",
     "ModuloInt64SignFollow/0",
     "ModuloInt32NoSignFollow/0",
