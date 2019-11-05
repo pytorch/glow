@@ -1264,6 +1264,33 @@ TEST_P(OperatorTest, matmul_ParCloneTest10) {
   }
 }
 
+/// Test that compareAgainstInterpreter works correctly along with quantization
+/// and parallel cloning.
+TEST_P(OperatorTest, matmulQuantized_InterpCompareParClone) {
+  CHECK_IF_ENABLED();
+
+  constexpr unsigned parallelCount = 10;
+  compareAgainstInterpreter(
+      getBackendName(),
+      [](PlaceholderBindings &bindings, ExecutionEngine &EE) {
+        Module &mod = EE.getModule();
+        Function *F = mod.createFunction("main");
+        Placeholder *lhs =
+            mod.createPlaceholder(ElemKind::FloatTy, {3, 2}, "lhs", false);
+        Placeholder *rhs =
+            mod.createPlaceholder(ElemKind::FloatTy, {2, 1}, "rhs", false);
+        bindings.allocate(lhs)->getHandle().randomize(-1.0, 1.0, mod.getPRNG());
+        bindings.allocate(rhs)->getHandle().randomize(-1.0, 1.0, mod.getPRNG());
+
+        MatMulNode *R = F->createMatMul("MM", lhs, rhs);
+
+        SaveNode *save = F->createSave("save", R);
+        Tensor *saveTensor = bindings.allocate(save->getPlaceholder());
+        return std::make_pair(F, saveTensor);
+      },
+      ElemKind::FloatTy, ElemKind::Int8QTy, 0.006, parallelCount);
+}
+
 /// Check that the matmul operator behaves correctly with FP16.
 TEST_P(OperatorTest, FP16Matmul) {
   CHECK_IF_ENABLED();
