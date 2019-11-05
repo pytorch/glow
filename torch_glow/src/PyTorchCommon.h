@@ -44,9 +44,6 @@ struct PyTorchLoaderSettings {
   /// A list of symbols for nodes that will be ignored by the Glow fuser and
   /// thus will not be fused to Glow.
   std::unordered_set<torch::jit::Symbol> opBlacklist;
-
-  /// Name of the Glow backend to use with CachingGraphRunner's HostManager.
-  std::string glowBackendName = "Interpreter";
 };
 
 /// Given a PyTorch ScalarType \p ty, \returns a matching Glow ElemKind.
@@ -61,6 +58,16 @@ PyTorchLoaderSettings &getPyTorchLoaderSettings();
 
 /// \returns the HostManager singleton used to run all PyTorch graphs in Glow.
 std::shared_ptr<runtime::HostManager> getHostManager();
+
+/// Set the active HostManager to one that owns \p numDevices of type
+/// \p backendName.
+void setHostManager(const std::string &backendName, size_t numDevices = 1);
+
+/// \returns the name of the device backend used by the active HostManager.
+const std::string &getBackendName();
+
+/// \returns the quantity of the device backends used by the active HostManager.
+size_t getBackendNumDevices();
 
 /// \returns the PyTorch symbol to be used for the PyTorch node which represents
 /// the subgraph that Glow will compile and run.
