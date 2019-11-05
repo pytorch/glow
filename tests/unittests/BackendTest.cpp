@@ -136,13 +136,14 @@ TEST(RuntimeBundle, BundleSymbolInfo) {
   ASSIGN_VALUE_OR_FAIL_TEST(dag, EE.getDAG("main"));
   assert(dag->nodes.size() > 0 && "Empty DAG list");
   auto table = dag->nodes[0]->runtimeBundle->getSymbolTable();
+
   // Check that placeholders and constants are correctly labelled.
   EXPECT_EQ(table.find(S->getPlaceholder()->getName())->second.symbolCategory,
             glow::runtime::SymbolCategory::Placeholder);
   EXPECT_EQ(table.find(ex->getName())->second.symbolCategory,
             glow::runtime::SymbolCategory::Constant);
   // Check that activations are labelled correctly.
-  EXPECT_EQ(table.find("fc_add_bias_res")->second.symbolCategory,
+  EXPECT_EQ(table.find("FC_res")->second.symbolCategory,
             glow::runtime::SymbolCategory::Activation);
   // Check that tensor views have the same label as their parent symbol. In this
   // case same as "input".
@@ -161,8 +162,8 @@ TEST(RuntimeBundle, BundleSymbolInfo) {
   EXPECT_EQ(table.find(qp->getHistogramPlaceholder()->getName())->second.output,
             true);
   // Check that activations are labelled correctly.
-  EXPECT_EQ(table.find("fc_add_bias_res")->second.input, false);
-  EXPECT_EQ(table.find("fc_add_bias_res")->second.output, false);
+  EXPECT_EQ(table.find("FC_res")->second.input, false);
+  EXPECT_EQ(table.find("FC_res")->second.output, false);
   // Check that tensor views are labelled correctly.
   EXPECT_EQ(table.find("tensorview_reshape_in")->second.input, false);
   EXPECT_EQ(table.find("tensorview_reshape_in")->second.output, false);

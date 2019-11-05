@@ -1196,21 +1196,9 @@ Error PyTorchModelLoader::loadQuantizedLinear(const torch::jit::Node *ptNode) {
       biasHandle.raw(biasMinMaxIdx.first), biasHandle.raw(biasMinMaxIdx.second),
       glow::quantization::Schema::Asymmetric, glow::ElemKind::Int32QTy);
 
-  llvm::outs() << "\nbias min, max in loader: "
-               << biasHandle.raw(biasMinMaxIdx.first) << ", "
-               << biasHandle.raw(biasMinMaxIdx.second) << "\n";
-
-  llvm::outs() << "bias scale, offset in loader: " << biasQParams.scale << ", "
-               << biasQParams.offset << "\n";
-
-  llvm::outs() << "bias elements before quantization: \n";
-  biasHandle.dump();
-
   const auto biasType =
       F_.getParent()->uniqueType(glow::ElemKind::Int32QTy, bias.dims(),
                                  biasQParams.scale, biasQParams.offset);
-
-  llvm::outs() << "bias type in loader: " << biasType << "\n";
 
   bias = F_.createQuantize("quantize_bias", bias, biasType);
 

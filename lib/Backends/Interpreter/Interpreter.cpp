@@ -100,6 +100,23 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
         {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy,
          ElemKind::Int16QTy});
 
+  case Kinded::Kind::FullyConnectedNodeKind:
+    if (!NI.getInTy(ConvolutionNode::InputIdx)->isQuantizedType()) {
+      return NI.allInputsAndOutputsHaveSameElemKind(
+          {ElemKind::FloatTy, ElemKind::Float16Ty});
+    }
+    return (NI.allInputsAndOutputsHaveSameElemKind(
+                {ElemKind::Int8QTy}, {FullyConnectedNode::BiasIdx}) &&
+            (NI.getInElemTy(FullyConnectedNode::BiasIdx) == ElemKind::Int8QTy ||
+             NI.getInElemTy(FullyConnectedNode::BiasIdx) ==
+                 ElemKind::Int32QTy)) ||
+           (NI.allInputsAndOutputsHaveSameElemKind(
+                {ElemKind::Int16QTy}, {FullyConnectedNode::BiasIdx}) &&
+            (NI.getInElemTy(FullyConnectedNode::BiasIdx) ==
+                 ElemKind::Int16QTy ||
+             NI.getInElemTy(FullyConnectedNode::BiasIdx) ==
+                 ElemKind::Int32QTy));
+
   case Kinded::Kind::MaxPoolNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
                {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy}, {},
@@ -614,6 +631,7 @@ bool Interpreter::shouldLower(const Node *N) const {
   case Kinded::Kind::ConvolutionNodeKind:
   case Kinded::Kind::SparseLengthsSumNodeKind:
   case Kinded::Kind::ChannelwiseQuantizedConvolutionNodeKind:
+  case Kinded::Kind::FullyConnectedNodeKind:
     return false;
   default:
     return true;

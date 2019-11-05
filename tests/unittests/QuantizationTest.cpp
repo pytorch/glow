@@ -577,8 +577,7 @@ enableRowwiseQuantizedFullyConnected(ElemKind quantizationPrecision,
 
   LoweredInfoMap loweredMapForQuant;
   CompilationContext cctx(/* bindings */ nullptr, &loweredMapForQuant);
-  std::unique_ptr<Backend> backend(createBackend(EE.getBackendName()));
-  ::glow::lower(F, cctx, backend.get());
+  ::glow::lower(F, cctx);
 
   // Get the MatMul node and the Batched_Add node.
   Node *matMul, *batchedAdd;
@@ -608,6 +607,7 @@ enableRowwiseQuantizedFullyConnected(ElemKind quantizationPrecision,
   quantConfig.precisionBias = quantizationPrecisionBias;
   quantConfig.enableRowwise = true;
   quantConfig.assertAllNodesQuantized = true;
+  std::unique_ptr<Backend> backend(createBackend(EE.getBackendName()));
   quantization::quantizeFunction(F, quantConfig, *backend, loweredMapForQuant);
 
   // Check the graph structure after quantization.
@@ -682,8 +682,7 @@ TEST(Quantization, enableRowwiseQuantizedFullyConnectedSymmetric) {
 
   LoweredInfoMap loweredMapForQuant;
   CompilationContext cctx(/* bindings */ nullptr, &loweredMapForQuant);
-  std::unique_ptr<Backend> backend(createBackend(EE.getBackendName()));
-  ::glow::lower(F, cctx, backend.get());
+  ::glow::lower(F, cctx);
 
   // Get the MatMul node and the Batched_Add node.
   Node *matMul, *batchedAdd;
@@ -714,6 +713,7 @@ TEST(Quantization, enableRowwiseQuantizedFullyConnectedSymmetric) {
   quantConfig.schema = quantization::Schema::Symmetric;
   quantConfig.enableRowwise = true;
   quantConfig.assertAllNodesQuantized = true;
+  std::unique_ptr<Backend> backend(createBackend(EE.getBackendName()));
   quantization::quantizeFunction(F, quantConfig, *backend, loweredMapForQuant);
 
   // Check the graph structure after quantization.

@@ -173,9 +173,14 @@ private:
   template <typename ElemTy> void fwdSoftMaxInstImpl(const SoftMaxInst *I);
 
   template <typename ElemTy, typename AccumulatorTy>
-  void fwdMatMulInstQuantizedImpl(const glow::MatMulInst *I);
+  void fwdMatMulInstQuantizedImpl(const MatMulInst *I);
+  template <typename ElemTy> void fwdMatMulInstFloatImpl(const MatMulInst *I);
+
+  template <typename ElemTy, typename AccumulatorTy,
+            typename BiasElemTy = int32_t>
+  void fwdFullyConnectedInstQuantizedImpl(const FullyConnectedInst *I);
   template <typename ElemTy>
-  void fwdMatMulInstFloatImpl(const glow::MatMulInst *I);
+  void fwdFullyConnectedInstFloatImpl(const FullyConnectedInst *I);
 
   template <typename ElemTy, typename AccumulatorTy,
             typename BiasElemTy = int32_t>
@@ -197,7 +202,7 @@ private:
 
   template <typename ElemTy, typename ElemOffsetTy, typename ElemScaleTy,
             typename CmpTy = ElemTy>
-  void fwdElementCmpEQInstImpl(const glow::ElementCmpEQInst *I);
+  void fwdElementCmpEQInstImpl(const ElementCmpEQInst *I);
 
   template <typename ElemTy>
   void fwdBatchOneHotImpl(const glow::BatchOneHotInst *I);

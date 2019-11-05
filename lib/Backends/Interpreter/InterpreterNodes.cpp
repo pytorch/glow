@@ -2603,6 +2603,106 @@ void BoundInterpreterFunction::fwdBatchMatMulInst(
 }
 
 //===----------------------------------------------------------------------===//
+//                                 FC
+//===----------------------------------------------------------------------===//
+template <typename ElemTy, typename AccumulatorTy, typename BiasElemTy>
+void BoundInterpreterFunction::fwdFullyConnectedInstQuantizedImpl(
+    const glow::FullyConnectedInst *I) {
+  assert(getTensor(I->getSrc())->getType().isQuantizedType());
+
+  auto inW = getWeightHandle<ElemTy>(I->getSrc());
+  auto weightsW = getWeightHandle<ElemTy>(I->getWeights());
+  auto biasW = getWeightHandle<BiasElemTy>(I->getBias());
+  auto outW = getWeightHandle<ElemTy>(I->getDest());
+
+  auto inTy = inW.getType();
+  auto weightsTy = weightsW.getType();
+  auto biasTy = biasW.getType();
+  auto outTy = outW.getType();
+
+  int32_t inOffset = inTy.getOffset();
+  int32_t weightsOffset = weightsTy.getOffset();
+  int32_t biasOffset = biasTy.getOffset();
+  int32_t outOffset = outTy.getOffset();
+
+  float outScale = outTy.getScale();
+  float weightsScale = weightsTy.getScale();
+  float biasScale = biasTy.getScale();
+  float inScale = inTy.getScale();
+
+  ShapeHW idim(inW.dims());
+  ShapeHW odim(outW.dims());
+
+  // Calculate the scale of the values that come out of the matrix
+  // multiplication part of the calculation.
+  float matMulScale = weightsScale * inScale;
+
+  outW.clear(0);
+
+  for (size_t i = 0; i < idim.height; i++) {
+    for (size_t j = 0; j < odim.width; j++) {
+      AccumulatorTy sum = 0;
+      for (size_t k = 0; k < idim.width; k++) {
+        AccumulatorTy W = weightsW.at({k, j});
+        AccumulatorTy A = inW.at({i, k});
+        sum += (W - weightsOffset) * (A - inOffset);
+      }
+
+      // Scale the bias to match the scale of the matrix multiplication.
+      AccumulatorTy B = std::round(float(biasW.at({j}) - biasOffset) *
+                                   (biasScale / matMulScale));
+
+      // Add the bias.
+      sum += B;
+
+      // Scale the result back to the expected destination scale.
+      outW.at({i, j}) = quantization::clip<AccumulatorTy, ElemTy>(
+          std::round(float(sum) * (matMulScale / outScale) + outOffset));
+    }
+  }
+}
+
+template <typename ElemTy>
+void BoundInterpreterFunction::fwdFullyConnectedInstFloatImpl(
+    const FullyConnectedInst *I) {
+  staticAssertFloatingPointType(ElemTy);
+
+  auto inW = getWeightHandle<ElemTy>(I->getSrc());
+  auto weightsW = getWeightHandle<ElemTy>(I->getWeights());
+  auto biasW = getWeightHandle<ElemTy>(I->getBias());
+  auto outW = getWeightHandle<ElemTy>(I->getDest());
+
+  ShapeHW idim(inW.dims());
+  ShapeHW odim(outW.dims());
+
+  outW.clear(0);
+
+  for (size_t i = 0; i < idim.height; i++) {
+    for (size_t j = 0; j < odim.width; j++) {
+      float sum = 0;
+      for (size_t k = 0; k < idim.width; k++) {
+        sum += float(inW.at({i, k})) * float(weightsW.at({k, j}));
+      }
+
+      outW.at({i, j}) = sum + float(biasW.at({j}));
+    }
+  }
+}
+
+void BoundInterpreterFunction::fwdFullyConnectedInst(
+    const glow::FullyConnectedInst *I) {
+
+  if (getTensor(I->getSrc())->getType().isQuantizedType()) {
+    dispatchQuantizedWithAccumulationAndBiasImpl(
+        fwdFullyConnectedInstQuantizedImpl, I->getSrc()->getElementType(),
+        I->getBias()->getElementType(), I);
+    return;
+  } else {
+    dispatchFloatingPointImpl(fwdFullyConnectedInstFloatImpl,
+                              I->getSrc()->getElementType(), I);
+  }
+}
+//===----------------------------------------------------------------------===//
 //                       Row-wise quantized FC
 //===----------------------------------------------------------------------===//
 template <typename ElemTy, typename AccumulatorTy, typename BiasElemTy>

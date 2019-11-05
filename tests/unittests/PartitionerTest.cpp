@@ -415,23 +415,12 @@ TEST_F(PartitionerTest, Basic1Roofline) {
 
   // check compute costs
   std::unordered_map<std::string, float> expectedComputeTime{
-      {"initial_sigmoid", 128},
-      {"left_sigmoid2", 64},
-      {"fc_add_bias__3", 192},
-      {"right_sigmoid1", 128},
-      {"mul", 96},
-      {"fc_add_bias__2", 96},
-      {"ret", 0},
-      {"fc_dot", 21760},
-      {"left_sigmoid1", 128},
-      {"fc_add_bias", 192},
-      {"fc_dot__1", 10240},
-      {"right_sigmoid2", 64},
-      {"fc_add_bias__1", 192},
-      {"fc_dot__2", 5120},
-      {"fc_dot__3", 10240},
-      {"fc_dot__4", 5120},
-      {"fc_add_bias__4", 96},
+      {"initial_sigmoid", 128}, {"left_sigmoid2", 64},
+      {"right_sigmoid1", 128},  {"mul", 96},
+      {"ret_save", 0},          {"initial_fc", 21760},
+      {"left_fc1", 10240},      {"left_fc2", 5120},
+      {"left_sigmoid1", 128},   {"right_fc1", 10240},
+      {"right_fc2", 5120},      {"right_sigmoid2", 64},
   };
 
   BackendInfo backendInfo;
