@@ -60,6 +60,9 @@ bool CPUBackend::isOpSupported(const NodeInfo &NI) const {
     return NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Int8QTy});
 
+  case Kinded::Kind::AdaptiveAvgPoolNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind({ElemKind::FloatTy});
+
   case Kinded::Kind::MaxPoolNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
                {ElemKind::FloatTy, ElemKind::Int8QTy}, {},
