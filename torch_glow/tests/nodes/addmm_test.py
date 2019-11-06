@@ -15,7 +15,7 @@ def test_addmm_basic():
     y = torch.randn(6, 10)
     z = torch.randn(10, 4)
 
-    jitVsGlow(test_f, x, y, z, expected_fused_ops={"aten::addmm"})
+    jitVsGlow(test_f, x, y, z, expected_fused_ops={"aten::add", "aten::mm"})
 
 
 def test_addmm_broadcast():
@@ -28,7 +28,7 @@ def test_addmm_broadcast():
     y = torch.randn(6, 10)
     z = torch.randn(10, 4)
 
-    jitVsGlow(test_f, x, y, z, expected_fused_ops={"aten::addmm"})
+    jitVsGlow(test_f, x, y, z, expected_fused_ops={"aten::add", "aten::mm"})
 
 
 def test_addmm_broadcast_with_alpha_and_beta():
