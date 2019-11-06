@@ -347,6 +347,10 @@ FunctionPassPipeline NNPIBackend::getOptimizationPipeline() const {
   auto pipeline = createDefaultGraphOptimizationPassPipeline();
   pipeline.removeAllInstancesOfPass(FunctionPassID::FoldTileAddIntoBatchedAdd);
 
+  // Disable SinkCode, as NNPI does data parallel transformations and so we do
+  // not want to undo that by sinking Nodes back together.
+  pipeline.removeAllInstancesOfPass(FunctionPassID::SinkCode);
+
   return pipeline;
 }
 
