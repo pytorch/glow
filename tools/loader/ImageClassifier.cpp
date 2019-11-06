@@ -519,8 +519,8 @@ setupContextPool(Placeholder *outputPH, Placeholder *inputImagePH,
       miniBatch ? std::min(int(poolSize), int(iterationsOpt / miniBatch)) : 1;
   // Setup pool of inference requests to be run.
   for (unsigned i = 0; i < iterations; i++) {
-    auto newContext = llvm::make_unique<ExecutionContext>();
-    newContext->setTraceContext(llvm::make_unique<TraceContext>(traceLevel));
+    auto newContext = glow::make_unique<ExecutionContext>();
+    newContext->setTraceContext(glow::make_unique<TraceContext>(traceLevel));
     auto ph = newContext->getPlaceholderBindings();
     ph->insert(inputImagePH, Tensor(inputImageData.getType()));
     ph->allocate(outputPH);
@@ -570,7 +570,7 @@ int main(int argc, char **argv) {
   // If tracing is enabled, create a TraceContext to merge each runs events
   // into.
   if (!tracePath.empty()) {
-    traceContext = llvm::make_unique<TraceContext>(TraceLevel::STANDARD);
+    traceContext = glow::make_unique<TraceContext>(TraceLevel::STANDARD);
   }
 
   // Mini-batch mode.
@@ -593,11 +593,11 @@ int main(int argc, char **argv) {
   // Process a set of minibatches with indices [startIndex, endIndex).
   auto processImageRange = [&](size_t startIndex, size_t endIndex) {
     std::unique_ptr<ExecutionContext> exContext =
-        llvm::make_unique<ExecutionContext>();
+        glow::make_unique<ExecutionContext>();
     PlaceholderBindings &bindings = *exContext->getPlaceholderBindings();
     if (traceContext) {
       exContext->setTraceContext(
-          llvm::make_unique<TraceContext>(TraceLevel::STANDARD));
+          glow::make_unique<TraceContext>(TraceLevel::STANDARD));
     }
     Loader loader;
     // Used to make sure we only compile once, and run only once if not

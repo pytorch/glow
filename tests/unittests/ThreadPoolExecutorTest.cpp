@@ -154,7 +154,7 @@ public:
       // If the function name has not already been registered, insert it into
       // resultMap_.
       std::tie(std::ignore, registered) = resultMap_.insert(std::make_pair(
-          functionName, llvm::make_unique<RunFunctionResult>(
+          functionName, glow::make_unique<RunFunctionResult>(
                             runId, success, std::move(inputContext),
                             std::move(resultContext))));
     }
@@ -308,9 +308,9 @@ public:
   /// between ExecutionContexts correctly.
   ExecutorTestBuilder(const std::shared_ptr<Executor> &executor,
                       const DeviceManagerMapTy &deviceManagers)
-      : executor_(executor), module_(llvm::make_unique<Module>()),
-        root_(llvm::make_unique<DAGNode>()),
-        bindings_(llvm::make_unique<PlaceholderBindings>()),
+      : executor_(executor), module_(glow::make_unique<Module>()),
+        root_(glow::make_unique<DAGNode>()),
+        bindings_(glow::make_unique<PlaceholderBindings>()),
         type_(
             std::unique_ptr<Type>(new Type(ElemKind::FloatTy, {32, 64, 128}))),
         success_(true), deviceManagers_(deviceManagers) {}
@@ -326,7 +326,7 @@ public:
                llvm::ArrayRef<llvm::StringRef> inputs,
                llvm::ArrayRef<llvm::StringRef> outputs, RunIdentifierTy runId,
                bool success) {
-    auto newNode = llvm::make_unique<DAGNode>();
+    auto newNode = glow::make_unique<DAGNode>();
     auto *newNodeRawPtr = newNode.get();
 
     // If this is the first node being added, record the run ID for the graph.
@@ -373,8 +373,8 @@ public:
     SymbolTableTy symbolTable;
     size_t offset = 0;
 
-    auto nodeInputContext = llvm::make_unique<ExecutionContext>();
-    auto nodeOutputContext = llvm::make_unique<ExecutionContext>();
+    auto nodeInputContext = glow::make_unique<ExecutionContext>();
+    auto nodeOutputContext = glow::make_unique<ExecutionContext>();
 
     auto nodeInputBindings = nodeInputContext->getPlaceholderBindings();
     auto nodeOutputBindings = nodeOutputContext->getPlaceholderBindings();
@@ -413,7 +413,7 @@ public:
     newNode->name = name;
     newNode->deviceIDs = {deviceId};
 
-    newNode->runtimeBundle = llvm::make_unique<RuntimeBundle>(
+    newNode->runtimeBundle = glow::make_unique<RuntimeBundle>(
         symbolTable, /*constWeight=*/0, /*mutableWeight=*/0,
         /*activations=*/0);
 
@@ -455,8 +455,8 @@ public:
     // output Placeholders are mapped to their expected output Tensors. This
     // ExecutionContext is used to verify that the one returned by the
     // Executor is correct.
-    auto inputContext = llvm::make_unique<ExecutionContext>();
-    auto outputContext = llvm::make_unique<ExecutionContext>();
+    auto inputContext = glow::make_unique<ExecutionContext>();
+    auto outputContext = glow::make_unique<ExecutionContext>();
 
     for (const auto &symbol : inputSymbols) {
       insertSymbolIntoPlaceholderBindings(
@@ -483,8 +483,8 @@ public:
 
     // Reset builder state to allow a new test to be constructed with this
     // instance.
-    root_ = llvm::make_unique<DAGNode>();
-    module_ = llvm::make_unique<Module>();
+    root_ = glow::make_unique<DAGNode>();
+    module_ = glow::make_unique<Module>();
     bindings_->clear();
     type_ = std::unique_ptr<Type>(new Type(ElemKind::FloatTy, {1, 2, 2}));
     nodes_.clear();
@@ -622,11 +622,11 @@ TEST_F(ThreadPoolExecutorTest, EmptyDAG) {
   // compare the returned PlaceholderBindings with.
   PseudoRNG rng;
   auto type = std::unique_ptr<Type>(new Type(ElemKind::FloatTy, {1, 2, 2}));
-  auto placeholder = llvm::make_unique<Placeholder>("a", type.get(),
+  auto placeholder = glow::make_unique<Placeholder>("a", type.get(),
                                                     /*trainable=*/false);
 
-  auto testContext = llvm::make_unique<ExecutionContext>();
-  auto refContext = llvm::make_unique<ExecutionContext>();
+  auto testContext = glow::make_unique<ExecutionContext>();
+  auto refContext = glow::make_unique<ExecutionContext>();
 
   auto *tensor =
       testContext->getPlaceholderBindings()->allocate(placeholder.get());
@@ -649,7 +649,7 @@ TEST_F(ThreadPoolExecutorTest, EmptyDAG) {
                      std::unique_ptr<ExecutionContext> context) {
                    executorRunId = runId;
                    executorOutputContext = std::move(context);
-                   runErr = llvm::make_unique<Error>(std::move(err));
+                   runErr = glow::make_unique<Error>(std::move(err));
                    promise.set_value();
                  });
 
@@ -671,7 +671,7 @@ TEST_F(ThreadPoolExecutorTest, SingleNode) {
   // Make a TestDeviceManager and insert into the DeviceManagerMap map (which
   // the ThreadPoolExecutor has a reference to) and the TestDeviceManager map
   // (which the ExecutorTestBuilder has a reference to).
-  auto deviceManager = llvm::make_unique<TestDeviceManager>(
+  auto deviceManager = glow::make_unique<TestDeviceManager>(
       deviceManagerThreads, DeviceConfig("Interpreter"));
   deviceManagerMap_.emplace(testDeviceId, std::move(deviceManager));
 
@@ -701,7 +701,7 @@ TEST_F(ThreadPoolExecutorTest, ConcurrentSingleNode) {
   // Make a TestDeviceManager and insert into the DeviceManagerMap map (which
   // the ThreadPoolExecutor has a reference to) and the TestDeviceManager map
   // (which the ExecutorTestBuilder has a reference to).
-  auto deviceManager = llvm::make_unique<TestDeviceManager>(
+  auto deviceManager = glow::make_unique<TestDeviceManager>(
       deviceManagerThreads, DeviceConfig("Interpreter"));
   deviceManagerMap_.emplace(testDeviceId, std::move(deviceManager));
 
@@ -790,7 +790,7 @@ TEST_F(ThreadPoolExecutorTest, ConcurrentSingleNodeDuplicateRunId) {
   // Make a TestDeviceManager and insert into the DeviceManagerMap map (which
   // the ThreadPoolExecutor has a reference to) and the TestDeviceManager map
   // (which the ExecutorTestBuilder has a reference to).
-  auto deviceManager = llvm::make_unique<TestDeviceManager>(
+  auto deviceManager = glow::make_unique<TestDeviceManager>(
       deviceManagerThreads, DeviceConfig("Interpreter"));
   deviceManagerMap_.emplace(testDeviceId, std::move(deviceManager));
 
@@ -844,7 +844,7 @@ TEST_F(ThreadPoolExecutorTest, MultiNode) {
   // Make a TestDeviceManager and insert into the DeviceManagerMap map (which
   // the ThreadPoolExecutor has a reference to) and the TestDeviceManager map
   // (which the ExecutorTestBuilder has a reference to).
-  auto deviceManager = llvm::make_unique<TestDeviceManager>(
+  auto deviceManager = glow::make_unique<TestDeviceManager>(
       deviceManagerThreads, DeviceConfig("Interpreter"));
   deviceManagerMap_.emplace(testDeviceId, std::move(deviceManager));
 
@@ -892,7 +892,7 @@ TEST_F(ThreadPoolExecutorTest, MultiNodeWithFailure) {
   // Make a TestDeviceManager and insert into the DeviceManagerMap map (which
   // the ThreadPoolExecutor has a reference to) and the TestDeviceManager map
   // (which the ExecutorTestBuilder has a reference to).
-  auto deviceManager = llvm::make_unique<TestDeviceManager>(
+  auto deviceManager = glow::make_unique<TestDeviceManager>(
       deviceManagerThreads, DeviceConfig("Interpreter"));
   deviceManagerMap_.emplace(testDeviceId, std::move(deviceManager));
 
@@ -947,7 +947,7 @@ TEST_F(ThreadPoolExecutorTest, MultiNodeMultiDevice) {
   // (which the ThreadPoolExecutor has a reference to) and the TestDeviceManager
   // map (which the ExecutorTestBuilder has a reference to).
   for (DeviceIDTy deviceId : {testDeviceIdA, testDeviceIdB, testDeviceIdC}) {
-    auto deviceManager = llvm::make_unique<TestDeviceManager>(
+    auto deviceManager = glow::make_unique<TestDeviceManager>(
         deviceManagerThreads, DeviceConfig("Interpreter"));
     deviceManagerMap_.emplace(deviceId, std::move(deviceManager));
   }
@@ -998,7 +998,7 @@ TEST_F(ThreadPoolExecutorTest, ConcurrentMultiNode) {
   // Make a TestDeviceManager and insert it into the DeviceManagerMap map
   // (which the ThreadPoolExecutor has a reference to) and the TestDeviceManager
   // map (which the ExecutorTestBuilder has a reference to).
-  auto deviceManager = llvm::make_unique<TestDeviceManager>(
+  auto deviceManager = glow::make_unique<TestDeviceManager>(
       deviceManagerThreads, DeviceConfig("Interpreter"));
   deviceManagerMap_.emplace(testDeviceId, std::move(deviceManager));
 

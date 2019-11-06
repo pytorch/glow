@@ -1520,7 +1520,7 @@ OCLBackend::compileIR(std::unique_ptr<IRFunction> IR) const {
   runtime::RuntimeBundle bundle =
       runtime::RuntimeBundle::create(*IR, allocator);
   std::unique_ptr<CompiledFunction> function =
-      llvm::make_unique<OpenCLFunction>(std::move(IR), std::move(bundle),
+      glow::make_unique<OpenCLFunction>(std::move(IR), std::move(bundle),
                                         std::move(traceInfo));
   auto OCLFunction = static_cast<OpenCLFunction *>(function.get());
   OCLFunction->collectConstants(module);
@@ -1546,7 +1546,7 @@ OCLBackend::compile(Function *F, const BackendOptions &opts) const {
   }
 
   std::unique_ptr<CompiledFunction> compiledFunc =
-      llvm::make_unique<OpenCLFunction>(std::move(IR), std::move(bundle),
+      glow::make_unique<OpenCLFunction>(std::move(IR), std::move(bundle),
                                         std::move(traceInfo));
 
   return Expected<std::unique_ptr<CompiledFunction>>(std::move(compiledFunc));

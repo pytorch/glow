@@ -322,7 +322,7 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
         }
         auto compiled = std::move(*compiledOrErr);
         node->runtimeBundle =
-            llvm::make_unique<RuntimeBundle>(compiled->getRuntimeBundle());
+            glow::make_unique<RuntimeBundle>(compiled->getRuntimeBundle());
 
         functionMap.emplace(node->name, compiled.get());
         // If this function is in more than one logical device store it for
@@ -343,7 +343,7 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
     devices_[physicalDevice]->addNetwork(
         &module, functionMap,
         [&addErr, &addPromise](const Module *, Error err) {
-          addErr = llvm::make_unique<Error>(std::move(err));
+          addErr = glow::make_unique<Error>(std::move(err));
           addPromise.set_value();
         });
     ready.wait();

@@ -140,11 +140,11 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
                               const onnxTensorDescriptorV1 *outputDescriptors,
                               EventPtr outputEvent,
                               onnxTraceEventList *traceEvents) {
-  auto ctx = llvm::make_unique<ExecutionContext>();
+  auto ctx = glow::make_unique<ExecutionContext>();
 
   TraceContext *traceContext = nullptr;
   if (traceEvents || GlowDumpDebugTraces) {
-    ctx->setTraceContext(llvm::make_unique<TraceContext>(TraceLevel::STANDARD));
+    ctx->setTraceContext(glow::make_unique<TraceContext>(TraceLevel::STANDARD));
     traceContext = ctx->getTraceContext();
     traceContext->setThreadName("Onnxifi");
   }

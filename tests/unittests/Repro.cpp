@@ -98,7 +98,7 @@ void parseCommandLine(int argc, char **argv) {
 
 void run() {
   // Build the execution engine and deserialize the Function.
-  auto mod = llvm::make_unique<Module>();
+  auto mod = glow::make_unique<Module>();
   Function *F = mod->createFunction("test");
   Error err = Error::empty();
   { ONNXModelLoader onnxLD(modelPathOpt, {}, {}, *F, &err, /*zipMode*/ true); }
@@ -106,7 +106,7 @@ void run() {
       << "ONNXModelLoader failed to load model: " << modelPathOpt;
 
   // Setup the inputs.
-  auto ctx = llvm::make_unique<ExecutionContext>();
+  auto ctx = glow::make_unique<ExecutionContext>();
   auto &bindings = *ctx->getPlaceholderBindings();
   bindings.clear();
   bindings.allocate(mod->getPlaceholders());
@@ -133,7 +133,7 @@ void run() {
   auto configs =
       runtime::generateDeviceConfigs(1, ExecutionBackend, MAX_MEMORY);
   auto hostManager =
-      llvm::make_unique<runtime::HostManager>(std::move(configs));
+      glow::make_unique<runtime::HostManager>(std::move(configs));
   CompilationContext cctx;
   cctx.precisionConfig = precConfig;
   EXIT_ON_ERR(hostManager->addNetwork(std::move(mod), cctx));

@@ -488,7 +488,7 @@ public:
 
   Expected<std::unique_ptr<CompiledFunction>>
   compile(Function *F, const BackendOptions &opts) const override {
-    return llvm::make_unique<MockFunction>(backendName,
+    return glow::make_unique<MockFunction>(backendName,
                                            runtime::RuntimeBundle::create(*F));
   }
 

@@ -207,11 +207,11 @@ TEST_P(BackendCorrectnessTest, dataParallelStackingTest) {
   // buffer that is already used by other instructions in the stacked kernel.
   Module mod;
   Function *F = mod.createFunction("DataParallelStacking");
-  auto M = llvm::make_unique<IRFunction>(F);
+  auto M = glow::make_unique<IRFunction>(F);
 
   auto *var =
       mod.createPlaceholder(glow::ElemKind::FloatTy, {2}, "output", false);
-  auto ctx = llvm::make_unique<ExecutionContext>();
+  auto ctx = glow::make_unique<ExecutionContext>();
   auto *outputTensor = ctx->getPlaceholderBindings()->allocate(var);
   {
     // Scope the IRBuilder so the active allocations are properly deallocated at

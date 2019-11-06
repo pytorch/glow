@@ -170,7 +170,7 @@ class MockBackend : public Backend {
 
   Expected<std::unique_ptr<CompiledFunction>>
   compile(Function *F, const BackendOptions &) const override {
-    return llvm::make_unique<MockFunction>(runtime::RuntimeBundle::create(*F));
+    return glow::make_unique<MockFunction>(runtime::RuntimeBundle::create(*F));
   }
 
   bool isOpSupported(const NodeInfo &NI) const override { return false; }
@@ -202,7 +202,7 @@ class MockBackendCustomIRGen : public Backend {
 
   Expected<std::unique_ptr<CompiledFunction>>
   compile(Function *F, const BackendOptions &) const override {
-    return llvm::make_unique<MockFunction>(runtime::RuntimeBundle::create(*F));
+    return glow::make_unique<MockFunction>(runtime::RuntimeBundle::create(*F));
   }
 
   bool isOpSupported(const NodeInfo &NI) const override { return false; }

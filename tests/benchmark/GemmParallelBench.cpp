@@ -61,9 +61,9 @@ public:
 
     // Setup host manager
     std::vector<std::unique_ptr<runtime::DeviceConfig>> configs;
-    auto config = llvm::make_unique<runtime::DeviceConfig>(backendStr_);
+    auto config = glow::make_unique<runtime::DeviceConfig>(backendStr_);
     configs.push_back(std::move(config));
-    hostManager_ = llvm::make_unique<runtime::HostManager>(std::move(configs));
+    hostManager_ = glow::make_unique<runtime::HostManager>(std::move(configs));
     size_t m = cDims[0];
     size_t n = cDims[1];
     size_t k = aDims[1];

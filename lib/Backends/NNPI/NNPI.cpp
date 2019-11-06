@@ -333,7 +333,7 @@ NNPIBackend::compile(Function *F, const BackendOptions &opts) const {
     F->dumpDAG(fname);
   }
   std::unique_ptr<NNPICompiledFunction> compiledFunc =
-      llvm::make_unique<NNPICompiledFunction>(F);
+      glow::make_unique<NNPICompiledFunction>(F);
   auto compileHasError = compiledFunc->compile(F, opts);
   if (compileHasError) {
     return std::move(compileHasError);

@@ -56,13 +56,13 @@ void ExecutionEngine::setBackendName(llvm::StringRef backend) {
     CHECK(backend.str() == configs[0]->backendName)
         << "Expected backend name to match the ExecutionEngine";
   } else {
-    auto config = llvm::make_unique<runtime::DeviceConfig>(backend);
+    auto config = glow::make_unique<runtime::DeviceConfig>(backend);
     if (deviceMemory_) {
       config->setDeviceMemory(deviceMemory_);
     }
     configs.push_back(std::move(config));
   }
-  hostManager_ = llvm::make_unique<runtime::HostManager>(std::move(configs));
+  hostManager_ = glow::make_unique<runtime::HostManager>(std::move(configs));
 }
 
 llvm::StringRef ExecutionEngine::getBackendName() const { return backendName_; }

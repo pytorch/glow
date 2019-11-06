@@ -664,7 +664,7 @@ void OpenCLDeviceManager::runFunctionImpl(
   // Create and set deviceBindings for call. This contains all the state
   // needed for the function to run on a device.
   auto program = programs_[function];
-  auto clBindings = llvm::make_unique<runtime::OpenCLDeviceBindings>(
+  auto clBindings = glow::make_unique<runtime::OpenCLDeviceBindings>(
       buffers_[function]->getBuffer(), queue.backingQueue, deviceId_, context_,
       program);
 

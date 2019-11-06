@@ -185,8 +185,8 @@ void dispatchInference(const std::string &fname,
     // Clone the placeholder bindings into a new executionContext.
     for (unsigned i = 0, max = concurrentRequestsOpt - 1; i < max; i++) {
       std::unique_ptr<ExecutionContext> newContext =
-          llvm::make_unique<ExecutionContext>(
-              llvm::make_unique<PlaceholderBindings>(
+          glow::make_unique<ExecutionContext>(
+              glow::make_unique<PlaceholderBindings>(
                   context.getPlaceholderBindings()->clone()));
       contexts.push_back(std::move(newContext));
     }

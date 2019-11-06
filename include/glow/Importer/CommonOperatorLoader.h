@@ -78,7 +78,7 @@ class CommonOperatorLoader : public ProtobufLoader {
     }
 
     LoadWeightResult result;
-    result.t = llvm::make_unique<Tensor>();
+    result.t = glow::make_unique<Tensor>();
 
     std::vector<size_t> dims;
     for (unsigned i = 0; i < in.dimensions; ++i) {
@@ -143,8 +143,8 @@ class CommonOperatorLoader : public ProtobufLoader {
     } else {
       Type scalesTy(ElemKind::FloatTy, llvm::makeArrayRef({qparams}));
       Type offsetsTy(ElemKind::Int32ITy, llvm::makeArrayRef({qparams}));
-      result.scales = llvm::make_unique<Tensor>((void *)in.scales, &scalesTy);
-      result.offsets = llvm::make_unique<Tensor>((void *)in.biases, &offsetsTy);
+      result.scales = glow::make_unique<Tensor>((void *)in.scales, &scalesTy);
+      result.offsets = glow::make_unique<Tensor>((void *)in.biases, &offsetsTy);
     }
 
     if (in.dataType == ONNXIFI_DATATYPE_UINT8) {

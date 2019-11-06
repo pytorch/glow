@@ -33,7 +33,7 @@ public:
   virtual ~DeviceBindings() {}
 
   virtual std::unique_ptr<DeviceBindings> clone() {
-    return llvm::make_unique<DeviceBindings>(backend_);
+    return glow::make_unique<DeviceBindings>(backend_);
   }
 };
 
@@ -51,7 +51,7 @@ class ExecutionContext {
 
 public:
   ExecutionContext()
-      : placeholderBindings_(llvm::make_unique<PlaceholderBindings>()) {}
+      : placeholderBindings_(glow::make_unique<PlaceholderBindings>()) {}
 
   ExecutionContext(std::unique_ptr<PlaceholderBindings> bindings)
       : placeholderBindings_(std::move(bindings)) {}
@@ -108,10 +108,10 @@ public:
   ExecutionContext clone() {
     if (deviceBindings_) {
       return ExecutionContext(
-          llvm::make_unique<PlaceholderBindings>(placeholderBindings_->clone()),
+          glow::make_unique<PlaceholderBindings>(placeholderBindings_->clone()),
           deviceBindings_->clone());
     } else {
-      return ExecutionContext(llvm::make_unique<PlaceholderBindings>(
+      return ExecutionContext(glow::make_unique<PlaceholderBindings>(
           placeholderBindings_->clone()));
     }
   }

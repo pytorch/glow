@@ -66,7 +66,7 @@ HabanaIOBufferPool::HabanaIOBufferPool(uint32_t deviceId,
   uint8_t *copyOffset = buffer_;
   for (unsigned i = 0; i < numBuffers_; ++i) {
     ioBuffers_.push(
-        llvm::make_unique<HabanaIOBuffer>(deviceId_, copyOffset, offsets_));
+        glow::make_unique<HabanaIOBuffer>(deviceId_, copyOffset, offsets_));
     copyOffset += perBufferSize_;
   }
 }
@@ -214,10 +214,10 @@ static Error dumpTopologyInfo(uint32_t deviceId, uint64_t topologyId) {
                             numOfIntermediates));
 
   using TensorNames = char[ENQUEUE_TENSOR_NAME_MAX_SIZE];
-  auto inputTensorNames = llvm::make_unique<TensorNames[]>(numOfInputs);
-  auto outputTensorNames = llvm::make_unique<TensorNames[]>(numOfOutputs);
+  auto inputTensorNames = glow::make_unique<TensorNames[]>(numOfInputs);
+  auto outputTensorNames = glow::make_unique<TensorNames[]>(numOfOutputs);
   auto intermediateTensorNames =
-      llvm::make_unique<TensorNames[]>(numOfIntermediates);
+      glow::make_unique<TensorNames[]>(numOfIntermediates);
 
   chk(synGetTensorsName(deviceId, topologyId, inputTensorNames.get(),
                         numOfInputs, outputTensorNames.get(), numOfOutputs,

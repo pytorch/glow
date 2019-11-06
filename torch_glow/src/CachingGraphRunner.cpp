@@ -59,7 +59,7 @@ CachingGraphRunner::loadImpl(torch::jit::Stack &stack) {
   auto info = std::make_shared<PerGlowGraphInfo>();
   info->functionName = strFormat("pt_function_%lu", hash);
 
-  std::unique_ptr<Module> module = llvm::make_unique<Module>();
+  std::unique_ptr<Module> module = glow::make_unique<Module>();
   Function *f = module->createFunction(info->functionName);
 
   RETURN_IF_ERR(PyTorchModelLoader::loadJITGraph(
@@ -80,7 +80,7 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
   size_t numInputs = graph_->inputs().size();
   const auto inputs = torch::jit::last(stack, numInputs);
 
-  std::unique_ptr<ExecutionContext> ctx = llvm::make_unique<ExecutionContext>();
+  std::unique_ptr<ExecutionContext> ctx = glow::make_unique<ExecutionContext>();
   auto *bindings = ctx->getPlaceholderBindings();
 
   // We only hold placeholders for tensor inputs so indexing them is different

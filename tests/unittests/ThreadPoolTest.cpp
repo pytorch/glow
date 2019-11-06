@@ -13,7 +13,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 #include "glow/Support/ThreadPool.h"
+#include "glow/Support/Memory.h"
+
 #include "gtest/gtest.h"
 
 #include "llvm/ADT/STLExtras.h"
@@ -55,7 +58,7 @@ TEST(ThreadPool, BasicTest) {
 TEST(ThreadPool, moveCaptureTest) {
   ThreadPool tp(1);
 
-  std::unique_ptr<int> input = llvm::make_unique<int>(42);
+  std::unique_ptr<int> input = glow::make_unique<int>(42);
   int output = 0;
   auto func = [input = std::move(input), &output]() { output = (*input) * 2; };
 

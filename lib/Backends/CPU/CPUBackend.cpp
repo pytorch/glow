@@ -390,7 +390,7 @@ bool CPUBackend::shouldLower(const Node *N) const {
 std::unique_ptr<CompiledFunction> CPUBackend::createCompiledFunction(
     std::unique_ptr<llvm::orc::GlowJIT> JIT,
     runtime::RuntimeBundle &&runtimeBundle) const {
-  return llvm::make_unique<CPUFunction>(std::move(JIT),
+  return glow::make_unique<CPUFunction>(std::move(JIT),
                                         std::move(runtimeBundle));
 }
 

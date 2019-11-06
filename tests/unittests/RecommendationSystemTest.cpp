@@ -303,7 +303,7 @@ protected:
     // Create TraceContext if trace file path is provided.
     if (!traceDir.empty()) {
       context_.setTraceContext(
-          llvm::make_unique<TraceContext>(TraceEvent::TraceLevel::STANDARD));
+          glow::make_unique<TraceContext>(TraceEvent::TraceLevel::STANDARD));
     }
 
     // If device memory capacity is unset via command line, use 32MB by default.

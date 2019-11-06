@@ -53,8 +53,8 @@ public:
 
     // Setup host manager
     std::vector<std::unique_ptr<runtime::DeviceConfig>> configs;
-    configs.push_back(llvm::make_unique<runtime::DeviceConfig>(backendStr_));
-    hostManager_ = llvm::make_unique<runtime::HostManager>(std::move(configs));
+    configs.push_back(glow::make_unique<runtime::DeviceConfig>(backendStr_));
+    hostManager_ = glow::make_unique<runtime::HostManager>(std::move(configs));
 
     std::unique_ptr<Module> mod(new Module);
     auto fn = mod->createFunction("singleNode");

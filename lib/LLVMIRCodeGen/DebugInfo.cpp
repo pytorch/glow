@@ -259,7 +259,7 @@ void LLVMIRGen::initDebugInfo() {
   initBaseAddressesOfMemoryAreas(dbgInfo_, *builder_, getModule());
 
   // Construct the DIBuilder.
-  DIBuilder_ = llvm::make_unique<llvm::DIBuilder>(getModule());
+  DIBuilder_ = glow::make_unique<llvm::DIBuilder>(getModule());
 
   // Create a textual representation of the IR for the main function.
   // First store the textual IR into a string.

@@ -2789,7 +2789,7 @@ ValueMapping::ValueMapping(NodeValue nodeValue, bool wasFrozen) {
 
 ValueMapping::ValueMapping(GlowIValue glowIValue) {
   mappingType_ = ValueMappingType::IValue;
-  glowIValue_ = llvm::make_unique<GlowIValue>(std::move(glowIValue));
+  glowIValue_ = glow::make_unique<GlowIValue>(std::move(glowIValue));
 }
 
 Expected<NodeValue> ValueMapping::getMappedNodeValue() {

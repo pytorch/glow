@@ -164,7 +164,7 @@ public:
   virtual ~HabanaBindings() {}
 
   std::unique_ptr<DeviceBindings> clone() override {
-    return llvm::make_unique<HabanaBindings>(deviceId_, topologyId_);
+    return glow::make_unique<HabanaBindings>(deviceId_, topologyId_);
   }
 
   uint32_t getDeviceId() const { return deviceId_; }

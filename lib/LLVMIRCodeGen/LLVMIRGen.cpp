@@ -211,7 +211,7 @@ void LLVMIRGen::initCodeGen() {
   // Setup the entry basic block and initialize the IR builder.
   llvm::BasicBlock *entry_bb =
       llvm::BasicBlock::Create(getLLVMContext(), "entry", func);
-  builder_ = llvm::make_unique<llvm::IRBuilder<>>(entry_bb);
+  builder_ = glow::make_unique<llvm::IRBuilder<>>(entry_bb);
   // Terminate the function with a return instruction.
   auto *ret = builder_->CreateRetVoid();
   // Emit all the code before the retrun instruction.

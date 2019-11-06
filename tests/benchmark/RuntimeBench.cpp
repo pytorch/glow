@@ -215,7 +215,7 @@ public:
 protected:
   std::unique_ptr<Backend> &getBackend() { return backend_; }
   void setUpBackend(benchmark::State &state) {
-    backend_ = llvm::make_unique<BackendTy>();
+    backend_ = glow::make_unique<BackendTy>();
   }
   virtual void tearDownBackend(benchmark::State &state) {}
 
@@ -235,9 +235,9 @@ protected:
 
     // Allocate all Placeholders in mod_ and move the bindings into an
     // ExecutionContext object.
-    auto bindings = llvm::make_unique<PlaceholderBindings>();
+    auto bindings = glow::make_unique<PlaceholderBindings>();
     bindings->allocate(mod_->getPlaceholders());
-    ctx_ = llvm::make_unique<ExecutionContext>(std::move(bindings));
+    ctx_ = glow::make_unique<ExecutionContext>(std::move(bindings));
   }
   virtual void tearDownExecutionContext(benchmark::State &state) {}
 
@@ -292,11 +292,11 @@ protected:
     std::vector<std::unique_ptr<DeviceConfig>> configs;
     for (unsigned i = 0; i < numDeviceManagers_; ++i) {
       configs.emplace_back(
-          llvm::make_unique<DeviceConfig>(backend->getBackendName()));
+          glow::make_unique<DeviceConfig>(backend->getBackendName()));
     }
 
     // Create and initialize the HostManager instance.
-    hostManager_ = llvm::make_unique<HostManager>(std::move(configs));
+    hostManager_ = glow::make_unique<HostManager>(std::move(configs));
 
     // Remember the names of all functions in the module before passing
     // ownership to the HostManager.
@@ -533,7 +533,7 @@ protected:
 //----------------------------- Single Node --------------------------------//
 /// Create a module consisting of a single FC operator.
 std::unique_ptr<Module> createSingleNodeModule() {
-  auto mod = llvm::make_unique<Module>();
+  auto mod = glow::make_unique<Module>();
   auto fn = mod->createFunction("singleNode");
   PlaceholderBindings bindings;
 
@@ -564,21 +564,21 @@ std::unique_ptr<DAG> createSingleNodeDAG(
   // The DAG should have one root node and one actual node corresponding to the
   // CompiledFunction obtained by compiling the singular function in the Module
   // created by createSingleNodeModule.
-  auto root = llvm::make_unique<DAGNode>();
-  auto singleNode = llvm::make_unique<DAGNode>();
+  auto root = glow::make_unique<DAGNode>();
+  auto singleNode = glow::make_unique<DAGNode>();
 
   root->children.emplace_back(singleNode.get());
 
   singleNode->parents.emplace_back(root.get());
   singleNode->deviceIDs = {0};
   singleNode->name = "singleNode";
-  singleNode->runtimeBundle = llvm::make_unique<RuntimeBundle>(
+  singleNode->runtimeBundle = glow::make_unique<RuntimeBundle>(
       compiledFunctions["singleNode"]->getRuntimeBundle());
 
   std::vector<std::unique_ptr<DAGNode>> nodes;
   nodes.emplace_back(std::move(singleNode));
 
-  auto dag = llvm::make_unique<DAG>();
+  auto dag = glow::make_unique<DAG>();
   dag->root = std::move(root);
   dag->nodes = std::move(nodes);
 
