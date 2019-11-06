@@ -3211,13 +3211,14 @@ Error glow::optimizeFunction(Function *F, const Backend &B,
   // need to be lowered, e.g., Clip.
   ::glow::lower(F, cctx, &B);
 
-  // Optimize the graph again, but given the backend's preferred pipeline.
-  ::glow::optimize(F, cctx, B);
+  // Optimize the graph again now that we have a lowered representation.
+  ::glow::optimize(F, cctx);
 
   // Allow the backend to transform the graph after lowering.
   if (B.transformPostLowering(F, cctx)) {
-    // Optimize the graph again after the backend transformation.
-    // In particular, DCE is very likely to be useful.
+    // If the backend made changes, optimize the graph again. Perform only
+    // passes that the Backend has requested so we do not interfere with the
+    // backend's transformations.
     ::glow::optimize(F, cctx, B);
   }
 
