@@ -16,6 +16,7 @@
 
 #include <pybind11/pybind11.h>
 
+#include "FuseKnownPatterns.h"
 #include "PyTorchCommon.h"
 #include "Registration.h"
 #include "TorchGlowTraining.h"
@@ -93,6 +94,19 @@ PYBIND11_MODULE(_torch_glow, m) {
   /// \returns the quantity of the device backends used by the active
   /// HostManager.
   m.def("getGlowBackendNumDevices", []() { return getBackendNumDevices(); });
+
+  /// Calls all of the fusion passes that get run before the PyTorchModelLoader
+  /// run.
+  /// NOTE: This is only exposed for testing.
+  m.def("fuseKnownPatterns_", fuseKnownPatterns);
+
+  /// Calls the removeException pass.
+  /// NOTE: This is only exposed for testing.
+  m.def("removeExceptions_", glow::detail::removeExceptions);
+
+  /// Calls the fuseBranchedLinearPattern pass.
+  /// NOTE: This is only exposed for testing.
+  m.def("fuseBranchedLinearPattern_", glow::detail::fuseBranchedLinearPattern);
 
   /// Binding wrapper class for TorchGlowTraining and its settings.
   py::class_<TorchGlowTrainingWrapper>(m, "TorchGlowTrainingWrapper")

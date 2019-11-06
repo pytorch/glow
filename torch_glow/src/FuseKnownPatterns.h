@@ -22,6 +22,37 @@
 namespace glow {
 /// Fuse known node patterns in \p graph to assist the PyTorchModelLoader.
 void fuseKnownPatterns(std::shared_ptr<torch::jit::Graph> &graph);
+
+/// Passes in detail namespace should not be used directly except for by
+/// unittests.
+namespace detail {
+/// Pass that removes all prim::RaiseException nodes from the \p graph.
+void removeExceptions(std::shared_ptr<torch::jit::Graph> &graph);
+
+/// Pass that fuses the output pattern of Linear module (which contains a branch
+/// based on the dims of the input) in \p graph to a glow::fused_linear op so
+/// that it can be loaded by Glow with the control flow happening at graph
+/// compile time.
+void fuseBranchedLinearPattern(std::shared_ptr<torch::jit::Graph> &graph);
+
+/// Pass that fuses prim::ListConstruct -> aten::cat patterns in \p graph into
+/// prim::FusedConcat node so that the number of tensors being concatenated is
+/// known at graph compile time.
+void fuseConcat(std::shared_ptr<torch::jit::Graph> &graph);
+
+/// Pass that fuses quantized::conv_prepack -> quantized::conv2d patterns in \p
+/// graph into glow::unpacked_quantized_conv2d.
+void fuseConvPrepack(std::shared_ptr<torch::jit::Graph> &graph);
+
+/// Pass that fuses quantized::linear_prepack -> quantized::linear patterns in
+/// \p graph into glow::unpacked_quantized_linear.
+void fuseLinearPrepack(std::shared_ptr<torch::jit::Graph> &graph);
+
+/// Pass that eliminates prim::NumToTensor -> aten::Int patterns in
+/// \p graph.
+void fuseNumToTensorToNum(std::shared_ptr<torch::jit::Graph> &graph);
+} // namespace detail
+
 } // namespace glow
 
 #endif // GLOW_TORCH_GLOW_SRC_FUSE_KNOWN_PATERNS_H
