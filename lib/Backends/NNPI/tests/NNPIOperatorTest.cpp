@@ -85,7 +85,6 @@ std::set<std::string> glow::backendTestBlacklist = {
     "ScatterDataNDimensional/0",
     "ScatterDataNDimensionalSimple/0",
     "ScatterDataQuantized/0",
-    "SigmoidSweep_Float16/0",
     "sliceReshape_Int32/0",
     "sliceVectors_Int32/0",
     "spaceToDepth_block2_Float/0",

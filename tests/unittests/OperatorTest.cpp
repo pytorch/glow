@@ -6071,74 +6071,6 @@ static float16_t refSigmoidFp16(float x) {
   return (float16_t)res;
 }
 
-/// LUT Sigmoid reference implementation.
-constexpr std::array<float, 257> sig_lut = {
-    0.0000454, 0.0000491, 0.0000531, 0.0000574, 0.0000620, 0.0000671, 0.0000725,
-    0.0000784, 0.0000848, 0.0000917, 0.0000991, 0.0001072, 0.0001159, 0.0001253,
-    0.0001355, 0.0001465, 0.0001584, 0.0001712, 0.0001851, 0.0002002, 0.0002164,
-    0.0002340, 0.0002530, 0.0002736, 0.0002958, 0.0003198, 0.0003458, 0.0003739,
-    0.0004043, 0.0004371, 0.0004726, 0.0005110, 0.0005525, 0.0005974, 0.0006459,
-    0.0006983, 0.0007551, 0.0008164, 0.0008826, 0.0009543, 0.0010318, 0.0011155,
-    0.0012060, 0.0013039, 0.0014097, 0.0015241, 0.0016477, 0.0017814, 0.0019258,
-    0.0020820, 0.0022508, 0.0024333, 0.0026305, 0.0028436, 0.0030739, 0.0033229,
-    0.0035919, 0.0038827, 0.0041969, 0.0045363, 0.0049031, 0.0052995, 0.0057276,
-    0.0061902, 0.0066898, 0.0072295, 0.0078123, 0.0084418, 0.0091215, 0.0098554,
-    0.0106477, 0.0115030, 0.0124261, 0.0134222, 0.0144971, 0.0156567, 0.0169074,
-    0.0182562, 0.0197105, 0.0212781, 0.0229674, 0.0247875, 0.0267478, 0.0288586,
-    0.0311307, 0.0335754, 0.0362050, 0.0390322, 0.0420706, 0.0453343, 0.0488383,
-    0.0525983, 0.0566305, 0.0609519, 0.0655802, 0.0705335, 0.0758307, 0.0814908,
-    0.0875334, 0.0939783, 0.1008453, 0.1081542, 0.1159245, 0.1241755, 0.1329255,
-    0.1421920, 0.1519913, 0.1623382, 0.1732456, 0.1847244, 0.1967828, 0.2094262,
-    0.2226569, 0.2364735, 0.2508708, 0.2658397, 0.2813663, 0.2974325, 0.3140153,
-    0.3310870, 0.3486153, 0.3665631, 0.3848890, 0.4035475, 0.4224892, 0.4416618,
-    0.4610099, 0.4804761, 0.5000019, 0.5195276, 0.5389938, 0.5583417, 0.5775141,
-    0.5964557, 0.6151139, 0.6334396, 0.6513871, 0.6689151, 0.6859866, 0.7025691,
-    0.7186350, 0.7341613, 0.7491299, 0.7635270, 0.7773433, 0.7905738, 0.8032170,
-    0.8152752, 0.8267538, 0.8376611, 0.8480079, 0.8578071, 0.8670735, 0.8758234,
-    0.8840743, 0.8918446, 0.8991535, 0.9060205, 0.9124653, 0.9185080, 0.9241681,
-    0.9294653, 0.9344187, 0.9390470, 0.9433685, 0.9474007, 0.9511607, 0.9546647,
-    0.9579285, 0.9609669, 0.9637942, 0.9664238, 0.9688686, 0.9711407, 0.9732515,
-    0.9752119, 0.9770320, 0.9787214, 0.9802890, 0.9817433, 0.9830921, 0.9843429,
-    0.9855025, 0.9865774, 0.9875736, 0.9884967, 0.9893520, 0.9901443, 0.9908783,
-    0.9915580, 0.9921875, 0.9927703, 0.9933100, 0.9938097, 0.9942722, 0.9947004,
-    0.9950967, 0.9954635, 0.9958030, 0.9961172, 0.9964080, 0.9966770, 0.9969260,
-    0.9971563, 0.9973695, 0.9975667, 0.9977491, 0.9979179, 0.9980741, 0.9982186,
-    0.9983522, 0.9984759, 0.9985903, 0.9986961, 0.9987939, 0.9988845, 0.9989682,
-    0.9990457, 0.9991173, 0.9991836, 0.9992449, 0.9993016, 0.9993541, 0.9994026,
-    0.9994475, 0.9994890, 0.9995274, 0.9995629, 0.9995957, 0.9996261, 0.9996542,
-    0.9996801, 0.9997042, 0.9997264, 0.9997470, 0.9997660, 0.9997836, 0.9997998,
-    0.9998149, 0.9998288, 0.9998416, 0.9998535, 0.9998645, 0.9998747, 0.9998841,
-    0.9998928, 0.9999009, 0.9999083, 0.9999152, 0.9999216, 0.9999275, 0.9999329,
-    0.9999380, 0.9999426, 0.9999469, 0.9999509, 0.9999546};
-static float16_t eval_lut_func(float x) {
-  float16_t a = -10;
-  float16_t b = 10;
-  uint32_t nBins = 256;
-  const float *lut = sig_lut.data();
-  float16_t delta = (b - a) / (float16_t)nBins;
-  float16_t one_delta = float16_t(1) / delta;
-  float16_t bin_calc = (x - (float)a) * (float)one_delta;
-  if (bin_calc < float16_t(0)) {
-    return float16_t(0);
-  }
-  if (bin_calc >= float16_t(256)) { // CHANGE TO TABLE SIZE-1
-    return float16_t(1);
-  }
-  uint32_t bin = (uint32_t)floor((float)bin_calc);
-  float16_t bin_x = a + delta * float16_t(bin);
-  float16_t p = (x - (float)bin_x) * (float)one_delta;
-  return float16_t(lut[bin + 1]) * p + (float16_t(1) - p) * float16_t(lut[bin]);
-}
-
-/// Mirrored LUT implementation.
-static float16_t refSigmoidFp16LUT(float x) {
-  if (x <= 0) {
-    return eval_lut_func(x);
-  } else {
-    return float16_t(1) - eval_lut_func(-x);
-  }
-}
-
 /// Test to verify that the sigmoid implementation is equal to the
 /// Mirrored LUT implementation
 /// Does a sweep of -15,15 and prints the outputs of the NNPI implementation
@@ -6171,26 +6103,32 @@ static void testSigmoidFp16Sweep(glow::PlaceholderBindings &bindings,
   EE.run(bindings);
 
   auto resultH = resultTensor->getHandle();
-  int count = 0;
+  int numDiffs = 0;
 
   for (size_t i = 0; i < N; i++) {
     float inputV = inputH.at({i});
     float refIdeal = refSigmoidFp16(inputV);
-    float refLut = refSigmoidFp16LUT(inputV);
     float output = resultH.at({i});
-    float diff = fabs(output - refLut);
+    float absDiff = fabs(output - refIdeal);
+    float relDiff = fabs(absDiff / (refIdeal + 1e-8));
 
-    if (diff > 1e-6) {
-      count++;
+    bool failed = false;
+    // Relative error should be 2^-11 but we are relaxing this constraint
+    // due to linear interpolation
+    // Absolute error can remain 1e-5 for now
+    if (absDiff > 1e-5 && relDiff > 2e-3) {
+      numDiffs++;
+      failed = true;
     }
 
     llvm::outs() << "Sigmoid " << i << " " << inputV << " Backend:" << output
-                 << " ref_ideal:" << refIdeal << " ref_lut:" << refLut
-                 << " diff:" << diff << "\n";
+                 << " ref_ideal:" << refIdeal << " relDiff:" << relDiff
+                 << " absDiff:" << absDiff << " failed:" << failed << "\n";
   }
+  llvm::outs() << "Number of diffs: " << numDiffs << "\n";
   llvm::outs().flush();
 
-  EXPECT_EQ(count, 0);
+  EXPECT_EQ(numDiffs, 0);
 }
 
 TEST_P(OperatorTest, SigmoidSweep_Float16) {
