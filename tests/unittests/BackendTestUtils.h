@@ -287,6 +287,9 @@ std::unordered_set<Tensor *> cloneFunInsideFun(FunctionTensorPair FTP,
                                                CompilationContext &cctx,
                                                unsigned parallelCount);
 
+/// \returns the number of nodes in \p F of kind \p kind.
+unsigned countNodeKind(Function *F, Kinded::Kind kind);
+
 void inferConvNet(Tensor *inputs, Tensor *filter, Tensor *bias, Tensor *out,
                   llvm::StringRef kind);
 

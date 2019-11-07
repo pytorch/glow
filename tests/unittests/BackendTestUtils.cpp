@@ -364,6 +364,16 @@ std::unordered_set<Tensor *> cloneFunInsideFun(FunctionTensorPair FTP,
   return resultTensors;
 }
 
+unsigned countNodeKind(Function *F, Kinded::Kind kind) {
+  unsigned count = 0;
+  for (auto &n : F->getNodes()) {
+    if (n.getKind() == kind) {
+      count++;
+    }
+  }
+  return count;
+}
+
 void inferIntLookupTableNet(Tensor *input, Tensor *out,
                             llvm::ArrayRef<int8_t> table,
                             llvm::StringRef kind) {
