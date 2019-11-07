@@ -144,7 +144,7 @@ public:
     }
 
     CompilationContext ctx;
-    hostManager_->addNetwork(std::move(mod), ctx);
+    EXIT_ON_ERR(hostManager_->addNetwork(std::move(mod), ctx));
   }
 
   void run() override {
