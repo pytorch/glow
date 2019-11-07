@@ -349,6 +349,28 @@ bool SinkCode::run(Function *F, const CompilationContext &cctx) {
       continue;
     }
 
+    // Sink Transpose below Clip nodes.
+    if (auto *CL = dyn_cast<ClipNode>(node)) {
+      auto *TR = dyn_cast<TransposeNode>(CL->getInput());
+
+      if (!TR) {
+        continue;
+      }
+
+      // Keep the same quantization parameters for Clip output, but
+      // change the shape to appropriate value.
+      auto clipOutTy = F->getParent()->uniqueTypeWithNewShape(
+          CL->getResult().getType(), TR->getInput().dims());
+      auto *NCL = F->createClip(CL->getName(), TR->getInput(), clipOutTy,
+                                CL->getMin(), CL->getMax());
+      NCL->setPredicate(node->getPredicate());
+      auto *newTR = F->createTranspose(TR->getName(), NCL, TR->getShuffle());
+      newTR->setPredicate(node->getPredicate());
+      CL->getResult().replaceAllUsesOfWith(newTR);
+      changed = true;
+      continue;
+    }
+
     // Sink Transpose below Sigmoid nodes.
     if (auto *SI = dyn_cast<SigmoidNode>(node)) {
       auto *TR = dyn_cast<TransposeNode>(SI->getInput());

@@ -1152,8 +1152,14 @@ public:
                           NodeValue lambda1, NodeValue lambda2,
                           float epsilon = std::numeric_limits<float>::min());
 
-  /// Create a series of nodes for the Clip operator. It limits the given input
-  /// within an interval specified by the `min` and `max` arguments.
+  /// Create a Clip node with the given \p name, \p input, minimum clip value
+  /// \p min, maximum clip value \p max and output type \p outTy.
+  ClipNode *createClip(llvm::StringRef name, NodeValue input, TypeRef outTy,
+                       float min, float max);
+
+  /// Create a Clip node with the given \p name, \p input, minimum clip value
+  /// \p min, maximum clip value \p max. Result type will be implicitly set
+  /// based on the \p input type.
   ClipNode *createClip(llvm::StringRef name, NodeValue input, float min,
                        float max);
   /// @}
