@@ -1791,8 +1791,7 @@ bool TransposeConstants::run(Function *F, const CompilationContext &cctx) {
       continue;
     }
     auto *C = dyn_cast<Constant>(TN->getInput());
-    // C must have a single use.
-    if (!C || !C->hasOneUse()) {
+    if (!C) {
       continue;
     }
     // Create a new Constant NC to hold the transposed result.
@@ -2123,10 +2122,7 @@ bool OptimizeReshape::run(Function *F, const CompilationContext &cctx) {
       continue;
     }
     // Reshape(Constant) -> Constant'.
-    // Only do this if the Constant has a single use, as otherwise we would
-    // duplicate the Constant and increase the memory footprint.
-    auto *C = dyn_cast<Constant>(inputNode);
-    if (C && C->hasOneUse()) {
+    if (auto *C = dyn_cast<Constant>(inputNode)) {
       // Create a new Constant with the type of the reshape.
       auto *newC = F->getParent()->createConstant(
           reshapeNode->getResult().getType(), C->getName());
