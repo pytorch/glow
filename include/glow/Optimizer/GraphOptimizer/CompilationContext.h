@@ -24,7 +24,8 @@
 namespace glow {
 namespace runtime {
 struct PartitionConfig;
-}
+class DeferredWeightLoader;
+} // namespace runtime
 
 /// Configuration for different precision modes.
 struct PrecisionConfiguration {
@@ -109,6 +110,10 @@ struct CompilationContext {
 
   /// How to annotate the compilation log filename.
   std::string compilationLogPrefix{"glow"};
+
+  /// Pointer to deferredWeightLoader object, this is used for large model
+  /// support.
+  runtime::DeferredWeightLoader *deferredWeightLoader{nullptr};
 
   CompilationContext(PlaceholderBindings *bindings_ = nullptr,
                      LoweredInfoMap *loweredInfoMap_ = nullptr)
