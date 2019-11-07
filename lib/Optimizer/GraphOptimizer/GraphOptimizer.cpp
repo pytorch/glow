@@ -3181,6 +3181,11 @@ Error glow::optimizeFunctionBeforeLowering(Function *F,
                                            CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), "glow::optimizeFunctionBeforeLowering")
 
+  // If we only want to lower the Function, do nothing here.
+  if (cctx.optimizationOpts.onlyLower) {
+    return Error::success();
+  }
+
   // Verify the function pre-optimization/lowering.
   assert(F->verify() && "Function must be valid");
 
@@ -3205,6 +3210,21 @@ Error glow::optimizeFunctionBeforeLowering(Function *F,
 Error glow::optimizeFunction(Function *F, const Backend &B,
                              CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), "glow::optimizeFunction")
+
+  // If requested only lower the Function and early return.
+  if (cctx.optimizationOpts.onlyLower) {
+    ::glow::lower(F, cctx, &B);
+    // Cleanup from lowering via DCE.
+    runDCEPass(F, cctx);
+
+    if (!B.verify(*F)) {
+      return MAKE_ERR(
+          ErrorValue::ErrorCode::COMPILE_UNSUPPORTED_NODE_AFTER_OPTIMIZE,
+          "Unsupported node(s) found after only-lowering path for Function " +
+              F->getName().str() + " for backend " + B.getBackendName());
+    }
+    return Error::success();
+  }
 
   RETURN_IF_ERR(optimizeFunctionBeforeLowering(F, cctx));
   // Lower the graph into a sequence of low-level linear algebra operations.
