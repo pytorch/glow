@@ -428,6 +428,12 @@ static int processAndPrintResults(Tensor *SMT,
 static void parseInputImageList(const std::string &inputImageListFile) {
   std::ifstream inFile;
   inFile.open(inputImageListFile);
+  if (!inFile.good()) {
+    llvm::outs() << "Could not open input-image-list-file: "
+                 << inputImageListFile << ", exiting.\n";
+    std::exit(1);
+  }
+
   while (!inFile.eof()) {
     std::string img;
     getline(inFile, img);
