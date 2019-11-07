@@ -40,8 +40,11 @@ protected:
     PlaceholderBindings originalBindings = bindings_.clone();
     PlaceholderBindings optimizedBindings = bindings_.clone();
 
-    // Compile and run functions.
-    EE_.compile(CompilationMode::Infer);
+    // Compile and run functions. Only lower Functions; we do not want to
+    // optimize the unoptimized Function, and the optimized Function has, well,
+    // already been optimized.
+    cctx_.optimizationOpts.onlyLower = true;
+    EE_.compile(cctx_);
     EE_.run(originalBindings, F_->getName());
     EE_.run(optimizedBindings, optimizedF_->getName());
 
@@ -61,6 +64,8 @@ protected:
   Function *optimizedF_{nullptr};
   /// The bindings used to check numerical equivalence for the test case.
   PlaceholderBindings bindings_;
+  /// CompilationContext used for all Functions in \ref mod_.
+  CompilationContext cctx_;
 };
 
 class GraphFold : public GraphOptz {};
@@ -1679,11 +1684,10 @@ TEST_F(GraphOptz, ReshapeAfterSplat) {
   // Before optimization, we have 9 nodes in the graph.
   EXPECT_EQ(F_->getNodes().size(), 9);
 
-  CompilationContext cctx;
-  cctx.compMode = CompilationMode::Infer;
+  cctx_.compMode = CompilationMode::Infer;
   // Do not perform any compile-time constant folding.
-  cctx.optimizationOpts.enableConstantFolding = false;
-  ::glow::optimize(F_, cctx);
+  cctx_.optimizationOpts.enableConstantFolding = false;
+  ::glow::optimize(F_, cctx_);
 
   // After optimization, we expect to see only 8 nodes, as Z2,R2 would be
   // replace by a new splat node.
@@ -2732,11 +2736,10 @@ TEST_F(GraphOptz, VarsCSE) {
   // placeholder).
   EXPECT_EQ(mod_.getConstants().size(), 3);
 
-  CompilationContext cctx;
-  cctx.compMode = CompilationMode::Infer;
+  cctx_.compMode = CompilationMode::Infer;
   // Do not perform any compile-time constant folding.
-  cctx.optimizationOpts.enableConstantFolding = false;
-  ::glow::optimize(F_, cctx);
+  cctx_.optimizationOpts.enableConstantFolding = false;
+  ::glow::optimize(F_, cctx_);
 
   // Now only two variables are left; input1 and input2 have been combined,
   // but input3 has not.
@@ -2794,11 +2797,10 @@ TEST_F(GraphOptz, VarsCSENaN) {
   // placeholder).
   EXPECT_EQ(mod_.getConstants().size(), 2);
 
-  CompilationContext cctx;
-  cctx.compMode = CompilationMode::Infer;
+  cctx_.compMode = CompilationMode::Infer;
   // Do not perform any compile-time constant folding.
-  cctx.optimizationOpts.enableConstantFolding = false;
-  ::glow::optimize(F_, cctx);
+  cctx_.optimizationOpts.enableConstantFolding = false;
+  ::glow::optimize(F_, cctx_);
 
   // Now only one variables is left; input1 and input2 have been combined.
   EXPECT_EQ(mod_.getConstants().size(), 1);
@@ -2918,10 +2920,9 @@ TEST_F(GraphOptz, ReshapeConstantOneUse) {
   // Before optimization, we have 2 Reshapes and a Save.
   EXPECT_EQ(F_->getNodes().size(), 3);
 
-  CompilationContext cctx;
   // Skip ConstantFolding as it would have the same result as this opt.
-  cctx.optimizationOpts.enableConstantFolding = false;
-  ::glow::optimize(F_, cctx);
+  cctx_.optimizationOpts.enableConstantFolding = false;
+  ::glow::optimize(F_, cctx_);
 
   // After optimization, we expect to see just a Save.
   EXPECT_EQ(F_->getNodes().size(), 1);

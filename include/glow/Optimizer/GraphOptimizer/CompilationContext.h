@@ -61,6 +61,10 @@ using QuantizationMode = PrecisionConfiguration::QuantizationMode;
 
 /// Options relevant to optimizations during compilation.
 struct OptimizationOptions {
+  /// Only lower, i.e. skip optimizations and precision transformations. Used
+  /// for testing.
+  bool onlyLower{false};
+
   /// If true, perform compile-time computation of constant operations.
   bool enableConstantFolding{true};
 };
