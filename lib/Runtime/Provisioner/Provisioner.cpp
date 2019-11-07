@@ -20,6 +20,7 @@
 #include "glow/Graph/Graph.h"
 #include "glow/Support/Debug.h"
 
+#include "llvm/Support/FileSystem.h"
 #include "llvm/Support/FormatVariadic.h"
 
 #include <future>
@@ -28,6 +29,10 @@
 
 using namespace glow;
 using namespace runtime;
+
+namespace glow {
+extern bool GlowDumpCompilationLog;
+}
 
 namespace {
 // STL sorting algorithm cannot inline predicate if it got provided as a regular
@@ -313,6 +318,24 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
 
         auto compiledOrErr =
             backends_[deviceBackendName]->compile(function, options);
+
+        if (GlowDumpCompilationLog) {
+          llvm::SmallString<64> path;
+          std::string prefix =
+              llvm::formatv("{0}-{1}", cctx.compilationLogPrefix,
+                            function->getName())
+                  .str();
+          auto tempFileRes =
+              llvm::sys::fs::createTemporaryFile(prefix, "log", path);
+          if (tempFileRes.value() != 0) {
+            LOG(ERROR)
+                << "Failed to create temp file for Glow compilation log: "
+                << tempFileRes;
+          }
+
+          function->getLogContext()->dumpLog(path);
+        }
+
         // Check to see if an error was encountered while compiling.
         if (!compiledOrErr) {
           // If and error occured, clean up provisioning state and return

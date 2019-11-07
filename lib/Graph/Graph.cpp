@@ -437,7 +437,6 @@ Function::~Function() {
     auto cur = it++;
     eraseNode(&*cur);
   }
-  logCtx_->dumpLog(getName());
 }
 
 TypeRef Module::uniqueType(ElemKind elemTy, llvm::ArrayRef<size_t> dims) {

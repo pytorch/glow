@@ -20,6 +20,7 @@
 #include "llvm/Support/FileSystem.h"
 
 namespace glow {
+extern bool GlowDumpCompilationLog;
 namespace onnxifi {
 
 extern bool GlowSaveOnnxifiModel;
@@ -89,6 +90,9 @@ onnxStatus HostManagerBackend::addNetwork(std::unique_ptr<Module> module) {
   if (GlowClipFP16) {
     precConfig.clipFP16 = GlowClipFP16;
     LOG(INFO) << "Clipping to fp16 enabled";
+  }
+  if (GlowDumpCompilationLog) {
+    cctx.compilationLogPrefix = "glow-onnxifi";
   }
 
   auto err =
