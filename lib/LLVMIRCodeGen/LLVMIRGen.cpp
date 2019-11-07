@@ -1415,9 +1415,11 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *dest = MM->getDest();
     auto *lhs = MM->getLHS();
     auto *rhs = MM->getRHS();
+    auto *scratch = MM->getScratch();
     auto *destPtr = emitValueAddress(builder, dest);
     auto *lhsPtr = emitValueAddress(builder, lhs);
     auto *rhsPtr = emitValueAddress(builder, rhs);
+    auto *scratchPtr = emitValueAddress(builder, scratch);
 
     auto *destDims = emitValueDims(builder, dest);
     auto *lhsDims = emitValueDims(builder, lhs);
@@ -1446,7 +1448,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
                   destOffset, lhsOffset, rhsOffset, outPre, outPost, outScale});
     } else {
       createCall(builder, F,
-                 {destPtr, lhsPtr, rhsPtr, destDims, lhsDims, rhsDims});
+                 {destPtr, lhsPtr, rhsPtr, destDims, lhsDims, rhsDims, scratchPtr});
     }
     break;
   }

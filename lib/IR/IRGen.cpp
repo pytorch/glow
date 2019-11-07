@@ -439,6 +439,44 @@ void IRGenVisitor::post(Node *parent, Node *N) {
     registerIR(SLWSG->getGradOfInputNamedWeights(), weightsGrad);
     break;
   }
+
+  case glow::Kinded::Kind::MatMulNodeKind: {
+    auto *MMN = cast<MatMulNode>(N);
+    auto *LHS = valueForNode(MMN->getLHS());
+    auto *RHS = valueForNode(MMN->getRHS());
+
+    // Allocate output activation.
+    std::string allocName = std::string(N->getName()) + ".res";
+    auto *Dest__ = builder_.createAllocActivationInst(allocName,MMN->getResult().getType());
+
+    // Compute scratch size.
+    constexpr int pack_threshold = 1024;
+    constexpr int kc = 128;
+    constexpr int nc = 4096;
+    int m = MMN->getResult().dims()[1];
+    bool pack = m >= pack_threshold;
+    size_t scratchSize;
+    if (pack) {
+      scratchSize = kc * nc;
+    } else {
+      // Scratch size should be 0 in this case but the shape of a tensor is not allowed to be 0.
+      // We use a dummy value of 1.
+      scratchSize = 1;
+    }
+
+    // Allocate scratch.
+    allocName = std::string(N->getName()) + ".scratch";
+    auto *Scratch = builder_.createAllocActivationInst(allocName, ElemKind::FloatTy, {scratchSize});
+
+    // Create instruction.
+    auto *V = builder_.createMatMulInst(N->getName(), Dest__, LHS, RHS, Scratch);
+
+    if (N->hasPredicate()) { V->setPredicate(valueForNode(N->getPredicate())); }
+    registerIR(MMN->getResult(), V->getDest());
+    nodeToInstr_[N] = V;
+    break;
+  }
+
   }
 }
 

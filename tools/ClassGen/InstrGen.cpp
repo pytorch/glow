@@ -237,7 +237,7 @@ int main(int argc, char **argv) {
       .addOperand("Dest", OperandKind::Out)
       .addOperand("LHS", OperandKind::In)
       .addOperand("RHS", OperandKind::In)
-      .autoIRGen()
+      .addOperand("Scratch", OperandKind::Out)
       .autoVerify(VerifyKind::SameElementType, {"Dest", "LHS", "RHS"});
 
   /// Accumulates all of the layers in the batch along the Axis dimension and

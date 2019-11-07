@@ -224,11 +224,12 @@ void libjit_matmul_inner(int m, int n, int k, const float *a, int lda,
 template <bool pack>
 void __attribute__((noinline))
 libjit_matmul_outer(size_t m, size_t n, size_t k, const float *a, size_t lda,
-                    const float *b, size_t ldb, float *c, size_t ldc) {
-  float *packedB = nullptr;
-  if (pack) {
-    libjit_aligned_malloc((void **)&packedB, 64, kc * nc);
-  }
+                    const float *b, size_t ldb, float *c, size_t ldc,
+                    float *packedB) {
+  //float *packedB = nullptr;
+  //if (pack) {
+  //  libjit_aligned_malloc((void **)&packedB, 64, kc * nc);
+  //}
 
   for (size_t p = 0; p < k; p += kc) {
     size_t pb = MIN(k - p, kc);
@@ -245,9 +246,9 @@ libjit_matmul_outer(size_t m, size_t n, size_t k, const float *a, size_t lda,
     }
   }
 
-  if (pack) {
-    libjit_aligned_free(packedB);
-  }
+  //if (pack) {
+  //  libjit_aligned_free(packedB);
+  //}
 }
 
 #undef C
@@ -300,7 +301,7 @@ extern "C" {
 /// \p b is a k x n matrix, so \p bDims = {k, n}
 void libjit_matmul_f(float *c, const float *a, const float *b,
                      const size_t *cDims, const size_t *aDims,
-                     const size_t *bDims) {
+                     const size_t *bDims, float *scratch) {
   memset(c, 0, cDims[0] * cDims[1] * sizeof(float));
   // Call the matrix multiplication routine with appropriate dimensions and
   // leading dimensions. The "leading dimension" for a row-major matrix is equal
@@ -318,9 +319,9 @@ void libjit_matmul_f(float *c, const float *a, const float *b,
   int k = aDims[1];
   bool pack = m >= pack_threshold;
   if (pack) {
-    libjit_matmul_outer<true>(m, n, k, b, bDims[1], a, aDims[1], c, cDims[1]);
+    libjit_matmul_outer<true>(m, n, k, b, bDims[1], a, aDims[1], c, cDims[1], scratch);
   } else {
-    libjit_matmul_outer<false>(m, n, k, b, bDims[1], a, aDims[1], c, cDims[1]);
+    libjit_matmul_outer<false>(m, n, k, b, bDims[1], a, aDims[1], c, cDims[1], scratch);
   }
 }
 
