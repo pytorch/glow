@@ -127,6 +127,10 @@ public:
   /// Context aware single execution of a function with the given \p
   /// name.
   void run(PlaceholderBindings &bindings, llvm::StringRef name);
+
+  /// \returns a reference to the backend with name \p backendName owned by the
+  /// Provisioner inside of \ref hostManager_.
+  Backend &getBackend(llvm::StringRef backendName) const;
 };
 
 //===----------------------------------------------------------------------===//

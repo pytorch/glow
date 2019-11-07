@@ -377,6 +377,12 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
   return Error::success();
 };
 
+Backend &Provisioner::getBackend(llvm::StringRef backendName) const {
+  assert(backends_.count(backendName) &&
+         "No backend created by specified name.");
+  return *backends_.at(backendName);
+}
+
 Error Provisioner::removeFunction(llvm::StringRef name) {
   std::lock_guard<std::mutex> functionsLock(functionsLock_);
   auto it = activeFunctions_.find(name);

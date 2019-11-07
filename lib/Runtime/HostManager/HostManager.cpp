@@ -544,3 +544,7 @@ bool runtime::loadDeviceConfigsFromFile(
   }
   return true;
 }
+
+Backend &HostManager::getBackend(llvm::StringRef backendName) const {
+  return provisioner_->getBackend(backendName);
+}

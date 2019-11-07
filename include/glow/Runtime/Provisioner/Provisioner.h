@@ -44,6 +44,9 @@ public:
   /// Remove stored compiledFunction.
   Error removeFunction(llvm::StringRef name);
 
+  /// \returns a reference to the backend with name \p backendName.
+  Backend &getBackend(llvm::StringRef backendName) const;
+
 private:
   /// Map of backends for all devices, one backend per device type.
   std::unordered_map<std::string, std::unique_ptr<Backend>> backends_;
