@@ -240,6 +240,16 @@ int main(int argc, char **argv) {
       .autoIRGen()
       .autoVerify(VerifyKind::SameElementType, {"Dest", "LHS", "RHS"});
 
+  /// Performs batch matrix multiplication between the LHS and RHS. The operands
+  /// are a stack of two dimensional matrices. Example: (N, A, Z) x (N, Z, B) =>
+  /// (N, A, B).
+  BB.newInstr("BatchMatMul")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("LHS", OperandKind::In)
+      .addOperand("RHS", OperandKind::In)
+      .autoIRGen()
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "LHS", "RHS"});
+
   /// Accumulates all of the layers in the batch along the Axis dimension and
   /// produce a tensor that has the same dimensions as the input tensor without
   /// the Axis dimension.

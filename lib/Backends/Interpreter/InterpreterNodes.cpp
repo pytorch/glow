@@ -2597,6 +2597,11 @@ void BoundInterpreterFunction::fwdMatMulInst(const glow::MatMulInst *I) {
                             I->getLHS()->getElementType(), I);
 }
 
+void BoundInterpreterFunction::fwdBatchMatMulInst(
+    const glow::BatchMatMulInst *I) {
+  DCHECK(!"Found BatchMatMulInst but BatchMatMul is lowered on Interpreter");
+}
+
 //===----------------------------------------------------------------------===//
 //                       Row-wise quantized FC
 //===----------------------------------------------------------------------===//
