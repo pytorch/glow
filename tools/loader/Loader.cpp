@@ -516,6 +516,9 @@ void Loader::compile(CompilationContext &cctx) {
     for (auto function : module->getFunctions()) {
       std::string filename =
           function->getFilename() + "_" + dumpGraphDAGFileOpt;
+      if (module->getFunctions().size() == 1) {
+        filename = dumpGraphDAGFileOpt;
+      }
       function->dumpDAG(filename.c_str());
     }
   }
