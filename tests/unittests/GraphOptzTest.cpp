@@ -630,6 +630,7 @@ TEST_F(GraphOptz, batchNormAfterConvNotOptimizeWhenMoreThanOneUseOfConv) {
 enum class TestSinkTransposeNodesKind {
   BatchNormalization,
   Relu,
+  Clip,
   Sigmoid,
   Tanh,
   Quantize,
@@ -647,6 +648,9 @@ public:
     }
     case TestSinkTransposeNodesKind::Relu: {
       return F_->createRELU("relu", T)->getResult();
+    }
+    case TestSinkTransposeNodesKind::Clip: {
+      return F_->createClip("clip", T, 0.0, 6.0)->getResult();
     }
     case TestSinkTransposeNodesKind::Sigmoid: {
       return F_->createSigmoid("sigmoid", T)->getResult();
@@ -756,6 +760,7 @@ GLOW_INSTANTIATE_TEST_SUITE_P(
     TestSinkTranspose, GraphOptzSinkTransposeBelowParametrized,
     ::testing::Values(TestSinkTransposeNodesKind::BatchNormalization,
                       TestSinkTransposeNodesKind::Relu,
+                      TestSinkTransposeNodesKind::Clip,
                       TestSinkTransposeNodesKind::Sigmoid,
                       TestSinkTransposeNodesKind::Tanh,
                       TestSinkTransposeNodesKind::Quantize));
