@@ -94,6 +94,9 @@ struct CompilationContext {
   /// Configuration for different precision modes.
   PrecisionConfiguration precisionConfig;
 
+  /// How to annotate the compilation log filename.
+  std::string compilationLogPrefix{"glow"};
+
   CompilationContext(PlaceholderBindings *bindings_ = nullptr,
                      LoweredInfoMap *loweredInfoMap_ = nullptr)
       : bindings(bindings_), loweredInfoMap(loweredInfoMap_) {}
