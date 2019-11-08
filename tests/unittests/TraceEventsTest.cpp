@@ -123,7 +123,7 @@ public:
          ExecutionEngine.getModule().getFunctions().front()->getNodes()) {
       std::string kind(Kinded::getKindName(i.getKind()));
       std::transform(kind.begin(), kind.end(), kind.begin(),
-                     [](unsigned char c) { return std::tolower(c); });
+                     [](unsigned char c) { return ::tolower(c); });
       if (checkedKinds.find(kind) != checkedKinds.end()) {
         std::string name(Module::getPrefix(i.getName()));
         // Let's remove all digits at the end of name since the code generation
