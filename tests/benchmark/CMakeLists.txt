@@ -64,6 +64,16 @@ target_link_libraries(TransposeBench
                         HostManager
                         CPURuntimeNative)
 
+add_executable(BERTProxyLayerBench
+               BERTProxyLayerBench.cpp)
+target_link_libraries(BERTProxyLayerBench
+                      PRIVATE
+                        ExecutionEngine
+                        Graph
+                        GraphOptimizer
+                        HostManager
+                        CPURuntimeNative)
+
 add_executable(RuntimeBench
                RuntimeBench.cpp)
 target_include_directories(RuntimeBench
