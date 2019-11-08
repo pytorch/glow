@@ -320,9 +320,7 @@ GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxWaitEvent)(onnxEvent event) {
     return ONNXIFI_STATUS_INVALID_EVENT;
   }
 
-  glowEvent->wait();
-
-  return ONNXIFI_STATUS_SUCCESS;
+  return glowEvent->wait();
 }
 
 /// Wait until an ONNXIFI \p event is signalled or until \p timeoutMs
