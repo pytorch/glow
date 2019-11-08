@@ -161,6 +161,16 @@ public:
   ///       responsible to update these if need be.
   void setType(unsigned idx, TypeRef ty);
 
+  /// Set the \p idx'th result type of the node, without checking if the dims of
+  /// the old type match the dims of the new one.
+  /// \note This setter only changes the type of this one
+  ///       result. If that type is incompatible with
+  ///       the inputs of the node, the caller is
+  ///       responsible to update these if need be.
+  ///       This function does not check for validity
+  ///       of input dims and whether the result exists.
+  void setTypeUnsafe(unsigned idx, TypeRef ty);
+
   /// Methods that forward to the result type (that must be valid):
   /// @{
   ElemKind getElementType(unsigned resNo) const;

@@ -32,9 +32,13 @@ TypeRef Node::getType(unsigned idx) const {
 }
 
 void Node::setType(unsigned idx, TypeRef ty) {
-  assert(idx < getNumResults() && "Result number does not exist.");
   assert(types_[idx]->dims() == ty->dims() &&
          "Better create a new node at this point");
+  setTypeUnsafe(idx, ty);
+}
+
+void Node::setTypeUnsafe(unsigned idx, TypeRef ty) {
+  assert(idx < getNumResults() && "Result number does not exist.");
   types_[idx] = ty;
 }
 

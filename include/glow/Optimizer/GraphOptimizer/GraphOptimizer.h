@@ -95,6 +95,19 @@ Error executeConstantFunction(Backend &backend, Function &F,
 bool executeVerticalFCWeightsSplit(Function *F, unsigned numOfChunks,
                                    unsigned minKToSplit);
 
+/// Represents what kind of parallelization transformation should be performed
+/// by \ref parallelizeOps().
+enum class ParallelTransformKind { None, Data, Model };
+
+/// Perform data or model parallel transformation of supported Nodes in \p F.
+/// \p numOfChunksMap maps Nodes to how many chunks they should be split into;
+/// if not listed this falls back to \p numOfChunks. \p parOpts represents what
+/// kind of parallelism to use.
+bool parallelizeOps(
+    Function *F, const llvm::DenseMap<Node *, size_t> &numOfChunksMap,
+    const llvm::DenseMap<Node *, ParallelTransformKind> &parOpts,
+    size_t numOfChunks);
+
 } // namespace glow
 
 #endif // GLOW_OPTIMIZER_GRAPHOPTIMIZER_GRAPHOPTIMIZER_H
