@@ -461,6 +461,10 @@ private:
   /// Load a glow::fused_linear node.
   /// \returns error on failure.
   Error loadGlowFusedLinear(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch aten::permute node.
+  /// \returns error on failure.
+  Error loadPermute(const torch::jit::Node *ptNode);
 };
 
 } // namespace glow

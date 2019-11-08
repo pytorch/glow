@@ -645,6 +645,7 @@ PyTorchModelLoader::getSymbolsMapping() {
        {{"aten::relu", "aten::relu_"}, &PyTorchModelLoader::loadRelu, {}},
        {{"aten::tanh", "aten::tanh_"}, &PyTorchModelLoader::loadTanh, {}},
        {{"aten::t", "aten::t_"}, &PyTorchModelLoader::loadT, {}},
+       {{"aten::permute"}, &PyTorchModelLoader::loadPermute, {}},
        {{"aten::transpose", "aten::transpose_"},
         &PyTorchModelLoader::loadTranspose,
         {}},
@@ -2441,6 +2442,37 @@ Error PyTorchModelLoader::loadSoftMax(const torch::jit::Node *ptNode) {
   auto origInDims = in.getType()->dims();
   auto *glowNode = F_.createReshape("reshapeOutput", SM, origInDims);
   return addValueMapping(outputs[0], glowNode);
+}
+
+Error PyTorchModelLoader::loadPermute(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 2, outputs, 1));
+
+  glow::NodeValue in;
+  ASSIGN_VALUE_OR_RETURN_ERR(in, getGlowNodeValueForValue(inputs[0]));
+  size_t inDims = in.dims().size();
+
+  std::vector<int64_t> *shuffle;
+  ASSIGN_VALUE_OR_RETURN_ERR(shuffle,
+                             iValToIntList(getGlowIValueForValue(inputs[1])));
+
+  for (const int64_t dim : *shuffle) {
+    RETURN_ERR_IF_NOT(dim >= 0,
+                      "Negative shuffle dimensions not supported by Glow yet.");
+    RETURN_ERR_IF_NOT(
+        dim < inDims,
+        "All shuffle dimensions must be less than the rank of the input.");
+  }
+
+  RETURN_ERR_IF_NOT(shuffle->size() == inDims,
+                    "Shuffle for permute must has the same number of "
+                    "dimensions as the input tensor.");
+
+  auto output = F_.createTranspose("reshapeInput", in,
+                                   castVector<glow::unsigned_t>(*shuffle))
+                    ->getResult();
+  return addValueMapping(outputs[0], output);
 }
 
 Error PyTorchModelLoader::loadFlatten(const torch::jit::Node *ptNode) {
