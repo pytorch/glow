@@ -613,6 +613,17 @@ struct TransposeInputs {
     dim1 = 2,
   };
 };
+
+/// Indexes of glow::fused_linear inputs.
+struct GlowFusedLinearInputs {
+  enum {
+    input = 0,
+    weights = 1,
+    bias = 2,
+    dim = 3,
+    add_scalar = 4,
+  };
+};
 } // namespace
 
 // static
@@ -662,6 +673,10 @@ PyTorchModelLoader::getSymbolsMapping() {
        {{"quantized::add_relu"},
         &PyTorchModelLoader::loadQuantizedAddRelu,
         {QuantizedAddReluInputs::scale, QuantizedAddReluInputs::zero_point}},
+       {{"glow::fused_linear"},
+        &PyTorchModelLoader::loadGlowFusedLinear,
+        {GlowFusedLinearInputs::bias, GlowFusedLinearInputs::weights,
+         GlowFusedLinearInputs::dim, GlowFusedLinearInputs::add_scalar}},
        {{"glow::unpacked_quantized_conv2d"},
         &PyTorchModelLoader::loadQuantizedConvUnpacked,
         {QuantizedUnpackedConv2dInputs::stride,
@@ -1154,6 +1169,53 @@ Error PyTorchModelLoader::loadQuantizedLinear(const torch::jit::Node *ptNode) {
   auto fc = F_.createFullyConnected("quantized_fc", input, weight, bias, outTy);
 
   return addValueMapping(outputs[0], rescaleIntToUint(fc->getResult()));
+}
+
+Error PyTorchModelLoader::loadGlowFusedLinear(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 5, outputs, 1));
+
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      input, getGlowNodeValueForValue(inputs[GlowFusedLinearInputs::input]));
+
+  glow::NodeValue weights;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      weights,
+      getGlowNodeValueForValue(inputs[GlowFusedLinearInputs::weights]));
+
+  glow::NodeValue bias;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      bias, getGlowNodeValueForValue(inputs[GlowFusedLinearInputs::bias]));
+
+  int64_t dim;
+  ASSIGN_VALUE_OR_RETURN_ERR(dim, iValToInt(getGlowIValueForValue(
+                                      inputs[GlowFusedLinearInputs::dim])));
+
+  int64_t addScalar;
+  ASSIGN_VALUE_OR_RETURN_ERR(addScalar,
+                             iValToInt(getGlowIValueForValue(
+                                 inputs[GlowFusedLinearInputs::add_scalar])));
+
+  RETURN_ERR_IF_NOT(addScalar == 1,
+                    glow::strFormat("Scalar must have value equal 1."));
+
+  glow::NodeValue output;
+  if (input.dims().size() == dim) {
+    weights = F_.createTranspose("weights_transposed", weights, {1, 0});
+    auto mmOutput =
+        F_.createMatMul("fused_linear_mm", input, weights)->getResult();
+    output = F_.createAdd("fused_linear_add", bias, mmOutput);
+  } else {
+    weights = F_.createTranspose("weights_transposed", weights, {1, 0});
+    glow::NodeValue matmulOutput;
+    ASSIGN_VALUE_OR_RETURN_ERR(matmulOutput, loadMatMulImpl(input, weights));
+    output = F_.createNodeWithBroadcast<glow::AddNode>("add", /*axis*/ -1,
+                                                       matmulOutput, bias);
+  }
+
+  return addValueMapping(outputs[0], output);
 }
 
 Error PyTorchModelLoader::loadMul(const torch::jit::Node *ptNode) {
@@ -2051,20 +2113,12 @@ Error PyTorchModelLoader::loadMean(const torch::jit::Node *ptNode) {
   return addValueMapping(outputs[0], input);
 }
 
-Error PyTorchModelLoader::loadMatMul(const torch::jit::Node *ptNode) {
-  auto inputs = ptNode->inputs();
-  auto outputs = ptNode->outputs();
-  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 2, outputs, 1));
-
-  glow::NodeValue lhs;
-  ASSIGN_VALUE_OR_RETURN_ERR(lhs, getGlowNodeValueForValue(inputs[0]));
-  glow::NodeValue rhs;
-  ASSIGN_VALUE_OR_RETURN_ERR(rhs, getGlowNodeValueForValue(inputs[1]));
+Expected<glow::NodeValue>
+PyTorchModelLoader::loadMatMulImpl(glow::NodeValue lhs, glow::NodeValue rhs) {
+  glow::NodeValue output;
 
   auto lhsRank = lhs.dims().size();
   auto rhsRank = rhs.dims().size();
-
-  glow::NodeValue output;
 
   if (lhsRank == 1 && rhsRank == 1) {
     // NOTE: Only Glow's 2d dotproduct operator accumulates so we prepend
@@ -2159,6 +2213,22 @@ Error PyTorchModelLoader::loadMatMul(const torch::jit::Node *ptNode) {
       output = F_.createReshape("matmul_output_reshape", output, newDims);
     }
   }
+
+  return output;
+}
+
+Error PyTorchModelLoader::loadMatMul(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 2, outputs, 1));
+
+  glow::NodeValue lhs;
+  ASSIGN_VALUE_OR_RETURN_ERR(lhs, getGlowNodeValueForValue(inputs[0]));
+  glow::NodeValue rhs;
+  ASSIGN_VALUE_OR_RETURN_ERR(rhs, getGlowNodeValueForValue(inputs[1]));
+
+  glow::NodeValue output;
+  ASSIGN_VALUE_OR_RETURN_ERR(output, loadMatMulImpl(lhs, rhs));
 
   return addValueMapping(outputs[0], output);
 }

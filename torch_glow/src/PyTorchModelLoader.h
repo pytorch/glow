@@ -442,6 +442,10 @@ private:
   /// \returns error on failure.
   Error loadConstantChunk(const torch::jit::Node *ptNode);
 
+  /// Helper function for loading a PyTorch aten::matmul node.
+  Expected<glow::NodeValue> loadMatMulImpl(glow::NodeValue lhs,
+                                           glow::NodeValue rhs);
+
   /// Load a PyTorch aten::matmul node.
   /// \returns error on failure.
   Error loadMatMul(const torch::jit::Node *ptNode);
@@ -453,6 +457,10 @@ private:
   /// Load a PyTorch aten::tanh node.
   /// \returns error on failure.
   Error loadTanh(const torch::jit::Node *ptNode);
+
+  /// Load a glow::fused_linear node.
+  /// \returns error on failure.
+  Error loadGlowFusedLinear(const torch::jit::Node *ptNode);
 };
 
 } // namespace glow

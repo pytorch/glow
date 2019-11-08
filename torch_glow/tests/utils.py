@@ -88,3 +88,7 @@ def jitVsGlow_(f_torch, f_glow, *inputs, expected_fused_ops=None,
                 print("torch_res\n", torch_res)
                 print("glow_res\n", glow_res)
             assert is_all_close
+
+
+def graph_contains_str(graph, substr):
+    return graph.str().find(substr) >= 0
