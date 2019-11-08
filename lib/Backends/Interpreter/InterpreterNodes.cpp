@@ -3146,6 +3146,12 @@ void BoundInterpreterFunction::fwdSparseLengthsWeightedSumInstI8Impl(
   }
 }
 
+void BoundInterpreterFunction::fwdSparseLengthsSumGradInst(
+    const SparseLengthsSumGradInst * /*I*/) {
+  DCHECK(!"Found SparseLengthsSumGradInst but SparseLengthsSum is lowered on "
+          "Interpreter");
+}
+
 void BoundInterpreterFunction::fwdSparseLengthsWeightedSumInst(
     const SparseLengthsWeightedSumInst *I) {
   if (I->getDest()->getType()->isQuantizedType()) {

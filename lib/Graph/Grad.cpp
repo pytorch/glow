@@ -107,6 +107,7 @@ Function *glow::differentiate(Function *F, const TrainingConfig &conf,
     CONVERT_TO_GRAD_NODE(SigmoidNode)
     CONVERT_TO_GRAD_NODE(TanhNode)
     CONVERT_TO_GRAD_NODE(SparseLengthsWeightedSumNode)
+    CONVERT_TO_GRAD_NODE(SparseLengthsSumNode)
 
     if (N->getKind() == Kind::SaveNodeKind) {
       // Swap the src and dest. Send the Zero value as gradient for both sides.
