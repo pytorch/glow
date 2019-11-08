@@ -45,44 +45,6 @@ void registerDummyOperator(const char *opName) {
       options)});
 }
 
-/// To judge if we can fuse the current node into a prim::FusedConcat.
-bool isFusableConcatNode(torch::jit::Node *node) {
-  if (node->kind() != at::aten::cat ||
-      !node->is_constant(torch::jit::attr::dim)) {
-    return false;
-  }
-
-  auto inputNode = node->namedInput(torch::jit::attr::tensors)->node();
-  if (inputNode->kind() != at::prim::ListConstruct) {
-    return false;
-  }
-  if (inputNode->output()->uses().size() > 1) {
-    return false;
-  }
-
-  return true;
-}
-
-/// Add one prim::FusedConcat before current node.
-/// The current node and the list construct node before it will become dead
-/// node.
-torch::jit::Node *createFusedConcat(torch::jit::Node *node) {
-  AT_ASSERT(node->kind() == at::aten::cat);
-  torch::jit::Graph *graph = node->owningGraph();
-  torch::jit::Node *inputNode =
-      node->namedInput(torch::jit::attr::tensors)->node();
-  int64_t dim = node->get<int64_t>(torch::jit::attr::dim).value();
-
-  torch::jit::Node *fusedConcatNode =
-      graph->create(at::prim::FusedConcat, inputNode->inputs())
-          ->i_(torch::jit::attr::dim, dim);
-  fusedConcatNode->insertBefore(inputNode);
-  fusedConcatNode->output()->copyMetadata(node->output());
-  node->output()->replaceAllUsesWith(fusedConcatNode->output());
-
-  return inputNode;
-}
-
 void removeExceptionsImpl(torch::jit::Block *block) {
   auto nodes = block->nodes().reverse();
   for (auto it = nodes.begin(); it != nodes.end(); it++) {
@@ -158,11 +120,37 @@ graph(%input):
 void fuseConcat(std::shared_ptr<torch::jit::Graph> &graph) {
   auto block = graph->block();
   for (auto it = block->nodes().rbegin(); it != block->nodes().rend(); it++) {
-    if (isFusableConcatNode(*it)) {
-      // Here we relay on EliminateDeadCode to remove useless node in graph
-      // and we dont remove them directly
-      createFusedConcat(*it);
+    auto *node = *it;
+    const auto kind = node->kind();
+
+    if (kind != at::aten::cat && kind != at::aten::stack) {
+      continue;
     }
+
+    // Can only fuse nodes with statically known dim input.
+    if (!node->is_constant(torch::jit::attr::dim)) {
+      continue;
+    }
+
+    auto dim = node->get<int64_t>(torch::jit::attr::dim).value();
+
+    // Can only fuse nodes with inputs from prim::ListConstruct.
+    auto *inputNode = node->namedInput(torch::jit::attr::tensors)->node();
+    if (inputNode->kind() != at::prim::ListConstruct) {
+      continue;
+    }
+
+    auto symbolS = node->kind() == at::aten::cat ? "prim::FusedConcat"
+                                                 : "glow::fused_stack";
+
+    auto *fusedNode = graph->create(torch::jit::Symbol::fromQualString(symbolS),
+                                    inputNode->inputs(), /*num_outputs*/ 1);
+
+    fusedNode->i_(torch::jit::attr::dim, dim);
+
+    fusedNode->insertBefore(inputNode);
+    fusedNode->output()->copyMetadata(node->output());
+    node->output()->replaceAllUsesWith(fusedNode->output());
   }
 }
 
@@ -321,12 +309,13 @@ void fuseBranchedLinearPattern(std::shared_ptr<torch::jit::Graph> &graph) {
     std::vector<torch::jit::Value *> fusedLinearInputs = {
         inputValue, weightValue, biasValue, cValue, dValue};
 
-    auto *newNode =
+    auto *fusedNode =
         graph->create(torch::jit::Symbol::fromQualString("glow::fused_linear"),
                       fusedLinearInputs, /*num_outputs*/ 1);
 
-    newNode->insertAfter(ifNode);
-    ifNode->replaceAllUsesWith(newNode);
+    fusedNode->insertAfter(ifNode);
+    fusedNode->output()->copyMetadata(ifNode->output());
+    ifNode->replaceAllUsesWith(fusedNode);
   }
 }
 } // namespace detail
@@ -337,6 +326,7 @@ void fuseKnownPatterns(std::shared_ptr<torch::jit::Graph> &graph) {
   std::call_once(onceFlag, []() {
     registerDummyOperator("glow::unpacked_quantized_linear");
     registerDummyOperator("glow::unpacked_quantized_conv2d");
+    registerDummyOperator("glow::fused_stack");
     registerDummyOperator("glow::fused_linear");
   });
 

@@ -326,9 +326,15 @@ private:
   /// \returns error on failure.
   Error loadReciprocal(const torch::jit::Node *ptNode);
 
-  /// Load a PyTorch cat node.
+  /// Load a PyTorch prim::cat node fused with a prim::ListConstruct into a
+  /// prim::FusedConcat node.
   /// \returns error on failure.
   Error loadFusedConcat(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch prim::stack node fused with a prim::ListConstruct into a
+  /// glow:FusedStack node.
+  /// \returns error on failure.
+  Error loadFusedStack(const torch::jit::Node *ptNode);
 
   /// Load a PyTorch _convolution node.
   /// \returns error on failure.
