@@ -23,12 +23,25 @@
 #include <torch/csrc/jit/operator_options.h>
 #include <torch/csrc/jit/pass_manager.h>
 #include <torch/csrc/jit/passes/subgraph_rewrite.h>
+#include <torch/csrc/jit/graph_executor.h>
 
 namespace glow {
+
 
 bool GlowCompilePyTorchModule = false;
 
 namespace {
+
+static int setGraphExecutorToLegacy() {
+  // use legacy GraphExecutor for Glow
+  torch::jit::getExecutorMode() = false;
+  torch::jit::getProfilingMode() = false;
+  return 0;
+
+}
+
+static const int USE_LEGACY_GE = setGraphExecutorToLegacy();
+
 /// GlowBackendState stores the currently active Glow HostManager that will
 /// be used to run the subgraphs lowered to Glow. It also contains information
 /// about the number and type of backend devices owned by the HostManager.
