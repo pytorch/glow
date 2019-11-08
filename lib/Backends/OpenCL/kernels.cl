@@ -120,6 +120,13 @@ cl_int32_t scale_i32i8(cl_int32_t input, cl_int32_t pre, cl_int32_t post,
   return ((((input >> pre) * scale) + rtn) >> post) + offset;
 }
 
+/// Scales a 32-bit integer using the integer shift-mult-shift method.
+
+cl_int32_t scale_i32i8p(cl_int32_t input, QuantizationTransform32To8 params,
+                        cl_int32_t offset) {
+  return scale_i32i8(input, params.pre, params.post, params.scale, offset);
+}
+
 /// Clips int32_t into int8_t.
 cl_int8_t clip(cl_int32_t val) { return (cl_int8_t)min(max(val, -128), 127); }
 
@@ -152,16 +159,6 @@ __kernel void quantize_i32K(__global cl_int32_t *dest, __global float *src,
   dest[i] = quantize_i32(src[i], scale, offset);
 }
 
-__kernel void quantize_i8W(__global void *mem, cl_uint32_t dest,
-                           cl_uint32_t src, float scale, cl_int32_t offset) {
-  quantize_i8K(&mem[dest], &mem[src], scale, offset);
-}
-
-__kernel void quantize_i32W(__global void *mem, cl_uint32_t dest,
-                            cl_uint32_t src, float scale, cl_int32_t offset) {
-  quantize_i32K(&mem[dest], &mem[src], scale, offset);
-}
-
 __kernel void rescalequantized_i8K(__global cl_int8_t *dest,
                                    __global cl_int8_t *src,
                                    cl_int32_t destOffset, cl_int32_t srcOffset,
@@ -174,24 +171,10 @@ __kernel void rescalequantized_i8K(__global cl_int8_t *dest,
   dest[i] = clip(s);
 }
 
-__kernel void rescalequantized_i8W(__global void *mem, cl_uint32_t dest,
-                                   cl_uint32_t src, cl_int32_t destOffset,
-                                   cl_int32_t srcOffset,
-                                   QuantizationTransform32To8 rescaleParams) {
-  rescalequantized_i8K(&mem[dest], &mem[src], destOffset, srcOffset,
-                       rescaleParams.pre, rescaleParams.post,
-                       rescaleParams.scale);
-}
-
 __kernel void dequantizeK(__global float *dest, __global cl_int8_t *src,
                           float scale, cl_int32_t offset) {
   size_t i = get_global_id(0);
   dest[i] = dequantize(src[i], scale, offset);
-}
-
-__kernel void dequantizeW(__global void *mem, cl_uint32_t dest, cl_uint32_t src,
-                          float scale, cl_int32_t offset) {
-  dequantizeK(&mem[dest], &mem[src], scale, offset);
 }
 
 /// Macro to define a kernel for data-parallel ternay operations. The body of
@@ -228,11 +211,6 @@ __kernel void dequantizeW(__global void *mem, cl_uint32_t dest, cl_uint32_t src,
       vstore8(VAL, i * 2 + 1, dest);                                           \
     }                                                                          \
   }                                                                            \
-  __kernel void name##W##16(__global void *mem, cl_uint32_t dest,              \
-                            cl_uint32_t cond, cl_uint32_t lhs,                 \
-                            cl_uint32_t rhs) {                                 \
-    name##K##16(&mem[dest], &mem[cond], &mem[lhs], &mem[rhs]);                 \
-  }                                                                            \
   __kernel void name##K##8(__global type * dest, __global type * cond,         \
                            __global type * lhs, __global type * rhs) {         \
     typedef float8 vtype;                                                      \
@@ -243,11 +221,6 @@ __kernel void dequantizeW(__global void *mem, cl_uint32_t dest, cl_uint32_t src,
     vtype VAL = body;                                                          \
     vstore8(VAL, i, dest);                                                     \
   }                                                                            \
-  __kernel void name##W##8(__global void *mem, cl_uint32_t dest,               \
-                           cl_uint32_t cond, cl_uint32_t lhs,                  \
-                           cl_uint32_t rhs) {                                  \
-    name##K##8(&mem[dest], &mem[cond], &mem[lhs], &mem[rhs]);                  \
-  }                                                                            \
   __kernel void name##K(__global type *dest, __global type *cond,              \
                         __global type *lhs, __global type *rhs) {              \
     typedef float vtype;                                                       \
@@ -256,10 +229,6 @@ __kernel void dequantizeW(__global void *mem, cl_uint32_t dest, cl_uint32_t src,
     vtype RHS = rhs[i];                                                        \
     vtype LHS = lhs[i];                                                        \
     dest[i] = body;                                                            \
-  }                                                                            \
-  __kernel void name##W(__global void *mem, cl_uint32_t dest,                  \
-                        cl_uint32_t cond, cl_uint32_t lhs, cl_uint32_t rhs) {  \
-    name##K(&mem[dest], &mem[cond], &mem[lhs], &mem[rhs]);                     \
   }
 
 /// Macro to define a kernel for data-parallel binary operations. The body of
@@ -294,10 +263,6 @@ __kernel void dequantizeW(__global void *mem, cl_uint32_t dest, cl_uint32_t src,
       vstore8(VAL, i * 2 + 1, dest);                                           \
     }                                                                          \
   }                                                                            \
-  __kernel void name##W##16(__global void *mem, cl_uint32_t dest,              \
-                            cl_uint32_t lhs, cl_uint32_t rhs) {                \
-    name##K##16(&mem[dest], &mem[lhs], &mem[rhs]);                             \
-  }                                                                            \
   __kernel void name##K##8(__global type * dest, __global type * lhs,          \
                            __global type * rhs) {                              \
     typedef float8 vtype;                                                      \
@@ -307,10 +272,6 @@ __kernel void dequantizeW(__global void *mem, cl_uint32_t dest, cl_uint32_t src,
     vtype VAL = body;                                                          \
     vstore8(VAL, i, dest);                                                     \
   }                                                                            \
-  __kernel void name##W##8(__global void *mem, cl_uint32_t dest,               \
-                           cl_uint32_t lhs, cl_uint32_t rhs) {                 \
-    name##K##8(&mem[dest], &mem[lhs], &mem[rhs]);                              \
-  }                                                                            \
   __kernel void name##K(__global type *dest, __global type *lhs,               \
                         __global type *rhs) {                                  \
     typedef float vtype;                                                       \
@@ -318,10 +279,6 @@ __kernel void dequantizeW(__global void *mem, cl_uint32_t dest, cl_uint32_t src,
     vtype RHS = rhs[i];                                                        \
     vtype LHS = lhs[i];                                                        \
     dest[i] = body;                                                            \
-  }                                                                            \
-  __kernel void name##W(__global void *mem, cl_uint32_t dest, cl_uint32_t lhs, \
-                        cl_uint32_t rhs) {                                     \
-    name##K(&mem[dest], &mem[lhs], &mem[rhs]);                                 \
   }
 
 /// Macro to define a kernel for data-parallel binary quantized operations. The
@@ -343,15 +300,6 @@ __kernel void dequantizeW(__global void *mem, cl_uint32_t dest, cl_uint32_t src,
     cl_int32_t RHS =                                                           \
         scale_i32i8(rhs[i] - rhsOffset, rhsPre, rhsPost, rhsScale, 0);         \
     dest[i] = clip((body) + destOffset);                                       \
-  }                                                                            \
-  __kernel void name##_i8W(                                                    \
-      __global void *mem, cl_uint32_t dest, cl_uint32_t lhs, cl_uint32_t rhs,  \
-      cl_int32_t destOffset, QuantizationTransform32To8 lhsScaleParams,        \
-      QuantizationTransform32To8 rhsScaleParams) {                             \
-    name##_i8K(&mem[dest], &mem[lhs], &mem[rhs], destOffset,                   \
-               lhsScaleParams.offset, rhsScaleParams.offset,                   \
-               lhsScaleParams.pre, lhsScaleParams.post, lhsScaleParams.scale,  \
-               rhsScaleParams.pre, rhsScaleParams.post, rhsScaleParams.scale); \
   }
 
 /// Macro to define a mini-kernel for data-parallel multiplicative quantized
@@ -370,16 +318,6 @@ __kernel void dequantizeW(__global void *mem, cl_uint32_t dest, cl_uint32_t src,
     cl_int32_t LHS = lhs[i] - lhsOffset;                                       \
     cl_int32_t RHS = rhs[i] - rhsOffset;                                       \
     dest[i] = clip(scale_i32i8((body), pre, post, scale, destOffset));         \
-  }                                                                            \
-  __kernel void name##_i8W(                                                    \
-      __global void *mem, cl_uint32_t dest, cl_uint32_t lhs, cl_uint32_t rhs,  \
-      cl_int32_t destOffset, QuantizationTransform32To8 lhsScaleParams,        \
-      QuantizationTransform32To8 rhsScaleParams,                               \
-      QuantizationTransform32To8 resultScaleParams) {                          \
-    name##_i8K(&mem[dest], &mem[lhs], &mem[rhs], destOffset,                   \
-               lhsScaleParams.offset, rhsScaleParams.offset,                   \
-               resultScaleParams.pre, resultScaleParams.post,                  \
-               resultScaleParams.scale);                                       \
   }
 
 /// Macro to define a kernel for data-parallel unary operations. The body of
@@ -411,10 +349,6 @@ __kernel void dequantizeW(__global void *mem, cl_uint32_t dest, cl_uint32_t src,
       vstore8(VAL, i * 2 + 1, dest);                                           \
     }                                                                          \
   }                                                                            \
-  __kernel void name##W##16(__global void *mem, cl_uint32_t dest,              \
-                            cl_uint32_t src) {                                 \
-    name##K##16(&mem[dest], &mem[src]);                                        \
-  }                                                                            \
   __kernel void name##K##8(__global type * dest, __global type * src) {        \
     typedef float8 vtype;                                                      \
     size_t i = get_global_id(0);                                               \
@@ -422,19 +356,11 @@ __kernel void dequantizeW(__global void *mem, cl_uint32_t dest, cl_uint32_t src,
     vtype VAL = body;                                                          \
     vstore8(VAL, i, dest);                                                     \
   }                                                                            \
-  __kernel void name##W##8(__global void *mem, cl_uint32_t dest,               \
-                           cl_uint32_t src) {                                  \
-    name##K##8(&mem[dest], &mem[src]);                                         \
-  }                                                                            \
   __kernel void name##K(__global type *dest, __global type *src) {             \
     typedef float vtype;                                                       \
     size_t i = get_global_id(0);                                               \
     vtype SRC = src[i];                                                        \
     dest[i] = body;                                                            \
-  }                                                                            \
-  __kernel void name##W(__global void *mem, cl_uint32_t dest,                  \
-                        cl_uint32_t src) {                                     \
-    name##K(&mem[dest], &mem[src]);                                            \
   }
 
 /// Macro to define a kernel for data-parallel unary operations with an
@@ -467,9 +393,6 @@ __kernel void dequantizeW(__global void *mem, cl_uint32_t dest, cl_uint32_t src,
       vstore8(VAL, i * 2 + 1, dest);                                           \
     }                                                                          \
   }                                                                            \
-  __kernel void name##W##16(__global void *mem, cl_uint32_t dest, float val) { \
-    name##K##16(&mem[dest], (type)val);                                        \
-  }                                                                            \
   __kernel void name##K##8(__global type * dest, type val) {                   \
     typedef type##8 vtype;                                                     \
     size_t i = get_global_id(0);                                               \
@@ -477,17 +400,11 @@ __kernel void dequantizeW(__global void *mem, cl_uint32_t dest, cl_uint32_t src,
     vtype VAL = body;                                                          \
     vstore8(VAL, i, dest);                                                     \
   }                                                                            \
-  __kernel void name##W##8(__global void *mem, cl_uint32_t dest, float val) {  \
-    name##K##8(&mem[dest], (type)val);                                         \
-  }                                                                            \
   __kernel void name##K(__global type *dest, type val) {                       \
     typedef type vtype;                                                        \
     size_t i = get_global_id(0);                                               \
     vtype SRC = (vtype)val;                                                    \
     dest[i] = body;                                                            \
-  }                                                                            \
-  __kernel void name##W(__global void *mem, cl_uint32_t dest, float val) {     \
-    name##K(&mem[dest], (type)val);                                            \
   }
 
 DEFINE_OPENCL_BINARY_DATA_PARALLEL_KERNEL(elementadd, float, LHS + RHS)
@@ -539,12 +456,6 @@ __kernel void elementselectK16(__global float *dest, __global cl_int8_t *cond,
           i + 1, dest);
 }
 
-__kernel void elementselectW16(__global void *mem, cl_uint32_t dest,
-                               cl_uint32_t cond, cl_uint32_t lhs,
-                               cl_uint32_t rhs) {
-  elementselectK16(&mem[dest], &mem[cond], &mem[lhs], &mem[rhs]);
-}
-
 __kernel void elementselectK8(__global float *dest, __global cl_int8_t *cond,
                               __global float *lhs, __global float *rhs) {
   size_t i = get_global_id(0);
@@ -555,12 +466,6 @@ __kernel void elementselectK8(__global float *dest, __global cl_int8_t *cond,
           i, dest);
 }
 
-__kernel void elementselectW8(__global void *mem, cl_uint32_t dest,
-                              cl_uint32_t cond, cl_uint32_t lhs,
-                              cl_uint32_t rhs) {
-  elementselectK8(&mem[dest], &mem[cond], &mem[lhs], &mem[rhs]);
-}
-
 __kernel void elementselectK(__global float *dest, __global cl_int8_t *cond,
                              __global float *lhs, __global float *rhs) {
   size_t i = get_global_id(0);
@@ -568,12 +473,6 @@ __kernel void elementselectK(__global float *dest, __global cl_int8_t *cond,
   float RHS = rhs[i];
   float LHS = lhs[i];
   dest[i] = (c != 0) ? LHS : RHS;
-}
-
-__kernel void elementselectW(__global void *mem, cl_uint32_t dest,
-                             cl_uint32_t cond, cl_uint32_t lhs,
-                             cl_uint32_t rhs) {
-  elementselectK(&mem[dest], &mem[cond], &mem[lhs], &mem[rhs]);
 }
 
 __kernel void elementcmplteK16(__global cl_int8_t *dest, __global float *LHS,
@@ -591,31 +490,16 @@ __kernel void elementcmplteK16(__global cl_int8_t *dest, __global float *LHS,
           i + 1, dest);
 }
 
-__kernel void elementcmplteW16(__global void *mem, cl_uint32_t dest,
-                               cl_uint32_t LHS, cl_uint32_t RHS) {
-  elementcmplteK16(&mem[dest], &mem[LHS], &mem[RHS]);
-}
-
 __kernel void elementcmplteK8(__global cl_int8_t *dest, __global float *LHS,
                               __global float *RHS) {
   size_t i = get_global_id(0);
   vstore8(convert_char8(islessequal(vload8(i, LHS), vload8(i, RHS))), i, dest);
 }
 
-__kernel void elementcmplteW8(__global void *mem, cl_uint32_t dest,
-                              cl_uint32_t LHS, cl_uint32_t RHS) {
-  elementcmplteK8(&mem[dest], &mem[LHS], &mem[RHS]);
-}
-
 __kernel void elementcmplteK(__global cl_int8_t *dest, __global float *LHS,
                              __global float *RHS) {
   size_t i = get_global_id(0);
   dest[i] = LHS[i] <= RHS[i];
-}
-
-__kernel void elementcmplteW(__global void *mem, cl_uint32_t dest,
-                             cl_uint32_t LHS, cl_uint32_t RHS) {
-  elementcmplteK(&mem[dest], &mem[LHS], &mem[RHS]);
 }
 
 __kernel void oclbatchedreduceaddK(__global float *dest, __global float *batch,
@@ -659,14 +543,6 @@ __kernel void oclbatchedreduceaddK(__global float *dest, __global float *batch,
   }
 }
 
-__kernel void
-oclbatchedreduceaddW(__global void *mem, cl_uint32_t dest, cl_uint32_t batch,
-                     cl_uint32_t destSliceSizes, cl_uint32_t batchSliceSizes,
-                     cl_uint32_t numSlices, cl_uint32_t axisSliceSize) {
-  oclbatchedreduceaddK(&mem[dest], &mem[batch], &mem[destSliceSizes],
-                       &mem[batchSliceSizes], numSlices, axisSliceSize);
-}
-
 __kernel void batchedaddK(__global float *dest, __global float *batch,
                           __global float *slice, cl_uint32_t numSlice,
                           cl_uint32_t sliceSize) {
@@ -676,70 +552,37 @@ __kernel void batchedaddK(__global float *dest, __global float *batch,
   }
 }
 
-__kernel void batchedaddW(__global void *mem, cl_uint32_t dest,
-                          cl_uint32_t batch, cl_uint32_t slice,
-                          cl_uint32_t numSlice, cl_uint32_t sliceSize) {
-  batchedaddK(&mem[dest], &mem[batch], &mem[slice], numSlice, sliceSize);
-}
-
 __kernel void batchedadd_i8K(__global cl_int8_t *dest,
                              __global cl_int8_t *batch,
                              __global cl_int8_t *slice, cl_uint32_t numSlice,
                              cl_uint32_t sliceSize, cl_int32_t destOffset,
-                             cl_int32_t batchOffset, cl_int32_t sliceOffset,
-                             cl_int32_t batchPre, cl_int32_t batchPost,
-                             cl_int32_t batchScale, cl_int32_t slicePre,
-                             cl_int32_t slicePost, cl_int32_t sliceScale) {
-  size_t s = get_global_id(0);
-  for (size_t n = 0; n < numSlice; n++) {
-    cl_int32_t batchVal = batch[n * sliceSize + s] - batchOffset;
-    cl_int32_t sliceVal = slice[s] - sliceOffset;
-    cl_int32_t x = scale_i32i8(batchVal, batchPre, batchPost, batchScale, 0);
-    cl_int32_t y = scale_i32i8(sliceVal, slicePre, slicePost, sliceScale, 0);
-    dest[n * sliceSize + s] = clip(x + y + destOffset);
-  }
-}
-
-__kernel void batchedadd_i8W(__global void *mem, cl_uint32_t dest,
-                             cl_uint32_t batch, cl_uint32_t slice,
-                             cl_uint32_t numSlice, cl_uint32_t sliceSize,
-                             cl_int32_t destOffset,
                              QuantizationTransform32To8 batchScaleParams,
                              QuantizationTransform32To8 sliceScaleParams) {
-  batchedadd_i8K(&mem[dest], &mem[batch], &mem[slice], numSlice, sliceSize,
-                 destOffset, batchScaleParams.offset, sliceScaleParams.offset,
-                 batchScaleParams.pre, batchScaleParams.post,
-                 batchScaleParams.scale, sliceScaleParams.pre,
-                 sliceScaleParams.post, sliceScaleParams.scale);
-}
-
-__kernel void batchedadd_i8K_32(
-    __global cl_int8_t *dest, __global cl_int8_t *batch,
-    __global cl_int32_t *slice, cl_uint32_t numSlice, cl_uint32_t sliceSize,
-    cl_int32_t destOffset, cl_int32_t batchOffset, cl_int32_t sliceOffset,
-    cl_int32_t batchPre, cl_int32_t batchPost, cl_int32_t batchScale,
-    cl_int32_t slicePre, cl_int32_t slicePost, cl_int32_t sliceScale) {
   size_t s = get_global_id(0);
   for (size_t n = 0; n < numSlice; n++) {
-    cl_int32_t batchVal = batch[n * sliceSize + s] - batchOffset;
-    cl_int32_t sliceVal = slice[s] - sliceOffset;
-    cl_int32_t x = scale_i32i8(batchVal, batchPre, batchPost, batchScale, 0);
-    cl_int32_t y = scale_i32i8(sliceVal, slicePre, slicePost, sliceScale, 0);
+    cl_int32_t batchVal = batch[n * sliceSize + s] - batchScaleParams.offset;
+    cl_int32_t sliceVal = slice[s] - sliceScaleParams.offset;
+    cl_int32_t x = scale_i32i8p(batchVal, batchScaleParams, 0);
+    cl_int32_t y = scale_i32i8p(sliceVal, sliceScaleParams, 0);
     dest[n * sliceSize + s] = clip(x + y + destOffset);
   }
 }
 
-__kernel void batchedadd_i8W_32(__global void *mem, cl_uint32_t dest,
-                                cl_uint32_t batch, cl_uint32_t slice,
+__kernel void batchedadd_i8K_32(__global cl_int8_t *dest,
+                                __global cl_int8_t *batch,
+                                __global cl_int32_t *slice,
                                 cl_uint32_t numSlice, cl_uint32_t sliceSize,
                                 cl_int32_t destOffset,
                                 QuantizationTransform32To8 batchScaleParams,
                                 QuantizationTransform32To8 sliceScaleParams) {
-  batchedadd_i8K_32(
-      &mem[dest], &mem[batch], &mem[slice], numSlice, sliceSize, destOffset,
-      batchScaleParams.offset, sliceScaleParams.offset, batchScaleParams.pre,
-      batchScaleParams.post, batchScaleParams.scale, sliceScaleParams.pre,
-      sliceScaleParams.post, sliceScaleParams.scale);
+  size_t s = get_global_id(0);
+  for (size_t n = 0; n < numSlice; n++) {
+    cl_int32_t batchVal = batch[n * sliceSize + s] - batchScaleParams.offset;
+    cl_int32_t sliceVal = slice[s] - sliceScaleParams.offset;
+    cl_int32_t x = scale_i32i8p(batchVal, batchScaleParams, 0);
+    cl_int32_t y = scale_i32i8p(sliceVal, sliceScaleParams, 0);
+    dest[n * sliceSize + s] = clip(x + y + destOffset);
+  }
 }
 
 /// Size of the tile to be used for matrix multiplication.
@@ -747,13 +590,9 @@ __kernel void batchedadd_i8W_32(__global void *mem, cl_uint32_t dest,
 /// workgroups with sizes which are at least as big as a tile.
 #define TILE_SIZE 8
 
-__kernel void matmul_tiled(__global void *mem, cl_uint32_t C_off,
-                           cl_uint32_t A_off, cl_uint32_t B_off, ShapeNHWC ddim,
-                           ShapeNHWC ldim, ShapeNHWC rdim) {
-  __global float *C = &mem[C_off];
-  __global float *A = &mem[A_off];
-  __global float *B = &mem[B_off];
-
+__kernel void matmul_tiled(__global float *C, __global float *A,
+                           __global float *B, ShapeNHWC ddim, ShapeNHWC ldim,
+                           ShapeNHWC rdim) {
   int M = ldim.n;
   int N = rdim.h;
   int K = ldim.h;
@@ -797,16 +636,12 @@ __kernel void matmul_tiled(__global void *mem, cl_uint32_t C_off,
   }
 }
 
-__kernel void matmul_tiled_i8(__global void *mem, cl_uint32_t C_off,
-                              cl_uint32_t A_off, cl_uint32_t B_off,
-                              ShapeNHWC ddim, ShapeNHWC ldim, ShapeNHWC rdim,
+__kernel void matmul_tiled_i8(__global cl_int8_t *C, __global cl_int8_t *A,
+                              __global cl_int8_t *B, ShapeNHWC ddim,
+                              ShapeNHWC ldim, ShapeNHWC rdim,
                               cl_int32_t aOffset, cl_int32_t bOffset,
                               cl_int32_t cOffset,
                               QuantizationTransform32To8 destScaleParams) {
-  __global cl_int8_t *C = &mem[C_off];
-  __global cl_int8_t *A = &mem[A_off];
-  __global cl_int8_t *B = &mem[B_off];
-
   int M = ldim.n;
   int N = rdim.h;
   int K = ldim.h;
@@ -870,12 +705,6 @@ __kernel void matmulK(__global float *dest, __global float *lhs,
   dest[getNHWC(ddim, x, y, 0, 0)] = sum;
 }
 
-__kernel void matmulW(__global void *mem, cl_uint32_t dest, cl_uint32_t lhs,
-                      cl_uint32_t rhs, ShapeNHWC ddim, ShapeNHWC ldim,
-                      ShapeNHWC rdim) {
-  matmulK(&mem[dest], &mem[lhs], &mem[rhs], ddim, ldim, rdim);
-}
-
 __kernel void matmul_i8K(__global cl_int8_t *dest, __global cl_int8_t *lhs,
                          __global cl_int8_t *rhs, ShapeNHWC ddim,
                          ShapeNHWC ldim, ShapeNHWC rdim, cl_int32_t lhsOffset,
@@ -898,18 +727,8 @@ __kernel void matmul_i8K(__global cl_int8_t *dest, __global cl_int8_t *lhs,
       clip(scale_i32i8(sum, destPre, destPost, destScale, destOffset));
 }
 
-__kernel void matmul_i8W(__global void *mem, cl_uint32_t dest, cl_uint32_t lhs,
-                         cl_uint32_t rhs, ShapeNHWC ddim, ShapeNHWC ldim,
-                         ShapeNHWC rdim, cl_int32_t lhsOffset,
-                         cl_int32_t rhsOffset, cl_int32_t destOffset,
-                         QuantizationTransform32To8 destScaleParams) {
-  matmul_i8K(&mem[dest], &mem[lhs], &mem[rhs], ddim, ldim, rdim, lhsOffset,
-             rhsOffset, destOffset, destScaleParams.pre, destScaleParams.post,
-             destScaleParams.scale);
-}
-
 __kernel void softmaxK(__global float *dest, __global float *src,
-                       __global float *e_cache, cl_uint32_t sliceSize) {
+                       cl_uint32_t sliceSize) {
   size_t i = get_global_id(0);
   float max_ = src[i * sliceSize];
   for (size_t j = 0; j < sliceSize; j++) {
@@ -923,18 +742,11 @@ __kernel void softmaxK(__global float *dest, __global float *src,
   }
   for (size_t j = 0; j < sliceSize; j++) {
     dest[i * sliceSize + j] /= sum;
-    if (e_cache)
-      e_cache[i * sliceSize + j] = dest[i * sliceSize + j];
   }
 }
 
-__kernel void softmaxW(__global void *mem, cl_uint32_t dest, cl_uint32_t src,
-                       cl_uint32_t sliceSize) {
-  softmaxK(&mem[dest], &mem[src], (__global float *)0, sliceSize);
-}
-
-__kernel void softmaxgradK(__global float *inG, __global float *outW,
-                           __global cl_uint64_t *selectedW,
+__kernel void softmaxgradK(__global float *outW, __global float *origSrc,
+                           __global cl_uint64_t *selectedW, __global float *inG,
                            cl_uint32_t sliceSize) {
   size_t i = get_global_id(0);
   for (size_t j = 0; j < sliceSize; j++) {
@@ -943,16 +755,10 @@ __kernel void softmaxgradK(__global float *inG, __global float *outW,
   }
 }
 
-__kernel void softmaxgradW(__global void *mem, cl_uint32_t origDest,
-                           cl_uint32_t origSrc, cl_uint32_t selected,
-                           cl_uint32_t srcGrad, cl_uint32_t sliceSize) {
-  softmaxgradK(&mem[srcGrad], &mem[origDest], &mem[selected], sliceSize);
-}
-
-__kernel void convolutionK(__global float *dest, __global float *src,
-                           __global float *filter, __global float *bias,
-                           ShapeHW kernelSizes, ShapeHW strides,
-                           PaddingTLBR pads, cl_uint32_t group,
+__kernel void convolutionK(__global void *unused, __global float *dest,
+                           __global float *src, __global float *filter,
+                           __global float *bias, ShapeHW kernelSizes,
+                           ShapeHW strides, PaddingTLBR pads, cl_uint32_t group,
                            cl_uint32_t dilation, ShapeNHWC odim, ShapeNHWC idim,
                            ShapeNHWC filterDim) {
   size_t ax = get_global_id(0);
@@ -994,16 +800,6 @@ __kernel void convolutionK(__global float *dest, __global float *src,
     sum += bias[d];
     dest[getNHWC(odim, n, ax, ay, d)] = sum;
   } // N
-}
-
-__kernel void convolutionW(__global void *mem, cl_uint32_t dest,
-                           cl_uint32_t src, cl_uint32_t filter,
-                           cl_uint32_t bias, ShapeHW kernelSizes,
-                           ShapeHW strides, PaddingTLBR pads, cl_uint32_t group,
-                           cl_uint32_t dilation, ShapeNHWC odim, ShapeNHWC idim,
-                           ShapeNHWC filterDim) {
-  convolutionK(&mem[dest], &mem[src], &mem[filter], &mem[bias], kernelSizes,
-               strides, pads, group, dilation, odim, idim, filterDim);
 }
 
 __kernel void
@@ -1060,20 +856,6 @@ convolution_i8K(__global cl_int8_t *dest, __global cl_int8_t *src,
   }
 }
 
-__kernel void
-convolution_i8W(__global void *mem, cl_uint32_t dest, cl_uint32_t src,
-                cl_uint32_t filter, cl_uint32_t bias, ShapeHW kernelSizes,
-                ShapeHW strides, PaddingTLBR pads, cl_uint32_t group,
-                cl_uint32_t dilation, ShapeNHWC odim, ShapeNHWC idim,
-                ShapeNHWC filterDim, cl_int32_t destOffset, float destScale,
-                cl_int32_t srcOffset, float srcScale, cl_int32_t filterOffset,
-                float filterScale, cl_int32_t biasOffset, float biasScale) {
-  convolution_i8K(&mem[dest], &mem[src], &mem[filter], &mem[bias], kernelSizes,
-                  strides, destOffset, destScale, srcOffset, srcScale,
-                  filterOffset, filterScale, biasOffset, biasScale, pads, group,
-                  dilation, odim, idim, filterDim);
-}
-
 __kernel void convolutiongradK(const __global float *inW,
                                const __global float *filterW,
                                const __global float *outG, __global float *inG,
@@ -1127,19 +909,6 @@ __kernel void convolutiongradK(const __global float *inW,
   } // N
 }
 
-__kernel void convolutiongradW(__global void *mem, cl_uint32_t src,
-                               cl_uint32_t filter, cl_uint32_t destGrad,
-                               cl_uint32_t srcGrad, cl_uint32_t filterGrad,
-                               cl_uint32_t biasGrad, ShapeHW kernelSizes,
-                               ShapeHW strides, PaddingTLBR pads,
-                               cl_uint32_t group, cl_uint32_t dilation,
-                               ShapeNHWC srcDim, ShapeNHWC destGradDim,
-                               ShapeNHWC filterGradDim) {
-  convolutiongradK(&mem[src], &mem[filter], &mem[destGrad], &mem[srcGrad],
-                   &mem[filterGrad], &mem[biasGrad], kernelSizes, strides, pads,
-                   group, dilation, srcDim, destGradDim, filterGradDim);
-}
-
 __kernel void maxpoolK(__global float *dest, __global float *src,
                        cl_uint32_t kernelSize, cl_uint32_t stride,
                        PaddingTLBR pads, ShapeNHWC odim, ShapeNHWC idim) {
@@ -1181,12 +950,6 @@ __kernel void maxpoolK(__global float *dest, __global float *src,
   } // N
 }
 
-__kernel void maxpoolW(__global void *mem, cl_uint32_t dest, cl_uint32_t src,
-                       cl_uint32_t kernelSize, cl_uint32_t stride,
-                       PaddingTLBR pads, ShapeNHWC odim, ShapeNHWC idim) {
-  maxpoolK(&mem[dest], &mem[src], kernelSize, stride, pads, odim, idim);
-}
-
 /// Macro to define a kernel for oclmaxpool. The body of
 /// the kernel is auto-generated by the macro.
 /// \p name the name of this kernel
@@ -1225,11 +988,6 @@ __kernel void maxpoolW(__global void *mem, cl_uint32_t dest, cl_uint32_t src,
       }                                                                        \
       dest[getNCHW(odim, n, d, ax, ay)] = maxVal;                              \
     }                                                                          \
-  }                                                                            \
-  __kernel void name##W(__global void *mem, cl_uint32_t dest, cl_uint32_t src, \
-                        cl_uint32_t kernelSize, cl_uint32_t stride,            \
-                        PaddingTLBR pads, ShapeNCHW odim, ShapeNCHW idim) {    \
-    name##K(&mem[dest], &mem[src], kernelSize, stride, pads, odim, idim);      \
   }
 DEFINE_OPENCL_MAXPOOL_KERNEL(oclmaxpool, float)
 DEFINE_OPENCL_MAXPOOL_KERNEL(oclmaxpool_i8, char)
@@ -1283,16 +1041,7 @@ __kernel void maxpoolwithargmaxK(__global float *dest, __global float *src,
   } // N
 }
 
-__kernel void maxpoolwithargmaxW(__global void *mem, cl_uint32_t dest,
-                                 cl_uint32_t src, cl_uint32_t argmax,
-                                 cl_uint32_t kernelSize, cl_uint32_t stride,
-                                 PaddingTLBR pads, ShapeNHWC odim,
-                                 ShapeNHWC idim) {
-  maxpoolwithargmaxK(&mem[dest], &mem[src], &mem[argmax], kernelSize, stride,
-                     pads, odim, idim);
-}
-
-__kernel void maxpoolwithargmaxgradK(__global float *dest,
+__kernel void maxpoolwithargmaxgradK(__global float *dest, __global float *src,
                                      __global cl_uint64_t *argmax,
                                      __global float *destGrad,
                                      __global float *srcGrad,
@@ -1319,19 +1068,6 @@ __kernel void maxpoolwithargmaxgradK(__global float *dest,
       } // W
     }   // H
   }     // C
-}
-
-__kernel void maxpoolwithargmaxgradW(__global void *mem, cl_uint32_t dest,
-                                     cl_uint32_t src, cl_uint32_t argmax,
-                                     cl_uint32_t destGrad, cl_uint32_t srcGrad,
-                                     cl_uint32_t kernelSize, cl_uint32_t stride,
-                                     PaddingTLBR pads, ShapeNHWC srcGradDim,
-                                     ShapeNHWC destDim) {
-  // src operand is present on the instruction but not needed by the OpenCL
-  // kernel.
-  maxpoolwithargmaxgradK(&mem[dest], &mem[argmax], &mem[destGrad],
-                         &mem[srcGrad], kernelSize, stride, pads, srcGradDim,
-                         destDim);
 }
 
 __kernel void avgpoolK(__global float *dest, __global float *src,
@@ -1370,12 +1106,6 @@ __kernel void avgpoolK(__global float *dest, __global float *src,
   } // N
 }
 
-__kernel void avgpoolW(__global void *mem, cl_uint32_t dest, cl_uint32_t src,
-                       cl_uint32_t kernelSize, cl_uint32_t stride,
-                       PaddingTLBR pads, ShapeNHWC odim, ShapeNHWC idim) {
-  avgpoolK(&mem[dest], &mem[src], kernelSize, stride, pads, odim, idim);
-}
-
 __kernel void oclavgpoolK(__global float *dest, __global float *src,
                           cl_uint32_t kernelSize, cl_uint32_t stride,
                           PaddingTLBR pads, ShapeNCHW odim, ShapeNCHW idim) {
@@ -1410,12 +1140,6 @@ __kernel void oclavgpoolK(__global float *dest, __global float *src,
     }
     dest[getNCHW(odim, n, d, ax, ay)] = sumVal / filterArea;
   } // N
-}
-
-__kernel void oclavgpoolW(__global void *mem, cl_uint32_t dest, cl_uint32_t src,
-                          cl_uint32_t kernelSize, cl_uint32_t stride,
-                          PaddingTLBR pads, ShapeNCHW odim, ShapeNCHW idim) {
-  oclavgpoolK(&mem[dest], &mem[src], kernelSize, stride, pads, odim, idim);
 }
 
 __kernel void oclavgpool_i8K(__global cl_int8_t *dest, __global cl_int8_t *src,
@@ -1456,17 +1180,6 @@ __kernel void oclavgpool_i8K(__global cl_int8_t *dest, __global cl_int8_t *src,
   }
 }
 
-__kernel void oclavgpool_i8W(__global void *mem, cl_uint32_t dest,
-                             cl_uint32_t src, cl_uint32_t kernelSize,
-                             cl_uint32_t stride, PaddingTLBR pads,
-                             ShapeNCHW odim, ShapeNCHW idim,
-                             cl_int32_t srcOffset,
-                             QuantizationTransform32To8 destScaleParams) {
-  oclavgpool_i8K(&mem[dest], &mem[src], kernelSize, stride, pads, odim, idim,
-                 srcOffset, destScaleParams.offset, destScaleParams.pre,
-                 destScaleParams.post, destScaleParams.scale);
-}
-
 /// Macro to define a kernel for transpose operations. The body of
 /// the kernel is auto-generated by the macro.
 /// \p type the type of the tensor elements and of the return value
@@ -1488,10 +1201,6 @@ __kernel void oclavgpool_i8W(__global void *mem, cl_uint32_t dest,
         dest[dstIdx] = src[srcIdx];                                            \
       }                                                                        \
     }                                                                          \
-  }                                                                            \
-  __kernel void name##W(__global void *mem, cl_uint32_t dest, cl_uint32_t src, \
-                        ShapeNHWC odim, ShapeNHWC idim, ShapeNHWC shuffle) {   \
-    name##K(&mem[dest], &mem[src], odim, idim, shuffle);                       \
   }
 
 DEFINE_OPENCL_TRANSPOSE_KERNEL(transpose_i8, cl_int8_t)
@@ -1531,11 +1240,6 @@ DEFINE_OPENCL_TRANSPOSE_KERNEL(transpose, float)
         }                                                                      \
       }                                                                        \
     }                                                                          \
-  }                                                                            \
-  __kernel void name##W(__global void *mem, cl_uint32_t dest, cl_uint32_t src, \
-                        ShapeNHWC odim, ShapeNHWC idim, ShapeNHWC offset,      \
-                        cl_uint32_t count, cl_uint32_t axis) {                 \
-    name##K(&mem[dest], &mem[src], odim, idim, offset, count, axis);           \
   }
 DEFINE_OPENCL_INSERT_TENSOR_KERNEL(inserttensor, float)
 DEFINE_OPENCL_INSERT_TENSOR_KERNEL(inserttensor_i8, char)
@@ -1563,10 +1267,6 @@ DEFINE_OPENCL_INSERT_TENSOR_KERNEL(inserttensor_i8, char)
         dest[destIdx] = src[srcIdx];                                           \
       }                                                                        \
     }                                                                          \
-  }                                                                            \
-  __kernel void name##W(__global void *mem, cl_uint32_t dest, cl_uint32_t src, \
-                        ShapeNHWC odim, ShapeNHWC idim, ShapeNHWC offset) {    \
-    name##K(&mem[dest], &mem[src], odim, idim, offset);                        \
   }
 DEFINE_OPENCL_EXTRACT_TENSOR_KERNEL(extracttensor, float)
 DEFINE_OPENCL_EXTRACT_TENSOR_KERNEL(extracttensor_i8, char)
@@ -1593,14 +1293,6 @@ __kernel void gatherK(__global float *dest, __global const float *src,
   }
 }
 
-__kernel void gatherW(__global void *mem, cl_uint32_t dest, cl_uint32_t src,
-                      cl_uint32_t indices, cl_uint32_t numIndices,
-                      cl_uint32_t sliceSize, cl_uint32_t numSamples,
-                      cl_uint32_t destSampleSize, cl_uint32_t srcSampleSize) {
-  gatherK(&mem[dest], &mem[src], &mem[indices], numIndices, sliceSize,
-          numSamples, destSampleSize, srcSampleSize);
-}
-
 __kernel void scatterdataK(__global float *data, __global cl_uint64_t *indices,
                            __global const float *slices,
                            cl_uint32_t sliceSize) {
@@ -1608,12 +1300,6 @@ __kernel void scatterdataK(__global float *data, __global cl_uint64_t *indices,
   cl_uint64_t destDataIdx = indices[idx];
   memcpy_float(data + destDataIdx * sliceSize, slices + idx * sliceSize,
                sliceSize);
-}
-
-__kernel void scatterdataW(__global void *mem, cl_uint32_t data,
-                           cl_uint32_t indices, cl_uint32_t slices,
-                           cl_uint32_t sliceSize) {
-  scatterdataK(&mem[data], &mem[indices], &mem[slices], sliceSize);
 }
 
 __kernel void sparselengthsweightedsumK(__global float *dest,
@@ -1654,20 +1340,11 @@ __kernel void sparselengthsweightedsumK(__global float *dest,
   }
 }
 
-__kernel void sparselengthsweightedsumW(__global void *mem, cl_uint32_t dest,
-                                        cl_uint32_t data, cl_uint32_t weights,
-                                        cl_uint32_t indices,
-                                        cl_uint32_t lengths,
-                                        cl_uint32_t dataSliceSize) {
-  sparselengthsweightedsumK(&mem[dest], &mem[data], &mem[weights],
-                            &mem[indices], &mem[lengths], dataSliceSize);
-}
-
 __kernel void sparselengthsweightedsumgradK(
-    __global float *destGrad, __global float *dataGrad,
-    __global float *weightsGrad, __global float *data, __global float *weights,
+    __global float *data, __global float *weights,
     __global cl_uint64_t *indices, __global cl_int32_t *lengths,
-    cl_uint32_t segments, cl_uint32_t sliceSize) {
+    __global float *destGrad, __global float *dataGrad,
+    __global float *weightsGrad, cl_uint32_t segments, cl_uint32_t sliceSize) {
 
   // For each segment:
   for (cl_uint32_t i = 0, curIdx = 0; i < segments; ++i) {
@@ -1696,17 +1373,6 @@ __kernel void sparselengthsweightedsumgradK(
       weightsGrad[curIdx] = weightGrad;
     }
   }
-}
-
-__kernel void
-sparselengthsweightedsumgradW(__global void *mem, cl_uint32_t data,
-                              cl_uint32_t weights, cl_uint32_t indices,
-                              cl_uint32_t lengths, cl_uint32_t destGrad,
-                              cl_uint32_t dataGrad, cl_uint32_t weightsGrad,
-                              cl_uint32_t segments, cl_uint32_t sliceSize) {
-  sparselengthsweightedsumgradK(
-      &mem[destGrad], &mem[dataGrad], &mem[weightsGrad], &mem[data],
-      &mem[weights], &mem[indices], &mem[lengths], segments, sliceSize);
 }
 
 /// An empty kernel used as a checkpoint for TraceEvents.

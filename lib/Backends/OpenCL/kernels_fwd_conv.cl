@@ -128,13 +128,8 @@
 __kernel
     __attribute__((reqd_work_group_size(workgroup_size_0, workgroup_size_1, 1)))
     __attribute__((vec_type_hint(Dtype4))) void
-    conv_forward_mem(__global void *mem, unsigned im_in_offset,
-                     unsigned wg_offset, unsigned bias_offset,
-                     unsigned im_out_offset) {
-  __global const Dtype *im_in = &mem[im_in_offset];
-  __global const Dtype *wg = &mem[wg_offset];
-  __global const Dtype *bias = &mem[bias_offset];
-  __global Dtype *im_out = &mem[im_out_offset];
+    conv_forward_mem(__global const Dtype *im_in, __global const Dtype *wg,
+                     __global const Dtype *bias, __global Dtype *im_out) {
   // Thread identifiers.
   // Local row ID (max: RTSM=TSM/WPTM).
   const int_tp tidn = get_local_id(0);

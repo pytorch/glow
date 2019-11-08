@@ -129,15 +129,11 @@ char clip(int val) { return (char)min(max(val, -128), 127); }
 __kernel
     __attribute__((reqd_work_group_size(workgroup_size_0, workgroup_size_1, 1)))
     __attribute__((vec_type_hint(Dtype4))) void
-    conv_forward_mem_i8(__global void *mem, unsigned im_in_offset,
-                        unsigned wg_offset, unsigned bias_offset,
-                        unsigned im_out_offset, int a_offset, float a_scale,
-                        int b_offset, float b_scale, int c_offset,
-                        float c_scale, int d_offset, float d_scale) {
-  __global const Dtype *im_in = &mem[im_in_offset];
-  __global const Dtype *wg = &mem[wg_offset];
-  __global const int *bias = &mem[bias_offset];
-  __global Dtype *im_out = &mem[im_out_offset];
+    conv_forward_mem_i8(__global const Dtype *im_in, __global const Dtype *wg,
+                        __global const int *bias, __global Dtype *im_out,
+                        int a_offset, float a_scale, int b_offset,
+                        float b_scale, int c_offset, float c_scale,
+                        int d_offset, float d_scale) {
   // Thread identifiers.
   // Local row ID (max: RTSM=TSM/WPTM).
   const int_tp tidn = get_local_id(0);
