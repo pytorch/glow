@@ -310,6 +310,10 @@ private:
   /// \returns error on failure.
   Error loadRelu(const torch::jit::Node *ptNode);
 
+  /// Load a PyTorch gelu node.
+  /// \returns error on failure.
+  Error loadGelu(const torch::jit::Node *ptNode);
+
   /// Load a PyTorch exp node.
   /// \returns error on failure.
   Error loadExp(const torch::jit::Node *ptNode);

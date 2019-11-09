@@ -530,6 +530,10 @@ public:
   /// output type \p outTy.
   ReluNode *createRELU(llvm::StringRef name, NodeValue input, TypeRef outTy);
 
+  /// Create a series of nodes representing a GeLU with the given \p name and \p
+  /// input. Result type will be implicitly set based on the \p input type.
+  Node *createGELU(llvm::StringRef name, NodeValue input);
+
   /// Create a PReLU node with the given \p name, \p input and  \p slope.
   /// Result type will be implicitly set based on the \p input type.
   PReluNode *createPRELU(llvm::StringRef name, NodeValue input,
