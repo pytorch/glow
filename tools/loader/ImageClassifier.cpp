@@ -261,6 +261,12 @@ buildAndCompileAndGetInAndOutPair(Loader &loader, PlaceholderBindings &bindings,
   Placeholder *inputImagePH =
       llvm::cast<Placeholder>(EXIT_ON_ERR(LD->getNodeValueByName(inputName)));
 
+  // When profiling the graph do not return the output placeholder. This allows
+  // profiling SSD models which have two output placeholders (scores and boxes).
+  if (profilingGraph()) {
+    return std::make_pair(inputImagePH, nullptr);
+  }
+
   // Get the Tensor from the Placeholder that the final expected Softmax writes
   // into at the end of image inference.
   Placeholder *SMPH = EXIT_ON_ERR(LD->getSingleOutput());
@@ -663,10 +669,14 @@ int main(int argc, char **argv) {
         outputPH = inputOutputPair.second;
       }
       CHECK(inputImagePH) << "Input must be valid.";
-      CHECK(outputPH) << "Output must be valid.";
       CHECK(inputImagePH->dims() == inputImageData.dims())
           << "New input shape does not match the compiled function: "
           << inputImagePH->dims() << " vs " << inputImageData.dims();
+
+      // Validate the out placeholder when doing inference (and not profiling).
+      if (!profilingGraph()) {
+        CHECK(outputPH) << "Output must be valid.";
+      }
 
       // Convert the raw input to fp16. This must be done every time we get new
       // image data.
@@ -689,8 +699,9 @@ int main(int argc, char **argv) {
         traceContext->merge(exContext->getTraceContext());
       }
 
-      // Print the top-k results from the output Softmax tensor.
-      {
+      // Print the top-k results from the output Softmax tensor. Do this only
+      // when doing inference (and not profiling).
+      if (!profilingGraph()) {
         std::lock_guard<std::mutex> lock(ioMu);
         numErrors += processAndPrintResults(bindings.get(outputPH),
                                             inputImageBatchFilenames);
