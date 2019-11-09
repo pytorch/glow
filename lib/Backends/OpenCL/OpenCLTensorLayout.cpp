@@ -63,8 +63,8 @@ static const TensorLayoutDescription *getLayoutFromEnum(const N &node) {
 /// if it has one. Else returns nullptr. This will be removed and refactored
 /// if/when we move to using strings for all layout specifications and get rid
 /// of the enum.
-static const TensorLayoutDescription *getLayouForTempEnumRep(size_t n,
-                                                             const Node *node) {
+static const TensorLayoutDescription *
+getLayoutForTempEnumRep(size_t n, const Node *node) {
   if (const auto MP = llvm::dyn_cast<MaxPoolNode>(node)) {
     return getLayoutFromEnum(MP);
   }
@@ -96,7 +96,7 @@ std::string OpenCLTensorLayout::getNthInputLayoutRequirements(const Node *node,
   DCHECK_LE(dims.size(), max_tensor_dimensions) << "Too many dimensions";
   // TODO: Remove ->getLayout() enum and take a string like transpose. Refactor
   // the following after doing so.
-  const auto *layout = getLayouForTempEnumRep(n, node);
+  const auto *layout = getLayoutForTempEnumRep(n, node);
   if (layout) {
     return layout->getSerializedLayout();
   }
@@ -112,7 +112,7 @@ std::string OpenCLTensorLayout::getNthResultLayoutRequirements(const Node *node,
   DCHECK_LE(dims.size(), max_tensor_dimensions) << "Too many dimensions";
   // TODO: Remove ->getLayout() enum and take a string like transpose. Refactor
   // the following after doing so.
-  const auto *layout = getLayouForTempEnumRep(n, node);
+  const auto *layout = getLayoutForTempEnumRep(n, node);
   if (layout) {
     return layout->getSerializedLayout();
   }

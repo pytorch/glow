@@ -25,7 +25,7 @@ Glow's string-based layout format is encoded as follows:
 
 1. A mandatory one character representing the current dimension. Either an  alphabetic letter or `*` (any layout).
 2. An optional token for the start of the current dimension's information: `[`.
-3. An optional namespace identifier for non-standard information, such as tiling, followed by `:`. Must have `[` from 2. in place. following said identifier, all subsequent data is considered as a "black box" until `]` is encountered.
+3. An optional namespace identifier for non-standard information, such as tiling, followed by `:`. Must have `[` from 2. in place. Following said identifier, all subsequent data is considered as a "black box" until `]` is encountered.
 4. Given that we have `[` from 2. in place, the closing bracket `]` for it.
 5. Optionally go back to 2.
 
@@ -70,9 +70,10 @@ Which includes the following virtual methods they can override:
 virtual bool isSatisfiedBy(TypeRef ty,
                                const TensorLayoutDescription &destLayout,
                                const TensorLayoutDescription *srcLayout) const
+                               ```
 	- This function checks if `ty` satisfies `destLayout` layout requirements, if `srcLayout` is provided for `ty`, take that into account.
 
-- `virtual std::array<TensorLayoutDescription, max_tensor_dimensions + 1> &getLayoutsForDims() const`
+- `virtual llvm::ArrayRef<TensorLayoutDescription> getLayoutsForDims() const`
 
   - This helper function returns an array of predefined layouts for all dimensions from `0-D` to Glow's max tensor layout dimension.
 

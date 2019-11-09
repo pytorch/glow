@@ -1610,8 +1610,8 @@ static NodeValue tryToOptimizeConcatOfRehapes(Function *F, ConcatNode *CN) {
   return F->createReshape(
       CN->getInputs().front().getNode()->getName(), newCN,
       CN->getResult().dims(),
-      CanonicalTensorLayout::getInstance().getNthResultLayoutRequirements(CN,
-                                                                          0));
+      CanonicalTensorLayout::getInstance().getNthResultLayoutRequirements(
+          CN, ConcatNode::ResultIdx));
 }
 
 /// Simplify concat node.

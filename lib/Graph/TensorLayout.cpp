@@ -431,7 +431,8 @@ std::string TensorLayoutCommon::getNthResultLayoutRequirements(const Node *node,
     }
     // Dynamically form the layout description for transposes.
     auto input = TN->getInput();
-    auto inputLayout = getNthInputLayoutRequirements(node, 0);
+    auto inputLayout =
+        getNthInputLayoutRequirements(node, TransposeNode::InputIdx);
     auto inputLayoutHelper = TensorLayoutDescription(inputLayout);
     llvm::SmallVector<std::string, max_tensor_dimensions> dims(
         input.dims().size());

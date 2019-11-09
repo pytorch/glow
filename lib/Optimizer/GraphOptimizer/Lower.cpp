@@ -174,8 +174,8 @@ static void lowerFullyConnectedGradNode(Function *F, CompilationContext &cctx,
   auto *dx2 = F->createMatMul("fcg.dot", dout, wT);
   auto *dx = F->createReshape(
       "fcg.inG", dx2, FCG.getInput().getType()->dims(),
-      CanonicalTensorLayout::getInstance().getNthInputLayoutRequirements(&FCG,
-                                                                         0));
+      CanonicalTensorLayout::getInstance().getNthInputLayoutRequirements(
+          &FCG, FullyConnectedGradNode::InputIdx));
   replaceAllUsesOfWith(cctx.loweredInfoMap, FCG.getGradOfInputNamedInput(), dx);
 
   // dw = xT * dout.

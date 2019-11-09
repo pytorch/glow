@@ -1388,6 +1388,8 @@ Node *recursiveClone(Function *newF, Node *node, NodeMap &currToNew);
   { 0u, 3u, 1u, 2u }
 #define HWCN2NHWC                                                              \
   { 3u, 0u, 1u, 2u }
+#define NHWC2HWNC                                                              \
+  { 1u, 2u, 0u, 3u }
 
 llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const Module &mod);
 
@@ -1397,8 +1399,6 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const Function &F);
 
 llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const Function *F);
 
-#define NHWC2HWNC                                                              \
-  { 1u, 2u, 0u, 3u }
 } // namespace glow
 
 #endif // GLOW_GRAPH_GRAPH_H
