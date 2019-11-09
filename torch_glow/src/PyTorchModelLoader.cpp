@@ -653,6 +653,7 @@ PyTorchModelLoader::getSymbolsMapping() {
        {{"aten::max"}, &PyTorchModelLoader::loadMax, {}},
        {{"aten::exp"}, &PyTorchModelLoader::loadExp, {}},
        {{"prim::FusedConcat"}, &PyTorchModelLoader::loadFusedConcat, {}},
+       {{"glow::fused_stack"}, &PyTorchModelLoader::loadFusedStack, {}},
        {{"aten::mean"},
         &PyTorchModelLoader::loadMean,
         {MeanInputs::axis, MeanInputs::keepdims, MeanInputs::output}},
@@ -1387,19 +1388,75 @@ Error PyTorchModelLoader::loadListConstruct(const torch::jit::Node *ptNode) {
 Error PyTorchModelLoader::loadFusedConcat(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
-  // Concat op require at least 2 inputs to be concated.
+  // Concat op require at least 2 inputs to be concatenated.
   RETURN_IF_ERR(checkInputAndOutputSizes(inputs, -2, outputs, 1));
-
-  std::vector<glow::NodeValue> input;
-  for (int i = 0; i < inputs.size(); i++) {
-    glow::NodeValue tmpInput;
-    ASSIGN_VALUE_OR_RETURN_ERR(tmpInput, getGlowNodeValueForValue(inputs[i]));
-    input.push_back(std::move(tmpInput));
-  }
 
   int64_t dim = ptNode->i(at::attr::dim);
 
-  return addValueMapping(outputs[0], F_.createConcat("concat", input, dim));
+  RETURN_ERR_IF_NOT(dim >= 0, "Negative concat dims not supported yet.");
+
+  std::vector<glow::NodeValue> glowInputs;
+  for (size_t i = 0; i < inputs.size(); ++i) {
+    glow::NodeValue glowInput;
+    ASSIGN_VALUE_OR_RETURN_ERR(glowInput, getGlowNodeValueForValue(inputs[i]));
+
+    RETURN_ERR_IF_NOT(dim < glowInput.dims().size(),
+                      "Dim must be less than the rank of inputs");
+
+    glowInputs.push_back(std::move(glowInput));
+  }
+
+  return addValueMapping(outputs[0], F_.createConcat("cat", glowInputs, dim));
+}
+
+Error PyTorchModelLoader::loadFusedStack(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  // Stack op require at least 2 inputs to be concatenated.
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, -2, outputs, 1));
+
+  int64_t dim = ptNode->i(at::attr::dim);
+
+  RETURN_ERR_IF_NOT(dim >= 0, "Negative stack dims not supported yet.");
+
+  std::vector<glow::NodeValue> glowInputs;
+  for (size_t i = 0; i < inputs.size(); ++i) {
+    glow::NodeValue glowInput;
+    ASSIGN_VALUE_OR_RETURN_ERR(glowInput, getGlowNodeValueForValue(inputs[i]));
+
+    // +1 because stack adds an extra dimension
+    RETURN_ERR_IF_NOT(
+        dim < glowInput.dims().size() + 1,
+        "Dim must be less than the rank of inputs plus the added dimension");
+
+    glowInputs.push_back(std::move(glowInput));
+  }
+
+  auto concat = F_.createConcat("stack_concat", glowInputs, dim)->getResult();
+  auto concatDims = concat.dims();
+
+  size_t numInputs = inputs.size();
+  std::vector<size_t> reshapeDims;
+
+  for (size_t i = 0; i < concatDims.size(); ++i) {
+    if (i == dim) {
+      reshapeDims.push_back(numInputs);
+      reshapeDims.push_back(concatDims[i] / numInputs);
+    } else {
+      reshapeDims.push_back(concatDims[i]);
+    }
+  }
+
+  // Handle the case when dim is the innermost dimension.
+  if (reshapeDims.size() == concatDims.size()) {
+    reshapeDims.back() /= numInputs;
+    reshapeDims.push_back(numInputs);
+  }
+
+  auto reshape =
+      F_.createReshape("stack_reshape", concat, reshapeDims)->getResult();
+
+  return addValueMapping(outputs[0], reshape);
 }
 
 Error PyTorchModelLoader::loadReshape(const torch::jit::Node *ptNode) {
