@@ -116,7 +116,7 @@ For MacPorts, run:
 
 #### Ubuntu
 
-[The following instructions have been tested on Ubuntu 16.04]
+[The following instructions have been tested on Ubuntu 16.04 and 18.04]
 
 In order to build Glow on Ubuntu it is necessary to install a few packages. The
 following command should install the required dependencies:
@@ -126,8 +126,7 @@ following command should install the required dependencies:
       libprotobuf-dev llvm-8 llvm-8-dev ninja-build protobuf-compiler wget \
       opencl-headers libgoogle-glog-dev
   ```
-[Note: building Glow on Ubuntu 16.04 with llvm-7 fails because llvm-7 xenial distribution
-uses an older c++ ABI]
+[Note: Ubuntu 16.04 and 18.04 ship with llvm-6 and need to be upgraded before building Glow. Building Glow on Ubuntu 16.04 with llvm-7 fails because llvm-7 xenial distribution uses an older c++ ABI, however building Glow on Ubuntu 18.04 with llvm-7 has been tested and is successful]
 
 It may be desirable to use `update-alternatives` to manage the version of
 clang/clang++:
