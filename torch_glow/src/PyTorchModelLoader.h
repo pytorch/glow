@@ -344,6 +344,10 @@ private:
   /// \returns error on failure.
   Error loadBatchNorm(const torch::jit::Node *ptNode);
 
+  /// Load a PyTorch dropout node.
+  /// \returns error on failure.
+  Error loadDropout(const torch::jit::Node *ptNode);
+
   /// Load a PyTorch quantized::add node.
   /// \return error on failure.
   Error loadQuantizedAdd(const torch::jit::Node *ptNode);

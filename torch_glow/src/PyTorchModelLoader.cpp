@@ -424,6 +424,15 @@ struct BNInputs {
   };
 };
 
+/// Indexes of aten::dropout inputs.
+struct DropoutInputs {
+  enum {
+    input = 0,
+    p = 1,
+    training = 2,
+  };
+};
+
 /// Indexes of aten::avg_pool2d inputs.
 struct AvgPoolInputs {
   enum {
@@ -662,6 +671,13 @@ PyTorchModelLoader::getSymbolsMapping() {
         {
             PowInputs::exponent,
         }},
+       {{"aten::dropout", "aten::dropout_"},
+        &PyTorchModelLoader::loadDropout,
+        {
+            DropoutInputs::p,
+            DropoutInputs::training,
+        }},
+
        {{"aten::sqrt", "aten::sqrt_"}, &PyTorchModelLoader::loadSqrt, {}},
        {{"aten::clamp"},
         &PyTorchModelLoader::loadClamp,
@@ -1744,6 +1760,24 @@ Error PyTorchModelLoader::loadBatchNorm(const torch::jit::Node *ptNode) {
       F_.createBatchNormalization("batchnorm", input, bias, weights, mean, var,
                                   channelIdx, epsilon, momentum);
   return addValueMapping(outputs[0], bn->getResult());
+}
+
+Error PyTorchModelLoader::loadDropout(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 3, outputs, 1));
+
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      input, getGlowNodeValueForValue(inputs[DropoutInputs::input]));
+
+  bool training;
+  ASSIGN_VALUE_OR_RETURN_ERR(training, iValToBool(getGlowIValueForValue(
+                                           inputs[DropoutInputs::training])));
+  RETURN_ERR_IF_NOT(!training, "Glow doesn't support dropout training yet");
+
+  // Dropout not in training mode is a noop.
+  return addValueMapping(outputs[0], input);
 }
 
 Error PyTorchModelLoader::loadQuantize(const torch::jit::Node *ptNode) {
