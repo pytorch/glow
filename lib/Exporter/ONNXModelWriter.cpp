@@ -822,6 +822,23 @@ Error ONNXModelWriter::writeBatchNormalization(
   return Error::success();
 }
 
+Error ONNXModelWriter::writeLayerNormalization(
+    const LayerNormalizationNode *node, GraphType &graph) {
+  auto *proto = graph.add_node();
+  // Add dictionary entries.
+  addValueAttribute(proto, "epsilon", node->getEpsilon());
+
+  proto->set_name(node->getName());
+  proto->set_op_type("LayerNormalization");
+
+  proto->add_input(node->getInput().getNode()->getName());
+  proto->add_input(node->getScale().getNode()->getName());
+  proto->add_input(node->getBias().getNode()->getName());
+
+  outputsToProto(node, proto);
+  return Error::success();
+}
+
 Error ONNXModelWriter::writeMeanVarNormalization(
     const MeanVarNormalizationNode *node, GraphType &graph) {
   auto *proto = graph.add_node();

@@ -428,7 +428,7 @@ struct MeanInputs {
 };
 
 /// Indexes of aten::batch_norm inputs.
-struct BNInputs {
+struct BatchNormInputs {
   enum {
     input = 0, // NCHW
     weights = 1,
@@ -439,6 +439,18 @@ struct BNInputs {
     momentum = 6,
     eps = 7,
     cuddnn_enabled = 8,
+  };
+};
+
+/// Indexes of aten::layer_norm inputs.
+struct LayerNormInputs {
+  enum {
+    input = 0,
+    normalized_shape = 1,
+    weight = 2,
+    bias = 3,
+    eps = 4,
+    cuddnn_enabled = 5,
   };
 };
 
@@ -778,14 +790,23 @@ PyTorchModelLoader::getSymbolsMapping() {
       {{"aten::batch_norm"},
        &PyTorchModelLoader::loadBatchNorm,
        {
-           BNInputs::weights,
-           BNInputs::bias,
-           BNInputs::running_mean,
-           BNInputs::running_var,
-           BNInputs::training,
-           BNInputs::momentum,
-           BNInputs::eps,
-           BNInputs::cuddnn_enabled,
+           BatchNormInputs::weights,
+           BatchNormInputs::bias,
+           BatchNormInputs::running_mean,
+           BatchNormInputs::running_var,
+           BatchNormInputs::training,
+           BatchNormInputs::momentum,
+           BatchNormInputs::eps,
+           BatchNormInputs::cuddnn_enabled,
+       }},
+      {{"aten::layer_norm"},
+       &PyTorchModelLoader::loadLayerNorm,
+       {
+           LayerNormInputs::normalized_shape,
+           LayerNormInputs::weight,
+           LayerNormInputs::bias,
+           LayerNormInputs::eps,
+           LayerNormInputs::cuddnn_enabled,
        }},
       {{"aten::max_pool2d"},
        &PyTorchModelLoader::loadMaxPool2d,
@@ -1084,6 +1105,20 @@ glow::NodeValue PyTorchModelLoader::rescaleIntToUint(glow::NodeValue input) {
   }
 }
 
+template <typename T>
+NodeValue PyTorchModelLoader::loadNodeValueOrCreateBroadcastedConstant(
+    const torch::jit::Value *value, llvm::StringRef name, const Type &ty,
+    const T &val) {
+  glow::NodeValue nodeValue;
+  if (hasGlowNodeValueForValue(value)) {
+    return EXIT_ON_ERR(getGlowNodeValueForValue(value));
+  } else {
+    glow::Tensor t(ty);
+    t.init(glow::Tensor::InitKind::Broadcast, val, F_.getParent()->getPRNG());
+    return F_.getParent()->createConstant(name, std::move(t))->getOutput();
+  }
+}
+
 Error PyTorchModelLoader::loadQuantizedAdd(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
@@ -1192,17 +1227,9 @@ Error PyTorchModelLoader::loadQuantizedLinear(const torch::jit::Node *ptNode) {
                                           outScale, outZeroPoint - OFFSETSHIFT);
 
   // Get bias or create a zero bias if no bias is found.
-  glow::NodeValue bias;
-  if (hasGlowNodeValueForValue(inputs[QuantizedLinearInputs::bias])) {
-    ASSIGN_VALUE_OR_RETURN_ERR(
-        bias, getGlowNodeValueForValue(inputs[QuantizedLinearInputs::bias]));
-  } else {
-    glow::Tensor biasT(glow::ElemKind::FloatTy, {weight.dims()[1]});
-    biasT.zero();
-    glow::Constant *biasConstant = F_.getParent()->createConstant(
-        "quantized_linear_bias", std::move(biasT));
-    bias = biasConstant->getOutput();
-  }
+  glow::NodeValue bias = loadNodeValueOrCreateBroadcastedConstant(
+      inputs[QuantizedLinearInputs::bias], "quantized_linear_bias",
+      glow::Type(ElemKind::FloatTy, {weight.dims()[1]}), 0.0);
 
   // Choose bias quantization params and quantize it.
   glow::Constant *biasConstant = llvm::dyn_cast<glow::Constant>(bias.getNode());
@@ -1272,7 +1299,7 @@ Error PyTorchModelLoader::loadGlowFusedLinear(const torch::jit::Node *ptNode) {
   return addValueMapping(outputs[0], output);
 }
 
-Expected<NodeValue> PyTorchModelLoader::loadNodeValueOrBroadcastedConstant(
+Expected<NodeValue> PyTorchModelLoader::loadNodeValueOrBroadcastedIValue(
     const torch::jit::Value *value, llvm::ArrayRef<size_t> dims) {
   if (hasGlowNodeValueForValue(value)) {
     return getGlowNodeValueForValue(value);
@@ -1307,11 +1334,11 @@ PyTorchModelLoader::loadArithmeticNode(llvm::StringRef name,
   if (hasGlowNodeValueForValue(lhs)) {
     ASSIGN_VALUE_OR_RETURN_ERR(lhsInput, getGlowNodeValueForValue(lhs));
     ASSIGN_VALUE_OR_RETURN_ERR(
-        rhsInput, loadNodeValueOrBroadcastedConstant(rhs, lhsInput.dims()));
+        rhsInput, loadNodeValueOrBroadcastedIValue(rhs, lhsInput.dims()));
   } else if (hasGlowNodeValueForValue(rhs)) {
     ASSIGN_VALUE_OR_RETURN_ERR(rhsInput, getGlowNodeValueForValue(rhs));
     ASSIGN_VALUE_OR_RETURN_ERR(
-        lhsInput, loadNodeValueOrBroadcastedConstant(lhs, rhsInput.dims()));
+        lhsInput, loadNodeValueOrBroadcastedIValue(lhs, rhsInput.dims()));
   } else {
     return MAKE_ERR("Either lhs or rhs of arithmetic node must be a tensor");
   }
@@ -1714,17 +1741,9 @@ Error PyTorchModelLoader::loadConvolution(const torch::jit::Node *ptNode) {
   glow::ShapeNHWC weightsShape(weights.dims());
 
   // If a bias was provided then use it otherwise create a 0 bias.
-  glow::NodeValue bias;
-  if (hasGlowNodeValueForValue(inputs[ConvInputs::bias])) {
-    ASSIGN_VALUE_OR_RETURN_ERR(
-        bias, getGlowNodeValueForValue(inputs[ConvInputs::bias]));
-  } else {
-    glow::Tensor biasT(glow::ElemKind::FloatTy, {weightsShape.n});
-    biasT.zero();
-    glow::Constant *biasConstant =
-        F_.getParent()->createConstant("conv_bias", std::move(biasT));
-    bias = biasConstant->getOutput();
-  }
+  glow::NodeValue bias = loadNodeValueOrCreateBroadcastedConstant(
+      inputs[ConvInputs::bias], "conv_bias",
+      glow::Type(ElemKind::FloatTy, {weightsShape.n}), 0);
 
   std::vector<glow::unsigned_t> strides;
   ASSIGN_VALUE_OR_RETURN_ERR(
@@ -1773,19 +1792,57 @@ Error PyTorchModelLoader::loadConvolution(const torch::jit::Node *ptNode) {
   return addValueMapping(outputs[0], output->getResult());
 }
 
+Error PyTorchModelLoader::loadLayerNorm(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 6, outputs, 1));
+
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      input, getGlowNodeValueForValue(inputs[LayerNormInputs::input]));
+
+  float eps = 1e-5;
+  if (hasGlowIValueForValue(inputs[LayerNormInputs::eps])) {
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        eps, iValToDouble(getGlowIValueForValue(inputs[LayerNormInputs::eps])));
+  }
+
+  std::vector<int64_t> *normalizedShape;
+  ASSIGN_VALUE_OR_RETURN_ERR(normalizedShape,
+                             iValToIntList(getGlowIValueForValue(
+                                 inputs[LayerNormInputs::normalized_shape])));
+
+  std::vector<size_t> normalizedShapeCast =
+      castVector<size_t>(*normalizedShape);
+
+  glow::NodeValue weight = loadNodeValueOrCreateBroadcastedConstant(
+      inputs[LayerNormInputs::weight], "layernorm_weight",
+      glow::Type(ElemKind::FloatTy, normalizedShapeCast), 1.0);
+
+  glow::NodeValue bias = loadNodeValueOrCreateBroadcastedConstant(
+      inputs[LayerNormInputs::bias], "layernorm_bias",
+      glow::Type(ElemKind::FloatTy, normalizedShapeCast), 0.0);
+
+  auto output =
+      F_.createLayerNormalization("layernorm", input, weight, bias, eps)
+          ->getResult();
+
+  return addValueMapping(outputs[0], output);
+}
+
 Error PyTorchModelLoader::loadBatchNorm(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
   RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 9, outputs, 1));
 
   bool training;
-  ASSIGN_VALUE_OR_RETURN_ERR(
-      training, iValToBool(getGlowIValueForValue(inputs[BNInputs::training])));
+  ASSIGN_VALUE_OR_RETURN_ERR(training, iValToBool(getGlowIValueForValue(
+                                           inputs[BatchNormInputs::training])));
   RETURN_ERR_IF_NOT(training == false, "Don't support BatchNorm training yet.");
 
   glow::NodeValue input;
-  ASSIGN_VALUE_OR_RETURN_ERR(input,
-                             getGlowNodeValueForValue(inputs[BNInputs::input]));
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      input, getGlowNodeValueForValue(inputs[BatchNormInputs::input]));
   RETURN_ERR_IF_NOT(
       input.dims().size() == 4,
       glow::strFormat("Number input dimensions must be equal to 4, got %lu",
@@ -1793,48 +1850,31 @@ Error PyTorchModelLoader::loadBatchNorm(const torch::jit::Node *ptNode) {
 
   size_t numChannels = input.dims()[1];
 
-  glow::NodeValue weights;
-  if (hasGlowNodeValueForValue(inputs[BNInputs::weights])) {
-    ASSIGN_VALUE_OR_RETURN_ERR(
-        weights, getGlowNodeValueForValue(inputs[BNInputs::weights]));
-  } else {
-    glow::Tensor weightsT(glow::ElemKind::FloatTy, {numChannels});
-    weightsT.init(glow::Tensor::InitKind::Broadcast, 1,
-                  F_.getParent()->getPRNG());
-    glow::Constant *weightsConstant = F_.getParent()->createConstant(
-        "batchnorm_weights", std::move(weightsT));
-    weights = weightsConstant->getOutput();
-  }
+  glow::NodeValue weights = loadNodeValueOrCreateBroadcastedConstant(
+      inputs[BatchNormInputs::weights], "batchnorm_weights",
+      glow::Type(ElemKind::FloatTy, {numChannels}), 1.0);
 
-  glow::NodeValue bias;
-  if (hasGlowNodeValueForValue(inputs[BNInputs::bias])) {
-    ASSIGN_VALUE_OR_RETURN_ERR(
-        bias, getGlowNodeValueForValue(inputs[BNInputs::bias]));
-  } else {
-    glow::Tensor biasT(glow::ElemKind::FloatTy, {numChannels});
-    biasT.zero();
-    glow::Constant *biasConstant =
-        F_.getParent()->createConstant("batchnorm_bias", std::move(biasT));
-    bias = biasConstant->getOutput();
-  }
+  glow::NodeValue bias = loadNodeValueOrCreateBroadcastedConstant(
+      inputs[BatchNormInputs::bias], "batchnorm_bias",
+      glow::Type(ElemKind::FloatTy, {numChannels}), 0.0);
 
   glow::NodeValue mean;
   ASSIGN_VALUE_OR_RETURN_ERR(
-      mean, getGlowNodeValueForValue(inputs[BNInputs::running_mean]));
+      mean, getGlowNodeValueForValue(inputs[BatchNormInputs::running_mean]));
 
   glow::NodeValue var;
   ASSIGN_VALUE_OR_RETURN_ERR(
-      var, getGlowNodeValueForValue(inputs[BNInputs::running_var]));
+      var, getGlowNodeValueForValue(inputs[BatchNormInputs::running_var]));
 
   float momentum;
   ASSIGN_VALUE_OR_RETURN_ERR(
-      momentum,
-      to32Bit(iValToDouble(getGlowIValueForValue(inputs[BNInputs::momentum]))));
+      momentum, to32Bit(iValToDouble(
+                    getGlowIValueForValue(inputs[BatchNormInputs::momentum]))));
 
   float epsilon;
   ASSIGN_VALUE_OR_RETURN_ERR(
-      epsilon,
-      to32Bit(iValToDouble(getGlowIValueForValue(inputs[BNInputs::eps]))));
+      epsilon, to32Bit(iValToDouble(
+                   getGlowIValueForValue(inputs[BatchNormInputs::eps]))));
 
   // Input is in NCHW.
   glow::unsigned_t channelIdx = 1;
@@ -1943,18 +1983,10 @@ Error PyTorchModelLoader::loadQuantizedConvUnpacked(
   weights = F_.createTranspose("qconv_weights_transposed", weights, NCHW2NHWC);
   glow::ShapeNHWC weightsShape(weights.dims());
 
-  glow::NodeValue bias;
-  if (hasGlowNodeValueForValue(inputs[QuantizedUnpackedConv2dInputs::bias])) {
-    ASSIGN_VALUE_OR_RETURN_ERR(
-        bias,
-        getGlowNodeValueForValue(inputs[QuantizedUnpackedConv2dInputs::bias]));
-  } else {
-    glow::Tensor biasT(glow::ElemKind::FloatTy, {weightsShape.n});
-    biasT.zero();
-    glow::Constant *biasConstant =
-        F_.getParent()->createConstant("qconv_bias", std::move(biasT));
-    bias = biasConstant->getOutput();
-  }
+  glow::NodeValue bias = loadNodeValueOrCreateBroadcastedConstant(
+      inputs[QuantizedUnpackedConv2dInputs::bias], "qconv_bias",
+      glow::Type(ElemKind::FloatTy, {weightsShape.n}), 0.0);
+
   auto biasType = F_.getParent()->uniqueType(
       glow::ElemKind::Int32QTy, bias.dims(),
       input.getType()->getScale() * weights.getType()->getScale(), 0);

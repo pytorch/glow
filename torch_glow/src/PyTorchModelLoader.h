@@ -253,8 +253,17 @@ private:
   /// broadcasting that value to a tensor of size \p dims and return the result
   /// of that Constant.
   Expected<glow::NodeValue>
-  loadNodeValueOrBroadcastedConstant(const torch::jit::Value *value,
-                                     llvm::ArrayRef<size_t> dims);
+  loadNodeValueOrBroadcastedIValue(const torch::jit::Value *value,
+                                   llvm::ArrayRef<size_t> dims);
+
+  /// If there is a NodeValue mapped to \p value then return it, otherwise
+  /// create a Constant with type \p ty, name \p name, and value \p val
+  /// broadcasted.
+  template <typename T = float>
+  glow::NodeValue
+  loadNodeValueOrCreateBroadcastedConstant(const torch::jit::Value *value,
+                                           llvm::StringRef name, const Type &ty,
+                                           const T &val);
 
   /// Find the Glow NodeValue that maps to a given PyTorch value \p value.
   Expected<glow::NodeValue>
@@ -369,6 +378,10 @@ private:
   /// Load a PyTorch batch_norm node.
   /// \returns error on failure.
   Error loadBatchNorm(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch aten::layer_norm node.
+  /// \returns error on failure.
+  Error loadLayerNorm(const torch::jit::Node *ptNode);
 
   /// Load a PyTorch dropout node.
   /// \returns error on failure.
