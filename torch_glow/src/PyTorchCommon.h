@@ -44,6 +44,10 @@ struct PyTorchLoaderSettings {
   /// A list of symbols for nodes that will be ignored by the Glow fuser and
   /// thus will not be fused to Glow.
   std::unordered_set<torch::jit::Symbol> opBlacklist;
+
+  /// The minimum size of a glow fusion groups in terms of number of PyTorch
+  /// nodes. 0 indicates no minimum size.
+  size_t minFusionGroupSize = 0;
 };
 
 /// Given a PyTorch ScalarType \p ty, \returns a matching Glow ElemKind.

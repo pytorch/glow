@@ -17,6 +17,7 @@
 #include <pybind11/pybind11.h>
 
 #include "FuseKnownPatterns.h"
+#include "GlowFuser.h"
 #include "PyTorchCommon.h"
 #include "Registration.h"
 #include "TorchGlowTraining.h"
@@ -107,6 +108,23 @@ PYBIND11_MODULE(_torch_glow, m) {
   /// Calls the fuseBranchedLinearPattern pass.
   /// NOTE: This is only exposed for testing.
   m.def("fuseBranchedLinearPattern_", glow::detail::fuseBranchedLinearPattern);
+
+  /// Set the minimum fusion group size.
+  m.def("setMinFusionGroupSize",
+        [](size_t k) { getPyTorchLoaderSettings().minFusionGroupSize = k; });
+
+  /// Call the Glow fuser and accept all node kinds but don't actually run the
+  /// PyTorchModelLoader.
+  /// NOTE: This is only exposed for testing.
+  m.def("glowCustomFuseDebug_", [](std::shared_ptr<torch::jit::Graph> graph) {
+    return glowCustomFuse(graph);
+  });
+
+  /// NOTE: This is only exposed for testing.
+  m.def("glowCustomFuseDebug_", [](std::shared_ptr<torch::jit::Graph> graph,
+                                   std::vector<std::string> &acceptableKinds) {
+    return glowCustomFuseDebug(graph, acceptableKinds);
+  });
 
   /// Binding wrapper class for TorchGlowTraining and its settings.
   py::class_<TorchGlowTrainingWrapper>(m, "TorchGlowTrainingWrapper")
