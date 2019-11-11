@@ -541,7 +541,6 @@ protected:
               "convert_" + embeddings[i].getNode()->getName().str(),
               embeddings[i], ElemKind::FloatTy);
         }
-        F_->createSave("save_embedding", embeddings[i]);
       } else {
         Constant *data =
             createRandomizedConstant(mod, internalTypeF, {embSizes[i], embDim},
