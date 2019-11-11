@@ -291,7 +291,8 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::SameElementType,
                   {"Indices", "ElemKind::Int64ITy"})
       .autoVerify(VerifyKind::SameElementType,
-                  {"Lengths", "ElemKind::Int32ITy"});
+                  {"Lengths", "ElemKind::Int32ITy"})
+      .addGradientInstr({"Data", "Indices", "Lengths"}, {"Dest", "Data"});
 
   BB.newInstr("SparseLengthsWeightedSum")
       .addOperand("Dest", OperandKind::Out)

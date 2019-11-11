@@ -1167,6 +1167,20 @@ bool SparseLengthsSumNode::verify() const {
                                 getLengths());
 }
 
+bool SparseLengthsSumGradNode::verify() const {
+  // Same checks as SparseLengthsSumNode.
+  bool isValid = verifySparseLengthsSum(getOriginalOutputForResult(), getData(),
+                                        getIndices(), getLengths());
+
+  // Checks on gradient inputs/outputs.
+  isValid &= checkSameType(getGradOfOriginalOutputNamedResult(),
+                           getOriginalOutputForResult(), this);
+  isValid &= checkSameType(getGradOfInputNamedData(), getData(), this);
+  isValid &= checkSameType(getGradOfInputNamedIndices(), getIndices(), this);
+  isValid &= checkSameType(getGradOfInputNamedLengths(), getLengths(), this);
+  return isValid;
+}
+
 bool SparseLengthsWeightedSumNode::verify() const {
   return verifySparseLengthsWeightedSum(getResult(), getData(), getWeights(),
                                         getIndices(), getLengths());

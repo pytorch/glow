@@ -475,6 +475,7 @@ int main(int argc, char **argv) {
       .addInput("Indices")
       .addInput("Lengths")
       .addResultFromCtorArg()
+      .addGradient()
       .setDocstring("Gathers slices of the outer-most dimension of Data "
                     "indexed by Indices vector, and then accumulates them into "
                     "len(Lengths) entries: first Lengths[0] slices are "
