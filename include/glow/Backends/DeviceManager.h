@@ -120,6 +120,16 @@ public:
               std::unique_ptr<ExecutionContext> context,
               runtime::ResultCBTy resultCB) = 0;
 
+  /// Copies the contents of Tensor \p T to the device resource allocated to
+  /// Placeholder \p PH. once finished calls \p resultCB with the result of the
+  /// operation.
+  virtual void
+  transferStaticPlaceholderToDevice(Placeholder *PH, Tensor *T,
+                                    std::function<void(Error)> resultCB) {
+    resultCB(MAKE_ERR(ErrorValue::ErrorCode::RUNTIME_ERROR,
+                      "Unsupported feature, cannot copy Placeholder."));
+  };
+
   /// Stops execution and shuts down the Device.
   virtual Error stop(bool block = true) { return Error::success(); };
 
