@@ -893,6 +893,41 @@ ReluNode *Function::createRELU(llvm::StringRef name, NodeValue input) {
   return addNode(new ReluNode(name, input.getType(), input));
 }
 
+Node *Function::createGELU(llvm::StringRef name, NodeValue input) {
+  auto outTy = input.getType();
+
+  Node *alphaSplat =
+      createSplat(name.str() + ".alpha", outTy, M_2_SQRTPI * M_SQRT1_2);
+  Node *splat = createSplat(name.str() + ".splat", outTy, 0.044715);
+  Node *splatHalf = createSplat(name.str() + ".splatHalf", outTy, 0.5);
+  Node *splat1 = createSplat(name.str() + ".splat3", outTy, 1.0);
+  Node *splat3 = createSplat(name.str() + ".splat3", outTy, 3.0);
+
+  // pow(x, 3)
+  Node *pow = createPow(name.str() + ".pow", input, splat3);
+
+  // pow(x, 3) * 0.044715
+  Node *mul = createMul(name.str() + ".mul", pow, splat);
+
+  // x + pow(x, 3) * 0.044715
+  Node *add = createAdd(name.str() + ".add", input, mul);
+
+  // (x * pow(x, 3) * 0.044715) * alpha
+  Node *mul2 = createMul(name.str() + ".mul2", add, alphaSplat);
+
+  // tanh((x * pow(x, 3) * 0.044715) * alpha)
+  Node *tanh = createTanh(name.str() + ".tanh", mul2);
+
+  // tanh((x * pow(x, 3) * 0.044715) * alpha) + 1
+  Node *add2 = createAdd(name.str() + ".add2", tanh, splat1);
+
+  // (tanh((x * pow(x, 3) * 0.044715) * alpha) + 1) * 0.5
+  Node *mul3 = createMul(name.str() + ".mul3", splatHalf, add2);
+
+  // (tanh((x * pow(x, 3) * 0.044715) * alpha) + 1) * 0.5 * x
+  return createMul(name.str() + ".mul4", mul3, input);
+}
+
 PReluNode *Function::createPRELU(llvm::StringRef name, NodeValue input,
                                  NodeValue slope, TypeRef outTy) {
   return addNode(new PReluNode(name, outTy, input, slope));

@@ -7,26 +7,25 @@ GLOW_NODE_NAME = "glow::FusionGroup"
 SUBGRAPH_ATTR = "Subgraph"
 
 
-def jitVsGlow(f, *inputs, expected_fused_ops, accept_all_ops=False):
+def jitVsGlow(f, *inputs, expected_fused_ops, accept_all_ops=False, check_trace=True, atol=5e-4, rtol=1e-3):
     """
     Runs the given inputs *inputs on f both with and without lowering f to Glow,
     compares the results, and checks that ops in expected_fused_ops were indeed
     lowered to Glow.
     """
-    jitVsGlow_(f, f, *inputs, expected_fused_ops=expected_fused_ops,
+    jitVsGlow_(f, f, check_trace, atol, rtol, *inputs, expected_fused_ops=expected_fused_ops,
                accept_all_ops=accept_all_ops)
 
 
-def jitVsGlow_(f_torch, f_glow, *inputs, expected_fused_ops=None,
+def jitVsGlow_(f_torch, f_glow, check_trace, atol, rtol, *inputs, expected_fused_ops=None,
                accept_all_ops=False):
-
     with torch.no_grad():
         torch_glow.disableFusionPass()
-        torch_trace = torch.jit.trace(f_torch, inputs)
+        torch_trace = torch.jit.trace(f_torch, inputs, check_trace=check_trace)
         torch_res = torch_trace(*inputs)
 
         torch_glow.enableFusionPass()
-        glow_trace = torch.jit.trace(f_glow, inputs)
+        glow_trace = torch.jit.trace(f_glow, inputs, check_trace=check_trace)
         glow_res = glow_trace(*inputs)
 
         # check that there are no Glow nodes in the torch graph
@@ -81,12 +80,15 @@ def jitVsGlow_(f_torch, f_glow, *inputs, expected_fused_ops=None,
             assert isinstance(torch_res, tuple) and isinstance(glow_res, tuple)
             assert len(torch_res) == len(glow_res)
             for i in range(len(torch_res)):
-                assert torch.allclose(torch_res[i], glow_res[i], atol=01e-6)
+                assert torch.allclose(
+                    torch_res[i], glow_res[i], atol=atol, rtol=rtol)
         else:
-            is_all_close = torch.allclose(torch_res, glow_res, atol=01e-6)
+            is_all_close = torch.allclose(
+                torch_res, glow_res, atol=atol, rtol=rtol)
             if not is_all_close:
                 print("torch_res\n", torch_res)
                 print("glow_res\n", glow_res)
+                print("diff\n", torch.abs(glow_res - torch_res))
             assert is_all_close
 
 
