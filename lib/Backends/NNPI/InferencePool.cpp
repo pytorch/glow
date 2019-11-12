@@ -475,9 +475,7 @@ Error InferencePoolEnv::init(unsigned numWorkers, NNPIAdapter adapter,
                                     void *userData) -> uint64_t {
         BlockStream *ss = reinterpret_cast<BlockStream *>(userData);
         size_t readSize = ss->read(static_cast<char *>(ptr), size * count);
-        LOG_AND_RETURN_IF_NOT(ERROR, readSize == size * count,
-                              "Failed to read stream", 0);
-        return count;
+        return readSize;
       };
       inputStream.writeCallback = NULL;
       inputStream.seekCallback = NULL;

@@ -70,7 +70,6 @@ std::set<std::string> glow::backendTestBlacklist = {
     "NonSquarePaddingMaxPool/0",
     "QuantizedMaxPoolWithArgmax/0",
     "QuantizedMaxPoolWithArgmaxTransposed/0",
-    "RepeatedSLSWithPartialTensors/0",
     "ResizeNearest_Float/0",
     "ResizeNearest_Float16/0",
     "ResizeNearest_Int16/0",

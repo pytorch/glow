@@ -154,5 +154,15 @@ inline std::string EnvDeviceVersion() {
 
 inline bool SymlowpWA() { return NNPIEnvVariables::getVarBool("SYMLOWP_WA"); }
 
+inline std::string EnvDeviceID() {
+  auto deviceID = NNPIEnvVariables::getVarString("NNPI_DEVICE_ID");
+  return deviceID.length() ? deviceID : "";
+}
+
+inline std::string EnvIceCores() {
+  auto iceCores = NNPIEnvVariables::getVarString("NNPI_ICE_CORES");
+  return iceCores.length() ? iceCores : "";
+}
+
 } // namespace glow
 #endif // GLOW_NNPI_IMPORTER_H

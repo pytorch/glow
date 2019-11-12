@@ -26,6 +26,7 @@
 #include "llvm/Support/raw_ostream.h"
 
 #include "DebugMacros.h"
+#include "glow/Support/Error.h"
 
 namespace glow {
 namespace runtime {
@@ -50,11 +51,11 @@ NNPIDeviceManager::NNPIDeviceManager(const DeviceConfig &config,
     : DeviceManager(config), numWorkersPerFunction_(numInferenceWorkers),
       deviceId_(config_.deviceID), adapter_(NNPI_INVALID_NNPIHANDLE),
       device_(NNPI_INVALID_NNPIHANDLE) {
-  auto it = config_.parameters.find("DeviceID");
-  if (it != config_.parameters.end()) {
+  const auto envDeviceId = EnvDeviceID();
+  if (envDeviceId.length() > 0) {
     // Todo: check device id is appropriate for the machine (check adapter for
     // active devices).
-    deviceId_ = std::stoul(it->second);
+    deviceId_ = std::stoul(envDeviceId);
   }
 
   if (!numWorkersPerFunction_) {

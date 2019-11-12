@@ -54,12 +54,15 @@ size_t BlockStream::write(const char *buffer, size_t size) {
 size_t BlockStream::read(char *buffer, size_t size) {
   char *bStart = &buffer[0];
   size_t readBytes = 0;
+  size_t maxReadSize = writeOffest_ - readOffest_;
+  size_t bytesToRead = std::min(maxReadSize, size);
   size_t offsetInBlock = readOffest_ % blockSize_;
   size_t blockIndex = readOffest_ / blockSize_;
-  while (size - readBytes > 0) {
+
+  while (bytesToRead - readBytes > 0) {
     std::vector<char> &currentBlock = blocks_[blockIndex++];
     size_t blockCopySize =
-        std::min(blockSize_ - offsetInBlock, (size - readBytes));
+        std::min(blockSize_ - offsetInBlock, (bytesToRead - readBytes));
     auto srcStartIt = currentBlock.begin() + offsetInBlock;
     auto srcEndIt = srcStartIt + blockCopySize;
     std::copy(srcStartIt, srcEndIt, bStart);

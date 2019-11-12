@@ -1191,7 +1191,7 @@ public:
         nodeValueName(glowSLWS->getResult()).c_str(),
         nodeValueName(glowSLWS->getWeights()).c_str(),
         nodeValueName(glowSLWS->getIndices()).c_str(),
-        nodeValueName(glowSLWS->getLengths()).c_str());
+        nodeValueName(glowSLWS->getLengths()).c_str(), false);
   }
 };
 
@@ -1452,13 +1452,17 @@ public:
         },
         {nodeValueName(glowSLWS->getResult())});
 
+    bool usFp32Accum = !(glowSLWS->getUseFP16Accumulation() &&
+                         (glowSLWS->getResult().getType()->getElementType() ==
+                          glow::ElemKind::Float16Ty));
+
     return nnpiNetworkAddSparseLengthsWeightedSumOp(
         importer.getNetwork(), glowSLWS->getName().begin(),
         nodeValueName(glowSLWS->getData()).c_str(),
         nodeValueName(glowSLWS->getResult()).c_str(),
         nodeValueName(glowSLWS->getWeights()).c_str(),
         nodeValueName(glowSLWS->getIndices()).c_str(),
-        nodeValueName(glowSLWS->getLengths()).c_str());
+        nodeValueName(glowSLWS->getLengths()).c_str(), usFp32Accum);
   }
 };
 
@@ -1478,13 +1482,17 @@ public:
         },
         {nodeValueName(glowSLWS->getResult())});
 
+    bool usFp32Accum = !(glowSLWS->getUseFP16Accumulation() &&
+                         (glowSLWS->getResult().getType()->getElementType() ==
+                          glow::ElemKind::Float16Ty));
+
     return nnpiNetworkAddSparseLengthsWeightedSumOp(
         importer.getNetwork(), glowSLWS->getName().begin(),
         nodeValueName(glowSLWS->getData()).c_str(),
         nodeValueName(glowSLWS->getResult()).c_str(),
         nodeValueName(glowSLWS->getWeights()).c_str(),
         nodeValueName(glowSLWS->getIndices()).c_str(),
-        nodeValueName(glowSLWS->getLengths()).c_str());
+        nodeValueName(glowSLWS->getLengths()).c_str(), usFp32Accum);
   }
 };
 
