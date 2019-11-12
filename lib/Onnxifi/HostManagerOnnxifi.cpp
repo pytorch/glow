@@ -170,7 +170,8 @@ onnxStatus HostManagerGraph::run(std::unique_ptr<ExecutionContext> ctx,
         if (auto *traceContext = ctx->getTraceContext()) {
           setTraceEvents(traceEvents, traceContext);
 
-          if (GlowDumpDebugTraces) {
+          if (GlowDumpDebugTraces &&
+              !GlobalTraceContext::tryConsume(traceContext)) {
             llvm::SmallString<64> path;
             auto tempFileRes =
                 llvm::sys::fs::createTemporaryFile("glow-trace", "json", path);
