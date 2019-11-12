@@ -475,9 +475,11 @@ void HostManager::updateExecutionStats(
   auto stats = glow::Stats();
   stats->addTimeSeriesValue("network_execution_e2e", duration);
   stats->incrementCounter("network_execution");
-  stats->addTimeSeriesValue("network_execution_throughput",
+  if(context && context->getPlaceholderBindings() && duration > 0) {
+    stats->addTimeSeriesValue("network_execution_throughput",
                             context->getPlaceholderBindings()->getDataSize() *
                                 1000000 / duration);
+  }
 }
 
 /// Helper to get the parameters in DeviceConfig from \p str. The \p str has
