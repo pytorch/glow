@@ -40,8 +40,8 @@ void fuseBranchedLinearPattern(std::shared_ptr<torch::jit::Graph> &graph);
 /// known at graph compile time.
 void fuseConcat(std::shared_ptr<torch::jit::Graph> &graph);
 
-/// Pass that fuses quantized::conv_prepack -> quantized::conv2d patterns in \p
-/// graph into glow::unpacked_quantized_conv2d.
+/// Pass that fuses quantized::conv2d_prepack -> quantized::conv2d patterns in
+/// \p graph into glow::unpacked_quantized_conv2d.
 void fuseConvPrepack(std::shared_ptr<torch::jit::Graph> &graph);
 
 /// Pass that fuses quantized::linear_prepack -> quantized::linear patterns in
