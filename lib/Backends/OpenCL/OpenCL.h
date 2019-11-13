@@ -145,7 +145,8 @@ private:
   /// Fill the device \p buffer with a given \p value.
   /// \param len number of buffer elements to be filled by the \p value.
   /// Elements are considered to be of the type described by \p elemKind.
-  void fillBuffer(cl_mem buffer, uint64_t len, float value, ElemKind elemKind,
+  void fillBuffer(cl_mem buffer, uint64_t start, uint64_t len, float value,
+                  ElemKind elemKind,
                   runtime::OpenCLDeviceBindings *devBindings);
 
   /// Execution a convolution instruction which uses NCHW format.
@@ -243,13 +244,10 @@ namespace runtime {
 /// device specific information used to run a compiled function on a specific
 /// device.
 struct OpenCLDeviceBindings : DeviceBindings {
-  OpenCLDeviceBindings(
-      cl_mem buffer, cl_command_queue commands, cl_device_id device,
-      cl_context ctx, cl_program prog,
-      const std::unordered_map<std::string, cl_mem> &subBuffers)
+  OpenCLDeviceBindings(cl_mem buffer, cl_command_queue commands,
+                       cl_device_id device, cl_context ctx, cl_program prog)
       : DeviceBindings(OCLBackend::getName()), deviceBuffer{buffer},
-        commandQueue{commands}, deviceId{device}, context{ctx}, program{prog},
-        weightBuffers(subBuffers) {}
+        commandQueue{commands}, deviceId{device}, context{ctx}, program{prog} {}
 
   /// CL memory buffer. Currently this contains both mutable and immutable
   /// weights, the buffer is allocated once when the network is added.
@@ -273,12 +271,6 @@ struct OpenCLDeviceBindings : DeviceBindings {
 
   /// A list of kernels and their associated events.
   std::vector<KernelLaunch> kernelLaunches;
-
-  /// Buffers or subBuffers associated with symbols.
-  std::unordered_map<std::string, cl_mem> weightBuffers;
-
-  /// /returns the subBufffer assciated with a Value.
-  cl_mem getBuffer(glow::Value *v);
 };
 } // namespace runtime
 } // namespace glow
