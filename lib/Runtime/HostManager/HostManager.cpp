@@ -475,10 +475,10 @@ void HostManager::updateExecutionStats(
   auto stats = glow::Stats();
   stats->addTimeSeriesValue("network_execution_e2e", duration);
   stats->incrementCounter("network_execution");
-  if(context && context->getPlaceholderBindings() && duration > 0) {
+  if (context && context->getPlaceholderBindings() && duration > 0) {
     stats->addTimeSeriesValue("network_execution_throughput",
-                            context->getPlaceholderBindings()->getDataSize() *
-                                1000000 / duration);
+                              context->getPlaceholderBindings()->getDataSize() *
+                                  1000000 / duration);
   }
 }
 
