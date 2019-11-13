@@ -20,13 +20,12 @@
 #include "GlowFuser.h"
 #include "PyTorchModelLoader.h"
 
+#include <torch/csrc/jit/graph_executor.h>
 #include <torch/csrc/jit/operator_options.h>
 #include <torch/csrc/jit/pass_manager.h>
 #include <torch/csrc/jit/passes/subgraph_rewrite.h>
-#include <torch/csrc/jit/graph_executor.h>
 
 namespace glow {
-
 
 bool GlowCompilePyTorchModule = false;
 
@@ -37,7 +36,6 @@ static int setGraphExecutorToLegacy() {
   torch::jit::getExecutorMode() = false;
   torch::jit::getProfilingMode() = false;
   return 0;
-
 }
 
 static const int USE_LEGACY_GE = setGraphExecutorToLegacy();
