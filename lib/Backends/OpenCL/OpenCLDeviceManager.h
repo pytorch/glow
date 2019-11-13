@@ -98,6 +98,9 @@ class OpenCLBuffer {
   /// The OpenCL buffer being stored.
   cl_mem buffer_;
 
+  /// Subbuffers for symbols.
+  std::unordered_map<std::string, cl_mem> subBuffers_;
+
   /// Count of functions using this buffer.
   unsigned int users_{0};
 
@@ -120,6 +123,14 @@ public:
 
   /// Get size of buffer in bytes.
   size_t getSize() { return size_; }
+
+  /// Return the mapping from Symbol name to subBuffer for this Buffer.
+  const std::unordered_map<std::string, cl_mem> &getSubBuffers() {
+    return subBuffers_;
+  }
+
+  /// Add a mapping from a Symbol name to an offset into buffer_;
+  bool addSubBuffer(std::string name, size_t offset, size_t size);
 };
 
 /// A class controlling a single OpenCL device. Many OpenCLFunctions may be
