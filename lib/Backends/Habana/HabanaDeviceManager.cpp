@@ -284,6 +284,10 @@ void HabanaDeviceManager::runFunctionImpl(RunIdentifierTy runId,
 
   TRACE_EVENT_SCOPE_NAMED(ctx->getTraceContext(), TraceLevel::RUNTIME,
                           "HabanaDM::runnerThread", trEvent);
+
+  /// Habana DeviceManager doesn't support Device Resident Tensors.
+  ctx->getPlaceholderBindings()->ensureOnHost();
+
   if (ctx->getTraceContext()) {
     ctx->getTraceContext()->setThreadName(
         llvm::formatv("Habana {0} (enqueue)", deviceId_).str());

@@ -87,6 +87,8 @@ std::string GlowErrorValue::errorCodeToString(const ErrorCode &ec) {
     return "RUNTIME_DEVICE_NOT_FOUND";
   case ErrorCode::RUNTIME_NET_BUSY:
     return "RUNTIME_NET_BUSY";
+  case ErrorCode::DEVICE_FEATURE_NOT_SUPPORTED:
+    return "DEVICE_FEATURE_NOT_SUPPORTED";
   case ErrorCode::COMPILE_UNSUPPORTED_NODE_AFTER_OPTIMIZE:
     return "COMPILE_UNSUPPORTED_NODE_AFTER_OPTIMIZE";
   case ErrorCode::COMPILE_CONTEXT_MALFORMED:

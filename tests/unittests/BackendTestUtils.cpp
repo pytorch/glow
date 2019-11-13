@@ -212,6 +212,10 @@ void dispatchInference(const std::string &fname,
   for (auto &future : futures) {
     future.wait();
   }
+
+  for (auto &c : contexts) {
+    c->getPlaceholderBindings()->ensureOnHost();
+  }
   // Release the original context passed in by reference so we don't free it.
   contexts[0].release();
 }

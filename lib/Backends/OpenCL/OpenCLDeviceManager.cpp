@@ -462,6 +462,7 @@ void OpenCLDeviceManager::copyInputsToDevice(
     runtime::OpenCLDeviceBindings *devBindings) {
   TRACE_EVENT_SCOPE(context->getTraceContext(), TraceLevel::RUNTIME,
                     "copyInputsToDevice");
+
   bool profilingEnabled =
       context->getTraceContext() &&
       (context->getTraceContext()->getTraceLevel() & TraceLevel::COPY);
@@ -491,6 +492,7 @@ void OpenCLDeviceManager::copyInputsToDevice(
       devBindings->kernelLaunches.emplace_back(name, "copy", event);
     }
   }
+
   // Do it!
   clFinish(devBindings->commandQueue);
 }
@@ -500,9 +502,11 @@ void OpenCLDeviceManager::copyOutputsFromDevice(
     runtime::OpenCLDeviceBindings *devBindings) {
   TRACE_EVENT_SCOPE(context->getTraceContext(), TraceLevel::RUNTIME,
                     "copyOutputsFromDevice");
+
   bool profilingEnabled =
       context->getTraceContext() &&
       (context->getTraceContext()->getTraceLevel() & TraceLevel::COPY);
+
   auto &symbolTable = runtimeBundle.getSymbolTable();
   for (auto PH : context->getPlaceholderBindings()->pairs()) {
     auto it = symbolTable.find(PH.first->getName());
@@ -528,6 +532,7 @@ void OpenCLDeviceManager::copyOutputsFromDevice(
       devBindings->kernelLaunches.emplace_back(name, "copy", event);
     }
   }
+
   // Do it!
   clFinish(devBindings->commandQueue);
 }
@@ -662,9 +667,11 @@ void OpenCLDeviceManager::runFunctionImpl(
     RunIdentifierTy id, std::string function,
     std::unique_ptr<ExecutionContext> context, ResultCBTy resultCB) {
   DCHECK(resultCB != nullptr);
-
   TRACE_EVENT_SCOPE_NAMED(context->getTraceContext(), TraceLevel::RUNTIME,
                           "DeviceManager::run", dmRun);
+  /// OpenCL DeviceManager doesn't support Device Resident Tensors.
+  context->getPlaceholderBindings()->ensureOnHost();
+
   auto funcIt = functions_.find(function);
   if (funcIt == functions_.end()) {
     dmRun.addArg("reason", "function not found");

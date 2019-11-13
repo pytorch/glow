@@ -473,6 +473,7 @@ ShapeVector glow::expandDimsToMax(llvm::ArrayRef<size_t> currDims) {
 }
 
 void Tensor::init(InitKind init, float val, PseudoRNG &PRNG) {
+  assert(!isDeviceResident() && "Tensor must reside on host to access data.");
   switch (init) {
   case InitKind::Zero:
     zero();
@@ -562,10 +563,12 @@ void Tensor::init(InitKind init, float val, PseudoRNG &PRNG) {
 }
 
 void Tensor::convertToType(ElemKind newTy) {
+  assert(!isDeviceResident() && "Tensor must reside on host to access data.");
   *this = this->getCopyConvertedToType(newTy);
 }
 
 Tensor Tensor::getCopyConvertedToType(ElemKind newKind) const {
+  assert(!isDeviceResident() && "Tensor must reside on host to access data.");
   const ElemKind origKind = getElementType();
   DCHECK((origKind == ElemKind::FloatTy && newKind == ElemKind::Float16Ty) ||
          (origKind == ElemKind::Float16Ty && newKind == ElemKind::FloatTy) ||
@@ -636,6 +639,21 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const Tensor *t) {
   assert(t != nullptr && "Null Pointer.");
   t->dump(os);
   return os;
+}
+
+void Tensor::moveToDevice(DeviceTensorTransferManager *deviceManager,
+                          void *locationContext) {
+  residencyInfoP_->deviceManager_ = deviceManager;
+  residencyInfoP_->locationContext_ = locationContext;
+  residencyInfoP_->tensorResidency_ =
+      DeviceResidencyInfo::TensorResidency::Device;
+}
+
+void Tensor::ensureOnHost() {
+  if (residencyInfoP_->isDeviceResident()) {
+    residencyInfoP_->deviceManager_->transferFromDevice(*this);
+  }
+  assert(!isDeviceResident());
 }
 
 } // namespace glow

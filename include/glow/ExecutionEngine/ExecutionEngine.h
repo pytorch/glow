@@ -59,6 +59,10 @@ class ExecutionEngine final {
   /// Glow functions compiled for this ExecutionEngine's backend.
   std::set<std::string> compiledFunctions_;
 
+  /// Whether to move all Device Resident Tensors on to the host at the end of
+  /// the run.
+  bool ensureOutputsOnHost_{true};
+
   /// Single execution of the given function, \p name with the given context
   /// \bindings.
   void runInternal(ExecutionContext &context, llvm::StringRef name);
@@ -84,6 +88,9 @@ public:
     deviceMemory_ = mem;
     setBackendName(backendName_);
   }
+
+  // Set whether or not to ensure outputs are in host memory.
+  void ensureOutputsOnHost(bool should) { ensureOutputsOnHost_ = should; }
 
   /// Get the name of the current backend in use.
   llvm::StringRef getBackendName() const;

@@ -32,11 +32,26 @@
 using namespace glow;
 using namespace glow::runtime;
 
+template <typename ResultType>
+std::pair<std::promise<ResultType>, std::future<ResultType>> getFutureHelper() {
+  std::promise<ResultType> promise;
+  auto future = promise.get_future();
+  return std::make_pair(std::move(promise), std::move(future));
+}
+
+template <typename ResultType>
+void callbackHelper(std::promise<ResultType> &promise, ResultType res,
+                    Error err) {
+  promise.set_value(!ERR_TO_BOOL(std::move(err)) ? std::move(res)
+                                                 : ResultType());
+}
+
 class DeviceManagerTest : public ::testing::TestWithParam<std::string> {
 public:
   void SetUp() override {
     backendName = GetParam();
-    device.reset(DeviceManager::createDeviceManager(DeviceConfig(backendName)));
+    DeviceConfig config(backendName);
+    device.reset(DeviceManager::createDeviceManager(config));
     ASSERT_TRUE(device.get());
     ASSERT_FALSE(ERR_TO_BOOL(device->init()));
   }
@@ -45,6 +60,40 @@ public:
 
   std::string backendName;
   std::unique_ptr<DeviceManager> device{nullptr};
+
+  void addToDevice(Module *module, FunctionMapTy functions) {
+
+    std::promise<const Module *> promise;
+    std::future<const Module *> future;
+    std::tie(promise, future) = getFutureHelper<const Module *>();
+
+    device->addNetwork(module, std::move(functions),
+                       [&promise](const Module *module, Error err) {
+                         callbackHelper(promise, module, std::move(err));
+                       });
+
+    future.wait_for(std::chrono::seconds(2));
+    EXPECT_EQ(future.get(), module);
+  }
+
+  std::unique_ptr<ExecutionContext>
+  runFunction(std::string name, std::unique_ptr<ExecutionContext> context) {
+    std::promise<std::unique_ptr<ExecutionContext>> runPromise;
+    std::future<std::unique_ptr<ExecutionContext>> runFuture;
+
+    std::tie(runPromise, runFuture) =
+        getFutureHelper<std::unique_ptr<ExecutionContext>>();
+    device->runFunction(
+        name, std::move(context),
+        [&runPromise](RunIdentifierTy, Error err,
+                      std::unique_ptr<ExecutionContext> context) {
+          callbackHelper(runPromise, std::move(context), std::move(err));
+        });
+
+    runFuture.wait_for(std::chrono::seconds(2));
+    context = runFuture.get();
+    return context;
+  }
 };
 
 std::unique_ptr<Module> makeBasicModule(std::string functionName = "main") {
@@ -83,41 +132,17 @@ compileFunctions(llvm::StringRef backendName, Module *module,
   return results;
 }
 
-template <typename ResultType>
-std::pair<std::promise<ResultType>, std::future<ResultType>> getFutureHelper() {
-  std::promise<ResultType> promise;
-  auto future = promise.get_future();
-  return std::make_pair(std::move(promise), std::move(future));
-}
-
-template <typename ResultType>
-void callbackHelper(std::promise<ResultType> &promise, ResultType res,
-                    Error err) {
-  promise.set_value(!ERR_TO_BOOL(std::move(err)) ? std::move(res)
-                                                 : ResultType());
-}
-
 TEST_P(DeviceManagerTest, Basic) {
   auto module = makeBasicModule();
   std::vector<std::unique_ptr<CompiledFunction>> backing;
   FunctionMapTy functions =
       compileFunctions(backendName, module.get(), backing);
 
-  std::promise<const Module *> promise;
-  std::future<const Module *> future;
-  std::tie(promise, future) = getFutureHelper<const Module *>();
-
-  device->addNetwork(module.get(), std::move(functions),
-                     [&promise](const Module *module, Error err) {
-                       callbackHelper(promise, module, std::move(err));
-                     });
-
-  future.wait_for(std::chrono::seconds(2));
-  EXPECT_EQ(future.get(), module.get());
-
   std::unique_ptr<ExecutionContext> context =
       glow::make_unique<ExecutionContext>();
   context->getPlaceholderBindings()->allocate(module->getPlaceholders());
+
+  addToDevice(module.get(), std::move(functions));
 
   Tensor input1(ElemKind::FloatTy, {1});
   Tensor output1(ElemKind::FloatTy, {1});
@@ -128,21 +153,11 @@ TEST_P(DeviceManagerTest, Basic) {
                           {module->getPlaceholderByName("main_input")},
                           {&input1});
 
-  std::promise<std::unique_ptr<ExecutionContext>> runPromise;
-  std::future<std::unique_ptr<ExecutionContext>> runFuture;
-
-  std::tie(runPromise, runFuture) =
-      getFutureHelper<std::unique_ptr<ExecutionContext>>();
-  device->runFunction("main", std::move(context),
-                      [&runPromise](RunIdentifierTy, Error err,
-                                    std::unique_ptr<ExecutionContext> context) {
-                        callbackHelper(runPromise, std::move(context),
-                                       std::move(err));
-                      });
-
-  runFuture.wait_for(std::chrono::seconds(2));
-  context = runFuture.get();
+  context = runFunction("main", std::move(context));
   ASSERT_TRUE(context);
+  // We must ensure results are on host since we're using DeviceManager
+  // directly.
+  context->getPlaceholderBindings()->ensureOnHost();
   Tensor *result1 = context->getPlaceholderBindings()->get(
       module->getPlaceholderByName("main_output"));
   ASSERT_TRUE(result1);
@@ -211,8 +226,13 @@ TEST_P(DeviceManagerTest, PartialTensorCopy) {
   runFuture.wait_for(std::chrono::seconds(2));
   context = runFuture.get();
   ASSERT_TRUE(context);
+  // We must ensure results are on host since we're using DeviceManager
+  // directly.
+  context->getPlaceholderBindings()->ensureOnHost();
+
   Tensor *result1 = context->getPlaceholderBindings()->get(
       module->getPlaceholderByName("main_output"));
+
   ASSERT_TRUE(result1);
   EXPECT_FLOAT_EQ(result1->getHandle().at({0}), std::max(std::tanh(0.5), 0.25));
 }
@@ -223,15 +243,7 @@ TEST_P(DeviceManagerTest, MultiRun) {
   FunctionMapTy functions =
       compileFunctions(backendName, module.get(), backing);
 
-  std::promise<const Module *> promise;
-  std::future<const Module *> future;
-  std::tie(promise, future) = getFutureHelper<const Module *>();
-  device->addNetwork(module.get(), std::move(functions),
-                     [&promise](const Module *module, Error err) {
-                       callbackHelper(promise, module, std::move(err));
-                     });
-  future.wait_for(std::chrono::seconds(2));
-  EXPECT_EQ(future.get(), module.get());
+  addToDevice(module.get(), std::move(functions));
 
   std::unique_ptr<ExecutionContext> context1 =
       glow::make_unique<ExecutionContext>();
@@ -281,6 +293,10 @@ TEST_P(DeviceManagerTest, MultiRun) {
   ASSERT_TRUE(context1);
   ASSERT_TRUE(context2);
   EXPECT_NE(context1, context2);
+  // We must ensure results are on host since we're using DeviceManager
+  // directly.
+  context1->getPlaceholderBindings()->ensureOnHost();
+  context2->getPlaceholderBindings()->ensureOnHost();
 
   Tensor *result1 = context1->getPlaceholderBindings()->get(
       module->getPlaceholderByName("main_output"));
@@ -376,6 +392,8 @@ TEST_P(DeviceManagerTest, MultiFunction) {
   ASSERT_TRUE(context1);
   ASSERT_TRUE(context2);
   EXPECT_NE(context1, context2);
+  context1->getPlaceholderBindings()->ensureOnHost();
+  context2->getPlaceholderBindings()->ensureOnHost();
 
   Tensor *result1 = context1->getPlaceholderBindings()->get(
       module->getPlaceholderByName("func1_output"));
@@ -458,6 +476,8 @@ TEST_P(DeviceManagerTest, MultiModule) {
   ASSERT_TRUE(context1);
   ASSERT_TRUE(context2);
   EXPECT_NE(context1, context2);
+  context2->getPlaceholderBindings()->ensureOnHost();
+  context2->getPlaceholderBindings()->ensureOnHost();
 
   Tensor *result1 = context1->getPlaceholderBindings()->get(
       module1->getPlaceholderByName("func1_output"));
@@ -737,5 +757,101 @@ TEST(DeviceManagerTest, DummyDeviceManager) {
 }
 
 #endif // GLOW_WITH_CPU
+
+/// Check that the device can move data to and from the host.
+/// Disable if your device does not support Device Resident Tensors.
+TEST_P(DeviceManagerTest, DeviceResidentTensors) {
+  CHECK_IF_ENABLED();
+  Tensor T = {1.2f, 12.1f, 51.0f, 1515.2f};
+  Tensor R = {1.2f, 12.1f, 51.0f, 1515.2f};
+
+  ASSERT_FALSE(T.isDeviceResident());
+
+  device->transferToDevice(T, nullptr);
+
+  ASSERT_TRUE(T.isDeviceResident());
+
+  device->transferFromDevice(T);
+
+  ASSERT_FALSE(T.isDeviceResident());
+
+  ASSERT_TRUE(T.isEqual(R));
+}
+
+/// A mock DeviceManager for use in Device Resident Tensor tests.
+class MockDM : public DeviceManager {
+public:
+  MockDM() : DeviceManager(DeviceConfig("MockDM")) {}
+  void addNetwork(const Module *module, FunctionMapTy functions,
+                  ReadyCBTy readyCB) override {}
+
+  void evictNetwork(std::string functionName,
+                    EvictFunctionCBTy evictCB = [](std::string, Error) {
+                    }) override {}
+
+  runtime::RunIdentifierTy
+  runFunction(std::string functionName,
+              std::unique_ptr<ExecutionContext> context,
+              runtime::ResultCBTy resultCB) override {
+    return 0;
+  }
+
+  uint64_t getMaximumMemory() const override { return 0; }
+
+  uint64_t getAvailableMemory() const override { return 0; }
+
+  bool isMemoryAvailable(uint64_t estimate) const override { return 0; }
+
+  void transferToDevice(Tensor &tensor, void *locationContext = nullptr,
+                        std::function<void(Error)> resultCB = [](Error) {
+                        }) override {
+    if (locationContext == nullptr) {
+      locationContext = this;
+    }
+    tensor.moveToDevice(this, locationContext);
+  }
+
+  void transferFromDevice(Tensor &tensor, bool release = true,
+                          std::function<void(Error)> resultCB = [](Error) {
+                          }) override {
+    tensor.clearDeviceResidency();
+  }
+
+  bool releaseDeviceTensor(void *locationContext) override { return true; }
+};
+
+TEST_P(DeviceManagerTest, CanHandleDeviceResidentTensors) {
+  MockDM mockDM;
+
+  auto module = makeBasicModule();
+  std::vector<std::unique_ptr<CompiledFunction>> backing;
+  FunctionMapTy functions =
+      compileFunctions(backendName, module.get(), backing);
+
+  addToDevice(module.get(), std::move(functions));
+
+  std::unique_ptr<ExecutionContext> context =
+      glow::make_unique<ExecutionContext>();
+  context->getPlaceholderBindings()->allocate(module->getPlaceholders());
+
+  Tensor input1(ElemKind::FloatTy, {1});
+  Tensor output1(ElemKind::FloatTy, {1});
+  input1.getHandle().clear(0.5);
+  output1.getHandle().clear(std::max(std::tanh(0.5), 0.25));
+
+  updateInputPlaceholders(*context->getPlaceholderBindings(),
+                          {module->getPlaceholderByName("main_input")},
+                          {&input1});
+
+  mockDM.transferToDevice(*context->getPlaceholderBindings()->get(
+      module->getPlaceholderByName("main_input")));
+
+  context = runFunction("main", std::move(context));
+  ASSERT_TRUE(context);
+  Tensor *result1 = context->getPlaceholderBindings()->get(
+      module->getPlaceholderByName("main_output"));
+  ASSERT_TRUE(result1);
+  EXPECT_TRUE(result1->isEqual(output1));
+}
 
 INSTANTIATE_BACKEND_TEST(DeviceManagerTest);

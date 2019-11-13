@@ -33,6 +33,9 @@ void LLVMCompiledFunction::collectConstants(const Module *module) {
 
 void LLVMCompiledFunction::loadPlaceholders(
     PlaceholderBindings *bindings, uint8_t *baseMutableWeightVarsAddress) {
+  // Make sure our inputs are on the host.
+  bindings->ensureOnHost();
+
   // Copy Placeholders into allocated memory.
   auto &symbolTable = runtimeBundle_.getSymbolTable();
   for (auto PH : bindings->pairs()) {
@@ -40,6 +43,7 @@ void LLVMCompiledFunction::loadPlaceholders(
     if (it == symbolTable.end()) {
       continue;
     }
+    assert(!PH.second->isDeviceResident());
     auto symbolInfo = it->second;
     auto payload = PH.second->getUnsafePtr();
     auto addr = symbolInfo.offset;

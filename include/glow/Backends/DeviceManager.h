@@ -17,6 +17,7 @@
 #define GLOW_BACKENDS_DEVICEMANAGER_H
 
 #include "glow/Backend/CompiledFunction.h"
+#include "glow/Base/DeviceTensorTransferManager.h"
 #include "glow/ExecutionContext/ExecutionContext.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Runtime/RuntimeTypes.h"
@@ -42,7 +43,7 @@ using ReadyCBTy = std::function<void(const Module *, Error)>;
 using FunctionMapTy = std::map<std::string, CompiledFunction *>;
 
 /// Interface managing a specific instance of a device.
-class DeviceManager {
+class DeviceManager : public DeviceTensorTransferManager {
 protected:
   /// Configuration object for the device.
   DeviceConfig config_;
@@ -162,6 +163,33 @@ public:
   /// \returns the DeviceInfo for this device containing peak limits for
   /// compute and bandwidths (used in partitioning).
   virtual DeviceInfo getDeviceInfo() const { return DeviceInfo(); }
+
+  /// Copies the contents of \p tensor from the host to the \p location
+  /// address on this device. Updates the tensor residency info.
+  virtual void transferToDevice(Tensor &tensor, void *locationContext,
+                                std::function<void(Error)> resultCB =
+                                    [](Error) {}) {
+    DCHECK("Not Implemented");
+    resultCB(MAKE_ERR(ErrorValue::ErrorCode::DEVICE_FEATURE_NOT_SUPPORTED,
+                      "Direct transfer not supported on this device"));
+  }
+
+  /// Copies the device buffer associated with \p tensor to the host.
+  /// The tensor must be resident on this device. If \p release is true,
+  /// frees the device memory. Updates the tensor residency info.
+  virtual void transferFromDevice(Tensor &tensor, bool release = true,
+                                  std::function<void(Error)> resultCB =
+                                      [](Error) {}) {
+    DCHECK("Not Implemented");
+    resultCB(MAKE_ERR(ErrorValue::ErrorCode::DEVICE_FEATURE_NOT_SUPPORTED,
+                      "Direct transfer not supported on this device"));
+  }
+
+  /// Releases the device buffer associated with \p tensor.
+  virtual bool releaseDeviceTensor(void *locationContext) {
+    DCHECK("Not Implemented");
+    return false;
+  }
 };
 
 } // namespace runtime
