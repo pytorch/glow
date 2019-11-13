@@ -460,7 +460,7 @@ void IRGenVisitor::post(Node *parent, Node *N) {
 }
 
 void IRFunction::generateIR(const Backend &B) {
-  assert(G_->verify() && "Invalid function");
+  assert(G_->verify(&B) && "Invalid function");
   // Schedule the nodes.
   NodesPtrList ScheduledNodes;
   scheduleGraph(ScheduledNodes);

@@ -685,12 +685,14 @@ int main(int argc, char **argv) {
   BB.newNode("Reshape")
       .addInput("Input")
       .addMember(MemberType::VectorSizeT, "Dims")
+      .addMember(MemberType::String, "Layout")
       .addResultFromCtorArg()
       .setDocstring("Reshape the Input tensor to shape Dims.");
 
   BB.newNode("Transpose")
       .addInput("Input")
       .addMember(MemberType::VectorUnsigned, "Shuffle")
+      .addMember(MemberType::String, "Layout")
       .addResultFromCtorArg()
       .setDocstring("Transpose the Input tensor based on the vector Shuffle, "
                     "which assigns a new axis for each dimension in Input.");

@@ -22,6 +22,7 @@
 #include "glow/Graph/Node.h"
 #include "glow/Graph/Nodes.h"
 #include "glow/Graph/PlaceholderBindings.h"
+#include "glow/Graph/TensorLayout.h"
 #include "glow/Graph/Utils.h"
 #include "glow/Optimizer/GraphOptimizer/FunctionPasses.h"
 
@@ -113,6 +114,44 @@ void run(Backend &backend, CompiledFunction &compiledF,
   context.movePlaceholderBindings().release();
 }
 
+static bool isCanonicalLayout(const NodeValue &RN, Backend &backend,
+                              Node *clonedC, size_t idx) {
+  auto resultLayoutStr =
+      backend.getTensorLayoutRequirements().getNthResultLayoutRequirements(
+          clonedC, idx);
+  auto resultLayout = TensorLayoutDescription(resultLayoutStr);
+  auto &canInstance = CanonicalTensorLayout::getInstance();
+  auto default4DStr = canInstance.getDefaultNDLayout(4);
+  auto default4D = TensorLayoutDescription(default4DStr);
+  if (resultLayout.getDims().size() == 4 &&
+      !canInstance.isSatisfiedBy(RN.getType(), default4D, &resultLayout)) {
+    return false;
+  }
+  return true;
+}
+
+// Bail on constant folding post-lowering for backends that break assumptions.
+static void bailOnNonCanonicalLayout(
+    Function *constEvaluationF, Module &mod,
+    const llvm::SmallVectorImpl<SaveNode *> &savedResults) {
+  // Some results may be in a non-canonical format post-lowering.
+  // For example, if we are trying to constant fold an OpenCL 'Reshape' that
+  // has NCHW layout. We cannot transpose it back to canonical layout for
+  // two reasons: 1) Need to add a solver that supports weird non-NCHW2NHWC
+  // backends. 2) Even if we get a constant tensor as a new "save" of the
+  // transpose, the new constant tensor will have the wrong shape. We'd
+  // actually need to transpose it back to its pre-modification shape. These
+  // issues may be solved in the future (TODO), for now bail on such corner
+  // cases. Clean-up before bailing:
+  for (auto *SN : savedResults) {
+    // Now erase the Placeholder that we created for the SaveNode.
+    auto &vars = mod.getPlaceholders();
+    mod.erasePlaceholder(
+        std::find(vars.begin(), vars.end(), SN->getPlaceholder()));
+  }
+  mod.eraseFunction(constEvaluationF);
+}
+
 /// Evaluates a provided constant operation \p C using the provided \p backend
 /// and using the compilation context \p cctx.
 /// \returns constant results.
@@ -134,8 +173,12 @@ evaluateConstantOperation(Backend &backend, CompilationContext &cctx, Node *C) {
   // Create save nodes for each of the results.
   llvm::SmallVector<SaveNode *, 16> savedResults;
   for (size_t idx = 0, e = clonedC->getNumResults(); idx < e; ++idx) {
-    auto *SN = constEvaluationF->createSave(clonedC->getName(),
-                                            clonedC->getNthResult(idx));
+    auto RN = clonedC->getNthResult(idx);
+    auto *SN = constEvaluationF->createSave(clonedC->getName(), RN);
+    if (!isCanonicalLayout(RN, backend, clonedC, idx)) {
+      bailOnNonCanonicalLayout(constEvaluationF, mod, savedResults);
+      return {};
+    }
     savedResults.emplace_back(SN);
     bindings.allocate(SN->getPlaceholder());
   }

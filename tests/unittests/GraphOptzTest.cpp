@@ -346,7 +346,7 @@ TEST_F(GraphOptz, optimizeBatchNormAfterConvWithReshapeConst) {
       mod_.createPlaceholder(ElemKind::FloatTy, {5, 5, 3, 1}, "filter", false);
   auto *bias = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "bias", false);
 
-  auto *TN = F_->createTranspose("transpose", filter, {3, 0, 1, 2});
+  auto *TN = F_->createTranspose("transpose", filter, HWCN2NHWC);
   auto *CV = F_->createConv("conv", input, TN, bias,
                             mod_.uniqueType(ElemKind::FloatTy, {1, 10, 20, 1}),
                             5, 1, 2, 1);

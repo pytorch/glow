@@ -139,7 +139,7 @@ Function *glow::differentiate(Function *F, const TrainingConfig &conf,
 
       // Swap the src and dest.
       auto *X = new ReshapeNode(N->getName(), inputW.getType(), outputG,
-                                inputW.getType()->dims());
+                                inputW.getType()->dims(), RN->getLayout());
       toAppend.push_back(X);
       map.addGradient(RN->getInput(), X);
       continue;
@@ -165,8 +165,9 @@ Function *glow::differentiate(Function *F, const TrainingConfig &conf,
       auto *BRAInputType =
           F->getParent()->uniqueTypeWithNewShape(TNInputType, BRAInputDims);
 
-      auto *RN = new ReshapeNode(TN->getName().str() + ".grad.reshape",
-                                 BRAInputType, outputG, BRAInputType->dims());
+      auto *RN =
+          new ReshapeNode(TN->getName().str() + ".grad.reshape", BRAInputType,
+                          outputG, BRAInputType->dims(), "*");
       auto *BRA =
           new BatchedReduceAddNode(TN->getName().str() + ".grad.bra",
                                    TN->getInput().getType(), RN, TN->getAxis());
@@ -196,14 +197,18 @@ Function *glow::differentiate(Function *F, const TrainingConfig &conf,
 
       // Generate the reverse shuffle.
       auto shuffle = TN->getShuffle();
+      auto layout = TN->getLayout();
+      std::string reverseLayout;
+      reverseLayout.resize(TN->getLayout().size());
       std::vector<unsigned_t> reverseShuffle(shuffle.begin(), shuffle.end());
       for (unsigned int i = 0; i < shuffle.size(); i++) {
         reverseShuffle[shuffle[i]] = i;
+        reverseLayout[shuffle[i]] = layout[i];
       }
 
       // Swap the src and dest.
       auto *X = new TransposeNode(N->getName(), inputW.getType(), outputG,
-                                  reverseShuffle);
+                                  reverseShuffle, reverseLayout);
       toAppend.push_back(X);
       map.addGradient(TN->getInput(), X);
       continue;

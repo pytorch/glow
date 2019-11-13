@@ -18,6 +18,7 @@
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/Node.h"
 #include "glow/Graph/Nodes.h"
+#include "glow/Graph/TensorLayout.h"
 #include "glow/Optimizer/GraphOptimizer/FunctionPasses.h"
 #include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
 
@@ -171,7 +172,10 @@ static void lowerFullyConnectedGradNode(Function *F, CompilationContext &cctx,
   // dx = dout * w.T
   auto *wT = F->createTranspose("fcg.wT", FCG.getWeights(), {1, 0});
   auto *dx2 = F->createMatMul("fcg.dot", dout, wT);
-  auto *dx = F->createReshape("fcg.inG", dx2, FCG.getInput().getType()->dims());
+  auto *dx = F->createReshape(
+      "fcg.inG", dx2, FCG.getInput().getType()->dims(),
+      CanonicalTensorLayout::getInstance().getNthInputLayoutRequirements(
+          &FCG, FullyConnectedGradNode::InputIdx));
   replaceAllUsesOfWith(cctx.loweredInfoMap, FCG.getGradOfInputNamedInput(), dx);
 
   // dw = xT * dout.
@@ -675,7 +679,7 @@ static void lowerBucketizeNode(Function *F, CompilationContext &cctx,
   auto *oneSplat = F->createSplat("oneSplat", boundariesConst->getType(), 1.0);
   auto *reshapedInput =
       F->createReshape(baseStr + ".reshape.input", B.getInput(),
-                       {B.getInput().getType()->size()});
+                       {B.getInput().getType()->size()}, "N");
   std::vector<NodeValue> results;
   for (size_t i = 0, e = reshapedInput->getResult().getType()->size(); i < e;
        i++) {
@@ -877,10 +881,11 @@ static void lowerChannelShuffleNode(Function *F, CompilationContext &cctx,
     transpose[i] = i;
   }
   std::swap(transpose[kernel], transpose[kernel + 1]);
-  auto *T =
-      F->createTranspose(CSN.getName().str() + ".transpose", R1, transpose);
+  auto *T = F->createTranspose(CSN.getName().str() + ".transpose", R1,
+                               transpose, R1->getLayout());
 
-  auto *R2 = F->createReshape(CSN.getName().str() + ".reshape2", T, inDims);
+  auto *R2 = F->createReshape(CSN.getName().str() + ".reshape2", T, inDims,
+                              T->getLayout());
   replaceAllUsesOfWith(cctx.loweredInfoMap, CSN.getResult(), R2);
 }
 

@@ -575,6 +575,7 @@ NodeBuilder &NodeBuilder::addGradient() {
   // The new 'Grad' class will have all of the fields of the current class.
   GN.members_ = members_;
   GN.enum_ = enum_;
+  GN.isDataParallel_ = isDataParallel_;
 
   // Add the inputs that we'll use in the grad instruction.
   for (const std::string &in : nodeInputs_) {

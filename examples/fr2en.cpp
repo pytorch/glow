@@ -277,14 +277,15 @@ void Model::loadEncoder() {
         {0, step, 0}, {batchSize_, step + 1, EMBEDDING_SIZE});
     Node *reshape =
         F_->createReshape("encoder." + std::to_string(step) + ".reshape",
-                          inputSlice, {batchSize_, EMBEDDING_SIZE});
+                          inputSlice, {batchSize_, EMBEDDING_SIZE}, ANY_LAYOUT);
     hidden = createPyTorchGRUCell(F_, reshape, hidden, wIh, bIh, wHh, bHh);
     outputs.push_back(hidden);
   }
 
   Node *output = F_->createConcat("encoder.output", outputs, 1);
-  Node *r2 = F_->createReshape("encoder.output.r2", output,
-                               {MAX_LENGTH * batchSize_, EMBEDDING_SIZE});
+  Node *r2 =
+      F_->createReshape("encoder.output.r2", output,
+                        {MAX_LENGTH * batchSize_, EMBEDDING_SIZE}, ANY_LAYOUT);
 
   encoderHiddenOutput_ = F_->createGather("encoder.outputNth", r2, seqLength_);
 }
@@ -339,14 +340,14 @@ void Model::loadDecoder() {
     Node *FC = F_->createFullyConnected("decoder.outFC", hidden, outW, outB);
     auto *topK = F_->createTopK("decoder.topK", FC, 1);
 
-    lastWordIdx =
-        F_->createReshape("decoder.reshape", topK->getIndices(), {batchSize_});
+    lastWordIdx = F_->createReshape("decoder.reshape", topK->getIndices(),
+                                    {batchSize_}, "N");
     outputs.push_back(lastWordIdx);
   }
 
   Node *concat = F_->createConcat("decoder.output.concat", outputs, 0);
   Node *reshape = F_->createReshape("decoder.output.reshape", concat,
-                                    {MAX_LENGTH, batchSize_});
+                                    {MAX_LENGTH, batchSize_}, ANY_LAYOUT);
   auto *save = F_->createSave("decoder.output", reshape);
   output_ = save->getPlaceholder();
   bindings.allocate(output_);

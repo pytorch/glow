@@ -27,6 +27,7 @@ add_library(Graph
             NodeValue.cpp
             Log.cpp
             PlaceholderBindings.cpp
+            TensorLayout.cpp
             Graph.cpp
             Grad.cpp
             VerifierHelper.cpp)

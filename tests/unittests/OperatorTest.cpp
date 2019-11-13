@@ -43,10 +43,10 @@ protected:
 /// dummy scale and offset, otherwise it will not.
 static Placeholder *createPlaceholderConditionallyQuantized(
     Module &mod, ElemKind T, llvm::ArrayRef<size_t> dims, llvm::StringRef name,
-    bool isTrainable) {
+    bool isTrainable, llvm::StringRef layout = ANY_LAYOUT) {
   return isQuantizedElemKind(T)
-             ? mod.createPlaceholder(T, dims, 1.0, 0, name, isTrainable)
-             : mod.createPlaceholder(T, dims, name, isTrainable);
+             ? mod.createPlaceholder(T, dims, 1.0, 0, name, isTrainable, layout)
+             : mod.createPlaceholder(T, dims, name, isTrainable, layout);
 }
 
 /// Helper to get a unique Type; if \p T is quantized, then it will include a
@@ -623,10 +623,11 @@ static void testSpaceToDepthBlock3(glow::PlaceholderBindings &bindings,
                                    glow::ExecutionEngine &EE, ElemKind DTy) {
   unsigned blockSize = 3;
   auto *in = createPlaceholderConditionallyQuantized(mod, DTy, {1, 2, 6, 6},
-                                                     "in", false);
-  auto *tri = F->createTranspose("sptdTransposeIn", in, {0, 2, 3, 1});
+                                                     "in", false, "NHWC");
+  auto *tri = F->createTranspose("sptdTransposeIn", in, {0, 2, 3, 1}, "NHWC");
   auto *stdn = F->createSpaceToDepth("spacetodepth", tri, blockSize);
-  auto *tro = F->createTranspose("sptdTransposeOut", stdn, {0, 3, 1, 2});
+  auto *tro =
+      F->createTranspose("sptdTransposeOut", stdn, {0, 3, 1, 2}, "NCHW");
   auto *save = F->createSave("save", tro);
   auto *result = bindings.allocate(save->getPlaceholder());
 
@@ -777,10 +778,11 @@ static void testSpaceToDepth(glow::PlaceholderBindings &bindings,
                              glow::ExecutionEngine &EE, ElemKind DTy) {
   unsigned blockSize = 2;
   auto *in = createPlaceholderConditionallyQuantized(mod, DTy, {2, 2, 4, 4},
-                                                     "in", false);
-  auto *tri = F->createTranspose("sptdTransposeIn", in, {0, 2, 3, 1});
+                                                     "in", false, "NHWC");
+  auto *tri = F->createTranspose("sptdTransposeIn", in, {0, 2, 3, 1}, "NHWC");
   auto *stdn = F->createSpaceToDepth("spacetodepth", tri, blockSize);
-  auto *tro = F->createTranspose("sptdTransposeOut", stdn, {0, 3, 1, 2});
+  auto *tro =
+      F->createTranspose("sptdTransposeOut", stdn, {0, 3, 1, 2}, "NCHW");
   auto *save = F->createSave("save", tro);
   auto *result = bindings.allocate(save->getPlaceholder());
 
@@ -886,7 +888,7 @@ static void testResizeNearest(glow::PlaceholderBindings &bindings,
                               glow::Module &mod, glow::Function *F,
                               glow::ExecutionEngine &EE, ElemKind DTy) {
   auto *input = createPlaceholderConditionallyQuantized(mod, DTy, {1, 2, 2, 1},
-                                                        "input", false);
+                                                        "input", false, "NHWC");
   bindings.allocate(input)->getHandle<DataType>() = {2, 4, 8, 16};
 
   auto heightScaleUp = 2.0f;
@@ -1640,7 +1642,7 @@ static void testBatchedReduceZeroDimResult(glow::PlaceholderBindings &bindings,
                                            glow::ExecutionEngine &EE,
                                            ElemKind DTy) {
   auto *batch = createPlaceholderConditionallyQuantized(
-      mod, DTy, {4}, "batch", /* isTrainable */ false);
+      mod, DTy, {4}, "batch", /* isTrainable */ false, "N");
   bindings.allocate(batch)->getHandle<DataType>() = {2, 4, 6, 8};
 
   auto OT = uniqueTypeConditionallyQuantized(mod, DTy, {});
@@ -1941,7 +1943,8 @@ TEST_P(OperatorTest, batchedReduceMeanUsingAvgPool) {
 
   std::vector<size_t> dims = {3, 20, 4, 8};
 
-  auto *batch = mod_.createPlaceholder(ElemKind::FloatTy, dims, "batch", false);
+  auto *batch =
+      mod_.createPlaceholder(ElemKind::FloatTy, dims, "batch", false, "NHWC");
 
   auto IH = bindings_.allocate(batch)->getHandle();
   IH.randomize(1.0, 100.0, mod_.getPRNG());
@@ -2344,9 +2347,9 @@ static void testArgMaxKeepDim(glow::PlaceholderBindings &bindings,
                               glow::Module &mod, glow::Function *F,
                               glow::ExecutionEngine &EE, ElemKind DTy) {
   auto *input = createPlaceholderConditionallyQuantized(mod, DTy, {2, 3, 2, 2},
-                                                        "input", false);
-  auto *argmax =
-      mod.createPlaceholder(ElemKind::Int64ITy, {1, 3, 2, 2}, "argmax", false);
+                                                        "input", false, "NHWC");
+  auto *argmax = mod.createPlaceholder(ElemKind::Int64ITy, {1, 3, 2, 2},
+                                       "argmax", false, "NHWC");
 
   bindings.allocate(input)->getHandle<DataType>() = {
       11, 24, 33, 41, 15, 26, 37, 48, 12, 28, 31, 42,
@@ -2389,7 +2392,7 @@ static void testArgMaxNoKeepDim(glow::PlaceholderBindings &bindings,
                                 glow::Module &mod, glow::Function *F,
                                 glow::ExecutionEngine &EE, ElemKind DTy) {
   auto *input = createPlaceholderConditionallyQuantized(mod, DTy, {2, 3, 2, 2},
-                                                        "input", false);
+                                                        "input", false, "NHWC");
   auto *argmax =
       mod.createPlaceholder(ElemKind::Int64ITy, {2, 2, 2}, "argmax", false);
 
@@ -2788,8 +2791,8 @@ void gatherRangesTest(glow::PlaceholderBindings &bindings_, glow::Module &mod_,
     OUTPUT = [1, 3, 4, 5, 6]
     LENGTHS = [3, 2]
   */
-  auto *data =
-      createPlaceholderConditionallyQuantized(mod_, DTy, {6}, "data", false);
+  auto *data = createPlaceholderConditionallyQuantized(mod_, DTy, {6}, "data",
+                                                       false, "N");
   auto *ranges = mod_.createPlaceholder(ITy, {2, 2, 2}, "ranges", false);
 
   bindings_.allocate(data)->getHandle<DataType>() = {1, 2, 3, 4, 5, 6};
@@ -3005,14 +3008,14 @@ TEST_P(OperatorTest, Transpose3Dims_Int8) {
 /// Test that Transpose optimization into Reshape yields expected results.
 TEST_P(OperatorTest, TransposeIntoReshapeOptim) {
   CHECK_IF_ENABLED();
-  auto *batch =
-      mod_.createPlaceholder(ElemKind::FloatTy, {1, 3, 2, 4}, "batch", false);
+  auto *batch = mod_.createPlaceholder(ElemKind::FloatTy, {1, 3, 2, 4}, "batch",
+                                       false, "NHWC");
   auto IH = bindings_.allocate(batch)->getHandle();
   for (size_t i = 0; i < 24; i++) {
     IH.raw(i) = i + 1;
   }
 
-  Node *T = F_->createTranspose("transpose", batch, {1, 2, 0, 3});
+  Node *T = F_->createTranspose("transpose", batch, {1, 2, 0, 3}, "HWNC");
   Node *R = F_->createBatchedReduceMean("reduce.mean", T, {2, 3});
   SaveNode *O = F_->createSave("ret", R);
   bindings_.allocate(mod_.getPlaceholders());
@@ -5624,15 +5627,15 @@ TEST_P(OperatorTest, GroupConv3D) {
 TEST_P(OperatorTest, NonSquarePaddingConvolution) {
   CHECK_IF_ENABLED();
 
-  auto *input =
-      mod_.createPlaceholder(ElemKind::FloatTy, {1, 4, 4, 1}, "input", false);
+  auto *input = mod_.createPlaceholder(ElemKind::FloatTy, {1, 4, 4, 1}, "input",
+                                       false, "NHWC");
   auto IH = bindings_.allocate(input)->getHandle();
   for (size_t i = 0; i < 4 * 4; i++) {
     IH.raw(i) = i + 1;
   }
 
-  auto filter =
-      mod_.createPlaceholder(ElemKind::FloatTy, {2, 2, 2, 1}, "filter", false);
+  auto filter = mod_.createPlaceholder(ElemKind::FloatTy, {2, 2, 2, 1},
+                                       "filter", false, "NHWC");
   auto FH = bindings_.allocate(filter)->getHandle();
   for (size_t i = 0; i < 2 * 2 * 2; i++) {
     FH.raw(i) = pow(2.0, i);
@@ -5655,8 +5658,8 @@ TEST_P(OperatorTest, NonSquarePaddingConvolution) {
 
   // Create the reference conv operator whose input is the same as the
   // after-padding-input above.
-  auto *input1 =
-      mod_.createPlaceholder(ElemKind::FloatTy, {1, 5, 9, 1}, "input1", false);
+  auto *input1 = mod_.createPlaceholder(ElemKind::FloatTy, {1, 5, 9, 1},
+                                        "input1", false, "NHWC");
   bindings_.allocate(input1)->zero();
   auto IH1 = bindings_.get(input1)->getHandle();
   for (size_t i = 0; i < 4; i++)
@@ -6208,7 +6211,7 @@ static void testMaxPoolWithArgmax(glow::PlaceholderBindings &bindings,
                                   glow::Module &mod, glow::Function *F,
                                   glow::ExecutionEngine &EE, ElemKind DTy) {
   auto *input = createPlaceholderConditionallyQuantized(mod, DTy, {1, 3, 3, 1},
-                                                        "input", false);
+                                                        "input", false, "NHWC");
   bindings.allocate(input)->getHandle<DataType>() = {0, 3, 7, 6, 5, 1, 2, 8, 4};
   auto *pool = F->createMaxPool("pool", input, {2, 2}, {1, 1}, {0, 0, 0, 0});
   auto *SResult = F->createSave("save_result", pool->getResult());
@@ -6248,7 +6251,7 @@ testMaxPoolWithArgmaxTransposed(glow::PlaceholderBindings &bindings,
   // Show that sequence Tensor(NCHW) -> Transpose(NCHWtoNHWC) ->
   // MaxPoolWithArgmax -> Transpose(NHWCtoNCHW) produces correct linearization.
   auto *inputNCHW = createPlaceholderConditionallyQuantized(
-      mod, DTy, {1, 3, 4, 4}, "input", false);
+      mod, DTy, {1, 3, 4, 4}, "input", false, "NCHW");
   auto inHandle = bindings.allocate(inputNCHW)->getHandle<DataType>();
   inHandle.clear(0.);
   inHandle.at({0, 0, 2, 2}) = 11;
@@ -6257,15 +6260,15 @@ testMaxPoolWithArgmaxTransposed(glow::PlaceholderBindings &bindings,
 
   // Input NCHW to NHWC conversion.
   auto *inputNHWC =
-      F->createTranspose("transposeInput", inputNCHW, {0, 2, 3, 1});
+      F->createTranspose("transposeInput", inputNCHW, {0, 2, 3, 1}, "NHWC");
   auto *pool =
       F->createMaxPool("pool", inputNHWC, {4, 4}, {4, 4}, {0, 0, 0, 0});
 
   // NHWC to NCHW conversion.
-  auto *resultNCHW =
-      F->createTranspose("transposeRes", pool->getResult(), {0, 3, 1, 2});
-  auto *argmaxNCHW =
-      F->createTranspose("transposeArgmax", pool->getArgmax(), {0, 3, 1, 2});
+  auto *resultNCHW = F->createTranspose("transposeRes", pool->getResult(),
+                                        {0, 3, 1, 2}, "NCHW");
+  auto *argmaxNCHW = F->createTranspose("transposeArgmax", pool->getArgmax(),
+                                        {0, 3, 1, 2}, "NCHW");
 
   auto *SResult = F->createSave("save_result", resultNCHW);
   auto *SArgmax = F->createSave("save_argmax", argmaxNCHW);
@@ -8795,7 +8798,7 @@ static void testFlatten(glow::PlaceholderBindings &bindings, glow::Module &mod,
                         glow::Function *F, glow::ExecutionEngine &EE,
                         ElemKind DTy) {
   auto *tensor4D = createPlaceholderConditionallyQuantized(
-      mod, DTy, {3, 2, 4, 3}, "4D", false);
+      mod, DTy, {3, 2, 4, 3}, "4D", false, "NHWC");
   bindings.allocate(tensor4D)->getHandle<DataType>().randomize(0, 100,
                                                                mod.getPRNG());
 
@@ -8827,7 +8830,7 @@ static void testFlatten(glow::PlaceholderBindings &bindings, glow::Module &mod,
   // again because flattening is supported for every axis up and including the
   // rank of a tensor, 1D vector means we can flatten it on axis 1.
   auto *tensor1D =
-      createPlaceholderConditionallyQuantized(mod, DTy, {15}, "1D", false);
+      createPlaceholderConditionallyQuantized(mod, DTy, {15}, "1D", false, "N");
   bindings.allocate(tensor1D)->getHandle<DataType>().randomize(0, 100,
                                                                mod.getPRNG());
 
@@ -9355,9 +9358,9 @@ void batchOneHotTest(glow::PlaceholderBindings &bindings, glow::Module &mod,
   auto *data =
       createPlaceholderConditionallyQuantized(mod, DTy, {3, 2}, "data", false);
   auto *lengths =
-      mod.createPlaceholder(ElemKind::Int32ITy, {2}, "lengths", false);
-  auto *values =
-      createPlaceholderConditionallyQuantized(mod, DTy, {6}, "values", false);
+      mod.createPlaceholder(ElemKind::Int32ITy, {2}, "lengths", false, "N");
+  auto *values = createPlaceholderConditionallyQuantized(mod, DTy, {6},
+                                                         "values", false, "N");
 
   bindings.allocate(data)->getHandle<DataType>() = {5, 0, 11, 3, 0, 5};
   bindings.allocate(lengths)->getHandle<int32_t>() = {4, 2};
@@ -9537,9 +9540,9 @@ static void testDotProduct1D(glow::PlaceholderBindings &bindings,
   // Input tensors.
   constexpr std::size_t kDataSize = 10;
   auto *X = createPlaceholderConditionallyQuantized(mod, DTy, {kDataSize}, "X",
-                                                    false);
+                                                    false, "N");
   auto *Y = createPlaceholderConditionallyQuantized(mod, DTy, {kDataSize}, "Y",
-                                                    false);
+                                                    false, "N");
   auto XH = bindings.allocate(X)->getHandle<DataType>();
   auto YH = bindings.allocate(Y)->getHandle<DataType>();
 
@@ -9549,7 +9552,7 @@ static void testDotProduct1D(glow::PlaceholderBindings &bindings,
 
   // Compute expected output.
   auto *expected = createPlaceholderConditionallyQuantized(
-      mod, DTy, {kDataSize}, "expected", false);
+      mod, DTy, {kDataSize}, "expected", false, "N");
   auto expectedH = bindings.allocate(expected)->getHandle<DataType>();
 
   for (std::size_t i = 0; i < kDataSize; ++i) {
@@ -9673,8 +9676,8 @@ static void testDotProduct2D(glow::PlaceholderBindings &bindings,
   YH.randomize(-3.0, 3.0, mod.getPRNG());
 
   // Compute expected output.
-  auto *expected = createPlaceholderConditionallyQuantized(mod, DTy, {kRows},
-                                                           "expected", false);
+  auto *expected = createPlaceholderConditionallyQuantized(
+      mod, DTy, {kRows}, "expected", false, "N");
   auto expectedH = bindings.allocate(expected)->getHandle<DataType>();
 
   for (std::size_t i = 0; i < kRows; ++i) {

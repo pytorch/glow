@@ -622,8 +622,8 @@ TEST_F(ThreadPoolExecutorTest, EmptyDAG) {
   // compare the returned PlaceholderBindings with.
   PseudoRNG rng;
   auto type = std::unique_ptr<Type>(new Type(ElemKind::FloatTy, {1, 2, 2}));
-  auto placeholder = glow::make_unique<Placeholder>("a", type.get(),
-                                                    /*trainable=*/false);
+  auto placeholder = glow::make_unique<Placeholder>(
+      "a", type.get(), /*trainable=*/false, ANY_LAYOUT);
 
   auto testContext = glow::make_unique<ExecutionContext>();
   auto refContext = glow::make_unique<ExecutionContext>();

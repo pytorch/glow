@@ -58,9 +58,10 @@ namespace {
 // Helpers for creating and intializing placeholders from tensors.
 static Placeholder *createPlaceholder(Module &mod,
                                       PlaceholderBindings &bindings,
-                                      Tensor *tensor, llvm::StringRef name) {
+                                      Tensor *tensor, llvm::StringRef name,
+                                      const std::string layout = ANY_LAYOUT) {
   auto *P = mod.createPlaceholder(tensor->getElementType(), tensor->dims(),
-                                  name, false);
+                                  name, false, layout);
   auto *PTensor = bindings.allocate(P);
   PTensor->assign(tensor);
 
@@ -692,7 +693,7 @@ void inferSmallConv(Tensor *inputs, Tensor *out, llvm::StringRef kind) {
   ExecutionEngine EE(kind);
   auto &mod = EE.getModule();
   auto *F = mod.createFunction("main");
-  auto *in = createPlaceholder(mod, bindings, inputs, "in");
+  auto *in = createPlaceholder(mod, bindings, inputs, "in", "NHWC");
   auto *C = F->createConv(bindings, "conv2a", in, 64, 1, 1, 0, 1);
   bindings.get(cast<Placeholder>(C->getFilter()))->getHandle().clear(0.3);
   bindings.get(cast<Placeholder>(C->getBias()))->getHandle().clear(0.4);
@@ -991,7 +992,7 @@ void inferBasicConvNet(Tensor *inputs, Tensor *out, llvm::StringRef kind,
   ExecutionEngine EE(kind);
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
-  auto *var = createPlaceholder(mod, bindings, inputs, "var");
+  auto *var = createPlaceholder(mod, bindings, inputs, "var", "NCHW");
   auto *tr = F->createTranspose("tr", var, NCHW2NHWC);
   auto *conv = F->createConv(bindings, "conv", tr, convDepth, {5, 5}, {2, 2},
                              {1, 1, 1, 1}, 1);
@@ -1014,8 +1015,8 @@ FunctionTensorPair createAndInitBasicFCNet(PlaceholderBindings &bindings,
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
-  auto *var =
-      mod.createPlaceholder(ElemKind::FloatTy, {2, 3, 16, 16}, "var", false);
+  auto *var = mod.createPlaceholder(ElemKind::FloatTy, {2, 3, 16, 16}, "var",
+                                    false, "NCHW");
   auto *tr = F->createTranspose("tr", var, NCHW2NHWC);
   auto *fc = F->createFullyConnected(bindings, "fc", tr, 16);
   auto *rl0 = F->createRELU("relu", fc);
@@ -1037,7 +1038,7 @@ void inferMixedNet(Tensor *inputs, Tensor *out, llvm::StringRef kind) {
   ExecutionEngine EE(kind);
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
-  auto *var = createPlaceholder(mod, bindings, inputs, "var");
+  auto *var = createPlaceholder(mod, bindings, inputs, "var", "NCHW");
   auto *selected =
       mod.createPlaceholder(ElemKind::Int64ITy, {2, 1}, "selected", false);
 
@@ -1079,20 +1080,20 @@ void inferComplexNet1(Tensor *inputs1, Tensor *inputs2, Tensor *inputs3,
   auto *sigmoid1 = F->createSigmoid("sigmoid1", conv1);
   auto *fc1 = F->createFullyConnected(bindings, "fc1", var2, 2352);
   bindings.get(cast<Placeholder>(fc1->getWeights()))->getHandle().clear(0.6);
-  auto *reshape1 = F->createReshape("reshape1", fc1, {8, 14, 28, 6});
+  auto *reshape1 = F->createReshape("reshape1", fc1, {8, 14, 28, 6}, "NHWC");
   auto *relu1 = F->createRELU("relu1", reshape1);
   auto *pool1 = F->createMaxPool("pool1", relu1, 2, 2, 1);
   auto *add = F->createAdd("add", sigmoid1, pool1->getResult());
   auto *tanh = F->createTanh("tanh", add);
   auto *fc2 = F->createFullyConnected(bindings, "fc2", var3, 720);
   bindings.get(cast<Placeholder>(fc2->getWeights()))->getHandle().clear(1.1);
-  auto *reshape2 = F->createReshape("reshape2", fc2, {8, 8, 15, 6});
+  auto *reshape2 = F->createReshape("reshape2", fc2, {8, 8, 15, 6}, "NHWC");
   auto *mul = F->createMul("mul", tanh, reshape2);
   auto *sigmoid2 = F->createSigmoid("sigmoid2", mul);
   auto *conv2 = F->createConv(bindings, "conv2", sigmoid2, 7, 3, 2, 1, 1);
   bindings.get(cast<Placeholder>(conv2->getFilter()))->getHandle().clear(0.3);
   bindings.get(cast<Placeholder>(conv2->getBias()))->getHandle().clear(1.3);
-  auto *reshape3 = F->createReshape("reshape3", conv2, {8, 8, 7, 4});
+  auto *reshape3 = F->createReshape("reshape3", conv2, {8, 8, 7, 4}, "NHWC");
   auto *sub = F->createSub("sub", reshape3, var4);
   auto *relu2 = F->createRELU("relu2", sub);
   auto *pool2 = F->createAvgPool("pool2", relu2, 3, 2, 1);
@@ -1124,7 +1125,7 @@ void inferTinyResnet(Tensor *input, Tensor *out, std::vector<Tensor> &weights,
   auto &mod = EE.getModule();
   auto *F = mod.createFunction("main");
 
-  auto *in = createPlaceholder(mod, bindings, input, "in");
+  auto *in = createPlaceholder(mod, bindings, input, "in", "NHWC");
   auto *conv1 = F->createConv(bindings, "conv1", in, 256, 1, 1, 0, 1);
   auto *conv2a = F->createConv(bindings, "conv2a", conv1, 64, 1, 1, 0, 1);
   auto *relu2a = F->createRELU("relu2a", conv2a);

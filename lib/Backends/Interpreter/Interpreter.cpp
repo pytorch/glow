@@ -541,7 +541,7 @@ static bool checkLayoutForNode(const Node &N) {
 }
 
 bool Interpreter::verify(const Function &F) const {
-  if (!F.verify()) {
+  if (!F.verify(this)) {
     return false;
   }
   if (!checkAllNodesSupported(F)) {

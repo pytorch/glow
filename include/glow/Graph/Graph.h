@@ -56,6 +56,9 @@ enum class FunctionState {
   FuncLoaded,
 };
 
+/// Helper names for common tensor layouts.
+#define ANY_LAYOUT "*"
+
 class Module final {
   /// Stores the functions in the module.
   FunctionList functions_;
@@ -173,26 +176,34 @@ public:
   ///@{
 
   Placeholder *createPlaceholder(ElemKind T, llvm::ArrayRef<size_t> dims,
-                                 llvm::StringRef name, bool isTrainable);
+                                 llvm::StringRef name, bool isTrainable,
+                                 const std::string &layout = ANY_LAYOUT);
 
   Placeholder *createPlaceholder(TypeRef T, llvm::StringRef name,
-                                 bool isTrainable);
+                                 bool isTrainable,
+                                 const std::string &layout = ANY_LAYOUT);
 
   Placeholder *createPlaceholder(ElemKind T, llvm::ArrayRef<size_t> dims,
                                  float scale, int32_t offset,
-                                 llvm::StringRef name, bool isTrainable);
+                                 llvm::StringRef name, bool isTrainable,
+                                 const std::string &layout = ANY_LAYOUT);
 
-  Constant *createConstant(TypeRef T, llvm::StringRef name);
+  Constant *createConstant(TypeRef T, llvm::StringRef name,
+                           const std::string &layout = ANY_LAYOUT);
 
   Constant *createConstant(ElemKind T, llvm::ArrayRef<size_t> dims,
-                           llvm::StringRef name);
+                           llvm::StringRef name,
+                           const std::string &layout = ANY_LAYOUT);
 
   Constant *createConstant(ElemKind T, llvm::ArrayRef<size_t> dims, float scale,
-                           int32_t offset, llvm::StringRef name);
+                           int32_t offset, llvm::StringRef name,
+                           const std::string &layout = ANY_LAYOUT);
 
-  Constant *createConstant(llvm::StringRef name, const Tensor &tensor);
+  Constant *createConstant(llvm::StringRef name, const Tensor &tensor,
+                           const std::string &layout = ANY_LAYOUT);
 
-  Constant *createConstant(llvm::StringRef name, Tensor &&tensor);
+  Constant *createConstant(llvm::StringRef name, Tensor &&tensor,
+                           const std::string &layout = ANY_LAYOUT);
 
   ///@}
 
@@ -249,6 +260,10 @@ public:
   Module &operator=(const PlaceholderBindings &) = delete;
   Module &operator=(PlaceholderBindings &&) = delete;
 };
+
+// Forward Declaration for verify's optional parameter
+class Backend;
+struct CompilationContext;
 
 /// Represents the compute graph.
 class Function final : public Named {
@@ -601,10 +616,12 @@ public:
                                       NodeValue targets);
 
   ReshapeNode *createReshape(llvm::StringRef name, NodeValue input,
-                             UnsignedArrayRef shape);
+                             UnsignedArrayRef shape,
+                             llvm::StringRef layout = ANY_LAYOUT);
 
   TransposeNode *createTranspose(llvm::StringRef name, NodeValue input,
-                                 llvm::ArrayRef<unsigned_t> shuffle);
+                                 llvm::ArrayRef<unsigned_t> shuffle,
+                                 const std::string &layout = ANY_LAYOUT);
 
   /// Create a series of nodes that implement a Broadcast operation. The \p
   /// input Tensor is broadcasted based on \p newShape and along the \p axis,
@@ -1312,9 +1329,11 @@ public:
   Function *clone(llvm::StringRef newName,
                   llvm::DenseMap<Node *, Node *> *map = nullptr);
 
-  /// Verify the correctness of the Function.
-  /// \returns true when the function is valid. False otherwise.
-  bool verify() const;
+  /// Verify the correctness of the Function. If \p backend is provided, checks
+  /// backend-specific layout requirements. Else checks the requirements based
+  /// on Glow's "canonical" layout. \returns true when the function is valid.
+  /// False otherwise.
+  bool verify(const Backend *backend = nullptr) const;
 
   /// Dump a textual representation of the Function into provided output stream.
   void dump() const;
@@ -1377,6 +1396,10 @@ Node *recursiveClone(Function *newF, Node *node, NodeMap &currToNew);
   { 0u, 2u, 3u, 1u }
 #define NHWC2NCHW                                                              \
   { 0u, 3u, 1u, 2u }
+#define HWCN2NHWC                                                              \
+  { 3u, 0u, 1u, 2u }
+#define NHWC2HWNC                                                              \
+  { 1u, 2u, 0u, 3u }
 
 llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const Module &mod);
 
