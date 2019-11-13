@@ -310,7 +310,7 @@ int main(int argc, char **argv) {
       .addGradientInstr({"Data", "Weights", "Indices", "Lengths"},
                         {"Dest", "Data", "Weights"});
 
-  BB.newInstr("SparseLengthsWeightedSumOffsets")
+  BB.newInstr("EmbeddingBag")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Data", OperandKind::In)
       .addOperand("Weights", OperandKind::In)

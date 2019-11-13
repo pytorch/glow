@@ -500,7 +500,7 @@ int main(int argc, char **argv) {
                     "Weights[0] * Slice(0) + Weights[1] * Slice(1) + ... "
                     "It implies that len(Weights) == len(Indices).");
 
-  BB.newNode("SparseLengthsWeightedSumOffsets")
+  BB.newNode("EmbeddingBag")
       .addInput("Data")
       .addInput("Weights")
       .addInput("Indices")

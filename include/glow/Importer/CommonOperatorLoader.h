@@ -824,7 +824,7 @@ protected:
     return Error::success();
   }
 
-  Error loadSparseLengthsWeightedSumOffsets(const OpType &op) {
+  Error loadEmbeddingBag(const OpType &op) {
     NodeValue in0;
     ASSIGN_VALUE_OR_RETURN_ERR(in0, getNodeValueByName(op.input(0)));
     NodeValue in1;
@@ -833,8 +833,8 @@ protected:
     ASSIGN_VALUE_OR_RETURN_ERR(in2, getNodeValueByName(op.input(2)));
     NodeValue in3;
     ASSIGN_VALUE_OR_RETURN_ERR(in3, getNodeValueByName(op.input(3)));
-    auto *node = G_.createSparseLengthsWeightedSumOffsets(loadOperatorName(op),
-                                                          in0, in1, in2, in3);
+    auto *node =
+        G_.createEmbeddingBag(loadOperatorName(op), in0, in1, in2, in3);
     RETURN_IF_ERR(addNodeAsOutput(op, node));
     return Error::success();
   }
@@ -1168,8 +1168,8 @@ protected:
       RETURN_IF_ERR(loadSparseLengthsWeightedSum(op));
       return true;
     }
-    if (typeName == "SparseLengthsWeightedSumOffsets") {
-      RETURN_IF_ERR(loadSparseLengthsWeightedSumOffsets(op));
+    if (typeName == "EmbeddingBag") {
+      RETURN_IF_ERR(loadEmbeddingBag(op));
       return true;
     }
     if (typeName == "LengthsToRanges") {

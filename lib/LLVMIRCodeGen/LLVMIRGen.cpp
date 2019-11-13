@@ -2453,8 +2453,8 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     break;
   }
 
-  case Kinded::Kind::SparseLengthsWeightedSumOffsetsInstKind: {
-    auto *SI = cast<SparseLengthsWeightedSumOffsetsInst>(I);
+  case Kinded::Kind::EmbeddingBagInstKind: {
+    auto *SI = cast<EmbeddingBagInst>(I);
     auto *dest = SI->getDest();
     auto *data = SI->getData();
     auto *weights = SI->getWeights();
@@ -2468,8 +2468,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *segments = emitConstSizeT(builder, offsets->dims()[0]);
     auto *totalLength = emitConstSizeT(builder, indices->dims()[0]);
     auto *lineSize = emitConstSizeT(builder, data->size() / data->dims()[0]);
-    auto *F = getFunction("sparse_lengths_weighted_sum_offsets",
-                          dest->getElementType());
+    auto *F = getFunction("embedding_bag", dest->getElementType());
     createCall(builder, F,
                {destPtr, dataPtr, weightsPtr, indicesPtr, offsetsPtr, segments,
                 lineSize, totalLength});

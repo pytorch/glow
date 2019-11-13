@@ -447,11 +447,9 @@ static bool verifySparseLengthsWeightedSum(NodeValue dest, NodeValue data,
   return isValid;
 }
 
-static bool verifySparseLengthsWeightedSumOffsets(NodeValue dest,
-                                                  NodeValue data,
-                                                  NodeValue weights,
-                                                  NodeValue indices,
-                                                  NodeValue offsets) {
+static bool verifyEmbeddingBag(NodeValue dest, NodeValue data,
+                               NodeValue weights, NodeValue indices,
+                               NodeValue offsets) {
   bool isValid = checkType(dest, data.getElementType(), dest.getNode());
   isValid &= checkType(weights, data.getElementType(), dest.getNode());
   isValid &= checkType(indices, ElemKind::Int64ITy, dest.getNode());
@@ -1202,9 +1200,9 @@ bool SparseLengthsWeightedSumGradNode::verify() const {
   return isValid;
 }
 
-bool SparseLengthsWeightedSumOffsetsNode::verify() const {
-  return verifySparseLengthsWeightedSumOffsets(
-      getResult(), getData(), getWeights(), getIndices(), getOffsets());
+bool EmbeddingBagNode::verify() const {
+  return verifyEmbeddingBag(getResult(), getData(), getWeights(), getIndices(),
+                            getOffsets());
 }
 
 bool RowwiseQuantizedSparseLengthsWeightedSumNode::verify() const {

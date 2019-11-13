@@ -3223,8 +3223,8 @@ void BoundInterpreterFunction::fwdSparseLengthsWeightedSumGradInst(
 }
 
 template <typename ElemTy>
-void BoundInterpreterFunction::fwdSparseLengthsWeightedSumOffsetsInstFloatImpl(
-    const SparseLengthsWeightedSumOffsetsInst *I) {
+void BoundInterpreterFunction::fwdEmbeddingBagInstFloatImpl(
+    const EmbeddingBagInst *I) {
   staticAssertFloatingPointType(ElemTy);
 
   auto out = getTensor(I->getDest());
@@ -3262,9 +3262,8 @@ void BoundInterpreterFunction::fwdSparseLengthsWeightedSumOffsetsInstFloatImpl(
   }
 }
 
-void BoundInterpreterFunction::fwdSparseLengthsWeightedSumOffsetsInst(
-    const SparseLengthsWeightedSumOffsetsInst *I) {
-  dispatchFloatingPointImpl(fwdSparseLengthsWeightedSumOffsetsInstFloatImpl,
+void BoundInterpreterFunction::fwdEmbeddingBagInst(const EmbeddingBagInst *I) {
+  dispatchFloatingPointImpl(fwdEmbeddingBagInstFloatImpl,
                             I->getData()->getElementType(), I);
 }
 

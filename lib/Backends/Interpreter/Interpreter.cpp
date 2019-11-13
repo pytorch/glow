@@ -265,15 +265,13 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
            (NI.getInElemTy(SparseLengthsWeightedSumNode::LengthsIdx) ==
             ElemKind::Int32ITy);
 
-  case Kinded::Kind::SparseLengthsWeightedSumOffsetsNodeKind:
+  case Kinded::Kind::EmbeddingBagNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
                {ElemKind::FloatTy, ElemKind::Float16Ty},
-               {SparseLengthsWeightedSumOffsetsNode::IndicesIdx,
-                SparseLengthsWeightedSumOffsetsNode::OffsetsIdx}) &&
-           (NI.getInElemTy(SparseLengthsWeightedSumOffsetsNode::IndicesIdx) ==
+               {EmbeddingBagNode::IndicesIdx, EmbeddingBagNode::OffsetsIdx}) &&
+           (NI.getInElemTy(EmbeddingBagNode::IndicesIdx) ==
             ElemKind::Int64ITy) &&
-           (NI.getInElemTy(SparseLengthsWeightedSumOffsetsNode::OffsetsIdx) ==
-            ElemKind::Int64ITy);
+           (NI.getInElemTy(EmbeddingBagNode::OffsetsIdx) == ElemKind::Int64ITy);
 
   case Kinded::Kind::SparseLengthsWeightedSumGradNodeKind:
     // GradOfInputNamedIndicesIdx and GradOfInputNamedLengthsIdx do not need to

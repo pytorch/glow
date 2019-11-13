@@ -882,11 +882,10 @@ public:
                                  NodeValue weights, NodeValue indices,
                                  NodeValue lengths);
 
-  /// Another version of SparseLengthsSum using offsets instead.
-  SparseLengthsWeightedSumOffsetsNode *
-  createSparseLengthsWeightedSumOffsets(llvm::StringRef name, NodeValue data,
-                                        NodeValue weights, NodeValue indices,
-                                        NodeValue offsets);
+  /// Create an EmbeddingBag node.
+  EmbeddingBagNode *createEmbeddingBag(llvm::StringRef name, NodeValue data,
+                                       NodeValue weights, NodeValue indices,
+                                       NodeValue offsets);
 
   /// Same as \ref createSparseLengthsWeightedSum(), but with \p outTy
   /// specified.
