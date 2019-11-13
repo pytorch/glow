@@ -55,29 +55,7 @@ DeviceManager *createOCLDeviceManager(const DeviceConfig &config) {
   return new OpenCLDeviceManager(config);
 }
 
-OpenCLBuffer::~OpenCLBuffer() {
-  for (auto buf : subBuffers_) {
-    clReleaseMemObject(buf.second);
-  }
-  subBuffers_.clear();
-
-  clReleaseMemObject(buffer_);
-}
-
-/// Add a mapping from a Symbol name to an offset into buffer_;
-bool OpenCLBuffer::addSubBuffer(std::string name, size_t offset, size_t size) {
-  cl_buffer_region region({offset, size});
-  cl_int err;
-  auto buf = clCreateSubBuffer(buffer_, CL_MEM_READ_WRITE,
-                               CL_BUFFER_CREATE_TYPE_REGION, &region, &err);
-  auto res = subBuffers_.emplace(name, buf);
-  if (!res.second) {
-    llvm::dbgs() << "OpenCLBuffer: failed to add subBuffer for symbol " << name
-                 << "\n";
-    return false;
-  }
-  return true;
-}
+OpenCLBuffer::~OpenCLBuffer() { clReleaseMemObject(buffer_); }
 } // namespace runtime
 } // namespace glow
 
@@ -378,15 +356,6 @@ void OpenCLDeviceManager::addNetworkImpl(const Module *module,
       clFinish(commands);
     }
     usedMemoryBytes_ += sizeInBytes;
-
-    // Add a sub-buffer for each symbol in the symbol table. OpenCL sub-buffers
-    // are essentially TensorViews in Glow.
-    for (auto &pair : bundle.getSymbolTable()) {
-      bool success = buffer->addSubBuffer(pair.first, pair.second.offset,
-                                          pair.second.size);
-      DCHECK(success);
-    }
-
     // Compile the CL program.
     // Add to the function name lookup map.
     // Add shared pointer to the buffer to buffers. This way the buffer will
@@ -407,7 +376,6 @@ void OpenCLDeviceManager::addNetworkImpl(const Module *module,
     programs_.emplace(func.first, program);
     functions_.emplace(func.first, func.second);
     buffers_.emplace(func.first, buffer);
-
     buffer->incrementUsers();
 
     DCHECK_LE(usedMemoryBytes_, maxMemoryBytes_);
@@ -705,7 +673,7 @@ void OpenCLDeviceManager::runFunctionImpl(
   auto program = programs_[function];
   auto clBindings = glow::make_unique<runtime::OpenCLDeviceBindings>(
       buffers_[function]->getBuffer(), queue.backingQueue, deviceId_, context_,
-      program, buffers_[function]->getSubBuffers());
+      program);
 
   // Copy inputs to the device.
   copyInputsToDevice(func->getRuntimeBundle(), context.get(), clBindings.get());

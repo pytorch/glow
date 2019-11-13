@@ -140,7 +140,7 @@ elif [[ "$CIRCLE_JOB" == "PYTORCH" ]]; then
     cd build
 elif [[ "$CIRCLE_JOB" == "OPENCL" ]]; then
     install_pocl
-    CMAKE_ARGS+=("-DGLOW_WITH_OPENCL=ON" "-DGLOW_OPENCL_ALIGN=128")
+    CMAKE_ARGS+=("-DGLOW_WITH_OPENCL=ON")
 else
     CMAKE_ARGS+=("-DCMAKE_BUILD_TYPE=Debug")
     if [[ "${CIRCLE_JOB}" == "SHARED" ]]; then
