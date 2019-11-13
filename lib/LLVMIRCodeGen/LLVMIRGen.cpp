@@ -180,7 +180,6 @@ static void registerEmptyDiagHandler(llvm::LLVMContext &ctx) {
 }
 
 void LLVMIRGen::initCodeGen() {
-  instrNumbering_.reset(new InstructionNumbering(*F_));
   // Load the jit library as a new module.
   llmodule_ = loadStandardLibrary(&getLLVMContext(), "libjit.bc", libjitBC_);
   CHECK(llmodule_.get()) << "Unable to load the JIT library.";
@@ -194,28 +193,6 @@ void LLVMIRGen::initCodeGen() {
 
   // Assign the target information to the module.
   llmodule_->setDataLayout(getTargetMachine().createDataLayout());
-
-  // Create the entry function into the LLVM module.
-  auto int8PtrTy = llvm::Type::getInt8PtrTy(getLLVMContext());
-  auto sizeTPtrTy =
-      llvm::Type::getIntNPtrTy(getLLVMContext(), getLibjitSizeTWidth());
-  // The entry point has the following API:
-  // void entry(uint8_t *baseConstantWeightVars, uint8_t
-  // *baseInoutWeightVars, uint8_t *baseActivations, size_t *offsets);
-  llvm::Type *voidTy = llvm::Type::getVoidTy(getLLVMContext());
-  llvm::FunctionType *jitFuncTy = llvm::FunctionType::get(
-      voidTy, {int8PtrTy, int8PtrTy, int8PtrTy, sizeTPtrTy}, false);
-  auto *func = llvm::Function::Create(
-      jitFuncTy, llvm::Function::ExternalLinkage, "main", llmodule_.get());
-
-  // Setup the entry basic block and initialize the IR builder.
-  llvm::BasicBlock *entry_bb =
-      llvm::BasicBlock::Create(getLLVMContext(), "entry", func);
-  builder_ = glow::make_unique<llvm::IRBuilder<>>(entry_bb);
-  // Terminate the function with a return instruction.
-  auto *ret = builder_->CreateRetVoid();
-  // Emit all the code before the retrun instruction.
-  builder_->SetInsertPoint(ret);
 
   // Initialize the debug information emission.
   initDebugInfo();
@@ -257,15 +234,40 @@ llvm::Type *LLVMIRGen::getElementType(llvm::IRBuilder<> &builder,
 }
 
 void LLVMIRGen::performCodeGen() {
+  // Create the entry function into the LLVM module.
+  auto int8PtrTy = llvm::Type::getInt8PtrTy(getLLVMContext());
+  auto sizeTPtrTy =
+      llvm::Type::getIntNPtrTy(getLLVMContext(), getLibjitSizeTWidth());
+  // The entry point has the following API:
+  // void entry(uint8_t *baseConstantWeightVars, uint8_t
+  // *baseInoutWeightVars, uint8_t *baseActivations, size_t *offsets);
+  llvm::Type *voidTy = llvm::Type::getVoidTy(getLLVMContext());
+  llvm::FunctionType *jitFuncTy = llvm::FunctionType::get(
+      voidTy, {int8PtrTy, int8PtrTy, int8PtrTy, sizeTPtrTy}, false);
+  llvmF_ = llvm::Function::Create(jitFuncTy, llvm::Function::ExternalLinkage,
+                                  "main", llmodule_.get());
+  emittedLLVMFunctions_.emplace_back(llvmF_);
+
+  // Setup the entry basic block and initialize the IR builder.
+  llvm::BasicBlock *entry_bb =
+      llvm::BasicBlock::Create(getLLVMContext(), "entry", llvmF_);
+  builder_ = glow::make_unique<llvm::IRBuilder<>>(entry_bb);
+  // Terminate the function with a return instruction.
+  auto *ret = builder_->CreateRetVoid();
+  // Emit all the code before the retrun instruction.
+  builder_->SetInsertPoint(ret);
+
+  instrNumbering_.reset(new InstructionNumbering(*F_));
+  generateFunctionDebugInfo();
   loadBaseAddresses(*builder_);
-
   generateLLVMIRForModule(*builder_);
+}
 
+void LLVMIRGen::finishCodeGen() {
   if (dumpIR) {
     llvm::outs() << "LLVM module before optimizations:\n";
     llmodule_->print(llvm::outs(), nullptr);
   }
-
   // Perform verification if no debug info is being emitted.
   // Otherwise, the verification is performed later by
   // generateDebugInfo, once the debug info emission is finalized.
@@ -282,7 +284,7 @@ void LLVMIRGen::performCodeGen() {
   optimizeLLVMModule(&getModule(), getTargetMachine());
 
   // Generate debug information.
-  generateDebugInfo();
+  generateModuleDebugInfo();
 
   if (dumpIR) {
     llvm::outs() << "LLVM module after optimizations:\n";
@@ -383,14 +385,18 @@ llvm::Value *LLVMIRGen::emitValueAddress(llvm::IRBuilder<> &builder,
 llvm::Value *
 LLVMIRGen::emitConstOffsetsArray(llvm::IRBuilder<> &builder,
                                  const AllocationsInfo &allocationsInfo) {
+  constexpr const char *offsetsArrayName = "offsetsArray";
   auto sizeTType = builder.getIntNTy(getLibjitSizeTWidth());
   std::vector<llvm::Constant *> elems(allocationsInfo.valueNumbers_.size());
+  size_t maxOffset = 0;
   for (auto &I : allocationsInfo.valueNumbers_) {
     auto *V = I.first;
     auto offset = I.second.second;
     elems[offset] = llvm::ConstantInt::get(
         sizeTType, allocationsInfo.allocatedAddress_.lookup(V));
+    maxOffset = std::max(maxOffset, offset);
   }
+  elems.resize(maxOffset + 1);
   auto *arr = llvm::ConstantArray::get(
       llvm::ArrayType::get(sizeTType, elems.size()), elems);
   // Ensure that the same casted global variable is used for the equivalent
@@ -398,14 +404,24 @@ LLVMIRGen::emitConstOffsetsArray(llvm::IRBuilder<> &builder,
   // LLVM does not do it automatically for this code pattern involving global
   // variables. It also reduces the number of variables.
   auto &constArrayVar = constArrayPtrs_[arr];
-  if (constArrayVar && constArrayVar->getType() == sizeTType->getPointerTo())
+  auto oldG =
+      getModule().getGlobalVariable(offsetsArrayName, /* allowInternal */ true);
+  if (constArrayVar && constArrayVar->getType() == sizeTType->getPointerTo()) {
     return constArrayVar;
-
+  }
+  if (oldG) {
+    oldG->setName("offsetsArrayOld");
+  }
   auto *M = builder.GetInsertBlock()->getModule();
-
   auto *G = new llvm::GlobalVariable(*M, arr->getType(), true,
-                                     llvm::GlobalValue::InternalLinkage, arr);
+                                     llvm::GlobalValue::InternalLinkage, arr,
+                                     offsetsArrayName);
   constArrayVar = builder.CreateBitCast(G, sizeTType->getPointerTo());
+  if (oldG) {
+    // Replace the old offsetsArray by the new one and remove the old.
+    oldG->replaceAllUsesWith(G);
+    oldG->eraseFromParent();
+  }
   return constArrayVar;
 }
 
@@ -558,6 +574,8 @@ llvm::Function *LLVMIRGen::getFunction(const std::string &name,
   }
 }
 
+llvm::Function *LLVMIRGen::getLLVMFunction() { return llvmF_; }
+
 llvm::CallInst *LLVMIRGen::createCall(llvm::IRBuilder<> &builder,
                                       llvm::Function *callee,
                                       llvm::ArrayRef<llvm::Value *> args) {
@@ -700,8 +718,11 @@ void LLVMIRGen::emitDataParallelKernelImpl(
   // Add a return.
   kernelBuilder.CreateRetVoid();
 
+  setCurrentDebugLocation(builder, *bundle.begin());
   // Emit a call of the kernel.
   createCall(builder, kernelFunc, buffers);
+  // Emit debug info for the generated data-parallel kernel.
+  generateFunctionDebugInfo(kernelFunc);
 }
 
 /// Emit the function that implements a data-parallel kernel and calls it.

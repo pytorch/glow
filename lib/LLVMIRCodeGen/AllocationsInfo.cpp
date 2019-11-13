@@ -37,18 +37,18 @@ using llvm::dyn_cast;
 using llvm::isa;
 
 void AllocationsInfo::allocateWeightVars(const IRFunction *F) {
-  // Use two different allocators, because constant weights and mutable weights
-  // may use different memory blocks.
-  MemoryAllocator constantWeightVarsAllocator("ConstantWeights", 0);
-  MemoryAllocator mutableWeightVarsAllocator("MutableWeights", 0);
-
   // Compute the new offsets for all the weights, do not reuse their current
   // addresses. Process all constant WeightVars first.
   for (auto &v : F->findConstants()) {
     assert(isa<WeightVar>(F->getWeightForNode(v)) && "Expected WeightVar");
     auto *w = cast<WeightVar>(F->getWeightForNode(v));
+    if (allocatedAddress_.count(v)) {
+      allocatedAddress_[w] = allocatedAddress_[v];
+      continue;
+    }
     auto numBytes = w->getSizeInBytes();
-    size_t addr = constantWeightVarsAllocator.allocate(numBytes, w);
+    size_t addr = constantWeightVarsAllocator.allocate(numBytes, v);
+    allocatedAddress_[v] = addr;
     allocatedAddress_[w] = addr;
   }
 
@@ -64,6 +64,9 @@ void AllocationsInfo::allocateWeightVars(const IRFunction *F) {
     // Get the WeightVar for each Placeholder to calculate offsets.
     assert(isa<WeightVar>(F->getWeightForNode(v)) && "Expected WeightVar");
     auto *w = cast<WeightVar>(F->getWeightForNode(v));
+    if (allocatedAddress_.count(w)) {
+      continue;
+    }
     auto numBytes = w->getSizeInBytes();
     size_t addr = mutableWeightVarsAllocator.allocate(numBytes, w);
     allocatedAddress_[w] = addr;
@@ -78,23 +81,22 @@ void AllocationsInfo::allocateWeightVars(const IRFunction *F) {
     if (isa<AllocActivationInst>(A.first) || isa<TensorViewInst>(A.first))
       continue;
     assert(valueNumbers_.count(A.first) && "Unknown weight");
+    if (isa<Constant>(A.first))
+      continue;
+    auto *weight = dyn_cast<WeightVar>(A.first);
     llvm::StringRef kind =
-        valueNumbers_[A.first].first == ValueKind::ConstantWeight
+        valueNumbers_[weight].first == ValueKind::ConstantWeight
             ? "constant weight"
             : "mutable weight";
-    llvm::dbgs() << "Allocated " << kind << " " << A.first->getName()
-                 << " size: " << A.first->getSizeInBytes()
-                 << "  address range:  [" << allocatedAddress_[A.first] << ", "
-                 << allocatedAddress_[A.first] + A.first->getSizeInBytes()
+    llvm::dbgs() << "Allocated " << kind << " " << weight->getName()
+                 << " size: " << weight->getSizeInBytes()
+                 << "  address range:  [" << allocatedAddress_[weight] << ", "
+                 << allocatedAddress_[weight] + weight->getSizeInBytes()
                  << "]\n";
   });
 }
 
 void AllocationsInfo::allocateActivations(const IRFunction *F) {
-  // Use a memory allocator with no upper bound on how much memory we can
-  // allocate.
-  MemoryAllocator activationsAllocator("Activations", 0);
-
   // Maps activations and views to some offset within the heap.
   llvm::DenseMap<const Value *, uint64_t> activationAddr;
 
@@ -124,11 +126,16 @@ void AllocationsInfo::allocateActivations(const IRFunction *F) {
   }
   DEBUG_GLOW(for (auto &A
                   : allocatedAddress_) {
-    llvm::dbgs() << "Allocated activation " << A.first->getName()
-                 << " size: " << A.first->getSizeInBytes()
-                 << "  address range:  [" << allocatedAddress_[A.first] << ", "
-                 << allocatedAddress_[A.first] + A.first->getSizeInBytes()
-                 << "]\n";
+    if (!isa<AllocActivationInst>(A.first)) {
+      continue;
+    }
+    if (isa<Constant>(A.first))
+      continue;
+    auto *act = dyn_cast<AllocActivationInst>(A.first);
+    llvm::dbgs() << "Allocated activation " << act->getName()
+                 << " size: " << act->getSizeInBytes() << "  address range:  ["
+                 << allocatedAddress_[act] << ", "
+                 << allocatedAddress_[act] + act->getSizeInBytes() << "]\n";
   });
 }
 
@@ -180,25 +187,34 @@ void AllocationsInfo::allocateTensorViews(const IRFunction *F) {
 }
 
 void AllocationsInfo::numberValues(const IRFunction *F) {
-  size_t valueIdx = 0;
   // Assign numbers to all weights.
   for (auto &v : F->findConstants()) {
     assert(isa<WeightVar>(F->getWeightForNode(v)));
     auto *w = cast<WeightVar>(F->getWeightForNode(v));
-    valueNumbers_[w] = std::make_pair(ValueKind::ConstantWeight, valueIdx++);
+    if (valueNumbers_.count(v)) {
+      valueNumbers_[w] = valueNumbers_[v];
+      continue;
+    }
+    valueNumbers_[v] = std::make_pair(ValueKind::ConstantWeight, valueIdx_);
+    valueNumbers_[w] = std::make_pair(ValueKind::ConstantWeight, valueIdx_++);
   }
 
   // Assign numbers to all placeholders.
   for (auto &v : F->findPlaceholders()) {
     assert(isa<WeightVar>(F->getWeightForNode(v)));
     auto *w = cast<WeightVar>(F->getWeightForNode(v));
-    valueNumbers_[w] = std::make_pair(ValueKind::MutableWeight, valueIdx++);
+    if (valueNumbers_.count(w)) {
+      continue;
+    }
+    valueNumbers_[w] = std::make_pair(ValueKind::MutableWeight, valueIdx_++);
   }
 
   // Assign numbers to all activations and tensorviews.
   for (const auto &I : F->getInstrs()) {
     if (auto *A = dyn_cast<AllocActivationInst>(&I)) {
-      valueNumbers_[A] = std::make_pair(ValueKind::Activation, valueIdx++);
+      assert(!valueNumbers_.count(A) &&
+             "Activation should be defined only once");
+      valueNumbers_[A] = std::make_pair(ValueKind::Activation, valueIdx_++);
       continue;
     }
     if (auto *A = dyn_cast<TensorViewInst>(&I)) {
@@ -208,8 +224,18 @@ void AllocationsInfo::numberValues(const IRFunction *F) {
         kind = w->isConstant() ? ValueKind::ConstantWeight
                                : ValueKind::MutableWeight;
       }
-      valueNumbers_[A] = std::make_pair(kind, valueIdx++);
+      assert(!valueNumbers_.count(A) &&
+             "TensorView should be defined only once");
+      valueNumbers_[A] = std::make_pair(kind, valueIdx_++);
       continue;
     }
   }
+  DEBUG_GLOW(for (auto &A
+                  : valueNumbers_) {
+    if (isa<Constant>(A.first))
+      continue;
+    auto *v = static_cast<const Value *>(A.first);
+    llvm::dbgs() << "Value number for " << v->getName() << ": "
+                 << A.second.second << "\n";
+  });
 }

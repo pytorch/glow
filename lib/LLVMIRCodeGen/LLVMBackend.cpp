@@ -115,13 +115,14 @@ LLVMBackend::compileIRWithoutConstants(IRFunction *IR) const {
   irgen->initTargetMachine(getTarget(), getArch(), getCPU(), targetFeatures,
                            getCodeModel(), getRelocModel());
   irgen->initCodeGen();
+  irgen->setIRFunction(IR);
   // Perform the address assignment for activations and WeightVars.
-
   allocateJITMemory(IR, irgen->getAllocationsInfo());
-  // Create the jitmain function to be invoked by JIT.
-  emitJitMain(*irgen);
   // Emit the code for the body of the entry function.
   irgen->performCodeGen();
+  // Create the jitmain function to be invoked by JIT.
+  emitJitMain(*irgen);
+  irgen->finishCodeGen();
   // Hand over the module to JIT for the machine code generation.
   auto JIT = glow::make_unique<llvm::orc::GlowJIT>(irgen->getTargetMachine());
   JIT->addModule(irgen->borrowModule());
@@ -160,7 +161,20 @@ void LLVMBackend::save(Function *F, llvm::StringRef outputDir,
   llvm::SmallVector<std::string, 8> targetFeatures(llvmTargetFeatures.begin(),
                                                    llvmTargetFeatures.end());
   auto IR = generateAndOptimizeIR(F, *this, shouldShareBuffers());
-  BundleSaver(IR.get(), *this)
-      .save(getTarget(), getArch(), getCPU(), targetFeatures, outputDir,
-            bundleName, mainEntryName, getBundleCodeModel(), getRelocModel());
+  BundleSaver bundleSaver(*this, outputDir, bundleName);
+  bundleSaver.save(mainEntryName, IR.get());
+  bundleSaver.produceBundle();
+}
+
+void LLVMBackend::saveFunctions(llvm::ArrayRef<BundleEntry> entries,
+                                llvm::StringRef outputDir,
+                                llvm::StringRef bundleName) const {
+  BundleSaver bundleSaver(*this, outputDir, bundleName);
+  std::vector<std::unique_ptr<glow::IRFunction>> irFunctions;
+  for (auto &entry : entries) {
+    auto IR = generateAndOptimizeIR(entry.func, *this, shouldShareBuffers());
+    bundleSaver.save(entry.name, IR.get());
+    irFunctions.emplace_back(std::move(IR));
+  }
+  bundleSaver.produceBundle();
 }

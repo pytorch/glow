@@ -26,7 +26,7 @@
 
 namespace glow {
 
-struct AllocationsInfo;
+class AllocationsInfo;
 class PlaceholderBindings;
 class LLVMIRGen;
 
@@ -93,6 +93,10 @@ public:
   virtual void save(Function *F, llvm::StringRef outputDir,
                     llvm::StringRef bundleName,
                     llvm::StringRef mainEntryName) const override;
+
+  virtual void saveFunctions(llvm::ArrayRef<BundleEntry> entries,
+                             llvm::StringRef outputDir,
+                             llvm::StringRef bundleName) const override;
   /// @}
 
   /// \returns the size of metrics collected for a single TraceEvent.

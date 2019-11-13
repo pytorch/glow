@@ -36,7 +36,7 @@ class Tensor;
 class Constant;
 class Instruction;
 class WeightVar;
-struct AllocationsInfo;
+class AllocationsInfo;
 
 /// Different kinds of memory areas used by the emitted LLVM function.
 /// The order is important. It should match the order of base addresses
@@ -97,6 +97,10 @@ protected:
 
   /// The IR to generate code for.
   const IRFunction *F_;
+  /// LLVM IR function corresponding to F_.
+  llvm::Function *llvmF_;
+  /// Set of emitted LLVM functions for IR functions.
+  llvm::SmallVector<llvm::Function *, 4> emittedLLVMFunctions_;
   /// The LLVM context.
   llvm::LLVMContext ctx_;
   /// The LLVM IR module.
@@ -207,8 +211,10 @@ protected:
   llvm::DIType *getDebugType(llvm::IRBuilder<> &builder, llvm::Type *ty);
   /// Init the generation of debug information.
   virtual void initDebugInfo();
-  /// Generate debug information.
-  virtual void generateDebugInfo();
+  /// Generate debug information for the current function.
+  virtual void generateFunctionDebugInfo();
+  /// Generate debug information for the whole module.
+  virtual void generateModuleDebugInfo();
   /// Set the debug location for the \p builder, so that it corresponds to the
   /// instruction \p I in the textual representation of the Glow IR.
   void setCurrentDebugLocation(llvm::IRBuilder<> &builder,
@@ -279,6 +285,8 @@ public:
   /// \returns a libjit API function by name and tensor element type.
   virtual llvm::Function *getFunction(const std::string &name,
                                       glow::ElemKind elemTy);
+  /// \returns current LLVM function.
+  virtual llvm::Function *getLLVMFunction();
   /// Optimize the function \p F and the module that owns it. Use the target
   /// information from the \p TM target machine.
   virtual void optimizeLLVMModule(llvm::Module *M, llvm::TargetMachine &TM);
@@ -300,6 +308,8 @@ public:
   virtual void initCodeGen();
   /// Emits the code of the entry function, performs optimizations, etc.
   virtual void performCodeGen();
+  /// Finish the LLVM IR code generation.
+  virtual void finishCodeGen();
   /// \returns the current builder.
   llvm::IRBuilder<> &getBuilder() { return *builder_; }
   /// \returns the target machine description.
@@ -313,6 +323,8 @@ public:
   llvm::Module &getModule() const { return *llmodule_; }
   /// \returns the IR function.
   const IRFunction *getIRFunction() { return F_; }
+  /// Set IRFunction to be processed next.
+  void setIRFunction(const IRFunction *F) { F_ = F; }
   /// Set output directory for bundles, debug info files, etc.
   void setOutputDir(llvm::StringRef outputDir) { outputDir_ = outputDir; }
   /// Get output directory for bundles, debug info files, etc.

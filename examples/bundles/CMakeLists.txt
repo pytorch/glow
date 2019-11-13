@@ -1,4 +1,5 @@
 if (GLOW_WITH_BUNDLES)
   add_subdirectory(lenet_mnist)
   add_subdirectory(resnet50)
+  add_subdirectory(bundle_with_multiple_entries)
 endif()

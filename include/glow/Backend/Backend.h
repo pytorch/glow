@@ -33,6 +33,14 @@ class IRGenVisitor;
 class FunctionPassPipeline;
 class TensorLayoutCommon;
 
+/// Information about an entry point of a saved bundle.
+struct BundleEntry {
+  /// Name of the bundle entry point for the function to be saved.
+  std::string name;
+  /// Function to be saved.
+  Function *func;
+};
+
 namespace runtime {
 
 class DeviceManager;
@@ -83,6 +91,12 @@ public:
   virtual void save(Function *F, llvm::StringRef outputDir,
                     llvm::StringRef bundleName,
                     llvm::StringRef mainEntryName) const {
+    LOG(FATAL) << "Saving a bundle is not supported by the backend";
+  }
+
+  virtual void saveFunctions(llvm::ArrayRef<BundleEntry> entries,
+                             llvm::StringRef outputDir,
+                             llvm::StringRef bundleName) const {
     LOG(FATAL) << "Saving a bundle is not supported by the backend";
   }
 
