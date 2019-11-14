@@ -559,7 +559,7 @@ std::string Module::getPrefix(llvm::StringRef name) {
   size_t delim = name.rfind("__");
   if (delim != std::string::npos &&
       std::all_of(name.begin() + (delim + 2), name.end(),
-                  [](unsigned char c) { return std::isdigit(c); })) {
+                  [](unsigned char c) { return ::isdigit(c); })) {
     prefix = prefix.substr(0, delim);
   }
   return prefix;

@@ -454,6 +454,11 @@ class GlowErrorEmpty final : public GlowError {};
 /// See declaration in Error for details.
 inline GlowErrorEmpty GlowError::empty() { return GlowErrorEmpty(); }
 
+template <typename T> class GlowExpected;
+template <typename T>
+T exitOnError(const char *fileName, size_t lineNumber,
+              GlowExpected<T> expected);
+
 /// Expected is a templated container for either a value of type T or an
 /// ErrorValue. It is used for fallible processes that may return either a value
 /// or encounter an error. Expected ensures that its state has been checked for
@@ -461,9 +466,8 @@ inline GlowErrorEmpty GlowError::empty() { return GlowErrorEmpty(); }
 template <typename T>
 class GlowExpected final
     : protected detail::CheckState<detail::enableCheckingErrors> {
-  template <typename TT>
-  friend TT detail::exitOnError(const char *fileName, size_t lineNumber,
-                                GlowExpected<TT> expected);
+  friend T detail::exitOnError<>(const char *fileName, size_t lineNumber,
+                                 GlowExpected<T> expected);
   template <typename OtherT> friend class GlowExpected;
 
   /// Union type between ErrorValue and T. Holds both in Opaque containers so
