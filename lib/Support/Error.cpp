@@ -115,8 +115,9 @@ void exitOnError(const char *fileName, size_t lineNumber, GlowError error) {
         detail::takeErrorValue(std::move(error));
     assert(errorValue != nullptr &&
            "Error should have a non-null ErrorValue if bool(error) is true");
-    LOG(FATAL) << "exitOnError(Error) at " << fileName << ":" << lineNumber
-               << " got an unexpected ErrorValue: " << (*errorValue);
+    errorValue->addToStack(fileName, lineNumber);
+    LOG(FATAL) << "exitOnError(Error) got an unexpected ErrorValue: "
+               << (*errorValue);
   }
 }
 
@@ -126,8 +127,8 @@ bool errorToBool(const char *fileName, size_t lineNumber, GlowError error,
       detail::takeErrorValue(std::move(error));
   if (errorValue) {
     if (log) {
-      LOG(ERROR) << "Converting Error to bool at " << fileName << ":"
-                 << lineNumber << ": " << (*errorValue);
+      errorValue->addToStack(fileName, lineNumber);
+      LOG(ERROR) << "Converting Error to bool: " << (*errorValue);
     }
     return true;
   } else {
