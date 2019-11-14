@@ -7426,11 +7426,11 @@ TEST_P(OperatorTest, SparseLengthsWeightedSumI8) {
   EXPECT_TRUE(expected.isEqual(result));
 }
 
-/// Test SparseLengthsWeightedSumOffsets with an N-dimension embedding table.
+/// Test EmbeddingBag with an N-dimension embedding table.
 template <typename DataType>
-static void testSLWSO(glow::PlaceholderBindings &bindings, glow::Module &mod,
-                      glow::Function *F, glow::ExecutionEngine &EE,
-                      ElemKind DTy, float allowedError, size_t ndims) {
+static void testEB(glow::PlaceholderBindings &bindings, glow::Module &mod,
+                   glow::Function *F, glow::ExecutionEngine &EE, ElemKind DTy,
+                   float allowedError, size_t ndims) {
   /*
     DATA  =   [[2.0, -0.5, 13]]
     WEIGHTS = [3, 1, 0, 0, 0, 0, 2, -0.5]
@@ -7468,8 +7468,7 @@ static void testSLWSO(glow::PlaceholderBindings &bindings, glow::Module &mod,
       6,
   };
 
-  auto *R = F->createSparseLengthsWeightedSumOffsets("SLWSO", data, weights,
-                                                     indices, offsets);
+  auto *R = F->createEmbeddingBag("EB", data, weights, indices, offsets);
   auto *S = F->createSave("save", R);
   bindings.allocate(S->getPlaceholder());
 
@@ -7488,32 +7487,32 @@ static void testSLWSO(glow::PlaceholderBindings &bindings, glow::Module &mod,
   EXPECT_TRUE(expected.isEqual(result, allowedError));
 }
 
-/// Test that SLWSO is correctly supported in FloatTy in 1D.
-TEST_P(OperatorTest, SparseLengthsWeightedSumOffsets_1D_Float) {
+/// Test that EB is correctly supported in FloatTy in 1D.
+TEST_P(OperatorTest, EmbeddingBag_1D_Float) {
   CHECK_IF_ENABLED();
-  testSLWSO<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy, 0.0001,
-                   /* ndims */ 1);
+  testEB<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy, 0.0001,
+                /* ndims */ 1);
 }
 
-/// Test that SLWSO is correctly supported in FloatTy in 2D.
-TEST_P(OperatorTest, SparseLengthsWeightedSumOffsets_2D_Float) {
+/// Test that EB is correctly supported in FloatTy in 2D.
+TEST_P(OperatorTest, EmbeddingBag_2D_Float) {
   CHECK_IF_ENABLED();
-  testSLWSO<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy, 0.0001,
-                   /* ndims */ 2);
+  testEB<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy, 0.0001,
+                /* ndims */ 2);
 }
 
-/// Test that SLWSO is correctly supported in Float16Ty in 1D.
-TEST_P(OperatorTest, SparseLengthsWeightedSumOffsets_1D_Float16) {
+/// Test that EB is correctly supported in Float16Ty in 1D.
+TEST_P(OperatorTest, EmbeddingBag_1D_Float16) {
   CHECK_IF_ENABLED();
-  testSLWSO<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty, 0.0001,
-                       /* ndims */ 1);
+  testEB<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty, 0.0001,
+                    /* ndims */ 1);
 }
 
-/// Test that SLWSO is correctly supported in Float16Ty in 2D.
-TEST_P(OperatorTest, SparseLengthsWeightedSumOffsets_2D_Float16) {
+/// Test that EB is correctly supported in Float16Ty in 2D.
+TEST_P(OperatorTest, EmbeddingBag_2D_Float16) {
   CHECK_IF_ENABLED();
-  testSLWSO<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty, 0.0001,
-                       /* ndims */ 2);
+  testEB<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty, 0.0001,
+                    /* ndims */ 2);
 }
 
 /// Helper to test RowwiseQuantizedSparseLengthsWeightedSum using \p DTy.

@@ -1363,9 +1363,9 @@ void libjit_sparse_lengths_weighted_sum_f(float *dest, float *data,
   }
 }
 
-void libjit_sparse_lengths_weighted_sum_offsets_f(
-    float *dest, float *data, float *weights, size_t *indices, int64_t *offsets,
-    size_t segments, size_t lineSize, size_t totalLength) {
+void libjit_embedding_bag_f(float *dest, float *data, float *weights,
+                            size_t *indices, int64_t *offsets, size_t segments,
+                            size_t lineSize, size_t totalLength) {
   memset(dest, 0, segments * lineSize * sizeof(float));
   size_t curIndex = 0;
   for (size_t i = 0; i < segments; i++) {

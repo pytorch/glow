@@ -1641,18 +1641,17 @@ Function::createSparseLengthsWeightedSum(llvm::StringRef name, TypeRef outTy,
                                                   indices, lengths));
 }
 
-SparseLengthsWeightedSumOffsetsNode *
-Function::createSparseLengthsWeightedSumOffsets(llvm::StringRef name,
-                                                NodeValue data,
-                                                NodeValue weights,
-                                                NodeValue indices,
-                                                NodeValue offsets) {
+EmbeddingBagNode *Function::createEmbeddingBag(llvm::StringRef name,
+                                               NodeValue data,
+                                               NodeValue weights,
+                                               NodeValue indices,
+                                               NodeValue offsets) {
   auto inDims = data.dims();
   ShapeVector outDims(inDims.begin(), inDims.end());
   outDims[0] = offsets.dims()[0];
   auto outTy = getParent()->uniqueTypeWithNewShape(data.getType(), outDims);
-  return addNode(new SparseLengthsWeightedSumOffsetsNode(
-      name, outTy, data, weights, indices, offsets));
+  return addNode(
+      new EmbeddingBagNode(name, outTy, data, weights, indices, offsets));
 }
 
 RowwiseQuantizedSparseLengthsWeightedSumNode *

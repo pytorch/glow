@@ -633,6 +633,19 @@ struct GlowFusedLinearInputs {
     add_scalar = 4,
   };
 };
+
+/// Indexes of aten::embedding_bag inputs.
+struct EmbeddingBagInputs {
+  enum {
+    weight,
+    indices,
+    offsets,
+    scale_grad_by_freq,
+    mode,
+    sparse,
+    per_sample_weights,
+  };
+};
 } // namespace
 
 // static
@@ -642,182 +655,184 @@ PyTorchModelLoader::getSymbolsMapping() {
   /// for loading these symbols, and the set of inputs that should be considered
   /// immutable between inference invocations by Glow and loaded as Constants
   /// instead of Placeholders.
-  static auto symbolLoaderMapping = MappingOfMemberFunctions(
-      {{{"prim::Constant"}, &PyTorchModelLoader::loadConstant, {}},
-       {{"aten::mul", "aten::mul_"}, &PyTorchModelLoader::loadMul, {}},
-       {{"aten::div", "aten::div_"}, &PyTorchModelLoader::loadDiv, {}},
-       {{"aten::add", "aten::add_"}, &PyTorchModelLoader::loadAdd, {}},
-       {{"aten::sub", "aten::sub_"}, &PyTorchModelLoader::loadSub, {}},
-       {{"aten::sigmoid", "aten::sigmoid_"},
-        &PyTorchModelLoader::loadSigmoid,
-        {}},
-       {{"aten::relu", "aten::relu_"}, &PyTorchModelLoader::loadRelu, {}},
-       {{"aten::gelu"}, &PyTorchModelLoader::loadGelu, {}},
-       {{"aten::tanh", "aten::tanh_"}, &PyTorchModelLoader::loadTanh, {}},
-       {{"aten::t", "aten::t_"}, &PyTorchModelLoader::loadT, {}},
-       {{"aten::permute"}, &PyTorchModelLoader::loadPermute, {}},
-       {{"aten::transpose", "aten::transpose_"},
-        &PyTorchModelLoader::loadTranspose,
-        {}},
-       {{"aten::min"}, &PyTorchModelLoader::loadMin, {}},
-       {{"aten::max"}, &PyTorchModelLoader::loadMax, {}},
-       {{"aten::exp"}, &PyTorchModelLoader::loadExp, {}},
-       {{"prim::FusedConcat"}, &PyTorchModelLoader::loadFusedConcat, {}},
-       {{"glow::fused_stack"}, &PyTorchModelLoader::loadFusedStack, {}},
-       {{"aten::mean"},
-        &PyTorchModelLoader::loadMean,
-        {MeanInputs::axis, MeanInputs::keepdims, MeanInputs::output}},
-       {{"aten::pow"},
-        &PyTorchModelLoader::loadPow,
-        {
-            PowInputs::exponent,
-        }},
-       {{"aten::dropout", "aten::dropout_"},
-        &PyTorchModelLoader::loadDropout,
-        {
-            DropoutInputs::p,
-            DropoutInputs::training,
-        }},
+  static auto symbolLoaderMapping = MappingOfMemberFunctions({
+      {{"prim::Constant"}, &PyTorchModelLoader::loadConstant, {}},
+      {{"aten::mul", "aten::mul_"}, &PyTorchModelLoader::loadMul, {}},
+      {{"aten::div", "aten::div_"}, &PyTorchModelLoader::loadDiv, {}},
+      {{"aten::add", "aten::add_"}, &PyTorchModelLoader::loadAdd, {}},
+      {{"aten::sub", "aten::sub_"}, &PyTorchModelLoader::loadSub, {}},
+      {{"aten::sigmoid", "aten::sigmoid_"},
+       &PyTorchModelLoader::loadSigmoid,
+       {}},
+      {{"aten::relu", "aten::relu_"}, &PyTorchModelLoader::loadRelu, {}},
+      {{"aten::gelu"}, &PyTorchModelLoader::loadGelu, {}},
+      {{"aten::tanh", "aten::tanh_"}, &PyTorchModelLoader::loadTanh, {}},
+      {{"aten::t", "aten::t_"}, &PyTorchModelLoader::loadT, {}},
+      {{"aten::permute"}, &PyTorchModelLoader::loadPermute, {}},
+      {{"aten::transpose", "aten::transpose_"},
+       &PyTorchModelLoader::loadTranspose,
+       {}},
+      {{"aten::min"}, &PyTorchModelLoader::loadMin, {}},
+      {{"aten::max"}, &PyTorchModelLoader::loadMax, {}},
+      {{"aten::exp"}, &PyTorchModelLoader::loadExp, {}},
+      {{"prim::FusedConcat"}, &PyTorchModelLoader::loadFusedConcat, {}},
+      {{"glow::fused_stack"}, &PyTorchModelLoader::loadFusedStack, {}},
+      {{"aten::mean"},
+       &PyTorchModelLoader::loadMean,
+       {MeanInputs::axis, MeanInputs::keepdims, MeanInputs::output}},
+      {{"aten::pow"},
+       &PyTorchModelLoader::loadPow,
+       {
+           PowInputs::exponent,
+       }},
+      {{"aten::dropout", "aten::dropout_"},
+       &PyTorchModelLoader::loadDropout,
+       {
+           DropoutInputs::p,
+           DropoutInputs::training,
+       }},
 
-       {{"aten::sqrt", "aten::sqrt_"}, &PyTorchModelLoader::loadSqrt, {}},
-       {{"aten::clamp"},
-        &PyTorchModelLoader::loadClamp,
-        {
-            ClampInputs::min,
-            ClampInputs::max,
-        }},
-       {{"quantized::add"},
-        &PyTorchModelLoader::loadQuantizedAdd,
-        {QuantizedAddInputs::scale, QuantizedAddInputs::zero_point}},
-       {{"quantized::add_relu"},
-        &PyTorchModelLoader::loadQuantizedAddRelu,
-        {QuantizedAddReluInputs::scale, QuantizedAddReluInputs::zero_point}},
-       {{"glow::fused_linear"},
-        &PyTorchModelLoader::loadGlowFusedLinear,
-        {GlowFusedLinearInputs::bias, GlowFusedLinearInputs::weights,
-         GlowFusedLinearInputs::dim, GlowFusedLinearInputs::add_scalar}},
-       {{"glow::unpacked_quantized_conv2d"},
-        &PyTorchModelLoader::loadQuantizedConvUnpacked,
-        {QuantizedUnpackedConv2dInputs::stride,
-         QuantizedUnpackedConv2dInputs::padding,
-         QuantizedUnpackedConv2dInputs::dilation,
-         QuantizedUnpackedConv2dInputs::group,
-         QuantizedUnpackedConv2dInputs::scale,
-         QuantizedUnpackedConv2dInputs::zero_point}},
-       {{"glow::unpacked_quantized_linear"},
-        &PyTorchModelLoader::loadQuantizedLinear,
-        {
-            QuantizedLinearInputs::weight,
-            QuantizedLinearInputs::bias,
-            QuantizedLinearInputs::scale,
-            QuantizedLinearInputs::zero_point,
-        }},
-       {{"aten::quantize_per_tensor"},
-        &PyTorchModelLoader::loadQuantize,
-        {QuantizeInputs::scale, QuantizeInputs::zero_point,
-         QuantizeInputs::dtype}},
-       {{"aten::dequantize"}, &PyTorchModelLoader::loadDequantize, {}},
-       {{"aten::size"}, &PyTorchModelLoader::loadSize, {SizeInputs::dim}},
-       // TODO: use -1 to freeze all inputs
-       {{"prim::ListConstruct"}, &PyTorchModelLoader::loadListConstruct, {}},
-       {{"aten::reciprocal", "aten::reciprocal_"},
-        &PyTorchModelLoader::loadReciprocal,
-        {}},
-       {{"aten::adaptive_avg_pool2d"},
-        &PyTorchModelLoader::loadAdaptiveAvgPool2d,
-        {AdaptiveAvgPoolInputs::output_size}},
-       {{"aten::reshape"},
-        &PyTorchModelLoader::loadReshape,
-        {ReshapeInputs::shape}},
-       {{"aten::_convolution"},
-        &PyTorchModelLoader::loadConvolution,
-        {
-            ConvInputs::weights,
-            ConvInputs::bias,
-            ConvInputs::stride,
-            ConvInputs::padding,
-            ConvInputs::dilation,
-            ConvInputs::transposed,
-            ConvInputs::output_padding,
-            ConvInputs::groups,
-            ConvInputs::benchmark,
-            ConvInputs::deterministic,
-            ConvInputs::cudnn_enabled,
-        }},
-       {{"aten::batch_norm"},
-        &PyTorchModelLoader::loadBatchNorm,
-        {
-            BNInputs::weights,
-            BNInputs::bias,
-            BNInputs::running_mean,
-            BNInputs::running_var,
-            BNInputs::training,
-            BNInputs::momentum,
-            BNInputs::eps,
-            BNInputs::cuddnn_enabled,
-        }},
-       {{"aten::max_pool2d"},
-        &PyTorchModelLoader::loadMaxPool2d,
-        {
-            MaxPoolInputs::kernel_size,
-            MaxPoolInputs::stride,
-            MaxPoolInputs::padding,
-            MaxPoolInputs::dilation,
-            MaxPoolInputs::ceil_mode,
-        }},
-       {{"aten::avg_pool2d"},
-        &PyTorchModelLoader::loadAvgPool2d,
-        {
-            AvgPoolInputs::kernel_size,
-            AvgPoolInputs::stride,
-            AvgPoolInputs::padding,
-            AvgPoolInputs::ceil_mode,
-            AvgPoolInputs::count_include_pad,
-            AvgPoolInputs::divisor_override,
-        }},
-       {{"aten::matmul"}, &PyTorchModelLoader::loadMatMul, {}},
-       {{"aten::mm"}, &PyTorchModelLoader::loadMM, {}},
-       {{"aten::bmm"}, &PyTorchModelLoader::loadBmm, {}},
-       {{"aten::addmm"},
-        &PyTorchModelLoader::loadAddMM,
-        {
-            AddMMInputs::alpha,
-            AddMMInputs::beta,
-        }},
-       {{"aten::flatten"},
-        &PyTorchModelLoader::loadFlatten,
-        {
-            FlattenInputs::start_dim,
-            FlattenInputs::end_dim,
-        }},
-       {{"aten::prelu"},
-        &PyTorchModelLoader::loadPRelu,
-        {
-            PReluInputs::weight,
-        }},
-       {{"aten::slice"},
-        &PyTorchModelLoader::loadSlice,
-        {
-            SliceInputs::dim,
-            SliceInputs::start,
-            SliceInputs::end,
-            SliceInputs::step,
-        }},
-       {{"aten::softmax"},
-        &PyTorchModelLoader::loadSoftMax,
-        {
-            SoftMaxInputs::dim,
-            SoftMaxInputs::dtype,
-        }},
-       {{"aten::topk"},
-        &PyTorchModelLoader::loadTopK,
-        {
-            TopKInputs::k,
-            TopKInputs::dim,
-            TopKInputs::largest,
-            TopKInputs::sorted,
-        }},
-       {{"prim::ConstantChunk"}, &PyTorchModelLoader::loadConstantChunk, {}}});
+      {{"aten::sqrt", "aten::sqrt_"}, &PyTorchModelLoader::loadSqrt, {}},
+      {{"aten::clamp"},
+       &PyTorchModelLoader::loadClamp,
+       {
+           ClampInputs::min,
+           ClampInputs::max,
+       }},
+      {{"quantized::add"},
+       &PyTorchModelLoader::loadQuantizedAdd,
+       {QuantizedAddInputs::scale, QuantizedAddInputs::zero_point}},
+      {{"quantized::add_relu"},
+       &PyTorchModelLoader::loadQuantizedAddRelu,
+       {QuantizedAddReluInputs::scale, QuantizedAddReluInputs::zero_point}},
+      {{"glow::fused_linear"},
+       &PyTorchModelLoader::loadGlowFusedLinear,
+       {GlowFusedLinearInputs::bias, GlowFusedLinearInputs::weights,
+        GlowFusedLinearInputs::dim, GlowFusedLinearInputs::add_scalar}},
+      {{"glow::unpacked_quantized_conv2d"},
+       &PyTorchModelLoader::loadQuantizedConvUnpacked,
+       {QuantizedUnpackedConv2dInputs::stride,
+        QuantizedUnpackedConv2dInputs::padding,
+        QuantizedUnpackedConv2dInputs::dilation,
+        QuantizedUnpackedConv2dInputs::group,
+        QuantizedUnpackedConv2dInputs::scale,
+        QuantizedUnpackedConv2dInputs::zero_point}},
+      {{"glow::unpacked_quantized_linear"},
+       &PyTorchModelLoader::loadQuantizedLinear,
+       {
+           QuantizedLinearInputs::weight,
+           QuantizedLinearInputs::bias,
+           QuantizedLinearInputs::scale,
+           QuantizedLinearInputs::zero_point,
+       }},
+      {{"aten::quantize_per_tensor"},
+       &PyTorchModelLoader::loadQuantize,
+       {QuantizeInputs::scale, QuantizeInputs::zero_point,
+        QuantizeInputs::dtype}},
+      {{"aten::dequantize"}, &PyTorchModelLoader::loadDequantize, {}},
+      {{"aten::size"}, &PyTorchModelLoader::loadSize, {SizeInputs::dim}},
+      // TODO: use -1 to freeze all inputs
+      {{"prim::ListConstruct"}, &PyTorchModelLoader::loadListConstruct, {}},
+      {{"aten::reciprocal", "aten::reciprocal_"},
+       &PyTorchModelLoader::loadReciprocal,
+       {}},
+      {{"aten::adaptive_avg_pool2d"},
+       &PyTorchModelLoader::loadAdaptiveAvgPool2d,
+       {AdaptiveAvgPoolInputs::output_size}},
+      {{"aten::reshape"},
+       &PyTorchModelLoader::loadReshape,
+       {ReshapeInputs::shape}},
+      {{"aten::_convolution"},
+       &PyTorchModelLoader::loadConvolution,
+       {
+           ConvInputs::weights,
+           ConvInputs::bias,
+           ConvInputs::stride,
+           ConvInputs::padding,
+           ConvInputs::dilation,
+           ConvInputs::transposed,
+           ConvInputs::output_padding,
+           ConvInputs::groups,
+           ConvInputs::benchmark,
+           ConvInputs::deterministic,
+           ConvInputs::cudnn_enabled,
+       }},
+      {{"aten::batch_norm"},
+       &PyTorchModelLoader::loadBatchNorm,
+       {
+           BNInputs::weights,
+           BNInputs::bias,
+           BNInputs::running_mean,
+           BNInputs::running_var,
+           BNInputs::training,
+           BNInputs::momentum,
+           BNInputs::eps,
+           BNInputs::cuddnn_enabled,
+       }},
+      {{"aten::max_pool2d"},
+       &PyTorchModelLoader::loadMaxPool2d,
+       {
+           MaxPoolInputs::kernel_size,
+           MaxPoolInputs::stride,
+           MaxPoolInputs::padding,
+           MaxPoolInputs::dilation,
+           MaxPoolInputs::ceil_mode,
+       }},
+      {{"aten::avg_pool2d"},
+       &PyTorchModelLoader::loadAvgPool2d,
+       {
+           AvgPoolInputs::kernel_size,
+           AvgPoolInputs::stride,
+           AvgPoolInputs::padding,
+           AvgPoolInputs::ceil_mode,
+           AvgPoolInputs::count_include_pad,
+           AvgPoolInputs::divisor_override,
+       }},
+      {{"aten::matmul"}, &PyTorchModelLoader::loadMatMul, {}},
+      {{"aten::mm"}, &PyTorchModelLoader::loadMM, {}},
+      {{"aten::bmm"}, &PyTorchModelLoader::loadBmm, {}},
+      {{"aten::addmm"},
+       &PyTorchModelLoader::loadAddMM,
+       {
+           AddMMInputs::alpha,
+           AddMMInputs::beta,
+       }},
+      {{"aten::flatten"},
+       &PyTorchModelLoader::loadFlatten,
+       {
+           FlattenInputs::start_dim,
+           FlattenInputs::end_dim,
+       }},
+      {{"aten::prelu"},
+       &PyTorchModelLoader::loadPRelu,
+       {
+           PReluInputs::weight,
+       }},
+      {{"aten::slice"},
+       &PyTorchModelLoader::loadSlice,
+       {
+           SliceInputs::dim,
+           SliceInputs::start,
+           SliceInputs::end,
+           SliceInputs::step,
+       }},
+      {{"aten::softmax"},
+       &PyTorchModelLoader::loadSoftMax,
+       {
+           SoftMaxInputs::dim,
+           SoftMaxInputs::dtype,
+       }},
+      {{"aten::topk"},
+       &PyTorchModelLoader::loadTopK,
+       {
+           TopKInputs::k,
+           TopKInputs::dim,
+           TopKInputs::largest,
+           TopKInputs::sorted,
+       }},
+      {{"prim::ConstantChunk"}, &PyTorchModelLoader::loadConstantChunk, {}},
+      {{"aten::embedding_bag"}, &PyTorchModelLoader::loadEmbeddingBag, {}},
+  });
 
   return symbolLoaderMapping;
 }
@@ -2727,6 +2742,60 @@ Error PyTorchModelLoader::loadConstant(const torch::jit::Node *ptNode) {
   }
 
   return Error::success();
+}
+
+Error PyTorchModelLoader::loadEmbeddingBag(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 7, outputs, 4));
+
+  glow::NodeValue weight;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      weight, getGlowNodeValueForValue(inputs[EmbeddingBagInputs::weight]));
+  glow::NodeValue indices;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      indices, getGlowNodeValueForValue(inputs[EmbeddingBagInputs::indices]));
+  glow::NodeValue offsets;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      offsets, getGlowNodeValueForValue(inputs[EmbeddingBagInputs::offsets]));
+
+  glow::NodeValue perSampleWeights;
+  if (hasGlowNodeValueForValue(
+          inputs[EmbeddingBagInputs::per_sample_weights])) {
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        perSampleWeights, getGlowNodeValueForValue(
+                              inputs[EmbeddingBagInputs::per_sample_weights]));
+  } else {
+    auto ty = F_.getParent()->uniqueTypeWithNewShape(weight.getType(),
+                                                     indices.dims()[0]);
+    auto *ones = F_.createSplat("EmbeddingBag.ones", ty, 1.0);
+    perSampleWeights = ones->getResult();
+  }
+
+  bool scaleGradByFreq;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      scaleGradByFreq, iValToBool(getGlowIValueForValue(
+                           inputs[EmbeddingBagInputs::scale_grad_by_freq])));
+
+  RETURN_ERR_IF_NOT(scaleGradByFreq == false,
+                    "Currently only support scale_grad_by_freq == 'false'");
+
+  int mode;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      mode, iValToInt(getGlowIValueForValue(inputs[EmbeddingBagInputs::mode])));
+
+  RETURN_ERR_IF_NOT(mode == 0, "Currently only support mode='sum'");
+
+  bool sparse;
+  ASSIGN_VALUE_OR_RETURN_ERR(sparse, iValToBool(getGlowIValueForValue(
+                                         inputs[EmbeddingBagInputs::sparse])));
+
+  RETURN_ERR_IF_NOT(sparse == false, "Currently only support sparse='false'");
+
+  auto *EB = F_.createEmbeddingBag("EmbeddingBag", weight, perSampleWeights,
+                                   indices, offsets);
+
+  return addValueMapping(outputs[0], EB->getResult());
 }
 
 Error PyTorchModelLoader::loadAttributes(
