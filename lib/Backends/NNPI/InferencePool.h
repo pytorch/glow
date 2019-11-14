@@ -30,6 +30,7 @@ namespace glow {
 namespace runtime {
 
 class InferenceThreadEnv {
+private:
   NNPINetwork nnpiNetwork_;                 // For ice-ref path only.
   NNPICompilationConfig compilationConfig_; // For ice-ref path only.
 
@@ -39,7 +40,13 @@ class InferenceThreadEnv {
 
   std::vector<std::pair<std::string, NNPITensorDesc>> netInputs_;
   std::vector<std::pair<std::string, NNPITensorDesc>> netOutputs_;
+
+  /// Map from Placeholders to their backing Tensor inputs.
   std::map<std::string, Tensor *> ioTensors_;
+
+  /// Set of inputs that can be partial tensors.
+  const std::unordered_set<const Placeholder *> *partialInputs_;
+
   struct NamedResource {
     NNPIObjectName name;
     NNPIResourceDesc desc;
@@ -51,7 +58,11 @@ class InferenceThreadEnv {
   std::vector<NNPICopyCommandConfig> inputCopyCmdConfigs_,
       outputCopyCmdConfigs_;
   std::vector<void *> rawInputs_, rawOutputs_;
-  std::set<int32_t *> tmpBuffers_; // Used for int64 tensors.
+
+  /// Used for int64 tensors and for zero-padded copies of unsupported partial
+  /// tensors.
+  std::set<char *> tmpBuffers_;
+
 public:
   InferenceThreadEnv();
   ~InferenceThreadEnv();
@@ -62,7 +73,8 @@ public:
       NNPINetwork network, NNPICompilationConfig config,
       // For ICE-T path.
       NNPIHostNetwork hostNetwork, NNPIDeviceNetwork deviceNetwork,
-      NNPIAdapter adapter, NNPIDeviceContext device);
+      NNPIAdapter adapter, NNPIDeviceContext device,
+      const std::unordered_set<const Placeholder *> &partialInputs);
 };
 
 class InferencePoolEnv {

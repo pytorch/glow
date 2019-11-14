@@ -68,8 +68,12 @@ void InferenceThreadEnv::execute(RunIdentifierTy runId,
   PlaceholderBindings &bindings = *ctx->getPlaceholderBindings();
   ioTensors_.clear();
 
+  std::unordered_set<Tensor *> partialTensorInputs;
   for (auto &pht : bindings.pairs()) {
     ioTensors_.emplace(pht.first->getName(), pht.second);
+    if (partialInputs_->count(pht.first)) {
+      partialTensorInputs.insert(pht.second);
+    }
   }
 
   // Handle inputs & outputs (+convert).
@@ -78,23 +82,49 @@ void InferenceThreadEnv::execute(RunIdentifierTy runId,
                                  "Can't find tensor for input", runId, ctx,
                                  resultCB);
     auto *t = ioTensors_.at(in.first);
+    char *bufferPtr = t->getUnsafePtr();
 
-    switch (t->getElementType()) {
-    case glow::ElemKind::Int64ITy: {
-      // Convert int64_t tensors to int32.
-      int64_t *pInput = reinterpret_cast<int64_t *>(t->getUnsafePtr());
-      const size_t unpaddedSize = t->getUnpaddedSizeInBytes() / sizeof(int64_t);
-      int32_t *tmp = new int32_t[unpaddedSize];
-      for (size_t i = 0; i < unpaddedSize; i++) {
-        tmp[i] = static_cast<int32_t>(pInput[i]);
-      }
-      rawInputs_.push_back(tmp);
-      tmpBuffers_.insert(tmp);
-    } break;
-    default:
-      rawInputs_.push_back(t->getUnsafePtr());
+    // Check if we need to allocate a new temporary buffer to handle this input.
+    const bool downcastInt64 = t->getElementType() == glow::ElemKind::Int64ITy;
+    size_t paddedSize = t->getSizeInBytes();
+    size_t unpaddedSize = t->getUnpaddedSizeInBytes();
+    if (downcastInt64) {
+      paddedSize /= 2;
+      unpaddedSize /= 2;
     }
+    const bool padUnhandledPartial =
+        paddedSize != unpaddedSize && !partialTensorInputs.count(t);
+    if (padUnhandledPartial || downcastInt64) {
+      char *tmp = new char[padUnhandledPartial ? paddedSize : unpaddedSize];
+      tmpBuffers_.insert(tmp);
+
+      // Copy over the original data. Downcast int64 tensors to int32 if needed.
+      if (downcastInt64) {
+        const int64_t *pInput = reinterpret_cast<int64_t *>(bufferPtr);
+        int32_t *tmp32 = reinterpret_cast<int32_t *>(tmp);
+        const size_t hostElems = unpaddedSize / sizeof(int32_t);
+        for (size_t i = 0; i < hostElems; i++) {
+          tmp32[i] = static_cast<int32_t>(pInput[i]);
+        }
+      } else {
+        // If we don't need to downcast then this must be an unhandled partial,
+        // so copy over the original data before we pad below.
+        memcpy(tmp, bufferPtr, unpaddedSize);
+      }
+      bufferPtr = tmp;
+
+      // If this tensor cannot be treated as partial but it is partial, then we
+      // need to zero out anything that's leftover in the extra padding, as it
+      // is still going to be used.
+      if (padUnhandledPartial) {
+        // Zero out rest of the new buffer.
+        memset(bufferPtr + unpaddedSize, 0, paddedSize - unpaddedSize);
+      }
+    }
+
+    rawInputs_.push_back(bufferPtr);
   }
+
   for (auto &out : netOutputs_) {
     LOG_AND_FAIL_CALLBACK_IF_NOT(ERROR, ioTensors_.count(out.first),
                                  "Can't find tensor for output", runId, ctx,
@@ -106,7 +136,7 @@ void InferenceThreadEnv::execute(RunIdentifierTy runId,
       // Create int32 buffer for size_t tensors.
       int32_t *tmp = new int32_t[t->getUnpaddedSizeInBytes() / sizeof(int64_t)];
       rawOutputs_.push_back(tmp);
-      tmpBuffers_.insert(tmp);
+      tmpBuffers_.insert(reinterpret_cast<char *>(tmp));
     } break;
     default:
       rawOutputs_.push_back(t->getUnsafePtr());
@@ -149,7 +179,7 @@ void InferenceThreadEnv::execute(RunIdentifierTy runId,
         }
         std::memcpy(pHostInput, rawInputs_[i], bufferSize);
         NNPICopyCommandConfig *copyConfig = nullptr;
-        if (bufferSize != fullBufferSize) {
+        if (bufferSize != fullBufferSize && partialTensorInputs.count(t)) {
           copyConfig = &inputCopyCmdConfigs_[i];
           copyConfig->size = bufferSize;
         }
@@ -294,11 +324,13 @@ bool InferenceThreadEnv::init(
     NNPINetwork network, NNPICompilationConfig config,
     // For ICE-T path.
     NNPIHostNetwork hostNetwork, NNPIDeviceNetwork deviceNetwork,
-    NNPIAdapter adapter, NNPIDeviceContext device) {
+    NNPIAdapter adapter, NNPIDeviceContext device,
+    const std::unordered_set<const Placeholder *> &partialInputs) {
 
   nnpiNetwork_ = network;
   device_ = device;
   compilationConfig_ = config;
+  partialInputs_ = &partialInputs;
 
   if (!UseInferenceAPI()) {
     size_t numInputs, numOutputs;
@@ -508,7 +540,8 @@ Error InferencePoolEnv::init(unsigned numWorkers, NNPIAdapter adapter,
   for (auto &tEnv : threadEnvs_) {
     auto success = tEnv.init(nnpiFunction->getCompiledNetworkHandle(),
                              nnpiFunction->getCompilationConfig(), hostNetwork_,
-                             deviceNetwork_, adapter, device);
+                             deviceNetwork_, adapter, device,
+                             nnpiFunction->getPartialInputs());
     if (!success) {
       return MAKE_ERR("Failed to initialize thread env");
     }

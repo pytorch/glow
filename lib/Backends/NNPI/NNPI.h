@@ -43,7 +43,7 @@ public:
   bool isOpSupported(const NodeInfo &NI) const override;
   bool shouldLower(const Node *N) const override;
   bool shouldShareBuffers() const override { return false; }
-  bool supportsPartialTensors() const override { return false; }
+  bool supportsPartialTensors() const override { return true; }
   FunctionPassPipeline getOptimizationPipeline() const override;
 
   runtime::DeviceManager *

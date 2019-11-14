@@ -18,6 +18,8 @@
 #include "Importer.h"
 #include "nnpi_transformer.h"
 
+#include "glow/Backend/BackendUtils.h"
+
 using namespace glow;
 
 Error NNPICompiledFunction::compile(Function *F, const BackendOptions &opts) {
@@ -113,6 +115,18 @@ Error NNPICompiledFunction::compile(Function *F, const BackendOptions &opts) {
       DBG_MEM_USAGE("NNPICompiledFunction destroy network done");
     }
   }
+
+  // Determine and save what inputs can be treated as partial. Need to do this
+  // while we still have access to F.
+  for (auto const &P : F->getParent()->getPlaceholders()) {
+    if (!usedInFunction(P, F)) {
+      continue;
+    }
+    if (allowsPartialInput(P, F)) {
+      partialInputs_.insert(P);
+    }
+  }
+
   return Error::success();
 }
 
