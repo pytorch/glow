@@ -7745,6 +7745,72 @@ TEST_P(OperatorTest, RepeatedSLSWithPartialTensors) {
   }
 }
 
+/// Helper to test gathers using partial inputs using \p ITy.
+template <typename IndicesType>
+static void testPartialGather(glow::PlaceholderBindings &bindings,
+                              glow::Module &mod, glow::Function *F,
+                              glow::ExecutionEngine &EE, ElemKind ITy) {
+  /*
+    The acutal input we care about has the following shape/result:
+
+    DATA  = [1.0, 2.3, 4.5]
+    INDICES = [0, 1, 0, 1, 2, 0]
+    OUTPUT = [1.0, 2.3, 1.0, 2.3, 4.5, 1.0]
+
+    However, we are going to create a larger INDICES input that is only
+    partially filled, and expect a larger OUTPUT that we expect will have data
+    we do not care about.
+  */
+
+  Placeholder *data = mod.createPlaceholder(ElemKind::FloatTy, {3}, "data",
+                                            /* isTrainable */ false);
+  Placeholder *indices =
+      mod.createPlaceholder(ITy, {10000}, "indices", /* isTrainable */ false);
+
+  bindings.allocate(data)->getHandle<float>() = {1.0f, 2.3f, 4.5f};
+
+  Tensor indicesReal(ITy, {6});
+  indicesReal.getHandle<IndicesType>() = {0, 1, 0, 1, 2, 0};
+  Tensor indicesPartial(indicesReal.getUnsafePtr(), indices->getType(),
+                        indicesReal.getSizeInBytes());
+  bindings.insert(indices, std::move(indicesPartial));
+
+  auto *R = F->createGather("gather", data, indices);
+
+  auto *result = F->createSave("save", R);
+  Tensor *resultT = bindings.allocate(result->getPlaceholder());
+
+  // Result should be 10000, even though we only care about the first 6 results.
+  EXPECT_EQ(resultT->getType().dims().size(), 1);
+  EXPECT_EQ(resultT->getType().dims()[0], 10000);
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  Tensor expectedT(ElemKind::FloatTy, {6});
+  auto expectedH = expectedT.getHandle<float>();
+  expectedH = {1.0, 2.3, 1.0, 2.3, 4.5, 1.0};
+  auto resultH = resultT->getHandle<float>();
+
+  for (size_t i = 0; i < 6; ++i) {
+    EXPECT_EQ(expectedH.at({i}), resultH.at({i}));
+  }
+}
+
+TEST_P(OperatorTest, GatherWithInt64PartialTensors) {
+  CHECK_IF_ENABLED();
+  // This test is only meaningful if the backend supports partial tensors.
+  ASSERT_TRUE(EE_.getBackend(getBackendName()).supportsPartialTensors());
+  testPartialGather<int64_t>(bindings_, mod_, F_, EE_, ElemKind::Int64ITy);
+}
+
+TEST_P(OperatorTest, GatherWithInt32PartialTensors) {
+  CHECK_IF_ENABLED();
+  // This test is only meaningful if the backend supports partial tensors.
+  ASSERT_TRUE(EE_.getBackend(getBackendName()).supportsPartialTensors());
+  testPartialGather<int32_t>(bindings_, mod_, F_, EE_, ElemKind::Int32ITy);
+}
+
 /// Helper to test FusedRowwiseQuantizedSparseLengthsWeightedSum using \p DTy.
 template <typename DataType>
 static void testFusedRowwiseQuantizedSparseLengthsWeightedSum(

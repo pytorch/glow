@@ -136,50 +136,6 @@ bool HabanaWaitHandle::wait() {
   return status == synSuccess;
 }
 
-/// \returns true if \p V is used in \p F; false otherwise.
-static bool usedInFunction(const Placeholder *V, const Function *F) {
-  for (auto const &U : V->getUsers()) {
-    if (U.getUser()->getParent() == F) {
-      return true;
-    }
-  }
-  return false;
-}
-
-/// \returns true if \p dst is capable of handling a partial tensor as input
-/// from \p src.
-static bool allowsPartialInput(const Node *src, const Node *dst) {
-  // If N is used as the indices or weights of a sparse lookup, it is safe to
-  // access a partial tensor.
-  if (auto *SLS =
-          llvm::dyn_cast<FusedRowwiseQuantizedSparseLengthsWeightedSumNode>(
-              dst)) {
-    return src == SLS->getIndices() || src == SLS->getWeights();
-  } else if (auto *SLS =
-                 llvm::dyn_cast<FusedRowwiseQuantizedSparseLengthsSumNode>(
-                     dst)) {
-    return src == SLS->getIndices();
-  } else if (auto *SLS = llvm::dyn_cast<SparseLengthsWeightedSumNode>(dst)) {
-    return src == SLS->getIndices() || src == SLS->getWeights();
-  } else if (auto *SLS = llvm::dyn_cast<SparseLengthsSumNode>(dst)) {
-    return src == SLS->getIndices();
-  }
-  return false;
-}
-
-/// \returns true if \p V is capable of handling a partial tensor as input.
-static bool allowsPartialInput(const Placeholder *V, const Function *F) {
-  for (auto const &U : V->getUsers()) {
-    if (U.getUser()->getParent() != F) {
-      continue;
-    }
-    if (!allowsPartialInput(*U.get(), U.getUser())) {
-      return false;
-    }
-  }
-  return true;
-}
-
 HabanaFunction::HabanaFunction(runtime::RuntimeBundle &&bundle,
                                const std::string &recipeName, Function *F)
     : CompiledFunction(std::move(bundle)), recipeName_(recipeName) {
