@@ -1021,7 +1021,7 @@ static void lowerFusedRowwiseQuantizedSparseLengthsSumNode(
   auto *ones = F->createSplat(FRQSLSN.getName().str() + ".ones", ty, 1.0);
   auto *FRQSLWSN = F->createFusedRowwiseQuantizedSparseLengthsWeightedSum(
       FRQSLSN.getName().str(), FRQSLSN.getData(), ones, FRQSLSN.getIndices(),
-      FRQSLSN.getLengths());
+      FRQSLSN.getLengths(), FRQSLSN.getUseFP16Accumulation());
 
   replaceAllUsesOfWith(cctx.loweredInfoMap, FRQSLSN.getResult(), FRQSLWSN);
 }
