@@ -248,6 +248,14 @@ private:
   bool hasGlowIValueForValue(const torch::jit::Value *value,
                              bool ignoreNones = false) const;
 
+  /// If a NodeValue is mapped to \p value then return it, otherwise look for a
+  /// float or integer IValue mapped to \p value, create a Glow Constant by
+  /// broadcasting that value to a tensor of size \p dims and return the result
+  /// of that Constant.
+  Expected<glow::NodeValue>
+  loadNodeValueOrBroadcastedConstant(const torch::jit::Value *value,
+                                     llvm::ArrayRef<size_t> dims);
+
   /// Find the Glow NodeValue that maps to a given PyTorch value \p value.
   Expected<glow::NodeValue>
   getGlowNodeValueForValue(const torch::jit::Value *value);
@@ -289,6 +297,16 @@ private:
   /// Load a PyTorch Constant node as a Glow Constant.
   /// \returns error on failure.
   Error loadConstant(const torch::jit::Node *ptNode);
+
+  /// Helper function for loading arithmetic nodes. \p name is of the name of
+  /// the node in the Glow graph, \p lhs and \p rhs are the inputs to the
+  /// arithetic node and template parameter \p GlowNode is the type of the node
+  /// that should be created in the Glow graph. \returns the output of the
+  /// loaded arithmetic node or an Error if any occurred.
+  template <typename GlowNode>
+  Expected<NodeValue> loadArithmeticNode(llvm::StringRef name,
+                                         const torch::jit::Value *lhs,
+                                         const torch::jit::Value *rhs);
 
   /// Load a PyTorch mul node.
   /// \returns error on failure.

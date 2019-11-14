@@ -55,3 +55,25 @@ def test_div_broadcast_3():
     y = torch.randn(8, 3, 4, 2)
 
     jitVsGlow(test_f, x, y, expected_fused_ops={"aten::div"})
+
+
+def test_div_float():
+    """Test of the PyTorch aten::div Node with a float argument"""
+
+    def test_f(a):
+        return (a*a).div(3.9)
+
+    x = torch.randn(4)
+
+    jitVsGlow(test_f, x, expected_fused_ops={"aten::div"})
+
+
+def test_div_int():
+    """Test of the PyTorch aten::div Node with an int argument"""
+
+    def test_f(a):
+        return (a*a).div(20)
+
+    x = torch.randn(4)
+
+    jitVsGlow(test_f, x, expected_fused_ops={"aten::div"})
