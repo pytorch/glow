@@ -1560,6 +1560,92 @@ TEST_P(MLTest, matrixRotationRecognition) {
 }
 
 /// Simple test case that learns the embedding table for a
+/// SparseLengthsSum operator.
+TEST_P(MLTest, learnSparseLengthsSumEmbeddings) {
+  CHECK_IF_ENABLED();
+  TrainingConfig TC;
+  TC.learningRate = 0.3;
+  TC.batchSize = 1;
+
+  PlaceholderBindings trainingBindings, inferBindings;
+  Function *F;
+  Placeholder *dataP, *indicesP, *lengthsP, *expectedP;
+  PseudoRNG &PRNG = EET_.getModule().getPRNG();
+  for (auto *EE : engines_) {
+    Module &mod = EE->getModule();
+
+    // Create a model consisting of one SparseLengthsSum operator
+    // followed by a Regression node to get some non-zero gradients.
+    F = mod.createFunction("SparseLengthsSum");
+    dataP = mod.createPlaceholder(ElemKind::FloatTy, {10}, "dataP",
+                                  /*isTrainable=*/true);
+    indicesP = mod.createPlaceholder(ElemKind::Int64ITy, {10}, "indicesP",
+                                     /*isTrainable=*/false);
+    lengthsP = mod.createPlaceholder(ElemKind::Int32ITy, {5}, "lengthsP",
+                                     /*isTrainable=*/false);
+    expectedP = mod.createPlaceholder(ElemKind::FloatTy, {5}, "expectedP",
+                                      /*isTrainable=*/false);
+
+    auto *SLWS = F->createSparseLengthsSum("SLWS", dataP, indicesP, lengthsP);
+    auto *reg = F->createRegression("reg", SLWS, expectedP);
+    F->createSave("save", reg);
+  }
+  // Allocate and randomly initialize embeddings.
+  auto DH = inferBindings.allocate(dataP)->getHandle();
+  DH.randomize(-5.0, 5.0, PRNG);
+
+  // Allocate and set indices such that input embeddings are reversed.
+  inferBindings.allocate(indicesP)->getHandle<int64_t>() = {9, 8, 7, 6, 5,
+                                                            4, 3, 2, 1, 0};
+
+  // Allocate and set lengths.
+  inferBindings.allocate(lengthsP)->getHandle<int32_t>() = {2, 2, 2, 2, 2};
+
+  // Allocate and set expected outputs. The embedding table will be adjusted
+  // during training so that the final result is this.
+  auto EH = inferBindings.allocate(expectedP)->getHandle();
+  EH = {1, 2, 3, 4, 5};
+
+  trainingBindings.allocate(EET_.getModule().getPlaceholders());
+  inferBindings.copyTrainableWeightsTo(trainingBindings);
+  inferBindings.copyToTarget("dataP", trainingBindings);
+  inferBindings.copyToTarget("indicesP", trainingBindings);
+  inferBindings.copyToTarget("lengthsP", trainingBindings);
+  inferBindings.copyToTarget("expectedP", trainingBindings);
+  inferBindings.clear();
+  inferBindings.allocate(EEI_.getModule().getPlaceholders());
+  EH = trainingBindings.get(trainingBindings.getPlaceholderByName("expectedP"))
+           ->getHandle();
+  auto *res = inferBindings.get(EEI_.getModule().getPlaceholderByName("save"));
+
+  // Train the network.
+  auto *TF = glow::differentiate(F, TC);
+  auto tfName = TF->getName();
+  auto fname = F->getName();
+  EET_.compile(CompilationMode::Train);
+
+  const size_t numIterations = 1000;
+
+  for (size_t i = 0; i < numIterations; ++i) {
+    EET_.run(trainingBindings, tfName);
+  }
+  trainingBindings.copyTrainableWeightsTo(inferBindings);
+  trainingBindings.copyToTarget("dataP", inferBindings);
+  trainingBindings.copyToTarget("indicesP", inferBindings);
+  trainingBindings.copyToTarget("lengthsP", inferBindings);
+  trainingBindings.copyToTarget("expectedP", inferBindings);
+  // Switch to inference mode and run the network.
+  EEI_.compile(CompilationMode::Infer);
+  EEI_.run(inferBindings, fname);
+
+  // Make sure that the network output matches expectations after training.
+  auto RH = res->getHandle();
+  for (size_t j = 0; j < EH.size(); ++j) {
+    EXPECT_NEAR(RH.raw(j), EH.raw(j), 0.02);
+  }
+}
+
+/// Simple test case that learns the embedding table for a
 /// SparseLengthsWeightedSum operator.
 TEST_P(MLTest, learnSparseLengthsWeightedSumEmbeddings) {
   CHECK_IF_ENABLED();

@@ -19,4 +19,5 @@ using namespace glow;
 
 std::set<std::string> glow::backendTestBlacklist = {
     "convNetForImageRecognition/0",
+    "learnSparseLengthsSumEmbeddings/0",
 };
