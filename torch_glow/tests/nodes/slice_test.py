@@ -8,7 +8,7 @@ def test_slice_basic():
     """Test of the PyTorch slice Node on Glow."""
 
     def slice_basic(a):
-        b = a[1:]
+        b = (a+a)[1:]
         return b[0][1:]
 
     x = torch.rand((2, 3))

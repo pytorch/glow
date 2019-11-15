@@ -25,9 +25,14 @@ namespace glow {
 /// this function.
 void glowCustomFuse(std::shared_ptr<torch::jit::Graph> graph, at::Symbol kind);
 
-/// Fuse nodes in \p graph that are supported by glow into a subgraph in a glow
-/// fusion group node.
+/// Fuse nodes in \p graph that are supported by glow into a subgraph in Glow
+/// fusion group nodes.
 void glowCustomFuse(std::shared_ptr<torch::jit::Graph> graph);
+
+/// Fuse nodes in \p graph that have a kind in \p acceptableKinds into a
+/// subgraph in Glow fusion group nodes.
+void glowCustomFuseDebug(std::shared_ptr<torch::jit::Graph> graph,
+                         std::vector<std::string> acceptableKinds);
 } // namespace glow
 
 #endif // GLOW_TORCH_GLOW_SRC_GLOW_FUSER_H

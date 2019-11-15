@@ -1014,8 +1014,9 @@ PyTorchModelLoader::getGlowNodeValueForValue(const torch::jit::Value *value) {
   }
   auto &mappingValue = it->second;
   if (mappingValue.getMappingType() == ValueMappingType::IValue) {
-    RETURN_ERR(glow::strFormat("Did not find a NodeValue mapping for Value %s",
-                               value->debugNameBase().c_str()));
+    RETURN_ERR(glow::strFormat(
+        "Found a GlowIValue instead of a NodeValue for this Value: %s",
+        value->debugNameBase().c_str()));
   }
 
   return mappingValue.getMappedNodeValue();
@@ -1030,8 +1031,9 @@ PyTorchModelLoader::getGlowIValueForValue(const torch::jit::Value *value) {
   }
   auto &mappingValue = it->second;
   if (mappingValue.getMappingType() != ValueMappingType::IValue) {
-    RETURN_ERR(glow::strFormat("Did not find a IValue mapping for Value %s",
-                               value->debugNameBase().c_str()));
+    RETURN_ERR(glow::strFormat(
+        "Found a NodeValue instead of a GlowIValue for this Value: %s",
+        value->debugNameBase().c_str()));
   }
   return mappingValue.getMappedGlowIValue();
 }
@@ -2971,6 +2973,11 @@ PyTorchModelLoader::PyTorchModelLoader(
   };
 
   error = loadFn();
+
+  if (error) {
+    DLOG(ERROR) << "Encountered error while loading graph:" << std::endl
+                << graph << std::endl;
+  }
 }
 
 /*static*/

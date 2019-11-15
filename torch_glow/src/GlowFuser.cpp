@@ -32,7 +32,7 @@
 
 namespace glow {
 namespace {
-using isSupportFunc = std::function<bool(torch::jit::Node *)>;
+using IsSupportFunc = std::function<bool(const torch::jit::Node *)>;
 
 torch::jit::value_list
 sortReverseTopological(at::ArrayRef<torch::jit::Value *> inputs,
@@ -51,133 +51,223 @@ sortReverseTopological(at::ArrayRef<torch::jit::Value *> inputs,
   return result;
 }
 
-bool canMerge(torch::jit::Node *node, isSupportFunc fn) {
-  return node->kind() == torch::jit::prim::Constant || fn(node);
-}
-
-#define REQ(cond, ignore, log_info)                                            \
-  if (!(cond)) {                                                               \
-    if (!(ignore)) {                                                           \
-      DLOG(ERROR) << (log_info);                                               \
-    }                                                                          \
-    return c10::nullopt;                                                       \
+bool canMerge(torch::jit::Node *node, IsSupportFunc fn,
+              torch::jit::Node *consumer) {
+  if (node->kind() == torch::jit::prim::Param) {
+    return false;
   }
 
-// Check if a node is a known not-lowered operator, etc, a tensor generator.
-static bool isLogIgnoredOp(const std::string &op_name) {
-  static const std::unordered_set<std::string> white_list{"prim::GetAttr",
-                                                          "prim::Param"};
-  return white_list.count(op_name) > 0;
-}
+  // Check that the node is supported
+  if (!(fn(node) || node->kind() == torch::jit::prim::Constant ||
+        node->kind() == torch::jit::prim::GetAttr)) {
+    return false;
+  }
 
-c10::optional<torch::jit::Node *> tryMerge(torch::jit::Node *consumer,
-                                           torch::jit::Node *producer,
-                                           torch::jit::AliasDb &aliasDb,
-                                           isSupportFunc fn, at::Symbol kind) {
+  // If the node is a producer (has a consumer), check that all non-tensor
+  // outputs are only consumed by the consumer.
+  for (torch::jit::Value *output : node->outputs()) {
+    if (output->type()->isSubtypeOf(torch::jit::TensorType::get())) {
+      continue;
+    }
 
-  std::string symbol_name_producer = producer->kind().toQualString();
-  std::string symbol_name_consumer = consumer->kind().toQualString();
-  REQ(canMerge(producer, fn), isLogIgnoredOp(symbol_name_producer),
-      "Detected unknown node: " + symbol_name_producer + ".\n");
-  REQ(consumer->kind() == kind || canMerge(consumer, fn),
-      isLogIgnoredOp(symbol_name_consumer),
-      "Detected unknown node: " + symbol_name_consumer + ".\n");
-
-  // Alias checks
-  // Requirement:
-  // - moveAfterTopologicallyValid(consumer, producer)
-  // - One of:
-  //   1) Both are in-place ops
-  //   2) Consumer is in-place, producer !hasInputWriters
-  //   3) Producer is in-place, consumer !hasOutputWriters
-  REQ(aliasDb.moveAfterTopologicallyValid(consumer, producer), false,
-      "Unable to move after topologically valid.");
-
-  // 1)
-  if (!(aliasDb.isMutable(consumer) && aliasDb.isMutable(producer))) {
-    // 2)
-    if (aliasDb.isMutable(consumer)) {
-      REQ(!aliasDb.hasInputWriters(producer), false,
-          "Producer does not have input writer when merging.");
-      // 3)
-    } else if (aliasDb.isMutable(producer)) {
-      REQ(!aliasDb.hasOutputWriters(consumer), false,
-          "Consumer does not have output writer when merging.");
+    // Producers can have non-tensor outputs as long as they are only consumed
+    // by consumer. Consumers cannot have non-tensor outputs.
+    if (consumer) {
+      for (auto use : output->uses()) {
+        if (use.user != consumer) {
+          return false;
+        }
+      }
+    } else {
+      return false;
     }
   }
 
+  return true;
+}
+
+/// Alias checks, takes a \p consumer node and a \p producer node and using \p
+/// aliasDB, checks to see if it is valid to fuse the producer into the
+/// consumer.
+/// Requirement:
+/// - moveAfterTopologicallyValid(consumer, producer)
+/// - One of:
+///   1) Both are in-place ops
+///   2) Consumer is in-place, producer !hasInputWriters
+///   3) Producer is in-place, consumer !hasOutputWriters
+bool aliasChecks(torch::jit::Node *consumer, torch::jit::Node *producer,
+                 torch::jit::AliasDb &aliasDb) {
+  if (!aliasDb.moveAfterTopologicallyValid(consumer, producer)) {
+    return false;
+  }
+
+  if (aliasDb.isMutable(consumer) && aliasDb.isMutable(producer)) {
+    return true;
+  }
+  if (aliasDb.isMutable(consumer) && aliasDb.hasInputWriters(producer)) {
+    return false;
+  }
+  if (aliasDb.isMutable(producer) && aliasDb.hasOutputWriters(consumer)) {
+    return false;
+  }
+
+  return true;
+}
+
+// Try to merge producer and consumer into a single fused node.
+torch::jit::Node *tryMerge(torch::jit::Node *consumer,
+                           torch::jit::Node *producer,
+                           torch::jit::AliasDb &aliasDb, IsSupportFunc fn,
+                           at::Symbol kind) {
+  // Check that producer can be merged
+  if (!canMerge(producer, fn, consumer)) {
+    return nullptr;
+  }
+
+  // Check that consumer can be merged
+  if (!(consumer->kind() == kind ||
+        canMerge(consumer, fn, /*consumer*/ nullptr))) {
+    return nullptr;
+  }
+
+  // Check for aliases
+  if (!aliasChecks(consumer, producer, aliasDb)) {
+    return nullptr;
+  }
+
+  // Wrap consumer as a subgraph
   if (!consumer->hasAttribute(torch::jit::attr::Subgraph) &&
       consumer->kind() != kind) {
     consumer =
         torch::jit::SubgraphUtils::createSingletonSubgraph(consumer, kind);
   }
+
+  // Move (or for constants, copy) node into subgraph
   if (producer->kind() == torch::jit::prim::Constant) {
     auto &subgraph = consumer->g(torch::jit::attr::Subgraph);
-    torch::jit::Node *in_const = subgraph->createClone(
+    torch::jit::Node *inConst = subgraph->createClone(
         producer, [](torch::jit::Value *) -> torch::jit::Value * {
-          throw std::runtime_error("unexpected input");
+          throw std::runtime_error("unexpected input to Constant node");
         });
-    subgraph->insertNode(in_const);
+    subgraph->insertNode(inConst);
   } else {
     torch::jit::SubgraphUtils::mergeNodeIntoSubgraph(producer, consumer);
   }
+
   return consumer;
 }
-#undef REQ
 
 std::pair<torch::jit::graph_node_list::iterator, bool>
 getNewNode(torch::jit::Node *node, torch::jit::AliasDb &aliasDb,
-           torch::jit::Block *block, isSupportFunc fn, at::Symbol kind) {
-  auto node_inputs = sortReverseTopological(node->inputs(), block);
-  for (auto input : node_inputs) {
-    if (auto group = tryMerge(node, input->node(), aliasDb, fn, kind)) {
-      return {group.value()->reverseIterator(), true};
+           torch::jit::Block *block, IsSupportFunc fn, at::Symbol kind) {
+  auto nodeInputs = sortReverseTopological(node->inputs(), block);
+  for (auto input : nodeInputs) {
+    if (auto *group = tryMerge(node, input->node(), aliasDb, fn, kind)) {
+      return {group->reverseIterator(), true};
     }
   }
   return {++node->reverseIterator(), false};
 }
 
+size_t graphSize(const std::shared_ptr<torch::jit::Graph> graph) {
+  size_t size = 0;
+  for (auto it = graph->nodes().begin(); it != graph->nodes().end(); ++it) {
+    ++size;
+  }
+  return size;
+}
+
+std::shared_ptr<torch::jit::Graph> getSubgraph(torch::jit::Node *n) {
+  return n->g(torch::jit::attr::Subgraph);
+}
+
+const std::shared_ptr<torch::jit::Graph>
+getSubgraph(const torch::jit::Node *n) {
+  return n->g(torch::jit::attr::Subgraph);
+}
+
 void fuseJITNodesToGlow(std::shared_ptr<torch::jit::Graph> graph,
-                        isSupportFunc fn, at::Symbol kind) {
+                        IsSupportFunc fn, at::Symbol kind) {
   torch::jit::AliasDb aliasDb(graph);
   auto block = graph->block();
 
-  bool is_changed;
+  bool changed;
   do {
-    is_changed = false;
+    changed = false;
     for (auto it = block->nodes().rbegin(); it != block->nodes().rend();) {
-      bool is_changed_thisnode;
-      std::tie(it, is_changed_thisnode) =
-          getNewNode(*it, aliasDb, block, fn, kind);
-      is_changed |= is_changed_thisnode;
+      bool nodeChanged;
+      std::tie(it, nodeChanged) = getNewNode(*it, aliasDb, block, fn, kind);
+      changed |= nodeChanged;
     }
-  } while (is_changed);
-  EliminateCommonSubexpression(graph);
-  EliminateDeadCode(graph);
+  } while (changed);
 }
 
-} // namespace
-
-void glowCustomFuse(std::shared_ptr<torch::jit::Graph> graph) {
-  auto symbol = getGlowSymbol();
-
-  static std::once_flag onceFlag;
-  std::call_once(onceFlag, [&symbol]() { registerGlowOp(symbol); });
-
-  glowCustomFuse(graph, symbol);
+void unmergeSubgraph(torch::jit::Node *subgraphNode) {
+  // Inline the graph, replace uses of node outputs and destroy the node
+  auto outerGraph = subgraphNode->owningGraph();
+  torch::jit::WithInsertPoint guard(subgraphNode);
+  const auto subgraphOutputs = insertGraph(
+      *outerGraph, *getSubgraph(subgraphNode), subgraphNode->inputs());
+  assert(subgraphOutputs.size() >= subgraphNode->outputs().size());
+  for (size_t i = 0; i < subgraphNode->outputs().size(); ++i) {
+    subgraphNode->outputs()[i]->replaceAllUsesWith(subgraphOutputs[i]);
+  }
+  subgraphNode->destroy();
 }
 
-void glowCustomFuse(std::shared_ptr<torch::jit::Graph> graph, at::Symbol kind) {
-  auto blacklist = getPyTorchLoaderSettings().opBlacklist;
-  auto nodeSupportedFn =
-      [bl = std::move(blacklist)](const torch::jit::Node *ptNode) {
-        if (bl.count(ptNode->kind())) {
-          std::cout << "Skipping black list op kind: "
-                    << ptNode->kind().toQualString() << std::endl;
-          return false;
+void unfuseSmallGraphs(std::shared_ptr<torch::jit::Graph> &graph,
+                       size_t minFusionGroupSize, at::Symbol kind) {
+  bool changed;
+  do {
+    changed = false;
+    for (auto *n : graph->nodes()) {
+      if (n->kind() == kind) {
+        if (graphSize(getSubgraph(n)) < minFusionGroupSize) {
+          changed = true;
+          unmergeSubgraph(n);
+          break; // start over
         }
-        return PyTorchModelLoader::isNodeSupported(ptNode);
-      };
+      }
+    }
+  } while (changed);
+}
+
+void verifyFusions(const std::shared_ptr<torch::jit::Graph> graph,
+                   at::Symbol kind) {
+  for (const auto *n : graph->nodes()) {
+    if (n->kind() != kind) {
+      continue;
+    }
+
+    auto g = getSubgraph(n);
+
+    // Verify that all outputs are tensors.
+    for (auto output : g->outputs()) {
+      if (!output->type()->isSubtypeOf(torch::jit::TensorType::get())) {
+        throw std::runtime_error(
+            "Glow fusion group should only have Tensor outputs");
+      }
+    }
+  }
+}
+
+void glowCustomFuseImpl(std::shared_ptr<torch::jit::Graph> graph,
+                        at::Symbol kind, IsSupportFunc fn) {
+  const auto &settings = getPyTorchLoaderSettings();
+  const auto blacklist = settings.opBlacklist;
+  const auto minFusionGroupSize = settings.minFusionGroupSize;
+
+  // Wrap fn in function that first checks the blacklist.
+  IsSupportFunc nodeSupportedFn = [bl = std::move(blacklist),
+                                   fn](const torch::jit::Node *ptNode) {
+    if (bl.count(ptNode->kind())) {
+      LOG(INFO) << "Skipping black list op kind: "
+                << ptNode->kind().toQualString();
+      return false;
+    }
+
+    return fn(ptNode);
+  };
 
   // Prepare the graph by fusing known patterns for the model loader.
   // TODO: this should be done only on Glow subgraphs to avoid modifying parts
@@ -185,6 +275,51 @@ void glowCustomFuse(std::shared_ptr<torch::jit::Graph> graph, at::Symbol kind) {
   fuseKnownPatterns(graph);
 
   fuseJITNodesToGlow(graph, nodeSupportedFn, kind);
+
+  if (minFusionGroupSize > 0) {
+    unfuseSmallGraphs(graph, minFusionGroupSize, kind);
+  }
+
+  EliminateCommonSubexpression(graph);
+
+  EliminateDeadCode(graph);
+
+  verifyFusions(graph, kind);
+}
+
+void registDefaultGlowFusionSymbolOnce() {
+  static std::once_flag onceFlag;
+  std::call_once(onceFlag, []() { registerGlowOp(getGlowSymbol()); });
+}
+
+} // namespace
+
+void glowCustomFuse(std::shared_ptr<torch::jit::Graph> graph) {
+  registDefaultGlowFusionSymbolOnce();
+  auto symbol = getGlowSymbol();
+  return glowCustomFuseImpl(graph, symbol, PyTorchModelLoader::isNodeSupported);
+}
+
+void glowCustomFuse(std::shared_ptr<torch::jit::Graph> graph, at::Symbol kind) {
+  return glowCustomFuseImpl(graph, kind, PyTorchModelLoader::isNodeSupported);
+}
+
+void glowCustomFuseDebug(std::shared_ptr<torch::jit::Graph> graph,
+                         std::vector<std::string> acceptableKinds) {
+  registDefaultGlowFusionSymbolOnce();
+  auto symbol = getGlowSymbol();
+
+  std::unordered_set<at::Symbol> kindSet;
+
+  for (const auto &kind : acceptableKinds) {
+    kindSet.insert(at::Symbol::fromQualString(kind));
+  }
+
+  auto fn = [kindSet = std::move(kindSet)](const torch::jit::Node *node) {
+    return kindSet.count(node->kind());
+  };
+
+  return glowCustomFuseImpl(graph, symbol, fn);
 }
 
 } // namespace glow
