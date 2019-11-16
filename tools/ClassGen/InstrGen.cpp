@@ -169,6 +169,14 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
       .addGradientInstr({"Dest"}, {"Dest", "Src"});
 
+  BB.newInstr("FullyConnected")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .addOperand("Weights", OperandKind::In)
+      .addOperand("Bias", OperandKind::In)
+      .autoIRGen()
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"});
+
   BB.newInstr("RowwiseQuantizedFullyConnected")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Src", OperandKind::In)
