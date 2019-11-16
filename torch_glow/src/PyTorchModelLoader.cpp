@@ -1254,20 +1254,65 @@ Error PyTorchModelLoader::loadGlowFusedLinear(const torch::jit::Node *ptNode) {
   return addValueMapping(outputs[0], output);
 }
 
+Expected<NodeValue> PyTorchModelLoader::loadNodeValueOrBroadcastedConstant(
+    const torch::jit::Value *value, llvm::ArrayRef<size_t> dims) {
+  if (hasGlowNodeValueForValue(value)) {
+    return getGlowNodeValueForValue(value);
+  } else {
+    GlowIValue *ival;
+    ASSIGN_VALUE_OR_RETURN_ERR(ival, getGlowIValueForValue(value));
+    float constVal;
+    if (ival->isInt()) {
+      ASSIGN_VALUE_OR_RETURN_ERR(constVal,
+                                 static_cast_expected<float>(ival->toInt()));
+    } else {
+      ASSIGN_VALUE_OR_RETURN_ERR(constVal,
+                                 static_cast_expected<float>(ival->toDouble()));
+    }
+    glow::Tensor t(glow::ElemKind::FloatTy, dims);
+    t.init(glow::Tensor::InitKind::Broadcast, constVal,
+           F_.getParent()->getPRNG());
+    return F_.getParent()
+        ->createConstant("constant", std::move(t))
+        ->getOutput();
+  }
+}
+
+template <typename GlowNode>
+Expected<NodeValue>
+PyTorchModelLoader::loadArithmeticNode(llvm::StringRef name,
+                                       const torch::jit::Value *lhs,
+                                       const torch::jit::Value *rhs) {
+  glow::NodeValue lhsInput;
+  glow::NodeValue rhsInput;
+
+  if (hasGlowNodeValueForValue(lhs)) {
+    ASSIGN_VALUE_OR_RETURN_ERR(lhsInput, getGlowNodeValueForValue(lhs));
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        rhsInput, loadNodeValueOrBroadcastedConstant(rhs, lhsInput.dims()));
+  } else if (hasGlowNodeValueForValue(rhs)) {
+    ASSIGN_VALUE_OR_RETURN_ERR(rhsInput, getGlowNodeValueForValue(rhs));
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        lhsInput, loadNodeValueOrBroadcastedConstant(lhs, rhsInput.dims()));
+  } else {
+    return MAKE_ERR("Either lhs or rhs of arithmetic node must be a tensor");
+  }
+
+  return F_
+      .createNodeWithBroadcast<GlowNode>(name, /*axis*/ -1, lhsInput, rhsInput)
+      ->getNthResult(0);
+}
+
 Error PyTorchModelLoader::loadMul(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
   RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 2, outputs, 1));
 
-  glow::NodeValue lhs;
-  ASSIGN_VALUE_OR_RETURN_ERR(lhs, getGlowNodeValueForValue(inputs[0]));
-  glow::NodeValue rhs;
-  ASSIGN_VALUE_OR_RETURN_ERR(rhs, getGlowNodeValueForValue(inputs[1]));
+  glow::NodeValue res;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      res, loadArithmeticNode<glow::MulNode>("mul", inputs[0], inputs[1]));
 
-  glow::MulNode *glowNode =
-      F_.createNodeWithBroadcast<glow::MulNode>("mul", /*axis*/ -1, lhs, rhs);
-
-  return addValueMapping(outputs[0], glowNode->getResult());
+  return addValueMapping(outputs[0], res);
 }
 
 Error PyTorchModelLoader::loadDiv(const torch::jit::Node *ptNode) {
@@ -1275,15 +1320,11 @@ Error PyTorchModelLoader::loadDiv(const torch::jit::Node *ptNode) {
   auto outputs = ptNode->outputs();
   RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 2, outputs, 1));
 
-  glow::NodeValue lhs;
-  ASSIGN_VALUE_OR_RETURN_ERR(lhs, getGlowNodeValueForValue(inputs[0]));
-  glow::NodeValue rhs;
-  ASSIGN_VALUE_OR_RETURN_ERR(rhs, getGlowNodeValueForValue(inputs[1]));
+  glow::NodeValue res;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      res, loadArithmeticNode<glow::DivNode>("div", inputs[0], inputs[1]));
 
-  glow::DivNode *glowNode =
-      F_.createNodeWithBroadcast<glow::DivNode>("div", /*axis*/ -1, lhs, rhs);
-
-  return addValueMapping(outputs[0], glowNode->getResult());
+  return addValueMapping(outputs[0], res);
 }
 
 Error PyTorchModelLoader::loadAdd(const torch::jit::Node *ptNode) {
@@ -1298,14 +1339,11 @@ Error PyTorchModelLoader::loadAdd(const torch::jit::Node *ptNode) {
   RETURN_ERR_IF_NOT(scalar == 1,
                     glow::strFormat("Scalar must have value equal 1."));
 
-  glow::NodeValue lhs;
-  ASSIGN_VALUE_OR_RETURN_ERR(lhs, getGlowNodeValueForValue(inputs[0]));
-  glow::NodeValue rhs;
-  ASSIGN_VALUE_OR_RETURN_ERR(rhs, getGlowNodeValueForValue(inputs[1]));
+  glow::NodeValue res;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      res, loadArithmeticNode<glow::AddNode>("add", inputs[0], inputs[1]));
 
-  glow::AddNode *glowNode =
-      F_.createNodeWithBroadcast<glow::AddNode>("add", /*axis*/ -1, lhs, rhs);
-  return addValueMapping(outputs[0], glowNode->getResult());
+  return addValueMapping(outputs[0], res);
 }
 
 Error PyTorchModelLoader::loadSub(const torch::jit::Node *ptNode) {
@@ -1320,14 +1358,11 @@ Error PyTorchModelLoader::loadSub(const torch::jit::Node *ptNode) {
   RETURN_ERR_IF_NOT(scalar == 1,
                     glow::strFormat("Scalar must have value equal 1."));
 
-  glow::NodeValue lhs;
-  ASSIGN_VALUE_OR_RETURN_ERR(lhs, getGlowNodeValueForValue(inputs[0]));
-  glow::NodeValue rhs;
-  ASSIGN_VALUE_OR_RETURN_ERR(rhs, getGlowNodeValueForValue(inputs[1]));
+  glow::NodeValue res;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      res, loadArithmeticNode<glow::SubNode>("sub", inputs[0], inputs[1]));
 
-  glow::SubNode *glowNode =
-      F_.createNodeWithBroadcast<glow::SubNode>("sub", /*axis*/ -1, lhs, rhs);
-  return addValueMapping(outputs[0], glowNode->getResult());
+  return addValueMapping(outputs[0], res);
 }
 
 Error PyTorchModelLoader::loadMax(const torch::jit::Node *ptNode) {

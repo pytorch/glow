@@ -133,7 +133,8 @@ glow::ElemKind scalarTypeToElemKind(c10::ScalarType ty) {
   } else if (ty == at::kBool) {
     return ElemKind::BoolTy;
   } else {
-    LOG(DFATAL) << "Not supported yet.";
+    LOG(DFATAL) << "ScalarType " << static_cast<int>(ty)
+                << " not supported yet.";
     return ElemKind::Int64ITy;
   }
 }
