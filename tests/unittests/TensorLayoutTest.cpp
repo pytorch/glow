@@ -159,4 +159,18 @@ TEST_P(TensorLayoutTest, parseTestStar) {
   EXPECT_EQ(custom.getAlignment(3), 64);
 }
 
+// Check TensorLayoutDescription's setting of alignment.
+TEST_P(TensorLayoutTest, setAlignment) {
+  CHECK_IF_ENABLED();
+
+  TensorLayoutDescription before("N[a=16][answer:42]HW[answer:42]C");
+  EXPECT_FALSE(before.isAnyLayout());
+  auto modN = before.setAlignment(0, 32);
+  EXPECT_EQ(modN, "N[answer:42][a=32]");
+  auto addToW = before.setAlignment(2, 64);
+  EXPECT_EQ(addToW, "W[answer:42][a=64]");
+  auto newSerial = before.getSerializedLayout();
+  EXPECT_EQ(newSerial, "N[answer:42][a=32]HW[answer:42][a=64]C");
+}
+
 INSTANTIATE_BACKEND_TEST(TensorLayoutTest);

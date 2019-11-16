@@ -80,6 +80,9 @@ public:
   size_t getAlignment(size_t n) const;
   /// \returns the alignment by parsing dimension string \p s.
   size_t getAlignment(const std::string &s) const;
+  /// sets the alignment of dimension \p n to the value \p align. \returns the
+  /// new layout serialization for the current dimension.
+  llvm::StringRef setAlignment(size_t n, size_t align);
   /// \returns true if both tensor layouts are the same.
   bool isSameLayout(const TensorLayoutDescription &rhs) const;
   /// \returns description of the dimension \p n.
