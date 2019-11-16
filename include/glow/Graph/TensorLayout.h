@@ -80,6 +80,15 @@ public:
   size_t getAlignment(size_t n) const;
   /// \returns the alignment by parsing dimension string \p s.
   size_t getAlignment(const std::string &s) const;
+  /// sets the alignment of dimension \p n to the value \p align. \returns the
+  /// new layout serialization for the current dimension.
+  llvm::StringRef setAlignment(size_t n, size_t align);
+  /// \returns the value of the attribute \p name of a dimension \p n.
+  std::string getAttribute(size_t n, llvm::StringRef name) const;
+  /// sets the value of attribute \p name to the value \p value. \returns the
+  /// new layout serialization for the current dimension.
+  llvm::StringRef setAttribute(size_t n, llvm::StringRef name,
+                               llvm::StringRef value);
   /// \returns true if both tensor layouts are the same.
   bool isSameLayout(const TensorLayoutDescription &rhs) const;
   /// \returns description of the dimension \p n.
@@ -105,6 +114,13 @@ private:
 
   /// parse helper: get the official extensions information.
   void parseOfficialExtensions(llvm::StringRef &text, unsigned idx);
+
+  /// Modifies \p dimStr to remove an extension starting with the prefix \p
+  /// name.
+  void removeAttribute(const std::string &name, std::string &dimStr);
+
+  /// Rebuilds serializedLayout_ from scratch.
+  void reconstructSerialized();
 };
 
 /// Interface for finding out layout requirements.
