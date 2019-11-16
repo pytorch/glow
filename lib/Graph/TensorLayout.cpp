@@ -219,33 +219,65 @@ size_t TensorLayoutDescription::getAlignment(const std::string &s) const {
   return ret;
 }
 
-llvm::StringRef TensorLayoutDescription::setAlignment(size_t n, size_t align) {
-  assert(n < numDims_ && "Wrong dimension number");
-  std::string alignPrefix = "a=";
-  auto &dimStr = dims_[n];
-  // If we have a current alignment value - remove it.
-  size_t pos = dimStr.find(alignPrefix);
-  if (pos != std::string::npos) {
-    size_t posEnd = pos;
-    pos = pos - 1;
-    assert(dimStr[pos] == '[' && "Expected start of align extension.");
-    while (dimStr[posEnd] != ']') {
-      ++posEnd;
-      assert(posEnd < dimStr.size() && "Expected to find closing bracket.");
-    }
-    dimStr = dimStr.substr(0, pos) + dimStr.substr(posEnd + 1);
+/// \returns the position of ']' for extension at \p pos.
+static size_t getEndOFExtension(llvm::StringRef dimStr, size_t pos) {
+  size_t posEnd = pos;
+  pos = pos - 1;
+  assert(dimStr[pos] == '[' && "Expected start of align extension.");
+  while (dimStr[posEnd] != ']') {
+    ++posEnd;
+    assert(posEnd < dimStr.size() && "Expected to find closing bracket.");
   }
-  // Add new alignment information to dim:
-  dimStr.append("[");
-  dimStr.append(alignPrefix);
-  dimStr.append(std::to_string(align));
-  dimStr.append("]");
-  // Reconstruct serializedLayout_:
+  return posEnd;
+}
+
+void TensorLayoutDescription::removeAttribute(const std::string &name,
+                                              std::string &dimStr) {
+  size_t pos = dimStr.find(name);
+  if (pos != std::string::npos) {
+    size_t posEnd = getEndOFExtension(dimStr, pos);
+    dimStr = dimStr.substr(0, pos - 1) + dimStr.substr(posEnd + 1);
+  }
+}
+
+void TensorLayoutDescription::reconstructSerialized() {
   serializedLayout_ = "";
   for (size_t i = 0; i < numDims_; ++i) {
     serializedLayout_.append(dims_[i]);
   }
+}
+
+llvm::StringRef TensorLayoutDescription::setAlignment(size_t n, size_t align) {
+  assert(n < numDims_ && "Wrong dimension number");
+  return setAttribute(n, "a=", std::to_string(align));
+}
+
+llvm::StringRef TensorLayoutDescription::setAttribute(size_t n,
+                                                      llvm::StringRef name,
+                                                      llvm::StringRef value) {
+  assert(n < numDims_ && "Wrong dimension number");
+  auto &dimStr = dims_[n];
+  // If we have a current name - remove it.
+  removeAttribute(name, dimStr);
+  // Add new name information to dim:
+  dimStr.append("[");
+  dimStr.append(name);
+  dimStr.append(value);
+  dimStr.append("]");
+  reconstructSerialized();
   return dimStr;
+}
+
+std::string TensorLayoutDescription::getAttribute(size_t n,
+                                                  llvm::StringRef name) const {
+  assert(n < numDims_ && "Wrong dimension number");
+  size_t pos = dims_[n].find(name);
+  if (pos == std::string::npos) {
+    return "";
+  }
+  size_t posEnd = getEndOFExtension(dims_[n], pos);
+  auto nameSZ = name.size();
+  return dims_[n].substr(pos + nameSZ, posEnd - nameSZ - pos);
 }
 
 llvm::ArrayRef<std::string> TensorLayoutDescription::getDims() const {

@@ -173,4 +173,30 @@ TEST_P(TensorLayoutTest, setAlignment) {
   EXPECT_EQ(newSerial, "N[answer:42][a=32]HW[answer:42][a=64]C");
 }
 
+// Check TensorLayoutDescription's attribute getter.
+TEST_P(TensorLayoutTest, getAttribute) {
+  CHECK_IF_ENABLED();
+
+  TensorLayoutDescription layout("N[a=16][answer:q=42]HWC");
+  EXPECT_FALSE(layout.isAnyLayout());
+  auto notFound = layout.getAttribute(0, "question");
+  EXPECT_EQ(notFound, "");
+  auto alignStr = layout.getAttribute(0, "a=");
+  EXPECT_EQ(alignStr, "16");
+  auto customAttr = layout.getAttribute(0, "answer:q=");
+  EXPECT_EQ(customAttr, "42");
+}
+
+// Check TensorLayoutDescription's attribute setter.
+TEST_P(TensorLayoutTest, setAttribute) {
+  CHECK_IF_ENABLED();
+
+  TensorLayoutDescription layout("N[a=16][answer:q=42]HWC");
+  EXPECT_FALSE(layout.isAnyLayout());
+  auto customAttr = layout.setAttribute(0, "answer:q=", "h2g2");
+  EXPECT_EQ(customAttr, "N[a=16][answer:q=h2g2]");
+  auto customAttrNew = layout.setAttribute(2, "answer:q=", "42");
+  EXPECT_EQ(customAttrNew, "W[answer:q=42]");
+}
+
 INSTANTIATE_BACKEND_TEST(TensorLayoutTest);
