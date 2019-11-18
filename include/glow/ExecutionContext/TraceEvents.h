@@ -341,32 +341,6 @@ public:
   void end();
 };
 
-/// Optional global trace context
-class GlobalTraceContext {
-public:
-  static void activate() {
-    globalTraceContext = glow::make_unique<TraceContext>(TraceLevel::STANDARD);
-  }
-
-  static void dump() {
-    if ((bool)globalTraceContext) {
-      globalTraceContext->dump("glow-trace.json", "GlobalTraceContext");
-      globalTraceContext.reset();
-    }
-  }
-
-  static bool tryConsume(TraceContext *context) {
-    if (!(bool)globalTraceContext) {
-      return false;
-    }
-    globalTraceContext->merge(context);
-    return true;
-  }
-
-private:
-  static std::unique_ptr<TraceContext> globalTraceContext;
-};
-
 } // namespace glow
 
 #endif // GLOW_BACKENDS_TRACEEVENTS_H

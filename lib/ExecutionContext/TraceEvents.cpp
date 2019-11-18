@@ -254,7 +254,4 @@ void ScopedTraceBlock::end() {
   }
   end_ = true;
 }
-
-std::unique_ptr<TraceContext> GlobalTraceContext::globalTraceContext;
-
 } // namespace glow
