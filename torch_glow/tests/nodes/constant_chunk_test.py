@@ -7,14 +7,22 @@ from tests.utils import jitVsGlow
 def test_constant_chunk_basic():
     """Test of prim::ConstantChunk node on glow"""
 
-    def constant_chunk_basic(x, y):
-        a = torch.chunk(x, 3, 1)  # shapes: [(10,4), (10,4), (10,3)]
-        b = a[0]
-        c = torch.chunk(y, 2, 1)  # shapes: [(10,4), (10, 3)]
-        return b + a[1] + c[0], a[2] + c[1]
+    def test_f(x):
+        return torch.chunk(x + x, 3, 1)  # shapes: [(10,4), (10,4), (10,3)]
 
     x = torch.rand((10, 11))
-    y = torch.rand((10, 7))
 
-    jitVsGlow(constant_chunk_basic, x, y,
+    jitVsGlow(test_f, x,
+              expected_fused_ops={"prim::ConstantChunk"})
+
+
+def test_constant_chunk_negative_indices():
+    """Test of prim::ConstantChunk node on glow"""
+
+    def test_f(x):
+        return torch.chunk(x + x, 3, -2)  # shapes: [(4,11), (4,11), (2,11)]
+
+    x = torch.rand((10, 11))
+
+    jitVsGlow(test_f, x,
               expected_fused_ops={"prim::ConstantChunk"})

@@ -381,6 +381,24 @@ std::vector<size_t> getContractDims(llvm::ArrayRef<size_t> inputDims,
   return newShape;
 }
 
+/// Helper function check that indices are valid and convert negative indices to
+/// positive indices using Python's negative indexing. \p index is the raw
+/// index, it could be positive or negative, dimSize is the size of the
+/// container being indexed into.
+Expected<int64_t> getPositiveIndex(int64_t index, int64_t dimSize) {
+  RETURN_ERR_IF_NOT(dimSize > 0, "Can't index into an empty container");
+
+  const int64_t minIndex = 0 - dimSize;
+  const int64_t maxIndex = dimSize - 1;
+
+  RETURN_ERR_IF_NOT(minIndex <= index && index <= maxIndex,
+                    strFormat("Invalid index, expected to be in range of "
+                              "[%" PRId64 ", %" PRId64 "], but got %" PRId64,
+                              minIndex, maxIndex, index));
+
+  return index >= 0 ? index : dimSize + index;
+}
+
 /// Indexes of aten::_convolution inputs.
 struct ConvInputs {
   enum {
@@ -2697,7 +2715,7 @@ Error PyTorchModelLoader::loadConstantChunk(const torch::jit::Node *ptNode) {
   RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 1, outputs, -1));
 
   int64_t chunks = ptNode->i(at::attr::chunks);
-  int64_t dim = ptNode->i(at::attr::dim);
+  int64_t dimRaw = ptNode->i(at::attr::dim);
 
   RETURN_ERR_IF_NOT(chunks > 0, "There needs to be at least one chunk!");
   RETURN_ERR_IF_NOT(chunks == outputs.size(),
@@ -2705,6 +2723,10 @@ Error PyTorchModelLoader::loadConstantChunk(const torch::jit::Node *ptNode) {
 
   glow::NodeValue input;
   ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
+
+  int64_t dim;
+  ASSIGN_VALUE_OR_RETURN_ERR(dim,
+                             getPositiveIndex(dimRaw, input.dims().size()));
 
   size_t dimsSize = input.dims().size();
   std::vector<size_t> begins(dimsSize);
