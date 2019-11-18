@@ -83,6 +83,8 @@ class InstrBuilder {
   /// If autoIRGen is used on this Instr, this is the name of the Node that
   /// generates to this Instr. If left empty then autoIRGen is not used.
   std::string autoIRGenNodeName;
+  /// Fixed IRGen for this Instr.
+  std::string IRGenBody;
 
   /// Header file stream.
   std::ofstream &headerStream;
@@ -194,6 +196,14 @@ public:
   /// name (if empty, defaults to same name as Instr).
   InstrBuilder &autoIRGen(const std::string &name = "") {
     autoIRGenNodeName = (name.empty() ? name_ : name);
+    return *this;
+  }
+
+  /// Adds a fixed string to be used for IRGen, similar to those in
+  /// lib/IR/IRGen.cpp. This is mostly useful for backend specific nodes which
+  /// can't use that method.
+  InstrBuilder &addIRGen(const std::string &body) {
+    IRGenBody = std::move(body);
     return *this;
   }
 

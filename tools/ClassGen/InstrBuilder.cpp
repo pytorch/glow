@@ -338,6 +338,11 @@ void InstrBuilder::addGradientInstr(
 }
 
 void InstrBuilder::emitAutoIRGen(std::ostream &os) const {
+  if (!IRGenBody.empty()) {
+    os << IRGenBody << "\n";
+    return;
+  }
+
   if (autoIRGenNodeName.empty()) {
     return;
   }
