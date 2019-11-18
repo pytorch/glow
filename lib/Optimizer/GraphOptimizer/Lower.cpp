@@ -422,6 +422,93 @@ static void lowerBatchNormalizationNode(Function *F, CompilationContext &cctx,
   replaceAllUsesOfWith(cctx.loweredInfoMap, BN.getResult(), newResult);
 }
 
+static void lowerLayerNormalizationNode(Function *F, CompilationContext &cctx,
+                                        const LayerNormalizationNode &LN) {
+  LOG_SCOPE(F->getLogContext(), "lowerLayerNormalizationNode")
+
+  auto in = LN.getInput();
+  auto out = LN.getResult();
+
+  auto gamma = LN.getScale();
+  auto beta = LN.getBias();
+  float epsilon = LN.getEpsilon();
+
+  auto nodeName = LN.getName();
+
+  // input shape -> {M, N} where N is the size of each layer to be normalized.
+  size_t N = std::accumulate(gamma.dims().begin(), gamma.dims().end(), 1,
+                             std::multiplies<size_t>());
+  size_t M = in.getType()->size() / N;
+  in = F->createReshape(nodeName, in, {M, N})->getResult();
+
+  // Compute mean and standard deviation for each layer using the formula from
+  // https://pytorch.org/docs/stable/nn.html#torch.nn.LayerNorm
+
+  // {M, N} -> {M}
+  auto mean = F->createBatchedReduceAdd(nodeName, in,
+                                        /*axes*/ {1})
+                  ->getResult();
+
+  // {M, N} -> {M}
+  auto inSquared = F->createMul(nodeName, in, in)->getResult();
+  auto stdDev = F->createBatchedReduceAdd(nodeName, inSquared,
+                                          /*axes*/ {1})
+                    ->getResult();
+
+  // {M}
+  auto nSplat = F->createSplat(nodeName, mean.getType(), N)->getResult();
+  auto epsSplat =
+      F->createSplat(nodeName, mean.getType(), epsilon)->getResult();
+  auto oneSplat = F->createSplat(nodeName, mean.getType(), 1.0)->getResult();
+  auto negOneSplat =
+      F->createSplat(nodeName, mean.getType(), -1.0)->getResult();
+
+  // {M}
+  mean = F->createDiv(nodeName, mean, nSplat)->getResult();
+
+  // {M}
+  stdDev = F->createDiv(nodeName, stdDev, nSplat)->getResult();
+
+  // {M}
+  auto meanSquared = F->createMul(nodeName, mean, mean)->getResult();
+  stdDev = F->createSub(nodeName, stdDev, meanSquared)->getResult();
+  stdDev = F->createRELU(nodeName, stdDev)->getResult();
+  stdDev = F->createAdd(nodeName, stdDev, epsSplat)->getResult();
+  stdDev = F->createPow(nodeName, stdDev, 0.5)->getResult();
+  stdDev = F->createDiv(nodeName, oneSplat, stdDev)->getResult();
+
+  // {M}
+  auto scale = stdDev;
+  auto bias = F->createMul(nodeName, stdDev, negOneSplat)->getResult();
+  bias = F->createMul(nodeName, bias, mean)->getResult();
+
+  // Broadcast mean and std deviation to the size of each batch
+  // {M} -> {M, N}
+  scale = F->createReshape(nodeName, scale, {M, 1})->getResult();
+  bias = F->createReshape(nodeName, bias, {M, 1})->getResult();
+  scale = F->createTile(nodeName, scale, N, 1)->getResult();
+  bias = F->createTile(nodeName, bias, N, 1)->getResult();
+
+  // Broadcast beta and gamma across batches
+  // {N} -> {M, N}
+  beta = F->createReshape(nodeName, beta, {1, N})->getResult();
+  gamma = F->createReshape(nodeName, gamma, {1, N})->getResult();
+  beta = F->createTile(nodeName, beta, M, 0)->getResult();
+  gamma = F->createTile(nodeName, gamma, M, 0)->getResult();
+
+  // Normalize layers
+  // {M, N}
+  auto output = F->createMul(nodeName, in, scale)->getResult();
+  output = F->createAdd(nodeName, output, bias)->getResult();
+  output = F->createMul(nodeName, output, gamma)->getResult();
+  output = F->createAdd(nodeName, output, beta)->getResult();
+
+  // {M, N} -> output shape
+  output = F->createReshape(nodeName, output, out.getType()->dims());
+
+  replaceAllUsesOfWith(cctx.loweredInfoMap, out, output);
+}
+
 static void lowerMeanVarNormalizationNode(Function *F, CompilationContext &cctx,
                                           const MeanVarNormalizationNode &MVN) {
   LOG_SCOPE(F->getLogContext(), "lowerMeanVarNormalizationNode")
@@ -1141,6 +1228,8 @@ static void lowerNode(Function *F, Node *node, CompilationContext &cctx) {
     lowerSGDNode(F, cctx, *SGD);
   } else if (auto *BN = dyn_cast<BatchNormalizationNode>(node)) {
     lowerBatchNormalizationNode(F, cctx, *BN);
+  } else if (auto *LN = dyn_cast<LayerNormalizationNode>(node)) {
+    lowerLayerNormalizationNode(F, cctx, *LN);
   } else if (auto *MVN = dyn_cast<MeanVarNormalizationNode>(node)) {
     lowerMeanVarNormalizationNode(F, cctx, *MVN);
   } else if (auto *BNG = dyn_cast<BatchNormalizationGradNode>(node)) {

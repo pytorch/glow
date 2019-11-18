@@ -242,6 +242,17 @@ int main(int argc, char **argv) {
                     "with the provided Scale, Bias, Mean, Var, ChannelIdx, "
                     "Epsilon, and Momentum. Similar to Caffe2 and ONNX LRN.");
 
+  BB.newNode("LayerNormalization")
+      .addInput("Input")
+      .addInput("Scale")
+      .addInput("Bias")
+      .addMember(MemberType::Float, "Epsilon")
+      .addResult("Input.getType()")
+      .setDocstring("Performs layer normalization on the Input tensor with the "
+                    "provided Scale, Bias, and Epsilon. Layer sizes are "
+                    "determined by the dimensions of Scale and Bias. Similar "
+                    "to PyTorch layer_norm.");
+
   BB.newNode("BatchBoxCox")
       .addInput("Input")
       .addInput("Lambda1")

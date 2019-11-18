@@ -1027,6 +1027,39 @@ bool BatchNormalizationNode::verify() const {
                                   getScale(), getMean(), getVar(), ChannelIdx_);
 }
 
+bool LayerNormalizationNode::verify() const {
+  auto dest = getResult();
+  auto src = getInput();
+  auto scale = getScale();
+  auto bias = getBias();
+
+  bool isValid = true;
+
+  // Check inputs and outputs match.
+  isValid &= checkSameType(src, dest, this);
+
+  // Check that the types of scale and bias match and that they have the same
+  // ElemKind as input.
+  isValid &= checkTypeIgnoreShape(scale, src, this);
+  isValid &= checkSameType(scale, bias, this);
+
+  // Check that the dims of scale and bias match the end of src.
+  auto srcDims = src.getType()->dims();
+  auto scaleDims = scale.getType()->dims();
+  isValid &= expectCompareTrue("Expected input to have more dims than scale",
+                               srcDims.size(), scaleDims.size(), this,
+                               CompareOperatorGreaterThan<size_t>());
+  for (size_t i = 0; i < scaleDims.size(); ++i) {
+    size_t scaleI = scaleDims.size() - i - 1;
+    size_t srcI = srcDims.size() - i - 1;
+    isValid &=
+        expectCompareTrue("Expected scale dims to match the end of src dims",
+                          scaleDims[scaleI], srcDims[srcI], this);
+  }
+
+  return isValid;
+}
+
 bool BatchNormalizationGradNode::verify() const {
   bool isValid =
       verifyInputAndGradInputTypes(getBias(), getGradOfInputNamedBias(), this);
