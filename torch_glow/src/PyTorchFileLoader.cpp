@@ -197,7 +197,7 @@ Error PyTorchFileLoader::parsePyTorchGraphForOnnxTraining(
 
   auto method = module->get_method("forward");
   auto graphAndTensors =
-      torch::jit::LowerGraph(*method.graph(), module->module_object());
+      torch::jit::LowerGraph(*method.graph(), module->_ivalue());
 
   fuseKnownPatterns(graphAndTensors.first);
 
