@@ -1652,19 +1652,6 @@ Function::createSparseLengthsWeightedSum(llvm::StringRef name, TypeRef outTy,
                                                   indices, lengths));
 }
 
-EmbeddingBagNode *Function::createEmbeddingBag(llvm::StringRef name,
-                                               NodeValue data,
-                                               NodeValue weights,
-                                               NodeValue indices,
-                                               NodeValue offsets) {
-  auto inDims = data.dims();
-  ShapeVector outDims(inDims.begin(), inDims.end());
-  outDims[0] = offsets.dims()[0];
-  auto outTy = getParent()->uniqueTypeWithNewShape(data.getType(), outDims);
-  return addNode(
-      new EmbeddingBagNode(name, outTy, data, weights, indices, offsets));
-}
-
 RowwiseQuantizedSparseLengthsWeightedSumNode *
 Function::createRowwiseQuantizedSparseLengthsWeightedSum(
     llvm::StringRef name, Constant *data, Constant *scales, Constant *offsets,
@@ -1755,15 +1742,15 @@ Function::createRowwiseQuantizedSparseLengthsSum(
 }
 
 /// Helper used to get specific output type required for
-/// createRowwiseQuantizedSparseLengthsSum and
-/// createRowwiseQuantizedSparseLengthsWeightedSum.
-/// Function \p F is used to get the specific type, using inputs \p data and
-/// \p lengthsDims to compute output dimensions.
+/// createRowwiseQuantizedSparseLengthsSum,
+/// createRowwiseQuantizedSparseLengthsWeightedSum, and
+/// EmbeddingBagByteRowwiseOffsets. Function \p F is used to get the specific
+/// type, using inputs \p data and \p segmentsDim to compute output dimensions.
 static TypeRef
 getOutputTypeOfFusedRowwiseQuantizedSLS(Function *F, NodeValue data,
-                                        llvm::ArrayRef<size_t> lengthsDims) {
+                                        llvm::ArrayRef<size_t> segmentsDim) {
   ShapeVector outDims(data.dims().begin(), data.dims().end());
-  outDims[0] = lengthsDims[0];
+  outDims[0] = segmentsDim[0];
   // The output column count is the same as the input column count, but
   // without the extra bytes for the fused scale/offset, as the output is not
   // fused.
@@ -1874,6 +1861,40 @@ Function::createFusedRowwiseQuantizedSparseLengthsSum(
           this, data, fusedElemKind);
   return this->createFusedRowwiseQuantizedSparseLengthsSum(
       name, rwqData, indices, lengths, useFP16Accumulation);
+}
+
+EmbeddingBagNode *Function::createEmbeddingBag(llvm::StringRef name,
+                                               NodeValue data,
+                                               NodeValue weights,
+                                               NodeValue indices,
+                                               NodeValue offsets) {
+  auto inDims = data.dims();
+  ShapeVector outDims(inDims.begin(), inDims.end());
+  outDims[0] = offsets.dims()[0];
+  auto outTy = getParent()->uniqueTypeWithNewShape(data.getType(), outDims);
+  return addNode(
+      new EmbeddingBagNode(name, outTy, data, weights, indices, offsets));
+}
+
+EmbeddingBagByteRowwiseOffsetsNode *
+Function::createEmbeddingBagByteRowwiseOffsets(
+    llvm::StringRef name, Tensor &data, NodeValue weights, NodeValue indices,
+    NodeValue offsets, ElemKind fusedElemKind, bool useFP16Accumulation) {
+  Constant *rwqData =
+      quantizeDataForFusedRowwiseQuantizedSparseLengthsWeightedSum(
+          this, data, fusedElemKind);
+  return createEmbeddingBagByteRowwiseOffsets(name, rwqData, weights, indices,
+                                              offsets, useFP16Accumulation);
+}
+
+EmbeddingBagByteRowwiseOffsetsNode *
+Function::createEmbeddingBagByteRowwiseOffsets(
+    llvm::StringRef name, NodeValue data, NodeValue weights, NodeValue indices,
+    NodeValue offsets, bool useFP16Accumulation) {
+  auto outTy =
+      getOutputTypeOfFusedRowwiseQuantizedSLS(this, data, offsets.dims());
+  return addNode(new EmbeddingBagByteRowwiseOffsetsNode(
+      name, outTy, data, weights, indices, offsets, useFP16Accumulation));
 }
 
 LengthsToRangesNode *Function::createLengthsToRanges(llvm::StringRef name,

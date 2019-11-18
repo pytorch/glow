@@ -7428,9 +7428,10 @@ TEST_P(OperatorTest, SparseLengthsWeightedSumI8) {
 
 /// Test EmbeddingBag with an N-dimension embedding table.
 template <typename DataType>
-static void testEB(glow::PlaceholderBindings &bindings, glow::Module &mod,
-                   glow::Function *F, glow::ExecutionEngine &EE, ElemKind DTy,
-                   float allowedError, size_t ndims) {
+static void testEmbeddingBag(glow::PlaceholderBindings &bindings,
+                             glow::Module &mod, glow::Function *F,
+                             glow::ExecutionEngine &EE, ElemKind DTy,
+                             float allowedError, size_t ndims) {
   /*
     DATA  =   [[2.0, -0.5, 13]]
     WEIGHTS = [3, 1, 0, 0, 0, 0, 2, -0.5]
@@ -7490,29 +7491,119 @@ static void testEB(glow::PlaceholderBindings &bindings, glow::Module &mod,
 /// Test that EB is correctly supported in FloatTy in 1D.
 TEST_P(OperatorTest, EmbeddingBag_1D_Float) {
   CHECK_IF_ENABLED();
-  testEB<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy, 0.0001,
-                /* ndims */ 1);
+  testEmbeddingBag<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy, 0.0001,
+                          /* ndims */ 1);
 }
 
 /// Test that EB is correctly supported in FloatTy in 2D.
 TEST_P(OperatorTest, EmbeddingBag_2D_Float) {
   CHECK_IF_ENABLED();
-  testEB<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy, 0.0001,
-                /* ndims */ 2);
+  testEmbeddingBag<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy, 0.0001,
+                          /* ndims */ 2);
 }
 
 /// Test that EB is correctly supported in Float16Ty in 1D.
 TEST_P(OperatorTest, EmbeddingBag_1D_Float16) {
   CHECK_IF_ENABLED();
-  testEB<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty, 0.0001,
-                    /* ndims */ 1);
+  testEmbeddingBag<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty,
+                              0.0001,
+                              /* ndims */ 1);
 }
 
 /// Test that EB is correctly supported in Float16Ty in 2D.
 TEST_P(OperatorTest, EmbeddingBag_2D_Float16) {
   CHECK_IF_ENABLED();
-  testEB<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty, 0.0001,
-                    /* ndims */ 2);
+  testEmbeddingBag<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty,
+                              0.0001,
+                              /* ndims */ 2);
+}
+
+/// Helper to test EmbeddingBagByteRowwiseOffsets using \p DTy.
+template <typename DataType>
+static void testEmbeddingBagByteRowwiseOffsets(
+    glow::PlaceholderBindings &bindings, glow::Module &mod, glow::Function *F,
+    glow::ExecutionEngine &EE, ElemKind fusedDTy, float allowedError,
+    bool useFP16Accumulation = false) {
+  /*
+    DATA  =   [[2.0, -0.5, 13]]
+    WEIGHTS = [3, 1, 0, 0, 0, 0, 2, -0.5]
+    INDICES = [1, 0, 2, 0, 1, 2, 2, 0]
+    OFFSETS = [0, 3, 3, 6]
+    OUTPUT =  [0.5, 0, 0, 25]
+  */
+  const bool fusedData = isFusedQuantizedElemKind(fusedDTy);
+  const ElemKind DTy =
+      fusedData ? getScaleOffsetElemKindFromFused(fusedDTy) : fusedDTy;
+  Tensor data(ElemKind::FloatTy, {3, 1});
+  data.getHandle() = {
+      2.0,
+      -0.5,
+      13,
+  };
+
+  Constant *weights = mod.createConstant(DTy, {8}, "weights");
+  weights->getPayloadMutable().getHandle<DataType>() = {
+      3., 1., 0., 0., 0., 0., 2., -0.5,
+  };
+
+  Placeholder *indices =
+      mod.createPlaceholder(ElemKind::Int64ITy, {8}, "indices",
+                            /* isTrainable */ false);
+  Placeholder *offsets =
+      mod.createPlaceholder(ElemKind::Int32ITy, {4}, "offsets",
+                            /* isTrainable */ false);
+
+  bindings.allocate(indices)->getHandle<int64_t>() = {
+      1, 0, 2, 0, 1, 2, 2, 0,
+  };
+  bindings.allocate(offsets)->getHandle<int32_t>() = {
+      0,
+      3,
+      3,
+      6,
+  };
+
+  auto *R = F->createEmbeddingBagByteRowwiseOffsets(
+      "EBBRO", data, weights, indices, offsets, fusedDTy, useFP16Accumulation);
+  SaveNode *S = F->createSave("save", R);
+  bindings.allocate(S->getPlaceholder());
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  Tensor &result = *bindings.get(S->getPlaceholder());
+  Tensor expected(DTy, {4, 1});
+  expected.getHandle<DataType>() = {
+      0.5,
+      0,
+      0,
+      25,
+  };
+
+  EXPECT_TRUE(expected.isEqual(result, allowedError));
+}
+
+/// Test EmbeddingBagByteRowwiseOffsets in Float.
+TEST_P(OperatorTest, EmbeddingBagByteRowwiseOffsets_Float) {
+  CHECK_IF_ENABLED();
+  testEmbeddingBagByteRowwiseOffsets<float>(bindings_, mod_, F_, EE_,
+                                            ElemKind::UInt8FusedQTy, 0.0001);
+}
+
+/// Test EmbeddingBagByteRowwiseOffsets in Float16. Uses Float accumulation.
+TEST_P(OperatorTest, EmbeddingBagByteRowwiseOffsets_Float16_AccumFloat) {
+  CHECK_IF_ENABLED();
+  testEmbeddingBagByteRowwiseOffsets<float16_t>(
+      bindings_, mod_, F_, EE_, ElemKind::UInt8FusedFP16QTy, 0.0001,
+      /* useFP16Accumulation */ false);
+}
+
+/// Test EmbeddingBagByteRowwiseOffsets in Float16. Uses Float16 accumulation.
+TEST_P(OperatorTest, EmbeddingBagByteRowwiseOffsets_Float16_AccumFloat16) {
+  CHECK_IF_ENABLED();
+  testEmbeddingBagByteRowwiseOffsets<float16_t>(
+      bindings_, mod_, F_, EE_, ElemKind::UInt8FusedFP16QTy, 0.0001,
+      /* useFP16Accumulation */ true);
 }
 
 /// Helper to test RowwiseQuantizedSparseLengthsWeightedSum using \p DTy.

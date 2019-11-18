@@ -914,6 +914,20 @@ public:
                                        NodeValue weights, NodeValue indices,
                                        NodeValue offsets);
 
+  /// Create an EmbeddingBagByteRowwiseOffsetsNode node.
+  EmbeddingBagByteRowwiseOffsetsNode *createEmbeddingBagByteRowwiseOffsets(
+      llvm::StringRef name, NodeValue data, NodeValue weights,
+      NodeValue indices, NodeValue offsets, bool useFP16Accumulation = false);
+
+  /// Same as \ref createEmbeddingBagByteRowwiseOffsets(), but
+  /// expects float input \p data, which is rowwise-quantized and fused
+  /// internally. \p fusedElemKind represents the element kind to use for the
+  /// final fused rowwise-quantized data.
+  EmbeddingBagByteRowwiseOffsetsNode *createEmbeddingBagByteRowwiseOffsets(
+      llvm::StringRef name, Tensor &data, NodeValue weights, NodeValue indices,
+      NodeValue offsets, ElemKind fusedElemKind = ElemKind::UInt8FusedQTy,
+      bool useFP16Accumulation = false);
+
   /// Same as \ref createSparseLengthsWeightedSum(), but with \p outTy
   /// specified.
   SparseLengthsWeightedSumNode *

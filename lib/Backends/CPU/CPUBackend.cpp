@@ -310,6 +310,18 @@ bool CPUBackend::isOpSupported(const NodeInfo &NI) const {
                {ElemKind::FloatTy}, {LengthsSumNode::LengthsIdx}) &&
            (NI.getInElemTy(LengthsSumNode::LengthsIdx) == ElemKind::Int32ITy);
 
+  case Kinded::Kind::EmbeddingBagByteRowwiseOffsetsNodeKind:
+    return (NI.getInElemTy(EmbeddingBagByteRowwiseOffsetsNode::DataIdx) ==
+            ElemKind::UInt8FusedQTy) &&
+           (NI.getInElemTy(EmbeddingBagByteRowwiseOffsetsNode::WeightsIdx) ==
+            ElemKind::FloatTy) &&
+           (NI.getInElemTy(EmbeddingBagByteRowwiseOffsetsNode::IndicesIdx) ==
+            ElemKind::Int64ITy) &&
+           (NI.getInElemTy(EmbeddingBagByteRowwiseOffsetsNode::OffsetsIdx) ==
+            ElemKind::Int32ITy) &&
+           (NI.getOutElemTy(EmbeddingBagByteRowwiseOffsetsNode::ResultIdx) ==
+            ElemKind::FloatTy);
+
   case Kinded::Kind::FusedRowwiseQuantizedSparseLengthsWeightedSumNodeKind:
     return (NI.getInElemTy(
                 FusedRowwiseQuantizedSparseLengthsWeightedSumNode::DataIdx) ==

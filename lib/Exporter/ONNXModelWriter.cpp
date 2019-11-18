@@ -1397,6 +1397,7 @@ DEF_ALL_WRITER_NODE(Regression)
 DEF_ALL_WRITER_NODE(RowwiseQuantizedFullyConnected)
 DEF_ALL_WRITER_NODE(RowwiseQuantizedSparseLengthsWeightedSum)
 DEF_ALL_WRITER_NODE(FusedRowwiseQuantizedSparseLengthsSum)
+DEF_ALL_WRITER_NODE(EmbeddingBagByteRowwiseOffsets)
 DEF_ALL_WRITER_NODE(FusedRowwiseQuantizedSparseLengthsWeightedSum)
 
 Error ONNXModelWriter::writeClip(const ClipNode *node, GraphType &graph) {

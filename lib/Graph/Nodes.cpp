@@ -1325,6 +1325,12 @@ static bool verifyFusedRowwiseQuantizedSparseLengthsSum(
   return isValid;
 }
 
+bool EmbeddingBagByteRowwiseOffsetsNode::verify() const {
+  return verifyFusedRowwiseQuantizedSparseLengthsSum(
+      getResult(), getData(), getIndices(), getOffsets(), getWeights(),
+      getUseFP16Accumulation());
+}
+
 bool FusedRowwiseQuantizedSparseLengthsWeightedSumNode::verify() const {
   return verifyFusedRowwiseQuantizedSparseLengthsSum(
       getResult(), getData(), getIndices(), getLengths(), getWeights(),
