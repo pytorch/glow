@@ -166,9 +166,9 @@ public:
 
   /// Copies the contents of \p tensor from the host to the \p location
   /// address on this device. Updates the tensor residency info.
-  virtual void transferToDevice(Tensor &tensor, void *locationContext,
-                                std::function<void(Error)> resultCB =
-                                    [](Error) {}) {
+  virtual void
+  transferToDevice(Tensor &tensor, void *locationContext,
+                   std::function<void(Error)> resultCB = GLOW_DRT_DEFAULT_CB) {
     DCHECK("Not Implemented");
     resultCB(MAKE_ERR(ErrorValue::ErrorCode::DEVICE_FEATURE_NOT_SUPPORTED,
                       "Direct transfer not supported on this device"));
@@ -177,9 +177,9 @@ public:
   /// Copies the device buffer associated with \p tensor to the host.
   /// The tensor must be resident on this device. If \p release is true,
   /// frees the device memory. Updates the tensor residency info.
-  virtual void transferFromDevice(Tensor &tensor, bool release = true,
-                                  std::function<void(Error)> resultCB =
-                                      [](Error) {}) {
+  virtual void transferFromDevice(
+      Tensor &tensor, bool release = true,
+      std::function<void(Error)> resultCB = GLOW_DRT_DEFAULT_CB) {
     DCHECK("Not Implemented");
     resultCB(MAKE_ERR(ErrorValue::ErrorCode::DEVICE_FEATURE_NOT_SUPPORTED,
                       "Direct transfer not supported on this device"));
