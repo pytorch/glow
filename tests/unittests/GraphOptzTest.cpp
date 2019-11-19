@@ -2600,35 +2600,55 @@ TEST_F(GraphOptz, concatElim) {
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::ConcatNodeKind), 0);
 }
 
-/// Check that we are able to eliminate concat followed by slices under certain
-/// conditions.
-TEST_F(GraphOptz, concatSliceElim) {
+/// Check that we are able to eliminate concat followed by slices on axis
+/// \p dim under certain conditions.
+static void testConcatSliceElim(Module &mod, Function *F, Function *&optimizedF,
+                                size_t dim) {
   constexpr size_t N = 5;
   std::array<NodeValue, N> inputs;
+  std::vector<size_t> inShape = {10, 20};
+  inShape.insert(inShape.begin() + dim, 0);
   for (size_t i = 0; i < N; i++) {
-    inputs[i] = mod_.createPlaceholder(ElemKind::FloatTy, {1 + i, 10, 20},
-                                       "input", true);
+    inShape[dim] = 1 + i;
+    inputs[i] = mod.createPlaceholder(ElemKind::FloatTy, inShape, "in", true);
   }
-  auto *CN = F_->createConcat("merge", inputs, 0);
+  auto *CN = F->createConcat("merge", inputs, dim);
 
   // Split the concat to a bunch of slices of the same shape as the concat
   // inputs and on the same axis.
+  std::vector<size_t> startShape = {0, 0, 0};
+  std::vector<size_t> endShape = {10, 20};
+  endShape.insert(endShape.begin() + dim, 0);
   for (size_t i = 0; i < N; i++) {
-    auto *SN = F_->createSlice("extract", CN, {(i * (i + 1)) / 2, 0, 0},
-                               {((i + 1) * (i + 2)) / 2, 10, 20});
-    F_->createSave("save", SN);
+    startShape[dim] = (i * (i + 1)) / 2;
+    endShape[dim] = ((i + 1) * (i + 2)) / 2;
+    auto *SN = F->createSlice("extract", CN, startShape, endShape);
+    F->createSave("save", SN);
   }
 
   // We created a concat followed by N slices of its results.
-  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::SliceNodeKind), N);
-  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::ConcatNodeKind), 1);
+  EXPECT_EQ(countNodeKind(F, Kinded::Kind::SliceNodeKind), N);
+  EXPECT_EQ(countNodeKind(F, Kinded::Kind::ConcatNodeKind), 1);
 
-  optimizedF_ = optimizeFunction(F_);
+  optimizedF = optimizeFunction(F);
 
   // Check that the concat and slices are gone.
-  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::ConcatNodeKind), 0);
-  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::SliceNodeKind), 0);
+  EXPECT_EQ(countNodeKind(optimizedF, Kinded::Kind::ConcatNodeKind), 0);
+  EXPECT_EQ(countNodeKind(optimizedF, Kinded::Kind::SliceNodeKind), 0);
+}
 
+TEST_F(GraphOptz, concatSliceElimInnerDim) {
+  testConcatSliceElim(mod_, F_, optimizedF_, 0);
+  checkNumericalEquivalence();
+}
+
+TEST_F(GraphOptz, concatSliceElimMiddleDim) {
+  testConcatSliceElim(mod_, F_, optimizedF_, 1);
+  checkNumericalEquivalence();
+}
+
+TEST_F(GraphOptz, concatSliceElimOuterDim) {
+  testConcatSliceElim(mod_, F_, optimizedF_, 2);
   checkNumericalEquivalence();
 }
 
