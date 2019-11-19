@@ -218,33 +218,36 @@ protected:
 
     // Bias quantization is specialized for Convolution and Fully Connected:
     // - for int32 bias quantization: since the dynamic range of int32 is
-    //   large we can force symmetric quantization (offset = 0) and also choose
-    //   the scale parameter as bias_scale = input_scale * weights_scale. Both
-    //   improve the performance of the implementation: no offset subtraction
-    //   while also biasPre = 0, biasPost = 0, biasScale = 1. We must verify
-    //   that by changing the bias scale we don`t saturate the data.
-    // - for int8/int16 bias quantization: the dynamic range is small so we will
-    //   keep the original quantization profile parameters (scale & offset).
+    //   large we can force symmetric quantization (offset = 0). This allows
+    //   a faster implementation since no offset subtraction is required.
+    // - for int8/int16 bias quantization: since the dynamic range is small we
+    //   will keep the original offset.
+    // - regardless of precision, we try to force the bias scale parameter to
+    //   bias_scale = input_scale * weights_scale since this has a performance
+    //   benefit by specializing the parameters to biasPre = 0, biasPost = 0,
+    //   biasScale = 1. We must verify that by changing the bias scale we don`t
+    //   saturate the data. This is also equivalent to forcing the effective
+    //   scale applied at run-time (bias_scale / (input_scale * weights_scale))
+    //   to be always greater than or equal to 1.0 which is a common constraint
+    //   for the bias for most libraries with quantized implementations.
     auto getBiasType = [&](TypeRef inputTy, TypeRef weightsTy) -> TypeRef {
-      // If bias is int8/int16, use original TQP params.
-      if (quantizationPrecisionBias_ == ElemKind::Int8QTy ||
-          quantizationPrecisionBias_ == ElemKind::Int16QTy) {
-        return mod_.uniqueType(quantizationPrecisionBias_, val.dims(),
-                               TQP.scale, TQP.offset);
+      // Choose bias offset. For int32 bias we always force offset 0 in order
+      // to simplify the implementation since the dynamic range allows it.
+      int32_t biasOffset = TQP.offset;
+      if (quantizationPrecisionBias_ == ElemKind::Int32QTy) {
+        biasOffset = 0;
       }
-      // If bias is int32 we try to impose scaleBias = scaleInput * scaleWeights
-      // but only if the resulting scale is larger than the true scale (obtained
-      // by the profiling procedure). If we use a smaller scale we will saturate
-      // the bias (this would mostly occur for int16 input and int16 weights).
+      // Choose bias scale. We try to force the bias scale value to the product
+      // input_scale * weights_scale but only if the resulting scale is larger
+      // (in order to avoid bias data saturation).
       float scaleInput = inputTy->getScale();
       float scaleWeights = weightsTy->getScale();
+      float biasScale = TQP.scale;
       if (scaleInput * scaleWeights > TQP.scale) {
-        return mod_.uniqueType(quantizationPrecisionBias_, val.dims(),
-                               scaleInput * scaleWeights, 0);
-      } else {
-        return mod_.uniqueType(quantizationPrecisionBias_, val.dims(),
-                               TQP.scale, TQP.offset);
+        biasScale = scaleInput * scaleWeights;
       }
+      return mod_.uniqueType(quantizationPrecisionBias_, val.dims(), biasScale,
+                             biasOffset);
     };
 
     if (use.getKind() == glow::Kinded::Kind::ConvolutionNodeKind &&
