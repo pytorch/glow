@@ -395,17 +395,18 @@ Expected<DAGListTy> Partitioner::createDAGWithoutPartition(
     llvm::StringRef backendName, std::map<std::string, BackendInfo> &backendMap,
     CompilationContext &cctx) {
   DAGListTy partitions;
+  const DeviceIDTy logDevice = 0;
   for (auto F : module_->getFunctions()) {
     if (!optimized_) {
       auto backend = backendMap[backendName].backend;
       RETURN_IF_ERR(::glow::optimizeFunction(F, *backend, cctx));
     }
     std::unique_ptr<DAGNode> DAG0 = glow::make_unique<DAGNode>();
-    DAG0->logicalDevices = {0};
+    DAG0->logicalDevices = {logDevice};
     DAG0->name = F->getName();
     DAG0->module = module_;
     std::unique_ptr<DAGNode> DAG1 = glow::make_unique<DAGNode>();
-    DAG1->logicalDevices = {0};
+    DAG1->logicalDevices = {logDevice};
     DAG1->name = F->getName();
     DAG1->backendName = backendName;
     DAG1->parents.push_back(DAG0.get());
@@ -420,6 +421,38 @@ Expected<DAGListTy> Partitioner::createDAGWithoutPartition(
   }
 
   NodeToFunctionMap mapping;
+  for (auto func : module_->getFunctions()) {
+    mapping.createPartition(func, backendName);
+
+    GraphMemInfo graphMem;
+    graphMem.constMemSize = func->getParent()->getConstantsSize();
+
+    // walk thru all the nodes to compute input and output mem size
+    for (auto &node : func->getNodes()) {
+      // if input to a node is a storage node but not constant then
+      // accummulate it as placeholder size
+      for (size_t i = 0, e = node.getNumInputs(); i < e; i++) {
+        if (auto *in = llvm::dyn_cast<Storage>(node.getNthInput(i).getNode())) {
+          if (in->getKind() != Kinded::Kind::ConstantKind) {
+            graphMem.inMemSize += in->getType()->getSizeInBytes();
+          }
+        }
+      }
+
+      // if a node is SaveNode then accumulate size
+      if (auto *SN = llvm::dyn_cast<SaveNode>(&node)) {
+        Storage *out = llvm::dyn_cast<Storage>(SN->getPlaceholder());
+        graphMem.outMemSize += out->getType()->getSizeInBytes();
+      }
+    }
+    // output memory got double counted as input as it is storage node
+    graphMem.inMemSize -= graphMem.outMemSize;
+
+    mapping.setGraphMemInfo(func, graphMem);
+    // use the same hard-coded logical device ID as used for the DAG itself
+    mapping.appendLogicalDeviceID(func, logDevice);
+  }
+
   RETURN_IF_ERR(finalize(partitions, mapping));
 
   return std::move(partitions);
