@@ -220,16 +220,16 @@ void BundleSaver::setIRFunction(llvm::StringRef mainEntryName,
 bool BundleSaver::WeightAddrComparator::
 operator()(const WeightInfo &LHS, const WeightInfo &RHS) const {
   auto lhsAddr =
-      bundleSaver_.allocationsInfo_.allocatedAddress_.lookup(LHS.first);
+      bundleSaver_->allocationsInfo_.allocatedAddress_.lookup(LHS.first);
   auto rhsAddr =
-      bundleSaver_.allocationsInfo_.allocatedAddress_.lookup(RHS.first);
+      bundleSaver_->allocationsInfo_.allocatedAddress_.lookup(RHS.first);
   return lhsAddr < rhsAddr;
 }
 
 std::set<BundleSaver::WeightInfo, BundleSaver::WeightAddrComparator>
 BundleSaver::findConstantWeights() const {
   std::set<BundleSaver::WeightInfo, BundleSaver::WeightAddrComparator>
-      constants(WeightAddrComparator(*this));
+      constants(WeightAddrComparator(*const_cast<BundleSaver *>(this)));
   for (auto &savedIRFunction : savedIRFunctions_) {
     for (auto *c : savedIRFunction.savedF->findConstants()) {
       auto *w = cast<WeightVar>(savedIRFunction.savedF->getWeightForNode(c));

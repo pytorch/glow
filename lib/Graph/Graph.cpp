@@ -30,6 +30,9 @@
 #include "llvm/Support/Format.h"
 #include "llvm/Support/raw_ostream.h"
 
+#ifdef WIN32
+#include <corecrt_math_defines.h>
+#endif
 #include <fstream>
 #include <unordered_set>
 
