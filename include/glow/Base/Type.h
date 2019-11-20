@@ -468,12 +468,12 @@ struct Type final {
           return false;
         }
       }
-    }
 
-    // Strides must be the same.
-    for (size_t i = 0; i < numSizes_; i++) {
-      if (strides_[i] != other.strides_[i]) {
-        return false;
+      // Strides must be the same.
+      for (size_t i = 0; i < numSizes_; i++) {
+        if (strides_[i] != other.strides_[i]) {
+          return false;
+        }
       }
     }
 

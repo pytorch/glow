@@ -853,6 +853,57 @@ TEST(Type, compare) {
   EXPECT_FALSE(T1.isEqual(T4));
 }
 
+TEST(Type, isEqual) {
+  {
+    Type T1(ElemKind::FloatTy, {1, 2, 3});
+    Type T2(ElemKind::Int64ITy, {1, 2, 3});
+    EXPECT_FALSE(T1.isEqual(T2));
+    EXPECT_FALSE(T2.isEqual(T1));
+  }
+  {
+    Type T1(ElemKind::FloatTy, {1, 2, 3});
+    Type T2(ElemKind::FloatTy, {1, 2});
+    EXPECT_FALSE(T1.isEqual(T2));
+    EXPECT_FALSE(T2.isEqual(T1));
+  }
+  {
+    Type T1(ElemKind::FloatTy, {1, 2, 3});
+    Type T2(ElemKind::FloatTy, {1, 2, 4});
+    EXPECT_FALSE(T1.isEqual(T2));
+    EXPECT_FALSE(T2.isEqual(T1));
+  }
+  {
+    Type T1(ElemKind::FloatTy, {1, 2, 3});
+    Type T2(ElemKind::FloatTy, {1, 2, 4});
+    EXPECT_TRUE(T1.isEqual(T2, /* allowDifferentShape */ true));
+    EXPECT_TRUE(T2.isEqual(T1, /* allowDifferentShape */ true));
+  }
+  {
+    Type T1(ElemKind::FloatTy, {1, 2, 3});
+    Type T2(ElemKind::FloatTy, {4, 2, 3});
+    EXPECT_TRUE(T1.isEqual(T2, /* allowDifferentShape */ true));
+    EXPECT_TRUE(T2.isEqual(T1, /* allowDifferentShape */ true));
+  }
+  {
+    Type T1(ElemKind::Int8QTy, {1, 2, 3}, 0, 0);
+    Type T2(ElemKind::Int8QTy, {1, 2, 3}, 1, 0);
+    EXPECT_FALSE(T1.isEqual(T2));
+    EXPECT_FALSE(T2.isEqual(T1));
+  }
+  {
+    Type T1(ElemKind::Int8QTy, {1, 2, 3}, 1, 4);
+    Type T2(ElemKind::Int8QTy, {1, 2, 3}, 1, 4);
+    EXPECT_TRUE(T1.isEqual(T2));
+    EXPECT_TRUE(T2.isEqual(T1));
+  }
+  {
+    Type T1(ElemKind::FloatTy, {1, 2, 3});
+    Type T2(ElemKind::FloatTy, {1, 2, 3});
+    EXPECT_TRUE(T1.isEqual(T2));
+    EXPECT_TRUE(T2.isEqual(T1));
+  }
+}
+
 TEST(Tensor, insertSlice) {
   Tensor big(ElemKind::FloatTy, {3, 4});
   Tensor small({1.0f, 2.0f, 3.0f, 4.0f});
