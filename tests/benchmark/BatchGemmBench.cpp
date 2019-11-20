@@ -43,14 +43,16 @@ class BatchGemmBench : public Benchmark {
   const char *backendStr_;
   ElemKind dtype_;
   size_t elementSize_;
+  const char *devId_;
 
 public:
   BatchGemmBench(size_t batchSize_, size_t m_, size_t n_, size_t numLayers_,
                  size_t asyncLaunchSize_, size_t numCores_,
-                 const char *backendStr_, const char *dtypeStr_)
+                 const char *backendStr_, const char *dtypeStr_,
+                 const char *devId_ = nullptr)
       : batchSize_(batchSize_), m_(m_), n_(n_), numLayers_(numLayers_),
         asyncLaunchSize_(asyncLaunchSize_), numCores_(numCores_),
-        backendStr_(backendStr_) {
+        backendStr_(backendStr_), devId_(devId_) {
 
     dtype_ = ElemKind::Float16Ty;
     elementSize_ = 2;
@@ -74,6 +76,9 @@ public:
     // Setup host manager
     std::vector<std::unique_ptr<runtime::DeviceConfig>> configs;
     auto config = glow::make_unique<runtime::DeviceConfig>(backendStr_);
+    if (devId_ != nullptr) {
+      config->parameters["DeviceID"] = devId_;
+    }
     configs.push_back(std::move(config));
     hostManager_ = glow::make_unique<runtime::HostManager>(std::move(configs));
 
@@ -185,7 +190,7 @@ public:
 };
 
 int main(int argc, char *argv[]) {
-  assert(argc == 10);
+  assert(argc == 10 || argc == 11);
   size_t batchSize = atoi(argv[1]);
   size_t m = atoi(argv[2]);
   size_t n = atoi(argv[3]);
@@ -195,10 +200,17 @@ int main(int argc, char *argv[]) {
   size_t numCores = atoi(argv[7]);
   const char *backendStr = argv[8];
   const char *dtypeStr = argv[9];
+  char *dev_id = nullptr;
+
+  if (argc > 10) {
+    dev_id = argv[10];
+    printf("Setting backend device: \"%s\"\n", dev_id);
+  }
+
   assert(numReps > 0);
 
   BatchGemmBench b(batchSize, m, n, numLayers, numAsyncLaunches, numCores,
-                   backendStr, dtypeStr);
+                   backendStr, dtypeStr, dev_id);
 
   auto times = bench(&b, numReps);
   for (auto t : times) {

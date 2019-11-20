@@ -40,20 +40,25 @@ class GemmBench : public Benchmark {
   size_t numSplits_;
   const char *backendStr_;
   const char *dtypeStr_;
+  const char *devId_;
 
 public:
   GemmBench(size_t m_, size_t n_, size_t k_, size_t numLayers_,
             size_t asyncLaunchSize_, size_t numSplits_, const char *backendStr_,
-            const char *dtypeStr_)
+            const char *dtypeStr_, const char *devId_ = nullptr)
       : m_(m_), n_(n_), k_(k_), numLayers_(numLayers_),
         asyncLaunchSize_(asyncLaunchSize_), numSplits_(numSplits_),
-        backendStr_(backendStr_), dtypeStr_(dtypeStr_) {}
+        backendStr_(backendStr_), dtypeStr_(dtypeStr_), devId_(devId_) {}
 
   void setup() override {
 
     // Setup host manager
     std::vector<std::unique_ptr<runtime::DeviceConfig>> configs;
-    configs.push_back(glow::make_unique<runtime::DeviceConfig>(backendStr_));
+    auto config = glow::make_unique<runtime::DeviceConfig>(backendStr_);
+    if (devId_ != nullptr) {
+      config->parameters["DeviceID"] = devId_;
+    }
+    configs.push_back(std::move(config));
     hostManager_ = glow::make_unique<runtime::HostManager>(std::move(configs));
 
     std::unique_ptr<Module> mod(new Module);
@@ -124,7 +129,7 @@ public:
 };
 
 int main(int argc, char *argv[]) {
-  assert(argc == 10);
+  assert(argc == 10 || argc == 11);
   size_t m = atoi(argv[1]);
   size_t n = atoi(argv[2]);
   size_t k = atoi(argv[3]);
@@ -134,8 +139,14 @@ int main(int argc, char *argv[]) {
   size_t numSplits = atoi(argv[7]);
   const char *backendStr = argv[8];
   const char *dtypeStr = argv[9];
+  char *dev_id = nullptr;
+
+  if (argc > 10) {
+    dev_id = argv[10];
+    printf("Setting backend device: \"%s\"\n", dev_id);
+  }
   GemmBench b(m, n, k, numLayers, asyncLaunches, numSplits, backendStr,
-              dtypeStr);
+              dtypeStr, dev_id);
   auto times = bench(&b, reps);
   for (auto t : times) {
     printf(
