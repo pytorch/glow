@@ -2551,7 +2551,8 @@ TEST(caffe2, importNames) {
   Tensor input(ElemKind::FloatTy, {6});
   Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename,
                              {"sigmoid_test_input"}, {&input.getType()}, *F);
-  EXPECT_TRUE(F->getNodeByName("sigmoid_test_output"));
+  EXPECT_TRUE(mod.getPlaceholderByName("sigmoid_test_output"));
+  EXPECT_TRUE(F->getNodeByName("sigmoid_test_output__1"));
 }
 
 TEST(caffe2, importSqr) {
