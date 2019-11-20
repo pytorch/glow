@@ -294,7 +294,7 @@ public:
     }
     os << "\nError return stack:\n";
     for (const auto &p : stack_) {
-      os << p.first << ":" << p.second << "\n";
+      os << p.first.c_str() << ":" << p.second << "\n";
     }
   }
 

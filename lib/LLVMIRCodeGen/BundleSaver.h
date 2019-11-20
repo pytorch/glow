@@ -40,12 +40,12 @@ public:
   /// address.
   class WeightAddrComparator {
   public:
-    WeightAddrComparator(const BundleSaver &bundleSaver)
-        : bundleSaver_(bundleSaver) {}
+    WeightAddrComparator(BundleSaver &bundleSaver)
+        : bundleSaver_(&bundleSaver) {}
     bool operator()(const WeightInfo &LHS, const WeightInfo &RHS) const;
 
   private:
-    const BundleSaver &bundleSaver_;
+    const BundleSaver *bundleSaver_;
   };
   /// Ctor.
   explicit BundleSaver(const IRFunction *F, const LLVMBackend &llvmBackend);
