@@ -22,6 +22,9 @@
 #include "glow/Support/Error.h"
 
 namespace glow {
+namespace runtime {
+struct PartitionConfig;
+}
 
 /// Configuration for different precision modes.
 struct PrecisionConfiguration {
@@ -73,6 +76,9 @@ struct OptimizationOptions {
 struct CompilationContext {
   /// Used during Profiling.
   PlaceholderBindings *bindings{nullptr};
+
+  /// Allows the user to specify user defined partitioning.
+  runtime::PartitionConfig *partitionConfig{nullptr};
 
   /// Used during Quantization and Profiling.
   LoweredInfoMap *loweredInfoMap{nullptr};
