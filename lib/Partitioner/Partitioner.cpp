@@ -423,33 +423,8 @@ Expected<DAGListTy> Partitioner::createDAGWithoutPartition(
   NodeToFunctionMap mapping;
   for (auto func : module_->getFunctions()) {
     mapping.createPartition(func, backendName);
+    mapping.setGraphMemInfo(func, getFunctionMemory(func));
 
-    GraphMemInfo graphMem;
-    graphMem.constMemSize = func->getParent()->getConstantsSize();
-
-    // Walk thru all the nodes to compute input and output mem size.
-    for (auto &node : func->getNodes()) {
-      // If input to a node is a storage node but not constant then
-      // accummulate it as placeholder size.
-      for (size_t i = 0, e = node.getNumInputs(); i < e; i++) {
-        if (auto *in = llvm::dyn_cast<Storage>(node.getNthInput(i).getNode())) {
-          if (in->getKind() != Kinded::Kind::ConstantKind) {
-            graphMem.inMemSize += in->getType()->getSizeInBytes();
-          }
-        }
-      }
-
-      // If a node is SaveNode then accumulate size for output memory.
-      if (auto *SN = llvm::dyn_cast<SaveNode>(&node)) {
-        Storage *out = llvm::dyn_cast<Storage>(SN->getPlaceholder());
-        graphMem.outMemSize += out->getType()->getSizeInBytes();
-      }
-    }
-    // Output memory got double counted as input as it is storage node
-    // so subtract from the input memory size.
-    graphMem.inMemSize -= graphMem.outMemSize;
-
-    mapping.setGraphMemInfo(func, graphMem);
     // Use the same hard-coded logical device ID as used for the DAG itself.
     mapping.appendLogicalDeviceID(func, logDevice);
   }
