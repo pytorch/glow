@@ -26,6 +26,7 @@
 #include "llvm/Support/raw_ostream.h"
 
 #include "DebugMacros.h"
+#include "glow/Support/Error.h"
 
 namespace glow {
 namespace runtime {
@@ -56,12 +57,21 @@ NNPIDeviceManager::NNPIDeviceManager(const DeviceConfig &config,
     // active devices).
     deviceId_ = std::stoul(it->second);
   }
+  const auto envDeviceId = EnvDeviceID();
+  if (envDeviceId.length() > 0) {
+    // Override if exists in environment variable.
+    deviceId_ = std::stoul(envDeviceId);
+  }
 
   if (!numWorkersPerFunction_) {
     numWorkersPerFunction_ =
         UseInferenceAPI()
             ? 2
             : 1; // Ice-ref not re-entrant for the same nnpiNetwork.
+  }
+  const auto envWorkers = EnvNumWorkers();
+  if (envWorkers > 0) {
+    numWorkersPerFunction_ = envWorkers;
   }
 }
 
@@ -99,6 +109,9 @@ Error NNPIDeviceManager::init() {
     LOG_NNPI_INF_ERROR_RETURN_LLVMERROR(
         nnpiDeviceContextCreate(adapter_, deviceId_, &device_),
         "Failed to create NNPI Device");
+    if (EnabledDeviceTracing()) {
+      deviceTracing_ = NNPIDeviceTracing::getForDevice(deviceId_);
+    }
   }
 
   runIdentifier_ = 0;
@@ -145,8 +158,8 @@ void NNPIDeviceManager::addNetwork(const Module *module,
     functions_.emplace(func.first, func.second);
     usedMemoryBytes_ += functionCost_; // TODO:: static moduleSize.
 
-    auto err = inferenceEnvs_[func.first].init(numWorkersPerFunction_, adapter_,
-                                               device_, func.second);
+    auto err = inferenceEnvs_[func.first].init(
+        numWorkersPerFunction_, adapter_, device_, deviceTracing_, func.second);
     if (err) {
       lock.unlock();
       readyCB(module, std::move(err));

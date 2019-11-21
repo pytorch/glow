@@ -27,6 +27,7 @@ std::set<std::string> glow::backendTestBlacklist = {
     "gradientCheckAvgPool/0",
     "gradientCheckMaxPool/0",
     "gradientCheckAdaptiveAvgPool/0",
+    "gradientCheckBatchMatMul/0",
     "gradientCheckBatchNorm/0",
     "gradientCheckArithmeticDiv/0",
     "gradientCheckArithmetic/0",
