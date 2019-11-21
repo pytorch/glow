@@ -945,7 +945,7 @@ TEST_F(PartitionerTest, funcMemInfoCalculation3) {
   (void)save;
 
   GraphMemInfo info = getFunctionMemory(F_);
-  // input consists of 5 input tensors (2*10 + 10*16 + 16*20 + 20*1 + 1*50 = 570) fp32
+  // input consists of 5 tensors (2*10 + 10*16 + 16*20 + 20*1 + 1*50 = 570) fp32
   // output is tensor of 2*50 = 100 fp32
   GraphMemInfo res(2280, 400, 0);
   EXPECT_EQ(res, info);

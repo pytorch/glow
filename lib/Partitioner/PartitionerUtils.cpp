@@ -497,25 +497,25 @@ GraphMemInfo getFunctionMemory(Function *func) {
   GraphMemInfo graphMem;
 
   for (auto cons : func->findConstants()) {
-      graphMem.constMemSize += cons->getType()->getSizeInBytes();
-    }
+    graphMem.constMemSize += cons->getType()->getSizeInBytes();
+  }
 
-    // Walk thru all the Placeholders in the function to accumulate input and
-    // output mem size.
-    for (auto &place : func->findPlaceholders()) {
-      graphMem.inMemSize += place->getType()->getSizeInBytes();
-    }
+  // Walk thru all the Placeholders in the function to accumulate input and
+  // output mem size.
+  for (auto &place : func->findPlaceholders()) {
+    graphMem.inMemSize += place->getType()->getSizeInBytes();
+  }
 
-    for (auto &node : func->getNodes()) {
-      // If a node is SaveNode then accumulate size for output memory.
-      if (auto *SN = llvm::dyn_cast<SaveNode>(&node)) {
-        graphMem.outMemSize += SN->getOutput().getType()->getSizeInBytes();
-      }
+  for (auto &node : func->getNodes()) {
+    // If a node is SaveNode then accumulate size for output memory.
+    if (auto *SN = llvm::dyn_cast<SaveNode>(&node)) {
+      graphMem.outMemSize += SN->getOutput().getType()->getSizeInBytes();
     }
-    // Output memory got double counted as inputs during Placeholder list scan
-    // so subtract from the input memory size.
-    graphMem.inMemSize -= graphMem.outMemSize;
-    return graphMem;
+  }
+  // Output memory got double counted as inputs during Placeholder list scan
+  // so subtract from the input memory size.
+  graphMem.inMemSize -= graphMem.outMemSize;
+  return graphMem;
 }
 
 std::set<Kinded::Kind> generateNodeKindsSet(llvm::StringRef names) {
