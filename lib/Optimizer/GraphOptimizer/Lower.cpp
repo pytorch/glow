@@ -24,6 +24,8 @@
 
 #include "llvm/Support/Casting.h"
 
+#include <numeric>
+
 using namespace glow;
 using llvm::dyn_cast;
 
