@@ -493,6 +493,28 @@ GraphMemInfo getGraphMemInfo(const NodesSet &nodes) {
   return ret;
 }
 
+GraphMemInfo getFunctionMemory(Function *func) {
+  GraphMemInfo graphMem;
+
+  for (auto cons : func->findConstants()) {
+    graphMem.constMemSize += cons->getType()->getSizeInBytes();
+  }
+
+  // Walk thru all Placeholders in the function to accumulate input and output
+  // mem size. These utility functions check the users of the PH to determine
+  // if the PH is an input or an output.
+  for (auto &place : func->findPlaceholders()) {
+    if (isInput(place, *func)) {
+      graphMem.inMemSize += place->getType()->getSizeInBytes();
+    }
+    if (isOutput(place, *func)) {
+      graphMem.outMemSize += place->getType()->getSizeInBytes();
+    }
+  }
+
+  return graphMem;
+}
+
 std::set<Kinded::Kind> generateNodeKindsSet(llvm::StringRef names) {
   std::set<Kinded::Kind> nodeKindsSet;
   llvm::StringRef::size_type pos = names.find(',');
