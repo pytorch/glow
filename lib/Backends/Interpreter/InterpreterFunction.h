@@ -316,6 +316,10 @@ private:
   template <typename T, typename AccumT>
   void fwdFusedRowwiseQuantizedSparseLengthsWeightedSumImpl(
       const FusedRowwiseQuantizedSparseLengthsWeightedSumInst *I);
+
+  template <typename T, typename AccumT>
+  void fwdEmbeddingBagByteRowwiseOffsetsImpl(
+      const EmbeddingBagByteRowwiseOffsetsInst *I);
   ///@}
 };
 

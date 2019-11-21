@@ -2574,6 +2574,30 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     break;
   }
 
+  case Kinded::Kind::EmbeddingBagByteRowwiseOffsetsInstKind: {
+    auto *N = cast<EmbeddingBagByteRowwiseOffsetsInst>(I);
+    auto *dest = N->getDest();
+    auto *data = N->getData();
+    auto *weights = N->getWeights();
+    auto *indices = N->getIndices();
+    auto *offsets = N->getOffsets();
+    auto *destPtr = emitValueAddress(builder, dest);
+    auto *dataPtr = emitValueAddress(builder, data);
+    auto *weightsPtr = emitValueAddress(builder, weights);
+    auto *indicesPtr = emitValueAddress(builder, indices);
+    auto *offsetsPtr = emitValueAddress(builder, offsets);
+    auto *segments = emitConstSizeT(builder, offsets->dims()[0]);
+    auto *numIndices = emitConstSizeT(builder, indices->dims()[0]);
+    auto *inLineSize = emitConstSizeT(builder, data->size() / data->dims()[0]);
+    auto *outLineSize = emitConstSizeT(builder, dest->size() / dest->dims()[0]);
+    auto *F = getFunction("embedding_bag_byte_rowwise_offsets",
+                          dest->getElementType());
+    createCall(builder, F,
+               {destPtr, dataPtr, weightsPtr, indicesPtr, offsetsPtr, segments,
+                numIndices, inLineSize, outLineSize});
+    break;
+  }
+
   case Kinded::Kind::SparseToDenseInstKind: {
     auto *STDI = llvm::cast<SparseToDenseInst>(I);
     auto *indices = STDI->getIndices();

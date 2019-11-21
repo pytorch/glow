@@ -528,6 +528,16 @@ int main(int argc, char **argv) {
           "Weights[0] * Slice(0) + Weights[1] * Slice(1) + ... "
           "It implies that len(Weights) == len(Indices).");
 
+  BB.newNode("EmbeddingBagByteRowwiseOffsets")
+      .addInput("Data")
+      .addInput("Weights")
+      .addInput("Indices")
+      .addInput("Offsets")
+      .addMember(MemberType::Boolean, "UseFP16Accumulation")
+      .addResultFromCtorArg()
+      .setDocstring("Same as FusedRowwiseQuantizedSparseLengthsWeightedSum but "
+                    "using offsets instead of lengths.");
+
   BB.newNode("RowwiseQuantizedSparseLengthsWeightedSum")
       .addInput("Data")
       .addInput("Scales")

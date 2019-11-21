@@ -363,6 +363,20 @@ int main(int argc, char **argv) {
                   {"Lengths", "ElemKind::Int32ITy"})
       .autoVerify(VerifyKind::SameShape, {"Weights", "Indices"});
 
+  BB.newInstr("EmbeddingBagByteRowwiseOffsets")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Data", OperandKind::In)
+      .addOperand("Weights", OperandKind::In)
+      .addOperand("Indices", OperandKind::In)
+      .addOperand("Offsets", OperandKind::In)
+      .addMember(MemberType::Boolean, "UseFP16Accumulation")
+      .autoIRGen()
+      .autoVerify(VerifyKind::SameElementType,
+                  {"Indices", "ElemKind::Int64ITy"})
+      .autoVerify(VerifyKind::SameElementType,
+                  {"Offsets", "ElemKind::Int32ITy"})
+      .autoVerify(VerifyKind::SameShape, {"Weights", "Indices"});
+
   BB.newInstr("LengthsToRanges")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Lengths", OperandKind::In)

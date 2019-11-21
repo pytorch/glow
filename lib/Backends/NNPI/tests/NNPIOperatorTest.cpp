@@ -94,6 +94,10 @@ std::set<std::string> glow::backendTestBlacklist = {
     "EmbeddingBag_1D_Float16/0",
     "EmbeddingBag_2D_Float/0",
     "EmbeddingBag_2D_Float16/0",
+    "EmbeddingBagByteRowwiseOffsets_ConvertedFloat16_back_",
+    "EmbeddingBagByteRowwiseOffsets_Float/0",
+    "EmbeddingBagByteRowwiseOffsets_Float16_AccumFloat/0",
+    "EmbeddingBagByteRowwiseOffsets_Float16_AccumFloat16/0",
     "SparseToDense/0",
     "SparseToDenseMask1/0",
     "SparseToDenseMask2/0",
@@ -144,7 +148,8 @@ struct EmulatorOnlyTests {
           "Exp/0",
           "FloatArgMaxKeepDim/0",
           "FloatArgMaxNoKeepDim/0",
-          "FusedRowwiseQuantizedSparseLengthsWeightedSum_ConvertedFloat16_back_"
+          "FusedRowwiseQuantizedSparseLengthsWeightedSum_ConvertedFloat16_"
+          "back_",
           "to_back2/0",
           "GroupDilatedConvolution/0",
           "less_int32Cases/0",

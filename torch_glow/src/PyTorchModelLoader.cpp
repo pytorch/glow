@@ -676,6 +676,19 @@ struct EmbeddingBagInputs {
     per_sample_weights,
   };
 };
+
+/// Indexes of fb::embedding_bag_byte_rowwise_offsets inputs.
+struct EmbeddingBagByteRowwiseOffsetsInputs {
+  enum {
+    weight,
+    indices,
+    offsets,
+    scale_grad_by_freq,
+    mode,
+    sparse,
+    per_sample_weights,
+  };
+};
 } // namespace
 
 // static
@@ -871,6 +884,9 @@ PyTorchModelLoader::getSymbolsMapping() {
        }},
       {{"prim::ConstantChunk"}, &PyTorchModelLoader::loadConstantChunk, {}},
       {{"aten::embedding_bag"}, &PyTorchModelLoader::loadEmbeddingBag, {}},
+      {{"fb::embedding_bag_byte_rowwise_offsets"},
+       &PyTorchModelLoader::loadEmbeddingBagByteRowwiseOffsets,
+       {}},
   });
 
   return symbolLoaderMapping;
@@ -2850,18 +2866,9 @@ Error PyTorchModelLoader::loadEmbeddingBag(const torch::jit::Node *ptNode) {
   ASSIGN_VALUE_OR_RETURN_ERR(
       offsets, getGlowNodeValueForValue(inputs[EmbeddingBagInputs::offsets]));
 
-  glow::NodeValue perSampleWeights;
-  if (hasGlowNodeValueForValue(
-          inputs[EmbeddingBagInputs::per_sample_weights])) {
-    ASSIGN_VALUE_OR_RETURN_ERR(
-        perSampleWeights, getGlowNodeValueForValue(
-                              inputs[EmbeddingBagInputs::per_sample_weights]));
-  } else {
-    auto ty = F_.getParent()->uniqueTypeWithNewShape(weight.getType(),
-                                                     indices.dims()[0]);
-    auto *ones = F_.createSplat("EmbeddingBag.ones", ty, 1.0);
-    perSampleWeights = ones->getResult();
-  }
+  glow::NodeValue perSampleWeights = loadNodeValueOrCreateBroadcastedConstant(
+      inputs[EmbeddingBagInputs::per_sample_weights], "EmbeddingBag.ones",
+      glow::Type(weight.getElementType(), {indices.dims()[0]}), 1.0);
 
   bool scaleGradByFreq;
   ASSIGN_VALUE_OR_RETURN_ERR(
@@ -2885,6 +2892,60 @@ Error PyTorchModelLoader::loadEmbeddingBag(const torch::jit::Node *ptNode) {
 
   auto *EB = F_.createEmbeddingBag("EmbeddingBag", weight, perSampleWeights,
                                    indices, offsets);
+
+  return addValueMapping(outputs[0], EB->getResult());
+}
+
+Error PyTorchModelLoader::loadEmbeddingBagByteRowwiseOffsets(
+    const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 7, outputs, 1));
+
+  glow::NodeValue weight;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      weight, getGlowNodeValueForValue(
+                  inputs[EmbeddingBagByteRowwiseOffsetsInputs::weight]));
+  glow::NodeValue indices;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      indices, getGlowNodeValueForValue(
+                   inputs[EmbeddingBagByteRowwiseOffsetsInputs::indices]));
+  glow::NodeValue offsets;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      offsets, getGlowNodeValueForValue(
+                   inputs[EmbeddingBagByteRowwiseOffsetsInputs::offsets]));
+
+  glow::NodeValue perSampleWeights = loadNodeValueOrCreateBroadcastedConstant(
+      inputs[EmbeddingBagByteRowwiseOffsetsInputs::per_sample_weights],
+      "EmbeddingBagByteRowwiseOffsets.ones",
+      glow::Type(weight.getElementType(), {indices.dims()[0]}), 1.0);
+
+  bool scaleGradByFreq;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      scaleGradByFreq,
+      iValToBool(getGlowIValueForValue(
+          inputs[EmbeddingBagByteRowwiseOffsetsInputs::scale_grad_by_freq])));
+
+  RETURN_ERR_IF_NOT(scaleGradByFreq == false,
+                    "Currently only support scale_grad_by_freq == 'false'");
+
+  int mode;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      mode, iValToInt(getGlowIValueForValue(
+                inputs[EmbeddingBagByteRowwiseOffsetsInputs::mode])));
+
+  RETURN_ERR_IF_NOT(mode == 0, "Currently only support mode='sum'");
+
+  bool sparse;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      sparse, iValToBool(getGlowIValueForValue(
+                  inputs[EmbeddingBagByteRowwiseOffsetsInputs::sparse])));
+
+  RETURN_ERR_IF_NOT(sparse == false, "Currently only support sparse='false'");
+
+  auto *EB = F_.createEmbeddingBagByteRowwiseOffsets(
+      "EmbeddingBagByteRowwiseOffsets", weight, perSampleWeights, indices,
+      offsets);
 
   return addValueMapping(outputs[0], EB->getResult());
 }

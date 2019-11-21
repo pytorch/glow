@@ -3523,6 +3523,82 @@ void BoundInterpreterFunction::
   }
 }
 
+template <typename T, typename AccumT>
+void BoundInterpreterFunction::fwdEmbeddingBagByteRowwiseOffsetsImpl(
+    const EmbeddingBagByteRowwiseOffsetsInst *I) {
+  auto *out = getTensor(I->getDest());
+  auto *data = getTensor(I->getData());
+  auto *weights = getTensor(I->getWeights());
+  auto *indices = getTensor(I->getIndices());
+  auto *offsets = getTensor(I->getOffsets());
+
+  out->zero();
+
+  auto IH = indices->getHandle<int64_t>();
+  auto OFFH = offsets->getHandle<int32_t>();
+
+  size_t segments = offsets->dims()[0];
+  size_t numIndices = indices->dims()[0];
+
+  const bool using4BitQuantization =
+      data->getType().getElementType() == ElemKind::UInt4FusedFP16QTy;
+
+  const size_t outLineSize = out->size() / out->dims()[0];
+
+  auto DH = data->getHandle<uint8_t>();
+  auto WH = weights->getHandle<T>();
+  auto OH = out->getHandle<T>();
+
+  for (size_t i = 0; i < segments; i++) {
+    std::vector<AccumT> accum(outLineSize, 0.0f);
+    size_t start = OFFH.raw(i);
+    size_t end = i == segments - 1 ? numIndices : OFFH.raw(i + 1);
+    for (size_t j = start; j < end; j++) {
+      const float weight = static_cast<float>(WH.raw(j));
+      const size_t rowIdx = IH.raw(j);
+      T scale, offset;
+      std::tie(scale, offset) = DH.getFusedScaleOffsetFromRow<T>(rowIdx);
+      for (size_t k = 0; k < outLineSize; k++) {
+        float d = 0.0f;
+        if (!using4BitQuantization) {
+          d = quantization::dequantizeWithFloatOffset(
+              DH.at({rowIdx, k}), static_cast<float>(scale),
+              static_cast<float>(offset));
+        } else {
+          const bool isMSB = (k % 2 == 1);
+          d = quantization::dequantize4BitWithFloatOffset(
+              DH.at({rowIdx, k / 2}), static_cast<float>(scale),
+              static_cast<float>(offset), isMSB);
+        }
+        accum[k] += d * weight;
+      }
+    }
+    // Accumulation in FP32 complete, now copy back to output with cast to T.
+    size_t offsetOut = i * outLineSize;
+    for (size_t k = 0; k < outLineSize; k++) {
+      OH.raw(offsetOut++) = static_cast<T>(accum[k]);
+    }
+  }
+}
+
+void BoundInterpreterFunction::fwdEmbeddingBagByteRowwiseOffsetsInst(
+    const EmbeddingBagByteRowwiseOffsetsInst *I) {
+  switch (I->getDest()->getElementType()) {
+  case ElemKind::FloatTy:
+    fwdEmbeddingBagByteRowwiseOffsetsImpl<float, float>(I);
+    break;
+  case ElemKind::Float16Ty:
+    if (I->getUseFP16Accumulation()) {
+      fwdEmbeddingBagByteRowwiseOffsetsImpl<float16_t, float16_t>(I);
+    } else {
+      fwdEmbeddingBagByteRowwiseOffsetsImpl<float16_t, float>(I);
+    }
+    break;
+  default:
+    llvm_unreachable("Type is not supported");
+  }
+}
+
 void BoundInterpreterFunction::fwdLengthsToRangesInst(
     const LengthsToRangesInst *I) {
   auto ranges = getTensor(I->getDest())->getHandle<int32_t>();

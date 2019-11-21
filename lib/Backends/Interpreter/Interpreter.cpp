@@ -321,6 +321,31 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
                 RowwiseQuantizedSparseLengthsWeightedSumNode::LengthsIdx) ==
             ElemKind::Int32ITy);
 
+  case Kinded::Kind::EmbeddingBagByteRowwiseOffsetsNodeKind: {
+    if (NI.getInElemTy(EmbeddingBagByteRowwiseOffsetsNode::IndicesIdx) !=
+            ElemKind::Int64ITy ||
+        NI.getInElemTy(EmbeddingBagByteRowwiseOffsetsNode::OffsetsIdx) !=
+            ElemKind::Int32ITy) {
+      return false;
+    }
+
+    switch (NI.getInElemTy(EmbeddingBagByteRowwiseOffsetsNode::DataIdx)) {
+    case ElemKind::UInt4FusedFP16QTy:
+    case ElemKind::UInt8FusedFP16QTy:
+      return (NI.getInElemTy(EmbeddingBagByteRowwiseOffsetsNode::WeightsIdx) ==
+              ElemKind::Float16Ty) &&
+             (NI.getOutElemTy(EmbeddingBagByteRowwiseOffsetsNode::ResultIdx) ==
+              ElemKind::Float16Ty);
+    case ElemKind::UInt8FusedQTy:
+      return (NI.getInElemTy(EmbeddingBagByteRowwiseOffsetsNode::WeightsIdx) ==
+              ElemKind::FloatTy) &&
+             (NI.getOutElemTy(EmbeddingBagByteRowwiseOffsetsNode::ResultIdx) ==
+              ElemKind::FloatTy);
+    default:
+      return false;
+    }
+  }
+
   case Kinded::Kind::FusedRowwiseQuantizedSparseLengthsWeightedSumNodeKind: {
     if (NI.getInElemTy(
             FusedRowwiseQuantizedSparseLengthsWeightedSumNode::IndicesIdx) !=
