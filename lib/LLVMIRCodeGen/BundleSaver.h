@@ -98,6 +98,8 @@ private:
   std::string bundleName_;
   /// Information about IR functions inside this bundle.
   std::vector<SavedIRFunction> savedIRFunctions_;
+  /// Bundle API to use.
+  BundleApiType bundleAPI_;
   /// Indicates if this bundle was saved already.
   bool isSaved_{false};
 };

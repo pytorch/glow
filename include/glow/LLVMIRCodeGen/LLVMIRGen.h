@@ -76,6 +76,26 @@ struct DebugInfo {
       baseAddressesVariables_;
 };
 
+/// Different kinds of bundle APIs.
+enum BundleApiType {
+  /// Dynamic bundle API with the following features:
+  /// - the weights are exported in a binary file which are assumed
+  ///   to be loaded dynamically at run-time.
+  /// - the memory layout information (bundle configuration) is only
+  ///   available at run-time and therefore allows ONLY dynamic memory
+  ///   allocaton.
+  Dynamic,
+  /// Static bundle API (default) with the following features:
+  /// - the weights are exported in a binary file but and also in a
+  ///   text file (C array format) suitable to include at compile-time.
+  /// - the memory layout information (bundle configuration) is available
+  ///   at compile-time through macros printed in the header file and thus
+  ///   allows also static memory allocation.
+  /// - this API is suitable for low end devices with no file system or OS
+  ///   (bare-metal).
+  Static,
+};
+
 /// This is a class containing a common logic for the generation of the LLVM IR
 /// from an IRFunction. The primary clients of this class are JITs and bundlers.
 class LLVMIRGen {

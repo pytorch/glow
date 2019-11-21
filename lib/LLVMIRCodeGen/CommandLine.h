@@ -17,6 +17,7 @@
 #ifndef GLOW_LLVMIRCODEGEN_COMMANDLINE_H
 #define GLOW_LLVMIRCODEGEN_COMMANDLINE_H
 
+#include "glow/LLVMIRCodeGen/LLVMIRGen.h"
 #include "llvm/Support/CodeGen.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Target/TargetOptions.h"
@@ -62,5 +63,8 @@ extern llvm::cl::list<std::string> llvmCompilerOptions;
 
 /// Option to set float ABI. Used as -float-abi=<abi-type>.
 extern llvm::cl::opt<llvm::FloatABI::ABIType> floatABI;
+
+/// Option to specify which bundle API to use.
+extern llvm::cl::opt<glow::BundleApiType> bundleAPI;
 
 #endif // GLOW_LLVMIRCODEGEN_COMMANDLINE_H
