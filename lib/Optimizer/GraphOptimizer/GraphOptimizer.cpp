@@ -3142,6 +3142,82 @@ bool FoldTileAddIntoBatchedAdd::run(Function *F,
   return changed;
 }
 
+/// Fold ElemKind conversion nodes (ConvertTo, Quantize, Dequantize) into
+/// single-user Placeholders and SaveNodes. Note that this changes the semantics
+/// of the IO of the Function and so must be done carefully, i.e. should always
+/// be opt-in and done alongside conversion of corresponding Tensors in
+/// PlaceholderBindings.
+bool FoldElemKindConversionIntoIO::run(Function *F,
+                                       const CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), getName());
+
+  std::unordered_set<SaveNode *> deadSaves;
+
+  bool changed = false;
+  // Since we will be adding in new SaveNodes, reverse iterate to be safe.
+  auto &nodes = F->getNodes();
+  for (auto it = nodes.rbegin(), e = nodes.rend(); it != e; it++) {
+    Node *N = &*it;
+    // Handle conversion of inputs (conversion of Placeholders):
+    ConvertToNode *CTN = llvm::dyn_cast<ConvertToNode>(N);
+    QuantizeNode *QN = llvm::dyn_cast<QuantizeNode>(N);
+    if (CTN || QN) {
+      NodeValue in = CTN ? CTN->getInput() : QN->getInput();
+      Placeholder *P = llvm::dyn_cast<Placeholder>(in);
+      if (!P || P->getUsers().size() != 1) {
+        continue;
+      }
+
+      // We have a conversion of a single-use placeholder to some other type, so
+      // it is safe to do the requested conversion.
+      NodeValue res = CTN ? CTN->getResult() : QN->getResult();
+
+      // Convert the type of the Placeholder to the conversion type.
+      P->setType(Storage::OutputIdx, res.getType());
+
+      // Replace all uses of the original ConvertTo to the Placeholder.
+      res.replaceAllUsesOfWith(P);
+
+      changed = true;
+      continue;
+    }
+
+    // Handle conversion of outputs (SaveNodes + Placeholders):
+    if (SaveNode *SN = llvm::dyn_cast<SaveNode>(N)) {
+      if (!SN) {
+        continue;
+      }
+      if (SN->getPlaceholder()->getUsers().size() != 1) {
+        continue;
+      }
+      ConvertToNode *CTN = llvm::dyn_cast<ConvertToNode>(SN->getInput());
+      DequantizeNode *DQN = llvm::dyn_cast<DequantizeNode>(SN->getInput());
+      if (!CTN && !DQN) {
+        continue;
+      }
+      NodeValue in = CTN ? CTN->getInput() : DQN->getInput();
+
+      // Set the type of the Placeholder to be same the conversion's input.
+      SN->getPlaceholder()->setType(Storage::OutputIdx, in.getType());
+
+      // Create a new SaveNode directly using the conversion's input.
+      F->createSave(SN->getName(), in, SN->getPlaceholder());
+
+      // Queue up deleting the original SaveNode as it won't be deleted via DCE.
+      deadSaves.insert(SN);
+      changed = true;
+      continue;
+    }
+  }
+
+  // Delete all the dead saves.
+  for (SaveNode *SN : deadSaves) {
+    F->eraseNode(SN);
+  }
+
+  return changed;
+}
+
 void glow::fold(Function *F, CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), "glow::fold")
 
@@ -3297,6 +3373,16 @@ Error glow::optimizeFunction(Function *F, const Backend &B,
 
   // Optimize the graph again now that we have a lowered representation.
   ::glow::optimize(F, cctx);
+
+  // If requested, fold ElemKind conversion Nodes into inputs and outputs
+  // (Placeholders and SaveNodes).
+  if (cctx.optimizationOpts.foldElemKindConversionIntoIO) {
+    FunctionPassManager FPM("FoldElemKindConversionIntoIO",
+                            {FunctionPassID::FoldElemKindConversionIntoIO});
+    if (FPM.run(F, cctx)) {
+      ::glow::optimize(F, cctx);
+    }
+  }
 
   // Allow the backend to transform the graph after lowering.
   if (B.transformPostLowering(F, cctx)) {
