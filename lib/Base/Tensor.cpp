@@ -66,6 +66,14 @@ template <class ElemTy> static char valueToChar(ElemTy input) {
   return ch;
 }
 
+static void dumpShape(llvm::ArrayRef<size_t> shape, llvm::raw_ostream &os) {
+  os << "shape: ( ";
+  for (auto &d : shape) {
+    os << d << " ";
+  }
+  os << ")";
+}
+
 template <class ElemTy>
 static void dumpGenericImpl(Handle<ElemTy> handle, llvm::raw_ostream &os,
                             unsigned maxNumElem) {
@@ -82,11 +90,8 @@ static void dumpGenericImpl(Handle<ElemTy> handle, llvm::raw_ostream &os,
   }
 
   // Output shape.
-  os << "shape: ( ";
-  for (auto &d : shape) {
-    os << d << " ";
-  }
-  os << ")\n";
+  dumpShape(shape, os);
+  os << "\n";
 
   ElemTy mx = handle.raw(0);
   ElemTy mn = handle.raw(0);
@@ -349,6 +354,13 @@ std::string Tensor::toString() const {
   std::string storage;
   llvm::raw_string_ostream os(storage);
   dumpImpl(this, os);
+  return os.str();
+}
+
+std::string Tensor::getShapeToString() const {
+  std::string storage;
+  llvm::raw_string_ostream os(storage);
+  dumpShape(dims(), os);
   return os.str();
 }
 
