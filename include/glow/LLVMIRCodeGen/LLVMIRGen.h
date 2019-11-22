@@ -370,6 +370,12 @@ public:
   /// \returns true if a global symbol \p GV needs to be preserved in the module
   /// and not interalized during optimizations.
   virtual bool preserveSymbol(const llvm::GlobalValue &GV);
+  /// \returns inlining mode to be used for a function \p F.
+  virtual llvm::Attribute::AttrKind
+  getInlinineAttr(const llvm::Function *F) const;
+  /// Update inline attributes of functions in the module \p M using a
+  /// backend-specific logic.
+  virtual void updateInlineAttributes(llvm::Module *M);
   /// \returns true if an instruction \p I can be part of a data parallel
   /// kernel. This gives backends a possibility to provide a custom logic to
   /// decide on a per-instruction basis what can be part of data parallel
