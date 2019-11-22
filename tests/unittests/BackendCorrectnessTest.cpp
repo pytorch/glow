@@ -466,7 +466,7 @@ TEST_P(BackendCorrectnessTest, basicFCNet) {
 TEST_P(BackendCorrectnessTest, basicFCNetQuantized) {
   CHECK_IF_ENABLED();
   compareAgainstInterpreter(GetParam(), createAndInitBasicFCNet,
-                            ElemKind::Int8QTy, ElemKind::Int8QTy, 0.0001f,
+                            ElemKind::Int8QTy, ElemKind::Int8QTy, 0.f,
                             parCloneCountOpt);
 }
 

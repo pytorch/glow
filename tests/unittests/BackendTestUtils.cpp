@@ -220,6 +220,40 @@ void dispatchInference(const std::string &fname,
   contexts[0].release();
 }
 
+/// Helper that iterates over all of the Placeholders in \p PHs and converts the
+/// Tensor pair found in \p bindings to the same type as the Placeholder if
+/// necessary.
+static void convertBindingsToCorrectType(PlaceholderBindings &bindings,
+                                         PlaceholderList PHs) {
+  for (Placeholder *PH : PHs) {
+    Tensor *T = bindings.get(PH);
+    TypeRef newTy = PH->getType();
+    if (T->getType().isEqual(newTy)) {
+      continue;
+    }
+    ElemKind newK = newTy->getElementType();
+    if (isQuantizedElemKind(newK)) {
+      Tensor QT = quantization::quantizeTensor(
+          *T, {newTy->getScale(), newTy->getOffset()}, newK);
+      T->assign(&QT);
+    } else {
+      T->convertToType(newK);
+    }
+  }
+}
+
+/// Helper to get a float copy of a Tensor \p T if needed.
+static Tensor convertToFloatIfNecessary(Tensor &T) {
+  const ElemKind srcK = T.getType().getElementType();
+  if (srcK == ElemKind::FloatTy) {
+    return std::move(T);
+  }
+  if (isQuantizedElemKind(srcK)) {
+    return quantization::dequantizeTensor(T, ElemKind::FloatTy);
+  }
+  return T.getCopyConvertedToType(ElemKind::FloatTy);
+}
+
 void compareAgainstInterpreter(llvm::StringRef backendName,
                                CreateAndInitFunction createAndInitFunction,
                                ElemKind interpElemKind,
@@ -255,21 +289,43 @@ void compareAgainstInterpreter(llvm::StringRef backendName,
   CompilationContext &cctxI = configs.first;
   CompilationContext &cctxB = configs.second;
 
+  // Skip conversion for rowwise quantized tests as they are a special case
+  // which don't fit cleanly here -- e.g. RWQ-SLS has FloatTy outputs.
+  if (!enableRowwiseQuantization) {
+    // We want to compare the ops themselves and not see differences in
+    // conversion, so fold ElemKind conversion nodes into IO.
+    cctxI.optimizationOpts.foldElemKindConversionIntoIO = true;
+    cctxB.optimizationOpts.foldElemKindConversionIntoIO = true;
+  }
+
   // Clone the Function inside itself many times if desired.
   std::unordered_set<Tensor *> resultTensors =
       cloneFunInsideFun(BFT, &bBindings, cctxB, count);
   assert(resultTensors.size() == count &&
          "Should get the same number of Tensors back as count.");
 
+  IEE.compile(cctxI);
   BEE.compile(cctxB);
+
+  // Again skip rowwise quantization as before.
+  if (!enableRowwiseQuantization) {
+    // Now that we have compiled, precision transformation has occurred. Now
+    // convert all mismatches for Placeholders given their original bindings.
+    convertBindingsToCorrectType(
+        iBindings, IEE.getSingleFunctionFromModule()->findPlaceholders());
+    convertBindingsToCorrectType(
+        bBindings, BEE.getSingleFunctionFromModule()->findPlaceholders());
+  }
+
+  IEE.run(iBindings);
   BEE.run(bBindings);
 
-  IEE.compile(cctxI);
-  IEE.run(iBindings);
-
-  // Compare each of our result tensors to the original.
+  // Compare each of our result tensors to the original. Always convert back to
+  // float if necessary, as allowed error is expected to compare float.
+  Tensor finalIT = convertToFloatIfNecessary(*IFT.second);
   for (Tensor *T : resultTensors) {
-    EXPECT_TRUE(IFT.second->isEqual(*T, allowedError));
+    Tensor finalBT = convertToFloatIfNecessary(*T);
+    EXPECT_TRUE(finalIT.isEqual(finalBT, allowedError, /* verbose */ true));
   }
 
   // Additionally check that each of the results from the parallel cloned
