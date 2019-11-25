@@ -92,6 +92,8 @@ Error Partitioner::finalize(const DAGListTy &partitions,
     for (const auto &node : partitions[0].nodes) {
       Function *subF = module_->getFunction(node->name);
       if (!subF) {
+        // If we fail dump partition info for debugging.
+        logPartitionInfo(mapping);
         return MAKE_ERR(ErrorValue::ErrorCode::PARTITIONER_ERROR,
                         "Invalid function name " + node->name);
       }
@@ -284,6 +286,7 @@ Expected<DAGListTy> Partitioner::backendBasedPartition(
       }
     }
     if (nodeToBackendName.find(&N) == nodeToBackendName.end()) {
+      logPartitionInfo(mapping);
       return MAKE_ERR(ErrorValue::ErrorCode::PARTITIONER_ERROR,
                       "Node is not supported by any of the provided backends");
     }
@@ -573,6 +576,7 @@ Expected<DAGListTy> Partitioner::loadBalancedPartition(CompilationContext &cctx,
 
       // Throw error if we were not able to put this node into any partition
       if (curPartition >= numDevices) {
+        logPartitionInfo(partitionMap);
         return MAKE_ERR(ErrorValue::ErrorCode::PARTITIONER_ERROR,
                         "Load balance partition error");
       }
