@@ -2519,3 +2519,53 @@ TEST(onnx, importLess) {
   EXPECT_EQ(CMPLT->getResult().dims()[1], 4);
   EXPECT_EQ(CMPLT->getResult().dims()[2], 1);
 }
+
+TEST(onnx, importDimParamExplicit) {
+  ExecutionEngine EE;
+  auto &mod = EE.getModule();
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/dimParam.onnxtxt");
+  auto *F = mod.createFunction("main");
+  
+  // Import ONNX model with explicit input information.
+  {
+    Tensor inputTensor(ElemKind::FloatTy, {1, 2});
+    ONNXModelLoader onnxLD(netFilename, {"input"}, {&inputTensor.getType()},
+                           *F);
+  }
+
+  // Validate placeholder sizes.
+  Placeholder *inputPH, *outputPH;
+  inputPH = mod.getPlaceholderByName("input");
+  outputPH = mod.getPlaceholderByName("output");
+  EXPECT_TRUE(inputPH);
+  EXPECT_TRUE(outputPH);
+  EXPECT_EQ(inputPH->dims()[0], 1);
+  EXPECT_EQ(inputPH->dims()[1], 2);
+  EXPECT_EQ(outputPH->dims()[0], 1);
+  EXPECT_EQ(outputPH->dims()[1], 2);
+}
+
+TEST(onnx, importDimParamImplicit) {
+  ExecutionEngine EE;
+  auto &mod = EE.getModule();
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/dimParam.onnxtxt");
+  auto *F = mod.createFunction("main");
+
+  // Import ONNX model with implicit input information.
+  {
+    ONNXModelLoader onnxLD(netFilename, {}, {}, *F);
+  }
+
+  // Validate placeholder sizes.
+  Placeholder *inputPH, *outputPH;
+  inputPH = mod.getPlaceholderByName("input");
+  outputPH = mod.getPlaceholderByName("output");
+  EXPECT_TRUE(inputPH);
+  EXPECT_TRUE(outputPH);
+  EXPECT_EQ(inputPH->dims()[0], 1);
+  EXPECT_EQ(inputPH->dims()[1], 2);
+  EXPECT_EQ(outputPH->dims()[0], 1);
+  EXPECT_EQ(outputPH->dims()[1], 2);
+}

@@ -36,14 +36,29 @@ using namespace glow;
 using llvm::cast;
 
 namespace {
+
+/// Get the shape of a TensorShapeProto given by \p shapeProto and return the
+/// dimensions in the vector \p dim passed by reference.
+Error getProtoShape(const ONNX_NAMESPACE::TensorShapeProto &shapeProto,
+                    std::vector<size_t> &dim) {
+  for (auto d : shapeProto.dim()) {
+    // If the proto has a symbolic dimension "dim_param" we will force it to 1.
+    // For now Glow does not support dynamic sizes.
+    if (d.has_dim_value()) {
+      dim.push_back(d.dim_value());
+    } else {
+      dim.push_back(1);
+    }
+  }
+  return Error::success();
+}
+
 /// Creates tensor \p T from the input \p in. Note, there is no data associated
 /// with the Tensor. This method makes sure that the tensor is created with the
 /// proper shape and element type.
 Error setTensorType(const ONNX_NAMESPACE::TypeProto &in, Tensor *T) {
   std::vector<size_t> dim;
-  for (auto d : in.tensor_type().shape().dim()) {
-    dim.push_back(d.dim_value());
-  }
+  RETURN_IF_ERR(getProtoShape(in.tensor_type().shape(), dim));
 
   if (in.tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto::FLOAT) {
     T->reset(ElemKind::FloatTy, dim);
@@ -1754,17 +1769,21 @@ Error ONNXModelLoader::checkInputs(ONNX_NAMESPACE::GraphProto &net,
         continue;
       }
 
+      // Get tensor shape.
       llvm::ArrayRef<size_t> dims = types[i]->dims();
-      const ONNX_NAMESPACE::TensorShapeProto &shape =
-          valueInfo.type().tensor_type().shape();
-      (void)shape;
+
+      // Get proto shape.
+      std::vector<size_t> dimsProto;
+      RETURN_IF_ERR(
+          getProtoShape(valueInfo.type().tensor_type().shape(), dimsProto));
 
       // Check if the number of dimensions is consistent.
-      RETURN_ERR_IF_NOT(dims.size() == (size_t)shape.dim_size(),
+      RETURN_ERR_IF_NOT(dims.size() == dimsProto.size(),
                         "Mismatch between input image and ONNX input shape");
+
       // Allow batch dimensions to be different.
       for (size_t k = 1; k < dims.size(); k++) {
-        RETURN_ERR_IF_NOT(dims[k] == (size_t)shape.dim(k).dim_value(),
+        RETURN_ERR_IF_NOT(dims[k] == dimsProto[k],
                           "Mismatch between input image and ONNX input shape");
       }
     }
