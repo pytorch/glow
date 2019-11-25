@@ -327,6 +327,11 @@ NNPIBackend::createDeviceManager(const runtime::DeviceConfig &deviceConfig) {
 
 Expected<std::unique_ptr<CompiledFunction>>
 NNPIBackend::compile(Function *F, const BackendOptions &opts) const {
+  TraceInfo traceInfo = buildManualTraceInfo(F);
+  if (opts.autoInstrument) {
+    autoInstrument(traceInfo, nullptr);
+  }
+
   if (glow::onnxifi::GlowDumpGraph) {
     std::string fname = "Graph_" + F->getName().str() + ".dot";
     LOG(INFO) << "Dumping net to " << fname;
@@ -338,6 +343,7 @@ NNPIBackend::compile(Function *F, const BackendOptions &opts) const {
   if (compileHasError) {
     return std::move(compileHasError);
   }
+  compiledFunc->setTraceInfo(std::move(traceInfo));
   return Expected<std::unique_ptr<CompiledFunction>>(std::move(compiledFunc));
 }
 

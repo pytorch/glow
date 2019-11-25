@@ -39,7 +39,7 @@ public:
   /// Read to stream (updates read offset).
   size_t write(const char *buffer, size_t size);
   /// Get size of written data.
-  size_t getSize() { return writeOffest_; }
+  size_t getSize() { return writeOffset_; }
   /// Reset read offset (not changing steam data - can re-read).
   void resetRead() { readOffest_ = 0; }
   /// Reset write offset (not deleting allocated memory).
@@ -54,7 +54,7 @@ public:
 
 private:
   uint64_t readOffest_;
-  uint64_t writeOffest_;
+  uint64_t writeOffset_;
   size_t blockSize_;
   std::vector<std::vector<char>> blocks_;
 

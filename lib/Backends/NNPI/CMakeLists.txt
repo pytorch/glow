@@ -32,6 +32,13 @@ else()
     set(NNPI_INF_LIB_SEARCH_PATH "/opt/intel_nnpi/lib/")
 endif()
 
+if (DEFINED NNPI_MG_LIB_DIR)
+    set(NNPI_MG_LIB_SEARCH_PATH ${NNPI_MG_LIB_DIR})
+else()
+    set(NNPI_MG_LIB_SEARCH_PATH "/opt/intel_nnpi/lib/")
+endif()
+
+
 if (DEFINED NNPI_API_DIR)
     set(NNPI_API_SEARCH_PATH ${NNPI_API_DIR})
 else()
@@ -44,6 +51,12 @@ else()
     set(NNPI_INF_API_SEARCH_PATH "/opt/intel_nnpi/include/")
 endif()
 
+if (DEFINED NNPI_MG_API_DIR)
+    set(NNPI_MG_SEARCH_PATH ${NNPI_MG_API_DIR})
+else()
+    set(NNPI_MG_SEARCH_PATH "/opt/intel_nnpi/include/")
+endif()
+
 find_library(NNPI_TRANSFORMER_LIB nnpi_transformer ${NNPI_LIB_SEARCH_PATH})
 if(NOT NNPI_TRANSFORMER_LIB)
   message(FATAL_ERROR "nnpi_transformer library not found at ${NNPI_LIB_SEARCH_PATH}")
@@ -54,14 +67,24 @@ if(NOT NNPI_INFERENCE_LIB)
   message(FATAL_ERROR "nnpi_inference library not found at ${NNPI_INF_LIB_SEARCH_PATH}")
 endif()
 
-find_path(NNPI_TRANSFORMER_API nnpi_transformer.h ${NNPI_API_DIR})
+find_path(NNPI_TRANSFORMER_API nnpi_transformer.h ${NNPI_API_SEARCH_PATH})
 if(NOT NNPI_TRANSFORMER_API)
   message(FATAL_ERROR "nnpi_transformer include files not found at ${NNPI_API_DIR}")
 endif()
 
-find_path(NNPI_INFERENCE_API nnpi_inference.h ${NNPI_INF_API_DIR})
+find_path(NNPI_INFERENCE_API nnpi_inference.h ${NNPI_INF_API_SEARCH_PATH})
 if(NOT NNPI_INFERENCE_API)
   message(FATAL_ERROR "nnpi_inference include files  not found at ${NNPI_INF_LIB_DIR}")
+endif()
+
+find_path(NNPI_MG_API nnpiml.h ${NNPI_MG_SEARCH_PATH})
+if(NOT NNPI_MG_API)
+  message(FATAL_ERROR "nnpiml include files not found at ${NNPI_MG_API_DIR}")
+endif()
+
+find_library(NNPI_MG_LIB nnpiml ${NNPI_MG_LIB_SEARCH_PATH})
+if(NOT NNPI_MG_LIB)
+  message(FATAL_ERROR "nnpiml library not found at ${NNPI_MG_LIB_SEARCH_PATH}")
 endif()
 
 message(STATUS "[NNPI] NNPI_API_DIR                = ${NNPI_API_DIR}")
@@ -69,6 +92,8 @@ message(STATUS "[NNPI] NNPI_LIB_DIR                = ${NNPI_TRANSFORMER_LIB}")
 
 message(STATUS "[NNPI] NNPI_INF_API_DIR            = ${NNPI_INF_API_DIR}")
 message(STATUS "[NNPI] NNPI_INF_LIB_DIR            = ${NNPI_INFERENCE_LIB}")
+message(STATUS "[NNPI] NNPI_MG_API_DIR             = ${NNPI_MG_API}")
+message(STATUS "[NNPI] NNPI_MG_LIB_DIR             = ${NNPI_MG_LIB}")
 message(STATUS "[NNPI] GLOW_BINARY_DIR             = ${GLOW_BINARY_DIR}")
 message(STATUS "[NNPI] NNPI_COLLECT_MEM_USAGE      = ${NNPI_MEM_PROFILING}")
 
@@ -77,6 +102,7 @@ add_subdirectory(ClassGen)
 include_directories(
     ${NNPI_TRANSFORMER_API}
     ${NNPI_INFERENCE_API}
+    ${NNPI_MG_API}
 )
 
 add_library(NNPI
@@ -88,6 +114,8 @@ add_library(NNPI
     NNPIFactory.cpp
     BlockStream.cpp
     NNPIMessageLogger.cpp
+    NNPITracing.cpp
+    NNPIMLTraceWrapper.cpp
 )
 
 target_link_libraries(NNPI
@@ -100,6 +128,7 @@ target_link_libraries(NNPI
                       Support
                       ${NNPI_TRANSFORMER_LIB}
                       ${NNPI_INFERENCE_LIB}
+                      ${NNPI_MG_LIB}
 )
 
 set(linked_backends ${linked_backends} NNPI PARENT_SCOPE)
