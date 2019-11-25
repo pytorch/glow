@@ -43,37 +43,6 @@ using llvm::cast;
 using llvm::dyn_cast;
 using llvm::isa;
 
-enum BundleApiType {
-  /// Dynamic bundle API (default) with the following features:
-  /// - the weights are exported in a binary file which are assumed
-  ///   to be loaded dynamically at run-time.
-  /// - the memory layout information (bundle configuration) is only
-  ///   available at run-time and therefore allows ONLY dynamic memory
-  ///   allocaton.
-  Dynamic,
-  /// Static bundle API with the following features:
-  /// - the weights are exported in a binary file but and also in a
-  ///   text file (C array format) suitable to include at compile-time.
-  /// - the memory layout information (bundle configuration) is available
-  ///   at compile-time through macros printed in the header file and thus
-  ///   allows also static memory allocation.
-  /// - this API is suitable for low end devices with no file system or OS
-  ///   (bare-metal).
-  Static,
-};
-
-namespace {
-llvm::cl::OptionCategory bundleSaverCat("Bundle Options");
-
-llvm::cl::opt<BundleApiType> bundleApi(
-    "bundle-api", llvm::cl::desc("Specify which bundle API to use."),
-    llvm::cl::Optional,
-    llvm::cl::values(clEnumValN(BundleApiType::Dynamic, "dynamic",
-                                "Dynamic API"),
-                     clEnumValN(BundleApiType::Static, "static", "Static API")),
-    llvm::cl::init(BundleApiType::Static), llvm::cl::cat(bundleSaverCat));
-} // namespace
-
 /// Header file string template.
 static const char *headerFileTemplate =
     R"RAW(// Bundle API header file
@@ -190,14 +159,16 @@ static void serializeBinaryToText(llvm::StringRef binFileName,
 }
 
 BundleSaver::BundleSaver(const IRFunction *F, const LLVMBackend &llvmBackend)
-    : irgen_(llvmBackend.createIRGen(F, allocationsInfo_)) {
+    : irgen_(llvmBackend.createIRGen(F, allocationsInfo_)),
+      bundleAPI_(BundleApiType::Static) {
   setIRFunction("", F);
 }
 
 BundleSaver::BundleSaver(const LLVMBackend &llvmBackend,
                          llvm::StringRef outputDir, llvm::StringRef bundleName)
     : irgen_(llvmBackend.createIRGen(nullptr, allocationsInfo_)),
-      outputDir_(outputDir), bundleName_(bundleName) {
+      outputDir_(outputDir), bundleName_(bundleName),
+      bundleAPI_(llvmBackend.getBundleAPI()) {
   llvm::SmallVector<std::string, 8> targetFeatures(llvmTargetFeatures.begin(),
                                                    llvmTargetFeatures.end());
   irgen_->setBundleName(bundleName);
@@ -307,7 +278,7 @@ void BundleSaver::saveHeader(llvm::StringRef headerFileName) {
   auto totMemSize = constMemSize + mutableMemSize + activationsMemSize;
 
   // Format common bundle definitions.
-  auto commonDefines = (bundleApi == BundleApiType::Dynamic)
+  auto commonDefines = (bundleAPI_ == BundleApiType::Dynamic)
                            ? dynamicApiCommonDefines
                            : staticApiCommonDefines;
 
@@ -377,7 +348,7 @@ void BundleSaver::saveHeader(llvm::StringRef headerFileName) {
   modelInfo += "//";
 
   std::string modelApi = "\n";
-  if (bundleApi == BundleApiType::Dynamic) {
+  if (bundleAPI_ == BundleApiType::Dynamic) {
     // Print bundle memory configuration.
     modelApi += strFormat("// Bundle memory configuration (memory layout)\n"
                           "extern BundleConfig %s_config;\n"
@@ -492,7 +463,7 @@ void BundleSaver::produceBundle() {
   irgen_->finishCodeGen();
   setIRFunction("<noname>", nullptr);
   // Emit symbol table and bundle config only for dynamic API
-  if (bundleApi == BundleApiType::Dynamic) {
+  if (bundleAPI_ == BundleApiType::Dynamic) {
     // Emit the symbol table for weight variables.
     emitSymbolTable();
     // Emit the config for the bundle.
@@ -556,7 +527,7 @@ void BundleSaver::produceBundle() {
   // Header file.
   saveHeader(bundleHeaderOutput);
   // Save weights also in text format for Static API.
-  if (bundleApi == BundleApiType::Static) {
+  if (bundleAPI_ == BundleApiType::Static) {
     auto bundleWeightsTxtOut =
         (outputDir_ + "/" + bundleName + ".weights.txt").str();
     serializeBinaryToText(bundleWeightsBinOut, bundleWeightsTxtOut);

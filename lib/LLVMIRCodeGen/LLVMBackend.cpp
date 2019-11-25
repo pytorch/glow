@@ -57,6 +57,7 @@ LLVMBackend::LLVMBackend() {
   codeModel_ = llvmCodeModel;
   bundleCodeModel_ = llvmBundleCodeModel;
   relocModel_ = llvmRelocModel;
+  bundleAPI_ = bundleAPI;
 }
 
 /// Emit the entry point for JIT called "jitmain".

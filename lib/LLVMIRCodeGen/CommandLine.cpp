@@ -88,3 +88,15 @@ llvm::cl::opt<llvm::FloatABI::ABIType>
                               clEnumValN(llvm::FloatABI::Hard, "hard",
                                          "Hard float ABI (hardfp)")),
              llvm::cl::init(llvm::FloatABI::Default));
+
+static llvm::cl::OptionCategory bundleSaverCat("Bundle Options");
+
+llvm::cl::opt<glow::BundleApiType>
+    bundleAPI("bundle-api", llvm::cl::desc("Specify which bundle API to use."),
+              llvm::cl::Optional,
+              llvm::cl::values(clEnumValN(glow::BundleApiType::Dynamic,
+                                          "dynamic", "Dynamic API"),
+                               clEnumValN(glow::BundleApiType::Static, "static",
+                                          "Static API")),
+              llvm::cl::init(glow::BundleApiType::Static),
+              llvm::cl::cat(bundleSaverCat));

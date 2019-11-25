@@ -20,6 +20,7 @@
 #include "glow/Backend/CompiledFunction.h"
 #include "glow/Base/Tensor.h"
 #include "glow/LLVMIRCodeGen/GlowJIT.h"
+#include "glow/LLVMIRCodeGen/LLVMIRGen.h"
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/IR/IRBuilder.h"
@@ -43,6 +44,8 @@ class LLVMBackend : public BackendUsingGlowIR {
   llvm::CodeModel::Model bundleCodeModel_;
   /// Relocation model used by this backend.
   llvm::Reloc::Model relocModel_;
+  /// Bundle API to use.
+  BundleApiType bundleAPI_;
 
 public:
   LLVMBackend();
@@ -70,6 +73,10 @@ public:
   void setBundleCodeModel(llvm::CodeModel::Model codeModel) {
     bundleCodeModel_ = codeModel;
   }
+  /// \returns bundle API used by this backend for bundles.
+  BundleApiType getBundleAPI() const { return bundleAPI_; }
+  /// Sets bundle API used by this backend for bundles.
+  void setBundleAPI(BundleApiType api) { bundleAPI_ = api; }
   /// \returns relocation model used by this backend.
   llvm::Reloc::Model getRelocModel() const { return relocModel_; }
   /// Sets relocation model used by this backend.
