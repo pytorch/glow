@@ -255,6 +255,15 @@ Tensor tensor4BitsFusedRowwiseDequantization(const Tensor &input);
 QuantizationTransform32To8 quantizeScaleOffset32To8(float scale,
                                                     int32_t offset);
 
+/// Function to get the quantized range for a given precision type \p qTy.
+/// \returns the range as a (min, max) pair.
+std::pair<int64_t, int64_t> getQuantizationRange(ElemKind qTy);
+
+/// Function to validate that the given quantization parameters \p qParams
+/// comply with the given quantization \p schema and precision \p qTy.
+void validateQuantizationParams(TensorQuantizationParams qParams, Schema schema,
+                                ElemKind qTy);
+
 /// Calculate TensorQuantizationParams based on the clipped \p min and \p max
 /// floating point range and using the base quantization type \p qTy and the
 /// quantization method described by \p schema.

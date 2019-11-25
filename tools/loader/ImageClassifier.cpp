@@ -252,14 +252,13 @@ buildAndCompileAndGetInAndOutPair(Loader &loader, PlaceholderBindings &bindings,
 
   // Compile the model, and perform quantization/emit a bundle/dump debug info
   // if requested from command line.
-  CompilationContext cctx{&bindings};
+  CompilationContext cctx = loader.getCompilationContext();
+  cctx.bindings = &bindings;
   cctx.backendOpts.autoInstrument = autoInstrument;
   loader.compile(cctx);
 
-  // The image name that the model expects must be passed on the command line.
-  const char *inputName = modelInputName.c_str();
-  Placeholder *inputImagePH =
-      llvm::cast<Placeholder>(EXIT_ON_ERR(LD->getNodeValueByName(inputName)));
+  // Get the input image placeholder.
+  Placeholder *inputImagePH = EXIT_ON_ERR(LD->getSingleInput());
 
   // When profiling the graph do not return the output placeholder. This allows
   // profiling SSD models which have two output placeholders (scores and boxes).

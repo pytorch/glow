@@ -16,51 +16,27 @@
 
 #include "Loader.h"
 
-#include "glow/Importer/Caffe2ModelLoader.h"
-#include "glow/Importer/ONNXModelLoader.h"
-
 using namespace glow;
 
 int main(int argc, char **argv) {
 
-  // Verify/initialize command line parameters, and then loader initializes
-  // the ExecutionEngine and Function.
+  // Parse command line parameters. All the options will be available as part of
+  // the loader object.
   parseCommandLine(argc, argv);
 
-  // Initialize loader.
+  // Initialize the loader object.
   Loader loader;
 
   // Emit bundle flag should be true.
   CHECK(emittingBundle())
       << "Bundle output directory not provided. Use the -emit-bundle option!";
 
-  // Create the model based on the input model format.
-  std::unique_ptr<ProtobufLoader> LD;
-  if (!loader.getCaffe2NetDescFilename().empty()) {
-    // For Caffe2 format the input placeholder names/types must be provided
-    // explicitly. Get model input names and types.
-    std::vector<std::string> inputNames;
-    std::vector<Type> inputTypes;
-    Loader::getModelInputs(inputNames, inputTypes);
-    std::vector<const char *> inputNameRefs;
-    std::vector<TypeRef> inputTypeRefs;
-    for (size_t idx = 0, e = inputNames.size(); idx < e; idx++) {
-      inputNameRefs.push_back(inputNames[idx].c_str());
-      inputTypeRefs.push_back(&inputTypes[idx]);
-    }
-    LD.reset(new Caffe2ModelLoader(
-        loader.getCaffe2NetDescFilename(), loader.getCaffe2NetWeightFilename(),
-        inputNameRefs, inputTypeRefs, *loader.getFunction()));
-  } else {
-    // For ONNX format the input placeholders names/types are
-    // derived automatically.
-    LD.reset(new ONNXModelLoader(loader.getOnnxModelFilename(), {}, {},
-                                 *loader.getFunction()));
-  }
+  // Load the model.
+  loader.loadModel();
 
-  // Compile the model and generate the bundle.
-  CompilationContext ctx;
-  loader.compile(ctx);
+  // Compile the model with default options.
+  CompilationContext cctx = loader.getCompilationContext();
+  loader.compile(cctx);
 
   return 0;
 }
