@@ -2526,7 +2526,7 @@ TEST(onnx, importDimParamExplicit) {
   std::string netFilename(GLOW_DATA_PATH
                           "tests/models/onnxModels/dimParam.onnxtxt");
   auto *F = mod.createFunction("main");
-  
+
   // Import ONNX model with explicit input information.
   {
     Tensor inputTensor(ElemKind::FloatTy, {1, 2});
@@ -2554,9 +2554,7 @@ TEST(onnx, importDimParamImplicit) {
   auto *F = mod.createFunction("main");
 
   // Import ONNX model with implicit input information.
-  {
-    ONNXModelLoader onnxLD(netFilename, {}, {}, *F);
-  }
+  { ONNXModelLoader onnxLD(netFilename, {}, {}, *F); }
 
   // Validate placeholder sizes.
   Placeholder *inputPH, *outputPH;
