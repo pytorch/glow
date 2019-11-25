@@ -318,6 +318,8 @@ void validateQuantizationParams(TensorQuantizationParams qParams, Schema schema,
   int64_t qmax = minMaxPair.second;
 
   // Validate params.
+  (void)(qmin);
+  (void)(qmax);
   assert((qmin <= qParams.offset) && (qParams.offset <= qmax) &&
          "The offset must be within the quantized range");
   if (schema == quantization::Schema::Symmetric) {
