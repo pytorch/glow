@@ -2516,6 +2516,27 @@ TEST_F(GraphOptz, eliminateNoopTile) {
   checkNumericalEquivalence();
 }
 
+/// Check that noop SliceNodes are correctly eliminated.
+TEST_F(GraphOptz, eliminateNoopSlice) {
+  Placeholder *input = mod_.createPlaceholder(
+      ElemKind::Int8QTy, {2, 32}, 0.004, 0, "input", /* isTrainable */ false);
+  auto *slice = F_->createSlice("tile", input, {0, 0}, {2, 32});
+  F_->createSave("save", slice);
+
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::SliceNodeKind), 1);
+
+  optimizedF_ = optimizeFunction(F_);
+
+  // Check that the Slice node is eliminated.
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::SliceNodeKind), 0);
+
+  bindings_.allocate(mod_.getPlaceholders());
+  bindings_.get(input)->getHandle<int8_t>().randomize(-1.0, 1.0,
+                                                      mod_.getPRNG());
+
+  checkNumericalEquivalence();
+}
+
 // Check that we are able to replace
 // Add(I, tile(B)) with -> BatchedAdd(I, B).
 TEST_F(GraphOptz, FoldTileAddIntoBatchedAdd) {
