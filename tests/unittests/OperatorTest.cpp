@@ -9707,9 +9707,8 @@ static void testDotProduct1D(glow::PlaceholderBindings &bindings,
   YH.randomize(-10.0, 10.0, mod.getPRNG());
 
   // Compute expected output.
-  auto *expected = createPlaceholderConditionallyQuantized(
-      mod, DTy, {kDataSize}, "expected", false, "N");
-  auto expectedH = bindings.allocate(expected)->getHandle<DataType>();
+  auto expected = createTensorConditionallyQuantized(DTy, {kDataSize});
+  auto expectedH = expected.getHandle<DataType>();
 
   for (std::size_t i = 0; i < kDataSize; ++i) {
     expectedH.at({i}) = XH.at({i}) * YH.at({i});
@@ -9832,9 +9831,8 @@ static void testDotProduct2D(glow::PlaceholderBindings &bindings,
   YH.randomize(-3.0, 3.0, mod.getPRNG());
 
   // Compute expected output.
-  auto *expected = createPlaceholderConditionallyQuantized(
-      mod, DTy, {kRows}, "expected", false, "N");
-  auto expectedH = bindings.allocate(expected)->getHandle<DataType>();
+  auto expected = createTensorConditionallyQuantized(DTy, {kRows});
+  auto expectedH = expected.getHandle<DataType>();
 
   for (std::size_t i = 0; i < kRows; ++i) {
     DataType dotProduct = 0.0f;
