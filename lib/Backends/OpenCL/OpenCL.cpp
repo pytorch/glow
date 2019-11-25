@@ -579,6 +579,13 @@ static void topK(Tensor &outW, Tensor &indW, Tensor &inW, size_t k) {
   }
 }
 
+static ShapeNHWC shapeFromDims(llvm::ArrayRef<size_t> arr) {
+  assert(arr.size() <= 4);
+  llvm::SmallVector<size_t, 4> ones(4, 1);
+  std::copy(arr.begin(), arr.end(), ones.begin());
+  return ShapeNHWC(llvm::ArrayRef<size_t>(ones));
+};
+
 Error OpenCLFunction::execute(ExecutionContext *context) {
   auto clBindings = static_cast<runtime::OpenCLDeviceBindings *>(
       context->getDeviceBindings());
@@ -786,30 +793,11 @@ Error OpenCLFunction::execute(ExecutionContext *context) {
 
       // Currently support tensors up to 4 dimensions.
       // TODO: Handle other dimensions.
-      const size_t numDimensions = ET->getDest()->getType()->dims().size();
-      ShapeNHWC odim = ShapeNHWC::empty();
-      ShapeNHWC idim = ShapeNHWC::empty();
-      ShapeNHWC offset = ShapeNHWC::empty();
+      assert(ET->getDest()->getType()->dims().size() <= 4);
 
-      if (numDimensions == 1) {
-        odim = ShapeNHWC::fromX(ET->getDest()->getType()->dims());
-        idim = ShapeNHWC::fromX(ET->getSrc()->getType()->dims());
-        offset = ShapeNHWC::fromXY(ET->getOffsets());
-      } else if (numDimensions == 2) {
-        odim = ShapeNHWC::fromXY(ET->getDest()->getType()->dims());
-        idim = ShapeNHWC::fromXY(ET->getSrc()->getType()->dims());
-        offset = ShapeNHWC::fromXY(ET->getOffsets());
-      } else if (numDimensions == 3) {
-        odim = ShapeNHWC::fromXYZ(ET->getDest()->getType()->dims());
-        idim = ShapeNHWC::fromXYZ(ET->getSrc()->getType()->dims());
-        offset = ShapeNHWC::fromXYZ(ET->getOffsets());
-      } else if (numDimensions == 4) {
-        odim = ShapeNHWC(ET->getDest()->getType()->dims());
-        idim = ShapeNHWC(ET->getSrc()->getType()->dims());
-        offset = ShapeNHWC(ET->getOffsets());
-      } else {
-        llvm_unreachable("Unsupported tensor dimension");
-      }
+      ShapeNHWC odim = shapeFromDims(ET->getDest()->getType()->dims());
+      ShapeNHWC idim = shapeFromDims(ET->getSrc()->getType()->dims());
+      ShapeNHWC offset = shapeFromDims(ET->getOffsets());
 
       setKernelArg(kernel, numArgs + 1, odim);
       setKernelArg(kernel, numArgs + 2, idim);
@@ -826,29 +814,11 @@ Error OpenCLFunction::execute(ExecutionContext *context) {
 
       // Currently support tensors of up to 4 dimensions.
       // TODO: Handle other dimensions.
-      const size_t numDimensions = IT->getDest()->getType()->dims().size();
-      ShapeNHWC odim = ShapeNHWC::empty();
-      ShapeNHWC idim = ShapeNHWC::empty();
-      ShapeNHWC offset = ShapeNHWC::empty();
-      if (numDimensions == 1) {
-        odim = ShapeNHWC::fromX(IT->getDest()->getType()->dims());
-        idim = ShapeNHWC::fromX(IT->getSrc()->getType()->dims());
-        offset = ShapeNHWC::fromX(IT->getOffsets());
-      } else if (numDimensions == 2) {
-        odim = ShapeNHWC::fromXY(IT->getDest()->getType()->dims());
-        idim = ShapeNHWC::fromXY(IT->getSrc()->getType()->dims());
-        offset = ShapeNHWC::fromXY(IT->getOffsets());
-      } else if (numDimensions == 3) {
-        odim = ShapeNHWC::fromXYZ(IT->getDest()->getType()->dims());
-        idim = ShapeNHWC::fromXYZ(IT->getSrc()->getType()->dims());
-        offset = ShapeNHWC::fromXYZ(IT->getOffsets());
-      } else if (numDimensions == 4) {
-        odim = ShapeNHWC(IT->getDest()->getType()->dims());
-        idim = ShapeNHWC(IT->getSrc()->getType()->dims());
-        offset = ShapeNHWC(IT->getOffsets());
-      } else {
-        llvm_unreachable("Unsupported tensor dimension");
-      }
+      assert(IT->getDest()->getType()->dims().size() <= 4);
+
+      ShapeNHWC odim = shapeFromDims(IT->getDest()->getType()->dims());
+      ShapeNHWC idim = shapeFromDims(IT->getSrc()->getType()->dims());
+      ShapeNHWC offset = shapeFromDims(IT->getOffsets());
 
       setKernelArg(kernel, numArgs + 1, odim);
       setKernelArg(kernel, numArgs + 2, idim);
@@ -861,8 +831,9 @@ Error OpenCLFunction::execute(ExecutionContext *context) {
     }
 
     if (auto *BMM = dyn_cast<MatMulInst>(&I)) {
-// Size of the tile to be used for matrix multiplication.
-#define TILE_DIM ((size_t)8)
+      // Size of the tile to be used for matrix multiplication.
+      constexpr size_t TILE_DIM = 8;
+
       // Determine max work groups sizes.
       size_t WIS[3];
       cl_int err = clGetDeviceInfo(deviceId, CL_DEVICE_MAX_WORK_ITEM_SIZES,
@@ -878,9 +849,9 @@ Error OpenCLFunction::execute(ExecutionContext *context) {
       setKernelArg(kernel, 0, deviceBuffer);
       auto numArgs = setKernelArgsForBuffers(kernel, I, 1, runtimeBundle_);
 
-      auto ddim = ShapeNHWC::fromXY(BMM->getDest()->getType()->dims());
-      auto ldim = ShapeNHWC::fromXY(BMM->getLHS()->getType()->dims());
-      auto rdim = ShapeNHWC::fromXY(BMM->getRHS()->getType()->dims());
+      ShapeNHWC ddim = shapeFromDims(BMM->getDest()->getType()->dims());
+      ShapeNHWC ldim = shapeFromDims(BMM->getLHS()->getType()->dims());
+      ShapeNHWC rdim = shapeFromDims(BMM->getRHS()->getType()->dims());
 
       setKernelArg(kernel, numArgs + 1, ddim);
       setKernelArg(kernel, numArgs + 2, ldim);
@@ -908,7 +879,6 @@ Error OpenCLFunction::execute(ExecutionContext *context) {
         enqueueKernel(I.getName(), commands, kernel, deviceId,
                       {ddim.n, ddim.h, ddim.w}, kernelLaunches);
       }
-#undef TILE_DIM
       continue;
     }
 

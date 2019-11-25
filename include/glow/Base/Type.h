@@ -71,25 +71,7 @@ struct ShapeNHWC {
     c = shape[3];
   }
 
-  static ShapeNHWC fromXYZ(llvm::ArrayRef<size_t> shape) {
-    assert(shape.size() == 3 && "Invalid 3d shape");
-    return ShapeNHWC(shape[0], shape[1], shape[2], 1);
-  }
-
-  static ShapeNHWC fromXY(llvm::ArrayRef<size_t> shape) {
-    assert(shape.size() == 2 && "Invalid 2d shape");
-    return ShapeNHWC(shape[0], shape[1], 1, 1);
-  }
-
-  static ShapeNHWC fromX(llvm::ArrayRef<size_t> shape) {
-    assert(shape.size() == 1 && "Invalid 1d shape");
-    return ShapeNHWC(shape[0], 1, 1, 1);
-  }
-
-  static ShapeNHWC empty() { return ShapeNHWC(0, 0, 0, 0); }
-
-  explicit ShapeNHWC(size_t samples, size_t height, size_t width,
-                     size_t channels)
+  ShapeNHWC(size_t samples, size_t height, size_t width, size_t channels)
       : n(samples), h(height), w(width), c(channels) {}
 
   bool equals(const ShapeNHWC &other) const {
@@ -113,10 +95,8 @@ struct ShapeNHWDC {
     c = shape[4];
   }
 
-  static ShapeNHWDC empty() { return ShapeNHWDC(0, 0, 0, 0, 0); }
-
-  explicit ShapeNHWDC(size_t samples, size_t height, size_t width, size_t depth,
-                      size_t channels)
+  ShapeNHWDC(size_t samples, size_t height, size_t width, size_t depth,
+             size_t channels)
       : n(samples), h(height), w(width), d(depth), c(channels) {}
 
   bool equals(const ShapeNHWDC &other) const {
@@ -139,20 +119,7 @@ struct ShapeNCHW {
     w = shape[3];
   }
 
-  static ShapeNCHW fromXYZ(llvm::ArrayRef<size_t> shape) {
-    assert(shape.size() == 3 && "Invalid 3d shape");
-    return ShapeNCHW(shape[0], 1, shape[1], shape[2]);
-  }
-
-  static ShapeNCHW fromXY(llvm::ArrayRef<size_t> shape) {
-    assert(shape.size() == 2 && "Invalid 2d shape");
-    return ShapeNCHW(shape[0], 1, shape[1], 1);
-  }
-
-  static ShapeNCHW empty() { return ShapeNCHW(0, 0, 0, 0); }
-
-  explicit ShapeNCHW(size_t samples, size_t channels, size_t height,
-                     size_t width)
+  ShapeNCHW(size_t samples, size_t channels, size_t height, size_t width)
       : n(samples), c(channels), h(height), w(width) {}
 
   bool equals(const ShapeNCHW &other) const {
