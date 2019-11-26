@@ -2122,6 +2122,29 @@ bool EliminateNoopTile::run(Function *F, const CompilationContext &cctx) {
   return changed;
 }
 
+/// Eliminate noop Slice(Node) -> Node.
+bool EliminateNoopSlice::run(Function *F, const CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), getName());
+  bool changed = false;
+
+  for (auto &node : F->getNodes()) {
+    SliceNode *sliceNode = dyn_cast<SliceNode>(&node);
+    if (!sliceNode) {
+      continue;
+    }
+
+    // If input and result have different types then this is not a noop.
+    if (sliceNode->getInput().getType() != sliceNode->getResult().getType()) {
+      continue;
+    }
+
+    sliceNode->getResult().replaceAllUsesOfWith(sliceNode->getInput());
+    changed = true;
+  }
+
+  return changed;
+}
+
 /// Optimize reshape nodes.
 bool OptimizeReshape::run(Function *F, const CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), getName());
