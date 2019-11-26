@@ -1284,16 +1284,16 @@ Error ONNXModelLoader::loadLSTM(const ONNX_NAMESPACE::NodeProto &op,
   const std::string &opName = loadOperatorName(op);
 
   // ------------------------- Attributes -------------------------------------
-  // Get activation alpha (Optional)(Default:activation dependent).
+  // Activation alpha not supported (Optional)(Default:activation dependent).
   RETURN_ERR_IF_NOT(!dict.count("activation_alpha"),
                     "ONNX LSTM 'activation_alpha' attribute not supported!");
 
-  // Get activation beta (Optional)(Default:activation dependent).
+  // Activation beta not supported (Optional)(Default:activation dependent).
   RETURN_ERR_IF_NOT(!dict.count("activation_beta"),
                     "ONNX LSTM 'activation_beta' attribute not supported!");
 
   // Get activations as lambdas (Optional)(Default:f=Sigmoid, g=Tanh, h=Tanh).
-  std::vector<std::function<Node *(llvm::StringRef, Node *)>> activationArray{
+  std::array<std::function<Node *(llvm::StringRef, Node *)>, 6> activationArray{
       LSTM_ACTIVATION_LAMBDA_SIGMOID, LSTM_ACTIVATION_LAMBDA_TANH,
       LSTM_ACTIVATION_LAMBDA_TANH,    LSTM_ACTIVATION_LAMBDA_SIGMOID,
       LSTM_ACTIVATION_LAMBDA_TANH,    LSTM_ACTIVATION_LAMBDA_TANH,
@@ -1317,7 +1317,7 @@ Error ONNXModelLoader::loadLSTM(const ONNX_NAMESPACE::NodeProto &op,
     }
   }
 
-  // Get clip (Optional)(Default: 0 for no clipping).
+  // Activation clipping not supported (Optional)(Default: 0 for no clipping).
   RETURN_ERR_IF_NOT(!dict.count("clip"),
                     "ONNX LSTM 'clip' attribute not supported!");
 
@@ -1592,9 +1592,9 @@ Error ONNXModelLoader::loadLSTM(const ONNX_NAMESPACE::NodeProto &op,
           prefix + ".Pf.", P, LSTM_P_SLICE_OFFSET_AND_SIZE(sliceIdx0, 2));
 
       // Repeat P slices to match [batchSize, hiddenSize].
-      Pi = G_.createTile(prefix + ".Pi.repeat", Pi, batchSize, 0, nullptr);
-      Po = G_.createTile(prefix + ".Po.repeat", Po, batchSize, 0, nullptr);
-      Pf = G_.createTile(prefix + ".Pf.repeat", Pf, batchSize, 0, nullptr);
+      Pi = G_.createTile(prefix + ".Pi.repeat", Pi, batchSize, 0);
+      Po = G_.createTile(prefix + ".Po.repeat", Po, batchSize, 0);
+      Pf = G_.createTile(prefix + ".Pf.repeat", Pf, batchSize, 0);
     }
 
     // Create H slice. Use the "initial_h" input state (if provided) else use
@@ -1698,8 +1698,8 @@ Error ONNXModelLoader::loadLSTM(const ONNX_NAMESPACE::NodeProto &op,
   if (forwardEnabled) {
     NodeValue forwardHslice;
     NodeValue forwardCslice;
-    RETURN_IF_ERR(
-        loadLSTMCell(true, forwardYslices, forwardHslice, forwardCslice));
+    RETURN_IF_ERR(loadLSTMCell(/* forward */ true, forwardYslices,
+                               forwardHslice, forwardCslice));
     Hslices.push_back(forwardHslice);
     Cslices.push_back(forwardCslice);
   }
@@ -1709,8 +1709,8 @@ Error ONNXModelLoader::loadLSTM(const ONNX_NAMESPACE::NodeProto &op,
   if (backwardEnabled) {
     NodeValue backwardHslice;
     NodeValue backwardCslice;
-    RETURN_IF_ERR(
-        loadLSTMCell(false, backwardYslices, backwardHslice, backwardCslice));
+    RETURN_IF_ERR(loadLSTMCell(/* forward */ false, backwardYslices,
+                               backwardHslice, backwardCslice));
     Hslices.push_back(backwardHslice);
     Cslices.push_back(backwardCslice);
   }
