@@ -100,6 +100,8 @@ private:
   std::vector<SavedIRFunction> savedIRFunctions_;
   /// Bundle API to use.
   BundleApiType bundleAPI_;
+  /// Bundle API verbose mode.
+  bool bundleAPIVerbose_{false};
   /// Indicates if this bundle was saved already.
   bool isSaved_{false};
 };
