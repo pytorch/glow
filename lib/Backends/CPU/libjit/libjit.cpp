@@ -805,6 +805,21 @@ libjit_space_to_depth_generic(const T *inPtr, T *outPtr, size_t blockSize,
     }
   }
 }
+
+template <typename DstType, typename SrcType>
+static void
+libjit_copy_kernel_with_conversion(DstType *dstPtr, const SrcType *srcPtr,
+                                   const size_t *dims, size_t numDims) {
+  size_t dimSize = 1;
+  for (size_t i = 0; i < numDims; ++i) {
+    dimSize *= dims[i];
+  }
+
+  for (size_t i = 0; i < dimSize; ++i) {
+    dstPtr[i] = DstType(srcPtr[i]);
+  }
+}
+
 /// The dimensions passed in here are pre-expanded in LLVMIRGen with 1s so that
 /// we can iterate over the shape here, regardless of the shape of the tensor.
 template <typename T>
@@ -2058,6 +2073,25 @@ void libjit_write_timestamp(uint64_t *tensor, size_t offset) {
                     std::chrono::steady_clock::now().time_since_epoch())
                     .count();
   memcpy(tensor + offset, &ts, sizeof(uint64_t));
+}
+
+/// Copies a kernel with type conversion
+void libjit_convertTo_f_i32(float *dstPtr, const int32_t *srcPtr,
+                            const size_t *dims, size_t numDims) {
+  libjit_copy_kernel_with_conversion<float, int32_t>(dstPtr, srcPtr, dims,
+                                                     numDims);
+}
+
+void libjit_convertTo_i32_u(int32_t *dstPtr, const int64_t *srcPtr,
+                            const size_t *dims, size_t numDims) {
+  libjit_copy_kernel_with_conversion<int32_t, int64_t>(dstPtr, srcPtr, dims,
+                                                       numDims);
+}
+
+void libjit_convertTo_u_i32(int64_t *dstPtr, const int32_t *srcPtr,
+                            const size_t *dims, size_t numDims) {
+  libjit_copy_kernel_with_conversion<int64_t, int32_t>(dstPtr, srcPtr, dims,
+                                                       numDims);
 }
 
 /// Update min/max values \p compInfo and histogram \p existingHistogram with
