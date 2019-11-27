@@ -37,6 +37,7 @@ class Constant;
 class Instruction;
 class WeightVar;
 class AllocationsInfo;
+class LLVMBackendOptions;
 
 /// Different kinds of memory areas used by the emitted LLVM function.
 /// The order is important. It should match the order of base addresses
@@ -274,13 +275,8 @@ public:
   explicit LLVMIRGen(const IRFunction *M, AllocationsInfo &allocationsInfo,
                      std::string mainEntryName, llvm::StringRef libjitBC);
 
-  /// Init the TargetMachine using a given \p target, \p arch, \p cpu, \p
-  /// targetFeatures and code model.
-  virtual void
-  initTargetMachine(llvm::StringRef target, llvm::StringRef arch,
-                    llvm::StringRef cpu,
-                    const llvm::SmallVectorImpl<std::string> &targetFeatures,
-                    llvm::CodeModel::Model CM, llvm::Reloc::Model relocModel);
+  /// Init the TargetMachine using settings provided by \p llvmBackend.
+  virtual void initTargetMachine(const LLVMBackendOptions &opts);
 
   /// Emit LLVM-IR for the instruction \p I, using the builder \p builder.
   /// Derived classes may want to override this function to implement a

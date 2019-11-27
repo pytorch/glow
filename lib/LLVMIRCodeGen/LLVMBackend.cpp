@@ -49,16 +49,21 @@ void allocateJITMemory(const IRFunction *F, AllocationsInfo &allocationsInfo) {
 
 } // end namespace
 
-LLVMBackend::LLVMBackend() {
+LLVMBackendOptions::LLVMBackendOptions() {
   // Initialize using command-line options by default.
   arch_ = llvmArch;
   target_ = llvmTarget;
   cpu_ = llvmCPU;
+  abi_ = llvmABI;
+  floatABI_ = floatABI;
   codeModel_ = llvmCodeModel;
   bundleCodeModel_ = llvmBundleCodeModel;
   relocModel_ = llvmRelocModel;
   bundleAPI_ = bundleAPI;
+  targetFeatures_.append(llvmTargetFeatures.begin(), llvmTargetFeatures.end());
 }
+
+LLVMBackend::LLVMBackend() {}
 
 /// Emit the entry point for JIT called "jitmain".
 /// Function has the following API:
@@ -113,8 +118,7 @@ LLVMBackend::compileIRWithoutConstants(IRFunction *IR) const {
   std::unique_ptr<LLVMIRGen> irgen = createIRGen(IR, allocationsInfo);
   llvm::SmallVector<std::string, 8> targetFeatures(llvmTargetFeatures.begin(),
                                                    llvmTargetFeatures.end());
-  irgen->initTargetMachine(getTarget(), getArch(), getCPU(), targetFeatures,
-                           getCodeModel(), getRelocModel());
+  irgen->initTargetMachine(getOptions());
   irgen->initCodeGen();
   irgen->setIRFunction(IR);
   // Perform the address assignment for activations and WeightVars.

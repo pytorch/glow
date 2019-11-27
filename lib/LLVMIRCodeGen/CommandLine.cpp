@@ -30,6 +30,9 @@ llvm::cl::opt<std::string>
 llvm::cl::opt<std::string> llvmCPU("mcpu",
                                    llvm::cl::desc("LLVM CPU to be used"));
 
+llvm::cl::opt<std::string> llvmABI("mabi",
+                                   llvm::cl::desc("Machine ABI to be used"));
+
 llvm::cl::opt<llvm::CodeModel::Model> llvmCodeModel(
     "code-model",
     llvm::cl::desc("Specify which code model to use on the target machine"),
