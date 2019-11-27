@@ -158,25 +158,19 @@ static void serializeBinaryToText(llvm::StringRef binFileName,
   fclose(outFile);
 }
 
-BundleSaver::BundleSaver(const IRFunction *F, const LLVMBackend &llvmBackend)
-    : irgen_(llvmBackend.createIRGen(F, allocationsInfo_)),
-      bundleAPI_(BundleApiType::Static) {
-  setIRFunction("", F);
-}
-
 BundleSaver::BundleSaver(const LLVMBackend &llvmBackend,
                          llvm::StringRef outputDir, llvm::StringRef bundleName)
     : irgen_(llvmBackend.createIRGen(nullptr, allocationsInfo_)),
       outputDir_(outputDir), bundleName_(bundleName),
-      bundleAPI_(llvmBackend.getBundleAPI()) {
+      bundleAPI_(llvmBackend.getOptions().getBundleAPI()) {
   llvm::SmallVector<std::string, 8> targetFeatures(llvmTargetFeatures.begin(),
                                                    llvmTargetFeatures.end());
   irgen_->setBundleName(bundleName);
   irgen_->setOutputDir(outputDir);
-  irgen_->initTargetMachine(llvmBackend.getTarget(), llvmBackend.getArch(),
-                            llvmBackend.getCPU(), targetFeatures,
-                            llvmBackend.getBundleCodeModel(),
-                            llvmBackend.getRelocModel());
+  // Use the bundle code model as a code model for the TargetMachine.
+  auto opts = llvmBackend.getOptions();
+  opts.setCodeModel(opts.getBundleCodeModel());
+  irgen_->initTargetMachine(opts);
   irgen_->initCodeGen();
 }
 
@@ -627,32 +621,6 @@ void BundleSaver::performBundleMemoryAllocation() {
   // and to assign new ones.
   allocationsInfo_.allocateWeightVars(F);
   allocationsInfo_.allocateTensorViews(F);
-}
-
-void BundleSaver::save(llvm::StringRef target, llvm::StringRef arch,
-                       llvm::StringRef cpu,
-                       const llvm::SmallVectorImpl<std::string> &targetFeatures,
-                       llvm::StringRef outputDir, llvm::StringRef bundleName,
-                       llvm::StringRef mainEntryName,
-                       llvm::CodeModel::Model codeModel,
-                       llvm::Reloc::Model relocModel) {
-  bundleName_ = bundleName;
-  outputDir_ = outputDir;
-  // Object files generation works properly only in small mode.
-  irgen_->initTargetMachine(target, arch, cpu, targetFeatures, codeModel,
-                            relocModel);
-  irgen_->setOutputDir(outputDir);
-  irgen_->setBundleName(bundleName);
-  irgen_->setMainEntryName(mainEntryName);
-  irgen_->initCodeGen();
-  // Perform the address assignment for activations and WeightVars.
-  performBundleMemoryAllocation();
-  // Emit the code for the body of the entry function.
-  irgen_->performCodeGen();
-  // Create the bundle entry function.
-  emitBundleEntryFunction();
-  // Produce the bundle.
-  produceBundle();
 }
 
 void BundleSaver::save(llvm::StringRef mainEntryName, const IRFunction *F) {

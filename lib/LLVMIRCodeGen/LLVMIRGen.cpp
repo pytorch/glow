@@ -94,31 +94,33 @@ LLVMIRGen::LLVMIRGen(const IRFunction *F, AllocationsInfo &allocationsInfo,
     : F_(F), allocationsInfo_(allocationsInfo), mainEntryName_(mainEntryName),
       libjitBC_(libjitBC) {}
 
-void LLVMIRGen::initTargetMachine(
-    llvm::StringRef target, llvm::StringRef arch, llvm::StringRef cpu,
-    const llvm::SmallVectorImpl<std::string> &targetFeatures,
-    llvm::CodeModel::Model codeModel, llvm::Reloc::Model relocModel) {
+void LLVMIRGen::initTargetMachine(const LLVMBackendOptions &opts) {
   llvm::InitializeAllTargets();
   llvm::InitializeAllTargetMCs();
   llvm::InitializeAllAsmPrinters();
   llvm::InitializeAllAsmParsers();
-  llvm::TargetOptions targetOpts;
-  targetOpts.FloatABIType = floatABI;
 
-  if (target.empty()) {
+  llvm::TargetOptions targetOpts;
+  if (opts.getFloatABI().hasValue()) {
+    targetOpts.FloatABIType = opts.getFloatABI().getValue();
+  }
+  if (!opts.getABIName().empty()) {
+    targetOpts.MCOptions.ABIName = opts.getABIName();
+  }
+  if (opts.getTarget().empty()) {
     TM_.reset(llvm::EngineBuilder()
-                  .setCodeModel(codeModel)
-                  .setRelocationModel(relocModel)
+                  .setCodeModel(opts.getCodeModel())
+                  .setRelocationModel(opts.getRelocModel())
                   .setTargetOptions(targetOpts)
-                  .selectTarget(llvm::Triple(), arch, getHostCpuName(),
-                                getHostMachineAttributes()));
+                  .selectTarget(llvm::Triple(), opts.getArch(),
+                                getHostCpuName(), getHostMachineAttributes()));
   } else {
-    TM_.reset(
-        llvm::EngineBuilder()
-            .setCodeModel(codeModel)
-            .setRelocationModel(relocModel)
-            .setTargetOptions(targetOpts)
-            .selectTarget(llvm::Triple(target), arch, cpu, targetFeatures));
+    TM_.reset(llvm::EngineBuilder()
+                  .setCodeModel(opts.getCodeModel())
+                  .setRelocationModel(opts.getRelocModel())
+                  .setTargetOptions(targetOpts)
+                  .selectTarget(llvm::Triple(opts.getTarget()), opts.getArch(),
+                                opts.getCPU(), opts.getTargetFeatures()));
   }
   assert(TM_ && "Could not initialize the target machine");
 }
