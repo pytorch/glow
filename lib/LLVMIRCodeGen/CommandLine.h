@@ -37,6 +37,9 @@ extern llvm::cl::opt<std::string> llvmArch;
 /// CPU to be used by the LLVMBackend. Used as -mcpu=cpuA.
 extern llvm::cl::opt<std::string> llvmCPU;
 
+/// ABI to be used by the LLVMBackend. Used as -mabi=abi.
+extern llvm::cl::opt<std::string> llvmABI;
+
 /// Code model to be used by the LLVMBackend.
 extern llvm::cl::opt<llvm::CodeModel::Model> llvmCodeModel;
 
