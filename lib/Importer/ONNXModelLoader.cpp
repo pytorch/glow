@@ -39,8 +39,9 @@ namespace {
 
 /// Get the shape of a TensorShapeProto given by \p shapeProto and return the
 /// dimensions in the vector \p dim passed by reference.
-Error getProtoShape(const ONNX_NAMESPACE::TensorShapeProto &shapeProto,
-                    std::vector<size_t> &dim) {
+Expected<std::vector<size_t>>
+getProtoShape(const ONNX_NAMESPACE::TensorShapeProto &shapeProto) {
+  std::vector<size_t> dim;
   for (auto d : shapeProto.dim()) {
     // If the proto has a symbolic dimension "dim_param" we will force it to 1.
     // For now Glow does not support dynamic sizes.
@@ -50,7 +51,7 @@ Error getProtoShape(const ONNX_NAMESPACE::TensorShapeProto &shapeProto,
       dim.push_back(1);
     }
   }
-  return Error::success();
+  return dim;
 }
 
 /// Creates tensor \p T from the input \p in. Note, there is no data associated
@@ -58,7 +59,7 @@ Error getProtoShape(const ONNX_NAMESPACE::TensorShapeProto &shapeProto,
 /// proper shape and element type.
 Error setTensorType(const ONNX_NAMESPACE::TypeProto &in, Tensor *T) {
   std::vector<size_t> dim;
-  RETURN_IF_ERR(getProtoShape(in.tensor_type().shape(), dim));
+  ASSIGN_VALUE_OR_RETURN_ERR(dim, getProtoShape(in.tensor_type().shape()));
 
   if (in.tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto::FLOAT) {
     T->reset(ElemKind::FloatTy, dim);
@@ -1774,8 +1775,8 @@ Error ONNXModelLoader::checkInputs(ONNX_NAMESPACE::GraphProto &net,
 
       // Get proto shape.
       std::vector<size_t> dimsProto;
-      RETURN_IF_ERR(
-          getProtoShape(valueInfo.type().tensor_type().shape(), dimsProto));
+      ASSIGN_VALUE_OR_RETURN_ERR(
+          dimsProto, getProtoShape(valueInfo.type().tensor_type().shape()));
 
       // Check if the number of dimensions is consistent.
       RETURN_ERR_IF_NOT(dims.size() == dimsProto.size(),
