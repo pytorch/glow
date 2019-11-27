@@ -1236,54 +1236,31 @@ Error ONNXModelLoader::loadWhere(const ONNX_NAMESPACE::NodeProto &op,
 // - Activation clipping not supported.
 // - Variable sequence length not supported.
 // - Coupling of input and forget gate not supported.
-// - Weights W, R and B are assumed constant.
-
-#define LSTM_ACTIVATION_LAMBDA_RELU                                            \
-  [this](llvm::StringRef name, Node *input) {                                  \
-    return G_.createRELU(name, input);                                         \
-  }
-
-#define LSTM_ACTIVATION_LAMBDA_TANH                                            \
-  [this](llvm::StringRef name, Node *input) {                                  \
-    return G_.createTanh(name, input);                                         \
-  }
-
-#define LSTM_ACTIVATION_LAMBDA_SIGMOID                                         \
-  [this](llvm::StringRef name, Node *input) {                                  \
-    return G_.createSigmoid(name, input);                                      \
-  }
-
-#define LSTM_X_SLICE_RANGE(idx)                                                \
-  {idx + 0, 0, 0}, { idx + 1, batchSize, inputSize }
-
-#define LSTM_H_SLICE_RANGE(idx)                                                \
-  {idx + 0, 0, 0}, { idx + 1, batchSize, hiddenSize }
-
-#define LSTM_C_SLICE_RANGE(idx)                                                \
-  {idx + 0, 0, 0}, { idx + 1, batchSize, hiddenSize }
-
-#define LSTM_W_SLICE_OFFSET_AND_SIZE(idx0, idx1)                               \
-  {idx0, idx1 * hiddenSize, 0}, { 1, 1 * hiddenSize, inputSize }
-
-#define LSTM_R_SLICE_OFFSET_AND_SIZE(idx0, idx1)                               \
-  {idx0, idx1 * hiddenSize, 0}, { 1, 1 * hiddenSize, hiddenSize }
-
-#define LSTM_B_SLICE_OFFSET_AND_SIZE(idx0, idx1)                               \
-  {idx0, idx1 * hiddenSize}, { 1, 1 * hiddenSize }
-
-#define LSTM_P_SLICE_OFFSET_AND_SIZE(idx0, idx1)                               \
-  {idx0, idx1 * hiddenSize}, { 1, 1 * hiddenSize }
-
-#define LSTM_CREATE_FC(name, LHS, RHS, BIAS)                                   \
-  BIAS ? (Node *)G_.createFullyConnected(name, LHS, RHS, BIAS)                 \
-       : (Node *)G_.createMatMul(name, LHS, RHS)
-
 Error ONNXModelLoader::loadLSTM(const ONNX_NAMESPACE::NodeProto &op,
                                 const ArgumentDictionaryTy &dict) {
 
   const std::string &opName = loadOperatorName(op);
 
   // ------------------------- Attributes -------------------------------------
+  // Get direction (Optional)(Default:forward).
+  Function::LstmDirection direction = Function::LstmDirection::Forward;
+  if (dict.count("direction")) {
+    std::string directionStr;
+    ASSIGN_VALUE_OR_RETURN_ERR(directionStr, loadStr(dict.at("direction")));
+    if (directionStr == "forward") {
+      direction = Function::LstmDirection::Forward;
+    } else if (directionStr == "reverse") {
+      direction = Function::LstmDirection::Reverse;
+    } else if (directionStr == "bidirectional") {
+      direction = Function::LstmDirection::Bidirectional;
+    } else {
+      RETURN_ERR("ONNX LSTM 'direction' attribute is invalid!",
+                 ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_ATTRIBUTE);
+    }
+  }
+  size_t numDirections =
+      (direction == Function::LstmDirection::Bidirectional) ? 2 : 1;
+
   // Activation alpha not supported (Optional)(Default:activation dependent).
   RETURN_ERR_IF_NOT(!dict.count("activation_alpha"),
                     "ONNX LSTM 'activation_alpha' attribute not supported!");
@@ -1293,58 +1270,53 @@ Error ONNXModelLoader::loadLSTM(const ONNX_NAMESPACE::NodeProto &op,
                     "ONNX LSTM 'activation_beta' attribute not supported!");
 
   // Get activations as lambdas (Optional)(Default:f=Sigmoid, g=Tanh, h=Tanh).
-  std::array<std::function<Node *(llvm::StringRef, Node *)>, 6> activationArray{
-      LSTM_ACTIVATION_LAMBDA_SIGMOID, LSTM_ACTIVATION_LAMBDA_TANH,
-      LSTM_ACTIVATION_LAMBDA_TANH,    LSTM_ACTIVATION_LAMBDA_SIGMOID,
-      LSTM_ACTIVATION_LAMBDA_TANH,    LSTM_ACTIVATION_LAMBDA_TANH,
-  };
+#define LSTM_ACTIVATION_LAMBDA_RELU                                            \
+  [this](llvm::StringRef name, Node *input) {                                  \
+    return G_.createRELU(name, input);                                         \
+  }
+#define LSTM_ACTIVATION_LAMBDA_TANH                                            \
+  [this](llvm::StringRef name, Node *input) {                                  \
+    return G_.createTanh(name, input);                                         \
+  }
+#define LSTM_ACTIVATION_LAMBDA_SIGMOID                                         \
+  [this](llvm::StringRef name, Node *input) {                                  \
+    return G_.createSigmoid(name, input);                                      \
+  }
+  std::vector<Function::LstmActivation> activations;
+  if (direction == Function::LstmDirection::Bidirectional) {
+    activations = {
+        LSTM_ACTIVATION_LAMBDA_SIGMOID, LSTM_ACTIVATION_LAMBDA_TANH,
+        LSTM_ACTIVATION_LAMBDA_TANH,    LSTM_ACTIVATION_LAMBDA_SIGMOID,
+        LSTM_ACTIVATION_LAMBDA_TANH,    LSTM_ACTIVATION_LAMBDA_TANH};
+  } else {
+    activations = {LSTM_ACTIVATION_LAMBDA_SIGMOID, LSTM_ACTIVATION_LAMBDA_TANH,
+                   LSTM_ACTIVATION_LAMBDA_TANH};
+  }
   if (dict.count("activations") && dict.at("activations")->strings_size()) {
     size_t actNum = dict.at("activations")->strings_size();
-    RETURN_ERR_IF_NOT(actNum == 3 || actNum == 6,
+    RETURN_ERR_IF_NOT(actNum == numDirections * 3,
                       "ONNX LSTM 'activations' attribute is invalid!");
     for (size_t actIdx = 0; actIdx < actNum; actIdx++) {
       std::string actStr = dict.at("activations")->strings().Get(actIdx);
       if (actStr == "Relu") {
-        activationArray[actIdx] = LSTM_ACTIVATION_LAMBDA_RELU;
+        activations[actIdx] = LSTM_ACTIVATION_LAMBDA_RELU;
       } else if (actStr == "Tanh") {
-        activationArray[actIdx] = LSTM_ACTIVATION_LAMBDA_TANH;
+        activations[actIdx] = LSTM_ACTIVATION_LAMBDA_TANH;
       } else if (actStr == "Sigmoid") {
-        activationArray[actIdx] = LSTM_ACTIVATION_LAMBDA_SIGMOID;
+        activations[actIdx] = LSTM_ACTIVATION_LAMBDA_SIGMOID;
       } else {
         RETURN_ERR("ONNX LSTM activation '" + actStr + "' not supported!",
                    ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_ATTRIBUTE);
       }
     }
   }
+#undef LSTM_ACTIVATION_LAMBDA_RELU
+#undef LSTM_ACTIVATION_LAMBDA_TANH
+#undef LSTM_ACTIVATION_LAMBDA_SIGMOID
 
   // Activation clipping not supported (Optional)(Default: 0 for no clipping).
   RETURN_ERR_IF_NOT(!dict.count("clip"),
                     "ONNX LSTM 'clip' attribute not supported!");
-
-  // LSTM direction local enumeration type.
-  enum LstmDirection {
-    FORWARD,
-    REVERSE,
-    BIDIRECTIONAL,
-  };
-
-  // Get direction (Optional)(Default:forward).
-  LstmDirection direction = LstmDirection::FORWARD;
-  if (dict.count("direction")) {
-    std::string directionStr;
-    ASSIGN_VALUE_OR_RETURN_ERR(directionStr, loadStr(dict.at("direction")));
-    if (directionStr == "forward") {
-      direction = LstmDirection::FORWARD;
-    } else if (directionStr == "reverse") {
-      direction = LstmDirection::REVERSE;
-    } else if (directionStr == "bidirectional") {
-      direction = LstmDirection::BIDIRECTIONAL;
-    } else {
-      RETURN_ERR("ONNX LSTM 'direction' attribute is invalid!",
-                 ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_ATTRIBUTE);
-    }
-  }
-  size_t numDirections = (direction == LstmDirection::BIDIRECTIONAL) ? 2 : 1;
 
   // Get hidden size (Required).
   size_t hiddenSize;
@@ -1368,30 +1340,19 @@ Error ONNXModelLoader::loadLSTM(const ONNX_NAMESPACE::NodeProto &op,
   // Input0: X (Required).
   NodeValue X;
   ASSIGN_VALUE_OR_RETURN_ERR(X, getNodeValueByName(op.input(0)));
-  RETURN_ERR_IF_NOT(X.dims().size() == 3,
-                    "ONNX LSTM input 'X' should have 3 dimensions!");
-  size_t seqLength = X.dims()[0];
-  size_t batchSize = X.dims()[1];
-  size_t inputSize = X.dims()[2];
 
   // Input1: W (Required).
-  Constant *W;
-  RETURN_ERR_IF_NOT(hasConstantByName(op.input(1)),
-                    "ONNX LSTM weight 'W' is expected to be constant!");
-  ASSIGN_VALUE_OR_RETURN_ERR(W, getConstantByName(op.input(1)));
+  NodeValue W;
+  ASSIGN_VALUE_OR_RETURN_ERR(W, getNodeValueByName(op.input(1)));
 
   // Input2: R (Required).
-  Constant *R;
-  RETURN_ERR_IF_NOT(hasConstantByName(op.input(2)),
-                    "ONNX LSTM weight 'R' is expected to be constant!");
-  ASSIGN_VALUE_OR_RETURN_ERR(R, getConstantByName(op.input(2)));
+  NodeValue R;
+  ASSIGN_VALUE_OR_RETURN_ERR(R, getNodeValueByName(op.input(2)));
 
   // Input3: B (Optional).
-  Constant *B = nullptr;
+  NodeValue B = nullptr;
   if (numInputs > 3 && !op.input(3).empty()) {
-    RETURN_ERR_IF_NOT(hasConstantByName(op.input(3)),
-                      "ONNX LSTM weight 'B' is expected to be constant!");
-    ASSIGN_VALUE_OR_RETURN_ERR(B, getConstantByName(op.input(3)));
+    ASSIGN_VALUE_OR_RETURN_ERR(B, getNodeValueByName(op.input(3)));
   }
 
   // Input4: sequence_lens (Optional).
@@ -1404,30 +1365,18 @@ Error ONNXModelLoader::loadLSTM(const ONNX_NAMESPACE::NodeProto &op,
   NodeValue initial_h = nullptr;
   if (numInputs > 5 && !op.input(5).empty()) {
     ASSIGN_VALUE_OR_RETURN_ERR(initial_h, getNodeValueByName(op.input(5)));
-    RETURN_ERR_IF_NOT(initial_h.dims().size() == 3 &&
-                          initial_h.dims()[0] == numDirections &&
-                          initial_h.dims()[1] == batchSize &&
-                          initial_h.dims()[2] == hiddenSize,
-                      "ONNX LSTM 'initial_h' tensor size invalid!");
   }
 
   // Input6: initial_c (Optional).
   NodeValue initial_c = nullptr;
   if (numInputs > 6 && !op.input(6).empty()) {
     ASSIGN_VALUE_OR_RETURN_ERR(initial_c, getNodeValueByName(op.input(6)));
-    RETURN_ERR_IF_NOT(initial_c.dims().size() == 3 &&
-                          initial_c.dims()[0] == numDirections &&
-                          initial_c.dims()[1] == batchSize &&
-                          initial_c.dims()[2] == hiddenSize,
-                      "ONNX LSTM 'initial_c' tensor size invalid!");
   }
 
   // Input7: P (Optional).
-  Constant *P = nullptr;
+  NodeValue P = nullptr;
   if (numInputs > 7 && !op.input(7).empty()) {
-    RETURN_ERR_IF_NOT(hasConstantByName(op.input(7)),
-                      "ONNX LSTM weight 'P' is expected to be constant!");
-    ASSIGN_VALUE_OR_RETURN_ERR(P, getConstantByName(op.input(7)));
+    ASSIGN_VALUE_OR_RETURN_ERR(P, getNodeValueByName(op.input(7)));
   }
 
   // -------------------------- Outputs ---------------------------------------
@@ -1440,10 +1389,14 @@ Error ONNXModelLoader::loadLSTM(const ONNX_NAMESPACE::NodeProto &op,
   //   to have it defined with only 1 time step and have the loop in the top
   //   of the application while the LSTM state will be automatically updated
   //   from one iteration (time step) to the next through the placeholders.
-
   const int numOutputs = op.output_size();
   RETURN_ERR_IF_NOT(1 <= numOutputs,
                     "ONNX LSTM should have minimum 1 output defined!");
+
+  // Derived parameters.
+  RETURN_ERR_IF_NOT(X.dims().size() == 3,
+                    "ONNX LSTM input 'X' should have 3 dimensions!");
+  size_t batchSize = X.dims()[1];
 
   // Create Y_h (hidden state) output placeholder.
   Placeholder *Y_h_ph;
@@ -1463,287 +1416,15 @@ Error ONNXModelLoader::loadLSTM(const ONNX_NAMESPACE::NodeProto &op,
                              createAndRegisterPlaceholder(Cname, Ctype));
   inputVarsByName_.try_emplace(Cname, Y_c_ph);
 
-  // Create X slices.
-  std::vector<Node *> Xslices;
-  if (seqLength == 1) {
-    // Do not insert a Slice operator for only one slice.
-    auto XreshapeName = opName + ".X.reshape";
-    Node *Xt = G_.createReshape(XreshapeName, X, {batchSize, inputSize});
-    Xslices.push_back(Xt);
-  } else {
-    for (size_t t = 0; t < seqLength; t++) {
-      auto XsliceName = opName + ".X" + std::to_string(t) + ".slice";
-      Node *Xt = G_.createSlice(XsliceName, X, LSTM_X_SLICE_RANGE(t));
-      auto XreshapeName = opName + ".X" + std::to_string(t) + ".reshape";
-      Xt = G_.createReshape(XreshapeName, Xt, {batchSize, inputSize});
-      Xslices.push_back(Xt);
-    }
-  }
+  // If LSTM input states are explicitly provided then used them. If not, then
+  // use the LSTM state placeholders.
+  NodeValue Y_h_init = initial_h.getNode() ? initial_h : Y_h_ph;
+  NodeValue Y_c_init = initial_c.getNode() ? initial_c : Y_c_ph;
 
-  // Lambda to load forward/backward LSTM cell.
-  auto loadLSTMCell = [&](bool forward, std::vector<NodeValue> &Yslices,
-                          NodeValue &Hslice, NodeValue &Cslice) -> Error {
-    // Name prefix.
-    std::string dirLabel = forward ? ".fw" : ".bw";
-    std::string prefix = opName + ((numDirections > 1) ? dirLabel : "");
-
-    // Slice index used for creating constant weights slices.
-    size_t sliceIdx0 = 0;
-    if (direction == LstmDirection::BIDIRECTIONAL) {
-      sliceIdx0 = forward ? 0 : 1;
-    }
-
-    // Activations.
-    auto activationF = forward ? activationArray[0] : activationArray[3];
-    auto activationG = forward ? activationArray[1] : activationArray[4];
-    auto activationH = forward ? activationArray[2] : activationArray[5];
-
-    // Create W constant slices (Required).
-    NodeValue Wi = G_.getParent()->createConstantSlice(
-        prefix + ".Wi.", W, LSTM_W_SLICE_OFFSET_AND_SIZE(sliceIdx0, 0));
-    NodeValue Wo = G_.getParent()->createConstantSlice(
-        prefix + ".Wo.", W, LSTM_W_SLICE_OFFSET_AND_SIZE(sliceIdx0, 1));
-    NodeValue Wf = G_.getParent()->createConstantSlice(
-        prefix + ".Wf.", W, LSTM_W_SLICE_OFFSET_AND_SIZE(sliceIdx0, 2));
-    NodeValue Wc = G_.getParent()->createConstantSlice(
-        prefix + ".Wc.", W, LSTM_W_SLICE_OFFSET_AND_SIZE(sliceIdx0, 3));
-
-    Wi = G_.createReshape(prefix + ".Wi.reshape", Wi, {hiddenSize, inputSize});
-    Wo = G_.createReshape(prefix + ".Wo.reshape", Wo, {hiddenSize, inputSize});
-    Wf = G_.createReshape(prefix + ".Wf.reshape", Wf, {hiddenSize, inputSize});
-    Wc = G_.createReshape(prefix + ".Wc.reshape", Wc, {hiddenSize, inputSize});
-
-    Wi = G_.createTranspose(prefix + ".Wi.transp", Wi, {1, 0});
-    Wo = G_.createTranspose(prefix + ".Wo.transp", Wo, {1, 0});
-    Wf = G_.createTranspose(prefix + ".Wf.transp", Wf, {1, 0});
-    Wc = G_.createTranspose(prefix + ".Wc.transp", Wc, {1, 0});
-
-    // Create R constant slices (Required).
-    NodeValue Ri = G_.getParent()->createConstantSlice(
-        prefix + ".Ri.", R, LSTM_R_SLICE_OFFSET_AND_SIZE(sliceIdx0, 0));
-    NodeValue Ro = G_.getParent()->createConstantSlice(
-        prefix + ".Ro.", R, LSTM_R_SLICE_OFFSET_AND_SIZE(sliceIdx0, 1));
-    NodeValue Rf = G_.getParent()->createConstantSlice(
-        prefix + ".Rf.", R, LSTM_R_SLICE_OFFSET_AND_SIZE(sliceIdx0, 2));
-    NodeValue Rc = G_.getParent()->createConstantSlice(
-        prefix + ".Rc.", R, LSTM_R_SLICE_OFFSET_AND_SIZE(sliceIdx0, 3));
-
-    Ri = G_.createReshape(prefix + ".Ri.reshape", Ri, {hiddenSize, hiddenSize});
-    Ro = G_.createReshape(prefix + ".Ro.reshape", Ro, {hiddenSize, hiddenSize});
-    Rf = G_.createReshape(prefix + ".Rf.reshape", Rf, {hiddenSize, hiddenSize});
-    Rc = G_.createReshape(prefix + ".Rc.reshape", Rc, {hiddenSize, hiddenSize});
-
-    Ri = G_.createTranspose(prefix + ".Ri.transp", Ri, {1, 0});
-    Ro = G_.createTranspose(prefix + ".Ro.transp", Ro, {1, 0});
-    Rf = G_.createTranspose(prefix + ".Rf.transp", Rf, {1, 0});
-    Rc = G_.createTranspose(prefix + ".Rc.transp", Rc, {1, 0});
-
-    // Create B constant slices (optional).
-    NodeValue bWi = nullptr;
-    NodeValue bWo = nullptr;
-    NodeValue bWf = nullptr;
-    NodeValue bWc = nullptr;
-    NodeValue bRi = nullptr;
-    NodeValue bRo = nullptr;
-    NodeValue bRf = nullptr;
-    NodeValue bRc = nullptr;
-
-    if (B) {
-
-      bWi = G_.getParent()->createConstantSlice(
-          prefix + ".bWi.", B, LSTM_B_SLICE_OFFSET_AND_SIZE(sliceIdx0, 0));
-      bWo = G_.getParent()->createConstantSlice(
-          prefix + ".bWo.", B, LSTM_B_SLICE_OFFSET_AND_SIZE(sliceIdx0, 1));
-      bWf = G_.getParent()->createConstantSlice(
-          prefix + ".bWf.", B, LSTM_B_SLICE_OFFSET_AND_SIZE(sliceIdx0, 2));
-      bWc = G_.getParent()->createConstantSlice(
-          prefix + ".bWc.", B, LSTM_B_SLICE_OFFSET_AND_SIZE(sliceIdx0, 3));
-      bRi = G_.getParent()->createConstantSlice(
-          prefix + ".bRi.", B, LSTM_B_SLICE_OFFSET_AND_SIZE(sliceIdx0, 4));
-      bRo = G_.getParent()->createConstantSlice(
-          prefix + ".bRo.", B, LSTM_B_SLICE_OFFSET_AND_SIZE(sliceIdx0, 5));
-      bRf = G_.getParent()->createConstantSlice(
-          prefix + ".bRf.", B, LSTM_B_SLICE_OFFSET_AND_SIZE(sliceIdx0, 6));
-      bRc = G_.getParent()->createConstantSlice(
-          prefix + ".bRc.", B, LSTM_B_SLICE_OFFSET_AND_SIZE(sliceIdx0, 7));
-
-      bWi = G_.createReshape(prefix + ".bWi.reshape", bWi, {hiddenSize});
-      bWo = G_.createReshape(prefix + ".bWo.reshape", bWo, {hiddenSize});
-      bWf = G_.createReshape(prefix + ".bWf.reshape", bWf, {hiddenSize});
-      bWc = G_.createReshape(prefix + ".bWc.reshape", bWc, {hiddenSize});
-      bRi = G_.createReshape(prefix + ".bRi.reshape", bRi, {hiddenSize});
-      bRo = G_.createReshape(prefix + ".bRo.reshape", bRo, {hiddenSize});
-      bRf = G_.createReshape(prefix + ".bRf.reshape", bRf, {hiddenSize});
-      bRc = G_.createReshape(prefix + ".bRc.reshape", bRc, {hiddenSize});
-    }
-
-    // Create P constant slices (optional).
-    NodeValue Pi = nullptr;
-    NodeValue Po = nullptr;
-    NodeValue Pf = nullptr;
-
-    if (P) {
-
-      Pi = G_.getParent()->createConstantSlice(
-          prefix + ".Pi.", P, LSTM_P_SLICE_OFFSET_AND_SIZE(sliceIdx0, 0));
-      Po = G_.getParent()->createConstantSlice(
-          prefix + ".Po.", P, LSTM_P_SLICE_OFFSET_AND_SIZE(sliceIdx0, 1));
-      Pf = G_.getParent()->createConstantSlice(
-          prefix + ".Pf.", P, LSTM_P_SLICE_OFFSET_AND_SIZE(sliceIdx0, 2));
-
-      // Repeat P slices to match [batchSize, hiddenSize].
-      Pi = G_.createTile(prefix + ".Pi.repeat", Pi, batchSize, 0);
-      Po = G_.createTile(prefix + ".Po.repeat", Po, batchSize, 0);
-      Pf = G_.createTile(prefix + ".Pf.repeat", Pf, batchSize, 0);
-    }
-
-    // Create H slice. Use the "initial_h" input state (if provided) else use
-    // the "Y_h_ph" placeholder (used both as input and output state).
-    Node *Hinit = initial_h.getNode() ? initial_h.getNode() : Y_h_ph;
-    if (numDirections > 1) {
-      Hinit = G_.createSlice(prefix + ".H.slice", Hinit,
-                             LSTM_H_SLICE_RANGE(sliceIdx0));
-    }
-    Hinit =
-        G_.createReshape(prefix + ".H.reshape", Hinit, {batchSize, hiddenSize});
-
-    // Create C slice. Use the "initial_c" input state (if provided) else use
-    // the "Y_c_ph" placeholder (used both as input and output state).
-    Node *Cinit = initial_c.getNode() ? initial_c.getNode() : Y_c_ph;
-    if (numDirections > 1) {
-      Cinit = G_.createSlice(prefix + ".C.slice", Cinit,
-                             LSTM_C_SLICE_RANGE(sliceIdx0));
-    }
-    Cinit =
-        G_.createReshape(prefix + ".C.reshape", Cinit, {batchSize, hiddenSize});
-
-    // Initialize.
-    Node *Ht = Hinit;
-    Node *Ct = Cinit;
-
-    // Unroll LSTM cell for all time steps.
-    for (size_t t = 0; t < seqLength; t++) {
-
-      // Input for current time step.
-      // For the reverse LSTM cell the inputs are provided in reverse order.
-      Node *Xt = forward ? Xslices[t] : Xslices[seqLength - 1 - t];
-
-      // Forget gate: ft = f(Wf * Xt + bWf + Rf * Ht-1 + bRf + Pf . Ct-1).
-      Node *ft = G_.createAdd(prefix + ".F.add1",
-                              LSTM_CREATE_FC(prefix + ".F.fc1", Xt, Wf, bWf),
-                              LSTM_CREATE_FC(prefix + ".F.fc2", Ht, Rf, bRf));
-      if (Pf) {
-        ft = G_.createAdd(prefix + ".F.add2", ft,
-                          G_.createMul(prefix + ".F.mult", Pf, Ct));
-      }
-      ft = activationF(prefix + ".F.act", ft);
-
-      // Cell state candidate: ctild = g(Wc * Xt + bWc + Rc * Ht-1 + bRc).
-      Node *ctild =
-          G_.createAdd(prefix + ".ctild.add1",
-                       LSTM_CREATE_FC(prefix + ".ctild.fc1", Xt, Wc, bWc),
-                       LSTM_CREATE_FC(prefix + ".ctild.fc2", Ht, Rc, bRc));
-      ctild = activationG(prefix + ".ctild.act", ctild);
-
-      // Input gate: it = f(Wi * Xt + bWi + Ri * Ht-1 + bRi + Pi . Ct-1).
-      Node *it = G_.createAdd(prefix + ".I.add1",
-                              LSTM_CREATE_FC(prefix + ".I.fc1", Xt, Wi, bWi),
-                              LSTM_CREATE_FC(prefix + ".I.fc2", Ht, Ri, bRi));
-      if (Pi) {
-        it = G_.createAdd(prefix + ".I.add2", it,
-                          G_.createMul(prefix + ".I.mult", Pi, Ct));
-      }
-      it = activationF(prefix + ".I.act", it);
-
-      // Cell state update: Ct = ft . Ct-1 + it . ctild.
-      Ct = G_.createAdd(prefix + ".C.add",
-                        G_.createMul(prefix + ".C.mult1", ft, Ct),
-                        G_.createMul(prefix + ".C.mult2", it, ctild));
-
-      // Output gate: ot = f(Wo * Xt + bWo + Ro * Ht-1 + bRo + Po . Ct).
-      Node *ot = G_.createAdd(prefix + ".O.add1",
-                              LSTM_CREATE_FC(prefix + ".O.fc1", Xt, Wo, bWo),
-                              LSTM_CREATE_FC(prefix + ".O.fc2", Ht, Ro, bRo));
-      if (Po) {
-        ot = G_.createAdd(prefix + ".O.add2", ot,
-                          G_.createMul(prefix + ".O.mult", Po, Ct));
-      }
-      ot = activationF(prefix + ".O.act", ot);
-
-      // Hidden state update: Ht = ot . h(Ct).
-      Ht = G_.createMul(prefix + ".H.mult", ot,
-                        activationH(prefix + ".H.act", Ct));
-
-      // Output.
-      Yslices.push_back(Ht);
-    }
-
-    // Updated states nodes.
-    Hslice = Ht;
-    Cslice = Ct;
-    return Error::success();
-  }; // End of local lambda "loadLSTMCell".
-
-  bool forwardEnabled = ((direction == LstmDirection::FORWARD) ||
-                         (direction == LstmDirection::BIDIRECTIONAL));
-  bool backwardEnabled = ((direction == LstmDirection::REVERSE) ||
-                          (direction == LstmDirection::BIDIRECTIONAL));
-
-  std::vector<NodeValue> YSlices;
-  std::vector<NodeValue> Hslices;
-  std::vector<NodeValue> Cslices;
-
-  // Load forward LSTM.
-  std::vector<NodeValue> forwardYslices;
-  if (forwardEnabled) {
-    NodeValue forwardHslice;
-    NodeValue forwardCslice;
-    RETURN_IF_ERR(loadLSTMCell(/* forward */ true, forwardYslices,
-                               forwardHslice, forwardCslice));
-    Hslices.push_back(forwardHslice);
-    Cslices.push_back(forwardCslice);
-  }
-
-  // Load backward LSTM.
-  std::vector<NodeValue> backwardYslices;
-  if (backwardEnabled) {
-    NodeValue backwardHslice;
-    NodeValue backwardCslice;
-    RETURN_IF_ERR(loadLSTMCell(/* forward */ false, backwardYslices,
-                               backwardHslice, backwardCslice));
-    Hslices.push_back(backwardHslice);
-    Cslices.push_back(backwardCslice);
-  }
-
-  // Gather Y slices.
-  for (size_t t = 0; t < seqLength; t++) {
-    if (forwardEnabled) {
-      YSlices.push_back(forwardYslices[t]);
-    }
-    if (backwardEnabled) {
-      YSlices.push_back(backwardYslices[seqLength - 1 - t]);
-    }
-  }
-
-  // Concatenate Y slices.
-  // Y size is [seq_length, num_directions, batch_size, hidden_size].
-  Node *Y = G_.createReshape(opName + ".Y.reshape",
-                             G_.createConcat(opName + ".Y.concat", YSlices, 0),
-                             {seqLength, numDirections, batchSize, hiddenSize});
-
-  // Concatenate Y_h slices.
-  // Y_h size is [num_directions, batch_size, hidden_size].
-  Node *Y_h =
-      G_.createReshape(opName + ".Y_h.reshape",
-                       G_.createConcat(opName + ".Y_h.concat", Hslices, 0),
-                       {numDirections, batchSize, hiddenSize});
-
-  // Concatenate Y_c slices.
-  // Y_c size is [num_directions, batch_size, hidden_size].
-  Node *Y_c =
-      G_.createReshape(opName + ".Y_c.reshape",
-                       G_.createConcat(opName + ".Y_c.concat", Cslices, 0),
-                       {numDirections, batchSize, hiddenSize});
+  // Create ONNX LSTM.
+  NodeValue Y, Y_h, Y_c;
+  G_.createONNXLSTM(opName, X, W, R, B, Y_h_init, Y_c_init, P, Y, Y_h, Y_c,
+                    hiddenSize, direction, activations);
 
   // Save LSTM state in the state placeholders.
   G_.createSave(opName + ".Y_h.save", Y_h, Y_h_ph);
@@ -1753,17 +1434,6 @@ Error ONNXModelLoader::loadLSTM(const ONNX_NAMESPACE::NodeProto &op,
   RETURN_IF_ERR(addNodeAsOutput(op, Y, 1));
   return Error::success();
 }
-#undef LSTM_ACTIVATION_LAMBDA_RELU
-#undef LSTM_ACTIVATION_LAMBDA_TANH
-#undef LSTM_ACTIVATION_LAMBDA_SIGMOID
-#undef LSTM_X_SLICE_RANGE
-#undef LSTM_H_SLICE_RANGE
-#undef LSTM_C_SLICE_RANGE
-#undef LSTM_W_SLICE_OFFSET_AND_SIZE
-#undef LSTM_R_SLICE_OFFSET_AND_SIZE
-#undef LSTM_B_SLICE_OFFSET_AND_SIZE
-#undef LSTM_P_SLICE_OFFSET_AND_SIZE
-#undef LSTM_CREATE_FC
 
 Error ONNXModelLoader::loadCmpEQ(const ONNX_NAMESPACE::NodeProto &op,
                                  const ArgumentDictionaryTy &dict) {
