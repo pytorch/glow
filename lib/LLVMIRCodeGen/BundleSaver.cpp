@@ -278,9 +278,10 @@ void BundleSaver::saveHeader(llvm::StringRef headerFileName) {
 
   // Format model description.
   std::string modelInfo = strFormat("// Model name: \"%s\"\n"
-                                    "// Total data size: %lu (bytes)\n"
-                                    "// Placeholders:\n",
+                                    "// Total data size: %lu (bytes)\n",
                                     bundleName.data(), totMemSize);
+  // Print placeholders (mandatory).
+  modelInfo += "// Placeholders:\n";
   auto placeholders = findPlaceholders();
   for (auto &v : placeholders) {
     auto *w = cast<WeightVar>(getWeightForNode(v));
@@ -310,34 +311,39 @@ void BundleSaver::saveHeader(llvm::StringRef headerFileName) {
                            name.data(), typeName.data(), shapeStr.c_str(),
                            sizeElem, sizeByte, (unsigned long)offset);
   }
-  auto constantWeights = findConstantWeights();
-  for (auto &weightInfo : constantWeights) {
-    auto *w = weightInfo.first;
-    // Get placeholder shape as string.
-    std::string shapeStr = "[";
-    auto dims = w->getType()->dims();
-    for (size_t idx = 0; idx < dims.size(); idx++) {
-      if (idx < dims.size() - 1) {
-        shapeStr += strFormat("%lu, ", dims[idx]);
-      } else {
-        shapeStr += strFormat("%lu]", dims[idx]);
+  // Print constants (optional).
+  if (bundleAPIVerbose) {
+    modelInfo += "//\n"
+                 "// Constants:\n";
+    auto constantWeights = findConstantWeights();
+    for (auto &weightInfo : constantWeights) {
+      auto *w = weightInfo.first;
+      // Get constant shape as string.
+      std::string shapeStr = "[";
+      auto dims = w->getType()->dims();
+      for (size_t idx = 0; idx < dims.size(); idx++) {
+        if (idx < dims.size() - 1) {
+          shapeStr += strFormat("%lu, ", dims[idx]);
+        } else {
+          shapeStr += strFormat("%lu]", dims[idx]);
+        }
       }
+      // Get constant properties.
+      auto name = w->getName();
+      auto typeName = w->getType()->getElementName();
+      auto sizeElem = w->getType()->size();
+      auto sizeByte = w->getType()->getSizeInBytes();
+      auto offset = allocationsInfo_.allocatedAddress_[w];
+      modelInfo += strFormat("//\n"
+                             "//   Name: \"%s\"\n"
+                             "//   Type: %s\n"
+                             "//   Shape: %s\n"
+                             "//   Size: %zu (elements)\n"
+                             "//   Size: %zu (bytes)\n"
+                             "//   Offset: %lu (bytes)\n",
+                             name.data(), typeName.data(), shapeStr.c_str(),
+                             sizeElem, sizeByte, (unsigned long)offset);
     }
-    // Get placeholder properties.
-    auto name = w->getName();
-    auto typeName = w->getType()->getElementName();
-    auto sizeElem = w->getType()->size();
-    auto sizeByte = w->getType()->getSizeInBytes();
-    auto offset = allocationsInfo_.allocatedAddress_[w];
-    modelInfo += strFormat("//\n"
-                           "//   Name: \"%s\"\n"
-                           "//   Type: %s\n"
-                           "//   Shape: %s\n"
-                           "//   Size: %zu (elements)\n"
-                           "//   Size: %zu (bytes)\n"
-                           "//   Offset: %lu (bytes)\n",
-                           name.data(), typeName.data(), shapeStr.c_str(),
-                           sizeElem, sizeByte, (unsigned long)offset);
   }
   modelInfo += "//";
 

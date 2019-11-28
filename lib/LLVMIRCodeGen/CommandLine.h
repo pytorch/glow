@@ -70,4 +70,7 @@ extern llvm::cl::opt<llvm::FloatABI::ABIType> floatABI;
 /// Option to specify which bundle API to use.
 extern llvm::cl::opt<glow::BundleApiType> bundleAPI;
 
+/// Option to print more details in the bundle API.
+extern llvm::cl::opt<bool> bundleAPIVerbose;
+
 #endif // GLOW_LLVMIRCODEGEN_COMMANDLINE_H

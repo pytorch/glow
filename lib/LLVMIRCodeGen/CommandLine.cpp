@@ -103,3 +103,8 @@ llvm::cl::opt<glow::BundleApiType>
                                           "Static API")),
               llvm::cl::init(glow::BundleApiType::Static),
               llvm::cl::cat(bundleSaverCat));
+
+llvm::cl::opt<bool> bundleAPIVerbose(
+    "bundle-api-verbose",
+    llvm::cl::desc("Print more details in the bundle API header file"),
+    llvm::cl::init(false), llvm::cl::cat(bundleSaverCat));
