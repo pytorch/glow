@@ -43,6 +43,15 @@ using llvm::cast;
 using llvm::dyn_cast;
 using llvm::isa;
 
+namespace {
+llvm::cl::OptionCategory bundleSaverCat("Bundle Options");
+
+llvm::cl::opt<bool> bundleAPIVerboseOpt(
+    "bundle-api-verbose",
+    llvm::cl::desc("Print more details in the bundle API header file"),
+    llvm::cl::init(false), llvm::cl::cat(bundleSaverCat));
+} // namespace
+
 /// Header file string template.
 static const char *headerFileTemplate =
     R"RAW(// Bundle API header file
@@ -318,8 +327,9 @@ void BundleSaver::saveHeader(llvm::StringRef headerFileName) {
                            sizeElem, sizeByte, (unsigned long)offset);
   }
   // Print constants (optional).
-  if (bundleAPIVerbose_) {
-    modelInfo += "// Constants:\n";
+  if (bundleAPIVerboseOpt) {
+    modelInfo += "//\n"
+                 "// Constants:\n";
     auto constantWeights = findConstantWeights();
     for (auto &weightInfo : constantWeights) {
       auto *w = weightInfo.first;
