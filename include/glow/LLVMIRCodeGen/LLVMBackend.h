@@ -119,16 +119,21 @@ public:
 };
 
 class LLVMBackend : public BackendUsingGlowIR {
-  LLVMBackendOptions options_;
-
 public:
   LLVMBackend();
   /// @name Backend methods.
   /// This is the implementation of the Backend interface.
   ///@{
   virtual ~LLVMBackend() override = default;
+
   /// \returns LLVM backend options.
   const LLVMBackendOptions &getOptions() const { return options_; }
+
+  /// \returns LLVM backend options.
+  LLVMBackendOptions &getOptions() { return options_; }
+
+  /// Sets LLVM backend options.
+  void setOptions(const LLVMBackendOptions &options) { options_ = options; }
 
   virtual std::unique_ptr<CompiledFunction>
   compileIR(std::unique_ptr<IRFunction> IR) const override;
@@ -177,6 +182,9 @@ protected:
 
   /// Emit the jitmain function.
   virtual void emitJitMain(LLVMIRGen &irgen) const;
+
+  /// LLVM backend options.
+  LLVMBackendOptions options_;
 };
 
 } // namespace glow
