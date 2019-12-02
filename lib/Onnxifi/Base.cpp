@@ -232,7 +232,24 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
       ONNX_NAMESPACE::GraphProto inputG;
       for (const auto &p : ctx->getPlaceholderBindings()->pairs()) {
         auto *t = inputG.add_initializer();
-        ONNXModelWriter::writeTensor(*p.second, t);
+        const auto &inputTensor = *p.second;
+        size_t unpaddedSize = inputTensor.getUnpaddedSizeInBytes();
+        size_t tensorSize = inputTensor.getSizeInBytes();
+        if (unpaddedSize == tensorSize) {
+          ONNXModelWriter::writeTensor(inputTensor, t);
+        } else {
+          // If the input is a partial tensor, then save only the part that has
+          // data.
+          auto ty = inputTensor.getType();
+          auto dims = ty.dims().vec();
+          dims[0] = dims[0] / (tensorSize / unpaddedSize);
+          const auto &resized = inputTensor.getUnowned(dims);
+          ONNXModelWriter::writeTensor(resized, t);
+          VLOG(1) << "Writing partial tensor " << p.first->getName().str()
+                  << " full size=" << inputTensor.getType().toString()
+                  << " partial size=" << inputTensor.getUnpaddedSizeInBytes()
+                  << " resized size=" << resized.getType().toString();
+        }
         t->set_name(p.first->getName());
       }
       std::string buffer;
