@@ -21,6 +21,7 @@
 #include "glow/Support/ZipUtils.h"
 
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/CommandLine.h"
 
 #include "google/protobuf/io/coded_stream.h"
 #include "google/protobuf/io/zero_copy_stream_impl.h"
@@ -37,18 +38,69 @@ using llvm::cast;
 
 namespace {
 
+llvm::cl::OptionCategory onnxModelLoaderCat("ONNX Model Loader Options");
+
+llvm::cl::list<std::string> onnxDefineSymbolOpt(
+    "onnx-define-symbol", llvm::cl::ZeroOrMore,
+    llvm::cl::desc(
+        "Define (replace) the undefined symbols from the tensor descriptions\n"
+        "in the ONNX model with actual integer sizes. The undefined symbols \n"
+        "are marked in the proto description with the 'dim_param' field. For\n"
+        "example, if the model contains a tensor with the size described as \n"
+        "'None' x 3 x 224 x 224, the symbol 'None' can be replaced with an  \n"
+        "actual integer size (for example 1) by using the following command \n"
+        "line option:                                                       \n"
+        "    -onnx-define-symbol=None,1                                     \n"
+        "Multiple symbols can be defined using this option, for example:    \n"
+        "    -onnx-define-symbol=<symbol_name1>,<symbol_value1>             \n"
+        "    -onnx-define-symbol=<symbol_name2>,<symbol_value2>             \n"
+        "    ..................................................\n"),
+    llvm::cl::value_desc("name,value"), llvm::cl::cat(onnxModelLoaderCat));
+
+/// Parse the command line option and get the user defined map of symbols.
+/// The command line option has the format <symbol_name>,<symbol_value>.
+Expected<std::unordered_map<std::string, size_t>> getSymbolMap() {
+  std::unordered_map<std::string, size_t> symbolMap;
+  for (const auto &str : onnxDefineSymbolOpt) {
+    auto strPair = llvm::StringRef(str).split(',');
+    llvm::StringRef name = strPair.first;
+    RETURN_ERR_IF_NOT(name.size() > 0, "ONNX defined symbol name is empty.");
+    size_t value;
+    RETURN_ERR_IF_NOT(!strPair.second.getAsInteger(0, value),
+                      strFormat("ONNX defined symbol value '%s' is invalid.",
+                                strPair.second.data()));
+    symbolMap[name.str()] = value;
+  }
+  return symbolMap;
+}
+
 /// Get the shape of a TensorShapeProto given by \p shapeProto and return the
 /// dimensions in the vector \p dim passed by reference.
 Expected<std::vector<size_t>>
 getProtoShape(const ONNX_NAMESPACE::TensorShapeProto &shapeProto) {
   std::vector<size_t> dim;
   for (auto d : shapeProto.dim()) {
-    // If the proto has a symbolic dimension "dim_param" we will force it to 1.
-    // For now Glow does not support dynamic sizes.
     if (d.has_dim_value()) {
+      // Proto shape has an explicit size given by the "dim_value" field.
       dim.push_back(d.dim_value());
+    } else if (d.has_dim_param()) {
+      // Proto shape has a symbolic size given by the "dim_param" field. Search
+      // the symbol in the user defined map of symbols. If the symbol is not
+      // found then raise an error.
+      auto symbolName = d.dim_param();
+      std::unordered_map<std::string, size_t> symbolMap;
+      ASSIGN_VALUE_OR_RETURN_ERR(symbolMap, getSymbolMap());
+      if (symbolMap.count(symbolName)) {
+        dim.push_back(symbolMap[symbolName]);
+      } else {
+        RETURN_ERR(strFormat(
+            "ONNX model symbol '%s' is undefined. Define the symbol with the "
+            "following command line option: -onnx-define-symbol=%s,<value>.",
+            symbolName.c_str(), symbolName.c_str()));
+      }
     } else {
-      dim.push_back(1);
+      // Proto shape has no "dim_value" and no "dim_param" field.
+      RETURN_ERR("Tensor shape proto has no 'dim_value' or 'dim_param' field!");
     }
   }
   return dim;
