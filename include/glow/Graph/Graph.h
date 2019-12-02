@@ -109,6 +109,12 @@ public:
     usedNodeNames_.insert(name);
   }
 
+  /// Registers a name as used by a Storage node (Constant or Placeholder) in
+  /// this module.
+  void registerStorageName(llvm::StringRef name) {
+    usedStorageNames_.insert(name);
+  }
+
   /// Return a pointer to a uniqued type \p T.
   TypeRef uniqueType(const Type &T);
 
