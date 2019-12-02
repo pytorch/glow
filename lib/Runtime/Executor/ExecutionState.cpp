@@ -75,13 +75,20 @@ void ExecutionState::init() {
           PH = module_->getPlaceholderByName(symbolName);
           DCHECK(PH) << "Placeholder: " << symbolName
                      << " is not in the module";
-
+          // If PH is marked static skip it.
+          if (PH->isStatic()) {
+            continue;
+          }
           // allocate into the resultBindings because they have the longest
           // lifetime.
           resultBindings->insert(PH,
                                  intermediateTensorPool_.get(PH->getType()));
           intermediatePlaceholders_.push_back(PH);
         }
+        // Check that provided context does not contain a static PH.
+        DCHECK(!PH->isStatic())
+            << "Placeholder: " << symbolName
+            << " is static and shouldn't be in Result Context.";
 
         nodeInputPhBindings->insert(
             PH, resultBindings->get(PH)->getUnowned(PH->dims()));
