@@ -16,6 +16,8 @@
 #include "BackendTestUtils.h"
 
 #include "glow/Backend/Backend.h"
+#include "glow/Converter/Float16Converter.h"
+#include "glow/Converter/TypeAToTypeBFunctionConverter.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/TensorLayout.h"
 #include "llvm/Support/raw_ostream.h"
@@ -89,6 +91,26 @@ TEST_P(TensorLayoutTest, convBadLayout) {
   buildBadConv(bindings_, mod_, F_);
 
   EXPECT_FALSE(verifyLayouts(*F_, CanonicalTensorLayout::getInstance(), false));
+}
+
+// Check that we propagate the layout information for convertTo nodes:
+TEST_P(TensorLayoutTest, convertTo) {
+  CHECK_IF_ENABLED();
+
+  auto *input = mod_.createPlaceholder(ElemKind::FloatTy, {1, 3, 3, 1}, "input",
+                                       false, "NWCH");
+  auto *resultNCHW = F_->createTranspose("transposeInput", input, NHWC2NCHW);
+  auto *save = F_->createSave("save", resultNCHW);
+  bindings_.allocate(save->getPlaceholder());
+
+  EXPECT_TRUE(verifyLayouts(*F_, CanonicalTensorLayout::getInstance()));
+
+  PrecisionConfiguration precConfig;
+  TypeAToTypeBFunctionConverter converter(*F_, ElemKind::FloatTy,
+                                          ElemKind::Float16Ty, precConfig);
+  converter.convert();
+
+  EXPECT_TRUE(verifyLayouts(*F_, CanonicalTensorLayout::getInstance()));
 }
 
 // Check TensorLayoutDescription's parser with simple input.
