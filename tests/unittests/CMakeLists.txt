@@ -349,6 +349,7 @@ target_link_libraries(OnnxImporterTest
 add_glow_test(NAME OnnxImporterTest
               COMMAND ${GLOW_BINARY_DIR}/tests/OnnxImporterTest
                   --gtest_output=xml:OnnxImporterTest.xml
+                  -onnx-define-symbol=ONNXUndefinedSymbol,1
               WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 add_executable(OnnxExporterTest
@@ -365,6 +366,7 @@ target_link_libraries(OnnxExporterTest
 add_glow_test(NAME OnnxExporterTest
               COMMAND ${GLOW_BINARY_DIR}/tests/OnnxExporterTest
                   --gtest_output=xml:OnnxExporterTest.xml
+                  -onnx-define-symbol=ONNXUndefinedSymbol,1
               WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 # Loop through all backends present in lib/Backends (see FindBackends.cmake)
