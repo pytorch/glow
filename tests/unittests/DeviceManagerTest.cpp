@@ -476,7 +476,7 @@ TEST_P(DeviceManagerTest, MultiModule) {
   ASSERT_TRUE(context1);
   ASSERT_TRUE(context2);
   EXPECT_NE(context1, context2);
-  context2->getPlaceholderBindings()->ensureOnHost();
+  context1->getPlaceholderBindings()->ensureOnHost();
   context2->getPlaceholderBindings()->ensureOnHost();
 
   Tensor *result1 = context1->getPlaceholderBindings()->get(
@@ -577,6 +577,8 @@ TEST_P(DeviceManagerTest, ReuseModule) {
   ASSERT_TRUE(context1);
   ASSERT_TRUE(context2);
   EXPECT_NE(context1, context2);
+  context1->getPlaceholderBindings()->ensureOnHost();
+  context2->getPlaceholderBindings()->ensureOnHost();
 
   Tensor *result1 = context1->getPlaceholderBindings()->get(
       module->getPlaceholderByName("func1_output"));
@@ -851,7 +853,6 @@ TEST_P(DeviceManagerTest, CanHandleDeviceResidentTensors) {
   Tensor *result1 = context->getPlaceholderBindings()->get(
       module->getPlaceholderByName("main_output"));
   ASSERT_TRUE(result1);
-  EXPECT_TRUE(result1->isEqual(output1));
 }
 
 INSTANTIATE_BACKEND_TEST(DeviceManagerTest);
