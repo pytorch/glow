@@ -197,6 +197,19 @@ void inputsToProto(const Node *node, ONNX_NAMESPACE::NodeProto *proto) {
   }
 }
 
+/// Write the output of the provided node, add SaveNode if necessary
+void outputKindToProto(const Node *node, ONNX_NAMESPACE::NodeProto *proto) {
+  for (const auto &use : node->getUsers()) {
+    const auto *user = use.getUser();
+    if (user->getKind() == Kinded::Kind::SaveNodeKind) {
+      const SaveNode *SN = llvm::cast<SaveNode>(user);
+      proto->add_output(SN->getPlaceholder()->getName());
+    } else {
+      outputsToProto(user, proto);
+    }
+  }
+}
+
 /// Write the output of the provided type only of node outputs.
 bool outputKindToProto(Kinded::Kind kind, const Node *node,
                        ONNX_NAMESPACE::NodeProto *proto) {
@@ -757,14 +770,8 @@ Error ONNXModelWriter::writeBatchedReduceMean(const BatchedReduceMeanNode *node,
   proto->set_op_type("ReduceMean");
   inputsToProto(node, proto);
 
-  // Use the output of reshape node.
-  if (outputKindToProto(Kinded::Kind::ReshapeNodeKind, node, proto)) {
-    // Add dictionary entries.
-    addValueAttribute(proto, "keepdims", 1);
-  } else {
-    addValueAttribute(proto, "keepdims", 0);
-    outputsToProto(node, proto);
-  }
+  addValueAttribute(proto, "keepdims", 0);
+  outputKindToProto(node, proto);
 
   return Error::success();
 }
@@ -781,14 +788,8 @@ Error ONNXModelWriter::writeBatchedReduceAdd(const BatchedReduceAddNode *node,
   proto->set_op_type("ReduceSum");
   inputsToProto(node, proto);
 
-  // Use the output of reshape node.
-  if (outputKindToProto(Kinded::Kind::ReshapeNodeKind, node, proto)) {
-    // Add dictionary entries.
-    addValueAttribute(proto, "keepdims", 1);
-  } else {
-    addValueAttribute(proto, "keepdims", 0);
-    outputsToProto(node, proto);
-  }
+  addValueAttribute(proto, "keepdims", 0);
+  outputKindToProto(node, proto);
 
   return Error::success();
 }
