@@ -455,6 +455,10 @@ std::string TensorLayoutCommon::getNthInputLayoutRequirements(const Node *node,
     auto input = QN->getInput();
     return getNthResultLayoutRequirements(input.getNode(), input.getResNo());
   }
+  if (const auto *CTN = llvm::dyn_cast<ConvertToNode>(node)) {
+    auto input = CTN->getInput();
+    return getNthResultLayoutRequirements(input.getNode(), input.getResNo());
+  }
   if (const auto *QPN = llvm::dyn_cast<QuantizationProfileNode>(node)) {
     switch (n) {
     case QuantizationProfileNode::InputIndices::InputIdx: {
@@ -478,6 +482,19 @@ static unsigned getInputIdx(const Node *N, NodeValue in) {
   return N->getNumInputs();
 }
 
+/// \returns true if getting the input's layout would cause an infinite loop.
+static bool inputDoesNotKnowRequirements(const Node *node) {
+  switch (node->getKind()) {
+  case Kinded::Kind::TransposeNodeKind:
+  case Kinded::Kind::QuantizeNodeKind:
+  case Kinded::Kind::QuantizationProfileNodeKind:
+  case Kinded::Kind::ConvertToNodeKind:
+    return true;
+  default:
+    return false;
+  }
+}
+
 std::string TensorLayoutCommon::getNthResultLayoutRequirements(const Node *node,
                                                                size_t n) {
   DCHECK_LT(n, node->getNumResults()) << "Wrong output number";
@@ -492,6 +509,9 @@ std::string TensorLayoutCommon::getNthResultLayoutRequirements(const Node *node,
     }
     // Dynamically form the layout description for transposes.
     auto input = TN->getInput();
+    while (inputDoesNotKnowRequirements(input)) {
+      input = input.getNode()->getNthInput(0);
+    }
     auto inputLayout =
         getNthInputLayoutRequirements(node, TransposeNode::InputIdx);
     auto inputLayoutHelper = TensorLayoutDescription(inputLayout);
@@ -524,7 +544,8 @@ std::string TensorLayoutCommon::getNthResultLayoutRequirements(const Node *node,
     auto result = node->getNthResult(n);
     auto *user = (*result.getUsers().begin()).getUser();
     int inputIdx = getInputIdx(user, result);
-    if (inputIdx >= user->getNumInputs() || llvm::isa<TransposeNode>(user)) {
+    if (inputDoesNotKnowRequirements(user) ||
+        inputIdx >= user->getNumInputs() || llvm::isa<TransposeNode>(user)) {
       return getLayoutsForDims()[dims.size()].getSerializedLayout();
     }
     auto layout = getNthInputLayoutRequirements(user, inputIdx);
