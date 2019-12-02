@@ -94,7 +94,13 @@ LLVMIRGen::LLVMIRGen(const IRFunction *F, AllocationsInfo &allocationsInfo,
     : F_(F), allocationsInfo_(allocationsInfo), mainEntryName_(mainEntryName),
       libjitBC_(libjitBC) {}
 
+/// Mutex to protect LLVM's TargetRegistry.
+static std::mutex initTargetMutex;
+
 void LLVMIRGen::initTargetMachine(const LLVMBackendOptions &opts) {
+  // LLVM's TargetRegistry is not thread safe so we add a critical section.
+  std::lock_guard<std::mutex> g(initTargetMutex);
+
   llvm::InitializeAllTargets();
   llvm::InitializeAllTargetMCs();
   llvm::InitializeAllAsmPrinters();
