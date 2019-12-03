@@ -27,6 +27,7 @@ namespace glow {
 namespace onnxifi {
 bool GlowSaveOnnxifiModel = false;
 bool GlowSaveOnnxifiIO = false;
+bool GlowEnablePartialTensors = true;
 
 extern bool GlowDumpDebugTraces;
 
@@ -193,7 +194,8 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
     if (inPhPtr->dims().equals(inOnnxTensorDims)) {
       ctx->getPlaceholderBindings()->insert(
           inPhPtr, Tensor(inOnnxBuffer, inPhPtr->getType()));
-    } else if (backendPtr_->getBackend().supportsPartialTensors() &&
+    } else if (GlowEnablePartialTensors &&
+               backendPtr_->getBackend().supportsPartialTensors() &&
                inOnnxBuffer && inOnnxTensorSize > 0) {
       // We have a partial input buffer.  Create a padded unowned tensor that
       // remembers the actual size of the input.
