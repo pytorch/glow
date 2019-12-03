@@ -150,6 +150,10 @@ class ONNXModelLoader
   Error loadWhere(const ONNX_NAMESPACE::NodeProto &op,
                   const ArgumentDictionaryTy &dict);
 
+  /// Load LSTM ONNX operator.
+  Error loadLSTM(const ONNX_NAMESPACE::NodeProto &op,
+                 const ArgumentDictionaryTy &dict);
+
   /// Load Glow specific operators, not defined in ONNX format
   /// Load Glow CmpEQ operator.
   Error loadCmpEQ(const ONNX_NAMESPACE::NodeProto &op,

@@ -511,6 +511,14 @@ public:
                                            Storage *B, unsigned_t axis = 1);
 
   /// Creates and \returns a FullyConnectedNode with \p name, \p input, weights
+  /// \p W, bias \p B. If \p input is not 2 dimensional then it is flattened
+  /// along \p axis. Note, output type and outputDepth are inferred based on
+  /// the input types.
+  FullyConnectedNode *createFullyConnected(llvm::StringRef name,
+                                           NodeValue input, NodeValue W,
+                                           NodeValue B, unsigned_t axis = 1);
+
+  /// Creates and \returns a FullyConnectedNode with \p name, \p input, weights
   /// \p W, bias \p B, and \p outTy. If \p input is not 2 dimensional then it is
   /// flattened along \p axis. Note, outputDepth is inferred based on \p outTy.
   FullyConnectedNode *createFullyConnected(llvm::StringRef name,
@@ -1337,6 +1345,45 @@ public:
                   const llvm::ArrayRef<NodeValue> inputs, unsigned batchSize,
                   unsigned hiddenSize, unsigned outputSize,
                   std::vector<NodeValue> &outputs);
+
+  /// Definition for the activation function of an LSTM module.
+  using LstmActivation = std::function<Node *(llvm::StringRef, Node *)>;
+
+  /// Type definition for the direction of an LSTM module.
+  enum class LstmDirection {
+    Forward,
+    Reverse,
+    Bidirectional,
+  };
+
+  /// Create an unrolled multi-layer LSTM according to the ONNX definition. The
+  /// LSTM has the following inputs:
+  /// - input \p X with size [S, B, ISize].
+  /// - weigts \p W with size [N, 4 * HSize, ISize].
+  /// - reccurence weights \p R with size [N, 4 * HSize, HSize].
+  /// - bias weights \p B with size [N, 8 * HSize].
+  /// - initial hidden state \p initial_h with size [N, B, HSize].
+  /// - initial cell state \p initial_c with size [N, B, HSize].
+  /// - peephole weights \p P with size [N, 3 * HSize].
+  /// where S is the sequence length, N is the number of directions, B is the
+  /// batch size, ISize is the input size and HSize is the hidden size.
+  /// The LSTM has the following outputs:
+  /// - output \p Y with size [S, N, B, HSize]
+  /// - final hidden state \p Y_h with size [N, B, HSize].
+  /// - final cell state \p Y_c with size [N, B, HSize].
+  /// The direction of the instatiated LSTM is given by \p direction. The LSTM
+  /// will use the activation functions defined by \p activations which defines:
+  /// - [f,g,h] in case the LSTM is unidirectional (3 functions).
+  /// - [f,g,h] for the forward cell followed by [f,g,h] for the reverse cell in
+  ///    case the LSTM is bidirectional (6 functions).
+  /// The inputs \p B and \p P are optional (assumed 0 if nullptr is provided).
+  /// The names of all the nodes created are prefixed with \p namePrefix.
+  void createONNXLSTM(llvm::StringRef namePrefix, NodeValue X, NodeValue W,
+                      NodeValue R, NodeValue B, NodeValue initial_h,
+                      NodeValue initial_c, NodeValue P, NodeValue &Y,
+                      NodeValue &Y_h, NodeValue &Y_c, unsigned hiddenSize,
+                      LstmDirection direction,
+                      std::vector<LstmActivation> &activations);
   /// @}
 
   /// Create a TraceEvent in the runtime profile, which triggers collection of
