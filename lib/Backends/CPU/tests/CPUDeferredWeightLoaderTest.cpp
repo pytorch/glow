@@ -19,4 +19,5 @@ using namespace glow;
 
 std::set<std::string> glow::backendTestBlacklist = {
     "staticPlaceholderInference/0",
+    "FP16StaticPlaceholderInference/0",
 };
