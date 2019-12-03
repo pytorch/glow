@@ -3304,7 +3304,7 @@ Error glow::optimizeFunctionBeforeLowering(Function *F,
   LOG_SCOPE(F->getLogContext(), "glow::optimizeFunctionBeforeLowering")
 
   // If we only want to lower the Function, do nothing here.
-  if (cctx.optimizationOpts.onlyLower) {
+  if (cctx.optimizationOpts.onlyLowerFuns.count(F)) {
     return Error::success();
   }
 
@@ -3334,7 +3334,7 @@ Error glow::optimizeFunction(Function *F, const Backend &B,
   LOG_SCOPE(F->getLogContext(), "glow::optimizeFunction")
 
   // If requested only lower the Function and early return.
-  if (cctx.optimizationOpts.onlyLower) {
+  if (cctx.optimizationOpts.onlyLowerFuns.count(F)) {
     ::glow::lower(F, cctx, &B);
     // Cleanup from lowering via DCE.
     runDCEPass(F, cctx);

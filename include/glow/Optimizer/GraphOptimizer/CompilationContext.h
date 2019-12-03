@@ -66,7 +66,7 @@ using QuantizationMode = PrecisionConfiguration::QuantizationMode;
 struct OptimizationOptions {
   /// Only lower, i.e. skip optimizations and precision transformations. Used
   /// for testing.
-  bool onlyLower{false};
+  llvm::SmallSet<Function *, 1> onlyLowerFuns;
 
   /// If true, perform compile-time computation of constant operations.
   bool enableConstantFolding{true};

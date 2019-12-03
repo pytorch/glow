@@ -154,6 +154,56 @@ extern bool useSymmetricRowwiseQuantFC;
           ::testing::UnitTest::GetInstance()->current_test_info()->name()))    \
     GTEST_SKIP();
 
+class GraphOptz : public ::testing::Test {
+public:
+  GraphOptz(llvm::StringRef backendName = "Interpreter")
+      : EE_(backendName), mod_(EE_.getModule()) {
+    F_ = mod_.createFunction("main");
+  }
+
+protected:
+  void checkNumericalEquivalence(float allowedError = 0.0001) {
+    // Check that the function and its optimized complement exist.
+    EXPECT_TRUE(F_);
+    EXPECT_TRUE(optimizedF_);
+
+    // Clone bindings to use for original and optimized functions.
+    PlaceholderBindings originalBindings = bindings_.clone();
+    PlaceholderBindings optimizedBindings = bindings_.clone();
+
+    // Compile and run functions. Only lower Functions; we do not want to
+    // optimize the unoptimized Function, and the optimized Function has, well,
+    // already been optimized.
+    if (!alreadyCompiled_) {
+      cctx_.optimizationOpts.onlyLowerFuns.insert(F_);
+      cctx_.optimizationOpts.onlyLowerFuns.insert(optimizedF_);
+      EE_.compile(cctx_);
+    }
+    EE_.run(originalBindings, F_->getName());
+    EE_.run(optimizedBindings, optimizedF_->getName());
+
+    // Compare outputs.
+    EXPECT_TRUE(PlaceholderBindings::compare(&originalBindings,
+                                             &optimizedBindings, allowedError));
+  }
+
+  /// ExecutionEngine instance for running functions to check numerical
+  /// equivalence.
+  ExecutionEngine EE_;
+  /// A reference to the Module inside EE_.
+  Module &mod_;
+  /// The original Function for the test case.
+  Function *F_{nullptr};
+  /// The optimized Function for the test case.
+  Function *optimizedF_{nullptr};
+  /// The bindings used to check numerical equivalence for the test case.
+  PlaceholderBindings bindings_;
+  /// CompilationContext used for all Functions in \ref mod_.
+  CompilationContext cctx_;
+  /// Whether \ref mod_ has already been compiled.
+  bool alreadyCompiled_{false};
+};
+
 /// MockBackend used only for unit testing.
 class MockBackend : public Backend {
   class MockFunction : public CompiledFunction {

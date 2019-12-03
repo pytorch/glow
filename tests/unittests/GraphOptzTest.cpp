@@ -26,48 +26,6 @@
 
 using namespace glow;
 
-class GraphOptz : public ::testing::Test {
-public:
-  GraphOptz() : mod_(EE_.getModule()) { F_ = mod_.createFunction("main"); }
-
-protected:
-  void checkNumericalEquivalence() {
-    // Check that the function and its optimized complement exist.
-    EXPECT_TRUE(F_);
-    EXPECT_TRUE(optimizedF_);
-
-    // Clone bindings to use for original and optimized functions.
-    PlaceholderBindings originalBindings = bindings_.clone();
-    PlaceholderBindings optimizedBindings = bindings_.clone();
-
-    // Compile and run functions. Only lower Functions; we do not want to
-    // optimize the unoptimized Function, and the optimized Function has, well,
-    // already been optimized.
-    cctx_.optimizationOpts.onlyLower = true;
-    EE_.compile(cctx_);
-    EE_.run(originalBindings, F_->getName());
-    EE_.run(optimizedBindings, optimizedF_->getName());
-
-    // Compare outputs.
-    EXPECT_TRUE(
-        PlaceholderBindings::compare(&originalBindings, &optimizedBindings));
-  }
-
-  /// ExecutionEngine instance for running functions to check numerical
-  /// equivalence.
-  ExecutionEngine EE_;
-  /// A reference to the Module inside EE_.
-  Module &mod_;
-  /// The original Function for the test case.
-  Function *F_{nullptr};
-  /// The optimized Function for the test case.
-  Function *optimizedF_{nullptr};
-  /// The bindings used to check numerical equivalence for the test case.
-  PlaceholderBindings bindings_;
-  /// CompilationContext used for all Functions in \ref mod_.
-  CompilationContext cctx_;
-};
-
 class GraphFold : public GraphOptz {};
 
 /// Optimize the function \p F. \returns the optimized function.
