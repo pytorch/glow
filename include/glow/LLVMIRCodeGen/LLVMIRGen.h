@@ -301,6 +301,10 @@ public:
   /// \returns a libjit API function by name and tensor element type.
   virtual llvm::Function *getFunction(const std::string &name,
                                       glow::ElemKind elemTy);
+  /// \returns a libjit API function by name and tensor element type.
+  virtual llvm::Function *
+  getFunction(const std::string &name,
+              llvm::ArrayRef<glow::ElemKind> elemTyArray);
   /// \returns current LLVM function.
   virtual llvm::Function *getLLVMFunction();
   /// Optimize the function \p F and the module that owns it. Use the target

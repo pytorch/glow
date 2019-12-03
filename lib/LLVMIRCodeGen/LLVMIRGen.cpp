@@ -550,36 +550,48 @@ void LLVMIRGen::markArgAsUnspecialized(llvm::Value *val) {
   dontSpecializeArgsSet_.insert(val);
 }
 
-llvm::Function *LLVMIRGen::getFunction(const std::string &name) {
-  auto *F = llmodule_->getFunction("libjit_" + name);
-  CHECK(F) << "Unable to load the function: libjit_" << name;
-  return F;
-}
-
-llvm::Function *LLVMIRGen::getFunction(const std::string &name,
-                                       ElemKind elemTy) {
-  auto get = [this](llvm::StringRef funcName) {
-    auto *F = llmodule_->getFunction(funcName);
-    CHECK(F) << "Unable to load the function: " << funcName.str();
-    return F;
-  };
+static std::string createName(const std::string &name, ElemKind elemTy) {
   switch (elemTy) {
   case ElemKind::FloatTy:
-    return get("libjit_" + name + "_f");
+    return name + "_f";
   case ElemKind::Int8QTy:
-    return get("libjit_" + name + "_i8");
+    return name + "_i8";
+  case ElemKind::Int16QTy:
+    return name + "_i16";
   case ElemKind::Int32QTy:
-    return get("libjit_" + name + "_i32");
+    return name + "_i32";
   case ElemKind::Int32ITy:
-    return get("libjit_" + name + "_i32");
+    return name + "_i32";
   case ElemKind::Int64ITy:
-    return get("libjit_" + name + "_u");
+    return name + "_u";
   case ElemKind::BoolTy:
-    return get("libjit_" + name + "_b");
+    return name + "_b";
   default:
     LOG(FATAL) << "Unsupported element type: "
                << Type::getElementName(elemTy).str();
   }
+}
+
+llvm::Function *
+LLVMIRGen::getFunction(const std::string &name,
+                       llvm::ArrayRef<glow::ElemKind> elemTyArray) {
+  auto strName = "libjit_" + name;
+
+  for (auto elTy : elemTyArray) {
+    strName = createName(strName, elTy);
+  }
+  auto *F = llmodule_->getFunction(strName);
+  CHECK(F) << "Unable to load the function: " << strName.c_str();
+  return F;
+}
+
+llvm::Function *LLVMIRGen::getFunction(const std::string &name) {
+  return getFunction(name, llvm::ArrayRef<ElemKind>{});
+}
+
+llvm::Function *LLVMIRGen::getFunction(const std::string &name,
+                                       ElemKind elemTy) {
+  return getFunction(name, llvm::ArrayRef<ElemKind>{elemTy});
 }
 
 llvm::Function *LLVMIRGen::getLLVMFunction() { return llvmF_; }
@@ -2653,6 +2665,23 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *dataPtr = emitValueAddress(builder, data);
     auto *F = getFunction("write_timestamp");
     createCall(builder, F, {dataPtr, offset});
+    break;
+  }
+
+  case Kinded::Kind::ConvertToInstKind: {
+    auto *CTI = llvm::cast<ConvertToInst>(I);
+    auto *input = CTI->getInput();
+    auto *output = CTI->getResult();
+
+    auto *inputVal = emitValueAddress(builder, input);
+    auto *outptVal = emitValueAddress(builder, output);
+    auto *dimsVal = emitValueDims(builder, output);
+    auto *dimSizeVal = emitConstSizeT(builder, output->dims().size());
+
+    auto *F = getFunction("convertTo",
+                          {output->getElementType(), input->getElementType()});
+
+    createCall(builder, F, {outptVal, inputVal, dimsVal, dimSizeVal});
     break;
   }
 
