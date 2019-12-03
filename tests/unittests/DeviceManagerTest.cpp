@@ -237,6 +237,85 @@ TEST_P(DeviceManagerTest, PartialTensorCopy) {
   EXPECT_FLOAT_EQ(result1->getHandle().at({0}), std::max(std::tanh(0.5), 0.25));
 }
 
+// Test that the DeviceManager correctly supports
+// transferStaticPlaceholderToDevice
+TEST_P(DeviceManagerTest, TransferStaticPlaceholderTest) {
+  CHECK_IF_ENABLED();
+  std::unique_ptr<Module> module = glow::make_unique<Module>();
+
+  Function *F = module->createFunction("main");
+  auto *input =
+      module->createPlaceholder(ElemKind::FloatTy, {1}, "input", false);
+  auto *staticPlaceholder = module->createPlaceholder(
+      ElemKind::FloatTy, {1}, "static_placeholder", false);
+  staticPlaceholder->setStatic(true);
+  auto *output =
+      module->createPlaceholder(ElemKind::FloatTy, {1}, "main_output", false);
+  auto *p = F->createPow("pow", input, staticPlaceholder);
+  F->createSave("ret", p, output);
+
+  std::vector<std::unique_ptr<CompiledFunction>> backing;
+  FunctionMapTy functions =
+      compileFunctions(backendName, module.get(), backing);
+
+  std::promise<const Module *> promise;
+  std::future<const Module *> future;
+  std::tie(promise, future) = getFutureHelper<const Module *>();
+
+  device->addNetwork(module.get(), std::move(functions),
+                     [&promise](const Module *module, Error err) {
+                       callbackHelper(promise, module, std::move(err));
+                     });
+
+  future.wait_for(std::chrono::seconds(2));
+  EXPECT_EQ(future.get(), module.get());
+
+  auto staticTensor = Tensor(staticPlaceholder->getType());
+  staticTensor.getHandle().clear(3.0);
+  std::promise<Error> transferPromise;
+  auto done = transferPromise.get_future();
+
+  device->transferStaticPlaceholderToDevice(
+      staticPlaceholder, &staticTensor, [&transferPromise](Error err) {
+        transferPromise.set_value(std::move(err));
+      });
+  EXPECT_FALSE(done.get());
+  std::unique_ptr<ExecutionContext> context =
+      glow::make_unique<ExecutionContext>();
+  context->getPlaceholderBindings()->allocate(output);
+
+  Tensor input1(ElemKind::FloatTy, {1});
+
+  Tensor output1(ElemKind::FloatTy, {1});
+  input1.getHandle().clear(2.0);
+
+  context->getPlaceholderBindings()->allocate(input);
+  context->getPlaceholderBindings()->get(input)->getHandle().clear(2.0);
+  std::promise<std::unique_ptr<ExecutionContext>> runPromise;
+  std::future<std::unique_ptr<ExecutionContext>> runFuture;
+
+  std::tie(runPromise, runFuture) =
+      getFutureHelper<std::unique_ptr<ExecutionContext>>();
+  device->runFunction("main", std::move(context),
+                      [&runPromise](RunIdentifierTy, Error err,
+                                    std::unique_ptr<ExecutionContext> context) {
+                        callbackHelper(runPromise, std::move(context),
+                                       std::move(err));
+                      });
+
+  runFuture.wait_for(std::chrono::seconds(2));
+  context = runFuture.get();
+  ASSERT_TRUE(context);
+  // We must ensure results are on host since we're using DeviceManager
+  // directly.
+  context->getPlaceholderBindings()->ensureOnHost();
+
+  Tensor *result = context->getPlaceholderBindings()->get(output);
+
+  ASSERT_TRUE(result);
+  EXPECT_NEAR(result->getHandle().at({0}), 8.0, 1E-5);
+}
+
 TEST_P(DeviceManagerTest, MultiRun) {
   auto module = makeBasicModule();
   std::vector<std::unique_ptr<CompiledFunction>> backing;

@@ -5,4 +5,5 @@ target_link_libraries(Provisioner
                       PRIVATE
                         Backend
                         Backends
-                        Graph)
+                        Graph
+                        Runtime)

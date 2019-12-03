@@ -15,6 +15,7 @@
  */
 
 #include "HostManagerOnnxifi.h"
+#include "glow/Runtime/DeferredWeightLoader.h"
 
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FileSystem.h"
@@ -75,9 +76,21 @@ void HostManagerBackend::runNetwork(const Graph *graph,
                            std::move(callback), priority);
 }
 
-onnxStatus HostManagerBackend::addNetwork(std::unique_ptr<Module> module) {
+onnxStatus HostManagerBackend::addNetwork(std::unique_ptr<Module> module,
+                                          void *deferredBlobReader) {
   CompilationContext cctx;
   PrecisionConfiguration &precConfig = cctx.precisionConfig;
+
+  if (deferredBlobReader) {
+    // Initialize loader and set field in cctx.
+    auto loader = runtime::DeferredLoader()->getLoader();
+    if (!loader) {
+      LOG(INFO) << "Blob reader provided but no loader registered!";
+      return ONNXIFI_STATUS_INTERNAL_ERROR;
+    }
+    loader->setSrc(deferredBlobReader);
+    cctx.deferredWeightLoader = loader;
+  }
 
   if (GlowFP16) {
     precConfig.convertToFP16 = GlowFP16;
@@ -118,7 +131,7 @@ onnxStatus HostManagerBackend::removeNetwork(const Graph *graph) {
 
 onnxStatus HostManagerGraph::initGraph(
     const void *onnxModel, size_t onnxModelSize, uint32_t weightCount,
-    const onnxTensorDescriptorV1 *weightDescriptors, void * /* unused */) {
+    const onnxTensorDescriptorV1 *weightDescriptors, void *deferedBlobReader) {
 
   netName_ = strFormat("onnxifi_function_%lu", makeUniqueGraphId());
 
@@ -144,7 +157,7 @@ onnxStatus HostManagerGraph::initGraph(
   }
 
   return static_cast<HostManagerBackend *>(backendPtr_)
-      ->addNetwork(std::move(module));
+      ->addNetwork(std::move(module), deferedBlobReader);
 }
 
 onnxStatus HostManagerGraph::run(std::unique_ptr<ExecutionContext> ctx,

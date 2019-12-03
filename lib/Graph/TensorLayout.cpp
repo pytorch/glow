@@ -651,9 +651,7 @@ static bool acceptsAnyInputLayout(const glow::Node *node) {
   case Kinded::Kind::SGDNodeKind: {
     return true;
   }
-  default: {
-    return false;
-  }
+  default: { return false; }
   }
 }
 

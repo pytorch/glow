@@ -82,9 +82,7 @@ getLayoutForTempEnumRep(size_t n, const Node *node) {
     switch (n) {
     case ConvolutionNode::InputIndices::BiasIdx:
       return &CanonicalTensorLayout::getInstance().getLayoutsForDims()[1];
-    default: {
-      return getLayoutFromEnum(CN);
-    }
+    default: { return getLayoutFromEnum(CN); }
     }
   }
   return nullptr;

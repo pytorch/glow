@@ -13,11 +13,24 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "tests/unittests/BackendTestUtils.h"
 
-using namespace glow;
+#include "glow/Runtime/DeferredWeightLoader.h"
 
-std::set<std::string> glow::backendTestBlacklist = {
-    "DeviceResidentTensors/0",
-    "TransferStaticPlaceholderTest/0",
-};
+namespace glow {
+namespace runtime {
+
+DeferredWeightLoader *DeferredWeightLoaderRegistry::getLoader() {
+  return loader_;
+}
+
+void DeferredWeightLoaderRegistry::registerLoader(
+    DeferredWeightLoader *loader) {
+  loader_ = loader;
+}
+
+DeferredWeightLoaderRegistry *DeferredLoader() {
+  static auto *deferredLoader = new DeferredWeightLoaderRegistry();
+  return deferredLoader;
+}
+} // namespace runtime
+} // namespace glow

@@ -17,7 +17,4 @@
 
 using namespace glow;
 
-std::set<std::string> glow::backendTestBlacklist = {
-    "DeviceResidentTensors/0",
-    "TransferStaticPlaceholderTest/0",
-};
+std::set<std::string> glow::backendTestBlacklist = {};
