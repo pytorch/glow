@@ -67,7 +67,7 @@ output {
     name: "argmax_scores"
     type {
       tensor_type {
-        elem_type: 7
+        elem_type: 6
         shape {
          dim {
             dim_value: 2

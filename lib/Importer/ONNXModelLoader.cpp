@@ -40,7 +40,7 @@ namespace {
 /// with the Tensor. This method makes sure that the tensor is created with the
 /// proper shape and element type.
 Error setTensorType(const ONNX_NAMESPACE::TypeProto &in, Tensor *T) {
-  std::vector<size_t> dim;
+  std::vector<dim_t> dim;
   for (auto d : in.tensor_type().shape().dim()) {
     dim.push_back(d.dim_value());
   }
@@ -78,7 +78,7 @@ loadArgumentMap(const ONNX_NAMESPACE::NodeProto &op) {
 
 /// Loads tensor \p T from the input \p in.
 Error glow::loadTensor(const ONNX_NAMESPACE::TensorProto &in, Tensor *T) {
-  std::vector<size_t> dim;
+  std::vector<dim_t> dim;
   for (auto d : in.dims()) {
     dim.push_back(d);
   }
@@ -407,7 +407,7 @@ Error ONNXModelLoader::loadConstant(const ONNX_NAMESPACE::NodeProto &op,
 template <typename T>
 static void helperSetter(Constant *constT, std::vector<ssize_t> &vec) {
   auto constH = constT->getPayload().getHandle<T>();
-  for (size_t i = 0; i < constH.size(); ++i) {
+  for (dim_t i = 0; i < constH.size(); ++i) {
     vec.push_back(constH.at({i}));
   }
 }
@@ -496,8 +496,8 @@ Error ONNXModelLoader::loadSlice(const ONNX_NAMESPACE::NodeProto &op,
   // an axis index is not given in the axes array. An interpretation is that
   // for such an axis, the entire range is taken. Then, we initialize
   // newStarts and newEnds with the full range for all axes.
-  std::vector<size_t> newStarts(numDims);
-  std::vector<size_t> newEnds(numDims);
+  std::vector<dim_t> newStarts(numDims);
+  std::vector<dim_t> newEnds(numDims);
   for (size_t i = 0; i < numDims; i++) {
     newStarts[i] = 0;
     newEnds[i] = dims[i];
@@ -594,7 +594,7 @@ Error ONNXModelLoader::loadConv(const ONNX_NAMESPACE::NodeProto &op,
   // number of filters. We use this value to calculate the size of the bias
   // if it is not specified.
   const NodeValue filterTransposedValue = filterTransposeNode->getResult();
-  size_t depth = filterTransposedValue.dims()[0];
+  dim_t depth = filterTransposedValue.dims()[0];
 
   // Get the kernel shape from the input.
   llvm::SmallVector<unsigned_t, 2> kernelShape(2);
@@ -646,7 +646,7 @@ Error ONNXModelLoader::loadConv(const ONNX_NAMESPACE::NodeProto &op,
 
   auto outSz = calculateConvPoolOutputDims(idim.h, idim.w, kernelShape, strides,
                                            pads, dilation);
-  std::array<size_t, 4> outDims = {{idim.n, outSz.first, outSz.second, depth}};
+  std::array<dim_t, 4> outDims = {{idim.n, outSz.first, outSz.second, depth}};
   auto outTy = G_.getParent()->uniqueType(ElemKind::FloatTy, outDims);
 
   auto *node = G_.createConv(opName, tr, filterTransposeNode, bias, outTy,
@@ -1011,7 +1011,7 @@ Error ONNXModelLoader::loadPad(const ONNX_NAMESPACE::NodeProto &op,
       "Pad: the 'pads' array must contain 2 values per dimensions");
 
   // Compute the output type.
-  std::vector<size_t> outDims(numDims);
+  std::vector<dim_t> outDims(numDims);
   for (unsigned_t i = 0; i < numDims; i++) {
     auto new_dim = inputDims[i] + pads[i] + pads[i + numDims];
     RETURN_ERR_IF_NOT(new_dim > 0,
@@ -1114,12 +1114,11 @@ Error ONNXModelLoader::loadConstantOfShape(const ONNX_NAMESPACE::NodeProto &op,
     RETURN_ERR_IF_NOT(in->dims().size() == 1, "Input must be a 1D vector.");
     RETURN_ERR_IF_NOT(in->getType()->getElementType() == ElemKind::Int64ITy,
                       "Input element type must be Int64ITy.");
-    // Convert 1D tensor of int64_t into llvm::ArrayRef<size_t>.
+    // Convert 1D tensor of int64_t into llvm::ArrayRef<dim_t>.
     auto TH = in->getPayload().getHandle<int64_t>();
     auto begin = &TH.raw(0);
     auto end = begin + TH.actualSize();
-    llvm::ArrayRef<size_t> outputDims = {(const size_t *)begin,
-                                         (const size_t *)end};
+    ShapeVector outputDims = {(const dim_t *)begin, (const dim_t *)end};
 
     ty = G_.getParent()->uniqueType(T.getType().getElementType(), outputDims);
     switch (T.getType().getElementType()) {
@@ -1265,7 +1264,7 @@ Error ONNXModelLoader::loadSelect(const ONNX_NAMESPACE::NodeProto &op,
   NodeValue RHS;
   ASSIGN_VALUE_OR_RETURN_ERR(RHS, getNodeValueByName(op.input(2)));
 
-  auto shape = getShape<size_t>(dict.at("shape"));
+  auto shape = getShape<dim_t>(dict.at("shape"));
 
   auto outTy = G_.getParent()->uniqueType(LHS.getElementType(), shape);
   Node *N = G_.createSelect(loadOperatorName(op), outTy, Cond, LHS, RHS);
@@ -1297,7 +1296,7 @@ Error ONNXModelLoader::loadConvertTo(const ONNX_NAMESPACE::NodeProto &op,
   NodeValue in;
   ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
 
-  auto shape = getShape<size_t>(dict.at("shape"));
+  auto shape = getShape<dim_t>(dict.at("shape"));
 
   auto outTy = G_.getParent()->uniqueType(in.getElementType(), shape);
   Node *N = G_.createConvertTo(loadOperatorName(op), in, outTy);
@@ -1364,7 +1363,7 @@ Error ONNXModelLoader::loadIntLookupTable(const ONNX_NAMESPACE::NodeProto &op,
   ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
 
   auto values = getShape<int8_t>(dict.at("values"));
-  auto shape = getShape<size_t>(dict.at("shape"));
+  auto shape = getShape<dim_t>(dict.at("shape"));
 
   auto outTy = G_.getParent()->uniqueType(in.getElementType(), shape);
   Node *N = G_.createIntLookupTable(loadOperatorName(op), in, values, outTy);
@@ -1495,7 +1494,7 @@ Error ONNXModelLoader::loadInsertTensor(const ONNX_NAMESPACE::NodeProto &op,
   NodeValue small;
   ASSIGN_VALUE_OR_RETURN_ERR(small, getNodeValueByName(op.input(1)));
 
-  auto start = getShape<size_t>(dict.at("start"));
+  auto start = getShape<dim_t>(dict.at("start"));
 
   unsigned_t count = 1;
   if (dict.count("count")) {
@@ -1525,9 +1524,9 @@ Error ONNXModelLoader::loadAdaptiveAvgPool(const ONNX_NAMESPACE::NodeProto &op,
                              NCHW2NHWC);
 
   // OutputSize defaults to size of input if not provided.
-  std::vector<size_t> outputSize;
+  std::vector<dim_t> outputSize;
   if (dict.count("output_size")) {
-    outputSize = getShape<size_t>(dict.at("output_size"));
+    outputSize = getShape<dim_t>(dict.at("output_size"));
   } else {
     outputSize = {input.dims()[2], input.dims()[3]};
   }
@@ -1754,7 +1753,7 @@ Error ONNXModelLoader::checkInputs(ONNX_NAMESPACE::GraphProto &net,
         continue;
       }
 
-      llvm::ArrayRef<size_t> dims = types[i]->dims();
+      llvm::ArrayRef<dim_t> dims = types[i]->dims();
       const ONNX_NAMESPACE::TensorShapeProto &shape =
           valueInfo.type().tensor_type().shape();
       (void)shape;

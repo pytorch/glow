@@ -43,7 +43,7 @@ using NodesPtrList = std::list<glow::Node *>;
 using FunctionList = std::list<Function *>;
 using ConstList = std::list<Constant *>;
 using PlaceholderList = std::list<Placeholder *>;
-using UnsignedArrayRef = llvm::ArrayRef<size_t>;
+using UnsignedArrayRef = llvm::ArrayRef<dim_t>;
 /// Map from original Nodes to cloned Nodes.
 using NodeMap = llvm::DenseMap<Node *, Node *>;
 /// State of a function. This can be used to control optimizations which depend
@@ -119,20 +119,20 @@ public:
   TypeRef uniqueType(const Type &T);
 
   /// Return a pointer to a uniqued type \p T.
-  TypeRef uniqueType(ElemKind elemTy, llvm::ArrayRef<size_t> dims);
+  TypeRef uniqueType(ElemKind elemTy, llvm::ArrayRef<dim_t> dims);
 
   /// Return a pointer to a uniqued type \p T.
-  TypeRef uniqueType(ElemKind elemTy, llvm::ArrayRef<size_t> dims, float scale,
+  TypeRef uniqueType(ElemKind elemTy, llvm::ArrayRef<dim_t> dims, float scale,
                      int32_t offset);
 
   /// Return a pointer to a uniqued type \p T.
   /// The new type is identical to \p T, with a new shape \p dims.
-  TypeRef uniqueTypeWithNewShape(TypeRef T, llvm::ArrayRef<size_t> dims);
+  TypeRef uniqueTypeWithNewShape(TypeRef T, llvm::ArrayRef<dim_t> dims);
 
   /// The new type is identical to \p T, with a new shape \p dims and new \p
   /// alignments.
-  TypeRef uniqueTypeWithNewShape(TypeRef T, llvm::ArrayRef<size_t> dims,
-                                 llvm::ArrayRef<size_t> alignments);
+  TypeRef uniqueTypeWithNewShape(TypeRef T, llvm::ArrayRef<dim_t> dims,
+                                 llvm::ArrayRef<dim_t> alignments);
 
   /// Return the void type.
   TypeRef getVoidTy();
@@ -181,7 +181,7 @@ public:
   /// @name High-level Storage builders.
   ///@{
 
-  Placeholder *createPlaceholder(ElemKind T, llvm::ArrayRef<size_t> dims,
+  Placeholder *createPlaceholder(ElemKind T, llvm::ArrayRef<dim_t> dims,
                                  llvm::StringRef name, bool isTrainable,
                                  const std::string &layout = ANY_LAYOUT);
 
@@ -189,7 +189,7 @@ public:
                                  bool isTrainable,
                                  const std::string &layout = ANY_LAYOUT);
 
-  Placeholder *createPlaceholder(ElemKind T, llvm::ArrayRef<size_t> dims,
+  Placeholder *createPlaceholder(ElemKind T, llvm::ArrayRef<dim_t> dims,
                                  float scale, int32_t offset,
                                  llvm::StringRef name, bool isTrainable,
                                  const std::string &layout = ANY_LAYOUT);
@@ -197,11 +197,11 @@ public:
   Constant *createConstant(TypeRef T, llvm::StringRef name,
                            const std::string &layout = ANY_LAYOUT);
 
-  Constant *createConstant(ElemKind T, llvm::ArrayRef<size_t> dims,
+  Constant *createConstant(ElemKind T, llvm::ArrayRef<dim_t> dims,
                            llvm::StringRef name,
                            const std::string &layout = ANY_LAYOUT);
 
-  Constant *createConstant(ElemKind T, llvm::ArrayRef<size_t> dims, float scale,
+  Constant *createConstant(ElemKind T, llvm::ArrayRef<dim_t> dims, float scale,
                            int32_t offset, llvm::StringRef name,
                            const std::string &layout = ANY_LAYOUT);
 
@@ -657,7 +657,7 @@ public:
   /// at offset into big \p start \p count times along \p axis.
   InsertTensorNode *createInsertTensor(llvm::StringRef name, NodeValue big,
                                        NodeValue small,
-                                       llvm::ArrayRef<size_t> start,
+                                       llvm::ArrayRef<dim_t> start,
                                        unsigned_t count = 1,
                                        unsigned_t axis = 0);
 
@@ -667,7 +667,7 @@ public:
   /// Create a slice node with the given starting point for each dimension.
   /// End points will be calculated based on the output type during execution.
   SliceNode *createSlice(llvm::StringRef name, NodeValue input,
-                         llvm::ArrayRef<size_t> start, TypeRef outTy);
+                         llvm::ArrayRef<dim_t> start, TypeRef outTy);
 
   /// Shuffles dimension number \p kernel. Suppose original size is D. It will
   /// be represented as groupX(D/group) matrix, transposed and concatenated back
@@ -689,13 +689,13 @@ public:
   /// opposite of ExpandDims.
   /// https://github.com/onnx/onnx/blob/master/docs/Operators.md#squeeze
   ReshapeNode *createSqueeze(llvm::StringRef name, NodeValue input,
-                             llvm::ArrayRef<size_t> axes);
+                             llvm::ArrayRef<dim_t> axes);
 
   /// Add single-dimensional entries to the shape of the \p input tensor at
   /// locations in \p axes. \p axes is listed as seen in the output tensor.
   /// Implemented as a single ReshapeNode. This is the opposite of Squeeze.
   ReshapeNode *createExpandDims(llvm::StringRef name, NodeValue input,
-                                llvm::ArrayRef<size_t> axes);
+                                llvm::ArrayRef<dim_t> axes);
 
   /// Flattens the input tensor into a 2D matrix. If input tensor has shape
   /// (d_0, d_1, ... d_n) then the output will have shape:
@@ -707,7 +707,7 @@ public:
   /// number \p axis. Array \p split defines lengths of slices. If \p split is
   /// empty, \p input is split to equal sized parts.
   void createSplit(llvm::StringRef name, NodeValue input, unsigned_t outputNum,
-                   unsigned_t axis, llvm::ArrayRef<size_t> split,
+                   unsigned_t axis, llvm::ArrayRef<dim_t> split,
                    std::vector<SliceNode *> &outputs);
 
   BatchNormalizationNode *
@@ -1064,7 +1064,7 @@ public:
   SparseToDenseMaskNode *
   createSparseToDenseMask(llvm::StringRef name, NodeValue indices,
                           NodeValue values, NodeValue defaultValue,
-                          NodeValue lengths, llvm::ArrayRef<int64_t> mask);
+                          NodeValue lengths, llvm::ArrayRef<dim_t> mask);
 
   SaveNode *createSave(llvm::StringRef name, NodeValue input);
   SaveNode *createSave(llvm::StringRef name, NodeValue input,
@@ -1238,7 +1238,7 @@ public:
   /// axis. \p layout defines the Tensor layout and must be either NHWC or NCHW.
   ConvolutionNode *createConv(PlaceholderBindings &bindings,
                               llvm::StringRef name, NodeValue input,
-                              size_t outChannels,
+                              dim_t outChannels,
                               llvm::ArrayRef<unsigned_t> kernels,
                               llvm::ArrayRef<unsigned_t> strides,
                               llvm::ArrayRef<unsigned_t> pads, unsigned_t group,
@@ -1256,7 +1256,7 @@ public:
   /// axis. \p layout defines the Tensor layout and must be either NHWC or NCHW.
   ConvolutionNode *createConv(PlaceholderBindings &bindings,
                               llvm::StringRef name, NodeValue input,
-                              size_t outChannels, unsigned_t kernel,
+                              dim_t outChannels, unsigned_t kernel,
                               unsigned_t stride, unsigned_t pad,
                               unsigned_t group, unsigned_t dilation = 1,
                               ConvolutionLayout layout = NHWC);
@@ -1270,7 +1270,7 @@ public:
   /// be divided into and convolved separately.
   Convolution3DNode *createConv3D(PlaceholderBindings &bindings,
                                   llvm::StringRef name, NodeValue input,
-                                  size_t outChannels,
+                                  dim_t outChannels,
                                   llvm::ArrayRef<unsigned_t> kernels,
                                   llvm::ArrayRef<unsigned_t> strides,
                                   llvm::ArrayRef<unsigned_t> pads,
@@ -1295,7 +1295,7 @@ public:
   /// types. Trainable weight and bias variables are created implicitly.
   FullyConnectedNode *createFullyConnected(PlaceholderBindings &bindings,
                                            llvm::StringRef name,
-                                           NodeValue input, size_t outDepth,
+                                           NodeValue input, dim_t outDepth,
                                            unsigned_t axis = 1);
 
   /// Create an unrolled single-layer Simple RNN cell with \p hiddenSize

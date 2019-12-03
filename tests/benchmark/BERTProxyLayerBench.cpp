@@ -30,14 +30,14 @@ using namespace glow;
  * the BERT network.
  */
 class BERTProxyLayerBench : public Benchmark {
-  size_t maxSequenceLength_;
-  size_t batchSize_;
-  size_t hiddenSize_;
-  size_t numHeads_;
-  size_t numCores_;
+  dim_t maxSequenceLength_;
+  dim_t batchSize_;
+  dim_t hiddenSize_;
+  dim_t numHeads_;
+  dim_t numCores_;
   std::unique_ptr<runtime::HostManager> hostManager_;
   std::vector<std::unique_ptr<ExecutionContext>> contexts_;
-  size_t asyncLaunchSize_;
+  dim_t asyncLaunchSize_;
   const char *backendStr_;
   ElemKind dtype_;
   ElemKind FCWeightType_;
@@ -45,9 +45,9 @@ class BERTProxyLayerBench : public Benchmark {
   bool quantize;
 
 public:
-  BERTProxyLayerBench(size_t maxSequenceLength_, size_t batchSize_,
-                      size_t hiddenSize_, size_t numHeads_, size_t numCores_,
-                      size_t asyncLaunchSize_, const char *backendStr_,
+  BERTProxyLayerBench(dim_t maxSequenceLength_, dim_t batchSize_,
+                      dim_t hiddenSize_, dim_t numHeads_, dim_t numCores_,
+                      dim_t asyncLaunchSize_, const char *backendStr_,
                       const char *dtypeStr_, const char *useInt8FCs)
       : maxSequenceLength_(maxSequenceLength_), batchSize_(batchSize_),
         hiddenSize_(hiddenSize_), numHeads_(numHeads_), numCores_(numCores_),
@@ -116,7 +116,7 @@ public:
   void setup() override {
 
     // Create execution contexts here
-    for (int i = 0; i < asyncLaunchSize_; i++) {
+    for (dim_t i = 0; i < asyncLaunchSize_; i++) {
       std::unique_ptr<ExecutionContext> context(new ExecutionContext);
       contexts_.push_back(std::move(context));
     }
@@ -135,7 +135,7 @@ public:
         dtype_, {maxSequenceLength_ * batchSize_, hiddenSize_}, "input", false);
 
     // for each context, add input bindings
-    for (int i = 0; i < asyncLaunchSize_; i++) {
+    for (dim_t i = 0; i < asyncLaunchSize_; i++) {
       randomizeTensor(contexts_[i]->getPlaceholderBindings()->allocate(input),
                       mod->getPRNG());
     }
@@ -361,7 +361,7 @@ public:
     for (auto &fut : futures) {
       fut.wait();
     }
-    for (int j = 0; j < asyncLaunchSize_; j++) {
+    for (dim_t j = 0; j < asyncLaunchSize_; j++) {
       contexts_[j] = std::move(localContexts[j]);
     }
   }

@@ -90,25 +90,25 @@ replacePlaceholderWithConstant(ONNX_NAMESPACE::ModelProto &model,
       auto RH = tensors[i]->getHandle<>();
       ONNX_NAMESPACE::TensorProto *tp = gp->add_initializer();
       tp->set_name(tensorNames[i]);
-      for (int k = 0; k < tensors[i]->dims().size(); k++) {
+      for (size_t k = 0; k < tensors[i]->dims().size(); k++) {
         tp->add_dims(tensors[i]->dims()[k]);
       }
       switch (RH.getElementType()) {
       case ElemKind::FloatTy:
         tp->set_data_type(ONNX_NAMESPACE::TensorProto::FLOAT);
-        for (int k = 0; k < tensors[i]->size(); k++) {
+        for (size_t k = 0; k < tensors[i]->size(); k++) {
           tp->add_float_data(RH.raw(k));
         }
         break;
       case ElemKind::Int64ITy:
         tp->set_data_type(ONNX_NAMESPACE::TensorProto::INT64);
-        for (int k = 0; k < tensors[i]->size(); k++) {
+        for (size_t k = 0; k < tensors[i]->size(); k++) {
           tp->add_int64_data(RH.raw(k));
         }
         break;
       case ElemKind::Int32ITy:
         tp->set_data_type(ONNX_NAMESPACE::TensorProto::INT32);
-        for (int k = 0; k < tensors[i]->size(); k++) {
+        for (size_t k = 0; k < tensors[i]->size(); k++) {
           tp->add_int32_data(RH.raw(k));
         }
         break;
@@ -166,7 +166,7 @@ Error checkConstFoldedOutput(std::string NetFilename,
 template <class OpType>
 static void
 importArithMultiBroadcastTest(std::string fileName,
-                              llvm::ArrayRef<size_t> inputShape, bool multi,
+                              llvm::ArrayRef<dim_t> inputShape, bool multi,
                               int numLeftTile, int numRightTile,
                               const std::function<float(float, float)> &op) {
   ExecutionEngine EE{};
@@ -227,7 +227,7 @@ importArithMultiBroadcastTest(std::string fileName,
   EE.compile(CompilationMode::Infer);
   EE.run(bindings);
   auto result = bindings.get(graphOutputVar)->getHandle();
-  std::vector<size_t> expectedDims = {1, 3, 4, 2};
+  std::vector<dim_t> expectedDims = {1, 3, 4, 2};
   std::vector<float> expectedValues;
 
   if (multi) {
@@ -395,7 +395,7 @@ TEST(onnx, importUniBroadcastMultiOutput) {
 
 /// Test loading of Elementwise Unary Ops floating point.
 static void testEltwiseUnaryOpFloat(std::string fileName,
-                                    llvm::ArrayRef<size_t> inputShape,
+                                    llvm::ArrayRef<dim_t> inputShape,
                                     std::string input_name, float delta,
                                     const std::function<float(float)> &op) {
   ExecutionEngine EE{};
@@ -429,7 +429,7 @@ TEST(onnx, importExp) {
 }
 
 static void testImportPRelu(std::string filename,
-                            llvm::ArrayRef<size_t> inputShape,
+                            llvm::ArrayRef<dim_t> inputShape,
                             std::vector<float> expectedSlope) {
   ExecutionEngine EE{};
   auto &mod = EE.getModule();
@@ -456,8 +456,8 @@ static void testImportPRelu(std::string filename,
   EE.run(bindings);
   auto dataH = bindings.get(bindings.getPlaceholderByName("data"))->getHandle();
   auto result = bindings.get(graphOutputVar)->getHandle();
-  std::vector<size_t> expectedDims = {inputShape[0], inputShape[1],
-                                      inputShape[2], inputShape[3]};
+  std::vector<dim_t> expectedDims = {inputShape[0], inputShape[1],
+                                     inputShape[2], inputShape[3]};
 
   EXPECT_TRUE(result.dims().vec() == expectedDims);
   for (size_t i = 0; i < dataH.size(); i++) {
@@ -514,7 +514,7 @@ TEST(onnx, importPReluInvalidBroadcastSlope) {
 /// The input is N*C*H*W (1*1*3*3), the kernels is {2, 2},
 /// strides is {1, 1}, group is 1. Pads can vary.
 static void convTestHelper(std::string &filename,
-                           const llvm::ArrayRef<size_t> expectedDims,
+                           const llvm::ArrayRef<dim_t> expectedDims,
                            const llvm::ArrayRef<float> expectedValues) {
 
   ExecutionEngine EE{};
@@ -577,7 +577,7 @@ static void convTestHelper(std::string &filename,
 /// strides is {1, 1}, pads is {1, 1, 1, 1}, group is 1.
 TEST(onnx, importConv) {
   std::string filename("simpleConv.onnxtxt");
-  std::vector<size_t> expectedDims = {1, 1, 4, 4};
+  std::vector<dim_t> expectedDims = {1, 1, 4, 4};
   std::vector<float> expectedValues = {2,  3,  5,  4,  5, 10, 14, 9,
                                        11, 22, 26, 15, 8, 15, 17, 10};
   convTestHelper(filename, expectedDims, expectedValues);
@@ -588,7 +588,7 @@ TEST(onnx, importConv) {
 /// strides is {1, 1}, auto_pad VALID (i.e. no padding), group is 1.
 TEST(onnx, importConvAutoPadValid) {
   std::string filename("simpleConvAutoPadValid.onnxtxt");
-  std::vector<size_t> expectedDims = {1, 1, 2, 2};
+  std::vector<dim_t> expectedDims = {1, 1, 2, 2};
   std::vector<float> expectedValues = {10, 14, 22, 26};
   convTestHelper(filename, expectedDims, expectedValues);
 }
@@ -598,7 +598,7 @@ TEST(onnx, importConvAutoPadValid) {
 /// strides is {1, 1}, auto_pad SAME_UPPER, group is 1.
 TEST(onnx, importConvAutoPadSameUpper) {
   std::string filename("simpleConvAutoPadSameUpper.onnxtxt");
-  std::vector<size_t> expectedDims = {1, 1, 3, 3};
+  std::vector<dim_t> expectedDims = {1, 1, 3, 3};
   std::vector<float> expectedValues = {10, 14, 9, 22, 26, 15, 15, 17, 10};
   convTestHelper(filename, expectedDims, expectedValues);
 }
@@ -608,7 +608,7 @@ TEST(onnx, importConvAutoPadSameUpper) {
 /// strides is {1, 1}, auto_pad SAME_LOWER, group is 1.
 TEST(onnx, importConvAutoPadSameLower) {
   std::string filename("simpleConvAutoPadSameLower.onnxtxt");
-  std::vector<size_t> expectedDims = {1, 1, 3, 3};
+  std::vector<dim_t> expectedDims = {1, 1, 3, 3};
   std::vector<float> expectedValues = {2, 3, 5, 5, 10, 14, 11, 22, 26};
   convTestHelper(filename, expectedDims, expectedValues);
 }
@@ -644,7 +644,7 @@ TEST(onnx, importConvBiasFail) {
 /// The input is N*C*H*W (1*1*3*3), the kernels is {2, 2},
 /// strides is {1, 1}, group is 1. Pads can vary in filename.
 static void averagePoolTestHelper(std::string &filename,
-                                  const llvm::ArrayRef<size_t> expectedDims,
+                                  const llvm::ArrayRef<dim_t> expectedDims,
                                   const llvm::ArrayRef<float> expectedValues) {
 
   ExecutionEngine EE{};
@@ -701,7 +701,7 @@ static void averagePoolTestHelper(std::string &filename,
 /// strides is {1, 1}, pads is auto_pad VALID (no padding), group is 1.
 TEST(onnx, importAveragePool2DAutoPadValid) {
   std::string filename("averagePool2DAutoPadValid.onnxtxt");
-  std::vector<size_t> expectedDims = {1, 1, 2, 2};
+  std::vector<dim_t> expectedDims = {1, 1, 2, 2};
   std::vector<float> expectedValues = {2, 3, 5, 6};
   averagePoolTestHelper(filename, expectedDims, expectedValues);
 }
@@ -711,7 +711,7 @@ TEST(onnx, importAveragePool2DAutoPadValid) {
 /// strides is {1, 1}, pads is auto_pad SAME_UPPER, group is 1.
 TEST(onnx, importAveragePool2DAutoPadSameUpper) {
   std::string filename("averagePool2DAutoPadSameUpper.onnxtxt");
-  std::vector<size_t> expectedDims = {1, 1, 3, 3};
+  std::vector<dim_t> expectedDims = {1, 1, 3, 3};
   std::vector<float> expectedValues = {2, 3, 1.75, 5, 6, 3.25, 3.25, 3.75, 2};
   averagePoolTestHelper(filename, expectedDims, expectedValues);
 }
@@ -721,7 +721,7 @@ TEST(onnx, importAveragePool2DAutoPadSameUpper) {
 /// strides is {1, 1}, pads is auto_pad SAME_LOWER, group is 1.
 TEST(onnx, importAveragePool2DAutoPadSameLower) {
   std::string filename("averagePool2DAutoPadSameLower.onnxtxt");
-  std::vector<size_t> expectedDims = {1, 1, 3, 3};
+  std::vector<dim_t> expectedDims = {1, 1, 3, 3};
   std::vector<float> expectedValues = {0, 0.25, 0.75, 0.75, 2, 3, 2.25, 5, 6};
   averagePoolTestHelper(filename, expectedDims, expectedValues);
 }
@@ -770,7 +770,7 @@ TEST(onnx, reduceMean4Dto3D) {
   EE.run(bindings);
 
   auto result = res->getHandle();
-  std::vector<size_t> expectedDims = {2, 2, 2};
+  std::vector<dim_t> expectedDims = {2, 2, 2};
   std::vector<float> expectedValues = {
       1.5, 3.5, 5.5, 7.5, 9.5, 11.5, 13.5, 15.5,
   };
@@ -814,7 +814,7 @@ TEST(onnx, reduceMean4Dto4D) {
   EE.run(bindings);
 
   auto result = res->getHandle();
-  std::vector<size_t> expectedDims = {2, 2, 2, 1};
+  std::vector<dim_t> expectedDims = {2, 2, 2, 1};
   std::vector<float> expectedValues = {
       1.5, 3.5, 5.5, 7.5, 9.5, 11.5, 13.5, 15.5,
   };
@@ -857,7 +857,7 @@ TEST(onnx, reduceSum4D) {
   EE.compile(CompilationMode::Infer);
   EE.run(bindings);
   auto result = res->getHandle();
-  std::vector<size_t> expectedDims = {2, 2, 2, 1};
+  std::vector<dim_t> expectedDims = {2, 2, 2, 1};
   std::vector<float> expectedValues = {3, 7, 11, 15, 19, 23, 27, 31};
 
   EXPECT_TRUE(result.dims().vec() == expectedDims);
@@ -899,7 +899,7 @@ TEST(onnx, reduceMean2AvgPoolKeepDims) {
   EE.run(bindings);
 
   auto result = res->getHandle();
-  std::vector<size_t> expectedDims = {2, 2, 1, 1};
+  std::vector<dim_t> expectedDims = {2, 2, 1, 1};
   std::vector<float> expectedValues = {
       2.5,
       6.5,
@@ -947,7 +947,7 @@ TEST(onnx, reduceMean2AvgPoolNoKeepDims) {
   EE.run(bindings);
 
   auto result = res->getHandle();
-  std::vector<size_t> expectedDims = {2, 2};
+  std::vector<dim_t> expectedDims = {2, 2};
   std::vector<float> expectedValues = {
       2.5,
       6.5,
@@ -994,11 +994,11 @@ TEST(onnx, reduceMinKeepDims) {
   EE.run(bindings);
 
   auto result = res->getHandle();
-  std::vector<size_t> expectedDims = {2, 2, 1, 1};
+  std::vector<dim_t> expectedDims = {2, 2, 1, 1};
   std::vector<float> expectedValues = {1, 5, 9, 13};
 
   EXPECT_TRUE(result.dims().vec() == expectedDims);
-  for (size_t i = 0; i < result.size(); i++) {
+  for (dim_t i = 0; i < result.size(); i++) {
     EXPECT_FLOAT_EQ(result.raw(i), expectedValues[i]);
   }
 }
@@ -1033,7 +1033,7 @@ TEST(onnx, reduceMinNoKeepDims) {
   EE.run(bindings);
 
   auto result = res->getHandle();
-  std::vector<size_t> expectedDims = {2, 2};
+  std::vector<dim_t> expectedDims = {2, 2};
   std::vector<float> expectedValues = {
       1,
       5,
@@ -1042,7 +1042,7 @@ TEST(onnx, reduceMinNoKeepDims) {
   };
 
   EXPECT_TRUE(result.dims().vec() == expectedDims);
-  for (size_t i = 0; i < result.size(); i++) {
+  for (dim_t i = 0; i < result.size(); i++) {
     EXPECT_FLOAT_EQ(result.raw(i), expectedValues[i]);
   }
 }
@@ -1076,7 +1076,7 @@ TEST(onnx, reduceMinKeepDimsDefaultAxis) {
   EE.run(bindings);
 
   auto result = res->getHandle();
-  std::vector<size_t> expectedDims = {1, 1, 1, 1};
+  std::vector<dim_t> expectedDims = {1, 1, 1, 1};
   std::vector<float> expectedValues = {1};
 
   EXPECT_TRUE(result.dims().vec() == expectedDims);
@@ -1143,7 +1143,7 @@ TEST(onnx, importClip) {
   EE.run(bindings);
 
   auto result = res->getHandle();
-  std::vector<size_t> expectedDims = {3, 3};
+  std::vector<dim_t> expectedDims = {3, 3};
   std::vector<float> expectedValues = {20, 20, 20, 40, 20, 20, 20, 20, 60};
 
   EXPECT_TRUE(result.dims().vec() == expectedDims);
@@ -1186,7 +1186,7 @@ TEST(onnx, importBatchMatMul) {
   EE.run(bindings);
 
   auto result = res->getHandle();
-  std::vector<size_t> expectedDims = {20, 7, 7};
+  std::vector<dim_t> expectedDims = {20, 7, 7};
   EXPECT_EQ(result.dims().vec(), expectedDims);
 
   // High level check on the content of the graph.
@@ -1253,7 +1253,7 @@ TEST(onnx, importBatchBoxCox) {
   lambda2H.randomize(1.0, 2.0, mod.getPRNG());
 
   // Zero out every other element to lambda1 to test that case of the transform.
-  for (size_t i = 0; i < kCols; i += 2) {
+  for (dim_t i = 0; i < kCols; i += 2) {
     lambda1H.at({i}) = 0;
   }
 
@@ -1280,8 +1280,8 @@ TEST(onnx, importBatchBoxCox) {
 
   // Compute elementwise Box-Cox transform and compare with corresponding
   // element of result.
-  for (size_t i = 0; i < kRows; ++i) {
-    for (size_t j = 0; j < kCols; ++j) {
+  for (dim_t i = 0; i < kRows; ++i) {
+    for (dim_t j = 0; j < kCols; ++j) {
       float d = dataH.at({i, j});
       float l1 = lambda1H.at({j});
       float l2 = lambda2H.at({j});
@@ -1368,7 +1368,7 @@ TEST(onnx, importSumN) {
   EE.run(bindings);
 
   auto result = res->getHandle();
-  std::vector<size_t> expectedDims = {3};
+  std::vector<dim_t> expectedDims = {3};
   std::vector<float> expectedValues = {12, 15, 18};
 
   EXPECT_EQ(result.dims().vec(), expectedDims);
@@ -1424,7 +1424,7 @@ TEST(onnx, importSum1) {
   EE.run(bindings);
 
   auto result = res->getHandle();
-  std::vector<size_t> expectedDims = {3};
+  std::vector<dim_t> expectedDims = {3};
   std::vector<float> expectedValues = {1, 2, 3};
 
   EXPECT_EQ(result.dims().vec(), expectedDims);
@@ -1513,11 +1513,11 @@ TEST(onnx, importSparseToDense) {
   Placeholder *output;
 
   // Create inputs.
-  constexpr size_t kNumIndices = 5;
-  constexpr size_t kMaxIndex = 20;
-  constexpr size_t kRows = 10;
-  constexpr size_t kCols = 5;
-  Tensor indices(ElemKind::Int64ITy, {kNumIndices});
+  constexpr dim_t kNumIndices = 5;
+  constexpr dim_t kMaxIndex = 20;
+  constexpr dim_t kRows = 10;
+  constexpr dim_t kCols = 5;
+  Tensor indices(IndexElemKind, {kNumIndices});
   Tensor values(ElemKind::FloatTy, {kNumIndices, kRows, kCols});
   Tensor dataToInferDim(ElemKind::FloatTy, {kMaxIndex, kRows, kCols});
 
@@ -1555,7 +1555,7 @@ TEST(onnx, importSparseLengthsSum) {
   Placeholder *output;
   {
     Tensor data(ElemKind::FloatTy, {2, 1});
-    Tensor indices(ElemKind::Int64ITy, {2});
+    Tensor indices(IndexElemKind, {2});
     Tensor lengths(ElemKind::Int32ITy, {2});
     ONNXModelLoader onnxLD(
         netFilename, {"data", "indices", "lengths"},
@@ -1808,14 +1808,14 @@ TEST(onnx, gatherOpConstantFoldingAndReshape) {
   setConstantFoldLoaderOpsFlag(false);
 
   auto result = bindings.get(output)->getHandle();
-  std::vector<size_t> expectedDims = {1, 4, 3, 2};
+  std::vector<dim_t> expectedDims = {1, 4, 3, 2};
   EXPECT_TRUE(result.dims().vec() == expectedDims);
 }
 
 static void importSliceTest(std::string fileName, const char *inputName,
-                            const llvm::ArrayRef<size_t> inputShape,
-                            const llvm::ArrayRef<size_t> starts,
-                            const llvm::ArrayRef<size_t> outputShape) {
+                            const llvm::ArrayRef<dim_t> inputShape,
+                            const llvm::ArrayRef<dim_t> starts,
+                            const llvm::ArrayRef<dim_t> outputShape) {
   ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
@@ -1850,17 +1850,17 @@ static void importSliceTest(std::string fileName, const char *inputName,
   EE.run(bindings);
   auto result = bindings.get(graphOutputVar)->getHandle();
   EXPECT_TRUE(result.dims().vec() == outputShape.vec());
-  size_t wSliceSize = inputShape[3];
-  size_t hSliceSize = inputShape[2] * wSliceSize;
-  size_t cSliceSize = inputShape[1] * hSliceSize;
-  size_t indexOutput = 0;
-  for (size_t n = 0; n < outputShape[0]; n++) {
-    for (size_t c = 0; c < outputShape[1]; c++) {
-      for (size_t h = 0; h < outputShape[2]; h++) {
-        for (size_t w = 0; w < outputShape[3]; w++) {
-          size_t indexInput = (starts[0] + n) * cSliceSize +
-                              (starts[1] + c) * hSliceSize +
-                              (starts[2] + h) * wSliceSize + (starts[3] + w);
+  dim_t wSliceSize = inputShape[3];
+  dim_t hSliceSize = inputShape[2] * wSliceSize;
+  dim_t cSliceSize = inputShape[1] * hSliceSize;
+  dim_t indexOutput = 0;
+  for (dim_t n = 0; n < outputShape[0]; n++) {
+    for (dim_t c = 0; c < outputShape[1]; c++) {
+      for (dim_t h = 0; h < outputShape[2]; h++) {
+        for (dim_t w = 0; w < outputShape[3]; w++) {
+          dim_t indexInput = (starts[0] + n) * cSliceSize +
+                             (starts[1] + c) * hSliceSize +
+                             (starts[2] + h) * wSliceSize + (starts[3] + w);
           EXPECT_FLOAT_EQ(result.raw(indexOutput++), indexInput);
         }
       }
@@ -1910,7 +1910,7 @@ TEST(onnx, importSliceNoAxes) {
 }
 
 static void importCast(llvm::StringRef fileName, llvm::StringRef inputName,
-                       const llvm::ArrayRef<size_t> inputShape,
+                       const llvm::ArrayRef<dim_t> inputShape,
                        ElemKind outputKind) {
   ExecutionEngine EE{};
   auto &mod = EE.getModule();
@@ -1990,7 +1990,7 @@ TEST(onnx, cast_32_64) {
   // be optimized away.
   EXPECT_EQ(F->getNodes().size(), 3);
   auto result = bindings.get(graphOutputVar)->getHandle();
-  std::vector<size_t> expectedDims = {1, 2, 4, 3};
+  std::vector<dim_t> expectedDims = {1, 2, 4, 3};
 
   EXPECT_TRUE(result.dims().vec() == expectedDims);
   for (size_t i = 0; i < expectedOut.size(); i++) {
@@ -1999,9 +1999,9 @@ TEST(onnx, cast_32_64) {
 }
 
 static void importPad(std::string fileName, const char *inputName,
-                      const llvm::ArrayRef<size_t> inputShape,
-                      const llvm::ArrayRef<ssize_t> starts,
-                      const llvm::ArrayRef<ssize_t> ends, PaddingMode mode,
+                      const llvm::ArrayRef<dim_t> inputShape,
+                      const llvm::ArrayRef<sdim_t> starts,
+                      const llvm::ArrayRef<sdim_t> ends, PaddingMode mode,
                       float value, bool testOutput,
                       bool expectLoadError = false) {
   ExecutionEngine EE{};
@@ -2045,7 +2045,7 @@ static void importPad(std::string fileName, const char *inputName,
     EXPECT_EQ(value, padNode->getValue());
   }
   // Check the Pad node output shape.
-  std::vector<size_t> expectedOutputShape(inputShape.size());
+  std::vector<dim_t> expectedOutputShape(inputShape.size());
   for (unsigned int i = 0; i < inputShape.size(); i++) {
     expectedOutputShape[i] =
         size_t(ssize_t(inputShape[i]) + starts[i] + ends[i]);
@@ -2189,7 +2189,7 @@ TEST(onnx, shape) {
   EE.run(bindings);
 
   auto result = res->getHandle<int64_t>();
-  std::vector<size_t> expectedDims = {1};
+  std::vector<dim_t> expectedDims = {1};
   std::vector<int64_t> expectedValues = {4};
 
   EXPECT_TRUE(result.dims().vec() == expectedDims);
@@ -2227,7 +2227,7 @@ TEST(onnx, tile) {
   EE.run(bindings);
 
   auto result = res->getHandle();
-  std::vector<size_t> expectedDims = {1, 4, 4, 3};
+  std::vector<dim_t> expectedDims = {1, 4, 4, 3};
   std::vector<float> expectedValues = {
       1.0, 1.0, 1.0, 2.0, 2.0, 2.0, 1.0, 1.0, 1.0, 2.0, 2.0, 2.0,
       3.0, 3.0, 3.0, 4.0, 4.0, 4.0, 3.0, 3.0, 3.0, 4.0, 4.0, 4.0,
@@ -2270,12 +2270,12 @@ TEST(onnx, topK) {
   EE.run(bindings);
 
   auto outputH = outputT->getHandle();
-  auto indexH = indexT->getHandle<int64_t>();
-  std::vector<size_t> expectedDims = {1, 3, 2};
+  auto indexH = indexT->getHandle<sdim_t>();
+  std::vector<dim_t> expectedDims = {1, 3, 2};
   std::vector<float> expectedValues = {
       4., 3., 8., 7., 12, 11.,
   };
-  std::vector<int64_t> expectedIndices = {3, 2, 0, 1, 1, 0};
+  std::vector<dim_t> expectedIndices = {3, 2, 0, 1, 1, 0};
 
   EXPECT_TRUE(outputH.dims().vec() == expectedDims);
   for (size_t i = 0; i < expectedValues.size(); i++) {
@@ -2314,8 +2314,8 @@ TEST(onnx, argMaxKeepDim) {
   EE.compile(CompilationMode::Infer);
   EE.run(bindings);
 
-  auto argmax = bindings.get(argmaxPH)->getHandle<int64_t>();
-  std::vector<size_t> expectedDims = {2, 3, 1, 5};
+  auto argmax = bindings.get(argmaxPH)->getHandle<sdim_t>();
+  std::vector<dim_t> expectedDims = {2, 3, 1, 5};
   EXPECT_TRUE(argmax.dims().vec() == expectedDims);
 }
 
@@ -2341,8 +2341,8 @@ TEST(onnx, argMaxNoKeepDim) {
   EE.compile(CompilationMode::Infer);
   EE.run(bindings);
 
-  auto argmax = bindings.get(argmaxPH)->getHandle<int64_t>();
-  std::vector<size_t> expectedDims = {2, 4, 5};
+  auto argmax = bindings.get(argmaxPH)->getHandle<sdim_t>();
+  std::vector<dim_t> expectedDims = {2, 4, 5};
   EXPECT_TRUE(argmax.dims().vec() == expectedDims);
 }
 
@@ -2368,8 +2368,8 @@ TEST(onnx, argMaxDefault) {
   EE.compile(CompilationMode::Infer);
   EE.run(bindings);
 
-  auto argmax = bindings.get(argmaxPH)->getHandle<int64_t>();
-  std::vector<size_t> expectedDims = {1, 3, 4, 5};
+  auto argmax = bindings.get(argmaxPH)->getHandle<sdim_t>();
+  std::vector<dim_t> expectedDims = {1, 3, 4, 5};
   EXPECT_TRUE(argmax.dims().vec() == expectedDims);
 }
 
@@ -2438,16 +2438,16 @@ TEST(onnx, importMaxPoolWithArgmax) {
   EE.run(bindings);
 
   auto result = bindings.get(resultPH)->getHandle();
-  auto indices = bindings.get(indicesPH)->getHandle<int64_t>();
-  std::vector<size_t> expectedDims = {1, 3, 2, 2};
+  auto indices = bindings.get(indicesPH)->getHandle<sdim_t>();
+  std::vector<dim_t> expectedDims = {1, 3, 2, 2};
 
   EXPECT_TRUE(result.dims().vec() == expectedDims);
   EXPECT_TRUE(indices.dims().vec() == expectedDims);
 
   std::vector<float> expectedResult = {58.0, 46.0, 33.0, 57.0, 55.0, 31.0,
                                        54.0, 53.0, 40.0, 52.0, 51.0, 38.0};
-  std::vector<int64_t> expectedIndices = {15, 18, 36, 30, 13, 19,
-                                          28, 43, 14, 11, 26, 44};
+  std::vector<sdim_t> expectedIndices = {15, 18, 36, 30, 13, 19,
+                                         28, 43, 14, 11, 26, 44};
 
   for (size_t i = 0; i < expectedResult.size(); i++) {
     EXPECT_EQ(result.raw(i), expectedResult[i]);

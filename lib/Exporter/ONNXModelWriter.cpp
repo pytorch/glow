@@ -328,8 +328,8 @@ Error writeArithmetic(const std::string &opName, const T *node,
     if (LHS.dims() != RHS.dims()) {
       // Extract axis from available shapes, ie. input origin,
       // reshape and target repeats.
-      llvm::ArrayRef<size_t> origin = RHS.dims();
-      llvm::ArrayRef<size_t> reshape = RN->getDims();
+      llvm::ArrayRef<dim_t> origin = RHS.dims();
+      llvm::ArrayRef<dim_t> reshape = RN->getDims();
       DCHECK(reshape.size() == repeats.size());
       DCHECK(repeats.size() >= origin.size());
 
@@ -866,9 +866,9 @@ Error ONNXModelWriter::writeSlice(const SliceNode *node, GraphType &graph) {
   RETURN_IF_ERR(writeAllWithNode("Slice", node, proto));
 
   if (opsetVersion_ >= 10) {
-    Tensor oneDimTensorStarts(ElemKind::Int64ITy, {starts.size()});
+    Tensor oneDimTensorStarts(ElemKind::Int64ITy, {(dim_t)starts.size()});
     auto handleStarts = oneDimTensorStarts.getHandle<int64_t>();
-    Tensor oneDimTensorEnds(ElemKind::Int64ITy, {starts.size()});
+    Tensor oneDimTensorEnds(ElemKind::Int64ITy, {(dim_t)starts.size()});
     auto handleEnds = oneDimTensorEnds.getHandle<int64_t>();
 
     for (size_t b = 0, e = starts.size(); b < e; ++b) {

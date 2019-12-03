@@ -16,6 +16,8 @@
 #ifndef GLOW_BASE_TYPE_H
 #define GLOW_BASE_TYPE_H
 
+#include "DimType.h"
+
 #include "glow/Support/Compiler.h"
 #include "glow/Support/Float16.h"
 #include "glow/Support/Memory.h"
@@ -55,13 +57,13 @@ using unsigned_t = uint32_t;
 using float16_t = float16;
 static_assert(sizeof(float16_t) == 2, "Half precision should be 16-bit");
 
-using ShapeVector = llvm::SmallVector<size_t, max_tensor_dimensions>;
+using ShapeVector = llvm::SmallVector<dim_t, max_tensor_dimensions>;
 
 struct ShapeNHWC {
-  size_t n; // Number of samples
-  size_t h; // Height
-  size_t w; // Width
-  size_t c; // Number of Channels
+  dim_t n; // Number of samples
+  dim_t h; // Height
+  dim_t w; // Width
+  dim_t c; // Number of Channels
 
   template <typename T> explicit ShapeNHWC(llvm::ArrayRef<T> shape) {
     assert(shape.size() == 4 && "Invalid shape");
@@ -71,7 +73,7 @@ struct ShapeNHWC {
     c = shape[3];
   }
 
-  ShapeNHWC(size_t samples, size_t height, size_t width, size_t channels)
+  ShapeNHWC(dim_t samples, dim_t height, dim_t width, dim_t channels)
       : n(samples), h(height), w(width), c(channels) {}
 
   bool equals(const ShapeNHWC &other) const {
@@ -80,11 +82,11 @@ struct ShapeNHWC {
 };
 
 struct ShapeNHWDC {
-  size_t n; // Number of samples
-  size_t h; // Height
-  size_t w; // Width
-  size_t d; // Depth
-  size_t c; // Number of Channels
+  dim_t n; // Number of samples
+  dim_t h; // Height
+  dim_t w; // Width
+  dim_t d; // Depth
+  dim_t c; // Number of Channels
 
   template <typename T> explicit ShapeNHWDC(llvm::ArrayRef<T> shape) {
     assert(shape.size() == 5 && "Invalid shape");
@@ -106,12 +108,12 @@ struct ShapeNHWDC {
 };
 
 struct ShapeNCHW {
-  size_t n; // Number of samples
-  size_t c; // Number of Channels
-  size_t h; // Height
-  size_t w; // Width
+  dim_t n; // Number of samples
+  dim_t c; // Number of Channels
+  dim_t h; // Height
+  dim_t w; // Width
 
-  explicit ShapeNCHW(llvm::ArrayRef<size_t> shape) {
+  explicit ShapeNCHW(llvm::ArrayRef<dim_t> shape) {
     assert(shape.size() == 4 && "Invalid shape");
     n = shape[0];
     c = shape[1];
@@ -119,7 +121,7 @@ struct ShapeNCHW {
     w = shape[3];
   }
 
-  ShapeNCHW(size_t samples, size_t channels, size_t height, size_t width)
+  ShapeNCHW(dim_t samples, dim_t channels, dim_t height, dim_t width)
       : n(samples), c(channels), h(height), w(width) {}
 
   bool equals(const ShapeNCHW &other) const {
@@ -128,10 +130,10 @@ struct ShapeNCHW {
 };
 
 struct PaddingTLBR {
-  size_t top;
-  size_t left;
-  size_t bottom;
-  size_t right;
+  dim_t top;
+  dim_t left;
+  dim_t bottom;
+  dim_t right;
 
   template <typename T> explicit PaddingTLBR(llvm::ArrayRef<T> pads) {
     assert(pads.size() == 4 && "Invalid padding");
@@ -147,12 +149,12 @@ struct PaddingTLBR {
 };
 
 struct PaddingTLNBRF {
-  size_t top;
-  size_t left;
-  size_t near;
-  size_t bottom;
-  size_t right;
-  size_t far;
+  dim_t top;
+  dim_t left;
+  dim_t near;
+  dim_t bottom;
+  dim_t right;
+  dim_t far;
 
   template <typename T> explicit PaddingTLNBRF(llvm::ArrayRef<T> pads) {
     assert(pads.size() == 6 && "Invalid padding");
@@ -171,8 +173,8 @@ struct PaddingTLNBRF {
 };
 
 struct ShapeHW {
-  size_t height;
-  size_t width;
+  dim_t height;
+  dim_t width;
 
   template <typename T> explicit ShapeHW(llvm::ArrayRef<T> shape) {
     assert(shape.size() == 2 && "Invalid shape");
@@ -184,9 +186,9 @@ struct ShapeHW {
 };
 
 struct ShapeHWD {
-  size_t height;
-  size_t width;
-  size_t depth;
+  dim_t height;
+  dim_t width;
+  dim_t depth;
 
   template <typename T> explicit ShapeHWD(llvm::ArrayRef<T> shape) {
     assert(shape.size() == 3 && "Invalid shape");
@@ -200,8 +202,8 @@ struct ShapeHWD {
 
 /// Collapse a tensor shape into two sizes: the first n dimensions and the size
 /// of the rest of the dimensions. For example, ([7, 3, 4, 2], 1) -> [7, 24]
-inline std::pair<size_t, size_t> flattenCdr(llvm::ArrayRef<size_t> dims,
-                                            unsigned_t n = 1) {
+inline std::pair<dim_t, dim_t> flattenCdr(llvm::ArrayRef<dim_t> dims,
+                                          unsigned_t n = 1) {
   assert(1 <= n && n <= dims.size());
   size_t first = dims[0];
   for (unsigned_t i = 1; i < n; i++) {
@@ -259,6 +261,9 @@ enum class ElemKind : unsigned char {
   BoolTy,
 };
 
+constexpr ElemKind IndexElemKind =
+    (sizeof(dim_t) == 4) ? ElemKind::Int32ITy : ElemKind::Int64ITy;
+
 /// \returns whether \p e is a quantized ElemKind.
 inline bool isQuantizedElemKind(ElemKind e) {
   return e == ElemKind::Int8QTy || e == ElemKind::UInt8QTy ||
@@ -285,7 +290,7 @@ inline ElemKind getScaleOffsetElemKindFromFused(ElemKind e) {
 /// A class that represents a type of a tensor.
 struct Type final {
   /// Contains the dimensions (sizes) of the tensor. Ex: [sx, sy, sz, ...].
-  size_t sizes_[max_tensor_dimensions] = {
+  dim_t sizes_[max_tensor_dimensions] = {
       0,
   };
   /// Contains the strides for each dimension (in elements). The order should be
@@ -294,7 +299,7 @@ struct Type final {
   /// number of elements that needs to be skipped in order to reach the next
   /// plane in the i-th dimension. For example, if the tensor has dimensions
   /// [3, 5, 10] and alignments [3, 32, 1], the strides will be [162, 32, 1].
-  size_t strides_[max_tensor_dimensions] = {
+  dim_t strides_[max_tensor_dimensions] = {
       0,
   };
 
@@ -310,8 +315,7 @@ struct Type final {
   ElemKind elementType_{ElemKind::Int64ITy};
 
   /// Initialize a new quantized type with \p scale and \p offset.
-  Type(ElemKind elemTy, llvm::ArrayRef<size_t> dims, float scale,
-       int32_t offset)
+  Type(ElemKind elemTy, llvm::ArrayRef<dim_t> dims, float scale, int32_t offset)
       : scale_(scale), offset_(offset), elementType_(elemTy) {
     assert(isQuantizedType() && "Only quantized types have a scale and offset");
     ShapeVector alignments(dims.size(), 1);
@@ -319,7 +323,7 @@ struct Type final {
   }
 
   /// Initialize a new non-quantized type.
-  Type(ElemKind elemTy, llvm::ArrayRef<size_t> dims) : elementType_(elemTy) {
+  Type(ElemKind elemTy, llvm::ArrayRef<dim_t> dims) : elementType_(elemTy) {
     assert(!isQuantizedType() &&
            "Can't initialize quantized types without scale and offset");
     ShapeVector alignments(dims.size(), 1);
@@ -327,16 +331,16 @@ struct Type final {
   }
 
   /// Initialize a new quantized type with \p scale and \p offset.
-  Type(ElemKind elemTy, llvm::ArrayRef<size_t> dims,
-       llvm::ArrayRef<size_t> alignments, float scale, int32_t offset)
+  Type(ElemKind elemTy, llvm::ArrayRef<dim_t> dims,
+       llvm::ArrayRef<dim_t> alignments, float scale, int32_t offset)
       : scale_(scale), offset_(offset), elementType_(elemTy) {
     assert(isQuantizedType() && "Only quantized types have a scale and offset");
     initDims(dims, alignments);
   }
 
   /// Initialize a new non-quantized type.
-  Type(ElemKind elemTy, llvm::ArrayRef<size_t> dims,
-       llvm::ArrayRef<size_t> alignments)
+  Type(ElemKind elemTy, llvm::ArrayRef<dim_t> dims,
+       llvm::ArrayRef<dim_t> alignments)
       : elementType_(elemTy) {
     assert(!isQuantizedType() &&
            "Can't initialize quantized types without scale and offset");
@@ -344,7 +348,7 @@ struct Type final {
   }
 
   /// Reshape existing type. This method takes care of quantized types.
-  static Type newShape(const Type &T, llvm::ArrayRef<size_t> dims) {
+  static Type newShape(const Type &T, llvm::ArrayRef<dim_t> dims) {
     if (T.isQuantizedType()) {
       return Type(T.getElementType(), dims, T.getScale(), T.getOffset());
     } else {
@@ -353,8 +357,8 @@ struct Type final {
   }
 
   /// Reshape existing type and change alignments.
-  static Type newShape(const Type &T, llvm::ArrayRef<size_t> dims,
-                       llvm::ArrayRef<size_t> alignments) {
+  static Type newShape(const Type &T, llvm::ArrayRef<dim_t> dims,
+                       llvm::ArrayRef<dim_t> alignments) {
     if (T.isQuantizedType()) {
       return Type(T.getElementType(), dims, alignments, T.getScale(),
                   T.getOffset());
@@ -466,16 +470,16 @@ struct Type final {
   ElemKind getElementType() const { return elementType_; }
 
   /// \returns the shape of the tensor.
-  llvm::ArrayRef<size_t> dims() const { return {sizes_, numSizes_}; }
+  llvm::ArrayRef<dim_t> dims() const { return {sizes_, numSizes_}; }
 
   /// \returns the strides of the tensor.
-  llvm::ArrayRef<size_t> strides() const { return {strides_, numSizes_}; }
+  llvm::ArrayRef<dim_t> strides() const { return {strides_, numSizes_}; }
 
   /// \returns the number of elements in the tensor.
-  size_t size() const {
-    size_t s = 1;
+  dim_t size() const {
+    dim_t s = 1;
     for (unsigned char i = 0; i < numSizes_; i++) {
-      s *= size_t(sizes_[i]);
+      s *= dim_t(sizes_[i]);
     }
 
     return s;
@@ -485,11 +489,11 @@ struct Type final {
   /// size of the slice starting at \p startDim. For example, the tensor with
   /// the shape [10, 10, 3] and startDim 1 would have the size 30, because this
   /// is the size of the slice [10, 3] that starts at index 1.
-  size_t getSliceSize(unsigned char startDim) const {
+  dim_t getSliceSize(unsigned char startDim) const {
     assert(startDim <= numSizes_ && "Invalid start dim");
-    size_t s = 1;
+    dim_t s = 1;
     for (unsigned char i = startDim; i < numSizes_; i++) {
-      s *= size_t(sizes_[i]);
+      s *= dim_t(sizes_[i]);
     }
     return s;
   }
@@ -548,7 +552,8 @@ struct Type final {
   size_t getSizeInBytes() const {
     size_t s = getElementSize();
     for (unsigned char i = 0; i < numSizes_; i++) {
-      s = std::max(s, size_t(sizes_[i]) * getElementSize() * strides_[i]);
+      s = std::max<dim_t>(s,
+                          size_t(sizes_[i]) * getElementSize() * strides_[i]);
     }
     return s;
   }
@@ -618,8 +623,7 @@ private:
   /// used by the constructor.
   /// \param dims of the tensor (in elements).
   /// \param alignments of the tensor (in bytes).
-  void initDims(llvm::ArrayRef<size_t> dims,
-                llvm::ArrayRef<size_t> alignments) {
+  void initDims(llvm::ArrayRef<dim_t> dims, llvm::ArrayRef<dim_t> alignments) {
     assert(dims.size() <= max_tensor_dimensions && "Too many dimensions.");
     assert(dims.size() == alignments.size() &&
            "The number of dimensions and alignments should be the same");
@@ -635,7 +639,7 @@ private:
       sizes_[numSizes_ - 1] = dims[numSizes_ - 1];
     }
     for (int i = numSizes_ - 2; i >= 0; i--) {
-      size_t alignment = alignments[i];
+      dim_t alignment = alignments[i];
       if (alignment != 1) {
         assert(alignment % getElementSize() == 0 &&
                "Alignment should be a multiple of element size");
@@ -646,6 +650,16 @@ private:
       assert(dims[i] > 0 && "Do not allow a dimension of zero.");
       sizes_[i] = dims[i];
     }
+  }
+
+  void initDims(llvm::ArrayRef<dim_t> dims) {
+    assert(dims.size() <= max_tensor_dimensions && "Too many dimensions.");
+    // Update the tensor sizes.
+    for (size_t i = 0, e = dims.size(); i < e; i++) {
+      assert(dims[i] > 0 && "Do not allow a dimension of zero.");
+      sizes_[i] = dims[i];
+    }
+    numSizes_ = dims.size();
   }
 };
 

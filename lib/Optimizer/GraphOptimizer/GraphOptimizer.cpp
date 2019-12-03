@@ -411,7 +411,7 @@ bool SinkCode::run(Function *F, const CompilationContext &cctx) {
       auto outPadShape = outPadType->dims();
       auto pads = padNode->getPads();
       size_t numDims = outPadShape.size();
-      std::vector<size_t> newOutPadShape(numDims);
+      std::vector<dim_t> newOutPadShape(numDims);
       std::vector<int> newPads(2 * numDims);
       for (size_t i = 0; i < outPadShape.size(); i++) {
         newOutPadShape[shuffle[i]] = outPadShape[i];
@@ -802,10 +802,10 @@ bool MergeMatMul::run(Function *F, const CompilationContext &cctx) {
     auto *CC = F->createConcat("mergeLHS", LHS, 0);
     auto *MM = F->createMatMul("bigMatMul", CC, it.first);
 
-    size_t R = MM->getResult().dims()[1];
-    size_t start = 0;
+    dim_t R = MM->getResult().dims()[1];
+    dim_t start = 0;
     for (auto *origMM : MMs) {
-      size_t H = origMM->getResult().dims()[0];
+      dim_t H = origMM->getResult().dims()[0];
       auto *ex = F->createSlice("extract", MM, {start, 0}, {start + H, R});
       start += H;
       origMM->getResult().replaceAllUsesOfWith(ex);
@@ -1062,10 +1062,10 @@ bool ConvertBroadcastedBatchMatMul::run(Function *F,
     // RHS = {M, P}
     // Multiply each LHS matrix {N, M} by RHS {M, P} to get final matrix
     // {numBatches, N, P}
-    const size_t numBatches = LHS.dims()[0];
-    const size_t N = LHS.dims()[1];
-    const size_t M = LHS.dims()[2];
-    const size_t P = RHS.dims()[2];
+    const dim_t numBatches = LHS.dims()[0];
+    const dim_t N = LHS.dims()[1];
+    const dim_t M = LHS.dims()[2];
+    const dim_t P = RHS.dims()[2];
     auto name = BMMN->getName();
 
     // Reshape the LHS to be a two-dimensional matrix, where each batch is
@@ -1295,7 +1295,7 @@ bool OptimizeReduceMean::run(Function *F, const CompilationContext &cctx) {
           RM->getName().str() + ".transposeNHWC2NCHW", AP, NHWC2NCHW, "NCHW");
 
       // AvgPool keeps original shape. Add reshape to match expected output.
-      std::vector<size_t> shape = TR2->getResult().dims();
+      std::vector<dim_t> shape = TR2->getResult().dims();
 
       ShapeVector shapeAxes(axes.begin(), axes.end());
 
@@ -1420,7 +1420,7 @@ bool normalizeWeights(Module *M, ConvolutionNode &CV,
   for (size_t i = 0, e = filterH.size(); i < e; i++) {
     // Dimension zero is the 'channel' dimension. If we ever change the
     // layout of the filter then we need to change this optimization.
-    size_t channelId = filterH.getDimForPtr(0, i);
+    dim_t channelId = filterH.getDimForPtr(0, i);
     float value = varH.at({channelId});
     float stdvar = 1.0f / std::sqrt(value + epsilon);
     float gamma = scaleH.at({channelId});
@@ -1431,7 +1431,7 @@ bool normalizeWeights(Module *M, ConvolutionNode &CV,
   for (size_t i = 0, e = cbiasH.size(); i < e; i++) {
     // Dimension zero is the 'channel' dimension. If we ever change the
     // layout of the filter then we need to change this optimization.
-    size_t channelId = cbiasH.getDimForPtr(0, i);
+    dim_t channelId = cbiasH.getDimForPtr(0, i);
     float mu = meanH.at({channelId});
     float value = varH.at({channelId});
     float stdvar = 1.0f / std::sqrt(value + epsilon);
@@ -1518,7 +1518,7 @@ static bool checkConcatNodeUniformDims(llvm::ArrayRef<NodeValue> inputs,
 /// matches the size 20, and the leading dimensions are <1,2>, which matches
 /// the size 2.
 static ssize_t findMatchingConcatDimForSameTrailingAndLeadingDims(
-    llvm::ArrayRef<size_t> firstDims, size_t leadingDimsProdOriginalConcatNode,
+    llvm::ArrayRef<dim_t> firstDims, size_t leadingDimsProdOriginalConcatNode,
     size_t trailingDimsProdOriginalConcatNode) {
   size_t trailingDimsProdCurNode = 1;
   for (ssize_t i = firstDims.size() - 1; i >= 0; i--) {
@@ -1561,8 +1561,8 @@ findConcatDimForSameTrailingAndLeadingDims(llvm::ArrayRef<NodeValue> inputs,
   // The sizes of the trailing/leading dimensions of the original ConcatNode,
   // which are being concatenated. This sizes are simply the products of
   // dimensions following/before the dimension used for concatenation.
-  size_t trailingDimsProdOriginalConcatNode = 1;
-  size_t leadingDimsProdOriginalConcatNode = 1;
+  dim_t trailingDimsProdOriginalConcatNode = 1;
+  dim_t leadingDimsProdOriginalConcatNode = 1;
   for (size_t i = 0; i < origConcatNInputDims.size(); ++i) {
     if (i < originalConcatNode->getDim()) {
       leadingDimsProdOriginalConcatNode *= origConcatNInputDims[i];
@@ -1922,9 +1922,9 @@ struct ConstsHasherDedup {
     // Only use the first 8 elements in the hash. It's likely that if two
     // tensors have different content they will diverge quickly. Fall back to
     // full equality check in ConstsEqDedup.
-    constexpr size_t maxNumEls = 8;
-    size_t numEls = std::min(T.getType().size(), maxNumEls);
-    size_t bufSize = T.getType().getElementSize() * numEls;
+    constexpr dim_t maxNumEls = 8;
+    dim_t numEls = std::min((dim_t)T.getType().size(), maxNumEls);
+    dim_t bufSize = T.getType().getElementSize() * numEls;
     auto *data = T.getUnsafePtr();
     for (size_t i = 0; i < bufSize; i++) {
       hash = llvm::hash_combine(hash, data[i]);
@@ -2938,7 +2938,7 @@ static bool getFloatScalar(Node *node, float *retFloat) {
       return false;
     }
     auto valueH = constNode->getHandle<float>();
-    std::vector<size_t> coord(constNode->getType()->dims().size(), 0);
+    std::vector<dim_t> coord(constNode->getType()->dims().size(), 0);
     *retFloat = valueH.at(coord);
     return true;
   }
@@ -3006,8 +3006,8 @@ static llvm::Optional<ChannelShuffleParams>
 getChannelShuffleParams(const ReshapeNode &node) {
   auto resM = llvm::Optional<ChannelShuffleParams>();
 
-  llvm::ArrayRef<size_t> inputDims = node.getInput().dims();
-  llvm::ArrayRef<size_t> resultDims = node.getDims();
+  llvm::ArrayRef<dim_t> inputDims = node.getInput().dims();
+  llvm::ArrayRef<dim_t> resultDims = node.getDims();
 
   // Check that there is one more output dimension than input dimension.
   if (resultDims.size() != inputDims.size() + 1) {
@@ -3428,8 +3428,8 @@ bool glow::executeVerticalFCWeightsSplit(Function *F, unsigned numOfChunks,
     auto weights = FC->getWeights();
     auto bias = FC->getBias();
 
-    size_t elemPerChunk = (bias.dims()[0] + numOfChunks - 1) / numOfChunks;
-    size_t sliceStart = 0;
+    dim_t elemPerChunk = (bias.dims()[0] + numOfChunks - 1) / numOfChunks;
+    dim_t sliceStart = 0;
     std::vector<NodeValue> fcs(numOfChunks);
 
     // Split weights across second dimension into numOfChunks pieces.
@@ -3484,21 +3484,21 @@ bool glow::executeVerticalFCWeightsSplit(Function *F, unsigned numOfChunks,
 /// concatenating the results. \p resultIdx represents the result index from
 /// \p curNode that is being split and later concatenated.
 static void parallelizeAndReplaceNode(Function *F, Node *curNode,
-                                      size_t numOfChunksNode,
-                                      size_t inputBatchIdx, size_t resultIdx,
+                                      dim_t numOfChunksNode,
+                                      dim_t inputBatchIdx, dim_t resultIdx,
                                       llvm::ArrayRef<int> splitDims,
                                       size_t resultDim) {
   const int inputIdx = splitDims[inputBatchIdx];
   CHECK_GE(inputIdx, 0) << "Input batch idx must be split";
-  const size_t batchSize = curNode->getNthInput(inputBatchIdx).dims()[inputIdx];
-  const size_t elemPerChunk = batchSize / numOfChunksNode;
-  const size_t remain = batchSize % numOfChunksNode;
+  const dim_t batchSize = curNode->getNthInput(inputBatchIdx).dims()[inputIdx];
+  const dim_t elemPerChunk = batchSize / numOfChunksNode;
+  const dim_t remain = batchSize % numOfChunksNode;
 
   std::vector<NodeValue> newNodes(numOfChunksNode);
-  for (size_t i = 0; i < numOfChunksNode; ++i) {
+  for (dim_t i = 0; i < numOfChunksNode; ++i) {
     // Calculate the out type of this chunk.
-    const size_t sliceStart = i * elemPerChunk + std::min(i, remain);
-    const size_t sliceEnd = sliceStart + elemPerChunk + ((i < remain) ? 1 : 0);
+    const dim_t sliceStart = i * elemPerChunk + std::min(i, remain);
+    const dim_t sliceEnd = sliceStart + elemPerChunk + ((i < remain) ? 1 : 0);
     std::cout << "\tChunk " << i << ": start: " << sliceStart
               << " end: " << sliceEnd << "\n";
     auto outDims = curNode->dims(resultIdx).vec();
@@ -3526,7 +3526,7 @@ static void parallelizeAndReplaceNode(Function *F, Node *curNode,
       }
 
       NodeValue currInput = curNode->getNthInput(j);
-      auto sliceDimsStart = std::vector<size_t>(currInput.dims().size(), 0);
+      auto sliceDimsStart = std::vector<dim_t>(currInput.dims().size(), 0);
       sliceDimsStart[dim] = sliceStart;
       auto sliceDimsEnd = currInput.dims().vec();
       sliceDimsEnd[dim] = sliceEnd;

@@ -59,8 +59,8 @@ using FourIntTupleConfig =
 /// Create a simple network that has a single fp convolution.
 static FunctionTensorPair
 createAndInitConvNet(glow::PlaceholderBindings &bindings,
-                     glow::ExecutionEngine &EE, size_t size, size_t convDepth,
-                     size_t kernel, size_t stride, size_t pad) {
+                     glow::ExecutionEngine &EE, dim_t size, dim_t convDepth,
+                     dim_t kernel, dim_t stride, dim_t pad) {
   PseudoRNG PRNG;
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
@@ -136,8 +136,8 @@ TEST_P(ConvSweepTest, ConvTest_Float16) {
 /// Create a simple network that has a single fp batch mat mul.
 static FunctionTensorPair
 createAndInitBatchMatMulNet(glow::PlaceholderBindings &bindings,
-                            glow::ExecutionEngine &EE, size_t N, size_t A,
-                            size_t Z, size_t B) {
+                            glow::ExecutionEngine &EE, dim_t N, dim_t A,
+                            dim_t Z, dim_t B) {
   PseudoRNG PRNG;
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
@@ -215,7 +215,7 @@ TEST_P(BatchMatMulSweepTest, BatchMatMulTest_Float16) {
 /// Create a simple network that has a single fp FC.
 static FunctionTensorPair
 createAndInitFCNet(glow::PlaceholderBindings &bindings,
-                   glow::ExecutionEngine &EE, size_t A, size_t Z, size_t B) {
+                   glow::ExecutionEngine &EE, dim_t A, dim_t Z, dim_t B) {
   PseudoRNG PRNG;
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
@@ -297,7 +297,7 @@ createAndInitConcatNet(glow::PlaceholderBindings &bindings,
 
   // Make leading dimensions smaller than trailing. Reduces size of tests and is
   // also in line with typical tests.
-  std::vector<size_t> dims(numDims, maxLength);
+  std::vector<dim_t> dims(numDims, maxLength);
   for (size_t i = 0; i < numDims; i++) {
     dims[numDims - 1 - i] /= std::pow(2, i);
   }
@@ -387,10 +387,11 @@ TEST_P(ConcatSweepTest, ConcatTest_Float16) {
 //===--------------------------------------------------------------------===//
 
 /// Create a simple network that has a single fp SLWS.
-static FunctionTensorPair createAndInitSLWSNet(
-    glow::PlaceholderBindings &bindings, glow::ExecutionEngine &EE,
-    size_t embeddingRows, size_t embeddingDim, size_t numLengths,
-    bool rowwiseQuantize, bool fused, bool FP16, bool accumFP16) {
+static FunctionTensorPair
+createAndInitSLWSNet(glow::PlaceholderBindings &bindings,
+                     glow::ExecutionEngine &EE, dim_t embeddingRows,
+                     dim_t embeddingDim, dim_t numLengths, bool rowwiseQuantize,
+                     bool fused, bool FP16, bool accumFP16) {
   PseudoRNG PRNG;
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
@@ -403,16 +404,16 @@ static FunctionTensorPair createAndInitSLWSNet(
   LH.randomize(80, 120, mod.getPRNG());
 
   // Get the sum of the lengths to then use as the size for indices and weights.
-  size_t sumOfLengths = 0;
+  dim_t sumOfLengths = 0;
   for (const int32_t &e : LH) {
     sumOfLengths += e;
   }
 
   // Initialize indices to size of sum of lengths. Randomly set them to point
   // somewhere inside the embedding.
-  auto *indices = mod.createPlaceholder(ElemKind::Int64ITy, {sumOfLengths},
-                                        "indices", false);
-  bindings.allocate(indices)->getHandle<int64_t>().randomize(
+  auto *indices =
+      mod.createPlaceholder(IndexElemKind, {sumOfLengths}, "indices", false);
+  bindings.allocate(indices)->getHandle<sdim_t>().randomize(
       0, embeddingRows - 1, mod.getPRNG());
 
   // Xavier initialize the weights with the correct data type.

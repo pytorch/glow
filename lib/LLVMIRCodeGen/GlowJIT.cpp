@@ -80,7 +80,13 @@ public:
     // more complete stack traces under debugger. And even it should even enable
     // the stepping functionality on platforms supporting it.
 #if LLVM_VERSION_MAJOR == 7 || FACEBOOK_INTERNAL
-    dbgRegistrationListener_->NotifyObjectEmitted(loadedObj, objInfo);
+    // This fails sometimes with the following assertion:
+    // lib/ExecutionEngine/GDBRegistrationListener.cpp:168: virtual void
+    // {anonymous}::GDBJITRegistrationListener::NotifyObjectEmitted(const
+    // llvm::object::ObjectFile&, const llvm::RuntimeDyld::LoadedObjectInfo&):
+    // Assertion `ObjectBufferMap.find(Key) == ObjectBufferMap.end() && "Second
+    // attempt to perform debug registration."' failed.
+    // dbgRegistrationListener_->NotifyObjectEmitted(loadedObj, objInfo);
 #else
     dbgRegistrationListener_->notifyObjectLoaded(
         (llvm::JITEventListener::ObjectKey)&loadedObj, loadedObj, objInfo);

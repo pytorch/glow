@@ -290,9 +290,9 @@ void BundleSaver::saveHeader(llvm::StringRef headerFileName) {
     auto dims = w->getType()->dims();
     for (size_t idx = 0; idx < dims.size(); idx++) {
       if (idx < dims.size() - 1) {
-        shapeStr += strFormat("%lu, ", dims[idx]);
+        shapeStr += strFormat("%" PRIuDIM ", ", dims[idx]);
       } else {
-        shapeStr += strFormat("%lu]", dims[idx]);
+        shapeStr += strFormat("%" PRIuDIM "]", dims[idx]);
       }
     }
     // Get placeholder properties.
@@ -305,7 +305,7 @@ void BundleSaver::saveHeader(llvm::StringRef headerFileName) {
                            "//   Name: \"%s\"\n"
                            "//   Type: %s\n"
                            "//   Shape: %s\n"
-                           "//   Size: %zu (elements)\n"
+                           "//   Size: %" PRIuDIM " (elements)\n"
                            "//   Size: %zu (bytes)\n"
                            "//   Offset: %lu (bytes)\n",
                            name.data(), typeName.data(), shapeStr.c_str(),
@@ -323,9 +323,9 @@ void BundleSaver::saveHeader(llvm::StringRef headerFileName) {
       auto dims = w->getType()->dims();
       for (size_t idx = 0; idx < dims.size(); idx++) {
         if (idx < dims.size() - 1) {
-          shapeStr += strFormat("%lu, ", dims[idx]);
+          shapeStr += strFormat("%" PRIuDIM ", ", dims[idx]);
         } else {
-          shapeStr += strFormat("%lu]", dims[idx]);
+          shapeStr += strFormat("%" PRIuDIM "]", dims[idx]);
         }
       }
       // Get constant properties.
@@ -338,7 +338,7 @@ void BundleSaver::saveHeader(llvm::StringRef headerFileName) {
                              "//   Name: \"%s\"\n"
                              "//   Type: %s\n"
                              "//   Shape: %s\n"
-                             "//   Size: %zu (elements)\n"
+                             "//   Size: %" PRIuDIM " (elements)\n"
                              "//   Size: %zu (bytes)\n"
                              "//   Offset: %lu (bytes)\n",
                              name.data(), typeName.data(), shapeStr.c_str(),

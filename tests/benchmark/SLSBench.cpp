@@ -33,10 +33,10 @@ using namespace glow;
  */
 class SLSBench : public Benchmark {
   /// Dimensions expressed in libjit's format.
-  size_t batchSize_;
-  size_t numIndicesPerBatch_;
-  size_t numTableEntries_;
-  size_t numElementsPerRow_;
+  dim_t batchSize_;
+  dim_t numIndicesPerBatch_;
+  dim_t numTableEntries_;
+  dim_t numElementsPerRow_;
   std::unique_ptr<runtime::HostManager> hostManager_;
   std::vector<std::unique_ptr<ExecutionContext>> contexts_;
   size_t asyncLaunchSize_;
@@ -48,10 +48,9 @@ class SLSBench : public Benchmark {
   const char *devId_;
 
 public:
-  SLSBench(size_t batchSize_, size_t numIndicesPerBatch_,
-           size_t numTableEntries_, size_t numElementsPerRow_,
-           size_t asyncLaunchSize_, size_t numSLSNodes_,
-           const char *backendStr_, const char *dtypeStr_,
+  SLSBench(dim_t batchSize_, dim_t numIndicesPerBatch_, dim_t numTableEntries_,
+           dim_t numElementsPerRow_, size_t asyncLaunchSize_,
+           size_t numSLSNodes_, const char *backendStr_, const char *dtypeStr_,
            const char *devId_ = nullptr)
       : batchSize_(batchSize_), numIndicesPerBatch_(numIndicesPerBatch_),
         numTableEntries_(numTableEntries_),
@@ -75,7 +74,7 @@ public:
   void setup() override {
 
     // Create execution contexts here
-    for (int i = 0; i < asyncLaunchSize_; i++) {
+    for (dim_t i = 0; i < asyncLaunchSize_; i++) {
       std::unique_ptr<ExecutionContext> context(new ExecutionContext);
       contexts_.push_back(std::move(context));
     }
@@ -97,7 +96,7 @@ public:
     std::vector<Placeholder *> lengths(numSLSNodes_);
     std::vector<SaveNode *> S(numSLSNodes_);
 
-    for (int slsNodeId = 0; slsNodeId < numSLSNodes_; slsNodeId++) {
+    for (size_t slsNodeId = 0; slsNodeId < numSLSNodes_; slsNodeId++) {
       Tensor data(ElemKind::FloatTy, {numTableEntries_, numElementsPerRow_});
       data.getHandle().clear(1.0f);
 
@@ -106,7 +105,7 @@ public:
                                  "weights_" + std::to_string(slsNodeId), false);
 
       indices[slsNodeId] = mod->createPlaceholder(
-          ElemKind::Int64ITy, {numIndicesPerBatch_ * batchSize_},
+          ElemKind::Int64ITy, {(dim_t)numIndicesPerBatch_ * batchSize_},
           "indices_" + std::to_string(slsNodeId),
           /* isTrainable */ false);
       lengths[slsNodeId] =
@@ -114,7 +113,7 @@ public:
                                  /* isTrainable */ false);
 
       // for each context, add input bindings
-      for (int i = 0; i < asyncLaunchSize_; i++) {
+      for (size_t i = 0; i < asyncLaunchSize_; i++) {
         contexts_[i]
             ->getPlaceholderBindings()
             ->allocate(indices[slsNodeId])
@@ -148,7 +147,7 @@ public:
       S[slsNodeId] = fn->createSave("save_" + std::to_string(slsNodeId), R);
 
       // for each context, add output bindings
-      for (int i = 0; i < asyncLaunchSize_; i++) {
+      for (size_t i = 0; i < asyncLaunchSize_; i++) {
         contexts_[i]->getPlaceholderBindings()->allocate(
             S[slsNodeId]->getPlaceholder());
       }
@@ -182,7 +181,7 @@ public:
     for (auto &fut : futures) {
       fut.wait();
     }
-    for (int j = 0; j < asyncLaunchSize_; j++) {
+    for (size_t j = 0; j < asyncLaunchSize_; j++) {
       contexts_[j] = std::move(localContexts[j]);
     }
   }

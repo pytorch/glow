@@ -34,8 +34,8 @@ using namespace glow;
 class AddBench : public Benchmark {
 
   /// Dimensions expressed in libjit's format.
-  size_t n_;
-  size_t numLayers_;
+  dim_t n_;
+  dim_t numLayers_;
   PlaceholderBindings bindings_;
   std::unique_ptr<runtime::HostManager> hostManager_;
   size_t asyncLaunchSize_;
@@ -46,8 +46,8 @@ class AddBench : public Benchmark {
   const char *devId_;
 
 public:
-  AddBench(size_t n_, size_t numLayers_, size_t asyncLaunchSize_,
-           size_t numCores_, const char *backendStr_, const char *dtypeStr_,
+  AddBench(dim_t n_, dim_t numLayers_, dim_t asyncLaunchSize_, dim_t numCores_,
+           const char *backendStr_, const char *dtypeStr_,
            const char *devId_ = nullptr)
       : n_(n_), numLayers_(numLayers_), asyncLaunchSize_(asyncLaunchSize_),
         numCores_(numCores_), backendStr_(backendStr_), devId_(devId_) {

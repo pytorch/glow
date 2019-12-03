@@ -41,6 +41,8 @@ NodeBuilder &NodeBuilder::addMember(MemberType type, const std::string &name) {
     typeInfo = &kVectorSignedTypeInfo;
   } else if (type == MemberType::VectorSizeT) {
     typeInfo = &kVectorSizeTTypeInfo;
+  } else if (type == MemberType::VectorDimT) {
+    typeInfo = &kVectorDimTTypeInfo;
   } else if (type == MemberType::VectorNodeValue) {
     typeInfo = &kVectorNodeValueTypeInfo;
   } else if (type == MemberType::Enum) {
@@ -410,8 +412,9 @@ void NodeBuilder::emitEquator(std::ostream &os) const {
 
 static bool isVectorType(MemberType ty) {
   return ty == MemberType::VectorFloat || ty == MemberType::VectorNodeValue ||
-         ty == MemberType::VectorSizeT || ty == MemberType::VectorUnsigned ||
-         ty == MemberType::VectorInt64 || ty == MemberType::VectorSigned;
+         ty == MemberType::VectorSizeT || ty == MemberType::VectorDimT ||
+         ty == MemberType::VectorUnsigned || ty == MemberType::VectorInt64 ||
+         ty == MemberType::VectorSigned;
 }
 
 static bool isFloatVectorType(MemberType ty) {

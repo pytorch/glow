@@ -159,8 +159,8 @@ static void dumpAsciiGenericImpl(Handle<ElemTy> handle, llvm::raw_ostream &os) {
   auto d = handle.dims();
 
   if (d.size() == 2) {
-    for (size_t x = 0; x < d[0]; x++) {
-      for (size_t y = 0; y < d[1]; y++) {
+    for (dim_t x = 0; x < d[0]; x++) {
+      for (dim_t y = 0; y < d[1]; y++) {
         auto val = handle.at({x, y});
         os << valueToChar(val);
       }
@@ -169,18 +169,18 @@ static void dumpAsciiGenericImpl(Handle<ElemTy> handle, llvm::raw_ostream &os) {
   } else if (d.size() == 3) {
     // Print monochrome (one-color channel) tensors:
     if (d[2] == 1) {
-      for (size_t x = 0; x < d[0]; x++) {
-        for (size_t y = 0; y < d[1]; y++) {
+      for (dim_t x = 0; x < d[0]; x++) {
+        for (dim_t y = 0; y < d[1]; y++) {
           auto val = handle.at({x, y, 0});
           os << valueToChar(val);
         }
         os << "\n";
       }
     } else {
-      for (size_t z = 0; z < d[2]; z++) {
+      for (dim_t z = 0; z < d[2]; z++) {
         os << "\n";
-        for (size_t x = 0; x < d[0]; x++) {
-          for (size_t y = 0; y < d[1]; y++) {
+        for (dim_t x = 0; x < d[0]; x++) {
+          for (dim_t y = 0; y < d[1]; y++) {
             auto val = handle.at({x, y, z});
             os << valueToChar(val);
           }
@@ -202,17 +202,17 @@ static void dumpAsciiGenericImpl(Handle<ElemTy> handle, llvm::raw_ostream &os) {
 template <class ElemTy>
 static void
 transposeGenericImpl(const Handle<ElemTy> &src, Handle<ElemTy> &dest,
-                     size_t *srcCoor, size_t *destCoor,
+                     dim_t *srcCoor, dim_t *destCoor,
                      llvm::ArrayRef<unsigned_t> shuffle, unsigned depth = 0) {
   if (depth == shuffle.size()) {
-    auto srcIdx = llvm::ArrayRef<size_t>(srcCoor, depth);
-    auto destIdx = llvm::ArrayRef<size_t>(destCoor, depth);
+    auto srcIdx = llvm::ArrayRef<dim_t>(srcCoor, depth);
+    auto destIdx = llvm::ArrayRef<dim_t>(destCoor, depth);
     dest.at(destIdx) = src.at(srcIdx);
     return;
   }
 
   // Iterate over one dimension and continue recursively to the next dim.
-  for (size_t x = 0, e = dest.dims()[depth]; x < e; x++) {
+  for (dim_t x = 0, e = dest.dims()[depth]; x < e; x++) {
     unsigned_t swizzledDepth = shuffle[depth];
     srcCoor[swizzledDepth] = x;
     destCoor[depth] = x;
@@ -229,11 +229,11 @@ template <class ElemTy>
 static bool tryTransposeFastImpl(const Handle<ElemTy> &src,
                                  Handle<ElemTy> &dest,
                                  llvm::ArrayRef<unsigned_t> shuffle) {
-  const size_t numDims = dest.dims().size();
-  size_t srcCoorArr[max_tensor_dimensions];
-  size_t destCoorArr[max_tensor_dimensions] = {0};
-  auto srcCoor = llvm::ArrayRef<size_t>(srcCoorArr, numDims);
-  auto destCoor = llvm::ArrayRef<size_t>(destCoorArr, numDims);
+  const dim_t numDims = dest.dims().size();
+  dim_t srcCoorArr[max_tensor_dimensions];
+  dim_t destCoorArr[max_tensor_dimensions] = {0};
+  auto srcCoor = llvm::ArrayRef<dim_t>(srcCoorArr, numDims);
+  auto destCoor = llvm::ArrayRef<dim_t>(destCoorArr, numDims);
 
   /// This defines a single depth of the for loop used to iterate over the
   /// source and destination tensors for transposing.
@@ -266,8 +266,8 @@ static void transposeSelectImpl(const Handle<ElemTy> &src, Handle<ElemTy> &dest,
                                 llvm::ArrayRef<unsigned_t> shuffle) {
   bool transposeOccurred = tryTransposeFastImpl(src, dest, shuffle);
   if (!transposeOccurred) {
-    size_t srcCoor[max_tensor_dimensions];
-    size_t destCoor[max_tensor_dimensions];
+    dim_t srcCoor[max_tensor_dimensions];
+    dim_t destCoor[max_tensor_dimensions];
     transposeGenericImpl(src, dest, srcCoor, destCoor, shuffle);
   }
 }
@@ -376,7 +376,7 @@ void glow::genericTranspose(const Tensor *src, Tensor *dest,
       << "Invalid dimensions " << src->dims().size()
       << " != " << src->dims().size();
 
-  size_t newSizes[max_tensor_dimensions];
+  dim_t newSizes[max_tensor_dimensions];
 
   // Generate the swizzled dimensions.
   auto origDims = src->dims();
@@ -464,7 +464,7 @@ void glow::genericTranspose(const Tensor *src, Tensor *dest,
   }
 }
 
-ShapeVector glow::expandDimsToMax(llvm::ArrayRef<size_t> currDims) {
+ShapeVector glow::expandDimsToMax(llvm::ArrayRef<dim_t> currDims) {
   ShapeVector newDims(currDims.begin(), currDims.end());
   for (size_t i = newDims.size(); i < max_tensor_dimensions; i++) {
     newDims.push_back(1);
@@ -523,8 +523,8 @@ void Tensor::init(InitKind init, float val, PseudoRNG &PRNG) {
         << "Fused tensor must have space for scale/offset, but only has  "     \
         << dims()[1] << " columns.";                                           \
     auto H = getHandle<uint8_t>();                                             \
-    for (size_t i = 0; i < dims()[0]; i++) {                                   \
-      for (size_t j = 0, f = dims()[1] - 2 * sizeof(DATA_TYPE); j < f; j++) {  \
+    for (dim_t i = 0; i < dims()[0]; i++) {                                    \
+      for (dim_t j = 0, f = dims()[1] - 2 * sizeof(DATA_TYPE); j < f; j++) {   \
         H.at({i, j}) = val;                                                    \
       }                                                                        \
     }                                                                          \
@@ -599,13 +599,14 @@ Tensor Tensor::getCopyConvertedToType(ElemKind newKind) const {
   DCHECK(origKind == ElemKind::UInt8FusedQTy && dims().size() == 2)
       << "UInt8FusedQTy must be 2 dimensional.";
   Tensor tmp(newKind,
-             {dims()[0], dims()[1] - 2 * (sizeof(float) - sizeof(float16_t))},
+             {dims()[0], dims()[1] - 2 * ((dim_t)sizeof(float) -
+                                          (dim_t)sizeof(float16_t))},
              1.0, 0);
 
   const size_t dstWidth = tmp.dims()[1];
   auto srcH = getHandle<uint8_t>();
   auto dstH = tmp.getHandle<uint8_t>();
-  for (size_t i = 0, e = dims()[0]; i < e; i++) {
+  for (dim_t i = 0, e = dims()[0]; i < e; i++) {
     // Copy the scale/offset from src to dst.
     float scale, offset;
     std::tie(scale, offset) = srcH.getFusedScaleOffsetFromRow<float>(i);
@@ -614,7 +615,7 @@ Tensor Tensor::getCopyConvertedToType(ElemKind newKind) const {
 
     // Copy over the row's uint8 data from src to dst; scales and offsets were
     // already copied over above.
-    for (size_t j = 0, f = dstWidth - 2 * sizeof(float16_t); j < f; j++) {
+    for (dim_t j = 0, f = dstWidth - 2 * sizeof(float16_t); j < f; j++) {
       dstH.at({i, j}) = srcH.at({i, j});
     }
   }

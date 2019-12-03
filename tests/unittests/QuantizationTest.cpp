@@ -299,8 +299,8 @@ TEST(Quantization, fused4BitsRowwiseQuantizeTensor) {
   Tensor quantized(ElemKind::UInt4FusedFP16QTy, {2, 7}, /* dummy scale */ 1.0,
                    /* dummy offset */ 0);
   Handle<float> inputH = inputFP32.getHandle<float>();
-  for (size_t i = 0; i < 2; i++) {
-    for (size_t j = 0; j < 6; j++) {
+  for (dim_t i = 0; i < 2; i++) {
+    for (dim_t j = 0; j < 6; j++) {
       inputH.at({i, j}) = (i + j) * 1.0f - 3;
     }
   }
@@ -309,8 +309,8 @@ TEST(Quantization, fused4BitsRowwiseQuantizeTensor) {
   dequantized = quantization::tensor4BitsFusedRowwiseDequantization(quantized);
 
   Handle<float> dequantizedH = dequantized.getHandle<float>();
-  for (size_t i = 0; i < 2; i++) {
-    for (size_t j = 0; j < 6; j++) {
+  for (dim_t i = 0; i < 2; i++) {
+    for (dim_t j = 0; j < 6; j++) {
       EXPECT_NEAR(inputH.at({i, j}), dequantizedH.at({i, j}), 0.02f);
     }
   }
@@ -757,8 +757,7 @@ TEST(Quantization, enableRowwiseQuantizedSLWS) {
   auto *data = mod.createPlaceholder(ElemKind::FloatTy, {3, 1}, "data", false);
   auto *weights =
       mod.createPlaceholder(ElemKind::FloatTy, {8}, "weights", false);
-  auto *indices =
-      mod.createPlaceholder(ElemKind::Int64ITy, {8}, "indices", false);
+  auto *indices = mod.createPlaceholder(IndexElemKind, {8}, "indices", false);
   auto *lengths =
       mod.createPlaceholder(ElemKind::Int32ITy, {4}, "lengths", false);
 
@@ -1107,7 +1106,7 @@ TEST_P(Operator, end2endInt8) {
 
 /// Fills the tensor \p H with some stable random integers with the seed \p seed
 /// and the range [0, scale).
-static void fillStableRandomIndex(Handle<int64_t> H, size_t seed,
+static void fillStableRandomIndex(Handle<sdim_t> H, size_t seed,
                                   size_t scale = 10) {
   for (size_t i = 0, e = H.size(); i < e; i++) {
     H.raw(i) = int(i * 1921 + seed) % scale;
@@ -1132,8 +1131,8 @@ static Function *createGRUForQuantization(Module *M,
   fillStableRandomData(bindings.allocate(emb)->getHandle(), 4565, 1);
 
   auto *input = F->getParent()->createPlaceholder(
-      ElemKind::Int64ITy, {batchSize, sequenceSize}, "input", false);
-  fillStableRandomIndex(bindings.allocate(input)->getHandle<int64_t>(), 7227,
+      IndexElemKind, {batchSize, sequenceSize}, "input", false);
+  fillStableRandomIndex(bindings.allocate(input)->getHandle<sdim_t>(), 7227,
                         10);
 
   auto *hiddenInit = F->getParent()->createPlaceholder(
@@ -1445,7 +1444,7 @@ TEST(Quantization, reluCanUseSymmetricSchema) {
       mod.createPlaceholder(ElemKind::FloatTy, {10}, "input", false);
   auto *inputTensor = bindings.allocate(input);
   auto IH = inputTensor->getHandle<float>();
-  for (size_t i = 0; i < 10; i++) {
+  for (dim_t i = 0; i < 10; i++) {
     IH.at({i}) = (i % 2 == 0) ? 5 : -5;
   }
 
@@ -1471,7 +1470,7 @@ TEST(Quantization, reluCanUseSymmetricSchema) {
 
   // Verify all negative values were correctly set to zero.
   auto RH = res->getHandle();
-  for (size_t i = 0; i < 10; i++) {
+  for (dim_t i = 0; i < 10; i++) {
     if (i % 2 == 0) {
       EXPECT_NEAR(RH.at({i}), 5, 0.05);
     } else {
@@ -1558,7 +1557,7 @@ TEST(Quantization, quantizeSoftmaxAndLRN) {
   auto *input =
       mod.createPlaceholder(ElemKind::FloatTy, {1, 10}, "input", true);
   auto *selected =
-      mod.createPlaceholder(ElemKind::Int64ITy, {1, 10}, "selected", true);
+      mod.createPlaceholder(IndexElemKind, {1, 10}, "selected", true);
   auto *LRN =
       F->createLocalResponseNormalization("LRN", input, 2, 1.0, 0.0001, 0.75);
   auto *SM = F->createSoftMax("softmax", LRN, selected);

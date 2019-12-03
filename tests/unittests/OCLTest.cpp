@@ -73,16 +73,16 @@ TEST(OpenCLCorrectnessTest, inferMixedNet) {
 
 TEST(OpenCLCorrectnessTest, softmaxGradTest) {
   PseudoRNG PRNG;
-  std::array<size_t, 2> S{{8, 23}};
-  llvm::ArrayRef<size_t> shape(S);
+  std::array<dim_t, 2> S{{8, 23}};
+  llvm::ArrayRef<dim_t> shape(S);
   Tensor inputs(ElemKind::FloatTy, shape);
   Tensor weights(ElemKind::FloatTy, {23, 23});
   Tensor bias(ElemKind::FloatTy, {23});
-  Tensor selected(ElemKind::Int64ITy, {8, 1});
+  Tensor selected(IndexElemKind, {8, 1});
   inputs.getHandle().initXavier(1, PRNG);
   weights.getHandle().randomize(0.0, 0.5, PRNG);
   bias.getHandle().randomize(-0.2, 0.0, PRNG);
-  auto selectedH = selected.getHandle<int64_t>();
+  auto selectedH = selected.getHandle<sdim_t>();
   for (size_t i = 0; i < 8; i++) {
     selectedH.raw(i) = PRNG.nextRandInt(0, 22);
   }
@@ -100,8 +100,8 @@ TEST(OpenCLCorrectnessTest, tanhConcatTest) {
   Tensor I2(ElemKind::FloatTy, {20, 5});
   Tensor I3(ElemKind::FloatTy, {30, 5});
 
-  for (size_t i = 0; i < 10; i++) {
-    for (size_t j = 0; j < 5; j++) {
+  for (dim_t i = 0; i < 10; i++) {
+    for (dim_t j = 0; j < 5; j++) {
       I1.getHandle<float>().at({i, j}) = 0.05 * (i + j * 10 + 1);
 
       I2.getHandle<float>().at({i, j}) = 0.10 * (i + j * 10 + 1);

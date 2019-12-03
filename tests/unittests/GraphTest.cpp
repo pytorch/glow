@@ -527,7 +527,7 @@ TEST(Graph, simpleQuant) {
                                      0.4, 2, "Input", true);
 
   // Calculate the size and allocate the output buffer.
-  std::array<size_t, 4> filterDim = {{depth, kernels[0], kernels[1], 3}};
+  std::array<dim_t, 4> filterDim = {{depth, kernels[0], kernels[1], 3}};
   auto *filter =
       MD.createPlaceholder(ElemKind::Int8QTy, filterDim, 3.3, 4, "F", true);
   auto *bias =
@@ -535,7 +535,7 @@ TEST(Graph, simpleQuant) {
 
   // Calculate the size and allocate the output buffer.
   auto outSz = calculateConvPoolOutputDims(width, width, kernels, steps, pads);
-  std::array<size_t, 4> outDims = {{1, outSz.first, outSz.second, 16}};
+  std::array<dim_t, 4> outDims = {{1, outSz.first, outSz.second, 16}};
   auto t = F->getParent()->uniqueType(glow::ElemKind::Int8QTy, outDims, 1.5, 6);
 
   auto *conv =
@@ -578,7 +578,7 @@ TEST(Graph, quantizeGather) {
   auto *F = mod.createFunction("main");
   auto *input =
       mod.createPlaceholder(ElemKind::Int8QTy, {2, 2}, 0.4, 2, "input", true);
-  auto *indices = mod.createPlaceholder(ElemKind::Int64ITy, {1}, "index", true);
+  auto *indices = mod.createPlaceholder(IndexElemKind, {1}, "index", true);
   auto *gather = F->createGather("gather", input, indices);
   PlaceholderBindings bindings;
   F->createSave("ret", gather);
@@ -718,7 +718,7 @@ TEST(Graph, nodesWithPredicates) {
   PlaceholderBindings bindings;
   auto *input =
       mod.createPlaceholder(ElemKind::FloatTy, {1, 32, 32, 3}, "input", true);
-  auto *ex = mod.createPlaceholder(ElemKind::Int64ITy, {1, 1}, "exp", true);
+  auto *ex = mod.createPlaceholder(IndexElemKind, {1, 1}, "exp", true);
   auto *pred =
       mod.createPlaceholder(ElemKind::Int64ITy, {1}, "predicate", false);
   bindings.allocate(input);
@@ -1239,13 +1239,13 @@ TEST(Graph, setType) {
   Module M;
   auto *F = M.createFunction("main");
 
-  const size_t inputDims[] = {4, 10};
-  const size_t top5Dims[] = {4, 5};
+  const dim_t inputDims[] = {4, 10};
+  const dim_t top5Dims[] = {4, 5};
   auto *input =
       M.createPlaceholder(ElemKind::FloatTy, inputDims, "input", true);
   TopKNode *topK = F->createTopK("add", input, 5);
   TypeRef origTopKRes0 = M.uniqueType(ElemKind::FloatTy, top5Dims);
-  TypeRef origTopKRes1 = M.uniqueType(ElemKind::Int64ITy, top5Dims);
+  TypeRef origTopKRes1 = M.uniqueType(IndexElemKind, top5Dims);
 
   EXPECT_EQ(topK->getType(TopKNode::ValuesIdx), origTopKRes0);
   EXPECT_EQ(topK->getType(TopKNode::IndicesIdx), origTopKRes1);
@@ -1835,7 +1835,7 @@ trainable : 1
   llvm::raw_string_ostream osF1(storageF1);
   F2->dump(osF1);
   std::string mesF = F2->toString();
-  std::string expectMesF = R"(Graph structure F2:
+  std::string expectMesF = DIM_T_BITWIDTH == 64 ? R"(Graph structure F2:
 TopK
 name : topk
 Input : float<10 x 10>
@@ -1843,6 +1843,15 @@ K : 3
 users : 0
 Values : float<10 x 3>
 Indices : index64<10 x 3>
+)"
+                                                : R"(Graph structure F2:
+TopK
+name : topk
+Input : float<10 x 10>
+K : 3
+users : 0
+Values : float<10 x 3>
+Indices : index32<10 x 3>
 )";
   EXPECT_EQ(mesF, expectMesF);
   EXPECT_EQ(mesF, osF1.str());

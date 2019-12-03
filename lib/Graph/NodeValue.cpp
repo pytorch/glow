@@ -97,7 +97,7 @@ ElemKind NodeValue::getElementType() const {
   return getType()->getElementType();
 }
 
-llvm::ArrayRef<size_t> NodeValue::dims() const { return getType()->dims(); }
+llvm::ArrayRef<dim_t> NodeValue::dims() const { return getType()->dims(); }
 
 NodeHandle::NodeHandle(Node *parent, Node *N) : NodeValue(N), parent_(parent) {
   setOperand(N, 0);
