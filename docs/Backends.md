@@ -22,7 +22,7 @@ And all factories must be linked to the Backends library, see
 ### `Backend` Abstract Class
 
 All backends in Glow derive from the [abstract base class
-`Backend`](https://github.com/pytorch/glow/blob/master/include/glow/Backends/Backend.h). There
+`Backend`](https://github.com/pytorch/glow/blob/master/include/glow/Backend/Backend.h). There
 are two pure virtual functions all backends must implement:
 
 - `virtual std::unique_ptr<CompiledFunction> compile(Function *F) const;`
@@ -72,6 +72,10 @@ Additionally, there are virtual functions that backends can override:
 - `virtual bool verify(const IRFunction &IR) const;`
 
   - Verifies that `IRFunction &IR` conforms to the backend-specific constraints.
+
+- `virtual TensorLayoutCommon &getTensorLayoutRequirements() const;`
+
+  - Gets the backend-specific tensor layout requirements.
 
 - `virtual bool shouldLower(const Node *N) const;`
 
@@ -190,6 +194,12 @@ BB.newBackendSpecificNode("CPUMaxSplat")
     .addMember(MemberType::Float, "SplatValue")
     .setDocstring("A Max node with one splat input; CPU specific.");
 ```
+
+If tensor layout requirements are enabled for the backend, on should take
+special care of updating the layout verifier when adding a new node.
+See `TensorLayout.md` for more information.
+To extend the example above, if the new node is data parallel, a `.dataParallel()`
+line should be added.
 
 During `transformPostLowering()`, this `CPUMaxSplat` node replaces the
 aforementioned pattern. However, there must be a corresponding instruction for

@@ -22,6 +22,9 @@
 #include "glow/Support/Error.h"
 
 namespace glow {
+namespace runtime {
+struct PartitionConfig;
+}
 
 /// Configuration for different precision modes.
 struct PrecisionConfiguration {
@@ -61,14 +64,28 @@ using QuantizationMode = PrecisionConfiguration::QuantizationMode;
 
 /// Options relevant to optimizations during compilation.
 struct OptimizationOptions {
+  /// Only lower, i.e. skip optimizations and precision transformations. Used
+  /// for testing.
+  bool onlyLower{false};
+
   /// If true, perform compile-time computation of constant operations.
   bool enableConstantFolding{true};
+
+  /// If true, this will merge ConvertTo and Quantize nodes into inputs and
+  /// outputs of the Function. This means modifying the types of Placeholders
+  /// and SaveNodes if they have a corresponding ElemKind conversion (ConvertTo,
+  /// Quantize, Dequantize nodes).. Note that this must be accompanied by
+  /// modifying the Tensors backing Placeholders at runtime.
+  bool foldElemKindConversionIntoIO{false};
 };
 
 /// Context for compilation.
 struct CompilationContext {
   /// Used during Profiling.
   PlaceholderBindings *bindings{nullptr};
+
+  /// Allows the user to specify user defined partitioning.
+  runtime::PartitionConfig *partitionConfig{nullptr};
 
   /// Used during Quantization and Profiling.
   LoweredInfoMap *loweredInfoMap{nullptr};
@@ -89,6 +106,9 @@ struct CompilationContext {
 
   /// Configuration for different precision modes.
   PrecisionConfiguration precisionConfig;
+
+  /// How to annotate the compilation log filename.
+  std::string compilationLogPrefix{"glow"};
 
   CompilationContext(PlaceholderBindings *bindings_ = nullptr,
                      LoweredInfoMap *loweredInfoMap_ = nullptr)

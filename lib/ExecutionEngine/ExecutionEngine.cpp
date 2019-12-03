@@ -56,16 +56,22 @@ void ExecutionEngine::setBackendName(llvm::StringRef backend) {
     CHECK(backend.str() == configs[0]->backendName)
         << "Expected backend name to match the ExecutionEngine";
   } else {
-    auto config = llvm::make_unique<runtime::DeviceConfig>(backend);
+    auto config = glow::make_unique<runtime::DeviceConfig>(backend);
     if (deviceMemory_) {
       config->setDeviceMemory(deviceMemory_);
     }
     configs.push_back(std::move(config));
   }
-  hostManager_ = llvm::make_unique<runtime::HostManager>(std::move(configs));
+  hostManager_ = glow::make_unique<runtime::HostManager>(std::move(configs));
 }
 
 llvm::StringRef ExecutionEngine::getBackendName() const { return backendName_; }
+
+Function *ExecutionEngine::getSingleFunctionFromModule() const {
+  auto &fList = getModule().getFunctions();
+  assert(fList.size() == 1 && "More than one Function in Module.");
+  return *fList.begin();
+}
 
 ExecutionEngine::~ExecutionEngine() { clear(); }
 
@@ -114,20 +120,25 @@ void glow::updateInputPlaceholdersByName(PlaceholderBindings &bindings,
 void ExecutionEngine::runInternal(ExecutionContext &context,
                                   llvm::StringRef name) {
   std::unique_ptr<ExecutionContext> contextPtr(&context);
+  std::unique_ptr<ExecutionContext> contextOut;
   std::promise<void> runPromise;
   auto fut = runPromise.get_future();
   Error runErr = Error::empty();
-  hostManager_->runNetwork(
-      name, std::move(contextPtr),
-      [&runPromise, &runErr](runtime::RunIdentifierTy, Error err,
-                             std::unique_ptr<ExecutionContext> contextPtr) {
-        // Don't delete context.
-        contextPtr.release();
-        runErr = std::move(err);
-        runPromise.set_value();
-      });
+  hostManager_->runNetwork(name, std::move(contextPtr),
+                           [&runPromise, &runErr, &contextOut](
+                               runtime::RunIdentifierTy, Error err,
+                               std::unique_ptr<ExecutionContext> contextPtr) {
+                             contextOut = std::move(contextPtr);
+                             runErr = std::move(err);
+                             runPromise.set_value();
+                           });
 
   fut.wait();
+  if (ensureOutputsOnHost_) {
+    contextOut->getPlaceholderBindings()->ensureOnHost();
+  }
+  // Don't delete context.
+  contextOut.release();
   EXIT_ON_ERR(std::move(runErr));
 }
 
@@ -199,6 +210,55 @@ void glow::runBatch(ExecutionEngine &EE, PlaceholderBindings &bindings,
   }
 }
 
+void glow::evalBatch(
+    ExecutionEngine &EE, PlaceholderBindings &bindings, size_t numMinibatchRuns,
+    size_t &sampleCounter, Placeholder *inputPH, Placeholder *outputPH,
+    Tensor &samplesInput, Tensor &labelsInput, llvm::StringRef name,
+    std::function<void(const Tensor &sampleIn, const Tensor &sampleOut,
+                       const Tensor &label, size_t sampleIndex)> &&cb) {
+  // The number of samples in a minibatch (a single function run)
+  size_t minibatchSize = inputPH->getType()->dims()[0];
+
+  assert(samplesInput.dims()[0] == labelsInput.dims()[0] &&
+         "The number of sample inputs does not match the number of labels");
+
+  auto LIH = labelsInput.getHandle<int64_t>();
+
+  // For each iteration in the batch:
+  for (size_t j = 0; j < numMinibatchRuns; j++) {
+    assert(inputPH && "Invalid value");
+    auto *backingTensor = bindings.get(inputPH);
+    assert(backingTensor && "Can't find the backing tensor");
+    auto dim = samplesInput.dims();
+    assert(backingTensor->dims().drop_front() == dim.drop_front() &&
+           "Invalid slice size");
+    // Extract the n'th slice, that must be a tensor.
+    size_t slc = sampleCounter % dim[0];
+    // Pick up one slice from the input tensors, and load it into the
+    // corresponding network Placeholder.
+    backingTensor->copyConsecutiveSlices(&samplesInput, slc);
+
+    // Run the network.
+    if (name == "") {
+      EE.run(bindings);
+    } else {
+      EE.run(bindings, name);
+    }
+
+    for (unsigned i = 0; i < minibatchSize; i++) {
+      auto sampleInputTensor = backingTensor->getHandle().extractSlice(i);
+      auto sampleOutputTensor =
+          bindings.get(outputPH)->getHandle().extractSlice(i);
+      // If index is out of bounds of samples/labels first dimension, it is
+      // wrapped around to be consistent with "copyConsecutiveSlices".
+      auto labelTensor = LIH.extractSlice((sampleCounter + i) % dim[0]);
+
+      cb(sampleInputTensor, sampleOutputTensor, labelTensor, sampleCounter + i);
+    }
+    sampleCounter += minibatchSize;
+  }
+}
+
 void ExecutionEngine::compile(CompilationMode mode) {
   CompilationContext cctx;
   cctx.compMode = mode;
@@ -213,4 +273,8 @@ void ExecutionEngine::compile(CompilationContext &cctx) {
   }
 
   EXIT_ON_ERR(hostManager_->addNetwork(std::move(module_), cctx));
+}
+
+Backend &ExecutionEngine::getBackend(llvm::StringRef backendName) const {
+  return hostManager_->getBackend(backendName);
 }

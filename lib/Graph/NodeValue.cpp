@@ -91,6 +91,7 @@ llvm::iterator_range<NodeValueConstIterator> NodeValue::getUsers() const {
 
 TypeRef NodeValue::getType() const { return node_->getType(resNo_); }
 void NodeValue::setType(TypeRef ty) { node_->setType(resNo_, ty); }
+void NodeValue::setTypeUnsafe(TypeRef ty) { node_->setTypeUnsafe(resNo_, ty); }
 
 ElemKind NodeValue::getElementType() const {
   return getType()->getElementType();

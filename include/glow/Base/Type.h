@@ -71,25 +71,7 @@ struct ShapeNHWC {
     c = shape[3];
   }
 
-  static ShapeNHWC fromXYZ(llvm::ArrayRef<size_t> shape) {
-    assert(shape.size() == 3 && "Invalid 3d shape");
-    return ShapeNHWC(shape[0], shape[1], shape[2], 1);
-  }
-
-  static ShapeNHWC fromXY(llvm::ArrayRef<size_t> shape) {
-    assert(shape.size() == 2 && "Invalid 2d shape");
-    return ShapeNHWC(shape[0], shape[1], 1, 1);
-  }
-
-  static ShapeNHWC fromX(llvm::ArrayRef<size_t> shape) {
-    assert(shape.size() == 1 && "Invalid 1d shape");
-    return ShapeNHWC(shape[0], 1, 1, 1);
-  }
-
-  static ShapeNHWC empty() { return ShapeNHWC(0, 0, 0, 0); }
-
-  explicit ShapeNHWC(size_t samples, size_t height, size_t width,
-                     size_t channels)
+  ShapeNHWC(size_t samples, size_t height, size_t width, size_t channels)
       : n(samples), h(height), w(width), c(channels) {}
 
   bool equals(const ShapeNHWC &other) const {
@@ -113,10 +95,8 @@ struct ShapeNHWDC {
     c = shape[4];
   }
 
-  static ShapeNHWDC empty() { return ShapeNHWDC(0, 0, 0, 0, 0); }
-
-  explicit ShapeNHWDC(size_t samples, size_t height, size_t width, size_t depth,
-                      size_t channels)
+  ShapeNHWDC(size_t samples, size_t height, size_t width, size_t depth,
+             size_t channels)
       : n(samples), h(height), w(width), d(depth), c(channels) {}
 
   bool equals(const ShapeNHWDC &other) const {
@@ -139,20 +119,7 @@ struct ShapeNCHW {
     w = shape[3];
   }
 
-  static ShapeNCHW fromXYZ(llvm::ArrayRef<size_t> shape) {
-    assert(shape.size() == 3 && "Invalid 3d shape");
-    return ShapeNCHW(shape[0], 1, shape[1], shape[2]);
-  }
-
-  static ShapeNCHW fromXY(llvm::ArrayRef<size_t> shape) {
-    assert(shape.size() == 2 && "Invalid 2d shape");
-    return ShapeNCHW(shape[0], 1, shape[1], 1);
-  }
-
-  static ShapeNCHW empty() { return ShapeNCHW(0, 0, 0, 0); }
-
-  explicit ShapeNCHW(size_t samples, size_t channels, size_t height,
-                     size_t width)
+  ShapeNCHW(size_t samples, size_t channels, size_t height, size_t width)
       : n(samples), c(channels), h(height), w(width) {}
 
   bool equals(const ShapeNCHW &other) const {
@@ -304,6 +271,15 @@ inline bool isQuantizedElemKind(ElemKind e) {
 inline bool isFusedQuantizedElemKind(ElemKind e) {
   return e == ElemKind::UInt8FusedQTy || e == ElemKind::UInt8FusedFP16QTy ||
          e == ElemKind::UInt4FusedFP16QTy;
+}
+
+/// \returns the scale and offset ElemKind used by the fused ElemKind \p e.
+inline ElemKind getScaleOffsetElemKindFromFused(ElemKind e) {
+  assert(isFusedQuantizedElemKind(e) && "Must pass Fused ElemKind.");
+  if (e == ElemKind::UInt8FusedQTy) {
+    return ElemKind::FloatTy;
+  }
+  return ElemKind::Float16Ty;
 }
 
 /// A class that represents a type of a tensor.
@@ -459,12 +435,12 @@ struct Type final {
           return false;
         }
       }
-    }
 
-    // Strides must be the same.
-    for (size_t i = 0; i < numSizes_; i++) {
-      if (strides_[i] != other.strides_[i]) {
-        return false;
+      // Strides must be the same.
+      for (size_t i = 0; i < numSizes_; i++) {
+        if (strides_[i] != other.strides_[i]) {
+          return false;
+        }
       }
     }
 

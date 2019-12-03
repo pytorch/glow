@@ -83,7 +83,7 @@ createAndSetTensorType(const caffe2::TensorProto &in) {
   }
 
   LoadWeightResult result;
-  result.t = llvm::make_unique<Tensor>();
+  result.t = glow::make_unique<Tensor>();
 
   if (in.data_type() == caffe2::TensorProto::FLOAT) {
     result.t->reset(ElemKind::FloatTy, dim);
@@ -130,7 +130,7 @@ createAndSetTensorType(const caffe2::QTensorProto &in) {
                     "Found a different number of biases and scales");
 
   LoadWeightResult result;
-  result.t = llvm::make_unique<Tensor>();
+  result.t = glow::make_unique<Tensor>();
 
   float scale = 1.0;
   int32_t offset = 0;
@@ -143,9 +143,9 @@ createAndSetTensorType(const caffe2::QTensorProto &in) {
     scale = in.scales(0);
     offset = in.biases(0);
   } else {
-    result.scales = llvm::make_unique<Tensor>(ElemKind::FloatTy,
+    result.scales = glow::make_unique<Tensor>(ElemKind::FloatTy,
                                               llvm::makeArrayRef({qparams}));
-    result.offsets = llvm::make_unique<Tensor>(ElemKind::Int32ITy,
+    result.offsets = glow::make_unique<Tensor>(ElemKind::Int32ITy,
                                                llvm::makeArrayRef({qparams}));
 
     auto scalesH = result.scales->getHandle<float>();
@@ -333,7 +333,7 @@ Error Caffe2ModelLoader::loadConv(const caffe2::OperatorDef &op,
   // Caffe2 "Conv" op always stores the weight as CKRS.
   Tensor wT;
   w->getPayload().transpose(&wT, NCHW2NHWC);
-  w = G_.getParent()->createConstant(w->getName(), std::move(wT));
+  w = G_.getParent()->createConstant(w->getName(), std::move(wT), "NHWC");
 
   // The structure of the conv weights is: CRSK. We take the C, which is the
   // number of filters. We use this value to calculate the size of the bias
@@ -434,7 +434,7 @@ Error Caffe2ModelLoader::loadConvQuantized(const caffe2::OperatorDef &op,
   if (order != "NHWC") {
     Tensor wT;
     w->getPayload().transpose(&wT, NCHW2NHWC);
-    w = G_.getParent()->createConstant(w->getName(), std::move(wT));
+    w = G_.getParent()->createConstant(w->getName(), std::move(wT), "NHWC");
   }
 
   // The structure of the conv weights is: CRSK. We take the C, which is the
@@ -1444,6 +1444,12 @@ Error Caffe2ModelLoader::loadInputs(const caffe2::NetDef &net,
 }
 
 Error Caffe2ModelLoader::loadNetwork(caffe2::NetDef &net) {
+  // Make a claim on the unique name of all output Placeholders.
+  for (int i = 0; i < net.external_output_size(); i++) {
+    auto &outputName = net.external_output(i);
+    G_.getParent()->registerStorageName(legalizeName(outputName));
+  }
+
   /// Load the network operators:
   for (int i = 0; i < net.op_size(); i++) {
     auto &op = net.op(i);
@@ -1464,8 +1470,13 @@ Error Caffe2ModelLoader::loadNetwork(caffe2::NetDef &net) {
     auto &outputName = net.external_output(i);
     NodeValue r;
     ASSIGN_VALUE_OR_RETURN_ERR(r, getNodeValueByName(outputName));
-    auto *PH =
-        G_.getParent()->createPlaceholder(r.getType(), outputName, false);
+
+    PlaceholderList &PHList = G_.getParent()->getPlaceholders();
+    // Create a Placeholder with the previously claimed name.
+    auto *PH = new Placeholder(legalizeName(outputName),
+                               G_.getParent()->uniqueType(*r.getType()), false,
+                               ANY_LAYOUT);
+    PHList.push_back(PH);
     auto *SN = G_.createSave("save_" + outputName, r, PH);
     outputVarsByName_[outputName] = SN->getPlaceholder();
   }

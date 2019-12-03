@@ -303,7 +303,7 @@ protected:
     // Create TraceContext if trace file path is provided.
     if (!traceDir.empty()) {
       context_.setTraceContext(
-          llvm::make_unique<TraceContext>(TraceEvent::TraceLevel::STANDARD));
+          glow::make_unique<TraceContext>(TraceEvent::TraceLevel::STANDARD));
     }
 
     // If device memory capacity is unset via command line, use 32MB by default.
@@ -514,9 +514,6 @@ protected:
                               std::vector<NodeValue> &embeddings) {
     auto internalTypeF = mod.uniqueType(ElemKind::FloatTy, {1});
 
-    const ElemKind precisionForSLWS =
-        useFP16SLWS ? ElemKind::Float16Ty : ElemKind::FloatTy;
-
     for (unsigned int i = 0; i < lengths.size(); i++) {
       fillStableRandomIndex(
           bindings_.allocate(lengths[i])->getHandle<int32_t>(), 2011,
@@ -536,7 +533,7 @@ protected:
             useFP16SLWS);
         embeddings[i] = F_->createFusedRowwiseQuantizedSparseLengthsSum(
             "RQSLWS" + std::to_string(i), data, indices, lengths[i],
-            precisionForSLWS, useFP16AccumSLWS);
+            useFP16AccumSLWS);
         // Convert back to Float if we used Float16 here. Optimizer will
         // eliminate if necessary.
         if (useFP16SLWS) {
@@ -544,7 +541,6 @@ protected:
               "convert_" + embeddings[i].getNode()->getName().str(),
               embeddings[i], ElemKind::FloatTy);
         }
-        F_->createSave("save_embedding", embeddings[i]);
       } else {
         Constant *data =
             createRandomizedConstant(mod, internalTypeF, {embSizes[i], embDim},
@@ -562,9 +558,6 @@ protected:
       llvm::ArrayRef<Placeholder *> lengths, llvm::ArrayRef<size_t> tableSizes,
       size_t embeddingDim, std::vector<NodeValue> &embeddings,
       uint32_t weightsSize = 1000) {
-    const ElemKind precisionForSLWS =
-        useFP16SLWS ? ElemKind::Float16Ty : ElemKind::FloatTy;
-
     for (size_t i = 0; i < lengths.size(); i++) {
       fillStableRandomIndex(
           bindings_.allocate(lengths[i])->getHandle<int32_t>(), 2011,
@@ -600,7 +593,7 @@ protected:
             useFP16SLWS);
         embeddings[i] = F_->createFusedRowwiseQuantizedSparseLengthsWeightedSum(
             "RQSLWS" + std::to_string(i), data, weights, indices, lengths[i],
-            precisionForSLWS, useFP16AccumSLWS);
+            useFP16AccumSLWS);
         // Convert back to Float if we used Float16 here. Optimizer will
         // eliminate if necessary.
         if (useFP16SLWS) {
@@ -808,7 +801,7 @@ protected:
 
     assert(resultTensor && "Must run and set resultTensor before comparing "
                            "against the intepreter.");
-    EXPECT_TRUE(resultIT->isEqual(*resultTensor, 0.005));
+    EXPECT_TRUE(resultIT->isEqual(*resultTensor, 0.004));
   }
 
   /// Create partitions to run and compare results.

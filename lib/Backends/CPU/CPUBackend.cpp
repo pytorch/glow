@@ -60,6 +60,9 @@ bool CPUBackend::isOpSupported(const NodeInfo &NI) const {
     return NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Int8QTy});
 
+  case Kinded::Kind::AdaptiveAvgPoolNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind({ElemKind::FloatTy});
+
   case Kinded::Kind::MaxPoolNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
                {ElemKind::FloatTy, ElemKind::Int8QTy}, {},
@@ -120,6 +123,14 @@ bool CPUBackend::isOpSupported(const NodeInfo &NI) const {
             ElemKind::Int64ITy) &&
            (NI.getInElemTy(SparseLengthsWeightedSumNode::LengthsIdx) ==
             ElemKind::Int32ITy);
+
+  case Kinded::Kind::EmbeddingBagNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind(
+               {ElemKind::FloatTy},
+               {EmbeddingBagNode::IndicesIdx, EmbeddingBagNode::OffsetsIdx}) &&
+           (NI.getInElemTy(EmbeddingBagNode::IndicesIdx) ==
+            ElemKind::Int64ITy) &&
+           (NI.getInElemTy(EmbeddingBagNode::OffsetsIdx) == ElemKind::Int64ITy);
 
   case Kinded::Kind::SparseLengthsWeightedSumGradNodeKind:
     // GradOfInputNamedIndicesIdx and GradOfInputNamedLengthsIdx do not need to
@@ -299,6 +310,18 @@ bool CPUBackend::isOpSupported(const NodeInfo &NI) const {
                {ElemKind::FloatTy}, {LengthsSumNode::LengthsIdx}) &&
            (NI.getInElemTy(LengthsSumNode::LengthsIdx) == ElemKind::Int32ITy);
 
+  case Kinded::Kind::EmbeddingBagByteRowwiseOffsetsNodeKind:
+    return (NI.getInElemTy(EmbeddingBagByteRowwiseOffsetsNode::DataIdx) ==
+            ElemKind::UInt8FusedQTy) &&
+           (NI.getInElemTy(EmbeddingBagByteRowwiseOffsetsNode::WeightsIdx) ==
+            ElemKind::FloatTy) &&
+           (NI.getInElemTy(EmbeddingBagByteRowwiseOffsetsNode::IndicesIdx) ==
+            ElemKind::Int64ITy) &&
+           (NI.getInElemTy(EmbeddingBagByteRowwiseOffsetsNode::OffsetsIdx) ==
+            ElemKind::Int32ITy) &&
+           (NI.getOutElemTy(EmbeddingBagByteRowwiseOffsetsNode::ResultIdx) ==
+            ElemKind::FloatTy);
+
   case Kinded::Kind::FusedRowwiseQuantizedSparseLengthsWeightedSumNodeKind:
     return (NI.getInElemTy(
                 FusedRowwiseQuantizedSparseLengthsWeightedSumNode::DataIdx) ==
@@ -359,6 +382,15 @@ bool CPUBackend::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::TraceEventNodeKind:
     return NI.getInElemTy(TraceEventNode::DataIdx) == ElemKind::Int64ITy;
 
+  case Kinded::Kind::ConvertToNodeKind:
+    return ((NI.getInElemTy(ConvertToNode::InputIdx) == ElemKind::Int32ITy) &&
+            (NI.getOutElemTy(ConvertToNode::ResultIdx) == ElemKind::FloatTy)) ||
+           ((NI.getInElemTy(ConvertToNode::InputIdx) == ElemKind::Int64ITy) &&
+            (NI.getOutElemTy(ConvertToNode::ResultIdx) ==
+             ElemKind::Int32ITy)) ||
+           ((NI.getInElemTy(ConvertToNode::InputIdx) == ElemKind::Int32ITy) &&
+            (NI.getOutElemTy(ConvertToNode::ResultIdx) == ElemKind::Int64ITy));
+
   default:
     return false;
   }
@@ -377,7 +409,7 @@ bool CPUBackend::shouldLower(const Node *N) const {
 std::unique_ptr<CompiledFunction> CPUBackend::createCompiledFunction(
     std::unique_ptr<llvm::orc::GlowJIT> JIT,
     runtime::RuntimeBundle &&runtimeBundle) const {
-  return llvm::make_unique<CPUFunction>(std::move(JIT),
+  return glow::make_unique<CPUFunction>(std::move(JIT),
                                         std::move(runtimeBundle));
 }
 

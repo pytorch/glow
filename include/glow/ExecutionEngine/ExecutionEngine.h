@@ -59,6 +59,10 @@ class ExecutionEngine final {
   /// Glow functions compiled for this ExecutionEngine's backend.
   std::set<std::string> compiledFunctions_;
 
+  /// Whether to move all Device Resident Tensors on to the host at the end of
+  /// the run.
+  bool ensureOutputsOnHost_{true};
+
   /// Single execution of the given function, \p name with the given context
   /// \bindings.
   void runInternal(ExecutionContext &context, llvm::StringRef name);
@@ -85,13 +89,16 @@ public:
     setBackendName(backendName_);
   }
 
+  // Set whether or not to ensure outputs are in host memory.
+  void ensureOutputsOnHost(bool should) { ensureOutputsOnHost_ = should; }
+
   /// Get the name of the current backend in use.
   llvm::StringRef getBackendName() const;
 
   /// \returns the internal graph. Note: After compilation the contents of the
   /// module will have been altered and raw pointers to elements of the graph
   /// may no longer be valid.
-  Module &getModule() { return *rawModule_; }
+  Module &getModule() const { return *rawModule_; }
 
   /// Clears the ExecutionEngine and all CompiledFunctions.
   void clear();
@@ -127,6 +134,14 @@ public:
   /// Context aware single execution of a function with the given \p
   /// name.
   void run(PlaceholderBindings &bindings, llvm::StringRef name);
+
+  /// \returns a reference to the backend with name \p backendName owned by the
+  /// Provisioner inside of \ref hostManager_.
+  Backend &getBackend(llvm::StringRef backendName) const;
+
+  /// \returns the single Function contained in this Module.
+  /// \pre Must be a single Function in the Module.
+  Function *getSingleFunctionFromModule() const;
 };
 
 //===----------------------------------------------------------------------===//
@@ -164,6 +179,16 @@ void runBatch(ExecutionEngine &EE, PlaceholderBindings &bindings,
               llvm::ArrayRef<Placeholder *> ph, llvm::ArrayRef<Tensor *> inputs,
               llvm::StringRef name = "");
 
+/// Runs \p numMinibatchRuns iterations of the compiled function called \p name.
+/// The method updates a global counter and future invocations of this method
+/// continue running iterations of the batch at the next available slice.
+/// The provided callback function \p cb is invoked on each sample.
+void evalBatch(
+    ExecutionEngine &EE, PlaceholderBindings &bindings, size_t numMinibatchRuns,
+    size_t &sampleCounter, Placeholder *inputPH, Placeholder *outputPH,
+    Tensor &samplesInput, Tensor &labelsInput, llvm::StringRef name,
+    std::function<void(const Tensor &sampleIn, const Tensor &sampleOut,
+                       const Tensor &label, size_t sampleIndex)> &&cb);
 } // namespace glow
 
 #endif // GLOW_EXECUTIONENGINE_EXECUTIONENGINE_H

@@ -8,6 +8,8 @@
 #### High level IR
 * Create a new Glow high level IR node in `ClassGen/NodeGen.cpp`. Run `ninja all` to generate the node. In the build directory, check `glow/AutoGenNodes.h` to ensure the node has been generated.
 * Implement the `verify()` method for the new node in `Graph/Nodes.cpp`.
+* Implement any node layout requirements, if any, see `TensorLayout.md` for details.
+Specifically see the notes section under `Canonical Tensor Layout`.
 * Implement a node creation method in `Graph/Graph.cpp`.
 * Implement logic to load model that contains the operator in `Importer/Caffe2ModelLoader.cpp` or `Importer/ONNXModelLoader.cpp` depending on which type of model the operator comes from. Add the operator to `Importer/CommonOperatorLoader.h` instead if the loading logic can be shared between Caffe2 and ONNX. Add as much validation logic as possible here in the loader for the operator because it's crucial to catch errors at this stage. Once the operator is loaded, it is assumed that Glow will be able to successfully run the operator so any issues must be caught here.
 #### Low level IR

@@ -16,6 +16,8 @@
 
 #include <pybind11/pybind11.h>
 
+#include "FuseKnownPatterns.h"
+#include "GlowFuser.h"
 #include "PyTorchCommon.h"
 #include "Registration.h"
 #include "TorchGlowTraining.h"
@@ -60,6 +62,69 @@ PYBIND11_MODULE(_torch_glow, m) {
   /// Disable dumping Glow DAG to file after model loading finishes.
   m.def("disableDumpGlowDag",
         []() { getPyTorchLoaderSettings().dumpGlowDag = false; });
+
+  /// Add all of the symbols in \p blacklist to the fusion blacklist so that
+  /// nodes with these symbols will not be fused to Glow.
+  m.def("setFusionBlacklist", [](const std::vector<std::string> &blacklist) {
+    auto &bl = getPyTorchLoaderSettings().opBlacklist;
+    bl.clear();
+    for (const auto &kind : blacklist) {
+      bl.insert(torch::jit::Symbol::fromQualString(kind));
+    }
+  });
+
+  /// Clear the fusion blacklist.
+  m.def("clearFusionBlacklist",
+        []() { getPyTorchLoaderSettings().opBlacklist.clear(); });
+
+  /// Set the active HostManager to one that owns 1 of type \p backendName.
+  m.def("setGlowBackend", [](const std::string &glowBackendName) {
+    setHostManager(glowBackendName);
+  });
+
+  /// Set the active HostManager to one that owns \p numDevices of type
+  /// \p backendName.
+  m.def("setGlowBackend",
+        [](const std::string &glowBackendName, size_t numDevices) {
+          setHostManager(glowBackendName, numDevices);
+        });
+
+  /// \returns the name of the device backend used by the active HostManager.
+  m.def("getGlowBackendName", []() { return getBackendName(); });
+
+  /// \returns the quantity of the device backends used by the active
+  /// HostManager.
+  m.def("getGlowBackendNumDevices", []() { return getBackendNumDevices(); });
+
+  /// Calls all of the fusion passes that get run before the PyTorchModelLoader
+  /// run.
+  /// NOTE: This is only exposed for testing.
+  m.def("fuseKnownPatterns_", fuseKnownPatterns);
+
+  /// Calls the removeException pass.
+  /// NOTE: This is only exposed for testing.
+  m.def("removeExceptions_", glow::detail::removeExceptions);
+
+  /// Calls the fuseBranchedLinearPattern pass.
+  /// NOTE: This is only exposed for testing.
+  m.def("fuseBranchedLinearPattern_", glow::detail::fuseBranchedLinearPattern);
+
+  /// Set the minimum fusion group size.
+  m.def("setMinFusionGroupSize",
+        [](size_t k) { getPyTorchLoaderSettings().minFusionGroupSize = k; });
+
+  /// Call the Glow fuser and accept all node kinds but don't actually run the
+  /// PyTorchModelLoader.
+  /// NOTE: This is only exposed for testing.
+  m.def("glowCustomFuseDebug_", [](std::shared_ptr<torch::jit::Graph> graph) {
+    return glowCustomFuse(graph);
+  });
+
+  /// NOTE: This is only exposed for testing.
+  m.def("glowCustomFuseDebug_", [](std::shared_ptr<torch::jit::Graph> graph,
+                                   std::vector<std::string> &acceptableKinds) {
+    return glowCustomFuseDebug(graph, acceptableKinds);
+  });
 
   /// Binding wrapper class for TorchGlowTraining and its settings.
   py::class_<TorchGlowTrainingWrapper>(m, "TorchGlowTrainingWrapper")

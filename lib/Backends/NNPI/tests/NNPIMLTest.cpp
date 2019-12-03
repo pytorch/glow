@@ -28,6 +28,7 @@ std::set<std::string> glow::backendTestBlacklist = {
     "trainSimpleLinearRegression/0",
     "classifyPlayerSport/0",
     "learnSinus/0",
+    "learnSparseLengthsSumEmbeddings/0",
     "nonLinearClassifier/0",
     "convNetForImageRecognition/0",
     "testFindPixelRegression/0",

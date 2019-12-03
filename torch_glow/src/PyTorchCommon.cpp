@@ -20,6 +20,7 @@
 #include "GlowFuser.h"
 #include "PyTorchModelLoader.h"
 
+#include <torch/csrc/jit/graph_executor.h>
 #include <torch/csrc/jit/operator_options.h>
 #include <torch/csrc/jit/pass_manager.h>
 #include <torch/csrc/jit/passes/subgraph_rewrite.h>
@@ -29,25 +30,68 @@ namespace glow {
 bool GlowCompilePyTorchModule = false;
 
 namespace {
-/// Builds and \returns a HostManager instance.
-std::unique_ptr<runtime::HostManager> buildHostManager() {
-  constexpr size_t numGlowDevices = 1;
 
-  std::vector<std::unique_ptr<runtime::DeviceConfig>> deviceConfigs;
-  for (int i = 0; i < numGlowDevices; i++) {
-    deviceConfigs.push_back(llvm::make_unique<runtime::DeviceConfig>(
-        getPyTorchLoaderSettings().glowBackendName));
-  }
+static int setGraphExecutorToLegacy() {
+  // use legacy GraphExecutor for Glow
+  torch::jit::getExecutorMode() = false;
+  torch::jit::getProfilingMode() = false;
+  return 0;
+}
 
-  return llvm::make_unique<runtime::HostManager>(std::move(deviceConfigs));
+static const int USE_LEGACY_GE = setGraphExecutorToLegacy();
+
+/// GlowBackendState stores the currently active Glow HostManager that will
+/// be used to run the subgraphs lowered to Glow. It also contains information
+/// about the number and type of backend devices owned by the HostManager.
+struct GlowBackendState {
+  std::shared_ptr<runtime::HostManager> hostManager;
+  std::string backendName;
+  size_t numDevices = 0;
+};
+
+/// Meyers singleton for GlowBackendState.
+GlowBackendState *getGlowBackendState() {
+  static GlowBackendState state_;
+  return &state_;
 }
 
 } // namespace
 
-/// \returns the HostManager singleton used to run all PyTorch graphs in Glow.
 std::shared_ptr<runtime::HostManager> getHostManager() {
-  static std::shared_ptr<runtime::HostManager> hostManager = buildHostManager();
+  auto hostManager = getGlowBackendState()->hostManager;
+  // If no HostManager has been set, use Glow's Interpreter.
+  if (!hostManager) {
+    setHostManager("Interpreter");
+    hostManager = getGlowBackendState()->hostManager;
+  }
   return hostManager;
+}
+
+const std::string &getBackendName() {
+  return getGlowBackendState()->backendName;
+}
+
+size_t getBackendNumDevices() { return getGlowBackendState()->numDevices; }
+
+void setHostManager(const std::string &backendName, size_t numDevices) {
+  auto *state = getGlowBackendState();
+
+  // Don't create a new identical HostManager.
+  if (state->backendName == backendName && state->numDevices == numDevices) {
+    return;
+  }
+
+  state->backendName = backendName;
+  state->numDevices = numDevices;
+
+  std::vector<std::unique_ptr<runtime::DeviceConfig>> deviceConfigs;
+  for (int i = 0; i < numDevices; i++) {
+    deviceConfigs.push_back(
+        llvm::make_unique<runtime::DeviceConfig>(backendName));
+  }
+
+  state->hostManager =
+      std::make_shared<runtime::HostManager>(std::move(deviceConfigs));
 }
 
 /// Given a Glow ElemKind \p ty, \returns a matching PyTorch ScalarType.
@@ -89,7 +133,8 @@ glow::ElemKind scalarTypeToElemKind(c10::ScalarType ty) {
   } else if (ty == at::kBool) {
     return ElemKind::BoolTy;
   } else {
-    LOG(DFATAL) << "Not supported yet.";
+    LOG(DFATAL) << "ScalarType " << static_cast<int>(ty)
+                << " not supported yet.";
     return ElemKind::Int64ITy;
   }
 }
@@ -146,5 +191,4 @@ glow::Tensor ptTensorToGlowTensor(const at::Tensor &ptTensor) {
   auto glowType = ptTypeToGlowType(*c10::TensorType::create(ptTensor));
   return glow::Tensor(ptTensor.data_ptr(), &glowType);
 }
-
 } // namespace glow

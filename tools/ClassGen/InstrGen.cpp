@@ -169,6 +169,14 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
       .addGradientInstr({"Dest"}, {"Dest", "Src"});
 
+  BB.newInstr("FullyConnected")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .addOperand("Weights", OperandKind::In)
+      .addOperand("Bias", OperandKind::In)
+      .autoIRGen()
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"});
+
   BB.newInstr("RowwiseQuantizedFullyConnected")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Src", OperandKind::In)
@@ -240,6 +248,16 @@ int main(int argc, char **argv) {
       .autoIRGen()
       .autoVerify(VerifyKind::SameElementType, {"Dest", "LHS", "RHS"});
 
+  /// Performs batch matrix multiplication between the LHS and RHS. The operands
+  /// are a stack of two dimensional matrices. Example: (N, A, Z) x (N, Z, B) =>
+  /// (N, A, B).
+  BB.newInstr("BatchMatMul")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("LHS", OperandKind::In)
+      .addOperand("RHS", OperandKind::In)
+      .autoIRGen()
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "LHS", "RHS"});
+
   /// Accumulates all of the layers in the batch along the Axis dimension and
   /// produce a tensor that has the same dimensions as the input tensor without
   /// the Axis dimension.
@@ -281,7 +299,8 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::SameElementType,
                   {"Indices", "ElemKind::Int64ITy"})
       .autoVerify(VerifyKind::SameElementType,
-                  {"Lengths", "ElemKind::Int32ITy"});
+                  {"Lengths", "ElemKind::Int32ITy"})
+      .addGradientInstr({"Data", "Indices", "Lengths"}, {"Dest", "Data"});
 
   BB.newInstr("SparseLengthsWeightedSum")
       .addOperand("Dest", OperandKind::Out)
@@ -298,6 +317,20 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::SameShape, {"Weights", "Indices"})
       .addGradientInstr({"Data", "Weights", "Indices", "Lengths"},
                         {"Dest", "Data", "Weights"});
+
+  BB.newInstr("EmbeddingBag")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Data", OperandKind::In)
+      .addOperand("Weights", OperandKind::In)
+      .addOperand("Indices", OperandKind::In)
+      .addOperand("Offsets", OperandKind::In)
+      .autoIRGen()
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "Data", "Weights"})
+      .autoVerify(VerifyKind::SameElementType,
+                  {"Indices", "ElemKind::Int64ITy"})
+      .autoVerify(VerifyKind::SameElementType,
+                  {"Offsets", "ElemKind::Int64ITy"})
+      .autoVerify(VerifyKind::SameShape, {"Weights", "Indices"});
 
   BB.newInstr("RowwiseQuantizedSparseLengthsWeightedSum")
       .addOperand("Dest", OperandKind::Out)
@@ -328,6 +361,20 @@ int main(int argc, char **argv) {
                   {"Indices", "ElemKind::Int64ITy"})
       .autoVerify(VerifyKind::SameElementType,
                   {"Lengths", "ElemKind::Int32ITy"})
+      .autoVerify(VerifyKind::SameShape, {"Weights", "Indices"});
+
+  BB.newInstr("EmbeddingBagByteRowwiseOffsets")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Data", OperandKind::In)
+      .addOperand("Weights", OperandKind::In)
+      .addOperand("Indices", OperandKind::In)
+      .addOperand("Offsets", OperandKind::In)
+      .addMember(MemberType::Boolean, "UseFP16Accumulation")
+      .autoIRGen()
+      .autoVerify(VerifyKind::SameElementType,
+                  {"Indices", "ElemKind::Int64ITy"})
+      .autoVerify(VerifyKind::SameElementType,
+                  {"Offsets", "ElemKind::Int32ITy"})
       .autoVerify(VerifyKind::SameShape, {"Weights", "Indices"});
 
   BB.newInstr("LengthsToRanges")

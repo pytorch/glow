@@ -248,6 +248,23 @@ private:
   bool hasGlowIValueForValue(const torch::jit::Value *value,
                              bool ignoreNones = false) const;
 
+  /// If a NodeValue is mapped to \p value then return it, otherwise look for a
+  /// float or integer IValue mapped to \p value, create a Glow Constant by
+  /// broadcasting that value to a tensor of size \p dims and return the result
+  /// of that Constant.
+  Expected<glow::NodeValue>
+  loadNodeValueOrBroadcastedIValue(const torch::jit::Value *value,
+                                   llvm::ArrayRef<size_t> dims);
+
+  /// If there is a NodeValue mapped to \p value then return it, otherwise
+  /// create a Constant with type \p ty, name \p name, and value \p val
+  /// broadcasted.
+  template <typename T = float>
+  glow::NodeValue
+  loadNodeValueOrCreateBroadcastedConstant(const torch::jit::Value *value,
+                                           llvm::StringRef name, const Type &ty,
+                                           const T &val);
+
   /// Find the Glow NodeValue that maps to a given PyTorch value \p value.
   Expected<glow::NodeValue>
   getGlowNodeValueForValue(const torch::jit::Value *value);
@@ -269,13 +286,40 @@ private:
   /// Constants.
   Error freezeWeights(const torch::jit::Node *ptNode);
 
-  /// Load a given PyTorch Node \p ptNode. \returns
-  /// error on failure.
-  Error loadNode(const torch::jit::Node *ptNode);
+  // Load a PyTorch aten::embedding_bag node.
+  // \returns error on failure.
+  Error loadEmbeddingBag(const torch::jit::Node *ptNode);
+
+  // Load a PyTorch fb::embedding_bag_byte_rowwise_offsets node.
+  // \returns error on failure.
+  Error loadEmbeddingBagByteRowwiseOffsets(const torch::jit::Node *ptNode);
+
+  /// Load all PyTorch prim::GetAttr nodes in \p graph. This method uses the
+  /// PyTorch Module hierarchy to map Values for all outputs of prim::GetAttr
+  /// nodes. If the output type of a prim::GetAttr is a tensor, this will load
+  /// it as a Glow constant, if it's an ivalue::Object it is ignored, and if
+  /// it's any other kind of IValue, it is loaded as a GlowIvalue for use during
+  /// the rest of model loading. \returns error on failure.
+  Error loadAttributes(const torch::jit::Graph &graph,
+                       const at::ArrayRef<torch::jit::IValue> inputs);
+
+  /// Load each PyTorch Node in the Graph \p graph.
+  /// \returns error on failure.
+  Error loadNodes(const torch::jit::Graph &graph);
 
   /// Load a PyTorch Constant node as a Glow Constant.
   /// \returns error on failure.
   Error loadConstant(const torch::jit::Node *ptNode);
+
+  /// Helper function for loading arithmetic nodes. \p name is of the name of
+  /// the node in the Glow graph, \p lhs and \p rhs are the inputs to the
+  /// arithetic node and template parameter \p GlowNode is the type of the node
+  /// that should be created in the Glow graph. \returns the output of the
+  /// loaded arithmetic node or an Error if any occurred.
+  template <typename GlowNode>
+  Expected<NodeValue> loadArithmeticNode(llvm::StringRef name,
+                                         const torch::jit::Value *lhs,
+                                         const torch::jit::Value *rhs);
 
   /// Load a PyTorch mul node.
   /// \returns error on failure.
@@ -301,6 +345,10 @@ private:
   /// \returns error on failure.
   Error loadRelu(const torch::jit::Node *ptNode);
 
+  /// Load a PyTorch gelu node.
+  /// \returns error on failure.
+  Error loadGelu(const torch::jit::Node *ptNode);
+
   /// Load a PyTorch exp node.
   /// \returns error on failure.
   Error loadExp(const torch::jit::Node *ptNode);
@@ -314,7 +362,18 @@ private:
   Error loadSqrt(const torch::jit::Node *ptNode);
 
   /// Load a PyTorch reciprocal node.
+  /// \returns error on failure.
   Error loadReciprocal(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch prim::cat node fused with a prim::ListConstruct into a
+  /// prim::FusedConcat node.
+  /// \returns error on failure.
+  Error loadFusedConcat(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch prim::stack node fused with a prim::ListConstruct into a
+  /// glow:FusedStack node.
+  /// \returns error on failure.
+  Error loadFusedStack(const torch::jit::Node *ptNode);
 
   /// Load a PyTorch _convolution node.
   /// \returns error on failure.
@@ -324,9 +383,21 @@ private:
   /// \returns error on failure.
   Error loadBatchNorm(const torch::jit::Node *ptNode);
 
+  /// Load a PyTorch aten::layer_norm node.
+  /// \returns error on failure.
+  Error loadLayerNorm(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch dropout node.
+  /// \returns error on failure.
+  Error loadDropout(const torch::jit::Node *ptNode);
+
   /// Load a PyTorch quantized::add node.
   /// \return error on failure.
   Error loadQuantizedAdd(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch quantized::add_relu node.
+  /// \return error on failure.
+  Error loadQuantizedAddRelu(const torch::jit::Node *ptNode);
 
   /// Load a PyTorch glow::unpacked_quantized_conv node.
   // \return error on failure.
@@ -360,7 +431,11 @@ private:
   /// \returns error on failure.
   Error loadAdaptiveAvgPool2d(const torch::jit::Node *ptNode);
 
-  /// Load a PyTorch t (transpose) node.
+  /// Load a PyTorch aten::t (transpose) node.
+  /// \returns error on failure.
+  Error loadT(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch aten::transpose node.
   /// \returns error on failure.
   Error loadTranspose(const torch::jit::Node *ptNode);
 
@@ -420,6 +495,10 @@ private:
   /// \returns error on failure.
   Error loadConstantChunk(const torch::jit::Node *ptNode);
 
+  /// Helper function for loading a PyTorch aten::matmul node.
+  Expected<glow::NodeValue> loadMatMulImpl(glow::NodeValue lhs,
+                                           glow::NodeValue rhs);
+
   /// Load a PyTorch aten::matmul node.
   /// \returns error on failure.
   Error loadMatMul(const torch::jit::Node *ptNode);
@@ -431,6 +510,14 @@ private:
   /// Load a PyTorch aten::tanh node.
   /// \returns error on failure.
   Error loadTanh(const torch::jit::Node *ptNode);
+
+  /// Load a glow::fused_linear node.
+  /// \returns error on failure.
+  Error loadGlowFusedLinear(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch aten::permute node.
+  /// \returns error on failure.
+  Error loadPermute(const torch::jit::Node *ptNode);
 };
 
 } // namespace glow

@@ -15,6 +15,7 @@
  */
 
 #include "glow/Support/ZipUtils.h"
+#include "glow/Support/Memory.h"
 
 #include "llvm/ADT/STLExtras.h"
 
@@ -59,8 +60,8 @@ size_t istreamReadFunc(void *pOpaque, mz_uint64 file_ofs, void *pBuf,
 }
 
 ZipReader::ZipReader(const std::string &file_name)
-    : ar_(llvm::make_unique<mz_zip_archive>()),
-      in_(llvm::make_unique<FileAdapter>(file_name)) {
+    : ar_(glow::make_unique<mz_zip_archive>()),
+      in_(glow::make_unique<FileAdapter>(file_name)) {
   init();
 }
 
@@ -150,7 +151,7 @@ size_t ostreamWriteFunc(void *pOpaque, mz_uint64 file_ofs, const void *pBuf,
 }
 
 ZipWriter::ZipWriter(std::ostream *out, const std::string &archive_name)
-    : out_(out), finalized_{false}, ar_(llvm::make_unique<mz_zip_archive>()),
+    : out_(out), finalized_{false}, ar_(glow::make_unique<mz_zip_archive>()),
       archive_name_(archive_name) {
   memset(ar_.get(), 0, sizeof(mz_zip_archive));
   ar_->m_pIO_opaque = this;

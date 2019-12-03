@@ -1538,7 +1538,11 @@ static void performDebugInstrumentation(IRFunction &M) {
         name += ".";
         name += I->getKindName();
         auto *dumpInstr = new DebugPrintInst(name, Op.first);
-        M.insertInstruction(&*next, dumpInstr);
+        if (next == e) {
+          M.insertInstruction(dumpInstr);
+        } else {
+          M.insertInstruction(&*next, dumpInstr);
+        }
       }
     }
     it = next;
@@ -1650,7 +1654,7 @@ void performPeepholeOptimizations(IRFunction &M) {
 std::unique_ptr<IRFunction>
 glow::generateAndOptimizeIR(Function *F, const Backend &B,
                             bool shouldShareBuffers) {
-  auto IR = llvm::make_unique<IRFunction>(F);
+  auto IR = glow::make_unique<IRFunction>(F);
   IR->generateIR(B);
   ::glow::optimize(*IR, shouldShareBuffers);
   if (!B.verify(*IR)) {

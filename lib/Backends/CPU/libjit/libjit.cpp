@@ -805,6 +805,21 @@ libjit_space_to_depth_generic(const T *inPtr, T *outPtr, size_t blockSize,
     }
   }
 }
+
+template <typename DstType, typename SrcType>
+static void
+libjit_copy_kernel_with_conversion(DstType *dstPtr, const SrcType *srcPtr,
+                                   const size_t *dims, size_t numDims) {
+  size_t dimSize = 1;
+  for (size_t i = 0; i < numDims; ++i) {
+    dimSize *= dims[i];
+  }
+
+  for (size_t i = 0; i < dimSize; ++i) {
+    dstPtr[i] = DstType(srcPtr[i]);
+  }
+}
+
 /// The dimensions passed in here are pre-expanded in LLVMIRGen with 1s so that
 /// we can iterate over the shape here, regardless of the shape of the tensor.
 template <typename T>
@@ -1363,6 +1378,25 @@ void libjit_sparse_lengths_weighted_sum_f(float *dest, float *data,
   }
 }
 
+void libjit_embedding_bag_f(float *dest, float *data, float *weights,
+                            size_t *indices, int64_t *offsets, size_t segments,
+                            size_t lineSize, size_t totalLength) {
+  memset(dest, 0, segments * lineSize * sizeof(float));
+  size_t curIndex = 0;
+  for (size_t i = 0; i < segments; i++) {
+    int64_t start = offsets[i];
+    int64_t end = i == segments - 1 ? totalLength : offsets[i + 1];
+    for (int64_t j = start; j < end; j++) {
+      float weight = weights[curIndex];
+      size_t line = indices[curIndex];
+      for (size_t k = 0; k < lineSize; k++) {
+        dest[i * lineSize + k] += weight * data[line * lineSize + k];
+      }
+      curIndex++;
+    }
+  }
+}
+
 void libjit_sparse_lengths_weighted_sum_grad_f(
     const float *destGrad, float *dataGrad, float *weightsGrad,
     const float *data, const float *weights, const size_t *indices,
@@ -1435,6 +1469,31 @@ void libjit_fused_rowwise_quantized_sparse_lengths_weighted_sum_f(
         dest[i * outLineSize + k] += weight * fData;
       }
       curIndex++;
+    }
+  }
+}
+
+void libjit_embedding_bag_byte_rowwise_offsets_f(
+    float *dest, int8_t *data, float *weights, size_t *indices,
+    int32_t *offsets, size_t segments, size_t numIndices, size_t inLineSize,
+    size_t outLineSize) {
+  memset(dest, 0, segments * outLineSize * sizeof(float));
+  for (size_t i = 0; i < segments; i++) {
+    size_t start = offsets[i];
+    size_t end = i == segments - 1 ? numIndices : offsets[i + 1];
+    for (int32_t j = start; j < end; j++) {
+      const float weight = weights[j];
+      const size_t line = indices[j];
+      const int8_t *currRowScaleOffsetPtr =
+          data + ((line + 1) * inLineSize) - 2 * sizeof(float);
+      float scale, offset;
+      memcpy(&scale, currRowScaleOffsetPtr, sizeof(float));
+      memcpy(&offset, currRowScaleOffsetPtr + sizeof(float), sizeof(float));
+      for (size_t k = 0; k < outLineSize; k++) {
+        const float fData =
+            (scale * (uint8_t)(data[line * inLineSize + k])) + offset;
+        dest[i * outLineSize + k] += weight * fData;
+      }
     }
   }
 }
@@ -1706,6 +1765,45 @@ void libjit_avg_pool_f(const float *inW, float *outW, const size_t *inWdims,
   }       // N
 }
 
+void libjit_adaptive_avg_pool_f(const float *inW, float *outW,
+                                const size_t *inWdims, const size_t *outWdims) {
+// https://github.com/pytorch/pytorch/blob/master/aten/src/ATen/native/AdaptiveAveragePooling.cpp
+#define START_IND(a, b, c) (size_t) std::floor((float)((a) * (c)) / (b))
+#define END_IND(a, b, c) (size_t) std::ceil((float)(((a) + 1) * (c)) / (b))
+
+  // For each input in the batch:
+  for (size_t n = 0; n < outWdims[0]; n++) {
+    // For each layer in the output tensor:
+    for (size_t z = 0; z < inWdims[3]; z++) {
+      // For each value in the output tensor:
+      for (size_t ax = 0; ax < outWdims[1]; ax++) {
+
+        size_t x = START_IND(ax, outWdims[1], inWdims[1]);
+        size_t kH = END_IND(ax, outWdims[1], inWdims[1]) - x;
+
+        for (size_t ay = 0; ay < outWdims[2]; ay++) {
+
+          size_t y = START_IND(ay, outWdims[2], inWdims[2]);
+          size_t kW = END_IND(ay, outWdims[2], inWdims[2]) - y;
+
+          float sum = 0;
+          for (size_t fx = 0; fx < kH; fx++) {
+            for (size_t fy = 0; fy < kW; fy++) {
+              size_t ox = x + fx;
+              size_t oy = y + fy;
+
+              sum += inW[libjit_getXYZW(inWdims, n, ox, oy, z)];
+            }
+          }
+          outW[libjit_getXYZW(outWdims, n, ax, ay, z)] = (sum / kW / kH);
+        } // W
+      }   // H
+    }     // C
+  }       // N
+#undef START_IND
+#undef END_IND
+}
+
 void libjit_avg_pool_grad_f(float *inG, const float *outG,
                             const size_t *inGdims, const size_t *outWdims,
                             size_t *kernels, size_t *strides, size_t *pads) {
@@ -1975,6 +2073,25 @@ void libjit_write_timestamp(uint64_t *tensor, size_t offset) {
                     std::chrono::steady_clock::now().time_since_epoch())
                     .count();
   memcpy(tensor + offset, &ts, sizeof(uint64_t));
+}
+
+/// Copies a kernel with type conversion
+void libjit_convertTo_f_i32(float *dstPtr, const int32_t *srcPtr,
+                            const size_t *dims, size_t numDims) {
+  libjit_copy_kernel_with_conversion<float, int32_t>(dstPtr, srcPtr, dims,
+                                                     numDims);
+}
+
+void libjit_convertTo_i32_u(int32_t *dstPtr, const int64_t *srcPtr,
+                            const size_t *dims, size_t numDims) {
+  libjit_copy_kernel_with_conversion<int32_t, int64_t>(dstPtr, srcPtr, dims,
+                                                       numDims);
+}
+
+void libjit_convertTo_u_i32(int64_t *dstPtr, const int32_t *srcPtr,
+                            const size_t *dims, size_t numDims) {
+  libjit_copy_kernel_with_conversion<int64_t, int32_t>(dstPtr, srcPtr, dims,
+                                                       numDims);
 }
 
 /// Update min/max values \p compInfo and histogram \p existingHistogram with

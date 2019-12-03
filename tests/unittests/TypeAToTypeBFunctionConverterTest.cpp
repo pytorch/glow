@@ -1040,7 +1040,7 @@ TEST_P(AllBackends, convertFRWQSLWS) {
       mod.createPlaceholder(ElemKind::Int32ITy, {4}, "lengths",
                             /* isTrainable */ false);
   auto *R = F->createFusedRowwiseQuantizedSparseLengthsWeightedSum(
-      "RQSLWS", data, weights, indices, lengths, ElemKind::FloatTy);
+      "RQSLWS", data, weights, indices, lengths, ElemKind::UInt8FusedQTy);
   SaveNode *S = F->createSave("save", R);
 
   size_t origSize = F->getNodes().size();
@@ -1105,7 +1105,7 @@ TEST_P(AllBackends, skipConvertingFRWQSLWS) {
       mod.createPlaceholder(ElemKind::Int32ITy, {4}, "lengths",
                             /* isTrainable */ false);
   auto *R = F->createFusedRowwiseQuantizedSparseLengthsWeightedSum(
-      "RQSLWS", data, weights, indices, lengths, ElemKind::FloatTy);
+      "RQSLWS", data, weights, indices, lengths, ElemKind::UInt8FusedQTy);
   SaveNode *S = F->createSave("save", R);
 
   size_t origSize = F->getNodes().size();
@@ -1157,7 +1157,7 @@ TEST_P(AllBackends, convertOnlyFloat16Ty) {
       mod.createPlaceholder(ElemKind::Int32ITy, {4}, "lengths",
                             /* isTrainable */ false);
   auto *R = F->createFusedRowwiseQuantizedSparseLengthsWeightedSum(
-      "RQSLWS", data, weights, indices, lengths, ElemKind::FloatTy);
+      "RQSLWS", data, weights, indices, lengths, ElemKind::UInt8FusedQTy);
   SaveNode *S = F->createSave("save", R);
 
   size_t origSize = F->getNodes().size();
@@ -1216,7 +1216,7 @@ TEST_P(AllBackends, convertOnlyUInt8FusedQTy) {
       mod.createPlaceholder(ElemKind::Int32ITy, {4}, "lengths",
                             /* isTrainable */ false);
   auto *R = F->createFusedRowwiseQuantizedSparseLengthsWeightedSum(
-      "RQSLWS", data, weights, indices, lengths, ElemKind::FloatTy);
+      "RQSLWS", data, weights, indices, lengths, ElemKind::UInt8FusedQTy);
   SaveNode *S = F->createSave("save", R);
 
   size_t origSize = F->getNodes().size();

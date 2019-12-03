@@ -300,7 +300,7 @@ static uint8_t *allocateMutableWeightVars(const BundleConfig &config) {
 static void dumpInferenceResults(const BundleConfig &config,
                                  uint8_t *mutableWeightVars) {
   const SymbolTableEntry &outputWeights =
-      getMutableWeightVar(config, "gpu_0_softmax__1");
+      getMutableWeightVar(config, "gpu_0_softmax");
   int maxIdx = 0;
   float maxValue = 0;
   float *results = (float *)(mutableWeightVars + outputWeights.offset);
@@ -343,7 +343,7 @@ int main(int argc, char **argv) {
   parseCommandLineOptions(argc, argv);
   // Allocate and initialize constant and mutable weights.
   uint8_t *constantWeightVarsAddr =
-      initConstantWeights("resnet50.weights", resnet50_config);
+      initConstantWeights("resnet50.weights.bin", resnet50_config);
   uint8_t *mutableWeightVarsAddr = initMutableWeightVars(resnet50_config);
   uint8_t *activationsAddr = initActivations(resnet50_config);
 

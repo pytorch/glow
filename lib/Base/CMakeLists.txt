@@ -18,3 +18,5 @@ if(PNG_FOUND)
                         PRIVATE
                           ${PNG_LIBRARY})
 endif()
+
+add_dependencies(Base AutoGen)

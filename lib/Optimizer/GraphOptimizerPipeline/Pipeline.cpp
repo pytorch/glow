@@ -41,6 +41,10 @@ FunctionPassPipeline glow::createDefaultGraphOptimizationPassPipeline() {
       // opportunities.
       {FunctionPassID::EliminateNoopTile},
 
+      // Eliminate no-op slices, possibly unlocking more optimization
+      // opportunities.
+      {FunctionPassID::EliminateNoopSlice},
+
       {FunctionPassID::TransposeConstants,
        ConvergenceMode::OnePass,
        {CompilationMode::Infer}},
@@ -79,8 +83,8 @@ FunctionPassPipeline glow::createDefaultGraphOptimizationPassPipeline() {
       // Optimize arithmetic nodes based on algebraic identities.
       {FunctionPassID::OptimizeArithmeticNodes},
 
-      // Optimize Tensor shape transformations.
-      {FunctionPassID::OptimizeSliceOfSplat},
+      // Optimize Splat nodes..
+      {FunctionPassID::OptimizeSplat},
 
       // Merge Transpose into MatMul/FC.
       {FunctionPassID::MergeTransposeIntoMatMulOrFC},

@@ -30,23 +30,26 @@ using namespace glow;
  * Benchmark m independent nxk transposes along with add layers.
  */
 class TransposeBench : public Benchmark {
-  size_t m_;
+  size_t batchSize_;
   size_t n_;
-  size_t k_;
   size_t numLayers_;
   std::unique_ptr<runtime::HostManager> hostManager_;
   std::vector<std::unique_ptr<ExecutionContext>> contexts_;
   size_t asyncLaunchSize_;
+  size_t numCores_;
   const char *backendStr_;
   ElemKind dtype_;
   size_t elementSize_;
+  const char *devId_;
 
 public:
-  TransposeBench(size_t m_, size_t n_, size_t k_, size_t numLayers_,
-                 size_t asyncLaunchSize_, const char *backendStr_,
-                 const char *dtypeStr_)
-      : m_(m_), n_(n_), k_(k_), numLayers_(numLayers_),
-        asyncLaunchSize_(asyncLaunchSize_), backendStr_(backendStr_) {
+  TransposeBench(size_t batchSize_, size_t n_, size_t numLayers_,
+                 size_t asyncLaunchSize_, size_t numCores_,
+                 const char *backendStr_, const char *dtypeStr_,
+                 const char *devId_ = nullptr)
+      : batchSize_(batchSize_), n_(n_), numLayers_(numLayers_),
+        asyncLaunchSize_(asyncLaunchSize_), numCores_(numCores_),
+        backendStr_(backendStr_), devId_(devId_) {
 
     dtype_ = ElemKind::Float16Ty;
     elementSize_ = 2;
@@ -69,53 +72,70 @@ public:
 
     // Setup host manager
     std::vector<std::unique_ptr<runtime::DeviceConfig>> configs;
-    auto config = llvm::make_unique<runtime::DeviceConfig>(backendStr_);
+    auto config = glow::make_unique<runtime::DeviceConfig>(backendStr_);
+    if (devId_ != nullptr) {
+      config->parameters["DeviceID"] = devId_;
+    }
     configs.push_back(std::move(config));
-    hostManager_ = llvm::make_unique<runtime::HostManager>(std::move(configs));
+    hostManager_ = glow::make_unique<runtime::HostManager>(std::move(configs));
 
     std::unique_ptr<Module> mod(new Module);
     auto fn = mod->createFunction("singleNode");
 
-    Placeholder *input;
-    Node *cur;
-    SaveNode *S;
+    std::vector<Placeholder *> input(numCores_);
+    std::vector<SaveNode *> S(numCores_);
+    auto batchSizePerCore = getBatchSizePerCore(batchSize_, numCores_);
 
-    input = mod->createPlaceholder(dtype_, {m_, n_, k_}, "A", false);
+    for (size_t core = 0; core < numCores_; core++) {
+      if (batchSizePerCore[core] == 0)
+        continue;
+      input[core] =
+          mod->createPlaceholder(dtype_, {batchSizePerCore[core], n_, n_},
+                                 "A" + std::to_string(core), false);
+    }
 
-    // for each context, add input bindings
-    for (int i = 0; i < asyncLaunchSize_; i++) {
-      if (dtype_ == ElemKind::FloatTy) {
-        contexts_[i]
-            ->getPlaceholderBindings()
-            ->allocate(input)
-            ->getHandle<float>()
-            .randomize(0.0f, 1.0f, mod->getPRNG());
-      } else if (dtype_ == ElemKind::Float16Ty) {
-        contexts_[i]
-            ->getPlaceholderBindings()
-            ->allocate(input)
-            ->getHandle<float16_t>()
-            .randomize(0.0f, 1.0f, mod->getPRNG());
+    for (size_t core = 0; core < numCores_; core++) {
+      if (batchSizePerCore[core] == 0)
+        continue;
+      // for each context, add input bindings
+      for (int i = 0; i < asyncLaunchSize_; i++) {
+        if (dtype_ == ElemKind::FloatTy) {
+          contexts_[i]
+              ->getPlaceholderBindings()
+              ->allocate(input[core])
+              ->getHandle<float>()
+              .randomize(0.0f, 1.0f, mod->getPRNG());
+        } else if (dtype_ == ElemKind::Float16Ty) {
+          contexts_[i]
+              ->getPlaceholderBindings()
+              ->allocate(input[core])
+              ->getHandle<float16_t>()
+              .randomize(0.0f, 1.0f, mod->getPRNG());
+        }
+      }
+
+      Node *cur = input[core];
+      for (int layer = 0; layer < numLayers_; layer++) {
+        auto *xp = fn->createTranspose("transpose_" + std::to_string(layer) +
+                                           "_" + std::to_string(core),
+                                       cur, {0, 2, 1});
+        auto *ad = fn->createAdd("add_" + std::to_string(layer) + "_" +
+                                     std::to_string(core),
+                                 cur, xp);
+        cur = ad;
+      }
+
+      S[core] = fn->createSave("save", cur);
+
+      // for each context, allocate output
+      for (int i = 0; i < asyncLaunchSize_; i++) {
+        contexts_[i]->getPlaceholderBindings()->allocate(
+            S[core]->getPlaceholder());
       }
     }
 
-    cur = input;
-    for (int layer = 0; layer < numLayers_; layer++) {
-      auto *xp = fn->createTranspose("transpose_" + std::to_string(layer), cur,
-                                     {0, 2, 1});
-      auto *ad = fn->createAdd("add_" + std::to_string(layer), cur, xp);
-      cur = ad;
-    }
-
-    S = fn->createSave("save", cur);
-
-    // for each context, allocate output
-    for (int i = 0; i < asyncLaunchSize_; i++) {
-      contexts_[i]->getPlaceholderBindings()->allocate(S->getPlaceholder());
-    }
-
     CompilationContext ctx;
-    hostManager_->addNetwork(std::move(mod), ctx);
+    EXIT_ON_ERR(hostManager_->addNetwork(std::move(mod), ctx));
   }
 
   void run() override {
@@ -151,30 +171,39 @@ public:
 
   // Each layer reads the tensor thrice, and writes the tensor twice
   double gbytes() const {
-    return (5.0 * numLayers_ * m_ * n_ * k_ * elementSize_) / 1e9;
+    return (5.0 * numLayers_ * batchSize_ * n_ * n_ * elementSize_) / 1e9;
   }
 };
 
 int main(int argc, char *argv[]) {
-  assert(argc == 9);
-  size_t m = atoi(argv[1]);
+  assert(argc == 9 || argc == 10);
+  size_t batchSize = atoi(argv[1]);
   size_t n = atoi(argv[2]);
-  size_t k = atoi(argv[3]);
-  size_t numLayers = atoi(argv[4]);
-  size_t numReps = atoi(argv[5]);
-  size_t numAsyncLaunches = atoi(argv[6]);
+  size_t numLayers = atoi(argv[3]);
+  size_t numReps = atoi(argv[4]);
+  size_t numAsyncLaunches = atoi(argv[5]);
+  size_t numCores = atoi(argv[6]);
   const char *backendStr = argv[7];
   const char *dtypeStr = argv[8];
+  char *dev_id = nullptr;
+
+  if (argc > 9) {
+    dev_id = argv[9];
+    printf("Setting backend device: \"%s\"\n", dev_id);
+  }
+
   assert(numReps > 0);
 
-  TransposeBench b(m, n, k, numLayers, numAsyncLaunches, backendStr, dtypeStr);
+  TransposeBench b(batchSize, n, numLayers, numAsyncLaunches, numCores,
+                   backendStr, dtypeStr, dev_id);
 
   auto times = bench(&b, numReps);
   for (auto t : times) {
     printf(
         "BenchResult,TransposeBench,SW,%zu,%zu,%zu,%zu,%zu,%zu,%s,%s,%f,%f\n",
-        m, n, k, numLayers, numReps, numAsyncLaunches, backendStr, dtypeStr,
-        t / numAsyncLaunches, b.gbytes() * numAsyncLaunches / t);
+        batchSize, n, numLayers, numReps, numAsyncLaunches, numCores,
+        backendStr, dtypeStr, t / numAsyncLaunches,
+        b.gbytes() * numAsyncLaunches / t);
   }
   double min = *(std::min_element(times.begin(), times.end()));
   size_t midElt = times.size() / 2;
@@ -185,7 +214,7 @@ int main(int argc, char *argv[]) {
   printf(
       "BenchSummary,TransposeBench,SW,%zu,%zu,%zu,%zu,%zu,%zu,%s,%s,%f,%f,%f,%"
       "f\n",
-      m, n, k, numLayers, numReps, numAsyncLaunches, backendStr, dtypeStr,
-      median_runtime, min_runtime, b.gbytes() / median_runtime,
+      batchSize, n, numLayers, numReps, numAsyncLaunches, numCores, backendStr,
+      dtypeStr, median_runtime, min_runtime, b.gbytes() / median_runtime,
       b.gbytes() / min_runtime);
 }

@@ -30,6 +30,40 @@ llvm::cl::opt<std::string>
 llvm::cl::opt<std::string> llvmCPU("mcpu",
                                    llvm::cl::desc("LLVM CPU to be used"));
 
+llvm::cl::opt<std::string> llvmABI("mabi",
+                                   llvm::cl::desc("Machine ABI to be used"));
+
+llvm::cl::opt<llvm::CodeModel::Model> llvmCodeModel(
+    "code-model",
+    llvm::cl::desc("Specify which code model to use on the target machine"),
+    llvm::cl::values(
+        clEnumValN(llvm::CodeModel::Model::Small, "small", "Small code model"),
+        clEnumValN(llvm::CodeModel::Model::Medium, "medium",
+                   "Medium code model"),
+        clEnumValN(llvm::CodeModel::Model::Large, "large", "Large code model")),
+    llvm::cl::init(llvm::CodeModel::Model::Large),
+    llvm::cl::cat(getLLVMBackendCat()));
+
+llvm::cl::opt<llvm::CodeModel::Model> llvmBundleCodeModel(
+    "bundle-code-model",
+    llvm::cl::desc("Specify which code model to use for a bundle"),
+    llvm::cl::values(
+        clEnumValN(llvm::CodeModel::Model::Small, "small", "Small code model"),
+        clEnumValN(llvm::CodeModel::Model::Medium, "medium",
+                   "Medium code model"),
+        clEnumValN(llvm::CodeModel::Model::Large, "large", "Large code model")),
+    llvm::cl::init(llvm::CodeModel::Model::Small),
+    llvm::cl::cat(getLLVMBackendCat()));
+
+llvm::cl::opt<llvm::Reloc::Model> llvmRelocModel(
+    "relocation-model",
+    llvm::cl::desc(
+        "Specify which relocation model to use on the target machine"),
+    llvm::cl::values(
+        clEnumValN(llvm::Reloc::Static, "static", "Non-relocatable code"),
+        clEnumValN(llvm::Reloc::PIC_, "pic", "Position independent code")),
+    llvm::cl::init(llvm::Reloc::Static), llvm::cl::cat(getLLVMBackendCat()));
+
 llvm::cl::list<std::string>
     llvmTargetFeatures("target-feature",
                        llvm::cl::desc("LLVM target/CPU features to be used"),
@@ -57,3 +91,20 @@ llvm::cl::opt<llvm::FloatABI::ABIType>
                               clEnumValN(llvm::FloatABI::Hard, "hard",
                                          "Hard float ABI (hardfp)")),
              llvm::cl::init(llvm::FloatABI::Default));
+
+static llvm::cl::OptionCategory bundleSaverCat("Bundle Options");
+
+llvm::cl::opt<glow::BundleApiType>
+    bundleAPI("bundle-api", llvm::cl::desc("Specify which bundle API to use."),
+              llvm::cl::Optional,
+              llvm::cl::values(clEnumValN(glow::BundleApiType::Dynamic,
+                                          "dynamic", "Dynamic API"),
+                               clEnumValN(glow::BundleApiType::Static, "static",
+                                          "Static API")),
+              llvm::cl::init(glow::BundleApiType::Static),
+              llvm::cl::cat(bundleSaverCat));
+
+llvm::cl::opt<bool> bundleAPIVerbose(
+    "bundle-api-verbose",
+    llvm::cl::desc("Print more details in the bundle API header file"),
+    llvm::cl::init(false), llvm::cl::cat(bundleSaverCat));

@@ -577,8 +577,7 @@ enableRowwiseQuantizedFullyConnected(ElemKind quantizationPrecision,
 
   LoweredInfoMap loweredMapForQuant;
   CompilationContext cctx(/* bindings */ nullptr, &loweredMapForQuant);
-  std::unique_ptr<Backend> backend(createBackend(EE.getBackendName()));
-  ::glow::lower(F, cctx, backend.get());
+  ::glow::lower(F, cctx);
 
   // Get the MatMul node and the Batched_Add node.
   Node *matMul, *batchedAdd;
@@ -608,6 +607,7 @@ enableRowwiseQuantizedFullyConnected(ElemKind quantizationPrecision,
   quantConfig.precisionBias = quantizationPrecisionBias;
   quantConfig.enableRowwise = true;
   quantConfig.assertAllNodesQuantized = true;
+  std::unique_ptr<Backend> backend(createBackend(EE.getBackendName()));
   quantization::quantizeFunction(F, quantConfig, *backend, loweredMapForQuant);
 
   // Check the graph structure after quantization.
@@ -682,8 +682,7 @@ TEST(Quantization, enableRowwiseQuantizedFullyConnectedSymmetric) {
 
   LoweredInfoMap loweredMapForQuant;
   CompilationContext cctx(/* bindings */ nullptr, &loweredMapForQuant);
-  std::unique_ptr<Backend> backend(createBackend(EE.getBackendName()));
-  ::glow::lower(F, cctx, backend.get());
+  ::glow::lower(F, cctx);
 
   // Get the MatMul node and the Batched_Add node.
   Node *matMul, *batchedAdd;
@@ -714,6 +713,7 @@ TEST(Quantization, enableRowwiseQuantizedFullyConnectedSymmetric) {
   quantConfig.schema = quantization::Schema::Symmetric;
   quantConfig.enableRowwise = true;
   quantConfig.assertAllNodesQuantized = true;
+  std::unique_ptr<Backend> backend(createBackend(EE.getBackendName()));
   quantization::quantizeFunction(F, quantConfig, *backend, loweredMapForQuant);
 
   // Check the graph structure after quantization.
@@ -2371,8 +2371,7 @@ static void testProfileQuantizationOfFC(bool expectLoweredFC,
     } else {
       EXPECT_EQ(quantRowwiseFC->getBias().getType()->getScale(),
                 FCBQI->Scale());
-      EXPECT_EQ(quantRowwiseFC->getBias().getType()->getOffset(),
-                FCBQI->Offset());
+      EXPECT_EQ(quantRowwiseFC->getBias().getType()->getOffset(), 0);
     }
   } else if (expectLoweredFC) {
     ASSERT_FALSE(quantFC);
@@ -2395,7 +2394,7 @@ static void testProfileQuantizationOfFC(bool expectLoweredFC,
       EXPECT_EQ(quantBA->getSlice().getType()->getOffset(), 0);
     } else {
       EXPECT_EQ(quantBA->getSlice().getType()->getScale(), FCBQI->Scale());
-      EXPECT_EQ(quantBA->getSlice().getType()->getOffset(), FCBQI->Offset());
+      EXPECT_EQ(quantBA->getSlice().getType()->getOffset(), 0);
     }
   } else {
     ASSERT_FALSE(quantRowwiseFC);
@@ -2416,7 +2415,7 @@ static void testProfileQuantizationOfFC(bool expectLoweredFC,
       EXPECT_EQ(quantFC->getBias().getType()->getOffset(), 0);
     } else {
       EXPECT_EQ(quantFC->getBias().getType()->getScale(), FCBQI->Scale());
-      EXPECT_EQ(quantFC->getBias().getType()->getOffset(), FCBQI->Offset());
+      EXPECT_EQ(quantFC->getBias().getType()->getOffset(), 0);
     }
   }
 }

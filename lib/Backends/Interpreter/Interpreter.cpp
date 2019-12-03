@@ -64,7 +64,7 @@ Interpreter::compileIRWithoutConstants(std::unique_ptr<IRFunction> IR) const {
   runtime::RuntimeBundle bundle = runtime::RuntimeBundle::create(
       *IR, constantWeightsAllocator, placeholderWeightsAllocator,
       activationsAllocator);
-  return llvm::make_unique<InterpreterFunction>(std::move(IR),
+  return glow::make_unique<InterpreterFunction>(std::move(IR),
                                                 std::move(bundle));
 }
 
@@ -99,6 +99,23 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
     return NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy,
          ElemKind::Int16QTy});
+
+  case Kinded::Kind::FullyConnectedNodeKind:
+    if (!NI.getInTy(ConvolutionNode::InputIdx)->isQuantizedType()) {
+      return NI.allInputsAndOutputsHaveSameElemKind(
+          {ElemKind::FloatTy, ElemKind::Float16Ty});
+    }
+    return (NI.allInputsAndOutputsHaveSameElemKind(
+                {ElemKind::Int8QTy}, {FullyConnectedNode::BiasIdx}) &&
+            (NI.getInElemTy(FullyConnectedNode::BiasIdx) == ElemKind::Int8QTy ||
+             NI.getInElemTy(FullyConnectedNode::BiasIdx) ==
+                 ElemKind::Int32QTy)) ||
+           (NI.allInputsAndOutputsHaveSameElemKind(
+                {ElemKind::Int16QTy}, {FullyConnectedNode::BiasIdx}) &&
+            (NI.getInElemTy(FullyConnectedNode::BiasIdx) ==
+                 ElemKind::Int16QTy ||
+             NI.getInElemTy(FullyConnectedNode::BiasIdx) ==
+                 ElemKind::Int32QTy));
 
   case Kinded::Kind::MaxPoolNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
@@ -265,6 +282,14 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
            (NI.getInElemTy(SparseLengthsWeightedSumNode::LengthsIdx) ==
             ElemKind::Int32ITy);
 
+  case Kinded::Kind::EmbeddingBagNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind(
+               {ElemKind::FloatTy, ElemKind::Float16Ty},
+               {EmbeddingBagNode::IndicesIdx, EmbeddingBagNode::OffsetsIdx}) &&
+           (NI.getInElemTy(EmbeddingBagNode::IndicesIdx) ==
+            ElemKind::Int64ITy) &&
+           (NI.getInElemTy(EmbeddingBagNode::OffsetsIdx) == ElemKind::Int64ITy);
+
   case Kinded::Kind::SparseLengthsWeightedSumGradNodeKind:
     // GradOfInputNamedIndicesIdx and GradOfInputNamedLengthsIdx do not need to
     // be checked because they are not used.
@@ -296,32 +321,60 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
                 RowwiseQuantizedSparseLengthsWeightedSumNode::LengthsIdx) ==
             ElemKind::Int32ITy);
 
-  case Kinded::Kind::FusedRowwiseQuantizedSparseLengthsWeightedSumNodeKind:
+  case Kinded::Kind::EmbeddingBagByteRowwiseOffsetsNodeKind: {
+    if (NI.getInElemTy(EmbeddingBagByteRowwiseOffsetsNode::IndicesIdx) !=
+            ElemKind::Int64ITy ||
+        NI.getInElemTy(EmbeddingBagByteRowwiseOffsetsNode::OffsetsIdx) !=
+            ElemKind::Int32ITy) {
+      return false;
+    }
+
+    switch (NI.getInElemTy(EmbeddingBagByteRowwiseOffsetsNode::DataIdx)) {
+    case ElemKind::UInt4FusedFP16QTy:
+    case ElemKind::UInt8FusedFP16QTy:
+      return (NI.getInElemTy(EmbeddingBagByteRowwiseOffsetsNode::WeightsIdx) ==
+              ElemKind::Float16Ty) &&
+             (NI.getOutElemTy(EmbeddingBagByteRowwiseOffsetsNode::ResultIdx) ==
+              ElemKind::Float16Ty);
+    case ElemKind::UInt8FusedQTy:
+      return (NI.getInElemTy(EmbeddingBagByteRowwiseOffsetsNode::WeightsIdx) ==
+              ElemKind::FloatTy) &&
+             (NI.getOutElemTy(EmbeddingBagByteRowwiseOffsetsNode::ResultIdx) ==
+              ElemKind::FloatTy);
+    default:
+      return false;
+    }
+  }
+
+  case Kinded::Kind::FusedRowwiseQuantizedSparseLengthsWeightedSumNodeKind: {
     if (NI.getInElemTy(
-            FusedRowwiseQuantizedSparseLengthsWeightedSumNode::DataIdx) ==
-        ElemKind::UInt8FusedFP16QTy) {
+            FusedRowwiseQuantizedSparseLengthsWeightedSumNode::IndicesIdx) !=
+            ElemKind::Int64ITy ||
+        NI.getInElemTy(
+            FusedRowwiseQuantizedSparseLengthsWeightedSumNode::LengthsIdx) !=
+            ElemKind::Int32ITy) {
+      return false;
+    }
+
+    switch (NI.getInElemTy(
+        FusedRowwiseQuantizedSparseLengthsWeightedSumNode::DataIdx)) {
+    case ElemKind::UInt4FusedFP16QTy:
+    case ElemKind::UInt8FusedFP16QTy:
       return (NI.getInElemTy(FusedRowwiseQuantizedSparseLengthsWeightedSumNode::
                                  WeightsIdx) == ElemKind::Float16Ty) &&
-             (NI.getInElemTy(FusedRowwiseQuantizedSparseLengthsWeightedSumNode::
-                                 IndicesIdx) == ElemKind::Int64ITy) &&
-             (NI.getInElemTy(FusedRowwiseQuantizedSparseLengthsWeightedSumNode::
-                                 LengthsIdx) == ElemKind::Int32ITy) &&
              (NI.getOutElemTy(
                   FusedRowwiseQuantizedSparseLengthsWeightedSumNode::
                       ResultIdx) == ElemKind::Float16Ty);
+    case ElemKind::UInt8FusedQTy:
+      return (NI.getInElemTy(FusedRowwiseQuantizedSparseLengthsWeightedSumNode::
+                                 WeightsIdx) == ElemKind::FloatTy) &&
+             (NI.getOutElemTy(
+                  FusedRowwiseQuantizedSparseLengthsWeightedSumNode::
+                      ResultIdx) == ElemKind::FloatTy);
+    default:
+      return false;
     }
-    return (NI.getInElemTy(
-                FusedRowwiseQuantizedSparseLengthsWeightedSumNode::DataIdx) ==
-            ElemKind::UInt8FusedQTy) &&
-           (NI.getInElemTy(FusedRowwiseQuantizedSparseLengthsWeightedSumNode::
-                               WeightsIdx) == ElemKind::FloatTy) &&
-           (NI.getInElemTy(FusedRowwiseQuantizedSparseLengthsWeightedSumNode::
-                               IndicesIdx) == ElemKind::Int64ITy) &&
-           (NI.getInElemTy(FusedRowwiseQuantizedSparseLengthsWeightedSumNode::
-                               LengthsIdx) == ElemKind::Int32ITy) &&
-           (NI.getOutElemTy(
-                FusedRowwiseQuantizedSparseLengthsWeightedSumNode::ResultIdx) ==
-            ElemKind::FloatTy);
+  }
 
   case Kinded::Kind::LengthsRangeFillNodeKind:
   case Kinded::Kind::LengthsToRangesNodeKind:
@@ -528,7 +581,7 @@ static bool checkLayoutForNode(const Node &N) {
 }
 
 bool Interpreter::verify(const Function &F) const {
-  if (!F.verify()) {
+  if (!F.verify(this)) {
     return false;
   }
   if (!checkAllNodesSupported(F)) {
@@ -603,6 +656,7 @@ bool Interpreter::shouldLower(const Node *N) const {
   case Kinded::Kind::ConvolutionNodeKind:
   case Kinded::Kind::SparseLengthsSumNodeKind:
   case Kinded::Kind::ChannelwiseQuantizedConvolutionNodeKind:
+  case Kinded::Kind::FullyConnectedNodeKind:
     return false;
   default:
     return true;

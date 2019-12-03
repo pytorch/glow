@@ -243,7 +243,8 @@ class FunctionSpecializer {
     const auto *caller = call->getFunction();
     const auto *callee = call->getCalledFunction();
     // Specialized only calls inside main.
-    assert(caller == entryF_ &&
+    assert(std::find(entryFunctions_.begin(), entryFunctions_.end(), caller) !=
+               entryFunctions_.end() &&
            "Only calls inside the entry function are specialized");
     (void)caller;
     // Do not specialize any LLVM internal functions.
@@ -265,9 +266,10 @@ class FunctionSpecializer {
   }
 
 public:
-  FunctionSpecializer(llvm::Function *entryF,
+  FunctionSpecializer(llvm::SmallVectorImpl<llvm::Function *> &entryFunctions,
                       llvm::DenseSet<llvm::Value *> &dontSpec, LLVMIRGen &irgen)
-      : entryF_(entryF), dontSpecializeArgsSet_(dontSpec), irgen_(irgen) {}
+      : entryFunctions_(entryFunctions), dontSpecializeArgsSet_(dontSpec),
+        irgen_(irgen) {}
 
   /// Specialize a single call.
   /// \returns the specialized Call instruction if it was possible to specialize
@@ -320,17 +322,18 @@ public:
     // these call instructions are used by the keys in Specializations_ map.
     llvm::DenseMap<llvm::Instruction *, llvm::Instruction *>
         callToSpecializedCall;
-    auto *F = entryF_;
-    // Collect all eligable calls in the current function.
     llvm::SmallVector<llvm::CallInst *, 64> calls;
-    for (auto &BB : *F) {
-      for (auto &I : BB) {
-        auto *CI = dyn_cast<llvm::CallInst>(&I);
-        if (!CI)
-          continue;
-        if (!isEligibleForSpecialization(CI))
-          continue;
-        calls.push_back(CI);
+    for (auto *F : entryFunctions_) {
+      // Collect all eligable calls in the current function.
+      for (auto &BB : *F) {
+        for (auto &I : BB) {
+          auto *CI = dyn_cast<llvm::CallInst>(&I);
+          if (!CI)
+            continue;
+          if (!isEligibleForSpecialization(CI))
+            continue;
+          calls.push_back(CI);
+        }
       }
     }
     // Try to specialize all the collected calls.
@@ -417,8 +420,8 @@ private:
     }
   };
 
-  /// The entry function of the module.
-  llvm::Function *entryF_;
+  /// The entry functions of the module.
+  llvm::SmallVectorImpl<llvm::Function *> &entryFunctions_;
   /// Mapping from specialization keys to the specialized functions.
   std::unordered_map<SpecializationKey, llvm::Function *,
                      SpecializationKeyHasher, SpecializationKeyEq>
@@ -441,7 +444,7 @@ private:
 } // namespace
 
 void LLVMIRGen::performSpecialization() {
-  FunctionSpecializer FuncSpecializer(llmodule_->getFunction("main"),
+  FunctionSpecializer FuncSpecializer(emittedLLVMFunctions_,
                                       dontSpecializeArgsSet_, *this);
   FuncSpecializer.run();
 }

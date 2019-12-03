@@ -320,9 +320,7 @@ GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxWaitEvent)(onnxEvent event) {
     return ONNXIFI_STATUS_INVALID_EVENT;
   }
 
-  glowEvent->wait();
-
-  return ONNXIFI_STATUS_SUCCESS;
+  return glowEvent->wait();
 }
 
 /// Wait until an ONNXIFI \p event is signalled or until \p timeoutMs
@@ -401,7 +399,8 @@ EXTERNC ONNXIFI_PUBLIC ONNXIFI_CHECK_RESULT onnxStatus ONNXIFI_ABI
 GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxInitGraph)(
     onnxBackend backend, const uint64_t *auxPropertiesList,
     size_t onnxModelSize, const void *onnxModel, uint32_t weightsCount,
-    const onnxTensorDescriptorV1 *weightDescriptors, onnxGraph *graph) {
+    const onnxTensorDescriptorV1 *weightDescriptors, onnxGraph *graph,
+    void *deferredBlobReader) {
   if (!onnxModel || (!weightDescriptors && weightsCount) || !graph) {
     return ONNXIFI_STATUS_INVALID_POINTER;
   }
@@ -427,7 +426,7 @@ GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxInitGraph)(
 
   auto *glowGraph = manager.createGraph(glowBackend, quantizationMode);
   auto ret = glowGraph->initGraph(onnxModel, onnxModelSize, weightsCount,
-                                  weightDescriptors);
+                                  weightDescriptors, deferredBlobReader);
   if (ret != ONNXIFI_STATUS_SUCCESS) {
     manager.release(glowGraph);
     return ret;

@@ -127,10 +127,12 @@ public:
                          EventPtr outputEvent, onnxTraceEventList *traceEvents);
 
   /// Init Glow graph based on the ONNX model \p onnxModel and
-  /// static trained weights \p weightDescriptors.
-  virtual onnxStatus
-  initGraph(const void *onnxModel, size_t onnxModelSize, uint32_t weightCount,
-            const onnxTensorDescriptorV1 *weightDescriptors) = 0;
+  /// static trained weights \p weightDescriptors. Weights can be read in later
+  /// by a \p deferedBlobReader.
+  virtual onnxStatus initGraph(const void *onnxModel, size_t onnxModelSize,
+                               uint32_t weightCount,
+                               const onnxTensorDescriptorV1 *weightDescriptors,
+                               void *deferedBlobReader) = 0;
 
   virtual onnxStatus run(std::unique_ptr<ExecutionContext> ctx,
                          EventPtr outputEvent,

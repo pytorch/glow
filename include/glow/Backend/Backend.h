@@ -31,6 +31,15 @@ class Node;
 class PlaceholderBindings;
 class IRGenVisitor;
 class FunctionPassPipeline;
+class TensorLayoutCommon;
+
+/// Information about an entry point of a saved bundle.
+struct BundleEntry {
+  /// Name of the bundle entry point for the function to be saved.
+  std::string name;
+  /// Function to be saved.
+  Function *func;
+};
 
 namespace runtime {
 
@@ -85,6 +94,12 @@ public:
     LOG(FATAL) << "Saving a bundle is not supported by the backend";
   }
 
+  virtual void saveFunctions(llvm::ArrayRef<BundleEntry> entries,
+                             llvm::StringRef outputDir,
+                             llvm::StringRef bundleName) const {
+    LOG(FATAL) << "Saving a bundle is not supported by the backend";
+  }
+
   /// Used by the compiler during graph optimization and before code generation,
   /// giving the backend an opportunity to transform the graph before IRGen. The
   /// backend may insert backend-specific nodes. The backend is responsible for
@@ -121,6 +136,11 @@ public:
   /// has a good reason not to call IRFunction::verify().
   virtual bool verify(const IRFunction &IR) const;
 
+  /// \returns a reference to the backend-specific tensor layout requirements
+  /// singleton. If not overridden, the default requirement is Glow's
+  /// "canonical" form.
+  virtual TensorLayoutCommon &getTensorLayoutRequirements() const;
+
   /// \returns true if the supplied Node \N should be lowered. By default, all
   /// Nodes are candidates for lowering.
   virtual bool shouldLower(const Node *N) const { return true; }
@@ -136,6 +156,11 @@ public:
   /// inputs that can have variable size (e.g., embedding indices).
   virtual bool supportsPartialTensors() const { return false; }
 
+  /// \returns true if the Backend supports static Placeholders. This means
+  /// an input can be treated as a placeholder that can be reused on the device
+  /// for multiple requests.
+  virtual bool supportsStaticPlaceholders() const { return false; }
+
   /// \returns true if Backend generated Instruction for Node \p N,
   /// using IRGenVisitor \p irgen.
   virtual bool generateInst(Node *N, IRGenVisitor &irgen) const {
@@ -148,6 +173,18 @@ public:
   /// deviceConfig.
   virtual runtime::DeviceManager *
   createDeviceManager(const runtime::DeviceConfig &deviceConfig);
+
+  /// \returns the supported options for compiled functions (name=>description).
+  virtual llvm::StringMap<std::string>
+  getSupportedCompiledFunctionOptions() const {
+    return llvm::StringMap<std::string>();
+  };
+
+  /// \returns the supported options for device managers (name=>description).
+  virtual llvm::StringMap<std::string>
+  getSupportedDeviceManagerOptions() const {
+    return llvm::StringMap<std::string>();
+  };
 
 protected:
   /// Parses the graph \F and builds a TraceInfo structure from any found

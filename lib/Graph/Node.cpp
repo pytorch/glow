@@ -32,9 +32,13 @@ TypeRef Node::getType(unsigned idx) const {
 }
 
 void Node::setType(unsigned idx, TypeRef ty) {
-  assert(idx < getNumResults() && "Result number does not exist.");
   assert(types_[idx]->dims() == ty->dims() &&
          "Better create a new node at this point");
+  setTypeUnsafe(idx, ty);
+}
+
+void Node::setTypeUnsafe(unsigned idx, TypeRef ty) {
+  assert(idx < getNumResults() && "Result number does not exist.");
   types_[idx] = ty;
 }
 
@@ -199,6 +203,17 @@ bool Node::hasSideEffects() const {
 #define DEF_NODE(CLASS, NAME)                                                  \
   case glow::Kinded::Kind::CLASS##Kind:                                        \
     return static_cast<const CLASS *>(this)->hasSideEffects();
+#include "glow/AutoGenNodes.def"
+  default:
+    llvm_unreachable("Unhandled node");
+  }
+}
+
+bool Node::isDataParallel() const {
+  switch (getKind()) {
+#define DEF_NODE(CLASS, NAME)                                                  \
+  case glow::Kinded::Kind::CLASS##Kind:                                        \
+    return static_cast<const CLASS *>(this)->isDataParallel();
 #include "glow/AutoGenNodes.def"
   default:
     llvm_unreachable("Unhandled node");

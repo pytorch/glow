@@ -2597,6 +2597,111 @@ void BoundInterpreterFunction::fwdMatMulInst(const glow::MatMulInst *I) {
                             I->getLHS()->getElementType(), I);
 }
 
+void BoundInterpreterFunction::fwdBatchMatMulInst(
+    const glow::BatchMatMulInst *I) {
+  DCHECK(!"Found BatchMatMulInst but BatchMatMul is lowered on Interpreter");
+}
+
+//===----------------------------------------------------------------------===//
+//                                 FC
+//===----------------------------------------------------------------------===//
+template <typename ElemTy, typename AccumulatorTy, typename BiasElemTy>
+void BoundInterpreterFunction::fwdFullyConnectedInstQuantizedImpl(
+    const glow::FullyConnectedInst *I) {
+  assert(getTensor(I->getSrc())->getType().isQuantizedType());
+
+  auto inW = getWeightHandle<ElemTy>(I->getSrc());
+  auto weightsW = getWeightHandle<ElemTy>(I->getWeights());
+  auto biasW = getWeightHandle<BiasElemTy>(I->getBias());
+  auto outW = getWeightHandle<ElemTy>(I->getDest());
+
+  auto inTy = inW.getType();
+  auto weightsTy = weightsW.getType();
+  auto biasTy = biasW.getType();
+  auto outTy = outW.getType();
+
+  int32_t inOffset = inTy.getOffset();
+  int32_t weightsOffset = weightsTy.getOffset();
+  int32_t biasOffset = biasTy.getOffset();
+  int32_t outOffset = outTy.getOffset();
+
+  float outScale = outTy.getScale();
+  float weightsScale = weightsTy.getScale();
+  float biasScale = biasTy.getScale();
+  float inScale = inTy.getScale();
+
+  ShapeHW idim(inW.dims());
+  ShapeHW odim(outW.dims());
+
+  // Calculate the scale of the values that come out of the matrix
+  // multiplication part of the calculation.
+  float matMulScale = weightsScale * inScale;
+
+  outW.clear(0);
+
+  for (size_t i = 0; i < idim.height; i++) {
+    for (size_t j = 0; j < odim.width; j++) {
+      AccumulatorTy sum = 0;
+      for (size_t k = 0; k < idim.width; k++) {
+        AccumulatorTy W = weightsW.at({k, j});
+        AccumulatorTy A = inW.at({i, k});
+        sum += (W - weightsOffset) * (A - inOffset);
+      }
+
+      // Scale the bias to match the scale of the matrix multiplication.
+      AccumulatorTy B = std::round(float(biasW.at({j}) - biasOffset) *
+                                   (biasScale / matMulScale));
+
+      // Add the bias.
+      sum += B;
+
+      // Scale the result back to the expected destination scale.
+      outW.at({i, j}) = quantization::clip<AccumulatorTy, ElemTy>(
+          std::round(float(sum) * (matMulScale / outScale) + outOffset));
+    }
+  }
+}
+
+template <typename ElemTy>
+void BoundInterpreterFunction::fwdFullyConnectedInstFloatImpl(
+    const FullyConnectedInst *I) {
+  staticAssertFloatingPointType(ElemTy);
+
+  auto inW = getWeightHandle<ElemTy>(I->getSrc());
+  auto weightsW = getWeightHandle<ElemTy>(I->getWeights());
+  auto biasW = getWeightHandle<ElemTy>(I->getBias());
+  auto outW = getWeightHandle<ElemTy>(I->getDest());
+
+  ShapeHW idim(inW.dims());
+  ShapeHW odim(outW.dims());
+
+  outW.clear(0);
+
+  for (size_t i = 0; i < idim.height; i++) {
+    for (size_t j = 0; j < odim.width; j++) {
+      float sum = 0;
+      for (size_t k = 0; k < idim.width; k++) {
+        sum += float(inW.at({i, k})) * float(weightsW.at({k, j}));
+      }
+
+      outW.at({i, j}) = sum + float(biasW.at({j}));
+    }
+  }
+}
+
+void BoundInterpreterFunction::fwdFullyConnectedInst(
+    const glow::FullyConnectedInst *I) {
+
+  if (getTensor(I->getSrc())->getType().isQuantizedType()) {
+    dispatchQuantizedWithAccumulationAndBiasImpl(
+        fwdFullyConnectedInstQuantizedImpl, I->getSrc()->getElementType(),
+        I->getBias()->getElementType(), I);
+    return;
+  } else {
+    dispatchFloatingPointImpl(fwdFullyConnectedInstFloatImpl,
+                              I->getSrc()->getElementType(), I);
+  }
+}
 //===----------------------------------------------------------------------===//
 //                       Row-wise quantized FC
 //===----------------------------------------------------------------------===//
@@ -3141,6 +3246,12 @@ void BoundInterpreterFunction::fwdSparseLengthsWeightedSumInstI8Impl(
   }
 }
 
+void BoundInterpreterFunction::fwdSparseLengthsSumGradInst(
+    const SparseLengthsSumGradInst * /*I*/) {
+  DCHECK(!"Found SparseLengthsSumGradInst but SparseLengthsSum is lowered on "
+          "Interpreter");
+}
+
 void BoundInterpreterFunction::fwdSparseLengthsWeightedSumInst(
     const SparseLengthsWeightedSumInst *I) {
   if (I->getDest()->getType()->isQuantizedType()) {
@@ -3209,6 +3320,51 @@ void BoundInterpreterFunction::fwdSparseLengthsWeightedSumGradInst(
       WGH.raw(curIdx) = weightGrad;
     }
   }
+}
+
+template <typename ElemTy>
+void BoundInterpreterFunction::fwdEmbeddingBagInstFloatImpl(
+    const EmbeddingBagInst *I) {
+  staticAssertFloatingPointType(ElemTy);
+
+  auto out = getTensor(I->getDest());
+  auto data = getTensor(I->getData());
+  auto weights = getTensor(I->getWeights());
+  auto indices = getTensor(I->getIndices());
+  auto offsets = getTensor(I->getOffsets());
+
+  out->zero();
+
+  auto IH = indices->getHandle<int64_t>();
+  auto OFFH = offsets->getHandle<int64_t>();
+
+  size_t segments = offsets->dims()[0];
+  size_t totalLength = indices->dims()[0];
+
+  size_t lineSize = data->size() / data->dims()[0];
+
+  auto DH = data->getHandle<ElemTy>();
+  auto WH = weights->getHandle<ElemTy>();
+  auto OH = out->getHandle<ElemTy>();
+
+  size_t curIdx = 0;
+  for (size_t i = 0; i < segments; i++) {
+    size_t start = OFFH.raw(i);
+    size_t end = i == segments - 1 ? totalLength : OFFH.raw(i + 1);
+    for (size_t j = start; j < end; j++) {
+      ElemTy weight = WH.raw(curIdx);
+      size_t offsetIn = IH.raw(curIdx++) * lineSize;
+      size_t offsetOut = i * lineSize;
+      for (size_t k = 0; k < lineSize; k++) {
+        OH.raw(offsetOut++) += DH.raw(offsetIn++) * weight;
+      }
+    }
+  }
+}
+
+void BoundInterpreterFunction::fwdEmbeddingBagInst(const EmbeddingBagInst *I) {
+  dispatchFloatingPointImpl(fwdEmbeddingBagInstFloatImpl,
+                            I->getData()->getElementType(), I);
 }
 
 template <typename T, typename AccumT>
@@ -3307,7 +3463,9 @@ void BoundInterpreterFunction::
   assert(totalLength <= indices->dims()[0] &&
          "sum(Lengths) must be equal to len(Indices)");
 
-  const size_t inLineSize = data->size() / data->dims()[0];
+  const bool using4BitQuantization =
+      data->getType().getElementType() == ElemKind::UInt4FusedFP16QTy;
+
   const size_t outLineSize = out->size() / out->dims()[0];
 
   auto DH = data->getHandle<uint8_t>();
@@ -3320,13 +3478,20 @@ void BoundInterpreterFunction::
     for (size_t j = 0, e = LH.raw(i); j < e; j++) {
       const float weight = static_cast<float>(WH.raw(curIdx));
       const size_t rowIdx = IH.raw(curIdx++);
-      size_t offsetIn = rowIdx * inLineSize;
       T scale, offset;
       std::tie(scale, offset) = DH.getFusedScaleOffsetFromRow<T>(rowIdx);
       for (size_t k = 0; k < outLineSize; k++) {
-        float d = quantization::dequantizeWithFloatOffset(
-            DH.raw(offsetIn++), static_cast<float>(scale),
-            static_cast<float>(offset));
+        float d = 0.0f;
+        if (!using4BitQuantization) {
+          d = quantization::dequantizeWithFloatOffset(
+              DH.at({rowIdx, k}), static_cast<float>(scale),
+              static_cast<float>(offset));
+        } else {
+          const bool isMSB = (k % 2 == 1);
+          d = quantization::dequantize4BitWithFloatOffset(
+              DH.at({rowIdx, k / 2}), static_cast<float>(scale),
+              static_cast<float>(offset), isMSB);
+        }
         accum[k] += d * weight;
       }
     }
@@ -3351,6 +3516,82 @@ void BoundInterpreterFunction::
                                                            float16_t>(I);
     } else {
       fwdFusedRowwiseQuantizedSparseLengthsWeightedSumImpl<float16_t, float>(I);
+    }
+    break;
+  default:
+    llvm_unreachable("Type is not supported");
+  }
+}
+
+template <typename T, typename AccumT>
+void BoundInterpreterFunction::fwdEmbeddingBagByteRowwiseOffsetsImpl(
+    const EmbeddingBagByteRowwiseOffsetsInst *I) {
+  auto *out = getTensor(I->getDest());
+  auto *data = getTensor(I->getData());
+  auto *weights = getTensor(I->getWeights());
+  auto *indices = getTensor(I->getIndices());
+  auto *offsets = getTensor(I->getOffsets());
+
+  out->zero();
+
+  auto IH = indices->getHandle<int64_t>();
+  auto OFFH = offsets->getHandle<int32_t>();
+
+  size_t segments = offsets->dims()[0];
+  size_t numIndices = indices->dims()[0];
+
+  const bool using4BitQuantization =
+      data->getType().getElementType() == ElemKind::UInt4FusedFP16QTy;
+
+  const size_t outLineSize = out->size() / out->dims()[0];
+
+  auto DH = data->getHandle<uint8_t>();
+  auto WH = weights->getHandle<T>();
+  auto OH = out->getHandle<T>();
+
+  for (size_t i = 0; i < segments; i++) {
+    std::vector<AccumT> accum(outLineSize, 0.0f);
+    size_t start = OFFH.raw(i);
+    size_t end = i == segments - 1 ? numIndices : OFFH.raw(i + 1);
+    for (size_t j = start; j < end; j++) {
+      const float weight = static_cast<float>(WH.raw(j));
+      const size_t rowIdx = IH.raw(j);
+      T scale, offset;
+      std::tie(scale, offset) = DH.getFusedScaleOffsetFromRow<T>(rowIdx);
+      for (size_t k = 0; k < outLineSize; k++) {
+        float d = 0.0f;
+        if (!using4BitQuantization) {
+          d = quantization::dequantizeWithFloatOffset(
+              DH.at({rowIdx, k}), static_cast<float>(scale),
+              static_cast<float>(offset));
+        } else {
+          const bool isMSB = (k % 2 == 1);
+          d = quantization::dequantize4BitWithFloatOffset(
+              DH.at({rowIdx, k / 2}), static_cast<float>(scale),
+              static_cast<float>(offset), isMSB);
+        }
+        accum[k] += d * weight;
+      }
+    }
+    // Accumulation in FP32 complete, now copy back to output with cast to T.
+    size_t offsetOut = i * outLineSize;
+    for (size_t k = 0; k < outLineSize; k++) {
+      OH.raw(offsetOut++) = static_cast<T>(accum[k]);
+    }
+  }
+}
+
+void BoundInterpreterFunction::fwdEmbeddingBagByteRowwiseOffsetsInst(
+    const EmbeddingBagByteRowwiseOffsetsInst *I) {
+  switch (I->getDest()->getElementType()) {
+  case ElemKind::FloatTy:
+    fwdEmbeddingBagByteRowwiseOffsetsImpl<float, float>(I);
+    break;
+  case ElemKind::Float16Ty:
+    if (I->getUseFP16Accumulation()) {
+      fwdEmbeddingBagByteRowwiseOffsetsImpl<float16_t, float16_t>(I);
+    } else {
+      fwdEmbeddingBagByteRowwiseOffsetsImpl<float16_t, float>(I);
     }
     break;
   default:

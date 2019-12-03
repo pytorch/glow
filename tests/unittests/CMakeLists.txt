@@ -36,6 +36,8 @@ add_executable(BasicIRTest
                BasicIRTest.cpp)
 target_link_libraries(BasicIRTest
                       PRIVATE
+                        Backend
+                        Backends
                         Graph
                         IR
                         gtest
@@ -165,6 +167,8 @@ add_executable(GraphSchedulerTest
                GraphSchedulerTest.cpp)
 target_link_libraries(GraphSchedulerTest
                       PRIVATE
+                        Backend
+                        Backends
                         Graph
                         IR
                         gtest
@@ -373,6 +377,7 @@ foreach(backend ${GLOW_BACKENDS})
   add_backend_test(TEST MLTest BACKEND "${backend}" UNOPT)
   add_backend_test(TEST OperatorGradTest BACKEND "${backend}" UNOPT)
   add_backend_test(TEST OperatorTest BACKEND "${backend}" UNOPT)
+  add_backend_test(TEST TensorLayoutTest BACKEND "${backend}" UNOPT)
   add_backend_test(TEST
                    RecommendationSystemTest
                    BACKEND
@@ -471,6 +476,8 @@ add_executable(TensorPoolTest
                TensorPoolTest.cpp)
 target_link_libraries(TensorPoolTest
                       PRIVATE
+                        Backend
+                        Backends
                         Graph
                         TensorPool
                         gtest

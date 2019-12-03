@@ -14,8 +14,10 @@
  * limitations under the License.
  */
 #include "glow/Graph/Graph.h"
+#include "glow/Backend/Backend.h"
 #include "glow/Graph/Nodes.h"
 #include "glow/Graph/PlaceholderBindings.h"
+#include "glow/Graph/TensorLayout.h"
 #include "glow/Graph/VerifierHelper.h"
 #include "glow/Quantization/Base/Base.h"
 #include "glow/Support/Support.h"
@@ -28,6 +30,9 @@
 #include "llvm/Support/Format.h"
 #include "llvm/Support/raw_ostream.h"
 
+#ifdef WIN32
+#include <corecrt_math_defines.h>
+#endif
 #include <fstream>
 #include <unordered_set>
 
@@ -437,7 +442,6 @@ Function::~Function() {
     auto cur = it++;
     eraseNode(&*cur);
   }
-  logCtx_->dumpLog(getName());
 }
 
 TypeRef Module::uniqueType(ElemKind elemTy, llvm::ArrayRef<size_t> dims) {
@@ -495,9 +499,10 @@ static ShapeVector getNewShapeWithoutAxes(llvm::ArrayRef<size_t> dims,
 //===----------------------------------------------------------------------===//
 
 Placeholder *Module::createPlaceholder(TypeRef T, llvm::StringRef name,
-                                       bool isTrainable) {
+                                       bool isTrainable,
+                                       const std::string &layout) {
   auto FT = uniqueType(*T);
-  auto *ph = new Placeholder(name, FT, isTrainable);
+  auto *ph = new Placeholder(name, FT, isTrainable, layout);
   ph->setName(uniqueName(ph->getName(), usedNodeNames_, usedStorageNames_));
   placeholders_.push_back(ph);
   logStorageCreation(functions_, ph);
@@ -505,44 +510,51 @@ Placeholder *Module::createPlaceholder(TypeRef T, llvm::StringRef name,
 }
 
 Placeholder *Module::createPlaceholder(ElemKind T, llvm::ArrayRef<size_t> dims,
-                                       llvm::StringRef name, bool isTrainable) {
+                                       llvm::StringRef name, bool isTrainable,
+                                       const std::string &layout) {
   auto FT = uniqueType(T, dims);
-  return createPlaceholder(FT, name, isTrainable);
+  return createPlaceholder(FT, name, isTrainable, layout);
 }
 
 Placeholder *Module::createPlaceholder(ElemKind T, llvm::ArrayRef<size_t> dims,
                                        float scale, int32_t offset,
-                                       llvm::StringRef name, bool isTrainable) {
+                                       llvm::StringRef name, bool isTrainable,
+                                       const std::string &layout) {
   auto FT = uniqueType(T, dims, scale, offset);
-  return createPlaceholder(FT, name, isTrainable);
+  return createPlaceholder(FT, name, isTrainable, layout);
 }
 
-Constant *Module::createConstant(TypeRef T, llvm::StringRef name) {
+Constant *Module::createConstant(TypeRef T, llvm::StringRef name,
+                                 const std::string &layout) {
   auto FT = uniqueType(*T);
-  return addConstant(new Constant(name, FT));
+  return addConstant(new Constant(name, FT, layout));
 }
 
 Constant *Module::createConstant(ElemKind T, llvm::ArrayRef<size_t> dims,
-                                 llvm::StringRef name) {
+                                 llvm::StringRef name,
+                                 const std::string &layout) {
   auto FT = uniqueType(T, dims);
-  return createConstant(FT, name);
+  return createConstant(FT, name, layout);
 }
 
 Constant *Module::createConstant(ElemKind T, llvm::ArrayRef<size_t> dims,
                                  float scale, int32_t offset,
-                                 llvm::StringRef name) {
+                                 llvm::StringRef name,
+                                 const std::string &layout) {
   auto FT = uniqueType(T, dims, scale, offset);
-  return createConstant(FT, name);
+  return createConstant(FT, name, layout);
 }
 
-Constant *Module::createConstant(llvm::StringRef name, const Tensor &tensor) {
-  auto *V = createConstant(&tensor.getType(), name);
+Constant *Module::createConstant(llvm::StringRef name, const Tensor &tensor,
+                                 const std::string &layout) {
+  auto *V = createConstant(&tensor.getType(), name, layout);
   V->assign(&tensor);
   return V;
 }
 
-Constant *Module::createConstant(llvm::StringRef name, Tensor &&tensor) {
-  return addConstant(new Constant(name, std::move(tensor)));
+Constant *Module::createConstant(llvm::StringRef name, Tensor &&tensor,
+                                 const std::string &layout) {
+  return addConstant(new Constant(name, std::move(tensor), layout));
 }
 
 std::string Module::getPrefix(llvm::StringRef name) {
@@ -550,7 +562,7 @@ std::string Module::getPrefix(llvm::StringRef name) {
   size_t delim = name.rfind("__");
   if (delim != std::string::npos &&
       std::all_of(name.begin() + (delim + 2), name.end(),
-                  [](unsigned char c) { return std::isdigit(c); })) {
+                  [](unsigned char c) { return ::isdigit(c); })) {
     prefix = prefix.substr(0, delim);
   }
   return prefix;
@@ -905,6 +917,41 @@ ReluNode *Function::createRELU(llvm::StringRef name, NodeValue input) {
   return addNode(new ReluNode(name, input.getType(), input));
 }
 
+Node *Function::createGELU(llvm::StringRef name, NodeValue input) {
+  auto outTy = input.getType();
+
+  Node *alphaSplat =
+      createSplat(name.str() + ".alpha", outTy, M_2_SQRTPI * M_SQRT1_2);
+  Node *splat = createSplat(name.str() + ".splat", outTy, 0.044715);
+  Node *splatHalf = createSplat(name.str() + ".splatHalf", outTy, 0.5);
+  Node *splat1 = createSplat(name.str() + ".splat3", outTy, 1.0);
+  Node *splat3 = createSplat(name.str() + ".splat3", outTy, 3.0);
+
+  // pow(x, 3)
+  Node *pow = createPow(name.str() + ".pow", input, splat3);
+
+  // pow(x, 3) * 0.044715
+  Node *mul = createMul(name.str() + ".mul", pow, splat);
+
+  // x + pow(x, 3) * 0.044715
+  Node *add = createAdd(name.str() + ".add", input, mul);
+
+  // (x * pow(x, 3) * 0.044715) * alpha
+  Node *mul2 = createMul(name.str() + ".mul2", add, alphaSplat);
+
+  // tanh((x * pow(x, 3) * 0.044715) * alpha)
+  Node *tanh = createTanh(name.str() + ".tanh", mul2);
+
+  // tanh((x * pow(x, 3) * 0.044715) * alpha) + 1
+  Node *add2 = createAdd(name.str() + ".add2", tanh, splat1);
+
+  // (tanh((x * pow(x, 3) * 0.044715) * alpha) + 1) * 0.5
+  Node *mul3 = createMul(name.str() + ".mul3", splatHalf, add2);
+
+  // (tanh((x * pow(x, 3) * 0.044715) * alpha) + 1) * 0.5 * x
+  return createMul(name.str() + ".mul4", mul3, input);
+}
+
 PReluNode *Function::createPRELU(llvm::StringRef name, NodeValue input,
                                  NodeValue slope, TypeRef outTy) {
   return addNode(new PReluNode(name, outTy, input, slope));
@@ -967,23 +1014,46 @@ Function::createSigmoidCrossEntropyWithLogits(llvm::StringRef name,
 }
 
 ReshapeNode *Function::createReshape(llvm::StringRef name, NodeValue input,
-                                     llvm::ArrayRef<size_t> shape) {
+                                     llvm::ArrayRef<size_t> shape,
+                                     llvm::StringRef layout) {
   auto TR = getParent()->uniqueTypeWithNewShape(input.getType(), shape);
   DCHECK_EQ(TR->size(), input.getType()->size())
       << "Reshape to a different size";
-  return addNode(new ReshapeNode(name, TR, input, shape.vec()));
+  return addNode(new ReshapeNode(name, TR, input, shape.vec(), layout));
 }
 
 TransposeNode *Function::createTranspose(llvm::StringRef name, NodeValue input,
-                                         llvm::ArrayRef<unsigned_t> shuffle) {
+                                         llvm::ArrayRef<unsigned_t> shuffle,
+                                         const std::string &layout) {
   ShapeVector shape;
   auto dims = input.dims();
   for (size_t i = 0; i < dims.size(); i++) {
     shape.push_back(dims[shuffle[i]]);
   }
 
+  // If the layout is known, check that it matches the shuffle:
+  auto compareShuffle = [&](const std::vector<unsigned_t> targetShuffle) {
+    auto shuffleVec = shuffle.vec();
+    return targetShuffle.size() == dims.size() &&
+           std::equal(shuffleVec.begin(), shuffleVec.end(),
+                      targetShuffle.begin());
+  };
+
+  auto currLayout = layout;
+  if (currLayout == ANY_LAYOUT) {
+    // If layout got a default value, change it based on shuffle:
+    // TODO: remove the shuffle and replace it with layout.
+    if (compareShuffle(NCHW2NHWC) || compareShuffle(HWCN2NHWC)) {
+      currLayout = "NHWC";
+    } else if (compareShuffle(NHWC2NCHW)) {
+      currLayout = "NCHW";
+    } else if (compareShuffle(NHWC2HWNC)) {
+      currLayout = "HWNC";
+    }
+  }
+
   auto NT = getParent()->uniqueTypeWithNewShape(input.getType(), shape);
-  return addNode(new TransposeNode(name, NT, input, shuffle.vec()));
+  return addNode(new TransposeNode(name, NT, input, shuffle.vec(), currLayout));
 }
 
 Node *Function::createBroadcast(llvm::StringRef name, NodeValue input,
@@ -1290,6 +1360,14 @@ BatchNormalizationNode *Function::createBatchNormalization(
     float momentum) {
   return addNode(new BatchNormalizationNode(name, input, scale, beta, mean, var,
                                             channelIdx, epsilon, momentum));
+}
+
+LayerNormalizationNode *Function::createLayerNormalization(llvm::StringRef name,
+                                                           NodeValue input,
+                                                           NodeValue scale,
+                                                           NodeValue bias,
+                                                           float epsilon) {
+  return addNode(new LayerNormalizationNode(name, input, scale, bias, epsilon));
 }
 
 BucketizeNode *Function::createBucketizeNode(llvm::StringRef name,
@@ -1675,30 +1753,40 @@ Function::createRowwiseQuantizedSparseLengthsSum(
 }
 
 /// Helper used to get specific output type required for
-/// createRowwiseQuantizedSparseLengthsSum and
-/// createRowwiseQuantizedSparseLengthsWeightedSum.
-/// Function \p F is used to get the speficific type, using inputs \p inDims and
-/// \p lenghtsDims to compute output dimensions.
-static TypeRef getOutputTypeOfFusedRowwiseQuantizedSLS(
-    Function *F, const llvm::ArrayRef<size_t> &inDims,
-    const llvm::ArrayRef<size_t> &lengthsDims, ElemKind scaleOffsetKind) {
-  ShapeVector outDims(inDims.begin(), inDims.end());
-  outDims[0] = lengthsDims[0];
+/// createRowwiseQuantizedSparseLengthsSum,
+/// createRowwiseQuantizedSparseLengthsWeightedSum, and
+/// EmbeddingBagByteRowwiseOffsets. Function \p F is used to get the specific
+/// type, using inputs \p data and \p segmentsDim to compute output dimensions.
+static TypeRef
+getOutputTypeOfFusedRowwiseQuantizedSLS(Function *F, NodeValue data,
+                                        llvm::ArrayRef<size_t> segmentsDim) {
+  ShapeVector outDims(data.dims().begin(), data.dims().end());
+  outDims[0] = segmentsDim[0];
   // The output column count is the same as the input column count, but
   // without the extra bytes for the fused scale/offset, as the output is not
   // fused.
-  outDims[1] -=
-      2 * ((scaleOffsetKind == ElemKind::FloatTy) ? sizeof(float)
-                                                  : sizeof(float16_t));
-  return F->getParent()->uniqueType(scaleOffsetKind, outDims);
+  CHECK(isFusedQuantizedElemKind(data.getElementType()))
+      << "Must use a fused ElemKind for data.";
+  outDims[1] -= 2 * ((data.getElementType() == ElemKind::UInt8FusedQTy)
+                         ? sizeof(float)
+                         : sizeof(float16_t));
+  // If using 4-bit quantization, then the input data has packed two 4-bit
+  // elements into one byte, so we need to double the outDims.
+  if (data.getElementType() == ElemKind::UInt4FusedFP16QTy) {
+    outDims[1] *= 2;
+  }
+  const ElemKind outputK = (data.getElementType() == ElemKind::UInt8FusedQTy)
+                               ? ElemKind::FloatTy
+                               : ElemKind::Float16Ty;
+  return F->getParent()->uniqueType(outputK, outDims);
 }
 
 FusedRowwiseQuantizedSparseLengthsWeightedSumNode *
 Function::createFusedRowwiseQuantizedSparseLengthsWeightedSum(
     llvm::StringRef name, NodeValue data, NodeValue weights, NodeValue indices,
-    NodeValue lengths, ElemKind precision, bool useFP16Accumulation) {
-  auto outTy = getOutputTypeOfFusedRowwiseQuantizedSLS(
-      this, data.dims(), lengths.dims(), precision);
+    NodeValue lengths, bool useFP16Accumulation) {
+  auto outTy =
+      getOutputTypeOfFusedRowwiseQuantizedSLS(this, data, lengths.dims());
   return addNode(new FusedRowwiseQuantizedSparseLengthsWeightedSumNode(
       name, outTy, data, weights, indices, lengths, useFP16Accumulation));
 }
@@ -1706,9 +1794,9 @@ Function::createFusedRowwiseQuantizedSparseLengthsWeightedSum(
 FusedRowwiseQuantizedSparseLengthsSumNode *
 Function::createFusedRowwiseQuantizedSparseLengthsSum(
     llvm::StringRef name, Constant *data, NodeValue indices, NodeValue lengths,
-    ElemKind precision, bool useFP16Accumulation) {
-  auto outTy = getOutputTypeOfFusedRowwiseQuantizedSLS(
-      this, data->dims(), lengths.dims(), precision);
+    bool useFP16Accumulation) {
+  auto outTy =
+      getOutputTypeOfFusedRowwiseQuantizedSLS(this, data, lengths.dims());
   return addNode(new FusedRowwiseQuantizedSparseLengthsSumNode(
       name, outTy, data, indices, lengths, useFP16Accumulation));
 }
@@ -1731,18 +1819,30 @@ static Constant *quantizeDataForFusedRowwiseQuantizedSparseLengthsWeightedSum(
   // dimension to include space for the scale/offset, each 4 bytes
   // (float/int32_t).
   switch (precision) {
-  case ElemKind::FloatTy: {
+  case ElemKind::UInt8FusedQTy: {
     Constant *rwqData = F->getParent()->createConstant(
-        ElemKind::UInt8FusedQTy,
-        {fDims.first, fDims.second + 2 * sizeof(float)}, 0.0, 0, "data");
+        precision, {fDims.first, fDims.second + 2 * sizeof(float)}, 0.0, 0,
+        "data");
     quantization::tensorFusedRowwiseQuantization<float>(
         fData, rwqData->getPayloadMutable());
     return rwqData;
   }
-  case ElemKind::Float16Ty: {
+  case ElemKind::UInt8FusedFP16QTy: {
     Constant *rwqData = F->getParent()->createConstant(
-        ElemKind::UInt8FusedFP16QTy,
-        {fDims.first, fDims.second + 2 * sizeof(float16_t)}, 0.0, 0, "data");
+        precision, {fDims.first, fDims.second + 2 * sizeof(float16_t)}, 0.0, 0,
+        "data");
+    quantization::tensorFusedRowwiseQuantization<float16_t>(
+        fData, rwqData->getPayloadMutable());
+    return rwqData;
+  }
+  case ElemKind::UInt4FusedFP16QTy: {
+    // We pack 4-bit values into bytes, so given the input size in float we
+    // divide by two and take the ceiling to make sure we have enough space for
+    // all elements.
+    const size_t outerDim =
+        std::ceil(((float)fDims.second) / 2) + 2 * sizeof(float16_t);
+    Constant *rwqData = F->getParent()->createConstant(
+        precision, {fDims.first, outerDim}, 0.0, 0, "data");
     quantization::tensorFusedRowwiseQuantization<float16_t>(
         fData, rwqData->getPayloadMutable());
     return rwqData;
@@ -1755,23 +1855,57 @@ static Constant *quantizeDataForFusedRowwiseQuantizedSparseLengthsWeightedSum(
 FusedRowwiseQuantizedSparseLengthsWeightedSumNode *
 Function::createFusedRowwiseQuantizedSparseLengthsWeightedSum(
     llvm::StringRef name, Tensor &data, NodeValue weights, NodeValue indices,
-    NodeValue lengths, ElemKind precision, bool useFP16Accumulation) {
+    NodeValue lengths, ElemKind fusedElemKind, bool useFP16Accumulation) {
   Constant *rwqData =
-      quantizeDataForFusedRowwiseQuantizedSparseLengthsWeightedSum(this, data,
-                                                                   precision);
+      quantizeDataForFusedRowwiseQuantizedSparseLengthsWeightedSum(
+          this, data, fusedElemKind);
   return createFusedRowwiseQuantizedSparseLengthsWeightedSum(
-      name, rwqData, weights, indices, lengths, precision, useFP16Accumulation);
+      name, rwqData, weights, indices, lengths, useFP16Accumulation);
 }
 
 FusedRowwiseQuantizedSparseLengthsSumNode *
 Function::createFusedRowwiseQuantizedSparseLengthsSum(
     llvm::StringRef name, Tensor &data, NodeValue indices, NodeValue lengths,
-    ElemKind precision, bool useFP16Accumulation) {
+    ElemKind fusedElemKind, bool useFP16Accumulation) {
   Constant *rwqData =
-      quantizeDataForFusedRowwiseQuantizedSparseLengthsWeightedSum(this, data,
-                                                                   precision);
+      quantizeDataForFusedRowwiseQuantizedSparseLengthsWeightedSum(
+          this, data, fusedElemKind);
   return this->createFusedRowwiseQuantizedSparseLengthsSum(
-      name, rwqData, indices, lengths, precision, useFP16Accumulation);
+      name, rwqData, indices, lengths, useFP16Accumulation);
+}
+
+EmbeddingBagNode *Function::createEmbeddingBag(llvm::StringRef name,
+                                               NodeValue data,
+                                               NodeValue weights,
+                                               NodeValue indices,
+                                               NodeValue offsets) {
+  auto inDims = data.dims();
+  ShapeVector outDims(inDims.begin(), inDims.end());
+  outDims[0] = offsets.dims()[0];
+  auto outTy = getParent()->uniqueTypeWithNewShape(data.getType(), outDims);
+  return addNode(
+      new EmbeddingBagNode(name, outTy, data, weights, indices, offsets));
+}
+
+EmbeddingBagByteRowwiseOffsetsNode *
+Function::createEmbeddingBagByteRowwiseOffsets(
+    llvm::StringRef name, Tensor &data, NodeValue weights, NodeValue indices,
+    NodeValue offsets, ElemKind fusedElemKind, bool useFP16Accumulation) {
+  Constant *rwqData =
+      quantizeDataForFusedRowwiseQuantizedSparseLengthsWeightedSum(
+          this, data, fusedElemKind);
+  return createEmbeddingBagByteRowwiseOffsets(name, rwqData, weights, indices,
+                                              offsets, useFP16Accumulation);
+}
+
+EmbeddingBagByteRowwiseOffsetsNode *
+Function::createEmbeddingBagByteRowwiseOffsets(
+    llvm::StringRef name, NodeValue data, NodeValue weights, NodeValue indices,
+    NodeValue offsets, bool useFP16Accumulation) {
+  auto outTy =
+      getOutputTypeOfFusedRowwiseQuantizedSLS(this, data, offsets.dims());
+  return addNode(new EmbeddingBagByteRowwiseOffsetsNode(
+      name, outTy, data, weights, indices, offsets, useFP16Accumulation));
 }
 
 LengthsToRangesNode *Function::createLengthsToRanges(llvm::StringRef name,
@@ -2125,8 +2259,13 @@ Node *Function::createBatchBoxCox(llvm::StringRef name, NodeValue data,
   return addNode(new BatchBoxCoxNode(name, data, lambda1, lambda2, epsilon));
 }
 
-Node *Function::createClip(llvm::StringRef name, NodeValue input, float min,
-                           float max) {
+ClipNode *Function::createClip(llvm::StringRef name, NodeValue input,
+                               TypeRef outTy, float min, float max) {
+  return addNode(new ClipNode(name, outTy, input, min, max));
+}
+
+ClipNode *Function::createClip(llvm::StringRef name, NodeValue input, float min,
+                               float max) {
   return addNode(new ClipNode(name, input.getType(), input, min, max));
 }
 
@@ -3478,8 +3617,21 @@ insertAndReport(std::unordered_map<std::string, const Node *> &nameToNode,
   return true;
 }
 
-bool Function::verify() const {
+bool Function::verify(const Backend *backend) const {
   bool isValid = true;
+  if (backend) {
+    if (backend->getTensorLayoutRequirements().isEnabled()) {
+      isValid &= expectCompareTrue(
+          "Expected correct backend-specific layouts for the graph",
+          verifyLayouts(*this, backend->getTensorLayoutRequirements()), true,
+          this);
+    }
+  } else {
+    // Always run verification pre-lowering / when we don't have backend:
+    isValid &= expectCompareTrue(
+        "Expected correct Glow canonical layouts for the graph",
+        verifyLayouts(*this, CanonicalTensorLayout::getInstance()), true, this);
+  }
   std::unordered_map<std::string, const Node *> nameToNode;
 
   for (auto *V : getParent()->getConstants()) {

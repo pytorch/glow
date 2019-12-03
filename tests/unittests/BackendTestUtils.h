@@ -170,7 +170,7 @@ class MockBackend : public Backend {
 
   Expected<std::unique_ptr<CompiledFunction>>
   compile(Function *F, const BackendOptions &) const override {
-    return llvm::make_unique<MockFunction>(runtime::RuntimeBundle::create(*F));
+    return glow::make_unique<MockFunction>(runtime::RuntimeBundle::create(*F));
   }
 
   bool isOpSupported(const NodeInfo &NI) const override { return false; }
@@ -202,7 +202,7 @@ class MockBackendCustomIRGen : public Backend {
 
   Expected<std::unique_ptr<CompiledFunction>>
   compile(Function *F, const BackendOptions &) const override {
-    return llvm::make_unique<MockFunction>(runtime::RuntimeBundle::create(*F));
+    return glow::make_unique<MockFunction>(runtime::RuntimeBundle::create(*F));
   }
 
   bool isOpSupported(const NodeInfo &NI) const override { return false; }
@@ -286,6 +286,9 @@ std::unordered_set<Tensor *> cloneFunInsideFun(FunctionTensorPair FTP,
                                                PlaceholderBindings *bindings,
                                                CompilationContext &cctx,
                                                unsigned parallelCount);
+
+/// \returns the number of nodes in \p F of kind \p kind.
+unsigned countNodeKind(Function *F, Kinded::Kind kind);
 
 void inferConvNet(Tensor *inputs, Tensor *filter, Tensor *bias, Tensor *out,
                   llvm::StringRef kind);

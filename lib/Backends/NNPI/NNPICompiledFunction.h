@@ -53,6 +53,11 @@ public:
   /// \returns the compilation config object.
   NNPICompilationConfig getCompilationConfig() const { return config_; }
 
+  /// \returns a reference to the set of Placeholders supporting partial inputs.
+  const std::unordered_set<const Placeholder *> &getPartialInputs() const {
+    return partialInputs_;
+  }
+
   /// Locks the output stream.
   BlockStream &lockCompiledStream();
   /// Unlocks the output stream.
@@ -66,6 +71,7 @@ private:
   NNPICompilationConfig config_;
   BlockStream compiledStream_;
   std::mutex compiledStreamMutex_;
+  std::unordered_set<const Placeholder *> partialInputs_;
   ///@}
 };
 } // end namespace glow

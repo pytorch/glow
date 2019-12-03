@@ -58,9 +58,10 @@ namespace {
 // Helpers for creating and intializing placeholders from tensors.
 static Placeholder *createPlaceholder(Module &mod,
                                       PlaceholderBindings &bindings,
-                                      Tensor *tensor, llvm::StringRef name) {
+                                      Tensor *tensor, llvm::StringRef name,
+                                      const std::string layout = ANY_LAYOUT) {
   auto *P = mod.createPlaceholder(tensor->getElementType(), tensor->dims(),
-                                  name, false);
+                                  name, false, layout);
   auto *PTensor = bindings.allocate(P);
   PTensor->assign(tensor);
 
@@ -84,21 +85,28 @@ static Placeholder *createQuantizedPlaceholder(Module &mod,
 /// then run the function in profiling mode to get the quantization parameters
 /// by using the specified quantization schema \p schema, the given element
 /// precision \p quantizationPrecision and the given bias precision
-/// \p quantizationPrecisionBias. \returns the quantization parameters for all
-/// the function nodes.
+/// \p quantizationPrecisionBias. \p count represents the number of times to
+/// clone the Function inside itself before profiling. \returns the quantization
+/// parameters for all the function nodes.
 static std::vector<NodeQuantizationInfo> profileAndGetNodeQuantizationInfo(
     CreateAndInitFunction createAndInitFunction, quantization::Schema schema,
-    ElemKind quantizationPrecision, ElemKind quantizationPrecisionBias) {
+    ElemKind quantizationPrecision, ElemKind quantizationPrecisionBias,
+    unsigned count) {
   LoweredInfoMap loweredMapForProf;
   PlaceholderBindings pBindings;
   // Note: deviceMemory = 0 is a signal to use the defaultMemory.
   ExecutionEngine PEE{"Interpreter", /* deviceMemory */ 0,
                       /* ignoreUserDeviceConfig */ true};
-  createAndInitFunction(pBindings, PEE);
+  auto FT = createAndInitFunction(pBindings, PEE);
   CompilationContext cctx{&pBindings, &loweredMapForProf};
+
+  // Clone the number of times as requested to match the Function that will be
+  // quantized.
+  cloneFunInsideFun(FT, &pBindings, cctx, count);
   cctx.precisionConfig.quantMode = QuantizationMode::Profile;
   PEE.compile(cctx);
   PEE.run(pBindings);
+
   // We get the new function using front() because the original function was
   // deleted as part of the Partitioner quantization flow.
   return quantization::generateNodeQuantizationInfos(
@@ -114,7 +122,8 @@ setupInterpAndBackendConfigs(
     LoweredInfoMap &ILIM, PlaceholderBindings &bBindings, LoweredInfoMap &BLIM,
     ElemKind interpElemKind, ElemKind backendElemKind,
     quantization::Schema schema, bool enableRowwiseQuantization,
-    CreateAndInitFunction createAndInitFunction, ElemKind biasElemKind) {
+    CreateAndInitFunction createAndInitFunction, ElemKind biasElemKind,
+    unsigned count) {
   CompilationContext cctxI{&iBindings, &ILIM};
   CompilationContext cctxB{&bBindings, &BLIM};
   PrecisionConfiguration &precConfigI = cctxI.precisionConfig;
@@ -125,9 +134,11 @@ setupInterpAndBackendConfigs(
     // If either interp or backend need to be quantized then we need to profile
     // and get quantization infos.
     if (isQuantizedElemKind(interpElemKind)) {
-
+      // Note: We only do parallel cloning for the backend, so always use count
+      // of 1 here.
       auto NQII = profileAndGetNodeQuantizationInfo(
-          createAndInitFunction, schema, interpElemKind, biasElemKind);
+          createAndInitFunction, schema, interpElemKind, biasElemKind,
+          /* count */ 1);
 
       precConfigI.quantMode = QuantizationMode::Quantize;
       precConfigI.quantConfig.infos = NQII;
@@ -139,9 +150,10 @@ setupInterpAndBackendConfigs(
     }
 
     if (isQuantizedElemKind(backendElemKind)) {
-
+      // Always clone count times here. This matches the Function the backend
+      // will quantize.
       auto NQIB = profileAndGetNodeQuantizationInfo(
-          createAndInitFunction, schema, backendElemKind, biasElemKind);
+          createAndInitFunction, schema, backendElemKind, biasElemKind, count);
 
       precConfigB.quantMode = QuantizationMode::Quantize;
       precConfigB.quantConfig.infos = NQIB;
@@ -174,8 +186,8 @@ void dispatchInference(const std::string &fname,
     // Clone the placeholder bindings into a new executionContext.
     for (unsigned i = 0, max = concurrentRequestsOpt - 1; i < max; i++) {
       std::unique_ptr<ExecutionContext> newContext =
-          llvm::make_unique<ExecutionContext>(
-              llvm::make_unique<PlaceholderBindings>(
+          glow::make_unique<ExecutionContext>(
+              glow::make_unique<PlaceholderBindings>(
                   context.getPlaceholderBindings()->clone()));
       contexts.push_back(std::move(newContext));
     }
@@ -200,8 +212,46 @@ void dispatchInference(const std::string &fname,
   for (auto &future : futures) {
     future.wait();
   }
+
+  for (auto &c : contexts) {
+    c->getPlaceholderBindings()->ensureOnHost();
+  }
   // Release the original context passed in by reference so we don't free it.
   contexts[0].release();
+}
+
+/// Helper that iterates over all of the Placeholders in \p PHs and converts the
+/// Tensor pair found in \p bindings to the same type as the Placeholder if
+/// necessary.
+static void convertBindingsToCorrectType(PlaceholderBindings &bindings,
+                                         PlaceholderList PHs) {
+  for (Placeholder *PH : PHs) {
+    Tensor *T = bindings.get(PH);
+    TypeRef newTy = PH->getType();
+    if (T->getType().isEqual(newTy)) {
+      continue;
+    }
+    ElemKind newK = newTy->getElementType();
+    if (isQuantizedElemKind(newK)) {
+      Tensor QT = quantization::quantizeTensor(
+          *T, {newTy->getScale(), newTy->getOffset()}, newK);
+      T->assign(&QT);
+    } else {
+      T->convertToType(newK);
+    }
+  }
+}
+
+/// Helper to get a float copy of a Tensor \p T if needed.
+static Tensor convertToFloatIfNecessary(Tensor &T) {
+  const ElemKind srcK = T.getType().getElementType();
+  if (srcK == ElemKind::FloatTy) {
+    return std::move(T);
+  }
+  if (isQuantizedElemKind(srcK)) {
+    return quantization::dequantizeTensor(T, ElemKind::FloatTy);
+  }
+  return T.getCopyConvertedToType(ElemKind::FloatTy);
 }
 
 void compareAgainstInterpreter(llvm::StringRef backendName,
@@ -235,9 +285,18 @@ void compareAgainstInterpreter(llvm::StringRef backendName,
   auto configs = setupInterpAndBackendConfigs(
       IF, IEE, iBindings, ILIM, bBindings, BLIM, interpElemKind,
       backendElemKind, schema, enableRowwiseQuantization, createAndInitFunction,
-      biasElemKind);
+      biasElemKind, count);
   CompilationContext &cctxI = configs.first;
   CompilationContext &cctxB = configs.second;
+
+  // Skip conversion for rowwise quantized tests as they are a special case
+  // which don't fit cleanly here -- e.g. RWQ-SLS has FloatTy outputs.
+  if (!enableRowwiseQuantization) {
+    // We want to compare the ops themselves and not see differences in
+    // conversion, so fold ElemKind conversion nodes into IO.
+    cctxI.optimizationOpts.foldElemKindConversionIntoIO = true;
+    cctxB.optimizationOpts.foldElemKindConversionIntoIO = true;
+  }
 
   // Clone the Function inside itself many times if desired.
   std::unordered_set<Tensor *> resultTensors =
@@ -245,15 +304,28 @@ void compareAgainstInterpreter(llvm::StringRef backendName,
   assert(resultTensors.size() == count &&
          "Should get the same number of Tensors back as count.");
 
+  IEE.compile(cctxI);
   BEE.compile(cctxB);
+
+  // Again skip rowwise quantization as before.
+  if (!enableRowwiseQuantization) {
+    // Now that we have compiled, precision transformation has occurred. Now
+    // convert all mismatches for Placeholders given their original bindings.
+    convertBindingsToCorrectType(
+        iBindings, IEE.getSingleFunctionFromModule()->findPlaceholders());
+    convertBindingsToCorrectType(
+        bBindings, BEE.getSingleFunctionFromModule()->findPlaceholders());
+  }
+
+  IEE.run(iBindings);
   BEE.run(bBindings);
 
-  IEE.compile(cctxI);
-  IEE.run(iBindings);
-
-  // Compare each of our result tensors to the original.
+  // Compare each of our result tensors to the original. Always convert back to
+  // float if necessary, as allowed error is expected to compare float.
+  Tensor finalIT = convertToFloatIfNecessary(*IFT.second);
   for (Tensor *T : resultTensors) {
-    EXPECT_TRUE(IFT.second->isEqual(*T, allowedError));
+    Tensor finalBT = convertToFloatIfNecessary(*T);
+    EXPECT_TRUE(finalIT.isEqual(finalBT, allowedError, /* verbose */ true));
   }
 
   // Additionally check that each of the results from the parallel cloned
@@ -351,6 +423,16 @@ std::unordered_set<Tensor *> cloneFunInsideFun(FunctionTensorPair FTP,
   origInfos.insert(origInfos.end(), newInfos.begin(), newInfos.end());
 
   return resultTensors;
+}
+
+unsigned countNodeKind(Function *F, Kinded::Kind kind) {
+  unsigned count = 0;
+  for (auto &n : F->getNodes()) {
+    if (n.getKind() == kind) {
+      count++;
+    }
+  }
+  return count;
 }
 
 void inferIntLookupTableNet(Tensor *input, Tensor *out,
@@ -671,7 +753,7 @@ void inferSmallConv(Tensor *inputs, Tensor *out, llvm::StringRef kind) {
   ExecutionEngine EE(kind);
   auto &mod = EE.getModule();
   auto *F = mod.createFunction("main");
-  auto *in = createPlaceholder(mod, bindings, inputs, "in");
+  auto *in = createPlaceholder(mod, bindings, inputs, "in", "NHWC");
   auto *C = F->createConv(bindings, "conv2a", in, 64, 1, 1, 0, 1);
   bindings.get(cast<Placeholder>(C->getFilter()))->getHandle().clear(0.3);
   bindings.get(cast<Placeholder>(C->getBias()))->getHandle().clear(0.4);
@@ -970,7 +1052,7 @@ void inferBasicConvNet(Tensor *inputs, Tensor *out, llvm::StringRef kind,
   ExecutionEngine EE(kind);
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
-  auto *var = createPlaceholder(mod, bindings, inputs, "var");
+  auto *var = createPlaceholder(mod, bindings, inputs, "var", "NCHW");
   auto *tr = F->createTranspose("tr", var, NCHW2NHWC);
   auto *conv = F->createConv(bindings, "conv", tr, convDepth, {5, 5}, {2, 2},
                              {1, 1, 1, 1}, 1);
@@ -993,8 +1075,8 @@ FunctionTensorPair createAndInitBasicFCNet(PlaceholderBindings &bindings,
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
-  auto *var =
-      mod.createPlaceholder(ElemKind::FloatTy, {2, 3, 16, 16}, "var", false);
+  auto *var = mod.createPlaceholder(ElemKind::FloatTy, {2, 3, 16, 16}, "var",
+                                    false, "NCHW");
   auto *tr = F->createTranspose("tr", var, NCHW2NHWC);
   auto *fc = F->createFullyConnected(bindings, "fc", tr, 16);
   auto *rl0 = F->createRELU("relu", fc);
@@ -1016,7 +1098,7 @@ void inferMixedNet(Tensor *inputs, Tensor *out, llvm::StringRef kind) {
   ExecutionEngine EE(kind);
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
-  auto *var = createPlaceholder(mod, bindings, inputs, "var");
+  auto *var = createPlaceholder(mod, bindings, inputs, "var", "NCHW");
   auto *selected =
       mod.createPlaceholder(ElemKind::Int64ITy, {2, 1}, "selected", false);
 
@@ -1058,20 +1140,20 @@ void inferComplexNet1(Tensor *inputs1, Tensor *inputs2, Tensor *inputs3,
   auto *sigmoid1 = F->createSigmoid("sigmoid1", conv1);
   auto *fc1 = F->createFullyConnected(bindings, "fc1", var2, 2352);
   bindings.get(cast<Placeholder>(fc1->getWeights()))->getHandle().clear(0.6);
-  auto *reshape1 = F->createReshape("reshape1", fc1, {8, 14, 28, 6});
+  auto *reshape1 = F->createReshape("reshape1", fc1, {8, 14, 28, 6}, "NHWC");
   auto *relu1 = F->createRELU("relu1", reshape1);
   auto *pool1 = F->createMaxPool("pool1", relu1, 2, 2, 1);
   auto *add = F->createAdd("add", sigmoid1, pool1->getResult());
   auto *tanh = F->createTanh("tanh", add);
   auto *fc2 = F->createFullyConnected(bindings, "fc2", var3, 720);
   bindings.get(cast<Placeholder>(fc2->getWeights()))->getHandle().clear(1.1);
-  auto *reshape2 = F->createReshape("reshape2", fc2, {8, 8, 15, 6});
+  auto *reshape2 = F->createReshape("reshape2", fc2, {8, 8, 15, 6}, "NHWC");
   auto *mul = F->createMul("mul", tanh, reshape2);
   auto *sigmoid2 = F->createSigmoid("sigmoid2", mul);
   auto *conv2 = F->createConv(bindings, "conv2", sigmoid2, 7, 3, 2, 1, 1);
   bindings.get(cast<Placeholder>(conv2->getFilter()))->getHandle().clear(0.3);
   bindings.get(cast<Placeholder>(conv2->getBias()))->getHandle().clear(1.3);
-  auto *reshape3 = F->createReshape("reshape3", conv2, {8, 8, 7, 4});
+  auto *reshape3 = F->createReshape("reshape3", conv2, {8, 8, 7, 4}, "NHWC");
   auto *sub = F->createSub("sub", reshape3, var4);
   auto *relu2 = F->createRELU("relu2", sub);
   auto *pool2 = F->createAvgPool("pool2", relu2, 3, 2, 1);
@@ -1103,7 +1185,7 @@ void inferTinyResnet(Tensor *input, Tensor *out, std::vector<Tensor> &weights,
   auto &mod = EE.getModule();
   auto *F = mod.createFunction("main");
 
-  auto *in = createPlaceholder(mod, bindings, input, "in");
+  auto *in = createPlaceholder(mod, bindings, input, "in", "NHWC");
   auto *conv1 = F->createConv(bindings, "conv1", in, 256, 1, 1, 0, 1);
   auto *conv2a = F->createConv(bindings, "conv2a", conv1, 64, 1, 1, 0, 1);
   auto *relu2a = F->createRELU("relu2a", conv2a);

@@ -415,23 +415,12 @@ TEST_F(PartitionerTest, Basic1Roofline) {
 
   // check compute costs
   std::unordered_map<std::string, float> expectedComputeTime{
-      {"initial_sigmoid", 128},
-      {"left_sigmoid2", 64},
-      {"fc_add_bias__3", 192},
-      {"right_sigmoid1", 128},
-      {"mul", 96},
-      {"fc_add_bias__2", 96},
-      {"ret", 0},
-      {"fc_dot", 21760},
-      {"left_sigmoid1", 128},
-      {"fc_add_bias", 192},
-      {"fc_dot__1", 10240},
-      {"right_sigmoid2", 64},
-      {"fc_add_bias__1", 192},
-      {"fc_dot__2", 5120},
-      {"fc_dot__3", 10240},
-      {"fc_dot__4", 5120},
-      {"fc_add_bias__4", 96},
+      {"initial_sigmoid", 128}, {"left_sigmoid2", 64},
+      {"right_sigmoid1", 128},  {"mul", 96},
+      {"ret_save", 0},          {"initial_fc", 21760},
+      {"left_fc1", 10240},      {"left_fc2", 5120},
+      {"left_sigmoid1", 128},   {"right_fc1", 10240},
+      {"right_fc2", 5120},      {"right_sigmoid2", 64},
   };
 
   BackendInfo backendInfo;
@@ -488,7 +477,7 @@ public:
 
   Expected<std::unique_ptr<CompiledFunction>>
   compile(Function *F, const BackendOptions &opts) const override {
-    return llvm::make_unique<MockFunction>(backendName,
+    return glow::make_unique<MockFunction>(backendName,
                                            runtime::RuntimeBundle::create(*F));
   }
 
@@ -977,6 +966,43 @@ TEST_F(PartitionerTest, partitionFromConfig) {
   heterogeneousPartitionValidation(dagList.get(), mod_);
 }
 
+/// Test user-defined partition with user specified logical devices through
+/// compilationContext.
+TEST_F(PartitionerTest, partitionFromConfigWithLogicalDevices) {
+  auto *input1 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {2, 10}, "input1", false);
+  auto *input2 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {2, 10}, "input2", false);
+  auto *input3 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {2, 10}, "input3", false);
+  auto *add1 = F_->createAdd("add1", input1, input2);
+  auto *add2 = F_->createAdd("add2", add1, input3);
+  auto *sub1 = F_->createSub("sub1", add1, add2);
+  F_->createSave("save", sub1);
+
+  std::vector<DeviceInfo> devices = {
+      {3072, "Interpreter"}, {3072, "Interpreter"}, {3072, "Interpreter"}};
+
+  // User-defined partition: p0->p1, p1->p2, p2->p1.
+  PartitionConfig partitionConfig;
+  partitionConfig.funcName = "main";
+  partitionConfig.numOfPartitions = 3;
+  partitionConfig.backendNames = {"Interpreter", "Interpreter", "Interpreter"};
+  partitionConfig.partitionNames = {"p0", "p1", "p2"};
+  partitionConfig.nodeToPartition = {{"add1", 0}, {"add2", 2}};
+  partitionConfig.logicalIDs = {{0}, {1}, {0, 1}};
+  auto partitioner = Partitioner(&mod_, devices, /*SaturateHost*/ false);
+  CompilationContext cctx;
+  cctx.partitionConfig = &partitionConfig;
+  auto result = partitioner.partition(cctx);
+  DAGListTy nodeList;
+  EXPECT_FALSE(ERR_TO_BOOL(result.takeError()));
+  nodeList = std::move(result.get());
+  // Check that p2 has both 0 and 1 for logicalDevices.
+  EXPECT_EQ(nodeList[0].nodes[2]->logicalDevices[0], 0);
+  EXPECT_EQ(nodeList[0].nodes[2]->logicalDevices[1], 1);
+}
+
 /// This one tests calling PartitionFromConfig directly.
 TEST_F(PartitionerTest, partitionFromConfigDirectCall) {
   createSimpleModule(mod_);
@@ -1006,8 +1032,8 @@ TEST_F(PartitionerTest, loadBalancedPartition) {
   ExecutionEngine EER, EEP;
   constexpr float range = 2.0;
   std::vector<ExecutionEngine *> engines{&EER, &EEP};
-  // Since compiling modifies the module and partitioning modifies the function,
-  // setup two EEs with identical functions for validation.
+  // Since compiling modifies the module and partitioning modifies the
+  // function, setup two EEs with identical functions for validation.
   for (auto EE : engines) {
     auto mod = &EE->getModule();
     F_ = mod->createFunction("main");

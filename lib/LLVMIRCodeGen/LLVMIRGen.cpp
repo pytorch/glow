@@ -94,31 +94,39 @@ LLVMIRGen::LLVMIRGen(const IRFunction *F, AllocationsInfo &allocationsInfo,
     : F_(F), allocationsInfo_(allocationsInfo), mainEntryName_(mainEntryName),
       libjitBC_(libjitBC) {}
 
-void LLVMIRGen::initTargetMachine(
-    llvm::StringRef target, llvm::StringRef arch, llvm::StringRef cpu,
-    const llvm::SmallVectorImpl<std::string> &targetFeatures,
-    llvm::CodeModel::Model codeModel, llvm::Reloc::Model relocModel) {
+/// Mutex to protect LLVM's TargetRegistry.
+static std::mutex initTargetMutex;
+
+void LLVMIRGen::initTargetMachine(const LLVMBackendOptions &opts) {
+  // LLVM's TargetRegistry is not thread safe so we add a critical section.
+  std::lock_guard<std::mutex> g(initTargetMutex);
+
   llvm::InitializeAllTargets();
   llvm::InitializeAllTargetMCs();
   llvm::InitializeAllAsmPrinters();
   llvm::InitializeAllAsmParsers();
-  llvm::TargetOptions targetOpts;
-  targetOpts.FloatABIType = floatABI;
 
-  if (target.empty()) {
+  llvm::TargetOptions targetOpts;
+  if (opts.getFloatABI().hasValue()) {
+    targetOpts.FloatABIType = opts.getFloatABI().getValue();
+  }
+  if (!opts.getABIName().empty()) {
+    targetOpts.MCOptions.ABIName = opts.getABIName();
+  }
+  if (opts.getTarget().empty()) {
     TM_.reset(llvm::EngineBuilder()
-                  .setCodeModel(codeModel)
-                  .setRelocationModel(relocModel)
+                  .setCodeModel(opts.getCodeModel())
+                  .setRelocationModel(opts.getRelocModel())
                   .setTargetOptions(targetOpts)
-                  .selectTarget(llvm::Triple(), arch, getHostCpuName(),
-                                getHostMachineAttributes()));
+                  .selectTarget(llvm::Triple(), opts.getArch(),
+                                getHostCpuName(), getHostMachineAttributes()));
   } else {
-    TM_.reset(
-        llvm::EngineBuilder()
-            .setCodeModel(codeModel)
-            .setRelocationModel(relocModel)
-            .setTargetOptions(targetOpts)
-            .selectTarget(llvm::Triple(target), arch, cpu, targetFeatures));
+    TM_.reset(llvm::EngineBuilder()
+                  .setCodeModel(opts.getCodeModel())
+                  .setRelocationModel(opts.getRelocModel())
+                  .setTargetOptions(targetOpts)
+                  .selectTarget(llvm::Triple(opts.getTarget()), opts.getArch(),
+                                opts.getCPU(), opts.getTargetFeatures()));
   }
   assert(TM_ && "Could not initialize the target machine");
 }
@@ -180,7 +188,6 @@ static void registerEmptyDiagHandler(llvm::LLVMContext &ctx) {
 }
 
 void LLVMIRGen::initCodeGen() {
-  instrNumbering_.reset(new InstructionNumbering(*F_));
   // Load the jit library as a new module.
   llmodule_ = loadStandardLibrary(&getLLVMContext(), "libjit.bc", libjitBC_);
   CHECK(llmodule_.get()) << "Unable to load the JIT library.";
@@ -194,28 +201,6 @@ void LLVMIRGen::initCodeGen() {
 
   // Assign the target information to the module.
   llmodule_->setDataLayout(getTargetMachine().createDataLayout());
-
-  // Create the entry function into the LLVM module.
-  auto int8PtrTy = llvm::Type::getInt8PtrTy(getLLVMContext());
-  auto sizeTPtrTy =
-      llvm::Type::getIntNPtrTy(getLLVMContext(), getLibjitSizeTWidth());
-  // The entry point has the following API:
-  // void entry(uint8_t *baseConstantWeightVars, uint8_t
-  // *baseInoutWeightVars, uint8_t *baseActivations, size_t *offsets);
-  llvm::Type *voidTy = llvm::Type::getVoidTy(getLLVMContext());
-  llvm::FunctionType *jitFuncTy = llvm::FunctionType::get(
-      voidTy, {int8PtrTy, int8PtrTy, int8PtrTy, sizeTPtrTy}, false);
-  auto *func = llvm::Function::Create(
-      jitFuncTy, llvm::Function::ExternalLinkage, "main", llmodule_.get());
-
-  // Setup the entry basic block and initialize the IR builder.
-  llvm::BasicBlock *entry_bb =
-      llvm::BasicBlock::Create(getLLVMContext(), "entry", func);
-  builder_ = llvm::make_unique<llvm::IRBuilder<>>(entry_bb);
-  // Terminate the function with a return instruction.
-  auto *ret = builder_->CreateRetVoid();
-  // Emit all the code before the retrun instruction.
-  builder_->SetInsertPoint(ret);
 
   // Initialize the debug information emission.
   initDebugInfo();
@@ -257,15 +242,40 @@ llvm::Type *LLVMIRGen::getElementType(llvm::IRBuilder<> &builder,
 }
 
 void LLVMIRGen::performCodeGen() {
+  // Create the entry function into the LLVM module.
+  auto int8PtrTy = llvm::Type::getInt8PtrTy(getLLVMContext());
+  auto sizeTPtrTy =
+      llvm::Type::getIntNPtrTy(getLLVMContext(), getLibjitSizeTWidth());
+  // The entry point has the following API:
+  // void entry(uint8_t *baseConstantWeightVars, uint8_t
+  // *baseInoutWeightVars, uint8_t *baseActivations, size_t *offsets);
+  llvm::Type *voidTy = llvm::Type::getVoidTy(getLLVMContext());
+  llvm::FunctionType *jitFuncTy = llvm::FunctionType::get(
+      voidTy, {int8PtrTy, int8PtrTy, int8PtrTy, sizeTPtrTy}, false);
+  llvmF_ = llvm::Function::Create(jitFuncTy, llvm::Function::ExternalLinkage,
+                                  "main", llmodule_.get());
+  emittedLLVMFunctions_.emplace_back(llvmF_);
+
+  // Setup the entry basic block and initialize the IR builder.
+  llvm::BasicBlock *entry_bb =
+      llvm::BasicBlock::Create(getLLVMContext(), "entry", llvmF_);
+  builder_ = glow::make_unique<llvm::IRBuilder<>>(entry_bb);
+  // Terminate the function with a return instruction.
+  auto *ret = builder_->CreateRetVoid();
+  // Emit all the code before the retrun instruction.
+  builder_->SetInsertPoint(ret);
+
+  instrNumbering_.reset(new InstructionNumbering(*F_));
+  generateFunctionDebugInfo();
   loadBaseAddresses(*builder_);
-
   generateLLVMIRForModule(*builder_);
+}
 
+void LLVMIRGen::finishCodeGen() {
   if (dumpIR) {
     llvm::outs() << "LLVM module before optimizations:\n";
     llmodule_->print(llvm::outs(), nullptr);
   }
-
   // Perform verification if no debug info is being emitted.
   // Otherwise, the verification is performed later by
   // generateDebugInfo, once the debug info emission is finalized.
@@ -282,7 +292,7 @@ void LLVMIRGen::performCodeGen() {
   optimizeLLVMModule(&getModule(), getTargetMachine());
 
   // Generate debug information.
-  generateDebugInfo();
+  generateModuleDebugInfo();
 
   if (dumpIR) {
     llvm::outs() << "LLVM module after optimizations:\n";
@@ -383,14 +393,18 @@ llvm::Value *LLVMIRGen::emitValueAddress(llvm::IRBuilder<> &builder,
 llvm::Value *
 LLVMIRGen::emitConstOffsetsArray(llvm::IRBuilder<> &builder,
                                  const AllocationsInfo &allocationsInfo) {
+  constexpr const char *offsetsArrayName = "offsetsArray";
   auto sizeTType = builder.getIntNTy(getLibjitSizeTWidth());
   std::vector<llvm::Constant *> elems(allocationsInfo.valueNumbers_.size());
+  size_t maxOffset = 0;
   for (auto &I : allocationsInfo.valueNumbers_) {
     auto *V = I.first;
     auto offset = I.second.second;
     elems[offset] = llvm::ConstantInt::get(
         sizeTType, allocationsInfo.allocatedAddress_.lookup(V));
+    maxOffset = std::max(maxOffset, offset);
   }
+  elems.resize(maxOffset + 1);
   auto *arr = llvm::ConstantArray::get(
       llvm::ArrayType::get(sizeTType, elems.size()), elems);
   // Ensure that the same casted global variable is used for the equivalent
@@ -398,14 +412,24 @@ LLVMIRGen::emitConstOffsetsArray(llvm::IRBuilder<> &builder,
   // LLVM does not do it automatically for this code pattern involving global
   // variables. It also reduces the number of variables.
   auto &constArrayVar = constArrayPtrs_[arr];
-  if (constArrayVar && constArrayVar->getType() == sizeTType->getPointerTo())
+  auto oldG =
+      getModule().getGlobalVariable(offsetsArrayName, /* allowInternal */ true);
+  if (constArrayVar && constArrayVar->getType() == sizeTType->getPointerTo()) {
     return constArrayVar;
-
+  }
+  if (oldG) {
+    oldG->setName("offsetsArrayOld");
+  }
   auto *M = builder.GetInsertBlock()->getModule();
-
   auto *G = new llvm::GlobalVariable(*M, arr->getType(), true,
-                                     llvm::GlobalValue::InternalLinkage, arr);
+                                     llvm::GlobalValue::InternalLinkage, arr,
+                                     offsetsArrayName);
   constArrayVar = builder.CreateBitCast(G, sizeTType->getPointerTo());
+  if (oldG) {
+    // Replace the old offsetsArray by the new one and remove the old.
+    oldG->replaceAllUsesWith(G);
+    oldG->eraseFromParent();
+  }
   return constArrayVar;
 }
 
@@ -526,37 +550,51 @@ void LLVMIRGen::markArgAsUnspecialized(llvm::Value *val) {
   dontSpecializeArgsSet_.insert(val);
 }
 
-llvm::Function *LLVMIRGen::getFunction(const std::string &name) {
-  auto *F = llmodule_->getFunction("libjit_" + name);
-  CHECK(F) << "Unable to load the function: libjit_" << name;
-  return F;
-}
-
-llvm::Function *LLVMIRGen::getFunction(const std::string &name,
-                                       ElemKind elemTy) {
-  auto get = [this](llvm::StringRef funcName) {
-    auto *F = llmodule_->getFunction(funcName);
-    CHECK(F) << "Unable to load the function: " << funcName.str();
-    return F;
-  };
+static std::string createName(const std::string &name, ElemKind elemTy) {
   switch (elemTy) {
   case ElemKind::FloatTy:
-    return get("libjit_" + name + "_f");
+    return name + "_f";
   case ElemKind::Int8QTy:
-    return get("libjit_" + name + "_i8");
+    return name + "_i8";
+  case ElemKind::Int16QTy:
+    return name + "_i16";
   case ElemKind::Int32QTy:
-    return get("libjit_" + name + "_i32");
+    return name + "_i32";
   case ElemKind::Int32ITy:
-    return get("libjit_" + name + "_i32");
+    return name + "_i32";
   case ElemKind::Int64ITy:
-    return get("libjit_" + name + "_u");
+    return name + "_u";
   case ElemKind::BoolTy:
-    return get("libjit_" + name + "_b");
+    return name + "_b";
   default:
     LOG(FATAL) << "Unsupported element type: "
                << Type::getElementName(elemTy).str();
   }
 }
+
+llvm::Function *
+LLVMIRGen::getFunction(const std::string &name,
+                       llvm::ArrayRef<glow::ElemKind> elemTyArray) {
+  auto strName = "libjit_" + name;
+
+  for (auto elTy : elemTyArray) {
+    strName = createName(strName, elTy);
+  }
+  auto *F = llmodule_->getFunction(strName);
+  CHECK(F) << "Unable to load the function: " << strName.c_str();
+  return F;
+}
+
+llvm::Function *LLVMIRGen::getFunction(const std::string &name) {
+  return getFunction(name, llvm::ArrayRef<ElemKind>{});
+}
+
+llvm::Function *LLVMIRGen::getFunction(const std::string &name,
+                                       ElemKind elemTy) {
+  return getFunction(name, llvm::ArrayRef<ElemKind>{elemTy});
+}
+
+llvm::Function *LLVMIRGen::getLLVMFunction() { return llvmF_; }
 
 llvm::CallInst *LLVMIRGen::createCall(llvm::IRBuilder<> &builder,
                                       llvm::Function *callee,
@@ -700,8 +738,11 @@ void LLVMIRGen::emitDataParallelKernelImpl(
   // Add a return.
   kernelBuilder.CreateRetVoid();
 
+  setCurrentDebugLocation(builder, *bundle.begin());
   // Emit a call of the kernel.
   createCall(builder, kernelFunc, buffers);
+  // Emit debug info for the generated data-parallel kernel.
+  generateFunctionDebugInfo(kernelFunc);
 }
 
 /// Emit the function that implements a data-parallel kernel and calls it.
@@ -2083,6 +2124,22 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     }
   }
 
+  case Kinded::Kind::AdaptiveAvgPoolInstKind: {
+    auto *PA = cast<AdaptiveAvgPoolInst>(I);
+
+    auto *dest = PA->getDest();
+    auto *src = PA->getSrc();
+    auto *destPtr = emitValueAddress(builder, dest);
+    auto *srcPtr = emitValueAddress(builder, src);
+
+    auto *destDims = emitValueDims(builder, dest);
+    auto *srcDims = emitValueDims(builder, src);
+
+    auto *F = getFunction("adaptive_avg_pool", dest->getElementType());
+    createCall(builder, F, {srcPtr, destPtr, srcDims, destDims});
+    break;
+  }
+
   case Kinded::Kind::AvgPoolGradInstKind: {
     auto *PAG = cast<AvgPoolGradInst>(I);
     auto *srcGrad = PAG->getSrcGrad();
@@ -2437,6 +2494,28 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     break;
   }
 
+  case Kinded::Kind::EmbeddingBagInstKind: {
+    auto *SI = cast<EmbeddingBagInst>(I);
+    auto *dest = SI->getDest();
+    auto *data = SI->getData();
+    auto *weights = SI->getWeights();
+    auto *indices = SI->getIndices();
+    auto *offsets = SI->getOffsets();
+    auto *destPtr = emitValueAddress(builder, dest);
+    auto *dataPtr = emitValueAddress(builder, data);
+    auto *weightsPtr = emitValueAddress(builder, weights);
+    auto *indicesPtr = emitValueAddress(builder, indices);
+    auto *offsetsPtr = emitValueAddress(builder, offsets);
+    auto *segments = emitConstSizeT(builder, offsets->dims()[0]);
+    auto *totalLength = emitConstSizeT(builder, indices->dims()[0]);
+    auto *lineSize = emitConstSizeT(builder, data->size() / data->dims()[0]);
+    auto *F = getFunction("embedding_bag", dest->getElementType());
+    createCall(builder, F,
+               {destPtr, dataPtr, weightsPtr, indicesPtr, offsetsPtr, segments,
+                lineSize, totalLength});
+    break;
+  }
+
   case Kinded::Kind::SparseLengthsWeightedSumGradInstKind: {
     auto *SI = cast<SparseLengthsWeightedSumGradInst>(I);
     auto *destGrad = SI->getDestGrad();
@@ -2515,6 +2594,30 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     break;
   }
 
+  case Kinded::Kind::EmbeddingBagByteRowwiseOffsetsInstKind: {
+    auto *N = cast<EmbeddingBagByteRowwiseOffsetsInst>(I);
+    auto *dest = N->getDest();
+    auto *data = N->getData();
+    auto *weights = N->getWeights();
+    auto *indices = N->getIndices();
+    auto *offsets = N->getOffsets();
+    auto *destPtr = emitValueAddress(builder, dest);
+    auto *dataPtr = emitValueAddress(builder, data);
+    auto *weightsPtr = emitValueAddress(builder, weights);
+    auto *indicesPtr = emitValueAddress(builder, indices);
+    auto *offsetsPtr = emitValueAddress(builder, offsets);
+    auto *segments = emitConstSizeT(builder, offsets->dims()[0]);
+    auto *numIndices = emitConstSizeT(builder, indices->dims()[0]);
+    auto *inLineSize = emitConstSizeT(builder, data->size() / data->dims()[0]);
+    auto *outLineSize = emitConstSizeT(builder, dest->size() / dest->dims()[0]);
+    auto *F = getFunction("embedding_bag_byte_rowwise_offsets",
+                          dest->getElementType());
+    createCall(builder, F,
+               {destPtr, dataPtr, weightsPtr, indicesPtr, offsetsPtr, segments,
+                numIndices, inLineSize, outLineSize});
+    break;
+  }
+
   case Kinded::Kind::SparseToDenseInstKind: {
     auto *STDI = llvm::cast<SparseToDenseInst>(I);
     auto *indices = STDI->getIndices();
@@ -2562,6 +2665,23 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *dataPtr = emitValueAddress(builder, data);
     auto *F = getFunction("write_timestamp");
     createCall(builder, F, {dataPtr, offset});
+    break;
+  }
+
+  case Kinded::Kind::ConvertToInstKind: {
+    auto *CTI = llvm::cast<ConvertToInst>(I);
+    auto *input = CTI->getInput();
+    auto *output = CTI->getResult();
+
+    auto *inputVal = emitValueAddress(builder, input);
+    auto *outptVal = emitValueAddress(builder, output);
+    auto *dimsVal = emitValueDims(builder, output);
+    auto *dimSizeVal = emitConstSizeT(builder, output->dims().size());
+
+    auto *F = getFunction("convertTo",
+                          {output->getElementType(), input->getElementType()});
+
+    createCall(builder, F, {outptVal, inputVal, dimsVal, dimSizeVal});
     break;
   }
 

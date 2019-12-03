@@ -56,6 +56,9 @@ enum class FunctionState {
   FuncLoaded,
 };
 
+/// Helper names for common tensor layouts.
+#define ANY_LAYOUT "*"
+
 class Module final {
   /// Stores the functions in the module.
   FunctionList functions_;
@@ -104,6 +107,12 @@ public:
   void registerNodeName(llvm::StringRef name) {
     // Don't care if it's already in the set.
     usedNodeNames_.insert(name);
+  }
+
+  /// Registers a name as used by a Storage node (Constant or Placeholder) in
+  /// this module.
+  void registerStorageName(llvm::StringRef name) {
+    usedStorageNames_.insert(name);
   }
 
   /// Return a pointer to a uniqued type \p T.
@@ -173,26 +182,34 @@ public:
   ///@{
 
   Placeholder *createPlaceholder(ElemKind T, llvm::ArrayRef<size_t> dims,
-                                 llvm::StringRef name, bool isTrainable);
+                                 llvm::StringRef name, bool isTrainable,
+                                 const std::string &layout = ANY_LAYOUT);
 
   Placeholder *createPlaceholder(TypeRef T, llvm::StringRef name,
-                                 bool isTrainable);
+                                 bool isTrainable,
+                                 const std::string &layout = ANY_LAYOUT);
 
   Placeholder *createPlaceholder(ElemKind T, llvm::ArrayRef<size_t> dims,
                                  float scale, int32_t offset,
-                                 llvm::StringRef name, bool isTrainable);
+                                 llvm::StringRef name, bool isTrainable,
+                                 const std::string &layout = ANY_LAYOUT);
 
-  Constant *createConstant(TypeRef T, llvm::StringRef name);
+  Constant *createConstant(TypeRef T, llvm::StringRef name,
+                           const std::string &layout = ANY_LAYOUT);
 
   Constant *createConstant(ElemKind T, llvm::ArrayRef<size_t> dims,
-                           llvm::StringRef name);
+                           llvm::StringRef name,
+                           const std::string &layout = ANY_LAYOUT);
 
   Constant *createConstant(ElemKind T, llvm::ArrayRef<size_t> dims, float scale,
-                           int32_t offset, llvm::StringRef name);
+                           int32_t offset, llvm::StringRef name,
+                           const std::string &layout = ANY_LAYOUT);
 
-  Constant *createConstant(llvm::StringRef name, const Tensor &tensor);
+  Constant *createConstant(llvm::StringRef name, const Tensor &tensor,
+                           const std::string &layout = ANY_LAYOUT);
 
-  Constant *createConstant(llvm::StringRef name, Tensor &&tensor);
+  Constant *createConstant(llvm::StringRef name, Tensor &&tensor,
+                           const std::string &layout = ANY_LAYOUT);
 
   ///@}
 
@@ -249,6 +266,10 @@ public:
   Module &operator=(const PlaceholderBindings &) = delete;
   Module &operator=(PlaceholderBindings &&) = delete;
 };
+
+// Forward Declaration for verify's optional parameter
+class Backend;
+struct CompilationContext;
 
 /// Represents the compute graph.
 class Function final : public Named {
@@ -538,6 +559,10 @@ public:
   /// output type \p outTy.
   ReluNode *createRELU(llvm::StringRef name, NodeValue input, TypeRef outTy);
 
+  /// Create a series of nodes representing a GeLU with the given \p name and \p
+  /// input. Result type will be implicitly set based on the \p input type.
+  Node *createGELU(llvm::StringRef name, NodeValue input);
+
   /// Create a PReLU node with the given \p name, \p input and  \p slope.
   /// Result type will be implicitly set based on the \p input type.
   PReluNode *createPRELU(llvm::StringRef name, NodeValue input,
@@ -605,10 +630,12 @@ public:
                                       NodeValue targets);
 
   ReshapeNode *createReshape(llvm::StringRef name, NodeValue input,
-                             UnsignedArrayRef shape);
+                             UnsignedArrayRef shape,
+                             llvm::StringRef layout = ANY_LAYOUT);
 
   TransposeNode *createTranspose(llvm::StringRef name, NodeValue input,
-                                 llvm::ArrayRef<unsigned_t> shuffle);
+                                 llvm::ArrayRef<unsigned_t> shuffle,
+                                 const std::string &layout = ANY_LAYOUT);
 
   /// Create a series of nodes that implement a Broadcast operation. The \p
   /// input Tensor is broadcasted based on \p newShape and along the \p axis,
@@ -696,6 +723,16 @@ public:
                            NodeValue beta, NodeValue scale, NodeValue mean,
                            NodeValue var, unsigned_t channelIdx = 0,
                            float epsilon = 1e-5, float momentum = 0.9);
+
+  /// Creates and \returns a LayerNormalizationNode that computes the layer
+  /// normalization of the inner most layers of \p input based on the shape of
+  /// \p scale and \p bias. \p epsilon is a small perterbation used to avoid
+  /// division by 0 during normalization.
+  LayerNormalizationNode *createLayerNormalization(llvm::StringRef name,
+                                                   NodeValue input,
+                                                   NodeValue scale,
+                                                   NodeValue bias,
+                                                   float epsilon = 1e-5);
 
   /// Bucketizes the input tensor based on monotonically increasing \p
   /// boundaries for each value in \p input. For each value x in input, the
@@ -886,6 +923,25 @@ public:
                                  NodeValue weights, NodeValue indices,
                                  NodeValue lengths);
 
+  /// Create an EmbeddingBag node.
+  EmbeddingBagNode *createEmbeddingBag(llvm::StringRef name, NodeValue data,
+                                       NodeValue weights, NodeValue indices,
+                                       NodeValue offsets);
+
+  /// Create an EmbeddingBagByteRowwiseOffsetsNode node.
+  EmbeddingBagByteRowwiseOffsetsNode *createEmbeddingBagByteRowwiseOffsets(
+      llvm::StringRef name, NodeValue data, NodeValue weights,
+      NodeValue indices, NodeValue offsets, bool useFP16Accumulation = false);
+
+  /// Same as \ref createEmbeddingBagByteRowwiseOffsets(), but
+  /// expects float input \p data, which is rowwise-quantized and fused
+  /// internally. \p fusedElemKind represents the element kind to use for the
+  /// final fused rowwise-quantized data.
+  EmbeddingBagByteRowwiseOffsetsNode *createEmbeddingBagByteRowwiseOffsets(
+      llvm::StringRef name, Tensor &data, NodeValue weights, NodeValue indices,
+      NodeValue offsets, ElemKind fusedElemKind = ElemKind::UInt8FusedQTy,
+      bool useFP16Accumulation = false);
+
   /// Same as \ref createSparseLengthsWeightedSum(), but with \p outTy
   /// specified.
   SparseLengthsWeightedSumNode *
@@ -938,42 +994,45 @@ public:
   /// Creates and \returns a node of \p name, performing the SparseLengthsSum
   /// operation, using fused rowwise quantization for the input \p data wherein
   /// the scales and offsets are fused inline with each row of data. \p data
-  /// must be ElemKind::UInt8FusedQTy. Gathers slices of the outer-most
-  /// dimension of data indexed by the \p indices vector, and then accumulates
-  /// them into len(\p lengths) entries: first Lengths[0] slices are aggregated
-  /// to Result[0], next Lengths[1] slices are aggregated to Result[1], etc.
-  /// I.e. sum(Lengths) must be equal to len(Indices). \p precision represents
-  /// what precision to use for Scale, Offset, and Result. If
-  /// \p useFP16Accumulation, then internal arithmetic will use FP16
+  /// must be of a fused ElemKind. Gathers slices of the outer-most dimension of
+  /// data indexed by the \p indices vector, and then accumulates them into
+  /// len(\p lengths) entries: first Lengths[0] slices are aggregated to
+  /// Result[0], next Lengths[1] slices are aggregated to Result[1], etc.  I.e.
+  /// sum(Lengths) must be equal to len(Indices).  The precision for the Result
+  /// is determined by the \p data input's ElemKind used for Scale and
+  /// Offset. If \p useFP16Accumulation, then internal arithmetic will use FP16
   /// accumulation; otherwise defaults to FP32.
   FusedRowwiseQuantizedSparseLengthsSumNode *
-  createFusedRowwiseQuantizedSparseLengthsSum(
-      llvm::StringRef name, Constant *data, NodeValue indices,
-      NodeValue lengths, ElemKind precision = ElemKind::FloatTy,
-      bool useFP16Accumulation = false);
+  createFusedRowwiseQuantizedSparseLengthsSum(llvm::StringRef name,
+                                              Constant *data, NodeValue indices,
+                                              NodeValue lengths,
+                                              bool useFP16Accumulation = false);
 
   /// Same as \ref createFusedRowwiseQuantizedSparseLengthsSum(), but expects
   /// float input \p data, which is rowwise-quantized and fused internally.
+  /// \p fusedElemKind represents the element kind to use for the final fused
+  /// rowwise-quantized data.
   FusedRowwiseQuantizedSparseLengthsSumNode *
   createFusedRowwiseQuantizedSparseLengthsSum(
       llvm::StringRef name, Tensor &data, NodeValue indices, NodeValue lengths,
-      ElemKind precision = ElemKind::FloatTy, bool useFP16Accumulation = false);
+      ElemKind fusedElemKind = ElemKind::UInt8FusedQTy,
+      bool useFP16Accumulation = false);
 
   /// Same as \ref createFusedRowwiseQuantizedSparseLengthsSum(), but i-th slice
   /// is multiplied by weights[i]. len(weights) must be equal to len(indices).
   FusedRowwiseQuantizedSparseLengthsWeightedSumNode *
   createFusedRowwiseQuantizedSparseLengthsWeightedSum(
       llvm::StringRef name, NodeValue data, NodeValue weights,
-      NodeValue indices, NodeValue lengths,
-      ElemKind precision = ElemKind::FloatTy, bool useFP16Accumulation = false);
+      NodeValue indices, NodeValue lengths, bool useFP16Accumulation = false);
 
   /// Same as \ref createFusedRowwiseQuantizedSparseLengthsWeightedSum(), but
   /// expects float input \p data, which is rowwise-quantized and fused
-  /// internally.
+  /// internally. \p fusedElemKind represents the element kind to use for the
+  /// final fused rowwise-quantized data.
   FusedRowwiseQuantizedSparseLengthsWeightedSumNode *
   createFusedRowwiseQuantizedSparseLengthsWeightedSum(
       llvm::StringRef name, Tensor &data, NodeValue weights, NodeValue indices,
-      NodeValue lengths, ElemKind precision = ElemKind::FloatTy,
+      NodeValue lengths, ElemKind fusedElemKind = ElemKind::UInt8FusedQTy,
       bool useFP16Accumulation = false);
 
   /// Given a vector of segment lengths, calculates offsets of each segment and
@@ -1151,9 +1210,16 @@ public:
                           NodeValue lambda1, NodeValue lambda2,
                           float epsilon = std::numeric_limits<float>::min());
 
-  /// Create a series of nodes for the Clip operator. It limits the given input
-  /// within an interval specified by the `min` and `max` arguments.
-  Node *createClip(llvm::StringRef name, NodeValue input, float min, float max);
+  /// Create a Clip node with the given \p name, \p input, minimum clip value
+  /// \p min, maximum clip value \p max and output type \p outTy.
+  ClipNode *createClip(llvm::StringRef name, NodeValue input, TypeRef outTy,
+                       float min, float max);
+
+  /// Create a Clip node with the given \p name, \p input, minimum clip value
+  /// \p min, maximum clip value \p max. Result type will be implicitly set
+  /// based on the \p input type.
+  ClipNode *createClip(llvm::StringRef name, NodeValue input, float min,
+                       float max);
   /// @}
 
   /// @name The builder functions below are identical to the builder functions
@@ -1339,9 +1405,11 @@ public:
   Function *clone(llvm::StringRef newName,
                   llvm::DenseMap<Node *, Node *> *map = nullptr);
 
-  /// Verify the correctness of the Function.
-  /// \returns true when the function is valid. False otherwise.
-  bool verify() const;
+  /// Verify the correctness of the Function. If \p backend is provided, checks
+  /// backend-specific layout requirements. Else checks the requirements based
+  /// on Glow's "canonical" layout. \returns true when the function is valid.
+  /// False otherwise.
+  bool verify(const Backend *backend = nullptr) const;
 
   /// Dump a textual representation of the Function into provided output stream.
   void dump() const;
@@ -1404,6 +1472,10 @@ Node *recursiveClone(Function *newF, Node *node, NodeMap &currToNew);
   { 0u, 2u, 3u, 1u }
 #define NHWC2NCHW                                                              \
   { 0u, 3u, 1u, 2u }
+#define HWCN2NHWC                                                              \
+  { 3u, 0u, 1u, 2u }
+#define NHWC2HWNC                                                              \
+  { 1u, 2u, 0u, 3u }
 
 llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const Module &mod);
 

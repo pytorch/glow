@@ -99,6 +99,8 @@ struct DAGNode {
   /// Runtime bundle containing all the symbol information for this network at
   /// runtime.
   std::unique_ptr<RuntimeBundle> runtimeBundle;
+  /// Size of constants and placeholders used by the function.
+  uint64_t size{0};
 
   /// Backend Hints object, this is populated by the Partitioner and is used
   /// to communicated hints to the compiler, like SRAM pinning and resource
@@ -192,6 +194,8 @@ struct PartitionConfig {
   std::vector<std::string> backendNames;
   /// The name for each partition. partitionNames.size() == numOfPartitions.
   std::vector<std::string> partitionNames;
+  /// The logical IDs to assign to the partitions.
+  std::vector<std::vector<unsigned>> logicalIDs;
   /// The mapping between nodes' name to Partition ids. Assume there are n nodes
   /// and m partitions. We have 2 types of valid mapping: 1. all nodes are
   /// mapped to a partition. 2. For i-th (0 <= i < m) partition, the nodes

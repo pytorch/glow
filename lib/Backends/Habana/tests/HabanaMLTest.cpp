@@ -34,6 +34,7 @@ std::set<std::string> glow::backendTestBlacklist = {
     "convNetForImageRecognition/0",
     "testFindPixelRegression/0",
     "matrixRotationRecognition/0",
+    "learnSparseLengthsSumEmbeddings/0",
     "learnSparseLengthsWeightedSumEmbeddings/0",
     "learnSparseLengthsWeightedSumWeights/0",
 };

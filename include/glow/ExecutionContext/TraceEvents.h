@@ -166,14 +166,13 @@ class TraceContext {
   std::map<int, std::string> threadNames_;
 
   /// The detail level of tracing for this run.
-  TraceLevel traceLevel_{TraceLevel::NONE};
+  int traceLevel_{TraceLevel::NONE};
 
   /// Lock around traceEvents_.
   std::mutex lock_;
 
 public:
-  TraceContext(TraceLevel level) : traceLevel_(level) {}
-  TraceContext(int level) : traceLevel_((TraceLevel)level) {}
+  TraceContext(int level) : traceLevel_(level) {}
 
   /// \returns TraceEvents for the last run.
   std::vector<TraceEvent> &getTraceEvents() { return traceEvents_; }
@@ -182,7 +181,7 @@ public:
   llvm::ArrayRef<TraceEvent> getTraceEvents() const { return traceEvents_; }
 
   /// \returns the level of verbosity allowed for TraceEvents.
-  TraceLevel getTraceLevel() { return traceLevel_; }
+  int getTraceLevel() { return traceLevel_; }
 
   /// Sets the level of verbosity for TraceEvents.
   void setTraceLevel(TraceLevel level) { traceLevel_ = level; }

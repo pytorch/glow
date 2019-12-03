@@ -39,16 +39,20 @@ class BatchGemmBench : public Benchmark {
   std::unique_ptr<runtime::HostManager> hostManager_;
   std::vector<std::unique_ptr<ExecutionContext>> contexts_;
   size_t asyncLaunchSize_;
+  size_t numCores_;
   const char *backendStr_;
   ElemKind dtype_;
   size_t elementSize_;
+  const char *devId_;
 
 public:
   BatchGemmBench(size_t batchSize_, size_t m_, size_t n_, size_t numLayers_,
-                 size_t asyncLaunchSize_, const char *backendStr_,
-                 const char *dtypeStr_)
+                 size_t asyncLaunchSize_, size_t numCores_,
+                 const char *backendStr_, const char *dtypeStr_,
+                 const char *devId_ = nullptr)
       : batchSize_(batchSize_), m_(m_), n_(n_), numLayers_(numLayers_),
-        asyncLaunchSize_(asyncLaunchSize_), backendStr_(backendStr_) {
+        asyncLaunchSize_(asyncLaunchSize_), numCores_(numCores_),
+        backendStr_(backendStr_), devId_(devId_) {
 
     dtype_ = ElemKind::Float16Ty;
     elementSize_ = 2;
@@ -71,62 +75,81 @@ public:
 
     // Setup host manager
     std::vector<std::unique_ptr<runtime::DeviceConfig>> configs;
-    auto config = llvm::make_unique<runtime::DeviceConfig>(backendStr_);
+    auto config = glow::make_unique<runtime::DeviceConfig>(backendStr_);
+    if (devId_ != nullptr) {
+      config->parameters["DeviceID"] = devId_;
+    }
     configs.push_back(std::move(config));
-    hostManager_ = llvm::make_unique<runtime::HostManager>(std::move(configs));
+    hostManager_ = glow::make_unique<runtime::HostManager>(std::move(configs));
 
     std::unique_ptr<Module> mod(new Module);
     auto fn = mod->createFunction("singleNode");
 
-    Placeholder *A;
-    Placeholder *B;
-    SaveNode *S;
+    std::vector<Placeholder *> A(numCores_);
+    std::vector<Placeholder *> B(numCores_);
+    std::vector<SaveNode *> S(numCores_);
 
-    A = mod->createPlaceholder(dtype_, {batchSize_, m_, m_}, "A", false);
-    B = mod->createPlaceholder(dtype_, {batchSize_, m_, n_}, "B", false);
+    // Calculate the batch size per core
+    auto batchSizePerCore = getBatchSizePerCore(batchSize_, numCores_);
+
+    for (size_t core = 0; core < numCores_; core++) {
+      if (batchSizePerCore[core] == 0)
+        continue;
+      A[core] = mod->createPlaceholder(dtype_, {batchSizePerCore[core], m_, m_},
+                                       "A" + std::to_string(core), false);
+      B[core] = mod->createPlaceholder(dtype_, {batchSizePerCore[core], m_, n_},
+                                       "B" + std::to_string(core), false);
+    }
 
     // for each context, add input bindings
-    for (int i = 0; i < asyncLaunchSize_; i++) {
-      if (dtype_ == ElemKind::FloatTy) {
-        contexts_[i]
-            ->getPlaceholderBindings()
-            ->allocate(A)
-            ->getHandle<float>()
-            .randomize(0.0f, 1.0f, mod->getPRNG());
-        contexts_[i]
-            ->getPlaceholderBindings()
-            ->allocate(B)
-            ->getHandle<float>()
-            .randomize(0.0f, 1.0f, mod->getPRNG());
-      } else if (dtype_ == ElemKind::Float16Ty) {
-        contexts_[i]
-            ->getPlaceholderBindings()
-            ->allocate(A)
-            ->getHandle<float16_t>()
-            .randomize(0.0f, 1.0f, mod->getPRNG());
-        contexts_[i]
-            ->getPlaceholderBindings()
-            ->allocate(B)
-            ->getHandle<float16_t>()
-            .randomize(0.0f, 1.0f, mod->getPRNG());
+    for (size_t core = 0; core < numCores_; core++) {
+      if (batchSizePerCore[core] == 0)
+        continue;
+      for (int i = 0; i < asyncLaunchSize_; i++) {
+        if (dtype_ == ElemKind::FloatTy) {
+          contexts_[i]
+              ->getPlaceholderBindings()
+              ->allocate(A[core])
+              ->getHandle<float>()
+              .randomize(0.0f, 1.0f, mod->getPRNG());
+          contexts_[i]
+              ->getPlaceholderBindings()
+              ->allocate(B[core])
+              ->getHandle<float>()
+              .randomize(0.0f, 1.0f, mod->getPRNG());
+        } else if (dtype_ == ElemKind::Float16Ty) {
+          contexts_[i]
+              ->getPlaceholderBindings()
+              ->allocate(A[core])
+              ->getHandle<float16_t>()
+              .randomize(0.0f, 1.0f, mod->getPRNG());
+          contexts_[i]
+              ->getPlaceholderBindings()
+              ->allocate(B[core])
+              ->getHandle<float16_t>()
+              .randomize(0.0f, 1.0f, mod->getPRNG());
+        }
+      }
+
+      Node *cur = B[core];
+      for (size_t layer = 0; layer < numLayers_; layer++) {
+        auto *bmm = fn->createBatchMatMul(
+            "batchmatmul" + std::to_string(layer) + "_" + std::to_string(core),
+            A[core], cur);
+        cur = bmm;
+      }
+
+      S[core] = fn->createSave("save" + std::to_string(core), cur);
+
+      // for each context, add output bindings
+      for (int i = 0; i < asyncLaunchSize_; i++) {
+        contexts_[i]->getPlaceholderBindings()->allocate(
+            S[core]->getPlaceholder());
       }
     }
 
-    Node *cur = B;
-    for (size_t layer = 0; layer < numLayers_; layer++) {
-      auto *bmm = fn->createBatchMatMul("batchmatmul", A, cur);
-      cur = bmm;
-    }
-
-    S = fn->createSave("save", cur);
-
-    // for each context, add output bindings
-    for (int i = 0; i < asyncLaunchSize_; i++) {
-      contexts_[i]->getPlaceholderBindings()->allocate(S->getPlaceholder());
-    }
-
     CompilationContext ctx;
-    hostManager_->addNetwork(std::move(mod), ctx);
+    EXIT_ON_ERR(hostManager_->addNetwork(std::move(mod), ctx));
   }
 
   void run() override {
@@ -167,26 +190,35 @@ public:
 };
 
 int main(int argc, char *argv[]) {
-  assert(argc == 9);
+  assert(argc == 10 || argc == 11);
   size_t batchSize = atoi(argv[1]);
   size_t m = atoi(argv[2]);
   size_t n = atoi(argv[3]);
   size_t numLayers = atoi(argv[4]);
   size_t numReps = atoi(argv[5]);
   size_t numAsyncLaunches = atoi(argv[6]);
-  const char *backendStr = argv[7];
-  const char *dtypeStr = argv[8];
+  size_t numCores = atoi(argv[7]);
+  const char *backendStr = argv[8];
+  const char *dtypeStr = argv[9];
+  char *dev_id = nullptr;
+
+  if (argc > 10) {
+    dev_id = argv[10];
+    printf("Setting backend device: \"%s\"\n", dev_id);
+  }
+
   assert(numReps > 0);
 
-  BatchGemmBench b(batchSize, m, n, numLayers, numAsyncLaunches, backendStr,
-                   dtypeStr);
+  BatchGemmBench b(batchSize, m, n, numLayers, numAsyncLaunches, numCores,
+                   backendStr, dtypeStr, dev_id);
 
   auto times = bench(&b, numReps);
   for (auto t : times) {
-    printf(
-        "BenchResult,BatchGemmBench,SW,%zu,%zu,%zu,%zu,%zu,%zu,%s,%s,%f,%f\n",
-        batchSize, m, n, numLayers, numReps, numAsyncLaunches, backendStr,
-        dtypeStr, t / numAsyncLaunches, b.gflops() * numAsyncLaunches / t);
+    printf("BenchResult,BatchGemmBench,SW,%zu,%zu,%zu,%zu,%zu,%zu,%zu,%s,%s,%f,"
+           "%f\n",
+           batchSize, m, n, numLayers, numReps, numAsyncLaunches, numCores,
+           backendStr, dtypeStr, t / numAsyncLaunches,
+           b.gflops() * numAsyncLaunches / t);
   }
   double min = *(std::min_element(times.begin(), times.end()));
   size_t midElt = times.size() / 2;
@@ -194,10 +226,10 @@ int main(int argc, char *argv[]) {
   double median = times[midElt];
   double median_runtime = median / ((double)numAsyncLaunches);
   double min_runtime = min / ((double)numAsyncLaunches);
-  printf(
-      "BenchSummary,BatchGemmBench,SW,%zu,%zu,%zu,%zu,%zu,%zu,%s,%s,%f,%f,%f,%"
-      "f\n",
-      batchSize, m, n, numLayers, numReps, numAsyncLaunches, backendStr,
-      dtypeStr, median_runtime, min_runtime, b.gflops() / median_runtime,
-      b.gflops() / min_runtime);
+  printf("BenchSummary,BatchGemmBench,SW,%zu,%zu,%zu,%zu,%zu,%zu,%zu,%s,%s,%f,%"
+         "f,%f,%"
+         "f\n",
+         batchSize, m, n, numLayers, numReps, numAsyncLaunches, numCores,
+         backendStr, dtypeStr, median_runtime, min_runtime,
+         b.gflops() / median_runtime, b.gflops() / min_runtime);
 }

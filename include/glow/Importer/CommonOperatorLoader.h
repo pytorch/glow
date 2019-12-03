@@ -78,11 +78,16 @@ class CommonOperatorLoader : public ProtobufLoader {
     }
 
     LoadWeightResult result;
-    result.t = llvm::make_unique<Tensor>();
+    result.t = glow::make_unique<Tensor>();
 
     std::vector<size_t> dims;
     for (unsigned i = 0; i < in.dimensions; ++i) {
       dims.push_back(in.shape[i]);
+    }
+
+    // TODO(garret): create cached placeholder if in.isOffline is 1
+    if (in.isOffline) {
+      RETURN_ERR(strFormat("Cannot handle offline tensor %s yet", in.name));
     }
 
     // Load unquantized tensor.
@@ -138,8 +143,8 @@ class CommonOperatorLoader : public ProtobufLoader {
     } else {
       Type scalesTy(ElemKind::FloatTy, llvm::makeArrayRef({qparams}));
       Type offsetsTy(ElemKind::Int32ITy, llvm::makeArrayRef({qparams}));
-      result.scales = llvm::make_unique<Tensor>((void *)in.scales, &scalesTy);
-      result.offsets = llvm::make_unique<Tensor>((void *)in.biases, &offsetsTy);
+      result.scales = glow::make_unique<Tensor>((void *)in.scales, &scalesTy);
+      result.offsets = glow::make_unique<Tensor>((void *)in.biases, &offsetsTy);
     }
 
     if (in.dataType == ONNXIFI_DATATYPE_UINT8) {
@@ -819,6 +824,21 @@ protected:
     return Error::success();
   }
 
+  Error loadEmbeddingBag(const OpType &op) {
+    NodeValue in0;
+    ASSIGN_VALUE_OR_RETURN_ERR(in0, getNodeValueByName(op.input(0)));
+    NodeValue in1;
+    ASSIGN_VALUE_OR_RETURN_ERR(in1, getNodeValueByName(op.input(1)));
+    NodeValue in2;
+    ASSIGN_VALUE_OR_RETURN_ERR(in2, getNodeValueByName(op.input(2)));
+    NodeValue in3;
+    ASSIGN_VALUE_OR_RETURN_ERR(in3, getNodeValueByName(op.input(3)));
+    auto *node =
+        G_.createEmbeddingBag(loadOperatorName(op), in0, in1, in2, in3);
+    RETURN_IF_ERR(addNodeAsOutput(op, node));
+    return Error::success();
+  }
+
   Error loadLengthsToRanges(const OpType &op) {
     NodeValue in;
     ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
@@ -1146,6 +1166,10 @@ protected:
     }
     if (typeName == "SparseLengthsWeightedSum") {
       RETURN_IF_ERR(loadSparseLengthsWeightedSum(op));
+      return true;
+    }
+    if (typeName == "EmbeddingBag") {
+      RETURN_IF_ERR(loadEmbeddingBag(op));
       return true;
     }
     if (typeName == "LengthsToRanges") {

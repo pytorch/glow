@@ -86,6 +86,8 @@ public:
   TypeRef getType() const;
   /// Set the type of the referenced value.
   void setType(TypeRef ty);
+  /// Set the type of the referenced value. Does not check that dims() match.
+  void setTypeUnsafe(TypeRef ty);
 
   /// Methods that forward to the result type (that must be valid):
   /// @{

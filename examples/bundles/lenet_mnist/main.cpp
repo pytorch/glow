@@ -207,7 +207,7 @@ void parseCommandLineOptions(int argc, char **argv) {
 /// initialize.
 GLOW_MEM_ALIGN(LENET_MNIST_MEM_ALIGN)
 uint8_t constantWeight[LENET_MNIST_CONSTANT_MEM_SIZE] = {
-#include "lenet_mnist.inc"
+#include "lenet_mnist.weights.txt"
 };
 
 /// Statically allocate memory for mutable weights (model input/output data).
@@ -222,7 +222,7 @@ uint8_t activations[LENET_MNIST_ACTIVATIONS_MEM_SIZE];
 uint8_t *inputAddr = GLOW_GET_ADDR(mutableWeight, LENET_MNIST_data);
 
 /// Bundle output data absolute address.
-uint8_t *outputAddr = GLOW_GET_ADDR(mutableWeight, LENET_MNIST_softmax__1);
+uint8_t *outputAddr = GLOW_GET_ADDR(mutableWeight, LENET_MNIST_softmax);
 
 /// Copy the pre-processed images into the mutable region of the bundle.
 static void initInputImages() {

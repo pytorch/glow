@@ -243,5 +243,11 @@ template <typename FUN, typename ARR>
 ContiguousPlaceholders getContiguousPlaceHolder(const ARR &holders,
                                                 const FUN &F);
 
+/// \returns true if \p V is capable of handling a partial tensor as input.
+bool allowsPartialInput(const Placeholder *V, const Function *F);
+
+/// \returns true if \p V is used in \p F; false otherwise.
+bool usedInFunction(const Placeholder *V, const Function *F);
+
 } // end namespace glow
 #endif // GLOW_BACKENDS_BACKENDUTILS_H

@@ -31,7 +31,7 @@ DAGListTy PartitionerBase::doPartitioning(llvm::StringRef funcName,
                                           bool saveDAG) {
   DAGListTy partitions;
   // Add a dummy node to make sure that a DAG has a single entrance.
-  DAGNodePtr DAGRoot = llvm::make_unique<DAGNode>();
+  DAGNodePtr DAGRoot = glow::make_unique<DAGNode>();
   DAGNodePtrVec nodes;
   DAGRoot->logicalDevices = {0};
   DAGRoot->name = funcName;
@@ -56,10 +56,11 @@ DAGListTy PartitionerBase::doPartitioning(llvm::StringRef funcName,
   llvm::DenseMap<Function *, DAGNode *> funcDAG;
   for (auto *subF : mapping.getPartitions()) {
     if (funcDAG.find(subF) == funcDAG.end()) {
-      std::unique_ptr<DAGNode> subDAG = llvm::make_unique<DAGNode>();
+      std::unique_ptr<DAGNode> subDAG = glow::make_unique<DAGNode>();
       subDAG->name = subF->getName();
       subDAG->logicalDevices = mapping.getLogicalDeviceIDList(subF);
       subDAG->backendName = mapping.getPartitionBackendName(subF);
+      subDAG->size = mapping.getGraphMemInfo(subF).getTotalMemSize();
       funcDAG[subF] = subDAG.get();
       nodes.push_back(std::move(subDAG));
     }
@@ -99,10 +100,11 @@ DAGListTy PartitionerBase::doPartitioning(llvm::StringRef funcName,
         // Check if a DAGNode for subF's parent is created or not. If not,
         // create one.
         if (funcDAG.find(inputF) == funcDAG.end()) {
-          std::unique_ptr<DAGNode> subDAG = llvm::make_unique<DAGNode>();
+          std::unique_ptr<DAGNode> subDAG = glow::make_unique<DAGNode>();
           subDAG->name = inputF->getName();
           subDAG->logicalDevices = mapping.getLogicalDeviceIDList(inputF);
           subDAG->backendName = mapping.getPartitionBackendName(inputF);
+          subDAG->size = mapping.getGraphMemInfo(inputF).getTotalMemSize();
           funcDAG[inputF] = subDAG.get();
           nodes.push_back(std::move(subDAG));
         }

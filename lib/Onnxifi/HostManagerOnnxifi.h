@@ -58,10 +58,12 @@ public:
   static size_t makeUniqueGraphId();
 
   /// Init Glow graph based on the ONNX model \p onnxModel and
-  /// static trained weights \p weightDescriptors.
-  onnxStatus
-  initGraph(const void *onnxModel, size_t onnxModelSize, uint32_t weightCount,
-            const onnxTensorDescriptorV1 *weightDescriptors) override;
+  /// static trained weights \p weightDescriptors. Weights can be read in later
+  /// by a \p deferedBlobReader.
+  onnxStatus initGraph(const void *onnxModel, size_t onnxModelSize,
+                       uint32_t weightCount,
+                       const onnxTensorDescriptorV1 *weightDescriptors,
+                       void *deferedBlobReader) override;
 
   /// Async run HostManagerGraph with the given ExecutionContext \p ctx then
   /// signal \p outputEvent when done. \p phNameToOnnxTensorOutputs is a mapping

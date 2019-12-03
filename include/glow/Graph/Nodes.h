@@ -36,7 +36,8 @@ public:
     OutputIdx = 0,
   };
 
-  Storage(Kinded::Kind k, llvm::StringRef name) : Node(k, name) {}
+  Storage(Kinded::Kind k, llvm::StringRef name, const std::string &layout)
+      : Node(k, name), layout_(layout) {}
 
   /// \return the single output value of the node.
   NodeValue getOutput() { return getNthResult(0); }
@@ -51,6 +52,7 @@ public:
   NodeValue getNthInput(unsigned idx);
   llvm::StringRef getOutputName(unsigned idx) const;
   bool hasSideEffects() const;
+  bool isDataParallel() const { return false; }
   Node *clone() const;
   /// @}
 
@@ -67,6 +69,13 @@ public:
     return k->getKind() == Kinded::Kind::ConstantKind ||
            k->getKind() == Kinded::Kind::PlaceholderKind;
   }
+
+  /// \return the layout of the storage.
+  const std::string &getLayout() const { return layout_; }
+
+private:
+  /// Specifies the Storage's layout
+  const std::string layout_;
 };
 
 class Constant : public Storage {
@@ -75,14 +84,14 @@ class Constant : public Storage {
 
 public:
   /// Create a new constant and initialize its payload.
-  Constant(llvm::StringRef name, TypeRef Ty)
-      : Storage(Kinded::Kind::ConstantKind, name) {
+  Constant(llvm::StringRef name, TypeRef Ty, const std::string &layout)
+      : Storage(Kinded::Kind::ConstantKind, name, layout) {
     addResult(Ty);
     payload_.reset(*Ty);
   }
 
-  Constant(llvm::StringRef name, Tensor &&payload)
-      : Storage(Kinded::Kind::ConstantKind, name),
+  Constant(llvm::StringRef name, Tensor &&payload, const std::string &layout)
+      : Storage(Kinded::Kind::ConstantKind, name, layout),
         payload_(std::move(payload)) {
     addResult(&payload_.getType());
   }
@@ -121,6 +130,8 @@ public:
 
   void setPayloadType(TypeRef ty) { payload_.setType(ty); }
 
+  bool isDataParallel() const { return false; }
+
   std::string getDebugDesc() const;
 
   llvm::hash_code getHash() const;
@@ -140,10 +151,15 @@ class Placeholder : public Storage {
   /// Specifies if associated Tensors should be zeroed when allocated.
   bool allocZero_{false};
 
+  /// Specifies if this is a static placeholder, this means it is set once
+  /// before the first network run and will be reused by following runs.
+  bool isStatic_{false};
+
 public:
   /// Create a new placeholder.
-  Placeholder(llvm::StringRef name, TypeRef Ty, bool isTrainable)
-      : Storage(Kinded::Kind::PlaceholderKind, name),
+  Placeholder(llvm::StringRef name, TypeRef Ty, bool isTrainable,
+              const std::string &layout)
+      : Storage(Kinded::Kind::PlaceholderKind, name, layout),
         isTrainable_(isTrainable) {
     addResult(Ty);
   }
@@ -155,12 +171,20 @@ public:
   /// \returns True if associated Tensors should be zeroed when allocated.
   bool allocZero() const { return allocZero_; }
 
+  /// Update the isStatic_ field.
+  void setStatic(bool isStatic) { isStatic_ = isStatic; }
+
+  /// Get the status of the isStatic_ flag.
+  bool isStatic() const { return isStatic_; }
+
   /// Sets whether or not associated Tensors should be zeroed.
   void setAllocZero(bool on = true) { allocZero_ = on; }
 
   static bool classof(const Kinded *k) {
     return k->getKind() == Kinded::Kind::PlaceholderKind;
   }
+
+  bool isDataParallel() const { return false; }
 
   std::string getDebugDesc() const;
 

@@ -888,7 +888,8 @@ TEST(Graph, parentLink) {
   ExecutionEngine EE;
 
   auto &mod = EE.getModule();
-  Constant *V = new Constant("V", mod.uniqueType(ElemKind::FloatTy, {3, 32}));
+  Constant *V =
+      new Constant("V", mod.uniqueType(ElemKind::FloatTy, {3, 32}), ANY_LAYOUT);
 
   // Variables don't belong to any function...
   EXPECT_EQ(V->getParent(), nullptr);
@@ -1497,7 +1498,7 @@ TEST(Graph, hookTest) {
   auto const &nodes = hooked.function->getNodes();
   ASSERT_EQ(mod.getPlaceholders().size(), 3);
   ASSERT_EQ(nodes.size(), 2);
-  auto const *hookSave = hooked.save;
+  auto const *hookSave = *hooked.saves.begin();
   ASSERT_TRUE(hookSave);
   auto *inp = llvm::dyn_cast<ReluNode>(hookSave->getInput());
   ASSERT_TRUE(inp);
@@ -1814,6 +1815,7 @@ TEST(Graph, testDumpStructure) {
   std::string mesN = K->toString();
   std::string expectMes = R"(Placeholder
 name : "input"
+layout : *
 output : float<4 x 320 x 200 x 100 x 3>
 users : 0
 trainable : 1
@@ -1857,6 +1859,7 @@ Indices : index64<10 x 3>
   std::string expectMesM = R"(Module structure:
 Constant
 name : "dummy"
+layout : *
 output : float<1 x 1>
 users : 0
 

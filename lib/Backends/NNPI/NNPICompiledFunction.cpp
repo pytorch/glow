@@ -18,6 +18,8 @@
 #include "Importer.h"
 #include "nnpi_transformer.h"
 
+#include "glow/Backend/BackendUtils.h"
+
 using namespace glow;
 
 Error NNPICompiledFunction::compile(Function *F, const BackendOptions &opts) {
@@ -63,6 +65,11 @@ Error NNPICompiledFunction::compile(Function *F, const BackendOptions &opts) {
     }
   }
 
+  const auto numCores = EnvIceCores();
+  if (!numCores.empty()) {
+    config_.numCoresToUse = std::stoul(numCores);
+  }
+
   if (UseIceT() || UseInferenceAPI()) {
     auto filename = ICETFilename();
     LOG_IF_NOT_RETURN_LLVMERROR(filename.length() < NNPI_MAX_STRING_LEN,
@@ -94,6 +101,7 @@ Error NNPICompiledFunction::compile(Function *F, const BackendOptions &opts) {
       LOG_NNPI_ERROR_RETURN_LLVMERROR(
           nnpiNetworkCompileToStream(network_, &config_, &outFileStream, NULL),
           "Failed NNPI Compile");
+
       DBG_MEM_USAGE("NNPICompiledFunction done compile <<");
     } else // Compile to file.
     {
@@ -101,12 +109,36 @@ Error NNPICompiledFunction::compile(Function *F, const BackendOptions &opts) {
           nnpiNetworkCompileToFile(network_, &config_, filename.c_str(), NULL),
           "Failed NNPI Compile");
     }
+    if (UseInferenceAPI()) {
+      DBG_MEM_USAGE("NNPICompiledFunction destroy network");
+      // NNPINetwork is not needed anymore on the inferfence api path.
+      // Once the complied stream is loaded, query on the network can be done
+      // using the host network instead.
+      LOG_NNPI_ERROR(nnpiNetworkDestroy(network_),
+                     "Failed NNPI Network Destroy");
+      network_ = NNPI_INVALID_NNPIHANDLE;
+      DBG_MEM_USAGE("NNPICompiledFunction destroy network done");
+    }
   }
+
+  // Determine and save what inputs can be treated as partial. Need to do this
+  // while we still have access to F.
+  for (auto const &P : F->getParent()->getPlaceholders()) {
+    if (!usedInFunction(P, F)) {
+      continue;
+    }
+    if (allowsPartialInput(P, F)) {
+      partialInputs_.insert(P);
+    }
+  }
+
   return Error::success();
 }
 
 NNPICompiledFunction::~NNPICompiledFunction() {
-  LOG_NNPI_ERROR(nnpiNetworkDestroy(network_), "Failed NNPI Network Destroy");
+  if (network_ != NNPI_INVALID_NNPIHANDLE) {
+    LOG_NNPI_ERROR(nnpiNetworkDestroy(network_), "Failed NNPI Network Destroy");
+  }
 }
 
 BlockStream &NNPICompiledFunction::lockCompiledStream() {

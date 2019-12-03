@@ -20,6 +20,7 @@
 #include "glow/Graph/Node.h"
 
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/Support/FormatVariadic.h"
 
 using namespace glow;
 
@@ -27,8 +28,18 @@ HookedFunction glow::hookOutput(Function *F, Node *node) {
   NodeMap currToNew;
   auto *newF = F->getParent()->createFunction("hook");
   Node *hooked = recursiveClone(newF, node, currToNew);
-  auto *save = newF->createSave("hook_save", hooked);
-  return HookedFunction{newF, save, save->getPlaceholder()};
+
+  std::list<SaveNode *> saves;
+  std::list<Placeholder *> placeholders;
+
+  for (unsigned i = 0; i < hooked->getNumResults(); ++i) {
+    auto *save = newF->createSave(llvm::formatv("hook_save_{}", i).str(),
+                                  hooked->getNthResult(i));
+    saves.emplace_back(save);
+    placeholders.emplace_back(save->getPlaceholder());
+  }
+
+  return HookedFunction{newF, std::move(saves), std::move(placeholders)};
 }
 
 HookedFunction glow::hookOutput(Function *F, llvm::StringRef nodeName) {

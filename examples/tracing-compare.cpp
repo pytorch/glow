@@ -146,9 +146,9 @@ int main(int argc, char **argv) {
       supportedBackends.size());
 
   for (unsigned i = 0, e = supportedBackends.size(); i < e; ++i) {
-    auto context = llvm::make_unique<ExecutionContext>();
+    auto context = glow::make_unique<ExecutionContext>();
     context->setTraceContext(
-        llvm::make_unique<TraceContext>(TraceLevel::STANDARD));
+        glow::make_unique<TraceContext>(TraceLevel::STANDARD));
     context->getPlaceholderBindings()->allocate(module.getPlaceholders());
     updateInputPlaceholders(*(context->getPlaceholderBindings()), {input},
                             {&batch});

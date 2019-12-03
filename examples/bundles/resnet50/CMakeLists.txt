@@ -37,7 +37,7 @@ add_custom_command(
   COMMAND
     image-classifier ${IMAGES}/dog_207.png -g -image-mode=0to1
     -m=${RESNET50_BUNDLE_DIR}/resnet50 -model-input-name=${MODEL_INPUT_NAME}
-    -backend=CPU -emit-bundle ${BUNDLE_OUTPUT_DIRECTORY}
+    -backend=CPU -emit-bundle ${BUNDLE_OUTPUT_DIRECTORY} -bundle-api=dynamic
   DEPENDS
     image-classifier ResNet50BundleDir
 )
@@ -63,7 +63,7 @@ add_custom_command(
   COMMAND
     image-classifier ${IMAGES}/dog_207.png -g -i=0to1 -load-profile=profile.yml -assert-all-nodes-quantized -keep-original-precision-for-nodes=SoftMax
     -m=${RESNET50_BUNDLE_DIR}/resnet50 -model-input-name=${MODEL_INPUT_NAME}
-    -backend=CPU -emit-bundle ${QUANTIZED_BUNDLE_OUTPUT_DIRECTORY}
+    -backend=CPU -emit-bundle ${QUANTIZED_BUNDLE_OUTPUT_DIRECTORY} -bundle-api=dynamic
   DEPENDS
   image-classifier ResNet50BundleDir
 )

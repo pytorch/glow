@@ -28,9 +28,11 @@ namespace glow {
 /// Log version number.
 static constexpr auto logVersionNo_ = "v1.0.0";
 
-static llvm::cl::opt<std::string>
-    dumpCompilationLogOpt("compilation-log", llvm::cl::init(""),
-                          llvm::cl::desc("Dump Compilation Log"));
+bool GlowDumpCompilationLog = false;
+static llvm::cl::opt<bool, true>
+    enableCompilationLogOpt("compilation-log",
+                            llvm::cl::desc("Dump Compilation Log"),
+                            llvm::cl::location(GlowDumpCompilationLog));
 
 static llvm::cl::opt<bool> verboseCompilationLogOpt(
     "verbose-compilation", llvm::cl::init(false),
@@ -221,14 +223,13 @@ void LogContext::popLogScope() {
   currentScope_ = currentScope_->parent;
 }
 
-void LogContext::dumpLog(llvm::StringRef) {
-  if (dumpCompilationLogOpt == "") {
+void LogContext::dumpLog(llvm::StringRef compileLogFilename) {
+  if (!GlowDumpCompilationLog) {
     return;
   }
-  std::string compileLogFilename = dumpCompilationLogOpt;
 
-  llvm::outs() << "Writing compilation log file for Module to: "
-               << compileLogFilename << '\n';
+  llvm::outs() << "Writing compilation log file to: " << compileLogFilename
+               << '\n';
   std::error_code EC;
   llvm::raw_fd_ostream myfile(compileLogFilename, EC);
   myfile << llvm::formatv("{ \"log\":\"Glow Compilation Log\", "
@@ -247,7 +248,7 @@ void LogContext::dumpLog(llvm::StringRef) {
 
 /// Logs the node creation with a list of input nodes.
 void LogContext::logNodeCreation(const Node &newNode, bool logIntoModule) {
-  if (dumpCompilationLogOpt == "") {
+  if (!GlowDumpCompilationLog) {
     return;
   }
 
@@ -261,7 +262,7 @@ void LogContext::logNodeCreation(const Node &newNode, bool logIntoModule) {
 
 /// Logs the node deletion.
 void LogContext::logNodeDeletion(const Node &deletedNode, bool logIntoModule) {
-  if (dumpCompilationLogOpt == "") {
+  if (!GlowDumpCompilationLog) {
     return;
   }
 
@@ -277,7 +278,7 @@ void LogContext::logNodeDeletion(const Node &deletedNode, bool logIntoModule) {
 void LogContext::logNodeInputChange(const Node &user,
                                     const NodeValue &prevOprVal,
                                     const NodeValue &newOprVal) {
-  if (dumpCompilationLogOpt == "") {
+  if (!GlowDumpCompilationLog) {
     return;
   }
 

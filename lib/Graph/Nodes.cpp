@@ -86,6 +86,7 @@ Node *Storage::clone() const { llvm_unreachable("Storage can't be cloned."); }
 std::string Constant::getDebugDesc() const {
   DescriptionBuilder db(getKindName());
   db.addParam("name", quote(getName()))
+      .addParam("layout", getLayout())
       .addParam("output", *getType())
       .addParam("users", getNumUsers());
   return db;
@@ -94,6 +95,7 @@ std::string Constant::getDebugDesc() const {
 std::string Placeholder::getDebugDesc() const {
   DescriptionBuilder db(getKindName());
   db.addParam("name", quote(getName()))
+      .addParam("layout", getLayout())
       .addParam("output", *getType())
       .addParam("users", getNumUsers())
       .addParam("trainable", isTraining());
@@ -436,6 +438,29 @@ static bool verifySparseLengthsWeightedSum(NodeValue dest, NodeValue data,
                         size_t(1), dest.getNode());
   isValid &=
       expectCompareTrue("Lengths must be a 1D vector", lengths.dims().size(),
+                        size_t(1), dest.getNode());
+  isValid &=
+      expectCompareTrue("Weights must be a 1D vector", weights.dims().size(),
+                        size_t(1), dest.getNode());
+
+  isValid &=
+      expectCompareTrue("Weights and Indices must have the same size",
+                        weights.dims()[0], indices.dims()[0], dest.getNode());
+  return isValid;
+}
+
+static bool verifyEmbeddingBag(NodeValue dest, NodeValue data,
+                               NodeValue weights, NodeValue indices,
+                               NodeValue offsets) {
+  bool isValid = checkType(dest, data.getElementType(), dest.getNode());
+  isValid &= checkType(weights, data.getElementType(), dest.getNode());
+  isValid &= checkType(indices, ElemKind::Int64ITy, dest.getNode());
+  isValid &= checkType(offsets, ElemKind::Int64ITy, dest.getNode());
+  isValid &=
+      expectCompareTrue("Indices must be a 1D vector", indices.dims().size(),
+                        size_t(1), dest.getNode());
+  isValid &=
+      expectCompareTrue("Offsets must be a 1D vector", offsets.dims().size(),
                         size_t(1), dest.getNode());
   isValid &=
       expectCompareTrue("Weights must be a 1D vector", weights.dims().size(),
@@ -1002,6 +1027,39 @@ bool BatchNormalizationNode::verify() const {
                                   getScale(), getMean(), getVar(), ChannelIdx_);
 }
 
+bool LayerNormalizationNode::verify() const {
+  auto dest = getResult();
+  auto src = getInput();
+  auto scale = getScale();
+  auto bias = getBias();
+
+  bool isValid = true;
+
+  // Check inputs and outputs match.
+  isValid &= checkSameType(src, dest, this);
+
+  // Check that the types of scale and bias match and that they have the same
+  // ElemKind as input.
+  isValid &= checkTypeIgnoreShape(scale, src, this);
+  isValid &= checkSameType(scale, bias, this);
+
+  // Check that the dims of scale and bias match the end of src.
+  auto srcDims = src.getType()->dims();
+  auto scaleDims = scale.getType()->dims();
+  isValid &= expectCompareTrue("Expected input to have more dims than scale",
+                               srcDims.size(), scaleDims.size(), this,
+                               CompareOperatorGreaterThan<size_t>());
+  for (size_t i = 0; i < scaleDims.size(); ++i) {
+    size_t scaleI = scaleDims.size() - i - 1;
+    size_t srcI = srcDims.size() - i - 1;
+    isValid &=
+        expectCompareTrue("Expected scale dims to match the end of src dims",
+                          scaleDims[scaleI], srcDims[srcI], this);
+  }
+
+  return isValid;
+}
+
 bool BatchNormalizationGradNode::verify() const {
   bool isValid =
       verifyInputAndGradInputTypes(getBias(), getGradOfInputNamedBias(), this);
@@ -1142,6 +1200,20 @@ bool SparseLengthsSumNode::verify() const {
                                 getLengths());
 }
 
+bool SparseLengthsSumGradNode::verify() const {
+  // Same checks as SparseLengthsSumNode.
+  bool isValid = verifySparseLengthsSum(getOriginalOutputForResult(), getData(),
+                                        getIndices(), getLengths());
+
+  // Checks on gradient inputs/outputs.
+  isValid &= checkSameType(getGradOfOriginalOutputNamedResult(),
+                           getOriginalOutputForResult(), this);
+  isValid &= checkSameType(getGradOfInputNamedData(), getData(), this);
+  isValid &= checkSameType(getGradOfInputNamedIndices(), getIndices(), this);
+  isValid &= checkSameType(getGradOfInputNamedLengths(), getLengths(), this);
+  return isValid;
+}
+
 bool SparseLengthsWeightedSumNode::verify() const {
   return verifySparseLengthsWeightedSum(getResult(), getData(), getWeights(),
                                         getIndices(), getLengths());
@@ -1161,6 +1233,11 @@ bool SparseLengthsWeightedSumGradNode::verify() const {
   isValid &= checkSameType(getGradOfInputNamedIndices(), getIndices(), this);
   isValid &= checkSameType(getGradOfInputNamedLengths(), getLengths(), this);
   return isValid;
+}
+
+bool EmbeddingBagNode::verify() const {
+  return verifyEmbeddingBag(getResult(), getData(), getWeights(), getIndices(),
+                            getOffsets());
 }
 
 bool RowwiseQuantizedSparseLengthsWeightedSumNode::verify() const {
@@ -1234,12 +1311,24 @@ static bool verifyFusedRowwiseQuantizedSparseLengthsSum(
   // Wrap this in isValid to prevent potential segfault if the result is
   // incorrectly shaped.
   if (isValid) {
+    // If using 4-bit quantization for embeddings then the input is packed into
+    // two elements per byte.
+    size_t finalSize = result.dims()[1];
+    if (data.getType()->getElementType() == ElemKind::UInt4FusedFP16QTy) {
+      finalSize /= 2;
+    }
     isValid &=
         expectCompareTrue("Result output shape should have second dim without "
                           "extra columns from scale/offset in Data.",
-                          result.dims()[1] + extraCols, data.dims()[1], parent);
+                          finalSize + extraCols, data.dims()[1], parent);
   }
   return isValid;
+}
+
+bool EmbeddingBagByteRowwiseOffsetsNode::verify() const {
+  return verifyFusedRowwiseQuantizedSparseLengthsSum(
+      getResult(), getData(), getIndices(), getOffsets(), getWeights(),
+      getUseFP16Accumulation());
 }
 
 bool FusedRowwiseQuantizedSparseLengthsWeightedSumNode::verify() const {

@@ -532,6 +532,7 @@ void NodeBuilder::emitNodeClass(std::ostream &os) const {
      << "  void setNthInput(unsigned idx, NodeValue val);\n"
      << "  llvm::StringRef getOutputName(unsigned idx) const;\n"
      << "  bool hasSideEffects() const { return " << hasSideEffects_ << "; }\n"
+     << "  bool isDataParallel() const { return " << isDataParallel_ << "; }\n"
      << "  std::string getDebugDesc() const;\n"
      << "  bool isEqual(const " << name_ << "Node &other) const;\n"
      << "  llvm::hash_code getHash() const;\n"
@@ -574,6 +575,7 @@ NodeBuilder &NodeBuilder::addGradient() {
   // The new 'Grad' class will have all of the fields of the current class.
   GN.members_ = members_;
   GN.enum_ = enum_;
+  GN.isDataParallel_ = isDataParallel_;
 
   // Add the inputs that we'll use in the grad instruction.
   for (const std::string &in : nodeInputs_) {

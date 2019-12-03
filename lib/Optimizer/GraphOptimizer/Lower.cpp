@@ -18,10 +18,13 @@
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/Node.h"
 #include "glow/Graph/Nodes.h"
+#include "glow/Graph/TensorLayout.h"
 #include "glow/Optimizer/GraphOptimizer/FunctionPasses.h"
 #include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
 
 #include "llvm/Support/Casting.h"
+
+#include <numeric>
 
 using namespace glow;
 using llvm::dyn_cast;
@@ -171,7 +174,10 @@ static void lowerFullyConnectedGradNode(Function *F, CompilationContext &cctx,
   // dx = dout * w.T
   auto *wT = F->createTranspose("fcg.wT", FCG.getWeights(), {1, 0});
   auto *dx2 = F->createMatMul("fcg.dot", dout, wT);
-  auto *dx = F->createReshape("fcg.inG", dx2, FCG.getInput().getType()->dims());
+  auto *dx = F->createReshape(
+      "fcg.inG", dx2, FCG.getInput().getType()->dims(),
+      CanonicalTensorLayout::getInstance().getNthInputLayoutRequirements(
+          &FCG, FullyConnectedGradNode::InputIdx));
   replaceAllUsesOfWith(cctx.loweredInfoMap, FCG.getGradOfInputNamedInput(), dx);
 
   // dw = xT * dout.
@@ -416,6 +422,93 @@ static void lowerBatchNormalizationNode(Function *F, CompilationContext &cctx,
   newResult = F->createAdd("result", newResult, betaB);
 
   replaceAllUsesOfWith(cctx.loweredInfoMap, BN.getResult(), newResult);
+}
+
+static void lowerLayerNormalizationNode(Function *F, CompilationContext &cctx,
+                                        const LayerNormalizationNode &LN) {
+  LOG_SCOPE(F->getLogContext(), "lowerLayerNormalizationNode")
+
+  auto in = LN.getInput();
+  auto out = LN.getResult();
+
+  auto gamma = LN.getScale();
+  auto beta = LN.getBias();
+  float epsilon = LN.getEpsilon();
+
+  auto nodeName = LN.getName();
+
+  // input shape -> {M, N} where N is the size of each layer to be normalized.
+  size_t N = std::accumulate(gamma.dims().begin(), gamma.dims().end(), 1,
+                             std::multiplies<size_t>());
+  size_t M = in.getType()->size() / N;
+  in = F->createReshape(nodeName, in, {M, N})->getResult();
+
+  // Compute mean and standard deviation for each layer using the formula from
+  // https://pytorch.org/docs/stable/nn.html#torch.nn.LayerNorm
+
+  // {M, N} -> {M}
+  auto mean = F->createBatchedReduceAdd(nodeName, in,
+                                        /*axes*/ {1})
+                  ->getResult();
+
+  // {M, N} -> {M}
+  auto inSquared = F->createMul(nodeName, in, in)->getResult();
+  auto stdDev = F->createBatchedReduceAdd(nodeName, inSquared,
+                                          /*axes*/ {1})
+                    ->getResult();
+
+  // {M}
+  auto nSplat = F->createSplat(nodeName, mean.getType(), N)->getResult();
+  auto epsSplat =
+      F->createSplat(nodeName, mean.getType(), epsilon)->getResult();
+  auto oneSplat = F->createSplat(nodeName, mean.getType(), 1.0)->getResult();
+  auto negOneSplat =
+      F->createSplat(nodeName, mean.getType(), -1.0)->getResult();
+
+  // {M}
+  mean = F->createDiv(nodeName, mean, nSplat)->getResult();
+
+  // {M}
+  stdDev = F->createDiv(nodeName, stdDev, nSplat)->getResult();
+
+  // {M}
+  auto meanSquared = F->createMul(nodeName, mean, mean)->getResult();
+  stdDev = F->createSub(nodeName, stdDev, meanSquared)->getResult();
+  stdDev = F->createRELU(nodeName, stdDev)->getResult();
+  stdDev = F->createAdd(nodeName, stdDev, epsSplat)->getResult();
+  stdDev = F->createPow(nodeName, stdDev, 0.5)->getResult();
+  stdDev = F->createDiv(nodeName, oneSplat, stdDev)->getResult();
+
+  // {M}
+  auto scale = stdDev;
+  auto bias = F->createMul(nodeName, stdDev, negOneSplat)->getResult();
+  bias = F->createMul(nodeName, bias, mean)->getResult();
+
+  // Broadcast mean and std deviation to the size of each batch
+  // {M} -> {M, N}
+  scale = F->createReshape(nodeName, scale, {M, 1})->getResult();
+  bias = F->createReshape(nodeName, bias, {M, 1})->getResult();
+  scale = F->createTile(nodeName, scale, N, 1)->getResult();
+  bias = F->createTile(nodeName, bias, N, 1)->getResult();
+
+  // Broadcast beta and gamma across batches
+  // {N} -> {M, N}
+  beta = F->createReshape(nodeName, beta, {1, N})->getResult();
+  gamma = F->createReshape(nodeName, gamma, {1, N})->getResult();
+  beta = F->createTile(nodeName, beta, M, 0)->getResult();
+  gamma = F->createTile(nodeName, gamma, M, 0)->getResult();
+
+  // Normalize layers
+  // {M, N}
+  auto output = F->createMul(nodeName, in, scale)->getResult();
+  output = F->createAdd(nodeName, output, bias)->getResult();
+  output = F->createMul(nodeName, output, gamma)->getResult();
+  output = F->createAdd(nodeName, output, beta)->getResult();
+
+  // {M, N} -> output shape
+  output = F->createReshape(nodeName, output, out.getType()->dims());
+
+  replaceAllUsesOfWith(cctx.loweredInfoMap, out, output);
 }
 
 static void lowerMeanVarNormalizationNode(Function *F, CompilationContext &cctx,
@@ -675,7 +768,7 @@ static void lowerBucketizeNode(Function *F, CompilationContext &cctx,
   auto *oneSplat = F->createSplat("oneSplat", boundariesConst->getType(), 1.0);
   auto *reshapedInput =
       F->createReshape(baseStr + ".reshape.input", B.getInput(),
-                       {B.getInput().getType()->size()});
+                       {B.getInput().getType()->size()}, "N");
   std::vector<NodeValue> results;
   for (size_t i = 0, e = reshapedInput->getResult().getType()->size(); i < e;
        i++) {
@@ -877,10 +970,11 @@ static void lowerChannelShuffleNode(Function *F, CompilationContext &cctx,
     transpose[i] = i;
   }
   std::swap(transpose[kernel], transpose[kernel + 1]);
-  auto *T =
-      F->createTranspose(CSN.getName().str() + ".transpose", R1, transpose);
+  auto *T = F->createTranspose(CSN.getName().str() + ".transpose", R1,
+                               transpose, R1->getLayout());
 
-  auto *R2 = F->createReshape(CSN.getName().str() + ".reshape2", T, inDims);
+  auto *R2 = F->createReshape(CSN.getName().str() + ".reshape2", T, inDims,
+                              T->getLayout());
   replaceAllUsesOfWith(cctx.loweredInfoMap, CSN.getResult(), R2);
 }
 
@@ -1010,13 +1104,13 @@ static void lowerSparseLengthsSumNode(Function *F, CompilationContext &cctx,
 static void lowerFusedRowwiseQuantizedSparseLengthsSumNode(
     Function *F, CompilationContext &cctx,
     const FusedRowwiseQuantizedSparseLengthsSumNode &FRQSLSN) {
-  ElemKind precision = FRQSLSN.getResult().getType()->getElementType();
-  auto ty =
-      F->getParent()->uniqueType(precision, {FRQSLSN.getIndices().dims()[0]});
+  auto ty = F->getParent()->uniqueType(
+      FRQSLSN.getResult().getType()->getElementType(),
+      {FRQSLSN.getIndices().dims()[0]});
   auto *ones = F->createSplat(FRQSLSN.getName().str() + ".ones", ty, 1.0);
   auto *FRQSLWSN = F->createFusedRowwiseQuantizedSparseLengthsWeightedSum(
       FRQSLSN.getName().str(), FRQSLSN.getData(), ones, FRQSLSN.getIndices(),
-      FRQSLSN.getLengths(), precision);
+      FRQSLSN.getLengths(), FRQSLSN.getUseFP16Accumulation());
 
   replaceAllUsesOfWith(cctx.loweredInfoMap, FRQSLSN.getResult(), FRQSLWSN);
 }
@@ -1136,6 +1230,8 @@ static void lowerNode(Function *F, Node *node, CompilationContext &cctx) {
     lowerSGDNode(F, cctx, *SGD);
   } else if (auto *BN = dyn_cast<BatchNormalizationNode>(node)) {
     lowerBatchNormalizationNode(F, cctx, *BN);
+  } else if (auto *LN = dyn_cast<LayerNormalizationNode>(node)) {
+    lowerLayerNormalizationNode(F, cctx, *LN);
   } else if (auto *MVN = dyn_cast<MeanVarNormalizationNode>(node)) {
     lowerMeanVarNormalizationNode(F, cctx, *MVN);
   } else if (auto *BNG = dyn_cast<BatchNormalizationGradNode>(node)) {

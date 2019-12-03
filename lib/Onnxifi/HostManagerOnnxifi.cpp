@@ -20,6 +20,7 @@
 #include "llvm/Support/FileSystem.h"
 
 namespace glow {
+extern bool GlowDumpCompilationLog;
 namespace onnxifi {
 
 extern bool GlowSaveOnnxifiModel;
@@ -53,14 +54,14 @@ HostManagerBackend::createHostManager(llvm::StringRef backendName) {
   // discovered devices.
   if (GlowNumDevices) {
     for (int i = 0; i < GlowNumDevices; i++) {
-      auto config = llvm::make_unique<runtime::DeviceConfig>(backendName);
+      auto config = glow::make_unique<runtime::DeviceConfig>(backendName);
       config->deviceID = i;
       configs.push_back(std::move(config));
     }
   } else {
     configs = runtime::DeviceManager::generateDeviceConfigs(backendName);
   }
-  return llvm::make_unique<runtime::HostManager>(std::move(configs));
+  return glow::make_unique<runtime::HostManager>(std::move(configs));
 }
 
 void HostManagerBackend::runNetwork(const Graph *graph,
@@ -90,6 +91,9 @@ onnxStatus HostManagerBackend::addNetwork(std::unique_ptr<Module> module) {
     precConfig.clipFP16 = GlowClipFP16;
     LOG(INFO) << "Clipping to fp16 enabled";
   }
+  if (GlowDumpCompilationLog) {
+    cctx.compilationLogPrefix = "glow-onnxifi";
+  }
 
   auto err =
       hostManager_->addNetwork(std::move(module), cctx, GlowSaturateHost);
@@ -112,14 +116,13 @@ onnxStatus HostManagerBackend::removeNetwork(const Graph *graph) {
   return ONNXIFI_STATUS_SUCCESS;
 }
 
-onnxStatus
-HostManagerGraph::initGraph(const void *onnxModel, size_t onnxModelSize,
-                            uint32_t weightCount,
-                            const onnxTensorDescriptorV1 *weightDescriptors) {
+onnxStatus HostManagerGraph::initGraph(
+    const void *onnxModel, size_t onnxModelSize, uint32_t weightCount,
+    const onnxTensorDescriptorV1 *weightDescriptors, void * /* unused */) {
 
   netName_ = strFormat("onnxifi_function_%lu", makeUniqueGraphId());
 
-  std::unique_ptr<Module> module = llvm::make_unique<Module>();
+  std::unique_ptr<Module> module = glow::make_unique<Module>();
   Function *function = module->createFunction(netName_);
 
   // TODO: make better error reporting.

@@ -516,6 +516,9 @@ void Loader::compile(CompilationContext &cctx) {
     for (auto function : module->getFunctions()) {
       std::string filename =
           function->getFilename() + "_" + dumpGraphDAGFileOpt;
+      if (module->getFunctions().size() == 1) {
+        filename = dumpGraphDAGFileOpt;
+      }
       function->dumpDAG(filename.c_str());
     }
   }
@@ -562,7 +565,7 @@ void Loader::runInference(ExecutionContext *context, size_t batchSize) {
           // Don't really delete context since we don't own it.
           contextPtr.release();
 
-          runErr = llvm::make_unique<Error>(std::move(err));
+          runErr = glow::make_unique<Error>(std::move(err));
           runPromise.set_value();
         });
     fut.wait();
@@ -608,7 +611,7 @@ Loader::Loader() {
   std::vector<std::unique_ptr<runtime::DeviceConfig>> configs =
       runtime::generateDeviceConfigs(numDevices, ExecutionBackend);
 
-  hostManager_ = llvm::make_unique<runtime::HostManager>(std::move(configs));
+  hostManager_ = glow::make_unique<runtime::HostManager>(std::move(configs));
   backend_ = std::unique_ptr<Backend>(createBackend(ExecutionBackend));
   F_ = M_->createFunction(modelPathOpt[0]);
   functionName_ = modelPathOpt[0];

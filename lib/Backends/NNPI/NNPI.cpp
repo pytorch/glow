@@ -16,6 +16,7 @@
 #include "NNPI.h"
 #include "NNPICompiledFunction.h"
 #include "NNPIDeviceManager.h"
+#include "NNPIMessageLogger.h"
 #include "glow/Graph/Nodes.h"
 #include "glow/Optimizer/GraphOptimizerPipeline/Pipeline.h"
 
@@ -29,6 +30,10 @@ bool GlowDisableNNPITransforms = false;
 
 } // namespace onnxifi
 } // namespace glow
+
+// Load NNPI message logger configuration.
+const NNPIMessageLogger &NNPIBackend::loggerConfig_ =
+    NNPIMessageLogger::getInstance();
 
 bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
   switch (NI.getKind()) {
@@ -48,6 +53,7 @@ bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::MatMulNodeKind:
   case Kinded::Kind::BatchedReduceAddNodeKind:
   case Kinded::Kind::BatchedReduceMeanNodeKind:
+  case Kinded::Kind::BatchedReduceMinNodeKind:
   case Kinded::Kind::LocalResponseNormalizationNodeKind:
   case Kinded::Kind::AvgPoolNodeKind:
   case Kinded::Kind::BatchedAddNodeKind:
@@ -59,6 +65,11 @@ bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
     return NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy,
          ElemKind::Int32ITy, ElemKind::Int64ITy});
+
+  case Kinded::Kind::BatchMatMulNodeKind:
+  case Kinded::Kind::PReluNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind(
+        {ElemKind::Int8QTy, ElemKind::Float16Ty});
 
   case Kinded::Kind::DivNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
@@ -278,7 +289,8 @@ bool NNPIBackend::shouldLower(const Node *N) const {
   switch (N->getKind()) {
   case Kinded::Kind::ClipNodeKind: {
     const ClipNode *CN = llvm::cast<ClipNode>(N);
-    if (CN->getResult().getElementType() != ElemKind::Float16Ty) {
+    if (CN->getResult().getElementType() != ElemKind::Float16Ty &&
+        CN->getResult().getElementType() != ElemKind::Int8QTy) {
       return true;
     }
     return false;
@@ -294,7 +306,13 @@ bool NNPIBackend::shouldLower(const Node *N) const {
   case Kinded::Kind::ReplaceNaNNodeKind:
   case Kinded::Kind::LocalResponseNormalizationNodeKind:
   case Kinded::Kind::BatchedReduceMeanNodeKind:
+  case Kinded::Kind::BatchedReduceMinNodeKind:
     return false;
+  case Kinded::Kind::BatchMatMulNodeKind:
+  case Kinded::Kind::PReluNodeKind: {
+    NodeInfo NI(*N);
+    return NI.allInputsAndOutputsHaveSameElemKind({ElemKind::FloatTy});
+  }
   default:
     return true;
     break;
@@ -309,17 +327,23 @@ NNPIBackend::createDeviceManager(const runtime::DeviceConfig &deviceConfig) {
 
 Expected<std::unique_ptr<CompiledFunction>>
 NNPIBackend::compile(Function *F, const BackendOptions &opts) const {
+  TraceInfo traceInfo = buildManualTraceInfo(F);
+  if (opts.autoInstrument) {
+    autoInstrument(traceInfo, nullptr);
+  }
+
   if (glow::onnxifi::GlowDumpGraph) {
     std::string fname = "Graph_" + F->getName().str() + ".dot";
     LOG(INFO) << "Dumping net to " << fname;
     F->dumpDAG(fname);
   }
   std::unique_ptr<NNPICompiledFunction> compiledFunc =
-      llvm::make_unique<NNPICompiledFunction>(F);
+      glow::make_unique<NNPICompiledFunction>(F);
   auto compileHasError = compiledFunc->compile(F, opts);
   if (compileHasError) {
     return std::move(compileHasError);
   }
+  compiledFunc->setTraceInfo(std::move(traceInfo));
   return Expected<std::unique_ptr<CompiledFunction>>(std::move(compiledFunc));
 }
 
@@ -328,6 +352,10 @@ FunctionPassPipeline NNPIBackend::getOptimizationPipeline() const {
   // issues for NNPI.
   auto pipeline = createDefaultGraphOptimizationPassPipeline();
   pipeline.removeAllInstancesOfPass(FunctionPassID::FoldTileAddIntoBatchedAdd);
+
+  // Disable SinkCode, as NNPI does data parallel transformations and so we do
+  // not want to undo that by sinking Nodes back together.
+  pipeline.removeAllInstancesOfPass(FunctionPassID::SinkCode);
 
   return pipeline;
 }

@@ -1563,7 +1563,7 @@ TEST_F(HabanaBackendTest, SingleFunctionMultiThreadMultiDevice) {
         // in runFunction (hopefully).
         for (unsigned j = 0, e = iterationsPerThread; j < e; ++j) {
           // Set inputs.
-          auto iBindings = llvm::make_unique<PlaceholderBindings>();
+          auto iBindings = glow::make_unique<PlaceholderBindings>();
           auto inputHandle = iBindings->allocate(inputP)->getHandle();
           inputHandle.clear(1);
 
@@ -1576,7 +1576,7 @@ TEST_F(HabanaBackendTest, SingleFunctionMultiThreadMultiDevice) {
           outputHandle.clear(32);
 
           inputExecutionContexts.emplace_back(
-              llvm::make_unique<ExecutionContext>(std::move(iBindings)));
+              glow::make_unique<ExecutionContext>(std::move(iBindings)));
           outputBindings.emplace_back(std::move(oBindings));
         }
 

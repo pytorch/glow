@@ -17,6 +17,7 @@
 #define GLOW_BACKENDS_NNPI_NNPIDEVICEMANAGER_H
 
 #include "InferencePool.h"
+#include "NNPITracing.h"
 #include "glow/Backends/DeviceManager.h"
 #include "glow/Runtime/RuntimeTypes.h"
 #include "glow/Support/ThreadPool.h"
@@ -64,6 +65,8 @@ class NNPIDeviceManager : public DeviceManager {
   NNPIDeviceContext device_;
   /// Lock to synchronize function adding/removing to/from the device manager.
   std::mutex functionMapMutex_;
+  /// Device Tracing contorl.
+  std::shared_ptr<NNPIDeviceTracing> deviceTracing_;
 
 public:
   explicit NNPIDeviceManager(const DeviceConfig &config,

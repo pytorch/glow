@@ -130,7 +130,7 @@ DeviceManager::generateDeviceConfigs(llvm::StringRef backendName) {
   std::vector<std::unique_ptr<runtime::DeviceConfig>> configs;
   auto deviceCount = numDevices(backendName);
   for (int i = 0; i < deviceCount; i++) {
-    auto config = llvm::make_unique<runtime::DeviceConfig>(backendName);
+    auto config = glow::make_unique<runtime::DeviceConfig>(backendName);
     config->deviceID = i;
     configs.push_back(std::move(config));
   }

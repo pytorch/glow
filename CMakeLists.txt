@@ -82,18 +82,18 @@ add_custom_target(CollectHeaders SOURCES ${header_files})
 find_package(Git)
 # Get the commit's short SHA1
 execute_process(COMMAND
-  "${GIT_EXECUTABLE}" log -1 --pretty=format:"%h"
+  "${GIT_EXECUTABLE}" log -1 --pretty=format:%h
   WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
   OUTPUT_VARIABLE GIT_SHA1
   ERROR_QUIET OUTPUT_STRIP_TRAILING_WHITESPACE)
-add_definitions("-DGIT_SHA1=${GIT_SHA1}")
+add_definitions("-DGIT_SHA1=\"${GIT_SHA1}\"")
 # Get the date of the commit
 execute_process(COMMAND
-  "${GIT_EXECUTABLE}" log -1 --pretty=format:"%ad" --date=short
+  "${GIT_EXECUTABLE}" log -1 --pretty=format:%ad --date=short
   WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
   OUTPUT_VARIABLE GIT_DATE
   ERROR_QUIET OUTPUT_STRIP_TRAILING_WHITESPACE)
-add_definitions("-DGIT_DATE=${GIT_DATE}")
+add_definitions("-DGIT_DATE=\"${GIT_DATE}\"")
 
 find_package(PNG)
 if(PNG_FOUND)

@@ -197,6 +197,19 @@ void inputsToProto(const Node *node, ONNX_NAMESPACE::NodeProto *proto) {
   }
 }
 
+/// Write the output of the provided node, add SaveNode if necessary
+void outputKindToProto(const Node *node, ONNX_NAMESPACE::NodeProto *proto) {
+  for (const auto &use : node->getUsers()) {
+    const auto *user = use.getUser();
+    if (user->getKind() == Kinded::Kind::SaveNodeKind) {
+      const SaveNode *SN = llvm::cast<SaveNode>(user);
+      proto->add_output(SN->getPlaceholder()->getName());
+    } else {
+      outputsToProto(user, proto);
+    }
+  }
+}
+
 /// Write the output of the provided type only of node outputs.
 bool outputKindToProto(Kinded::Kind kind, const Node *node,
                        ONNX_NAMESPACE::NodeProto *proto) {
@@ -757,14 +770,8 @@ Error ONNXModelWriter::writeBatchedReduceMean(const BatchedReduceMeanNode *node,
   proto->set_op_type("ReduceMean");
   inputsToProto(node, proto);
 
-  // Use the output of reshape node.
-  if (outputKindToProto(Kinded::Kind::ReshapeNodeKind, node, proto)) {
-    // Add dictionary entries.
-    addValueAttribute(proto, "keepdims", 1);
-  } else {
-    addValueAttribute(proto, "keepdims", 0);
-    outputsToProto(node, proto);
-  }
+  addValueAttribute(proto, "keepdims", 0);
+  outputKindToProto(node, proto);
 
   return Error::success();
 }
@@ -781,14 +788,8 @@ Error ONNXModelWriter::writeBatchedReduceAdd(const BatchedReduceAddNode *node,
   proto->set_op_type("ReduceSum");
   inputsToProto(node, proto);
 
-  // Use the output of reshape node.
-  if (outputKindToProto(Kinded::Kind::ReshapeNodeKind, node, proto)) {
-    // Add dictionary entries.
-    addValueAttribute(proto, "keepdims", 1);
-  } else {
-    addValueAttribute(proto, "keepdims", 0);
-    outputsToProto(node, proto);
-  }
+  addValueAttribute(proto, "keepdims", 0);
+  outputKindToProto(node, proto);
 
   return Error::success();
 }
@@ -817,6 +818,23 @@ Error ONNXModelWriter::writeBatchNormalization(
   proto->add_input(node->getBias().getNode()->getName());
   proto->add_input(node->getMean().getNode()->getName());
   proto->add_input(node->getVar().getNode()->getName());
+
+  outputsToProto(node, proto);
+  return Error::success();
+}
+
+Error ONNXModelWriter::writeLayerNormalization(
+    const LayerNormalizationNode *node, GraphType &graph) {
+  auto *proto = graph.add_node();
+  // Add dictionary entries.
+  addValueAttribute(proto, "epsilon", node->getEpsilon());
+
+  proto->set_name(node->getName());
+  proto->set_op_type("LayerNormalization");
+
+  proto->add_input(node->getInput().getNode()->getName());
+  proto->add_input(node->getScale().getNode()->getName());
+  proto->add_input(node->getBias().getNode()->getName());
 
   outputsToProto(node, proto);
   return Error::success();
@@ -1368,6 +1386,7 @@ DEF_ALL_WRITER_NODE(BatchOneHot)
 DEF_ALL_WRITER_NODE(LengthsToRanges)
 DEF_ALL_WRITER_NODE(SparseLengthsSum)
 DEF_ALL_WRITER_NODE(SparseLengthsWeightedSum)
+DEF_ALL_WRITER_NODE(EmbeddingBag)
 
 // Glow nodes with default exporting algorithm.
 DEF_ALL_WRITER_NODE(CmpEQ)
@@ -1379,6 +1398,7 @@ DEF_ALL_WRITER_NODE(Regression)
 DEF_ALL_WRITER_NODE(RowwiseQuantizedFullyConnected)
 DEF_ALL_WRITER_NODE(RowwiseQuantizedSparseLengthsWeightedSum)
 DEF_ALL_WRITER_NODE(FusedRowwiseQuantizedSparseLengthsSum)
+DEF_ALL_WRITER_NODE(EmbeddingBagByteRowwiseOffsets)
 DEF_ALL_WRITER_NODE(FusedRowwiseQuantizedSparseLengthsWeightedSum)
 
 Error ONNXModelWriter::writeClip(const ClipNode *node, GraphType &graph) {
@@ -1570,6 +1590,7 @@ DEF_UNSUPPORTED_NODE(Convolution3DGrad)
 DEF_UNSUPPORTED_NODE(FullyConnectedGrad)
 DEF_UNSUPPORTED_NODE(CrossEntropyLossGrad)
 DEF_UNSUPPORTED_NODE(BatchNormalizationGrad)
+DEF_UNSUPPORTED_NODE(SparseLengthsSumGrad)
 DEF_UNSUPPORTED_NODE(SparseLengthsWeightedSumGrad)
 DEF_UNSUPPORTED_NODE(SigmoidCrossEntropyWithLogits)
 DEF_UNSUPPORTED_NODE(LocalResponseNormalizationGrad)

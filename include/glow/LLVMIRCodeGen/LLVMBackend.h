@@ -20,30 +20,43 @@
 #include "glow/Backend/CompiledFunction.h"
 #include "glow/Base/Tensor.h"
 #include "glow/LLVMIRCodeGen/GlowJIT.h"
+#include "glow/LLVMIRCodeGen/LLVMIRGen.h"
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/IR/IRBuilder.h"
 
 namespace glow {
 
-struct AllocationsInfo;
+class AllocationsInfo;
 class PlaceholderBindings;
 class LLVMIRGen;
 
-class LLVMBackend : public BackendUsingGlowIR {
+/// LLVM backend options used to configure e.g. the LLVM TargetMachine, ORC JIT
+/// or BundleSaver.
+class LLVMBackendOptions {
   /// Target used by this backend.
   std::string target_;
   /// Arch used by this backend.
   std::string arch_;
   /// Cpu used by this backend.
   std::string cpu_;
+  /// ABI to be used by this backend.
+  std::string abi_;
+  /// Float ABI to be used by this backend.
+  llvm::Optional<llvm::FloatABI::ABIType> floatABI_;
   /// Code model used by this backend.
   llvm::CodeModel::Model codeModel_;
+  /// Code model used by this backend for bundles.
+  llvm::CodeModel::Model bundleCodeModel_;
   /// Relocation model used by this backend.
   llvm::Reloc::Model relocModel_;
+  /// LLVM target features used by this backend.
+  llvm::SmallVector<std::string, 0> targetFeatures_;
+  /// Bundle API to use.
+  BundleApiType bundleAPI_;
 
 public:
-  LLVMBackend();
+  LLVMBackendOptions();
   /// \returns target used by this backend.
   llvm::StringRef getTarget() const { return target_; }
   /// Sets target used by this backend.
@@ -56,22 +69,71 @@ public:
   llvm::StringRef getCPU() const { return cpu_; }
   /// Sets cpu used by this backend.
   void setCPU(llvm::StringRef cpu) { cpu_ = cpu; }
+  /// \returns ABI used by this backend.
+  llvm::StringRef getABIName() const { return abi_; }
+  /// Sets ABI used by this backend.
+  void setABIName(llvm::StringRef abi) { abi_ = abi; }
+  /// \returns Float ABI used by this backend.
+  llvm::Optional<llvm::FloatABI::ABIType> getFloatABI() const {
+    return floatABI_;
+  }
+  /// Sets Float ABI used by this backend.
+  void setFloatABI(llvm::Optional<llvm::FloatABI::ABIType> floatABI) {
+    floatABI_ = floatABI;
+  }
   /// \returns code model used by this backend.
   llvm::CodeModel::Model getCodeModel() const { return codeModel_; }
   /// Sets code model used by this backend.
   void setCodeModel(llvm::CodeModel::Model codeModel) {
     codeModel_ = codeModel;
   }
+  /// \returns code model used by this backend for bundles.
+  llvm::CodeModel::Model getBundleCodeModel() const { return bundleCodeModel_; }
+  /// Sets code model used by this backend for bundles.
+  void setBundleCodeModel(llvm::CodeModel::Model codeModel) {
+    bundleCodeModel_ = codeModel;
+  }
+  /// \returns bundle API used by this backend for bundles.
+  BundleApiType getBundleAPI() const { return bundleAPI_; }
+  /// Sets bundle API used by this backend for bundles.
+  void setBundleAPI(BundleApiType api) { bundleAPI_ = api; }
   /// \returns relocation model used by this backend.
   llvm::Reloc::Model getRelocModel() const { return relocModel_; }
-  // Sets Relocation Model used by this backend
+  /// Sets relocation model used by this backend.
   void setRelocModel(llvm::Reloc::Model relocModel) {
     relocModel_ = relocModel;
   }
+  /// \returns target features used by this backend.
+  const llvm::SmallVectorImpl<std::string> &getTargetFeatures() const {
+    return targetFeatures_;
+  }
+  /// Adds target features used by this backend.
+  void addTargetFeatures(llvm::ArrayRef<std::string> targetFeatures) {
+    targetFeatures_.append(targetFeatures.begin(), targetFeatures.end());
+  }
+  /// Sets target features used by this backend.
+  void setTargetFeatures(llvm::ArrayRef<std::string> targetFeatures) {
+    targetFeatures_.clear();
+    addTargetFeatures(targetFeatures);
+  }
+};
+
+class LLVMBackend : public BackendUsingGlowIR {
+public:
+  LLVMBackend();
   /// @name Backend methods.
   /// This is the implementation of the Backend interface.
   ///@{
   virtual ~LLVMBackend() override = default;
+
+  /// \returns LLVM backend options.
+  const LLVMBackendOptions &getOptions() const { return options_; }
+
+  /// \returns LLVM backend options.
+  LLVMBackendOptions &getOptions() { return options_; }
+
+  /// Sets LLVM backend options.
+  void setOptions(const LLVMBackendOptions &options) { options_ = options; }
 
   virtual std::unique_ptr<CompiledFunction>
   compileIR(std::unique_ptr<IRFunction> IR) const override;
@@ -85,6 +147,10 @@ public:
   virtual void save(Function *F, llvm::StringRef outputDir,
                     llvm::StringRef bundleName,
                     llvm::StringRef mainEntryName) const override;
+
+  virtual void saveFunctions(llvm::ArrayRef<BundleEntry> entries,
+                             llvm::StringRef outputDir,
+                             llvm::StringRef bundleName) const override;
   /// @}
 
   /// \returns the size of metrics collected for a single TraceEvent.
@@ -116,6 +182,9 @@ protected:
 
   /// Emit the jitmain function.
   virtual void emitJitMain(LLVMIRGen &irgen) const;
+
+  /// LLVM backend options.
+  LLVMBackendOptions options_;
 };
 
 } // namespace glow

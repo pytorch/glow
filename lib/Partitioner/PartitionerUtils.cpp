@@ -521,9 +521,13 @@ void logPartitionInfo(const NodeToFunctionMap &partitions) {
               << "\t\t\t output size:\t"
               << partitions.getGraphMemInfo(subF).outMemSize << "\n"
               << "\t\t\t constant size:\t"
-              << partitions.getGraphMemInfo(subF).constMemSize << "\n"
-              << "\t\t LogicalDeviceIDs :\t"
-              << partitions.getLogicalDeviceIDList(subF)[0] << "\n";
+              << partitions.getGraphMemInfo(subF).constMemSize << "\n";
+    // This may be called before logicalDevices are assigned so check before
+    // printing.
+    if (partitions.getLogicalDeviceIDList(subF).size()) {
+      LOG(INFO) << "\t\t LogicalDeviceIDs :\t"
+                << partitions.getLogicalDeviceIDList(subF)[0] << "\n";
+    }
   }
 }
 } // namespace glow

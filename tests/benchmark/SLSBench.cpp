@@ -43,27 +43,32 @@ class SLSBench : public Benchmark {
   size_t numSLSNodes_;
   const char *backendStr_;
   ElemKind dtype_;
+  ElemKind fusedDtype_;
   size_t elementSize_;
+  const char *devId_;
 
 public:
   SLSBench(size_t batchSize_, size_t numIndicesPerBatch_,
            size_t numTableEntries_, size_t numElementsPerRow_,
            size_t asyncLaunchSize_, size_t numSLSNodes_,
-           const char *backendStr_, const char *dtypeStr_)
+           const char *backendStr_, const char *dtypeStr_,
+           const char *devId_ = nullptr)
       : batchSize_(batchSize_), numIndicesPerBatch_(numIndicesPerBatch_),
         numTableEntries_(numTableEntries_),
         numElementsPerRow_(numElementsPerRow_),
         asyncLaunchSize_(asyncLaunchSize_), numSLSNodes_(numSLSNodes_),
-        backendStr_(backendStr_) {
-
-    dtype_ = ElemKind::Float16Ty;
+        backendStr_(backendStr_), devId_(devId_) {
     elementSize_ = 2;
     if (std::string(dtypeStr_) == "Float16") {
       dtype_ = ElemKind::Float16Ty;
+      fusedDtype_ = ElemKind::UInt8FusedFP16QTy;
       elementSize_ = 2;
     } else if (std::string(dtypeStr_) == "Float32") {
       dtype_ = ElemKind::FloatTy;
+      fusedDtype_ = ElemKind::UInt8FusedQTy;
       elementSize_ = 4;
+    } else {
+      llvm_unreachable("Unhandled ElemKind.");
     }
   }
 
@@ -77,9 +82,12 @@ public:
 
     // Setup host manager
     std::vector<std::unique_ptr<runtime::DeviceConfig>> configs;
-    auto config = llvm::make_unique<runtime::DeviceConfig>(backendStr_);
+    auto config = glow::make_unique<runtime::DeviceConfig>(backendStr_);
+    if (devId_ != nullptr) {
+      config->parameters["DeviceID"] = devId_;
+    }
     configs.push_back(std::move(config));
-    hostManager_ = llvm::make_unique<runtime::HostManager>(std::move(configs));
+    hostManager_ = glow::make_unique<runtime::HostManager>(std::move(configs));
 
     std::unique_ptr<Module> mod(new Module);
     auto fn = mod->createFunction("singleNode");
@@ -91,7 +99,7 @@ public:
 
     for (int slsNodeId = 0; slsNodeId < numSLSNodes_; slsNodeId++) {
       Tensor data(ElemKind::FloatTy, {numTableEntries_, numElementsPerRow_});
-      data.getHandle().randomize(0.0f, 1.0f, mod->getPRNG());
+      data.getHandle().clear(1.0f);
 
       weights[slsNodeId] =
           mod->createPlaceholder(dtype_, {numIndicesPerBatch_ * batchSize_},
@@ -135,7 +143,7 @@ public:
 
       auto *R = fn->createFusedRowwiseQuantizedSparseLengthsWeightedSum(
           "RQSLWS_" + std::to_string(slsNodeId), data, weights[slsNodeId],
-          indices[slsNodeId], lengths[slsNodeId], dtype_, false);
+          indices[slsNodeId], lengths[slsNodeId], fusedDtype_, false);
 
       S[slsNodeId] = fn->createSave("save_" + std::to_string(slsNodeId), R);
 
@@ -147,7 +155,7 @@ public:
     } // For each slsNodeId
 
     CompilationContext ctx;
-    hostManager_->addNetwork(std::move(mod), ctx);
+    EXIT_ON_ERR(hostManager_->addNetwork(std::move(mod), ctx));
   }
 
   void run() override {
@@ -208,7 +216,7 @@ public:
 };
 
 int main(int argc, char *argv[]) {
-  assert(argc == 10);
+  assert(argc == 10 || argc == 11);
   size_t batchSize = atoi(argv[1]);
   size_t numIndicesPerBatch = atoi(argv[2]);
   size_t numTableEntries = atoi(argv[3]);
@@ -218,10 +226,16 @@ int main(int argc, char *argv[]) {
   size_t numSLSNodes = atoi(argv[7]);
   const char *backendStr = argv[8];
   const char *dtypeStr = argv[9];
+  char *dev_id = nullptr;
+
+  if (argc > 10) {
+    dev_id = argv[10];
+    printf("Setting backend device: \"%s\"\n", dev_id);
+  }
   assert(numReps > 0);
 
   SLSBench b(batchSize, numIndicesPerBatch, numTableEntries, numElementsPerRow,
-             numAsyncLaunches, numSLSNodes, backendStr, dtypeStr);
+             numAsyncLaunches, numSLSNodes, backendStr, dtypeStr, dev_id);
   auto times = bench(&b, numReps);
   for (auto t : times) {
     printf("BenchResult,SLSBench,SW,%zu,%zu,%zu,%zu,%zu,%zu,%zu,%s,%s,%f,%f\n",

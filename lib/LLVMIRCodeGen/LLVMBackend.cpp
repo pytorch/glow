@@ -49,14 +49,21 @@ void allocateJITMemory(const IRFunction *F, AllocationsInfo &allocationsInfo) {
 
 } // end namespace
 
-LLVMBackend::LLVMBackend() {
+LLVMBackendOptions::LLVMBackendOptions() {
   // Initialize using command-line options by default.
   arch_ = llvmArch;
   target_ = llvmTarget;
   cpu_ = llvmCPU;
-  codeModel_ = llvm::CodeModel::Model::Large;
-  relocModel_ = llvm::Reloc::Model::Static;
+  abi_ = llvmABI;
+  floatABI_ = floatABI;
+  codeModel_ = llvmCodeModel;
+  bundleCodeModel_ = llvmBundleCodeModel;
+  relocModel_ = llvmRelocModel;
+  bundleAPI_ = bundleAPI;
+  targetFeatures_.append(llvmTargetFeatures.begin(), llvmTargetFeatures.end());
 }
+
+LLVMBackend::LLVMBackend() {}
 
 /// Emit the entry point for JIT called "jitmain".
 /// Function has the following API:
@@ -111,18 +118,18 @@ LLVMBackend::compileIRWithoutConstants(IRFunction *IR) const {
   std::unique_ptr<LLVMIRGen> irgen = createIRGen(IR, allocationsInfo);
   llvm::SmallVector<std::string, 8> targetFeatures(llvmTargetFeatures.begin(),
                                                    llvmTargetFeatures.end());
-  irgen->initTargetMachine(getTarget(), getArch(), getCPU(), targetFeatures,
-                           getCodeModel(), getRelocModel());
+  irgen->initTargetMachine(getOptions());
   irgen->initCodeGen();
+  irgen->setIRFunction(IR);
   // Perform the address assignment for activations and WeightVars.
-
   allocateJITMemory(IR, irgen->getAllocationsInfo());
-  // Create the jitmain function to be invoked by JIT.
-  emitJitMain(*irgen);
   // Emit the code for the body of the entry function.
   irgen->performCodeGen();
+  // Create the jitmain function to be invoked by JIT.
+  emitJitMain(*irgen);
+  irgen->finishCodeGen();
   // Hand over the module to JIT for the machine code generation.
-  auto JIT = llvm::make_unique<llvm::orc::GlowJIT>(irgen->getTargetMachine());
+  auto JIT = glow::make_unique<llvm::orc::GlowJIT>(irgen->getTargetMachine());
   JIT->addModule(irgen->borrowModule());
   // Build runtimeBundle object containing offsets and allocation sizes.
   MemoryAllocator constantAllocator("ConstantWeights", 0);
@@ -159,7 +166,20 @@ void LLVMBackend::save(Function *F, llvm::StringRef outputDir,
   llvm::SmallVector<std::string, 8> targetFeatures(llvmTargetFeatures.begin(),
                                                    llvmTargetFeatures.end());
   auto IR = generateAndOptimizeIR(F, *this, shouldShareBuffers());
-  BundleSaver(IR.get(), *this)
-      .save(getTarget(), getArch(), getCPU(), targetFeatures, outputDir,
-            bundleName, mainEntryName, getCodeModel(), getRelocModel());
+  BundleSaver bundleSaver(*this, outputDir, bundleName);
+  bundleSaver.save(mainEntryName, IR.get());
+  bundleSaver.produceBundle();
+}
+
+void LLVMBackend::saveFunctions(llvm::ArrayRef<BundleEntry> entries,
+                                llvm::StringRef outputDir,
+                                llvm::StringRef bundleName) const {
+  BundleSaver bundleSaver(*this, outputDir, bundleName);
+  std::vector<std::unique_ptr<glow::IRFunction>> irFunctions;
+  for (auto &entry : entries) {
+    auto IR = generateAndOptimizeIR(entry.func, *this, shouldShareBuffers());
+    bundleSaver.save(entry.name, IR.get());
+    irFunctions.emplace_back(std::move(IR));
+  }
+  bundleSaver.produceBundle();
 }

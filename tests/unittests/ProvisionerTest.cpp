@@ -25,7 +25,7 @@ using namespace glow::runtime;
 class ProvisionerTest : public ::testing::Test {};
 
 std::unique_ptr<Module> setupModule(unsigned functionCount) {
-  auto mod = llvm::make_unique<Module>();
+  auto mod = glow::make_unique<Module>();
   for (unsigned int i = 0; i < functionCount; i++) {
     auto *F = mod->createFunction("function" + std::to_string(i));
     auto *X = mod->createPlaceholder(ElemKind::FloatTy, {16, 1024}, "X", false);
@@ -44,8 +44,8 @@ DAGListTy setupDAG(unsigned rootCount, unsigned childCount) {
   unsigned currentFunction = 0;
   for (unsigned int root = 0; root < rootCount; root++) {
     DAGNodePtrVec nodes;
-    auto rootNode = llvm::make_unique<DAGNode>();
-    auto firstNode = llvm::make_unique<DAGNode>();
+    auto rootNode = glow::make_unique<DAGNode>();
+    auto firstNode = glow::make_unique<DAGNode>();
     rootNode->name = "root" + std::to_string(root);
     rootNode->children.push_back(firstNode.get());
     firstNode->name = "function" + std::to_string(currentFunction);
@@ -53,7 +53,7 @@ DAGListTy setupDAG(unsigned rootCount, unsigned childCount) {
     firstNode->backendName = "CPU";
     currentFunction++;
     for (unsigned int child = 0; child < childCount; child++) {
-      auto newChild = llvm::make_unique<DAGNode>();
+      auto newChild = glow::make_unique<DAGNode>();
       newChild->name = "function" + std::to_string(currentFunction);
       newChild->logicalDevices = {0};
       newChild->backendName = "CPU";

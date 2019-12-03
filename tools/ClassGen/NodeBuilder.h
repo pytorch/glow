@@ -66,6 +66,8 @@ class NodeBuilder {
   bool hasSideEffects_{false};
   /// Specifies if this Node is backend specific.
   bool isBackendSpecific_{false};
+  /// Specifies if this Node is data parallel.
+  bool isDataParallel_{false};
 
 public:
   NodeBuilder(std::ofstream &H, std::ofstream &C, std::ofstream &D,
@@ -158,6 +160,11 @@ public:
     }
     llvm_unreachable("Cannot register an overwritten input that is not a known "
                      "input of a node");
+  }
+
+  NodeBuilder &dataParallel() {
+    isDataParallel_ = true;
+    return *this;
   }
 
   /// Constructs a new gradient node that is based on the current node that we

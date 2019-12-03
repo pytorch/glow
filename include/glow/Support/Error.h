@@ -28,7 +28,6 @@
 /// abstraction between Error/Expected types and the specific classes that
 /// implement them.
 
-namespace glow {
 /// Consumes an Error \p err and \returns true iff the error contained an
 /// ErrorValue. Calls the log method on ErrorValue if the optional argument \p
 /// log is passed.
@@ -74,7 +73,9 @@ namespace glow {
     if (rhsOrErrV) {                                                           \
       lhs = std::move(rhsOrErrV.get());                                        \
     } else {                                                                   \
-      return rhsOrErrV.takeError();                                            \
+      auto err = rhsOrErrV.takeError();                                        \
+      err.addToStack(__FILE__, __LINE__);                                      \
+      return std::forward<Error>(err);                                         \
     }                                                                          \
   } while (0)
 
@@ -96,9 +97,10 @@ namespace glow {
 // TODO: extend this to work with Expected as well.
 #define RETURN_IF_ERR(err)                                                     \
   do {                                                                         \
-    if (auto errV = std::forward<Error>(err)) {                                \
+    if (auto errV = std::forward<glow::detail::GlowError>(err)) {              \
       static_assert(glow::detail::IsError<decltype(errV)>::value,              \
                     "Expected value to be a Error");                           \
+      errV.addToStack(__FILE__, __LINE__);                                     \
       return std::forward<Error>(errV);                                        \
     }                                                                          \
   } while (0)
@@ -106,7 +108,7 @@ namespace glow {
 /// Takes an Error and if it contains an ErrorValue then calls FAIL().
 #define FAIL_TEST_IF_ERR(err)                                                  \
   do {                                                                         \
-    if (auto errV = std::forward<Error>(err)) {                                \
+    if (auto errV = std::forward<glow::detail::GlowError>(err)) {              \
       static_assert(glow::detail::IsError<decltype(errV)>::value,              \
                     "Expected value to be a Error");                           \
       FAIL() << errorToString(std::move(errV));                                \
@@ -121,6 +123,8 @@ namespace glow {
       RETURN_ERR(__VA_ARGS__);                                                 \
     }                                                                          \
   } while (0)
+
+namespace glow {
 
 /// Forward declarations.
 namespace detail {
@@ -262,6 +266,8 @@ public:
     RUNTIME_DEVICE_NOT_FOUND,
     // Runtime error, network busy to perform any operation on it.
     RUNTIME_NET_BUSY,
+    // Device error, not supported.
+    DEVICE_FEATURE_NOT_SUPPORTED,
     // Compilation error; node unsupported after optimizations.
     COMPILE_UNSUPPORTED_NODE_AFTER_OPTIMIZE,
     // Compilation error; Compilation context not correctly setup.
@@ -280,43 +286,44 @@ public:
   /// line number the ErrorValue was created on as well as the message and/or
   /// error code the ErrorValue was created with.
   template <typename StreamT> void log(StreamT &os) const {
-    os << "location: " << fileName_ << ":" << lineNumber_;
     if (ec_ != ErrorCode::UNKNOWN) {
-      os << " error code: " << errorCodeToString(ec_);
+      os << "\nError code: " << errorCodeToString(ec_);
     }
     if (!message_.empty()) {
-      os << " message: " << message_;
+      os << "\nError message: " << message_;
     }
+    os << "\nError return stack:\n";
+    for (const auto &p : stack_) {
+      os << p.first.c_str() << ":" << p.second << "\n";
+    }
+  }
+
+  /// Add \p filename and \p lineNumber to the ErrorValue's stack for logging.
+  void addToStack(const std::string &fileName, size_t lineNumber) {
+    stack_.push_back({fileName, lineNumber});
   }
 
   std::string logToString() const;
 
-  GlowErrorValue(const char *fileName, size_t lineNumber, std::string message,
-                 ErrorCode ec)
-      : lineNumber_(lineNumber), fileName_(fileName), message_(message),
-        ec_(ec) {}
+  GlowErrorValue(std::string message, ErrorCode ec)
+      : message_(message), ec_(ec) {}
 
-  GlowErrorValue(const char *fileName, size_t lineNumber, ErrorCode ec,
-                 std::string message)
-      : lineNumber_(lineNumber), fileName_(fileName), message_(message),
-        ec_(ec) {}
+  GlowErrorValue(ErrorCode ec, std::string message)
+      : message_(message), ec_(ec) {}
 
-  GlowErrorValue(const char *fileName, size_t lineNumber, ErrorCode ec)
-      : lineNumber_(lineNumber), fileName_(fileName), ec_(ec) {}
+  GlowErrorValue(ErrorCode ec) : ec_(ec) {}
 
-  GlowErrorValue(const char *fileName, size_t lineNumber, std::string message)
-      : lineNumber_(lineNumber), fileName_(fileName), message_(message) {}
+  GlowErrorValue(std::string message) : message_(message) {}
 
 private:
   /// Convert ErrorCode values to string.
   static std::string errorCodeToString(const ErrorCode &ec);
 
-  /// The line number the error was generated on.
-  size_t lineNumber_;
-  /// The name of the file the error was generated in.
-  std::string fileName_;
   /// Optional message associated with the error.
   std::string message_;
+  /// The filename and line number of all places that created, forwarded, and
+  /// destroyed the ErrorValue.
+  std::vector<std::pair<std::string, size_t>> stack_;
   /// Optional error code associated with the error.
   ErrorCode ec_ = ErrorCode::UNKNOWN;
 };
@@ -403,6 +410,14 @@ public:
     return *this;
   }
 
+  /// Add \p filename and \p lineNumber to the contained ErrorValue's stack for
+  /// logging.
+  void addToStack(const std::string &fileName, size_t lineNumber) {
+    if (hasErrorValue()) {
+      errorValue_->addToStack(fileName, lineNumber);
+    }
+  }
+
   /// Create an Error not containing an ErrorValue that is signifies success
   /// instead of failure of an operation.
   /// NOTE: this Error must still be checked before being destroyed.
@@ -452,6 +467,11 @@ class GlowErrorEmpty final : public GlowError {};
 /// See declaration in Error for details.
 inline GlowErrorEmpty GlowError::empty() { return GlowErrorEmpty(); }
 
+template <typename T> class GlowExpected;
+template <typename T>
+T exitOnError(const char *fileName, size_t lineNumber,
+              GlowExpected<T> expected);
+
 /// Expected is a templated container for either a value of type T or an
 /// ErrorValue. It is used for fallible processes that may return either a value
 /// or encounter an error. Expected ensures that its state has been checked for
@@ -459,9 +479,8 @@ inline GlowErrorEmpty GlowError::empty() { return GlowErrorEmpty(); }
 template <typename T>
 class GlowExpected final
     : protected detail::CheckState<detail::enableCheckingErrors> {
-  template <typename TT>
-  friend TT detail::exitOnError(const char *fileName, size_t lineNumber,
-                                GlowExpected<TT> expected);
+  friend T detail::exitOnError<>(const char *fileName, size_t lineNumber,
+                                 GlowExpected<T> expected);
   template <typename OtherT> friend class GlowExpected;
 
   /// Union type between ErrorValue and T. Holds both in Opaque containers so
@@ -575,6 +594,14 @@ class GlowExpected final
     ensureValue();
     setChecked(true);
     return std::move(payload_.asValue.get());
+  }
+
+  /// Add \p filename and \p lineNumber to the contained ErrorValue's stack for
+  /// logging.
+  void addToStack(const std::string &fileName, size_t lineNumber) {
+    if (getIsError()) {
+      payload_.asErrorValue.get()->addToStack(fileName, lineNumber);
+    }
   }
 
 public:
@@ -694,9 +721,9 @@ T exitOnError(const char *fileName, size_t lineNumber,
         detail::takeErrorValue(std::move(error));
     assert(errorValue != nullptr && "Expected should have a non-null "
                                     "ErrorValue if bool(expected) is false");
-    LOG(FATAL) << "exitOnError(Expected<T>) at " << fileName << ":"
-               << lineNumber
-               << " got an unexpected ErrorValue: " << (*errorValue);
+    errorValue->addToStack(fileName, lineNumber);
+    LOG(FATAL) << "exitOnError(Expected<T>) got an unexpected ErrorValue: "
+               << (*errorValue);
   }
 }
 
@@ -704,9 +731,11 @@ T exitOnError(const char *fileName, size_t lineNumber,
 /// Error.
 /// NOTE: this should not be used directly, use macros defined at the top of
 /// Error.h instead.
-template <typename... Args> GlowError makeError(Args &&... args) {
+template <typename... Args>
+GlowError makeError(const char *fileName, size_t lineNumber, Args &&... args) {
   auto errorValue = std::unique_ptr<GlowErrorValue>(
       new GlowErrorValue(std::forward<Args>(args)...));
+  errorValue->addToStack(fileName, lineNumber);
   return GlowError(std::move(errorValue));
 }
 

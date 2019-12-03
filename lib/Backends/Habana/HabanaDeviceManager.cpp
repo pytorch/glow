@@ -105,8 +105,8 @@ Error HabanaDeviceManager::init() {
   RETURN_IF_ERR(updateMemoryUsage());
 
   // Create thread pools for running functions and waiting on function results.
-  runPool_ = llvm::make_unique<ThreadPool>(numRunners_);
-  waitPool_ = llvm::make_unique<ThreadPool>(numWaiters_);
+  runPool_ = glow::make_unique<ThreadPool>(numRunners_);
+  waitPool_ = glow::make_unique<ThreadPool>(numWaiters_);
 
   if (!runPool_ || !waitPool_) {
     RETURN_ERR("Failed to create HabanaDeviceManager thread pools");
@@ -184,7 +184,7 @@ void HabanaDeviceManager::addNetwork(const Module *module,
     std::tie(std::ignore, inserted) = functions_.insert(std::make_pair(
         func.first,
         HabanaFunctionMeta{topologyId, habanaFunction,
-                           llvm::make_unique<HabanaIOBufferPool>(
+                           glow::make_unique<HabanaIOBufferPool>(
                                deviceId_, habanaFunction->getInputs(),
                                habanaFunction->getOutputs())}));
 
@@ -284,6 +284,10 @@ void HabanaDeviceManager::runFunctionImpl(RunIdentifierTy runId,
 
   TRACE_EVENT_SCOPE_NAMED(ctx->getTraceContext(), TraceLevel::RUNTIME,
                           "HabanaDM::runnerThread", trEvent);
+
+  /// Habana DeviceManager doesn't support Device Resident Tensors.
+  ctx->getPlaceholderBindings()->ensureOnHost();
+
   if (ctx->getTraceContext()) {
     ctx->getTraceContext()->setThreadName(
         llvm::formatv("Habana {0} (enqueue)", deviceId_).str());
@@ -334,7 +338,7 @@ void HabanaDeviceManager::runFunctionImpl(RunIdentifierTy runId,
 
   // Execute the function.
   auto deviceBindings =
-      llvm::make_unique<HabanaBindings>(deviceId_, topologyId);
+      glow::make_unique<HabanaBindings>(deviceId_, topologyId);
   deviceBindings->setIOBuffer(ioBufferPool->get());
   ctx->setDeviceBindings(std::move(deviceBindings));
 
