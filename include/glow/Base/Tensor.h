@@ -498,6 +498,9 @@ public:
   /// Tensor to std::string.
   std::string toString(unsigned maxNumElem) const;
 
+  /// Dump a textual representation of the shape of this Tensor to std::string.
+  std::string getShapeToString() const;
+
   /// \returns true if the content of the other tensor \p other is identical to
   /// this one, given some \p allowedError. If \p verbose and the tensors are
   /// not equal, then we will log information about the mismatch (number of
@@ -506,6 +509,10 @@ public:
                bool verbose = true) const {
     if (isDeviceResident()) {
       if (!other.isDeviceResident()) {
+        if (verbose) {
+          LOG(INFO) << "Tensors cannot be compared as they are not resident in "
+                       "the same location.";
+        }
         return false;
       }
 
@@ -525,6 +532,11 @@ public:
   bool isEqualImpl(const Tensor &other, bool isBitwise, float allowedError,
                    bool verbose) const {
     if (other.dims() != dims()) {
+      if (verbose) {
+        LOG(INFO) << "Tensors are not equal as they have different shapes: "
+                  << this->getShapeToString() << " vs. "
+                  << other.getShapeToString();
+      }
       return false;
     }
 
