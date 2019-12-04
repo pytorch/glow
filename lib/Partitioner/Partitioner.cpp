@@ -92,6 +92,8 @@ Error Partitioner::finalize(const DAGListTy &partitions,
     for (const auto &node : partitions[0].nodes) {
       Function *subF = module_->getFunction(node->name);
       if (!subF) {
+        // If we fail dump partition info for debugging.
+        logPartitionInfo(mapping);
         return MAKE_ERR(ErrorValue::ErrorCode::PARTITIONER_ERROR,
                         "Invalid function name " + node->name);
       }
@@ -284,6 +286,7 @@ Expected<DAGListTy> Partitioner::backendBasedPartition(
       }
     }
     if (nodeToBackendName.find(&N) == nodeToBackendName.end()) {
+      logPartitionInfo(mapping);
       return MAKE_ERR(ErrorValue::ErrorCode::PARTITIONER_ERROR,
                       "Node is not supported by any of the provided backends");
     }
@@ -582,6 +585,7 @@ Expected<DAGListTy> Partitioner::loadBalancedPartition(CompilationContext &cctx,
 
       // Throw error if we were not able to put this node into any partition
       if (curPartition >= numDevices) {
+        logPartitionInfo(partitionMap);
         return MAKE_ERR(ErrorValue::ErrorCode::PARTITIONER_ERROR,
                         "Load balance partition error");
       }
@@ -829,8 +833,21 @@ Partitioner::partitionFromConfig(const PartitionConfig &partitionConfig) {
   }
   RETURN_IF_ERR(memoryUsageValidation(partitionMap, backendMap_));
 
-  // Logical device ID validation.
-  logicalDeviceID_ = assignLogicalDeviceID(partitionMap, backendMap_);
+  // If logical device assignments are provided use them otherwise assign them.
+  if (partitionConfig.logicalIDs.size()) {
+    DCHECK(partitionConfig.numOfPartitions ==
+           partitionConfig.logicalIDs.size());
+    for (size_t i = 0; i < partitionConfig.numOfPartitions; i++) {
+      auto func = funcList[i];
+      for (auto logicalDevice : partitionConfig.logicalIDs[i]) {
+        partitionMap.appendLogicalDeviceID(func, logicalDevice);
+      }
+    }
+
+  } else {
+    // Logical device ID validation.
+    logicalDeviceID_ = assignLogicalDeviceID(partitionMap, backendMap_);
+  }
   RETURN_IF_ERR(logicalDevicesValidation(partitionMap, backendMap_));
 
   // Do partition.
@@ -859,6 +876,10 @@ Partitioner::partitionFromConfig(const PartitionConfig &partitionConfig) {
 }
 
 Expected<DAGListTy> Partitioner::partition(CompilationContext &cctx) {
+  if (cctx.partitionConfig) {
+    partitionConfig_ = *cctx.partitionConfig;
+  }
+
   if (partitionConfig_.enabled()) {
     // Call user-defined partition flow.
     return partitionFromConfig(partitionConfig_);

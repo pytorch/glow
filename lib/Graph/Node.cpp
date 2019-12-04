@@ -47,7 +47,7 @@ ElemKind Node::getElementType(unsigned resNo) const {
   return TR->getElementType();
 }
 
-llvm::ArrayRef<size_t> Node::dims(unsigned resNo) const {
+llvm::ArrayRef<dim_t> Node::dims(unsigned resNo) const {
   TypeRef TR = getType(resNo);
   return TR->dims();
 }

@@ -40,7 +40,7 @@ namespace {
 /// with the Tensor. This method makes sure that the tensor is created with the
 /// proper shape and element type.
 Error setTensorType(const ONNX_NAMESPACE::TypeProto &in, Tensor *T) {
-  std::vector<size_t> dim;
+  std::vector<dim_t> dim;
   for (auto d : in.tensor_type().shape().dim()) {
     dim.push_back(d.dim_value());
   }
@@ -78,7 +78,7 @@ loadArgumentMap(const ONNX_NAMESPACE::NodeProto &op) {
 
 /// Loads tensor \p T from the input \p in.
 Error glow::loadTensor(const ONNX_NAMESPACE::TensorProto &in, Tensor *T) {
-  std::vector<size_t> dim;
+  std::vector<dim_t> dim;
   for (auto d : in.dims()) {
     dim.push_back(d);
   }
@@ -407,7 +407,7 @@ Error ONNXModelLoader::loadConstant(const ONNX_NAMESPACE::NodeProto &op,
 template <typename T>
 static void helperSetter(Constant *constT, std::vector<ssize_t> &vec) {
   auto constH = constT->getPayload().getHandle<T>();
-  for (size_t i = 0; i < constH.size(); ++i) {
+  for (dim_t i = 0; i < constH.size(); ++i) {
     vec.push_back(constH.at({i}));
   }
 }
@@ -496,8 +496,8 @@ Error ONNXModelLoader::loadSlice(const ONNX_NAMESPACE::NodeProto &op,
   // an axis index is not given in the axes array. An interpretation is that
   // for such an axis, the entire range is taken. Then, we initialize
   // newStarts and newEnds with the full range for all axes.
-  std::vector<size_t> newStarts(numDims);
-  std::vector<size_t> newEnds(numDims);
+  std::vector<dim_t> newStarts(numDims);
+  std::vector<dim_t> newEnds(numDims);
   for (size_t i = 0; i < numDims; i++) {
     newStarts[i] = 0;
     newEnds[i] = dims[i];
@@ -594,7 +594,7 @@ Error ONNXModelLoader::loadConv(const ONNX_NAMESPACE::NodeProto &op,
   // number of filters. We use this value to calculate the size of the bias
   // if it is not specified.
   const NodeValue filterTransposedValue = filterTransposeNode->getResult();
-  size_t depth = filterTransposedValue.dims()[0];
+  dim_t depth = filterTransposedValue.dims()[0];
 
   // Get the kernel shape from the input.
   llvm::SmallVector<unsigned_t, 2> kernelShape(2);
@@ -646,7 +646,7 @@ Error ONNXModelLoader::loadConv(const ONNX_NAMESPACE::NodeProto &op,
 
   auto outSz = calculateConvPoolOutputDims(idim.h, idim.w, kernelShape, strides,
                                            pads, dilation);
-  std::array<size_t, 4> outDims = {{idim.n, outSz.first, outSz.second, depth}};
+  std::array<dim_t, 4> outDims = {{idim.n, outSz.first, outSz.second, depth}};
   auto outTy = G_.getParent()->uniqueType(ElemKind::FloatTy, outDims);
 
   auto *node = G_.createConv(opName, tr, filterTransposeNode, bias, outTy,
@@ -1011,7 +1011,7 @@ Error ONNXModelLoader::loadPad(const ONNX_NAMESPACE::NodeProto &op,
       "Pad: the 'pads' array must contain 2 values per dimensions");
 
   // Compute the output type.
-  std::vector<size_t> outDims(numDims);
+  std::vector<dim_t> outDims(numDims);
   for (unsigned_t i = 0; i < numDims; i++) {
     auto new_dim = inputDims[i] + pads[i] + pads[i + numDims];
     RETURN_ERR_IF_NOT(new_dim > 0,
@@ -1114,12 +1114,11 @@ Error ONNXModelLoader::loadConstantOfShape(const ONNX_NAMESPACE::NodeProto &op,
     RETURN_ERR_IF_NOT(in->dims().size() == 1, "Input must be a 1D vector.");
     RETURN_ERR_IF_NOT(in->getType()->getElementType() == ElemKind::Int64ITy,
                       "Input element type must be Int64ITy.");
-    // Convert 1D tensor of int64_t into llvm::ArrayRef<size_t>.
+    // Convert 1D tensor of int64_t into llvm::ArrayRef<dim_t>.
     auto TH = in->getPayload().getHandle<int64_t>();
     auto begin = &TH.raw(0);
     auto end = begin + TH.actualSize();
-    llvm::ArrayRef<size_t> outputDims = {(const size_t *)begin,
-                                         (const size_t *)end};
+    ShapeVector outputDims = {(const dim_t *)begin, (const dim_t *)end};
 
     ty = G_.getParent()->uniqueType(T.getType().getElementType(), outputDims);
     switch (T.getType().getElementType()) {
@@ -1230,6 +1229,211 @@ Error ONNXModelLoader::loadWhere(const ONNX_NAMESPACE::NodeProto &op,
   return Error::success();
 }
 
+// ONNX LSTM: https://github.com/onnx/onnx/blob/master/docs/Operators.md#lstm
+// Limitations:
+// - Only Sigmoid, Tahn and ReLU activations are supported.
+// - Activation clipping not supported.
+// - Variable sequence length not supported.
+// - Coupling of input and forget gate not supported.
+Error ONNXModelLoader::loadLSTM(const ONNX_NAMESPACE::NodeProto &op,
+                                const ArgumentDictionaryTy &dict) {
+
+  const std::string &opName = loadOperatorName(op);
+
+  // ------------------------- Attributes -------------------------------------
+  // Get direction (Optional)(Default:forward).
+  Function::LstmDirection direction = Function::LstmDirection::Forward;
+  if (dict.count("direction")) {
+    std::string directionStr;
+    ASSIGN_VALUE_OR_RETURN_ERR(directionStr, loadStr(dict.at("direction")));
+    if (directionStr == "forward") {
+      direction = Function::LstmDirection::Forward;
+    } else if (directionStr == "reverse") {
+      direction = Function::LstmDirection::Reverse;
+    } else if (directionStr == "bidirectional") {
+      direction = Function::LstmDirection::Bidirectional;
+    } else {
+      RETURN_ERR("ONNX LSTM 'direction' attribute is invalid!",
+                 ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_ATTRIBUTE);
+    }
+  }
+  size_t numDirections =
+      (direction == Function::LstmDirection::Bidirectional) ? 2 : 1;
+
+  // Activation alpha not supported (Optional)(Default:activation dependent).
+  RETURN_ERR_IF_NOT(!dict.count("activation_alpha"),
+                    "ONNX LSTM 'activation_alpha' attribute not supported!");
+
+  // Activation beta not supported (Optional)(Default:activation dependent).
+  RETURN_ERR_IF_NOT(!dict.count("activation_beta"),
+                    "ONNX LSTM 'activation_beta' attribute not supported!");
+
+  // Get activations as lambdas (Optional)(Default:f=Sigmoid, g=Tanh, h=Tanh).
+#define LSTM_ACTIVATION_LAMBDA_RELU                                            \
+  [this](llvm::StringRef name, Node *input) {                                  \
+    return G_.createRELU(name, input);                                         \
+  }
+#define LSTM_ACTIVATION_LAMBDA_TANH                                            \
+  [this](llvm::StringRef name, Node *input) {                                  \
+    return G_.createTanh(name, input);                                         \
+  }
+#define LSTM_ACTIVATION_LAMBDA_SIGMOID                                         \
+  [this](llvm::StringRef name, Node *input) {                                  \
+    return G_.createSigmoid(name, input);                                      \
+  }
+  std::vector<Function::LstmActivation> activations;
+  if (direction == Function::LstmDirection::Bidirectional) {
+    activations = {
+        LSTM_ACTIVATION_LAMBDA_SIGMOID, LSTM_ACTIVATION_LAMBDA_TANH,
+        LSTM_ACTIVATION_LAMBDA_TANH,    LSTM_ACTIVATION_LAMBDA_SIGMOID,
+        LSTM_ACTIVATION_LAMBDA_TANH,    LSTM_ACTIVATION_LAMBDA_TANH};
+  } else {
+    activations = {LSTM_ACTIVATION_LAMBDA_SIGMOID, LSTM_ACTIVATION_LAMBDA_TANH,
+                   LSTM_ACTIVATION_LAMBDA_TANH};
+  }
+  if (dict.count("activations") && dict.at("activations")->strings_size()) {
+    size_t actNum = dict.at("activations")->strings_size();
+    RETURN_ERR_IF_NOT(actNum == numDirections * 3,
+                      "ONNX LSTM 'activations' attribute is invalid!");
+    for (size_t actIdx = 0; actIdx < actNum; actIdx++) {
+      std::string actStr = dict.at("activations")->strings().Get(actIdx);
+      if (actStr == "Relu") {
+        activations[actIdx] = LSTM_ACTIVATION_LAMBDA_RELU;
+      } else if (actStr == "Tanh") {
+        activations[actIdx] = LSTM_ACTIVATION_LAMBDA_TANH;
+      } else if (actStr == "Sigmoid") {
+        activations[actIdx] = LSTM_ACTIVATION_LAMBDA_SIGMOID;
+      } else {
+        RETURN_ERR("ONNX LSTM activation '" + actStr + "' not supported!",
+                   ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_ATTRIBUTE);
+      }
+    }
+  }
+#undef LSTM_ACTIVATION_LAMBDA_RELU
+#undef LSTM_ACTIVATION_LAMBDA_TANH
+#undef LSTM_ACTIVATION_LAMBDA_SIGMOID
+
+  // Activation clipping not supported (Optional)(Default: 0 for no clipping).
+  RETURN_ERR_IF_NOT(!dict.count("clip"),
+                    "ONNX LSTM 'clip' attribute not supported!");
+
+  // Get hidden size (Required).
+  size_t hiddenSize;
+  RETURN_ERR_IF_NOT(dict.count("hidden_size"),
+                    "ONNX LSTM 'hidden_size' attribute is required!");
+  ASSIGN_VALUE_OR_RETURN_ERR(hiddenSize, loadInt(dict.at("hidden_size")));
+
+  // Get input forget (Optional)(Default:0).
+  int inputForget = 0;
+  if (dict.count("input_forget") && dict.at("input_forget")->has_i()) {
+    inputForget = dict.at("input_forget")->i();
+  }
+  RETURN_ERR_IF_NOT(inputForget == 0,
+                    "ONNX LSTM 'input_forget' attribute not supported!");
+
+  // --------------------------- Inputs ---------------------------------------
+  const int numInputs = op.input_size();
+  RETURN_ERR_IF_NOT((3 <= numInputs) && (numInputs <= 8),
+                    "ONNX LSTM should have minimum 3 and maximum 8 inputs!");
+
+  // Input0: X (Required).
+  NodeValue X;
+  ASSIGN_VALUE_OR_RETURN_ERR(X, getNodeValueByName(op.input(0)));
+
+  // Input1: W (Required).
+  NodeValue W;
+  ASSIGN_VALUE_OR_RETURN_ERR(W, getNodeValueByName(op.input(1)));
+
+  // Input2: R (Required).
+  NodeValue R;
+  ASSIGN_VALUE_OR_RETURN_ERR(R, getNodeValueByName(op.input(2)));
+
+  // Input3: B (Optional).
+  NodeValue B = nullptr;
+  if (numInputs > 3 && !op.input(3).empty()) {
+    ASSIGN_VALUE_OR_RETURN_ERR(B, getNodeValueByName(op.input(3)));
+  }
+
+  // Input4: sequence_lens (Optional).
+  if (numInputs > 4) {
+    RETURN_ERR_IF_NOT(op.input(4).empty(),
+                      "ONNX LSTM 'sequence_lens' attribute not supported!");
+  }
+
+  // Input5: initial_h (Optional).
+  NodeValue initial_h = nullptr;
+  if (numInputs > 5 && !op.input(5).empty()) {
+    ASSIGN_VALUE_OR_RETURN_ERR(initial_h, getNodeValueByName(op.input(5)));
+  }
+
+  // Input6: initial_c (Optional).
+  NodeValue initial_c = nullptr;
+  if (numInputs > 6 && !op.input(6).empty()) {
+    ASSIGN_VALUE_OR_RETURN_ERR(initial_c, getNodeValueByName(op.input(6)));
+  }
+
+  // Input7: P (Optional).
+  NodeValue P = nullptr;
+  if (numInputs > 7 && !op.input(7).empty()) {
+    ASSIGN_VALUE_OR_RETURN_ERR(P, getNodeValueByName(op.input(7)));
+  }
+
+  // -------------------------- Outputs ---------------------------------------
+  // We always create placeholders for the LSTM state variables (Y_h and Y_c)
+  // for the following reasons:
+  // - expose the LSTM state in the graph interface for accessibility (set
+  //   desired state, reset state, watch the state being updated automatically).
+  // - since the LSTM cells are unrolled (no graph loop primitive available
+  //   at this point), the optimal way to use the LSTM within a model would be
+  //   to have it defined with only 1 time step and have the loop in the top
+  //   of the application while the LSTM state will be automatically updated
+  //   from one iteration (time step) to the next through the placeholders.
+  const int numOutputs = op.output_size();
+  RETURN_ERR_IF_NOT(1 <= numOutputs,
+                    "ONNX LSTM should have minimum 1 output defined!");
+
+  // Derived parameters.
+  RETURN_ERR_IF_NOT(X.dims().size() == 3,
+                    "ONNX LSTM input 'X' should have 3 dimensions!");
+  size_t batchSize = X.dims()[1];
+
+  // Create Y_h (hidden state) output placeholder.
+  Placeholder *Y_h_ph;
+  TypeRef Htype = G_.getParent()->uniqueTypeWithNewShape(
+      X.getType(), {numDirections, batchSize, hiddenSize});
+  std::string Hname = opName + ".Y_h";
+  ASSIGN_VALUE_OR_RETURN_ERR(Y_h_ph,
+                             createAndRegisterPlaceholder(Hname, Htype));
+  inputVarsByName_.try_emplace(Hname, Y_h_ph);
+
+  // Create Y_c (cell state) output placeholder.
+  Placeholder *Y_c_ph;
+  TypeRef Ctype = G_.getParent()->uniqueTypeWithNewShape(
+      X.getType(), {numDirections, batchSize, hiddenSize});
+  std::string Cname = opName + ".Y_c";
+  ASSIGN_VALUE_OR_RETURN_ERR(Y_c_ph,
+                             createAndRegisterPlaceholder(Cname, Ctype));
+  inputVarsByName_.try_emplace(Cname, Y_c_ph);
+
+  // If LSTM input states are explicitly provided then used them. If not, then
+  // use the LSTM state placeholders.
+  NodeValue Y_h_init = initial_h.getNode() ? initial_h : Y_h_ph;
+  NodeValue Y_c_init = initial_c.getNode() ? initial_c : Y_c_ph;
+
+  // Create ONNX LSTM.
+  NodeValue Y, Y_h, Y_c;
+  G_.createONNXLSTM(opName, X, W, R, B, Y_h_init, Y_c_init, P, Y, Y_h, Y_c,
+                    hiddenSize, direction, activations);
+
+  // Save LSTM state in the state placeholders.
+  G_.createSave(opName + ".Y_h.save", Y_h, Y_h_ph);
+  G_.createSave(opName + ".Y_c.save", Y_c, Y_c_ph);
+
+  // Add node.
+  RETURN_IF_ERR(addNodeAsOutput(op, Y, 1));
+  return Error::success();
+}
+
 Error ONNXModelLoader::loadCmpEQ(const ONNX_NAMESPACE::NodeProto &op,
                                  const ArgumentDictionaryTy &dict) {
   NodeValue LHS;
@@ -1265,7 +1469,7 @@ Error ONNXModelLoader::loadSelect(const ONNX_NAMESPACE::NodeProto &op,
   NodeValue RHS;
   ASSIGN_VALUE_OR_RETURN_ERR(RHS, getNodeValueByName(op.input(2)));
 
-  auto shape = getShape<size_t>(dict.at("shape"));
+  auto shape = getShape<dim_t>(dict.at("shape"));
 
   auto outTy = G_.getParent()->uniqueType(LHS.getElementType(), shape);
   Node *N = G_.createSelect(loadOperatorName(op), outTy, Cond, LHS, RHS);
@@ -1297,7 +1501,7 @@ Error ONNXModelLoader::loadConvertTo(const ONNX_NAMESPACE::NodeProto &op,
   NodeValue in;
   ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
 
-  auto shape = getShape<size_t>(dict.at("shape"));
+  auto shape = getShape<dim_t>(dict.at("shape"));
 
   auto outTy = G_.getParent()->uniqueType(in.getElementType(), shape);
   Node *N = G_.createConvertTo(loadOperatorName(op), in, outTy);
@@ -1364,7 +1568,7 @@ Error ONNXModelLoader::loadIntLookupTable(const ONNX_NAMESPACE::NodeProto &op,
   ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
 
   auto values = getShape<int8_t>(dict.at("values"));
-  auto shape = getShape<size_t>(dict.at("shape"));
+  auto shape = getShape<dim_t>(dict.at("shape"));
 
   auto outTy = G_.getParent()->uniqueType(in.getElementType(), shape);
   Node *N = G_.createIntLookupTable(loadOperatorName(op), in, values, outTy);
@@ -1495,7 +1699,7 @@ Error ONNXModelLoader::loadInsertTensor(const ONNX_NAMESPACE::NodeProto &op,
   NodeValue small;
   ASSIGN_VALUE_OR_RETURN_ERR(small, getNodeValueByName(op.input(1)));
 
-  auto start = getShape<size_t>(dict.at("start"));
+  auto start = getShape<dim_t>(dict.at("start"));
 
   unsigned_t count = 1;
   if (dict.count("count")) {
@@ -1525,9 +1729,9 @@ Error ONNXModelLoader::loadAdaptiveAvgPool(const ONNX_NAMESPACE::NodeProto &op,
                              NCHW2NHWC);
 
   // OutputSize defaults to size of input if not provided.
-  std::vector<size_t> outputSize;
+  std::vector<dim_t> outputSize;
   if (dict.count("output_size")) {
-    outputSize = getShape<size_t>(dict.at("output_size"));
+    outputSize = getShape<dim_t>(dict.at("output_size"));
   } else {
     outputSize = {input.dims()[2], input.dims()[3]};
   }
@@ -1620,6 +1824,9 @@ Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
   }
   if (typeName == "Where") {
     return loadWhere(op, dict);
+  }
+  if (typeName == "LSTM") {
+    return loadLSTM(op, dict);
   }
   // Glow specific operators
   if (typeName == "CmpEQ") {
@@ -1754,7 +1961,7 @@ Error ONNXModelLoader::checkInputs(ONNX_NAMESPACE::GraphProto &net,
         continue;
       }
 
-      llvm::ArrayRef<size_t> dims = types[i]->dims();
+      llvm::ArrayRef<dim_t> dims = types[i]->dims();
       const ONNX_NAMESPACE::TensorShapeProto &shape =
           valueInfo.type().tensor_type().shape();
       (void)shape;

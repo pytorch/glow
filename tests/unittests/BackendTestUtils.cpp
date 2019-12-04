@@ -220,6 +220,40 @@ void dispatchInference(const std::string &fname,
   contexts[0].release();
 }
 
+/// Helper that iterates over all of the Placeholders in \p PHs and converts the
+/// Tensor pair found in \p bindings to the same type as the Placeholder if
+/// necessary.
+static void convertBindingsToCorrectType(PlaceholderBindings &bindings,
+                                         PlaceholderList PHs) {
+  for (Placeholder *PH : PHs) {
+    Tensor *T = bindings.get(PH);
+    TypeRef newTy = PH->getType();
+    if (T->getType().isEqual(newTy)) {
+      continue;
+    }
+    ElemKind newK = newTy->getElementType();
+    if (isQuantizedElemKind(newK)) {
+      Tensor QT = quantization::quantizeTensor(
+          *T, {newTy->getScale(), newTy->getOffset()}, newK);
+      T->assign(&QT);
+    } else {
+      T->convertToType(newK);
+    }
+  }
+}
+
+/// Helper to get a float copy of a Tensor \p T if needed.
+static Tensor convertToFloatIfNecessary(Tensor &T) {
+  const ElemKind srcK = T.getType().getElementType();
+  if (srcK == ElemKind::FloatTy) {
+    return std::move(T);
+  }
+  if (isQuantizedElemKind(srcK)) {
+    return quantization::dequantizeTensor(T, ElemKind::FloatTy);
+  }
+  return T.getCopyConvertedToType(ElemKind::FloatTy);
+}
+
 void compareAgainstInterpreter(llvm::StringRef backendName,
                                CreateAndInitFunction createAndInitFunction,
                                ElemKind interpElemKind,
@@ -255,21 +289,43 @@ void compareAgainstInterpreter(llvm::StringRef backendName,
   CompilationContext &cctxI = configs.first;
   CompilationContext &cctxB = configs.second;
 
+  // Skip conversion for rowwise quantized tests as they are a special case
+  // which don't fit cleanly here -- e.g. RWQ-SLS has FloatTy outputs.
+  if (!enableRowwiseQuantization) {
+    // We want to compare the ops themselves and not see differences in
+    // conversion, so fold ElemKind conversion nodes into IO.
+    cctxI.optimizationOpts.foldElemKindConversionIntoIO = true;
+    cctxB.optimizationOpts.foldElemKindConversionIntoIO = true;
+  }
+
   // Clone the Function inside itself many times if desired.
   std::unordered_set<Tensor *> resultTensors =
       cloneFunInsideFun(BFT, &bBindings, cctxB, count);
   assert(resultTensors.size() == count &&
          "Should get the same number of Tensors back as count.");
 
+  IEE.compile(cctxI);
   BEE.compile(cctxB);
+
+  // Again skip rowwise quantization as before.
+  if (!enableRowwiseQuantization) {
+    // Now that we have compiled, precision transformation has occurred. Now
+    // convert all mismatches for Placeholders given their original bindings.
+    convertBindingsToCorrectType(
+        iBindings, IEE.getSingleFunctionFromModule()->findPlaceholders());
+    convertBindingsToCorrectType(
+        bBindings, BEE.getSingleFunctionFromModule()->findPlaceholders());
+  }
+
+  IEE.run(iBindings);
   BEE.run(bBindings);
 
-  IEE.compile(cctxI);
-  IEE.run(iBindings);
-
-  // Compare each of our result tensors to the original.
+  // Compare each of our result tensors to the original. Always convert back to
+  // float if necessary, as allowed error is expected to compare float.
+  Tensor finalIT = convertToFloatIfNecessary(*IFT.second);
   for (Tensor *T : resultTensors) {
-    EXPECT_TRUE(IFT.second->isEqual(*T, allowedError));
+    Tensor finalBT = convertToFloatIfNecessary(*T);
+    EXPECT_TRUE(finalIT.isEqual(finalBT, allowedError, /* verbose */ true));
   }
 
   // Additionally check that each of the results from the parallel cloned
@@ -386,7 +442,7 @@ void inferIntLookupTableNet(Tensor *input, Tensor *out,
   ExecutionEngine EE(kind);
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
-  auto outTy = mod.uniqueType(ElemKind::Int8QTy, {input->size()}, 3, 3);
+  auto outTy = mod.uniqueType(ElemKind::Int8QTy, {(dim_t)input->size()}, 3, 3);
   auto var = createQuantizedPlaceholder(mod, bindings, input,
                                         input->getType().getScale(),
                                         input->getType().getOffset(), "var");
@@ -450,7 +506,7 @@ void inferConvNet(Tensor *inputs, Tensor *filter, Tensor *bias, Tensor *out,
 
 void trainConvNet(Tensor *inputs, Tensor *kernel1, Tensor *bias1,
                   Tensor *kernel2, Tensor *bias2, Tensor *selected,
-                  llvm::ArrayRef<size_t> shape1, llvm::ArrayRef<size_t> shape2,
+                  llvm::ArrayRef<dim_t> shape1, llvm::ArrayRef<dim_t> shape2,
                   Tensor *out, llvm::StringRef kind) {
   ExecutionEngine EET(kind);
   ExecutionEngine EEI(kind);
@@ -527,8 +583,8 @@ void inferLocalResponseNormalizationNet(Tensor *inputs, Tensor *out,
 
 void trainLocalResponseNormalizationNet(Tensor *inputs, Tensor *weights,
                                         Tensor *bias, Tensor *selected,
-                                        llvm::ArrayRef<size_t> shape1,
-                                        llvm::ArrayRef<size_t> shape2,
+                                        llvm::ArrayRef<dim_t> shape1,
+                                        llvm::ArrayRef<dim_t> shape2,
                                         Tensor *out, llvm::StringRef kind) {
   PlaceholderBindings bindings, trainingBindings;
   ExecutionEngine EET(kind);
@@ -582,8 +638,8 @@ void trainLocalResponseNormalizationNet(Tensor *inputs, Tensor *weights,
 }
 
 void trainAvgPoolNet(Tensor *inputs, Tensor *weights, Tensor *bias,
-                     Tensor *selected, llvm::ArrayRef<size_t> shape1,
-                     llvm::ArrayRef<size_t> shape2, Tensor *out,
+                     Tensor *selected, llvm::ArrayRef<dim_t> shape1,
+                     llvm::ArrayRef<dim_t> shape2, Tensor *out,
                      llvm::StringRef kind) {
   ExecutionEngine EET(kind);
   ExecutionEngine EEI(kind);
@@ -637,8 +693,8 @@ void trainAvgPoolNet(Tensor *inputs, Tensor *weights, Tensor *bias,
 }
 
 void trainMaxPoolNet(Tensor *inputs, Tensor *weights, Tensor *bias,
-                     Tensor *selected, llvm::ArrayRef<size_t> shape1,
-                     llvm::ArrayRef<size_t> shape2, Tensor *out,
+                     Tensor *selected, llvm::ArrayRef<dim_t> shape1,
+                     llvm::ArrayRef<dim_t> shape2, Tensor *out,
                      llvm::StringRef kind) {
   ExecutionEngine EET(kind);
   ExecutionEngine EEI(kind);
@@ -731,8 +787,8 @@ void inferGroupConv(Tensor *out, llvm::StringRef kind) {
                                        "filter", false);
   auto *filterTensor = bindings.allocate(filter);
   auto FH = filterTensor->getHandle();
-  for (size_t i = 0; i < 128; i++)
-    for (size_t j = 0; j < 16; j++) {
+  for (dim_t i = 0; i < 128; i++)
+    for (dim_t j = 0; j < 16; j++) {
       FH.at({i, 0, 0, j}) = (i + j) / 100.0;
     }
   auto *zeroBias =
@@ -771,8 +827,8 @@ void inferNonSquarePaddingConv(Tensor *out, llvm::StringRef kind) {
                                        "filter", false);
   auto *filterTensor = bindings.allocate(filter);
   auto FH = filterTensor->getHandle();
-  for (size_t i = 0; i < 128; i++)
-    for (size_t j = 0; j < 32; j++) {
+  for (dim_t i = 0; i < 128; i++)
+    for (dim_t j = 0; j < 32; j++) {
       FH.at({i, 0, 0, j}) = (i + j) / 100.0;
     }
   auto *zeroBias =
@@ -810,9 +866,9 @@ void inferNonSquareKernelConv(Tensor *out, llvm::StringRef kind) {
                                        "filter", false);
   auto *filterTensor = bindings.allocate(filter);
   auto FH = filterTensor->getHandle();
-  for (size_t i = 0; i < 128; i++)
-    for (size_t j = 0; j < 2; j++)
-      for (size_t k = 0; k < 32; k++) {
+  for (dim_t i = 0; i < 128; i++)
+    for (dim_t j = 0; j < 2; j++)
+      for (dim_t k = 0; k < 32; k++) {
         FH.at({i, j, 0, k}) = (i + j + k) / 100.0;
       }
   auto *zeroBias =
@@ -850,9 +906,9 @@ void inferNonSquareStrideConv(Tensor *out, llvm::StringRef kind) {
                                        "filter", false);
   auto *filterTensor = bindings.allocate(filter);
   auto FH = filterTensor->getHandle();
-  for (size_t i = 0; i < 128; i++)
-    for (size_t j = 0; j < 2; j++)
-      for (size_t k = 0; k < 32; k++) {
+  for (dim_t i = 0; i < 128; i++)
+    for (dim_t j = 0; j < 2; j++)
+      for (dim_t k = 0; k < 32; k++) {
         FH.at({i, j, 0, k}) = (i + j + k) / 100.0;
       }
   auto *zeroBias =
@@ -891,10 +947,10 @@ void inferConvDKKC8(Tensor *out, llvm::StringRef kind) {
   auto *filterTensor = bindings.allocate(filter);
   filterTensor->zero();
   auto FH = filterTensor->getHandle();
-  for (size_t i = 0; i < 192; i++)
-    for (size_t j = 0; j < 3; j++)
-      for (size_t k = 0; k < 3; k++)
-        for (size_t l = 0; l < 32; l++) {
+  for (dim_t i = 0; i < 192; i++)
+    for (dim_t j = 0; j < 3; j++)
+      for (dim_t k = 0; k < 3; k++)
+        for (dim_t l = 0; l < 32; l++) {
           FH.at({i, j, k, k}) = (i + j + k + l) / 200.0;
         }
   auto *zeroBias =
@@ -1044,7 +1100,7 @@ void inferMixedNet(Tensor *inputs, Tensor *out, llvm::StringRef kind) {
   Function *F = mod.createFunction("main");
   auto *var = createPlaceholder(mod, bindings, inputs, "var", "NCHW");
   auto *selected =
-      mod.createPlaceholder(ElemKind::Int64ITy, {2, 1}, "selected", false);
+      mod.createPlaceholder(IndexElemKind, {2, 1}, "selected", false);
 
   auto *tr = F->createTranspose("tr", var, NCHW2NHWC);
   auto *fc = F->createFullyConnected(bindings, "fc", tr, 16);
@@ -1254,7 +1310,7 @@ void runOnDevice(ExecutionContext &context, llvm::StringRef name,
 }
 
 Constant *createRandomizedConstant(Module &mod, TypeRef type,
-                                   llvm::ArrayRef<size_t> dims,
+                                   llvm::ArrayRef<dim_t> dims,
                                    llvm::StringRef name) {
   auto *c = mod.createConstant(mod.uniqueTypeWithNewShape(type, dims), name);
 
@@ -1289,13 +1345,13 @@ Constant *createRandomizedConstant(Module &mod, TypeRef type,
 }
 
 Constant *createRandomFusedRowwiseQuantizedConstant(Module &mod,
-                                                    llvm::ArrayRef<size_t> dims,
+                                                    llvm::ArrayRef<dim_t> dims,
                                                     llvm::StringRef name,
                                                     bool useFusedFP16) {
   auto T = mod.uniqueType(
       (useFusedFP16 ? ElemKind::UInt8FusedFP16QTy : ElemKind::UInt8FusedQTy),
       {1}, 1, 0);
-  const size_t sizeScaleOffset =
+  const dim_t sizeScaleOffset =
       useFusedFP16 ? sizeof(float16_t) : sizeof(float);
   Constant *c = createRandomizedConstant(
       mod, T, {dims[0], dims[1] + 2 * sizeScaleOffset}, name);

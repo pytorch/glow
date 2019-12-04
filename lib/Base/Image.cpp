@@ -196,13 +196,13 @@ bool glow::readPngImage(Tensor *T, const char *filename,
   png_set_sig_bytes(png_ptr, 8);
   png_read_info(png_ptr, info_ptr);
 
-  size_t width = png_get_image_width(png_ptr, info_ptr);
-  size_t height = png_get_image_height(png_ptr, info_ptr);
+  dim_t width = png_get_image_width(png_ptr, info_ptr);
+  dim_t height = png_get_image_height(png_ptr, info_ptr);
   int color_type = png_get_color_type(png_ptr, info_ptr);
   int bit_depth = png_get_bit_depth(png_ptr, info_ptr);
 
   const bool isGray = color_type == PNG_COLOR_TYPE_GRAY;
-  const size_t numChannels = isGray ? 1 : 3;
+  const dim_t numChannels = isGray ? 1 : 3;
 
   (void)bit_depth;
   DCHECK_EQ(bit_depth, 8) << "Invalid image";
@@ -225,7 +225,7 @@ bool glow::readPngImage(Tensor *T, const char *filename,
   }
 
   auto *row_pointers = (png_bytep *)malloc(sizeof(png_bytep) * height);
-  for (size_t y = 0; y < height; y++) {
+  for (dim_t y = 0; y < height; y++) {
     row_pointers[y] = (png_byte *)malloc(png_get_rowbytes(png_ptr, info_ptr));
   }
 
@@ -238,12 +238,12 @@ bool glow::readPngImage(Tensor *T, const char *filename,
   float scale = ((range.second - range.first) / 255.0);
   float bias = range.first;
 
-  for (size_t row_n = 0; row_n < height; row_n++) {
+  for (dim_t row_n = 0; row_n < height; row_n++) {
     png_byte *row = row_pointers[row_n];
-    for (size_t col_n = 0; col_n < width; col_n++) {
+    for (dim_t col_n = 0; col_n < width; col_n++) {
       png_byte *ptr =
           &(row[col_n * (hasAlpha ? (numChannels + 1) : numChannels)]);
-      for (size_t i = 0; i < numChannels; i++) {
+      for (dim_t i = 0; i < numChannels; i++) {
         float val = float(ptr[i]);
         val = (val - mean[i]) / stddev[i];
         H.at({row_n, col_n, i}) = val * scale + bias;
@@ -251,7 +251,7 @@ bool glow::readPngImage(Tensor *T, const char *filename,
     }
   }
 
-  for (size_t y = 0; y < height; y++) {
+  for (dim_t y = 0; y < height; y++) {
     free(row_pointers[y]);
   }
   free(row_pointers);
@@ -324,11 +324,11 @@ bool glow::writePngImage(Tensor *T, const char *filename,
   float scale = ((range.second - range.first) / 255.0);
   float bias = range.first;
 
-  for (size_t y = 0; y < height; y++) {
+  for (dim_t y = 0; y < height; y++) {
     png_byte *row = row_pointers[y];
-    for (size_t x = 0; x < width; x++) {
+    for (dim_t x = 0; x < width; x++) {
       png_byte *ptr = &(row[x * 4]);
-      for (size_t i = 0; i < numChannels; i++) {
+      for (dim_t i = 0; i < numChannels; i++) {
         float val = (H.at({y, x, i}) - bias) / scale;
         val = (val * stddev[i]) + mean[i];
         ptr[i] = val;
@@ -379,9 +379,9 @@ void glow::readPngImageAndPreprocess(Tensor &imageData,
   bool loadSuccess =
       !readPngImage(&imageData, filename.data(), range, mean, stddev);
   CHECK(loadSuccess) "Error reading input image from file: " << filename.str();
-  size_t imgHeight = imageData.dims()[0];
-  size_t imgWidth = imageData.dims()[1];
-  size_t numChannels = imageData.dims()[2];
+  dim_t imgHeight = imageData.dims()[0];
+  dim_t imgWidth = imageData.dims()[1];
+  dim_t numChannels = imageData.dims()[2];
 
   // PNG images are NHWC and RGB.  Convert if needed.
   // Convert to requested channel ordering.
@@ -413,14 +413,15 @@ void glow::loadImagesAndPreprocess(const llvm::ArrayRef<std::string> &filenames,
                                    ImageLayout imageLayout) {
   DCHECK(!filenames.empty())
       << "There must be at least one filename in filenames.";
-  size_t numImages = filenames.size();
+  assert((dim_t)filenames.size() == filenames.size());
+  dim_t numImages = filenames.size();
 
   // Get image dimensions and check if grayscale or color.
-  size_t imgHeight;
-  size_t imgWidth;
+  dim_t imgHeight;
+  dim_t imgWidth;
   bool isGray;
   std::tie(imgHeight, imgWidth, isGray) = getPngInfo(filenames[0].c_str());
-  const size_t numChannels = isGray ? 1 : 3;
+  const dim_t numChannels = isGray ? 1 : 3;
 
   // Assign mean and stddev for input normalization.
   llvm::ArrayRef<float> mean;

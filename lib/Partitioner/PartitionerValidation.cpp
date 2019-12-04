@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 #include "glow/Partitioner/PartitionerValidation.h"
+#include "glow/Partitioner/PartitionerUtils.h"
 
 #include "llvm/Support/FormatVariadic.h"
 
@@ -32,13 +33,14 @@ Error logicalDevicesValidation(
       partitionsNum[backendName].insert(logicalIDList[i]);
     }
     auto backendNum = backendMap.at(backendName).num;
-    RETURN_ERR_IF_NOT(
-        partitionsNum[backendName].size() <= backendNum,
-        llvm::formatv("Partition failed: the number of given({0}) devices({1}) "
-                      "is fewer than the required minimal partitions({2}).",
-                      backendName, backendNum,
-                      partitionsNum[backendName].size())
-            .str());
+    if (partitionsNum[backendName].size() > backendNum) {
+      logPartitionInfo(partitions);
+      RETURN_ERR(llvm::formatv(
+                     "Partition failed: the number of given({0}) devices({1}) "
+                     "is fewer than the required minimal partitions({2}).",
+                     backendName, backendNum, partitionsNum[backendName].size())
+                     .str());
+    }
   }
   return Error::success();
 }
@@ -50,13 +52,15 @@ Error memoryUsageValidation(
     auto backendName = partitions.getPartitionBackendName(func);
     auto usedMemSize = partitions.getGraphMemInfo(func).getTotalMemSize();
     auto availableMemSize = backendMap.at(backendName).memSize;
-    RETURN_ERR_IF_NOT(
-        usedMemSize <= availableMemSize,
-        llvm::formatv(
-            "Partition failed: the memory usage({0}) of one partition exceeds "
-            "the available memory({1}) of given devices({2}).",
-            usedMemSize, availableMemSize, backendName)
-            .str());
+    if (usedMemSize > availableMemSize) {
+      logPartitionInfo(partitions);
+      RETURN_ERR(
+          llvm::formatv("Partition failed: the memory usage({0}) of one "
+                        "partition exceeds "
+                        "the available memory({1}) of given devices({2}).",
+                        usedMemSize, availableMemSize, backendName)
+              .str());
+    }
   }
   return Error::success();
 }

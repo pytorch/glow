@@ -195,6 +195,12 @@ BB.newBackendSpecificNode("CPUMaxSplat")
     .setDocstring("A Max node with one splat input; CPU specific.");
 ```
 
+If tensor layout requirements are enabled for the backend, on should take
+special care of updating the layout verifier when adding a new node.
+See `TensorLayout.md` for more information.
+To extend the example above, if the new node is data parallel, a `.dataParallel()`
+line should be added.
+
 During `transformPostLowering()`, this `CPUMaxSplat` node replaces the
 aforementioned pattern. However, there must be a corresponding instruction for
 this Node to be lowered to during the IRGen phase. Thus, we need a corresponding

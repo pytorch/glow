@@ -92,7 +92,7 @@ public:
   /// Methods that forward to the result type (that must be valid):
   /// @{
   ElemKind getElementType() const;
-  llvm::ArrayRef<size_t> dims() const;
+  llvm::ArrayRef<dim_t> dims() const;
   /// @}
 
   bool operator==(const NodeValue &O) const {

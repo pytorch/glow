@@ -24,7 +24,8 @@
 using namespace glow;
 
 bool PlaceholderBindings::compare(const PlaceholderBindings *A,
-                                  const PlaceholderBindings *B) {
+                                  const PlaceholderBindings *B,
+                                  float allowedError) {
   // Trivial cases.
   if (!A && !B) {
     return true;
@@ -51,8 +52,8 @@ bool PlaceholderBindings::compare(const PlaceholderBindings *A,
         B->get(B->getPlaceholderByName(placeholder->getName()));
 
     if (!tensorA || !tensorB ||
-        !tensorA->isEqual(*tensorB, /* allowedError */ 0.0001,
-                          /* verbose */ false)) {
+        !tensorA->isEqual(*tensorB, allowedError,
+                          /* verbose */ true)) {
       return false;
     }
   }

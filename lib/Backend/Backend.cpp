@@ -64,7 +64,7 @@ void Backend::autoInstrument(TraceInfo &traceInfo, IRFunction *IR) const {
 
   // First pass, find out how many TraceEvents we should add. Existing
   // TraceEvents have their own backing Tensors, so don't count them.
-  size_t numEvents = 1; // Starts at 1 since there is always a start event.
+  dim_t numEvents = 1; // Starts at 1 since there is always a start event.
   for (auto it = instructions.begin(); it != instructions.end(); it++) {
     auto &I = *it;
     bool isInstrumentation = llvm::isa<TraceEventInst>(&I);
@@ -81,8 +81,8 @@ void Backend::autoInstrument(TraceInfo &traceInfo, IRFunction *IR) const {
   auto &varmap = IR->getVariableMap();
   auto type = F->getParent()->uniqueType(
       ElemKind::Int64ITy,
-      {numEvents,
-       getTraceEventDataSize() / Type::getElementSize(ElemKind::Int64ITy)});
+      {numEvents, (dim_t)getTraceEventDataSize() /
+                      Type::getElementSize(ElemKind::Int64ITy)});
 
   WeightVar *backingWeight = nullptr;
 

@@ -65,6 +65,11 @@ Error NNPICompiledFunction::compile(Function *F, const BackendOptions &opts) {
     }
   }
 
+  const auto numCores = EnvIceCores();
+  if (!numCores.empty()) {
+    config_.numCoresToUse = std::stoul(numCores);
+  }
+
   if (UseIceT() || UseInferenceAPI()) {
     auto filename = ICETFilename();
     LOG_IF_NOT_RETURN_LLVMERROR(filename.length() < NNPI_MAX_STRING_LEN,

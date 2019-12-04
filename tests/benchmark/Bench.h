@@ -22,6 +22,8 @@
 #include <tuple>
 #include <vector>
 
+#include "glow/Base/DimType.h"
+
 namespace glow {
 
 /// Interface for benchmarks
@@ -48,12 +50,12 @@ std::vector<double> bench(Benchmark *b, size_t reps) {
   return times;
 }
 
-std::vector<size_t> getBatchSizePerCore(size_t batchSize, size_t numCores) {
-  std::vector<size_t> batchSizePerCore(numCores);
-  for (size_t core = 0; core < numCores; core++) {
-    size_t perCore = (batchSize + numCores - 1) / numCores;
-    size_t startIdx = core * perCore;
-    size_t endIdx = (core + 1) * perCore;
+std::vector<dim_t> getBatchSizePerCore(size_t batchSize, dim_t numCores) {
+  std::vector<dim_t> batchSizePerCore(numCores);
+  for (dim_t core = 0; core < numCores; core++) {
+    dim_t perCore = (batchSize + numCores - 1) / numCores;
+    dim_t startIdx = core * perCore;
+    dim_t endIdx = (core + 1) * perCore;
     if (startIdx > batchSize)
       startIdx = batchSize;
     if (endIdx > batchSize)

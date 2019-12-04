@@ -67,7 +67,7 @@ class CommonOperatorLoader : public ProtobufLoader {
     }
 
     // Number of qparams in the onnxTensorDescriptor.
-    const size_t qparams = static_cast<size_t>(in.quantizationParams);
+    const dim_t qparams = static_cast<dim_t>(in.quantizationParams);
 
     // Only support quantizationAxis=1 for now.
     if (qparams > 0 && in.quantizationAxis != 1) {
@@ -80,7 +80,7 @@ class CommonOperatorLoader : public ProtobufLoader {
     LoadWeightResult result;
     result.t = glow::make_unique<Tensor>();
 
-    std::vector<size_t> dims;
+    std::vector<dim_t> dims;
     for (unsigned i = 0; i < in.dimensions; ++i) {
       dims.push_back(in.shape[i]);
     }
@@ -174,8 +174,8 @@ class CommonOperatorLoader : public ProtobufLoader {
 
   /// Merge shape \p shape into \p mergeShape, following multidirectional
   /// broadcasting rules.
-  Error mergeMultidirectionalBroadcast(std::vector<size_t> &mergeShape,
-                                       llvm::ArrayRef<size_t> shape) {
+  Error mergeMultidirectionalBroadcast(std::vector<dim_t> &mergeShape,
+                                       llvm::ArrayRef<dim_t> shape) {
     size_t shift = mergeShape.size() - shape.size();
     for (size_t i = 0; i < shape.size(); i++) {
       if (shape[i] != 1) {
@@ -282,7 +282,7 @@ protected:
     ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
 
     // This is statically known data, and so we create a Tensor for it.
-    Tensor T(ElemKind::Int64ITy, {in.dims().size()});
+    Tensor T(ElemKind::Int64ITy, {(dim_t)in.dims().size()});
     T.getHandle<int64_t>() =
         std::vector<int64_t>(in.dims().begin(), in.dims().end());
 
@@ -563,7 +563,7 @@ protected:
       ASSIGN_VALUE_OR_RETURN_ERR(axis, loadInt(dict["axis"]));
     }
 
-    std::vector<size_t> split;
+    std::vector<dim_t> split;
     if (dict.count("split"))
       split = getShape(dict["split"]);
 
@@ -585,7 +585,7 @@ protected:
 
     // Get the requested shape from the model.
     // First look at input tensors, then at the "shape" attribute.
-    std::vector<int64_t> requestedDims;
+    std::vector<dim_t> requestedDims;
     if (op.input_size() > 1) {
       if (!getConstantByNameOrNull(op.input(1))) {
         RETURN_ERR("Non-constant shape tensors are unsupported by Glow.");
@@ -610,17 +610,17 @@ protected:
 
     // Compute the actual new shape
     ssize_t negOneIndex = -1;
-    llvm::ArrayRef<size_t> inputDims = in.dims();
-    std::vector<size_t> outputDims;
+    llvm::ArrayRef<dim_t> inputDims = in.dims();
+    std::vector<dim_t> outputDims;
     int64_t dimProduct = 1;
     for (size_t i = 0, e = requestedDims.size(); i != e; i++) {
-      int64_t newDim = requestedDims[i];
+      dim_t newDim = requestedDims[i];
       if (newDim == 0) {
         // 0 means that corresponding input dimension should be propagated to
         // the output.
         newDim = inputDims[i];
       }
-      if (newDim != -1) {
+      if (newDim != (dim_t)-1) {
         dimProduct *= newDim;
         outputDims.push_back(newDim);
       } else {
@@ -770,7 +770,7 @@ protected:
     // Our batched reduce add/mean does not keep the dim; reshape if necessary.
     if (keepDims) {
 
-      std::vector<size_t> shape = node.dims();
+      std::vector<dim_t> shape = node.dims();
 
       // Add removed axes. Requires increasing order sort - done above.
       for (const auto &axis : shapeAxes) {
@@ -979,7 +979,7 @@ protected:
     auto maskIt = dict.find("mask");
     RETURN_ERR_IF_NOT(maskIt != dict.end(),
                       "Require mask when loading SparseToDenseMask.");
-    auto mask = getShape<int64_t>(maskIt->second);
+    auto mask = getShape(maskIt->second);
 
     auto *node = G_.createSparseToDenseMask(
         loadOperatorName(op), indices, values, defaultValue, lengths, mask);
@@ -1225,13 +1225,13 @@ protected:
 
   /// Utility function which computes the resulting shape in case of
   /// multidirectional broadcasting.
-  Expected<std::vector<size_t>>
-  computeMultidirectionalBroadcast(llvm::ArrayRef<size_t> shape0,
-                                   llvm::ArrayRef<size_t> shape1) {
+  Expected<std::vector<dim_t>>
+  computeMultidirectionalBroadcast(llvm::ArrayRef<dim_t> shape0,
+                                   llvm::ArrayRef<dim_t> shape1) {
     size_t numDims0 = shape0.size();
     size_t numDims1 = shape1.size();
     size_t newNumDims = numDims0 > numDims1 ? numDims0 : numDims1;
-    std::vector<size_t> reshapeDims(newNumDims);
+    std::vector<dim_t> reshapeDims(newNumDims);
 
     for (size_t i = 0; i < newNumDims; i++) {
       reshapeDims[i] = 1;
@@ -1246,7 +1246,8 @@ protected:
   /// \p op should match the number of elements of \p NVs.
   /// \returns error code in case of error.
   Error assignNodeOutputs(const OpType &op, llvm::ArrayRef<NodeValue> NVs) {
-    RETURN_ERR_IF_NOT(NVs.size() == op.output_size(), "Output size mismatch.");
+    RETURN_ERR_IF_NOT((dim_t)NVs.size() == (dim_t)op.output_size(),
+                      "Output size mismatch.");
     for (size_t i = 0; i < NVs.size(); i++) {
       nodeValueByName_[op.output(i)] = NVs[i];
     }

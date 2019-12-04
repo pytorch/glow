@@ -627,7 +627,7 @@ int main(int argc, char **argv) {
       .addInput("Values")
       .addInput("DefaultValue")
       .addInput("Lengths")
-      .addMember(MemberType::VectorInt64, "Mask")
+      .addMember(MemberType::VectorDimT, "Mask")
       .addResultFromCtorArg()
       .setDocstring(
           "Converts the sparse representation specified by the pair "
@@ -705,7 +705,7 @@ int main(int argc, char **argv) {
 
   BB.newNode("Reshape")
       .addInput("Input")
-      .addMember(MemberType::VectorSizeT, "Dims")
+      .addMember(MemberType::VectorDimT, "Dims")
       .addMember(MemberType::String, "Layout")
       .addResultFromCtorArg()
       .setDocstring("Reshape the Input tensor to shape Dims.");
@@ -728,7 +728,7 @@ int main(int argc, char **argv) {
 
   BB.newNode("Slice")
       .addInput("Input")
-      .addMember(MemberType::VectorSizeT, "Start")
+      .addMember(MemberType::VectorDimT, "Start")
       .addResultFromCtorArg()
       .setDocstring("Produces a slice of the Input tensor. The Start vector "
                     "defines the starting indices for each dimension from "
@@ -738,7 +738,7 @@ int main(int argc, char **argv) {
   BB.newNode("InsertTensor")
       .addInput("Big")
       .addInput("Small")
-      .addMember(MemberType::VectorSizeT, "Start")
+      .addMember(MemberType::VectorDimT, "Start")
       .addMember(MemberType::Unsigned, "Count")
       .addMember(MemberType::Unsigned, "Axis")
       .addResult("Big.getType()")

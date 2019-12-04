@@ -146,6 +146,8 @@ struct EmulatorOnlyTests {
           "ConvertFrom_Int64ITy_To_FloatTy_AndBack/0",
           "DilatedConvolution/0",
           "Exp/0",
+          "ExpandDims_Float/0",
+          "ExpandDims_Float16/0",
           "FloatArgMaxKeepDim/0",
           "FloatArgMaxNoKeepDim/0",
           "FusedRowwiseQuantizedSparseLengthsWeightedSum_ConvertedFloat16_"

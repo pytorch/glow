@@ -25,7 +25,8 @@ target_link_libraries(onnxifi-glow-lib
                         HostManager
                         Importer
                         GraphOptimizer
-                        Quantization)
+                        Quantization
+                        Runtime)
 
 target_link_libraries(onnxifi-glow
                       PUBLIC
@@ -37,7 +38,8 @@ target_link_libraries(onnxifi-glow
                         HostManager
                         Importer
                         GraphOptimizer
-                        Quantization)
+                        Quantization
+                        Runtime)
 
 target_compile_definitions(onnxifi-glow
                            PRIVATE
