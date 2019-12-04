@@ -288,9 +288,9 @@ Expected<T> static_cast_expected(Expected<OriginalT> originalExpected) {
 /// lhsDims and \p rhsDims, \returns the broadcast for each dimension with the
 /// inner-most two dimensions set to 0 because they will not be broadcast for
 /// matmul. This is a helper for loading matmul.
-Expected<std::vector<size_t>>
-computeBroadcastedMatMulTargetDims(llvm::ArrayRef<size_t> lhsDims,
-                                   llvm::ArrayRef<size_t> rhsDims) {
+Expected<std::vector<glow::dim_t>>
+computeBroadcastedMatMulTargetDims(llvm::ArrayRef<glow::dim_t> lhsDims,
+                                   llvm::ArrayRef<glow::dim_t> rhsDims) {
 
   size_t lhsRank = lhsDims.size();
   size_t rhsRank = lhsDims.size();
@@ -302,11 +302,11 @@ computeBroadcastedMatMulTargetDims(llvm::ArrayRef<size_t> lhsDims,
   RETURN_ERR_IF_NOT(lhsRank >= 3,
                     "Inputs must have at least rank 3 to compute broadcast.");
 
-  std::vector<size_t> targetDims;
+  std::vector<glow::dim_t> targetDims;
 
   // Reverse both inputs dims.
-  auto lhsDimsRev = std::vector<size_t>(lhsDims.rbegin(), lhsDims.rend());
-  auto rhsDimsRev = std::vector<size_t>(rhsDims.rbegin(), rhsDims.rend());
+  auto lhsDimsRev = std::vector<glow::dim_t>(lhsDims.rbegin(), lhsDims.rend());
+  auto rhsDimsRev = std::vector<glow::dim_t>(rhsDims.rbegin(), rhsDims.rend());
 
   // Insert 0 placeholders for the final two dims.
   targetDims.push_back(0);
@@ -333,13 +333,13 @@ computeBroadcastedMatMulTargetDims(llvm::ArrayRef<size_t> lhsDims,
 
 /// Given dims \p inputDims, returns an expansion of these dims to rank \p
 /// targetRank by prepending 1s. This is a helper for loading matmul.
-std::vector<size_t> getExpandDims(llvm::ArrayRef<size_t> inputDims,
-                                  size_t targetRank) {
+std::vector<glow::dim_t> getExpandDims(llvm::ArrayRef<glow::dim_t> inputDims,
+                                       size_t targetRank) {
   DCHECK_LE(inputDims.size(), targetRank)
       << "The rank of inputDims can't be expanded if it's already larger than "
          "targetRank.";
 
-  std::vector<size_t> newShape;
+  std::vector<glow::dim_t> newShape;
   for (size_t i = 0, e = targetRank - inputDims.size(); i < e; ++i) {
     newShape.push_back(1);
   }
@@ -351,8 +351,8 @@ std::vector<size_t> getExpandDims(llvm::ArrayRef<size_t> inputDims,
 
 /// Given dims \p inputDims, \returns these dims contracted to rank \p by
 /// combining the outer most dimensions. This is a helper for loading matmul.
-std::vector<size_t> getContractDims(llvm::ArrayRef<size_t> inputDims,
-                                    size_t targetRank) {
+std::vector<glow::dim_t> getContractDims(llvm::ArrayRef<glow::dim_t> inputDims,
+                                         size_t targetRank) {
   size_t inputRank = inputDims.size();
 
   DCHECK_GE(inputRank, targetRank)
@@ -362,7 +362,7 @@ std::vector<size_t> getContractDims(llvm::ArrayRef<size_t> inputDims,
     return inputDims;
   }
 
-  std::vector<size_t> newShape;
+  std::vector<glow::dim_t> newShape;
 
   size_t inputIndex = 0;
 
@@ -917,7 +917,7 @@ Error PyTorchModelLoader::freezeWeights(const torch::jit::Node *ptNode) {
 
   const auto inputs = ptNode->inputs();
 
-  std::vector<size_t> frozenInputIndices;
+  std::vector<glow::dim_t> frozenInputIndices;
 
   for (size_t i = 0; i < inputs.size(); i++) {
     // Skip inputs that are not marked to be frozen
@@ -1316,7 +1316,7 @@ Error PyTorchModelLoader::loadGlowFusedLinear(const torch::jit::Node *ptNode) {
 }
 
 Expected<NodeValue> PyTorchModelLoader::loadNodeValueOrBroadcastedIValue(
-    const torch::jit::Value *value, llvm::ArrayRef<size_t> dims) {
+    const torch::jit::Value *value, llvm::ArrayRef<glow::dim_t> dims) {
   if (hasGlowNodeValueForValue(value)) {
     return getGlowNodeValueForValue(value);
   } else {
@@ -1566,7 +1566,7 @@ Error PyTorchModelLoader::loadFusedStack(const torch::jit::Node *ptNode) {
   auto concatDims = concat.dims();
 
   size_t numInputs = inputs.size();
-  std::vector<size_t> reshapeDims;
+  std::vector<glow::dim_t> reshapeDims;
 
   for (size_t i = 0; i < concatDims.size(); ++i) {
     if (i == dim) {
@@ -1607,7 +1607,7 @@ Error PyTorchModelLoader::loadReshape(const torch::jit::Node *ptNode) {
     totalDims *= dim;
   }
 
-  std::vector<size_t> glowShape;
+  std::vector<glow::dim_t> glowShape;
   for (size_t i = 0, e = shape->size(); i < e; ++i) {
     int64_t dim = (*shape)[i];
 
@@ -1794,7 +1794,7 @@ Error PyTorchModelLoader::loadConvolution(const torch::jit::Node *ptNode) {
 
   auto outSz = glow::calculateConvPoolOutputDims(
       inputShape.h, inputShape.w, kernels, strides, pads, dilation);
-  std::array<size_t, 4> outDims = {
+  std::array<glow::dim_t, 4> outDims = {
       {input.dims()[0], outSz.first, outSz.second, weightsShape.n}};
   glow::TypeRef outTy =
       F_.getParent()->uniqueType(glow::ElemKind::FloatTy, outDims);
@@ -1828,8 +1828,8 @@ Error PyTorchModelLoader::loadLayerNorm(const torch::jit::Node *ptNode) {
                              iValToIntList(getGlowIValueForValue(
                                  inputs[LayerNormInputs::normalized_shape])));
 
-  std::vector<size_t> normalizedShapeCast =
-      castVector<size_t>(*normalizedShape);
+  std::vector<glow::dim_t> normalizedShapeCast =
+      castVector<glow::dim_t>(*normalizedShape);
 
   glow::NodeValue weight = loadNodeValueOrCreateBroadcastedConstant(
       inputs[LayerNormInputs::weight], "layernorm_weight",
@@ -2049,7 +2049,7 @@ Error PyTorchModelLoader::loadQuantizedConvUnpacked(
       static_cast<glow::unsigned_t>(weightsShape.w)};
   auto outSz = glow::calculateConvPoolOutputDims(
       inputShape.h, inputShape.w, kernels, strides, pads, dilation);
-  std::array<size_t, 4> outDims = {
+  std::array<glow::dim_t, 4> outDims = {
       {input.dims()[0], outSz.first, outSz.second, weightsShape.n}};
   glow::TypeRef outTy = F_.getParent()->uniqueType(
       glow::ElemKind::Int8QTy, outDims, outScale, outOffset);
@@ -2219,11 +2219,11 @@ Error PyTorchModelLoader::loadAdaptiveAvgPool2d(
                              NCHW2NHWC);
 
   // OutputSize defaults to size of input if not provided.
-  std::vector<size_t> outputSize;
+  std::vector<glow::dim_t> outputSize;
   if (hasGlowIValueForValue(inputs[AdaptiveAvgPoolInputs::output_size])) {
     ASSIGN_VALUE_OR_RETURN_ERR(
         outputSize,
-        castVector<size_t>(expandIntIValIfNeeded(
+        castVector<glow::dim_t>(expandIntIValIfNeeded(
             getGlowIValueForValue(inputs[AdaptiveAvgPoolInputs::output_size]),
             2)));
   } else {
@@ -2367,12 +2367,12 @@ PyTorchModelLoader::loadMatMulImpl(glow::NodeValue lhs, glow::NodeValue rhs) {
     const bool lhsPrepend = lhsRank == 1;
     const bool rhsAppend = rhsRank == 1;
     if (lhsPrepend) {
-      std::vector<size_t> newDims = lhs.dims();
+      std::vector<glow::dim_t> newDims = lhs.dims();
       newDims.insert(newDims.begin(), 1);
       lhs = F_.createReshape("reshape_matmul_lhs", lhs, newDims);
     }
     if (rhsAppend) {
-      std::vector<size_t> newDims = rhs.dims();
+      std::vector<glow::dim_t> newDims = rhs.dims();
       newDims.push_back(1);
       rhs = F_.createReshape("reshape_matmul_rhs", rhs, newDims);
     }
@@ -2385,7 +2385,7 @@ PyTorchModelLoader::loadMatMulImpl(glow::NodeValue lhs, glow::NodeValue rhs) {
                            getExpandDims(rhs.dims(), maxRank));
 
     // Compute target dims template (0s for the innermost dimensions)
-    std::vector<size_t> targetDims;
+    std::vector<glow::dim_t> targetDims;
     ASSIGN_VALUE_OR_RETURN_ERR(
         targetDims, computeBroadcastedMatMulTargetDims(lhs.dims(), rhs.dims()));
 
@@ -2425,14 +2425,14 @@ PyTorchModelLoader::loadMatMulImpl(glow::NodeValue lhs, glow::NodeValue rhs) {
     // If a 1 was prepended to lhs or a 1 was appended to rhs at the beginning,
     // undo that now.
     if (lhsPrepend) {
-      std::vector<size_t> newDims(output.dims().begin(),
-                                  output.dims().end() - 2);
+      std::vector<glow::dim_t> newDims(output.dims().begin(),
+                                       output.dims().end() - 2);
       newDims.push_back(*(output.dims().end() - 1));
       output = F_.createReshape("matmul_output_reshape", output, newDims);
     }
     if (rhsAppend) {
-      std::vector<size_t> newDims(output.dims().begin(),
-                                  output.dims().end() - 1);
+      std::vector<glow::dim_t> newDims(output.dims().begin(),
+                                       output.dims().end() - 1);
       output = F_.createReshape("matmul_output_reshape", output, newDims);
     }
   }
@@ -2625,8 +2625,8 @@ Error PyTorchModelLoader::loadSlice(const torch::jit::Node *ptNode) {
 
   RETURN_ERR_IF_NOT(step == 1, "loadSlice only supports step == 1");
   int dimsSize = input.dims().size();
-  std::vector<size_t> begins(dimsSize);
-  std::vector<size_t> ends(dimsSize);
+  std::vector<glow::dim_t> begins(dimsSize);
+  std::vector<glow::dim_t> ends(dimsSize);
 
   for (int i = 0; i < dimsSize; ++i) {
     if (i == dim) {
@@ -2777,8 +2777,8 @@ Error PyTorchModelLoader::loadConstantChunk(const torch::jit::Node *ptNode) {
                              getPositiveIndex(dimRaw, input.dims().size()));
 
   size_t dimsSize = input.dims().size();
-  std::vector<size_t> begins(dimsSize);
-  std::vector<size_t> ends(dimsSize);
+  std::vector<glow::dim_t> begins(dimsSize);
+  std::vector<glow::dim_t> ends(dimsSize);
   for (int i = 0; i < dimsSize; ++i) {
     begins[i] = 0;
     ends[i] = input.dims()[i];

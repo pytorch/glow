@@ -43,10 +43,10 @@ TEST(TorchGlowTraining, Test) {
     return;
   }
 
-  std::vector<size_t> sampleDims = {1, 3, 224, 224};
+  std::vector<glow::dim_t> sampleDims = {1, 3, 224, 224};
   Tensor samples(ElemKind::FloatTy, sampleDims);
 
-  std::vector<size_t> labelDims = {1, 1};
+  std::vector<glow::dim_t> labelDims = {1, 1};
   Tensor labels(ElemKind::Int64ITy, labelDims);
   EXPECT_FALSE(ERR_TO_BOOL(trainer.train(samples, labels)));
 

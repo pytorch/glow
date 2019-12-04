@@ -66,7 +66,7 @@ template <class ElemTy> static char valueToChar(ElemTy input) {
   return ch;
 }
 
-static void dumpShape(llvm::ArrayRef<size_t> shape, llvm::raw_ostream &os) {
+static void dumpShape(llvm::ArrayRef<dim_t> shape, llvm::raw_ostream &os) {
   os << "shape: ( ";
   for (auto &d : shape) {
     os << d << " ";
