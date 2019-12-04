@@ -86,7 +86,9 @@ public:
   /// Add a member to the node. Format: type, name.
   /// The name should start with a capital letter.
   /// For example: "Filter".
-  NodeBuilder &addMember(MemberType type, const std::string &name);
+  /// If \p addSetter then a setter will be generated for this member.
+  NodeBuilder &addMember(MemberType type, const std::string &name,
+                         bool addSetter = false);
   /// Add a member to the node. Format type, name.
   /// The name should start with a capital letter.
   /// For example: "Filter".
@@ -103,7 +105,10 @@ public:
   ///   const T RHS)` (or a custom comparator function mentioned in
   ///   MemberTypeInfo::cmpFn), which takes T by reference or by value depending
   ///   on the intended use.
-  NodeBuilder &addMember(MemberTypeInfo typeInfo, const std::string &name) {
+  /// If \p addSetter then a setter will be generated for this member.
+  NodeBuilder &addMember(MemberTypeInfo typeInfo, const std::string &name,
+                         bool addSetter = false) {
+    typeInfo.addSetter = addSetter;
     members_.push_back({typeInfo, name});
     return *this;
   }
@@ -189,9 +194,9 @@ private:
   /// Emits the class members (the fields of the class).
   void emitClassMembers(std::ostream &os) const;
 
-  /// Emit the getter for a accessible class member.
-  void emitMemberGetter(std::ostream &os, const MemberTypeInfo *type,
-                        const std::string &name) const;
+  /// Emit the getter for a accessible class member, and optionally a setter.
+  void emitMemberGetterSetter(std::ostream &os, const MemberTypeInfo *type,
+                              const std::string &name) const;
 
   /// Emit setters/getters for each accessible class member.
   void emitSettersGetters(std::ostream &os) const;
