@@ -45,8 +45,18 @@ struct PrecisionConfiguration {
   /// Whether to convert UInt8FusedQTy to UInt8FusedFP16QTy in the Function.
   bool convertFusedToFP16{false};
 
-  /// Whether to clip out-of-range FP values to the min/max of fp16.
+  /// If convertToFP16, whether to convert input Placeholders.
+  bool convertPlaceholdersToFP16{false};
+
+  /// If convertToFP16, whether to convert Constants.
+  bool convertConstantsToFP16{false};
+
+  /// If convertToFP16, whether to clip out-of-range FP values to the min/max of
+  /// fp16.
   bool clipFP16{false};
+
+  /// If clipFP16, whether to skip clipping inputs of Nodes.
+  bool clipFP16SkipInputs{false};
 
   /// Used during Quantization and convertToFP16 to keep the original precision
   /// of specific node kinds (i.e. quantization/FP16 conversion would be skipped

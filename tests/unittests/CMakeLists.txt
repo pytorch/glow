@@ -399,7 +399,13 @@ foreach(backend ${GLOW_BACKENDS})
                    PRIVATE
                    HostManager
                    Runtime)
-  add_backend_test(TEST TypeAToTypeBFunctionConverterTest BACKEND "${backend}")
+
+  add_backend_test(TEST
+                   TypeAToTypeBFunctionConverterTest
+                   BACKEND
+                   "${backend}"
+                   Converter
+                   Graph)
 endforeach()
 
 add_executable(PartitionerTest

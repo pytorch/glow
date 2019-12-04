@@ -69,6 +69,9 @@ public:
   /// \p precConfig.
   TypeAToTypeBFunctionConverter(Function &F, ElemKind fromKind, ElemKind toKind,
                                 const PrecisionConfiguration &precConfig);
+
+  /// Convert and clip all Storage nodes used by the function.
+  void convertAndClipStorage();
 };
 } // namespace glow
 #endif

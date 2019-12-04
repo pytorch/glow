@@ -2276,6 +2276,13 @@ ClipNode *Function::createClip(llvm::StringRef name, NodeValue input, float min,
   return addNode(new ClipNode(name, input.getType(), input, min, max));
 }
 
+ClipNode *Function::createClipMinMaxFP16(llvm::StringRef name,
+                                         NodeValue input) {
+  constexpr float float16Min = -65504.0f;
+  constexpr float float16Max = 65504.0f;
+  return createClip(name, input, float16Min, float16Max);
+}
+
 //===----------------------------------------------------------------------===//
 //                   Placeholder-builder methods.
 //===----------------------------------------------------------------------===//
