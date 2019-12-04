@@ -588,7 +588,7 @@ static void topK(Tensor &outW, Tensor &indW, Tensor &inW, size_t k) {
   }
 }
 
-static ShapeNHWC shapeFromDims(llvm::ArrayRef<size_t> arr) {
+static ShapeNHWC shapeFromDims(llvm::ArrayRef<dim_t> arr) {
   assert(arr.size() <= 4);
   llvm::SmallVector<size_t, 4> ones(4, 1);
   std::copy(arr.begin(), arr.end(), ones.begin());
