@@ -27,7 +27,13 @@
 using namespace glow;
 
 /*
- * Benchmark m independent nxk transposes along with add layers.
+ * This class implements a transpose microbenchmark. There are multiple
+ * layers of transpose, followed by an Add with the tensor from the previous
+ * layer.
+ *
+ * Microbenchmarks are generally useful for understanding performance
+ * through targeted experiementation and are not representative of
+ * end-to-end workloads.
  */
 class TransposeBench : public Benchmark {
   dim_t batchSize_;
@@ -94,6 +100,7 @@ public:
                                  "A" + std::to_string(core), false);
     }
 
+    // Create multiple chains of Transpose and Add nodes
     for (dim_t core = 0; core < numCores_; core++) {
       if (batchSizePerCore[core] == 0)
         continue;
@@ -144,7 +151,7 @@ public:
     std::vector<std::promise<void>> promises(asyncLaunchSize_);
     std::vector<std::future<void>> futures;
 
-    // Launch a number of parallel requests
+    // Launch a number of independent requests
     int i = 0;
     for (auto &promise : promises) {
       futures.push_back(promise.get_future());
@@ -176,6 +183,10 @@ public:
 };
 
 int main(int argc, char *argv[]) {
+  printf("Transpose Microbenchmark\n");
+  printf("Usage: TransposeBench batchSize(Int) n(Int) numLayers(Int) "
+         "numReps(Int) numAsyncLaunches(Int) numTransposeChains(Int) "
+         "backendStr(String) dtypeStr(\"Float16\"|\"Float32\") dev_id(Int)\n");
   assert(argc == 9 || argc == 10);
   size_t batchSize = atoi(argv[1]);
   size_t n = atoi(argv[2]);
@@ -198,6 +209,8 @@ int main(int argc, char *argv[]) {
                    backendStr, dtypeStr, dev_id);
 
   auto times = bench(&b, numReps);
+  printf("_,benchName,_,batchSize,n,numLayers,numReps,numAsyncLaunches,"
+         "numTransposeChains,backendStr,dtypeStr,runtime,gbytesPerSec\n");
   for (auto t : times) {
     printf(
         "BenchResult,TransposeBench,SW,%zu,%zu,%zu,%zu,%zu,%zu,%s,%s,%f,%f\n",
@@ -211,6 +224,9 @@ int main(int argc, char *argv[]) {
   double median = times[midElt];
   double median_runtime = median / ((double)numAsyncLaunches);
   double min_runtime = min / ((double)numAsyncLaunches);
+  printf("_,benchName,_,batchSize,n,numLayers,numReps,numAsyncLaunches,"
+         "numTransposeChains,backendStr,dtypeStr,medianRuntime,minRuntime,"
+         "medianGbytesPerSec,maxGbytesPerSec\n");
   printf(
       "BenchSummary,TransposeBench,SW,%zu,%zu,%zu,%zu,%zu,%zu,%s,%s,%f,%f,%f,%"
       "f\n",

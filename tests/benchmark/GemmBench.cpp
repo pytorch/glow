@@ -25,11 +25,15 @@
 using namespace glow;
 
 /*
- * Benchmark an (m x k) * (k x n) = (m x n) matrix multiplication,
- * chained together in multiple layers.
+ * This class implements a GEMM/FC microbenchmark. There are a set of
+ * (m x k) * (k x n) = (m x n) matrix multiplications, chained together in
+ * multiple layers.
+ *
+ * Microbenchmarks are generally useful for understanding performance
+ * through targeted experiementation and are not representative of
+ * end-to-end workloads.
  */
 class GemmBench : public Benchmark {
-  /// Dimensions expressed in libjit's format.
   dim_t m_;
   dim_t n_;
   dim_t k_;
@@ -73,6 +77,8 @@ public:
     auto *input = mod->createPlaceholder(dtype, {m_, k_}, "input", false);
     auto *output = mod->createPlaceholder(dtype, {m_, n_}, "output", false);
     Node *cur = input;
+
+    // Create multiple layers of FC nodes
     for (size_t layer = 0; layer < numLayers_; layer++) {
       Placeholder *weights;
       Placeholder *bias;
@@ -107,6 +113,8 @@ public:
   void run() override {
     std::vector<std::promise<void>> promises(asyncLaunchSize_);
     std::vector<std::future<void>> futures;
+
+    // Launch a number of independent requests
     for (auto &runPromise : promises) {
       std::unique_ptr<ExecutionContext> contextPtr(new ExecutionContext);
       futures.push_back(runPromise.get_future());
@@ -129,6 +137,11 @@ public:
 };
 
 int main(int argc, char *argv[]) {
+  printf("GEMM Microbenchmark\n");
+  printf("Usage: GemmBench m(Int) n(Int) k(Int) numLayers(Int) numReps(Int) "
+         "numAsyncLaunches(Int) numSplits(Int) backendStr(String) "
+         "dtypeStr(\"Float16\"|\"Float32\") dev_id(Int)\n");
+
   assert(argc == 10 || argc == 11);
   size_t m = atoi(argv[1]);
   size_t n = atoi(argv[2]);
@@ -148,6 +161,8 @@ int main(int argc, char *argv[]) {
   GemmBench b(m, n, k, numLayers, asyncLaunches, numSplits, backendStr,
               dtypeStr, dev_id);
   auto times = bench(&b, reps);
+  printf("_,benchName,_,m,n,k,numLayers,numReps,numAsyncLaunches,numSplits,"
+         "backendStr,dtypeStr,runtime,gflopPerSec\n");
   for (auto t : times) {
     printf(
         "BenchResult,GemmBench,SW,%4zu,%4zu,%4zu,%4zu,%4zu,%4zu,%4zu,%s,%s,%2."
@@ -161,6 +176,9 @@ int main(int argc, char *argv[]) {
   double median = times[midElt];
   double median_runtime = median / ((double)asyncLaunches);
   double min_runtime = min / ((double)asyncLaunches);
+  printf("_,benchName,_,m,n,k,numLayers,numReps,numAsyncLaunches,numSplits,"
+         "backendStr,dtypeStr,medianRuntime,minRuntime,medianGflopPerSec,"
+         "maxGflopPerSec\n");
   printf(
       "BenchSummary,GemmBench,SW,%4zu,%4zu,%4zu,%4zu,%4zu,%4zu,%4zu,%s,%s,%2."
       "6lf,%2.6lf,%5.2lf, %5.2lf\n",
