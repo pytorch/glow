@@ -334,6 +334,9 @@ if(GLOW_WITH_OPENCL)
                 ${GLOW_BINARY_DIR}/tests/OCLTest
                     --gtest_output=xml:OCLTest.xml)
   LIST(APPEND UNOPT_TESTS ./tests/OCLTest -optimize-ir=false &&)
+
+
+
 endif()
 
 add_executable(OnnxImporterTest
@@ -387,6 +390,14 @@ foreach(backend ${GLOW_BACKENDS})
                    Partitioner
                    HostManager)
   add_backend_test(TEST TraceEventsTest BACKEND "${backend}" UNOPT)
+  add_backend_test(TEST
+                   DeferredWeightLoaderTest
+                   BACKEND
+                   "${backend}"
+                   UNOPT
+                   PRIVATE
+                   HostManager
+                   Runtime)
   add_backend_test(TEST TypeAToTypeBFunctionConverterTest BACKEND "${backend}")
 endforeach()
 

@@ -215,7 +215,7 @@ static void runInference(
     std::pair<Placeholder *, std::unordered_map<std::string, Tensor *>>
         &ioPlaceholders,
     const std::vector<char> &inputData,
-    std::unordered_map<std::string, std::pair<std::vector<char>, std::size_t>>
+    std::unordered_map<std::string, std::pair<std::vector<char>, dim_t>>
         &outputData) {
   // Grab a pointer to the input tensor from the placeholders
   Tensor *inputT = ioBindings.get(ioPlaceholders.first);
@@ -249,8 +249,8 @@ static void runInference(
 
 /// Write out \p outputData into \p file.
 static void writeOutputData(
-    const std::unordered_map<
-        std::string, std::pair<std::vector<char>, std::size_t>> &outputData,
+    const std::unordered_map<std::string, std::pair<std::vector<char>, dim_t>>
+        &outputData,
     const std::string &file) {
   if (writeOutput) {
     std::ofstream outputFile;
@@ -285,7 +285,7 @@ int main(int argc, char **argv) {
   parseCommandLine(argc, argv);
   Loader loader;
 
-  std::vector<std::size_t> dims;
+  std::vector<dim_t> dims;
   std::vector<char> inputData;
   std::vector<std::string> files;
   Tensor inputT;
@@ -330,7 +330,7 @@ int main(int argc, char **argv) {
     // a byte array; it also carries information about its size. So
     // first = name
     // second = <byte array, array size>.
-    std::unordered_map<std::string, std::pair<std::vector<char>, std::size_t>>
+    std::unordered_map<std::string, std::pair<std::vector<char>, dim_t>>
         outputData;
 
     // Reads input from file to the inputData vector, of max size = the capacity

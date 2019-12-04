@@ -62,7 +62,7 @@ public:
   /// Methods that forward to the result type (that must be valid):
   /// @{
   ElemKind getElementType() const { return getType()->getElementType(); };
-  llvm::ArrayRef<size_t> dims() const { return getType()->dims(); };
+  llvm::ArrayRef<dim_t> dims() const { return getType()->dims(); };
   /// @}
 
   static bool classof(const Kinded *k) {
@@ -193,7 +193,7 @@ public:
 
 /// Calculate the size of the output tensor based on the convolution/pooling
 /// parameters.
-inline std::pair<size_t, size_t> calculateConvPoolOutputDims(
+inline std::pair<dim_t, dim_t> calculateConvPoolOutputDims(
     size_t sx, size_t sy, llvm::ArrayRef<unsigned_t> kernels,
     llvm::ArrayRef<unsigned_t> strides, llvm::ArrayRef<unsigned_t> pads,
     unsigned_t dilation = 1) {

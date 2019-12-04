@@ -220,7 +220,7 @@ template <typename Ty> void testAssignment(const Type &ty) {
 }
 
 TEST(Tensor, assignment) {
-  size_t dim[] = {320, 200, 64};
+  dim_t dim[] = {320, 200, 64};
   testAssignment<float>(Type{ElemKind::FloatTy, dim});
   testAssignment<int8_t>(Type{ElemKind::Int8QTy, dim, 1., 0});
   testAssignment<uint8_t>(Type{ElemKind::UInt8QTy, dim, 1., 0});
@@ -244,7 +244,7 @@ TEST(Tensor, concatTensors1D) {
   zH.insertTensors(xH, {4});
   zH.insertTensors(yH, {0});
 
-  for (size_t i = 0, e = eH.size(); i < e; i++) {
+  for (dim_t i = 0, e = eH.size(); i < e; i++) {
     EXPECT_EQ(eH.at({i}), zH.at({i}));
   }
 }
@@ -316,7 +316,7 @@ TEST(Tensor, getDimForPtr) {
   for (unsigned x = 0; x < 10; x++) {
     for (unsigned y = 0; y < 5; y++) {
       for (unsigned z = 0; z < 3; z++) {
-        size_t ptr = H.getElementPtr({x, y, z});
+        dim_t ptr = H.getElementPtr({x, y, z});
         EXPECT_EQ(x, H.getDimForPtr(0, ptr));
         EXPECT_EQ(y, H.getDimForPtr(1, ptr));
         EXPECT_EQ(z, H.getDimForPtr(2, ptr));
@@ -442,7 +442,7 @@ TEST(Tensor, transpose) {
 
   auto XhatH = Xhat.getHandle<>();
 
-  for (size_t i = 0; i < 5; i++) {
+  for (dim_t i = 0; i < 5; i++) {
     EXPECT_EQ(H.at({i, 0}), XhatH.at({0, i}));
     EXPECT_EQ(H.at({i, 1}), XhatH.at({1, i}));
   }
@@ -459,9 +459,9 @@ TEST(Tensor, transpose2) {
 
   auto XhatH = Xhat.getHandle<>();
 
-  for (size_t i = 0; i < 10; i++) {
-    for (size_t j = 0; j < 6; j++) {
-      for (size_t k = 0; k < 3; k++) {
+  for (dim_t i = 0; i < 10; i++) {
+    for (dim_t j = 0; j < 6; j++) {
+      for (dim_t k = 0; k < 3; k++) {
         EXPECT_EQ(H.at({i, j, k}), XhatH.at({j, k, i}));
       }
     }
@@ -582,9 +582,9 @@ TEST(Tensor, modifyOffsetIntoTensor3D) {
 
   // Verify the underlying data was correctly modified.
   auto H_orig = orig.getHandle<>();
-  for (size_t i = 0; i < 4; i++) {
-    for (size_t j = 0; j < 3; j++) {
-      for (size_t k = 0; k < 2; k++) {
+  for (dim_t i = 0; i < 4; i++) {
+    for (dim_t j = 0; j < 3; j++) {
+      for (dim_t k = 0; k < 2; k++) {
         if (i == 1 || i == 2) {
           EXPECT_EQ(H_orig.at({i, j, k}), 1.0);
         } else {
@@ -616,7 +616,7 @@ TEST(Tensor, equalsOffsetIntoTensor) {
   auto H_recreatedSubview = recreatedSubview.getHandle<>();
   H_recreatedSubview = {4, 5, 6, 7};
 
-  for (size_t i = 0; i < 4; i++) {
+  for (dim_t i = 0; i < 4; i++) {
     EXPECT_EQ(H_subview.at({i}), H_recreatedSubview.at({i}));
   }
 }
@@ -687,8 +687,8 @@ TEST(Tensor, insertWithCountAndAxis) {
   // Insert three of these slices on axis 1
   yH.insertTensors(xH, {0, 0}, /* count */ 3, /* axis */ 1);
 
-  for (size_t i = 0; i < 3; i++) {
-    for (size_t j = 0; j < 6; j++) {
+  for (dim_t i = 0; i < 3; i++) {
+    for (dim_t j = 0; j < 6; j++) {
       EXPECT_EQ(xH.at({i, j % 2}), yH.at({i, j}));
     }
   }
@@ -949,7 +949,7 @@ static void testInitZeroFused(ElemKind fusedKind, float allowedError) {
 
   // Now check that we correctly set the data, and that the scale/offsets are
   // the same as expected (untouched by initializing to zero).
-  for (size_t i = 0; i < 10; i++) {
+  for (dim_t i = 0; i < 10; i++) {
     uint8_t *scaleOffsetPtr =
         &TData[i * rowLength] + width - 2 * sizeof(ScaleOffsetT);
     ScaleOffsetT scale, offset;
@@ -981,20 +981,20 @@ TEST(Tensor, initZeroFused_Float16) {
 /// Check that initializing a fused tensor with Broadcast that the scale and
 /// offset are not changed, and broadcast value is set correctly.
 static void testBroadcastFused(ElemKind fusedKind) {
-  const size_t numTotalColumns =
+  const dim_t numTotalColumns =
       2 + 2 * ((fusedKind == ElemKind::UInt8FusedQTy) ? sizeof(float)
                                                       : sizeof(float16_t));
   Tensor T(fusedKind, {10, numTotalColumns}, 0.0, 0);
   auto TH = T.getHandle<uint8_t>();
-  for (size_t i = 0; i < 10; i++) {
-    for (size_t j = 0; j < numTotalColumns; j++) {
+  for (dim_t i = 0; i < 10; i++) {
+    for (dim_t j = 0; j < numTotalColumns; j++) {
       TH.at({i, j}) = i * 10 + j;
     }
   }
   PseudoRNG PRNG;
   T.init(Tensor::InitKind::Broadcast, 5, PRNG);
-  for (size_t i = 0; i < 10; i++) {
-    for (size_t j = 0; j < numTotalColumns; j++) {
+  for (dim_t i = 0; i < 10; i++) {
+    for (dim_t j = 0; j < numTotalColumns; j++) {
       // Check that the scales/offsets are unchanged, and that the broadcast
       // value is everywhere else.
       if (j < 2) {
@@ -1019,20 +1019,20 @@ TEST(Tensor, initBroadcastFused_Float16) {
 /// Check that when randomizing a fused quantized tensor, the scale and offset
 /// are not changed.
 static void testRandomizeFused(ElemKind fusedKind) {
-  const size_t numTotalColumns =
+  const dim_t numTotalColumns =
       2 + 2 * ((fusedKind == ElemKind::UInt8FusedQTy) ? sizeof(float)
                                                       : sizeof(float16_t));
   Tensor T(fusedKind, {10, numTotalColumns}, 1.0, 0);
   auto TH = T.getHandle<uint8_t>();
-  for (size_t i = 0; i < 10; i++) {
-    for (size_t j = 0; j < numTotalColumns; j++) {
+  for (dim_t i = 0; i < 10; i++) {
+    for (dim_t j = 0; j < numTotalColumns; j++) {
       TH.at({i, j}) = i * 10 + j;
     }
   }
   PseudoRNG PRNG;
   TH.randomize(0, 255, PRNG);
-  for (size_t i = 0; i < 10; i++) {
-    for (size_t j = 2; j < numTotalColumns; j++) {
+  for (dim_t i = 0; i < 10; i++) {
+    for (dim_t j = 2; j < numTotalColumns; j++) {
       // Check that the scales/offsets are unchanged.
       EXPECT_EQ(TH.at({i, j}), i * 10 + j);
     }

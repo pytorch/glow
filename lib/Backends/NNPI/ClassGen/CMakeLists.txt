@@ -12,5 +12,5 @@
 # limitations under the License.
 
 set(VERIF_FILENAME NNPISpecificNodesVerification.h)
-configure_file(${VERIF_FILENAME} ${GLOW_BINARY_DIR}/${VERIF_FILENAME} COPYONLY)
+configure_file(${VERIF_FILENAME} ${GLOW_BINARY_DIR}/glow/${VERIF_FILENAME} COPYONLY)
 

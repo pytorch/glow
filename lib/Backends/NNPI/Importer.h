@@ -147,12 +147,30 @@ inline bool UseInferenceAPI() {
   return NNPIEnvVariables::getVarBool("USE_INF_API");
 }
 
+inline bool EnabledDeviceTracing() {
+  return NNPIEnvVariables::getVarBool("NNPI_DEVICE_TRACING");
+}
+
 inline std::string EnvDeviceVersion() {
   auto deviceVersion = NNPIEnvVariables::getVarString("NNPI_DEVICE_VERSION");
   return deviceVersion.length() ? deviceVersion : "";
 }
 
 inline bool SymlowpWA() { return NNPIEnvVariables::getVarBool("SYMLOWP_WA"); }
+
+inline std::string EnvDeviceID() {
+  auto deviceID = NNPIEnvVariables::getVarString("NNPI_DEVICE_ID");
+  return deviceID.length() ? deviceID : "";
+}
+
+inline std::string EnvIceCores() {
+  auto iceCores = NNPIEnvVariables::getVarString("NNPI_ICE_CORES");
+  return iceCores.length() ? iceCores : "";
+}
+
+inline int EnvNumWorkers() {
+  return NNPIEnvVariables::getVarInt("NNPI_NUM_WORKERS", -1);
+}
 
 } // namespace glow
 #endif // GLOW_NNPI_IMPORTER_H

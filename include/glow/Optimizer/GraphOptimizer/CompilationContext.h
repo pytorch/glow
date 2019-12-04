@@ -24,7 +24,8 @@
 namespace glow {
 namespace runtime {
 struct PartitionConfig;
-}
+class DeferredWeightLoader;
+} // namespace runtime
 
 /// Configuration for different precision modes.
 struct PrecisionConfiguration {
@@ -66,10 +67,17 @@ using QuantizationMode = PrecisionConfiguration::QuantizationMode;
 struct OptimizationOptions {
   /// Only lower, i.e. skip optimizations and precision transformations. Used
   /// for testing.
-  bool onlyLower{false};
+  llvm::SmallSet<Function *, 1> onlyLowerFuns;
 
   /// If true, perform compile-time computation of constant operations.
   bool enableConstantFolding{true};
+
+  /// If true, this will merge ConvertTo and Quantize nodes into inputs and
+  /// outputs of the Function. This means modifying the types of Placeholders
+  /// and SaveNodes if they have a corresponding ElemKind conversion (ConvertTo,
+  /// Quantize, Dequantize nodes).. Note that this must be accompanied by
+  /// modifying the Tensors backing Placeholders at runtime.
+  bool foldElemKindConversionIntoIO{false};
 };
 
 /// Context for compilation.
@@ -102,6 +110,10 @@ struct CompilationContext {
 
   /// How to annotate the compilation log filename.
   std::string compilationLogPrefix{"glow"};
+
+  /// Pointer to deferredWeightLoader object, this is used for large model
+  /// support.
+  runtime::DeferredWeightLoader *deferredWeightLoader{nullptr};
 
   CompilationContext(PlaceholderBindings *bindings_ = nullptr,
                      LoweredInfoMap *loweredInfoMap_ = nullptr)

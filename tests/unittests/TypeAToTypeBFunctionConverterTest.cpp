@@ -523,7 +523,7 @@ TEST_P(AllBackends, int64IConversionFloatToFloat16) {
   auto *output =
       mod.createPlaceholder(ElemKind::FloatTy, {20, 3}, "Output", false);
   auto *outputIdx =
-      mod.createPlaceholder(ElemKind::Int64ITy, {20, 3}, "Output", false);
+      mod.createPlaceholder(IndexElemKind, {20, 3}, "Output", false);
 
   auto *topK = F->createTopK("topK", input, 3);
   auto *result = F->createSave("save", topK->getValues(), output);
@@ -555,8 +555,7 @@ TEST_P(AllBackends, int64IConversionFloatToFloat16) {
   ASSERT_NE(convertedTopK, nullptr);
   EXPECT_EQ(convertedTopK->getElementType(TopKNode::ValuesIdx),
             ElemKind::Float16Ty);
-  EXPECT_EQ(convertedTopK->getElementType(TopKNode::IndicesIdx),
-            ElemKind::Int64ITy);
+  EXPECT_EQ(convertedTopK->getElementType(TopKNode::IndicesIdx), IndexElemKind);
   // Check that the input of TopK is a convertTo node from float to
   // Float16Ty.
   auto *convertedTopKInput =
@@ -582,7 +581,7 @@ TEST_P(AllBackends, int64IConversionFloatToFloat16) {
   EXPECT_EQ(resultIndices->getOutput(), outputIdx->getOutput());
   EXPECT_EQ(resultIndices->getInput(),
             convertedTopK->getNthResult(TopKNode::IndicesIdx));
-  EXPECT_EQ(resultIndices->getInput().getElementType(), ElemKind::Int64ITy);
+  EXPECT_EQ(resultIndices->getInput().getElementType(), IndexElemKind);
 }
 
 /// Check that the conversion optimization can get rid of conversion of
@@ -1033,9 +1032,8 @@ TEST_P(AllBackends, convertFRWQSLWS) {
 
   Constant *weights = mod.createConstant(ElemKind::FloatTy, {8}, "weights");
 
-  Placeholder *indices =
-      mod.createPlaceholder(ElemKind::Int64ITy, {8}, "indices",
-                            /* isTrainable */ false);
+  Placeholder *indices = mod.createPlaceholder(IndexElemKind, {8}, "indices",
+                                               /* isTrainable */ false);
   Placeholder *lengths =
       mod.createPlaceholder(ElemKind::Int32ITy, {4}, "lengths",
                             /* isTrainable */ false);
@@ -1098,9 +1096,8 @@ TEST_P(AllBackends, skipConvertingFRWQSLWS) {
 
   Constant *weights = mod.createConstant(ElemKind::FloatTy, {8}, "weights");
 
-  Placeholder *indices =
-      mod.createPlaceholder(ElemKind::Int64ITy, {8}, "indices",
-                            /* isTrainable */ false);
+  Placeholder *indices = mod.createPlaceholder(IndexElemKind, {8}, "indices",
+                                               /* isTrainable */ false);
   Placeholder *lengths =
       mod.createPlaceholder(ElemKind::Int32ITy, {4}, "lengths",
                             /* isTrainable */ false);
@@ -1150,9 +1147,8 @@ TEST_P(AllBackends, convertOnlyFloat16Ty) {
 
   Constant *weights = mod.createConstant(ElemKind::FloatTy, {8}, "weights");
 
-  Placeholder *indices =
-      mod.createPlaceholder(ElemKind::Int64ITy, {8}, "indices",
-                            /* isTrainable */ false);
+  Placeholder *indices = mod.createPlaceholder(IndexElemKind, {8}, "indices",
+                                               /* isTrainable */ false);
   Placeholder *lengths =
       mod.createPlaceholder(ElemKind::Int32ITy, {4}, "lengths",
                             /* isTrainable */ false);
@@ -1209,9 +1205,8 @@ TEST_P(AllBackends, convertOnlyUInt8FusedQTy) {
 
   Constant *weights = mod.createConstant(ElemKind::FloatTy, {8}, "weights");
 
-  Placeholder *indices =
-      mod.createPlaceholder(ElemKind::Int64ITy, {8}, "indices",
-                            /* isTrainable */ false);
+  Placeholder *indices = mod.createPlaceholder(IndexElemKind, {8}, "indices",
+                                               /* isTrainable */ false);
   Placeholder *lengths =
       mod.createPlaceholder(ElemKind::Int32ITy, {4}, "lengths",
                             /* isTrainable */ false);
@@ -1254,8 +1249,8 @@ TEST_P(AllBackends, convertOnlyUInt8FusedQTy) {
 TEST_P(AllBackends, convertWithoutClipAroundNonNumericNodes) {
   Module mod;
   Function *F = mod.createFunction("test");
-  const size_t dims[] = {1, 5, 10, 15};
-  const size_t dimsReshape[] = {10, 10, 15};
+  const dim_t dims[] = {1, 5, 10, 15};
+  const dim_t dimsReshape[] = {10, 10, 15};
   Node *I0 = mod.createPlaceholder(ElemKind::FloatTy, dims, "i0", false);
   Node *I1 = mod.createPlaceholder(ElemKind::FloatTy, dims, "i1", false);
   Node *I2 = mod.createPlaceholder(ElemKind::Int32ITy, {2, 2, 2}, "i2", false);

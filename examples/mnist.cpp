@@ -158,8 +158,8 @@ void validateModel(ExecutionEngine &EE, PlaceholderBindings &bindings,
   ::glow::convertPlaceholdersToConstants(F, bindings, {inputPH, outputPH});
   EE.compile(CompilationMode::Infer);
 
-  size_t rightAnswer = 0;
-  size_t offset = numIterations * minibatchSize;
+  dim_t rightAnswer = 0;
+  dim_t offset = numIterations * minibatchSize;
   size_t sampleCounter = offset;
   size_t iterations = 10;
   std::vector<Tensor> estimates;
@@ -167,7 +167,7 @@ void validateModel(ExecutionEngine &EE, PlaceholderBindings &bindings,
             imageInputs, labelInputs, F->getName(),
             [&](const Tensor &sampleIn, const Tensor &sampleOut,
                 const Tensor &label, size_t sampleIndex) {
-              auto correct = label.getHandle<int64_t>().at({0, 0});
+              auto correct = label.getHandle<sdim_t>().at({0, 0});
               auto guess = sampleOut.getHandle().minMaxArg().second;
               rightAnswer += (guess == correct);
               if (sampleIndex < offset + minibatchSize) {

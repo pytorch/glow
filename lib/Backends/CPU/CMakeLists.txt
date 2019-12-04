@@ -27,7 +27,8 @@ set(CPURunttimeCompilationOptions
       -std=c++14
       -ffast-math
       -fno-finite-math-only
-      -g0
+      -g
+      -I${CMAKE_SOURCE_DIR}/include
       -emit-llvm
       -O0
 
@@ -41,7 +42,7 @@ set(CPURunttimeCompilationOptions
       # --sysroot=/usr/arm-linux-gnueabihf/
       # -target armv7-neon-linux-gnueabihf
       # -I/usr/arm-linux-gnueabihf/include/c++/7.4.0/arm-linux-gnueabihf/
-      )
+      ${LLVMCPURuntimeExtraFlags})
 
 set(libjit_files "libjit;libjit_conv;libjit_matmul")
 

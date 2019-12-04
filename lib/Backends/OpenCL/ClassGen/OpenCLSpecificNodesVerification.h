@@ -55,9 +55,8 @@ bool OCLBatchedReduceAddNode::verify() const {
     ok &= expectCompareTrue("axisSrcSlizeSize is incorrect",
                             getAxisSrcSliceSize(), static_cast<unsigned_t>(1),
                             this);
-    ok &=
-        expectCompareTrue("srcSliceSizes has the wrong shape",
-                          srcSliceSizesH.size(), static_cast<size_t>(1), this);
+    ok &= expectCompareTrue("srcSliceSizes has the wrong shape",
+                            srcSliceSizesH.size(), static_cast<dim_t>(1), this);
     ok &= expectCompareTrue("srcSliceSizes is incorrect",
                             srcSliceSizesH.at({0}), 1, this);
   }
@@ -69,9 +68,9 @@ bool OCLBatchedReduceAddNode::verify() const {
   }
   auto destSliceSizesH = destSliceSizes->getPayload().getHandle<int32_t>();
 
-  ok &=
-      expectCompareTrue("destSliceSizes is incorrect",
-                        destSliceSizesH.at({destDimsVec.size() - 1}), 1, this);
+  ok &= expectCompareTrue("destSliceSizes is incorrect",
+                          destSliceSizesH.at({(dim_t)destDimsVec.size() - 1}),
+                          1, this);
 
   for (ssize_t i = destDimsVec.size() - 2; i >= 0; --i) {
     ok &= expectCompareTrue("destSliceSizes is incorrect",

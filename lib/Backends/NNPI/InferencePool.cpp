@@ -147,6 +147,9 @@ void InferenceThreadEnv::execute(RunIdentifierTy runId,
     TRACE_EVENT_SCOPE(ctx->getTraceContext(), TraceLevel::REQUEST,
                       UseInferenceAPI() ? "queuing" : "running");
     if (UseInferenceAPI()) {
+      if (deviceTracing_ != nullptr) {
+        deviceTracing_->start(ctx->getTraceContext(), runId);
+      }
       // Copy data to host resource and preprocess int64.
       // Queue copy commands.
       // For every input: lock host, copy data (+convert), unlock.
@@ -155,7 +158,6 @@ void InferenceThreadEnv::execute(RunIdentifierTy runId,
                                    "Bad inputs", runId, ctx, resultCB);
       for (size_t i = 0, e = hostInputs_.size(); i < e; i++) {
         void *pHostInput(nullptr);
-
         // Lock input host resource.
         LOG_AND_CALLBACK_NNPI_INF_ERROR(
             nnpiHostResourceLock(hostInputs_[i].handle, NNPI_LOCK_FOR_WRITE,
@@ -183,7 +185,6 @@ void InferenceThreadEnv::execute(RunIdentifierTy runId,
           copyConfig = &inputCopyCmdConfigs_[i];
           copyConfig->size = bufferSize;
         }
-
         // Unlock host resource.
         LOG_AND_CALLBACK_NNPI_INF_ERROR(
             nnpiHostResourceUnlock(hostInputs_[i].handle),
@@ -193,6 +194,9 @@ void InferenceThreadEnv::execute(RunIdentifierTy runId,
             nnpiCopyCommandQueue(inputCopyCmds_[i], copyConfig),
             "Failed to queue input copy command.", runId, ctx, resultCB);
       }
+      if (deviceTracing_ != nullptr) {
+        deviceTracing_->startCopyTime();
+      }
     }
 
     // Inference.
@@ -200,6 +204,8 @@ void InferenceThreadEnv::execute(RunIdentifierTy runId,
       LOG_AND_CALLBACK_NNPI_INF_ERROR(nnpiInferCommandQueue(inferCmd_, 0),
                                       "Failed to queue infer command.", runId,
                                       ctx, resultCB);
+      TRACE_EVENT_SCOPE(ctx->getTraceContext(), TraceLevel::REQUEST,
+                        "infer_queue");
       for (size_t i = 0, e = hostOutputs_.size(); i < e; i++) {
         auto *t = ioTensors_.at(hostOutputs_[i].name);
         size_t bufferSize = t->getUnpaddedSizeInBytes();
@@ -263,6 +269,8 @@ void InferenceThreadEnv::execute(RunIdentifierTy runId,
                                         : "copying output");
     // Post inference output handling.
     if (UseInferenceAPI()) {
+      TRACE_EVENT_SCOPE(ctx->getTraceContext(), TraceLevel::REQUEST,
+                        "copy_output");
       // For every output, lock and copy data (+convert), unlock
       // then copy to output tensors.
       LOG_AND_FAIL_CALLBACK_IF_NOT(ERROR,
@@ -301,6 +309,9 @@ void InferenceThreadEnv::execute(RunIdentifierTy runId,
         LOG_AND_CALLBACK_NNPI_INF_ERROR(
             nnpiHostResourceUnlock(hostOutputs_[i].handle),
             "Failed to unlock host resource", runId, ctx, resultCB);
+        if (deviceTracing_ != nullptr) {
+          deviceTracing_->stopAndUpdate(ctx->getTraceContext(), runId);
+        }
       }
     }
   }
@@ -325,12 +336,14 @@ bool InferenceThreadEnv::init(
     // For ICE-T path.
     NNPIHostNetwork hostNetwork, NNPIDeviceNetwork deviceNetwork,
     NNPIAdapter adapter, NNPIDeviceContext device,
-    const std::unordered_set<const Placeholder *> &partialInputs) {
+    const std::unordered_set<const Placeholder *> &partialInputs,
+    std::shared_ptr<NNPIDeviceTracing> deviceTracing) {
 
   nnpiNetwork_ = network;
   device_ = device;
   compilationConfig_ = config;
   partialInputs_ = &partialInputs;
+  deviceTracing_ = deviceTracing;
 
   if (!UseInferenceAPI()) {
     size_t numInputs, numOutputs;
@@ -483,12 +496,15 @@ InferencePoolEnv::~InferencePoolEnv() {
 
 Error InferencePoolEnv::init(unsigned numWorkers, NNPIAdapter adapter,
                              NNPIDeviceContext device,
+                             std::shared_ptr<NNPIDeviceTracing> deviceTracing,
                              CompiledFunction *compiledFunction) {
   if (workersPool_) {
     return MAKE_ERR("InferencePool already initialized!");
   }
   numWorkers_ = numWorkers;
   workersPool_ = std::make_unique<ThreadPool>(numWorkers_);
+  deviceTracing_ = deviceTracing;
+
   threadEnvs_.resize(numWorkers_);
   if (threadEnvs_.size() != numWorkers_) {
     return MAKE_ERR("InferencePool failed to initialize thread env");
@@ -507,9 +523,7 @@ Error InferencePoolEnv::init(unsigned numWorkers, NNPIAdapter adapter,
                                     void *userData) -> uint64_t {
         BlockStream *ss = reinterpret_cast<BlockStream *>(userData);
         size_t readSize = ss->read(static_cast<char *>(ptr), size * count);
-        LOG_AND_RETURN_IF_NOT(ERROR, readSize == size * count,
-                              "Failed to read stream", 0);
-        return count;
+        return readSize;
       };
       inputStream.writeCallback = NULL;
       inputStream.seekCallback = NULL;
@@ -541,7 +555,7 @@ Error InferencePoolEnv::init(unsigned numWorkers, NNPIAdapter adapter,
     auto success = tEnv.init(nnpiFunction->getCompiledNetworkHandle(),
                              nnpiFunction->getCompilationConfig(), hostNetwork_,
                              deviceNetwork_, adapter, device,
-                             nnpiFunction->getPartialInputs());
+                             nnpiFunction->getPartialInputs(), deviceTracing_);
     if (!success) {
       return MAKE_ERR("Failed to initialize thread env");
     }

@@ -298,8 +298,8 @@ static void lowerPadNode(Function *F, CompilationContext &cctx,
 
   SplatNode *constant = F->createSplat("pad.const", outputType, P.getValue());
 
-  std::vector<size_t> orig(numDims);
-  for (size_t i = 0; i < numDims; i++) {
+  std::vector<dim_t> orig(numDims);
+  for (dim_t i = 0; i < numDims; i++) {
     orig[i] = size_t(pads[i]);
   }
 
@@ -524,9 +524,9 @@ static void lowerMeanVarNormalizationNode(Function *F, CompilationContext &cctx,
   auto momentum = MVN.getMomentum();
 
   // The number of different channels.
-  const size_t numChannels = in.dims()[channelIdx];
+  const dim_t numChannels = in.dims()[channelIdx];
   // The number of elements that each channel holds.
-  const size_t samplesPerChannel = in.getType()->size() / numChannels;
+  const dim_t samplesPerChannel = in.getType()->size() / numChannels;
 
   // Input tensor can have arbitrary shape:
   // {d_1, d_2, ..., d[channelIdx], ... d_n}
@@ -609,9 +609,9 @@ static void lowerBatchNormalizationGradNode(Function *F,
   auto epsilon = BNG.getEpsilon();
 
   // The number of different channels.
-  const size_t numChannels = inW.dims()[channelIdx];
+  const dim_t numChannels = inW.dims()[channelIdx];
   // The number of elements that each channel holds.
-  const size_t samplesPerChannel = inW.getType()->size() / numChannels;
+  const dim_t samplesPerChannel = inW.getType()->size() / numChannels;
 
   // Calculate: sum(dy * (h - mu))
   auto *meanB =
@@ -758,7 +758,7 @@ static void lowerBucketizeNode(Function *F, CompilationContext &cctx,
   // 3.2 Else if they are all smaller = output is len(Boundaries)
   // 3.2 Else output is Boundaries[i-1] < x <= Boundaries[i]
   // 4. Gather the all 'x's and create a new tensor to replace the node with
-  auto numOfBuckets = B.getBoundaries().size();
+  dim_t numOfBuckets = (dim_t)B.getBoundaries().size();
   const std::string &baseStr = B.getName().str();
   auto *boundariesConst = F->getParent()->createConstant(
       ElemKind::FloatTy, {numOfBuckets}, baseStr + ".const");
@@ -937,7 +937,7 @@ static void lowerTileNode(Function *F, CompilationContext &cctx,
   // Use a zero splat as the Big node input for InsertTensor.
   auto *zero = F->createSplat("zero", TN.getResult().getType(), 0);
   // Insert at the beginning of the splat.
-  auto start = std::vector<size_t>(input.dims().size(), 0);
+  auto start = std::vector<dim_t>(input.dims().size(), 0);
 
   auto *IN = F->createInsertTensor(TN.getName(), zero, input, start,
                                    TN.getCount(), TN.getAxis());
@@ -1054,15 +1054,15 @@ static void lowerBatchMatMulNode(Function *F, CompilationContext &cctx,
 
   // LHS = {numBatches, N, M}
   // RHS = {numBatches, M, P}
-  const size_t numBatches = lhs.dims()[0];
-  const size_t N = lhs.dims()[1];
-  const size_t M = lhs.dims()[2];
-  const size_t P = rhs.dims()[2];
+  const dim_t numBatches = lhs.dims()[0];
+  const dim_t N = lhs.dims()[1];
+  const dim_t M = lhs.dims()[2];
+  const dim_t P = rhs.dims()[2];
 
   // Lower to Slices, MatMuls, and a final Concat. Multiply i-th LHS matrix
   // {N, M} by i-th RHS matrix {M, P} to get final matrix {numBatches, N, P}.
   std::vector<NodeValue> MMS(numBatches);
-  for (size_t i = 0; i < numBatches; i++) {
+  for (dim_t i = 0; i < numBatches; i++) {
     SliceNode *sliceA =
         F->createSlice(name.str() + ".sliceA." + std::to_string(i), lhs,
                        {i, 0, 0}, {i + 1, N, M});

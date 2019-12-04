@@ -70,7 +70,7 @@ MaxPoolWithArgmaxInst *IRBuilder::createMaxPoolWithArgmaxOp(
 
     // Allocate storage for flattened NCHW index of max element.
     argmax =
-        createAllocActivationInst(name.str() + ".argmax", ElemKind::Int64ITy,
+        createAllocActivationInst(name.str() + ".argmax", IndexElemKind,
                                   {idim.n, outSz.first, outSz.second, idim.c});
 
     outTy = F_->getGraph()->getParent()->uniqueTypeWithNewShape(
@@ -83,7 +83,7 @@ MaxPoolWithArgmaxInst *IRBuilder::createMaxPoolWithArgmaxOp(
 
     // Allocate storage for flattened NCHW index of max element.
     argmax =
-        createAllocActivationInst(name.str() + ".argmax", ElemKind::Int64ITy,
+        createAllocActivationInst(name.str() + ".argmax", IndexElemKind,
                                   {idim.n, idim.c, outSz.first, outSz.second});
 
     outTy = F_->getGraph()->getParent()->uniqueTypeWithNewShape(
@@ -110,8 +110,8 @@ ArgMaxInst *IRBuilder::createArgMaxOp(llvm::StringRef name, Value *input,
   }
 
   // Allocate storage for flattened NCHW index of max element.
-  Value *argmax = createAllocActivationInst(name.str() + ".argmax",
-                                            ElemKind::Int64ITy, odim);
+  Value *argmax =
+      createAllocActivationInst(name.str() + ".argmax", IndexElemKind, odim);
   return createArgMaxInst(name, argmax, input, axis, keepDims);
 }
 
@@ -158,16 +158,16 @@ CrossEntropyLossInst *IRBuilder::createCrossEntropyLossOp(llvm::StringRef name,
 /// \param offsets is a vector of offsets into the Tensor for this view of the
 /// Tensor.
 TensorViewInst *IRBuilder::createTensorView(ElemKind elemKind,
-                                            llvm::ArrayRef<size_t> dims,
+                                            llvm::ArrayRef<dim_t> dims,
                                             Value *src, llvm::StringRef name,
-                                            llvm::ArrayRef<size_t> offsets) {
+                                            llvm::ArrayRef<dim_t> offsets) {
   auto ty =
       getIRFunction().getGraph()->getParent()->uniqueType(Type(elemKind, dims));
   return createTensorViewInst(
       name, src, ty,
       (offsets.size()
            ? offsets
-           : llvm::ArrayRef<size_t>(std::vector<size_t>(dims.size(), 0))));
+           : llvm::ArrayRef<dim_t>(std::vector<dim_t>(dims.size(), 0))));
 }
 
 LocalResponseNormalizationInst *IRBuilder::createLocalResponseNormalizationOp(
@@ -197,7 +197,7 @@ TopKInst *IRBuilder::createTopKOp(llvm::StringRef name, Value *input,
   createSplatInst(name.str() + ".zero.scratch", scratch, 0);
   auto *values = createAllocActivationInst(name.str() + ".values", outTy);
   auto *indices = createAllocActivationInst(name.str() + ".indices",
-                                            ElemKind::Int64ITy, outDims);
+                                            IndexElemKind, outDims);
   return createTopKInst(name.str(), values, indices, input, scratch, k);
 }
 
@@ -213,7 +213,7 @@ Value *IRBuilder::createReturnOp(Value *input) {
 //===----------------------------------------------------------------------===//
 
 WeightVar *IRBuilder::createWeightVar(ElemKind elemTy,
-                                      llvm::ArrayRef<size_t> dims,
+                                      llvm::ArrayRef<dim_t> dims,
                                       llvm::StringRef name,
                                       WeightVar::MutabilityKind m) {
   auto T = F_->getGraph()->getParent()->uniqueType(elemTy, dims);
@@ -228,7 +228,7 @@ WeightVar *IRBuilder::createWeightVar(TypeRef T, llvm::StringRef name,
 }
 
 WeightVar *IRBuilder::createWeightVar(ElemKind elemTy,
-                                      llvm::ArrayRef<size_t> dims, float scale,
+                                      llvm::ArrayRef<dim_t> dims, float scale,
                                       int32_t offset, llvm::StringRef name,
                                       WeightVar::MutabilityKind m) {
   auto T = F_->getGraph()->getParent()->uniqueType(elemTy, dims, scale, offset);
@@ -237,7 +237,7 @@ WeightVar *IRBuilder::createWeightVar(ElemKind elemTy,
 
 AllocActivationInst *
 IRBuilder::createAllocActivationInst(llvm::StringRef name, ElemKind elemTy,
-                                     llvm::ArrayRef<size_t> dims) {
+                                     llvm::ArrayRef<dim_t> dims) {
   auto T = F_->getGraph()->getParent()->uniqueType(elemTy, dims);
   return createAllocActivationInst(name, T);
 }

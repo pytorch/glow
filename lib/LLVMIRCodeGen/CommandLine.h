@@ -17,6 +17,7 @@
 #ifndef GLOW_LLVMIRCODEGEN_COMMANDLINE_H
 #define GLOW_LLVMIRCODEGEN_COMMANDLINE_H
 
+#include "glow/LLVMIRCodeGen/LLVMIRGen.h"
 #include "llvm/Support/CodeGen.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Target/TargetOptions.h"
@@ -35,6 +36,9 @@ extern llvm::cl::opt<std::string> llvmArch;
 
 /// CPU to be used by the LLVMBackend. Used as -mcpu=cpuA.
 extern llvm::cl::opt<std::string> llvmCPU;
+
+/// ABI to be used by the LLVMBackend. Used as -mabi=abi.
+extern llvm::cl::opt<std::string> llvmABI;
 
 /// Code model to be used by the LLVMBackend.
 extern llvm::cl::opt<llvm::CodeModel::Model> llvmCodeModel;
@@ -62,5 +66,11 @@ extern llvm::cl::list<std::string> llvmCompilerOptions;
 
 /// Option to set float ABI. Used as -float-abi=<abi-type>.
 extern llvm::cl::opt<llvm::FloatABI::ABIType> floatABI;
+
+/// Option to specify which bundle API to use.
+extern llvm::cl::opt<glow::BundleApiType> bundleAPI;
+
+/// Option to print more details in the bundle API.
+extern llvm::cl::opt<bool> bundleAPIVerbose;
 
 #endif // GLOW_LLVMIRCODEGEN_COMMANDLINE_H

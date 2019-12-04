@@ -64,9 +64,9 @@ public:
     auto config = glow::make_unique<runtime::DeviceConfig>(backendStr_);
     configs.push_back(std::move(config));
     hostManager_ = glow::make_unique<runtime::HostManager>(std::move(configs));
-    size_t m = cDims[0];
-    size_t n = cDims[1];
-    size_t k = aDims[1];
+    dim_t m = cDims[0];
+    dim_t n = cDims[1];
+    dim_t k = aDims[1];
     a.resize(m * k);
     b.resize(k * n);
     c.resize(m * n);
@@ -110,11 +110,11 @@ public:
         cur[core] = fc[core];
       }
     }
-    for (int core = 0; core < numCores_; core++) {
+    for (size_t core = 0; core < numCores_; core++) {
       fn->createSave("save" + std::to_string(core), cur[core], output[core]);
     }
 
-    for (int core = 0; core < numCores_; core++) {
+    for (size_t core = 0; core < numCores_; core++) {
       ::glow::convertPlaceholdersToConstants(fn, bindings_,
                                              {
                                                  input[core],

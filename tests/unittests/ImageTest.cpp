@@ -67,9 +67,9 @@ TEST(Image, readPngImageAndPreprocessWithAndWithoutInputTensor) {
                             imagenetNormMean, imagenetNormStd);
 
   // Test if the preprocess actually happened.
-  size_t imgHeight = image1.dims()[0];
-  size_t imgWidth = image1.dims()[1];
-  size_t numChannels = image1.dims()[2];
+  dim_t imgHeight = image1.dims()[0];
+  dim_t imgWidth = image1.dims()[1];
+  dim_t numChannels = image1.dims()[2];
 
   Tensor transposed;
   image2.transpose(&transposed, {1u, 2u, 0u});
@@ -78,9 +78,9 @@ TEST(Image, readPngImageAndPreprocessWithAndWithoutInputTensor) {
   Tensor swizzled(image1.getType());
   auto IH = image1.getHandle();
   auto SH = swizzled.getHandle();
-  for (size_t z = 0; z < numChannels; z++) {
-    for (size_t y = 0; y < imgHeight; y++) {
-      for (size_t x = 0; x < imgWidth; x++) {
+  for (dim_t z = 0; z < numChannels; z++) {
+    for (dim_t y = 0; y < imgHeight; y++) {
+      for (dim_t x = 0; x < imgWidth; x++) {
         SH.at({x, y, numChannels - 1 - z}) = IH.at({x, y, z});
       }
     }

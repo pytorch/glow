@@ -15,6 +15,7 @@ option(GLOW_BUILD_PYTORCH_INTEGRATION "Build integration for PyTorch" OFF)
 option(GLOW_BUILD_TESTS "Build the tests" ON)
 option(GLOW_WITH_BUNDLES "Build bundles" OFF)
 option(LINK_PROTOBUF_AS_DLL "Link against protobuf build as dynamic libray." OFF)
+option(TENSOR_DIMS_32_BITS "Set the max bitwidth of the tensor dimension and related indices to 32b instead of 64b." OFF)
 
 set(CMAKE_CXX_STANDARD 14)
 set(CXX_STANDARD_REQUIRED ON)
@@ -137,6 +138,14 @@ if (GLOW_WITH_HABANA)
     "${SYNAPSE_LIB}"
     "${TPCSIM_SHARED_LIB}"
     "${HL_THUNK_LIB}")
+endif ()
+
+if (TENSOR_DIMS_32_BITS)
+  add_definitions(-DDIM_T_32)
+  set(LLVMCPURuntimeExtraFlags "-DDIM_T_32")
+  message(STATUS "Using 32b tensor dimensions.")
+else()
+  message(STATUS "Using 64b tensor dimensions.")
 endif ()
 
 # Top level setup for external backends

@@ -70,9 +70,9 @@ public:
                                                  Value *labels);
 
   TensorViewInst *createTensorView(ElemKind elemKind,
-                                   llvm::ArrayRef<size_t> dims, Value *src,
+                                   llvm::ArrayRef<dim_t> dims, Value *src,
                                    llvm::StringRef name,
-                                   llvm::ArrayRef<size_t> offsets = {});
+                                   llvm::ArrayRef<dim_t> offsets = {});
 
   LocalResponseNormalizationInst *createLocalResponseNormalizationOp(
       llvm::StringRef name, Value *input, size_t halfWindowSize = 2,
@@ -90,18 +90,18 @@ public:
   WeightVar *createWeightVar(TypeRef T, llvm::StringRef name = "",
                              MutabilityKind m = MutabilityKind::Mutable);
 
-  WeightVar *createWeightVar(ElemKind elemTy, llvm::ArrayRef<size_t> dims,
+  WeightVar *createWeightVar(ElemKind elemTy, llvm::ArrayRef<dim_t> dims,
                              llvm::StringRef name = "",
                              MutabilityKind m = MutabilityKind::Mutable);
 
-  WeightVar *createWeightVar(ElemKind elemTy, llvm::ArrayRef<size_t> dims,
+  WeightVar *createWeightVar(ElemKind elemTy, llvm::ArrayRef<dim_t> dims,
                              float scale, int32_t offset,
                              llvm::StringRef name = "",
                              MutabilityKind m = MutabilityKind::Mutable);
 
   AllocActivationInst *createAllocActivationInst(llvm::StringRef name,
                                                  ElemKind elemTy,
-                                                 llvm::ArrayRef<size_t> dims);
+                                                 llvm::ArrayRef<dim_t> dims);
 
 // Import the auto-generated instruction creation methods:
 #include "glow/AutoGenIRBuilder.h"

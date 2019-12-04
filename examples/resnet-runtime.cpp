@@ -101,7 +101,7 @@ void dispatchClassify(unsigned int id, HostManager *hostManager,
         EXIT_ON_ERR(std::move(err));
         auto *bindings = context->getPlaceholderBindings();
         size_t maxIdx =
-            bindings->get(bindings->getPlaceholderByName("gpu_0_softmax__1"))
+            bindings->get(bindings->getPlaceholderByName("gpu_0_softmax"))
                 ->getHandle()
                 .minMaxArg()
                 .second;
@@ -147,7 +147,7 @@ int main(int argc, char **argv) {
 
   // Load model, create a context, and add to HostManager.
 
-  std::vector<size_t> inputShape{1, 3, 224, 224};
+  std::vector<dim_t> inputShape{1, 3, 224, 224};
 
   Placeholder *input;
   PlaceholderList phList;

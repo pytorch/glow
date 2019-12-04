@@ -190,7 +190,7 @@ TEST_P(GradCheck, gradientCheckConcat) {
   PlaceholderBindings bindings;
   Placeholder *A, *Exp, *B;
   SaveNode *result;
-  size_t numOutputElem = 20;
+  dim_t numOutputElem = 20;
   for (auto *EE : engines_) {
     auto &mod = EE->getModule();
     Function *F = mod.createFunction("main");
@@ -225,7 +225,7 @@ TEST_P(GradCheck, gradientCheckMatMul) {
   PlaceholderBindings Bindings;
   Placeholder *A, *Exp, *B;
   SaveNode *Result;
-  size_t NumDim = 10;
+  dim_t NumDim = 10;
   for (auto *EE : engines_) {
     auto &Mod = EE->getModule();
     Bindings.clear();
@@ -338,9 +338,9 @@ TEST_P(GradCheck, gradientCheckBatchedReduceAddAxis0) {
   PlaceholderBindings Bindings;
   Placeholder *A, *Exp;
   SaveNode *Result;
-  size_t BatchSize = 4;
-  size_t NumRows = 3;
-  size_t NumCols = 5;
+  dim_t BatchSize = 4;
+  dim_t NumRows = 3;
+  dim_t NumCols = 5;
   for (auto *EE : engines_) {
     auto &Mod = EE->getModule();
     Function *F = Mod.createFunction("main");
@@ -373,9 +373,9 @@ TEST_P(GradCheck, gradientCheckBatchedReduceAddAxis0) {
 TEST_P(GradCheck, gradientCheckBatchedReduceAddAxis1) {
   CHECK_IF_ENABLED();
   PlaceholderBindings Bindings;
-  size_t NumRows = 3;
-  size_t BatchSize = 4;
-  size_t NumCols = 5;
+  dim_t NumRows = 3;
+  dim_t BatchSize = 4;
+  dim_t NumCols = 5;
   Placeholder *A, *Exp;
   SaveNode *Result;
   for (auto *EE : engines_) {
@@ -418,8 +418,8 @@ TEST_P(GradCheck, gradientCheckGatherVec) {
     Function *F = Mod.createFunction("main");
 
     A = Mod.createPlaceholder(ElemKind::FloatTy, {3, 4}, "A", false);
-    auto *Indices = Mod.createPlaceholder(ElemKind::Int64ITy, {2}, "I", false);
-    Bindings.allocate(Indices)->getHandle<int64_t>() = {0, 2};
+    auto *Indices = Mod.createPlaceholder(IndexElemKind, {2}, "I", false);
+    Bindings.allocate(Indices)->getHandle<sdim_t>() = {0, 2};
     Exp = Mod.createPlaceholder(ElemKind::FloatTy, {2, 4}, "exp", false);
 
     Node *G = F->createGather("gather", A, Indices, 0 /*batchDims*/);
@@ -451,9 +451,8 @@ TEST_P(GradCheck, gradientCheckGatherDim) {
     Function *F = Mod.createFunction("main");
 
     A = Mod.createPlaceholder(ElemKind::FloatTy, {8, 4}, "A", false);
-    auto *Indices =
-        Mod.createPlaceholder(ElemKind::Int64ITy, {2, 2}, "I", false);
-    Bindings.allocate(Indices)->getHandle<int64_t>() = {0, 2, 3, 1};
+    auto *Indices = Mod.createPlaceholder(IndexElemKind, {2, 2}, "I", false);
+    Bindings.allocate(Indices)->getHandle<sdim_t>() = {0, 2, 3, 1};
     Exp = Mod.createPlaceholder(ElemKind::FloatTy, {2, 2, 4}, "exp", false);
 
     Node *G = F->createGather("gather", A, Indices, 0 /*batchDims*/);
@@ -474,11 +473,11 @@ TEST_P(GradCheck, gradientCheckGatherDim) {
                    &Inputs, &Outputs, 0.001, 0.01);
 }
 
-static void gradientCheckGroupConv(size_t depth, size_t group,
+static void gradientCheckGroupConv(dim_t depth, dim_t group,
                                    ExecutionEngine &EET_,
                                    ExecutionEngine &EEI_) {
   PlaceholderBindings bindings;
-  size_t numDim = 10;
+  dim_t numDim = 10;
   std::vector<ExecutionEngine *> engines;
   engines.push_back(&EEI_);
   engines.push_back(&EET_);
@@ -526,11 +525,11 @@ TEST_P(GradCheck, gradientCheckGroupConv) {
   gradientCheckGroupConv(4, 2, EET_, EEI_);
 }
 
-static void gradientCheckDilatedConv(size_t depth, size_t group,
-                                     size_t dilation, ExecutionEngine &EET_,
+static void gradientCheckDilatedConv(dim_t depth, dim_t group, dim_t dilation,
+                                     ExecutionEngine &EET_,
                                      ExecutionEngine &EEI_) {
   PlaceholderBindings bindings;
-  size_t numDim = 10;
+  dim_t numDim = 10;
   std::vector<ExecutionEngine *> engines;
   engines.push_back(&EEI_);
   engines.push_back(&EET_);
@@ -572,8 +571,8 @@ TEST_P(GradCheck, gradientCheckDilatedConv) {
 TEST_P(GradCheck, gradientCheckAvgPool) {
   CHECK_IF_ENABLED();
   PlaceholderBindings bindings;
-  size_t numDim = 10;
-  size_t numOutputElem = 10;
+  dim_t numDim = 10;
+  dim_t numOutputElem = 10;
   Placeholder *A, *Exp;
   SaveNode *result;
   for (auto *EE : engines_) {
@@ -608,8 +607,8 @@ TEST_P(GradCheck, gradientCheckAvgPool) {
 TEST_P(GradCheck, gradientCheckMaxPool) {
   CHECK_IF_ENABLED();
   PlaceholderBindings bindings;
-  size_t numDim = 10;
-  size_t numOutputElem = 10;
+  dim_t numDim = 10;
+  dim_t numOutputElem = 10;
   Placeholder *A, *Exp;
   SaveNode *result;
   for (auto *EE : engines_) {
@@ -644,8 +643,8 @@ TEST_P(GradCheck, gradientCheckMaxPool) {
 TEST_P(GradCheck, gradientCheckAdaptiveAvgPool) {
   CHECK_IF_ENABLED();
   PlaceholderBindings bindings;
-  size_t numDim = 10;
-  size_t numOutputElem = 10;
+  dim_t numDim = 10;
+  dim_t numOutputElem = 10;
   Placeholder *A, *Exp;
   SaveNode *result;
   for (auto *EE : engines_) {
@@ -681,8 +680,8 @@ TEST_P(GradCheck, gradientCheckAdaptiveAvgPool) {
 TEST_P(GradCheck, gradientCheckBatchNorm) {
   CHECK_IF_ENABLED();
   PlaceholderBindings bindings;
-  size_t numDim = 5;
-  size_t numOutputElem = numDim * numDim * 3;
+  dim_t numDim = 5;
+  dim_t numOutputElem = numDim * numDim * 3;
   Placeholder *A, *Ex;
   SaveNode *result;
   for (auto *EE : engines_) {
@@ -723,7 +722,7 @@ TEST_P(GradCheck, gradientCheckArithmeticDiv) {
   // B and Exp are external data (initialized randomly once). SGD will find
   // correct value for A, and then gradient check will be performed.
   PlaceholderBindings bindings;
-  size_t numDim = 10;
+  dim_t numDim = 10;
   Placeholder *B, *Exp;
   SaveNode *result;
   for (auto *EE : engines_) {
@@ -757,7 +756,7 @@ TEST_P(GradCheck, gradientCheckArithmeticDiv) {
 TEST_P(GradCheck, gradientCheckArithmetic) {
   CHECK_IF_ENABLED();
   PlaceholderBindings bindings;
-  size_t numDim = 20;
+  dim_t numDim = 20;
   Placeholder *A, *Exp;
   SaveNode *result;
   for (auto *EE : engines_) {
@@ -804,8 +803,8 @@ TEST_P(GradCheck, gradientCheckFCConcatTanh) {
   CHECK_IF_ENABLED();
   // Using the same gradient check test setup as gradientCheck_FC_Concat_RELU
   PlaceholderBindings bindings;
-  size_t numInputElem = 20;
-  size_t numOutputElem = 10;
+  dim_t numInputElem = 20;
+  dim_t numOutputElem = 10;
   Placeholder *A, *Exp;
   SaveNode *result;
   for (auto *EE : engines_) {
@@ -837,8 +836,8 @@ TEST_P(GradCheck, gradientCheckFCConcatTanh) {
 TEST_P(GradCheck, gradientCheckFC) {
   CHECK_IF_ENABLED();
   PlaceholderBindings bindings;
-  size_t numInputElem = 20;
-  size_t numOutputElem = 10;
+  dim_t numInputElem = 20;
+  dim_t numOutputElem = 10;
   Placeholder *A, *Exp;
   SaveNode *result;
   for (auto *EE : engines_) {
@@ -870,8 +869,8 @@ TEST_P(GradCheck, gradientCheckFC) {
 TEST_P(GradCheck, gradientCheckSigmoid) {
   CHECK_IF_ENABLED();
   PlaceholderBindings bindings;
-  size_t numInputElem = 20;
-  size_t numOutputElem = 20;
+  dim_t numInputElem = 20;
+  dim_t numOutputElem = 20;
   Placeholder *A, *Exp;
   SaveNode *result;
   for (auto *EE : engines_) {
@@ -902,8 +901,8 @@ TEST_P(GradCheck, gradientCheckSigmoid) {
 TEST_P(GradCheck, gradientCheckRelu) {
   CHECK_IF_ENABLED();
   PlaceholderBindings bindings;
-  size_t numInputElem = 20;
-  size_t numOutputElem = 20;
+  dim_t numInputElem = 20;
+  dim_t numOutputElem = 20;
   Placeholder *A, *Exp;
   SaveNode *result;
   for (auto *EE : engines_) {
@@ -935,7 +934,7 @@ TEST_P(GradCheck, gradientCheckTranspose) {
   CHECK_IF_ENABLED();
   // Using the same gradient check test setup as gradientCheck_FC_Concat_RELU
   PlaceholderBindings bindings;
-  size_t numOutputElem = 10;
+  dim_t numOutputElem = 10;
   Placeholder *A, *Exp;
   SaveNode *result;
   for (auto *EE : engines_) {
@@ -979,8 +978,7 @@ TEST_P(GradCheck, gradientCheckCrossEntropyLoss) {
   auto *P =
       mod.createPlaceholder(ElemKind::FloatTy, {batchSize, 4}, "P", false);
   bindings.allocate(P)->zero();
-  auto *Y =
-      mod.createPlaceholder(ElemKind::Int64ITy, {batchSize}, "Labels", false);
+  auto *Y = mod.createPlaceholder(IndexElemKind, {batchSize}, "Labels", false);
   bindings.allocate(Y)->zero();
   Node *CE = F->createCrossEntropyLoss("celoss", P, Y);
   auto *result = F->createSave("ret", CE);
@@ -988,11 +986,11 @@ TEST_P(GradCheck, gradientCheckCrossEntropyLoss) {
 
   Tensor inputs(ElemKind::FloatTy, {batchSize, 4});
   inputs.zero();
-  Tensor outputs(ElemKind::Int64ITy, {batchSize});
+  Tensor outputs(IndexElemKind, {batchSize});
   outputs.zero();
 
   auto inputsH = inputs.getHandle();
-  auto outputsH = outputs.getHandle<int64_t>();
+  auto outputsH = outputs.getHandle<sdim_t>();
 
   inputsH.randomize(0.0, 1.0, mod.getPRNG());
   outputsH.at({0}) = 2;

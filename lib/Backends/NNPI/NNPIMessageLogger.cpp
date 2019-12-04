@@ -21,7 +21,7 @@
 using namespace glow;
 
 void NNPIMessageLogger::setLogLevel(NNPI_LOG_LEVEL level) {
-  NNPISetLogLevel(level);
+  nnpiSetLogLevel(level);
 }
 
 NNPIMessageLogger::NNPIMessageLogger() {
@@ -34,8 +34,8 @@ NNPIMessageLogger::NNPIMessageLogger() {
   NNPI_LOG_LEVEL logLevel = NNPI_LOG_LEVEL_DEBUG;
 #endif // NDEBUG
   logLevel = NNPIEnvVariables::getVarLogLevel("NNPI_LOG_LEVEL", logLevel);
-  NNPISetLogLevel(logLevel);
-  NNPISetLogStream(&messagesStream_);
+  nnpiSetLogLevel(logLevel);
+  nnpiSetLogStream(&messagesStream_);
 }
 
 uint64_t NNPIMessageLogger::messagesWriteHandler(const void *ptr, uint64_t size,

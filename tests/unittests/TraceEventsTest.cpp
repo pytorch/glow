@@ -76,8 +76,8 @@ public:
   }
 
   Node *part_four(Function *F, ExecutionContext &context, NodeValue last) {
-    auto *ex = F->getParent()->createPlaceholder(ElemKind::Int64ITy, {1, 1},
-                                                 "exp", false);
+    auto *ex =
+        F->getParent()->createPlaceholder(IndexElemKind, {1, 1}, "exp", false);
     auto *FCL1 = F->createFullyConnected(*context.getPlaceholderBindings(),
                                          "fc", last, 10);
     auto *RL3 = F->createRELU("relu4", FCL1);
@@ -86,11 +86,11 @@ public:
     return S;
   }
 
-  Placeholder *createEventPlaceholder(size_t numEvents) {
+  Placeholder *createEventPlaceholder(dim_t numEvents) {
     std::unique_ptr<Backend> backend(createBackend(EE_.getBackendName()));
     return EE_.getModule().createPlaceholder(
         ElemKind::Int64ITy,
-        {numEvents, backend->getTraceEventDataSize() /
+        {numEvents, (dim_t)backend->getTraceEventDataSize() /
                         Type::getElementSize(ElemKind::Int64ITy)},
         "", false);
   }

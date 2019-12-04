@@ -197,6 +197,19 @@ void inputsToProto(const Node *node, ONNX_NAMESPACE::NodeProto *proto) {
   }
 }
 
+/// Write the output of the provided node, add SaveNode if necessary
+void outputKindToProto(const Node *node, ONNX_NAMESPACE::NodeProto *proto) {
+  for (const auto &use : node->getUsers()) {
+    const auto *user = use.getUser();
+    if (user->getKind() == Kinded::Kind::SaveNodeKind) {
+      const SaveNode *SN = llvm::cast<SaveNode>(user);
+      proto->add_output(SN->getPlaceholder()->getName());
+    } else {
+      outputsToProto(user, proto);
+    }
+  }
+}
+
 /// Write the output of the provided type only of node outputs.
 bool outputKindToProto(Kinded::Kind kind, const Node *node,
                        ONNX_NAMESPACE::NodeProto *proto) {
@@ -315,8 +328,8 @@ Error writeArithmetic(const std::string &opName, const T *node,
     if (LHS.dims() != RHS.dims()) {
       // Extract axis from available shapes, ie. input origin,
       // reshape and target repeats.
-      llvm::ArrayRef<size_t> origin = RHS.dims();
-      llvm::ArrayRef<size_t> reshape = RN->getDims();
+      llvm::ArrayRef<dim_t> origin = RHS.dims();
+      llvm::ArrayRef<dim_t> reshape = RN->getDims();
       DCHECK(reshape.size() == repeats.size());
       DCHECK(repeats.size() >= origin.size());
 
@@ -757,14 +770,8 @@ Error ONNXModelWriter::writeBatchedReduceMean(const BatchedReduceMeanNode *node,
   proto->set_op_type("ReduceMean");
   inputsToProto(node, proto);
 
-  // Use the output of reshape node.
-  if (outputKindToProto(Kinded::Kind::ReshapeNodeKind, node, proto)) {
-    // Add dictionary entries.
-    addValueAttribute(proto, "keepdims", 1);
-  } else {
-    addValueAttribute(proto, "keepdims", 0);
-    outputsToProto(node, proto);
-  }
+  addValueAttribute(proto, "keepdims", 0);
+  outputKindToProto(node, proto);
 
   return Error::success();
 }
@@ -781,14 +788,8 @@ Error ONNXModelWriter::writeBatchedReduceAdd(const BatchedReduceAddNode *node,
   proto->set_op_type("ReduceSum");
   inputsToProto(node, proto);
 
-  // Use the output of reshape node.
-  if (outputKindToProto(Kinded::Kind::ReshapeNodeKind, node, proto)) {
-    // Add dictionary entries.
-    addValueAttribute(proto, "keepdims", 1);
-  } else {
-    addValueAttribute(proto, "keepdims", 0);
-    outputsToProto(node, proto);
-  }
+  addValueAttribute(proto, "keepdims", 0);
+  outputKindToProto(node, proto);
 
   return Error::success();
 }
@@ -865,9 +866,9 @@ Error ONNXModelWriter::writeSlice(const SliceNode *node, GraphType &graph) {
   RETURN_IF_ERR(writeAllWithNode("Slice", node, proto));
 
   if (opsetVersion_ >= 10) {
-    Tensor oneDimTensorStarts(ElemKind::Int64ITy, {starts.size()});
+    Tensor oneDimTensorStarts(ElemKind::Int64ITy, {(dim_t)starts.size()});
     auto handleStarts = oneDimTensorStarts.getHandle<int64_t>();
-    Tensor oneDimTensorEnds(ElemKind::Int64ITy, {starts.size()});
+    Tensor oneDimTensorEnds(ElemKind::Int64ITy, {(dim_t)starts.size()});
     auto handleEnds = oneDimTensorEnds.getHandle<int64_t>();
 
     for (size_t b = 0, e = starts.size(); b < e; ++b) {

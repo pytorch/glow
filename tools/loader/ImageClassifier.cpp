@@ -291,7 +291,7 @@ static std::vector<FloatIndexPair> getTopKPairs(Handle<ElemTy> H) {
       topKQueue;
 
   // Loop over all the probabilites, finding the highest k probability pairs.
-  for (size_t i = 0, e = H.size(); i < e; i++) {
+  for (dim_t i = 0, e = H.size(); i < e; i++) {
     float currProbability = H.at({i});
     if (topKQueue.size() < topKCount) {
       // Always push the first k elements.
@@ -372,7 +372,7 @@ static int processAndPrintResultsImpl(Tensor *SMT,
   // numLabels (any other dimension), and optionally - 1 in all other
   // dimensions. The value of numLabels should be greater than 1.
   DCHECK_GE(SMT->dims().size(), 2) << "Softmax should have at least 2 dims.";
-  const size_t batchSize = SMT->dims()[0];
+  const dim_t batchSize = SMT->dims()[0];
   DCHECK_EQ(batchSize, imageList.size())
       << "Softmax batch size must equal the input number of images.";
   size_t labelsDim = 0;
@@ -383,12 +383,12 @@ static int processAndPrintResultsImpl(Tensor *SMT,
     }
   }
   DCHECK_NE(labelsDim, 0) << "Labels dimension not found!";
-  const size_t numLabels = SMT->dims()[labelsDim];
+  const dim_t numLabels = SMT->dims()[labelsDim];
   // Get a view with canonical layout {batches, labels}.
   Tensor canonical = SMT->getUnowned({batchSize, numLabels});
   SMT = &canonical;
 
-  std::vector<size_t> sliceOffset(SMT->dims().size(), 0);
+  std::vector<dim_t> sliceOffset(SMT->dims().size(), 0);
 
   int retVal = 0;
   for (unsigned i = 0; i < imageList.size(); i++) {
