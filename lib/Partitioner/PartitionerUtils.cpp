@@ -500,21 +500,18 @@ GraphMemInfo getFunctionMemory(Function *func) {
     graphMem.constMemSize += cons->getType()->getSizeInBytes();
   }
 
-  // Walk thru all the Placeholders in the function to accumulate input and
-  // output mem size.
+  // Walk thru all Placeholders in the function to accumulate input and output
+  // mem size. These utility functions check the users of the PH to determine
+  // if the PH is an input or an output.
   for (auto &place : func->findPlaceholders()) {
-    graphMem.inMemSize += place->getType()->getSizeInBytes();
-  }
-
-  for (auto &node : func->getNodes()) {
-    // If a node is SaveNode then accumulate size for output memory.
-    if (auto *SN = llvm::dyn_cast<SaveNode>(&node)) {
-      graphMem.outMemSize += SN->getOutput().getType()->getSizeInBytes();
+    if (isInput(place, *func)) {
+      graphMem.inMemSize += place->getType()->getSizeInBytes();
+    }
+    if (isOutput(place, *func)) {
+      graphMem.outMemSize += place->getType()->getSizeInBytes();
     }
   }
-  // Output memory got double counted as inputs during Placeholder list scan
-  // so subtract from the input memory size.
-  graphMem.inMemSize -= graphMem.outMemSize;
+
   return graphMem;
 }
 
