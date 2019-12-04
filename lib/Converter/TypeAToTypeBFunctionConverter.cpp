@@ -54,14 +54,15 @@ TypeAToTypeBFunctionConverter::getTargetTypeForInput(const Node &use,
 Node *TypeAToTypeBFunctionConverter::createConversion(Function &function,
                                                       const Node &node,
                                                       NodeValue &val,
-                                                      TypeRef destTy) {
+                                                      TypeRef destTy,
+                                                      bool isInput) {
   assert(((destTy->getElementType() == dstKind_ &&
            val.getType()->getElementType() == srcKind_) ||
           (destTy->getElementType() == srcKind_ &&
            val.getType()->getElementType() == dstKind_)) &&
          "Unexpected conversion type");
 
-  bool needClip = precConfig_.clipFP16;
+  bool needClip = !isInput && precConfig_.clipFP16;
   if (needClip) {
     switch (node.getKind()) {
     case Kinded::Kind::ConcatNodeKind:
