@@ -59,6 +59,13 @@ static_assert(sizeof(float16_t) == 2, "Half precision should be 16-bit");
 
 using ShapeVector = llvm::SmallVector<dim_t, max_tensor_dimensions>;
 
+/// Create a SmallVector from a C array.  Enables template argument deduction
+/// of the vector type and size.
+template <typename T, unsigned N>
+llvm::SmallVector<T, N> makeSmallVector(const T (&arr)[N]) {
+  return llvm::SmallVector<T, N>(arr, arr + N);
+}
+
 struct ShapeNHWC {
   dim_t n; // Number of samples
   dim_t h; // Height

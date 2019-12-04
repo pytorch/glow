@@ -621,8 +621,8 @@ public:
 
 TEST_P(GraphOptzSinkTransposeBelowParametrized,
        TestSinkTransposeForDifferentCases) {
-  const dim_t origDims[] = {1, 5, 10, 15};
-  const dim_t transposedDims[] = {1, 15, 5, 10};
+  ShapeVector origDims({1, 5, 10, 15});
+  ShapeVector transposedDims({1, 15, 5, 10});
   auto *A = mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input", false);
   Node *T = F_->createTranspose("transpose", A, NHWC2NCHW);
   auto IN = getNodeFromInput(GetParam(), T);
@@ -664,8 +664,8 @@ TEST_P(GraphOptzSinkTransposeBelowParametrized,
     // Quantize does not work with generic test for predicates.
     return;
   }
-  const dim_t origDims[] = {1, 5, 10, 15};
-  const dim_t transposedDims[] = {1, 15, 5, 10};
+  ShapeVector origDims({1, 5, 10, 15});
+  ShapeVector transposedDims({1, 15, 5, 10});
   Node *A = mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input", false);
   Node *pred1 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred", false);
   Node *pred2 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred", false);
@@ -717,8 +717,8 @@ GLOW_INSTANTIATE_TEST_SUITE_P(
 /// For example folding Rescale in to Convolution.
 TEST_F(GraphOptz, sinkTransposeBelowRescale) {
   // Inputs.
-  const dim_t origDims[] = {1, 5, 10, 15};
-  const dim_t transposedDims[] = {1, 15, 5, 10};
+  ShapeVector origDims({1, 5, 10, 15});
+  ShapeVector transposedDims({1, 15, 5, 10});
   auto *input = mod_.createPlaceholder(ElemKind::Int8QTy, origDims, 0.1, 0,
                                        "input", false);
   auto *filter = mod_.createPlaceholder(ElemKind::Int8QTy, {15, 1, 1, 15}, 0.1,
@@ -755,7 +755,7 @@ TEST_F(GraphOptz, sinkTransposeBelowRescale) {
 }
 
 TEST_F(GraphOptz, cancelTwoTransposes) {
-  const dim_t origDims[] = {1, 5, 10, 15};
+  ShapeVector origDims({1, 5, 10, 15});
   Placeholder *A =
       mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input", false);
   Node *T1 = F_->createTranspose("transpose", A, NCHW2NHWC);
@@ -791,7 +791,7 @@ TEST_F(GraphOptz, cancelTwoTransposes) {
 /// transpose(transpose) => identity and that they are
 /// preserved.
 TEST_F(GraphOptz, cancelTwoTransposesWithPredicate) {
-  const dim_t origDims[] = {1, 5, 10, 15};
+  ShapeVector origDims({1, 5, 10, 15});
   Node *A = mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input", false);
   Node *pred1 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred", false);
   Node *pred2 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred", false);
@@ -821,7 +821,7 @@ TEST_F(GraphOptz, cancelTwoTransposesWithPredicate) {
 }
 
 TEST_F(GraphOptz, removeIdentityTranspose) {
-  const dim_t origDims[] = {1, 5, 10, 15};
+  ShapeVector origDims({1, 5, 10, 15});
   Placeholder *A =
       mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input", false);
   TransposeNode *T = F_->createTranspose("transpose", A, {0, 1, 2, 3});
@@ -844,7 +844,7 @@ TEST_F(GraphOptz, removeIdentityTranspose) {
 /// the identity transpose removal, while still being
 /// preserved.
 TEST_F(GraphOptz, removeIdentityTransposeWithPredicate) {
-  const dim_t origDims[] = {1, 5, 10, 15};
+  ShapeVector origDims({1, 5, 10, 15});
   Placeholder *A =
       mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input", false);
   Placeholder *pred1 =
@@ -877,8 +877,8 @@ TEST_F(GraphOptz, removeIdentityTransposeWithPredicate) {
 /// Check that consecutive non-inverse transposes are merged
 /// into an equivalent single transpose node.
 TEST_F(GraphOptz, mergeNonInverseTransposes) {
-  const dim_t origDims[] = {1, 5, 10, 15};
-  const dim_t finalDims[] = {5, 1, 15, 10};
+  ShapeVector origDims({1, 5, 10, 15});
+  ShapeVector finalDims({5, 1, 15, 10});
 
   Placeholder *A =
       mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input", false);
@@ -920,7 +920,7 @@ TEST_F(GraphOptz, mergeNonInverseTransposes) {
 }
 
 TEST_F(GraphOptz, sinkTransposeBelowArithmeticNodes) {
-  const dim_t origDims[] = {1, 5, 10, 15};
+  ShapeVector origDims({1, 5, 10, 15});
   Node *A1 =
       mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input1", false);
   Node *A2 =
@@ -953,8 +953,8 @@ TEST_F(GraphOptz, sinkTransposeBelowArithmeticNodes) {
 /// Check that Transpose node is sunk below arithmetic nodes when one of the
 /// operands is a Constant.
 TEST_F(GraphOptz, sinkTransposeBelowArithmeticNodesWithConstantOperand) {
-  const dim_t origDims[] = {1, 5, 10, 15};
-  const dim_t transposedDims[] = {1, 15, 5, 10};
+  ShapeVector origDims({1, 5, 10, 15});
+  ShapeVector transposedDims({1, 15, 5, 10});
 
   // Create one subgraph in which the Constant is the LHS operand of the Add.
   Constant *C1 = mod_.createConstant(ElemKind::FloatTy, transposedDims, "C1");
@@ -1031,7 +1031,7 @@ TEST_F(GraphOptz, sinkTransposeBelowArithmeticNodesWithConstantOperand) {
 /// Check that the predicates are properly preserved while doing
 /// the add(transpose, transpose) => transpose(add).
 TEST_F(GraphOptz, sinkTransposeBelowArithmeticNodesWithPredicate) {
-  const dim_t origDims[] = {1, 5, 10, 15};
+  ShapeVector origDims({1, 5, 10, 15});
   Node *A1 =
       mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input1", false);
   Node *A2 =
@@ -1073,8 +1073,8 @@ TEST_F(GraphOptz, sinkTransposeBelowArithmeticNodesWithPredicate) {
 }
 
 TEST_F(GraphOptz, sinkReluBelowConcatNodes) {
-  const dim_t origDims[] = {1, 5, 10, 15};
-  const dim_t origDimsConcat[] = {1, 10, 10, 15};
+  ShapeVector origDims({1, 5, 10, 15});
+  ShapeVector origDimsConcat({1, 10, 10, 15});
   Node *A1 =
       mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input1", false);
   Node *A2 =
@@ -1107,8 +1107,8 @@ TEST_F(GraphOptz, sinkReluBelowConcatNodes) {
 /// Check that the predicates are properly preserved while doing
 /// the sinking of relu nodes.
 TEST_F(GraphOptz, sinkReluBelowConcatNodesWithPredicate) {
-  const dim_t origDims[] = {1, 5, 10, 15};
-  const dim_t origDimsConcat[] = {1, 10, 10, 15};
+  ShapeVector origDims({1, 5, 10, 15});
+  ShapeVector origDimsConcat({1, 10, 10, 15});
   Node *A1 =
       mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input1", false);
   Node *A2 =
@@ -1150,8 +1150,8 @@ TEST_F(GraphOptz, sinkReluBelowConcatNodesWithPredicate) {
 }
 
 TEST_F(GraphOptz, sinkTransposeBelowConcatNodes) {
-  const dim_t origDims[] = {1, 5, 10, 15};
-  const dim_t origDimsConcat[] = {1, 5, 20, 15};
+  ShapeVector origDims({1, 5, 10, 15});
+  ShapeVector origDimsConcat({1, 5, 20, 15});
   Node *A1 =
       mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input1", false);
   Node *A2 =
@@ -1184,8 +1184,8 @@ TEST_F(GraphOptz, sinkTransposeBelowConcatNodes) {
 /// Check that the predicates are properly preserved while doing
 /// the concat(transpose, transpose) => transpose(add).
 TEST_F(GraphOptz, sinkTransposeBelowConcatWithPredicate) {
-  const dim_t origDims[] = {1, 5, 10, 15};
-  const dim_t origDimsConcat[] = {1, 5, 20, 15};
+  ShapeVector origDims({1, 5, 10, 15});
+  ShapeVector origDimsConcat({1, 5, 20, 15});
   Node *A1 =
       mod_.createPlaceholder(ElemKind::FloatTy, origDims, "input1", false);
   Node *A2 =
@@ -1228,17 +1228,17 @@ TEST_F(GraphOptz, sinkTransposeBelowConcatWithPredicate) {
 
 TEST_F(GraphOptz, sinkTransposeBelowPad) {
   // The shape of the graph before the optimization.
-  const dim_t inputDims[] = {1, 5, 10, 15};
-  const dim_t outTransposeDims[] = {1, 10, 15, 5};
-  const dim_t outPadDims[] = {5, 18, 25, 11};
+  ShapeVector inputDims({1, 5, 10, 15});
+  ShapeVector outTransposeDims({1, 10, 15, 5});
+  ShapeVector outPadDims({5, 18, 25, 11});
   // Padding before the optimization.
-  int pads[] = {0, 2, 3, 1, 4, 6, 7, 5};
+  auto pads = makeSmallVector({0, 2, 3, 1, 4, 6, 7, 5});
 
   // The shape of the graph after the optimization.
-  const dim_t outPadDimsAfterOptim[] = {5, 11, 18, 25};
-  const dim_t outTransposeDimsAfterOptims[] = {5, 18, 25, 11};
+  ShapeVector outPadDimsAfterOptim({5, 11, 18, 25});
+  ShapeVector outTransposeDimsAfterOptims({5, 18, 25, 11});
   // Padding after the optimization.
-  int padsAfterOptim[] = {0, 1, 2, 3, 4, 5, 6, 7};
+  auto padsAfterOptim = makeSmallVector({0, 1, 2, 3, 4, 5, 6, 7});
 
   // Create the initial graph.
   Node *A =
@@ -1587,7 +1587,7 @@ TEST(GraphOptzTest, SliceOfSplatNodeChain) {
 }
 
 TEST_F(GraphOptz, ReshapeNoop) {
-  const dim_t shape[] = {10, 20, 30};
+  ShapeVector shape({10, 20, 30});
   Type t(ElemKind::FloatTy, shape);
   auto *Z = F_->createSplat("zero", &t, 0.);
   auto *R = F_->createReshape("reshape", Z, shape);
@@ -1611,8 +1611,8 @@ TEST_F(GraphOptz, ReshapeNoop) {
 /// use. In the negative case, the optimization will not happen as the splat
 /// node (Z1) has more than one use.
 TEST_F(GraphOptz, ReshapeAfterSplat) {
-  const dim_t shape[] = {10, 20, 30};
-  const dim_t reshape[] = {1, 6000};
+  ShapeVector shape({10, 20, 30});
+  ShapeVector reshape({1, 6000});
   Type t1(ElemKind::FloatTy, shape);
   Type t2(ElemKind::FloatTy, reshape);
   Node *input = F_->getParent()->createPlaceholder(ElemKind::FloatTy, shape,
@@ -1664,9 +1664,9 @@ TEST_F(GraphOptz, ReshapeAfterSplat) {
 
 /// Test the Reshape(Reshape(x)) -> Reshape(x) transformation.
 TEST_F(GraphOptz, ReshapeReshapeOpt) {
-  const dim_t shape[] = {10, 20};
-  const dim_t reshape1[] = {200, 1};
-  const dim_t reshape2[] = {200};
+  ShapeVector shape({10, 20});
+  ShapeVector reshape1({200, 1});
+  ShapeVector reshape2({200});
   Node *input = F_->getParent()->createPlaceholder(ElemKind::FloatTy, shape,
                                                    "input", true);
   auto *R1 = F_->createReshape("reshape1", input, reshape1);
@@ -2098,17 +2098,19 @@ void fusePadIntoConvTest(glow::Module &mod_, glow::Function *F_,
       mod_.createPlaceholder(ElemKind::FloatTy, inputDims, "input", true);
 
   // Pad
-  dim_t outPadDims[4];
+  // ShapeVector outPadDims;
+  // llvm::SmallVector<dim_t, 6> outPadDims(4);
+  ShapeVector outPadDims;
   for (int i = 0; i < 4; i++) {
-    outPadDims[i] = dim_t(ssize_t(inputDims[i]) + pads[i] + pads[4 + i]);
+    outPadDims.push_back(ssize_t(inputDims[i]) + pads[i] + pads[4 + i]);
   }
   auto outTy = mod_.uniqueType(ElemKind::FloatTy, outPadDims);
   Node *P =
       F_->createPad("pad", input, outTy, PaddingMode::CONSTANT, pads, 0.f);
 
   // Convolution
-  dim_t filterDims[] = {convNumKernels, convKernelSize, convKernelSize,
-                        inputDims[3]};
+  ShapeVector filterDims = {convNumKernels, convKernelSize, convKernelSize,
+                            inputDims[3]};
   auto *F =
       mod_.createPlaceholder(ElemKind::FloatTy, filterDims, "filter", true);
   auto *B =
@@ -2132,11 +2134,10 @@ void fusePadIntoConvTest(glow::Module &mod_, glow::Function *F_,
   EXPECT_EQ(conv->getResult().dims(),
             llvm::ArrayRef<dim_t>(
                 {outPadDims[0], outPadDims[1], outPadDims[2], filterDims[0]}));
-  unsigned_t expectedPads[4];
+  llvm::SmallVector<unsigned, 4> expectedPads;
   for (int i = 0; i < 2; i++) {
     for (int j = 0; j < 2; j++) {
-      expectedPads[2 * i + j] =
-          unsigned_t(int(convPads[2 * i + j]) + pads[4 * i + (1 + j)]);
+      expectedPads.push_back(int(convPads[2 * i + j]) + pads[4 * i + (1 + j)]);
     }
   }
   EXPECT_EQ(conv->getPads(), llvm::makeArrayRef(expectedPads));
@@ -2224,7 +2225,7 @@ TEST_F(GraphFold, foldLeakyReluFromConst) {
 
 /// Testing folding of Reshape->Transpose->Reshape into ChannelShuffle.
 TEST_F(GraphFold, foldChannelShuffle) {
-  const dim_t inputDims[] = {3, 136, 28, 28};
+  ShapeVector inputDims({3, 136, 28, 28});
 
   Node *K =
       mod_.createPlaceholder(ElemKind::FloatTy, inputDims, "input", false);
@@ -2633,9 +2634,9 @@ TEST_F(GraphOptz, concatSliceElimOuterDim) {
 
 // Check the transformation Concat(Reshape(x) * N) -> Reshape(Concat(x * N)).
 TEST_F(GraphOptz, concatReshapes) {
-  const dim_t shape1[] = {2, 5, 2, 1, 20};
-  const dim_t shape2[] = {10, 2, 2, 10};
-  const dim_t shape3[] = {5, 80};
+  ShapeVector shape1({2, 5, 2, 1, 20});
+  ShapeVector shape2({10, 2, 2, 10});
+  ShapeVector shape3({5, 80});
   llvm::SmallVector<NodeValue, 10> inputs1;
   llvm::SmallVector<NodeValue, 10> inputs2;
   for (size_t i = 0; i < 10; i++) {
@@ -2898,9 +2899,9 @@ TEST_F(GraphOptz, eliminateSingleConcat) {
 /// Test that a reshape of a private variable with one use has the reshape
 /// merged into the variable.
 TEST_F(GraphOptz, ReshapeConstantOneUse) {
-  const dim_t shape[] = {10, 20};
-  const dim_t reshape1[] = {200, 1};
-  const dim_t reshape2[] = {200};
+  ShapeVector shape({10, 20});
+  ShapeVector reshape1({200, 1});
+  ShapeVector reshape2({200});
   Constant *input =
       F_->getParent()->createConstant(ElemKind::FloatTy, shape, "input");
   input->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
@@ -2952,7 +2953,7 @@ TEST_F(GraphOptz, mergeTransposeIntoMatMul) {
       F_->getParent()->createConstant(ElemKind::FloatTy, {6, 1}, "weights");
 
   weights->getHandle() = {0, 1, 2, 3, 4, 5};
-  float newWeightsRef[] = {0, 2, 4, 1, 3, 5};
+  auto newWeightsRef = makeSmallVector({0, 2, 4, 1, 3, 5});
 
   auto *TN = F_->createTranspose("transpose", input, NHWC2NCHW);
   auto *RN = F_->createReshape("reshape", TN, {1, 6});
@@ -2986,7 +2987,7 @@ TEST_F(GraphOptz, mergeTransposeIntoFC) {
   auto *bias = F_->getParent()->createConstant(ElemKind::FloatTy, {1}, "bias");
 
   weights->getHandle() = {0, 1, 2, 3, 4, 5};
-  float newWeightsRef[] = {0, 2, 4, 1, 3, 5};
+  auto newWeightsRef = makeSmallVector({0, 2, 4, 1, 3, 5});
 
   auto *TN = F_->createTranspose("transpose", input, NHWC2NCHW);
   auto *RN = F_->createReshape("reshape", TN, {1, 6});
@@ -3127,7 +3128,7 @@ TEST_F(GraphOptz, dceBeforeOptimizeTranpose) {
 /// inverse transpose below the ChannelShuffle. This test models a pattern
 /// that has has been observed in shufflenet during graph optimization.
 TEST_F(GraphOptz, sinkTransposeBelowChannelShuffleNodesAndEliminate) {
-  const dim_t inputDims[] = {3, 28, 28, 136};
+  ShapeVector inputDims({3, 28, 28, 136});
 
   Node *K =
       mod_.createPlaceholder(ElemKind::FloatTy, inputDims, "input", false);
@@ -3186,7 +3187,7 @@ TEST_F(GraphOptz, QuantizedFC) {
 
 /// Test batchedReduceMean optimization using AvgPool.
 TEST_F(GraphOptz, convertReduceMean2AvgPool) {
-  const dim_t dims[] = {2, 2, 2, 2};
+  ShapeVector dims({2, 2, 2, 2});
 
   Node *A = mod_.createPlaceholder(ElemKind::FloatTy, dims, "input", false);
   Node *R = F_->createBatchedReduceMean("reduce.mean", A, {2, 3});
