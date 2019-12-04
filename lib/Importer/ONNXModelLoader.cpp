@@ -1229,7 +1229,350 @@ Error ONNXModelLoader::loadWhere(const ONNX_NAMESPACE::NodeProto &op,
   return Error::success();
 }
 
-// ONNX LSTM: https://github.com/onnx/onnx/blob/master/docs/Operators.md#lstm
+// Limitations:
+// - Only Sigmoid, Tahn and ReLU activations are supported.
+// - Activation clipping not supported.
+// - Variable sequence length not supported.
+Error ONNXModelLoader::loadRNN(const ONNX_NAMESPACE::NodeProto &op,
+                               const ArgumentDictionaryTy &dict) {
+
+  const std::string &opName = loadOperatorName(op);
+
+  // ------------------------- Attributes -------------------------------------
+  // Get direction (Optional)(Default:forward).
+  Function::RnnDirection direction = Function::RnnDirection::Forward;
+  if (dict.count("direction")) {
+    std::string directionStr;
+    ASSIGN_VALUE_OR_RETURN_ERR(directionStr, loadStr(dict.at("direction")));
+    if (directionStr == "forward") {
+      direction = Function::RnnDirection::Forward;
+    } else if (directionStr == "reverse") {
+      direction = Function::RnnDirection::Reverse;
+    } else if (directionStr == "bidirectional") {
+      direction = Function::RnnDirection::Bidirectional;
+    } else {
+      RETURN_ERR("ONNX RNN 'direction' attribute is invalid!",
+                 ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_ATTRIBUTE);
+    }
+  }
+  size_t numDirections =
+      (direction == Function::RnnDirection::Bidirectional) ? 2 : 1;
+
+  // Activation alpha not supported (Optional)(Default:activation dependent).
+  RETURN_ERR_IF_NOT(!dict.count("activation_alpha"),
+                    "ONNX RNN 'activation_alpha' attribute not supported!");
+
+  // Activation beta not supported (Optional)(Default:activation dependent).
+  RETURN_ERR_IF_NOT(!dict.count("activation_beta"),
+                    "ONNX RNN 'activation_beta' attribute not supported!");
+
+  // Get activations as lambdas (Optional)(Default:f=Sigmoid, g=Tanh).
+#define RNN_ACTIVATION_LAMBDA_RELU                                             \
+  [this](llvm::StringRef name, Node *input) {                                  \
+    return G_.createRELU(name, input);                                         \
+  }
+#define RNN_ACTIVATION_LAMBDA_TANH                                             \
+  [this](llvm::StringRef name, Node *input) {                                  \
+    return G_.createTanh(name, input);                                         \
+  }
+#define RNN_ACTIVATION_LAMBDA_SIGMOID                                          \
+  [this](llvm::StringRef name, Node *input) {                                  \
+    return G_.createSigmoid(name, input);                                      \
+  }
+  std::vector<Function::RnnActivation> activations;
+  if (direction == Function::RnnDirection::Bidirectional) {
+    activations = {RNN_ACTIVATION_LAMBDA_TANH, RNN_ACTIVATION_LAMBDA_TANH};
+  } else {
+    activations = {RNN_ACTIVATION_LAMBDA_TANH};
+  }
+  if (dict.count("activations") && dict.at("activations")->strings_size()) {
+    size_t actNum = dict.at("activations")->strings_size();
+    RETURN_ERR_IF_NOT(actNum == numDirections * 1,
+                      "ONNX RNN 'activations' attribute is invalid!");
+    for (size_t actIdx = 0; actIdx < actNum; actIdx++) {
+      std::string actStr = dict.at("activations")->strings().Get(actIdx);
+      if (actStr == "Relu") {
+        activations[actIdx] = RNN_ACTIVATION_LAMBDA_RELU;
+      } else if (actStr == "Tanh") {
+        activations[actIdx] = RNN_ACTIVATION_LAMBDA_TANH;
+      } else if (actStr == "Sigmoid") {
+        activations[actIdx] = RNN_ACTIVATION_LAMBDA_SIGMOID;
+      } else {
+        RETURN_ERR("ONNX RNN activation '" + actStr + "' not supported!",
+                   ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_ATTRIBUTE);
+      }
+    }
+  }
+#undef RNN_ACTIVATION_LAMBDA_RELU
+#undef RNN_ACTIVATION_LAMBDA_TANH
+#undef RNN_ACTIVATION_LAMBDA_SIGMOID
+
+  // Activation clipping not supported (Optional)(Default: 0 for no clipping).
+  RETURN_ERR_IF_NOT(!dict.count("clip"),
+                    "ONNX RNN 'clip' attribute not supported!");
+
+  // Get hidden size (Required).
+  size_t hiddenSize;
+  RETURN_ERR_IF_NOT(dict.count("hidden_size"),
+                    "ONNX RNN 'hidden_size' attribute is required!");
+  ASSIGN_VALUE_OR_RETURN_ERR(hiddenSize, loadInt(dict.at("hidden_size")));
+
+  // --------------------------- Inputs ---------------------------------------
+  const int numInputs = op.input_size();
+  RETURN_ERR_IF_NOT((3 <= numInputs) && (numInputs <= 6),
+                    "ONNX RNN should have minimum 3 and maximum 6 inputs!");
+
+  // Input0: X (Required).
+  NodeValue X;
+  ASSIGN_VALUE_OR_RETURN_ERR(X, getNodeValueByName(op.input(0)));
+
+  // Input1: W (Required).
+  NodeValue W;
+  ASSIGN_VALUE_OR_RETURN_ERR(W, getNodeValueByName(op.input(1)));
+
+  // Input2: R (Required).
+  NodeValue R;
+  ASSIGN_VALUE_OR_RETURN_ERR(R, getNodeValueByName(op.input(2)));
+
+  // Input3: B (Optional).
+  NodeValue B = nullptr;
+  if (numInputs > 3 && !op.input(3).empty()) {
+    ASSIGN_VALUE_OR_RETURN_ERR(B, getNodeValueByName(op.input(3)));
+  }
+
+  // Input4: sequence_lens (Optional).
+  if (numInputs > 4) {
+    RETURN_ERR_IF_NOT(op.input(4).empty(),
+                      "ONNX RNN 'sequence_lens' attribute not supported!");
+  }
+
+  // Input5: initial_h (Optional).
+  NodeValue initial_h = nullptr;
+  if (numInputs > 5 && !op.input(5).empty()) {
+    ASSIGN_VALUE_OR_RETURN_ERR(initial_h, getNodeValueByName(op.input(5)));
+  }
+
+  // -------------------------- Outputs ---------------------------------------
+  // We always create placeholders for the RNN state variable Y_h for the
+  // following reasons:
+  // - expose the RNN state in the graph interface for accessibility (set
+  //   desired state, reset state, watch the state being updated automatically).
+  // - since the RNN cells are unrolled (no graph loop primitive available
+  //   at this point), the optimal way to use the RNN within a model would be
+  //   to have it defined with only 1 time step and have the loop in the top
+  //   of the application while the RNN state will be automatically updated
+  //   from one iteration (time step) to the next through the placeholders.
+  const int numOutputs = op.output_size();
+  RETURN_ERR_IF_NOT(1 <= numOutputs,
+                    "ONNX RNN should have minimum 1 output defined!");
+
+  // Derived parameters.
+  RETURN_ERR_IF_NOT(X.dims().size() == 3,
+                    "ONNX RNN input 'X' should have 3 dimensions!");
+  size_t batchSize = X.dims()[1];
+
+  // Create Y_h (hidden state) output placeholder.
+  Placeholder *Y_h_ph;
+  TypeRef Htype = G_.getParent()->uniqueTypeWithNewShape(
+      X.getType(), {numDirections, batchSize, hiddenSize});
+  std::string Hname = opName + ".Y_h";
+  ASSIGN_VALUE_OR_RETURN_ERR(Y_h_ph,
+                             createAndRegisterPlaceholder(Hname, Htype));
+  inputVarsByName_.try_emplace(Hname, Y_h_ph);
+
+  // If RNN input state is explicitly provided then used it. If not, then
+  // use the RNN state placeholder.
+  NodeValue Y_h_init = initial_h.getNode() ? initial_h : Y_h_ph;
+
+  // Create ONNX RNN.
+  NodeValue Y, Y_h;
+  G_.createOnnxRNN(opName, X, W, R, B, Y_h_init, Y, Y_h, hiddenSize, direction,
+                   activations);
+
+  // Save RNN state in the state placeholder.
+  G_.createSave(opName + ".Y_h.save", Y_h, Y_h_ph);
+
+  // Add node.
+  RETURN_IF_ERR(addNodeAsOutput(op, Y, 1));
+  return Error::success();
+}
+
+// Limitations:
+// - Only Sigmoid, Tahn and ReLU activations are supported.
+// - Activation clipping not supported.
+// - Variable sequence length not supported.
+Error ONNXModelLoader::loadGRU(const ONNX_NAMESPACE::NodeProto &op,
+                               const ArgumentDictionaryTy &dict) {
+
+  const std::string &opName = loadOperatorName(op);
+
+  // ------------------------- Attributes -------------------------------------
+  // Get direction (Optional)(Default:forward).
+  Function::RnnDirection direction = Function::RnnDirection::Forward;
+  if (dict.count("direction")) {
+    std::string directionStr;
+    ASSIGN_VALUE_OR_RETURN_ERR(directionStr, loadStr(dict.at("direction")));
+    if (directionStr == "forward") {
+      direction = Function::RnnDirection::Forward;
+    } else if (directionStr == "reverse") {
+      direction = Function::RnnDirection::Reverse;
+    } else if (directionStr == "bidirectional") {
+      direction = Function::RnnDirection::Bidirectional;
+    } else {
+      RETURN_ERR("ONNX GRU 'direction' attribute is invalid!",
+                 ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_ATTRIBUTE);
+    }
+  }
+  size_t numDirections =
+      (direction == Function::RnnDirection::Bidirectional) ? 2 : 1;
+
+  // Activation alpha not supported (Optional)(Default:activation dependent).
+  RETURN_ERR_IF_NOT(!dict.count("activation_alpha"),
+                    "ONNX GRU 'activation_alpha' attribute not supported!");
+
+  // Activation beta not supported (Optional)(Default:activation dependent).
+  RETURN_ERR_IF_NOT(!dict.count("activation_beta"),
+                    "ONNX GRU 'activation_beta' attribute not supported!");
+
+  // Get activations as lambdas (Optional)(Default:f=Sigmoid, g=Tanh).
+#define GRU_ACTIVATION_LAMBDA_RELU                                             \
+  [this](llvm::StringRef name, Node *input) {                                  \
+    return G_.createRELU(name, input);                                         \
+  }
+#define GRU_ACTIVATION_LAMBDA_TANH                                             \
+  [this](llvm::StringRef name, Node *input) {                                  \
+    return G_.createTanh(name, input);                                         \
+  }
+#define GRU_ACTIVATION_LAMBDA_SIGMOID                                          \
+  [this](llvm::StringRef name, Node *input) {                                  \
+    return G_.createSigmoid(name, input);                                      \
+  }
+  std::vector<Function::RnnActivation> activations;
+  if (direction == Function::RnnDirection::Bidirectional) {
+    activations = {GRU_ACTIVATION_LAMBDA_SIGMOID, GRU_ACTIVATION_LAMBDA_TANH,
+                   GRU_ACTIVATION_LAMBDA_SIGMOID, GRU_ACTIVATION_LAMBDA_TANH};
+  } else {
+    activations = {GRU_ACTIVATION_LAMBDA_SIGMOID, GRU_ACTIVATION_LAMBDA_TANH};
+  }
+  if (dict.count("activations") && dict.at("activations")->strings_size()) {
+    size_t actNum = dict.at("activations")->strings_size();
+    RETURN_ERR_IF_NOT(actNum == numDirections * 2,
+                      "ONNX GRU 'activations' attribute is invalid!");
+    for (size_t actIdx = 0; actIdx < actNum; actIdx++) {
+      std::string actStr = dict.at("activations")->strings().Get(actIdx);
+      if (actStr == "Relu") {
+        activations[actIdx] = GRU_ACTIVATION_LAMBDA_RELU;
+      } else if (actStr == "Tanh") {
+        activations[actIdx] = GRU_ACTIVATION_LAMBDA_TANH;
+      } else if (actStr == "Sigmoid") {
+        activations[actIdx] = GRU_ACTIVATION_LAMBDA_SIGMOID;
+      } else {
+        RETURN_ERR("ONNX GRU activation '" + actStr + "' not supported!",
+                   ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_ATTRIBUTE);
+      }
+    }
+  }
+#undef GRU_ACTIVATION_LAMBDA_RELU
+#undef GRU_ACTIVATION_LAMBDA_TANH
+#undef GRU_ACTIVATION_LAMBDA_SIGMOID
+
+  // Activation clipping not supported (Optional)(Default: 0 for no clipping).
+  RETURN_ERR_IF_NOT(!dict.count("clip"),
+                    "ONNX GRU 'clip' attribute not supported!");
+
+  // Get hidden size (Required).
+  size_t hiddenSize;
+  RETURN_ERR_IF_NOT(dict.count("hidden_size"),
+                    "ONNX GRU 'hidden_size' attribute is required!");
+  ASSIGN_VALUE_OR_RETURN_ERR(hiddenSize, loadInt(dict.at("hidden_size")));
+
+  // Get linear_before_reset (Optional)(Default:0).
+  int linearBeforeReset = 0;
+  if (dict.count("linear_before_reset") &&
+      dict.at("linear_before_reset")->has_i()) {
+    linearBeforeReset = dict.at("linear_before_reset")->i();
+  }
+
+  // --------------------------- Inputs ---------------------------------------
+  const int numInputs = op.input_size();
+  RETURN_ERR_IF_NOT((3 <= numInputs) && (numInputs <= 6),
+                    "ONNX GRU should have minimum 3 and maximum 6 inputs!");
+
+  // Input0: X (Required).
+  NodeValue X;
+  ASSIGN_VALUE_OR_RETURN_ERR(X, getNodeValueByName(op.input(0)));
+
+  // Input1: W (Required).
+  NodeValue W;
+  ASSIGN_VALUE_OR_RETURN_ERR(W, getNodeValueByName(op.input(1)));
+
+  // Input2: R (Required).
+  NodeValue R;
+  ASSIGN_VALUE_OR_RETURN_ERR(R, getNodeValueByName(op.input(2)));
+
+  // Input3: B (Optional).
+  NodeValue B = nullptr;
+  if (numInputs > 3 && !op.input(3).empty()) {
+    ASSIGN_VALUE_OR_RETURN_ERR(B, getNodeValueByName(op.input(3)));
+  }
+
+  // Input4: sequence_lens (Optional).
+  if (numInputs > 4) {
+    RETURN_ERR_IF_NOT(op.input(4).empty(),
+                      "ONNX GRU 'sequence_lens' attribute not supported!");
+  }
+
+  // Input5: initial_h (Optional).
+  NodeValue initial_h = nullptr;
+  if (numInputs > 5 && !op.input(5).empty()) {
+    ASSIGN_VALUE_OR_RETURN_ERR(initial_h, getNodeValueByName(op.input(5)));
+  }
+
+  // -------------------------- Outputs ---------------------------------------
+  // We always create placeholders for the GRU state variable Y_h for the
+  // following reasons:
+  // - expose the GRU state in the graph interface for accessibility (set
+  //   desired state, reset state, watch the state being updated automatically).
+  // - since the GRU cells are unrolled (no graph loop primitive available
+  //   at this point), the optimal way to use the GRU within a model would be
+  //   to have it defined with only 1 time step and have the loop in the top
+  //   of the application while the GRU state will be automatically updated
+  //   from one iteration (time step) to the next through the placeholders.
+  const int numOutputs = op.output_size();
+  RETURN_ERR_IF_NOT(1 <= numOutputs,
+                    "ONNX GRU should have minimum 1 output defined!");
+
+  // Derived parameters.
+  RETURN_ERR_IF_NOT(X.dims().size() == 3,
+                    "ONNX GRU input 'X' should have 3 dimensions!");
+  size_t batchSize = X.dims()[1];
+
+  // Create Y_h (hidden state) output placeholder.
+  Placeholder *Y_h_ph;
+  TypeRef Htype = G_.getParent()->uniqueTypeWithNewShape(
+      X.getType(), {numDirections, batchSize, hiddenSize});
+  std::string Hname = opName + ".Y_h";
+  ASSIGN_VALUE_OR_RETURN_ERR(Y_h_ph,
+                             createAndRegisterPlaceholder(Hname, Htype));
+  inputVarsByName_.try_emplace(Hname, Y_h_ph);
+
+  // If GRU input state is explicitly provided then used it. If not, then
+  // use the GRU state placeholder.
+  NodeValue Y_h_init = initial_h.getNode() ? initial_h : Y_h_ph;
+
+  // Create ONNX GRU.
+  NodeValue Y, Y_h;
+  G_.createOnnxGRU(opName, X, W, R, B, Y_h_init, Y, Y_h, hiddenSize, direction,
+                   activations, (bool)linearBeforeReset);
+
+  // Save GRU state in the state placeholder.
+  G_.createSave(opName + ".Y_h.save", Y_h, Y_h_ph);
+
+  // Add node.
+  RETURN_IF_ERR(addNodeAsOutput(op, Y, 1));
+  return Error::success();
+}
+
 // Limitations:
 // - Only Sigmoid, Tahn and ReLU activations are supported.
 // - Activation clipping not supported.
@@ -1242,23 +1585,23 @@ Error ONNXModelLoader::loadLSTM(const ONNX_NAMESPACE::NodeProto &op,
 
   // ------------------------- Attributes -------------------------------------
   // Get direction (Optional)(Default:forward).
-  Function::LstmDirection direction = Function::LstmDirection::Forward;
+  Function::RnnDirection direction = Function::RnnDirection::Forward;
   if (dict.count("direction")) {
     std::string directionStr;
     ASSIGN_VALUE_OR_RETURN_ERR(directionStr, loadStr(dict.at("direction")));
     if (directionStr == "forward") {
-      direction = Function::LstmDirection::Forward;
+      direction = Function::RnnDirection::Forward;
     } else if (directionStr == "reverse") {
-      direction = Function::LstmDirection::Reverse;
+      direction = Function::RnnDirection::Reverse;
     } else if (directionStr == "bidirectional") {
-      direction = Function::LstmDirection::Bidirectional;
+      direction = Function::RnnDirection::Bidirectional;
     } else {
       RETURN_ERR("ONNX LSTM 'direction' attribute is invalid!",
                  ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_ATTRIBUTE);
     }
   }
   size_t numDirections =
-      (direction == Function::LstmDirection::Bidirectional) ? 2 : 1;
+      (direction == Function::RnnDirection::Bidirectional) ? 2 : 1;
 
   // Activation alpha not supported (Optional)(Default:activation dependent).
   RETURN_ERR_IF_NOT(!dict.count("activation_alpha"),
@@ -1281,8 +1624,8 @@ Error ONNXModelLoader::loadLSTM(const ONNX_NAMESPACE::NodeProto &op,
   [this](llvm::StringRef name, Node *input) {                                  \
     return G_.createSigmoid(name, input);                                      \
   }
-  std::vector<Function::LstmActivation> activations;
-  if (direction == Function::LstmDirection::Bidirectional) {
+  std::vector<Function::RnnActivation> activations;
+  if (direction == Function::RnnDirection::Bidirectional) {
     activations = {
         LSTM_ACTIVATION_LAMBDA_SIGMOID, LSTM_ACTIVATION_LAMBDA_TANH,
         LSTM_ACTIVATION_LAMBDA_TANH,    LSTM_ACTIVATION_LAMBDA_SIGMOID,
@@ -1422,7 +1765,7 @@ Error ONNXModelLoader::loadLSTM(const ONNX_NAMESPACE::NodeProto &op,
 
   // Create ONNX LSTM.
   NodeValue Y, Y_h, Y_c;
-  G_.createONNXLSTM(opName, X, W, R, B, Y_h_init, Y_c_init, P, Y, Y_h, Y_c,
+  G_.createOnnxLSTM(opName, X, W, R, B, Y_h_init, Y_c_init, P, Y, Y_h, Y_c,
                     hiddenSize, direction, activations);
 
   // Save LSTM state in the state placeholders.
@@ -1824,6 +2167,12 @@ Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
   }
   if (typeName == "Where") {
     return loadWhere(op, dict);
+  }
+  if (typeName == "RNN") {
+    return loadRNN(op, dict);
+  }
+  if (typeName == "GRU") {
+    return loadGRU(op, dict);
   }
   if (typeName == "LSTM") {
     return loadLSTM(op, dict);
