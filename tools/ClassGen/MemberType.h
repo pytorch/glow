@@ -47,6 +47,7 @@ enum class MemberType : unsigned {
   VectorUnsigned,
   VectorInt64,
   VectorSizeT,
+  VectorDimT,
   VectorNodeValue,
   Enum,
   UserDefinedType,
@@ -82,6 +83,7 @@ extern MemberTypeInfo kVectorUnsignedTypeInfo;
 extern MemberTypeInfo kVectorInt64TypeInfo;
 extern MemberTypeInfo kVectorSignedTypeInfo;
 extern MemberTypeInfo kVectorSizeTTypeInfo;
+extern MemberTypeInfo kVectorDimTTypeInfo;
 extern MemberTypeInfo kVectorNodeValueTypeInfo;
 extern MemberTypeInfo kEnumTypeInfo;
 
@@ -110,6 +112,7 @@ inline const char *getReturnTypename(MemberType type) {
                                "llvm::ArrayRef<unsigned_t>",
                                "llvm::ArrayRef<int64_t>",
                                "llvm::ArrayRef<size_t>",
+                               "llvm::ArrayRef<dim_t>",
                                "NodeValueArrayRef",
                                nullptr,
                                nullptr};
@@ -128,6 +131,7 @@ inline const char *getStorageTypename(MemberType type) {
                                 "std::vector<unsigned_t>",
                                 "std::vector<int64_t>",
                                 "std::vector<size_t>",
+                                "std::vector<dim_t>",
                                 "std::vector<NodeHandle>",
                                 nullptr,
                                 nullptr};
@@ -146,6 +150,7 @@ inline const char *getCtorArgTypename(MemberType type) {
                                 "std::vector<unsigned_t>",
                                 "std::vector<int64_t>",
                                 "std::vector<size_t>",
+                                "std::vector<dim_t>",
                                 "std::vector<NodeValue>",
                                 nullptr,
                                 nullptr};

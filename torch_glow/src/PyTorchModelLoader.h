@@ -80,9 +80,9 @@ public:
 // Input's shape and type
 struct InputMeta {
   c10::ScalarType type;
-  std::vector<size_t> dims;
+  std::vector<glow::dim_t> dims;
 
-  InputMeta(c10::ScalarType type_, std::vector<size_t> &&dims_) {
+  InputMeta(c10::ScalarType type_, std::vector<glow::dim_t> &&dims_) {
     type = type_;
     dims = dims_;
   }
@@ -254,7 +254,7 @@ private:
   /// of that Constant.
   Expected<glow::NodeValue>
   loadNodeValueOrBroadcastedIValue(const torch::jit::Value *value,
-                                   llvm::ArrayRef<size_t> dims);
+                                   llvm::ArrayRef<glow::dim_t> dims);
 
   /// If there is a NodeValue mapped to \p value then return it, otherwise
   /// create a Constant with type \p ty, name \p name, and value \p val
@@ -289,6 +289,10 @@ private:
   // Load a PyTorch aten::embedding_bag node.
   // \returns error on failure.
   Error loadEmbeddingBag(const torch::jit::Node *ptNode);
+
+  // Load a PyTorch fb::embedding_bag_byte_rowwise_offsets node.
+  // \returns error on failure.
+  Error loadEmbeddingBagByteRowwiseOffsets(const torch::jit::Node *ptNode);
 
   /// Load all PyTorch prim::GetAttr nodes in \p graph. This method uses the
   /// PyTorch Module hierarchy to map Values for all outputs of prim::GetAttr

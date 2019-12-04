@@ -32,8 +32,8 @@ using llvm::cast;
 extern "C" {
 // Forward declare functions from libjit.
 extern void libjit_matmul_f(float *c, const float *a, const float *b,
-                            const size_t *cDims, const size_t *aDims,
-                            const size_t *bDims);
+                            const dim_t *cDims, const dim_t *aDims,
+                            const dim_t *bDims);
 }
 
 void infer(Tensor *out, Tensor *lhs, Tensor *rhs) {
@@ -61,7 +61,7 @@ void infer(Tensor *out, Tensor *lhs, Tensor *rhs) {
   out->assign(res);
 }
 
-static void testGemm(size_t m, size_t n, size_t k) {
+static void testGemm(dim_t m, dim_t n, dim_t k) {
   PseudoRNG PRNG;
 
   Tensor lhs(ElemKind::FloatTy, {m, k});

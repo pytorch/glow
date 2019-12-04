@@ -30,21 +30,21 @@ using namespace glow;
  * Benchmark m independent nxk transposes along with add layers.
  */
 class TransposeBench : public Benchmark {
-  size_t batchSize_;
-  size_t n_;
-  size_t numLayers_;
+  dim_t batchSize_;
+  dim_t n_;
+  dim_t numLayers_;
   std::unique_ptr<runtime::HostManager> hostManager_;
   std::vector<std::unique_ptr<ExecutionContext>> contexts_;
-  size_t asyncLaunchSize_;
-  size_t numCores_;
+  dim_t asyncLaunchSize_;
+  dim_t numCores_;
   const char *backendStr_;
   ElemKind dtype_;
-  size_t elementSize_;
+  dim_t elementSize_;
   const char *devId_;
 
 public:
-  TransposeBench(size_t batchSize_, size_t n_, size_t numLayers_,
-                 size_t asyncLaunchSize_, size_t numCores_,
+  TransposeBench(dim_t batchSize_, dim_t n_, dim_t numLayers_,
+                 dim_t asyncLaunchSize_, dim_t numCores_,
                  const char *backendStr_, const char *dtypeStr_,
                  const char *devId_ = nullptr)
       : batchSize_(batchSize_), n_(n_), numLayers_(numLayers_),
@@ -65,7 +65,7 @@ public:
   void setup() override {
 
     // Create execution contexts here
-    for (int i = 0; i < asyncLaunchSize_; i++) {
+    for (dim_t i = 0; i < asyncLaunchSize_; i++) {
       std::unique_ptr<ExecutionContext> context(new ExecutionContext);
       contexts_.push_back(std::move(context));
     }
@@ -86,7 +86,7 @@ public:
     std::vector<SaveNode *> S(numCores_);
     auto batchSizePerCore = getBatchSizePerCore(batchSize_, numCores_);
 
-    for (size_t core = 0; core < numCores_; core++) {
+    for (dim_t core = 0; core < numCores_; core++) {
       if (batchSizePerCore[core] == 0)
         continue;
       input[core] =
@@ -94,11 +94,11 @@ public:
                                  "A" + std::to_string(core), false);
     }
 
-    for (size_t core = 0; core < numCores_; core++) {
+    for (dim_t core = 0; core < numCores_; core++) {
       if (batchSizePerCore[core] == 0)
         continue;
       // for each context, add input bindings
-      for (int i = 0; i < asyncLaunchSize_; i++) {
+      for (dim_t i = 0; i < asyncLaunchSize_; i++) {
         if (dtype_ == ElemKind::FloatTy) {
           contexts_[i]
               ->getPlaceholderBindings()
@@ -115,7 +115,7 @@ public:
       }
 
       Node *cur = input[core];
-      for (int layer = 0; layer < numLayers_; layer++) {
+      for (dim_t layer = 0; layer < numLayers_; layer++) {
         auto *xp = fn->createTranspose("transpose_" + std::to_string(layer) +
                                            "_" + std::to_string(core),
                                        cur, {0, 2, 1});
@@ -128,7 +128,7 @@ public:
       S[core] = fn->createSave("save", cur);
 
       // for each context, allocate output
-      for (int i = 0; i < asyncLaunchSize_; i++) {
+      for (dim_t i = 0; i < asyncLaunchSize_; i++) {
         contexts_[i]->getPlaceholderBindings()->allocate(
             S[core]->getPlaceholder());
       }
@@ -162,7 +162,7 @@ public:
     for (auto &fut : futures) {
       fut.wait();
     }
-    for (int j = 0; j < asyncLaunchSize_; j++) {
+    for (dim_t j = 0; j < asyncLaunchSize_; j++) {
       contexts_[j] = std::move(localContexts[j]);
     }
   }

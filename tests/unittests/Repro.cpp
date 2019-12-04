@@ -76,6 +76,11 @@ llvm::cl::opt<bool>
                 llvm::cl::desc("Force glow to clip fp16 values to min/max"),
                 llvm::cl::Optional, llvm::cl::cat(reproTestCat));
 
+llvm::cl::opt<bool> enablePartialTensor("glow_enable_partial_tensor",
+                                        llvm::cl::desc("Enable partial tensor"),
+                                        llvm::cl::Optional,
+                                        llvm::cl::cat(reproTestCat));
+
 void parseCommandLine(int argc, char **argv) {
   llvm::sys::PrintStackTraceOnErrorSignal(argv[0]);
   llvm::cl::ParseCommandLineOptions(
@@ -141,14 +146,50 @@ void run() {
   // Run inference.
   size_t inputGroupSize = inputsOpt.size();
   for (int i = 0; i < inputGroupSize; ++i) {
+    // This holds the tensor that actually owns the data for all the partial
+    // inputs.
+    std::vector<Tensor> partialTensorPayloads;
+
     llvm::outs() << "input file: " << inputsOpt[i] << "\n";
     auto inputGroup = parseIO(inputsOpt[i]);
     for (const auto &tp : inputGroup.initializer()) {
       auto *tensor = bindings.get(bindings.getPlaceholderByName(tp.name()));
       CHECK(tensor);
+      size_t fullSize = tensor->getSizeInBytes();
+      const auto fullType = tensor->getType();
+
       auto error = loadTensor(tp, tensor);
       bool hasError = ERR_TO_BOOL(std::move(error));
       CHECK(!hasError) << "Cannot load input tensor";
+      size_t loadedSize = tensor->getSizeInBytes();
+      if (loadedSize != fullSize) {
+        if (enablePartialTensor) {
+          LOG(INFO) << "Loading " << tp.name()
+                    << " as a partial tensor: partial size="
+                    << tensor->getType().toString()
+                    << " full size=" << fullType.toString();
+          Tensor fullTensor(tensor->getUnsafePtr(), &fullType,
+                            tensor->getSizeInBytes());
+          // 'fullTensor' doesn't own the underlying data. 'tensor' does. So we
+          // want to keep the original tensor object around until inference is
+          // finished.
+          partialTensorPayloads.emplace_back(std::move(*tensor));
+          *tensor = std::move(fullTensor);
+        } else {
+          // pad with 0
+          LOG(INFO) << "Loading and padding " << tp.name()
+                    << " as a partial tensor: partial size="
+                    << tensor->getType().toString()
+                    << " full size=" << fullType.toString();
+          Tensor fullTensor(&fullType);
+          std::memcpy(fullTensor.getUnsafePtr(), tensor->getUnsafePtr(),
+                      tensor->getSizeInBytes());
+          std::memset(fullTensor.getUnsafePtr() + tensor->getSizeInBytes(), 0,
+                      fullTensor.getSizeInBytes() - tensor->getSizeInBytes());
+
+          *tensor = std::move(fullTensor);
+        }
+      }
     }
 
     dispatchInference("test", hostManager.get(), *ctx, concurrentRequestsOpt);

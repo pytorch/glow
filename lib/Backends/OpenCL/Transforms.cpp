@@ -104,7 +104,7 @@ bool OCLBackend::transformPostLowering(Function *F,
       auto numBatchDims = batchDims.size();
       auto batchSliceSizesLen = numBatchDims > 1 ? numBatchDims - 1 : 1;
       auto *batchSliceSizes = F->getParent()->createConstant(
-          ElemKind::Int32ITy, {batchSliceSizesLen}, "batchSliceSizes");
+          ElemKind::Int32ITy, {(dim_t)batchSliceSizesLen}, "batchSliceSizes");
       auto batchSliceSizesH =
           batchSliceSizes->getPayloadMutable().getHandle<int32_t>();
       batchSliceSizesH.clear(1);
@@ -136,7 +136,7 @@ bool OCLBackend::transformPostLowering(Function *F,
       auto numDestDims = destDimsVec.size();
       auto destSliceSizesLen = numDestDims > 0 ? numDestDims : 1;
       auto *destSliceSizes = F->getParent()->createConstant(
-          ElemKind::Int32ITy, {destSliceSizesLen}, "destSliceSizes");
+          ElemKind::Int32ITy, {(dim_t)destSliceSizesLen}, "destSliceSizes");
       auto destSliceSizesH =
           destSliceSizes->getPayloadMutable().getHandle<int32_t>();
       destSliceSizesH.clear(1);

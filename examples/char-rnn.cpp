@@ -96,9 +96,9 @@ static void loadText(Tensor &inputText, Tensor &nextChar, llvm::StringRef text,
   //  |ello| |World
   //  |llo |W|orld
   //  |lo W|o|rld
-  for (size_t i = 0; i < B; i++) {
-    for (size_t j = 0; j < S; j++) {
-      size_t c = clipASCII(text[i + j]);
+  for (dim_t i = 0; i < B; i++) {
+    for (dim_t j = 0; j < S; j++) {
+      dim_t c = clipASCII(text[i + j]);
 
       IH.at({i, j, c}) = 1.0;
       if (train) {
@@ -125,14 +125,14 @@ PseudoRNG &getRNG() {
 /// to one. The algorithm that we use here picks a random number between zero
 /// and one. Then, we scan the tensor and accumulate the probabilities. We stop
 /// and pick the index when sum is greater than the selected random number.
-static char getPredictedChar(Tensor &inputText, size_t slice, size_t word) {
+static char getPredictedChar(Tensor &inputText, dim_t slice, dim_t word) {
   auto IH = inputText.getHandle();
 
   // Pick a random number between zero and one.
   double x = std::abs(getRNG().nextRand());
   double sum = 0;
   // Accumulate the probabilities into 'sum'.
-  for (size_t i = 0; i < 128; i++) {
+  for (dim_t i = 0; i < 128; i++) {
     sum += IH.at({slice, word, i});
     // As soon as we cross the threshold return the index.
     if (sum > x) {
@@ -159,8 +159,8 @@ static std::unique_ptr<llvm::MemoryBuffer> loadFile(llvm::StringRef filename) {
 /// Creates a new RNN network. The network answers the question, given N chars
 /// of input, what is the character following each one of these chars.
 static Function *createNetwork(Module &mod, PlaceholderBindings &bindings,
-                               size_t minibatchSize, size_t numSteps,
-                               size_t hiddenSize) {
+                               dim_t minibatchSize, dim_t numSteps,
+                               dim_t hiddenSize) {
   Function *F = mod.createFunction("main");
 
   auto *X = mod.createPlaceholder(
@@ -212,10 +212,10 @@ int main(int argc, char **argv) {
   LOG(INFO) << "Loaded " << text.size() << " chars.\n";
   PlaceholderBindings inferBindings, trainingBindings;
 
-  const size_t numSteps = 50;
-  const size_t minibatchSize = 32;
-  const size_t batchSize = text.size() - numSteps;
-  const size_t hiddenSize = 256;
+  const dim_t numSteps = 50;
+  const dim_t minibatchSize = 32;
+  const dim_t batchSize = text.size() - numSteps;
+  const dim_t hiddenSize = 256;
 
   CHECK_GT(text.size(), numSteps) << "Text is too short";
   TrainingConfig TC;

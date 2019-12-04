@@ -27,6 +27,7 @@ namespace glow {
 namespace onnxifi {
 bool GlowSaveOnnxifiModel = false;
 bool GlowSaveOnnxifiIO = false;
+bool GlowEnablePartialTensors = true;
 
 extern bool GlowDumpDebugTraces;
 
@@ -164,7 +165,7 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
 
     auto &inPhPtr = inPhIt->getValue();
 
-    std::vector<size_t> inOnnxTensorDims(inOnnxTensor.dimensions);
+    std::vector<dim_t> inOnnxTensorDims(inOnnxTensor.dimensions);
     size_t inOnnxTensorSize = 1;
     for (unsigned j = 0; j < inOnnxTensor.dimensions; ++j) {
       inOnnxTensorDims[j] = inOnnxTensor.shape[j];
@@ -193,7 +194,8 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
     if (inPhPtr->dims().equals(inOnnxTensorDims)) {
       ctx->getPlaceholderBindings()->insert(
           inPhPtr, Tensor(inOnnxBuffer, inPhPtr->getType()));
-    } else if (backendPtr_->getBackend().supportsPartialTensors() &&
+    } else if (GlowEnablePartialTensors &&
+               backendPtr_->getBackend().supportsPartialTensors() &&
                inOnnxBuffer && inOnnxTensorSize > 0) {
       // We have a partial input buffer.  Create a padded unowned tensor that
       // remembers the actual size of the input.
@@ -232,7 +234,24 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
       ONNX_NAMESPACE::GraphProto inputG;
       for (const auto &p : ctx->getPlaceholderBindings()->pairs()) {
         auto *t = inputG.add_initializer();
-        ONNXModelWriter::writeTensor(*p.second, t);
+        const auto &inputTensor = *p.second;
+        size_t unpaddedSize = inputTensor.getUnpaddedSizeInBytes();
+        size_t tensorSize = inputTensor.getSizeInBytes();
+        if (unpaddedSize == tensorSize) {
+          ONNXModelWriter::writeTensor(inputTensor, t);
+        } else {
+          // If the input is a partial tensor, then save only the part that has
+          // data.
+          auto ty = inputTensor.getType();
+          auto dims = ty.dims().vec();
+          dims[0] = dims[0] / (tensorSize / unpaddedSize);
+          const auto &resized = inputTensor.getUnowned(dims);
+          ONNXModelWriter::writeTensor(resized, t);
+          VLOG(1) << "Writing partial tensor " << p.first->getName().str()
+                  << " full size=" << inputTensor.getType().toString()
+                  << " partial size=" << inputTensor.getUnpaddedSizeInBytes()
+                  << " resized size=" << resized.getType().toString();
+        }
         t->set_name(p.first->getName());
       }
       std::string buffer;
@@ -258,8 +277,8 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
     auto &outPhPtr = outPhIt->getValue();
 
     // Compute the total size of the onnxifi tensor.
-    std::vector<size_t> outOnnxTensorDims(outOnnxTensor.dimensions);
-    size_t outOnnxTensorSize = 1;
+    std::vector<dim_t> outOnnxTensorDims(outOnnxTensor.dimensions);
+    dim_t outOnnxTensorSize = 1;
     for (unsigned j = 0; j < outOnnxTensor.dimensions; ++j) {
       outOnnxTensorDims[j] = outOnnxTensor.shape[j];
       outOnnxTensorSize *= outOnnxTensorDims[j];

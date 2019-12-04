@@ -43,37 +43,6 @@ using llvm::cast;
 using llvm::dyn_cast;
 using llvm::isa;
 
-enum BundleApiType {
-  /// Dynamic bundle API (default) with the following features:
-  /// - the weights are exported in a binary file which are assumed
-  ///   to be loaded dynamically at run-time.
-  /// - the memory layout information (bundle configuration) is only
-  ///   available at run-time and therefore allows ONLY dynamic memory
-  ///   allocaton.
-  Dynamic,
-  /// Static bundle API with the following features:
-  /// - the weights are exported in a binary file but and also in a
-  ///   text file (C array format) suitable to include at compile-time.
-  /// - the memory layout information (bundle configuration) is available
-  ///   at compile-time through macros printed in the header file and thus
-  ///   allows also static memory allocation.
-  /// - this API is suitable for low end devices with no file system or OS
-  ///   (bare-metal).
-  Static,
-};
-
-namespace {
-llvm::cl::OptionCategory bundleSaverCat("Bundle Options");
-
-llvm::cl::opt<BundleApiType> bundleApi(
-    "bundle-api", llvm::cl::desc("Specify which bundle API to use."),
-    llvm::cl::Optional,
-    llvm::cl::values(clEnumValN(BundleApiType::Dynamic, "dynamic",
-                                "Dynamic API"),
-                     clEnumValN(BundleApiType::Static, "static", "Static API")),
-    llvm::cl::init(BundleApiType::Static), llvm::cl::cat(bundleSaverCat));
-} // namespace
-
 /// Header file string template.
 static const char *headerFileTemplate =
     R"RAW(// Bundle API header file
@@ -189,23 +158,19 @@ static void serializeBinaryToText(llvm::StringRef binFileName,
   fclose(outFile);
 }
 
-BundleSaver::BundleSaver(const IRFunction *F, const LLVMBackend &llvmBackend)
-    : irgen_(llvmBackend.createIRGen(F, allocationsInfo_)) {
-  setIRFunction("", F);
-}
-
 BundleSaver::BundleSaver(const LLVMBackend &llvmBackend,
                          llvm::StringRef outputDir, llvm::StringRef bundleName)
     : irgen_(llvmBackend.createIRGen(nullptr, allocationsInfo_)),
-      outputDir_(outputDir), bundleName_(bundleName) {
+      outputDir_(outputDir), bundleName_(bundleName),
+      bundleAPI_(llvmBackend.getOptions().getBundleAPI()) {
   llvm::SmallVector<std::string, 8> targetFeatures(llvmTargetFeatures.begin(),
                                                    llvmTargetFeatures.end());
   irgen_->setBundleName(bundleName);
   irgen_->setOutputDir(outputDir);
-  irgen_->initTargetMachine(llvmBackend.getTarget(), llvmBackend.getArch(),
-                            llvmBackend.getCPU(), targetFeatures,
-                            llvmBackend.getBundleCodeModel(),
-                            llvmBackend.getRelocModel());
+  // Use the bundle code model as a code model for the TargetMachine.
+  auto opts = llvmBackend.getOptions();
+  opts.setCodeModel(opts.getBundleCodeModel());
+  irgen_->initTargetMachine(opts);
   irgen_->initCodeGen();
 }
 
@@ -307,15 +272,16 @@ void BundleSaver::saveHeader(llvm::StringRef headerFileName) {
   auto totMemSize = constMemSize + mutableMemSize + activationsMemSize;
 
   // Format common bundle definitions.
-  auto commonDefines = (bundleApi == BundleApiType::Dynamic)
+  auto commonDefines = (bundleAPI_ == BundleApiType::Dynamic)
                            ? dynamicApiCommonDefines
                            : staticApiCommonDefines;
 
   // Format model description.
   std::string modelInfo = strFormat("// Model name: \"%s\"\n"
-                                    "// Total data size: %lu (bytes)\n"
-                                    "// Placeholders:\n",
+                                    "// Total data size: %lu (bytes)\n",
                                     bundleName.data(), totMemSize);
+  // Print placeholders (mandatory).
+  modelInfo += "// Placeholders:\n";
   auto placeholders = findPlaceholders();
   for (auto &v : placeholders) {
     auto *w = cast<WeightVar>(getWeightForNode(v));
@@ -324,9 +290,9 @@ void BundleSaver::saveHeader(llvm::StringRef headerFileName) {
     auto dims = w->getType()->dims();
     for (size_t idx = 0; idx < dims.size(); idx++) {
       if (idx < dims.size() - 1) {
-        shapeStr += strFormat("%lu, ", dims[idx]);
+        shapeStr += strFormat("%" PRIuDIM ", ", dims[idx]);
       } else {
-        shapeStr += strFormat("%lu]", dims[idx]);
+        shapeStr += strFormat("%" PRIuDIM "]", dims[idx]);
       }
     }
     // Get placeholder properties.
@@ -339,45 +305,50 @@ void BundleSaver::saveHeader(llvm::StringRef headerFileName) {
                            "//   Name: \"%s\"\n"
                            "//   Type: %s\n"
                            "//   Shape: %s\n"
-                           "//   Size: %zu (elements)\n"
+                           "//   Size: %" PRIuDIM " (elements)\n"
                            "//   Size: %zu (bytes)\n"
                            "//   Offset: %lu (bytes)\n",
                            name.data(), typeName.data(), shapeStr.c_str(),
                            sizeElem, sizeByte, (unsigned long)offset);
   }
-  auto constantWeights = findConstantWeights();
-  for (auto &weightInfo : constantWeights) {
-    auto *w = weightInfo.first;
-    // Get placeholder shape as string.
-    std::string shapeStr = "[";
-    auto dims = w->getType()->dims();
-    for (size_t idx = 0; idx < dims.size(); idx++) {
-      if (idx < dims.size() - 1) {
-        shapeStr += strFormat("%lu, ", dims[idx]);
-      } else {
-        shapeStr += strFormat("%lu]", dims[idx]);
+  // Print constants (optional).
+  if (bundleAPIVerbose) {
+    modelInfo += "//\n"
+                 "// Constants:\n";
+    auto constantWeights = findConstantWeights();
+    for (auto &weightInfo : constantWeights) {
+      auto *w = weightInfo.first;
+      // Get constant shape as string.
+      std::string shapeStr = "[";
+      auto dims = w->getType()->dims();
+      for (size_t idx = 0; idx < dims.size(); idx++) {
+        if (idx < dims.size() - 1) {
+          shapeStr += strFormat("%" PRIuDIM ", ", dims[idx]);
+        } else {
+          shapeStr += strFormat("%" PRIuDIM "]", dims[idx]);
+        }
       }
+      // Get constant properties.
+      auto name = w->getName();
+      auto typeName = w->getType()->getElementName();
+      auto sizeElem = w->getType()->size();
+      auto sizeByte = w->getType()->getSizeInBytes();
+      auto offset = allocationsInfo_.allocatedAddress_[w];
+      modelInfo += strFormat("//\n"
+                             "//   Name: \"%s\"\n"
+                             "//   Type: %s\n"
+                             "//   Shape: %s\n"
+                             "//   Size: %" PRIuDIM " (elements)\n"
+                             "//   Size: %zu (bytes)\n"
+                             "//   Offset: %lu (bytes)\n",
+                             name.data(), typeName.data(), shapeStr.c_str(),
+                             sizeElem, sizeByte, (unsigned long)offset);
     }
-    // Get placeholder properties.
-    auto name = w->getName();
-    auto typeName = w->getType()->getElementName();
-    auto sizeElem = w->getType()->size();
-    auto sizeByte = w->getType()->getSizeInBytes();
-    auto offset = allocationsInfo_.allocatedAddress_[w];
-    modelInfo += strFormat("//\n"
-                           "//   Name: \"%s\"\n"
-                           "//   Type: %s\n"
-                           "//   Shape: %s\n"
-                           "//   Size: %zu (elements)\n"
-                           "//   Size: %zu (bytes)\n"
-                           "//   Offset: %lu (bytes)\n",
-                           name.data(), typeName.data(), shapeStr.c_str(),
-                           sizeElem, sizeByte, (unsigned long)offset);
   }
   modelInfo += "//";
 
   std::string modelApi = "\n";
-  if (bundleApi == BundleApiType::Dynamic) {
+  if (bundleAPI_ == BundleApiType::Dynamic) {
     // Print bundle memory configuration.
     modelApi += strFormat("// Bundle memory configuration (memory layout)\n"
                           "extern BundleConfig %s_config;\n"
@@ -492,7 +463,7 @@ void BundleSaver::produceBundle() {
   irgen_->finishCodeGen();
   setIRFunction("<noname>", nullptr);
   // Emit symbol table and bundle config only for dynamic API
-  if (bundleApi == BundleApiType::Dynamic) {
+  if (bundleAPI_ == BundleApiType::Dynamic) {
     // Emit the symbol table for weight variables.
     emitSymbolTable();
     // Emit the config for the bundle.
@@ -556,7 +527,7 @@ void BundleSaver::produceBundle() {
   // Header file.
   saveHeader(bundleHeaderOutput);
   // Save weights also in text format for Static API.
-  if (bundleApi == BundleApiType::Static) {
+  if (bundleAPI_ == BundleApiType::Static) {
     auto bundleWeightsTxtOut =
         (outputDir_ + "/" + bundleName + ".weights.txt").str();
     serializeBinaryToText(bundleWeightsBinOut, bundleWeightsTxtOut);
@@ -656,32 +627,6 @@ void BundleSaver::performBundleMemoryAllocation() {
   // and to assign new ones.
   allocationsInfo_.allocateWeightVars(F);
   allocationsInfo_.allocateTensorViews(F);
-}
-
-void BundleSaver::save(llvm::StringRef target, llvm::StringRef arch,
-                       llvm::StringRef cpu,
-                       const llvm::SmallVectorImpl<std::string> &targetFeatures,
-                       llvm::StringRef outputDir, llvm::StringRef bundleName,
-                       llvm::StringRef mainEntryName,
-                       llvm::CodeModel::Model codeModel,
-                       llvm::Reloc::Model relocModel) {
-  bundleName_ = bundleName;
-  outputDir_ = outputDir;
-  // Object files generation works properly only in small mode.
-  irgen_->initTargetMachine(target, arch, cpu, targetFeatures, codeModel,
-                            relocModel);
-  irgen_->setOutputDir(outputDir);
-  irgen_->setBundleName(bundleName);
-  irgen_->setMainEntryName(mainEntryName);
-  irgen_->initCodeGen();
-  // Perform the address assignment for activations and WeightVars.
-  performBundleMemoryAllocation();
-  // Emit the code for the body of the entry function.
-  irgen_->performCodeGen();
-  // Create the bundle entry function.
-  emitBundleEntryFunction();
-  // Produce the bundle.
-  produceBundle();
 }
 
 void BundleSaver::save(llvm::StringRef mainEntryName, const IRFunction *F) {

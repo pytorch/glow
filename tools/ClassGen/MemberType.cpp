@@ -40,6 +40,9 @@ MemberTypeInfo kVectorSignedTypeInfo{MemberType::VectorSigned,
 MemberTypeInfo kVectorSizeTTypeInfo{
     MemberType::VectorSizeT, "llvm::ArrayRef<size_t>", "std::vector<size_t>",
     "std::vector<size_t>"};
+MemberTypeInfo kVectorDimTTypeInfo{MemberType::VectorDimT,
+                                   "llvm::ArrayRef<dim_t>",
+                                   "std::vector<dim_t>", "std::vector<dim_t>"};
 MemberTypeInfo kVectorNodeValueTypeInfo{
     MemberType::VectorNodeValue, "NodeValueArrayRef", "std::vector<NodeHandle>",
     "std::vector<NodeValue>"};

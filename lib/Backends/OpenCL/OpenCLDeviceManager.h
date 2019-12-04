@@ -164,6 +164,10 @@ class OpenCLDeviceManager : public QueueBackedDeviceManager {
   /// The TID of the device (for TraceEvents);
   int deviceTid_{-1};
 
+  /// Map from PH to functionName for static placeholders.
+  std::unordered_map<Placeholder *, std::vector<std::string>>
+      staticPlaceholderToFunctions_;
+
 public:
   OpenCLDeviceManager(const DeviceConfig &config);
 
@@ -218,6 +222,12 @@ protected:
   void translateTraceEvents(ManualEventMap &manualTraceEvents,
                             ExecutionContext *context,
                             runtime::OpenCLDeviceBindings *devBindings);
+
+  /// Copies the contents of Tensor \p T to the device resource allocated to
+  /// Placeholder \p PH. once finished calls \p resultCB with the result of the
+  /// operation.
+  void transferStaticPlaceholderToDevice(
+      Placeholder *PH, Tensor *T, std::function<void(Error)> resultCB) override;
 };
 
 DeviceManager *createOCLDeviceManager(const DeviceConfig &config);

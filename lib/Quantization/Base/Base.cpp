@@ -122,13 +122,13 @@ Tensor tensor4BitsFusedRowwiseDequantization(const Tensor &input) {
   // should be (input.dims()[1] - 2*sizeof(float16_t)) * 2.
   Tensor output(
       ElemKind::FloatTy,
-      {input.dims()[0], (input.dims()[1] - 2 * sizeof(float16_t)) * 2});
+      {input.dims()[0], (dim_t)(input.dims()[1] - 2 * sizeof(float16_t)) * 2});
   auto srcH = input.getHandle<uint8_t>();
   auto destH = output.getHandle<float>();
-  for (size_t i = 0; i < input.dims()[0]; i++) {
+  for (dim_t i = 0; i < input.dims()[0]; i++) {
     float16_t scale, offset;
     std::tie(scale, offset) = srcH.getFusedScaleOffsetFromRow<float16_t>(i);
-    for (size_t j = 0; j < output.dims()[1]; j++) {
+    for (dim_t j = 0; j < output.dims()[1]; j++) {
       bool isMSB = (j % 2 == 1);
       destH.at({i, j}) = dequantize4BitWithFloatOffset(
           srcH.at({i, j / 2}), static_cast<float>(scale),

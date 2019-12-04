@@ -20,7 +20,7 @@
 namespace glow {
 
 BlockStream::BlockStream(size_t preallocSize, uint32_t pageBlockSize)
-    : readOffest_(0), writeOffest_(0), blockSize_(pageBlockSize) {
+    : readOffest_(0), writeOffset_(0), blockSize_(pageBlockSize) {
   allocateBlocks(preallocSize);
 }
 
@@ -34,8 +34,8 @@ size_t BlockStream::write(const char *buffer, size_t size) {
 
   const char *bStart = &buffer[0];
   size_t copied = 0;
-  size_t offsetInBlock = writeOffest_ % blockSize_;
-  size_t blockIndex = writeOffest_ / blockSize_;
+  size_t offsetInBlock = writeOffset_ % blockSize_;
+  size_t blockIndex = writeOffset_ / blockSize_;
   while (size - copied > 0) {
     std::vector<char> &currentBlock = blocks_[blockIndex++];
     size_t blockCopySize =
@@ -47,19 +47,22 @@ size_t BlockStream::write(const char *buffer, size_t size) {
     copied += blockCopySize;
     offsetInBlock = 0;
   }
-  writeOffest_ += copied;
+  writeOffset_ += copied;
   return copied;
 }
 
 size_t BlockStream::read(char *buffer, size_t size) {
   char *bStart = &buffer[0];
   size_t readBytes = 0;
+  size_t maxReadSize = writeOffset_ - readOffest_;
+  size_t bytesToRead = std::min(maxReadSize, size);
   size_t offsetInBlock = readOffest_ % blockSize_;
   size_t blockIndex = readOffest_ / blockSize_;
-  while (size - readBytes > 0) {
+
+  while (bytesToRead - readBytes > 0) {
     std::vector<char> &currentBlock = blocks_[blockIndex++];
     size_t blockCopySize =
-        std::min(blockSize_ - offsetInBlock, (size - readBytes));
+        std::min(blockSize_ - offsetInBlock, (bytesToRead - readBytes));
     auto srcStartIt = currentBlock.begin() + offsetInBlock;
     auto srcEndIt = srcStartIt + blockCopySize;
     std::copy(srcStartIt, srcEndIt, bStart);
@@ -72,7 +75,7 @@ size_t BlockStream::read(char *buffer, size_t size) {
 }
 
 size_t BlockStream::getFreeAllocatedSpace() {
-  return blockSize_ * blocks_.size() - writeOffest_;
+  return blockSize_ * blocks_.size() - writeOffset_;
 }
 
 size_t BlockStream::allocateBlocks(size_t size) {
@@ -87,11 +90,11 @@ size_t BlockStream::allocateBlocks(size_t size) {
     std::vector<char> block;
     block.reserve(blockSize_);
     size_t reserved = block.capacity();
-    available += reserved;
     if (reserved < blockSize_ && static_cast<int64_t>(reserved) < missingSize) {
       // Failed to allocate.
       return available;
     }
+    available += reserved;
     missingSize -= reserved;
     blocks_.push_back(block);
   }
@@ -102,7 +105,7 @@ void BlockStream::resetWrite() {
   for (auto &block : blocks_) {
     block.clear();
   }
-  writeOffest_ = 0;
+  writeOffset_ = 0;
 }
 
 void BlockStream::releaseMemory() {

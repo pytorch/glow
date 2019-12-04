@@ -67,6 +67,12 @@ void ExecutionEngine::setBackendName(llvm::StringRef backend) {
 
 llvm::StringRef ExecutionEngine::getBackendName() const { return backendName_; }
 
+Function *ExecutionEngine::getSingleFunctionFromModule() const {
+  auto &fList = getModule().getFunctions();
+  assert(fList.size() == 1 && "More than one Function in Module.");
+  return *fList.begin();
+}
+
 ExecutionEngine::~ExecutionEngine() { clear(); }
 
 void ExecutionEngine::clear() {

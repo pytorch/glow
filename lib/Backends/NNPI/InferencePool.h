@@ -17,6 +17,7 @@
 #define GLOW_BACKENDS_NNPI_INFERENCEPOOL_H
 
 #include "NNPICompiledFunction.h"
+#include "NNPITracing.h"
 #include "glow/Runtime/RuntimeTypes.h"
 #include "glow/Support/ThreadPool.h"
 #include "nnpi_inference.h"
@@ -47,6 +48,9 @@ private:
   /// Set of inputs that can be partial tensors.
   const std::unordered_set<const Placeholder *> *partialInputs_;
 
+  /// Device tracing handler.
+  std::shared_ptr<NNPIDeviceTracing> deviceTracing_;
+
   struct NamedResource {
     NNPIObjectName name;
     NNPIResourceDesc desc;
@@ -74,7 +78,8 @@ public:
       // For ICE-T path.
       NNPIHostNetwork hostNetwork, NNPIDeviceNetwork deviceNetwork,
       NNPIAdapter adapter, NNPIDeviceContext device,
-      const std::unordered_set<const Placeholder *> &partialInputs);
+      const std::unordered_set<const Placeholder *> &partialInputs,
+      std::shared_ptr<NNPIDeviceTracing> deviceTracing);
 };
 
 class InferencePoolEnv {
@@ -84,11 +89,13 @@ class InferencePoolEnv {
   std::vector<InferenceThreadEnv> threadEnvs_;
   NNPIHostNetwork hostNetwork_;
   NNPIDeviceNetwork deviceNetwork_;
+  std::shared_ptr<NNPIDeviceTracing> deviceTracing_;
 
 public:
   InferencePoolEnv();
   ~InferencePoolEnv();
   Error init(unsigned numWorkers, NNPIAdapter adapter, NNPIDeviceContext device,
+             std::shared_ptr<NNPIDeviceTracing> deviceTracing,
              CompiledFunction *compiledFunction);
   void stop(bool block);
   void execute(RunIdentifierTy runId, std::unique_ptr<ExecutionContext> ctx,

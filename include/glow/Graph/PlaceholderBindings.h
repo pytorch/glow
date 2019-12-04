@@ -52,9 +52,11 @@ private:
 
 public:
   /// \returns true if \p A and \p B contain the same Placeholders mapped to
-  /// equivalent Tensors.
+  /// equivalent Tensors. \p allowedError is used when comparing each
+  /// Placeholder's backing payload data.
   static bool compare(const PlaceholderBindings *A,
-                      const PlaceholderBindings *B);
+                      const PlaceholderBindings *B,
+                      float allowedError = 0.0001);
 
   /// \returns the tensor that corresponds to Placeholder \p P or Null if the
   /// tensor is not found.

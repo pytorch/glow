@@ -121,7 +121,11 @@ TEST(exporter, onnxModels) {
       llvm::outs() << "Ignore output file: " << name << "\n";
       continue;
     }
-
+    if (name.find("lstm") != std::string::npos) {
+      // Ignore LSTM files.
+      llvm::outs() << "Ignore LSTM model file: " << name << "\n";
+      continue;
+    }
     testLoadAndSaveONNXModel(dirIt->path(), /* zipMode */ true);
     testLoadAndSaveONNXModel(dirIt->path(), /* zipMode */ false);
   }

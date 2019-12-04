@@ -108,7 +108,7 @@ private:
   /// the unowned tensor is provided by \p src.
   /// \returns a tensor for \p v.
   Tensor *getOrCreateUnownedTensor(const Value *v, const Value *src,
-                                   llvm::ArrayRef<size_t> offsets);
+                                   llvm::ArrayRef<dim_t> offsets);
 
   /// If a tensor is allocated for \p v then delete it.
   void deleteTensor(const Value *v);
@@ -316,6 +316,10 @@ private:
   template <typename T, typename AccumT>
   void fwdFusedRowwiseQuantizedSparseLengthsWeightedSumImpl(
       const FusedRowwiseQuantizedSparseLengthsWeightedSumInst *I);
+
+  template <typename T, typename AccumT>
+  void fwdEmbeddingBagByteRowwiseOffsetsImpl(
+      const EmbeddingBagByteRowwiseOffsetsInst *I);
   ///@}
 };
 

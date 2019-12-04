@@ -32,22 +32,22 @@ using namespace glow;
  * intermediate outputs (RHS) and inputs (LHS)
  */
 class BatchGemmBench : public Benchmark {
-  size_t batchSize_;
-  size_t m_;
-  size_t n_;
-  size_t numLayers_;
+  dim_t batchSize_;
+  dim_t m_;
+  dim_t n_;
+  dim_t numLayers_;
   std::unique_ptr<runtime::HostManager> hostManager_;
   std::vector<std::unique_ptr<ExecutionContext>> contexts_;
-  size_t asyncLaunchSize_;
-  size_t numCores_;
+  dim_t asyncLaunchSize_;
+  dim_t numCores_;
   const char *backendStr_;
   ElemKind dtype_;
-  size_t elementSize_;
+  dim_t elementSize_;
   const char *devId_;
 
 public:
-  BatchGemmBench(size_t batchSize_, size_t m_, size_t n_, size_t numLayers_,
-                 size_t asyncLaunchSize_, size_t numCores_,
+  BatchGemmBench(dim_t batchSize_, dim_t m_, dim_t n_, dim_t numLayers_,
+                 dim_t asyncLaunchSize_, dim_t numCores_,
                  const char *backendStr_, const char *dtypeStr_,
                  const char *devId_ = nullptr)
       : batchSize_(batchSize_), m_(m_), n_(n_), numLayers_(numLayers_),
@@ -68,7 +68,7 @@ public:
   void setup() override {
 
     // Create execution contexts here
-    for (int i = 0; i < asyncLaunchSize_; i++) {
+    for (dim_t i = 0; i < asyncLaunchSize_; i++) {
       std::unique_ptr<ExecutionContext> context(new ExecutionContext);
       contexts_.push_back(std::move(context));
     }
@@ -92,7 +92,7 @@ public:
     // Calculate the batch size per core
     auto batchSizePerCore = getBatchSizePerCore(batchSize_, numCores_);
 
-    for (size_t core = 0; core < numCores_; core++) {
+    for (dim_t core = 0; core < numCores_; core++) {
       if (batchSizePerCore[core] == 0)
         continue;
       A[core] = mod->createPlaceholder(dtype_, {batchSizePerCore[core], m_, m_},
@@ -102,10 +102,10 @@ public:
     }
 
     // for each context, add input bindings
-    for (size_t core = 0; core < numCores_; core++) {
+    for (dim_t core = 0; core < numCores_; core++) {
       if (batchSizePerCore[core] == 0)
         continue;
-      for (int i = 0; i < asyncLaunchSize_; i++) {
+      for (dim_t i = 0; i < asyncLaunchSize_; i++) {
         if (dtype_ == ElemKind::FloatTy) {
           contexts_[i]
               ->getPlaceholderBindings()
@@ -132,7 +132,7 @@ public:
       }
 
       Node *cur = B[core];
-      for (size_t layer = 0; layer < numLayers_; layer++) {
+      for (dim_t layer = 0; layer < numLayers_; layer++) {
         auto *bmm = fn->createBatchMatMul(
             "batchmatmul" + std::to_string(layer) + "_" + std::to_string(core),
             A[core], cur);
@@ -142,7 +142,7 @@ public:
       S[core] = fn->createSave("save" + std::to_string(core), cur);
 
       // for each context, add output bindings
-      for (int i = 0; i < asyncLaunchSize_; i++) {
+      for (dim_t i = 0; i < asyncLaunchSize_; i++) {
         contexts_[i]->getPlaceholderBindings()->allocate(
             S[core]->getPlaceholder());
       }
@@ -176,7 +176,7 @@ public:
     for (auto &fut : futures) {
       fut.wait();
     }
-    for (int j = 0; j < asyncLaunchSize_; j++) {
+    for (dim_t j = 0; j < asyncLaunchSize_; j++) {
       contexts_[j] = std::move(localContexts[j]);
     }
   }

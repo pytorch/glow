@@ -41,6 +41,10 @@ FunctionPassPipeline glow::createDefaultGraphOptimizationPassPipeline() {
       // opportunities.
       {FunctionPassID::EliminateNoopTile},
 
+      // Eliminate no-op slices, possibly unlocking more optimization
+      // opportunities.
+      {FunctionPassID::EliminateNoopSlice},
+
       {FunctionPassID::TransposeConstants,
        ConvergenceMode::OnePass,
        {CompilationMode::Infer}},

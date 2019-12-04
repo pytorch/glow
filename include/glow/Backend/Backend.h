@@ -174,6 +174,18 @@ public:
   virtual runtime::DeviceManager *
   createDeviceManager(const runtime::DeviceConfig &deviceConfig);
 
+  /// \returns the supported options for compiled functions (name=>description).
+  virtual llvm::StringMap<std::string>
+  getSupportedCompiledFunctionOptions() const {
+    return llvm::StringMap<std::string>();
+  };
+
+  /// \returns the supported options for device managers (name=>description).
+  virtual llvm::StringMap<std::string>
+  getSupportedDeviceManagerOptions() const {
+    return llvm::StringMap<std::string>();
+  };
+
 protected:
   /// Parses the graph \F and builds a TraceInfo structure from any found
   /// TraceEventNodes.
