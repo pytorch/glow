@@ -1118,7 +1118,7 @@ Error ONNXModelLoader::loadConstantOfShape(const ONNX_NAMESPACE::NodeProto &op,
     auto TH = in->getPayload().getHandle<int64_t>();
     auto begin = &TH.raw(0);
     auto end = begin + TH.actualSize();
-    ShapeVector outputDims = {(const dim_t *)begin, (const dim_t *)end};
+    ShapeVector outputDims(begin, end);
 
     ty = G_.getParent()->uniqueType(T.getType().getElementType(), outputDims);
     switch (T.getType().getElementType()) {
@@ -1257,7 +1257,7 @@ Error ONNXModelLoader::loadLSTM(const ONNX_NAMESPACE::NodeProto &op,
                  ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_ATTRIBUTE);
     }
   }
-  size_t numDirections =
+  dim_t numDirections =
       (direction == Function::LstmDirection::Bidirectional) ? 2 : 1;
 
   // Activation alpha not supported (Optional)(Default:activation dependent).
@@ -1318,7 +1318,7 @@ Error ONNXModelLoader::loadLSTM(const ONNX_NAMESPACE::NodeProto &op,
                     "ONNX LSTM 'clip' attribute not supported!");
 
   // Get hidden size (Required).
-  size_t hiddenSize;
+  dim_t hiddenSize;
   RETURN_ERR_IF_NOT(dict.count("hidden_size"),
                     "ONNX LSTM 'hidden_size' attribute is required!");
   ASSIGN_VALUE_OR_RETURN_ERR(hiddenSize, loadInt(dict.at("hidden_size")));
@@ -1395,7 +1395,7 @@ Error ONNXModelLoader::loadLSTM(const ONNX_NAMESPACE::NodeProto &op,
   // Derived parameters.
   RETURN_ERR_IF_NOT(X.dims().size() == 3,
                     "ONNX LSTM input 'X' should have 3 dimensions!");
-  size_t batchSize = X.dims()[1];
+  dim_t batchSize = X.dims()[1];
 
   // Create Y_h (hidden state) output placeholder.
   Placeholder *Y_h_ph;

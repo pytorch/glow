@@ -141,6 +141,9 @@ elif [[ "$CIRCLE_JOB" == "PYTORCH" ]]; then
 elif [[ "$CIRCLE_JOB" == "OPENCL" ]]; then
     install_pocl
     CMAKE_ARGS+=("-DGLOW_WITH_OPENCL=ON")
+elif [[ "$CIRCLE_JOB" == "32B_DIM_T" ]]; then
+    install_pocl
+    CMAKE_ARGS+=("-DTENSOR_DIMS_32_BITS=ON -DGLOW_WITH_OPENCL=ON")
 else
     CMAKE_ARGS+=("-DCMAKE_BUILD_TYPE=Debug")
     if [[ "${CIRCLE_JOB}" == "SHARED" ]]; then
