@@ -27,13 +27,15 @@
 using namespace glow;
 
 /*
- * This class implements an Add benchmark. There are a number of
+ * This class implements an add microbenchmark. There are a number of
  * parallel Add nodes which are created, one per core. Then these are
  * chained together in multiple layers.
+ *
+ * Microbenchmarks are generally useful for understanding performance
+ * through targeted experiementation and are not representative of
+ * end-to-end workloads.
  */
 class AddBench : public Benchmark {
-
-  /// Dimensions expressed in libjit's format.
   dim_t n_;
   dim_t numLayers_;
   PlaceholderBindings bindings_;
@@ -77,6 +79,7 @@ public:
     std::unique_ptr<Module> mod(new Module);
     auto fn = mod->createFunction("singleNode");
 
+    // Create multiple chains of Add nodes
     std::vector<Placeholder *> A(numCores_);
     std::vector<Placeholder *> B(numCores_);
     std::vector<Placeholder *> output(numCores_);
@@ -111,6 +114,8 @@ public:
   void run() override {
     std::vector<std::promise<void>> promises(asyncLaunchSize_);
     std::vector<std::future<void>> futures;
+
+    // Launch a number of independent requests
     for (auto &runPromise : promises) {
       std::unique_ptr<ExecutionContext> contextPtr(new ExecutionContext);
       futures.push_back(runPromise.get_future());
@@ -134,6 +139,10 @@ public:
 };
 
 int main(int argc, char *argv[]) {
+  printf("Add Microbenchmark\n");
+  printf("Usage: AddBench n(Int) numLayers(Int) numReps(Int) "
+         "numAsyncLaunches(Int) numAddChains(Int) backendStr(String) "
+         "dtypeStr(\"Float16\"|\"Float32\") dev_id(Int)\n");
   assert(argc == 8 || argc == 9);
   size_t n = atoi(argv[1]);
   size_t numLayers = atoi(argv[2]);
@@ -154,6 +163,8 @@ int main(int argc, char *argv[]) {
   AddBench b(n, numLayers, asyncLaunches, numCores, backendStr, dtypeStr,
              dev_id);
   auto times = bench(&b, reps);
+  printf("_,benchName,_,n,numLayers,numReps,numAsyncLaunches,numAddChains,"
+         "backendStr,dtypeStr,runtime,gbytesPerSecPerChain\n");
   for (auto t : times) {
     printf("BenchResult,AddBench,SW,%4zu,%4zu,%4zu,%4zu,%4zu,%s,%s,%2.6lf,"
            "%5.2lf\n",
@@ -166,6 +177,9 @@ int main(int argc, char *argv[]) {
   double median = times[midElt];
   double median_runtime = median / ((double)asyncLaunches);
   double min_runtime = min / ((double)asyncLaunches);
+  printf("_,benchName,_,n,numLayers,numReps,numAsyncLaunches,numAddChains,"
+         "backendStr,dtypeStr,medianRuntime,minRuntime,"
+         "medianGbytesPerSecPerChain,maxGbytesPerSecPerChain\n");
   printf(
       "BenchSummary,AddBench,SW,%4zu,%4zu,%4zu,%4zu,%4zu,%s,%s,%2.6lf,%2.6lf,%"
       "5.2lf, %5.2lf\n",

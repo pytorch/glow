@@ -65,8 +65,8 @@ TEST_P(TensorLayoutTest, convDefault) {
 TEST_P(TensorLayoutTest, pad) {
   CHECK_IF_ENABLED();
 
-  const size_t inputDims[] = {1, 10, 15, 5};
-  const size_t outPadDims[] = {5, 18, 25, 11};
+  const dim_t inputDims[] = {1, 10, 15, 5};
+  const dim_t outPadDims[] = {5, 18, 25, 11};
   int pads[] = {0, 2, 3, 1, 4, 6, 7, 5};
 
   Node *A = mod_.createPlaceholder(ElemKind::FloatTy, inputDims, "input", false,

@@ -168,9 +168,9 @@ glow::Type ptTypeToGlowType(const c10::TensorType &ptType) {
   DCHECK(ptType.scalarType().has_value())
       << "TensorType has no associated scalar type.";
   const auto concreteSizes = ptType.sizes().concrete_sizes().value();
-  std::vector<size_t> dims;
+  std::vector<glow::dim_t> dims;
   for (const auto &size : concreteSizes) {
-    dims.push_back(static_cast<size_t>(size));
+    dims.push_back(static_cast<glow::dim_t>(size));
   }
 
   auto scalarType = ptType.scalarType().value();

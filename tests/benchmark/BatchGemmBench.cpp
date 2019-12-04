@@ -27,9 +27,14 @@
 using namespace glow;
 
 /*
- * Benchmark a batch of (m x m) * (m x n) matrix multiplications.
- * There are a number of layers which do successive GEMMs on the
- * intermediate outputs (RHS) and inputs (LHS)
+ * This class implements a batch GEMM microbenchmark. Each layer contains a
+ * batch of (m x m) * (m x n) matrix multiplications. There are a number of
+ * layers which do successive GEMMs on the intermediate outputs (RHS) and
+ * inputs (LHS)
+ *
+ * Microbenchmarks are generally useful for understanding performance
+ * through targeted experiementation and are not representative of
+ * end-to-end workloads.
  */
 class BatchGemmBench : public Benchmark {
   dim_t batchSize_;
@@ -158,7 +163,7 @@ public:
     std::vector<std::promise<void>> promises(asyncLaunchSize_);
     std::vector<std::future<void>> futures;
 
-    // Launch a number of parallel requests
+    // Launch a number of independent requests
     int i = 0;
     for (auto &promise : promises) {
       futures.push_back(promise.get_future());
@@ -190,6 +195,11 @@ public:
 };
 
 int main(int argc, char *argv[]) {
+  printf("BatchGEMM Microbenchmark\n");
+  printf("Usage: BatchGemmBench batchSize(Int) m(Int) n(Int) numLayers(Int) "
+         "numReps(Int) numAsyncLaunches(Int) numBatchGEMMChains(Int) "
+         "backendStr(String) dtypeStr(\"Float16\"|\"Float32\") dev_id(Int)\n");
+
   assert(argc == 10 || argc == 11);
   size_t batchSize = atoi(argv[1]);
   size_t m = atoi(argv[2]);
@@ -213,6 +223,8 @@ int main(int argc, char *argv[]) {
                    backendStr, dtypeStr, dev_id);
 
   auto times = bench(&b, numReps);
+  printf("_,benchName,_,batchSize,m,n,numLayers,numReps,numAsyncLaunches,"
+         "numBatchGEMMChains,backendStr,dtypeStr,runtime,gflopsPerSec\n");
   for (auto t : times) {
     printf("BenchResult,BatchGemmBench,SW,%zu,%zu,%zu,%zu,%zu,%zu,%zu,%s,%s,%f,"
            "%f\n",
@@ -226,6 +238,9 @@ int main(int argc, char *argv[]) {
   double median = times[midElt];
   double median_runtime = median / ((double)numAsyncLaunches);
   double min_runtime = min / ((double)numAsyncLaunches);
+  printf("_,benchName,_,batchSize,m,n,numLayers,numReps,numAsyncLaunches,"
+         "numBatchGEMMChains,backendStr,dtypeStr,medianRuntime,minRuntime,"
+         "medianGflopsPerSec,maxGflopsPerSec\n");
   printf("BenchSummary,BatchGemmBench,SW,%zu,%zu,%zu,%zu,%zu,%zu,%zu,%s,%s,%f,%"
          "f,%f,%"
          "f\n",
