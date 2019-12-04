@@ -2566,6 +2566,7 @@ TEST(onnx, importDimParamImplicit) {
   EXPECT_EQ(inputPH->dims()[1], 2);
   EXPECT_EQ(outputPH->dims()[0], 1);
   EXPECT_EQ(outputPH->dims()[1], 2);
+}
 
 /// Test loading LSTM from a ONNX model. The ONNX model already computes
 /// the error compared to a PyTorch reference implementation.
