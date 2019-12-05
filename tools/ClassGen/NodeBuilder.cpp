@@ -16,7 +16,8 @@
 
 #include "NodeBuilder.h"
 
-NodeBuilder &NodeBuilder::addMember(MemberType type, const std::string &name) {
+NodeBuilder &NodeBuilder::addMember(MemberType type, const std::string &name,
+                                    bool addSetter) {
   MemberTypeInfo *typeInfo = nullptr;
 
   if (type == MemberType::TypeRef) {
@@ -54,7 +55,7 @@ NodeBuilder &NodeBuilder::addMember(MemberType type, const std::string &name) {
     llvm_unreachable("Type not recognized");
   }
 
-  return addMember(*typeInfo, name);
+  return addMember(*typeInfo, name, addSetter);
 }
 
 void NodeBuilder::emitMemberForwardDecls(std::ostream &os) const {
@@ -172,13 +173,18 @@ void NodeBuilder::emitClassMembers(std::ostream &os) const {
   }
 }
 
-void NodeBuilder::emitMemberGetter(std::ostream &os,
-                                   const MemberTypeInfo *typeInfo,
-                                   const std::string &name) const {
+void NodeBuilder::emitMemberGetterSetter(std::ostream &os,
+                                         const MemberTypeInfo *typeInfo,
+                                         const std::string &name) const {
   // Synthesize the general getter.
-  auto returnTypeStr = getReturnTypename(typeInfo);
-  os << "  " << returnTypeStr << " get" << name << "() const { return " << name
+  auto typeStr = getReturnTypename(typeInfo);
+  os << "  " << typeStr << " get" << name << "() const { return " << name
      << "_; }\n";
+
+  if (typeInfo->addSetter) {
+    os << "  void set" << name << "(" << typeStr << " a) {" << name
+       << "_ = a; }\n";
+  }
 }
 
 void NodeBuilder::emitSettersGetters(std::ostream &os) const {
@@ -198,7 +204,7 @@ void NodeBuilder::emitSettersGetters(std::ostream &os) const {
   }
 
   for (const auto &op : members_) {
-    emitMemberGetter(os, &op.first, op.second);
+    emitMemberGetterSetter(os, &op.first, op.second);
   }
 
   // Synthesize the 'classof' method that enables the non-rtti polymorphism.

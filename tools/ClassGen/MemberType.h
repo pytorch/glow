@@ -69,6 +69,8 @@ struct MemberTypeInfo {
   std::string forwardDecl;
   /// Comparator function to be used for comparing members of this type.
   std::string cmpFn = "==";
+  /// Whether to include a setter for this member type.
+  bool addSetter{false};
 };
 
 /// These are instances of MemberTypeInfo for commonly used types.
