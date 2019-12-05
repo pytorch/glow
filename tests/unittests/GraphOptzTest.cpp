@@ -202,25 +202,30 @@ TEST_F(GraphOptz, optimizeBatchNormAfterConvMultiple) {
   // Conv's Filter and Bias, plus BN's Scale, Bias, Mean, and Var.
   EXPECT_EQ(mod_.getConstants().size(), 6);
 
-  ::glow::optimize(F_, CompilationMode::Infer);
+  optimizedF_ = optimizeFunction(F_);
 
   // BatchNorm should have been merged into the Conv.
-  EXPECT_EQ(F_->getNodes().size(), 4);
+  EXPECT_EQ(optimizedF_->getNodes().size(), 4);
 
   // Filter and Bias should have been duplicated so that the Conv-BN
   // optimization does not modify the filter/bias being saved, equaling 4
   // Constants. Additionally, the BN's Scale, Bias, Mean, and Var should be
   // eliminated due to the opti.
-  EXPECT_EQ(mod_.getConstants().size(), 4);
+  EXPECT_EQ(mod_.getConstants().size(), 8);
 
-  ASSERT_EQ(A->getNumUsers(), 1);
-  Node *newCV = A->getUsers().begin()->getUser();
+  ASSERT_EQ(A->getNumUsers(), 2);
+  Node *newCV = A->getUsers().back().getUser();
   EXPECT_TRUE(llvm::isa<ConvolutionNode>(newCV));
   ASSERT_EQ(newCV->getNumUsers(), 1);
   Node *save = newCV->getUsers().begin()->getUser();
   EXPECT_TRUE(llvm::isa<SaveNode>(save));
 
-  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::BatchNormalizationNodeKind), 0);
+  EXPECT_EQ(
+      countNodeKind(optimizedF_, Kinded::Kind::BatchNormalizationNodeKind), 0);
+
+  bindings_.allocate(mod_.getPlaceholders());
+  bindings_.get(A)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
+  checkNumericalEquivalence();
 }
 
 TEST_F(GraphOptz, optimizeBatchNormAfterConvFP16) {
