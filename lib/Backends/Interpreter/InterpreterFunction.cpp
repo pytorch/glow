@@ -50,6 +50,12 @@ void InterpreterFunction::collectConstants(const Module *module) {
   }
 }
 
+void InterpreterFunction::addConstant(std::string name, Tensor *T) {
+  Tensor *newTensor = new Tensor;
+  newTensor->assign(T);
+  constants_[name] = newTensor;
+}
+
 Error InterpreterFunction::execute(ExecutionContext *context) {
   BoundInterpreterFunction boundFunc(constants_);
   auto res = boundFunc.execute(F_.get(), context);
