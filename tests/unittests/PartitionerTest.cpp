@@ -873,6 +873,94 @@ TEST_F(PartitionerTest, graphMemInfoCalculation2) {
   EXPECT_EQ(res2, GraphMemInfo(96, 32, 544));
 }
 
+/// Check the function getFunctionMemory in PartitionerUtils.cpp to compute
+/// memory consumption of a simple function with same inputs used for multiple
+/// nodes.
+TEST_F(PartitionerTest, funcMemInfoCalculation1) {
+  auto *input1 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {16}, "input1", false);
+  auto *input2 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {16}, "input2", false);
+  auto *input3 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {16}, "input3", false);
+  auto *sub = F_->createSub("sub", input1, input2);
+  auto *mul = F_->createMul("mul", input1, input2);
+  auto *sum = F_->createAdd("add", sub, mul);
+  auto *sub2 = F_->createSub("sub1", sum, input3);
+  auto *save = F_->createSave("ret", sub2);
+  (void)save;
+
+  GraphMemInfo info = getFunctionMemory(F_);
+  // 3x input Tensors of 16 fp32 each and 1x output of 16 fp32 values.
+  GraphMemInfo res(192, 64, 0);
+  EXPECT_EQ(res, info);
+}
+
+/// Check the function getFunctionMemory in PartitionerUtils.cpp to compute
+/// memory consumption of a function with constants.
+TEST_F(PartitionerTest, funcMemInfoCalculation2) {
+  auto *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 16}, "input", false);
+
+  // Left branch.
+  auto *w2 = mod_.createConstant(ElemKind::FloatTy, {16, 16}, "w2");
+  auto *b2 = mod_.createConstant(ElemKind::FloatTy, {16}, "b2");
+  auto *L = F_->createFullyConnected("left_fc1", input, w2, b2);
+  auto *L1 = F_->createSigmoid("left_sigmoid1", L);
+  auto *w3 = mod_.createConstant(ElemKind::FloatTy, {16, 8}, "w3");
+  auto *b3 = mod_.createConstant(ElemKind::FloatTy, {8}, "b3");
+  auto *L2 = F_->createFullyConnected("left_fc2", L1, w3, b3);
+  auto *L3 = F_->createSigmoid("left_sigmoid2", L2);
+
+  // Right branch.
+  auto *R = F_->createFullyConnected("right_fc1", input, w2, b2);
+  auto *R1 = F_->createSigmoid("right_sigmoid1", R);
+  auto *w5 = mod_.createConstant(ElemKind::FloatTy, {16, 8}, "w5");
+  auto *b5 = mod_.createConstant(ElemKind::FloatTy, {8}, "b5");
+  auto *R2 = F_->createFullyConnected("right_fc2", R1, w5, b5);
+  auto *R3 = F_->createSigmoid("right_sigmoid2", R2);
+
+  // Join branches.
+  auto *mul = F_->createMul("mul", L3, R3);
+  auto *save = F_->createSave("ret", mul);
+  (void)save;
+
+  GraphMemInfo info = getFunctionMemory(F_);
+  // single input tensor (1*16) fp32
+  // single output tensor (1*8) fp32
+  // constants fp32 (16*16 + 16 + 16*8 + 8 + 16*8 + 8)
+  GraphMemInfo res(64, 32, 2176);
+  EXPECT_EQ(res, info);
+}
+
+/// Check the function getFunctionMemory in PartitionerUtils.cpp to compute
+/// memory consumption of a function with same inputs used for multiple
+/// nodes.
+TEST_F(PartitionerTest, funcMemInfoCalculation3) {
+  auto *input1 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {2, 10}, "input1", false);
+  auto *input2 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {10, 16}, "input2", false);
+  auto *input3 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {16, 20}, "input3", false);
+  auto *input4 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {20, 1}, "input4", false);
+  auto *input5 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 50}, "input5", false);
+  auto *mul0 = F_->createMatMul("mul0", input1, input2);
+  auto *mul1 = F_->createMatMul("mul1", mul0, input3);
+  auto *mul2 = F_->createMatMul("mul2", mul1, input4);
+  auto *mul3 = F_->createMatMul("mul3", mul2, input5);
+  auto *save = F_->createSave("ret", mul3);
+  (void)save;
+
+  GraphMemInfo info = getFunctionMemory(F_);
+  // input consists of 5 tensors (2*10 + 10*16 + 16*20 + 20*1 + 1*50 = 570) fp32
+  // output is tensor of 2*50 = 100 fp32
+  GraphMemInfo res(2280, 400, 0);
+  EXPECT_EQ(res, info);
+}
+
 /// This one test the memoryUsageValidation in Partitioner : the memory usage
 /// of one single node is larger than the given device memory.
 TEST_F(PartitionerTest, memoryUsageValidation1) {
