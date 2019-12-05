@@ -208,6 +208,8 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
                     << inOnnxTensor.name;
         return ONNXIFI_STATUS_INTERNAL_ERROR;
       }
+      // We want fresh DeviceResidencyInfo for this fresh Tensor.
+      inputTensor->resetDeviceInfo();
       // Copy the input from onnxTensorDescriptor unless it has a NULL buffer
       // pointer (which is a valid case if the tensor is empty).
       if (inOnnxBuffer) {
