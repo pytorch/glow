@@ -1535,6 +1535,18 @@ SaveNode *getOutputSave(Function *F, Placeholder *PH);
 /// currToNew.
 Node *recursiveClone(Function *newF, Node *node, NodeMap &currToNew);
 
+/// If \p PH is an output placeholder in the Function \p F,
+/// \returns true.
+/// This is determined by checking if the PH has a user which uses the PH as an
+/// overwritten input.
+bool isOutput(const Placeholder *PH, const Function &F);
+
+/// If \p PH is an input placeholderin the Function \p F,
+/// \returns true.
+/// This is determined by checking if the PH is the input to a saveNode or is
+/// used by a non saveNode.
+bool isInput(const Placeholder *PH, const Function &F);
+
 /// Helper vectors for common transpose shuffles.
 #define NCHW2NHWC                                                              \
   { 0u, 2u, 3u, 1u }
