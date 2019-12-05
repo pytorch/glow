@@ -58,6 +58,15 @@ NodeBuilder &NodeBuilder::addMember(MemberType type, const std::string &name,
   return addMember(*typeInfo, name, addSetter);
 }
 
+NodeBuilder &NodeBuilder::addFusedActivation() {
+  return addMember(MEMBER_TYPE_INFO(glow::FusedActivation), "FusedActivation",
+                   /* addSetter */ true)
+      .addExtraMethod(
+          "bool hasFusedActivation() const;",
+          "bool ConvolutionNode::hasFusedActivation() const { return "
+          "getFusedActivation() != FusedActivation::NONE; }");
+}
+
 void NodeBuilder::emitMemberForwardDecls(std::ostream &os) const {
   for (const auto &mem : members_) {
     const std::string &forwardDecl = (mem.first).forwardDecl;

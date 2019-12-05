@@ -2184,7 +2184,8 @@ TEST_F(GraphFold, foldLeakyReluFromSplat) {
 
   EXPECT_EQ(4, F_->getNodes().size());
 
-  ::glow::fold(F_, CompilationMode::Infer);
+  CompilationContext cctx;
+  ::glow::fold(F_, cctx);
 
   // Check the resulting graph after folding.
   EXPECT_EQ(3, F_->getNodes().size());
@@ -2214,7 +2215,8 @@ TEST_F(GraphFold, foldLeakyReluFromConst) {
 
   EXPECT_EQ(6, F_->getNodes().size());
 
-  ::glow::fold(F_, CompilationMode::Infer);
+  CompilationContext cctx;
+  ::glow::fold(F_, cctx);
 
   // Check the resulting graph after folding. Reshape must have been merged into
   // the constant and LeakyRelu must have been folded.
@@ -2241,7 +2243,8 @@ TEST_F(GraphFold, foldChannelShuffle) {
   EXPECT_EQ(F_->getNodes().size(), 4);
 
   // Fold RN->TR->RN into ChannelShuffle
-  ::glow::fold(F_, CompilationMode::Infer);
+  CompilationContext cctx;
+  ::glow::fold(F_, cctx);
 
   ASSERT_EQ(F_->getNodes().size(), 2);
 
@@ -2267,11 +2270,57 @@ TEST_F(GraphFold, NoFoldChannelShuffle) {
 
   EXPECT_EQ(F_->getNodes().size(), 4);
 
-  ::glow::fold(F_, CompilationMode::Infer);
+  CompilationContext cctx;
+  ::glow::fold(F_, cctx);
 
   EXPECT_EQ(F_->getNodes().size(), 4);
   EXPECT_FALSE(llvm::isa<ChannelShuffleNode>(save->getInput()));
 }
+
+class MockBackendWithFusion : public MockBackend {
+  bool supportsFusedActivation(Node *parent, Node *activation) const override {
+    switch (parent->getKind()) {
+    case Kinded::Kind::ConvolutionNodeKind:
+      switch (activation->getKind()) {
+      case Kinded::Kind::ReluNodeKind:
+      case Kinded::Kind::SigmoidNodeKind:
+      case Kinded::Kind::TanhNodeKind:
+        return true;
+      default:
+        return false;
+      }
+    default:
+      return false;
+    }
+  }
+};
+
+#define CONV_ACTIVATION_TEST(ACTIVATION_, CREATOR_)                            \
+  TEST_F(GraphFold, FoldConv##ACTIVATION_##Activation) {                       \
+    auto *A =                                                                  \
+        mod_.createPlaceholder(ElemKind::FloatTy, {1, 10, 20, 3}, "A", false); \
+    ConvolutionNode *CV =                                                      \
+        F_->createConv(bindings_, "conv", A, 16, 5, 1, 2, 1);                  \
+    auto *AN = F_->CREATOR_(#ACTIVATION_, CV);                                 \
+    SaveNode *SN = F_->createSave("ret", AN);                                  \
+                                                                               \
+    EXPECT_EQ(F_->getNodes().size(), 3);                                       \
+                                                                               \
+    CompilationContext cctx;                                                   \
+    auto B = MockBackendWithFusion();                                          \
+    ::glow::fold(F_, cctx, &B);                                                \
+                                                                               \
+    ConvolutionNode *fusedCV =                                                 \
+        llvm::dyn_cast<ConvolutionNode>(SN->getInput());                       \
+    ASSERT_TRUE(fusedCV);                                                      \
+    EXPECT_EQ(fusedCV->getFusedActivation(), FusedActivation::ACTIVATION_);    \
+  }
+
+CONV_ACTIVATION_TEST(RELU, createRELU);
+CONV_ACTIVATION_TEST(SIGMOID, createSigmoid);
+CONV_ACTIVATION_TEST(TANH, createTanh);
+
+#undef CONV_ACTIVATION_TEST
 
 /// This test ensures that if there is a RescaleNode whose input has multiple
 /// users that the input is not cloned, as this duplicates the node.

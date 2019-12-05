@@ -3218,17 +3218,62 @@ bool FoldElemKindConversionIntoIO::run(Function *F,
   return changed;
 }
 
-void glow::fold(Function *F, CompilationContext &cctx) {
+/// Looks for an activation directly following \p N from \p F that the backend
+/// \p B supports for fusion.
+template <class T> bool fuseActivation(T *N, Function *F, const Backend *B) {
+  if (!N || N->hasFusedActivation() || !N->getResult().hasOneUse()) {
+    return false;
+  }
+
+  // We know there is one result user so we can just deref the first result.
+  Node *activation = (*N->getResult().getUsers().begin()).getUser();
+  if (!B || !B->supportsFusedActivation(N, activation)) {
+    return false;
+  }
+
+  FusedActivation activationType;
+  NodeValue activationNV;
+  switch (activation->getKind()) {
+  case Kinded::Kind::ReluNodeKind:
+    activationType = FusedActivation::RELU;
+    activationNV = cast<ReluNode>(activation)->getResult();
+    break;
+  case Kinded::Kind::SigmoidNodeKind:
+    activationType = FusedActivation::SIGMOID;
+    activationNV = cast<SigmoidNode>(activation)->getResult();
+    break;
+  case Kinded::Kind::TanhNodeKind:
+    activationType = FusedActivation::TANH;
+    activationNV = cast<TanhNode>(activation)->getResult();
+    break;
+  default:
+    return false;
+  }
+
+  N->setFusedActivation(activationType);
+  activationNV.replaceAllUsesOfWith(N->getResult());
+  return true;
+}
+
+static bool foldActivations(Function *F, CompilationContext &cctx,
+                            const Backend *B) {
+  bool changed = false;
+  for (auto &node : F->getNodes()) {
+    if (fuseActivation(dyn_cast<ConvolutionNode>(&node), F, B)) {
+      changed = true;
+      continue;
+    }
+  }
+  return changed;
+}
+
+void glow::fold(Function *F, CompilationContext &cctx, const Backend *B) {
   LOG_SCOPE(F->getLogContext(), "glow::fold")
 
   FunctionPassManager FPM("FoldFPM", createDefaultFoldPassPipeline());
   FPM.run(F, cctx);
-}
 
-void glow::fold(Function *F, CompilationMode mode) {
-  CompilationContext cctx;
-  cctx.compMode = mode;
-  fold(F, cctx);
+  foldActivations(F, cctx, B);
 }
 
 void glow::optimize(Function *F, CompilationContext &cctx, const Backend &B) {
