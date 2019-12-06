@@ -32,7 +32,6 @@
 constexpr size_t IMAGE_COLORS = 3;
 constexpr size_t IMAGE_HEIGHT = 224;
 constexpr size_t IMAGE_WIDTH = 224;
-constexpr size_t CIFAR_NUM_IMAGES = 80;
 
 using namespace glow;
 
@@ -57,16 +56,20 @@ llvm::cl::opt<float> momentum("momentum", llvm::cl::desc("Momentum parameter."),
 llvm::cl::opt<float> l2Decay("l2-decay", llvm::cl::desc("L2Decay parameter."),
                              llvm::cl::init(0.01), llvm::cl::value_desc("N"),
                              llvm::cl::cat(category));
-llvm::cl::opt<std::string>
-    cifar10DbPath("cifar10", llvm::cl::desc("Path to the CIFAR-10 database."),
-                  llvm::cl::init("cifar-10-batches-bin/data_batch_1.bin"),
-                  llvm::cl::value_desc("db path"), llvm::cl::Optional,
-                  llvm::cl::cat(category));
+llvm::cl::opt<bool> verboseOpt("verbose", llvm::cl::desc("verbose outputs."),
+                               llvm::cl::init(false), llvm::cl::cat(category));
+
+llvm::cl::opt<std::string> imageListFile(
+    "input-image-list-file",
+    llvm::cl::desc(
+        "Name of the file containing list of images (one image per line)"),
+    llvm::cl::Positional, llvm::cl::cat(category));
 
 llvm::cl::opt<std::string>
     resnet50Path("resnet50", llvm::cl::desc("Path to the ResNet50 model."),
                  llvm::cl::init("resnet50"), llvm::cl::value_desc("model path"),
                  llvm::cl::Optional, llvm::cl::cat(category));
+
 llvm::cl::opt<std::string> executionBackend(
     "backend",
     llvm::cl::desc("Backend to use, e.g., Interpreter, CPU, OpenCL:"),
@@ -86,50 +89,83 @@ template <typename H> size_t findMaxIndex(const H &handle, size_t range) {
   return ret;
 }
 
-void loadImagesAndLabels(Tensor &images, Tensor &labels) {
-  llvm::outs() << "Loading the CIFAR-10 database.\n";
-  /// ResNet expects ImageChannelOrder::BGR, ImageLayout::NCHW.
-  std::ifstream dbInput(cifar10DbPath, std::ios::binary);
-
-  if (!dbInput.is_open()) {
-    llvm::errs() << "Failed to open cifar10 data file, probably missing.\n";
-    llvm::errs() << "Run 'python ../glow/utils/download_test_db.py'\n";
-    exit(1);
+bool parseInputImageList(const std::string &inputImageListFile,
+                         std::vector<std::string> &filenames,
+                         std::vector<dim_t> &labels) {
+  std::ifstream inFile;
+  inFile.open(inputImageListFile);
+  if (!inFile.good()) {
+    llvm::outs() << "Could not open input-image-list-file: "
+                 << inputImageListFile << ", exiting.\n";
+    return false;
   }
 
-  /// The CIFAR file format is structured as one byte label in the range 0..9.
-  /// The label is followed by an image: 32 x 32 pixels, in RGB format. Each
-  /// color is 1 byte. The first 1024 red bytes are followed by 1024 of green
-  /// and blue. Each 1024 byte color slice is organized in row-major format.
-  /// The database contains 10000 images.
-  /// Size: (1 + (32 * 32 * 3)) * 10000 = 30730000.
-  llvm::outs() << "Assigning images/labels bytes.\n";
-  auto labelsH = labels.getHandle<int64_t>();
-  auto imagesH = images.getHandle();
-  float scale = 1. / 255.0;
-  float bias = 0;
-  images.zero();
-  labels.zero();
-
-  /// CIFAR image dimensions are 32x32, ResNet50 expects 224x224.
-  /// Simple scaling would be one CIFAR image copied to the center area with
-  /// offset 96 pixels
-  constexpr unsigned imageOffset = 96;
-  for (unsigned n = 0; n < CIFAR_NUM_IMAGES; ++n) {
-    labelsH.at({n, 0}) = static_cast<unsigned long>(dbInput.get());
-    // ResNet50 model got trained in NCHW format.
-    for (unsigned c = 0; c < IMAGE_COLORS; ++c) {
-      dim_t bgrc = IMAGE_COLORS - 1 - c;
-      for (unsigned h = 0; h < 32; ++h) {
-        for (unsigned w = 0; w < 32; ++w) {
-          // ResNet BGR color space vs CIFAR RGB.
-          auto val = static_cast<float>(static_cast<uint8_t>(dbInput.get()));
-          // Normalize and scale image.
-          val = (val - imagenetNormMean[c]) * scale / imagenetNormStd[c] + bias;
-          imagesH.at({n, bgrc, h + imageOffset, w + imageOffset}) = val;
-        }
-      }
+  while (!inFile.eof()) {
+    std::string line;
+    getline(inFile, line);
+    if (!line.empty()) {
+      auto delim = line.find_last_of(',');
+      filenames.push_back(line.substr(0, delim));
+      labels.push_back(std::stoi(line.substr(delim + 1)));
     }
+  }
+
+  return true;
+}
+
+/// A pair representing a float and the index where the float was found.
+using FloatIndexPair = std::pair<float, size_t>;
+
+/// Given a Handle \p H of a 1D tensor with float elements, \returns the top K
+/// (topKCount) [float, index] pairs, i.e. the pairs with the highest floats.
+template <typename ElemTy>
+static std::vector<FloatIndexPair> getTopKPairs(Handle<ElemTy> H,
+                                                size_t topKCount) {
+  DCHECK_LE(topKCount, H.size()) << "Function requires k < number of labels.";
+  DCHECK_EQ(H.dims().size(), 1) << "H must be a Handle of a 1d Tensor.";
+
+  // Use a priority queue of pairs of floats (probabilities) to size_t (indices)
+  // to determine the top K pairs, and then return the indices from it.
+  std::priority_queue<FloatIndexPair, std::vector<FloatIndexPair>,
+                      std::greater<FloatIndexPair>>
+      topKQueue;
+
+  // Loop over all the probabilites, finding the highest k probability pairs.
+  for (size_t i = 0, e = H.size(); i < e; i++) {
+    float currProbability = H.at({i});
+    if (topKQueue.size() < topKCount) {
+      // Always push the first k elements.
+      topKQueue.push(std::make_pair(currProbability, i));
+    } else if (topKQueue.top().first < currProbability) {
+      // If the lowest element has lower probability than the current, then pop
+      // the lowest and insert the current pair.
+      topKQueue.pop();
+      topKQueue.push(std::make_pair(currProbability, i));
+    }
+  }
+
+  // We now have the top K pairs in reverse order.
+  std::vector<FloatIndexPair> res(topKCount);
+  for (size_t i = 0; i < topKCount; i++) {
+    res[topKCount - i - 1] = topKQueue.top();
+    topKQueue.pop();
+  }
+
+  return res;
+}
+
+/// Print out the top K pairs to stdout, which were passed in via \p topKPairs.
+static void printTopKPairs(const std::vector<FloatIndexPair> &topKPairs) {
+  for (size_t i = 0; i < topKPairs.size(); i++) {
+    // Some models are trained with more classes. E.g. Some imagenet models
+    // exported from TensorFlow have 1 extra "neutral" class.
+    const size_t label = topKPairs[i].second;
+    // Tab out the label so it aligns nicely with Label-K1.
+    if (i != 0) {
+      llvm::outs() << "\t\t\t\t\t";
+    }
+    llvm::outs() << "\tLabel-K" << i + 1 << ": " << label << " (probability: "
+                 << llvm::format("%0.4f", topKPairs[i].first) << ")\n";
   }
 }
 } // namespace
@@ -139,11 +175,17 @@ int main(int argc, char **argv) {
                                     " ResNet50 Training Example\n\n");
 
   // We expect the input to be NCHW.
-  std::vector<dim_t> allImagesDims = {CIFAR_NUM_IMAGES, IMAGE_COLORS,
-                                      IMAGE_HEIGHT, IMAGE_WIDTH};
+  std::vector<dim_t> allImagesDims = {miniBatchSize, IMAGE_COLORS, IMAGE_HEIGHT,
+                                      IMAGE_WIDTH};
   std::vector<dim_t> initImagesDims = {1, IMAGE_COLORS, IMAGE_HEIGHT,
                                        IMAGE_WIDTH};
-  std::vector<dim_t> allLabelsDims = {CIFAR_NUM_IMAGES, 1};
+  std::vector<dim_t> allLabelsDims = {miniBatchSize, 1};
+
+  std::vector<std::string> filenames;
+  std::vector<dim_t> labels;
+  if (!parseInputImageList(imageListFile, filenames, labels)) {
+    return 1;
+  }
 
   ExecutionEngine EE(executionBackend);
   auto &mod = EE.getModule();
@@ -186,24 +228,41 @@ int main(int argc, char **argv) {
   TC.learningRate = learningRate;
   TC.momentum = momentum;
   TC.L2Decay = l2Decay;
-  TC.batchSize = miniBatchSize;
+  TC.batchSize = 1;
   Function *TF = glow::differentiate(F, TC);
   auto tfName = TF->getName();
 
   llvm::outs() << "Compiling backend.\n";
   EE.compile(CompilationMode::Train);
+  // New PH's for the grad need to be allocated.
+  bindings.allocate(mod.getPlaceholders());
 
   // Get input and output tensors.
   auto *input = bindings.get(A);
   auto *result = bindings.get(E);
   auto *label = bindings.get(selected);
+  result->zero();
 
   // These tensors allocate memory for all images and labels prepared for
   // training.
-  Tensor images(ElemKind::FloatTy, allImagesDims);
-  Tensor labels(IndexElemKind, allLabelsDims);
+  Tensor imagesT(ElemKind::FloatTy, allImagesDims);
+  Tensor labelsT(IndexElemKind, allLabelsDims);
 
-  loadImagesAndLabels(images, labels);
+  size_t idx = 0;
+  size_t orig_size = filenames.size();
+  while (filenames.size() < miniBatchSize) {
+    filenames.push_back(filenames[idx % orig_size]);
+    labels.push_back(labels[idx % orig_size]);
+    idx++;
+  }
+
+  loadImagesAndPreprocess(filenames, &imagesT, ImageNormalizationMode::k0to1,
+                          ImageChannelOrder::BGR, ImageLayout::NCHW);
+
+  auto LH = labelsT.getHandle<int64_t>();
+  for (idx = 0; idx < miniBatchSize; ++idx) {
+    LH.raw(idx) = labels[idx];
+  }
 
   llvm::Timer timer("Training", "Training");
 
@@ -213,18 +272,26 @@ int main(int argc, char **argv) {
     // Train and evaluating network on all examples.
     unsigned score = 0;
     unsigned total = 0;
-    for (unsigned int i = 0; i < CIFAR_NUM_IMAGES; ++i) {
-      llvm::outs() << ".";
+    for (unsigned int i = 0; i < miniBatchSize; ++i) {
+      input->copyConsecutiveSlices(&imagesT, i);
+      label->copyConsecutiveSlices(&labelsT, i);
 
-      input->copyConsecutiveSlices(&images, i);
-      label->copyConsecutiveSlices(&labels, i);
+      llvm::outs() << ".";
 
       timer.startTimer();
       EE.run(bindings, tfName);
       timer.stopTimer();
 
-      auto correct = labels.getHandle<sdim_t>().raw(0);
-      auto guess = findMaxIndex(result->getHandle(), 10);
+      auto correct = labelsT.getHandle<sdim_t>().raw(i);
+      auto guess = findMaxIndex(result->getHandle(), 1000);
+
+      auto slice = result->getUnowned({1000});
+      if (verboseOpt) {
+        llvm::outs() << "correct: " << correct << " guess: " << guess << "\n";
+        auto k = getTopKPairs(slice.getHandle(), 3);
+        printTopKPairs(k);
+      }
+
       score += guess == correct;
       ++total;
     }
