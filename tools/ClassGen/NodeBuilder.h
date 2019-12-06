@@ -179,6 +179,10 @@ public:
   /// the same name.
   NodeBuilder &addGradient();
 
+  /// Helper to add a FusedActivation Member to this node, along with getters
+  /// and setters.
+  NodeBuilder &addFusedActivation();
+
   ~NodeBuilder();
 
 private:

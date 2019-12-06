@@ -161,6 +161,11 @@ public:
   /// for multiple requests.
   virtual bool supportsStaticPlaceholders() const { return false; }
 
+  /// \returns whether the backend supports fusing \p activation into \p parent.
+  virtual bool supportsFusedActivation(Node *parent, Node *activation) const {
+    return false;
+  }
+
   /// \returns true if Backend generated Instruction for Node \p N,
   /// using IRGenVisitor \p irgen.
   virtual bool generateInst(Node *N, IRGenVisitor &irgen) const {
