@@ -84,14 +84,35 @@ ENDMACRO()
 
 # Macro to register backend specific nodes and instructions.
 MACRO(ExternalBackendsClassGen)
+set(ClassGen_Include_DIR ${GLOW_BINARY_DIR}/glow)
 getSubDirList(SUBDIRS ${GLOW_SOURCE_DIR}/externalbackends)
 FOREACH(child ${SUBDIRS})
   getBackendEnableVariable(backend_enable_variable ${child})
   # Handle the backend only when activated
   if (${backend_enable_variable})
     # If the backend has a 'ClassGen' sub-directory, add it.
+    set(backend_classgen_DIR "${EXTERNAL_BACKENDS_DIR}/${child}/ClassGen")
     if(EXISTS ${EXTERNAL_BACKENDS_DIR}/${child}/ClassGen)
        add_subdirectory(${EXTERNAL_BACKENDS_DIR}/${child}/ClassGen EXT_${child})
+
+       # Check for header files with custom node definitions in this subdirectory.
+       file(GLOB backend_specific_nodes
+            RELATIVE "${backend_classgen_DIR}"
+            "${backend_classgen_DIR}/*SpecificNodes.h")
+       # Include these header files into NodeGenIncludes.h.
+       foreach(include_file ${backend_specific_nodes})
+           file(APPEND "${ClassGen_Include_DIR}/NodeGenIncludes.h"
+                       "#include \"${EXTERNAL_BACKENDS_DIR}/${child}/ClassGen/${include_file}\"\n")
+       endforeach()
+       # Check for header files with custom instruction definitions in this subdirectory.
+       file(GLOB backend_specific_instrs
+            RELATIVE "${backend_classgen_DIR}"
+            "${backend_classgen_DIR}/*SpecificInstrs.h")
+       # Include these header files into InstrGenIncludes.h.
+       foreach(include_file ${backend_specific_instrs})
+           file(APPEND "${ClassGen_Include_DIR}/InstrGenIncludes.h"
+                       "#include \"${EXTERNAL_BACKENDS_DIR}/${child}/ClassGen/${include_file}\"\n")
+       endforeach()
     else()
       message(STATUS "External backend '${child}' has no 'ClassGen' sub-directory")
     endif()
