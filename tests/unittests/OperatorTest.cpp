@@ -7976,6 +7976,13 @@ TEST_P(OperatorTest, FusedRowwiseQuantizedSparseLengthsWeightedSum_Float) {
       bindings_, mod_, F_, EE_, ElemKind::UInt8FusedQTy, 0.0001);
 }
 
+/// Test Fused-RWQ-SLWS in Float.
+TEST_P(OperatorTest, FusedRowwiseQuantizedSparseLengthsWeightedSum_float16) {
+  CHECK_IF_ENABLED();
+  testFusedRowwiseQuantizedSparseLengthsWeightedSum<float16_t>(
+      bindings_, mod_, F_, EE_, ElemKind::UInt8FusedQTy, 0.0001);
+}
+
 /// Test Fused-RWQ-SLWS in Float16. Uses Float accumulation.
 TEST_P(OperatorTest,
        FusedRowwiseQuantizedSparseLengthsWeightedSum_Float16_AccumFloat) {
