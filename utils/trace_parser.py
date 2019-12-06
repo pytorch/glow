@@ -74,7 +74,7 @@ class Event:
         return (self.end - self.start) - self.child_time
 
 
-def loadEvents(filename):
+def loadEvents(filename, runtimeEvents):
     """ Load the json trace file and create Events. """
     trace = None
     with open(filename) as f:
@@ -92,6 +92,8 @@ def loadEvents(filename):
                     optype = line["args"]["type"]
                 elif "kind" in line["args"]:
                     optype = line["args"]["kind"]
+            if not runtimeEvents and optype == "runtime":
+                continue
             end = 0
             if evtype == "X":
                 end = start + int(line["dur"])
@@ -169,9 +171,10 @@ def main():
                         help='filename for trace file to load')
     parser.add_argument("--layers", action='store_true')
     parser.add_argument("--kinds", action='store_true')
+    parser.add_argument("--runtime", action='store_true')
 
     args = parser.parse_args()
-    events = loadEvents(args.filename)
+    events = loadEvents(args.filename, args.runtime)
 
     # Stack events so we can determine selfTime.
     stacked = stackEvents(events)
