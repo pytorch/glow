@@ -3142,21 +3142,21 @@ bool FoldTileAddIntoBatchedAdd::run(Function *F,
   return changed;
 }
 
-/// Fold ElemKind conversion nodes (ConvertTo, Quantize, Dequantize) into
-/// single-user Placeholders and SaveNodes. Note that this changes the semantics
+/// Fold ElemKind conversion nodes (ConvertTo, Quantize) into
+/// single-user Placeholders. Note that this changes the semantics
 /// of the IO of the Function and so must be done carefully, i.e. should always
 /// be opt-in and done alongside conversion of corresponding Tensors in
-/// PlaceholderBindings.
-bool FoldElemKindConversionIntoIO::run(Function *F,
-                                       const CompilationContext &cctx) {
+/// PlaceholderBindings. If
+/// cctx.optimizationOpts.foldStaticPlaceholderConversions is set this will
+/// only change Placeholders marked as static.
+bool FoldElemKindConversionIntoInputs::run(Function *F,
+                                           const CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), getName());
 
-  std::unordered_set<SaveNode *> deadSaves;
-
   bool changed = false;
-  // Since we will be adding in new SaveNodes, reverse iterate to be safe.
   auto &nodes = F->getNodes();
-  for (auto it = nodes.rbegin(), e = nodes.rend(); it != e; it++) {
+
+  for (auto it = nodes.begin(), e = nodes.end(); it != e; it++) {
     Node *N = &*it;
     // Handle conversion of inputs (conversion of Placeholders):
     ConvertToNode *CTN = llvm::dyn_cast<ConvertToNode>(N);
@@ -3165,6 +3165,12 @@ bool FoldElemKindConversionIntoIO::run(Function *F,
       NodeValue in = CTN ? CTN->getInput() : QN->getInput();
       Placeholder *P = llvm::dyn_cast<Placeholder>(in);
       if (!P || P->getUsers().size() != 1) {
+        continue;
+      }
+      // If foldElemKindConversionIntoIO is not set and this is not a static
+      // placeholder then skip.
+      if (!cctx.optimizationOpts.foldElemKindConversionIntoIO &&
+          !P->isStatic()) {
         continue;
       }
 
@@ -3181,6 +3187,25 @@ bool FoldElemKindConversionIntoIO::run(Function *F,
       changed = true;
       continue;
     }
+  }
+  return changed;
+}
+
+/// Fold ElemKind conversion nodes (ConvertTo, Dequantize) into SaveNodes. Note
+/// that this changes the semantics of the IO of the Function and so must be
+/// done carefully, i.e. should always be opt-in and done alongside conversion
+/// of corresponding Tensors in PlaceholderBindings.
+bool FoldElemKindConversionIntoOutputs::run(Function *F,
+                                            const CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), getName());
+
+  std::unordered_set<SaveNode *> deadSaves;
+
+  bool changed = false;
+  // Since we will be adding in new SaveNodes, reverse iterate to be safe.
+  auto &nodes = F->getNodes();
+  for (auto it = nodes.rbegin(), e = nodes.rend(); it != e; it++) {
+    Node *N = &*it;
 
     // Handle conversion of outputs (SaveNodes + Placeholders):
     if (SaveNode *SN = llvm::dyn_cast<SaveNode>(N)) {
@@ -3419,11 +3444,17 @@ Error glow::optimizeFunction(Function *F, const Backend &B,
   // Optimize the graph again now that we have a lowered representation.
   ::glow::optimize(F, cctx);
 
-  // If requested, fold ElemKind conversion Nodes into inputs and outputs
-  // (Placeholders and SaveNodes).
-  if (cctx.optimizationOpts.foldElemKindConversionIntoIO) {
-    FunctionPassManager FPM("FoldElemKindConversionIntoIO",
-                            {FunctionPassID::FoldElemKindConversionIntoIO});
+  // If requested fold ElemKind conversion Nodes into static Placeholders,
+  // inputs, and outputs (Placeholders and SaveNodes).
+  if (cctx.optimizationOpts.foldStaticPlaceholderConversions ||
+      cctx.optimizationOpts.foldElemKindConversionIntoIO) {
+    FunctionPassPipeline pipeline{
+        FunctionPassID::FoldElemKindConversionIntoInputs};
+
+    if (cctx.optimizationOpts.foldElemKindConversionIntoIO) {
+      pipeline.pushBack({FunctionPassID::FoldElemKindConversionIntoOutputs});
+    }
+    FunctionPassManager FPM("FoldElemKindConversionIntoIO", pipeline);
     if (FPM.run(F, cctx)) {
       ::glow::optimize(F, cctx);
     }

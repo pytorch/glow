@@ -90,6 +90,9 @@ onnxStatus HostManagerBackend::addNetwork(std::unique_ptr<Module> module,
     }
     loader->setSrc(deferredBlobReader);
     cctx.deferredWeightLoader = loader;
+    // Signal that we want to fold convertTo and Quantize into static
+    // Placeholders.
+    cctx.optimizationOpts.foldStaticPlaceholderConversions = true;
   }
 
   if (GlowFP16) {

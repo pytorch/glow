@@ -105,6 +105,7 @@ TEST_P(DeferredWeightLoaderTest, staticPlaceholderInference) {
 
   CompilationContext cctx;
   cctx.deferredWeightLoader = &loader;
+  cctx.optimizationOpts.foldStaticPlaceholderConversions = true;
   EE.compile(cctx);
   PlaceholderBindings pBindings;
   pBindings.allocate(Z);
@@ -114,4 +115,55 @@ TEST_P(DeferredWeightLoaderTest, staticPlaceholderInference) {
   auto resHandle = pBindings.get(output)->getHandle();
   EXPECT_NEAR(resHandle.at({0}), 256.0, 1E-5);
 }
+
+TEST_P(DeferredWeightLoaderTest, FP16StaticPlaceholderInference) {
+  CHECK_IF_ENABLED();
+  auto hostmanager = createHostManager(GetParam());
+  ExecutionEngine EE{GetParam()};
+  auto &module = EE.getModule();
+  auto F = module.createFunction("main");
+  auto *X = module.createPlaceholder(ElemKind::FloatTy, {1}, "X", false);
+
+  auto *Y = module.createPlaceholder(ElemKind::FloatTy, {1}, "Y", false);
+  auto *Z = module.createPlaceholder(ElemKind::FloatTy, {1}, "Z", false);
+  auto *output =
+      module.createPlaceholder(ElemKind::FloatTy, {1}, "output", false);
+  // Set X and Y as static.
+  X->setStatic(true);
+  Y->setStatic(true);
+  auto pow1 = F->createPow("pow", X, Y);
+  auto pow2 = F->createPow("pow2", Z, pow1);
+  F->createSave("save", pow2, output);
+  std::vector<Tensor> staticInputs;
+  auto xTensor = Tensor(X->getType());
+  auto yTensor = Tensor(Y->getType());
+  auto zTensor = Tensor(Z->getType());
+  xTensor.getHandle().clear(2.0);
+  yTensor.getHandle().clear(3.0);
+  zTensor.getHandle().clear(2.0);
+
+  TestDeferredWeightLoader loader;
+  loader.addWeight(&xTensor);
+  loader.addWeight(&yTensor);
+  loader.addName("X");
+  loader.addName("Y");
+  DeferredLoader()->registerLoader(&loader);
+
+  PlaceholderBindings pBindings;
+
+  CompilationContext cctx;
+  cctx.deferredWeightLoader = &loader;
+  cctx.optimizationOpts.foldStaticPlaceholderConversions = true;
+  cctx.precisionConfig.convertToFP16 = true;
+
+  EE.compile(cctx);
+
+  pBindings.allocate(Z);
+  pBindings.allocate(output);
+  updateInputPlaceholders(pBindings, {Z}, {&zTensor});
+  EE.run(pBindings);
+  auto resHandle = pBindings.get(output)->getHandle();
+  EXPECT_NEAR(resHandle.at({0}), 256.0, 1E-5);
+}
+
 INSTANTIATE_BACKEND_TEST(DeferredWeightLoaderTest);
