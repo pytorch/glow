@@ -590,9 +590,9 @@ static void topK(Tensor &outW, Tensor &indW, Tensor &inW, size_t k) {
 
 static ShapeNHWC shapeFromDims(llvm::ArrayRef<dim_t> arr) {
   assert(arr.size() <= 4);
-  llvm::SmallVector<size_t, 4> ones(4, 1);
+  llvm::SmallVector<dim_t, 4> ones(4, 1);
   std::copy(arr.begin(), arr.end(), ones.begin());
-  return ShapeNHWC(llvm::ArrayRef<size_t>(ones));
+  return ShapeNHWC(llvm::ArrayRef<dim_t>(ones));
 };
 
 Error OpenCLFunction::execute(ExecutionContext *context) {
