@@ -598,7 +598,7 @@ ONNXModelWriter::convertType(const Type &glowType) {
   case ElemKind::BoolTy:
     return TensorType::BOOL;
   }
-  LOG(DFATAL) << "Cannot reach here.";
+  LOG(FATAL) << "Cannot reach here.";
 }
 
 void ONNXModelWriter::writeTensor(const Tensor &T, TensorType *out) {

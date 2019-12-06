@@ -620,7 +620,7 @@ public:
           ->getResult();
     }
     }
-    LOG(DFATAL) << "Cannot reach here.";
+    LOG(FATAL) << "Cannot reach here.";
   }
 };
 

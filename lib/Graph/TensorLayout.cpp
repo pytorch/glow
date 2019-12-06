@@ -543,7 +543,7 @@ std::string TensorLayoutCommon::getNthResultLayoutRequirements(const Node *node,
     }
     auto result = node->getNthResult(n);
     auto *user = (*result.getUsers().begin()).getUser();
-    int inputIdx = getInputIdx(user, result);
+    unsigned inputIdx = getInputIdx(user, result);
     if (inputDoesNotKnowRequirements(user) ||
         inputIdx >= user->getNumInputs() || llvm::isa<TransposeNode>(user)) {
       return getLayoutsForDims()[dims.size()].getSerializedLayout();
@@ -585,7 +585,7 @@ bool TensorLayoutCommon::isSatisfiedBy(
       destLayout.getSerializedLayout().size()) {
     return false;
   }
-  for (unsigned idx = 0, e = destLayout.getSerializedLayout().size(); idx < e;
+  for (size_t idx = 0, e = destLayout.getSerializedLayout().size(); idx < e;
        ++idx) {
     // '*' is compatible with anything.
     if (destLayout.getSerializedLayout()[idx] == '*' ||

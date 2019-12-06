@@ -99,7 +99,7 @@ struct TraceEvent {
                   const std::map<int, std::string> &threadNames = {});
 
   /// Return the current time in microseconds in the timestamp domain.
-  static uint64_t now();
+  static int64_t now();
 
   /// Returns a string representation of the provided \p level.
   static llvm::StringRef traceLevelToString(TraceLevel level);

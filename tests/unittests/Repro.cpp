@@ -145,7 +145,7 @@ void run() {
 
   // Run inference.
   size_t inputGroupSize = inputsOpt.size();
-  for (int i = 0; i < inputGroupSize; ++i) {
+  for (size_t i = 0; i < inputGroupSize; ++i) {
     // This holds the tensor that actually owns the data for all the partial
     // inputs.
     std::vector<Tensor> partialTensorPayloads;

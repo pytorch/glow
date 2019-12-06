@@ -37,23 +37,23 @@ public:
   std::string getName() override {
     for (auto na : names_) {
     }
-    if (position_ >= names_.size()) {
+    if (position_ > names_.size()) {
       return "";
     }
-    return names_[position_];
+    return names_[position_ - 1];
   }
 
   Tensor *getTensor() override {
-    if (position_ >= weights_.size()) {
+    if (position_ > weights_.size()) {
       return nullptr;
     }
-    return weights_[position_];
+    return weights_[position_ - 1];
   }
 
 private:
   std::vector<Tensor *> weights_{};
   std::vector<std::string> names_{};
-  int position_{-1};
+  size_t position_{0};
 };
 
 class DeferredWeightLoaderTest : public ::testing::TestWithParam<std::string> {

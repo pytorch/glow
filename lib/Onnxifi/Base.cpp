@@ -341,7 +341,7 @@ void Graph::setTraceEvents(onnxTraceEventList *traceEvents,
 
   /// Internally we use steady_clock, but our interface is system_clock
   /// timestamps. Do a simple conversion.
-  auto steadyTS = TraceEvent::now();
+  int64_t steadyTS = TraceEvent::now();
   auto systemTS = std::chrono::duration_cast<std::chrono::microseconds>(
                       std::chrono::system_clock::now().time_since_epoch())
                       .count();

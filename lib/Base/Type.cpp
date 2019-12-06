@@ -37,7 +37,7 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const Type &type) {
   }
 
   os << '<';
-  for (unsigned i = 0; i < type.numSizes_; ++i) {
+  for (unsigned char i = 0; i < type.numSizes_; ++i) {
     if (i) {
       os << " x ";
     }
