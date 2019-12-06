@@ -51,7 +51,8 @@ createHostManager(llvm::StringRef backendName,
   return hostManager;
 }
 
-Error addNetwork(HostManager *manager, std::string name) {
+Error addNetwork(HostManager *manager, std::string name,
+                 bool saturateHost = false) {
   std::unique_ptr<Module> module = glow::make_unique<Module>();
   Function *F = module->createFunction(name);
   auto *X =
@@ -62,7 +63,7 @@ Error addNetwork(HostManager *manager, std::string name) {
   // Expect this to be an Error because multiple networks with the same name
   // have been added to HostManager
   CompilationContext cctx;
-  return manager->addNetwork(std::move(module), cctx);
+  return manager->addNetwork(std::move(module), cctx, saturateHost);
 }
 
 void addAndRemoveNetwork(HostManager *manager, unsigned int functionNumber) {
@@ -276,4 +277,14 @@ TEST_F(HostManagerTest, QueueTest) {
   // Should expect them to finish in order: 1, 3, 2. Check atomic value
   EXPECT_GT(res3, res1);
   EXPECT_GT(res2, res3);
+}
+
+TEST_F(HostManagerTest, SaturateHost) {
+  HostConfig hostConfig;
+  std::vector<std::unique_ptr<runtime::DeviceConfig>> configs =
+      runtime::DeviceManager::generateDeviceConfigs("NNPI");
+  std::unique_ptr<HostManager> hostManager =
+      glow::make_unique<HostManager>(std::move(configs), hostConfig);
+
+  EXPECT_FALSE(ERR_TO_BOOL(addNetwork(hostManager.get(), "main", true)));
 }
