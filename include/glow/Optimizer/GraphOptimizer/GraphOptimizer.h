@@ -62,13 +62,15 @@ void profileQuantization(PlaceholderBindings &bindings, Function *F);
 /// Optimize the Function \p F given compilation options \p cctx for Backend \B.
 /// \returns success if all nodes in the final resulting optimized Function are
 /// supported by \p B; if not, this represents a compiler error.
-Error optimizeFunction(Function *F, const Backend &B, CompilationContext &cctx);
+Error optimizeFunction(Function *F, Backend &B, CompilationContext &cctx);
 
 /// Optimize the Function \p F given compilation options \p cctx performing
 /// backend-independent optimizations that can be done before lowering.
 /// \returns success if there were no compiler errors; if not, this represents a
-/// compiler error.
-Error optimizeFunctionBeforeLowering(Function *F, CompilationContext &cctx);
+/// compiler error. If \p B is not null then it will be used for
+/// backend-specific folding, e.g. fused activations.
+Error optimizeFunctionBeforeLowering(Function *F, CompilationContext &cctx,
+                                     Backend *B = nullptr);
 
 /// Perform a compile-time constant folding of the node \p N.
 /// \returns list of constants which are the result of the constant-folding.
