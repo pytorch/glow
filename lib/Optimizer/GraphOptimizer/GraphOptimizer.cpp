@@ -3345,7 +3345,8 @@ static void transformForPrecisionMode(const Backend &B, Function *F,
 }
 
 Error glow::optimizeFunctionBeforeLowering(Function *F,
-                                           CompilationContext &cctx) {
+                                           CompilationContext &cctx,
+                                           Backend *B) {
   LOG_SCOPE(F->getLogContext(), "glow::optimizeFunctionBeforeLowering")
 
   // If we only want to lower the Function, do nothing here.
@@ -3365,7 +3366,7 @@ Error glow::optimizeFunctionBeforeLowering(Function *F,
   // model converters, like converters from Tensorflow to ONNX). In this
   // situation, such folding can then enable more optimizations and also improve
   // the performance backends that support natively such high-level operators.
-  ::glow::fold(F, cctx);
+  ::glow::fold(F, cctx, B);
 
   // Optimize the graph. Only runs optimizations that are target-independent.
   ::glow::optimize(F, cctx);
@@ -3374,7 +3375,7 @@ Error glow::optimizeFunctionBeforeLowering(Function *F,
 
 // NOTE: When updating this function, please also update the documentation in
 // docs/GraphOptimizationPipeline.md
-Error glow::optimizeFunction(Function *F, const Backend &B,
+Error glow::optimizeFunction(Function *F, Backend &B,
                              CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), "glow::optimizeFunction")
 
@@ -3393,7 +3394,7 @@ Error glow::optimizeFunction(Function *F, const Backend &B,
     return Error::success();
   }
 
-  RETURN_IF_ERR(optimizeFunctionBeforeLowering(F, cctx));
+  RETURN_IF_ERR(optimizeFunctionBeforeLowering(F, cctx, &B));
   // Lower the graph into a sequence of low-level linear algebra operations.
   const PrecisionConfiguration &precConfig = cctx.precisionConfig;
   if (precConfig.quantMode == QuantizationMode::Profile) {
