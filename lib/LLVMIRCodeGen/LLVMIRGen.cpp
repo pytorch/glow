@@ -576,6 +576,8 @@ static std::string createName(const std::string &name, ElemKind elemTy) {
   switch (elemTy) {
   case ElemKind::FloatTy:
     return name + "_f";
+  case ElemKind::Float16Ty:
+    return name + "_fp16";
   case ElemKind::Int8QTy:
     return name + "_i8";
   case ElemKind::Int16QTy:
