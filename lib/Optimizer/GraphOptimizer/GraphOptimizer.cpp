@@ -3263,6 +3263,10 @@ static bool foldActivations(Function *F, CompilationContext &cctx,
       changed = true;
       continue;
     }
+    if (fuseActivation(dyn_cast<FullyConnectedNode>(&node), F, B)) {
+      changed = true;
+      continue;
+    }
   }
   return changed;
 }

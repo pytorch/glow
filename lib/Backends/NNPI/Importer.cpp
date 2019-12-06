@@ -28,14 +28,15 @@ using namespace glow;
 
 const std::string NNPIImporter::internalName_("_NNPI_");
 
-static std::string nodeValueName(const glow::NodeValue &nv) {
+static std::string nodeValueName(const glow::NodeValue &nv,
+                                 const std::string &suffix = "") {
+  const std::string baseName = nv.getNode()->getName().data() + suffix;
   if (nv.getNode()->getKind() == glow::Kinded::Kind::PlaceholderKind) {
-    return nv.getNode()->getName();
+    return baseName;
   } else if (nv.getNode()->getKind() == glow::Kinded::Kind::ConstantKind) {
-    return std::string(nv.getNode()->getName()) + std::string("__const");
+    return baseName + std::string("__const");
   }
-  return std::string(nv.getNode()->getName()) + std::string("__res_") +
-         std::to_string(nv.getResNo());
+  return baseName + std::string("__res_") + std::to_string(nv.getResNo());
 }
 
 std::string NNPIEnvVariables::getVarString(const std::string &varName) {
@@ -519,71 +520,6 @@ NNPINetwork glow::NNPIImporter::importFunction(Function *F,
 }
 
 // Node Importers ////////////////////////////////////////////////////////
-class ConvolutionNodeImporter : public INNPINodeImporter {
-public:
-  NNPIErrorCode importNode(Node *n, NNPIImporter &importer) override {
-    auto *glowConv = llvm::dyn_cast<ConvolutionNode>(n);
-    LOG_AND_RETURN_IF_NOT(ERROR, glowConv, "Bad node type", NNPI_INVALID_PARAM);
-
-    const uint32_t SPATIAL_DIMS2 = 2;
-    LOG_AND_RETURN_IF_NOT(ERROR, glowConv->getKernels().size() == SPATIAL_DIMS2,
-                          "[Conv] Invalid number of kernel sizes",
-                          NNPI_INVALID_PARAM);
-    LOG_AND_RETURN_IF_NOT(ERROR,
-                          glowConv->getPads().size() == 2 * SPATIAL_DIMS2,
-                          "[Conv] Invalid number of pads", NNPI_INVALID_PARAM);
-    LOG_AND_RETURN_IF_NOT(ERROR, glowConv->getStrides().size() == SPATIAL_DIMS2,
-                          "[Conv] Invalid number of strides",
-                          NNPI_INVALID_PARAM);
-
-    uint32_t kernel[SPATIAL_DIMS2] = {glowConv->getKernels()[0],
-                                      glowConv->getKernels()[1]};
-    uint32_t paddingStart[SPATIAL_DIMS2] = {glowConv->getPads()[0],
-                                            glowConv->getPads()[1]};
-    uint32_t paddingEnd[SPATIAL_DIMS2] = {glowConv->getPads()[2],
-                                          glowConv->getPads()[3]};
-    uint32_t stride[SPATIAL_DIMS2] = {glowConv->getStrides()[0],
-                                      glowConv->getStrides()[1]};
-    uint32_t dilation[SPATIAL_DIMS2] = {glowConv->getDilation(),
-                                        glowConv->getDilation()};
-
-    LOG_NNPI_ERROR_RETURN_VALUE(
-        importer.addTensor(nodeValueName(glowConv->getFilter()),
-                           /* alternativeLayout */ true),
-        "Failed to add tensor to NNPI");
-    LOG_NNPI_ERROR_RETURN_VALUE(
-        importer.addTensor(nodeValueName(glowConv->getBias())),
-        "Failed to add tensor to NNPI");
-
-    // Overwrite input/output values for layout.
-    LOG_NNPI_ERROR_RETURN_VALUE(
-        importer.addValue(nodeValueName(glowConv->getInput()),
-                          glowConv->getInput().getType(),
-                          /* alternativeLayout */ true),
-        "Failed to add tensor to NNPI");
-    LOG_NNPI_ERROR_RETURN_VALUE(
-        importer.addValue(nodeValueName(glowConv->getResult()),
-                          glowConv->getResult().getType(),
-                          /* alternativeLayout */ true),
-        "Failed to add tensor to NNPI");
-
-    importer.setUsedTensors({nodeValueName(glowConv->getInput()),
-                             nodeValueName(glowConv->getFilter()),
-                             nodeValueName(glowConv->getBias())},
-                            {nodeValueName(glowConv->getResult())});
-
-    return nnpiNetworkAddConvolutionOp(
-        importer.getNetwork(), glowConv->getName().begin(),
-        nodeValueName(glowConv->getInput()).c_str(),
-        nodeValueName(glowConv->getResult()).c_str(),
-        nodeValueName(glowConv->getFilter()).c_str(),
-        glowConv->getBias() ? nodeValueName(glowConv->getBias()).c_str()
-                            : nullptr,
-        kernel, paddingStart, paddingEnd, stride, dilation, SPATIAL_DIMS2,
-        glowConv->getGroup());
-  }
-};
-
 class TransposeNodeImporter : public INNPINodeImporter {
 public:
   NNPIErrorCode importNode(Node *n, NNPIImporter &importer) override {
@@ -660,43 +596,6 @@ public:
   }
 };
 
-class FullyConnectedNodeImporter : public INNPINodeImporter {
-public:
-  NNPIErrorCode importNode(Node *n, NNPIImporter &importer) override {
-    auto *glowFC = llvm::dyn_cast<FullyConnectedNode>(n);
-    LOG_AND_RETURN_IF_NOT(ERROR, glowFC, "Bad node type", NNPI_INVALID_PARAM);
-
-    LOG_NNPI_ERROR_RETURN_VALUE(
-        importer.addTensor(nodeValueName(glowFC->getWeights()),
-                           /* alternativeLayout */ true),
-        "Failed to add tensor to NNPI");
-
-    // Overwrite input/output values for layout.
-    const auto *input = glowFC->getInput().getNode();
-    LOG_NNPI_ERROR_RETURN_VALUE(
-        importer.addValue(input->getName(), input->getType(0),
-                          input->getType(0)->dims().size() == 4),
-        "Failed to add tensor to NNPI");
-    const auto *result = glowFC->getResult().getNode();
-    LOG_NNPI_ERROR_RETURN_VALUE(
-        importer.addValue(result->getName(), result->getType(0),
-                          result->getType(0)->dims().size() == 4),
-        "Failed to add tensor to NNPI");
-
-    importer.setUsedTensors({nodeValueName(glowFC->getInput()),
-                             nodeValueName(glowFC->getWeights()),
-                             nodeValueName(glowFC->getBias())},
-                            {nodeValueName(glowFC->getResult())});
-
-    return nnpiNetworkAddFullyConnectedOp(
-        importer.getNetwork(), glowFC->getName().begin(),
-        nodeValueName(glowFC->getInput()).c_str(),
-        nodeValueName(glowFC->getResult()).c_str(),
-        nodeValueName(glowFC->getWeights()).c_str(),
-        glowFC->getBias() ? nodeValueName(glowFC->getBias()).c_str() : nullptr);
-  }
-};
-
 class SoftMaxNodeImporter : public INNPINodeImporter {
 public:
   NNPIErrorCode importNode(Node *n, NNPIImporter &importer) override {
@@ -732,6 +631,12 @@ public:
 
 class ReluNodeImporter : public INNPINodeImporter {
 public:
+  static NNPIErrorCode addOp(NNPINetwork network, const NNPIObjectName opName,
+                             const NNPIObjectName inputTensor,
+                             const NNPIObjectName outputTensor) {
+    return nnpiNetworkAddReluOp(network, opName, inputTensor, outputTensor);
+  }
+
   NNPIErrorCode importNode(Node *n, NNPIImporter &importer) override {
     auto *glowRelu = llvm::dyn_cast<ReluNode>(n);
     LOG_AND_RETURN_IF_NOT(ERROR, glowRelu, "Bad node type", NNPI_INVALID_PARAM);
@@ -739,10 +644,9 @@ public:
     importer.setUsedTensors({nodeValueName(glowRelu->getInput())},
                             {nodeValueName(glowRelu->getResult())});
 
-    return nnpiNetworkAddReluOp(importer.getNetwork(),
-                                glowRelu->getName().begin(),
-                                nodeValueName(glowRelu->getInput()).c_str(),
-                                nodeValueName(glowRelu->getResult()).c_str());
+    return addOp(importer.getNetwork(), glowRelu->getName().begin(),
+                 nodeValueName(glowRelu->getInput()).c_str(),
+                 nodeValueName(glowRelu->getResult()).c_str());
   }
 };
 
@@ -906,6 +810,12 @@ public:
 
 class SigmoidNodeImporter : public INNPINodeImporter {
 public:
+  static NNPIErrorCode addOp(NNPINetwork network, const NNPIObjectName opName,
+                             const NNPIObjectName inputTensor,
+                             const NNPIObjectName outputTensor) {
+    return nnpiNetworkAddSigmoidOp(network, opName, inputTensor, outputTensor);
+  }
+
   NNPIErrorCode importNode(Node *n, NNPIImporter &importer) override {
     auto *glowSigmoid = llvm::dyn_cast<SigmoidNode>(n);
     LOG_AND_RETURN_IF_NOT(ERROR, glowSigmoid, "Bad node type",
@@ -914,15 +824,19 @@ public:
     importer.setUsedTensors({nodeValueName(glowSigmoid->getInput())},
                             {nodeValueName(glowSigmoid->getResult())});
 
-    return nnpiNetworkAddSigmoidOp(
-        importer.getNetwork(), glowSigmoid->getName().begin(),
-        nodeValueName(glowSigmoid->getInput()).c_str(),
-        nodeValueName(glowSigmoid->getResult()).c_str());
+    return addOp(importer.getNetwork(), glowSigmoid->getName().begin(),
+                 nodeValueName(glowSigmoid->getInput()).c_str(),
+                 nodeValueName(glowSigmoid->getResult()).c_str());
   }
 };
 
 class TanhNodeImporter : public INNPINodeImporter {
 public:
+  static NNPIErrorCode addOp(NNPINetwork network, const NNPIObjectName opName,
+                             const NNPIObjectName inputTensor,
+                             const NNPIObjectName outputTensor) {
+    return nnpiNetworkAddTanhOp(network, opName, inputTensor, outputTensor);
+  }
   NNPIErrorCode importNode(Node *n, NNPIImporter &importer) override {
     auto *glowTanh = llvm::dyn_cast<TanhNode>(n);
     LOG_AND_RETURN_IF_NOT(ERROR, glowTanh, "Bad node type", NNPI_INVALID_PARAM);
@@ -930,10 +844,9 @@ public:
     importer.setUsedTensors({nodeValueName(glowTanh->getInput())},
                             {nodeValueName(glowTanh->getResult())});
 
-    return nnpiNetworkAddTanhOp(importer.getNetwork(),
-                                glowTanh->getName().begin(),
-                                nodeValueName(glowTanh->getInput()).c_str(),
-                                nodeValueName(glowTanh->getResult()).c_str());
+    return addOp(importer.getNetwork(), glowTanh->getName().begin(),
+                 nodeValueName(glowTanh->getInput()).c_str(),
+                 nodeValueName(glowTanh->getResult()).c_str());
   }
 };
 
@@ -1625,6 +1538,149 @@ public:
                                 nodeValueName(glowClip->getInput()).c_str(),
                                 nodeValueName(glowClip->getResult()).c_str(),
                                 glowClip->getMin(), glowClip->getMax());
+  }
+};
+
+/// Helper that checks if a Node \p N has an activation fused to it and produces
+/// the activation as a separate op for importing into the NNPI stack. \returns
+/// the appropriate NNPIErrorCode.
+template <class T>
+static NNPIErrorCode
+addPotentiallyFusedActivationOp(T *N, NNPIErrorCode baseCode,
+                                const std::string &resultName,
+                                NNPIImporter &importer, Function *F) {
+#define CASE_FUSED_ACTIVATION(ACT_NAME_, NODE_NAME_)                           \
+  case FusedActivation::ACT_NAME_:                                             \
+    LOG_NNPI_ERROR_RETURN_VALUE(                                               \
+        baseCode, std::string("Issue with ") + N->getKindName() +              \
+                      " for fusion with " #NODE_NAME_);                        \
+    return NODE_NAME_##NodeImporter::addOp(                                    \
+        importer.getNetwork(),                                                 \
+        F->uniqueName(N->getName().str() + "_" #NODE_NAME_).begin(),           \
+        resultName.c_str(), nodeValueName(N->getResult()).c_str());
+
+  switch (N->getFusedActivation()) {
+    CASE_FUSED_ACTIVATION(RELU, Relu);
+    CASE_FUSED_ACTIVATION(SIGMOID, Sigmoid);
+    CASE_FUSED_ACTIVATION(TANH, Tanh);
+  case FusedActivation::NONE:
+    return baseCode;
+  }
+#undef CASE_FUSED_ACTIVATION
+}
+
+class FullyConnectedNodeImporter : public INNPINodeImporter {
+public:
+  NNPIErrorCode importNode(Node *n, NNPIImporter &importer) override {
+    auto *glowFC = llvm::dyn_cast<FullyConnectedNode>(n);
+    LOG_AND_RETURN_IF_NOT(ERROR, glowFC, "Bad node type", NNPI_INVALID_PARAM);
+
+    LOG_NNPI_ERROR_RETURN_VALUE(
+        importer.addTensor(nodeValueName(glowFC->getWeights()),
+                           /* alternativeLayout */ true),
+        "Failed to add tensor to NNPI");
+
+    // Overwrite input/output values for layout.
+    const auto *input = glowFC->getInput().getNode();
+    LOG_NNPI_ERROR_RETURN_VALUE(
+        importer.addValue(input->getName(), input->getType(0),
+                          input->getType(0)->dims().size() == 4),
+        "Failed to add tensor to NNPI");
+    const auto *result = glowFC->getResult().getNode();
+    LOG_NNPI_ERROR_RETURN_VALUE(
+        importer.addValue(result->getName(), result->getType(0),
+                          result->getType(0)->dims().size() == 4),
+        "Failed to add tensor to NNPI");
+
+    importer.setUsedTensors({nodeValueName(glowFC->getInput()),
+                             nodeValueName(glowFC->getWeights()),
+                             nodeValueName(glowFC->getBias())},
+                            {nodeValueName(glowFC->getResult())});
+
+    Function *F = glowFC->getParent();
+    std::string FCResultName = nodeValueName(
+        glowFC->getResult(), glowFC->hasFusedActivation() ? "_preFuse" : "");
+
+    NNPIErrorCode FCCode = nnpiNetworkAddFullyConnectedOp(
+        importer.getNetwork(), glowFC->getName().begin(),
+        nodeValueName(glowFC->getInput()).c_str(), FCResultName.c_str(),
+        nodeValueName(glowFC->getWeights()).c_str(),
+        glowFC->getBias() ? nodeValueName(glowFC->getBias()).c_str() : nullptr);
+
+    return addPotentiallyFusedActivationOp(glowFC, FCCode, FCResultName,
+                                           importer, F);
+  }
+};
+
+class ConvolutionNodeImporter : public INNPINodeImporter {
+public:
+  NNPIErrorCode importNode(Node *n, NNPIImporter &importer) override {
+    auto *glowConv = llvm::dyn_cast<ConvolutionNode>(n);
+    LOG_AND_RETURN_IF_NOT(ERROR, glowConv, "Bad node type", NNPI_INVALID_PARAM);
+
+    const uint32_t SPATIAL_DIMS2 = 2;
+    LOG_AND_RETURN_IF_NOT(ERROR, glowConv->getKernels().size() == SPATIAL_DIMS2,
+                          "[Conv] Invalid number of kernel sizes",
+                          NNPI_INVALID_PARAM);
+    LOG_AND_RETURN_IF_NOT(ERROR,
+                          glowConv->getPads().size() == 2 * SPATIAL_DIMS2,
+                          "[Conv] Invalid number of pads", NNPI_INVALID_PARAM);
+    LOG_AND_RETURN_IF_NOT(ERROR, glowConv->getStrides().size() == SPATIAL_DIMS2,
+                          "[Conv] Invalid number of strides",
+                          NNPI_INVALID_PARAM);
+
+    uint32_t kernel[SPATIAL_DIMS2] = {glowConv->getKernels()[0],
+                                      glowConv->getKernels()[1]};
+    uint32_t paddingStart[SPATIAL_DIMS2] = {glowConv->getPads()[0],
+                                            glowConv->getPads()[1]};
+    uint32_t paddingEnd[SPATIAL_DIMS2] = {glowConv->getPads()[2],
+                                          glowConv->getPads()[3]};
+    uint32_t stride[SPATIAL_DIMS2] = {glowConv->getStrides()[0],
+                                      glowConv->getStrides()[1]};
+    uint32_t dilation[SPATIAL_DIMS2] = {glowConv->getDilation(),
+                                        glowConv->getDilation()};
+
+    LOG_NNPI_ERROR_RETURN_VALUE(
+        importer.addTensor(nodeValueName(glowConv->getFilter()),
+                           /* alternativeLayout */ true),
+        "Failed to add tensor to NNPI");
+    LOG_NNPI_ERROR_RETURN_VALUE(
+        importer.addTensor(nodeValueName(glowConv->getBias())),
+        "Failed to add tensor to NNPI");
+
+    // Overwrite input/output values for layout.
+    LOG_NNPI_ERROR_RETURN_VALUE(
+        importer.addValue(nodeValueName(glowConv->getInput()),
+                          glowConv->getInput().getType(),
+                          /* alternativeLayout */ true),
+        "Failed to add tensor to NNPI");
+    LOG_NNPI_ERROR_RETURN_VALUE(
+        importer.addValue(nodeValueName(glowConv->getResult()),
+                          glowConv->getResult().getType(),
+                          /* alternativeLayout */ true),
+        "Failed to add tensor to NNPI");
+
+    importer.setUsedTensors({nodeValueName(glowConv->getInput()),
+                             nodeValueName(glowConv->getFilter()),
+                             nodeValueName(glowConv->getBias())},
+                            {nodeValueName(glowConv->getResult())});
+
+    Function *F = glowConv->getParent();
+    std::string convResultName =
+        nodeValueName(glowConv->getResult(),
+                      glowConv->hasFusedActivation() ? "_preFuse" : "");
+
+    NNPIErrorCode convCode = nnpiNetworkAddConvolutionOp(
+        importer.getNetwork(), glowConv->getName().begin(),
+        nodeValueName(glowConv->getInput()).c_str(), convResultName.c_str(),
+        nodeValueName(glowConv->getFilter()).c_str(),
+        glowConv->getBias() ? nodeValueName(glowConv->getBias()).c_str()
+                            : nullptr,
+        kernel, paddingStart, paddingEnd, stride, dilation, SPATIAL_DIMS2,
+        glowConv->getGroup());
+
+    return addPotentiallyFusedActivationOp(glowConv, convCode, convResultName,
+                                           importer, F);
   }
 };
 

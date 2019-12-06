@@ -857,7 +857,8 @@ FullyConnectedNode *Function::createFullyConnected(llvm::StringRef name,
   }
 
   TypeRef OT = getParent()->uniqueType(*outTy);
-  return addNode(new FullyConnectedNode(name, OT, input, W, B));
+  return addNode(
+      new FullyConnectedNode(name, OT, input, W, B, FusedActivation::NONE));
 }
 
 RowwiseQuantizedFullyConnectedNode *

@@ -376,3 +376,21 @@ bool NNPIBackend::transformPostLowering(Function *F,
 
   return changed;
 }
+
+bool NNPIBackend::supportsFusedActivation(Node *parent,
+                                          Node *activation) const {
+  switch (parent->getKind()) {
+  case Kinded::Kind::ConvolutionNodeKind:
+  case Kinded::Kind::FullyConnectedNodeKind:
+    switch (activation->getKind()) {
+    case Kinded::Kind::ReluNodeKind:
+    case Kinded::Kind::SigmoidNodeKind:
+    case Kinded::Kind::TanhNodeKind:
+      return true;
+    default:
+      return false;
+    }
+  default:
+    return false;
+  }
+}

@@ -51,6 +51,9 @@ public:
 
   bool transformPostLowering(Function *F,
                              CompilationContext &cctx) const override;
+
+  bool supportsFusedActivation(Node *parent, Node *activation) const override;
+
   /// @}
 
 private:

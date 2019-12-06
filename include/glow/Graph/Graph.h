@@ -345,10 +345,17 @@ public:
 
   const Module *getParent() const { return parent_; }
 
+  /// Calls into \ref Module::uniqueName() and \returns a unique name from
+  /// \p name based on the Module's used storage names and the unique node names
+  /// used by this Function.
+  llvm::StringRef uniqueName(llvm::StringRef name) {
+    return Module::uniqueName(name, parent_->usedStorageNames_,
+                              uniqueNodeNames_);
+  }
+
   /// Inserts the node \p N to the list of nodes, and returns the inserted node.
   template <class NodeTy> NodeTy *addNode(NodeTy *N) {
-    N->setName(Module::uniqueName(N->getName(), parent_->usedStorageNames_,
-                                  uniqueNodeNames_));
+    N->setName(uniqueName(N->getName()));
     parent_->registerNodeName(N->getName());
     nodes_.push_back(N);
 
@@ -362,8 +369,7 @@ public:
   /// to the current Function, and also unique its name.
   void takeOwnershipOfNode(Node *N) {
     N->getParent()->getNodes().remove(N);
-    N->setName(Module::uniqueName(N->getName(), parent_->usedStorageNames_,
-                                  uniqueNodeNames_));
+    N->setName(uniqueName(N->getName()));
     parent_->registerNodeName(N->getName());
     nodes_.push_back(N);
   }

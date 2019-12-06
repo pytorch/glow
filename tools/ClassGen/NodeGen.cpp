@@ -175,6 +175,7 @@ int main(int argc, char **argv) {
       .addInput("Input")
       .addInput("Weights")
       .addInput("Bias")
+      .addFusedActivation()
       .addResultFromCtorArg()
       .addGradient()
       .setDocstring("Creates a FullyConnected node where the Input tensor and "
