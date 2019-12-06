@@ -27,20 +27,28 @@
 using namespace glow;
 
 /*
- * This class implements an SLS benchmark. There are a number of
- * parallel FusedRowwiseQuantizedSparseLengthsWeightedSum nodes
- * which are created.
+ * This class implements an SLS microbenchmark. There are a number of
+ * parallel FusedRowwiseQuantizedSparseLengthsWeightedSum or
+ * FusedRowwiseQuantizedSparseLengthsSum nodes which are created.
+ *
+ * Microbenchmarks are generally useful for understanding performance
+ * through targeted experiementation and are not representative of
+ * end-to-end workloads.
  */
 class SLSBench : public Benchmark {
   /// Dimensions expressed in libjit's format.
   dim_t batchSize_;
   dim_t numIndicesPerBatch_;
+  dim_t numIndicesPerBatchPad_;
   dim_t numTableEntries_;
   dim_t numElementsPerRow_;
   std::unique_ptr<runtime::HostManager> hostManager_;
   std::vector<std::unique_ptr<ExecutionContext>> contexts_;
+  std::vector<std::vector<Tensor>> indicesReal_;
+  std::vector<std::vector<Tensor>> weightsReal_;
   size_t asyncLaunchSize_;
   size_t numSLSNodes_;
+  const char *weightedStr_;
   const char *backendStr_;
   ElemKind dtype_;
   ElemKind fusedDtype_;
@@ -48,15 +56,18 @@ class SLSBench : public Benchmark {
   const char *devId_;
 
 public:
-  SLSBench(dim_t batchSize_, dim_t numIndicesPerBatch_, dim_t numTableEntries_,
+  SLSBench(dim_t batchSize_, dim_t numIndicesPerBatch_,
+           dim_t numIndicesPerBatchPad_, dim_t numTableEntries_,
            dim_t numElementsPerRow_, size_t asyncLaunchSize_,
-           size_t numSLSNodes_, const char *backendStr_, const char *dtypeStr_,
+           size_t numSLSNodes_, const char *weightedStr_,
+           const char *backendStr_, const char *dtypeStr_,
            const char *devId_ = nullptr)
       : batchSize_(batchSize_), numIndicesPerBatch_(numIndicesPerBatch_),
+        numIndicesPerBatchPad_(numIndicesPerBatchPad_),
         numTableEntries_(numTableEntries_),
         numElementsPerRow_(numElementsPerRow_),
         asyncLaunchSize_(asyncLaunchSize_), numSLSNodes_(numSLSNodes_),
-        backendStr_(backendStr_), devId_(devId_) {
+        weightedStr_(weightedStr_), backendStr_(backendStr_), devId_(devId_) {
     elementSize_ = 2;
     if (std::string(dtypeStr_) == "Float16") {
       dtype_ = ElemKind::Float16Ty;
@@ -95,54 +106,80 @@ public:
     std::vector<Placeholder *> indices(numSLSNodes_);
     std::vector<Placeholder *> lengths(numSLSNodes_);
     std::vector<SaveNode *> S(numSLSNodes_);
+    indicesReal_.resize(asyncLaunchSize_);
+    weightsReal_.resize(asyncLaunchSize_);
+    for (dim_t i = 0; i < asyncLaunchSize_; i++) {
+      for (dim_t slsNodeId = 0; slsNodeId < numSLSNodes_; slsNodeId++) {
+        Tensor indicesReal(ElemKind::Int64ITy,
+                           {numIndicesPerBatch_ * batchSize_});
+        indicesReal.getHandle<int64_t>().randomize(0, numTableEntries_ - 1,
+                                                   mod->getPRNG());
+        indicesReal_[i].push_back(std::move(indicesReal));
 
-    for (size_t slsNodeId = 0; slsNodeId < numSLSNodes_; slsNodeId++) {
+        if (dtype_ == ElemKind::FloatTy) {
+          Tensor weightsReal(ElemKind::FloatTy,
+                             {numIndicesPerBatch_ * batchSize_});
+          weightsReal.getHandle<float>().clear(1.0f);
+          weightsReal_[i].push_back(std::move(weightsReal));
+        } else if (dtype_ == ElemKind::Float16Ty) {
+          Tensor weightsReal(ElemKind::Float16Ty,
+                             {numIndicesPerBatch_ * batchSize_});
+          weightsReal.getHandle<float16_t>().clear(1.0f);
+          weightsReal_[i].push_back(std::move(weightsReal));
+        }
+      }
+    }
+
+    // Create multiple SLS nodes
+    for (dim_t slsNodeId = 0; slsNodeId < numSLSNodes_; slsNodeId++) {
       Tensor data(ElemKind::FloatTy, {numTableEntries_, numElementsPerRow_});
       data.getHandle().clear(1.0f);
 
       weights[slsNodeId] =
-          mod->createPlaceholder(dtype_, {numIndicesPerBatch_ * batchSize_},
+          mod->createPlaceholder(dtype_, {numIndicesPerBatchPad_ * batchSize_},
                                  "weights_" + std::to_string(slsNodeId), false);
 
       indices[slsNodeId] = mod->createPlaceholder(
-          ElemKind::Int64ITy, {(dim_t)numIndicesPerBatch_ * batchSize_},
+          ElemKind::Int64ITy, {(dim_t)numIndicesPerBatchPad_ * batchSize_},
           "indices_" + std::to_string(slsNodeId),
           /* isTrainable */ false);
+
       lengths[slsNodeId] =
           mod->createPlaceholder(ElemKind::Int32ITy, {batchSize_}, "lengths",
                                  /* isTrainable */ false);
 
       // for each context, add input bindings
-      for (size_t i = 0; i < asyncLaunchSize_; i++) {
-        contexts_[i]
-            ->getPlaceholderBindings()
-            ->allocate(indices[slsNodeId])
-            ->getHandle<int64_t>()
-            .randomize(0, numTableEntries_ - 1, mod->getPRNG());
+      for (dim_t i = 0; i < asyncLaunchSize_; i++) {
+        Tensor indicesPartial(indicesReal_[i][slsNodeId].getUnsafePtr(),
+                              indices[slsNodeId]->getType(),
+                              indicesReal_[i][slsNodeId].getSizeInBytes());
+
+        contexts_[i]->getPlaceholderBindings()->insert(
+            indices[slsNodeId], std::move(indicesPartial));
+
         contexts_[i]
             ->getPlaceholderBindings()
             ->allocate(lengths[slsNodeId])
             ->getHandle<int32_t>()
             .clear(numIndicesPerBatch_);
 
-        if (dtype_ == ElemKind::FloatTy) {
-          contexts_[i]
-              ->getPlaceholderBindings()
-              ->allocate(weights[slsNodeId])
-              ->getHandle<float>()
-              .clear(1.0f);
-        } else if (dtype_ == ElemKind::Float16Ty) {
-          contexts_[i]
-              ->getPlaceholderBindings()
-              ->allocate(weights[slsNodeId])
-              ->getHandle<float16_t>()
-              .clear(1.0f);
-        }
+        Tensor weightsPartial(weightsReal_[i][slsNodeId].getUnsafePtr(),
+                              weights[slsNodeId]->getType(),
+                              weightsReal_[i][slsNodeId].getSizeInBytes());
+        contexts_[i]->getPlaceholderBindings()->insert(
+            weights[slsNodeId], std::move(weightsPartial));
       }
 
-      auto *R = fn->createFusedRowwiseQuantizedSparseLengthsWeightedSum(
-          "RQSLWS_" + std::to_string(slsNodeId), data, weights[slsNodeId],
-          indices[slsNodeId], lengths[slsNodeId], fusedDtype_, false);
+      Node *R;
+      if (std::string(weightedStr_) == "Unweighted") {
+        R = fn->createFusedRowwiseQuantizedSparseLengthsSum(
+            "RQSLWS_" + std::to_string(slsNodeId), data, indices[slsNodeId],
+            lengths[slsNodeId], fusedDtype_, false);
+      } else {
+        R = fn->createFusedRowwiseQuantizedSparseLengthsWeightedSum(
+            "RQSLWS_" + std::to_string(slsNodeId), data, weights[slsNodeId],
+            indices[slsNodeId], lengths[slsNodeId], fusedDtype_, false);
+      }
 
       S[slsNodeId] = fn->createSave("save_" + std::to_string(slsNodeId), R);
 
@@ -163,7 +200,7 @@ public:
     std::vector<std::promise<void>> promises(asyncLaunchSize_);
     std::vector<std::future<void>> futures;
 
-    // Launch a number of parallel requests
+    // Launch a number of independent requests
     int i = 0;
     for (auto &promise : promises) {
       futures.push_back(promise.get_future());
@@ -201,8 +238,11 @@ public:
         1e9;
 
     // + weights
-    input_gbytes +=
-        (numSLSNodes_ * batchSize_ * numIndicesPerBatch_ * elementSize_) / 1e9;
+    if (std::string(weightedStr_) != "Unweighted") {
+      input_gbytes +=
+          (numSLSNodes_ * batchSize_ * numIndicesPerBatch_ * elementSize_) /
+          1e9;
+    }
 
     // + lengths
     input_gbytes += (numSLSNodes_ * batchSize_ * sizeof(int32_t)) / 1e9;
@@ -215,32 +255,51 @@ public:
 };
 
 int main(int argc, char *argv[]) {
-  assert(argc == 10 || argc == 11);
+
+  printf("SLS Microbenchmark\n");
+  printf("Usage: SLSBench batchSize(Int) numIndicesPerBatch(Int) "
+         "numIndicesPerBatchPad(Int) numTableEntries(Int) "
+         "numElementsPerRow(int) numReps(Int) "
+         "numAsyncLaunches(Int) numSLSNodes(Int) "
+         "weightedStr(\"Weighted\"|\"Unweighted\") backendStr(String) "
+         "dtypeStr(\"Float16\"|\"Float32\") dev_id(Int)\n");
+  printf("\n");
+
+  assert(argc == 12 || argc == 13);
   size_t batchSize = atoi(argv[1]);
   size_t numIndicesPerBatch = atoi(argv[2]);
-  size_t numTableEntries = atoi(argv[3]);
-  size_t numElementsPerRow = atoi(argv[4]);
-  size_t numReps = atoi(argv[5]);
-  size_t numAsyncLaunches = atoi(argv[6]);
-  size_t numSLSNodes = atoi(argv[7]);
-  const char *backendStr = argv[8];
-  const char *dtypeStr = argv[9];
+  size_t numIndicesPerBatchPad = atoi(argv[3]);
+  size_t numTableEntries = atoi(argv[4]);
+  size_t numElementsPerRow = atoi(argv[5]);
+  size_t numReps = atoi(argv[6]);
+  size_t numAsyncLaunches = atoi(argv[7]);
+  size_t numSLSNodes = atoi(argv[8]);
+  const char *weightedStr = argv[9];
+  const char *backendStr = argv[10];
+  const char *dtypeStr = argv[11];
   char *dev_id = nullptr;
 
-  if (argc > 10) {
-    dev_id = argv[10];
+  if (argc > 12) {
+    dev_id = argv[12];
     printf("Setting backend device: \"%s\"\n", dev_id);
   }
   assert(numReps > 0);
 
-  SLSBench b(batchSize, numIndicesPerBatch, numTableEntries, numElementsPerRow,
-             numAsyncLaunches, numSLSNodes, backendStr, dtypeStr, dev_id);
+  SLSBench b(batchSize, numIndicesPerBatch, numIndicesPerBatchPad,
+             numTableEntries, numElementsPerRow, numAsyncLaunches, numSLSNodes,
+             weightedStr, backendStr, dtypeStr, dev_id);
   auto times = bench(&b, numReps);
+  printf("_,benchName,_,batchSize,numIndicesPerBatch,numIndicesPerBatchPad,"
+         "numTableEntries,"
+         "numElementsPerRow,numReps,numAsyncLaunches,numSLSNodes,weightedStr,"
+         "backendStr,dtypeStr,runtime,gbytesPerSec\n");
   for (auto t : times) {
-    printf("BenchResult,SLSBench,SW,%zu,%zu,%zu,%zu,%zu,%zu,%zu,%s,%s,%f,%f\n",
-           batchSize, numIndicesPerBatch, numTableEntries, numElementsPerRow,
-           numReps, numAsyncLaunches, numSLSNodes, backendStr, dtypeStr,
-           t / numAsyncLaunches, b.gbytes() * numAsyncLaunches / t);
+    printf("BenchResult,SLSBench,SW,%zu,%zu,%zu,%zu,%zu,%zu,%zu,%zu,%s,%s,%s,%"
+           "f,%f\n",
+           batchSize, numIndicesPerBatch, numIndicesPerBatchPad,
+           numTableEntries, numElementsPerRow, numReps, numAsyncLaunches,
+           numSLSNodes, weightedStr, backendStr, dtypeStr, t / numAsyncLaunches,
+           b.gbytes() * numAsyncLaunches / t);
   }
   double min = *(std::min_element(times.begin(), times.end()));
   size_t midElt = times.size() / 2;
@@ -248,10 +307,16 @@ int main(int argc, char *argv[]) {
   double median = times[midElt];
   double median_runtime = median / ((double)numAsyncLaunches);
   double min_runtime = min / ((double)numAsyncLaunches);
-  printf("BenchSummary,SLSBench,SW,%zu,%zu,%zu,%zu,%zu,%zu,%zu,%s,%s,%f,%f,%f,%"
+  printf("_,benchName,_,batchSize,numIndicesPerBatch,numIndicesPerBatchPad,"
+         "numTableEntries,"
+         "numElementsPerRow,numReps,numAsyncLaunches,numSLSNodes,weightedStr,"
+         "backendStr,dtypeStr,medianRuntime,minRuntime,medianGbytesPerSec,"
+         "maxGbytesPerSec\n");
+  printf("BenchSummary,SLSBench,SW,%zu,%zu,%zu,%zu,%zu,%zu,%zu,%zu,%s,%s,%s,%f,"
+         "%f,%f,%"
          "f\n",
-         batchSize, numIndicesPerBatch, numTableEntries, numElementsPerRow,
-         numReps, numAsyncLaunches, numSLSNodes, backendStr, dtypeStr,
-         median_runtime, min_runtime, b.gbytes() / median_runtime,
-         b.gbytes() / min_runtime);
+         batchSize, numIndicesPerBatch, numIndicesPerBatchPad, numTableEntries,
+         numElementsPerRow, numReps, numAsyncLaunches, numSLSNodes, weightedStr,
+         backendStr, dtypeStr, median_runtime, min_runtime,
+         b.gbytes() / median_runtime, b.gbytes() / min_runtime);
 }

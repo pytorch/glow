@@ -650,7 +650,7 @@ void OpenCLDeviceManager::translateTraceEvents(
         // Convert into usec and move into steady_clock domain.
         auto timestamp = (timeEnd / 1000) + tsOffset;
 
-        handle.at({ev->startIndex, 0}) = timestamp;
+        handle.at({(dim_t)ev->startIndex, 0}) = timestamp;
         traceEvents.push_back({ev->name,
                                TraceLevel::DEBUG,
                                timestamp,

@@ -202,25 +202,30 @@ TEST_F(GraphOptz, optimizeBatchNormAfterConvMultiple) {
   // Conv's Filter and Bias, plus BN's Scale, Bias, Mean, and Var.
   EXPECT_EQ(mod_.getConstants().size(), 6);
 
-  ::glow::optimize(F_, CompilationMode::Infer);
+  optimizedF_ = optimizeFunction(F_);
 
   // BatchNorm should have been merged into the Conv.
-  EXPECT_EQ(F_->getNodes().size(), 4);
+  EXPECT_EQ(optimizedF_->getNodes().size(), 4);
 
   // Filter and Bias should have been duplicated so that the Conv-BN
   // optimization does not modify the filter/bias being saved, equaling 4
   // Constants. Additionally, the BN's Scale, Bias, Mean, and Var should be
   // eliminated due to the opti.
-  EXPECT_EQ(mod_.getConstants().size(), 4);
+  EXPECT_EQ(mod_.getConstants().size(), 8);
 
-  ASSERT_EQ(A->getNumUsers(), 1);
-  Node *newCV = A->getUsers().begin()->getUser();
+  ASSERT_EQ(A->getNumUsers(), 2);
+  Node *newCV = A->getUsers().back().getUser();
   EXPECT_TRUE(llvm::isa<ConvolutionNode>(newCV));
   ASSERT_EQ(newCV->getNumUsers(), 1);
   Node *save = newCV->getUsers().begin()->getUser();
   EXPECT_TRUE(llvm::isa<SaveNode>(save));
 
-  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::BatchNormalizationNodeKind), 0);
+  EXPECT_EQ(
+      countNodeKind(optimizedF_, Kinded::Kind::BatchNormalizationNodeKind), 0);
+
+  bindings_.allocate(mod_.getPlaceholders());
+  bindings_.get(A)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
+  checkNumericalEquivalence();
 }
 
 TEST_F(GraphOptz, optimizeBatchNormAfterConvFP16) {
@@ -2179,7 +2184,8 @@ TEST_F(GraphFold, foldLeakyReluFromSplat) {
 
   EXPECT_EQ(4, F_->getNodes().size());
 
-  ::glow::fold(F_, CompilationMode::Infer);
+  CompilationContext cctx;
+  ::glow::fold(F_, cctx);
 
   // Check the resulting graph after folding.
   EXPECT_EQ(3, F_->getNodes().size());
@@ -2209,7 +2215,8 @@ TEST_F(GraphFold, foldLeakyReluFromConst) {
 
   EXPECT_EQ(6, F_->getNodes().size());
 
-  ::glow::fold(F_, CompilationMode::Infer);
+  CompilationContext cctx;
+  ::glow::fold(F_, cctx);
 
   // Check the resulting graph after folding. Reshape must have been merged into
   // the constant and LeakyRelu must have been folded.
@@ -2236,7 +2243,8 @@ TEST_F(GraphFold, foldChannelShuffle) {
   EXPECT_EQ(F_->getNodes().size(), 4);
 
   // Fold RN->TR->RN into ChannelShuffle
-  ::glow::fold(F_, CompilationMode::Infer);
+  CompilationContext cctx;
+  ::glow::fold(F_, cctx);
 
   ASSERT_EQ(F_->getNodes().size(), 2);
 
@@ -2262,11 +2270,57 @@ TEST_F(GraphFold, NoFoldChannelShuffle) {
 
   EXPECT_EQ(F_->getNodes().size(), 4);
 
-  ::glow::fold(F_, CompilationMode::Infer);
+  CompilationContext cctx;
+  ::glow::fold(F_, cctx);
 
   EXPECT_EQ(F_->getNodes().size(), 4);
   EXPECT_FALSE(llvm::isa<ChannelShuffleNode>(save->getInput()));
 }
+
+class MockBackendWithFusion : public MockBackend {
+  bool supportsFusedActivation(Node *parent, Node *activation) const override {
+    switch (parent->getKind()) {
+    case Kinded::Kind::ConvolutionNodeKind:
+      switch (activation->getKind()) {
+      case Kinded::Kind::ReluNodeKind:
+      case Kinded::Kind::SigmoidNodeKind:
+      case Kinded::Kind::TanhNodeKind:
+        return true;
+      default:
+        return false;
+      }
+    default:
+      return false;
+    }
+  }
+};
+
+#define CONV_ACTIVATION_TEST(ACTIVATION_, CREATOR_)                            \
+  TEST_F(GraphFold, FoldConv##ACTIVATION_##Activation) {                       \
+    auto *A =                                                                  \
+        mod_.createPlaceholder(ElemKind::FloatTy, {1, 10, 20, 3}, "A", false); \
+    ConvolutionNode *CV =                                                      \
+        F_->createConv(bindings_, "conv", A, 16, 5, 1, 2, 1);                  \
+    auto *AN = F_->CREATOR_(#ACTIVATION_, CV);                                 \
+    SaveNode *SN = F_->createSave("ret", AN);                                  \
+                                                                               \
+    EXPECT_EQ(F_->getNodes().size(), 3);                                       \
+                                                                               \
+    CompilationContext cctx;                                                   \
+    auto B = MockBackendWithFusion();                                          \
+    ::glow::fold(F_, cctx, &B);                                                \
+                                                                               \
+    ConvolutionNode *fusedCV =                                                 \
+        llvm::dyn_cast<ConvolutionNode>(SN->getInput());                       \
+    ASSERT_TRUE(fusedCV);                                                      \
+    EXPECT_EQ(fusedCV->getFusedActivation(), FusedActivation::ACTIVATION_);    \
+  }
+
+CONV_ACTIVATION_TEST(RELU, createRELU);
+CONV_ACTIVATION_TEST(SIGMOID, createSigmoid);
+CONV_ACTIVATION_TEST(TANH, createTanh);
+
+#undef CONV_ACTIVATION_TEST
 
 /// This test ensures that if there is a RescaleNode whose input has multiple
 /// users that the input is not cloned, as this duplicates the node.

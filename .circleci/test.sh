@@ -79,6 +79,9 @@ case ${CIRCLE_JOB} in
     SHARED)
         # No tests with shared libs; it's similar to DEBUG.
         ;;
+    32B_DIM_T)
+        # No tests with 32b dim_t; it's similar to DEBUG.
+        ;;
     RELEASE_WITH_EXPENSIVE_TESTS)
         run_unit_tests check_expensive
         run_and_check_lenet_mnist_bundle

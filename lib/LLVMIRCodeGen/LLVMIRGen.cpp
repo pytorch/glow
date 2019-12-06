@@ -2693,7 +2693,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *inputVal = emitValueAddress(builder, input);
     auto *outptVal = emitValueAddress(builder, output);
     auto *dimsVal = emitValueDims(builder, output);
-    auto *dimSizeVal = emitConstSizeT(builder, output->dims().size());
+    auto *dimSizeVal = emitConstDimT(builder, output->dims().size());
 
     auto *F = getFunction("convertTo",
                           {output->getElementType(), input->getElementType()});

@@ -668,7 +668,7 @@ protected:
     auto *reshapeDot = F->createReshape(
         "reshapeDot", dot,
         {bottomMLP.dims()[0],
-         (dim_t)embeddings.size() * embeddings.size()}); // {MB, n^2}
+         (dim_t)(embeddings.size() * embeddings.size())}); // {MB, n^2}
     NodeValue interact = F->createConcat("interact", {reshapeDot, bottomMLP},
                                          1); // {MB, n^2 + embDim}
 

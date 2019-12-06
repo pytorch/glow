@@ -179,11 +179,13 @@ void InferenceThreadEnv::execute(RunIdentifierTy runId,
           bufferSize /= 2;
           fullBufferSize /= 2;
         }
-        std::memcpy(pHostInput, rawInputs_[i], bufferSize);
         NNPICopyCommandConfig *copyConfig = nullptr;
         if (bufferSize != fullBufferSize && partialTensorInputs.count(t)) {
           copyConfig = &inputCopyCmdConfigs_[i];
           copyConfig->size = bufferSize;
+          std::memcpy(pHostInput, rawInputs_[i], bufferSize);
+        } else {
+          std::memcpy(pHostInput, rawInputs_[i], fullBufferSize);
         }
         // Unlock host resource.
         LOG_AND_CALLBACK_NNPI_INF_ERROR(

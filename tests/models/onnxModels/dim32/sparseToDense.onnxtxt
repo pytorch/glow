@@ -1,0 +1,85 @@
+ir_version: 3
+producer_name: "backend-test"
+graph {
+  node {
+    input: "indices"
+    input: "values"
+    input: "dataToInferDim"
+    output: "y"
+    op_type: "SparseToDense"
+  }
+  name: "test_SparseToDense"
+  input {
+    name: "indices"
+    type {
+      tensor_type {
+        elem_type: 6
+        shape {
+          dim {
+            dim_value: 5
+          }
+        }
+      }
+    }
+  }
+  input {
+    name: "values"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 5
+          }
+          dim {
+            dim_value: 10
+          }
+          dim {
+            dim_value: 5
+          }
+        }
+      }
+    }
+  }
+  input {
+    name: "dataToInferDim"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 20 
+          }
+          dim {
+            dim_value: 10
+          }
+          dim {
+            dim_value: 5
+          }
+        }
+      }
+    }
+  }
+  output {
+    name: "y"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 20 
+          }
+          dim {
+            dim_value: 10
+          }
+          dim {
+            dim_value: 5
+          }
+        }
+      }
+    }
+  }
+}
+opset_import {
+  version: 9
+}

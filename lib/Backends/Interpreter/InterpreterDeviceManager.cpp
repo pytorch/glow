@@ -93,6 +93,15 @@ void InterpreterDeviceManager::addNetworkImpl(const Module *module,
 
     allFunctionsMemoryBytes +=
         func.second->getRuntimeBundle().getConstantWeightSize();
+
+    // Add function name to map for static placeholders.
+    InterpreterFunction *function =
+        static_cast<InterpreterFunction *>(func.second);
+    for (auto PH : function->getIR()->getGraph()->findPlaceholders()) {
+      if (PH->isStatic()) {
+        staticPlaceholderToFunctions_[PH].push_back(func.first);
+      }
+    }
   }
 
   if (usedMemoryBytes_ + allFunctionsMemoryBytes > maxMemoryBytes_) {
@@ -117,6 +126,23 @@ void InterpreterDeviceManager::addNetworkImpl(const Module *module,
   exportMemoryCounters();
   // Fire the ready CB.
   readyCB(module, Error::success());
+}
+
+void InterpreterDeviceManager::transferStaticPlaceholderToDevice(
+    Placeholder *PH, Tensor *T, std::function<void(Error)> resultCB) {
+  auto it = staticPlaceholderToFunctions_.find(PH);
+  if (it == staticPlaceholderToFunctions_.end()) {
+    resultCB(MAKE_ERR(
+        ErrorValue::ErrorCode::RUNTIME_ERROR,
+        llvm::formatv("Unable to transfer PH: {0}", PH->getName()).str()));
+    return;
+  }
+  for (auto functionName : it->second) {
+    InterpreterFunction *func =
+        static_cast<InterpreterFunction *>(functions_[functionName]);
+    func->addConstant(PH->getName(), T);
+  }
+  resultCB(Error::success());
 }
 
 void InterpreterDeviceManager::evictNetworkImpl(std::string functionName,

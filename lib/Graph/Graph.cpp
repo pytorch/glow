@@ -1827,8 +1827,8 @@ static Constant *quantizeDataForFusedRowwiseQuantizedSparseLengthsWeightedSum(
   }
   case ElemKind::UInt8FusedFP16QTy: {
     Constant *rwqData = F->getParent()->createConstant(
-        precision, {fDims.first, fDims.second + 2 * sizeof(float16_t)}, 0.0, 0,
-        "data");
+        precision, {fDims.first, fDims.second + 2 * (dim_t)sizeof(float16_t)},
+        0.0, 0, "data");
     quantization::tensorFusedRowwiseQuantization<float16_t>(
         fData, rwqData->getPayloadMutable());
     return rwqData;
@@ -1837,7 +1837,7 @@ static Constant *quantizeDataForFusedRowwiseQuantizedSparseLengthsWeightedSum(
     // We pack 4-bit values into bytes, so given the input size in float we
     // divide by two and take the ceiling to make sure we have enough space for
     // all elements.
-    const size_t outerDim =
+    const dim_t outerDim =
         std::ceil(((float)fDims.second) / 2) + 2 * sizeof(float16_t);
     Constant *rwqData = F->getParent()->createConstant(
         precision, {fDims.first, outerDim}, 0.0, 0, "data");
@@ -3418,12 +3418,12 @@ void Function::createOnnxLSTM(llvm::StringRef namePrefix, NodeValue X,
   const std::string &opName = namePrefix.str();
 
   // Get all size parameters.
-  size_t numDirections = (direction == RnnDirection::Bidirectional) ? 2 : 1;
+  dim_t numDirections = (direction == RnnDirection::Bidirectional) ? 2 : 1;
   assert(X.dims().size() == 3 &&
          "ONNX LSTM input 'X' should have 3 dimensions!");
-  size_t seqLength = X.dims()[0];
-  size_t batchSize = X.dims()[1];
-  size_t inputSize = X.dims()[2];
+  dim_t seqLength = X.dims()[0];
+  dim_t batchSize = X.dims()[1];
+  dim_t inputSize = X.dims()[2];
 
   // Validate W size.
   assert(W.dims().size() == 3 &&
@@ -3479,7 +3479,7 @@ void Function::createOnnxLSTM(llvm::StringRef namePrefix, NodeValue X,
 
   // Create X slices.
   std::vector<Node *> Xslices;
-  for (size_t t = 0; t < seqLength; t++) {
+  for (dim_t t = 0; t < seqLength; t++) {
     auto XsliceName = opName + ".X" + std::to_string(t) + ".slice";
     Node *Xt = createSlice(XsliceName, X, LSTM_X_SLICE_RANGE(t));
     auto XreshapeName = opName + ".X" + std::to_string(t) + ".reshape";
@@ -3495,7 +3495,7 @@ void Function::createOnnxLSTM(llvm::StringRef namePrefix, NodeValue X,
     std::string prefix = opName + ((numDirections > 1) ? dirLabel : "");
 
     // Slice index used for creating weights slices.
-    size_t sliceIdx0 = 0;
+    dim_t sliceIdx0 = 0;
     if (direction == RnnDirection::Bidirectional) {
       sliceIdx0 = forward ? 0 : 1;
     }

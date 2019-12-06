@@ -161,8 +161,7 @@ public:
         (float)(1.0 / std::sqrt(((double)hiddenSize_) / ((double)numHeads_)));
 
     // Softmax expected output. Not needed for inference
-    Tensor expected_Tensor(ElemKind::Int64ITy,
-                           {maxSequenceLength_ * batchSize_, 1});
+    Tensor expected_Tensor(IndexElemKind, {maxSequenceLength_ * batchSize_, 1});
     Constant *expected = mod->createConstant("expected", expected_Tensor);
 
     // Weights/bias constants for FC1
@@ -192,7 +191,7 @@ public:
     // rowSizePerCore is the number of tokens assigned to each
     // core (each data-parallel chunk)
     auto rowSizePerCore = batchSizePerCore;
-    for (size_t i = 0; i < batchSizePerCore.size(); i++) {
+    for (dim_t i = 0; i < batchSizePerCore.size(); i++) {
       rowSizePerCore[i] = batchSizePerCore[i] * maxSequenceLength_;
     }
 
