@@ -132,6 +132,14 @@ glow::ElemKind scalarTypeToElemKind(c10::ScalarType ty) {
     return ElemKind::Int64ITy;
   } else if (ty == at::kBool) {
     return ElemKind::BoolTy;
+  } else if (ty == at::kByte) {
+    // We should have an 8-byte non-quantized integer type eventually
+    // Currently usage of Bool is fine
+    return ElemKind::BoolTy;
+  } else if (ty == at::kQInt8) {
+    return ElemKind::Int8QTy;
+  } else if (ty == at::kQUInt8) {
+    return ElemKind::UInt8QTy;
   } else {
     LOG(DFATAL) << "ScalarType " << static_cast<int>(ty)
                 << " not supported yet.";
@@ -177,6 +185,20 @@ glow::Type ptTypeToGlowType(const c10::TensorType &ptType) {
   return glow::Type(scalarTypeToElemKind(scalarType), dims);
 }
 
+glow::Type ptTypeToGlowType(const c10::TensorType &ptType, float scale,
+                            int32_t zero_point) {
+  DCHECK(ptType.scalarType().has_value())
+      << "TensorType has no associated scalar type.";
+  const auto concreteSizes = ptType.sizes().concrete_sizes().value();
+  std::vector<glow::dim_t> dims;
+  for (const auto &size : concreteSizes) {
+    dims.push_back(static_cast<glow::dim_t>(size));
+  }
+
+  auto scalarType = ptType.scalarType().value();
+  return glow::Type(scalarTypeToElemKind(scalarType), dims, scale, zero_point);
+}
+
 at::Tensor glowTypeToEmptyPTTensor(const glow::Type &glowType) {
   std::vector<int64_t> sizes;
   for (const auto dim : glowType.dims()) {
@@ -188,7 +210,41 @@ at::Tensor glowTypeToEmptyPTTensor(const glow::Type &glowType) {
 }
 
 glow::Tensor ptTensorToGlowTensor(const at::Tensor &ptTensor) {
-  auto glowType = ptTypeToGlowType(*c10::TensorType::create(ptTensor));
-  return glow::Tensor(ptTensor.data_ptr(), &glowType);
+  if (ptTensor.is_quantized()) {
+    float scale = 1.0;
+    int32_t offset = 0;
+    if (ptTensor.qscheme() == at::kPerChannelAffine) {
+      // If it is channel wise quantized, which means
+      // this tensor is the weight of quantized linear or conv
+      // Then we dont deal with the qparams here,
+      // and only set up soome dummy scale & offset by using the first
+      // elements's scale & offset.
+      scale = ptTensor.q_per_channel_scales()[0].item<float>();
+      offset = ptTensor.q_per_channel_zero_points()[0].item<int32_t>();
+    } else if (ptTensor.qscheme() == at::kPerTensorAffine) {
+      scale = static_cast<float>(ptTensor.q_scale());
+      offset = static_cast<int32_t>(ptTensor.q_zero_point());
+    } else {
+      LOG(DFATAL)
+          << "PyTorch tensor with unsupported quantization scheme detected.";
+    }
+    auto glowType =
+        ptTypeToGlowType(*c10::TensorType::create(ptTensor), scale, offset);
+    return glow::Tensor(ptTensor.data_ptr(), &glowType);
+  } else {
+    auto glowType = ptTypeToGlowType(*c10::TensorType::create(ptTensor));
+    return glow::Tensor(ptTensor.data_ptr(), &glowType);
+  }
 }
+
+at::Tensor glowTensorToPTTensor(const glow::Tensor &glowTensor,
+                                const at::ScalarType &torch_type) {
+  std::vector<int64_t> sizes;
+  for (const auto dim : glowTensor.dims()) {
+    sizes.push_back(dim);
+  }
+  return at::from_blob(glowTensor.getUnsafePtr(), sizes,
+                       at::device(at::kCPU).dtype(torch_type));
+}
+
 } // namespace glow
