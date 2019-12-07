@@ -2,15 +2,17 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 
 import torch
 from tests.utils import jitVsGlow
+import unittest
 
 
-def test_pow_basic():
-    """Test of the PyTorch pow Node on Glow."""
+class TestPow(unittest.TestCase):
+    def test_pow_basic(self):
+        """Test of the PyTorch pow Node on Glow."""
 
-    def pow_basic(a):
-        b = torch.pow(a, 2.3)
-        return torch.pow(b, 3.4)
+        def pow_basic(a):
+            b = torch.pow(a, 2.3)
+            return torch.pow(b, 3.4)
 
-    x = torch.rand(4) + 5
+        x = torch.rand(4) + 5
 
-    jitVsGlow(pow_basic, x, expected_fused_ops={"aten::pow"})
+        jitVsGlow(pow_basic, x, expected_fused_ops={"aten::pow"})
