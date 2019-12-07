@@ -120,7 +120,7 @@ using FloatIndexPair = std::pair<float, size_t>;
 /// (topKCount) [float, index] pairs, i.e. the pairs with the highest floats.
 template <typename ElemTy>
 static std::vector<FloatIndexPair> getTopKPairs(Handle<ElemTy> H,
-                                                size_t topKCount) {
+                                                dim_t topKCount) {
   DCHECK_LE(topKCount, H.size()) << "Function requires k < number of labels.";
   DCHECK_EQ(H.dims().size(), 1) << "H must be a Handle of a 1d Tensor.";
 
@@ -131,7 +131,7 @@ static std::vector<FloatIndexPair> getTopKPairs(Handle<ElemTy> H,
       topKQueue;
 
   // Loop over all the probabilites, finding the highest k probability pairs.
-  for (size_t i = 0, e = H.size(); i < e; i++) {
+  for (dim_t i = 0, e = H.size(); i < e; i++) {
     float currProbability = H.at({i});
     if (topKQueue.size() < topKCount) {
       // Always push the first k elements.
