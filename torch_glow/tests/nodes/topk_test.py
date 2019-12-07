@@ -3,15 +3,17 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 import torch
 
 from tests.utils import jitVsGlow
+import unittest
 
 
-def test_topk_basic():
-    """Test of the PyTorch TopK Node on Glow."""
+class TestTopk(unittest.TestCase):
+    def test_topk_basic(self):
+        """Test of the PyTorch TopK Node on Glow."""
 
-    def test_topk(x):
-        x+x
-        return torch.topk(x, 3)
+        def test_topk(x):
+            x + x
+            return torch.topk(x, 3)
 
-    x = torch.arange(1., 6.)
+        x = torch.arange(1.0, 6.0)
 
-    jitVsGlow(test_topk, x, expected_fused_ops={"aten::topk"})
+        jitVsGlow(test_topk, x, expected_fused_ops={"aten::topk"})
