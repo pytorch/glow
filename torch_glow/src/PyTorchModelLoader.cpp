@@ -2645,7 +2645,8 @@ Error PyTorchModelLoader::loadMean(const torch::jit::Node *ptNode) {
     }
   }
 
-  if (hasGlowIValueForValue(inputs[MeanInputs::keepdims])) {
+  if (inputs.size() > 2 &&
+      hasGlowIValueForValue(inputs[MeanInputs::keepdims])) {
     bool keepdims;
     ASSIGN_VALUE_OR_RETURN_ERR(keepdims, iValToBool(getGlowIValueForValue(
                                              inputs[MeanInputs::keepdims])));
