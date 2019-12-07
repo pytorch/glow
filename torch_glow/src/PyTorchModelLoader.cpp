@@ -1455,6 +1455,9 @@ Error PyTorchModelLoader::loadQuantizedLinear(const torch::jit::Node *ptNode) {
   const c10::optional<at::Tensor> ptBiasTensor =
       unpackedParams[1].toOptional<at::Tensor>();
 
+  bool isRowwiseQuantized = ptWeightTensor.is_quantized() &&
+                            ptWeightTensor.qscheme() == at::kPerChannelAffine;
+
   // unpacked weights
   auto weightTensor = ptTensorToGlowTensor(ptWeightTensor);
   glow::Constant *weightConstant = F_.getParent()->createConstant(
@@ -1507,11 +1510,49 @@ Error PyTorchModelLoader::loadQuantizedLinear(const torch::jit::Node *ptNode) {
   auto outTy = F_.getParent()->uniqueType(ElemKind::Int8QTy,
                                           {input.dims()[0], weight.dims()[1]},
                                           outScale, outZeroPoint - OFFSETSHIFT);
+  if (isRowwiseQuantized) {
+    // extract qparams from ptWeightTensor.
+    // Notice since the memory of qparams may not be continous
+    // we CANNOT use the data ptr of this chunk of memory and
+    // convert them into glow tensor directly by using PtTensorToGlowTensor.
+    // Instead, we extract them one after one.
+    std::vector<float> scalesVector;
+    std::vector<int32_t> offsetsVector;
+    std::vector<glow::dim_t> dims;
+    const int n = ptWeightTensor.q_per_channel_scales().size(0);
+    dims.push_back(n);
+    for (int i = 0; i < n; i++) {
+      float scale =
+          ptWeightTensor.q_per_channel_scales().to(at::kFloat)[i].item<float>();
+      int32_t offset = ptWeightTensor.q_per_channel_zero_points()
+                           .to(at::kInt)[i]
+                           .item<int32_t>();
+      scalesVector.push_back(scale);
+      offsetsVector.push_back(offset);
+    }
 
-  // TODO Rowwise quantization is not enabled
-  // We should enable it later.
-  auto fc = F_.createFullyConnected("quantized_fc", input, weight, bias, outTy);
-  return addValueMapping(outputs[0], rescaleIntToUint(fc->getResult()));
+    // construct qparam constants
+    auto scaleType = glow::Type(ElemKind::FloatTy, dims);
+    auto offsetType = glow::Type(ElemKind::Int32ITy, dims);
+    auto wScalesTensor = glow::Tensor(scalesVector.data(), &scaleType);
+    auto wOffsetsTensor = glow::Tensor(offsetsVector.data(), &offsetType);
+
+    auto wScales = F_.getParent()->createConstant(
+        "channel_wised_scales_of_qlinear", std::move(wScalesTensor));
+    wScales->ensureIsOwned();
+    auto wOffsets = F_.getParent()->createConstant(
+        "channel_wised_offsets_of_qlinear", std::move(wOffsetsTensor));
+    wOffsets->ensureIsOwned();
+    auto rowwise_fc = F_.createRowwiseQuantizedFullyConnected(
+        "rowwise_quantized_fc", input, weightConstant, wScales, wOffsets, bias,
+        outTy);
+    return addValueMapping(outputs[0],
+                           rescaleIntToUint(rowwise_fc->getResult()));
+  } else {
+    auto fc =
+        F_.createFullyConnected("quantized_fc", input, weight, bias, outTy);
+    return addValueMapping(outputs[0], rescaleIntToUint(fc->getResult()));
+  }
 }
 
 Error PyTorchModelLoader::loadQuantizedLinearUnpacked(

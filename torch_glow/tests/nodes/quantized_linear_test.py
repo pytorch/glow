@@ -13,6 +13,7 @@ class TestQuantizedLinear(unittest.TestCase):
         q = torch.nn.quantized.Quantize(
             scale=1 / 25, zero_point=17, dtype=torch.quint8)
         dq = torch.nn.quantized.DeQuantize()
+
         linear = torch.nn.Linear(5, 5)
 
         linear.weight.data.fill_(1.2)
@@ -72,3 +73,23 @@ class TestQuantizedLinear(unittest.TestCase):
                     "aten::dequantize",
                 },
             )
+
+    def test_quantized_linear_packed_rowwise(self):
+        """Basic test of the PyTorch quantized::linear Node with rowwise quantized
+        packed weights on Glow."""
+
+        linear = torch.nn.Linear(6, 5)
+        linear.weight.data.random_(0, 100)
+        linear.bias.data.random_(0, 10)
+
+        x = torch.tensor(range(30), dtype=torch.float)
+        x = torch.reshape(x, [5, 6])
+
+        model = torch.quantization.QuantWrapper(linear)
+        model.qconfig = torch.quantization.get_default_qconfig('fbgemm')
+        torch.quantization.prepare(model, inplace=True)
+        torch.quantization.convert(model, inplace=True)
+
+        jitVsGlow(model, x, expected_fused_ops={"aten::quantize_per_tensor",
+                                                "quantized::linear",
+                                                "aten::dequantize"})

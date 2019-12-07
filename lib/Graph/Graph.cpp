@@ -863,6 +863,16 @@ FullyConnectedNode *Function::createFullyConnected(llvm::StringRef name,
 RowwiseQuantizedFullyConnectedNode *
 Function::createRowwiseQuantizedFullyConnected(llvm::StringRef name,
                                                NodeValue input, Constant *W,
+                                               Constant *scales,
+                                               Constant *offsets, NodeValue B,
+                                               TypeRef outTy) {
+  return addNode(new RowwiseQuantizedFullyConnectedNode(name, outTy, input, W,
+                                                        scales, offsets, B));
+}
+
+RowwiseQuantizedFullyConnectedNode *
+Function::createRowwiseQuantizedFullyConnected(llvm::StringRef name,
+                                               NodeValue input, Constant *W,
                                                NodeValue B, TypeRef outTy,
                                                quantization::Schema schema,
                                                bool transposeWeight) {
