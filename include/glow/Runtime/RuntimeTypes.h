@@ -48,7 +48,7 @@ using ResultCBTy = std::function<void(runtime::RunIdentifierTy, Error,
 /// Data structure that contains device constraint information for each device.
 /// Used to communicate memory constraints and later costs to the Partitioner.
 struct DeviceInfo {
-  /// Available memory on device in bytes.
+  /// Available global memory on device in bytes.
   uint64_t availableMemory;
   /// Backend Type.
   std::string backendName;
@@ -62,6 +62,9 @@ struct DeviceInfo {
   std::string supportedNodes;
   /// Available SRAM capacity in bytes.
   uint64_t sramCapacity;
+  /// Available (software controlled) local/scratchpad/onchip memory on the
+  /// device in bytes.
+  uint64_t availableLocalMemory;
   /// Peak compute on device in ops/second. Assumes all ops are in int8.
   /// TODO: distinguish between data types with different peak flops.
   float peakCompute;
