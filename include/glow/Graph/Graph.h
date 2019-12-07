@@ -528,6 +528,15 @@ public:
 
   /// Create a row-wise quantized fully connected node. This node is only used
   /// in quantization. Args \p input and \p B are quantized in regular way, \p W
+  /// is the constant weights and is row-wise quantized using the given \p
+  /// scales and \p offsets. The output is quantized in the regular way, and its
+  /// type \p outTy is a quantized type.
+  RowwiseQuantizedFullyConnectedNode *createRowwiseQuantizedFullyConnected(
+      llvm::StringRef name, NodeValue input, Constant *W, Constant *scales,
+      Constant *offsets, NodeValue B, TypeRef outTy);
+
+  /// Create a row-wise quantized fully connected node. This node is only used
+  /// in quantization. Args \p input and \p B are quantized in regular way, \p W
   /// is the constant weights and will be row-wise quantized during node
   /// creation time. The output is quantized in the regular way, and its type
   /// \p outTy is a quantized type. if \p transposeWeight is true, \p W need to
