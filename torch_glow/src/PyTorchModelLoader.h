@@ -279,6 +279,12 @@ private:
   /// Rescale a int8 NodeValue \p input to the equivalent uint8 NodeValue.
   glow::NodeValue rescaleIntToUint(glow::NodeValue input);
 
+  /// Load a quantized conv node from ptNode to qconv.
+  /// a wrapper function of loadQuantizedConv and loadQuantizedConvRelu.
+  /// Returns error on failure.
+  Expected<NodeValue> loadQuantizedConvImpl(const torch::jit::Node *ptNode,
+                                            const bool isRelu);
+
   /// For each Placeholder input to \p ptNode, if this input has been marked
   /// as being an input that should be frozen in MappingOfMemberFunctions,
   /// create a glow Constant for that Placeholder with the iValue from the stack
@@ -399,11 +405,23 @@ private:
   /// \return error on failure.
   Error loadQuantizedAddRelu(const torch::jit::Node *ptNode);
 
-  /// Load a PyTorch glow::unpacked_quantized_conv node.
+  /// Load a glow::unpacked_quantized_conv node.
   // \return error on failure.
   Error loadQuantizedConvUnpacked(const torch::jit::Node *ptNode);
 
+  /// Load a PyTorch quantized::conv2d node.
+  // \return error on failure.
+  Error loadQuantizedConv(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch quantized::conv2d_relu node.
+  // \return error on failure.
+  Error loadQuantizedConvRelu(const torch::jit::Node *ptNode);
+
   /// Load a glow::unpacked_quantized_linear node.
+  /// \return error on failure.
+  Error loadQuantizedLinearUnpacked(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch quantized::linear node.
   /// \return error on failure.
   Error loadQuantizedLinear(const torch::jit::Node *ptNode);
 

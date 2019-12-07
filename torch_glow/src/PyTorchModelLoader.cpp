@@ -22,6 +22,8 @@
 #include "glow/Support/Support.h"
 
 #include <ATen/ATen.h>
+#include <ATen/core/dispatch/Dispatcher.h>
+#include <ATen/native/c10_utils.h>
 #include <torch/csrc/jit/ir.h>
 
 namespace glow {
@@ -31,11 +33,6 @@ namespace {
 /// In Glow, the activations are quantized to int_8. Therefore, for the offset
 /// read from quantized pytorch model, we need to subtract 128(i.e. INT8_MIN) to
 /// make the activations becomes int8_t.
-
-/// For Glow: -128 <= orig_fp32/scale_1 + offset_1 <= 127
-/// For PyTorch: 0 <= orig_fp32/scale_2 + offset_2 <= 255
-/// Therefore, we can make scale_1 == scale_2, and offset_1 = offset2 - 128
-const int32_t OFFSETSHIFT = 128;
 
 /// Downcast a double to a float.
 Expected<float> to32Bit(double val) {
@@ -214,6 +211,16 @@ Expected<std::vector<int64_t> *>
 iValToIntList(Expected<GlowIValue *> expectedIVal) {
   if (expectedIVal) {
     return (*expectedIVal)->toIntList();
+  } else {
+    return expectedIVal.takeError();
+  }
+}
+
+/// Unwrap a Expected<GlowIValue *> \p expectedIVal and call toPTTensor,
+/// propogate any Errors.
+Expected<at::Tensor *> iValToPTTensor(Expected<GlowIValue *> expectedIVal) {
+  if (expectedIVal) {
+    return (*expectedIVal)->toPTTensor();
   } else {
     return expectedIVal.takeError();
   }
@@ -528,6 +535,20 @@ struct QuantizedUnpackedConv2dInputs {
   };
 };
 
+/// Indexes of quantized::conv2d and quantized::conv2d_relu inputs.
+struct QuantizedConv2dInputs {
+  enum {
+    input = 0, // NCHW
+    packed_weights = 1,
+    stride = 2,
+    padding = 3,
+    dilation = 4,
+    group = 5,
+    scale = 6,
+    zero_point = 7,
+  };
+};
+
 /// Indexes of quantized::add_relu inputs.
 struct QuantizedAddReluInputs {
   enum {
@@ -549,13 +570,23 @@ struct QuantizedAddInputs {
 };
 
 /// Indexes of glow::unpacked_quantized_linear inputs.
-struct QuantizedLinearInputs {
+struct QuantizedUnpackedLinearInputs {
   enum {
     input = 0,
     weight = 1,
     bias = 2,
     scale = 3,
     zero_point = 4,
+  };
+};
+
+/// Indexes of quantized::linear inputs.
+struct QuantizedLinearInputs {
+  enum {
+    input = 0,
+    packed_weights = 1,
+    scale = 2,
+    zero_point = 3,
   };
 };
 
@@ -761,13 +792,32 @@ PyTorchModelLoader::getSymbolsMapping() {
         QuantizedUnpackedConv2dInputs::scale,
         QuantizedUnpackedConv2dInputs::zero_point}},
       {{"glow::unpacked_quantized_linear"},
+       &PyTorchModelLoader::loadQuantizedLinearUnpacked,
+       {
+           QuantizedUnpackedLinearInputs::weight,
+           QuantizedUnpackedLinearInputs::bias,
+           QuantizedUnpackedLinearInputs::scale,
+           QuantizedUnpackedLinearInputs::zero_point,
+       }},
+      {{"quantized::linear"},
        &PyTorchModelLoader::loadQuantizedLinear,
        {
-           QuantizedLinearInputs::weight,
-           QuantizedLinearInputs::bias,
+           QuantizedLinearInputs::packed_weights,
            QuantizedLinearInputs::scale,
            QuantizedLinearInputs::zero_point,
        }},
+      {{"quantized::conv2d"},
+       &PyTorchModelLoader::loadQuantizedConv,
+       {QuantizedConv2dInputs::packed_weights, QuantizedConv2dInputs::stride,
+        QuantizedConv2dInputs::padding, QuantizedConv2dInputs::dilation,
+        QuantizedConv2dInputs::group, QuantizedConv2dInputs::scale,
+        QuantizedConv2dInputs::zero_point}},
+      {{"quantized::conv2d_relu"},
+       &PyTorchModelLoader::loadQuantizedConvRelu,
+       {QuantizedConv2dInputs::packed_weights, QuantizedConv2dInputs::stride,
+        QuantizedConv2dInputs::padding, QuantizedConv2dInputs::dilation,
+        QuantizedConv2dInputs::group, QuantizedConv2dInputs::scale,
+        QuantizedConv2dInputs::zero_point}},
       {{"aten::quantize_per_tensor"},
        &PyTorchModelLoader::loadQuantize,
        {QuantizeInputs::scale, QuantizeInputs::zero_point,
@@ -1121,6 +1171,179 @@ glow::NodeValue PyTorchModelLoader::rescaleIntToUint(glow::NodeValue input) {
   }
 }
 
+Expected<NodeValue>
+PyTorchModelLoader::loadQuantizedConvImpl(const torch::jit::Node *ptNode,
+                                          const bool isRelu) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  const glow::TransposeNode *output;
+
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 8, outputs, 1));
+
+  // input
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      input, getGlowNodeValueForValue(inputs[QuantizedConv2dInputs::input]));
+  input = rescaleUIntToInt(input);
+
+  input = F_.createTranspose("qconv_input_transposed", input, NCHW2NHWC);
+  glow::ShapeNHWC inputShape(input.dims());
+
+  // groups
+  glow::unsigned_t groups;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      groups,
+      static_cast_expected<glow::unsigned_t>(iValToInt(
+          getGlowIValueForValue(inputs[QuantizedConv2dInputs::group]))));
+
+  // weight and bias
+  at::Tensor *ptTensor;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      ptTensor, iValToPTTensor(getGlowIValueForValue(
+                    inputs[QuantizedConv2dInputs::packed_weights])));
+
+  auto op =
+      c10::Dispatcher::singleton().findSchema({"quantized::conv2d_unpack", ""});
+  CHECK(op.has_value());
+  auto unpackedParams = callOp(*op, *ptTensor);
+  const at::Tensor ptWeightTensor = unpackedParams[0].toTensor();
+  const c10::optional<at::Tensor> ptBiasTensor =
+      unpackedParams[1].toOptional<at::Tensor>();
+
+  // if groups == 1 it is regular conv
+  bool isGroupwiseQuantized = ptWeightTensor.is_quantized() &&
+                              ptWeightTensor.qscheme() == at::kPerChannelAffine;
+  isGroupwiseQuantized &= (groups > 1);
+
+  // unpacked weights
+  auto weightTensor = ptTensorToGlowTensor(ptWeightTensor);
+  glow::Tensor weightTensorTransposed;
+  weightTensor.transpose(&weightTensorTransposed, NCHW2NHWC);
+  glow::Constant *weightConstant = F_.getParent()->createConstant(
+      "quantized_conv2d_weights", std::move(weightTensorTransposed));
+  auto weight = weightConstant->getOutput();
+  weight = rescaleUIntToInt(weight);
+
+  // unpacked bias
+  glow::Tensor biasTensor;
+  glow::NodeValue bias;
+  glow::ShapeNHWC weightShape(weight.dims());
+  if (ptBiasTensor.has_value()) {
+    biasTensor = ptTensorToGlowTensor(ptBiasTensor.value());
+  } else {
+    biasTensor = glow::Tensor(glow::ElemKind::FloatTy, {weightShape.n});
+    biasTensor.zero();
+  }
+  glow::Constant *biasConstant = F_.getParent()->createConstant(
+      "quantized_conv2d_bias", std::move(biasTensor));
+  biasConstant->ensureIsOwned();
+  // bias is not used for groupwised quantization.
+  // Instead we use biasConstant
+  bias = biasConstant->getOutput();
+  auto biasType = F_.getParent()->uniqueType(
+      glow::ElemKind::Int32QTy, bias.dims(),
+      input.getType()->getScale() * weight.getType()->getScale(), 0);
+  bias = F_.createQuantize("quantize_bias", bias, biasType);
+
+  // strides
+  std::vector<glow::unsigned_t> strides;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      strides,
+      castVector<glow::unsigned_t>(expandIntIValIfNeeded(
+          getGlowIValueForValue(inputs[QuantizedConv2dInputs::stride]), 2)));
+
+  // pad
+  glow::unsigned_t pad;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      pad, static_cast_expected<glow::unsigned_t>(contractIntIValIfNeeded(
+               getGlowIValueForValue(inputs[QuantizedConv2dInputs::padding]))));
+  std::vector<glow::unsigned_t> pads = {pad, pad, pad, pad};
+
+  // dilation
+  glow::unsigned_t dilation;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      dilation,
+      static_cast_expected<glow::unsigned_t>(contractIntIValIfNeeded(
+          getGlowIValueForValue(inputs[QuantizedConv2dInputs::dilation]))));
+
+  // quantized params
+  float outScale;
+  ASSIGN_VALUE_OR_RETURN_ERR(outScale,
+                             iValToDouble(getGlowIValueForValue(
+                                 inputs[QuantizedConv2dInputs::scale])));
+
+  int32_t outOffset;
+  ASSIGN_VALUE_OR_RETURN_ERR(outOffset,
+                             iValToInt(getGlowIValueForValue(
+                                 inputs[QuantizedConv2dInputs::zero_point])));
+
+  // calc output type
+  std::vector<glow::unsigned_t> kernels = {
+      static_cast<glow::unsigned_t>(weightShape.h),
+      static_cast<glow::unsigned_t>(weightShape.w)};
+  auto outSz = glow::calculateConvPoolOutputDims(
+      inputShape.h, inputShape.w, kernels, strides, pads, dilation);
+  std::array<glow::dim_t, 4> outDims = {
+      {input.dims()[0], outSz.first, outSz.second, weightShape.n}};
+  glow::TypeRef outTy = F_.getParent()->uniqueType(
+      glow::ElemKind::Int8QTy, outDims, outScale, outOffset);
+
+  glow::NodeValue output_not_transposed;
+  if (isGroupwiseQuantized) {
+    RETURN_ERR_IF_NOT(dilation <= 1,
+                      "Dilation not supported for group quantized convolution");
+
+    // extract qparams from ptWeightTensor.
+    // Notice since the memory of qparams may not be continous
+    // we CANNOT use the data ptr of this chunk of memory and
+    // convert them into glow tensor directly by using PtTensorToGlowTensor.
+    // Instead, we extract them one after one.
+    std::vector<float> scalesVector;
+    std::vector<int32_t> offsetsVector;
+    std::vector<glow::dim_t> dims;
+    const int n = ptWeightTensor.q_per_channel_scales().size(0);
+    dims.push_back(n);
+    for (int i = 0; i < n; i++) {
+      float scale =
+          ptWeightTensor.q_per_channel_scales().to(at::kFloat)[i].item<float>();
+      int32_t offset = ptWeightTensor.q_per_channel_zero_points()
+                           .to(at::kInt)[i]
+                           .item<int32_t>();
+      scalesVector.push_back(scale);
+      offsetsVector.push_back(offset);
+    }
+
+    // construct qparam constants
+    auto scaleType = glow::Type(ElemKind::FloatTy, dims);
+    auto offsetType = glow::Type(ElemKind::Int32ITy, dims);
+    auto wScalesTensor = glow::Tensor(scalesVector.data(), &scaleType);
+    auto wOffsetsTensor = glow::Tensor(offsetsVector.data(), &offsetType);
+
+    auto wScales = F_.getParent()->createConstant(
+        "channel_wised_scales_of_qconv", std::move(wScalesTensor));
+    wScales->ensureIsOwned();
+    auto wOffsets = F_.getParent()->createConstant(
+        "channel_wised_offsets_of_qconv", std::move(wOffsetsTensor));
+    wOffsets->ensureIsOwned();
+
+    auto qconv = F_.createChannelwiseQuantizedConv(
+        "qconv_channel_wised", input, weightConstant, biasConstant, wScales,
+        wOffsets, outTy, kernels, strides, pads, groups);
+    output_not_transposed = qconv->getResult();
+  } else {
+    auto qconv = F_.createConv("qconv", input, weight, bias, outTy, kernels,
+                               strides, pads, groups, dilation);
+    glow::NodeValue output_not_transposed = qconv->getResult();
+  }
+  if (isRelu) {
+    glow::ReluNode *qrelu = F_.createRELU("qconv_relu", output_not_transposed);
+    output_not_transposed = qrelu->getResult();
+  }
+  output = F_.createTranspose("channel_wised_qconv_relu_output_transposed",
+                              output_not_transposed, NHWC2NCHW);
+  return Expected<NodeValue>(output->getResult());
+}
+
 template <typename T>
 NodeValue PyTorchModelLoader::loadNodeValueOrCreateBroadcastedConstant(
     const torch::jit::Value *value, llvm::StringRef name, const Type &ty,
@@ -1212,20 +1435,63 @@ Error PyTorchModelLoader::loadQuantizedAddRelu(const torch::jit::Node *ptNode) {
 Error PyTorchModelLoader::loadQuantizedLinear(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
-  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 5, outputs, 1));
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 4, outputs, 1));
 
   glow::NodeValue input;
   ASSIGN_VALUE_OR_RETURN_ERR(
       input, getGlowNodeValueForValue(inputs[QuantizedLinearInputs::input]));
   input = rescaleUIntToInt(input);
 
-  glow::NodeValue weight;
+  at::Tensor *ptTensor;
   ASSIGN_VALUE_OR_RETURN_ERR(
-      weight, getGlowNodeValueForValue(inputs[QuantizedLinearInputs::weight]));
+      ptTensor, iValToPTTensor(getGlowIValueForValue(
+                    inputs[QuantizedLinearInputs::packed_weights])));
+
+  auto op =
+      c10::Dispatcher::singleton().findSchema({"quantized::linear_unpack", ""});
+  CHECK(op.has_value());
+  auto unpackedParams = callOp(*op, *ptTensor);
+  const at::Tensor ptWeightTensor = unpackedParams[0].toTensor();
+  const c10::optional<at::Tensor> ptBiasTensor =
+      unpackedParams[1].toOptional<at::Tensor>();
+
+  // unpacked weights
+  auto weightTensor = ptTensorToGlowTensor(ptWeightTensor);
+  glow::Constant *weightConstant = F_.getParent()->createConstant(
+      "quantized_linear_weights", std::move(weightTensor));
+  weightConstant->ensureIsOwned();
+  auto weight = weightConstant->getOutput();
   weight = rescaleUIntToInt(weight);
 
-  RETURN_ERR_IF_NOT(weight.dims().size() == 2, "Expected 2d Linear weights");
+  // unpacked bias
+  glow::Tensor biasTensor;
+  if (ptBiasTensor.has_value()) {
+    biasTensor = ptTensorToGlowTensor(ptBiasTensor.value());
+  } else {
+    biasTensor = glow::Tensor(glow::ElemKind::FloatTy, {weight.dims()[1]});
+    biasTensor.zero();
+  }
 
+  // Choose bias quantization params and quantize it.
+  glow::Constant *biasConstant = F_.getParent()->createConstant(
+      "quantized_linear_bias", std::move(biasTensor));
+  biasConstant->ensureIsOwned();
+  RETURN_ERR_IF_NOT(biasConstant, "quantized::linear bias must be constant");
+  const auto biasHandle = biasConstant->getPayload().getHandle<float>();
+  const auto biasMinMaxIdx = biasHandle.minMaxArg();
+
+  const auto biasQParams = chooseQuantizationParams(
+      biasHandle.raw(biasMinMaxIdx.first), biasHandle.raw(biasMinMaxIdx.second),
+      glow::quantization::Schema::Asymmetric, glow::ElemKind::Int32QTy);
+
+  auto bias = biasConstant->getOutput();
+
+  auto biasType =
+      F_.getParent()->uniqueType(glow::ElemKind::Int32QTy, bias.dims(),
+                                 biasQParams.scale, biasQParams.offset);
+  bias = F_.createQuantize("quantize_bias", bias, biasType);
+
+  RETURN_ERR_IF_NOT(weight.dims().size() == 2, "Expected 2d Linear weights");
   weight = F_.createTranspose("weight_transpose", weight, {1, 0});
 
   float outScale;
@@ -1242,14 +1508,56 @@ Error PyTorchModelLoader::loadQuantizedLinear(const torch::jit::Node *ptNode) {
                                           {input.dims()[0], weight.dims()[1]},
                                           outScale, outZeroPoint - OFFSETSHIFT);
 
+  // TODO Rowwise quantization is not enabled
+  // We should enable it later.
+  auto fc = F_.createFullyConnected("quantized_fc", input, weight, bias, outTy);
+  return addValueMapping(outputs[0], rescaleIntToUint(fc->getResult()));
+}
+
+Error PyTorchModelLoader::loadQuantizedLinearUnpacked(
+    const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 5, outputs, 1));
+
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      input,
+      getGlowNodeValueForValue(inputs[QuantizedUnpackedLinearInputs::input]));
+  input = rescaleUIntToInt(input);
+
+  glow::NodeValue weight;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      weight,
+      getGlowNodeValueForValue(inputs[QuantizedUnpackedLinearInputs::weight]));
+  weight = rescaleUIntToInt(weight);
+
+  RETURN_ERR_IF_NOT(weight.dims().size() == 2, "Expected 2d Linear weights");
+
+  weight = F_.createTranspose("weight_transpose", weight, {1, 0});
+
+  float outScale;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      outScale, to32Bit(iValToDouble(getGlowIValueForValue(
+                    inputs[QuantizedUnpackedLinearInputs::scale]))));
+
+  int64_t outZeroPoint;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      outZeroPoint, iValToInt(getGlowIValueForValue(
+                        inputs[QuantizedUnpackedLinearInputs::zero_point])));
+
+  auto outTy = F_.getParent()->uniqueType(ElemKind::Int8QTy,
+                                          {input.dims()[0], weight.dims()[1]},
+                                          outScale, outZeroPoint - OFFSETSHIFT);
+
   // Get bias or create a zero bias if no bias is found.
   glow::NodeValue bias = loadNodeValueOrCreateBroadcastedConstant(
-      inputs[QuantizedLinearInputs::bias], "quantized_linear_bias",
+      inputs[QuantizedUnpackedLinearInputs::bias], "quantized_linear_bias",
       glow::Type(ElemKind::FloatTy, {weight.dims()[1]}), 0.0);
 
   // Choose bias quantization params and quantize it.
   glow::Constant *biasConstant = llvm::dyn_cast<glow::Constant>(bias.getNode());
-  RETURN_ERR_IF_NOT(biasConstant, "quantized::linear bias must be constant");
+
   const auto biasHandle = biasConstant->getPayload().getHandle<float>();
   const auto biasMinMaxIdx = biasHandle.minMaxArg();
 
@@ -1474,7 +1782,6 @@ Error PyTorchModelLoader::loadListConstruct(const torch::jit::Node *ptNode) {
   auto outputs = ptNode->outputs();
   // Requires -1 because this requires at least one input.
   RETURN_IF_ERR(checkInputAndOutputSizes(inputs, -1, outputs, 1));
-
   // Get the Tag of the first input to use for the whole list.
   GlowIValue *firstInputIVal;
   ASSIGN_VALUE_OR_RETURN_ERR(firstInputIVal, getGlowIValueForValue(inputs[0]));
@@ -1958,7 +2265,6 @@ Error PyTorchModelLoader::loadQuantize(const torch::jit::Node *ptNode) {
   } else {
     return MAKE_ERR("Quantize only supports QUInt8 and QInt8");
   }
-
   glow::QuantizeNode *qn = F_.createQuantize("quantize", input, outTy);
 
   return addValueMapping(outputs[0], qn->getResult());
@@ -1974,6 +2280,21 @@ Error PyTorchModelLoader::loadDequantize(const torch::jit::Node *ptNode) {
 
   glow::DequantizeNode *dn = F_.createDequantize("dequantize", input);
   return addValueMapping(outputs[0], dn->getResult());
+}
+
+Error PyTorchModelLoader::loadQuantizedConvRelu(
+    const torch::jit::Node *ptNode) {
+  auto outputs = ptNode->outputs();
+  glow::NodeValue output;
+  ASSIGN_VALUE_OR_RETURN_ERR(output, loadQuantizedConvImpl(ptNode, true));
+  return addValueMapping(outputs[0], rescaleIntToUint(output));
+}
+
+Error PyTorchModelLoader::loadQuantizedConv(const torch::jit::Node *ptNode) {
+  auto outputs = ptNode->outputs();
+  glow::NodeValue output;
+  ASSIGN_VALUE_OR_RETURN_ERR(output, loadQuantizedConvImpl(ptNode, true));
+  return addValueMapping(outputs[0], rescaleIntToUint(output));
 }
 
 Error PyTorchModelLoader::loadQuantizedConvUnpacked(
@@ -2214,7 +2535,7 @@ Error PyTorchModelLoader::loadAdaptiveAvgPool2d(
 
   size_t inputH = input.dims()[1];
   size_t inputW = input.dims()[2];
-
+  input = rescaleUIntToInt(input);
   input = F_.createTranspose("adaptive_avg_pool2d_input_transposed", input,
                              NCHW2NHWC);
 
@@ -2238,7 +2559,7 @@ Error PyTorchModelLoader::loadAdaptiveAvgPool2d(
       F_.createAdaptiveAvgPool("adaptive_avg_pool2d", input, outTy);
   output = F_.createTranspose("adaptive_avg_pool2d_output_transposed", output,
                               NHWC2NCHW);
-  return addValueMapping(outputs[0], output);
+  return addValueMapping(outputs[0], rescaleIntToUint(output));
 }
 
 Error PyTorchModelLoader::loadT(const torch::jit::Node *ptNode) {
@@ -2705,6 +3026,7 @@ Error PyTorchModelLoader::loadFlatten(const torch::jit::Node *ptNode) {
   glow::NodeValue in;
   ASSIGN_VALUE_OR_RETURN_ERR(
       in, getGlowNodeValueForValue(inputs[FlattenInputs::input]));
+  in = rescaleUIntToInt(in);
 
   int64_t startDim;
   ASSIGN_VALUE_OR_RETURN_ERR(startDim, iValToInt(getGlowIValueForValue(
@@ -2717,7 +3039,7 @@ Error PyTorchModelLoader::loadFlatten(const torch::jit::Node *ptNode) {
 
   auto xDim = glow::flattenCdr(in.dims(), startDim);
   auto *glowNode = F_.createReshape("flatten", in, {xDim.first, xDim.second});
-  return addValueMapping(outputs[0], glowNode);
+  return addValueMapping(outputs[0], rescaleIntToUint(glowNode->getResult()));
 }
 
 Error PyTorchModelLoader::loadTopK(const torch::jit::Node *ptNode) {
@@ -3006,16 +3328,24 @@ Error PyTorchModelLoader::loadAttributes(
           std::make_pair(&ival.toObjectRef(), newNameHierarchy);
       continue;
     } else if (ival.isTensor()) {
-      const auto &ptTensor = ival.toTensor();
-      auto glowTensor = ptTensorToGlowTensor(ptTensor);
+      const auto ptTensor = ival.toTensor();
+      // PyTorch Tensor extracted type is kByte
+      // indicate it is the address of stored weights of quantized
+      // linear or conv.
+      if (ptTensor.scalar_type() == at::kByte) {
+        GlowIValue glowIVal;
+        glowIVal.fromPTTensor(ptTensor);
+        RETURN_IF_ERR(addValueMapping(outputValue, std::move(glowIVal)));
+      } else {
+        auto glowTensor = ptTensorToGlowTensor(ptTensor);
+        glow::Constant *glowConstant = F_.getParent()->createConstant(
+            newNameHierarchy, std::move(glowTensor));
 
-      glow::Constant *glowConstant = F_.getParent()->createConstant(
-          newNameHierarchy, std::move(glowTensor));
-
-      if (copyTensorMemory_) {
-        glowConstant->ensureIsOwned();
+        if (copyTensorMemory_) {
+          glowConstant->ensureIsOwned();
+        }
+        RETURN_IF_ERR(addValueMapping(outputValue, glowConstant->getOutput()));
       }
-      RETURN_IF_ERR(addValueMapping(outputValue, glowConstant->getOutput()));
     } else {
       GlowIValue glowIVal;
       RETURN_IF_ERR(glowIVal.fromIValue(ival));
@@ -3064,7 +3394,6 @@ PyTorchModelLoader::PyTorchModelLoader(
     for (size_t i = 0; i < graphInputValues.size(); ++i) {
       const torch::jit::Value *inputValue = graphInputValues[i];
       glow::Placeholder *ph;
-
       if (!inputMeta.empty()) {
         if (inputValue->type()->kind() == c10::TypeKind::TensorType) {
           glow::Type t(scalarTypeToElemKind(inputMeta[i].type),
@@ -3102,7 +3431,6 @@ PyTorchModelLoader::PyTorchModelLoader(
     }
 
     RETURN_IF_ERR(loadAttributes(graph, inputs));
-
     RETURN_IF_ERR(loadNodes(graph));
 
     // Create Glow Placeholders for outputs.
