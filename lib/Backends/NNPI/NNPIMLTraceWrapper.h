@@ -45,7 +45,6 @@ class NNPITraceContext {
 public:
   NNPITraceContext(uint32_t eventsMask);
   virtual ~NNPITraceContext();
-
   /// Start capturing traces from the HW device.
   bool startCapture() const;
   /// Start capturing.
@@ -68,7 +67,7 @@ public:
 
   /// Use to sync device and host clocks by flagging the first input copy on the
   /// host.
-  void markInputCopyStart();
+  void markInputCopyStart(uint64_t uptime);
 
 private:
   bool createContext();
@@ -81,6 +80,7 @@ private:
   std::vector<NNPITraceEntry> entries_;
   uint64_t upRefTime_{0};
   int64_t timeDiff_{0};
+  size_t timeUpdatedIndex_{0};
 };
 
 #endif // NNPI_NNPITRACING_ML_WRAPPER_H

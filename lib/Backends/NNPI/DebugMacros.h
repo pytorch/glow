@@ -74,6 +74,31 @@ static std::atomic<double> dbg_mem_usage_last_rss_value(0.0);
 #define ASSERT_WITH_MSG(exp, msg) LOG_ERROR_IF_NOT(exp) << msg
 #endif // NDEBUG
 
+static inline std::string GetNNPIErrorDesc(NNPIErrorCode err) {
+  NNPIObjectName desc = {0};
+  if (nnpiGetNNPIErrorCodeDesc(err, desc) != NNPI_NO_ERROR) {
+    return std::string("Failed to get error description");
+  }
+  return std::string(desc);
+}
+
+static inline std::string
+GetNNPIInferenceErrorDesc(NNPIInferenceErrorCode err) {
+  NNPIObjectName desc = {0};
+  if (nnpiGetNNPIInferenceErrorCodeDesc(err, desc) != NNPI_INF_NO_ERROR) {
+    return std::string("Failed to get error description");
+  }
+  return std::string(desc);
+}
+
+#define NNPI_ERROR_MSG(res, msg)                                               \
+  "NNPIErrorCode [" << res << " = " << GetNNPIErrorDesc(res) << "]: \"" << msg \
+                    << "\""
+
+#define NNPI_INF_ERROR_MSG(res, msg)                                           \
+  "NNPIInferenceErrorCode [" << res << " = " << GetNNPIInferenceErrorDesc(res) \
+                             << "]: \"" << msg << "\""
+
 #define LOG_AND_RETURN_IF(loglevel, exp, msg, retVal)                          \
   {                                                                            \
     if ((exp)) {                                                               \
@@ -92,49 +117,43 @@ static std::atomic<double> dbg_mem_usage_last_rss_value(0.0);
 #ifndef NDEBUG
 #define ASSERT_LOG_NNPI_ERROR(exp_to_log, msg)                                 \
   {                                                                            \
-    NNPIErrorCode exp_res = (exp_to_log);                                      \
-    CHECK(exp_res == NNPI_NO_ERROR)                                            \
-        << " NNPIErrorCode:" << exp_res << " :" << msg;                        \
+    NNPIErrorCode res = (exp_to_log);                                          \
+    CHECK(res == NNPI_NO_ERROR) << NNPI_ERROR_MSG(res, msg);                   \
   }
 
 #else //  NDEBUG
 #define ASSERT_LOG_NNPI_ERROR(exp_to_log, msg)                                 \
   {                                                                            \
-    NNPIErrorCode exp_res = (exp_to_log);                                      \
-    LOG_IF(ERROR, exp_res != NNPI_NO_ERROR)                                    \
-        << "NNPIErrorCode:" << exp_res << " :" << msg;                         \
+    NNPIErrorCode res = (exp_to_log);                                          \
+    LOG_IF(ERROR, res != NNPI_NO_ERROR) << NNPI_ERROR_MSG(res, msg);           \
   }
 
 #endif //  NDEBUG
 
 #define LOG_NNPI_ERROR(exp_to_log, msg)                                        \
   {                                                                            \
-    NNPIErrorCode exp_res = (exp_to_log);                                      \
-    LOG_IF(ERROR, exp_res != NNPI_NO_ERROR)                                    \
-        << "NNPIErrorCode:" << exp_res << " :" << msg;                         \
+    NNPIErrorCode res = (exp_to_log);                                          \
+    LOG_IF(ERROR, res != NNPI_NO_ERROR) << NNPI_ERROR_MSG(res, msg);           \
   }
 
 #define LOG_NNPI_ERROR_RETURN_LLVMERROR(exp, msg)                              \
   {                                                                            \
     NNPIErrorCode res = (exp);                                                 \
-    LOG_IF(ERROR, res != NNPI_NO_ERROR)                                        \
-        << "NNPIErrorCode:" << res << " :" << msg;                             \
+    LOG_IF(ERROR, res != NNPI_NO_ERROR) << NNPI_ERROR_MSG(res, msg);           \
     if (res != NNPI_NO_ERROR)                                                  \
       RETURN_ERR(msg);                                                         \
   }
 
 #define LOG_NNPI_INF_ERROR(exp_to_log, msg)                                    \
   {                                                                            \
-    NNPIInferenceErrorCode exp_res = (exp_to_log);                             \
-    LOG_IF(ERROR, exp_res != NNPI_INF_NO_ERROR)                                \
-        << "NNPIInferenceErrorCode:" << exp_res << " :" << msg;                \
+    NNPIInferenceErrorCode res = (exp_to_log);                                 \
+    LOG_IF(ERROR, res != NNPI_INF_NO_ERROR) << NNPI_INF_ERROR_MSG(res, msg);   \
   }
 
 #define LOG_NNPI_INF_ERROR_RETURN_FALSE(exp, msg)                              \
   {                                                                            \
     NNPIInferenceErrorCode res = (exp);                                        \
-    LOG_IF(ERROR, res != NNPI_INF_NO_ERROR)                                    \
-        << "NNPIInferenceErrorCode:" << res << " :" << msg;                    \
+    LOG_IF(ERROR, res != NNPI_INF_NO_ERROR) << NNPI_INF_ERROR_MSG(res, msg);   \
     if (res != NNPI_INF_NO_ERROR)                                              \
       return false;                                                            \
   }
@@ -142,8 +161,7 @@ static std::atomic<double> dbg_mem_usage_last_rss_value(0.0);
 #define LOG_NNPI_INF_ERROR_RETURN_LLVMERROR(exp, msg)                          \
   {                                                                            \
     NNPIInferenceErrorCode res = (exp);                                        \
-    LOG_IF(ERROR, res != NNPI_INF_NO_ERROR)                                    \
-        << "NNPIInferenceErrorCode:" << res << " :" << msg;                    \
+    LOG_IF(ERROR, res != NNPI_INF_NO_ERROR) << NNPI_INF_ERROR_MSG(res, msg);   \
     if (res != NNPI_INF_NO_ERROR)                                              \
       RETURN_ERR(msg);                                                         \
   }
@@ -151,8 +169,7 @@ static std::atomic<double> dbg_mem_usage_last_rss_value(0.0);
 #define LOG_NNPI_ERROR_RETURN_VALUE(exp, msg)                                  \
   {                                                                            \
     NNPIErrorCode res = (exp);                                                 \
-    LOG_IF(ERROR, res != NNPI_NO_ERROR)                                        \
-        << "NNPIErrorCode:" << res << " :" << msg;                             \
+    LOG_IF(ERROR, res != NNPI_NO_ERROR) << NNPI_ERROR_MSG(res, msg);           \
     if (res != NNPI_NO_ERROR)                                                  \
       return res;                                                              \
   }
@@ -160,8 +177,7 @@ static std::atomic<double> dbg_mem_usage_last_rss_value(0.0);
 #define LOG_NNPI_ERROR_RETURN_INVALID_HANDLE(exp, msg)                         \
   {                                                                            \
     NNPIErrorCode res = (exp);                                                 \
-    LOG_IF(ERROR, res != NNPI_NO_ERROR)                                        \
-        << "NNPIErrorCode:" << res << " :" << msg;                             \
+    LOG_IF(ERROR, res != NNPI_NO_ERROR) << NNPI_ERROR_MSG(res, msg);           \
     if (res != NNPI_NO_ERROR)                                                  \
       return NNPI_INVALID_NNPIHANDLE;                                          \
   }
@@ -169,8 +185,7 @@ static std::atomic<double> dbg_mem_usage_last_rss_value(0.0);
 #define LOG_NNPI_ERROR_RETURN_FALSE(exp, msg)                                  \
   {                                                                            \
     NNPIErrorCode res = (exp);                                                 \
-    LOG_IF(ERROR, res != NNPI_NO_ERROR)                                        \
-        << "NNPIErrorCode:" << res << " :" << msg;                             \
+    LOG_IF(ERROR, res != NNPI_NO_ERROR) << NNPI_ERROR_MSG(res, msg);           \
     if (res != NNPI_NO_ERROR)                                                  \
       return false;                                                            \
   }
@@ -191,7 +206,8 @@ static std::atomic<double> dbg_mem_usage_last_rss_value(0.0);
       RETURN_ERR(msg);                                                         \
   }
 
-#define LOG_AND_FAIL_CALLBACK_IF_NOT(loglevel, exp, msg, runId, ctx, callback) \
+#define LOG_AND_FAIL_EXECUTE_CALLBACK_IF_NOT(loglevel, exp, msg, runId, ctx,   \
+                                             callback)                         \
   {                                                                            \
     bool res = (exp);                                                          \
     LOG_IF(loglevel, !res) << msg;                                             \
@@ -201,18 +217,38 @@ static std::atomic<double> dbg_mem_usage_last_rss_value(0.0);
     }                                                                          \
   }
 
-#define LOG_AND_CALLBACK_NNPI_INF_ERROR(exp, msg, runId, ctx, callback)        \
+#define LOG_AND_FAIL_CALLBACK_IF_NOT(exp, msg, callback)                       \
+  {                                                                            \
+    bool res = (exp);                                                          \
+    LOG_IF(ERROR, !res) << msg;                                                \
+    if (!res) {                                                                \
+      callback(MAKE_ERR(msg));                                                 \
+      return;                                                                  \
+    }                                                                          \
+  }
+
+#define LOG_AND_CALLBACK_EXECUTE_NNPI_INF_ERROR(exp, msg, runId, ctx,          \
+                                                callback)                      \
   {                                                                            \
     NNPIInferenceErrorCode res = (exp);                                        \
     bool nnpiOK = (res == NNPI_INF_NO_ERROR);                                  \
-    LOG_AND_FAIL_CALLBACK_IF_NOT(ERROR, nnpiOK, msg, runId, ctx, callback);    \
+    LOG_AND_FAIL_EXECUTE_CALLBACK_IF_NOT(ERROR, nnpiOK, msg, runId, ctx,       \
+                                         callback);                            \
   }
 
-#define LOG_AND_CALLBACK_NNPI_ERROR(exp, msg, runId, ctx, callback)            \
+#define LOG_AND_CALLBACK_EXECUTE_NNPI_ERROR(exp, msg, runId, ctx, callback)    \
   {                                                                            \
     NNPIErrorCode res = (exp);                                                 \
     bool nnpiOK = (res == NNPI_NO_ERROR);                                      \
-    LOG_AND_FAIL_CALLBACK_IF_NOT(ERROR, nnpiOK, msg, runId, ctx, callback);    \
+    LOG_AND_FAIL_EXECUTE_CALLBACK_IF_NOT(ERROR, nnpiOK, msg, runId, ctx,       \
+                                         callback);                            \
   }
 
+#define LOG_AND_CALLBACK_NNPI_INF_ERROR(exp, msg, callback)                    \
+  {                                                                            \
+    NNPIInferenceErrorCode res = (exp);                                        \
+    LOG_IF(ERROR, res != NNPI_INF_NO_ERROR) << NNPI_INF_ERROR_MSG(res, msg);   \
+    if (res != NNPI_INF_NO_ERROR)                                              \
+      callback(MAKE_ERR(ErrorValue::ErrorCode::RUNTIME_ERROR, msg));           \
+  }
 #endif // GLOW_NNPI_DEBUG_MACROS_H

@@ -17,6 +17,7 @@
 #define GLOW_NNPI_FUNCTION_H
 
 #include "BlockStream.h"
+#include "NNPIOptions.h"
 #include "glow/Backend/CompiledFunction.h"
 #include "glow/Backends/BackendOptions.h"
 #include "glow/ExecutionContext/ExecutionContext.h"
@@ -58,6 +59,11 @@ public:
     return partialInputs_;
   }
 
+  /// \returns a reference to the set of static Placeholders.
+  const std::unordered_set<const Placeholder *> &getStaticInputs() const {
+    return staticInputs_;
+  }
+
   /// Locks the output stream.
   BlockStream &lockCompiledStream();
   /// Unlocks the output stream.
@@ -72,6 +78,10 @@ private:
   BlockStream compiledStream_;
   std::mutex compiledStreamMutex_;
   std::unordered_set<const Placeholder *> partialInputs_;
+  std::unordered_set<const Placeholder *> staticInputs_;
+
+  Error updateCompilationConfigFromOptions(
+      NNPICompilationOptions &compilationOptions);
   ///@}
 };
 } // end namespace glow
