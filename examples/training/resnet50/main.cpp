@@ -131,7 +131,7 @@ static std::vector<FloatIndexPair> getTopKPairs(Handle<ElemTy> H,
       topKQueue;
 
   // Loop over all the probabilites, finding the highest k probability pairs.
-  for (size_t i = 0, e = H.size(); i < e; i++) {
+  for (dim_t i = 0, e = H.size(); i < e; i++) {
     float currProbability = H.at({i});
     if (topKQueue.size() < topKCount) {
       // Always push the first k elements.
