@@ -616,7 +616,7 @@ NodeBuilder &NodeBuilder::addGradient() {
   std::stringstream ss;
   ss << "\n" + name_ + "GradNode *" + name_
      << "Node::getGrad(GraphGradMapper &builder) {\n"
-     << "  auto *x = new " + name_ + "GradNode(getName()";
+     << "  auto *x = new " + name_ + "GradNode(getName().str() + \"_grad\"";
 
   if (enum_.size()) {
     ss << ", (" << name_ << "GradNode::Mode)getMode()";
