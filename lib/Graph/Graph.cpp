@@ -2938,12 +2938,12 @@ void Function::createOnnxRNN(llvm::StringRef namePrefix, NodeValue X,
   const std::string &opName = namePrefix.str();
 
   // Get all size parameters.
-  size_t numDirections = (direction == RnnDirection::Bidirectional) ? 2 : 1;
+  dim_t numDirections = (direction == RnnDirection::Bidirectional) ? 2 : 1;
   assert(X.dims().size() == 3 &&
          "ONNX RNN input 'X' should have 3 dimensions!");
-  size_t seqLength = X.dims()[0];
-  size_t batchSize = X.dims()[1];
-  size_t inputSize = X.dims()[2];
+  dim_t seqLength = X.dims()[0];
+  dim_t batchSize = X.dims()[1];
+  dim_t inputSize = X.dims()[2];
 
   // Validate W size.
   assert(W.dims().size() == 3 &&
@@ -2981,7 +2981,7 @@ void Function::createOnnxRNN(llvm::StringRef namePrefix, NodeValue X,
 
   // Create X slices.
   std::vector<Node *> Xslices;
-  for (size_t t = 0; t < seqLength; t++) {
+  for (dim_t t = 0; t < seqLength; t++) {
     auto XsliceName = opName + ".X" + std::to_string(t) + ".slice";
     Node *Xt = createSlice(XsliceName, X, RNN_X_SLICE_RANGE(t));
     auto XreshapeName = opName + ".X" + std::to_string(t) + ".reshape";
@@ -2997,7 +2997,7 @@ void Function::createOnnxRNN(llvm::StringRef namePrefix, NodeValue X,
     std::string prefix = opName + ((numDirections > 1) ? dirLabel : "");
 
     // Slice index used for creating weights slices.
-    size_t sliceIdx0 = 0;
+    dim_t sliceIdx0 = 0;
     if (direction == RnnDirection::Bidirectional) {
       sliceIdx0 = forward ? 0 : 1;
     }
@@ -3142,12 +3142,12 @@ void Function::createOnnxGRU(llvm::StringRef namePrefix, NodeValue X,
   const std::string &opName = namePrefix.str();
 
   // Get all size parameters.
-  size_t numDirections = (direction == RnnDirection::Bidirectional) ? 2 : 1;
+  dim_t numDirections = (direction == RnnDirection::Bidirectional) ? 2 : 1;
   assert(X.dims().size() == 3 &&
          "ONNX GRU input 'X' should have 3 dimensions!");
-  size_t seqLength = X.dims()[0];
-  size_t batchSize = X.dims()[1];
-  size_t inputSize = X.dims()[2];
+  dim_t seqLength = X.dims()[0];
+  dim_t batchSize = X.dims()[1];
+  dim_t inputSize = X.dims()[2];
 
   // Validate W size.
   assert(W.dims().size() == 3 &&
@@ -3185,7 +3185,7 @@ void Function::createOnnxGRU(llvm::StringRef namePrefix, NodeValue X,
 
   // Create X slices.
   std::vector<Node *> Xslices;
-  for (size_t t = 0; t < seqLength; t++) {
+  for (dim_t t = 0; t < seqLength; t++) {
     auto XsliceName = opName + ".X" + std::to_string(t) + ".slice";
     Node *Xt = createSlice(XsliceName, X, GRU_X_SLICE_RANGE(t));
     auto XreshapeName = opName + ".X" + std::to_string(t) + ".reshape";
@@ -3201,7 +3201,7 @@ void Function::createOnnxGRU(llvm::StringRef namePrefix, NodeValue X,
     std::string prefix = opName + ((numDirections > 1) ? dirLabel : "");
 
     // Slice index used for creating weights slices.
-    size_t sliceIdx0 = 0;
+    dim_t sliceIdx0 = 0;
     if (direction == RnnDirection::Bidirectional) {
       sliceIdx0 = forward ? 0 : 1;
     }
