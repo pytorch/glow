@@ -60,17 +60,20 @@ protected:
   /// Amount of memory used by all models.
   std::atomic<uint64_t> usedMemoryBytes_{0};
 
+  /// Keeps the stats exporter registry object alive till destructor.
+  std::shared_ptr<StatsExporterRegistry> statsExporterRegistry_;
+
   /// Helper method to export memory usage counters.
   void exportMemoryCounters() {
-    Stats()->setCounter(availableMemoryKey_,
-                        maxMemoryBytes_ - usedMemoryBytes_);
-    Stats()->setCounter(usedMemoryKey_, usedMemoryBytes_);
+    statsExporterRegistry_->setCounter(availableMemoryKey_,
+                                       maxMemoryBytes_ - usedMemoryBytes_);
+    statsExporterRegistry_->setCounter(usedMemoryKey_, usedMemoryBytes_);
   }
 
   /// Helper method to zero out memory counters, used when a device is freed.
   void zeroMemoryCounters() {
-    Stats()->setCounter(availableMemoryKey_, 0);
-    Stats()->setCounter(usedMemoryKey_, 0);
+    statsExporterRegistry_->setCounter(availableMemoryKey_, 0);
+    statsExporterRegistry_->setCounter(usedMemoryKey_, 0);
   }
 
 public:
@@ -80,8 +83,10 @@ public:
                             std::to_string(config_.deviceID)),
         usedMemoryKey_("glow.device.used_memory.device" +
                        std::to_string(config_.deviceID)),
-        maxMemoryBytes_(config_.getDeviceMemory(2000000000)) {}
-  virtual ~DeviceManager() {}
+        maxMemoryBytes_(config_.getDeviceMemory(2000000000)),
+        statsExporterRegistry_(StatsExporterRegistry::Stats()) {}
+
+  virtual ~DeviceManager() = default;
 
   /// Create a device manager based on the device config \p config.
   static DeviceManager *createDeviceManager(const DeviceConfig &config);
