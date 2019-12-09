@@ -1333,7 +1333,7 @@ PyTorchModelLoader::loadQuantizedConvImpl(const torch::jit::Node *ptNode,
   } else {
     auto qconv = F_.createConv("qconv", input, weight, bias, outTy, kernels,
                                strides, pads, groups, dilation);
-    glow::NodeValue output_not_transposed = qconv->getResult();
+    output_not_transposed = qconv->getResult();
   }
   if (isRelu) {
     glow::ReluNode *qrelu = F_.createRELU("qconv_relu", output_not_transposed);
