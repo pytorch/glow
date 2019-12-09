@@ -1255,7 +1255,7 @@ Error ONNXModelLoader::loadRNN(const ONNX_NAMESPACE::NodeProto &op,
                  ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_ATTRIBUTE);
     }
   }
-  size_t numDirections =
+  dim_t numDirections =
       (direction == Function::RnnDirection::Bidirectional) ? 2 : 1;
 
   // Activation alpha not supported (Optional)(Default:activation dependent).
@@ -1312,7 +1312,7 @@ Error ONNXModelLoader::loadRNN(const ONNX_NAMESPACE::NodeProto &op,
                     "ONNX RNN 'clip' attribute not supported!");
 
   // Get hidden size (Required).
-  size_t hiddenSize;
+  dim_t hiddenSize;
   RETURN_ERR_IF_NOT(dict.count("hidden_size"),
                     "ONNX RNN 'hidden_size' attribute is required!");
   ASSIGN_VALUE_OR_RETURN_ERR(hiddenSize, loadInt(dict.at("hidden_size")));
@@ -1369,7 +1369,7 @@ Error ONNXModelLoader::loadRNN(const ONNX_NAMESPACE::NodeProto &op,
   // Derived parameters.
   RETURN_ERR_IF_NOT(X.dims().size() == 3,
                     "ONNX RNN input 'X' should have 3 dimensions!");
-  size_t batchSize = X.dims()[1];
+  dim_t batchSize = X.dims()[1];
 
   // Create Y_h (hidden state) output placeholder.
   Placeholder *Y_h_ph;
@@ -1423,7 +1423,7 @@ Error ONNXModelLoader::loadGRU(const ONNX_NAMESPACE::NodeProto &op,
                  ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_ATTRIBUTE);
     }
   }
-  size_t numDirections =
+  dim_t numDirections =
       (direction == Function::RnnDirection::Bidirectional) ? 2 : 1;
 
   // Activation alpha not supported (Optional)(Default:activation dependent).
@@ -1481,7 +1481,7 @@ Error ONNXModelLoader::loadGRU(const ONNX_NAMESPACE::NodeProto &op,
                     "ONNX GRU 'clip' attribute not supported!");
 
   // Get hidden size (Required).
-  size_t hiddenSize;
+  dim_t hiddenSize;
   RETURN_ERR_IF_NOT(dict.count("hidden_size"),
                     "ONNX GRU 'hidden_size' attribute is required!");
   ASSIGN_VALUE_OR_RETURN_ERR(hiddenSize, loadInt(dict.at("hidden_size")));
@@ -1545,7 +1545,7 @@ Error ONNXModelLoader::loadGRU(const ONNX_NAMESPACE::NodeProto &op,
   // Derived parameters.
   RETURN_ERR_IF_NOT(X.dims().size() == 3,
                     "ONNX GRU input 'X' should have 3 dimensions!");
-  size_t batchSize = X.dims()[1];
+  dim_t batchSize = X.dims()[1];
 
   // Create Y_h (hidden state) output placeholder.
   Placeholder *Y_h_ph;
