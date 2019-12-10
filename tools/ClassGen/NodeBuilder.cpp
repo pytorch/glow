@@ -550,6 +550,7 @@ void NodeBuilder::emitNodeClass(std::ostream &os) const {
      << "  void setNthInput(unsigned idx, NodeValue val);\n"
      << "  llvm::StringRef getOutputName(unsigned idx) const;\n"
      << "  bool hasSideEffects() const { return " << hasSideEffects_ << "; }\n"
+     << "  bool isCanonical() const { return " << !isBackendSpecific_ << "; }\n"
      << "  bool isDataParallel() const { return " << isDataParallel_ << "; }\n"
      << "  std::string getDebugDesc() const;\n"
      << "  bool isEqual(const " << name_ << "Node &other) const;\n"

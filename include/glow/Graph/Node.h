@@ -98,6 +98,7 @@ public:
   llvm::StringRef getOutputName(unsigned idx) const;
   bool hasSideEffects() const;
   bool isArithmetic() const;
+  bool isCanonical() const;
   bool isDataParallel() const;
 
   /// \returns true if this input is being overwritten by the node.
