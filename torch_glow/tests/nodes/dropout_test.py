@@ -4,25 +4,26 @@ import torch
 import torch.nn.functional as F
 
 from tests.utils import jitVsGlow
+import unittest
 
 
-def test_dropout():
-    """Basic test of the PyTorch aten::dropout Node on Glow."""
+class TestDropout(unittest.TestCase):
+    def test_dropout(self):
+        """Basic test of the PyTorch aten::dropout Node on Glow."""
 
-    def test_f(a):
-        return F.dropout(a + a, p=0.5, training=False)
+        def test_f(a):
+            return F.dropout(a + a, p=0.5, training=False)
 
-    x = torch.randn(6, 4, 10)
+        x = torch.randn(6, 4, 10)
 
-    jitVsGlow(test_f, x, expected_fused_ops={"aten::dropout"})
+        jitVsGlow(test_f, x, expected_fused_ops={"aten::dropout"})
 
+    def test_dropout_inplace(self):
+        """Basic test of the PyTorch aten::dropout_ Node on Glow."""
 
-def test_dropout_inplace():
-    """Basic test of the PyTorch aten::dropout_ Node on Glow."""
+        def test_f(a):
+            return F.dropout(a + a, p=0.5, training=False, inplace=True)
 
-    def test_f(a):
-        return F.dropout(a + a, p=0.5, training=False, inplace=True)
+        x = torch.randn(6, 4, 10)
 
-    x = torch.randn(6, 4, 10)
-
-    jitVsGlow(test_f, x, expected_fused_ops={"aten::dropout_"})
+        jitVsGlow(test_f, x, expected_fused_ops={"aten::dropout_"})

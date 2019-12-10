@@ -806,13 +806,13 @@ static void libjit_space_to_depth_generic(const T *inPtr, T *outPtr,
 template <typename DstType, typename SrcType>
 static void
 libjit_copy_kernel_with_conversion(DstType *dstPtr, const SrcType *srcPtr,
-                                   const size_t *dims, size_t numDims) {
-  size_t dimSize = 1;
-  for (size_t i = 0; i < numDims; ++i) {
+                                   const dim_t *dims, dim_t numDims) {
+  dim_t dimSize = 1;
+  for (dim_t i = 0; i < numDims; ++i) {
     dimSize *= dims[i];
   }
 
-  for (size_t i = 0; i < dimSize; ++i) {
+  for (dim_t i = 0; i < dimSize; ++i) {
     dstPtr[i] = DstType(srcPtr[i]);
   }
 }
@@ -823,12 +823,12 @@ template <typename T>
 static void libjit_reducemin(T *dest, const T *batch, size_t destSize,
                              const dim_t *destDims, const dim_t *batchDims,
                              T init) {
-  for (size_t i = 0; i < destSize; i++) {
+  for (dim_t i = 0; i < destSize; i++) {
     dest[i] = init;
   }
 
   unsigned int axis[6];
-  for (size_t i = 0; i < 6; i++) {
+  for (dim_t i = 0; i < 6; i++) {
     axis[i] = (destDims[i] > 1);
   }
 
@@ -2072,19 +2072,19 @@ void libjit_write_timestamp(uint64_t *tensor, dim_t offset) {
 
 /// Copies a kernel with type conversion
 void libjit_convertTo_f_i32(float *dstPtr, const int32_t *srcPtr,
-                            const size_t *dims, size_t numDims) {
+                            const dim_t *dims, dim_t numDims) {
   libjit_copy_kernel_with_conversion<float, int32_t>(dstPtr, srcPtr, dims,
                                                      numDims);
 }
 
 void libjit_convertTo_i32_u(int32_t *dstPtr, const int64_t *srcPtr,
-                            const size_t *dims, size_t numDims) {
+                            const dim_t *dims, dim_t numDims) {
   libjit_copy_kernel_with_conversion<int32_t, int64_t>(dstPtr, srcPtr, dims,
                                                        numDims);
 }
 
 void libjit_convertTo_u_i32(int64_t *dstPtr, const int32_t *srcPtr,
-                            const size_t *dims, size_t numDims) {
+                            const dim_t *dims, dim_t numDims) {
   libjit_copy_kernel_with_conversion<int64_t, int32_t>(dstPtr, srcPtr, dims,
                                                        numDims);
 }

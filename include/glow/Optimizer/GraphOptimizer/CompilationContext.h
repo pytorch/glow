@@ -78,6 +78,11 @@ struct OptimizationOptions {
   /// Quantize, Dequantize nodes).. Note that this must be accompanied by
   /// modifying the Tensors backing Placeholders at runtime.
   bool foldElemKindConversionIntoIO{false};
+
+  /// If true this will fold convertTo and Quantize nodes into only static
+  /// placeholders. The conversion of the Tensors will be handled by the
+  /// provisioner.
+  bool foldStaticPlaceholderConversions{false};
 };
 
 /// Context for compilation.

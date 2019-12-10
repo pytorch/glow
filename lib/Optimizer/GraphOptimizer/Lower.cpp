@@ -438,9 +438,9 @@ static void lowerLayerNormalizationNode(Function *F, CompilationContext &cctx,
   auto nodeName = LN.getName();
 
   // input shape -> {M, N} where N is the size of each layer to be normalized.
-  size_t N = std::accumulate(gamma.dims().begin(), gamma.dims().end(), 1,
-                             std::multiplies<size_t>());
-  size_t M = in.getType()->size() / N;
+  dim_t N = std::accumulate(gamma.dims().begin(), gamma.dims().end(), 1,
+                            std::multiplies<size_t>());
+  dim_t M = in.getType()->size() / N;
   in = F->createReshape(nodeName, in, {M, N})->getResult();
 
   // Compute mean and standard deviation for each layer using the formula from

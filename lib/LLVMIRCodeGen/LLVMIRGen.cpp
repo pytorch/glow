@@ -576,6 +576,8 @@ static std::string createName(const std::string &name, ElemKind elemTy) {
   switch (elemTy) {
   case ElemKind::FloatTy:
     return name + "_f";
+  case ElemKind::Float16Ty:
+    return name + "_fp16";
   case ElemKind::Int8QTy:
     return name + "_i8";
   case ElemKind::Int16QTy:
@@ -2693,7 +2695,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *inputVal = emitValueAddress(builder, input);
     auto *outptVal = emitValueAddress(builder, output);
     auto *dimsVal = emitValueDims(builder, output);
-    auto *dimSizeVal = emitConstSizeT(builder, output->dims().size());
+    auto *dimSizeVal = emitConstDimT(builder, output->dims().size());
 
     auto *F = getFunction("convertTo",
                           {output->getElementType(), input->getElementType()});

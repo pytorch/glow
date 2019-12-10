@@ -29,6 +29,10 @@ class InterpreterDeviceManager : public QueueBackedDeviceManager {
   /// Compiled function list by name.
   FunctionMapTy functions_;
 
+  /// Map from PH to functionName for static placeholders.
+  std::unordered_map<Placeholder *, std::vector<std::string>>
+      staticPlaceholderToFunctions_;
+
   /// String constant for logging number of in-use devices.
   static constexpr const char *kDevicesUsedInterpreter =
       "glow.devices_used.interpreter";
@@ -60,6 +64,12 @@ public:
   /// Returns the DeviceInfo for this device containing peak limits for
   /// compute and bandwidths (used in partitioning).
   DeviceInfo getDeviceInfo() const override;
+
+  /// Copies the contents of Tensor \p T to the device resource allocated to
+  /// Placeholder \p PH. once finished calls \p resultCB with the result of the
+  /// operation.
+  void transferStaticPlaceholderToDevice(
+      Placeholder *PH, Tensor *T, std::function<void(Error)> resultCB) override;
 
 protected:
   void addNetworkImpl(const Module *module, FunctionMapTy functions,

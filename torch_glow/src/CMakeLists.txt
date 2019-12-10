@@ -24,7 +24,7 @@ target_compile_options(PyTorchModelLoader
                         -frtti -fexceptions -DC10_USE_GLOG)
 target_link_libraries(PyTorchModelLoader
                       PRIVATE
-                        torch
+                        torch_cpu
                         c10
                         Support
                         HostManager

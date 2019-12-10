@@ -212,8 +212,11 @@ def gen_lstm_onnx_test_model(model_path, seq_length, batch_size, hidden_size, in
             dir_idx)
 
         def f(x): return (1 / (1 + np.exp(-x)))
+
         def g(x): return np.tanh(x)
+
         def h(x): return np.tanh(x)
+
         def mm(x, w): return np.matmul(x, w.transpose())
         Ht = np.reshape(initial_h[dir_idx, :, :], [batch_size, hidden_size])
         Ct = np.reshape(initial_c[dir_idx, :, :], [batch_size, hidden_size])
