@@ -38,6 +38,10 @@ public:
   /// library, e.g. deferredBlobReader in onnxifi.
   virtual Error setSrc(void *loaderObject) = 0;
 
+  /// Accepts a map from string to Type \p info. This is used by the loader when
+  /// converted the loaded weight into a glow Tensor.
+  virtual void setTypeInfo(std::map<std::string, Type> info) = 0;
+
   /// Gets the name of the currently loaded weight.
   virtual std::string getName() = 0;
 
