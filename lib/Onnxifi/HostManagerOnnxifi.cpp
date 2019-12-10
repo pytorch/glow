@@ -88,6 +88,15 @@ onnxStatus HostManagerBackend::addNetwork(std::unique_ptr<Module> module,
       LOG(INFO) << "Blob reader provided but no loader registered!";
       return ONNXIFI_STATUS_INTERNAL_ERROR;
     }
+
+    // Generate a map of type date for all static placeholders.
+    std::map<std::string, Type> staticPlaceholderTypes;
+    for (auto PH : module->getPlaceholders()) {
+      if (PH->isStatic()) {
+        staticPlaceholderTypes[std::string(PH->getName())] = *PH->getType();
+      }
+    }
+    loader->setTypeInfo(std::move(staticPlaceholderTypes));
     loader->setSrc(deferredBlobReader);
     cctx.deferredWeightLoader = loader;
     // Signal that we want to fold convertTo and Quantize into static

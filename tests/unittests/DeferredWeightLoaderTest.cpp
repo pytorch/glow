@@ -33,6 +33,7 @@ public:
   Error setSrc(void *loaderObject) override { return Error::success(); }
   void addWeight(Tensor *weight) { weights_.push_back(weight); }
   void addName(std::string name) { names_.push_back(name); }
+  void setTypeInfo(std::map<std::string, Type> info) override {}
 
   std::string getName() override {
     for (auto na : names_) {

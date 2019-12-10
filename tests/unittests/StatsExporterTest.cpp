@@ -25,10 +25,16 @@
 using namespace glow;
 
 class MockStatsExporter : public StatsExporter {
-public:
-  MockStatsExporter() { Stats()->registerStatsExporter(this); }
+  std::shared_ptr<StatsExporterRegistry> statsExporterRegistry_;
 
-  ~MockStatsExporter() override {}
+public:
+  MockStatsExporter() : statsExporterRegistry_(StatsExporterRegistry::Stats()) {
+    statsExporterRegistry_->registerStatsExporter(this);
+  }
+
+  ~MockStatsExporter() override {
+    statsExporterRegistry_->revokeStatsExporter(this);
+  }
 
   void addTimeSeriesValue(llvm::StringRef key, double value) override {
     timeSeries[key].push_back(value);
