@@ -22,7 +22,6 @@
 #include "glow/Runtime/Executor/ThreadPoolExecutor.h"
 #include "glow/Runtime/Provisioner/Provisioner.h"
 #include "glow/Runtime/RuntimeTypes.h"
-#include "glow/Runtime/StatsExporter.h"
 #include "glow/Support/Support.h"
 
 #include "llvm/Support/CommandLine.h"
@@ -53,10 +52,16 @@ llvm::cl::opt<std::string> loadDeviceConfigsFileOpt(
     llvm::cl::value_desc("configs.yaml"), llvm::cl::Optional,
     llvm::cl::cat(hostManagerCat));
 
-HostManager::HostManager(const HostConfig &hostConfig) : config_(hostConfig) {}
+HostManager::HostManager()
+    : config_(), statsExporterRegistry_(StatsExporterRegistry::Stats()) {}
+
+HostManager::HostManager(const HostConfig &hostConfig)
+    : config_(hostConfig),
+      statsExporterRegistry_(StatsExporterRegistry::Stats()) {}
 
 HostManager::HostManager(
-    std::vector<std::unique_ptr<DeviceConfig>> deviceConfigs) {
+    std::vector<std::unique_ptr<DeviceConfig>> deviceConfigs)
+    : config_(), statsExporterRegistry_(StatsExporterRegistry::Stats()) {
   // TODO: move all initialization out of constructor.
   EXIT_ON_ERR(init(std::move(deviceConfigs)));
 }
@@ -64,7 +69,8 @@ HostManager::HostManager(
 HostManager::HostManager(
     std::vector<std::unique_ptr<DeviceConfig>> deviceConfigs,
     const HostConfig &hostConfig)
-    : config_(hostConfig) {
+    : config_(hostConfig),
+      statsExporterRegistry_(StatsExporterRegistry::Stats()) {
   // TODO: move all initialization out of constructor.
   EXIT_ON_ERR(init(std::move(deviceConfigs)));
 }
@@ -106,9 +112,9 @@ void HostManager::exportMemoryCounters() {
     maxMem += dev.second->getMaximumMemory();
     availableMem += dev.second->getAvailableMemory();
   }
-  Stats()->setCounter(kDeviceMemoryUsed, maxMem - availableMem);
-  Stats()->setCounter(kDeviceMemoryAvailable, availableMem);
-  Stats()->setCounter(kDeviceMemoryMax, maxMem);
+  statsExporterRegistry_->setCounter(kDeviceMemoryUsed, maxMem - availableMem);
+  statsExporterRegistry_->setCounter(kDeviceMemoryAvailable, availableMem);
+  statsExporterRegistry_->setCounter(kDeviceMemoryMax, maxMem);
 }
 
 HostManager::~HostManager() {
@@ -313,9 +319,9 @@ Error HostManager::clearHost() {
     errContainer.set(it.second->stop());
   }
   // Zero out counters.
-  Stats()->setCounter(kDeviceMemoryUsed, 0);
-  Stats()->setCounter(kDeviceMemoryAvailable, 0);
-  Stats()->setCounter(kDeviceMemoryMax, 0);
+  statsExporterRegistry_->setCounter(kDeviceMemoryUsed, 0);
+  statsExporterRegistry_->setCounter(kDeviceMemoryAvailable, 0);
+  statsExporterRegistry_->setCounter(kDeviceMemoryMax, 0);
 
   return errContainer.get();
 }
@@ -472,13 +478,12 @@ HostManager::runNetwork(llvm::StringRef networkName,
 void HostManager::updateExecutionStats(
     uint64_t startTime, std::unique_ptr<ExecutionContext> &context) {
   auto duration = TraceEvent::now() - startTime;
-  auto stats = glow::Stats();
-  stats->addTimeSeriesValue("network_execution_e2e", duration);
-  stats->incrementCounter("network_execution");
+  statsExporterRegistry_->addTimeSeriesValue("network_execution_e2e", duration);
+  statsExporterRegistry_->incrementCounter("network_execution");
   if (context && context->getPlaceholderBindings() && duration > 0) {
-    stats->addTimeSeriesValue("network_execution_throughput",
-                              context->getPlaceholderBindings()->getDataSize() *
-                                  1000000 / duration);
+    statsExporterRegistry_->addTimeSeriesValue(
+        "network_execution_throughput",
+        context->getPlaceholderBindings()->getDataSize() * 1000000 / duration);
   }
 }
 
