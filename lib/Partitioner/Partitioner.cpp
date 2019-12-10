@@ -768,7 +768,8 @@ Partitioner::heterogeneousPartition(CompilationContext &cctx) {
 }
 
 Expected<DAGListTy>
-Partitioner::partitionFromConfig(const PartitionConfig &partitionConfig) {
+Partitioner::partitionFromConfig(const PartitionConfig &partitionConfig,
+                                 CompilationContext &cctx) {
   DAGListTy partitions;
   // Prepare the mapping between BackendName and BackendInfo.
   std::vector<Backend *> backends;
@@ -865,7 +866,6 @@ Partitioner::partitionFromConfig(const PartitionConfig &partitionConfig) {
     std::unique_ptr<Backend> backend(
         createBackend(partitionConfig.backendNames[i]));
     if (!optimized_) {
-      CompilationContext cctx;
       RETURN_IF_ERR(::glow::optimizeFunction(func, *backend, cctx));
     }
   }
@@ -882,7 +882,7 @@ Expected<DAGListTy> Partitioner::partition(CompilationContext &cctx) {
 
   if (partitionConfig_.enabled()) {
     // Call user-defined partition flow.
-    return partitionFromConfig(partitionConfig_);
+    return partitionFromConfig(partitionConfig_, cctx);
   }
 
   if (cctx.precisionConfig.quantMode == QuantizationMode::Profile) {
