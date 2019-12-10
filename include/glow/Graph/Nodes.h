@@ -52,6 +52,7 @@ public:
   NodeValue getNthInput(unsigned idx);
   llvm::StringRef getOutputName(unsigned idx) const;
   bool hasSideEffects() const;
+  bool isCanonical() const { return true; }
   bool isDataParallel() const { return false; }
   Node *clone() const;
   /// @}

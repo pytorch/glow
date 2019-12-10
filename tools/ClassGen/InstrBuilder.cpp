@@ -115,6 +115,11 @@ void InstrBuilder::emitInplaceMethod(std::ostream &os) const {
   os << "    return false;\n  }\n";
 }
 
+void InstrBuilder::emitCanonicalProperty(std::ostream &os) const {
+  os << "\n  bool isCanonical() const {\n";
+  os << "    return " << (isBackendSpecific_ ? "false" : "true") << ";\n  }\n";
+}
+
 void InstrBuilder::emitDataParallelProperty(std::ostream &os) const {
   os << "\n  bool isDataParallel() const {\n";
   os << "    return " << (isDataParallel_ ? "true" : "false") << ";\n  }\n";
