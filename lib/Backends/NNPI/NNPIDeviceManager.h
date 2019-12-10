@@ -38,7 +38,7 @@ namespace runtime {
 /// inference is executed at a time.
 class InferenceThreadEnv;
 
-class NNPIStaticPlaceHolderContainer {
+class NNPIStaticPlaceholderContainer {
   struct NamedResourceWithRef : public NamedResource {
     uint64_t refCount = 0;
     NamedResourceWithRef() : refCount(0) {}
@@ -46,7 +46,7 @@ class NNPIStaticPlaceHolderContainer {
         : NamedResource(nr), refCount(0){};
   };
   std::map<const Placeholder *, NamedResourceWithRef>
-      staticPlaceHoldersDeviceResource_;
+      staticPlaceholdersDeviceResource_;
   /// NNPI Device Context handle.
   NNPIDeviceContext device_;
   // Given a Placeholder, erase its allocated NamedResourceWithRef and destory
@@ -56,21 +56,21 @@ class NNPIStaticPlaceHolderContainer {
   bool EraseAndDestroyDeviceResource_(const Placeholder *PH);
 
 public:
-  NNPIStaticPlaceHolderContainer() : device_(NNPI_INVALID_NNPIHANDLE){};
-  ~NNPIStaticPlaceHolderContainer();
+  NNPIStaticPlaceholderContainer() : device_(NNPI_INVALID_NNPIHANDLE){};
+  ~NNPIStaticPlaceholderContainer();
 
   // Set the device that the container create and destroy device resource for
   // return false if device is invalid
   bool SetDevice(NNPIDeviceContext device, bool inferOnRuntime);
 
-  // Acquire a device resource with a given static PlaceHolder and
+  // Acquire a device resource with a given static Placeholder and
   // NamedResource
   // returned NamedResource will contain the allocated handle
   // caller should check the returned handle before using it.
   NamedResource AcquireDeviceResource(const Placeholder *,
                                       const NamedResource &nr);
 
-  // Release a device resource given a static PlaceHolder
+  // Release a device resource given a static Placeholder
   // return false if release failed.
   bool ReleaseDeviceResource(const Placeholder *);
 };
@@ -106,7 +106,7 @@ class NNPIDeviceManager : public DeviceManager {
   /// Device Tracing contorl.
   std::shared_ptr<NNPIDeviceTracing> deviceTracing_;
   /// Maps between static placeholders' names to their device resource.
-  NNPIStaticPlaceHolderContainer staticPlaceHolderContainer_;
+  NNPIStaticPlaceholderContainer staticPlaceholderContainer_;
   /// NNPI Device options (environment variables + DeviceConfig options).
   NNPIDeviceOptions deviceOptions_;
 

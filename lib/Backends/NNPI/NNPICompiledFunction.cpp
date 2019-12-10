@@ -26,18 +26,18 @@ using namespace glow;
 
 Error NNPICompiledFunction::updateCompilationConfigFromOptions(
     NNPICompilationOptions &compilationOptions) {
-  if (compilationOptions.showVars_) {
+  if (compilationOptions.showVars) {
     LOG(INFO) << compilationOptions.dumpStatus();
   }
-  if (!compilationOptions.customDspKernelsFile_.empty()) {
+  if (!compilationOptions.customDspKernelsFile.empty()) {
     std::strncpy(config_.customDspKernelsFile,
-                 compilationOptions.customDspKernelsFile_.c_str(),
+                 compilationOptions.customDspKernelsFile.c_str(),
                  sizeof(config_.customDspKernelsFile));
   }
 
   // Handle device version.
-  if (compilationOptions.deviceVersion_ > 0) {
-    switch (compilationOptions.deviceVersion_) {
+  if (compilationOptions.deviceVersion > 0) {
+    switch (compilationOptions.deviceVersion) {
     case 1:
       config_.deviceType = NNPI_DEVICE_M2_A;
       break;
@@ -53,12 +53,12 @@ Error NNPICompiledFunction::updateCompilationConfigFromOptions(
     }
   }
 
-  if (compilationOptions.iceCores_ > 0) {
-    config_.numCoresToUse = static_cast<uint32_t>(compilationOptions.iceCores_);
+  if (compilationOptions.iceCores > 0) {
+    config_.numCoresToUse = static_cast<uint32_t>(compilationOptions.iceCores);
   }
-  if (!compilationOptions.debugCompileConfigFile_.empty()) {
+  if (!compilationOptions.debugCompileConfigFile.empty()) {
     strncpy(config_.debugConfigFile,
-            compilationOptions.debugCompileConfigFile_.c_str(),
+            compilationOptions.debugCompileConfigFile.c_str(),
             sizeof(config_.debugConfigFile));
   }
   return Error::success();
@@ -87,8 +87,8 @@ Error NNPICompiledFunction::compile(Function *F, const BackendOptions &opts) {
     return error;
   }
 
-  if (compilationOptions.useIceT_ || compilationOptions.inferOnDevice_) {
-    auto filename = compilationOptions.compiledFile_;
+  if (compilationOptions.useIceT || compilationOptions.inferOnDevice) {
+    auto filename = compilationOptions.compiledFile;
     LOG_IF_NOT_RETURN_LLVMERROR(filename.length() < NNPI_MAX_STRING_LEN,
                                 "Bad filename");
 
@@ -126,7 +126,7 @@ Error NNPICompiledFunction::compile(Function *F, const BackendOptions &opts) {
           nnpiNetworkCompileToFile(network_, &config_, filename.c_str(), NULL),
           "Failed NNPI Compile");
     }
-    if (compilationOptions.inferOnDevice_) {
+    if (compilationOptions.inferOnDevice) {
       DBG_MEM_USAGE("NNPICompiledFunction destroy network");
       // NNPINetwork is not needed anymore on the inferfence api path.
       // Once the complied stream is loaded, query on the network can be done

@@ -136,8 +136,10 @@ static std::vector<std::vector<std::string>> buildOptions() {
       "0"};
   options[CompilationLogLevelOption] = {
       "CompilationLogLevel", "NNPI_LOG_LEVEL",
-      "Sets the compilation logging level (0 most detailed).", "0"};
-  options[OverideNNPIMemoryOption] = {
+      "Sets the compilation logging level (0-6). 0=Debug, 1=Assert, 2=Info, "
+      "3=Warning, 4=Error, 5=Critical, 6=User,",
+      "0"};
+  options[OverrideNNPIMemoryOption] = {
       "DeviceMemory", "NNPI_DEVICE_MEMORY",
       "Override the amount of DRAM to allocate per NNPI device, in kilobytes.",
       "0"};
@@ -222,11 +224,11 @@ llvm::StringMap<std::string> NNPIBackendOptions::getSupportedOptions() {
 }
 
 NNPIBackendOptions::NNPIBackendOptions() {
-  useIceT_ = NNPIOptions::getBoolVal<llvm::StringMap<std::string>>(
-      UseIceTOption, nullptr);
-  inferOnDevice_ = NNPIOptions::getBoolVal<llvm::StringMap<std::string>>(
+  useIceT = NNPIOptions::getBoolVal<llvm::StringMap<std::string>>(UseIceTOption,
+                                                                  nullptr);
+  inferOnDevice = NNPIOptions::getBoolVal<llvm::StringMap<std::string>>(
       InferOnDeviceOption, nullptr);
-  showVars_ = NNPIOptions::getBoolVal<llvm::StringMap<std::string>>(
+  showVars = NNPIOptions::getBoolVal<llvm::StringMap<std::string>>(
       ShowVarsOption, nullptr);
 }
 
@@ -235,10 +237,10 @@ std::string NNPIBackendOptions::dumpStatus() const {
   std::stringstream desc;
   desc << "\nNNPI Backend environment option variables\n";
   desc << "  " << options[UseIceTOption][NNPIParamOptionEnvironmentVarName]
-       << "=" << useIceT_ << "\n";
+       << "=" << useIceT << "\n";
   desc << "  "
        << options[InferOnDeviceOption][NNPIParamOptionEnvironmentVarName] << "="
-       << inferOnDevice_ << "\n";
+       << inferOnDevice << "\n";
   return desc.str();
 }
 
@@ -254,35 +256,35 @@ llvm::StringMap<std::string> NNPICompilationOptions::getSupportedOptions() {
 
 NNPICompilationOptions::NNPICompilationOptions(
     const std::map<std::string, std::string> *parameters) {
-  useIceT_ = NNPIOptions::getBoolVal<std::map<std::string, std::string>>(
+  useIceT = NNPIOptions::getBoolVal<std::map<std::string, std::string>>(
       UseIceTOption, parameters);
-  inferOnDevice_ = NNPIOptions::getBoolVal<std::map<std::string, std::string>>(
+  inferOnDevice = NNPIOptions::getBoolVal<std::map<std::string, std::string>>(
       InferOnDeviceOption, parameters);
-  showVars_ = NNPIOptions::getBoolVal<std::map<std::string, std::string>>(
+  showVars = NNPIOptions::getBoolVal<std::map<std::string, std::string>>(
       ShowVarsOption, parameters);
-  compiledFile_ = NNPIOptions::getStringVal<std::map<std::string, std::string>>(
+  compiledFile = NNPIOptions::getStringVal<std::map<std::string, std::string>>(
       CompiledFileOption, parameters);
-  useSymlowp_ = NNPIOptions::getBoolVal<std::map<std::string, std::string>>(
+  useSymlowp = NNPIOptions::getBoolVal<std::map<std::string, std::string>>(
       UseSymlowpOption, parameters);
-  deviceVersion_ = NNPIOptions::getIntVal<std::map<std::string, std::string>>(
+  deviceVersion = NNPIOptions::getIntVal<std::map<std::string, std::string>>(
       DeviceVersionOption, parameters);
-  iceCores_ = NNPIOptions::getIntVal<std::map<std::string, std::string>>(
+  iceCores = NNPIOptions::getIntVal<std::map<std::string, std::string>>(
       IceCoresOption, parameters);
-  compilationLogLevel_ =
+  compilationLogLevel =
       NNPIOptions::getIntVal<std::map<std::string, std::string>>(
           CompilationLogLevelOption, parameters);
-  debugCompileConfigFile_ =
+  debugCompileConfigFile =
       NNPIOptions::getStringVal<std::map<std::string, std::string>>(
           CompilationDebugConfigFileOption, parameters);
-  customDspKernelsFile_ =
+  customDspKernelsFile =
       NNPIOptions::getStringVal<std::map<std::string, std::string>>(
           CustomDSPLibOption, parameters);
 
-  setLogLevel(compilationLogLevel_);
+  setLogLevel(compilationLogLevel);
 }
 
 void NNPICompilationOptions::setLogLevel(int logLevel) {
-  // We have only one log level for NNPI compilation. Setting it will be change
+  // We have only one log level for NNPI compilation. Setting it will change
   // the level for all compilation instances.
   NNPI_LOG_LEVEL level;
   switch (logLevel) {
@@ -327,28 +329,28 @@ std::string NNPICompilationOptions::dumpStatus() const {
   std::stringstream desc;
   desc << "\nNNPI Backend compilation option variables\n";
   desc << "  " << options[UseIceTOption][NNPIParamOptionEnvironmentVarName]
-       << "=" << useIceT_ << "\n";
+       << "=" << useIceT << "\n";
   desc << "  "
        << options[InferOnDeviceOption][NNPIParamOptionEnvironmentVarName] << "="
-       << inferOnDevice_ << "\n";
+       << inferOnDevice << "\n";
   desc << "  " << options[CompiledFileOption][NNPIParamOptionEnvironmentVarName]
-       << "=" << compiledFile_ << "\n";
+       << "=" << compiledFile << "\n";
   desc << "  " << options[UseSymlowpOption][NNPIParamOptionEnvironmentVarName]
-       << "=" << useSymlowp_ << "\n";
+       << "=" << useSymlowp << "\n";
   desc << "  "
        << options[DeviceVersionOption][NNPIParamOptionEnvironmentVarName] << "="
-       << deviceVersion_ << "\n";
+       << deviceVersion << "\n";
   desc << "  " << options[IceCoresOption][NNPIParamOptionEnvironmentVarName]
-       << "=" << iceCores_ << "\n";
+       << "=" << iceCores << "\n";
   desc << "  "
        << options[CompilationDebugConfigFileOption]
                  [NNPIParamOptionEnvironmentVarName]
-       << "=" << debugCompileConfigFile_ << "\n";
+       << "=" << debugCompileConfigFile << "\n";
   desc << "  "
        << options[CompilationLogLevelOption][NNPIParamOptionEnvironmentVarName]
-       << "=" << compilationLogLevel_ << "\n";
+       << "=" << compilationLogLevel << "\n";
   desc << "  " << options[ShowVarsOption][NNPIParamOptionEnvironmentVarName]
-       << "=" << showVars_ << "\n";
+       << "=" << showVars << "\n";
   return desc.str();
 }
 
@@ -364,45 +366,47 @@ llvm::StringMap<std::string> NNPIDeviceOptions::getSupportedOptions() {
 
 NNPIDeviceOptions::NNPIDeviceOptions(
     const llvm::StringMap<std::string> *parameters) {
-  useIceT_ = NNPIOptions::getBoolVal<llvm::StringMap<std::string>>(
-      UseIceTOption, parameters);
-  inferOnDevice_ = NNPIOptions::getBoolVal<llvm::StringMap<std::string>>(
+  useIceT = NNPIOptions::getBoolVal<llvm::StringMap<std::string>>(UseIceTOption,
+                                                                  parameters);
+  inferOnDevice = NNPIOptions::getBoolVal<llvm::StringMap<std::string>>(
       InferOnDeviceOption, parameters);
-  internalTesting_ = NNPIOptions::getStringVal<llvm::StringMap<std::string>>(
-                         InternalTestingOption, parameters) != "";
-  showVars_ = NNPIOptions::getBoolVal<llvm::StringMap<std::string>>(
+  internalTesting = NNPIOptions::getStringVal<llvm::StringMap<std::string>>(
+                        InternalTestingOption, parameters) != "";
+  showVars = NNPIOptions::getBoolVal<llvm::StringMap<std::string>>(
       ShowVarsOption, parameters);
-  compiledFile_ = NNPIOptions::getStringVal<llvm::StringMap<std::string>>(
+  compiledFile = NNPIOptions::getStringVal<llvm::StringMap<std::string>>(
       CompiledFileOption, parameters);
-  deviceID_ = NNPIOptions::getIntVal<llvm::StringMap<std::string>>(
+  deviceID = NNPIOptions::getIntVal<llvm::StringMap<std::string>>(
       DeviceIDOption, parameters);
-  numWorkers_ = NNPIOptions::getIntVal<llvm::StringMap<std::string>>(
+  numWorkers = NNPIOptions::getIntVal<llvm::StringMap<std::string>>(
       NumOfWorkersOption, parameters);
-  enabledDeviceTraceing_ =
-      NNPIOptions::getBoolVal<llvm::StringMap<std::string>>(DeviceTraceOption,
-                                                            parameters);
-// Todo: remove if 1 section once nnpiDeviceGetInfo changes are implemented.
-#if 1
-  deviceMemory_ = 16000000;
-#else
-  deviceMemory_ = NNPIOptions::getUnsignedVal<llvm::StringMap<std::string>>(
-      OverideNNPIMemoryOption, parameters);
+  enabledDeviceTraceing = NNPIOptions::getBoolVal<llvm::StringMap<std::string>>(
+      DeviceTraceOption, parameters);
+  deviceMemory = NNPIOptions::getUnsignedVal<llvm::StringMap<std::string>>(
+      OverrideNNPIMemoryOption, parameters);
+#if 1 // Todo: remove default memory size initialization once real device memory
+      // is implemented.
+  // Set default memory size if option not defined.
+  if (deviceMemory <= 0) {
+    deviceMemory = 16000000;
+  }
 #endif
-  enabledCommandLists_ =
+
+  enabledCommandLists =
       NNPIOptions::getUnsignedVal<llvm::StringMap<std::string>>(
           CommandListsOption, parameters);
 }
 
 NNPIDeviceOptions::NNPIDeviceOptions(const NNPIDeviceOptions &other) {
-  showVars_ = other.showVars_;
-  useIceT_ = other.useIceT_;
-  inferOnDevice_ = other.inferOnDevice_;
-  compiledFile_ = other.compiledFile_;
-  deviceID_ = other.deviceID_;
-  numWorkers_ = other.numWorkers_;
-  enabledDeviceTraceing_ = other.enabledDeviceTraceing_;
-  deviceMemory_ = other.deviceMemory_;
-  enabledCommandLists_ = other.enabledCommandLists_;
+  showVars = other.showVars;
+  useIceT = other.useIceT;
+  inferOnDevice = other.inferOnDevice;
+  compiledFile = other.compiledFile;
+  deviceID = other.deviceID;
+  numWorkers = other.numWorkers;
+  enabledDeviceTraceing = other.enabledDeviceTraceing;
+  deviceMemory = other.deviceMemory;
+  enabledCommandLists = other.enabledCommandLists;
 }
 
 std::string NNPIDeviceOptions::dumpStatus() const {
@@ -410,28 +414,28 @@ std::string NNPIDeviceOptions::dumpStatus() const {
   std::stringstream desc;
   desc << "\nNNPI Backend device variables\n";
   desc << "  " << options[UseIceTOption][NNPIParamOptionEnvironmentVarName]
-       << "=" << useIceT_ << "\n";
+       << "=" << useIceT << "\n";
   desc << "  "
        << options[InferOnDeviceOption][NNPIParamOptionEnvironmentVarName] << "="
-       << inferOnDevice_ << "\n";
+       << inferOnDevice << "\n";
   desc << "  "
        << options[InternalTestingOption][NNPIParamOptionEnvironmentVarName]
-       << "=" << internalTesting_ << "\n";
+       << "=" << internalTesting << "\n";
   desc << "  " << options[CompiledFileOption][NNPIParamOptionEnvironmentVarName]
-       << "=" << compiledFile_ << "\n";
+       << "=" << compiledFile << "\n";
   desc << "  " << options[DeviceIDOption][NNPIParamOptionEnvironmentVarName]
-       << "=" << deviceID_ << "\n";
+       << "=" << deviceID << "\n";
   desc << "  " << options[NumOfWorkersOption][NNPIParamOptionEnvironmentVarName]
-       << "=" << numWorkers_ << "\n";
+       << "=" << numWorkers << "\n";
   desc << "  " << options[DeviceTraceOption][NNPIParamOptionEnvironmentVarName]
-       << "=" << enabledDeviceTraceing_ << "\n";
+       << "=" << enabledDeviceTraceing << "\n";
   desc << "  "
-       << options[OverideNNPIMemoryOption][NNPIParamOptionEnvironmentVarName]
-       << "=" << deviceMemory_ << "\n";
+       << options[OverrideNNPIMemoryOption][NNPIParamOptionEnvironmentVarName]
+       << "=" << deviceMemory << "\n";
   desc << "  " << options[CommandListsOption][NNPIParamOptionEnvironmentVarName]
-       << "=" << enabledCommandLists_ << "\n";
+       << "=" << enabledCommandLists << "\n";
   desc << "  " << options[ShowVarsOption][NNPIParamOptionEnvironmentVarName]
-       << "=" << showVars_ << "\n";
+       << "=" << showVars << "\n";
 
   return desc.str();
 }

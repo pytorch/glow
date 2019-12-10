@@ -46,7 +46,7 @@ glow::NNPIImporter::NNPIImporter(const NNPICompilationOptions &compileOptions)
                         "Failed to create NNPI network");
   // Setting the network name for testing framework purposes.
   ASSERT_LOG_NNPI_ERROR(
-      nnpiNetworkSetName(network_, compileOptions_.compiledFile_.c_str()),
+      nnpiNetworkSetName(network_, compileOptions_.compiledFile.c_str()),
       "Failed to set NNPI network name");
 }
 
@@ -303,7 +303,7 @@ void glow::NNPIImporter::updateDescQuantFromGlow(
       // If there is no offsets, or Symlowp workaround is used and all offsets
       // are zero, the quantization type is SYMLOWP_PCQ.
       if (forceSymlowp || offsetTensor.empty() ||
-          (compileOptions_.useSymlowp_ && zeroes(offsetTensor))) {
+          (compileOptions_.useSymlowp && zeroes(offsetTensor))) {
         desc.quantParams.type = NNPI_QUANTIZATION_SYMLOWP_PCQ;
         std::strncpy(desc.quantParams.params.symlowpPCQ.scalesTensor,
                      scaleTensor.c_str(),
@@ -322,7 +322,7 @@ void glow::NNPIImporter::updateDescQuantFromGlow(
       desc.quantParams.type = NNPI_QUANTIZATION_GEMMLOWP;
       desc.quantParams.params.gemlowp.scale = t.getScale();
       desc.quantParams.params.gemlowp.offset = t.getOffset();
-      if (forceSymlowp || compileOptions_.useSymlowp_) {
+      if (forceSymlowp || compileOptions_.useSymlowp) {
         // WA use SYMLOWP for zero offset tensors.
         if (t.getOffset() == 0) {
           DBG("SYMLOWP WA");
@@ -368,7 +368,7 @@ void glow::NNPIImporter::updateDescQuantFromGlow(
     break;
   case glow::ElemKind::Int32QTy:
     desc.quantParams.precision = NNPI_PRECISION_INT32;
-    if ((forceSymlowp || compileOptions_.useSymlowp_) && t.getOffset() == 0) {
+    if ((forceSymlowp || compileOptions_.useSymlowp) && t.getOffset() == 0) {
       desc.quantParams.type = NNPI_QUANTIZATION_SYMLOWP;
     } else {
       desc.quantParams.type = NNPI_QUANTIZATION_GEMMLOWP;

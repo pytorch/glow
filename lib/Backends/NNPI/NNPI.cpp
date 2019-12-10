@@ -333,7 +333,7 @@ bool NNPIBackend::shouldLower(const Node *N) const {
   case Kinded::Kind::FusedRowwiseQuantizedSparseLengthsSumNodeKind: {
     const FusedRowwiseQuantizedSparseLengthsSumNode *SLSN =
         llvm::cast<FusedRowwiseQuantizedSparseLengthsSumNode>(N);
-    if ((backendOptions_.useIceT_ || backendOptions_.inferOnDevice_) &&
+    if ((backendOptions_.useIceT || backendOptions_.inferOnDevice) &&
         (SLSN->getResult().getElementType() == ElemKind::Float16Ty)) {
       return false; // Don't lower == keep without weights
     } else {
@@ -342,8 +342,8 @@ bool NNPIBackend::shouldLower(const Node *N) const {
   }
   case Kinded::Kind::SparseLengthsSumNodeKind:
     // WA - lower until ICE-T implements it.
-    if (NNPIBackend::backendOptions_.useIceT_ ||
-        NNPIBackend::backendOptions_.inferOnDevice_) {
+    if (NNPIBackend::backendOptions_.useIceT ||
+        NNPIBackend::backendOptions_.inferOnDevice) {
       return true;
     }
     return false;

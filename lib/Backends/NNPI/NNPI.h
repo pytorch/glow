@@ -42,7 +42,7 @@ public:
   bool shouldLower(const Node *N) const override;
   bool shouldShareBuffers() const override { return false; }
   bool supportsPartialTensors() const override { return true; }
-  bool supportsStaticPlaceholders() const { return true; }
+  bool supportsStaticPlaceholders() const override { return true; }
   FunctionPassPipeline getOptimizationPipeline() const override;
 
   runtime::DeviceManager *
@@ -52,12 +52,12 @@ public:
                              CompilationContext &cctx) const override;
 
   virtual llvm::StringMap<std::string>
-  getSupportedCompiledFunctionOptions() const {
+  getSupportedCompiledFunctionOptions() const override {
     return NNPICompilationOptions::getSupportedOptions();
   };
 
   virtual llvm::StringMap<std::string>
-  getSupportedDeviceManagerOptions() const {
+  getSupportedDeviceManagerOptions() const override {
     return NNPIDeviceOptions::getSupportedOptions();
   };
   /// @}

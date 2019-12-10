@@ -38,7 +38,7 @@ enum NNPIParamOption {
   IceCoresOption,
   DeviceTraceOption,
   CompilationLogLevelOption,
-  OverideNNPIMemoryOption,
+  OverrideNNPIMemoryOption,
   ShowVarsOption,
   CustomDSPLibOption,
   CommandListsOption,
@@ -82,13 +82,13 @@ public:
   /// Lists the supported options (name=>description).
   static llvm::StringMap<std::string> getSupportedOptions();
   /// Compile to ICE-T if true, ICE-Ref otherwise.
-  bool useIceT_;
+  bool useIceT;
   /// Enable execution on device (useIceT_ and !inferOnDevice_ will compile but
   /// not execute inference).
-  bool inferOnDevice_;
+  bool inferOnDevice;
   /// Setting this to true will log the status of all variables at backend
   /// creation.
-  bool showVars_;
+  bool showVars;
 
 protected:
   static std::map<std::string, std::pair<std::string, std::string>>
@@ -107,32 +107,32 @@ public:
   static llvm::StringMap<std::string> getSupportedOptions();
   /// Compile to ICE-T if true, ICE-Ref otherwise - this variable cab be
   /// verridden by inferOnDevice_.
-  bool useIceT_;
+  bool useIceT;
   /// Enable execution on device (useIceT_ and !inferOnDevice_ will compile but
   /// not execute inference).
-  bool inferOnDevice_;
+  bool inferOnDevice;
   /// Setting this to true will log the status of all variables at backend
   /// creation.
-  bool showVars_;
+  bool showVars;
   /// Setting this variable will save the compilation output to the filename
   /// specified.
-  std::string compiledFile_;
+  std::string compiledFile;
   /// Setting this variable will force compilation to the to use no more than
   /// the amount of ice cores (1-12) - default 0.
-  int iceCores_;
+  int iceCores;
   /// When this flag is set to true all quantized Int8 tensors are set to
   /// Symlowp when their offset is 0.
-  bool useSymlowp_;
+  bool useSymlowp;
   /// Setting this variable will override target device version used for
   /// compilation (currently supporting 1-3).
-  int deviceVersion_;
+  int deviceVersion;
   /// A path to a custom DSP kernel library.
-  std::string customDspKernelsFile_;
+  std::string customDspKernelsFile;
   /// Setting this variable will control the logging level (0 for debug, 1
   /// assert, 2 info, 3 warning, 4 error, 5 critical ).
-  int compilationLogLevel_;
+  int compilationLogLevel;
   /// Compilation debug configuration file.
-  std::string debugCompileConfigFile_;
+  std::string debugCompileConfigFile;
 
 protected:
   /// There is only on logger for NNPI compilation. Setting it's properties can
@@ -154,30 +154,30 @@ public:
   /// Lists the supported options (name=>description).
   static llvm::StringMap<std::string> getSupportedOptions();
   /// Compile to ICE-T if true, ICE-Ref otherwise.
-  bool useIceT_;
+  bool useIceT;
   /// Enable execution on device (useIceT_ and !inferOnDevice_ will compile but
   /// not execute inference).
-  bool inferOnDevice_;
+  bool inferOnDevice;
   /// Enables internal testing
-  bool internalTesting_;
+  bool internalTesting;
   /// Setting this to true will log the status of all variables at backend
   /// creation.
-  bool showVars_;
+  bool showVars;
   /// Setting this variable will override the target device ID used to run
   /// (0,1,...).
-  int deviceID_;
+  int deviceID;
   /// Setting this variable will load the compilation from filename specified.
-  std::string compiledFile_;
+  std::string compiledFile;
   /// Setting this variable will override the amount of worker threads allocated
   /// per network on the device (default:2).
-  int numWorkers_;
+  int numWorkers;
   /// Setting this variable will enabled device tracing (host2device,
   /// device2host copy infer etc.).
-  bool enabledDeviceTraceing_;
+  bool enabledDeviceTraceing;
   /// Overied the max NNPI device memory.
-  unsigned deviceMemory_;
+  unsigned deviceMemory;
   /// Enable using command list instead of per command queuing.
-  int enabledCommandLists_;
+  int enabledCommandLists;
 };
 } // namespace glow
 #endif // GLOW_NNPI_ENV_VARIABLES_H

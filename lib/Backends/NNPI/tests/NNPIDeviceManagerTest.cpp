@@ -18,8 +18,11 @@
 using namespace glow;
 
 std::set<std::string> glow::backendTestBlacklist = {
-    "MultiFunction/0", "DeviceResidentTensors/0",
-    "TransferStaticPlaceholderTest/0", "CanHandleDeviceResidentTensors/0"};
+    "MultiFunction/0",
+    "DeviceResidentTensors/0",
+    "TransferStaticPlaceholderTest/0",
+    "CanHandleDeviceResidentTensors/0",
+};
 
 struct EmulatorOnlyTests {
   EmulatorOnlyTests() {

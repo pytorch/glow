@@ -37,7 +37,7 @@ struct NamedResource {
   void *hostPtr;
   NamedResource() { memset(this, 0, sizeof(NamedResource)); }
 };
-class NNPIStaticPlaceHolderContainer;
+class NNPIStaticPlaceholderContainer;
 class InferenceThreadEnv {
 private:
   NNPINetwork nnpiNetwork_;                 // For ice-ref path only.
@@ -78,7 +78,7 @@ private:
   /// tensors.
   std::set<char *> tmpBuffers_;
 
-  NNPIStaticPlaceHolderContainer *staticPlaceHolderContainer_;
+  NNPIStaticPlaceholderContainer *staticPlaceholderContainer_;
 
 public:
   InferenceThreadEnv();
@@ -94,7 +94,7 @@ public:
       const std::unordered_set<const Placeholder *> &partialInputs,
       const std::unordered_set<const Placeholder *> &staticInputs,
       std::shared_ptr<NNPIDeviceTracing> deviceTracing,
-      NNPIStaticPlaceHolderContainer *staticPlaceHolderContainer,
+      NNPIStaticPlaceholderContainer *staticPlaceholderContainer,
       const NNPIDeviceOptions &deviceOptions);
 };
 
@@ -114,7 +114,7 @@ public:
   Error init(unsigned numWorkers, NNPIAdapter adapter, NNPIDeviceContext device,
              std::shared_ptr<NNPIDeviceTracing> deviceTracing,
              CompiledFunction *compiledFunction,
-             NNPIStaticPlaceHolderContainer *staticPlaceHolderContainer,
+             NNPIStaticPlaceholderContainer *staticPlaceholderContainer,
              const NNPIDeviceOptions &deviceOptions);
   void stop(bool block);
   void execute(RunIdentifierTy runId, std::unique_ptr<ExecutionContext> ctx,
