@@ -84,6 +84,11 @@ TEST_F(GraphOptz, DCE) {
   Placeholder *input = mod_.createPlaceholder(ElemKind::FloatTy,
                                               {4, 320, 200, 3}, "input", false);
 
+  // Save the input itself so that the function graph always has
+  // something to do and doesn't become empty after dead code is
+  // eliminated via optimization.
+  F_->createSave("ret", input);
+
   Node *K = F_->createRELU("relu", input);
   K = F_->createAdd("arith", K, K);
 
@@ -95,13 +100,14 @@ TEST_F(GraphOptz, DCE) {
   }
 
   // Check that we know how many nodes we've created.
-  EXPECT_EQ(F_->getNodes().size(), 80);
+  EXPECT_EQ(F_->getNodes().size(), 81);
 
   // Optimize all of the dead code.
   optimizedF_ = optimizeFunction(F_);
 
-  //  All of the nodes are gone as output not saved.
-  EXPECT_EQ(optimizedF_->getNodes().size(), 0);
+  //  All of the nodes except the single save node are
+  // gone since output of Relu-Add is not saved.
+  EXPECT_EQ(optimizedF_->getNodes().size(), 1);
   EXPECT_EQ(mod_.getConstants().size(), 0);
 
   // Confirm numerical equivalence as well.
