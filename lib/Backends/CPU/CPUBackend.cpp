@@ -106,6 +106,12 @@ bool CPUBackend::isOpSupported(const NodeInfo &NI) const {
         {ElemKind::FloatTy, ElemKind::Int8QTy, ElemKind::Int64ITy,
          ElemKind::BoolTy});
 
+  case Kinded::Kind::FlipNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind(
+        {ElemKind::FloatTy, ElemKind::Int8QTy, ElemKind::Int16QTy,
+         ElemKind::Int32QTy, ElemKind::Int32ITy, ElemKind::Int64ITy,
+         ElemKind::BoolTy});
+
   case Kinded::Kind::SparseLengthsSumNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
                {ElemKind::FloatTy}, {SparseLengthsSumNode::IndicesIdx,
