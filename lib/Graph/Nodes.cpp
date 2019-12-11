@@ -910,8 +910,8 @@ bool FlipNode::verify() const {
   auto src = getInput();
   dim_t axis = getAxis();
   bool isValid = checkSameType(src, dest, this);
-  isValid &= expectCompareTrue("Invalid axis", axis, src.dims().size(), this,
-                               CompareOperatorLess<dim_t>());
+  isValid &= expectCompareTrue("Invalid axis", axis, (dim_t)src.dims().size(),
+                               this, CompareOperatorLess<dim_t>());
   return isValid;
 }
 
