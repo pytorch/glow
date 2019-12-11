@@ -3270,6 +3270,9 @@ Error PyTorchModelLoader::loadEmbeddingBagByteRowwiseOffsets(
   ASSIGN_VALUE_OR_RETURN_ERR(
       weight, getGlowNodeValueForValue(
                   inputs[EmbeddingBagByteRowwiseOffsetsInputs::weight]));
+  // Fix the weight type to be UInt8FusedQTy
+  weight.setType(F_.getParent()->uniqueType(ElemKind::UInt8FusedQTy,
+                                            weight.getType()->dims(), 0.0, 0));
   glow::NodeValue indices;
   ASSIGN_VALUE_OR_RETURN_ERR(
       indices, getGlowNodeValueForValue(
@@ -3282,7 +3285,7 @@ Error PyTorchModelLoader::loadEmbeddingBagByteRowwiseOffsets(
   glow::NodeValue perSampleWeights = loadNodeValueOrCreateBroadcastedConstant(
       inputs[EmbeddingBagByteRowwiseOffsetsInputs::per_sample_weights],
       "EmbeddingBagByteRowwiseOffsets.ones",
-      glow::Type(weight.getElementType(), {indices.dims()[0]}), 1.0);
+      glow::Type(ElemKind::FloatTy, {indices.dims()[0]}), 1.0);
 
   bool scaleGradByFreq;
   ASSIGN_VALUE_OR_RETURN_ERR(
@@ -3371,7 +3374,9 @@ Error PyTorchModelLoader::loadAttributes(
       continue;
     } else if (ival.isTensor()) {
       const auto ptTensor = ival.toTensor();
-      // PyTorch Tensor extracted type is kByte
+      // FIXME: this is not safe as there are legit byte tensors from PyTorch.
+      // We should really check whether the byte tensor can be cast into
+      // specific packing struct. PyTorch Tensor extracted type is kByte
       // indicate it is the address of stored weights of quantized
       // linear or conv.
       if (ptTensor.scalar_type() == at::kByte) {
