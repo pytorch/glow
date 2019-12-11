@@ -3081,21 +3081,21 @@ static void testFlip(glow::PlaceholderBindings &bindings, glow::Module &mod,
 
 /// Test Flip 1D with Int8.
 TEST_P(OperatorTest, Flip1D_Int8) {
-  CHECK_IF_ENABLED();
+  ENABLED_BACKENDS(Interpreter, CPU);
   testFlip<int8_t>(bindings_, mod_, F_, EE_, {1, 2, 3, 4}, {4, 3, 2, 1}, {4}, 0,
                    ElemKind::Int8QTy);
 }
 
 /// Test Flip 1D with Int32.
 TEST_P(OperatorTest, Flip1D_Int32) {
-  CHECK_IF_ENABLED();
+  ENABLED_BACKENDS(Interpreter, CPU);
   testFlip<int32_t>(bindings_, mod_, F_, EE_, {1, 2, 3, 4}, {4, 3, 2, 1}, {4},
                     0, ElemKind::Int32QTy);
 }
 
 /// Test Flip 1D with Int64.
 TEST_P(OperatorTest, Flip1D_Int64) {
-  CHECK_IF_ENABLED();
+  ENABLED_BACKENDS(Interpreter, CPU);
   testFlip<int64_t>(bindings_, mod_, F_, EE_, {1, 2, 3, 4}, {4, 3, 2, 1}, {4},
                     0, ElemKind::Int64ITy);
 }
@@ -3203,116 +3203,116 @@ TEST_P(OperatorTest, Flip1D_Int64) {
 
 /// Test Flip 1D with Float.
 TEST_P(OperatorTest, Flip1D_Axis0_Float) {
-  CHECK_IF_ENABLED();
+  ENABLED_BACKENDS(Interpreter, CPU);
   testFlip<float>(bindings_, mod_, F_, EE_, {1, 2}, {2, 1}, {2}, 0);
 }
 
 /// Test Flip 2D with Float.
 TEST_P(OperatorTest, Flip2D_Axis0_Float) {
-  CHECK_IF_ENABLED();
+  ENABLED_BACKENDS(Interpreter, CPU);
   testFlip<float>(bindings_, mod_, F_, EE_, {1, 2, 3, 4}, {3, 4, 1, 2}, {2, 2},
                   0);
 }
 TEST_P(OperatorTest, Flip2D_Axis1_Float) {
-  CHECK_IF_ENABLED();
+  ENABLED_BACKENDS(Interpreter, CPU);
   testFlip<float>(bindings_, mod_, F_, EE_, {1, 2, 3, 4}, {2, 1, 4, 3}, {2, 2},
                   1);
 }
 
 /// Test Flip 3D with Float.
 TEST_P(OperatorTest, Flip3D_Axis0_Float) {
-  CHECK_IF_ENABLED();
+  ENABLED_BACKENDS(Interpreter, CPU);
   testFlip<float>(bindings_, mod_, F_, EE_, FLIP_3D_INPUT, FLIP_3D_AXIS0,
                   {2, 2, 2}, 0);
 }
 TEST_P(OperatorTest, Flip3D_Axis1_Float) {
-  CHECK_IF_ENABLED();
+  ENABLED_BACKENDS(Interpreter, CPU);
   testFlip<float>(bindings_, mod_, F_, EE_, FLIP_3D_INPUT, FLIP_3D_AXIS1,
                   {2, 2, 2}, 1);
 }
 TEST_P(OperatorTest, Flip3D_Axis2_Float) {
-  CHECK_IF_ENABLED();
+  ENABLED_BACKENDS(Interpreter, CPU);
   testFlip<float>(bindings_, mod_, F_, EE_, FLIP_3D_INPUT, FLIP_3D_AXIS2,
                   {2, 2, 2}, 2);
 }
 
 /// Test Flip 4D with Float.
 TEST_P(OperatorTest, Flip4D_Axis0_Float) {
-  CHECK_IF_ENABLED();
+  ENABLED_BACKENDS(Interpreter, CPU);
   testFlip<float>(bindings_, mod_, F_, EE_, FLIP_4D_INPUT, FLIP_4D_AXIS0,
                   {2, 2, 2, 2}, 0);
 }
 TEST_P(OperatorTest, Flip4D_Axis1_Float) {
-  CHECK_IF_ENABLED();
+  ENABLED_BACKENDS(Interpreter, CPU);
   testFlip<float>(bindings_, mod_, F_, EE_, FLIP_4D_INPUT, FLIP_4D_AXIS1,
                   {2, 2, 2, 2}, 1);
 }
 TEST_P(OperatorTest, Flip4D_Axis2_Float) {
-  CHECK_IF_ENABLED();
+  ENABLED_BACKENDS(Interpreter, CPU);
   testFlip<float>(bindings_, mod_, F_, EE_, FLIP_4D_INPUT, FLIP_4D_AXIS2,
                   {2, 2, 2, 2}, 2);
 }
 TEST_P(OperatorTest, Flip4D_Axis3_Float) {
-  CHECK_IF_ENABLED();
+  ENABLED_BACKENDS(Interpreter, CPU);
   testFlip<float>(bindings_, mod_, F_, EE_, FLIP_4D_INPUT, FLIP_4D_AXIS3,
                   {2, 2, 2, 2}, 3);
 }
 
 /// Test Flip 5D with Float.
 TEST_P(OperatorTest, Flip5D_Axis0_Float) {
-  CHECK_IF_ENABLED();
+  ENABLED_BACKENDS(Interpreter, CPU);
   testFlip<float>(bindings_, mod_, F_, EE_, FLIP_5D_INPUT, FLIP_5D_AXIS0,
                   {2, 2, 2, 2, 2}, 0);
 }
 TEST_P(OperatorTest, Flip5D_Axis1_Float) {
-  CHECK_IF_ENABLED();
+  ENABLED_BACKENDS(Interpreter, CPU);
   testFlip<float>(bindings_, mod_, F_, EE_, FLIP_5D_INPUT, FLIP_5D_AXIS1,
                   {2, 2, 2, 2, 2}, 1);
 }
 TEST_P(OperatorTest, Flip5D_Axis2_Float) {
-  CHECK_IF_ENABLED();
+  ENABLED_BACKENDS(Interpreter, CPU);
   testFlip<float>(bindings_, mod_, F_, EE_, FLIP_5D_INPUT, FLIP_5D_AXIS2,
                   {2, 2, 2, 2, 2}, 2);
 }
 TEST_P(OperatorTest, Flip5D_Axis3_Float) {
-  CHECK_IF_ENABLED();
+  ENABLED_BACKENDS(Interpreter, CPU);
   testFlip<float>(bindings_, mod_, F_, EE_, FLIP_5D_INPUT, FLIP_5D_AXIS3,
                   {2, 2, 2, 2, 2}, 3);
 }
 TEST_P(OperatorTest, Flip5D_Axis4_Float) {
-  CHECK_IF_ENABLED();
+  ENABLED_BACKENDS(Interpreter, CPU);
   testFlip<float>(bindings_, mod_, F_, EE_, FLIP_5D_INPUT, FLIP_5D_AXIS4,
                   {2, 2, 2, 2, 2}, 4);
 }
 
 /// Test Flip 6D with Float.
 TEST_P(OperatorTest, Flip6D_Axis0_Float) {
-  CHECK_IF_ENABLED();
+  ENABLED_BACKENDS(Interpreter, CPU);
   testFlip<float>(bindings_, mod_, F_, EE_, FLIP_6D_INPUT, FLIP_6D_AXIS0,
                   {2, 2, 2, 2, 2, 2}, 0);
 }
 TEST_P(OperatorTest, Flip6D_Axis1_Float) {
-  CHECK_IF_ENABLED();
+  ENABLED_BACKENDS(Interpreter, CPU);
   testFlip<float>(bindings_, mod_, F_, EE_, FLIP_6D_INPUT, FLIP_6D_AXIS1,
                   {2, 2, 2, 2, 2, 2}, 1);
 }
 TEST_P(OperatorTest, Flip6D_Axis2_Float) {
-  CHECK_IF_ENABLED();
+  ENABLED_BACKENDS(Interpreter, CPU);
   testFlip<float>(bindings_, mod_, F_, EE_, FLIP_6D_INPUT, FLIP_6D_AXIS2,
                   {2, 2, 2, 2, 2, 2}, 2);
 }
 TEST_P(OperatorTest, Flip6D_Axis3_Float) {
-  CHECK_IF_ENABLED();
+  ENABLED_BACKENDS(Interpreter, CPU);
   testFlip<float>(bindings_, mod_, F_, EE_, FLIP_6D_INPUT, FLIP_6D_AXIS3,
                   {2, 2, 2, 2, 2, 2}, 3);
 }
 TEST_P(OperatorTest, Flip6D_Axis4_Float) {
-  CHECK_IF_ENABLED();
+  ENABLED_BACKENDS(Interpreter, CPU);
   testFlip<float>(bindings_, mod_, F_, EE_, FLIP_6D_INPUT, FLIP_6D_AXIS4,
                   {2, 2, 2, 2, 2, 2}, 4);
 }
 TEST_P(OperatorTest, Flip6D_Axis5_Float) {
-  CHECK_IF_ENABLED();
+  ENABLED_BACKENDS(Interpreter, CPU);
   testFlip<float>(bindings_, mod_, F_, EE_, FLIP_6D_INPUT, FLIP_6D_AXIS5,
                   {2, 2, 2, 2, 2, 2}, 5);
 }
