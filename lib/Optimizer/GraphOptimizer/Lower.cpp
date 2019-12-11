@@ -150,10 +150,12 @@ static void lowerFullyConnectedNode(Function *F, CompilationContext &cctx,
                                     const FullyConnectedNode &FC) {
   LOG_SCOPE(F->getLogContext(), "lowerFullyConnectedNode")
 
+  std::string namePrefix = FC.getName().str();
   auto W = FC.getWeights();
   TypeRef OT = FC.getResult().getType();
-  auto *mul = F->createMatMul("fc.dot", OT, FC.getInput(), W);
-  auto *add = F->createBatchedAdd("fc.add.bias", OT, mul, FC.getBias());
+  auto *mul = F->createMatMul(namePrefix + "_dot", OT, FC.getInput(), W);
+  auto *add =
+      F->createBatchedAdd(namePrefix + "_add_bias", OT, mul, FC.getBias());
   replaceAllUsesOfWith(cctx.loweredInfoMap, FC.getResult(), add);
 
   if (FC.hasPredicate()) {
@@ -170,25 +172,27 @@ static void lowerFullyConnectedGradNode(Function *F, CompilationContext &cctx,
   LOG_SCOPE(F->getLogContext(), "lowerFullyConnectedGradNode")
 
   auto dout = FCG.getGradOfOriginalOutputNamedResult();
+  std::string namePrefix = FCG.getName().str();
 
   // dx = dout * w.T
-  auto *wT = F->createTranspose("fcg.wT", FCG.getWeights(), {1, 0});
-  auto *dx2 = F->createMatMul("fcg.dot", dout, wT);
+  auto *wT = F->createTranspose(namePrefix + "_wT", FCG.getWeights(), {1, 0});
+  auto *dx2 = F->createMatMul(namePrefix + "_wT_MM", dout, wT);
   auto *dx = F->createReshape(
-      "fcg.inG", dx2, FCG.getInput().getType()->dims(),
+      namePrefix + "_inG", dx2, FCG.getInput().getType()->dims(),
       CanonicalTensorLayout::getInstance().getNthInputLayoutRequirements(
           &FCG, FullyConnectedGradNode::InputIdx));
   replaceAllUsesOfWith(cctx.loweredInfoMap, FCG.getGradOfInputNamedInput(), dx);
 
   // dw = xT * dout.
-  Node *x2 = F->createFlatten("fcg.x", FCG.getInput(), 1);
-  auto *x2T = F->createTranspose("fcg.xT", x2, {1, 0});
-  auto *dw = F->createMatMul("fcg.dot", x2T, dout);
+  Node *x2 = F->createFlatten(namePrefix + "_x", FCG.getInput(), 1);
+  auto *x2T = F->createTranspose(namePrefix + "_xT", x2, {1, 0});
+  auto *dw = F->createMatMul(namePrefix + "_x_MM", x2T, dout);
   replaceAllUsesOfWith(cctx.loweredInfoMap, FCG.getGradOfInputNamedWeights(),
                        dw);
 
   // db = reduce(dout).
-  auto *db = F->createBatchedReduceAdd("fc.bias.reduce", dout, /* axis */ 0);
+  auto *db = F->createBatchedReduceAdd(namePrefix + "_bias_reduce", dout,
+                                       /* axis */ 0);
   replaceAllUsesOfWith(cctx.loweredInfoMap, FCG.getGradOfInputNamedBias(), db);
 }
 
