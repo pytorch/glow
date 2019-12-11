@@ -28,7 +28,8 @@ target_link_libraries(Repro
                       PRIVATE
                         BackendTestUtils
                         HostManager
-                        Importer)
+                        Importer
+                        Exporter)
 
 # Test executables, sorted alphabetically.
 

@@ -17,6 +17,7 @@
 #include "BackendTestUtils.h"
 #include "glow/Backend/Backend.h"
 #include "glow/ExecutionEngine/ExecutionEngine.h"
+#include "glow/Exporter/ONNXModelWriter.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Importer/ONNXModelLoader.h"
 
@@ -64,6 +65,10 @@ llvm::cl::opt<bool>
     globalFp16Opt("glow_global_fp16",
                   llvm::cl::desc("Enable fp16 lowering for all ops on the net"),
                   llvm::cl::Optional, llvm::cl::cat(reproTestCat));
+llvm::cl::opt<bool> dumpOutputsOpt("dump_outputs",
+                                   llvm::cl::desc("Dump output tensors"),
+                                   llvm::cl::Optional,
+                                   llvm::cl::cat(reproTestCat));
 
 llvm::cl::opt<bool> fuseScaleOffsetFp16Opt(
     "glow_global_fused_scale_offset_fp16",
@@ -196,6 +201,14 @@ void run() {
 
     llvm::outs() << "output file: " << outputsOpt[i] << "\n";
     auto outputGroup = parseIO(outputsOpt[i]);
+    ONNX_NAMESPACE::GraphProto outputG;
+    std::ofstream of;
+    if (dumpOutputsOpt) {
+      std::stringstream ss;
+      ss << "output_dump_" << i << ".onnx";
+      of.open(ss.str(), std::ios::binary);
+      CHECK(of) << "Cannot create output dump file: " << ss.str();
+    }
     for (const auto &tp : outputGroup.initializer()) {
       Tensor tensorRef;
       auto error = loadTensor(tp, &tensorRef);
@@ -203,12 +216,22 @@ void run() {
       const auto *tensor =
           bindings.get(bindings.getPlaceholderByName(tp.name()));
       CHECK(tensor);
+      if (dumpOutputsOpt) {
+        auto *t = outputG.add_initializer();
+        ONNXModelWriter::writeTensor(*tensor, t);
+        t->set_name(tp.name());
+      }
       bool equal = tensorRef.isEqual(*tensor, thresholdOpt, true);
       if (!equal) {
         llvm::outs() << "Verification failed at input/output pair " << i
                      << " for output tensor " << tp.name() << "\n";
         return;
       }
+    }
+    if (dumpOutputsOpt) {
+      std::string buffer;
+      outputG.SerializeToString(&buffer);
+      of << buffer;
     }
   }
 
