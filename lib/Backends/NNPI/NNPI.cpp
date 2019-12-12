@@ -416,6 +416,56 @@ static bool lowerRequiredNodes(Function *F, CompilationContext &cctx) {
   return changed;
 }
 
+/// All activations have a single input and output.
+static constexpr unsigned ActivationIOIdx = 0;
+static_assert(ActivationIOIdx == ReluNode::InputIdx, "Format incorrect");
+static_assert(ActivationIOIdx == ReluNode::ResultIdx, "Format incorrect");
+static_assert(ActivationIOIdx == SigmoidNode::InputIdx, "Format incorrect");
+static_assert(ActivationIOIdx == SigmoidNode::ResultIdx, "Format incorrect");
+static_assert(ActivationIOIdx == TanhNode::InputIdx, "Format incorrect");
+static_assert(ActivationIOIdx == TanhNode::ResultIdx, "Format incorrect");
+
+/// Helper which looks for FC -> Clip -> Activation -> Clip, and removes the
+/// Clip between the FC and Activation. These activations block FC-Activation
+/// fusion from occurring.
+static bool removeClipsBlockingFusion(Function *F) {
+  bool changed = false;
+  for (auto &N : F->getNodes()) {
+    auto *clipActivation = llvm::dyn_cast<ClipNode>(&N);
+    if (!clipActivation) {
+      continue;
+    }
+    Node *activation = clipActivation->getInput().getNode();
+    NodeValue activationInput;
+    NodeValue activationResult;
+    switch (activation->getKind()) {
+    case Kinded::Kind::ReluNodeKind:
+    case Kinded::Kind::SigmoidNodeKind:
+    case Kinded::Kind::TanhNodeKind:
+      activationInput = activation->getNthInput(ActivationIOIdx);
+      activationResult = activation->getNthResult(ActivationIOIdx);
+      break;
+    default:
+      continue;
+    }
+    auto *clipFC = llvm::dyn_cast<ClipNode>(activationInput);
+    if (!clipFC) {
+      continue;
+    }
+    if (clipFC->getMin() != clipActivation->getMin() ||
+        clipFC->getMax() != clipActivation->getMax()) {
+      continue;
+    }
+    auto *FC = llvm::dyn_cast<FullyConnectedNode>(clipFC->getInput());
+    if (!FC) {
+      continue;
+    }
+    clipFC->getResult().replaceAllUsesOfWith(FC->getResult());
+    changed = true;
+  }
+  return changed;
+}
+
 bool NNPIBackend::transformPostLowering(Function *F,
                                         CompilationContext &cctx) const {
   LOG_SCOPE(F->getLogContext(), "NNPIBackend::transformPostLowering");
@@ -424,7 +474,8 @@ bool NNPIBackend::transformPostLowering(Function *F,
     return false;
   }
 
-  bool changed = lowerRequiredNodes(F, cctx);
+  bool changed = removeClipsBlockingFusion(F);
+  changed |= lowerRequiredNodes(F, cctx);
 
 #if FACEBOOK_INTERNAL
   changed |= transformPrivate(F, cctx);
