@@ -17,6 +17,7 @@
 #include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
 
 #include "glow/Backend/Backend.h"
+#include "glow/Backends/Interpreter/Interpreter.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/Log.h"
 #include "glow/Graph/Node.h"
@@ -277,7 +278,7 @@ bool glow::ConstantFold::run(Function *F, const CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), "glow::constantFold")
   bool changed = false;
   // Backend to be used for compile-time computations.
-  std::unique_ptr<Backend> backend(createBackend("Interpreter"));
+  std::unique_ptr<Backend> backend(new Interpreter());
   // Traverse nodes in post-order, so that children are seen before parents.
   GraphPostOrderVisitor postOrderVisitor(*F);
   auto nodes = postOrderVisitor.getPostOrder();
@@ -317,7 +318,7 @@ bool glow::ConstantFold::run(Function *F, const CompilationContext &cctx) {
 
 std::vector<Constant *> glow::constantFold(Node *N) {
   LOG_SCOPE(N->getParent()->getLogContext(), "glow::constantFold")
-  std::unique_ptr<Backend> backend(createBackend("Interpreter"));
+  std::unique_ptr<Backend> backend(new Interpreter());
   if (!isConstantOperation(N, *backend)) {
     return {};
   }

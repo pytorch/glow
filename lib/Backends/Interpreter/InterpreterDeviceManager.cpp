@@ -13,8 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "InterpreterDeviceManager.h"
-#include "Interpreter.h"
+#include "glow/Backends/Interpreter/InterpreterDeviceManager.h"
+#include "glow/Backends/Interpreter/Interpreter.h"
 
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FormatVariadic.h"

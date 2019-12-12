@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#include "Interpreter.h"
-#include "InterpreterFunction.h"
+#include "glow/Backends/Interpreter/Interpreter.h"
+#include "glow/Backends/Interpreter/InterpreterFunction.h"
 
 #include "glow/Backend/BackendUtils.h"
 #include "glow/CodeGen/MemoryAllocator.h"
