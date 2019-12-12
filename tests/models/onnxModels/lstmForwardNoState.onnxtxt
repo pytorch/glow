@@ -23,6 +23,11 @@ graph {
       i: 4
       type: INT
     }
+    attribute {
+      name: "input_forget"
+      i: 0
+      type: INT
+    }
   }
   node {
     input: "Y"

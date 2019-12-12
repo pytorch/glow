@@ -1304,17 +1304,11 @@ Error ONNXModelLoader::loadWhere(const ONNX_NAMESPACE::NodeProto &op,
   return Error::success();
 }
 
-// Limitations:
-// - Only Sigmoid, Tahn and ReLU activations are supported.
-// - Activation clipping not supported.
-// - Variable sequence length not supported.
-Error ONNXModelLoader::loadRNN(const ONNX_NAMESPACE::NodeProto &op,
-                               const ArgumentDictionaryTy &dict) {
-
-  const std::string &opName = loadOperatorName(op);
-
-  // ------------------------- Attributes -------------------------------------
-  // Get direction (Optional)(Default:forward).
+/// Utility function to get the RNN, GRU or LSTM direction from the proto
+/// description. If not provided, the default direction is 'forward'.
+static Expected<Function::RnnDirection>
+getRnnDirection(const ONNX_NAMESPACE::NodeProto &op,
+                const ArgumentDictionaryTy &dict) {
   Function::RnnDirection direction = Function::RnnDirection::Forward;
   if (dict.count("direction")) {
     std::string directionStr;
@@ -1326,61 +1320,103 @@ Error ONNXModelLoader::loadRNN(const ONNX_NAMESPACE::NodeProto &op,
     } else if (directionStr == "bidirectional") {
       direction = Function::RnnDirection::Bidirectional;
     } else {
-      RETURN_ERR("ONNX RNN 'direction' attribute is invalid!",
+      RETURN_ERR("ONNX " + op.op_type() + " 'direction' attribute is invalid!",
                  ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_ATTRIBUTE);
     }
   }
-  dim_t numDirections =
-      (direction == Function::RnnDirection::Bidirectional) ? 2 : 1;
+  return direction;
+}
+
+/// Relu activation function definition.
+static Function::RnnActivation RnnActivationRelu(Function &F) {
+  return [&F](llvm::StringRef name, Node *input) {
+    return F.createRELU(name, input);
+  };
+}
+
+/// Tanh activation function definition.
+static Function::RnnActivation RnnActivationTanh(Function &F) {
+  return [&F](llvm::StringRef name, Node *input) {
+    return F.createTanh(name, input);
+  };
+}
+
+/// Sigmoid activation function definition.
+static Function::RnnActivation RnnActivationSigmoid(Function &F) {
+  return [&F](llvm::StringRef name, Node *input) {
+    return F.createSigmoid(name, input);
+  };
+}
+
+/// Utility function to get the RNN, GRU or LSTM activation functions from the
+/// proto description. The activation function array is assumed to be already
+/// initialized with the default values upon entering this function so that the
+/// purpose of this function is to overwrite the specific default values.
+/// Currenlty only Sigmoid, Tahn and ReLU activations are supported.
+static Error
+getRnnActivations(const ONNX_NAMESPACE::NodeProto &op,
+                  const ArgumentDictionaryTy &dict, Function &F,
+                  std::vector<Function::RnnActivation> &activations) {
 
   // Activation alpha not supported (Optional)(Default:activation dependent).
   RETURN_ERR_IF_NOT(!dict.count("activation_alpha"),
-                    "ONNX RNN 'activation_alpha' attribute not supported!");
+                    "ONNX " + op.op_type() +
+                        " 'activation_alpha' attribute not supported!");
 
   // Activation beta not supported (Optional)(Default:activation dependent).
   RETURN_ERR_IF_NOT(!dict.count("activation_beta"),
-                    "ONNX RNN 'activation_beta' attribute not supported!");
+                    "ONNX " + op.op_type() +
+                        " 'activation_beta' attribute not supported!");
 
-  // Get activations as lambdas (Optional)(Default:f=Sigmoid, g=Tanh).
-#define RNN_ACTIVATION_LAMBDA_RELU                                             \
-  [this](llvm::StringRef name, Node *input) {                                  \
-    return G_.createRELU(name, input);                                         \
-  }
-#define RNN_ACTIVATION_LAMBDA_TANH                                             \
-  [this](llvm::StringRef name, Node *input) {                                  \
-    return G_.createTanh(name, input);                                         \
-  }
-#define RNN_ACTIVATION_LAMBDA_SIGMOID                                          \
-  [this](llvm::StringRef name, Node *input) {                                  \
-    return G_.createSigmoid(name, input);                                      \
-  }
-  std::vector<Function::RnnActivation> activations;
-  if (direction == Function::RnnDirection::Bidirectional) {
-    activations = {RNN_ACTIVATION_LAMBDA_TANH, RNN_ACTIVATION_LAMBDA_TANH};
-  } else {
-    activations = {RNN_ACTIVATION_LAMBDA_TANH};
-  }
+  // Get activations.
   if (dict.count("activations") && dict.at("activations")->strings_size()) {
     size_t actNum = dict.at("activations")->strings_size();
-    RETURN_ERR_IF_NOT(actNum == numDirections * 1,
-                      "ONNX RNN 'activations' attribute is invalid!");
+    size_t actNumExpected = activations.size();
+    RETURN_ERR_IF_NOT(actNum == actNumExpected,
+                      strFormat("ONNX %s 'activations' attribute has invalid "
+                                "number of functions! Expected number is %d!",
+                                op.op_type().c_str(), (int)actNumExpected));
     for (size_t actIdx = 0; actIdx < actNum; actIdx++) {
       std::string actStr = dict.at("activations")->strings().Get(actIdx);
       if (actStr == "Relu") {
-        activations[actIdx] = RNN_ACTIVATION_LAMBDA_RELU;
+        activations[actIdx] = RnnActivationRelu(F);
       } else if (actStr == "Tanh") {
-        activations[actIdx] = RNN_ACTIVATION_LAMBDA_TANH;
+        activations[actIdx] = RnnActivationTanh(F);
       } else if (actStr == "Sigmoid") {
-        activations[actIdx] = RNN_ACTIVATION_LAMBDA_SIGMOID;
+        activations[actIdx] = RnnActivationSigmoid(F);
       } else {
-        RETURN_ERR("ONNX RNN activation '" + actStr + "' not supported!",
+        RETURN_ERR("ONNX " + op.op_type() + " activation '" + actStr +
+                       "' not supported!",
                    ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_ATTRIBUTE);
       }
     }
   }
-#undef RNN_ACTIVATION_LAMBDA_RELU
-#undef RNN_ACTIVATION_LAMBDA_TANH
-#undef RNN_ACTIVATION_LAMBDA_SIGMOID
+  return Error::success();
+}
+
+// Limitations:
+// - Activation clipping not supported.
+// - Variable sequence length not supported.
+Error ONNXModelLoader::loadRNN(const ONNX_NAMESPACE::NodeProto &op,
+                               const ArgumentDictionaryTy &dict) {
+
+  const std::string &opName = loadOperatorName(op);
+
+  // ------------------------- Attributes -------------------------------------
+  // Get direction (Optional)(Default:forward).
+  Function::RnnDirection direction;
+  ASSIGN_VALUE_OR_RETURN_ERR(direction, getRnnDirection(op, dict));
+  dim_t numDirections =
+      (direction == Function::RnnDirection::Bidirectional) ? 2 : 1;
+
+  // Get activations as lambdas (Optional)(Default:f=Tanh).
+  std::vector<Function::RnnActivation> activations;
+  if (direction == Function::RnnDirection::Bidirectional) {
+    activations = {RnnActivationTanh(G_), RnnActivationTanh(G_)};
+  } else {
+    activations = {RnnActivationTanh(G_)};
+  }
+  RETURN_IF_ERR(getRnnActivations(op, dict, G_, activations));
 
   // Activation clipping not supported (Optional)(Default: 0 for no clipping).
   RETURN_ERR_IF_NOT(!dict.count("clip"),
@@ -1473,7 +1509,6 @@ Error ONNXModelLoader::loadRNN(const ONNX_NAMESPACE::NodeProto &op,
 }
 
 // Limitations:
-// - Only Sigmoid, Tahn and ReLU activations are supported.
 // - Activation clipping not supported.
 // - Variable sequence length not supported.
 Error ONNXModelLoader::loadGRU(const ONNX_NAMESPACE::NodeProto &op,
@@ -1483,73 +1518,20 @@ Error ONNXModelLoader::loadGRU(const ONNX_NAMESPACE::NodeProto &op,
 
   // ------------------------- Attributes -------------------------------------
   // Get direction (Optional)(Default:forward).
-  Function::RnnDirection direction = Function::RnnDirection::Forward;
-  if (dict.count("direction")) {
-    std::string directionStr;
-    ASSIGN_VALUE_OR_RETURN_ERR(directionStr, loadStr(dict.at("direction")));
-    if (directionStr == "forward") {
-      direction = Function::RnnDirection::Forward;
-    } else if (directionStr == "reverse") {
-      direction = Function::RnnDirection::Reverse;
-    } else if (directionStr == "bidirectional") {
-      direction = Function::RnnDirection::Bidirectional;
-    } else {
-      RETURN_ERR("ONNX GRU 'direction' attribute is invalid!",
-                 ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_ATTRIBUTE);
-    }
-  }
+  Function::RnnDirection direction;
+  ASSIGN_VALUE_OR_RETURN_ERR(direction, getRnnDirection(op, dict));
   dim_t numDirections =
       (direction == Function::RnnDirection::Bidirectional) ? 2 : 1;
 
-  // Activation alpha not supported (Optional)(Default:activation dependent).
-  RETURN_ERR_IF_NOT(!dict.count("activation_alpha"),
-                    "ONNX GRU 'activation_alpha' attribute not supported!");
-
-  // Activation beta not supported (Optional)(Default:activation dependent).
-  RETURN_ERR_IF_NOT(!dict.count("activation_beta"),
-                    "ONNX GRU 'activation_beta' attribute not supported!");
-
   // Get activations as lambdas (Optional)(Default:f=Sigmoid, g=Tanh).
-#define GRU_ACTIVATION_LAMBDA_RELU                                             \
-  [this](llvm::StringRef name, Node *input) {                                  \
-    return G_.createRELU(name, input);                                         \
-  }
-#define GRU_ACTIVATION_LAMBDA_TANH                                             \
-  [this](llvm::StringRef name, Node *input) {                                  \
-    return G_.createTanh(name, input);                                         \
-  }
-#define GRU_ACTIVATION_LAMBDA_SIGMOID                                          \
-  [this](llvm::StringRef name, Node *input) {                                  \
-    return G_.createSigmoid(name, input);                                      \
-  }
   std::vector<Function::RnnActivation> activations;
   if (direction == Function::RnnDirection::Bidirectional) {
-    activations = {GRU_ACTIVATION_LAMBDA_SIGMOID, GRU_ACTIVATION_LAMBDA_TANH,
-                   GRU_ACTIVATION_LAMBDA_SIGMOID, GRU_ACTIVATION_LAMBDA_TANH};
+    activations = {RnnActivationSigmoid(G_), RnnActivationTanh(G_),
+                   RnnActivationSigmoid(G_), RnnActivationTanh(G_)};
   } else {
-    activations = {GRU_ACTIVATION_LAMBDA_SIGMOID, GRU_ACTIVATION_LAMBDA_TANH};
+    activations = {RnnActivationSigmoid(G_), RnnActivationTanh(G_)};
   }
-  if (dict.count("activations") && dict.at("activations")->strings_size()) {
-    size_t actNum = dict.at("activations")->strings_size();
-    RETURN_ERR_IF_NOT(actNum == numDirections * 2,
-                      "ONNX GRU 'activations' attribute is invalid!");
-    for (size_t actIdx = 0; actIdx < actNum; actIdx++) {
-      std::string actStr = dict.at("activations")->strings().Get(actIdx);
-      if (actStr == "Relu") {
-        activations[actIdx] = GRU_ACTIVATION_LAMBDA_RELU;
-      } else if (actStr == "Tanh") {
-        activations[actIdx] = GRU_ACTIVATION_LAMBDA_TANH;
-      } else if (actStr == "Sigmoid") {
-        activations[actIdx] = GRU_ACTIVATION_LAMBDA_SIGMOID;
-      } else {
-        RETURN_ERR("ONNX GRU activation '" + actStr + "' not supported!",
-                   ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_ATTRIBUTE);
-      }
-    }
-  }
-#undef GRU_ACTIVATION_LAMBDA_RELU
-#undef GRU_ACTIVATION_LAMBDA_TANH
-#undef GRU_ACTIVATION_LAMBDA_SIGMOID
+  RETURN_IF_ERR(getRnnActivations(op, dict, G_, activations));
 
   // Activation clipping not supported (Optional)(Default: 0 for no clipping).
   RETURN_ERR_IF_NOT(!dict.count("clip"),
@@ -1649,10 +1631,8 @@ Error ONNXModelLoader::loadGRU(const ONNX_NAMESPACE::NodeProto &op,
 }
 
 // Limitations:
-// - Only Sigmoid, Tahn and ReLU activations are supported.
 // - Activation clipping not supported.
 // - Variable sequence length not supported.
-// - Coupling of input and forget gate not supported.
 Error ONNXModelLoader::loadLSTM(const ONNX_NAMESPACE::NodeProto &op,
                                 const ArgumentDictionaryTy &dict) {
 
@@ -1660,76 +1640,22 @@ Error ONNXModelLoader::loadLSTM(const ONNX_NAMESPACE::NodeProto &op,
 
   // ------------------------- Attributes -------------------------------------
   // Get direction (Optional)(Default:forward).
-  Function::RnnDirection direction = Function::RnnDirection::Forward;
-  if (dict.count("direction")) {
-    std::string directionStr;
-    ASSIGN_VALUE_OR_RETURN_ERR(directionStr, loadStr(dict.at("direction")));
-    if (directionStr == "forward") {
-      direction = Function::RnnDirection::Forward;
-    } else if (directionStr == "reverse") {
-      direction = Function::RnnDirection::Reverse;
-    } else if (directionStr == "bidirectional") {
-      direction = Function::RnnDirection::Bidirectional;
-    } else {
-      RETURN_ERR("ONNX LSTM 'direction' attribute is invalid!",
-                 ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_ATTRIBUTE);
-    }
-  }
+  Function::RnnDirection direction;
+  ASSIGN_VALUE_OR_RETURN_ERR(direction, getRnnDirection(op, dict));
   dim_t numDirections =
       (direction == Function::RnnDirection::Bidirectional) ? 2 : 1;
 
-  // Activation alpha not supported (Optional)(Default:activation dependent).
-  RETURN_ERR_IF_NOT(!dict.count("activation_alpha"),
-                    "ONNX LSTM 'activation_alpha' attribute not supported!");
-
-  // Activation beta not supported (Optional)(Default:activation dependent).
-  RETURN_ERR_IF_NOT(!dict.count("activation_beta"),
-                    "ONNX LSTM 'activation_beta' attribute not supported!");
-
   // Get activations as lambdas (Optional)(Default:f=Sigmoid, g=Tanh, h=Tanh).
-#define LSTM_ACTIVATION_LAMBDA_RELU                                            \
-  [this](llvm::StringRef name, Node *input) {                                  \
-    return G_.createRELU(name, input);                                         \
-  }
-#define LSTM_ACTIVATION_LAMBDA_TANH                                            \
-  [this](llvm::StringRef name, Node *input) {                                  \
-    return G_.createTanh(name, input);                                         \
-  }
-#define LSTM_ACTIVATION_LAMBDA_SIGMOID                                         \
-  [this](llvm::StringRef name, Node *input) {                                  \
-    return G_.createSigmoid(name, input);                                      \
-  }
   std::vector<Function::RnnActivation> activations;
   if (direction == Function::RnnDirection::Bidirectional) {
-    activations = {
-        LSTM_ACTIVATION_LAMBDA_SIGMOID, LSTM_ACTIVATION_LAMBDA_TANH,
-        LSTM_ACTIVATION_LAMBDA_TANH,    LSTM_ACTIVATION_LAMBDA_SIGMOID,
-        LSTM_ACTIVATION_LAMBDA_TANH,    LSTM_ACTIVATION_LAMBDA_TANH};
+    activations = {RnnActivationSigmoid(G_), RnnActivationTanh(G_),
+                   RnnActivationTanh(G_),    RnnActivationSigmoid(G_),
+                   RnnActivationTanh(G_),    RnnActivationTanh(G_)};
   } else {
-    activations = {LSTM_ACTIVATION_LAMBDA_SIGMOID, LSTM_ACTIVATION_LAMBDA_TANH,
-                   LSTM_ACTIVATION_LAMBDA_TANH};
+    activations = {RnnActivationSigmoid(G_), RnnActivationTanh(G_),
+                   RnnActivationTanh(G_)};
   }
-  if (dict.count("activations") && dict.at("activations")->strings_size()) {
-    size_t actNum = dict.at("activations")->strings_size();
-    RETURN_ERR_IF_NOT(actNum == numDirections * 3,
-                      "ONNX LSTM 'activations' attribute is invalid!");
-    for (size_t actIdx = 0; actIdx < actNum; actIdx++) {
-      std::string actStr = dict.at("activations")->strings().Get(actIdx);
-      if (actStr == "Relu") {
-        activations[actIdx] = LSTM_ACTIVATION_LAMBDA_RELU;
-      } else if (actStr == "Tanh") {
-        activations[actIdx] = LSTM_ACTIVATION_LAMBDA_TANH;
-      } else if (actStr == "Sigmoid") {
-        activations[actIdx] = LSTM_ACTIVATION_LAMBDA_SIGMOID;
-      } else {
-        RETURN_ERR("ONNX LSTM activation '" + actStr + "' not supported!",
-                   ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_ATTRIBUTE);
-      }
-    }
-  }
-#undef LSTM_ACTIVATION_LAMBDA_RELU
-#undef LSTM_ACTIVATION_LAMBDA_TANH
-#undef LSTM_ACTIVATION_LAMBDA_SIGMOID
+  RETURN_IF_ERR(getRnnActivations(op, dict, G_, activations));
 
   // Activation clipping not supported (Optional)(Default: 0 for no clipping).
   RETURN_ERR_IF_NOT(!dict.count("clip"),
@@ -1746,8 +1672,6 @@ Error ONNXModelLoader::loadLSTM(const ONNX_NAMESPACE::NodeProto &op,
   if (dict.count("input_forget") && dict.at("input_forget")->has_i()) {
     inputForget = dict.at("input_forget")->i();
   }
-  RETURN_ERR_IF_NOT(inputForget == 0,
-                    "ONNX LSTM 'input_forget' attribute not supported!");
 
   // --------------------------- Inputs ---------------------------------------
   const int numInputs = op.input_size();
@@ -1841,7 +1765,7 @@ Error ONNXModelLoader::loadLSTM(const ONNX_NAMESPACE::NodeProto &op,
   // Create ONNX LSTM.
   NodeValue Y, Y_h, Y_c;
   G_.createOnnxLSTM(opName, X, W, R, B, Y_h_init, Y_c_init, P, Y, Y_h, Y_c,
-                    hiddenSize, direction, activations);
+                    hiddenSize, direction, activations, (bool)inputForget);
 
   // Save LSTM state in the state placeholders.
   G_.createSave(opName + ".Y_h.save", Y_h, Y_h_ph);

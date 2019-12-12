@@ -2756,3 +2756,8 @@ TEST(onnx, importLSTMForwardWithPeephole) {
   importLSTM(GLOW_DATA_PATH
              "tests/models/onnxModels/lstmForwardWithPeephole.onnxtxt");
 }
+
+TEST(onnx, importLSTMForwardInputForget) {
+  importLSTM(GLOW_DATA_PATH
+             "tests/models/onnxModels/lstmForwardInputForget.onnxtxt");
+}

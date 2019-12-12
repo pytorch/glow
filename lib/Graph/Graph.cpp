@@ -3042,7 +3042,7 @@ void Function::createOnnxRNN(llvm::StringRef namePrefix, NodeValue X,
     }
 
     // Create H slice for this direction.
-    Node *Hinit = createSlice(prefix + ".H.slice", initial_h.getNode(),
+    Node *Hinit = createSlice(prefix + ".H.slice", initial_h,
                               RNN_H_SLICE_RANGE(sliceIdx0));
     Hinit =
         createReshape(prefix + ".H.reshape", Hinit, {batchSize, hiddenSize});
@@ -3279,7 +3279,7 @@ void Function::createOnnxGRU(llvm::StringRef namePrefix, NodeValue X,
     }
 
     // Create H slice for this direction.
-    Node *Hinit = createSlice(prefix + ".H.slice", initial_h.getNode(),
+    Node *Hinit = createSlice(prefix + ".H.slice", initial_h,
                               GRU_H_SLICE_RANGE(sliceIdx0));
     Hinit =
         createReshape(prefix + ".H.reshape", Hinit, {batchSize, hiddenSize});
@@ -3402,7 +3402,8 @@ void Function::createOnnxLSTM(llvm::StringRef namePrefix, NodeValue X,
                               NodeValue P, NodeValue &Y, NodeValue &Y_h,
                               NodeValue &Y_c, unsigned hiddenSize,
                               RnnDirection direction,
-                              std::vector<RnnActivation> &activations) {
+                              std::vector<RnnActivation> &activations,
+                              bool inputForget) {
 
 #define LSTM_X_SLICE_RANGE(idx)                                                \
   {idx + 0, 0, 0}, { idx + 1, batchSize, inputSize }
@@ -3605,13 +3606,13 @@ void Function::createOnnxLSTM(llvm::StringRef namePrefix, NodeValue X,
     }
 
     // Create H slice for this direction.
-    Node *Hinit = createSlice(prefix + ".H.slice", initial_h.getNode(),
+    Node *Hinit = createSlice(prefix + ".H.slice", initial_h,
                               LSTM_H_SLICE_RANGE(sliceIdx0));
     Hinit =
         createReshape(prefix + ".H.reshape", Hinit, {batchSize, hiddenSize});
 
     // Create C slice for this direction.
-    Node *Cinit = createSlice(prefix + ".C.slice", initial_c.getNode(),
+    Node *Cinit = createSlice(prefix + ".C.slice", initial_c,
                               LSTM_C_SLICE_RANGE(sliceIdx0));
     Cinit =
         createReshape(prefix + ".C.reshape", Cinit, {batchSize, hiddenSize});
@@ -3644,15 +3645,26 @@ void Function::createOnnxLSTM(llvm::StringRef namePrefix, NodeValue X,
                     LSTM_CREATE_FC(prefix + ".Ctild.fc2", Ht, Rc, bRc));
       ctild = activationG(prefix + ".Ctild.act", ctild);
 
-      // Input gate: it = f(Xt * Wi + bWi + Ht-1 * Ri + bRi + Pi . Ct-1).
-      Node *it = createAdd(prefix + ".I.add1",
-                           LSTM_CREATE_FC(prefix + ".I.fc1", Xt, Wi, bWi),
-                           LSTM_CREATE_FC(prefix + ".I.fc2", Ht, Ri, bRi));
-      if (Pi) {
-        it = createAdd(prefix + ".I.add2", it,
-                       createMul(prefix + ".I.mult", Pi, Ct));
+      // Input gate:
+      // For inputForget == true:
+      //   it = 1 - ft.
+      // For inputForget == false:
+      //   it = f(Xt * Wi + bWi + Ht-1 * Ri + bRi + Pi . Ct-1).
+      Node *it;
+      if (inputForget) {
+        auto splatTy = ft->getNthResult(0).getType();
+        it = createSub(prefix + ".I.sub",
+                       createSplat(prefix + ".I.splat", splatTy, 1.0), ft);
+      } else {
+        it = createAdd(prefix + ".I.add1",
+                       LSTM_CREATE_FC(prefix + ".I.fc1", Xt, Wi, bWi),
+                       LSTM_CREATE_FC(prefix + ".I.fc2", Ht, Ri, bRi));
+        if (Pi) {
+          it = createAdd(prefix + ".I.add2", it,
+                         createMul(prefix + ".I.mult", Pi, Ct));
+        }
+        it = activationF(prefix + ".I.act", it);
       }
-      it = activationF(prefix + ".I.act", it);
 
       // Cell state update: Ct = ft . Ct-1 + it . ctild.
       Ct = createAdd(prefix + ".C.add", createMul(prefix + ".C.mult1", ft, Ct),

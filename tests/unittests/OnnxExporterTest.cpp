@@ -124,6 +124,7 @@ TEST(exporter, onnxModels) {
       llvm::outs() << "Ignore output file: " << name << "\n";
       continue;
     }
+    // TODO: Debug why these RNN models don`t work!
     if (name.find("rnn") != std::string::npos) {
       // Ignore RNN files.
       llvm::outs() << "Ignore RNN model file: " << name << "\n";

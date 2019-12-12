@@ -1443,12 +1443,15 @@ public:
   ///    case the LSTM is bidirectional (6 functions).
   /// The inputs \p B and \p P are optional (assumed 0 if nullptr is provided).
   /// The names of all the nodes created are prefixed with \p namePrefix.
+  /// The boolean parameter \p inputForget defines whether the input and forget
+  /// gates should be coupled (compute the input gate from the forget gate).
   void createOnnxLSTM(llvm::StringRef namePrefix, NodeValue X, NodeValue W,
                       NodeValue R, NodeValue B, NodeValue initial_h,
                       NodeValue initial_c, NodeValue P, NodeValue &Y,
                       NodeValue &Y_h, NodeValue &Y_c, unsigned hiddenSize,
                       RnnDirection direction,
-                      std::vector<RnnActivation> &activations);
+                      std::vector<RnnActivation> &activations,
+                      bool inputForget = false);
   /// @}
 
   /// Create a TraceEvent in the runtime profile, which triggers collection of
