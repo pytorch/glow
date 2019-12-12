@@ -61,13 +61,13 @@ llvm::cl::list<std::string, std::vector<std::string>> onnxDefineSymbolOpt(
 
 /// Parse the command line option and get the user defined map of symbols.
 /// The command line option has the format <symbol_name>,<symbol_value>.
-Expected<std::unordered_map<std::string, size_t>> getSymbolMap() {
-  std::unordered_map<std::string, size_t> symbolMap;
+Expected<std::unordered_map<std::string, dim_t>> getSymbolMap() {
+  std::unordered_map<std::string, dim_t> symbolMap;
   for (const auto &str : onnxDefineSymbol) {
     auto strPair = llvm::StringRef(str).split(',');
     llvm::StringRef name = strPair.first;
     RETURN_ERR_IF_NOT(name.size() > 0, "ONNX defined symbol name is empty.");
-    size_t value;
+    dim_t value;
     RETURN_ERR_IF_NOT(!strPair.second.getAsInteger(0, value),
                       strFormat("ONNX defined symbol value '%s' is invalid.",
                                 strPair.second.data()));
@@ -78,9 +78,9 @@ Expected<std::unordered_map<std::string, size_t>> getSymbolMap() {
 
 /// Get the shape of a TensorShapeProto given by \p shapeProto and return the
 /// dimensions in the vector \p dim passed by reference.
-Expected<std::vector<size_t>>
+Expected<std::vector<dim_t>>
 getProtoShape(const ONNX_NAMESPACE::TensorShapeProto &shapeProto) {
-  std::vector<size_t> dim;
+  std::vector<dim_t> dim;
   for (auto d : shapeProto.dim()) {
     if (d.has_dim_value()) {
       // Proto shape has an explicit size given by the "dim_value" field.
@@ -90,7 +90,7 @@ getProtoShape(const ONNX_NAMESPACE::TensorShapeProto &shapeProto) {
       // the symbol in the user defined map of symbols. If the symbol is not
       // found then raise an error.
       auto symbolName = d.dim_param();
-      std::unordered_map<std::string, size_t> symbolMap;
+      std::unordered_map<std::string, dim_t> symbolMap;
       ASSIGN_VALUE_OR_RETURN_ERR(symbolMap, getSymbolMap());
       if (symbolMap.count(symbolName)) {
         dim.push_back(symbolMap[symbolName]);
@@ -113,7 +113,7 @@ getProtoShape(const ONNX_NAMESPACE::TensorShapeProto &shapeProto) {
 /// proper shape and element type.
 Error setTensorType(const ONNX_NAMESPACE::TypeProto &in, Tensor *T) {
 
-  std::vector<size_t> dim;
+  std::vector<dim_t> dim;
   ASSIGN_VALUE_OR_RETURN_ERR(dim, getProtoShape(in.tensor_type().shape()));
 
   if (in.tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto::FLOAT) {
@@ -2310,10 +2310,10 @@ Error ONNXModelLoader::checkInputs(ONNX_NAMESPACE::GraphProto &net,
       }
 
       // Get tensor shape.
-      llvm::ArrayRef<size_t> dims = types[i]->dims();
+      llvm::ArrayRef<dim_t> dims = types[i]->dims();
 
       // Get proto shape.
-      std::vector<size_t> dimsProto;
+      std::vector<dim_t> dimsProto;
       ASSIGN_VALUE_OR_RETURN_ERR(
           dimsProto, getProtoShape(valueInfo.type().tensor_type().shape()));
 
