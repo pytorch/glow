@@ -78,9 +78,9 @@ Expected<std::unordered_map<std::string, size_t>> getSymbolMap() {
 
 /// Get the shape of a TensorShapeProto given by \p shapeProto and return the
 /// dimensions in the vector \p dim passed by reference.
-Expected<std::vector<size_t>>
+Expected<std::vector<dim_t>>
 getProtoShape(const ONNX_NAMESPACE::TensorShapeProto &shapeProto) {
-  std::vector<size_t> dim;
+  std::vector<dim_t> dim;
   for (auto d : shapeProto.dim()) {
     if (d.has_dim_value()) {
       // Proto shape has an explicit size given by the "dim_value" field.
@@ -113,7 +113,7 @@ getProtoShape(const ONNX_NAMESPACE::TensorShapeProto &shapeProto) {
 /// proper shape and element type.
 Error setTensorType(const ONNX_NAMESPACE::TypeProto &in, Tensor *T) {
 
-  std::vector<size_t> dim;
+  std::vector<dim_t> dim;
   ASSIGN_VALUE_OR_RETURN_ERR(dim, getProtoShape(in.tensor_type().shape()));
 
   if (in.tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto::FLOAT) {
@@ -2037,10 +2037,10 @@ Error ONNXModelLoader::checkInputs(ONNX_NAMESPACE::GraphProto &net,
       }
 
       // Get tensor shape.
-      llvm::ArrayRef<size_t> dims = types[i]->dims();
+      llvm::ArrayRef<dim_t> dims = types[i]->dims();
 
       // Get proto shape.
-      std::vector<size_t> dimsProto;
+      std::vector<dim_t> dimsProto;
       ASSIGN_VALUE_OR_RETURN_ERR(
           dimsProto, getProtoShape(valueInfo.type().tensor_type().shape()));
 
