@@ -21,6 +21,7 @@
 #include "glow/Support/ZipUtils.h"
 
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/CommandLine.h"
 
 #include "google/protobuf/io/coded_stream.h"
 #include "google/protobuf/io/zero_copy_stream_impl.h"
@@ -36,14 +37,84 @@ using namespace glow;
 using llvm::cast;
 
 namespace {
+
+llvm::cl::OptionCategory onnxModelLoaderCat("ONNX Model Loader Options");
+
+std::vector<std::string> onnxDefineSymbol;
+llvm::cl::list<std::string, std::vector<std::string>> onnxDefineSymbolOpt(
+    "onnx-define-symbol", llvm::cl::ZeroOrMore,
+    llvm::cl::location(onnxDefineSymbol),
+    llvm::cl::desc(
+        "Define (replace) the undefined symbols from the tensor descriptions\n"
+        "in the ONNX model with actual integer sizes. The undefined symbols \n"
+        "are marked in the proto description with the 'dim_param' field. For\n"
+        "example, if the model contains a tensor with the size described as \n"
+        "'None' x 3 x 224 x 224, the symbol 'None' can be replaced with an  \n"
+        "actual integer size (for example 1) by using the following command \n"
+        "line option:                                                       \n"
+        "    -onnx-define-symbol=None,1                                     \n"
+        "Multiple symbols can be defined using this option, for example:    \n"
+        "    -onnx-define-symbol=<symbol_name1>,<symbol_value1>             \n"
+        "    -onnx-define-symbol=<symbol_name2>,<symbol_value2>             \n"
+        "    ..................................................\n"),
+    llvm::cl::value_desc("name,value"), llvm::cl::cat(onnxModelLoaderCat));
+
+/// Parse the command line option and get the user defined map of symbols.
+/// The command line option has the format <symbol_name>,<symbol_value>.
+Expected<std::unordered_map<std::string, size_t>> getSymbolMap() {
+  std::unordered_map<std::string, size_t> symbolMap;
+  for (const auto &str : onnxDefineSymbol) {
+    auto strPair = llvm::StringRef(str).split(',');
+    llvm::StringRef name = strPair.first;
+    RETURN_ERR_IF_NOT(name.size() > 0, "ONNX defined symbol name is empty.");
+    size_t value;
+    RETURN_ERR_IF_NOT(!strPair.second.getAsInteger(0, value),
+                      strFormat("ONNX defined symbol value '%s' is invalid.",
+                                strPair.second.data()));
+    symbolMap[name.str()] = value;
+  }
+  return symbolMap;
+}
+
+/// Get the shape of a TensorShapeProto given by \p shapeProto and return the
+/// dimensions in the vector \p dim passed by reference.
+Expected<std::vector<size_t>>
+getProtoShape(const ONNX_NAMESPACE::TensorShapeProto &shapeProto) {
+  std::vector<size_t> dim;
+  for (auto d : shapeProto.dim()) {
+    if (d.has_dim_value()) {
+      // Proto shape has an explicit size given by the "dim_value" field.
+      dim.push_back(d.dim_value());
+    } else if (d.has_dim_param()) {
+      // Proto shape has a symbolic size given by the "dim_param" field. Search
+      // the symbol in the user defined map of symbols. If the symbol is not
+      // found then raise an error.
+      auto symbolName = d.dim_param();
+      std::unordered_map<std::string, size_t> symbolMap;
+      ASSIGN_VALUE_OR_RETURN_ERR(symbolMap, getSymbolMap());
+      if (symbolMap.count(symbolName)) {
+        dim.push_back(symbolMap[symbolName]);
+      } else {
+        RETURN_ERR(strFormat(
+            "ONNX model symbol '%s' is undefined. Define the symbol with the "
+            "following command line option: -onnx-define-symbol=%s,<value>.",
+            symbolName.c_str(), symbolName.c_str()));
+      }
+    } else {
+      // Proto shape has no "dim_value" and no "dim_param" field.
+      RETURN_ERR("Tensor shape proto has no 'dim_value' or 'dim_param' field!");
+    }
+  }
+  return dim;
+}
+
 /// Creates tensor \p T from the input \p in. Note, there is no data associated
 /// with the Tensor. This method makes sure that the tensor is created with the
 /// proper shape and element type.
 Error setTensorType(const ONNX_NAMESPACE::TypeProto &in, Tensor *T) {
-  std::vector<dim_t> dim;
-  for (auto d : in.tensor_type().shape().dim()) {
-    dim.push_back(d.dim_value());
-  }
+
+  std::vector<size_t> dim;
+  ASSIGN_VALUE_OR_RETURN_ERR(dim, getProtoShape(in.tensor_type().shape()));
 
   if (in.tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto::FLOAT) {
     T->reset(ElemKind::FloatTy, dim);
@@ -74,6 +145,10 @@ loadArgumentMap(const ONNX_NAMESPACE::NodeProto &op) {
     dict[arg.name()] = &arg;
   }
   return dict;
+}
+
+void glow::setOnnxDefineSymbol(const std::vector<std::string> &strs) {
+  onnxDefineSymbol = strs;
 }
 
 /// Loads tensor \p T from the input \p in.
@@ -1961,17 +2036,21 @@ Error ONNXModelLoader::checkInputs(ONNX_NAMESPACE::GraphProto &net,
         continue;
       }
 
-      llvm::ArrayRef<dim_t> dims = types[i]->dims();
-      const ONNX_NAMESPACE::TensorShapeProto &shape =
-          valueInfo.type().tensor_type().shape();
-      (void)shape;
+      // Get tensor shape.
+      llvm::ArrayRef<size_t> dims = types[i]->dims();
+
+      // Get proto shape.
+      std::vector<size_t> dimsProto;
+      ASSIGN_VALUE_OR_RETURN_ERR(
+          dimsProto, getProtoShape(valueInfo.type().tensor_type().shape()));
 
       // Check if the number of dimensions is consistent.
-      RETURN_ERR_IF_NOT(dims.size() == (size_t)shape.dim_size(),
+      RETURN_ERR_IF_NOT(dims.size() == dimsProto.size(),
                         "Mismatch between input image and ONNX input shape");
+
       // Allow batch dimensions to be different.
       for (size_t k = 1; k < dims.size(); k++) {
-        RETURN_ERR_IF_NOT(dims[k] == (size_t)shape.dim(k).dim_value(),
+        RETURN_ERR_IF_NOT(dims[k] == dimsProto[k],
                           "Mismatch between input image and ONNX input shape");
       }
     }

@@ -1,0 +1,45 @@
+ir_version: 5
+domain: "onnx"
+graph {
+  node {
+    input: "input"
+    output: "output"
+    name: "Unary operator"
+    op_type: "Exp"
+  }
+  input {
+    name: "input"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_param: "ONNXUndefinedSymbol"
+          }
+          dim {
+            dim_value: 2
+          }
+        }
+      }
+    }
+  }
+  output {
+    name: "output"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_param: "ONNXUndefinedSymbol"
+          }
+          dim {
+            dim_value: 2
+          }
+        }
+      }
+    }
+  }
+}
+opset_import {
+  version: 10
+}

@@ -129,7 +129,18 @@ TEST(exporter, onnxModels) {
       llvm::outs() << "Ignore LSTM model file: " << name << "\n";
       continue;
     }
+    const bool customOnnxDefineSymbol =
+        name.find("dimParam.onnxtxt") != std::string::npos;
+    if (customOnnxDefineSymbol) {
+      setOnnxDefineSymbol({"ONNXUndefinedSymbol,1"});
+    }
+
     testLoadAndSaveONNXModel(dirIt->path(), /* zipMode */ true);
     testLoadAndSaveONNXModel(dirIt->path(), /* zipMode */ false);
+
+    // Reset the custom symbol used.
+    if (customOnnxDefineSymbol) {
+      setOnnxDefineSymbol({});
+    }
   }
 }
