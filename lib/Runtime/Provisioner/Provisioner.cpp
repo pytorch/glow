@@ -418,12 +418,17 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
         functions_.emplace(func.first, std::move(func.second));
       }
       // Check if any of the duplicated functions can also be moved.
-      for (auto func : remainingDuplications) {
+      for (auto iter = remainingDuplications.begin();
+           iter != remainingDuplications.end();) {
+        const auto &func = *iter;
         if (func.second == 0) {
           duplicatedFunctions[func.first]->freeCompilationResources();
           functions_.emplace(func.first,
                              std::move(duplicatedFunctions[func.first]));
           duplicatedFunctions.erase(func.first);
+          iter = remainingDuplications.erase(iter);
+        } else {
+          ++iter;
         }
       }
     }
