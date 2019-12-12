@@ -102,6 +102,7 @@ add_subdirectory(ClassGen)
 include_directories(
     ${NNPI_TRANSFORMER_API}
     ${NNPI_INFERENCE_API}
+    ${CMAKE_CURRENT_SOURCE_DIR}
     ${NNPI_MG_API}
 )
 
@@ -113,7 +114,7 @@ add_library(NNPI
     NNPIDeviceManager.cpp
     NNPIFactory.cpp
     BlockStream.cpp
-    NNPIMessageLogger.cpp
+    NNPIOptions.cpp
     NNPITracing.cpp
     NNPIMLTraceWrapper.cpp
 )

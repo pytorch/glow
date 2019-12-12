@@ -16,7 +16,6 @@
 #include "NNPI.h"
 #include "NNPICompiledFunction.h"
 #include "NNPIDeviceManager.h"
-#include "NNPIMessageLogger.h"
 #include "glow/Graph/Nodes.h"
 #include "glow/Optimizer/GraphOptimizerPipeline/Pipeline.h"
 
@@ -31,9 +30,7 @@ bool GlowDisableNNPITransforms = false;
 } // namespace onnxifi
 } // namespace glow
 
-// Load NNPI message logger configuration.
-const NNPIMessageLogger &NNPIBackend::loggerConfig_ =
-    NNPIMessageLogger::getInstance();
+NNPIBackendOptions NNPIBackend::backendOptions_;
 
 bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
   switch (NI.getKind()) {
@@ -200,6 +197,15 @@ bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
            (NI.getOutElemTy(RowwiseQuantizedFullyConnectedNode::ResultIdx) ==
             ElemKind::Int8QTy);
 
+  case Kinded::Kind::SparseLengthsSumNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind(
+               {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy},
+               {SparseLengthsSumNode::IndicesIdx,
+                SparseLengthsSumNode::LengthsIdx}) &&
+           (NI.getInElemTy(SparseLengthsSumNode::IndicesIdx) ==
+            ElemKind::Int64ITy) &&
+           (NI.getInElemTy(SparseLengthsSumNode::LengthsIdx) ==
+            ElemKind::Int32ITy);
   case Kinded::Kind::SparseLengthsWeightedSumNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
                {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy},
@@ -209,6 +215,21 @@ bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
             ElemKind::Int64ITy) &&
            (NI.getInElemTy(SparseLengthsWeightedSumNode::LengthsIdx) ==
             ElemKind::Int32ITy);
+
+  case Kinded::Kind::FusedRowwiseQuantizedSparseLengthsSumNodeKind: {
+    auto dataK =
+        NI.getInElemTy(FusedRowwiseQuantizedSparseLengthsSumNode::DataIdx);
+    auto lengthsK =
+        NI.getInElemTy(FusedRowwiseQuantizedSparseLengthsSumNode::LengthsIdx);
+    auto indicesK =
+        NI.getInElemTy(FusedRowwiseQuantizedSparseLengthsSumNode::IndicesIdx);
+    auto resultK =
+        NI.getOutElemTy(FusedRowwiseQuantizedSparseLengthsSumNode::ResultIdx);
+    return (dataK == ElemKind::UInt8FusedQTy ||
+            dataK == ElemKind::UInt8FusedFP16QTy) &&
+           (resultK == ElemKind::FloatTy || resultK == ElemKind::Float16Ty) &&
+           (indicesK == ElemKind::Int64ITy) && (lengthsK == ElemKind::Int32ITy);
+  }
 
   case Kinded::Kind::FusedRowwiseQuantizedSparseLengthsWeightedSumNodeKind: {
     auto dataK = NI.getInElemTy(
@@ -222,7 +243,8 @@ bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
     auto resultK = NI.getOutElemTy(
         FusedRowwiseQuantizedSparseLengthsWeightedSumNode::ResultIdx);
     return (dataK == ElemKind::UInt8FusedQTy ||
-            dataK == ElemKind::UInt8FusedFP16QTy) &&
+            dataK == ElemKind::UInt8FusedFP16QTy ||
+            dataK == ElemKind::UInt4FusedFP16QTy) &&
            (weightsK == resultK) &&
            (resultK == ElemKind::FloatTy || resultK == ElemKind::Float16Ty) &&
            (indicesK == ElemKind::Int64ITy) && (lengthsK == ElemKind::Int32ITy);
@@ -308,6 +330,23 @@ bool NNPIBackend::shouldLower(const Node *N) const {
   case Kinded::Kind::BatchedReduceMeanNodeKind:
   case Kinded::Kind::BatchedReduceMinNodeKind:
     return false;
+  case Kinded::Kind::FusedRowwiseQuantizedSparseLengthsSumNodeKind: {
+    const FusedRowwiseQuantizedSparseLengthsSumNode *SLSN =
+        llvm::cast<FusedRowwiseQuantizedSparseLengthsSumNode>(N);
+    if ((backendOptions_.useIceT || backendOptions_.inferOnDevice) &&
+        (SLSN->getResult().getElementType() == ElemKind::Float16Ty)) {
+      return false; // Don't lower == keep without weights
+    } else {
+      return true;
+    }
+  }
+  case Kinded::Kind::SparseLengthsSumNodeKind:
+    // WA - lower until ICE-T implements it.
+    if (NNPIBackend::backendOptions_.useIceT ||
+        NNPIBackend::backendOptions_.inferOnDevice) {
+      return true;
+    }
+    return false;
   case Kinded::Kind::BatchMatMulNodeKind:
   case Kinded::Kind::PReluNodeKind: {
     NodeInfo NI(*N);
@@ -327,11 +366,6 @@ NNPIBackend::createDeviceManager(const runtime::DeviceConfig &deviceConfig) {
 
 Expected<std::unique_ptr<CompiledFunction>>
 NNPIBackend::compile(Function *F, const BackendOptions &opts) const {
-  TraceInfo traceInfo = buildManualTraceInfo(F);
-  if (opts.autoInstrument) {
-    autoInstrument(traceInfo, nullptr);
-  }
-
   if (glow::onnxifi::GlowDumpGraph) {
     std::string fname = "Graph_" + F->getName().str() + ".dot";
     LOG(INFO) << "Dumping net to " << fname;
@@ -343,7 +377,7 @@ NNPIBackend::compile(Function *F, const BackendOptions &opts) const {
   if (compileHasError) {
     return std::move(compileHasError);
   }
-  compiledFunc->setTraceInfo(std::move(traceInfo));
+
   return Expected<std::unique_ptr<CompiledFunction>>(std::move(compiledFunc));
 }
 

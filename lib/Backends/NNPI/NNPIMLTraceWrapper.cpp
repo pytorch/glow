@@ -36,15 +36,6 @@ static inline int64_t nanosecondsToMicrosecondsSigned(int64_t nanoseconds) {
   return nanoseconds / 1e3;
 }
 
-static uint64_t getUpRefTime() {
-  // Get uptime.
-  double uptime(0.0);
-  if (std::ifstream("/proc/uptime", std::ios::in) >> uptime) {
-    return secondsToMicroseconds(uptime);
-  }
-  return 0;
-}
-
 enum NNPITraceColumnIndex {
   NNPI_TRACE_PID_IDX = 0,
   NNPI_TRACE_CPU_IDX = 1,
@@ -159,7 +150,7 @@ protected:
       return NNPI_TRACE_DMA;
     } else if (part == "copy:") {
       return NNPI_TRACE_COPY;
-    } else if (part == "runtime-infer-request:") {
+    } else if (part == "infreq:") {
       return NNPI_TRACE_INFER;
     } else if (part == "clock_sync:") {
       return NNPI_TRACE_CLOCK_SYNC;
@@ -191,8 +182,7 @@ protected:
 };
 
 NNPITraceContext::NNPITraceContext(uint32_t eventsMask)
-    : devID_(0), devIDSet_(false),
-      events_("copy,runtime_sw_events.runtime.infer,infer_create,infreq") {
+    : devID_(0), devIDSet_(false), events_("copy,infreq") {
   if (eventsMask) {
     events_ = "";
     if (eventsMask & NNPI_TRACE_DMA) {
@@ -202,7 +192,7 @@ NNPITraceContext::NNPITraceContext(uint32_t eventsMask)
       events_ += "copy,";
     }
     if (eventsMask & NNPI_TRACE_INFER) {
-      events_ += "runtime_sw_events.runtime.infer,infer_create,infreq";
+      events_ += "infreq";
     }
   }
   createContext();
@@ -271,12 +261,14 @@ bool NNPITraceContext::load() {
 
     parser.parseLine(line, entry);
     entries_.push_back(entry);
-    if (timeDiff_ == 0 && parser.getTimeDiff() != 0) {
-      // First time time diff updated update old entries.
+    if (timeDiff_ != parser.getTimeDiff()) {
+      // On time diff updated update old entries.
       timeDiff_ = parser.getTimeDiff();
-      for (std::vector<NNPITraceEntry>::iterator it = entries_.begin();
+      for (std::vector<NNPITraceEntry>::iterator it =
+               entries_.begin() + timeUpdatedIndex_;
            it != entries_.end() - 1; ++it) {
         parser.setHostTime(*it);
+        timeUpdatedIndex_++;
       }
     }
   }
@@ -307,8 +299,8 @@ bool NNPITraceContext::createContext() {
   return true;
 }
 
-void NNPITraceContext::markInputCopyStart() {
+void NNPITraceContext::markInputCopyStart(uint64_t uptime) {
   if (upRefTime_ == 0) {
-    upRefTime_ = getUpRefTime();
+    upRefTime_ = uptime;
   }
 }

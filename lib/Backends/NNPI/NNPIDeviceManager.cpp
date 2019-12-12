@@ -31,7 +31,7 @@
 namespace glow {
 namespace runtime {
 
-unsigned GlowNNPIMemory = 16 << 20; // 16 GB.
+unsigned GlowNNPIMemory = 0;
 
 static llvm::cl::opt<unsigned, /* ExternalStorage */ true>
     GlowNNPIMemoryOpt("glow-nnpi-memory",
@@ -43,6 +43,9 @@ DeviceManager *createNNPIDeviceManager(const DeviceConfig &config) {
   return new NNPIDeviceManager(config);
 }
 
+// 1K bytes.
+static constexpr uint64_t KB = 1 << 10;
+
 //////////////////////////////////////////////////////////////////////////
 std::atomic<RunIdentifierTy> NNPIDeviceManager::runIdentifier_;
 
@@ -50,39 +53,46 @@ NNPIDeviceManager::NNPIDeviceManager(const DeviceConfig &config,
                                      unsigned numInferenceWorkers)
     : DeviceManager(config), numWorkersPerFunction_(numInferenceWorkers),
       deviceId_(config_.deviceID), adapter_(NNPI_INVALID_NNPIHANDLE),
-      device_(NNPI_INVALID_NNPIHANDLE) {
-  auto it = config_.parameters.find("DeviceID");
-  if (it != config_.parameters.end()) {
-    // Todo: check device id is appropriate for the machine (check adapter for
-    // active devices).
-    deviceId_ = std::stoul(it->second);
+      device_(NNPI_INVALID_NNPIHANDLE), deviceOptions_(&config_.parameters) {
+  if (deviceOptions_.showVars) {
+    LOG(INFO) << deviceOptions_.dumpStatus();
   }
-  const auto envDeviceId = EnvDeviceID();
-  if (envDeviceId.length() > 0) {
-    // Override if exists in environment variable.
-    deviceId_ = std::stoul(envDeviceId);
+  if (deviceOptions_.deviceID >= 0) {
+    deviceId_ = static_cast<unsigned>(deviceOptions_.deviceID);
   }
 
   if (!numWorkersPerFunction_) {
     numWorkersPerFunction_ =
-        UseInferenceAPI()
+        deviceOptions_.inferOnDevice
             ? 2
             : 1; // Ice-ref not re-entrant for the same nnpiNetwork.
   }
-  const auto envWorkers = EnvNumWorkers();
-  if (envWorkers > 0) {
-    numWorkersPerFunction_ = envWorkers;
+
+  if (deviceOptions_.numWorkers > 0) {
+    numWorkersPerFunction_ = deviceOptions_.numWorkers;
   }
 }
 
 NNPIDeviceManager::~NNPIDeviceManager() {
-  if (device_ != NNPI_INVALID_NNPIHANDLE) {
+  std::unordered_set<std::string> functionsNames;
+  for (auto func : functions_) {
+    functionsNames.emplace(func.first);
+  }
+
+  for (auto func : functionsNames) {
+    evictNetwork(func, [](std::string name, Error err) {
+      LOG_IF(ERROR, ERR_TO_BOOL(std::move(err)))
+          << "Failed to evict network during NNPIDeviceManager destructor";
+    });
+  }
+
+  if (device_ != NNPI_INVALID_NNPIHANDLE || deviceOptions_.internalTesting) {
     LOG_NNPI_INF_ERROR(nnpiDeviceContextDestroy(device_),
                        "Failed to destroy NNPI device context");
     device_ = NNPI_INVALID_NNPIHANDLE;
   }
 
-  if (adapter_ != NNPI_INVALID_NNPIHANDLE) {
+  if (adapter_ != NNPI_INVALID_NNPIHANDLE || deviceOptions_.internalTesting) {
     LOG_NNPI_INF_ERROR(nnpiAdapterDestroy(adapter_),
                        "Failed to destroy NNPI adapter");
     adapter_ = NNPI_INVALID_NNPIHANDLE;
@@ -90,17 +100,19 @@ NNPIDeviceManager::~NNPIDeviceManager() {
 }
 
 Error NNPIDeviceManager::init() {
-  LOG_IF_NOT_RETURN_LLVMERROR(adapter_ == NNPI_INVALID_NNPIHANDLE,
-                              "Bad NNPI adapter");
-  LOG_IF_NOT_RETURN_LLVMERROR(device_ == NNPI_INVALID_NNPIHANDLE,
-                              "Bad NNPI device");
+  if (deviceOptions_.internalTesting) {
+    LOG_IF_NOT_RETURN_LLVMERROR(adapter_ == NNPI_INVALID_NNPIHANDLE,
+                                "Invalid NNPI adapter");
+    LOG_IF_NOT_RETURN_LLVMERROR(device_ == NNPI_INVALID_NNPIHANDLE,
+                                "Invalid NNPI device");
+  }
 
   NNPITransformerInfo info;
   CHECK_EQ(nnpiTransformerGetInfo(&info), NNPI_NO_ERROR);
   LOG(INFO) << "NNPI Transformer Version " << info.majorVersion << "."
             << info.minorVersion << "." << info.patchVersion;
 
-  if (UseInferenceAPI()) {
+  if (deviceOptions_.inferOnDevice) {
     // Create NNPI adapter.
     LOG_NNPI_INF_ERROR_RETURN_LLVMERROR(nnpiAdapterCreate(nullptr, &adapter_),
                                         "Failed to create NNPI Adapter");
@@ -109,8 +121,27 @@ Error NNPIDeviceManager::init() {
     LOG_NNPI_INF_ERROR_RETURN_LLVMERROR(
         nnpiDeviceContextCreate(adapter_, deviceId_, &device_),
         "Failed to create NNPI Device");
-    if (EnabledDeviceTracing()) {
+    LOG_IF_NOT_RETURN_LLVMERROR(
+        staticPlaceholderContainer_.SetDevice(device_,
+                                              deviceOptions_.internalTesting),
+        "setting device for StaticPlaceholderContainer failed");
+    if (deviceOptions_.enabledDeviceTraceing) {
       deviceTracing_ = NNPIDeviceTracing::getForDevice(deviceId_);
+    }
+    if (GlowNNPIMemory == 0 && deviceOptions_.deviceMemory == 0) {
+      // Todo: enable once nnpiDeviceGetInfo changes are implemented.
+#if 0
+      NNPIDeviceInfo deviceInfo;
+      LOG_NNPI_INF_ERROR_RETURN_LLVMERROR(
+          nnpiDeviceGetInfo(deviceId_, &deviceInfo),
+          "Failed to get NNPI Device Info");
+      maxMemoryBytes_ = static_cast<uint64_t>(deviceInfo.totalMemory) * KB;
+      // Todo: sum protected and un protected.
+#endif
+    } else if (GlowNNPIMemory > 0) {
+      maxMemoryBytes_ = static_cast<uint64_t>(GlowNNPIMemory) * KB;
+    } else {
+      maxMemoryBytes_ = static_cast<uint64_t>(deviceOptions_.deviceMemory) * KB;
     }
   }
 
@@ -157,10 +188,11 @@ void NNPIDeviceManager::addNetwork(const Module *module,
   for (const auto &func : functions) {
     functions_.emplace(func.first, func.second);
     usedMemoryBytes_ += functionCost_; // TODO:: static moduleSize.
-
     auto err = inferenceEnvs_[func.first].init(
-        numWorkersPerFunction_, adapter_, device_, deviceTracing_, func.second);
+        numWorkersPerFunction_, adapter_, device_, deviceTracing_, func.second,
+        &staticPlaceholderContainer_, deviceOptions_);
     if (err) {
+      functions_.erase(func.first);
       lock.unlock();
       readyCB(module, std::move(err));
     }
@@ -173,8 +205,8 @@ void NNPIDeviceManager::addNetwork(const Module *module,
   lock.unlock();
   readyCB(module, Error::success());
 }
-
 void NNPIDeviceManager::evictNetwork(std::string functionName,
+
                                      EvictFunctionCBTy evictCB) {
   std::unique_lock<std::mutex> lock(functionMapMutex_);
   Error err = Error::success();
@@ -226,11 +258,18 @@ Error NNPIDeviceManager::stop(bool block) {
   }
   return Error::success();
 }
-uint64_t NNPIDeviceManager::getMaximumMemory() const {
-  return uint64_t{GlowNNPIMemory} * 1024;
-  // Todo: use nnpiDeviceGetInfo.
-}
+uint64_t NNPIDeviceManager::getMaximumMemory() const { return maxMemoryBytes_; }
 uint64_t NNPIDeviceManager::getAvailableMemory() const {
+  // Todo: enable once nnpiDeviceGetInfo changes are implemented.
+#if 0
+  if (GlowNNPIMemory == 0 && deviceOptions_.deviceMemory == 0 &&
+      (deviceOptions_.useIceT_ || deviceOptions_.inferOnDevice_)) {
+    NNPIDeviceStatus devStatus;
+    nnpiDeviceGetStatus(deviceId_, &devStatus);
+    return static_cast<uint64_t>(devStatus.availableMemory) * KB;
+    // Todo: sum protected and un protected.
+  }
+#endif
   auto freeMemory = getMaximumMemory();
   for (const auto &p : functions_) {
     const auto &fn = p.second;
@@ -245,5 +284,195 @@ bool NNPIDeviceManager::isMemoryAvailable(uint64_t estimate) const {
   return estimate <= getAvailableMemory(); // This is just an estimate and not
                                            // necessarily accurate.
 }
+
+void NNPIDeviceManager::transferStaticPlaceholderToDevice(
+    Placeholder *PH, Tensor *T, std::function<void(Error)> resultCB) {
+
+  NNPIHostResource hInput;
+  NamedResource nr;
+  nr = staticPlaceholderContainer_.AcquireDeviceResource(PH, nr);
+  if (!deviceOptions_.internalTesting) {
+    LOG_AND_FAIL_CALLBACK_IF_NOT(nr.handle != NNPI_INVALID_NNPIHANDLE,
+                                 "Failed to acquire device resource", resultCB);
+  }
+
+  LOG_AND_CALLBACK_NNPI_INF_ERROR(
+      nnpiHostResourceCreate(adapter_, &nr.desc, &hInput),
+      "Failed to create NNPI host resource", resultCB);
+
+  void *pHostInput(nullptr);
+  LOG_AND_CALLBACK_NNPI_INF_ERROR(
+      nnpiHostResourceLock(hInput, NNPI_LOCK_FOR_WRITE, UINT32_MAX,
+                           &pHostInput),
+      "Failed to create NNPI host resource", resultCB);
+
+  size_t bufferSize = T->getUnpaddedSizeInBytes();
+  size_t fullBufferSize = T->getSizeInBytes();
+
+  switch (T->getElementType()) {
+  case glow::ElemKind::Int64ITy: {
+    // Convert int64_t tensors to int32.
+    int64_t *pInput = reinterpret_cast<int64_t *>(T->getUnsafePtr());
+    const size_t unpaddedSize = bufferSize / sizeof(int64_t);
+    int32_t *tmp = new int32_t[unpaddedSize];
+    for (size_t i = 0; i < unpaddedSize; i++) {
+      tmp[i] = static_cast<int32_t>(pInput[i]);
+    }
+    bufferSize /= 2;
+    fullBufferSize /= 2;
+    std::memcpy(pHostInput, tmp, bufferSize);
+    delete[](tmp);
+  } break;
+  default:
+    std::memcpy(pHostInput, T->getUnsafePtr(), bufferSize);
+  }
+
+  LOG_AND_CALLBACK_NNPI_INF_ERROR(nnpiHostResourceUnlock(hInput),
+                                  "Failed to unlock host resource", resultCB);
+
+  NNPICopyCommand copyInputCmd(NNPI_INVALID_NNPIHANDLE);
+  LOG_AND_CALLBACK_NNPI_INF_ERROR(
+      nnpiCopyCommandCreateHostToDevice(device_, nr.handle, hInput,
+                                        &copyInputCmd),
+      "Failed to create NNPI copy command", resultCB);
+
+  if (deviceOptions_.enabledCommandLists > 1) {
+    // Create command list.
+    NNPICommandList cmdList = NNPI_INVALID_NNPIHANDLE;
+    NNPICommandHandle cmdHnd;
+    cmdHnd.type = NNPI_COMMAND_TYPE_COPY;
+    cmdHnd.copyCommand = copyInputCmd;
+    LOG_AND_CALLBACK_NNPI_INF_ERROR(
+        nnpiCommandListCreate(&cmdHnd, 1, nullptr, 0, &cmdList),
+        "Failed to create NNPI command list", resultCB);
+
+    // Queue command list.
+    LOG_AND_CALLBACK_NNPI_INF_ERROR(nnpiCommandListQueue(cmdList, nullptr, 0),
+                                    "Failed to queue command list.", resultCB);
+
+    // Wait for completion.
+    uint32_t numErrors(0);
+    NNPICommandListError singleError;
+    memset(&singleError, 0, sizeof(NNPICommandListError));
+    NNPIInferenceErrorCode result =
+        nnpiCommandListWait(cmdList, UINT32_MAX, &singleError, 1, &numErrors);
+
+    if (result != NNPI_INF_NO_ERROR) {
+      LOG_NNPI_INF_ERROR(result, "Failed to wait on command list");
+    } else {
+      if (numErrors > 0) {
+        LOG(ERROR) << NNPI_INF_ERROR_MSG(singleError.err, singleError.desc);
+      }
+    }
+    if (result != NNPI_INF_NO_ERROR || numErrors > 0) {
+      LOG_AND_CALLBACK_NNPI_INF_ERROR(
+          result, "Errors detected during command list", resultCB);
+    }
+
+    // Destroy command list.
+    LOG_NNPI_INF_ERROR(nnpiCommandListDestroy(cmdList),
+                       "Failed to destroy NNPI command list");
+  } else {
+    LOG_AND_CALLBACK_NNPI_INF_ERROR(nnpiCopyCommandQueue(copyInputCmd, nullptr),
+                                    "Failed to queue input copy command.",
+                                    resultCB);
+    LOG_AND_CALLBACK_NNPI_INF_ERROR(
+        nnpiHostResourceLock(hInput, NNPI_LOCK_FOR_WRITE, UINT32_MAX,
+                             &pHostInput),
+        "Failed to lock host resource during static Placeholder transfer",
+        resultCB);
+    LOG_AND_CALLBACK_NNPI_INF_ERROR(nnpiHostResourceUnlock(hInput),
+                                    "Failed to unlock host resource", resultCB);
+  }
+
+  LOG_AND_CALLBACK_NNPI_INF_ERROR(nnpiCopyCommandDestroy(copyInputCmd),
+                                  "Failed to destroy NNPI copy command",
+                                  resultCB);
+
+  LOG_AND_CALLBACK_NNPI_INF_ERROR(nnpiHostResourceDestroy(hInput),
+                                  "Failed to destroy NNPI host resource",
+                                  resultCB);
+
+  LOG_AND_FAIL_CALLBACK_IF_NOT(
+      staticPlaceholderContainer_.ReleaseDeviceResource(PH),
+      "Failed to release device resource", resultCB);
+
+  resultCB(Error::success());
+};
+
+NNPIStaticPlaceholderContainer::~NNPIStaticPlaceholderContainer() {
+  LOG_IF_NOT(ERROR, staticPlaceholdersDeviceResource_.size() == 0)
+      << "NNPIStaticPlaceholderContainer contains allocated refs for device "
+         "resource";
+  for (auto item : staticPlaceholdersDeviceResource_) {
+    auto PH = item.first;
+    EraseAndDestroyDeviceResource_(PH);
+  }
+}
+
+bool NNPIStaticPlaceholderContainer::SetDevice(NNPIDeviceContext device,
+                                               bool inferOnRuntime) {
+  // Exception for internal testing (ICE-24091)
+  if (!inferOnRuntime) {
+    LOG_AND_RETURN_IF(ERROR, device == NNPI_INVALID_NNPIHANDLE,
+                      "NNPIStaticPlaceholderContainer received invalid device",
+                      false);
+  }
+  device_ = device;
+  return true;
+}
+
+NamedResource
+NNPIStaticPlaceholderContainer::AcquireDeviceResource(const Placeholder *PH,
+                                                      const NamedResource &nr) {
+  if (staticPlaceholdersDeviceResource_.count(PH) == 0) {
+    NamedResourceWithRef nrf = nr;
+    LOG_NNPI_INF_ERROR(
+        nnpiDeviceResourceCreate(device_, &nrf.desc, &nrf.handle),
+        "Failed to create NNPI device resource");
+    staticPlaceholdersDeviceResource_[PH] = nrf;
+  }
+  auto nrf = staticPlaceholdersDeviceResource_.at(PH);
+
+  nrf.refCount += 1;
+  staticPlaceholdersDeviceResource_[PH] = nrf;
+  return nrf;
+}
+
+bool NNPIStaticPlaceholderContainer::EraseAndDestroyDeviceResource_(
+    const Placeholder *PH) {
+  LOG_AND_RETURN_IF_NOT(ERROR, staticPlaceholdersDeviceResource_.count(PH),
+                        "Resource with name:" + PH->getName().str() +
+                            " wasn't initialized as static Placeholder",
+                        false)
+  auto &nrf = staticPlaceholdersDeviceResource_.at(PH);
+  LOG_NNPI_INF_ERROR_RETURN_FALSE(nnpiDeviceResourceDestroy(nrf.handle),
+                                  "Failed to destroy NNPI device resource");
+  nrf.handle = NNPI_INVALID_NNPIHANDLE;
+  staticPlaceholdersDeviceResource_.erase(PH);
+  return true;
+}
+
+bool NNPIStaticPlaceholderContainer::ReleaseDeviceResource(
+    const Placeholder *PH) {
+  LOG_AND_RETURN_IF_NOT(ERROR, staticPlaceholdersDeviceResource_.count(PH),
+                        "Resource with name:" + PH->getName().str() +
+                            " wasn't initialized as static Placeholder",
+                        false)
+
+  auto &nrf = staticPlaceholdersDeviceResource_.at(PH);
+  LOG_IF_NOT(ERROR, nrf.refCount > 0)
+      << "ref count for resource with name:" << PH->getName().str()
+      << " is already 0";
+  if (nrf.refCount > 0) {
+    nrf.refCount -= 1;
+  }
+
+  if (nrf.refCount == 0) {
+    return EraseAndDestroyDeviceResource_(PH);
+  }
+  return true;
+}
+
 } // namespace runtime
 } // namespace glow

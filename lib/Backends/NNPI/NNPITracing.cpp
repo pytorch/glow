@@ -15,22 +15,18 @@
 
 #include "NNPITracing.h"
 #include "DebugMacros.h"
-#include "Importer.h"
+#include "NNPI.h"
 #include "NNPIMLTraceWrapper.h"
 #include <unordered_map>
 
 using namespace glow;
 
 NNPIDeviceTracing::NNPIDeviceTracing(uint32_t deviceID) : deviceID_(deviceID) {
-  if (!UseIceT() && !UseInferenceAPI())
-    return;
   traceCtx_ = std::make_unique<NNPITraceContext>(0);
 }
 
 void NNPIDeviceTracing::start(TraceContext *traceContext,
                               runtime::RunIdentifierTy runId) {
-  if (!UseIceT() && !UseInferenceAPI())
-    return;
   if (!traceContext ||
       !traceContext->shouldLog(TraceEvent::TraceLevel::OPERATOR)) {
     return;
@@ -143,8 +139,6 @@ bool NNPIDeviceTracing::addTrace(NNPITraceEntry &entry) {
 
 void NNPIDeviceTracing::stopAndUpdate(TraceContext *traceContext,
                                       runtime::RunIdentifierTy runId) {
-  if (!UseIceT() && !UseInferenceAPI())
-    return;
   if (glowTraceCtx_ != traceContext || runId_ != runId) {
     // Ignore stop from other contexts.
     return;
@@ -167,6 +161,6 @@ void NNPIDeviceTracing::stopAndUpdate(TraceContext *traceContext,
 
 void NNPIDeviceTracing::startCopyTime() {
   if (traceCtx_) {
-    traceCtx_->markInputCopyStart();
+    traceCtx_->markInputCopyStart(TraceEvent::now());
   }
 }

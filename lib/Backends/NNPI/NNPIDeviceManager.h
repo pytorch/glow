@@ -23,6 +23,7 @@
 #include "glow/Support/ThreadPool.h"
 #include "nnpi_inference.h"
 #include <atomic>
+#include <map>
 #include <mutex>
 #include <string>
 #include <vector>
@@ -36,6 +37,43 @@ namespace runtime {
 /// the IR-NNPI. Many NNPIFunctions may be added, but only one
 /// inference is executed at a time.
 class InferenceThreadEnv;
+
+class NNPIStaticPlaceholderContainer {
+  struct NamedResourceWithRef : public NamedResource {
+    uint64_t refCount = 0;
+    NamedResourceWithRef() : refCount(0) {}
+    NamedResourceWithRef(const NamedResource &nr)
+        : NamedResource(nr), refCount(0){};
+  };
+  std::map<const Placeholder *, NamedResourceWithRef>
+      staticPlaceholdersDeviceResource_;
+  /// NNPI Device Context handle.
+  NNPIDeviceContext device_;
+  // Given a Placeholder, erase its allocated NamedResourceWithRef and destory
+  // its DeviceResource
+  // return true on success, false otherwise
+  // NOTE: Doesn't check for remaining refs pointing at the DeviceResource
+  bool EraseAndDestroyDeviceResource_(const Placeholder *PH);
+
+public:
+  NNPIStaticPlaceholderContainer() : device_(NNPI_INVALID_NNPIHANDLE){};
+  ~NNPIStaticPlaceholderContainer();
+
+  // Set the device that the container create and destroy device resource for
+  // return false if device is invalid
+  bool SetDevice(NNPIDeviceContext device, bool inferOnRuntime);
+
+  // Acquire a device resource with a given static Placeholder and
+  // NamedResource
+  // returned NamedResource will contain the allocated handle
+  // caller should check the returned handle before using it.
+  NamedResource AcquireDeviceResource(const Placeholder *,
+                                      const NamedResource &nr);
+
+  // Release a device resource given a static Placeholder
+  // return false if release failed.
+  bool ReleaseDeviceResource(const Placeholder *);
+};
 
 // thread pool per network
 class NNPIDeviceManager : public DeviceManager {
@@ -67,6 +105,10 @@ class NNPIDeviceManager : public DeviceManager {
   std::mutex functionMapMutex_;
   /// Device Tracing contorl.
   std::shared_ptr<NNPIDeviceTracing> deviceTracing_;
+  /// Maps between static placeholders' names to their device resource.
+  NNPIStaticPlaceholderContainer staticPlaceholderContainer_;
+  /// NNPI Device options (environment variables + DeviceConfig options).
+  NNPIDeviceOptions deviceOptions_;
 
 public:
   explicit NNPIDeviceManager(const DeviceConfig &config,
@@ -85,6 +127,9 @@ public:
   uint64_t getMaximumMemory() const override;
   uint64_t getAvailableMemory() const override;
   bool isMemoryAvailable(uint64_t estimate) const override;
+
+  void transferStaticPlaceholderToDevice(Placeholder *PH, Tensor *T,
+                                         std::function<void(Error)> resultCB);
 };
 
 DeviceManager *createNNPIDeviceManager(const DeviceConfig &config);

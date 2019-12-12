@@ -30,6 +30,14 @@
 namespace glow {
 namespace runtime {
 
+struct NamedResource {
+  NNPIObjectName name;
+  NNPIResourceDesc desc;
+  NNPIHandle handle;
+  void *hostPtr;
+  NamedResource() { memset(this, 0, sizeof(NamedResource)); }
+};
+class NNPIStaticPlaceholderContainer;
 class InferenceThreadEnv {
 private:
   NNPINetwork nnpiNetwork_;                 // For ice-ref path only.
@@ -38,6 +46,9 @@ private:
   NNPIDeviceContext device_; // For queuing purposes (is created/destroyed in
                              // the DM ctor/dtor).
   NNPIInferCommand inferCmd_;
+  NNPICommandList commandList_;
+  NNPICommandListError *commandErrors_;
+  uint32_t numCommands_;
 
   std::vector<std::pair<std::string, NNPITensorDesc>> netInputs_;
   std::vector<std::pair<std::string, NNPITensorDesc>> netOutputs_;
@@ -48,24 +59,26 @@ private:
   /// Set of inputs that can be partial tensors.
   const std::unordered_set<const Placeholder *> *partialInputs_;
 
+  /// Set of inputs that are static tensors.
+  std::unordered_set<const Placeholder *> staticInputs_;
+
   /// Device tracing handler.
   std::shared_ptr<NNPIDeviceTracing> deviceTracing_;
 
-  struct NamedResource {
-    NNPIObjectName name;
-    NNPIResourceDesc desc;
-    NNPIHandle handle;
-  };
+  /// NNPI Device configuration.
+  std::shared_ptr<NNPIDeviceOptions> deviceOptions_;
+
   std::vector<NamedResource> hostInputs_, hostOutputs_, deviceInputs_,
-      deviceOutputs_;
+      allocatedDeviceInputs_, deviceOutputs_;
   std::vector<NNPICopyCommand> inputCopyCmds_, outputCopyCmds_;
-  std::vector<NNPICopyCommandConfig> inputCopyCmdConfigs_,
-      outputCopyCmdConfigs_;
+  std::vector<NNPICommandConfig> cmdConfigs_;
   std::vector<void *> rawInputs_, rawOutputs_;
 
   /// Used for int64 tensors and for zero-padded copies of unsupported partial
   /// tensors.
   std::set<char *> tmpBuffers_;
+
+  NNPIStaticPlaceholderContainer *staticPlaceholderContainer_;
 
 public:
   InferenceThreadEnv();
@@ -79,7 +92,10 @@ public:
       NNPIHostNetwork hostNetwork, NNPIDeviceNetwork deviceNetwork,
       NNPIAdapter adapter, NNPIDeviceContext device,
       const std::unordered_set<const Placeholder *> &partialInputs,
-      std::shared_ptr<NNPIDeviceTracing> deviceTracing);
+      const std::unordered_set<const Placeholder *> &staticInputs,
+      std::shared_ptr<NNPIDeviceTracing> deviceTracing,
+      NNPIStaticPlaceholderContainer *staticPlaceholderContainer,
+      const NNPIDeviceOptions &deviceOptions);
 };
 
 class InferencePoolEnv {
@@ -90,13 +106,16 @@ class InferencePoolEnv {
   NNPIHostNetwork hostNetwork_;
   NNPIDeviceNetwork deviceNetwork_;
   std::shared_ptr<NNPIDeviceTracing> deviceTracing_;
+  std::shared_ptr<NNPIDeviceOptions> deviceOptions_;
 
 public:
   InferencePoolEnv();
   ~InferencePoolEnv();
   Error init(unsigned numWorkers, NNPIAdapter adapter, NNPIDeviceContext device,
              std::shared_ptr<NNPIDeviceTracing> deviceTracing,
-             CompiledFunction *compiledFunction);
+             CompiledFunction *compiledFunction,
+             NNPIStaticPlaceholderContainer *staticPlaceholderContainer,
+             const NNPIDeviceOptions &deviceOptions);
   void stop(bool block);
   void execute(RunIdentifierTy runId, std::unique_ptr<ExecutionContext> ctx,
                runtime::ResultCBTy resultCB);
