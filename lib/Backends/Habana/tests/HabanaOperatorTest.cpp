@@ -233,6 +233,8 @@ std::set<std::string> glow::backendTestBlacklist = {
     "NonSquarePaddingMaxPool/0",
     "NonSquareStrideAveragePool/0",
     "NonSquareStrideConvolution/0",
+    "ParallelBatchMatMul_Float16/0",
+    "ParallelBatchMatMul_Int8/0",
     "pow/0",
     "PReluSimple_Float/0",
     "PReluSimple_Float16/0",

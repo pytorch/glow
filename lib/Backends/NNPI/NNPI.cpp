@@ -18,6 +18,7 @@
 #include "NNPIDeviceManager.h"
 #include "glow/Graph/Nodes.h"
 #include "glow/Optimizer/GraphOptimizerPipeline/Pipeline.h"
+#include "glow/Optimizer/Lower/Lower.h"
 
 using namespace glow;
 
@@ -329,6 +330,7 @@ bool NNPIBackend::shouldLower(const Node *N) const {
   case Kinded::Kind::LocalResponseNormalizationNodeKind:
   case Kinded::Kind::BatchedReduceMeanNodeKind:
   case Kinded::Kind::BatchedReduceMinNodeKind:
+  case Kinded::Kind::BatchMatMulNodeKind:
     return false;
   case Kinded::Kind::FusedRowwiseQuantizedSparseLengthsSumNodeKind: {
     const FusedRowwiseQuantizedSparseLengthsSumNode *SLSN =
@@ -347,7 +349,6 @@ bool NNPIBackend::shouldLower(const Node *N) const {
       return true;
     }
     return false;
-  case Kinded::Kind::BatchMatMulNodeKind:
   case Kinded::Kind::PReluNodeKind: {
     NodeInfo NI(*N);
     return NI.allInputsAndOutputsHaveSameElemKind({ElemKind::FloatTy});
@@ -394,6 +395,27 @@ FunctionPassPipeline NNPIBackend::getOptimizationPipeline() const {
   return pipeline;
 }
 
+/// Helper to lower nodes which need further lowering. \returns whether \p F was
+/// modified.
+static bool lowerRequiredNodes(Function *F, CompilationContext &cctx) {
+  bool changed = false;
+  for (auto &N : F->getNodes()) {
+    BatchMatMulNode *BMMN = llvm::dyn_cast<BatchMatMulNode>(&N);
+    if (!BMMN) {
+      continue;
+    }
+
+    if (!NodeInfo(*BMMN).allInputsAndOutputsHaveSameElemKind(
+            {ElemKind::FloatTy})) {
+      continue;
+    }
+
+    lowerNode(F, BMMN, cctx);
+    changed = true;
+  }
+  return changed;
+}
+
 bool NNPIBackend::transformPostLowering(Function *F,
                                         CompilationContext &cctx) const {
   LOG_SCOPE(F->getLogContext(), "NNPIBackend::transformPostLowering");
@@ -402,7 +424,7 @@ bool NNPIBackend::transformPostLowering(Function *F,
     return false;
   }
 
-  bool changed = false;
+  bool changed = lowerRequiredNodes(F, cctx);
 
 #if FACEBOOK_INTERNAL
   changed |= transformPrivate(F, cctx);
