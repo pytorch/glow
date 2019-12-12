@@ -13,5 +13,6 @@ target_link_libraries(GraphOptimizer
                         Converter
                         Graph
                         GraphOptimizerPipeline
+                        Lower
                         Quantization
                         QuantizationBase)
