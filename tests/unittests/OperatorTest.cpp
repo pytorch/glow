@@ -1396,6 +1396,41 @@ TEST_P(OperatorTest, ParallelBatchMatMul) {
   EXPECT_NEAR(H.at({1, 2, 0}), -54, 0.001);
 }
 
+static FunctionTensorPair
+createAndInitParallelBatchMatMulTest(glow::PlaceholderBindings &bindings,
+                                     glow::ExecutionEngine &EE) {
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  auto *lhs =
+      mod.createPlaceholder(ElemKind::FloatTy, {10, 50, 100}, "lhs", false);
+  auto *rhs =
+      mod.createPlaceholder(ElemKind::FloatTy, {10, 100, 80}, "rhs", false);
+  bindings.allocate(lhs)->getHandle().randomize(-0.1, 0.1, mod.getPRNG());
+  bindings.allocate(rhs)->getHandle().randomize(-0.1, 0.1, mod.getPRNG());
+
+  auto *R = F->createBatchMatMul("BMM", lhs, rhs);
+
+  auto *save = F->createSave("save", R);
+  auto *resultTensor = bindings.allocate(save->getPlaceholder());
+
+  return std::make_pair(F, resultTensor);
+}
+
+TEST_P(OperatorStatelessTest, ParallelBatchMatMul_Float16) {
+  CHECK_IF_ENABLED();
+  compareAgainstInterpreter(
+      getBackendName(), createAndInitParallelBatchMatMulTest, ElemKind::FloatTy,
+      ElemKind::Float16Ty, 0.0005f, parCloneCountOpt);
+}
+
+TEST_P(OperatorStatelessTest, ParallelBatchMatMul_Int8) {
+  CHECK_IF_ENABLED();
+  compareAgainstInterpreter(
+      getBackendName(), createAndInitParallelBatchMatMulTest, ElemKind::FloatTy,
+      ElemKind::Int8QTy, 0.002f, parCloneCountOpt);
+}
+
 /// Helper to test BatchedReduceAdd using \p DTy.
 template <typename DataType>
 static void testBatchedReduceAdd(glow::PlaceholderBindings &bindings,
