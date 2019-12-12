@@ -41,6 +41,7 @@ public:
     DoubleList,
     BoolList,
     Tuple,
+    PTTensor,
   };
 
 private:
@@ -56,6 +57,7 @@ private:
     std::vector<double> *asDoubleList;
     std::vector<bool> *asBoolList;
     std::vector<GlowIValue> *asTuple;
+    at::Tensor *asPTTensor;
   };
 
   Tag tag_ = Tag::None;
@@ -96,6 +98,7 @@ public:
   bool isDoubleList() const;
   bool isBoolList() const;
   bool isTuple() const;
+  bool isPTTensor() const;
 
   /// \returns Payload a glow Tensor or error if the tag is not Tensor.
   Expected<Tensor *> toTensor();
@@ -138,11 +141,22 @@ public:
   /// \returns Payload a vector of GlowIValues or error if the tag is not Tuple.
   Expected<const std::vector<GlowIValue> *> toTuple() const;
 
+  /// \returns Payload a PyTorch Tensor* or error if the tag is not a PyTorch
+  /// Tensor.
+  Expected<at::Tensor *> toPTTensor();
+
+  /// \returns Payload a const Pytorch Tensor* or error if the tag is not
+  /// Tensor.
+  Expected<const at::Tensor *> toPTTensor() const;
+
   /// Set the tag to None.
   void fromNone();
 
   /// Set the tag to Tensor.
   void fromTensor(Tensor tensor);
+
+  /// Set the tag to PyTorch Tensor.
+  void fromPTTensor(at::Tensor tensor);
 
   /// Set the tag to Double.
   void fromDouble(double d);

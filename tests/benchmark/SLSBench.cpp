@@ -49,6 +49,7 @@ class SLSBench : public Benchmark {
   size_t asyncLaunchSize_;
   size_t numSLSNodes_;
   const char *weightedStr_;
+  const char *sortedStr_;
   const char *backendStr_;
   ElemKind dtype_;
   ElemKind fusedDtype_;
@@ -60,14 +61,15 @@ public:
            dim_t numIndicesPerBatchPad_, dim_t numTableEntries_,
            dim_t numElementsPerRow_, size_t asyncLaunchSize_,
            size_t numSLSNodes_, const char *weightedStr_,
-           const char *backendStr_, const char *dtypeStr_,
-           const char *devId_ = nullptr)
+           const char *sortedStr_, const char *backendStr_,
+           const char *dtypeStr_, const char *devId_ = nullptr)
       : batchSize_(batchSize_), numIndicesPerBatch_(numIndicesPerBatch_),
         numIndicesPerBatchPad_(numIndicesPerBatchPad_),
         numTableEntries_(numTableEntries_),
         numElementsPerRow_(numElementsPerRow_),
         asyncLaunchSize_(asyncLaunchSize_), numSLSNodes_(numSLSNodes_),
-        weightedStr_(weightedStr_), backendStr_(backendStr_), devId_(devId_) {
+        weightedStr_(weightedStr_), sortedStr_(sortedStr_),
+        backendStr_(backendStr_), devId_(devId_) {
     elementSize_ = 2;
     if (std::string(dtypeStr_) == "Float16") {
       dtype_ = ElemKind::Float16Ty;
@@ -114,6 +116,14 @@ public:
                            {numIndicesPerBatch_ * batchSize_});
         indicesReal.getHandle<int64_t>().randomize(0, numTableEntries_ - 1,
                                                    mod->getPRNG());
+        // Sort each segment
+        if (std::string(sortedStr_) == "Sorted") {
+          int64_t *indicesRealPtr = (int64_t *)indicesReal.getUnsafePtr();
+          for (dim_t b = 0; b < batchSize_; b++) {
+            std::sort(indicesRealPtr + b * numIndicesPerBatch_,
+                      indicesRealPtr + (b + 1) * numIndicesPerBatch_);
+          }
+        }
         indicesReal_[i].push_back(std::move(indicesReal));
 
         if (dtype_ == ElemKind::FloatTy) {
@@ -261,11 +271,12 @@ int main(int argc, char *argv[]) {
          "numIndicesPerBatchPad(Int) numTableEntries(Int) "
          "numElementsPerRow(int) numReps(Int) "
          "numAsyncLaunches(Int) numSLSNodes(Int) "
-         "weightedStr(\"Weighted\"|\"Unweighted\") backendStr(String) "
+         "weightedStr(\"Weighted\"|\"Unweighted\") "
+         "sortedStr(\"Sorted\"|\"Unsorted\") backendStr(String) "
          "dtypeStr(\"Float16\"|\"Float32\") dev_id(Int)\n");
   printf("\n");
 
-  assert(argc == 12 || argc == 13);
+  assert(argc == 13 || argc == 14);
   size_t batchSize = atoi(argv[1]);
   size_t numIndicesPerBatch = atoi(argv[2]);
   size_t numIndicesPerBatchPad = atoi(argv[3]);
@@ -275,31 +286,33 @@ int main(int argc, char *argv[]) {
   size_t numAsyncLaunches = atoi(argv[7]);
   size_t numSLSNodes = atoi(argv[8]);
   const char *weightedStr = argv[9];
-  const char *backendStr = argv[10];
-  const char *dtypeStr = argv[11];
+  const char *sortedStr = argv[10];
+  const char *backendStr = argv[11];
+  const char *dtypeStr = argv[12];
   char *dev_id = nullptr;
 
-  if (argc > 12) {
-    dev_id = argv[12];
+  if (argc > 13) {
+    dev_id = argv[13];
     printf("Setting backend device: \"%s\"\n", dev_id);
   }
   assert(numReps > 0);
 
   SLSBench b(batchSize, numIndicesPerBatch, numIndicesPerBatchPad,
              numTableEntries, numElementsPerRow, numAsyncLaunches, numSLSNodes,
-             weightedStr, backendStr, dtypeStr, dev_id);
+             weightedStr, sortedStr, backendStr, dtypeStr, dev_id);
   auto times = bench(&b, numReps);
   printf("_,benchName,_,batchSize,numIndicesPerBatch,numIndicesPerBatchPad,"
          "numTableEntries,"
          "numElementsPerRow,numReps,numAsyncLaunches,numSLSNodes,weightedStr,"
          "backendStr,dtypeStr,runtime,gbytesPerSec\n");
   for (auto t : times) {
-    printf("BenchResult,SLSBench,SW,%zu,%zu,%zu,%zu,%zu,%zu,%zu,%zu,%s,%s,%s,%"
-           "f,%f\n",
-           batchSize, numIndicesPerBatch, numIndicesPerBatchPad,
-           numTableEntries, numElementsPerRow, numReps, numAsyncLaunches,
-           numSLSNodes, weightedStr, backendStr, dtypeStr, t / numAsyncLaunches,
-           b.gbytes() * numAsyncLaunches / t);
+    printf(
+        "BenchResult,SLSBench,SW,%zu,%zu,%zu,%zu,%zu,%zu,%zu,%zu,%s,%s,%s,%s,%"
+        "f,%f\n",
+        batchSize, numIndicesPerBatch, numIndicesPerBatchPad, numTableEntries,
+        numElementsPerRow, numReps, numAsyncLaunches, numSLSNodes, weightedStr,
+        sortedStr, backendStr, dtypeStr, t / numAsyncLaunches,
+        b.gbytes() * numAsyncLaunches / t);
   }
   double min = *(std::min_element(times.begin(), times.end()));
   size_t midElt = times.size() / 2;
@@ -310,13 +323,15 @@ int main(int argc, char *argv[]) {
   printf("_,benchName,_,batchSize,numIndicesPerBatch,numIndicesPerBatchPad,"
          "numTableEntries,"
          "numElementsPerRow,numReps,numAsyncLaunches,numSLSNodes,weightedStr,"
-         "backendStr,dtypeStr,medianRuntime,minRuntime,medianGbytesPerSec,"
+         "sortedStr,backendStr,dtypeStr,medianRuntime,minRuntime,"
+         "medianGbytesPerSec,"
          "maxGbytesPerSec\n");
-  printf("BenchSummary,SLSBench,SW,%zu,%zu,%zu,%zu,%zu,%zu,%zu,%zu,%s,%s,%s,%f,"
-         "%f,%f,%"
-         "f\n",
-         batchSize, numIndicesPerBatch, numIndicesPerBatchPad, numTableEntries,
-         numElementsPerRow, numReps, numAsyncLaunches, numSLSNodes, weightedStr,
-         backendStr, dtypeStr, median_runtime, min_runtime,
-         b.gbytes() / median_runtime, b.gbytes() / min_runtime);
+  printf(
+      "BenchSummary,SLSBench,SW,%zu,%zu,%zu,%zu,%zu,%zu,%zu,%zu,%s,%s,%s,%s,%f,"
+      "%f,%f,%"
+      "f\n",
+      batchSize, numIndicesPerBatch, numIndicesPerBatchPad, numTableEntries,
+      numElementsPerRow, numReps, numAsyncLaunches, numSLSNodes, weightedStr,
+      sortedStr, backendStr, dtypeStr, median_runtime, min_runtime,
+      b.gbytes() / median_runtime, b.gbytes() / min_runtime);
 }

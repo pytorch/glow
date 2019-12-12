@@ -46,6 +46,8 @@ const char *GlowIValue::tagToStr(GlowIValue::Tag tag) {
     return "BoolList";
   case GlowIValue::Tag::Tuple:
     return "Tuple";
+  case GlowIValue::Tag::PTTensor:
+    return "PyTorch Tensor";
   }
   LOG(DFATAL) << "Cannot reach here.";
 }
@@ -66,6 +68,9 @@ void GlowIValue::reset() {
     break;
   case Tag::Tuple:
     delete payload_.asTuple;
+    break;
+  case Tag::PTTensor:
+    delete payload_.asPTTensor;
     break;
   case Tag::None:
   case Tag::Double:
@@ -104,6 +109,7 @@ bool GlowIValue::isIntList() const { return Tag::IntList == tag_; }
 bool GlowIValue::isDoubleList() const { return Tag::DoubleList == tag_; }
 bool GlowIValue::isBoolList() const { return Tag::BoolList == tag_; }
 bool GlowIValue::isTuple() const { return Tag::Tuple == tag_; }
+bool GlowIValue::isPTTensor() const { return Tag::PTTensor == tag_; }
 
 #define ExpectTag(EXPECTED_TAG)                                                \
   RETURN_ERR_IF_NOT(tag_ == (EXPECTED_TAG),                                    \
@@ -175,6 +181,16 @@ Expected<const std::vector<GlowIValue> *> GlowIValue::toTuple() const {
   return payload_.asTuple;
 }
 
+Expected<at::Tensor *> GlowIValue::toPTTensor() {
+  ExpectTag(Tag::PTTensor);
+  return payload_.asPTTensor;
+}
+
+Expected<const at::Tensor *> GlowIValue::toPTTensor() const {
+  ExpectTag(Tag::PTTensor);
+  return payload_.asPTTensor;
+}
+
 #undef ExpectTag
 
 void GlowIValue::fromNone() {
@@ -232,6 +248,12 @@ void GlowIValue::fromTuple(std::vector<GlowIValue> glowIValList) {
   tag_ = Tag::Tuple;
   payload_.asTuple = new std::vector<GlowIValue>;
   std::swap(glowIValList, *payload_.asTuple);
+}
+
+void GlowIValue::fromPTTensor(at::Tensor tensor) {
+  reset();
+  tag_ = Tag::PTTensor;
+  payload_.asPTTensor = new at::Tensor(tensor);
 }
 
 Error GlowIValue::fromIValue(const at::IValue &ival) {

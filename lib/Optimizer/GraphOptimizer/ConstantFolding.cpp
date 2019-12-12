@@ -50,6 +50,11 @@ bool isConstantOperation(const Node *N, const Backend &backend) {
   if (isa<Constant>(N) || isa<SplatNode>(N)) {
     return true;
   }
+  // If the node is backend specific, we cannot safely do constant folding using
+  // the interpreter.
+  if (!N->isCanonical()) {
+    return false;
+  }
   // If the operation is not supported by the backend, it cannot be computed at
   // compile-time.
   if (!backend.shouldLower(N) && !backend.isOpSupported(NodeInfo(*N))) {

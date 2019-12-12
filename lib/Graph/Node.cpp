@@ -209,6 +209,17 @@ bool Node::hasSideEffects() const {
   }
 }
 
+bool Node::isCanonical() const {
+  switch (getKind()) {
+#define DEF_NODE(CLASS, NAME)                                                  \
+  case glow::Kinded::Kind::CLASS##Kind:                                        \
+    return static_cast<const CLASS *>(this)->isCanonical();
+#include "glow/AutoGenNodes.def"
+  default:
+    llvm_unreachable("Unhandled node");
+  }
+}
+
 bool Node::isDataParallel() const {
   switch (getKind()) {
 #define DEF_NODE(CLASS, NAME)                                                  \

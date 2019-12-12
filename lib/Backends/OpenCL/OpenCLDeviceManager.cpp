@@ -241,7 +241,7 @@ Error OpenCLDeviceManager::init() {
   commandQueuePool_.setContext(context_);
   commandQueuePool_.setDevice(deviceId_);
 
-  Stats()->incrementCounter(kDevicesUsedOpenCL);
+  statsExporterRegistry_->incrementCounter(kDevicesUsedOpenCL);
   exportMemoryCounters();
 
   threads::getThreadId();
@@ -259,7 +259,7 @@ Error OpenCLDeviceManager::init() {
 OpenCLDeviceManager::~OpenCLDeviceManager() {
   clReleaseContext(context_);
   buffers_.clear();
-  Stats()->incrementCounter(kDevicesUsedOpenCL, -1);
+  statsExporterRegistry_->incrementCounter(kDevicesUsedOpenCL, -1);
   zeroMemoryCounters();
 }
 

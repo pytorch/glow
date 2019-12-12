@@ -1104,6 +1104,57 @@ TEST_F(PartitionerTest, partitionFromConfigWithLogicalDevices) {
   EXPECT_EQ(nodeList[0].nodes[2]->logicalDevices[1], 1);
 }
 
+/// Test user-defined partition with user specified logical devices through
+/// compilationContext using fp16.
+TEST_F(PartitionerTest, partitionFromConfigWithLogicalDevicesFp16) {
+  auto *input1 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {2, 10}, "input1", false);
+  auto *input2 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {2, 10}, "input2", false);
+  auto *input3 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {2, 10}, "input3", false);
+  auto *add1 = F_->createAdd("add1", input1, input2);
+  auto *add2 = F_->createAdd("add2", add1, input3);
+  auto *sub1 = F_->createSub("sub1", add1, add2);
+  F_->createSave("save", sub1);
+
+  std::vector<DeviceInfo> devices = {
+      {3072, "Interpreter"}, {3072, "Interpreter"}, {3072, "Interpreter"}};
+
+  // User-defined partition: p0->p1, p1->p2, p2->p1.
+  PartitionConfig partitionConfig;
+  partitionConfig.funcName = "main";
+  partitionConfig.numOfPartitions = 3;
+  partitionConfig.backendNames = {"Interpreter", "Interpreter", "Interpreter"};
+  partitionConfig.partitionNames = {"p0", "p1", "p2"};
+  partitionConfig.nodeToPartition = {{"add1", 0}, {"add2", 2}};
+  partitionConfig.logicalIDs = {{0}, {1}, {0, 1}};
+  auto partitioner = Partitioner(&mod_, devices, /*SaturateHost*/ false);
+  CompilationContext cctx;
+  cctx.partitionConfig = &partitionConfig;
+  PrecisionConfiguration pc;
+  pc.convertToFP16 = true;
+  cctx.precisionConfig = pc;
+  auto result = partitioner.partition(cctx);
+  DAGListTy nodeList;
+  EXPECT_FALSE(ERR_TO_BOOL(result.takeError()));
+  nodeList = std::move(result.get());
+  // Check that p2 has both 0 and 1 for logicalDevices.
+  EXPECT_EQ(nodeList[0].nodes[2]->logicalDevices[0], 0);
+  EXPECT_EQ(nodeList[0].nodes[2]->logicalDevices[1], 1);
+  // Check that the inputs and outputs of add1, add2 and sub1 are in fp16
+  for (auto const &F : mod_.getFunctions()) {
+    for (auto const &N : F->getNodes()) {
+      auto NI = NodeInfo(N);
+      if (NI.getKind() != Kinded::Kind::SaveNodeKind &&
+          NI.getKind() != Kinded::Kind::ConvertToNodeKind) {
+        EXPECT_TRUE(
+            NI.allInputsAndOutputsHaveSameElemKind({ElemKind::Float16Ty}));
+      }
+    }
+  }
+}
+
 /// This one tests calling PartitionFromConfig directly.
 TEST_F(PartitionerTest, partitionFromConfigDirectCall) {
 #ifndef GLOW_WITH_CPU
@@ -1123,7 +1174,7 @@ TEST_F(PartitionerTest, partitionFromConfigDirectCall) {
   partitionConfig.nodeToPartition = {{"sub", 0}, {"mul", 1}};
   Partitioner partitioner(&mod_, devices);
   CompilationContext cctx;
-  auto dagList = partitioner.partitionFromConfig(partitionConfig);
+  auto dagList = partitioner.partitionFromConfig(partitionConfig, cctx);
   ASSERT_TRUE((bool)dagList);
   EXPECT_EQ(mod_.getFunctions().size(), 3);
   EXPECT_EQ(dagList->size(), 1);

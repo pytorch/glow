@@ -40,12 +40,12 @@ class InterpreterDeviceManager : public QueueBackedDeviceManager {
 public:
   explicit InterpreterDeviceManager(const DeviceConfig &config)
       : QueueBackedDeviceManager(config) {
-    Stats()->incrementCounter(kDevicesUsedInterpreter);
+    statsExporterRegistry_->incrementCounter(kDevicesUsedInterpreter);
     exportMemoryCounters();
   }
 
   ~InterpreterDeviceManager() override {
-    Stats()->incrementCounter(kDevicesUsedInterpreter, -1);
+    statsExporterRegistry_->incrementCounter(kDevicesUsedInterpreter, -1);
     zeroMemoryCounters();
   }
 

@@ -448,18 +448,34 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
                 weightName)
                 .str());
       }
+      // Convert the weight if needed.
+      auto newTy = PH->getType();
+      auto weight = loader->getTensor();
+      // Ensure we are working with a static PH.
+      assert(PH->isStatic());
+      if (!weight->getType().isEqual(newTy)) {
+        ElemKind newK = newTy->getElementType();
+        if (isQuantizedElemKind(newK)) {
+          Tensor QT = quantization::quantizeTensor(
+              *weight, {newTy->getScale(), newTy->getOffset()}, newK);
+          weight->assign(&QT);
+        } else {
+          weight->convertToType(newK);
+        }
+      }
+
       // Transfer weight to all devices needed.
       for (const auto &device : placeholderToDevicManager[PH]) {
         std::promise<Error> transferPromise;
         auto done = transferPromise.get_future();
         devices_[device]->transferStaticPlaceholderToDevice(
-            PH, loader->getTensor(), [&transferPromise](Error err) {
+            PH, weight, [&transferPromise](Error err) {
               transferPromise.set_value(std::move(err));
             });
         RETURN_IF_ERR(done.get());
-        RETURN_IF_ERR(loader->loadNextWeight());
-        weightName = loader->getName();
       }
+      RETURN_IF_ERR(loader->loadNextWeight());
+      weightName = loader->getName();
       // Remove PH from map, this way we can know that we've added all static
       // PH's
       placeholderToDevicManager.erase(PH);

@@ -63,7 +63,7 @@ HabanaDeviceManager::~HabanaDeviceManager() {
   }
   std::lock_guard<std::mutex> lock(synapseMtx_);
   numActiveDevices_--;
-  Stats()->incrementCounter(kDevicesUsedHabana, -1);
+  statsExporterRegistry_->incrementCounter(kDevicesUsedHabana, -1);
 
   // Explicitly clear this map to force synFree of the managed IOBuffers to
   // happen now, before we synReleaseDevice.  Otherwise synReleaseDevice will
@@ -99,7 +99,7 @@ Error HabanaDeviceManager::init() {
   }
 
   numActiveDevices_++;
-  Stats()->incrementCounter(kDevicesUsedHabana);
+  statsExporterRegistry_->incrementCounter(kDevicesUsedHabana);
 
   // Fetch initial memory information.
   RETURN_IF_ERR(updateMemoryUsage());

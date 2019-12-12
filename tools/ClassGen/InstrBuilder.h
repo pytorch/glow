@@ -230,6 +230,9 @@ private:
   /// Emits the method that calculates the inplace property.
   void emitInplaceMethod(std::ostream &os) const;
 
+  /// Emits the property that returns true if the instruction is canonical.
+  void emitCanonicalProperty(std::ostream &os) const;
+
   /// Emits the property that returns true if the instruction is data parallel.
   void emitDataParallelProperty(std::ostream &os) const;
 

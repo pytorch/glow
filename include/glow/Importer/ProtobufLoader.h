@@ -132,9 +132,11 @@ protected:
   Error createAndRegisterConstant(llvm::StringRef name, Tensor &&tensor);
 
   /// Create a new Placeholder of type \p T, and register it
-  /// under the name \p name. \returns The newly created placeholder.
+  /// under the name \p name. If \p isStatic is true register the Placeholder as
+  /// a static placeholder. \returns The newly created placeholder.
   Expected<Placeholder *> createAndRegisterPlaceholder(llvm::StringRef name,
-                                                       TypeRef T);
+                                                       TypeRef T,
+                                                       bool isStatic = false);
 
   /// \returns the NodeValue that was registered with the name \p name or
   /// a nullptr wrapped in a NodeValue if no node has been registered with this
