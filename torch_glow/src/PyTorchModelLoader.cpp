@@ -742,6 +742,7 @@ PyTorchModelLoader::getSymbolsMapping() {
       {{"aten::gelu"}, &PyTorchModelLoader::loadGelu, {}},
       {{"aten::tanh", "aten::tanh_"}, &PyTorchModelLoader::loadTanh, {}},
       {{"aten::t", "aten::t_"}, &PyTorchModelLoader::loadT, {}},
+      {{"aten::to"}, &PyTorchModelLoader::loadTo, {}},
       {{"aten::permute"}, &PyTorchModelLoader::loadPermute, {}},
       {{"aten::transpose", "aten::transpose_"},
        &PyTorchModelLoader::loadTranspose,
@@ -3060,6 +3061,18 @@ Error PyTorchModelLoader::loadPermute(const torch::jit::Node *ptNode) {
   return addValueMapping(outputs[0], output);
 }
 
+Error PyTorchModelLoader::loadTo(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 5, outputs, 1));
+
+  // TODO: use ConvertTo
+  glow::NodeValue in;
+  ASSIGN_VALUE_OR_RETURN_ERR(in, getGlowNodeValueForValue(inputs[0]));
+
+  return addValueMapping(outputs[0], in);
+}
+
 Error PyTorchModelLoader::loadFlatten(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
@@ -3284,6 +3297,19 @@ Error PyTorchModelLoader::loadEmbeddingBagByteRowwiseOffsets(
       "EmbeddingBagByteRowwiseOffsets.ones",
       glow::Type(weight.getElementType(), {indices.dims()[0]}), 1.0);
 
+  glow::Constant *weightConstant =
+      llvm::dyn_cast<glow::Constant>(weight.getNode());
+
+  RETURN_ERR_IF_NOT(weightConstant,
+                    strFormat("Expected Weight to be a Constant but found: %s",
+                              weight.getNode()->getKindName()));
+
+  TypeRef fusedTy = F_.getParent()->uniqueType(ElemKind::UInt8FusedQTy,
+                                               weight.dims(), 0.0, 0);
+
+  weightConstant->setType(Storage::OutputIdx, fusedTy);
+  weightConstant->setPayloadType(fusedTy);
+
   bool scaleGradByFreq;
   ASSIGN_VALUE_OR_RETURN_ERR(
       scaleGradByFreq,
@@ -3308,8 +3334,8 @@ Error PyTorchModelLoader::loadEmbeddingBagByteRowwiseOffsets(
   RETURN_ERR_IF_NOT(sparse == false, "Currently only support sparse='false'");
 
   auto *EB = F_.createEmbeddingBagByteRowwiseOffsets(
-      "EmbeddingBagByteRowwiseOffsets", weight, perSampleWeights, indices,
-      offsets);
+      "EmbeddingBagByteRowwiseOffsets", weightConstant->getOutput(),
+      perSampleWeights, indices, offsets);
 
   return addValueMapping(outputs[0], EB->getResult());
 }
