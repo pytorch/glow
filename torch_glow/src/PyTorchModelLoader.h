@@ -536,6 +536,10 @@ private:
   /// Load a PyTorch aten::permute node.
   /// \returns error on failure.
   Error loadPermute(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch aten::to node.
+  /// \returns error on failure.
+  Error loadTo(const torch::jit::Node *ptNode);
 };
 
 } // namespace glow
