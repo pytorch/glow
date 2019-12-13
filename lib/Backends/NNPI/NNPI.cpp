@@ -20,9 +20,22 @@
 #include "glow/Optimizer/GraphOptimizerPipeline/Pipeline.h"
 #include "glow/Optimizer/Lower/Lower.h"
 
+#include "llvm/Support/CommandLine.h"
+
 using namespace glow;
 
 namespace glow {
+llvm::cl::OptionCategory optionsForNNPI("NNPI Backend Options");
+
+bool GlowNNPILowerAllBatchMatMul = false;
+static llvm::cl::opt<bool, /* ExternalStorage */ true>
+    GlowNNPILowerAllBatchMatMulOpt(
+        "glow_nnpi_lower_all_batch_matmul",
+        llvm::cl::desc("Whether to override default lowering for NNPI and "
+                       "always lower BatchMatMul to a series of MatMuls."),
+        llvm::cl::location(GlowNNPILowerAllBatchMatMul), llvm::cl::Optional,
+        llvm::cl::init(true), llvm::cl::cat(optionsForNNPI));
+
 namespace onnxifi {
 
 bool GlowDumpGraph = false;
@@ -405,7 +418,8 @@ static bool lowerRequiredNodes(Function *F, CompilationContext &cctx) {
       continue;
     }
 
-    if (!NodeInfo(*BMMN).allInputsAndOutputsHaveSameElemKind(
+    if (!GlowNNPILowerAllBatchMatMul &&
+        !NodeInfo(*BMMN).allInputsAndOutputsHaveSameElemKind(
             {ElemKind::FloatTy})) {
       continue;
     }
