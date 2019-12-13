@@ -161,7 +161,6 @@ static void serializeBinaryToText(llvm::StringRef binFileName,
 BundleSaver::BundleSaver(const LLVMBackend &llvmBackend,
                          llvm::StringRef outputDir, llvm::StringRef bundleName)
     : irgen_(llvmBackend.createIRGen(nullptr, allocationsInfo_)),
-      outputDir_(outputDir), bundleName_(bundleName),
       bundleAPI_(llvmBackend.getOptions().getBundleAPI()) {
   llvm::SmallVector<std::string, 8> targetFeatures(llvmTargetFeatures.begin(),
                                                    llvmTargetFeatures.end());
@@ -471,12 +470,13 @@ void BundleSaver::produceBundle() {
   }
 
   auto &M = irgen_->getModule();
+  auto outputDir = irgen_->getOutputDir();
   auto bundleName = irgen_->getBundleName();
   std::string extension = (llvmCompiler.empty()) ? ".o" : ".bc";
-  auto bundleCodeOutput = (outputDir_ + "/" + bundleName + extension).str();
+  auto bundleCodeOutput = (outputDir + "/" + bundleName + extension).str();
   auto bundleWeightsBinOut =
-      (outputDir_ + "/" + bundleName + ".weights.bin").str();
-  auto bundleHeaderOutput = (outputDir_ + "/" + bundleName + ".h").str();
+      (outputDir + "/" + bundleName + ".weights.bin").str();
+  auto bundleHeaderOutput = (outputDir + "/" + bundleName + ".h").str();
   DEBUG_GLOW(llvm::dbgs() << "Producing a bundle:\n"
                           << "bundle name: " << bundleName << "\n"
                           << "bundle code: " << bundleCodeOutput << "\n"
@@ -500,7 +500,7 @@ void BundleSaver::produceBundle() {
       }
       cmd += " " + bundleCodeOutput;
       std::string bundleObjectCodeOutputOpt =
-          " -o " + (outputDir_ + "/" + bundleName + ".o").str();
+          " -o " + (outputDir + "/" + bundleName + ".o").str();
       cmd += bundleObjectCodeOutputOpt;
       CHECK(!system(cmd.c_str()))
           << "Error running external LLVM compiler: " << cmd;
@@ -529,7 +529,7 @@ void BundleSaver::produceBundle() {
   // Save weights also in text format for Static API.
   if (bundleAPI_ == BundleApiType::Static) {
     auto bundleWeightsTxtOut =
-        (outputDir_ + "/" + bundleName + ".weights.txt").str();
+        (outputDir + "/" + bundleName + ".weights.txt").str();
     serializeBinaryToText(bundleWeightsBinOut, bundleWeightsTxtOut);
   }
 }
@@ -630,9 +630,10 @@ void BundleSaver::performBundleMemoryAllocation() {
 }
 
 void BundleSaver::save(llvm::StringRef mainEntryName, const IRFunction *F) {
-  setIRFunction(mainEntryName, F);
   // Object files generation works properly only in small mode.
   irgen_->setMainEntryName(mainEntryName);
+  // Set current IRFunction using the legalized name.
+  setIRFunction(irgen_->getMainEntryName(), F);
   // irgen_->initCodeGen();
   // Perform the address assignment for activations and WeightVars.
   performBundleMemoryAllocation();
