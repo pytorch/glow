@@ -8029,8 +8029,10 @@ TEST_P(OperatorTest,
       /* useFP16Accumulation */ true);
 }
 
-TEST_P(OperatorTest,
-       FusedRowwiseQuantizedSparseLengthsWeightedSum_ConvertedFloat16) {
+static void testRowwiseQuantizedSparseLengthsSum_ConvertedFloat16(
+    glow::PlaceholderBindings &bindings, glow::Module &mod, glow::Function *F,
+    glow::ExecutionEngine &EE, float allowedError,
+    bool convertFusedToFP16 = true) {
   CHECK_IF_ENABLED();
   /*
     DATA  =   [[2.0, -0.5, 13]]
@@ -8046,39 +8048,39 @@ TEST_P(OperatorTest,
       13,
   };
 
-  Constant *weights = mod_.createConstant(ElemKind::FloatTy, {8}, "weights");
+  Constant *weights = mod.createConstant(ElemKind::FloatTy, {8}, "weights");
   weights->getPayloadMutable().getHandle<float>() = {
       3., 1., 0., 0., 0., 0., 2., -0.5,
   };
 
-  Placeholder *indices = mod_.createPlaceholder(IndexElemKind, {8}, "indices",
-                                                /* isTrainable */ false);
+  Placeholder *indices = mod.createPlaceholder(IndexElemKind, {8}, "indices",
+                                               /* isTrainable */ false);
   Placeholder *lengths =
-      mod_.createPlaceholder(ElemKind::Int32ITy, {4}, "lengths",
-                             /* isTrainable */ false);
+      mod.createPlaceholder(ElemKind::Int32ITy, {4}, "lengths",
+                            /* isTrainable */ false);
 
-  bindings_.allocate(indices)->getHandle<sdim_t>() = {
+  bindings.allocate(indices)->getHandle<sdim_t>() = {
       1, 0, 2, 0, 1, 2, 2, 0,
   };
-  bindings_.allocate(lengths)->getHandle<int32_t>() = {
+  bindings.allocate(lengths)->getHandle<int32_t>() = {
       3,
       0,
       3,
       2,
   };
 
-  auto *R = F_->createFusedRowwiseQuantizedSparseLengthsWeightedSum(
+  auto *R = F->createFusedRowwiseQuantizedSparseLengthsWeightedSum(
       "RQSLWS", data, weights, indices, lengths);
-  SaveNode *S = F_->createSave("save", R);
-  bindings_.allocate(S->getPlaceholder());
+  SaveNode *S = F->createSave("save", R);
+  bindings.allocate(S->getPlaceholder());
 
   CompilationContext cctx;
   cctx.precisionConfig.convertToFP16 = true;
-  cctx.precisionConfig.convertFusedToFP16 = true;
-  EE_.compile(cctx);
-  EE_.run(bindings_);
+  cctx.precisionConfig.convertFusedToFP16 = convertFusedToFP16;
+  EE.compile(cctx);
+  EE.run(bindings);
 
-  Tensor &result = *bindings_.get(S->getPlaceholder());
+  Tensor &result = *bindings.get(S->getPlaceholder());
   Tensor expected(ElemKind::FloatTy, {4, 1});
   expected.getHandle<float>() = {
       0.5,
@@ -8087,7 +8089,26 @@ TEST_P(OperatorTest,
       25,
   };
 
-  EXPECT_TRUE(expected.isEqual(result, 0.02));
+  EXPECT_TRUE(expected.isEqual(result, allowedError));
+}
+
+/// Test Fused-RWQ-SLWS in where the weights are in Fp16, data
+/// inputs are UInt8FusedQTy.
+TEST_P(
+    OperatorTest,
+    FusedRowwiseQuantizedSparseLengthsWeightedSum_ConvertedFloat16_NoFusedConvert) {
+  CHECK_IF_ENABLED();
+  return testRowwiseQuantizedSparseLengthsSum_ConvertedFloat16(
+      bindings_, mod_, F_, EE_, 0.02,
+      /* convertFusedToFP16*/ false);
+}
+
+TEST_P(OperatorTest,
+       FusedRowwiseQuantizedSparseLengthsWeightedSum_ConvertedFloat16) {
+  CHECK_IF_ENABLED();
+  return testRowwiseQuantizedSparseLengthsSum_ConvertedFloat16(
+      bindings_, mod_, F_, EE_, 0.02,
+      /* convertFusedToFP16*/ true);
 }
 
 TEST_P(

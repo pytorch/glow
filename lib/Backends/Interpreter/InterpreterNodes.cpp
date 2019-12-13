@@ -3479,8 +3479,23 @@ void BoundInterpreterFunction::
     for (dim_t j = 0, e = LH.raw(i); j < e; j++) {
       const float weight = static_cast<float>(WH.raw(curIdx));
       const dim_t rowIdx = IH.raw(curIdx++);
-      T scale, offset;
-      std::tie(scale, offset) = DH.getFusedScaleOffsetFromRow<T>(rowIdx);
+      // Data type for the Scale and Offset for fused types need not follow
+      // the type for the output Tensor passed in T.
+      float scale, offset;
+      switch (
+          getScaleOffsetElemKindFromFused(data->getType().getElementType())) {
+      case ElemKind::FloatTy:
+        std::tie(scale, offset) = DH.getFusedScaleOffsetFromRow<float>(rowIdx);
+        break;
+      case ElemKind::Float16Ty:
+        std::tie(scale, offset) =
+            DH.getFusedScaleOffsetFromRow<float16_t>(rowIdx);
+        break;
+      default:
+        llvm_unreachable("Type is not supported");
+        break;
+      }
+
       for (dim_t k = 0; k < outLineSize; k++) {
         float d = 0.0f;
         if (!using4BitQuantization) {
