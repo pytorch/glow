@@ -92,8 +92,10 @@ static unsigned getPointerNumBits(const llvm::TargetMachine &TM) {
 
 LLVMIRGen::LLVMIRGen(const IRFunction *F, AllocationsInfo &allocationsInfo,
                      std::string mainEntryName, llvm::StringRef libjitBC)
-    : F_(F), allocationsInfo_(allocationsInfo), mainEntryName_(mainEntryName),
-      libjitBC_(libjitBC) {}
+    : F_(F), allocationsInfo_(allocationsInfo), libjitBC_(libjitBC) {
+  // Legalize main entry name.
+  setMainEntryName(mainEntryName);
+}
 
 /// Mutex to protect LLVM's TargetRegistry.
 static std::mutex initTargetMutex;
@@ -134,13 +136,15 @@ void LLVMIRGen::initTargetMachine(const LLVMBackendOptions &opts) {
 
 llvm::StringRef LLVMIRGen::getBundleName() const { return bundleName_; }
 
-void LLVMIRGen::setBundleName(const std::string &name) { bundleName_ = name; }
-
-std::string LLVMIRGen::getMainEntryName() const {
-  return mainEntryName_.empty() ? "main" : mainEntryName_;
+void LLVMIRGen::setBundleName(const std::string &name) {
+  bundleName_ = name.empty() ? "bundle" : legalizeName(name);
 }
 
-void LLVMIRGen::setMainEntryName(std::string name) { mainEntryName_ = name; }
+std::string LLVMIRGen::getMainEntryName() const { return mainEntryName_; }
+
+void LLVMIRGen::setMainEntryName(std::string name) {
+  mainEntryName_ = name.empty() ? "main" : legalizeName(name);
+}
 
 /// Load base addresses of different memory areas so that they can be easily
 /// reused during codegen.

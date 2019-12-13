@@ -82,10 +82,6 @@ private:
   AllocationsInfo allocationsInfo_;
   /// The LLVM IR code generator.
   std::unique_ptr<LLVMIRGen> irgen_;
-  /// The output directory to be used.
-  std::string outputDir_;
-  /// The name of the bundle to be saved.
-  std::string bundleName_;
   /// Information about IR functions inside this bundle.
   std::vector<SavedIRFunction> savedIRFunctions_;
   /// Bundle API to use.
