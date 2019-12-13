@@ -1065,6 +1065,9 @@ static void lowerBatchMatMulNode(Function *F, CompilationContext &cctx,
   // Lower to Slices, MatMuls, and a final Concat. Multiply i-th LHS matrix
   // {N, M} by i-th RHS matrix {M, P} to get final matrix {numBatches, N, P}.
   std::vector<NodeValue> MMS(numBatches);
+  // Use the original quantization parameters from the BMM for each MM.
+  const TypeRef outTy = F->getParent()->uniqueTypeWithNewShape(
+      BMMN.getResult().getType(), {N, P});
   for (dim_t i = 0; i < numBatches; i++) {
     SliceNode *sliceA =
         F->createSlice(name.str() + ".sliceA." + std::to_string(i), lhs,
@@ -1076,7 +1079,7 @@ static void lowerBatchMatMulNode(Function *F, CompilationContext &cctx,
         F->createReshape(sliceA->getName().str() + ".reshape", sliceA, {N, M});
     ReshapeNode *reshapeB =
         F->createReshape(sliceB->getName().str() + ".reshape", sliceB, {M, P});
-    MMS[i] = F->createMatMul(name.str() + ".MatMul." + std::to_string(i),
+    MMS[i] = F->createMatMul(name.str() + ".MatMul." + std::to_string(i), outTy,
                              reshapeA, reshapeB);
   }
   // Concat all the resulting MatMuls back together.
