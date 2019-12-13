@@ -365,11 +365,21 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
                   FusedRowwiseQuantizedSparseLengthsWeightedSumNode::
                       ResultIdx) == ElemKind::Float16Ty);
     case ElemKind::UInt8FusedQTy:
-      return (NI.getInElemTy(FusedRowwiseQuantizedSparseLengthsWeightedSumNode::
-                                 WeightsIdx) == ElemKind::FloatTy) &&
-             (NI.getOutElemTy(
-                  FusedRowwiseQuantizedSparseLengthsWeightedSumNode::
-                      ResultIdx) == ElemKind::FloatTy);
+      if ((NI.getInElemTy(
+               FusedRowwiseQuantizedSparseLengthsWeightedSumNode::WeightsIdx) ==
+           ElemKind::FloatTy) &&
+          (NI.getOutElemTy(
+               FusedRowwiseQuantizedSparseLengthsWeightedSumNode::ResultIdx) ==
+           ElemKind::FloatTy)) {
+        return true;
+      }
+      return (
+          (NI.getInElemTy(
+               FusedRowwiseQuantizedSparseLengthsWeightedSumNode::WeightsIdx) ==
+           ElemKind::Float16Ty) &&
+          (NI.getOutElemTy(
+               FusedRowwiseQuantizedSparseLengthsWeightedSumNode::ResultIdx) ==
+           ElemKind::Float16Ty));
     default:
       return false;
     }

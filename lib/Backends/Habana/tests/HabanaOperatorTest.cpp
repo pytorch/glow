@@ -162,6 +162,8 @@ std::set<std::string> glow::backendTestBlacklist = {
     "back/0",
     "FusedRowwiseQuantizedSparseLengthsWeightedSum_ConvertedFloat16_back_to_"
     "back2/0",
+    "FusedRowwiseQuantizedSparseLengthsWeightedSum_ConvertedFloat16_"
+    "NoFusedConvert/0",
     "FusedRowwiseQuantizedSparseLengthsWeightedSum_Float16_AccumFloat/0",
     "FusedRowwiseQuantizedSparseLengthsWeightedSum_Float16_AccumFloat16/0",
     "EmbeddingBagByteRowwiseOffsets_ConvertedFloat16/0",

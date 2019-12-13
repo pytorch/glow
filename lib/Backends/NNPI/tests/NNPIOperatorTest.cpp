@@ -151,6 +151,8 @@ struct EmulatorOnlyTests {
           "AccumFloat16/0",
           "FusedRowwiseQuantizedSparseLengthsWeightedSum_ConvertedFloat16_"
           "back_",
+          "FusedRowwiseQuantizedSparseLengthsWeightedSum_ConvertedFloat16_"
+          "NoFusedConvert/0",
           "to_back2/0",
           "GroupDilatedConvolution/0",
           "less_int32Cases/0",
