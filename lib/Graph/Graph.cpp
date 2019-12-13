@@ -2922,13 +2922,488 @@ void Function::createLSTM(PlaceholderBindings &bindings,
   }
 };
 
-void Function::createONNXLSTM(llvm::StringRef namePrefix, NodeValue X,
+void Function::createOnnxRNN(llvm::StringRef namePrefix, NodeValue X,
+                             NodeValue W, NodeValue R, NodeValue B,
+                             NodeValue initial_h, NodeValue &Y, NodeValue &Y_h,
+                             unsigned hiddenSize, RnnDirection direction,
+                             std::vector<RnnActivation> &activations) {
+
+#define RNN_X_SLICE_RANGE(idx)                                                 \
+  {idx + 0, 0, 0}, { idx + 1, batchSize, inputSize }
+#define RNN_W_SLICE_RANGE(idx0, idx1)                                          \
+  {idx0, idx1 * hiddenSize, 0}, { idx0 + 1, (idx1 + 1) * hiddenSize, inputSize }
+#define RNN_R_SLICE_RANGE(idx0, idx1)                                          \
+  {idx0, idx1 * hiddenSize, 0}, {                                              \
+    idx0 + 1, (idx1 + 1) * hiddenSize, hiddenSize                              \
+  }
+#define RNN_B_SLICE_RANGE(idx0, idx1)                                          \
+  {idx0, idx1 * hiddenSize}, { idx0 + 1, (idx1 + 1) * hiddenSize }
+#define RNN_H_SLICE_RANGE(idx)                                                 \
+  {idx + 0, 0, 0}, { idx + 1, batchSize, hiddenSize }
+#define RNN_CREATE_FC(name, LHS, RHS, BIAS)                                    \
+  BIAS ? (Node *)createFullyConnected(name, LHS, RHS, BIAS)                    \
+       : (Node *)createMatMul(name, LHS, RHS)
+
+  // Operator name.
+  const std::string &opName = namePrefix.str();
+
+  // Get all size parameters.
+  dim_t numDirections = (direction == RnnDirection::Bidirectional) ? 2 : 1;
+  assert(X.dims().size() == 3 &&
+         "ONNX RNN input 'X' should have 3 dimensions!");
+  dim_t seqLength = X.dims()[0];
+  dim_t batchSize = X.dims()[1];
+  dim_t inputSize = X.dims()[2];
+
+  // Validate W size.
+  assert(W.dims().size() == 3 &&
+         "ONNX RNN input 'W' should have 3 dimensions!");
+  assert(W.dims()[0] == numDirections && W.dims()[1] == hiddenSize &&
+         W.dims()[2] == inputSize && "ONNX RNN 'W' tensor size invalid!");
+
+  // Validate R size.
+  assert(R.dims().size() == 3 &&
+         "ONNX RNN input 'R' should have 3 dimensions!");
+  assert(R.dims()[0] == numDirections && R.dims()[1] == hiddenSize &&
+         R.dims()[2] == hiddenSize && "ONNX RNN 'R' tensor size invalid!");
+
+  // Validate B size.
+  if (B.getNode()) {
+    assert(B.dims().size() == 2 &&
+           "ONNX RNN input 'B' should have 2 dimensions!");
+    assert(B.dims()[0] == numDirections && B.dims()[1] == 2 * hiddenSize &&
+           "ONNX RNN 'B' tensor size invalid!");
+  }
+
+  // Validate initial_h size.
+  assert(initial_h.getNode() &&
+         "ONNX RNN input 'initial_h' is mandatory. Null provided!");
+  assert(initial_h.dims().size() == 3 &&
+         "ONNX RNN input 'initial_h' should have 2 dimensions!");
+  assert(initial_h.dims()[0] == numDirections &&
+         initial_h.dims()[1] == batchSize &&
+         initial_h.dims()[2] == hiddenSize &&
+         "ONNX RNN 'initial_h' tensor size invalid!");
+
+  // Validate number of activations.
+  assert(activations.size() == numDirections * 1 &&
+         "ONNX RNN activations vector invalid!");
+
+  // Create X slices.
+  std::vector<Node *> Xslices;
+  for (dim_t t = 0; t < seqLength; t++) {
+    auto XsliceName = opName + ".X" + std::to_string(t) + ".slice";
+    Node *Xt = createSlice(XsliceName, X, RNN_X_SLICE_RANGE(t));
+    auto XreshapeName = opName + ".X" + std::to_string(t) + ".reshape";
+    Xt = createReshape(XreshapeName, Xt, {batchSize, inputSize});
+    Xslices.push_back(Xt);
+  }
+
+  // Lambda to load forward/backward RNN cell.
+  auto loadRNNCell = [&](bool forward, std::vector<NodeValue> &Yslices,
+                         NodeValue &Hslice) {
+    // Name prefix.
+    std::string dirLabel = forward ? ".fw" : ".bw";
+    std::string prefix = opName + ((numDirections > 1) ? dirLabel : "");
+
+    // Slice index used for creating weights slices.
+    dim_t sliceIdx0 = 0;
+    if (direction == RnnDirection::Bidirectional) {
+      sliceIdx0 = forward ? 0 : 1;
+    }
+
+    // Activations.
+    size_t activationOffset = sliceIdx0 * 1;
+    auto activationF = activations[activationOffset + 0];
+
+    // Create W slice (Required).
+    NodeValue Wi =
+        createSlice(prefix + ".Wi.", W, RNN_W_SLICE_RANGE(sliceIdx0, 0));
+    Wi = createReshape(prefix + ".Wi.reshape", Wi, {hiddenSize, inputSize});
+    Wi = createTranspose(prefix + ".Wi.transp", Wi, {1, 0});
+
+    // Create R slice (Required).
+    NodeValue Ri =
+        createSlice(prefix + ".Ri.", R, RNN_R_SLICE_RANGE(sliceIdx0, 0));
+    Ri = createReshape(prefix + ".Ri.reshape", Ri, {hiddenSize, hiddenSize});
+    Ri = createTranspose(prefix + ".Ri.transp", Ri, {1, 0});
+
+    // Create B slices (optional).
+    NodeValue bWi = nullptr;
+    NodeValue bRi = nullptr;
+
+    if (B) {
+
+      bWi = createSlice(prefix + ".bWi.", B, RNN_B_SLICE_RANGE(sliceIdx0, 0));
+      bRi = createSlice(prefix + ".bRi.", B, RNN_B_SLICE_RANGE(sliceIdx0, 1));
+
+      bWi = createReshape(prefix + ".bWi.reshape", bWi, {hiddenSize});
+      bRi = createReshape(prefix + ".bRi.reshape", bRi, {hiddenSize});
+    }
+
+    // Create H slice for this direction.
+    Node *Hinit = createSlice(prefix + ".H.slice", initial_h,
+                              RNN_H_SLICE_RANGE(sliceIdx0));
+    Hinit =
+        createReshape(prefix + ".H.reshape", Hinit, {batchSize, hiddenSize});
+
+    // Initialize.
+    Node *Ht = Hinit;
+
+    // Unroll RNN cell for all time steps.
+    for (size_t t = 0; t < seqLength; t++) {
+
+      // Input for current time step.
+      // For the reverse RNN cell the inputs are provided in reverse order.
+      Node *Xt = forward ? Xslices[t] : Xslices[seqLength - 1 - t];
+
+      // Hidden state update: Ht = f(Xt * Wi + bWi + Ht-1 * Ri + bRi).
+      Ht = createAdd(prefix + ".H.add",
+                     RNN_CREATE_FC(prefix + ".H.fc1", Xt, Wi, bWi),
+                     RNN_CREATE_FC(prefix + ".H.fc2", Ht, Ri, bRi));
+      Ht = activationF(prefix + ".H.act", Ht);
+
+      // Output.
+      Yslices.push_back(Ht);
+    }
+
+    // Updated states nodes.
+    Hslice = Ht;
+  }; // End of local lambda "loadRNNCell".
+
+  bool forwardEnabled = ((direction == RnnDirection::Forward) ||
+                         (direction == RnnDirection::Bidirectional));
+  bool backwardEnabled = ((direction == RnnDirection::Reverse) ||
+                          (direction == RnnDirection::Bidirectional));
+
+  std::vector<NodeValue> YSlices;
+  std::vector<NodeValue> Hslices;
+
+  // Load forward RNN.
+  std::vector<NodeValue> forwardYslices;
+  if (forwardEnabled) {
+    NodeValue forwardHslice;
+    loadRNNCell(/* forward */ true, forwardYslices, forwardHslice);
+    Hslices.push_back(forwardHslice);
+  }
+
+  // Load backward RNN.
+  std::vector<NodeValue> backwardYslices;
+  if (backwardEnabled) {
+    NodeValue backwardHslice;
+    loadRNNCell(/* forward */ false, backwardYslices, backwardHslice);
+    Hslices.push_back(backwardHslice);
+  }
+
+  // Gather Y slices.
+  for (size_t t = 0; t < seqLength; t++) {
+    if (forwardEnabled) {
+      YSlices.push_back(forwardYslices[t]);
+    }
+    if (backwardEnabled) {
+      YSlices.push_back(backwardYslices[seqLength - 1 - t]);
+    }
+  }
+
+  // Concatenate Y slices.
+  // Y size is [seqLength, numDirections, batchSize, hiddenSize].
+  Y = createReshape(opName + ".Y.reshape",
+                    createConcat(opName + ".Y.concat", YSlices, 0),
+                    {seqLength, numDirections, batchSize, hiddenSize});
+
+  // Concatenate Y_h slices.
+  // Y_h size is [numDirections, batchSize, hiddenSize].
+  Y_h = createReshape(opName + ".Y_h.reshape",
+                      createConcat(opName + ".Y_h.concat", Hslices, 0),
+                      {numDirections, batchSize, hiddenSize});
+
+#undef RNN_X_SLICE_RANGE
+#undef RNN_W_SLICE_RANGE
+#undef RNN_R_SLICE_RANGE
+#undef RNN_B_SLICE_RANGE
+#undef RNN_H_SLICE_RANGE
+#undef RNN_CREATE_FC
+}
+
+void Function::createOnnxGRU(llvm::StringRef namePrefix, NodeValue X,
+                             NodeValue W, NodeValue R, NodeValue B,
+                             NodeValue initial_h, NodeValue &Y, NodeValue &Y_h,
+                             unsigned hiddenSize, RnnDirection direction,
+                             std::vector<RnnActivation> &activations,
+                             bool linearBeforeReset) {
+
+#define GRU_X_SLICE_RANGE(idx)                                                 \
+  {idx + 0, 0, 0}, { idx + 1, batchSize, inputSize }
+#define GRU_W_SLICE_RANGE(idx0, idx1)                                          \
+  {idx0, idx1 * hiddenSize, 0}, { idx0 + 1, (idx1 + 1) * hiddenSize, inputSize }
+#define GRU_R_SLICE_RANGE(idx0, idx1)                                          \
+  {idx0, idx1 * hiddenSize, 0}, {                                              \
+    idx0 + 1, (idx1 + 1) * hiddenSize, hiddenSize                              \
+  }
+#define GRU_B_SLICE_RANGE(idx0, idx1)                                          \
+  {idx0, idx1 * hiddenSize}, { idx0 + 1, (idx1 + 1) * hiddenSize }
+#define GRU_H_SLICE_RANGE(idx)                                                 \
+  {idx + 0, 0, 0}, { idx + 1, batchSize, hiddenSize }
+#define GRU_CREATE_FC(name, LHS, RHS, BIAS)                                    \
+  BIAS ? (Node *)createFullyConnected(name, LHS, RHS, BIAS)                    \
+       : (Node *)createMatMul(name, LHS, RHS)
+
+  // Operator name.
+  const std::string &opName = namePrefix.str();
+
+  // Get all size parameters.
+  dim_t numDirections = (direction == RnnDirection::Bidirectional) ? 2 : 1;
+  assert(X.dims().size() == 3 &&
+         "ONNX GRU input 'X' should have 3 dimensions!");
+  dim_t seqLength = X.dims()[0];
+  dim_t batchSize = X.dims()[1];
+  dim_t inputSize = X.dims()[2];
+
+  // Validate W size.
+  assert(W.dims().size() == 3 &&
+         "ONNX GRU input 'W' should have 3 dimensions!");
+  assert(W.dims()[0] == numDirections && W.dims()[1] == 3 * hiddenSize &&
+         W.dims()[2] == inputSize && "ONNX GRU 'W' tensor size invalid!");
+
+  // Validate R size.
+  assert(R.dims().size() == 3 &&
+         "ONNX GRU input 'R' should have 3 dimensions!");
+  assert(R.dims()[0] == numDirections && R.dims()[1] == 3 * hiddenSize &&
+         R.dims()[2] == hiddenSize && "ONNX GRU 'R' tensor size invalid!");
+
+  // Validate B size.
+  if (B.getNode()) {
+    assert(B.dims().size() == 2 &&
+           "ONNX GRU input 'B' should have 2 dimensions!");
+    assert(B.dims()[0] == numDirections && B.dims()[1] == 6 * hiddenSize &&
+           "ONNX GRU 'B' tensor size invalid!");
+  }
+
+  // Validate initial_h size.
+  assert(initial_h.getNode() &&
+         "ONNX GRU input 'initial_h' is mandatory. Null provided!");
+  assert(initial_h.dims().size() == 3 &&
+         "ONNX GRU input 'initial_h' should have 2 dimensions!");
+  assert(initial_h.dims()[0] == numDirections &&
+         initial_h.dims()[1] == batchSize &&
+         initial_h.dims()[2] == hiddenSize &&
+         "ONNX GRU 'initial_h' tensor size invalid!");
+
+  // Validate number of activations.
+  assert(activations.size() == numDirections * 2 &&
+         "ONNX GRU activations vector invalid!");
+
+  // Create X slices.
+  std::vector<Node *> Xslices;
+  for (dim_t t = 0; t < seqLength; t++) {
+    auto XsliceName = opName + ".X" + std::to_string(t) + ".slice";
+    Node *Xt = createSlice(XsliceName, X, GRU_X_SLICE_RANGE(t));
+    auto XreshapeName = opName + ".X" + std::to_string(t) + ".reshape";
+    Xt = createReshape(XreshapeName, Xt, {batchSize, inputSize});
+    Xslices.push_back(Xt);
+  }
+
+  // Lambda to load forward/backward GRU cell.
+  auto loadGRUCell = [&](bool forward, std::vector<NodeValue> &Yslices,
+                         NodeValue &Hslice) {
+    // Name prefix.
+    std::string dirLabel = forward ? ".fw" : ".bw";
+    std::string prefix = opName + ((numDirections > 1) ? dirLabel : "");
+
+    // Slice index used for creating weights slices.
+    dim_t sliceIdx0 = 0;
+    if (direction == RnnDirection::Bidirectional) {
+      sliceIdx0 = forward ? 0 : 1;
+    }
+
+    // Activations.
+    size_t activationOffset = sliceIdx0 * 2;
+    auto activationF = activations[activationOffset + 0];
+    auto activationG = activations[activationOffset + 1];
+
+    // Create W slices (Required).
+    NodeValue Wz =
+        createSlice(prefix + ".Wz.", W, GRU_W_SLICE_RANGE(sliceIdx0, 0));
+    NodeValue Wr =
+        createSlice(prefix + ".Wr.", W, GRU_W_SLICE_RANGE(sliceIdx0, 1));
+    NodeValue Wh =
+        createSlice(prefix + ".Wh.", W, GRU_W_SLICE_RANGE(sliceIdx0, 2));
+
+    Wz = createReshape(prefix + ".Wz.reshape", Wz, {hiddenSize, inputSize});
+    Wr = createReshape(prefix + ".Wr.reshape", Wr, {hiddenSize, inputSize});
+    Wh = createReshape(prefix + ".Wh.reshape", Wh, {hiddenSize, inputSize});
+
+    Wz = createTranspose(prefix + ".Wz.transp", Wz, {1, 0});
+    Wr = createTranspose(prefix + ".Wr.transp", Wr, {1, 0});
+    Wh = createTranspose(prefix + ".Wh.transp", Wh, {1, 0});
+
+    // Create R slices (Required).
+    NodeValue Rz =
+        createSlice(prefix + ".Rz.", R, GRU_R_SLICE_RANGE(sliceIdx0, 0));
+    NodeValue Rr =
+        createSlice(prefix + ".Rr.", R, GRU_R_SLICE_RANGE(sliceIdx0, 1));
+    NodeValue Rh =
+        createSlice(prefix + ".Rh.", R, GRU_R_SLICE_RANGE(sliceIdx0, 2));
+
+    Rz = createReshape(prefix + ".Rz.reshape", Rz, {hiddenSize, hiddenSize});
+    Rr = createReshape(prefix + ".Rr.reshape", Rr, {hiddenSize, hiddenSize});
+    Rh = createReshape(prefix + ".Rh.reshape", Rh, {hiddenSize, hiddenSize});
+
+    Rz = createTranspose(prefix + ".Rz.transp", Rz, {1, 0});
+    Rr = createTranspose(prefix + ".Rr.transp", Rr, {1, 0});
+    Rh = createTranspose(prefix + ".Rh.transp", Rh, {1, 0});
+
+    // Create B slices (optional).
+    NodeValue bWz = nullptr;
+    NodeValue bWr = nullptr;
+    NodeValue bWh = nullptr;
+    NodeValue bRz = nullptr;
+    NodeValue bRr = nullptr;
+    NodeValue bRh = nullptr;
+
+    if (B) {
+
+      bWz = createSlice(prefix + ".bWz.", B, GRU_B_SLICE_RANGE(sliceIdx0, 0));
+      bWr = createSlice(prefix + ".bWr.", B, GRU_B_SLICE_RANGE(sliceIdx0, 1));
+      bWh = createSlice(prefix + ".bWh.", B, GRU_B_SLICE_RANGE(sliceIdx0, 2));
+      bRz = createSlice(prefix + ".bRz.", B, GRU_B_SLICE_RANGE(sliceIdx0, 3));
+      bRr = createSlice(prefix + ".bRr.", B, GRU_B_SLICE_RANGE(sliceIdx0, 4));
+      bRh = createSlice(prefix + ".bRh.", B, GRU_B_SLICE_RANGE(sliceIdx0, 5));
+
+      bWz = createReshape(prefix + ".bWz.reshape", bWz, {hiddenSize});
+      bWr = createReshape(prefix + ".bWr.reshape", bWr, {hiddenSize});
+      bWh = createReshape(prefix + ".bWh.reshape", bWh, {hiddenSize});
+      bRz = createReshape(prefix + ".bRz.reshape", bRz, {hiddenSize});
+      bRr = createReshape(prefix + ".bRr.reshape", bRr, {hiddenSize});
+      bRh = createReshape(prefix + ".bRh.reshape", bRh, {hiddenSize});
+    }
+
+    // Create H slice for this direction.
+    Node *Hinit = createSlice(prefix + ".H.slice", initial_h,
+                              GRU_H_SLICE_RANGE(sliceIdx0));
+    Hinit =
+        createReshape(prefix + ".H.reshape", Hinit, {batchSize, hiddenSize});
+
+    // Initialize.
+    Node *Ht = Hinit;
+
+    // Unroll GRU cell for all time steps.
+    for (size_t t = 0; t < seqLength; t++) {
+
+      // Input for current time step.
+      // For the reverse GRU cell the inputs are provided in reverse order.
+      Node *Xt = forward ? Xslices[t] : Xslices[seqLength - 1 - t];
+
+      // Update gate: zt = f(Xt * Wz + bWz + Ht-1 * Rz + bRz).
+      Node *zt = createAdd(prefix + ".Z.add1",
+                           GRU_CREATE_FC(prefix + ".Z.fc1", Xt, Wz, bWz),
+                           GRU_CREATE_FC(prefix + ".Z.fc2", Ht, Rz, bRz));
+      zt = activationF(prefix + ".Z.act", zt);
+
+      // Reset gate: rt = f(Xt * Wr + bWr + Ht-1 * Rr + bRr).
+      Node *rt = createAdd(prefix + ".R.add1",
+                           GRU_CREATE_FC(prefix + ".R.fc1", Xt, Wr, bWr),
+                           GRU_CREATE_FC(prefix + ".R.fc2", Ht, Rr, bRr));
+      rt = activationF(prefix + ".R.act", rt);
+
+      // Hidden gate:
+      // For linearBeforeReset = true:
+      //   htild = g(Xt * Wh + bWh + rt . (Ht-1 * Rh + bRh)).
+      // For linearBeforeReset = false:
+      //   htild = g(Xt * Wh + bWh + (rt . Ht-1) * Rh + bRh).
+      Node *htild;
+      if (linearBeforeReset) {
+        htild = createAdd(
+            prefix + ".Htild.add",
+            GRU_CREATE_FC(prefix + ".Htild.fc1", Xt, Wh, bWh),
+            createMul(prefix + ".Htild.reset", rt,
+                      GRU_CREATE_FC(prefix + ".Htild.fc2", Ht, Rh, bRh)));
+      } else {
+        htild = createAdd(
+            prefix + ".Htild.add",
+            GRU_CREATE_FC(prefix + ".Htild.fc1", Xt, Wh, bWh),
+            GRU_CREATE_FC(prefix + ".Htild.fc2",
+                          createMul(prefix + ".Htild.reset", rt, Ht), Rh, bRh));
+      }
+      htild = activationG(prefix + ".Htild.act", htild);
+
+      // Hidden state update:
+      // Ht = (1 - zt) . htild + zt . Ht-1 = htild - zt . htild + zt . Ht-1.
+      Ht = createAdd(prefix + ".H.add",
+                     createSub(prefix + ".H.sub", htild,
+                               createMul(prefix + ".H.mult1", zt, htild)),
+                     createMul(prefix + ".H.mult2", zt, Ht));
+
+      // Output.
+      Yslices.push_back(Ht);
+    }
+
+    // Updated states nodes.
+    Hslice = Ht;
+  }; // End of local lambda "loadGRUCell".
+
+  bool forwardEnabled = ((direction == RnnDirection::Forward) ||
+                         (direction == RnnDirection::Bidirectional));
+  bool backwardEnabled = ((direction == RnnDirection::Reverse) ||
+                          (direction == RnnDirection::Bidirectional));
+
+  std::vector<NodeValue> YSlices;
+  std::vector<NodeValue> Hslices;
+
+  // Load forward GRU.
+  std::vector<NodeValue> forwardYslices;
+  if (forwardEnabled) {
+    NodeValue forwardHslice;
+    loadGRUCell(/* forward */ true, forwardYslices, forwardHslice);
+    Hslices.push_back(forwardHslice);
+  }
+
+  // Load backward GRU.
+  std::vector<NodeValue> backwardYslices;
+  if (backwardEnabled) {
+    NodeValue backwardHslice;
+    loadGRUCell(/* forward */ false, backwardYslices, backwardHslice);
+    Hslices.push_back(backwardHslice);
+  }
+
+  // Gather Y slices.
+  for (size_t t = 0; t < seqLength; t++) {
+    if (forwardEnabled) {
+      YSlices.push_back(forwardYslices[t]);
+    }
+    if (backwardEnabled) {
+      YSlices.push_back(backwardYslices[seqLength - 1 - t]);
+    }
+  }
+
+  // Concatenate Y slices.
+  // Y size is [seqLength, numDirections, batchSize, hiddenSize].
+  Y = createReshape(opName + ".Y.reshape",
+                    createConcat(opName + ".Y.concat", YSlices, 0),
+                    {seqLength, numDirections, batchSize, hiddenSize});
+
+  // Concatenate Y_h slices.
+  // Y_h size is [numDirections, batchSize, hiddenSize].
+  Y_h = createReshape(opName + ".Y_h.reshape",
+                      createConcat(opName + ".Y_h.concat", Hslices, 0),
+                      {numDirections, batchSize, hiddenSize});
+
+#undef GRU_X_SLICE_RANGE
+#undef GRU_W_SLICE_RANGE
+#undef GRU_R_SLICE_RANGE
+#undef GRU_B_SLICE_RANGE
+#undef GRU_H_SLICE_RANGE
+#undef GRU_CREATE_FC
+}
+
+void Function::createOnnxLSTM(llvm::StringRef namePrefix, NodeValue X,
                               NodeValue W, NodeValue R, NodeValue B,
                               NodeValue initial_h, NodeValue initial_c,
                               NodeValue P, NodeValue &Y, NodeValue &Y_h,
                               NodeValue &Y_c, unsigned hiddenSize,
-                              LstmDirection direction,
-                              std::vector<LstmActivation> &activations) {
+                              RnnDirection direction,
+                              std::vector<RnnActivation> &activations,
+                              bool inputForget) {
 
 #define LSTM_X_SLICE_RANGE(idx)                                                \
   {idx + 0, 0, 0}, { idx + 1, batchSize, inputSize }
@@ -2954,7 +3429,7 @@ void Function::createONNXLSTM(llvm::StringRef namePrefix, NodeValue X,
   const std::string &opName = namePrefix.str();
 
   // Get all size parameters.
-  dim_t numDirections = (direction == LstmDirection::Bidirectional) ? 2 : 1;
+  dim_t numDirections = (direction == RnnDirection::Bidirectional) ? 2 : 1;
   assert(X.dims().size() == 3 &&
          "ONNX LSTM input 'X' should have 3 dimensions!");
   dim_t seqLength = X.dims()[0];
@@ -3032,15 +3507,12 @@ void Function::createONNXLSTM(llvm::StringRef namePrefix, NodeValue X,
 
     // Slice index used for creating weights slices.
     dim_t sliceIdx0 = 0;
-    if (direction == LstmDirection::Bidirectional) {
+    if (direction == RnnDirection::Bidirectional) {
       sliceIdx0 = forward ? 0 : 1;
     }
 
     // Activations.
-    size_t activationOffset = 0;
-    if (direction == LstmDirection::Bidirectional) {
-      activationOffset = forward ? 0 : 3;
-    }
+    size_t activationOffset = sliceIdx0 * 3;
     auto activationF = activations[activationOffset + 0];
     auto activationG = activations[activationOffset + 1];
     auto activationH = activations[activationOffset + 2];
@@ -3134,20 +3606,14 @@ void Function::createONNXLSTM(llvm::StringRef namePrefix, NodeValue X,
     }
 
     // Create H slice for this direction.
-    Node *Hinit = initial_h.getNode();
-    if (numDirections > 1) {
-      Hinit = createSlice(prefix + ".H.slice", Hinit,
-                          LSTM_H_SLICE_RANGE(sliceIdx0));
-    }
+    Node *Hinit = createSlice(prefix + ".H.slice", initial_h,
+                              LSTM_H_SLICE_RANGE(sliceIdx0));
     Hinit =
         createReshape(prefix + ".H.reshape", Hinit, {batchSize, hiddenSize});
 
     // Create C slice for this direction.
-    Node *Cinit = initial_c.getNode();
-    if (numDirections > 1) {
-      Cinit = createSlice(prefix + ".C.slice", Cinit,
-                          LSTM_C_SLICE_RANGE(sliceIdx0));
-    }
+    Node *Cinit = createSlice(prefix + ".C.slice", initial_c,
+                              LSTM_C_SLICE_RANGE(sliceIdx0));
     Cinit =
         createReshape(prefix + ".C.reshape", Cinit, {batchSize, hiddenSize});
 
@@ -3162,7 +3628,7 @@ void Function::createONNXLSTM(llvm::StringRef namePrefix, NodeValue X,
       // For the reverse LSTM cell the inputs are provided in reverse order.
       Node *Xt = forward ? Xslices[t] : Xslices[seqLength - 1 - t];
 
-      // Forget gate: ft = f(Wf * Xt + bWf + Rf * Ht-1 + bRf + Pf . Ct-1).
+      // Forget gate: ft = f(Xt * Wf + bWf + Ht-1 * Rf + bRf + Pf . Ct-1).
       Node *ft = createAdd(prefix + ".F.add1",
                            LSTM_CREATE_FC(prefix + ".F.fc1", Xt, Wf, bWf),
                            LSTM_CREATE_FC(prefix + ".F.fc2", Ht, Rf, bRf));
@@ -3172,28 +3638,39 @@ void Function::createONNXLSTM(llvm::StringRef namePrefix, NodeValue X,
       }
       ft = activationF(prefix + ".F.act", ft);
 
-      // Cell state candidate: ctild = g(Wc * Xt + bWc + Rc * Ht-1 + bRc).
+      // Cell state candidate: ctild = g(Xt * Wc + bWc + Ht-1 * Rc + bRc).
       Node *ctild =
-          createAdd(prefix + ".ctild.add1",
-                    LSTM_CREATE_FC(prefix + ".ctild.fc1", Xt, Wc, bWc),
-                    LSTM_CREATE_FC(prefix + ".ctild.fc2", Ht, Rc, bRc));
-      ctild = activationG(prefix + ".ctild.act", ctild);
+          createAdd(prefix + ".Ctild.add",
+                    LSTM_CREATE_FC(prefix + ".Ctild.fc1", Xt, Wc, bWc),
+                    LSTM_CREATE_FC(prefix + ".Ctild.fc2", Ht, Rc, bRc));
+      ctild = activationG(prefix + ".Ctild.act", ctild);
 
-      // Input gate: it = f(Wi * Xt + bWi + Ri * Ht-1 + bRi + Pi . Ct-1).
-      Node *it = createAdd(prefix + ".I.add1",
-                           LSTM_CREATE_FC(prefix + ".I.fc1", Xt, Wi, bWi),
-                           LSTM_CREATE_FC(prefix + ".I.fc2", Ht, Ri, bRi));
-      if (Pi) {
-        it = createAdd(prefix + ".I.add2", it,
-                       createMul(prefix + ".I.mult", Pi, Ct));
+      // Input gate:
+      // For inputForget == true:
+      //   it = 1 - ft.
+      // For inputForget == false:
+      //   it = f(Xt * Wi + bWi + Ht-1 * Ri + bRi + Pi . Ct-1).
+      Node *it;
+      if (inputForget) {
+        auto splatTy = ft->getNthResult(0).getType();
+        it = createSub(prefix + ".I.sub",
+                       createSplat(prefix + ".I.splat", splatTy, 1.0), ft);
+      } else {
+        it = createAdd(prefix + ".I.add1",
+                       LSTM_CREATE_FC(prefix + ".I.fc1", Xt, Wi, bWi),
+                       LSTM_CREATE_FC(prefix + ".I.fc2", Ht, Ri, bRi));
+        if (Pi) {
+          it = createAdd(prefix + ".I.add2", it,
+                         createMul(prefix + ".I.mult", Pi, Ct));
+        }
+        it = activationF(prefix + ".I.act", it);
       }
-      it = activationF(prefix + ".I.act", it);
 
       // Cell state update: Ct = ft . Ct-1 + it . ctild.
       Ct = createAdd(prefix + ".C.add", createMul(prefix + ".C.mult1", ft, Ct),
                      createMul(prefix + ".C.mult2", it, ctild));
 
-      // Output gate: ot = f(Wo * Xt + bWo + Ro * Ht-1 + bRo + Po . Ct).
+      // Output gate: ot = f(Xt * Wo + bWo + Ht-1 * Ro + bRo + Po . Ct).
       Node *ot = createAdd(prefix + ".O.add1",
                            LSTM_CREATE_FC(prefix + ".O.fc1", Xt, Wo, bWo),
                            LSTM_CREATE_FC(prefix + ".O.fc2", Ht, Ro, bRo));
@@ -3216,10 +3693,10 @@ void Function::createONNXLSTM(llvm::StringRef namePrefix, NodeValue X,
     Cslice = Ct;
   }; // End of local lambda "loadLSTMCell".
 
-  bool forwardEnabled = ((direction == LstmDirection::Forward) ||
-                         (direction == LstmDirection::Bidirectional));
-  bool backwardEnabled = ((direction == LstmDirection::Reverse) ||
-                          (direction == LstmDirection::Bidirectional));
+  bool forwardEnabled = ((direction == RnnDirection::Forward) ||
+                         (direction == RnnDirection::Bidirectional));
+  bool backwardEnabled = ((direction == RnnDirection::Reverse) ||
+                          (direction == RnnDirection::Bidirectional));
 
   std::vector<NodeValue> YSlices;
   std::vector<NodeValue> Hslices;

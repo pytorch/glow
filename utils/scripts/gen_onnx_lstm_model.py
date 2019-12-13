@@ -35,7 +35,7 @@ def make_init(name, type, tensor):
 
 # Function to generate LSTM ONNX test model
 def gen_lstm_onnx_test_model(model_path, seq_length, batch_size, hidden_size, input_size, direction, has_bias,
-                             has_sequence_lens, has_initial_h, has_initial_c, has_peephole):
+                             has_sequence_lens, has_initial_h, has_initial_c, has_peephole, input_forget=False):
 
     # Validate parameters
     assert direction in LSTM_DIRS, 'ONNX LSTM direction invalid!'
@@ -225,7 +225,10 @@ def gen_lstm_onnx_test_model(model_path, seq_length, batch_size, hidden_size, in
         for t in range(seq_length):
             xt = Xslices[t] if forward else Xslices[seq_length - 1 - t]
             ft = f(mm(xt, Wf) + bWf + mm(Ht, Rf) + bRf + Pf * Ct)
-            it = f(mm(xt, Wi) + bWi + mm(Ht, Ri) + bRi + Pi * Ct)
+            if input_forget:
+                it = 1 - ft
+            else:
+                it = f(mm(xt, Wi) + bWi + mm(Ht, Ri) + bRi + Pi * Ct)
             ctild = g(mm(xt, Wc) + bWc + mm(Ht, Rc) + bRc)
             Ct = ft * Ct + it * ctild
             ot = f(mm(xt, Wo) + bWo + mm(Ht, Ro) + bRo + Po * Ct)
@@ -266,8 +269,8 @@ def gen_lstm_onnx_test_model(model_path, seq_length, batch_size, hidden_size, in
     Y_c_ref_np = np.concatenate(Cslices, 0).reshape(
         [num_directions, batch_size, hidden_size])
 
-    # Use numpy implementation when using peepholes, else assert errors
-    if has_peephole:
+    # Use numpy implementation when using peepholes or input_forget, else assert errors
+    if has_peephole or input_forget:
         Y_ref = Y_ref_np
         Y_h_ref = Y_h_ref_np
         Y_c_ref = Y_c_ref_np
@@ -300,7 +303,8 @@ def gen_lstm_onnx_test_model(model_path, seq_length, batch_size, hidden_size, in
         inputs=node_inputs,
         outputs=node_outputs,
         hidden_size=hidden_size,
-        direction=direction
+        direction=direction,
+        input_forget=input_forget
     )
 
     # Error node definition
@@ -397,7 +401,8 @@ gen_lstm_onnx_test_model(model_path='lstmForward.onnxtxt',
                          has_sequence_lens=False,
                          has_initial_h=True,
                          has_initial_c=True,
-                         has_peephole=False)
+                         has_peephole=False,
+                         input_forget=False)
 
 # Reverse LSTM
 gen_lstm_onnx_test_model(model_path='lstmReverse.onnxtxt',
@@ -410,7 +415,8 @@ gen_lstm_onnx_test_model(model_path='lstmReverse.onnxtxt',
                          has_sequence_lens=False,
                          has_initial_h=True,
                          has_initial_c=True,
-                         has_peephole=False)
+                         has_peephole=False,
+                         input_forget=False)
 
 # Bidirectional LSTM
 gen_lstm_onnx_test_model(model_path='lstmBidirectional.onnxtxt',
@@ -423,7 +429,8 @@ gen_lstm_onnx_test_model(model_path='lstmBidirectional.onnxtxt',
                          has_sequence_lens=False,
                          has_initial_h=True,
                          has_initial_c=True,
-                         has_peephole=False)
+                         has_peephole=False,
+                         input_forget=False)
 
 # Forward no bias LSTM
 gen_lstm_onnx_test_model(model_path='lstmForwardNoBias.onnxtxt',
@@ -436,7 +443,8 @@ gen_lstm_onnx_test_model(model_path='lstmForwardNoBias.onnxtxt',
                          has_sequence_lens=False,
                          has_initial_h=True,
                          has_initial_c=True,
-                         has_peephole=False)
+                         has_peephole=False,
+                         input_forget=False)
 
 # Forward no state LSTM
 gen_lstm_onnx_test_model(model_path='lstmForwardNoState.onnxtxt',
@@ -449,7 +457,8 @@ gen_lstm_onnx_test_model(model_path='lstmForwardNoState.onnxtxt',
                          has_sequence_lens=False,
                          has_initial_h=False,
                          has_initial_c=False,
-                         has_peephole=False)
+                         has_peephole=False,
+                         input_forget=False)
 
 # Forward with peephole LSTM
 gen_lstm_onnx_test_model(model_path='lstmForwardWithPeephole.onnxtxt',
@@ -462,4 +471,19 @@ gen_lstm_onnx_test_model(model_path='lstmForwardWithPeephole.onnxtxt',
                          has_sequence_lens=False,
                          has_initial_h=True,
                          has_initial_c=True,
-                         has_peephole=True)
+                         has_peephole=True,
+                         input_forget=False)
+
+# Forward with input forget LSTM
+gen_lstm_onnx_test_model(model_path='lstmForwardInputForget.onnxtxt',
+                         seq_length=1,
+                         batch_size=5,
+                         hidden_size=4,
+                         input_size=3,
+                         direction='forward',
+                         has_bias=True,
+                         has_sequence_lens=False,
+                         has_initial_h=True,
+                         has_initial_c=True,
+                         has_peephole=False,
+                         input_forget=True)

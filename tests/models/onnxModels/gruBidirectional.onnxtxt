@@ -1,5 +1,5 @@
 ir_version: 5
-producer_name: "onnx-lstm"
+producer_name: "onnx-gru"
 graph {
   node {
     input: "X"
@@ -8,14 +8,12 @@ graph {
     input: "B"
     input: ""
     input: "initial_h"
-    input: "initial_c"
-    input: ""
     output: "Y"
-    name: "lstm"
-    op_type: "LSTM"
+    name: "gru"
+    op_type: "GRU"
     attribute {
       name: "direction"
-      s: "forward"
+      s: "bidirectional"
       type: STRING
     }
     attribute {
@@ -24,7 +22,7 @@ graph {
       type: INT
     }
     attribute {
-      name: "input_forget"
+      name: "linear_before_reset"
       i: 0
       type: INT
     }
@@ -36,7 +34,7 @@ graph {
     name: "error"
     op_type: "Sub"
   }
-  name: "lstm_test"
+  name: "gru_test"
   initializer {
     dims: 2
     dims: 5
@@ -75,8 +73,8 @@ graph {
     name: "X"
   }
   initializer {
-    dims: 1
-    dims: 16
+    dims: 2
+    dims: 12
     dims: 3
     data_type: 1
     float_data: -0.6916607618331909
@@ -127,13 +125,6 @@ graph {
     float_data: -2.0222012996673584
     float_data: -0.30620402097702026
     float_data: 0.8279746174812317
-    name: "W"
-  }
-  initializer {
-    dims: 1
-    dims: 16
-    dims: 4
-    data_type: 1
     float_data: 0.23009473085403442
     float_data: 0.7620111703872681
     float_data: -0.22232814133167267
@@ -158,6 +149,13 @@ graph {
     float_data: 0.698032021522522
     float_data: -0.447128564119339
     float_data: 1.2245076894760132
+    name: "W"
+  }
+  initializer {
+    dims: 2
+    dims: 12
+    dims: 4
+    data_type: 1
     float_data: 0.40349164605140686
     float_data: 0.5935785174369812
     float_data: -1.094911813735962
@@ -198,12 +196,6 @@ graph {
     float_data: 0.04656729847192764
     float_data: -0.18656976521015167
     float_data: -0.10174587368965149
-    name: "R"
-  }
-  initializer {
-    dims: 1
-    dims: 32
-    data_type: 1
     float_data: 0.8688861727714539
     float_data: 0.7504116296768188
     float_data: 0.5294653177261353
@@ -236,13 +228,6 @@ graph {
     float_data: 0.901486873626709
     float_data: 2.5283257961273193
     float_data: -0.24863477051258087
-    name: "B"
-  }
-  initializer {
-    dims: 1
-    dims: 5
-    dims: 4
-    data_type: 1
     float_data: 0.043668992817401886
     float_data: -0.2263142466545105
     float_data: 1.3314571380615234
@@ -263,17 +248,16 @@ graph {
     float_data: 0.36949270963668823
     float_data: 1.9046586751937866
     float_data: 1.1110566854476929
-    name: "initial_h"
-  }
-  initializer {
-    dims: 1
-    dims: 5
-    dims: 4
-    data_type: 1
     float_data: 0.6590498089790344
     float_data: -1.6274383068084717
     float_data: 0.6023193001747131
     float_data: 0.4202822148799896
+    name: "R"
+  }
+  initializer {
+    dims: 2
+    dims: 24
+    data_type: 1
     float_data: 0.8109516501426697
     float_data: 1.044442057609558
     float_data: -0.4008781909942627
@@ -290,54 +274,173 @@ graph {
     float_data: -1.342675805091858
     float_data: 1.1143829822540283
     float_data: -0.5865239500999451
-    name: "initial_c"
+    float_data: -1.2368533611297607
+    float_data: 0.8758389353752136
+    float_data: 0.6233621835708618
+    float_data: -0.4349566698074341
+    float_data: 1.407539963722229
+    float_data: 0.12910157442092896
+    float_data: 1.6169495582580566
+    float_data: 0.5027408599853516
+    float_data: 1.5588055849075317
+    float_data: 0.10940269380807877
+    float_data: -1.2197444438934326
+    float_data: 2.449368715286255
+    float_data: -0.5457741618156433
+    float_data: -0.19883786141872406
+    float_data: -0.7003985047340393
+    float_data: -0.20339444279670715
+    float_data: 0.24266944825649261
+    float_data: 0.2018301784992218
+    float_data: 0.6610202789306641
+    float_data: 1.7921582460403442
+    float_data: -0.12046457082033157
+    float_data: -1.2331206798553467
+    float_data: -1.182318091392517
+    float_data: -0.665754497051239
+    float_data: -1.6741957664489746
+    float_data: 0.8250298500061035
+    float_data: -0.4982135593891144
+    float_data: -0.3109849691390991
+    float_data: -0.0018914828542619944
+    float_data: -1.3966203927993774
+    float_data: -0.8613163828849792
+    float_data: 0.6747115254402161
+    name: "B"
   }
   initializer {
     dims: 2
-    dims: 1
     dims: 5
     dims: 4
     data_type: 1
-    float_data: -0.0025073192082345486
-    float_data: -0.029248230159282684
-    float_data: 0.10335244238376617
-    float_data: -0.37830352783203125
-    float_data: -0.6846296191215515
-    float_data: 0.014212781563401222
-    float_data: -0.2873882055282593
-    float_data: 0.6879828572273254
-    float_data: 0.04762459173798561
-    float_data: 0.08635172992944717
-    float_data: -0.6732637882232666
-    float_data: -0.4424405097961426
-    float_data: -0.8606193661689758
-    float_data: -0.003097095526754856
-    float_data: -0.5818638801574707
-    float_data: 0.3305215835571289
-    float_data: 0.16285081207752228
-    float_data: -0.49072203040122986
-    float_data: 0.3839721083641052
-    float_data: -0.13327273726463318
-    float_data: -0.4976532757282257
-    float_data: 0.11136293411254883
-    float_data: 0.3407604694366455
-    float_data: -0.015222622081637383
-    float_data: -0.6233256459236145
-    float_data: 0.09541770070791245
-    float_data: -0.004889961332082748
-    float_data: 0.23766900599002838
-    float_data: 0.48381438851356506
-    float_data: 0.009071349166333675
-    float_data: -0.6133842468261719
-    float_data: -0.26729273796081543
-    float_data: -0.13883478939533234
-    float_data: 0.157814159989357
-    float_data: -0.2884327471256256
-    float_data: 0.14862513542175293
-    float_data: -0.15628398954868317
-    float_data: 0.3625759482383728
-    float_data: 0.4816629886627197
-    float_data: 0.0627441480755806
+    float_data: 0.6185391545295715
+    float_data: -0.4431719183921814
+    float_data: 1.810534954071045
+    float_data: -1.3057268857955933
+    float_data: -0.3449872136116028
+    float_data: -0.23083974421024323
+    float_data: -2.7930850982666016
+    float_data: 1.9375288486480713
+    float_data: 0.3663320243358612
+    float_data: -1.0445894002914429
+    float_data: 2.051173448562622
+    float_data: 0.5856620073318481
+    float_data: 0.429526150226593
+    float_data: -0.6069983839988708
+    float_data: 0.1062227264046669
+    float_data: -1.5256803035736084
+    float_data: 0.7950261235237122
+    float_data: -0.3744383156299591
+    float_data: 0.134048193693161
+    float_data: 1.2020548582077026
+    float_data: 0.2847481071949005
+    float_data: 0.2624674439430237
+    float_data: 0.27649930119514465
+    float_data: -0.733271598815918
+    float_data: 0.8360047340393066
+    float_data: 1.5433591604232788
+    float_data: 0.7588056325912476
+    float_data: 0.8849087953567505
+    float_data: -0.8772815465927124
+    float_data: -0.86778724193573
+    float_data: -1.4408760070800781
+    float_data: 1.232253074645996
+    float_data: -0.25417986512184143
+    float_data: 1.3998439311981201
+    float_data: -0.7819116711616516
+    float_data: -0.4375089704990387
+    float_data: 0.095425084233284
+    float_data: 0.9214500784873962
+    float_data: 0.06075019761919975
+    float_data: 0.2111247479915619
+    name: "initial_h"
+  }
+  initializer {
+    dims: 2
+    dims: 2
+    dims: 5
+    dims: 4
+    data_type: 1
+    float_data: -0.7219530344009399
+    float_data: -0.033515963703393936
+    float_data: 0.12938444316387177
+    float_data: -1.2885924577713013
+    float_data: -0.3474609851837158
+    float_data: -0.46382108330726624
+    float_data: -0.20406363904476166
+    float_data: 1.167168378829956
+    float_data: -0.5517638921737671
+    float_data: 0.06141887232661247
+    float_data: 0.21209806203842163
+    float_data: 0.6291744112968445
+    float_data: 0.13782711327075958
+    float_data: -0.8087005019187927
+    float_data: 0.788288950920105
+    float_data: -1.5089373588562012
+    float_data: 0.6920076012611389
+    float_data: -0.3261420726776123
+    float_data: 0.2882385551929474
+    float_data: 1.0016340017318726
+    float_data: 0.19239504635334015
+    float_data: -0.899047315120697
+    float_data: 0.20014788210391998
+    float_data: 0.653607189655304
+    float_data: 0.30720871686935425
+    float_data: 0.09355268627405167
+    float_data: 0.9985561370849609
+    float_data: 0.2375192791223526
+    float_data: -0.876086413860321
+    float_data: -0.9883790612220764
+    float_data: -0.38382843136787415
+    float_data: 1.009047269821167
+    float_data: 0.8616482615470886
+    float_data: -0.5259793400764465
+    float_data: 0.536663293838501
+    float_data: -0.03670015558600426
+    float_data: -0.07619959861040115
+    float_data: -0.4296862781047821
+    float_data: -0.4563191831111908
+    float_data: 0.24787309765815735
+    float_data: -0.7103284597396851
+    float_data: -0.46979835629463196
+    float_data: 0.15067079663276672
+    float_data: -1.0403504371643066
+    float_data: -0.458487331867218
+    float_data: -0.7396059632301331
+    float_data: 0.2504953145980835
+    float_data: 1.068331003189087
+    float_data: 0.19208745658397675
+    float_data: 0.6814517974853516
+    float_data: 0.37877798080444336
+    float_data: 0.879551112651825
+    float_data: -0.49922680854797363
+    float_data: -0.5145388245582581
+    float_data: 0.3144787847995758
+    float_data: -1.485986351966858
+    float_data: 0.6006044149398804
+    float_data: -0.4241890609264374
+    float_data: 0.4376438558101654
+    float_data: 0.9897019267082214
+    float_data: -0.38130438327789307
+    float_data: 0.10708881914615631
+    float_data: 0.7698466777801514
+    float_data: -0.7013380527496338
+    float_data: 0.9594787955284119
+    float_data: -0.028804155066609383
+    float_data: 0.9772778153419495
+    float_data: 0.2954232692718506
+    float_data: -0.8770410418510437
+    float_data: -0.9225170612335205
+    float_data: -0.2526000142097473
+    float_data: 1.0499347448349
+    float_data: 0.952235758304596
+    float_data: -0.501578688621521
+    float_data: -0.5446439981460571
+    float_data: 0.5084633827209473
+    float_data: -0.060488879680633545
+    float_data: 0.31280648708343506
+    float_data: 0.17818863689899445
+    float_data: 0.22366103529930115
     name: "Y_ref"
   }
   input {
@@ -366,10 +469,10 @@ graph {
         elem_type: 1
         shape {
           dim {
-            dim_value: 1
+            dim_value: 2
           }
           dim {
-            dim_value: 16
+            dim_value: 12
           }
           dim {
             dim_value: 3
@@ -385,10 +488,10 @@ graph {
         elem_type: 1
         shape {
           dim {
-            dim_value: 1
+            dim_value: 2
           }
           dim {
-            dim_value: 16
+            dim_value: 12
           }
           dim {
             dim_value: 4
@@ -404,10 +507,10 @@ graph {
         elem_type: 1
         shape {
           dim {
-            dim_value: 1
+            dim_value: 2
           }
           dim {
-            dim_value: 32
+            dim_value: 24
           }
         }
       }
@@ -420,26 +523,7 @@ graph {
         elem_type: 1
         shape {
           dim {
-            dim_value: 1
-          }
-          dim {
-            dim_value: 5
-          }
-          dim {
-            dim_value: 4
-          }
-        }
-      }
-    }
-  }
-  input {
-    name: "initial_c"
-    type {
-      tensor_type {
-        elem_type: 1
-        shape {
-          dim {
-            dim_value: 1
+            dim_value: 2
           }
           dim {
             dim_value: 5
@@ -461,7 +545,7 @@ graph {
             dim_value: 2
           }
           dim {
-            dim_value: 1
+            dim_value: 2
           }
           dim {
             dim_value: 5
@@ -483,7 +567,7 @@ graph {
             dim_value: 2
           }
           dim {
-            dim_value: 1
+            dim_value: 2
           }
           dim {
             dim_value: 5

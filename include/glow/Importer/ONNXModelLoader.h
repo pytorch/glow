@@ -154,6 +154,14 @@ class ONNXModelLoader
   Error loadWhere(const ONNX_NAMESPACE::NodeProto &op,
                   const ArgumentDictionaryTy &dict);
 
+  /// Load RNN ONNX operator.
+  Error loadRNN(const ONNX_NAMESPACE::NodeProto &op,
+                const ArgumentDictionaryTy &dict);
+
+  /// Load GRU ONNX operator.
+  Error loadGRU(const ONNX_NAMESPACE::NodeProto &op,
+                const ArgumentDictionaryTy &dict);
+
   /// Load LSTM ONNX operator.
   Error loadLSTM(const ONNX_NAMESPACE::NodeProto &op,
                  const ArgumentDictionaryTy &dict);

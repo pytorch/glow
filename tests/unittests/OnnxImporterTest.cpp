@@ -2574,6 +2574,121 @@ TEST(onnx, importDimParamImplicit) {
   EXPECT_EQ(outputPH->dims()[1], 2);
 }
 
+/// Test loading RNN from a ONNX model. The ONNX model already computes
+/// the error compared to a PyTorch reference implementation.
+static void importRNN(std::string fileName) {
+  ExecutionEngine EE;
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  PlaceholderBindings bindings;
+  {
+    ONNXModelLoader onnxLD(fileName, {}, {}, *F);
+    bindings.allocate(mod.getPlaceholders());
+  }
+
+  // Search RNN state placeholder and set to 0.
+  Placeholder *Y_h_ph = nullptr;
+  for (const auto &ph : mod.getPlaceholders()) {
+    if (llvm::StringRef(ph->getName()).endswith("Y_h"))
+      Y_h_ph = ph;
+  }
+  EXPECT_TRUE(Y_h_ph);
+  bindings.get(Y_h_ph)->zero();
+
+  // Compile and run.
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  // Verify RNN error.
+  Placeholder *Y_err_ph = mod.getPlaceholderByName("Y_err");
+  EXPECT_TRUE(Y_err_ph);
+  auto err = bindings.get(Y_err_ph)->getHandle();
+  for (size_t idx = 0; idx < Y_err_ph->getType()->size(); idx++) {
+    EXPECT_TRUE(std::abs(err.raw(idx)) < 1e-6);
+  }
+}
+
+TEST(onnx, importRNNForward) {
+  importRNN(GLOW_DATA_PATH "tests/models/onnxModels/rnnForward.onnxtxt");
+}
+
+TEST(onnx, importRNNReverse) {
+  importRNN(GLOW_DATA_PATH "tests/models/onnxModels/rnnReverse.onnxtxt");
+}
+
+TEST(onnx, importRNNBidirectional) {
+  importRNN(GLOW_DATA_PATH "tests/models/onnxModels/rnnBidirectional.onnxtxt");
+}
+
+TEST(onnx, importRNNForwardNoBias) {
+  importRNN(GLOW_DATA_PATH "tests/models/onnxModels/rnnForwardNoBias.onnxtxt");
+}
+
+TEST(onnx, importRNNForwardNoState) {
+  importRNN(GLOW_DATA_PATH "tests/models/onnxModels/rnnForwardNoState.onnxtxt");
+}
+
+/// Test loading GRU from a ONNX model. The ONNX model already computes
+/// the error compared to a PyTorch reference implementation.
+static void importGRU(std::string fileName) {
+  ExecutionEngine EE;
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  PlaceholderBindings bindings;
+  {
+    ONNXModelLoader onnxLD(fileName, {}, {}, *F);
+    bindings.allocate(mod.getPlaceholders());
+  }
+
+  // Search GRU state placeholder and set to 0.
+  Placeholder *Y_h_ph = nullptr;
+  for (const auto &ph : mod.getPlaceholders()) {
+    if (llvm::StringRef(ph->getName()).endswith("Y_h"))
+      Y_h_ph = ph;
+  }
+  EXPECT_TRUE(Y_h_ph);
+  bindings.get(Y_h_ph)->zero();
+
+  // Compile and run.
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  // Verify GRU error.
+  Placeholder *Y_err_ph = mod.getPlaceholderByName("Y_err");
+  EXPECT_TRUE(Y_err_ph);
+  auto err = bindings.get(Y_err_ph)->getHandle();
+  for (size_t idx = 0; idx < Y_err_ph->getType()->size(); idx++) {
+    EXPECT_TRUE(std::abs(err.raw(idx)) < 1e-6);
+  }
+}
+
+TEST(onnx, importGRUForward) {
+  importGRU(GLOW_DATA_PATH "tests/models/onnxModels/gruForward.onnxtxt");
+}
+
+TEST(onnx, importGRUReverse) {
+  importGRU(GLOW_DATA_PATH "tests/models/onnxModels/gruReverse.onnxtxt");
+}
+
+TEST(onnx, importGRUBidirectional) {
+  importGRU(GLOW_DATA_PATH "tests/models/onnxModels/gruBidirectional.onnxtxt");
+}
+
+TEST(onnx, importGRUForwardNoBias) {
+  importGRU(GLOW_DATA_PATH "tests/models/onnxModels/gruForwardNoBias.onnxtxt");
+}
+
+TEST(onnx, importGRUForwardNoState) {
+  importGRU(GLOW_DATA_PATH "tests/models/onnxModels/gruForwardNoState.onnxtxt");
+}
+
+TEST(onnx, importGRUForwardLinearBeforeReset) {
+  importGRU(GLOW_DATA_PATH
+            "tests/models/onnxModels/gruForwardLinearBeforeReset.onnxtxt");
+}
+
 /// Test loading LSTM from a ONNX model. The ONNX model already computes
 /// the error compared to a PyTorch reference implementation.
 static void importLSTM(std::string fileName) {
@@ -2640,4 +2755,9 @@ TEST(onnx, importLSTMForwardNoState) {
 TEST(onnx, importLSTMForwardWithPeephole) {
   importLSTM(GLOW_DATA_PATH
              "tests/models/onnxModels/lstmForwardWithPeephole.onnxtxt");
+}
+
+TEST(onnx, importLSTMForwardInputForget) {
+  importLSTM(GLOW_DATA_PATH
+             "tests/models/onnxModels/lstmForwardInputForget.onnxtxt");
 }
