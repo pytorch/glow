@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#include "InterpreterFunction.h"
+#include "glow/Backends/Interpreter/InterpreterFunction.h"
 
 #include "glow/IR/IR.h"
 #include "glow/IR/IRUtils.h"

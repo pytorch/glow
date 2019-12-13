@@ -3,6 +3,7 @@ add_executable(AddBench
                AddBench.cpp)
 target_link_libraries(AddBench
                       PRIVATE
+                        Backends
                         ExecutionEngine
                         Graph
                         HostManager
@@ -12,6 +13,7 @@ add_executable(SLSBench
                SLSBench.cpp)
 target_link_libraries(SLSBench
                       PRIVATE
+                        Backends
                         ExecutionEngine
                         Graph
                         HostManager
@@ -21,6 +23,7 @@ add_executable(ConvBench
                ConvBench.cpp)
 target_link_libraries(ConvBench
                       PRIVATE
+                        Backends
                         ExecutionEngine
                         CPURuntimeNative)
 
@@ -28,6 +31,7 @@ add_executable(GemmBench
                GemmBench.cpp)
 target_link_libraries(GemmBench
                       PRIVATE
+                        Backends
                         ExecutionEngine
                         Graph
                         GraphOptimizer
@@ -38,6 +42,7 @@ add_executable(GemmParallelBench
                GemmParallelBench.cpp)
 target_link_libraries(GemmParallelBench
                       PRIVATE
+                        Backends
                         ExecutionEngine
                         Graph
                         GraphOptimizer
@@ -48,6 +53,7 @@ add_executable(BatchGemmBench
                BatchGemmBench.cpp)
 target_link_libraries(BatchGemmBench
                       PRIVATE
+                        Backends
                         ExecutionEngine
                         Graph
                         GraphOptimizer
@@ -58,6 +64,7 @@ add_executable(TransposeBench
                TransposeBench.cpp)
 target_link_libraries(TransposeBench
                       PRIVATE
+                        Backends
                         ExecutionEngine
                         Graph
                         GraphOptimizer
@@ -68,6 +75,7 @@ add_executable(BERTProxyLayerBench
                BERTProxyLayerBench.cpp)
 target_link_libraries(BERTProxyLayerBench
                       PRIVATE
+                        Backends
                         ExecutionEngine
                         Graph
                         GraphOptimizer
@@ -78,6 +86,7 @@ add_executable(RuntimeBench
                RuntimeBench.cpp)
 target_include_directories(RuntimeBench
                            PRIVATE
+                             Backends
                              ${GLOW_SOURCE_DIR}/lib/Backends/CPU
                              ${GLOW_SOURCE_DIR}/lib/Backends/Interpreter)
 target_link_libraries(RuntimeBench

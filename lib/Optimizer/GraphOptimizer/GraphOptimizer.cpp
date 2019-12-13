@@ -3462,7 +3462,7 @@ Error glow::optimizeFunction(Function *F, const Backend &B,
   }
 
   // Allow the backend to transform the graph after lowering.
-  while (B.transformPostLowering(F, cctx)) {
+  if (B.transformPostLowering(F, cctx)) {
     // If the backend made changes, optimize the graph again. Perform only
     // passes that the Backend has requested so we do not interfere with the
     // backend's transformations.

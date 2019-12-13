@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#include "Interpreter.h"
+#include "glow/Backends/Interpreter/Interpreter.h"
 
 #include "glow/IR/Instrs.h"
 #include "glow/Quantization/Base/Base.h"
