@@ -40,6 +40,7 @@ namespace onnxifi {
 
 bool GlowDumpGraph = false;
 bool GlowDisableNNPITransforms = false;
+bool GlowDisableNNPIPrivateTransforms = false;
 
 } // namespace onnxifi
 } // namespace glow
@@ -492,6 +493,10 @@ bool NNPIBackend::transformPostLowering(Function *F,
   changed |= lowerRequiredNodes(F, cctx);
 
 #if FACEBOOK_INTERNAL
+  if (glow::onnxifi::GlowDisableNNPIPrivateTransforms) {
+    return changed;
+  }
+
   changed |= transformPrivate(F, cctx);
 #endif /* FACEBOOK_INTERNAL */
 
