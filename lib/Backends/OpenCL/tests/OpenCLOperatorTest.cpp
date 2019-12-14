@@ -278,5 +278,6 @@ std::set<std::string> glow::backendTestBlacklist = {
     "RepeatedSLSWithPartialTensors/0",
     "GatherWithInt32PartialTensors/0",
     "GatherWithInt64PartialTensors/0",
+    "GroupwiseQuantizedConvolution/0",
     "ParallelBatchMatMul_Float16/0",
 };
