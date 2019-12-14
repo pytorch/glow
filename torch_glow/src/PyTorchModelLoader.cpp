@@ -1021,7 +1021,6 @@ Error PyTorchModelLoader::loadNodes(const torch::jit::Graph &graph) {
   // Nodes are topologically sorted.
   for (const auto &node : graph.nodes()) {
     const auto kind = node->kind();
-
     // prim::GetAttr is loaded separately.
     if (kind == torch::jit::prim::GetAttr) {
       continue;
@@ -1207,14 +1206,13 @@ PyTorchModelLoader::loadQuantizedConvImpl(const torch::jit::Node *ptNode,
       c10::Dispatcher::singleton().findSchema({"quantized::conv2d_unpack", ""});
   CHECK(op.has_value());
   auto unpackedParams = callOp(*op, *ptTensor);
-  const at::Tensor ptWeightTensor = unpackedParams[0].toTensor();
-  const c10::optional<at::Tensor> ptBiasTensor =
+  const at::Tensor ptWeightTensor = unpackedParams[0].toTensor().contiguous();
+
+  const c10::optional<at::Tensor> ptBiasTensorTmp =
       unpackedParams[1].toOptional<at::Tensor>();
 
-  // if groups == 1 it is regular conv
   bool isGroupwiseQuantized = ptWeightTensor.is_quantized() &&
                               ptWeightTensor.qscheme() == at::kPerChannelAffine;
-  isGroupwiseQuantized &= (groups > 1);
 
   // unpacked weights
   auto weightTensor = ptTensorToGlowTensor(ptWeightTensor);
@@ -1222,6 +1220,7 @@ PyTorchModelLoader::loadQuantizedConvImpl(const torch::jit::Node *ptNode,
   weightTensor.transpose(&weightTensorTransposed, NCHW2NHWC);
   glow::Constant *weightConstant = F_.getParent()->createConstant(
       "quantized_conv2d_weights", std::move(weightTensorTransposed));
+  weightConstant->ensureIsOwned();
   auto weight = weightConstant->getOutput();
   weight = rescaleUIntToInt(weight);
 
@@ -1229,8 +1228,9 @@ PyTorchModelLoader::loadQuantizedConvImpl(const torch::jit::Node *ptNode,
   glow::Tensor biasTensor;
   glow::NodeValue bias;
   glow::ShapeNHWC weightShape(weight.dims());
-  if (ptBiasTensor.has_value()) {
-    biasTensor = ptTensorToGlowTensor(ptBiasTensor.value());
+  if (ptBiasTensorTmp.has_value()) {
+    auto ptBiasTensor = ptBiasTensorTmp.value().contiguous();
+    biasTensor = ptTensorToGlowTensor(ptBiasTensor);
   } else {
     biasTensor = glow::Tensor(glow::ElemKind::FloatTy, {weightShape.n});
     biasTensor.zero();
@@ -1452,8 +1452,8 @@ Error PyTorchModelLoader::loadQuantizedLinear(const torch::jit::Node *ptNode) {
       c10::Dispatcher::singleton().findSchema({"quantized::linear_unpack", ""});
   CHECK(op.has_value());
   auto unpackedParams = callOp(*op, *ptTensor);
-  const at::Tensor ptWeightTensor = unpackedParams[0].toTensor();
-  const c10::optional<at::Tensor> ptBiasTensor =
+  const at::Tensor ptWeightTensor = unpackedParams[0].toTensor().contiguous();
+  const c10::optional<at::Tensor> ptBiasTensorTmp =
       unpackedParams[1].toOptional<at::Tensor>();
 
   bool isRowwiseQuantized = ptWeightTensor.is_quantized() &&
@@ -1469,8 +1469,9 @@ Error PyTorchModelLoader::loadQuantizedLinear(const torch::jit::Node *ptNode) {
 
   // unpacked bias
   glow::Tensor biasTensor;
-  if (ptBiasTensor.has_value()) {
-    biasTensor = ptTensorToGlowTensor(ptBiasTensor.value());
+  if (ptBiasTensorTmp.has_value()) {
+    auto ptBiasTensor = ptBiasTensorTmp.value().contiguous();
+    biasTensor = ptTensorToGlowTensor(ptBiasTensor);
   } else {
     biasTensor = glow::Tensor(glow::ElemKind::FloatTy, {weight.dims()[1]});
     biasTensor.zero();
@@ -2328,14 +2329,16 @@ Error PyTorchModelLoader::loadQuantizedConvRelu(
     const torch::jit::Node *ptNode) {
   auto outputs = ptNode->outputs();
   glow::NodeValue output;
-  ASSIGN_VALUE_OR_RETURN_ERR(output, loadQuantizedConvImpl(ptNode, true));
+  ASSIGN_VALUE_OR_RETURN_ERR(output,
+                             loadQuantizedConvImpl(ptNode, true /* isRelu */));
   return addValueMapping(outputs[0], rescaleIntToUint(output));
 }
 
 Error PyTorchModelLoader::loadQuantizedConv(const torch::jit::Node *ptNode) {
   auto outputs = ptNode->outputs();
   glow::NodeValue output;
-  ASSIGN_VALUE_OR_RETURN_ERR(output, loadQuantizedConvImpl(ptNode, true));
+  ASSIGN_VALUE_OR_RETURN_ERR(output,
+                             loadQuantizedConvImpl(ptNode, false /* isRelu */));
   return addValueMapping(outputs[0], rescaleIntToUint(output));
 }
 

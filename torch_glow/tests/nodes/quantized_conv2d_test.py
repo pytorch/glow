@@ -87,25 +87,32 @@ class TestQuantizedConv2d(unittest.TestCase):
             },
         )
 
-    @unittest.skip(reason="accuracy between glow & pytorch")
-    def test_quantized_conv2d_nonfunctional(self):
-        """Basic test of the PyTorch quantized conv2d Node with external quantized
-        input on Glow."""
+    def test_quantized_conv2d_packed_channelwise(self):
+        """Basic test of PyTorch quantize::conv2d Node with packed channelwise weights on Glow."""
 
-        def test_f(a):
-            q = torch.nn.quantized.Quantize(1 / 16, 0, torch.quint8)
-            dq = torch.nn.quantized.DeQuantize()
-            conv = torch.nn.quantized.Conv2d(1, 1, [2, 2])
-            return dq(conv(q(a)))
+        with torch.no_grad():
+            x = torch.tensor(range(64), dtype=torch.float) - 32
+            x = x.reshape([1, 4, 4, 4])
 
-        x = torch.tensor([[[[5.0, 6.0], [7.0, 8.0]]]])
+            conv = torch.nn.Conv2d(4, 2, [2, 2], groups=1)
+            conv.weight.set_(torch.arange(32,
+                                          dtype=torch.float).reshape([2, 4, 2, 2])-10)
+            conv.bias.data.random_(-5, 5)
 
-        jitVsGlow(
-            test_f,
-            x,
-            expected_fused_ops={
-                "aten::quantize_per_tensor",
-                "glow::unpacked_quantized_conv2d",
-                "aten::dequantize",
-            },
-        )
+            model = torch.quantization.QuantWrapper(conv)
+            model.qconfig = torch.quantization.get_default_qconfig('fbgemm')
+
+            torch.quantization.prepare(model, inplace=True)
+            # Calibration
+            model.forward(x)
+            torch.quantization.convert(model, inplace=True)
+
+            jitVsGlow(
+                model,
+                x,
+                expected_fused_ops={
+                    "aten::quantize_per_tensor",
+                    "quantized::conv2d",
+                    "aten::dequantize",
+                },
+            )

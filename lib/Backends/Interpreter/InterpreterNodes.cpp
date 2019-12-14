@@ -643,14 +643,13 @@ void BoundInterpreterFunction::fwdChannelwiseQuantizedConvolutionInst(
     // For each group of input channels:
     for (dim_t g = 0; g < group; g++) {
 
-      // get groupwise qparams params
-      int32_t filterOffset = offsetsW.at(g);
-      float filterScale = scalesW.at(g);
-      float matMulScale = inScale * filterScale;
-
       // For each output channel in the group:
       for (dim_t d = g * outCperG; d < (g + 1) * outCperG; d++) {
 
+        // get channelwise qparams params
+        int32_t filterOffset = offsetsW.at(d);
+        float filterScale = scalesW.at(d);
+        float matMulScale = inScale * filterScale;
         // For each convolution 'jump' in the input tensor:
         sdim_t x = -sdim_t(pdim.top);
         for (dim_t ax = 0; ax < odim.h; x += sdim.height, ax++) {
