@@ -27,8 +27,6 @@
 
 namespace glow {
 
-bool GlowCompilePyTorchModule = false;
-
 namespace {
 
 static int setGraphExecutorToLegacy() {
