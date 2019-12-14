@@ -128,8 +128,9 @@ Error NNPIDeviceManager::init() {
     if (deviceOptions_.enabledDeviceTraceing) {
       deviceTracing_ = NNPIDeviceTracing::getForDevice(deviceId_);
     }
-    if (GlowNNPIMemory == 0 && deviceOptions_.deviceMemory == 0) {
-      // Todo: enable once nnpiDeviceGetInfo changes are implemented.
+  }
+  if (GlowNNPIMemory == 0 && deviceOptions_.deviceMemory == 0) {
+    // Todo: enable once nnpiDeviceGetInfo changes are implemented.
 #if 0
       NNPIDeviceInfo deviceInfo;
       LOG_NNPI_INF_ERROR_RETURN_LLVMERROR(
@@ -138,11 +139,10 @@ Error NNPIDeviceManager::init() {
       maxMemoryBytes_ = static_cast<uint64_t>(deviceInfo.totalMemory) * KB;
       // Todo: sum protected and un protected.
 #endif
-    } else if (GlowNNPIMemory > 0) {
-      maxMemoryBytes_ = static_cast<uint64_t>(GlowNNPIMemory) * KB;
-    } else {
-      maxMemoryBytes_ = static_cast<uint64_t>(deviceOptions_.deviceMemory) * KB;
-    }
+  } else if (GlowNNPIMemory > 0) {
+    maxMemoryBytes_ = static_cast<uint64_t>(GlowNNPIMemory) * KB;
+  } else {
+    maxMemoryBytes_ = static_cast<uint64_t>(deviceOptions_.deviceMemory) * KB;
   }
 
   runIdentifier_ = 0;
