@@ -31,11 +31,16 @@ namespace glow {
 /// Therefore, we can make scale_1 == scale_2, and offset_1 = offset2 - 128
 const int32_t OFFSETSHIFT = 128;
 
-extern bool GlowCompilePyTorchModule;
 /// Various settings to be used by code that loads PyTorch models. There should
 /// only be one of these and it should be obtained by calling
 /// getPyTorchLoaderSettings().
 struct PyTorchLoaderSettings {
+  /// This should be used with CachingGraphRunner::warmCache. When this flag is
+  /// enabled, it assumes the glow graph is compiled ahead of time instead of
+  /// at PyTorch JIT runtime. And the registered glow operator will run
+  /// the precompiled results directly.
+  bool preCompilePyTorchModule = false;
+
   /// Whether or not run the custom pass that fuses jit nodes into a glow node.
   bool fusionPassEnabled = false;
 
