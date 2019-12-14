@@ -5404,44 +5404,48 @@ TEST_P(OperatorTest, GroupwiseQuantizedConvolution) {
   CHECK_IF_ENABLED();
 
   constexpr size_t groups = 2;
+  constexpr size_t output_channel = 4;
 
   auto *input =
-      mod_.createPlaceholder(ElemKind::FloatTy, {1, 2, 1, 8}, "input", false);
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 2, 3, 2}, "input", false);
   auto IH = bindings_.allocate(input)->getHandle<float>();
-  for (size_t i = 0; i < 2 * 8; i++) {
+  for (size_t i = 0; i < 2 * 3 * 2; i++) {
     IH.raw(i) = i + 1;
   }
 
-  auto *qInTy = mod_.uniqueType(ElemKind::Int8QTy, {1, 2, 1, 8}, 1.0, 0);
+  auto *qInTy = mod_.uniqueType(ElemKind::Int8QTy, {1, 2, 3, 2}, 1.0, 0);
   auto *qInput = F_->createQuantize("qInput", input, qInTy);
 
-  auto filterT = Tensor(ElemKind::Int8QTy, {6, 1, 1, 4}, 1.0, 0);
-  for (dim_t i = 0; i < 6; i++) {
-    for (dim_t j = 0; j < 4; j++) {
-      filterT.getHandle<int8_t>().at({i, 0, 0, j}) = (i % 2) + 1;
+  auto filterT = Tensor(ElemKind::Int8QTy, {4, 2, 1, 1}, 1.0, 0);
+  for (dim_t i = 0; i < 4; i++) {
+    for (dim_t j = 0; j < 2; j++) {
+      for (dim_t k = 0; k < 1; k++) {
+        for (dim_t l = 0; l < 1; l++) {
+          filterT.getHandle<int8_t>().at({i, j, k, l}) = j + 1;
+        }
+      }
     }
   }
   auto *filter = mod_.createConstant("filter", std::move(filterT));
 
-  auto biasT = Tensor(ElemKind::FloatTy, {6});
+  auto biasT = Tensor(ElemKind::FloatTy, {4});
   biasT.zero();
   auto *bias = mod_.createConstant("bias", std::move(biasT));
 
-  auto scalesT = Tensor(ElemKind::FloatTy, {groups});
+  auto scalesT = Tensor(ElemKind::FloatTy, {output_channel});
   for (size_t i = 0; i < scalesT.size(); i++) {
     scalesT.getHandle<float>().raw(i) = 1;
   }
   auto *scales = mod_.createConstant("scales", std::move(scalesT));
 
-  auto offsetsT = Tensor(ElemKind::Int32ITy, {groups});
+  auto offsetsT = Tensor(ElemKind::Int32ITy, {output_channel});
   offsetsT.zero();
   auto *offsets = mod_.createConstant("offsets", std::move(offsetsT));
 
-  auto *outTy = mod_.uniqueType(ElemKind::Int8QTy, {1, 2, 1, 6}, 1.0, 0);
-
+  auto *outTy = mod_.uniqueType(ElemKind::Int8QTy, {1, 1, 3, 4}, 1.0, 0);
   ChannelwiseQuantizedConvolutionNode *CQC = F_->createChannelwiseQuantizedConv(
-      "groupwiseQuantizedConv", qInput, filter, bias, scales, offsets, outTy,
-      {1, 1}, {1, 1}, {0, 0, 0, 0}, groups);
+      "channelwiseQuantizedConv", qInput, filter, bias, scales, offsets, outTy,
+      {2, 1}, {1, 1}, {0, 0, 0, 0}, groups);
 
   DequantizeNode *dq = F_->createDequantize("dequantize", CQC);
   SaveNode *S = F_->createSave("save", dq);
@@ -5455,22 +5459,21 @@ TEST_P(OperatorTest, GroupwiseQuantizedConvolution) {
 
   auto result = bindings_.get(S->getPlaceholder())->getHandle();
 
-  std::vector<dim_t> expectedDims = {1, 2, 1, 6};
+  std::vector<dim_t> expectedDims = {1, 1, 3, 4};
   ASSERT_TRUE(result.dims().vec() == expectedDims);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 0, 0}), 15);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 0, 1}), 15);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 0, 2}), 18);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 0, 3}), 18);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 1, 0}), 21);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 1, 1}), 21);
 
-  EXPECT_FLOAT_EQ(result.at({0, 0, 0, 0}), (1 + 2 + 3 + 4) * 1);
-  EXPECT_FLOAT_EQ(result.at({0, 0, 0, 1}), (1 + 2 + 3 + 4) * 2);
-  EXPECT_FLOAT_EQ(result.at({0, 0, 0, 2}), (1 + 2 + 3 + 4) * 1);
-  EXPECT_FLOAT_EQ(result.at({0, 0, 0, 3}), (5 + 6 + 7 + 8) * 2);
-  EXPECT_FLOAT_EQ(result.at({0, 0, 0, 4}), (5 + 6 + 7 + 8) * 1);
-  EXPECT_FLOAT_EQ(result.at({0, 0, 0, 5}), (5 + 6 + 7 + 8) * 2);
-
-  EXPECT_FLOAT_EQ(result.at({0, 1, 0, 0}), (9 + 10 + 11 + 12) * 1);
-  EXPECT_FLOAT_EQ(result.at({0, 1, 0, 1}), (9 + 10 + 11 + 12) * 2);
-  EXPECT_FLOAT_EQ(result.at({0, 1, 0, 2}), (9 + 10 + 11 + 12) * 1);
-  EXPECT_FLOAT_EQ(result.at({0, 1, 0, 3}), (13 + 14 + 15 + 16) * 2);
-  EXPECT_FLOAT_EQ(result.at({0, 1, 0, 4}), (13 + 14 + 15 + 16) * 1);
-  EXPECT_FLOAT_EQ(result.at({0, 1, 0, 5}), (13 + 14 + 15 + 16) * 2);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 1, 2}), 24);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 1, 3}), 24);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 2, 0}), 27);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 2, 1}), 27);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 2, 2}), 30);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 2, 3}), 30);
 }
 
 TEST_P(OperatorTest, DilatedConvolution) {

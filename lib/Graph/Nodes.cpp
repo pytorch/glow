@@ -519,12 +519,12 @@ bool ChannelwiseQuantizedConvolutionNode::verify() const {
                                getScales().dims().size(), size_t(1), this);
 
   // check qparam sizes
-  isValid &=
-      expectCompareTrue("There must be one filter offset qparam per group",
-                        getOffsets().dims()[0], dim_t(getGroup()), this);
-  isValid &=
-      expectCompareTrue("There must be one filter scale qparam per group",
-                        getScales().dims()[0], dim_t(getGroup()), this);
+  isValid &= expectCompareTrue(
+      "There must be one filter offset qparam per output channel",
+      getOffsets().dims()[0], dim_t(getResult().dims()[3]), this);
+  isValid &= expectCompareTrue(
+      "There must be one filter scale qparam per output channel",
+      getScales().dims()[0], dim_t(getResult().dims()[3]), this);
   return isValid;
 }
 
