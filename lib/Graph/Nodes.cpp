@@ -1270,7 +1270,8 @@ bool RowwiseQuantizedSparseLengthsWeightedSumNode::verify() const {
 
 static bool verifyFusedRowwiseQuantizedSparseLengthsSum(
     NodeValue result, NodeValue data, NodeValue indices, NodeValue lengths,
-    NodeValue weights, bool useFP16Accumulation) {
+    NodeValue weights, bool useFP16Accumulation,
+    bool isEmbeddingBagByteRowwiseOffsets = false) {
   const Node *parent = result.getNode();
   bool isValid = expectCompareTrue(
       "Input data must be Fused Quantized type",
@@ -1287,7 +1288,14 @@ static bool verifyFusedRowwiseQuantizedSparseLengthsSum(
         result.getType()->getElementType(), ElemKind::Float16Ty, parent);
   }
   isValid &= checkType(indices, IndexElemKind, parent);
-  isValid &= checkType(lengths, ElemKind::Int32ITy, parent);
+  // For EmbeddingBagByteRowwiseOffsets lengths are really offsets and should be
+  // Int64ITy.
+  if (isEmbeddingBagByteRowwiseOffsets) {
+    isValid &= checkType(lengths, ElemKind::Int64ITy, parent);
+  } else {
+    isValid &= checkType(lengths, ElemKind::Int32ITy, parent);
+  }
+
   isValid &= expectCompareTrue("Indices must be a 1D vector",
                                indices.dims().size(), size_t(1), parent);
   isValid &= expectCompareTrue("Lengths must be a 1D vector",
@@ -1327,7 +1335,7 @@ static bool verifyFusedRowwiseQuantizedSparseLengthsSum(
 bool EmbeddingBagByteRowwiseOffsetsNode::verify() const {
   return verifyFusedRowwiseQuantizedSparseLengthsSum(
       getResult(), getData(), getIndices(), getOffsets(), getWeights(),
-      getUseFP16Accumulation());
+      getUseFP16Accumulation(), /*isEmbeddingBagByteRowwiseOffsets*/ true);
 }
 
 bool FusedRowwiseQuantizedSparseLengthsWeightedSumNode::verify() const {

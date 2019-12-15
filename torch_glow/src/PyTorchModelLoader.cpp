@@ -406,6 +406,30 @@ Expected<int64_t> getPositiveIndex(int64_t index, int64_t dimSize) {
   return index >= 0 ? index : dimSize + index;
 }
 
+// TODO: replace this with PyTorch's cpp_custom_type_hack::isa
+/// \returns true if output of \p node is used only by a packed quantized node.
+bool isPackedQParamNode(const torch::jit::Node *node) {
+  static std::unordered_set<torch::jit::Symbol> packedQuantNodeKinds = {
+      torch::jit::Symbol::fromQualString("quantized::linear"),
+      torch::jit::Symbol::fromQualString("quantized::conv2d"),
+      torch::jit::Symbol::fromQualString("quantized::conv2d_relu")};
+
+  const auto uses = node->output()->uses();
+  if (uses.empty()) {
+    return false;
+  }
+
+  const auto userKind = uses[0].user->kind();
+
+  if (packedQuantNodeKinds.count(userKind)) {
+    DCHECK_EQ(uses.size(), 1) << "Expected packed quantization parameters to "
+                                 "only be used by one node";
+    return true;
+  }
+
+  return false;
+}
+
 /// Indexes of aten::_convolution inputs.
 struct ConvInputs {
   enum {
@@ -742,7 +766,6 @@ PyTorchModelLoader::getSymbolsMapping() {
       {{"aten::gelu"}, &PyTorchModelLoader::loadGelu, {}},
       {{"aten::tanh", "aten::tanh_"}, &PyTorchModelLoader::loadTanh, {}},
       {{"aten::t", "aten::t_"}, &PyTorchModelLoader::loadT, {}},
-      {{"aten::to"}, &PyTorchModelLoader::loadTo, {}},
       {{"aten::permute"}, &PyTorchModelLoader::loadPermute, {}},
       {{"aten::transpose", "aten::transpose_"},
        &PyTorchModelLoader::loadTranspose,
@@ -1868,8 +1891,14 @@ Error PyTorchModelLoader::loadListConstruct(const torch::jit::Node *ptNode) {
 Error PyTorchModelLoader::loadFusedConcat(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
-  // Concat op require at least 2 inputs to be concatenated.
-  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, -2, outputs, 1));
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, -1, outputs, 1));
+
+  // In the case of a single input, just return it.
+  if (inputs.size() == 1) {
+    glow::NodeValue input;
+    ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
+    return addValueMapping(outputs[0], input);
+  }
 
   int64_t dim = ptNode->i(at::attr::dim);
 
@@ -1892,8 +1921,14 @@ Error PyTorchModelLoader::loadFusedConcat(const torch::jit::Node *ptNode) {
 Error PyTorchModelLoader::loadFusedStack(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
-  // Stack op require at least 2 inputs to be concatenated.
-  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, -2, outputs, 1));
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, -1, outputs, 1));
+
+  // In the case of a single input, just return it.
+  if (inputs.size() == 1) {
+    glow::NodeValue input;
+    ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
+    return addValueMapping(outputs[0], input);
+  }
 
   int64_t dim = ptNode->i(at::attr::dim);
 
@@ -1948,38 +1983,41 @@ Error PyTorchModelLoader::loadReshape(const torch::jit::Node *ptNode) {
   ASSIGN_VALUE_OR_RETURN_ERR(
       input, getGlowNodeValueForValue(inputs[ReshapeInputs::input]));
 
-  std::vector<int64_t> *shape;
-  ASSIGN_VALUE_OR_RETURN_ERR(shape, iValToIntList(getGlowIValueForValue(
-                                        inputs[ReshapeInputs::shape])));
+  std::vector<int64_t> *shapeOrignal;
+  ASSIGN_VALUE_OR_RETURN_ERR(shapeOrignal, iValToIntList(getGlowIValueForValue(
+                                               inputs[ReshapeInputs::shape])));
 
-  int64_t totalDims = 1;
-  for (size_t dim : input.dims()) {
-    totalDims *= dim;
-  }
+  // Copy shape so we can modify it.
+  std::vector<int64_t> shape = *shapeOrignal;
 
-  std::vector<glow::dim_t> glowShape;
-  for (size_t i = 0, e = shape->size(); i < e; ++i) {
-    int64_t dim = (*shape)[i];
+  // Get total size of input.
+  size_t inputTotalDims = input.getType()->size();
 
-    RETURN_ERR_IF_NOT(dim >= 1 || dim == -1,
-                      "Only positive values and -1 allowed in shape");
-
-    if (dim == -1) {
-      RETURN_ERR_IF_NOT(i == e - 1,
-                        "-1 in shape only allowed in last position for now.");
-
-      dim = totalDims;
+  // Get total size of shape, count -1 as 1, store index of -1 if found.
+  int64_t negOneIndex = -1;
+  size_t shapeTotalDims = 1;
+  for (size_t i = 0; i < shape.size(); ++i) {
+    int64_t val = shape[i];
+    if (val > 0) {
+      shapeTotalDims *= val;
+    } else if (val == -1) {
+      RETURN_ERR_IF_NOT(negOneIndex == -1,
+                        "At most one negative value allowed in shape");
+      negOneIndex = i;
+    } else {
+      return MAKE_ERR(
+          strFormat("Found an invalid shape input value: % " PRId64, val));
     }
-
-    totalDims /= dim;
-
-    glowShape.push_back(dim);
   }
 
-  RETURN_ERR_IF_NOT(totalDims == 1, "Expect reshape to preserve total size.");
+  // If there was a negative index, replace it with the remaining dims in input.
+  if (negOneIndex >= 0) {
+    shape[negOneIndex] = inputTotalDims / shapeTotalDims;
+  }
 
-  return addValueMapping(outputs[0],
-                         F_.createReshape("reshape", input, glowShape));
+  return addValueMapping(
+      outputs[0],
+      F_.createReshape("reshape", input, castVector<size_t>(shape)));
 }
 
 Error PyTorchModelLoader::loadRelu(const torch::jit::Node *ptNode) {
@@ -3086,14 +3124,21 @@ Error PyTorchModelLoader::loadFlatten(const torch::jit::Node *ptNode) {
       in, getGlowNodeValueForValue(inputs[FlattenInputs::input]));
   in = rescaleUIntToInt(in);
 
+  int64_t startDimRaw;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      startDimRaw,
+      iValToInt(getGlowIValueForValue(inputs[FlattenInputs::start_dim])));
   int64_t startDim;
-  ASSIGN_VALUE_OR_RETURN_ERR(startDim, iValToInt(getGlowIValueForValue(
-                                           inputs[FlattenInputs::start_dim])));
+  ASSIGN_VALUE_OR_RETURN_ERR(startDim,
+                             getPositiveIndex(startDimRaw, in.dims().size()));
+
+  int64_t endDimRaw;
+  ASSIGN_VALUE_OR_RETURN_ERR(endDimRaw, iValToInt(getGlowIValueForValue(
+                                            inputs[FlattenInputs::end_dim])));
 
   int64_t endDim;
-  ASSIGN_VALUE_OR_RETURN_ERR(
-      endDim, iValToInt(getGlowIValueForValue(inputs[FlattenInputs::end_dim])));
-  RETURN_ERR_IF_NOT(endDim == -1, "only -1 value for end_dim is supported.");
+  ASSIGN_VALUE_OR_RETURN_ERR(endDim,
+                             getPositiveIndex(endDimRaw, in.dims().size()));
 
   auto xDim = glow::flattenCdr(in.dims(), startDim);
   auto *glowNode = F_.createReshape("flatten", in, {xDim.first, xDim.second});
@@ -3246,6 +3291,15 @@ Error PyTorchModelLoader::loadEmbeddingBag(const torch::jit::Node *ptNode) {
   ASSIGN_VALUE_OR_RETURN_ERR(
       offsets, getGlowNodeValueForValue(inputs[EmbeddingBagInputs::offsets]));
 
+  // If no indices are provided, replace the op with a zero Constant.
+  if (indices.dims()[0] == 0) {
+    glow::Tensor t(ElemKind::FloatTy, {offsets.dims()[0], weight.dims()[1]});
+    t.zero();
+    glow::Constant *glowConstant =
+        F_.getParent()->createConstant("EmptyEmbeddingBag", std::move(t));
+    return addValueMapping(outputs[0], glowConstant->getOutput());
+  }
+
   glow::NodeValue perSampleWeights = loadNodeValueOrCreateBroadcastedConstant(
       inputs[EmbeddingBagInputs::per_sample_weights], "EmbeddingBag.ones",
       glow::Type(weight.getElementType(), {indices.dims()[0]}), 1.0);
@@ -3267,8 +3321,6 @@ Error PyTorchModelLoader::loadEmbeddingBag(const torch::jit::Node *ptNode) {
   bool sparse;
   ASSIGN_VALUE_OR_RETURN_ERR(sparse, iValToBool(getGlowIValueForValue(
                                          inputs[EmbeddingBagInputs::sparse])));
-
-  RETURN_ERR_IF_NOT(sparse == false, "Currently only support sparse='false'");
 
   auto *EB = F_.createEmbeddingBag("EmbeddingBag", weight, perSampleWeights,
                                    indices, offsets);
@@ -3295,24 +3347,6 @@ Error PyTorchModelLoader::loadEmbeddingBagByteRowwiseOffsets(
       offsets, getGlowNodeValueForValue(
                    inputs[EmbeddingBagByteRowwiseOffsetsInputs::offsets]));
 
-  glow::NodeValue perSampleWeights = loadNodeValueOrCreateBroadcastedConstant(
-      inputs[EmbeddingBagByteRowwiseOffsetsInputs::per_sample_weights],
-      "EmbeddingBagByteRowwiseOffsets.ones",
-      glow::Type(weight.getElementType(), {indices.dims()[0]}), 1.0);
-
-  glow::Constant *weightConstant =
-      llvm::dyn_cast<glow::Constant>(weight.getNode());
-
-  RETURN_ERR_IF_NOT(weightConstant,
-                    strFormat("Expected Weight to be a Constant but found: %s",
-                              weight.getNode()->getKindName()));
-
-  TypeRef fusedTy = F_.getParent()->uniqueType(ElemKind::UInt8FusedQTy,
-                                               weight.dims(), 0.0, 0);
-
-  weightConstant->setType(Storage::OutputIdx, fusedTy);
-  weightConstant->setPayloadType(fusedTy);
-
   bool scaleGradByFreq;
   ASSIGN_VALUE_OR_RETURN_ERR(
       scaleGradByFreq,
@@ -3335,6 +3369,34 @@ Error PyTorchModelLoader::loadEmbeddingBagByteRowwiseOffsets(
                   inputs[EmbeddingBagByteRowwiseOffsetsInputs::sparse])));
 
   RETURN_ERR_IF_NOT(sparse == false, "Currently only support sparse='false'");
+
+  // If no indices are provided, replace the op with a zero Constant.
+  if (indices.dims()[0] == 0) {
+    glow::Tensor t(ElemKind::FloatTy,
+                   {offsets.dims()[0], weight.dims()[1] - 2 * sizeof(float)});
+    t.zero();
+    glow::Constant *glowConstant = F_.getParent()->createConstant(
+        "EmptyEmbeddingBagByteRowwiseOffsets", std::move(t));
+    return addValueMapping(outputs[0], glowConstant->getOutput());
+  }
+
+  glow::NodeValue perSampleWeights = loadNodeValueOrCreateBroadcastedConstant(
+      inputs[EmbeddingBagByteRowwiseOffsetsInputs::per_sample_weights],
+      "EmbeddingBagByteRowwiseOffsets.ones",
+      glow::Type(ElemKind::FloatTy, {indices.dims()[0]}), 1.0);
+
+  glow::Constant *weightConstant =
+      llvm::dyn_cast<glow::Constant>(weight.getNode());
+
+  RETURN_ERR_IF_NOT(weightConstant,
+                    strFormat("Expected Weight to be a Constant but found: %s",
+                              weight.getNode()->getKindName()));
+
+  TypeRef fusedTy = F_.getParent()->uniqueType(ElemKind::UInt8FusedQTy,
+                                               weight.dims(), 0.0, 0);
+
+  weightConstant->setType(Storage::OutputIdx, fusedTy);
+  weightConstant->setPayloadType(fusedTy);
 
   auto *EB = F_.createEmbeddingBagByteRowwiseOffsets(
       "EmbeddingBagByteRowwiseOffsets", weightConstant->getOutput(),
@@ -3403,7 +3465,7 @@ Error PyTorchModelLoader::loadAttributes(
       // PyTorch Tensor extracted type is kByte
       // indicate it is the address of stored weights of quantized
       // linear or conv.
-      if (ptTensor.scalar_type() == at::kByte) {
+      if (isPackedQParamNode(node)) {
         GlowIValue glowIVal;
         glowIVal.fromPTTensor(ptTensor);
         RETURN_IF_ERR(addValueMapping(outputValue, std::move(glowIVal)));

@@ -7591,14 +7591,13 @@ static void testEmbeddingBagByteRowwiseOffsets(
 
   Placeholder *indices = mod.createPlaceholder(IndexElemKind, {8}, "indices",
                                                /* isTrainable */ false);
-  Placeholder *offsets =
-      mod.createPlaceholder(ElemKind::Int32ITy, {4}, "offsets",
-                            /* isTrainable */ false);
+  Placeholder *offsets = mod.createPlaceholder(IndexElemKind, {4}, "offsets",
+                                               /* isTrainable */ false);
 
   bindings.allocate(indices)->getHandle<sdim_t>() = {
       1, 0, 2, 0, 1, 2, 2, 0,
   };
-  bindings.allocate(offsets)->getHandle<int32_t>() = {
+  bindings.allocate(offsets)->getHandle<sdim_t>() = {
       0,
       3,
       3,

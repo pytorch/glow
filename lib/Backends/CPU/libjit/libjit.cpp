@@ -1473,7 +1473,7 @@ void libjit_fused_rowwise_quantized_sparse_lengths_weighted_sum_f(
 }
 
 void libjit_embedding_bag_byte_rowwise_offsets_f(
-    float *dest, int8_t *data, float *weights, dim_t *indices, int32_t *offsets,
+    float *dest, int8_t *data, float *weights, dim_t *indices, dim_t *offsets,
     dim_t segments, dim_t numIndices, dim_t inLineSize, dim_t outLineSize) {
   memset(dest, 0, segments * outLineSize * sizeof(float));
   for (dim_t i = 0; i < segments; i++) {

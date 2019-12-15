@@ -324,7 +324,7 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
     if (NI.getInElemTy(EmbeddingBagByteRowwiseOffsetsNode::IndicesIdx) !=
             IndexElemKind ||
         NI.getInElemTy(EmbeddingBagByteRowwiseOffsetsNode::OffsetsIdx) !=
-            ElemKind::Int32ITy) {
+            IndexElemKind) {
       return false;
     }
 

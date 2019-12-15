@@ -19,11 +19,18 @@
 
 #include <torch/csrc/jit/ir.h>
 
+#include "PyTorchCommon.h"
+
 namespace glow {
 /// Fuse nodes in \p graph that are supported by glow into a subgraph in a node
 /// with symbol \p kind. NOTE: kind must be registered with jit before calling
 /// this function.
 void glowCustomFuse(std::shared_ptr<torch::jit::Graph> graph, at::Symbol kind);
+
+/// Fuse nodes in \p graph that are supported by glow into a subgraph in Glow
+/// fusion group nodes using the settings in \p settings.
+void glowCustomFuse(std::shared_ptr<torch::jit::Graph> graph,
+                    const PyTorchLoaderSettings &settings);
 
 /// Fuse nodes in \p graph that are supported by glow into a subgraph in Glow
 /// fusion group nodes.

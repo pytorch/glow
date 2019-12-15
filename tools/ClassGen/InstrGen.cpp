@@ -366,8 +366,7 @@ int main(int argc, char **argv) {
       .addMember(MemberType::Boolean, "UseFP16Accumulation")
       .autoIRGen()
       .autoVerify(VerifyKind::SameElementType, {"Indices", "IndexElemKind"})
-      .autoVerify(VerifyKind::SameElementType,
-                  {"Offsets", "ElemKind::Int32ITy"})
+      .autoVerify(VerifyKind::SameElementType, {"Offsets", "IndexElemKind"})
       .autoVerify(VerifyKind::SameShape, {"Weights", "Indices"});
 
   BB.newInstr("LengthsToRanges")
