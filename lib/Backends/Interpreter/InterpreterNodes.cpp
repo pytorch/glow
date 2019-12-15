@@ -3550,7 +3550,7 @@ void BoundInterpreterFunction::fwdEmbeddingBagByteRowwiseOffsetsImpl(
   out->zero();
 
   auto IH = indices->getHandle<sdim_t>();
-  auto OFFH = offsets->getHandle<int32_t>();
+  auto OFFH = offsets->getHandle<sdim_t>();
 
   dim_t segments = offsets->dims()[0];
   dim_t numIndices = indices->dims()[0];

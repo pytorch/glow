@@ -292,7 +292,8 @@ Error GlowIValue::fromIValue(const at::IValue &ival) {
     }
     fromTuple(std::move(tuple));
   } else {
-    RETURN_ERR("Encountered unhandled IValue type");
+    RETURN_ERR(strFormat("Encountered unhandled IValue type: %s",
+                         ival.tagKind().data()));
   }
   return Error::success();
 }

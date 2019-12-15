@@ -316,7 +316,7 @@ bool CPUBackend::isOpSupported(const NodeInfo &NI) const {
            (NI.getInElemTy(EmbeddingBagByteRowwiseOffsetsNode::IndicesIdx) ==
             IndexElemKind) &&
            (NI.getInElemTy(EmbeddingBagByteRowwiseOffsetsNode::OffsetsIdx) ==
-            ElemKind::Int32ITy) &&
+            IndexElemKind) &&
            (NI.getOutElemTy(EmbeddingBagByteRowwiseOffsetsNode::ResultIdx) ==
             ElemKind::FloatTy);
 
