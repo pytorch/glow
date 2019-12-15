@@ -190,6 +190,7 @@ class OCLBackend final : public BackendUsingGlowIR {
 public:
   /// Ctor.
   OCLBackend() = default;
+  OCLBackend(const BackendOptions &) : OCLBackend(){};
 
   /// @name Backend methods.
   /// This is the implementation of the Backend interface.

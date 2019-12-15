@@ -33,16 +33,19 @@ using namespace glow::runtime;
 namespace glow {
 namespace runtime {
 
-DeviceManager *DeviceManager::createDeviceManager(const DeviceConfig &config) {
+DeviceManager *
+DeviceManager::createDeviceManager(const DeviceConfig &config,
+                                   const BackendOptions &backendOptions) {
   std::unique_ptr<Backend> backend(
-      FactoryRegistry<std::string, Backend>::get(config.backendName));
+      FactoryRegistry<std::string, Backend, BackendOptions>::get(
+          config.backendName, backendOptions));
 
   if (backend == nullptr) {
     LOG(ERROR) << "There is no registered backend by name: "
                << config.backendName;
     LOG(ERROR) << "List of all registered backends: ";
     for (const auto &factory :
-         FactoryRegistry<std::string, Backend>::factories()) {
+         FactoryRegistry<std::string, Backend, BackendOptions>::factories()) {
       LOG(ERROR) << factory.first;
     }
 

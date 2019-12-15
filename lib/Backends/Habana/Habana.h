@@ -33,6 +33,7 @@ class HabanaBackend final : public Backend {
 public:
   /// Constructor.
   HabanaBackend() = default;
+  HabanaBackend(const BackendOptions &) : HabanaBackend(){};
 
   /// @name Backend methods.
   /// This is the implementation of the Backend interface.

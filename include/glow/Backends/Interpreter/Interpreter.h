@@ -29,6 +29,7 @@ class Interpreter final : public BackendUsingGlowIR {
 public:
   /// Ctor.
   Interpreter() = default;
+  Interpreter(const BackendOptions &) : Interpreter() {}
 
   /// @name Backend methods.
   /// This is the implementation of the Backend interface.

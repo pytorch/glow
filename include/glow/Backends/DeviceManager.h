@@ -89,7 +89,9 @@ public:
   virtual ~DeviceManager() = default;
 
   /// Create a device manager based on the device config \p config.
-  static DeviceManager *createDeviceManager(const DeviceConfig &config);
+  static DeviceManager *
+  createDeviceManager(const DeviceConfig &config,
+                      const BackendOptions &backendOptions = {});
 
   /// Query the system for the number of devices of a specified kind.
   static unsigned numDevices(llvm::StringRef backendName);

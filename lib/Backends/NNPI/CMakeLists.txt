@@ -127,6 +127,7 @@ target_link_libraries(NNPI
                       CodeGen
                       IR
                       Support
+                      GraphOptimizer
                       ${NNPI_TRANSFORMER_LIB}
                       ${NNPI_INFERENCE_LIB}
                       ${NNPI_MG_LIB}

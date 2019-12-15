@@ -25,7 +25,8 @@ namespace glow {
 class NNPIBackend final : public Backend {
 public:
   /// Ctor.
-  explicit NNPIBackend() = default;
+  NNPIBackend() = default;
+  NNPIBackend(const BackendOptions &) : NNPIBackend(){};
 
   /// @name Backend methods.
   /// This is the implementation of the Backend interface.

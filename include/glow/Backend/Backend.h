@@ -203,8 +203,10 @@ protected:
   void autoInstrument(TraceInfo &traceInfo, IRFunction *IR) const;
 };
 
-/// Create a backend based on the registered backend name \p backendName.
-Backend *createBackend(llvm::StringRef backendName);
+/// Create a backend based on the registered backend name \p backendName with \p
+/// backendOptions.
+Backend *createBackend(llvm::StringRef backendName,
+                       const BackendOptions &backendOptions = {});
 
 // Backends that use Glow low-level IR should inherit from this class. It allows
 // for unit tests to create low-level IR to compile and run.
@@ -218,14 +220,17 @@ public:
 
 /// Perform Backend Factory registration.
 #define REGISTER_GLOW_BACKEND_FACTORY(FactoryName, BackendClass)               \
-  class FactoryName : public BaseFactory<std::string, Backend> {               \
+  class FactoryName                                                            \
+      : public BaseFactory<std::string, Backend, BackendOptions> {             \
   public:                                                                      \
-    Backend *create() override { return new BackendClass(); }                  \
+    Backend *create(const BackendOptions &backendOptions) override {           \
+      return new BackendClass(backendOptions);                                 \
+    }                                                                          \
     std::string getRegistrationKey() const override {                          \
       return BackendClass::getName();                                          \
     }                                                                          \
   };                                                                           \
-  static RegisterFactory<std::string, FactoryName, Backend>                    \
+  static RegisterFactory<std::string, FactoryName, Backend, BackendOptions>    \
       FactoryName##_REGISTERED;
 
 /// The backend name used in Glow quantization profiling.

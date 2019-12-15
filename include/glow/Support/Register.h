@@ -25,11 +25,11 @@ namespace glow {
 /// for static registration of arbitrary classes.
 /// For example, CPUFactory would be responsible for creating CPU backends
 /// registred with "CPU" key.
-template <class Key, class Base> class BaseFactory {
+template <class Key, class Base, class Options> class BaseFactory {
 public:
   virtual ~BaseFactory() = default;
-  /// Create an object of Base type.
-  virtual Base *create() = 0;
+  /// Create an object of Base type with \p options.
+  virtual Base *create(const Options &options) = 0;
   /// Key used for a registered factory.
   virtual Key getRegistrationKey() const = 0;
 };
@@ -37,28 +37,29 @@ public:
 /// General registry for implementation factories.
 /// The registry is templated by the Key class and Base class that a
 /// set of factories inherits from.
-template <class Key, class Base> class FactoryRegistry {
+template <class Key, class Base, class Options> class FactoryRegistry {
 public:
-  using FactoryMap = std::map<Key, BaseFactory<Key, Base> *>;
+  using FactoryMap = std::map<Key, BaseFactory<Key, Base, Options> *>;
 
   /// Register \p factory in a static map.
-  static void registerFactory(BaseFactory<Key, Base> &factory) {
+  static void registerFactory(BaseFactory<Key, Base, Options> &factory) {
     Key registrationKey = factory.getRegistrationKey();
     auto inserted = factories().emplace(registrationKey, &factory);
     assert(inserted.second && "Double registration of base factory");
     (void)inserted;
   }
 
-  /// \returns newly created object from factory keyed by \p key.
-  /// \returns nullptr if there is no factory registered with \p key.
-  static Base *get(const Key &key) {
+  /// \returns newly created object from factory keyed by \p key with \p
+  /// backedOptions as paramerter to the backend. \returns nullptr if there is
+  /// no factory registered with \p key.
+  static Base *get(const Key &key, const Options &options) {
     auto it = factories().find(key);
 
     if (it == factories().end()) {
       return nullptr;
     }
 
-    return it->second->create();
+    return it->second->create(options);
   }
 
   /// \returns all registered factories.
@@ -76,9 +77,12 @@ public:
 /// Example registration:
 /// static Registry::RegisterFactory<
 ///          SpecificKeyType, SpecificFactory, BaseFactory> registered_;
-template <class Key, class Factory, class Base> class RegisterFactory {
+template <class Key, class Factory, class Base, class Options>
+class RegisterFactory {
 public:
-  RegisterFactory() { FactoryRegistry<Key, Base>::registerFactory(factory_); }
+  RegisterFactory() {
+    FactoryRegistry<Key, Base, Options>::registerFactory(factory_);
+  }
 
 private:
   Factory factory_{};
