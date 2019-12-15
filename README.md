@@ -80,7 +80,7 @@ Install the required dependencies using either [Homebrew](https://brew.sh/) or
 
   ```bash
   brew install cmake graphviz libpng ninja protobuf wget glog autopep8
-  brew install llvm@7
+  brew install llvm@8
   ```
 
 If using MacPorts, run:
@@ -200,7 +200,7 @@ installed in `/usr/local/opt`:
   ```bash
   cmake -G Ninja ../glow \
       -DCMAKE_BUILD_TYPE=Debug \
-      -DLLVM_DIR=/usr/local/opt/llvm@7/lib/cmake/llvm
+      -DLLVM_DIR=/usr/local/opt/llvm@8/lib/cmake/llvm
   ```
 
 If LLVM is not available on your system you'll need to build it manually.  Run
