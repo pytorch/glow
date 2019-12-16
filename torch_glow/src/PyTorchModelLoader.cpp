@@ -2016,8 +2016,7 @@ Error PyTorchModelLoader::loadReshape(const torch::jit::Node *ptNode) {
   }
 
   return addValueMapping(
-      outputs[0],
-      F_.createReshape("reshape", input, castVector<size_t>(shape)));
+      outputs[0], F_.createReshape("reshape", input, castVector<dim_t>(shape)));
 }
 
 Error PyTorchModelLoader::loadRelu(const torch::jit::Node *ptNode) {
