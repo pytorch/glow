@@ -53,7 +53,7 @@ NNPIDeviceManager::NNPIDeviceManager(const DeviceConfig &config,
                                      unsigned numInferenceWorkers)
     : DeviceManager(config), numWorkersPerFunction_(numInferenceWorkers),
       deviceId_(config_.deviceID), adapter_(NNPI_INVALID_NNPIHANDLE),
-      device_(NNPI_INVALID_NNPIHANDLE), deviceOptions_(&config_.parameters) {
+      device_(NNPI_INVALID_NNPIHANDLE), deviceOptions_(config_.parameters) {
   if (deviceOptions_.showVars) {
     LOG(INFO) << deviceOptions_.dumpStatus();
   }
@@ -86,13 +86,15 @@ NNPIDeviceManager::~NNPIDeviceManager() {
     });
   }
 
-  if (device_ != NNPI_INVALID_NNPIHANDLE || deviceOptions_.internalTesting) {
+  if (device_ != NNPI_INVALID_NNPIHANDLE ||
+      !deviceOptions_.internalTesting.get().empty()) {
     LOG_NNPI_INF_ERROR(nnpiDeviceContextDestroy(device_),
                        "Failed to destroy NNPI device context");
     device_ = NNPI_INVALID_NNPIHANDLE;
   }
 
-  if (adapter_ != NNPI_INVALID_NNPIHANDLE || deviceOptions_.internalTesting) {
+  if (adapter_ != NNPI_INVALID_NNPIHANDLE ||
+      !deviceOptions_.internalTesting.get().empty()) {
     LOG_NNPI_INF_ERROR(nnpiAdapterDestroy(adapter_),
                        "Failed to destroy NNPI adapter");
     adapter_ = NNPI_INVALID_NNPIHANDLE;
@@ -100,7 +102,7 @@ NNPIDeviceManager::~NNPIDeviceManager() {
 }
 
 Error NNPIDeviceManager::init() {
-  if (deviceOptions_.internalTesting) {
+  if (!deviceOptions_.internalTesting.get().empty()) {
     LOG_IF_NOT_RETURN_LLVMERROR(adapter_ == NNPI_INVALID_NNPIHANDLE,
                                 "Invalid NNPI adapter");
     LOG_IF_NOT_RETURN_LLVMERROR(device_ == NNPI_INVALID_NNPIHANDLE,
@@ -122,10 +124,10 @@ Error NNPIDeviceManager::init() {
         nnpiDeviceContextCreate(adapter_, deviceId_, &device_),
         "Failed to create NNPI Device");
     LOG_IF_NOT_RETURN_LLVMERROR(
-        staticPlaceholderContainer_.SetDevice(device_,
-                                              deviceOptions_.internalTesting),
+        staticPlaceholderContainer_.SetDevice(
+            device_, !deviceOptions_.internalTesting.get().empty()),
         "setting device for StaticPlaceholderContainer failed");
-    if (deviceOptions_.enabledDeviceTraceing) {
+    if (deviceOptions_.enabledDeviceTracing) {
       deviceTracing_ = NNPIDeviceTracing::getForDevice(deviceId_);
     }
   }
@@ -263,7 +265,7 @@ uint64_t NNPIDeviceManager::getAvailableMemory() const {
   // Todo: enable once nnpiDeviceGetInfo changes are implemented.
 #if 0
   if (GlowNNPIMemory == 0 && deviceOptions_.deviceMemory == 0 &&
-      (deviceOptions_.useIceT_ || deviceOptions_.inferOnDevice_)) {
+      (deviceOptions_.useIceT || deviceOptions_.inferOnDevice)) {
     NNPIDeviceStatus devStatus;
     nnpiDeviceGetStatus(deviceId_, &devStatus);
     return static_cast<uint64_t>(devStatus.availableMemory) * KB;
@@ -291,7 +293,7 @@ void NNPIDeviceManager::transferStaticPlaceholderToDevice(
   NNPIHostResource hInput;
   NamedResource nr;
   nr = staticPlaceholderContainer_.AcquireDeviceResource(PH, nr);
-  if (!deviceOptions_.internalTesting) {
+  if (deviceOptions_.internalTesting.get().empty()) {
     LOG_AND_FAIL_CALLBACK_IF_NOT(nr.handle != NNPI_INVALID_NNPIHANDLE,
                                  "Failed to acquire device resource", resultCB);
   }

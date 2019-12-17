@@ -19,7 +19,6 @@
 #include "glow/Graph/Nodes.h"
 #include "glow/Optimizer/GraphOptimizerPipeline/Pipeline.h"
 #include "glow/Optimizer/Lower/Lower.h"
-
 #include "llvm/Support/CommandLine.h"
 
 using namespace glow;

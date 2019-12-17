@@ -29,9 +29,9 @@ Error NNPICompiledFunction::updateCompilationConfigFromOptions(
   if (compilationOptions.showVars) {
     LOG(INFO) << compilationOptions.dumpStatus();
   }
-  if (!compilationOptions.customDspKernelsFile.empty()) {
+  if (!compilationOptions.customDspKernelsFile.get().empty()) {
     std::strncpy(config_.customDspKernelsFile,
-                 compilationOptions.customDspKernelsFile.c_str(),
+                 compilationOptions.customDspKernelsFile.get().c_str(),
                  sizeof(config_.customDspKernelsFile));
   }
 
@@ -56,17 +56,17 @@ Error NNPICompiledFunction::updateCompilationConfigFromOptions(
   if (compilationOptions.iceCores > 0) {
     config_.numCoresToUse = static_cast<uint32_t>(compilationOptions.iceCores);
   }
-  if (!compilationOptions.debugCompileConfigFile.empty()) {
+  if (!compilationOptions.debugCompileConfigFile.get().empty()) {
     strncpy(config_.debugConfigFile,
-            compilationOptions.debugCompileConfigFile.c_str(),
+            compilationOptions.debugCompileConfigFile.get().c_str(),
             sizeof(config_.debugConfigFile));
   }
   return Error::success();
 }
 
 Error NNPICompiledFunction::compile(Function *F, const BackendOptions &opts) {
-  NNPICompilationOptions compilationOptions(&opts.backendSpecificOpts);
-  NNPIImporter importer(compilationOptions);
+  compilationOptions_ = NNPICompilationOptions(opts.backendSpecificOpts);
+  NNPIImporter importer(compilationOptions_);
   network_ = importer.importFunction(F, opts);
   LOG_INVALID_HANDLE_RETURN_LLVMERROR(network_, "Failed to import function");
 
@@ -82,17 +82,17 @@ Error NNPICompiledFunction::compile(Function *F, const BackendOptions &opts) {
   LOG_NNPI_ERROR_RETURN_LLVMERROR(nnpiGetDefaultCompilationConfig(&config_),
                                   "Failed NNPI API Read Config");
 
-  auto error = updateCompilationConfigFromOptions(compilationOptions);
+  auto error = updateCompilationConfigFromOptions(compilationOptions_);
   if (error) {
     return error;
   }
 
-  if (compilationOptions.useIceT || compilationOptions.inferOnDevice) {
-    auto filename = compilationOptions.compiledFile;
-    LOG_IF_NOT_RETURN_LLVMERROR(filename.length() < NNPI_MAX_STRING_LEN,
-                                "Bad filename");
+  if (compilationOptions_.useIceT || compilationOptions_.inferOnDevice) {
+    compilationFileName_ = compilationOptions_.compiledFile.get();
+    LOG_IF_NOT_RETURN_LLVMERROR(
+        compilationFileName_.length() < NNPI_MAX_STRING_LEN, "Bad filename");
 
-    if (filename.empty()) // Compile to memory.
+    if (compilationFileName_.empty()) // Compile to memory.
     {
       NNPIStream outFileStream;
       outFileStream.userData = &compiledStream_;
@@ -123,10 +123,11 @@ Error NNPICompiledFunction::compile(Function *F, const BackendOptions &opts) {
     } else // Compile to file.
     {
       LOG_NNPI_ERROR_RETURN_LLVMERROR(
-          nnpiNetworkCompileToFile(network_, &config_, filename.c_str(), NULL),
+          nnpiNetworkCompileToFile(network_, &config_,
+                                   compilationFileName_.c_str(), NULL),
           "Failed NNPI Compile");
     }
-    if (compilationOptions.inferOnDevice) {
+    if (compilationOptions_.inferOnDevice) {
       DBG_MEM_USAGE("NNPICompiledFunction destroy network");
       // NNPINetwork is not needed anymore on the inferfence api path.
       // Once the complied stream is loaded, query on the network can be done

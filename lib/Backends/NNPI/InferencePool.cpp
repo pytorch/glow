@@ -545,7 +545,7 @@ bool InferenceThreadEnv::init(
       const auto PH = staticPlaceholders.at(nr.name);
       nr = staticPlaceholderContainer_->AcquireDeviceResource(PH, nr);
       // Exception for internal testing (ICE-24091).
-      if (!deviceOptions_->internalTesting) {
+      if (deviceOptions_->internalTesting.get().empty()) {
         LOG_AND_RETURN_IF(ERROR, nr.handle == NNPI_INVALID_NNPIHANDLE,
                           "Failed to acquire device resource", false);
       }
@@ -713,7 +713,7 @@ Error InferencePoolEnv::init(
   auto *nnpiFunction = static_cast<NNPICompiledFunction *>(compiledFunction);
   if (deviceOptions_->inferOnDevice) {
     // Create NNPI host network (load compiled binary).
-    auto filename = deviceOptions_->compiledFile;
+    auto filename = nnpiFunction->getCompilationFilename();
     if (filename.empty()) // Create network from memory.
     {
       NNPIHostStream inputStream;
@@ -747,6 +747,11 @@ Error InferencePoolEnv::init(
         nnpiDeviceNetworkCreate(device, hostNetwork_, nullptr, &deviceNetwork_),
         "Failed to create NNPI device network");
     DBG_MEM_USAGE("done nnpiDeviceNetworkCreate");
+    if (nnpiFunction->getCompilationOptions().reserveResources) {
+      LOG_NNPI_INF_ERROR_RETURN_LLVMERROR(
+          nnpiDeviceNetworkReserveExecResources(deviceNetwork_, UINT32_MAX),
+          "Failed to reserve resources for device network");
+    }
   }
 
   // Initialize all thread envs.
