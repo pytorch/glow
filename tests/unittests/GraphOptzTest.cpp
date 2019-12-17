@@ -1472,6 +1472,43 @@ TEST_F(GraphOptz, ZeroArithmetic) {
   checkNumericalEquivalence();
 }
 
+// Similar to ZeroArithmetic, but tests that nodes with multiple results are
+// correctly handled (i.e. that the correct output is selected after optimising
+// away an arithmetic identity).
+TEST_F(GraphOptz, ZeroArithmeticMultiResNode) {
+  auto *input = mod_.createPlaceholder(ElemKind::FloatTy, {10}, "input", true);
+  auto *topK = F_->createTopK("topK", input, /*k=*/5);
+  auto *zero = F_->createSplat("zero", topK->getValues().getType(), 0.);
+  auto *add = F_->createAdd("add", topK->getValues(), zero);
+  auto *sub = F_->createSub("sub", topK->getValues(), zero);
+
+  SaveNode *AS = F_->createSave("ret", add);
+  SaveNode *SS = F_->createSave("ret", sub);
+
+  // There should be 6 nodes: 2 Saves, Add, Sub, Splat and TopK.
+  EXPECT_EQ(F_->getNodes().size(), 6);
+
+  optimizedF_ = optimizeFunction(F_);
+
+  // Now there should only be 3 nodes: TopK and 2 Saves.
+  EXPECT_EQ(optimizedF_->getNodes().size(), 3);
+
+  auto *OAS = findFunctionNodeByName<SaveNode>(optimizedF_, AS->getName());
+  auto *OSS = findFunctionNodeByName<SaveNode>(optimizedF_, SS->getName());
+  auto *OTopK = findFunctionNodeByName<TopKNode>(optimizedF_, topK->getName());
+
+  // Since the operations reprsented by the arithmetic nodes are no-ops,
+  // the input to both SaveNodes should be the Values result of TopKNode.
+  EXPECT_EQ(OAS->getInput(), OTopK->getValues());
+  EXPECT_EQ(OSS->getInput(), OTopK->getValues());
+
+  // Check numerical equivalence.
+  bindings_.allocate(mod_.getPlaceholders());
+  bindings_.get(input)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
+
+  checkNumericalEquivalence();
+}
+
 /// A test that verifies that arithmetic simplification works correctly when
 /// the parents need to be simplified prior to the node itself.
 TEST_F(GraphOptz, ZeroArithmeticParentsMustBeSimplifiedFirst) {
