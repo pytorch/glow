@@ -323,16 +323,44 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
   // device are compiled and then added to their assigned device. If a function
   // is in multiple logical devices it is stored so that it only needs to be
   // compiled once.
+  //
+  // We prioritize logical devices whose functions are all already compiled and
+  // loaded first. This way, we can clean up those functions sooner.
+  std::set<DeviceIDTy> toAssign;
   for (auto &assignment : assignments) {
-    auto logicalDevice = assignment.first;
-    auto physicalDevice = assignment.second;
+    toAssign.insert(assignment.first);
+  }
+
+  while (!toAssign.empty()) {
+    DeviceIDTy next = *toAssign.begin();
+
+    for (auto id : toAssign) {
+      bool hasNewFunctions = false;
+      for (auto &node : logicalDevices[id]) {
+        if (duplicatedFunctions.find(node->name) == duplicatedFunctions.end()) {
+          hasNewFunctions = true;
+          break;
+        }
+      }
+      if (!hasNewFunctions) {
+        // this device has all its function already stored. let's load this one
+        // next.
+        next = id;
+        break;
+      }
+    }
+
+    toAssign.erase(next);
+    auto logicalDevice = next;
+    auto physicalDevice = assignments[logicalDevice];
     auto deviceBackendName = logicalDevices[logicalDevice][0]->backendName;
     FunctionMapTy functionMap;
     // Container for the compiledFunctions for this logicalDevice.
     std::map<std::string, std::unique_ptr<CompiledFunction>> compiledFunctions;
 
     for (auto &node : logicalDevices[logicalDevice]) {
-      // Check if this is a duplicated function that has already been compiled.
+      // Check if this is a duplicated function that has already been
+      // compiled.
       if (duplicatedFunctions.find(node->name) != duplicatedFunctions.end()) {
         functionMap.emplace(node->name, duplicatedFunctions[node->name].get());
         remainingDuplications[node->name] -= 1;
@@ -446,12 +474,11 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
     while (weightName != "") {
       auto PH = module.getPlaceholderByName(weightName);
       if (!PH) {
-        return MAKE_ERR(
-            ErrorValue::ErrorCode::RUNTIME_ERROR,
-            llvm::formatv(
-                "Error loading deferred weight. Name: {0} not found in module.",
-                weightName)
-                .str());
+        return MAKE_ERR(ErrorValue::ErrorCode::RUNTIME_ERROR,
+                        llvm::formatv("Error loading deferred weight. Name: "
+                                      "{0} not found in module.",
+                                      weightName)
+                            .str());
       }
       // Convert the weight if needed.
       auto newTy = PH->getType();
