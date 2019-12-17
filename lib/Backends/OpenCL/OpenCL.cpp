@@ -74,6 +74,14 @@ static const unsigned char kernels_fwd_quantized_conv_cl_src[] = {
 static const size_t kernels_fwd_quantized_conv_cl_src_size =
     sizeof(kernels_fwd_quantized_conv_cl_src);
 
+// Non-local memory using convolution for aggressive compile time
+// specialization.
+static const unsigned char kernels_specialized_no_local_mem_conv_cl_src[] = {
+#include "glow/OpenCL/kernels_specialized_no_local_mem_conv.cl.inc"
+};
+static const size_t kernels_specialized_no_local_mem_conv_cl_src_size =
+    sizeof(kernels_specialized_no_local_mem_conv_cl_src);
+
 static llvm::cl::OptionCategory OpenCLBackendCat("Glow OpenCL Backend Options");
 
 llvm::cl::opt<unsigned>
@@ -88,6 +96,14 @@ llvm::cl::opt<bool> clDoProfile("opencl-profile",
                                 llvm::cl::desc("Profile OpenCL kernels"),
                                 llvm::cl::init(false),
                                 llvm::cl::cat(OpenCLBackendCat));
+
+// Since conv_forward_mem is always specialized, this actually affects only
+// the non-local memory using non-quantized one currently, but can be extended
+// later to cover also the quantized one.
+llvm::cl::opt<bool> clSpecializeConvolution(
+    "opencl-specialize-convolution",
+    llvm::cl::desc("Aggressively specialize convolution kernel launches."),
+    llvm::cl::init(false), llvm::cl::cat(OpenCLBackendCat));
 
 llvm::cl::opt<std::string> clDeviceProgramCacheDir(
     "opencl-program-cache-dir",
@@ -1139,36 +1155,72 @@ Error OpenCLFunction::execute(ExecutionContext *context) {
 
       // This is a naive implementation that parallelizes using three dims:
       // the X and the Y in the output filter.
-      cl_kernel kernel = createKernel(kernelName, program);
-      setKernelArg(kernel, 0, deviceBuffer);
-      auto numArgs = setKernelArgsForBuffers(kernel, I, 1, runtimeBundle_);
-      auto odim = ShapeNHWC(CC->getDest()->getType()->dims());
+      cl_program prog = program;
       auto idim = ShapeNHWC(CC->getSrc()->getType()->dims());
-      auto pads = PaddingTLBR(CC->getPads());
       ShapeHW kdim(CC->getKernels());
       ShapeHW sdim(CC->getStrides());
-      setKernelArg(kernel, numArgs + 1, kdim);
-      setKernelArg(kernel, numArgs + 2, sdim);
-      setKernelArg(kernel, numArgs + 3, pads);
-      setKernelArg(kernel, numArgs + 4, CC->getGroup());
-      setKernelArg(kernel, numArgs + 5, CC->getDilation());
-      setKernelArg(kernel, numArgs + 6, odim);
-      setKernelArg(kernel, numArgs + 7, idim);
-      setKernelArg(kernel, numArgs + 8,
-                   ShapeNHWC(CC->getFilter()->getType()->dims()));
-      if (isQuantized) {
-        auto srcTy = CC->getSrc()->getType();
-        auto destTy = CC->getDest()->getType();
-        auto filterTy = CC->getFilter()->getType();
-        auto biasTy = CC->getBias()->getType();
-        setKernelArg(kernel, numArgs + 9, destTy->getOffset());
-        setKernelArg(kernel, numArgs + 10, destTy->getScale());
-        setKernelArg(kernel, numArgs + 11, srcTy->getOffset());
-        setKernelArg(kernel, numArgs + 12, srcTy->getScale());
-        setKernelArg(kernel, numArgs + 13, filterTy->getOffset());
-        setKernelArg(kernel, numArgs + 14, filterTy->getScale());
-        setKernelArg(kernel, numArgs + 15, biasTy->getOffset());
-        setKernelArg(kernel, numArgs + 16, biasTy->getScale());
+      auto odim = ShapeNHWC(CC->getDest()->getType()->dims());
+      ShapeNHWC kernelSize(CC->getFilter()->getType()->dims());
+      auto pads = PaddingTLBR(CC->getPads());
+
+      const bool specialize = clSpecializeConvolution && !isQuantized;
+      std::string src;
+      if (specialize) {
+        // Specialize the kernel related to Conv node parameters to enable
+        // aggressive constant propagation and other optimizations.
+        std::vector<std::string> options;
+        addIntOption(options, "CONVK_GROUP", CC->getGroup());
+        addIntOption(options, "CONVK_BATCHES", idim.n);
+        addIntOption(options, "CONVK_DILATION", CC->getDilation());
+        addIntOption(options, "CONVK_KERNEL_W", kdim.width);
+        addIntOption(options, "CONVK_KERNEL_H", kdim.height);
+        addIntOption(options, "CONVK_STRIDES_W", sdim.width);
+        addIntOption(options, "CONVK_STRIDES_H", sdim.height);
+        addIntOption(options, "CONVK_IDIM_W", idim.w);
+        addIntOption(options, "CONVK_IDIM_H", idim.h);
+        addIntOption(options, "CONVK_IDIM_C", idim.c);
+        addIntOption(options, "CONVK_ODIM_W", odim.w);
+        addIntOption(options, "CONVK_ODIM_H", odim.h);
+        addIntOption(options, "CONVK_ODIM_C", odim.c);
+        addIntOption(options, "CONVK_PADS_TOP", pads.top);
+        addIntOption(options, "CONVK_PADS_LEFT", pads.left);
+        addIntOption(options, "CONVK_FILTER_W", kernelSize.w);
+        addIntOption(options, "CONVK_FILTER_H", kernelSize.h);
+        addIntOption(options, "CONVK_FILTER_C", kernelSize.c);
+        src.append(reinterpret_cast<const char *>(
+                       kernels_specialized_no_local_mem_conv_cl_src),
+                   kernels_specialized_no_local_mem_conv_cl_src_size);
+        prog = createProgram(src, options, commands);
+      }
+
+      cl_kernel kernel = createKernel(kernelName, prog);
+      setKernelArg(kernel, 0, deviceBuffer);
+      auto numArgs = setKernelArgsForBuffers(kernel, I, 1, runtimeBundle_);
+
+      if (!specialize) {
+        setKernelArg(kernel, numArgs + 1, kdim);
+        setKernelArg(kernel, numArgs + 2, sdim);
+        setKernelArg(kernel, numArgs + 3, pads);
+        setKernelArg(kernel, numArgs + 4, CC->getGroup());
+        setKernelArg(kernel, numArgs + 5, CC->getDilation());
+        setKernelArg(kernel, numArgs + 6, odim);
+        setKernelArg(kernel, numArgs + 7, idim);
+        setKernelArg(kernel, numArgs + 8, kernelSize);
+
+        if (isQuantized) {
+          auto srcTy = CC->getSrc()->getType();
+          auto destTy = CC->getDest()->getType();
+          auto filterTy = CC->getFilter()->getType();
+          auto biasTy = CC->getBias()->getType();
+          setKernelArg(kernel, numArgs + 9, destTy->getOffset());
+          setKernelArg(kernel, numArgs + 10, destTy->getScale());
+          setKernelArg(kernel, numArgs + 11, srcTy->getOffset());
+          setKernelArg(kernel, numArgs + 12, srcTy->getScale());
+          setKernelArg(kernel, numArgs + 13, filterTy->getOffset());
+          setKernelArg(kernel, numArgs + 14, filterTy->getScale());
+          setKernelArg(kernel, numArgs + 15, biasTy->getOffset());
+          setKernelArg(kernel, numArgs + 16, biasTy->getScale());
+        }
       }
 
       // Use a 3D grid where the first dimension is the depth and the second

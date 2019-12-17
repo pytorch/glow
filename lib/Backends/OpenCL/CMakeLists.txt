@@ -24,6 +24,14 @@ add_custom_command(
           "${CMAKE_CURRENT_SOURCE_DIR}/kernels_fwd_conv.cl")
 
 add_custom_command(
+  OUTPUT "${OpenCL_DIR}/kernels_specialized_no_local_mem_conv.cl.inc"
+  COMMAND include-bin
+          "${CMAKE_CURRENT_SOURCE_DIR}/kernels_specialized_no_local_mem_conv.cl"
+          "${OpenCL_DIR}/kernels_specialized_no_local_mem_conv.cl.inc"
+  DEPENDS make_opencl_dir include-bin
+          "${CMAKE_CURRENT_SOURCE_DIR}/kernels_specialized_no_local_mem_conv.cl")
+
+add_custom_command(
   OUTPUT "${OpenCL_DIR}/kernels_fwd_quantized_conv.cl.inc"
   COMMAND include-bin
           "${CMAKE_CURRENT_SOURCE_DIR}/kernels_fwd_quantized_conv.cl"
@@ -35,6 +43,7 @@ add_library(OpenCLBackend
             "${OpenCL_DIR}/kernels.cl.inc"
             "${OpenCL_DIR}/kernels_fwd_conv.cl.inc"
             "${OpenCL_DIR}/kernels_fwd_quantized_conv.cl.inc"
+            "${OpenCL_DIR}/kernels_specialized_no_local_mem_conv.cl.inc"
             OpenCL.cpp
             OpenCLDeviceManager.cpp
             OpenCLFactory.cpp
