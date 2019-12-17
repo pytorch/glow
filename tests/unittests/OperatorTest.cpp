@@ -7866,14 +7866,13 @@ createAndInitRWQSLWSAllSame(glow::PlaceholderBindings &bindings,
       0.2244578,  0.44881952, 0.42696562, 0.33007848, 0.4511249,  0.11568925,
       0.02629679, 0.33864713, 0.42614424};
 
-  Placeholder *indices =
-      mod.createPlaceholder(ElemKind::Int64ITy, {21}, "indices",
-                            /* isTrainable */ false);
+  Placeholder *indices = mod.createPlaceholder(IndexElemKind, {21}, "indices",
+                                               /* isTrainable */ false);
   Placeholder *lengths =
       mod.createPlaceholder(ElemKind::Int32ITy, {2}, "lengths",
                             /* isTrainable */ false);
 
-  bindings.allocate(indices)->getHandle<int64_t>() = {
+  bindings.allocate(indices)->getHandle<sdim_t>() = {
       11, 8, 19, 8, 4, 11, 4, 19, 6, 18, 2, 6, 15, 5, 14, 14, 15, 13, 4, 6, 5,
   };
   bindings.allocate(lengths)->getHandle<int32_t>() = {15, 6};

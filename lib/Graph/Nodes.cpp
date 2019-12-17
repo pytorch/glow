@@ -1291,7 +1291,7 @@ static bool verifyFusedRowwiseQuantizedSparseLengthsSum(
   // For EmbeddingBagByteRowwiseOffsets lengths are really offsets and should be
   // Int64ITy.
   if (isEmbeddingBagByteRowwiseOffsets) {
-    isValid &= checkType(lengths, ElemKind::Int64ITy, parent);
+    isValid &= checkType(lengths, IndexElemKind, parent);
   } else {
     isValid &= checkType(lengths, ElemKind::Int32ITy, parent);
   }
