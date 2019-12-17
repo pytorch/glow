@@ -956,6 +956,23 @@ public:
   }
 };
 
+/// Helper which \returns the flattened 1D offset given \p indices into a tensor
+/// with \p strides.
+inline size_t getFlattenedOffset(llvm::ArrayRef<dim_t> strides,
+                                 llvm::ArrayRef<dim_t> indices) {
+  assert(indices.size() <= strides.size() && "Invalid number of indices");
+  // The loop below can be rewritten using std::inner_product. Unfortunately
+  // std::inner_product does not optimize very well and loops that use this
+  // method don't get vectorized. Don't change this loop without benchmarking
+  // the program on a few compilers.
+  size_t index = 0;
+  for (size_t i = 0, e = indices.size(); i < e; i++) {
+    index += size_t(strides[i]) * size_t(indices[i]);
+  }
+
+  return index;
+}
+
 /// A class that provides indexed access to a tensor. This class has value
 /// semantics and it's copied around. One of the reasons for making this class
 /// value semantics is to allow efficient index calculation that the compiler
@@ -1010,17 +1027,8 @@ public:
   /// padding elements, meaning that it's possible to get an index pointing at
   /// data, added to meet alignment requirements.
   size_t getElementPtr(llvm::ArrayRef<dim_t> indices) const {
-    assert(indices.size() <= numDims_ && "Invalid number of indices");
-    // The loop below can be rewritten using std::inner_product. Unfortunately
-    // std::inner_product does not optimize very well and loops that use this
-    // method don't get vectorized. Don't change this loop without benchmarking
-    // the program on a few compilers.
-    size_t index = 0;
-    for (size_t i = 0, e = indices.size(); i < e; i++) {
-      index += size_t(sizeIntegral_[i]) * size_t(indices[i]);
-    }
-
-    return index;
+    return getFlattenedOffset(llvm::makeArrayRef(sizeIntegral_, numDims_),
+                              indices);
   }
 
   /// \returns the value of the n'th dimension \p dim, for the index \p idx.
