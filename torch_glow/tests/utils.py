@@ -7,6 +7,35 @@ GLOW_NODE_NAME = "glow::FusionGroup"
 SUBGRAPH_ATTR = "Subgraph"
 
 
+def get_image(filename):
+    """Prepare a img tensor for pytorch resnet model from file,
+       return a numpy [1, 3, 224, 224] tensor.
+       Example: get_image("cat.jpg")"""
+    from PIL import Image
+    pic = Image.open(filename)
+
+    w, h = pic.size
+    crop_w = min(w, h)
+    crop_h = min(h, w)
+    x = (w - crop_w) / 2
+    y = (h - crop_h) / 2
+
+    MIX_THIS = 224
+    pic = pic.crop((x, y, x + crop_w, y + crop_h)).resize(
+        (MIX_THIS, MIX_THIS), Image.BILINEAR)
+
+    im = np.array(pic.getdata()).reshape(
+        pic.size[0], pic.size[1], 3).astype(np.float32)
+
+    # Normalization logic, provided by Cortex.
+    resized = np.array([
+        (im[:, :, 2] - 103.53) / 57.375,
+        (im[:, :, 1] - 116.28) / 57.12,
+        (im[:, :, 0] - 123.675) / 58.395])
+
+    return resized.reshape(1, 3, MIX_THIS, MIX_THIS)
+
+
 def jitVsGlow(f, *inputs, expected_fused_ops, accept_all_ops=False, check_trace=True, atol=5e-4, rtol=1e-3):
     """
     Runs the given inputs *inputs on f both with and without lowering f to Glow,
