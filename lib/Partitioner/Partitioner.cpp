@@ -859,15 +859,10 @@ Partitioner::partitionFromConfig(const PartitionConfig &partitionConfig,
   // DAG validation.
   RETURN_IF_ERR(dagValidation(partitions[0]));
 
-  // Do optimization based on backendName.
+  // Verify the function.
   for (size_t i = 0; i < partitionConfig.numOfPartitions; i++) {
     auto func = funcList[i];
     DCHECK(func->verify()) << "Conversion led to invalid function";
-    std::unique_ptr<Backend> backend(
-        createBackend(partitionConfig.backendNames[i]));
-    if (!optimized_) {
-      RETURN_IF_ERR(::glow::optimizeFunction(func, *backend, cctx));
-    }
   }
 
   RETURN_IF_ERR(finalize(partitions, partitionMap));
