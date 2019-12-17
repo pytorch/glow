@@ -747,6 +747,10 @@ public:
   /// associated device memory.
   void ensureOnHost();
 
+  /// Updates contents of a device resident Tensor with the data from \p t
+  /// without copying its contents to host.
+  void copyRawToDevice(const Tensor *t);
+
   /// \returns the pointer to the device manager where the tensor resides.
   DeviceTensorTransferManager *getDeviceManager() const {
     assert(deviceResidency_ != nullptr && "DeviceResidencyInfo must exist");
