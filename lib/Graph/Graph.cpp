@@ -276,14 +276,19 @@ protected:
     os << "}";
   }
 
-  void dumpNode(Node *N) {
+  void dumpNode(Node *N, bool uniqueNames) {
     if (!N) {
       return;
     }
     std::ostringstream os;
     // Print a node descriptor that looks like this:
-    // vNNNN [ shape = "record" label = "{...}" ];
-    os << uniqueVertexName(N) << "[\n";
+    if (uniqueNames) {
+      // vNNNN [ shape = "record" label = "{...}" ];
+      os << uniqueVertexName(N) << "[\n";
+    } else {
+      // <name> [ shape = "record" label = "{...}" ];
+      os << N->getName().str() << "[\n";
+    }
     os << "\tlabel = \"";
     dumpLabel(N, os);
     os << "\"\n";
@@ -381,7 +386,7 @@ class ModuleDottyPrinter : public AbstractDottyPrinter {
 public:
   void visitModule(Module *M) {
     for (auto N : M->getConstants()) {
-      dumpNode(N);
+      dumpNode(N, true);
     }
 
     for (auto F : M->getFunctions()) {
@@ -3815,16 +3820,16 @@ class FunctionDottyPrinter : public AbstractDottyPrinter {
       return;
     visitedNodes_.insert(N);
 
-    dumpNode(N);
+    dumpNode(N, false);
 
     // Print edges for the predicate field, if it's used.
     if (N->hasPredicate()) {
       auto pred = N->getPredicate();
       size_t resNo = pred.getResNo();
       std::ostringstream edge;
-      edge << uniqueVertexName(pred) << ":"
+      edge << pred.getNode()->getName().str() << ":"
            << pred.getNode()->getOutputName(resNo).str() << " -> "
-           << uniqueVertexName(N) << ":w";
+           << N->getName().str() << ":w";
       dumpEdgeStyle(N, 0, pred, edge);
       edges_.insert(edge.str());
       visitNode(pred);
@@ -3835,8 +3840,8 @@ class FunctionDottyPrinter : public AbstractDottyPrinter {
       size_t resNo = N->getNthInput(i).getResNo();
 
       std::ostringstream edge;
-      edge << uniqueVertexName(to) << ":" << to->getOutputName(resNo).str()
-           << " -> " << uniqueVertexName(N) << ":" << N->getInputName(i);
+      edge << to->getName().str() << ":" << to->getOutputName(resNo).str()
+           << " -> " << N->getName().str() << ":" << N->getInputName(i);
       dumpEdgeStyle(N, i, to, edge);
       edges_.insert(edge.str());
 
