@@ -24,6 +24,7 @@
 #include "glow/Optimizer/GraphOptimizer/FunctionPasses.h"
 #include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
 
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/Casting.h"
 
 #include <numeric>
@@ -31,6 +32,9 @@
 using namespace glow;
 using llvm::cast;
 using llvm::dyn_cast;
+
+#define DECORATE_NODE_NAME(Node, ...)                                          \
+  llvm::join_items("_", Node.getName(), __VA_ARGS__)
 
 /// Helper which replaces all uses of \p oldNV with \p newNV, and also
 /// optionally maps from \p newNV to \p oldNV in \p loweredMap. This map can be
@@ -78,8 +82,10 @@ static void lowerMulGradNode(Function *F, CompilationContext &cctx,
   NodeValue LHS = node.getLHS();
   NodeValue RHS = node.getRHS();
 
-  auto *lhsResult = F->createMul("mul.grad.rhs", outG, RHS);
-  auto *rhsResult = F->createMul("mul.grad.lhs", outG, LHS);
+  auto *lhsResult =
+      F->createMul(DECORATE_NODE_NAME(node, "grad", "rhs"), outG, RHS);
+  auto *rhsResult =
+      F->createMul(DECORATE_NODE_NAME(node, "grad", "lhs"), outG, LHS);
   replaceAllUsesOfWith(cctx.loweredInfoMap, node.getGradOfInputNamedLHS(),
                        lhsResult);
   replaceAllUsesOfWith(cctx.loweredInfoMap, node.getGradOfInputNamedRHS(),
@@ -96,7 +102,7 @@ static void lowerSubGradNode(Function *F, CompilationContext &cctx,
 
   auto outG = node.getGradOfOriginalOutputNamedResult();
   auto *zero = F->createSplat("zero", outG.getType(), 0);
-  auto *sub = F->createSub("sub.grad", zero, outG);
+  auto *sub = F->createSub(DECORATE_NODE_NAME(node, "grad"), zero, outG);
   replaceAllUsesOfWith(cctx.loweredInfoMap, node.getGradOfInputNamedLHS(),
                        outG);
   replaceAllUsesOfWith(cctx.loweredInfoMap, node.getGradOfInputNamedRHS(), sub);
@@ -113,14 +119,18 @@ static void lowerDivGradNode(Function *F, CompilationContext &cctx,
   NodeValue LHS = node.getLHS();
   NodeValue RHS = node.getRHS();
 
-  auto *lhsResult = F->createDiv("div.grad.rhs", outG, RHS);
+  auto *lhsResult =
+      F->createDiv(DECORATE_NODE_NAME(node, "grad", "lhs"), outG, RHS);
 
   auto *zero = F->createSplat("zero", outG.getType(), 0);
-  auto *subGrad = F->createSub("sub.grad", zero, outG);
-  auto *mulLhsGrad = F->createMul("mul.sub.grad.lhs", subGrad, LHS);
+  auto *subGrad = F->createSub(DECORATE_NODE_NAME(node, "grad"), zero, outG);
+  auto *mulLhsGrad = F->createMul(
+      DECORATE_NODE_NAME(node, "grad", "mul", "lhs"), subGrad, LHS);
 
-  auto *squareRhs = F->createMul("square.rhs", RHS, RHS);
-  auto *rhsResult = F->createDiv("div.grad", mulLhsGrad, squareRhs);
+  auto *squareRhs =
+      F->createMul(DECORATE_NODE_NAME(node, "grad", "square", "rhs"), RHS, RHS);
+  auto *rhsResult = F->createDiv(DECORATE_NODE_NAME(node, "grad", "div", "rhs"),
+                                 mulLhsGrad, squareRhs);
 
   replaceAllUsesOfWith(cctx.loweredInfoMap, node.getGradOfInputNamedLHS(),
                        lhsResult);
@@ -140,8 +150,10 @@ static void lowerRegressionGradNode(Function *F, CompilationContext &cctx,
 
   auto outG = node.getInput();
 
-  auto *inputG = F->createSub("rgn.grad", node.getInput(), node.getExpected());
-  auto *expG = F->createSplat("exp.grad", node.getExpected().getType(), 0);
+  auto *inputG = F->createSub(DECORATE_NODE_NAME(node, "grad"), node.getInput(),
+                              node.getExpected());
+  auto *expG = F->createSplat(DECORATE_NODE_NAME(node, "grad", "exp"),
+                              node.getExpected().getType(), 0);
 
   replaceAllUsesOfWith(cctx.loweredInfoMap, node.getGradOfInputNamedInput(),
                        inputG);
@@ -155,8 +167,10 @@ static void lowerFullyConnectedNode(Function *F, CompilationContext &cctx,
 
   auto W = FC.getWeights();
   TypeRef OT = FC.getResult().getType();
-  auto *mul = F->createMatMul("fc.dot", OT, FC.getInput(), W);
-  auto *add = F->createBatchedAdd("fc.add.bias", OT, mul, FC.getBias());
+  auto *mul =
+      F->createMatMul(DECORATE_NODE_NAME(FC, "dot"), OT, FC.getInput(), W);
+  auto *add = F->createBatchedAdd(DECORATE_NODE_NAME(FC, "bias"), OT, mul,
+                                  FC.getBias());
   replaceAllUsesOfWith(cctx.loweredInfoMap, FC.getResult(), add);
 
   if (FC.hasPredicate()) {
@@ -175,23 +189,30 @@ static void lowerFullyConnectedGradNode(Function *F, CompilationContext &cctx,
   auto dout = FCG.getGradOfOriginalOutputNamedResult();
 
   // dx = dout * w.T
-  auto *wT = F->createTranspose("fcg.wT", FCG.getWeights(), {1, 0});
-  auto *dx2 = F->createMatMul("fcg.dot", dout, wT);
+  auto *wT = F->createTranspose(DECORATE_NODE_NAME(FCG, "weight", "transpose"),
+                                FCG.getWeights(), {1, 0});
+  auto *dx2 =
+      F->createMatMul(DECORATE_NODE_NAME(FCG, "weight", "dot"), dout, wT);
   auto *dx = F->createReshape(
-      "fcg.inG", dx2, FCG.getInput().getType()->dims(),
+      DECORATE_NODE_NAME(FCG, "weight", "reshape"), dx2,
+      FCG.getInput().getType()->dims(),
       CanonicalTensorLayout::getInstance().getNthInputLayoutRequirements(
           &FCG, FullyConnectedGradNode::InputIdx));
   replaceAllUsesOfWith(cctx.loweredInfoMap, FCG.getGradOfInputNamedInput(), dx);
 
   // dw = xT * dout.
-  Node *x2 = F->createFlatten("fcg.x", FCG.getInput(), 1);
-  auto *x2T = F->createTranspose("fcg.xT", x2, {1, 0});
-  auto *dw = F->createMatMul("fcg.dot", x2T, dout);
+  Node *x2 = F->createFlatten(DECORATE_NODE_NAME(FCG, "output", "flatten"),
+                              FCG.getInput(), 1);
+  auto *x2T = F->createTranspose(DECORATE_NODE_NAME(FCG, "output", "transpose"),
+                                 x2, {1, 0});
+  auto *dw =
+      F->createMatMul(DECORATE_NODE_NAME(FCG, "output", "dot"), x2T, dout);
   replaceAllUsesOfWith(cctx.loweredInfoMap, FCG.getGradOfInputNamedWeights(),
                        dw);
 
   // db = reduce(dout).
-  auto *db = F->createBatchedReduceAdd("fc.bias.reduce", dout, /* axis */ 0);
+  auto *db = F->createBatchedReduceAdd(
+      DECORATE_NODE_NAME(FCG, "bias", "reduce"), dout, /* axis */ 0);
   replaceAllUsesOfWith(cctx.loweredInfoMap, FCG.getGradOfInputNamedBias(), db);
 }
 
@@ -259,8 +280,8 @@ static void lowerReluNode(Function *F, CompilationContext &cctx,
 
   // Relu is a max between zero and the input value.
   SplatNode *zero = F->createSplat("zero", R.getResult().getType(), 0.0);
-  auto *relu =
-      F->createMax("relu", R.getResult().getType(), zero, R.getInput());
+  auto *relu = F->createMax(DECORATE_NODE_NAME(R, "max"),
+                            R.getResult().getType(), zero, R.getInput());
   replaceAllUsesOfWith(cctx.loweredInfoMap, R.getResult(), relu);
 }
 
@@ -273,10 +294,13 @@ static void lowerPReluNode(Function *F, CompilationContext &cctx,
 
   LOG_SCOPE(F->getLogContext(), "lowerPReluNode")
 
-  auto *zeroSplat = F->createSplat("zeroSplat", R.getResult().getType(), 0.0);
-  auto *cmplgt = F->createCmpLTE("cmplgt", zeroSplat, R.getInput());
-  auto *mul = F->createMul("mul", R.getSlope(), R.getInput());
-  auto *prelu = F->createSelect("prelu", cmplgt, R.getInput(), mul);
+  auto *zeroSplat = F->createSplat("zero", R.getResult().getType(), 0.0);
+  auto *cmplgt =
+      F->createCmpLTE(DECORATE_NODE_NAME(R, "cmplte"), zeroSplat, R.getInput());
+  auto *mul =
+      F->createMul(DECORATE_NODE_NAME(R, "mul"), R.getSlope(), R.getInput());
+  auto *prelu = F->createSelect(DECORATE_NODE_NAME(R, "select"), cmplgt,
+                                R.getInput(), mul);
 
   replaceAllUsesOfWith(cctx.loweredInfoMap, R.getResult(), prelu);
 }
@@ -299,15 +323,16 @@ static void lowerPadNode(Function *F, CompilationContext &cctx,
     assert((p >= 0) && "negative pads not supported at lowering.");
   }
 
-  SplatNode *constant = F->createSplat("pad.const", outputType, P.getValue());
+  SplatNode *constant = F->createSplat(DECORATE_NODE_NAME(P, "pad", "const"),
+                                       outputType, P.getValue());
 
   std::vector<dim_t> orig(numDims);
   for (dim_t i = 0; i < numDims; i++) {
     orig[i] = size_t(pads[i]);
   }
 
-  auto *insert =
-      F->createInsertTensor(P.getName(), constant, P.getInput(), orig);
+  auto *insert = F->createInsertTensor(DECORATE_NODE_NAME(P, "insert"),
+                                       constant, P.getInput(), orig);
   replaceAllUsesOfWith(cctx.loweredInfoMap, P.getResult(), insert);
 }
 
@@ -335,49 +360,60 @@ static void lowerSGDNode(Function *F, CompilationContext &cctx,
 
   NodeValue gij = G;
   if (L1Decay != 0.0f) {
-    auto *L1DecaySplat = F->createSplat("L1DecaySplat", type, L1Decay);
-    auto *zeroSplat = F->createSplat("zeroSplat", type, 0);
-    auto *oneSplat = F->createSplat("oneSplat", type, 1);
-    auto *minusOneSplat = F->createSplat("minusOneSplat", type, -1);
+    auto *L1DecaySplat = F->createSplat(
+        DECORATE_NODE_NAME(SGD, "splat", "l1_decay"), type, L1Decay);
+    auto *zeroSplat = F->createSplat("zero", type, 0);
+    auto *oneSplat = F->createSplat("one", type, 1);
+    auto *minusOneSplat = F->createSplat("minusOne", type, -1);
 
-    auto *Wcmp = F->createCmpLTE("Wcmp", zeroSplat, W);
-    auto *Wdir = F->createSelect("Wdir", Wcmp, oneSplat, minusOneSplat);
-    auto *L1Grad = F->createMul("L1Grad", L1DecaySplat, Wdir);
+    auto *Wcmp = F->createCmpLTE(DECORATE_NODE_NAME(SGD, "Wcmp"), zeroSplat, W);
+    auto *Wdir = F->createSelect(DECORATE_NODE_NAME(SGD, "Wdir"), Wcmp,
+                                 oneSplat, minusOneSplat);
+    auto *L1Grad =
+        F->createMul(DECORATE_NODE_NAME(SGD, "L1Grad"), L1DecaySplat, Wdir);
 
-    gij = F->createAdd("gij_with_l1", gij, L1Grad);
+    gij = F->createAdd(DECORATE_NODE_NAME(SGD, "gij_with_l1"), gij, L1Grad);
   }
   if (L2Decay != 0.0f) {
-    auto *L2DecaySplat = F->createSplat("L2DecaySplat", type, L2Decay);
+    auto *L2DecaySplat =
+        F->createSplat(DECORATE_NODE_NAME(SGD, "L2DecaySplat"), type, L2Decay);
 
-    auto *L2Grad = F->createMul("L2Grad", L2DecaySplat, W);
+    auto *L2Grad =
+        F->createMul(DECORATE_NODE_NAME(SGD, "L2Grad"), L2DecaySplat, W);
 
-    gij = F->createAdd("gij_with_l2", gij, L2Grad);
+    gij = F->createAdd(DECORATE_NODE_NAME(SGD, "gij_with_l2"), gij, L2Grad);
   }
   if (batchSize > 1) {
-    auto *batchSizeSplat = F->createSplat("batchSizeSplat", type, batchSize);
-    gij = F->createDiv("gij_div_batchSz", gij, batchSizeSplat);
+    auto *batchSizeSplat = F->createSplat(
+        DECORATE_NODE_NAME(SGD, "batchSizeSplat"), type, batchSize);
+    gij = F->createDiv(DECORATE_NODE_NAME(SGD, "gij_div_batchSz"), gij,
+                       batchSizeSplat);
   }
 
-  auto *negLearningRateSplat =
-      F->createSplat("learningRateSplat", type, -learningRate);
-  Node *dx = F->createMul("dx", negLearningRateSplat, gij);
+  auto *negLearningRateSplat = F->createSplat(
+      DECORATE_NODE_NAME(SGD, "learningRateSplat"), type, -learningRate);
+  Node *dx =
+      F->createMul(DECORATE_NODE_NAME(SGD, "dx"), negLearningRateSplat, gij);
 
   // Use the momentum to improve the gradient descent:
   // http://ufldl.stanford.edu/tutorial/supervised/
   // OptimizationStochasticGradientDescent/
   if (momentum > 0.0) {
-    Placeholder *Gsum =
-        F->getParent()->createPlaceholder(W.getType(), "gsum", false);
+    Placeholder *Gsum = F->getParent()->createPlaceholder(
+        W.getType(), DECORATE_NODE_NAME(SGD, "gsum"), false);
     Gsum->setAllocZero();
 
-    auto *momentumSplat = F->createSplat("learningRateSplat", type, momentum);
-    auto *GsumMult = F->createMul("GsumMult", momentumSplat, Gsum);
+    auto *momentumSplat = F->createSplat(
+        DECORATE_NODE_NAME(SGD, "momentumSplat"), type, momentum);
+    auto *GsumMult =
+        F->createMul(DECORATE_NODE_NAME(SGD, "GsumMult"), momentumSplat, Gsum);
 
-    dx = F->createAdd("dx_with_momentum", GsumMult, dx);
-    F->createSave("save.gsum", dx, Gsum);
+    dx =
+        F->createAdd(DECORATE_NODE_NAME(SGD, "dx_with_momentum"), GsumMult, dx);
+    F->createSave(DECORATE_NODE_NAME(SGD, "save", "gsum"), dx, Gsum);
   }
 
-  auto *newW = F->createAdd("newW", W, dx);
+  auto *newW = F->createAdd(DECORATE_NODE_NAME(SGD, "weight", "update"), W, dx);
   replaceAllUsesOfWith(cctx.loweredInfoMap, SGD.getUpdatedWeight(), newW);
 }
 
@@ -406,23 +442,28 @@ static void lowerBatchNormalizationNode(Function *F, CompilationContext &cctx,
   auto channelIdx = BN.getChannelIdx();
   auto epsilon = BN.getEpsilon();
 
-  auto *epsilonSplat = F->createSplat("epsSplat", var.getType(), epsilon);
-  Node *coef = F->createAdd("var_plus_eps", var, epsilonSplat);
-  coef = F->createPow("sqrt_var_plus_eps", coef, 0.5);
-  coef = F->createDiv("inverse_sqrt_var_plus_eps", gamma, coef);
+  auto *epsilonSplat =
+      F->createSplat(DECORATE_NODE_NAME(BN, "epsilon"), var.getType(), epsilon);
+  Node *coef =
+      F->createAdd(DECORATE_NODE_NAME(BN, "var_plus_eps"), var, epsilonSplat);
+  coef = F->createPow(DECORATE_NODE_NAME(BN, "sqrt_var_plus_eps"), coef, 0.5);
+  coef = F->createDiv(DECORATE_NODE_NAME(BN, "inverse_sqrt_var_plus_eps"),
+                      gamma, coef);
 
   // Apply: out := (in - mean) * coef + beta
   // in and out are of the same size, while others must be broadcasted.
-  auto *meanB =
-      F->createBroadcast("muBroadcasted", mean, in.dims(), channelIdx);
-  auto *coefB =
-      F->createBroadcast("coefBroadcasted", coef, in.dims(), channelIdx);
-  auto *betaB =
-      F->createBroadcast("betaBroadcasted", beta, in.dims(), channelIdx);
+  auto *meanB = F->createBroadcast(DECORATE_NODE_NAME(BN, "muBroadcasted"),
+                                   mean, in.dims(), channelIdx);
+  auto *coefB = F->createBroadcast(DECORATE_NODE_NAME(BN, "coefBroadcasted"),
+                                   coef, in.dims(), channelIdx);
+  auto *betaB = F->createBroadcast(DECORATE_NODE_NAME(BN, "betaBroadcasted"),
+                                   beta, in.dims(), channelIdx);
 
-  Node *newResult = F->createSub("in_minus_mean", in, meanB);
-  newResult = F->createMul("mul_coef", newResult, coefB);
-  newResult = F->createAdd("result", newResult, betaB);
+  Node *newResult =
+      F->createSub(DECORATE_NODE_NAME(BN, "in_minus_mean"), in, meanB);
+  newResult =
+      F->createMul(DECORATE_NODE_NAME(BN, "mul_coef"), newResult, coefB);
+  newResult = F->createAdd(DECORATE_NODE_NAME(BN, "result"), newResult, betaB);
 
   replaceAllUsesOfWith(cctx.loweredInfoMap, BN.getResult(), newResult);
 }
@@ -444,69 +485,108 @@ static void lowerLayerNormalizationNode(Function *F, CompilationContext &cctx,
   dim_t N = std::accumulate(gamma.dims().begin(), gamma.dims().end(), 1,
                             std::multiplies<size_t>());
   dim_t M = in.getType()->size() / N;
-  in = F->createReshape(nodeName, in, {M, N})->getResult();
+  in = F->createReshape(DECORATE_NODE_NAME(LN, "reshape"), in, {M, N})
+           ->getResult();
 
   // Compute mean and standard deviation for each layer using the formula from
   // https://pytorch.org/docs/stable/nn.html#torch.nn.LayerNorm
 
   // {M, N} -> {M}
-  auto mean = F->createBatchedReduceAdd(nodeName, in,
-                                        /*axes*/ {1})
-                  ->getResult();
+  auto mean =
+      F->createBatchedReduceAdd(DECORATE_NODE_NAME(LN, "mean", "add"), in,
+                                /*axes*/ {1})
+          ->getResult();
 
   // {M, N} -> {M}
-  auto inSquared = F->createMul(nodeName, in, in)->getResult();
-  auto stdDev = F->createBatchedReduceAdd(nodeName, inSquared,
-                                          /*axes*/ {1})
+  auto inSquared =
+      F->createMul(DECORATE_NODE_NAME(LN, "squared"), in, in)->getResult();
+  auto stdDev = F->createBatchedReduceAdd(
+                     DECORATE_NODE_NAME(LN, "stddev", "add"), inSquared,
+                     /*axes*/ {1})
                     ->getResult();
 
   // {M}
-  auto nSplat = F->createSplat(nodeName, mean.getType(), N)->getResult();
+  auto nSplat = F->createSplat(DECORATE_NODE_NAME(LN, "n"), mean.getType(), N)
+                    ->getResult();
   auto epsSplat =
-      F->createSplat(nodeName, mean.getType(), epsilon)->getResult();
-  auto oneSplat = F->createSplat(nodeName, mean.getType(), 1.0)->getResult();
+      F->createSplat(DECORATE_NODE_NAME(LN, "epsilon"), mean.getType(), epsilon)
+          ->getResult();
+  auto oneSplat = F->createSplat("one", mean.getType(), 1.0)->getResult();
   auto negOneSplat =
-      F->createSplat(nodeName, mean.getType(), -1.0)->getResult();
+      F->createSplat("minusOne", mean.getType(), -1.0)->getResult();
 
   // {M}
-  mean = F->createDiv(nodeName, mean, nSplat)->getResult();
+  mean = F->createDiv(DECORATE_NODE_NAME(LN, "mean", "div"), mean, nSplat)
+             ->getResult();
 
   // {M}
-  stdDev = F->createDiv(nodeName, stdDev, nSplat)->getResult();
+  stdDev = F->createDiv(DECORATE_NODE_NAME(LN, "stddev", "div"), stdDev, nSplat)
+               ->getResult();
 
   // {M}
-  auto meanSquared = F->createMul(nodeName, mean, mean)->getResult();
-  stdDev = F->createSub(nodeName, stdDev, meanSquared)->getResult();
-  stdDev = F->createRELU(nodeName, stdDev)->getResult();
-  stdDev = F->createAdd(nodeName, stdDev, epsSplat)->getResult();
-  stdDev = F->createPow(nodeName, stdDev, 0.5)->getResult();
-  stdDev = F->createDiv(nodeName, oneSplat, stdDev)->getResult();
+  auto meanSquared =
+      F->createMul(DECORATE_NODE_NAME(LN, "mean", "squared"), mean, mean)
+          ->getResult();
+  stdDev =
+      F->createSub(DECORATE_NODE_NAME(LN, "stddev", "sub"), stdDev, meanSquared)
+          ->getResult();
+  stdDev = F->createRELU(DECORATE_NODE_NAME(LN, "stddev", "relu"), stdDev)
+               ->getResult();
+  stdDev =
+      F->createAdd(DECORATE_NODE_NAME(LN, "stddev", "add"), stdDev, epsSplat)
+          ->getResult();
+  stdDev = F->createPow(DECORATE_NODE_NAME(LN, "stddev", "pow"), stdDev, 0.5)
+               ->getResult();
+  stdDev = F->createDiv(DECORATE_NODE_NAME(LN, "stddev", "reciprocal"),
+                        oneSplat, stdDev)
+               ->getResult();
 
   // {M}
   auto scale = stdDev;
-  auto bias = F->createMul(nodeName, stdDev, negOneSplat)->getResult();
-  bias = F->createMul(nodeName, bias, mean)->getResult();
+  auto bias =
+      F->createMul(DECORATE_NODE_NAME(LN, "bias", "mul"), stdDev, negOneSplat)
+          ->getResult();
+  bias = F->createMul(DECORATE_NODE_NAME(LN, "bias", "mul"), bias, mean)
+             ->getResult();
 
   // Broadcast mean and std deviation to the size of each batch
   // {M} -> {M, N}
-  scale = F->createReshape(nodeName, scale, {M, 1})->getResult();
-  bias = F->createReshape(nodeName, bias, {M, 1})->getResult();
-  scale = F->createTile(nodeName, scale, N, 1)->getResult();
-  bias = F->createTile(nodeName, bias, N, 1)->getResult();
+  scale = F->createReshape(DECORATE_NODE_NAME(LN, "scale", "reshape"), scale,
+                           {M, 1})
+              ->getResult();
+  bias =
+      F->createReshape(DECORATE_NODE_NAME(LN, "bias", "reshape"), bias, {M, 1})
+          ->getResult();
+  scale = F->createTile(DECORATE_NODE_NAME(LN, "scale", "tile"), scale, N, 1)
+              ->getResult();
+  bias = F->createTile(DECORATE_NODE_NAME(LN, "bias", "tile"), bias, N, 1)
+             ->getResult();
 
   // Broadcast beta and gamma across batches
   // {N} -> {M, N}
-  beta = F->createReshape(nodeName, beta, {1, N})->getResult();
-  gamma = F->createReshape(nodeName, gamma, {1, N})->getResult();
-  beta = F->createTile(nodeName, beta, M, 0)->getResult();
-  gamma = F->createTile(nodeName, gamma, M, 0)->getResult();
+  beta =
+      F->createReshape(DECORATE_NODE_NAME(LN, "beta", "reshape"), beta, {1, N})
+          ->getResult();
+  gamma = F->createReshape(DECORATE_NODE_NAME(LN, "gamma", "reshape"), gamma,
+                           {1, N})
+              ->getResult();
+  beta = F->createTile(DECORATE_NODE_NAME(LN, "beta", "tile"), beta, M, 0)
+             ->getResult();
+  gamma = F->createTile(DECORATE_NODE_NAME(LN, "gamma", "tile"), gamma, M, 0)
+              ->getResult();
 
   // Normalize layers
   // {M, N}
-  auto output = F->createMul(nodeName, in, scale)->getResult();
-  output = F->createAdd(nodeName, output, bias)->getResult();
-  output = F->createMul(nodeName, output, gamma)->getResult();
-  output = F->createAdd(nodeName, output, beta)->getResult();
+  auto output =
+      F->createMul(DECORATE_NODE_NAME(LN, "output", "scale"), in, scale)
+          ->getResult();
+  output = F->createAdd(DECORATE_NODE_NAME(LN, "output", "bias"), output, bias)
+               ->getResult();
+  output =
+      F->createMul(DECORATE_NODE_NAME(LN, "output", "gamma"), output, gamma)
+          ->getResult();
+  output = F->createAdd(DECORATE_NODE_NAME(LN, "output", "beta"), output, beta)
+               ->getResult();
 
   // {M, N} -> output shape
   output = F->createReshape(nodeName, output, out.getType()->dims());
@@ -545,51 +625,65 @@ static void lowerMeanVarNormalizationNode(Function *F, CompilationContext &cctx,
       perm[i] = i;
     }
     std::swap(perm[channelIdx], perm[perm.size() - 1]);
-    inPrep = F->createTranspose("in.transpose", in, perm);
+    inPrep = F->createTranspose(DECORATE_NODE_NAME(MVN, "in", "transpose"), in,
+                                perm);
   }
   // Reshape input tensor to form:
   // {samplesPerChannel, numChannels}
   ReshapeNode *inFlat =
-      F->createReshape("in.flat", inPrep, {samplesPerChannel, numChannels});
+      F->createReshape(DECORATE_NODE_NAME(MVN, "in", "flat"), inPrep,
+                       {samplesPerChannel, numChannels});
 
   // Calculate Mean:
 
   // sum(in[i])
   // reduce the tensor by the first dimension, to get {numChannels}
-  auto *batchedAdd = F->createBatchedReduceAdd("in.sum", inFlat, /* axis */ 0);
+  auto *batchedAdd = F->createBatchedReduceAdd(
+      DECORATE_NODE_NAME(MVN, "in", "sum"), inFlat, /* axis */ 0);
   // Mean = sum(in[i]) / N
   auto samplesPerChannelSplat =
-      F->createSplat("samplesPerChannelSplat",
+      F->createSplat(DECORATE_NODE_NAME(MVN, "samplesPerChannelSplat"),
                      batchedAdd->getResult().getType(), samplesPerChannel);
-  DivNode *localMean =
-      F->createDiv("localMean", batchedAdd, samplesPerChannelSplat);
+  DivNode *localMean = F->createDiv(DECORATE_NODE_NAME(MVN, "localMean"),
+                                    batchedAdd, samplesPerChannelSplat);
 
   // Calculate Variance:
   // sum((x - mu) ^ 2)
-  auto *localMeanB = F->createBroadcast("new_mean_broadcasted", localMean,
-                                        inFlat->getResult().dims(), 1);
+  auto *localMeanB =
+      F->createBroadcast(DECORATE_NODE_NAME(MVN, "new_mean_broadcasted"),
+                         localMean, inFlat->getResult().dims(), 1);
 
-  Node *localVar = F->createSub("x_mu", inFlat, localMeanB);
-  localVar = F->createPow("x_mu2", localVar, 2);
-  localVar = F->createBatchedReduceAdd("x_mu2.sum", localVar, /* axis */ 0);
+  Node *localVar =
+      F->createSub(DECORATE_NODE_NAME(MVN, "x_mu"), inFlat, localMeanB);
+  localVar = F->createPow(DECORATE_NODE_NAME(MVN, "x_mu2"), localVar, 2);
+  localVar = F->createBatchedReduceAdd(DECORATE_NODE_NAME(MVN, "x_mu2_sum"),
+                                       localVar, /* axis */ 0);
   // Var = sum((x - mu) ^ 2) / N
-  localVar = F->createDiv("localVar", localVar, samplesPerChannelSplat);
+  localVar = F->createDiv(DECORATE_NODE_NAME(MVN, "localVar"), localVar,
+                          samplesPerChannelSplat);
 
   // Update the global variance and mean:
-  auto *momentumSplat = F->createSplat(
-      "momentumSplat", localMean->getResult().getType(), momentum);
-  auto *oneMinusMomentumSplat = F->createSplat(
-      "oneMinusMomentumSplat", localMean->getResult().getType(), 1 - momentum);
+  auto *momentumSplat =
+      F->createSplat(DECORATE_NODE_NAME(MVN, "momentumSplat"),
+                     localMean->getResult().getType(), momentum);
+  auto *oneMinusMomentumSplat =
+      F->createSplat(DECORATE_NODE_NAME(MVN, "oneMinusMomentumSplat"),
+                     localMean->getResult().getType(), 1 - momentum);
 
   // newMean := P * localMean + (1 - P) * oldMean
   auto *newMean = F->createAdd(
-      "newMean",
-      F->createMul("momentum_by_localMean", momentumSplat, localMean),
-      F->createMul("1_momentum_by_oldMean", oneMinusMomentumSplat, inMean));
+      DECORATE_NODE_NAME(MVN, "newMean"),
+      F->createMul(DECORATE_NODE_NAME(MVN, "momentum_by_localMean"),
+                   momentumSplat, localMean),
+      F->createMul(DECORATE_NODE_NAME(MVN, "1_momentum_by_oldMean"),
+                   oneMinusMomentumSplat, inMean));
   // newVar := P * localVar + (1 - P) * oldVar
-  auto *newVar = F->createAdd(
-      "newVar", F->createMul("momentum_by_localVar", momentumSplat, localVar),
-      F->createMul("1_momentum_by_oldVar", oneMinusMomentumSplat, inVar));
+  auto *newVar =
+      F->createAdd(DECORATE_NODE_NAME(MVN, "newVar"),
+                   F->createMul(DECORATE_NODE_NAME(MVN, "momentum_by_localVar"),
+                                momentumSplat, localVar),
+                   F->createMul(DECORATE_NODE_NAME(MVN, "1_momentum_by_oldVar"),
+                                oneMinusMomentumSplat, inVar));
 
   replaceAllUsesOfWith(cctx.loweredInfoMap, MVN.getNewMean(), newMean);
   replaceAllUsesOfWith(cctx.loweredInfoMap, MVN.getNewVar(), newVar);
@@ -617,10 +711,11 @@ static void lowerBatchNormalizationGradNode(Function *F,
   const dim_t samplesPerChannel = inW.getType()->size() / numChannels;
 
   // Calculate: sum(dy * (h - mu))
-  auto *meanB =
-      F->createBroadcast("mean_broadcasted", mean, inW.dims(), channelIdx);
-  auto *hmu = F->createSub("x_minus_mean", inW, meanB);
-  NodeValue sumDyhmu = F->createMul("dy_mul_h_minus_mu", outG, hmu);
+  auto *meanB = F->createBroadcast(DECORATE_NODE_NAME(BNG, "mean_broadcasted"),
+                                   mean, inW.dims(), channelIdx);
+  auto *hmu = F->createSub(DECORATE_NODE_NAME(BNG, "x_minus_mean"), inW, meanB);
+  NodeValue sumDyhmu =
+      F->createMul(DECORATE_NODE_NAME(BNG, "dy_mul_h_minus_mu"), outG, hmu);
 
   // Calculate: sum(dy)
   NodeValue sumDy = outG;
@@ -633,16 +728,19 @@ static void lowerBatchNormalizationGradNode(Function *F,
     }
     std::swap(perm[channelIdx], perm[perm.size() - 1]);
 
-    sumDyhmu = F->createTranspose("sumDyhmu.transpose", sumDyhmu, perm);
-    sumDy = F->createTranspose("sumDy.transpose", sumDy, perm);
+    sumDyhmu = F->createTranspose(
+        DECORATE_NODE_NAME(BNG, "sumDyhmu", "transpose"), sumDyhmu, perm);
+    sumDy = F->createTranspose(DECORATE_NODE_NAME(BNG, "sumDy", "transpose"),
+                               sumDy, perm);
   }
-  sumDyhmu = F->createReshape("sumDyhmu.flat", sumDyhmu,
-                              {samplesPerChannel, numChannels});
-  sumDy =
-      F->createReshape("sumDy.flat", sumDy, {samplesPerChannel, numChannels});
-  sumDyhmu =
-      F->createBatchedReduceAdd("sumDyhmu.reduced", sumDyhmu, /* axis */ 0);
-  sumDy = F->createBatchedReduceAdd("sumDy.reduced", sumDy, /* axis */ 0);
+  sumDyhmu = F->createReshape(DECORATE_NODE_NAME(BNG, "sumDyhmu", "flat"),
+                              sumDyhmu, {samplesPerChannel, numChannels});
+  sumDy = F->createReshape(DECORATE_NODE_NAME(BNG, "sumDy", "flat"), sumDy,
+                           {samplesPerChannel, numChannels});
+  sumDyhmu = F->createBatchedReduceAdd(
+      DECORATE_NODE_NAME(BNG, "sumDyhmu", "reduced"), sumDyhmu, /* axis */ 0);
+  sumDy = F->createBatchedReduceAdd(DECORATE_NODE_NAME(BNG, "sumDy", "reduced"),
+                                    sumDy, /* axis */ 0);
 
   // http://cthorey.github.io./backpropagation/
   //
@@ -655,46 +753,58 @@ static void lowerBatchNormalizationGradNode(Function *F,
   //     np.sum(dy * (h - mu)))
   //
 
-  auto *epsilonSplat = F->createSplat("epsSplat", var.getType(), epsilon);
-  auto *oneSplat = F->createSplat("oneSplat", var.getType(), 1.0);
-  auto *invNSplat =
-      F->createSplat("invNSplat", var.getType(), 1.0 / samplesPerChannel);
-  Node *invVar = F->createAdd("var_plus_eps", var, epsilonSplat);
-  invVar = F->createDiv("inverse_var_plus_eps", oneSplat, invVar);
-  Node *invVarSqrt = F->createPow("invVarSqrt", invVar, 0.5);
+  auto *epsilonSplat = F->createSplat(DECORATE_NODE_NAME(BNG, "epsilon"),
+                                      var.getType(), epsilon);
+  auto *oneSplat = F->createSplat("one", var.getType(), 1.0);
+  auto *invNSplat = F->createSplat(DECORATE_NODE_NAME(BNG, "invNSplat"),
+                                   var.getType(), 1.0 / samplesPerChannel);
+  Node *invVar =
+      F->createAdd(DECORATE_NODE_NAME(BNG, "var_plus_eps"), var, epsilonSplat);
+  invVar = F->createDiv(DECORATE_NODE_NAME(BNG, "inverse_var_plus_eps"),
+                        oneSplat, invVar);
+  Node *invVarSqrt =
+      F->createPow(DECORATE_NODE_NAME(BNG, "invVarSqrt"), invVar, 0.5);
 
-  Node *coef1 =
-      F->createMul("invN_gamma_invVarSqrt",
-                   F->createMul("invN_gamma", invNSplat, gamma), invVarSqrt);
-  Node *coef2 = F->createMul("invVar_sumDyhmu", invVar, sumDyhmu);
+  Node *coef1 = F->createMul(
+      DECORATE_NODE_NAME(BNG, "invN_gamma_invVarSqrt"),
+      F->createMul(DECORATE_NODE_NAME(BNG, "invN_gamma"), invNSplat, gamma),
+      invVarSqrt);
+  Node *coef2 = F->createMul(DECORATE_NODE_NAME(BNG, "invVar_sumDyhmu"), invVar,
+                             sumDyhmu);
 
   // Apply:
   // inG := Bcast(coef1) * (NSplat * outG - Bcast(sumDy) - hmu * Bcast(coef2))
 
-  coef1 =
-      F->createBroadcast("coef1_broadcasted", coef1, inW.dims(), channelIdx);
-  coef2 =
-      F->createBroadcast("coef2_broadcasted", coef2, inW.dims(), channelIdx);
+  coef1 = F->createBroadcast(DECORATE_NODE_NAME(BNG, "coef1_broadcasted"),
+                             coef1, inW.dims(), channelIdx);
+  coef2 = F->createBroadcast(DECORATE_NODE_NAME(BNG, "coef2_broadcasted"),
+                             coef2, inW.dims(), channelIdx);
   auto *sumDyB =
-      F->createBroadcast("sumDy_broadcasted", sumDy, inW.dims(), channelIdx);
-  auto *NSplat = F->createSplat("oneSplat", inW.getType(), samplesPerChannel);
-  Node *inBrackets = F->createMul("NSplat_outG", NSplat, outG);
-  inBrackets = F->createSub("inBrackets",
-                            F->createSub("inBrackets_2ops", inBrackets, sumDyB),
-                            F->createMul("hmu_coef2", hmu, coef2));
+      F->createBroadcast(DECORATE_NODE_NAME(BNG, "sumDy_broadcasted"), sumDy,
+                         inW.dims(), channelIdx);
+  auto *NSplat = F->createSplat(DECORATE_NODE_NAME(BNG, "samplesPerChannel"),
+                                inW.getType(), samplesPerChannel);
+  Node *inBrackets =
+      F->createMul(DECORATE_NODE_NAME(BNG, "NSplat_outG"), NSplat, outG);
+  inBrackets = F->createSub(
+      DECORATE_NODE_NAME(BNG, "inBrackets"),
+      F->createSub(DECORATE_NODE_NAME(BNG, "inBrackets_2ops"), inBrackets,
+                   sumDyB),
+      F->createMul(DECORATE_NODE_NAME(BNG, "hmu_coef2"), hmu, coef2));
 
-  auto *inG = F->createMul("inG", coef1, inBrackets);
+  auto *inG = F->createMul(DECORATE_NODE_NAME(BNG, "inG"), coef1, inBrackets);
   replaceAllUsesOfWith(cctx.loweredInfoMap, BNG.getGradOfInputNamedInput(),
                        inG);
 
   replaceAllUsesOfWith(cctx.loweredInfoMap, BNG.getGradOfInputNamedBias(),
                        sumDy);
 
-  auto *gammaG = F->createMul("gammaG", sumDyhmu, invVarSqrt);
+  auto *gammaG =
+      F->createMul(DECORATE_NODE_NAME(BNG, "gammaG"), sumDyhmu, invVarSqrt);
   replaceAllUsesOfWith(cctx.loweredInfoMap, BNG.getGradOfInputNamedScale(),
                        gammaG);
 
-  auto *zeroSplat = F->createSplat("zeroSplat", var.getType(), 0);
+  auto *zeroSplat = F->createSplat("zero", var.getType(), 0);
   replaceAllUsesOfWith(cctx.loweredInfoMap, BNG.getGradOfInputNamedMean(),
                        zeroSplat);
   replaceAllUsesOfWith(cctx.loweredInfoMap, BNG.getGradOfInputNamedVar(),
