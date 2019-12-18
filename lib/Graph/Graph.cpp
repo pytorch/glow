@@ -2276,6 +2276,13 @@ ClipNode *Function::createClip(llvm::StringRef name, NodeValue input, float min,
   return addNode(new ClipNode(name, input.getType(), input, min, max));
 }
 
+ClipNode *Function::createClipMinMaxFP16(llvm::StringRef name,
+                                         NodeValue input) {
+  constexpr float float16Min = -65504.0f;
+  constexpr float float16Max = 65504.0f;
+  return createClip(name, input, float16Min, float16Max);
+}
+
 //===----------------------------------------------------------------------===//
 //                   Placeholder-builder methods.
 //===----------------------------------------------------------------------===//
@@ -4267,6 +4274,53 @@ Node *glow::recursiveClone(Function *newF, Node *node, NodeMap &currToNew) {
 }
 
 namespace glow {
+/// If \p PH is an output placeholder, \returns true.
+/// This is determined by checking if the PH has a user which uses the PH as an
+/// overwritten input.
+bool isOutput(const Placeholder *PH, const Function &F) {
+  for (const auto &use : PH->getUsers()) {
+    // Look through the inputs of the PH's users. If an input is overwritten
+    // check if it's the PH, if it is return true.
+    auto *user = use.getUser();
+    // Consider only users inside the same function.
+    if (user->getParent() != &F) {
+      continue;
+    }
+    for (unsigned i = 0, numInputs = user->getNumInputs(); i < numInputs; i++) {
+      // If the input is not overwritten we can continue.
+      if (!user->isOverwrittenNthInput(i)) {
+        continue;
+      }
+      auto input = use.getUser()->getNthInput(i);
+      if (input.getNode() == PH) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+/// If \p PH is an input placeholder, \returns true.
+bool isInput(const Placeholder *PH, const Function &F) {
+  // Check that the PH is the input to a saveNode or is used by a non saveNode.
+  for (const auto &use : PH->getUsers()) {
+    // Consider only users inside the same function.
+    if (use.getUser()->getParent() != &F) {
+      continue;
+    }
+    // Check if PH is an input to a saveNode.
+    if (auto *save = dyn_cast<SaveNode>(use.getUser())) {
+      auto input = save->getInput();
+      // If the PH is not an input to the saveNode we keep looking.
+      if (input.getNode() != PH) {
+        continue;
+      }
+    }
+    return true;
+  }
+  return false;
+}
+
 llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const Module &mod) {
   mod.dump(os);
   return os;

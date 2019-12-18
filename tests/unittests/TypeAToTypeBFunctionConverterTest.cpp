@@ -1281,4 +1281,85 @@ TEST_P(AllBackends, convertWithoutClipAroundNonNumericNodes) {
   EXPECT_TRUE(F->verify());
 }
 
+// Test that we only insert clips for outputs.
+TEST_P(AllBackends, checkConvertOnlyOutputs) {
+  Module mod;
+  Function *F = mod.createFunction("test");
+  Node *I = mod.createPlaceholder(ElemKind::FloatTy, {10}, "i", false);
+  ReluNode *RN = F->createRELU("relu", I);
+  SaveNode *SN = F->createSave("ret", RN);
+
+  PrecisionConfiguration precConfig;
+  precConfig.convertToFP16 = true;
+  precConfig.clipFP16 = true;
+  precConfig.clipFP16SkipInputs = true;
+  precConfig.convertPlaceholdersToFP16 = true;
+  precConfig.convertConstantsToFP16 = true;
+  convertFunctionToFloat16(F, precConfig);
+
+  // PH -> ConvertToFP16 -> Clip -> ConvertToFP32 -> ConvertToFP16 -> Relu ->
+  // Clip -> ConvertToFP32 -> Save
+
+  ConvertToNode *convertRN = llvm::dyn_cast<ConvertToNode>(SN->getInput());
+  ASSERT_TRUE(convertRN);
+  EXPECT_EQ(convertRN->getResult().getType()->getElementType(),
+            ElemKind::FloatTy);
+  ClipNode *clipRN = llvm::dyn_cast<ClipNode>(convertRN->getInput());
+  ASSERT_TRUE(clipRN);
+  ASSERT_TRUE(clipRN->getInput() == RN->getResult());
+  ConvertToNode *convert32To16 = llvm::dyn_cast<ConvertToNode>(RN->getInput());
+  ASSERT_TRUE(convert32To16);
+  EXPECT_EQ(convert32To16->getResult().getType()->getElementType(),
+            ElemKind::Float16Ty);
+  ConvertToNode *convert16To32 =
+      llvm::dyn_cast<ConvertToNode>(convert32To16->getInput());
+  ASSERT_TRUE(convert16To32);
+  EXPECT_EQ(convert16To32->getResult().getType()->getElementType(),
+            ElemKind::FloatTy);
+  ClipNode *clipPH = llvm::dyn_cast<ClipNode>(convert16To32->getInput());
+  ASSERT_TRUE(clipPH);
+  ConvertToNode *convertPH = llvm::dyn_cast<ConvertToNode>(clipPH->getInput());
+  ASSERT_TRUE(convertPH);
+  EXPECT_EQ(convertPH->getResult().getType()->getElementType(),
+            ElemKind::Float16Ty);
+
+  EXPECT_TRUE(F->verify());
+}
+
+// Test that we only insert clips for outputs.
+TEST_P(AllBackends, checkConvertClipStorage) {
+  Module mod;
+  Function *F = mod.createFunction("test");
+  Node *PH = mod.createPlaceholder(ElemKind::FloatTy, {10}, "ph", false);
+  Node *C = mod.createConstant(ElemKind::FloatTy, {10, 1}, "c");
+  SaveNode *SPH = F->createSave("ret", PH);
+  SaveNode *SC = F->createSave("ret", C);
+
+  PrecisionConfiguration precConfig;
+  precConfig.convertToFP16 = true;
+  precConfig.clipFP16 = true;
+  precConfig.clipFP16SkipInputs = true;
+  precConfig.convertPlaceholdersToFP16 = true;
+  precConfig.convertConstantsToFP16 = true;
+  convertFunctionToFloat16(F, precConfig);
+
+  ConvertToNode *convertFP32PH = llvm::dyn_cast<ConvertToNode>(SPH->getInput());
+  ASSERT_TRUE(convertFP32PH);
+  ClipNode *clipPH = llvm::dyn_cast<ClipNode>(convertFP32PH->getInput());
+  ASSERT_TRUE(clipPH);
+  ConvertToNode *convertFP16PH =
+      llvm::dyn_cast<ConvertToNode>(clipPH->getInput());
+  ASSERT_TRUE(convertFP16PH);
+
+  ConvertToNode *convertFP32C = llvm::dyn_cast<ConvertToNode>(SC->getInput());
+  ASSERT_TRUE(convertFP32C);
+  ClipNode *clipC = llvm::dyn_cast<ClipNode>(convertFP32C->getInput());
+  ASSERT_TRUE(clipC);
+  ConvertToNode *convertFP16C =
+      llvm::dyn_cast<ConvertToNode>(clipC->getInput());
+  ASSERT_TRUE(convertFP16C);
+
+  EXPECT_TRUE(F->verify());
+}
+
 INSTANTIATE_BACKEND_TEST(AllBackends);

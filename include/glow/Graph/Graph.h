@@ -1229,7 +1229,11 @@ public:
   /// based on the \p input type.
   ClipNode *createClip(llvm::StringRef name, NodeValue input, float min,
                        float max);
-  /// @}
+
+  /// Creates and \returns a ClipNode to the min/max range of FP16 with \p name
+  /// of \p input. Result type will be implicitly set based on the \p input
+  /// type.
+  ClipNode *createClipMinMaxFP16(llvm::StringRef name, NodeValue input);
 
   /// @name The builder functions below are identical to the builder functions
   /// above except that they create nodes that use Placeholder instead of
@@ -1534,6 +1538,18 @@ SaveNode *getOutputSave(Function *F, Placeholder *PH);
 /// Clone \p node and its sources into \p newF using old-to-new mapping \p
 /// currToNew.
 Node *recursiveClone(Function *newF, Node *node, NodeMap &currToNew);
+
+/// If \p PH is an output placeholder in the Function \p F,
+/// \returns true.
+/// This is determined by checking if the PH has a user which uses the PH as an
+/// overwritten input.
+bool isOutput(const Placeholder *PH, const Function &F);
+
+/// If \p PH is an input placeholderin the Function \p F,
+/// \returns true.
+/// This is determined by checking if the PH is the input to a saveNode or is
+/// used by a non saveNode.
+bool isInput(const Placeholder *PH, const Function &F);
 
 /// Helper vectors for common transpose shuffles.
 #define NCHW2NHWC                                                              \
