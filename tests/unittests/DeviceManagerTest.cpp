@@ -887,14 +887,18 @@ public:
                         std::function<void(Error)> resultCB = [](Error) {
                         }) override {
     if (locationContext == nullptr) {
-      locationContext = this;
+      locationContext = malloc(tensor.getSizeInBytes());
     }
+    memcpy(locationContext, tensor.getUnsafePtr(), tensor.getSizeInBytes());
     tensor.moveToDevice(this, locationContext);
   }
 
   void transferFromDevice(Tensor &tensor, bool release = true,
                           std::function<void(Error)> resultCB = [](Error) {
                           }) override {
+    memcpy(tensor.getUnsafePtr(), tensor.getLocationContext(),
+           tensor.getSizeInBytes());
+    free(tensor.getLocationContext());
     tensor.clearDeviceResidency();
   }
 
@@ -932,6 +936,35 @@ TEST_P(DeviceManagerTest, CanHandleDeviceResidentTensors) {
   Tensor *result1 = context->getPlaceholderBindings()->get(
       module->getPlaceholderByName("main_output"));
   ASSERT_TRUE(result1);
+}
+
+TEST_P(DeviceManagerTest, TensorCopyRawToDevice) {
+  MockDM mockDM;
+
+  Tensor input1(ElemKind::FloatTy, {10});
+  Tensor input2(ElemKind::FloatTy, {10});
+
+  input1.getHandle().clear(1);
+  input2.getHandle().clear(2);
+
+  float *deviceMemory = (float *)malloc(sizeof(float) * 10);
+  mockDM.transferToDevice(input1, deviceMemory);
+
+  for (int i = 0; i < 10; ++i) {
+    EXPECT_EQ(deviceMemory[i], 1);
+  }
+
+  input1.copyRawToDevice(&input2);
+
+  for (int i = 0; i < 10; ++i) {
+    EXPECT_EQ(deviceMemory[i], 2);
+  }
+
+  mockDM.transferFromDevice(input1);
+  auto inputHandle = input1.getHandle();
+  for (unsigned i = 0; i < 10; ++i) {
+    EXPECT_EQ(inputHandle.at({i}), 2);
+  }
 }
 
 INSTANTIATE_BACKEND_TEST(DeviceManagerTest);

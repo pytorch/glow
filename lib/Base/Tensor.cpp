@@ -676,4 +676,13 @@ void Tensor::ensureOnHost() {
   assert(!isDeviceResident());
 }
 
+void Tensor::copyRawToDevice(const Tensor *t) {
+  assert(isDeviceResident());
+  void *locationContext = deviceResidency_->locationContext_;
+  DeviceTensorTransferManager *DM = deviceResidency_->deviceManager_;
+  clearDeviceResidency();
+  copyRawFrom(t);
+  DM->transferToDevice(*this, locationContext);
+}
+
 } // namespace glow
