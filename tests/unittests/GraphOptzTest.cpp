@@ -351,6 +351,7 @@ TEST_F(GraphOptz, optimizeBatchNormAfterConvWithPred) {
       F_->createBatchNormalization(bindings_, "batch", CV, 3, 0.0001, 0.9);
   BN->setPredicate(pred2);
   F_->createSave("ret", BN);
+  auto *cloneF_ = F_->clone(F_->getName().str() + "_cloned");
 
   EXPECT_EQ(F_->getNodes().size(), 3);
 
@@ -358,7 +359,7 @@ TEST_F(GraphOptz, optimizeBatchNormAfterConvWithPred) {
   ::glow::optimize(F_, CompilationMode::Infer);
   EXPECT_EQ(F_->getNodes().size(), 2);
 
-  ASSERT_EQ(A->getNumUsers(), 1);
+  ASSERT_EQ(A->getNumUsers(), 2);
   Node *newCV = A->getUsers().begin()->getUser();
   EXPECT_TRUE(llvm::isa<ConvolutionNode>(newCV));
   ASSERT_TRUE(newCV->hasPredicate());
@@ -366,6 +367,11 @@ TEST_F(GraphOptz, optimizeBatchNormAfterConvWithPred) {
   ASSERT_EQ(newCV->getNumUsers(), 1);
   Node *save = newCV->getUsers().begin()->getUser();
   EXPECT_TRUE(llvm::isa<SaveNode>(save));
+
+  // Update pointers accordingly as the original F_ was optimized not the clone
+  optimizedF_ = F_;
+  F_ = cloneF_;
+  checkNumericalEquivalence();
 }
 
 /// Check CSE will not merge two nodes that have all the same inputs but
