@@ -79,7 +79,7 @@ template <> unsigned NNPIOptions::getStringAsType<unsigned>(std::string sVal);
       val_ = NNPIOptions::getStringAsType<VAR_TYPE>(v);                        \
     }                                                                          \
     inline void setVal(VAR_TYPE v) { val_ = v; }                               \
-    inline VAR_TYPE get() const { return (val_); }                             \
+    inline const VAR_TYPE &get() const { return (val_); }                      \
                                                                                \
     operator VAR_TYPE() const { return val_; }                                 \
                                                                                \
@@ -100,7 +100,6 @@ template <> unsigned NNPIOptions::getStringAsType<unsigned>(std::string sVal);
     this->loadedOptions_[VAR_NAME.getEnv()] =                                  \
         llvm::formatv("{0}", VAR_NAME).str();                                  \
   }
-
 class NNPIBackendOptions : public NNPIOptions {
 public:
   /// Compile for HW (ignored if InferOnDevice is defined).
