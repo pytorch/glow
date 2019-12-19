@@ -2602,6 +2602,10 @@ void BoundInterpreterFunction::fwdBatchMatMulInst(
   DCHECK(!"Found BatchMatMulInst but BatchMatMul is lowered on Interpreter");
 }
 
+void BoundInterpreterFunction::fwdReluGradInst(const glow::ReluGradInst *I) {
+  DCHECK(!"Found ReluGradInst but ReluGrad is lowered on Interpreter");
+}
+
 //===----------------------------------------------------------------------===//
 //                                 FC
 //===----------------------------------------------------------------------===//
