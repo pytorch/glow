@@ -37,12 +37,12 @@ class CPUDeviceManager : public QueueBackedDeviceManager {
 public:
   explicit CPUDeviceManager(const DeviceConfig &config)
       : QueueBackedDeviceManager(config) {
-    Stats()->incrementCounter(kDevicesUsedCPU);
+    statsExporterRegistry_->incrementCounter(kDevicesUsedCPU);
     exportMemoryCounters();
   }
 
   ~CPUDeviceManager() override {
-    Stats()->incrementCounter(kDevicesUsedCPU, -1);
+    statsExporterRegistry_->incrementCounter(kDevicesUsedCPU, -1);
     zeroMemoryCounters();
   }
 
@@ -50,7 +50,7 @@ public:
   /// models are loaded.
   uint64_t getMaximumMemory() const override;
 
-  /// Returns the amount of memory in bytes currently availbe on the device.
+  /// Returns the amount of memory in bytes currently availbe on the device.4
   uint64_t getAvailableMemory() const override;
 
   /// Returns true if a function requiring the \p estimate size will fit on the

@@ -15,6 +15,7 @@
 
 #include "Importer.h"
 #include "DebugMacros.h"
+#include "NNPI.h"
 #include "glow/IR/IR.h"
 #include "glow/IR/Instrs.h"
 #include "glow/Quantization/Base/Base.h"
@@ -38,45 +39,15 @@ static std::string nodeValueName(const glow::NodeValue &nv) {
          std::to_string(nv.getResNo());
 }
 
-std::string NNPIEnvVariables::getVarString(const std::string &varName) {
-  static std::map<std::string, std::string> vars;
-  LOG_AND_RETURN_IF_NOT(ERROR, varName.length(), "Can't search empty string",
-                        "");
-  if (vars.count(varName) == 0) {
-    char *pEnvVar = getenv(varName.c_str());
-    vars[varName] = pEnvVar ? std::string(pEnvVar) : std::string();
-  }
-  return vars.at(varName);
-}
-
-bool NNPIEnvVariables::getVarBool(const std::string &varName) {
-  auto var = getVarString(varName);
-  return (var == std::string("1"));
-}
-
-int NNPIEnvVariables::getVarInt(const std::string &varName, int defaultNumber) {
-  auto var = getVarString(varName);
-  if (var.empty() || std::find_if(var.begin(), var.end(), [](char c) {
-                       return !std::isdigit(c);
-                     }) != var.end()) {
-    return defaultNumber;
-  }
-  return std::stoi(var);
-}
-
-NNPI_LOG_LEVEL NNPIEnvVariables::getVarLogLevel(const std::string &varName,
-                                                NNPI_LOG_LEVEL defaultLevel) {
-  return static_cast<NNPI_LOG_LEVEL>(
-      getVarInt(varName, static_cast<int>(defaultLevel)));
-}
-
-glow::NNPIImporter::NNPIImporter()
-    : internalNameCounter_(0), network_(NNPI_INVALID_NNPIHANDLE) {
+glow::NNPIImporter::NNPIImporter(const NNPICompilationOptions &compileOptions)
+    : internalNameCounter_(0), network_(NNPI_INVALID_NNPIHANDLE),
+      compileOptions_(compileOptions) {
   ASSERT_LOG_NNPI_ERROR(nnpiNetworkCreate(&network_),
                         "Failed to create NNPI network");
   // Setting the network name for testing framework purposes.
-  ASSERT_LOG_NNPI_ERROR(nnpiNetworkSetName(network_, ICETFilename().c_str()),
-                        "Failed to set NNPI network name");
+  ASSERT_LOG_NNPI_ERROR(
+      nnpiNetworkSetName(network_, compileOptions_.compiledFile.c_str()),
+      "Failed to set NNPI network name");
 }
 
 /// Destructor.
@@ -115,6 +86,7 @@ NNPIErrorCode glow::NNPIImporter::addTensor(std::string name,
   case glow::ElemKind::UInt8QTy:
   case glow::ElemKind::UInt8FusedQTy:
   case glow::ElemKind::UInt8FusedFP16QTy:
+  case glow::ElemKind::UInt4FusedFP16QTy:
   case glow::ElemKind::Int32ITy:
   case glow::ElemKind::Int32QTy:
   case glow::ElemKind::BoolTy:
@@ -331,7 +303,7 @@ void glow::NNPIImporter::updateDescQuantFromGlow(
       // If there is no offsets, or Symlowp workaround is used and all offsets
       // are zero, the quantization type is SYMLOWP_PCQ.
       if (forceSymlowp || offsetTensor.empty() ||
-          (SymlowpWA() && zeroes(offsetTensor))) {
+          (compileOptions_.useSymlowp && zeroes(offsetTensor))) {
         desc.quantParams.type = NNPI_QUANTIZATION_SYMLOWP_PCQ;
         std::strncpy(desc.quantParams.params.symlowpPCQ.scalesTensor,
                      scaleTensor.c_str(),
@@ -350,7 +322,7 @@ void glow::NNPIImporter::updateDescQuantFromGlow(
       desc.quantParams.type = NNPI_QUANTIZATION_GEMMLOWP;
       desc.quantParams.params.gemlowp.scale = t.getScale();
       desc.quantParams.params.gemlowp.offset = t.getOffset();
-      if (forceSymlowp || SymlowpWA()) {
+      if (forceSymlowp || compileOptions_.useSymlowp) {
         // WA use SYMLOWP for zero offset tensors.
         if (t.getOffset() == 0) {
           DBG("SYMLOWP WA");
@@ -386,13 +358,17 @@ void glow::NNPIImporter::updateDescQuantFromGlow(
     desc.quantParams.precision = NNPI_PRECISION_UINT8;
     desc.quantParams.type = NNPI_QUANTIZATION_GEMMLOWP_PCQ_FUSED_FP16;
     break;
+  case glow::ElemKind::UInt4FusedFP16QTy:
+    desc.quantParams.precision = NNPI_PRECISION_UINT8;
+    desc.quantParams.type = NNPI_QUANTIZATION_GEMMLOWP_PCQ_4BIT_FUSED_FP16;
+    break;
   case glow::ElemKind::Int32ITy:
     desc.quantParams.precision = NNPI_PRECISION_INT32;
     desc.quantParams.type = NNPI_QUANTIZATION_NONE;
     break;
   case glow::ElemKind::Int32QTy:
     desc.quantParams.precision = NNPI_PRECISION_INT32;
-    if ((forceSymlowp || SymlowpWA()) && t.getOffset() == 0) {
+    if ((forceSymlowp || compileOptions_.useSymlowp) && t.getOffset() == 0) {
       desc.quantParams.type = NNPI_QUANTIZATION_SYMLOWP;
     } else {
       desc.quantParams.type = NNPI_QUANTIZATION_GEMMLOWP;
@@ -1170,6 +1146,29 @@ public:
   }
 };
 
+class SLSNodeImporter : public INNPINodeImporter {
+public:
+  NNPIErrorCode importNode(Node *n, NNPIImporter &importer) override {
+    auto *glowSLS = llvm::dyn_cast<SparseLengthsSumNode>(n);
+    LOG_AND_RETURN_IF_NOT(ERROR, glowSLS, "Bad node type", NNPI_INVALID_PARAM);
+
+    importer.setUsedTensors(
+        {
+            nodeValueName(glowSLS->getData()),
+            nodeValueName(glowSLS->getIndices()),
+            nodeValueName(glowSLS->getLengths()),
+        },
+        {nodeValueName(glowSLS->getResult())});
+
+    return nnpiNetworkAddSparseLengthsWeightedSumOp(
+        importer.getNetwork(), glowSLS->getName().begin(),
+        nodeValueName(glowSLS->getData()).c_str(),
+        nodeValueName(glowSLS->getResult()).c_str(), NULL,
+        nodeValueName(glowSLS->getIndices()).c_str(),
+        nodeValueName(glowSLS->getLengths()).c_str(), false);
+  }
+};
+
 class SLWSNodeImporter : public INNPINodeImporter {
 public:
   NNPIErrorCode importNode(Node *n, NNPIImporter &importer) override {
@@ -1466,6 +1465,34 @@ public:
   }
 };
 
+class FRQSLSNodeImporter : public INNPINodeImporter {
+public:
+  NNPIErrorCode importNode(Node *n, NNPIImporter &importer) override {
+    auto *glowSLWS =
+        llvm::dyn_cast<FusedRowwiseQuantizedSparseLengthsSumNode>(n);
+    LOG_AND_RETURN_IF_NOT(ERROR, glowSLWS, "Bad node type", NNPI_INVALID_PARAM);
+
+    importer.setUsedTensors(
+        {
+            nodeValueName(glowSLWS->getData()),
+            nodeValueName(glowSLWS->getIndices()),
+            nodeValueName(glowSLWS->getLengths()),
+        },
+        {nodeValueName(glowSLWS->getResult())});
+
+    bool usFp32Accum = !(glowSLWS->getUseFP16Accumulation() &&
+                         (glowSLWS->getResult().getType()->getElementType() ==
+                          glow::ElemKind::Float16Ty));
+
+    return nnpiNetworkAddSparseLengthsWeightedSumOp(
+        importer.getNetwork(), glowSLWS->getName().begin(),
+        nodeValueName(glowSLWS->getData()).c_str(),
+        nodeValueName(glowSLWS->getResult()).c_str(), NULL,
+        nodeValueName(glowSLWS->getIndices()).c_str(),
+        nodeValueName(glowSLWS->getLengths()).c_str(), usFp32Accum);
+  }
+};
+
 class FRQSLWSNodeImporter : public INNPINodeImporter {
 public:
   NNPIErrorCode importNode(Node *n, NNPIImporter &importer) override {
@@ -1689,6 +1716,8 @@ const std::map<std::string, INNPINodeImporter *> NNPIImporter::nodeImporters_ =
                                         NNPI_REDUCE_MIN>()},
         {"Splat", new SplatNodeImporter()},
         {"SparseLengthsWeightedSum", new SLWSNodeImporter()},
+        {"SparseLengthsSum", new SLSNodeImporter()},
+        {"FusedRowwiseQuantizedSparseLengthsSum", new FRQSLSNodeImporter()},
         {"Select", new SelectNodeImporter()},
         {"LocalResponseNormalization", new LRNNodeImporter()},
         {"RowwiseQuantizedFullyConnected", new RQFCNodeImporter()},

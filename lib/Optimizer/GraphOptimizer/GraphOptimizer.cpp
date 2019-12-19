@@ -29,6 +29,7 @@
 #include "glow/Optimizer/GraphOptimizer/FunctionPasses.h"
 #include "glow/Optimizer/GraphOptimizer/PassManager.h"
 #include "glow/Optimizer/GraphOptimizerPipeline/Pipeline.h"
+#include "glow/Optimizer/Lower/Lower.h"
 #include "glow/Quantization/Base/Base.h"
 #include "glow/Quantization/Quantization.h"
 
@@ -215,8 +216,8 @@ bool isSplatOfVal(Node *N, float val) {
 /// \returns True if the node returns a constant value.
 bool isConstant(Node *N) { return isa<SplatNode>(N); }
 
-/// \returns the new simplified node or the original node.
-static Node *simplifyNode(Node *node, Function *F) {
+/// \returns the new simplified NodeValue or the original node's first result.
+static NodeValue simplifyNode(Node *node, Function *F) {
 // Simplify commutative nodes by moving the constant operator to the right-hand
 // side.
 // Example:  C + X  =>  X + C
@@ -1793,10 +1794,12 @@ bool OptimizeArithmeticNodes::run(Function *F, const CompilationContext &cctx) {
     assert(N->isArithmetic() && "Must be an Arithmetic node.");
     worklist.pop_back();
 
-    auto *SN = simplifyNode(N, F);
-    if (SN != N) {
-      N->getNthResult(ArithmeticNode::ResultIdx).replaceAllUsesOfWith(SN);
+    auto SNV = simplifyNode(N, F);
+    if (SNV.getNode() != N) {
+      N->getNthResult(ArithmeticNode::ResultIdx).replaceAllUsesOfWith(SNV);
       changed = true;
+
+      auto *SN = SNV.getNode();
 
       // The simplified node could be further simplified. Note that the
       // simplified node might not be arithmetic; it could be a splat.
@@ -3461,7 +3464,7 @@ Error glow::optimizeFunction(Function *F, const Backend &B,
   }
 
   // Allow the backend to transform the graph after lowering.
-  while (B.transformPostLowering(F, cctx)) {
+  if (B.transformPostLowering(F, cctx)) {
     // If the backend made changes, optimize the graph again. Perform only
     // passes that the Backend has requested so we do not interfere with the
     // backend's transformations.

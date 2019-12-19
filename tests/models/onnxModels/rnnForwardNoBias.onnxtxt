@@ -1,0 +1,275 @@
+ir_version: 5
+producer_name: "onnx-rnn"
+graph {
+  node {
+    input: "X"
+    input: "W"
+    input: "R"
+    input: ""
+    input: ""
+    input: "initial_h"
+    output: "Y"
+    name: "rnn"
+    op_type: "RNN"
+    attribute {
+      name: "direction"
+      s: "forward"
+      type: STRING
+    }
+    attribute {
+      name: "hidden_size"
+      i: 4
+      type: INT
+    }
+  }
+  node {
+    input: "Y"
+    input: "Y_ref"
+    output: "Y_err"
+    name: "error"
+    op_type: "Sub"
+  }
+  name: "rnn_test"
+  initializer {
+    dims: 1
+    dims: 5
+    dims: 3
+    data_type: 1
+    float_data: 1.6243454217910767
+    float_data: -0.6117563843727112
+    float_data: -0.5281717777252197
+    float_data: -1.072968602180481
+    float_data: 0.8654076457023621
+    float_data: -2.3015387058258057
+    float_data: 1.744811773300171
+    float_data: -0.7612069249153137
+    float_data: 0.31903910636901855
+    float_data: -0.24937038123607635
+    float_data: 1.4621078968048096
+    float_data: -2.060140609741211
+    float_data: -0.3224171996116638
+    float_data: -0.38405436277389526
+    float_data: 1.1337693929672241
+    name: "X"
+  }
+  initializer {
+    dims: 1
+    dims: 4
+    dims: 3
+    data_type: 1
+    float_data: -1.0998913049697876
+    float_data: -0.1724282056093216
+    float_data: -0.8778584003448486
+    float_data: 0.042213745415210724
+    float_data: 0.5828152298927307
+    float_data: -1.1006191968917847
+    float_data: 1.144723653793335
+    float_data: 0.9015907049179077
+    float_data: 0.5024943351745605
+    float_data: 0.9008559584617615
+    float_data: -0.6837278604507446
+    float_data: -0.12289022654294968
+    name: "W"
+  }
+  initializer {
+    dims: 1
+    dims: 4
+    dims: 4
+    data_type: 1
+    float_data: -0.9357694387435913
+    float_data: -0.26788806915283203
+    float_data: 0.5303554534912109
+    float_data: -0.6916607618331909
+    float_data: -0.3967535197734833
+    float_data: -0.6871727108955383
+    float_data: -0.8452056646347046
+    float_data: -0.6712461113929749
+    float_data: -0.01266459934413433
+    float_data: -1.1173104047775269
+    float_data: 0.2344156950712204
+    float_data: 1.6598021984100342
+    float_data: 0.7420441508293152
+    float_data: -0.19183555245399475
+    float_data: -0.887628972530365
+    float_data: -0.7471582889556885
+    name: "R"
+  }
+  initializer {
+    dims: 1
+    dims: 5
+    dims: 4
+    data_type: 1
+    float_data: 1.6924545764923096
+    float_data: 0.050807755440473557
+    float_data: -0.6369956731796265
+    float_data: 0.19091548025608063
+    float_data: 2.100255250930786
+    float_data: 0.12015895545482635
+    float_data: 0.6172031164169312
+    float_data: 0.30017033219337463
+    float_data: -0.3522498607635498
+    float_data: -1.142518162727356
+    float_data: -0.3493427336215973
+    float_data: -0.20889423787593842
+    float_data: 0.5866231918334961
+    float_data: 0.838983416557312
+    float_data: 0.9311020970344543
+    float_data: 0.2855873107910156
+    float_data: 0.8851411938667297
+    float_data: -0.7543979287147522
+    float_data: 1.2528681755065918
+    float_data: 0.5129297971725464
+    name: "initial_h"
+  }
+  initializer {
+    dims: 1
+    dims: 1
+    dims: 5
+    dims: 4
+    data_type: 1
+    float_data: -0.9971986413002014
+    float_data: -0.0028152093291282654
+    float_data: 0.8116437196731567
+    float_data: 0.9985530972480774
+    float_data: 0.8254006505012512
+    float_data: 0.8748044371604919
+    float_data: -0.8084254264831543
+    float_data: -0.47161686420440674
+    float_data: -0.9001522064208984
+    float_data: 0.5643690228462219
+    float_data: 0.9810105562210083
+    float_data: 0.9859894514083862
+    float_data: 0.8748232126235962
+    float_data: 0.8670569062232971
+    float_data: -0.24961020052433014
+    float_data: -0.9398378729820251
+    float_data: -0.711860179901123
+    float_data: -0.9913809895515442
+    float_data: 0.9499350190162659
+    float_data: -0.6967620253562927
+    name: "Y_ref"
+  }
+  input {
+    name: "X"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 1
+          }
+          dim {
+            dim_value: 5
+          }
+          dim {
+            dim_value: 3
+          }
+        }
+      }
+    }
+  }
+  input {
+    name: "W"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 1
+          }
+          dim {
+            dim_value: 4
+          }
+          dim {
+            dim_value: 3
+          }
+        }
+      }
+    }
+  }
+  input {
+    name: "R"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 1
+          }
+          dim {
+            dim_value: 4
+          }
+          dim {
+            dim_value: 4
+          }
+        }
+      }
+    }
+  }
+  input {
+    name: "initial_h"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 1
+          }
+          dim {
+            dim_value: 5
+          }
+          dim {
+            dim_value: 4
+          }
+        }
+      }
+    }
+  }
+  input {
+    name: "Y_ref"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 1
+          }
+          dim {
+            dim_value: 1
+          }
+          dim {
+            dim_value: 5
+          }
+          dim {
+            dim_value: 4
+          }
+        }
+      }
+    }
+  }
+  output {
+    name: "Y_err"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 1
+          }
+          dim {
+            dim_value: 1
+          }
+          dim {
+            dim_value: 5
+          }
+          dim {
+            dim_value: 4
+          }
+        }
+      }
+    }
+  }
+}
+opset_import {
+  version: 10
+}

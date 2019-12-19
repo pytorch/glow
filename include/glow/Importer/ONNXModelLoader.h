@@ -40,6 +40,10 @@ namespace glow {
 /// Loads tensor \p T from the input \p in.
 Error loadTensor(const ONNX_NAMESPACE::TensorProto &in, Tensor *T);
 
+/// Define undefined symbols to \p str loaded from an ONNX proto. See
+/// onnxDefineSymbolOpt in ONNXModelLoader.cpp.
+void setOnnxDefineSymbol(const std::vector<std::string> &lst);
+
 /// Loads ONNX models.
 class ONNXModelLoader
     : public CommonOperatorLoader<ONNX_NAMESPACE::NodeProto,
@@ -149,6 +153,14 @@ class ONNXModelLoader
   /// Load Where ONNX operator.
   Error loadWhere(const ONNX_NAMESPACE::NodeProto &op,
                   const ArgumentDictionaryTy &dict);
+
+  /// Load RNN ONNX operator.
+  Error loadRNN(const ONNX_NAMESPACE::NodeProto &op,
+                const ArgumentDictionaryTy &dict);
+
+  /// Load GRU ONNX operator.
+  Error loadGRU(const ONNX_NAMESPACE::NodeProto &op,
+                const ArgumentDictionaryTy &dict);
 
   /// Load LSTM ONNX operator.
   Error loadLSTM(const ONNX_NAMESPACE::NodeProto &op,

@@ -197,19 +197,6 @@ void inputsToProto(const Node *node, ONNX_NAMESPACE::NodeProto *proto) {
   }
 }
 
-/// Write the output of the provided node, add SaveNode if necessary
-void outputKindToProto(const Node *node, ONNX_NAMESPACE::NodeProto *proto) {
-  for (const auto &use : node->getUsers()) {
-    const auto *user = use.getUser();
-    if (user->getKind() == Kinded::Kind::SaveNodeKind) {
-      const SaveNode *SN = llvm::cast<SaveNode>(user);
-      proto->add_output(SN->getPlaceholder()->getName());
-    } else {
-      outputsToProto(user, proto);
-    }
-  }
-}
-
 /// Write the output of the provided type only of node outputs.
 bool outputKindToProto(Kinded::Kind kind, const Node *node,
                        ONNX_NAMESPACE::NodeProto *proto) {
@@ -779,7 +766,7 @@ Error ONNXModelWriter::writeBatchedReduceMean(const BatchedReduceMeanNode *node,
   inputsToProto(node, proto);
 
   addValueAttribute(proto, "keepdims", 0);
-  outputKindToProto(node, proto);
+  outputsToProto(node, proto);
 
   return Error::success();
 }
@@ -797,7 +784,7 @@ Error ONNXModelWriter::writeBatchedReduceAdd(const BatchedReduceAddNode *node,
   inputsToProto(node, proto);
 
   addValueAttribute(proto, "keepdims", 0);
-  outputKindToProto(node, proto);
+  outputsToProto(node, proto);
 
   return Error::success();
 }
@@ -1038,15 +1025,6 @@ Error ONNXModelWriter::writeBatchMatMul(const BatchMatMulNode *node,
 }
 
 Error ONNXModelWriter::writeReshape(const ReshapeNode *node, GraphType &graph) {
-  // ReduceMean/ReduceSum nodes create reshape for the output.
-  // Therefore check if this reshape has BatchedReduceMean/BatchedReduceAdd
-  // node as input.
-  const Node *input = node->getInput().getNode();
-  if (llvm::dyn_cast<BatchedReduceMeanNode>(input) ||
-      llvm::dyn_cast<BatchedReduceAddNode>(input)) {
-    return Error::success();
-  }
-
   auto *proto = graph.add_node();
 
   // Add ints type attribute.

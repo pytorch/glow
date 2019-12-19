@@ -24,6 +24,11 @@ void StatsExporterRegistry::registerStatsExporter(StatsExporter *exporter) {
   exporters_.push_back(exporter);
 }
 
+void StatsExporterRegistry::revokeStatsExporter(StatsExporter *exporter) {
+  exporters_.erase(std::remove(exporters_.begin(), exporters_.end(), exporter),
+                   exporters_.end());
+}
+
 void StatsExporterRegistry::addTimeSeriesValue(llvm::StringRef key,
                                                double value) {
   for (auto const &exporter : exporters_) {
@@ -44,8 +49,8 @@ void StatsExporterRegistry::incrementCounter(llvm::StringRef key,
   }
 }
 
-StatsExporterRegistry *Stats() {
-  static auto *stats = new StatsExporterRegistry();
+std::shared_ptr<StatsExporterRegistry> StatsExporterRegistry::Stats() {
+  static auto stats = std::make_shared<StatsExporterRegistry>();
   return stats;
 }
 

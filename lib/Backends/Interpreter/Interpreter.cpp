@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#include "Interpreter.h"
-#include "InterpreterFunction.h"
+#include "glow/Backends/Interpreter/Interpreter.h"
+#include "glow/Backends/Interpreter/InterpreterFunction.h"
 
 #include "glow/Backend/BackendUtils.h"
 #include "glow/CodeGen/MemoryAllocator.h"
@@ -324,7 +324,7 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
     if (NI.getInElemTy(EmbeddingBagByteRowwiseOffsetsNode::IndicesIdx) !=
             IndexElemKind ||
         NI.getInElemTy(EmbeddingBagByteRowwiseOffsetsNode::OffsetsIdx) !=
-            ElemKind::Int32ITy) {
+            IndexElemKind) {
       return false;
     }
 
@@ -365,11 +365,21 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
                   FusedRowwiseQuantizedSparseLengthsWeightedSumNode::
                       ResultIdx) == ElemKind::Float16Ty);
     case ElemKind::UInt8FusedQTy:
-      return (NI.getInElemTy(FusedRowwiseQuantizedSparseLengthsWeightedSumNode::
-                                 WeightsIdx) == ElemKind::FloatTy) &&
-             (NI.getOutElemTy(
-                  FusedRowwiseQuantizedSparseLengthsWeightedSumNode::
-                      ResultIdx) == ElemKind::FloatTy);
+      if ((NI.getInElemTy(
+               FusedRowwiseQuantizedSparseLengthsWeightedSumNode::WeightsIdx) ==
+           ElemKind::FloatTy) &&
+          (NI.getOutElemTy(
+               FusedRowwiseQuantizedSparseLengthsWeightedSumNode::ResultIdx) ==
+           ElemKind::FloatTy)) {
+        return true;
+      }
+      return (
+          (NI.getInElemTy(
+               FusedRowwiseQuantizedSparseLengthsWeightedSumNode::WeightsIdx) ==
+           ElemKind::Float16Ty) &&
+          (NI.getOutElemTy(
+               FusedRowwiseQuantizedSparseLengthsWeightedSumNode::ResultIdx) ==
+           ElemKind::Float16Ty));
     default:
       return false;
     }

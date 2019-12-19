@@ -400,6 +400,11 @@ static bool commandLineIsInvalid() {
                   end = llvm::sys::path::rend(modelPathOpt[0]);
              it != end; ++it) {
           networkName = *it;
+          // Strip extension (if any).
+          size_t lastDotPos = networkName.find_last_of(".");
+          if (lastDotPos != std::string::npos) {
+            networkName = networkName.substr(0, lastDotPos);
+          }
           // Empty names are replaced by '.' (see Path.h in LLVM).
           if (!networkName.empty() && networkName != ".") {
             break;
@@ -494,6 +499,10 @@ void Loader::compile(CompilationContext &cctx) {
   auto module = M_.get();
 
   if (emittingBundle()) {
+    // Create bundle directory if not exists.
+    if (!llvm::sys::fs::is_directory(emitBundle)) {
+      llvm::sys::fs::create_directory(emitBundle);
+    }
     // Emit IR for the graph, compile it and save as a bundle.
     auto error = ::glow::optimizeFunction(F_, *backend_, cctx);
     EXIT_ON_ERR(std::move(error));

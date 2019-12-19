@@ -14,6 +14,7 @@ target_compile_options(TorchGlowTraining
                         -frtti -fexceptions -DC10_USE_GLOG)
 target_link_libraries(TorchGlowTraining
                       PRIVATE
+                        Backends
                         PyTorchFileLoader
                         ExecutionEngine
                         Exporter

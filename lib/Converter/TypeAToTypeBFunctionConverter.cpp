@@ -54,14 +54,16 @@ TypeAToTypeBFunctionConverter::getTargetTypeForInput(const Node &use,
 Node *TypeAToTypeBFunctionConverter::createConversion(Function &function,
                                                       const Node &node,
                                                       NodeValue &val,
-                                                      TypeRef destTy) {
+                                                      TypeRef destTy,
+                                                      bool isInput) {
   assert(((destTy->getElementType() == dstKind_ &&
            val.getType()->getElementType() == srcKind_) ||
           (destTy->getElementType() == srcKind_ &&
            val.getType()->getElementType() == dstKind_)) &&
          "Unexpected conversion type");
 
-  bool needClip = precConfig_.clipFP16;
+  bool needClip = dstKind_ == ElemKind::Float16Ty && precConfig_.clipFP16 &&
+                  !(isInput && precConfig_.clipFP16SkipInputs);
   if (needClip) {
     switch (node.getKind()) {
     case Kinded::Kind::ConcatNodeKind:
@@ -79,20 +81,15 @@ Node *TypeAToTypeBFunctionConverter::createConversion(Function &function,
     assert((destTy->getElementType() == ElemKind::Float16Ty ||
             val.getType()->getElementType() == ElemKind::Float16Ty) &&
            "Unexpected conversion type");
-    constexpr float float16Max = 65504.0f;
-    constexpr float float16Min = -65504.0f;
-
     // If the input is fp32 and output is fp16, then we want to do the convert
     // before the clip. This way the clip can execute in fp16 mode.
     if (destTy->getElementType() == ElemKind::Float16Ty &&
         val.getType()->getElementType() == ElemKind::FloatTy) {
       auto convert =
           function.createConvertTo(val.getNode()->getName(), val, destTy);
-      return function.createClip(val.getNode()->getName(), convert, float16Min,
-                                 float16Max);
+      return function.createClipMinMaxFP16(val.getNode()->getName(), convert);
     } else {
-      auto clip = function.createClip(val.getNode()->getName(), val, float16Min,
-                                      float16Max);
+      auto clip = function.createClipMinMaxFP16(val.getNode()->getName(), val);
       return function.createConvertTo(val.getNode()->getName(), clip, destTy);
     }
   } else {
@@ -104,4 +101,47 @@ void TypeAToTypeBFunctionConverter::convertTensor(Tensor &tensor,
                                                   TypeRef destTy) {
   assert(destTy->getElementType() == dstKind_);
   tensor.convertToType(dstKind_);
+}
+
+void convertAndClipStorageHelper(Storage &S, Function &F, bool clipFP16,
+                                 ElemKind srcKind, ElemKind dstKind) {
+  if (S.getOutput().getType()->getElementType() != srcKind) {
+    return;
+  }
+
+  ConvertToNode *convertToFP16 =
+      F.createConvertTo("convert to", S.getOutput(), dstKind);
+
+  NodeValue NV = convertToFP16->getResult();
+  if (clipFP16) {
+    NV = F.createClipMinMaxFP16(S.getName(), NV)->getResult();
+  }
+
+  // We have to convert back to the srcKind now as the users currently must be
+  // expecting FP32. The optimizer will remove if possible.
+  NodeValue convertBack =
+      F.createConvertTo("convert back", NV, srcKind)->getResult();
+
+  // We need to specify to skip replacing convertToFP16 here as otherwise we
+  // will create a cycle in the graph.
+  S.getOutput().replaceAllUsesOfWith(convertBack, &F, convertToFP16);
+}
+
+void TypeAToTypeBFunctionConverter::convertAndClipStorage() {
+  if (precConfig_.convertPlaceholdersToFP16) {
+    for (Placeholder *PH : function_.findPlaceholders()) {
+      // If the PH is not used as an input then we do not clip it.
+      if (!isInput(PH, function_)) {
+        continue;
+      }
+      convertAndClipStorageHelper(*PH, function_, precConfig_.clipFP16,
+                                  srcKind_, dstKind_);
+    }
+  }
+  if (precConfig_.convertConstantsToFP16) {
+    for (Constant *C : function_.findConstants()) {
+      convertAndClipStorageHelper(*C, function_, precConfig_.clipFP16, srcKind_,
+                                  dstKind_);
+    }
+  }
 }

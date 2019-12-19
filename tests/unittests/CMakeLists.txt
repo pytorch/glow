@@ -28,7 +28,8 @@ target_link_libraries(Repro
                       PRIVATE
                         BackendTestUtils
                         HostManager
-                        Importer)
+                        Importer
+                        Exporter)
 
 # Test executables, sorted alphabetically.
 
@@ -152,6 +153,7 @@ add_executable(GraphOptzTest
                GraphOptzTest.cpp)
 target_link_libraries(GraphOptzTest
                       PRIVATE
+                        Backends
                         BackendTestUtils
                         ExecutionEngine
                         Graph
@@ -398,7 +400,13 @@ foreach(backend ${GLOW_BACKENDS})
                    PRIVATE
                    HostManager
                    Runtime)
-  add_backend_test(TEST TypeAToTypeBFunctionConverterTest BACKEND "${backend}")
+
+  add_backend_test(TEST
+                   TypeAToTypeBFunctionConverterTest
+                   BACKEND
+                   "${backend}"
+                   Converter
+                   Graph)
 endforeach()
 
 add_executable(PartitionerTest

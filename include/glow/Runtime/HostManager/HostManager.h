@@ -15,12 +15,14 @@
  */
 #ifndef GLOW_RUNTIME_HOSTMANAGERR_HOSTMANAGER_H
 #define GLOW_RUNTIME_HOSTMANAGERR_HOSTMANAGER_H
+
 #include "glow/Backend/Backend.h"
 #include "glow/Backends/DeviceManager.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Runtime/Executor/Executor.h"
 #include "glow/Runtime/Provisioner/Provisioner.h"
 #include "glow/Runtime/RuntimeTypes.h"
+#include "glow/Runtime/StatsExporter.h"
 
 #include <atomic>
 #include <map>
@@ -141,14 +143,17 @@ class HostManager final {
   /// Method to calculate and export aggregate memory usage counters.
   void exportMemoryCounters();
 
-  /// Execution stats update
-  static void updateExecutionStats(uint64_t startTime,
-                                   std::unique_ptr<ExecutionContext> &context);
+  /// Execution stats update.
+  void updateExecutionStats(uint64_t startTime,
+                            std::unique_ptr<ExecutionContext> &context);
+
+  /// Keeps the stats exporter registry object alive till destructor.
+  std::shared_ptr<StatsExporterRegistry> statsExporterRegistry_;
+
+  /// Default constructor.
+  HostManager();
 
 public:
-  /// Default constructor.
-  HostManager() = default;
-
   /// Constructor that takes configuration options.
   HostManager(const HostConfig &hostConfig);
 

@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#include "Interpreter.h"
+#include "glow/Backends/Interpreter/Interpreter.h"
 
 #include "glow/IR/Instrs.h"
 #include "glow/Quantization/Base/Base.h"
@@ -673,14 +673,13 @@ void BoundInterpreterFunction::fwdChannelwiseQuantizedConvolutionInst(
     // For each group of input channels:
     for (dim_t g = 0; g < group; g++) {
 
-      // get groupwise qparams params
-      int32_t filterOffset = offsetsW.at(g);
-      float filterScale = scalesW.at(g);
-      float matMulScale = inScale * filterScale;
-
       // For each output channel in the group:
       for (dim_t d = g * outCperG; d < (g + 1) * outCperG; d++) {
 
+        // get channelwise qparams params
+        int32_t filterOffset = offsetsW.at(d);
+        float filterScale = scalesW.at(d);
+        float matMulScale = inScale * filterScale;
         // For each convolution 'jump' in the input tensor:
         sdim_t x = -sdim_t(pdim.top);
         for (dim_t ax = 0; ax < odim.h; x += sdim.height, ax++) {
@@ -3509,8 +3508,23 @@ void BoundInterpreterFunction::
     for (dim_t j = 0, e = LH.raw(i); j < e; j++) {
       const float weight = static_cast<float>(WH.raw(curIdx));
       const dim_t rowIdx = IH.raw(curIdx++);
-      T scale, offset;
-      std::tie(scale, offset) = DH.getFusedScaleOffsetFromRow<T>(rowIdx);
+      // Data type for the Scale and Offset for fused types need not follow
+      // the type for the output Tensor passed in T.
+      float scale, offset;
+      switch (
+          getScaleOffsetElemKindFromFused(data->getType().getElementType())) {
+      case ElemKind::FloatTy:
+        std::tie(scale, offset) = DH.getFusedScaleOffsetFromRow<float>(rowIdx);
+        break;
+      case ElemKind::Float16Ty:
+        std::tie(scale, offset) =
+            DH.getFusedScaleOffsetFromRow<float16_t>(rowIdx);
+        break;
+      default:
+        llvm_unreachable("Type is not supported");
+        break;
+      }
+
       for (dim_t k = 0; k < outLineSize; k++) {
         float d = 0.0f;
         if (!using4BitQuantization) {
@@ -3566,7 +3580,7 @@ void BoundInterpreterFunction::fwdEmbeddingBagByteRowwiseOffsetsImpl(
   out->zero();
 
   auto IH = indices->getHandle<sdim_t>();
-  auto OFFH = offsets->getHandle<int32_t>();
+  auto OFFH = offsets->getHandle<sdim_t>();
 
   dim_t segments = offsets->dims()[0];
   dim_t numIndices = indices->dims()[0];

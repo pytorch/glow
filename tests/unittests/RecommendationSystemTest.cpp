@@ -161,7 +161,7 @@ static size_t sumOfElements(Handle<int32_t> H) {
 ///    * An initial Multilayer Perceptron acting in the inputs.
 ///    * Some number of Sparse Features: SparseLengthSum nodes acting on
 ///      embedding tables (see https://caffe2.ai/docs/sparse-operations.html).
-///    * An interaction layer bringing together the output for hte top MLP and
+///    * An interaction layer bringing together the output for the top MLP and
 ///      the sparse features.
 ///    * A final MLP acting on the result of the interaction.
 ///

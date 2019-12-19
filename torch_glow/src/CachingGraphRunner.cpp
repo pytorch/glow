@@ -134,9 +134,44 @@ Error CachingGraphRunner::run(torch::jit::Stack &stack) {
   return runImpl(*DCHECK_NOTNULL(info), stack);
 }
 
+Error CachingGraphRunner::runOnly(torch::jit::Stack &stack) {
+  if (perGlowGraphInfoMap_.size() != 1) {
+    return MAKE_ERR(strFormat(
+        "There should be one and only one compiled graph, but got %lu",
+        perGlowGraphInfoMap_.size()));
+  }
+  return runImpl(*DCHECK_NOTNULL(perGlowGraphInfoMap_[0].get()), stack);
+}
+
 Error CachingGraphRunner::warmCache(const std::vector<InputMeta> &inputMeta) {
-  // TODO: implement caching based on input metas. For now this is an
-  // opmtimization.
+  if (!hostManager_) {
+    return MAKE_ERR("Host manager is null!");
+  }
+
+  if (!graph_) {
+    return MAKE_ERR("No graph found!");
+  }
+
+  if (perGlowGraphInfoMap_.size() != 0) {
+    return MAKE_ERR(strFormat("There is already a compiled graph!"));
+  }
+
+  auto info = std::make_shared<PerGlowGraphInfo>();
+  info->functionName = strFormat("PTFunction_precompiled");
+
+  std::unique_ptr<Module> glowModule = llvm::make_unique<Module>();
+  Function *f = glowModule->createFunction(info->functionName);
+
+  RETURN_IF_ERR(PyTorchModelLoader::loadJITGraph(
+      *f, *graph_, info->inputPlaceholders, info->outputPlaceholders,
+      getPyTorchLoaderSettings(), {}, inputMeta));
+
+  glow::CompilationContext cctx;
+
+  RETURN_IF_ERR(hostManager_->addNetwork(std::move(glowModule), cctx));
+  // Randomly picked one key. There should be only one element in the map
+  // when model is precompiled.
+  perGlowGraphInfoMap_[0] = std::move(info);
   return Error::success();
 }
 

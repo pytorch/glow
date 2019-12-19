@@ -150,7 +150,8 @@ public:
   /// Based on \p partitionConfig passed into Partitioner, do user-defined
   /// partition.
   Expected<DAGListTy>
-  partitionFromConfig(const PartitionConfig &partitionConfig);
+  partitionFromConfig(const PartitionConfig &partitionConfig,
+                      CompilationContext &cctx);
 
   /// This partition approach is used in Glow Quantization Profiling flow. The
   /// backendBasedPartition is applied first in case there are heterogeneous

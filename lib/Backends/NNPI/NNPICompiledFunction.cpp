@@ -16,14 +16,57 @@
 #include "NNPICompiledFunction.h"
 #include "DebugMacros.h"
 #include "Importer.h"
+#include "NNPI.h"
+#include "NNPIOptions.h"
 #include "nnpi_transformer.h"
 
 #include "glow/Backend/BackendUtils.h"
 
 using namespace glow;
 
+Error NNPICompiledFunction::updateCompilationConfigFromOptions(
+    NNPICompilationOptions &compilationOptions) {
+  if (compilationOptions.showVars) {
+    LOG(INFO) << compilationOptions.dumpStatus();
+  }
+  if (!compilationOptions.customDspKernelsFile.empty()) {
+    std::strncpy(config_.customDspKernelsFile,
+                 compilationOptions.customDspKernelsFile.c_str(),
+                 sizeof(config_.customDspKernelsFile));
+  }
+
+  // Handle device version.
+  if (compilationOptions.deviceVersion > 0) {
+    switch (compilationOptions.deviceVersion) {
+    case 1:
+      config_.deviceType = NNPI_DEVICE_M2_A;
+      break;
+    case 2:
+      config_.deviceType = NNPI_DEVICE_M2_B;
+      break;
+    case 3:
+      config_.deviceType = NNPI_DEVICE_M2_C;
+      break;
+    default:
+      LOG_IF_NOT_RETURN_LLVMERROR(
+          false, "INVALID NNPI_DEVICE_VERSION, valid values are 1,2,3");
+    }
+  }
+
+  if (compilationOptions.iceCores > 0) {
+    config_.numCoresToUse = static_cast<uint32_t>(compilationOptions.iceCores);
+  }
+  if (!compilationOptions.debugCompileConfigFile.empty()) {
+    strncpy(config_.debugConfigFile,
+            compilationOptions.debugCompileConfigFile.c_str(),
+            sizeof(config_.debugConfigFile));
+  }
+  return Error::success();
+}
+
 Error NNPICompiledFunction::compile(Function *F, const BackendOptions &opts) {
-  NNPIImporter importer;
+  NNPICompilationOptions compilationOptions(&opts.backendSpecificOpts);
+  NNPIImporter importer(compilationOptions);
   network_ = importer.importFunction(F, opts);
   LOG_INVALID_HANDLE_RETURN_LLVMERROR(network_, "Failed to import function");
 
@@ -39,39 +82,13 @@ Error NNPICompiledFunction::compile(Function *F, const BackendOptions &opts) {
   LOG_NNPI_ERROR_RETURN_LLVMERROR(nnpiGetDefaultCompilationConfig(&config_),
                                   "Failed NNPI API Read Config");
 
-  // Parse compilation config options.
-  auto customDspLib = opts.backendSpecificOpts.find("NNPICustomDSPLib");
-  if (customDspLib != opts.backendSpecificOpts.end()) {
-    std::strncpy(config_.customDspKernelsFile, customDspLib->second.c_str(),
-                 sizeof(config_.customDspKernelsFile));
+  auto error = updateCompilationConfigFromOptions(compilationOptions);
+  if (error) {
+    return error;
   }
 
-  // Handle device version.
-  std::string deviceVersion = EnvDeviceVersion();
-  if (deviceVersion.empty() &&
-      opts.backendSpecificOpts.count("NNPIDeviceVersion")) {
-    deviceVersion = opts.backendSpecificOpts.at("NNPIDeviceVersion");
-  }
-  if (!deviceVersion.empty()) {
-    if (deviceVersion.compare("1") == 0) {
-      config_.deviceType = NNPI_DEVICE_M2_A;
-    } else if (deviceVersion.compare("2") == 0) {
-      config_.deviceType = NNPI_DEVICE_M2_B;
-    } else if (deviceVersion.compare("3") == 0) {
-      config_.deviceType = NNPI_DEVICE_M2_C;
-    } else {
-      LOG_IF_NOT_RETURN_LLVMERROR(
-          false, "INVALID NNPI_DEVICE_VERSION, valid values are 1,2,3");
-    }
-  }
-
-  const auto numCores = EnvIceCores();
-  if (!numCores.empty()) {
-    config_.numCoresToUse = std::stoul(numCores);
-  }
-
-  if (UseIceT() || UseInferenceAPI()) {
-    auto filename = ICETFilename();
+  if (compilationOptions.useIceT || compilationOptions.inferOnDevice) {
+    auto filename = compilationOptions.compiledFile;
     LOG_IF_NOT_RETURN_LLVMERROR(filename.length() < NNPI_MAX_STRING_LEN,
                                 "Bad filename");
 
@@ -109,7 +126,7 @@ Error NNPICompiledFunction::compile(Function *F, const BackendOptions &opts) {
           nnpiNetworkCompileToFile(network_, &config_, filename.c_str(), NULL),
           "Failed NNPI Compile");
     }
-    if (UseInferenceAPI()) {
+    if (compilationOptions.inferOnDevice) {
       DBG_MEM_USAGE("NNPICompiledFunction destroy network");
       // NNPINetwork is not needed anymore on the inferfence api path.
       // Once the complied stream is loaded, query on the network can be done
@@ -130,6 +147,9 @@ Error NNPICompiledFunction::compile(Function *F, const BackendOptions &opts) {
     if (allowsPartialInput(P, F)) {
       partialInputs_.insert(P);
     }
+    if (P->isStatic()) {
+      staticInputs_.insert(P);
+    }
   }
 
   return Error::success();
@@ -149,7 +169,7 @@ BlockStream &NNPICompiledFunction::lockCompiledStream() {
 
 void NNPICompiledFunction::unlockCompiledStream() {
   DBG_MEM_USAGE("unlockCompiledStream");
-  compiledStream_.reset();
+  compiledStream_.resetRead();
   compiledStreamMutex_.unlock();
 }
 

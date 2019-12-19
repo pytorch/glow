@@ -21,3 +21,18 @@ std::set<std::string> glow::backendTestBlacklist = {
     "staticPlaceholderInference/0",
     "FP16StaticPlaceholderInference/0",
 };
+
+struct EmulatorOnlyTests {
+  EmulatorOnlyTests() {
+    // If USE_INF_API is set, we are running on real hardware, and need
+    // to blacklist additional testcases.
+    auto useInfAPI = getenv("USE_INF_API");
+    if (useInfAPI && !strcmp(useInfAPI, "1")) {
+      // N.B.: This insertion is defined to come after the initialization of
+      // backendTestBlacklist because they are ordered within the same
+      // translation unit (this source file).  Otherwise this technique would
+      // be subject to the static initialization order fiasco.
+      backendTestBlacklist.erase({"staticPlaceholderInference/0"});
+    }
+  }
+} emuTests;
