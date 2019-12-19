@@ -30,6 +30,9 @@ llvm::cl::opt<std::string>
 llvm::cl::opt<std::string> llvmCPU("mcpu",
                                    llvm::cl::desc("LLVM CPU to be used"));
 
+llvm::cl::opt<std::string> llvmABI("mabi",
+                                   llvm::cl::desc("Machine ABI to be used"));
+
 llvm::cl::opt<llvm::CodeModel::Model> llvmCodeModel(
     "code-model",
     llvm::cl::desc("Specify which code model to use on the target machine"),
@@ -88,3 +91,20 @@ llvm::cl::opt<llvm::FloatABI::ABIType>
                               clEnumValN(llvm::FloatABI::Hard, "hard",
                                          "Hard float ABI (hardfp)")),
              llvm::cl::init(llvm::FloatABI::Default));
+
+static llvm::cl::OptionCategory bundleSaverCat("Bundle Options");
+
+llvm::cl::opt<glow::BundleApiType>
+    bundleAPI("bundle-api", llvm::cl::desc("Specify which bundle API to use."),
+              llvm::cl::Optional,
+              llvm::cl::values(clEnumValN(glow::BundleApiType::Dynamic,
+                                          "dynamic", "Dynamic API"),
+                               clEnumValN(glow::BundleApiType::Static, "static",
+                                          "Static API")),
+              llvm::cl::init(glow::BundleApiType::Static),
+              llvm::cl::cat(bundleSaverCat));
+
+llvm::cl::opt<bool> bundleAPIVerbose(
+    "bundle-api-verbose",
+    llvm::cl::desc("Print more details in the bundle API header file"),
+    llvm::cl::init(false), llvm::cl::cat(bundleSaverCat));

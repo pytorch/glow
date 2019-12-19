@@ -92,6 +92,8 @@ Error Partitioner::finalize(const DAGListTy &partitions,
     for (const auto &node : partitions[0].nodes) {
       Function *subF = module_->getFunction(node->name);
       if (!subF) {
+        // If we fail dump partition info for debugging.
+        logPartitionInfo(mapping);
         return MAKE_ERR(ErrorValue::ErrorCode::PARTITIONER_ERROR,
                         "Invalid function name " + node->name);
       }
@@ -284,6 +286,7 @@ Expected<DAGListTy> Partitioner::backendBasedPartition(
       }
     }
     if (nodeToBackendName.find(&N) == nodeToBackendName.end()) {
+      logPartitionInfo(mapping);
       return MAKE_ERR(ErrorValue::ErrorCode::PARTITIONER_ERROR,
                       "Node is not supported by any of the provided backends");
     }
@@ -395,17 +398,18 @@ Expected<DAGListTy> Partitioner::createDAGWithoutPartition(
     llvm::StringRef backendName, std::map<std::string, BackendInfo> &backendMap,
     CompilationContext &cctx) {
   DAGListTy partitions;
+  const DeviceIDTy logDevice = 0;
   for (auto F : module_->getFunctions()) {
     if (!optimized_) {
       auto backend = backendMap[backendName].backend;
       RETURN_IF_ERR(::glow::optimizeFunction(F, *backend, cctx));
     }
     std::unique_ptr<DAGNode> DAG0 = glow::make_unique<DAGNode>();
-    DAG0->logicalDevices = {0};
+    DAG0->logicalDevices = {logDevice};
     DAG0->name = F->getName();
     DAG0->module = module_;
     std::unique_ptr<DAGNode> DAG1 = glow::make_unique<DAGNode>();
-    DAG1->logicalDevices = {0};
+    DAG1->logicalDevices = {logDevice};
     DAG1->name = F->getName();
     DAG1->backendName = backendName;
     DAG1->parents.push_back(DAG0.get());
@@ -420,6 +424,14 @@ Expected<DAGListTy> Partitioner::createDAGWithoutPartition(
   }
 
   NodeToFunctionMap mapping;
+  for (auto func : module_->getFunctions()) {
+    mapping.createPartition(func, backendName);
+    mapping.setGraphMemInfo(func, getFunctionMemory(func));
+
+    // Use the same hard-coded logical device ID as used for the DAG itself.
+    mapping.appendLogicalDeviceID(func, logDevice);
+  }
+
   RETURN_IF_ERR(finalize(partitions, mapping));
 
   return std::move(partitions);
@@ -573,6 +585,7 @@ Expected<DAGListTy> Partitioner::loadBalancedPartition(CompilationContext &cctx,
 
       // Throw error if we were not able to put this node into any partition
       if (curPartition >= numDevices) {
+        logPartitionInfo(partitionMap);
         return MAKE_ERR(ErrorValue::ErrorCode::PARTITIONER_ERROR,
                         "Load balance partition error");
       }
@@ -755,7 +768,8 @@ Partitioner::heterogeneousPartition(CompilationContext &cctx) {
 }
 
 Expected<DAGListTy>
-Partitioner::partitionFromConfig(const PartitionConfig &partitionConfig) {
+Partitioner::partitionFromConfig(const PartitionConfig &partitionConfig,
+                                 CompilationContext &cctx) {
   DAGListTy partitions;
   // Prepare the mapping between BackendName and BackendInfo.
   std::vector<Backend *> backends;
@@ -820,8 +834,21 @@ Partitioner::partitionFromConfig(const PartitionConfig &partitionConfig) {
   }
   RETURN_IF_ERR(memoryUsageValidation(partitionMap, backendMap_));
 
-  // Logical device ID validation.
-  logicalDeviceID_ = assignLogicalDeviceID(partitionMap, backendMap_);
+  // If logical device assignments are provided use them otherwise assign them.
+  if (partitionConfig.logicalIDs.size()) {
+    DCHECK(partitionConfig.numOfPartitions ==
+           partitionConfig.logicalIDs.size());
+    for (size_t i = 0; i < partitionConfig.numOfPartitions; i++) {
+      auto func = funcList[i];
+      for (auto logicalDevice : partitionConfig.logicalIDs[i]) {
+        partitionMap.appendLogicalDeviceID(func, logicalDevice);
+      }
+    }
+
+  } else {
+    // Logical device ID validation.
+    logicalDeviceID_ = assignLogicalDeviceID(partitionMap, backendMap_);
+  }
   RETURN_IF_ERR(logicalDevicesValidation(partitionMap, backendMap_));
 
   // Do partition.
@@ -839,7 +866,6 @@ Partitioner::partitionFromConfig(const PartitionConfig &partitionConfig) {
     std::unique_ptr<Backend> backend(
         createBackend(partitionConfig.backendNames[i]));
     if (!optimized_) {
-      CompilationContext cctx;
       RETURN_IF_ERR(::glow::optimizeFunction(func, *backend, cctx));
     }
   }
@@ -850,9 +876,13 @@ Partitioner::partitionFromConfig(const PartitionConfig &partitionConfig) {
 }
 
 Expected<DAGListTy> Partitioner::partition(CompilationContext &cctx) {
+  if (cctx.partitionConfig) {
+    partitionConfig_ = *cctx.partitionConfig;
+  }
+
   if (partitionConfig_.enabled()) {
     // Call user-defined partition flow.
-    return partitionFromConfig(partitionConfig_);
+    return partitionFromConfig(partitionConfig_, cctx);
   }
 
   if (cctx.precisionConfig.quantMode == QuantizationMode::Profile) {

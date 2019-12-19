@@ -18,6 +18,7 @@
 #include "glow/Backend/BackendUtils.h"
 #include "glow/Backend/CompiledFunction.h"
 #include "glow/Graph/Graph.h"
+#include "glow/Runtime/DeferredWeightLoader.h"
 #include "glow/Support/Debug.h"
 
 #include "llvm/Support/FileSystem.h"
@@ -286,6 +287,37 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
   std::map<std::string, std::unique_ptr<CompiledFunction>> duplicatedFunctions;
   std::map<std::string, unsigned> remainingDuplications;
 
+  // Map from Placeholder* to DeviceManager, this is used for deferred weight
+  // loading.
+  std::unordered_map<Placeholder *, std::vector<unsigned>>
+      placeholderToDevicManager;
+  if (cctx.deferredWeightLoader) {
+    // Populate placeholdeToDeviceManager map.
+    for (auto &assignment : assignments) {
+      for (const auto &node : logicalDevices[assignment.first]) {
+        Function *function = module.getFunction(node->name);
+        for (auto PH : function->findPlaceholders()) {
+          if (PH->isStatic()) {
+            placeholderToDevicManager[PH].push_back(assignment.second);
+          }
+        }
+      }
+    }
+  } else {
+    // Make sure there are no static placeholders.
+    for (auto PH : module.getPlaceholders()) {
+      if (PH->isStatic()) {
+        return MAKE_ERR(
+            ErrorValue::ErrorCode::RUNTIME_ERROR,
+            llvm::formatv("Error Placholder: {0} is marked as static but no "
+                          "deferredWeightLoader is provided.",
+                          PH->getName())
+                .str());
+        ;
+      }
+    }
+  }
+
   // Compile and load.
   // This is done one logical device at a time. All functions in a logical
   // device are compiled and then added to their assigned device. If a function
@@ -386,16 +418,82 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
         functions_.emplace(func.first, std::move(func.second));
       }
       // Check if any of the duplicated functions can also be moved.
-      for (auto func : remainingDuplications) {
+      for (auto iter = remainingDuplications.begin();
+           iter != remainingDuplications.end();) {
+        const auto &func = *iter;
         if (func.second == 0) {
           duplicatedFunctions[func.first]->freeCompilationResources();
           functions_.emplace(func.first,
                              std::move(duplicatedFunctions[func.first]));
           duplicatedFunctions.erase(func.first);
+          iter = remainingDuplications.erase(iter);
+        } else {
+          ++iter;
         }
       }
     }
   }
+
+  // If a deferredWeightLoader is provided, create a deferredWeightLoader and
+  // load deferred weights.
+  if (cctx.deferredWeightLoader) {
+
+    auto loader = cctx.deferredWeightLoader;
+    // Load the first weight.
+    RETURN_IF_ERR(loader->loadNextWeight());
+    std::string weightName = loader->getName();
+    // Load weights while there are weights to be loaded.
+    while (weightName != "") {
+      auto PH = module.getPlaceholderByName(weightName);
+      if (!PH) {
+        return MAKE_ERR(
+            ErrorValue::ErrorCode::RUNTIME_ERROR,
+            llvm::formatv(
+                "Error loading deferred weight. Name: {0} not found in module.",
+                weightName)
+                .str());
+      }
+      // Convert the weight if needed.
+      auto newTy = PH->getType();
+      auto weight = loader->getTensor();
+      // Ensure we are working with a static PH.
+      assert(PH->isStatic());
+      if (!weight->getType().isEqual(newTy)) {
+        ElemKind newK = newTy->getElementType();
+        if (isQuantizedElemKind(newK)) {
+          Tensor QT = quantization::quantizeTensor(
+              *weight, {newTy->getScale(), newTy->getOffset()}, newK);
+          weight->assign(&QT);
+        } else {
+          weight->convertToType(newK);
+        }
+      }
+
+      // Transfer weight to all devices needed.
+      for (const auto &device : placeholderToDevicManager[PH]) {
+        std::promise<Error> transferPromise;
+        auto done = transferPromise.get_future();
+        devices_[device]->transferStaticPlaceholderToDevice(
+            PH, weight, [&transferPromise](Error err) {
+              transferPromise.set_value(std::move(err));
+            });
+        RETURN_IF_ERR(done.get());
+      }
+      RETURN_IF_ERR(loader->loadNextWeight());
+      weightName = loader->getName();
+      // Remove PH from map, this way we can know that we've added all static
+      // PH's
+      placeholderToDevicManager.erase(PH);
+    }
+    if (placeholderToDevicManager.size()) {
+      for (auto PH : placeholderToDevicManager) {
+        llvm::outs() << PH.first->getName() << "\n";
+      }
+      return MAKE_ERR(ErrorValue::ErrorCode::RUNTIME_ERROR,
+                      "Error not all static placeholders were initialized.");
+    }
+  }
+
   cleanupProvision(localActiveNames, false);
   return Error::success();
 };

@@ -523,7 +523,7 @@ TEST_P(AllBackends, int64IConversionFloatToFloat16) {
   auto *output =
       mod.createPlaceholder(ElemKind::FloatTy, {20, 3}, "Output", false);
   auto *outputIdx =
-      mod.createPlaceholder(ElemKind::Int64ITy, {20, 3}, "Output", false);
+      mod.createPlaceholder(IndexElemKind, {20, 3}, "Output", false);
 
   auto *topK = F->createTopK("topK", input, 3);
   auto *result = F->createSave("save", topK->getValues(), output);
@@ -555,8 +555,7 @@ TEST_P(AllBackends, int64IConversionFloatToFloat16) {
   ASSERT_NE(convertedTopK, nullptr);
   EXPECT_EQ(convertedTopK->getElementType(TopKNode::ValuesIdx),
             ElemKind::Float16Ty);
-  EXPECT_EQ(convertedTopK->getElementType(TopKNode::IndicesIdx),
-            ElemKind::Int64ITy);
+  EXPECT_EQ(convertedTopK->getElementType(TopKNode::IndicesIdx), IndexElemKind);
   // Check that the input of TopK is a convertTo node from float to
   // Float16Ty.
   auto *convertedTopKInput =
@@ -582,7 +581,7 @@ TEST_P(AllBackends, int64IConversionFloatToFloat16) {
   EXPECT_EQ(resultIndices->getOutput(), outputIdx->getOutput());
   EXPECT_EQ(resultIndices->getInput(),
             convertedTopK->getNthResult(TopKNode::IndicesIdx));
-  EXPECT_EQ(resultIndices->getInput().getElementType(), ElemKind::Int64ITy);
+  EXPECT_EQ(resultIndices->getInput().getElementType(), IndexElemKind);
 }
 
 /// Check that the conversion optimization can get rid of conversion of
@@ -1033,9 +1032,8 @@ TEST_P(AllBackends, convertFRWQSLWS) {
 
   Constant *weights = mod.createConstant(ElemKind::FloatTy, {8}, "weights");
 
-  Placeholder *indices =
-      mod.createPlaceholder(ElemKind::Int64ITy, {8}, "indices",
-                            /* isTrainable */ false);
+  Placeholder *indices = mod.createPlaceholder(IndexElemKind, {8}, "indices",
+                                               /* isTrainable */ false);
   Placeholder *lengths =
       mod.createPlaceholder(ElemKind::Int32ITy, {4}, "lengths",
                             /* isTrainable */ false);
@@ -1098,9 +1096,8 @@ TEST_P(AllBackends, skipConvertingFRWQSLWS) {
 
   Constant *weights = mod.createConstant(ElemKind::FloatTy, {8}, "weights");
 
-  Placeholder *indices =
-      mod.createPlaceholder(ElemKind::Int64ITy, {8}, "indices",
-                            /* isTrainable */ false);
+  Placeholder *indices = mod.createPlaceholder(IndexElemKind, {8}, "indices",
+                                               /* isTrainable */ false);
   Placeholder *lengths =
       mod.createPlaceholder(ElemKind::Int32ITy, {4}, "lengths",
                             /* isTrainable */ false);
@@ -1150,9 +1147,8 @@ TEST_P(AllBackends, convertOnlyFloat16Ty) {
 
   Constant *weights = mod.createConstant(ElemKind::FloatTy, {8}, "weights");
 
-  Placeholder *indices =
-      mod.createPlaceholder(ElemKind::Int64ITy, {8}, "indices",
-                            /* isTrainable */ false);
+  Placeholder *indices = mod.createPlaceholder(IndexElemKind, {8}, "indices",
+                                               /* isTrainable */ false);
   Placeholder *lengths =
       mod.createPlaceholder(ElemKind::Int32ITy, {4}, "lengths",
                             /* isTrainable */ false);
@@ -1209,9 +1205,8 @@ TEST_P(AllBackends, convertOnlyUInt8FusedQTy) {
 
   Constant *weights = mod.createConstant(ElemKind::FloatTy, {8}, "weights");
 
-  Placeholder *indices =
-      mod.createPlaceholder(ElemKind::Int64ITy, {8}, "indices",
-                            /* isTrainable */ false);
+  Placeholder *indices = mod.createPlaceholder(IndexElemKind, {8}, "indices",
+                                               /* isTrainable */ false);
   Placeholder *lengths =
       mod.createPlaceholder(ElemKind::Int32ITy, {4}, "lengths",
                             /* isTrainable */ false);
@@ -1254,8 +1249,8 @@ TEST_P(AllBackends, convertOnlyUInt8FusedQTy) {
 TEST_P(AllBackends, convertWithoutClipAroundNonNumericNodes) {
   Module mod;
   Function *F = mod.createFunction("test");
-  const size_t dims[] = {1, 5, 10, 15};
-  const size_t dimsReshape[] = {10, 10, 15};
+  const dim_t dims[] = {1, 5, 10, 15};
+  const dim_t dimsReshape[] = {10, 10, 15};
   Node *I0 = mod.createPlaceholder(ElemKind::FloatTy, dims, "i0", false);
   Node *I1 = mod.createPlaceholder(ElemKind::FloatTy, dims, "i1", false);
   Node *I2 = mod.createPlaceholder(ElemKind::Int32ITy, {2, 2, 2}, "i2", false);
@@ -1282,6 +1277,87 @@ TEST_P(AllBackends, convertWithoutClipAroundNonNumericNodes) {
 
   EXPECT_EQ(9, numConvertTos);
   EXPECT_EQ(0, numClips);
+
+  EXPECT_TRUE(F->verify());
+}
+
+// Test that we only insert clips for outputs.
+TEST_P(AllBackends, checkConvertOnlyOutputs) {
+  Module mod;
+  Function *F = mod.createFunction("test");
+  Node *I = mod.createPlaceholder(ElemKind::FloatTy, {10}, "i", false);
+  ReluNode *RN = F->createRELU("relu", I);
+  SaveNode *SN = F->createSave("ret", RN);
+
+  PrecisionConfiguration precConfig;
+  precConfig.convertToFP16 = true;
+  precConfig.clipFP16 = true;
+  precConfig.clipFP16SkipInputs = true;
+  precConfig.convertPlaceholdersToFP16 = true;
+  precConfig.convertConstantsToFP16 = true;
+  convertFunctionToFloat16(F, precConfig);
+
+  // PH -> ConvertToFP16 -> Clip -> ConvertToFP32 -> ConvertToFP16 -> Relu ->
+  // Clip -> ConvertToFP32 -> Save
+
+  ConvertToNode *convertRN = llvm::dyn_cast<ConvertToNode>(SN->getInput());
+  ASSERT_TRUE(convertRN);
+  EXPECT_EQ(convertRN->getResult().getType()->getElementType(),
+            ElemKind::FloatTy);
+  ClipNode *clipRN = llvm::dyn_cast<ClipNode>(convertRN->getInput());
+  ASSERT_TRUE(clipRN);
+  ASSERT_TRUE(clipRN->getInput() == RN->getResult());
+  ConvertToNode *convert32To16 = llvm::dyn_cast<ConvertToNode>(RN->getInput());
+  ASSERT_TRUE(convert32To16);
+  EXPECT_EQ(convert32To16->getResult().getType()->getElementType(),
+            ElemKind::Float16Ty);
+  ConvertToNode *convert16To32 =
+      llvm::dyn_cast<ConvertToNode>(convert32To16->getInput());
+  ASSERT_TRUE(convert16To32);
+  EXPECT_EQ(convert16To32->getResult().getType()->getElementType(),
+            ElemKind::FloatTy);
+  ClipNode *clipPH = llvm::dyn_cast<ClipNode>(convert16To32->getInput());
+  ASSERT_TRUE(clipPH);
+  ConvertToNode *convertPH = llvm::dyn_cast<ConvertToNode>(clipPH->getInput());
+  ASSERT_TRUE(convertPH);
+  EXPECT_EQ(convertPH->getResult().getType()->getElementType(),
+            ElemKind::Float16Ty);
+
+  EXPECT_TRUE(F->verify());
+}
+
+// Test that we only insert clips for outputs.
+TEST_P(AllBackends, checkConvertClipStorage) {
+  Module mod;
+  Function *F = mod.createFunction("test");
+  Node *PH = mod.createPlaceholder(ElemKind::FloatTy, {10}, "ph", false);
+  Node *C = mod.createConstant(ElemKind::FloatTy, {10, 1}, "c");
+  SaveNode *SPH = F->createSave("ret", PH);
+  SaveNode *SC = F->createSave("ret", C);
+
+  PrecisionConfiguration precConfig;
+  precConfig.convertToFP16 = true;
+  precConfig.clipFP16 = true;
+  precConfig.clipFP16SkipInputs = true;
+  precConfig.convertPlaceholdersToFP16 = true;
+  precConfig.convertConstantsToFP16 = true;
+  convertFunctionToFloat16(F, precConfig);
+
+  ConvertToNode *convertFP32PH = llvm::dyn_cast<ConvertToNode>(SPH->getInput());
+  ASSERT_TRUE(convertFP32PH);
+  ClipNode *clipPH = llvm::dyn_cast<ClipNode>(convertFP32PH->getInput());
+  ASSERT_TRUE(clipPH);
+  ConvertToNode *convertFP16PH =
+      llvm::dyn_cast<ConvertToNode>(clipPH->getInput());
+  ASSERT_TRUE(convertFP16PH);
+
+  ConvertToNode *convertFP32C = llvm::dyn_cast<ConvertToNode>(SC->getInput());
+  ASSERT_TRUE(convertFP32C);
+  ClipNode *clipC = llvm::dyn_cast<ClipNode>(convertFP32C->getInput());
+  ASSERT_TRUE(clipC);
+  ConvertToNode *convertFP16C =
+      llvm::dyn_cast<ConvertToNode>(clipC->getInput());
+  ASSERT_TRUE(convertFP16C);
 
   EXPECT_TRUE(F->verify());
 }

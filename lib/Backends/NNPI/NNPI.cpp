@@ -16,24 +16,36 @@
 #include "NNPI.h"
 #include "NNPICompiledFunction.h"
 #include "NNPIDeviceManager.h"
-#include "NNPIMessageLogger.h"
 #include "glow/Graph/Nodes.h"
 #include "glow/Optimizer/GraphOptimizerPipeline/Pipeline.h"
+#include "glow/Optimizer/Lower/Lower.h"
+
+#include "llvm/Support/CommandLine.h"
 
 using namespace glow;
 
 namespace glow {
+llvm::cl::OptionCategory optionsForNNPI("NNPI Backend Options");
+
+bool GlowNNPILowerAllBatchMatMul = false;
+static llvm::cl::opt<bool, /* ExternalStorage */ true>
+    GlowNNPILowerAllBatchMatMulOpt(
+        "glow_nnpi_lower_all_batch_matmul",
+        llvm::cl::desc("Whether to override default lowering for NNPI and "
+                       "always lower BatchMatMul to a series of MatMuls."),
+        llvm::cl::location(GlowNNPILowerAllBatchMatMul), llvm::cl::Optional,
+        llvm::cl::init(true), llvm::cl::cat(optionsForNNPI));
+
 namespace onnxifi {
 
 bool GlowDumpGraph = false;
 bool GlowDisableNNPITransforms = false;
+bool GlowDisableNNPIPrivateTransforms = false;
 
 } // namespace onnxifi
 } // namespace glow
 
-// Load NNPI message logger configuration.
-const NNPIMessageLogger &NNPIBackend::loggerConfig_ =
-    NNPIMessageLogger::getInstance();
+NNPIBackendOptions NNPIBackend::backendOptions_;
 
 bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
   switch (NI.getKind()) {
@@ -200,6 +212,15 @@ bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
            (NI.getOutElemTy(RowwiseQuantizedFullyConnectedNode::ResultIdx) ==
             ElemKind::Int8QTy);
 
+  case Kinded::Kind::SparseLengthsSumNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind(
+               {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy},
+               {SparseLengthsSumNode::IndicesIdx,
+                SparseLengthsSumNode::LengthsIdx}) &&
+           (NI.getInElemTy(SparseLengthsSumNode::IndicesIdx) ==
+            ElemKind::Int64ITy) &&
+           (NI.getInElemTy(SparseLengthsSumNode::LengthsIdx) ==
+            ElemKind::Int32ITy);
   case Kinded::Kind::SparseLengthsWeightedSumNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
                {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy},
@@ -209,6 +230,21 @@ bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
             ElemKind::Int64ITy) &&
            (NI.getInElemTy(SparseLengthsWeightedSumNode::LengthsIdx) ==
             ElemKind::Int32ITy);
+
+  case Kinded::Kind::FusedRowwiseQuantizedSparseLengthsSumNodeKind: {
+    auto dataK =
+        NI.getInElemTy(FusedRowwiseQuantizedSparseLengthsSumNode::DataIdx);
+    auto lengthsK =
+        NI.getInElemTy(FusedRowwiseQuantizedSparseLengthsSumNode::LengthsIdx);
+    auto indicesK =
+        NI.getInElemTy(FusedRowwiseQuantizedSparseLengthsSumNode::IndicesIdx);
+    auto resultK =
+        NI.getOutElemTy(FusedRowwiseQuantizedSparseLengthsSumNode::ResultIdx);
+    return (dataK == ElemKind::UInt8FusedQTy ||
+            dataK == ElemKind::UInt8FusedFP16QTy) &&
+           (resultK == ElemKind::FloatTy || resultK == ElemKind::Float16Ty) &&
+           (indicesK == ElemKind::Int64ITy) && (lengthsK == ElemKind::Int32ITy);
+  }
 
   case Kinded::Kind::FusedRowwiseQuantizedSparseLengthsWeightedSumNodeKind: {
     auto dataK = NI.getInElemTy(
@@ -222,7 +258,8 @@ bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
     auto resultK = NI.getOutElemTy(
         FusedRowwiseQuantizedSparseLengthsWeightedSumNode::ResultIdx);
     return (dataK == ElemKind::UInt8FusedQTy ||
-            dataK == ElemKind::UInt8FusedFP16QTy) &&
+            dataK == ElemKind::UInt8FusedFP16QTy ||
+            dataK == ElemKind::UInt4FusedFP16QTy) &&
            (weightsK == resultK) &&
            (resultK == ElemKind::FloatTy || resultK == ElemKind::Float16Ty) &&
            (indicesK == ElemKind::Int64ITy) && (lengthsK == ElemKind::Int32ITy);
@@ -307,8 +344,25 @@ bool NNPIBackend::shouldLower(const Node *N) const {
   case Kinded::Kind::LocalResponseNormalizationNodeKind:
   case Kinded::Kind::BatchedReduceMeanNodeKind:
   case Kinded::Kind::BatchedReduceMinNodeKind:
-    return false;
   case Kinded::Kind::BatchMatMulNodeKind:
+    return false;
+  case Kinded::Kind::FusedRowwiseQuantizedSparseLengthsSumNodeKind: {
+    const FusedRowwiseQuantizedSparseLengthsSumNode *SLSN =
+        llvm::cast<FusedRowwiseQuantizedSparseLengthsSumNode>(N);
+    if ((backendOptions_.useIceT || backendOptions_.inferOnDevice) &&
+        (SLSN->getResult().getElementType() == ElemKind::Float16Ty)) {
+      return false; // Don't lower == keep without weights
+    } else {
+      return true;
+    }
+  }
+  case Kinded::Kind::SparseLengthsSumNodeKind:
+    // WA - lower until ICE-T implements it.
+    if (NNPIBackend::backendOptions_.useIceT ||
+        NNPIBackend::backendOptions_.inferOnDevice) {
+      return true;
+    }
+    return false;
   case Kinded::Kind::PReluNodeKind: {
     NodeInfo NI(*N);
     return NI.allInputsAndOutputsHaveSameElemKind({ElemKind::FloatTy});
@@ -338,6 +392,7 @@ NNPIBackend::compile(Function *F, const BackendOptions &opts) const {
   if (compileHasError) {
     return std::move(compileHasError);
   }
+
   return Expected<std::unique_ptr<CompiledFunction>>(std::move(compiledFunc));
 }
 
@@ -354,6 +409,78 @@ FunctionPassPipeline NNPIBackend::getOptimizationPipeline() const {
   return pipeline;
 }
 
+/// Helper to lower nodes which need further lowering. \returns whether \p F was
+/// modified.
+static bool lowerRequiredNodes(Function *F, CompilationContext &cctx) {
+  bool changed = false;
+  for (auto &N : F->getNodes()) {
+    BatchMatMulNode *BMMN = llvm::dyn_cast<BatchMatMulNode>(&N);
+    if (!BMMN) {
+      continue;
+    }
+
+    if (!GlowNNPILowerAllBatchMatMul &&
+        !NodeInfo(*BMMN).allInputsAndOutputsHaveSameElemKind(
+            {ElemKind::FloatTy})) {
+      continue;
+    }
+
+    lowerNode(F, BMMN, cctx);
+    changed = true;
+  }
+  return changed;
+}
+
+/// All activations have a single input and output.
+static constexpr unsigned ActivationIOIdx = 0;
+static_assert(ActivationIOIdx == ReluNode::InputIdx, "Format incorrect");
+static_assert(ActivationIOIdx == ReluNode::ResultIdx, "Format incorrect");
+static_assert(ActivationIOIdx == SigmoidNode::InputIdx, "Format incorrect");
+static_assert(ActivationIOIdx == SigmoidNode::ResultIdx, "Format incorrect");
+static_assert(ActivationIOIdx == TanhNode::InputIdx, "Format incorrect");
+static_assert(ActivationIOIdx == TanhNode::ResultIdx, "Format incorrect");
+
+/// Helper which looks for FC -> Clip -> Activation -> Clip, and removes the
+/// Clip between the FC and Activation. These activations block FC-Activation
+/// fusion from occurring.
+static bool removeClipsBlockingFusion(Function *F) {
+  bool changed = false;
+  for (auto &N : F->getNodes()) {
+    auto *clipActivation = llvm::dyn_cast<ClipNode>(&N);
+    if (!clipActivation) {
+      continue;
+    }
+    Node *activation = clipActivation->getInput().getNode();
+    NodeValue activationInput;
+    NodeValue activationResult;
+    switch (activation->getKind()) {
+    case Kinded::Kind::ReluNodeKind:
+    case Kinded::Kind::SigmoidNodeKind:
+    case Kinded::Kind::TanhNodeKind:
+      activationInput = activation->getNthInput(ActivationIOIdx);
+      activationResult = activation->getNthResult(ActivationIOIdx);
+      break;
+    default:
+      continue;
+    }
+    auto *clipFC = llvm::dyn_cast<ClipNode>(activationInput);
+    if (!clipFC) {
+      continue;
+    }
+    if (clipFC->getMin() != clipActivation->getMin() ||
+        clipFC->getMax() != clipActivation->getMax()) {
+      continue;
+    }
+    auto *FC = llvm::dyn_cast<FullyConnectedNode>(clipFC->getInput());
+    if (!FC) {
+      continue;
+    }
+    clipFC->getResult().replaceAllUsesOfWith(FC->getResult());
+    changed = true;
+  }
+  return changed;
+}
+
 bool NNPIBackend::transformPostLowering(Function *F,
                                         CompilationContext &cctx) const {
   LOG_SCOPE(F->getLogContext(), "NNPIBackend::transformPostLowering");
@@ -362,9 +489,14 @@ bool NNPIBackend::transformPostLowering(Function *F,
     return false;
   }
 
-  bool changed = false;
+  bool changed = removeClipsBlockingFusion(F);
+  changed |= lowerRequiredNodes(F, cctx);
 
 #if FACEBOOK_INTERNAL
+  if (glow::onnxifi::GlowDisableNNPIPrivateTransforms) {
+    return changed;
+  }
+
   changed |= transformPrivate(F, cctx);
 #endif /* FACEBOOK_INTERNAL */
 

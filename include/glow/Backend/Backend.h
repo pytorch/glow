@@ -161,6 +161,11 @@ public:
   /// for multiple requests.
   virtual bool supportsStaticPlaceholders() const { return false; }
 
+  /// \returns whether the backend supports fusing \p activation into \p parent.
+  virtual bool supportsFusedActivation(Node *parent, Node *activation) const {
+    return false;
+  }
+
   /// \returns true if Backend generated Instruction for Node \p N,
   /// using IRGenVisitor \p irgen.
   virtual bool generateInst(Node *N, IRGenVisitor &irgen) const {
@@ -173,6 +178,18 @@ public:
   /// deviceConfig.
   virtual runtime::DeviceManager *
   createDeviceManager(const runtime::DeviceConfig &deviceConfig);
+
+  /// \returns the supported options for compiled functions (name=>description).
+  virtual llvm::StringMap<std::string>
+  getSupportedCompiledFunctionOptions() const {
+    return llvm::StringMap<std::string>();
+  };
+
+  /// \returns the supported options for device managers (name=>description).
+  virtual llvm::StringMap<std::string>
+  getSupportedDeviceManagerOptions() const {
+    return llvm::StringMap<std::string>();
+  };
 
 protected:
   /// Parses the graph \F and builds a TraceInfo structure from any found

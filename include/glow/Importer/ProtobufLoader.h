@@ -77,7 +77,7 @@ template <typename T> static Expected<std::string> loadStr(const T *arg) {
 }
 
 /// Load the 'shape' record into a vector of sizes.
-template <typename ElemTy = size_t, typename AttrType>
+template <typename ElemTy = dim_t, typename AttrType>
 std::vector<ElemTy> getShape(const AttrType *arg) {
   std::vector<ElemTy> dim;
   for (auto i : arg->ints()) {
@@ -132,9 +132,11 @@ protected:
   Error createAndRegisterConstant(llvm::StringRef name, Tensor &&tensor);
 
   /// Create a new Placeholder of type \p T, and register it
-  /// under the name \p name. \returns The newly created placeholder.
+  /// under the name \p name. If \p isStatic is true register the Placeholder as
+  /// a static placeholder. \returns The newly created placeholder.
   Expected<Placeholder *> createAndRegisterPlaceholder(llvm::StringRef name,
-                                                       TypeRef T);
+                                                       TypeRef T,
+                                                       bool isStatic = false);
 
   /// \returns the NodeValue that was registered with the name \p name or
   /// a nullptr wrapped in a NodeValue if no node has been registered with this
@@ -230,7 +232,7 @@ Error constantFoldInLoader(Function *F, LoaderType &tmpLoader,
 
   // Register the constant inputs to the current op with the constant folding
   // loader.
-  for (unsigned i = 0; i < op.input_size(); i++) {
+  for (unsigned i = 0; i < (dim_t)op.input_size(); i++) {
     Constant *tmpConst = mod->getConstantByName(op.input(i));
     RETURN_ERR_IF_NOT(tmpConst, "No constant found");
     tmpLoader.nodeValueByName_[op.input(i)] = tmpConst->getOutput();

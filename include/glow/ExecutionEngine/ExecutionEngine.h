@@ -98,7 +98,7 @@ public:
   /// \returns the internal graph. Note: After compilation the contents of the
   /// module will have been altered and raw pointers to elements of the graph
   /// may no longer be valid.
-  Module &getModule() { return *rawModule_; }
+  Module &getModule() const { return *rawModule_; }
 
   /// Clears the ExecutionEngine and all CompiledFunctions.
   void clear();
@@ -138,6 +138,10 @@ public:
   /// \returns a reference to the backend with name \p backendName owned by the
   /// Provisioner inside of \ref hostManager_.
   Backend &getBackend(llvm::StringRef backendName) const;
+
+  /// \returns the single Function contained in this Module.
+  /// \pre Must be a single Function in the Module.
+  Function *getSingleFunctionFromModule() const;
 };
 
 //===----------------------------------------------------------------------===//

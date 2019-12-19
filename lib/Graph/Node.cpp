@@ -47,7 +47,7 @@ ElemKind Node::getElementType(unsigned resNo) const {
   return TR->getElementType();
 }
 
-llvm::ArrayRef<size_t> Node::dims(unsigned resNo) const {
+llvm::ArrayRef<dim_t> Node::dims(unsigned resNo) const {
   TypeRef TR = getType(resNo);
   return TR->dims();
 }
@@ -203,6 +203,17 @@ bool Node::hasSideEffects() const {
 #define DEF_NODE(CLASS, NAME)                                                  \
   case glow::Kinded::Kind::CLASS##Kind:                                        \
     return static_cast<const CLASS *>(this)->hasSideEffects();
+#include "glow/AutoGenNodes.def"
+  default:
+    llvm_unreachable("Unhandled node");
+  }
+}
+
+bool Node::isCanonical() const {
+  switch (getKind()) {
+#define DEF_NODE(CLASS, NAME)                                                  \
+  case glow::Kinded::Kind::CLASS##Kind:                                        \
+    return static_cast<const CLASS *>(this)->isCanonical();
 #include "glow/AutoGenNodes.def"
   default:
     llvm_unreachable("Unhandled node");

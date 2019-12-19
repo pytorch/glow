@@ -48,18 +48,8 @@ public:
     const BundleSaver *bundleSaver_;
   };
   /// Ctor.
-  explicit BundleSaver(const IRFunction *F, const LLVMBackend &llvmBackend);
   explicit BundleSaver(const LLVMBackend &llvmBackend,
                        llvm::StringRef outputDir, llvm::StringRef bundleName);
-  /// Save code bundle built for \p target, \p arch, \p cpu and \p
-  /// targetFeatures to \p outputDir under name \p bundleName. Make
-  /// \p mainEntryName the function name for the entry point of the network and
-  /// prepend all generated files with this name.
-  void save(llvm::StringRef target, llvm::StringRef arch, llvm::StringRef cpu,
-            const llvm::SmallVectorImpl<std::string> &targetFeatures,
-            llvm::StringRef outputDir, llvm::StringRef bundleName,
-            llvm::StringRef mainEntryName, llvm::CodeModel::Model codeModel,
-            llvm::Reloc::Model relocModel);
   void save(llvm::StringRef mainEntryName, const IRFunction *F);
   /// Produce a bundle.
   void produceBundle();
@@ -92,12 +82,10 @@ private:
   AllocationsInfo allocationsInfo_;
   /// The LLVM IR code generator.
   std::unique_ptr<LLVMIRGen> irgen_;
-  /// The output directory to be used.
-  std::string outputDir_;
-  /// The name of the bundle to be saved.
-  std::string bundleName_;
   /// Information about IR functions inside this bundle.
   std::vector<SavedIRFunction> savedIRFunctions_;
+  /// Bundle API to use.
+  BundleApiType bundleAPI_;
   /// Indicates if this bundle was saved already.
   bool isSaved_{false};
 };

@@ -80,9 +80,9 @@ public:
 // Input's shape and type
 struct InputMeta {
   c10::ScalarType type;
-  std::vector<size_t> dims;
+  std::vector<glow::dim_t> dims;
 
-  InputMeta(c10::ScalarType type_, std::vector<size_t> &&dims_) {
+  InputMeta(c10::ScalarType type_, std::vector<glow::dim_t> &&dims_) {
     type = type_;
     dims = dims_;
   }
@@ -254,7 +254,7 @@ private:
   /// of that Constant.
   Expected<glow::NodeValue>
   loadNodeValueOrBroadcastedIValue(const torch::jit::Value *value,
-                                   llvm::ArrayRef<size_t> dims);
+                                   llvm::ArrayRef<glow::dim_t> dims);
 
   /// If there is a NodeValue mapped to \p value then return it, otherwise
   /// create a Constant with type \p ty, name \p name, and value \p val
@@ -279,6 +279,12 @@ private:
   /// Rescale a int8 NodeValue \p input to the equivalent uint8 NodeValue.
   glow::NodeValue rescaleIntToUint(glow::NodeValue input);
 
+  /// Load a quantized conv node from ptNode to qconv.
+  /// a wrapper function of loadQuantizedConv and loadQuantizedConvRelu.
+  /// Returns error on failure.
+  Expected<NodeValue> loadQuantizedConvImpl(const torch::jit::Node *ptNode,
+                                            const bool isRelu);
+
   /// For each Placeholder input to \p ptNode, if this input has been marked
   /// as being an input that should be frozen in MappingOfMemberFunctions,
   /// create a glow Constant for that Placeholder with the iValue from the stack
@@ -289,6 +295,10 @@ private:
   // Load a PyTorch aten::embedding_bag node.
   // \returns error on failure.
   Error loadEmbeddingBag(const torch::jit::Node *ptNode);
+
+  // Load a PyTorch fb::embedding_bag_byte_rowwise_offsets node.
+  // \returns error on failure.
+  Error loadEmbeddingBagByteRowwiseOffsets(const torch::jit::Node *ptNode);
 
   /// Load all PyTorch prim::GetAttr nodes in \p graph. This method uses the
   /// PyTorch Module hierarchy to map Values for all outputs of prim::GetAttr
@@ -395,11 +405,23 @@ private:
   /// \return error on failure.
   Error loadQuantizedAddRelu(const torch::jit::Node *ptNode);
 
-  /// Load a PyTorch glow::unpacked_quantized_conv node.
+  /// Load a glow::unpacked_quantized_conv node.
   // \return error on failure.
   Error loadQuantizedConvUnpacked(const torch::jit::Node *ptNode);
 
+  /// Load a PyTorch quantized::conv2d node.
+  // \return error on failure.
+  Error loadQuantizedConv(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch quantized::conv2d_relu node.
+  // \return error on failure.
+  Error loadQuantizedConvRelu(const torch::jit::Node *ptNode);
+
   /// Load a glow::unpacked_quantized_linear node.
+  /// \return error on failure.
+  Error loadQuantizedLinearUnpacked(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch quantized::linear node.
   /// \return error on failure.
   Error loadQuantizedLinear(const torch::jit::Node *ptNode);
 
@@ -514,6 +536,10 @@ private:
   /// Load a PyTorch aten::permute node.
   /// \returns error on failure.
   Error loadPermute(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch aten::to node.
+  /// \returns error on failure.
+  Error loadTo(const torch::jit::Node *ptNode);
 };
 
 } // namespace glow

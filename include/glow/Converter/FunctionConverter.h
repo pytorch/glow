@@ -94,9 +94,10 @@ protected:
 
   /// Create a conversion with \p val as input and \p destTy as the destination
   /// type in \p function, given \p node. In other words, creates something like
-  /// cast val to destTy.
+  /// cast val to destTy. \p isInput represents if this is converting an input.
   virtual Node *createConversion(Function &function, const Node &node,
-                                 NodeValue &val, TypeRef destTy) = 0;
+                                 NodeValue &val, TypeRef destTy,
+                                 bool isInput) = 0;
 
   /// Given a \p conversion, get its output value.
   /// The default implementation returns the zero-th result.

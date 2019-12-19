@@ -22,6 +22,10 @@
 #include "glow/Support/Error.h"
 
 namespace glow {
+namespace runtime {
+struct PartitionConfig;
+class DeferredWeightLoader;
+} // namespace runtime
 
 /// Configuration for different precision modes.
 struct PrecisionConfiguration {
@@ -41,8 +45,18 @@ struct PrecisionConfiguration {
   /// Whether to convert UInt8FusedQTy to UInt8FusedFP16QTy in the Function.
   bool convertFusedToFP16{false};
 
-  /// Whether to clip out-of-range FP values to the min/max of fp16.
+  /// If convertToFP16, whether to convert input Placeholders.
+  bool convertPlaceholdersToFP16{false};
+
+  /// If convertToFP16, whether to convert Constants.
+  bool convertConstantsToFP16{false};
+
+  /// If convertToFP16, whether to clip out-of-range FP values to the min/max of
+  /// fp16.
   bool clipFP16{false};
+
+  /// If clipFP16, whether to skip clipping inputs of Nodes.
+  bool clipFP16SkipInputs{false};
 
   /// Used during Quantization and convertToFP16 to keep the original precision
   /// of specific node kinds (i.e. quantization/FP16 conversion would be skipped
@@ -63,16 +77,31 @@ using QuantizationMode = PrecisionConfiguration::QuantizationMode;
 struct OptimizationOptions {
   /// Only lower, i.e. skip optimizations and precision transformations. Used
   /// for testing.
-  bool onlyLower{false};
+  llvm::SmallSet<Function *, 1> onlyLowerFuns;
 
   /// If true, perform compile-time computation of constant operations.
   bool enableConstantFolding{true};
+
+  /// If true, this will merge ConvertTo and Quantize nodes into inputs and
+  /// outputs of the Function. This means modifying the types of Placeholders
+  /// and SaveNodes if they have a corresponding ElemKind conversion (ConvertTo,
+  /// Quantize, Dequantize nodes).. Note that this must be accompanied by
+  /// modifying the Tensors backing Placeholders at runtime.
+  bool foldElemKindConversionIntoIO{false};
+
+  /// If true this will fold convertTo and Quantize nodes into only static
+  /// placeholders. The conversion of the Tensors will be handled by the
+  /// provisioner.
+  bool foldStaticPlaceholderConversions{false};
 };
 
 /// Context for compilation.
 struct CompilationContext {
   /// Used during Profiling.
   PlaceholderBindings *bindings{nullptr};
+
+  /// Allows the user to specify user defined partitioning.
+  runtime::PartitionConfig *partitionConfig{nullptr};
 
   /// Used during Quantization and Profiling.
   LoweredInfoMap *loweredInfoMap{nullptr};
@@ -96,6 +125,10 @@ struct CompilationContext {
 
   /// How to annotate the compilation log filename.
   std::string compilationLogPrefix{"glow"};
+
+  /// Pointer to deferredWeightLoader object, this is used for large model
+  /// support.
+  runtime::DeferredWeightLoader *deferredWeightLoader{nullptr};
 
   CompilationContext(PlaceholderBindings *bindings_ = nullptr,
                      LoweredInfoMap *loweredInfoMap_ = nullptr)

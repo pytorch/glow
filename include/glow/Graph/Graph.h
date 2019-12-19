@@ -43,7 +43,7 @@ using NodesPtrList = std::list<glow::Node *>;
 using FunctionList = std::list<Function *>;
 using ConstList = std::list<Constant *>;
 using PlaceholderList = std::list<Placeholder *>;
-using UnsignedArrayRef = llvm::ArrayRef<size_t>;
+using UnsignedArrayRef = llvm::ArrayRef<dim_t>;
 /// Map from original Nodes to cloned Nodes.
 using NodeMap = llvm::DenseMap<Node *, Node *>;
 /// State of a function. This can be used to control optimizations which depend
@@ -109,24 +109,30 @@ public:
     usedNodeNames_.insert(name);
   }
 
+  /// Registers a name as used by a Storage node (Constant or Placeholder) in
+  /// this module.
+  void registerStorageName(llvm::StringRef name) {
+    usedStorageNames_.insert(name);
+  }
+
   /// Return a pointer to a uniqued type \p T.
   TypeRef uniqueType(const Type &T);
 
   /// Return a pointer to a uniqued type \p T.
-  TypeRef uniqueType(ElemKind elemTy, llvm::ArrayRef<size_t> dims);
+  TypeRef uniqueType(ElemKind elemTy, llvm::ArrayRef<dim_t> dims);
 
   /// Return a pointer to a uniqued type \p T.
-  TypeRef uniqueType(ElemKind elemTy, llvm::ArrayRef<size_t> dims, float scale,
+  TypeRef uniqueType(ElemKind elemTy, llvm::ArrayRef<dim_t> dims, float scale,
                      int32_t offset);
 
   /// Return a pointer to a uniqued type \p T.
   /// The new type is identical to \p T, with a new shape \p dims.
-  TypeRef uniqueTypeWithNewShape(TypeRef T, llvm::ArrayRef<size_t> dims);
+  TypeRef uniqueTypeWithNewShape(TypeRef T, llvm::ArrayRef<dim_t> dims);
 
   /// The new type is identical to \p T, with a new shape \p dims and new \p
   /// alignments.
-  TypeRef uniqueTypeWithNewShape(TypeRef T, llvm::ArrayRef<size_t> dims,
-                                 llvm::ArrayRef<size_t> alignments);
+  TypeRef uniqueTypeWithNewShape(TypeRef T, llvm::ArrayRef<dim_t> dims,
+                                 llvm::ArrayRef<dim_t> alignments);
 
   /// Return the void type.
   TypeRef getVoidTy();
@@ -175,7 +181,7 @@ public:
   /// @name High-level Storage builders.
   ///@{
 
-  Placeholder *createPlaceholder(ElemKind T, llvm::ArrayRef<size_t> dims,
+  Placeholder *createPlaceholder(ElemKind T, llvm::ArrayRef<dim_t> dims,
                                  llvm::StringRef name, bool isTrainable,
                                  const std::string &layout = ANY_LAYOUT);
 
@@ -183,7 +189,7 @@ public:
                                  bool isTrainable,
                                  const std::string &layout = ANY_LAYOUT);
 
-  Placeholder *createPlaceholder(ElemKind T, llvm::ArrayRef<size_t> dims,
+  Placeholder *createPlaceholder(ElemKind T, llvm::ArrayRef<dim_t> dims,
                                  float scale, int32_t offset,
                                  llvm::StringRef name, bool isTrainable,
                                  const std::string &layout = ANY_LAYOUT);
@@ -191,11 +197,11 @@ public:
   Constant *createConstant(TypeRef T, llvm::StringRef name,
                            const std::string &layout = ANY_LAYOUT);
 
-  Constant *createConstant(ElemKind T, llvm::ArrayRef<size_t> dims,
+  Constant *createConstant(ElemKind T, llvm::ArrayRef<dim_t> dims,
                            llvm::StringRef name,
                            const std::string &layout = ANY_LAYOUT);
 
-  Constant *createConstant(ElemKind T, llvm::ArrayRef<size_t> dims, float scale,
+  Constant *createConstant(ElemKind T, llvm::ArrayRef<dim_t> dims, float scale,
                            int32_t offset, llvm::StringRef name,
                            const std::string &layout = ANY_LAYOUT);
 
@@ -505,12 +511,29 @@ public:
                                            Storage *B, unsigned_t axis = 1);
 
   /// Creates and \returns a FullyConnectedNode with \p name, \p input, weights
+  /// \p W, bias \p B. If \p input is not 2 dimensional then it is flattened
+  /// along \p axis. Note, output type and outputDepth are inferred based on
+  /// the input types.
+  FullyConnectedNode *createFullyConnected(llvm::StringRef name,
+                                           NodeValue input, NodeValue W,
+                                           NodeValue B, unsigned_t axis = 1);
+
+  /// Creates and \returns a FullyConnectedNode with \p name, \p input, weights
   /// \p W, bias \p B, and \p outTy. If \p input is not 2 dimensional then it is
   /// flattened along \p axis. Note, outputDepth is inferred based on \p outTy.
   FullyConnectedNode *createFullyConnected(llvm::StringRef name,
                                            NodeValue input, NodeValue W,
                                            NodeValue B, TypeRef outTy,
                                            unsigned_t axis = 1);
+
+  /// Create a row-wise quantized fully connected node. This node is only used
+  /// in quantization. Args \p input and \p B are quantized in regular way, \p W
+  /// is the constant weights and is row-wise quantized using the given \p
+  /// scales and \p offsets. The output is quantized in the regular way, and its
+  /// type \p outTy is a quantized type.
+  RowwiseQuantizedFullyConnectedNode *createRowwiseQuantizedFullyConnected(
+      llvm::StringRef name, NodeValue input, Constant *W, Constant *scales,
+      Constant *offsets, NodeValue B, TypeRef outTy);
 
   /// Create a row-wise quantized fully connected node. This node is only used
   /// in quantization. Args \p input and \p B are quantized in regular way, \p W
@@ -651,7 +674,7 @@ public:
   /// at offset into big \p start \p count times along \p axis.
   InsertTensorNode *createInsertTensor(llvm::StringRef name, NodeValue big,
                                        NodeValue small,
-                                       llvm::ArrayRef<size_t> start,
+                                       llvm::ArrayRef<dim_t> start,
                                        unsigned_t count = 1,
                                        unsigned_t axis = 0);
 
@@ -661,7 +684,7 @@ public:
   /// Create a slice node with the given starting point for each dimension.
   /// End points will be calculated based on the output type during execution.
   SliceNode *createSlice(llvm::StringRef name, NodeValue input,
-                         llvm::ArrayRef<size_t> start, TypeRef outTy);
+                         llvm::ArrayRef<dim_t> start, TypeRef outTy);
 
   /// Shuffles dimension number \p kernel. Suppose original size is D. It will
   /// be represented as groupX(D/group) matrix, transposed and concatenated back
@@ -683,13 +706,13 @@ public:
   /// opposite of ExpandDims.
   /// https://github.com/onnx/onnx/blob/master/docs/Operators.md#squeeze
   ReshapeNode *createSqueeze(llvm::StringRef name, NodeValue input,
-                             llvm::ArrayRef<size_t> axes);
+                             llvm::ArrayRef<dim_t> axes);
 
   /// Add single-dimensional entries to the shape of the \p input tensor at
   /// locations in \p axes. \p axes is listed as seen in the output tensor.
   /// Implemented as a single ReshapeNode. This is the opposite of Squeeze.
   ReshapeNode *createExpandDims(llvm::StringRef name, NodeValue input,
-                                llvm::ArrayRef<size_t> axes);
+                                llvm::ArrayRef<dim_t> axes);
 
   /// Flattens the input tensor into a 2D matrix. If input tensor has shape
   /// (d_0, d_1, ... d_n) then the output will have shape:
@@ -701,7 +724,7 @@ public:
   /// number \p axis. Array \p split defines lengths of slices. If \p split is
   /// empty, \p input is split to equal sized parts.
   void createSplit(llvm::StringRef name, NodeValue input, unsigned_t outputNum,
-                   unsigned_t axis, llvm::ArrayRef<size_t> split,
+                   unsigned_t axis, llvm::ArrayRef<dim_t> split,
                    std::vector<SliceNode *> &outputs);
 
   BatchNormalizationNode *
@@ -914,6 +937,20 @@ public:
                                        NodeValue weights, NodeValue indices,
                                        NodeValue offsets);
 
+  /// Create an EmbeddingBagByteRowwiseOffsetsNode node.
+  EmbeddingBagByteRowwiseOffsetsNode *createEmbeddingBagByteRowwiseOffsets(
+      llvm::StringRef name, NodeValue data, NodeValue weights,
+      NodeValue indices, NodeValue offsets, bool useFP16Accumulation = false);
+
+  /// Same as \ref createEmbeddingBagByteRowwiseOffsets(), but
+  /// expects float input \p data, which is rowwise-quantized and fused
+  /// internally. \p fusedElemKind represents the element kind to use for the
+  /// final fused rowwise-quantized data.
+  EmbeddingBagByteRowwiseOffsetsNode *createEmbeddingBagByteRowwiseOffsets(
+      llvm::StringRef name, Tensor &data, NodeValue weights, NodeValue indices,
+      NodeValue offsets, ElemKind fusedElemKind = ElemKind::UInt8FusedQTy,
+      bool useFP16Accumulation = false);
+
   /// Same as \ref createSparseLengthsWeightedSum(), but with \p outTy
   /// specified.
   SparseLengthsWeightedSumNode *
@@ -1044,7 +1081,7 @@ public:
   SparseToDenseMaskNode *
   createSparseToDenseMask(llvm::StringRef name, NodeValue indices,
                           NodeValue values, NodeValue defaultValue,
-                          NodeValue lengths, llvm::ArrayRef<int64_t> mask);
+                          NodeValue lengths, llvm::ArrayRef<dim_t> mask);
 
   SaveNode *createSave(llvm::StringRef name, NodeValue input);
   SaveNode *createSave(llvm::StringRef name, NodeValue input,
@@ -1192,7 +1229,11 @@ public:
   /// based on the \p input type.
   ClipNode *createClip(llvm::StringRef name, NodeValue input, float min,
                        float max);
-  /// @}
+
+  /// Creates and \returns a ClipNode to the min/max range of FP16 with \p name
+  /// of \p input. Result type will be implicitly set based on the \p input
+  /// type.
+  ClipNode *createClipMinMaxFP16(llvm::StringRef name, NodeValue input);
 
   /// @name The builder functions below are identical to the builder functions
   /// above except that they create nodes that use Placeholder instead of
@@ -1218,7 +1259,7 @@ public:
   /// axis. \p layout defines the Tensor layout and must be either NHWC or NCHW.
   ConvolutionNode *createConv(PlaceholderBindings &bindings,
                               llvm::StringRef name, NodeValue input,
-                              size_t outChannels,
+                              dim_t outChannels,
                               llvm::ArrayRef<unsigned_t> kernels,
                               llvm::ArrayRef<unsigned_t> strides,
                               llvm::ArrayRef<unsigned_t> pads, unsigned_t group,
@@ -1236,7 +1277,7 @@ public:
   /// axis. \p layout defines the Tensor layout and must be either NHWC or NCHW.
   ConvolutionNode *createConv(PlaceholderBindings &bindings,
                               llvm::StringRef name, NodeValue input,
-                              size_t outChannels, unsigned_t kernel,
+                              dim_t outChannels, unsigned_t kernel,
                               unsigned_t stride, unsigned_t pad,
                               unsigned_t group, unsigned_t dilation = 1,
                               ConvolutionLayout layout = NHWC);
@@ -1250,7 +1291,7 @@ public:
   /// be divided into and convolved separately.
   Convolution3DNode *createConv3D(PlaceholderBindings &bindings,
                                   llvm::StringRef name, NodeValue input,
-                                  size_t outChannels,
+                                  dim_t outChannels,
                                   llvm::ArrayRef<unsigned_t> kernels,
                                   llvm::ArrayRef<unsigned_t> strides,
                                   llvm::ArrayRef<unsigned_t> pads,
@@ -1275,7 +1316,7 @@ public:
   /// types. Trainable weight and bias variables are created implicitly.
   FullyConnectedNode *createFullyConnected(PlaceholderBindings &bindings,
                                            llvm::StringRef name,
-                                           NodeValue input, size_t outDepth,
+                                           NodeValue input, dim_t outDepth,
                                            unsigned_t axis = 1);
 
   /// Create an unrolled single-layer Simple RNN cell with \p hiddenSize
@@ -1317,6 +1358,104 @@ public:
                   const llvm::ArrayRef<NodeValue> inputs, unsigned batchSize,
                   unsigned hiddenSize, unsigned outputSize,
                   std::vector<NodeValue> &outputs);
+
+  /// Type definition for the direction of an RNN module (RNN, GRU, LSTM).
+  enum class RnnDirection {
+    Forward,
+    Reverse,
+    Bidirectional,
+  };
+
+  /// Definition for a lambda used to create an activation node for RNN modules.
+  using RnnActivation = std::function<Node *(llvm::StringRef, Node *)>;
+
+  /// Create an unrolled multi-layer RNN according to the ONNX definition:
+  /// https://github.com/onnx/onnx/blob/master/docs/Operators.md#RNN
+  /// The RNN has the following inputs:
+  /// - input \p X with size [S, B, ISize].
+  /// - weigts \p W with size [N, HSize, ISize].
+  /// - reccurence weights \p R with size [N, HSize, HSize].
+  /// - bias weights \p B with size [N, 2 * HSize].
+  /// - initial hidden state \p initial_h with size [N, B, HSize].
+  /// where S is the sequence length, N is the number of directions, B is the
+  /// batch size, ISize is the input size and HSize is the hidden size.
+  /// The RNN has the following outputs:
+  /// - output \p Y with size [S, N, B, HSize].
+  /// - final hidden state \p Y_h with size [N, B, HSize].
+  /// The direction of the instatiated RNN is given by \p direction. The RNN
+  /// will use the activation functions defined by the \p activations array:
+  /// - [f] in case the RNN is unidirectional (1 function).
+  /// - [f] for the forward cell followed by [f] for the reverse cell in
+  ///    case the RNN is bidirectional (4 functions).
+  /// The input \p B is optional (assumed 0 if nullptr is provided).
+  /// The names of all the nodes created are prefixed with \p namePrefix.
+  void createOnnxRNN(llvm::StringRef namePrefix, NodeValue X, NodeValue W,
+                     NodeValue R, NodeValue B, NodeValue initial_h,
+                     NodeValue &Y, NodeValue &Y_h, unsigned hiddenSize,
+                     RnnDirection direction,
+                     std::vector<RnnActivation> &activations);
+
+  /// Create an unrolled multi-layer GRU according to the ONNX definition:
+  /// https://github.com/onnx/onnx/blob/master/docs/Operators.md#GRU
+  /// The GRU has the following inputs:
+  /// - input \p X with size [S, B, ISize].
+  /// - weigts \p W with size [N, 3 * HSize, ISize].
+  /// - reccurence weights \p R with size [N, 3 * HSize, HSize].
+  /// - bias weights \p B with size [N, 6 * HSize].
+  /// - initial hidden state \p initial_h with size [N, B, HSize].
+  /// where S is the sequence length, N is the number of directions, B is the
+  /// batch size, ISize is the input size and HSize is the hidden size.
+  /// The GRU has the following outputs:
+  /// - output \p Y with size [S, N, B, HSize].
+  /// - final hidden state \p Y_h with size [N, B, HSize].
+  /// The direction of the instatiated GRU is given by \p direction. The GRU
+  /// will use the activation functions defined by the \p activations array:
+  /// - [f,g] in case the GRU is unidirectional (2 functions).
+  /// - [f,g] for the forward cell followed by [f,g] for the reverse cell in
+  ///    case the GRU is bidirectional (4 functions).
+  /// The input \p B is optional (assumed 0 if nullptr is provided).
+  /// The names of all the nodes created are prefixed with \p namePrefix.
+  /// The boolean parameter \p linearBeforeReset defines whether the reset
+  /// for the previous hidden state occurs before/after the linear expression.
+  void createOnnxGRU(llvm::StringRef namePrefix, NodeValue X, NodeValue W,
+                     NodeValue R, NodeValue B, NodeValue initial_h,
+                     NodeValue &Y, NodeValue &Y_h, unsigned hiddenSize,
+                     RnnDirection direction,
+                     std::vector<RnnActivation> &activations,
+                     bool linearBeforeReset = false);
+
+  /// Create an unrolled multi-layer LSTM according to the ONNX definition:
+  /// https://github.com/onnx/onnx/blob/master/docs/Operators.md#LSTM
+  /// The LSTM has the following inputs:
+  /// - input \p X with size [S, B, ISize].
+  /// - weigts \p W with size [N, 4 * HSize, ISize].
+  /// - reccurence weights \p R with size [N, 4 * HSize, HSize].
+  /// - bias weights \p B with size [N, 8 * HSize].
+  /// - initial hidden state \p initial_h with size [N, B, HSize].
+  /// - initial cell state \p initial_c with size [N, B, HSize].
+  /// - peephole weights \p P with size [N, 3 * HSize].
+  /// where S is the sequence length, N is the number of directions, B is the
+  /// batch size, ISize is the input size and HSize is the hidden size.
+  /// The LSTM has the following outputs:
+  /// - output \p Y with size [S, N, B, HSize].
+  /// - final hidden state \p Y_h with size [N, B, HSize].
+  /// - final cell state \p Y_c with size [N, B, HSize].
+  /// The direction of the instatiated LSTM is given by \p direction. The LSTM
+  /// will use the activation functions defined by \p activations array:
+  /// - [f,g,h] in case the LSTM is unidirectional (3 functions).
+  /// - [f,g,h] for the forward cell followed by [f,g,h] for the reverse cell in
+  ///    case the LSTM is bidirectional (6 functions).
+  /// The inputs \p B and \p P are optional (assumed 0 if nullptr is provided).
+  /// The names of all the nodes created are prefixed with \p namePrefix.
+  /// The boolean parameter \p inputForget defines whether the input and forget
+  /// gates should be coupled (compute the input gate from the forget gate).
+  void createOnnxLSTM(llvm::StringRef namePrefix, NodeValue X, NodeValue W,
+                      NodeValue R, NodeValue B, NodeValue initial_h,
+                      NodeValue initial_c, NodeValue P, NodeValue &Y,
+                      NodeValue &Y_h, NodeValue &Y_c, unsigned hiddenSize,
+                      RnnDirection direction,
+                      std::vector<RnnActivation> &activations,
+                      bool inputForget = false);
   /// @}
 
   /// Create a TraceEvent in the runtime profile, which triggers collection of
@@ -1399,6 +1538,18 @@ SaveNode *getOutputSave(Function *F, Placeholder *PH);
 /// Clone \p node and its sources into \p newF using old-to-new mapping \p
 /// currToNew.
 Node *recursiveClone(Function *newF, Node *node, NodeMap &currToNew);
+
+/// If \p PH is an output placeholder in the Function \p F,
+/// \returns true.
+/// This is determined by checking if the PH has a user which uses the PH as an
+/// overwritten input.
+bool isOutput(const Placeholder *PH, const Function &F);
+
+/// If \p PH is an input placeholderin the Function \p F,
+/// \returns true.
+/// This is determined by checking if the PH is the input to a saveNode or is
+/// used by a non saveNode.
+bool isInput(const Placeholder *PH, const Function &F);
 
 /// Helper vectors for common transpose shuffles.
 #define NCHW2NHWC                                                              \

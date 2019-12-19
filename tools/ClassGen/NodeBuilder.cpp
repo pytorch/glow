@@ -16,7 +16,8 @@
 
 #include "NodeBuilder.h"
 
-NodeBuilder &NodeBuilder::addMember(MemberType type, const std::string &name) {
+NodeBuilder &NodeBuilder::addMember(MemberType type, const std::string &name,
+                                    bool addSetter) {
   MemberTypeInfo *typeInfo = nullptr;
 
   if (type == MemberType::TypeRef) {
@@ -41,6 +42,8 @@ NodeBuilder &NodeBuilder::addMember(MemberType type, const std::string &name) {
     typeInfo = &kVectorSignedTypeInfo;
   } else if (type == MemberType::VectorSizeT) {
     typeInfo = &kVectorSizeTTypeInfo;
+  } else if (type == MemberType::VectorDimT) {
+    typeInfo = &kVectorDimTTypeInfo;
   } else if (type == MemberType::VectorNodeValue) {
     typeInfo = &kVectorNodeValueTypeInfo;
   } else if (type == MemberType::Enum) {
@@ -52,7 +55,16 @@ NodeBuilder &NodeBuilder::addMember(MemberType type, const std::string &name) {
     llvm_unreachable("Type not recognized");
   }
 
-  return addMember(*typeInfo, name);
+  return addMember(*typeInfo, name, addSetter);
+}
+
+NodeBuilder &NodeBuilder::addFusedActivation() {
+  return addMember(MEMBER_TYPE_INFO(glow::FusedActivation), "FusedActivation",
+                   /* addSetter */ true)
+      .addExtraMethod(
+          "bool hasFusedActivation() const;",
+          "bool ConvolutionNode::hasFusedActivation() const { return "
+          "getFusedActivation() != FusedActivation::NONE; }");
 }
 
 void NodeBuilder::emitMemberForwardDecls(std::ostream &os) const {
@@ -170,13 +182,18 @@ void NodeBuilder::emitClassMembers(std::ostream &os) const {
   }
 }
 
-void NodeBuilder::emitMemberGetter(std::ostream &os,
-                                   const MemberTypeInfo *typeInfo,
-                                   const std::string &name) const {
+void NodeBuilder::emitMemberGetterSetter(std::ostream &os,
+                                         const MemberTypeInfo *typeInfo,
+                                         const std::string &name) const {
   // Synthesize the general getter.
-  auto returnTypeStr = getReturnTypename(typeInfo);
-  os << "  " << returnTypeStr << " get" << name << "() const { return " << name
+  auto typeStr = getReturnTypename(typeInfo);
+  os << "  " << typeStr << " get" << name << "() const { return " << name
      << "_; }\n";
+
+  if (typeInfo->addSetter) {
+    os << "  void set" << name << "(" << typeStr << " a) {" << name
+       << "_ = a; }\n";
+  }
 }
 
 void NodeBuilder::emitSettersGetters(std::ostream &os) const {
@@ -196,7 +213,7 @@ void NodeBuilder::emitSettersGetters(std::ostream &os) const {
   }
 
   for (const auto &op : members_) {
-    emitMemberGetter(os, &op.first, op.second);
+    emitMemberGetterSetter(os, &op.first, op.second);
   }
 
   // Synthesize the 'classof' method that enables the non-rtti polymorphism.
@@ -410,8 +427,9 @@ void NodeBuilder::emitEquator(std::ostream &os) const {
 
 static bool isVectorType(MemberType ty) {
   return ty == MemberType::VectorFloat || ty == MemberType::VectorNodeValue ||
-         ty == MemberType::VectorSizeT || ty == MemberType::VectorUnsigned ||
-         ty == MemberType::VectorInt64 || ty == MemberType::VectorSigned;
+         ty == MemberType::VectorSizeT || ty == MemberType::VectorDimT ||
+         ty == MemberType::VectorUnsigned || ty == MemberType::VectorInt64 ||
+         ty == MemberType::VectorSigned;
 }
 
 static bool isFloatVectorType(MemberType ty) {
@@ -532,6 +550,7 @@ void NodeBuilder::emitNodeClass(std::ostream &os) const {
      << "  void setNthInput(unsigned idx, NodeValue val);\n"
      << "  llvm::StringRef getOutputName(unsigned idx) const;\n"
      << "  bool hasSideEffects() const { return " << hasSideEffects_ << "; }\n"
+     << "  bool isCanonical() const { return " << !isBackendSpecific_ << "; }\n"
      << "  bool isDataParallel() const { return " << isDataParallel_ << "; }\n"
      << "  std::string getDebugDesc() const;\n"
      << "  bool isEqual(const " << name_ << "Node &other) const;\n"
@@ -598,7 +617,7 @@ NodeBuilder &NodeBuilder::addGradient() {
   std::stringstream ss;
   ss << "\n" + name_ + "GradNode *" + name_
      << "Node::getGrad(GraphGradMapper &builder) {\n"
-     << "  auto *x = new " + name_ + "GradNode(getName()";
+     << "  auto *x = new " + name_ + "GradNode(getName().str() + \"_grad\"";
 
   if (enum_.size()) {
     ss << ", (" << name_ << "GradNode::Mode)getMode()";

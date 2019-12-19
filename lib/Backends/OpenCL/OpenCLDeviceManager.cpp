@@ -241,7 +241,7 @@ Error OpenCLDeviceManager::init() {
   commandQueuePool_.setContext(context_);
   commandQueuePool_.setDevice(deviceId_);
 
-  Stats()->incrementCounter(kDevicesUsedOpenCL);
+  statsExporterRegistry_->incrementCounter(kDevicesUsedOpenCL);
   exportMemoryCounters();
 
   threads::getThreadId();
@@ -259,7 +259,7 @@ Error OpenCLDeviceManager::init() {
 OpenCLDeviceManager::~OpenCLDeviceManager() {
   clReleaseContext(context_);
   buffers_.clear();
-  Stats()->incrementCounter(kDevicesUsedOpenCL, -1);
+  statsExporterRegistry_->incrementCounter(kDevicesUsedOpenCL, -1);
   zeroMemoryCounters();
 }
 
@@ -378,6 +378,13 @@ void OpenCLDeviceManager::addNetworkImpl(const Module *module,
     buffers_.emplace(func.first, buffer);
     buffer->incrementUsers();
 
+    // Add function name to map for static placeholders.
+    for (auto PH : function->getIR()->getGraph()->findPlaceholders()) {
+      if (PH->isStatic()) {
+        staticPlaceholderToFunctions_[PH].push_back(func.first);
+      }
+    }
+
     DCHECK_LE(usedMemoryBytes_, maxMemoryBytes_);
     clReleaseCommandQueue(commands);
   }
@@ -425,6 +432,69 @@ void OpenCLDeviceManager::returnRunCommandQueue(OpenCLCommandQueue &queue) {
   commandQueuePool_.returnCommandQueue(queue);
 }
 
+void OpenCLDeviceManager::transferStaticPlaceholderToDevice(
+    Placeholder *PH, Tensor *T, std::function<void(Error)> resultCB) {
+  auto it = staticPlaceholderToFunctions_.find(PH);
+  if (it == staticPlaceholderToFunctions_.end()) {
+    resultCB(MAKE_ERR(
+        ErrorValue::ErrorCode::RUNTIME_ERROR,
+        llvm::formatv("Unable to transfer PH: {0}", PH->getName()).str()));
+    return;
+  }
+  for (auto functionName : it->second) {
+    // Tranfer for each function that needs PH.
+    auto buffer = buffers_[functionName]->getBuffer();
+
+    auto funcIt = functions_.find(functionName);
+    if (funcIt == functions_.end()) {
+      resultCB(
+          MAKE_ERR(ErrorValue::ErrorCode::RUNTIME_NET_NOT_FOUND,
+                   llvm::formatv("Function {} not found", functionName).str()));
+      return;
+    }
+
+    OpenCLFunction *func = static_cast<OpenCLFunction *>(funcIt->second);
+
+    OpenCLCommandQueue queue;
+    auto queueOrError = requestRunCommandQueue(func);
+
+    if (queueOrError) {
+      queue = std::move(queueOrError.get());
+    } else {
+      resultCB(queueOrError.takeError());
+      return;
+    }
+    auto symbolTable = func->getRuntimeBundle().getSymbolTable();
+    auto symbolIt = symbolTable.find(PH->getName());
+    if (symbolIt == symbolTable.end()) {
+      resultCB(
+          MAKE_ERR(ErrorValue::ErrorCode::RUNTIME_ERROR,
+                   llvm::formatv("Symbol {} not found", PH->getName()).str()));
+      return;
+    }
+    auto offset = symbolIt->second.offset;
+    auto size = symbolIt->second.size;
+
+    // Issue a non-blocking command to copy the buffer to the device.
+    cl_int err = clEnqueueWriteBuffer(queue.backingQueue, buffer,
+                                      /* blocking_write */ CL_FALSE, offset,
+                                      size, T->getUnsafePtr(),
+                                      /* num_events_in_wait_list */ 0,
+                                      /* event_list */ nullptr,
+                                      /* event */ nullptr);
+    if (err != CL_SUCCESS) {
+      resultCB(MAKE_ERR(
+          ErrorValue::ErrorCode::RUNTIME_ERROR,
+          llvm::formatv("Copying Symbol: {} to device failed.", PH->getName())
+              .str()));
+    }
+    clFinish(queue.backingQueue);
+    returnRunCommandQueue(queue);
+  }
+
+  resultCB(Error::success());
+}
+
 void OpenCLDeviceManager::copyInputsToDevice(
     const RuntimeBundle &runtimeBundle, ExecutionContext *context,
     runtime::OpenCLDeviceBindings *devBindings) {
@@ -439,6 +509,10 @@ void OpenCLDeviceManager::copyInputsToDevice(
   for (auto PH : context->getPlaceholderBindings()->pairs()) {
     auto it = symbolTable.find(PH.first->getName());
     if (it == symbolTable.end()) {
+      continue;
+    }
+    // If the PH is marked as static do not copy it.
+    if (PH.first->isStatic()) {
       continue;
     }
     auto symbolInfo = it->second;
@@ -576,7 +650,7 @@ void OpenCLDeviceManager::translateTraceEvents(
         // Convert into usec and move into steady_clock domain.
         auto timestamp = (timeEnd / 1000) + tsOffset;
 
-        handle.at({ev->startIndex, 0}) = timestamp;
+        handle.at({(dim_t)ev->startIndex, 0}) = timestamp;
         traceEvents.push_back({ev->name,
                                TraceLevel::DEBUG,
                                timestamp,

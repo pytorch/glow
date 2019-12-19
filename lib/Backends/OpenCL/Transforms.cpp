@@ -65,6 +65,14 @@ bool OCLBackend::transformPostLowering(Function *F,
         continue;
       }
 
+      // We need to replace both of the MaxPool results with their NCHW
+      // counterpart in order to get rid of the old node. There appears to be a
+      // bug in the implementation of the result(1) portion of the optimized
+      // kernel, if getArgmax got users - bail.
+      if (PMN->getArgmax().getNumUsers() > 0) {
+        continue;
+      }
+
       auto results = convertMaxPoolToNCHWPool(PMN, F);
       PMN->getResult().replaceAllUsesOfWith(results.first);
       changed = true;
@@ -104,7 +112,7 @@ bool OCLBackend::transformPostLowering(Function *F,
       auto numBatchDims = batchDims.size();
       auto batchSliceSizesLen = numBatchDims > 1 ? numBatchDims - 1 : 1;
       auto *batchSliceSizes = F->getParent()->createConstant(
-          ElemKind::Int32ITy, {batchSliceSizesLen}, "batchSliceSizes");
+          ElemKind::Int32ITy, {(dim_t)batchSliceSizesLen}, "batchSliceSizes");
       auto batchSliceSizesH =
           batchSliceSizes->getPayloadMutable().getHandle<int32_t>();
       batchSliceSizesH.clear(1);
@@ -136,7 +144,7 @@ bool OCLBackend::transformPostLowering(Function *F,
       auto numDestDims = destDimsVec.size();
       auto destSliceSizesLen = numDestDims > 0 ? numDestDims : 1;
       auto *destSliceSizes = F->getParent()->createConstant(
-          ElemKind::Int32ITy, {destSliceSizesLen}, "destSliceSizes");
+          ElemKind::Int32ITy, {(dim_t)destSliceSizesLen}, "destSliceSizes");
       auto destSliceSizesH =
           destSliceSizes->getPayloadMutable().getHandle<int32_t>();
       destSliceSizesH.clear(1);

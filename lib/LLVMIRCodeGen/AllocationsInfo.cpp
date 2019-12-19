@@ -146,20 +146,12 @@ static size_t calculateTensorViewOffset(const TensorViewInst *TVI) {
   const TensorViewInst *currTVI = TVI;
   size_t totalOffsetLength = 0;
   do {
-    // Calculate and store the length of the current tensorview's offset
-    // into the source of the tensorview. Note that this source may be
-    // another tensorview.
-    size_t currOffsetLength =
-        currTVI->getOffsets().empty() ? 0 : currTVI->getOffsets()[0];
-    auto *tvSource = currTVI->getSrc();
-    for (size_t i = 1; i < tvSource->dims().size(); ++i) {
-      currOffsetLength *= tvSource->dims()[i];
-    }
-
-    // Increment the running total offset length which will be used to store
-    // into allocatedAddressed.
+    // Get the offset into the current base Tensor in bytes. Aggregate all
+    // offsets from stacked TVIs into totalOffsetLength.
     totalOffsetLength +=
-        currOffsetLength * currTVI->getType()->getElementSize();
+        getFlattenedOffset(currTVI->getSrc()->getType()->strides(),
+                           currTVI->getOffsets()) *
+        currTVI->getType()->getElementSize();
   } while ((currTVI = dyn_cast<TensorViewInst>(currTVI->getSrc())));
 
   return totalOffsetLength;

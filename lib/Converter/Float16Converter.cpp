@@ -54,7 +54,7 @@ convertFusedRowwiseQuantizedInputs(Function *F,
       // needed for FP16 scale/offset instead of FP32.
       const auto &shape = input.dims();
       assert(shape.size() == 2 && "UInt8FusedQTy must be 2D.");
-      const size_t newCols = shape[1] - 2 * (sizeof(float) - sizeof(float16_t));
+      const dim_t newCols = shape[1] - 2 * (sizeof(float) - sizeof(float16_t));
       auto OT = mod.uniqueType(ElemKind::UInt8FusedFP16QTy, {shape[0], newCols},
                                1.0, 0); // Dummy scale/offset.
       ConvertToNode *CN = F->createConvertTo(
@@ -74,6 +74,11 @@ void glow::convertFunctionToFloat16(Function *F,
                                           ElemKind::Float16Ty, precConfig);
   if (precConfig.convertToFP16) {
     converter.convert();
+
+    // Storage nodes are not converted + clipped directly -- they need to be
+    // converted via adding ConvertToNodes instead of directly setting their
+    // types like the TypeAToTypeBFunctionConverter does.
+    converter.convertAndClipStorage();
   }
 
   // Now we want to additionally convert all nodes with inputs in UInt8FusedQTy

@@ -57,6 +57,6 @@ int main() {
 
   // Read output and find argmax.
   auto out = bindings.get(output)->getHandle<float>();
-  printf("digit: %zu\n", out.minMaxArg().second);
+  printf("digit: %zu\n", (size_t)out.minMaxArg().second);
   return 0;
 }

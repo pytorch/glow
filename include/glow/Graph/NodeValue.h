@@ -75,12 +75,13 @@ public:
 
   /// Replace all of the uses in \p F of this value with \p v. Types of the node
   /// value and \p v should be exactly the same.
-  void replaceAllUsesOfWith(NodeValue v, const Function *F = nullptr) const;
+  void replaceAllUsesOfWith(NodeValue v, const Function *F = nullptr,
+                            Node *skipReplacement = nullptr) const;
 
   /// Replace all of the uses in \p F of this value with \p v. Types of the node
   /// value and \p v can be different.
-  void typeUnsafeReplaceAllUsesOfWith(NodeValue v,
-                                      const Function *F = nullptr) const;
+  void typeUnsafeReplaceAllUsesOfWith(NodeValue v, const Function *F = nullptr,
+                                      Node *skipReplacement = nullptr) const;
 
   /// Return the TypeRef of the referenced return value.
   TypeRef getType() const;
@@ -92,7 +93,7 @@ public:
   /// Methods that forward to the result type (that must be valid):
   /// @{
   ElemKind getElementType() const;
-  llvm::ArrayRef<size_t> dims() const;
+  llvm::ArrayRef<dim_t> dims() const;
   /// @}
 
   bool operator==(const NodeValue &O) const {

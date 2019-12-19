@@ -27,27 +27,32 @@
 using namespace glow;
 
 /*
- * Benchmark a batch of (m x m) * (m x n) matrix multiplications.
- * There are a number of layers which do successive GEMMs on the
- * intermediate outputs (RHS) and inputs (LHS)
+ * This class implements a batch GEMM microbenchmark. Each layer contains a
+ * batch of (m x m) * (m x n) matrix multiplications. There are a number of
+ * layers which do successive GEMMs on the intermediate outputs (RHS) and
+ * inputs (LHS)
+ *
+ * Microbenchmarks are generally useful for understanding performance
+ * through targeted experiementation and are not representative of
+ * end-to-end workloads.
  */
 class BatchGemmBench : public Benchmark {
-  size_t batchSize_;
-  size_t m_;
-  size_t n_;
-  size_t numLayers_;
+  dim_t batchSize_;
+  dim_t m_;
+  dim_t n_;
+  dim_t numLayers_;
   std::unique_ptr<runtime::HostManager> hostManager_;
   std::vector<std::unique_ptr<ExecutionContext>> contexts_;
-  size_t asyncLaunchSize_;
-  size_t numCores_;
+  dim_t asyncLaunchSize_;
+  dim_t numCores_;
   const char *backendStr_;
   ElemKind dtype_;
-  size_t elementSize_;
+  dim_t elementSize_;
   const char *devId_;
 
 public:
-  BatchGemmBench(size_t batchSize_, size_t m_, size_t n_, size_t numLayers_,
-                 size_t asyncLaunchSize_, size_t numCores_,
+  BatchGemmBench(dim_t batchSize_, dim_t m_, dim_t n_, dim_t numLayers_,
+                 dim_t asyncLaunchSize_, dim_t numCores_,
                  const char *backendStr_, const char *dtypeStr_,
                  const char *devId_ = nullptr)
       : batchSize_(batchSize_), m_(m_), n_(n_), numLayers_(numLayers_),
@@ -68,7 +73,7 @@ public:
   void setup() override {
 
     // Create execution contexts here
-    for (int i = 0; i < asyncLaunchSize_; i++) {
+    for (dim_t i = 0; i < asyncLaunchSize_; i++) {
       std::unique_ptr<ExecutionContext> context(new ExecutionContext);
       contexts_.push_back(std::move(context));
     }
@@ -92,7 +97,7 @@ public:
     // Calculate the batch size per core
     auto batchSizePerCore = getBatchSizePerCore(batchSize_, numCores_);
 
-    for (size_t core = 0; core < numCores_; core++) {
+    for (dim_t core = 0; core < numCores_; core++) {
       if (batchSizePerCore[core] == 0)
         continue;
       A[core] = mod->createPlaceholder(dtype_, {batchSizePerCore[core], m_, m_},
@@ -102,10 +107,10 @@ public:
     }
 
     // for each context, add input bindings
-    for (size_t core = 0; core < numCores_; core++) {
+    for (dim_t core = 0; core < numCores_; core++) {
       if (batchSizePerCore[core] == 0)
         continue;
-      for (int i = 0; i < asyncLaunchSize_; i++) {
+      for (dim_t i = 0; i < asyncLaunchSize_; i++) {
         if (dtype_ == ElemKind::FloatTy) {
           contexts_[i]
               ->getPlaceholderBindings()
@@ -132,7 +137,7 @@ public:
       }
 
       Node *cur = B[core];
-      for (size_t layer = 0; layer < numLayers_; layer++) {
+      for (dim_t layer = 0; layer < numLayers_; layer++) {
         auto *bmm = fn->createBatchMatMul(
             "batchmatmul" + std::to_string(layer) + "_" + std::to_string(core),
             A[core], cur);
@@ -142,7 +147,7 @@ public:
       S[core] = fn->createSave("save" + std::to_string(core), cur);
 
       // for each context, add output bindings
-      for (int i = 0; i < asyncLaunchSize_; i++) {
+      for (dim_t i = 0; i < asyncLaunchSize_; i++) {
         contexts_[i]->getPlaceholderBindings()->allocate(
             S[core]->getPlaceholder());
       }
@@ -158,7 +163,7 @@ public:
     std::vector<std::promise<void>> promises(asyncLaunchSize_);
     std::vector<std::future<void>> futures;
 
-    // Launch a number of parallel requests
+    // Launch a number of independent requests
     int i = 0;
     for (auto &promise : promises) {
       futures.push_back(promise.get_future());
@@ -176,7 +181,7 @@ public:
     for (auto &fut : futures) {
       fut.wait();
     }
-    for (int j = 0; j < asyncLaunchSize_; j++) {
+    for (dim_t j = 0; j < asyncLaunchSize_; j++) {
       contexts_[j] = std::move(localContexts[j]);
     }
   }
@@ -190,6 +195,11 @@ public:
 };
 
 int main(int argc, char *argv[]) {
+  printf("BatchGEMM Microbenchmark\n");
+  printf("Usage: BatchGemmBench batchSize(Int) m(Int) n(Int) numLayers(Int) "
+         "numReps(Int) numAsyncLaunches(Int) numBatchGEMMChains(Int) "
+         "backendStr(String) dtypeStr(\"Float16\"|\"Float32\") dev_id(Int)\n");
+
   assert(argc == 10 || argc == 11);
   size_t batchSize = atoi(argv[1]);
   size_t m = atoi(argv[2]);
@@ -213,6 +223,8 @@ int main(int argc, char *argv[]) {
                    backendStr, dtypeStr, dev_id);
 
   auto times = bench(&b, numReps);
+  printf("_,benchName,_,batchSize,m,n,numLayers,numReps,numAsyncLaunches,"
+         "numBatchGEMMChains,backendStr,dtypeStr,runtime,gflopsPerSec\n");
   for (auto t : times) {
     printf("BenchResult,BatchGemmBench,SW,%zu,%zu,%zu,%zu,%zu,%zu,%zu,%s,%s,%f,"
            "%f\n",
@@ -226,6 +238,9 @@ int main(int argc, char *argv[]) {
   double median = times[midElt];
   double median_runtime = median / ((double)numAsyncLaunches);
   double min_runtime = min / ((double)numAsyncLaunches);
+  printf("_,benchName,_,batchSize,m,n,numLayers,numReps,numAsyncLaunches,"
+         "numBatchGEMMChains,backendStr,dtypeStr,medianRuntime,minRuntime,"
+         "medianGflopsPerSec,maxGflopsPerSec\n");
   printf("BenchSummary,BatchGemmBench,SW,%zu,%zu,%zu,%zu,%zu,%zu,%zu,%s,%s,%f,%"
          "f,%f,%"
          "f\n",

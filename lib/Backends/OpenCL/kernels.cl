@@ -23,38 +23,25 @@ typedef int cl_int32_t;
 typedef char cl_int8_t;
 typedef unsigned char cl_uint8_t;
 
-/// Define a type cl_host_size_t exactly matching the type size_t used on the
-/// host size. This is required to e.g. properly pass struct parameters of
-/// types like ShapeNHWC, ShapeNCHW, etc. The definitions of these types on the
-/// host side use size_t for their members and they should be defined on the
-/// OpenCL's side using integer types of the same width.
-#if SIZEOF_HOST_SIZE_T == 8
-typedef cl_uint64_t cl_host_size_t;
-#elif SIZEOF_HOST_SIZE_T == 4
-typedef cl_uint32_t cl_host_size_t;
-#else
-#error "Unsupported size of size_t on the host side"
-#endif
-
 /// The types of elements should be always matching the definitions of
 /// ShapeNHWC in Type.h
 typedef struct {
-  cl_host_size_t n; // Number of samples
-  cl_host_size_t h; // Height
-  cl_host_size_t w; // Width
-  cl_host_size_t c; // Number of channels
+  dim_t n; // Number of samples
+  dim_t h; // Height
+  dim_t w; // Width
+  dim_t c; // Number of channels
 } ShapeNHWC;
 
 typedef struct {
-  cl_host_size_t n; // Number of samples
-  cl_host_size_t c; // Number of channels
-  cl_host_size_t h; // Height
-  cl_host_size_t w; // Width
+  dim_t n; // Number of samples
+  dim_t c; // Number of channels
+  dim_t h; // Height
+  dim_t w; // Width
 } ShapeNCHW;
 
 typedef struct {
-  cl_host_size_t height;
-  cl_host_size_t width;
+  dim_t height;
+  dim_t width;
 } ShapeHW;
 
 /// Helper struct that contains the information for quantization.
@@ -68,10 +55,10 @@ typedef struct {
 /// The types of elements should be always matching the definitions of
 /// PaddingTLBR in Type.h
 typedef struct {
-  cl_host_size_t top;
-  cl_host_size_t left;
-  cl_host_size_t bottom;
-  cl_host_size_t right;
+  dim_t top;
+  dim_t left;
+  dim_t bottom;
+  dim_t right;
 } PaddingTLBR;
 
 #if defined(cl_khr_int32_base_atomics)
@@ -934,8 +921,7 @@ __kernel void softmaxW(__global void *mem, cl_uint32_t dest, cl_uint32_t src,
 }
 
 __kernel void softmaxgradK(__global float *inG, __global float *outW,
-                           __global cl_uint64_t *selectedW,
-                           cl_uint32_t sliceSize) {
+                           __global dim_t *selectedW, cl_uint32_t sliceSize) {
   size_t i = get_global_id(0);
   for (size_t j = 0; j < sliceSize; j++) {
     float delta = (selectedW[i] == j);
@@ -1236,10 +1222,9 @@ DEFINE_OPENCL_MAXPOOL_KERNEL(oclmaxpool_i8, char)
 #undef DEFINE_OPENCL_BINARY_DATA_PARALLEL_KERNEL
 
 __kernel void maxpoolwithargmaxK(__global float *dest, __global float *src,
-                                 __global cl_uint64_t *argmax,
-                                 cl_uint32_t kernelSize, cl_uint32_t stride,
-                                 PaddingTLBR pads, ShapeNHWC odim,
-                                 ShapeNHWC idim) {
+                                 __global dim_t *argmax, cl_uint32_t kernelSize,
+                                 cl_uint32_t stride, PaddingTLBR pads,
+                                 ShapeNHWC odim, ShapeNHWC idim) {
   size_t ax = get_global_id(0);
   size_t ay = get_global_id(1);
   size_t d = get_global_id(2);
@@ -1253,7 +1238,7 @@ __kernel void maxpoolwithargmaxK(__global float *dest, __global float *src,
   for (size_t n = 0; n < idim.n; n++) {
     float maxVal = 0;
     bool first = true;
-    cl_uint64_t argmaxNHWC = 0;
+    dim_t argmaxNHWC = 0;
 
     // For each element in the convolution-filter:
     for (size_t fx = 0; fx < kernelSize; fx++) {
@@ -1292,13 +1277,10 @@ __kernel void maxpoolwithargmaxW(__global void *mem, cl_uint32_t dest,
                      pads, odim, idim);
 }
 
-__kernel void maxpoolwithargmaxgradK(__global float *dest,
-                                     __global cl_uint64_t *argmax,
-                                     __global float *destGrad,
-                                     __global float *srcGrad,
-                                     cl_uint32_t kernelSize, cl_uint32_t stride,
-                                     PaddingTLBR pads, ShapeNHWC srcGradDim,
-                                     ShapeNHWC destGradDim) {
+__kernel void maxpoolwithargmaxgradK(
+    __global float *dest, __global dim_t *argmax, __global float *destGrad,
+    __global float *srcGrad, cl_uint32_t kernelSize, cl_uint32_t stride,
+    PaddingTLBR pads, ShapeNHWC srcGradDim, ShapeNHWC destGradDim) {
   size_t n = get_global_id(0);
 
   // NHWC format is assumed
@@ -1579,11 +1561,11 @@ void memcpy_float(__global float *dest, const __global float *src, int len) {
 }
 
 __kernel void gatherK(__global float *dest, __global const float *src,
-                      __global cl_uint64_t *indices, cl_uint32_t numIndices,
+                      __global dim_t *indices, cl_uint32_t numIndices,
                       cl_uint32_t sliceSize, cl_uint32_t numSamples,
                       cl_uint32_t destSampleSize, cl_uint32_t srcSampleSize) {
   int idx = get_global_id(0);
-  cl_uint64_t slice = indices[idx];
+  dim_t slice = indices[idx];
   // For each sample in our batch:
   for (size_t sample = 0; sample < numSamples; sample++) {
     size_t srcSampleStart = sample * srcSampleSize;
@@ -1601,11 +1583,11 @@ __kernel void gatherW(__global void *mem, cl_uint32_t dest, cl_uint32_t src,
           numSamples, destSampleSize, srcSampleSize);
 }
 
-__kernel void scatterdataK(__global float *data, __global cl_uint64_t *indices,
+__kernel void scatterdataK(__global float *data, __global dim_t *indices,
                            __global const float *slices,
                            cl_uint32_t sliceSize) {
   int idx = get_global_id(0);
-  cl_uint64_t destDataIdx = indices[idx];
+  dim_t destDataIdx = indices[idx];
   memcpy_float(data + destDataIdx * sliceSize, slices + idx * sliceSize,
                sliceSize);
 }
@@ -1616,12 +1598,10 @@ __kernel void scatterdataW(__global void *mem, cl_uint32_t data,
   scatterdataK(&mem[data], &mem[indices], &mem[slices], sliceSize);
 }
 
-__kernel void sparselengthsweightedsumK(__global float *dest,
-                                        __global float *data,
-                                        __global float *weights,
-                                        __global cl_uint64_t *indices,
-                                        __global cl_int32_t *lengths,
-                                        cl_uint32_t sliceSize) {
+__kernel void
+sparselengthsweightedsumK(__global float *dest, __global float *data,
+                          __global float *weights, __global dim_t *indices,
+                          __global cl_int32_t *lengths, cl_uint32_t sliceSize) {
   // Get the global ID. This corresponds to the segment that this kernel will
   // compute, and therefore also the index into the output buffer at which this
   // kernel will write its output.
@@ -1641,7 +1621,7 @@ __kernel void sparselengthsweightedsumK(__global float *dest,
     // Read the weight.
     float weight = weights[curIdx];
     // Read the data index.
-    cl_uint64_t dataIdx = indices[curIdx];
+    dim_t dataIdx = indices[curIdx];
 
     // Read an entire slice of data at index dataIdx, multiply it by the weight
     // and store it into dest at index idx (same as the segment number).
@@ -1666,8 +1646,8 @@ __kernel void sparselengthsweightedsumW(__global void *mem, cl_uint32_t dest,
 __kernel void sparselengthsweightedsumgradK(
     __global float *destGrad, __global float *dataGrad,
     __global float *weightsGrad, __global float *data, __global float *weights,
-    __global cl_uint64_t *indices, __global cl_int32_t *lengths,
-    cl_uint32_t segments, cl_uint32_t sliceSize) {
+    __global dim_t *indices, __global cl_int32_t *lengths, cl_uint32_t segments,
+    cl_uint32_t sliceSize) {
 
   // For each segment:
   for (cl_uint32_t i = 0, curIdx = 0; i < segments; ++i) {
@@ -1677,7 +1657,7 @@ __kernel void sparselengthsweightedsumgradK(
       // Get the weight for the current index.
       float weight = weights[curIdx];
       // Get the index into dataGrad corresponding to the current index.
-      cl_uint64_t dataGradIdx = indices[curIdx];
+      dim_t dataGradIdx = indices[curIdx];
 
       // Read an entire slice of destGrad at index i (same as the segment
       // number), multiply it by the weight (that helped produce the

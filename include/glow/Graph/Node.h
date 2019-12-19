@@ -98,6 +98,7 @@ public:
   llvm::StringRef getOutputName(unsigned idx) const;
   bool hasSideEffects() const;
   bool isArithmetic() const;
+  bool isCanonical() const;
   bool isDataParallel() const;
 
   /// \returns true if this input is being overwritten by the node.
@@ -174,7 +175,7 @@ public:
   /// Methods that forward to the result type (that must be valid):
   /// @{
   ElemKind getElementType(unsigned resNo) const;
-  llvm::ArrayRef<size_t> dims(unsigned resNo) const;
+  llvm::ArrayRef<dim_t> dims(unsigned resNo) const;
   /// @}
 
 protected:

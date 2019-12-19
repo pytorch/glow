@@ -72,10 +72,10 @@ static Node *optimizeCPUConv(ConvolutionNode *CN, Function *F) {
 
   // Transpose the weights into the format [D/8, K, K, C, 8], where the depth
   // dimension is consecutive in memory.
-  for (size_t c0 = 0; c0 < dims[0]; c0++)
-    for (size_t c1 = 0; c1 < dims[1]; c1++)
-      for (size_t c2 = 0; c2 < dims[2]; c2++)
-        for (size_t c3 = 0; c3 < dims[3]; c3++) {
+  for (dim_t c0 = 0; c0 < dims[0]; c0++)
+    for (dim_t c1 = 0; c1 < dims[1]; c1++)
+      for (dim_t c2 = 0; c2 < dims[2]; c2++)
+        for (dim_t c3 = 0; c3 < dims[3]; c3++) {
           F8H.at({c0 / 8, c1, c2, c3, c0 % 8}) = FH.at({c0, c1, c2, c3});
         }
 

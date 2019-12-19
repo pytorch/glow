@@ -29,6 +29,7 @@
 #include "glow/Optimizer/GraphOptimizer/FunctionPasses.h"
 #include "glow/Optimizer/GraphOptimizer/PassManager.h"
 #include "glow/Optimizer/GraphOptimizerPipeline/Pipeline.h"
+#include "glow/Optimizer/Lower/Lower.h"
 #include "glow/Quantization/Base/Base.h"
 #include "glow/Quantization/Quantization.h"
 
@@ -215,8 +216,8 @@ bool isSplatOfVal(Node *N, float val) {
 /// \returns True if the node returns a constant value.
 bool isConstant(Node *N) { return isa<SplatNode>(N); }
 
-/// \returns the new simplified node or the original node.
-static Node *simplifyNode(Node *node, Function *F) {
+/// \returns the new simplified NodeValue or the original node's first result.
+static NodeValue simplifyNode(Node *node, Function *F) {
 // Simplify commutative nodes by moving the constant operator to the right-hand
 // side.
 // Example:  C + X  =>  X + C
@@ -411,7 +412,7 @@ bool SinkCode::run(Function *F, const CompilationContext &cctx) {
       auto outPadShape = outPadType->dims();
       auto pads = padNode->getPads();
       size_t numDims = outPadShape.size();
-      std::vector<size_t> newOutPadShape(numDims);
+      std::vector<dim_t> newOutPadShape(numDims);
       std::vector<int> newPads(2 * numDims);
       for (size_t i = 0; i < outPadShape.size(); i++) {
         newOutPadShape[shuffle[i]] = outPadShape[i];
@@ -802,10 +803,10 @@ bool MergeMatMul::run(Function *F, const CompilationContext &cctx) {
     auto *CC = F->createConcat("mergeLHS", LHS, 0);
     auto *MM = F->createMatMul("bigMatMul", CC, it.first);
 
-    size_t R = MM->getResult().dims()[1];
-    size_t start = 0;
+    dim_t R = MM->getResult().dims()[1];
+    dim_t start = 0;
     for (auto *origMM : MMs) {
-      size_t H = origMM->getResult().dims()[0];
+      dim_t H = origMM->getResult().dims()[0];
       auto *ex = F->createSlice("extract", MM, {start, 0}, {start + H, R});
       start += H;
       origMM->getResult().replaceAllUsesOfWith(ex);
@@ -1062,10 +1063,10 @@ bool ConvertBroadcastedBatchMatMul::run(Function *F,
     // RHS = {M, P}
     // Multiply each LHS matrix {N, M} by RHS {M, P} to get final matrix
     // {numBatches, N, P}
-    const size_t numBatches = LHS.dims()[0];
-    const size_t N = LHS.dims()[1];
-    const size_t M = LHS.dims()[2];
-    const size_t P = RHS.dims()[2];
+    const dim_t numBatches = LHS.dims()[0];
+    const dim_t N = LHS.dims()[1];
+    const dim_t M = LHS.dims()[2];
+    const dim_t P = RHS.dims()[2];
     auto name = BMMN->getName();
 
     // Reshape the LHS to be a two-dimensional matrix, where each batch is
@@ -1295,7 +1296,7 @@ bool OptimizeReduceMean::run(Function *F, const CompilationContext &cctx) {
           RM->getName().str() + ".transposeNHWC2NCHW", AP, NHWC2NCHW, "NCHW");
 
       // AvgPool keeps original shape. Add reshape to match expected output.
-      std::vector<size_t> shape = TR2->getResult().dims();
+      std::vector<dim_t> shape = TR2->getResult().dims();
 
       ShapeVector shapeAxes(axes.begin(), axes.end());
 
@@ -1420,7 +1421,7 @@ bool normalizeWeights(Module *M, ConvolutionNode &CV,
   for (size_t i = 0, e = filterH.size(); i < e; i++) {
     // Dimension zero is the 'channel' dimension. If we ever change the
     // layout of the filter then we need to change this optimization.
-    size_t channelId = filterH.getDimForPtr(0, i);
+    dim_t channelId = filterH.getDimForPtr(0, i);
     float value = varH.at({channelId});
     float stdvar = 1.0f / std::sqrt(value + epsilon);
     float gamma = scaleH.at({channelId});
@@ -1431,7 +1432,7 @@ bool normalizeWeights(Module *M, ConvolutionNode &CV,
   for (size_t i = 0, e = cbiasH.size(); i < e; i++) {
     // Dimension zero is the 'channel' dimension. If we ever change the
     // layout of the filter then we need to change this optimization.
-    size_t channelId = cbiasH.getDimForPtr(0, i);
+    dim_t channelId = cbiasH.getDimForPtr(0, i);
     float mu = meanH.at({channelId});
     float value = varH.at({channelId});
     float stdvar = 1.0f / std::sqrt(value + epsilon);
@@ -1518,7 +1519,7 @@ static bool checkConcatNodeUniformDims(llvm::ArrayRef<NodeValue> inputs,
 /// matches the size 20, and the leading dimensions are <1,2>, which matches
 /// the size 2.
 static ssize_t findMatchingConcatDimForSameTrailingAndLeadingDims(
-    llvm::ArrayRef<size_t> firstDims, size_t leadingDimsProdOriginalConcatNode,
+    llvm::ArrayRef<dim_t> firstDims, size_t leadingDimsProdOriginalConcatNode,
     size_t trailingDimsProdOriginalConcatNode) {
   size_t trailingDimsProdCurNode = 1;
   for (ssize_t i = firstDims.size() - 1; i >= 0; i--) {
@@ -1561,8 +1562,8 @@ findConcatDimForSameTrailingAndLeadingDims(llvm::ArrayRef<NodeValue> inputs,
   // The sizes of the trailing/leading dimensions of the original ConcatNode,
   // which are being concatenated. This sizes are simply the products of
   // dimensions following/before the dimension used for concatenation.
-  size_t trailingDimsProdOriginalConcatNode = 1;
-  size_t leadingDimsProdOriginalConcatNode = 1;
+  dim_t trailingDimsProdOriginalConcatNode = 1;
+  dim_t leadingDimsProdOriginalConcatNode = 1;
   for (size_t i = 0; i < origConcatNInputDims.size(); ++i) {
     if (i < originalConcatNode->getDim()) {
       leadingDimsProdOriginalConcatNode *= origConcatNInputDims[i];
@@ -1793,10 +1794,12 @@ bool OptimizeArithmeticNodes::run(Function *F, const CompilationContext &cctx) {
     assert(N->isArithmetic() && "Must be an Arithmetic node.");
     worklist.pop_back();
 
-    auto *SN = simplifyNode(N, F);
-    if (SN != N) {
-      N->getNthResult(ArithmeticNode::ResultIdx).replaceAllUsesOfWith(SN);
+    auto SNV = simplifyNode(N, F);
+    if (SNV.getNode() != N) {
+      N->getNthResult(ArithmeticNode::ResultIdx).replaceAllUsesOfWith(SNV);
       changed = true;
+
+      auto *SN = SNV.getNode();
 
       // The simplified node could be further simplified. Note that the
       // simplified node might not be arithmetic; it could be a splat.
@@ -1922,9 +1925,9 @@ struct ConstsHasherDedup {
     // Only use the first 8 elements in the hash. It's likely that if two
     // tensors have different content they will diverge quickly. Fall back to
     // full equality check in ConstsEqDedup.
-    constexpr size_t maxNumEls = 8;
-    size_t numEls = std::min(T.getType().size(), maxNumEls);
-    size_t bufSize = T.getType().getElementSize() * numEls;
+    constexpr dim_t maxNumEls = 8;
+    dim_t numEls = std::min((dim_t)T.getType().size(), maxNumEls);
+    dim_t bufSize = T.getType().getElementSize() * numEls;
     auto *data = T.getUnsafePtr();
     for (size_t i = 0; i < bufSize; i++) {
       hash = llvm::hash_combine(hash, data[i]);
@@ -2117,6 +2120,29 @@ bool EliminateNoopTile::run(Function *F, const CompilationContext &cctx) {
         changed = true;
       }
     }
+  }
+
+  return changed;
+}
+
+/// Eliminate noop Slice(Node) -> Node.
+bool EliminateNoopSlice::run(Function *F, const CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), getName());
+  bool changed = false;
+
+  for (auto &node : F->getNodes()) {
+    SliceNode *sliceNode = dyn_cast<SliceNode>(&node);
+    if (!sliceNode) {
+      continue;
+    }
+
+    // If input and result have different types then this is not a noop.
+    if (sliceNode->getInput().getType() != sliceNode->getResult().getType()) {
+      continue;
+    }
+
+    sliceNode->getResult().replaceAllUsesOfWith(sliceNode->getInput());
+    changed = true;
   }
 
   return changed;
@@ -2915,7 +2941,7 @@ static bool getFloatScalar(Node *node, float *retFloat) {
       return false;
     }
     auto valueH = constNode->getHandle<float>();
-    std::vector<size_t> coord(constNode->getType()->dims().size(), 0);
+    std::vector<dim_t> coord(constNode->getType()->dims().size(), 0);
     *retFloat = valueH.at(coord);
     return true;
   }
@@ -2983,8 +3009,8 @@ static llvm::Optional<ChannelShuffleParams>
 getChannelShuffleParams(const ReshapeNode &node) {
   auto resM = llvm::Optional<ChannelShuffleParams>();
 
-  llvm::ArrayRef<size_t> inputDims = node.getInput().dims();
-  llvm::ArrayRef<size_t> resultDims = node.getDims();
+  llvm::ArrayRef<dim_t> inputDims = node.getInput().dims();
+  llvm::ArrayRef<dim_t> resultDims = node.getDims();
 
   // Check that there is one more output dimension than input dimension.
   if (resultDims.size() != inputDims.size() + 1) {
@@ -3119,17 +3145,163 @@ bool FoldTileAddIntoBatchedAdd::run(Function *F,
   return changed;
 }
 
-void glow::fold(Function *F, CompilationContext &cctx) {
+/// Fold ElemKind conversion nodes (ConvertTo, Quantize) into
+/// single-user Placeholders. Note that this changes the semantics
+/// of the IO of the Function and so must be done carefully, i.e. should always
+/// be opt-in and done alongside conversion of corresponding Tensors in
+/// PlaceholderBindings. If
+/// cctx.optimizationOpts.foldStaticPlaceholderConversions is set this will
+/// only change Placeholders marked as static.
+bool FoldElemKindConversionIntoInputs::run(Function *F,
+                                           const CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), getName());
+
+  bool changed = false;
+  auto &nodes = F->getNodes();
+
+  for (auto it = nodes.begin(), e = nodes.end(); it != e; it++) {
+    Node *N = &*it;
+    // Handle conversion of inputs (conversion of Placeholders):
+    ConvertToNode *CTN = llvm::dyn_cast<ConvertToNode>(N);
+    QuantizeNode *QN = llvm::dyn_cast<QuantizeNode>(N);
+    if (CTN || QN) {
+      NodeValue in = CTN ? CTN->getInput() : QN->getInput();
+      Placeholder *P = llvm::dyn_cast<Placeholder>(in);
+      if (!P || P->getUsers().size() != 1) {
+        continue;
+      }
+      // If foldElemKindConversionIntoIO is not set and this is not a static
+      // placeholder then skip.
+      if (!cctx.optimizationOpts.foldElemKindConversionIntoIO &&
+          !P->isStatic()) {
+        continue;
+      }
+
+      // We have a conversion of a single-use placeholder to some other type, so
+      // it is safe to do the requested conversion.
+      NodeValue res = CTN ? CTN->getResult() : QN->getResult();
+
+      // Convert the type of the Placeholder to the conversion type.
+      P->setType(Storage::OutputIdx, res.getType());
+
+      // Replace all uses of the original ConvertTo to the Placeholder.
+      res.replaceAllUsesOfWith(P);
+
+      changed = true;
+      continue;
+    }
+  }
+  return changed;
+}
+
+/// Fold ElemKind conversion nodes (ConvertTo, Dequantize) into SaveNodes. Note
+/// that this changes the semantics of the IO of the Function and so must be
+/// done carefully, i.e. should always be opt-in and done alongside conversion
+/// of corresponding Tensors in PlaceholderBindings.
+bool FoldElemKindConversionIntoOutputs::run(Function *F,
+                                            const CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), getName());
+
+  std::unordered_set<SaveNode *> deadSaves;
+
+  bool changed = false;
+  // Since we will be adding in new SaveNodes, reverse iterate to be safe.
+  auto &nodes = F->getNodes();
+  for (auto it = nodes.rbegin(), e = nodes.rend(); it != e; it++) {
+    Node *N = &*it;
+
+    // Handle conversion of outputs (SaveNodes + Placeholders):
+    if (SaveNode *SN = llvm::dyn_cast<SaveNode>(N)) {
+      if (!SN) {
+        continue;
+      }
+      if (SN->getPlaceholder()->getUsers().size() != 1) {
+        continue;
+      }
+      ConvertToNode *CTN = llvm::dyn_cast<ConvertToNode>(SN->getInput());
+      DequantizeNode *DQN = llvm::dyn_cast<DequantizeNode>(SN->getInput());
+      if (!CTN && !DQN) {
+        continue;
+      }
+      NodeValue in = CTN ? CTN->getInput() : DQN->getInput();
+
+      // Set the type of the Placeholder to be same the conversion's input.
+      SN->getPlaceholder()->setType(Storage::OutputIdx, in.getType());
+
+      // Create a new SaveNode directly using the conversion's input.
+      F->createSave(SN->getName(), in, SN->getPlaceholder());
+
+      // Queue up deleting the original SaveNode as it won't be deleted via DCE.
+      deadSaves.insert(SN);
+      changed = true;
+      continue;
+    }
+  }
+
+  // Delete all the dead saves.
+  for (SaveNode *SN : deadSaves) {
+    F->eraseNode(SN);
+  }
+
+  return changed;
+}
+
+/// Looks for an activation directly following \p N from \p F that the backend
+/// \p B supports for fusion.
+template <class T> bool fuseActivation(T *N, Function *F, const Backend *B) {
+  if (!N || N->hasFusedActivation() || !N->getResult().hasOneUse()) {
+    return false;
+  }
+
+  // We know there is one result user so we can just deref the first result.
+  Node *activation = (*N->getResult().getUsers().begin()).getUser();
+  if (!B || !B->supportsFusedActivation(N, activation)) {
+    return false;
+  }
+
+  FusedActivation activationType;
+  NodeValue activationNV;
+  switch (activation->getKind()) {
+  case Kinded::Kind::ReluNodeKind:
+    activationType = FusedActivation::RELU;
+    activationNV = cast<ReluNode>(activation)->getResult();
+    break;
+  case Kinded::Kind::SigmoidNodeKind:
+    activationType = FusedActivation::SIGMOID;
+    activationNV = cast<SigmoidNode>(activation)->getResult();
+    break;
+  case Kinded::Kind::TanhNodeKind:
+    activationType = FusedActivation::TANH;
+    activationNV = cast<TanhNode>(activation)->getResult();
+    break;
+  default:
+    return false;
+  }
+
+  N->setFusedActivation(activationType);
+  activationNV.replaceAllUsesOfWith(N->getResult());
+  return true;
+}
+
+static bool foldActivations(Function *F, CompilationContext &cctx,
+                            const Backend *B) {
+  bool changed = false;
+  for (auto &node : F->getNodes()) {
+    if (fuseActivation(dyn_cast<ConvolutionNode>(&node), F, B)) {
+      changed = true;
+      continue;
+    }
+  }
+  return changed;
+}
+
+void glow::fold(Function *F, CompilationContext &cctx, const Backend *B) {
   LOG_SCOPE(F->getLogContext(), "glow::fold")
 
   FunctionPassManager FPM("FoldFPM", createDefaultFoldPassPipeline());
   FPM.run(F, cctx);
-}
 
-void glow::fold(Function *F, CompilationMode mode) {
-  CompilationContext cctx;
-  cctx.compMode = mode;
-  fold(F, cctx);
+  foldActivations(F, cctx, B);
 }
 
 void glow::optimize(Function *F, CompilationContext &cctx, const Backend &B) {
@@ -3205,7 +3377,7 @@ Error glow::optimizeFunctionBeforeLowering(Function *F,
   LOG_SCOPE(F->getLogContext(), "glow::optimizeFunctionBeforeLowering")
 
   // If we only want to lower the Function, do nothing here.
-  if (cctx.optimizationOpts.onlyLower) {
+  if (cctx.optimizationOpts.onlyLowerFuns.count(F)) {
     return Error::success();
   }
 
@@ -3235,7 +3407,7 @@ Error glow::optimizeFunction(Function *F, const Backend &B,
   LOG_SCOPE(F->getLogContext(), "glow::optimizeFunction")
 
   // If requested only lower the Function and early return.
-  if (cctx.optimizationOpts.onlyLower) {
+  if (cctx.optimizationOpts.onlyLowerFuns.count(F)) {
     ::glow::lower(F, cctx, &B);
     // Cleanup from lowering via DCE.
     runDCEPass(F, cctx);
@@ -3274,6 +3446,22 @@ Error glow::optimizeFunction(Function *F, const Backend &B,
 
   // Optimize the graph again now that we have a lowered representation.
   ::glow::optimize(F, cctx);
+
+  // If requested fold ElemKind conversion Nodes into static Placeholders,
+  // inputs, and outputs (Placeholders and SaveNodes).
+  if (cctx.optimizationOpts.foldStaticPlaceholderConversions ||
+      cctx.optimizationOpts.foldElemKindConversionIntoIO) {
+    FunctionPassPipeline pipeline{
+        FunctionPassID::FoldElemKindConversionIntoInputs};
+
+    if (cctx.optimizationOpts.foldElemKindConversionIntoIO) {
+      pipeline.pushBack({FunctionPassID::FoldElemKindConversionIntoOutputs});
+    }
+    FunctionPassManager FPM("FoldElemKindConversionIntoIO", pipeline);
+    if (FPM.run(F, cctx)) {
+      ::glow::optimize(F, cctx);
+    }
+  }
 
   // Allow the backend to transform the graph after lowering.
   if (B.transformPostLowering(F, cctx)) {
@@ -3319,8 +3507,8 @@ bool glow::executeVerticalFCWeightsSplit(Function *F, unsigned numOfChunks,
     auto weights = FC->getWeights();
     auto bias = FC->getBias();
 
-    size_t elemPerChunk = (bias.dims()[0] + numOfChunks - 1) / numOfChunks;
-    size_t sliceStart = 0;
+    dim_t elemPerChunk = (bias.dims()[0] + numOfChunks - 1) / numOfChunks;
+    dim_t sliceStart = 0;
     std::vector<NodeValue> fcs(numOfChunks);
 
     // Split weights across second dimension into numOfChunks pieces.
@@ -3375,21 +3563,21 @@ bool glow::executeVerticalFCWeightsSplit(Function *F, unsigned numOfChunks,
 /// concatenating the results. \p resultIdx represents the result index from
 /// \p curNode that is being split and later concatenated.
 static void parallelizeAndReplaceNode(Function *F, Node *curNode,
-                                      size_t numOfChunksNode,
-                                      size_t inputBatchIdx, size_t resultIdx,
+                                      dim_t numOfChunksNode,
+                                      dim_t inputBatchIdx, dim_t resultIdx,
                                       llvm::ArrayRef<int> splitDims,
                                       size_t resultDim) {
   const int inputIdx = splitDims[inputBatchIdx];
   CHECK_GE(inputIdx, 0) << "Input batch idx must be split";
-  const size_t batchSize = curNode->getNthInput(inputBatchIdx).dims()[inputIdx];
-  const size_t elemPerChunk = batchSize / numOfChunksNode;
-  const size_t remain = batchSize % numOfChunksNode;
+  const dim_t batchSize = curNode->getNthInput(inputBatchIdx).dims()[inputIdx];
+  const dim_t elemPerChunk = batchSize / numOfChunksNode;
+  const dim_t remain = batchSize % numOfChunksNode;
 
   std::vector<NodeValue> newNodes(numOfChunksNode);
-  for (size_t i = 0; i < numOfChunksNode; ++i) {
+  for (dim_t i = 0; i < numOfChunksNode; ++i) {
     // Calculate the out type of this chunk.
-    const size_t sliceStart = i * elemPerChunk + std::min(i, remain);
-    const size_t sliceEnd = sliceStart + elemPerChunk + ((i < remain) ? 1 : 0);
+    const dim_t sliceStart = i * elemPerChunk + std::min(i, remain);
+    const dim_t sliceEnd = sliceStart + elemPerChunk + ((i < remain) ? 1 : 0);
     std::cout << "\tChunk " << i << ": start: " << sliceStart
               << " end: " << sliceEnd << "\n";
     auto outDims = curNode->dims(resultIdx).vec();
@@ -3417,7 +3605,7 @@ static void parallelizeAndReplaceNode(Function *F, Node *curNode,
       }
 
       NodeValue currInput = curNode->getNthInput(j);
-      auto sliceDimsStart = std::vector<size_t>(currInput.dims().size(), 0);
+      auto sliceDimsStart = std::vector<dim_t>(currInput.dims().size(), 0);
       sliceDimsStart[dim] = sliceStart;
       auto sliceDimsEnd = currInput.dims().vec();
       sliceDimsEnd[dim] = sliceEnd;

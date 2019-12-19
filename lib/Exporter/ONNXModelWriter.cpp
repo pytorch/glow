@@ -315,8 +315,8 @@ Error writeArithmetic(const std::string &opName, const T *node,
     if (LHS.dims() != RHS.dims()) {
       // Extract axis from available shapes, ie. input origin,
       // reshape and target repeats.
-      llvm::ArrayRef<size_t> origin = RHS.dims();
-      llvm::ArrayRef<size_t> reshape = RN->getDims();
+      llvm::ArrayRef<dim_t> origin = RHS.dims();
+      llvm::ArrayRef<dim_t> reshape = RN->getDims();
       DCHECK(reshape.size() == repeats.size());
       DCHECK(repeats.size() >= origin.size());
 
@@ -757,14 +757,8 @@ Error ONNXModelWriter::writeBatchedReduceMean(const BatchedReduceMeanNode *node,
   proto->set_op_type("ReduceMean");
   inputsToProto(node, proto);
 
-  // Use the output of reshape node.
-  if (outputKindToProto(Kinded::Kind::ReshapeNodeKind, node, proto)) {
-    // Add dictionary entries.
-    addValueAttribute(proto, "keepdims", 1);
-  } else {
-    addValueAttribute(proto, "keepdims", 0);
-    outputsToProto(node, proto);
-  }
+  addValueAttribute(proto, "keepdims", 0);
+  outputsToProto(node, proto);
 
   return Error::success();
 }
@@ -781,14 +775,8 @@ Error ONNXModelWriter::writeBatchedReduceAdd(const BatchedReduceAddNode *node,
   proto->set_op_type("ReduceSum");
   inputsToProto(node, proto);
 
-  // Use the output of reshape node.
-  if (outputKindToProto(Kinded::Kind::ReshapeNodeKind, node, proto)) {
-    // Add dictionary entries.
-    addValueAttribute(proto, "keepdims", 1);
-  } else {
-    addValueAttribute(proto, "keepdims", 0);
-    outputsToProto(node, proto);
-  }
+  addValueAttribute(proto, "keepdims", 0);
+  outputsToProto(node, proto);
 
   return Error::success();
 }
@@ -865,9 +853,9 @@ Error ONNXModelWriter::writeSlice(const SliceNode *node, GraphType &graph) {
   RETURN_IF_ERR(writeAllWithNode("Slice", node, proto));
 
   if (opsetVersion_ >= 10) {
-    Tensor oneDimTensorStarts(ElemKind::Int64ITy, {starts.size()});
+    Tensor oneDimTensorStarts(ElemKind::Int64ITy, {(dim_t)starts.size()});
     auto handleStarts = oneDimTensorStarts.getHandle<int64_t>();
-    Tensor oneDimTensorEnds(ElemKind::Int64ITy, {starts.size()});
+    Tensor oneDimTensorEnds(ElemKind::Int64ITy, {(dim_t)starts.size()});
     auto handleEnds = oneDimTensorEnds.getHandle<int64_t>();
 
     for (size_t b = 0, e = starts.size(); b < e; ++b) {
@@ -1029,15 +1017,6 @@ Error ONNXModelWriter::writeBatchMatMul(const BatchMatMulNode *node,
 }
 
 Error ONNXModelWriter::writeReshape(const ReshapeNode *node, GraphType &graph) {
-  // ReduceMean/ReduceSum nodes create reshape for the output.
-  // Therefore check if this reshape has BatchedReduceMean/BatchedReduceAdd
-  // node as input.
-  const Node *input = node->getInput().getNode();
-  if (llvm::dyn_cast<BatchedReduceMeanNode>(input) ||
-      llvm::dyn_cast<BatchedReduceAddNode>(input)) {
-    return Error::success();
-  }
-
   auto *proto = graph.add_node();
 
   // Add ints type attribute.
@@ -1397,6 +1376,7 @@ DEF_ALL_WRITER_NODE(Regression)
 DEF_ALL_WRITER_NODE(RowwiseQuantizedFullyConnected)
 DEF_ALL_WRITER_NODE(RowwiseQuantizedSparseLengthsWeightedSum)
 DEF_ALL_WRITER_NODE(FusedRowwiseQuantizedSparseLengthsSum)
+DEF_ALL_WRITER_NODE(EmbeddingBagByteRowwiseOffsets)
 DEF_ALL_WRITER_NODE(FusedRowwiseQuantizedSparseLengthsWeightedSum)
 
 Error ONNXModelWriter::writeClip(const ClipNode *node, GraphType &graph) {

@@ -65,8 +65,8 @@ size_t glow::getOriginOffset(Value *V) {
       return off;
     }
 
-    llvm::ArrayRef<size_t> offsets = TVI->getOffsets();
-    llvm::ArrayRef<size_t> srcDims = TVI->getSrc()->getType()->dims();
+    llvm::ArrayRef<dim_t> offsets = TVI->getOffsets();
+    llvm::ArrayRef<dim_t> srcDims = TVI->getSrc()->getType()->dims();
 
     size_t numSrcDims = srcDims.size();
 

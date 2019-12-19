@@ -86,11 +86,7 @@ int main(int argc, char **argv) {
       .addMember(MemberType::Unsigned, "Group")
       .addMember(MemberType::Unsigned, "Dilation")
       .addMember(MEMBER_TYPE_INFO(glow::ConvolutionLayout), "Layout")
-      .addMember(MEMBER_TYPE_INFO(glow::FusedActivation), "FusedActivation")
-      .addExtraMethod(
-          "bool hasFusedActivation() const;",
-          "bool ConvolutionNode::hasFusedActivation() const { return "
-          "getFusedActivation() != FusedActivation::NONE; }")
+      .addFusedActivation()
       .addResultFromCtorArg()
       .addGradient()
       .setDocstring(
@@ -528,6 +524,17 @@ int main(int argc, char **argv) {
           "Weights[0] * Slice(0) + Weights[1] * Slice(1) + ... "
           "It implies that len(Weights) == len(Indices).");
 
+  BB.newNode("EmbeddingBagByteRowwiseOffsets")
+      .addInput("Data")
+      .addInput("Weights")
+      .addInput("Indices")
+      .addInput("Offsets")
+      .addMember(MemberType::Boolean, "UseFP16Accumulation",
+                 /* addSetter */ true)
+      .addResultFromCtorArg()
+      .setDocstring("Same as FusedRowwiseQuantizedSparseLengthsWeightedSum but "
+                    "using offsets instead of lengths.");
+
   BB.newNode("RowwiseQuantizedSparseLengthsWeightedSum")
       .addInput("Data")
       .addInput("Scales")
@@ -535,7 +542,8 @@ int main(int argc, char **argv) {
       .addInput("Weights")
       .addInput("Indices")
       .addInput("Lengths")
-      .addMember(MemberType::Boolean, "UseFP16Accumulation")
+      .addMember(MemberType::Boolean, "UseFP16Accumulation",
+                 /* addSetter */ true)
       .addResultFromCtorArg()
       .setDocstring("Gathers slices of the outer-most dimension of Data "
                     "indexed by Indices vector, and then accumulates them into "
@@ -554,7 +562,8 @@ int main(int argc, char **argv) {
       .addInput("Weights")
       .addInput("Indices")
       .addInput("Lengths")
-      .addMember(MemberType::Boolean, "UseFP16Accumulation")
+      .addMember(MemberType::Boolean, "UseFP16Accumulation",
+                 /* addSetter */ true)
       .addResultFromCtorArg()
       .setDocstring("Gathers slices of the outer-most dimension of Data "
                     "indexed by Indices vector, and then accumulates them into "
@@ -573,7 +582,8 @@ int main(int argc, char **argv) {
       .addInput("Data")
       .addInput("Indices")
       .addInput("Lengths")
-      .addMember(MemberType::Boolean, "UseFP16Accumulation")
+      .addMember(MemberType::Boolean, "UseFP16Accumulation",
+                 /* addSetter */ true)
       .addResultFromCtorArg()
       .setDocstring("Gathers slices of the outer-most dimension of Data "
                     "indexed by Indices vector, and then accumulates them into "
@@ -617,7 +627,7 @@ int main(int argc, char **argv) {
       .addInput("Values")
       .addInput("DefaultValue")
       .addInput("Lengths")
-      .addMember(MemberType::VectorInt64, "Mask")
+      .addMember(MemberType::VectorDimT, "Mask")
       .addResultFromCtorArg()
       .setDocstring(
           "Converts the sparse representation specified by the pair "
@@ -695,7 +705,7 @@ int main(int argc, char **argv) {
 
   BB.newNode("Reshape")
       .addInput("Input")
-      .addMember(MemberType::VectorSizeT, "Dims")
+      .addMember(MemberType::VectorDimT, "Dims")
       .addMember(MemberType::String, "Layout")
       .addResultFromCtorArg()
       .setDocstring("Reshape the Input tensor to shape Dims.");
@@ -718,7 +728,7 @@ int main(int argc, char **argv) {
 
   BB.newNode("Slice")
       .addInput("Input")
-      .addMember(MemberType::VectorSizeT, "Start")
+      .addMember(MemberType::VectorDimT, "Start")
       .addResultFromCtorArg()
       .setDocstring("Produces a slice of the Input tensor. The Start vector "
                     "defines the starting indices for each dimension from "
@@ -728,7 +738,7 @@ int main(int argc, char **argv) {
   BB.newNode("InsertTensor")
       .addInput("Big")
       .addInput("Small")
-      .addMember(MemberType::VectorSizeT, "Start")
+      .addMember(MemberType::VectorDimT, "Start")
       .addMember(MemberType::Unsigned, "Count")
       .addMember(MemberType::Unsigned, "Axis")
       .addResult("Big.getType()")

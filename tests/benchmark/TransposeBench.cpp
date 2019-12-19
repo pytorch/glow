@@ -27,24 +27,30 @@
 using namespace glow;
 
 /*
- * Benchmark m independent nxk transposes along with add layers.
+ * This class implements a transpose microbenchmark. There are multiple
+ * layers of transpose, followed by an Add with the tensor from the previous
+ * layer.
+ *
+ * Microbenchmarks are generally useful for understanding performance
+ * through targeted experiementation and are not representative of
+ * end-to-end workloads.
  */
 class TransposeBench : public Benchmark {
-  size_t batchSize_;
-  size_t n_;
-  size_t numLayers_;
+  dim_t batchSize_;
+  dim_t n_;
+  dim_t numLayers_;
   std::unique_ptr<runtime::HostManager> hostManager_;
   std::vector<std::unique_ptr<ExecutionContext>> contexts_;
-  size_t asyncLaunchSize_;
-  size_t numCores_;
+  dim_t asyncLaunchSize_;
+  dim_t numCores_;
   const char *backendStr_;
   ElemKind dtype_;
-  size_t elementSize_;
+  dim_t elementSize_;
   const char *devId_;
 
 public:
-  TransposeBench(size_t batchSize_, size_t n_, size_t numLayers_,
-                 size_t asyncLaunchSize_, size_t numCores_,
+  TransposeBench(dim_t batchSize_, dim_t n_, dim_t numLayers_,
+                 dim_t asyncLaunchSize_, dim_t numCores_,
                  const char *backendStr_, const char *dtypeStr_,
                  const char *devId_ = nullptr)
       : batchSize_(batchSize_), n_(n_), numLayers_(numLayers_),
@@ -65,7 +71,7 @@ public:
   void setup() override {
 
     // Create execution contexts here
-    for (int i = 0; i < asyncLaunchSize_; i++) {
+    for (dim_t i = 0; i < asyncLaunchSize_; i++) {
       std::unique_ptr<ExecutionContext> context(new ExecutionContext);
       contexts_.push_back(std::move(context));
     }
@@ -86,7 +92,7 @@ public:
     std::vector<SaveNode *> S(numCores_);
     auto batchSizePerCore = getBatchSizePerCore(batchSize_, numCores_);
 
-    for (size_t core = 0; core < numCores_; core++) {
+    for (dim_t core = 0; core < numCores_; core++) {
       if (batchSizePerCore[core] == 0)
         continue;
       input[core] =
@@ -94,11 +100,12 @@ public:
                                  "A" + std::to_string(core), false);
     }
 
-    for (size_t core = 0; core < numCores_; core++) {
+    // Create multiple chains of Transpose and Add nodes
+    for (dim_t core = 0; core < numCores_; core++) {
       if (batchSizePerCore[core] == 0)
         continue;
       // for each context, add input bindings
-      for (int i = 0; i < asyncLaunchSize_; i++) {
+      for (dim_t i = 0; i < asyncLaunchSize_; i++) {
         if (dtype_ == ElemKind::FloatTy) {
           contexts_[i]
               ->getPlaceholderBindings()
@@ -115,7 +122,7 @@ public:
       }
 
       Node *cur = input[core];
-      for (int layer = 0; layer < numLayers_; layer++) {
+      for (dim_t layer = 0; layer < numLayers_; layer++) {
         auto *xp = fn->createTranspose("transpose_" + std::to_string(layer) +
                                            "_" + std::to_string(core),
                                        cur, {0, 2, 1});
@@ -128,7 +135,7 @@ public:
       S[core] = fn->createSave("save", cur);
 
       // for each context, allocate output
-      for (int i = 0; i < asyncLaunchSize_; i++) {
+      for (dim_t i = 0; i < asyncLaunchSize_; i++) {
         contexts_[i]->getPlaceholderBindings()->allocate(
             S[core]->getPlaceholder());
       }
@@ -144,7 +151,7 @@ public:
     std::vector<std::promise<void>> promises(asyncLaunchSize_);
     std::vector<std::future<void>> futures;
 
-    // Launch a number of parallel requests
+    // Launch a number of independent requests
     int i = 0;
     for (auto &promise : promises) {
       futures.push_back(promise.get_future());
@@ -162,7 +169,7 @@ public:
     for (auto &fut : futures) {
       fut.wait();
     }
-    for (int j = 0; j < asyncLaunchSize_; j++) {
+    for (dim_t j = 0; j < asyncLaunchSize_; j++) {
       contexts_[j] = std::move(localContexts[j]);
     }
   }
@@ -176,6 +183,10 @@ public:
 };
 
 int main(int argc, char *argv[]) {
+  printf("Transpose Microbenchmark\n");
+  printf("Usage: TransposeBench batchSize(Int) n(Int) numLayers(Int) "
+         "numReps(Int) numAsyncLaunches(Int) numTransposeChains(Int) "
+         "backendStr(String) dtypeStr(\"Float16\"|\"Float32\") dev_id(Int)\n");
   assert(argc == 9 || argc == 10);
   size_t batchSize = atoi(argv[1]);
   size_t n = atoi(argv[2]);
@@ -198,6 +209,8 @@ int main(int argc, char *argv[]) {
                    backendStr, dtypeStr, dev_id);
 
   auto times = bench(&b, numReps);
+  printf("_,benchName,_,batchSize,n,numLayers,numReps,numAsyncLaunches,"
+         "numTransposeChains,backendStr,dtypeStr,runtime,gbytesPerSec\n");
   for (auto t : times) {
     printf(
         "BenchResult,TransposeBench,SW,%zu,%zu,%zu,%zu,%zu,%zu,%s,%s,%f,%f\n",
@@ -211,6 +224,9 @@ int main(int argc, char *argv[]) {
   double median = times[midElt];
   double median_runtime = median / ((double)numAsyncLaunches);
   double min_runtime = min / ((double)numAsyncLaunches);
+  printf("_,benchName,_,batchSize,n,numLayers,numReps,numAsyncLaunches,"
+         "numTransposeChains,backendStr,dtypeStr,medianRuntime,minRuntime,"
+         "medianGbytesPerSec,maxGbytesPerSec\n");
   printf(
       "BenchSummary,TransposeBench,SW,%zu,%zu,%zu,%zu,%zu,%zu,%s,%s,%f,%f,%f,%"
       "f\n",

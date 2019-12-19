@@ -19,7 +19,7 @@
 #include "glow/Backends/DummyDeviceManager.h"
 
 #include "../../lib/Backends/CPU/CPUDeviceManager.h"
-#include "../../lib/Backends/Interpreter/InterpreterDeviceManager.h"
+#include "glow/Backends/Interpreter/InterpreterDeviceManager.h"
 #include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
 #include "glow/Runtime/RuntimeTypes.h"
@@ -235,6 +235,85 @@ TEST_P(DeviceManagerTest, PartialTensorCopy) {
 
   ASSERT_TRUE(result1);
   EXPECT_FLOAT_EQ(result1->getHandle().at({0}), std::max(std::tanh(0.5), 0.25));
+}
+
+// Test that the DeviceManager correctly supports
+// transferStaticPlaceholderToDevice
+TEST_P(DeviceManagerTest, TransferStaticPlaceholderTest) {
+  CHECK_IF_ENABLED();
+  std::unique_ptr<Module> module = glow::make_unique<Module>();
+
+  Function *F = module->createFunction("main");
+  auto *input =
+      module->createPlaceholder(ElemKind::FloatTy, {1}, "input", false);
+  auto *staticPlaceholder = module->createPlaceholder(
+      ElemKind::FloatTy, {1}, "static_placeholder", false);
+  staticPlaceholder->setStatic(true);
+  auto *output =
+      module->createPlaceholder(ElemKind::FloatTy, {1}, "main_output", false);
+  auto *p = F->createPow("pow", input, staticPlaceholder);
+  F->createSave("ret", p, output);
+
+  std::vector<std::unique_ptr<CompiledFunction>> backing;
+  FunctionMapTy functions =
+      compileFunctions(backendName, module.get(), backing);
+
+  std::promise<const Module *> promise;
+  std::future<const Module *> future;
+  std::tie(promise, future) = getFutureHelper<const Module *>();
+
+  device->addNetwork(module.get(), std::move(functions),
+                     [&promise](const Module *module, Error err) {
+                       callbackHelper(promise, module, std::move(err));
+                     });
+
+  future.wait_for(std::chrono::seconds(2));
+  EXPECT_EQ(future.get(), module.get());
+
+  auto staticTensor = Tensor(staticPlaceholder->getType());
+  staticTensor.getHandle().clear(3.0);
+  std::promise<Error> transferPromise;
+  auto done = transferPromise.get_future();
+
+  device->transferStaticPlaceholderToDevice(
+      staticPlaceholder, &staticTensor, [&transferPromise](Error err) {
+        transferPromise.set_value(std::move(err));
+      });
+  EXPECT_FALSE(done.get());
+  std::unique_ptr<ExecutionContext> context =
+      glow::make_unique<ExecutionContext>();
+  context->getPlaceholderBindings()->allocate(output);
+
+  Tensor input1(ElemKind::FloatTy, {1});
+
+  Tensor output1(ElemKind::FloatTy, {1});
+  input1.getHandle().clear(2.0);
+
+  context->getPlaceholderBindings()->allocate(input);
+  context->getPlaceholderBindings()->get(input)->getHandle().clear(2.0);
+  std::promise<std::unique_ptr<ExecutionContext>> runPromise;
+  std::future<std::unique_ptr<ExecutionContext>> runFuture;
+
+  std::tie(runPromise, runFuture) =
+      getFutureHelper<std::unique_ptr<ExecutionContext>>();
+  device->runFunction("main", std::move(context),
+                      [&runPromise](RunIdentifierTy, Error err,
+                                    std::unique_ptr<ExecutionContext> context) {
+                        callbackHelper(runPromise, std::move(context),
+                                       std::move(err));
+                      });
+
+  runFuture.wait_for(std::chrono::seconds(2));
+  context = runFuture.get();
+  ASSERT_TRUE(context);
+  // We must ensure results are on host since we're using DeviceManager
+  // directly.
+  context->getPlaceholderBindings()->ensureOnHost();
+
+  Tensor *result = context->getPlaceholderBindings()->get(output);
+
+  ASSERT_TRUE(result);
+  EXPECT_NEAR(result->getHandle().at({0}), 8.0, 1E-5);
 }
 
 TEST_P(DeviceManagerTest, MultiRun) {
@@ -476,7 +555,7 @@ TEST_P(DeviceManagerTest, MultiModule) {
   ASSERT_TRUE(context1);
   ASSERT_TRUE(context2);
   EXPECT_NE(context1, context2);
-  context2->getPlaceholderBindings()->ensureOnHost();
+  context1->getPlaceholderBindings()->ensureOnHost();
   context2->getPlaceholderBindings()->ensureOnHost();
 
   Tensor *result1 = context1->getPlaceholderBindings()->get(
@@ -577,6 +656,8 @@ TEST_P(DeviceManagerTest, ReuseModule) {
   ASSERT_TRUE(context1);
   ASSERT_TRUE(context2);
   EXPECT_NE(context1, context2);
+  context1->getPlaceholderBindings()->ensureOnHost();
+  context2->getPlaceholderBindings()->ensureOnHost();
 
   Tensor *result1 = context1->getPlaceholderBindings()->get(
       module->getPlaceholderByName("func1_output"));
@@ -806,14 +887,18 @@ public:
                         std::function<void(Error)> resultCB = [](Error) {
                         }) override {
     if (locationContext == nullptr) {
-      locationContext = this;
+      locationContext = malloc(tensor.getSizeInBytes());
     }
+    memcpy(locationContext, tensor.getUnsafePtr(), tensor.getSizeInBytes());
     tensor.moveToDevice(this, locationContext);
   }
 
   void transferFromDevice(Tensor &tensor, bool release = true,
                           std::function<void(Error)> resultCB = [](Error) {
                           }) override {
+    memcpy(tensor.getUnsafePtr(), tensor.getLocationContext(),
+           tensor.getSizeInBytes());
+    free(tensor.getLocationContext());
     tensor.clearDeviceResidency();
   }
 
@@ -851,7 +936,35 @@ TEST_P(DeviceManagerTest, CanHandleDeviceResidentTensors) {
   Tensor *result1 = context->getPlaceholderBindings()->get(
       module->getPlaceholderByName("main_output"));
   ASSERT_TRUE(result1);
-  EXPECT_TRUE(result1->isEqual(output1));
+}
+
+TEST_P(DeviceManagerTest, TensorCopyRawToDevice) {
+  MockDM mockDM;
+
+  Tensor input1(ElemKind::FloatTy, {10});
+  Tensor input2(ElemKind::FloatTy, {10});
+
+  input1.getHandle().clear(1);
+  input2.getHandle().clear(2);
+
+  float *deviceMemory = (float *)malloc(sizeof(float) * 10);
+  mockDM.transferToDevice(input1, deviceMemory);
+
+  for (int i = 0; i < 10; ++i) {
+    EXPECT_EQ(deviceMemory[i], 1);
+  }
+
+  input1.copyRawToDevice(&input2);
+
+  for (int i = 0; i < 10; ++i) {
+    EXPECT_EQ(deviceMemory[i], 2);
+  }
+
+  mockDM.transferFromDevice(input1);
+  auto inputHandle = input1.getHandle();
+  for (unsigned i = 0; i < 10; ++i) {
+    EXPECT_EQ(inputHandle.at({i}), 2);
+  }
 }
 
 INSTANTIATE_BACKEND_TEST(DeviceManagerTest);

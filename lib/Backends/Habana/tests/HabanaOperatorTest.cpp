@@ -162,8 +162,14 @@ std::set<std::string> glow::backendTestBlacklist = {
     "back/0",
     "FusedRowwiseQuantizedSparseLengthsWeightedSum_ConvertedFloat16_back_to_"
     "back2/0",
+    "FusedRowwiseQuantizedSparseLengthsWeightedSum_ConvertedFloat16_"
+    "NoFusedConvert/0",
     "FusedRowwiseQuantizedSparseLengthsWeightedSum_Float16_AccumFloat/0",
     "FusedRowwiseQuantizedSparseLengthsWeightedSum_Float16_AccumFloat16/0",
+    "EmbeddingBagByteRowwiseOffsets_ConvertedFloat16/0",
+    "EmbeddingBagByteRowwiseOffsets_Float/0",
+    "EmbeddingBagByteRowwiseOffsets_Float16_AccumFloat/0",
+    "EmbeddingBagByteRowwiseOffsets_Float16_AccumFloat16/0",
     "FusedRWQSLSAllZeroLengths_Float/0",
     "FusedRWQSLSAllZeroLengths_Float16/0",
     "GatherDataFloat16IdxInt32/0",
@@ -229,6 +235,8 @@ std::set<std::string> glow::backendTestBlacklist = {
     "NonSquarePaddingMaxPool/0",
     "NonSquareStrideAveragePool/0",
     "NonSquareStrideConvolution/0",
+    "ParallelBatchMatMul_Float16/0",
+    "ParallelBatchMatMul_Int8/0",
     "pow/0",
     "PReluSimple_Float/0",
     "PReluSimple_Float16/0",

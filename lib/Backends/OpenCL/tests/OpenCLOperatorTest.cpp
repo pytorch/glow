@@ -178,6 +178,10 @@ std::set<std::string> glow::backendTestBlacklist = {
     "back/0",
     "FusedRowwiseQuantizedSparseLengthsWeightedSum_ConvertedFloat16_back_to_"
     "back2/0",
+    "EmbeddingBagByteRowwiseOffsets_Float/0",
+    "EmbeddingBagByteRowwiseOffsets_Float16_AccumFloat/0",
+    "EmbeddingBagByteRowwiseOffsets_Float16_AccumFloat16/0",
+    "EmbeddingBagByteRowwiseOffsets_ConvertedFloat16/0",
     "FusedRowwiseQuantizedSparseLengthsSum_Float/0",
     "FusedRowwiseQuantizedSparseLengthsSum_Float16_AccumFloat/0",
     "FusedRowwiseQuantizedSparseLengthsSum_Float16_AccumFloat16/0",
@@ -186,6 +190,8 @@ std::set<std::string> glow::backendTestBlacklist = {
     "FusedRowwiseQuantizedSLWSTwoColumn_Float16_AccumFloat/0",
     "FusedRowwiseQuantizedSLWSTwoColumn_Float16_AccumFloat16/0",
     "FusedRowwiseQuantizedSLWSTwoColumn_Fused4Bit_Float16_AccumFloat16/0",
+    "FusedRowwiseQuantizedSparseLengthsWeightedSum_ConvertedFloat16_"
+    "NoFusedConvert/0",
     "SLWSTwoColumn_Float16_AccumFloat/0",
     "SLSWithZeroLengths/0",
     "SparseToDense/0",
@@ -272,4 +278,6 @@ std::set<std::string> glow::backendTestBlacklist = {
     "RepeatedSLSWithPartialTensors/0",
     "GatherWithInt32PartialTensors/0",
     "GatherWithInt64PartialTensors/0",
+    "GroupwiseQuantizedConvolution/0",
+    "ParallelBatchMatMul_Float16/0",
 };

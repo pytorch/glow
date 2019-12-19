@@ -16,8 +16,8 @@
 #ifndef GLOW_BACKENDS_INTERPRETER_INTERPRETER_H
 #define GLOW_BACKENDS_INTERPRETER_INTERPRETER_H
 
-#include "InterpreterDeviceManager.h"
-#include "InterpreterFunction.h"
+#include "glow/Backends/Interpreter/InterpreterDeviceManager.h"
+#include "glow/Backends/Interpreter/InterpreterFunction.h"
 
 #include "glow/Backend/Backend.h"
 

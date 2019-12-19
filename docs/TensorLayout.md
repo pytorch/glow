@@ -108,6 +108,16 @@ derives from `TensorLayoutCommon` and overrides the following functions:
   - This function takes an operator `Node *node` and returns the layout requirements of the Nth result `n`.
   - It returns Common layout constraints, for example, `ConvolutionNode` should be in `NHWC` format.
 
+Notes:
+
+1. Some nodes can accept any layout as input, they are either data parallel, e.g. `Add`,
+or, while not data parallel, do not care about the order of dimensions for their operation,
+e.g. `ReshapeNodeKind`. When adding new nodes to Glow, such a behavior should be explicitly
+specified, by adding `.dataParallel()` in NodeGen for example.
+2. Some nodes propagate the layout information of their input, e.g. `convertTo` node,
+when adding such nodes to Glow the canonical layout verifier should be aware of them.
+We currently do that in `getNthInputLayoutRequirements`.
+
 ## Placeholders and Constants
 
 An important thing to note is that some operators may have a `Placeholder` or
