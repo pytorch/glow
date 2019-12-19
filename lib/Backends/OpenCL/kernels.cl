@@ -895,6 +895,98 @@ __kernel void matmul_i8W(__global void *mem, cl_uint32_t dest, cl_uint32_t lhs,
              destScaleParams.scale);
 }
 
+//__attribute__((reqd_work_group_size(1, 1, 1)))
+__kernel void localresponsenormalizationW(__global void *mem, unsigned dest,
+                                          unsigned src, unsigned scaleC,
+                                          ShapeNHWC dim,
+                                          unsigned halfWindowSize, float k,
+                                          float beta, float normedAlpha) {
+
+  global float *outW = (global float *)&mem[dest];
+  global float *inW = (global float *)&mem[src];
+  global float *scaleCache = (global float *)&mem[scaleC];
+  unsigned n = get_global_id(0);
+  unsigned h = get_global_id(1);
+  unsigned w = get_global_id(2);
+  // For every channel:
+  for (unsigned c = 0; c < dim.c; c++) {
+    float squareSum = 0.0;
+    for (unsigned i = (c >= halfWindowSize ? c - halfWindowSize : 0);
+         i <= min(c + halfWindowSize, (unsigned)dim.c - 1); i++) {
+      float val = inW[getNHWC(dim, n, h, w, i)];
+      squareSum += val * val;
+    }
+
+    float scale = k + normedAlpha * squareSum;
+
+    // This will be used to accelerate the backward pass.
+    scaleCache[getNHWC(dim, n, h, w, c)] = scale;
+
+    float normFactor = pow(scale, -beta);
+    outW[getNHWC(dim, n, h, w, c)] = inW[getNHWC(dim, n, h, w, c)] * normFactor;
+  }
+}
+
+__kernel void localresponsenormalizationgradW(__global void *mem, unsigned dest,
+                                              unsigned src, unsigned scaleC,
+                                              unsigned destGrad,
+                                              unsigned srcGrad, ShapeNHWC dim,
+                                              unsigned halfWindowSize, float k,
+                                              float beta, float normedAlpha) {
+
+  global float *outW = (global float *)&mem[dest];
+  global float *outG = (global float *)&mem[destGrad];
+  global float *inW = (global float *)&mem[src];
+  global float *inG = (global float *)&mem[srcGrad];
+  global float *scaleCache = (global float *)&mem[scaleC];
+
+  unsigned n = get_global_id(0);
+  unsigned h = get_global_id(1);
+  unsigned w = get_global_id(2);
+
+  float sum = 0.0;
+
+  // Compute sum for first channel.
+  for (unsigned c = 0; c <= halfWindowSize && c < dim.c; c++) {
+    float outw = outW[getNHWC(dim, n, h, w, c)];
+    float scale = scaleCache[getNHWC(dim, n, h, w, c)];
+    float outg = outG[getNHWC(dim, n, h, w, c)];
+    sum += (outg * (outw / scale));
+  }
+
+  // For every channel:
+  for (unsigned c = 0; c < dim.c; c++) {
+    float outg = outG[getNHWC(dim, n, h, w, c)];
+    float scale = scaleCache[getNHWC(dim, n, h, w, c)];
+    float inw = inW[getNHWC(dim, n, h, w, c)];
+
+    inG[getNHWC(dim, n, h, w, c)] =
+        outg * pow(scale, -beta) - 2 * normedAlpha * beta * inw * sum;
+
+    // Modify sum for next channel.
+    unsigned subIndex = c - halfWindowSize;
+    unsigned addIndex = c + halfWindowSize + 1;
+
+    if (c >= halfWindowSize) {
+      float outw = outW[getNHWC(dim, n, h, w, subIndex)];
+      float scale = scaleCache[getNHWC(dim, n, h, w, subIndex)];
+      float outg = outG[getNHWC(dim, n, h, w, subIndex)];
+
+      // Subtract "rear" end of this window.
+      sum -= (outg * (outw / scale));
+    }
+
+    if (addIndex < dim.c) {
+      float outw = outW[getNHWC(dim, n, h, w, addIndex)];
+      float scale = scaleCache[getNHWC(dim, n, h, w, addIndex)];
+      float outg = outG[getNHWC(dim, n, h, w, addIndex)];
+
+      // Add "front" end of next window.
+      sum += (outg * (outw / scale));
+    }
+  }
+}
+
 __kernel void softmaxK(__global float *dest, __global float *src,
                        __global float *e_cache, cl_uint32_t sliceSize) {
   size_t i = get_global_id(0);
