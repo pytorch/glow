@@ -46,7 +46,7 @@ glow::NNPIImporter::NNPIImporter(const NNPICompilationOptions &compileOptions)
                         "Failed to create NNPI network");
   // Setting the network name for testing framework purposes.
   ASSERT_LOG_NNPI_ERROR(
-      nnpiNetworkSetName(network_, compileOptions_.compiledFile.c_str()),
+      nnpiNetworkSetName(network_, compileOptions_.compiledFile.get().c_str()),
       "Failed to set NNPI network name");
 }
 

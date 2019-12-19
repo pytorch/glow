@@ -18,6 +18,8 @@
 
 #include "nnpi_transformer_types.h"
 #include "llvm/ADT/StringMap.h"
+#include "llvm/ADT/StringRef.h"
+#include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/raw_ostream.h"
 #include <map>
 #include <string>
@@ -25,114 +27,208 @@
 
 namespace glow {
 
-/// Defines the supported options and used for storing details of each
-/// (including names and defaults).
-enum NNPIParamOption {
-  UseIceTOption = 0,
-  InferOnDeviceOption,
-  CompiledFileOption,
-  UseSymlowpOption,
-  DeviceVersionOption,
-  NumOfWorkersOption,
-  DeviceIDOption,
-  IceCoresOption,
-  DeviceTraceOption,
-  CompilationLogLevelOption,
-  OverrideNNPIMemoryOption,
-  ShowVarsOption,
-  CustomDSPLibOption,
-  CommandListsOption,
-  CompilationDebugConfigFileOption,
-  InternalTestingOption,
-  NNPIParamOptionsSize
-};
-
 /// Parent calls for all NNPI option knobs.
 class NNPIOptions {
 public:
+  static std::string getFromEnv(std::string envName, std::string defVal);
+
+  template <typename T> static T getStringAsType(std::string sVal);
+
+  virtual std::string dumpStatus();
+  virtual llvm::StringMap<std::string> getSupportedOptions();
+
+  virtual llvm::StringRef getOptionsName() const = 0;
+
   virtual ~NNPIOptions(){};
-  /// Dump the status of all variables.
-  virtual std::string dumpStatus() const = 0;
+
+  template <typename MapType>
+  std::string getFromMap(const MapType &map, std::string name,
+                         std::string defVal) {
+    std::string stVal = defVal;
+    auto it = map.find(name);
+    if (it != map.end()) {
+      stVal = it->second;
+    }
+    return stVal;
+  }
 
 protected:
-  static std::vector<std::vector<std::string>> &getOptions();
-
-  template <typename ParamsMapType>
-  static bool getBoolVal(NNPIParamOption option, const ParamsMapType *params);
-
-  template <typename ParamsMapType>
-  static std::string getStringVal(NNPIParamOption option,
-                                  const ParamsMapType *params);
-
-  template <typename ParamsMapType>
-  static int getIntVal(NNPIParamOption option, const ParamsMapType *params);
-
-  template <typename ParamsMapType>
-  static unsigned getUnsignedVal(NNPIParamOption option,
-                                 const ParamsMapType *params);
+  llvm::StringMap<std::string> loadedOptions_;
+  llvm::StringMap<std::string> supportedOptions_;
 };
 
-/// This class holds all environment variable knobs for the general NNPI
-/// backend.
+/// Explicit forward decleration of template type.
+template <> bool NNPIOptions::getStringAsType<bool>(std::string sVal);
+/// Explicit forward decleration of template type.
+template <>
+std::string NNPIOptions::getStringAsType<std::string>(std::string sVal);
+/// Explicit forward decleration of template type.
+template <> int NNPIOptions::getStringAsType<int>(std::string sVal);
+/// Explicit forward decleration of template type.
+template <> unsigned NNPIOptions::getStringAsType<unsigned>(std::string sVal);
+
+#define DECLARE_NNPI_OPTION(VAR_NAME, VAR_TYPE, OPT_NAME, OPT_DESC, OPT_ENV,   \
+                            OPT_DEFAULT)                                       \
+  class {                                                                      \
+  public:                                                                      \
+    inline static llvm::StringRef getName() { return OPT_NAME; }               \
+    inline static llvm::StringRef getDesc() { return OPT_DESC; }               \
+    inline static llvm::StringRef getEnv() { return OPT_ENV; }                 \
+    inline static llvm::StringRef getDefault() { return OPT_DEFAULT; }         \
+    inline void setValFromString(std::string v) {                              \
+      val_ = NNPIOptions::getStringAsType<VAR_TYPE>(v);                        \
+    }                                                                          \
+    inline void setVal(VAR_TYPE v) { val_ = v; }                               \
+    inline const VAR_TYPE &get() const { return (val_); }                      \
+                                                                               \
+    operator VAR_TYPE() const { return val_; }                                 \
+                                                                               \
+  private:                                                                     \
+    VAR_TYPE val_;                                                             \
+  } VAR_NAME;
+
+#define INIT_NNPI_OPTIONS(VAR_NAME, map)                                       \
+  {                                                                            \
+    supportedOptions_[VAR_NAME.getName()] =                                    \
+        llvm::formatv("{0} Default: {1} Environment Variable:",                \
+                      VAR_NAME.getDefault(), VAR_NAME.getEnv())                \
+            .str();                                                            \
+    std::string stVal =                                                        \
+        getFromMap(map, VAR_NAME.getName(), VAR_NAME.getDefault());            \
+    stVal = NNPIOptions::getFromEnv(VAR_NAME.getEnv(), stVal);                 \
+    this->VAR_NAME.setValFromString(stVal);                                    \
+    this->loadedOptions_[VAR_NAME.getEnv()] =                                  \
+        llvm::formatv("{0}", VAR_NAME).str();                                  \
+  }
 class NNPIBackendOptions : public NNPIOptions {
 public:
-  explicit NNPIBackendOptions();
-  /// Dump the status of all variables.
-  virtual std::string dumpStatus() const override;
-  /// Lists the supported options (name=>description).
-  static llvm::StringMap<std::string> getSupportedOptions();
-  /// Compile to ICE-T if true, ICE-Ref otherwise.
-  bool useIceT;
-  /// Enable execution on device (useIceT_ and !inferOnDevice_ will compile but
-  /// not execute inference).
-  bool inferOnDevice;
+  /// Compile for HW (ignored if InferOnDevice is defined).
+  DECLARE_NNPI_OPTION(useIceT, bool, "UseIceT",
+                      "Compile for HW (ignored if InferOnDevice is defined).",
+                      "USE_ICE_T", "0");
+  /// Enable execution on device (if true, will also force compilation for HW
+  /// and ignore the UseIceT option).
+  DECLARE_NNPI_OPTION(inferOnDevice, bool, "InferOnDevice",
+                      "Enable execution on device (if true, will also force "
+                      "compilation for HW and ignore the UseIceT option).",
+                      "USE_INF_API", "0");
   /// Setting this to true will log the status of all variables at backend
   /// creation.
-  bool showVars;
+  DECLARE_NNPI_OPTION(showVars, bool, "ShowVars",
+                      "Setting this to true will log the status of all "
+                      "variables at backend creation.",
+                      "NNPI_SHOW_VARS",
+#ifdef NDEBUG
+                      "0"
+#else
+                      "1"
+#endif
+  );
 
-protected:
-  static std::map<std::string, std::pair<std::string, std::string>>
-  supportedOptionsMap();
+  NNPIBackendOptions() {
+    INIT_NNPI_OPTIONS(useIceT, llvm::StringMap<std::string>());
+    INIT_NNPI_OPTIONS(inferOnDevice, llvm::StringMap<std::string>());
+    INIT_NNPI_OPTIONS(showVars, llvm::StringMap<std::string>());
+  }
+
+  virtual llvm::StringRef getOptionsName() const override {
+    return "Backend Options";
+  };
 };
 
-/// This class holds all environment variable knobs for the NNPI compilation.
 class NNPICompilationOptions : public NNPIOptions {
 public:
-  /// Compilation paramters used as defaults (if exists) that may be overriden
-  /// by environment variables.
-  NNPICompilationOptions(const std::map<std::string, std::string> *parameters);
-  /// Dump the status of all variables.
-  virtual std::string dumpStatus() const override;
-  /// Lists the supported options (name=>description).
-  static llvm::StringMap<std::string> getSupportedOptions();
-  /// Compile to ICE-T if true, ICE-Ref otherwise - this variable cab be
-  /// verridden by inferOnDevice_.
-  bool useIceT;
-  /// Enable execution on device (useIceT_ and !inferOnDevice_ will compile but
-  /// not execute inference).
-  bool inferOnDevice;
+  /// Compile for HW (ignored if InferOnDevice is defined).
+  DECLARE_NNPI_OPTION(useIceT, bool, "UseIceT",
+                      "Compile for HW (ignored if InferOnDevice is defined).",
+                      "USE_ICE_T", "0");
+  /// Enable execution on device (if true, will also force compilation for HW
+  /// and ignore the UseIceT option).
+  DECLARE_NNPI_OPTION(inferOnDevice, bool, "InferOnDevice",
+                      "Enable execution on device (if true, will also force "
+                      "compilation for HW and ignore the UseIceT option).",
+                      "USE_INF_API", "0");
   /// Setting this to true will log the status of all variables at backend
   /// creation.
-  bool showVars;
-  /// Setting this variable will save the compilation output to the filename
-  /// specified.
-  std::string compiledFile;
-  /// Setting this variable will force compilation to the to use no more than
-  /// the amount of ice cores (1-12) - default 0.
-  int iceCores;
-  /// When this flag is set to true all quantized Int8 tensors are set to
-  /// Symlowp when their offset is 0.
-  bool useSymlowp;
-  /// Setting this variable will override target device version used for
-  /// compilation (currently supporting 1-3).
-  int deviceVersion;
-  /// A path to a custom DSP kernel library.
-  std::string customDspKernelsFile;
+  DECLARE_NNPI_OPTION(showVars, bool, "ShowVars",
+                      "Setting this to true will log the status of all "
+                      "variables at backend creation.",
+                      "NNPI_SHOW_VARS",
+#ifdef NDEBUG
+                      "0"
+#else
+                      "1"
+#endif
+  );
   /// Setting this variable will control the logging level (0 for debug, 1
   /// assert, 2 info, 3 warning, 4 error, 5 critical ).
-  int compilationLogLevel;
+  DECLARE_NNPI_OPTION(
+      compilationLogLevel, int, "CompilationLogLevel",
+      "Sets the compilation logging level (0-6). 0=Debug, 1=Assert, 2=Info, "
+      "3=Warning, 4=Error, 5=Critical, 6=User.",
+      "NNPI_LOG_LEVEL",
+#ifdef NDEBUG
+      "4"
+#else
+      "0"
+#endif
+  );
+  /// Setting this variable will save the compilation output to the filename
+  /// specified.
+  DECLARE_NNPI_OPTION(compiledFile, std::string, "CompiledFile",
+                      "Sets a file name to save the compilation output to the "
+                      "filename specified.",
+                      "ICE_T_FILE", "");
+  /// Force compilation with maximum amount of ice cores, -1 for unlimited.
+  DECLARE_NNPI_OPTION(
+      iceCores, int, "IceCores",
+      "Force compilation with maximum amount of ice cores, -1 for unlimited.",
+      "NNPI_ICE_CORES", "-1");
+  /// When this flag is set to true all quantized Int8 tensors are set to
+  /// Symlowp when their offset is 0.
+  DECLARE_NNPI_OPTION(useSymlowp, bool, "UseSymlowp",
+                      "When this flag is set to true all quantized Int8 "
+                      "tensors are set to Symlowp when their offset is 0.",
+                      "SYMLOWP_WA", "0");
+  /// Setting this variable will override target device version used for
+  /// compilation (currently supporting 1-3).
+  DECLARE_NNPI_OPTION(deviceVersion, int, "DeviceVersion",
+                      "Override target device version used for compilation "
+                      "(currently supporting 1-3).",
+                      "NNPI_DEVICE_VERSION", "-1");
+  /// A path to a custom DSP kernel library.
+  DECLARE_NNPI_OPTION(customDspKernelsFile, std::string, "CustomDSPLib",
+                      "Sets custom DPS kernel file path.",
+                      "NNPI_CUSTOM_DSP_LIB", "");
   /// Compilation debug configuration file.
-  std::string debugCompileConfigFile;
+  DECLARE_NNPI_OPTION(
+      debugCompileConfigFile, std::string, "CompilationDebugConfigFile",
+      "JSON file path containing debug options for NNPI compilation.",
+      "NNPI_COMPILATION_CONFIG_FILE", "");
+  /// Reserve network resources.
+  DECLARE_NNPI_OPTION(
+      reserveResources, bool, "ResourceReservation",
+      "Reserve execution resources for the network on the device.",
+      "NNPI_RESOURCE_RESERVATION", "0");
+
+  NNPICompilationOptions(const std::map<std::string, std::string> &parameters) {
+    INIT_NNPI_OPTIONS(useIceT, parameters);
+    INIT_NNPI_OPTIONS(inferOnDevice, parameters);
+    INIT_NNPI_OPTIONS(showVars, parameters);
+    INIT_NNPI_OPTIONS(compiledFile, parameters);
+    INIT_NNPI_OPTIONS(iceCores, parameters);
+    INIT_NNPI_OPTIONS(useSymlowp, parameters);
+    INIT_NNPI_OPTIONS(deviceVersion, parameters);
+    INIT_NNPI_OPTIONS(customDspKernelsFile, parameters);
+    INIT_NNPI_OPTIONS(compilationLogLevel, parameters);
+    INIT_NNPI_OPTIONS(debugCompileConfigFile, parameters);
+    INIT_NNPI_OPTIONS(reserveResources, parameters);
+    setLogLevel(this->compilationLogLevel);
+  }
+
+  virtual llvm::StringRef getOptionsName() const override {
+    return "Compilation Options";
+  };
 
 protected:
   /// There is only on logger for NNPI compilation. Setting it's properties can
@@ -140,44 +236,90 @@ protected:
   static void setLogLevel(int logLevel);
 };
 
-/// This class holds all environment variable knobs for the NNPI device.
 class NNPIDeviceOptions : public NNPIOptions {
 public:
-  /// Compilation paramters used as defaults (if exists) that may be overriden
-  /// by environment variables.
-  NNPIDeviceOptions(const llvm::StringMap<std::string> *parameters);
-  /// All options are copied as is (environment variable are not re-read).
-  NNPIDeviceOptions(const NNPIDeviceOptions &other);
-
-  /// Dump the status of all variables.
-  virtual std::string dumpStatus() const override;
-  /// Lists the supported options (name=>description).
-  static llvm::StringMap<std::string> getSupportedOptions();
-  /// Compile to ICE-T if true, ICE-Ref otherwise.
-  bool useIceT;
-  /// Enable execution on device (useIceT_ and !inferOnDevice_ will compile but
-  /// not execute inference).
-  bool inferOnDevice;
-  /// Enables internal testing
-  bool internalTesting;
+  /// Compile for HW (ignored if InferOnDevice is defined).
+  DECLARE_NNPI_OPTION(useIceT, bool, "UseIceT",
+                      "Compile for HW (ignored if InferOnDevice is defined).",
+                      "USE_ICE_T", "0");
+  /// Enable execution on device (if true, will also force compilation for HW
+  /// and ignore the UseIceT option).
+  DECLARE_NNPI_OPTION(inferOnDevice, bool, "InferOnDevice",
+                      "Enable execution on device (if true, will also force "
+                      "compilation for HW and ignore the UseIceT option).",
+                      "USE_INF_API", "0");
   /// Setting this to true will log the status of all variables at backend
   /// creation.
-  bool showVars;
+  DECLARE_NNPI_OPTION(showVars, bool, "ShowVars",
+                      "Setting this to true will log the status of all "
+                      "variables at backend creation.",
+                      "NNPI_SHOW_VARS",
+#ifdef NDEBUG
+                      "0"
+#else
+                      "1"
+#endif
+  );
+  /// Enables internal testing.
+  DECLARE_NNPI_OPTION(internalTesting, std::string, "InternalTesting",
+                      "Enable internal testing.", "INVOKE_RUNTIME", "");
   /// Setting this variable will override the target device ID used to run
   /// (0,1,...).
-  int deviceID;
-  /// Setting this variable will load the compilation from filename specified.
-  std::string compiledFile;
+  DECLARE_NNPI_OPTION(deviceID, int, "DeviceID",
+                      "Override the target device ID used to run (0,1,...).",
+                      "NNPI_DEVICE_ID", "-1");
   /// Setting this variable will override the amount of worker threads allocated
   /// per network on the device (default:2).
-  int numWorkers;
+  DECLARE_NNPI_OPTION(numWorkers, int, "NumOfWorkers",
+                      "Override the amount of worker threads allocated per "
+                      "network on the device.",
+                      "NNPI_NUM_WORKERS", "-1");
   /// Setting this variable will enabled device tracing (host2device,
   /// device2host copy infer etc.).
-  bool enabledDeviceTraceing;
+  DECLARE_NNPI_OPTION(
+      enabledDeviceTracing, bool, "DeviceTracing",
+      "Enabled device tracing (host2device, device2host copy infer etc.).",
+      "NNPI_DEVICE_TRACING", "0");
   /// Overied the max NNPI device memory.
-  unsigned deviceMemory;
+  DECLARE_NNPI_OPTION(
+      deviceMemory, unsigned, "DeviceMemory",
+      "Override the amount of DRAM to allocate per NNPI device, in kilobytes.",
+      "NNPI_DEVICE_MEMORY", "0");
   /// Enable using command list instead of per command queuing.
-  int enabledCommandLists;
+  DECLARE_NNPI_OPTION(
+      enabledCommandLists, int, "CommandLists",
+      "Enabled command lists. "
+      "\n  0 = disabled. "
+      "\n  1+ = enable command list to queue copy/infer. "
+      "\n  2+ = enable command list wait instead of locking host resources. "
+      "\n  3+ = enable copy command config (partial copies). ",
+      "NNPI_COMMAND_LISTS", "3");
+
+  NNPIDeviceOptions(const llvm::StringMap<std::string> &parameters) {
+    INIT_NNPI_OPTIONS(useIceT, parameters);
+    INIT_NNPI_OPTIONS(inferOnDevice, parameters);
+    INIT_NNPI_OPTIONS(showVars, parameters);
+    INIT_NNPI_OPTIONS(internalTesting, parameters);
+    INIT_NNPI_OPTIONS(deviceID, parameters);
+    INIT_NNPI_OPTIONS(numWorkers, parameters);
+    INIT_NNPI_OPTIONS(enabledDeviceTracing, parameters);
+    INIT_NNPI_OPTIONS(deviceMemory, parameters);
+    INIT_NNPI_OPTIONS(enabledCommandLists, parameters);
+#if 1 // Todo: remove default memory size initialization once real device memory
+      // is implemented.
+    // Set default memory size if option not defined.
+    if (deviceMemory <= 0) {
+      deviceMemory.setVal(15000000);
+    }
+#endif
+  }
+  virtual llvm::StringRef getOptionsName() const override {
+    return "Device Options";
+  };
 };
+
+#undef DECLARE_NNPI_OPTION
+#undef INIT_NNPI_OPTIONS
+
 } // namespace glow
 #endif // GLOW_NNPI_ENV_VARIABLES_H
