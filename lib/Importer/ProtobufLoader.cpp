@@ -84,6 +84,18 @@ bool ProtobufLoader::hasConstantByName(llvm::StringRef name) const {
   return getConstantByNameOrNull(name) != nullptr;
 }
 
+Expected<Placeholder *> ProtobufLoader::getSingleOutput() const {
+  RETURN_ERR_IF_NOT(outputVarsByName_.size() == 1,
+                    "There must be only one output.");
+  return outputVarsByName_.begin()->second;
+}
+
+Expected<Placeholder *> ProtobufLoader::getSingleInput() const {
+  RETURN_ERR_IF_NOT(inputVarsByName_.size() == 1,
+                    "There must be only one input.");
+  return inputVarsByName_.begin()->second;
+}
+
 Expected<Placeholder *>
 ProtobufLoader::getOutputByName(llvm::StringRef name) const {
   auto it = outputVarsByName_.find(name);

@@ -191,20 +191,12 @@ public:
   /// that there is only one output, returns Error otherwise. For image
   /// classification, this single final output is usually the result of the
   /// last softmax or regression layer.
-  Expected<Placeholder *> getSingleOutput() {
-    RETURN_ERR_IF_NOT(outputVarsByName_.size() == 1,
-                      "There must be only one output.");
-    return outputVarsByName_.begin()->second;
-  }
+  Expected<Placeholder *> getSingleOutput() const;
 
   /// \returns the single input of the network. The function assumes that there
   /// is only one input, returns Error otherwise. For most of the models the
   /// single input is usually an image tensor.
-  Expected<Placeholder *> getSingleInput() {
-    RETURN_ERR_IF_NOT(inputVarsByName_.size() == 1,
-                      "There must be only one input.");
-    return inputVarsByName_.begin()->second;
-  }
+  Expected<Placeholder *> getSingleInput() const;
 
   /// \returns the Placeholder for the external output with \p name.
   /// \pre outputVarsByName_.find(name) != outputVarsByName_.end()
