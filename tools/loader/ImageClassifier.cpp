@@ -252,7 +252,8 @@ buildAndCompileAndGetInAndOutPair(Loader &loader, PlaceholderBindings &bindings,
 
   // Compile the model, and perform quantization/emit a bundle/dump debug info
   // if requested from command line.
-  CompilationContext cctx{&bindings};
+  CompilationContext cctx = loader.getCompilationContext();
+  cctx.bindings = &bindings;
   cctx.backendOpts.autoInstrument = autoInstrument;
   loader.compile(cctx);
 

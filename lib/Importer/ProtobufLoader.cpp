@@ -84,12 +84,34 @@ bool ProtobufLoader::hasConstantByName(llvm::StringRef name) const {
   return getConstantByNameOrNull(name) != nullptr;
 }
 
+Expected<Placeholder *> ProtobufLoader::getSingleOutput() const {
+  RETURN_ERR_IF_NOT(outputVarsByName_.size() == 1,
+                    "There must be only one output.");
+  return outputVarsByName_.begin()->second;
+}
+
+Expected<Placeholder *> ProtobufLoader::getSingleInput() const {
+  RETURN_ERR_IF_NOT(inputVarsByName_.size() == 1,
+                    "There must be only one input.");
+  return inputVarsByName_.begin()->second;
+}
+
 Expected<Placeholder *>
 ProtobufLoader::getOutputByName(llvm::StringRef name) const {
   auto it = outputVarsByName_.find(name);
   RETURN_ERR_IF_NOT(
       it != outputVarsByName_.end(),
       llvm::Twine("No external output Variable was registered with name ", name)
+          .str());
+  return it->second;
+}
+
+Expected<Placeholder *>
+ProtobufLoader::getInputByName(llvm::StringRef name) const {
+  auto it = inputVarsByName_.find(name);
+  RETURN_ERR_IF_NOT(
+      it != inputVarsByName_.end(),
+      llvm::Twine("No external input Variable was registered with name ", name)
           .str());
   return it->second;
 }
@@ -187,11 +209,10 @@ ProtobufLoader::ProtobufLoader(llvm::ArrayRef<const char *> tensorNames,
     for (size_t i = 0, e = tensorNames.size(); i < e; i++) {
       RETURN_ERR_IF_NOT(!hasNodeByName(tensorNames[i]),
                         "Input names have duplicate");
-      auto placeholderOrErr =
-          createAndRegisterPlaceholder(tensorNames[i], types[i]);
-      if (!placeholderOrErr) {
-        return placeholderOrErr.takeError();
-      }
+      Placeholder *placeholder;
+      ASSIGN_VALUE_OR_RETURN_ERR(
+          placeholder, createAndRegisterPlaceholder(tensorNames[i], types[i]));
+      inputVarsByName_.try_emplace(tensorNames[i], placeholder);
     }
     return Error::success();
   };
