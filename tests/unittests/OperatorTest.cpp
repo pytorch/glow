@@ -3089,12 +3089,9 @@ static void testFlip(glow::PlaceholderBindings &bindings, glow::Module &mod,
                      ElemKind elemKind = ElemKind::FloatTy) {
 
   // Create network.
-  Placeholder *input;
-  if (isQuantizedElemKind(elemKind)) {
-    input = mod.createPlaceholder(elemKind, dims, 1.0, 0, "input", false);
-  } else {
-    input = mod.createPlaceholder(elemKind, dims, "input", false);
-  }
+  auto *input =
+      createPlaceholderConditionallyQuantized(mod, elemKind, dims, "input",
+                                              /* isTrainable */ false);
   auto *flip = F->createFlip("flip", input, axis);
   Placeholder *output = F->createSave("save", flip)->getPlaceholder();
 
