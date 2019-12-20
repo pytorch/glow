@@ -111,7 +111,9 @@ private:
   NNPINetwork network_;
 
   /// Map of Glow node specific importers.
-  static const std::map<std::string, INNPINodeImporter *> nodeImporters_;
+  static const std::unordered_map<std::string,
+                                  std::unique_ptr<INNPINodeImporter>>
+      nodeImporters_;
   /// NNPI Device configuration.
   const NNPICompilationOptions &compileOptions_;
 };
