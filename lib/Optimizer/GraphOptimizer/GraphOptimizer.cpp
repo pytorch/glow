@@ -29,6 +29,7 @@
 #include "glow/Optimizer/GraphOptimizer/FunctionPasses.h"
 #include "glow/Optimizer/GraphOptimizer/PassManager.h"
 #include "glow/Optimizer/GraphOptimizerPipeline/Pipeline.h"
+#include "glow/Optimizer/Lower/Lower.h"
 #include "glow/Quantization/Base/Base.h"
 #include "glow/Quantization/Quantization.h"
 
@@ -215,8 +216,8 @@ bool isSplatOfVal(Node *N, float val) {
 /// \returns True if the node returns a constant value.
 bool isConstant(Node *N) { return isa<SplatNode>(N); }
 
-/// \returns the new simplified node or the original node.
-static Node *simplifyNode(Node *node, Function *F) {
+/// \returns the new simplified NodeValue or the original node's first result.
+static NodeValue simplifyNode(Node *node, Function *F) {
 // Simplify commutative nodes by moving the constant operator to the right-hand
 // side.
 // Example:  C + X  =>  X + C
@@ -1793,10 +1794,12 @@ bool OptimizeArithmeticNodes::run(Function *F, const CompilationContext &cctx) {
     assert(N->isArithmetic() && "Must be an Arithmetic node.");
     worklist.pop_back();
 
-    auto *SN = simplifyNode(N, F);
-    if (SN != N) {
-      N->getNthResult(ArithmeticNode::ResultIdx).replaceAllUsesOfWith(SN);
+    auto SNV = simplifyNode(N, F);
+    if (SNV.getNode() != N) {
+      N->getNthResult(ArithmeticNode::ResultIdx).replaceAllUsesOfWith(SNV);
       changed = true;
+
+      auto *SN = SNV.getNode();
 
       // The simplified node could be further simplified. Note that the
       // simplified node might not be arithmetic; it could be a splat.
@@ -3142,21 +3145,21 @@ bool FoldTileAddIntoBatchedAdd::run(Function *F,
   return changed;
 }
 
-/// Fold ElemKind conversion nodes (ConvertTo, Quantize, Dequantize) into
-/// single-user Placeholders and SaveNodes. Note that this changes the semantics
+/// Fold ElemKind conversion nodes (ConvertTo, Quantize) into
+/// single-user Placeholders. Note that this changes the semantics
 /// of the IO of the Function and so must be done carefully, i.e. should always
 /// be opt-in and done alongside conversion of corresponding Tensors in
-/// PlaceholderBindings.
-bool FoldElemKindConversionIntoIO::run(Function *F,
-                                       const CompilationContext &cctx) {
+/// PlaceholderBindings. If
+/// cctx.optimizationOpts.foldStaticPlaceholderConversions is set this will
+/// only change Placeholders marked as static.
+bool FoldElemKindConversionIntoInputs::run(Function *F,
+                                           const CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), getName());
 
-  std::unordered_set<SaveNode *> deadSaves;
-
   bool changed = false;
-  // Since we will be adding in new SaveNodes, reverse iterate to be safe.
   auto &nodes = F->getNodes();
-  for (auto it = nodes.rbegin(), e = nodes.rend(); it != e; it++) {
+
+  for (auto it = nodes.begin(), e = nodes.end(); it != e; it++) {
     Node *N = &*it;
     // Handle conversion of inputs (conversion of Placeholders):
     ConvertToNode *CTN = llvm::dyn_cast<ConvertToNode>(N);
@@ -3165,6 +3168,12 @@ bool FoldElemKindConversionIntoIO::run(Function *F,
       NodeValue in = CTN ? CTN->getInput() : QN->getInput();
       Placeholder *P = llvm::dyn_cast<Placeholder>(in);
       if (!P || P->getUsers().size() != 1) {
+        continue;
+      }
+      // If foldElemKindConversionIntoIO is not set and this is not a static
+      // placeholder then skip.
+      if (!cctx.optimizationOpts.foldElemKindConversionIntoIO &&
+          !P->isStatic()) {
         continue;
       }
 
@@ -3181,6 +3190,25 @@ bool FoldElemKindConversionIntoIO::run(Function *F,
       changed = true;
       continue;
     }
+  }
+  return changed;
+}
+
+/// Fold ElemKind conversion nodes (ConvertTo, Dequantize) into SaveNodes. Note
+/// that this changes the semantics of the IO of the Function and so must be
+/// done carefully, i.e. should always be opt-in and done alongside conversion
+/// of corresponding Tensors in PlaceholderBindings.
+bool FoldElemKindConversionIntoOutputs::run(Function *F,
+                                            const CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), getName());
+
+  std::unordered_set<SaveNode *> deadSaves;
+
+  bool changed = false;
+  // Since we will be adding in new SaveNodes, reverse iterate to be safe.
+  auto &nodes = F->getNodes();
+  for (auto it = nodes.rbegin(), e = nodes.rend(); it != e; it++) {
+    Node *N = &*it;
 
     // Handle conversion of outputs (SaveNodes + Placeholders):
     if (SaveNode *SN = llvm::dyn_cast<SaveNode>(N)) {
@@ -3218,17 +3246,62 @@ bool FoldElemKindConversionIntoIO::run(Function *F,
   return changed;
 }
 
-void glow::fold(Function *F, CompilationContext &cctx) {
+/// Looks for an activation directly following \p N from \p F that the backend
+/// \p B supports for fusion.
+template <class T> bool fuseActivation(T *N, Function *F, const Backend *B) {
+  if (!N || N->hasFusedActivation() || !N->getResult().hasOneUse()) {
+    return false;
+  }
+
+  // We know there is one result user so we can just deref the first result.
+  Node *activation = (*N->getResult().getUsers().begin()).getUser();
+  if (!B || !B->supportsFusedActivation(N, activation)) {
+    return false;
+  }
+
+  FusedActivation activationType;
+  NodeValue activationNV;
+  switch (activation->getKind()) {
+  case Kinded::Kind::ReluNodeKind:
+    activationType = FusedActivation::RELU;
+    activationNV = cast<ReluNode>(activation)->getResult();
+    break;
+  case Kinded::Kind::SigmoidNodeKind:
+    activationType = FusedActivation::SIGMOID;
+    activationNV = cast<SigmoidNode>(activation)->getResult();
+    break;
+  case Kinded::Kind::TanhNodeKind:
+    activationType = FusedActivation::TANH;
+    activationNV = cast<TanhNode>(activation)->getResult();
+    break;
+  default:
+    return false;
+  }
+
+  N->setFusedActivation(activationType);
+  activationNV.replaceAllUsesOfWith(N->getResult());
+  return true;
+}
+
+static bool foldActivations(Function *F, CompilationContext &cctx,
+                            const Backend *B) {
+  bool changed = false;
+  for (auto &node : F->getNodes()) {
+    if (fuseActivation(dyn_cast<ConvolutionNode>(&node), F, B)) {
+      changed = true;
+      continue;
+    }
+  }
+  return changed;
+}
+
+void glow::fold(Function *F, CompilationContext &cctx, const Backend *B) {
   LOG_SCOPE(F->getLogContext(), "glow::fold")
 
   FunctionPassManager FPM("FoldFPM", createDefaultFoldPassPipeline());
   FPM.run(F, cctx);
-}
 
-void glow::fold(Function *F, CompilationMode mode) {
-  CompilationContext cctx;
-  cctx.compMode = mode;
-  fold(F, cctx);
+  foldActivations(F, cctx, B);
 }
 
 void glow::optimize(Function *F, CompilationContext &cctx, const Backend &B) {
@@ -3374,11 +3447,17 @@ Error glow::optimizeFunction(Function *F, const Backend &B,
   // Optimize the graph again now that we have a lowered representation.
   ::glow::optimize(F, cctx);
 
-  // If requested, fold ElemKind conversion Nodes into inputs and outputs
-  // (Placeholders and SaveNodes).
-  if (cctx.optimizationOpts.foldElemKindConversionIntoIO) {
-    FunctionPassManager FPM("FoldElemKindConversionIntoIO",
-                            {FunctionPassID::FoldElemKindConversionIntoIO});
+  // If requested fold ElemKind conversion Nodes into static Placeholders,
+  // inputs, and outputs (Placeholders and SaveNodes).
+  if (cctx.optimizationOpts.foldStaticPlaceholderConversions ||
+      cctx.optimizationOpts.foldElemKindConversionIntoIO) {
+    FunctionPassPipeline pipeline{
+        FunctionPassID::FoldElemKindConversionIntoInputs};
+
+    if (cctx.optimizationOpts.foldElemKindConversionIntoIO) {
+      pipeline.pushBack({FunctionPassID::FoldElemKindConversionIntoOutputs});
+    }
+    FunctionPassManager FPM("FoldElemKindConversionIntoIO", pipeline);
     if (FPM.run(F, cctx)) {
       ::glow::optimize(F, cctx);
     }

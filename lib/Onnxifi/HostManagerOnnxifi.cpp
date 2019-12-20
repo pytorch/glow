@@ -27,11 +27,16 @@ namespace onnxifi {
 extern bool GlowSaveOnnxifiModel;
 ;
 int32_t GlowNumDevices = 0;
+int32_t GlowSparseNNPartitioningSchemeNumCards = 1;
+int64_t GlowSparseNNPartitioningSchemeSLSTableKBytesPerCard = 0;
+int32_t GlowSparseNNPartitioningSchemeNumCoresSLS = 1;
+int32_t GlowSparseNNPartitioningSchemeNumCoresOther = 1;
 bool GlowDumpDebugTraces = false;
 bool GlowSaturateHost = false;
 bool GlowFP16 = false;
 bool GlowFusedScaleOffsetFP16 = false;
 bool GlowClipFP16 = false;
+bool GlowUseSparseNNPartitioningScheme = false;
 
 static llvm::cl::opt<int32_t, true>
     GlowNumDevicesOpt("glow-num-devices",
@@ -88,8 +93,20 @@ onnxStatus HostManagerBackend::addNetwork(std::unique_ptr<Module> module,
       LOG(INFO) << "Blob reader provided but no loader registered!";
       return ONNXIFI_STATUS_INTERNAL_ERROR;
     }
+
+    // Generate a map of type date for all static placeholders.
+    std::map<std::string, Type> staticPlaceholderTypes;
+    for (auto PH : module->getPlaceholders()) {
+      if (PH->isStatic()) {
+        staticPlaceholderTypes[std::string(PH->getName())] = *PH->getType();
+      }
+    }
+    loader->setTypeInfo(std::move(staticPlaceholderTypes));
     loader->setSrc(deferredBlobReader);
     cctx.deferredWeightLoader = loader;
+    // Signal that we want to fold convertTo and Quantize into static
+    // Placeholders.
+    cctx.optimizationOpts.foldStaticPlaceholderConversions = true;
   }
 
   if (GlowFP16) {
@@ -106,6 +123,17 @@ onnxStatus HostManagerBackend::addNetwork(std::unique_ptr<Module> module,
   }
   if (GlowDumpCompilationLog) {
     cctx.compilationLogPrefix = "glow-onnxifi";
+  }
+  if (GlowUseSparseNNPartitioningScheme) {
+    cctx.optimizationOpts.useSparseNNPartitioningScheme = true;
+    cctx.optimizationOpts.sparseNNPartitioningSchemeNumCards =
+        GlowSparseNNPartitioningSchemeNumCards;
+    cctx.optimizationOpts.sparseNNPartitioningSchemeSLSTableKBytesPerCard =
+        GlowSparseNNPartitioningSchemeSLSTableKBytesPerCard;
+    cctx.optimizationOpts.sparseNNPartitioningSchemeNumCoresSLS =
+        GlowSparseNNPartitioningSchemeNumCoresSLS;
+    cctx.optimizationOpts.sparseNNPartitioningSchemeNumCoresOther =
+        GlowSparseNNPartitioningSchemeNumCoresOther;
   }
 
   auto err =

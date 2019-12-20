@@ -526,6 +526,50 @@ static void createSimpleModule(Module &mod) {
   (void)save;
 }
 
+static void createSimpleSparseNNModule(Module &mod) {
+  mod.clear();
+  auto *F = mod.createFunction("test");
+
+  // Create SLS inputs
+  std::vector<NodeValue> slsOutputs;
+  dim_t tableWidth = 16;
+  dim_t numIndices = 80;
+  dim_t batchSize = 32;
+  dim_t tableEntries = 10;
+
+  // Create SLS portion
+  for (int table = 0; table < 5; table++) {
+    Tensor data(ElemKind::FloatTy, {tableEntries, tableWidth});
+    auto indices = mod.createPlaceholder(
+        ElemKind::Int64ITy, {numIndices * batchSize}, "indices", false);
+    auto weights = mod.createPlaceholder(
+        ElemKind::FloatTy, {numIndices * batchSize}, "weights", false);
+    auto lengths = mod.createPlaceholder(ElemKind::Int32ITy, {batchSize},
+                                         "lengths", false);
+    auto output = F->createFusedRowwiseQuantizedSparseLengthsWeightedSum(
+        "SLS", data, weights, indices, lengths, ElemKind::UInt8FusedQTy, false);
+    slsOutputs.push_back(output);
+  }
+
+  // Create Concat
+  auto *concat = F->createConcat("concat", slsOutputs, 1);
+  Node *cur = (Node *)concat;
+
+  // Create FC portion
+  for (dim_t layer = 0; layer < 4; layer++) {
+    Tensor FCWeights(ElemKind::FloatTy, {5 * tableWidth, 5 * tableWidth});
+    Constant *weights = mod.createConstant("FCWeights", FCWeights);
+    Tensor FCBias(ElemKind::FloatTy, {5 * tableWidth});
+    Constant *bias = mod.createConstant("FCBias", FCBias);
+
+    auto *FC = F->createFullyConnected("FC", cur, weights, bias);
+    cur = (Node *)FC;
+  }
+
+  auto *save = F->createSave("ret", cur);
+  (void)save;
+}
+
 /// \returns true if there is \p nodeKind kind of nodes in \p func.
 static bool findNodeInFunction(const Function *func,
                                const Kinded::Kind nodeKind) {
@@ -535,6 +579,62 @@ static bool findNodeInFunction(const Function *func,
     }
   }
   return false;
+}
+
+/// To check if the generated DAG is correct for the SparseNN Partiton
+/// unnittests. The network used for check is generated from function static
+/// void createSimpleSparseNNModule(Module &mod).
+static void sparseNNPartitionValidation(const DAGListTy &dagList, Module &mod) {
+  int numOfCPUBackends = 0;
+  int numOfSLSNodes = 0;
+  int numOfFCNodes = 0;
+  for (auto &dag : dagList) {
+    for (auto &node : dag.nodes) {
+      if (node->backendName == "CPU") {
+        numOfCPUBackends++;
+        auto func = mod.getFunction(node->name);
+        if (findNodeInFunction(
+                func,
+                Kinded::Kind::
+                    FusedRowwiseQuantizedSparseLengthsWeightedSumNodeKind) ==
+            true) {
+          numOfSLSNodes++;
+          EXPECT_EQ(node->logicalDevices.size(), 1);
+        } else {
+          numOfFCNodes++;
+          EXPECT_EQ(node->logicalDevices.size(), 3);
+        }
+      }
+    }
+  }
+  // 4 partitions (3 SLS + 1 FC)
+  EXPECT_EQ(numOfCPUBackends, 4);
+  EXPECT_EQ(numOfSLSNodes, 3);
+  EXPECT_EQ(numOfFCNodes, 1);
+}
+
+/// Test using user-defined backends for SparseNN partition.
+TEST_F(PartitionerTest, SimpleSparseNNPartitioning) {
+  createSimpleSparseNNModule(mod_);
+  BackendWithoutSub backend1, backend2, backend3;
+  std::vector<Backend *> backends;
+  backends.emplace_back(&backend1);
+  backends.emplace_back(&backend2);
+  backends.emplace_back(&backend3);
+  std::vector<DeviceInfo> devices = {
+      {400000, "CPU"}, {400000, "CPU"}, {400000, "CPU"}};
+  Partitioner partitioner(&mod_, devices, backends, /* saturateHost */ false);
+  CompilationContext cctx;
+  cctx.optimizationOpts.useSparseNNPartitioningScheme = true;
+  cctx.optimizationOpts.sparseNNPartitioningSchemeNumCards = 3;
+  cctx.optimizationOpts.sparseNNPartitioningSchemeSLSTableKBytesPerCard = 200;
+  auto dagList = partitioner.partition(cctx);
+  ASSERT_TRUE((bool)dagList);
+  EXPECT_EQ(mod_.getFunctions().size(), 4);
+  EXPECT_EQ(dagList->size(), 1);
+  ASSERT_TRUE(checkSaveNode(mod_));
+  sparseNNPartitionValidation(dagList.get(), mod_);
+  mod_.clear();
 }
 
 /// To check if the generated DAG is correct for the Heterogeneous Partiton
@@ -980,6 +1080,39 @@ TEST_F(PartitionerTest, memoryUsageValidation1) {
 }
 
 /// This one test dagValidation in partitioner : p1->p2, p2->p1.
+TEST_F(PartitionerTest, dagValidationWithBackendHints) {
+  auto *input1 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {2, 10}, "input1", false);
+  auto *input2 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {2, 10}, "input2", false);
+  auto *input3 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {2, 10}, "input3", false);
+  auto *add1 = F_->createAdd("add1", input1, input2);
+  auto *add2 = F_->createAdd("add2", add1, input3);
+  auto *sub1 = F_->createSub("sub1", add1, add2);
+  F_->createSave("save", sub1);
+
+  std::vector<DeviceInfo> devices = {{3072, "Interpreter"},
+                                     {3072, "Interpreter"}};
+
+  // User-defined partition: p1->p2, p2->p1.
+  PartitionConfig partitionConfig;
+  partitionConfig.funcName = "main";
+  partitionConfig.numOfPartitions = 2;
+  BackendHints bh1, bh2;
+  bh1.executionUnits = 2;
+  bh2.executionUnits = 3;
+  partitionConfig.backendHints = {bh1, bh2};
+  partitionConfig.backendNames = {"Interpreter", "Interpreter"};
+  partitionConfig.partitionNames = {"p1", "p2"};
+  partitionConfig.nodeToPartition = {{"add2", 0}};
+  auto partitioner = Partitioner(&mod_, devices, false, false, partitionConfig);
+  CompilationContext cctx;
+  auto dagList = partitioner.partition(cctx);
+  EXPECT_TRUE(ERR_TO_BOOL(dagList.takeError()));
+}
+
+/// This one test dagValidation in partitioner : p1->p2, p2->p1.
 TEST_F(PartitionerTest, dagValidation1) {
   auto *input1 =
       mod_.createPlaceholder(ElemKind::FloatTy, {2, 10}, "input1", false);
@@ -1104,6 +1237,67 @@ TEST_F(PartitionerTest, partitionFromConfigWithLogicalDevices) {
   EXPECT_EQ(nodeList[0].nodes[2]->logicalDevices[1], 1);
 }
 
+/// Test user-defined partition with user specified logical devices through
+/// compilationContext using fp16.
+TEST_F(PartitionerTest, partitionFromConfigWithLogicalDevicesFp16) {
+  auto *input1 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {2, 10}, "input1", false);
+  auto *input2 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {2, 10}, "input2", false);
+  auto *input3 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {2, 10}, "input3", false);
+  auto *add1 = F_->createAdd("add1", input1, input2);
+  auto *add2 = F_->createAdd("add2", add1, input3);
+  auto *sub1 = F_->createSub("sub1", add1, add2);
+  F_->createSave("save", sub1);
+
+  std::vector<DeviceInfo> devices = {
+      {3072, "Interpreter"}, {3072, "Interpreter"}, {3072, "Interpreter"}};
+
+  // User-defined partition: p0->p1, p1->p2, p2->p1.
+  PartitionConfig partitionConfig;
+  partitionConfig.funcName = "main";
+  partitionConfig.numOfPartitions = 3;
+  partitionConfig.backendNames = {"Interpreter", "Interpreter", "Interpreter"};
+  partitionConfig.partitionNames = {"p0", "p1", "p2"};
+  partitionConfig.nodeToPartition = {{"add1", 0}, {"add2", 2}};
+  partitionConfig.logicalIDs = {{0}, {1}, {0, 1}};
+  auto partitioner = Partitioner(&mod_, devices, /*SaturateHost*/ false);
+  CompilationContext cctx;
+  cctx.partitionConfig = &partitionConfig;
+  PrecisionConfiguration pc;
+  pc.convertToFP16 = true;
+  cctx.precisionConfig = pc;
+  auto result = partitioner.partition(cctx);
+
+  // Do optimization
+  for (dim_t i = 0; i < partitionConfig.numOfPartitions; i++) {
+    for (auto &func : mod_.getFunctions()) {
+      std::unique_ptr<Backend> backend(createBackend("Interpreter"));
+      auto err = ::glow::optimizeFunction(func, *backend, cctx);
+      EXPECT_FALSE(err);
+    }
+  }
+
+  DAGListTy nodeList;
+  EXPECT_FALSE(ERR_TO_BOOL(result.takeError()));
+  nodeList = std::move(result.get());
+  // Check that p2 has both 0 and 1 for logicalDevices.
+  EXPECT_EQ(nodeList[0].nodes[2]->logicalDevices[0], 0);
+  EXPECT_EQ(nodeList[0].nodes[2]->logicalDevices[1], 1);
+  // Check that the inputs and outputs of add1, add2 and sub1 are in fp16
+  for (auto const &F : mod_.getFunctions()) {
+    for (auto const &N : F->getNodes()) {
+      auto NI = NodeInfo(N);
+      if (NI.getKind() != Kinded::Kind::SaveNodeKind &&
+          NI.getKind() != Kinded::Kind::ConvertToNodeKind) {
+        EXPECT_TRUE(
+            NI.allInputsAndOutputsHaveSameElemKind({ElemKind::Float16Ty}));
+      }
+    }
+  }
+}
+
 /// This one tests calling PartitionFromConfig directly.
 TEST_F(PartitionerTest, partitionFromConfigDirectCall) {
 #ifndef GLOW_WITH_CPU
@@ -1123,7 +1317,7 @@ TEST_F(PartitionerTest, partitionFromConfigDirectCall) {
   partitionConfig.nodeToPartition = {{"sub", 0}, {"mul", 1}};
   Partitioner partitioner(&mod_, devices);
   CompilationContext cctx;
-  auto dagList = partitioner.partitionFromConfig(partitionConfig);
+  auto dagList = partitioner.partitionFromConfig(partitionConfig, cctx);
   ASSERT_TRUE((bool)dagList);
   EXPECT_EQ(mod_.getFunctions().size(), 3);
   EXPECT_EQ(dagList->size(), 1);

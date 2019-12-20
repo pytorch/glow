@@ -57,7 +57,7 @@ protected:
   /// Create a node in \p function that converts \p val to \p destTy, given
   /// context \p node. \p val and \p destTy must have the same shape.
   Node *createConversion(Function &function, const Node &node, NodeValue &val,
-                         TypeRef destTy) override;
+                         TypeRef destTy, bool isInput) override;
 
   /// Check if \p node can be converted.
   bool canConvert(const Node &node) const override;
@@ -69,6 +69,9 @@ public:
   /// \p precConfig.
   TypeAToTypeBFunctionConverter(Function &F, ElemKind fromKind, ElemKind toKind,
                                 const PrecisionConfiguration &precConfig);
+
+  /// Convert and clip all Storage nodes used by the function.
+  void convertAndClipStorage();
 };
 } // namespace glow
 #endif

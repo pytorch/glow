@@ -17,7 +17,6 @@
 #include "GlowFuser.h"
 
 #include "FuseKnownPatterns.h"
-#include "PyTorchCommon.h"
 #include "PyTorchModelLoader.h"
 #include "Registration.h"
 
@@ -27,6 +26,7 @@
 #include <torch/csrc/jit/passes/alias_analysis.h>
 #include <torch/csrc/jit/passes/common_subexpression_elimination.h>
 #include <torch/csrc/jit/passes/dead_code_elimination.h>
+#include <torch/csrc/jit/passes/inliner.h>
 #include <torch/csrc/jit/passes/subgraph_rewrite.h>
 #include <torch/csrc/jit/passes/utils/subgraph_utils.h>
 
@@ -252,8 +252,8 @@ void verifyFusions(const std::shared_ptr<torch::jit::Graph> graph,
 }
 
 void glowCustomFuseImpl(std::shared_ptr<torch::jit::Graph> graph,
-                        at::Symbol kind, IsSupportFunc fn) {
-  const auto &settings = getPyTorchLoaderSettings();
+                        at::Symbol kind, const PyTorchLoaderSettings &settings,
+                        IsSupportFunc fn) {
   const auto blacklist = settings.opBlacklist;
   const auto minFusionGroupSize = settings.minFusionGroupSize;
 
@@ -268,6 +268,8 @@ void glowCustomFuseImpl(std::shared_ptr<torch::jit::Graph> graph,
 
     return fn(ptNode);
   };
+
+  Inline(*graph);
 
   // Prepare the graph by fusing known patterns for the model loader.
   // TODO: this should be done only on Glow subgraphs to avoid modifying parts
@@ -297,11 +299,23 @@ void registDefaultGlowFusionSymbolOnce() {
 void glowCustomFuse(std::shared_ptr<torch::jit::Graph> graph) {
   registDefaultGlowFusionSymbolOnce();
   auto symbol = getGlowSymbol();
-  return glowCustomFuseImpl(graph, symbol, PyTorchModelLoader::isNodeSupported);
+  const auto &settings = getPyTorchLoaderSettings();
+  return glowCustomFuseImpl(graph, symbol, settings,
+                            PyTorchModelLoader::isNodeSupported);
+}
+
+void glowCustomFuse(std::shared_ptr<torch::jit::Graph> graph,
+                    const PyTorchLoaderSettings &settings) {
+  registDefaultGlowFusionSymbolOnce();
+  auto symbol = getGlowSymbol();
+  return glowCustomFuseImpl(graph, symbol, settings,
+                            PyTorchModelLoader::isNodeSupported);
 }
 
 void glowCustomFuse(std::shared_ptr<torch::jit::Graph> graph, at::Symbol kind) {
-  return glowCustomFuseImpl(graph, kind, PyTorchModelLoader::isNodeSupported);
+  const auto &settings = getPyTorchLoaderSettings();
+  return glowCustomFuseImpl(graph, kind, settings,
+                            PyTorchModelLoader::isNodeSupported);
 }
 
 void glowCustomFuseDebug(std::shared_ptr<torch::jit::Graph> graph,
@@ -319,7 +333,9 @@ void glowCustomFuseDebug(std::shared_ptr<torch::jit::Graph> graph,
     return kindSet.count(node->kind());
   };
 
-  return glowCustomFuseImpl(graph, symbol, fn);
+  const auto &settings = getPyTorchLoaderSettings();
+
+  return glowCustomFuseImpl(graph, symbol, settings, fn);
 }
 
 } // namespace glow

@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#include "InterpreterFunction.h"
+#include "glow/Backends/Interpreter/InterpreterFunction.h"
 
 #include "glow/IR/IR.h"
 #include "glow/IR/IRUtils.h"
@@ -48,6 +48,12 @@ void InterpreterFunction::collectConstants(const Module *module) {
       }
     }
   }
+}
+
+void InterpreterFunction::addConstant(std::string name, Tensor *T) {
+  Tensor *newTensor = new Tensor;
+  newTensor->assign(T);
+  constants_[name] = newTensor;
 }
 
 Error InterpreterFunction::execute(ExecutionContext *context) {

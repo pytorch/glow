@@ -1396,6 +1396,41 @@ TEST_P(OperatorTest, ParallelBatchMatMul) {
   EXPECT_NEAR(H.at({1, 2, 0}), -54, 0.001);
 }
 
+static FunctionTensorPair
+createAndInitParallelBatchMatMulTest(glow::PlaceholderBindings &bindings,
+                                     glow::ExecutionEngine &EE) {
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  auto *lhs =
+      mod.createPlaceholder(ElemKind::FloatTy, {10, 50, 100}, "lhs", false);
+  auto *rhs =
+      mod.createPlaceholder(ElemKind::FloatTy, {10, 100, 80}, "rhs", false);
+  bindings.allocate(lhs)->getHandle().randomize(-0.1, 0.1, mod.getPRNG());
+  bindings.allocate(rhs)->getHandle().randomize(-0.1, 0.1, mod.getPRNG());
+
+  auto *R = F->createBatchMatMul("BMM", lhs, rhs);
+
+  auto *save = F->createSave("save", R);
+  auto *resultTensor = bindings.allocate(save->getPlaceholder());
+
+  return std::make_pair(F, resultTensor);
+}
+
+TEST_P(OperatorStatelessTest, ParallelBatchMatMul_Float16) {
+  CHECK_IF_ENABLED();
+  compareAgainstInterpreter(
+      getBackendName(), createAndInitParallelBatchMatMulTest, ElemKind::FloatTy,
+      ElemKind::Float16Ty, 0.0005f, parCloneCountOpt);
+}
+
+TEST_P(OperatorStatelessTest, ParallelBatchMatMul_Int8) {
+  CHECK_IF_ENABLED();
+  compareAgainstInterpreter(
+      getBackendName(), createAndInitParallelBatchMatMulTest, ElemKind::FloatTy,
+      ElemKind::Int8QTy, 0.002f, parCloneCountOpt);
+}
+
 /// Helper to test BatchedReduceAdd using \p DTy.
 template <typename DataType>
 static void testBatchedReduceAdd(glow::PlaceholderBindings &bindings,
@@ -5369,44 +5404,48 @@ TEST_P(OperatorTest, GroupwiseQuantizedConvolution) {
   CHECK_IF_ENABLED();
 
   constexpr size_t groups = 2;
+  constexpr size_t output_channel = 4;
 
   auto *input =
-      mod_.createPlaceholder(ElemKind::FloatTy, {1, 2, 1, 8}, "input", false);
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 2, 3, 2}, "input", false);
   auto IH = bindings_.allocate(input)->getHandle<float>();
-  for (size_t i = 0; i < 2 * 8; i++) {
+  for (size_t i = 0; i < 2 * 3 * 2; i++) {
     IH.raw(i) = i + 1;
   }
 
-  auto *qInTy = mod_.uniqueType(ElemKind::Int8QTy, {1, 2, 1, 8}, 1.0, 0);
+  auto *qInTy = mod_.uniqueType(ElemKind::Int8QTy, {1, 2, 3, 2}, 1.0, 0);
   auto *qInput = F_->createQuantize("qInput", input, qInTy);
 
-  auto filterT = Tensor(ElemKind::Int8QTy, {6, 1, 1, 4}, 1.0, 0);
-  for (dim_t i = 0; i < 6; i++) {
-    for (dim_t j = 0; j < 4; j++) {
-      filterT.getHandle<int8_t>().at({i, 0, 0, j}) = (i % 2) + 1;
+  auto filterT = Tensor(ElemKind::Int8QTy, {4, 2, 1, 1}, 1.0, 0);
+  for (dim_t i = 0; i < 4; i++) {
+    for (dim_t j = 0; j < 2; j++) {
+      for (dim_t k = 0; k < 1; k++) {
+        for (dim_t l = 0; l < 1; l++) {
+          filterT.getHandle<int8_t>().at({i, j, k, l}) = j + 1;
+        }
+      }
     }
   }
   auto *filter = mod_.createConstant("filter", std::move(filterT));
 
-  auto biasT = Tensor(ElemKind::FloatTy, {6});
+  auto biasT = Tensor(ElemKind::FloatTy, {4});
   biasT.zero();
   auto *bias = mod_.createConstant("bias", std::move(biasT));
 
-  auto scalesT = Tensor(ElemKind::FloatTy, {groups});
+  auto scalesT = Tensor(ElemKind::FloatTy, {output_channel});
   for (size_t i = 0; i < scalesT.size(); i++) {
     scalesT.getHandle<float>().raw(i) = 1;
   }
   auto *scales = mod_.createConstant("scales", std::move(scalesT));
 
-  auto offsetsT = Tensor(ElemKind::Int32ITy, {groups});
+  auto offsetsT = Tensor(ElemKind::Int32ITy, {output_channel});
   offsetsT.zero();
   auto *offsets = mod_.createConstant("offsets", std::move(offsetsT));
 
-  auto *outTy = mod_.uniqueType(ElemKind::Int8QTy, {1, 2, 1, 6}, 1.0, 0);
-
+  auto *outTy = mod_.uniqueType(ElemKind::Int8QTy, {1, 1, 3, 4}, 1.0, 0);
   ChannelwiseQuantizedConvolutionNode *CQC = F_->createChannelwiseQuantizedConv(
-      "groupwiseQuantizedConv", qInput, filter, bias, scales, offsets, outTy,
-      {1, 1}, {1, 1}, {0, 0, 0, 0}, groups);
+      "channelwiseQuantizedConv", qInput, filter, bias, scales, offsets, outTy,
+      {2, 1}, {1, 1}, {0, 0, 0, 0}, groups);
 
   DequantizeNode *dq = F_->createDequantize("dequantize", CQC);
   SaveNode *S = F_->createSave("save", dq);
@@ -5420,22 +5459,21 @@ TEST_P(OperatorTest, GroupwiseQuantizedConvolution) {
 
   auto result = bindings_.get(S->getPlaceholder())->getHandle();
 
-  std::vector<dim_t> expectedDims = {1, 2, 1, 6};
+  std::vector<dim_t> expectedDims = {1, 1, 3, 4};
   ASSERT_TRUE(result.dims().vec() == expectedDims);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 0, 0}), 15);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 0, 1}), 15);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 0, 2}), 18);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 0, 3}), 18);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 1, 0}), 21);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 1, 1}), 21);
 
-  EXPECT_FLOAT_EQ(result.at({0, 0, 0, 0}), (1 + 2 + 3 + 4) * 1);
-  EXPECT_FLOAT_EQ(result.at({0, 0, 0, 1}), (1 + 2 + 3 + 4) * 2);
-  EXPECT_FLOAT_EQ(result.at({0, 0, 0, 2}), (1 + 2 + 3 + 4) * 1);
-  EXPECT_FLOAT_EQ(result.at({0, 0, 0, 3}), (5 + 6 + 7 + 8) * 2);
-  EXPECT_FLOAT_EQ(result.at({0, 0, 0, 4}), (5 + 6 + 7 + 8) * 1);
-  EXPECT_FLOAT_EQ(result.at({0, 0, 0, 5}), (5 + 6 + 7 + 8) * 2);
-
-  EXPECT_FLOAT_EQ(result.at({0, 1, 0, 0}), (9 + 10 + 11 + 12) * 1);
-  EXPECT_FLOAT_EQ(result.at({0, 1, 0, 1}), (9 + 10 + 11 + 12) * 2);
-  EXPECT_FLOAT_EQ(result.at({0, 1, 0, 2}), (9 + 10 + 11 + 12) * 1);
-  EXPECT_FLOAT_EQ(result.at({0, 1, 0, 3}), (13 + 14 + 15 + 16) * 2);
-  EXPECT_FLOAT_EQ(result.at({0, 1, 0, 4}), (13 + 14 + 15 + 16) * 1);
-  EXPECT_FLOAT_EQ(result.at({0, 1, 0, 5}), (13 + 14 + 15 + 16) * 2);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 1, 2}), 24);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 1, 3}), 24);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 2, 0}), 27);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 2, 1}), 27);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 2, 2}), 30);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 2, 3}), 30);
 }
 
 TEST_P(OperatorTest, DilatedConvolution) {
@@ -7553,14 +7591,13 @@ static void testEmbeddingBagByteRowwiseOffsets(
 
   Placeholder *indices = mod.createPlaceholder(IndexElemKind, {8}, "indices",
                                                /* isTrainable */ false);
-  Placeholder *offsets =
-      mod.createPlaceholder(ElemKind::Int32ITy, {4}, "offsets",
-                            /* isTrainable */ false);
+  Placeholder *offsets = mod.createPlaceholder(IndexElemKind, {4}, "offsets",
+                                               /* isTrainable */ false);
 
   bindings.allocate(indices)->getHandle<sdim_t>() = {
       1, 0, 2, 0, 1, 2, 2, 0,
   };
-  bindings.allocate(offsets)->getHandle<int32_t>() = {
+  bindings.allocate(offsets)->getHandle<sdim_t>() = {
       0,
       3,
       3,
@@ -7994,8 +8031,10 @@ TEST_P(OperatorTest,
       /* useFP16Accumulation */ true);
 }
 
-TEST_P(OperatorTest,
-       FusedRowwiseQuantizedSparseLengthsWeightedSum_ConvertedFloat16) {
+static void testRowwiseQuantizedSparseLengthsSum_ConvertedFloat16(
+    glow::PlaceholderBindings &bindings, glow::Module &mod, glow::Function *F,
+    glow::ExecutionEngine &EE, float allowedError,
+    bool convertFusedToFP16 = true) {
   CHECK_IF_ENABLED();
   /*
     DATA  =   [[2.0, -0.5, 13]]
@@ -8011,39 +8050,39 @@ TEST_P(OperatorTest,
       13,
   };
 
-  Constant *weights = mod_.createConstant(ElemKind::FloatTy, {8}, "weights");
+  Constant *weights = mod.createConstant(ElemKind::FloatTy, {8}, "weights");
   weights->getPayloadMutable().getHandle<float>() = {
       3., 1., 0., 0., 0., 0., 2., -0.5,
   };
 
-  Placeholder *indices = mod_.createPlaceholder(IndexElemKind, {8}, "indices",
-                                                /* isTrainable */ false);
+  Placeholder *indices = mod.createPlaceholder(IndexElemKind, {8}, "indices",
+                                               /* isTrainable */ false);
   Placeholder *lengths =
-      mod_.createPlaceholder(ElemKind::Int32ITy, {4}, "lengths",
-                             /* isTrainable */ false);
+      mod.createPlaceholder(ElemKind::Int32ITy, {4}, "lengths",
+                            /* isTrainable */ false);
 
-  bindings_.allocate(indices)->getHandle<sdim_t>() = {
+  bindings.allocate(indices)->getHandle<sdim_t>() = {
       1, 0, 2, 0, 1, 2, 2, 0,
   };
-  bindings_.allocate(lengths)->getHandle<int32_t>() = {
+  bindings.allocate(lengths)->getHandle<int32_t>() = {
       3,
       0,
       3,
       2,
   };
 
-  auto *R = F_->createFusedRowwiseQuantizedSparseLengthsWeightedSum(
+  auto *R = F->createFusedRowwiseQuantizedSparseLengthsWeightedSum(
       "RQSLWS", data, weights, indices, lengths);
-  SaveNode *S = F_->createSave("save", R);
-  bindings_.allocate(S->getPlaceholder());
+  SaveNode *S = F->createSave("save", R);
+  bindings.allocate(S->getPlaceholder());
 
   CompilationContext cctx;
   cctx.precisionConfig.convertToFP16 = true;
-  cctx.precisionConfig.convertFusedToFP16 = true;
-  EE_.compile(cctx);
-  EE_.run(bindings_);
+  cctx.precisionConfig.convertFusedToFP16 = convertFusedToFP16;
+  EE.compile(cctx);
+  EE.run(bindings);
 
-  Tensor &result = *bindings_.get(S->getPlaceholder());
+  Tensor &result = *bindings.get(S->getPlaceholder());
   Tensor expected(ElemKind::FloatTy, {4, 1});
   expected.getHandle<float>() = {
       0.5,
@@ -8052,7 +8091,26 @@ TEST_P(OperatorTest,
       25,
   };
 
-  EXPECT_TRUE(expected.isEqual(result, 0.02));
+  EXPECT_TRUE(expected.isEqual(result, allowedError));
+}
+
+/// Test Fused-RWQ-SLWS in where the weights are in Fp16, data
+/// inputs are UInt8FusedQTy.
+TEST_P(
+    OperatorTest,
+    FusedRowwiseQuantizedSparseLengthsWeightedSum_ConvertedFloat16_NoFusedConvert) {
+  CHECK_IF_ENABLED();
+  return testRowwiseQuantizedSparseLengthsSum_ConvertedFloat16(
+      bindings_, mod_, F_, EE_, 0.02,
+      /* convertFusedToFP16*/ false);
+}
+
+TEST_P(OperatorTest,
+       FusedRowwiseQuantizedSparseLengthsWeightedSum_ConvertedFloat16) {
+  CHECK_IF_ENABLED();
+  return testRowwiseQuantizedSparseLengthsSum_ConvertedFloat16(
+      bindings_, mod_, F_, EE_, 0.02,
+      /* convertFusedToFP16*/ true);
 }
 
 TEST_P(

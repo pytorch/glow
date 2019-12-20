@@ -74,6 +74,11 @@ void glow::convertFunctionToFloat16(Function *F,
                                           ElemKind::Float16Ty, precConfig);
   if (precConfig.convertToFP16) {
     converter.convert();
+
+    // Storage nodes are not converted + clipped directly -- they need to be
+    // converted via adding ConvertToNodes instead of directly setting their
+    // types like the TypeAToTypeBFunctionConverter does.
+    converter.convertAndClipStorage();
   }
 
   // Now we want to additionally convert all nodes with inputs in UInt8FusedQTy

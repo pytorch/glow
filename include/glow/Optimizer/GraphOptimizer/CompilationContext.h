@@ -45,8 +45,18 @@ struct PrecisionConfiguration {
   /// Whether to convert UInt8FusedQTy to UInt8FusedFP16QTy in the Function.
   bool convertFusedToFP16{false};
 
-  /// Whether to clip out-of-range FP values to the min/max of fp16.
+  /// If convertToFP16, whether to convert input Placeholders.
+  bool convertPlaceholdersToFP16{false};
+
+  /// If convertToFP16, whether to convert Constants.
+  bool convertConstantsToFP16{false};
+
+  /// If convertToFP16, whether to clip out-of-range FP values to the min/max of
+  /// fp16.
   bool clipFP16{false};
+
+  /// If clipFP16, whether to skip clipping inputs of Nodes.
+  bool clipFP16SkipInputs{false};
 
   /// Used during Quantization and convertToFP16 to keep the original precision
   /// of specific node kinds (i.e. quantization/FP16 conversion would be skipped
@@ -78,6 +88,31 @@ struct OptimizationOptions {
   /// Quantize, Dequantize nodes).. Note that this must be accompanied by
   /// modifying the Tensors backing Placeholders at runtime.
   bool foldElemKindConversionIntoIO{false};
+
+  /// If true this will fold convertTo and Quantize nodes into only static
+  /// placeholders. The conversion of the Tensors will be handled by the
+  /// provisioner.
+  bool foldStaticPlaceholderConversions{false};
+
+  /// If true, this will direct the partitioner to use SparseNN partitioning
+  /// scheme
+  bool useSparseNNPartitioningScheme{false};
+
+  /// The number of cards over which to split SLS tables when using SparseNN
+  /// partitioning scheme
+  unsigned int sparseNNPartitioningSchemeNumCards{1};
+
+  /// The number of bytes to allocate per card for SLS tables when using
+  /// the SparseNN partitioning scheme
+  unsigned int sparseNNPartitioningSchemeSLSTableKBytesPerCard{0};
+
+  /// The number of cores to assign to SLS partition when using SparseNN
+  /// partitioning scheme
+  unsigned int sparseNNPartitioningSchemeNumCoresSLS{1};
+
+  /// The number of cores to assign to non-SLS partition when using SparseNN
+  /// partitioning scheme
+  unsigned int sparseNNPartitioningSchemeNumCoresOther{1};
 };
 
 /// Context for compilation.

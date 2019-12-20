@@ -81,6 +81,9 @@ public:
   /// it as a Glow Function and compiles. \returns error of failure.
   Error run(torch::jit::Stack &stack);
 
+  /// The Glow Function should've already been created. Returns an error if not.
+  Error runOnly(torch::jit::Stack &stack);
+
   // Warm up the cache by compiling a Glow function for the inputs in \p stack.
   Error warmCache(const std::vector<InputMeta> &inputMeta);
 };

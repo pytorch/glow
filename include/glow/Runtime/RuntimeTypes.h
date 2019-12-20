@@ -194,6 +194,9 @@ struct PartitionConfig {
   std::vector<std::string> backendNames;
   /// The name for each partition. partitionNames.size() == numOfPartitions.
   std::vector<std::string> partitionNames;
+  /// The backend hints for each partition. backendNames.size() ==
+  /// numOfPartitions.
+  std::vector<BackendHints> backendHints;
   /// The logical IDs to assign to the partitions.
   std::vector<std::vector<unsigned>> logicalIDs;
   /// The mapping between nodes' name to Partition ids. Assume there are n nodes

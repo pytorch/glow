@@ -36,8 +36,7 @@ void optimize(Function *F, CompilationMode mode);
 void optimize(Function *F, CompilationContext &cctx, const Backend &B);
 
 /// Fold nodes that were expressed lowered in the input model.
-void fold(Function *F, CompilationContext &cctx);
-void fold(Function *F, CompilationMode mode);
+void fold(Function *F, CompilationContext &cctx, const Backend *B = nullptr);
 
 /// Lower the high-level neural network nodes found in \p F into low-level
 /// linear algebra operators. If \p B is not a nullptr then it can prevent

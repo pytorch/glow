@@ -1,5 +1,6 @@
-/*
+/**
  * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -12,29 +13,21 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-#ifndef GLOW_BACKENDS_NNPI_NNPIMESSAGELOGGER_H
-#define GLOW_BACKENDS_NNPI_NNPIMESSAGELOGGER_H
-
-#include "nnpi_transformer.h"
+#ifndef GLOW_OPTIMIZER_LOWER_LOWER_H
+#define GLOW_OPTIMIZER_LOWER_LOWER_H
 
 namespace glow {
-/// NNPI logging stream controller.
-class NNPIMessageLogger {
-public:
-  static NNPIMessageLogger &getInstance() {
-    static NNPIMessageLogger instance;
-    return instance;
-  }
 
-  void setLogLevel(NNPI_LOG_LEVEL level);
+class Backend;
+class Function;
+class Node;
+struct CompilationContext;
 
-private:
-  NNPIMessageLogger();
-  static uint64_t messagesWriteHandler(const void *ptr, uint64_t size,
-                                       uint64_t count, void *userData);
-  NNPIStream messagesStream_;
-};
+/// Lowers \p node given Function \p. \p cctx contains a mapping of loweredMap
+/// that will log the lowering info of what was replaced by what via output
+/// names. \returns whether \p node was lowered.
+bool lowerNode(Function *F, Node *node, CompilationContext &cctx);
 
-} // end namespace glow
-#endif // GLOW_BACKENDS_NNPI_NNPIMESSAGELOGGER_H
+} // namespace glow
+
+#endif /* GLOW_OPTIMIZER_LOWER_LOWER_H */

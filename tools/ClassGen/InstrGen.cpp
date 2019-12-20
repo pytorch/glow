@@ -366,8 +366,7 @@ int main(int argc, char **argv) {
       .addMember(MemberType::Boolean, "UseFP16Accumulation")
       .autoIRGen()
       .autoVerify(VerifyKind::SameElementType, {"Indices", "IndexElemKind"})
-      .autoVerify(VerifyKind::SameElementType,
-                  {"Offsets", "ElemKind::Int32ITy"})
+      .autoVerify(VerifyKind::SameElementType, {"Offsets", "IndexElemKind"})
       .autoVerify(VerifyKind::SameShape, {"Weights", "Indices"});
 
   BB.newInstr("LengthsToRanges")
@@ -577,7 +576,8 @@ int main(int argc, char **argv) {
       })
       .dataParallel()
       .autoVerify(VerifyKind::SameType, {"Dest", "Src"})
-      .autoIRGen();
+      .autoIRGen()
+      .addGradientInstr({"Dest"}, {"Dest", "Src"});
 
   BB.newInstr("Sigmoid")
       .addOperand("Dest", OperandKind::Out)

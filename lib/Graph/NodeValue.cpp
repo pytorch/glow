@@ -33,15 +33,16 @@ NodeValue::NodeValue(Node *N, unsigned resNo) {
   resNo_ = resNo;
 }
 
-void NodeValue::replaceAllUsesOfWith(NodeValue v, const Function *F) const {
+void NodeValue::replaceAllUsesOfWith(NodeValue v, const Function *F,
+                                     Node *skipReplacement) const {
   if (v.getNode()) {
     assert(getType() == v.getType() && "Replacing value with the wrong type");
   }
-  typeUnsafeReplaceAllUsesOfWith(v, F);
+  typeUnsafeReplaceAllUsesOfWith(v, F, skipReplacement);
 }
 
-void NodeValue::typeUnsafeReplaceAllUsesOfWith(NodeValue v,
-                                               const Function *F) const {
+void NodeValue::typeUnsafeReplaceAllUsesOfWith(NodeValue v, const Function *F,
+                                               Node *skipReplacement) const {
   // Copy the list of users in a temporary vector since that list (and the
   // underlying iterators) are going to be invalidated by the next loop.
   auto nodeValueUsers = getUsers();
@@ -51,10 +52,15 @@ void NodeValue::typeUnsafeReplaceAllUsesOfWith(NodeValue v,
     NodeHandle *site = U.get();
     auto *userF = U.getUser()->getParent();
     // If the user is not in function F, don't touch it.
-    if (F && userF != F)
+    if (F && userF != F) {
       continue;
+    }
     assert(site->getNode() == node_ && "Invalid user");
     assert(site->getResNo() == getResNo() && "Invalid list of uses");
+
+    if (U.getUser() == skipReplacement) {
+      continue;
+    }
 
     // Log the change of node input(operand).
     if (Function *F = getNode()->getParent()) {

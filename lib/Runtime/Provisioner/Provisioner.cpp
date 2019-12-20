@@ -418,12 +418,17 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
         functions_.emplace(func.first, std::move(func.second));
       }
       // Check if any of the duplicated functions can also be moved.
-      for (auto func : remainingDuplications) {
+      for (auto iter = remainingDuplications.begin();
+           iter != remainingDuplications.end();) {
+        const auto &func = *iter;
         if (func.second == 0) {
           duplicatedFunctions[func.first]->freeCompilationResources();
           functions_.emplace(func.first,
                              std::move(duplicatedFunctions[func.first]));
           duplicatedFunctions.erase(func.first);
+          iter = remainingDuplications.erase(iter);
+        } else {
+          ++iter;
         }
       }
     }
@@ -448,18 +453,36 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
                 weightName)
                 .str());
       }
+      // Convert the weight if needed.
+      auto newTy = PH->getType();
+      auto weight = loader->getTensor();
+      auto oldKind = weight->getElementType();
+      // Ensure we are working with a static PH.
+      assert(PH->isStatic());
+      if (!weight->getType().isEqual(newTy)) {
+        ElemKind newK = newTy->getElementType();
+
+        if (!isQuantizedElemKind(oldKind) && isQuantizedElemKind(newK)) {
+          Tensor QT = quantization::quantizeTensor(
+              *weight, {newTy->getScale(), newTy->getOffset()}, newK);
+          weight->assign(&QT);
+        } else {
+          weight->convertToType(newK);
+        }
+      }
+
       // Transfer weight to all devices needed.
       for (const auto &device : placeholderToDevicManager[PH]) {
         std::promise<Error> transferPromise;
         auto done = transferPromise.get_future();
         devices_[device]->transferStaticPlaceholderToDevice(
-            PH, loader->getTensor(), [&transferPromise](Error err) {
+            PH, weight, [&transferPromise](Error err) {
               transferPromise.set_value(std::move(err));
             });
         RETURN_IF_ERR(done.get());
-        RETURN_IF_ERR(loader->loadNextWeight());
-        weightName = loader->getName();
       }
+      RETURN_IF_ERR(loader->loadNextWeight());
+      weightName = loader->getName();
       // Remove PH from map, this way we can know that we've added all static
       // PH's
       placeholderToDevicManager.erase(PH);

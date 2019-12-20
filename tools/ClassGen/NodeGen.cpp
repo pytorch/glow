@@ -86,11 +86,7 @@ int main(int argc, char **argv) {
       .addMember(MemberType::Unsigned, "Group")
       .addMember(MemberType::Unsigned, "Dilation")
       .addMember(MEMBER_TYPE_INFO(glow::ConvolutionLayout), "Layout")
-      .addMember(MEMBER_TYPE_INFO(glow::FusedActivation), "FusedActivation")
-      .addExtraMethod(
-          "bool hasFusedActivation() const;",
-          "bool ConvolutionNode::hasFusedActivation() const { return "
-          "getFusedActivation() != FusedActivation::NONE; }")
+      .addFusedActivation()
       .addResultFromCtorArg()
       .addGradient()
       .setDocstring(

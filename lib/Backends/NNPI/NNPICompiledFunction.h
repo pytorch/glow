@@ -17,6 +17,7 @@
 #define GLOW_NNPI_FUNCTION_H
 
 #include "BlockStream.h"
+#include "NNPIOptions.h"
 #include "glow/Backend/CompiledFunction.h"
 #include "glow/Backends/BackendOptions.h"
 #include "glow/ExecutionContext/ExecutionContext.h"
@@ -31,7 +32,8 @@ namespace glow {
 class NNPICompiledFunction final : public CompiledFunction {
 public:
   NNPICompiledFunction(Function *F)
-      : CompiledFunction(runtime::RuntimeBundle::create(*F)){};
+      : CompiledFunction(runtime::RuntimeBundle::create(*F)),
+        compilationOptions_({}){};
 
   /// \name CompiledFunction interface.
   ///@{
@@ -58,6 +60,11 @@ public:
     return partialInputs_;
   }
 
+  /// \returns a reference to the set of static Placeholders.
+  const std::unordered_set<const Placeholder *> &getStaticInputs() const {
+    return staticInputs_;
+  }
+
   /// Locks the output stream.
   BlockStream &lockCompiledStream();
   /// Unlocks the output stream.
@@ -66,12 +73,26 @@ public:
 
   virtual Error compile(Function *F, const BackendOptions &opts);
 
+  NNPICompilationOptions getCompilationOptions() const {
+    return compilationOptions_;
+  }
+
+  const std::string &getCompilationFilename() const {
+    return compilationFileName_;
+  }
+
 private:
   NNPINetwork network_;
   NNPICompilationConfig config_;
   BlockStream compiledStream_;
   std::mutex compiledStreamMutex_;
   std::unordered_set<const Placeholder *> partialInputs_;
+  std::unordered_set<const Placeholder *> staticInputs_;
+  NNPICompilationOptions compilationOptions_;
+  std::string compilationFileName_;
+
+  Error updateCompilationConfigFromOptions(
+      NNPICompilationOptions &compilationOptions);
   ///@}
 };
 } // end namespace glow

@@ -16,6 +16,7 @@
 #ifndef GLOW_NNPI_IMPORTER_H
 #define GLOW_NNPI_IMPORTER_H
 
+#include "NNPIOptions.h"
 #include "glow/Backends/BackendOptions.h"
 #include "glow/Support/Compiler.h"
 #include "nnpi_network_builder.h"
@@ -40,7 +41,7 @@ class INNPINodeImporter;
 class NNPIImporter {
 public:
   /// Constructor.
-  NNPIImporter();
+  NNPIImporter(const NNPICompilationOptions &compileOptions);
 
   /// Destructor.
   ~NNPIImporter();
@@ -111,6 +112,8 @@ private:
 
   /// Map of Glow node specific importers.
   static const std::map<std::string, INNPINodeImporter *> nodeImporters_;
+  /// NNPI Device configuration.
+  const NNPICompilationOptions &compileOptions_;
 };
 
 /// Interface class for all node specific importers.
@@ -123,54 +126,6 @@ public:
   /// Destructor.
   virtual ~INNPINodeImporter() = default;
 };
-
-class NNPIEnvVariables {
-public:
-  static std::string getVarString(const std::string &varName);
-  static bool getVarBool(const std::string &varName);
-  static int getVarInt(const std::string &varName, int defaultNumber);
-  static NNPI_LOG_LEVEL getVarLogLevel(const std::string &varName,
-                                       NNPI_LOG_LEVEL defaultLevel);
-
-private:
-  NNPIEnvVariables() = default;
-};
-
-inline std::string ICETFilename() {
-  auto filename = NNPIEnvVariables::getVarString("ICE_T_FILE");
-  return filename.length() ? filename : "";
-}
-
-inline bool UseIceT() { return NNPIEnvVariables::getVarBool("USE_ICE_T"); }
-
-inline bool UseInferenceAPI() {
-  return NNPIEnvVariables::getVarBool("USE_INF_API");
-}
-
-inline bool EnabledDeviceTracing() {
-  return NNPIEnvVariables::getVarBool("NNPI_DEVICE_TRACING");
-}
-
-inline std::string EnvDeviceVersion() {
-  auto deviceVersion = NNPIEnvVariables::getVarString("NNPI_DEVICE_VERSION");
-  return deviceVersion.length() ? deviceVersion : "";
-}
-
-inline bool SymlowpWA() { return NNPIEnvVariables::getVarBool("SYMLOWP_WA"); }
-
-inline std::string EnvDeviceID() {
-  auto deviceID = NNPIEnvVariables::getVarString("NNPI_DEVICE_ID");
-  return deviceID.length() ? deviceID : "";
-}
-
-inline std::string EnvIceCores() {
-  auto iceCores = NNPIEnvVariables::getVarString("NNPI_ICE_CORES");
-  return iceCores.length() ? iceCores : "";
-}
-
-inline int EnvNumWorkers() {
-  return NNPIEnvVariables::getVarInt("NNPI_NUM_WORKERS", -1);
-}
 
 } // namespace glow
 #endif // GLOW_NNPI_IMPORTER_H

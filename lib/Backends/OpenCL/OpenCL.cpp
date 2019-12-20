@@ -161,7 +161,7 @@ cl_kernel OpenCLFunction::createKernel(const std::string &name,
   DCHECK(program) << "program cannot be null.";
   cl_int err = CL_SUCCESS;
   cl_kernel kernel = clCreateKernel(program, name.c_str(), &err);
-  CHECK(kernel) << "clCreateKernel Failed.";
+  CHECK(kernel) << "clCreateKernel Failed for " << name;
   CHECK_EQ(err, CL_SUCCESS) << "clCreateKernel Failed.";
   return kernel;
 }
@@ -590,9 +590,9 @@ static void topK(Tensor &outW, Tensor &indW, Tensor &inW, size_t k) {
 
 static ShapeNHWC shapeFromDims(llvm::ArrayRef<dim_t> arr) {
   assert(arr.size() <= 4);
-  llvm::SmallVector<size_t, 4> ones(4, 1);
+  llvm::SmallVector<dim_t, 4> ones(4, 1);
   std::copy(arr.begin(), arr.end(), ones.begin());
-  return ShapeNHWC(llvm::ArrayRef<size_t>(ones));
+  return ShapeNHWC(llvm::ArrayRef<dim_t>(ones));
 };
 
 Error OpenCLFunction::execute(ExecutionContext *context) {
@@ -960,6 +960,46 @@ Error OpenCLFunction::execute(ExecutionContext *context) {
       // Parallelize on each element in the slice.
       enqueueKernel(I.getName(), commands, kernel, deviceId, destDimsVec,
                     kernelLaunches);
+      continue;
+    }
+
+    if (auto *LRN = dyn_cast<LocalResponseNormalizationGradInst>(&I)) {
+      cl_kernel kernel = createKernel(kernelName, program);
+      setKernelArg(kernel, 0, deviceBuffer);
+
+      size_t numArgs = setKernelArgsForBuffers(kernel, I, 1, runtimeBundle_);
+      ShapeNHWC dim(LRN->getDest()->getType()->dims());
+
+      uint32_t halfWindowSize = LRN->getHalfWindowSize();
+      uint32_t windowSize = 2 * halfWindowSize + 1;
+      setKernelArg(kernel, ++numArgs, dim);
+      setKernelArg(kernel, ++numArgs, halfWindowSize);
+      setKernelArg(kernel, ++numArgs, LRN->getK());
+      setKernelArg(kernel, ++numArgs, LRN->getBeta());
+      setKernelArg(kernel, ++numArgs, LRN->getAlpha() / windowSize);
+
+      enqueueKernel(I.getName(), commands, kernel, deviceId,
+                    {dim.n, dim.h, dim.w}, kernelLaunches);
+      continue;
+    }
+
+    if (auto *LRN = dyn_cast<LocalResponseNormalizationInst>(&I)) {
+      cl_kernel kernel = createKernel(kernelName, program);
+      setKernelArg(kernel, 0, deviceBuffer);
+
+      size_t numArgs = setKernelArgsForBuffers(kernel, I, 1, runtimeBundle_);
+      ShapeNHWC dim(LRN->getDest()->getType()->dims());
+
+      uint32_t halfWindowSize = LRN->getHalfWindowSize();
+      uint32_t windowSize = 2 * halfWindowSize + 1;
+      setKernelArg(kernel, ++numArgs, dim);
+      setKernelArg(kernel, ++numArgs, halfWindowSize);
+      setKernelArg(kernel, ++numArgs, LRN->getK());
+      setKernelArg(kernel, ++numArgs, LRN->getBeta());
+      setKernelArg(kernel, ++numArgs, LRN->getAlpha() / windowSize);
+
+      enqueueKernel(I.getName(), commands, kernel, deviceId,
+                    {dim.n, dim.h, dim.w}, kernelLaunches);
       continue;
     }
 
@@ -1540,6 +1580,8 @@ bool OCLBackend::isOpSupported(const NodeInfo &NI) const {
         {ElemKind::FloatTy, ElemKind::Int8QTy, IndexElemKind});
 
   case Kinded::Kind::PowNodeKind:
+  case Kinded::Kind::LocalResponseNormalizationNodeKind:
+  case Kinded::Kind::LocalResponseNormalizationGradNodeKind:
   case Kinded::Kind::BatchedReduceAddNodeKind:
   case Kinded::Kind::TanhNodeKind:
   case Kinded::Kind::SigmoidNodeKind:

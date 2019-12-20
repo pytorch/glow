@@ -76,7 +76,12 @@ void registerGlowOp(const c10::Symbol &symbol) {
         }
 
         return [graphRunner](torch::jit::Stack &stack) {
-          Error err = graphRunner->run(stack);
+          Error err = Error::empty();
+          if (getPyTorchLoaderSettings().preCompilePyTorchModule) {
+            err = graphRunner->runOnly(stack);
+          } else {
+            err = graphRunner->run(stack);
+          }
 
           if (static_cast<bool>(err)) {
             // PyTorch framework expects an exception been thrown here.

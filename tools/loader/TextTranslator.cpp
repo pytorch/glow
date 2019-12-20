@@ -54,6 +54,21 @@ llvm::cl::opt<double>
                                     "highest likelihood output sentence."),
                      llvm::cl::Optional, llvm::cl::init(0.0f),
                      llvm::cl::cat(textTranslatorCat));
+
+llvm::cl::opt<std::string> inputSentencesFile(
+    "input-text-file",
+    llvm::cl::desc(
+        "Name of the file containing list of sentences (one per line)"),
+    llvm::cl::value_desc("string_name"), llvm::cl::Optional,
+    llvm::cl::cat(textTranslatorCat));
+
+llvm::cl::opt<std::string> expectedResultSentencesFile(
+    "expected-output-text-file",
+    llvm::cl::desc("Name of the file containing list of sentences (one per "
+                   "line) corresponding to expected translations provided via "
+                   "-input-text-file."),
+    llvm::cl::value_desc("string_name"), llvm::cl::Optional,
+    llvm::cl::cat(textTranslatorCat));
 } // namespace
 
 /// These should be kept in sync with pytorch_translate/vocab_constants.py
@@ -160,12 +175,18 @@ static void encodeString(const llvm::StringRef sentence,
   }
 }
 
-/// Load a sentence from std::cin for processing, placing the encoded inputs in
-/// \p encoderInputs. \returns false if the passed in line was empty.
-static bool loadNextInputTranslationText(Tensor *encoderInputs) {
-  llvm::outs() << "Enter a sentence in English to translate to German: ";
+/// Load a sentence from std::cin for processing, or from \p file if it is open,
+/// and place the encoded inputs in \p encoderInputs. \returns false if the
+/// passed in line was empty.
+static bool loadNextInputTranslationText(Tensor *encoderInputs,
+                                         std::ifstream &file) {
   std::string sentence;
-  getline(std::cin, sentence);
+  if (file.is_open()) {
+    getline(file, sentence);
+  } else {
+    llvm::outs() << "Enter a sentence in English to translate to German: ";
+    getline(std::cin, sentence);
+  }
 
   if (sentence.empty()) {
     return false;
@@ -261,16 +282,20 @@ static std::vector<dim_t> getBestTranslation(Tensor *outputTokenBeamList,
 }
 
 /// Queries getBestTranslation() for the best translation via the outputs from
-/// the model, \p outputTokenBeamList, \p outputScoreBeamList, and \p
-/// outputPrevIndexBeamList. Then converts each of the tokens from the returned
-/// best translation into words from the dest dictionary, and prints it.
-static void processAndPrintDecodedTranslation(Tensor *outputTokenBeamList,
-                                              Tensor *outputScoreBeamList,
-                                              Tensor *outputPrevIndexBeamList) {
+/// the model, \p outputTokenBeamList, \p outputScoreBeamList, and
+/// \p outputPrevIndexBeamList. Then converts each of the tokens from the
+/// returned best translation into words from the dest dictionary, and prints
+/// it. \p expectedResultFile is a stream of expected results; if open the
+/// translation is checked against the expected result, and will \returns
+/// whether it does. Otherwise returns true.
+static bool processAndPrintDecodedTranslation(
+    Tensor *outputTokenBeamList, Tensor *outputScoreBeamList,
+    Tensor *outputPrevIndexBeamList, std::ifstream &expectedResultFile) {
   std::vector<dim_t> translationTokens = getBestTranslation(
       outputTokenBeamList, outputScoreBeamList, outputPrevIndexBeamList);
 
   // Use the dest dictionary to convert tokens to words, and print it.
+  std::string result;
   for (size_t i = 0; i < translationTokens.size(); i++) {
     auto wordIdx = translationTokens[i];
     auto word = dstVocab.getWordFromIdx(wordIdx);
@@ -283,9 +308,22 @@ static void processAndPrintDecodedTranslation(Tensor *outputTokenBeamList,
     } else if (i != translationTokens.size() - 1) {
       word = word + " ";
     }
-    llvm::outs() << word;
+    result += word;
+  }
+  llvm::outs() << result;
+  bool correctTranslation = true;
+  if (expectedResultFile.is_open()) {
+    std::string expectedResult;
+    CHECK(getline(expectedResultFile, expectedResult))
+        << "Did not find expected translation.";
+    correctTranslation = expectedResult == result;
+    if (!correctTranslation) {
+      llvm::outs() << "\n   PREVIOUS TRANSLATION INCORRECT; EXPECTED: "
+                   << expectedResult;
+    }
   }
   llvm::outs() << "\n\n";
+  return correctTranslation;
 }
 
 int main(int argc, char **argv) {
@@ -353,7 +391,15 @@ int main(int argc, char **argv) {
   Placeholder *outputPrevIndexBeamList =
       EXIT_ON_ERR(LD.getOutputByName("output_prev_index_beam_list"));
 
-  while (loadNextInputTranslationText(&encoderInputs)) {
+  std::ifstream inFile, expectedResultFile;
+  if (!inputSentencesFile.empty()) {
+    inFile.open(inputSentencesFile, std::ifstream::in);
+  }
+  if (!expectedResultSentencesFile.empty()) {
+    expectedResultFile.open(expectedResultSentencesFile, std::ifstream::in);
+  }
+  int incorrectTranslationCount = 0;
+  while (loadNextInputTranslationText(&encoderInputs, inFile)) {
     // Update the inputs.
     updateInputPlaceholders(bindings, {encoderInputsVar}, {&encoderInputs});
 
@@ -362,9 +408,12 @@ int main(int argc, char **argv) {
 
     // Process the outputs to determine the highest likelihood sentence, and
     // print out the decoded translation using the dest dictionary.
-    processAndPrintDecodedTranslation(bindings.get(outputTokenBeamList),
-                                      bindings.get(outputScoreBeamList),
-                                      bindings.get(outputPrevIndexBeamList));
+    if (!processAndPrintDecodedTranslation(
+            bindings.get(outputTokenBeamList),
+            bindings.get(outputScoreBeamList),
+            bindings.get(outputPrevIndexBeamList), expectedResultFile)) {
+      incorrectTranslationCount += 1;
+    }
   }
 
   // If profiling, generate and serialize the quantization infos now that we
@@ -373,5 +422,5 @@ int main(int argc, char **argv) {
     loader.generateAndSerializeQuantizationInfos(bindings);
   }
 
-  return 0;
+  return incorrectTranslationCount;
 }

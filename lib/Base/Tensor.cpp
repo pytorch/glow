@@ -656,17 +656,33 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const Tensor *t) {
 
 void Tensor::moveToDevice(DeviceTensorTransferManager *deviceManager,
                           void *locationContext) {
-  residencyInfoP_->deviceManager_ = deviceManager;
-  residencyInfoP_->locationContext_ = locationContext;
-  residencyInfoP_->tensorResidency_ =
+  if (deviceResidency_ == nullptr) {
+    deviceResidency_ = new DeviceResidencyInfo();
+  }
+  deviceResidency_->deviceManager_ = deviceManager;
+  deviceResidency_->locationContext_ = locationContext;
+  deviceResidency_->tensorResidency_ =
       DeviceResidencyInfo::TensorResidency::Device;
 }
 
 void Tensor::ensureOnHost() {
-  if (residencyInfoP_->isDeviceResident()) {
-    residencyInfoP_->deviceManager_->transferFromDevice(*this);
+  if (deviceResidency_ == nullptr) {
+    // already on host.
+    return;
+  }
+  if (deviceResidency_->isDeviceResident()) {
+    deviceResidency_->deviceManager_->transferFromDevice(*this);
   }
   assert(!isDeviceResident());
+}
+
+void Tensor::copyRawToDevice(const Tensor *t) {
+  assert(isDeviceResident());
+  void *locationContext = deviceResidency_->locationContext_;
+  DeviceTensorTransferManager *DM = deviceResidency_->deviceManager_;
+  clearDeviceResidency();
+  copyRawFrom(t);
+  DM->transferToDevice(*this, locationContext);
 }
 
 } // namespace glow

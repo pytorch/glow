@@ -27,7 +27,7 @@ namespace glow {
 class StatsExporter {
 public:
   /// Dtor.
-  virtual ~StatsExporter() {}
+  virtual ~StatsExporter() = default;
 
   /// Add value to a time series.  May be called concurrently.
   virtual void addTimeSeriesValue(llvm::StringRef key, double value) = 0;
@@ -54,13 +54,16 @@ public:
   /// Register a StatsExporter.
   void registerStatsExporter(StatsExporter *exporter);
 
+  /// Revoke a StatsExporter.
+  void revokeStatsExporter(StatsExporter *exporter);
+
+  /// Static singleton StatsExporter.
+  static std::shared_ptr<StatsExporterRegistry> Stats();
+
 private:
   /// Registered StatsExporters.
   std::vector<StatsExporter *> exporters_;
 };
-
-/// Global singleton StatsExporter.
-StatsExporterRegistry *Stats();
 
 } // namespace glow
 

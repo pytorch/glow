@@ -265,11 +265,7 @@ QuantizationTransform32To8 quantizeScaleOffset32To8(float scale,
                                     offset);
 }
 
-TensorQuantizationParams chooseQuantizationParams(float min, float max,
-                                                  Schema schema, ElemKind qTy) {
-  assert(min <= max && "min must not be bigger than max");
-
-  // Compute the quantized int range.
+std::pair<int64_t, int64_t> getQuantizationRange(ElemKind qTy) {
   // Pick int64_t in order to cover the uint32_t range.
   int64_t qmin;
   int64_t qmax;
@@ -310,6 +306,45 @@ TensorQuantizationParams chooseQuantizationParams(float min, float max,
   default:
     llvm_unreachable("Quantized type not supported");
   }
+  return std::pair<int64_t, int64_t>(qmin, qmax);
+}
+
+void validateQuantizationParams(TensorQuantizationParams qParams, Schema schema,
+                                ElemKind qTy) {
+
+  // Get the quantized range.
+  auto minMaxPair = getQuantizationRange(qTy);
+  int64_t qmin = minMaxPair.first;
+  int64_t qmax = minMaxPair.second;
+
+  // Validate params.
+  (void)(qmin);
+  (void)(qmax);
+  assert((qmin <= qParams.offset) && (qParams.offset <= qmax) &&
+         "The offset must be within the quantized range");
+  if (schema == quantization::Schema::Symmetric) {
+    assert((qParams.offset == 0) &&
+           "Symmetric quantization should have offset 0");
+  } else if (schema == quantization::Schema::SymmetricWithUnsigned) {
+    assert((qParams.offset == qmin || qParams.offset == 0) &&
+           "SymmetricWithUnsigned quantization should have offset 0 or qmin");
+  } else if (schema == quantization::Schema::SymmetricWithPower2Scale) {
+    assert((qParams.offset == 0) &&
+           "SymmetricWithPower2Scale quantization should have offset 0");
+    assert(isFloatPowerOf2(qParams.scale) &&
+           "SymmetricWithPower2Scale quantization parameter should be a power "
+           "of 2");
+  }
+}
+
+TensorQuantizationParams chooseQuantizationParams(float min, float max,
+                                                  Schema schema, ElemKind qTy) {
+  assert(min <= max && "min must not be bigger than max");
+
+  // Get the quantized range.
+  auto minMaxPair = getQuantizationRange(qTy);
+  int64_t qmin = minMaxPair.first;
+  int64_t qmax = minMaxPair.second;
 
   // We extend the [min, max] interval to ensure that it contains 0.
   // Otherwise, we would not meet the requirement that 0 be an exactly
@@ -403,27 +438,7 @@ TensorQuantizationParams chooseQuantizationParams(float min, float max,
   }
 
   TensorQuantizationParams result{static_cast<float>(scale), nudgedZeroPoint};
-  // The only valid offset for symmetric quantization is 0.
-  assert((result.offset == 0 || schema != quantization::Schema::Symmetric) &&
-         "Symmetric quantization should be centered on 0");
-
-  // The only valid offsets for symmetric quantization with unsigned support are
-  // 0 and qmin.
-  assert((result.offset == qmin || result.offset == 0 ||
-          schema != quantization::Schema::SymmetricWithUnsigned) &&
-         "Symmetric quantization with unsigned should be centered on 0 or on "
-         "-qmin");
-
-  // For SymmetricWithPower2Scale schema the offset should be 0.
-  assert((result.offset == 0 ||
-          schema != quantization::Schema::SymmetricWithPower2Scale) &&
-         "Symmetric quantization should be centered on 0");
-
-  // For SymmetricWithPower2Scale schema the scale should be a power of 2.
-  assert((isFloatPowerOf2(result.scale) ||
-          schema != quantization::Schema::SymmetricWithPower2Scale) &&
-         "Scale quantization parameter should be a power of 2");
-
+  validateQuantizationParams(result, schema, qTy);
   return result;
 }
 

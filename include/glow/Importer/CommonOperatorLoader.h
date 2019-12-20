@@ -46,6 +46,8 @@ struct LoadWeightResult {
   /// Glow tensor containing quantization scales. This should only be non-null
   /// if there is more than 1 quantization parameter found.
   std::unique_ptr<Tensor> scales;
+  /// Type info of the weight, this is used for offline weights.
+  Type type;
 };
 
 /// Contains loaders for operators, which are common to ONNX and Caffe2
@@ -85,33 +87,22 @@ class CommonOperatorLoader : public ProtobufLoader {
       dims.push_back(in.shape[i]);
     }
 
-    // TODO(garret): create cached placeholder if in.isOffline is 1
-    if (in.isOffline) {
-      RETURN_ERR(strFormat("Cannot handle offline tensor %s yet", in.name));
-    }
-
     // Load unquantized tensor.
     if (in.quantizationParams == 0) {
       if (in.dataType == ONNXIFI_DATATYPE_FLOAT32) {
-        Type ty(ElemKind::FloatTy, dims);
-        *result.t = Tensor((void *)in.buffer, &ty);
+        result.type = Type(ElemKind::FloatTy, dims);
       } else if (in.dataType == ONNXIFI_DATATYPE_FLOAT16) {
-        Type ty(ElemKind::Float16Ty, dims);
-        *result.t = Tensor((void *)in.buffer, &ty);
+        result.type = Type(ElemKind::Float16Ty, dims);
       } else if (in.dataType == ONNXIFI_DATATYPE_INT32) {
-        Type ty(ElemKind::Int32ITy, dims);
-        *result.t = Tensor((void *)in.buffer, &ty);
+        result.type = Type(ElemKind::Int32ITy, dims);
       } else if (in.dataType == ONNXIFI_DATATYPE_INT64) {
-        Type ty(ElemKind::Int64ITy, dims);
-        *result.t = Tensor((void *)in.buffer, &ty);
+        result.type = Type(ElemKind::Int64ITy, dims);
       } else if (in.dataType == ONNXIFI_DATATYPE_UINT8) {
         // UInt8 type is used for variety of rowwise quantized SLSs.
         // Make dummy scale and offset for these cases.
-        Type ty(ElemKind::UInt8QTy, dims, 1.0, 0);
-        *result.t = Tensor((void *)in.buffer, &ty);
+        result.type = Type(ElemKind::UInt8QTy, dims, 1.0, 0);
       } else if (in.dataType == ONNXIFI_DATATYPE_UINT64) {
-        Type ty(ElemKind::Int64ITy, dims);
-        *result.t = Tensor((void *)in.buffer, &ty);
+        result.type = Type(ElemKind::Int64ITy, dims);
         for (size_t i = 0; i < result.t->size(); ++i) {
           RETURN_ERR_IF_NOT(
               ((int64_t *)in.buffer)[i] >= 0,
@@ -123,7 +114,9 @@ class CommonOperatorLoader : public ProtobufLoader {
             "got input with ONNXIFI_DATATYPE: %zu",
             static_cast<size_t>(in.dataType)));
       }
-
+      if (!in.isOffline) {
+        *result.t = Tensor((void *)in.buffer, &result.type);
+      }
       return Expected<LoadWeightResult>(std::move(result));
     }
 
@@ -150,19 +143,26 @@ class CommonOperatorLoader : public ProtobufLoader {
     if (in.dataType == ONNXIFI_DATATYPE_UINT8) {
       // Must copy the weights here because we will need to modify them by
       // adjusting for OFFSETSHIFT.
-      result.t->reset(ElemKind::Int8QTy, dims, scale, offset - OFFSETSHIFT);
+      result.type = Type(ElemKind::Int8QTy, dims, scale, offset - OFFSETSHIFT);
+      if (!in.isOffline) {
+        result.t->reset(result.type);
 
-      auto TH = result.t->getHandle<int8_t>();
-      uint8_t *data = (uint8_t *)in.buffer;
-      for (size_t i = 0; i < TH.size(); ++i) {
-        TH.raw(i) = (int8_t)(data[i] - OFFSETSHIFT);
+        auto TH = result.t->getHandle<int8_t>();
+        uint8_t *data = (uint8_t *)in.buffer;
+        for (size_t i = 0; i < TH.size(); ++i) {
+          TH.raw(i) = (int8_t)(data[i] - OFFSETSHIFT);
+        }
       }
     } else if (in.dataType == ONNXIFI_DATATYPE_INT32) {
-      Type ty(ElemKind::Int32QTy, dims, scale, offset);
-      *result.t = Tensor((void *)in.buffer, &ty);
+      result.type = Type(ElemKind::Int32QTy, dims, scale, offset);
+      if (!in.isOffline) {
+        *result.t = Tensor((void *)in.buffer, &result.type);
+      }
     } else if (in.dataType == ONNXIFI_DATATYPE_INT8) {
-      Type ty(ElemKind::Int8QTy, dims, scale, offset);
-      *result.t = Tensor((void *)in.buffer, &ty);
+      result.type = Type(ElemKind::Int8QTy, dims, scale, offset);
+      if (!in.isOffline) {
+        *result.t = Tensor((void *)in.buffer, &result.type);
+      }
     } else {
       RETURN_ERR(strFormat("Only uint8, int32, and int8, quantized tensors are "
                            "supported, got input with ONNXIFI_DATATYPE: %zu",
@@ -1267,7 +1267,15 @@ protected:
         return resOrErr.takeError();
       }
 
-      RETURN_IF_ERR(createAndRegisterConstant(name, std::move(*loadResult.t)));
+      // If the weight is offline create a static placeholder, otherwise create
+      // a constant.
+      if (weightDescriptors[i].isOffline) {
+        createAndRegisterPlaceholder(name, &loadResult.type,
+                                     /*isStatic*/ true);
+      } else {
+        RETURN_IF_ERR(
+            createAndRegisterConstant(name, std::move(*loadResult.t)));
+      }
 
       if (loadResult.offsets) {
         auto offsetsName = strFormat("%s_loaded_offsets", name);

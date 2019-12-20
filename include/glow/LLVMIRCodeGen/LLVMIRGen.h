@@ -324,13 +324,13 @@ public:
   virtual AllocationsInfo &getAllocationsInfo() { return allocationsInfo_; }
   /// \returns the name of the bundle, to be used for filename when saving.
   llvm::StringRef getBundleName() const;
-  /// Set the name of the bundle.
+  /// Set the name of the bundle (name is automatically legalized).
   void setBundleName(const std::string &name);
   /// \returns the name of the main entry point.
   /// When JITting, it will be "main". In case of bundling it will be the name
   /// of the bundle.
   std::string getMainEntryName() const;
-  /// Set the name of the main entry point.
+  /// Set the name of the main entry point (name is automatically legalized).
   void setMainEntryName(std::string name);
   /// Creates an LLVM module, the entry function, etc.
   virtual void initCodeGen();

@@ -138,8 +138,10 @@ private:
   TensorPool *tensorPool_{nullptr};
 
   /// The device residency info accosiated with the tensor.
-  std::shared_ptr<DeviceResidencyInfo> residencyInfoP_{
-      new DeviceResidencyInfo()};
+  DeviceResidencyInfo *deviceResidency_{nullptr};
+
+  /// If this tensor owns the DeviceResidencyInfo.
+  bool ownsDeviceResidency_{false};
 
   /// Size in bytes of the unpadded region memory. This is useful  communicating
   /// the actual size of the data, this allows for copying only inputs and not
@@ -315,6 +317,8 @@ public:
         type_(*ty), isUnowned_{false}, unpaddedSize_{unpaddedSize} {
     // Mark as unowned.
     isUnowned_ = true;
+    // We do want DeviceResidency however, since there is no owning Glow Tensor.
+    resetDeviceInfo();
   }
 
   /// Allocate and initialize a new integer tensor with \p scale and \p offset.
@@ -369,7 +373,7 @@ public:
     unownedTensor.isUnowned_ = true;
     unownedTensor.type_ = Type::newShape(getType(), dims);
     unownedTensor.unpaddedSize_ = unpaddedSize_;
-    unownedTensor.residencyInfoP_ = residencyInfoP_;
+    unownedTensor.deviceResidency_ = deviceResidency_;
     if (offsets.size() == 0) {
       assert(actualSize() == unownedTensor.actualSize() &&
              "The size of the unowned tensor "
@@ -421,6 +425,7 @@ public:
       PseudoRNG rng;
       init(InitKind::Broadcast, GLOW_DEBUG_TENSOR_INIT, rng);
 #endif
+      resetDeviceInfo();
       return;
     }
 
@@ -431,6 +436,9 @@ public:
 
     // We are allocating memory specifically for this tensor, thus, it owns it.
     isUnowned_ = false;
+
+    // We are allocating memory on the host so it is not device resident.
+    resetDeviceInfo();
 
     // Note: zero-dimensional tensors have size 1.
     assert(size() > 0 && "Tensors must always have positive size.");
@@ -445,14 +453,24 @@ public:
   /// Releases the data buffer and sets the unOwned flag to true. This is useful
   /// for keeping metadata around but not the actual contents.
   void release() {
-    if (!isUnowned())
+    if (!isUnowned()) {
       alignedFree(getData());
+    }
+    if (ownsDeviceResidency_) {
+      delete deviceResidency_;
+      ownsDeviceResidency_ = false;
+    }
 
     isUnowned_ = true;
   }
   ~Tensor() {
     if (!isUnowned()) {
       alignedFree(getData());
+    }
+
+    if (ownsDeviceResidency_) {
+      delete deviceResidency_;
+      ownsDeviceResidency_ = false;
     }
   }
 
@@ -463,7 +481,8 @@ public:
     std::swap(isUnowned_, other.isUnowned_);
     std::swap(tensorPool_, other.tensorPool_);
     std::swap(unpaddedSize_, other.unpaddedSize_);
-    std::swap(residencyInfoP_, other.residencyInfoP_);
+    std::swap(deviceResidency_, other.deviceResidency_);
+    std::swap(ownsDeviceResidency_, other.ownsDeviceResidency_);
   }
 
   /// Move assignment operator.
@@ -473,7 +492,8 @@ public:
     std::swap(isUnowned_, other.isUnowned_);
     std::swap(tensorPool_, other.tensorPool_);
     std::swap(unpaddedSize_, other.unpaddedSize_);
-    std::swap(residencyInfoP_, other.residencyInfoP_);
+    std::swap(deviceResidency_, other.deviceResidency_);
+    std::swap(ownsDeviceResidency_, other.ownsDeviceResidency_);
     return *this;
   }
 
@@ -715,7 +735,9 @@ public:
   char *getUnsafePtr() const { return getData(); }
 
   /// \returns true if tensor data is stored on a device
-  bool isDeviceResident() const { return residencyInfoP_->isDeviceResident(); }
+  bool isDeviceResident() const {
+    return deviceResidency_ && deviceResidency_->isDeviceResident();
+  }
 
   /// Update device residency info with new device manager and context
   void moveToDevice(DeviceTensorTransferManager *deviceManager,
@@ -725,27 +747,44 @@ public:
   /// associated device memory.
   void ensureOnHost();
 
+  /// Updates contents of a device resident Tensor with the data from \p t
+  /// without copying its contents to host.
+  void copyRawToDevice(const Tensor *t);
+
   /// \returns the pointer to the device manager where the tensor resides.
   DeviceTensorTransferManager *getDeviceManager() const {
-    assert(residencyInfoP_->isDeviceResident() &&
+    assert(deviceResidency_ != nullptr && "DeviceResidencyInfo must exist");
+    assert(deviceResidency_->isDeviceResident() &&
            "Tensor must be device resident");
-    return residencyInfoP_->getDeviceManager();
+    return deviceResidency_->getDeviceManager();
   }
 
   /// \returns the pointer to the location context of where the tensor resides.
   void *getLocationContext() const {
-    assert(residencyInfoP_->isDeviceResident() &&
+    assert(deviceResidency_ != nullptr && "DeviceResidencyInfo must exist");
+    assert(deviceResidency_->isDeviceResident() &&
            "Tensor must be device resident");
-    return residencyInfoP_->getLocationContext();
+    return deviceResidency_->getLocationContext();
+  }
+
+  void resetDeviceInfo() {
+    if (deviceResidency_ && ownsDeviceResidency_) {
+      deviceResidency_->clear();
+      return;
+    }
+
+    deviceResidency_ = new DeviceResidencyInfo();
+    ownsDeviceResidency_ = true;
   }
 
   /// Clears DeviceResidencyInfo.
   /// Note that this does not affect the associated DeviceManager or device
   /// memory.
   void clearDeviceResidency() {
-    assert(residencyInfoP_->isDeviceResident() &&
+    assert(deviceResidency_ != nullptr && "DeviceResidencyInfo must exist");
+    assert(deviceResidency_->isDeviceResident() &&
            "Tensor must be device resident");
-    residencyInfoP_->clear();
+    deviceResidency_->clear();
   }
 
   /// \return a new handle that points and manages this tensor.
@@ -921,6 +960,23 @@ public:
   }
 };
 
+/// Helper which \returns the flattened 1D offset given \p indices into a tensor
+/// with \p strides.
+inline size_t getFlattenedOffset(llvm::ArrayRef<dim_t> strides,
+                                 llvm::ArrayRef<dim_t> indices) {
+  assert(indices.size() <= strides.size() && "Invalid number of indices");
+  // The loop below can be rewritten using std::inner_product. Unfortunately
+  // std::inner_product does not optimize very well and loops that use this
+  // method don't get vectorized. Don't change this loop without benchmarking
+  // the program on a few compilers.
+  size_t index = 0;
+  for (size_t i = 0, e = indices.size(); i < e; i++) {
+    index += size_t(strides[i]) * size_t(indices[i]);
+  }
+
+  return index;
+}
+
 /// A class that provides indexed access to a tensor. This class has value
 /// semantics and it's copied around. One of the reasons for making this class
 /// value semantics is to allow efficient index calculation that the compiler
@@ -975,17 +1031,8 @@ public:
   /// padding elements, meaning that it's possible to get an index pointing at
   /// data, added to meet alignment requirements.
   size_t getElementPtr(llvm::ArrayRef<dim_t> indices) const {
-    assert(indices.size() <= numDims_ && "Invalid number of indices");
-    // The loop below can be rewritten using std::inner_product. Unfortunately
-    // std::inner_product does not optimize very well and loops that use this
-    // method don't get vectorized. Don't change this loop without benchmarking
-    // the program on a few compilers.
-    size_t index = 0;
-    for (size_t i = 0, e = indices.size(); i < e; i++) {
-      index += size_t(sizeIntegral_[i]) * size_t(indices[i]);
-    }
-
-    return index;
+    return getFlattenedOffset(llvm::makeArrayRef(sizeIntegral_, numDims_),
+                              indices);
   }
 
   /// \returns the value of the n'th dimension \p dim, for the index \p idx.

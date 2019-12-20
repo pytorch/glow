@@ -62,6 +62,10 @@ public:
   /// Collects constants for runtime.
   void collectConstants(const Module *module) override;
 
+  /// Add a constant to the function, this is used for loading static
+  /// placeholders.
+  void addConstant(std::string name, Tensor *T);
+
   /// Get reference to IR function.
   IRFunction *getIR() { return F_.get(); }
 

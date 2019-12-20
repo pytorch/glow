@@ -171,18 +171,6 @@ public:
 /// has_getFusedActivation that looks for said method.
 CLASS_CONTAINS_METHOD(getFusedActivation)
 
-/// If \p PH is an output placeholder in the Function \p F,
-/// \returns true.
-/// This is determined by checking if the PH has a user which uses the PH as an
-/// overwritten input.
-bool isOutput(const Placeholder *PH, const Function &F);
-
-/// If \p PH is an input placeholderin the Function \p F,
-/// \returns true.
-/// This is determined by checking if the PH is the input to a saveNode or is
-/// used by a non saveNode.
-bool isInput(const Placeholder *PH, const Function &F);
-
 /// If \p PH is an output placeholder in the IRFunction \p F,
 /// \returns true.
 /// This is determined by checking if the PH has weights which are referenced by

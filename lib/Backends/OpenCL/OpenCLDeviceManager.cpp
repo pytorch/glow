@@ -241,7 +241,7 @@ Error OpenCLDeviceManager::init() {
   commandQueuePool_.setContext(context_);
   commandQueuePool_.setDevice(deviceId_);
 
-  Stats()->incrementCounter(kDevicesUsedOpenCL);
+  statsExporterRegistry_->incrementCounter(kDevicesUsedOpenCL);
   exportMemoryCounters();
 
   threads::getThreadId();
@@ -259,7 +259,7 @@ Error OpenCLDeviceManager::init() {
 OpenCLDeviceManager::~OpenCLDeviceManager() {
   clReleaseContext(context_);
   buffers_.clear();
-  Stats()->incrementCounter(kDevicesUsedOpenCL, -1);
+  statsExporterRegistry_->incrementCounter(kDevicesUsedOpenCL, -1);
   zeroMemoryCounters();
 }
 
@@ -650,7 +650,7 @@ void OpenCLDeviceManager::translateTraceEvents(
         // Convert into usec and move into steady_clock domain.
         auto timestamp = (timeEnd / 1000) + tsOffset;
 
-        handle.at({ev->startIndex, 0}) = timestamp;
+        handle.at({(dim_t)ev->startIndex, 0}) = timestamp;
         traceEvents.push_back({ev->name,
                                TraceLevel::DEBUG,
                                timestamp,

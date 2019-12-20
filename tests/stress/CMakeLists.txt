@@ -14,6 +14,7 @@ add_executable(ParameterSweepTest
                ParameterSweepTest.cpp)
 target_link_libraries(ParameterSweepTest
                       PRIVATE
+                        Backends
                         BackendTestUtils
                         ExecutionEngine
                         glog::glog

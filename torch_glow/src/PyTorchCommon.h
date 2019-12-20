@@ -26,11 +26,21 @@
 
 namespace glow {
 
-extern bool GlowCompilePyTorchModule;
+/// For Glow: -128 <= orig_fp32/scale_1 + offset_1 <= 127
+/// For PyTorch: 0 <= orig_fp32/scale_2 + offset_2 <= 255
+/// Therefore, we can make scale_1 == scale_2, and offset_1 = offset2 - 128
+const int32_t OFFSETSHIFT = 128;
+
 /// Various settings to be used by code that loads PyTorch models. There should
 /// only be one of these and it should be obtained by calling
 /// getPyTorchLoaderSettings().
 struct PyTorchLoaderSettings {
+  /// This should be used with CachingGraphRunner::warmCache. When this flag is
+  /// enabled, it assumes the glow graph is compiled ahead of time instead of
+  /// at PyTorch JIT runtime. And the registered glow operator will run
+  /// the precompiled results directly.
+  bool preCompilePyTorchModule = false;
+
   /// Whether or not run the custom pass that fuses jit nodes into a glow node.
   bool fusionPassEnabled = false;
 
@@ -87,6 +97,11 @@ glow::Tensor ptTensorToGlowTensor(const at::Tensor &ptTensor);
 /// Given a Glow Type \p glowType, \returns an empty PyTorch Tensor with a
 /// matching type.
 at::Tensor glowTypeToEmptyPTTensor(const glow::Type &glowType);
+
+/// Given a Glow Tensor \p glowTensor, \returns a PyTorch Tensor with the same
+/// type, shape and content.
+at::Tensor glowTensorToPTTensor(const glow::Tensor &glowTensor,
+                                const at::ScalarType &torch_type);
 
 } // namespace glow
 

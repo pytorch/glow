@@ -28,8 +28,9 @@ using namespace glow;
 
 /*
  * This class implements an SLS microbenchmark. There are a number of
- * parallel FusedRowwiseQuantizedSparseLengthsWeightedSum or
- * FusedRowwiseQuantizedSparseLengthsSum nodes which are created.
+ * parallel FusedRowwiseQuantizedSparseLengthsWeightedSum,
+ * FusedRowwiseQuantizedSparseLengthsSum, or SparseLengthsSum nodes which are
+ * created.
  *
  * Microbenchmarks are generally useful for understanding performance
  * through targeted experiementation and are not representative of
@@ -48,7 +49,8 @@ class SLSBench : public Benchmark {
   std::vector<std::vector<Tensor>> weightsReal_;
   size_t asyncLaunchSize_;
   size_t numSLSNodes_;
-  const char *weightedStr_;
+  const char *slsKindStr_;
+  const char *sortedStr_;
   const char *backendStr_;
   ElemKind dtype_;
   ElemKind fusedDtype_;
@@ -59,7 +61,7 @@ public:
   SLSBench(dim_t batchSize_, dim_t numIndicesPerBatch_,
            dim_t numIndicesPerBatchPad_, dim_t numTableEntries_,
            dim_t numElementsPerRow_, size_t asyncLaunchSize_,
-           size_t numSLSNodes_, const char *weightedStr_,
+           size_t numSLSNodes_, const char *slsKindStr_, const char *sortedStr_,
            const char *backendStr_, const char *dtypeStr_,
            const char *devId_ = nullptr)
       : batchSize_(batchSize_), numIndicesPerBatch_(numIndicesPerBatch_),
@@ -67,7 +69,8 @@ public:
         numTableEntries_(numTableEntries_),
         numElementsPerRow_(numElementsPerRow_),
         asyncLaunchSize_(asyncLaunchSize_), numSLSNodes_(numSLSNodes_),
-        weightedStr_(weightedStr_), backendStr_(backendStr_), devId_(devId_) {
+        slsKindStr_(slsKindStr_), sortedStr_(sortedStr_),
+        backendStr_(backendStr_), devId_(devId_) {
     elementSize_ = 2;
     if (std::string(dtypeStr_) == "Float16") {
       dtype_ = ElemKind::Float16Ty;
@@ -79,6 +82,11 @@ public:
       elementSize_ = 4;
     } else {
       llvm_unreachable("Unhandled ElemKind.");
+    }
+    if (!((std::string(slsKindStr_) == "Weighted") ||
+          (std::string(slsKindStr_) == "Unweighted") ||
+          (std::string(slsKindStr_) == "UnfusedWeighted"))) {
+      llvm_unreachable("Unhandled SLSKind.");
     }
   }
 
@@ -114,6 +122,14 @@ public:
                            {numIndicesPerBatch_ * batchSize_});
         indicesReal.getHandle<int64_t>().randomize(0, numTableEntries_ - 1,
                                                    mod->getPRNG());
+        // Sort each segment
+        if (std::string(sortedStr_) == "Sorted") {
+          int64_t *indicesRealPtr = (int64_t *)indicesReal.getUnsafePtr();
+          for (dim_t b = 0; b < batchSize_; b++) {
+            std::sort(indicesRealPtr + b * numIndicesPerBatch_,
+                      indicesRealPtr + (b + 1) * numIndicesPerBatch_);
+          }
+        }
         indicesReal_[i].push_back(std::move(indicesReal));
 
         if (dtype_ == ElemKind::FloatTy) {
@@ -134,6 +150,19 @@ public:
     for (dim_t slsNodeId = 0; slsNodeId < numSLSNodes_; slsNodeId++) {
       Tensor data(ElemKind::FloatTy, {numTableEntries_, numElementsPerRow_});
       data.getHandle().clear(1.0f);
+
+      Constant *dataConstant = nullptr;
+      if (std::string(slsKindStr_) == "UnfusedWeighted") {
+        Tensor dataConstantTensor(dtype_,
+                                  {numTableEntries_, numElementsPerRow_});
+        if (dtype_ == ElemKind::FloatTy) {
+          dataConstantTensor.getHandle<float>().clear(1.0f);
+        } else {
+          dataConstantTensor.getHandle<float16_t>().clear(1.0f);
+        }
+        dataConstant = mod->createConstant(
+            "SLSData_" + std::to_string(slsNodeId), dataConstantTensor);
+      }
 
       weights[slsNodeId] =
           mod->createPlaceholder(dtype_, {numIndicesPerBatchPad_ * batchSize_},
@@ -170,15 +199,19 @@ public:
             weights[slsNodeId], std::move(weightsPartial));
       }
 
-      Node *R;
-      if (std::string(weightedStr_) == "Unweighted") {
+      Node *R = nullptr;
+      if (std::string(slsKindStr_) == "Unweighted") {
         R = fn->createFusedRowwiseQuantizedSparseLengthsSum(
-            "RQSLWS_" + std::to_string(slsNodeId), data, indices[slsNodeId],
+            "RQSLS_" + std::to_string(slsNodeId), data, indices[slsNodeId],
             lengths[slsNodeId], fusedDtype_, false);
-      } else {
+      } else if (std::string(slsKindStr_) == "Weighted") {
         R = fn->createFusedRowwiseQuantizedSparseLengthsWeightedSum(
             "RQSLWS_" + std::to_string(slsNodeId), data, weights[slsNodeId],
             indices[slsNodeId], lengths[slsNodeId], fusedDtype_, false);
+      } else {
+        R = fn->createSparseLengthsWeightedSum(
+            "SLS_" + std::to_string(slsNodeId), dataConstant,
+            weights[slsNodeId], indices[slsNodeId], lengths[slsNodeId]);
       }
 
       S[slsNodeId] = fn->createSave("save_" + std::to_string(slsNodeId), R);
@@ -190,6 +223,7 @@ public:
       }
     } // For each slsNodeId
 
+    fn->dumpDAG("slsbench.dot");
     CompilationContext ctx;
     EXIT_ON_ERR(hostManager_->addNetwork(std::move(mod), ctx));
   }
@@ -229,16 +263,25 @@ public:
   double gbytes() const {
 
     // Embedding data
-    double input_gbytes = (numSLSNodes_ * batchSize_ * numIndicesPerBatch_ *
-                           (numElementsPerRow_ + 2 * elementSize_)) /
-                          1e9;
+    double input_gbytes = 0.0;
+    if (std::string(slsKindStr_) == "UnfusedWeighted") {
+      input_gbytes += (numSLSNodes_ * batchSize_ * numIndicesPerBatch_ *
+                       (numElementsPerRow_ * elementSize_)) /
+                      1e9;
+    } else {
+      input_gbytes += (numSLSNodes_ * batchSize_ * numIndicesPerBatch_ *
+                       (numElementsPerRow_ + 2 * elementSize_)) /
+                      1e9;
+    }
+
     // + indices
     input_gbytes +=
         (numSLSNodes_ * batchSize_ * numIndicesPerBatch_ * sizeof(int32_t)) /
         1e9;
 
     // + weights
-    if (std::string(weightedStr_) != "Unweighted") {
+    if ((std::string(slsKindStr_) == "Weighted") ||
+        (std::string(slsKindStr_) == "UnfusedWeighted")) {
       input_gbytes +=
           (numSLSNodes_ * batchSize_ * numIndicesPerBatch_ * elementSize_) /
           1e9;
@@ -261,11 +304,12 @@ int main(int argc, char *argv[]) {
          "numIndicesPerBatchPad(Int) numTableEntries(Int) "
          "numElementsPerRow(int) numReps(Int) "
          "numAsyncLaunches(Int) numSLSNodes(Int) "
-         "weightedStr(\"Weighted\"|\"Unweighted\") backendStr(String) "
+         "slsKindStr(\"Weighted\"|\"Unweighted\"|\"UnfusedWeighted\") "
+         "sortedStr(\"Sorted\"|\"Unsorted\") backendStr(String) "
          "dtypeStr(\"Float16\"|\"Float32\") dev_id(Int)\n");
   printf("\n");
 
-  assert(argc == 12 || argc == 13);
+  assert(argc == 13 || argc == 14);
   size_t batchSize = atoi(argv[1]);
   size_t numIndicesPerBatch = atoi(argv[2]);
   size_t numIndicesPerBatchPad = atoi(argv[3]);
@@ -274,32 +318,34 @@ int main(int argc, char *argv[]) {
   size_t numReps = atoi(argv[6]);
   size_t numAsyncLaunches = atoi(argv[7]);
   size_t numSLSNodes = atoi(argv[8]);
-  const char *weightedStr = argv[9];
-  const char *backendStr = argv[10];
-  const char *dtypeStr = argv[11];
+  const char *slsKindStr = argv[9];
+  const char *sortedStr = argv[10];
+  const char *backendStr = argv[11];
+  const char *dtypeStr = argv[12];
   char *dev_id = nullptr;
 
-  if (argc > 12) {
-    dev_id = argv[12];
+  if (argc > 13) {
+    dev_id = argv[13];
     printf("Setting backend device: \"%s\"\n", dev_id);
   }
   assert(numReps > 0);
 
   SLSBench b(batchSize, numIndicesPerBatch, numIndicesPerBatchPad,
              numTableEntries, numElementsPerRow, numAsyncLaunches, numSLSNodes,
-             weightedStr, backendStr, dtypeStr, dev_id);
+             slsKindStr, sortedStr, backendStr, dtypeStr, dev_id);
   auto times = bench(&b, numReps);
   printf("_,benchName,_,batchSize,numIndicesPerBatch,numIndicesPerBatchPad,"
          "numTableEntries,"
-         "numElementsPerRow,numReps,numAsyncLaunches,numSLSNodes,weightedStr,"
+         "numElementsPerRow,numReps,numAsyncLaunches,numSLSNodes,slsKindStr,"
          "backendStr,dtypeStr,runtime,gbytesPerSec\n");
   for (auto t : times) {
-    printf("BenchResult,SLSBench,SW,%zu,%zu,%zu,%zu,%zu,%zu,%zu,%zu,%s,%s,%s,%"
-           "f,%f\n",
-           batchSize, numIndicesPerBatch, numIndicesPerBatchPad,
-           numTableEntries, numElementsPerRow, numReps, numAsyncLaunches,
-           numSLSNodes, weightedStr, backendStr, dtypeStr, t / numAsyncLaunches,
-           b.gbytes() * numAsyncLaunches / t);
+    printf(
+        "BenchResult,SLSBench,SW,%zu,%zu,%zu,%zu,%zu,%zu,%zu,%zu,%s,%s,%s,%s,%"
+        "f,%f\n",
+        batchSize, numIndicesPerBatch, numIndicesPerBatchPad, numTableEntries,
+        numElementsPerRow, numReps, numAsyncLaunches, numSLSNodes, slsKindStr,
+        sortedStr, backendStr, dtypeStr, t / numAsyncLaunches,
+        b.gbytes() * numAsyncLaunches / t);
   }
   double min = *(std::min_element(times.begin(), times.end()));
   size_t midElt = times.size() / 2;
@@ -309,14 +355,16 @@ int main(int argc, char *argv[]) {
   double min_runtime = min / ((double)numAsyncLaunches);
   printf("_,benchName,_,batchSize,numIndicesPerBatch,numIndicesPerBatchPad,"
          "numTableEntries,"
-         "numElementsPerRow,numReps,numAsyncLaunches,numSLSNodes,weightedStr,"
-         "backendStr,dtypeStr,medianRuntime,minRuntime,medianGbytesPerSec,"
+         "numElementsPerRow,numReps,numAsyncLaunches,numSLSNodes,slsKindStr,"
+         "sortedStr,backendStr,dtypeStr,medianRuntime,minRuntime,"
+         "medianGbytesPerSec,"
          "maxGbytesPerSec\n");
-  printf("BenchSummary,SLSBench,SW,%zu,%zu,%zu,%zu,%zu,%zu,%zu,%zu,%s,%s,%s,%f,"
-         "%f,%f,%"
-         "f\n",
-         batchSize, numIndicesPerBatch, numIndicesPerBatchPad, numTableEntries,
-         numElementsPerRow, numReps, numAsyncLaunches, numSLSNodes, weightedStr,
-         backendStr, dtypeStr, median_runtime, min_runtime,
-         b.gbytes() / median_runtime, b.gbytes() / min_runtime);
+  printf(
+      "BenchSummary,SLSBench,SW,%zu,%zu,%zu,%zu,%zu,%zu,%zu,%zu,%s,%s,%s,%s,%f,"
+      "%f,%f,%"
+      "f\n",
+      batchSize, numIndicesPerBatch, numIndicesPerBatchPad, numTableEntries,
+      numElementsPerRow, numReps, numAsyncLaunches, numSLSNodes, slsKindStr,
+      sortedStr, backendStr, dtypeStr, median_runtime, min_runtime,
+      b.gbytes() / median_runtime, b.gbytes() / min_runtime);
 }

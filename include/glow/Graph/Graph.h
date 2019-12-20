@@ -528,6 +528,15 @@ public:
 
   /// Create a row-wise quantized fully connected node. This node is only used
   /// in quantization. Args \p input and \p B are quantized in regular way, \p W
+  /// is the constant weights and is row-wise quantized using the given \p
+  /// scales and \p offsets. The output is quantized in the regular way, and its
+  /// type \p outTy is a quantized type.
+  RowwiseQuantizedFullyConnectedNode *createRowwiseQuantizedFullyConnected(
+      llvm::StringRef name, NodeValue input, Constant *W, Constant *scales,
+      Constant *offsets, NodeValue B, TypeRef outTy);
+
+  /// Create a row-wise quantized fully connected node. This node is only used
+  /// in quantization. Args \p input and \p B are quantized in regular way, \p W
   /// is the constant weights and will be row-wise quantized during node
   /// creation time. The output is quantized in the regular way, and its type
   /// \p outTy is a quantized type. if \p transposeWeight is true, \p W need to
@@ -960,7 +969,7 @@ public:
   /// Result. If \p useFP16Accumulation, then internal arithmetic will use FP16
   /// accumulation; otherwise defaults to FP32.
   RowwiseQuantizedSparseLengthsWeightedSumNode *
-  createRowwiseQuantizedSparseLengthsSum(llvm::StringRef name, Constant *data,
+  createRowwiseQuantizedSparseLengthsSum(llvm::StringRef name, Storage *data,
                                          Constant *scales, Constant *offsets,
                                          NodeValue indices, NodeValue lengths,
                                          ElemKind precision = ElemKind::FloatTy,
@@ -979,7 +988,7 @@ public:
   /// multiplied by weights[i]. len(weights) must be equal to len(indices).
   RowwiseQuantizedSparseLengthsWeightedSumNode *
   createRowwiseQuantizedSparseLengthsWeightedSum(
-      llvm::StringRef name, Constant *data, Constant *scales, Constant *offsets,
+      llvm::StringRef name, Storage *data, Constant *scales, Constant *offsets,
       NodeValue weights, NodeValue indices, NodeValue lengths,
       ElemKind precision = ElemKind::FloatTy, bool useFP16Accumulation = false);
 
@@ -1004,7 +1013,7 @@ public:
   /// accumulation; otherwise defaults to FP32.
   FusedRowwiseQuantizedSparseLengthsSumNode *
   createFusedRowwiseQuantizedSparseLengthsSum(llvm::StringRef name,
-                                              Constant *data, NodeValue indices,
+                                              Storage *data, NodeValue indices,
                                               NodeValue lengths,
                                               bool useFP16Accumulation = false);
 
@@ -1220,7 +1229,11 @@ public:
   /// based on the \p input type.
   ClipNode *createClip(llvm::StringRef name, NodeValue input, float min,
                        float max);
-  /// @}
+
+  /// Creates and \returns a ClipNode to the min/max range of FP16 with \p name
+  /// of \p input. Result type will be implicitly set based on the \p input
+  /// type.
+  ClipNode *createClipMinMaxFP16(llvm::StringRef name, NodeValue input);
 
   /// @name The builder functions below are identical to the builder functions
   /// above except that they create nodes that use Placeholder instead of
@@ -1346,18 +1359,74 @@ public:
                   unsigned hiddenSize, unsigned outputSize,
                   std::vector<NodeValue> &outputs);
 
-  /// Definition for the activation function of an LSTM module.
-  using LstmActivation = std::function<Node *(llvm::StringRef, Node *)>;
-
-  /// Type definition for the direction of an LSTM module.
-  enum class LstmDirection {
+  /// Type definition for the direction of an RNN module (RNN, GRU, LSTM).
+  enum class RnnDirection {
     Forward,
     Reverse,
     Bidirectional,
   };
 
-  /// Create an unrolled multi-layer LSTM according to the ONNX definition. The
-  /// LSTM has the following inputs:
+  /// Definition for a lambda used to create an activation node for RNN modules.
+  using RnnActivation = std::function<Node *(llvm::StringRef, Node *)>;
+
+  /// Create an unrolled multi-layer RNN according to the ONNX definition:
+  /// https://github.com/onnx/onnx/blob/master/docs/Operators.md#RNN
+  /// The RNN has the following inputs:
+  /// - input \p X with size [S, B, ISize].
+  /// - weigts \p W with size [N, HSize, ISize].
+  /// - reccurence weights \p R with size [N, HSize, HSize].
+  /// - bias weights \p B with size [N, 2 * HSize].
+  /// - initial hidden state \p initial_h with size [N, B, HSize].
+  /// where S is the sequence length, N is the number of directions, B is the
+  /// batch size, ISize is the input size and HSize is the hidden size.
+  /// The RNN has the following outputs:
+  /// - output \p Y with size [S, N, B, HSize].
+  /// - final hidden state \p Y_h with size [N, B, HSize].
+  /// The direction of the instatiated RNN is given by \p direction. The RNN
+  /// will use the activation functions defined by the \p activations array:
+  /// - [f] in case the RNN is unidirectional (1 function).
+  /// - [f] for the forward cell followed by [f] for the reverse cell in
+  ///    case the RNN is bidirectional (4 functions).
+  /// The input \p B is optional (assumed 0 if nullptr is provided).
+  /// The names of all the nodes created are prefixed with \p namePrefix.
+  void createOnnxRNN(llvm::StringRef namePrefix, NodeValue X, NodeValue W,
+                     NodeValue R, NodeValue B, NodeValue initial_h,
+                     NodeValue &Y, NodeValue &Y_h, unsigned hiddenSize,
+                     RnnDirection direction,
+                     std::vector<RnnActivation> &activations);
+
+  /// Create an unrolled multi-layer GRU according to the ONNX definition:
+  /// https://github.com/onnx/onnx/blob/master/docs/Operators.md#GRU
+  /// The GRU has the following inputs:
+  /// - input \p X with size [S, B, ISize].
+  /// - weigts \p W with size [N, 3 * HSize, ISize].
+  /// - reccurence weights \p R with size [N, 3 * HSize, HSize].
+  /// - bias weights \p B with size [N, 6 * HSize].
+  /// - initial hidden state \p initial_h with size [N, B, HSize].
+  /// where S is the sequence length, N is the number of directions, B is the
+  /// batch size, ISize is the input size and HSize is the hidden size.
+  /// The GRU has the following outputs:
+  /// - output \p Y with size [S, N, B, HSize].
+  /// - final hidden state \p Y_h with size [N, B, HSize].
+  /// The direction of the instatiated GRU is given by \p direction. The GRU
+  /// will use the activation functions defined by the \p activations array:
+  /// - [f,g] in case the GRU is unidirectional (2 functions).
+  /// - [f,g] for the forward cell followed by [f,g] for the reverse cell in
+  ///    case the GRU is bidirectional (4 functions).
+  /// The input \p B is optional (assumed 0 if nullptr is provided).
+  /// The names of all the nodes created are prefixed with \p namePrefix.
+  /// The boolean parameter \p linearBeforeReset defines whether the reset
+  /// for the previous hidden state occurs before/after the linear expression.
+  void createOnnxGRU(llvm::StringRef namePrefix, NodeValue X, NodeValue W,
+                     NodeValue R, NodeValue B, NodeValue initial_h,
+                     NodeValue &Y, NodeValue &Y_h, unsigned hiddenSize,
+                     RnnDirection direction,
+                     std::vector<RnnActivation> &activations,
+                     bool linearBeforeReset = false);
+
+  /// Create an unrolled multi-layer LSTM according to the ONNX definition:
+  /// https://github.com/onnx/onnx/blob/master/docs/Operators.md#LSTM
+  /// The LSTM has the following inputs:
   /// - input \p X with size [S, B, ISize].
   /// - weigts \p W with size [N, 4 * HSize, ISize].
   /// - reccurence weights \p R with size [N, 4 * HSize, HSize].
@@ -1368,22 +1437,25 @@ public:
   /// where S is the sequence length, N is the number of directions, B is the
   /// batch size, ISize is the input size and HSize is the hidden size.
   /// The LSTM has the following outputs:
-  /// - output \p Y with size [S, N, B, HSize]
+  /// - output \p Y with size [S, N, B, HSize].
   /// - final hidden state \p Y_h with size [N, B, HSize].
   /// - final cell state \p Y_c with size [N, B, HSize].
   /// The direction of the instatiated LSTM is given by \p direction. The LSTM
-  /// will use the activation functions defined by \p activations which defines:
+  /// will use the activation functions defined by \p activations array:
   /// - [f,g,h] in case the LSTM is unidirectional (3 functions).
   /// - [f,g,h] for the forward cell followed by [f,g,h] for the reverse cell in
   ///    case the LSTM is bidirectional (6 functions).
   /// The inputs \p B and \p P are optional (assumed 0 if nullptr is provided).
   /// The names of all the nodes created are prefixed with \p namePrefix.
-  void createONNXLSTM(llvm::StringRef namePrefix, NodeValue X, NodeValue W,
+  /// The boolean parameter \p inputForget defines whether the input and forget
+  /// gates should be coupled (compute the input gate from the forget gate).
+  void createOnnxLSTM(llvm::StringRef namePrefix, NodeValue X, NodeValue W,
                       NodeValue R, NodeValue B, NodeValue initial_h,
                       NodeValue initial_c, NodeValue P, NodeValue &Y,
                       NodeValue &Y_h, NodeValue &Y_c, unsigned hiddenSize,
-                      LstmDirection direction,
-                      std::vector<LstmActivation> &activations);
+                      RnnDirection direction,
+                      std::vector<RnnActivation> &activations,
+                      bool inputForget = false);
   /// @}
 
   /// Create a TraceEvent in the runtime profile, which triggers collection of
@@ -1466,6 +1538,18 @@ SaveNode *getOutputSave(Function *F, Placeholder *PH);
 /// Clone \p node and its sources into \p newF using old-to-new mapping \p
 /// currToNew.
 Node *recursiveClone(Function *newF, Node *node, NodeMap &currToNew);
+
+/// If \p PH is an output placeholder in the Function \p F,
+/// \returns true.
+/// This is determined by checking if the PH has a user which uses the PH as an
+/// overwritten input.
+bool isOutput(const Placeholder *PH, const Function &F);
+
+/// If \p PH is an input placeholderin the Function \p F,
+/// \returns true.
+/// This is determined by checking if the PH is the input to a saveNode or is
+/// used by a non saveNode.
+bool isInput(const Placeholder *PH, const Function &F);
 
 /// Helper vectors for common transpose shuffles.
 #define NCHW2NHWC                                                              \

@@ -58,6 +58,15 @@ NodeBuilder &NodeBuilder::addMember(MemberType type, const std::string &name,
   return addMember(*typeInfo, name, addSetter);
 }
 
+NodeBuilder &NodeBuilder::addFusedActivation() {
+  return addMember(MEMBER_TYPE_INFO(glow::FusedActivation), "FusedActivation",
+                   /* addSetter */ true)
+      .addExtraMethod(
+          "bool hasFusedActivation() const;",
+          "bool ConvolutionNode::hasFusedActivation() const { return "
+          "getFusedActivation() != FusedActivation::NONE; }");
+}
+
 void NodeBuilder::emitMemberForwardDecls(std::ostream &os) const {
   for (const auto &mem : members_) {
     const std::string &forwardDecl = (mem.first).forwardDecl;
@@ -541,6 +550,7 @@ void NodeBuilder::emitNodeClass(std::ostream &os) const {
      << "  void setNthInput(unsigned idx, NodeValue val);\n"
      << "  llvm::StringRef getOutputName(unsigned idx) const;\n"
      << "  bool hasSideEffects() const { return " << hasSideEffects_ << "; }\n"
+     << "  bool isCanonical() const { return " << !isBackendSpecific_ << "; }\n"
      << "  bool isDataParallel() const { return " << isDataParallel_ << "; }\n"
      << "  std::string getDebugDesc() const;\n"
      << "  bool isEqual(const " << name_ << "Node &other) const;\n"
@@ -607,7 +617,7 @@ NodeBuilder &NodeBuilder::addGradient() {
   std::stringstream ss;
   ss << "\n" + name_ + "GradNode *" + name_
      << "Node::getGrad(GraphGradMapper &builder) {\n"
-     << "  auto *x = new " + name_ + "GradNode(getName()";
+     << "  auto *x = new " + name_ + "GradNode(getName().str() + \"_grad\"";
 
   if (enum_.size()) {
     ss << ", (" << name_ << "GradNode::Mode)getMode()";
