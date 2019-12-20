@@ -107,6 +107,8 @@ class NodeToFunctionMap {
 
   using PartitionCostMap = llvm::DenseMap<Function *, GraphMemInfo>;
 
+  using BackendHintsMap = llvm::DenseMap<Function *, BackendHints>;
+
   /// Newly-created partitions.
   FunctionList functions_;
 
@@ -119,6 +121,9 @@ class NodeToFunctionMap {
 
   /// Map of sub-functions to their memory consumption.
   PartitionCostMap partitionCost_;
+
+  /// BackendHints for this sub-function
+  BackendHintsMap backendHints_;
 
   /// Map of partitions and the logicalDeviceID. The partitions with the same
   /// logcialDeviceID will be assigned into the same physical device.
@@ -186,6 +191,7 @@ public:
     functions_.remove(func);
     functionToBackendName_.erase(func);
     partitionCost_.erase(func);
+    backendHints_.erase(func);
   }
 
   /// Set the memory consumption \p cost for a partition \p func.
@@ -199,6 +205,19 @@ public:
       return GraphMemInfo{};
     }
     return partitionCost_.find(func)->second;
+  }
+
+  /// Set the backend hints for a partition \p func.
+  void setBackendHints(Function *func, BackendHints hints) {
+    backendHints_[func] = hints;
+  }
+
+  /// Get the backend hints for a partition \p func.
+  BackendHints getBackendHints(Function *func) const {
+    if (backendHints_.find(func) == backendHints_.end()) {
+      return BackendHints{};
+    }
+    return backendHints_.find(func)->second;
   }
 };
 

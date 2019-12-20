@@ -105,6 +105,14 @@ struct OptimizationOptions {
   /// The number of bytes to allocate per card for SLS tables when using
   /// the SparseNN partitioning scheme
   unsigned int sparseNNPartitioningSchemeSLSTableKBytesPerCard{0};
+
+  /// The number of cores to assign to SLS partition when using SparseNN
+  /// partitioning scheme
+  unsigned int sparseNNPartitioningSchemeNumCoresSLS{1};
+
+  /// The number of cores to assign to non-SLS partition when using SparseNN
+  /// partitioning scheme
+  unsigned int sparseNNPartitioningSchemeNumCoresOther{1};
 };
 
 /// Context for compilation.

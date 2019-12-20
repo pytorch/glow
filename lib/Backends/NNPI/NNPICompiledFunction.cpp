@@ -65,9 +65,19 @@ Error NNPICompiledFunction::updateCompilationConfigFromOptions(
 }
 
 Error NNPICompiledFunction::compile(Function *F, const BackendOptions &opts) {
-  compilationOptions_ = NNPICompilationOptions(opts.backendSpecificOpts);
+  BackendOptions newOpts = opts;
+  if (opts.backendHints.executionUnits) {
+    LOG(INFO) << " Setting backendSpecificOpts cores for network: "
+              << F->getName().str() << " to "
+              << std::to_string(opts.backendHints.executionUnits) << " cores ";
+
+    newOpts.backendSpecificOpts["IceCores"] =
+        std::to_string(opts.backendHints.executionUnits);
+  }
+
+  compilationOptions_ = NNPICompilationOptions(newOpts.backendSpecificOpts);
   NNPIImporter importer(compilationOptions_);
-  network_ = importer.importFunction(F, opts);
+  network_ = importer.importFunction(F, newOpts);
   LOG_INVALID_HANDLE_RETURN_LLVMERROR(network_, "Failed to import function");
 
   // Apply optimizations.
