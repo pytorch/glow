@@ -63,6 +63,16 @@ bool ProtobufLoader::isConstantFoldable(llvm::ArrayRef<NodeValue> inputs,
   return true;
 }
 
+Placeholder *
+ProtobufLoader::getStaticPlaceholderByNameOrNull(llvm::StringRef name) const {
+  auto it = nodeValueByName_.find(name);
+  if (it == nodeValueByName_.end()) {
+    return nullptr;
+  }
+  auto *res = llvm::dyn_cast<Placeholder>(it->second.getNode());
+  return (res && res->isStatic()) ? res : nullptr;
+}
+
 Constant *ProtobufLoader::getConstantByNameOrNull(llvm::StringRef name) const {
   auto it = nodeValueByName_.find(name);
   if (it == nodeValueByName_.end()) {

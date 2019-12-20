@@ -143,6 +143,8 @@ protected:
   /// name.
   NodeValue getNodeValueByNameOrNullNodeValue(llvm::StringRef name) const;
 
+  Placeholder *getStaticPlaceholderByNameOrNull(llvm::StringRef name) const;
+
   /// \returns the Constant registered with the given \p name and nullptr if
   /// no Constant has been registered with this name.
   Constant *getConstantByNameOrNull(llvm::StringRef name) const;
