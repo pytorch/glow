@@ -786,6 +786,12 @@ Partitioner::partitionFromConfig(const PartitionConfig &partitionConfig,
       partitionConfig.numOfPartitions == partitionConfig.partitionNames.size())
       << "Invalid user-defined partition config.";
 
+  if (partitionConfig.backendHints.size()) {
+    DCHECK(partitionConfig.numOfPartitions ==
+           partitionConfig.backendHints.size())
+        << "Invalid user-defined partition config (backendHints).";
+  }
+
   NodeToFunctionMap partitionMap;
   std::vector<Function *> funcList;
   std::unordered_set<size_t> unused;
@@ -824,6 +830,14 @@ Partitioner::partitionFromConfig(const PartitionConfig &partitionConfig,
     for (auto &node : unMapped) {
       partitionMap.add(node, funcList[partitionID]);
       nodesSets[partitionID].insert(node);
+    }
+  }
+
+  // Set backend hints if they exist
+  if (partitionConfig.backendHints.size()) {
+    for (size_t i = 0; i < partitionConfig.numOfPartitions; i++) {
+      auto func = funcList[i];
+      partitionMap.setBackendHints(func, partitionConfig.backendHints[i]);
     }
   }
 
@@ -1038,6 +1052,10 @@ Expected<DAGListTy> Partitioner::partitionSparseNN(CompilationContext &cctx) {
                                              std::to_string(p));
     partitionConfig.backendNames.push_back(deviceInfo_[p].backendName);
     partitionConfig.logicalIDs.push_back({(unsigned int)p});
+    BackendHints backendHints;
+    backendHints.executionUnits =
+        cctx.optimizationOpts.sparseNNPartitioningSchemeNumCoresSLS;
+    partitionConfig.backendHints.push_back(backendHints);
     allLogicalIDs.push_back(p);
   }
 
@@ -1045,6 +1063,10 @@ Expected<DAGListTy> Partitioner::partitionSparseNN(CompilationContext &cctx) {
   partitionConfig.partitionNames.push_back(std::string("NonSLSPartition_"));
   partitionConfig.backendNames.push_back(deviceInfo_[0].backendName);
   partitionConfig.logicalIDs.push_back(allLogicalIDs);
+  BackendHints backendHints;
+  backendHints.executionUnits =
+      cctx.optimizationOpts.sparseNNPartitioningSchemeNumCoresOther;
+  partitionConfig.backendHints.push_back(backendHints);
 
   // Map SLS nodes to their partitions
   for (auto &table : slsTables) {
