@@ -1361,6 +1361,10 @@ Error Caffe2ModelLoader::loadInputsWithTensorProtoType(
     return Error::success();
   }
 
+  if (getStaticPlaceholderByNameOrNull(in.name())) {
+    return Error::success();
+  }
+
   LoadWeightResult loadRes;
   if (auto resOrErr = createAndSetTensorType(in)) {
     loadRes = std::move(*resOrErr);
