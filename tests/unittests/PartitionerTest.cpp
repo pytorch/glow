@@ -526,6 +526,50 @@ static void createSimpleModule(Module &mod) {
   (void)save;
 }
 
+static void createSimpleSparseNNModule(Module &mod) {
+  mod.clear();
+  auto *F = mod.createFunction("test");
+
+  // Create SLS inputs
+  std::vector<NodeValue> slsOutputs;
+  dim_t tableWidth = 16;
+  dim_t numIndices = 80;
+  dim_t batchSize = 32;
+  dim_t tableEntries = 10;
+
+  // Create SLS portion
+  for (int table = 0; table < 5; table++) {
+    Tensor data(ElemKind::FloatTy, {tableEntries, tableWidth});
+    auto indices = mod.createPlaceholder(
+        ElemKind::Int64ITy, {numIndices * batchSize}, "indices", false);
+    auto weights = mod.createPlaceholder(
+        ElemKind::FloatTy, {numIndices * batchSize}, "weights", false);
+    auto lengths = mod.createPlaceholder(ElemKind::Int32ITy, {batchSize},
+                                         "lengths", false);
+    auto output = F->createFusedRowwiseQuantizedSparseLengthsWeightedSum(
+        "SLS", data, weights, indices, lengths, ElemKind::UInt8FusedQTy, false);
+    slsOutputs.push_back(output);
+  }
+
+  // Create Concat
+  auto *concat = F->createConcat("concat", slsOutputs, 1);
+  Node *cur = (Node *)concat;
+
+  // Create FC portion
+  for (dim_t layer = 0; layer < 4; layer++) {
+    Tensor FCWeights(ElemKind::FloatTy, {5 * tableWidth, 5 * tableWidth});
+    Constant *weights = mod.createConstant("FCWeights", FCWeights);
+    Tensor FCBias(ElemKind::FloatTy, {5 * tableWidth});
+    Constant *bias = mod.createConstant("FCBias", FCBias);
+
+    auto *FC = F->createFullyConnected("FC", cur, weights, bias);
+    cur = (Node *)FC;
+  }
+
+  auto *save = F->createSave("ret", cur);
+  (void)save;
+}
+
 /// \returns true if there is \p nodeKind kind of nodes in \p func.
 static bool findNodeInFunction(const Function *func,
                                const Kinded::Kind nodeKind) {
@@ -535,6 +579,62 @@ static bool findNodeInFunction(const Function *func,
     }
   }
   return false;
+}
+
+/// To check if the generated DAG is correct for the SparseNN Partiton
+/// unnittests. The network used for check is generated from function static
+/// void createSimpleSparseNNModule(Module &mod).
+static void sparseNNPartitionValidation(const DAGListTy &dagList, Module &mod) {
+  int numOfCPUBackends = 0;
+  int numOfSLSNodes = 0;
+  int numOfFCNodes = 0;
+  for (auto &dag : dagList) {
+    for (auto &node : dag.nodes) {
+      if (node->backendName == "CPU") {
+        numOfCPUBackends++;
+        auto func = mod.getFunction(node->name);
+        if (findNodeInFunction(
+                func,
+                Kinded::Kind::
+                    FusedRowwiseQuantizedSparseLengthsWeightedSumNodeKind) ==
+            true) {
+          numOfSLSNodes++;
+          EXPECT_EQ(node->logicalDevices.size(), 1);
+        } else {
+          numOfFCNodes++;
+          EXPECT_EQ(node->logicalDevices.size(), 3);
+        }
+      }
+    }
+  }
+  // 4 partitions (3 SLS + 1 FC)
+  EXPECT_EQ(numOfCPUBackends, 4);
+  EXPECT_EQ(numOfSLSNodes, 3);
+  EXPECT_EQ(numOfFCNodes, 1);
+}
+
+/// Test using user-defined backends for SparseNN partition.
+TEST_F(PartitionerTest, SimpleSparseNNPartitioning) {
+  createSimpleSparseNNModule(mod_);
+  BackendWithoutSub backend1, backend2, backend3;
+  std::vector<Backend *> backends;
+  backends.emplace_back(&backend1);
+  backends.emplace_back(&backend2);
+  backends.emplace_back(&backend3);
+  std::vector<DeviceInfo> devices = {
+      {400000, "CPU"}, {400000, "CPU"}, {400000, "CPU"}};
+  Partitioner partitioner(&mod_, devices, backends, /* saturateHost */ false);
+  CompilationContext cctx;
+  cctx.optimizationOpts.useSparseNNPartitioningScheme = true;
+  cctx.optimizationOpts.sparseNNPartitioningSchemeNumCards = 3;
+  cctx.optimizationOpts.sparseNNPartitioningSchemeSLSTableKBytesPerCard = 200;
+  auto dagList = partitioner.partition(cctx);
+  ASSERT_TRUE((bool)dagList);
+  EXPECT_EQ(mod_.getFunctions().size(), 4);
+  EXPECT_EQ(dagList->size(), 1);
+  ASSERT_TRUE(checkSaveNode(mod_));
+  sparseNNPartitionValidation(dagList.get(), mod_);
+  mod_.clear();
 }
 
 /// To check if the generated DAG is correct for the Heterogeneous Partiton
@@ -1138,7 +1238,7 @@ TEST_F(PartitionerTest, partitionFromConfigWithLogicalDevicesFp16) {
   auto result = partitioner.partition(cctx);
 
   // Do optimization
-  for (size_t i = 0; i < partitionConfig.numOfPartitions; i++) {
+  for (dim_t i = 0; i < partitionConfig.numOfPartitions; i++) {
     for (auto &func : mod_.getFunctions()) {
       std::unique_ptr<Backend> backend(createBackend("Interpreter"));
       auto err = ::glow::optimizeFunction(func, *backend, cctx);

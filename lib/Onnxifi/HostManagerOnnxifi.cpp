@@ -27,11 +27,14 @@ namespace onnxifi {
 extern bool GlowSaveOnnxifiModel;
 ;
 int32_t GlowNumDevices = 0;
+int32_t GlowSparseNNPartitioningSchemeNumCards = 1;
+int64_t GlowSparseNNPartitioningSchemeSLSTableKBytesPerCard = 0;
 bool GlowDumpDebugTraces = false;
 bool GlowSaturateHost = false;
 bool GlowFP16 = false;
 bool GlowFusedScaleOffsetFP16 = false;
 bool GlowClipFP16 = false;
+bool GlowUseSparseNNPartitioningScheme = false;
 
 static llvm::cl::opt<int32_t, true>
     GlowNumDevicesOpt("glow-num-devices",
@@ -118,6 +121,13 @@ onnxStatus HostManagerBackend::addNetwork(std::unique_ptr<Module> module,
   }
   if (GlowDumpCompilationLog) {
     cctx.compilationLogPrefix = "glow-onnxifi";
+  }
+  if (GlowUseSparseNNPartitioningScheme) {
+    cctx.optimizationOpts.useSparseNNPartitioningScheme = true;
+    cctx.optimizationOpts.sparseNNPartitioningSchemeNumCards =
+        GlowSparseNNPartitioningSchemeNumCards;
+    cctx.optimizationOpts.sparseNNPartitioningSchemeSLSTableKBytesPerCard =
+        GlowSparseNNPartitioningSchemeSLSTableKBytesPerCard;
   }
 
   auto err =

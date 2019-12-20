@@ -870,6 +870,259 @@ Partitioner::partitionFromConfig(const PartitionConfig &partitionConfig,
   return std::move(partitions);
 }
 
+template <typename SLSType>
+void Partitioner::appendSLSTable(
+    Node &node, std::vector<Partitioner::SLSTableInfo> &slsTables) {
+  auto *SLS0 = llvm::dyn_cast<SLSType>(&node);
+  if (SLS0) {
+    auto SLSDataDims = SLS0->getData().dims();
+    auto SLSIndexDims = SLS0->getIndices().dims();
+    size_t numElementsPerRowUpperBound =
+        std::max((size_t)SLSDataDims[1], (size_t)0);
+    size_t numIndices = SLSIndexDims[0];
+    uint64_t numBytesInTable =
+        (uint64_t)SLSDataDims[0] * (uint64_t)SLSDataDims[1];
+    slsTables.push_back(
+        {SLS0, numBytesInTable, numElementsPerRowUpperBound, numIndices, 0});
+  }
+}
+
+Expected<DAGListTy> Partitioner::partitionSparseNN(CompilationContext &cctx) {
+
+  LOG(INFO) << "Doing partitioning" << std::endl;
+  PartitionConfig partitionConfig;
+  partitionConfig.numOfPartitions = 0;
+
+  // Find the first partition with an SLS node
+  std::string funcName;
+  bool foundFunction = false;
+  for (Function *F : module_->getFunctions()) {
+    for (auto &node : F->getNodes()) {
+      auto *SLS =
+          llvm::dyn_cast<FusedRowwiseQuantizedSparseLengthsWeightedSumNode>(
+              &node);
+      if (SLS) {
+        funcName = std::string(F->getName());
+        foundFunction = true;
+        break;
+      }
+    }
+    if (foundFunction) {
+      break;
+    }
+  }
+
+  // If no matching functions then return empty config
+  if (!foundFunction) {
+    return MAKE_ERR(ErrorValue::ErrorCode::PARTITIONER_ERROR,
+                    "Did not find a partition with an SLS node");
+  }
+
+  if (deviceInfo_.size() == 0) {
+    return MAKE_ERR(ErrorValue::ErrorCode::PARTITIONER_ERROR,
+                    "Not enough devices to partition");
+  }
+
+  // Otherwise partition this function
+  partitionConfig.funcName = funcName;
+
+  // First optimize the function
+  Function *F = module_->getFunction(funcName);
+  std::vector<Backend *> backends;
+  genBackendMap(backendMap_, backendHolder, backends);
+  // First optimize it
+  if (!optimized_) {
+    RETURN_IF_ERR(::glow::optimizeFunction(F, *(backends[0]), cctx));
+  }
+
+  // Create list of SLS Tables
+  std::vector<SLSTableInfo> slsTables;
+  partitionConfig.funcName = std::string(F->getName());
+  LOG(INFO) << "Function: " << std::string(F->getName()) << std::endl;
+  for (auto &node : F->getNodes()) {
+    appendSLSTable<FusedRowwiseQuantizedSparseLengthsWeightedSumNode>(
+        node, slsTables);
+    appendSLSTable<FusedRowwiseQuantizedSparseLengthsSumNode>(node, slsTables);
+    appendSLSTable<RowwiseQuantizedSparseLengthsWeightedSumNode>(node,
+                                                                 slsTables);
+    appendSLSTable<SparseLengthsSumNode>(node, slsTables);
+    appendSLSTable<SparseLengthsWeightedSumNode>(node, slsTables);
+  }
+
+  // Now sort SLS tables by size decreasing
+  LOG(INFO) << "SLS tables sorted by size decreasing" << std::endl;
+  std::sort(slsTables.begin(), slsTables.end(),
+            [](const SLSTableInfo &l, const SLSTableInfo &r) {
+              return l.numBytesInTable > r.numBytesInTable;
+            });
+
+  // Print SLS tables
+  for (auto &table : slsTables) {
+    LOG(INFO) << "(numBytesInTable, numElementsPerRowUpperBound, numIndices, "
+                 "deviceId)"
+              << "\t" << table.numBytesInTable << "\t"
+              << table.numElementsPerRowUpperBound << "\t" << table.numIndices
+              << "\t" << table.deviceId << std::endl;
+  }
+
+  // Create table of devices
+  std::vector<SLSDeviceInfo> slsDevices;
+  for (unsigned int device = 0;
+       device < cctx.optimizationOpts.sparseNNPartitioningSchemeNumCards;
+       device++) {
+    slsDevices.push_back(
+        {device,
+         (uint64_t)(
+             (uint64_t)1024 *
+             (uint64_t)(cctx.optimizationOpts
+                            .sparseNNPartitioningSchemeSLSTableKBytesPerCard)),
+         0});
+  }
+
+  // Now assign SLS Nodes to devices
+  for (auto &table : slsTables) {
+
+    // Sort by cost increasing
+    std::sort(slsDevices.begin(), slsDevices.end(),
+              [](const SLSDeviceInfo &l, const SLSDeviceInfo &r) {
+                return l.currentCost < r.currentCost;
+              });
+
+    LOG(INFO) << "Devices sorted by cost increasing" << std::endl;
+    for (auto &device : slsDevices) {
+      LOG(INFO) << "(deviceId, memAvailableInBytes, currentCost): "
+                << device.deviceId << "\t" << device.memAvailableInBytes << "\t"
+                << device.currentCost << std::endl;
+    }
+
+    // Pick the first that fits
+    bool deviceFound = false;
+    for (unsigned int d = 0; d < slsDevices.size(); d++) {
+      if (slsDevices[d].memAvailableInBytes >= table.numBytesInTable) {
+        deviceFound = true;
+        slsDevices[d].memAvailableInBytes -= table.numBytesInTable;
+        slsDevices[d].currentCost += 1; // Cost is 1 per table
+        table.deviceId = slsDevices[d].deviceId;
+        break;
+      }
+    }
+    if (!deviceFound) {
+      return MAKE_ERR(ErrorValue::ErrorCode::PARTITIONER_ERROR,
+                      "SLS Balancing Partitioning Error: Not enough memory");
+    }
+  }
+
+  // Print final device info
+  LOG(INFO) << "Devices sorted by cost increasing" << std::endl;
+  for (auto &device : slsDevices) {
+    LOG(INFO) << "(deviceId, memAvailableInBytes, currentCost): "
+              << device.deviceId << "\t" << device.memAvailableInBytes << "\t"
+              << device.currentCost << std::endl;
+  }
+
+  // Print assignments
+  for (auto &table : slsTables) {
+    LOG(INFO) << "(numBytesInTable, numElementsPerRow, numIndices, deviceId)"
+              << "\t" << table.numBytesInTable << "\t"
+              << table.numElementsPerRowUpperBound << "\t" << table.numIndices
+              << "\t" << table.deviceId << std::endl;
+  }
+
+  // Create manual partition
+  partitionConfig.numOfPartitions = slsDevices.size() + 1;
+  std::vector<unsigned int> allLogicalIDs;
+
+  // Add SLS Partitions
+  for (size_t p = 0; p < slsDevices.size(); p++) {
+    partitionConfig.partitionNames.push_back(std::string("SLSPartition_") +
+                                             std::to_string(p));
+    partitionConfig.backendNames.push_back(deviceInfo_[p].backendName);
+    partitionConfig.logicalIDs.push_back({(unsigned int)p});
+    allLogicalIDs.push_back(p);
+  }
+
+  // Add last partition
+  partitionConfig.partitionNames.push_back(std::string("NonSLSPartition_"));
+  partitionConfig.backendNames.push_back(deviceInfo_[0].backendName);
+  partitionConfig.logicalIDs.push_back(allLogicalIDs);
+
+  // Map SLS nodes to their partitions
+  for (auto &table : slsTables) {
+    partitionConfig.nodeToPartition[table.node->getName()] = table.deviceId;
+  }
+
+  // For each partition, go through all SLS tables assigned and get all their
+  // predecessors into the same partition
+  for (size_t p = 0; p < slsDevices.size(); p++) {
+    std::queue<Node *> preds;
+    for (auto &table : slsTables) {
+      if (table.deviceId == p) {
+        preds.push(table.node);
+      }
+    }
+    while (!preds.empty()) {
+      auto cur = preds.front();
+      preds.pop();
+      for (auto &node : getInputs(cur)) {
+        if (partitionConfig.nodeToPartition.find(node->getName()) ==
+            partitionConfig.nodeToPartition.end()) {
+          partitionConfig.nodeToPartition[node->getName()] = p;
+          preds.push(node);
+        }
+      }
+    }
+  }
+
+  // Also, go through all SLS tables and assign any Clip's following them to
+  // same partition
+  for (size_t p = 0; p < slsDevices.size(); p++) {
+    for (auto &table : slsTables) {
+      if (table.deviceId == p) {
+        auto users = table.node->getUsers();
+        for (auto j = users.begin(), f = users.end(); j != f; ++j) {
+          const Node *user = (*j).getUser();
+          if (user->getKind() == Kinded::Kind::ClipNodeKind) {
+            partitionConfig.nodeToPartition[user->getName()] = p;
+          }
+        }
+      }
+    }
+  }
+
+  // All other nodes go in the last partition
+  for (auto &node : F->getNodes()) {
+    if (partitionConfig.nodeToPartition.find(node.getName()) ==
+        partitionConfig.nodeToPartition.end()) {
+      partitionConfig.nodeToPartition[node.getName()] = slsDevices.size();
+    }
+  }
+  LOG(INFO) << " Done partitioning" << std::endl;
+
+  LOG(INFO) << " PartitionConfig ::: funcName = " << partitionConfig.funcName
+            << "\n";
+  LOG(INFO) << " PartitionConfig ::: numOfPartitions = "
+            << partitionConfig.numOfPartitions << "\n";
+  LOG(INFO) << " PartitionConfig ::: partitionNames = ";
+  for (unsigned i = 0; i < partitionConfig.numOfPartitions; i++) {
+    LOG(INFO) << partitionConfig.partitionNames[i] << " ";
+  }
+  LOG(INFO) << "\n";
+  LOG(INFO) << " PartitionConfig ::: logicalIDs = ";
+  for (unsigned i = 0; i < partitionConfig.numOfPartitions; i++) {
+    for (auto &id : partitionConfig.logicalIDs[i]) {
+      LOG(INFO) << id << " ";
+    }
+    LOG(INFO) << "\n";
+  }
+
+  auto partitions = partitionFromConfig(partitionConfig, cctx);
+  if (saturateHost_) {
+    saturateHost(cctx.optimizationOpts.sparseNNPartitioningSchemeNumCards,
+                 std::move(partitions.get()));
+  }
+  return partitions;
+}
+
 Expected<DAGListTy> Partitioner::partition(CompilationContext &cctx) {
   if (cctx.partitionConfig) {
     partitionConfig_ = *cctx.partitionConfig;
@@ -878,6 +1131,11 @@ Expected<DAGListTy> Partitioner::partition(CompilationContext &cctx) {
   if (partitionConfig_.enabled()) {
     // Call user-defined partition flow.
     return partitionFromConfig(partitionConfig_, cctx);
+  }
+
+  if (!multiBackendNames_ &&
+      cctx.optimizationOpts.useSparseNNPartitioningScheme) {
+    return partitionSparseNN(cctx);
   }
 
   if (cctx.precisionConfig.quantMode == QuantizationMode::Profile) {
