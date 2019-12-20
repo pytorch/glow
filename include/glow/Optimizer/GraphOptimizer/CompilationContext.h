@@ -93,6 +93,18 @@ struct OptimizationOptions {
   /// placeholders. The conversion of the Tensors will be handled by the
   /// provisioner.
   bool foldStaticPlaceholderConversions{false};
+
+  /// If true, this will direct the partitioner to use SparseNN partitioning
+  /// scheme
+  bool useSparseNNPartitioningScheme{false};
+
+  /// The number of cards over which to split SLS tables when using SparseNN
+  /// partitioning scheme
+  unsigned int sparseNNPartitioningSchemeNumCards{1};
+
+  /// The number of bytes to allocate per card for SLS tables when using
+  /// the SparseNN partitioning scheme
+  unsigned int sparseNNPartitioningSchemeSLSTableKBytesPerCard{0};
 };
 
 /// Context for compilation.

@@ -125,6 +125,25 @@ class Partitioner final : public PartitionerBase {
                      std::vector<std::unique_ptr<Backend>> &backendsHolder,
                      std::vector<Backend *> &backends);
 
+  struct SLSTableInfo {
+    Node *node;
+    uint64_t numBytesInTable;
+    size_t numElementsPerRowUpperBound;
+    size_t numIndices;
+    unsigned int deviceId;
+  };
+
+  struct SLSDeviceInfo {
+    unsigned int deviceId;
+    uint64_t memAvailableInBytes;
+    size_t currentCost;
+  };
+
+  /// Helper function for SparseNN Partitioning scheme. Checks for each
+  /// kind of SLS table and appends their metadata to the vector.
+  template <typename SLSType>
+  void appendSLSTable(Node &node, std::vector<SLSTableInfo> &slsTables);
+
 public:
   /// \p parent is the module which contains the functions need to be divided.
   /// Here we assume that all the functions in one module belong to a same
@@ -174,6 +193,11 @@ public:
   /// users.
   Expected<DAGListTy> loadBalancedPartition(CompilationContext &cctx,
                                             size_t numDevices = 0);
+
+  // This partition approach is meant for SparseNN models. The SLS tables are
+  // split across logical devices and the non-SLS nodes are assigned in a
+  // round-robin fashion to all logical devices.
+  Expected<DAGListTy> partitionSparseNN(CompilationContext &cctx);
 
   /// Decompose each function in a module. Given the parameters, this function
   /// will choose different partition approches supported in this class:
