@@ -1136,6 +1136,16 @@ TEST_F(PartitionerTest, partitionFromConfigWithLogicalDevicesFp16) {
   pc.convertToFP16 = true;
   cctx.precisionConfig = pc;
   auto result = partitioner.partition(cctx);
+
+  // Do optimization
+  for (size_t i = 0; i < partitionConfig.numOfPartitions; i++) {
+    for (auto &func : mod_.getFunctions()) {
+      std::unique_ptr<Backend> backend(createBackend("Interpreter"));
+      auto err = ::glow::optimizeFunction(func, *backend, cctx);
+      EXPECT_FALSE(err);
+    }
+  }
+
   DAGListTy nodeList;
   EXPECT_FALSE(ERR_TO_BOOL(result.takeError()));
   nodeList = std::move(result.get());
