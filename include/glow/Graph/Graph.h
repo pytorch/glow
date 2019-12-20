@@ -969,7 +969,7 @@ public:
   /// Result. If \p useFP16Accumulation, then internal arithmetic will use FP16
   /// accumulation; otherwise defaults to FP32.
   RowwiseQuantizedSparseLengthsWeightedSumNode *
-  createRowwiseQuantizedSparseLengthsSum(llvm::StringRef name, Constant *data,
+  createRowwiseQuantizedSparseLengthsSum(llvm::StringRef name, Storage *data,
                                          Constant *scales, Constant *offsets,
                                          NodeValue indices, NodeValue lengths,
                                          ElemKind precision = ElemKind::FloatTy,
@@ -988,7 +988,7 @@ public:
   /// multiplied by weights[i]. len(weights) must be equal to len(indices).
   RowwiseQuantizedSparseLengthsWeightedSumNode *
   createRowwiseQuantizedSparseLengthsWeightedSum(
-      llvm::StringRef name, Constant *data, Constant *scales, Constant *offsets,
+      llvm::StringRef name, Storage *data, Constant *scales, Constant *offsets,
       NodeValue weights, NodeValue indices, NodeValue lengths,
       ElemKind precision = ElemKind::FloatTy, bool useFP16Accumulation = false);
 
@@ -1013,7 +1013,7 @@ public:
   /// accumulation; otherwise defaults to FP32.
   FusedRowwiseQuantizedSparseLengthsSumNode *
   createFusedRowwiseQuantizedSparseLengthsSum(llvm::StringRef name,
-                                              Constant *data, NodeValue indices,
+                                              Storage *data, NodeValue indices,
                                               NodeValue lengths,
                                               bool useFP16Accumulation = false);
 

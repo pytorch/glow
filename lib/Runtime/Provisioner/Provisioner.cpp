@@ -456,11 +456,13 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
       // Convert the weight if needed.
       auto newTy = PH->getType();
       auto weight = loader->getTensor();
+      auto oldKind = weight->getElementType();
       // Ensure we are working with a static PH.
       assert(PH->isStatic());
       if (!weight->getType().isEqual(newTy)) {
         ElemKind newK = newTy->getElementType();
-        if (isQuantizedElemKind(newK)) {
+
+        if (!isQuantizedElemKind(oldKind) && isQuantizedElemKind(newK)) {
           Tensor QT = quantization::quantizeTensor(
               *weight, {newTy->getScale(), newTy->getOffset()}, newK);
           weight->assign(&QT);

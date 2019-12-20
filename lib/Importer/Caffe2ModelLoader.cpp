@@ -1255,7 +1255,7 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     NodeValue lengths;
     ASSIGN_VALUE_OR_RETURN_ERR(lengths,
                                getNodeValueByName(op.input(lengthsIdx)));
-    Constant *dataC = llvm::dyn_cast<Constant>(data);
+    Storage *dataS = llvm::dyn_cast<Storage>(data);
 
     const dim_t numRows = data.dims()[0];
 
@@ -1268,24 +1268,27 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
       // There is no specific fused quantized type in Caffe2, so we will load
       // UInt8QTy. We then change it from UInt8QTy to UInt8FusedQTy here if
       // necessary -- another user could have already changed it.
-      if (dataC->getElementType() != ElemKind::UInt8FusedQTy) {
-        RETURN_ERR_IF_NOT(dataC->getElementType() == ElemKind::UInt8QTy,
+      if (dataS->getElementType() != ElemKind::UInt8FusedQTy) {
+        RETURN_ERR_IF_NOT(dataS->getElementType() == ElemKind::UInt8QTy,
                           "Data must be UInt8QTy.");
         // Use dummy 0.0/0 as scale/offset, since the actual scales/offsets
         // are fused inline with the data.
         TypeRef fusedTy = G_.getParent()->uniqueType(ElemKind::UInt8FusedQTy,
-                                                     dataC->dims(), 0.0, 0);
-        dataC->setType(Storage::OutputIdx, fusedTy);
-        dataC->setPayloadType(fusedTy);
+                                                     dataS->dims(), 0.0, 0);
+        dataS->setType(Storage::OutputIdx, fusedTy);
+        // If the node is a Constant set the payload type as well.
+        if (auto dataConstant = llvm::dyn_cast<Constant>(data)) {
+          dataConstant->setPayloadType(fusedTy);
+        }
       }
 
       // No other work to do, since the data is already loaded fused, so just
       // create the new node with its inputs.
       if (isWeighted) {
         node = G_.createFusedRowwiseQuantizedSparseLengthsWeightedSum(
-            opName, dataC, weights, indices, lengths);
+            opName, dataS, weights, indices, lengths);
       } else {
-        node = G_.createFusedRowwiseQuantizedSparseLengthsSum(opName, dataC,
+        node = G_.createFusedRowwiseQuantizedSparseLengthsSum(opName, dataS,
                                                               indices, lengths);
       }
     } else {
@@ -1320,10 +1323,10 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
       // Now create the actual node.
       if (isWeighted) {
         node = G_.createRowwiseQuantizedSparseLengthsWeightedSum(
-            opName, dataC, dataScales, dataOffsets, weights, indices, lengths);
+            opName, dataS, dataScales, dataOffsets, weights, indices, lengths);
       } else {
         node = G_.createRowwiseQuantizedSparseLengthsSum(
-            opName, dataC, dataScales, dataOffsets, indices, lengths);
+            opName, dataS, dataScales, dataOffsets, indices, lengths);
       }
     }
 

@@ -162,7 +162,6 @@ Error NNPICompiledFunction::compile(Function *F, const BackendOptions &opts) {
       staticInputs_.insert(P);
     }
   }
-
   return Error::success();
 }
 
