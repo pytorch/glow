@@ -636,7 +636,7 @@ bool InferenceThreadEnv::init(
     }
 
     // Create command list.
-    NNPICommandHandle *commands = new NNPICommandHandle[numCommands_];
+    NNPICommandHandle commands[numCommands_];
     LOG_AND_RETURN_IF_NOT(ERROR, commands,
                           "Failed to allocate command handle array", false);
     uint32_t cmdIdx = 0;
