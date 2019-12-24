@@ -77,6 +77,7 @@ std::set<std::string> glow::backendTestBlacklist = {
     "ResizeNearest_Int8/0",
     "rowwiseQuantizedFCTest_Int8_BiasInt32/0",
     "rowwiseQuantizedFCTest_Int8_BiasInt8/0",
+    "RWQSLWSAllSame_Float16_AccumFP32/0",
     "ScatterAddNDimensionalDuplicatingIndices/0",
     "ScatterAddNDimensionalSimple/0",
     "ScatterAddQuantized/0",

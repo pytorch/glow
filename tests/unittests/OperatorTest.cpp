@@ -7736,6 +7736,68 @@ TEST_P(OperatorTest,
       /* useFP16Accumulation */ true);
 }
 
+static FunctionTensorPair
+createAndInitRWQSLWSAllSame(glow::PlaceholderBindings &bindings,
+                            glow::ExecutionEngine &EE) {
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  Tensor data(ElemKind::FloatTy, {20, 2});
+  data.getHandle<float>() = {
+      0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1,
+      0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1,
+      0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1,
+  };
+
+  Constant *weights = mod.createConstant(ElemKind::FloatTy, {21}, "weights");
+  weights->getPayloadMutable().getHandle<float>() = {
+      0.44419134, 0.3419154,  0.28775468, 0.47224975, 0.05422213, 0.14346851,
+      0.05846643, 0.3750175,  0.09190885, 0.3335992,  0.09665264, 0.4560224,
+      0.2244578,  0.44881952, 0.42696562, 0.33007848, 0.4511249,  0.11568925,
+      0.02629679, 0.33864713, 0.42614424};
+
+  Placeholder *indices =
+      mod.createPlaceholder(ElemKind::Int64ITy, {21}, "indices",
+                            /* isTrainable */ false);
+  Placeholder *lengths =
+      mod.createPlaceholder(ElemKind::Int32ITy, {2}, "lengths",
+                            /* isTrainable */ false);
+
+  bindings.allocate(indices)->getHandle<int64_t>() = {
+      11, 8, 19, 8, 4, 11, 4, 19, 6, 18, 2, 6, 15, 5, 14, 14, 15, 13, 4, 6, 5,
+  };
+  bindings.allocate(lengths)->getHandle<int32_t>() = {15, 6};
+
+  auto *R = F->createRowwiseQuantizedSparseLengthsWeightedSum(
+      "RQSLWS", data, weights, indices, lengths,
+      quantization::Schema::Asymmetric, ElemKind::FloatTy,
+      /* useFP16Accumulation */ false);
+  SaveNode *S = F->createSave("save", R);
+  Tensor *resultT = bindings.allocate(S->getPlaceholder());
+
+  return std::make_pair(F, resultT);
+}
+
+TEST_P(OperatorTest, RWQSLWSAllSame_Float16_AccumFP16) {
+  CHECK_IF_ENABLED();
+  compareAgainstInterpreter(
+      getBackendName(), createAndInitRWQSLWSAllSame, ElemKind::Float16Ty,
+      ElemKind::Float16Ty, 1e-6, parCloneCountOpt,
+      /* convertToRowwiseQuantization */ false,
+      /*schema */ quantization::Schema::Asymmetric,
+      /* biasElemKind */ ElemKind::Int32QTy, /* forceFP16AccumSLS */ true);
+}
+
+TEST_P(OperatorTest, RWQSLWSAllSame_Float16_AccumFP32) {
+  CHECK_IF_ENABLED();
+  compareAgainstInterpreter(
+      getBackendName(), createAndInitRWQSLWSAllSame, ElemKind::Float16Ty,
+      ElemKind::Float16Ty, 1e-6, parCloneCountOpt,
+      /* convertToRowwiseQuantization */ false,
+      /*schema */ quantization::Schema::Asymmetric,
+      /* biasElemKind */ ElemKind::Int32QTy, /* forceFP16AccumSLS */ false);
+}
+
 /// Helper to test RowwiseQuantizedSparseLengthsWeightedSum using \p DTy.
 template <typename DataType>
 static void testRowwiseQuantizedSparseLengthsSum(

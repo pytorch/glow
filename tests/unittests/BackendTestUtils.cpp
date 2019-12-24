@@ -123,7 +123,7 @@ setupInterpAndBackendConfigs(
     ElemKind interpElemKind, ElemKind backendElemKind,
     quantization::Schema schema, bool convertToRowwiseQuantization,
     CreateAndInitFunction createAndInitFunction, ElemKind biasElemKind,
-    unsigned count) {
+    bool forceFP16AccumSLS, unsigned count) {
   CompilationContext cctxI{&iBindings, &ILIM};
   CompilationContext cctxB{&bBindings, &BLIM};
   PrecisionConfiguration &precConfigI = cctxI.precisionConfig;
@@ -165,10 +165,13 @@ setupInterpAndBackendConfigs(
     }
   }
 
+  // For now if the ElemKind is FP16 then we use Float16Ty, UInt8FusedFP16QTy.
   precConfigI.convertToFP16 = interpElemKind == ElemKind::Float16Ty;
   precConfigI.convertFusedToFP16 = interpElemKind == ElemKind::Float16Ty;
+  precConfigI.forceFP16AccumSLS = forceFP16AccumSLS;
   precConfigB.convertToFP16 = backendElemKind == ElemKind::Float16Ty;
   precConfigB.convertFusedToFP16 = backendElemKind == ElemKind::Float16Ty;
+  precConfigB.forceFP16AccumSLS = forceFP16AccumSLS;
 
   return std::make_pair(cctxI, cctxB);
 }
@@ -254,11 +257,14 @@ static Tensor convertToFloatIfNecessary(Tensor &T) {
   return T.getCopyConvertedToType(ElemKind::FloatTy);
 }
 
-void compareAgainstInterpreter(
-    llvm::StringRef backendName, CreateAndInitFunction createAndInitFunction,
-    ElemKind interpElemKind, ElemKind backendElemKind, float allowedError,
-    unsigned count, bool convertToRowwiseQuantization,
-    quantization::Schema schema, ElemKind biasElemKind) {
+void compareAgainstInterpreter(llvm::StringRef backendName,
+                               CreateAndInitFunction createAndInitFunction,
+                               ElemKind interpElemKind,
+                               ElemKind backendElemKind, float allowedError,
+                               unsigned count,
+                               bool convertToRowwiseQuantization,
+                               quantization::Schema schema,
+                               ElemKind biasElemKind, bool forceFP16AccumSLS) {
   // Note: deviceMemory = 0 is a signal to use the defaultMemory.
   ExecutionEngine IEE{"Interpreter", /* deviceMemory */ 0,
                       /* ignoreUserDeviceConfig */ true};
@@ -283,7 +289,7 @@ void compareAgainstInterpreter(
   auto configs = setupInterpAndBackendConfigs(
       IF, IEE, iBindings, ILIM, bBindings, BLIM, interpElemKind,
       backendElemKind, schema, convertToRowwiseQuantization,
-      createAndInitFunction, biasElemKind, count);
+      createAndInitFunction, biasElemKind, forceFP16AccumSLS, count);
   CompilationContext &cctxI = configs.first;
   CompilationContext &cctxB = configs.second;
 
