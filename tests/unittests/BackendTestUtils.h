@@ -317,14 +317,15 @@ using CreateAndInitFunction =
 /// use, if applicable. \p parallelCount represents the number of times to clone
 /// the Function inside itself, so that testing can be done on architectures
 /// that have parallel compute engines. The bias is quantized using the
-/// precision \p biasElemKind.
+/// precision \p biasElemKind. \p forceFP16AccumSLS is propagated into the
+/// precision config for compilation.
 void compareAgainstInterpreter(
     llvm::StringRef backendName, CreateAndInitFunction createAndInitFunction,
     ElemKind interpElemKind, ElemKind backendElemKind,
     float allowedError = 0.0001, unsigned parallelCount = 1,
     bool convertToRowwiseQuantization = false,
     quantization::Schema schema = quantization::Schema::Asymmetric,
-    ElemKind biasElemKind = ElemKind::Int32QTy);
+    ElemKind biasElemKind = ElemKind::Int32QTy, bool forceFP16AccumSLS = false);
 
 /// Given some \p FTP representing a Function with a single SaveNode and its
 /// Tensor output, duplicate the Nodes in the Function and their Placeholder

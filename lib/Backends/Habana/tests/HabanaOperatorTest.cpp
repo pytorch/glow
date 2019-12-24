@@ -269,6 +269,8 @@ std::set<std::string> glow::backendTestBlacklist = {
     "RowwiseQuantizedSparseLengthsWeightedSum_Float/0",
     "RowwiseQuantizedSparseLengthsWeightedSum_Float16_AccumFloat/0",
     "RowwiseQuantizedSparseLengthsWeightedSum_Float16_AccumFloat16/0",
+    "RWQSLWSAllSame_Float16_AccumFP16/0",
+    "RWQSLWSAllSame_Float16_AccumFP32/0",
     "ScatterAddNDimensionalDuplicatingIndices/0",
     "ScatterAddNDimensionalSimple/0",
     "ScatterAddQuantized/0",
