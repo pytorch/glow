@@ -81,6 +81,11 @@ llvm::cl::opt<bool>
                 llvm::cl::desc("Force glow to clip fp16 values to min/max"),
                 llvm::cl::Optional, llvm::cl::cat(reproTestCat));
 
+llvm::cl::opt<bool>
+    forceFP16AccumSLSOpt("glow_global_force_sls_fp16_accum",
+                         llvm::cl::desc("Force FP16 accumulation for SLS ops"),
+                         llvm::cl::Optional, llvm::cl::cat(reproTestCat));
+
 llvm::cl::opt<bool> enablePartialTensor("glow_enable_partial_tensor",
                                         llvm::cl::desc("Enable partial tensor"),
                                         llvm::cl::Optional,
@@ -139,6 +144,10 @@ void run() {
   if (ClipFp16Opt) {
     precConfig.clipFP16 = ClipFp16Opt;
     llvm::outs() << "Clipping to fp16 enabled\n";
+  }
+  if (forceFP16AccumSLSOpt) {
+    precConfig.forceFP16AccumSLS = true;
+    llvm::outs() << "Forcing fp16 accumulation for SLS ops enabled\n";
   }
   auto configs =
       runtime::generateDeviceConfigs(1, ExecutionBackend, MAX_MEMORY);

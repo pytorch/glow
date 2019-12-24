@@ -35,6 +35,7 @@ bool GlowDumpDebugTraces = false;
 bool GlowSaturateHost = false;
 bool GlowFP16 = false;
 bool GlowFusedScaleOffsetFP16 = false;
+bool GlowForceSLSAccumFP16 = false;
 bool GlowClipFP16 = false;
 bool GlowUseSparseNNPartitioningScheme = false;
 
@@ -120,6 +121,10 @@ onnxStatus HostManagerBackend::addNetwork(std::unique_ptr<Module> module,
   if (GlowClipFP16) {
     precConfig.clipFP16 = GlowClipFP16;
     LOG(INFO) << "Clipping to fp16 enabled";
+  }
+  if (GlowForceSLSAccumFP16) {
+    precConfig.forceFP16AccumSLS = GlowForceSLSAccumFP16;
+    LOG(INFO) << "Forcing all SLS/SLWS ops to use FP16 accumulation enabled";
   }
   if (GlowDumpCompilationLog) {
     cctx.compilationLogPrefix = "glow-onnxifi";

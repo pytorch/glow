@@ -312,17 +312,17 @@ using CreateAndInitFunction =
 /// be gathered on the Interpreter, and then that profile will be used to
 /// quantize one or both. Otherwise if either is Float16Ty then the respective
 /// Function it will be converted using the Converter. If
-/// \p enableRowwiseQuantization then rowwise quantization will be used for
-/// nodes that support it. \p schema represents the quantization schema to use,
-/// if applicable. \p parallelCount represents the number of times to clone the
-/// Function inside itself, so that testing can be done on architectures that
-/// have parallel compute engines. The bias is quantized using the precision
-/// \p biasElemKind.
+/// \p convertToRowwiseQuantization then nodes supporting rowwise quantization
+/// will converted to use it. \p schema represents the quantization schema to
+/// use, if applicable. \p parallelCount represents the number of times to clone
+/// the Function inside itself, so that testing can be done on architectures
+/// that have parallel compute engines. The bias is quantized using the
+/// precision \p biasElemKind.
 void compareAgainstInterpreter(
     llvm::StringRef backendName, CreateAndInitFunction createAndInitFunction,
     ElemKind interpElemKind, ElemKind backendElemKind,
     float allowedError = 0.0001, unsigned parallelCount = 1,
-    bool enableRowwiseQuantization = false,
+    bool convertToRowwiseQuantization = false,
     quantization::Schema schema = quantization::Schema::Asymmetric,
     ElemKind biasElemKind = ElemKind::Int32QTy);
 

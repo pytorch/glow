@@ -121,7 +121,7 @@ setupInterpAndBackendConfigs(
     Function *IF, ExecutionEngine &IEE, PlaceholderBindings &iBindings,
     LoweredInfoMap &ILIM, PlaceholderBindings &bBindings, LoweredInfoMap &BLIM,
     ElemKind interpElemKind, ElemKind backendElemKind,
-    quantization::Schema schema, bool enableRowwiseQuantization,
+    quantization::Schema schema, bool convertToRowwiseQuantization,
     CreateAndInitFunction createAndInitFunction, ElemKind biasElemKind,
     unsigned count) {
   CompilationContext cctxI{&iBindings, &ILIM};
@@ -142,7 +142,7 @@ setupInterpAndBackendConfigs(
 
       precConfigI.quantMode = QuantizationMode::Quantize;
       precConfigI.quantConfig.infos = NQII;
-      precConfigI.quantConfig.enableRowwise = enableRowwiseQuantization;
+      precConfigI.quantConfig.enableRowwise = convertToRowwiseQuantization;
       precConfigI.quantConfig.schema = schema;
       precConfigI.quantConfig.precision = interpElemKind;
       precConfigI.quantConfig.assertAllNodesQuantized = true;
@@ -157,7 +157,7 @@ setupInterpAndBackendConfigs(
 
       precConfigB.quantMode = QuantizationMode::Quantize;
       precConfigB.quantConfig.infos = NQIB;
-      precConfigB.quantConfig.enableRowwise = enableRowwiseQuantization;
+      precConfigB.quantConfig.enableRowwise = convertToRowwiseQuantization;
       precConfigB.quantConfig.schema = schema;
       precConfigB.quantConfig.precision = backendElemKind;
       precConfigB.quantConfig.assertAllNodesQuantized = true;
@@ -254,13 +254,11 @@ static Tensor convertToFloatIfNecessary(Tensor &T) {
   return T.getCopyConvertedToType(ElemKind::FloatTy);
 }
 
-void compareAgainstInterpreter(llvm::StringRef backendName,
-                               CreateAndInitFunction createAndInitFunction,
-                               ElemKind interpElemKind,
-                               ElemKind backendElemKind, float allowedError,
-                               unsigned count, bool enableRowwiseQuantization,
-                               quantization::Schema schema,
-                               ElemKind biasElemKind) {
+void compareAgainstInterpreter(
+    llvm::StringRef backendName, CreateAndInitFunction createAndInitFunction,
+    ElemKind interpElemKind, ElemKind backendElemKind, float allowedError,
+    unsigned count, bool convertToRowwiseQuantization,
+    quantization::Schema schema, ElemKind biasElemKind) {
   // Note: deviceMemory = 0 is a signal to use the defaultMemory.
   ExecutionEngine IEE{"Interpreter", /* deviceMemory */ 0,
                       /* ignoreUserDeviceConfig */ true};
@@ -284,14 +282,14 @@ void compareAgainstInterpreter(llvm::StringRef backendName,
   LoweredInfoMap ILIM, BLIM;
   auto configs = setupInterpAndBackendConfigs(
       IF, IEE, iBindings, ILIM, bBindings, BLIM, interpElemKind,
-      backendElemKind, schema, enableRowwiseQuantization, createAndInitFunction,
-      biasElemKind, count);
+      backendElemKind, schema, convertToRowwiseQuantization,
+      createAndInitFunction, biasElemKind, count);
   CompilationContext &cctxI = configs.first;
   CompilationContext &cctxB = configs.second;
 
   // Skip conversion for rowwise quantized tests as they are a special case
   // which don't fit cleanly here -- e.g. RWQ-SLS has FloatTy outputs.
-  if (!enableRowwiseQuantization) {
+  if (!convertToRowwiseQuantization) {
     // We want to compare the ops themselves and not see differences in
     // conversion, so fold ElemKind conversion nodes into IO.
     cctxI.optimizationOpts.foldElemKindConversionIntoIO = true;
@@ -308,7 +306,7 @@ void compareAgainstInterpreter(llvm::StringRef backendName,
   BEE.compile(cctxB);
 
   // Again skip rowwise quantization as before.
-  if (!enableRowwiseQuantization) {
+  if (!convertToRowwiseQuantization) {
     // Now that we have compiled, precision transformation has occurred. Now
     // convert all mismatches for Placeholders given their original bindings.
     convertBindingsToCorrectType(
