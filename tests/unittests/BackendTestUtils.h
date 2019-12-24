@@ -167,6 +167,10 @@ protected:
     EXPECT_TRUE(F_);
     EXPECT_TRUE(optimizedF_);
 
+    // Check that the bindings are not empty. If they are, the numerical
+    // equivalence check can produce a false positive.
+    EXPECT_GT(bindings_.getDataSize(), 0);
+
     // Clone bindings to use for original and optimized functions.
     PlaceholderBindings originalBindings = bindings_.clone();
     PlaceholderBindings optimizedBindings = bindings_.clone();

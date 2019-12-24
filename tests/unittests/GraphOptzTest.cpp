@@ -2673,14 +2673,16 @@ TEST_F(GraphOptz, concatElim) {
 /// Check that we are able to eliminate concat followed by slices on axis
 /// \p dim under certain conditions.
 static void testConcatSliceElim(Module &mod, Function *F, Function *&optimizedF,
-                                size_t dim) {
+                                PlaceholderBindings &bindings, size_t dim) {
   constexpr size_t N = 5;
   std::array<NodeValue, N> inputs;
   std::vector<dim_t> inShape = {10, 20};
   inShape.insert(inShape.begin() + dim, 0);
   for (dim_t i = 0; i < N; i++) {
     inShape[dim] = 1 + i;
-    inputs[i] = mod.createPlaceholder(ElemKind::FloatTy, inShape, "in", true);
+    auto *P = mod.createPlaceholder(ElemKind::FloatTy, inShape, "in", true);
+    bindings.allocate(P)->getHandle().randomize(-1.0, 1.0, mod.getPRNG());
+    inputs[i] = P;
   }
   auto *CN = F->createConcat("merge", inputs, dim);
 
@@ -2708,17 +2710,17 @@ static void testConcatSliceElim(Module &mod, Function *F, Function *&optimizedF,
 }
 
 TEST_F(GraphOptz, concatSliceElimInnerDim) {
-  testConcatSliceElim(mod_, F_, optimizedF_, 0);
+  testConcatSliceElim(mod_, F_, optimizedF_, bindings_, 0);
   checkNumericalEquivalence();
 }
 
 TEST_F(GraphOptz, concatSliceElimMiddleDim) {
-  testConcatSliceElim(mod_, F_, optimizedF_, 1);
+  testConcatSliceElim(mod_, F_, optimizedF_, bindings_, 1);
   checkNumericalEquivalence();
 }
 
 TEST_F(GraphOptz, concatSliceElimOuterDim) {
-  testConcatSliceElim(mod_, F_, optimizedF_, 2);
+  testConcatSliceElim(mod_, F_, optimizedF_, bindings_, 2);
   checkNumericalEquivalence();
 }
 
