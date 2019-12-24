@@ -58,6 +58,9 @@ struct PrecisionConfiguration {
   /// If clipFP16, whether to skip clipping inputs of Nodes.
   bool clipFP16SkipInputs{false};
 
+  /// Whether to force FP16 accumulation for the SLS family of ops.
+  bool forceFP16AccumSLS{false};
+
   /// Used during Quantization and convertToFP16 to keep the original precision
   /// of specific node kinds (i.e. quantization/FP16 conversion would be skipped
   /// for any node kinds found here). Used during profiling to prevent nodes

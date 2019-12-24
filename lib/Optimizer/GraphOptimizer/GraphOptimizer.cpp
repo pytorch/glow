@@ -3330,12 +3330,48 @@ void glow::optimize(Function *F, CompilationMode mode) {
   optimize(F, cctx);
 }
 
-/// Helper function that may transform \p F given preferences of \p cctx and
-/// \p B. The specific transformations are done based on the
-/// PrecisionConfiguration found in \p cctx. This could include quantization,
-/// profiling, and FP16 conversion.
-static void transformForPrecisionMode(const Backend &B, Function *F,
-                                      CompilationContext &cctx) {
+/// Helper to pass over all Nodes in \p F and set FP16 accumulation to true for
+/// those Nodes in the SLS family which support and need it. \p precConfig
+/// contains the black/whitelist for skipping.
+static void setFP16AccumSLS(Function *F,
+                            const PrecisionConfiguration &precConfig) {
+  // Iterate from original end to beginning to avoid processing new Nodes added
+  // during the pass.
+  auto nodeIt = F->getNodes().end();
+  auto stopIt = F->getNodes().begin();
+  do {
+    --nodeIt;
+    Node &node = *nodeIt;
+    // Only update allowed nodes based on black/whitelist.
+    const bool inSet = precConfig.precisionModeKindSet.count(node.getKind());
+    const bool allowConversion = precConfig.useSetAsWhitelist ? inSet : !inSet;
+    if (!allowConversion) {
+      continue;
+    }
+
+#define CASE_SET_SLS_FP16_ACCUM(NODE_)                                         \
+  case Kinded::Kind::NODE_##NodeKind: {                                        \
+    NODE_##Node *SLS = llvm::cast<NODE_##Node>(&node);                         \
+    if (SLS->getResult().getElementType() != ElemKind::Float16Ty) {            \
+      continue;                                                                \
+    }                                                                          \
+    SLS->setUseFP16Accumulation(true);                                         \
+    continue;                                                                  \
+  }
+
+    switch (node.getKind()) {
+      CASE_SET_SLS_FP16_ACCUM(RowwiseQuantizedSparseLengthsWeightedSum);
+      CASE_SET_SLS_FP16_ACCUM(FusedRowwiseQuantizedSparseLengthsWeightedSum);
+      CASE_SET_SLS_FP16_ACCUM(FusedRowwiseQuantizedSparseLengthsSum);
+      CASE_SET_SLS_FP16_ACCUM(EmbeddingBagByteRowwiseOffsets);
+    default:
+      continue;
+    }
+  } while (nodeIt != stopIt);
+}
+
+void glow::transformForPrecisionMode(const Backend &B, Function *F,
+                                     CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), "transformForPrecisionMode")
   const PrecisionConfiguration &precConfig = cctx.precisionConfig;
 
@@ -3369,6 +3405,12 @@ static void transformForPrecisionMode(const Backend &B, Function *F,
     FunctionPassManager FPM("FP16GraphOptzFPM",
                             createFP16GraphOptimizationPassPipeline());
     FPM.run(F, cctx);
+  }
+
+  // By default, FP16 SLS accumulation is not enabled.
+  // If requested, Force all ops in the SLS family to use FP16 accumulation.
+  if (precConfig.forceFP16AccumSLS) {
+    setFP16AccumSLS(F, precConfig);
   }
 }
 
