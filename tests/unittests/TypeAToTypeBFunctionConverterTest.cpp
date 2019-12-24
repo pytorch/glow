@@ -1018,9 +1018,9 @@ TEST_P(AllBackends, convertExistingConversionToNoop) {
   EXPECT_TRUE(F->verify());
 }
 
-/// Test conversion of a FusedRowwiseQuantizedSparseLengthsWeightedSumNode to
-/// FP16, instead of creating it directly.
-TEST_P(AllBackends, convertFRWQSLWS) {
+/// Helper for testing FRWQSLWS FP16 conversion, with and without FP16
+/// accumulation based on \p forceFP16AccumSLS.
+static void testConvertFRWQSLWS(bool forceFP16AccumSLS) {
   Module mod;
   Function *F = mod.createFunction("test");
   Tensor data(ElemKind::FloatTy, {3, 1});
@@ -1043,13 +1043,17 @@ TEST_P(AllBackends, convertFRWQSLWS) {
 
   size_t origSize = F->getNodes().size();
 
-  PrecisionConfiguration precConfig;
+  CompilationContext cctx;
+  PrecisionConfiguration &precConfig = cctx.precisionConfig;
   precConfig.convertToFP16 = true;
   precConfig.convertFusedToFP16 = true;
-  convertFunctionToFloat16(F, precConfig);
+  precConfig.forceFP16AccumSLS = forceFP16AccumSLS;
+  transformForPrecisionMode(MockBackend(), F, cctx);
 
-  // Should have added convert nodes for the data, weights, and results.
-  EXPECT_EQ(F->getNodes().size(), origSize + 3);
+  // Should have added convert nodes for the Data, Weights, and Result. Data
+  // and Weights ConvertTo nodes should have been merged in, while Result stil
+  // has a ConvertTo.
+  EXPECT_EQ(F->getNodes().size(), origSize + 1);
 
   auto *convertResult = llvm::dyn_cast<ConvertToNode>(S->getInput());
   ASSERT_NE(convertResult, nullptr);
@@ -1060,26 +1064,25 @@ TEST_P(AllBackends, convertFRWQSLWS) {
           convertResult->getInput());
   ASSERT_NE(SLWS, nullptr);
   EXPECT_EQ(SLWS->getResult().getElementType(), ElemKind::Float16Ty);
+  EXPECT_EQ(SLWS->getUseFP16Accumulation(), forceFP16AccumSLS);
 
-  auto *convertData = llvm::dyn_cast<ConvertToNode>(SLWS->getData());
-  ASSERT_NE(convertData, nullptr);
-  EXPECT_EQ(convertData->getResult().getElementType(),
-            ElemKind::UInt8FusedFP16QTy);
-
-  auto *origData = llvm::dyn_cast<Constant>(convertData->getInput());
-  ASSERT_NE(origData, nullptr);
-  EXPECT_EQ(origData->getOutput().getElementType(), ElemKind::UInt8FusedQTy);
-
-  auto *convertWeights = llvm::dyn_cast<ConvertToNode>(SLWS->getWeights());
-  ASSERT_NE(convertWeights, nullptr);
-  EXPECT_EQ(convertWeights->getResult().getElementType(), ElemKind::Float16Ty);
-
-  auto *origWeights = llvm::dyn_cast<Constant>(convertWeights->getInput());
-  ASSERT_NE(origWeights, nullptr);
-  EXPECT_EQ(origWeights->getOutput().getElementType(), ElemKind::FloatTy);
-  EXPECT_EQ(weights, origWeights);
+  EXPECT_EQ(SLWS->getData().getElementType(), ElemKind::UInt8FusedFP16QTy);
+  EXPECT_EQ(SLWS->getWeights().getElementType(), ElemKind::Float16Ty);
 
   EXPECT_TRUE(F->verify());
+}
+
+/// Test conversion of a FusedRowwiseQuantizedSparseLengthsWeightedSumNode to
+/// FP16, instead of creating it directly. Use FP16 accumulation.
+TEST_P(AllBackends, convertFRWQSLWS_FP16Accum) {
+  testConvertFRWQSLWS(/* forceFP16AccumSLS */ true);
+}
+
+/// Test conversion of a FusedRowwiseQuantizedSparseLengthsWeightedSumNode to
+/// FP16, instead of creating it directly. Do not use FP16 accumulation; note
+/// that conversion by default uses FP32 accumulation.
+TEST_P(AllBackends, convertFRWQSLWS_FP32Accum) {
+  testConvertFRWQSLWS(/* forceFP16AccumSLS */ false);
 }
 
 /// Test skipping conversion of a

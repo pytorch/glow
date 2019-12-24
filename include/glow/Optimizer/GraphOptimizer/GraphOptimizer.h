@@ -70,6 +70,13 @@ Error optimizeFunction(Function *F, const Backend &B, CompilationContext &cctx);
 /// compiler error.
 Error optimizeFunctionBeforeLowering(Function *F, CompilationContext &cctx);
 
+/// Helper function that may transform \p F given preferences of \p cctx and
+/// \p B. The specific transformations are done based on the
+/// PrecisionConfiguration found in \p cctx. This could include quantization,
+/// profiling, and FP16 conversion.
+void transformForPrecisionMode(const Backend &B, Function *F,
+                               CompilationContext &cctx);
+
 /// Perform a compile-time constant folding of the node \p N.
 /// \returns list of constants which are the result of the constant-folding.
 /// These constants correspond to results of the node. If no constant folding
