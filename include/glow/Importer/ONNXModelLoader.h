@@ -236,6 +236,10 @@ class ONNXModelLoader
   Error loadFullyConnected(const ONNX_NAMESPACE::NodeProto &op,
                            const ArgumentDictionaryTy &dict);
 
+  /// Load ONNX Identity operator.
+  Error loadIdentity(const ONNX_NAMESPACE::NodeProto &op,
+                     const ArgumentDictionaryTy &dict);
+
   /// Load Glow Splat operator.
   Error loadSplat(const ONNX_NAMESPACE::NodeProto &op,
                   const ArgumentDictionaryTy &dict);
