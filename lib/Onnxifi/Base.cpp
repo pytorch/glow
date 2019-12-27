@@ -246,7 +246,7 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
           // data.
           auto ty = inputTensor.getType();
           auto dims = ty.dims().vec();
-          dims[0] = dims[0] / (tensorSize / unpaddedSize);
+          dims[0] = dims[0] * unpaddedSize / tensorSize;
           const auto &resized = inputTensor.getUnowned(dims);
           ONNXModelWriter::writeTensor(resized, t);
           VLOG(1) << "Writing partial tensor " << p.first->getName().str()
