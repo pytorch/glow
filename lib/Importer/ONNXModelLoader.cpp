@@ -2060,6 +2060,14 @@ Error ONNXModelLoader::loadInsertTensor(const ONNX_NAMESPACE::NodeProto &op,
   return Error::success();
 }
 
+Error ONNXModelLoader::loadIdentity(const ONNX_NAMESPACE::NodeProto &op,
+                                    const ArgumentDictionaryTy &dict) {
+  NodeValue in;
+  ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
+  RETURN_IF_ERR(addNodeAsOutput(op, in));
+  return Error::success();
+}
+
 Error ONNXModelLoader::loadAdaptiveAvgPool(const ONNX_NAMESPACE::NodeProto &op,
                                            const ArgumentDictionaryTy &dict) {
   // Glow expects inputs to be in NHWC but ONNX keeps them in NCHW so we
@@ -2239,6 +2247,9 @@ Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
   }
   if (typeName == "AdaptiveAvgPool") {
     return loadAdaptiveAvgPool(op, dict);
+  }
+  if (typeName == "Identity") {
+    return loadIdentity(op, dict);
   }
 
   RETURN_ERR("Failed to load operator " + typeName + " .",
