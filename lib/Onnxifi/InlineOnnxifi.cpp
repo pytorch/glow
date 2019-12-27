@@ -43,9 +43,11 @@ void computeModelHash(const void *onnxModel, size_t onnxModelSize,
 }
 } // namespace
 
-onnxStatus InlineGraph::initGraph(
-    const void *onnxModel, size_t onnxModelSize, uint32_t weightCount,
-    const onnxTensorDescriptorV1 *weightDescriptors, void *deferedBlobReader) {
+onnxStatus
+InlineGraph::initGraph(const void *onnxModel, size_t onnxModelSize,
+                       uint32_t weightCount,
+                       const onnxTensorDescriptorV1 *weightDescriptors,
+                       uint32_t maxSeqLength, void * /*unused */) {
   function_ = executionEngine_.getModule().createFunction("function");
 
   std::unique_ptr<ONNXIFIModelLoader> loader =
@@ -59,6 +61,7 @@ onnxStatus InlineGraph::initGraph(
     saveOnnxifiModel(function_);
   }
 
+  setZeroLengthSequence(maxSeqLength);
   computeModelHash(onnxModel, onnxModelSize, modelHash_);
   optimize(function_, CompilationMode::Infer);
 

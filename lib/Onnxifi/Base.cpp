@@ -135,6 +135,12 @@ std::pair<bool, onnxStatus> Event::waitFor(size_t timeoutMs) {
   return {/*signalled*/ true, status_};
 }
 
+void Graph::setZeroLengthSequence(dim_t maxSeqLength) {
+  Type ty(ElemKind::Int64ITy, {maxSeqLength});
+  zeroLengthSequence_.reset(ty);
+  zeroLengthSequence_.zero();
+}
+
 onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
                               const onnxTensorDescriptorV1 *inputDescriptors,
                               uint32_t outputsCount,
@@ -201,6 +207,11 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
       // remembers the actual size of the input.
       ctx->getPlaceholderBindings()->insert(
           inPhPtr, Tensor(inOnnxBuffer, inPhPtr->getType(), onnxBytes));
+    } else if (!inOnnxBuffer && inPhPtr->getType()->size() <=
+                                    zeroLengthSequence_.getType().size()) {
+      ctx->getPlaceholderBindings()->insert(
+          inPhPtr, Tensor((void *)(zeroLengthSequence_.getUnsafePtr()),
+                          inPhPtr->getType()));
     } else {
       Tensor *inputTensor = tensorPool_.get(inPhPtr->getType());
       if (!inputTensor) {

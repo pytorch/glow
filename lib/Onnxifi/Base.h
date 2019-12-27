@@ -132,6 +132,7 @@ public:
   virtual onnxStatus initGraph(const void *onnxModel, size_t onnxModelSize,
                                uint32_t weightCount,
                                const onnxTensorDescriptorV1 *weightDescriptors,
+                               uint32_t maxSeqLength,
                                void *deferedBlobReader) = 0;
 
   virtual onnxStatus run(std::unique_ptr<ExecutionContext> ctx,
@@ -160,6 +161,12 @@ protected:
 
   /// An object pool for tensors, to share allocations.
   TensorPool tensorPool_;
+
+  /// An anchor tensor specialized for zero length indices
+  Tensor zeroLengthSequence_;
+
+  /// Set the zero length tensor
+  void setZeroLengthSequence(dim_t maxSeqLength);
 
 private:
   /// inference dump counter
