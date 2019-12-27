@@ -30,8 +30,6 @@
 #include <fstream>
 #include <string>
 
-constexpr size_t MAX_MEMORY = 64e+9;
-
 using namespace glow;
 
 namespace {
@@ -54,8 +52,18 @@ llvm::cl::opt<std::string> ExecutionBackend(
     llvm::cl::init("Interpreter"), llvm::cl::cat(reproTestCat));
 
 llvm::cl::opt<unsigned> concurrentRequestsOpt(
-    "concurrent-count", llvm::cl::desc("Number of concurrent requests."),
+    "concurrent_count", llvm::cl::desc("Number of concurrent requests."),
     llvm::cl::Optional, llvm::cl::init(1), llvm::cl::cat(reproTestCat));
+
+llvm::cl::opt<unsigned> numDevicesOpt(
+    "glow_num_devices", llvm::cl::desc("Number of devices for Glow backend"),
+    llvm::cl::Optional, llvm::cl::init(1), llvm::cl::cat(reproTestCat));
+
+llvm::cl::opt<float> deviceMemoryOpt(
+    "glow_device_memory",
+    llvm::cl::desc("Size of memory for a certain Glow backend device"),
+    llvm::cl::Optional, llvm::cl::init(256 * 1024.0 * 1024.0 * 1024.0),
+    llvm::cl::cat(reproTestCat));
 
 llvm::cl::opt<float> thresholdOpt(
     "threshold", llvm::cl::desc("theshold for tensor numeric comparison"),
@@ -131,7 +139,6 @@ void run() {
   }
 
   // Build host manager and compile the module.
-  // TODO: fix MAX_MEMORY
   PrecisionConfiguration precConfig;
   if (globalFp16Opt) {
     precConfig.convertToFP16 = globalFp16Opt;
@@ -149,8 +156,8 @@ void run() {
     precConfig.forceFP16AccumSLS = true;
     llvm::outs() << "Forcing fp16 accumulation for SLS ops enabled\n";
   }
-  auto configs =
-      runtime::generateDeviceConfigs(1, ExecutionBackend, MAX_MEMORY);
+  auto configs = runtime::generateDeviceConfigs(numDevicesOpt, ExecutionBackend,
+                                                deviceMemoryOpt);
   auto hostManager =
       glow::make_unique<runtime::HostManager>(std::move(configs));
   CompilationContext cctx;
