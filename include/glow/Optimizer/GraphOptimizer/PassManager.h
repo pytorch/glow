@@ -69,7 +69,7 @@ public:
   /// \p cctx. \returns whether \p F was modified.
   bool run(Function *F, const CompilationContext &cctx);
 
-  /// Getter for a reference to the Pipeline used by this PassManager..
+  /// Getter for a reference to the Pipeline used by this PassManager.
   const FunctionPassPipeline &getPipeline() const { return pipeline_; };
 
   /// Dump a textual representation of the FunctionPassManager to \p os.

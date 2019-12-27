@@ -8912,7 +8912,7 @@ TEST_P(OperatorTest, Reshape) {
   }
 }
 
-/// Verify that the Reshape operator works correctly with Int64ITy..
+/// Verify that the Reshape operator works correctly with Int64ITy.
 TEST_P(OperatorTest, ReshapeInt) {
   CHECK_IF_ENABLED();
 
