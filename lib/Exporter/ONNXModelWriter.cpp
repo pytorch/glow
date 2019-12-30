@@ -730,7 +730,7 @@ Error ONNXModelWriter::writeFlip(const FlipNode *node, GraphType &graph) {
   // Add dictionary entries.
   addValueAttribute(proto, "axis", node->getAxis());
 
-  return writeAllWithNode("Flip", node, proto);
+  return writeAllWithNode("Flip", node, graph, proto);
 }
 
 Error ONNXModelWriter::writeConvolution(const ConvolutionNode *node,
