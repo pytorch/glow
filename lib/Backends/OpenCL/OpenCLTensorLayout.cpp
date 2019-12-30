@@ -44,6 +44,14 @@ static std::string returnBaseReqOrNHWC(TensorLayoutDescription &baseReq,
     // These nodes accept any 4-D layout.
     return baseReq.getSerializedLayout();
   }
+  // For Placeholders and Constants that were loaded from another tool, we don't
+  // have the layout information in during load time. This makes us assume they
+  // are in Glow's Canonical NHWC format, which is not correct if we are loading
+  // an image with NCHW such as in resent loader. Weaken the verifier to avoid a
+  // runtime crash: if this is a storage location, return the baseReq.
+  if (llvm::dyn_cast<Storage>(node)) {
+    return baseReq.getSerializedLayout();
+  }
 
   return CanonicalTensorLayout::getInstance().getDefaultNDLayout(4);
 }
