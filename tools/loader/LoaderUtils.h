@@ -96,6 +96,73 @@ unsigned getDurationSec(TimeStamp &startTime);
 void getDuration(TimeStamp &startTime, unsigned &sec, unsigned &min,
                  unsigned &hrs);
 
+/// Helper function to trim left and right a string \p str by removing the
+/// characters given by \p trimChars.
+std::string trimString(std::string str, std::string trimChars = " ");
+
+/// Helper function to split a given string \p str using the given delimiter
+/// character \p delim. The function will NOT split the string inside groups
+/// of characters which start with one of the caracters specified with
+/// \p nopStartChars and end with one of the characters specified with
+/// \p nopStopChars. Characters specified with \p ignoreChars will be ignored.
+/// This function \returns the parts of the string as a vector of strings.
+std::vector<std::string> splitString(std::string str, char delim = ',',
+                                     std::string nopStartChars = "(",
+                                     std::string nopStopChars = ")",
+                                     std::string ignoreChars = " ");
+
+/// Helper class to parse the string description of a generic function call, for
+/// example "FUNC('s',1,2.0,"str",[1,2,3],[1.0,2.0,3.0])" where the string is
+/// parsed as being a function call with the name "FUNC" having 6 arguments with
+/// different types (char,int,float,string,int array,float array) and values.
+class FunctionString {
+  /// Function name.
+  std::string name_;
+  /// Function arguments as vector of strings.
+  std::vector<std::string> args_;
+  /// Split argument into an array of arguments.
+  static std::vector<std::string> splitArgArray(std::string arg);
+
+public:
+  /// This constructor parses the given string and derives the function name and
+  /// arguments.
+  FunctionString(std::string str);
+
+  /// Getter for function name.
+  std::string getName() const { return name_; }
+
+  /// Getter for function arguments.
+  std::vector<std::string> getArgs() const { return args_; }
+
+  /// Get number of function arguments.
+  size_t getNumArgs() const { return args_.size(); }
+
+  /// Verify if function has argument with given position.
+  bool hasArg(int pos = 0) const;
+
+  /// Get an argument from the argument list as string without
+  /// interpretting or stripping any characters.
+  std::string getArg(int pos = 0) const;
+
+  /// Get a character argument (delimited with ' or ").
+  char getArgChar(int pos = 0) const;
+
+  /// Get a string argument (delimited with ' or ").
+  std::string getArgStr(int pos = 0) const;
+
+  /// Get a signed integer argument ("1").
+  int getArgInt(int pos = 0) const;
+
+  /// Get a float argument ("2.0").
+  float getArgFloat(int pos = 0) const;
+
+  /// Get a signed integer array argument ("[1,2,3]").
+  std::vector<int> getArgIntArray(int pos = 0) const;
+
+  /// Get a float array argument ("[1.0,2.0,3.0]").
+  std::vector<float> getArgFloatArray(int pos = 0) const;
+};
+
 } // namespace glow
 
 #endif // GLOW_TOOLS_LOADER_UTILS_H

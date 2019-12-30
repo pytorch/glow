@@ -1,5 +1,6 @@
 add_executable(image-classifier
   Loader.cpp
+  LoaderUtils.cpp
   ImageClassifier.cpp)
 
 target_link_libraries(image-classifier
@@ -17,6 +18,7 @@ target_link_libraries(image-classifier
 
 add_executable(text-translator
   Loader.cpp
+  LoaderUtils.cpp
   TextTranslator.cpp)
 
 target_link_libraries(text-translator
@@ -34,6 +36,7 @@ target_link_libraries(text-translator
 
 add_executable(model-runner
   Loader.cpp
+  LoaderUtils.cpp
   ModelRunner.cpp)
 
 target_link_libraries(model-runner
@@ -51,6 +54,7 @@ target_link_libraries(model-runner
 
 add_executable(x-model-builder
   Loader.cpp
+  LoaderUtils.cpp
   XModelBuilder.cpp)
 
 target_link_libraries(x-model-builder
@@ -68,6 +72,7 @@ target_link_libraries(x-model-builder
 
 add_executable(model-compiler
   Loader.cpp
+  LoaderUtils.cpp
   ModelCompiler.cpp)
 
 target_link_libraries(model-compiler
