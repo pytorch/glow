@@ -37,6 +37,7 @@ void testLoadAndSaveONNXModel(const std::string &name, bool zipMode) {
   ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
+  llvm::errs() << "loading model " << name << "\n";
 
   size_t irVer = 0, opsetVer = 0;
   Error err = Error::empty();
@@ -77,6 +78,15 @@ void testLoadAndSaveONNXModel(const std::string &name, bool zipMode) {
   EXPECT_FALSE(ERR_TO_BOOL(std::move(err)))
       << "ONNXModelLoader failed to reload model: " << outputFilename;
 }
+
+bool endsWith(const std::string &full, const std::string &ending) {
+  if (full.length() >= ending.length()) {
+    return (0 == full.compare(full.length() - ending.length(), ending.length(),
+                              ending));
+  } else {
+    return false;
+  }
+}
 } // namespace
 
 TEST(exporter, onnxModels) {
@@ -86,7 +96,7 @@ TEST(exporter, onnxModels) {
        !code && dirIt != llvm::sys::fs::directory_iterator();
        dirIt.increment(code)) {
     auto name = dirIt->path();
-    if (name.find(".onnxtxt") == std::string::npos) {
+    if (!endsWith(name, ".onnxtxt")) {
       llvm::outs() << "Ignore non-onnxtxt input: " << name << "\n";
       continue;
     }

@@ -47,6 +47,8 @@ std::set<std::string> glow::backendTestBlacklist = {
     "FullyConnected_Int16_BiasInt16/0",
     "FullyConnected_Int16_BiasInt32/0",
     "FullyConnected_Int8_BiasInt8/0",
+    "FusedRowwiseQuantizedSparseLengthsWeightedSum_ConvertedFloat16_"
+    "NoFusedConvert/0",
     "GroupConv3D/0",
     "GroupwiseQuantizedConvolution/0",
     "insertTensorTest/0",
@@ -75,6 +77,7 @@ std::set<std::string> glow::backendTestBlacklist = {
     "ResizeNearest_Int8/0",
     "rowwiseQuantizedFCTest_Int8_BiasInt32/0",
     "rowwiseQuantizedFCTest_Int8_BiasInt8/0",
+    "RWQSLWSAllSame_Float16_AccumFP32/0",
     "ScatterAddNDimensionalDuplicatingIndices/0",
     "ScatterAddNDimensionalSimple/0",
     "ScatterAddQuantized/0",
@@ -152,7 +155,7 @@ struct EmulatorOnlyTests {
           "FusedRowwiseQuantizedSparseLengthsWeightedSum_ConvertedFloat16_"
           "back_",
           "FusedRowwiseQuantizedSparseLengthsWeightedSum_ConvertedFloat16_"
-          "NoFusedConvert/0",
+          "NoFusedConvert_FP32Accum/0",
           "to_back2/0",
           "GroupDilatedConvolution/0",
           "less_int32Cases/0",

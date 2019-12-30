@@ -4153,8 +4153,8 @@ TEST_P(OperatorStatelessTest, ConvolutionDepth10_Int8_BiasInt8) {
   compareAgainstInterpreter(
       getBackendName(), createAndInitConvDepthTest<10>, ElemKind::FloatTy,
       ElemKind::Int8QTy, 0.03f, parCloneCountOpt,
-      /* enableRowwiseQuantization */ false, quantization::Schema::Asymmetric,
-      ElemKind::Int8QTy);
+      /* convertToRowwiseQuantization */ false,
+      quantization::Schema::Asymmetric, ElemKind::Int8QTy);
 }
 
 TEST_P(OperatorStatelessTest, ConvolutionDepth10_Int8_BiasInt32) {
@@ -4162,8 +4162,8 @@ TEST_P(OperatorStatelessTest, ConvolutionDepth10_Int8_BiasInt32) {
   compareAgainstInterpreter(
       getBackendName(), createAndInitConvDepthTest<10>, ElemKind::FloatTy,
       ElemKind::Int8QTy, 0.03f, parCloneCountOpt,
-      /* enableRowwiseQuantization */ false, quantization::Schema::Asymmetric,
-      ElemKind::Int32QTy);
+      /* convertToRowwiseQuantization */ false,
+      quantization::Schema::Asymmetric, ElemKind::Int32QTy);
 }
 
 TEST_P(OperatorStatelessTest, ConvolutionDepth10_Int16_BiasInt16) {
@@ -4171,8 +4171,8 @@ TEST_P(OperatorStatelessTest, ConvolutionDepth10_Int16_BiasInt16) {
   compareAgainstInterpreter(
       getBackendName(), createAndInitConvDepthTest<10>, ElemKind::FloatTy,
       ElemKind::Int16QTy, 0.0003f, parCloneCountOpt,
-      /* enableRowwiseQuantization */ false, quantization::Schema::Asymmetric,
-      ElemKind::Int16QTy);
+      /* convertToRowwiseQuantization */ false,
+      quantization::Schema::Asymmetric, ElemKind::Int16QTy);
 }
 
 TEST_P(OperatorStatelessTest, ConvolutionDepth10_Int16_BiasInt32) {
@@ -4180,8 +4180,8 @@ TEST_P(OperatorStatelessTest, ConvolutionDepth10_Int16_BiasInt32) {
   compareAgainstInterpreter(
       getBackendName(), createAndInitConvDepthTest<10>, ElemKind::FloatTy,
       ElemKind::Int16QTy, 0.0003f, parCloneCountOpt,
-      /* enableRowwiseQuantization */ false, quantization::Schema::Asymmetric,
-      ElemKind::Int32QTy);
+      /* convertToRowwiseQuantization */ false,
+      quantization::Schema::Asymmetric, ElemKind::Int32QTy);
 }
 
 static FunctionTensorPair
@@ -4289,8 +4289,8 @@ TEST_P(OperatorStatelessTest, FullyConnected_Int8_BiasInt8) {
   compareAgainstInterpreter(
       getBackendName(), createAndInitBasicFCTest, ElemKind::FloatTy,
       ElemKind::Int8QTy, 0.05f, parCloneCountOpt,
-      /* enableRowwiseQuantization */ false, quantization::Schema::Asymmetric,
-      ElemKind::Int8QTy);
+      /* convertToRowwiseQuantization */ false,
+      quantization::Schema::Asymmetric, ElemKind::Int8QTy);
 }
 
 /// Test Int8 FullyConnected with Int32 bias.
@@ -4299,8 +4299,8 @@ TEST_P(OperatorStatelessTest, FullyConnected_Int8_BiasInt32) {
   compareAgainstInterpreter(
       getBackendName(), createAndInitBasicFCTest, ElemKind::FloatTy,
       ElemKind::Int8QTy, 0.05f, parCloneCountOpt,
-      /* enableRowwiseQuantization */ false, quantization::Schema::Asymmetric,
-      ElemKind::Int32QTy);
+      /* convertToRowwiseQuantization */ false,
+      quantization::Schema::Asymmetric, ElemKind::Int32QTy);
 }
 
 /// Test Int16 FullyConnected with Int16 bias.
@@ -4309,8 +4309,8 @@ TEST_P(OperatorStatelessTest, FullyConnected_Int16_BiasInt16) {
   compareAgainstInterpreter(
       getBackendName(), createAndInitBasicFCTest, ElemKind::FloatTy,
       ElemKind::Int16QTy, 0.0005f, parCloneCountOpt,
-      /* enableRowwiseQuantization */ false, quantization::Schema::Asymmetric,
-      ElemKind::Int16QTy);
+      /* convertToRowwiseQuantization */ false,
+      quantization::Schema::Asymmetric, ElemKind::Int16QTy);
 }
 
 /// Test Int16 FullyConnected with Int32 bias.
@@ -4319,8 +4319,8 @@ TEST_P(OperatorStatelessTest, FullyConnected_Int16_BiasInt32) {
   compareAgainstInterpreter(
       getBackendName(), createAndInitBasicFCTest, ElemKind::FloatTy,
       ElemKind::Int16QTy, 0.0005f, parCloneCountOpt,
-      /* enableRowwiseQuantization */ false, quantization::Schema::Asymmetric,
-      ElemKind::Int32QTy);
+      /* convertToRowwiseQuantization */ false,
+      quantization::Schema::Asymmetric, ElemKind::Int32QTy);
 }
 
 TEST_P(OperatorTest, EntropyLossTest) {
@@ -8029,6 +8029,68 @@ TEST_P(OperatorTest,
       /* useFP16Accumulation */ true);
 }
 
+static FunctionTensorPair
+createAndInitRWQSLWSAllSame(glow::PlaceholderBindings &bindings,
+                            glow::ExecutionEngine &EE) {
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  Tensor data(ElemKind::FloatTy, {20, 2});
+  data.getHandle<float>() = {
+      0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1,
+      0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1,
+      0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1,
+  };
+
+  Constant *weights = mod.createConstant(ElemKind::FloatTy, {21}, "weights");
+  weights->getPayloadMutable().getHandle<float>() = {
+      0.44419134, 0.3419154,  0.28775468, 0.47224975, 0.05422213, 0.14346851,
+      0.05846643, 0.3750175,  0.09190885, 0.3335992,  0.09665264, 0.4560224,
+      0.2244578,  0.44881952, 0.42696562, 0.33007848, 0.4511249,  0.11568925,
+      0.02629679, 0.33864713, 0.42614424};
+
+  Placeholder *indices =
+      mod.createPlaceholder(ElemKind::Int64ITy, {21}, "indices",
+                            /* isTrainable */ false);
+  Placeholder *lengths =
+      mod.createPlaceholder(ElemKind::Int32ITy, {2}, "lengths",
+                            /* isTrainable */ false);
+
+  bindings.allocate(indices)->getHandle<int64_t>() = {
+      11, 8, 19, 8, 4, 11, 4, 19, 6, 18, 2, 6, 15, 5, 14, 14, 15, 13, 4, 6, 5,
+  };
+  bindings.allocate(lengths)->getHandle<int32_t>() = {15, 6};
+
+  auto *R = F->createRowwiseQuantizedSparseLengthsWeightedSum(
+      "RQSLWS", data, weights, indices, lengths,
+      quantization::Schema::Asymmetric, ElemKind::FloatTy,
+      /* useFP16Accumulation */ false);
+  SaveNode *S = F->createSave("save", R);
+  Tensor *resultT = bindings.allocate(S->getPlaceholder());
+
+  return std::make_pair(F, resultT);
+}
+
+TEST_P(OperatorTest, RWQSLWSAllSame_Float16_AccumFP16) {
+  CHECK_IF_ENABLED();
+  compareAgainstInterpreter(
+      getBackendName(), createAndInitRWQSLWSAllSame, ElemKind::Float16Ty,
+      ElemKind::Float16Ty, 1e-6, parCloneCountOpt,
+      /* convertToRowwiseQuantization */ false,
+      /*schema */ quantization::Schema::Asymmetric,
+      /* biasElemKind */ ElemKind::Int32QTy, /* forceFP16AccumSLS */ true);
+}
+
+TEST_P(OperatorTest, RWQSLWSAllSame_Float16_AccumFP32) {
+  CHECK_IF_ENABLED();
+  compareAgainstInterpreter(
+      getBackendName(), createAndInitRWQSLWSAllSame, ElemKind::Float16Ty,
+      ElemKind::Float16Ty, 1e-6, parCloneCountOpt,
+      /* convertToRowwiseQuantization */ false,
+      /*schema */ quantization::Schema::Asymmetric,
+      /* biasElemKind */ ElemKind::Int32QTy, /* forceFP16AccumSLS */ false);
+}
+
 /// Helper to test RowwiseQuantizedSparseLengthsWeightedSum using \p DTy.
 template <typename DataType>
 static void testRowwiseQuantizedSparseLengthsSum(
@@ -8326,8 +8388,8 @@ TEST_P(OperatorTest,
 
 static void testRowwiseQuantizedSparseLengthsSum_ConvertedFloat16(
     glow::PlaceholderBindings &bindings, glow::Module &mod, glow::Function *F,
-    glow::ExecutionEngine &EE, float allowedError,
-    bool convertFusedToFP16 = true) {
+    glow::ExecutionEngine &EE, float allowedError, bool convertFusedToFP16,
+    bool useFP16AccumSLS) {
   CHECK_IF_ENABLED();
   /*
     DATA  =   [[2.0, -0.5, 13]]
@@ -8372,6 +8434,7 @@ static void testRowwiseQuantizedSparseLengthsSum_ConvertedFloat16(
   CompilationContext cctx;
   cctx.precisionConfig.convertToFP16 = true;
   cctx.precisionConfig.convertFusedToFP16 = convertFusedToFP16;
+  cctx.precisionConfig.forceFP16AccumSLS = useFP16AccumSLS;
   EE.compile(cctx);
   EE.run(bindings);
 
@@ -8395,7 +8458,16 @@ TEST_P(
   CHECK_IF_ENABLED();
   return testRowwiseQuantizedSparseLengthsSum_ConvertedFloat16(
       bindings_, mod_, F_, EE_, 0.02,
-      /* convertFusedToFP16*/ false);
+      /* convertFusedToFP16*/ false, /* useFP16AccumSLS */ true);
+}
+
+TEST_P(
+    OperatorTest,
+    FusedRowwiseQuantizedSparseLengthsWeightedSum_ConvertedFloat16_NoFusedConvert_FP32Accum) {
+  CHECK_IF_ENABLED();
+  return testRowwiseQuantizedSparseLengthsSum_ConvertedFloat16(
+      bindings_, mod_, F_, EE_, 0.02,
+      /* convertFusedToFP16*/ false, /* useFP16AccumSLS */ false);
 }
 
 TEST_P(OperatorTest,
@@ -8403,7 +8475,7 @@ TEST_P(OperatorTest,
   CHECK_IF_ENABLED();
   return testRowwiseQuantizedSparseLengthsSum_ConvertedFloat16(
       bindings_, mod_, F_, EE_, 0.02,
-      /* convertFusedToFP16*/ true);
+      /* convertFusedToFP16*/ true, /* useFP16AccumSLS */ true);
 }
 
 TEST_P(
@@ -8860,11 +8932,11 @@ TEST_P(OperatorTest, SLSWithZeroLengths) {
 }
 
 /// Helper to create an SLS test with all zero lengths, with and without fused
-/// rowwise quantization based on \p useRowwiseQuantization.
+/// rowwise quantization based on \p convertToRowwiseQuantization.
 static FunctionTensorPair
 createAndInitZeroLengthsSLSTest(glow::PlaceholderBindings &bindings,
                                 glow::ExecutionEngine &EE,
-                                bool useRowwiseQuantization) {
+                                bool convertToRowwiseQuantization) {
   auto &mod = EE.getModule();
   auto *F = mod.createFunction("main");
   constexpr dim_t embedWidth = 1000;
@@ -8883,7 +8955,7 @@ createAndInitZeroLengthsSLSTest(glow::PlaceholderBindings &bindings,
   LH.clear(0);
 
   Node *R = nullptr;
-  if (useRowwiseQuantization) {
+  if (convertToRowwiseQuantization) {
     R = F->createFusedRowwiseQuantizedSparseLengthsWeightedSum(
         "RQSLWS", data, weights, indices, lengths);
   } else {
@@ -8905,7 +8977,7 @@ TEST_P(OperatorTest, FusedRWQSLSAllZeroLengths_Float) {
   compareAgainstInterpreter(
       getBackendName(),
       std::bind(createAndInitZeroLengthsSLSTest, std::placeholders::_1,
-                std::placeholders::_2, /* useRowwiseQuantization */ true),
+                std::placeholders::_2, /* convertToRowwiseQuantization */ true),
       ElemKind::FloatTy, ElemKind::FloatTy);
 }
 
@@ -8916,7 +8988,7 @@ TEST_P(OperatorTest, FusedRWQSLSAllZeroLengths_Float16) {
   compareAgainstInterpreter(
       getBackendName(),
       std::bind(createAndInitZeroLengthsSLSTest, std::placeholders::_1,
-                std::placeholders::_2, /* useRowwiseQuantization */ true),
+                std::placeholders::_2, /* convertToRowwiseQuantization */ true),
 
       ElemKind::Float16Ty, ElemKind::Float16Ty);
 }
@@ -8925,23 +8997,25 @@ TEST_P(OperatorTest, FusedRWQSLSAllZeroLengths_Float16) {
 TEST_P(OperatorTest, SLSAllZeroLengths_Float) {
   CHECK_IF_ENABLED();
 
-  compareAgainstInterpreter(
-      getBackendName(),
-      std::bind(createAndInitZeroLengthsSLSTest, std::placeholders::_1,
-                std::placeholders::_2, /* useRowwiseQuantization */ false),
-      ElemKind::FloatTy, ElemKind::FloatTy);
+  compareAgainstInterpreter(getBackendName(),
+                            std::bind(createAndInitZeroLengthsSLSTest,
+                                      std::placeholders::_1,
+                                      std::placeholders::_2,
+                                      /* convertToRowwiseQuantization */ false),
+                            ElemKind::FloatTy, ElemKind::FloatTy);
 }
 
 /// Test SLS when all "lengths" inputs are zero in Float16Ty.
 TEST_P(OperatorTest, SLSAllZeroLengths_Float16) {
   CHECK_IF_ENABLED();
 
-  compareAgainstInterpreter(
-      getBackendName(),
-      std::bind(createAndInitZeroLengthsSLSTest, std::placeholders::_1,
-                std::placeholders::_2, /* useRowwiseQuantization */ false),
+  compareAgainstInterpreter(getBackendName(),
+                            std::bind(createAndInitZeroLengthsSLSTest,
+                                      std::placeholders::_1,
+                                      std::placeholders::_2,
+                                      /* convertToRowwiseQuantization */ false),
 
-      ElemKind::Float16Ty, ElemKind::Float16Ty);
+                            ElemKind::Float16Ty, ElemKind::Float16Ty);
 }
 
 TEST_P(OperatorTest, SparseToDense) {
@@ -9576,7 +9650,7 @@ TEST_P(OperatorStatelessTest, rowwiseQuantizedFCTest_Int8_BiasInt8) {
   compareAgainstInterpreter(
       getBackendName(), createAndInitBasicRowwiseFCTest, ElemKind::FloatTy,
       ElemKind::Int8QTy, 0.06f, parCloneCountOpt,
-      /* enableRowwiseQuantization */ true, quantization::Schema::Asymmetric,
+      /* convertToRowwiseQuantization */ true, quantization::Schema::Asymmetric,
       ElemKind::Int8QTy);
 }
 
@@ -9586,7 +9660,7 @@ TEST_P(OperatorStatelessTest, rowwiseQuantizedFCTest_Int8_BiasInt32) {
   compareAgainstInterpreter(
       getBackendName(), createAndInitBasicRowwiseFCTest, ElemKind::FloatTy,
       ElemKind::Int8QTy, 0.06f, parCloneCountOpt,
-      /* enableRowwiseQuantization */ true, quantization::Schema::Asymmetric,
+      /* convertToRowwiseQuantization */ true, quantization::Schema::Asymmetric,
       ElemKind::Int32QTy);
 }
 
@@ -9596,7 +9670,7 @@ TEST_P(OperatorStatelessTest, rowwiseQuantizedFCTestSymmetric) {
   compareAgainstInterpreter(
       getBackendName(), createAndInitBasicRowwiseFCTest, ElemKind::FloatTy,
       ElemKind::Int8QTy, 0.07f, parCloneCountOpt,
-      /* enableRowwiseQuantization */ true, quantization::Schema::Symmetric);
+      /* convertToRowwiseQuantization */ true, quantization::Schema::Symmetric);
 }
 
 static FunctionTensorPair
@@ -9653,7 +9727,7 @@ TEST_P(OperatorStatelessTest, rowwiseQuantizedSLWSTest) {
   compareAgainstInterpreter(getBackendName(), createAndInitBasicSLWSTest,
                             ElemKind::FloatTy, ElemKind::Int8QTy, 0.01f,
                             parCloneCountOpt,
-                            /* enableRowwiseQuantization */ true);
+                            /* convertToRowwiseQuantization */ true);
 }
 
 static SaveNode *setupBucketNode(Function *F, PlaceholderBindings &bindings,

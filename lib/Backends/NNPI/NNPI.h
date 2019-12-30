@@ -53,12 +53,14 @@ public:
 
   virtual llvm::StringMap<std::string>
   getSupportedCompiledFunctionOptions() const override {
-    return NNPICompilationOptions::getSupportedOptions();
+    NNPICompilationOptions options({});
+    return options.getSupportedOptions();
   };
 
   virtual llvm::StringMap<std::string>
   getSupportedDeviceManagerOptions() const override {
-    return NNPIDeviceOptions::getSupportedOptions();
+    NNPIDeviceOptions options({});
+    return options.getSupportedOptions();
   };
   /// @}
 

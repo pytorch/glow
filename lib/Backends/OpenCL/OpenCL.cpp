@@ -161,7 +161,7 @@ cl_kernel OpenCLFunction::createKernel(const std::string &name,
   DCHECK(program) << "program cannot be null.";
   cl_int err = CL_SUCCESS;
   cl_kernel kernel = clCreateKernel(program, name.c_str(), &err);
-  CHECK(kernel) << "clCreateKernel Failed.";
+  CHECK(kernel) << "clCreateKernel Failed for " << name;
   CHECK_EQ(err, CL_SUCCESS) << "clCreateKernel Failed.";
   return kernel;
 }
@@ -963,6 +963,46 @@ Error OpenCLFunction::execute(ExecutionContext *context) {
       continue;
     }
 
+    if (auto *LRN = dyn_cast<LocalResponseNormalizationGradInst>(&I)) {
+      cl_kernel kernel = createKernel(kernelName, program);
+      setKernelArg(kernel, 0, deviceBuffer);
+
+      size_t numArgs = setKernelArgsForBuffers(kernel, I, 1, runtimeBundle_);
+      ShapeNHWC dim(LRN->getDest()->getType()->dims());
+
+      uint32_t halfWindowSize = LRN->getHalfWindowSize();
+      uint32_t windowSize = 2 * halfWindowSize + 1;
+      setKernelArg(kernel, ++numArgs, dim);
+      setKernelArg(kernel, ++numArgs, halfWindowSize);
+      setKernelArg(kernel, ++numArgs, LRN->getK());
+      setKernelArg(kernel, ++numArgs, LRN->getBeta());
+      setKernelArg(kernel, ++numArgs, LRN->getAlpha() / windowSize);
+
+      enqueueKernel(I.getName(), commands, kernel, deviceId,
+                    {dim.n, dim.h, dim.w}, kernelLaunches);
+      continue;
+    }
+
+    if (auto *LRN = dyn_cast<LocalResponseNormalizationInst>(&I)) {
+      cl_kernel kernel = createKernel(kernelName, program);
+      setKernelArg(kernel, 0, deviceBuffer);
+
+      size_t numArgs = setKernelArgsForBuffers(kernel, I, 1, runtimeBundle_);
+      ShapeNHWC dim(LRN->getDest()->getType()->dims());
+
+      uint32_t halfWindowSize = LRN->getHalfWindowSize();
+      uint32_t windowSize = 2 * halfWindowSize + 1;
+      setKernelArg(kernel, ++numArgs, dim);
+      setKernelArg(kernel, ++numArgs, halfWindowSize);
+      setKernelArg(kernel, ++numArgs, LRN->getK());
+      setKernelArg(kernel, ++numArgs, LRN->getBeta());
+      setKernelArg(kernel, ++numArgs, LRN->getAlpha() / windowSize);
+
+      enqueueKernel(I.getName(), commands, kernel, deviceId,
+                    {dim.n, dim.h, dim.w}, kernelLaunches);
+      continue;
+    }
+
     if (auto *CC = dyn_cast<ConvolutionInst>(&I)) {
       if (CC->getLayout() == NCHW) {
         executeNCHWConvolution(CC, context, clBindings);
@@ -1540,6 +1580,8 @@ bool OCLBackend::isOpSupported(const NodeInfo &NI) const {
         {ElemKind::FloatTy, ElemKind::Int8QTy, IndexElemKind});
 
   case Kinded::Kind::PowNodeKind:
+  case Kinded::Kind::LocalResponseNormalizationNodeKind:
+  case Kinded::Kind::LocalResponseNormalizationGradNodeKind:
   case Kinded::Kind::BatchedReduceAddNodeKind:
   case Kinded::Kind::TanhNodeKind:
   case Kinded::Kind::SigmoidNodeKind:

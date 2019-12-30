@@ -124,6 +124,7 @@ target_link_libraries(NNPI
                       Backend
                       Base
                       Graph
+                      GraphOptimizer
                       CodeGen
                       IR
                       Support

@@ -120,7 +120,7 @@ using FloatIndexPair = std::pair<float, size_t>;
 /// (topKCount) [float, index] pairs, i.e. the pairs with the highest floats.
 template <typename ElemTy>
 static std::vector<FloatIndexPair> getTopKPairs(Handle<ElemTy> H,
-                                                size_t topKCount) {
+                                                dim_t topKCount) {
   DCHECK_LE(topKCount, H.size()) << "Function requires k < number of labels.";
   DCHECK_EQ(H.dims().size(), 1) << "H must be a Handle of a 1d Tensor.";
 

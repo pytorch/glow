@@ -19,9 +19,10 @@
 #include "glow/Base/Tensor.h"
 #include "glow/Converter/TypeAToTypeBFunctionConverter.h"
 #include "glow/IR/IR.h"
+#include "glow/Importer/Caffe2ModelLoader.h"
+#include "glow/Importer/ONNXModelLoader.h"
 #include "glow/Optimizer/GraphOptimizer/CompilationContext.h"
 #include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
-#include "glow/Quantization/Quantization.h"
 #include "glow/Quantization/Serialization.h"
 #include "glow/Runtime/RuntimeTypes.h"
 
@@ -271,13 +272,17 @@ llvm::StringRef Loader::getModelOptDir() {
   return modelPathOpt[0];
 }
 
+bool glow::emittingBundle() { return !emitBundle.empty(); }
+
+bool glow::profilingGraph() { return !dumpProfileFileOpt.empty(); }
+
 /// Parse the 'modelInputsOpt' option and get the model input names and types.
 /// The expected format is one of the following:
 /// - <name> (default type is 'float', default shape is '[1]')
 /// - <name>,<type>,<shape> for non-quantized types.
 /// - <name>,<type>,<scale>,<offset>,<shape> for quantized types.
-void Loader::getModelInputs(std::vector<std::string> &inputNames,
-                            std::vector<Type> &inputTypes) {
+static void getModelInputs(std::vector<std::string> &inputNames,
+                           std::vector<Type> &inputTypes) {
   for (const auto &str : modelInputsOpt) {
     // Parse name.
     auto strPair = llvm::StringRef(str).split(',');
@@ -369,9 +374,39 @@ void Loader::getModelInputs(std::vector<std::string> &inputNames,
   }
 }
 
-bool glow::emittingBundle() { return !emitBundle.empty(); }
+std::unique_ptr<ProtobufLoader> Loader::loadModel() {
 
-bool glow::profilingGraph() { return !dumpProfileFileOpt.empty(); }
+  // Get model input names and types.
+  std::vector<std::string> inputNames;
+  std::vector<Type> inputTypes;
+  getModelInputs(inputNames, inputTypes);
+  std::vector<const char *> inputNameRefs;
+  std::vector<TypeRef> inputTypeRefs;
+  for (size_t idx = 0, e = inputNames.size(); idx < e; idx++) {
+    inputNameRefs.push_back(inputNames[idx].c_str());
+    inputTypeRefs.push_back(&inputTypes[idx]);
+  }
+
+  // Load the model based on the model format.
+  std::unique_ptr<ProtobufLoader> protoLoader;
+  if (!getCaffe2NetDescFilename().empty()) {
+    // For Caffe2 format the input placeholder names/types must be provided
+    // explicitly (mandatory).
+    protoLoader.reset(new Caffe2ModelLoader(
+        getCaffe2NetDescFilename(), getCaffe2NetWeightFilename(), inputNameRefs,
+        inputTypeRefs, *getFunction()));
+  } else {
+    // For ONNX format the input placeholders names/types can be optionally
+    // provided but is not mandatory. If not provided (the arrays are empty)
+    // they are derived automatically. One might want to provide explicitly
+    // the input placeholder types in order to override the placeholder sizes
+    // (one such example is the batch size).
+    protoLoader.reset(new ONNXModelLoader(getOnnxModelFilename(), inputNameRefs,
+                                          inputTypeRefs, *getFunction()));
+  }
+
+  return protoLoader;
+}
 
 static bool commandLineIsInvalid() {
   if (!dumpProfileFileOpt.empty() &&
@@ -444,24 +479,53 @@ void glow::parseCommandLine(int argc, char **argv) {
   }
 }
 
-void Loader::compile(PlaceholderBindings &bindings) {
-  CompilationContext cctx{&bindings};
-  compile(cctx);
+quantization::QuantizationConfiguration Loader::getQuantizationConfiguration() {
+  quantization::QuantizationConfiguration quantConfig;
+  quantConfig.precision = quantizationPrecision;
+  quantConfig.precisionBias = quantizationPrecisionBias;
+  quantConfig.schema = quantizationSchema;
+  quantConfig.enableRowwise = enableRowwiseOpt;
+  quantConfig.assertAllNodesQuantized = assertAllNodesQuantizedOpt;
+  if (!loadProfileFileOpt.empty()) {
+    quantConfig.infos = deserializeFromYaml(loadProfileFileOpt);
+  }
+  return quantConfig;
 }
 
-void Loader::compile(CompilationContext &cctx) {
+CompilationContext Loader::getCompilationContext(QuantizationMode mode) {
+
+  // Common configurations.
+  CompilationContext cctx;
   cctx.loweredInfoMap = &loweredMap_;
-
-  // Dump the DAG before compilation if needed.
-  if (!dumpGraphDAGFileBeforeCompilationOpt.empty()) {
-    F_->dumpDAG(dumpGraphDAGFileBeforeCompilationOpt.c_str());
-  }
-
   PrecisionConfiguration &precConfig = cctx.precisionConfig;
+  precConfig.convertToFP16 = convertToFP16;
 
-  // Handle the request to profile the graph in preparation for quantization.
-  if (!dumpProfileFileOpt.empty()) {
-    precConfig.quantMode = QuantizationMode::Profile;
+  // Specific configurations.
+  precConfig.quantMode = mode;
+  if (mode == QuantizationMode::None) {
+
+    // By default, when converting models, all nodes that can be converted are
+    // converted. However, some models may need to keep higher precision for
+    // some nodes to prevent high accuracy loss. Those nodes are gathered via
+    // the keepOriginalPrecisionForNodesOpt option and passed to the related
+    // conversion function.
+    for (llvm::StringRef kindName : keepOriginalPrecisionForNodesOpt) {
+      precConfig.precisionModeKindSet.insert(getKindFromNodeName(kindName));
+    }
+
+  } else if (mode == QuantizationMode::Quantize) {
+
+    // By default, when converting models, all nodes that can be converted are
+    // converted. However, some models may need to keep higher precision for
+    // some nodes to prevent high accuracy loss. Those nodes are gathered via
+    // the keepOriginalPrecisionForNodesOpt option and passed to the related
+    // conversion function.
+    for (llvm::StringRef kindName : keepOriginalPrecisionForNodesOpt) {
+      precConfig.precisionModeKindSet.insert(getKindFromNodeName(kindName));
+    }
+    precConfig.quantConfig = getQuantizationConfiguration();
+
+  } else if (mode == QuantizationMode::Profile) {
 
     // By default everything will be lowered for profiling. However this may
     // cause performance issues for some models, e.g. if a model has group
@@ -471,28 +535,36 @@ void Loader::compile(CompilationContext &cctx) {
     for (llvm::StringRef kindName : doNotLowerNodesForProfilingOpt) {
       precConfig.precisionModeKindSet.insert(getKindFromNodeName(kindName));
     }
+
   } else {
-    // By default, when converting models, all nodes that can be converted are
-    // converted. However, some models may need to keep higher precision for
-    // some nodes to prevent high accuracy loss. Those nodes are gathered via
-    // the keepOriginalPrecisionForNodesOpt option and passed to the related
-    // conversion function.
-    for (llvm::StringRef kindName : keepOriginalPrecisionForNodesOpt) {
-      precConfig.precisionModeKindSet.insert(getKindFromNodeName(kindName));
-    }
+    LOG(FATAL) << "Quantization mode not supported";
   }
 
-  if (!loadProfileFileOpt.empty()) {
-    precConfig.quantMode = QuantizationMode::Quantize;
-    precConfig.quantConfig.precision = quantizationPrecision;
-    precConfig.quantConfig.infos = deserializeFromYaml(loadProfileFileOpt);
-    precConfig.quantConfig.schema = quantizationSchema;
-    precConfig.quantConfig.enableRowwise = enableRowwiseOpt;
-    precConfig.quantConfig.assertAllNodesQuantized = assertAllNodesQuantizedOpt;
-    precConfig.quantConfig.precisionBias = quantizationPrecisionBias;
-  }
+  return cctx;
+}
 
-  precConfig.convertToFP16 = convertToFP16;
+CompilationContext Loader::getCompilationContext() {
+  if (!dumpProfileFileOpt.empty()) {
+    return Loader::getCompilationContext(QuantizationMode::Profile);
+  } else if (!loadProfileFileOpt.empty()) {
+    return Loader::getCompilationContext(QuantizationMode::Quantize);
+  } else {
+    return Loader::getCompilationContext(QuantizationMode::None);
+  }
+}
+
+void Loader::compile(PlaceholderBindings &bindings) {
+  CompilationContext cctx = getCompilationContext();
+  cctx.bindings = &bindings;
+  compile(cctx);
+}
+
+void Loader::compile(CompilationContext &cctx) {
+
+  // Dump the DAG before compilation if needed.
+  if (!dumpGraphDAGFileBeforeCompilationOpt.empty()) {
+    F_->dumpDAG(dumpGraphDAGFileBeforeCompilationOpt.c_str());
+  }
 
   // Store a raw pointer to the Module, we pass the unique_ptr to HostManager
   // but the Module is stored by Hostmanager so the pointer will remain valid.
@@ -542,7 +614,7 @@ void Loader::runInference(PlaceholderBindings &bindings, size_t batchSize) {
     timer.startTimer();
   }
   for (unsigned i = 0; i < iterations; i++) {
-    auto runErr = hostManager_->runNetworkBlocking(modelPathOpt[0], bindings);
+    auto runErr = hostManager_->runNetworkBlocking(functionName_, bindings);
     EXIT_ON_ERR(std::move(runErr));
   }
   if (timeOpt) {
@@ -568,7 +640,7 @@ void Loader::runInference(ExecutionContext *context, size_t batchSize) {
     auto fut = runPromise.get_future();
     std::unique_ptr<Error> runErr;
     hostManager_->runNetwork(
-        modelPathOpt[0], std::move(contextP),
+        functionName_, std::move(contextP),
         [&runPromise, &runErr](runtime::RunIdentifierTy, Error err,
                                std::unique_ptr<ExecutionContext> contextPtr) {
           // Don't really delete context since we don't own it.

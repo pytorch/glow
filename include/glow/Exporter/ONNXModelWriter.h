@@ -62,7 +62,7 @@ class ONNXModelWriter : public CommonOperatorWriter<ONNX_TRAITS> {
   /// Writes all inputs and outputs with operator name \p opName from give Node
   /// \p node into protobuf \p proto.
   static Error writeAllWithNode(const std::string &opName, const Node *node,
-                                NodeType *proto);
+                                GraphType &graph, NodeType *proto);
   /// Writes all inputs and outputs with operator name \p opName from give Node
   /// \p node into created node protobuf using \p graph.
   static Error writeAll(const std::string &opName, const Node *node,

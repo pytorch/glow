@@ -20,8 +20,6 @@ using namespace glow;
 std::set<std::string> glow::backendTestBlacklist = {
     // Requires the CPU target due to the use of MockCPUBackend.
     "dataParallelStackingTest/0",
-    "localResponseNormalizationTest/0",
-    "localResponseNormalizationGradTest/0",
     "AvgPoolGradTest/0",
     "intLookupTable/0",
 };

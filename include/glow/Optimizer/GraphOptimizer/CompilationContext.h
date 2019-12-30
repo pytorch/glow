@@ -58,6 +58,9 @@ struct PrecisionConfiguration {
   /// If clipFP16, whether to skip clipping inputs of Nodes.
   bool clipFP16SkipInputs{false};
 
+  /// Whether to force FP16 accumulation for the SLS family of ops.
+  bool forceFP16AccumSLS{false};
+
   /// Used during Quantization and convertToFP16 to keep the original precision
   /// of specific node kinds (i.e. quantization/FP16 conversion would be skipped
   /// for any node kinds found here). Used during profiling to prevent nodes
@@ -93,6 +96,26 @@ struct OptimizationOptions {
   /// placeholders. The conversion of the Tensors will be handled by the
   /// provisioner.
   bool foldStaticPlaceholderConversions{false};
+
+  /// If true, this will direct the partitioner to use SparseNN partitioning
+  /// scheme
+  bool useSparseNNPartitioningScheme{false};
+
+  /// The number of cards over which to split SLS tables when using SparseNN
+  /// partitioning scheme
+  unsigned int sparseNNPartitioningSchemeNumCards{1};
+
+  /// The number of bytes to allocate per card for SLS tables when using
+  /// the SparseNN partitioning scheme
+  unsigned int sparseNNPartitioningSchemeSLSTableKBytesPerCard{0};
+
+  /// The number of cores to assign to SLS partition when using SparseNN
+  /// partitioning scheme
+  unsigned int sparseNNPartitioningSchemeNumCoresSLS{1};
+
+  /// The number of cores to assign to non-SLS partition when using SparseNN
+  /// partitioning scheme
+  unsigned int sparseNNPartitioningSchemeNumCoresOther{1};
 };
 
 /// Context for compilation.

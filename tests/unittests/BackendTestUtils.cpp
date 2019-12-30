@@ -121,9 +121,9 @@ setupInterpAndBackendConfigs(
     Function *IF, ExecutionEngine &IEE, PlaceholderBindings &iBindings,
     LoweredInfoMap &ILIM, PlaceholderBindings &bBindings, LoweredInfoMap &BLIM,
     ElemKind interpElemKind, ElemKind backendElemKind,
-    quantization::Schema schema, bool enableRowwiseQuantization,
+    quantization::Schema schema, bool convertToRowwiseQuantization,
     CreateAndInitFunction createAndInitFunction, ElemKind biasElemKind,
-    unsigned count) {
+    bool forceFP16AccumSLS, unsigned count) {
   CompilationContext cctxI{&iBindings, &ILIM};
   CompilationContext cctxB{&bBindings, &BLIM};
   PrecisionConfiguration &precConfigI = cctxI.precisionConfig;
@@ -142,7 +142,7 @@ setupInterpAndBackendConfigs(
 
       precConfigI.quantMode = QuantizationMode::Quantize;
       precConfigI.quantConfig.infos = NQII;
-      precConfigI.quantConfig.enableRowwise = enableRowwiseQuantization;
+      precConfigI.quantConfig.enableRowwise = convertToRowwiseQuantization;
       precConfigI.quantConfig.schema = schema;
       precConfigI.quantConfig.precision = interpElemKind;
       precConfigI.quantConfig.assertAllNodesQuantized = true;
@@ -157,7 +157,7 @@ setupInterpAndBackendConfigs(
 
       precConfigB.quantMode = QuantizationMode::Quantize;
       precConfigB.quantConfig.infos = NQIB;
-      precConfigB.quantConfig.enableRowwise = enableRowwiseQuantization;
+      precConfigB.quantConfig.enableRowwise = convertToRowwiseQuantization;
       precConfigB.quantConfig.schema = schema;
       precConfigB.quantConfig.precision = backendElemKind;
       precConfigB.quantConfig.assertAllNodesQuantized = true;
@@ -165,10 +165,13 @@ setupInterpAndBackendConfigs(
     }
   }
 
+  // For now if the ElemKind is FP16 then we use Float16Ty, UInt8FusedFP16QTy.
   precConfigI.convertToFP16 = interpElemKind == ElemKind::Float16Ty;
   precConfigI.convertFusedToFP16 = interpElemKind == ElemKind::Float16Ty;
+  precConfigI.forceFP16AccumSLS = forceFP16AccumSLS;
   precConfigB.convertToFP16 = backendElemKind == ElemKind::Float16Ty;
   precConfigB.convertFusedToFP16 = backendElemKind == ElemKind::Float16Ty;
+  precConfigB.forceFP16AccumSLS = forceFP16AccumSLS;
 
   return std::make_pair(cctxI, cctxB);
 }
@@ -258,9 +261,10 @@ void compareAgainstInterpreter(llvm::StringRef backendName,
                                CreateAndInitFunction createAndInitFunction,
                                ElemKind interpElemKind,
                                ElemKind backendElemKind, float allowedError,
-                               unsigned count, bool enableRowwiseQuantization,
+                               unsigned count,
+                               bool convertToRowwiseQuantization,
                                quantization::Schema schema,
-                               ElemKind biasElemKind) {
+                               ElemKind biasElemKind, bool forceFP16AccumSLS) {
   // Note: deviceMemory = 0 is a signal to use the defaultMemory.
   ExecutionEngine IEE{"Interpreter", /* deviceMemory */ 0,
                       /* ignoreUserDeviceConfig */ true};
@@ -284,14 +288,14 @@ void compareAgainstInterpreter(llvm::StringRef backendName,
   LoweredInfoMap ILIM, BLIM;
   auto configs = setupInterpAndBackendConfigs(
       IF, IEE, iBindings, ILIM, bBindings, BLIM, interpElemKind,
-      backendElemKind, schema, enableRowwiseQuantization, createAndInitFunction,
-      biasElemKind, count);
+      backendElemKind, schema, convertToRowwiseQuantization,
+      createAndInitFunction, biasElemKind, forceFP16AccumSLS, count);
   CompilationContext &cctxI = configs.first;
   CompilationContext &cctxB = configs.second;
 
   // Skip conversion for rowwise quantized tests as they are a special case
   // which don't fit cleanly here -- e.g. RWQ-SLS has FloatTy outputs.
-  if (!enableRowwiseQuantization) {
+  if (!convertToRowwiseQuantization) {
     // We want to compare the ops themselves and not see differences in
     // conversion, so fold ElemKind conversion nodes into IO.
     cctxI.optimizationOpts.foldElemKindConversionIntoIO = true;
@@ -308,7 +312,7 @@ void compareAgainstInterpreter(llvm::StringRef backendName,
   BEE.compile(cctxB);
 
   // Again skip rowwise quantization as before.
-  if (!enableRowwiseQuantization) {
+  if (!convertToRowwiseQuantization) {
     // Now that we have compiled, precision transformation has occurred. Now
     // convert all mismatches for Placeholders given their original bindings.
     convertBindingsToCorrectType(

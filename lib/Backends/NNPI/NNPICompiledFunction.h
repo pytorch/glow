@@ -32,7 +32,8 @@ namespace glow {
 class NNPICompiledFunction final : public CompiledFunction {
 public:
   NNPICompiledFunction(Function *F)
-      : CompiledFunction(runtime::RuntimeBundle::create(*F)){};
+      : CompiledFunction(runtime::RuntimeBundle::create(*F)),
+        compilationOptions_({}){};
 
   /// \name CompiledFunction interface.
   ///@{
@@ -72,6 +73,14 @@ public:
 
   virtual Error compile(Function *F, const BackendOptions &opts);
 
+  NNPICompilationOptions getCompilationOptions() const {
+    return compilationOptions_;
+  }
+
+  const std::string &getCompilationFilename() const {
+    return compilationFileName_;
+  }
+
 private:
   NNPINetwork network_;
   NNPICompilationConfig config_;
@@ -79,6 +88,8 @@ private:
   std::mutex compiledStreamMutex_;
   std::unordered_set<const Placeholder *> partialInputs_;
   std::unordered_set<const Placeholder *> staticInputs_;
+  NNPICompilationOptions compilationOptions_;
+  std::string compilationFileName_;
 
   Error updateCompilationConfigFromOptions(
       NNPICompilationOptions &compilationOptions);

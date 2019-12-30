@@ -53,11 +53,6 @@ constexpr int mc = 256;
 constexpr int kc = 128;
 constexpr int nc = 4096;
 
-/// Only pack matrices if dimension is above this threshold.  Packing is
-/// primarily helpful for avoiding TLB pressure and cache set conflicts, so this
-/// can be fairly large.
-constexpr int pack_threshold = 1024;
-
 /// Compute a RAxRB block of C using a vectorized dot product, where RA is the
 /// number of registers to load from matrix A, and RB is the number of registers
 /// to load from matrix B.
@@ -316,12 +311,13 @@ void libjit_matmul_f(float *c, const float *a, const float *b,
   int m = cDims[1];
   int n = cDims[0];
   int k = aDims[1];
-  bool pack = m >= pack_threshold;
-  if (pack) {
-    libjit_matmul_outer<true>(m, n, k, b, bDims[1], a, aDims[1], c, cDims[1]);
-  } else {
-    libjit_matmul_outer<false>(m, n, k, b, bDims[1], a, aDims[1], c, cDims[1]);
-  }
+
+  // Use the unpacked version which does not use extra HEAP or STACK which
+  // makes the memory usage predictable. This is very useful when building
+  // bundles (AOT) for MCU targets where the HEAP and STACK are relatively
+  // limited in size. By avoiding heap/stack usage the memory consumption
+  // is controlled and perfectly known (e.g. printed in the bundle API).
+  libjit_matmul_outer<false>(m, n, k, b, bDims[1], a, aDims[1], c, cDims[1]);
 }
 
 void libjit_matmul_i8(int8_t *outW, const int8_t *lhsW, const int8_t *rhsW,

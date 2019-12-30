@@ -17,6 +17,8 @@
 #define GLOW_TOOLS_LOADER_LOADER_H
 
 #include "glow/ExecutionEngine/ExecutionEngine.h"
+#include "glow/Importer/ProtobufLoader.h"
+#include "glow/Quantization/Quantization.h"
 #include "glow/Runtime/HostManager/HostManager.h"
 
 #include "llvm/Support/CommandLine.h"
@@ -69,37 +71,55 @@ class Loader {
   LoweredInfoMap loweredMap_;
 
 public:
-  /// Getter for the hostManager, this can be useful for calling int othe
+  /// Getter for the hostManager, this can be useful for calling into the
   /// HostManager directly.
   runtime::HostManager *getHostManager() { return hostManager_.get(); }
+
   /// Getter for the Function. This should not be called after compile since the
   /// compile process is destructive on the original function.
   Function *getFunction() { return F_; }
+
   /// Getter for function name.
   std::string getFunctionName() { return functionName_; }
+
   /// Getter for the Module. This should not be called after compile since the
   /// compile process is destructive on the original function and module.
   Module *getModule() { return F_->getParent(); }
+
   /// Getter for the Caffe2 network file name.
   llvm::StringRef getCaffe2NetDescFilename() { return caffe2NetDescFilename_; }
+
   /// Getter for the Caffe2 weights file name.
   llvm::StringRef getCaffe2NetWeightFilename() {
     return caffe2NetWeightFilename_;
   }
+
   /// Getter for the ONNX model file name.
   llvm::StringRef getOnnxModelFilename() { return onnxModelFilename_; }
+
   /// Getter for the model path.
   /// \pre (modelPathOpt.size() == 1)
   static std::string getModelOptPath();
+
   /// Getter for the model path, expected to be a directory.
   /// \pre (modelPathOpt.size() == 1)
   static llvm::StringRef getModelOptDir();
 
-  /// Get the description of the model inputs provided through the command
-  /// line interface to the Loader by providing separately the names in the
-  /// vector \p inputNames and the input types in the vector \p inputTypes.
-  static void getModelInputs(std::vector<std::string> &inputNames,
-                             std::vector<Type> &inputTypes);
+  /// Get the quantization options based on the command line parameters of the
+  /// Loader.
+  static quantization::QuantizationConfiguration getQuantizationConfiguration();
+
+  /// Load a Caffe2 or ONNX model into this Loader object according to the
+  /// Loader command line options.
+  std::unique_ptr<ProtobufLoader> loadModel();
+
+  /// Get the compilation options (context) for a given quantization \p mode.
+  /// The options are initialized by the Loader command line arguments.
+  CompilationContext getCompilationContext(QuantizationMode mode);
+
+  /// Get the default compilation options (context) initialized by the Loader
+  /// command line arguments.
+  CompilationContext getCompilationContext();
 
   /// Compiles the Function F_. Handles quantization, emitting bundles, and
   /// dumping debug information. \p bindings bind specific

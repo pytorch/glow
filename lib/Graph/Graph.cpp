@@ -1684,7 +1684,7 @@ Function::createSparseLengthsWeightedSum(llvm::StringRef name, TypeRef outTy,
 
 RowwiseQuantizedSparseLengthsWeightedSumNode *
 Function::createRowwiseQuantizedSparseLengthsWeightedSum(
-    llvm::StringRef name, Constant *data, Constant *scales, Constant *offsets,
+    llvm::StringRef name, Storage *data, Constant *scales, Constant *offsets,
     NodeValue weights, NodeValue indices, NodeValue lengths, ElemKind precision,
     bool useFP16Accumulation) {
   auto inDims = data->dims();
@@ -1698,7 +1698,7 @@ Function::createRowwiseQuantizedSparseLengthsWeightedSum(
 
 RowwiseQuantizedSparseLengthsWeightedSumNode *
 Function::createRowwiseQuantizedSparseLengthsSum(
-    llvm::StringRef name, Constant *data, Constant *scales, Constant *offsets,
+    llvm::StringRef name, Storage *data, Constant *scales, Constant *offsets,
     NodeValue indices, NodeValue lengths, ElemKind precision,
     bool useFP16Accumulation) {
   auto ty = getParent()->uniqueType(precision, {indices.dims()[0]});
@@ -1812,7 +1812,7 @@ Function::createFusedRowwiseQuantizedSparseLengthsWeightedSum(
 
 FusedRowwiseQuantizedSparseLengthsSumNode *
 Function::createFusedRowwiseQuantizedSparseLengthsSum(
-    llvm::StringRef name, Constant *data, NodeValue indices, NodeValue lengths,
+    llvm::StringRef name, Storage *data, NodeValue indices, NodeValue lengths,
     bool useFP16Accumulation) {
   auto outTy =
       getOutputTypeOfFusedRowwiseQuantizedSLS(this, data, lengths.dims());

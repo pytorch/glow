@@ -27,11 +27,17 @@ namespace onnxifi {
 extern bool GlowSaveOnnxifiModel;
 ;
 int32_t GlowNumDevices = 0;
+int32_t GlowSparseNNPartitioningSchemeNumCards = 1;
+int64_t GlowSparseNNPartitioningSchemeSLSTableKBytesPerCard = 0;
+int32_t GlowSparseNNPartitioningSchemeNumCoresSLS = 1;
+int32_t GlowSparseNNPartitioningSchemeNumCoresOther = 1;
 bool GlowDumpDebugTraces = false;
 bool GlowSaturateHost = false;
 bool GlowFP16 = false;
 bool GlowFusedScaleOffsetFP16 = false;
+bool GlowForceSLSAccumFP16 = false;
 bool GlowClipFP16 = false;
+bool GlowUseSparseNNPartitioningScheme = false;
 
 static llvm::cl::opt<int32_t, true>
     GlowNumDevicesOpt("glow-num-devices",
@@ -116,8 +122,23 @@ onnxStatus HostManagerBackend::addNetwork(std::unique_ptr<Module> module,
     precConfig.clipFP16 = GlowClipFP16;
     LOG(INFO) << "Clipping to fp16 enabled";
   }
+  if (GlowForceSLSAccumFP16) {
+    precConfig.forceFP16AccumSLS = GlowForceSLSAccumFP16;
+    LOG(INFO) << "Forcing all SLS/SLWS ops to use FP16 accumulation enabled";
+  }
   if (GlowDumpCompilationLog) {
     cctx.compilationLogPrefix = "glow-onnxifi";
+  }
+  if (GlowUseSparseNNPartitioningScheme) {
+    cctx.optimizationOpts.useSparseNNPartitioningScheme = true;
+    cctx.optimizationOpts.sparseNNPartitioningSchemeNumCards =
+        GlowSparseNNPartitioningSchemeNumCards;
+    cctx.optimizationOpts.sparseNNPartitioningSchemeSLSTableKBytesPerCard =
+        GlowSparseNNPartitioningSchemeSLSTableKBytesPerCard;
+    cctx.optimizationOpts.sparseNNPartitioningSchemeNumCoresSLS =
+        GlowSparseNNPartitioningSchemeNumCoresSLS;
+    cctx.optimizationOpts.sparseNNPartitioningSchemeNumCoresOther =
+        GlowSparseNNPartitioningSchemeNumCoresOther;
   }
 
   auto err =
@@ -141,9 +162,11 @@ onnxStatus HostManagerBackend::removeNetwork(const Graph *graph) {
   return ONNXIFI_STATUS_SUCCESS;
 }
 
-onnxStatus HostManagerGraph::initGraph(
-    const void *onnxModel, size_t onnxModelSize, uint32_t weightCount,
-    const onnxTensorDescriptorV1 *weightDescriptors, void *deferedBlobReader) {
+onnxStatus
+HostManagerGraph::initGraph(const void *onnxModel, size_t onnxModelSize,
+                            uint32_t weightCount,
+                            const onnxTensorDescriptorV1 *weightDescriptors,
+                            uint32_t maxSeqLength, void *deferedBlobReader) {
 
   netName_ = strFormat("onnxifi_function_%lu", makeUniqueGraphId());
 
@@ -159,6 +182,7 @@ onnxStatus HostManagerGraph::initGraph(
   onnxInputToPlaceholder_ = loader->getInputVarsMapping();
   onnxOutputToPlaceholder_ = loader->getOutputVarsMapping();
 
+  setZeroLengthSequence(maxSeqLength);
   // Make sure the pool is ready to go.
   for (auto &obj : onnxInputToPlaceholder_) {
     tensorPool_.reserve(obj.second->getType(), 10);
