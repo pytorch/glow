@@ -1703,6 +1703,44 @@ bool ResizeNearestNode::verify() const {
   return isValid;
 }
 
+bool NonMaxSuppressionNode::verify() const {
+  NodeValue boxes = getBoxes();
+  NodeValue scores = getScores();
+  auto boxesDims = boxes.dims();
+  auto scoresDims = scores.dims();
+  bool isV4 = getIsTFVersion4();
+
+  size_t scoresBoxDim = scores.dims().size() - 1;
+  size_t scoresBatchDim = scores.dims().size() - 3;
+
+  size_t boxesBoxDim = boxes.dims().size() - 2;
+  size_t boxesBatchDim = boxes.dims().size() - 3;
+
+  bool isValid = true;
+  if (isV4) {
+    isValid &= expectCompareTrue(
+        "Number of boxes doesn't match number of confidence scores.",
+        boxesDims[boxesBoxDim], scoresDims[scoresBoxDim], this,
+        CompareOperatorEqual<dim_t>());
+  }
+
+  // checking layout matching. See ONNX spec for details.
+  if (!isV4) {
+    isValid &= expectCompareTrue(
+        "Batch dimension doesn't match.", boxesDims[boxesBatchDim],
+        scoresDims[scoresBatchDim], this, CompareOperatorEqual<dim_t>());
+
+    isValid &= expectCompareTrue(
+        "Number of boxes doesn't match number of confidence scores.",
+        boxesDims[boxesBoxDim], scoresDims[scoresBoxDim], this,
+        CompareOperatorEqual<dim_t>());
+  }
+
+  isValid &= checkType(boxes, scores.getElementType(), this);
+
+  return isValid;
+}
+
 bool SaveNode::verify() const {
   return checkSameType(getInput(), getOutput(), this);
 }

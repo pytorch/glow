@@ -325,6 +325,9 @@ private:
   void fwdFusedRowwiseQuantizedSparseLengthsWeightedSumImpl(
       const FusedRowwiseQuantizedSparseLengthsWeightedSumInst *I);
 
+  template <typename T>
+  void fwdNonMaxSuppressionInstImpl(glow::NonMaxSuppressionInst const *I);
+
   template <typename T, typename AccumT>
   void fwdEmbeddingBagByteRowwiseOffsetsImpl(
       const EmbeddingBagByteRowwiseOffsetsInst *I);

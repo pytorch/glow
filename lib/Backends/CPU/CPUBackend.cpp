@@ -385,6 +385,25 @@ bool CPUBackend::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::TraceEventNodeKind:
     return NI.getInElemTy(TraceEventNode::DataIdx) == ElemKind::Int64ITy;
 
+  case Kinded::Kind::NonMaxSuppressionNodeKind:
+    return NI.getInElemTy(NonMaxSuppressionNode::BoxesIdx) ==
+               ElemKind::FloatTy &&
+           NI.getInElemTy(NonMaxSuppressionNode::ScoresIdx) ==
+               ElemKind::FloatTy &&
+           (NI.getOutElemTy(NonMaxSuppressionNode::IndicesIdx) ==
+                ElemKind::Int32ITy ||
+            NI.getOutElemTy(NonMaxSuppressionNode::IndicesIdx) ==
+                ElemKind::Int64ITy) &&
+           (NI.getOutElemTy(
+                NonMaxSuppressionNode::NumberOfSelectedIndicesIdx) ==
+                ElemKind::Int32ITy ||
+            NI.getOutElemTy(
+                NonMaxSuppressionNode::NumberOfSelectedIndicesIdx) ==
+                ElemKind::Int64ITy) &&
+           (NI.getOutElemTy(
+                NonMaxSuppressionNode::NumberOfSelectedIndicesIdx) ==
+            NI.getOutElemTy(NonMaxSuppressionNode::IndicesIdx));
+
   case Kinded::Kind::ConvertToNodeKind:
     return ((NI.getInElemTy(ConvertToNode::InputIdx) == ElemKind::Int32ITy) &&
             (NI.getOutElemTy(ConvertToNode::ResultIdx) == ElemKind::FloatTy)) ||

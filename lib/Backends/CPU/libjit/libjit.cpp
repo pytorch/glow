@@ -883,6 +883,233 @@ static void libjit_reducemin(T *dest, const T *batch, size_t destSize,
     }
   }
 }
+
+struct ClassBox {
+  float score{0.0f};
+  size_t index{0};
+};
+
+struct Box {
+  float v0{0.0f};
+  float v1{0.0f};
+  float v2{0.0f};
+  float v3{0.0f};
+};
+
+struct OutBox {
+  float classValue{0.0f};
+  size_t batchIndex{0};
+  size_t classIndex{0};
+  size_t boxIndex{0};
+};
+
+static void maxMin(float lhs, float rhs, float &min, float &max) {
+  if (lhs >= rhs) {
+    min = rhs;
+    max = lhs;
+  } else {
+    min = lhs;
+    max = rhs;
+  }
+}
+
+static bool checkIOU(const Box &sb, const Box &cb, float iouThreshold,
+                     size_t centerPointBox) {
+  float xSMin = 0.0f;
+  float ySMin = 0.0f;
+  float xSMax = 0.0f;
+  float ySMax = 0.0f;
+
+  float xCMin = 0.0f;
+  float yCMin = 0.0f;
+  float xCMax = 0.0f;
+  float yCMax = 0.0f;
+
+  // Standardizing coordinates so that (xmin, ymin) is upper left corner of a
+  // box and (xmax, ymax) is lower right corner of the box.
+  if (!centerPointBox) {
+    // 0 means coordinates for diagonal ends of a box.
+    // Coordinates can either be absolute or normalized.
+    maxMin(sb.v0, sb.v2, xSMin, xSMax);
+    maxMin(sb.v1, sb.v3, ySMin, ySMax);
+
+    maxMin(cb.v0, cb.v2, xCMin, xCMax);
+    maxMin(cb.v1, cb.v3, yCMin, yCMax);
+  } else {
+    float halfWidthS = sb.v2 / 2.0f;
+    float halfHeightS = sb.v3 / 2.0f;
+    float halfWidthC = cb.v2 / 2.0f;
+    float halfHeightC = cb.v3 / 2.0f;
+
+    xSMin = sb.v0 - halfWidthS;
+    ySMin = sb.v1 - halfHeightS;
+    xSMax = sb.v0 + halfWidthS;
+    ySMax = sb.v1 + halfHeightS;
+
+    xCMin = cb.v0 - halfWidthC;
+    yCMin = cb.v1 - halfHeightC;
+    xCMax = cb.v0 + halfWidthC;
+    yCMax = cb.v1 + halfHeightC;
+  }
+
+  // finding upper left and lower right corner of a box formed by intersection.
+  float xMin = MAX(xSMin, xCMin);
+  float yMin = MAX(ySMin, yCMin);
+  float xMax = MIN(xSMax, xCMax);
+  float yMax = MIN(ySMax, yCMax);
+
+  float intersectionArea = MAX((0.0f), xMax - xMin) * MAX((0.0f), yMax - yMin);
+
+  if (intersectionArea == 0.0f) {
+    return false;
+  }
+
+  float sArea = (xSMax - xSMin) * (ySMax - ySMin);
+  float cArea = (xCMax - xCMin) * (yCMax - yCMin);
+  float unionArea = sArea + cArea - intersectionArea;
+
+  return intersectionArea > iouThreshold * unionArea;
+}
+
+// ONNX
+// Class/Score [BatchNum][ClassNum][BoxNum]
+// Box [BatchNum][BoxNum][4]
+// Result [BatchNum*MaxOutputPerBatch][3]
+// V4
+// Class/Score [BatchNum][BoxNum]
+// Boxes [BatdhNum][BoxNum][4]
+// Result [BatchNum*MaxOutputPerBatch]
+// NumberOfIndicesDetected [BatchNum*MaxOutputPerBatch]
+template <typename T>
+static void
+libjit_nms_generic(T *indices, T *numDetected, const float *boxTensor,
+                   const size_t *boxTensorDims, size_t boxTensorDimSize,
+                   const float *scoresTensor, const size_t *scoresTensorDims,
+                   size_t scoresTensorDimSize, const size_t *resultTensorDims,
+                   size_t resultTensorDimSize, unsigned centerPointBox,
+                   unsigned maxOutputBoxesPerClass, float iouThreshold,
+                   float scoreThreshold, bool isV4) {
+  int boxesBoxDim = boxTensorDimSize - 2;
+
+  size_t numBatches = 1;
+  size_t numClasses = 1;
+  size_t numBoxes = boxTensorDims[boxesBoxDim];
+
+  size_t maxOutputPerBatch = 0;
+  if (!isV4) {
+    int boxesBatchDim = boxTensorDimSize - 3;
+    int scoresBatchDim = scoresTensorDimSize - 3;
+
+    int scoresBoxDim = scoresTensorDimSize - 1;
+    int scoresClassDim = scoresTensorDimSize - 2;
+
+    assert(scoresTensorDims[scoresBoxDim] == boxTensorDims[boxesBoxDim] &&
+           "Mismatch between number of scores and number of boxes.");
+    assert(scoresTensorDims[scoresBatchDim] == boxTensorDims[boxesBatchDim] &&
+           "Scores and Box Batch Dimensions don't match.");
+    (void)boxesBatchDim;
+    (void)scoresBoxDim;
+    numBatches = scoresTensorDims[scoresBatchDim];
+    numClasses = scoresTensorDims[scoresClassDim];
+    numBoxes = boxTensorDims[boxesBoxDim];
+    maxOutputPerBatch = resultTensorDims[resultTensorDimSize - 2] / numBatches;
+  } else {
+    maxOutputPerBatch = resultTensorDims[resultTensorDimSize - 1] / numBatches;
+  }
+
+  static_assert(sizeof(Box) == 4 * sizeof(float),
+                "Can't reinterpret raw float data as a Box.");
+  const Box *boxes = reinterpret_cast<const Box *>(boxTensor);
+
+  auto cmpFunc = [](const ClassBox &cb1, const ClassBox &cb2) -> bool {
+    return cb1.score > cb2.score;
+  };
+
+  size_t outPutBoxIndex = 0;
+  for (size_t batchIndex = 0; batchIndex < numBatches; ++batchIndex) {
+    int32_t detectedPerBatch = 0;
+    OutBox minBox{scoresTensor[batchIndex * numClasses], batchIndex, 0, 0};
+    for (size_t classIndex = 0; classIndex < numClasses; ++classIndex) {
+      ClassBox selectedIndices[numBoxes];
+      ClassBox potentialBoxes[numBoxes];
+      size_t indexPBoxes = 0;
+      const float *currClass =
+          &scoresTensor[(batchIndex * numClasses + classIndex) * numBoxes];
+      for (size_t boxIndex = 0; boxIndex < numBoxes; ++boxIndex) {
+        float classScore = currClass[boxIndex];
+        if (classScore > scoreThreshold) {
+          ClassBox &b = potentialBoxes[indexPBoxes++];
+          b.score = classScore;
+          b.index = boxIndex;
+        }
+      }
+
+      std::sort(potentialBoxes, potentialBoxes + indexPBoxes, cmpFunc);
+
+      size_t indexSBoxes = 0;
+      size_t detectedPerClass = 0;
+      float tScore = minBox.classValue;
+      for (unsigned int i = 0; i < indexPBoxes; ++i) {
+        ClassBox &pbI = potentialBoxes[i];
+        const Box &potentialBox = boxes[batchIndex * numBoxes + pbI.index];
+        bool selected = true;
+        for (unsigned int j = 0; j < indexSBoxes && selected; ++j) {
+          ClassBox &sbI = selectedIndices[j];
+          const Box &selectedBox = boxes[batchIndex * numBoxes + sbI.index];
+          selected = !checkIOU(selectedBox, potentialBox, iouThreshold,
+                               centerPointBox);
+        }
+
+        if (selected) {
+          selectedIndices[indexSBoxes++] = pbI;
+          if (isV4) {
+            indices[outPutBoxIndex] = pbI.index;
+          } else {
+            indices[outPutBoxIndex * 3 + 0] = batchIndex;
+            indices[outPutBoxIndex * 3 + 1] = classIndex;
+            indices[outPutBoxIndex * 3 + 2] = pbI.index;
+          }
+
+          tScore = pbI.score;
+          ++outPutBoxIndex;
+          ++detectedPerClass;
+          ++detectedPerBatch;
+        }
+
+        if (detectedPerClass == maxOutputBoxesPerClass) {
+          break;
+        }
+      }
+
+      if (tScore < minBox.classValue) {
+        minBox.classValue = tScore;
+        if (isV4) {
+          minBox.boxIndex = indices[outPutBoxIndex - 1];
+        } else {
+          minBox.boxIndex = indices[(outPutBoxIndex - 1) * 3 + 2];
+        }
+        minBox.classIndex = classIndex;
+      }
+    }
+
+    // Filling the rest of the class with minimum value.
+    for (size_t i = detectedPerBatch; i < maxOutputPerBatch; ++i) {
+      if (isV4) {
+        indices[outPutBoxIndex] = minBox.boxIndex;
+      } else {
+        indices[outPutBoxIndex * 3 + 0] = minBox.batchIndex;
+        indices[outPutBoxIndex * 3 + 1] = minBox.classIndex;
+        indices[outPutBoxIndex * 3 + 2] = minBox.boxIndex;
+      }
+
+      ++outPutBoxIndex;
+    }
+    // For ONNX NMS it's not used, for TF Batch Dimension is 1.
+    for (size_t i = 0; i < maxOutputBoxesPerClass; ++i) {
+      numDetected[batchIndex * maxOutputBoxesPerClass + i] = detectedPerBatch;
+    }
+  }
+}
 } // namespace
 
 extern "C" {
@@ -2251,5 +2478,35 @@ libjit_quantization_profile(float *inputTensor, dim_t tensorSize,
     dim_t newBin = get_bin(nBins, binWidth, min, inputTensor[i]);
     existingHistogram[newBin]++;
   }
+}
+
+__attribute__((noinline)) void
+libjit_nms_u(size_t *indices, size_t *numDetected, const float *boxTensor,
+             const size_t *boxTensorDims, size_t boxTensorDimSize,
+             const float *scoresTensor, const size_t *scoresTensorDims,
+             size_t scoresTensorDimSize, const size_t *resultTensorDims,
+             size_t resultTensorDimSize, unsigned centerPointBox,
+             unsigned maxOutputBoxesPerClass, float iouThreshold,
+             float scoreThreshold, bool isV4) {
+  libjit_nms_generic(indices, numDetected, boxTensor, boxTensorDims,
+                     boxTensorDimSize, scoresTensor, scoresTensorDims,
+                     scoresTensorDimSize, resultTensorDims, resultTensorDimSize,
+                     centerPointBox, maxOutputBoxesPerClass, iouThreshold,
+                     scoreThreshold, isV4);
+}
+
+__attribute__((noinline)) void
+libjit_nms_i32(int32_t *indices, int32_t *numDetected, const float *boxTensor,
+               const size_t *boxTensorDims, size_t boxTensorDimSize,
+               const float *scoresTensor, const size_t *scoresTensorDims,
+               size_t scoresTensorDimSize, const size_t *resultTensorDims,
+               size_t resultTensorDimSize, unsigned centerPointBox,
+               unsigned maxOutputBoxesPerClass, float iouThreshold,
+               float scoreThreshold, bool isV4) {
+  libjit_nms_generic(indices, numDetected, boxTensor, boxTensorDims,
+                     boxTensorDimSize, scoresTensor, scoresTensorDims,
+                     scoresTensorDimSize, resultTensorDims, resultTensorDimSize,
+                     centerPointBox, maxOutputBoxesPerClass, iouThreshold,
+                     scoreThreshold, isV4);
 }
 } // extern "C"
