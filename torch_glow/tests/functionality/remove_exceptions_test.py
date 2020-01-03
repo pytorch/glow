@@ -3,6 +3,7 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 import torch
 import torch_glow
 from tests.utils import graph_contains_str
+import unittest
 
 graph_str = """
 graph(%x : Tensor):
@@ -22,9 +23,10 @@ graph(%x : Tensor):
 """
 
 
-def test_remove_exceptions():
-    """Test Glow's removeExceptions JIT pass"""
-    graph = torch._C.parse_ir(graph_str)
-    assert(graph_contains_str(graph, "prim::RaiseException"))
-    torch_glow.removeExceptions_(graph)
-    assert(not graph_contains_str(graph, "prim::RaiseException"))
+class TestRemoveException(unittest.TestCase):
+    def test_remove_exceptions(self):
+        """Test Glow's removeExceptions JIT pass"""
+        graph = torch._C.parse_ir(graph_str)
+        assert(graph_contains_str(graph, "prim::RaiseException"))
+        torch_glow.removeExceptions_(graph)
+        assert(not graph_contains_str(graph, "prim::RaiseException"))
