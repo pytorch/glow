@@ -334,10 +334,12 @@ if(GLOW_WITH_OPENCL)
                           TestMain)
   add_glow_test(OCLTest
                 ${GLOW_BINARY_DIR}/tests/OCLTest
-                    --gtest_output=xml:OCLTest.xml)
+                --gtest_output=xml:OCLTest.xml)
+
+  add_glow_test(OCLTestWithDiskCache
+                ${CMAKE_COMMAND} -P ${CMAKE_SOURCE_DIR}/lib/Backends/OpenCL/tests/OpenCLDiskCacheTest.cmake)
+
   LIST(APPEND UNOPT_TESTS ./tests/OCLTest -optimize-ir=false &&)
-
-
 
 endif()
 
