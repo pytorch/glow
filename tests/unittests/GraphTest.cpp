@@ -32,6 +32,16 @@
 
 using namespace glow;
 
+// Helper to find a node in the Function by name
+static const Node *nodeByName(const Function *F, const std::string &name) {
+  for (auto &n : F->getNodes()) {
+    if (n.getName().str() == name) {
+      return &n;
+    }
+  }
+  return nullptr;
+}
+
 TEST(Graph, testVariableErasure) {
   Module MD;
   auto &vars = MD.getConstants();
@@ -642,7 +652,7 @@ TEST(Graph, functionDependenciesTest) {
   M.dumpDAG();
 }
 
-TEST(Graph, cloneTest2) {
+TEST(Graph, functionCloneTest) {
   Module M;
   PlaceholderBindings bindings;
 
@@ -650,20 +660,56 @@ TEST(Graph, cloneTest2) {
   Node *K =
       M.createPlaceholder(ElemKind::FloatTy, {4, 320, 200, 3}, "input", true);
   Node *S = M.createPlaceholder(ElemKind::Int64ITy, {4, 1}, "select", true);
-  Node *conv = F->createConv(bindings, "Conv1", K, 16, 3, 2, 3, 1);
+  Node *conv = F->createConv(bindings, "Conv", K, 16, 3, 2, 3, 1);
   Node *relu = F->createRELU("Relu", conv);
   Node *concat = F->createConcat("concat", {relu, relu, relu}, 0);
-
   Node *SM = F->createSoftMax("SoftMax", concat, S);
   F->createSave("Save", SM);
 
   auto *newF = F->clone("new_main");
+
   EXPECT_TRUE(newF->verify());
-  F->dump();
-  newF->dump();
 
   EXPECT_EQ(newF->getNodes().size(), F->getNodes().size());
   EXPECT_EQ(newF->getParent(), F->getParent());
+}
+
+TEST(Graph, cloneWithPredicates) {
+  Module M;
+  PlaceholderBindings bindings;
+
+  auto *F = M.createFunction("main");
+  auto *input =
+      M.createPlaceholder(ElemKind::FloatTy, {4, 320, 200, 3}, "input", false);
+  auto *counters =
+      M.createPlaceholder(ElemKind::FloatTy, {10}, "counters", false);
+  auto *reluExt = F->createRELU("reluExt", input);
+  auto *reluInt = F->createRELU("reluInt", input);
+  auto *externalPredicate =
+      M.createPlaceholder(ElemKind::Int64ITy, {1}, "predicate", false);
+  auto *C10 = F->createSplat("C10", counters->getType(), 10.0);
+  auto *internalPredicate = F->createCmpLTE("lte", C10, counters);
+
+  reluExt->setPredicate(externalPredicate);
+  reluInt->setPredicate(internalPredicate);
+
+  auto *newF = F->clone("new_main");
+
+  EXPECT_TRUE(newF->verify());
+  EXPECT_EQ(newF->getNodes().size(), F->getNodes().size());
+  EXPECT_EQ(newF->getParent(), F->getParent());
+
+  // Original predicates are not changed
+  EXPECT_EQ(reluExt->getPredicate().getNode(), externalPredicate);
+  EXPECT_EQ(reluInt->getPredicate().getNode(), internalPredicate);
+  // Clone of predicate that points to a node outside the graph
+  // points to the same node (predicate is shared)
+  EXPECT_EQ(nodeByName(newF, "reluExt")->getPredicate().getNode(),
+            externalPredicate);
+  // Clone of predicate that points to a node that belongs to the graph
+  // points to the predicate clone
+  EXPECT_EQ(nodeByName(newF, "reluInt")->getPredicate().getNode(),
+            nodeByName(newF, "lte"));
 }
 
 TEST(Graph, NodeValue) {
