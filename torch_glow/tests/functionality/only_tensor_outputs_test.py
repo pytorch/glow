@@ -4,39 +4,40 @@ import torch
 
 from tests.utils import GLOW_NODE_NAME
 import torch_glow
+import unittest
 
 
-def f(a, b):
-    x = (a+b).size(0)
-    c = a.reshape(x, -1)
-    return a+c
+class TestOnlyTensorOutputs(unittest.TestCase):
+    def test_only_tensor_outputs(self):
+        """Test that Glow fuser only produces tensor outputs."""
 
+        def f(a, b):
+            x = (a + b).size(0)
+            c = a.reshape(x, -1)
+            return a + c
 
-def test_only_tensor_outputs():
-    """Test that Glow fuser only produces tensor outputs."""
+        torch_glow.disableFusionPass()
 
-    torch_glow.disableFusionPass()
+        a = torch.randn(5, 5)
+        b = torch.randn(5, 5)
 
-    a = torch.randn(5, 5)
-    b = torch.randn(5, 5)
+        jit_f = torch.jit.trace(f, (a, b))
+        jit_f_graph = jit_f.graph_for(a, b)
 
-    jit_f = torch.jit.trace(f, (a, b))
-    jit_f_graph = jit_f.graph_for(a, b)
+        # By creating a graph with an aten::size (supported) feeding into an
+        # unsupported op (prim::ListConstruct), we see that even if an op is
+        # supported, if it produces a non-tensor output to the fusion group it
+        # would not be fused.
+        torch_glow.glowCustomFuseDebug_(
+            jit_f_graph, ["prim::Constant", "aten::add", "aten::size", "aten::reshape"])
 
-    # By creating a graph with an aten::size (supported) feeding into an
-    # unsupported op (prim::ListConstruct), we see that even if an op is
-    # supported, if it produces a non-tensor output to the fusion group it
-    # would not be fused.
-    torch_glow.glowCustomFuseDebug_(
-        jit_f_graph, ["prim::Constant", "aten::add", "aten::size", "aten::reshape"])
+        fusion_nodes = 0
+        aten_sizes = 0
+        for node in jit_f_graph.nodes():
+            if node.kind() == GLOW_NODE_NAME:
+                fusion_nodes += 1
+            if node.kind() == "aten::size":
+                aten_sizes += 1
 
-    fusion_nodes = 0
-    aten_sizes = 0
-    for node in jit_f_graph.nodes():
-        if node.kind() == GLOW_NODE_NAME:
-            fusion_nodes += 1
-        if node.kind() == "aten::size":
-            aten_sizes += 1
-
-    assert fusion_nodes == 2, "Expected two fusion nodes to be split up with aten::size between them"
-    assert aten_sizes == 1, "Expected aten::size not to be fused"
+        assert fusion_nodes == 2, "Expected two fusion nodes to be split up with aten::size between them"
+        assert aten_sizes == 1, "Expected aten::size not to be fused"
