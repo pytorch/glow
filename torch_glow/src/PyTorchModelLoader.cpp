@@ -3460,18 +3460,21 @@ Error PyTorchModelLoader::loadAttributes(
           std::make_pair(&ival.toObjectRef(), newNameHierarchy);
       continue;
     } else if (ival.isTensor()) {
-      const auto ptTensor = ival.toTensor();
+      GlowIValue glowIVal;
       // PyTorch Tensor extracted type is kByte
       // indicate it is the address of stored weights of quantized
       // linear or conv.
       if (isPackedQParamNode(node)) {
-        GlowIValue glowIVal;
+        const auto ptTensor = ival.toTensor();
+        CHECK(ptTensor.is_contiguous());
         glowIVal.fromPTTensor(ptTensor);
         RETURN_IF_ERR(addValueMapping(outputValue, std::move(glowIVal)));
       } else {
-        auto glowTensor = ptTensorToGlowTensor(ptTensor);
-        glow::Constant *glowConstant = F_.getParent()->createConstant(
-            newNameHierarchy, std::move(glowTensor));
+        RETURN_IF_ERR(glowIVal.fromIValue(ival));
+        glow::Tensor *t;
+        ASSIGN_VALUE_OR_RETURN_ERR(t, glowIVal.toTensor());
+        glow::Constant *glowConstant =
+            F_.getParent()->createConstant(newNameHierarchy, std::move(*t));
 
         if (copyTensorMemory_) {
           glowConstant->ensureIsOwned();
