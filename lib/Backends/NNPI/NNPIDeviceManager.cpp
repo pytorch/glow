@@ -130,20 +130,24 @@ Error NNPIDeviceManager::init() {
     if (deviceOptions_.enabledDeviceTracing) {
       deviceTracing_ = NNPIDeviceTracing::getForDevice(deviceId_);
     }
+    NNPIDeviceInfo deviceInfo;
+    LOG_NNPI_INF_ERROR_RETURN_LLVMERROR(
+        nnpiDeviceGetInfo(deviceId_, &deviceInfo),
+        "Failed to get NNPI Device Info");
+    maxMemoryBytes_ =
+        static_cast<uint64_t>(deviceInfo.totalUnprotectedMemory) * KB;
+    LOG(INFO) << "NNPI Driver Version "
+              << static_cast<int>(deviceInfo.driverVersion.major) << "."
+              << static_cast<int>(deviceInfo.driverVersion.minor) << "."
+              << static_cast<int>(deviceInfo.driverVersion.dot);
+    LOG(INFO) << "NNPI Fireware Version "
+              << static_cast<int>(deviceInfo.fwVersion.major) << "."
+              << static_cast<int>(deviceInfo.fwVersion.minor) << "."
+              << static_cast<int>(deviceInfo.fwVersion.dot);
   }
-  if (GlowNNPIMemory == 0 && deviceOptions_.deviceMemory == 0) {
-    // Todo: enable once nnpiDeviceGetInfo changes are implemented.
-#if 0
-      NNPIDeviceInfo deviceInfo;
-      LOG_NNPI_INF_ERROR_RETURN_LLVMERROR(
-          nnpiDeviceGetInfo(deviceId_, &deviceInfo),
-          "Failed to get NNPI Device Info");
-      maxMemoryBytes_ = static_cast<uint64_t>(deviceInfo.totalMemory) * KB;
-      // Todo: sum protected and un protected.
-#endif
-  } else if (GlowNNPIMemory > 0) {
+  if (GlowNNPIMemory > 0) {
     maxMemoryBytes_ = static_cast<uint64_t>(GlowNNPIMemory) * KB;
-  } else {
+  } else if (deviceOptions_.deviceMemory > 0) {
     maxMemoryBytes_ = static_cast<uint64_t>(deviceOptions_.deviceMemory) * KB;
   }
 
@@ -262,16 +266,16 @@ Error NNPIDeviceManager::stop(bool block) {
 }
 uint64_t NNPIDeviceManager::getMaximumMemory() const { return maxMemoryBytes_; }
 uint64_t NNPIDeviceManager::getAvailableMemory() const {
-  // Todo: enable once nnpiDeviceGetInfo changes are implemented.
-#if 0
   if (GlowNNPIMemory == 0 && deviceOptions_.deviceMemory == 0 &&
-      (deviceOptions_.useIceT || deviceOptions_.inferOnDevice)) {
+      deviceOptions_.inferOnDevice) {
     NNPIDeviceStatus devStatus;
-    nnpiDeviceGetStatus(deviceId_, &devStatus);
-    return static_cast<uint64_t>(devStatus.availableMemory) * KB;
-    // Todo: sum protected and un protected.
+    NNPIInferenceErrorCode res = nnpiDeviceGetStatus(deviceId_, &devStatus);
+    if (res != NNPI_INF_NO_ERROR) {
+      LOG_NNPI_INF_ERROR(res, "Failed to read available memory from device.")
+      return 0;
+    }
+    return static_cast<uint64_t>(devStatus.availableUnprotectedMemory) * KB;
   }
-#endif
   auto freeMemory = getMaximumMemory();
   for (const auto &p : functions_) {
     const auto &fn = p.second;
@@ -280,7 +284,6 @@ uint64_t NNPIDeviceManager::getAvailableMemory() const {
     freeMemory -= bundle.getMutableWeightSize();
   }
   return freeMemory;
-  // Todo: use nnpiDeviceGetStatus.
 }
 bool NNPIDeviceManager::isMemoryAvailable(uint64_t estimate) const {
   return estimate <= getAvailableMemory(); // This is just an estimate and not
@@ -356,19 +359,19 @@ void NNPIDeviceManager::transferStaticPlaceholderToDevice(
     uint32_t numErrors(0);
     NNPICommandListError singleError;
     memset(&singleError, 0, sizeof(NNPICommandListError));
-    NNPIInferenceErrorCode result =
+    NNPIInferenceErrorCode res =
         nnpiCommandListWait(cmdList, UINT32_MAX, &singleError, 1, &numErrors);
 
-    if (result != NNPI_INF_NO_ERROR) {
-      LOG_NNPI_INF_ERROR(result, "Failed to wait on command list");
+    if (res != NNPI_INF_NO_ERROR) {
+      LOG_NNPI_INF_ERROR(res, "Failed to wait on command list");
     } else {
       if (numErrors > 0) {
         LOG(ERROR) << NNPI_INF_ERROR_MSG(singleError.err, singleError.desc);
       }
     }
-    if (result != NNPI_INF_NO_ERROR || numErrors > 0) {
+    if (res != NNPI_INF_NO_ERROR || numErrors > 0) {
       LOG_AND_CALLBACK_NNPI_INF_ERROR(
-          result, "Errors detected during command list", resultCB);
+          res, "Errors detected during command list", resultCB);
     }
 
     // Destroy command list.

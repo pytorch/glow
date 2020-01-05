@@ -30,10 +30,12 @@ bool GlowNNPILowerAllBatchMatMul = false;
 static llvm::cl::opt<bool, /* ExternalStorage */ true>
     GlowNNPILowerAllBatchMatMulOpt(
         "glow_nnpi_lower_all_batch_matmul",
-        llvm::cl::desc("Whether to override default lowering for NNPI and "
-                       "always lower BatchMatMul to a series of MatMuls."),
+        llvm::cl::desc("Whether to override default "
+                       "lowering for NNPI and "
+                       "always lower BatchMatMul to a "
+                       "series of MatMuls."),
         llvm::cl::location(GlowNNPILowerAllBatchMatMul), llvm::cl::Optional,
-        llvm::cl::init(true), llvm::cl::cat(optionsForNNPI));
+        llvm::cl::init(false), llvm::cl::cat(optionsForNNPI));
 
 namespace onnxifi {
 
