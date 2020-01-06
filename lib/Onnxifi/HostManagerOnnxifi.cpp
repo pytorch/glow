@@ -54,6 +54,37 @@ static llvm::cl::opt<bool, true> GlowSaturateHostOpt(
     llvm::cl::desc("Try to use all available devices on the host"),
     llvm::cl::location(GlowSaturateHost));
 
+static llvm::cl::opt<int32_t, true> GlowSparseNNPartitioningSchemeNumCardsOpt(
+    "glow_snn_partitioning_num_cards",
+    llvm::cl::desc("Number of cards for SparseNNPartitioningScheme"),
+    llvm::cl::location(GlowSparseNNPartitioningSchemeNumCards));
+
+static llvm::cl::opt<int64_t, true>
+    GlowSparseNNPartitioningSchemeSLSTableKBytesPerCardOpt(
+        "glow_snn_partitioning_kbytes_per_card",
+        llvm::cl::desc("SLS KBytes per card for SparseNNPartitioningScheme"),
+        llvm::cl::location(
+            GlowSparseNNPartitioningSchemeSLSTableKBytesPerCard));
+
+static llvm::cl::opt<int32_t, true>
+    GlowSparseNNPartitioningSchemeNumCoresSLSOpt(
+        "glow_snn_partitioning_num_cores_sls",
+        llvm::cl::desc(
+            "Number of cores for SLS for SparseNNPartitioningScheme"),
+        llvm::cl::location(GlowSparseNNPartitioningSchemeNumCoresSLS));
+
+static llvm::cl::opt<int32_t, true>
+    GlowSparseNNPartitioningSchemeNumCoresOtherOpt(
+        "glow_snn_partitioning_num_cores_other",
+        llvm::cl::desc(
+            "Number of cores for other for SparseNNPartitioningScheme"),
+        llvm::cl::location(GlowSparseNNPartitioningSchemeNumCoresOther));
+
+static llvm::cl::opt<bool, true> GlowUseSparseNNPartitioningSchemeOpt(
+    "glow_use_sparsenn_partitioning_scheme",
+    llvm::cl::desc("Whether to use SparseNNPartitioningScheme"),
+    llvm::cl::location(GlowUseSparseNNPartitioningScheme));
+
 std::unique_ptr<runtime::HostManager>
 HostManagerBackend::createHostManager(llvm::StringRef backendName) {
   std::vector<std::unique_ptr<runtime::DeviceConfig>> configs;
