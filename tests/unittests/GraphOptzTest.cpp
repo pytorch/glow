@@ -1922,7 +1922,7 @@ TEST_F(GraphOptz, mergeRescaleIntoDequantize) {
   EXPECT_EQ(F_->getNodes().size(), 2);
 
   // Check the graph structure
-  auto *SN = F_->getNodeByName("ret_save");
+  auto *SN = F_->getNodeByName("save_ret");
   EXPECT_NE(nullptr, SN);
   auto *S = llvm::dyn_cast<SaveNode>(SN);
   EXPECT_NE(nullptr, S);
