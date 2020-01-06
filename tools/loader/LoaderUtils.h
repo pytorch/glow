@@ -114,7 +114,10 @@ std::vector<std::string> splitString(std::string str, char delim = ',',
 /// Helper class to parse the string description of a generic function call, for
 /// example "FUNC('s',1,2.0,"str",[1,2,3],[1.0,2.0,3.0])" where the string is
 /// parsed as being a function call with the name "FUNC" having 6 arguments with
-/// different types (char,int,float,string,int array,float array) and values.
+/// different types (char,int,float,string,int array,float array). The arguments
+/// can be extracted using dedicated methods for each argument type, given the
+/// argument position. For example, to extract the 3rd argument as a float value
+/// use the method "getArgFloat(2)".
 class FunctionString {
   /// Function name.
   std::string name_;

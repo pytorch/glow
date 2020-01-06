@@ -393,13 +393,20 @@ static void getModelInputs(std::vector<std::string> &inputNames,
   }
 }
 
-/// Helper function to create a simple linear graph from a string description.
-/// For example starting with a string .......................................
+/// Helper function to create a simple linear graph within the given function
+/// \p F using the starting node \p input and the graph string description \p
+/// graphString. For example we can create a simple graph to pre-process an
+/// image with the following string description "NHWC2NCHW,RGB2BGR" which
+/// creates a node to transform the layout from NHWC to NCHW followed by RGB to
+/// BGR channel reordering. The node descriptions can also have any number of
+/// arguments with several supported types: integer, float, char, string, array
+/// of integers, array of floats. For example we can have the following node
+/// description: "NODE(1,1.0,'c','string',[1,2,3],[1.0,2.0,3.0])".
 Node *createSimpleGraphFromString(Function *F, Node *input,
-                                  std::string functionString) {
+                                  std::string graphString) {
 
   // Split node descriptions from comma separated sequence.
-  auto funcStrArray = splitString(functionString, ',', "([", ")]", " ");
+  auto funcStrArray = splitString(graphString, ',', "([", ")]", " ");
 
   // Parse each node description.
   std::vector<FunctionString> funcArray;
@@ -466,7 +473,7 @@ Node *createSimpleGraphFromString(Function *F, Node *input,
           "Graph string processor: for '%s' the tensor inner-most dimension "
           "must be 3 (encountered value is %d)!",
           funcName.c_str(), innerDim);
-      // TODO: Implement Flip node.
+      // TODO: Implement and create Flip node.
       LOG(FATAL) << "Not supported yet ...";
       continue;
     }
@@ -495,12 +502,6 @@ Node *createSimpleGraphFromString(Function *F, Node *input,
       continue;
     }
 
-    // TODOs:
-    // RGB2YUV, YUV2RGB
-    // RGB2BGR, BGR2RGB -> FlipNode
-    // NORM(min,max)
-    // QUANT/DEQUANT operation??
-
     // Function not supported.
     LOG(FATAL) << strFormat(
         "Graph string processor: operator '%s' is not supported!",
@@ -516,11 +517,13 @@ std::unique_ptr<ProtobufLoader> Loader::loadModel() {
   // Get loader function.
   Function *F = getFunction();
 
-  // Get model input names and types.
+  // Get model input names, types and options.
   std::vector<std::string> inputNames;
   std::vector<Type> inputTypes;
   std::vector<std::string> inputOpts;
   getModelInputs(inputNames, inputTypes, inputOpts);
+
+  // Model input name and type references.
   std::vector<const char *> inputNameRefs;
   std::vector<TypeRef> inputTypeRefs;
   for (size_t idx = 0, e = inputNames.size(); idx < e; idx++) {
