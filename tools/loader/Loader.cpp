@@ -90,10 +90,24 @@ llvm::cl::list<std::string> modelInputsOpt(
         " The supported types are:                                  \n"
         "    - float, float16 (floating point types)                \n"
         "    - int32, int64 (integer types)                         \n"
-        "    - int8q, int16q, int32q (integer quantized types)      \n"
-        "    - bool (logic type)\n"),
-    llvm::cl::value_desc("name,[type,[scale,offset],shape]"),
+        "    - int8q, uint8q, int16q, int32q (quantized types)      \n"
+        "    - bool (logic type)                                    \n"
+        " After the shape argument, extra options can be specified  \n"
+        " for each input."),
+    llvm::cl::value_desc("name,[type,[scale,offset],shape,opts]"),
     llvm::cl::cat(loaderCat));
+
+llvm::cl::list<std::string> modelOutputsOpt(
+    "model-output", llvm::cl::ZeroOrMore,
+    llvm::cl::desc(
+        " This option can be used to specify extra options for the  \n"
+        " model outputs. One or more outputs can be described by    \n"
+        " using this option separately for each:                    \n"
+        "    -model-output=<outputName1>,<outputOptions1>           \n"
+        "    -model-output=<outputName2>,<outputOptions2>           \n"
+        "    ....................................................   \n"
+        " This option is NOT mandatory.\n"),
+    llvm::cl::value_desc("name,opts"), llvm::cl::cat(loaderCat));
 
 llvm::cl::opt<bool>
     verbose("verbose",
@@ -277,15 +291,41 @@ bool glow::emittingBundle() { return !emitBundle.empty(); }
 
 bool glow::profilingGraph() { return !dumpProfileFileOpt.empty(); }
 
-/// Parse the 'modelInputsOpt' option and get the model input names and types.
+/// Helper function to get the element kind from the kind name.
+static ElemKind getElemKindByName(std::string name) {
+  if ((name == "float") || (name == "float32")) {
+    return ElemKind::FloatTy;
+  } else if (name == "float16") {
+    return ElemKind::Float16Ty;
+  } else if (name == "int8q") {
+    return ElemKind::Int8QTy;
+  } else if (name == "uint8q") {
+    return ElemKind::UInt8QTy;
+  } else if (name == "int16q") {
+    return ElemKind::Int16QTy;
+  } else if (name == "int32q") {
+    return ElemKind::Int32QTy;
+  } else if (name == "int32") {
+    return ElemKind::Int32ITy;
+  } else if (name == "int64") {
+    return ElemKind::Int64ITy;
+  } else if (name == "bool") {
+    return ElemKind::BoolTy;
+  } else {
+    LOG(FATAL) << strFormat("Type '%s' is not supported!", name.c_str());
+  }
+}
+
+/// Parse the 'modelInputsOpt' option and get the model input names, types and
+/// options. The 'options' string captures all the remaining part of the string:
 /// The expected format is one of the following:
-/// - <name> (default type is 'float', default shape is '[1]')
-/// - <name>,<type>,<shape> for non-quantized types.
-/// - <name>,<type>,<scale>,<offset>,<shape> for quantized types.
-/// All the remaining description for each model input will be captured in a 
-/// single options string (if nothing is left an empty string "" is used):
+/// - <name>
+/// - <name>,<type>,<shape>         for non-quantized types.
 /// - <name>,<type>,<shape>,<opts>  for non-quantized types
+/// - <name>,<type>,<scale>,<offset>,<shape>        for quantized types.
 /// - <name>,<type>,<scale>,<offset>,<shape>,<opts> for quantized types.
+/// Where not specified, the default <type> is 'float', the default <shape> is
+/// [1] and the default <opts> is the empty string ''.
 static void getModelInputs(std::vector<std::string> &inputNames,
                            std::vector<Type> &inputTypes,
                            std::vector<std::string> &inputOpts) {
@@ -316,27 +356,7 @@ static void getModelInputs(std::vector<std::string> &inputNames,
     strPair = strPair.second.split(',');
     llvm::StringRef type = strPair.first;
     CHECK(type.size()) << "Model input type is empty!";
-    ElemKind kind;
-    if (type.equals("float")) {
-      kind = ElemKind::FloatTy;
-    } else if (type.equals("float16")) {
-      kind = ElemKind::Float16Ty;
-    } else if (type.equals("int8q")) {
-      kind = ElemKind::Int8QTy;
-    } else if (type.equals("int16q")) {
-      kind = ElemKind::Int16QTy;
-    } else if (type.equals("int32q")) {
-      kind = ElemKind::Int32QTy;
-    } else if (type.equals("int32")) {
-      kind = ElemKind::Int32ITy;
-    } else if (type.equals("int64")) {
-      kind = ElemKind::Int64ITy;
-    } else if (type.equals("bool")) {
-      kind = ElemKind::BoolTy;
-    } else {
-      LOG(FATAL) << strFormat("Model input type \"%s\" is not supported!",
-                              std::string(type).c_str());
-    }
+    ElemKind kind = getElemKindByName(type);
 
     // For quantized type get scale and offset.
     double scale;
@@ -354,17 +374,19 @@ static void getModelInputs(std::vector<std::string> &inputNames,
 
     // Get shape string and the options string.
     llvm::StringRef strRem = strPair.second;
-    CHECK(strRem.size()) << "Model input shape is empty!";    
+    CHECK(strRem.size()) << "Model input shape is empty!";
     CHECK_EQ(strRem.front(), '[') << "Model input shape should start with '['!";
     strRem = strRem.drop_front();
     auto shapeEndPos = strRem.find(']');
-    CHECK(shapeEndPos != llvm::StringRef::npos) << "Model input shape should end with ']'!";
+    CHECK(shapeEndPos != llvm::StringRef::npos)
+        << "Model input shape should end with ']'!";
     strPair = strRem.split(']');
     llvm::StringRef shape = strPair.first;
     CHECK(shape.size()) << "Model input shape is empty!";
     llvm::StringRef opts = strPair.second;
     if (opts.size()) {
-      CHECK_EQ(opts.front(), ',') << "Model input shape must be followed by ',' for options!";
+      CHECK_EQ(opts.front(), ',')
+          << "Model input shape must be followed by ',' for options!";
       opts = opts.drop_front();
     }
 
@@ -378,7 +400,8 @@ static void getModelInputs(std::vector<std::string> &inputNames,
       dims.push_back(val);
       shape = splitRes.second;
     }
-    CHECK(!shape.getAsInteger(0, val)) << "Model input shape integer is invalid!";
+    CHECK(!shape.getAsInteger(0, val))
+        << "Model input shape integer is invalid!";
     dims.push_back(val);
 
     // Build type and add to vector.
@@ -387,9 +410,35 @@ static void getModelInputs(std::vector<std::string> &inputNames,
     } else {
       inputTypes.push_back(Type(kind, dims));
     }
-    
+
     // Add the options string.
     inputOpts.push_back(opts);
+  }
+}
+
+/// Parse the 'modelOutputsOpt' option and get the model output options.
+/// The expected format is the following: <name>,<opts>.
+static void getModelOutputs(std::vector<std::string> &outputNames,
+                            std::vector<std::string> &outputOpts) {
+  for (const auto &str : modelOutputsOpt) {
+    // Get name and options.
+    auto strPair = llvm::StringRef(str).split(',');
+    llvm::StringRef name = strPair.first;
+    CHECK(name.size()) << "Model output name is empty!";
+
+    // Verify name is unique and add to vector.
+    for (const auto &nameIter : outputNames) {
+      if (name.equals(nameIter)) {
+        LOG(FATAL) << strFormat("Model output name \"%s\" is not unique. Check "
+                                "the graph definition for the output names!",
+                                std::string(name).c_str());
+      }
+    }
+    outputNames.push_back(name);
+
+    // Add the options string.
+    llvm::StringRef opts = strPair.second;
+    outputOpts.push_back(opts);
   }
 }
 
@@ -414,59 +463,51 @@ Node *createSimpleGraphFromString(Function *F, Node *input,
     funcArray.push_back(FunctionString(funcStr));
   }
 
-  //========================================================================
-  //                                DEBUG
-  //========================================================================
-  std::cout << "------------- FUNCTIONS -------------------\n";
-  std::cout << "Num functions = " << funcArray.size() << "\n";
-  for (auto func : funcArray) {
-    auto funcName = func.getName();
-    auto funcArgs = func.getArgs();
-    std::cout << "Func = '" << funcName << "'\n";
-    for (int idx = 0; idx < funcArgs.size(); idx++) {
-      std::cout << "Arg[" << idx << "] = '" << funcArgs[idx] << "'\n";
-    }
-    std::cout << "\n";
-  }
-  //========================================================================
-
   // Create simple linear graph.
   Node *node = input;
   for (const auto &func : funcArray) {
     std::string funcName = func.getName();
 
-    // Cast conversion.
+    // Quantize. Parameters are type, scale and offset.
+    if (funcName == "QUANT") {
+      auto inpDims = node->getNthResult(0).dims();
+      std::string type = func.getArg(0);
+      float scale = func.getArgFloat(1);
+      int offset = func.getArgInt(2);
+      Type outTy = Type(getElemKindByName(type), inpDims, scale, offset);
+      node = F->createQuantize("QUANT", node, &outTy);
+      continue;
+    }
+
+    // Dequantize.
+    if (funcName == "DEQUANT") {
+      node = F->createDequantize("DEQUANT", node);
+      continue;
+    }
+
+    // Convert to type. Parameter is type.
+    // TODO: Add int8, uint8 index types and cast implementations to float in
+    // order to convert an image from int8/uint8 to float (simpler to understand
+    // than using a quantized type + dequantize).
     if (funcName == "CAST") {
       std::string type = func.getArg();
-      if ((type == "FLOAT") || (type == "FLOAT32")) {
-        node = F->createConvertTo("pre.CAST", node, ElemKind::FloatTy);
-      } else if (type == "FLOAT16") {
-        node = F->createConvertTo("pre.CAST", node, ElemKind::Float16Ty);
-      } else if (type == "INT32") {
-        node = F->createConvertTo("pre.CAST", node, ElemKind::Int32ITy);
-      } else if (type == "INT64") {
-        node = F->createConvertTo("pre.CAST", node, ElemKind::Int64ITy);
-      } else {
-        LOG(FATAL) << strFormat(
-            "Graph string processor: for '%s' the type '%s' is not supported!",
-            funcName.c_str(), type.c_str());
-      }
+      node = F->createConvertTo("CAST", node, getElemKindByName(type));
       continue;
     }
 
-    // NCHW to NHWC conversion.
+    // Image NCHW to NHWC conversion.
     if (funcName == "NCHW2NHWC") {
-      node = F->createTranspose("pre.NCHW2NHWC", node, NCHW2NHWC);
+      node = F->createTranspose("NCHW2NHWC", node, NCHW2NHWC);
       continue;
     }
 
-    // NHWC to NCHW conversion.
+    // Image NHWC to NCHW conversion.
     if (funcName == "NHWC2NCHW") {
-      node = F->createTranspose("pre.NHWC2NCHW", node, NHWC2NCHW);
+      node = F->createTranspose("NHWC2NCHW", node, NHWC2NCHW);
       continue;
     }
 
-    // Channel inversions.
+    // Image channel order inversion.
     if ((funcName == "RGB2BGR") || (funcName == "BGR2RGB")) {
       int innerDim = (int)node->getType(0)->dims()[0];
       CHECK(innerDim == 3) << strFormat(
@@ -478,7 +519,7 @@ Node *createSimpleGraphFromString(Function *F, Node *input,
       continue;
     }
 
-    // RGB to YUV conversion.
+    // Image RGB to YUV conversion.
     if (funcName == "RGB2YUV") {
       int innerDim = (int)node->getType(0)->dims()[0];
       CHECK(innerDim == 3) << strFormat(
@@ -490,7 +531,7 @@ Node *createSimpleGraphFromString(Function *F, Node *input,
       continue;
     }
 
-    // YUV to RGB conversion.
+    // Image YUV to RGB conversion.
     if (funcName == "YUV2RGB") {
       int innerDim = (int)node->getType(0)->dims()[0];
       CHECK(innerDim == 3) << strFormat(
@@ -502,7 +543,7 @@ Node *createSimpleGraphFromString(Function *F, Node *input,
       continue;
     }
 
-    // Function not supported.
+    // Operator not supported.
     LOG(FATAL) << strFormat(
         "Graph string processor: operator '%s' is not supported!",
         funcName.c_str());
@@ -531,17 +572,12 @@ std::unique_ptr<ProtobufLoader> Loader::loadModel() {
     inputTypeRefs.push_back(&inputTypes[idx]);
   }
 
-  //========================================================================
-  //                                DEBUG
-  //========================================================================
-  for (size_t idx = 0, e = inputNames.size(); idx < e; idx++) {
-    std::cout << "Name = |" << inputNames[idx] << "|\n";
-    std::cout << "Type = |" << inputTypes[idx].toString() << "|\n";
-    std::cout << "Opts = |" << inputOpts[idx] << "|\n";
-  }
-  //========================================================================
+  // Get model output names and options.
+  std::vector<std::string> outputNames;
+  std::vector<std::string> outputOpts;
+  getModelOutputs(outputNames, outputOpts);
 
-  // Create input subgraphs.
+  // Create the input subgraphs.
   std::vector<Node *> inputGraphs(inputOpts.size(), nullptr);
   for (size_t idx = 0, e = inputOpts.size(); idx < e; idx++) {
 
@@ -550,28 +586,28 @@ std::unique_ptr<ProtobufLoader> Loader::loadModel() {
       continue;
     }
 
-    // Create new placeholder using the given name and type.
-    Placeholder *newPlaceholder = F->getParent()->createPlaceholder(
+    // Create new input placeholder using the given name and type.
+    Placeholder *newInputPlaceholder = F->getParent()->createPlaceholder(
         inputTypeRefs[idx], inputNameRefs[idx],
         /* isTrainable */ false);
 
-    // Create input graph.
-    inputGraphs[idx] = createSimpleGraphFromString(F, newPlaceholder, inputOpts[idx]);
+    // Create model input subgraph.
+    inputGraphs[idx] =
+        createSimpleGraphFromString(F, newInputPlaceholder, inputOpts[idx]);
 
     // Update the type used to instatiate the model for this input using the
     // type of this subgraph output.
     inputTypeRefs[idx] = inputGraphs[idx]->getType(0);
   }
 
-
   // Load the model based on the model format.
   std::unique_ptr<ProtobufLoader> protoLoader;
   if (!getCaffe2NetDescFilename().empty()) {
     // For Caffe2 format the input placeholder names/types must be provided
     // explicitly (mandatory).
-    protoLoader.reset(new Caffe2ModelLoader(
-        getCaffe2NetDescFilename(), getCaffe2NetWeightFilename(), inputNameRefs,
-        inputTypeRefs, *F));
+    protoLoader.reset(new Caffe2ModelLoader(getCaffe2NetDescFilename(),
+                                            getCaffe2NetWeightFilename(),
+                                            inputNameRefs, inputTypeRefs, *F));
   } else {
     // For ONNX format the input placeholders names/types can be optionally
     // provided but is not mandatory. If not provided (the arrays are empty)
@@ -582,7 +618,7 @@ std::unique_ptr<ProtobufLoader> Loader::loadModel() {
                                           inputTypeRefs, *F));
   }
 
-  // Link the model graph to the input subgraphs.
+  // Link the input subgraphs.
   for (size_t idx = 0, e = inputNames.size(); idx < e; idx++) {
 
     // Skip this section if no subgraph was created for this input.
@@ -590,17 +626,54 @@ std::unique_ptr<ProtobufLoader> Loader::loadModel() {
       continue;
     }
 
-    // Get old placeholder using the original name used for registration.
-    Placeholder *oldPlaceholder =
+    // Get old input placeholder using the original name used for registration.
+    Placeholder *oldInputPlaceholder =
         EXIT_ON_ERR(protoLoader->getInputByName(inputNames[idx]));
 
-    // Replace old placeholder with the input graph.
-    oldPlaceholder->getOutput().replaceAllUsesOfWith(inputGraphs[idx]);
+    // Replace old input placeholder with the input graph.
+    oldInputPlaceholder->getOutput().replaceAllUsesOfWith(inputGraphs[idx]);
 
-    // Delete old placeholder.
+    // Delete old input placeholder.
     auto &vars = F->getParent()->getPlaceholders();
     F->getParent()->erasePlaceholder(
-        std::find(vars.begin(), vars.end(), oldPlaceholder));
+        std::find(vars.begin(), vars.end(), oldInputPlaceholder));
+  }
+
+  // Create and link output subgraphs.
+  for (size_t idx = 0, e = outputNames.size(); idx < e; idx++) {
+
+    // Skip output graph creation if empty graph description.
+    if (outputOpts[idx].empty()) {
+      continue;
+    }
+
+    // Find old output placeholder.
+    Placeholder *oldOutputPlaceholder =
+        EXIT_ON_ERR(protoLoader->getOutputByName(outputNames[idx]));
+
+    // Get node which is saved in this placeholder.
+    auto *oldSN = llvm::dyn_cast<SaveNode>(
+        oldOutputPlaceholder->getUsers().begin()->getUser());
+    CHECK(oldSN) << strFormat(
+        "Model output placeholder '%s' is not attached to a SaveNode!",
+        outputNames[idx].c_str());
+    Node *node = oldSN->getInput();
+
+    // Remove old SaveNode and old output placeholder.
+    F->eraseNode(oldSN);
+    auto &vars = F->getParent()->getPlaceholders();
+    F->getParent()->erasePlaceholder(
+        std::find(vars.begin(), vars.end(), oldOutputPlaceholder));
+
+    // Create model output subgraph.
+    node = createSimpleGraphFromString(F, node, outputOpts[idx]);
+
+    // Create new SaveNode and new output placeholder.
+    auto *newSN = F->createSave(outputNames[idx], node);
+
+    // Force new placeholder name to old placeholder name.
+    newSN->setName("save_" + outputNames[idx]);
+    newSN->getPlaceholder()->setName(outputNames[idx]);
   }
 
   return protoLoader;

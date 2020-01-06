@@ -1966,7 +1966,7 @@ SparseToDenseMaskNode *Function::createSparseToDenseMask(
 
 SaveNode *Function::createSave(llvm::StringRef name, NodeValue input) {
   auto *dest = getParent()->createPlaceholder(input.getType(), name, false);
-  std::string nodeName = (name + "_save").str();
+  std::string nodeName = ("save_" + name).str();
   return addNode(new SaveNode(nodeName, input, dest));
 }
 
