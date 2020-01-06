@@ -1284,6 +1284,40 @@ TEST_P(AllBackends, convertWithoutClipAroundNonNumericNodes) {
   EXPECT_TRUE(F->verify());
 }
 
+// Test that we don't insert Clips at the output of Tanh or Sigmoid
+TEST_P(AllBackends, convertWithoutClipAroundAfterTanhOrSigmoid) {
+  Module mod;
+  Function *F = mod.createFunction("test");
+  const dim_t dims[] = {10, 20};
+  const dim_t dims2[] = {10, 30};
+  Node *I0 = mod.createPlaceholder(ElemKind::FloatTy, dims, "i0", false);
+  Node *I1 = mod.createPlaceholder(ElemKind::FloatTy, dims2, "i1", false);
+  Node *T = F->createTanh("tanh", {I0});
+  Node *S = F->createSigmoid("sigmoid", {I1});
+  Node *CN = F->createConcat("concat", {T, S}, 1);
+  F->createSave("ret", CN);
+
+  PrecisionConfiguration precConfig;
+  precConfig.convertToFP16 = true;
+  precConfig.clipFP16 = true;
+  convertFunctionToFloat16(F, precConfig);
+
+  int numClips = 0;
+  int numConvertTos = 0;
+  for (auto &n : F->getNodes()) {
+    if (n.getKind() == Kinded::Kind::ClipNodeKind) {
+      ++numClips;
+    } else if (n.getKind() == Kinded::Kind::ConvertToNodeKind) {
+      ++numConvertTos;
+    }
+  }
+
+  EXPECT_EQ(7, numConvertTos);
+  EXPECT_EQ(2, numClips);
+
+  EXPECT_TRUE(F->verify());
+}
+
 // Test that we only insert clips for outputs.
 TEST_P(AllBackends, checkConvertOnlyOutputs) {
   Module mod;
