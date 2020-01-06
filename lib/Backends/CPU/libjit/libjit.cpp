@@ -1379,12 +1379,17 @@ void libjit_sparse_lengths_weighted_sum_f(float *dest, float *data,
 
 void libjit_embedding_bag_f(float *dest, float *data, float *weights,
                             dim_t *indices, dim_t *offsets, dim_t segments,
-                            dim_t lineSize, dim_t totalLength) {
+                            dim_t lineSize, dim_t totalLength,
+                            bool hasEndOffset) {
+  if (hasEndOffset) {
+    --segments;
+  }
   memset(dest, 0, segments * lineSize * sizeof(float));
   dim_t curIndex = 0;
   for (dim_t i = 0; i < segments; i++) {
     int64_t start = offsets[i];
-    int64_t end = i == segments - 1 ? totalLength : offsets[i + 1];
+    int64_t end =
+        !hasEndOffset && i == segments - 1 ? totalLength : offsets[i + 1];
     for (int64_t j = start; j < end; j++) {
       float weight = weights[curIndex];
       dim_t line = indices[curIndex];
@@ -1474,11 +1479,16 @@ void libjit_fused_rowwise_quantized_sparse_lengths_weighted_sum_f(
 
 void libjit_embedding_bag_byte_rowwise_offsets_f(
     float *dest, int8_t *data, float *weights, dim_t *indices, dim_t *offsets,
-    dim_t segments, dim_t numIndices, dim_t inLineSize, dim_t outLineSize) {
+    dim_t segments, dim_t numIndices, dim_t inLineSize, dim_t outLineSize,
+    bool hasEndOffset) {
+  if (hasEndOffset) {
+    --segments;
+  }
   memset(dest, 0, segments * outLineSize * sizeof(float));
   for (dim_t i = 0; i < segments; i++) {
     dim_t start = offsets[i];
-    dim_t end = i == segments - 1 ? numIndices : offsets[i + 1];
+    dim_t end =
+        !hasEndOffset && i == segments - 1 ? numIndices : offsets[i + 1];
     for (dim_t j = start; j < end; j++) {
       const float weight = weights[j];
       const dim_t line = indices[j];
