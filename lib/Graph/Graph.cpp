@@ -4018,6 +4018,9 @@ Function *Function::clone(llvm::StringRef newName,
     // Record the copy relationship between the graphs.
     currToNew[&N] = copy;
     newF->addNode(copy);
+    if (N.hasPredicate()) {
+      copy->setPredicate(N.getPredicate());
+    }
   }
 
   // At this point we have a new invalid function that points into nodes in
@@ -4037,6 +4040,13 @@ Function *Function::clone(llvm::StringRef newName,
 
       // Update the node with the edge to the current graph.
       N.setNthInput(inp, NodeValue(it->second, input.getResNo()));
+    }
+
+    if (N.hasPredicate()) {
+      auto it = currToNew.find(N.getPredicate().getNode());
+      if (it != currToNew.end()) {
+        N.setPredicate(NodeValue(it->second, N.getPredicate().getResNo()));
+      }
     }
   }
 
