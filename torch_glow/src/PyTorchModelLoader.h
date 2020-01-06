@@ -90,9 +90,12 @@ struct InputMeta {
 
 /// Loads PyTorch JIT IR graphs as a Glow Function.
 class PyTorchModelLoader {
-  /// Glow Function created outside this class.
+public:
+  /// Glow Function created outside this class. Made public so that it can be
+  /// accessed by custom operator loaders.
   glow::Function &F_;
 
+private:
   /// Map from input placeholders to their location on the input stack.
   std::unordered_map<glow::Placeholder *, size_t>
       inputPlaceholdersReverseIndex_;
@@ -218,9 +221,16 @@ private:
                      Error &error,
                      const at::ArrayRef<torch::jit::IValue> inputs);
 
-  /// Save access to the mapping.
+  /// Build mapping from jit symbols to function that loads nodes of that kind.
+  static const MappingOfMemberFunctions buildSymbolsMapping();
+
+  /// Save access to the mapping from jit symbols to function that loads nodes
+  /// of that kind.
   static const MappingOfMemberFunctions &getSymbolsMapping();
 
+  // The below methods are made public so that they can be accessed by custom
+  // operator loaders.
+public:
   /// Add a new mapping from the PyTorch Value \p value to the Glow NodeValue
   /// \p nodeValue. Set \p wasFrozen to true if this comes from a from a frozen
   /// input.
@@ -279,6 +289,40 @@ private:
   /// Rescale a int8 NodeValue \p input to the equivalent uint8 NodeValue.
   glow::NodeValue rescaleIntToUint(glow::NodeValue input);
 
+  /// Given Node inputs and outputs, check the expected sizes. Negative size
+  /// indicates that the size should be equal to or greater than that size (for
+  /// example -2 means at least 2).
+  template <typename T>
+  static Error checkInputAndOutputSizes(const T &inputs, int64_t inputsSize,
+                                        const T &outputs, int64_t outputsSize) {
+    if (inputsSize >= 0) {
+      RETURN_ERR_IF_NOT(inputs.size() == inputsSize,
+                        glow::strFormat("Expected exactly %lu inputs, got %lu.",
+                                        (size_t)inputsSize, inputs.size()));
+    } else {
+      inputsSize = inputsSize * -1;
+      RETURN_ERR_IF_NOT(
+          inputs.size() >= inputsSize,
+          glow::strFormat("Expected at least %lu inputs, got %lu.",
+                          (size_t)inputsSize, inputs.size()));
+    }
+
+    if (outputsSize >= 0) {
+      RETURN_ERR_IF_NOT(
+          outputs.size() == outputsSize,
+          glow::strFormat("Expected exactly %lu outputs, got %lu.",
+                          (size_t)outputsSize, outputs.size()));
+    } else {
+      outputsSize = outputsSize * -1;
+      RETURN_ERR_IF_NOT(
+          outputs.size() >= outputsSize,
+          glow::strFormat("Expected at least %lu outputs, got %lu.",
+                          (size_t)outputsSize, outputs.size()));
+    }
+    return Error::success();
+  }
+
+private:
   /// Load a quantized conv node from ptNode to qconv.
   /// a wrapper function of loadQuantizedConv and loadQuantizedConvRelu.
   /// Returns error on failure.
@@ -316,6 +360,11 @@ private:
   /// Load a PyTorch Constant node as a Glow Constant.
   /// \returns error on failure.
   Error loadConstant(const torch::jit::Node *ptNode);
+
+  /// Load a custom PyTorch op using a statically register CustomPyTorchOpLoader
+  /// for that op.
+  /// \returns error on failure.
+  Error loadCustomOp(const torch::jit::Node *ptNode);
 
   /// Helper function for loading arithmetic nodes. \p name is of the name of
   /// the node in the Glow graph, \p lhs and \p rhs are the inputs to the

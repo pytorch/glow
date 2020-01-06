@@ -162,9 +162,11 @@ onnxStatus HostManagerBackend::removeNetwork(const Graph *graph) {
   return ONNXIFI_STATUS_SUCCESS;
 }
 
-onnxStatus HostManagerGraph::initGraph(
-    const void *onnxModel, size_t onnxModelSize, uint32_t weightCount,
-    const onnxTensorDescriptorV1 *weightDescriptors, void *deferedBlobReader) {
+onnxStatus
+HostManagerGraph::initGraph(const void *onnxModel, size_t onnxModelSize,
+                            uint32_t weightCount,
+                            const onnxTensorDescriptorV1 *weightDescriptors,
+                            uint32_t maxSeqLength, void *deferedBlobReader) {
 
   netName_ = strFormat("onnxifi_function_%lu", makeUniqueGraphId());
 
@@ -180,6 +182,7 @@ onnxStatus HostManagerGraph::initGraph(
   onnxInputToPlaceholder_ = loader->getInputVarsMapping();
   onnxOutputToPlaceholder_ = loader->getOutputVarsMapping();
 
+  setZeroLengthSequence(maxSeqLength);
   // Make sure the pool is ready to go.
   for (auto &obj : onnxInputToPlaceholder_) {
     tensorPool_.reserve(obj.second->getType(), 10);

@@ -90,7 +90,16 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
     if (input.isTensor()) {
       glow::Placeholder *ph = info.inputPlaceholders[placeholderI++];
       glow::TypeRef ty = ph->getType();
-      glow::Tensor t(input.toTensor().data_ptr(), ty);
+
+      auto pttensor = input.toTensor();
+      glow::Tensor t;
+      if (!pttensor.is_contiguous()) {
+        pttensor = pttensor.contiguous();
+        t = glow::Tensor(pttensor.data_ptr(), ty).clone();
+      } else {
+        t = glow::Tensor(pttensor.data_ptr(), ty);
+      }
+
       bindings->insert(ph, std::move(t));
     } else if (input.isObject()) {
       // Objects are only used for loading attributes at compile time.

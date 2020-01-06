@@ -290,7 +290,7 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
   // Map from Placeholder* to DeviceManager, this is used for deferred weight
   // loading.
   std::unordered_map<Placeholder *, std::vector<unsigned>>
-      placeholderToDevicManager;
+      placeholderToDeviceManager;
   if (cctx.deferredWeightLoader) {
     // Populate placeholdeToDeviceManager map.
     for (auto &assignment : assignments) {
@@ -298,7 +298,7 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
         Function *function = module.getFunction(node->name);
         for (auto PH : function->findPlaceholders()) {
           if (PH->isStatic()) {
-            placeholderToDevicManager[PH].push_back(assignment.second);
+            placeholderToDeviceManager[PH].push_back(assignment.second);
           }
         }
       }
@@ -472,7 +472,7 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
       }
 
       // Transfer weight to all devices needed.
-      for (const auto &device : placeholderToDevicManager[PH]) {
+      for (const auto &device : placeholderToDeviceManager[PH]) {
         std::promise<Error> transferPromise;
         auto done = transferPromise.get_future();
         devices_[device]->transferStaticPlaceholderToDevice(
@@ -485,12 +485,9 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
       weightName = loader->getName();
       // Remove PH from map, this way we can know that we've added all static
       // PH's
-      placeholderToDevicManager.erase(PH);
+      placeholderToDeviceManager.erase(PH);
     }
-    if (placeholderToDevicManager.size()) {
-      for (auto PH : placeholderToDevicManager) {
-        llvm::outs() << PH.first->getName() << "\n";
-      }
+    if (placeholderToDeviceManager.size()) {
       return MAKE_ERR(ErrorValue::ErrorCode::RUNTIME_ERROR,
                       "Error not all static placeholders were initialized.");
     }

@@ -314,7 +314,7 @@ public:
   /// unpaddedSize can be set to indicate actual size of the inputs.
   Tensor(void *data, TypeRef ty, size_t unpaddedSize = 0)
       : data_(reinterpret_cast<char *>(data)),
-        type_(*ty), isUnowned_{false}, unpaddedSize_{unpaddedSize} {
+        type_(*ty), unpaddedSize_{unpaddedSize} {
     // Mark as unowned.
     isUnowned_ = true;
     // We do want DeviceResidency however, since there is no owning Glow Tensor.

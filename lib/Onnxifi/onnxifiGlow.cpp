@@ -400,7 +400,7 @@ GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxInitGraph)(
     onnxBackend backend, const uint64_t *auxPropertiesList,
     size_t onnxModelSize, const void *onnxModel, uint32_t weightsCount,
     const onnxTensorDescriptorV1 *weightDescriptors, onnxGraph *graph,
-    void *deferredBlobReader) {
+    uint32_t maxSeqLength, void *deferredBlobReader) {
   if (!onnxModel || (!weightDescriptors && weightsCount) || !graph) {
     return ONNXIFI_STATUS_INVALID_POINTER;
   }
@@ -425,8 +425,9 @@ GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxInitGraph)(
   }
 
   auto *glowGraph = manager.createGraph(glowBackend, quantizationMode);
-  auto ret = glowGraph->initGraph(onnxModel, onnxModelSize, weightsCount,
-                                  weightDescriptors, deferredBlobReader);
+  auto ret =
+      glowGraph->initGraph(onnxModel, onnxModelSize, weightsCount,
+                           weightDescriptors, maxSeqLength, deferredBlobReader);
   if (ret != ONNXIFI_STATUS_SUCCESS) {
     manager.release(glowGraph);
     return ret;

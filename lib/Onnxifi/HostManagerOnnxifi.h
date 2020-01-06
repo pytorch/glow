@@ -64,6 +64,7 @@ public:
   onnxStatus initGraph(const void *onnxModel, size_t onnxModelSize,
                        uint32_t weightCount,
                        const onnxTensorDescriptorV1 *weightDescriptors,
+                       uint32_t maxSeqLengths,
                        void *deferedBlobReader) override;
 
   /// Async run HostManagerGraph with the given ExecutionContext \p ctx then

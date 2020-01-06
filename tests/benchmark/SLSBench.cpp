@@ -16,8 +16,10 @@
 #include <algorithm>
 #include <array>
 #include <cstdlib>
+#include <fstream>
 #include <future>
 #include <random>
+#include <string>
 
 #include "Bench.h"
 
@@ -36,100 +38,214 @@ using namespace glow;
  * through targeted experiementation and are not representative of
  * end-to-end workloads.
  */
+
+enum SLSKind {
+  NONQUANTIZED_UNWEIGHTED,
+  NONQUANTIZED_WEIGHTED,
+  QUANTIZED_UNWEIGHTED,
+  QUANTIZED_WEIGHTED
+};
+
+struct SLSParam {
+  dim_t batchSize;
+  dim_t numReps;
+  dim_t numAsyncLaunches;
+  std::string backendStr;
+  std::string devId;
+  dim_t numIndicesPerBatch;
+  dim_t numIndicesPerBatchPad;
+  dim_t numTableEntries;
+  dim_t numElementsPerRow;
+  dim_t numSLSNodes;
+  SLSKind slsKind;
+  bool isSorted;
+  bool addClip;
+  bool useFP16Accumulation;
+  ElemKind fusedDtype;
+  ElemKind dtype;
+};
+
 class SLSBench : public Benchmark {
-  /// Dimensions expressed in libjit's format.
-  dim_t batchSize_;
-  dim_t numIndicesPerBatch_;
-  dim_t numIndicesPerBatchPad_;
-  dim_t numTableEntries_;
-  dim_t numElementsPerRow_;
   std::unique_ptr<runtime::HostManager> hostManager_;
   std::vector<std::unique_ptr<ExecutionContext>> contexts_;
   std::vector<std::vector<Tensor>> indicesReal_;
   std::vector<std::vector<Tensor>> weightsReal_;
-  size_t asyncLaunchSize_;
-  size_t numSLSNodes_;
-  const char *slsKindStr_;
-  const char *backendStr_;
-  ElemKind dtype_;
-  bool addClip_;
-  bool isSorted_;
-  ElemKind fusedDtype_;
-  bool useFP16Accumulation_;
-  size_t elementSize_;
-  const char *devId_;
+  dim_t batchSize_;
+  dim_t asyncLaunchSize_;
+  std::string backendStr_;
+  std::vector<SLSParam> params_;
+  std::string devId_;
 
 public:
-  SLSBench(dim_t batchSize_, dim_t numIndicesPerBatch_,
-           dim_t numIndicesPerBatchPad_, dim_t numTableEntries_,
-           dim_t numElementsPerRow_, size_t asyncLaunchSize_,
-           size_t numSLSNodes_, const char *slsKindStr_, const char *sortedStr_,
-           const char *backendStr_, const char *dtypeStr_,
-           const char *addClipStr_, const char *quantizationDtypeStr_,
-           const char *useFP16AccumulationStr, const char *devId_ = nullptr)
-      : batchSize_(batchSize_), numIndicesPerBatch_(numIndicesPerBatch_),
-        numIndicesPerBatchPad_(numIndicesPerBatchPad_),
-        numTableEntries_(numTableEntries_),
-        numElementsPerRow_(numElementsPerRow_),
-        asyncLaunchSize_(asyncLaunchSize_), numSLSNodes_(numSLSNodes_),
-        slsKindStr_(slsKindStr_), backendStr_(backendStr_), devId_(devId_) {
+  SLSBench(dim_t batchSize_, dim_t asyncLaunchSize_, std::string backendStr_,
+           std::vector<SLSParam> params_, std::string devId_ = std::string(""))
+      : batchSize_(batchSize_), asyncLaunchSize_(asyncLaunchSize_),
+        backendStr_(backendStr_), params_(params_), devId_(devId_) {}
 
-    // Check SLSKind
-    if (!((std::string(slsKindStr_) == "QuantizedWeighted") ||
-          (std::string(slsKindStr_) == "QuantizedUnweighted") ||
-          (std::string(slsKindStr_) == "NonquantizedWeighted") ||
-          (std::string(slsKindStr_) == "NonquantizedUnweighted"))) {
-      llvm_unreachable("Unhandled SLSKind.");
+  double countSLSGbytes(SLSParam param) const {
+
+    dim_t elementSize = 2;
+    if (param.dtype == ElemKind::FloatTy) {
+      elementSize = 4;
     }
 
-    // Check sorted/unsorted string
-    if (std::string(sortedStr_) == "Sorted") {
-      isSorted_ = true;
-    } else if (std::string(sortedStr_) == "Unsorted") {
-      isSorted_ = false;
-    } else {
-      llvm_unreachable("sortedStr must be Sorted or Unsorted.");
-    }
-
-    // Check dtypeStr
-    elementSize_ = 2;
-    fusedDtype_ = ElemKind::UInt8FusedFP16QTy;
-    if (std::string(dtypeStr_) == "Float16") {
-      dtype_ = ElemKind::Float16Ty;
-      elementSize_ = 2;
-    } else if (std::string(dtypeStr_) == "Float32") {
-      dtype_ = ElemKind::FloatTy;
-      elementSize_ = 4;
-    } else {
-      llvm_unreachable("Unhandled ElemKind.");
-    }
-
-    // Check Quantization dtype
-    if ((std::string(slsKindStr_) == "QuantizedWeighted") ||
-        (std::string(slsKindStr_) == "QuantizedUnweighted")) {
-      if (std::string(quantizationDtypeStr_) == "Int8") {
-        fusedDtype_ = ElemKind::UInt8FusedFP16QTy;
-      } else if (std::string(quantizationDtypeStr_) == "Int4") {
-        fusedDtype_ = ElemKind::UInt4FusedFP16QTy;
-      } else {
-        llvm_unreachable("Unhandled quantization type.");
-      }
-      if (std::string(useFP16AccumulationStr) == "True") {
-        useFP16Accumulation_ = true;
-      } else if (std::string(useFP16AccumulationStr) == "False") {
-        useFP16Accumulation_ = false;
-      } else {
-        llvm_unreachable("useFP16AccumulationStr must be True or False.");
+    // Embedding data
+    double input_gbytes = 0.0;
+    if ((param.slsKind == NONQUANTIZED_WEIGHTED) ||
+        (param.slsKind == NONQUANTIZED_UNWEIGHTED)) {
+      input_gbytes +=
+          (param.numSLSNodes * batchSize_ * param.numIndicesPerBatch *
+           (param.numElementsPerRow * elementSize)) /
+          1e9;
+    } else { // Quantized
+      if (param.fusedDtype == ElemKind::UInt8FusedFP16QTy) {
+        input_gbytes +=
+            (param.numSLSNodes * batchSize_ * param.numIndicesPerBatch *
+             (param.numElementsPerRow + 2 * elementSize)) /
+            1e9;
+      } else { // Int4
+        input_gbytes +=
+            (param.numSLSNodes * batchSize_ * param.numIndicesPerBatch *
+             ((param.numElementsPerRow + 1) / 2 + 2 * elementSize)) /
+            1e9;
       }
     }
 
-    // Check clip option
-    if (std::string(addClipStr_) == "True") {
-      addClip_ = true;
-    } else if (std::string(addClipStr_) == "False") {
-      addClip_ = false;
+    // + indices
+    input_gbytes += (param.numSLSNodes * batchSize_ * param.numIndicesPerBatch *
+                     sizeof(int32_t)) /
+                    1e9;
+
+    // + weights
+    if ((param.slsKind == QUANTIZED_WEIGHTED) ||
+        (param.slsKind == NONQUANTIZED_WEIGHTED)) {
+      input_gbytes += (param.numSLSNodes * batchSize_ *
+                       param.numIndicesPerBatch * elementSize) /
+                      1e9;
+    }
+
+    // + lengths
+    input_gbytes += (param.numSLSNodes * batchSize_ * sizeof(int32_t)) / 1e9;
+
+    double output_gbytes = (param.numSLSNodes * batchSize_ *
+                            (param.numElementsPerRow * elementSize)) /
+                           1e9;
+
+    return input_gbytes + output_gbytes;
+  }
+
+  void addSLSNode(std::unique_ptr<Module> &mod, Function *fn, SLSParam param) {
+
+    // Create and initialize data tensor
+    Tensor data(ElemKind::FloatTy,
+                {param.numTableEntries, param.numElementsPerRow});
+    data.getHandle().clear(1.0f);
+
+    // Constant needed for Non-quantized case
+    Constant *dataConstant = nullptr;
+    if ((param.slsKind == NONQUANTIZED_WEIGHTED) ||
+        (param.slsKind == NONQUANTIZED_UNWEIGHTED)) {
+      Tensor dataConstantTensor(
+          param.dtype, {param.numTableEntries, param.numElementsPerRow});
+      if (param.dtype == ElemKind::FloatTy) {
+        dataConstantTensor.getHandle<float>().clear(1.0f);
+      } else {
+        dataConstantTensor.getHandle<float16_t>().clear(1.0f);
+      }
+      dataConstant = mod->createConstant("SLSData", dataConstantTensor);
+    }
+
+    // Create placeholders for weights, indices and lengths
+    auto *weights = mod->createPlaceholder(
+        param.dtype, {param.numIndicesPerBatchPad * batchSize_}, "weights",
+        false);
+
+    auto *indices = mod->createPlaceholder(
+        ElemKind::Int64ITy, {param.numIndicesPerBatchPad * batchSize_},
+        "indices",
+        /* isTrainable */ false);
+
+    auto *lengths =
+        mod->createPlaceholder(ElemKind::Int32ITy, {batchSize_}, "lengths",
+                               /* isTrainable */ false);
+
+    for (dim_t i = 0; i < asyncLaunchSize_; i++) {
+
+      // Create and sort indices
+      Tensor indicesReal(ElemKind::Int64ITy,
+                         {param.numIndicesPerBatch * batchSize_});
+      indicesReal.getHandle<int64_t>().randomize(0, param.numTableEntries - 1,
+                                                 mod->getPRNG());
+      // Sort each segment
+      if (param.isSorted) {
+        int64_t *indicesRealPtr = (int64_t *)indicesReal.getUnsafePtr();
+        for (dim_t b = 0; b < batchSize_; b++) {
+          std::sort(indicesRealPtr + b * param.numIndicesPerBatch,
+                    indicesRealPtr + (b + 1) * param.numIndicesPerBatch);
+        }
+      }
+      indicesReal_[i].push_back(std::move(indicesReal));
+
+      // Create weights
+      if (param.dtype == ElemKind::FloatTy) {
+        Tensor weightsReal(ElemKind::FloatTy,
+                           {param.numIndicesPerBatch * batchSize_});
+        weightsReal.getHandle<float>().clear(1.0f);
+        weightsReal_[i].push_back(std::move(weightsReal));
+      } else if (param.dtype == ElemKind::Float16Ty) {
+        Tensor weightsReal(ElemKind::Float16Ty,
+                           {param.numIndicesPerBatch * batchSize_});
+        weightsReal.getHandle<float16_t>().clear(1.0f);
+        weightsReal_[i].push_back(std::move(weightsReal));
+      }
+
+      Tensor indicesPartial(indicesReal_[i].back().getUnsafePtr(),
+                            indices->getType(),
+                            indicesReal_[i].back().getSizeInBytes());
+
+      contexts_[i]->getPlaceholderBindings()->insert(indices,
+                                                     std::move(indicesPartial));
+
+      contexts_[i]
+          ->getPlaceholderBindings()
+          ->allocate(lengths)
+          ->getHandle<int32_t>()
+          .clear(param.numIndicesPerBatch);
+
+      Tensor weightsPartial(weightsReal_[i].back().getUnsafePtr(),
+                            weights->getType(),
+                            weightsReal_[i].back().getSizeInBytes());
+      contexts_[i]->getPlaceholderBindings()->insert(weights,
+                                                     std::move(weightsPartial));
+    } // i
+
+    // Create SLS node, optional clip node, and save node
+    Node *R = nullptr;
+    if (param.slsKind == QUANTIZED_UNWEIGHTED) {
+      R = fn->createFusedRowwiseQuantizedSparseLengthsSum(
+          "RQSLS", data, indices, lengths, param.fusedDtype,
+          param.useFP16Accumulation);
+    } else if (param.slsKind == QUANTIZED_WEIGHTED) {
+      R = fn->createFusedRowwiseQuantizedSparseLengthsWeightedSum(
+          "RQSLWS", data, weights, indices, lengths, param.fusedDtype,
+          param.useFP16Accumulation);
+    } else if (param.slsKind == NONQUANTIZED_WEIGHTED) {
+      R = fn->createSparseLengthsWeightedSum("SLS", dataConstant, weights,
+                                             indices, lengths);
+    } else { // NonquantizedUnweighted
+      R = fn->createSparseLengthsSum("SLS", dataConstant, indices, lengths);
+    }
+    SaveNode *S = nullptr;
+    if (param.addClip) {
+      auto *clp = fn->createClip("clip", R, -65504.0f, 65504.0f);
+      S = fn->createSave("save", clp);
     } else {
-      llvm_unreachable("addClipStr must be True or False.");
+      S = fn->createSave("save", R);
+    }
+
+    // for each context, add output bindings
+    for (dim_t i = 0; i < asyncLaunchSize_; i++) {
+      contexts_[i]->getPlaceholderBindings()->allocate(S->getPlaceholder());
     }
   }
 
@@ -143,147 +259,27 @@ public:
 
     // Setup host manager
     std::vector<std::unique_ptr<runtime::DeviceConfig>> configs;
-    auto config = glow::make_unique<runtime::DeviceConfig>(backendStr_);
-    if (devId_ != nullptr) {
-      config->parameters["DeviceID"] = devId_;
+    auto config = glow::make_unique<runtime::DeviceConfig>(backendStr_.c_str());
+    if (devId_ != "") {
+      config->parameters["DeviceID"] = devId_.c_str();
     }
     configs.push_back(std::move(config));
     hostManager_ = glow::make_unique<runtime::HostManager>(std::move(configs));
 
+    // Create a function
     std::unique_ptr<Module> mod(new Module);
     auto fn = mod->createFunction("singleNode");
 
-    std::vector<Placeholder *> weights(numSLSNodes_);
-    std::vector<Placeholder *> indices(numSLSNodes_);
-    std::vector<Placeholder *> lengths(numSLSNodes_);
-    std::vector<SaveNode *> S(numSLSNodes_);
+    // Keep tensors around so they aren't deleted
     indicesReal_.resize(asyncLaunchSize_);
     weightsReal_.resize(asyncLaunchSize_);
-    for (dim_t i = 0; i < asyncLaunchSize_; i++) {
-      for (dim_t slsNodeId = 0; slsNodeId < numSLSNodes_; slsNodeId++) {
 
-        // Create and sort indices
-        Tensor indicesReal(ElemKind::Int64ITy,
-                           {numIndicesPerBatch_ * batchSize_});
-        indicesReal.getHandle<int64_t>().randomize(0, numTableEntries_ - 1,
-                                                   mod->getPRNG());
-        // Sort each segment
-        if (isSorted_) {
-          int64_t *indicesRealPtr = (int64_t *)indicesReal.getUnsafePtr();
-          for (dim_t b = 0; b < batchSize_; b++) {
-            std::sort(indicesRealPtr + b * numIndicesPerBatch_,
-                      indicesRealPtr + (b + 1) * numIndicesPerBatch_);
-          }
-        }
-        indicesReal_[i].push_back(std::move(indicesReal));
-
-        // Create weights
-        if (dtype_ == ElemKind::FloatTy) {
-          Tensor weightsReal(ElemKind::FloatTy,
-                             {numIndicesPerBatch_ * batchSize_});
-          weightsReal.getHandle<float>().clear(1.0f);
-          weightsReal_[i].push_back(std::move(weightsReal));
-        } else if (dtype_ == ElemKind::Float16Ty) {
-          Tensor weightsReal(ElemKind::Float16Ty,
-                             {numIndicesPerBatch_ * batchSize_});
-          weightsReal.getHandle<float16_t>().clear(1.0f);
-          weightsReal_[i].push_back(std::move(weightsReal));
-        }
+    // Add SLS nodes
+    for (auto &param : params_) {
+      for (int i = 0; i < param.numSLSNodes; i++) {
+        addSLSNode(mod, fn, param);
       }
     }
-
-    // Create multiple SLS nodes
-    for (dim_t slsNodeId = 0; slsNodeId < numSLSNodes_; slsNodeId++) {
-
-      // Create and initialize data tensor
-      Tensor data(ElemKind::FloatTy, {numTableEntries_, numElementsPerRow_});
-      data.getHandle().clear(1.0f);
-
-      // Constant needed for Non-quantized case
-      Constant *dataConstant = nullptr;
-      if ((std::string(slsKindStr_) == "NonquantizedWeighted") ||
-          (std::string(slsKindStr_) == "NonquantizedUnweighted")) {
-        Tensor dataConstantTensor(dtype_,
-                                  {numTableEntries_, numElementsPerRow_});
-        if (dtype_ == ElemKind::FloatTy) {
-          dataConstantTensor.getHandle<float>().clear(1.0f);
-        } else {
-          dataConstantTensor.getHandle<float16_t>().clear(1.0f);
-        }
-        dataConstant = mod->createConstant(
-            "SLSData_" + std::to_string(slsNodeId), dataConstantTensor);
-      }
-
-      // Create placeholders for weights, indices and lengths
-      weights[slsNodeId] =
-          mod->createPlaceholder(dtype_, {numIndicesPerBatchPad_ * batchSize_},
-                                 "weights_" + std::to_string(slsNodeId), false);
-
-      indices[slsNodeId] = mod->createPlaceholder(
-          ElemKind::Int64ITy, {(dim_t)numIndicesPerBatchPad_ * batchSize_},
-          "indices_" + std::to_string(slsNodeId),
-          /* isTrainable */ false);
-
-      lengths[slsNodeId] =
-          mod->createPlaceholder(ElemKind::Int32ITy, {batchSize_}, "lengths",
-                                 /* isTrainable */ false);
-
-      // for each context, add input bindings
-      for (dim_t i = 0; i < asyncLaunchSize_; i++) {
-        Tensor indicesPartial(indicesReal_[i][slsNodeId].getUnsafePtr(),
-                              indices[slsNodeId]->getType(),
-                              indicesReal_[i][slsNodeId].getSizeInBytes());
-
-        contexts_[i]->getPlaceholderBindings()->insert(
-            indices[slsNodeId], std::move(indicesPartial));
-
-        contexts_[i]
-            ->getPlaceholderBindings()
-            ->allocate(lengths[slsNodeId])
-            ->getHandle<int32_t>()
-            .clear(numIndicesPerBatch_);
-
-        Tensor weightsPartial(weightsReal_[i][slsNodeId].getUnsafePtr(),
-                              weights[slsNodeId]->getType(),
-                              weightsReal_[i][slsNodeId].getSizeInBytes());
-        contexts_[i]->getPlaceholderBindings()->insert(
-            weights[slsNodeId], std::move(weightsPartial));
-      }
-
-      // Create SLS node, optional clip node, and save node
-      Node *R = nullptr;
-      if (std::string(slsKindStr_) == "QuantizedUnweighted") {
-        R = fn->createFusedRowwiseQuantizedSparseLengthsSum(
-            "RQSLS_" + std::to_string(slsNodeId), data, indices[slsNodeId],
-            lengths[slsNodeId], fusedDtype_, useFP16Accumulation_);
-      } else if (std::string(slsKindStr_) == "QuantizedWeighted") {
-        R = fn->createFusedRowwiseQuantizedSparseLengthsWeightedSum(
-            "RQSLWS_" + std::to_string(slsNodeId), data, weights[slsNodeId],
-            indices[slsNodeId], lengths[slsNodeId], fusedDtype_,
-            useFP16Accumulation_);
-      } else if (std::string(slsKindStr_) == "NonquantizedWeighted") {
-        R = fn->createSparseLengthsWeightedSum(
-            "SLS_" + std::to_string(slsNodeId), dataConstant,
-            weights[slsNodeId], indices[slsNodeId], lengths[slsNodeId]);
-      } else { // NonquantizedUnweighted
-        R = fn->createSparseLengthsSum("SLS_" + std::to_string(slsNodeId),
-                                       dataConstant, indices[slsNodeId],
-                                       lengths[slsNodeId]);
-      }
-      if (addClip_) {
-        auto *clp = fn->createClip("clip_" + std::to_string(slsNodeId), R,
-                                   -65504.0f, 65504.0f);
-        S[slsNodeId] = fn->createSave("save_" + std::to_string(slsNodeId), clp);
-      } else {
-        S[slsNodeId] = fn->createSave("save_" + std::to_string(slsNodeId), R);
-      }
-
-      // for each context, add output bindings
-      for (size_t i = 0; i < asyncLaunchSize_; i++) {
-        contexts_[i]->getPlaceholderBindings()->allocate(
-            S[slsNodeId]->getPlaceholder());
-      }
-    } // For each slsNodeId
 
     fn->dumpDAG("slsbench.dot");
     CompilationContext ctx;
@@ -314,57 +310,116 @@ public:
     for (auto &fut : futures) {
       fut.wait();
     }
-    for (size_t j = 0; j < asyncLaunchSize_; j++) {
+    for (dim_t j = 0; j < asyncLaunchSize_; j++) {
       contexts_[j] = std::move(localContexts[j]);
     }
   }
 
   void teardown() override {}
 
-  // Each row has numElementsPerRow bytes per row, plus scale and offset
   double gbytes() const {
-
-    // Embedding data
-    double input_gbytes = 0.0;
-    if ((std::string(slsKindStr_) == "NonquantizedWeighted") ||
-        (std::string(slsKindStr_) == "NonquantizedUnweighted")) {
-      input_gbytes += (numSLSNodes_ * batchSize_ * numIndicesPerBatch_ *
-                       (numElementsPerRow_ * elementSize_)) /
-                      1e9;
-    } else { // Quantized
-      if (fusedDtype_ == ElemKind::UInt8FusedFP16QTy) {
-        input_gbytes += (numSLSNodes_ * batchSize_ * numIndicesPerBatch_ *
-                         (numElementsPerRow_ + 2 * elementSize_)) /
-                        1e9;
-      } else { // Int4
-        input_gbytes += (numSLSNodes_ * batchSize_ * numIndicesPerBatch_ *
-                         ((numElementsPerRow_ + 1) / 2 + 2 * elementSize_)) /
-                        1e9;
-      }
+    double total = 0.0;
+    for (auto &param : params_) {
+      total += countSLSGbytes(param);
     }
-
-    // + indices
-    input_gbytes +=
-        (numSLSNodes_ * batchSize_ * numIndicesPerBatch_ * sizeof(int32_t)) /
-        1e9;
-
-    // + weights
-    if ((std::string(slsKindStr_) == "QuantizedWeighted") ||
-        (std::string(slsKindStr_) == "NonquantizedWeighted")) {
-      input_gbytes +=
-          (numSLSNodes_ * batchSize_ * numIndicesPerBatch_ * elementSize_) /
-          1e9;
-    }
-
-    // + lengths
-    input_gbytes += (numSLSNodes_ * batchSize_ * sizeof(int32_t)) / 1e9;
-
-    double output_gbytes =
-        (numSLSNodes_ * batchSize_ * (numElementsPerRow_ * elementSize_)) / 1e9;
-
-    return input_gbytes + output_gbytes;
+    return total;
   }
 };
+
+// Indices of arguments
+#define ROWWISE_QUANT 14
+#define ACCUM_TYPE 15
+#define DEVICE_ID 16
+
+SLSParam parseArgs(int argc, char *argv[]) {
+  SLSParam param;
+  param.batchSize = atoi(argv[1]);
+  param.numIndicesPerBatch = atoi(argv[2]);
+  param.numIndicesPerBatchPad = atoi(argv[3]);
+  param.numTableEntries = atoi(argv[4]);
+  param.numElementsPerRow = atoi(argv[5]);
+  param.numReps = atoi(argv[6]);
+  param.numAsyncLaunches = atoi(argv[7]);
+  param.numSLSNodes = atoi(argv[8]);
+  printf("batchSize %zu\n", (size_t)param.batchSize);
+  printf("numIndicesPerBatch %zu\n", (size_t)param.numIndicesPerBatch);
+  printf("numIndicesPerBatchPad %zu\n", (size_t)param.numIndicesPerBatchPad);
+  printf("numTableEntries %zu\n", (size_t)param.numTableEntries);
+  printf("numElementsPerRow %zu\n", (size_t)param.numElementsPerRow);
+  printf("numReps %zu\n", (size_t)param.numReps);
+  printf("numAsyncLaunches %zu\n", (size_t)param.numAsyncLaunches);
+  printf("numSLSNodes %zu\n", (size_t)param.numSLSNodes);
+  printf("slsKind %s\n", argv[9]);
+  if (std::string(argv[9]) == "NonquantizedUnweighted") {
+    param.slsKind = NONQUANTIZED_UNWEIGHTED;
+  } else if (std::string(argv[9]) == "NonquantizedWeighted") {
+    param.slsKind = NONQUANTIZED_WEIGHTED;
+  } else if (std::string(argv[9]) == "QuantizedUnweighted") {
+    param.slsKind = QUANTIZED_UNWEIGHTED;
+  } else if (std::string(argv[9]) == "QuantizedWeighted") {
+    param.slsKind = QUANTIZED_WEIGHTED;
+  } else {
+    llvm_unreachable("Invalid SLS Kind");
+  }
+  printf("sortedStr %s\n", argv[10]);
+  if (std::string(argv[10]) == "Sorted") {
+    param.isSorted = true;
+  } else if (std::string(argv[10]) == "Unsorted") {
+    param.isSorted = false;
+  } else {
+    llvm_unreachable("Invalid sortedStr");
+  }
+  printf("backendStr %s\n", argv[11]);
+  param.backendStr = std::string(argv[11]);
+  printf("dtypeStr %s\n", argv[12]);
+  if (std::string(argv[12]) == "Float16") {
+    param.dtype = ElemKind::Float16Ty;
+  } else if (std::string(argv[12]) == "Float32") {
+    param.dtype = ElemKind::FloatTy;
+  } else {
+    llvm_unreachable("Invalid dtype");
+  }
+  printf("addClipStr %s\n", argv[13]);
+  if (std::string(argv[13]) == "True") {
+    param.addClip = true;
+  } else if (std::string(argv[13]) == "False") {
+    param.addClip = false;
+  } else {
+    llvm_unreachable("Invalid addClipStr");
+  }
+  printf("fusedDtype%s\n", argv[ROWWISE_QUANT]);
+  if (argc > ROWWISE_QUANT) {
+    if (std::string(argv[ROWWISE_QUANT]) == "Int8") {
+      param.fusedDtype = ElemKind::UInt8FusedFP16QTy;
+    } else if (std::string(argv[ROWWISE_QUANT]) == "Int4") {
+      param.fusedDtype = ElemKind::UInt4FusedFP16QTy;
+    } else {
+      llvm_unreachable("Invalid Quantization datatype");
+    }
+  } else {
+    param.fusedDtype = ElemKind::UInt8FusedFP16QTy;
+  }
+  printf("useFP16Accumulation %s\n", argv[ACCUM_TYPE]);
+  if (argc > ACCUM_TYPE) {
+    if (std::string(argv[ACCUM_TYPE]) == "True") {
+      param.useFP16Accumulation = true;
+    } else if (std::string(argv[ACCUM_TYPE]) == "False") {
+      param.useFP16Accumulation = false;
+    } else {
+      llvm_unreachable("Invalid useFP16Accumulation");
+    }
+  } else {
+    param.useFP16Accumulation = false;
+  }
+  printf("devId %s\n", argv[DEVICE_ID]);
+  if (argc > DEVICE_ID) {
+    param.devId = std::string(argv[DEVICE_ID]);
+  } else {
+    param.devId = std::string("");
+  }
+  printf("\n\n");
+  return param;
+}
 
 int main(int argc, char *argv[]) {
 
@@ -384,98 +439,77 @@ int main(int argc, char *argv[]) {
       "useFP16AccumulationStr(\"True\"|\"False\") \nOptional: dev_id(Int)\n");
   printf("\n");
 
-  assert(argc == 14 || argc == 15 || argc == 16 || argc == 17);
-  size_t batchSize = atoi(argv[1]);
-  size_t numIndicesPerBatch = atoi(argv[2]);
-  size_t numIndicesPerBatchPad = atoi(argv[3]);
-  size_t numTableEntries = atoi(argv[4]);
-  size_t numElementsPerRow = atoi(argv[5]);
-  size_t numReps = atoi(argv[6]);
-  size_t numAsyncLaunches = atoi(argv[7]);
-  size_t numSLSNodes = atoi(argv[8]);
-  const char *slsKindStr = argv[9];
-  const char *sortedStr = argv[10];
-  const char *backendStr = argv[11];
-  const char *dtypeStr = argv[12];
-  const char *addClipStr = argv[13];
-  const char *quantizationDtypeStr = nullptr;
-  const char *useFP16AccumulationStr = nullptr;
-  char *dev_id = nullptr;
+  std::vector<SLSParam> params;
+  std::string runHeader;
+  std::string runPrefix;
 
-  printf("Using:\n");
-  printf("batchSize: %zu\n", batchSize);
-  printf("numIndicesPerBatch: %zu\n", numIndicesPerBatch);
-  printf("numIndicesPerBatchPad: %zu\n", numIndicesPerBatchPad);
-  printf("numTableEntries: %zu\n", numTableEntries);
-  printf("numElementsPerRow: %zu\n", numElementsPerRow);
-  printf("numReps: %zu\n", numReps);
-  printf("numAsyncLaunches: %zu\n", numAsyncLaunches);
-  printf("numSLSNodes: %zu\n", numSLSNodes);
-  printf("slsKindStr: %s\n", slsKindStr);
-  printf("sortedStr: %s\n", sortedStr);
-  printf("backendStr: %s\n", backendStr);
-  printf("dtypeStr: %s\n", dtypeStr);
-  printf("addClipStr: %s\n", addClipStr);
+  // Using a config file
+  if (argc == 2) {
+    auto fname = std::string(argv[1]);
+    std::ifstream fin(fname.c_str());
+    if (!fin) {
+      std::cout << "Could not open file: " << fname << std::endl;
+      exit(0);
+    }
+    std::string line;
+    while (getline(fin, line)) {
+      std::array<char, 1024> buf;
+      char *saveptr = nullptr;
+      std::vector<char *> argVec;
+      strcpy(buf.data(), line.c_str());
+      char *ptr = strtok_r(buf.data(), " ", &saveptr);
+      while (ptr != nullptr) {
+        argVec.push_back(ptr);
+        ptr = strtok_r(nullptr, " ", &saveptr);
+      }
+      SLSParam param = parseArgs(argVec.size(), argVec.data());
+      params.push_back(param);
+      runHeader = std::string("_,benchName,_,filename");
+      runPrefix = std::string(strFormat("SLSBench,SW,%s", fname.c_str()));
+    }
+  }
+  // Using command line
+  else if (argc == 14 || argc == 15 || argc == 16 || argc == 17) {
+    SLSParam param = parseArgs(argc, argv);
+    params.push_back(param);
 
-  if (argc > 14) {
-    quantizationDtypeStr = argv[14];
-    printf("quantizationDtypeStr: %s\n", quantizationDtypeStr);
+    runHeader = std::string(
+        "_,benchName,_,batchSize,numIndicesPerBatch,numIndicesPerBatchPad,"
+        "numTableEntries,"
+        "numElementsPerRow,numReps,numAsyncLaunches,numSLSNodes,slsKindStr,"
+        "backendStr,dtypeStr,addClipStr,quantizationDtypeStr,"
+        "useFP16AccumulationStr");
+    runPrefix = std::string(strFormat(
+        "SLSBench,SW,%zu,%zu,%zu,%zu,%zu,%zu,%zu,%zu,%s,%s,%s,%"
+        "s,%s,%"
+        "s,%s",
+        (size_t)param.batchSize, (size_t)param.numIndicesPerBatch,
+        (size_t)param.numIndicesPerBatchPad, (size_t)param.numTableEntries,
+        (size_t)param.numElementsPerRow, (size_t)param.numReps,
+        (size_t)param.numAsyncLaunches, (size_t)param.numSLSNodes, argv[9],
+        argv[10], argv[11], argv[12], argv[13], argv[14], argv[15]));
+  } else {
+    llvm_unreachable("Invalid command line");
   }
-  if (argc > 15) {
-    useFP16AccumulationStr = argv[15];
-    printf("useFP16AccumulationStr: %s\n", useFP16AccumulationStr);
-  }
-  if (argc > 16) {
-    dev_id = argv[16];
-    printf("Setting backend device: \"%s\"\n", dev_id);
-  }
-  printf("\n");
-  assert(numReps > 0);
 
-  SLSBench b(batchSize, numIndicesPerBatch, numIndicesPerBatchPad,
-             numTableEntries, numElementsPerRow, numAsyncLaunches, numSLSNodes,
-             slsKindStr, sortedStr, backendStr, dtypeStr, addClipStr,
-             quantizationDtypeStr, useFP16AccumulationStr, dev_id);
-  auto times = bench(&b, numReps);
-  printf("_,benchName,_,batchSize,numIndicesPerBatch,numIndicesPerBatchPad,"
-         "numTableEntries,"
-         "numElementsPerRow,numReps,numAsyncLaunches,numSLSNodes,slsKindStr,"
-         "backendStr,dtypeStr,addClipStr,quantizationDtypeStr,"
-         "useFP16AccumulationStr,"
-         "runtime,gbytesPerSec\n");
+  SLSParam param = params.front();
+  SLSBench b(param.batchSize, param.numAsyncLaunches, param.backendStr, params,
+             param.devId);
+  auto times = bench(&b, param.numReps);
+
+  printf("%s,runtime,gbytesPerSec\n", runHeader.c_str());
   for (auto t : times) {
-    printf("BenchResult,SLSBench,SW,%zu,%zu,%zu,%zu,%zu,%zu,%zu,%zu,%s,%s,%s,%"
-           "s,%s,%"
-           "s,%s,%"
-           "f,%f\n",
-           batchSize, numIndicesPerBatch, numIndicesPerBatchPad,
-           numTableEntries, numElementsPerRow, numReps, numAsyncLaunches,
-           numSLSNodes, slsKindStr, sortedStr, backendStr, dtypeStr, addClipStr,
-           quantizationDtypeStr, useFP16AccumulationStr, t / numAsyncLaunches,
-           b.gbytes() * numAsyncLaunches / t);
+    printf("BenchResult,%s,%f,%f\n", runPrefix.c_str(),
+           t / param.numAsyncLaunches, b.gbytes() * param.numAsyncLaunches / t);
   }
   double min = *(std::min_element(times.begin(), times.end()));
-  size_t midElt = times.size() / 2;
+  dim_t midElt = times.size() / 2;
   std::nth_element(times.begin(), times.begin() + midElt, times.end());
   double median = times[midElt];
-  double median_runtime = median / ((double)numAsyncLaunches);
-  double min_runtime = min / ((double)numAsyncLaunches);
-  printf("_,benchName,_,batchSize,numIndicesPerBatch,numIndicesPerBatchPad,"
-         "numTableEntries,"
-         "numElementsPerRow,numReps,numAsyncLaunches,numSLSNodes,slsKindStr,"
-         "sortedStr,backendStr,dtypeStr,addClipStr,quantizationDtypeStr,"
-         "useFP16AccumulationStr,medianRuntime,"
-         "minRuntime,"
-         "medianGbytesPerSec,"
-         "maxGbytesPerSec\n");
-  printf("BenchSummary,SLSBench,SW,%zu,%zu,%zu,%zu,%zu,%zu,%zu,%zu,%s,%s,%s,%s,"
-         "%s,%s,"
-         "%s,%f,"
-         "%f,%f,%"
-         "f\n",
-         batchSize, numIndicesPerBatch, numIndicesPerBatchPad, numTableEntries,
-         numElementsPerRow, numReps, numAsyncLaunches, numSLSNodes, slsKindStr,
-         sortedStr, backendStr, dtypeStr, addClipStr, quantizationDtypeStr,
-         useFP16AccumulationStr, median_runtime, min_runtime,
-         b.gbytes() / median_runtime, b.gbytes() / min_runtime);
+  double medianRuntime = median / ((double)param.numAsyncLaunches);
+  double minRuntime = min / ((double)param.numAsyncLaunches);
+  printf("%s,medianRuntime,minRuntime,medianGbytesPerSec,maxGbytesPerSec\n",
+         runHeader.c_str());
+  printf("BenchSummary,%s,%f,%f,%f,%f\n", runPrefix.c_str(), medianRuntime,
+         minRuntime, b.gbytes() / medianRuntime, b.gbytes() / minRuntime);
 }
