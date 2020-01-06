@@ -13,6 +13,7 @@ link_directories(${PYTORCH_DIR}/lib)
 
 add_library(PyTorchModelLoader
                      CachingGraphRunner.cpp
+                     CustomPyTorchOpLoader.cpp
                      GlowFuser.cpp
                      FuseKnownPatterns.cpp
                      GlowIValue.cpp
