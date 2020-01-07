@@ -1,84 +1,98 @@
 # Creating standalone executable bundles
 
-This document provides a short description about producing ahead-of-time
+This document provides a short description about producing Ahead Of Time (AOT)
 compiled executable bundles. The motivation for this work is to remove the cost
 of compile time by allowing the users of Glow to compile the package ahead of
 time.
 
+
 ## Overview
 
 A bundle is a self-contained compiled network model that can be used to execute
-the model in a standalone mode. After following the instructions in this
-document and the [CMakeLists.txt](../examples/bundles/resnet50/CMakeLists.txt) in the example
-directory you will be able to compile convolutional neural networks into small
-executables. Example:
+the model in a standalone mode. Glow has multiple backends which can run models
+but not all of them are capable to save a compiled model. The main backend used
+to generate bundles is the **CPU backend**.
+
+After following this document you will be able to compile models into executables.
+You can also view the CMake instructions used to build the bundles for the ResNet50
+and LeNetMnist models here:
+- [ResNet50](../examples/bundles/resnet50/CMakeLists.txt)
+- [LeNetMnist](../examples/bundles/lenet_mnist/CMakeLists.txt)
+
+When building Glow you can choose to build the **ResNet50** and the **LeNetMnist**
+examples by enabling the `GLOW_WITH_BUNDLES` option as below:
 
 ```
-  $cmake -G ninja <other cmake flags> -DGLOW_WITH_BUNDLES=ON -DGLOW_WITH_CPU=ON
-  ...
-
-  $ninja ResNet50Bundle
-  ...
-
-  $./resnet50 cat.png
-  Result: 285
+mkdir build_Debug
+cd build_Debug
+cmake -G Ninja -DCMAKE_BUILD_TYPE=Debug -DGLOW_WITH_BUNDLES=ON ../glow
+ninja all
 ```
 
-
-## Producing a bundle
-
-It is possible to use the Glow library to produce bundles. On the CPU, the
-bundles are object files that can be linked with some executable. On other
-architectures, the bundle may look completely different.
-
-This document demonstrates how to produce a bundle for the host CPU using the
-'image-classifier' tool.  We use the flag `-emit-bundle` to specify the output
-directory.
+After the build is complete, you can run the example applications using one of the
+following commands:
 
 ```
-$image-classifier image.png -image-mode=0to1 -m=resnet50 -model-input-name=gpu_0/data -backend=CPU -emit-bundle build/
+cd ./bundles/resnet50/
+./ResNet50Bundle cat_285.png
+```
+```
+cd ./bundles/quantized_resnet50/
+./QuantizedResNet50Bundle cat_285.png
+```
+```
+cd ./bundles/lenet_mnist/
+./LeNetMnistBundle 0_1009.png
+```
+```
+cd ./bundles/quantized_lenet_mnist/
+./QuantizedLeNetMnistBundle 0_1009.png
 ```
 
-The command above would compile the neural network model described by the files
-`init_net.pb` and `predict_net.pb` located in the `network_model_directory_name`
-directory and generate a bundle consisting of two files in the directory
-`output_directory_name`, `<network_name>.o` and `<network_name>.weights.bin` where
-`<network_name>` is by default equals to the last directory in the model path,
-i.e., `resnet50` in that case, and can be changed using
-`-network-name=<network_name>`.
-`predict_net.pb` describes the network model using the protobuf format for the ONNX
-or the caffe2 representation. `init_net.pb` contains the weights that are used by the
-network using the protobuf format as well.
+You can find the sample images used in the examples above in the following directories:
+- Sample images for the ResNet50 model from the IMAGENET database: [here](../tests/images/imagenet)
+- Sample image for the LeNetMnist model from the MNIST database: [here](../tests/images/mnist)
 
-The first generated file is named `<network_name>.o` and contains the compiled code
-of the network model. By default, this is a non-relocatable object file that
-can be linked with other files in your project. It is possible to control
-the relocation model with the command line option `-relocation-model=<mode>`.
 
-This option supports two modes:
-- `static`: (Default) Produce non-relocatable code.
-- `pic`: Produce position independent code.
+## Compile a bundle for a floating-point model
 
-The second generated file is named `<network_name>.weights.bin` and
-contains the weights required to run the compiled model.
+The `model-compiler` front-end tool is the main Glow tool used to compile ONNX and
+Caffe2 models into bundles. The tool is generic in the sense that it can compile
+models with any number of inputs or outputs, without being tied to a particular
+application. The command used to build a bundle using the CPU backend is the following:
 
-Another tool is the `model-compiler` which is used to compile a model into a bundle.
-This tool is more generic (is not tied just to image classification applications)
-and can compile models with any number of inputs. There is a difference when using
-this tool with ONNX or Caffe2 models:
-- when using ONNX models the tool can infer automatically the inputs of the model
-since the description of the input tensors is part of the model. We can use this tool
-simply as: 
+```
+$model-compiler -backend=CPU -model=<model-path> -emit-bundle=<bundle-dir>
+```
+
+- The option `backend` specifies the backend used to generated the bundle.
+- The option `model` specifies the path for the Caffe2 or ONNX model:
+  - For Caffe2 models the `<model-path>` is expected to point to a **directory**
+  which contains two model files: `init_net.pb` and `predict_net.pb`. Some Caffe2
+  model directories also contain a file named `predict_net.pbtxt` but that file
+  is not required.
+  - For ONNX models the `<model-path>` is expected to point to a **file** with
+  the extension **.onnx** or **.onnxtxt**.
+- The option `emit-bundle` specifies the bundle output **directory**. If the
+directory does not exist, it will be created.
+
+There is a small difference when using this tool with ONNX versus Caffe2 models:
+- For **ONNX models** the tool can infer automatically the inputs of the model
+since the description of the input tensors is part of the model. Therefore the tool
+will be used in the form shown above:
   ```
-  $model-compiler -model=<onnx-model-path> -backend=CPU -emit-bundle=<bundle-dir>
+  $model-compiler -backend=CPU -model=<onnx-model-path> -emit-bundle=<bundle-dir>
   ```
-- when using Caffe2 models the user must provide explicitly the description of the
-input tensors (which is not part of the model) using the `-model-input` option:
+- For **Caffe2 models** the user must also provide explicitly the description
+of the input tensors which is not part of model. The option `model-input` will be used
+to specify the name, type and shape for each model input. The model input names can be
+deduced by inspecting the model with [Netron](https://lutzroeder.github.io/netron/).
+The option can be used multiple times to describe each model input separately:
   ```
-  $model-compiler -model=<caffe2-model-path> -backend=CPU -emit-bundle=<bundle-dir> \
-      -model-input=<inputName1>,<inputType1>,<inputShape1> \
-      -model-input=<inputName2>,<inputType2>,<inputShape2> \
-      ...
+  $model-compiler -backend=CPU -model=<caffe2-model-path> -emit-bundle=<bundle-dir> \
+    -model-input=<inputName1>,<inputType1>,<inputShape1>                            \
+    -model-input=<inputName2>,<inputType2>,<inputShape2>                            \
+    ....................................................
   ```
   For quantized types the format of the `-model-input` is slightly different since the
   scale and offset parameters should also be provided:
@@ -91,10 +105,100 @@ input tensors (which is not part of the model) using the `-model-input` option:
   -model-input=data_bias,int32,[1,32,32]
   -model-input=data,int8q,0.123,-13,[1,10]
   ```
-For more information about the options of the model-compiler type:
+
+The above command will generate in the directory specified with `-emit-bundle` the
+following artifacts:
+- `<network_name>.o` - the bundle object file (code).
+- `<network_name>.h` - the bundle header file (API).
+- `<network_name>.weights.bin` - the model weights in binary format.
+- `<network_name>.weights.txt` - the model weights in text format as C text array.
+
+For example, to compile the ResNet50 model provided by Glow in Caffe2 format, you can use
+the following command (the name of the input tensor is *gpu_0/data*, the type is *float*
+and the shape is *1 x 3 x 224 x 224* corresponding to a RGB image with NCHW layout):
+```
+$model-compiler -backend=CPU -model=resnet50 -emit-bundle=build -model-input=gpu_0/data,float,[1,3,224,224]
+```
+
+Similarly, to compile the LeNetMnist model provided by Glow in Caffe2 format, you can use
+the following command (the name of the input tensor is *data*, the type is *float* and the
+shape is *1 x 1 x 28 x 28* corresponding to a grayscale image with NCHW layout):
+```
+$model-compiler -backend=CPU  -model=lenet_mnist -emit-bundle=build -model-input=data,float,[1,1,28,28]
+```
+
+For more information about the options of the `model-compiler` tool use:
 ```
 $model-compiler -help
 ```
+
+## Compile a bundle for a quantized model
+
+Glow support for out-of-the-box quantized models is a work in progress mainly because the
+quantized operands and operators are not well standardized in formats like Caffe2 and ONNX.
+
+The way Glow produces a quantized bundle is by taking a floating-point model and converting
+it to a quantized model using it's own internal representation before compiling to a bundle.
+
+The procedure used for quantizing the model is called **profile-guided quantization** (more
+details [here](../Quantization.md)). Before the model is quantized and compiled with the
+*model-compiler* tool, the quantization profile must be acquired.
+
+In order to compute the quantization profile, the **image-classifier** tool is used. This
+application is used for image classification models only and requires a set of images to do
+the inference and compute the profile:
+
+```
+$image-classifier <images> <image-ops> -model=<model-path> -model-input-name=<name> -dump-profile=profile.yaml
+```
+
+- The image paths are specified one after the other, separated by space. Only images in *PNG*
+format are supported (either RGB or grayscale).
+- `model` specifies the path for the Caffe2 or ONNX model.
+- `model-input-name` specifies the name of the model input.
+- The option `dump-profile` specifies the file name used to dump the profile in YAML format.
+
+Extra options are available to specify how the images are pre-processed before feeding to the model:
+- The option `image-mode` can be used to specify how the images are normalized:
+  - `neg1to1` for the range [-1, 1].
+  - `0to1` for the range [0, 1].
+  - `0to255` for the range [0, 255] (Default).
+  - `neg128to127` for the range [-128,127].
+- The option `image-channel-order` can be used to specify the order of the channels:
+  - `RGB` for R,G,B channel ordering.
+  - `BGR` for B,G,R channel ordering (Default).
+- The option `image-layout` can be used to specify the tensor dimension ordering (layout) which must
+match the layout of the model:
+  - `NCHW` for NCHW tensor layout (Default).
+  - `NHWC` for NHWC tensor layout.
+
+For more information about the options of the `image-classifier` tool use:
+```
+$image-classifier -help
+```
+
+After the quantization profile `profile.yaml` has been generated, we can use the `model-compiler`
+tool to compile the model into a bundle by loading the previously generated profile:
+```
+$model-compiler ... -load-profile=profile.yaml
+```
+
+If a specific quantization schema is desired, same schema must be provided during both
+profiling and compiling using the `quantization-schema` option. More details about the
+quantization schema can be found [here](../Quantization.md).
+
+For example, in order to profile, quantize and compile the ResNet50 model you can use the commands:
+```
+$image-classifier cat_285.png ... -image-mode=0to1 -model=resnet50 -model-input-name=gpu_0/data -dump-profile=profile.yml
+$model-compiler -backend=CPU -model=resnet50 -emit-bundle=build -model-input=gpu_0/data,float,[1,3,224,224] -load-profile=profile.yml
+```
+
+Similarly for the LeNetMnist model:
+```
+$image-classifier 0_1009.png ... -image-mode=0to1 -model=lenet_mnist -model-input-name=data -dump-profile=profile.yml
+$model-compiler -backend=CPU -model=lenet_mnist -emit-bundle=build -model-input=data,float,[1,1,28,28] -load-profile=profile.yml
+```
+
 
 ## Cross-compile a bundle for a specific architecture
 
@@ -159,7 +263,43 @@ LLVM (http://llvm.org/):
     xcore      - XCore
 ```
 
+
 ## Extra options
+
+- If you want to change the name of the bundle artifacts you can use the option:
+  ```
+  -network-name=<network-name>
+  ```
+  For example by using the option `-network-name=mb2` the generated bundle artifacts
+will be named *mb2.o*, *mb2.h*, *mb2.weights.bin* and *mb2.weights.txt*.
+
+- The object file `<network_name>.o` associated to the bundle is non-relocatable
+by default. It is possible to control the relocation model with the command line
+option `-relocation-model=<mode>`. This option supports two modes:
+  - `static`: (Default) Produce non-relocatable code.
+  - `pic`: Produce position independent code.
+
+- The ONNX format allows within the model to have some of the tensor dimensions
+undefined, that is marked as symbols and not as actual sizes. In the ONNX proto
+description the symbolic sizes are marked with `dim_param` while the actual sizes
+are marked with `dim_value`. For example, when inspecting an image classification
+model with [Netron](https://lutzroeder.github.io/netron/) one might see that the
+input tensor size is defined as `None x 3 x 224 x 224` where `None` is the undefined
+size (symbol) associated with the batch size of the model. Glow cannot compile a
+model with undefined sizes, therefore the user must assign manually the actual
+values for all the symbols. The user will be prompted with an error if there is an
+undefined symbol (for example `ONNX model symbol 'None' is undefined.`). In the above
+example, the user can define the symbol `None` to have the value `1` by using the
+following option:
+  ```
+  -onnx-define-symbol=None,1
+  ```
+  Multiple symbols can be defined using this option, for example:
+  ```
+  -onnx-define-symbol=<symbol_name1>,<symbol_value1>
+  -onnx-define-symbol=<symbol_name2>,<symbol_value2>
+  ..................................................
+  ```
 
 - When cross-compiling bundles for some target architectures you might
 be interested in generating a bundle compatible with a given float ABI
@@ -394,6 +534,8 @@ mutable weights variables, and activations.
 * After `<network_name>` has returned, you can find the results of the mutable weights
 variables area.
 
+## Examples
+
 ## A step-by-step example of the Resnet50 network model
 
 There are concrete examples of integrating a network model with a project located in the `examples/bundles/` directory in the Glow repository. You can enable the compilation of these bundles by invoking `cmake` with `-DGLOW_WITH_BUNDLES=ON -DGLOW_WITH_CPU=ON`.
@@ -420,6 +562,8 @@ The CMakeLists.txt provides the following targets:
   *  Once everything is setup, it invokes the compiled network model by calling the
      `resnet50` function from the `resnet50.o` object file.
 * `ResNet50Bundle`: it links the user-defined `main.o` and auto-generated `resnet50.o` into a standalone executable file called `resnet50`
+
+
 ### Quantized network
 
 All of the aforementioned targets have quantized versions in CMakeLists.txt named
