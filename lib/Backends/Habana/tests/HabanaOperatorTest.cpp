@@ -202,7 +202,7 @@ std::set<std::string> glow::backendTestBlacklist = {
     "GroupConv3D/0",
     "GroupConvolution/0",
     "GroupDilatedConvolution/0",
-    "GroupwiseQuantizedConvolution/0",
+    "ChannelwiseQuantizedGroupConvolution/0",
     "insertTensorTest/0",
     "Int16ConvolutionDepth10/0",
     "Int16ConvolutionDepth8/0",

@@ -5398,9 +5398,9 @@ TEST_P(OperatorTest, GroupConvolution) {
   EXPECT_FLOAT_EQ(result.at({0, 1, 0, 5}), (13 + 14 + 15 + 16) * 100000);
 }
 
-/// Test the functionality of groupwise quantized convolution expressed using
+/// Test the functionality of channelwise quantized group convolution using
 /// ChannelwiseQuantizedConvNode.
-TEST_P(OperatorTest, GroupwiseQuantizedConvolution) {
+TEST_P(OperatorTest, ChannelwiseQuantizedGroupConvolution) {
   CHECK_IF_ENABLED();
 
   constexpr size_t groups = 2;

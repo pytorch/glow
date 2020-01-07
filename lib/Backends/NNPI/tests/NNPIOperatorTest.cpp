@@ -50,7 +50,7 @@ std::set<std::string> glow::backendTestBlacklist = {
     "FusedRowwiseQuantizedSparseLengthsWeightedSum_ConvertedFloat16_"
     "NoFusedConvert/0",
     "GroupConv3D/0",
-    "GroupwiseQuantizedConvolution/0",
+    "ChannelwiseQuantizedGroupConvolution/0",
     "insertTensorTest/0",
     "Int16ConvolutionDepth10/0",
     "Int16ConvolutionDepth8/0",
