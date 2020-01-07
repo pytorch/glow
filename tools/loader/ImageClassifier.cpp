@@ -146,7 +146,7 @@ llvm::cl::opt<unsigned> traceLevel(
     "trace-level",
     llvm::cl::desc(
         "Set tracing level (bit-field, see TraceEvents.h for details)"),
-    llvm::cl::Optional, llvm::cl::init((unsigned)TraceLevel::STANDARD),
+    llvm::cl::Optional, llvm::cl::init((unsigned)TraceLevel::NONE),
     llvm::cl::cat(imageLoaderCat));
 
 llvm::cl::opt<unsigned>
