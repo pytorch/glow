@@ -14,10 +14,11 @@ but not all of them are capable to save a compiled model. The main backend used
 to generate bundles is the **CPU backend**.
 
 After following this document you will be able to compile models into executables.
-You can also view the CMake instructions used to build the bundles for the ResNet50
+You can view the CMake instructions (*CMakeLists.txt*) used to build the bundles
+and also the applications (*main.cpp*) which integrate the bundles for the ResNet50
 and LeNetMnist models here:
-- [ResNet50 example](../examples/bundles/resnet50/CMakeLists.txt)
-- [LeNetMnist example](../examples/bundles/lenet_mnist/CMakeLists.txt)
+- [ResNet50 example](../examples/bundles/resnet50)
+- [LeNetMnist example](../examples/bundles/lenet_mnist)
 
 When building Glow you can choose to build the **ResNet50** and the **LeNetMnist**
 examples by enabling the `GLOW_WITH_BUNDLES` option as below:
