@@ -512,6 +512,7 @@ int main(int argc, char **argv) {
       .addInput("Weights")
       .addInput("Indices")
       .addInput("Offsets")
+      .addMember(MemberType::Boolean, "HasEndOffset")
       .addResultFromCtorArg()
       .setDocstring(
           "Gathers slices of the outer-most dimension of Data "
@@ -531,6 +532,7 @@ int main(int argc, char **argv) {
       .addInput("Offsets")
       .addMember(MemberType::Boolean, "UseFP16Accumulation",
                  /* addSetter */ true)
+      .addMember(MemberType::Boolean, "HasEndOffset")
       .addResultFromCtorArg()
       .setDocstring("Same as FusedRowwiseQuantizedSparseLengthsWeightedSum but "
                     "using offsets instead of lengths.");
