@@ -520,6 +520,7 @@ add_executable(UtilsTest
                StrCheck.cpp
                SupportTest.cpp
                TaggedListTest.cpp
+               SharedMutexTest.cpp
                UtilsTest.cpp)
 target_link_libraries(UtilsTest
                       PRIVATE
