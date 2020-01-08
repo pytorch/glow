@@ -1797,6 +1797,44 @@ TEST(caffe2, tensorFillsTest) {
   }
 }
 
+TEST(caffe2, HalfToFloat) {
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  llvm::StringRef NetDescFilename(
+      GLOW_DATA_PATH "tests/models/caffe2Models/halftofloat_op_net.pbtxt");
+  std::string NetWeightFilename(
+      GLOW_DATA_PATH "tests/models/caffe2Models/empty_init_net.pbtxt");
+
+  Placeholder *output;
+  PlaceholderBindings bindings;
+
+  Tensor input(ElemKind::Float16Ty, {1, 2, 3, 4});
+
+  // Destroy the loader after the graph is loaded since the following execution
+  // will not depend on anything from the loader.
+  {
+    // Loaded protos must have at least one external output, so load an unused
+    // output and type to satisfy it. It is named unused_output in
+    // empty_predict_net.pbtxt.
+    Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"X"},
+                               {&input.getType()}, *F);
+    output = EXIT_ON_ERR(caffe2LD.getSingleOutput());
+  }
+
+  ASSERT_TRUE(output);
+
+  // Graph has 2 nodes: Save and ConvertTo
+  EXPECT_EQ(F->getNodes().size(), 2);
+
+  // Input to save node is ConvertToNode.
+  auto *saveNode = getSaveNodeFromDest(output);
+  auto *N = llvm::dyn_cast<ConvertToNode>(saveNode->getInput());
+  EXPECT_TRUE(N);
+  EXPECT_EQ(N->getResult().getElementType(), ElemKind::FloatTy);
+}
+
 TEST(caffe2, Alias) {
   ExecutionEngine EE{};
   auto &mod = EE.getModule();
