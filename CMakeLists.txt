@@ -10,6 +10,7 @@ option(GLOW_WITH_LLVMIRCODEGEN "Build the LLVM-based code generation library" ON
 option(GLOW_WITH_OPENCL "Build the OpenCL backend" OFF)
 option(GLOW_WITH_NNPI "Build the NNPI backend" OFF)
 option(GLOW_WITH_HABANA "Build the Habana backend" OFF)
+option(GLOW_WITH_EXAMPLE "Build the example backend" OFF)
 option(GLOW_BUILD_EXAMPLES "Build the examples" ON)
 option(GLOW_BUILD_PYTORCH_INTEGRATION "Build integration for PyTorch" OFF)
 option(GLOW_BUILD_TESTS "Build the tests" ON)
@@ -119,6 +120,10 @@ endif ()
 
 if(GLOW_WITH_NNPI)
   add_definitions(-DGLOW_WITH_NNPI=1)
+endif()
+
+if(GLOW_WITH_EXAMPLE)
+  add_definitions(-DGLOW_WITH_EXAMPLE=1)
 endif()
 
 if (GLOW_WITH_HABANA)
