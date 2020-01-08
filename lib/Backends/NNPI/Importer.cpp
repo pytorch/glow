@@ -941,7 +941,7 @@ public:
     auto numInputs = glowConcat->getNumInputs();
     NNPIObjectName *inputs = new NNPIObjectName[numInputs];
     LOG_AND_RETURN_IF_NOT(ERROR, inputs, "No inputs", NNPI_INVALID_PARAM);
-    std::set<std::string> inputTensors;
+    std::unordered_set<std::string> inputTensors;
 
     for (unsigned i = 0; i < numInputs; i++) {
       auto nvName = nodeValueName(glowConcat->getNthInput(i));
@@ -969,11 +969,29 @@ public:
     importer.setUsedTensors({nodeValueName(glowTile->getInput())},
                             {nodeValueName(glowTile->getResult())});
 
-    return nnpiNetworkAddTileOp(importer.getNetwork(),
-                                glowTile->getName().begin(),
-                                nodeValueName(glowTile->getInput()).c_str(),
-                                nodeValueName(glowTile->getResult()).c_str(),
-                                glowTile->getCount(), glowTile->getAxis());
+    auto numDims = glowTile->getInput().getType()->dims().size();
+    std::vector<int32_t> repeats(numDims, 1);
+    auto axis = glowTile->getAxis();
+    LOG_AND_RETURN_IF_NOT(ERROR, axis >= 0 && axis < numDims,
+                          "tile axis is invalid", NNPI_INVALID_PARAM);
+    repeats[axis] = glowTile->getCount();
+    NNPITensorDesc desc;
+    desc.attributes.value = 0;
+    desc.attributes.constant = 1;
+    desc.numDims = 1;
+    desc.dims[0] = numDims;
+    desc.quantParams.precision = NNPI_PRECISION_INT32;
+    desc.quantParams.type = NNPI_QUANTIZATION_NONE;
+    desc.layout = NNPI_LAYOUT_ANY;
+
+    auto repeatsTensorName = glowTile->getName().str() + "_repeats";
+
+    importer.addTensor(repeatsTensorName, desc, repeats.data());
+
+    return nnpiNetworkAddTileOp(
+        importer.getNetwork(), glowTile->getName().begin(),
+        nodeValueName(glowTile->getInput()).c_str(), repeatsTensorName.c_str(),
+        nodeValueName(glowTile->getResult()).c_str());
   }
 };
 
@@ -1592,7 +1610,7 @@ public:
     auto numInputs = glowDSP->getInputs().size();
     NNPIObjectName *inputs = new NNPIObjectName[numInputs];
     LOG_AND_RETURN_IF_NOT(ERROR, inputs, "No inputs", NNPI_INVALID_PARAM);
-    std::set<std::string> inputTensors;
+    std::unordered_set<std::string> inputTensors;
     uint32_t i = 0;
     for (const auto &nv : glowDSP->getInputs()) {
       auto nvName = nodeValueName(nv);
@@ -1603,7 +1621,7 @@ public:
     uint32_t numOutputs = 1;
     NNPIObjectName *outputs = new NNPIObjectName[numOutputs];
     LOG_AND_RETURN_IF_NOT(ERROR, outputs, "No outputs", NNPI_INVALID_PARAM);
-    std::set<std::string> outputTensors;
+    std::unordered_set<std::string> outputTensors;
     auto nvName = nodeValueName(glowDSP->getResult());
     strncpy(outputs[0], nvName.c_str(), sizeof(NNPIObjectName));
     outputTensors.insert(nvName);

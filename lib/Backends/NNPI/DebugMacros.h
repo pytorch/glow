@@ -19,7 +19,9 @@
 #include "glow/Support/Error.h"
 #include "nnpi_inference.h"
 #include "nnpi_transformer.h"
+#include <chrono>
 #include <glog/logging.h>
+#include <string>
 
 // Macro for memory instrumentation.
 #if NNPI_COLLECT_MEM_USAGE
@@ -255,4 +257,20 @@ GetNNPIInferenceErrorDesc(NNPIInferenceErrorCode err) {
     if (exp_res != NNPI_INF_NO_ERROR)                                          \
       callback(MAKE_ERR(ErrorValue::ErrorCode::RUNTIME_ERROR, msg));           \
   }
+
+// Used in debugging.
+#define NNPI_TIMER_START(timer_name)                                           \
+  auto timer_name = std::chrono::high_resolution_clock::now();
+#define NNPI_TIMER_STOP(timer_name, msg_prefix_)                               \
+  {                                                                            \
+    auto timer_end_ = std::chrono::high_resolution_clock::now();               \
+    std::cout                                                                  \
+        << std::string(msg_prefix_) +                                          \
+               std::to_string(                                                 \
+                   std::chrono::duration_cast<std::chrono::microseconds>(      \
+                       timer_end - timer_name)                                 \
+                       .count()) +                                             \
+               "\n";                                                           \
+  }
+
 #endif // GLOW_NNPI_DEBUG_MACROS_H

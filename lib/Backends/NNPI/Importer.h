@@ -23,9 +23,9 @@
 #include "nnpi_network_builder_EXPERIMENTAL.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/Support/raw_ostream.h"
-#include <map>
-#include <set>
 #include <string>
+#include <unordered_map>
+#include <unordered_set>
 
 namespace glow {
 class Function;
@@ -67,8 +67,9 @@ public:
                          const std::string &offsetTensor = {},
                          bool forceSymlowp = false);
   /// Set given tensor names as inputs/outputs.
-  void setUsedTensors(const std::set<std::string> &readTensors = {},
-                      const std::set<std::string> &writeTensors = {}) {
+  void
+  setUsedTensors(const std::unordered_set<std::string> &readTensors = {},
+                 const std::unordered_set<std::string> &writeTensors = {}) {
     readTensors_.insert(readTensors.begin(), readTensors.end());
     writeTensors_.insert(writeTensors.begin(), writeTensors.end());
   }
@@ -97,13 +98,13 @@ public:
 
 private:
   /// Map of named external tensors (inputs, outputs, weights, etc...).
-  std::map<std::string, const Tensor *> constants_;
+  std::unordered_map<std::string, const Tensor *> constants_;
   /// Set of tensors written to by the function.
-  std::set<std::string> writeTensors_;
+  std::unordered_set<std::string> writeTensors_;
   /// Set of tensors read from by the function.
-  std::set<std::string> readTensors_;
+  std::unordered_set<std::string> readTensors_;
   /// Set of tensors already defined.
-  std::set<std::string> definedTensors_;
+  std::unordered_set<std::string> definedTensors_;
   /// Number of internal names created for variables.
   size_t internalNameCounter_;
 

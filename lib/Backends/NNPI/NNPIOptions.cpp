@@ -98,21 +98,24 @@ void NNPICompilationOptions::setLogLevel(int logLevel) {
   NNPI_LOG_LEVEL level;
   switch (logLevel) {
   case 0:
-    level = NNPI_LOG_LEVEL_DEBUG;
+    level = NNPI_LOG_LEVEL_VERBOSE;
     break;
   case 1:
-    level = NNPI_LOG_LEVEL_ASSERT;
+    level = NNPI_LOG_LEVEL_DEBUG;
     break;
   case 2:
-    level = NNPI_LOG_LEVEL_INFO;
+    level = NNPI_LOG_LEVEL_ASSERT;
     break;
   case 3:
-    level = NNPI_LOG_LEVEL_WARNING;
+    level = NNPI_LOG_LEVEL_INFO;
     break;
   case 4:
-    level = NNPI_LOG_LEVEL_CRITICAL;
+    level = NNPI_LOG_LEVEL_WARNING;
     break;
   case 5:
+    level = NNPI_LOG_LEVEL_CRITICAL;
+    break;
+  case 6:
     level = NNPI_LOG_LEVEL_ERROR;
     break;
   default:
