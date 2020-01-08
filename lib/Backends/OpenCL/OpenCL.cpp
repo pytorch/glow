@@ -38,8 +38,11 @@
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
+#include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Format.h"
 #include "llvm/Support/raw_ostream.h"
+
+#include <fstream>
 
 #define DEBUG_TYPE "opencl"
 
@@ -84,6 +87,13 @@ llvm::cl::opt<bool> clDoProfile("opencl-profile",
                                 llvm::cl::desc("Profile OpenCL kernels"),
                                 llvm::cl::init(false),
                                 llvm::cl::cat(OpenCLBackendCat));
+
+llvm::cl::opt<std::string> clDeviceProgramCacheDir(
+    "opencl-program-cache-dir",
+    llvm::cl::desc("The program disk cache directory for the "
+                   "used device. If empty, disk caching "
+                   "disabled."),
+    llvm::cl::init(""), llvm::cl::cat(OpenCLBackendCat));
 
 static void dumpCompileLog(cl_device_id dev, cl_program prog) {
 #ifndef NDEBUG
@@ -166,6 +176,96 @@ cl_kernel OpenCLFunction::createKernel(const std::string &name,
   return kernel;
 }
 
+std::string OpenCLFunction::deviceProgramCacheDir(cl_device_id deviceId) {
+  // Support only a single device and device program cache directory
+  // for now.
+  return clDeviceProgramCacheDir;
+}
+
+std::string
+OpenCLFunction::diskCacheProgramFileName(cl_device_id deviceId,
+                                         const std::string &source,
+                                         const std::string &options) {
+  std::ostringstream hashString;
+  hashString << source << options;
+  return std::to_string(std::hash<std::string>{}(hashString.str())) + ".clb";
+}
+
+cl_program OpenCLFunction::loadProgramFromDiskCache(std::string cacheDirectory,
+                                                    std::string programFileName,
+                                                    cl_context ctx,
+                                                    cl_device_id device) {
+  std::string programPath = cacheDirectory + '/' + programFileName;
+  if (!llvm::sys::fs::exists(programPath))
+    return nullptr;
+
+  uint64_t binarySize;
+  std::error_code errc = llvm::sys::fs::file_size(programPath, binarySize);
+  CHECK(!errc) << "Error getting the file size of " << programPath << ".";
+
+  std::ifstream binFile(programPath.c_str(), std::ios::binary);
+  CHECK(binFile) << "Error opening " << programPath << " for reading.";
+
+  auto binary = glow::make_unique<unsigned char[]>(binarySize);
+  binFile.read((char *)binary.get(), binarySize);
+  CHECK(binFile) << "Could not read the binary.";
+  binFile.close();
+
+  cl_int status;
+  cl_int err;
+  cl_program prog =
+      clCreateProgramWithBinary(ctx, 1, &device, &binarySize,
+                                (const unsigned char **)&binary, &status, &err);
+  if (err != CL_SUCCESS) {
+    // The binary might be corrupted (e.g. process killed during write,
+    // or incompatible OpenCL driver update). Just delete the cached
+    // binary silently so we generate a fresh one.
+    llvm::sys::fs::remove(programPath);
+    return nullptr;
+  }
+  return prog;
+}
+
+void OpenCLFunction::saveProgramToDiskCache(std::string cacheDirectory,
+                                            std::string programFilename,
+                                            cl_program program, cl_context ctx,
+                                            cl_device_id deviceId) {
+
+  std::string programPath = cacheDirectory + '/' + programFilename;
+  if (!llvm::sys::fs::is_directory(cacheDirectory)) {
+    std::error_code err = llvm::sys::fs::create_directories(cacheDirectory);
+    CHECK(!err) << "Could not create the OpenCL program disk cache directory "
+                << cacheDirectory << ".";
+  }
+  cl_uint numDevices = 0;
+  cl_int errC = clGetProgramInfo(program, CL_PROGRAM_NUM_DEVICES,
+                                 sizeof(cl_uint), &numDevices, nullptr);
+  CHECK_EQ(errC, CL_SUCCESS)
+      << "clGetProgramInfo for CL_PROGRAM_NUM_DEVICES failed";
+  CHECK_EQ(numDevices, 1) << "Only one OpenCL device supported";
+
+  size_t binSize = 0;
+  errC = clGetProgramInfo(program, CL_PROGRAM_BINARY_SIZES, sizeof(size_t *),
+                          &binSize, nullptr);
+  CHECK_EQ(errC, CL_SUCCESS)
+      << "clGetProgramInfo for CL_PROGRAM_BINARY_SIZES failed";
+
+  std::unique_ptr<unsigned char[]> bin =
+      glow::make_unique<unsigned char[]>(binSize);
+  errC = clGetProgramInfo(program, CL_PROGRAM_BINARIES, binSize, bin.get(),
+                          nullptr);
+  CHECK_EQ(errC, CL_SUCCESS)
+      << "clGetProgramInfo for CL_PROGRAM_BINARIES failed.";
+
+  std::ofstream binFile(programPath.c_str(),
+                        std::ios::binary | std::ios::trunc);
+  CHECK(binFile) << "Error opening " << programPath << " for writing.";
+
+  binFile.write((const char *)bin.get(), binSize);
+  CHECK(binFile) << "Could not write binary to " << programPath << ".";
+  binFile.close();
+}
+
 cl_program
 OpenCLFunction::createProgram(const std::string &source,
                               const std::vector<std::string> &options,
@@ -187,12 +287,6 @@ OpenCLFunction::createProgram(const std::string &source,
     combinedOptions.append(opt).append(" ");
   }
 
-  ProgramKey key = std::make_tuple(source, combinedOptions, deviceId, ctx);
-  cl_program &program = programsCache_[key];
-  if (program) {
-    return program;
-  }
-
   if (DIM_T_BITWIDTH == 32) {
     combinedOptions.append("-Ddim_t=uint -Dsdim_t=int");
   } else if (DIM_T_BITWIDTH == 64) {
@@ -201,16 +295,42 @@ OpenCLFunction::createProgram(const std::string &source,
     static_assert(DIM_T_BITWIDTH == 32 || DIM_T_BITWIDTH == 64,
                   "Unsupported dim_t width.");
   }
-  // Create a new compiled program. This will also add the program to the cache
-  // because 'program' is a reference to an existing cache item.
-  program = clCreateProgramWithSource(ctx, 1, &src, nullptr, &err);
-  CHECK(program) << "clCreateProgramWithSource Failed.";
+
+  ProgramKey key = std::make_tuple(source, combinedOptions, deviceId, ctx);
+  cl_program &program = programsCache_[key];
+  if (program) {
+    return program;
+  }
+
+  const bool useDiskCache = deviceProgramCacheDir(deviceId) != "";
+
+  std::string cacheDir;
+  std::string programFileName;
+  if (useDiskCache) {
+    cacheDir = deviceProgramCacheDir(deviceId);
+    programFileName =
+        diskCacheProgramFileName(deviceId, source, combinedOptions);
+    program =
+        loadProgramFromDiskCache(cacheDir, programFileName, ctx, deviceId);
+  }
+
+  if (program == nullptr) {
+    // Create a new compiled program from the source. This will also add the
+    // program to the in-memory program cache because 'program' is a reference
+    // to an existing cache item.
+    program = clCreateProgramWithSource(ctx, 1, &src, nullptr, &err);
+    CHECK(program) << "clCreateProgramWithSource failed.";
+  }
   err = clBuildProgram(program, 0, nullptr, combinedOptions.c_str(), nullptr,
                        nullptr);
   if (err) {
     dumpCompileLog(deviceId, program);
   }
   CHECK_EQ(err, CL_SUCCESS) << "clBuildProgram Failed.";
+
+  if (useDiskCache) {
+    saveProgramToDiskCache(cacheDir, programFileName, program, ctx, deviceId);
+  }
 
   return program;
 }

@@ -132,6 +132,29 @@ public:
   ManualEventMap &getManualTraceEvents() { return manualTraceEvents_; }
 
 private:
+  /// Returns the directory of cached pre-built programs for the given device.
+  /// \returns the directory as given by the user.
+  std::string deviceProgramCacheDir(cl_device_id deviceId);
+
+  /// Returns the (hashed) file name of a cached pre-built program for the
+  /// given source and set of build options.
+  /// \returns the filename (without directory).
+  std::string diskCacheProgramFileName(cl_device_id deviceId,
+                                       const std::string &source,
+                                       const std::string &options);
+
+  /// (Tries to) load a program with the given (hashed) filename
+  /// from the disk cache.
+  /// \returns pointer to the program, if found, nullptr otherwise.
+  cl_program loadProgramFromDiskCache(std::string cacheDirectory,
+                                      std::string programFileName,
+                                      cl_context ctx, cl_device_id device);
+
+  /// Save the given program to the disk cache.
+  void saveProgramToDiskCache(std::string cacheDirectory,
+                              std::string programFilename, cl_program program,
+                              cl_context ctx, cl_device_id deviceId);
+
   /// Copy the value from a device to a provided buffer.
   /// \returns number of copied bytes.
   uint64_t copyValueFromDevice(const Value *v,
