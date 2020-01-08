@@ -9481,13 +9481,26 @@ TEST_P(OperatorStatelessTest, rowwiseQuantizedFCTest_Int8_BiasInt32) {
       ElemKind::Int32QTy);
 }
 
-/// Test RowwiseQuantizedFullyConnected Node with Symmetric quantization.
-TEST_P(OperatorStatelessTest, rowwiseQuantizedFCTestSymmetric) {
+/// Test RowwiseQuantizedFullyConnected Node with Symmetric quantization with
+/// Int8 bias.
+TEST_P(OperatorStatelessTest, rowwiseQuantizedFCTestSymmetric_BiasInt8) {
+  CHECK_IF_ENABLED();
+  compareAgainstInterpreter(getBackendName(), createAndInitBasicRowwiseFCTest,
+                            ElemKind::FloatTy, ElemKind::Int8QTy, 0.07f,
+                            parCloneCountOpt,
+                            /* convertToRowwiseQuantization */ true,
+                            quantization::Schema::Symmetric, ElemKind::Int8QTy);
+}
+
+/// Test RowwiseQuantizedFullyConnected Node with Symmetric quantization with
+/// Int32 bias.
+TEST_P(OperatorStatelessTest, rowwiseQuantizedFCTestSymmetric_BiasInt32) {
   CHECK_IF_ENABLED();
   compareAgainstInterpreter(
       getBackendName(), createAndInitBasicRowwiseFCTest, ElemKind::FloatTy,
       ElemKind::Int8QTy, 0.07f, parCloneCountOpt,
-      /* convertToRowwiseQuantization */ true, quantization::Schema::Symmetric);
+      /* convertToRowwiseQuantization */ true, quantization::Schema::Symmetric,
+      ElemKind::Int32QTy);
 }
 
 static FunctionTensorPair

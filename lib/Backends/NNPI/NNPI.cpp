@@ -209,8 +209,10 @@ bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
             ElemKind::FloatTy) &&
            (NI.getInElemTy(RowwiseQuantizedFullyConnectedNode::OffsetsIdx) ==
             ElemKind::Int32ITy) &&
-           (NI.getInElemTy(RowwiseQuantizedFullyConnectedNode::BiasIdx) ==
-            ElemKind::Int32QTy) &&
+           ((NI.getInElemTy(RowwiseQuantizedFullyConnectedNode::BiasIdx) ==
+             ElemKind::Int32QTy) ||
+            (NI.getInElemTy(RowwiseQuantizedFullyConnectedNode::BiasIdx) ==
+             ElemKind::Int8QTy)) &&
            (NI.getOutElemTy(RowwiseQuantizedFullyConnectedNode::ResultIdx) ==
             ElemKind::Int8QTy);
 
