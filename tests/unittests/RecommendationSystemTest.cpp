@@ -226,6 +226,11 @@ protected:
   // Partitioner config:
   uint64_t deviceMemCapacity;
   size_t numDevices;
+  bool useSparseNNPartitioning{false};
+  int32_t sparseNNPartitioningNumCards{1};
+  int64_t sparseNNPartitioningSLSKbytes{1000};
+  int32_t sparseNNPartitioningNumCoresSLS{1};
+  int32_t sparseNNPartitioningNumCoresOther{1};
 
   // Result from executing the unpartitioned model on the backend being tested.
   Tensor *resultTensor{nullptr};
@@ -829,6 +834,16 @@ protected:
     // Use the same precision transformation for compilation.
     CompilationContext cctx;
     cctx.precisionConfig = precConfig_;
+    cctx.optimizationOpts.useSparseNNPartitioningScheme =
+        useSparseNNPartitioning;
+    cctx.optimizationOpts.sparseNNPartitioningSchemeNumCards =
+        sparseNNPartitioningNumCards;
+    cctx.optimizationOpts.sparseNNPartitioningSchemeSLSTableKBytesPerCard =
+        sparseNNPartitioningSLSKbytes;
+    cctx.optimizationOpts.sparseNNPartitioningSchemeNumCoresSLS =
+        sparseNNPartitioningNumCoresSLS;
+    cctx.optimizationOpts.sparseNNPartitioningSchemeNumCoresOther =
+        sparseNNPartitioningNumCoresOther;
     EXIT_ON_ERR(hostManager->addNetwork(std::move(modP), cctx));
     std::cout << "Partitions = " << rawModule->getFunctions().size()
               << std::endl;
@@ -1177,6 +1192,31 @@ TEST_P(RecommendationSystemTest,
   useFP16AccumSLWS = true;
   quantizeFC = false;
   convertToFP16 = true;
+
+  testRecSys();
+
+  testPartitionedRecSys(numDevices, deviceMemCapacity, context_);
+}
+
+/// Rowwise quantize the SLWS, with FP16 for scales/bias, and other
+/// inputs/outputs in FP16, and use FP16 accumulation. Everything else in FP16.
+/// Also run partitioned using SparseNN partitioning and compare results.
+TEST_P(RecommendationSystemTest,
+       RecSys_Partitioned_RWQuantizedFP16AccumFP16_SLWS_FP16_SNN_Partitioning) {
+  CHECK_IF_ENABLED();
+
+  quantizeSLWSData = true;
+  useFP16SLWS = true;
+  useFP16AccumSLWS = true;
+  quantizeFC = false;
+  convertToFP16 = true;
+
+  // Options for SparseNN Partitioning
+  useSparseNNPartitioning = true;
+  sparseNNPartitioningNumCards = 1;
+  sparseNNPartitioningSLSKbytes = 1000000;
+  sparseNNPartitioningNumCoresSLS = 6;
+  sparseNNPartitioningNumCoresOther = 4;
 
   testRecSys();
 

@@ -912,10 +912,17 @@ Expected<DAGListTy> Partitioner::partitionSparseNN(CompilationContext &cctx) {
   bool foundFunction = false;
   for (Function *F : module_->getFunctions()) {
     for (auto &node : F->getNodes()) {
-      auto *SLS =
-          llvm::dyn_cast<FusedRowwiseQuantizedSparseLengthsWeightedSumNode>(
-              &node);
-      if (SLS) {
+      if (node.getKind() ==
+              glow::Kinded::Kind::
+                  FusedRowwiseQuantizedSparseLengthsWeightedSumNodeKind ||
+          node.getKind() == glow::Kinded::Kind::
+                                FusedRowwiseQuantizedSparseLengthsSumNodeKind ||
+          node.getKind() ==
+              glow::Kinded::Kind::
+                  RowwiseQuantizedSparseLengthsWeightedSumNodeKind ||
+          node.getKind() == glow::Kinded::Kind::SparseLengthsSumNodeKind ||
+          node.getKind() ==
+              glow::Kinded::Kind::SparseLengthsWeightedSumNodeKind) {
         funcName = std::string(F->getName());
         foundFunction = true;
         break;
