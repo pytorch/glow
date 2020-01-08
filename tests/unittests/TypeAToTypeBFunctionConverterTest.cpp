@@ -1285,7 +1285,7 @@ TEST_P(AllBackends, convertWithoutClipAroundNonNumericNodes) {
 }
 
 // Test that we don't insert Clips at the output of Tanh or Sigmoid
-TEST_P(AllBackends, convertWithoutClipAroundAfterTanhOrSigmoid) {
+TEST_P(AllBackends, convertWithoutClipAfterTanhOrSigmoid) {
   Module mod;
   Function *F = mod.createFunction("test");
   const dim_t dims[] = {10, 20};
@@ -1314,6 +1314,40 @@ TEST_P(AllBackends, convertWithoutClipAroundAfterTanhOrSigmoid) {
 
   EXPECT_EQ(7, numConvertTos);
   EXPECT_EQ(2, numClips);
+
+  EXPECT_TRUE(F->verify());
+}
+
+// Test that we don't insert Clips at the output of ConvertTo if its input is
+// fp16
+TEST_P(AllBackends, convertWithoutClipAfterFp16ConvertTo) {
+  Module mod;
+  Function *F = mod.createFunction("test");
+  const dim_t dims[] = {10, 20};
+  const dim_t dims2[] = {10, 30};
+  Node *I0 = mod.createPlaceholder(ElemKind::Float16Ty, dims, "i0", false);
+  Node *I1 = mod.createPlaceholder(ElemKind::Float16Ty, dims2, "i1", false);
+  Node *T = F->createConvertTo("c1", {I0}, ElemKind::FloatTy);
+  Node *S = F->createConvertTo("c2", {I1}, ElemKind::FloatTy);
+  Node *CN = F->createConcat("concat", {T, S}, 1);
+  F->createSave("ret", CN);
+
+  PrecisionConfiguration precConfig;
+  precConfig.convertToFP16 = true;
+  precConfig.clipFP16 = true;
+  convertFunctionToFloat16(F, precConfig);
+
+  int numClips = 0;
+  int numConvertTos = 0;
+  for (auto &n : F->getNodes()) {
+    if (n.getKind() == Kinded::Kind::ClipNodeKind) {
+      ++numClips;
+    } else if (n.getKind() == Kinded::Kind::ConvertToNodeKind) {
+      ++numConvertTos;
+    }
+  }
+
+  EXPECT_EQ(0, numClips);
 
   EXPECT_TRUE(F->verify());
 }
