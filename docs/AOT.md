@@ -198,16 +198,16 @@ $model-compiler -backend=CPU -model=lenet_mnist -emit-bundle=build -model-input=
 
 It is important to note that currently the quantization of a model is performed
 only for the intermediate nodes of the graph without affecting the data types of
-the model inputs and outputs. In the examples above the data type of the model input
+the model inputs and outputs. In the examples above, the data type for the model input
 (image tensor) and the model output remains **float** even though the intermediate
 operators and tensors use **int8** data type.
 
 When compiling a quantized bundle you can choose to disable the quantization of some
 of the graph operators which might be more susceptible to quantization by using
 the option `keep-original-precision-for-nodes`. For example in order to disable the
-quantization for the Div, Exp and SoftMax operators, you can use:
+quantization for the operators Add,Sub,Mul,Div,Exp and SoftMax you can use:
 ```
-$model-compiler ... -keep-original-precision-for-nodes=Div,Exp,SoftMax'
+$model-compiler ... -keep-original-precision-for-nodes=Add,Sub,Mul,Div,Exp,SoftMax
 ```
 
 
