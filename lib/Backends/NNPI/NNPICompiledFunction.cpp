@@ -39,13 +39,13 @@ Error NNPICompiledFunction::updateCompilationConfigFromOptions(
   if (compilationOptions.deviceVersion > 0) {
     switch (compilationOptions.deviceVersion) {
     case 1:
-      config_.deviceType = NNPI_DEVICE_M2_A;
+      config_.deviceType = NNPI_1000_A;
       break;
     case 2:
-      config_.deviceType = NNPI_DEVICE_M2_B;
+      config_.deviceType = NNPI_1000_B;
       break;
     case 3:
-      config_.deviceType = NNPI_DEVICE_M2_C;
+      config_.deviceType = NNPI_1000_C;
       break;
     default:
       LOG_IF_NOT_RETURN_LLVMERROR(

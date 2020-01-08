@@ -30,9 +30,12 @@ def transform_image(image):
     return image
 
 
-def run_model(model, image, use_glow, print_graph):
+def run_model(model, image, use_glow, backend, print_graph):
     if use_glow:
         torch_glow.enableFusionPass()
+        if backend:
+            torch_glow.setGlowBackend(backend)
+
     with torch.no_grad():
         traced = torch.jit.trace(model, image)
         if print_graph:
@@ -61,6 +64,11 @@ def run():
         action='store_true',
         default=False,
         help="Don't run using Glow")
+    parser.add_argument(
+        "--backend",
+        action="store",
+        default=None,
+        help="Select Glow backend to run. Default is not to request a specific backend.")
     args = parser.parse_args()
 
     image = load_image(args.image)
@@ -69,7 +77,9 @@ def run():
     use_glow = not args.skip_glow
 
     (indices, scores) = run_model(model, image,
-                                  use_glow=use_glow, print_graph=args.print_graph)
+                                  use_glow=use_glow,
+                                  backend=args.backend,
+                                  print_graph=args.print_graph)
     print("rank", "class", "P")
     for i in range(args.k):
         print(i, int(indices[0][i]), float(scores[0][i]))

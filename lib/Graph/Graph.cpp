@@ -1887,38 +1887,45 @@ Function::createFusedRowwiseQuantizedSparseLengthsSum(
       name, rwqData, indices, lengths, useFP16Accumulation);
 }
 
-EmbeddingBagNode *Function::createEmbeddingBag(llvm::StringRef name,
-                                               NodeValue data,
-                                               NodeValue weights,
-                                               NodeValue indices,
-                                               NodeValue offsets) {
+EmbeddingBagNode *
+Function::createEmbeddingBag(llvm::StringRef name, NodeValue data,
+                             NodeValue weights, NodeValue indices,
+                             NodeValue offsets, bool hasEndOffset) {
   auto inDims = data.dims();
   ShapeVector outDims(inDims.begin(), inDims.end());
-  outDims[0] = offsets.dims()[0];
+  outDims[0] = hasEndOffset ? offsets.dims()[0] - 1 : offsets.dims()[0];
   auto outTy = getParent()->uniqueTypeWithNewShape(data.getType(), outDims);
-  return addNode(
-      new EmbeddingBagNode(name, outTy, data, weights, indices, offsets));
+  return addNode(new EmbeddingBagNode(name, outTy, data, weights, indices,
+                                      offsets, hasEndOffset));
 }
 
 EmbeddingBagByteRowwiseOffsetsNode *
 Function::createEmbeddingBagByteRowwiseOffsets(
     llvm::StringRef name, Tensor &data, NodeValue weights, NodeValue indices,
-    NodeValue offsets, ElemKind fusedElemKind, bool useFP16Accumulation) {
+    NodeValue offsets, ElemKind fusedElemKind, bool useFP16Accumulation,
+    bool hasEndOffset) {
   Constant *rwqData =
       quantizeDataForFusedRowwiseQuantizedSparseLengthsWeightedSum(
           this, data, fusedElemKind);
   return createEmbeddingBagByteRowwiseOffsets(name, rwqData, weights, indices,
-                                              offsets, useFP16Accumulation);
+                                              offsets, useFP16Accumulation,
+                                              hasEndOffset);
 }
 
 EmbeddingBagByteRowwiseOffsetsNode *
 Function::createEmbeddingBagByteRowwiseOffsets(
     llvm::StringRef name, NodeValue data, NodeValue weights, NodeValue indices,
-    NodeValue offsets, bool useFP16Accumulation) {
-  auto outTy =
-      getOutputTypeOfFusedRowwiseQuantizedSLS(this, data, offsets.dims());
+    NodeValue offsets, bool useFP16Accumulation, bool hasEndOffset) {
+  std::vector<dim_t> segmentDims(offsets.dims().begin(), offsets.dims().end());
+  // If hasEndOffset the last offset is just for marking the end of the last
+  // segment.
+  if (hasEndOffset) {
+    segmentDims[0] -= 1;
+  }
+  auto outTy = getOutputTypeOfFusedRowwiseQuantizedSLS(this, data, segmentDims);
   return addNode(new EmbeddingBagByteRowwiseOffsetsNode(
-      name, outTy, data, weights, indices, offsets, useFP16Accumulation));
+      name, outTy, data, weights, indices, offsets, useFP16Accumulation,
+      hasEndOffset));
 }
 
 LengthsToRangesNode *Function::createLengthsToRanges(llvm::StringRef name,
@@ -4018,6 +4025,9 @@ Function *Function::clone(llvm::StringRef newName,
     // Record the copy relationship between the graphs.
     currToNew[&N] = copy;
     newF->addNode(copy);
+    if (N.hasPredicate()) {
+      copy->setPredicate(N.getPredicate());
+    }
   }
 
   // At this point we have a new invalid function that points into nodes in
@@ -4037,6 +4047,13 @@ Function *Function::clone(llvm::StringRef newName,
 
       // Update the node with the edge to the current graph.
       N.setNthInput(inp, NodeValue(it->second, input.getResNo()));
+    }
+
+    if (N.hasPredicate()) {
+      auto it = currToNew.find(N.getPredicate().getNode());
+      if (it != currToNew.end()) {
+        N.setPredicate(NodeValue(it->second, N.getPredicate().getResNo()));
+      }
     }
   }
 

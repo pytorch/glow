@@ -73,6 +73,9 @@ Node *TypeAToTypeBFunctionConverter::createConversion(Function &function,
     case Kinded::Kind::TransposeNodeKind:
       needClip = false;
       break;
+    case Kinded::Kind::SigmoidNodeKind:
+    case Kinded::Kind::TanhNodeKind:
+      needClip = isInput;
     default:
       break;
     }

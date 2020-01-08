@@ -3336,14 +3336,17 @@ void BoundInterpreterFunction::fwdEmbeddingBagInstFloatImpl(
   auto weights = getTensor(I->getWeights());
   auto indices = getTensor(I->getIndices());
   auto offsets = getTensor(I->getOffsets());
+  bool hasEndOffset = I->getHasEndOffset();
 
   out->zero();
 
   auto IH = indices->getHandle<sdim_t>();
   auto OFFH = offsets->getHandle<sdim_t>();
 
-  size_t segments = offsets->dims()[0];
-  size_t totalLength = indices->dims()[0];
+  // If an end offset is present to mark the end of the last segment then this
+  // must be subtracted to get the correct number of segments
+  size_t segments = hasEndOffset ? offsets->dims()[0] - 1 : offsets->dims()[0];
+  size_t numIndices = indices->dims()[0];
 
   size_t lineSize = data->size() / data->dims()[0];
 
@@ -3354,7 +3357,17 @@ void BoundInterpreterFunction::fwdEmbeddingBagInstFloatImpl(
   dim_t curIdx = 0;
   for (dim_t i = 0; i < segments; i++) {
     dim_t start = OFFH.raw(i);
-    dim_t end = i == segments - 1 ? totalLength : OFFH.raw(i + 1);
+    dim_t end;
+    if (!hasEndOffset) {
+      // Note that in this case we have to use numIndices to find the end of
+      // the last segment. This is an issue though because it relies on knowing
+      // the total length of the indices tensor which may not be possible.
+      // Future implementations of this operator should always give an end
+      // offset so eventually this case should be removed.
+      end = i == segments - 1 ? numIndices : OFFH.raw(i + 1);
+    } else {
+      end = OFFH.raw(i + 1);
+    }
     for (dim_t j = start; j < end; j++) {
       ElemTy weight = WH.raw(curIdx);
       dim_t offsetIn = IH.raw(curIdx++) * lineSize;
@@ -3550,13 +3563,16 @@ void BoundInterpreterFunction::fwdEmbeddingBagByteRowwiseOffsetsImpl(
   auto *weights = getTensor(I->getWeights());
   auto *indices = getTensor(I->getIndices());
   auto *offsets = getTensor(I->getOffsets());
+  bool hasEndOffset = I->getHasEndOffset();
 
   out->zero();
 
   auto IH = indices->getHandle<sdim_t>();
   auto OFFH = offsets->getHandle<sdim_t>();
 
-  dim_t segments = offsets->dims()[0];
+  // If an end offset is present to mark the end of the last segment then this
+  // must be subtracted to get the correct number of segments
+  size_t segments = hasEndOffset ? offsets->dims()[0] - 1 : offsets->dims()[0];
   dim_t numIndices = indices->dims()[0];
 
   const bool using4BitQuantization =
@@ -3571,7 +3587,17 @@ void BoundInterpreterFunction::fwdEmbeddingBagByteRowwiseOffsetsImpl(
   for (dim_t i = 0; i < segments; i++) {
     std::vector<AccumT> accum(outLineSize, 0.0f);
     size_t start = OFFH.raw(i);
-    size_t end = i == segments - 1 ? numIndices : OFFH.raw(i + 1);
+    dim_t end;
+    if (!hasEndOffset) {
+      // Note that in this case we have to use numIndices to find the end of
+      // the last segment. This is an issue though because it relies on knowing
+      // the total length of the indices tensor which may not be possible.
+      // Future implementations of this operator should always give an end
+      // offset so eventually this case should be removed.
+      end = i == segments - 1 ? numIndices : OFFH.raw(i + 1);
+    } else {
+      end = OFFH.raw(i + 1);
+    }
     for (dim_t j = start; j < end; j++) {
       const float weight = static_cast<float>(WH.raw(j));
       const dim_t rowIdx = IH.raw(j);

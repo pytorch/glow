@@ -167,6 +167,9 @@ protected:
     std::getline(partSplitStream, name, '=');
     std::getline(partSplitStream, value, '=');
 
+    while (value[value.size() - 1] == ',') {
+      value = value.substr(0, value.size() - 2);
+    }
     entry.params[name] = value;
     if (refTimeDiff_ == 0 && entry.traceType == NNPI_TRACE_CLOCK_SYNC &&
         name == "clock_diff_in_nanosec") {

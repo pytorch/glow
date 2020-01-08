@@ -5398,9 +5398,9 @@ TEST_P(OperatorTest, GroupConvolution) {
   EXPECT_FLOAT_EQ(result.at({0, 1, 0, 5}), (13 + 14 + 15 + 16) * 100000);
 }
 
-/// Test the functionality of groupwise quantized convolution expressed using
+/// Test the functionality of channelwise quantized group convolution using
 /// ChannelwiseQuantizedConvNode.
-TEST_P(OperatorTest, GroupwiseQuantizedConvolution) {
+TEST_P(OperatorTest, ChannelwiseQuantizedGroupConvolution) {
   CHECK_IF_ENABLED();
 
   constexpr size_t groups = 2;
@@ -7473,10 +7473,10 @@ TEST_P(OperatorTest, SparseLengthsWeightedSumI8) {
 
 /// Test EmbeddingBag with an N-dimension embedding table.
 template <typename DataType>
-static void testEmbeddingBag(glow::PlaceholderBindings &bindings,
-                             glow::Module &mod, glow::Function *F,
-                             glow::ExecutionEngine &EE, ElemKind DTy,
-                             float allowedError, dim_t ndims) {
+static void
+testEmbeddingBag(glow::PlaceholderBindings &bindings, glow::Module &mod,
+                 glow::Function *F, glow::ExecutionEngine &EE, ElemKind DTy,
+                 float allowedError, dim_t ndims, bool hasEndOffset) {
   /*
     DATA  =   [[2.0, -0.5, 13]]
     WEIGHTS = [3, 1, 0, 0, 0, 0, 2, -0.5]
@@ -7490,29 +7490,55 @@ static void testEmbeddingBag(glow::PlaceholderBindings &bindings,
   odims[0] = 4;
 
   auto *data = mod.createPlaceholder(DTy, idims, "data", false);
-  auto *weights = mod.createPlaceholder(DTy, {8}, "weights", false);
-  auto *indices = mod.createPlaceholder(IndexElemKind, {8}, "indices", false);
-  auto *offsets = mod.createPlaceholder(IndexElemKind, {4}, "offsets", false);
 
   bindings.allocate(data)->getHandle<DataType>() = {
       2.0,
       -0.5,
       13,
   };
-  bindings.allocate(weights)->getHandle<DataType>() = {
-      3, 1, 0, 0, 0, 0, 2, -0.5,
-  };
-  bindings.allocate(indices)->getHandle<sdim_t>() = {
-      1, 0, 2, 0, 1, 2, 2, 0,
-  };
-  bindings.allocate(offsets)->getHandle<sdim_t>() = {
-      0,
-      3,
-      3,
-      6,
-  };
 
-  auto *R = F->createEmbeddingBag("EB", data, weights, indices, offsets);
+  // If hasEndOffset then add some additional junk to the end of indices and
+  // weights and an extra offset to offsets.
+  Placeholder *weights;
+  Placeholder *indices;
+  Placeholder *offsets;
+  if (hasEndOffset) {
+    weights = mod.createPlaceholder(DTy, {10}, "weights", false);
+    indices = mod.createPlaceholder(IndexElemKind, {10}, "indices", false);
+    offsets = mod.createPlaceholder(IndexElemKind, {5}, "offsets", false);
+
+    bindings.allocate(weights)->getHandle<DataType>() = {
+        3, 1, 0, 0, 0, 0, 2, -0.5, 42.0, 42.0,
+    };
+    bindings.allocate(indices)->getHandle<sdim_t>() = {
+        1, 0, 2, 0, 1, 2, 2, 0, 13, 10,
+    };
+    bindings.allocate(offsets)->getHandle<sdim_t>() = {
+        0, 3, 3, 6,
+        8, // extra end offset
+    };
+
+  } else {
+    weights = mod.createPlaceholder(DTy, {8}, "weights", false);
+    indices = mod.createPlaceholder(IndexElemKind, {8}, "indices", false);
+    offsets = mod.createPlaceholder(IndexElemKind, {4}, "offsets", false);
+
+    bindings.allocate(weights)->getHandle<DataType>() = {
+        3, 1, 0, 0, 0, 0, 2, -0.5,
+    };
+    bindings.allocate(indices)->getHandle<sdim_t>() = {
+        1, 0, 2, 0, 1, 2, 2, 0,
+    };
+    bindings.allocate(offsets)->getHandle<sdim_t>() = {
+        0,
+        3,
+        3,
+        6,
+    };
+  }
+
+  auto *R = F->createEmbeddingBag("EB", data, weights, indices, offsets,
+                                  hasEndOffset);
   auto *S = F->createSave("save", R);
   bindings.allocate(S->getPlaceholder());
 
@@ -7535,14 +7561,28 @@ static void testEmbeddingBag(glow::PlaceholderBindings &bindings,
 TEST_P(OperatorTest, EmbeddingBag_1D_Float) {
   CHECK_IF_ENABLED();
   testEmbeddingBag<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy, 0.0001,
-                          /* ndims */ 1);
+                          /* ndims */ 1, /* hasEndOffset */ false);
+}
+
+/// Test that EB is correctly supported in FloatTy in 1D with an end offset.
+TEST_P(OperatorTest, EmbeddingBag_1D_Float_End_Offset) {
+  CHECK_IF_ENABLED();
+  testEmbeddingBag<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy, 0.0001,
+                          /* ndims */ 1, /* hasEndOffset */ true);
 }
 
 /// Test that EB is correctly supported in FloatTy in 2D.
 TEST_P(OperatorTest, EmbeddingBag_2D_Float) {
   CHECK_IF_ENABLED();
   testEmbeddingBag<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy, 0.0001,
-                          /* ndims */ 2);
+                          /* ndims */ 2, /* hasEndOffset */ false);
+}
+
+/// Test that EB is correctly supported in FloatTy in 2D with an end offset.
+TEST_P(OperatorTest, EmbeddingBag_2D_Float_End_Offset) {
+  CHECK_IF_ENABLED();
+  testEmbeddingBag<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy, 0.0001,
+                          /* ndims */ 2, /* hasEndOffset */ true);
 }
 
 /// Test that EB is correctly supported in Float16Ty in 1D.
@@ -7550,7 +7590,15 @@ TEST_P(OperatorTest, EmbeddingBag_1D_Float16) {
   CHECK_IF_ENABLED();
   testEmbeddingBag<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty,
                               0.0001,
-                              /* ndims */ 1);
+                              /* ndims */ 1, /* hasEndOffset */ false);
+}
+
+/// Test that EB is correctly supported in Float16Ty in 1D with an end offset.
+TEST_P(OperatorTest, EmbeddingBag_1D_Float16_End_Offset) {
+  CHECK_IF_ENABLED();
+  testEmbeddingBag<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty,
+                              0.0001,
+                              /* ndims */ 1, /* hasEndOffset */ true);
 }
 
 /// Test that EB is correctly supported in Float16Ty in 2D.
@@ -7558,7 +7606,15 @@ TEST_P(OperatorTest, EmbeddingBag_2D_Float16) {
   CHECK_IF_ENABLED();
   testEmbeddingBag<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty,
                               0.0001,
-                              /* ndims */ 2);
+                              /* ndims */ 2, /* hasEndOffset */ false);
+}
+
+/// Test that EB is correctly supported in Float16Ty in 2D with an end offset.
+TEST_P(OperatorTest, EmbeddingBag_2D_Float16_End_Offset) {
+  CHECK_IF_ENABLED();
+  testEmbeddingBag<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty,
+                              0.0001,
+                              /* ndims */ 2, /* hasEndOffset */ true);
 }
 
 /// Helper to test EmbeddingBagByteRowwiseOffsets using \p DTy.
@@ -7566,7 +7622,7 @@ template <typename DataType>
 static void testEmbeddingBagByteRowwiseOffsets(
     glow::PlaceholderBindings &bindings, glow::Module &mod, glow::Function *F,
     glow::ExecutionEngine &EE, ElemKind fusedDTy, float allowedError,
-    bool useFP16Accumulation = false) {
+    bool useFP16Accumulation, bool hasEndOffset) {
   /*
     DATA  =   [[2.0, -0.5, 13]]
     WEIGHTS = [3, 1, 0, 0, 0, 0, 2, -0.5]
@@ -7584,28 +7640,53 @@ static void testEmbeddingBagByteRowwiseOffsets(
       13,
   };
 
-  Constant *weights = mod.createConstant(DTy, {8}, "weights");
-  weights->getPayloadMutable().getHandle<DataType>() = {
-      3., 1., 0., 0., 0., 0., 2., -0.5,
-  };
+  // If hasEndOffset then add some additional junk to the end of indices and
+  // weights and an extra offset to offsets.
+  Constant *weights;
+  Placeholder *indices;
+  Placeholder *offsets;
+  if (hasEndOffset) {
+    weights = mod.createConstant(DTy, {10}, "weights");
+    weights->getPayloadMutable().getHandle<DataType>() = {
+        3., 1., 0., 0., 0., 0., 2., -0.5, 42.0, 35.0,
+    };
 
-  Placeholder *indices = mod.createPlaceholder(IndexElemKind, {8}, "indices",
-                                               /* isTrainable */ false);
-  Placeholder *offsets = mod.createPlaceholder(IndexElemKind, {4}, "offsets",
-                                               /* isTrainable */ false);
+    indices = mod.createPlaceholder(IndexElemKind, {10}, "indices",
+                                    /* isTrainable */ false);
+    offsets = mod.createPlaceholder(IndexElemKind, {5}, "offsets",
+                                    /* isTrainable */ false);
 
-  bindings.allocate(indices)->getHandle<sdim_t>() = {
-      1, 0, 2, 0, 1, 2, 2, 0,
-  };
-  bindings.allocate(offsets)->getHandle<sdim_t>() = {
-      0,
-      3,
-      3,
-      6,
-  };
+    bindings.allocate(indices)->getHandle<sdim_t>() = {1, 0, 2, 0, 1,
+                                                       2, 2, 0, 1, 5};
+    bindings.allocate(offsets)->getHandle<sdim_t>() = {
+        0, 3, 3, 6,
+        8, // extra end offset
+    };
+  } else {
+    weights = mod.createConstant(DTy, {8}, "weights");
+    weights->getPayloadMutable().getHandle<DataType>() = {
+        3., 1., 0., 0., 0., 0., 2., -0.5,
+    };
+
+    indices = mod.createPlaceholder(IndexElemKind, {8}, "indices",
+                                    /* isTrainable */ false);
+    offsets = mod.createPlaceholder(IndexElemKind, {4}, "offsets",
+                                    /* isTrainable */ false);
+
+    bindings.allocate(indices)->getHandle<sdim_t>() = {
+        1, 0, 2, 0, 1, 2, 2, 0,
+    };
+    bindings.allocate(offsets)->getHandle<sdim_t>() = {
+        0,
+        3,
+        3,
+        6,
+    };
+  }
 
   auto *R = F->createEmbeddingBagByteRowwiseOffsets(
-      "EBBRO", data, weights, indices, offsets, fusedDTy, useFP16Accumulation);
+      "EBBRO", data, weights, indices, offsets, fusedDTy, useFP16Accumulation,
+      hasEndOffset);
   SaveNode *S = F->createSave("save", R);
   bindings.allocate(S->getPlaceholder());
 
@@ -7627,8 +7708,17 @@ static void testEmbeddingBagByteRowwiseOffsets(
 /// Test EmbeddingBagByteRowwiseOffsets in Float.
 TEST_P(OperatorTest, EmbeddingBagByteRowwiseOffsets_Float) {
   CHECK_IF_ENABLED();
-  testEmbeddingBagByteRowwiseOffsets<float>(bindings_, mod_, F_, EE_,
-                                            ElemKind::UInt8FusedQTy, 0.0001);
+  testEmbeddingBagByteRowwiseOffsets<float>(
+      bindings_, mod_, F_, EE_, ElemKind::UInt8FusedQTy, 0.0001,
+      /* useFP16Accumulation */ false, /* hasEndOffset */ false);
+}
+
+/// Test EmbeddingBagByteRowwiseOffsets in Float with end offset.
+TEST_P(OperatorTest, EmbeddingBagByteRowwiseOffsets_Float_End_Offset) {
+  CHECK_IF_ENABLED();
+  testEmbeddingBagByteRowwiseOffsets<float>(
+      bindings_, mod_, F_, EE_, ElemKind::UInt8FusedQTy, 0.0001,
+      /* useFP16Accumulation */ false, /* hasEndOffset */ true);
 }
 
 /// Test EmbeddingBagByteRowwiseOffsets in Float16. Uses Float accumulation.
@@ -7636,7 +7726,17 @@ TEST_P(OperatorTest, EmbeddingBagByteRowwiseOffsets_Float16_AccumFloat) {
   CHECK_IF_ENABLED();
   testEmbeddingBagByteRowwiseOffsets<float16_t>(
       bindings_, mod_, F_, EE_, ElemKind::UInt8FusedFP16QTy, 0.0001,
-      /* useFP16Accumulation */ false);
+      /* useFP16Accumulation */ false, /* hasEndOffset */ false);
+}
+
+/// Test EmbeddingBagByteRowwiseOffsets in Float16. Uses Float accumulation. Has
+/// end offset.
+TEST_P(OperatorTest,
+       EmbeddingBagByteRowwiseOffsets_Float16_AccumFloat_End_Offset) {
+  CHECK_IF_ENABLED();
+  testEmbeddingBagByteRowwiseOffsets<float16_t>(
+      bindings_, mod_, F_, EE_, ElemKind::UInt8FusedFP16QTy, 0.0001,
+      /* useFP16Accumulation */ false, /* hasEndOffset */ true);
 }
 
 /// Test EmbeddingBagByteRowwiseOffsets in Float16. Uses Float16 accumulation.
@@ -7644,7 +7744,17 @@ TEST_P(OperatorTest, EmbeddingBagByteRowwiseOffsets_Float16_AccumFloat16) {
   CHECK_IF_ENABLED();
   testEmbeddingBagByteRowwiseOffsets<float16_t>(
       bindings_, mod_, F_, EE_, ElemKind::UInt8FusedFP16QTy, 0.0001,
-      /* useFP16Accumulation */ true);
+      /* useFP16Accumulation */ true, /* hasEndOffset */ false);
+}
+
+/// Test EmbeddingBagByteRowwiseOffsets in Float16. Uses Float16 accumulation.
+/// Has end offset.
+TEST_P(OperatorTest,
+       EmbeddingBagByteRowwiseOffsets_Float16_AccumFloat16_End_Offset) {
+  CHECK_IF_ENABLED();
+  testEmbeddingBagByteRowwiseOffsets<float16_t>(
+      bindings_, mod_, F_, EE_, ElemKind::UInt8FusedFP16QTy, 0.0001,
+      /* useFP16Accumulation */ true, /* hasEndOffset */ true);
 }
 
 /// Helper to test RowwiseQuantizedSparseLengthsWeightedSum using \p DTy.

@@ -932,24 +932,32 @@ public:
                                  NodeValue weights, NodeValue indices,
                                  NodeValue lengths);
 
-  /// Create an EmbeddingBag node.
+  /// Create an EmbeddingBag node. If \p hasEndOffset is true then the node
+  /// expects an extra offset to be appended to \p offsets which marks the end
+  /// of the last range.
   EmbeddingBagNode *createEmbeddingBag(llvm::StringRef name, NodeValue data,
                                        NodeValue weights, NodeValue indices,
-                                       NodeValue offsets);
+                                       NodeValue offsets,
+                                       bool hasEndOffset = false);
 
-  /// Create an EmbeddingBagByteRowwiseOffsetsNode node.
+  /// Create an EmbeddingBagByteRowwiseOffsetsNode node. If \p hasEndOffset is
+  /// true then the node expects an extra offset to be appended to \p offsets
+  /// which marks the end of the last range.
   EmbeddingBagByteRowwiseOffsetsNode *createEmbeddingBagByteRowwiseOffsets(
       llvm::StringRef name, NodeValue data, NodeValue weights,
-      NodeValue indices, NodeValue offsets, bool useFP16Accumulation = false);
+      NodeValue indices, NodeValue offsets, bool useFP16Accumulation = false,
+      bool hasEndOffset = false);
 
   /// Same as \ref createEmbeddingBagByteRowwiseOffsets(), but
   /// expects float input \p data, which is rowwise-quantized and fused
   /// internally. \p fusedElemKind represents the element kind to use for the
-  /// final fused rowwise-quantized data.
+  /// final fused rowwise-quantized data. If \p hasEndOffset is true then the
+  /// node expects an extra offset to be appended to \p offsets which marks the
+  /// end of the last range.
   EmbeddingBagByteRowwiseOffsetsNode *createEmbeddingBagByteRowwiseOffsets(
       llvm::StringRef name, Tensor &data, NodeValue weights, NodeValue indices,
       NodeValue offsets, ElemKind fusedElemKind = ElemKind::UInt8FusedQTy,
-      bool useFP16Accumulation = false);
+      bool useFP16Accumulation = false, bool hasEndOffset = false);
 
   /// Same as \ref createSparseLengthsWeightedSum(), but with \p outTy
   /// specified.
