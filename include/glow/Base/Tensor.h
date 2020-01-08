@@ -631,7 +631,8 @@ public:
     assert(!isDeviceResident() && "Tensor must reside on host to access data.");
     assert(this != t && "Copying to self");
     reset(t);
-    size_t bufferSize = type_.getSizeInBytes();
+    size_t bufferSize = t->getUnpaddedSizeInBytes();
+    this->unpaddedSize_ = bufferSize;
     std::copy(&t->getData()[0], &t->getData()[bufferSize], getData());
   }
 
