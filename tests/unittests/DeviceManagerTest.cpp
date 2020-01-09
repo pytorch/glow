@@ -272,14 +272,17 @@ TEST_P(DeviceManagerTest, TransferStaticPlaceholderTest) {
 
   auto staticTensor = Tensor(staticPlaceholder->getType());
   staticTensor.getHandle().clear(3.0);
-  std::promise<Error> transferPromise;
+  std::promise<void> transferPromise;
+  Error transferError = Error::empty();
   auto done = transferPromise.get_future();
 
   device->transferStaticPlaceholderToDevice(
-      staticPlaceholder, &staticTensor, [&transferPromise](Error err) {
-        transferPromise.set_value(std::move(err));
+      staticPlaceholder, &staticTensor,
+      [&transferPromise, &transferError](Error err) {
+        transferError = std::move(err);
+        transferPromise.set_value();
       });
-  EXPECT_FALSE(done.get());
+  EXPECT_FALSE(ERR_TO_BOOL(std::move(transferError)));
   std::unique_ptr<ExecutionContext> context =
       glow::make_unique<ExecutionContext>();
   context->getPlaceholderBindings()->allocate(output);
