@@ -260,8 +260,7 @@ TEST_F(GraphOptz, optimizeBatchNormAfterConvFP16) {
   EXPECT_EQ(F_->getNodes().size(), 3);
 
   ::glow::convertPlaceholdersToConstants(F_, bindings_, {});
-  optimizedF_ = F_->clone(F_->getName().str() + "_optimized");
-  ::glow::optimize(optimizedF_, CompilationMode::Infer);
+  optimizedF_ = optimizeFunction(F_);
 
   EXPECT_EQ(optimizedF_->getNodes().size(), 2);
 
@@ -309,8 +308,7 @@ TEST_F(GraphOptz, optimizeBatchNormAfterConvWithTransposedWeights) {
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::BatchNormalizationNodeKind), 1);
 
   ::glow::convertPlaceholdersToConstants(F_, bindings_, {input});
-  optimizedF_ = F_->clone(F_->getName().str() + "_optimized");
-  ::glow::optimize(optimizedF_, CompilationMode::Infer);
+  optimizedF_ = optimizeFunction(F_);
 
   EXPECT_EQ(optimizedF_->getNodes().size(), 2);
   EXPECT_EQ(
@@ -346,8 +344,7 @@ TEST_F(GraphOptz, optimizeBatchNormAfterConvWithReshapeConst) {
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::BatchNormalizationNodeKind), 1);
 
   ::glow::convertPlaceholdersToConstants(F_, bindings_, {input});
-  optimizedF_ = F_->clone(F_->getName().str() + "_optimized");
-  ::glow::optimize(optimizedF_, CompilationMode::Infer);
+  optimizedF_ = optimizeFunction(F_);
 
   EXPECT_EQ(optimizedF_->getNodes().size(), 2);
   EXPECT_EQ(
