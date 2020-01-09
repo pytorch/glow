@@ -53,10 +53,10 @@ void ExecutionEngine::setBackendName(llvm::StringRef backend) {
     // and that it matches the expected backend name.
     CHECK_EQ(configs.size(), 1)
         << "Expected a single device for the ExecutionEngine";
-    CHECK(backend.str() == configs[0]->backendName)
+    CHECK(backendName_ == configs[0]->backendName)
         << "Expected backend name to match the ExecutionEngine";
   } else {
-    auto config = glow::make_unique<runtime::DeviceConfig>(backend);
+    auto config = glow::make_unique<runtime::DeviceConfig>(backendName_);
     if (deviceMemory_) {
       config->setDeviceMemory(deviceMemory_);
     }
