@@ -41,7 +41,7 @@ public:
   using PlaceholderMap = std::unordered_map<Placeholder *, Tensor *>;
 
   /// Maps Placeholder names to Placeholders.
-  using PlaceholderNameMap = std::unordered_map<std::string, Placeholder *>;
+  using PlaceholderNameMap = llvm::StringMap<Placeholder *>;
 
 private:
   /// Maps Placeholders to Tensors.
