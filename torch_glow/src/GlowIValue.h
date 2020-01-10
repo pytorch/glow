@@ -24,6 +24,20 @@
 #include "glow/Support/Support.h"
 
 namespace glow {
+class GlowIValue;
+
+/// Hash functor for GlowIValueMap.
+/// NOTE: This functor is only defined for some GlowIValue tags and will assert
+/// that the given GlowIValue has one of those tags. See GlowIValue::hash for
+/// more.
+struct GlowIValueMapHash {
+  size_t operator()(const GlowIValue &ival) const;
+};
+
+/// Map type for storing mappings from GlowIValue to GlowIValue. Not all IValue
+/// kinds can be keys, see GlowIValue::hash for details.
+using GlowIValueMap =
+    std::unordered_map<GlowIValue, GlowIValue, GlowIValueMapHash>;
 
 /// GlowIValue is a tagged union type analogous to PyTorch's JIT IValue but
 /// holds Glow Tensors instead. PyTorch Graph inputs and outputs and the results
@@ -42,6 +56,8 @@ public:
     BoolList,
     Tuple,
     PTTensor,
+    GenericMap,
+    String,
   };
 
 private:
@@ -58,6 +74,8 @@ private:
     std::vector<bool> *asBoolList;
     std::vector<GlowIValue> *asTuple;
     at::Tensor *asPTTensor;
+    GlowIValueMap *asGenericMap;
+    std::string *asString;
   };
 
   Tag tag_ = Tag::None;
@@ -88,6 +106,17 @@ public:
   GlowIValue(const GlowIValue &other) = delete;
   GlowIValue &operator=(const GlowIValue &other) = delete;
 
+  /// Given a GlowIValue \p ival, \returns the hash of that value depending on
+  /// the tag or an Error if a hash could not be computed.
+  static Expected<size_t> hash(const GlowIValue &ival);
+
+  /// Given GlowIValues \p ivalA and \p ivalB, \returns true iff they have the
+  /// same tag and equal values.
+  static bool equal(const GlowIValue &ivalA, const GlowIValue &ivalB);
+
+  /// \return true iff this GlowIValue is equal to \p other.
+  bool operator==(const GlowIValue &other) const;
+
   /// Methods to determine the tag of a GlowIValue.
   bool isNone() const;
   bool isTensor() const;
@@ -99,6 +128,8 @@ public:
   bool isBoolList() const;
   bool isTuple() const;
   bool isPTTensor() const;
+  bool isGenericMap() const;
+  bool isString() const;
 
   /// \returns Payload a glow Tensor or error if the tag is not Tensor.
   Expected<Tensor *> toTensor();
@@ -149,6 +180,22 @@ public:
   /// Tensor.
   Expected<const at::Tensor *> toPTTensor() const;
 
+  /// \returns Payload a GlowIValueMap* or error if the tag is not
+  /// GenericMap.
+  Expected<GlowIValueMap *> toGenericMap();
+
+  /// \returns Payload a const GlowIValueMap* or error if the tag is not
+  /// GenericMap.
+  Expected<const GlowIValueMap *> toGenericMap() const;
+
+  /// \returns Payload a std::string* or error if the tag is not
+  /// String.
+  Expected<std::string *> toString();
+
+  /// \returns Payload a const std::string* or error if the tag is not
+  /// String.
+  Expected<const std::string *> toString() const;
+
   /// Set the tag to None.
   void fromNone();
 
@@ -178,6 +225,12 @@ public:
 
   /// Set the tag to Tuple.
   void fromTuple(std::vector<GlowIValue> glowIValList);
+
+  /// Set the tag to GenericMap.
+  void fromGenericMap(GlowIValueMap glowIValueMap);
+
+  /// Set the tag to String.
+  void fromString(std::string str);
 
   /// Given a PyTorch IValue \p ival, set the tag to the analogous Tag.
   Error fromIValue(const at::IValue &ival);
