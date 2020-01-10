@@ -743,6 +743,29 @@ GLOW_INSTANTIATE_TEST_SUITE_P(
                       TestSinkTransposeNodesKind::Tanh,
                       TestSinkTransposeNodesKind::Quantize));
 
+TEST_F(GraphOptz, SinkTransposeBelowDequantize) {
+  auto *in =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 5, 10, 15}, "input", false);
+  auto *quantize = F_->createQuantize(
+      "quantize", in, mod_.uniqueType(ElemKind::Int8QTy, in->dims(), 0.01, 2));
+  auto *tile = F_->createTile("tile", quantize, 3, 0);
+  auto *transpose = F_->createTranspose("transpose", tile, NHWC2NCHW);
+  auto *deq = F_->createDequantize("dequantize", transpose);
+  SaveNode *O = F_->createSave("out", deq);
+
+  optimizedF_ = optimizeFunction(F_);
+
+  EXPECT_EQ(F_->getNodes().size(), 5);
+  EXPECT_EQ(optimizedF_->getNodes().size(), 5);
+
+  auto *optOut = findFunctionNodeByName<SaveNode>(optimizedF_, O->getName());
+  EXPECT_TRUE(llvm::isa<TransposeNode>(optOut->getInput().getNode()));
+
+  bindings_.allocate(mod_.getPlaceholders());
+  bindings_.get(in)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
+  checkNumericalEquivalence();
+}
+
 /// For example folding Rescale in to Convolution.
 TEST_F(GraphOptz, sinkTransposeBelowRescale) {
   // Inputs.
