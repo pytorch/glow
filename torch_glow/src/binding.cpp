@@ -33,7 +33,11 @@ namespace py = pybind11;
 using namespace glow;
 
 /// The torch_glow pybind11 module.
+#ifdef TORCH_GLOW_MODULE_NAME
+PYBIND11_MODULE(TORCH_GLOW_MODULE_NAME, m) {
+#else
 PYBIND11_MODULE(_torch_glow, m) {
+#endif
   /// Register Glow op and FusionPass, enable the fusion pass if
   /// fusionPassEnabled is set in PyTorchLoaderSettings.
   registerGlowFusionOpAndPass(
