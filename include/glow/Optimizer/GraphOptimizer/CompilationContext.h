@@ -88,7 +88,7 @@ struct OptimizationOptions {
   /// If true, this will merge ConvertTo and Quantize nodes into inputs and
   /// outputs of the Function. This means modifying the types of Placeholders
   /// and SaveNodes if they have a corresponding ElemKind conversion (ConvertTo,
-  /// Quantize, Dequantize nodes).. Note that this must be accompanied by
+  /// Quantize, Dequantize nodes). Note that this must be accompanied by
   /// modifying the Tensors backing Placeholders at runtime.
   bool foldElemKindConversionIntoIO{false};
 
