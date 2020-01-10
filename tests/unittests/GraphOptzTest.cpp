@@ -599,6 +599,23 @@ TEST_F(GraphOptz, batchNormAfterConvNotOptimizeWhenMoreThanOneUseOfConv) {
   EXPECT_EQ(conv->getInput().getNode(), A);
 }
 
+TEST_F(GraphOptz, DequantizeQuantize) {
+  auto *in =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 5, 10, 15}, "input", false);
+  auto *quantize = F_->createQuantize(
+      "quantize", in, mod_.uniqueType(ElemKind::Int8QTy, in->dims(), 0.01, 2));
+  auto *dequant = F_->createDequantize("dequantize", quantize);
+  F_->createSave("ret", dequant);
+
+  optimizedF_ = optimizeFunction(F_);
+
+  // Independent of implementation details optimization should maintain
+  // equivalence
+  bindings_.allocate(mod_.getPlaceholders());
+  bindings_.get(in)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
+  checkNumericalEquivalence();
+}
+
 enum class TestSinkTransposeNodesKind {
   BatchNormalization,
   Relu,

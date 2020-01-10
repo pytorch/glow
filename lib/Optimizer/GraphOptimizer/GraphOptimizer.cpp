@@ -2802,12 +2802,6 @@ bool OptimizeQuantization::run(Function *F, const CompilationContext &cctx) {
     }
 
     if (auto *DQ = dyn_cast<DequantizeNode>(node)) {
-      if (auto *Q = dyn_cast<QuantizeNode>(DQ->getInput())) {
-        // Dequantize(Quantize(X)) -> X
-        changed = true;
-        DQ->getResult().replaceAllUsesOfWith(Q->getInput());
-        continue;
-      }
       // Fold the rescale into the following Dequantize.
       // Dequantize(rescale) -> Dequantize()
       if (auto *RS = dyn_cast<RescaleQuantizedNode>(DQ->getInput())) {
