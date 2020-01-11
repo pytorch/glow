@@ -3079,6 +3079,299 @@ TEST_P(OperatorTest, TransposeIntoReshapeOptim) {
   }
 }
 
+/// Helper to check the code generation for flip nodes.
+template <typename elemType>
+static void testFlip(glow::PlaceholderBindings &bindings, glow::Module &mod,
+                     glow::Function *F, glow::ExecutionEngine &EE,
+                     std::vector<elemType> inputData,
+                     std::vector<elemType> expectedData,
+                     llvm::ArrayRef<dim_t> dims, dim_t axis,
+                     ElemKind elemKind = ElemKind::FloatTy) {
+
+  // Create network.
+  auto *input =
+      createPlaceholderConditionallyQuantized(mod, elemKind, dims, "input",
+                                              /* isTrainable */ false);
+  auto *flip = F->createFlip("flip", input, axis);
+  Placeholder *output = F->createSave("save", flip)->getPlaceholder();
+
+  // Allocate input/output and initialize input.
+  auto inputH = bindings.allocate(input)->getHandle<elemType>();
+  auto outputH = bindings.allocate(output)->getHandle<elemType>();
+  inputH = inputData;
+
+  // Compile and run.
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  // Compare output with reference.
+  EXPECT_EQ(outputH.size(), expectedData.size());
+  for (size_t i = 0; i < expectedData.size(); i++) {
+    EXPECT_EQ(outputH.raw(i), expectedData[i]);
+  }
+}
+
+/// Test Flip 1D with Int8.
+TEST_P(OperatorTest, Flip1D_Int8) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  testFlip<int8_t>(bindings_, mod_, F_, EE_, {1, 2, 3, 4}, {4, 3, 2, 1}, {4}, 0,
+                   ElemKind::Int8QTy);
+}
+
+/// Test Flip 1D with Int32.
+TEST_P(OperatorTest, Flip1D_Int32) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  testFlip<int32_t>(bindings_, mod_, F_, EE_, {1, 2, 3, 4}, {4, 3, 2, 1}, {4},
+                    0, ElemKind::Int32QTy);
+}
+
+/// Test Flip 1D with Int64.
+TEST_P(OperatorTest, Flip1D_Int64) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  testFlip<int64_t>(bindings_, mod_, F_, EE_, {1, 2, 3, 4}, {4, 3, 2, 1}, {4},
+                    0, ElemKind::Int64ITy);
+}
+
+#define FLIP_3D_INPUT                                                          \
+  { 1, 2, 3, 4, 5, 6, 7, 8 }
+#define FLIP_3D_AXIS0                                                          \
+  { 5, 6, 7, 8, 1, 2, 3, 4 }
+#define FLIP_3D_AXIS1                                                          \
+  { 3, 4, 1, 2, 7, 8, 5, 6 }
+#define FLIP_3D_AXIS2                                                          \
+  { 2, 1, 4, 3, 6, 5, 8, 7 }
+
+#define FLIP_4D_INPUT                                                          \
+  { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16 }
+#define FLIP_4D_AXIS0                                                          \
+  { 9, 10, 11, 12, 13, 14, 15, 16, 1, 2, 3, 4, 5, 6, 7, 8 }
+#define FLIP_4D_AXIS1                                                          \
+  { 5, 6, 7, 8, 1, 2, 3, 4, 13, 14, 15, 16, 9, 10, 11, 12 }
+#define FLIP_4D_AXIS2                                                          \
+  { 3, 4, 1, 2, 7, 8, 5, 6, 11, 12, 9, 10, 15, 16, 13, 14 }
+#define FLIP_4D_AXIS3                                                          \
+  { 2, 1, 4, 3, 6, 5, 8, 7, 10, 9, 12, 11, 14, 13, 16, 15 }
+
+#define FLIP_5D_INPUT                                                          \
+  {                                                                            \
+    1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, \
+        22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32                             \
+  }
+#define FLIP_5D_AXIS0                                                          \
+  {                                                                            \
+    17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 1, 2, 3,   \
+        4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16                           \
+  }
+#define FLIP_5D_AXIS1                                                          \
+  {                                                                            \
+    9, 10, 11, 12, 13, 14, 15, 16, 1, 2, 3, 4, 5, 6, 7, 8, 25, 26, 27, 28, 29, \
+        30, 31, 32, 17, 18, 19, 20, 21, 22, 23, 24                             \
+  }
+#define FLIP_5D_AXIS2                                                          \
+  {                                                                            \
+    5, 6, 7, 8, 1, 2, 3, 4, 13, 14, 15, 16, 9, 10, 11, 12, 21, 22, 23, 24, 17, \
+        18, 19, 20, 29, 30, 31, 32, 25, 26, 27, 28                             \
+  }
+#define FLIP_5D_AXIS3                                                          \
+  {                                                                            \
+    3, 4, 1, 2, 7, 8, 5, 6, 11, 12, 9, 10, 15, 16, 13, 14, 19, 20, 17, 18, 23, \
+        24, 21, 22, 27, 28, 25, 26, 31, 32, 29, 30                             \
+  }
+#define FLIP_5D_AXIS4                                                          \
+  {                                                                            \
+    2, 1, 4, 3, 6, 5, 8, 7, 10, 9, 12, 11, 14, 13, 16, 15, 18, 17, 20, 19, 22, \
+        21, 24, 23, 26, 25, 28, 27, 30, 29, 32, 31                             \
+  }
+
+#define FLIP_6D_INPUT                                                          \
+  {                                                                            \
+    1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, \
+        22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38,    \
+        39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55,    \
+        56, 57, 58, 59, 60, 61, 62, 63, 64                                     \
+  }
+#define FLIP_6D_AXIS0                                                          \
+  {                                                                            \
+    33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50,    \
+        51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 1, 2, 3, 4, 5, \
+        6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,    \
+        24, 25, 26, 27, 28, 29, 30, 31, 32                                     \
+  }
+#define FLIP_6D_AXIS1                                                          \
+  {                                                                            \
+    17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 1, 2, 3,   \
+        4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 49, 50, 51, 52, 53, 54,  \
+        55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 33, 34, 35, 36, 37, 38, 39,    \
+        40, 41, 42, 43, 44, 45, 46, 47, 48                                     \
+  }
+#define FLIP_6D_AXIS2                                                          \
+  {                                                                            \
+    9, 10, 11, 12, 13, 14, 15, 16, 1, 2, 3, 4, 5, 6, 7, 8, 25, 26, 27, 28, 29, \
+        30, 31, 32, 17, 18, 19, 20, 21, 22, 23, 24, 41, 42, 43, 44, 45, 46,    \
+        47, 48, 33, 34, 35, 36, 37, 38, 39, 40, 57, 58, 59, 60, 61, 62, 63,    \
+        64, 49, 50, 51, 52, 53, 54, 55, 56                                     \
+  }
+#define FLIP_6D_AXIS3                                                          \
+  {                                                                            \
+    5, 6, 7, 8, 1, 2, 3, 4, 13, 14, 15, 16, 9, 10, 11, 12, 21, 22, 23, 24, 17, \
+        18, 19, 20, 29, 30, 31, 32, 25, 26, 27, 28, 37, 38, 39, 40, 33, 34,    \
+        35, 36, 45, 46, 47, 48, 41, 42, 43, 44, 53, 54, 55, 56, 49, 50, 51,    \
+        52, 61, 62, 63, 64, 57, 58, 59, 60                                     \
+  }
+#define FLIP_6D_AXIS4                                                          \
+  {                                                                            \
+    3, 4, 1, 2, 7, 8, 5, 6, 11, 12, 9, 10, 15, 16, 13, 14, 19, 20, 17, 18, 23, \
+        24, 21, 22, 27, 28, 25, 26, 31, 32, 29, 30, 35, 36, 33, 34, 39, 40,    \
+        37, 38, 43, 44, 41, 42, 47, 48, 45, 46, 51, 52, 49, 50, 55, 56, 53,    \
+        54, 59, 60, 57, 58, 63, 64, 61, 62                                     \
+  }
+#define FLIP_6D_AXIS5                                                          \
+  {                                                                            \
+    2, 1, 4, 3, 6, 5, 8, 7, 10, 9, 12, 11, 14, 13, 16, 15, 18, 17, 20, 19, 22, \
+        21, 24, 23, 26, 25, 28, 27, 30, 29, 32, 31, 34, 33, 36, 35, 38, 37,    \
+        40, 39, 42, 41, 44, 43, 46, 45, 48, 47, 50, 49, 52, 51, 54, 53, 56,    \
+        55, 58, 57, 60, 59, 62, 61, 64, 63                                     \
+  }
+
+/// Test Flip 1D with Float.
+TEST_P(OperatorTest, Flip1D_Axis0_Float) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  testFlip<float>(bindings_, mod_, F_, EE_, {1, 2}, {2, 1}, {2}, 0);
+}
+
+/// Test Flip 2D with Float.
+TEST_P(OperatorTest, Flip2D_Axis0_Float) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  testFlip<float>(bindings_, mod_, F_, EE_, {1, 2, 3, 4}, {3, 4, 1, 2}, {2, 2},
+                  0);
+}
+TEST_P(OperatorTest, Flip2D_Axis1_Float) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  testFlip<float>(bindings_, mod_, F_, EE_, {1, 2, 3, 4}, {2, 1, 4, 3}, {2, 2},
+                  1);
+}
+
+/// Test Flip 3D with Float.
+TEST_P(OperatorTest, Flip3D_Axis0_Float) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  testFlip<float>(bindings_, mod_, F_, EE_, FLIP_3D_INPUT, FLIP_3D_AXIS0,
+                  {2, 2, 2}, 0);
+}
+TEST_P(OperatorTest, Flip3D_Axis1_Float) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  testFlip<float>(bindings_, mod_, F_, EE_, FLIP_3D_INPUT, FLIP_3D_AXIS1,
+                  {2, 2, 2}, 1);
+}
+TEST_P(OperatorTest, Flip3D_Axis2_Float) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  testFlip<float>(bindings_, mod_, F_, EE_, FLIP_3D_INPUT, FLIP_3D_AXIS2,
+                  {2, 2, 2}, 2);
+}
+
+/// Test Flip 4D with Float.
+TEST_P(OperatorTest, Flip4D_Axis0_Float) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  testFlip<float>(bindings_, mod_, F_, EE_, FLIP_4D_INPUT, FLIP_4D_AXIS0,
+                  {2, 2, 2, 2}, 0);
+}
+TEST_P(OperatorTest, Flip4D_Axis1_Float) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  testFlip<float>(bindings_, mod_, F_, EE_, FLIP_4D_INPUT, FLIP_4D_AXIS1,
+                  {2, 2, 2, 2}, 1);
+}
+TEST_P(OperatorTest, Flip4D_Axis2_Float) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  testFlip<float>(bindings_, mod_, F_, EE_, FLIP_4D_INPUT, FLIP_4D_AXIS2,
+                  {2, 2, 2, 2}, 2);
+}
+TEST_P(OperatorTest, Flip4D_Axis3_Float) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  testFlip<float>(bindings_, mod_, F_, EE_, FLIP_4D_INPUT, FLIP_4D_AXIS3,
+                  {2, 2, 2, 2}, 3);
+}
+
+/// Test Flip 5D with Float.
+TEST_P(OperatorTest, Flip5D_Axis0_Float) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  testFlip<float>(bindings_, mod_, F_, EE_, FLIP_5D_INPUT, FLIP_5D_AXIS0,
+                  {2, 2, 2, 2, 2}, 0);
+}
+TEST_P(OperatorTest, Flip5D_Axis1_Float) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  testFlip<float>(bindings_, mod_, F_, EE_, FLIP_5D_INPUT, FLIP_5D_AXIS1,
+                  {2, 2, 2, 2, 2}, 1);
+}
+TEST_P(OperatorTest, Flip5D_Axis2_Float) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  testFlip<float>(bindings_, mod_, F_, EE_, FLIP_5D_INPUT, FLIP_5D_AXIS2,
+                  {2, 2, 2, 2, 2}, 2);
+}
+TEST_P(OperatorTest, Flip5D_Axis3_Float) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  testFlip<float>(bindings_, mod_, F_, EE_, FLIP_5D_INPUT, FLIP_5D_AXIS3,
+                  {2, 2, 2, 2, 2}, 3);
+}
+TEST_P(OperatorTest, Flip5D_Axis4_Float) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  testFlip<float>(bindings_, mod_, F_, EE_, FLIP_5D_INPUT, FLIP_5D_AXIS4,
+                  {2, 2, 2, 2, 2}, 4);
+}
+
+/// Test Flip 6D with Float.
+TEST_P(OperatorTest, Flip6D_Axis0_Float) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  testFlip<float>(bindings_, mod_, F_, EE_, FLIP_6D_INPUT, FLIP_6D_AXIS0,
+                  {2, 2, 2, 2, 2, 2}, 0);
+}
+TEST_P(OperatorTest, Flip6D_Axis1_Float) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  testFlip<float>(bindings_, mod_, F_, EE_, FLIP_6D_INPUT, FLIP_6D_AXIS1,
+                  {2, 2, 2, 2, 2, 2}, 1);
+}
+TEST_P(OperatorTest, Flip6D_Axis2_Float) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  testFlip<float>(bindings_, mod_, F_, EE_, FLIP_6D_INPUT, FLIP_6D_AXIS2,
+                  {2, 2, 2, 2, 2, 2}, 2);
+}
+TEST_P(OperatorTest, Flip6D_Axis3_Float) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  testFlip<float>(bindings_, mod_, F_, EE_, FLIP_6D_INPUT, FLIP_6D_AXIS3,
+                  {2, 2, 2, 2, 2, 2}, 3);
+}
+TEST_P(OperatorTest, Flip6D_Axis4_Float) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  testFlip<float>(bindings_, mod_, F_, EE_, FLIP_6D_INPUT, FLIP_6D_AXIS4,
+                  {2, 2, 2, 2, 2, 2}, 4);
+}
+TEST_P(OperatorTest, Flip6D_Axis5_Float) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  testFlip<float>(bindings_, mod_, F_, EE_, FLIP_6D_INPUT, FLIP_6D_AXIS5,
+                  {2, 2, 2, 2, 2, 2}, 5);
+}
+
+#undef FLIP_3D_INPUT
+#undef FLIP_3D_AXIS0
+#undef FLIP_3D_AXIS1
+#undef FLIP_3D_AXIS2
+#undef FLIP_4D_INPUT
+#undef FLIP_4D_AXIS0
+#undef FLIP_4D_AXIS1
+#undef FLIP_4D_AXIS2
+#undef FLIP_4D_AXIS3
+#undef FLIP_5D_INPUT
+#undef FLIP_5D_AXIS0
+#undef FLIP_5D_AXIS1
+#undef FLIP_5D_AXIS2
+#undef FLIP_5D_AXIS3
+#undef FLIP_5D_AXIS4
+#undef FLIP_6D_INPUT
+#undef FLIP_6D_AXIS0
+#undef FLIP_6D_AXIS1
+#undef FLIP_6D_AXIS2
+#undef FLIP_6D_AXIS3
+#undef FLIP_6D_AXIS4
+#undef FLIP_6D_AXIS5
+
 /// Check that gather on Int64ITy/size_t works.
 TEST_P(OperatorTest, GatherSizeT) {
   CHECK_IF_ENABLED();

@@ -2097,6 +2097,22 @@ Error ONNXModelLoader::loadAdaptiveAvgPool(const ONNX_NAMESPACE::NodeProto &op,
   return Error::success();
 }
 
+Error ONNXModelLoader::loadFlip(const ONNX_NAMESPACE::NodeProto &op,
+                                const ArgumentDictionaryTy &dict) {
+  NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getNodeValueByName(op.input(0)));
+
+  unsigned_t axis = 0;
+  if (dict.count("axis")) {
+    ASSIGN_VALUE_OR_RETURN_ERR(axis, loadInt(dict.at("axis")));
+  }
+
+  Node *N = G_.createFlip("flip", input, axis);
+
+  RETURN_IF_ERR(addNodeAsOutput(op, N));
+  return Error::success();
+}
+
 Error ONNXModelLoader::loadRowwiseQuantizedFullyConnected(
     const ONNX_NAMESPACE::NodeProto &op, const ArgumentDictionaryTy &dict) {
   // TODO
@@ -2247,6 +2263,9 @@ Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
   }
   if (typeName == "AdaptiveAvgPool") {
     return loadAdaptiveAvgPool(op, dict);
+  }
+  if (typeName == "Flip") {
+    return loadFlip(op, dict);
   }
   if (typeName == "Identity") {
     return loadIdentity(op, dict);

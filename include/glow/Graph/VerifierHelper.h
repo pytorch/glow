@@ -106,6 +106,12 @@ struct CompareOperatorLessEqual : public CompareWithName<Ty> {
   bool operator()(const Ty &a, const Ty &b) const override { return a <= b; }
   llvm::StringRef getCompareName() const override { return "LessEqual"; }
 };
+
+/// Operator <.
+template <typename Ty> struct CompareOperatorLess : public CompareWithName<Ty> {
+  bool operator()(const Ty &a, const Ty &b) const override { return a < b; }
+  llvm::StringRef getCompareName() const override { return "Less"; }
+};
 /// @}
 
 /// Main API of the verifier.

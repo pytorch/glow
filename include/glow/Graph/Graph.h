@@ -646,6 +646,10 @@ public:
                                  llvm::ArrayRef<unsigned_t> shuffle,
                                  const std::string &layout = ANY_LAYOUT);
 
+  /// Create a node with the name \p name which flips (reorders) the elements
+  /// of the input \p input along the given axis \p axis.
+  FlipNode *createFlip(llvm::StringRef name, NodeValue input, unsigned_t axis);
+
   /// Create a series of nodes that implement a Broadcast operation. The \p
   /// input Tensor is broadcasted based on \p newShape and along the \p axis,
   /// which defines the offset from the leading dimension under which

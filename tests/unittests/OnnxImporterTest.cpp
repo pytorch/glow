@@ -2761,3 +2761,37 @@ TEST(onnx, importLSTMForwardInputForget) {
   importLSTM(GLOW_DATA_PATH
              "tests/models/onnxModels/lstmForwardInputForget.onnxtxt");
 }
+
+/// Test loading Flip from a ONNX model. The ONNX model already computes
+/// the error.
+static void importFlip(std::string fileName) {
+  ExecutionEngine EE;
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  PlaceholderBindings bindings;
+  {
+    ONNXModelLoader onnxLD(fileName, {}, {}, *F);
+    bindings.allocate(mod.getPlaceholders());
+  }
+
+  // Compile and run.
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  // Verify error.
+  Placeholder *Y_err_ph = mod.getPlaceholderByName("Y_err");
+  EXPECT_TRUE(Y_err_ph);
+  auto err = bindings.get(Y_err_ph)->getHandle();
+  for (size_t idx = 0; idx < Y_err_ph->getType()->size(); idx++) {
+    EXPECT_EQ(err.raw(idx), 0);
+  }
+}
+
+TEST(onnx, importFlipWithAxis) {
+  importFlip(GLOW_DATA_PATH "tests/models/onnxModels/flipWithAxis.onnxtxt");
+}
+
+TEST(onnx, importFlipNoAxis) {
+  importFlip(GLOW_DATA_PATH "tests/models/onnxModels/flipNoAxis.onnxtxt");
+}

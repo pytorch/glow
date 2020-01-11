@@ -683,6 +683,18 @@ int main(int argc, char **argv) {
       .autoIRGen();
 
   //===--------------------------------------------------------------------===//
+  //                Reorder transformations
+  //===--------------------------------------------------------------------===//
+
+  BB.newInstr("Flip")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .addMember(MemberType::Unsigned, "Axis")
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
+      .autoVerify(VerifyKind::SameShape, {"Dest", "Src"})
+      .autoIRGen();
+
+  //===--------------------------------------------------------------------===//
   //             Instructions used for debugging/profiling/printing
   //===--------------------------------------------------------------------===//
 

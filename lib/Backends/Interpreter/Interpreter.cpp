@@ -523,6 +523,7 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::TransposeNodeKind:
   case Kinded::Kind::ReshapeNodeKind:
   case Kinded::Kind::SaveNodeKind:
+  case Kinded::Kind::FlipNodeKind:
     // These work regardless of the underlying type.
     return true;
 

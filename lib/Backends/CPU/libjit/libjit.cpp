@@ -564,6 +564,39 @@ static void libjit_transpose_generic(const T *inW, T *outW, const dim_t *idim,
 }
 
 template <typename T>
+static void libjit_flip_generic(const T *inW, T *outW, const dim_t *dims,
+                                dim_t axis, dim_t numDims) {
+
+  // Product of outer dimensions excluding the flip dimension.
+  dim_t outerLen = 1;
+  for (dim_t idx = 0; idx < axis; idx++) {
+    outerLen *= dims[idx];
+  }
+
+  // Flip dimension.
+  dim_t len = dims[axis];
+
+  // Product of inner dimensions excluding the flip dimension.
+  dim_t innerLen = 1;
+  for (dim_t idx = axis + 1; idx < numDims; idx++) {
+    innerLen *= dims[idx];
+  }
+
+  // Flip axis such that input data is read linearly.
+  const T *inpPtr = inW;
+  T *outPtr = outW + (len - 1) * innerLen;
+  for (dim_t outerIdx = 0; outerIdx < outerLen; outerIdx++) {
+    for (dim_t idx = 0; idx < len; idx++) {
+      for (dim_t innerIdx = 0; innerIdx < innerLen; innerIdx++) {
+        *outPtr++ = *inpPtr++;
+      }
+      outPtr -= 2 * innerLen;
+    }
+    outPtr += 2 * len * innerLen;
+  }
+}
+
+template <typename T>
 static void libjit_max_pool_generic(const T *inW, T *outW, const dim_t *inWdims,
                                     const dim_t *outWdims, dim_t *kernelSizes,
                                     dim_t *strides, dim_t *pads) {
@@ -1952,6 +1985,36 @@ void libjit_transpose_b(const bool *inW, bool *outW, const dim_t *idim,
                         const dim_t *odim, const dim_t *shuffle,
                         dim_t numDims) {
   libjit_transpose_generic(inW, outW, idim, odim, shuffle, numDims);
+}
+
+void libjit_flip_i8(const int8_t *inW, int8_t *outW, const dim_t *dims,
+                    dim_t axis, dim_t numDims) {
+  libjit_flip_generic(inW, outW, dims, axis, numDims);
+}
+
+void libjit_flip_i16(const int16_t *inW, int16_t *outW, const dim_t *dims,
+                     dim_t axis, dim_t numDims) {
+  libjit_flip_generic(inW, outW, dims, axis, numDims);
+}
+
+void libjit_flip_i32(const int32_t *inW, int32_t *outW, const dim_t *dims,
+                     dim_t axis, dim_t numDims) {
+  libjit_flip_generic(inW, outW, dims, axis, numDims);
+}
+
+void libjit_flip_u(const int64_t *inW, int64_t *outW, const dim_t *dims,
+                   dim_t axis, dim_t numDims) {
+  libjit_flip_generic(inW, outW, dims, axis, numDims);
+}
+
+void libjit_flip_f(const float *inW, float *outW, const dim_t *dims, dim_t axis,
+                   dim_t numDims) {
+  libjit_flip_generic(inW, outW, dims, axis, numDims);
+}
+
+void libjit_flip_b(const bool *inW, bool *outW, const dim_t *dims, dim_t axis,
+                   dim_t numDims) {
+  libjit_flip_generic(inW, outW, dims, axis, numDims);
 }
 
 void libjit_insert_tensor_f(float *tensor, float *slice, dim_t *offset,

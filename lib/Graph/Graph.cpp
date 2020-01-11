@@ -1070,6 +1070,12 @@ TransposeNode *Function::createTranspose(llvm::StringRef name, NodeValue input,
   return addNode(new TransposeNode(name, NT, input, shuffle.vec(), currLayout));
 }
 
+FlipNode *Function::createFlip(llvm::StringRef name, NodeValue input,
+                               unsigned_t axis) {
+  auto OT = getParent()->uniqueType(*input.getType());
+  return addNode(new FlipNode(name, OT, input, axis));
+}
+
 Node *Function::createBroadcast(llvm::StringRef name, NodeValue input,
                                 UnsignedArrayRef newShape, unsigned_t axis) {
   const auto &origDims = input.dims();

@@ -835,6 +835,19 @@ int main(int argc, char **argv) {
           "floor(H*HeightScale), floor(W*WidthScale), C]");
 
   //===--------------------------------------------------------------------===//
+  //                Reorder transformations
+  //===--------------------------------------------------------------------===//
+
+  BB.newNode("Flip")
+      .addInput("Input")
+      .addMember(MemberType::Unsigned, "Axis")
+      .addResultFromCtorArg()
+      .setDocstring(
+          "Reverse the order of elements in a tensor along the given axis. The "
+          "shape of the tensor is preserved, but the elements are reordered. "
+          "The node is inspired from Python numpy.");
+
+  //===--------------------------------------------------------------------===//
   //                Nodes used for network training
   //===--------------------------------------------------------------------===//
 

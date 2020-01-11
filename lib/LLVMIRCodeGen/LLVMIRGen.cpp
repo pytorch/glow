@@ -2280,6 +2280,20 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     break;
   }
 
+  case Kinded::Kind::FlipInstKind: {
+    auto *FI = cast<FlipInst>(I);
+    auto *dest = FI->getDest();
+    auto *src = FI->getSrc();
+    auto *destPtr = emitValueAddress(builder, dest);
+    auto *srcPtr = emitValueAddress(builder, src);
+    auto *dims = emitValueDims(builder, src);
+    auto *axis = emitConstDimT(builder, FI->getAxis());
+    auto *dimsSize = emitConstDimT(builder, src->getType()->dims().size());
+    auto *F = getFunction("flip", src->getElementType());
+    createCall(builder, F, {srcPtr, destPtr, dims, axis, dimsSize});
+    break;
+  }
+
     // Alloc and Dealloc instructions are handled by the memory allocator.
   case Kinded::Kind::AllocActivationInstKind:
   case Kinded::Kind::DeallocActivationInstKind:
