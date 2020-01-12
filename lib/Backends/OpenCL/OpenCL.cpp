@@ -203,6 +203,8 @@ cl_program OpenCLFunction::loadProgramFromDiskCache(std::string cacheDirectory,
   std::error_code errc = llvm::sys::fs::file_size(programPath, binarySize);
   CHECK(!errc) << "Error getting the file size of " << programPath << ".";
 
+  size_t binarySizeST = binarySize;
+
   std::ifstream binFile(programPath.c_str(), std::ios::binary);
   CHECK(binFile) << "Error opening " << programPath << " for reading.";
 
@@ -211,11 +213,12 @@ cl_program OpenCLFunction::loadProgramFromDiskCache(std::string cacheDirectory,
   CHECK(binFile) << "Could not read the binary.";
   binFile.close();
 
+  const unsigned char *binPtr = binary.get();
+
   cl_int status;
   cl_int err;
-  cl_program prog =
-      clCreateProgramWithBinary(ctx, 1, &device, &binarySize,
-                                (const unsigned char **)&binary, &status, &err);
+  cl_program prog = clCreateProgramWithBinary(ctx, 1, &device, &binarySizeST,
+                                              &binPtr, &status, &err);
   if (err != CL_SUCCESS) {
     // The binary might be corrupted (e.g. process killed during write,
     // or incompatible OpenCL driver update). Just delete the cached
@@ -252,8 +255,9 @@ void OpenCLFunction::saveProgramToDiskCache(std::string cacheDirectory,
 
   std::unique_ptr<unsigned char[]> bin =
       glow::make_unique<unsigned char[]>(binSize);
-  errC = clGetProgramInfo(program, CL_PROGRAM_BINARIES, binSize, bin.get(),
-                          nullptr);
+  unsigned char *binPtr = bin.get();
+  errC =
+      clGetProgramInfo(program, CL_PROGRAM_BINARIES, binSize, &binPtr, nullptr);
   CHECK_EQ(errC, CL_SUCCESS)
       << "clGetProgramInfo for CL_PROGRAM_BINARIES failed.";
 

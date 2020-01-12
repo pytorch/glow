@@ -6,20 +6,18 @@ set(OPENCL_CACHE_DIR ${CMAKE_CURRENT_BINARY_DIR}/opencl-cached-binaries)
 file(REMOVE_RECURSE ${OPENCL_CACHE_DIR})
 
 function(RUN_OCLTEST)
-  execute_process(COMMAND "${CMAKE_CURRENT_BINARY_DIR}/tests/OCLTest" "--gtest_output=xml:OCLTestCached.xml" "--opencl-program-cache-dir=${OPENCL_CACHE_DIR}"
-    RESULT_VARIABLE CMD_RES
-    ERROR_QUIET
-    OUTPUT_QUIET)
+  execute_process(COMMAND "${GLOW_BINARY_DIR}/tests/OpenCLBackendCorrectnessTest" "--gtest_output=xml:OpenCLBackendCorrectnessTestCached.xml" "--opencl-program-cache-dir=${OPENCL_CACHE_DIR}")
+  set(RES ${CMD_RES} PARENT_SCOPE)
 endfunction(RUN_OCLTEST)
 
 run_ocltest()
-if(CMD_RES)
-  message(FATAL_ERROR "Error in the OpenCL cold cache test run.")
+if(RES)
+  message(FATAL_ERROR "Error in the OpenCL cold cache test run: ${RES}")
 endif()
 
 run_ocltest()
-if(CMD_RES)
-  message(FATAL_ERROR "Error in the warm cache OpenCL test run.")
+if(RES)
+  message(FATAL_ERROR "Error in the warm cache OpenCL test run: ${RES}")
 endif()
 
 file(REMOVE_RECURSE ${OPENCL_CACHE_DIR})
