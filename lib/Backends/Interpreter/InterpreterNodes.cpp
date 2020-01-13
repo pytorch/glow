@@ -1392,6 +1392,10 @@ void BoundInterpreterFunction::fwdSplatInst(const glow::SplatInst *I) {
   llvm_unreachable("Unsupported tensor type");
 }
 
+void BoundInterpreterFunction::fwdTouchInst(const glow::TouchInst *) {
+  // Do nothing for a TouchInst
+}
+
 void BoundInterpreterFunction::fwdInsertTensorInst(
     const glow::InsertTensorInst *I) {
   Tensor *outT = getTensor(I->getDest());

@@ -972,6 +972,10 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
     ARITHMETIC_UNARY_OP_WITH_IMM_CASE(Splat, "splat", Value);
 #undef ARITHMETIC_UNARY_OP_WITH_IMM_CASE
 
+  case Kinded::Kind::TouchInstKind:
+    // do nothing;
+    break;
+
   case Kinded::Kind::ElementSelectInstKind: {
     auto *ES = cast<ElementSelectInst>(I);
     auto *dest = ES->getDest();
