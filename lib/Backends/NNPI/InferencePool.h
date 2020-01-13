@@ -54,7 +54,7 @@ private:
   std::vector<std::pair<std::string, NNPITensorDesc>> netOutputs_;
 
   /// Map from Placeholders to their backing Tensor inputs.
-  std::map<std::string, Tensor *> ioTensors_;
+  std::unordered_map<std::string, Tensor *> ioTensors_;
 
   /// Set of inputs that can be partial tensors.
   const std::unordered_set<const Placeholder *> *partialInputs_;
@@ -76,7 +76,7 @@ private:
 
   /// Used for int64 tensors and for zero-padded copies of unsupported partial
   /// tensors.
-  std::set<char *> tmpBuffers_;
+  std::unordered_set<char *> tmpBuffers_;
 
   NNPIStaticPlaceholderContainer *staticPlaceholderContainer_;
 

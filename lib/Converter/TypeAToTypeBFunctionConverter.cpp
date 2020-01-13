@@ -73,6 +73,17 @@ Node *TypeAToTypeBFunctionConverter::createConversion(Function &function,
     case Kinded::Kind::TransposeNodeKind:
       needClip = false;
       break;
+    case Kinded::Kind::SigmoidNodeKind:
+    case Kinded::Kind::TanhNodeKind:
+      needClip = isInput;
+      break;
+    case Kinded::Kind::ConvertToNodeKind:
+      needClip = llvm::dyn_cast<const ConvertToNode>(&node)
+                             ->getInput()
+                             .getElementType() == ElemKind::Float16Ty
+                     ? false
+                     : true;
+      break;
     default:
       break;
     }

@@ -324,6 +324,9 @@ private:
   template <typename T, typename AccumT>
   void fwdEmbeddingBagByteRowwiseOffsetsImpl(
       const EmbeddingBagByteRowwiseOffsetsInst *I);
+
+  template <typename ElemTy> void fwdFlipInstImpl(const FlipInst *I);
+
   ///@}
 };
 

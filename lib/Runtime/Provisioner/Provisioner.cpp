@@ -473,13 +473,15 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
 
       // Transfer weight to all devices needed.
       for (const auto &device : placeholderToDeviceManager[PH]) {
-        std::promise<Error> transferPromise;
+        std::promise<void> transferPromise;
+        Error transferError = Error::empty();
         auto done = transferPromise.get_future();
         devices_[device]->transferStaticPlaceholderToDevice(
-            PH, weight, [&transferPromise](Error err) {
-              transferPromise.set_value(std::move(err));
+            PH, weight, [&transferPromise, &transferError](Error err) {
+              transferError = std::move(err);
+              transferPromise.set_value();
             });
-        RETURN_IF_ERR(done.get());
+        RETURN_IF_ERR(transferError);
       }
       RETURN_IF_ERR(loader->loadNextWeight());
       weightName = loader->getName();

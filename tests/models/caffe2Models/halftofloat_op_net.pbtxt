@@ -1,0 +1,9 @@
+name: "alias"
+op {
+  input: "X"
+  output: "Y"
+  name: ""
+  type: "HalfToFloat"
+}
+external_input: "X"
+external_output: "Y"

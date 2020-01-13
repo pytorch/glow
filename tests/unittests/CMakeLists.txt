@@ -334,10 +334,12 @@ if(GLOW_WITH_OPENCL)
                           TestMain)
   add_glow_test(OCLTest
                 ${GLOW_BINARY_DIR}/tests/OCLTest
-                    --gtest_output=xml:OCLTest.xml)
+                --gtest_output=xml:OCLTest.xml)
+
+  add_glow_test(OpenCLBackendTestWithDiskCache
+                ${CMAKE_COMMAND} "-DGLOW_BINARY_DIR=${GLOW_BINARY_DIR}" "-P" "${CMAKE_SOURCE_DIR}/lib/Backends/OpenCL/tests/OpenCLDiskCacheTest.cmake")
+
   LIST(APPEND UNOPT_TESTS ./tests/OCLTest -optimize-ir=false &&)
-
-
 
 endif()
 
@@ -520,6 +522,7 @@ add_executable(UtilsTest
                StrCheck.cpp
                SupportTest.cpp
                TaggedListTest.cpp
+               SharedMutexTest.cpp
                UtilsTest.cpp)
 target_link_libraries(UtilsTest
                       PRIVATE

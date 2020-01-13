@@ -3079,6 +3079,299 @@ TEST_P(OperatorTest, TransposeIntoReshapeOptim) {
   }
 }
 
+/// Helper to check the code generation for flip nodes.
+template <typename elemType>
+static void testFlip(glow::PlaceholderBindings &bindings, glow::Module &mod,
+                     glow::Function *F, glow::ExecutionEngine &EE,
+                     std::vector<elemType> inputData,
+                     std::vector<elemType> expectedData,
+                     llvm::ArrayRef<dim_t> dims, dim_t axis,
+                     ElemKind elemKind = ElemKind::FloatTy) {
+
+  // Create network.
+  auto *input =
+      createPlaceholderConditionallyQuantized(mod, elemKind, dims, "input",
+                                              /* isTrainable */ false);
+  auto *flip = F->createFlip("flip", input, axis);
+  Placeholder *output = F->createSave("save", flip)->getPlaceholder();
+
+  // Allocate input/output and initialize input.
+  auto inputH = bindings.allocate(input)->getHandle<elemType>();
+  auto outputH = bindings.allocate(output)->getHandle<elemType>();
+  inputH = inputData;
+
+  // Compile and run.
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  // Compare output with reference.
+  EXPECT_EQ(outputH.size(), expectedData.size());
+  for (size_t i = 0; i < expectedData.size(); i++) {
+    EXPECT_EQ(outputH.raw(i), expectedData[i]);
+  }
+}
+
+/// Test Flip 1D with Int8.
+TEST_P(OperatorTest, Flip1D_Int8) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  testFlip<int8_t>(bindings_, mod_, F_, EE_, {1, 2, 3, 4}, {4, 3, 2, 1}, {4}, 0,
+                   ElemKind::Int8QTy);
+}
+
+/// Test Flip 1D with Int32.
+TEST_P(OperatorTest, Flip1D_Int32) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  testFlip<int32_t>(bindings_, mod_, F_, EE_, {1, 2, 3, 4}, {4, 3, 2, 1}, {4},
+                    0, ElemKind::Int32QTy);
+}
+
+/// Test Flip 1D with Int64.
+TEST_P(OperatorTest, Flip1D_Int64) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  testFlip<int64_t>(bindings_, mod_, F_, EE_, {1, 2, 3, 4}, {4, 3, 2, 1}, {4},
+                    0, ElemKind::Int64ITy);
+}
+
+#define FLIP_3D_INPUT                                                          \
+  { 1, 2, 3, 4, 5, 6, 7, 8 }
+#define FLIP_3D_AXIS0                                                          \
+  { 5, 6, 7, 8, 1, 2, 3, 4 }
+#define FLIP_3D_AXIS1                                                          \
+  { 3, 4, 1, 2, 7, 8, 5, 6 }
+#define FLIP_3D_AXIS2                                                          \
+  { 2, 1, 4, 3, 6, 5, 8, 7 }
+
+#define FLIP_4D_INPUT                                                          \
+  { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16 }
+#define FLIP_4D_AXIS0                                                          \
+  { 9, 10, 11, 12, 13, 14, 15, 16, 1, 2, 3, 4, 5, 6, 7, 8 }
+#define FLIP_4D_AXIS1                                                          \
+  { 5, 6, 7, 8, 1, 2, 3, 4, 13, 14, 15, 16, 9, 10, 11, 12 }
+#define FLIP_4D_AXIS2                                                          \
+  { 3, 4, 1, 2, 7, 8, 5, 6, 11, 12, 9, 10, 15, 16, 13, 14 }
+#define FLIP_4D_AXIS3                                                          \
+  { 2, 1, 4, 3, 6, 5, 8, 7, 10, 9, 12, 11, 14, 13, 16, 15 }
+
+#define FLIP_5D_INPUT                                                          \
+  {                                                                            \
+    1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, \
+        22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32                             \
+  }
+#define FLIP_5D_AXIS0                                                          \
+  {                                                                            \
+    17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 1, 2, 3,   \
+        4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16                           \
+  }
+#define FLIP_5D_AXIS1                                                          \
+  {                                                                            \
+    9, 10, 11, 12, 13, 14, 15, 16, 1, 2, 3, 4, 5, 6, 7, 8, 25, 26, 27, 28, 29, \
+        30, 31, 32, 17, 18, 19, 20, 21, 22, 23, 24                             \
+  }
+#define FLIP_5D_AXIS2                                                          \
+  {                                                                            \
+    5, 6, 7, 8, 1, 2, 3, 4, 13, 14, 15, 16, 9, 10, 11, 12, 21, 22, 23, 24, 17, \
+        18, 19, 20, 29, 30, 31, 32, 25, 26, 27, 28                             \
+  }
+#define FLIP_5D_AXIS3                                                          \
+  {                                                                            \
+    3, 4, 1, 2, 7, 8, 5, 6, 11, 12, 9, 10, 15, 16, 13, 14, 19, 20, 17, 18, 23, \
+        24, 21, 22, 27, 28, 25, 26, 31, 32, 29, 30                             \
+  }
+#define FLIP_5D_AXIS4                                                          \
+  {                                                                            \
+    2, 1, 4, 3, 6, 5, 8, 7, 10, 9, 12, 11, 14, 13, 16, 15, 18, 17, 20, 19, 22, \
+        21, 24, 23, 26, 25, 28, 27, 30, 29, 32, 31                             \
+  }
+
+#define FLIP_6D_INPUT                                                          \
+  {                                                                            \
+    1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, \
+        22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38,    \
+        39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55,    \
+        56, 57, 58, 59, 60, 61, 62, 63, 64                                     \
+  }
+#define FLIP_6D_AXIS0                                                          \
+  {                                                                            \
+    33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50,    \
+        51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 1, 2, 3, 4, 5, \
+        6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,    \
+        24, 25, 26, 27, 28, 29, 30, 31, 32                                     \
+  }
+#define FLIP_6D_AXIS1                                                          \
+  {                                                                            \
+    17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 1, 2, 3,   \
+        4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 49, 50, 51, 52, 53, 54,  \
+        55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 33, 34, 35, 36, 37, 38, 39,    \
+        40, 41, 42, 43, 44, 45, 46, 47, 48                                     \
+  }
+#define FLIP_6D_AXIS2                                                          \
+  {                                                                            \
+    9, 10, 11, 12, 13, 14, 15, 16, 1, 2, 3, 4, 5, 6, 7, 8, 25, 26, 27, 28, 29, \
+        30, 31, 32, 17, 18, 19, 20, 21, 22, 23, 24, 41, 42, 43, 44, 45, 46,    \
+        47, 48, 33, 34, 35, 36, 37, 38, 39, 40, 57, 58, 59, 60, 61, 62, 63,    \
+        64, 49, 50, 51, 52, 53, 54, 55, 56                                     \
+  }
+#define FLIP_6D_AXIS3                                                          \
+  {                                                                            \
+    5, 6, 7, 8, 1, 2, 3, 4, 13, 14, 15, 16, 9, 10, 11, 12, 21, 22, 23, 24, 17, \
+        18, 19, 20, 29, 30, 31, 32, 25, 26, 27, 28, 37, 38, 39, 40, 33, 34,    \
+        35, 36, 45, 46, 47, 48, 41, 42, 43, 44, 53, 54, 55, 56, 49, 50, 51,    \
+        52, 61, 62, 63, 64, 57, 58, 59, 60                                     \
+  }
+#define FLIP_6D_AXIS4                                                          \
+  {                                                                            \
+    3, 4, 1, 2, 7, 8, 5, 6, 11, 12, 9, 10, 15, 16, 13, 14, 19, 20, 17, 18, 23, \
+        24, 21, 22, 27, 28, 25, 26, 31, 32, 29, 30, 35, 36, 33, 34, 39, 40,    \
+        37, 38, 43, 44, 41, 42, 47, 48, 45, 46, 51, 52, 49, 50, 55, 56, 53,    \
+        54, 59, 60, 57, 58, 63, 64, 61, 62                                     \
+  }
+#define FLIP_6D_AXIS5                                                          \
+  {                                                                            \
+    2, 1, 4, 3, 6, 5, 8, 7, 10, 9, 12, 11, 14, 13, 16, 15, 18, 17, 20, 19, 22, \
+        21, 24, 23, 26, 25, 28, 27, 30, 29, 32, 31, 34, 33, 36, 35, 38, 37,    \
+        40, 39, 42, 41, 44, 43, 46, 45, 48, 47, 50, 49, 52, 51, 54, 53, 56,    \
+        55, 58, 57, 60, 59, 62, 61, 64, 63                                     \
+  }
+
+/// Test Flip 1D with Float.
+TEST_P(OperatorTest, Flip1D_Axis0_Float) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  testFlip<float>(bindings_, mod_, F_, EE_, {1, 2}, {2, 1}, {2}, 0);
+}
+
+/// Test Flip 2D with Float.
+TEST_P(OperatorTest, Flip2D_Axis0_Float) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  testFlip<float>(bindings_, mod_, F_, EE_, {1, 2, 3, 4}, {3, 4, 1, 2}, {2, 2},
+                  0);
+}
+TEST_P(OperatorTest, Flip2D_Axis1_Float) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  testFlip<float>(bindings_, mod_, F_, EE_, {1, 2, 3, 4}, {2, 1, 4, 3}, {2, 2},
+                  1);
+}
+
+/// Test Flip 3D with Float.
+TEST_P(OperatorTest, Flip3D_Axis0_Float) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  testFlip<float>(bindings_, mod_, F_, EE_, FLIP_3D_INPUT, FLIP_3D_AXIS0,
+                  {2, 2, 2}, 0);
+}
+TEST_P(OperatorTest, Flip3D_Axis1_Float) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  testFlip<float>(bindings_, mod_, F_, EE_, FLIP_3D_INPUT, FLIP_3D_AXIS1,
+                  {2, 2, 2}, 1);
+}
+TEST_P(OperatorTest, Flip3D_Axis2_Float) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  testFlip<float>(bindings_, mod_, F_, EE_, FLIP_3D_INPUT, FLIP_3D_AXIS2,
+                  {2, 2, 2}, 2);
+}
+
+/// Test Flip 4D with Float.
+TEST_P(OperatorTest, Flip4D_Axis0_Float) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  testFlip<float>(bindings_, mod_, F_, EE_, FLIP_4D_INPUT, FLIP_4D_AXIS0,
+                  {2, 2, 2, 2}, 0);
+}
+TEST_P(OperatorTest, Flip4D_Axis1_Float) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  testFlip<float>(bindings_, mod_, F_, EE_, FLIP_4D_INPUT, FLIP_4D_AXIS1,
+                  {2, 2, 2, 2}, 1);
+}
+TEST_P(OperatorTest, Flip4D_Axis2_Float) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  testFlip<float>(bindings_, mod_, F_, EE_, FLIP_4D_INPUT, FLIP_4D_AXIS2,
+                  {2, 2, 2, 2}, 2);
+}
+TEST_P(OperatorTest, Flip4D_Axis3_Float) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  testFlip<float>(bindings_, mod_, F_, EE_, FLIP_4D_INPUT, FLIP_4D_AXIS3,
+                  {2, 2, 2, 2}, 3);
+}
+
+/// Test Flip 5D with Float.
+TEST_P(OperatorTest, Flip5D_Axis0_Float) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  testFlip<float>(bindings_, mod_, F_, EE_, FLIP_5D_INPUT, FLIP_5D_AXIS0,
+                  {2, 2, 2, 2, 2}, 0);
+}
+TEST_P(OperatorTest, Flip5D_Axis1_Float) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  testFlip<float>(bindings_, mod_, F_, EE_, FLIP_5D_INPUT, FLIP_5D_AXIS1,
+                  {2, 2, 2, 2, 2}, 1);
+}
+TEST_P(OperatorTest, Flip5D_Axis2_Float) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  testFlip<float>(bindings_, mod_, F_, EE_, FLIP_5D_INPUT, FLIP_5D_AXIS2,
+                  {2, 2, 2, 2, 2}, 2);
+}
+TEST_P(OperatorTest, Flip5D_Axis3_Float) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  testFlip<float>(bindings_, mod_, F_, EE_, FLIP_5D_INPUT, FLIP_5D_AXIS3,
+                  {2, 2, 2, 2, 2}, 3);
+}
+TEST_P(OperatorTest, Flip5D_Axis4_Float) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  testFlip<float>(bindings_, mod_, F_, EE_, FLIP_5D_INPUT, FLIP_5D_AXIS4,
+                  {2, 2, 2, 2, 2}, 4);
+}
+
+/// Test Flip 6D with Float.
+TEST_P(OperatorTest, Flip6D_Axis0_Float) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  testFlip<float>(bindings_, mod_, F_, EE_, FLIP_6D_INPUT, FLIP_6D_AXIS0,
+                  {2, 2, 2, 2, 2, 2}, 0);
+}
+TEST_P(OperatorTest, Flip6D_Axis1_Float) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  testFlip<float>(bindings_, mod_, F_, EE_, FLIP_6D_INPUT, FLIP_6D_AXIS1,
+                  {2, 2, 2, 2, 2, 2}, 1);
+}
+TEST_P(OperatorTest, Flip6D_Axis2_Float) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  testFlip<float>(bindings_, mod_, F_, EE_, FLIP_6D_INPUT, FLIP_6D_AXIS2,
+                  {2, 2, 2, 2, 2, 2}, 2);
+}
+TEST_P(OperatorTest, Flip6D_Axis3_Float) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  testFlip<float>(bindings_, mod_, F_, EE_, FLIP_6D_INPUT, FLIP_6D_AXIS3,
+                  {2, 2, 2, 2, 2, 2}, 3);
+}
+TEST_P(OperatorTest, Flip6D_Axis4_Float) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  testFlip<float>(bindings_, mod_, F_, EE_, FLIP_6D_INPUT, FLIP_6D_AXIS4,
+                  {2, 2, 2, 2, 2, 2}, 4);
+}
+TEST_P(OperatorTest, Flip6D_Axis5_Float) {
+  ENABLED_BACKENDS(Interpreter, CPU);
+  testFlip<float>(bindings_, mod_, F_, EE_, FLIP_6D_INPUT, FLIP_6D_AXIS5,
+                  {2, 2, 2, 2, 2, 2}, 5);
+}
+
+#undef FLIP_3D_INPUT
+#undef FLIP_3D_AXIS0
+#undef FLIP_3D_AXIS1
+#undef FLIP_3D_AXIS2
+#undef FLIP_4D_INPUT
+#undef FLIP_4D_AXIS0
+#undef FLIP_4D_AXIS1
+#undef FLIP_4D_AXIS2
+#undef FLIP_4D_AXIS3
+#undef FLIP_5D_INPUT
+#undef FLIP_5D_AXIS0
+#undef FLIP_5D_AXIS1
+#undef FLIP_5D_AXIS2
+#undef FLIP_5D_AXIS3
+#undef FLIP_5D_AXIS4
+#undef FLIP_6D_INPUT
+#undef FLIP_6D_AXIS0
+#undef FLIP_6D_AXIS1
+#undef FLIP_6D_AXIS2
+#undef FLIP_6D_AXIS3
+#undef FLIP_6D_AXIS4
+#undef FLIP_6D_AXIS5
+
 /// Check that gather on Int64ITy/size_t works.
 TEST_P(OperatorTest, GatherSizeT) {
   CHECK_IF_ENABLED();
@@ -5398,9 +5691,9 @@ TEST_P(OperatorTest, GroupConvolution) {
   EXPECT_FLOAT_EQ(result.at({0, 1, 0, 5}), (13 + 14 + 15 + 16) * 100000);
 }
 
-/// Test the functionality of groupwise quantized convolution expressed using
+/// Test the functionality of channelwise quantized group convolution using
 /// ChannelwiseQuantizedConvNode.
-TEST_P(OperatorTest, GroupwiseQuantizedConvolution) {
+TEST_P(OperatorTest, ChannelwiseQuantizedGroupConvolution) {
   CHECK_IF_ENABLED();
 
   constexpr size_t groups = 2;
@@ -7473,10 +7766,10 @@ TEST_P(OperatorTest, SparseLengthsWeightedSumI8) {
 
 /// Test EmbeddingBag with an N-dimension embedding table.
 template <typename DataType>
-static void testEmbeddingBag(glow::PlaceholderBindings &bindings,
-                             glow::Module &mod, glow::Function *F,
-                             glow::ExecutionEngine &EE, ElemKind DTy,
-                             float allowedError, dim_t ndims) {
+static void
+testEmbeddingBag(glow::PlaceholderBindings &bindings, glow::Module &mod,
+                 glow::Function *F, glow::ExecutionEngine &EE, ElemKind DTy,
+                 float allowedError, dim_t ndims, bool hasEndOffset) {
   /*
     DATA  =   [[2.0, -0.5, 13]]
     WEIGHTS = [3, 1, 0, 0, 0, 0, 2, -0.5]
@@ -7490,29 +7783,55 @@ static void testEmbeddingBag(glow::PlaceholderBindings &bindings,
   odims[0] = 4;
 
   auto *data = mod.createPlaceholder(DTy, idims, "data", false);
-  auto *weights = mod.createPlaceholder(DTy, {8}, "weights", false);
-  auto *indices = mod.createPlaceholder(IndexElemKind, {8}, "indices", false);
-  auto *offsets = mod.createPlaceholder(IndexElemKind, {4}, "offsets", false);
 
   bindings.allocate(data)->getHandle<DataType>() = {
       2.0,
       -0.5,
       13,
   };
-  bindings.allocate(weights)->getHandle<DataType>() = {
-      3, 1, 0, 0, 0, 0, 2, -0.5,
-  };
-  bindings.allocate(indices)->getHandle<sdim_t>() = {
-      1, 0, 2, 0, 1, 2, 2, 0,
-  };
-  bindings.allocate(offsets)->getHandle<sdim_t>() = {
-      0,
-      3,
-      3,
-      6,
-  };
 
-  auto *R = F->createEmbeddingBag("EB", data, weights, indices, offsets);
+  // If hasEndOffset then add some additional junk to the end of indices and
+  // weights and an extra offset to offsets.
+  Placeholder *weights;
+  Placeholder *indices;
+  Placeholder *offsets;
+  if (hasEndOffset) {
+    weights = mod.createPlaceholder(DTy, {10}, "weights", false);
+    indices = mod.createPlaceholder(IndexElemKind, {10}, "indices", false);
+    offsets = mod.createPlaceholder(IndexElemKind, {5}, "offsets", false);
+
+    bindings.allocate(weights)->getHandle<DataType>() = {
+        3, 1, 0, 0, 0, 0, 2, -0.5, 42.0, 42.0,
+    };
+    bindings.allocate(indices)->getHandle<sdim_t>() = {
+        1, 0, 2, 0, 1, 2, 2, 0, 13, 10,
+    };
+    bindings.allocate(offsets)->getHandle<sdim_t>() = {
+        0, 3, 3, 6,
+        8, // extra end offset
+    };
+
+  } else {
+    weights = mod.createPlaceholder(DTy, {8}, "weights", false);
+    indices = mod.createPlaceholder(IndexElemKind, {8}, "indices", false);
+    offsets = mod.createPlaceholder(IndexElemKind, {4}, "offsets", false);
+
+    bindings.allocate(weights)->getHandle<DataType>() = {
+        3, 1, 0, 0, 0, 0, 2, -0.5,
+    };
+    bindings.allocate(indices)->getHandle<sdim_t>() = {
+        1, 0, 2, 0, 1, 2, 2, 0,
+    };
+    bindings.allocate(offsets)->getHandle<sdim_t>() = {
+        0,
+        3,
+        3,
+        6,
+    };
+  }
+
+  auto *R = F->createEmbeddingBag("EB", data, weights, indices, offsets,
+                                  hasEndOffset);
   auto *S = F->createSave("save", R);
   bindings.allocate(S->getPlaceholder());
 
@@ -7535,14 +7854,28 @@ static void testEmbeddingBag(glow::PlaceholderBindings &bindings,
 TEST_P(OperatorTest, EmbeddingBag_1D_Float) {
   CHECK_IF_ENABLED();
   testEmbeddingBag<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy, 0.0001,
-                          /* ndims */ 1);
+                          /* ndims */ 1, /* hasEndOffset */ false);
+}
+
+/// Test that EB is correctly supported in FloatTy in 1D with an end offset.
+TEST_P(OperatorTest, EmbeddingBag_1D_Float_End_Offset) {
+  CHECK_IF_ENABLED();
+  testEmbeddingBag<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy, 0.0001,
+                          /* ndims */ 1, /* hasEndOffset */ true);
 }
 
 /// Test that EB is correctly supported in FloatTy in 2D.
 TEST_P(OperatorTest, EmbeddingBag_2D_Float) {
   CHECK_IF_ENABLED();
   testEmbeddingBag<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy, 0.0001,
-                          /* ndims */ 2);
+                          /* ndims */ 2, /* hasEndOffset */ false);
+}
+
+/// Test that EB is correctly supported in FloatTy in 2D with an end offset.
+TEST_P(OperatorTest, EmbeddingBag_2D_Float_End_Offset) {
+  CHECK_IF_ENABLED();
+  testEmbeddingBag<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy, 0.0001,
+                          /* ndims */ 2, /* hasEndOffset */ true);
 }
 
 /// Test that EB is correctly supported in Float16Ty in 1D.
@@ -7550,7 +7883,15 @@ TEST_P(OperatorTest, EmbeddingBag_1D_Float16) {
   CHECK_IF_ENABLED();
   testEmbeddingBag<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty,
                               0.0001,
-                              /* ndims */ 1);
+                              /* ndims */ 1, /* hasEndOffset */ false);
+}
+
+/// Test that EB is correctly supported in Float16Ty in 1D with an end offset.
+TEST_P(OperatorTest, EmbeddingBag_1D_Float16_End_Offset) {
+  CHECK_IF_ENABLED();
+  testEmbeddingBag<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty,
+                              0.0001,
+                              /* ndims */ 1, /* hasEndOffset */ true);
 }
 
 /// Test that EB is correctly supported in Float16Ty in 2D.
@@ -7558,7 +7899,15 @@ TEST_P(OperatorTest, EmbeddingBag_2D_Float16) {
   CHECK_IF_ENABLED();
   testEmbeddingBag<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty,
                               0.0001,
-                              /* ndims */ 2);
+                              /* ndims */ 2, /* hasEndOffset */ false);
+}
+
+/// Test that EB is correctly supported in Float16Ty in 2D with an end offset.
+TEST_P(OperatorTest, EmbeddingBag_2D_Float16_End_Offset) {
+  CHECK_IF_ENABLED();
+  testEmbeddingBag<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty,
+                              0.0001,
+                              /* ndims */ 2, /* hasEndOffset */ true);
 }
 
 /// Helper to test EmbeddingBagByteRowwiseOffsets using \p DTy.
@@ -7566,7 +7915,7 @@ template <typename DataType>
 static void testEmbeddingBagByteRowwiseOffsets(
     glow::PlaceholderBindings &bindings, glow::Module &mod, glow::Function *F,
     glow::ExecutionEngine &EE, ElemKind fusedDTy, float allowedError,
-    bool useFP16Accumulation = false) {
+    bool useFP16Accumulation, bool hasEndOffset) {
   /*
     DATA  =   [[2.0, -0.5, 13]]
     WEIGHTS = [3, 1, 0, 0, 0, 0, 2, -0.5]
@@ -7584,28 +7933,53 @@ static void testEmbeddingBagByteRowwiseOffsets(
       13,
   };
 
-  Constant *weights = mod.createConstant(DTy, {8}, "weights");
-  weights->getPayloadMutable().getHandle<DataType>() = {
-      3., 1., 0., 0., 0., 0., 2., -0.5,
-  };
+  // If hasEndOffset then add some additional junk to the end of indices and
+  // weights and an extra offset to offsets.
+  Constant *weights;
+  Placeholder *indices;
+  Placeholder *offsets;
+  if (hasEndOffset) {
+    weights = mod.createConstant(DTy, {10}, "weights");
+    weights->getPayloadMutable().getHandle<DataType>() = {
+        3., 1., 0., 0., 0., 0., 2., -0.5, 42.0, 35.0,
+    };
 
-  Placeholder *indices = mod.createPlaceholder(IndexElemKind, {8}, "indices",
-                                               /* isTrainable */ false);
-  Placeholder *offsets = mod.createPlaceholder(IndexElemKind, {4}, "offsets",
-                                               /* isTrainable */ false);
+    indices = mod.createPlaceholder(IndexElemKind, {10}, "indices",
+                                    /* isTrainable */ false);
+    offsets = mod.createPlaceholder(IndexElemKind, {5}, "offsets",
+                                    /* isTrainable */ false);
 
-  bindings.allocate(indices)->getHandle<sdim_t>() = {
-      1, 0, 2, 0, 1, 2, 2, 0,
-  };
-  bindings.allocate(offsets)->getHandle<sdim_t>() = {
-      0,
-      3,
-      3,
-      6,
-  };
+    bindings.allocate(indices)->getHandle<sdim_t>() = {1, 0, 2, 0, 1,
+                                                       2, 2, 0, 1, 5};
+    bindings.allocate(offsets)->getHandle<sdim_t>() = {
+        0, 3, 3, 6,
+        8, // extra end offset
+    };
+  } else {
+    weights = mod.createConstant(DTy, {8}, "weights");
+    weights->getPayloadMutable().getHandle<DataType>() = {
+        3., 1., 0., 0., 0., 0., 2., -0.5,
+    };
+
+    indices = mod.createPlaceholder(IndexElemKind, {8}, "indices",
+                                    /* isTrainable */ false);
+    offsets = mod.createPlaceholder(IndexElemKind, {4}, "offsets",
+                                    /* isTrainable */ false);
+
+    bindings.allocate(indices)->getHandle<sdim_t>() = {
+        1, 0, 2, 0, 1, 2, 2, 0,
+    };
+    bindings.allocate(offsets)->getHandle<sdim_t>() = {
+        0,
+        3,
+        3,
+        6,
+    };
+  }
 
   auto *R = F->createEmbeddingBagByteRowwiseOffsets(
-      "EBBRO", data, weights, indices, offsets, fusedDTy, useFP16Accumulation);
+      "EBBRO", data, weights, indices, offsets, fusedDTy, useFP16Accumulation,
+      hasEndOffset);
   SaveNode *S = F->createSave("save", R);
   bindings.allocate(S->getPlaceholder());
 
@@ -7627,8 +8001,17 @@ static void testEmbeddingBagByteRowwiseOffsets(
 /// Test EmbeddingBagByteRowwiseOffsets in Float.
 TEST_P(OperatorTest, EmbeddingBagByteRowwiseOffsets_Float) {
   CHECK_IF_ENABLED();
-  testEmbeddingBagByteRowwiseOffsets<float>(bindings_, mod_, F_, EE_,
-                                            ElemKind::UInt8FusedQTy, 0.0001);
+  testEmbeddingBagByteRowwiseOffsets<float>(
+      bindings_, mod_, F_, EE_, ElemKind::UInt8FusedQTy, 0.0001,
+      /* useFP16Accumulation */ false, /* hasEndOffset */ false);
+}
+
+/// Test EmbeddingBagByteRowwiseOffsets in Float with end offset.
+TEST_P(OperatorTest, EmbeddingBagByteRowwiseOffsets_Float_End_Offset) {
+  CHECK_IF_ENABLED();
+  testEmbeddingBagByteRowwiseOffsets<float>(
+      bindings_, mod_, F_, EE_, ElemKind::UInt8FusedQTy, 0.0001,
+      /* useFP16Accumulation */ false, /* hasEndOffset */ true);
 }
 
 /// Test EmbeddingBagByteRowwiseOffsets in Float16. Uses Float accumulation.
@@ -7636,7 +8019,17 @@ TEST_P(OperatorTest, EmbeddingBagByteRowwiseOffsets_Float16_AccumFloat) {
   CHECK_IF_ENABLED();
   testEmbeddingBagByteRowwiseOffsets<float16_t>(
       bindings_, mod_, F_, EE_, ElemKind::UInt8FusedFP16QTy, 0.0001,
-      /* useFP16Accumulation */ false);
+      /* useFP16Accumulation */ false, /* hasEndOffset */ false);
+}
+
+/// Test EmbeddingBagByteRowwiseOffsets in Float16. Uses Float accumulation. Has
+/// end offset.
+TEST_P(OperatorTest,
+       EmbeddingBagByteRowwiseOffsets_Float16_AccumFloat_End_Offset) {
+  CHECK_IF_ENABLED();
+  testEmbeddingBagByteRowwiseOffsets<float16_t>(
+      bindings_, mod_, F_, EE_, ElemKind::UInt8FusedFP16QTy, 0.0001,
+      /* useFP16Accumulation */ false, /* hasEndOffset */ true);
 }
 
 /// Test EmbeddingBagByteRowwiseOffsets in Float16. Uses Float16 accumulation.
@@ -7644,7 +8037,17 @@ TEST_P(OperatorTest, EmbeddingBagByteRowwiseOffsets_Float16_AccumFloat16) {
   CHECK_IF_ENABLED();
   testEmbeddingBagByteRowwiseOffsets<float16_t>(
       bindings_, mod_, F_, EE_, ElemKind::UInt8FusedFP16QTy, 0.0001,
-      /* useFP16Accumulation */ true);
+      /* useFP16Accumulation */ true, /* hasEndOffset */ false);
+}
+
+/// Test EmbeddingBagByteRowwiseOffsets in Float16. Uses Float16 accumulation.
+/// Has end offset.
+TEST_P(OperatorTest,
+       EmbeddingBagByteRowwiseOffsets_Float16_AccumFloat16_End_Offset) {
+  CHECK_IF_ENABLED();
+  testEmbeddingBagByteRowwiseOffsets<float16_t>(
+      bindings_, mod_, F_, EE_, ElemKind::UInt8FusedFP16QTy, 0.0001,
+      /* useFP16Accumulation */ true, /* hasEndOffset */ true);
 }
 
 /// Helper to test RowwiseQuantizedSparseLengthsWeightedSum using \p DTy.
@@ -7756,14 +8159,13 @@ createAndInitRWQSLWSAllSame(glow::PlaceholderBindings &bindings,
       0.2244578,  0.44881952, 0.42696562, 0.33007848, 0.4511249,  0.11568925,
       0.02629679, 0.33864713, 0.42614424};
 
-  Placeholder *indices =
-      mod.createPlaceholder(ElemKind::Int64ITy, {21}, "indices",
-                            /* isTrainable */ false);
+  Placeholder *indices = mod.createPlaceholder(IndexElemKind, {21}, "indices",
+                                               /* isTrainable */ false);
   Placeholder *lengths =
       mod.createPlaceholder(ElemKind::Int32ITy, {2}, "lengths",
                             /* isTrainable */ false);
 
-  bindings.allocate(indices)->getHandle<int64_t>() = {
+  bindings.allocate(indices)->getHandle<sdim_t>() = {
       11, 8, 19, 8, 4, 11, 4, 19, 6, 18, 2, 6, 15, 5, 14, 14, 15, 13, 4, 6, 5,
   };
   bindings.allocate(lengths)->getHandle<int32_t>() = {15, 6};
@@ -8912,7 +9314,7 @@ TEST_P(OperatorTest, Reshape) {
   }
 }
 
-/// Verify that the Reshape operator works correctly with Int64ITy..
+/// Verify that the Reshape operator works correctly with Int64ITy.
 TEST_P(OperatorTest, ReshapeInt) {
   CHECK_IF_ENABLED();
 

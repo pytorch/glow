@@ -322,6 +322,7 @@ int main(int argc, char **argv) {
       .addOperand("Weights", OperandKind::In)
       .addOperand("Indices", OperandKind::In)
       .addOperand("Offsets", OperandKind::In)
+      .addMember(MemberType::Boolean, "HasEndOffset")
       .autoIRGen()
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Data", "Weights"})
       .autoVerify(VerifyKind::SameElementType, {"Indices", "IndexElemKind"})
@@ -364,6 +365,7 @@ int main(int argc, char **argv) {
       .addOperand("Indices", OperandKind::In)
       .addOperand("Offsets", OperandKind::In)
       .addMember(MemberType::Boolean, "UseFP16Accumulation")
+      .addMember(MemberType::Boolean, "HasEndOffset")
       .autoIRGen()
       .autoVerify(VerifyKind::SameElementType, {"Indices", "IndexElemKind"})
       .autoVerify(VerifyKind::SameElementType, {"Offsets", "IndexElemKind"})
@@ -678,6 +680,18 @@ int main(int argc, char **argv) {
       .addMember(MemberType::Float, "HeightScale")
       .addMember(MemberType::Float, "WidthScale")
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
+      .autoIRGen();
+
+  //===--------------------------------------------------------------------===//
+  //                Reorder transformations
+  //===--------------------------------------------------------------------===//
+
+  BB.newInstr("Flip")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .addMember(MemberType::Unsigned, "Axis")
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
+      .autoVerify(VerifyKind::SameShape, {"Dest", "Src"})
       .autoIRGen();
 
   //===--------------------------------------------------------------------===//

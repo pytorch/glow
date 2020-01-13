@@ -2280,6 +2280,20 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     break;
   }
 
+  case Kinded::Kind::FlipInstKind: {
+    auto *FI = cast<FlipInst>(I);
+    auto *dest = FI->getDest();
+    auto *src = FI->getSrc();
+    auto *destPtr = emitValueAddress(builder, dest);
+    auto *srcPtr = emitValueAddress(builder, src);
+    auto *dims = emitValueDims(builder, src);
+    auto *axis = emitConstDimT(builder, FI->getAxis());
+    auto *dimsSize = emitConstDimT(builder, src->getType()->dims().size());
+    auto *F = getFunction("flip", src->getElementType());
+    createCall(builder, F, {srcPtr, destPtr, dims, axis, dimsSize});
+    break;
+  }
+
     // Alloc and Dealloc instructions are handled by the memory allocator.
   case Kinded::Kind::AllocActivationInstKind:
   case Kinded::Kind::DeallocActivationInstKind:
@@ -2524,6 +2538,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *weights = SI->getWeights();
     auto *indices = SI->getIndices();
     auto *offsets = SI->getOffsets();
+    auto *hasEndOffset = emitConstI1(builder, SI->getHasEndOffset());
     auto *destPtr = emitValueAddress(builder, dest);
     auto *dataPtr = emitValueAddress(builder, data);
     auto *weightsPtr = emitValueAddress(builder, weights);
@@ -2535,7 +2550,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *F = getFunction("embedding_bag", dest->getElementType());
     createCall(builder, F,
                {destPtr, dataPtr, weightsPtr, indicesPtr, offsetsPtr, segments,
-                lineSize, totalLength});
+                lineSize, totalLength, hasEndOffset});
     break;
   }
 
@@ -2624,6 +2639,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *weights = N->getWeights();
     auto *indices = N->getIndices();
     auto *offsets = N->getOffsets();
+    auto *hasEndOffset = emitConstI1(builder, N->getHasEndOffset());
     auto *destPtr = emitValueAddress(builder, dest);
     auto *dataPtr = emitValueAddress(builder, data);
     auto *weightsPtr = emitValueAddress(builder, weights);
@@ -2637,7 +2653,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
                           dest->getElementType());
     createCall(builder, F,
                {destPtr, dataPtr, weightsPtr, indicesPtr, offsetsPtr, segments,
-                numIndices, inLineSize, outLineSize});
+                numIndices, inLineSize, outLineSize, hasEndOffset});
     break;
   }
 

@@ -1141,6 +1141,16 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     return Error::success();
   }
 
+  if (typeName == "HalfToFloat") {
+    NodeValue in;
+    ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
+    auto convertedType =
+        G_.getParent()->uniqueType(ElemKind::FloatTy, in.getType()->dims());
+    auto *R = G_.createConvertTo("ConvertInput", in, convertedType);
+    RETURN_IF_ERR(addNodeAsOutput(op, R));
+    return Error::success();
+  }
+
   if (typeName == "ScatterAssign") {
     NodeValue data;
     ASSIGN_VALUE_OR_RETURN_ERR(data, getNodeValueByName(op.input(0)));

@@ -648,6 +648,7 @@ static bool acceptsAnyInputLayout(const glow::Node *node) {
   case Kinded::Kind::ReshapeNodeKind:
   case Kinded::Kind::MeanVarNormalizationNodeKind:
   case Kinded::Kind::MatMulNodeKind:
+  case Kinded::Kind::FlipNodeKind:
   case Kinded::Kind::SGDNodeKind: {
     return true;
   }

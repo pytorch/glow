@@ -725,6 +725,14 @@ Error ONNXModelWriter::writeTranspose(const TransposeNode *node,
   return writeAllWithNode("Transpose", node, graph, proto);
 }
 
+Error ONNXModelWriter::writeFlip(const FlipNode *node, GraphType &graph) {
+  auto *proto = graph.add_node();
+  // Add dictionary entries.
+  addValueAttribute(proto, "axis", node->getAxis());
+
+  return writeAllWithNode("Flip", node, graph, proto);
+}
+
 Error ONNXModelWriter::writeConvolution(const ConvolutionNode *node,
                                         GraphType &graph) {
   // Loading convolution creates a sandwich with Transpose nodes for Input,

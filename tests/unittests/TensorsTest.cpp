@@ -1238,3 +1238,40 @@ TEST(CustomAlignedTensor, getDimForPtr) {
   EXPECT_EQ(H.getDimForPtr(1, 3), 1);
   EXPECT_EQ(H.getDimForPtr(2, 3), 0);
 }
+
+// Check that we iterate over tensors correctly: unit test for a bug wherein we
+// used size() instead of actualSize() when treating the data as a raw pointer.
+TEST(Tensor, sameAlignment) {
+  Type Ty1(ElemKind::Float16Ty, {2, 1}, {4, 1});
+  Type Ty2(ElemKind::Float16Ty, {2, 1}, {4, 1});
+  Tensor T1(Ty1);
+  Tensor T2(Ty2);
+  auto T1H = T1.getHandle<float16_t>();
+  auto T2H = T2.getHandle<float16_t>();
+  T1H.clear(0);
+  T2H.clear(1);
+  T1H.at({0, 0}) = T2H.at({0, 0}) = 1;
+  T1H.at({1, 0}) = T2H.at({1, 0}) = 2;
+
+  EXPECT_TRUE(T1.isEqual(T2));
+  T2H.at({1, 0}) = 1;
+  EXPECT_FALSE(T1.isEqual(T2));
+}
+
+// Check that our tensor iteration is aware of padding: unit-test that checks we
+// iterate correctly when accessing elements in tensors that have different
+// alignment requirements.
+TEST(Tensor, differentAlignment) {
+  Type Ty1(ElemKind::Float16Ty, {2, 1}, {4, 1});
+  Type Ty2(ElemKind::Float16Ty, {2, 1}, {2, 1});
+  Tensor T1(Ty1);
+  Tensor T2(Ty2);
+  auto T1H = T1.getHandle<float16_t>();
+  auto T2H = T2.getHandle<float16_t>();
+  T1H.at({0, 0}) = T2H.at({0, 0}) = 1;
+  T1H.at({1, 0}) = T2H.at({1, 0}) = 2;
+
+  EXPECT_TRUE(T1.isEqual(T2));
+  T2H.at({1, 0}) = 1;
+  EXPECT_FALSE(T1.isEqual(T2));
+}

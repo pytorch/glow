@@ -30,6 +30,7 @@ std::set<std::string> glow::backendTestBlacklist = {
     "RecSys_Partitioned_RWQuantizedFP16AccumFP16_SLWS/0",
     "RecSys_Partitioned_RWQuantizedFP16_SLWS_FP16/0",
     "RecSys_Partitioned_RWQuantizedFP16AccumFP16_SLWS_FP16/0",
+    "RecSys_Partitioned_RWQuantizedFP16AccumFP16_SLWS_FP16_SNN_Partitioning/0",
     "RecSys_SLS_Only/0",
     "RecSys_FP32_Gather_Weights/0",
     "RecSys_Partitioned_RWQuantized_SLWS_FC_FP16/0",

@@ -65,6 +65,21 @@ struct SLSParam {
   ElemKind dtype;
 };
 
+std::string getSLSDescription(SLSParam param) {
+  std::string SLSStr = (param.slsKind == NONQUANTIZED_UNWEIGHTED)
+                           ? std::string("SLS")
+                           : (param.slsKind == NONQUANTIZED_WEIGHTED)
+                                 ? std::string("SLWS")
+                                 : (param.slsKind == QUANTIZED_UNWEIGHTED)
+                                       ? std::string("RWQLSS")
+                                       : std::string("RWQLSWS");
+
+  return strFormat(
+      "%s_%zu_%zu_%zu_%zu", SLSStr.c_str(), (size_t)param.numIndicesPerBatch,
+      (size_t)param.numIndicesPerBatchPad, (size_t)param.numTableEntries,
+      (size_t)param.numElementsPerRow);
+}
+
 class SLSBench : public Benchmark {
   std::unique_ptr<runtime::HostManager> hostManager_;
   std::vector<std::unique_ptr<ExecutionContext>> contexts_;
@@ -223,17 +238,18 @@ public:
     Node *R = nullptr;
     if (param.slsKind == QUANTIZED_UNWEIGHTED) {
       R = fn->createFusedRowwiseQuantizedSparseLengthsSum(
-          "RQSLS", data, indices, lengths, param.fusedDtype,
+          getSLSDescription(param), data, indices, lengths, param.fusedDtype,
           param.useFP16Accumulation);
     } else if (param.slsKind == QUANTIZED_WEIGHTED) {
       R = fn->createFusedRowwiseQuantizedSparseLengthsWeightedSum(
-          "RQSLWS", data, weights, indices, lengths, param.fusedDtype,
-          param.useFP16Accumulation);
+          getSLSDescription(param), data, weights, indices, lengths,
+          param.fusedDtype, param.useFP16Accumulation);
     } else if (param.slsKind == NONQUANTIZED_WEIGHTED) {
-      R = fn->createSparseLengthsWeightedSum("SLS", dataConstant, weights,
-                                             indices, lengths);
+      R = fn->createSparseLengthsWeightedSum(
+          getSLSDescription(param), dataConstant, weights, indices, lengths);
     } else { // NonquantizedUnweighted
-      R = fn->createSparseLengthsSum("SLS", dataConstant, indices, lengths);
+      R = fn->createSparseLengthsSum(getSLSDescription(param), dataConstant,
+                                     indices, lengths);
     }
     SaveNode *S = nullptr;
     if (param.addClip) {
@@ -387,8 +403,8 @@ SLSParam parseArgs(int argc, char *argv[]) {
   } else {
     llvm_unreachable("Invalid addClipStr");
   }
-  printf("fusedDtype%s\n", argv[ROWWISE_QUANT]);
   if (argc > ROWWISE_QUANT) {
+    printf("fusedDtype%s\n", argv[ROWWISE_QUANT]);
     if (std::string(argv[ROWWISE_QUANT]) == "Int8") {
       param.fusedDtype = ElemKind::UInt8FusedFP16QTy;
     } else if (std::string(argv[ROWWISE_QUANT]) == "Int4") {
@@ -399,8 +415,8 @@ SLSParam parseArgs(int argc, char *argv[]) {
   } else {
     param.fusedDtype = ElemKind::UInt8FusedFP16QTy;
   }
-  printf("useFP16Accumulation %s\n", argv[ACCUM_TYPE]);
   if (argc > ACCUM_TYPE) {
+    printf("useFP16Accumulation %s\n", argv[ACCUM_TYPE]);
     if (std::string(argv[ACCUM_TYPE]) == "True") {
       param.useFP16Accumulation = true;
     } else if (std::string(argv[ACCUM_TYPE]) == "False") {
@@ -411,8 +427,8 @@ SLSParam parseArgs(int argc, char *argv[]) {
   } else {
     param.useFP16Accumulation = false;
   }
-  printf("devId %s\n", argv[DEVICE_ID]);
   if (argc > DEVICE_ID) {
+    printf("devId %s\n", argv[DEVICE_ID]);
     param.devId = std::string(argv[DEVICE_ID]);
   } else {
     param.devId = std::string("");

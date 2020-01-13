@@ -512,6 +512,7 @@ int main(int argc, char **argv) {
       .addInput("Weights")
       .addInput("Indices")
       .addInput("Offsets")
+      .addMember(MemberType::Boolean, "HasEndOffset")
       .addResultFromCtorArg()
       .setDocstring(
           "Gathers slices of the outer-most dimension of Data "
@@ -531,6 +532,7 @@ int main(int argc, char **argv) {
       .addInput("Offsets")
       .addMember(MemberType::Boolean, "UseFP16Accumulation",
                  /* addSetter */ true)
+      .addMember(MemberType::Boolean, "HasEndOffset")
       .addResultFromCtorArg()
       .setDocstring("Same as FusedRowwiseQuantizedSparseLengthsWeightedSum but "
                     "using offsets instead of lengths.");
@@ -831,6 +833,19 @@ int main(int argc, char **argv) {
           "Output tensor with resized spatial dimensions using nearest "
           "neighbor interpolation. The Output tensor is of shape [N, "
           "floor(H*HeightScale), floor(W*WidthScale), C]");
+
+  //===--------------------------------------------------------------------===//
+  //                Reorder transformations
+  //===--------------------------------------------------------------------===//
+
+  BB.newNode("Flip")
+      .addInput("Input")
+      .addMember(MemberType::Unsigned, "Axis")
+      .addResultFromCtorArg()
+      .setDocstring(
+          "Reverse the order of elements in a tensor along the given axis. The "
+          "shape of the tensor is preserved, but the elements are reordered. "
+          "The node is inspired from Python numpy.");
 
   //===--------------------------------------------------------------------===//
   //                Nodes used for network training

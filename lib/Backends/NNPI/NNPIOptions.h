@@ -100,6 +100,7 @@ template <> unsigned NNPIOptions::getStringAsType<unsigned>(std::string sVal);
     this->loadedOptions_[VAR_NAME.getEnv()] =                                  \
         llvm::formatv("{0}", VAR_NAME).str();                                  \
   }
+
 class NNPIBackendOptions : public NNPIOptions {
 public:
   /// Compile for HW (ignored if InferOnDevice is defined).
@@ -124,7 +125,6 @@ public:
                       "1"
 #endif
   );
-
   NNPIBackendOptions() {
     INIT_NNPI_OPTIONS(useIceT, llvm::StringMap<std::string>());
     INIT_NNPI_OPTIONS(inferOnDevice, llvm::StringMap<std::string>());
@@ -160,17 +160,17 @@ public:
                       "1"
 #endif
   );
-  /// Setting this variable will control the logging level (0 for debug, 1
-  /// assert, 2 info, 3 warning, 4 error, 5 critical ).
+  /// Sets the compilation logging level (0-7). 0=Verbose 1=Debug, 2=Assert,
+  /// 3=Info, 4=Warning, 5=Error, 6=Critical, 7=User.
   DECLARE_NNPI_OPTION(
       compilationLogLevel, int, "CompilationLogLevel",
-      "Sets the compilation logging level (0-6). 0=Debug, 1=Assert, 2=Info, "
-      "3=Warning, 4=Error, 5=Critical, 6=User.",
+      "Sets the compilation logging level (0-7). 0=Verbose 1=Debug, 2=Assert, "
+      "3=Info, 4=Warning, 5=Error, 6=Critical, 7=User.",
       "NNPI_LOG_LEVEL",
 #ifdef NDEBUG
-      "4"
+      "5"
 #else
-      "0"
+      "1"
 #endif
   );
   /// Setting this variable will save the compilation output to the filename
@@ -179,7 +179,8 @@ public:
                       "Sets a file name to save the compilation output to the "
                       "filename specified.",
                       "ICE_T_FILE", "");
-  /// Force compilation with maximum amount of ice cores, -1 for unlimited.
+  /// Setting this variable will force compilation to use no more than
+  /// the set amount of ice cores (1-12), -1 for unlimited.
   DECLARE_NNPI_OPTION(
       iceCores, int, "IceCores",
       "Force compilation with maximum amount of ice cores, -1 for unlimited.",
@@ -294,6 +295,9 @@ public:
       "\n  2+ = enable command list wait instead of locking host resources. "
       "\n  3+ = enable copy command config (partial copies). ",
       "NNPI_COMMAND_LISTS", "3");
+  /// Dump IO to files.
+  DECLARE_NNPI_OPTION(dumpIOtoFiles, bool, "DumpIOtoFiles",
+                      "Dump Inputs/Outputs to files.", "NNPI_DUMP_IO", "0");
 
   NNPIDeviceOptions(const llvm::StringMap<std::string> &parameters) {
     INIT_NNPI_OPTIONS(useIceT, parameters);
@@ -305,13 +309,7 @@ public:
     INIT_NNPI_OPTIONS(enabledDeviceTracing, parameters);
     INIT_NNPI_OPTIONS(deviceMemory, parameters);
     INIT_NNPI_OPTIONS(enabledCommandLists, parameters);
-#if 1 // Todo: remove default memory size initialization once real device memory
-      // is implemented.
-    // Set default memory size if option not defined.
-    if (deviceMemory <= 0) {
-      deviceMemory.setVal(15000000);
-    }
-#endif
+    INIT_NNPI_OPTIONS(dumpIOtoFiles, parameters);
   }
   virtual llvm::StringRef getOptionsName() const override {
     return "Device Options";

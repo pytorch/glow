@@ -21,6 +21,11 @@
 #include <memory>
 #include <unordered_map>
 
+#define TRACING_BACKEND_EXECUTE "backend execute"
+#define TRACING_PRE_PROCESS "pre process"
+#define TRACING_INFERENCE "host inference"
+#define TRACING_POST_PROCESS "post process"
+
 namespace glow {
 
 class NNPIDeviceTracing {

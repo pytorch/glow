@@ -83,7 +83,7 @@ FunctionPassPipeline glow::createDefaultGraphOptimizationPassPipeline() {
       // Optimize arithmetic nodes based on algebraic identities.
       {FunctionPassID::OptimizeArithmeticNodes},
 
-      // Optimize Splat nodes..
+      // Optimize Splat nodes.
       {FunctionPassID::OptimizeSplat},
 
       // Merge Transpose into MatMul/FC.

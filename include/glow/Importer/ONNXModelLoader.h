@@ -252,6 +252,10 @@ class ONNXModelLoader
   Error loadAdaptiveAvgPool(const ONNX_NAMESPACE::NodeProto &op,
                             const ArgumentDictionaryTy &dict);
 
+  /// Load Flip Glow operator.
+  Error loadFlip(const ONNX_NAMESPACE::NodeProto &op,
+                 const ArgumentDictionaryTy &dict);
+
 protected:
   /// Load the network operators from the GraphProto.
   /// \returns Error if network cannot be loaded.

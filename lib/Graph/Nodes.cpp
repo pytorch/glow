@@ -905,6 +905,16 @@ bool TransposeNode::verify() const {
   return isValid;
 }
 
+bool FlipNode::verify() const {
+  auto dest = getResult();
+  auto src = getInput();
+  dim_t axis = getAxis();
+  bool isValid = checkSameType(src, dest, this);
+  isValid &= expectCompareTrue("Invalid axis", axis, (dim_t)src.dims().size(),
+                               this, CompareOperatorLess<dim_t>());
+  return isValid;
+}
+
 bool ChannelShuffleNode::verify() const {
   bool isValid = expectCompareTrue("Channel shuffle into a different size.",
                                    getResult().getType()->size(),
@@ -1291,7 +1301,7 @@ static bool verifyFusedRowwiseQuantizedSparseLengthsSum(
   // For EmbeddingBagByteRowwiseOffsets lengths are really offsets and should be
   // Int64ITy.
   if (isEmbeddingBagByteRowwiseOffsets) {
-    isValid &= checkType(lengths, ElemKind::Int64ITy, parent);
+    isValid &= checkType(lengths, IndexElemKind, parent);
   } else {
     isValid &= checkType(lengths, ElemKind::Int32ITy, parent);
   }
