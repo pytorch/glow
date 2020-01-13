@@ -509,23 +509,23 @@ Node *createSimpleGraphFromString(Function *F, Node *input,
 
     // Image channel order inversion.
     if ((funcName == "RGB2BGR") || (funcName == "BGR2RGB")) {
-      int innerDim = (int)node->getType(0)->dims()[0];
-      CHECK(innerDim == 3) << strFormat(
-          "Graph string processor: for '%s' the tensor inner-most dimension "
+      int numDim = (int)node->getType(0)->dims().size();
+      int lastDim = (int)node->getType(0)->dims().back();
+      CHECK(lastDim == 3) << strFormat(
+          "Graph string processor: for '%s' the tensor last dimension "
           "must be 3 (encountered value is %d)!",
-          funcName.c_str(), innerDim);
-      // TODO: Implement and create Flip node.
-      LOG(FATAL) << "Not supported yet ...";
+          funcName.c_str(), lastDim);
+      node = F->createFlip(funcName, node, numDim - 1);
       continue;
     }
 
     // Image RGB to YUV conversion.
     if (funcName == "RGB2YUV") {
-      int innerDim = (int)node->getType(0)->dims()[0];
-      CHECK(innerDim == 3) << strFormat(
-          "Graph string processor: for '%s' the tensor inner-most dimension "
+      int lastDim = (int)node->getType(0)->dims().back();
+      CHECK(lastDim == 3) << strFormat(
+          "Graph string processor: for '%s' the tensor last dimension "
           "must be 3 (encountered value is %d)!",
-          funcName.c_str(), innerDim);
+          funcName.c_str(), lastDim);
       // TODO: Implement conversion node.
       LOG(FATAL) << "Not supported yet ...";
       continue;
@@ -533,13 +533,20 @@ Node *createSimpleGraphFromString(Function *F, Node *input,
 
     // Image YUV to RGB conversion.
     if (funcName == "YUV2RGB") {
-      int innerDim = (int)node->getType(0)->dims()[0];
-      CHECK(innerDim == 3) << strFormat(
-          "Graph string processor: for '%s' the tensor inner-most dimension "
+      int lastDim = (int)node->getType(0)->dims().back();
+      CHECK(lastDim == 3) << strFormat(
+          "Graph string processor: for '%s' the tensor last dimension "
           "must be 3 (encountered value is %d)!",
-          funcName.c_str(), innerDim);
+          funcName.c_str(), lastDim);
       // TODO: Implement conversion node.
       LOG(FATAL) << "Not supported yet ...";
+      continue;
+    }
+
+    // TopK operator.
+    if (funcName == "TOPK") {
+      int k = func.getArgInt(0);
+      node = F->createTopK(funcName, node, k);
       continue;
     }
 
@@ -548,8 +555,6 @@ Node *createSimpleGraphFromString(Function *F, Node *input,
         "Graph string processor: operator '%s' is not supported!",
         funcName.c_str());
   }
-  CHECK(node->getNumResults() == 1)
-      << "Graph string processor: last node must have only one output!";
   return node;
 }
 
@@ -631,7 +636,8 @@ std::unique_ptr<ProtobufLoader> Loader::loadModel() {
         EXIT_ON_ERR(protoLoader->getInputByName(inputNames[idx]));
 
     // Replace old input placeholder with the input graph.
-    oldInputPlaceholder->getOutput().replaceAllUsesOfWith(inputGraphs[idx]);
+    oldInputPlaceholder->getOutput().replaceAllUsesOfWith(
+        inputGraphs[idx]->getNthResult(0));
 
     // Delete old input placeholder.
     auto &vars = F->getParent()->getPlaceholders();
@@ -668,12 +674,14 @@ std::unique_ptr<ProtobufLoader> Loader::loadModel() {
     // Create model output subgraph.
     node = createSimpleGraphFromString(F, node, outputOpts[idx]);
 
-    // Create new SaveNode and new output placeholder.
-    auto *newSN = F->createSave(outputNames[idx], node);
-
-    // Force new placeholder name to old placeholder name.
-    newSN->setName("save_" + outputNames[idx]);
-    newSN->getPlaceholder()->setName(outputNames[idx]);
+    // Save all the subgraph outputs as placeholders. For example, for the TopK
+    // operator we will save both the values and the indices.
+    for (size_t valIdx = 0, valNum = node->getNumResults(); valIdx < valNum;
+         valIdx++) {
+      F->createSave(node->getName().str() + "_" +
+                        node->getOutputName(valIdx).str(),
+                    node->getNthResult(valIdx));
+    }
   }
 
   return protoLoader;
