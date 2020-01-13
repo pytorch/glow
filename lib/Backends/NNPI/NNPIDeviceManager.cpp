@@ -140,7 +140,7 @@ Error NNPIDeviceManager::init() {
               << static_cast<int>(deviceInfo.driverVersion.major) << "."
               << static_cast<int>(deviceInfo.driverVersion.minor) << "."
               << static_cast<int>(deviceInfo.driverVersion.dot);
-    LOG(INFO) << "NNPI Fireware Version "
+    LOG(INFO) << "NNPI Firmware Version "
               << static_cast<int>(deviceInfo.fwVersion.major) << "."
               << static_cast<int>(deviceInfo.fwVersion.minor) << "."
               << static_cast<int>(deviceInfo.fwVersion.dot);
