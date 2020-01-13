@@ -26,15 +26,33 @@ class Node;
 class Placeholder;
 class SaveNode;
 
+/// This struct is used to keep information returned from
+/// hooking a function.
 struct HookedFunction {
+  /// Saves the function hookNode() creates and inserts hooks in.
   Function *function;
-  std::list<SaveNode *> saves;
+  /// List of Save nodes hookNode() inserts at the outputs of the layer.
+  std::list<SaveNode *> outputSaves;
+  /// List of the Placeholders associated with Save nodes in outputSaves.
   std::list<Placeholder *> outputs;
+  /// List of Save nodes hookNode() inserts at the input of the layer.
+  std::list<SaveNode *> inputSaves;
+  /// List of the Placeholders associated with Save nodes in inputSaves.
+  std::list<Placeholder *> inputs;
 };
 
-HookedFunction hookOutput(Function *F, Node *node);
+/// Given a function \p F and a node \p node it creates a function
+/// in the same module and populates it with a recursive clone of
+/// the node \p node then inserts Save nodes at the output of to capture it.
+/// If \p hookInputs is set it also inserts Save nodes to capture the inputs.
+/// \returns the list of inserted nodes and associated placeholder in
+/// \p HookedFunction object.
+HookedFunction hookNode(Function *F, Node *node, bool hookInputs = false);
 
-HookedFunction hookOutput(Function *F, llvm::StringRef nodeName);
+/// Given a function \p F and a layer name \p nodeName it finds the
+/// corresponding nodes in the function \p F then calls above override.
+HookedFunction hookNode(Function *F, llvm::StringRef nodeName,
+                        bool hookInputs = false);
 
 } // namespace glow
 

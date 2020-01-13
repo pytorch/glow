@@ -64,7 +64,7 @@ public:
     Caffe2ModelLoader loader(
         "resnet50/predict_net.pb", "resnet50/init_net.pb", {inputName},
         {mod->uniqueType(ElemKind::FloatTy, {1, 3, 224, 224})}, *FI);
-    auto hook = hookOutput(FI, name);
+    auto hook = hookNode(FI, name);
     inferBindings.allocate(modI->getPlaceholders());
     for (auto PH : bindings.pairs()) {
       auto iPH = inferBindings.getPlaceholderByName(PH.first->getName());

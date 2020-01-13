@@ -24,25 +24,39 @@
 
 using namespace glow;
 
-HookedFunction glow::hookOutput(Function *F, Node *node) {
+HookedFunction glow::hookNode(Function *F, Node *node, bool hookInputs) {
   NodeMap currToNew;
   auto *newF = F->getParent()->createFunction("hook");
   Node *hooked = recursiveClone(newF, node, currToNew);
 
-  std::list<SaveNode *> saves;
-  std::list<Placeholder *> placeholders;
+  std::list<SaveNode *> output_saves;
+  std::list<Placeholder *> output_placeholders;
+
+  std::list<SaveNode *> input_saves;
+  std::list<Placeholder *> input_placeholders;
 
   for (unsigned i = 0; i < hooked->getNumResults(); ++i) {
-    auto *save = newF->createSave(llvm::formatv("hook_save_{0}", i).str(),
-                                  hooked->getNthResult(i));
-    saves.emplace_back(save);
-    placeholders.emplace_back(save->getPlaceholder());
+    auto *save =
+        newF->createSave(hooked->getOutputName(i), hooked->getNthResult(i));
+    output_saves.emplace_back(save);
+    output_placeholders.emplace_back(save->getPlaceholder());
   }
 
-  return HookedFunction{newF, std::move(saves), std::move(placeholders)};
+  if (hookInputs) {
+    for (unsigned i = 0; i < hooked->getNumInputs(); ++i) {
+      auto *save =
+          newF->createSave(hooked->getInputName(i), hooked->getNthInput(i));
+      input_saves.emplace_back(save);
+      input_placeholders.emplace_back(save->getPlaceholder());
+    }
+  }
+  return HookedFunction{newF, std::move(output_saves),
+                        std::move(output_placeholders), std::move(input_saves),
+                        std::move(input_placeholders)};
 }
 
-HookedFunction glow::hookOutput(Function *F, llvm::StringRef nodeName) {
+HookedFunction glow::hookNode(Function *F, llvm::StringRef nodeName,
+                              bool hookInputs) {
   auto *node = F->getNodeByName(nodeName);
-  return hookOutput(F, node);
+  return hookNode(F, node, hookInputs);
 }

@@ -1544,11 +1544,11 @@ TEST(Graph, hookTest) {
   EXPECT_EQ(mod.getPlaceholders().size(), 2);
 
   // Hook the first relu and verify that the hooked graph looks right.
-  auto hooked = glow::hookOutput(F, relu1);
+  auto hooked = glow::hookNode(F, relu1);
   auto const &nodes = hooked.function->getNodes();
   ASSERT_EQ(mod.getPlaceholders().size(), 3);
   ASSERT_EQ(nodes.size(), 2);
-  auto const *hookSave = *hooked.saves.begin();
+  auto const *hookSave = *hooked.outputSaves.begin();
   ASSERT_TRUE(hookSave);
   auto *inp = llvm::dyn_cast<ReluNode>(hookSave->getInput());
   ASSERT_TRUE(inp);
