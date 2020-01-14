@@ -49,7 +49,7 @@ llvm::cl::list<std::string> outputsOpt("outputs", llvm::cl::desc("Ouptuts"),
 
 llvm::cl::opt<std::string> ExecutionBackend(
     "backend", llvm::cl::desc("Backend to use, e.g., Interpreter, CPU, NNPI:"),
-    llvm::cl::init("Interpreter"), llvm::cl::cat(reproTestCat));
+    llvm::cl::init("NNPI"), llvm::cl::cat(reproTestCat));
 
 llvm::cl::opt<unsigned> concurrentRequestsOpt(
     "concurrent_count", llvm::cl::desc("Number of concurrent requests."),
@@ -72,22 +72,24 @@ llvm::cl::opt<float> thresholdOpt(
 llvm::cl::opt<bool>
     globalFp16Opt("glow_global_fp16",
                   llvm::cl::desc("Enable fp16 lowering for all ops on the net"),
-                  llvm::cl::Optional, llvm::cl::cat(reproTestCat));
+                  llvm::cl::Optional, llvm::cl::init(true),
+                  llvm::cl::cat(reproTestCat));
 llvm::cl::opt<bool> dumpOutputsOpt("dump_outputs",
                                    llvm::cl::desc("Dump output tensors"),
-                                   llvm::cl::Optional,
+                                   llvm::cl::Optional, llvm::cl::init(true),
                                    llvm::cl::cat(reproTestCat));
 
 llvm::cl::opt<bool> fuseScaleOffsetFp16Opt(
     "glow_global_fused_scale_offset_fp16",
     llvm::cl::desc(
         "Enable fp16 lowering for all op inputs using fused scale/offset"),
-    llvm::cl::Optional, llvm::cl::cat(reproTestCat));
+    llvm::cl::Optional, llvm::cl::init(true), llvm::cl::cat(reproTestCat));
 
 llvm::cl::opt<bool>
     ClipFp16Opt("glow_clip_fp16",
                 llvm::cl::desc("Force glow to clip fp16 values to min/max"),
-                llvm::cl::Optional, llvm::cl::cat(reproTestCat));
+                llvm::cl::Optional, llvm::cl::init(true),
+                llvm::cl::cat(reproTestCat));
 
 llvm::cl::opt<bool>
     forceFP16AccumSLSOpt("glow_global_force_sls_fp16_accum",
@@ -97,6 +99,8 @@ llvm::cl::opt<bool>
 llvm::cl::opt<bool> enablePartialTensor("glow_enable_partial_tensor",
                                         llvm::cl::desc("Enable partial tensor"),
                                         llvm::cl::Optional,
+                                        llvm::cl::init(true),
+
                                         llvm::cl::cat(reproTestCat));
 
 void parseCommandLine(int argc, char **argv) {
