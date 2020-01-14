@@ -181,3 +181,8 @@ struct EmulatorOnlyTests {
     }
   }
 } emuTests;
+
+/// Default to parallel cloning 12 times for NNPI.
+struct CloneCount {
+  CloneCount() { setParCloneCount(12); }
+} cloneCount;

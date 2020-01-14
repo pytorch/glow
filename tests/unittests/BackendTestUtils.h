@@ -33,6 +33,9 @@ namespace glow {
 
 extern unsigned parCloneCountOpt;
 
+/// Allow backends to manually set the default parallel clone count.
+inline void setParCloneCount(unsigned c) { parCloneCountOpt = c; }
+
 // INSTANTIATE_TEST_CASE_P is deprecated in gtest v1.10.0. For now use it still
 // internally.
 #if FACEBOOK_INTERNAL

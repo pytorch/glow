@@ -249,7 +249,7 @@ static void convertBindingsToCorrectType(PlaceholderBindings &bindings,
 static Tensor convertToFloatIfNecessary(Tensor &T) {
   const ElemKind srcK = T.getType().getElementType();
   if (srcK == ElemKind::FloatTy) {
-    return std::move(T);
+    return T.clone();
   }
   if (isQuantizedElemKind(srcK)) {
     return quantization::dequantizeTensor(T, ElemKind::FloatTy);
