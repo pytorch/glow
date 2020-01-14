@@ -16,6 +16,7 @@ target_link_libraries(BackendTestUtils
                         ExecutionEngine
                         Graph
                         GraphOptimizer
+                        HostManager
                         Quantization
                         QuantizationBase
                         LLVMSupport
