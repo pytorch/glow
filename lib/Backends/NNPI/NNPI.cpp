@@ -352,6 +352,7 @@ bool NNPIBackend::shouldLower(const Node *N) const {
     const FusedRowwiseQuantizedSparseLengthsSumNode *SLSN =
         llvm::cast<FusedRowwiseQuantizedSparseLengthsSumNode>(N);
     if ((backendOptions_.useIceT || backendOptions_.inferOnDevice) &&
+        (SLSN->getData().getElementType() != ElemKind::UInt4FusedFP16QTy) &&
         (SLSN->getResult().getElementType() == ElemKind::Float16Ty)) {
       return false; // Don't lower == keep without weights
     } else {
