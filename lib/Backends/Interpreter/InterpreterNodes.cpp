@@ -2613,7 +2613,7 @@ void BoundInterpreterFunction::fwdMatMulInstFloatImpl(const MatMulInst *I) {
       // Perform DOT on the row an column.
       float sum = 0;
       for (dim_t i = 0; i < lhsDim[1]; i++) {
-        sum += float(lhs.at({x, i}) * rhs.at({i, y}));
+        sum += float(lhs.at({x, i})) * float(rhs.at({i, y}));
       }
       dest.at({x, y}) = ElemTy(sum);
     }
