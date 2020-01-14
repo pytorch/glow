@@ -1,3 +1,13 @@
+
+# This definition is due to older buggy C++11 cstdint implementations which do
+# not import the printf format macros (used at least by DimType.h) without it
+# in place. Since the definition doesn't harm the correct implementations,
+# we'll define it explicitly here without a preprocessor test.
+#
+# See: https://github.com/pytorch/glow/issues/3929 and
+#      https://sourceware.org/bugzilla/show_bug.cgi?id=15366
+add_definitions("-D__STDC_FORMAT_MACROS")
+
 add_custom_target(AutoGen)
 
 add_subdirectory(Backend)
