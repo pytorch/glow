@@ -736,7 +736,7 @@ Error OpenCLFunction::execute(ExecutionContext *context) {
   for (const auto &I : F_->getInstrs()) {
     // Skip memory allocation instructions as they are NOPs.
     if (isa<AllocActivationInst>(I) || isa<DeallocActivationInst>(I) ||
-        isa<TensorViewInst>(I)) {
+        isa<TensorViewInst>(I) || isa<TouchInst>(I)) {
       continue;
     }
     // The kernels are named after the name of the instruction, plus the "W"

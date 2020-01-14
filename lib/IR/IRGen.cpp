@@ -269,7 +269,9 @@ void IRGenVisitor::post(Node *parent, Node *N) {
 
     auto *dest = builder_.createAllocActivationInst(CC->getName(),
                                                     CC->getResult().getType());
-    builder_.createSplatInst(CC->getName(), dest, 0);
+    // Mark the buffer as initialized, this is safe since the InsertTensors
+    // below will fully overwrite the buffer.
+    builder_.createTouchInst(CC->getName(), dest);
     auto inputs = CC->getInputs();
 
     // We start inserting to the shape at (0,0, ... ).
