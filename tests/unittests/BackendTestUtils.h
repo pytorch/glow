@@ -154,6 +154,11 @@ extern bool useSymmetricRowwiseQuantFC;
           ::testing::UnitTest::GetInstance()->current_test_info()->name()))    \
     GTEST_SKIP();
 
+class NumericsTest : public BackendTest {
+protected:
+  PlaceholderBindings bindings_;
+};
+
 class GraphOptz : public ::testing::Test {
 public:
   GraphOptz(llvm::StringRef backendName = "Interpreter")

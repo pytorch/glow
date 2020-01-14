@@ -385,6 +385,7 @@ foreach(backend ${GLOW_BACKENDS})
   add_backend_test(TEST MLTest BACKEND "${backend}" UNOPT)
   add_backend_test(TEST OperatorGradTest BACKEND "${backend}" UNOPT)
   add_backend_test(TEST OperatorTest BACKEND "${backend}" UNOPT)
+  add_backend_test(TEST NumericsTest BACKEND "${backend}" UNOPT)
   add_backend_test(TEST TensorLayoutTest BACKEND "${backend}" UNOPT)
   add_backend_test(TEST
                    RecommendationSystemTest
