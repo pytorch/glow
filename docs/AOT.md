@@ -613,13 +613,14 @@ In order modify a protocol buffer one needs:
 - the proto definition:
   - for ONNX format the proto definition **onnx.proto** can be found [here](https://github.com/onnx/onnx/blob/master/onnx/onnx.proto)
   - for TensorFlow format the proto definition **saved_model.proto** can be found [here](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/protobuf/saved_model.proto)
-After you install the **protoc** application and you download the proto definitions you can
-perform the actions defined below.
 
-When you need to manually edit an ONNX model you will use the commands above to:
+When you need to manually edit an ONNX model you will use the commands defined below to:
 - decode the model proto to text format
 - edit the model in text format
 - encode the model back to proto format
+
+After you install the **protoc** application and you download the proto definitions you can
+perform the actions defined below:
 
 - Decode an ONNX model from proto `model.onnx` to text file `model.onnxtxt`:
   ```
