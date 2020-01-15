@@ -385,6 +385,7 @@ __attribute__((aligned(64)))
 uint8_t aligned_buffer[BUFFER_SIZE];
 ```
 
+
 ## Static bundle API
 
 This is the default bundle API obtained by generating the bundle with the option
@@ -459,6 +460,7 @@ you need to write the following in the user application:
 uint8_t *inputAddr  = GLOW_GET_ADDR(mutableWeight, LENET_MNIST_data);
 uint8_t *outputAddr = GLOW_GET_ADDR(mutableWeight, LENET_MNIST_softmax__1);
 ```
+
 
 ## Dynamic bundle API
 
@@ -552,3 +554,101 @@ structure and are only available at run-time.
 regions previously allocated.
 7. After the main entry function has returned, you can find the results in the corresponding model
 output tensors from the `mutableWeight` buffer.
+
+
+## Extra utilities
+
+### Visualize models
+
+A very popular tool for visualizing the original model before compiling with Glow is **Netron** which
+has:
+- an online browser version [here](https://lutzroeder.github.io/netron/) which you can use to drag & drop a
+model into the browser window
+- an offline standalone version [here](https://github.com/lutzroeder/netron) which you can download
+
+### Convert models
+
+The Glow compiler currently has support only for Caffe2 and ONNX model formats. Since a lot of popular
+models are available in other formats, for example TensorFlow, it is useful to have tools to convert
+models between different formats.
+
+The most used tools for format conversion are MMDNN and tf2onnx:
+- [MMDNN](https://github.com/Microsoft/MMdnn)
+- [tf2onnx](https://github.com/onnx/tensorflow-onnx)
+
+We will exemplify how to convert a TensorFlow model to ONNX using the MMDNN tool. We will convert a
+MobileNet v1 image classification model which operates on 128 x 128 RGB images and 1001 classes. Steps:
+1. Install MMDNN from [here](https://github.com/Microsoft/MMdnn).
+2. Download the MobileNet V1 model archive from [here](http://download.tensorflow.org/models/mobilenet_v1_2018_08_02/mobilenet_v1_0.25_128.tgz)
+and unzip it.
+3. Run the following command to convert the TensorFlow frozen file `mobilenet_v1_0.25_128_frozen.pb`
+to the ONNX model file `mobilenet_v1_0.25_128_frozen_2018.onnx`.
+
+```
+mmconvert                                              \
+  --srcFramework tensorflow                            \
+  --inputWeight mobilenet_v1_0.25_128_frozen.pb        \
+  --inNodeName input                                   \
+  --inputShape 128,128,3                               \
+  --dstNodeName MobilenetV1/Predictions/Softmax        \
+  --dstFramework onnx                                  \
+  --outputModel mobilenet_v1_0.25_128_frozen_2018.onnx  
+```
+
+After converting the model to ONNX you can build a bundle using the Glow **model-compiler** tool with the command:
+
+```
+$model-compiler -backend=CPU -model=mobilenet_v1_0.25_128_frozen_2018.onnx -emit-bundle=bundle
+```
+
+### Edit protocol buffers
+
+There are times when it is useful to manually edit [protocol buffers](https://developers.google.com/protocol-buffers)
+which are used for model formats like ONNX and TensorFlow. One such example is when
+one needs to modify an ONNX model in order to circumvent a limitation of the Glow
+compiler (for example when an attribute is not relevant but causes importer issues, etc).
+
+In order modify a protocol buffer one needs:
+- the proto compiler application **protoc** which can be found [here](https://github.com/protocolbuffers/protobuf/releases)
+- the proto definition:
+  - for ONNX format the proto definition **onnx.proto** can be found [here](https://github.com/onnx/onnx/blob/master/onnx/onnx.proto)
+  - for TensorFlow format the proto definition **saved_model.proto** can be found [here](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/protobuf/saved_model.proto)
+After you install the **protoc** application and you download the proto definitions you can
+perform the actions defined below.
+
+When you need to manually edit an ONNX model you will use the commands above to:
+- decode the model proto to text format
+- edit the model in text format
+- encode the model back to proto format
+
+- Decode an ONNX model from proto `model.onnx` to text file `model.onnxtxt`:
+  ```
+  protoc onnx.proto --decode=onnx.ModelProto < model.onnx > model.onnxtxt
+  ```
+
+- Encode an ONNX model from text file `model.onnxtxt` to proto `model.onnx`:
+  ```
+  protoc onnx.proto --encode=onnx.ModelProto < model.onnxtxt > model.onnx
+  ```
+
+- Decode an ONNX tensor from proto `tensor.pb` to text file `tensor.pbtxt`:
+  ```
+  protoc onnx.proto --decode=onnx.TensorProto < tensor.pb > tensor.pbtxt 
+  ```
+
+- Encode an ONNX tensor from text file `tensor.pbtxt` to proto `tensor.pb`:
+  ```
+  protoc onnx.proto --encode=onnx.TensorProto < tensor.pbtxt > tensor.pb
+  ```
+
+- Decode/Encode TensorFlow saved model to/from text file:
+  ```
+  protoc saved_model.proto --decode tensorflow.SavedModel < model.pb > model.pbtxt
+  protoc saved_model.proto --encode tensorflow.SavedModel < model.pbtxt < model.pb
+  ```
+
+- Decode/Encode TensorFlow frozen graph to/from text file:
+  ```
+  protoc saved_model.proto --decode tensorflow.GraphDef < model.pb > model.pbtxt
+  protoc saved_model.proto --encode tensorflow.GraphDef < model.pbtxt > model.pb
+  ```
