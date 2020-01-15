@@ -30,6 +30,10 @@ class Module;
 class PlaceholderBindings;
 class Placeholder;
 
+namespace runtime {
+struct DeviceInfo;
+}
+
 /// Perform optimizations on the graph representation.
 void optimize(Function *F, CompilationContext &cctx);
 void optimize(Function *F, CompilationMode mode);
@@ -62,7 +66,8 @@ void profileQuantization(PlaceholderBindings &bindings, Function *F);
 /// Optimize the Function \p F given compilation options \p cctx for Backend \B.
 /// \returns success if all nodes in the final resulting optimized Function are
 /// supported by \p B; if not, this represents a compiler error.
-Error optimizeFunction(Function *F, const Backend &B, CompilationContext &cctx);
+Error optimizeFunction(Function *F, const Backend &B, CompilationContext &cctx,
+                       const glow::runtime::DeviceInfo *devInfo = nullptr);
 
 /// Optimize the Function \p F given compilation options \p cctx performing
 /// backend-independent optimizations that can be done before lowering.

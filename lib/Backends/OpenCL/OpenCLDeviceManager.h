@@ -151,6 +151,9 @@ class OpenCLDeviceManager : public QueueBackedDeviceManager {
   /// Device name.
   std::string name_;
 
+  /// Size of static local memory in the device.
+  cl_ulong localMemSize_;
+
   /// Command queue pool.
   OpenCLCommandQueuePool commandQueuePool_;
 
@@ -189,6 +192,8 @@ public:
   /// device. This is not a promise as memory cost could vary due to alignment,
   /// etc.
   bool isMemoryAvailable(uint64_t estimate) const override;
+
+  DeviceInfo getDeviceInfo() const override;
 
 protected:
   /// Adds functions to the device. Calls to this are serialized so concurrency

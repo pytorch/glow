@@ -238,6 +238,23 @@ Error OpenCLDeviceManager::init() {
     maxMemoryBytes_ = mem_size;
   }
 
+  localMemSize_ = 0;
+  cl_device_local_mem_type localMemType;
+  err = clGetDeviceInfo(deviceId_, CL_DEVICE_LOCAL_MEM_TYPE,
+                        sizeof(localMemType), &localMemType, NULL);
+  if (err != CL_SUCCESS) {
+    RETURN_ERR("Error getting device local memory type.");
+  }
+  if (localMemType == CL_LOCAL) {
+    cl_ulong localMemSize;
+    err = clGetDeviceInfo(deviceId_, CL_DEVICE_LOCAL_MEM_SIZE,
+                          sizeof(localMemSize), &localMemSize, NULL);
+    if (err != CL_SUCCESS) {
+      RETURN_ERR("Error getting device local memory type.");
+    }
+    localMemSize_ = localMemSize;
+  }
+
   commandQueuePool_.setContext(context_);
   commandQueuePool_.setDevice(deviceId_);
 
@@ -781,4 +798,10 @@ void OpenCLDeviceManager::runFunctionImpl(
 
   // Fire the resultCB.
   resultCB(id, std::move(executeErr), std::move(context));
+}
+
+DeviceInfo OpenCLDeviceManager::getDeviceInfo() const {
+  DeviceInfo info;
+  info.availableLocalMemory = localMemSize_;
+  return info;
 }

@@ -119,8 +119,9 @@ static Node *optimizeCPUMaxSplat(MaxNode *MN, Function *F) {
       new CPUMaxSplatNode(MN->getName(), input, splat->getValue()));
 }
 
-bool CPUBackend::transformPostLowering(Function *F,
-                                       CompilationContext &) const {
+bool CPUBackend::transformPostLowering(
+    Function *F, CompilationContext &,
+    const glow::runtime::DeviceInfo *) const {
   LOG_SCOPE(F->getLogContext(), "CPUBackend::transformPostLowering")
 
   bool changed = false;

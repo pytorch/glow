@@ -485,8 +485,9 @@ static bool removeClipsBlockingFusion(Function *F) {
   return changed;
 }
 
-bool NNPIBackend::transformPostLowering(Function *F,
-                                        CompilationContext &cctx) const {
+bool NNPIBackend::transformPostLowering(
+    Function *F, CompilationContext &cctx,
+    const glow::runtime::DeviceInfo *devInfo) const {
   LOG_SCOPE(F->getLogContext(), "NNPIBackend::transformPostLowering");
 
   if (glow::onnxifi::GlowDisableNNPITransforms) {
