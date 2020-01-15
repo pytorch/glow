@@ -4037,12 +4037,23 @@ ConstList Function::findConstants() const {
 }
 
 Function *Function::clone(llvm::StringRef newName,
-                          llvm::DenseMap<Node *, Node *> *map) {
+                          llvm::DenseMap<const Node *, Node *> *map,
+                          llvm::DenseMap<const Node *, Node *> *currToNewMap) {
   Module *M = getParent();
   auto *newF = M->createFunction(newName);
+  return clone(newF, map, currToNewMap);
+}
 
+Function *
+Function::clone(Function *newF, llvm::DenseMap<const Node *, Node *> *map,
+                llvm::DenseMap<const Node *, Node *> *currToNewMap) const {
   // Maps current nodes to new nodes.
-  llvm::DenseMap<Node *, Node *> currToNew;
+  llvm::DenseMap<const Node *, Node *> currToNew;
+
+  // Initialize the map from a user-provided map.
+  if (currToNewMap) {
+    currToNew.insert(currToNewMap->begin(), currToNewMap->end());
+  }
 
   // Clone all of the nodes in the function.
   for (auto &N : getNodes()) {
@@ -4110,6 +4121,49 @@ static bool verifyNodeInput(const Node &N, size_t idx) {
   report("Any node referencing another node N must be in the use-list of the "
          "node N");
   return false;
+}
+
+Module *Module::clone() const {
+  auto *M = new Module;
+  return clone(M);
+}
+
+Module *Module::clone(Module *M) const {
+  // Maps current nodes to new nodes.
+  llvm::DenseMap<const Node *, Node *> currToNew;
+  // Clone placeholders.
+  for (auto &PH : getPlaceholders()) {
+    auto *copyPH = M->createPlaceholder(PH->getType(), PH->getName(),
+                                        PH->isTraining(), PH->getLayout());
+    currToNew[PH] = copyPH;
+  }
+  // Clone constants.
+  for (auto &C : getConstants()) {
+    // Cloner cannot decide on its own what to do with constants having unowned
+    // payloads. Some kind of policy/hook maybe needed in the future for
+    // deciding what needs to be done in such cases.
+    DCHECK(!C->getPayload().isUnowned())
+        << "Cannot copy constant " << C->getName().str()
+        << ": Unowned payloads are not supported";
+    auto *copyC = M->createConstant(C->getType(), C->getName(), C->getLayout());
+    copyC->assign(&C->getPayload());
+    currToNew[C] = copyC;
+  }
+  // Clone all functions.
+  for (auto *F : getFunctions()) {
+    // Create an empty clone function in the new module.
+    auto *copyF = M->createFunction(F->getName());
+    // Clone function's body into the newly created cloned function. Use the
+    // currToNew to properly map constants and placeholders.
+    F->clone(copyF, nullptr, &currToNew);
+    // Update all types by cloned types.
+    for (auto &N : copyF->getNodes()) {
+      for (unsigned idx = 0, e = N.getNumResults(); idx < e; ++idx) {
+        N.setType(idx, M->uniqueType(*N.getType(idx)));
+      }
+    }
+  }
+  return M;
 }
 
 /// \returns True if \p n is a storage node (constant or placeholder) of the
