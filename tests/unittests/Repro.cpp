@@ -106,6 +106,32 @@ llvm::cl::opt<unsigned> itersOpt(
     "iters", llvm::cl::desc("Number of times to loop over provided input."),
     llvm::cl::Optional, llvm::cl::init(1), llvm::cl::cat(reproTestCat));
 
+llvm::cl::opt<bool> useSparseNNPartitioningScheme(
+    "glow_use_sparsenn_partitioning_scheme",
+    llvm::cl::desc("Enable SparseNN partitioning scheme"), llvm::cl::Optional,
+    llvm::cl::init(false), llvm::cl::cat(reproTestCat));
+
+llvm::cl::opt<int32_t> sparseNNPartitioningSchemeNumCards(
+    "glow_snn_partitioning_num_cards",
+    llvm::cl::desc("Num cards used in SparseNN partitioning scheme"),
+    llvm::cl::Optional, llvm::cl::init(1), llvm::cl::cat(reproTestCat));
+
+llvm::cl::opt<int32_t> sparseNNPartitioningSchemeKBytesPerCard(
+    "glow_snn_partitioning_kbytes_per_card",
+    llvm::cl::desc("Num kbytes per card in SparseNN partitioning scheme"),
+    llvm::cl::Optional, llvm::cl::init(5000000), llvm::cl::cat(reproTestCat));
+
+llvm::cl::opt<int32_t> sparseNNPartitioningSchemeNumCoresSLS(
+    "glow_snn_partitioning_num_cores_sls",
+    llvm::cl::desc("Num cores used for SLS in SparseNN partitioning scheme"),
+    llvm::cl::Optional, llvm::cl::init(6), llvm::cl::cat(reproTestCat));
+
+llvm::cl::opt<int32_t> sparseNNPartitioningSchemeNumCoresOther(
+    "glow_snn_partitioning_num_cores_other",
+    llvm::cl::desc(
+        "Num cores used for non-SLS in SparseNN partitioning scheme"),
+    llvm::cl::Optional, llvm::cl::init(6), llvm::cl::cat(reproTestCat));
+
 void parseCommandLine(int argc, char **argv) {
   llvm::sys::PrintStackTraceOnErrorSignal(argv[0]);
   llvm::cl::ParseCommandLineOptions(
@@ -169,6 +195,19 @@ int run() {
       glow::make_unique<runtime::HostManager>(std::move(configs));
   CompilationContext cctx;
   cctx.precisionConfig = precConfig;
+  if (useSparseNNPartitioningScheme) {
+    cctx.optimizationOpts.useSparseNNPartitioningScheme =
+        useSparseNNPartitioningScheme;
+    cctx.optimizationOpts.sparseNNPartitioningSchemeNumCards =
+        sparseNNPartitioningSchemeNumCards;
+    cctx.optimizationOpts.sparseNNPartitioningSchemeSLSTableKBytesPerCard =
+        sparseNNPartitioningSchemeKBytesPerCard;
+    cctx.optimizationOpts.sparseNNPartitioningSchemeNumCoresSLS =
+        sparseNNPartitioningSchemeNumCoresSLS;
+    cctx.optimizationOpts.sparseNNPartitioningSchemeNumCoresOther =
+        sparseNNPartitioningSchemeNumCoresOther;
+  }
+
   EXIT_ON_ERR(hostManager->addNetwork(std::move(mod), cctx));
 
   // Parse all input and output files ahead of inference.
