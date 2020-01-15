@@ -243,7 +243,8 @@ bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
     auto resultK =
         NI.getOutElemTy(FusedRowwiseQuantizedSparseLengthsSumNode::ResultIdx);
     return (dataK == ElemKind::UInt8FusedQTy ||
-            dataK == ElemKind::UInt8FusedFP16QTy) &&
+            dataK == ElemKind::UInt8FusedFP16QTy ||
+            dataK == ElemKind::UInt4FusedFP16QTy) &&
            (resultK == ElemKind::FloatTy || resultK == ElemKind::Float16Ty) &&
            (indicesK == ElemKind::Int64ITy) && (lengthsK == ElemKind::Int32ITy);
   }

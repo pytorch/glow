@@ -157,9 +157,6 @@ struct EmulatorOnlyTests {
           "Exp/0",
           "FloatArgMaxKeepDim/0",
           "FloatArgMaxNoKeepDim/0",
-          "FusedRowwiseQuantizedSLWSTwoColumn_Fused4Bit_Float16_AccumFloat16/0",
-          "FusedRowwiseQuantizedSparseLengthsSum_Fused4Bit_Float16_"
-          "AccumFloat16/0",
           "FusedRowwiseQuantizedSparseLengthsWeightedSum_ConvertedFloat16_"
           "back_",
           "FusedRowwiseQuantizedSparseLengthsWeightedSum_ConvertedFloat16_"
