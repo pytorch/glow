@@ -100,8 +100,11 @@ llvm::cl::opt<bool> enablePartialTensor("glow_enable_partial_tensor",
                                         llvm::cl::desc("Enable partial tensor"),
                                         llvm::cl::Optional,
                                         llvm::cl::init(true),
-
                                         llvm::cl::cat(reproTestCat));
+
+llvm::cl::opt<unsigned> itersOpt(
+    "iters", llvm::cl::desc("Number of times to loop over provided input."),
+    llvm::cl::Optional, llvm::cl::init(1), llvm::cl::cat(reproTestCat));
 
 void parseCommandLine(int argc, char **argv) {
   llvm::sys::PrintStackTraceOnErrorSignal(argv[0]);
@@ -123,7 +126,15 @@ void parseCommandLine(int argc, char **argv) {
   return g;
 }
 
-void run() {
+struct InferenceResult {
+  Error error = Error::success();
+  std::unique_ptr<ExecutionContext> ctx;
+  int index = 0;
+};
+
+int run() {
+  int numFailed = 0;
+
   // Build the execution engine and deserialize the Function.
   auto mod = glow::make_unique<Module>();
   Function *F = mod->createFunction("test");
@@ -132,15 +143,7 @@ void run() {
   CHECK(!ERR_TO_BOOL(std::move(err)))
       << "ONNXModelLoader failed to load model: " << modelPathOpt;
 
-  // Setup the inputs.
-  auto ctx = glow::make_unique<ExecutionContext>();
-  auto &bindings = *ctx->getPlaceholderBindings();
-  bindings.clear();
-  bindings.allocate(mod->getPlaceholders());
-  const auto &ps = bindings.pairs();
-  for (const auto &kv : ps) {
-    llvm::outs() << "Placeholder allocated: " << kv.first->getName() << "\n";
-  }
+  const auto &placeholderList = mod->getPlaceholders();
 
   // Build host manager and compile the module.
   PrecisionConfiguration precConfig;
@@ -168,18 +171,46 @@ void run() {
   cctx.precisionConfig = precConfig;
   EXIT_ON_ERR(hostManager->addNetwork(std::move(mod), cctx));
 
-  // Run inference.
+  // Parse all input and output files ahead of inference.
+  std::vector<::ONNX_NAMESPACE::GraphProto> parsedInputs;
+  std::vector<::ONNX_NAMESPACE::GraphProto> parsedOutputs;
   size_t inputGroupSize = inputsOpt.size();
   for (int i = 0; i < inputGroupSize; ++i) {
-    // This holds the tensor that actually owns the data for all the partial
-    // inputs.
-    std::vector<Tensor> partialTensorPayloads;
-
-    llvm::outs() << "input file: " << inputsOpt[i] << "\n";
+    llvm::outs() << "Loading input file: " << inputsOpt[i] << "\n";
     auto inputGroup = parseIO(inputsOpt[i]);
+    parsedInputs.push_back(std::move(inputGroup));
+    llvm::outs() << "Loading output file: " << outputsOpt[i] << "\n";
+    auto outputGroup = parseIO(outputsOpt[i]);
+    parsedOutputs.push_back(std::move(outputGroup));
+  }
+
+  llvm::outs() << "Starting inference\n";
+
+  std::list<std::promise<InferenceResult>> promises;
+  std::list<std::future<InferenceResult>> futures;
+  // This holds the tensor that actually owns the data for all the partial
+  // inputs.
+  std::vector<Tensor> partialTensorPayloads;
+
+  auto timer = std::chrono::steady_clock::now();
+  int numTotalInferences = inputGroupSize * itersOpt;
+  for (int ioIndex = 0, numInferencesIssued = 0;
+       numInferencesIssued < numTotalInferences;
+       ++numInferencesIssued, ioIndex = numTotalInferences % inputGroupSize) {
+    // Setup the inputs.
+    auto ctx = glow::make_unique<ExecutionContext>();
+    auto &bindings = *ctx->getPlaceholderBindings();
+    bindings.clear();
+    bindings.allocate(placeholderList);
+    const auto &ps = bindings.pairs();
+    for (const auto &kv : ps) {
+      VLOG(1) << "Placeholder allocated: " << kv.first->getName().str();
+    }
+
+    const auto &inputGroup = parsedInputs[ioIndex];
     for (const auto &tp : inputGroup.initializer()) {
       auto *tensor = bindings.get(bindings.getPlaceholderByName(tp.name()));
-      CHECK(tensor);
+      CHECK(tensor) << "Unable to get tensor for " << tp.name();
       size_t fullSize = tensor->getSizeInBytes();
       const auto fullType = tensor->getType();
 
@@ -189,10 +220,10 @@ void run() {
       size_t loadedSize = tensor->getSizeInBytes();
       if (loadedSize != fullSize) {
         if (enablePartialTensor) {
-          LOG(INFO) << "Loading " << tp.name()
-                    << " as a partial tensor: partial size="
-                    << tensor->getType().toString()
-                    << " full size=" << fullType.toString();
+          VLOG(1) << "Loading " << tp.name()
+                  << " as a partial tensor: partial size="
+                  << tensor->getType().toString()
+                  << " full size=" << fullType.toString();
           Tensor fullTensor(tensor->getUnsafePtr(), &fullType,
                             tensor->getSizeInBytes());
           // 'fullTensor' doesn't own the underlying data. 'tensor' does. So we
@@ -202,10 +233,10 @@ void run() {
           *tensor = std::move(fullTensor);
         } else {
           // pad with 0
-          LOG(INFO) << "Loading and padding " << tp.name()
-                    << " as a partial tensor: partial size="
-                    << tensor->getType().toString()
-                    << " full size=" << fullType.toString();
+          VLOG(1) << "Loading and padding " << tp.name()
+                  << " as a partial tensor: partial size="
+                  << tensor->getType().toString()
+                  << " full size=" << fullType.toString();
           Tensor fullTensor(&fullType);
           std::memcpy(fullTensor.getUnsafePtr(), tensor->getUnsafePtr(),
                       tensor->getSizeInBytes());
@@ -217,51 +248,104 @@ void run() {
       }
     }
 
-    dispatchInference("test", hostManager.get(), *ctx, concurrentRequestsOpt);
+    // dispatch inference
+    promises.emplace_back(std::promise<InferenceResult>());
+    std::promise<InferenceResult> &promise = promises.back();
+    futures.emplace_back(promise.get_future());
 
-    llvm::outs() << "output file: " << outputsOpt[i] << "\n";
-    auto outputGroup = parseIO(outputsOpt[i]);
-    ONNX_NAMESPACE::GraphProto outputG;
-    std::ofstream of;
-    if (dumpOutputsOpt) {
-      std::stringstream ss;
-      ss << "output_dump_" << i << ".onnx";
-      of.open(ss.str(), std::ios::binary);
-      CHECK(of) << "Cannot create output dump file: " << ss.str();
-    }
-    for (const auto &tp : outputGroup.initializer()) {
-      Tensor tensorRef;
-      auto error = loadTensor(tp, &tensorRef);
-      CHECK(!ERR_TO_BOOL(std::move(error))) << "Cannot load output ref tensor";
-      const auto *tensor =
-          bindings.get(bindings.getPlaceholderByName(tp.name()));
-      CHECK(tensor);
-      if (dumpOutputsOpt) {
-        auto *t = outputG.add_initializer();
-        ONNXModelWriter::writeTensor(*tensor, t);
-        t->set_name(tp.name());
+    hostManager->runNetwork(
+        "test", std::move(ctx),
+        [&promise, index = ioIndex](
+            runtime::RunIdentifierTy, Error err,
+            std::unique_ptr<ExecutionContext> contextPtr) mutable {
+          InferenceResult result;
+          result.error = std::move(err);
+          result.ctx = std::move(contextPtr);
+          result.index = index;
+          promise.set_value(std::move(result));
+        });
+
+    // stop and wait for results when we reach the max concurrent request we
+    // want to send or we have no more requests to send.
+    if (futures.size() >= concurrentRequestsOpt ||
+        numInferencesIssued == numTotalInferences - 1) {
+      for (auto &future : futures) {
+        future.wait();
       }
-      bool equal = tensorRef.isEqual(*tensor, thresholdOpt, true);
-      if (!equal) {
-        llvm::outs() << "Verification failed at input/output pair " << i
-                     << " for output tensor " << tp.name() << "\n";
-        return;
+      std::chrono::duration<double, std::milli> duration =
+          std::chrono::steady_clock::now() - timer;
+      LOG(INFO) << "Executed " << futures.size() << " inferences in "
+                << duration.count() << "ms";
+
+      for (auto &future : futures) {
+        auto result = future.get();
+
+        if (result.error) {
+          llvm::outs() << "Inference failed!";
+          ++numFailed;
+        } else {
+          const auto &bindings = *result.ctx->getPlaceholderBindings();
+
+          const auto &outputGroup = parsedOutputs[result.index];
+          ONNX_NAMESPACE::GraphProto outputG;
+          std::ofstream of;
+          if (dumpOutputsOpt) {
+            std::stringstream ss;
+            ss << "output_dump_" << result.index << ".onnx";
+            of.open(ss.str(), std::ios::binary);
+            CHECK(of) << "Cannot create output dump file: " << ss.str();
+          }
+          for (const auto &tp : outputGroup.initializer()) {
+            Tensor tensorRef;
+            auto error = loadTensor(tp, &tensorRef);
+            CHECK(!ERR_TO_BOOL(std::move(error)))
+                << "Cannot load output ref tensor";
+            const auto *tensor =
+                bindings.get(bindings.getPlaceholderByName(tp.name()));
+            CHECK(tensor) << "Missing " << tp.name()
+                          << " in output placeholder";
+            if (dumpOutputsOpt) {
+              auto *t = outputG.add_initializer();
+              ONNXModelWriter::writeTensor(*tensor, t);
+              t->set_name(tp.name());
+            }
+            bool equal = tensorRef.isEqual(*tensor, thresholdOpt, true);
+            if (!equal) {
+              llvm::outs() << "Verification failed at input/output pair "
+                           << result.index << " for output tensor " << tp.name()
+                           << "\n";
+              ++numFailed;
+              break;
+            }
+          }
+          if (dumpOutputsOpt) {
+            std::string buffer;
+            outputG.SerializeToString(&buffer);
+            of << buffer;
+          }
+        }
       }
-    }
-    if (dumpOutputsOpt) {
-      std::string buffer;
-      outputG.SerializeToString(&buffer);
-      of << buffer;
+      promises.clear();
+      futures.clear();
+      partialTensorPayloads.clear();
+      timer = std::chrono::steady_clock::now();
     }
   }
 
-  llvm::outs() << "All passed!\n";
+  CHECK(promises.empty());
+  CHECK(futures.empty());
+
+  if (numFailed == 0) {
+    llvm::outs() << "All passed!\n";
+  } else {
+    llvm::outs() << numFailed << " inferences failed to match reference.\n";
+  }
+  return numFailed;
 }
 
 } // namespace
 
 int main(int argc, char **argv) {
   parseCommandLine(argc, argv);
-  run();
-  return 0;
+  return run();
 }
