@@ -149,6 +149,9 @@ public:
 
   const FunctionList &getFunctions() const { return functions_; }
 
+  /// \returns the list of types that the Module owns.
+  const TypesList &getTypes() const { return types_; }
+
   /// Erase the constant \p N from the Module.
   void eraseConstant(Constant *N);
 

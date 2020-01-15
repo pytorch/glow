@@ -198,6 +198,25 @@ bool Module::verify() const {
   for (auto *F : functions_) {
     isValid &= F->verify();
   }
+  // Check that all types used by constants or placeholders belong to the
+  // module.
+  auto &types = getTypes();
+  for (const auto *PH : getPlaceholders()) {
+    bool foundType =
+        std::find(types.begin(), types.end(), *PH->getType()) != types.end();
+    isValid &=
+        expectCompareTrue("Every type used by placeholders should be part of "
+                          "the graph",
+                          foundType, true, PH);
+  }
+  for (const auto *C : getConstants()) {
+    bool foundType =
+        std::find(types.begin(), types.end(), *C->getType()) != types.end();
+    isValid &=
+        expectCompareTrue("Every type used by constants should be part of "
+                          "the graph",
+                          foundType, true, C);
+  }
   return isValid;
 }
 
@@ -4187,6 +4206,20 @@ bool Function::verify(const Backend *backend) const {
           "All uses of a node should refer to this node", U.get()->getNode(),
           &N, &N);
       ;
+    }
+  }
+
+  // Check that all types used by nodes belong to the parent module.
+  auto &types = getParent()->getTypes();
+  for (const auto &N : nodes_) {
+    for (size_t idx = 0, e = N.getNumResults(); idx < e; ++idx) {
+      auto ty = N.getType(idx);
+      bool foundType =
+          std::find(types.begin(), types.end(), *ty) != types.end();
+      isValid &= expectCompareTrue(
+          "Every type used by one of the graph nodes should be part of "
+          "the graph",
+          foundType, true, &N);
     }
   }
 
