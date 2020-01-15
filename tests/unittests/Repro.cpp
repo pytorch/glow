@@ -94,7 +94,8 @@ llvm::cl::opt<bool>
 llvm::cl::opt<bool>
     forceFP16AccumSLSOpt("glow_global_force_sls_fp16_accum",
                          llvm::cl::desc("Force FP16 accumulation for SLS ops"),
-                         llvm::cl::Optional, llvm::cl::cat(reproTestCat));
+                         llvm::cl::Optional, llvm::cl::init(true),
+                         llvm::cl::cat(reproTestCat));
 
 llvm::cl::opt<bool> enablePartialTensor("glow_enable_partial_tensor",
                                         llvm::cl::desc("Enable partial tensor"),
