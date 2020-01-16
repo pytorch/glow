@@ -263,7 +263,7 @@ bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
     return (dataK == ElemKind::UInt8FusedQTy ||
             dataK == ElemKind::UInt8FusedFP16QTy ||
             dataK == ElemKind::UInt4FusedFP16QTy) &&
-           (weightsK == resultK) &&
+           (weightsK == ElemKind::FloatTy || weightsK == ElemKind::Float16Ty) &&
            (resultK == ElemKind::FloatTy || resultK == ElemKind::Float16Ty) &&
            (indicesK == ElemKind::Int64ITy) && (lengthsK == ElemKind::Int32ITy);
   }
