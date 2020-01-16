@@ -58,7 +58,7 @@ application.
 
 The command used to build a bundle using the CPU backend is the following:
 ```
-$model-compiler -backend=CPU -model=<model-path> -emit-bundle=<bundle-dir>
+model-compiler -backend=CPU -model=<model-path> -emit-bundle=<bundle-dir>
 ```
 
 - The option `backend` specifies the backend used to generated the bundle.
@@ -77,7 +77,7 @@ There is a small difference when using this tool with ONNX versus Caffe2 models:
 since the description of the input tensors is part of the model. Therefore the tool
 will be used in the form shown above:
   ```
-  $model-compiler -backend=CPU -model=<onnx-model-path> -emit-bundle=<bundle-dir>
+  model-compiler -backend=CPU -model=<onnx-model-path> -emit-bundle=<bundle-dir>
   ```
 - For **Caffe2 models** the user must also provide explicitly the description
 of the input tensors which is not part of model. The option `model-input` will be used
@@ -85,7 +85,7 @@ to specify the name, type and shape for each model input. The model input names 
 deduced by inspecting the model with [Netron](https://lutzroeder.github.io/netron/).
 The option can be used multiple times to describe each model input separately:
   ```
-  $model-compiler -backend=CPU -model=<caffe2-model-path> -emit-bundle=<bundle-dir> \
+  model-compiler -backend=CPU -model=<caffe2-model-path> -emit-bundle=<bundle-dir>  \
     -model-input=<inputName1>,<inputType1>,<inputShape1>                            \
     -model-input=<inputName2>,<inputType2>,<inputShape2>                            \
     ....................................................
@@ -113,19 +113,19 @@ For example, to compile the **ResNet50** model provided by Glow in Caffe2 format
 the following command. The name of the input tensor is *gpu_0/data*, the type is *float*
 and the shape is *1 x 3 x 224 x 224* corresponding to a RGB image with NCHW layout:
 ```
-$model-compiler -backend=CPU -model=resnet50 -emit-bundle=build -model-input=gpu_0/data,float,[1,3,224,224]
+model-compiler -backend=CPU -model=resnet50 -emit-bundle=build -model-input=gpu_0/data,float,[1,3,224,224]
 ```
 
 Similarly, to compile the **LeNetMnist** model provided by Glow in Caffe2 format, you can use
 the following command. The name of the input tensor is *data*, the type is *float* and the
 shape is *1 x 1 x 28 x 28* corresponding to a grayscale image with NCHW layout:
 ```
-$model-compiler -backend=CPU -model=lenet_mnist -emit-bundle=build -model-input=data,float,[1,1,28,28]
+model-compiler -backend=CPU -model=lenet_mnist -emit-bundle=build -model-input=data,float,[1,1,28,28]
 ```
 
 For more information about the options of the **model-compiler** tool use:
 ```
-$model-compiler -help
+model-compiler -help
 ```
 
 
@@ -145,7 +145,7 @@ In order to compute the quantization profile, the **image-classifier** tool is u
 application is used for image classification models only and requires a set of images to do
 the inference and compute the profile:
 ```
-$image-classifier <images> <image-opts> -model=<model-path> -model-input-name=<name> -dump-profile=profile.yaml
+image-classifier <images> <image-opts> -model=<model-path> -model-input-name=<name> -dump-profile=profile.yaml
 ```
 
 - The image paths are specified one after the other, separated by space. Only images in **PNG**
@@ -171,13 +171,13 @@ match the layout of the model input:
 
 For more information about the options of the **image-classifier** tool use:
 ```
-$image-classifier -help
+image-classifier -help
 ```
 
 After the quantization profile `profile.yaml` has been generated, we can use the **model-compiler**
 tool to compile the model into a bundle by loading the previously generated profile:
 ```
-$model-compiler ... -load-profile=profile.yaml
+model-compiler ... -load-profile=profile.yaml
 ```
 
 If a specific quantization schema is desired, same schema must be provided during both
@@ -186,14 +186,14 @@ quantization schema can be found [here](./Quantization.md).
 
 For example, in order to profile, quantize and compile the **ResNet50** model you can use the commands:
 ```
-$image-classifier cat_285.png ... -image-mode=0to1 -model=resnet50 -model-input-name=gpu_0/data -dump-profile=profile.yml
-$model-compiler -backend=CPU -model=resnet50 -emit-bundle=build -model-input=gpu_0/data,float,[1,3,224,224] -load-profile=profile.yml
+image-classifier cat_285.png ... -image-mode=0to1 -model=resnet50 -model-input-name=gpu_0/data -dump-profile=profile.yml
+model-compiler -backend=CPU -model=resnet50 -emit-bundle=build -model-input=gpu_0/data,float,[1,3,224,224] -load-profile=profile.yml
 ```
 
 Similarly, for the **LeNetMnist** model:
 ```
-$image-classifier 0_1009.png ... -image-mode=0to1 -model=lenet_mnist -model-input-name=data -dump-profile=profile.yml
-$model-compiler -backend=CPU -model=lenet_mnist -emit-bundle=build -model-input=data,float,[1,1,28,28] -load-profile=profile.yml
+image-classifier 0_1009.png ... -image-mode=0to1 -model=lenet_mnist -model-input-name=data -dump-profile=profile.yml
+model-compiler -backend=CPU -model=lenet_mnist -emit-bundle=build -model-input=data,float,[1,1,28,28] -load-profile=profile.yml
 ```
 
 It is important to note that currently the quantization of a model is performed
@@ -207,7 +207,7 @@ of the graph operators which might be more susceptible to quantization by using
 the option `keep-original-precision-for-nodes`. For example in order to disable the
 quantization for the operators Add,Sub,Mul,Div,Exp and SoftMax you can use:
 ```
-$model-compiler ... -keep-original-precision-for-nodes=Add,Sub,Mul,Div,Exp,SoftMax
+model-compiler ... -keep-original-precision-for-nodes=Add,Sub,Mul,Div,Exp,SoftMax
 ```
 
 
@@ -562,43 +562,60 @@ output tensors from the `mutableWeight` buffer.
 
 A very popular tool for visualizing the original model before compiling with Glow is **Netron** which
 has:
-- an online browser version [here](https://lutzroeder.github.io/netron/) which you can use to drag & drop a
-model into the browser window
-- an offline standalone version [here](https://github.com/lutzroeder/netron) which you can download
+- an online browser version [here](https://lutzroeder.github.io/netron/) (drag & drop a model into the browser window).
+- an offline standalone version [here](https://github.com/lutzroeder/netron) (drag & drop a model into the GUI window).
 
 ### Convert models
 
 The Glow compiler currently has support only for Caffe2 and ONNX model formats. Since a lot of popular
 models are available in other formats, for example TensorFlow, it is useful to have tools to convert
-models between different formats.
-
-The most used tools for format conversion are MMDNN and tf2onnx:
-- [MMDNN](https://github.com/Microsoft/MMdnn)
+models between different formats. The most used tools for format conversion are:
+- [MMdnn](https://github.com/Microsoft/MMdnn)
 - [tf2onnx](https://github.com/onnx/tensorflow-onnx)
 
-We will exemplify how to convert a TensorFlow model to ONNX using the MMDNN tool. We will convert a
-MobileNet v1 image classification model which operates on 128 x 128 RGB images and 1001 classes. Steps:
-1. Install MMDNN from [here](https://github.com/Microsoft/MMdnn).
-2. Download the MobileNet V1 model archive from [here](http://download.tensorflow.org/models/mobilenet_v1_2018_08_02/mobilenet_v1_0.25_128.tgz)
-and unzip it.
-3. Run the following command to convert the TensorFlow frozen file `mobilenet_v1_0.25_128_frozen.pb`
-to the ONNX model file `mobilenet_v1_0.25_128_frozen_2018.onnx`.
+We will exemplify how to convert a TensorFlow model to ONNX. We will convert a MobileNet V1 image
+classification model which operates on 128 x 128 RGB images and 1001 classes. You can download the
+model archive in TensorFlow format from [here](http://download.tensorflow.org/models/mobilenet_v1_2018_08_02/mobilenet_v1_0.25_128.tgz).
 
-```
-mmconvert                                              \
-  --srcFramework tensorflow                            \
-  --inputWeight mobilenet_v1_0.25_128_frozen.pb        \
-  --inNodeName input                                   \
-  --inputShape 128,128,3                               \
-  --dstNodeName MobilenetV1/Predictions/Softmax        \
-  --dstFramework onnx                                  \
-  --outputModel mobilenet_v1_0.25_128_frozen_2018.onnx  
-```
+In order to convert the model to ONNX format using the **MMdnn** tool:
+1. Install MMdnn from [here](https://github.com/Microsoft/MMdnn).
+2. Download the MobileNet V1 model archive and unzip it.
+3. Run the following command to convert the TensorFlow frozen file `mobilenet_v1_0.25_128_frozen.pb`
+to the ONNX model file `mobilenet_v1_0.25_128.onnx`:
+   ```
+   mmconvert                                              \
+     --srcFramework tensorflow                            \
+     --inputWeight mobilenet_v1_0.25_128_frozen.pb        \
+     --inNodeName input                                   \
+     --inputShape 128,128,3                               \
+     --dstNodeName MobilenetV1/Predictions/Softmax        \
+     --dstFramework onnx                                  \
+     --outputModel mobilenet_v1_0.25_128.onnx              
+   ```
+
+In order to convert the model to ONNX format using the **tf2onnx** tool:
+1. Install tf2onnx from [here](https://github.com/onnx/tensorflow-onnx).
+2. Download the MobileNet V1 model archive and unzip it.
+3. Run the following command to convert the TensorFlow frozen file `mobilenet_v1_0.25_128_frozen.pb`
+to the ONNX model file `mobilenet_v1_0.25_128.onnx`:
+   ```
+   python -m tf2onnx.convert                      \
+     --input mobilenet_v1_0.25_128_frozen.pb      \
+     --inputs input:0                             \
+     --outputs MobilenetV1/Predictions/Softmax:0  \
+     --output mobilenet_v1_0.25_128.onnx           
+   ```
 
 After converting the model to ONNX you can build a bundle using the Glow **model-compiler** tool with the command:
-
 ```
-$model-compiler -backend=CPU -model=mobilenet_v1_0.25_128_frozen_2018.onnx -emit-bundle=bundle
+model-compiler -backend=CPU -model=mobilenet_v1_0.25_128.onnx -emit-bundle=bundle
+```
+
+When converting the model with **tf2onnx** some undefined symbols might end up in the ONNX model. For example,
+the input batch size might be encoded as a symbol `unk__286` which can be defined to a value of `1` by using
+the extra option:
+```
+-onnx-define-symbol=unk__286,1
 ```
 
 ### Edit protocol buffers
@@ -606,20 +623,20 @@ $model-compiler -backend=CPU -model=mobilenet_v1_0.25_128_frozen_2018.onnx -emit
 There are times when it is useful to manually edit [protocol buffers](https://developers.google.com/protocol-buffers)
 which are used for model formats like ONNX and TensorFlow. One such example is when
 one needs to modify an ONNX model in order to circumvent a limitation of the Glow
-compiler (for example when an attribute is not relevant but causes importer issues, etc).
+compiler (for example when an attribute is not relevant but causes compiler issues, etc).
 
-In order modify a protocol buffer one needs:
-- the proto compiler application **protoc** which can be found [here](https://github.com/protocolbuffers/protobuf/releases)
+In order modify a protocol buffer you need:
+- the proto compiler application **protoc** which can be found [here](https://github.com/protocolbuffers/protobuf/releases).
 - the proto definition:
-  - for ONNX format the proto definition **onnx.proto** can be found [here](https://github.com/onnx/onnx/blob/master/onnx/onnx.proto)
-  - for TensorFlow format the proto definition **saved_model.proto** can be found [here](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/protobuf/saved_model.proto)
+  - for ONNX format the proto definition **onnx.proto** can be found [here](https://github.com/onnx/onnx/blob/master/onnx/onnx.proto).
+  - for TensorFlow format the proto definition **saved_model.proto** can be found [here](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/protobuf/saved_model.proto).
 
-When you need to manually edit an ONNX model you will use the commands defined below to:
-- decode the model proto to text format
-- edit the model in text format
-- encode the model back to proto format
+When you need to manually edit an ONNX model you will need to:
+- decode the model proto to text format.
+- edit the model in text format.
+- encode the model back to proto format.
 
-After you install the **protoc** application and you download the proto definitions you can
+After you install the **protoc** application and you download the proto definitions, you can
 perform the actions defined below:
 
 - Decode an ONNX model from proto `model.onnx` to text file `model.onnxtxt`:
