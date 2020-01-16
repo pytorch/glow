@@ -86,7 +86,7 @@ If using MacPorts, run:
 
   ```bash
   port install cmake graphviz libpng ninja protobuf-cpp wget google-glog
-  # Choose version >=7. 
+  # Choose version >= 7
   export LLVM_VERSION=7
   port install llvm-$LLVM_VERSION.0 
   ```
