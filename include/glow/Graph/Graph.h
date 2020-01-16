@@ -149,6 +149,9 @@ public:
 
   const FunctionList &getFunctions() const { return functions_; }
 
+  /// \returns the list of types that the Module owns.
+  const TypesList &getTypes() const { return types_; }
+
   /// Erase the constant \p N from the Module.
   void eraseConstant(Constant *N);
 
@@ -243,6 +246,15 @@ public:
 
   /// Erase all the functions, Placeholders, Constants, etc.
   void clear();
+
+  /// Clone a module.
+  /// \returns a new module that is a copy of the current module.
+  Module *clone() const;
+
+  /// Clone the current module into a user-provided module \p M.
+  /// \returns the user-provided module \p M that now contains a clone of the
+  /// current module.
+  Module *clone(Module *M) const;
 
   /// Strips payloads from constants. This is useful when
   /// the Module will be kept around for metadata but we want to reduce memory
@@ -1482,12 +1494,26 @@ public:
   /// Erase the node \p I from the Function.
   void eraseNode(NodesList::iterator I);
 
-  /// Clone the current function into a new function with the name \p newName.
-  /// If \p map is non-null then the procedure records the mapping between the
-  /// old node to the new node in \p map.
+  /// Clone the current function into a new function with the name \p newName in
+  /// the same module. If \p map is non-null then the procedure records the
+  /// mapping between the old node to the new node in \p map. If \p currToNewMap
+  /// is non-null it is used as the initial state of the currToNew map inside
+  /// the cloner.
   /// \returns a new function that is a copy of the current function.
   Function *clone(llvm::StringRef newName,
-                  llvm::DenseMap<Node *, Node *> *map = nullptr);
+                  llvm::DenseMap<const Node *, Node *> *map = nullptr,
+                  llvm::DenseMap<const Node *, Node *> *currToNewMap = nullptr);
+
+  /// Clone the current function into a user-provided function \p newF. The
+  /// function \p newF is not automatically added to a module by the clone call.
+  /// If \p map is non-null then the procedure records the mapping between the
+  /// old node to the new node in \p map. If \p currToNewMap is non-null it is
+  /// used as the initial state of the currToNew map inside the cloner. \returns
+  /// a user-provided function \p newF that now contains a clone of the current
+  /// function.
+  Function *
+  clone(Function *newF, llvm::DenseMap<const Node *, Node *> *map = nullptr,
+        llvm::DenseMap<const Node *, Node *> *currToNewMap = nullptr) const;
 
   /// Verify the correctness of the Function. If \p backend is provided, checks
   /// backend-specific layout requirements. Else checks the requirements based

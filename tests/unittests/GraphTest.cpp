@@ -674,6 +674,88 @@ TEST(Graph, functionCloneTest) {
   EXPECT_EQ(newF->getParent(), F->getParent());
 }
 
+/// Compile the module \p M inside the execution engine \p EE and then run it
+/// using the provided \p bindings. Use the provided \p inputName and \p
+/// outputName.
+static void compileAndRun(ExecutionEngine &EE, PlaceholderBindings &bindings,
+                          Module &M, llvm::StringRef inputName,
+                          llvm::StringRef outputName) {
+  EE.compile(glow::CompilationMode::Infer);
+  // Allocate stprage for placeholders and initialize inputs.
+  bindings.allocate(M.getPlaceholderByName(inputName))->getHandle().clear(2.0);
+  bindings.allocate(M.getPlaceholderByName(outputName));
+  EE.run(bindings);
+}
+
+/// Check the module cloning functionality.
+TEST(Graph, moduleCloneTest) {
+  // State related to the cloned module and its execution.
+  ExecutionEngine clonedEE("Interpreter");
+  Module &clonedM = clonedEE.getModule();
+  PlaceholderBindings clonedBindings;
+  Tensor clonedResult;
+  // State related to the original module and its execution.
+  PlaceholderBindings originalBindings;
+  Tensor originalResult;
+  // Name of the placeholder holding the results of executions.
+  std::string resultName;
+  {
+    // Define the original execution engine and module.
+    ExecutionEngine originalEE("Interpreter");
+    Module &originalM = originalEE.getModule();
+
+    // Create a function.
+    auto *F = originalM.createFunction("main");
+    auto *input1 = originalM.createPlaceholder(ElemKind::FloatTy,
+                                               {4, 10, 10, 3}, "input", true);
+
+    auto *add = F->createAdd("add", input1, input1);
+    auto *relu = F->createRELU("Relu", add);
+    auto *concat = F->createConcat("concat", {relu, relu, relu}, 0);
+    auto *C = originalM.createConstant(concat->getResult().getType(), "C");
+    C->getPayloadMutable().getHandle().clear(1.0f);
+    auto *SM = F->createAdd("add", concat, C);
+    auto *SN = F->createSave("Save", SM);
+    resultName = SN->getPlaceholder()->getName();
+
+    // Clone the original module into the cloned module.
+    originalM.clone(&clonedM);
+    // The cloned module should have the same numer of types, functions,
+    // constants and placeholders.
+    EXPECT_EQ(originalM.getFunctions().size(), clonedM.getFunctions().size());
+    EXPECT_EQ(originalM.getPlaceholders().size(),
+              clonedM.getPlaceholders().size());
+    EXPECT_EQ(originalM.getConstants().size(), clonedM.getConstants().size());
+    EXPECT_EQ(originalM.getTypes().size(), clonedM.getTypes().size());
+    // String representations of the original and cloned modules should be the
+    // same.
+    EXPECT_EQ(originalM.toString(), clonedM.toString());
+    for (auto *originalF : originalM.getFunctions()) {
+      EXPECT_EQ(originalF->toString(),
+                clonedM.getFunction(originalF->getName())->toString());
+    }
+
+    // Compile and run the original module.
+    compileAndRun(originalEE, originalBindings, originalM, "input", resultName);
+    // Store the result of running the original module.
+    originalResult.assign(originalBindings.get(
+        originalBindings.getPlaceholderByName(resultName)));
+    // The old module should be removed when this scope ends. Thus, if the
+    // cloned module newM refers to any deleted nodes from the original module,
+    // it would result in a dangling reference and most likely in a crash.
+  }
+  // Check that the cloned module is still alive and valid after the original
+  // module was deleted.
+  EXPECT_TRUE(clonedM.verify());
+  // Compile and run the cloned model.
+  compileAndRun(clonedEE, clonedBindings, clonedM, "input", resultName);
+  // Store the result of running the cloned module.
+  clonedResult.assign(
+      clonedBindings.get(clonedBindings.getPlaceholderByName(resultName)));
+  // The results of execution should be exactly the same in both cases.
+  EXPECT_TRUE(originalResult.isEqual(clonedResult, 0));
+}
+
 TEST(Graph, cloneWithPredicates) {
   Module M;
   PlaceholderBindings bindings;
