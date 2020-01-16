@@ -236,7 +236,7 @@ int run() {
   int numTotalInferences = inputGroupSize * itersOpt;
   for (int ioIndex = 0, numInferencesIssued = 0;
        numInferencesIssued < numTotalInferences;
-       ++numInferencesIssued, ioIndex = numTotalInferences % inputGroupSize) {
+       ++numInferencesIssued, ioIndex = numInferencesIssued % inputGroupSize) {
     // Setup the inputs.
     auto ctx = glow::make_unique<ExecutionContext>();
     auto &bindings = *ctx->getPlaceholderBindings();
