@@ -2456,6 +2456,75 @@ TEST(caffe2, SparseLengthsSumFused8BitRowwise) {
   EXPECT_TRUE(expected.isEqual(result, 0.02f));
 }
 
+/// Test loading SparseLengthsSumFused4BitRowwise.
+TEST(caffe2, SparseLengthsSumFused4BitRowwise) {
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string NetDescFilename(
+      GLOW_DATA_PATH
+      "tests/models/caffe2Models/"
+      "4bit_fused_rowwise_quantized_sparse_lengths_sum_predict_net.pbtxt");
+  std::string NetWeightFilename(
+      GLOW_DATA_PATH
+      "tests/models/caffe2Models/"
+      "4bit_fused_rowwise_quantized_sparse_lengths_sum_init_net.pbtxt");
+
+  Placeholder *output, *indices, *lengths;
+  PlaceholderBindings bindings;
+
+  TypeRef indicesType = F->getParent()->uniqueType(IndexElemKind, {8});
+  TypeRef lengthsType = F->getParent()->uniqueType(ElemKind::Int32ITy, {5});
+
+  // Destroy the loader after the graph is loaded since the following execution
+  // will not depend on anything from the loader.
+  {
+    Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename,
+                               {"indices", "lengths"},
+                               {indicesType, lengthsType}, *F);
+
+    indices = llvm::dyn_cast<Placeholder>(
+        EXIT_ON_ERR(caffe2LD.getNodeValueByName("indices")));
+    lengths = llvm::dyn_cast<Placeholder>(
+        EXIT_ON_ERR(caffe2LD.getNodeValueByName("lengths")));
+    output = EXIT_ON_ERR(caffe2LD.getSingleOutput());
+  }
+
+  ASSERT_TRUE(indices);
+  ASSERT_TRUE(lengths);
+
+  // High level check on the content of the graph. We have 1 rowwise-quantized
+  // SLS, 1 convertTo and 1 save.
+  EXPECT_EQ(F->getNodes().size(), 3);
+  SaveNode *saveNode = getSaveNodeFromDest(output);
+  ConvertToNode *C =
+      llvm::dyn_cast<ConvertToNode>(saveNode->getInput().getNode());
+  ASSERT_TRUE(C);
+  FusedRowwiseQuantizedSparseLengthsSumNode *FRWQSLS =
+      llvm::dyn_cast<FusedRowwiseQuantizedSparseLengthsSumNode>(
+          C->getInput().getNode());
+  ASSERT_TRUE(FRWQSLS);
+  // Check that the data input is a Constant node with expected ElemKind.
+  Constant *data = llvm::dyn_cast<Constant>(FRWQSLS->getData().getNode());
+  ASSERT_TRUE(data);
+  EXPECT_TRUE(data->getElementType() == ElemKind::UInt4FusedFP16QTy);
+
+  // Check the output dim
+  const auto out_node = saveNode->getOutput();
+  EXPECT_EQ(out_node.getElementType(), ElemKind::FloatTy);
+  const auto dims = out_node.dims();
+  EXPECT_EQ(dims.size(), 2);
+  EXPECT_EQ(dims[0], 5);
+  EXPECT_EQ(dims[1], 10);
+
+  // We have 3 placeholders: 1 for save, and then indices and lengths.
+  EXPECT_EQ(mod.getPlaceholders().size(), 3);
+
+  // We have 1 constant: data.
+  EXPECT_EQ(mod.getConstants().size(), 1);
+}
+
 /// Load big enough model and validate node order.
 TEST(caffe2, validateNodeOrder) {
   ExecutionEngine EE{};

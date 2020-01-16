@@ -1,0 +1,12 @@
+name: "4bit_fused_rowwise_quantized_sparse_lengths_sum_predict_net_test"
+op {
+  input: "data"
+  input: "indices"
+  input: "lengths"
+  output: "result"
+  name: ""
+  type: "SparseLengthsSumFused4BitRowwise"
+}
+external_input: "indices"
+external_input: "lengths"
+external_output: "result"

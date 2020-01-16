@@ -360,7 +360,9 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
     case ElemKind::UInt4FusedFP16QTy:
     case ElemKind::UInt8FusedFP16QTy:
       return (NI.getInElemTy(FusedRowwiseQuantizedSparseLengthsWeightedSumNode::
-                                 WeightsIdx) == ElemKind::Float16Ty) &&
+                                 WeightsIdx) == ElemKind::Float16Ty ||
+              NI.getInElemTy(FusedRowwiseQuantizedSparseLengthsWeightedSumNode::
+                                 WeightsIdx) == ElemKind::FloatTy) &&
              (NI.getOutElemTy(
                   FusedRowwiseQuantizedSparseLengthsWeightedSumNode::
                       ResultIdx) == ElemKind::Float16Ty);

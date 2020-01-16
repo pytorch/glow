@@ -836,10 +836,17 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
       // When add axis is used, this means we have to add a new dimension
       // before the axis, instead of merging on the axis.
       std::vector<dim_t> outputDims = inputs[0].dims();
+      unsigned i = 0;
       for (const auto &input : inputs) {
         RETURN_ERR_IF_NOT(
             outputDims[channel] == input.dims()[channel],
-            "inputs need all to have the same dims for concat with add_axis");
+            strFormat("inputs need all to have the same dims for "
+                      "concat with add_axis: input 0 (%s) vs "
+                      "input %u (%s), %u vs %u, channel = %u",
+                      op.input(0).c_str(), i, op.input(i).c_str(),
+                      static_cast<unsigned>(outputDims[channel]),
+                      static_cast<unsigned>(input.dims()[channel]), channel));
+        ++i;
       }
       outputDims.insert(outputDims.begin() + channel, numInputs);
       node = G_.createReshape(opName, node, outputDims);
@@ -1235,13 +1242,21 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
   if (typeName == "SparseLengthsWeightedSum8BitsRowwise" ||
       typeName == "SparseLengthsSum8BitsRowwise" ||
       typeName == "SparseLengthsWeightedSumFused8BitRowwise" ||
-      typeName == "SparseLengthsSumFused8BitRowwise") {
+      typeName == "SparseLengthsSumFused8BitRowwise" ||
+      typeName == "SparseLengthsWeightedSumFused4BitRowwise" ||
+      typeName == "SparseLengthsSumFused4BitRowwise") {
     const bool isWeighted =
         typeName == "SparseLengthsWeightedSum8BitsRowwise" ||
-        typeName == "SparseLengthsWeightedSumFused8BitRowwise";
+        typeName == "SparseLengthsWeightedSumFused8BitRowwise" ||
+        typeName == "SparseLengthsWeightedSumFused4BitRowwise";
     const bool isFused =
         typeName == "SparseLengthsWeightedSumFused8BitRowwise" ||
-        typeName == "SparseLengthsSumFused8BitRowwise";
+        typeName == "SparseLengthsSumFused8BitRowwise" ||
+        typeName == "SparseLengthsWeightedSumFused4BitRowwise" ||
+        typeName == "SparseLengthsSumFused4BitRowwise";
+    const bool is4Bit =
+        typeName == "SparseLengthsWeightedSumFused4BitRowwise" ||
+        typeName == "SparseLengthsSumFused4BitRowwise";
     // If weighted, then the weights are the second input and so we need to
     // shift indices/lengths/scalesBiases.
     size_t indicesIdx = 1;
@@ -1276,15 +1291,17 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     Node *node;
     if (isFused) {
       // There is no specific fused quantized type in Caffe2, so we will load
-      // UInt8QTy. We then change it from UInt8QTy to UInt8FusedQTy here if
-      // necessary -- another user could have already changed it.
+      // UInt8QTy. We then change it from UInt8QTy to UInt8FusedQTy or
+      // UInt4FusedFP16QTy here if necessary -- another user could have already
+      // changed it.
       if (dataS->getElementType() != ElemKind::UInt8FusedQTy) {
         RETURN_ERR_IF_NOT(dataS->getElementType() == ElemKind::UInt8QTy,
                           "Data must be UInt8QTy.");
         // Use dummy 0.0/0 as scale/offset, since the actual scales/offsets
         // are fused inline with the data.
-        TypeRef fusedTy = G_.getParent()->uniqueType(ElemKind::UInt8FusedQTy,
-                                                     dataS->dims(), 0.0, 0);
+        TypeRef fusedTy = G_.getParent()->uniqueType(
+            is4Bit ? ElemKind::UInt4FusedFP16QTy : ElemKind::UInt8FusedQTy,
+            dataS->dims(), 0.0, 0);
         dataS->setType(Storage::OutputIdx, fusedTy);
         // If the node is a Constant set the payload type as well.
         if (auto dataConstant = llvm::dyn_cast<Constant>(data)) {
@@ -1300,6 +1317,10 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
       } else {
         node = G_.createFusedRowwiseQuantizedSparseLengthsSum(opName, dataS,
                                                               indices, lengths);
+      }
+
+      if (is4Bit) {
+        node = G_.createConvertTo(opName, node, ElemKind::FloatTy);
       }
     } else {
       NodeValue scalesBiases;
