@@ -7462,6 +7462,158 @@ TEST_P(OperatorTest, testQuantizedBatchAdd) {
   quantizedBatchAdd(EE_, bindings_, ElemKind::Int32QTy);
 }
 
+template <typename DataType>
+static Tensor *testCumSum(glow::PlaceholderBindings &bindings,
+                          glow::Module &mod, glow::Function *F,
+                          glow::ExecutionEngine &EE, ElemKind DTy,
+                          bool exclusive, bool reverse) {
+  auto *data = mod.createPlaceholder(DTy, {4}, "data", false);
+  bindings.allocate(data)->getHandle<DataType>() = {1, 2, 3, 4};
+
+  auto *CS = F->createCumSum("CumSum", data, exclusive, reverse);
+  auto *S = F->createSave("save", CS);
+  bindings.allocate(S->getPlaceholder());
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+  return bindings.get(S->getPlaceholder());
+}
+
+TEST_P(OperatorTest, CumSum_Float) {
+  CHECK_IF_ENABLED();
+  /*
+    DATA  = [1, 2, 3, 4]
+    OUTPUT = [1, 3, 6, 10]
+  */
+
+  Tensor *result =
+      testCumSum<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy,
+                        /*exclusive*/ false, /*reverse*/ false);
+  Tensor expected(result->getType());
+  expected.getHandle<float>() = {1, 3, 6, 10};
+
+  EXPECT_TRUE(expected.isEqual(*result));
+}
+
+TEST_P(OperatorTest, CumSum_Float16) {
+  CHECK_IF_ENABLED();
+  /*
+    DATA  = [1, 2, 3, 4]
+    OUTPUT = [1, 3, 6, 10]
+  */
+
+  Tensor *result =
+      testCumSum<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty,
+                            /*exclusive*/ false, /*reverse*/ false);
+  Tensor expected(result->getType());
+  expected.getHandle<float16_t>() = {1, 3, 6, 10};
+
+  EXPECT_TRUE(expected.isEqual(*result));
+}
+
+TEST_P(OperatorTest, CumSum_Int32) {
+  CHECK_IF_ENABLED();
+  /*
+    DATA  = [1, 2, 3, 4]
+    OUTPUT = [1, 3, 6, 10]
+  */
+
+  Tensor *result =
+      testCumSum<int32_t>(bindings_, mod_, F_, EE_, ElemKind::Int32ITy,
+                          /*exclusive*/ false, /*reverse*/ false);
+  Tensor expected(result->getType());
+  expected.getHandle<int32_t>() = {1, 3, 6, 10};
+
+  EXPECT_TRUE(expected.isEqual(*result));
+}
+
+TEST_P(OperatorTest, CumSum_Int64) {
+  CHECK_IF_ENABLED();
+  /*
+    DATA  = [1, 2, 3, 4]
+    OUTPUT = [1, 3, 6, 10]
+  */
+
+  Tensor *result =
+      testCumSum<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy,
+                        /*exclusive*/ false, /*reverse*/ false);
+  Tensor expected(result->getType());
+  expected.getHandle<float>() = {1, 3, 6, 10};
+
+  EXPECT_TRUE(expected.isEqual(*result));
+}
+
+TEST_P(OperatorTest, CumSum_Exclusive) {
+  CHECK_IF_ENABLED();
+  /*
+    DATA  = [1, 2, 3, 4]
+    OUTPUT = [0, 1, 3, 6]
+  */
+
+  Tensor *result =
+      testCumSum<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy,
+                        /*exclusive*/ true, /*reverse*/ false);
+  Tensor expected(result->getType());
+  expected.getHandle<float>() = {0, 1, 3, 6};
+
+  EXPECT_TRUE(expected.isEqual(*result));
+}
+
+TEST_P(OperatorTest, CumSum_Reverse) {
+  CHECK_IF_ENABLED();
+  /*
+    DATA  = [1, 2, 3, 4]
+    OUTPUT = [10, 9, 7, 4]
+  */
+
+  Tensor *result =
+      testCumSum<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty,
+                            /*exclusive*/ false, /*reverse*/ true);
+  Tensor expected(result->getType());
+  expected.getHandle<float16_t>() = {10, 9, 7, 4};
+
+  EXPECT_TRUE(expected.isEqual(*result));
+}
+
+TEST_P(OperatorTest, CumSum_ExclusiveReverse) {
+  CHECK_IF_ENABLED();
+  /*
+    DATA  = [1, 2, 3, 4]
+    OUTPUT = [9, 7, 4, 0]
+  */
+
+  Tensor *result =
+      testCumSum<int32_t>(bindings_, mod_, F_, EE_, ElemKind::Int32ITy,
+                          /*exclusive*/ true, /*reverse*/ true);
+  Tensor expected(result->getType());
+  expected.getHandle<int32_t>() = {9, 7, 4, 0};
+
+  EXPECT_TRUE(expected.isEqual(*result));
+}
+
+TEST_P(OperatorTest, CumSum_WithZeroes) {
+  CHECK_IF_ENABLED();
+  /*
+    DATA  = [0, 0, 1, 0, 0, 2, 0, 0, 3]
+    OUTPUT = [0, 0, 1, 1, 1, 3, 3, 3, 6]
+  */
+
+  auto *data = mod_.createPlaceholder(ElemKind::Int64ITy, {9}, "data", false);
+  bindings_.allocate(data)->getHandle<int64_t>() = {0, 0, 1, 0, 0, 2, 0, 0, 3};
+
+  auto *CS = F_->createCumSum("CumSum", data);
+  auto *S = F_->createSave("save", CS);
+  bindings_.allocate(S->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+  Tensor *result = bindings_.get(S->getPlaceholder());
+  Tensor expected(result->getType());
+  expected.getHandle<int64_t>() = {0, 0, 1, 1, 1, 3, 3, 3, 6};
+
+  EXPECT_TRUE(expected.isEqual(*result));
+}
+
 TEST_P(OperatorTest, LengthsSum) {
   CHECK_IF_ENABLED();
 

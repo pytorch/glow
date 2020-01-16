@@ -921,6 +921,11 @@ public:
   BatchedAddNode *createBatchedAdd(llvm::StringRef name, TypeRef outTy,
                                    NodeValue batch, NodeValue sample);
 
+  /// Create a node performing a Cumulative Sum operation, output type matches
+  /// \p input type.
+  CumSumNode *createCumSum(llvm::StringRef name, NodeValue input,
+                           bool exclusive = false, bool reverse = false);
+
   /// Implements an operation that accumulates the values in \p data along the
   /// first dimension into len(\p lengths) entries by summing together the first
   /// lengths[0] values, then the subsequent lengths[1] values, etc.

@@ -1889,6 +1889,43 @@ Error ONNXModelLoader::loadBatchedAdd(const ONNX_NAMESPACE::NodeProto &op,
   return Error::success();
 }
 
+Error ONNXModelLoader::loadCumSum(const ONNX_NAMESPACE::NodeProto &op,
+                                  const ArgumentDictionaryTy &dict) {
+  if (op.input_size() > 1) {
+    Expected<NodeValue> axis = getNodeValueByName(op.input(1));
+    if (axis) {
+      if (auto *AC = llvm::dyn_cast<Constant>(axis->getNode())) {
+        RETURN_ERR_IF_NOT(AC->getPayload().dims().size() == 1,
+                          "CumSum axis must be 0-D");
+        RETURN_ERR_IF_NOT(AC->getPayload().dims()[0] == 1,
+                          "CumSum axis must be 0-D");
+        RETURN_ERR_IF_NOT(AC->getHandle<int32_t>().at(0) == 0,
+                          "CumSum only supports axis == 0");
+      } else {
+        RETURN_ERR("Axis must be Constant");
+      }
+
+      // Axis default is 0, which is fine.
+    }
+  }
+
+  NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getNodeValueByName(op.input(0)));
+  bool exclusive = false;
+  if (dict.count("exclusive")) {
+    ASSIGN_VALUE_OR_RETURN_ERR(exclusive, loadInt(dict.at("exclusive")));
+  }
+
+  bool reverse = false;
+  if (dict.count("reverse")) {
+    ASSIGN_VALUE_OR_RETURN_ERR(reverse, loadInt(dict.at("reverse")));
+  }
+
+  Node *N = G_.createCumSum(loadOperatorName(op), input, exclusive, reverse);
+  RETURN_IF_ERR(addNodeAsOutput(op, N));
+  return Error::success();
+}
+
 Error ONNXModelLoader::loadScatterAssign(const ONNX_NAMESPACE::NodeProto &op,
                                          const ArgumentDictionaryTy &dict) {
   NodeValue data;
@@ -2224,6 +2261,9 @@ Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
   }
   if (typeName == "BatchedAdd") {
     return loadBatchedAdd(op, dict);
+  }
+  if (typeName == "CumSum") {
+    return loadCumSum(op, dict);
   }
   if (typeName == "ScatterAssign") {
     return loadScatterAssign(op, dict);

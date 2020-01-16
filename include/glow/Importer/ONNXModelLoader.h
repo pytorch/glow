@@ -199,6 +199,10 @@ class ONNXModelLoader
   Error loadBatchedAdd(const ONNX_NAMESPACE::NodeProto &op,
                        const ArgumentDictionaryTy &dict);
 
+  /// Load Glow CumSum operator.
+  Error loadCumSum(const ONNX_NAMESPACE::NodeProto &op,
+                   const ArgumentDictionaryTy &dict);
+
   /// Load Glow ScatterAssign operator.
   Error loadScatterAssign(const ONNX_NAMESPACE::NodeProto &op,
                           const ArgumentDictionaryTy &dict);
