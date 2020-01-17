@@ -289,10 +289,18 @@ bool glow::ConstantFold::run(Function *F, const CompilationContext &cctx) {
     if (isa<Storage>(N) || isa<Constant>(N) || isa<SplatNode>(N)) {
       continue;
     }
+
+    // Don't try to constant fold Nodes that are not supported by the
+    // Interpreter. These are usually backend-specific.
+    if (!backend->isOpSupported(*N)) {
+      continue;
+    }
+
     // Skip nodes that are not constant operations.
     if (!isConstantOperation(N, *backend)) {
       continue;
     }
+
     // Add only a constant operation node whose value is used by at least
     // one non constant-operation node, because no other bigger constant
     // operation containing the current node can completely replace the result
@@ -302,6 +310,7 @@ bool glow::ConstantFold::run(Function *F, const CompilationContext &cctx) {
     if (!hasNonConstantOperationUser(N, *backend)) {
       continue;
     }
+
     // Compute the constant value of the node.
     std::vector<Constant *> constResults = constantFoldNodeImpl(*backend, N);
     // Replace all results of the original operation by the computed
