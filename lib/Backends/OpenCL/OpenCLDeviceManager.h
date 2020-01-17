@@ -215,12 +215,14 @@ protected:
   /// Load inputs from \p context onto the device.
   void copyInputsToDevice(const RuntimeBundle &runtimeBundle,
                           ExecutionContext *context,
-                          runtime::OpenCLDeviceBindings *devBindings);
+                          runtime::OpenCLDeviceBindings *devBindings,
+                          bool traceEnabled);
 
   /// Copy back results from the device to the host.
   void copyOutputsFromDevice(const RuntimeBundle &runtimeBundle,
                              ExecutionContext *context,
-                             runtime::OpenCLDeviceBindings *devBindings);
+                             runtime::OpenCLDeviceBindings *devBindings,
+                             bool traceEnabled);
 
   /// Get profiling information for each kernelLaunch. This must happen after
   /// copyOutputsFromDevice.
