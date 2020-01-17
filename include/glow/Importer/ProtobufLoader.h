@@ -227,7 +227,7 @@ Error constantFoldInLoader(Function *F, LoaderType &tmpLoader,
   // Register the constant inputs to the current op with the constant folding
   // loader.
   for (unsigned i = 0; i < (dim_t)op.input_size(); i++) {
-    Constant *tmpConst = mod->getConstantByName(op.input(i));
+    Constant *tmpConst = loader->getConstantByNameOrNull(op.input(i));
     RETURN_ERR_IF_NOT(tmpConst, "No constant found");
     tmpLoader.nodeValueByName_[op.input(i)] = tmpConst->getOutput();
   }
