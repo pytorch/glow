@@ -222,7 +222,6 @@ Error constantFoldInLoader(Function *F, LoaderType &tmpLoader,
                            LoaderType *loader, const OpType &op) {
   PlaceholderBindings bindings;
   std::vector<Tensor *> outTensors;
-  Module *mod = F->getParent();
 
   // Register the constant inputs to the current op with the constant folding
   // loader.
