@@ -1132,6 +1132,24 @@ TEST(Tensor, unpaddedSize) {
   auto copy = moved.getUnowned(moved.dims());
   EXPECT_EQ(copy.getUnpaddedSizeInBytes(), bytes);
   EXPECT_EQ(copy.getSizeInBytes(), paddedBytes);
+
+  // Test that a clone of a partial is still partial.
+  auto clone = moved.clone();
+  EXPECT_EQ(clone.getUnpaddedSizeInBytes(), bytes);
+  EXPECT_EQ(clone.getSizeInBytes(), paddedBytes);
+
+  // Test that assigning a Tensor to a partial is still partial.
+  Tensor assigned;
+  assigned.assign(&moved);
+  EXPECT_EQ(assigned.getUnpaddedSizeInBytes(), bytes);
+  EXPECT_EQ(assigned.getSizeInBytes(), paddedBytes);
+
+  // Check that when we reset a partial Tensor with the same Type but without
+  // specifying the reset should be partial that we do not have the same ptr, as
+  // it should have been reallocated.
+  char *oldPtr = assigned.getUnsafePtr();
+  assigned.reset(paddedType);
+  EXPECT_NE(assigned.getUnsafePtr(), oldPtr);
 }
 
 TEST(CustomAlignedTensor, sizes) {

@@ -157,9 +157,8 @@ public:
   /// \returns true if it is an unowned tensor.
   bool isUnowned() const { return isUnowned_; }
 
-  /// \returns the size of the unpadded memory region. If unpaddedSize_ is not
-  /// set return the size of the entire payload.
-  size_t getUnpaddedSizeInBytes() const;
+  /// \returns the number of allocated bytes pointed to by \ref data_.
+  size_t getUnpaddedSizeInBytes() const { return unpaddedSize_; }
 
   /// \returns the type of the tensor.
   const Type &getType() const { return type_; }
@@ -271,7 +270,8 @@ public:
   /// always <= actualSize().
   dim_t actualSize() const { return type_.actualSize(); }
 
-  /// \returns the number of bytes required to store the tensor.
+  /// \returns the number of bytes required to store the tensor based on its
+  /// Type. Note that this includes the size required for padding.
   uint64_t getSizeInBytes() const { return type_.getSizeInBytes(); }
 
   /// \returns the TensorPool managing this object, or nullptr if it is
@@ -319,6 +319,9 @@ public:
     isUnowned_ = true;
     // We do want DeviceResidency however, since there is no owning Glow Tensor.
     resetDeviceInfo();
+    if (unpaddedSize_ == 0) {
+      unpaddedSize_ = type_.getSizeInBytes();
+    }
   }
 
   /// Allocate and initialize a new integer tensor with \p scale and \p offset.
@@ -372,15 +375,23 @@ public:
     unownedTensor.data_ = firstElemPtr;
     unownedTensor.isUnowned_ = true;
     unownedTensor.type_ = Type::newShape(getType(), dims);
-    unownedTensor.unpaddedSize_ = unpaddedSize_;
     unownedTensor.deviceResidency_ = deviceResidency_;
+
+    // If the original base Tensor is padded, then we only allow the unowned
+    // Tensor to be padded if there are no offsets. Otherwise assert that the
+    // base Tensor is not padded, and set unpaddedSize to that of the new
+    // unowned type.
     if (offsets.size() == 0) {
+      unownedTensor.unpaddedSize_ = unpaddedSize_;
       assert(actualSize() == unownedTensor.actualSize() &&
              "The size of the unowned tensor "
              "should be the same as the size of "
              "the original tensor");
 
     } else {
+      unownedTensor.unpaddedSize_ = unownedTensor.type_.getSizeInBytes();
+      assert(getSizeInBytes() == getUnpaddedSizeInBytes() &&
+             "Problematic to get unowned offsetted view of a padded tensor");
       assert(actualSize() >= unownedTensor.actualSize() &&
              "The size of the unowned tensor "
              "should be no greater than the "
@@ -401,8 +412,12 @@ public:
   }
 
   /// Reset the shape and type of this tensor to match the shape and type of
-  /// \p other.
-  void reset(const Tensor *other) { reset(other->getType()); }
+  /// \p other. The size of the buffer is set to \p unpaddedSize unless it is
+  /// zero, which will instead default back to the number of bytes needed for
+  /// the type of \p other.
+  void reset(const Tensor *other, size_t unpaddedSize = 0) {
+    reset(other->getType(), unpaddedSize);
+  }
 
   void reset(ElemKind elemTy, llvm::ArrayRef<dim_t> shape) {
     Type t(elemTy, shape);
@@ -415,12 +430,24 @@ public:
     reset(t);
   }
 
-  /// Assigns a new shape to the tensor and allocates a new buffer.
-  void reset(const Type &T) {
+  /// Assigns a new shape to the tensor and allocates a new buffer. The size of
+  /// the buffer is set to \p unpaddedSize unless it is zero, which will
+  /// instead default back to the number of bytes needed for \p T.
+  void reset(const Type &T, size_t unpaddedSize = 0) {
     assert(!isDeviceResident() && "Tensor must reside on host to access data.");
+
+    // If 0 then fall back to the passed in Type's padded size.
+    if (unpaddedSize == 0) {
+      unpaddedSize = T.getSizeInBytes();
+    }
+
     // If the new size is identical to the allocated size then there is no need
     // to re-allocate the buffer.
-    if (type_ == T && getData()) {
+    const bool isOrigPadded = getSizeInBytes() != getUnpaddedSizeInBytes();
+    const bool isNewPadded = T.getSizeInBytes() != unpaddedSize;
+    const bool isBufReuseAllowed = (isOrigPadded == isNewPadded) &&
+                                   (getUnpaddedSizeInBytes() == unpaddedSize);
+    if (type_ == T && getData() && isBufReuseAllowed) {
 #ifdef GLOW_DEBUG_TENSOR_INIT
       PseudoRNG rng;
       init(InitKind::Broadcast, GLOW_DEBUG_TENSOR_INIT, rng);
@@ -442,8 +469,11 @@ public:
 
     // Note: zero-dimensional tensors have size 1.
     assert(size() > 0 && "Tensors must always have positive size.");
-    size_t count = type_.getSizeInBytes();
-    data_ = reinterpret_cast<char *>(alignedAlloc(count, TensorAlignment));
+    data_ =
+        reinterpret_cast<char *>(alignedAlloc(unpaddedSize, TensorAlignment));
+
+    // Set unpaddedSize_ to the actual number of bytes.
+    unpaddedSize_ = unpaddedSize;
 
 #ifdef GLOW_DEBUG_TENSOR_INIT
     PseudoRNG rng;
@@ -630,8 +660,8 @@ public:
   void assign(const Tensor *t) {
     assert(!isDeviceResident() && "Tensor must reside on host to access data.");
     assert(this != t && "Copying to self");
-    reset(t);
-    size_t bufferSize = type_.getSizeInBytes();
+    const size_t bufferSize = t->getUnpaddedSizeInBytes();
+    reset(t, bufferSize);
     std::copy(&t->getData()[0], &t->getData()[bufferSize], getData());
   }
 
@@ -641,6 +671,8 @@ public:
     assert(this != t && "Copying to self");
     assert(actualSize() == t->actualSize());
     assert(getElementType() == t->getElementType() && "Invalid element type");
+    assert(t->getUnpaddedSizeInBytes() == getUnpaddedSizeInBytes() &&
+           "Do not support copying between different unpadded sized tensors");
     size_t bufferSize = type_.getSizeInBytes();
     std::copy(&t->getData()[0], &t->getData()[bufferSize], getData());
   }
