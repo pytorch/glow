@@ -932,11 +932,13 @@ __kernel void localresponsenormalizationW(__global void *mem, unsigned dest,
   global float *outW = (global float *)&mem[dest];
   global float *inW = (global float *)&mem[src];
   global float *scaleCache = (global float *)&mem[scaleC];
-  unsigned n = get_global_id(0);
-  unsigned h = get_global_id(1);
-  unsigned w = get_global_id(2);
-  // For every channel:
-  for (unsigned c = 0; c < dim.c; c++) {
+
+  unsigned h = get_global_id(0);
+  unsigned w = get_global_id(1);
+  unsigned c = get_global_id(2);
+
+  // For each input in the batch:
+  for (unsigned n = 0; n < dim.n; n++) {
     float squareSum = 0.0;
     for (unsigned i = (c >= halfWindowSize ? c - halfWindowSize : 0);
          i <= min(c + halfWindowSize, (unsigned)dim.c - 1); i++) {
