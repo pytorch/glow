@@ -176,6 +176,11 @@ public:
 
   ~OpenCLDeviceManager();
 
+  /// Enumerate OpenCL devices, if deviceId > 0 then choose that index,
+  /// otherwise guess the best available device.
+  Error findBestDevice(cl_platform_id platformId, int deviceId);
+
+  /// Initialize the DeviceManager, choosing a device and creating a CL context.
   Error init() override;
 
   /// Parse config object provided at initialization \returns Error

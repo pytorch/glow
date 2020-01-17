@@ -79,10 +79,11 @@ static llvm::cl::OptionCategory OpenCLBackendCat("Glow OpenCL Backend Options");
 llvm::cl::opt<unsigned>
     clPlatformId("platform", llvm::cl::desc("OpenCL platform to be used"),
                  llvm::cl::init(0), llvm::cl::cat(OpenCLBackendCat));
-llvm::cl::opt<unsigned> clDeviceId("device",
-                                   llvm::cl::desc("OpenCL device to be used"),
-                                   llvm::cl::init(0),
-                                   llvm::cl::cat(OpenCLBackendCat));
+llvm::cl::opt<int> clDeviceId(
+    "device",
+    llvm::cl::desc(
+        "OpenCL device to be used. Default is to guess best device."),
+    llvm::cl::init(-1), llvm::cl::cat(OpenCLBackendCat));
 llvm::cl::opt<bool> clDoProfile("opencl-profile",
                                 llvm::cl::desc("Profile OpenCL kernels"),
                                 llvm::cl::init(false),
