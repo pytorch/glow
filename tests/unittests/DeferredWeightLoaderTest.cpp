@@ -38,14 +38,14 @@ public:
   std::string getName() override {
     for (auto na : names_) {
     }
-    if (position_ >= names_.size()) {
+    if (position_ >= int(names_.size())) {
       return "";
     }
     return names_[position_];
   }
 
   Tensor *getTensor() override {
-    if (position_ >= weights_.size()) {
+    if (position_ >= int(weights_.size())) {
       return nullptr;
     }
     return weights_[position_];

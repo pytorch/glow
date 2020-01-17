@@ -149,7 +149,7 @@ llvm::StringRef glow::getNameOfPass(FunctionPassID passID) {
     return #PASS_NAME;
 #include "glow/Optimizer/GraphOptimizer/FunctionPasses.def"
   }
-  LOG(DFATAL) << "Cannot reach here.";
+  llvm_unreachable("Unexpected pass.");
 }
 
 static constexpr char const *tab = "  ";

@@ -1892,7 +1892,7 @@ static Constant *quantizeDataForFusedRowwiseQuantizedSparseLengthsWeightedSum(
     return rwqData;
   }
   default:
-    LOG(FATAL) << "Invalid type for FusedRowwiswQuantization.";
+    llvm_unreachable("Invalid type for FusedRowwiswQuantization.");
   }
 }
 
