@@ -1576,6 +1576,16 @@ Error ONNXModelWriter::writeTile(const TileNode *node, GraphType &graph) {
   return Error::success();
 }
 
+Error ONNXModelWriter::writeCumSum(const CumSumNode *node, GraphType &graph) {
+  auto *proto = graph.add_node();
+  // Add dictionary entries.
+  addValueAttribute(proto, "axis", 0);
+  addValueAttribute(proto, "exclusive", node->getExclusive());
+  addValueAttribute(proto, "reverse", node->getReverse());
+
+  return writeAllWithNode("CumSum", node, graph, proto);
+}
+
 // Unsupported for export Glow nodes.
 #define DEF_UNSUPPORTED_STORAGE(NAME)                                          \
   Error ONNXModelWriter::write##NAME(const NAME *node, GraphType &) {          \

@@ -3055,6 +3055,44 @@ void BoundInterpreterFunction::fwdBatchedReduceMinInst(
 }
 
 template <typename ElemTy>
+void BoundInterpreterFunction::fwdCumSumInstImpl(Value *input, Value *dest,
+                                                 bool exclusive, bool reverse) {
+  auto *eInput = getTensor(input);
+  auto *eDest = getTensor(dest);
+  auto eInputH = eInput->getHandle<ElemTy>();
+  auto eDestH = eDest->getHandle<ElemTy>();
+  eDestH.clear();
+
+  ElemTy accum = 0;
+
+  sdim_t s = 0;
+  sdim_t n = eDestH.size();
+  sdim_t dir = 1;
+
+  if (reverse) {
+    s = n - 1;
+    n = -1;
+    dir = -1;
+  }
+
+  for (sdim_t i = s; i != n; i += dir) {
+    if (!exclusive) {
+      accum += eInputH.at(i);
+    }
+    eDestH.at(i) = accum;
+    if (exclusive) {
+      accum += eInputH.at(i);
+    }
+  }
+}
+
+void BoundInterpreterFunction::fwdCumSumInst(glow::CumSumInst const *I) {
+  dispatchArithmeticImpl(fwdCumSumInstImpl, I->getInput()->getElementType(),
+                         I->getInput(), I->getDest(), I->getExclusive(),
+                         I->getReverse());
+}
+
+template <typename ElemTy>
 void BoundInterpreterFunction::fwdLengthsSumInstFloatImpl(
     const LengthsSumInst *I) {
   staticAssertFloatingPointType(ElemTy);

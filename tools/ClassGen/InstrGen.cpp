@@ -278,6 +278,17 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Batch"})
       .autoIRGen();
 
+  // Does a running accumulation of all values in input (inclusive).
+  // e.g [1, 2, 3, 4] -> [1, 3, 6, 10]
+  BB.newInstr("CumSum")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Input", OperandKind::In)
+      .addMember(MemberType::Unsigned, "Exclusive")
+      .addMember(MemberType::Unsigned, "Reverse")
+      .inplaceOperand({"Dest", "Input"})
+      .autoIRGen()
+      .autoVerify(VerifyKind::SameType, {"Dest", "Input"});
+
   /// Sums together groups of consecutive slices of Data as per the group sizes
   /// specified by Lengths.
   BB.newInstr("LengthsSum")

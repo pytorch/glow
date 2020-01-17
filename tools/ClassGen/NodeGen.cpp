@@ -467,6 +467,19 @@ int main(int argc, char **argv) {
       .addResultFromCtorArg()
       .setDocstring("Performs Channel shuffle.");
 
+  BB.newNode("CumSum")
+      .addInput("Input")
+      .addMember(MemberType::Unsigned, "Exclusive")
+      .addMember(MemberType::Unsigned, "Reverse")
+      .addResultFromCtorArg()
+      .dataParallel()
+      .setDocstring("Performs a Cumulative Sum operation over a 1D vector with "
+                    "flags for working in exclusive mode and in reverse. In "
+                    "each case the output size is the same as in input size."
+                    "e.g (default) [1, 2, 3, 4] -> [1, 3, 6, 10]. "
+                    "(exclusive) [1, 2, 3, 4] -> [0, 1, 3, 6]. "
+                    "(reverse) [1, 2, 3, 4] -> [10, 9, 7, 4]. ");
+
   BB.newNode("LengthsSum")
       .addInput("Data")
       .addInput("Lengths")

@@ -1181,6 +1181,10 @@ bool BatchedReduceAddNode::verify() const {
   return isValid;
 }
 
+bool CumSumNode::verify() const {
+  return checkSameType(getResult(), getInput(), this);
+}
+
 bool LengthsSumNode::verify() const {
   return expectCompareTrue("Lengths must be a 1D vector",
                            getLengths().dims().size(), size_t(1), this);

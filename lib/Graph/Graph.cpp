@@ -1662,6 +1662,12 @@ BatchedAddNode *Function::createBatchedAdd(llvm::StringRef name, TypeRef outTy,
       new BatchedAddNode(name, getParent()->uniqueType(*outTy), batch, sample));
 }
 
+CumSumNode *Function::createCumSum(llvm::StringRef name, NodeValue input,
+                                   bool exclusive, bool reverse) {
+  return addNode(
+      new CumSumNode(name, input.getType(), input, exclusive, reverse));
+}
+
 LengthsSumNode *Function::createLengthsSum(llvm::StringRef name, NodeValue data,
                                            NodeValue lengths) {
   ShapeVector outDims(data.dims().begin(), data.dims().end());

@@ -497,6 +497,11 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
                {CrossEntropyLossNode::LabelsIdx}) &&
            (NI.getInElemTy(CrossEntropyLossNode::LabelsIdx) == IndexElemKind);
 
+  case Kinded::Kind::CumSumNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind(
+        {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int32ITy,
+         ElemKind::Int64ITy});
+
   case Kinded::Kind::LengthsSumNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
                {ElemKind::FloatTy, ElemKind::Float16Ty},

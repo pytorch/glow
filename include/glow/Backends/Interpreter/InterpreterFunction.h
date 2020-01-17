@@ -278,6 +278,10 @@ private:
                                    const ShapeVector &eDestDims, ElemTy max);
 
   template <typename ElemTy>
+  void fwdCumSumInstImpl(Value *input, Value *dest, bool exclusive,
+                         bool reverse);
+
+  template <typename ElemTy>
   void fwdLengthsSumInstFloatImpl(const LengthsSumInst *I);
 
   template <typename ElemTy> void fwdGatherInstImpl(const GatherInst *I);
