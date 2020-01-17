@@ -261,8 +261,7 @@ std::string Loader::getModelOptPath() {
 
   // Model path must be to one or more files. Use the path of the first file.
   size_t found = modelPathOpt[0].find_last_of("/");
-  assert(found != std::string::npos && "Expected path to proto with directory");
-  return modelPathOpt[0].substr(0, found);
+  return found == std::string::npos ? "." : modelPathOpt[0].substr(0, found);
 }
 
 llvm::StringRef Loader::getModelOptDir() {
