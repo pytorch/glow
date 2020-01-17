@@ -606,6 +606,22 @@ bool SinkCode::run(Function *F, const CompilationContext &cctx) {
       changed = true;
     }
 
+    // Sink TransposeNode below DequantizedNode.
+    // If it doesn't work out it will be re-sinked later.
+    if (auto *D = dyn_cast<DequantizeNode>(node)) {
+      auto *TR = dyn_cast<TransposeNode>(D->getInput());
+      if (!TR) {
+        continue;
+      }
+
+      auto newDType = F->getParent()->uniqueTypeWithNewShape(
+          D->getResult().getType(), TR->getInput().dims());
+      auto *newD = F->createDequantize(D->getName(), TR->getInput(), newDType);
+      auto *newTR = F->createTranspose(TR->getName(), newD, TR->getShuffle());
+      D->getResult().replaceAllUsesOfWith(newTR);
+      changed = true;
+    }
+
     // Sink Transpose below RescaleQuantized.
     // Potentially exposes opportunity to be combined up with Convolution.
     // If it doesn't work out it will be re-sinked later.
