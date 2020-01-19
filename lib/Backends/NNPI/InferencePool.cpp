@@ -27,8 +27,8 @@
 #include <immintrin.h>
 static inline void convertI64ToI32(int64_t const *i64InputOrg,
                                    int32_t *i32OutputOrg, uint32_t elements) {
-  uint8_t i64Input = reinterpret_cast<const uint8_t *>(i64InputOrg);
-  uint8_t i32OutputOrg = reinterpret_cast<uint8_t *>(i32OutputOrg);
+  const uint8_t *i64Input = reinterpret_cast<const uint8_t *>(i64InputOrg);
+  uint8_t *i32Output = reinterpret_cast<uint8_t *>(i32OutputOrg);
   const __mmask8 masks[9] = {
       0b0, 0b1, 0b11, 0b111, 0b1111, 0b11111, 0b111111, 0b1111111, 0b11111111,
   };
@@ -126,7 +126,7 @@ InferenceThreadEnv::~InferenceThreadEnv() {
                          "Failed to destroy NNPI device resource");
     }
     for (auto &ph : staticInputs_) {
-      LOG_IF_NOT(ERROR, staticPlaceholderContainer_->ReleaseDeviceResource(ph))
+      LOG_IF_NOT(ERROR, staticPlaceholderContainer_->releaseDeviceResource(ph))
           << "Failed to release device resource for " << ph->getName().str();
     }
     for (auto &nr : deviceOutputs_) {
@@ -650,12 +650,10 @@ bool InferenceThreadEnv::init(
       allocatedDeviceInputs_.push_back(nr);
     } else {
       const auto PH = staticPlaceholders.at(nr.name);
-      nr = staticPlaceholderContainer_->AcquireDeviceResource(PH, nr);
+      nr = staticPlaceholderContainer_->acquireDeviceResource(PH, nr);
       // Exception for internal testing (ICE-24091).
-      if (deviceOptions_->internalTesting.get().empty()) {
-        LOG_AND_RETURN_IF(ERROR, nr.handle == NNPI_INVALID_NNPIHANDLE,
-                          "Failed to acquire device resource", false);
-      }
+      LOG_AND_RETURN_IF(ERROR, nr.handle == NNPI_INVALID_NNPIHANDLE,
+                        "Failed to acquire device resource", false);
     }
 
     deviceInputs_.push_back(nr);

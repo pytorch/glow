@@ -32,7 +32,7 @@ struct EmulatorOnlyTests {
       // backendTestBlacklist because they are ordered within the same
       // translation unit (this source file).  Otherwise this technique would
       // be subject to the static initialization order fiasco.
-      backendTestBlacklist.erase({"staticPlaceholderInference/0"});
+      backendTestBlacklist = {};
     }
   }
 } emuTests;

@@ -86,15 +86,13 @@ NNPIDeviceManager::~NNPIDeviceManager() {
     });
   }
 
-  if (device_ != NNPI_INVALID_NNPIHANDLE ||
-      !deviceOptions_.internalTesting.get().empty()) {
+  if (device_ != NNPI_INVALID_NNPIHANDLE) {
     LOG_NNPI_INF_ERROR(nnpiDeviceContextDestroy(device_),
                        "Failed to destroy NNPI device context");
     device_ = NNPI_INVALID_NNPIHANDLE;
   }
 
-  if (adapter_ != NNPI_INVALID_NNPIHANDLE ||
-      !deviceOptions_.internalTesting.get().empty()) {
+  if (adapter_ != NNPI_INVALID_NNPIHANDLE) {
     LOG_NNPI_INF_ERROR(nnpiAdapterDestroy(adapter_),
                        "Failed to destroy NNPI adapter");
     adapter_ = NNPI_INVALID_NNPIHANDLE;
@@ -102,12 +100,10 @@ NNPIDeviceManager::~NNPIDeviceManager() {
 }
 
 Error NNPIDeviceManager::init() {
-  if (!deviceOptions_.internalTesting.get().empty()) {
-    LOG_IF_NOT_RETURN_LLVMERROR(adapter_ == NNPI_INVALID_NNPIHANDLE,
-                                "Invalid NNPI adapter");
-    LOG_IF_NOT_RETURN_LLVMERROR(device_ == NNPI_INVALID_NNPIHANDLE,
-                                "Invalid NNPI device");
-  }
+  LOG_IF_NOT_RETURN_LLVMERROR(adapter_ == NNPI_INVALID_NNPIHANDLE,
+                              "Invalid NNPI adapter");
+  LOG_IF_NOT_RETURN_LLVMERROR(device_ == NNPI_INVALID_NNPIHANDLE,
+                              "Invalid NNPI device");
 
   NNPITransformerInfo info;
   CHECK_EQ(nnpiTransformerGetInfo(&info), NNPI_NO_ERROR);
@@ -124,8 +120,7 @@ Error NNPIDeviceManager::init() {
         nnpiDeviceContextCreate(adapter_, deviceId_, &device_),
         "Failed to create NNPI Device");
     LOG_IF_NOT_RETURN_LLVMERROR(
-        staticPlaceholderContainer_.SetDevice(
-            device_, !deviceOptions_.internalTesting.get().empty()),
+        staticPlaceholderContainer_.setDevice(device_),
         "setting device for StaticPlaceholderContainer failed");
     if (deviceOptions_.enabledDeviceTracing) {
       deviceTracing_ = NNPIDeviceTracing::getForDevice(deviceId_);
@@ -295,11 +290,9 @@ void NNPIDeviceManager::transferStaticPlaceholderToDevice(
 
   NNPIHostResource hInput;
   NamedResource nr;
-  nr = staticPlaceholderContainer_.AcquireDeviceResource(PH, nr);
-  if (deviceOptions_.internalTesting.get().empty()) {
-    LOG_AND_FAIL_CALLBACK_IF_NOT(nr.handle != NNPI_INVALID_NNPIHANDLE,
-                                 "Failed to acquire device resource", resultCB);
-  }
+  nr = staticPlaceholderContainer_.acquireDeviceResource(PH, nr);
+  LOG_AND_FAIL_CALLBACK_IF_NOT(nr.handle != NNPI_INVALID_NNPIHANDLE,
+                               "Failed to acquire device resource", resultCB);
 
   LOG_AND_CALLBACK_NNPI_INF_ERROR(
       nnpiHostResourceCreate(adapter_, &nr.desc, &hInput),
@@ -399,7 +392,7 @@ void NNPIDeviceManager::transferStaticPlaceholderToDevice(
                                   resultCB);
 
   LOG_AND_FAIL_CALLBACK_IF_NOT(
-      staticPlaceholderContainer_.ReleaseDeviceResource(PH),
+      staticPlaceholderContainer_.releaseDeviceResource(PH),
       "Failed to release device resource", resultCB);
 
   resultCB(Error::success());
@@ -411,24 +404,21 @@ NNPIStaticPlaceholderContainer::~NNPIStaticPlaceholderContainer() {
          "resource";
   for (auto item : staticPlaceholdersDeviceResource_) {
     auto PH = item.first;
-    EraseAndDestroyDeviceResource_(PH);
+    eraseAndDestroyDeviceResource_(PH);
   }
 }
 
-bool NNPIStaticPlaceholderContainer::SetDevice(NNPIDeviceContext device,
-                                               bool inferOnRuntime) {
+bool NNPIStaticPlaceholderContainer::setDevice(NNPIDeviceContext device) {
   // Exception for internal testing (ICE-24091)
-  if (!inferOnRuntime) {
-    LOG_AND_RETURN_IF(ERROR, device == NNPI_INVALID_NNPIHANDLE,
-                      "NNPIStaticPlaceholderContainer received invalid device",
-                      false);
-  }
+  LOG_AND_RETURN_IF(ERROR, device == NNPI_INVALID_NNPIHANDLE,
+                    "NNPIStaticPlaceholderContainer received invalid device",
+                    false);
   device_ = device;
   return true;
 }
 
 NamedResource
-NNPIStaticPlaceholderContainer::AcquireDeviceResource(const Placeholder *PH,
+NNPIStaticPlaceholderContainer::acquireDeviceResource(const Placeholder *PH,
                                                       const NamedResource &nr) {
   if (staticPlaceholdersDeviceResource_.count(PH) == 0) {
     NamedResourceWithRef nrf = nr;
@@ -444,7 +434,7 @@ NNPIStaticPlaceholderContainer::AcquireDeviceResource(const Placeholder *PH,
   return nrf;
 }
 
-bool NNPIStaticPlaceholderContainer::EraseAndDestroyDeviceResource_(
+bool NNPIStaticPlaceholderContainer::eraseAndDestroyDeviceResource_(
     const Placeholder *PH) {
   LOG_AND_RETURN_IF_NOT(ERROR, staticPlaceholdersDeviceResource_.count(PH),
                         "Resource with name:" + PH->getName().str() +
@@ -458,7 +448,7 @@ bool NNPIStaticPlaceholderContainer::EraseAndDestroyDeviceResource_(
   return true;
 }
 
-bool NNPIStaticPlaceholderContainer::ReleaseDeviceResource(
+bool NNPIStaticPlaceholderContainer::releaseDeviceResource(
     const Placeholder *PH) {
   LOG_AND_RETURN_IF_NOT(ERROR, staticPlaceholdersDeviceResource_.count(PH),
                         "Resource with name:" + PH->getName().str() +
@@ -474,7 +464,7 @@ bool NNPIStaticPlaceholderContainer::ReleaseDeviceResource(
   }
 
   if (nrf.refCount == 0) {
-    return EraseAndDestroyDeviceResource_(PH);
+    return eraseAndDestroyDeviceResource_(PH);
   }
   return true;
 }
