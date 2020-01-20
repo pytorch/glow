@@ -251,6 +251,7 @@ void GlowIValue::fromTuple(std::vector<GlowIValue> glowIValList) {
 }
 
 void GlowIValue::fromPTTensor(at::Tensor tensor) {
+  CHECK(tensor.is_contiguous());
   reset();
   tag_ = Tag::PTTensor;
   payload_.asPTTensor = new at::Tensor(tensor);
@@ -261,7 +262,14 @@ Error GlowIValue::fromIValue(const at::IValue &ival) {
   if (ival.isNone()) {
     fromNone();
   } else if (ival.isTensor()) {
-    glow::Tensor t = ptTensorToGlowTensor(ival.toTensor());
+    auto at = ival.toTensor();
+    glow::Tensor t;
+    if (!at.is_contiguous()) {
+      at = at.contiguous();
+      t = ptTensorToGlowTensor(at).clone();
+    } else {
+      t = ptTensorToGlowTensor(at);
+    }
     fromTensor(std::move(t));
   } else if (ival.isDouble()) {
     fromDouble(ival.toDouble());

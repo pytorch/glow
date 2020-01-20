@@ -1599,6 +1599,31 @@ TEST(onnx, importLengthsSum) {
   ASSERT_TRUE(llvm::isa<Placeholder>(LS->getLengths()));
 }
 
+/// Test loading CumSum from an ONNX model.
+TEST(onnx, importCumSum) {
+  ExecutionEngine EE;
+  auto &mod = EE.getModule();
+  auto *F = mod.createFunction("main");
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/cumsum.onnxtxt");
+  Placeholder *output;
+  {
+    Tensor lengths(ElemKind::FloatTy, {10});
+    lengths.getHandle() = {10, 9, 8, 7, 6, 5, 4, 3, 2, 1};
+    ONNXModelLoader onnxLD(netFilename, {"lengths"}, {&lengths.getType()}, *F);
+    output = EXIT_ON_ERR(onnxLD.getSingleOutput());
+  }
+  // Verify structure: PH -> CumSum -> Save -> PH.
+  ASSERT_EQ(mod.getPlaceholders().size(), 2);
+  ASSERT_EQ(F->getNodes().size(), 2);
+  auto *save = getSaveNodeFromDest(output);
+  auto *CS = llvm::dyn_cast<CumSumNode>(save->getInput().getNode());
+  ASSERT_TRUE(CS);
+  ASSERT_TRUE(llvm::isa<Placeholder>(CS->getInput()));
+  ASSERT_FALSE(CS->getExclusive());
+  ASSERT_TRUE(CS->getReverse());
+}
+
 /// Test loading a FCTransposed node: I * W + B, where I is need to be flatten.
 TEST(onnx, FCTransposedWithFlatten) {
   ExecutionEngine EE{};
@@ -2768,4 +2793,38 @@ TEST(onnx, importLSTMForwardWithPeephole) {
 TEST(onnx, importLSTMForwardInputForget) {
   importLSTM(GLOW_DATA_PATH
              "tests/models/onnxModels/lstmForwardInputForget.onnxtxt");
+}
+
+/// Test loading Flip from a ONNX model. The ONNX model already computes
+/// the error.
+static void importFlip(std::string fileName) {
+  ExecutionEngine EE;
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  PlaceholderBindings bindings;
+  {
+    ONNXModelLoader onnxLD(fileName, {}, {}, *F);
+    bindings.allocate(mod.getPlaceholders());
+  }
+
+  // Compile and run.
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  // Verify error.
+  Placeholder *Y_err_ph = mod.getPlaceholderByName("Y_err");
+  EXPECT_TRUE(Y_err_ph);
+  auto err = bindings.get(Y_err_ph)->getHandle();
+  for (size_t idx = 0; idx < Y_err_ph->getType()->size(); idx++) {
+    EXPECT_EQ(err.raw(idx), 0);
+  }
+}
+
+TEST(onnx, importFlipWithAxis) {
+  importFlip(GLOW_DATA_PATH "tests/models/onnxModels/flipWithAxis.onnxtxt");
+}
+
+TEST(onnx, importFlipNoAxis) {
+  importFlip(GLOW_DATA_PATH "tests/models/onnxModels/flipNoAxis.onnxtxt");
 }

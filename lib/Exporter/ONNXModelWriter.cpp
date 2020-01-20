@@ -725,6 +725,14 @@ Error ONNXModelWriter::writeTranspose(const TransposeNode *node,
   return writeAllWithNode("Transpose", node, graph, proto);
 }
 
+Error ONNXModelWriter::writeFlip(const FlipNode *node, GraphType &graph) {
+  auto *proto = graph.add_node();
+  // Add dictionary entries.
+  addValueAttribute(proto, "axis", node->getAxis());
+
+  return writeAllWithNode("Flip", node, graph, proto);
+}
+
 Error ONNXModelWriter::writeConvolution(const ConvolutionNode *node,
                                         GraphType &graph) {
   // Loading convolution creates a sandwich with Transpose nodes for Input,
@@ -1566,6 +1574,16 @@ Error ONNXModelWriter::writeTile(const TileNode *node, GraphType &graph) {
   proto->add_input(tile->getName().str() + "_indices");
 
   return Error::success();
+}
+
+Error ONNXModelWriter::writeCumSum(const CumSumNode *node, GraphType &graph) {
+  auto *proto = graph.add_node();
+  // Add dictionary entries.
+  addValueAttribute(proto, "axis", 0);
+  addValueAttribute(proto, "exclusive", node->getExclusive());
+  addValueAttribute(proto, "reverse", node->getReverse());
+
+  return writeAllWithNode("CumSum", node, graph, proto);
 }
 
 // Unsupported for export Glow nodes.

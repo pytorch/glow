@@ -35,11 +35,12 @@ add_custom_command(
   OUTPUT
     ${BUNDLE_OUTPUT_DIRECTORY}/lenet_mnist.o
   COMMAND
-    image-classifier ${IMAGES}/3_1020.png -g -i=0to1
-    -m=${LENET_MNIST_BUNDLE_DIR}/lenet_mnist -model-input-name=${MODEL_INPUT_NAME}
-    -backend=CPU -emit-bundle ${BUNDLE_OUTPUT_DIRECTORY} -bundle-api=static
+    model-compiler -g -model=${LENET_MNIST_BUNDLE_DIR}/lenet_mnist
+    -model-input=${MODEL_INPUT_NAME},float,[1,1,28,28]
+    -backend=CPU -emit-bundle=${BUNDLE_OUTPUT_DIRECTORY}
+    -bundle-api=static
   DEPENDS
-    image-classifier LeNetMnistBundleDir
+    model-compiler LeNetMnistBundleDir
 )
 add_custom_target(LeNetMnistBundleNet DEPENDS ${BUNDLE_OUTPUT_DIRECTORY}/lenet_mnist.o LeNetMnistBundleNetFiles)
 
@@ -61,11 +62,12 @@ add_custom_command(
   OUTPUT
   ${QUANTIZED_BUNDLE_OUTPUT_DIRECTORY}/lenet_mnist.o
   COMMAND
-    image-classifier ${IMAGES}/3_1020.png -g -i=0to1 -load-profile=profile.yml
-    -m=${LENET_MNIST_BUNDLE_DIR}/lenet_mnist -model-input-name=${MODEL_INPUT_NAME}
-    -backend=CPU -emit-bundle ${QUANTIZED_BUNDLE_OUTPUT_DIRECTORY} -bundle-api=static
+    model-compiler -g -load-profile=profile.yml -model=${LENET_MNIST_BUNDLE_DIR}/lenet_mnist
+    -model-input=${MODEL_INPUT_NAME},float,[1,1,28,28]
+    -backend=CPU -emit-bundle=${QUANTIZED_BUNDLE_OUTPUT_DIRECTORY}
+    -bundle-api=static
   DEPENDS
-  image-classifier LeNetMnistBundleDir
+    model-compiler LeNetMnistBundleDir
 )
 add_custom_target(QuantizedLeNetMnistBundleNet DEPENDS ${QUANTIZED_BUNDLE_OUTPUT_DIRECTORY}/lenet_mnist.o LeNetMnistBundleQuantizationProfile)
 

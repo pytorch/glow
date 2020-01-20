@@ -38,6 +38,7 @@ class TestQuantizedLinear(unittest.TestCase):
             },
         )
 
+    @unittest.skip(reason="random input could cause flaky")
     def test_quantized_linear_random_input(self):
         """Basic test of the PyTorch quantized::linear Node on Glow."""
 

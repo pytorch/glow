@@ -278,6 +278,10 @@ private:
                                    const ShapeVector &eDestDims, ElemTy max);
 
   template <typename ElemTy>
+  void fwdCumSumInstImpl(Value *input, Value *dest, bool exclusive,
+                         bool reverse);
+
+  template <typename ElemTy>
   void fwdLengthsSumInstFloatImpl(const LengthsSumInst *I);
 
   template <typename ElemTy> void fwdGatherInstImpl(const GatherInst *I);
@@ -324,6 +328,9 @@ private:
   template <typename T, typename AccumT>
   void fwdEmbeddingBagByteRowwiseOffsetsImpl(
       const EmbeddingBagByteRowwiseOffsetsInst *I);
+
+  template <typename ElemTy> void fwdFlipInstImpl(const FlipInst *I);
+
   ///@}
 };
 

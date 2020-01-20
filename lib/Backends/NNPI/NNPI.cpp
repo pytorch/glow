@@ -30,10 +30,12 @@ bool GlowNNPILowerAllBatchMatMul = false;
 static llvm::cl::opt<bool, /* ExternalStorage */ true>
     GlowNNPILowerAllBatchMatMulOpt(
         "glow_nnpi_lower_all_batch_matmul",
-        llvm::cl::desc("Whether to override default lowering for NNPI and "
-                       "always lower BatchMatMul to a series of MatMuls."),
+        llvm::cl::desc("Whether to override default "
+                       "lowering for NNPI and "
+                       "always lower BatchMatMul to a "
+                       "series of MatMuls."),
         llvm::cl::location(GlowNNPILowerAllBatchMatMul), llvm::cl::Optional,
-        llvm::cl::init(true), llvm::cl::cat(optionsForNNPI));
+        llvm::cl::init(false), llvm::cl::cat(optionsForNNPI));
 
 namespace onnxifi {
 
@@ -241,7 +243,8 @@ bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
     auto resultK =
         NI.getOutElemTy(FusedRowwiseQuantizedSparseLengthsSumNode::ResultIdx);
     return (dataK == ElemKind::UInt8FusedQTy ||
-            dataK == ElemKind::UInt8FusedFP16QTy) &&
+            dataK == ElemKind::UInt8FusedFP16QTy ||
+            dataK == ElemKind::UInt4FusedFP16QTy) &&
            (resultK == ElemKind::FloatTy || resultK == ElemKind::Float16Ty) &&
            (indicesK == ElemKind::Int64ITy) && (lengthsK == ElemKind::Int32ITy);
   }
@@ -260,7 +263,7 @@ bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
     return (dataK == ElemKind::UInt8FusedQTy ||
             dataK == ElemKind::UInt8FusedFP16QTy ||
             dataK == ElemKind::UInt4FusedFP16QTy) &&
-           (weightsK == resultK) &&
+           (weightsK == ElemKind::FloatTy || weightsK == ElemKind::Float16Ty) &&
            (resultK == ElemKind::FloatTy || resultK == ElemKind::Float16Ty) &&
            (indicesK == ElemKind::Int64ITy) && (lengthsK == ElemKind::Int32ITy);
   }
@@ -350,6 +353,7 @@ bool NNPIBackend::shouldLower(const Node *N) const {
     const FusedRowwiseQuantizedSparseLengthsSumNode *SLSN =
         llvm::cast<FusedRowwiseQuantizedSparseLengthsSumNode>(N);
     if ((backendOptions_.useIceT || backendOptions_.inferOnDevice) &&
+        (SLSN->getData().getElementType() != ElemKind::UInt4FusedFP16QTy) &&
         (SLSN->getResult().getElementType() == ElemKind::Float16Ty)) {
       return false; // Don't lower == keep without weights
     } else {
@@ -481,8 +485,9 @@ static bool removeClipsBlockingFusion(Function *F) {
   return changed;
 }
 
-bool NNPIBackend::transformPostLowering(Function *F,
-                                        CompilationContext &cctx) const {
+bool NNPIBackend::transformPostLowering(
+    Function *F, CompilationContext &cctx,
+    const glow::runtime::DeviceInfo *devInfo) const {
   LOG_SCOPE(F->getLogContext(), "NNPIBackend::transformPostLowering");
 
   if (glow::onnxifi::GlowDisableNNPITransforms) {

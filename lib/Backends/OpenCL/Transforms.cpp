@@ -18,6 +18,7 @@
 
 #include "glow/Backends/LayoutConverter.h"
 #include "glow/Graph/Nodes.h"
+#include "glow/Runtime/RuntimeTypes.h"
 
 #include "llvm/Support/Casting.h"
 
@@ -26,8 +27,9 @@ using llvm::dyn_cast;
 using namespace glow;
 
 /// Perform OpenCL specific post-lowering graph transformation.
-bool OCLBackend::transformPostLowering(Function *F,
-                                       CompilationContext &cctx) const {
+bool OCLBackend::transformPostLowering(
+    Function *F, CompilationContext &cctx,
+    const glow::runtime::DeviceInfo *devInfo) const {
   // NCHW transformation is not supported in training mode yet, because of some
   // issues with gradient nodes.
 
@@ -48,6 +50,12 @@ bool OCLBackend::transformPostLowering(Function *F,
       }
 
       if (CN->getLayout() == NCHW) {
+        continue;
+      }
+
+      // If there is no compiler controlled local memory on the device,
+      // try to avoid kernels that use (additional) copies to local memory.
+      if (devInfo != nullptr && devInfo->availableLocalMemory == 0) {
         continue;
       }
 

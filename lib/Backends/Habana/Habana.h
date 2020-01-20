@@ -49,8 +49,9 @@ public:
 
   bool shouldLower(const Node *N) const override;
 
-  bool transformPostLowering(Function *F,
-                             CompilationContext &cctx) const override;
+  bool transformPostLowering(
+      Function *F, CompilationContext &cctx,
+      const glow::runtime::DeviceInfo *devInfo = nullptr) const override;
 
   bool shouldShareBuffers() const override { return false; }
 

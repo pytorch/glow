@@ -149,6 +149,9 @@ public:
 
   const FunctionList &getFunctions() const { return functions_; }
 
+  /// \returns the list of types that the Module owns.
+  const TypesList &getTypes() const { return types_; }
+
   /// Erase the constant \p N from the Module.
   void eraseConstant(Constant *N);
 
@@ -243,6 +246,15 @@ public:
 
   /// Erase all the functions, Placeholders, Constants, etc.
   void clear();
+
+  /// Clone a module.
+  /// \returns a new module that is a copy of the current module.
+  Module *clone() const;
+
+  /// Clone the current module into a user-provided module \p M.
+  /// \returns the user-provided module \p M that now contains a clone of the
+  /// current module.
+  Module *clone(Module *M) const;
 
   /// Strips payloads from constants. This is useful when
   /// the Module will be kept around for metadata but we want to reduce memory
@@ -646,6 +658,10 @@ public:
                                  llvm::ArrayRef<unsigned_t> shuffle,
                                  const std::string &layout = ANY_LAYOUT);
 
+  /// Create a node with the name \p name which flips (reorders) the elements
+  /// of the input \p input along the given axis \p axis.
+  FlipNode *createFlip(llvm::StringRef name, NodeValue input, unsigned_t axis);
+
   /// Create a series of nodes that implement a Broadcast operation. The \p
   /// input Tensor is broadcasted based on \p newShape and along the \p axis,
   /// which defines the offset from the leading dimension under which
@@ -905,6 +921,11 @@ public:
   BatchedAddNode *createBatchedAdd(llvm::StringRef name, TypeRef outTy,
                                    NodeValue batch, NodeValue sample);
 
+  /// Create a node performing a Cumulative Sum operation, output type matches
+  /// \p input type.
+  CumSumNode *createCumSum(llvm::StringRef name, NodeValue input,
+                           bool exclusive = false, bool reverse = false);
+
   /// Implements an operation that accumulates the values in \p data along the
   /// first dimension into len(\p lengths) entries by summing together the first
   /// lengths[0] values, then the subsequent lengths[1] values, etc.
@@ -932,24 +953,32 @@ public:
                                  NodeValue weights, NodeValue indices,
                                  NodeValue lengths);
 
-  /// Create an EmbeddingBag node.
+  /// Create an EmbeddingBag node. If \p hasEndOffset is true then the node
+  /// expects an extra offset to be appended to \p offsets which marks the end
+  /// of the last range.
   EmbeddingBagNode *createEmbeddingBag(llvm::StringRef name, NodeValue data,
                                        NodeValue weights, NodeValue indices,
-                                       NodeValue offsets);
+                                       NodeValue offsets,
+                                       bool hasEndOffset = false);
 
-  /// Create an EmbeddingBagByteRowwiseOffsetsNode node.
+  /// Create an EmbeddingBagByteRowwiseOffsetsNode node. If \p hasEndOffset is
+  /// true then the node expects an extra offset to be appended to \p offsets
+  /// which marks the end of the last range.
   EmbeddingBagByteRowwiseOffsetsNode *createEmbeddingBagByteRowwiseOffsets(
       llvm::StringRef name, NodeValue data, NodeValue weights,
-      NodeValue indices, NodeValue offsets, bool useFP16Accumulation = false);
+      NodeValue indices, NodeValue offsets, bool useFP16Accumulation = false,
+      bool hasEndOffset = false);
 
   /// Same as \ref createEmbeddingBagByteRowwiseOffsets(), but
   /// expects float input \p data, which is rowwise-quantized and fused
   /// internally. \p fusedElemKind represents the element kind to use for the
-  /// final fused rowwise-quantized data.
+  /// final fused rowwise-quantized data. If \p hasEndOffset is true then the
+  /// node expects an extra offset to be appended to \p offsets which marks the
+  /// end of the last range.
   EmbeddingBagByteRowwiseOffsetsNode *createEmbeddingBagByteRowwiseOffsets(
       llvm::StringRef name, Tensor &data, NodeValue weights, NodeValue indices,
       NodeValue offsets, ElemKind fusedElemKind = ElemKind::UInt8FusedQTy,
-      bool useFP16Accumulation = false);
+      bool useFP16Accumulation = false, bool hasEndOffset = false);
 
   /// Same as \ref createSparseLengthsWeightedSum(), but with \p outTy
   /// specified.
@@ -1470,12 +1499,26 @@ public:
   /// Erase the node \p I from the Function.
   void eraseNode(NodesList::iterator I);
 
-  /// Clone the current function into a new function with the name \p newName.
-  /// If \p map is non-null then the procedure records the mapping between the
-  /// old node to the new node in \p map.
+  /// Clone the current function into a new function with the name \p newName in
+  /// the same module. If \p map is non-null then the procedure records the
+  /// mapping between the old node to the new node in \p map. If \p currToNewMap
+  /// is non-null it is used as the initial state of the currToNew map inside
+  /// the cloner.
   /// \returns a new function that is a copy of the current function.
   Function *clone(llvm::StringRef newName,
-                  llvm::DenseMap<Node *, Node *> *map = nullptr);
+                  llvm::DenseMap<const Node *, Node *> *map = nullptr,
+                  llvm::DenseMap<const Node *, Node *> *currToNewMap = nullptr);
+
+  /// Clone the current function into a user-provided function \p newF. The
+  /// function \p newF is not automatically added to a module by the clone call.
+  /// If \p map is non-null then the procedure records the mapping between the
+  /// old node to the new node in \p map. If \p currToNewMap is non-null it is
+  /// used as the initial state of the currToNew map inside the cloner. \returns
+  /// a user-provided function \p newF that now contains a clone of the current
+  /// function.
+  Function *
+  clone(Function *newF, llvm::DenseMap<const Node *, Node *> *map = nullptr,
+        llvm::DenseMap<const Node *, Node *> *currToNewMap = nullptr) const;
 
   /// Verify the correctness of the Function. If \p backend is provided, checks
   /// backend-specific layout requirements. Else checks the requirements based

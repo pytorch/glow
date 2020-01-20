@@ -144,6 +144,10 @@ class Partitioner final : public PartitionerBase {
   template <typename SLSType>
   void appendSLSTable(Node &node, std::vector<SLSTableInfo> &slsTables);
 
+  /// Returns info for the default device of the backend. If multiple devices,
+  /// returns the first one.
+  const DeviceInfo &getDeviceInfoForBackend(llvm::StringRef backendName);
+
 public:
   /// \p parent is the module which contains the functions need to be divided.
   /// Here we assume that all the functions in one module belong to a same

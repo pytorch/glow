@@ -15,7 +15,7 @@ class TestMm(unittest.TestCase):
             return r.mm(t)
 
         x = torch.randn(2, 3)
-        y = torch.randn(3, 4)
+        y = torch.randn(4, 3).t()
         t = torch.randn(4, 2)
 
         jitVsGlow(test_f, x, y, t, expected_fused_ops={"aten::mm"})

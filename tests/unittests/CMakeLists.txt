@@ -16,6 +16,7 @@ target_link_libraries(BackendTestUtils
                         ExecutionEngine
                         Graph
                         GraphOptimizer
+                        HostManager
                         Quantization
                         QuantizationBase
                         LLVMSupport
@@ -334,10 +335,12 @@ if(GLOW_WITH_OPENCL)
                           TestMain)
   add_glow_test(OCLTest
                 ${GLOW_BINARY_DIR}/tests/OCLTest
-                    --gtest_output=xml:OCLTest.xml)
+                --gtest_output=xml:OCLTest.xml)
+
+  add_glow_test(OpenCLBackendTestWithDiskCache
+                ${CMAKE_COMMAND} "-DGLOW_BINARY_DIR=${GLOW_BINARY_DIR}" "-P" "${CMAKE_SOURCE_DIR}/lib/Backends/OpenCL/tests/OpenCLDiskCacheTest.cmake")
+
   LIST(APPEND UNOPT_TESTS ./tests/OCLTest -optimize-ir=false &&)
-
-
 
 endif()
 
@@ -382,6 +385,7 @@ foreach(backend ${GLOW_BACKENDS})
   add_backend_test(TEST MLTest BACKEND "${backend}" UNOPT)
   add_backend_test(TEST OperatorGradTest BACKEND "${backend}" UNOPT)
   add_backend_test(TEST OperatorTest BACKEND "${backend}" UNOPT)
+  add_backend_test(TEST NumericsTest BACKEND "${backend}" UNOPT)
   add_backend_test(TEST TensorLayoutTest BACKEND "${backend}" UNOPT)
   add_backend_test(TEST
                    RecommendationSystemTest
@@ -520,6 +524,7 @@ add_executable(UtilsTest
                StrCheck.cpp
                SupportTest.cpp
                TaggedListTest.cpp
+               SharedMutexTest.cpp
                UtilsTest.cpp)
 target_link_libraries(UtilsTest
                       PRIVATE

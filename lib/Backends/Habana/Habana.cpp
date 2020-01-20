@@ -1419,8 +1419,9 @@ bool surroundTileWithReshapes(Function *F, TileNode &tile) {
 
 } // namespace
 
-bool HabanaBackend::transformPostLowering(Function *F,
-                                          CompilationContext &cctx) const {
+bool HabanaBackend::transformPostLowering(
+    Function *F, CompilationContext &cctx,
+    const glow::runtime::DeviceInfo *devInfo) const {
   LOG_SCOPE(F->getLogContext(), "HabanaBackend::transformPostLowering")
 
   bool changed = false;

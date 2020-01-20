@@ -173,6 +173,7 @@ def gen_rnn_onnx_test_model(model_path, seq_length, batch_size, hidden_size, inp
         Wi, Ri, bWi, bRi = get_weights(dir_idx)
 
         def f(x): return np.tanh(x)
+
         def mm(x, w): return np.matmul(x, w.transpose())
         Ht = np.reshape(initial_h[dir_idx, :, :], [batch_size, hidden_size])
 

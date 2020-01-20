@@ -32,6 +32,7 @@
 #include "glow/Optimizer/Lower/Lower.h"
 #include "glow/Quantization/Base/Base.h"
 #include "glow/Quantization/Quantization.h"
+#include "glow/Runtime/RuntimeTypes.h"
 
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/CommandLine.h"
@@ -602,6 +603,22 @@ bool SinkCode::run(Function *F, const CompilationContext &cctx) {
       auto *newQ = F->createQuantize(Q->getName(), TR->getInput(), newQType);
       auto *newTR = F->createTranspose(TR->getName(), newQ, TR->getShuffle());
       Q->getResult().replaceAllUsesOfWith(newTR);
+      changed = true;
+    }
+
+    // Sink TransposeNode below DequantizedNode.
+    // If it doesn't work out it will be re-sinked later.
+    if (auto *D = dyn_cast<DequantizeNode>(node)) {
+      auto *TR = dyn_cast<TransposeNode>(D->getInput());
+      if (!TR) {
+        continue;
+      }
+
+      auto newDType = F->getParent()->uniqueTypeWithNewShape(
+          D->getResult().getType(), TR->getInput().dims());
+      auto *newD = F->createDequantize(D->getName(), TR->getInput(), newDType);
+      auto *newTR = F->createTranspose(TR->getName(), newD, TR->getShuffle());
+      D->getResult().replaceAllUsesOfWith(newTR);
       changed = true;
     }
 
@@ -3445,7 +3462,8 @@ Error glow::optimizeFunctionBeforeLowering(Function *F,
 // NOTE: When updating this function, please also update the documentation in
 // docs/GraphOptimizationPipeline.md
 Error glow::optimizeFunction(Function *F, const Backend &B,
-                             CompilationContext &cctx) {
+                             CompilationContext &cctx,
+                             const glow::runtime::DeviceInfo *devInfo) {
   LOG_SCOPE(F->getLogContext(), "glow::optimizeFunction")
 
   // If requested only lower the Function and early return.
@@ -3506,7 +3524,7 @@ Error glow::optimizeFunction(Function *F, const Backend &B,
   }
 
   // Allow the backend to transform the graph after lowering.
-  if (B.transformPostLowering(F, cctx)) {
+  if (B.transformPostLowering(F, cctx, devInfo)) {
     // If the backend made changes, optimize the graph again. Perform only
     // passes that the Backend has requested so we do not interfere with the
     // backend's transformations.

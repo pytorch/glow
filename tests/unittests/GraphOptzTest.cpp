@@ -28,6 +28,27 @@ using namespace glow;
 
 class GraphFold : public GraphOptz {};
 
+/// A helper predicate to check if the provided node has the same address as a
+/// pre-defined address provided in constructor. This is useful if you need to
+/// check that a given node is still in the graph. In general, it is not safe to
+/// use the std::find(begin_it, end_it, value) and compare the nodes by value,
+/// because the node provided as the last parameter of std::find (i.e. the value
+/// reference) may have been removed by some optimizations and cannot be
+/// dereferenced anymore. But comparing the addresses of the nodes should be
+/// fine. Thus, one can use the following form instead:
+/// std::find_if(begin_it, end_it, IsSameNodeAddress(node_address))
+struct IsSameNodeAddress {
+  const Node *nodeAddress_;
+  IsSameNodeAddress(const Node *nodeAddress) : nodeAddress_(nodeAddress) {}
+  bool operator()(const Node &n) const { return &n == nodeAddress_; }
+};
+
+/// \returns true if the Function \p F contains the Node \p N.
+static bool functionContainsNode(const Function *F, const Node *N) {
+  return std::find_if(F->getNodes().begin(), F->getNodes().end(),
+                      IsSameNodeAddress(N)) != F->getNodes().end();
+}
+
 /// Optimize the function \p F. \returns the optimized function.
 static Function *optimizeFunction(Function *F) {
   auto *G = F->clone(F->getName().str() + "_optimized");
@@ -239,8 +260,7 @@ TEST_F(GraphOptz, optimizeBatchNormAfterConvFP16) {
   EXPECT_EQ(F_->getNodes().size(), 3);
 
   ::glow::convertPlaceholdersToConstants(F_, bindings_, {});
-  optimizedF_ = F_->clone(F_->getName().str() + "_optimized");
-  ::glow::optimize(optimizedF_, CompilationMode::Infer);
+  optimizedF_ = optimizeFunction(F_);
 
   EXPECT_EQ(optimizedF_->getNodes().size(), 2);
 
@@ -288,8 +308,7 @@ TEST_F(GraphOptz, optimizeBatchNormAfterConvWithTransposedWeights) {
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::BatchNormalizationNodeKind), 1);
 
   ::glow::convertPlaceholdersToConstants(F_, bindings_, {input});
-  optimizedF_ = F_->clone(F_->getName().str() + "_optimized");
-  ::glow::optimize(optimizedF_, CompilationMode::Infer);
+  optimizedF_ = optimizeFunction(F_);
 
   EXPECT_EQ(optimizedF_->getNodes().size(), 2);
   EXPECT_EQ(
@@ -325,8 +344,7 @@ TEST_F(GraphOptz, optimizeBatchNormAfterConvWithReshapeConst) {
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::BatchNormalizationNodeKind), 1);
 
   ::glow::convertPlaceholdersToConstants(F_, bindings_, {input});
-  optimizedF_ = F_->clone(F_->getName().str() + "_optimized");
-  ::glow::optimize(optimizedF_, CompilationMode::Infer);
+  optimizedF_ = optimizeFunction(F_);
 
   EXPECT_EQ(optimizedF_->getNodes().size(), 2);
   EXPECT_EQ(
@@ -371,9 +389,11 @@ TEST_F(GraphOptz, optimizeBatchNormAfterConvWithPred) {
 /// Check CSE will not merge two nodes that have all the same inputs but
 /// different predicates.
 TEST_F(GraphOptz, cseRespectsPredicates) {
-  Node *in = mod_.createPlaceholder(ElemKind::FloatTy, {5}, "in", false);
-  Node *pred1 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred", false);
-  Node *pred2 = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred", false);
+  Placeholder *in = mod_.createPlaceholder(ElemKind::FloatTy, {5}, "in", false);
+  Placeholder *pred1 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred", false);
+  Placeholder *pred2 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1}, "pred", false);
 
   Node *RN1 = F_->createRELU("relu1", in);
   RN1->setPredicate(pred1);
@@ -391,12 +411,16 @@ TEST_F(GraphOptz, cseRespectsPredicates) {
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::SaveNodeKind), 2);
 
   ::glow::convertPlaceholdersToConstants(F_, bindings_, {});
-  ::glow::optimize(F_, CompilationMode::Infer);
+  optimizedF_ = optimizeFunction(F_);
 
   // Two RELUS and two Saves should still be there.
   EXPECT_EQ(F_->getNodes().size(), 4);
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::ReluNodeKind), 2);
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::SaveNodeKind), 2);
+
+  bindings_.allocate(mod_.getPlaceholders());
+  bindings_.get(in)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
+  checkNumericalEquivalence();
 }
 
 TEST_F(GraphOptz, optimizeBatchNormAfterConvButConvReused) {
@@ -718,6 +742,29 @@ GLOW_INSTANTIATE_TEST_SUITE_P(
                       TestSinkTransposeNodesKind::Sigmoid,
                       TestSinkTransposeNodesKind::Tanh,
                       TestSinkTransposeNodesKind::Quantize));
+
+TEST_F(GraphOptz, SinkTransposeBelowDequantize) {
+  auto *in =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 5, 10, 15}, "input", false);
+  auto *quantize = F_->createQuantize(
+      "quantize", in, mod_.uniqueType(ElemKind::Int8QTy, in->dims(), 0.01, 2));
+  auto *tile = F_->createTile("tile", quantize, 3, 0);
+  auto *transpose = F_->createTranspose("transpose", tile, NHWC2NCHW);
+  auto *deq = F_->createDequantize("dequantize", transpose);
+  SaveNode *O = F_->createSave("out", deq);
+
+  optimizedF_ = optimizeFunction(F_);
+
+  EXPECT_EQ(F_->getNodes().size(), 5);
+  EXPECT_EQ(optimizedF_->getNodes().size(), 5);
+
+  auto *optOut = findFunctionNodeByName<SaveNode>(optimizedF_, O->getName());
+  EXPECT_TRUE(llvm::isa<TransposeNode>(optOut->getInput().getNode()));
+
+  bindings_.allocate(mod_.getPlaceholders());
+  bindings_.get(in)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
+  checkNumericalEquivalence();
+}
 
 /// For example folding Rescale in to Convolution.
 TEST_F(GraphOptz, sinkTransposeBelowRescale) {
@@ -1272,21 +1319,6 @@ TEST_F(GraphOptz, sinkTransposeBelowPad) {
   EXPECT_EQ(F_->getNodes().size(), 3);
 }
 
-/// A helper predicate to check if the provided node has the same address as a
-/// pre-defined address provided in constructor. This is useful if you need to
-/// check that a given node is still in the graph. In general, it is not safe to
-/// use the std::find(begin_it, end_it, value) and compare the nodes by value,
-/// because the node provided as the last parameter of std::find (i.e. the value
-/// reference) may have been removed by some optimizations and cannot be
-/// dereferenced anymore. But comparing the addresses of the nodes should be
-/// fine. Thus, one can use the following form instead:
-/// std::find_if(begin_it, end_it, IsSameNodeAddress(node_address))
-struct IsSameNodeAddress {
-  Node *nodeAddress_;
-  IsSameNodeAddress(Node *nodeAddress) : nodeAddress_(nodeAddress) {}
-  bool operator()(const Node &n) const { return &n == nodeAddress_; }
-};
-
 TEST_F(GraphOptz, mergeConcatNodes) {
   Node *A1 = mod_.createPlaceholder(ElemKind::FloatTy, {1, 5, 10, 15}, "input1",
                                     false);
@@ -1325,21 +1357,17 @@ TEST_F(GraphOptz, mergeConcatNodes) {
 
   // CN1 should be merged into a new CN2 and later into a new CN4 and removed by
   // the optimizations.
-  EXPECT_TRUE(std::find_if(F_->getNodes().begin(), F_->getNodes().end(),
-                           IsSameNodeAddress(CN1)) == F_->getNodes().end());
+  EXPECT_FALSE(functionContainsNode(F_, CN1));
 
   // CN2 should be merged into a new CN4 and removed by the optimizations.
-  EXPECT_TRUE(std::find_if(F_->getNodes().begin(), F_->getNodes().end(),
-                           IsSameNodeAddress(CN2)) == F_->getNodes().end());
+  EXPECT_FALSE(functionContainsNode(F_, CN2));
 
   // CN3 should not be merged into CN4 and should not be removed,
   // because CN4 and CN3 have a different dimension parameter.
-  EXPECT_TRUE(std::find_if(F_->getNodes().begin(), F_->getNodes().end(),
-                           IsSameNodeAddress(CN3)) != F_->getNodes().end());
+  EXPECT_TRUE(functionContainsNode(F_, CN3));
 
   // The CN4 concat node should be replaced by a merged concat node.
-  EXPECT_TRUE(std::find_if(F_->getNodes().begin(), F_->getNodes().end(),
-                           IsSameNodeAddress(CN4)) == F_->getNodes().end());
+  EXPECT_FALSE(functionContainsNode(F_, CN4));
 
   EXPECT_EQ(F_->getNodes().size(), 3);
 }
@@ -1369,12 +1397,10 @@ TEST_F(GraphOptz, CSE) {
   EXPECT_EQ(CN->getInputs().size(), 2);
 
   // CN1 should not be removed.
-  EXPECT_TRUE(std::find_if(F_->getNodes().begin(), F_->getNodes().end(),
-                           IsSameNodeAddress(CN1)) != F_->getNodes().end());
+  EXPECT_TRUE(functionContainsNode(F_, CN1));
 
   // CSE should replace CN2 by CN1 and remove CN2.
-  EXPECT_TRUE(std::find_if(F_->getNodes().begin(), F_->getNodes().end(),
-                           IsSameNodeAddress(CN2)) == F_->getNodes().end());
+  EXPECT_FALSE(functionContainsNode(F_, CN2));
 
   EXPECT_EQ(F_->getNodes().size(), 3);
 }
@@ -1536,10 +1562,8 @@ TEST_F(GraphOptz, ZeroArithmeticParentsMustBeSimplifiedFirst) {
 
   // Expect all muls to be optimized away, with 1 splat and 1 save left.
   EXPECT_EQ(F_->getNodes().size(), 2);
-  EXPECT_TRUE(std::find_if(F_->getNodes().begin(), F_->getNodes().end(),
-                           IsSameNodeAddress(O)) != F_->getNodes().end());
-  EXPECT_TRUE(std::find_if(F_->getNodes().begin(), F_->getNodes().end(),
-                           IsSameNodeAddress(zero)) != F_->getNodes().end());
+  EXPECT_TRUE(functionContainsNode(F_, O));
+  EXPECT_TRUE(functionContainsNode(F_, zero));
   EXPECT_EQ(O->getInput().getNode(), zero);
 }
 
@@ -1563,10 +1587,7 @@ TEST_F(GraphOptz, ArithmeticIdentitiesOne) {
   EXPECT_EQ(optimizedF_->getNodes().size(), 1);
   SaveNode *SN =
       llvm::dyn_cast<SaveNode>(optimizedF_->getNodeByName(save->getName()));
-  ASSERT_TRUE(std::find_if(optimizedF_->getNodes().begin(),
-                           optimizedF_->getNodes().end(),
-                           IsSameNodeAddress(SN)) !=
-              optimizedF_->getNodes().end());
+  ASSERT_TRUE(functionContainsNode(optimizedF_, SN));
   ASSERT_NE(SN, nullptr);
 
   // Save node should just save the input.
@@ -1694,14 +1715,11 @@ TEST_F(GraphOptz, ReshapeAfterSplat) {
   EXPECT_TRUE(SN->getResult().getType()->dims().equals(reshape));
 
   // R1 should still be in the graph.
-  EXPECT_TRUE(std::find_if(F_->getNodes().begin(), F_->getNodes().end(),
-                           IsSameNodeAddress(R1)) != F_->getNodes().end());
+  EXPECT_TRUE(functionContainsNode(F_, R1));
 
   // R3 and Z2 should not be in the graph any more.
-  EXPECT_TRUE(std::find_if(F_->getNodes().begin(), F_->getNodes().end(),
-                           IsSameNodeAddress(R3)) == F_->getNodes().end());
-  EXPECT_TRUE(std::find_if(F_->getNodes().begin(), F_->getNodes().end(),
-                           IsSameNodeAddress(Z2)) == F_->getNodes().end());
+  EXPECT_FALSE(functionContainsNode(F_, R3));
+  EXPECT_FALSE(functionContainsNode(F_, Z2));
 }
 
 /// Test the Reshape(Reshape(x)) -> Reshape(x) transformation.
@@ -1731,10 +1749,8 @@ TEST_F(GraphOptz, ReshapeReshapeOpt) {
 
   // R1 and R2 should not be in the graph any more; they were replaced by a
   // single new reshape.
-  EXPECT_TRUE(std::find_if(F_->getNodes().begin(), F_->getNodes().end(),
-                           IsSameNodeAddress(R1)) == F_->getNodes().end());
-  EXPECT_TRUE(std::find_if(F_->getNodes().begin(), F_->getNodes().end(),
-                           IsSameNodeAddress(R2)) == F_->getNodes().end());
+  EXPECT_FALSE(functionContainsNode(F_, R1));
+  EXPECT_FALSE(functionContainsNode(F_, R2));
 }
 
 TEST_F(GraphOptz, DCEPublicVars) {
@@ -2775,13 +2791,9 @@ TEST_F(GraphOptz, concatReshapes) {
   EXPECT_EQ(F_->getNodes().size(), 15);
 
   // concatNode1 should not exist any more.
-  EXPECT_TRUE(std::find_if(F_->getNodes().begin(), F_->getNodes().end(),
-                           IsSameNodeAddress(concatNode1)) ==
-              F_->getNodes().end());
+  EXPECT_FALSE(functionContainsNode(F_, concatNode1));
   // concatNode2 should still exist.
-  EXPECT_TRUE(std::find_if(F_->getNodes().begin(), F_->getNodes().end(),
-                           IsSameNodeAddress(concatNode2)) !=
-              F_->getNodes().end());
+  EXPECT_TRUE(functionContainsNode(F_, concatNode2));
 
   // The first input of addNode should be a Reshape node now, with the same
   // result shape of concatNode1.
@@ -2981,8 +2993,7 @@ TEST_F(GraphOptz, eliminateSingleConcat) {
 
   // Just the SaveNode should be left.
   EXPECT_EQ(F_->getNodes().size(), 1);
-  ASSERT_TRUE(std::find_if(F_->getNodes().begin(), F_->getNodes().end(),
-                           IsSameNodeAddress(SN)) != F_->getNodes().end());
+  ASSERT_TRUE(functionContainsNode(F_, SN));
 
   // Save node should just save the input.
   EXPECT_TRUE(SN->getInput().getNode() == input);

@@ -116,23 +116,29 @@ bool NNPIDeviceTracing::addTrace(NNPITraceEntry &entry) {
 
   if (state == "q" || state == "queued") {
     name += "-Queue";
-    glowTraceCtx_->logTraceEvent(name, TraceLevel::OPERATOR, 'I',
-                                 entry.hostTime, entry.params);
+    glowTraceCtx_->logTraceEvent(name, TraceLevel::OPERATOR,
+                                 TraceEvent::InstantType, entry.hostTime,
+                                 entry.params);
   } else if (state == "s" || state == "cbs" || state == "executed") {
-    glowTraceCtx_->logTraceEvent(name, TraceLevel::OPERATOR, 'B',
-                                 entry.hostTime, entry.params);
+    glowTraceCtx_->logTraceEvent(name, TraceLevel::OPERATOR,
+                                 TraceEvent::BeginType, entry.hostTime,
+                                 entry.params);
   } else if (state == "c" || state == "cbc" || state == "completed") {
-    glowTraceCtx_->logTraceEvent(name, TraceLevel::OPERATOR, 'E',
-                                 entry.hostTime, entry.params);
+    glowTraceCtx_->logTraceEvent(name, TraceLevel::OPERATOR,
+                                 TraceEvent::EndType, entry.hostTime,
+                                 entry.params);
   } else if (state == "cbs") {
-    glowTraceCtx_->logTraceEvent(name, TraceLevel::OPERATOR, 'B',
-                                 entry.hostTime, entry.params);
+    glowTraceCtx_->logTraceEvent(name, TraceLevel::OPERATOR,
+                                 TraceEvent::BeginType, entry.hostTime,
+                                 entry.params);
   } else if (state == "cbc") {
-    glowTraceCtx_->logTraceEvent(name, TraceLevel::OPERATOR, 'E',
-                                 entry.hostTime, entry.params);
+    glowTraceCtx_->logTraceEvent(name, TraceLevel::OPERATOR,
+                                 TraceEvent::EndType, entry.hostTime,
+                                 entry.params);
   } else if (state == "cbnwc") {
-    glowTraceCtx_->logTraceEvent(name, TraceLevel::OPERATOR, 'I',
-                                 entry.hostTime, entry.params);
+    glowTraceCtx_->logTraceEvent(name, TraceLevel::OPERATOR,
+                                 TraceEvent::InstantType, entry.hostTime,
+                                 entry.params);
   }
   return true;
 }

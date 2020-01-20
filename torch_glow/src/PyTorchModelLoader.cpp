@@ -15,6 +15,7 @@
  */
 
 #include "PyTorchModelLoader.h"
+#include "CustomPyTorchOpLoader.h"
 #include "PyTorchCommon.h"
 
 #include "glow/Quantization/Base/Base.h"
@@ -224,36 +225,6 @@ Expected<at::Tensor *> iValToPTTensor(Expected<GlowIValue *> expectedIVal) {
   } else {
     return expectedIVal.takeError();
   }
-}
-
-/// Given Node inputs and outputs, check the expected sizes. Negative size
-/// indicates that the size should be equal to or greater than that size (for
-/// example -2 means at least 2).
-template <typename T>
-Error checkInputAndOutputSizes(const T &inputs, int64_t inputsSize,
-                               const T &outputs, int64_t outputsSize) {
-  if (inputsSize >= 0) {
-    RETURN_ERR_IF_NOT(inputs.size() == inputsSize,
-                      glow::strFormat("Expected exactly %lu inputs, got %lu.",
-                                      (size_t)inputsSize, inputs.size()));
-  } else {
-    inputsSize = inputsSize * -1;
-    RETURN_ERR_IF_NOT(inputs.size() >= inputsSize,
-                      glow::strFormat("Expected at least %lu inputs, got %lu.",
-                                      (size_t)inputsSize, inputs.size()));
-  }
-
-  if (outputsSize >= 0) {
-    RETURN_ERR_IF_NOT(outputs.size() == outputsSize,
-                      glow::strFormat("Expected exactly %lu outputs, got %lu.",
-                                      (size_t)outputsSize, outputs.size()));
-  } else {
-    outputsSize = outputsSize * -1;
-    RETURN_ERR_IF_NOT(outputs.size() >= outputsSize,
-                      glow::strFormat("Expected at least %lu outputs, got %lu.",
-                                      (size_t)outputsSize, outputs.size()));
-  }
-  return Error::success();
 }
 
 /// Given a vector \p original containing elements of some type, \returns a
@@ -747,13 +718,10 @@ struct EmbeddingBagByteRowwiseOffsetsInputs {
 } // namespace
 
 // static
-const PyTorchModelLoader::MappingOfMemberFunctions &
-PyTorchModelLoader::getSymbolsMapping() {
-  /// Static map of the set of PyTorch symbols to load, the PyTorchModelLoader
-  /// for loading these symbols, and the set of inputs that should be considered
-  /// immutable between inference invocations by Glow and loaded as Constants
-  /// instead of Placeholders.
-  static auto symbolLoaderMapping = MappingOfMemberFunctions({
+const PyTorchModelLoader::MappingOfMemberFunctions
+PyTorchModelLoader::buildSymbolsMapping() {
+  // First build mapping with standard PyTorch operators.
+  auto symbolLoaderMapping = MappingOfMemberFunctions({
       {{"prim::Constant"}, &PyTorchModelLoader::loadConstant, {}},
       {{"aten::mul", "aten::mul_"}, &PyTorchModelLoader::loadMul, {}},
       {{"aten::div", "aten::div_"}, &PyTorchModelLoader::loadDiv, {}},
@@ -962,6 +930,30 @@ PyTorchModelLoader::getSymbolsMapping() {
        &PyTorchModelLoader::loadEmbeddingBagByteRowwiseOffsets,
        {}},
   });
+
+  // Add in custom operator loaders.
+  for (const auto &symbolAndLoader : getCustomPyTorchOpLoaders()) {
+    const char *symbolStr = symbolAndLoader.first.toQualString();
+    MappingOfMemberFunctionsValue val({symbolStr},
+                                      &PyTorchModelLoader::loadCustomOp, {});
+    auto res = symbolLoaderMapping.insert({symbolAndLoader.first, val});
+    DCHECK(res.second)
+        << "Tried to create a custom op loader for a symbol that "
+           "already has a registered loader: "
+        << symbolStr;
+  }
+
+  return symbolLoaderMapping;
+}
+
+// static
+const PyTorchModelLoader::MappingOfMemberFunctions &
+PyTorchModelLoader::getSymbolsMapping() {
+  /// Static map of the set of PyTorch symbols to load, the PyTorchModelLoader
+  /// for loading these symbols, and the set of inputs that should be considered
+  /// immutable between inference invocations by Glow and loaded as Constants
+  /// instead of Placeholders.
+  static auto symbolLoaderMapping = buildSymbolsMapping();
 
   return symbolLoaderMapping;
 }
@@ -3275,6 +3267,18 @@ Error PyTorchModelLoader::loadConstant(const torch::jit::Node *ptNode) {
   return Error::success();
 }
 
+Error PyTorchModelLoader::loadCustomOp(const torch::jit::Node *ptNode) {
+  CustomPyTorchOpLoader *customLoader =
+      getCustomPyTorchOpLoaderForSymbol(ptNode->kind());
+
+  RETURN_ERR_IF_NOT(
+      customLoader,
+      strFormat("Expected a custom loader to be found for symbol: %s",
+                ptNode->kind().toQualString()));
+
+  return customLoader->loadNode(*this, ptNode);
+}
+
 Error PyTorchModelLoader::loadEmbeddingBag(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
@@ -3460,18 +3464,21 @@ Error PyTorchModelLoader::loadAttributes(
           std::make_pair(&ival.toObjectRef(), newNameHierarchy);
       continue;
     } else if (ival.isTensor()) {
-      const auto ptTensor = ival.toTensor();
+      GlowIValue glowIVal;
       // PyTorch Tensor extracted type is kByte
       // indicate it is the address of stored weights of quantized
       // linear or conv.
       if (isPackedQParamNode(node)) {
-        GlowIValue glowIVal;
+        const auto ptTensor = ival.toTensor();
+        CHECK(ptTensor.is_contiguous());
         glowIVal.fromPTTensor(ptTensor);
         RETURN_IF_ERR(addValueMapping(outputValue, std::move(glowIVal)));
       } else {
-        auto glowTensor = ptTensorToGlowTensor(ptTensor);
-        glow::Constant *glowConstant = F_.getParent()->createConstant(
-            newNameHierarchy, std::move(glowTensor));
+        RETURN_IF_ERR(glowIVal.fromIValue(ival));
+        glow::Tensor *t;
+        ASSIGN_VALUE_OR_RETURN_ERR(t, glowIVal.toTensor());
+        glow::Constant *glowConstant =
+            F_.getParent()->createConstant(newNameHierarchy, std::move(*t));
 
         if (copyTensorMemory_) {
           glowConstant->ensureIsOwned();

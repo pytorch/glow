@@ -208,6 +208,7 @@ at::Tensor glowTypeToEmptyPTTensor(const glow::Type &glowType) {
 }
 
 glow::Tensor ptTensorToGlowTensor(const at::Tensor &ptTensor) {
+  CHECK(ptTensor.is_contiguous());
   if (ptTensor.is_quantized()) {
     float scale = 1.0;
     int32_t offset = 0;

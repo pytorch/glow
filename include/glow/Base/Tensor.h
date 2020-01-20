@@ -314,7 +314,7 @@ public:
   /// unpaddedSize can be set to indicate actual size of the inputs.
   Tensor(void *data, TypeRef ty, size_t unpaddedSize = 0)
       : data_(reinterpret_cast<char *>(data)),
-        type_(*ty), isUnowned_{false}, unpaddedSize_{unpaddedSize} {
+        type_(*ty), unpaddedSize_{unpaddedSize} {
     // Mark as unowned.
     isUnowned_ = true;
     // We do want DeviceResidency however, since there is no owning Glow Tensor.
@@ -814,12 +814,19 @@ private:
   bool isEqualImpl(const Tensor &other, float allowedError,
                    bool verbose) const {
     assert(!isDeviceResident() && "Tensor must reside on host to access data.");
-    auto const *myData = getRawDataPointer<ElemTy>();
-    auto const *otherData = other.getRawDataPointer<ElemTy>();
+    auto thisHandle = getHandle<ElemTy>();
+    auto otherHandle = other.getHandle<ElemTy>();
     double maxFoundError = 0.0;
-    size_t maxFoundErrorIdx = 0, numExceedingError = 0;
-    for (size_t i = 0, e = size(); i < e; i++) {
-      double delta = myData[i] - otherData[i];
+    size_t numExceedingError = 0;
+    size_t currIndex = 0;
+    size_t maxFoundErrorIdx = 0;
+    double maxRE = 0.0; // relative error.
+    size_t maxREIdx = 0;
+    for (auto thisHandleIt = thisHandle.begin(),
+              otherHandleIt = otherHandle.begin();
+         thisHandleIt != thisHandle.end() && otherHandleIt != otherHandle.end();
+         ++thisHandleIt, ++otherHandleIt, ++currIndex) {
+      double delta = *thisHandleIt - *otherHandleIt;
       delta = std::abs(delta);
       // Since any comparison with NAN returns false, we use a negated condition
       // so that this function correctly returns false when delta is NAN.
@@ -830,17 +837,29 @@ private:
         numExceedingError += 1;
         if (!(delta <= maxFoundError)) {
           maxFoundError = delta;
-          maxFoundErrorIdx = i;
+          maxFoundErrorIdx = currIndex;
+        }
+        double sum = *thisHandleIt + *otherHandleIt;
+        double re = delta / std::abs(sum);
+        if (!(re <= maxRE)) {
+          maxRE = re;
+          maxREIdx = currIndex;
         }
       }
     }
+    auto thisHandleIt = thisHandle.begin();
+    auto otherHandleIt = otherHandle.begin();
     if (numExceedingError != 0) {
       LOG(INFO) << "Tensors not equal: " << numExceedingError << " out of "
-                << size() << " elements exceeded allowed error threshold "
+                << actualSize() << " elements exceeded allowed error threshold "
                 << allowedError << ". Maximum error found was " << maxFoundError
                 << " at index " << maxFoundErrorIdx << ": "
-                << myData[maxFoundErrorIdx] << " vs. "
-                << otherData[maxFoundErrorIdx];
+                << *(thisHandleIt.operator+(maxFoundErrorIdx)) << " vs. "
+                << *(otherHandleIt.operator+(maxFoundErrorIdx));
+      LOG(INFO) << "Maximum relative error found was: " << maxRE
+                << " at index: " << maxREIdx << ": "
+                << *(thisHandleIt.operator+(maxREIdx)) << " v.s. "
+                << *(otherHandleIt.operator+(maxREIdx));
     }
     return numExceedingError == 0;
   }

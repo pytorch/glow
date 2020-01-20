@@ -360,7 +360,9 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
     case ElemKind::UInt4FusedFP16QTy:
     case ElemKind::UInt8FusedFP16QTy:
       return (NI.getInElemTy(FusedRowwiseQuantizedSparseLengthsWeightedSumNode::
-                                 WeightsIdx) == ElemKind::Float16Ty) &&
+                                 WeightsIdx) == ElemKind::Float16Ty ||
+              NI.getInElemTy(FusedRowwiseQuantizedSparseLengthsWeightedSumNode::
+                                 WeightsIdx) == ElemKind::FloatTy) &&
              (NI.getOutElemTy(
                   FusedRowwiseQuantizedSparseLengthsWeightedSumNode::
                       ResultIdx) == ElemKind::Float16Ty);
@@ -495,6 +497,11 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
                {CrossEntropyLossNode::LabelsIdx}) &&
            (NI.getInElemTy(CrossEntropyLossNode::LabelsIdx) == IndexElemKind);
 
+  case Kinded::Kind::CumSumNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind(
+        {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int32ITy,
+         ElemKind::Int64ITy});
+
   case Kinded::Kind::LengthsSumNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
                {ElemKind::FloatTy, ElemKind::Float16Ty},
@@ -523,6 +530,7 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::TransposeNodeKind:
   case Kinded::Kind::ReshapeNodeKind:
   case Kinded::Kind::SaveNodeKind:
+  case Kinded::Kind::FlipNodeKind:
     // These work regardless of the underlying type.
     return true;
 

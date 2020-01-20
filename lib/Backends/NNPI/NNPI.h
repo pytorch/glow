@@ -48,8 +48,9 @@ public:
   runtime::DeviceManager *
   createDeviceManager(const runtime::DeviceConfig &deviceConfig) override;
 
-  bool transformPostLowering(Function *F,
-                             CompilationContext &cctx) const override;
+  bool transformPostLowering(
+      Function *F, CompilationContext &cctx,
+      const glow::runtime::DeviceInfo *devInfo = nullptr) const override;
 
   virtual llvm::StringMap<std::string>
   getSupportedCompiledFunctionOptions() const override {

@@ -44,6 +44,7 @@ struct BundleEntry {
 namespace runtime {
 
 class DeviceManager;
+struct DeviceInfo;
 struct DeviceConfig;
 
 } // namespace runtime
@@ -102,11 +103,12 @@ public:
 
   /// Used by the compiler during graph optimization and before code generation,
   /// giving the backend an opportunity to transform the graph before IRGen. The
-  /// backend may insert backend-specific nodes. The backend is responsible for
-  /// cleaning up after itself.
+  /// backend may insert backend and device-specific nodes. The backend is
+  /// responsible for cleaning up after itself.
   /// \returns True if the graph was modified.
-  virtual bool transformPostLowering(Function *F,
-                                     CompilationContext &cctx) const {
+  virtual bool transformPostLowering(
+      Function *F, CompilationContext &cctx,
+      const glow::runtime::DeviceInfo *devInfo = nullptr) const {
     return false;
   }
 

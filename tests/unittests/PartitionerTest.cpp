@@ -541,7 +541,7 @@ static void createSimpleSparseNNModule(Module &mod) {
   for (int table = 0; table < 5; table++) {
     Tensor data(ElemKind::FloatTy, {tableEntries, tableWidth});
     auto indices = mod.createPlaceholder(
-        ElemKind::Int64ITy, {numIndices * batchSize}, "indices", false);
+        IndexElemKind, {numIndices * batchSize}, "indices", false);
     auto weights = mod.createPlaceholder(
         ElemKind::FloatTy, {numIndices * batchSize}, "weights", false);
     auto lengths = mod.createPlaceholder(ElemKind::Int32ITy, {batchSize},

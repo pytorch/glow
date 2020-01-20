@@ -198,6 +198,25 @@ bool Module::verify() const {
   for (auto *F : functions_) {
     isValid &= F->verify();
   }
+  // Check that all types used by constants or placeholders belong to the
+  // module.
+  auto &types = getTypes();
+  for (const auto *PH : getPlaceholders()) {
+    bool foundType =
+        std::find(types.begin(), types.end(), *PH->getType()) != types.end();
+    isValid &=
+        expectCompareTrue("Every type used by placeholders should be part of "
+                          "the graph",
+                          foundType, true, PH);
+  }
+  for (const auto *C : getConstants()) {
+    bool foundType =
+        std::find(types.begin(), types.end(), *C->getType()) != types.end();
+    isValid &=
+        expectCompareTrue("Every type used by constants should be part of "
+                          "the graph",
+                          foundType, true, C);
+  }
   return isValid;
 }
 
@@ -1070,6 +1089,12 @@ TransposeNode *Function::createTranspose(llvm::StringRef name, NodeValue input,
   return addNode(new TransposeNode(name, NT, input, shuffle.vec(), currLayout));
 }
 
+FlipNode *Function::createFlip(llvm::StringRef name, NodeValue input,
+                               unsigned_t axis) {
+  auto OT = getParent()->uniqueType(*input.getType());
+  return addNode(new FlipNode(name, OT, input, axis));
+}
+
 Node *Function::createBroadcast(llvm::StringRef name, NodeValue input,
                                 UnsignedArrayRef newShape, unsigned_t axis) {
   const auto &origDims = input.dims();
@@ -1637,6 +1662,12 @@ BatchedAddNode *Function::createBatchedAdd(llvm::StringRef name, TypeRef outTy,
       new BatchedAddNode(name, getParent()->uniqueType(*outTy), batch, sample));
 }
 
+CumSumNode *Function::createCumSum(llvm::StringRef name, NodeValue input,
+                                   bool exclusive, bool reverse) {
+  return addNode(
+      new CumSumNode(name, input.getType(), input, exclusive, reverse));
+}
+
 LengthsSumNode *Function::createLengthsSum(llvm::StringRef name, NodeValue data,
                                            NodeValue lengths) {
   ShapeVector outDims(data.dims().begin(), data.dims().end());
@@ -1887,38 +1918,45 @@ Function::createFusedRowwiseQuantizedSparseLengthsSum(
       name, rwqData, indices, lengths, useFP16Accumulation);
 }
 
-EmbeddingBagNode *Function::createEmbeddingBag(llvm::StringRef name,
-                                               NodeValue data,
-                                               NodeValue weights,
-                                               NodeValue indices,
-                                               NodeValue offsets) {
+EmbeddingBagNode *
+Function::createEmbeddingBag(llvm::StringRef name, NodeValue data,
+                             NodeValue weights, NodeValue indices,
+                             NodeValue offsets, bool hasEndOffset) {
   auto inDims = data.dims();
   ShapeVector outDims(inDims.begin(), inDims.end());
-  outDims[0] = offsets.dims()[0];
+  outDims[0] = hasEndOffset ? offsets.dims()[0] - 1 : offsets.dims()[0];
   auto outTy = getParent()->uniqueTypeWithNewShape(data.getType(), outDims);
-  return addNode(
-      new EmbeddingBagNode(name, outTy, data, weights, indices, offsets));
+  return addNode(new EmbeddingBagNode(name, outTy, data, weights, indices,
+                                      offsets, hasEndOffset));
 }
 
 EmbeddingBagByteRowwiseOffsetsNode *
 Function::createEmbeddingBagByteRowwiseOffsets(
     llvm::StringRef name, Tensor &data, NodeValue weights, NodeValue indices,
-    NodeValue offsets, ElemKind fusedElemKind, bool useFP16Accumulation) {
+    NodeValue offsets, ElemKind fusedElemKind, bool useFP16Accumulation,
+    bool hasEndOffset) {
   Constant *rwqData =
       quantizeDataForFusedRowwiseQuantizedSparseLengthsWeightedSum(
           this, data, fusedElemKind);
   return createEmbeddingBagByteRowwiseOffsets(name, rwqData, weights, indices,
-                                              offsets, useFP16Accumulation);
+                                              offsets, useFP16Accumulation,
+                                              hasEndOffset);
 }
 
 EmbeddingBagByteRowwiseOffsetsNode *
 Function::createEmbeddingBagByteRowwiseOffsets(
     llvm::StringRef name, NodeValue data, NodeValue weights, NodeValue indices,
-    NodeValue offsets, bool useFP16Accumulation) {
-  auto outTy =
-      getOutputTypeOfFusedRowwiseQuantizedSLS(this, data, offsets.dims());
+    NodeValue offsets, bool useFP16Accumulation, bool hasEndOffset) {
+  std::vector<dim_t> segmentDims(offsets.dims().begin(), offsets.dims().end());
+  // If hasEndOffset the last offset is just for marking the end of the last
+  // segment.
+  if (hasEndOffset) {
+    segmentDims[0] -= 1;
+  }
+  auto outTy = getOutputTypeOfFusedRowwiseQuantizedSLS(this, data, segmentDims);
   return addNode(new EmbeddingBagByteRowwiseOffsetsNode(
-      name, outTy, data, weights, indices, offsets, useFP16Accumulation));
+      name, outTy, data, weights, indices, offsets, useFP16Accumulation,
+      hasEndOffset));
 }
 
 LengthsToRangesNode *Function::createLengthsToRanges(llvm::StringRef name,
@@ -4005,12 +4043,23 @@ ConstList Function::findConstants() const {
 }
 
 Function *Function::clone(llvm::StringRef newName,
-                          llvm::DenseMap<Node *, Node *> *map) {
+                          llvm::DenseMap<const Node *, Node *> *map,
+                          llvm::DenseMap<const Node *, Node *> *currToNewMap) {
   Module *M = getParent();
   auto *newF = M->createFunction(newName);
+  return clone(newF, map, currToNewMap);
+}
 
+Function *
+Function::clone(Function *newF, llvm::DenseMap<const Node *, Node *> *map,
+                llvm::DenseMap<const Node *, Node *> *currToNewMap) const {
   // Maps current nodes to new nodes.
-  llvm::DenseMap<Node *, Node *> currToNew;
+  llvm::DenseMap<const Node *, Node *> currToNew;
+
+  // Initialize the map from a user-provided map.
+  if (currToNewMap) {
+    currToNew.insert(currToNewMap->begin(), currToNewMap->end());
+  }
 
   // Clone all of the nodes in the function.
   for (auto &N : getNodes()) {
@@ -4018,6 +4067,9 @@ Function *Function::clone(llvm::StringRef newName,
     // Record the copy relationship between the graphs.
     currToNew[&N] = copy;
     newF->addNode(copy);
+    if (N.hasPredicate()) {
+      copy->setPredicate(N.getPredicate());
+    }
   }
 
   // At this point we have a new invalid function that points into nodes in
@@ -4037,6 +4089,13 @@ Function *Function::clone(llvm::StringRef newName,
 
       // Update the node with the edge to the current graph.
       N.setNthInput(inp, NodeValue(it->second, input.getResNo()));
+    }
+
+    if (N.hasPredicate()) {
+      auto it = currToNew.find(N.getPredicate().getNode());
+      if (it != currToNew.end()) {
+        N.setPredicate(NodeValue(it->second, N.getPredicate().getResNo()));
+      }
     }
   }
 
@@ -4068,6 +4127,49 @@ static bool verifyNodeInput(const Node &N, size_t idx) {
   report("Any node referencing another node N must be in the use-list of the "
          "node N");
   return false;
+}
+
+Module *Module::clone() const {
+  auto *M = new Module;
+  return clone(M);
+}
+
+Module *Module::clone(Module *M) const {
+  // Maps current nodes to new nodes.
+  llvm::DenseMap<const Node *, Node *> currToNew;
+  // Clone placeholders.
+  for (auto &PH : getPlaceholders()) {
+    auto *copyPH = M->createPlaceholder(PH->getType(), PH->getName(),
+                                        PH->isTraining(), PH->getLayout());
+    currToNew[PH] = copyPH;
+  }
+  // Clone constants.
+  for (auto &C : getConstants()) {
+    // Cloner cannot decide on its own what to do with constants having unowned
+    // payloads. Some kind of policy/hook maybe needed in the future for
+    // deciding what needs to be done in such cases.
+    DCHECK(!C->getPayload().isUnowned())
+        << "Cannot copy constant " << C->getName().str()
+        << ": Unowned payloads are not supported";
+    auto *copyC = M->createConstant(C->getType(), C->getName(), C->getLayout());
+    copyC->assign(&C->getPayload());
+    currToNew[C] = copyC;
+  }
+  // Clone all functions.
+  for (auto *F : getFunctions()) {
+    // Create an empty clone function in the new module.
+    auto *copyF = M->createFunction(F->getName());
+    // Clone function's body into the newly created cloned function. Use the
+    // currToNew to properly map constants and placeholders.
+    F->clone(copyF, nullptr, &currToNew);
+    // Update all types by cloned types.
+    for (auto &N : copyF->getNodes()) {
+      for (unsigned idx = 0, e = N.getNumResults(); idx < e; ++idx) {
+        N.setType(idx, M->uniqueType(*N.getType(idx)));
+      }
+    }
+  }
+  return M;
 }
 
 /// \returns True if \p n is a storage node (constant or placeholder) of the
@@ -4164,6 +4266,20 @@ bool Function::verify(const Backend *backend) const {
           "All uses of a node should refer to this node", U.get()->getNode(),
           &N, &N);
       ;
+    }
+  }
+
+  // Check that all types used by nodes belong to the parent module.
+  auto &types = getParent()->getTypes();
+  for (const auto &N : nodes_) {
+    for (size_t idx = 0, e = N.getNumResults(); idx < e; ++idx) {
+      auto ty = N.getType(idx);
+      bool foundType =
+          std::find(types.begin(), types.end(), *ty) != types.end();
+      isValid &= expectCompareTrue(
+          "Every type used by one of the graph nodes should be part of "
+          "the graph",
+          foundType, true, &N);
     }
   }
 

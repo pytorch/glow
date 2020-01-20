@@ -192,9 +192,9 @@ static void lowerFullyConnectedGradNode(Function *F, CompilationContext &cctx,
   auto *wT = F->createTranspose(DECORATE_NODE_NAME(FCG, "weight", "transpose"),
                                 FCG.getWeights(), {1, 0});
   auto *dx2 =
-      F->createMatMul(DECORATE_NODE_NAME(FCG, "weight", "dot"), dout, wT);
+      F->createMatMul(DECORATE_NODE_NAME(FCG, "output", "dot"), dout, wT);
   auto *dx = F->createReshape(
-      DECORATE_NODE_NAME(FCG, "weight", "reshape"), dx2,
+      DECORATE_NODE_NAME(FCG, "output", "reshape"), dx2,
       FCG.getInput().getType()->dims(),
       CanonicalTensorLayout::getInstance().getNthInputLayoutRequirements(
           &FCG, FullyConnectedGradNode::InputIdx));
@@ -206,7 +206,7 @@ static void lowerFullyConnectedGradNode(Function *F, CompilationContext &cctx,
   auto *x2T = F->createTranspose(DECORATE_NODE_NAME(FCG, "output", "transpose"),
                                  x2, {1, 0});
   auto *dw =
-      F->createMatMul(DECORATE_NODE_NAME(FCG, "output", "dot"), x2T, dout);
+      F->createMatMul(DECORATE_NODE_NAME(FCG, "weight", "dot"), x2T, dout);
   replaceAllUsesOfWith(cctx.loweredInfoMap, FCG.getGradOfInputNamedWeights(),
                        dw);
 

@@ -45,7 +45,7 @@ class NNPIStaticPlaceholderContainer {
     NamedResourceWithRef(const NamedResource &nr)
         : NamedResource(nr), refCount(0){};
   };
-  std::map<const Placeholder *, NamedResourceWithRef>
+  std::unordered_map<const Placeholder *, NamedResourceWithRef>
       staticPlaceholdersDeviceResource_;
   /// NNPI Device Context handle.
   NNPIDeviceContext device_;
@@ -81,7 +81,7 @@ class NNPIDeviceManager : public DeviceManager {
   FunctionMapTy functions_;
   /// Maximum available memory on the device, for local devices fix to some
   /// constant.
-  uint64_t maxMemoryBytes_{16000000000l};
+  uint64_t maxMemoryBytes_{14000000000l};
   /// Amount of memory used by all models.
   uint64_t usedMemoryBytes_{0};
   /// Static memory cost of the InterpreterFunction.

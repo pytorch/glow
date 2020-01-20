@@ -278,6 +278,17 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Batch"})
       .autoIRGen();
 
+  // Does a running accumulation of all values in input (inclusive).
+  // e.g [1, 2, 3, 4] -> [1, 3, 6, 10]
+  BB.newInstr("CumSum")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Input", OperandKind::In)
+      .addMember(MemberType::Unsigned, "Exclusive")
+      .addMember(MemberType::Unsigned, "Reverse")
+      .inplaceOperand({"Dest", "Input"})
+      .autoIRGen()
+      .autoVerify(VerifyKind::SameType, {"Dest", "Input"});
+
   /// Sums together groups of consecutive slices of Data as per the group sizes
   /// specified by Lengths.
   BB.newInstr("LengthsSum")
@@ -322,6 +333,7 @@ int main(int argc, char **argv) {
       .addOperand("Weights", OperandKind::In)
       .addOperand("Indices", OperandKind::In)
       .addOperand("Offsets", OperandKind::In)
+      .addMember(MemberType::Boolean, "HasEndOffset")
       .autoIRGen()
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Data", "Weights"})
       .autoVerify(VerifyKind::SameElementType, {"Indices", "IndexElemKind"})
@@ -364,6 +376,7 @@ int main(int argc, char **argv) {
       .addOperand("Indices", OperandKind::In)
       .addOperand("Offsets", OperandKind::In)
       .addMember(MemberType::Boolean, "UseFP16Accumulation")
+      .addMember(MemberType::Boolean, "HasEndOffset")
       .autoIRGen()
       .autoVerify(VerifyKind::SameElementType, {"Indices", "IndexElemKind"})
       .autoVerify(VerifyKind::SameElementType, {"Offsets", "IndexElemKind"})
@@ -619,6 +632,11 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::NoVerify)
       .autoIRGen();
 
+  BB.newInstr("Touch")
+      .addOperand("Dest", OperandKind::Out)
+      .dataParallel()
+      .autoVerify(VerifyKind::NoVerify);
+
   BB.newInstr("InsertTensor")
       .addOperand("Dest", OperandKind::InOut)
       .addOperand("Src", OperandKind::In)
@@ -678,6 +696,18 @@ int main(int argc, char **argv) {
       .addMember(MemberType::Float, "HeightScale")
       .addMember(MemberType::Float, "WidthScale")
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
+      .autoIRGen();
+
+  //===--------------------------------------------------------------------===//
+  //                Reorder transformations
+  //===--------------------------------------------------------------------===//
+
+  BB.newInstr("Flip")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .addMember(MemberType::Unsigned, "Axis")
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
+      .autoVerify(VerifyKind::SameShape, {"Dest", "Src"})
       .autoIRGen();
 
   //===--------------------------------------------------------------------===//

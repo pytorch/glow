@@ -1,0 +1,14 @@
+name: "4bit_fused_rowwise_quantized_sparse_lengths_weighted_sum_init_net_test"
+op {
+  output: "data"
+  type: "GivenTensorByteStringToUInt8Fill"
+  arg {
+    name: "shape"
+    ints: 3
+    ints: 9
+  }
+  arg {
+    name: "values"
+    strings: "\000\000\000\000\000\000\000\000\100\000\000\000\000\000\000\000\000\277\000\000\000\000\000\000\000\120\101"
+  }
+}

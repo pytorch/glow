@@ -28,6 +28,36 @@
 
 using namespace glow;
 
+#define dispatchImpl(functionName, elemTy, ...)                                \
+  switch (elemTy) {                                                            \
+  case ElemKind::FloatTy:                                                      \
+    functionName<float>(__VA_ARGS__);                                          \
+    break;                                                                     \
+  case ElemKind::Float16Ty:                                                    \
+    functionName<float16_t>(__VA_ARGS__);                                      \
+    break;                                                                     \
+  case ElemKind::Int8QTy:                                                      \
+    functionName<int8_t>(__VA_ARGS__);                                         \
+    break;                                                                     \
+  case ElemKind::Int16QTy:                                                     \
+    functionName<int16_t>(__VA_ARGS__);                                        \
+    break;                                                                     \
+  case ElemKind::Int32QTy:                                                     \
+    functionName<int32_t>(__VA_ARGS__);                                        \
+    break;                                                                     \
+  case ElemKind::Int32ITy:                                                     \
+    functionName<int32_t>(__VA_ARGS__);                                        \
+    break;                                                                     \
+  case ElemKind::Int64ITy:                                                     \
+    functionName<int64_t>(__VA_ARGS__);                                        \
+    break;                                                                     \
+  case ElemKind::BoolTy:                                                       \
+    functionName<bool>(__VA_ARGS__);                                           \
+    break;                                                                     \
+  default:                                                                     \
+    llvm_unreachable("Type is not supported");                                 \
+  }
+
 #define dispatchFloatingPointImpl(functionName, elemTy, ...)                   \
   switch (elemTy) {                                                            \
   case ElemKind::FloatTy:                                                      \
@@ -1360,6 +1390,10 @@ void BoundInterpreterFunction::fwdSplatInst(const glow::SplatInst *I) {
   }
 
   llvm_unreachable("Unsupported tensor type");
+}
+
+void BoundInterpreterFunction::fwdTouchInst(const glow::TouchInst *) {
+  // Do nothing for a TouchInst
 }
 
 void BoundInterpreterFunction::fwdInsertTensorInst(
@@ -3021,6 +3055,44 @@ void BoundInterpreterFunction::fwdBatchedReduceMinInst(
 }
 
 template <typename ElemTy>
+void BoundInterpreterFunction::fwdCumSumInstImpl(Value *input, Value *dest,
+                                                 bool exclusive, bool reverse) {
+  auto *eInput = getTensor(input);
+  auto *eDest = getTensor(dest);
+  auto eInputH = eInput->getHandle<ElemTy>();
+  auto eDestH = eDest->getHandle<ElemTy>();
+  eDestH.clear();
+
+  ElemTy accum = 0;
+
+  sdim_t s = 0;
+  sdim_t n = eDestH.size();
+  sdim_t dir = 1;
+
+  if (reverse) {
+    s = n - 1;
+    n = -1;
+    dir = -1;
+  }
+
+  for (sdim_t i = s; i != n; i += dir) {
+    if (!exclusive) {
+      accum += eInputH.at(i);
+    }
+    eDestH.at(i) = accum;
+    if (exclusive) {
+      accum += eInputH.at(i);
+    }
+  }
+}
+
+void BoundInterpreterFunction::fwdCumSumInst(glow::CumSumInst const *I) {
+  dispatchArithmeticImpl(fwdCumSumInstImpl, I->getInput()->getElementType(),
+                         I->getInput(), I->getDest(), I->getExclusive(),
+                         I->getReverse());
+}
+
+template <typename ElemTy>
 void BoundInterpreterFunction::fwdLengthsSumInstFloatImpl(
     const LengthsSumInst *I) {
   staticAssertFloatingPointType(ElemTy);
@@ -3336,14 +3408,17 @@ void BoundInterpreterFunction::fwdEmbeddingBagInstFloatImpl(
   auto weights = getTensor(I->getWeights());
   auto indices = getTensor(I->getIndices());
   auto offsets = getTensor(I->getOffsets());
+  bool hasEndOffset = I->getHasEndOffset();
 
   out->zero();
 
   auto IH = indices->getHandle<sdim_t>();
   auto OFFH = offsets->getHandle<sdim_t>();
 
-  size_t segments = offsets->dims()[0];
-  size_t totalLength = indices->dims()[0];
+  // If an end offset is present to mark the end of the last segment then this
+  // must be subtracted to get the correct number of segments
+  size_t segments = hasEndOffset ? offsets->dims()[0] - 1 : offsets->dims()[0];
+  size_t numIndices = indices->dims()[0];
 
   size_t lineSize = data->size() / data->dims()[0];
 
@@ -3354,7 +3429,17 @@ void BoundInterpreterFunction::fwdEmbeddingBagInstFloatImpl(
   dim_t curIdx = 0;
   for (dim_t i = 0; i < segments; i++) {
     dim_t start = OFFH.raw(i);
-    dim_t end = i == segments - 1 ? totalLength : OFFH.raw(i + 1);
+    dim_t end;
+    if (!hasEndOffset) {
+      // Note that in this case we have to use numIndices to find the end of
+      // the last segment. This is an issue though because it relies on knowing
+      // the total length of the indices tensor which may not be possible.
+      // Future implementations of this operator should always give an end
+      // offset so eventually this case should be removed.
+      end = i == segments - 1 ? numIndices : OFFH.raw(i + 1);
+    } else {
+      end = OFFH.raw(i + 1);
+    }
     for (dim_t j = start; j < end; j++) {
       ElemTy weight = WH.raw(curIdx);
       dim_t offsetIn = IH.raw(curIdx++) * lineSize;
@@ -3550,13 +3635,16 @@ void BoundInterpreterFunction::fwdEmbeddingBagByteRowwiseOffsetsImpl(
   auto *weights = getTensor(I->getWeights());
   auto *indices = getTensor(I->getIndices());
   auto *offsets = getTensor(I->getOffsets());
+  bool hasEndOffset = I->getHasEndOffset();
 
   out->zero();
 
   auto IH = indices->getHandle<sdim_t>();
   auto OFFH = offsets->getHandle<sdim_t>();
 
-  dim_t segments = offsets->dims()[0];
+  // If an end offset is present to mark the end of the last segment then this
+  // must be subtracted to get the correct number of segments
+  size_t segments = hasEndOffset ? offsets->dims()[0] - 1 : offsets->dims()[0];
   dim_t numIndices = indices->dims()[0];
 
   const bool using4BitQuantization =
@@ -3571,7 +3659,17 @@ void BoundInterpreterFunction::fwdEmbeddingBagByteRowwiseOffsetsImpl(
   for (dim_t i = 0; i < segments; i++) {
     std::vector<AccumT> accum(outLineSize, 0.0f);
     size_t start = OFFH.raw(i);
-    size_t end = i == segments - 1 ? numIndices : OFFH.raw(i + 1);
+    dim_t end;
+    if (!hasEndOffset) {
+      // Note that in this case we have to use numIndices to find the end of
+      // the last segment. This is an issue though because it relies on knowing
+      // the total length of the indices tensor which may not be possible.
+      // Future implementations of this operator should always give an end
+      // offset so eventually this case should be removed.
+      end = i == segments - 1 ? numIndices : OFFH.raw(i + 1);
+    } else {
+      end = OFFH.raw(i + 1);
+    }
     for (dim_t j = start; j < end; j++) {
       const float weight = static_cast<float>(WH.raw(j));
       const dim_t rowIdx = IH.raw(j);
@@ -4011,4 +4109,54 @@ void BoundInterpreterFunction::fwdConvertToInst(const glow::ConvertToInst *I) {
   CONVERT(int64_t, int32_t, ElemKind::Int64ITy, ElemKind::Int32ITy)
 #undef CONVERT
   llvm_unreachable("Type not supported");
+}
+
+template <typename ElemTy>
+void BoundInterpreterFunction::fwdFlipInstImpl(const FlipInst *I) {
+
+  static_assert(max_tensor_dimensions == 6,
+                "Loops below assume max_tensor_dimensions = 6.");
+
+  auto *src = I->getSrc();
+  auto *dest = I->getDest();
+
+  // Get unowned handles of src and dest with dims expanded to maximum.
+  ShapeVector eDims = expandDimsToMax(src->dims());
+  auto eSrc = getTensor(src)->getUnowned(eDims);
+  auto eDest = getTensor(dest)->getUnowned(eDims);
+  auto srcH = eSrc.getHandle<ElemTy>();
+  auto destH = eDest.getHandle<ElemTy>();
+
+#define LOOP_AXIS_CASE(_D0, _D1, _D2, _D3, _D4, _D5)                           \
+  for (dim_t idx0 = 0; idx0 < eDims[0]; idx0++)                                \
+    for (dim_t idx1 = 0; idx1 < eDims[1]; idx1++)                              \
+      for (dim_t idx2 = 0; idx2 < eDims[2]; idx2++)                            \
+        for (dim_t idx3 = 0; idx3 < eDims[3]; idx3++)                          \
+          for (dim_t idx4 = 0; idx4 < eDims[4]; idx4++)                        \
+            for (dim_t idx5 = 0; idx5 < eDims[5]; idx5++) {                    \
+              destH.at({_D0, _D1, _D2, _D3, _D4, _D5}) =                       \
+                  srcH.at({idx0, idx1, idx2, idx3, idx4, idx5});               \
+            }                                                                  \
+  return;
+
+  switch (I->getAxis()) {
+  case 0:
+    LOOP_AXIS_CASE(eDims[0] - 1 - idx0, idx1, idx2, idx3, idx4, idx5);
+  case 1:
+    LOOP_AXIS_CASE(idx0, eDims[1] - 1 - idx1, idx2, idx3, idx4, idx5);
+  case 2:
+    LOOP_AXIS_CASE(idx0, idx1, eDims[2] - 1 - idx2, idx3, idx4, idx5);
+  case 3:
+    LOOP_AXIS_CASE(idx0, idx1, idx2, eDims[3] - 1 - idx3, idx4, idx5);
+  case 4:
+    LOOP_AXIS_CASE(idx0, idx1, idx2, idx3, eDims[4] - 1 - idx4, idx5);
+  case 5:
+    LOOP_AXIS_CASE(idx0, idx1, idx2, idx3, idx4, eDims[5] - 1 - idx5);
+  default:
+    llvm_unreachable("Axis should be less than max_tensor_dimensions.");
+  }
+}
+
+void BoundInterpreterFunction::fwdFlipInst(const FlipInst *I) {
+  dispatchImpl(fwdFlipInstImpl, I->getSrc()->getElementType(), I);
 }
