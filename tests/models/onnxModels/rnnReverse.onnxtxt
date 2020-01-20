@@ -9,6 +9,7 @@ graph {
     input: ""
     input: "initial_h"
     output: "Y"
+    output: "Y_h"
     name: "rnn"
     op_type: "RNN"
     attribute {
