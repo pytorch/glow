@@ -63,9 +63,10 @@ NNPIErrorCode glow::NNPIImporter::addTensor(std::string name,
                                             const std::string &scaleTensor,
                                             const std::string &offsetTensor,
                                             bool forceSymlowp) {
-  LOG_AND_RETURN_IF_NOT(ERROR, constants_.count(name),
-                        "Could not find Constants for tensor",
-                        NNPI_INVALID_PARAM);
+  LOG_AND_RETURN_IF_NOT(
+      ERROR, constants_.count(name),
+      strFormat("Could not find Constants for tensor %s", name.c_str()),
+      NNPI_INVALID_PARAM);
   const Tensor *t = constants_.at(name);
 
   NNPITensorDesc desc;
