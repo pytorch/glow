@@ -634,14 +634,6 @@ Tensor Tensor::getCopyConvertedToType(ElemKind newKind) const {
   return tmp;
 }
 
-size_t Tensor::getUnpaddedSizeInBytes() const {
-  if (unpaddedSize_) {
-    return unpaddedSize_;
-  } else {
-    return type_.getSizeInBytes();
-  }
-}
-
 namespace glow {
 llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const Tensor &t) {
   t.dump(os);
