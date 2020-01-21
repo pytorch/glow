@@ -514,12 +514,12 @@ void OpenCLDeviceManager::transferStaticPlaceholderToDevice(
 
 void OpenCLDeviceManager::copyInputsToDevice(
     const RuntimeBundle &runtimeBundle, ExecutionContext *context,
-    runtime::OpenCLDeviceBindings *devBindings) {
+    runtime::OpenCLDeviceBindings *devBindings, bool traceEnabled) {
   TRACE_EVENT_SCOPE(context->getTraceContext(), TraceLevel::RUNTIME,
                     "copyInputsToDevice");
 
   bool profilingEnabled =
-      context->getTraceContext() &&
+      traceEnabled && context->getTraceContext() &&
       (context->getTraceContext()->getTraceLevel() & TraceLevel::COPY);
 
   auto &symbolTable = runtimeBundle.getSymbolTable();
@@ -558,12 +558,12 @@ void OpenCLDeviceManager::copyInputsToDevice(
 
 void OpenCLDeviceManager::copyOutputsFromDevice(
     const RuntimeBundle &runtimeBundle, ExecutionContext *context,
-    runtime::OpenCLDeviceBindings *devBindings) {
+    runtime::OpenCLDeviceBindings *devBindings, bool traceEnabled) {
   TRACE_EVENT_SCOPE(context->getTraceContext(), TraceLevel::RUNTIME,
                     "copyOutputsFromDevice");
 
   bool profilingEnabled =
-      context->getTraceContext() &&
+      traceEnabled && context->getTraceContext() &&
       (context->getTraceContext()->getTraceLevel() & TraceLevel::COPY);
 
   auto &symbolTable = runtimeBundle.getSymbolTable();
@@ -648,10 +648,16 @@ void OpenCLDeviceManager::translateTraceEvents(
     cl_ulong timeStart;
     cl_ulong timeEnd;
 
-    clGetEventProfilingInfo(event, CL_PROFILING_COMMAND_START,
-                            sizeof(timeStart), &timeStart, NULL);
-    clGetEventProfilingInfo(event, CL_PROFILING_COMMAND_END, sizeof(timeEnd),
-                            &timeEnd, NULL);
+    if (clGetEventProfilingInfo(event, CL_PROFILING_COMMAND_START,
+                                sizeof(timeStart), &timeStart,
+                                NULL) != CL_SUCCESS) {
+      continue;
+    }
+    if (clGetEventProfilingInfo(event, CL_PROFILING_COMMAND_END,
+                                sizeof(timeEnd), &timeEnd,
+                                NULL) != CL_SUCCESS) {
+      continue;
+    }
 
     if (type == "checkpoint") {
       const auto &it = manualTraceEvents.find(name);
@@ -743,6 +749,7 @@ void OpenCLDeviceManager::runFunctionImpl(
   }
 
   OpenCLFunction *func = static_cast<OpenCLFunction *>(funcIt->second);
+  bool traceEnabled = func->getTraceInfo().enabled || clDoProfile;
 
   // Get a command queue for this run.
   OpenCLCommandQueue queue;
@@ -767,7 +774,8 @@ void OpenCLDeviceManager::runFunctionImpl(
       program);
 
   // Copy inputs to the device.
-  copyInputsToDevice(func->getRuntimeBundle(), context.get(), clBindings.get());
+  copyInputsToDevice(func->getRuntimeBundle(), context.get(), clBindings.get(),
+                     traceEnabled);
 
   // Run that function.
   context->setDeviceBindings(std::move(clBindings));
@@ -775,7 +783,8 @@ void OpenCLDeviceManager::runFunctionImpl(
 
   auto devBindings = static_cast<runtime::OpenCLDeviceBindings *>(
       context->getDeviceBindings());
-  copyOutputsFromDevice(func->getRuntimeBundle(), context.get(), devBindings);
+  copyOutputsFromDevice(func->getRuntimeBundle(), context.get(), devBindings,
+                        traceEnabled);
 
   // Output profiling information.
   translateTraceEvents(func->getManualTraceEvents(), context.get(),

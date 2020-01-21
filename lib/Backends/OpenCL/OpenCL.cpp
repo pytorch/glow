@@ -500,7 +500,8 @@ void OpenCLFunction::enqueueKernel(llvm::StringRef name,
                                &global[0], &local[0], 0, nullptr,
                                profile ? &event : nullptr);
   CHECK_EQ(err, CL_SUCCESS) << "Error in clEnqueueNDRangeKernel.";
-  kernelLaunches.push_back(KernelLaunch(kernel, name, kernelType, event));
+  kernelLaunches.push_back(
+      KernelLaunch(kernel, name, kernelType, profile ? event : nullptr));
 }
 
 void OpenCLFunction::executeNCHWConvolution(
