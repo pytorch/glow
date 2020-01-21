@@ -39,6 +39,15 @@ static llvm::cl::opt<bool, /* ExternalStorage */ true>
 
 namespace onnxifi {
 
+bool GlowDumpNNPICompilerData = false;
+static llvm::cl::opt<bool, /* ExternalStorage */ true>
+    GlowDumpNNPICompilerDataOpt("glow_dump_nnpi_compiler_data",
+                                llvm::cl::desc("Whether to dump NNPI compiler"
+                                               "data to a file"),
+                                llvm::cl::location(GlowDumpNNPICompilerData),
+                                llvm::cl::Optional, llvm::cl::init(false),
+                                llvm::cl::cat(optionsForNNPI));
+
 bool GlowDumpGraph = false;
 bool GlowDisableNNPITransforms = false;
 bool GlowDisableNNPIPrivateTransforms = false;
