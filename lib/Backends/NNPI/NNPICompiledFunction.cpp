@@ -24,6 +24,13 @@
 
 using namespace glow;
 
+namespace glow {
+namespace onnxifi {
+extern bool GlowDumpNNPICompilerData;
+
+} // namespace onnxifi
+} // namespace glow
+
 Error NNPICompiledFunction::updateCompilationConfigFromOptions(
     NNPICompilationOptions &compilationOptions) {
   if (compilationOptions.showVars) {
@@ -73,6 +80,11 @@ Error NNPICompiledFunction::compile(Function *F, const BackendOptions &opts) {
 
     newOpts.backendSpecificOpts["IceCores"] =
         std::to_string(opts.backendHints.executionUnits);
+  }
+
+  if (glow::onnxifi::GlowDumpNNPICompilerData) {
+    newOpts.backendSpecificOpts["CompiledFile"] =
+        std::string("icet_file_") + F->getName().str();
   }
 
   compilationOptions_ = NNPICompilationOptions(newOpts.backendSpecificOpts);
