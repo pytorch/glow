@@ -468,6 +468,10 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
                {TopKNode::IndicesIdx}) &&
            (NI.getOutElemTy(TopKNode::IndicesIdx) == IndexElemKind);
 
+  case Kinded::Kind::ClipNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind(
+        {ElemKind::Float16Ty, ElemKind::Int8QTy});
+
   case Kinded::Kind::ScatterDataNodeKind:
     return (NI.getInElemTy(ScatterDataNode::IndicesIdx) == IndexElemKind) &&
            (NI.getOutElemTy(ScatterDataNode::ResultIdx) ==
