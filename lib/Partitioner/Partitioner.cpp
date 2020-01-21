@@ -390,6 +390,9 @@ void Partitioner::genBackendMap(
       backends.push_back(backendMap[backendName].backend);
     } else {
       backendMap[backendName].num += 1;
+      // Since we are currently assuming one value it should be the max.
+      backendMap[backendName].memSize = std::max(
+          backendMap[backendName].memSize, deviceInfo_[i].availableMemory);
     }
   }
 }
