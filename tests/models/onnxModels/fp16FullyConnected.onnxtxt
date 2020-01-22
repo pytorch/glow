@@ -1,0 +1,102 @@
+ir_version: 7
+producer_name: "ONNXModelWriter"
+graph {
+  node {
+    input: "X__0"
+    output: "X__1"
+    name: "N__0"
+    op_type: "ConvertTo"
+    attribute {
+      name: "shape"
+      t {
+        dims: 7
+        data_type: 1
+      }
+    }
+  }
+  node {
+    input: "X__2"
+    output: "X__3"
+    name: "N__1"
+    op_type: "ConvertTo"
+    attribute {
+      name: "shape"
+      t {
+        dims: 10
+        dims: 1
+        data_type: 10
+      }
+    }
+  }
+  node {
+    input: "X__3"
+    input: "X__4"
+    input: "X__1"
+    output: "X__5"
+    name: "N__2"
+    op_type: "FullyConnected"
+  }
+  node {
+    input: "X__5"
+    output: "X__6"
+    name: "N__3"
+    op_type: "ConvertTo"
+    attribute {
+      name: "shape"
+      t {
+        dims: 10
+        dims: 7
+        data_type: 1
+      }
+    }
+  }
+  name: "glow"
+  initializer {
+    dims: 7
+    data_type: 1
+    name: "X__0"
+    raw_data: "\023\347\313\275K;\031;\360\314i\275%\201=\275i\341\035:\372\207\003\276\253J\000\275"
+  }
+  initializer {
+    dims: 1
+    dims: 7
+    data_type: 10
+    name: "X__4"
+    raw_data: "\257;\2537W$\2713\210:\2523\240:"
+  }
+  input {
+    name: "X__2"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 10
+          }
+          dim {
+            dim_value: 1
+          }
+        }
+      }
+    }
+  }
+  output {
+    name: "X__6"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 1
+          }
+          dim {
+            dim_value: 7
+          }
+        }
+      }
+    }
+  }
+}
+opset_import {
+  version: 9
+}
