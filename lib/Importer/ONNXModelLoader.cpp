@@ -174,6 +174,15 @@ Error glow::loadTensor(const ONNX_NAMESPACE::TensorProto &in, Tensor *T) {
       RETURN_ERR("Unsupported Tensor format.",
                  ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_DATATYPE);
     }
+  } else if (in.data_type() == ONNX_NAMESPACE::TensorProto::FLOAT16) {
+    T->reset(ElemKind::Float16Ty, dim);
+    if (in.has_raw_data()) {
+      std::istringstream inStream(in.raw_data(), std::stringstream::binary);
+      inStream.read(T->getUnsafePtr(), T->size() * (sizeof(float) / 2));
+    } else {
+      RETURN_ERR("Unsupported Tensor format.",
+                 ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_DATATYPE);
+    }
   } else if (in.data_type() == ONNX_NAMESPACE::TensorProto::INT64) {
     T->reset(ElemKind::Int64ITy, dim);
 
@@ -212,6 +221,9 @@ Error glow::loadTensor(const ONNX_NAMESPACE::TensorProto &in, Tensor *T) {
     const auto &elementType = in.doc_string();
     if (elementType == Type::getElementName(ElemKind::UInt8FusedQTy)) {
       T->reset(ElemKind::UInt8FusedQTy, dim, 0.0, 0);
+    } else if (elementType ==
+               Type::getElementName(ElemKind::UInt4FusedFP16QTy)) {
+      T->reset(ElemKind::UInt4FusedFP16QTy, dim, 0.0, 0);
     } else {
       RETURN_ERR("Unsupported Tensor element type " + elementType,
                  ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_DATATYPE);
@@ -234,7 +246,8 @@ Error glow::loadTensor(const ONNX_NAMESPACE::TensorProto &in, Tensor *T) {
                  ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_DATATYPE);
     }
   } else {
-    RETURN_ERR("Only float and index tensors are supported",
+    RETURN_ERR(strFormat("Unsupported tensor data type: %u",
+                         static_cast<unsigned>(in.data_type())),
                ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_DATATYPE);
   }
   return Error::success();
