@@ -96,15 +96,19 @@ Node *TypeAToTypeBFunctionConverter::createConversion(Function &function,
     // before the clip. This way the clip can execute in fp16 mode.
     if (destTy->getElementType() == ElemKind::Float16Ty &&
         val.getType()->getElementType() == ElemKind::FloatTy) {
-      auto convert =
-          function.createConvertTo(val.getNode()->getName(), val, destTy);
-      return function.createClipMinMaxFP16(val.getNode()->getName(), convert);
+      auto convert = function.createConvertTo(
+          val.getNode()->getName().str() + "_converted", val, destTy);
+      return function.createClipMinMaxFP16(
+          val.getNode()->getName().str() + "_clipped", convert);
     } else {
-      auto clip = function.createClipMinMaxFP16(val.getNode()->getName(), val);
-      return function.createConvertTo(val.getNode()->getName(), clip, destTy);
+      auto clip = function.createClipMinMaxFP16(
+          val.getNode()->getName().str() + "_clipped", val);
+      return function.createConvertTo(
+          val.getNode()->getName().str() + "_converted", clip, destTy);
     }
   } else {
-    return function.createConvertTo(val.getNode()->getName(), val, destTy);
+    return function.createConvertTo(
+        val.getNode()->getName().str() + "_converted", val, destTy);
   }
 }
 
@@ -120,18 +124,21 @@ void convertAndClipStorageHelper(Storage &S, Function &F, bool clipFP16,
     return;
   }
 
-  ConvertToNode *convertToFP16 =
-      F.createConvertTo("convert to", S.getOutput(), dstKind);
+  ConvertToNode *convertToFP16 = F.createConvertTo(
+      S.getName().str() + "convert_to", S.getOutput(), dstKind);
 
   NodeValue NV = convertToFP16->getResult();
   if (clipFP16) {
-    NV = F.createClipMinMaxFP16(S.getName(), NV)->getResult();
+    NV =
+        F.createClipMinMaxFP16(S.getName().str() + "_clipped", NV)->getResult();
   }
 
   // We have to convert back to the srcKind now as the users currently must be
   // expecting FP32. The optimizer will remove if possible.
   NodeValue convertBack =
-      F.createConvertTo("convert back", NV, srcKind)->getResult();
+      F.createConvertTo(NV.getNode()->getName().str() + "convert_back", NV,
+                        srcKind)
+          ->getResult();
 
   // We need to specify to skip replacing convertToFP16 here as otherwise we
   // will create a cycle in the graph.
