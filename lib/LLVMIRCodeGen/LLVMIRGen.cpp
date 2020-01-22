@@ -175,12 +175,19 @@ loadStandardLibrary(llvm::LLVMContext *ctx, llvm::StringRef filename,
   llvm::SMDiagnostic error;
 
   // Parse the compiled-in image of libjit and return the resulting Module.
-  return llvm::parseIR(
+  // checking for and reporting errors from parseIR.
+
+  auto mod = llvm::parseIR(
       llvm::MemoryBufferRef(
           llvm::StringRef(reinterpret_cast<const char *>(libjitBC.data()),
                           libjitBC.size()),
           "libjit.bc"),
       error, *ctx);
+
+  if (!mod) {
+    error.print("LLVMIRGen", llvm::errs());
+  }
+  return mod;
 }
 
 /// Register a diagnostics handler that prevents the compiler from printing to
