@@ -32,6 +32,14 @@
 
 using namespace glow;
 
+namespace glow {
+namespace onnxifi {
+#ifdef GLOW_WITH_NNPI
+extern bool GlowDumpGraph;
+#endif
+} // namespace onnxifi
+} // namespace glow
+
 namespace {
 llvm::cl::OptionCategory reproTestCat("Repro Category");
 llvm::cl::opt<std::string> modelPathOpt("model", llvm::cl::desc("Input models"),
@@ -40,12 +48,26 @@ llvm::cl::opt<std::string> modelPathOpt("model", llvm::cl::desc("Input models"),
                                         llvm::cl::cat(reproTestCat));
 llvm::cl::list<std::string> inputsOpt("inputs", llvm::cl::desc("Inputs"),
                                       llvm::cl::value_desc("Inputs"),
-                                      llvm::cl::Required, llvm::cl::OneOrMore,
+                                      llvm::cl::Optional, llvm::cl::ZeroOrMore,
                                       llvm::cl::cat(reproTestCat));
 llvm::cl::list<std::string> outputsOpt("outputs", llvm::cl::desc("Ouptuts"),
                                        llvm::cl::value_desc("Ouptuts"),
-                                       llvm::cl::Required, llvm::cl::OneOrMore,
+                                       llvm::cl::Optional, llvm::cl::ZeroOrMore,
                                        llvm::cl::cat(reproTestCat));
+llvm::cl::opt<std::string>
+    inputPatternOpt("input_pattern",
+                    llvm::cl::desc("Input file pattern. in_{}.onnx"),
+                    llvm::cl::init(""), llvm::cl::cat(reproTestCat));
+llvm::cl::opt<std::string>
+    outputPatternOpt("output_pattern",
+                     llvm::cl::desc("Output file pattern. out_{}.onnx"),
+                     llvm::cl::init(""), llvm::cl::cat(reproTestCat));
+llvm::cl::opt<unsigned> seqStartOpt(
+    "seq_start", llvm::cl::desc("Start index of input/output files"),
+    llvm::cl::Optional, llvm::cl::init(0), llvm::cl::cat(reproTestCat));
+llvm::cl::opt<unsigned> seqLenOpt(
+    "seq_len", llvm::cl::desc("Lengths of the input/output file seqquence."),
+    llvm::cl::Optional, llvm::cl::init(0), llvm::cl::cat(reproTestCat));
 
 llvm::cl::opt<std::string> ExecutionBackend(
     "backend", llvm::cl::desc("Backend to use, e.g., Interpreter, CPU, NNPI:"),
@@ -68,6 +90,11 @@ llvm::cl::opt<float> deviceMemoryOpt(
 llvm::cl::opt<float> thresholdOpt(
     "threshold", llvm::cl::desc("theshold for tensor numeric comparison"),
     llvm::cl::Optional, llvm::cl::init(1e-5), llvm::cl::cat(reproTestCat));
+
+llvm::cl::opt<bool> glowDumpGraphOpt(
+    "glow_dump_graph",
+    llvm::cl::desc("Dump the glow Graph into files before compilation"),
+    llvm::cl::Optional, llvm::cl::init(false), llvm::cl::cat(reproTestCat));
 
 llvm::cl::opt<bool>
     globalFp16Opt("glow_global_fp16",
@@ -215,13 +242,40 @@ int run() {
   std::vector<::ONNX_NAMESPACE::GraphProto> parsedInputs;
   std::vector<::ONNX_NAMESPACE::GraphProto> parsedOutputs;
   size_t inputGroupSize = inputsOpt.size();
-  for (int i = 0; i < inputGroupSize; ++i) {
-    llvm::outs() << "Loading input file: " << inputsOpt[i] << "\n";
-    auto inputGroup = parseIO(inputsOpt[i]);
-    parsedInputs.push_back(std::move(inputGroup));
-    llvm::outs() << "Loading output file: " << outputsOpt[i] << "\n";
-    auto outputGroup = parseIO(outputsOpt[i]);
-    parsedOutputs.push_back(std::move(outputGroup));
+  if (inputGroupSize) {
+    for (int i = 0; i < inputGroupSize; ++i) {
+      llvm::outs() << "Loading input file: " << inputsOpt[i] << "\n";
+      auto inputGroup = parseIO(inputsOpt[i]);
+      parsedInputs.push_back(std::move(inputGroup));
+      llvm::outs() << "Loading output file: " << outputsOpt[i] << "\n";
+      auto outputGroup = parseIO(outputsOpt[i]);
+      parsedOutputs.push_back(std::move(outputGroup));
+    }
+  } else if (!inputPatternOpt.empty() && !outputPatternOpt.empty() &&
+             seqLenOpt > 0) {
+    size_t input_iter = inputPatternOpt.find("{}");
+    CHECK_NE(input_iter, std::string::npos)
+        << "Input pattern " << inputPatternOpt << " has to contain {}";
+    size_t output_iter = outputPatternOpt.find("{}");
+    CHECK_NE(output_iter, std::string::npos)
+        << "Output pattern " << outputPatternOpt << " has to contain {}";
+    for (unsigned i = 0; i < seqLenOpt; ++i) {
+      std::string copy = inputPatternOpt;
+      copy.replace(input_iter, 2, std::to_string(seqStartOpt + i));
+      llvm::outs() << "Loading input file: " << copy << "\n";
+      auto inputGroup = parseIO(copy);
+      parsedInputs.push_back(std::move(inputGroup));
+      copy = outputPatternOpt;
+      copy.replace(output_iter, 2, std::to_string(seqStartOpt + i));
+      llvm::outs() << "Loading output file: " << copy << "\n";
+      auto outputGroup = parseIO(copy);
+      parsedOutputs.push_back(std::move(outputGroup));
+    }
+  }
+
+  if (parsedInputs.empty()) {
+    llvm::outs() << "No inputs are provided. Exiting...\n";
+    return -1;
   }
 
   llvm::outs() << "Starting inference\n";
@@ -387,5 +441,10 @@ int run() {
 
 int main(int argc, char **argv) {
   parseCommandLine(argc, argv);
+  if (glowDumpGraphOpt) {
+#ifdef GLOW_WITH_NNPI
+    glow::onnxifi::GlowDumpGraph = true;
+#endif
+  }
   return run();
 }
