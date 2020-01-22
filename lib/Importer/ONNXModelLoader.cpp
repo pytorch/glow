@@ -132,6 +132,32 @@ Error setTensorType(const ONNX_NAMESPACE::TypeProto &in, Tensor *T) {
   }
 }
 
+Error onnxTensorDataTypeToElemKind(int32_t onnxType, ElemKind *elemTy) {
+  if (onnxType == ONNX_NAMESPACE::TensorProto::FLOAT) {
+    *elemTy = ElemKind::FloatTy;
+    return Error::success();
+  } else if (onnxType == ONNX_NAMESPACE::TensorProto::FLOAT16) {
+    *elemTy = ElemKind::Float16Ty;
+    return Error::success();
+  } else if (onnxType == ONNX_NAMESPACE::TensorProto::INT64) {
+    *elemTy = ElemKind::Int64ITy;
+    return Error::success();
+  } else if (onnxType == ONNX_NAMESPACE::TensorProto::INT32) {
+    *elemTy = ElemKind::Int32ITy;
+    return Error::success();
+  } else if (onnxType == ONNX_NAMESPACE::TensorProto::UINT8) {
+    *elemTy = ElemKind::UInt8FusedQTy;
+    return Error::success();
+  } else if (ONNX_NAMESPACE::TensorProto::BOOL) {
+    *elemTy = ElemKind::BoolTy;
+    return Error::success();
+  } else {
+    RETURN_ERR(strFormat(
+        "Don't know how to convert ONNX tensor data type %d to ElemKind",
+        onnxType));
+  }
+}
+
 } // namespace
 
 using ArgumentDictionaryTy =
@@ -1856,9 +1882,18 @@ Error ONNXModelLoader::loadConvertTo(const ONNX_NAMESPACE::NodeProto &op,
   NodeValue in;
   ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
 
-  auto shape = getShape<dim_t>(dict.at("shape"));
+  const auto *attr = dict.at("shape");
+  RETURN_ERR_IF_NOT(attr->has_t(),
+                    "ConvertTo should have t() field as \"shape\"");
+  const auto &t = attr->t();
+  std::vector<dim_t> shape;
+  for (const auto d : t.dims()) {
+    shape.push_back(d);
+  }
 
-  auto outTy = G_.getParent()->uniqueType(in.getElementType(), shape);
+  auto type = ElemKind::FloatTy;
+  RETURN_IF_ERR(onnxTensorDataTypeToElemKind(t.data_type(), &type));
+  auto outTy = G_.getParent()->uniqueType(type, shape);
   Node *N = G_.createConvertTo(loadOperatorName(op), in, outTy);
 
   RETURN_IF_ERR(addNodeAsOutput(op, N));
@@ -2065,15 +2100,19 @@ Error ONNXModelLoader::loadFullyConnected(const ONNX_NAMESPACE::NodeProto &op,
   ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
   Constant *W;
   ASSIGN_VALUE_OR_RETURN_ERR(W, getConstantByName(op.input(1)));
-  Constant *B;
-  ASSIGN_VALUE_OR_RETURN_ERR(B, getConstantByName(op.input(2)));
+  Constant *B = getConstantByNameOrNull(op.input(2));
+  NodeValue b;
+  if (!B) {
+    ASSIGN_VALUE_OR_RETURN_ERR(b, getNodeValueByName(op.input(2)));
+  }
 
   unsigned_t axis = 1;
   if (dict.count("axis")) {
     ASSIGN_VALUE_OR_RETURN_ERR(axis, loadInt(dict.at("axis")));
   }
 
-  Node *N = G_.createFullyConnected(loadOperatorName(op), in, W, B, axis);
+  Node *N =
+      G_.createFullyConnected(loadOperatorName(op), in, W, B ? B : b, axis);
 
   RETURN_IF_ERR(addNodeAsOutput(op, N));
   return Error::success();

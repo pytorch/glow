@@ -1437,8 +1437,16 @@ Error ONNXModelWriter::writeClip(const ClipNode *node, GraphType &graph) {
 Error ONNXModelWriter::writeConvertTo(const ConvertToNode *node,
                                       GraphType &graph) {
   auto *proto = graph.add_node();
+
   // Add dictionary entries.
-  addValueAttribute(proto, "shape", node->getResult().dims());
+  TensorType ttype;
+  for (auto d : node->getResult().dims()) {
+    ttype.add_dims(d);
+  }
+  ttype.set_data_type(convertType(*node->getResult().getType()));
+  auto *attr = proto->add_attribute();
+  attr->set_name("shape");
+  attr->mutable_t()->CopyFrom(ttype);
 
   return writeAllWithNode("ConvertTo", node, graph, proto);
 }
