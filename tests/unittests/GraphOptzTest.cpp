@@ -579,7 +579,7 @@ TEST_F(GraphOptz, BatchNormAfterConvNotOptimizeForTrain) {
 }
 
 TEST_F(GraphOptz, batchNormAfterConvNotOptimizeWhenMoreThanOneUseOfConv) {
-  Node *A =
+  auto *A =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 10, 20, 3}, "A", false);
 
   Node *CV = F_->createConv(bindings_, "conv", A, 16, 5, 1, 2, 1);
@@ -590,10 +590,11 @@ TEST_F(GraphOptz, batchNormAfterConvNotOptimizeWhenMoreThanOneUseOfConv) {
 
   EXPECT_EQ(F_->getNodes().size(), 4);
 
-  ::glow::optimize(F_, CompilationMode::Infer);
+  optimizedF_ = optimizeFunction(F_);
+
   // Make sure the structure of the graph did not change, since the convolution
   // node is used more than once.
-  EXPECT_EQ(F_->getNodes().size(), 4);
+  EXPECT_EQ(optimizedF_->getNodes().size(), 4);
   ASSERT_TRUE(llvm::isa<ConvolutionNode>(convSave->getInput()));
   ConvolutionNode *conv = llvm::dyn_cast<ConvolutionNode>(convSave->getInput());
   EXPECT_EQ(conv, CV);
@@ -603,6 +604,10 @@ TEST_F(GraphOptz, batchNormAfterConvNotOptimizeWhenMoreThanOneUseOfConv) {
   EXPECT_EQ(batchNorm, BN);
   EXPECT_EQ(batchNorm->getInput().getNode(), CV);
   EXPECT_EQ(conv->getInput().getNode(), A);
+
+  bindings_.allocate(mod_.getPlaceholders());
+  bindings_.get(A)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
+  checkNumericalEquivalence();
 }
 
 enum class TestSinkTransposeNodesKind {
@@ -1793,11 +1798,12 @@ TEST_F(GraphOptz, foldQuantizeIntoVarMultipleUsages) {
 
   auto *Q = F_->createQuantize("quantize", input, qType);
   F_->createSave("save", Q);
-  auto clonedF = F_->clone("cloned");
+  optimizedF_ = F_->clone("cloned");
 
-  EXPECT_EQ(2, clonedF->getNodes().size());
-  ::glow::convertPlaceholdersToConstants(clonedF, bindings_, {});
-  ::glow::optimize(clonedF, CompilationMode::Infer);
+  EXPECT_EQ(2, F_->getNodes().size());
+  EXPECT_EQ(2, optimizedF_->getNodes().size());
+  ::glow::convertPlaceholdersToConstants(optimizedF_, bindings_, {});
+  ::glow::optimize(optimizedF_, CompilationMode::Infer);
   // F_ function should not be affected.
   EXPECT_EQ(2, F_->getNodes().size());
 
@@ -1807,14 +1813,15 @@ TEST_F(GraphOptz, foldQuantizeIntoVarMultipleUsages) {
   }
 
   // Quantization node was merged into input var.
-  EXPECT_EQ(1, clonedF->getNodes().size());
-  auto *save = llvm::dyn_cast<SaveNode>(&clonedF->getNodes().front());
+  EXPECT_EQ(1, optimizedF_->getNodes().size());
+  auto *save = llvm::dyn_cast<SaveNode>(&optimizedF_->getNodes().front());
   ASSERT_TRUE(save);
   auto quantizedInput = llvm::cast<Constant>(save->getInput());
   auto quantizedValues = quantizedInput->getHandle<int8_t>();
   for (unsigned i = 0; i < 4; ++i) {
     EXPECT_EQ(5, quantizedValues.raw(i));
   }
+  checkNumericalEquivalence();
 }
 
 /// Check that the Quantize(Splat) -> Splat' optimization works.
