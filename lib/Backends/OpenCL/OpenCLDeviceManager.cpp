@@ -45,7 +45,7 @@ static const unsigned char kernels_cl_src[] = {
 static const size_t kernels_cl_src_size = sizeof(kernels_cl_src);
 
 extern llvm::cl::opt<unsigned> clPlatformId;
-extern llvm::cl::opt<unsigned> clDeviceId;
+extern llvm::cl::opt<int> clDeviceId;
 extern llvm::cl::opt<bool> clDoProfile;
 
 namespace glow {
@@ -181,6 +181,61 @@ Error OpenCLDeviceManager::parseConfig() {
   return Error::success();
 }
 
+Error OpenCLDeviceManager::findBestDevice(cl_platform_id platformId,
+                                          int deviceId) {
+  cl_uint num{0};
+  cl_int err = clGetDeviceIDs(platformId, CL_DEVICE_TYPE_ALL, 0, nullptr, &num);
+  if (err != CL_SUCCESS) {
+    RETURN_ERR("clGetDeviceIDs Failed");
+  }
+  if ((deviceId > 0 && num < deviceId) || num == 0) {
+    RETURN_ERR("Should have at least one GPU/CPU/FPGA for running OpenCL");
+  }
+
+  // Enumerate all available devices.
+  std::vector<cl_device_id> devices(num);
+  err = clGetDeviceIDs(platformId, CL_DEVICE_TYPE_ALL, num, devices.data(),
+                       nullptr);
+  if (err != CL_SUCCESS) {
+    RETURN_ERR("clGetDeviceIDs Failed");
+  }
+
+  // If the deviceId was set on the command line, use that.
+  if (deviceId >= 0) {
+    deviceId_ = devices[deviceId];
+  } else {
+    cl_device_id chosen = devices[0];
+    cl_device_type chosen_type = 0;
+
+    // Otherwise loop through all devices.
+    for (auto id : devices) {
+      cl_bitfield type;
+      // Get the device type (bitmask of 1 for cpu, 2 for gpu, 4 for
+      // accelerator).
+      err = clGetDeviceInfo(id, CL_DEVICE_TYPE, sizeof(cl_bitfield), &type,
+                            nullptr);
+      if (err != CL_SUCCESS) {
+        RETURN_ERR("clGetDeviceInfo Failed");
+      }
+
+      // prefer the highest device type, and tiebreak on the the highest device
+      // id.
+      if (type >= chosen_type) {
+        chosen = id;
+        chosen_type = type;
+      }
+    }
+
+    deviceId_ = chosen;
+  }
+
+  char name[100];
+  err = clGetDeviceInfo(deviceId_, CL_DEVICE_NAME, 100, &name, nullptr);
+  DEBUG_GLOW(llvm::dbgs() << "Using OpenCL device " << name << "\n");
+
+  return Error::success();
+}
+
 Error OpenCLDeviceManager::init() {
   // The OpenCL Backend defines three command line options: doProfile, deviceId,
   // and platformId. If the parameter is not provided we use the CL
@@ -203,22 +258,11 @@ Error OpenCLDeviceManager::init() {
   err = clGetPlatformIDs(numPlatforms, platform_ids.data(), NULL);
 
   cl_platform_id platform_id_used = platform_ids[clPlatformId];
-  cl_uint num{0};
-  err = clGetDeviceIDs(platform_id_used, CL_DEVICE_TYPE_ALL, 0, nullptr, &num);
-  if (err != CL_SUCCESS) {
-    RETURN_ERR("clGetDeviceIDs Failed");
-  }
-  if (num < clDeviceId) {
-    RETURN_ERR("Should have at least one GPU/CPU/FPGA for running OpenCL");
-  }
-  std::vector<cl_device_id> devices(num);
-  err = clGetDeviceIDs(platform_id_used, CL_DEVICE_TYPE_ALL, num,
-                       devices.data(), nullptr);
-  if (err != CL_SUCCESS) {
-    RETURN_ERR("clGetDeviceIDs Failed");
-  }
 
-  deviceId_ = devices[clDeviceId];
+  Error deviceErr = findBestDevice(platform_id_used, clDeviceId);
+  if (deviceErr) {
+    return deviceErr;
+  }
   context_ = clCreateContext(nullptr, 1, &deviceId_, nullptr, nullptr, nullptr);
   if (!context_) {
     RETURN_ERR("clCreateContext Failed");
