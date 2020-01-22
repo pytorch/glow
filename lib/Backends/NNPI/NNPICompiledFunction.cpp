@@ -27,6 +27,7 @@ using namespace glow;
 namespace glow {
 namespace onnxifi {
 extern bool GlowDumpNNPICompilerData;
+extern bool GlowUsePerPartitionIcetConfig;
 
 } // namespace onnxifi
 } // namespace glow
@@ -83,8 +84,19 @@ Error NNPICompiledFunction::compile(Function *F, const BackendOptions &opts) {
   }
 
   if (glow::onnxifi::GlowDumpNNPICompilerData) {
-    newOpts.backendSpecificOpts["CompiledFile"] =
-        std::string("icet_file_") + F->getName().str();
+    std::string icet_fname = std::string("icet_file_") + F->getName().str();
+    LOG(INFO) << "Writing ICE_T compiled output to: " << icet_fname
+              << std::endl;
+    newOpts.backendSpecificOpts["CompiledFile"] = icet_fname;
+  }
+
+  if (glow::onnxifi::GlowUsePerPartitionIcetConfig) {
+    std::string icet_config_fname =
+        std::string("icet_config_") + F->getName().str() + std::string(".json");
+    LOG(INFO) << "Reading ICE_T config from: " << icet_config_fname
+              << std::endl;
+    newOpts.backendSpecificOpts["CompilationDebugConfigFile"] =
+        icet_config_fname;
   }
 
   compilationOptions_ = NNPICompilationOptions(newOpts.backendSpecificOpts);
