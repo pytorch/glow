@@ -19,15 +19,15 @@ target_link_libraries(InstrGen
 add_library(MemberType
               MemberType.cpp)
 
-# External backends
-ExternalBackendsClassGen()
-
 # Include custom nodes and instructions definitions from enabled backends.
 set(ClassGen_Include_DIR ${GLOW_BINARY_DIR}/glow)
 include_directories(${ClassGen_Include_DIR})
 
 file(REMOVE "${ClassGen_Include_DIR}/NodeGenIncludes.h")
 file(REMOVE "${ClassGen_Include_DIR}/InstrGenIncludes.h")
+
+# External backends
+ExternalBackendsClassGen()
 
 # Iterate over all enabled backends.
 foreach(backend ${GLOW_BACKENDS})
