@@ -1387,6 +1387,7 @@ TEST(caffe2, LengthsToRanges) {
 
   // Destroy the loader after the graph is loaded
   {
+    setConstantFoldLoaderOpsFlag(false);
     Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {}, {}, *F);
     output = EXIT_ON_ERR(caffe2LD.getSingleOutput());
   }
