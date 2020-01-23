@@ -186,6 +186,27 @@ else()
   include_directories(${GLOW_THIRDPARTY_DIR}/fp16/include)
 endif()
 
+if(NOT EXISTS "${GLOW_THIRDPARTY_DIR}/folly/folly")
+  message(FATAL_ERROR "No folly git submodule. Run: git submodule update --init --recursive")
+else()
+  # Apple-specific definitions for folly.
+  if(APPLE)
+    set(FOLLY_HAVE_WEAK_SYMBOLS ON CACHE BOOL "Compiler supports weak symbols")
+    set(OPENSSL_ROOT_DIR /usr/local/opt/openssl)
+    find_package(OpenSSL REQUIRED)
+  endif()
+
+  # Remove Glow-specific CMAKE_CXX_FLAGS to build folly.
+  set(SAVE_CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
+  set(CMAKE_CXX_FLAGS "")
+  add_subdirectory("${GLOW_THIRDPARTY_DIR}/folly" EXCLUDE_FROM_ALL)
+  target_include_directories(folly PUBLIC "${OPENSSL_INCLUDE_DIR}")
+  set(CMAKE_CXX_FLAGS "${SAVE_CMAKE_CXX_FLAGS}")
+
+  add_library(folly_jemalloc INTERFACE)
+  target_link_libraries(folly_jemalloc INTERFACE folly jemalloc)
+endif()
+
 add_library(Miniz
   ${GLOW_THIRDPARTY_DIR}/miniz-2.0.8/miniz.c)
 target_include_directories(Miniz PUBLIC ${GLOW_THIRDPARTY_DIR}/miniz-2.0.8)

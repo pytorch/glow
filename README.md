@@ -79,13 +79,16 @@ Install the required dependencies using either [Homebrew](https://brew.sh/) or
 [MacPorts](https://www.macports.org/). If using Homebrew, run:
 
   ```bash
-  brew install cmake graphviz libpng ninja protobuf wget glog autopep8 llvm
+  brew install cmake graphviz libpng ninja protobuf wget glog autopep8 llvm   \
+      boost double-conversion gflags jemalloc libevent lz4 openssl pkg-config \
+      snappy xz
   ```
 
 If using MacPorts, run:
 
   ```bash
-  port install cmake graphviz libpng ninja protobuf-cpp wget google-glog
+  port install cmake graphviz libpng ninja protobuf-cpp wget google-glog \
+      boost double-conversion gflags jemalloc libevent lz4 openssl snappy xz
   # Choose version >= 7
   export LLVM_VERSION=7
   port install llvm-$LLVM_VERSION.0 
