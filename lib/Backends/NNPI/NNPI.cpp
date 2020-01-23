@@ -48,6 +48,16 @@ static llvm::cl::opt<bool, /* ExternalStorage */ true>
                                 llvm::cl::Optional, llvm::cl::init(false),
                                 llvm::cl::cat(optionsForNNPI));
 
+bool GlowUsePerPartitionIcetConfig = true;
+static llvm::cl::opt<bool, /* ExternalStorage */ true>
+    GlowUsePerPartitionIcetConfigOpt(
+        "glow_use_per_partition_icet_config",
+        llvm::cl::desc("Whether to load an"
+                       "icet_config.json file"
+                       "for each partition"),
+        llvm::cl::location(GlowUsePerPartitionIcetConfig), llvm::cl::Optional,
+        llvm::cl::init(false), llvm::cl::cat(optionsForNNPI));
+
 bool GlowDumpGraph = false;
 bool GlowDisableNNPITransforms = false;
 bool GlowDisableNNPIPrivateTransforms = false;
