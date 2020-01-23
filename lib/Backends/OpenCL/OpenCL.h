@@ -234,7 +234,7 @@ public:
 
   bool isOpSupported(const NodeInfo &NI) const override;
 
-  bool verify(const Function &F) const override;
+  bool verify(const Function &F, bool verbose = true) const override;
   bool verify(const IRFunction &IR) const override;
 
   TensorLayoutCommon &getTensorLayoutRequirements() const override;

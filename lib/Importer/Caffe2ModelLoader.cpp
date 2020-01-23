@@ -556,7 +556,8 @@ Expected<bool> Caffe2ModelLoader::foldOperator(const caffe2::OperatorDef &op) {
   Caffe2ModelLoader tmpLoader(*tmpF, nullptr);
   bool foldStatus =
       !ERR_TO_BOOL(constantFoldInLoader<Caffe2ModelLoader, caffe2::OperatorDef>(
-          tmpF, tmpLoader, this, op));
+                       tmpF, tmpLoader, this, op),
+                   /* log */ false);
   G_.getParent()->eraseFunction(tmpF);
   return foldStatus;
 }
@@ -1492,9 +1493,14 @@ Error Caffe2ModelLoader::loadNetwork(caffe2::NetDef &net) {
   for (int i = 0; i < net.op_size(); i++) {
     auto &op = net.op(i);
     if (getConstantFoldLoaderOpsFlag()) {
-      auto foldstatus = foldOperator(op);
-      if (foldstatus && foldstatus.get()) {
-        // Folded successfully.
+      auto tryFold = foldOperator(op);
+      if (!tryFold) {
+        // Error during constant folding; load the op normally below.
+        const std::string errStr = ERR_TO_STRING(tryFold.takeError());
+        VLOG(1) << "Error while trying to ConstantFold " << loadOperatorName(op)
+                << ": " << errStr;
+      } else if (tryFold.get()) {
+        // Folded successfully, so skip loading the op below.
         continue;
       }
     }

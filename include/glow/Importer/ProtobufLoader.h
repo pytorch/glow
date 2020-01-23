@@ -253,6 +253,9 @@ Error constantFoldInLoader(Function *F, LoaderType &tmpLoader,
   cctx.compMode = CompilationMode::Infer;
   cctx.optimizationOpts.enableConstantFolding = false;
   cctx.backendOpts.collectConstants = true;
+  // Do not print out compilation errors encountered, as constant folding is a
+  // best effort; simply silently give up and continue with compilation.
+  cctx.verboseCompile = false;
   RETURN_IF_ERR(executeConstantFunction(*backend, *F, bindings, cctx));
 
   // Using the graph output, place constant nodes in the original graph.
