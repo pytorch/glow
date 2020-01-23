@@ -409,6 +409,10 @@ bool CPUBackend::shouldLower(const Node *N) const {
   }
 }
 
+unsigned CPUBackend::numDevices() {
+  return std::thread::hardware_concurrency();
+}
+
 std::unique_ptr<CompiledFunction> CPUBackend::createCompiledFunction(
     std::unique_ptr<llvm::orc::GlowJIT> JIT,
     runtime::RuntimeBundle &&runtimeBundle) const {

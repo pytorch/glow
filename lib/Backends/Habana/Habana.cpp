@@ -27,6 +27,7 @@
 #include "llvm/Support/FormatVariadic.h"
 
 #include <chrono>
+#include <fstream>
 #include <glog/logging.h>
 #include <unordered_map>
 
@@ -1510,4 +1511,16 @@ bool HabanaBackend::isVersionBiggerEqualTo(std::string versionToCompare) {
     }
   }
   return false;
+}
+
+unsigned HabanaBackend::numDevices() {
+  std::ifstream devices("/proc/bus/pci/devices");
+  std::string device;
+  unsigned count = 0;
+  while (std::getline(devices, device)) {
+    if (device.find("habanalabs") != std::string::npos) {
+      count++;
+    }
+  }
+  return count;
 }

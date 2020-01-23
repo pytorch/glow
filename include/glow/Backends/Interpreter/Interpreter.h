@@ -37,6 +37,7 @@ public:
 
   std::string getBackendName() const override { return getName(); }
   static std::string getName() { return "Interpreter"; }
+  static unsigned numDevices() { return std::thread::hardware_concurrency(); }
 
   std::unique_ptr<CompiledFunction>
   compileIR(std::unique_ptr<IRFunction> IR) const override;

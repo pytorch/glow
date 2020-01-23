@@ -40,6 +40,7 @@ public:
 
   std::string getBackendName() const override { return getName(); }
   static std::string getName() { return "CPU"; }
+  static unsigned numDevices();
 
   bool transformPostLowering(
       Function *F, CompilationContext &cctx,
