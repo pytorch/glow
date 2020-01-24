@@ -1,24 +1,8 @@
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${GLOW_BINARY_DIR}/tests/stress/)
 
-add_executable(SparseLengthsSumTest
-  SparseLengthsSumTest.cpp)
-target_link_libraries(SparseLengthsSumTest
-  PRIVATE
-  Backends
-  BackendTestUtils
-  ExecutionEngine
-  gtest
-  glog::glog)
-
-add_executable(ParameterSweepTest
-               ParameterSweepTest.cpp)
-target_link_libraries(ParameterSweepTest
-                      PRIVATE
-                        Backends
-                        BackendTestUtils
-                        ExecutionEngine
-                        glog::glog
-                        gtest
-                        Graph
-                        GraphOptimizer
-                        Support)
+# Loop through all backends present in lib/Backends (see FindBackends.cmake)
+# and instantiate a backend-parameterized test for each of them.
+foreach(backend ${GLOW_BACKENDS})
+  add_backend_test(TEST ParameterSweepTest BACKEND "${backend}" UNOPT)
+  add_backend_test(TEST SparseLengthsSumTest BACKEND "${backend}" UNOPT)
+endforeach()

@@ -97,6 +97,14 @@ protected:
   Function *F_;
 };
 
+/// Stringify a macro def.
+#define BACKEND_TO_STR(X) #X
+
+#ifdef GLOW_TEST_BACKEND
+  #define STRINGIZE(X) BACKEND_TO_STR(X)
+  static const auto all_backends =
+    ::testing::Values(STRINGIZE(GLOW_TEST_BACKEND));
+#else
 static const auto all_backends = ::testing::Values(
 #ifdef GLOW_WITH_NNPI
     "NNPI",
@@ -111,6 +119,7 @@ static const auto all_backends = ::testing::Values(
     "Habana",
 #endif // GLOW_WITH_HABANA
     "Interpreter");
+#endif
 
 // Instantiate parameterized test suite with all available backends.
 #define GLOW_INSTANTIATE_TEST_SUITE_P_FOR_BACKEND_TEST(prefix, test_case_name) \
@@ -133,9 +142,6 @@ extern std::set<std::string> backendTestBlacklist;
 
 /// Bool for whether to use symmetric quantization for rowwise-quantized FCs.
 extern bool useSymmetricRowwiseQuantFC;
-
-/// Stringify a macro def.
-#define BACKEND_TO_STR(X) #X
 
 /// Intermediate layer of macros to make expansion of defs work correctly.
 #define INSTANTIATE_TEST_INTERNAL(B, T)                                        \
