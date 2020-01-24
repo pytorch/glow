@@ -211,6 +211,10 @@ ProtobufLoader::ProtobufLoader(llvm::ArrayRef<const char *> tensorNames,
     return;
   }
 
+  // Use the global flag as default. This may be overridden by instantiations of
+  // the loader later on.
+  constFoldInLoader_ = getConstantFoldLoaderOpsFlag();
+
   // Lambda to setup the ProtobufLoader and return any Errors that were
   // raised.
   auto setup = [&]() -> Error {

@@ -119,6 +119,8 @@ protected:
   llvm::StringMap<Placeholder *> outputVarsByName_;
   /// A map from names of the external inputs of the network to Variables.
   llvm::StringMap<Placeholder *> inputVarsByName_;
+  /// Whether to try constant folding as we load each op from a protobuf.
+  bool constFoldInLoader_{true};
 
   // Delete all Constants that have no users. This is useful because some
   // Constants may have been copied and modified during loading instead of used

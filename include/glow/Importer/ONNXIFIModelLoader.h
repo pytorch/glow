@@ -51,11 +51,13 @@ public:
   /// Tensors. Loading inputs as Tensors is useful for when weights are not
   /// provided such as when the graph being loaded is actually a small patch of
   /// a larger graph because the graph inputs in this case may represent
-  /// internal values for the larger graph.
+  /// internal values for the larger graph. \p constFoldInLoader is used to
+  /// determine whether to try constant folding at load time.
   static Expected<std::unique_ptr<ONNXIFIModelLoader>>
   parse(const void *onnxModel, uint32_t onnxModelSize, uint32_t weightsCount,
         const onnxTensorDescriptorV1 *weightDescriptors, Function &F,
-        bool loadInputsAsPlaceholders = true, bool use_onnx = true);
+        bool loadInputsAsPlaceholders = true, bool use_onnx = true,
+        bool constFoldInLoader = true);
 };
 
 } // namespace glow

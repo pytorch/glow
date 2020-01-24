@@ -2401,7 +2401,7 @@ Error ONNXModelLoader::loadNetwork(ONNX_NAMESPACE::GraphProto &net) {
   /// Load the network operators:
   for (int i = 0; i < net.node_size(); i++) {
     auto &op = net.node(i);
-    if (getConstantFoldLoaderOpsFlag()) {
+    if (constFoldInLoader_) {
       auto tryFold = foldOperator(op);
       if (!tryFold) {
         // Error during constant folding; load the op normally below.
@@ -2526,12 +2526,15 @@ ONNXModelLoader::ONNXModelLoader(const std::string &modelDescFilename,
 ONNXModelLoader::ONNXModelLoader(
     const void *model, uint32_t modelSize, uint32_t weightsCount,
     const onnxTensorDescriptorV1 *weightDescriptors, Function &F,
-    bool loadInputsAsPlaceholders, Error *errPtr)
+    bool loadInputsAsPlaceholders, Error *errPtr, bool constFoldInLoader)
     : CommonOperatorLoader({}, {}, F, errPtr) {
   // if errPtr already contains an error then don't continue with constructor
   if (errPtr && *errPtr) {
     return;
   }
+
+  // Always override the default for folding in this constructor.
+  constFoldInLoader_ = constFoldInLoader;
 
   // Lambda to setup the ONNXModelLoader and return any Errors that were
   // raised.

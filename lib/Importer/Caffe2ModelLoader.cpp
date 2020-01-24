@@ -1492,7 +1492,7 @@ Error Caffe2ModelLoader::loadNetwork(caffe2::NetDef &net) {
   /// Load the network operators:
   for (int i = 0; i < net.op_size(); i++) {
     auto &op = net.op(i);
-    if (getConstantFoldLoaderOpsFlag()) {
+    if (constFoldInLoader_) {
       auto tryFold = foldOperator(op);
       if (!tryFold) {
         // Error during constant folding; load the op normally below.
@@ -1887,12 +1887,15 @@ Caffe2ModelLoader::Caffe2ModelLoader(const std::string &netDescFilename,
 Caffe2ModelLoader::Caffe2ModelLoader(
     const void *model, uint32_t modelSize, uint32_t weightsCount,
     const onnxTensorDescriptorV1 *weightDescriptors, Function &F,
-    bool loadInputsAsPlaceholders, Error *errPtr)
+    bool loadInputsAsPlaceholders, Error *errPtr, bool constFoldInLoader)
     : CommonOperatorLoader({}, {}, F, errPtr) {
   // if errPtr already contains an error then don't continue with constructor
   if (errPtr && *errPtr) {
     return;
   }
+
+  // Always override the default for folding in this constructor.
+  constFoldInLoader_ = constFoldInLoader;
 
   // Lambda to setup the Caffe2ModelLoader and return any Errors that were
   // raised.
