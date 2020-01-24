@@ -194,7 +194,7 @@ void parseCommandLine(int argc, char **argv) {
 }
 
 struct InferenceResult {
-  Error error = Error::success();
+  Error error = Error::empty();
   std::unique_ptr<ExecutionContext> ctx;
   int index = 0;
 };
