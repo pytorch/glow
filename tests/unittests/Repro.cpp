@@ -22,6 +22,7 @@
 #include "glow/Importer/ONNXModelLoader.h"
 
 #include "llvm/Support/CommandLine.h"
+#include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Signals.h"
 
 #include "google/protobuf/io/coded_stream.h"
@@ -160,6 +161,11 @@ llvm::cl::opt<int32_t> sparseNNPartitioningSchemeNumCoresOther(
         "Num cores used for non-SLS in SparseNN partitioning scheme"),
     llvm::cl::Optional, llvm::cl::init(6), llvm::cl::cat(reproTestCat));
 
+llvm::cl::opt<bool> glowDumpTrace("glow_dump_debug_traces",
+                                  llvm::cl::desc("Dump glow trace"),
+                                  llvm::cl::Optional, llvm::cl::init(false),
+                                  llvm::cl::cat(reproTestCat));
+
 void parseCommandLine(int argc, char **argv) {
   llvm::sys::PrintStackTraceOnErrorSignal(argv[0]);
   llvm::cl::ParseCommandLineOptions(
@@ -293,72 +299,88 @@ int run() {
        ++numInferencesIssued, ioIndex = numInferencesIssued % inputGroupSize) {
     // Setup the inputs.
     auto ctx = glow::make_unique<ExecutionContext>();
-    auto &bindings = *ctx->getPlaceholderBindings();
-    bindings.clear();
-    bindings.allocate(placeholderList);
-    const auto &ps = bindings.pairs();
-    for (const auto &kv : ps) {
-      VLOG(1) << "Placeholder allocated: " << kv.first->getName().str();
+
+    TraceContext *traceContext = nullptr;
+    if (glowDumpTrace) {
+      ctx->setTraceContext(
+          glow::make_unique<TraceContext>(TraceLevel::STANDARD));
+      traceContext = ctx->getTraceContext();
+      traceContext->setThreadName("main");
     }
+    {
+      TRACE_EVENT_SCOPE(traceContext, TraceLevel::RUNTIME,
+                        "Prepping input to Glow");
+      auto &bindings = *ctx->getPlaceholderBindings();
+      bindings.clear();
+      bindings.allocate(placeholderList);
+      const auto &ps = bindings.pairs();
+      for (const auto &kv : ps) {
+        VLOG(1) << "Placeholder allocated: " << kv.first->getName().str();
+      }
 
-    const auto &inputGroup = parsedInputs[ioIndex];
-    for (const auto &tp : inputGroup.initializer()) {
-      auto *tensor = bindings.get(bindings.getPlaceholderByName(tp.name()));
-      CHECK(tensor) << "Unable to get tensor for " << tp.name();
-      size_t fullSize = tensor->getSizeInBytes();
-      const auto fullType = tensor->getType();
+      const auto &inputGroup = parsedInputs[ioIndex];
+      for (const auto &tp : inputGroup.initializer()) {
+        auto *tensor = bindings.get(bindings.getPlaceholderByName(tp.name()));
+        CHECK(tensor) << "Unable to get tensor for " << tp.name();
+        size_t fullSize = tensor->getSizeInBytes();
+        const auto fullType = tensor->getType();
 
-      auto error = loadTensor(tp, tensor);
-      bool hasError = ERR_TO_BOOL(std::move(error));
-      CHECK(!hasError) << "Cannot load input tensor";
-      size_t loadedSize = tensor->getSizeInBytes();
-      if (loadedSize != fullSize) {
-        if (enablePartialTensor) {
-          VLOG(1) << "Loading " << tp.name()
-                  << " as a partial tensor: partial size="
-                  << tensor->getType().toString()
-                  << " full size=" << fullType.toString();
-          Tensor fullTensor(tensor->getUnsafePtr(), &fullType,
-                            tensor->getSizeInBytes());
-          // 'fullTensor' doesn't own the underlying data. 'tensor' does. So we
-          // want to keep the original tensor object around until inference is
-          // finished.
-          partialTensorPayloads.emplace_back(std::move(*tensor));
-          *tensor = std::move(fullTensor);
-        } else {
-          // pad with 0
-          VLOG(1) << "Loading and padding " << tp.name()
-                  << " as a partial tensor: partial size="
-                  << tensor->getType().toString()
-                  << " full size=" << fullType.toString();
-          Tensor fullTensor(&fullType);
-          std::memcpy(fullTensor.getUnsafePtr(), tensor->getUnsafePtr(),
-                      tensor->getSizeInBytes());
-          std::memset(fullTensor.getUnsafePtr() + tensor->getSizeInBytes(), 0,
-                      fullTensor.getSizeInBytes() - tensor->getSizeInBytes());
+        auto error = loadTensor(tp, tensor);
+        bool hasError = ERR_TO_BOOL(std::move(error));
+        CHECK(!hasError) << "Cannot load input tensor";
+        size_t loadedSize = tensor->getSizeInBytes();
+        if (loadedSize != fullSize) {
+          if (enablePartialTensor) {
+            VLOG(1) << "Loading " << tp.name()
+                    << " as a partial tensor: partial size="
+                    << tensor->getType().toString()
+                    << " full size=" << fullType.toString();
+            Tensor fullTensor(tensor->getUnsafePtr(), &fullType,
+                              tensor->getSizeInBytes());
+            // 'fullTensor' doesn't own the underlying data. 'tensor' does. So
+            // we want to keep the original tensor object around until inference
+            // is finished.
+            partialTensorPayloads.emplace_back(std::move(*tensor));
+            *tensor = std::move(fullTensor);
+          } else {
+            // pad with 0
+            VLOG(1) << "Loading and padding " << tp.name()
+                    << " as a partial tensor: partial size="
+                    << tensor->getType().toString()
+                    << " full size=" << fullType.toString();
+            Tensor fullTensor(&fullType);
+            std::memcpy(fullTensor.getUnsafePtr(), tensor->getUnsafePtr(),
+                        tensor->getSizeInBytes());
+            std::memset(fullTensor.getUnsafePtr() + tensor->getSizeInBytes(), 0,
+                        fullTensor.getSizeInBytes() - tensor->getSizeInBytes());
 
-          *tensor = std::move(fullTensor);
+            *tensor = std::move(fullTensor);
+          }
         }
       }
     }
 
-    // dispatch inference
-    promises.emplace_back(std::promise<InferenceResult>());
-    std::promise<InferenceResult> &promise = promises.back();
-    futures.emplace_back(promise.get_future());
+    {
+      TRACE_EVENT_SCOPE(traceContext, TraceLevel::RUNTIME,
+                        "Dispatch to host manager");
 
-    hostManager->runNetwork(
-        "test", std::move(ctx),
-        [&promise, index = ioIndex](
-            runtime::RunIdentifierTy, Error err,
-            std::unique_ptr<ExecutionContext> contextPtr) mutable {
-          InferenceResult result;
-          result.error = std::move(err);
-          result.ctx = std::move(contextPtr);
-          result.index = index;
-          promise.set_value(std::move(result));
-        });
+      // dispatch inference
+      promises.emplace_back(std::promise<InferenceResult>());
+      std::promise<InferenceResult> &promise = promises.back();
+      futures.emplace_back(promise.get_future());
 
+      hostManager->runNetwork(
+          "test", std::move(ctx),
+          [&promise, index = ioIndex](
+              runtime::RunIdentifierTy, Error err,
+              std::unique_ptr<ExecutionContext> contextPtr) mutable {
+            InferenceResult result;
+            result.error = std::move(err);
+            result.ctx = std::move(contextPtr);
+            result.index = index;
+            promise.set_value(std::move(result));
+          });
+    }
     // stop and wait for results when we reach the max concurrent request we
     // want to send or we have no more requests to send.
     if (futures.size() >= concurrentRequestsOpt ||
@@ -416,6 +438,18 @@ int run() {
             std::string buffer;
             outputG.SerializeToString(&buffer);
             of << buffer;
+          }
+
+          if (glowDumpTrace) {
+            llvm::SmallString<64> path;
+            auto tempFileRes =
+                llvm::sys::fs::createTemporaryFile("glow-trace", "json", path);
+            if (tempFileRes.value() != 0) {
+              LOG(ERROR) << "Failed to create temp file for Glow trace events: "
+                         << tempFileRes;
+            } else {
+              traceContext->dump(path);
+            }
           }
         }
       }
