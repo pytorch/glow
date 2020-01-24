@@ -102,6 +102,13 @@ llvm::cl::opt<bool>
                   llvm::cl::desc("Enable fp16 lowering for all ops on the net"),
                   llvm::cl::Optional, llvm::cl::init(true),
                   llvm::cl::cat(reproTestCat));
+
+llvm::cl::opt<bool> sliceConcatFp32Opt(
+    "glow_slice_concat_fp32",
+    llvm::cl::desc("Don't convert slice and concat ops's precision when "
+                   "--glow_global_fp16 is used."),
+    llvm::cl::Optional, llvm::cl::init(false), llvm::cl::cat(reproTestCat));
+
 llvm::cl::opt<bool> dumpOutputsOpt("dump_outputs",
                                    llvm::cl::desc("Dump output tensors"),
                                    llvm::cl::Optional, llvm::cl::init(true),
@@ -209,6 +216,10 @@ int run() {
   PrecisionConfiguration precConfig;
   if (globalFp16Opt) {
     precConfig.convertToFP16 = globalFp16Opt;
+    if (sliceConcatFp32Opt) {
+      precConfig.precisionModeKindSet.insert(Kinded::Kind::SliceNodeKind);
+      precConfig.precisionModeKindSet.insert(Kinded::Kind::ConcatNodeKind);
+    }
     llvm::outs() << "Conversion to fp16 enabled\n";
   }
   if (fuseScaleOffsetFp16Opt) {
