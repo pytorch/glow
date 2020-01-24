@@ -52,27 +52,27 @@ class NNPIStaticPlaceholderContainer {
   // Given a Placeholder, erase its allocated NamedResourceWithRef and destory
   // its DeviceResource
   // return true on success, false otherwise
-  // NOTE: Doesn't check for remaining refs pointing at the DeviceResource
-  bool EraseAndDestroyDeviceResource_(const Placeholder *PH);
+  // NOTE: Doesn't check for remaining refs pointing at the DeviceResource.
+  bool eraseAndDestroyDeviceResource_(const Placeholder *PH);
 
 public:
   NNPIStaticPlaceholderContainer() : device_(NNPI_INVALID_NNPIHANDLE){};
   ~NNPIStaticPlaceholderContainer();
 
   // Set the device that the container create and destroy device resource for
-  // return false if device is invalid
-  bool SetDevice(NNPIDeviceContext device, bool inferOnRuntime);
+  // return false if device is invalid.
+  bool setDevice(NNPIDeviceContext device);
 
   // Acquire a device resource with a given static Placeholder and
   // NamedResource
   // returned NamedResource will contain the allocated handle
   // caller should check the returned handle before using it.
-  NamedResource AcquireDeviceResource(const Placeholder *,
+  NamedResource acquireDeviceResource(const Placeholder *,
                                       const NamedResource &nr);
 
   // Release a device resource given a static Placeholder
   // return false if release failed.
-  bool ReleaseDeviceResource(const Placeholder *);
+  bool releaseDeviceResource(const Placeholder *);
 };
 
 // thread pool per network
@@ -103,7 +103,7 @@ class NNPIDeviceManager : public DeviceManager {
   NNPIDeviceContext device_;
   /// Lock to synchronize function adding/removing to/from the device manager.
   std::mutex functionMapMutex_;
-  /// Device Tracing contorl.
+  /// Device Tracing control.
   std::shared_ptr<NNPIDeviceTracing> deviceTracing_;
   /// Maps between static placeholders' names to their device resource.
   NNPIStaticPlaceholderContainer staticPlaceholderContainer_;

@@ -143,9 +143,7 @@ struct EmulatorOnlyTests {
           "ArithMul_int64_t/0",
           "ArithSub_int32_t/0",
           "ArithSub_int64_t/0",
-          "AvgPool/0",
           "BatchedGather/0",
-          "batchedReduceMeanUsingAvgPool/0",
           "batchedReduceMin_Int32/0",
           "batchedReduceMin_Int64/0",
           "Bucketize/0",
@@ -173,15 +171,9 @@ struct EmulatorOnlyTests {
           "GroupDilatedConvolution/0",
           "less_int32Cases/0",
           "less_int64Cases/0",
-          "MaxPool/0",
-          "NonSquareKernelAveragePool/0",
-          "NonSquareKernelMaxPool/0",
-          "NonSquareStrideAveragePool/0",
-          "NonSquareStrideMaxPool/0",
           "SoftMax/0",
           "TopK/0",
           "TopK1/0",
-          "TransposeIntoReshapeOptim/0",
       });
     }
   }
