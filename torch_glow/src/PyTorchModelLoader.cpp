@@ -3282,7 +3282,7 @@ Error PyTorchModelLoader::loadCustomOp(const torch::jit::Node *ptNode) {
 Error PyTorchModelLoader::loadEmbeddingBag(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
-  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 7, outputs, 4));
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, -7, outputs, 4));
 
   glow::NodeValue weight;
   ASSIGN_VALUE_OR_RETURN_ERR(
