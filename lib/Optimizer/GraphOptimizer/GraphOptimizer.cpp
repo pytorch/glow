@@ -3638,14 +3638,13 @@ static void parallelizeAndReplaceNode(Function *F, Node *curNode,
     // Calculate the out type of this chunk.
     const dim_t sliceStart = i * elemPerChunk + std::min(i, remain);
     const dim_t sliceEnd = sliceStart + elemPerChunk + ((i < remain) ? 1 : 0);
-    std::cout << "\tChunk " << i << ": start: " << sliceStart
-              << " end: " << sliceEnd << "\n";
+    VLOG(1) << "\tChunk " << i << ": start: " << sliceStart
+            << " end: " << sliceEnd << "\n";
     auto outDims = curNode->dims(resultIdx).vec();
     outDims[resultDim] = (sliceEnd - sliceStart);
-    std::cout << "outDims: ";
-    std::copy(outDims.begin(), outDims.end(),
-              std::ostream_iterator<int>(std::cout, " "));
-    std::cout << "\n";
+    for (auto outDim : outDims) {
+      VLOG(1) << "outDim: " << outDim << "\n";
+    }
 
     // Clone the original Node, so that it keeps all of the inputs/members of
     // the original Node. Then modify the output type so that its new shape is
@@ -3669,15 +3668,15 @@ static void parallelizeAndReplaceNode(Function *F, Node *curNode,
       sliceDimsStart[dim] = sliceStart;
       auto sliceDimsEnd = currInput.dims().vec();
       sliceDimsEnd[dim] = sliceEnd;
-      std::cout << "start: ";
-      std::copy(sliceDimsStart.begin(), sliceDimsStart.end(),
-                std::ostream_iterator<int>(std::cout, " "));
-      std::cout << "\nend: ";
-      std::copy(sliceDimsEnd.begin(), sliceDimsEnd.end(),
-                std::ostream_iterator<int>(std::cout, " "));
-      std::cout << "\n";
-      std::cout << "Input name: " << currInput.getNode()->getName().str()
-                << "\n";
+      VLOG(1) << "start: ";
+      for (auto sliceDimStart : sliceDimsStart) {
+        VLOG(1) << sliceDimStart << "\n";
+      }
+      VLOG(1) << "end: ";
+      for (auto sliceDimEnd : sliceDimsEnd) {
+        VLOG(1) << sliceDimEnd << "\n";
+      }
+      VLOG(1) << "Input name: " << currInput.getNode()->getName().str() << "\n";
 
       auto *inputSlice =
           F->createSlice("dp_slice." + currInput.getNode()->getName().str() +
@@ -3691,7 +3690,7 @@ static void parallelizeAndReplaceNode(Function *F, Node *curNode,
 
   // Now that we have split the node into many, concat all of the pieces back
   // together and replace the original by the concat.
-  std::cout << "\tCreating concat\n";
+  VLOG(1) << "Creating Concat";
   auto *concat = F->createConcat("concat." + curNode->getName().str(), newNodes,
                                  resultDim);
   curNode->getNthResult(resultIdx).replaceAllUsesOfWith(concat);
@@ -3718,7 +3717,8 @@ bool glow::parallelizeOps(
       ++numProcessedNodes;
     }
 
-    std::cout << "Node name: " << curNode->getName().str() << "\n";
+    VLOG(1) << "Attempting to Parallelizing Node: " << curNode->getName().str()
+            << "\n";
 
     // Use this vector to communicate what dims to split to
     // parallelizeAndReplaceNode(). -1 represents not splitting at all.
@@ -3782,8 +3782,9 @@ bool glow::parallelizeOps(
         break;
       }
       default:
-        std::cout << "Op Type: " << curNode->getKindName()
-                  << "not yet supported" << std::endl;
+        VLOG(1) << "Attempted to parallelize op type " << curNode->getKindName()
+                << "not yet supported"
+                << "\n";
         break;
       }
       break;
@@ -3809,6 +3810,9 @@ bool glow::parallelizeOps(
         break;
       }
       default:
+        VLOG(1) << "Attempted to parallelize op type " << curNode->getKindName()
+                << "not yet supported"
+                << "\n";
         break;
       }
       break;
@@ -3817,8 +3821,6 @@ bool glow::parallelizeOps(
     case ParallelTransformKind::None:
       break;
     }
-
-    std::cout << "Done : " << curNode->getName().str() << "\n";
   }
 
   // Because we transformed Node types unsafely, make sure all types of the
