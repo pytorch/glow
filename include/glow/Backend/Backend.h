@@ -226,6 +226,9 @@ public:
     std::string getRegistrationKey() const override {                          \
       return BackendClass::getName();                                          \
     }                                                                          \
+    unsigned numDevices() const override {                                     \
+      return BackendClass::numDevices();                                       \
+    }                                                                          \
   };                                                                           \
   static RegisterFactory<std::string, FactoryName, Backend>                    \
       FactoryName##_REGISTERED;

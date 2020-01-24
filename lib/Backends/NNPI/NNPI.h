@@ -34,6 +34,7 @@ public:
 
   std::string getBackendName() const override { return getName(); }
   static std::string getName() { return "NNPI"; }
+  static unsigned numDevices();
 
   Expected<std::unique_ptr<CompiledFunction>>
   compile(Function *F, const BackendOptions &opts) const override;

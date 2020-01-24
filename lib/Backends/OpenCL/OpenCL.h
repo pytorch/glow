@@ -221,6 +221,7 @@ public:
 
   std::string getBackendName() const override { return getName(); }
   static std::string getName() { return "OpenCL"; }
+  static unsigned numDevices() { return 1; }
 
   std::unique_ptr<CompiledFunction>
   compileIR(std::unique_ptr<IRFunction> IR) const override;

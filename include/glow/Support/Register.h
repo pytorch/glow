@@ -32,6 +32,8 @@ public:
   virtual Base *create() = 0;
   /// Key used for a registered factory.
   virtual Key getRegistrationKey() const = 0;
+  /// Number of devices available for the registered factory.
+  virtual unsigned numDevices() const = 0;
 };
 
 /// General registry for implementation factories.
