@@ -101,8 +101,8 @@ protected:
 #define BACKEND_TO_STR(X) #X
 
 #ifdef GLOW_TEST_BACKEND
-  #define STRINGIZE(X) BACKEND_TO_STR(X)
-  static const auto all_backends =
+#define STRINGIZE(X) BACKEND_TO_STR(X)
+static const auto all_backends =
     ::testing::Values(STRINGIZE(GLOW_TEST_BACKEND));
 #else
 static const auto all_backends = ::testing::Values(
