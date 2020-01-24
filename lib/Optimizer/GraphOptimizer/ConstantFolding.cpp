@@ -92,32 +92,25 @@ bool hasNonConstantOperationUser(const Node *N, const Backend &backend) {
 /// Compile the function \p F for the provided \p backend using the compilation
 /// context \p cctx.
 /// \returns compiled function.
-std::unique_ptr<CompiledFunction> compile(Backend &backend, Function &F,
-                                          CompilationContext &cctx) {
-  EXIT_ON_ERR(::glow::optimizeFunction(&F, backend, cctx));
-  for (const Node &N : F.getNodes()) {
-    CHECK(backend.isOpSupported(N))
-        << "Backend must support all nodes after high-level optimizations but "
-           "encountered unsupported operator: "
-        << N.getDebugDesc();
-  }
-  auto funcOrErr = backend.compile(&F, cctx.backendOpts);
-  EXIT_ON_ERR(funcOrErr.takeError());
-  return std::move(*funcOrErr);
+Expected<std::unique_ptr<CompiledFunction>>
+compile(Backend &backend, Function &F, CompilationContext &cctx) {
+  RETURN_IF_ERR(::glow::optimizeFunction(&F, backend, cctx));
+  return backend.compile(&F, cctx.backendOpts);
 }
 
 /// Runs the compiled function \p compiledF on the \p backend using provided \p
 /// bindings.
-void run(Backend &backend, CompiledFunction &compiledF,
-         PlaceholderBindings &bindings) {
+Error run(Backend &backend, CompiledFunction &compiledF,
+          PlaceholderBindings &bindings) {
   std::unique_ptr<PlaceholderBindings> bindingsPtr(&bindings);
   ExecutionContext context(std::move(bindingsPtr));
   // TODO: Add only constants used by F to the compiled function. This should
   // reduce the amount of data that needs to be copied.
   auto executeErr = compiledF.execute(&context);
-  EXIT_ON_ERR(std::move(executeErr));
+  RETURN_IF_ERR(std::move(executeErr));
   // Don't delete bindings.
   context.movePlaceholderBindings().release();
+  return Error::success();
 }
 
 static bool isCanonicalLayout(const NodeValue &RN, Backend &backend,
@@ -190,8 +183,11 @@ evaluateConstantOperation(Backend &backend, CompilationContext &cctx, Node *C) {
   }
   // Run the temporary backend to perform this constant operation
   // evaluation.
-  EXIT_ON_ERR(
-      executeConstantFunction(backend, *constEvaluationF, bindings, cctx));
+  if (ERR_TO_BOOL(executeConstantFunction(backend, *constEvaluationF, bindings,
+                                          cctx))) {
+    return {};
+  }
+
   // Get the results of the constant operation compile-time computation and
   // create new constants from it.
   std::vector<Constant *> constResults;
@@ -249,6 +245,9 @@ std::vector<Constant *> constantFoldNodeImpl(Backend &backend, Node *N) {
   // Do not recursively call constant folding.
   cctx.optimizationOpts.enableConstantFolding = false;
   cctx.backendOpts.collectConstants = true;
+  // Do not print out compilation errors encountered, as constant folding is a
+  // best effort; simply silently give up and continue with compilation.
+  cctx.verboseCompile = false;
   return evaluateConstantOperation(backend, cctx, N);
 }
 
@@ -261,9 +260,9 @@ Error glow::executeConstantFunction(Backend &backend, Function &F,
 #ifndef NDEBUG
   RETURN_IF_ERR(verifyConstantFunction(backend, F));
 #endif
-  auto compiledF = compile(backend, F, cctx);
-  run(backend, *compiledF, bindings);
-  return Error::success();
+  std::unique_ptr<CompiledFunction> compiledF;
+  ASSIGN_VALUE_OR_RETURN_ERR(compiledF, compile(backend, F, cctx));
+  return run(backend, *compiledF, bindings);
 }
 
 /// Perform constant folding in the function \p F . Any non-trivial node (i.e.

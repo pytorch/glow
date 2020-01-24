@@ -1870,11 +1870,11 @@ template <class T> static bool checkSquare(const T &I) {
   return true;
 }
 
-bool OCLBackend::verify(const Function &F) const {
+bool OCLBackend::verify(const Function &F, bool verbose) const {
   if (!F.verify(this)) {
     return false;
   }
-  if (!checkAllNodesSupported(F)) {
+  if (!checkAllNodesSupported(F, verbose)) {
     return false;
   }
   for (const Node &N : F.getNodes()) {

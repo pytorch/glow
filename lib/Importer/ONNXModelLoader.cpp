@@ -1319,7 +1319,8 @@ ONNXModelLoader::foldOperator(const ONNX_NAMESPACE::NodeProto &op) {
   tmpLoader.opsetVersion_ = opsetVersion_;
   bool foldStatus = !ERR_TO_BOOL(
       constantFoldInLoader<ONNXModelLoader, ONNX_NAMESPACE::NodeProto>(
-          tmpF, tmpLoader, this, op));
+          tmpF, tmpLoader, this, op),
+      /* log */ false);
   G_.getParent()->eraseFunction(tmpF);
   return foldStatus;
 }
@@ -2401,9 +2402,14 @@ Error ONNXModelLoader::loadNetwork(ONNX_NAMESPACE::GraphProto &net) {
   for (int i = 0; i < net.node_size(); i++) {
     auto &op = net.node(i);
     if (getConstantFoldLoaderOpsFlag()) {
-      auto foldstatus = foldOperator(op);
-      if (foldstatus && foldstatus.get()) {
-        // Folded successfully.
+      auto tryFold = foldOperator(op);
+      if (!tryFold) {
+        // Error during constant folding; load the op normally below.
+        const std::string errStr = ERR_TO_STRING(tryFold.takeError());
+        VLOG(1) << "Error while trying to ConstantFold " << loadOperatorName(op)
+                << ": " << errStr;
+      } else if (tryFold.get()) {
+        // Folded successfully, so skip loading the op below.
         continue;
       }
     }
