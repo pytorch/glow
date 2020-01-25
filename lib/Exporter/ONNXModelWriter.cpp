@@ -1426,6 +1426,7 @@ DEF_ALL_WRITER_NODE(RowwiseQuantizedSparseLengthsWeightedSum)
 DEF_ALL_WRITER_NODE(FusedRowwiseQuantizedSparseLengthsSum)
 DEF_ALL_WRITER_NODE(EmbeddingBagByteRowwiseOffsets)
 DEF_ALL_WRITER_NODE(FusedRowwiseQuantizedSparseLengthsWeightedSum)
+DEF_ALL_WRITER_NODE(NonMaxSuppression)
 
 Error ONNXModelWriter::writeClip(const ClipNode *node, GraphType &graph) {
   auto *proto = graph.add_node();

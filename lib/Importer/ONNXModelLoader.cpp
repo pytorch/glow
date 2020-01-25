@@ -2119,6 +2119,86 @@ Error ONNXModelLoader::loadFullyConnected(const ONNX_NAMESPACE::NodeProto &op,
   return Error::success();
 }
 
+Error ONNXModelLoader::loadNonMaxSuppression(
+    const ONNX_NAMESPACE::NodeProto &op, const ArgumentDictionaryTy &dict,
+    bool isV4) {
+  NodeValue boxesNV;
+  ASSIGN_VALUE_OR_RETURN_ERR(boxesNV, getNodeValueByName(op.input(0)));
+  NodeValue scoresNV;
+  ASSIGN_VALUE_OR_RETURN_ERR(scoresNV, getNodeValueByName(op.input(1)));
+  Constant *maxOutputBoxesPerClassC = getConstantByNameOrNull(op.input(2));
+  Constant *iouThresholdC = getConstantByNameOrNull(op.input(3));
+  Constant *scoreThresholdC = getConstantByNameOrNull(op.input(4));
+
+  // Defaults to 0 which is the same representation as TF.
+  unsigned centerPointBox = 0;
+  if (dict.count("center_point_box")) {
+    ASSIGN_VALUE_OR_RETURN_ERR(centerPointBox,
+                               loadInt(dict.at("center_point_box")));
+  }
+
+  int32_t padToMaxOutputSize = 0;
+  if (isV4) {
+    if (dict.count("pad_to_max_output_size")) {
+      ASSIGN_VALUE_OR_RETURN_ERR(padToMaxOutputSize,
+                                 loadInt(dict.at("pad_to_max_output_size")));
+    }
+
+    // Does it make sense within GLOW context to have no padding? Since Size has
+    // to be compile time constant.
+    RETURN_ERR_IF_NOT(padToMaxOutputSize == 1,
+                      "NonMaxSuppressionV4 does not support non-padding mode.");
+  }
+
+  unsigned maxOutputBoxesPerClass = 0;
+  float iouThreshold = 0.0f;
+  float scoreThreshold = 0.0f;
+
+  if (maxOutputBoxesPerClassC) {
+    if (maxOutputBoxesPerClassC->getPayload().getElementType() ==
+        ElemKind::Int64ITy) {
+      maxOutputBoxesPerClass =
+          maxOutputBoxesPerClassC->getPayload().getHandle<int64_t>().raw(0);
+    } else if (maxOutputBoxesPerClassC->getPayload().getElementType() ==
+               ElemKind::Int32ITy) {
+      maxOutputBoxesPerClass =
+          maxOutputBoxesPerClassC->getPayload().getHandle<int32_t>().raw(0);
+    } else {
+      RETURN_ERR("Unsupported type for maxoutputboxesperclass.");
+    }
+  } else {
+    RETURN_ERR("NMS: maxOutputBoxesPerClass is not a contant tensor.");
+  }
+
+  if (iouThresholdC) {
+    iouThreshold = iouThresholdC->getPayload().getHandle<float>().raw(0);
+  } else {
+    RETURN_ERR("NMS: iouThreshold is not a contant tensor.");
+  }
+
+  if (scoreThresholdC) {
+    scoreThreshold = scoreThresholdC->getPayload().getHandle<float>().raw(0);
+  } else {
+    RETURN_ERR("NMS: scoreThrehold is not a contant tensor.");
+  }
+
+  // Create Node.
+  std::string opName = loadOperatorName(op);
+  Node *N = nullptr;
+
+  if (isV4) {
+    N = G_.createNonMaxSuppressionV4(opName, boxesNV, scoresNV, centerPointBox,
+                                     maxOutputBoxesPerClass, iouThreshold,
+                                     scoreThreshold);
+  } else {
+    N = G_.createNonMaxSuppressionONNX(opName, boxesNV, scoresNV,
+                                       centerPointBox, maxOutputBoxesPerClass,
+                                       iouThreshold, scoreThreshold);
+  }
+  RETURN_IF_ERR(addNodeAsOutput(op, N));
+  return Error::success();
+}
+
 Error ONNXModelLoader::loadSplat(const ONNX_NAMESPACE::NodeProto &op,
                                  const ArgumentDictionaryTy &dict) {
   return loadConstantOfShape(op, dict, true /* isSplat */);
@@ -2353,6 +2433,12 @@ Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
   }
   if (typeName == "ArgMax") {
     return loadArgMax(op, dict);
+  }
+  if (typeName == "NonMaxSuppressionV4") {
+    return loadNonMaxSuppression(op, dict, true);
+  }
+  if (typeName == "NonMaxSuppression") {
+    return loadNonMaxSuppression(op, dict, false);
   }
   if (typeName == "AdaptiveAvgPool") {
     return loadAdaptiveAvgPool(op, dict);

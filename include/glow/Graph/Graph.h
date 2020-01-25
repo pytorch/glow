@@ -1493,6 +1493,90 @@ public:
                                    llvm::StringRef eventType, Node *data,
                                    unsigned index);
 
+  /// Creates NMSv4 node that does NMS for one class.
+  /// Inputs
+  /// - \p boxes Tensor with box coordinates.
+  /// - \p scores Tensor with scores per box.
+  /// - \p centerPointBox Indicates format of the box per ONNX spec.
+  /// - \p iouThreshold Threshold for box overlap.
+  /// - \p scoreThreshold Threshold for box scores.
+  NonMaxSuppressionNode *
+  createNonMaxSuppressionV4(llvm::StringRef name, NodeValue boxes,
+                            NodeValue scores, int64_t centerPointBox,
+                            int64_t maxOutputBoxesPerClass, float iouThreshold,
+                            float scoreThreshold);
+
+  /// Creates NMSv4 node that does NMS for one class.
+  /// Inputs
+  /// - \p boxes Tensor with box coordinates.
+  /// - \p scores Tensor with scores per box.
+  /// - \p centerPointBox Indicates format of the box per ONNX spec.
+  /// - \p iouThreshold Threshold for box overlap.
+  /// - \p scoreThreshold Threshold for box scores.
+  /// - \p ElemKind Output ElemKind.
+  NonMaxSuppressionNode *
+  createNonMaxSuppressionV4(llvm::StringRef name, NodeValue boxes,
+                            NodeValue scores, int64_t centerPointBox,
+                            int64_t maxOutputBoxesPerClass, float iouThreshold,
+                            float scoreThreshold, ElemKind elTy);
+
+  /// Creates NMSv4 node that does NMS for one class.
+  /// Inputs
+  /// - \p boxes Tensor with box coordinates.
+  /// - \p scores Tensor with scores per box.
+  /// - \p centerPointBox Indicates format of the box per ONNX spec.
+  /// - \p iouThreshold Threshold for box overlap.
+  /// - \p scoreThreshold Threshold for box scores.
+  /// - \p indicesTy Type of indices output.
+  /// - \p numberOfSelectedIndicesTy \p Type of second output for number of
+  /// boxes detected.
+  NonMaxSuppressionNode *
+  createNonMaxSuppressionV4(llvm::StringRef name, NodeValue boxes,
+                            NodeValue scores, int64_t centerPointBox,
+                            int64_t maxOutputBoxesPerClass, float iouThreshold,
+                            float scoreThreshold, TypeRef indicesTy,
+                            TypeRef numberOfSelectedIndicesTy);
+
+  /// Performs class wise NMS based on ONNX specification, with padding and ONNX
+  /// layout output.
+  /// Inputs
+  /// - \p boxes Tensor with box coordinates.
+  /// - \p scores Tensor with scores per box.
+  /// - \p centerPointBox Indicates format of the box per ONNX spec.
+  /// - \p iouThreshold Threshold for box overlap.
+  /// - \p scoreThreshold Threshold for box scores.
+  NonMaxSuppressionNode *
+  createNonMaxSuppressionONNX(llvm::StringRef name, NodeValue boxes,
+                              NodeValue scores, int64_t centerPointBox,
+                              int64_t maxOutputBoxesPerClass,
+                              float iouThreshold, float scoreThreshold);
+
+  /// Performs class wise NMS based on ONNX specification, with padding and ONNX
+  /// layout output.
+  /// Inputs
+  /// - \p boxes Tensor with box coordinates.
+  /// - \p scores Tensor with scores per box.
+  /// - \p centerPointBox Indicates format of the box per ONNX spec.
+  /// - \p iouThreshold Threshold for box overlap.
+  /// - \p scoreThreshold Threshold for box scores.
+  NonMaxSuppressionNode *createNonMaxSuppressionONNX(
+      llvm::StringRef name, NodeValue boxes, NodeValue scores,
+      int64_t centerPointBox, int64_t maxOutputBoxesPerClass,
+      float iouThreshold, float scoreThreshold, ElemKind elTy);
+
+  /// Performs class wise NMS based on ONNX specification, with padding and ONNX
+  /// layout output.
+  /// Inputs
+  /// - \p boxes Tensor with box coordinates.
+  /// - \p scores Tensor with scores per box.
+  /// - \p centerPointBox Indicates format of the box per ONNX spec.
+  /// - \p iouThreshold Threshold for box overlap.
+  /// - \p scoreThreshold Threshold for box scores.
+  NonMaxSuppressionNode *createNonMaxSuppressionONNX(
+      llvm::StringRef name, NodeValue boxes, NodeValue scores,
+      int64_t centerPointBox, int64_t maxOutputBoxesPerClass,
+      float iouThreshold, float scoreThreshold, TypeRef indicesTy);
+
   /// Erase the node \p N from the Function.
   void eraseNode(Node *N);
 

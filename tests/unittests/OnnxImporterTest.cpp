@@ -1609,7 +1609,7 @@ TEST_F(OnnxImporterTest, importLengthsSum) {
 }
 
 /// Test loading CumSum from an ONNX model.
-TEST(onnx, importCumSum) {
+TEST_F(OnnxImporterTest, importCumSum) {
   ExecutionEngine EE;
   auto &mod = EE.getModule();
   auto *F = mod.createFunction("main");
@@ -2552,6 +2552,101 @@ TEST_F(OnnxImporterTest, importLess) {
   EXPECT_EQ(CMPLT->getResult().dims()[0], 4);
   EXPECT_EQ(CMPLT->getResult().dims()[1], 4);
   EXPECT_EQ(CMPLT->getResult().dims()[2], 1);
+}
+
+/// Test loading NMS using initializer nodes op from an ONNX model.
+TEST_F(OnnxImporterTest, importNMSInitializer) {
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/NonMaxSuppression.onnxtxt");
+
+  PlaceholderBindings bindings;
+  Placeholder *output;
+  {
+    Tensor boxes(ElemKind::FloatTy, {8, 4});
+    boxes.zero();
+
+    Tensor scores(ElemKind::FloatTy, {8});
+    scores.zero();
+
+    ONNXModelLoader onnxLD(netFilename, {"boxes", "scores"},
+                           {&boxes.getType(), &scores.getType()}, *F);
+    output = EXIT_ON_ERR(onnxLD.getOutputByName("indices"));
+  }
+
+  auto *save = getSaveNodeFromDest(output);
+  NonMaxSuppressionNode *NMS =
+      llvm::dyn_cast<NonMaxSuppressionNode>(save->getInput().getNode());
+  ASSERT_TRUE(NMS);
+  EXPECT_EQ(NMS->dims(0)[0], 3);
+  EXPECT_EQ(NMS->getCenterPointBox(), 0);
+}
+
+/// Test loading NMS using Constant Tensors op from an ONNX model.
+TEST_F(OnnxImporterTest, importNMSConstTensor) {
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string netFilename(
+      GLOW_DATA_PATH "tests/models/onnxModels/NonMaxSuppressionSSD.onnxtxt");
+
+  PlaceholderBindings bindings;
+  Placeholder *output;
+  {
+    Tensor boxes(ElemKind::FloatTy, {8, 4});
+    boxes.zero();
+
+    Tensor scores(ElemKind::FloatTy, {8});
+    scores.zero();
+
+    ONNXModelLoader onnxLD(netFilename, {"boxes", "scores"},
+                           {&boxes.getType(), &scores.getType()}, *F);
+    output = EXIT_ON_ERR(onnxLD.getOutputByName("indices"));
+  }
+
+  auto *save = getSaveNodeFromDest(output);
+  NonMaxSuppressionNode *NMS =
+      llvm::dyn_cast<NonMaxSuppressionNode>(save->getInput().getNode());
+  ASSERT_TRUE(NMS);
+  EXPECT_EQ(NMS->dims(0)[0], 3);
+  EXPECT_EQ(NMS->getCenterPointBox(), 1);
+}
+
+/// Test loading ONNX NMS using Constant Tensors op from an ONNX model.
+TEST_F(OnnxImporterTest, importNMSONNXConstTensor) {
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string netFilename(
+      GLOW_DATA_PATH
+      "tests/models/onnxModels/NonMaxSuppressionSSD_ONNX.onnxtxt");
+
+  PlaceholderBindings bindings;
+  Placeholder *output;
+  {
+    Tensor boxes(ElemKind::FloatTy, {1, 8, 4});
+    boxes.zero();
+
+    Tensor scores(ElemKind::FloatTy, {1, 1, 8});
+    scores.zero();
+
+    ONNXModelLoader onnxLD(netFilename, {"boxes", "scores"},
+                           {&boxes.getType(), &scores.getType()}, *F);
+    output = EXIT_ON_ERR(onnxLD.getOutputByName("indices"));
+  }
+
+  auto *save = getSaveNodeFromDest(output);
+  NonMaxSuppressionNode *NMS =
+      llvm::dyn_cast<NonMaxSuppressionNode>(save->getInput().getNode());
+  ASSERT_TRUE(NMS);
+  EXPECT_EQ(NMS->dims(0)[0], 3);
+  EXPECT_EQ(NMS->dims(0)[1], 3);
+  EXPECT_EQ(NMS->getCenterPointBox(), 1);
 }
 
 TEST_F(OnnxImporterTest, importDimParamExplicit) {

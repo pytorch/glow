@@ -616,6 +616,411 @@ TEST_P(OperatorTest, where_element_wise_float) {
   }
 }
 
+struct NMSMetaData {
+  int centerPoint{0};
+  size_t maxOutputPerClass{0};
+  float iouThreshold{0.0};
+  float scoreThreshold{0.0};
+};
+
+struct SelectedBox {
+  int batchIndex{0};
+  int classIndex{0};
+  int boxIndex{0};
+};
+
+struct Box {
+  float x;
+  float y;
+  float h;
+  float w;
+};
+
+template <typename DataType, typename outType = int64_t>
+static Handle<outType> testNonMaxSuppression(
+    glow::PlaceholderBindings &bindings, glow::Module &mod, glow::Function *F,
+    glow::ExecutionEngine &EE, ElemKind DTy, llvm::ArrayRef<dim_t> boxesDims,
+    llvm::ArrayRef<dim_t> scoresDims, llvm::ArrayRef<DataType> boxesData,
+    llvm::ArrayRef<DataType> classes, llvm::ArrayRef<SelectedBox> refResults,
+    llvm::ArrayRef<int32_t> refNumSelected, const NMSMetaData &metaData,
+    bool isV4) {
+
+  // NHW
+  auto *boxes = createPlaceholderConditionallyQuantized(mod, DTy, boxesDims,
+                                                        "boxes", false);
+
+  auto *scores = createPlaceholderConditionallyQuantized(mod, DTy, scoresDims,
+                                                         "scores", false);
+
+  NonMaxSuppressionNode *nms = nullptr;
+
+  if (isV4) {
+    nms = F->createNonMaxSuppressionV4(
+        "NMS", boxes, scores, metaData.centerPoint, metaData.maxOutputPerClass,
+        metaData.iouThreshold, metaData.scoreThreshold);
+  } else {
+    nms = F->createNonMaxSuppressionONNX(
+        "NMS", boxes, scores, metaData.centerPoint, metaData.maxOutputPerClass,
+        metaData.iouThreshold, metaData.scoreThreshold);
+  }
+
+  auto *saveIndices = F->createSave("save", nms->getIndices());
+  auto *saveNumSelected =
+      F->createSave("numSelected", nms->getNumberOfSelectedIndices());
+  auto *result = bindings.allocate(saveIndices->getPlaceholder());
+  auto *result2 = bindings.allocate(saveNumSelected->getPlaceholder());
+
+  bindings.allocate(boxes)->getHandle<DataType>() = boxesData;
+  bindings.allocate(scores)->getHandle<DataType>() = classes;
+
+  CompilationContext cctx;
+  cctx.compMode = CompilationMode::Infer;
+  EE.compile(cctx);
+  EE.run(bindings);
+
+  Handle<outType> result2H = result2->getHandle<outType>();
+  for (dim_t i = 0; i < (dim_t)refNumSelected.size(); ++i) {
+    EXPECT_EQ(result2H.at({i}), refNumSelected[i]);
+  }
+
+  Handle<outType> resultH = result->getHandle<outType>();
+
+  if (isV4) {
+    for (dim_t i = 0; i < (dim_t)metaData.maxOutputPerClass; ++i) {
+      EXPECT_EQ(refResults[i].boxIndex, resultH.at({i}));
+    }
+  } else {
+    for (dim_t i = 0; i < (dim_t)metaData.maxOutputPerClass; ++i) {
+      EXPECT_EQ(refResults[i].batchIndex, resultH.at({i, (dim_t)0}));
+      EXPECT_EQ(refResults[i].classIndex, resultH.at({i, (dim_t)1}));
+      EXPECT_EQ(refResults[i].boxIndex, resultH.at({i, (dim_t)2}));
+    }
+  }
+
+  return resultH;
+}
+
+template <typename DataType, typename outType = int64_t>
+static Handle<float> testNonMaxSuppressionWithGather(
+    glow::PlaceholderBindings &bindings, glow::Module &mod, glow::Function *F,
+    glow::ExecutionEngine &EE, ElemKind DTy, llvm::ArrayRef<dim_t> boxesDims,
+    llvm::ArrayRef<dim_t> scoresDims, llvm::ArrayRef<dim_t> boxIndicesDim,
+    llvm::ArrayRef<DataType> boxesData, llvm::ArrayRef<DataType> classes,
+    llvm::ArrayRef<int32_t> boxIndicesData, llvm::ArrayRef<Box> refBoxResults,
+    llvm::ArrayRef<int32_t> refNumSelected, const NMSMetaData &metaData,
+    bool isV4) {
+  // NHW
+  auto *boxes = createPlaceholderConditionallyQuantized(mod, DTy, boxesDims,
+                                                        "boxes", false);
+
+  auto *scores = createPlaceholderConditionallyQuantized(mod, DTy, scoresDims,
+                                                         "scores", false);
+
+  auto *boxIndices = createPlaceholderConditionallyQuantized(
+      mod, ElemKind::Int32ITy, boxIndicesDim, "boxIndices", false);
+
+  NonMaxSuppressionNode *nms = nullptr;
+
+  unsigned axis = 1;
+  if (isV4) {
+    nms = F->createNonMaxSuppressionV4(
+        "NMS", boxes, scores, metaData.centerPoint, metaData.maxOutputPerClass,
+        metaData.iouThreshold, metaData.scoreThreshold);
+    axis = 0;
+  } else {
+
+    nms = F->createNonMaxSuppressionONNX(
+        "NMS", boxes, scores, metaData.centerPoint, metaData.maxOutputPerClass,
+        metaData.iouThreshold, metaData.scoreThreshold);
+  }
+
+  // extract all the box indices
+  auto *gthI =
+      F->createGather("gatherBoxIndices", nms->getIndices(), boxIndices, axis);
+  auto *gthB = F->createGather("gatherClassIndices", boxes, gthI, axis);
+  Node *fltn2 = nullptr;
+
+  if (isV4) {
+    fltn2 = gthB;
+  } else {
+    fltn2 = F->createFlatten("flatten", gthB, 2);
+  }
+
+  auto *saveBoxes = F->createSave("saveBoxes", fltn2);
+  auto saveNumSelected =
+      F->createSave("numSelected", nms->getNumberOfSelectedIndices());
+
+  auto *result = bindings.allocate(saveBoxes->getPlaceholder());
+  auto *result2 = bindings.allocate(saveNumSelected->getPlaceholder());
+
+  bindings.allocate(boxes)->getHandle<DataType>() = boxesData;
+  bindings.allocate(scores)->getHandle<DataType>() = classes;
+  bindings.allocate(boxIndices)->getHandle<int32_t>() = boxIndicesData;
+
+  CompilationContext cctx;
+  cctx.compMode = CompilationMode::Infer;
+  EE.compile(cctx);
+  EE.run(bindings);
+
+  Handle<outType> result2H = result2->getHandle<outType>();
+  for (dim_t i = 0; i < (dim_t)refNumSelected.size(); ++i) {
+    EXPECT_EQ(result2H.at({i}), refNumSelected[i]);
+  }
+
+  Handle<float> resultH = result->getHandle<float>();
+
+  for (dim_t i = 0; i < (dim_t)refBoxResults.size(); ++i) {
+    EXPECT_EQ(refBoxResults[i].x, resultH.at({i, (dim_t)0}));
+    EXPECT_EQ(refBoxResults[i].y, resultH.at({i, (dim_t)1}));
+    EXPECT_EQ(refBoxResults[i].h, resultH.at({i, (dim_t)2}));
+    EXPECT_EQ(refBoxResults[i].w, resultH.at({i, (dim_t)3}));
+  }
+
+  return resultH;
+}
+
+TEST_P(OperatorTest, nms_center_point_box_with_gather_float) {
+  CHECK_IF_ENABLED();
+  llvm::SmallVector<dim_t, 3> boxesDims = {1, 6, 4};
+  llvm::SmallVector<dim_t, 3> scoresDims = {1, 1, 6};
+  llvm::SmallVector<dim_t, 1> boxIndexesDms = {1};
+
+  llvm::SmallVector<float, 24> boxes = {
+      0.5, 0.5,  1.0, 1.0, 0.5, 0.6,  1.0, 1.0, 0.5, 0.4,   1.0, 1.0,
+      0.5, 10.5, 1.0, 1.0, 0.5, 10.6, 1.0, 1.0, 0.5, 100.5, 1.0, 1.0};
+
+  llvm::SmallVector<float, 6> classes = {0.9, 0.75, 0.6, 0.95, 0.5, 0.3};
+  llvm::SmallVector<int32_t, 1> boxIndices = {2};
+  llvm::SmallVector<Box, 3> refResults = {
+      {0.5, 10.5, 1.0, 1.0}, {0.5, 0.5, 1.0, 1.0}, {0.5, 0.5, 1.0, 1.0}};
+  NMSMetaData metaData = {1, 3, 0.5, 0.4};
+  llvm::SmallVector<int32_t, 1> refNumSelected = {2};
+
+  testNonMaxSuppressionWithGather<float>(
+      bindings_, mod_, F_, EE_, ElemKind::FloatTy, boxesDims, scoresDims,
+      boxIndexesDms, boxes, classes, boxIndices, refResults, refNumSelected,
+      metaData, false);
+}
+
+TEST_P(OperatorTest, nms_v4_center_point_box_with_gather_float) {
+  CHECK_IF_ENABLED();
+  llvm::SmallVector<dim_t, 3> boxesDims = {6, 4};
+  llvm::SmallVector<dim_t, 1> scoresDims = {6};
+  llvm::SmallVector<dim_t, 1> boxIndexesDims = {3};
+
+  llvm::SmallVector<float, 24> boxes = {
+      0.5, 0.5,  1.0, 1.0, 0.5, 0.6,  1.0, 1.0, 0.5, 0.4,   1.0, 1.0,
+      0.5, 10.5, 1.0, 1.0, 0.5, 10.6, 1.0, 1.0, 0.5, 100.5, 1.0, 1.0};
+
+  llvm::SmallVector<float, 6> classes = {0.9, 0.75, 0.6, 0.95, 0.5, 0.3};
+  llvm::SmallVector<int32_t, 3> boxIndices = {0, 1, 2};
+  llvm::SmallVector<Box, 3> refResults = {
+      {0.5, 10.5, 1.0, 1.0}, {0.5, 0.5, 1.0, 1.0}, {0.5, 0.5, 1.0, 1.0}};
+  NMSMetaData metaData = {1, 3, 0.5, 0.4};
+  llvm::SmallVector<int32_t, 1> refNumSelected{2};
+
+  testNonMaxSuppressionWithGather<float>(
+      bindings_, mod_, F_, EE_, ElemKind::FloatTy, boxesDims, scoresDims,
+      boxIndexesDims, boxes, classes, boxIndices, refResults, refNumSelected,
+      metaData, true);
+}
+
+TEST_P(OperatorTest, nms_center_point_box_float) {
+  CHECK_IF_ENABLED();
+  llvm::SmallVector<dim_t, 3> boxesDims = {1, 6, 4};
+  llvm::SmallVector<dim_t, 3> scoresDims = {1, 1, 6};
+  llvm::SmallVector<float, 24> boxes = {
+      0.5, 0.5,  1.0, 1.0, 0.5, 0.6,  1.0, 1.0, 0.5, 0.4,   1.0, 1.0,
+      0.5, 10.5, 1.0, 1.0, 0.5, 10.6, 1.0, 1.0, 0.5, 100.5, 1.0, 1.0};
+  llvm::SmallVector<float, 6> classes = {0.9, 0.75, 0.6, 0.95, 0.5, 0.3};
+  llvm::SmallVector<SelectedBox, 3> refResults = {
+      {0, 0, 3}, {0, 0, 0}, {0, 0, 5}};
+  NMSMetaData metaData = {1, 3, 0.5, 0.0};
+  llvm::SmallVector<int32_t, 1> refNumSelected{3};
+
+  testNonMaxSuppression<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy,
+                               boxesDims, scoresDims, boxes, classes,
+                               refResults, refNumSelected, metaData, false);
+}
+
+TEST_P(OperatorTest, nms_v4_center_point_box_float) {
+  CHECK_IF_ENABLED();
+  llvm::SmallVector<dim_t, 3> boxesDims = {6, 4};
+  llvm::SmallVector<dim_t, 1> scoresDims = {6};
+  llvm::SmallVector<float, 24> boxes = {
+      0.5, 0.5,  1.0, 1.0, 0.5, 0.6,  1.0, 1.0, 0.5, 0.4,   1.0, 1.0,
+      0.5, 10.5, 1.0, 1.0, 0.5, 10.6, 1.0, 1.0, 0.5, 100.5, 1.0, 1.0};
+  llvm::SmallVector<float, 6> classes = {0.9, 0.75, 0.6, 0.95, 0.5, 0.3};
+  llvm::SmallVector<SelectedBox, 3> refResults = {
+      {0, 0, 3}, {0, 0, 0}, {0, 0, 5}};
+  NMSMetaData metaData = {1, 3, 0.5, 0.0};
+  llvm::SmallVector<int32_t, 1> refNumSelected{3};
+
+  testNonMaxSuppression<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy,
+                               boxesDims, scoresDims, boxes, classes,
+                               refResults, refNumSelected, metaData, true);
+}
+
+TEST_P(OperatorTest, nms_flipped_coordinates_float) {
+  CHECK_IF_ENABLED();
+  llvm::SmallVector<dim_t, 3> boxesDims = {1, 6, 4};
+  llvm::SmallVector<dim_t, 3> scoresDims = {1, 1, 6};
+  llvm::SmallVector<float, 24> boxes = {
+      1.0, 1.0,  0.0, 0.0,  0.0, 0.1,  1.0, 1.1,  0.0, 0.9,   1.0, -0.1,
+      0.0, 10.0, 1.0, 11.0, 1.0, 10.1, 0.0, 11.1, 1.0, 101.0, 0.0, 100.0};
+  llvm::SmallVector<float, 6> classes = {0.9, 0.75, 0.6, 0.95, 0.5, 0.3};
+  llvm::SmallVector<SelectedBox, 3> refResults = {
+      {0, 0, 3}, {0, 0, 0}, {0, 0, 5}};
+  NMSMetaData metaData = {0, 3, 0.5, 0.0};
+  llvm::SmallVector<int32_t, 1> refNumSelected{3};
+
+  testNonMaxSuppression<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy,
+                               boxesDims, scoresDims, boxes, classes,
+                               refResults, refNumSelected, metaData, false);
+}
+
+TEST_P(OperatorTest, nms_identical_boxes_float) {
+  CHECK_IF_ENABLED();
+  llvm::SmallVector<dim_t, 3> boxesDims = {1, 10, 4};
+  llvm::SmallVector<dim_t, 3> scoresDims = {1, 1, 10};
+  llvm::SmallVector<float, 40> boxes = {
+      0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0,
+      1.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, 1.0,
+      0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, 1.0};
+  llvm::SmallVector<float, 10> classes = {0.9, 0.9, 0.9, 0.9, 0.9,
+                                          0.9, 0.9, 0.9, 0.9, 0.9};
+  llvm::SmallVector<SelectedBox, 3> refResults = {{0, 0, 0}};
+  NMSMetaData metaData = {0, 1, 0.5, 0.0};
+  llvm::SmallVector<int32_t, 1> refNumSelected{1};
+
+  testNonMaxSuppression<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy,
+                               boxesDims, scoresDims, boxes, classes,
+                               refResults, refNumSelected, metaData, false);
+}
+
+TEST_P(OperatorTest, nms_limit_output_size_float) {
+  CHECK_IF_ENABLED();
+  llvm::SmallVector<dim_t, 3> boxesDims = {1, 6, 4};
+  llvm::SmallVector<dim_t, 3> scoresDims = {1, 1, 6};
+  llvm::SmallVector<float, 24> boxes = {
+      0.0, 0.0,  1.0, 1.0,  0.0, 0.1,  1.0, 1.1,  0.0, -0.1,  1.0, 0.9,
+      0.0, 10.0, 1.0, 11.0, 0.0, 10.1, 1.0, 11.1, 0.0, 100.0, 1.0, 101.0};
+  llvm::SmallVector<float, 6> classes = {0.9, 0.75, 0.6, 0.95, 0.5, 0.3};
+  llvm::SmallVector<SelectedBox, 2> refResults = {{0, 0, 3}, {0, 0, 0}};
+  NMSMetaData metaData = {0, 2, 0.5, 0.0};
+  llvm::SmallVector<int32_t, 1> refNumSelected{2};
+
+  testNonMaxSuppression<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy,
+                               boxesDims, scoresDims, boxes, classes,
+                               refResults, refNumSelected, metaData, false);
+}
+
+TEST_P(OperatorTest, nms_single_box_float) {
+  CHECK_IF_ENABLED();
+  llvm::SmallVector<dim_t, 3> boxesDims = {1, 1, 4};
+  llvm::SmallVector<dim_t, 3> scoresDims = {1, 1, 1};
+  llvm::SmallVector<float, 4> boxes = {0.0, 0.0, 1.0, 1.0};
+  llvm::SmallVector<float, 1> classes = {0.9};
+  llvm::SmallVector<SelectedBox, 1> refResults = {
+      {0, 0, 0}, {0, 0, 0}, {0, 0, 0}};
+  NMSMetaData metaData = {0, 3, 0.5, 0.0};
+  llvm::SmallVector<int32_t, 1> refNumSelected{1};
+
+  testNonMaxSuppression<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy,
+                               boxesDims, scoresDims, boxes, classes,
+                               refResults, refNumSelected, metaData, false);
+}
+
+TEST_P(OperatorTest, nms_by_iou_float) {
+  CHECK_IF_ENABLED();
+  llvm::SmallVector<dim_t, 3> boxesDims = {1, 6, 4};
+  llvm::SmallVector<dim_t, 3> scoresDims = {1, 1, 6};
+  llvm::SmallVector<float, 24> boxes = {
+      0.0, 0.0,  1.0, 1.0,  0.0, 0.1,  1.0, 1.1,  0.0, -0.1,  1.0, 0.9,
+      0.0, 10.0, 1.0, 11.0, 0.0, 10.1, 1.0, 11.1, 0.0, 100.0, 1.0, 101.0};
+  llvm::SmallVector<float, 6> classes = {0.9, 0.75, 0.6, 0.95, 0.5, 0.3};
+  llvm::SmallVector<SelectedBox, 2> refResults = {
+      {0, 0, 3}, {0, 0, 0}, {0, 0, 5}};
+  NMSMetaData metaData = {0, 3, 0.5, 0.0};
+  llvm::SmallVector<int32_t, 1> refNumSelected{3};
+
+  testNonMaxSuppression<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy,
+                               boxesDims, scoresDims, boxes, classes,
+                               refResults, refNumSelected, metaData, false);
+}
+
+TEST_P(OperatorTest, nms_by_iou_and_scores_float) {
+  CHECK_IF_ENABLED();
+  llvm::SmallVector<dim_t, 3> boxesDims = {1, 6, 4};
+  llvm::SmallVector<dim_t, 3> scoresDims = {1, 1, 6};
+  llvm::SmallVector<float, 24> boxes = {
+      0.0, 0.0,  1.0, 1.0,  0.0, 0.1,  1.0, 1.1,  0.0, -0.1,  1.0, 0.9,
+      0.0, 10.0, 1.0, 11.0, 0.0, 10.1, 1.0, 11.1, 0.0, 100.0, 1.0, 101.0};
+  llvm::SmallVector<float, 6> classes = {0.9, 0.75, 0.6, 0.95, 0.5, 0.3};
+  llvm::SmallVector<SelectedBox, 2> refResults = {{0, 0, 3}, {0, 0, 0}};
+  NMSMetaData metaData = {0, 2, 0.5, 0.4};
+  llvm::SmallVector<int32_t, 1> refNumSelected{2};
+
+  testNonMaxSuppression<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy,
+                               boxesDims, scoresDims, boxes, classes,
+                               refResults, refNumSelected, metaData, false);
+}
+
+TEST_P(OperatorTest, nms_two_batches_float) {
+  CHECK_IF_ENABLED();
+  llvm::SmallVector<dim_t, 3> boxesDims = {2, 6, 4};
+  llvm::SmallVector<dim_t, 3> scoresDims = {2, 1, 6};
+  llvm::SmallVector<float, 48> boxes = {
+      0.0, 0.0,  1.0, 1.0,  0.0, 0.1,  1.0, 1.1,  0.0, -0.1,  1.0, 0.9,
+      0.0, 10.0, 1.0, 11.0, 0.0, 10.1, 1.0, 11.1, 0.0, 100.0, 1.0, 101.0,
+      0.0, 0.0,  1.0, 1.0,  0.0, 0.1,  1.0, 1.1,  0.0, -0.1,  1.0, 0.9,
+      0.0, 10.0, 1.0, 11.0, 0.0, 10.1, 1.0, 11.1, 0.0, 100.0, 1.0, 101.0};
+  llvm::SmallVector<float, 12> classes = {0.9, 0.75, 0.6, 0.95, 0.5, 0.3,
+                                          0.9, 0.75, 0.6, 0.95, 0.5, 0.3};
+  llvm::SmallVector<SelectedBox, 4> refResults = {
+      {0, 0, 3}, {0, 0, 0}, {1, 0, 3}, {1, 0, 0}};
+  NMSMetaData metaData = {0, 2, 0.5, 0.0};
+  llvm::SmallVector<int32_t, 2> refNumSelected{2, 2};
+
+  testNonMaxSuppression<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy,
+                               boxesDims, scoresDims, boxes, classes,
+                               refResults, refNumSelected, metaData, false);
+}
+
+TEST_P(OperatorTest, nms_two_classes_float) {
+  CHECK_IF_ENABLED();
+  llvm::SmallVector<dim_t, 3> boxesDims = {1, 6, 4};
+  llvm::SmallVector<dim_t, 3> scoresDims = {1, 2, 6};
+  llvm::SmallVector<float, 24> boxes = {
+      0.0, 0.0,  1.0, 1.0,  0.0, 0.1,  1.0, 1.1,  0.0, -0.1,  1.0, 0.9,
+      0.0, 10.0, 1.0, 11.0, 0.0, 10.1, 1.0, 11.1, 0.0, 100.0, 1.0, 101.0};
+  llvm::SmallVector<float, 12> classes = {0.9, 0.75, 0.6, 0.95, 0.5, 0.3,
+                                          0.9, 0.75, 0.6, 0.95, 0.5, 0.3};
+  llvm::SmallVector<SelectedBox, 4> refResults = {
+      {0, 0, 3}, {0, 0, 0}, {0, 1, 3}, {0, 1, 0}};
+  NMSMetaData metaData = {0, 2, 0.5, 0.4};
+  llvm::SmallVector<int32_t, 1> refNumSelected{4};
+
+  testNonMaxSuppression<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy,
+                               boxesDims, scoresDims, boxes, classes,
+                               refResults, refNumSelected, metaData, false);
+}
+
+TEST_P(OperatorTest, nms_two_boxes_float) {
+  CHECK_IF_ENABLED();
+  llvm::SmallVector<dim_t, 3> boxesDims = {1, 2, 4};
+  llvm::SmallVector<dim_t, 3> scoresDims = {1, 1, 2};
+  llvm::SmallVector<float, 4> boxes = {0.0, 0.0, 1.0, 1.0, 0.1, 0.1, 0.9, 0.9};
+  llvm::SmallVector<float, 2> classes = {0.8, 0.9};
+  llvm::SmallVector<SelectedBox, 1> refResults = {{0, 0, 1}};
+  NMSMetaData metaData = {0, 1, 0.5, 0.0};
+  llvm::SmallVector<int32_t, 1> refNumSelected{1};
+
+  testNonMaxSuppression<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy,
+                               boxesDims, scoresDims, boxes, classes,
+                               refResults, refNumSelected, metaData, false);
+}
+
 // Helper to test SpaceToDepth using \p DTy.
 template <typename DataType>
 static void testSpaceToDepthBlock3(glow::PlaceholderBindings &bindings,

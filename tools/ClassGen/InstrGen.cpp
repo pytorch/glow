@@ -794,6 +794,25 @@ int main(int argc, char **argv) {
       .autoIRGen();
 
   //===--------------------------------------------------------------------===//
+  //                Post Processing
+  //===--------------------------------------------------------------------===//
+
+  BB.newInstr("NonMaxSuppression")
+      .addOperand("Indices", OperandKind::Out)
+      .addOperand("NumberOfSelectedIndices", OperandKind::Out)
+      .addOperand("Boxes", OperandKind::In)
+      .addOperand("Scores", OperandKind::In)
+      .addMember(MemberType::Int64, "CenterPointBox")
+      .addMember(MemberType::Int64, "MaxOutputBoxesPerClass")
+      .addMember(MemberType::Float, "IouThreshold")
+      .addMember(MemberType::Float, "ScoreThreshold")
+      .addMember(MemberType::Boolean, "IsTFVersion4")
+      .autoVerify(VerifyKind::SameElementType, {"Boxes", "Scores"})
+      .autoVerify(VerifyKind::SameElementType,
+                  {"Indices", "NumberOfSelectedIndices"})
+      .autoIRGen();
+
+  //===--------------------------------------------------------------------===//
   //                Backend-Specific Instructions
   //===--------------------------------------------------------------------===//
 

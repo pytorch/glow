@@ -4160,3 +4160,257 @@ void BoundInterpreterFunction::fwdFlipInstImpl(const FlipInst *I) {
 void BoundInterpreterFunction::fwdFlipInst(const FlipInst *I) {
   dispatchImpl(fwdFlipInstImpl, I->getSrc()->getElementType(), I);
 }
+
+//===----------------------------------------------------------------------===//
+//                Instructions used by ObjectDetection
+//===----------------------------------------------------------------------===//
+static void maxMin(float lhs, float rhs, float &min, float &max) {
+  if (lhs >= rhs) {
+    min = rhs;
+    max = lhs;
+  } else {
+    min = lhs;
+    max = rhs;
+  }
+}
+
+using ClassBox = std::pair<float, dim_t>;
+
+struct Box {
+  float classValue{0.0f};
+  dim_t batchIndex{0};
+  dim_t classIndex{0};
+  dim_t boxIndex{0};
+};
+
+template <typename ElemTy>
+static bool doIOU(Handle<ElemTy> &boxes, dim_t batchIndex,
+                  dim_t selectedBoxIndex, dim_t candidateBoxIndex,
+                  int centerPointBox, float iouThreshold, bool isV4) {
+  float sx[] = {0.0f, 0.0f, 0.0f, 0.0f};
+  float cx[] = {0.0f, 0.0f, 0.0f, 0.0f};
+
+  if (isV4) {
+    for (dim_t i = 0; i < 4; ++i) {
+      sx[i] = boxes.at({selectedBoxIndex, i});
+      cx[i] = boxes.at({candidateBoxIndex, i});
+    }
+  } else {
+    for (dim_t i = 0; i < 4; ++i) {
+      sx[i] = boxes.at({batchIndex, selectedBoxIndex, i});
+      cx[i] = boxes.at({batchIndex, candidateBoxIndex, i});
+    }
+  }
+
+  float xSMin = 0.0f;
+  float ySMin = 0.0f;
+  float xSMax = 0.0f;
+  float ySMax = 0.0f;
+
+  float xCMin = 0.0f;
+  float yCMin = 0.0f;
+  float xCMax = 0.0f;
+  float yCMax = 0.0f;
+
+  // Standardizing coordinates so that (xmin, ymin) is upper left corner of a
+  // box and (xmax, ymax) is lower right corner of the box.
+  if (!centerPointBox) {
+    // 0 means coordinates for diagonal ends of a box.
+    // Coordinates can either be absolute or normalized.
+    maxMin(sx[0], sx[2], xSMin, xSMax);
+    maxMin(sx[1], sx[3], ySMin, ySMax);
+
+    maxMin(cx[0], cx[2], xCMin, xCMax);
+    maxMin(cx[1], cx[3], yCMin, yCMax);
+  } else {
+    float halfWidthS = sx[2] / 2.0f;
+    float halfHeightS = sx[3] / 2.0f;
+    float halfWidthC = cx[2] / 2.0f;
+    float halfHeightC = cx[3] / 2.0f;
+
+    xSMin = sx[0] - halfWidthS;
+    ySMin = sx[1] - halfHeightS;
+    xSMax = sx[0] + halfWidthS;
+    ySMax = sx[1] + halfHeightS;
+
+    xCMin = cx[0] - halfWidthC;
+    yCMin = cx[1] - halfHeightC;
+    xCMax = cx[0] + halfWidthC;
+    yCMax = cx[1] + halfHeightC;
+  }
+
+  // finding upper left and lower right corner of a box formed by intersection.
+  float xMin = std::max(xSMin, xCMin);
+  float yMin = std::max(ySMin, yCMin);
+  float xMax = std::min(xSMax, xCMax);
+  float yMax = std::min(ySMax, yCMax);
+
+  float intersectionArea =
+      std::max(0.0f, xMax - xMin) * std::max(0.0f, yMax - yMin);
+
+  if (intersectionArea == 0.0f) {
+    return false;
+  }
+
+  float sArea = (xSMax - xSMin) * (ySMax - ySMin);
+  float cArea = (xCMax - xCMin) * (yCMax - yCMin);
+  float unionArea = sArea + cArea - intersectionArea;
+
+  return intersectionArea > iouThreshold * unionArea;
+}
+
+template <typename T>
+void BoundInterpreterFunction::fwdNonMaxSuppressionInstImpl(
+    glow::NonMaxSuppressionInst const *I) {
+
+  auto boxes = I->getBoxes();
+  auto scores = I->getScores();
+  auto indices = I->getIndices();
+  auto numDetected = I->getNumberOfSelectedIndices();
+  float iouThreshold = I->getIouThreshold();
+  dim_t maxBoxesPerClass = I->getMaxOutputBoxesPerClass();
+  float scoreThreshold = I->getScoreThreshold();
+  unsigned centerPointBox = I->getCenterPointBox();
+  bool isV4 = I->getIsTFVersion4();
+
+  auto boxesH = getTensor(boxes)->getHandle<float>();
+  auto scoresH = getTensor(scores)->getHandle<float>();
+  auto indicesH = getTensor(indices)->getHandle<T>();
+  auto numDetectedH = getTensor(numDetected)->getHandle<T>();
+
+  int boxesBoxDim = boxes->dims().size() - 2;
+
+  dim_t numBatches = 1;
+  dim_t numClasses = 1;
+  dim_t numBoxes = boxes->dims()[boxesBoxDim];
+
+  size_t maxOutputPerBatch = 0;
+
+  if (!isV4) {
+    int boxesBatchDim = boxes->dims().size() - 3;
+
+    int scoresBatchDim = scores->dims().size() - 3;
+    int scoresBoxDim = scores->dims().size() - 1;
+    int scoresClassDim = scores->dims().size() - 2;
+    assert(scores->dims()[scoresBoxDim] == boxes->dims()[boxesBoxDim] &&
+           "Mismatch between number of scores and number of boxes.");
+    assert(scores->dims()[scoresBatchDim] == boxes->dims()[boxesBatchDim] &&
+           "Mismatch in batch dimension.");
+    (void)boxesBatchDim;
+    (void)scoresBoxDim;
+    numBatches = scores->dims()[scoresBatchDim];
+    numClasses = scores->dims()[scoresClassDim];
+    numBoxes = boxes->dims()[boxesBoxDim];
+    maxOutputPerBatch =
+        indices->dims()[indices->dims().size() - 2] / numBatches;
+  } else {
+    maxOutputPerBatch =
+        indices->dims()[indices->dims().size() - 1] / numBatches;
+  }
+
+  auto cmpFunc = [](const ClassBox &a, const ClassBox &b) {
+    return a.first < b.first;
+  };
+
+  std::vector<ClassBox> selectedIndices(numBoxes);
+  dim_t outPutBoxIndex = 0;
+
+  for (dim_t batchIndex = 0; batchIndex < numBatches; ++batchIndex) {
+    Box minBox{scoresH.raw(batchIndex * numClasses * numBoxes), batchIndex, 0,
+               0};
+    int32_t detectedPerBatch = 0;
+    for (dim_t classIndex = 0; classIndex < numClasses; ++classIndex) {
+      selectedIndices.clear();
+      size_t detectedPerClass = 0;
+      std::priority_queue<ClassBox, std::vector<ClassBox>, decltype(cmpFunc)>
+          queue(cmpFunc);
+
+      for (size_t boxIndex = 0; boxIndex < numBoxes; ++boxIndex) {
+        float classValue = scoresH.raw(
+            (batchIndex * numClasses + classIndex) * numBoxes + boxIndex);
+        if (classValue > scoreThreshold) {
+          queue.emplace(classValue, boxIndex);
+        }
+      }
+
+      float tScore = minBox.classValue;
+      while (!queue.empty()) {
+        auto priorBox = queue.top();
+        queue.pop();
+
+        bool selected = true;
+        for (auto &sBox : selectedIndices) {
+          if (doIOU(boxesH, batchIndex, sBox.second, priorBox.second,
+                    centerPointBox, iouThreshold, isV4)) {
+            selected = false;
+            break;
+          }
+        }
+
+        if (selected) {
+          selectedIndices.emplace_back(priorBox);
+          if (isV4) {
+            indicesH.at({outPutBoxIndex}) = priorBox.second;
+            tScore = scoresH.at({priorBox.second});
+          } else {
+            indicesH.at({outPutBoxIndex, 0}) = batchIndex;
+            indicesH.at({outPutBoxIndex, 1}) = classIndex;
+            indicesH.at({outPutBoxIndex, 2}) = priorBox.second;
+            tScore = scoresH.at({batchIndex, classIndex, priorBox.second});
+          }
+
+          ++outPutBoxIndex;
+          ++detectedPerClass;
+          ++detectedPerBatch;
+        }
+        if (maxBoxesPerClass == detectedPerClass) {
+          break;
+        }
+      }
+
+      if (tScore < minBox.classValue) {
+        minBox.classValue = tScore;
+        minBox.classIndex = classIndex;
+        if (isV4) {
+          minBox.boxIndex = indicesH.at({outPutBoxIndex - 1});
+        } else {
+          minBox.boxIndex = indicesH.at({outPutBoxIndex - 1, 2});
+        }
+      }
+    }
+
+    for (size_t i = detectedPerBatch; i < maxOutputPerBatch; ++i) {
+      if (isV4) {
+        indicesH.at({outPutBoxIndex}) = minBox.boxIndex;
+      } else {
+        indicesH.at({outPutBoxIndex, 0}) = minBox.batchIndex;
+        indicesH.at({outPutBoxIndex, 1}) = minBox.classIndex;
+        indicesH.at({outPutBoxIndex, 2}) = minBox.boxIndex;
+      }
+
+      ++outPutBoxIndex;
+    }
+    // For ONNX NMS it's not used, for TF Batch Dimension is 1.
+    for (dim_t i = 0; i < maxBoxesPerClass; ++i) {
+      numDetectedH.at({batchIndex * maxBoxesPerClass + i}) = detectedPerBatch;
+    }
+  }
+}
+
+void BoundInterpreterFunction::fwdNonMaxSuppressionInst(
+    glow::NonMaxSuppressionInst const *I) {
+  switch (I->getBoxes()->getElementType()) {
+  case ElemKind::FloatTy:
+    if (I->getIndices()->getElementType() == ElemKind::Int32ITy) {
+      fwdNonMaxSuppressionInstImpl<int32_t>(I);
+    } else if (I->getIndices()->getElementType() == ElemKind::Int64ITy) {
+      fwdNonMaxSuppressionInstImpl<int64_t>(I);
+    } else {
+      llvm_unreachable("Output type is not supported.");
+    }
+    break;
+  default:
+    llvm_unreachable("Type is not supported.");
+    break;
+  }
+}

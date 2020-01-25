@@ -993,6 +993,25 @@ int main(int argc, char **argv) {
           "and Rescale nodes.");
 
   //===--------------------------------------------------------------------===//
+  //                Post Processing
+  //===--------------------------------------------------------------------===//
+
+  BB.newNode("NonMaxSuppression")
+      .addInput("Boxes")
+      .addInput("Scores")
+      .addMember(MemberType::Unsigned, "CenterPointBox")
+      .addMember(MemberType::Unsigned, "MaxOutputBoxesPerClass")
+      .addMember(MemberType::Float, "IouThreshold")
+      .addMember(MemberType::Float, "ScoreThreshold")
+      .addMember(MemberType::Boolean, "IsTFVersion4")
+      .addResultFromCtorArg("Indices")
+      .addResultFromCtorArg("NumberOfSelectedIndices")
+      .setDocstring("This is a mix of ONNX and TF NMSv4. It supports multiple "
+                    "classes and does per class NMS. It also supports TF NMS "
+                    "V4 by outputting indices and scalar tensor with number of "
+                    "valid indices. It pads the rest with global MIN box.");
+
+  //===--------------------------------------------------------------------===//
   //                Backend-Specific Nodes
   //===--------------------------------------------------------------------===//
 

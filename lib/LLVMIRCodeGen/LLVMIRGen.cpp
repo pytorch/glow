@@ -2718,6 +2718,46 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     break;
   }
 
+  case Kinded::Kind::NonMaxSuppressionInstKind: {
+    auto *NMSI = llvm::cast<NonMaxSuppressionInst>(I);
+    auto boxes = NMSI->getBoxes();
+    auto scores = NMSI->getScores();
+    auto indices = NMSI->getIndices();
+    auto numDetected = NMSI->getNumberOfSelectedIndices();
+    float iouThreshold = NMSI->getIouThreshold();
+    int64_t maxBoxesPerClass = NMSI->getMaxOutputBoxesPerClass();
+    float scoreThreshold = NMSI->getScoreThreshold();
+    int centerPointBox = NMSI->getCenterPointBox();
+    bool isV4 = NMSI->getIsTFVersion4();
+
+    auto *boxesPtr = emitValueAddress(builder, boxes);
+    auto *scoresPtr = emitValueAddress(builder, scores);
+    auto *indicesPtr = emitValueAddress(builder, indices);
+    auto *numDetectedPtr = emitValueAddress(builder, numDetected);
+
+    auto *maxBoxesPerClassVal = emitConstI32(builder, maxBoxesPerClass);
+    auto *centerPointBoxVal = emitConstI32(builder, centerPointBox);
+    auto *iouThresholdVal = emitConstF32(builder, iouThreshold);
+    auto *scoreThresholdVal = emitConstF32(builder, scoreThreshold);
+
+    auto *boxesDimVal = emitValueDims(builder, boxes);
+    auto *scoreDimVal = emitValueDims(builder, scores);
+    auto *indicesDimVal = emitValueDims(builder, indices);
+    auto *boxesDimSizeVal = emitConstSizeT(builder, boxes->dims().size());
+    auto *scoresDimSizeVal = emitConstSizeT(builder, scores->dims().size());
+    auto *indicesDimSizeVal = emitConstSizeT(builder, indices->dims().size());
+    auto *isV4Val = emitConstI1(builder, isV4);
+
+    auto *F = getFunction("nms", indices->getElementType());
+    createCall(builder, F,
+               {indicesPtr, numDetectedPtr, boxesPtr, boxesDimVal,
+                boxesDimSizeVal, scoresPtr, scoreDimVal, scoresDimSizeVal,
+                indicesDimVal, indicesDimSizeVal, centerPointBoxVal,
+                maxBoxesPerClassVal, iouThresholdVal, scoreThresholdVal,
+                isV4Val});
+    break;
+  }
+
   case Kinded::Kind::ConvertToInstKind: {
     auto *CTI = llvm::cast<ConvertToInst>(I);
     auto *input = CTI->getInput();

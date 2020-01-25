@@ -248,6 +248,11 @@ class ONNXModelLoader
   Error loadSplat(const ONNX_NAMESPACE::NodeProto &op,
                   const ArgumentDictionaryTy &dict);
 
+  /// Load NonMaxSuppression ONNX and TF NMSv4 operator.
+  /// The \p isV4 indicates whether this is ONNX or custom NMSv4 operator.
+  Error loadNonMaxSuppression(const ONNX_NAMESPACE::NodeProto &op,
+                              const ArgumentDictionaryTy &dict, bool isV4);
+
   /// Load Glow InsertTensor operator.
   Error loadInsertTensor(const ONNX_NAMESPACE::NodeProto &op,
                          const ArgumentDictionaryTy &dict);

@@ -3819,6 +3819,114 @@ TraceEventNode *Function::createTraceEvent(llvm::StringRef eventName,
   return addNode(new TraceEventNode(name, data, eventName, eventType, index));
 }
 
+NonMaxSuppressionNode *Function::createNonMaxSuppressionV4(
+    llvm::StringRef name, NodeValue boxes, NodeValue scores,
+    int64_t centerPointBox, int64_t maxOutputBoxesPerClass, float iouThreshold,
+    float scoreThreshold, ElemKind elTy) {
+  // V4
+  // Class/Score [BatchNum][BoxNum]
+  // Boxes [BatdhNum][BoxNum][4]
+  // Result [BatchNum*MaxOutputPerBatch]
+  // NumberOfIndicesDetected [BatchNum*MaxOutputPerBatch]
+  auto scoresDim = scores.dims();
+  int scoresBoxDim = scoresDim.size() - 1;
+  if (maxOutputBoxesPerClass == 0) {
+    maxOutputBoxesPerClass = scoresDim[scoresBoxDim];
+  }
+
+  // Allocating maximum because we don't know how many boxes will actually be
+  // detected.
+  std::vector<dim_t> newDim = {static_cast<dim_t>(maxOutputBoxesPerClass)};
+  auto indicesTy = getParent()->uniqueType(elTy, newDim);
+  auto numberOfSelectedIndicesTy = getParent()->uniqueType(
+      elTy, {static_cast<dim_t>(maxOutputBoxesPerClass)});
+  return addNode(new NonMaxSuppressionNode(
+      name, indicesTy, numberOfSelectedIndicesTy, boxes, scores, centerPointBox,
+      maxOutputBoxesPerClass, iouThreshold, scoreThreshold, true));
+}
+
+NonMaxSuppressionNode *
+Function::createNonMaxSuppressionV4(llvm::StringRef name, NodeValue boxes,
+                                    NodeValue scores, int64_t centerPointBox,
+                                    int64_t maxOutputBoxesPerClass,
+                                    float iouThreshold, float scoreThreshold) {
+  return createNonMaxSuppressionV4(name, boxes, scores, centerPointBox,
+                                   maxOutputBoxesPerClass, iouThreshold,
+                                   scoreThreshold, ElemKind::Int64ITy);
+}
+
+NonMaxSuppressionNode *Function::createNonMaxSuppressionV4(
+    llvm::StringRef name, NodeValue boxes, NodeValue scores,
+    int64_t centerPointBox, int64_t maxOutputBoxesPerClass, float iouThreshold,
+    float scoreThreshold, TypeRef indicesTy,
+    TypeRef numberOfSelectedIndicesTy) {
+  assert(maxOutputBoxesPerClass > 0 && "Invalid maxOutputBoxesPerClass.");
+
+  return addNode(new NonMaxSuppressionNode(
+      name, indicesTy, numberOfSelectedIndicesTy, boxes, scores, centerPointBox,
+      maxOutputBoxesPerClass, iouThreshold, scoreThreshold, true));
+}
+
+NonMaxSuppressionNode *Function::createNonMaxSuppressionONNX(
+    llvm::StringRef name, NodeValue boxes, NodeValue scores,
+    int64_t centerPointBox, int64_t maxOutputBoxesPerClass, float iouThreshold,
+    float scoreThreshold, ElemKind elTy) {
+  // ONNX
+  // Class/Score [BatchNum][ClassNum][BoxNum]
+  // Box [BatchNum][BoxNum][4]
+  // Result [BatchNum*MaxOutputPerBatch][3]
+  auto boxesDim = boxes.dims();
+  auto scoresDim = scores.dims();
+  int scoresBoxDim = scoresDim.size() - 1;
+  int scoresClassDim = scoresDim.size() - 2;
+  int scoresBatchDim = scoresDim.size() - 3;
+  int boxesBatchDim = boxesDim.size() - 3;
+  if (maxOutputBoxesPerClass == 0) {
+    maxOutputBoxesPerClass = scoresDim[scoresBoxDim];
+  }
+
+  // allocating maximum because we don't know how many boxes will actually be
+  // detected.
+  std::vector<dim_t> newDim = {scoresDim[scoresBatchDim] *
+                                   scoresDim[scoresClassDim] *
+                                   static_cast<dim_t>(maxOutputBoxesPerClass),
+                               3};
+  auto indicesTy = getParent()->uniqueType(elTy, newDim);
+  auto numberOfSelectedIndicesTy = getParent()->uniqueType(
+      elTy,
+      {boxesDim[boxesBatchDim] * static_cast<dim_t>(maxOutputBoxesPerClass)});
+  return addNode(new NonMaxSuppressionNode(
+      name, indicesTy, numberOfSelectedIndicesTy, boxes, scores, centerPointBox,
+      maxOutputBoxesPerClass, iouThreshold, scoreThreshold, false));
+}
+
+NonMaxSuppressionNode *Function::createNonMaxSuppressionONNX(
+    llvm::StringRef name, NodeValue boxes, NodeValue scores,
+    int64_t centerPointBox, int64_t maxOutputBoxesPerClass, float iouThreshold,
+    float scoreThreshold) {
+  return createNonMaxSuppressionONNX(name, boxes, scores, centerPointBox,
+                                     maxOutputBoxesPerClass, iouThreshold,
+                                     scoreThreshold, ElemKind::Int64ITy);
+}
+
+NonMaxSuppressionNode *Function::createNonMaxSuppressionONNX(
+    llvm::StringRef name, NodeValue boxes, NodeValue scores,
+    int64_t centerPointBox, int64_t maxOutputBoxesPerClass, float iouThreshold,
+    float scoreThreshold, TypeRef indicesTy) {
+  auto boxesDim = boxes.dims();
+  assert(maxOutputBoxesPerClass > 0 && "Invalid maxOutputBoxesPerClass.");
+
+  // allocating maximum because we don't know how many boxes will actually be
+  // detected.
+  auto numberOfSelectedIndicesTy = getParent()->uniqueType(
+      ElemKind::Int32ITy, {1, 1, 1,
+                           boxesDim[boxesDim.size() - 2] *
+                               static_cast<dim_t>(maxOutputBoxesPerClass)});
+  return addNode(new NonMaxSuppressionNode(
+      name, indicesTy, numberOfSelectedIndicesTy, boxes, scores, centerPointBox,
+      maxOutputBoxesPerClass, iouThreshold, scoreThreshold, false));
+}
+
 //===----------------------------------------------------------------------===//
 //                   Graph dumping and printing
 //===----------------------------------------------------------------------===//
