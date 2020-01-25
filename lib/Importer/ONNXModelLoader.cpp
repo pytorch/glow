@@ -1319,7 +1319,8 @@ ONNXModelLoader::foldOperator(const ONNX_NAMESPACE::NodeProto &op) {
   tmpLoader.opsetVersion_ = opsetVersion_;
   bool foldStatus = !ERR_TO_BOOL(
       constantFoldInLoader<ONNXModelLoader, ONNX_NAMESPACE::NodeProto>(
-          tmpF, tmpLoader, this, op));
+          tmpF, tmpLoader, this, op),
+      /* log */ false);
   G_.getParent()->eraseFunction(tmpF);
   return foldStatus;
 }
@@ -2400,10 +2401,15 @@ Error ONNXModelLoader::loadNetwork(ONNX_NAMESPACE::GraphProto &net) {
   /// Load the network operators:
   for (int i = 0; i < net.node_size(); i++) {
     auto &op = net.node(i);
-    if (getConstantFoldLoaderOpsFlag()) {
-      auto foldstatus = foldOperator(op);
-      if (foldstatus && foldstatus.get()) {
-        // Folded successfully.
+    if (constFoldInLoader_) {
+      auto tryFold = foldOperator(op);
+      if (!tryFold) {
+        // Error during constant folding; load the op normally below.
+        const std::string errStr = ERR_TO_STRING(tryFold.takeError());
+        VLOG(1) << "Error while trying to ConstantFold " << loadOperatorName(op)
+                << ": " << errStr;
+      } else if (tryFold.get()) {
+        // Folded successfully, so skip loading the op below.
         continue;
       }
     }
@@ -2520,12 +2526,15 @@ ONNXModelLoader::ONNXModelLoader(const std::string &modelDescFilename,
 ONNXModelLoader::ONNXModelLoader(
     const void *model, uint32_t modelSize, uint32_t weightsCount,
     const onnxTensorDescriptorV1 *weightDescriptors, Function &F,
-    bool loadInputsAsPlaceholders, Error *errPtr)
+    bool loadInputsAsPlaceholders, Error *errPtr, bool constFoldInLoader)
     : CommonOperatorLoader({}, {}, F, errPtr) {
   // if errPtr already contains an error then don't continue with constructor
   if (errPtr && *errPtr) {
     return;
   }
+
+  // Always override the default for folding in this constructor.
+  constFoldInLoader_ = constFoldInLoader;
 
   // Lambda to setup the ONNXModelLoader and return any Errors that were
   // raised.

@@ -598,11 +598,11 @@ static bool checkLayoutForNode(const Node &N) {
   return true;
 }
 
-bool Interpreter::verify(const Function &F) const {
+bool Interpreter::verify(const Function &F, bool verbose) const {
   if (!F.verify(this)) {
     return false;
   }
-  if (!checkAllNodesSupported(F)) {
+  if (!checkAllNodesSupported(F, verbose)) {
     return false;
   }
   for (const Node &N : F.getNodes()) {

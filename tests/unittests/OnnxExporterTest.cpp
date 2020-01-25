@@ -156,6 +156,9 @@ TEST(exporter, onnxModels) {
       setOnnxDefineSymbol({"ONNXUndefinedSymbol,1"});
     }
 
+    // Disable constant folding for these tests.
+    setConstantFoldLoaderOpsFlag(false);
+
     testLoadAndSaveONNXModel(dirIt->path(), /* zipMode */ true);
     testLoadAndSaveONNXModel(dirIt->path(), /* zipMode */ false);
 

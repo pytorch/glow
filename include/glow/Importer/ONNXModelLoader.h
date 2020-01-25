@@ -312,10 +312,12 @@ protected:
   /// and \p weightsCount, and \p onnxTensorDescriptorV1 correspondent
   /// descriptors. Converts inputs into placeholder if requested \p
   /// loadInputsAsPlaceholders. Reports success/failure through optional
-  /// parameter \p errPtr.
+  /// parameter \p errPtr. This constructor always overrides the default
+  /// constant folding in loader flag with \p constFoldInLoader.
   ONNXModelLoader(const void *model, uint32_t modelSize, uint32_t weightsCount,
                   const onnxTensorDescriptorV1 *weightDescriptors, Function &F,
-                  bool loadInputsAsPlaceholders, Error *errPtr = nullptr);
+                  bool loadInputsAsPlaceholders, Error *errPtr = nullptr,
+                  bool constFoldInLoader = true);
 
   friend class ONNXIFIModelLoader;
 

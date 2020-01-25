@@ -53,10 +53,18 @@ onnxStatus Backend::checkGraphCompatibility(const void *onnxModel,
   auto function = module.createFunction(compatibilityFunctionName);
 
   std::unique_ptr<ONNXIFIModelLoader> loader;
-  auto loaderOrErr = ONNXIFIModelLoader::parse(
-      onnxModel, onnxModelSize, 0 /*weightCount*/,
-      nullptr /*weightDescriptors*/, *function,
-      false /*loadInputsAsPlaceholders*/, getUseOnnx());
+  // Note: Because we are not loading inputs as Placeholders, we need to
+  // explicitly not do constant folding in the loader. This is because the
+  // inputs will be loaded as uninitialized Constants. We do this for now
+  // because backends may have limitations on some ops to have inputs as
+  // Constants, such as a Convolution's weights. In the future we should clean
+  // this up so that we load Constants and Placeholders based on the actual
+  // eventual input graph.
+  auto loaderOrErr =
+      ONNXIFIModelLoader::parse(onnxModel, onnxModelSize, 0 /*weightCount*/,
+                                nullptr /*weightDescriptors*/, *function,
+                                false /*loadInputsAsPlaceholders*/,
+                                getUseOnnx(), /*constFoldInLoader*/ false);
   if (loaderOrErr) {
     loader = std::move(*loaderOrErr);
   } else {

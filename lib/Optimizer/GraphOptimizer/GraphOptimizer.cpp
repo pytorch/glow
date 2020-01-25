@@ -3472,7 +3472,7 @@ Error glow::optimizeFunction(Function *F, const Backend &B,
     // Cleanup from lowering via DCE.
     runDCEPass(F, cctx);
 
-    if (!B.verify(*F)) {
+    if (!B.verify(*F, cctx.verboseCompile)) {
       return MAKE_ERR(
           ErrorValue::ErrorCode::COMPILE_UNSUPPORTED_NODE_AFTER_OPTIMIZE,
           "Unsupported node(s) found after only-lowering path for Function " +
@@ -3534,7 +3534,7 @@ Error glow::optimizeFunction(Function *F, const Backend &B,
   // We already started using backend specific verification when the function
   // state became lowered. Do one more verification pass to make sure everything
   // is in order and to bail if it is not.
-  if (!B.verify(*F)) {
+  if (!B.verify(*F, cctx.verboseCompile)) {
     return MAKE_ERR(
         ErrorValue::ErrorCode::COMPILE_UNSUPPORTED_NODE_AFTER_OPTIMIZE,
         "Unsupported node(s) found after optimizing Function " +
