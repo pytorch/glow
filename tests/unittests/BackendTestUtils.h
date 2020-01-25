@@ -67,11 +67,6 @@ extern unsigned parCloneCountOpt;
     bool isEnabledBackend(const std::set<std::string> &enabledBackends) {      \
       return enabledBackends.find(getBackendName()) != enabledBackends.end();  \
     }                                                                          \
-    const std::string Interpreter = "Interpreter";                             \
-    const std::string CPU = "CPU";                                             \
-    const std::string OpenCL = "OpenCL";                                       \
-    const std::string Habana = "Habana";                                       \
-    const std::string NNPI = "NNPI";                                           \
                                                                                \
   public:                                                                      \
     std::string getBackendName() { return std::get<0>(GetParam()); }           \
