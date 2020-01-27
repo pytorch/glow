@@ -550,3 +550,38 @@ add_glow_test(ErrorTest ${GLOW_BINARY_DIR}/tests/ErrorTest --gtest_output=xml:Er
 LIST(APPEND UNOPT_TESTS true)
 add_custom_target(test_unopt ${UNOPT_TESTS}
                   WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# JIT tests
+if("${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang")
+    set(CLANG_BIN ${CMAKE_CXX_COMPILER})
+else()
+    find_program(CLANG_BIN clang++)
+endif()
+if(NOT CLANG_BIN)
+    message(SEND_ERROR "unable to find clang, cannot build the CPU runtime")
+endif()
+set (TEST_LIBJIT "test_libjit")
+add_custom_command(
+    OUTPUT ${GLOW_BINARY_DIR}/tests/${TEST_LIBJIT}.bc
+    COMMAND ${CLANG_BIN} -emit-llvm -c -o ${GLOW_BINARY_DIR}/tests/${TEST_LIBJIT}.bc ${TEST_LIBJIT}.cpp
+    DEPENDS ${TEST_LIBJIT}.cpp
+    WORKING_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}")
+file(MAKE_DIRECTORY ${GLOW_BINARY_DIR}/glow/CPU)
+add_custom_command(
+    OUTPUT ${GLOW_BINARY_DIR}/glow/CPU/${TEST_LIBJIT}_bc.inc
+    COMMAND include-bin "${GLOW_BINARY_DIR}/tests/${TEST_LIBJIT}.bc" "${GLOW_BINARY_DIR}/glow/CPU/${TEST_LIBJIT}_bc.inc"
+    DEPENDS ${GLOW_BINARY_DIR}/tests/${TEST_LIBJIT}.bc
+    WORKING_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}")
+add_executable(CPUJITTest
+    CPUJITTest.cpp ${GLOW_BINARY_DIR}/glow/CPU/${TEST_LIBJIT}_bc.inc)
+target_link_libraries(CPUJITTest
+    PRIVATE
+    Backends
+    ExecutionEngine
+    Graph
+    Support
+    gtest
+    TestMain)
+add_custom_target(CPUJITTest_libjit SOURCES ${TEST_LIBJIT}.cpp)
+add_glow_test(CPUJITTest ${GLOW_BINARY_DIR}/tests/CPUJITTest --gtest_output=xml:CPUJITTest.xml)
+

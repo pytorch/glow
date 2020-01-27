@@ -14,10 +14,15 @@
  * limitations under the License.
  */
 
-#include "glow/LLVMIRCodeGen/GlowJIT.h"
 #include "CommandLine.h"
+
+#include "glow/LLVMIRCodeGen/GlowJIT.h"
+#include "glow/Support/Debug.h"
+
 #include "llvm/ExecutionEngine/JITEventListener.h"
 #include "llvm/Object/SymbolSize.h"
+
+#define DEBUG_TYPE "jit-engine"
 
 using GlowJIT = llvm::orc::GlowJIT;
 
@@ -130,16 +135,36 @@ GlowJIT::GlowJIT(llvm::TargetMachine &TM)
                    }),
 #else
       SSP_(std::make_shared<SymbolStringPool>()), ES_(SSP_),
+      cxxSymbolOverride_(
+          [this](const std::string &name) { return mangle(name); }),
       resolver_(createLegacyLookupResolver(
           ES_,
-          [this](const std::string &Name) -> JITSymbol {
-            if (auto Sym = compileLayer_.findSymbol(Name, false))
-              return Sym;
-            else if (auto Err = Sym.takeError())
+          [this](const std::string &name) -> JITSymbol {
+            if (auto localSym = compileLayer_.findSymbol(name, false)) {
+              return localSym;
+            } else if (auto Err = localSym.takeError()) {
               return std::move(Err);
-            if (auto SymAddr =
-                    RTDyldMemoryManager::getSymbolAddressInProcess(Name))
-              return JITSymbol(SymAddr, JITSymbolFlags::Exported);
+            }
+            // Some symbols are overridden, in particular __dso_handle and
+            // __cxa_atexit .
+            if (auto overriddenSym = cxxSymbolOverride_.searchOverrides(name)) {
+              return overriddenSym;
+            }
+            // FIXME: looking for symbols external to libjit in the process is
+            // dangerous because it can be environment dependent. For example,
+            // we get cases where a symbol is found in the Linux environment,
+            // but not in the Windows environment.
+            if (auto processSymAddr =
+                    RTDyldMemoryManager::getSymbolAddressInProcess(name)) {
+              return JITSymbol(processSymAddr, JITSymbolFlags::Exported);
+            }
+            // The symbol was not resolved. This will make the retreival of
+            // 'main' function symbol fail later without much information about
+            // the source of the problem. Then, we dump an error message now to
+            // ease debugging.
+            DEBUG_GLOW(llvm::dbgs()
+                       << "JIT: Error resolving symbol '" << name << "'\n");
+            // Return a 'symbol not found' JITSymbol object (nullptr).
             return nullptr;
           },
           [](Error Err) { cantFail(std::move(Err), "lookupFlags failed"); })),
@@ -160,14 +185,53 @@ GlowJIT::GlowJIT(llvm::TargetMachine &TM)
 #endif
 #endif
       compileLayer_(objectLayer_, SimpleCompiler(TM_)) {
+  //  When passing a null pointer to LoadLibraryPermanently, we request to
+  //  'load' the host process itself, making its exported symbols available for
+  //  execution.
   llvm::sys::DynamicLibrary::LoadLibraryPermanently(nullptr);
+}
+
+GlowJIT::~GlowJIT() {
+  // Run any destructor registered with __cxa_atexit.
+  cxxSymbolOverride_.runDestructors();
+  // Run any destructor discovered in the LLVM IR of the JIT modules.
+  for (auto &dtorRunner : irStaticDestructorRunners_) {
+    cantFail(dtorRunner.runViaLayer(compileLayer_));
+  }
 }
 
 GlowJIT::ModuleHandle GlowJIT::addModule(std::unique_ptr<llvm::Module> M) {
   // Add the set to the JIT with the resolver and a newly created
   // SectionMemoryManager.
+
   auto K = ES_.allocateVModule();
+
+  // Record the static constructors and destructors. We have to do this before
+  // we hand over ownership of the module to the JIT.
+  // Note: This code is based on the LLI/OrcLazyJIT LLVM tool code that is based
+  // on the ORCv1 API (see
+  // https://github.com/llvm-mirror/llvm/blob/release_60/tools/lli/OrcLazyJIT.cpp)
+  // In recent LLVM versions (7+), LLJIT uses the newer ORCv2 API (see
+  // https://github.com/llvm-mirror/llvm/blob/release_70/lib/ExecutionEngine/Orc/LLJIT.cpp).
+  std::vector<std::string> ctorNames, dtorNames;
+  for (auto ctor : orc::getConstructors(*M))
+    ctorNames.push_back(mangle(ctor.Func->getName()));
+  for (auto dtor : orc::getDestructors(*M))
+    dtorNames.push_back(mangle(dtor.Func->getName()));
+
   cantFail(compileLayer_.addModule(K, std::move(M)));
+
+#if LLVM_VERSION_MAJOR == 7 || FACEBOOK_INTERNAL
+  CtorDtorRunner<decltype(compileLayer_)> ctorRunner(std::move(ctorNames), K);
+#else
+  LegacyCtorDtorRunner<decltype(compileLayer_)> ctorRunner(std::move(ctorNames),
+                                                           K);
+#endif
+
+  // Run the static constructors and register static destructors.
+  consumeError(ctorRunner.runViaLayer(compileLayer_));
+  irStaticDestructorRunners_.emplace_back(std::move(dtorNames), K);
+
   return K;
 }
 
@@ -175,9 +239,13 @@ void GlowJIT::removeModule(GlowJIT::ModuleHandle H) {
   cantFail(compileLayer_.removeModule(H));
 }
 
-llvm::JITSymbol GlowJIT::findSymbol(const std::string name) {
+std::string GlowJIT::mangle(const std::string &name) {
   std::string mangledName;
   raw_string_ostream MangledNameStream(mangledName);
   Mangler::getNameWithPrefix(MangledNameStream, name, DL_);
-  return compileLayer_.findSymbol(MangledNameStream.str(), false);
+  return MangledNameStream.str();
+}
+
+llvm::JITSymbol GlowJIT::findSymbol(const std::string &name) {
+  return compileLayer_.findSymbol(mangle(name), false);
 }
