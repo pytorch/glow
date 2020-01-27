@@ -26,7 +26,7 @@ using namespace glow;
 class SparseLengthsSum : public BackendTest {};
 
 TEST_P(SparseLengthsSum, Big) {
-  ENABLED_BACKENDS(CPU, Habana, NNPI);
+  ENABLED_BACKENDS("CPU", "Habana", "NNPI");
   ExecutionEngine interp{};
   interp.setDeviceMemory(10000000000);
   EE_.setDeviceMemory(10000000000);

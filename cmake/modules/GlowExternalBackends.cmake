@@ -120,6 +120,29 @@ FOREACH(child ${SUBDIRS})
 ENDFOREACH()
 ENDMACRO()
 
+# Macro to add backend specific ONNX model writers.
+MACRO(ExternalBackendsCollectONNXModelWriters)
+set(Exporter_Include_DIR ${GLOW_BINARY_DIR}/glow)
+getSubDirList(SUBDIRS ${GLOW_SOURCE_DIR}/externalbackends)
+FOREACH(backend ${SUBDIRS})
+  getBackendEnableVariable(backend_enable_variable ${backend})
+  # Handle the backend only when activated
+  if (${backend_enable_variable})
+    message(STATUS "Check backend ${backend} for ONNXModelWriters")
+    set(backend_ONNX_DIR "${EXTERNAL_BACKENDS_DIR}/${backend}")
+    # Check for ONNXModelWriters in the current backend subdirectory.
+    file(GLOB backend_specific_onnx_model_writers
+            RELATIVE "${backend_ONNX_DIR}"
+            "${backend_ONNX_DIR}/*ONNXModelWriter.cpp")
+    # Include these files into ONNXModelWriterIncludes.h.
+    foreach(onnx_model_writer ${backend_specific_onnx_model_writers})
+           file(APPEND "${Exporter_Include_DIR}/ONNXModelWriterIncludes.h"
+                       "#include \"${EXTERNAL_BACKENDS_DIR}/${backend}/ONNX/${onnx_model_writer}\"\n")
+    endforeach()
+  endif()
+ENDFOREACH()
+ENDMACRO()
+
 # Macro to add external backends tests.
 MACRO(ExternalBackendsTest)
 getSubDirList(SUBDIRS ${GLOW_SOURCE_DIR}/externalbackends)
@@ -136,4 +159,3 @@ FOREACH(child ${SUBDIRS})
   endif()
 ENDFOREACH()
 ENDMACRO()
-

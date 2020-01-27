@@ -1641,65 +1641,6 @@ DEF_UNSUPPORTED_NODE(SigmoidCrossEntropyWithLogits)
 DEF_UNSUPPORTED_NODE(LocalResponseNormalizationGrad)
 DEF_UNSUPPORTED_NODE(AdaptiveAvgPoolGrad)
 
-#ifdef GLOW_WITH_CPU
-
-Error ONNXModelWriter::writeCPUMaxSplat(const CPUMaxSplatNode *node,
-                                        GraphType &graph) {
-  auto *proto = graph.add_node();
-  // Add dictionary entries.
-  addValueAttribute(proto, "value", node->getSplatValue());
-
-  return writeAllWithNode("CPUMaxSplat", node, graph, proto);
-}
-
-Error ONNXModelWriter::writeCPUConvDKKC8(const CPUConvDKKC8Node *node,
-                                         GraphType &graph) {
-  auto *proto = graph.add_node();
-  // Add dictionary entries.
-  addValueAttribute(proto, "kernel_shape", node->getKernels());
-  addValueAttribute(proto, "strides", node->getStrides());
-  addValueAttribute(proto, "pads", node->getPads());
-  addValueAttribute(proto, "group", node->getGroup());
-
-  return writeAllWithNode("CPUConvDKKC8", node, graph, proto);
-}
-
-#endif // GLOW_WITH_CPU
-
-#ifdef GLOW_WITH_OPENCL
-
-Error ONNXModelWriter::writeOCLBatchedReduceAdd(
-    const OCLBatchedReduceAddNode *node, GraphType &graph) {
-  auto *proto = graph.add_node();
-  // Add dictionary entries.
-  addValueAttribute(proto, "axis", node->getAxis());
-  addValueAttribute(proto, "source_axis", node->getAxisSrcSliceSize());
-
-  return writeAllWithNode("OCLBatchedReduceAdd", node, graph, proto);
-}
-
-#endif // GLOW_WITH_OPENCL
-
-#ifdef GLOW_WITH_NNPI
-Error ONNXModelWriter::writeNNPICustomDSP(glow::NNPICustomDSPNode const *,
-                                          GraphType &graph) {
-  return MAKE_ERR("Unsupported Op for ONNX");
-}
-#endif // GLOW_WITH_NNPI
-
-#ifdef GLOW_WITH_HABANA
-Error ONNXModelWriter::writeHabanaFullyConnected(
-    glow::HabanaFullyConnectedNode const *, GraphType &graph) {
-  return MAKE_ERR("Unsupported Op for ONNX");
-}
-Error ONNXModelWriter::writeHabanaConvolution(
-    glow::HabanaConvolutionNode const *, GraphType &graph) {
-  return MAKE_ERR("Unsupported Op for ONNX");
-}
-Error ONNXModelWriter::writeHabanaConvolutionAdd(
-    glow::HabanaConvolutionAddNode const *, GraphType &graph) {
-  return MAKE_ERR("Unsupported Op for ONNX");
-}
-#endif // GLOW_WITH_HABANA
-
+// Include backend-specific ONNX model writers.
+#include "glow/ONNXModelWriterIncludes.h"
 } // namespace glow
