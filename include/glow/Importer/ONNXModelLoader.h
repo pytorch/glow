@@ -26,6 +26,7 @@
 #include "llvm/ADT/StringRef.h"
 
 #include <string>
+#include <unordered_set>
 
 namespace ONNX_NAMESPACE {
 class AttributeProto;
@@ -72,6 +73,9 @@ class ONNXModelLoader
 
   /// ONNX model op_version;
   size_t opsetVersion_;
+
+  /// A set of inputs which will be static placeholders.
+  std::unordered_set<std::string> staticInputs_;
 
   /// Load Constant ONNX operator.
   Error loadConstant(const ONNX_NAMESPACE::NodeProto &op,
@@ -311,6 +315,10 @@ protected:
   Error checkInputs(ONNX_NAMESPACE::GraphProto &net,
                     llvm::ArrayRef<const char *> tensorNames,
                     llvm::ArrayRef<TypeRef> types);
+
+  /// Go through the ValueInfoProto of the inputs of the \p net and collect
+  /// static placeholders if it's marked in the ValueInfoProto.
+  Error collectStaticInputs(ONNX_NAMESPACE::GraphProto &net);
 
   /// Creates a ONNX model loader to build \p F.
   /// Loads the ONNIXFI \p model from memory of \p modelSize size,

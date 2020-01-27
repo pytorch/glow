@@ -108,30 +108,6 @@ getProtoShape(const ONNX_NAMESPACE::TensorShapeProto &shapeProto) {
   return dim;
 }
 
-/// Creates tensor \p T from the input \p in. Note, there is no data associated
-/// with the Tensor. This method makes sure that the tensor is created with the
-/// proper shape and element type.
-Error setTensorType(const ONNX_NAMESPACE::TypeProto &in, Tensor *T) {
-
-  std::vector<dim_t> dim;
-  ASSIGN_VALUE_OR_RETURN_ERR(dim, getProtoShape(in.tensor_type().shape()));
-
-  if (in.tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto::FLOAT) {
-    T->reset(ElemKind::FloatTy, dim);
-    return Error::success();
-  } else if (in.tensor_type().elem_type() ==
-             ONNX_NAMESPACE::TensorProto::INT64) {
-    T->reset(ElemKind::Int64ITy, dim);
-    return Error::success();
-  } else if (in.tensor_type().elem_type() ==
-             ONNX_NAMESPACE::TensorProto::INT32) {
-    T->reset(ElemKind::Int32ITy, dim);
-    return Error::success();
-  } else {
-    RETURN_ERR("Only float and index tensors are supported");
-  }
-}
-
 Error onnxTensorDataTypeToElemKind(int32_t onnxType, ElemKind *elemTy) {
   if (onnxType == ONNX_NAMESPACE::TensorProto::FLOAT) {
     *elemTy = ElemKind::FloatTy;
@@ -158,6 +134,23 @@ Error onnxTensorDataTypeToElemKind(int32_t onnxType, ElemKind *elemTy) {
   }
 }
 
+/// Creates tensor \p T from the input \p in. Note, there is no data associated
+/// with the Tensor. This method makes sure that the tensor is created with the
+/// proper shape and element type.
+Error setTensorType(const ONNX_NAMESPACE::TypeProto &in, Tensor *T) {
+  std::vector<dim_t> dim;
+  ASSIGN_VALUE_OR_RETURN_ERR(dim, getProtoShape(in.tensor_type().shape()));
+
+  ElemKind kind = ElemKind::FloatTy;
+  RETURN_IF_ERR(
+      onnxTensorDataTypeToElemKind(in.tensor_type().elem_type(), &kind));
+  if (kind == ElemKind::UInt8FusedQTy || kind == ElemKind::UInt4FusedFP16QTy) {
+    T->reset(kind, dim, 0.0, 0);
+  } else {
+    T->reset(kind, dim);
+  }
+  return Error::success();
+}
 } // namespace
 
 using ArgumentDictionaryTy =
@@ -293,7 +286,9 @@ Error ONNXModelLoader::loadInputs(ONNX_NAMESPACE::GraphProto &net,
 
       Placeholder *placeholder;
       ASSIGN_VALUE_OR_RETURN_ERR(
-          placeholder, createAndRegisterPlaceholder(in.name(), &T.getType()));
+          placeholder,
+          createAndRegisterPlaceholder(in.name(), &T.getType(),
+                                       staticInputs_.count(in.name())));
       inputVarsByName_.try_emplace(in.name(), placeholder);
     } else {
       Tensor T;
@@ -2087,9 +2082,9 @@ Error ONNXModelLoader::loadFusedRowwiseQuantizedSparseLengthsSum(
   NodeValue lengths;
   ASSIGN_VALUE_OR_RETURN_ERR(lengths, getNodeValueByName(op.input(2)));
 
-  Constant *dataC = llvm::dyn_cast<Constant>(data);
+  Storage *dataS = llvm::dyn_cast<Storage>(data);
   Node *N = G_.createFusedRowwiseQuantizedSparseLengthsSum(
-      loadOperatorName(op), dataC, indices, lengths);
+      loadOperatorName(op), dataS, indices, lengths);
 
   RETURN_IF_ERR(addNodeAsOutput(op, N));
   return Error::success();
@@ -2510,6 +2505,17 @@ ONNXModelLoader::ONNXModelLoader(Function &F, Error *errPtr)
   deleteUnusedConstants();
 }
 
+Error ONNXModelLoader::collectStaticInputs(ONNX_NAMESPACE::GraphProto &net) {
+  for (int i = 0; i < net.input_size(); i++) {
+    const ONNX_NAMESPACE::ValueInfoProto &valueInfo = net.input(i);
+    const std::string &inputName = valueInfo.name();
+    if (valueInfo.has_doc_string() && valueInfo.doc_string() == "offline") {
+      staticInputs_.emplace(inputName);
+    }
+  }
+  return Error::success();
+}
+
 Error ONNXModelLoader::checkInputs(ONNX_NAMESPACE::GraphProto &net,
                                    llvm::ArrayRef<const char *> tensorNames,
                                    llvm::ArrayRef<TypeRef> types) {
@@ -2539,6 +2545,10 @@ Error ONNXModelLoader::checkInputs(ONNX_NAMESPACE::GraphProto &net,
       for (size_t k = 1; k < dims.size(); k++) {
         RETURN_ERR_IF_NOT(dims[k] == dimsProto[k],
                           "Mismatch between input image and ONNX input shape");
+      }
+
+      if (valueInfo.has_doc_string() && valueInfo.doc_string() == "offline") {
+        staticInputs_.emplace(inputName);
       }
     }
   }
@@ -2583,6 +2593,7 @@ ONNXModelLoader::ONNXModelLoader(const std::string &modelDescFilename,
 
     ONNX_NAMESPACE::GraphProto graphDef = modelDef.graph();
     RETURN_IF_ERR(checkInputs(graphDef, tensorNames, types));
+    RETURN_IF_ERR(collectStaticInputs(graphDef));
 
     RETURN_IF_ERR(loadInitializers(graphDef));
 

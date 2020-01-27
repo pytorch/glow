@@ -1270,8 +1270,10 @@ protected:
       // If the weight is offline create a static placeholder, otherwise create
       // a constant.
       if (weightDescriptors[i].isOffline) {
-        createAndRegisterPlaceholder(name, &loadResult.type,
-                                     /*isStatic*/ true);
+        Placeholder *pl;
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            pl, createAndRegisterPlaceholder(name, &loadResult.type,
+                                             /*isStatic*/ true));
       } else {
         RETURN_IF_ERR(
             createAndRegisterConstant(name, std::move(*loadResult.t)));
