@@ -25,6 +25,9 @@
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
 
+#include "google/protobuf/io/coded_stream.h"
+#include "google/protobuf/io/zero_copy_stream_impl.h"
+#include <fstream>
 #include <string>
 #include <unordered_set>
 
@@ -40,6 +43,15 @@ namespace glow {
 
 /// Loads tensor \p T from the input \p in.
 Error loadTensor(const ONNX_NAMESPACE::TensorProto &in, Tensor *T);
+
+/// Parse as input file name \p fileName which is an ONNX file
+/// and \returns a parsed GraphProto.
+::ONNX_NAMESPACE::GraphProto parseOnnxFile(const std::string &fileName);
+
+/// Taken an ONNX file in \p fileName reads it and loads the tensors
+/// in \p bindings.
+void fillPlaceholders(const std::string &fileName,
+                      PlaceholderBindings *bindings);
 
 /// Define undefined symbols to \p str loaded from an ONNX proto. See
 /// onnxDefineSymbolOpt in ONNXModelLoader.cpp.

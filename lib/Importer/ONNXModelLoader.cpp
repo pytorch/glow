@@ -223,6 +223,51 @@ void glow::setOnnxDefineSymbol(const std::vector<std::string> &strs) {
   onnxDefineSymbol = strs;
 }
 
+/// Parse as input file name \p fileName which is an ONNX file
+/// and \returns a parsed GraphProto.
+::ONNX_NAMESPACE::GraphProto glow::parseOnnxFile(const std::string &fileName) {
+  ::ONNX_NAMESPACE::GraphProto graphProto;
+  std::ifstream inputFileStream(fileName, std::ios::in | std::ios::binary);
+  CHECK(inputFileStream) << "Can't find the input file for " << fileName;
+  google::protobuf::io::IstreamInputStream protobufFileStream(&inputFileStream);
+  google::protobuf::io::CodedInputStream codedStream(&protobufFileStream);
+  codedStream.SetTotalBytesLimit(MAX_PROTO_SIZE, MAX_PROTO_SIZE);
+  bool parsedSuccessfully = graphProto.ParseFromCodedStream(&codedStream);
+  CHECK(parsedSuccessfully) << "Failed to parse GraphProto";
+  return graphProto;
+}
+
+/// Taken an ONNX file name in \p fileName and loads the tensors
+/// in \p bindings.
+void glow::fillPlaceholders(const std::string &fileName,
+                            PlaceholderBindings *bindings) {
+  auto inputGroup = parseOnnxFile(fileName);
+  for (const auto &tensorProto : inputGroup.initializer()) {
+    auto *tensor =
+        bindings->get(bindings->getPlaceholderByName(tensorProto.name()));
+    CHECK(tensor);
+    size_t fullSize = tensor->getSizeInBytes();
+    const auto fullType = tensor->getType();
+    auto error = loadTensor(tensorProto, tensor);
+    bool hasError = ERR_TO_BOOL(std::move(error));
+    CHECK(!hasError) << "Cannot load input tensor";
+    size_t loadedSize = tensor->getSizeInBytes();
+    if (loadedSize != fullSize) {
+      // pad with 0
+      LOG(INFO) << "Loading and padding " << tensorProto.name()
+                << " as a partial tensor: partial size="
+                << tensor->getType().toString()
+                << " full size=" << fullType.toString();
+      Tensor fullTensor(&fullType);
+      std::memcpy(fullTensor.getUnsafePtr(), tensor->getUnsafePtr(),
+                  tensor->getSizeInBytes());
+      std::memset(fullTensor.getUnsafePtr() + tensor->getSizeInBytes(), 0,
+                  fullTensor.getSizeInBytes() - tensor->getSizeInBytes());
+      *tensor = std::move(fullTensor);
+    }
+  }
+}
+
 /// Loads tensor \p T from the input \p in.
 Error glow::loadTensor(const ONNX_NAMESPACE::TensorProto &in, Tensor *T) {
   std::vector<dim_t> dim;
