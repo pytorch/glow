@@ -20,6 +20,8 @@
 #include "glow/Exporter/ONNXModelWriter.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Importer/ONNXModelLoader.h"
+#include "glow/Runtime/DeferredWeightLoader.h"
+#include "glow/Support/ZipUtils.h"
 
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FileSystem.h"
@@ -47,6 +49,9 @@ llvm::cl::opt<std::string> modelPathOpt("model", llvm::cl::desc("Input models"),
                                         llvm::cl::value_desc("modelPath"),
                                         llvm::cl::Required,
                                         llvm::cl::cat(reproTestCat));
+llvm::cl::opt<std::string> deferredWeightsPathOpt(
+    "deferred_weights", llvm::cl::desc("Path to the deferred weights file"),
+    llvm::cl::Optional, llvm::cl::init(""), llvm::cl::cat(reproTestCat));
 llvm::cl::list<std::string> inputsOpt("inputs", llvm::cl::desc("Inputs"),
                                       llvm::cl::value_desc("Inputs"),
                                       llvm::cl::Optional, llvm::cl::ZeroOrMore,
@@ -199,6 +204,74 @@ struct InferenceResult {
   int index = 0;
 };
 
+class ZipFileBackedDeferredBlobLoader
+    : public ::glow::runtime::DeferredWeightLoader {
+public:
+  explicit ZipFileBackedDeferredBlobLoader(const std::string &path) {
+    zip_ = ::glow::make_unique<::glow::ZipReader>(path);
+    CHECK(zip_);
+    auto numWeightsStr = zip_->getRecord("weights");
+    weightsToLoad_ = atoi(numWeightsStr.c_str());
+    i_ = 0;
+  }
+
+  ::glow::Error loadNextWeight() override {
+    if (weightsToLoad_ == i_) {
+      llvm::outs() << "All deferred weights are loaded\n";
+      currentBlobName_ = "";
+      currentTensor_.reset();
+      zip_.reset(nullptr);
+      return ::glow::Error::success();
+    }
+
+    std::stringstream ss;
+    ss << "weight_" << i_++;
+    largeBuffer_ = zip_->getRecord(ss.str());
+    ::ONNX_NAMESPACE::TensorProto t;
+    t.ParseFromString(largeBuffer_);
+
+    currentBlobName_ = t.name();
+    auto tyIdx = typeInfo_.find(currentBlobName_);
+    if (tyIdx == typeInfo_.end()) {
+      return ::MAKE_ERR(
+          ::glow::ErrorValue::ErrorCode::RUNTIME_ERROR,
+          ::glow::strFormat(
+              "Error: Blob name: %s not found in list of static placeholders.",
+              currentBlobName_.c_str()));
+    }
+    auto ty = typeInfo_[currentBlobName_];
+
+    currentTensor_.reset(new ::glow::Tensor());
+    RETURN_IF_ERR(::glow::loadTensor(t, currentTensor_.get()));
+    CHECK(currentTensor_->getType().isEqual(ty))
+        << "Mismatched tensor type: " << currentTensor_->getType().toString()
+        << " vs " << ty.toString();
+
+    return ::glow::Error::success();
+  }
+
+  ::glow::Error setSrc(void * /*unused*/) override {
+    return ::glow::Error::success();
+  }
+
+  std::string getName() override { return currentBlobName_; }
+
+  ::glow::Tensor *getTensor() override { return currentTensor_.get(); }
+
+  void setTypeInfo(std::map<std::string, ::glow::Type> info) override {
+    typeInfo_ = info;
+  }
+
+private:
+  std::unique_ptr<::glow::ZipReader> zip_;
+  std::string largeBuffer_;
+  std::map<std::string, ::glow::Type> typeInfo_;
+  std::string currentBlobName_;
+  std::unique_ptr<::glow::Tensor> currentTensor_;
+  size_t weightsToLoad_{0};
+  size_t i_{0};
+};
+
 int run() {
   int numFailed = 0;
 
@@ -209,8 +282,6 @@ int run() {
   { ONNXModelLoader onnxLD(modelPathOpt, {}, {}, *F, &err, /*zipMode*/ true); }
   CHECK(!ERR_TO_BOOL(std::move(err)))
       << "ONNXModelLoader failed to load model: " << modelPathOpt;
-
-  const auto &placeholderList = mod->getPlaceholders();
 
   // Build host manager and compile the module.
   PrecisionConfiguration precConfig;
@@ -234,10 +305,6 @@ int run() {
     precConfig.forceFP16AccumSLS = true;
     llvm::outs() << "Forcing fp16 accumulation for SLS ops enabled\n";
   }
-  auto configs = runtime::generateDeviceConfigs(numDevicesOpt, ExecutionBackend,
-                                                deviceMemoryOpt);
-  auto hostManager =
-      glow::make_unique<runtime::HostManager>(std::move(configs));
   CompilationContext cctx;
   cctx.precisionConfig = precConfig;
   if (useSparseNNPartitioningScheme) {
@@ -253,6 +320,38 @@ int run() {
         sparseNNPartitioningSchemeNumCoresOther;
   }
 
+  // Load deferred weights if applicable
+  const auto &placeholderList = mod->getPlaceholders();
+  glow::PlaceholderList nonStaticPlaceholderList;
+  std::copy_if(placeholderList.begin(), placeholderList.end(),
+               std::back_inserter(nonStaticPlaceholderList),
+               [](const glow::Placeholder *p) { return !p->isStatic(); });
+  if (!deferredWeightsPathOpt.empty()) {
+    ::glow::runtime::DeferredLoader()->registerLoader(
+        new ZipFileBackedDeferredBlobLoader(deferredWeightsPathOpt));
+    // Initialize loader and set field in cctx.
+    auto *loader = runtime::DeferredLoader()->getLoader();
+    CHECK(loader) << "No deferred weights loader registered!";
+
+    // Generate a map of type date for all static placeholders.
+    std::map<std::string, Type> staticPlaceholderTypes;
+    for (auto *PH : placeholderList) {
+      if (PH->isStatic()) {
+        staticPlaceholderTypes[std::string(PH->getName())] = *PH->getType();
+      }
+    }
+    loader->setTypeInfo(std::move(staticPlaceholderTypes));
+    CHECK(!loader->setSrc(nullptr));
+    cctx.deferredWeightLoader = loader;
+    // Signal that we want to fold convertTo and Quantize into static
+    // Placeholders.
+    cctx.optimizationOpts.foldStaticPlaceholderConversions = true;
+  }
+
+  auto configs = runtime::generateDeviceConfigs(numDevicesOpt, ExecutionBackend,
+                                                deviceMemoryOpt);
+  auto hostManager =
+      glow::make_unique<runtime::HostManager>(std::move(configs));
   EXIT_ON_ERR(hostManager->addNetwork(std::move(mod), cctx));
 
   // Parse all input and output files ahead of inference.
@@ -323,7 +422,7 @@ int run() {
                         "Prepping input to Glow");
       auto &bindings = *ctx->getPlaceholderBindings();
       bindings.clear();
-      bindings.allocate(placeholderList);
+      bindings.allocate(nonStaticPlaceholderList);
       const auto &ps = bindings.pairs();
       for (const auto &kv : ps) {
         VLOG(1) << "Placeholder allocated: " << kv.first->getName().str();

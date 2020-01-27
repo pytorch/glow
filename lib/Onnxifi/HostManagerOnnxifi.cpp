@@ -134,7 +134,11 @@ onnxStatus HostManagerBackend::addNetwork(std::unique_ptr<Module> module,
       }
     }
     loader->setTypeInfo(std::move(staticPlaceholderTypes));
-    loader->setSrc(deferredBlobReader);
+    auto err = loader->setSrc(deferredBlobReader);
+    if (ERR_TO_BOOL(std::move(err))) {
+      return ONNXIFI_STATUS_INTERNAL_ERROR;
+    }
+
     cctx.deferredWeightLoader = loader;
     // Signal that we want to fold convertTo and Quantize into static
     // Placeholders.

@@ -437,6 +437,7 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
   // If a deferredWeightLoader is provided, create a deferredWeightLoader and
   // load deferred weights.
   if (cctx.deferredWeightLoader) {
+    LOG(INFO) << "Loading deferred weights";
 
     auto loader = cctx.deferredWeightLoader;
     // Load the first weight.

@@ -643,6 +643,9 @@ void ONNXModelWriter::writeTensor(const Tensor &T, TensorType *out) {
 void ONNXModelWriter::tensorShapeFromPlaceholder(const Placeholder *PH,
                                                  ValueInfoType *valueProto) {
   tensorShapeFromInput(PH->getName(), PH->getType(), valueProto);
+  if (PH->isStatic()) {
+    valueProto->set_doc_string("offline");
+  }
 }
 
 Error ONNXModelWriter::writeAllWithNode(const std::string &opName,
