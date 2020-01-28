@@ -3198,8 +3198,14 @@ bool FoldElemKindConversionIntoInputs::run(Function *F,
       // it is safe to do the requested conversion.
       NodeValue res = CTN ? CTN->getResult() : QN->getResult();
 
-      // Convert the type of the Placeholder to the conversion type.
-      P->setType(Storage::OutputIdx, res.getType());
+      // Convert the type of the Placeholder to the conversion type. If target
+      // type is fused call setTypeUnsafe because the shape can change in this
+      // case.
+      if (isFusedQuantizedElemKind(res.getElementType())) {
+        P->setTypeUnsafe(Storage::OutputIdx, res.getType());
+      } else {
+        P->setType(Storage::OutputIdx, res.getType());
+      }
 
       // Replace all uses of the original ConvertTo to the Placeholder.
       res.replaceAllUsesOfWith(P);
