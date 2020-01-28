@@ -68,6 +68,17 @@ int32_t GlowNNPINumParallelChunks = 1;
 } // namespace onnxifi
 } // namespace glow
 
+namespace {
+/// Check whether the embedding table is a unary one.
+/// Input type must come from data input of SparseLengths{Weighted)Sum
+bool isUnaryLookup(TypeRef type) {
+  if (type->dims().size() != 2) {
+    return false;
+  }
+  return type->dims()[1] == 1;
+}
+} // namespace
+
 NNPIBackendOptions NNPIBackend::backendOptions_;
 
 unsigned NNPIBackend::numDevices() {
@@ -261,7 +272,8 @@ bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
            (NI.getInElemTy(SparseLengthsSumNode::IndicesIdx) ==
             ElemKind::Int64ITy) &&
            (NI.getInElemTy(SparseLengthsSumNode::LengthsIdx) ==
-            ElemKind::Int32ITy);
+            ElemKind::Int32ITy) &&
+           !isUnaryLookup(NI.getInTy(SparseLengthsSumNode::DataIdx));
   case Kinded::Kind::SparseLengthsWeightedSumNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
                {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy},
@@ -270,7 +282,8 @@ bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
            (NI.getInElemTy(SparseLengthsWeightedSumNode::IndicesIdx) ==
             ElemKind::Int64ITy) &&
            (NI.getInElemTy(SparseLengthsWeightedSumNode::LengthsIdx) ==
-            ElemKind::Int32ITy);
+            ElemKind::Int32ITy) &&
+           !isUnaryLookup(NI.getInTy(SparseLengthsWeightedSumNode::DataIdx));
 
   case Kinded::Kind::FusedRowwiseQuantizedSparseLengthsSumNodeKind: {
     auto dataK =

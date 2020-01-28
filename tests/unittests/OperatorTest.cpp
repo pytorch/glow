@@ -8182,14 +8182,14 @@ static void testSLWS(glow::PlaceholderBindings &bindings, glow::Module &mod,
                      glow::Function *F, glow::ExecutionEngine &EE, ElemKind DTy,
                      float allowedError, size_t ndims) {
   /*
-    DATA  =   [[2.0, -0.5, 13]]
+    DATA  =   [[2.0, 2.0], [-0.5, -0.5], [13, 13]]
     WEIGHTS = [3, 1, 0, 0, 0, 0, 2, -0.5]
     INDICES = [1, 0, 2, 0, 1, 2, 2, 0]
     LENGTHS = [3, 0, 3, 2]
     OUTPUT =  [0.5, 0, 0, 25]
   */
-  ShapeVector idims(ndims, 1);
-  ShapeVector odims(ndims, 1);
+  ShapeVector idims(ndims, 2);
+  ShapeVector odims(ndims, 2);
   idims[0] = 3;
   odims[0] = 4;
 
@@ -8200,9 +8200,7 @@ static void testSLWS(glow::PlaceholderBindings &bindings, glow::Module &mod,
       mod.createPlaceholder(ElemKind::Int32ITy, {4}, "lengths", false);
 
   bindings.allocate(data)->getHandle<DataType>() = {
-      2.0,
-      -0.5,
-      13,
+      2.0, 2.0, -0.5, -0.5, 13, 13,
   };
   bindings.allocate(weights)->getHandle<DataType>() = {
       3, 1, 0, 0, 0, 0, 2, -0.5,
@@ -8227,11 +8225,9 @@ static void testSLWS(glow::PlaceholderBindings &bindings, glow::Module &mod,
 
   Tensor &result = *bindings.get(S->getPlaceholder());
   Tensor expected(DTy, odims);
+  llvm::errs() << result.toString() << "\n";
   expected.getHandle<DataType>() = {
-      0.5,
-      0,
-      0,
-      25,
+      0.5, 0.5, 0, 0, 0, 0, 25, 25,
   };
 
   EXPECT_TRUE(expected.isEqual(result));
@@ -8852,7 +8848,7 @@ TEST_P(OperatorTest, RepeatedSLSWithPartialTensors) {
   constexpr size_t iterations = 33;
 
   auto *data =
-      mod_.createConstant(ElemKind::FloatTy, {embeddingRows, 1}, "data");
+      mod_.createConstant(ElemKind::FloatTy, {embeddingRows, 2}, "data");
   data->getPayloadMutable().getHandle<float>().randomize(-1.0, 1.0,
                                                          mod_.getPRNG());
   auto *indices =
