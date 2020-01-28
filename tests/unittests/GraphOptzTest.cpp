@@ -3648,3 +3648,30 @@ TEST_F(GraphOptz, ParallelizeGraph_Transpose) {
 
   checkNumericalEquivalence();
 }
+
+TEST_F(GraphOptz, SinkClipBelowReshape) {
+  Placeholder *in =
+      mod_.createPlaceholder(ElemKind::FloatTy, {10}, "input", false);
+  ClipNode *clip = F_->createClip("clip", in, 0.2, 0.8);
+  ReshapeNode *reshape = F_->createReshape("reshape", clip, {2, 5});
+  SaveNode *save = F_->createSave("save", reshape);
+
+  optimizedF_ = optimizeFunction(F_);
+
+  // Same number of nodes, just swapped order.
+  EXPECT_EQ(F_->getNodes().size(), 3);
+  EXPECT_EQ(optimizedF_->getNodes().size(), 3);
+
+  const SaveNode *optSave =
+      findFunctionNodeByName<SaveNode>(optimizedF_, save->getName());
+  ASSERT_TRUE(optSave);
+  ClipNode *newClip = llvm::dyn_cast<ClipNode>(optSave->getInput());
+  ASSERT_TRUE(newClip);
+  ReshapeNode *newReshape = llvm::dyn_cast<ReshapeNode>(newClip->getInput());
+  ASSERT_TRUE(newReshape);
+  EXPECT_EQ(newReshape->getResult().dims(), reshape->getResult().dims());
+
+  bindings_.allocate(mod_.getPlaceholders());
+  bindings_.get(in)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
+  checkNumericalEquivalence();
+}
