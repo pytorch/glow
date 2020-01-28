@@ -235,6 +235,9 @@ public:
   static RegisterFactory<std::string, FactoryName, Backend>                    \
       FactoryName##_REGISTERED;
 
+/// \returns the set of names for all available, registered backends.
+std::vector<std::string> getAvailableBackends();
+
 /// The backend name used in Glow quantization profiling.
 #ifdef GLOW_WITH_CPU
 constexpr const char *profilingBackend = "CPU";

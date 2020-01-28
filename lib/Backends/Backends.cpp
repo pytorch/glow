@@ -33,4 +33,13 @@ Backend *createBackend(llvm::StringRef backendName) {
   return backend;
 }
 
+std::vector<std::string> getAvailableBackends() {
+  std::vector<std::string> backendNames;
+  const auto &factories = FactoryRegistry<std::string, Backend>::factories();
+  for (auto &factory : factories) {
+    backendNames.emplace_back(factory.first);
+  }
+  return backendNames;
+}
+
 } // namespace glow

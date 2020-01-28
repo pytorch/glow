@@ -97,34 +97,20 @@ protected:
 
 #ifdef GLOW_TEST_BACKEND
 #define STRINGIZE(X) BACKEND_TO_STR(X)
-static const auto all_backends =
-    ::testing::Values(STRINGIZE(GLOW_TEST_BACKEND));
+#define ALL_BACKENDS ::testing::Values(STRINGIZE(GLOW_TEST_BACKEND))
 #else
-static const auto all_backends = ::testing::Values(
-#ifdef GLOW_WITH_NNPI
-    "NNPI",
-#endif // GLOW_WITH_NNPI
-#ifdef GLOW_WITH_CPU
-    "CPU",
-#endif // GLOW_WITH_CPU
-#ifdef GLOW_WITH_OPENCL
-    "OpenCL",
-#endif // GLOW_WITH_OPENCL
-#ifdef GLOW_WITH_HABANA
-    "Habana",
-#endif // GLOW_WITH_HABANA
-    "Interpreter");
+#define ALL_BACKENDS ::testing::ValuesIn(getAvailableBackends())
 #endif
 
 // Instantiate parameterized test suite with all available backends.
 #define GLOW_INSTANTIATE_TEST_SUITE_P_FOR_BACKEND_TEST(prefix, test_case_name) \
-  GLOW_INSTANTIATE_TEST_SUITE_P(prefix, test_case_name, all_backends)
+  GLOW_INSTANTIATE_TEST_SUITE_P(prefix, test_case_name, ALL_BACKENDS)
 
 // Instantiate parameterized test suite with all available backends.
 #define GLOW_INSTANTIATE_TEST_SUITE_P_FOR_BACKEND_COMBINED_TEST(               \
     prefix, test_case_name, combine)                                           \
   GLOW_INSTANTIATE_TEST_SUITE_P(prefix, test_case_name,                        \
-                                ::testing::Combine(all_backends, combine))
+                                ::testing::Combine(ALL_BACKENDS, combine))
 
 // TODO: Replace return for GTEST_SKIP() so that skipped tests are
 // correctly reported once the macro gets available.
