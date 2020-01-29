@@ -22,7 +22,7 @@
 using namespace glow;
 
 NNPIDeviceTracing::NNPIDeviceTracing(uint32_t deviceID) : deviceID_(deviceID) {
-  traceCtx_ = std::make_unique<NNPITraceContext>(0);
+  traceCtx_ = glow::make_unique<NNPITraceContext>(0);
 }
 
 void NNPIDeviceTracing::start(TraceContext *traceContext,
