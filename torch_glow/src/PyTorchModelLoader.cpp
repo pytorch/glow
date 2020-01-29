@@ -3335,7 +3335,7 @@ Error PyTorchModelLoader::loadEmbeddingBagByteRowwiseOffsets(
     const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
-  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 7, outputs, 1));
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, -7, outputs, 1));
 
   glow::NodeValue weight;
   ASSIGN_VALUE_OR_RETURN_ERR(
