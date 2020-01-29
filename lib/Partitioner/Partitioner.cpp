@@ -916,6 +916,20 @@ void Partitioner::appendSLSTable(
   }
 }
 
+// Check if the weights input for \p SLWS is a SplatNode with more than one
+// user, and if so clone the splat node into \p F and set it to be the new
+// weights of \p SLWS.
+template <class T>
+static void cloneSplatWeightsIfNecessary(T *SLWS, Function *F) {
+  SplatNode *splatWeights = llvm::dyn_cast<SplatNode>(SLWS->getWeights());
+  if (!splatWeights || splatWeights->getNumUsers() <= 1) {
+    return;
+  }
+  SplatNode *splatWeightsClone =
+      F->addNode(llvm::cast<SplatNode>(splatWeights->clone()));
+  SLWS->setNthInput(T::WeightsIdx, splatWeightsClone->getResult());
+}
+
 Expected<DAGListTy> Partitioner::partitionSparseNN(CompilationContext &cctx) {
 
   VLOG(1) << "Doing SparseNN partitioning" << std::endl;
@@ -969,6 +983,25 @@ Expected<DAGListTy> Partitioner::partitionSparseNN(CompilationContext &cctx) {
   // First optimize it
   if (!optimized_) {
     RETURN_IF_ERR(::glow::optimizeFunction(F, *(backends[0]), cctx));
+  }
+
+  // Now we may want to duplicate Splat weights in case they have been CSE'd
+  // into a single SplatNode. This is because if two SLWS that share weights are
+  // separated to two partitions, then partitioning will force a dependence from
+  // whichever partition the weights are placed to the other partition. After
+  // partitioning when we optimize each partition individually, they may be
+  // merged again inside the partition.
+  for (auto &node : F->getNodes()) {
+    if (auto *SLWS = llvm::dyn_cast<SparseLengthsWeightedSumNode>(&node)) {
+      cloneSplatWeightsIfNecessary(SLWS, F);
+    } else if (auto *SLWS = llvm::dyn_cast<
+                   FusedRowwiseQuantizedSparseLengthsWeightedSumNode>(&node)) {
+      cloneSplatWeightsIfNecessary(SLWS, F);
+    } else if (auto *SLWS =
+                   llvm::dyn_cast<RowwiseQuantizedSparseLengthsWeightedSumNode>(
+                       &node)) {
+      cloneSplatWeightsIfNecessary(SLWS, F);
+    }
   }
 
   // Create list of SLS Tables
