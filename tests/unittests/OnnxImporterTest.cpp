@@ -2714,6 +2714,8 @@ static void importRNN(std::string fileName) {
   {
     ONNXModelLoader onnxLD(fileName, {}, {}, *F);
     bindings.allocate(mod.getPlaceholders());
+    auto Y_h_nv = EXIT_ON_ERR(onnxLD.getNodeValueByName("Y_h"));
+    EXPECT_TRUE(Y_h_nv.getNode());
   }
 
   // Search RNN state placeholder and set to 0.
@@ -2769,6 +2771,8 @@ static void importGRU(std::string fileName) {
   {
     ONNXModelLoader onnxLD(fileName, {}, {}, *F);
     bindings.allocate(mod.getPlaceholders());
+    auto Y_h_nv = EXIT_ON_ERR(onnxLD.getNodeValueByName("Y_h"));
+    EXPECT_TRUE(Y_h_nv.getNode());
   }
 
   // Search GRU state placeholder and set to 0.
@@ -2829,6 +2833,10 @@ static void importLSTM(std::string fileName) {
   {
     ONNXModelLoader onnxLD(fileName, {}, {}, *F);
     bindings.allocate(mod.getPlaceholders());
+    auto Y_h_nv = EXIT_ON_ERR(onnxLD.getNodeValueByName("Y_h"));
+    auto Y_c_nv = EXIT_ON_ERR(onnxLD.getNodeValueByName("Y_c"));
+    EXPECT_TRUE(Y_h_nv.getNode());
+    EXPECT_TRUE(Y_c_nv.getNode());
   }
 
   // Search LSTM state placeholders and set to 0.

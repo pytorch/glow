@@ -294,7 +294,7 @@ def gen_lstm_onnx_test_model(model_path, seq_length, batch_size, hidden_size, in
                    'P' if has_peephole else '']
 
     # Node outputs
-    node_outputs = ['Y']
+    node_outputs = ['Y', 'Y_h', 'Y_c']
 
     # LSTM node definition
     lstm_node_def = onnx.helper.make_node(

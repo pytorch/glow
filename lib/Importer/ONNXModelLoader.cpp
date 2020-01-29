@@ -1508,9 +1508,6 @@ Error ONNXModelLoader::loadRNN(const ONNX_NAMESPACE::NodeProto &op,
   //   to have it defined with only 1 time step and have the loop in the top
   //   of the application while the RNN state will be automatically updated
   //   from one iteration (time step) to the next through the placeholders.
-  const int numOutputs = op.output_size();
-  RETURN_ERR_IF_NOT(1 <= numOutputs,
-                    "ONNX RNN should have minimum 1 output defined!");
 
   // Derived parameters.
   RETURN_ERR_IF_NOT(X.dims().size() == 3,
@@ -1539,7 +1536,14 @@ Error ONNXModelLoader::loadRNN(const ONNX_NAMESPACE::NodeProto &op,
   G_.createSave(opName + ".Y_h.save", Y_h, Y_h_ph);
 
   // Add node.
-  RETURN_IF_ERR(addNodeAsOutput(op, Y, 1));
+  const int numOutputs = op.output_size();
+  if (numOutputs == 1) {
+    RETURN_IF_ERR(addNodeAsOutput(op, Y));
+  } else if (numOutputs == 2) {
+    RETURN_IF_ERR(assignNodeOutputs(op, {Y, Y_h}));
+  } else {
+    RETURN_ERR("ONNX RNN should have minimum 1 and maximum 2 outputs!");
+  }
   return Error::success();
 }
 
@@ -1630,9 +1634,6 @@ Error ONNXModelLoader::loadGRU(const ONNX_NAMESPACE::NodeProto &op,
   //   to have it defined with only 1 time step and have the loop in the top
   //   of the application while the GRU state will be automatically updated
   //   from one iteration (time step) to the next through the placeholders.
-  const int numOutputs = op.output_size();
-  RETURN_ERR_IF_NOT(1 <= numOutputs,
-                    "ONNX GRU should have minimum 1 output defined!");
 
   // Derived parameters.
   RETURN_ERR_IF_NOT(X.dims().size() == 3,
@@ -1661,7 +1662,14 @@ Error ONNXModelLoader::loadGRU(const ONNX_NAMESPACE::NodeProto &op,
   G_.createSave(opName + ".Y_h.save", Y_h, Y_h_ph);
 
   // Add node.
-  RETURN_IF_ERR(addNodeAsOutput(op, Y, 1));
+  const int numOutputs = op.output_size();
+  if (numOutputs == 1) {
+    RETURN_IF_ERR(addNodeAsOutput(op, Y));
+  } else if (numOutputs == 2) {
+    RETURN_IF_ERR(assignNodeOutputs(op, {Y, Y_h}));
+  } else {
+    RETURN_ERR("ONNX GRU should have minimum 1 and maximum 2 outputs!");
+  }
   return Error::success();
 }
 
@@ -1765,9 +1773,6 @@ Error ONNXModelLoader::loadLSTM(const ONNX_NAMESPACE::NodeProto &op,
   //   to have it defined with only 1 time step and have the loop in the top
   //   of the application while the LSTM state will be automatically updated
   //   from one iteration (time step) to the next through the placeholders.
-  const int numOutputs = op.output_size();
-  RETURN_ERR_IF_NOT(1 <= numOutputs,
-                    "ONNX LSTM should have minimum 1 output defined!");
 
   // Derived parameters.
   RETURN_ERR_IF_NOT(X.dims().size() == 3,
@@ -1807,7 +1812,16 @@ Error ONNXModelLoader::loadLSTM(const ONNX_NAMESPACE::NodeProto &op,
   G_.createSave(opName + ".Y_c.save", Y_c, Y_c_ph);
 
   // Add node.
-  RETURN_IF_ERR(addNodeAsOutput(op, Y, 1));
+  const int numOutputs = op.output_size();
+  if (numOutputs == 1) {
+    RETURN_IF_ERR(addNodeAsOutput(op, Y));
+  } else if (numOutputs == 2) {
+    RETURN_IF_ERR(assignNodeOutputs(op, {Y, Y_h}));
+  } else if (numOutputs == 3) {
+    RETURN_IF_ERR(assignNodeOutputs(op, {Y, Y_h, Y_c}));
+  } else {
+    RETURN_ERR("ONNX LSTM should have minimum 1 and maximum 3 outputs!");
+  }
   return Error::success();
 }
 
