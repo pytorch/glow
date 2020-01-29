@@ -28,12 +28,11 @@
 /// This is an example demonstrating how to load resnet50 model,
 /// randomize weights and perform training on a limited data set,
 /// and evaluate model.
-
-constexpr size_t IMAGE_COLORS = 3;
-constexpr size_t IMAGE_HEIGHT = 224;
-constexpr size_t IMAGE_WIDTH = 224;
-
 using namespace glow;
+
+constexpr dim_t IMAGE_COLORS = 3;
+constexpr dim_t IMAGE_HEIGHT = 224;
+constexpr dim_t IMAGE_WIDTH = 224;
 
 namespace {
 llvm::cl::OptionCategory category("resnet-training Options");
@@ -246,7 +245,7 @@ int main(int argc, char **argv) {
   // These tensors allocate memory for all images and labels prepared for
   // training.
   Tensor imagesT(ElemKind::FloatTy, allImagesDims);
-  Tensor labelsT(IndexElemKind, allLabelsDims);
+  Tensor labelsT(ElemKind::Int64ITy, allLabelsDims);
 
   size_t idx = 0;
   size_t orig_size = filenames.size();

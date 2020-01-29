@@ -265,7 +265,7 @@ struct HyphenNetwork {
   HyphenNetwork(Module &mod, TrainingConfig &conf)
       : input_(mod.createPlaceholder(ElemKind::FloatTy, {conf.batchSize, 6, 27},
                                      "input", false)),
-        expected_(mod.createPlaceholder(IndexElemKind, {conf.batchSize, 1},
+        expected_(mod.createPlaceholder(ElemKind::Int64ITy, {conf.batchSize, 1},
                                         "expected", false)),
         infer_(mod.createFunction("infer")), result_(nullptr), train_(nullptr) {
     bindings_.allocate(input_);
@@ -330,7 +330,7 @@ TEST(HyphenTest, network) {
   }
 
   // This depends on the training data, of course.
-  const size_t numSamples = 566;
+  const dim_t numSamples = 566;
   ASSERT_EQ(hyphens.size(), numSamples);
   ASSERT_EQ(words.size(), numSamples);
 
@@ -345,10 +345,10 @@ TEST(HyphenTest, network) {
 
   // Convert words and hyphens to a tensor representation.
   Tensor inputs(ElemKind::FloatTy, {numSamples, 6, 27});
-  Tensor expected(IndexElemKind, {numSamples, 1});
+  Tensor expected(ElemKind::Int64ITy, {numSamples, 1});
   inputs.zero();
   auto inputHandle = inputs.getHandle<float>();
-  auto expectedHandle = expected.getHandle<sdim_t>();
+  auto expectedHandle = expected.getHandle<int64_t>();
   for (dim_t i = 0; i != numSamples; i++) {
     mapLetterWindow(words[i], i, inputHandle);
     expectedHandle.at({i, 0}) = hyphens[i];

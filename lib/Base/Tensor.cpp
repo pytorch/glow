@@ -583,7 +583,13 @@ Tensor Tensor::getCopyConvertedToType(ElemKind newKind) const {
   assert(!isDeviceResident() && "Tensor must reside on host to access data.");
   const ElemKind origKind = getElementType();
   DCHECK((origKind == ElemKind::FloatTy && newKind == ElemKind::Float16Ty) ||
+         (origKind == ElemKind::FloatTy && newKind == ElemKind::Int32ITy) ||
+         (origKind == ElemKind::FloatTy && newKind == ElemKind::Int64ITy) ||
          (origKind == ElemKind::Float16Ty && newKind == ElemKind::FloatTy) ||
+         (origKind == ElemKind::Int64ITy && newKind == ElemKind::Int32ITy) ||
+         (origKind == ElemKind::Int64ITy && newKind == ElemKind::FloatTy) ||
+         (origKind == ElemKind::Int32ITy && newKind == ElemKind::Int64ITy) ||
+         (origKind == ElemKind::Int32ITy && newKind == ElemKind::FloatTy) ||
          (origKind == ElemKind::UInt8FusedQTy &&
           newKind == ElemKind::UInt8FusedFP16QTy))
       << "Conversion from " << Type::getElementName(origKind).str() << " to "
@@ -597,7 +603,34 @@ Tensor Tensor::getCopyConvertedToType(ElemKind newKind) const {
       break;
 
     case ElemKind::FloatTy:
-      tmp.copyWithCast<float, float16_t>(this);
+      if (getElementType() == ElemKind::Int32ITy) {
+        tmp.copyWithCast<float, int32_t>(this);
+      } else if (getElementType() == ElemKind::Int64ITy) {
+        tmp.copyWithCast<float, int64_t>(this);
+      } else if (getElementType() == ElemKind::Float16Ty) {
+        tmp.copyWithCast<float, float16_t>(this);
+      } else if (getElementType() == ElemKind::FloatTy) {
+        tmp.copyRawFrom(this);
+      } else {
+        llvm_unreachable("Invalid conversion to FLOAT.");
+      }
+      break;
+
+    case ElemKind::Int32ITy:
+      if (getElementType() == ElemKind::Int64ITy) {
+        tmp.copyWithCast<int32_t, int64_t>(this);
+      } else if (getElementType() == ElemKind::FloatTy) {
+        tmp.copyWithCast<int32_t, float>(this);
+      } else {
+        llvm_unreachable("Invalid conversion from FLOAT.");
+      }
+      break;
+    case ElemKind::Int64ITy:
+      if (getElementType() == ElemKind::Int32ITy) {
+        tmp.copyWithCast<int64_t, int32_t>(this);
+      } else {
+        llvm_unreachable("Invalid conversion from FLOAT.");
+      }
       break;
 
     default:

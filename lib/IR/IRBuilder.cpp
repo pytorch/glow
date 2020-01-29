@@ -58,7 +58,7 @@ void IRBuilder::deallocateActiveInstrs() {
 MaxPoolWithArgmaxInst *IRBuilder::createMaxPoolWithArgmaxOp(
     llvm::StringRef name, Value *input, llvm::ArrayRef<unsigned_t> kernels,
     llvm::ArrayRef<unsigned_t> strides, llvm::ArrayRef<unsigned_t> pads,
-    unsigned_t layout) {
+    unsigned_t layout, ElemKind argMaxIndicesTy) {
   TypeRef outTy{nullptr};
   Value *argmax{nullptr};
 
@@ -70,7 +70,7 @@ MaxPoolWithArgmaxInst *IRBuilder::createMaxPoolWithArgmaxOp(
 
     // Allocate storage for flattened NCHW index of max element.
     argmax =
-        createAllocActivationInst(name.str() + ".argmax", IndexElemKind,
+        createAllocActivationInst(name.str() + ".argmax", argMaxIndicesTy,
                                   {idim.n, outSz.first, outSz.second, idim.c});
 
     outTy = F_->getGraph()->getParent()->uniqueTypeWithNewShape(
@@ -83,7 +83,7 @@ MaxPoolWithArgmaxInst *IRBuilder::createMaxPoolWithArgmaxOp(
 
     // Allocate storage for flattened NCHW index of max element.
     argmax =
-        createAllocActivationInst(name.str() + ".argmax", IndexElemKind,
+        createAllocActivationInst(name.str() + ".argmax", argMaxIndicesTy,
                                   {idim.n, idim.c, outSz.first, outSz.second});
 
     outTy = F_->getGraph()->getParent()->uniqueTypeWithNewShape(
@@ -97,7 +97,8 @@ MaxPoolWithArgmaxInst *IRBuilder::createMaxPoolWithArgmaxOp(
 }
 
 ArgMaxInst *IRBuilder::createArgMaxOp(llvm::StringRef name, Value *input,
-                                      unsigned_t axis, bool keepDims) {
+                                      unsigned_t axis, bool keepDims,
+                                      ElemKind outIndicesTy) {
   auto idim = input->dims();
 
   ShapeVector odim;
@@ -111,7 +112,7 @@ ArgMaxInst *IRBuilder::createArgMaxOp(llvm::StringRef name, Value *input,
 
   // Allocate storage for flattened NCHW index of max element.
   Value *argmax =
-      createAllocActivationInst(name.str() + ".argmax", IndexElemKind, odim);
+      createAllocActivationInst(name.str() + ".argmax", outIndicesTy, odim);
   return createArgMaxInst(name, argmax, input, axis, keepDims);
 }
 
@@ -182,22 +183,24 @@ LocalResponseNormalizationInst *IRBuilder::createLocalResponseNormalizationOp(
                                               halfWindowSize, alpha, beta, k);
 }
 
-TopKInst *IRBuilder::createTopKOp(llvm::StringRef name, Value *input,
-                                  size_t k) {
+TopKInst *IRBuilder::createTopKOp(llvm::StringRef name, Value *input, size_t k,
+                                  ElemKind outIndicesTy) {
   auto inDims = input->dims();
   assert(inDims.size() > 0);
   assert(k <= inDims.back());
+  assert(outIndicesTy == ElemKind::Int32ITy ||
+         outIndicesTy == ElemKind::Int64ITy);
   ShapeVector outDims(inDims.begin(), inDims.end());
   outDims.back() = k;
   auto outTy = F_->getGraph()->getParent()->uniqueTypeWithNewShape(
       input->getType(), outDims);
   // Allocate enough scratch space to hold N values and N indices.
-  auto *scratch = createAllocActivationInst(
-      name.str() + ".scratch", ElemKind::Int64ITy, {inDims.back() * 2});
+  auto *scratch = createAllocActivationInst(name.str() + ".scratch",
+                                            outIndicesTy, {inDims.back() * 2});
   createSplatInst(name.str() + ".zero.scratch", scratch, 0);
   auto *values = createAllocActivationInst(name.str() + ".values", outTy);
-  auto *indices = createAllocActivationInst(name.str() + ".indices",
-                                            IndexElemKind, outDims);
+  auto *indices =
+      createAllocActivationInst(name.str() + ".indices", outIndicesTy, outDims);
   return createTopKInst(name.str(), values, indices, input, scratch, k);
 }
 

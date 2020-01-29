@@ -263,7 +263,7 @@ TEST_P(GradCheck, gradientCheckBatchMatMul) {
   Placeholder *A, *Exp, *B;
   SaveNode *Result;
 
-  constexpr size_t BatchSize{4}, P{5}, Q{6}, R{7};
+  constexpr dim_t BatchSize{4}, P{5}, Q{6}, R{7};
 
   for (auto *EE : engines_) {
     auto &Mod = EE->getModule();
@@ -304,8 +304,8 @@ TEST_P(GradCheck, gradientCheckTile) {
   Placeholder *A, *Exp;
   SaveNode *Result;
 
-  constexpr size_t N{2}, C{3}, H{4}, W{5};
-  constexpr size_t NumTiles{5};
+  constexpr dim_t N{2}, C{3}, H{4}, W{5};
+  constexpr dim_t NumTiles{5};
 
   for (auto *EE : engines_) {
     auto &Mod = EE->getModule();
@@ -418,8 +418,8 @@ TEST_P(GradCheck, gradientCheckGatherVec) {
     Function *F = Mod.createFunction("main");
 
     A = Mod.createPlaceholder(ElemKind::FloatTy, {3, 4}, "A", false);
-    auto *Indices = Mod.createPlaceholder(IndexElemKind, {2}, "I", false);
-    Bindings.allocate(Indices)->getHandle<sdim_t>() = {0, 2};
+    auto *Indices = Mod.createPlaceholder(ElemKind::Int64ITy, {2}, "I", false);
+    Bindings.allocate(Indices)->getHandle<int64_t>() = {0, 2};
     Exp = Mod.createPlaceholder(ElemKind::FloatTy, {2, 4}, "exp", false);
 
     Node *G = F->createGather("gather", A, Indices, 0 /*batchDims*/);
@@ -451,8 +451,9 @@ TEST_P(GradCheck, gradientCheckGatherDim) {
     Function *F = Mod.createFunction("main");
 
     A = Mod.createPlaceholder(ElemKind::FloatTy, {8, 4}, "A", false);
-    auto *Indices = Mod.createPlaceholder(IndexElemKind, {2, 2}, "I", false);
-    Bindings.allocate(Indices)->getHandle<sdim_t>() = {0, 2, 3, 1};
+    auto *Indices =
+        Mod.createPlaceholder(ElemKind::Int64ITy, {2, 2}, "I", false);
+    Bindings.allocate(Indices)->getHandle<int64_t>() = {0, 2, 3, 1};
     Exp = Mod.createPlaceholder(ElemKind::FloatTy, {2, 2, 4}, "exp", false);
 
     Node *G = F->createGather("gather", A, Indices, 0 /*batchDims*/);
@@ -966,7 +967,7 @@ TEST_P(GradCheck, gradientCheckTranspose) {
 
 TEST_P(GradCheck, gradientCheckCrossEntropyLoss) {
   CHECK_IF_ENABLED();
-  const size_t batchSize = 6;
+  const dim_t batchSize = 6;
   const int testSamples = 5;
   const float stepSize = 1e-4;
   const float delta = 0.015;
@@ -978,7 +979,8 @@ TEST_P(GradCheck, gradientCheckCrossEntropyLoss) {
   auto *P =
       mod.createPlaceholder(ElemKind::FloatTy, {batchSize, 4}, "P", false);
   bindings.allocate(P)->zero();
-  auto *Y = mod.createPlaceholder(IndexElemKind, {batchSize}, "Labels", false);
+  auto *Y =
+      mod.createPlaceholder(ElemKind::Int64ITy, {batchSize}, "Labels", false);
   bindings.allocate(Y)->zero();
   Node *CE = F->createCrossEntropyLoss("celoss", P, Y);
   auto *result = F->createSave("ret", CE);
@@ -986,11 +988,11 @@ TEST_P(GradCheck, gradientCheckCrossEntropyLoss) {
 
   Tensor inputs(ElemKind::FloatTy, {batchSize, 4});
   inputs.zero();
-  Tensor outputs(IndexElemKind, {batchSize});
+  Tensor outputs(ElemKind::Int64ITy, {batchSize});
   outputs.zero();
 
   auto inputsH = inputs.getHandle();
-  auto outputsH = outputs.getHandle<sdim_t>();
+  auto outputsH = outputs.getHandle<int64_t>();
 
   inputsH.randomize(0.0, 1.0, mod.getPRNG());
   outputsH.at({0}) = 2;

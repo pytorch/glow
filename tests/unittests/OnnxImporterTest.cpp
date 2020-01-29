@@ -1426,8 +1426,8 @@ TEST_F(OnnxImporterTest, importBatchBoxCox) {
   Placeholder *output;
 
   // Make input tensors.
-  const size_t kRows = 3;
-  const size_t kCols = 3;
+  const dim_t kRows = 3;
+  const dim_t kCols = 3;
   Tensor data(ElemKind::FloatTy, {kRows, kCols});
   Tensor lambda1(ElemKind::FloatTy, {kCols});
   Tensor lambda2(ElemKind::FloatTy, {kCols});
@@ -1705,7 +1705,7 @@ TEST_F(OnnxImporterTest, importSparseToDense) {
   constexpr dim_t kMaxIndex = 20;
   constexpr dim_t kRows = 10;
   constexpr dim_t kCols = 5;
-  Tensor indices(IndexElemKind, {kNumIndices});
+  Tensor indices(ElemKind::Int64ITy, {kNumIndices});
   Tensor values(ElemKind::FloatTy, {kNumIndices, kRows, kCols});
   Tensor dataToInferDim(ElemKind::FloatTy, {kMaxIndex, kRows, kCols});
 
@@ -1743,7 +1743,7 @@ TEST_F(OnnxImporterTest, importSparseLengthsSum) {
   Placeholder *output;
   {
     Tensor data(ElemKind::FloatTy, {2, 1});
-    Tensor indices(IndexElemKind, {2});
+    Tensor indices(ElemKind::Int64ITy, {2});
     Tensor lengths(ElemKind::Int32ITy, {2});
     ONNXModelLoader onnxLD(
         netFilename, {"data", "indices", "lengths"},
@@ -2482,12 +2482,12 @@ TEST_F(OnnxImporterTest, topK) {
   EE.run(bindings);
 
   auto outputH = outputT->getHandle();
-  auto indexH = indexT->getHandle<sdim_t>();
+  auto indexH = indexT->getHandle<int64_t>();
   std::vector<dim_t> expectedDims = {1, 3, 2};
   std::vector<float> expectedValues = {
       4., 3., 8., 7., 12, 11.,
   };
-  std::vector<dim_t> expectedIndices = {3, 2, 0, 1, 1, 0};
+  std::vector<int64_t> expectedIndices = {3, 2, 0, 1, 1, 0};
 
   EXPECT_TRUE(outputH.dims().vec() == expectedDims);
   for (size_t i = 0; i < expectedValues.size(); i++) {
@@ -2650,7 +2650,7 @@ TEST_F(OnnxImporterTest, importMaxPoolWithArgmax) {
   EE.run(bindings);
 
   auto result = bindings.get(resultPH)->getHandle();
-  auto indices = bindings.get(indicesPH)->getHandle<sdim_t>();
+  auto indices = bindings.get(indicesPH)->getHandle<int64_t>();
   std::vector<dim_t> expectedDims = {1, 3, 2, 2};
 
   EXPECT_TRUE(result.dims().vec() == expectedDims);
@@ -2658,8 +2658,8 @@ TEST_F(OnnxImporterTest, importMaxPoolWithArgmax) {
 
   std::vector<float> expectedResult = {58.0, 46.0, 33.0, 57.0, 55.0, 31.0,
                                        54.0, 53.0, 40.0, 52.0, 51.0, 38.0};
-  std::vector<sdim_t> expectedIndices = {15, 18, 36, 30, 13, 19,
-                                         28, 43, 14, 11, 26, 44};
+  std::vector<int64_t> expectedIndices = {15, 18, 36, 30, 13, 19,
+                                          28, 43, 14, 11, 26, 44};
 
   for (size_t i = 0; i < expectedResult.size(); i++) {
     EXPECT_EQ(result.raw(i), expectedResult[i]);
@@ -3121,7 +3121,7 @@ TEST_F(OnnxImporterTest, importFRWQSLWS) {
   Placeholder *output;
   {
     Tensor weights(ElemKind::FloatTy, {8});
-    Tensor indices(IndexElemKind, {8});
+    Tensor indices(ElemKind::Int64ITy, {8});
     Tensor lengths(ElemKind::Int32ITy, {5});
     ONNXModelLoader onnxLD(
         netFilename, {"weights", "indices", "lengths"},

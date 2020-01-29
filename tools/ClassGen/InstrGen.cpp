@@ -320,7 +320,6 @@ int main(int argc, char **argv) {
       .addMember(MEMBER_TYPE_INFO(glow::LengthsMode), "LengthsMode")
       .autoIRGen()
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Data"})
-      .autoVerify(VerifyKind::SameElementType, {"Indices", "IndexElemKind"})
       .autoVerify(VerifyKind::SameElementType,
                   {"Lengths", "ElemKind::Int32ITy"})
       .addGradientInstr({"Data", "Indices", "Lengths"}, {"Dest", "Data"});
@@ -334,7 +333,6 @@ int main(int argc, char **argv) {
       .addMember(MEMBER_TYPE_INFO(glow::LengthsMode), "LengthsMode")
       .autoIRGen()
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Data", "Weights"})
-      .autoVerify(VerifyKind::SameElementType, {"Indices", "IndexElemKind"})
       .autoVerify(VerifyKind::SameElementType,
                   {"Lengths", "ElemKind::Int32ITy"})
       .autoVerify(VerifyKind::SameShape, {"Weights", "Indices"})
@@ -351,8 +349,10 @@ int main(int argc, char **argv) {
       .addMember(MEMBER_TYPE_INFO(glow::LengthsMode), "LengthsMode")
       .autoIRGen()
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Data", "Weights"})
-      .autoVerify(VerifyKind::SameElementType, {"Indices", "IndexElemKind"})
-      .autoVerify(VerifyKind::SameElementType, {"Offsets", "IndexElemKind"})
+      .autoVerify(VerifyKind::SameElementType,
+                  {"Indices", "ElemKind::Int64ITy"})
+      .autoVerify(VerifyKind::SameElementType,
+                  {"Offsets", "ElemKind::Int64ITy"})
       .autoVerify(VerifyKind::SameShape, {"Weights", "Indices"});
 
   BB.newInstr("RowwiseQuantizedSparseLengthsWeightedSum")
@@ -367,7 +367,6 @@ int main(int argc, char **argv) {
       .addMember(MEMBER_TYPE_INFO(glow::LengthsMode), "LengthsMode")
       .autoIRGen()
       .autoVerify(VerifyKind::SameElementType, {"Data", "ElemKind::UInt8QTy"})
-      .autoVerify(VerifyKind::SameElementType, {"Indices", "IndexElemKind"})
       .autoVerify(VerifyKind::SameElementType,
                   {"Lengths", "ElemKind::Int32ITy"})
       .autoVerify(VerifyKind::SameShape, {"Weights", "Indices"});
@@ -381,7 +380,6 @@ int main(int argc, char **argv) {
       .addMember(MemberType::Boolean, "UseFP16Accumulation")
       .addMember(MEMBER_TYPE_INFO(glow::LengthsMode), "LengthsMode")
       .autoIRGen()
-      .autoVerify(VerifyKind::SameElementType, {"Indices", "IndexElemKind"})
       .autoVerify(VerifyKind::SameElementType,
                   {"Lengths", "ElemKind::Int32ITy"})
       .autoVerify(VerifyKind::SameShape, {"Weights", "Indices"});
@@ -396,8 +394,10 @@ int main(int argc, char **argv) {
       .addMember(MemberType::Boolean, "HasEndOffset")
       .addMember(MEMBER_TYPE_INFO(glow::LengthsMode), "LengthsMode")
       .autoIRGen()
-      .autoVerify(VerifyKind::SameElementType, {"Indices", "IndexElemKind"})
-      .autoVerify(VerifyKind::SameElementType, {"Offsets", "IndexElemKind"})
+      .autoVerify(VerifyKind::SameElementType,
+                  {"Indices", "ElemKind::Int64ITy"})
+      .autoVerify(VerifyKind::SameElementType,
+                  {"Offsets", "ElemKind::Int64ITy"})
       .autoVerify(VerifyKind::SameShape, {"Weights", "Indices"});
 
   BB.newInstr("LengthsToRanges")
@@ -433,7 +433,8 @@ int main(int argc, char **argv) {
       .addMember(MemberType::VectorDimT, "Mask")
       .autoVerify(VerifyKind::SameElementType,
                   {"Dest", "Values", "DefaultValue"})
-      .autoVerify(VerifyKind::SameElementType, {"Indices", "IndexElemKind"})
+      .autoVerify(VerifyKind::SameElementType,
+                  {"Indices", "ElemKind::Int64ITy"})
       .autoVerify(VerifyKind::SameElementType,
                   {"Lengths", "ElemKind::Int32ITy"})
       .autoIRGen();
@@ -700,7 +701,7 @@ int main(int argc, char **argv) {
       .addOperand("Indices", OperandKind::In)
       .addOperand("Slices", OperandKind::In)
       .addMember(MemberType::Boolean, "Cumulative")
-      .autoVerify(VerifyKind::SameElementType, {"Indices", "IndexElemKind"});
+      .autoVerify(VerifyKind::NoVerify);
 
   BB.newInstr("BatchOneHot")
       .addOperand("Dest", OperandKind::Out)

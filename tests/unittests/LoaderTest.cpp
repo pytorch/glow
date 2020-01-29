@@ -38,7 +38,7 @@ protected:
 using namespace glow;
 
 namespace {
-const size_t BATCH_SIZE = 8;
+const dim_t BATCH_SIZE = 8;
 const size_t MINI_BATCH_SIZE = 2;
 } // namespace
 

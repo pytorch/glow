@@ -920,7 +920,7 @@ TEST(Tensor, insertSlice) {
 /// row's offset.
 template <typename ScaleOffsetT>
 static void testInitZeroFused(ElemKind fusedKind, float allowedError) {
-  constexpr size_t numTotalColumns = 2 + 2 * sizeof(ScaleOffsetT);
+  constexpr dim_t numTotalColumns = 2 + 2 * sizeof(ScaleOffsetT);
   Tensor T(fusedKind, {10, numTotalColumns}, 0.0, 0);
   auto TH = T.getHandle<uint8_t>();
   auto *TData = reinterpret_cast<uint8_t *>(T.getUnsafePtr());

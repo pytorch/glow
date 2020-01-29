@@ -510,7 +510,7 @@ TEST(Graph, quantizeGather) {
   auto *F = mod.createFunction("main");
   auto *input =
       mod.createPlaceholder(ElemKind::Int8QTy, {2, 2}, 0.4, 2, "input", true);
-  auto *indices = mod.createPlaceholder(IndexElemKind, {1}, "index", true);
+  auto *indices = mod.createPlaceholder(ElemKind::Int64ITy, {1}, "index", true);
   auto *gather = F->createGather("gather", input, indices);
   PlaceholderBindings bindings;
   F->createSave("ret", gather);
@@ -768,7 +768,7 @@ TEST(Graph, nodesWithPredicates) {
   PlaceholderBindings bindings;
   auto *input =
       mod.createPlaceholder(ElemKind::FloatTy, {1, 32, 32, 3}, "input", true);
-  auto *ex = mod.createPlaceholder(IndexElemKind, {1, 1}, "exp", true);
+  auto *ex = mod.createPlaceholder(ElemKind::Int64ITy, {1, 1}, "exp", true);
   auto *pred =
       mod.createPlaceholder(ElemKind::Int64ITy, {1}, "predicate", false);
   bindings.allocate(input);
@@ -1295,7 +1295,7 @@ TEST(Graph, setType) {
       M.createPlaceholder(ElemKind::FloatTy, inputDims, "input", true);
   TopKNode *topK = F->createTopK("add", input, 5);
   TypeRef origTopKRes0 = M.uniqueType(ElemKind::FloatTy, top5Dims);
-  TypeRef origTopKRes1 = M.uniqueType(IndexElemKind, top5Dims);
+  TypeRef origTopKRes1 = M.uniqueType(ElemKind::Int64ITy, top5Dims);
 
   EXPECT_EQ(topK->getType(TopKNode::ValuesIdx), origTopKRes0);
   EXPECT_EQ(topK->getType(TopKNode::IndicesIdx), origTopKRes1);
@@ -1885,7 +1885,7 @@ trainable : 1
   llvm::raw_string_ostream osF1(storageF1);
   F2->dump(osF1);
   std::string mesF = F2->toString();
-  std::string expectMesF = DIM_T_BITWIDTH == 64 ? R"(Graph structure F2:
+  std::string expectMesF = R"(Graph structure F2:
 TopK
 name : topk
 Input : float<10 x 10>
@@ -1893,15 +1893,6 @@ K : 3
 users : 0
 Values : float<10 x 3>
 Indices : index64<10 x 3>
-)"
-                                                : R"(Graph structure F2:
-TopK
-name : topk
-Input : float<10 x 10>
-K : 3
-users : 0
-Values : float<10 x 3>
-Indices : index32<10 x 3>
 )";
   EXPECT_EQ(mesF, expectMesF);
   EXPECT_EQ(mesF, osF1.str());
