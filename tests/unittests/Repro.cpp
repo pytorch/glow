@@ -396,6 +396,7 @@ int run() {
     }
   } else if (!inputPatternOpt.empty() && !outputPatternOpt.empty() &&
              seqLenOpt > 0) {
+    inputGroupSize = seqLenOpt;
     size_t input_iter = inputPatternOpt.find("{}");
     CHECK_NE(input_iter, std::string::npos)
         << "Input pattern " << inputPatternOpt << " has to contain {}";
