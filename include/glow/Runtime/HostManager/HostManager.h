@@ -18,6 +18,7 @@
 
 #include "glow/Backend/Backend.h"
 #include "glow/Backends/DeviceManager.h"
+#include "glow/Base/SharedMutex.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Runtime/Executor/Executor.h"
 #include "glow/Runtime/Provisioner/Provisioner.h"
@@ -28,6 +29,7 @@
 #include <map>
 #include <mutex>
 #include <queue>
+#include <shared_mutex>
 #include <unordered_map>
 #include <vector>
 
@@ -96,6 +98,11 @@ class HostManager final {
                       std::greater<InferRequest>>
       inferQueue_;
 
+  /// Lock for the priority queue above. Please make sure whenever you want to
+  /// access inferQueue_, you take a lock. Usage is the same as
+  /// std::shared_mutex
+  std::shared_timed_mutex inferQueueLock_;
+
   /// Configuration parameters for this Runtime Host.
   const HostConfig config_{};
 
@@ -104,7 +111,7 @@ class HostManager final {
 
   /// Mutex for networks_ since runNetwork, addNetwork, and
   /// removeNetwork can all be called concurrently, a guard is needed.
-  std::mutex networkLock_;
+  std::shared_timed_mutex networkLock_;
 
   /// A map of DeviceManagers by deviceID. An ordered map is used here to allow
   /// a stable iteration order over devices.

@@ -31,6 +31,7 @@
 
 #include <future>
 #include <queue>
+#include <shared_mutex>
 
 using namespace glow;
 using namespace runtime;
@@ -133,7 +134,7 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
                               CompilationContext &cctx, bool saturateHost) {
   std::vector<std::string> names;
   {
-    std::lock_guard<std::mutex> networkLock(networkLock_);
+    std::unique_lock<std::shared_timed_mutex> networkLock(networkLock_);
     auto functions = module->getFunctions();
     for (auto &F : functions) {
       std::string name = F->getName();
@@ -162,7 +163,7 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
 
   std::vector<DeviceInfo> deviceInfo;
   {
-    std::lock_guard<std::mutex> networkLock(networkLock_);
+    std::unique_lock<std::shared_timed_mutex> networkLock(networkLock_);
     for (auto &device : devices_) {
       DeviceInfo info = device.second->getDeviceInfo();
       info.availableMemory = device.second->getAvailableMemory();
@@ -179,7 +180,7 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
     auto err = optimizeFunctionBeforeLowering(F, cctx);
     if (err) {
       {
-        std::lock_guard<std::mutex> networkLock(networkLock_);
+        std::unique_lock<std::shared_timed_mutex> networkLock(networkLock_);
         cleanupAddNetwork(names);
       }
       return err;
@@ -191,7 +192,7 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
   if (result) {
     nodeList = std::move(result.get());
   } else {
-    std::lock_guard<std::mutex> networkLock(networkLock_);
+    std::unique_lock<std::shared_timed_mutex> networkLock(networkLock_);
     cleanupAddNetwork(names);
     return result.takeError();
   }
@@ -221,7 +222,7 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
   auto err = provisioner_->provision(nodeList, *module, cctx);
   if (err) {
     {
-      std::lock_guard<std::mutex> networkLock(networkLock_);
+      std::unique_lock<std::shared_timed_mutex> networkLock(networkLock_);
       cleanupAddNetwork(names);
     }
     return err;
@@ -233,7 +234,7 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
   module->strip();
   auto sharedModule = std::shared_ptr<Module>(std::move(module));
   {
-    std::lock_guard<std::mutex> networkLock(networkLock_);
+    std::unique_lock<std::shared_timed_mutex> networkLock(networkLock_);
     for (auto &node : nodeList) {
       auto &networkData = networks_[(node.root)->name];
       networkData.dag = std::move(node);
@@ -245,7 +246,7 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
 }
 
 Error HostManager::removeNetwork(llvm::StringRef networkName) {
-  std::lock_guard<std::mutex> networkLock(networkLock_);
+  std::unique_lock<std::shared_timed_mutex> networkLock(networkLock_);
   auto networkIterator = networks_.find(networkName);
   if (networkIterator == networks_.end()) {
     return Error::success();
@@ -295,7 +296,7 @@ Error HostManager::removeNetwork(llvm::StringRef networkName) {
 }
 
 bool HostManager::networkAdded(llvm::StringRef networkName) {
-  std::lock_guard<std::mutex> networkLock(networkLock_);
+  std::shared_lock<std::shared_timed_mutex> networkLock(networkLock_);
   return networks_.find(networkName) != networks_.end();
 }
 
@@ -313,7 +314,7 @@ Error HostManager::clearHost() {
   }
 
   // Now it's safe to stop the DeviceManagers.
-  std::lock_guard<std::mutex> networkLock(networkLock_);
+  std::unique_lock<std::shared_timed_mutex> networkLock(networkLock_);
   OneErrOnly errContainer;
   for (auto &it : devices_) {
     errContainer.set(it.second->stop());
@@ -370,46 +371,57 @@ Error HostManager::runNetworkBlocking(
 }
 
 void HostManager::dispatchNextRun() {
-  std::lock_guard<std::mutex> networkLock(networkLock_);
-  if (inferQueue_.size()) {
-    // Get the next request, unfortunately priority_queue only
-    // provides a const ref to the top element, since we need to move
-    // it we first cast it to remove the const.
-    auto request = std::move(const_cast<InferRequest &>(inferQueue_.top()));
-    int requestId = static_cast<int>(request.requestID);
-    inferQueue_.pop();
-    TRACE_EVENT_CREATE(beginTraceEvent, TraceLevel::REQUEST,
-                       "network_execution_e2e", TraceEvent::AsyncBeginType,
-                       requestId);
-    auto startTime = TraceEvent::now();
-    executor_->run(
-        networks_[request.networkName].dag.root.get(),
-        std::move(request.context), request.requestID,
-        [this, callback = request.callback, name = request.networkName,
-         startTime, requestId, beginTraceEvent = std::move(beginTraceEvent)](
-            RunIdentifierTy runID, Error err,
-            std::unique_ptr<ExecutionContext> context) mutable {
-          {
-            std::lock_guard<std::mutex> networkLock(networkLock_);
-            auto it = networks_.find(name);
-            if (it != networks_.end()) {
-              it->second.refcount--;
-            }
-          }
-          TRACE_EVENT_LOG_PRE_CREATED(context->getTraceContext(),
-                                      beginTraceEvent);
-          TRACE_EVENT_LOG_ID(context->getTraceContext(), TraceLevel::REQUEST,
-                             "network_execution_e2e", TraceEvent::AsyncEndType,
-                             TraceEvent::now(), requestId);
-          updateExecutionStats(startTime, context);
-          callback(runID, std::move(err), std::move(context));
-          dispatchNextRun();
-        });
-  } else {
-    // Decrement the activeRequest counter so new requests can
-    // launched.
-    --activeRequestCount_;
+  int requestId = -1;
+  llvm::Optional<InferRequest> pRequest;
+  std::shared_lock<std::shared_timed_mutex> networkLock(networkLock_);
+  {
+    // hmm this lock is hot but I still have it as a unique lock because
+    // we always need to pop inferQueue and inferQueue is not thread safe
+    std::unique_lock<std::shared_timed_mutex> queueLock(inferQueueLock_);
+    if (inferQueue_.size()) {
+      // Get the next request, unfortunately priority_queue only
+      // provides a const ref to the top element, since we need to move
+      // it we first cast it to remove the const.
+      pRequest = std::move(const_cast<InferRequest &>(inferQueue_.top()));
+      requestId = static_cast<int>(pRequest->requestID);
+      inferQueue_.pop();
+    } else {
+      // Decrement the activeRequest counter so new requests can
+      // launched.
+      --activeRequestCount_;
+      return;
+    }
   }
+
+  assert(pRequest.hasValue());
+  InferRequest request = std::move(pRequest.getValue());
+  TRACE_EVENT_CREATE(beginTraceEvent, TraceLevel::REQUEST,
+                     "network_execution_e2e", TraceEvent::AsyncBeginType,
+                     requestId);
+  auto startTime = TraceEvent::now();
+  executor_->run(
+      networks_[request.networkName].dag.root.get(), std::move(request.context),
+      request.requestID,
+      [this, callback = request.callback, name = request.networkName, startTime,
+       requestId, beginTraceEvent = std::move(beginTraceEvent)](
+          RunIdentifierTy runID, Error err,
+          std::unique_ptr<ExecutionContext> context) mutable {
+        {
+          std::shared_lock<std::shared_timed_mutex> netLock(networkLock_);
+          auto it = networks_.find(name);
+          if (it != networks_.end()) {
+            it->second.refcount--;
+          }
+        }
+        TRACE_EVENT_LOG_PRE_CREATED(context->getTraceContext(),
+                                    beginTraceEvent);
+        TRACE_EVENT_LOG_ID(context->getTraceContext(), TraceLevel::REQUEST,
+                           "network_execution_e2e", TraceEvent::AsyncEndType,
+                           TraceEvent::now(), requestId);
+        updateExecutionStats(startTime, context);
+        callback(runID, std::move(err), std::move(context));
+        dispatchNextRun();
+      });
 }
 
 RunIdentifierTy
@@ -427,7 +439,7 @@ HostManager::runNetwork(llvm::StringRef networkName,
 
   NetworkData *network = nullptr;
   {
-    std::lock_guard<std::mutex> networkLock(networkLock_);
+    std::shared_lock<std::shared_timed_mutex> networkLock(networkLock_);
     auto it = networks_.find(networkName);
     if (it != networks_.end()) {
       network = &it->second;
@@ -446,22 +458,28 @@ HostManager::runNetwork(llvm::StringRef networkName,
     InferRequest queuedRequest(networkName, std::move(context), callback,
                                priority, currentRun);
     // Put the request in the queue.
-    auto queueSize = inferQueue_.size();
-    if (queueSize >= config_.maxQueueSize) {
-      // The queue is full, return an error.
-      network->refcount--;
-      callback(
-          currentRun,
-          MAKE_ERR(
-              ErrorValue::ErrorCode::RUNTIME_REQUEST_REFUSED,
-              strFormat(
-                  "The number of allowed queued requests has been exceeded. "
-                  "queued requests: %lu allowed requests: %zu",
-                  queueSize, config_.maxQueueSize)),
-          std::move(context));
-      return currentRun;
+    {
+      std::shared_lock<std::shared_timed_mutex> lock(inferQueueLock_);
+      auto queueSize = inferQueue_.size();
+      if (queueSize >= config_.maxQueueSize) {
+        // The queue is full, return an error.
+        network->refcount--;
+        callback(
+            currentRun,
+            MAKE_ERR(
+                ErrorValue::ErrorCode::RUNTIME_REQUEST_REFUSED,
+                strFormat(
+                    "The number of allowed queued requests has been exceeded. "
+                    "queued requests: %lu allowed requests: %zu",
+                    queueSize, config_.maxQueueSize)),
+            std::move(context));
+        return currentRun;
+      }
     }
-    inferQueue_.push(std::move(queuedRequest));
+    {
+      std::unique_lock<std::shared_timed_mutex> lock(inferQueueLock_);
+      inferQueue_.push(std::move(queuedRequest));
+    }
   }
 
   // If we haven't reached maxActiveRequests kick off next request.
