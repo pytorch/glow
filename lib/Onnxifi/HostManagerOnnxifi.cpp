@@ -34,9 +34,12 @@ int32_t GlowSparseNNPartitioningSchemeNumCoresOther = 1;
 bool GlowDumpDebugTraces = false;
 bool GlowSaturateHost = false;
 bool GlowFP16 = false;
+bool GlowFP16Placeholders = false;
+bool GlowFP16Constants = false;
 bool GlowFusedScaleOffsetFP16 = false;
 bool GlowForceSLSAccumFP16 = false;
 bool GlowClipFP16 = false;
+bool GlowClipFP16SkipInputs = false;
 bool GlowUseSparseNNPartitioningScheme = false;
 
 static llvm::cl::opt<int32_t, true>
@@ -149,6 +152,14 @@ onnxStatus HostManagerBackend::addNetwork(std::unique_ptr<Module> module,
     precConfig.convertToFP16 = GlowFP16;
     LOG(INFO) << "Conversion to fp16 enabled";
   }
+  if (GlowFP16Placeholders) {
+    precConfig.convertPlaceholdersToFP16 = GlowFP16Placeholders;
+    LOG(INFO) << "Conversion of Placeholders to fp16 enabled";
+  }
+  if (GlowFP16Constants) {
+    precConfig.convertConstantsToFP16 = GlowFP16Constants;
+    LOG(INFO) << "Conversion of Constants to fp16 enabled";
+  }
   if (GlowFusedScaleOffsetFP16) {
     precConfig.convertFusedToFP16 = GlowFusedScaleOffsetFP16;
     LOG(INFO) << "Conversion of fused scales/offsets to fp16 enabled";
@@ -156,6 +167,10 @@ onnxStatus HostManagerBackend::addNetwork(std::unique_ptr<Module> module,
   if (GlowClipFP16) {
     precConfig.clipFP16 = GlowClipFP16;
     LOG(INFO) << "Clipping to fp16 enabled";
+  }
+  if (GlowClipFP16SkipInputs) {
+    precConfig.clipFP16SkipInputs = GlowClipFP16SkipInputs;
+    LOG(INFO) << "Skipping clipping for fp16 Node inputs fp16";
   }
   if (GlowForceSLSAccumFP16) {
     precConfig.forceFP16AccumSLS = GlowForceSLSAccumFP16;

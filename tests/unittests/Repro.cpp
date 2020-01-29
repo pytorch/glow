@@ -108,6 +108,16 @@ llvm::cl::opt<bool>
                   llvm::cl::Optional, llvm::cl::init(true),
                   llvm::cl::cat(reproTestCat));
 
+llvm::cl::opt<bool> globalFp16ConstantsOpt(
+    "glow_global_fp16_constants",
+    llvm::cl::desc("Enable fp16 conversion for Constants"), llvm::cl::Optional,
+    llvm::cl::init(false), llvm::cl::cat(reproTestCat));
+
+llvm::cl::opt<bool> globalFp16PlaceholdersOpt(
+    "glow_global_fp16_placeholders",
+    llvm::cl::desc("Enable fp16 conversion for Placeholders"),
+    llvm::cl::Optional, llvm::cl::init(false), llvm::cl::cat(reproTestCat));
+
 llvm::cl::opt<bool> sliceConcatFp32Opt(
     "glow_slice_concat_fp32",
     llvm::cl::desc("Don't convert slice and concat ops's precision when "
@@ -130,6 +140,11 @@ llvm::cl::opt<bool>
                 llvm::cl::desc("Force glow to clip fp16 values to min/max"),
                 llvm::cl::Optional, llvm::cl::init(true),
                 llvm::cl::cat(reproTestCat));
+
+llvm::cl::opt<bool> ClipFp16SkipInputsOpt(
+    "glow_clip_fp16_skip_inputs",
+    llvm::cl::desc("Force glow to skip clipping fp16 Node inputs to min/max"),
+    llvm::cl::Optional, llvm::cl::init(false), llvm::cl::cat(reproTestCat));
 
 llvm::cl::opt<bool>
     forceFP16AccumSLSOpt("glow_global_force_sls_fp16_accum",
@@ -293,6 +308,14 @@ int run() {
     }
     llvm::outs() << "Conversion to fp16 enabled\n";
   }
+  if (globalFp16PlaceholdersOpt) {
+    precConfig.convertPlaceholdersToFP16 = globalFp16PlaceholdersOpt;
+    llvm::outs() << "Conversion of Placeholders to fp16 enabled";
+  }
+  if (globalFp16ConstantsOpt) {
+    precConfig.convertConstantsToFP16 = globalFp16ConstantsOpt;
+    llvm::outs() << "Conversion of Constants to fp16 enabled";
+  }
   if (fuseScaleOffsetFp16Opt) {
     precConfig.convertFusedToFP16 = fuseScaleOffsetFp16Opt;
     llvm::outs() << "Conversion of fused scales/offsets to fp16 enabled\n";
@@ -300,6 +323,10 @@ int run() {
   if (ClipFp16Opt) {
     precConfig.clipFP16 = ClipFp16Opt;
     llvm::outs() << "Clipping to fp16 enabled\n";
+  }
+  if (ClipFp16SkipInputsOpt) {
+    precConfig.clipFP16SkipInputs = ClipFp16SkipInputsOpt;
+    llvm::outs() << "Skipping clipping for fp16 Node inputs fp16";
   }
   if (forceFP16AccumSLSOpt) {
     precConfig.forceFP16AccumSLS = true;
