@@ -32,6 +32,7 @@ std::set<std::string> glow::backendTestBlacklist = {
     "batchedReduceAdd_Float16/0",
     "batchedReduceZeroDimResult_Float16/0",
     "batchedReduceAddWithAxis_Float16/0",
+    "BatchNorm_Float16/0",
     "ReluSimple_Float16/0",
     "PReluSimple_Float16/0",
     "GatherDataFloat16IdxInt32/0",

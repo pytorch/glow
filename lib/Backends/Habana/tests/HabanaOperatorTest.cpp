@@ -70,6 +70,8 @@ std::set<std::string> glow::backendTestBlacklist = {
     "batchedReduceZeroDimResult_Float/0",
     "batchedReduceZeroDimResult_Float16/0",
     "batchedReduceZeroDimResult_Int8/0",
+    "BatchNorm_Float/0",
+    "BatchNorm_Float16/0",
     "BatchOneHotDataFloat/0",
     "BatchOneHotDataFloat16/0",
     "BatchOneHotDataInt64/0",

@@ -11218,5 +11218,45 @@ TEST_CAST_2WAYS(int64_t, int64_t, Int64ITy, Int64ITy, /* castIsNoOp */ true)
 
 #undef TEST_CAST_2WAYS
 
+static FunctionTensorPair
+createAndInitBatchNormTest(glow::PlaceholderBindings &bindings,
+                           glow::ExecutionEngine &EE) {
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  Placeholder *input =
+      mod.createPlaceholder(ElemKind::FloatTy, {32, 3844, 1, 1}, "in", false);
+  Constant *scale = mod.createConstant(ElemKind::FloatTy, {3844}, "scale");
+  Constant *bias = mod.createConstant(ElemKind::FloatTy, {3844}, "bias");
+  Constant *mean = mod.createConstant(ElemKind::FloatTy, {3844}, "mean");
+  Constant *var = mod.createConstant(ElemKind::FloatTy, {3844}, "var");
+  bindings.allocate(input)->getHandle().randomize(-20, 20, mod.getPRNG());
+  scale->getPayloadMutable().getHandle().randomize(0.5, 1.5, mod.getPRNG());
+  bias->getPayloadMutable().getHandle().randomize(-5, 5, mod.getPRNG());
+  mean->getPayloadMutable().getHandle().randomize(-0.1, 0.1, mod.getPRNG());
+  var->getPayloadMutable().getHandle().randomize(0, 40, mod.getPRNG());
+
+  BatchNormalizationNode *BNN = F->createBatchNormalization(
+      "BNN", input, bias, scale, mean, var, 1, 1e-05f);
+  SaveNode *save = F->createSave("save", BNN);
+  Tensor *resultTensor = bindings.allocate(save->getPlaceholder());
+
+  return std::make_pair(F, resultTensor);
+}
+
+TEST_P(OperatorStatelessTest, BatchNorm_Float) {
+  CHECK_IF_ENABLED();
+  compareAgainstInterpreter(getBackendName(), createAndInitBatchNormTest,
+                            ElemKind::FloatTy, ElemKind::FloatTy, 0.0005f,
+                            parCloneCountOpt);
+}
+
+TEST_P(OperatorStatelessTest, BatchNorm_Float16) {
+  CHECK_IF_ENABLED();
+  compareAgainstInterpreter(getBackendName(), createAndInitBatchNormTest,
+                            ElemKind::Float16Ty, ElemKind::Float16Ty, 0.25f,
+                            parCloneCountOpt);
+}
+
 INSTANTIATE_BACKEND_TEST(OperatorStatelessTest);
 INSTANTIATE_BACKEND_TEST(OperatorTest);

@@ -1674,6 +1674,28 @@ public:
   }
 };
 
+class BatchNormalizationNodeImporter : public INNPINodeImporter {
+public:
+  NNPIErrorCode importNode(Node *n, NNPIImporter &importer) override {
+    auto *glowBN = llvm::dyn_cast<BatchNormalizationNode>(n);
+    LOG_AND_RETURN_IF_NOT(ERROR, glowBN, "Bad node type", NNPI_INVALID_PARAM);
+
+    importer.setUsedTensors(
+        {nodeValueName(glowBN->getInput()), nodeValueName(glowBN->getScale())},
+        {nodeValueName(glowBN->getBias()), nodeValueName(glowBN->getMean()),
+         nodeValueName(glowBN->getVar()), nodeValueName(glowBN->getResult())});
+
+    return nnpiNetworkAddBatchNormOp(
+        importer.getNetwork(), glowBN->getName().begin(),
+        nodeValueName(glowBN->getInput()).c_str(),
+        nodeValueName(glowBN->getResult()).c_str(),
+        nodeValueName(glowBN->getMean()).c_str(),
+        nodeValueName(glowBN->getVar()).c_str(),
+        nodeValueName(glowBN->getScale()).c_str(),
+        nodeValueName(glowBN->getBias()).c_str(), glowBN->getEpsilon());
+  }
+};
+
 //////////////////////////////////////////////////////////////////////////
 namespace {
 std::unordered_map<
@@ -1760,6 +1782,7 @@ std::unordered_map<
     {"NNPICustomDSP", std::make_unique<NNPICustomDSPNodeImporter>()},
     {"SpaceToDepth", std::make_unique<SpaceToDepthNodeImporter>()},
     {"Clip", std::make_unique<ClipNodeImporter>()},
+    {"BatchNormalization", std::make_unique<BatchNormalizationNodeImporter>()},
 };
 }
 

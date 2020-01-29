@@ -159,6 +159,7 @@ struct EmulatorOnlyTests {
           "BatchedGather/0",
           "batchedReduceMin_Int32/0",
           "batchedReduceMin_Int64/0",
+          "BatchNorm_Float/0",
           "Bucketize/0",
           "CmpEQ/0",
           "ConcatTopK/0",
