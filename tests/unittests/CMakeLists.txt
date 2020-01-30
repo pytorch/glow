@@ -364,7 +364,9 @@ add_executable(OnnxExporterTest
 target_link_libraries(OnnxExporterTest
                       PRIVATE
                         Backend
+                        Backends
                         Graph
+                        GraphOptimizer
                         Importer
                         Exporter
                         ExecutionEngine
@@ -584,4 +586,3 @@ target_link_libraries(CPUJITTest
     TestMain)
 add_custom_target(CPUJITTest_libjit SOURCES ${TEST_LIBJIT}.cpp)
 add_glow_test(CPUJITTest ${GLOW_BINARY_DIR}/tests/CPUJITTest --gtest_output=xml:CPUJITTest.xml)
-
