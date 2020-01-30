@@ -526,7 +526,7 @@ static void createSimpleModule(Module &mod) {
   (void)save;
 }
 
-static void createSimpleSparseNNModule(Module &mod) {
+static void createSimpleSparseNNModule(Module &mod, bool shareSplatWeights) {
   mod.clear();
   auto *F = mod.createFunction("test");
 
@@ -537,16 +537,26 @@ static void createSimpleSparseNNModule(Module &mod) {
   dim_t batchSize = 32;
   dim_t tableEntries = 10;
 
+  NodeValue weights;
+  if (shareSplatWeights) {
+    auto ty =
+        F->getParent()->uniqueType(ElemKind::FloatTy, {numIndices * batchSize});
+    weights = F->createSplat("ones", ty, 1.0)->getResult();
+  }
+
   // Create SLS portion
   for (int table = 0; table < 5; table++) {
     Tensor data(ElemKind::FloatTy, {tableEntries, tableWidth});
-    auto indices = mod.createPlaceholder(
+    auto *indices = mod.createPlaceholder(
         IndexElemKind, {numIndices * batchSize}, "indices", false);
-    auto weights = mod.createPlaceholder(
-        ElemKind::FloatTy, {numIndices * batchSize}, "weights", false);
-    auto lengths = mod.createPlaceholder(ElemKind::Int32ITy, {batchSize},
-                                         "lengths", false);
-    auto output = F->createFusedRowwiseQuantizedSparseLengthsWeightedSum(
+    if (!shareSplatWeights) {
+      weights = mod.createPlaceholder(ElemKind::FloatTy,
+                                      {numIndices * batchSize}, "w", false)
+                    ->getOutput();
+    }
+    auto *lengths = mod.createPlaceholder(ElemKind::Int32ITy, {batchSize},
+                                          "lengths", false);
+    auto *output = F->createFusedRowwiseQuantizedSparseLengthsWeightedSum(
         "SLS", data, weights, indices, lengths, ElemKind::UInt8FusedQTy, false);
     slsOutputs.push_back(output);
   }
@@ -584,7 +594,8 @@ static bool findNodeInFunction(const Function *func,
 /// To check if the generated DAG is correct for the SparseNN Partiton
 /// unnittests. The network used for check is generated from function static
 /// void createSimpleSparseNNModule(Module &mod).
-static void sparseNNPartitionValidation(const DAGListTy &dagList, Module &mod) {
+static void sparseNNPartitionValidation(const DAGListTy &dagList, Module &mod,
+                                        bool shareSplatWeights) {
   int numOfCPUBackends = 0;
   int numOfSLSNodes = 0;
   int numOfFCNodes = 0;
@@ -592,14 +603,21 @@ static void sparseNNPartitionValidation(const DAGListTy &dagList, Module &mod) {
     for (auto &node : dag.nodes) {
       if (node->backendName == "CPU") {
         numOfCPUBackends++;
-        auto func = mod.getFunction(node->name);
+        auto *func = mod.getFunction(node->name);
         if (findNodeInFunction(
                 func,
                 Kinded::Kind::
-                    FusedRowwiseQuantizedSparseLengthsWeightedSumNodeKind) ==
-            true) {
+                    FusedRowwiseQuantizedSparseLengthsWeightedSumNodeKind)) {
           numOfSLSNodes++;
           EXPECT_EQ(node->logicalDevices.size(), 1);
+          if (shareSplatWeights) {
+            for (const Node &N : func->getNodes()) {
+              if (const auto *SLWS = llvm::dyn_cast<
+                      FusedRowwiseQuantizedSparseLengthsWeightedSumNode>(&N)) {
+                EXPECT_TRUE(llvm::isa<SplatNode>(SLWS->getWeights()));
+              }
+            }
+          }
         } else {
           numOfFCNodes++;
           EXPECT_EQ(node->logicalDevices.size(), 3);
@@ -613,9 +631,9 @@ static void sparseNNPartitionValidation(const DAGListTy &dagList, Module &mod) {
   EXPECT_EQ(numOfFCNodes, 1);
 }
 
-/// Test using user-defined backends for SparseNN partition.
-TEST_F(PartitionerTest, SimpleSparseNNPartitioning) {
-  createSimpleSparseNNModule(mod_);
+static void testSimpleSparseNNPartitioning(Module &mod,
+                                           bool shareSplatWeights) {
+  createSimpleSparseNNModule(mod, shareSplatWeights);
   BackendWithoutSub backend1, backend2, backend3;
   std::vector<Backend *> backends;
   backends.emplace_back(&backend1);
@@ -623,18 +641,29 @@ TEST_F(PartitionerTest, SimpleSparseNNPartitioning) {
   backends.emplace_back(&backend3);
   std::vector<DeviceInfo> devices = {
       {400000, "CPU"}, {400000, "CPU"}, {400000, "CPU"}};
-  Partitioner partitioner(&mod_, devices, backends, /* saturateHost */ false);
+  Partitioner partitioner(&mod, devices, backends, /* saturateHost */ false);
   CompilationContext cctx;
   cctx.optimizationOpts.useSparseNNPartitioningScheme = true;
   cctx.optimizationOpts.sparseNNPartitioningSchemeNumCards = 3;
   cctx.optimizationOpts.sparseNNPartitioningSchemeSLSTableKBytesPerCard = 200;
   auto dagList = partitioner.partition(cctx);
   ASSERT_TRUE((bool)dagList);
-  EXPECT_EQ(mod_.getFunctions().size(), 4);
+  EXPECT_EQ(mod.getFunctions().size(), 4);
   EXPECT_EQ(dagList->size(), 1);
-  ASSERT_TRUE(checkSaveNode(mod_));
-  sparseNNPartitionValidation(dagList.get(), mod_);
-  mod_.clear();
+  ASSERT_TRUE(checkSaveNode(mod));
+  sparseNNPartitionValidation(dagList.get(), mod, shareSplatWeights);
+  mod.clear();
+}
+
+/// Test using user-defined backends for SparseNN partition.
+TEST_F(PartitionerTest, SimpleSparseNNPartitioning) {
+  testSimpleSparseNNPartitioning(mod_, /*shareSplatWeights*/ false);
+}
+
+/// Test using user-defined backends for SparseNN partition when weights are
+/// shared Splats by all SLSs.
+TEST_F(PartitionerTest, SimpleSparseNNPartitioning_SharedWeights) {
+  testSimpleSparseNNPartitioning(mod_, /*shareSplatWeights*/ true);
 }
 
 /// To check if the generated DAG is correct for the Heterogeneous Partiton
