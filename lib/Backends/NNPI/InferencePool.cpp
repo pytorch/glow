@@ -803,7 +803,7 @@ Error InferencePoolEnv::init(
     return MAKE_ERR("InferencePool already initialized!");
   }
   numWorkers_ = numWorkers;
-  workersPool_ = std::make_unique<ThreadPool>(numWorkers_);
+  workersPool_ = glow::make_unique<ThreadPool>(numWorkers_);
   deviceTracing_ = deviceTracing;
 
   threadEnvs_.resize(numWorkers_);
