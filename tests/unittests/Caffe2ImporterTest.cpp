@@ -261,7 +261,6 @@ TEST_F(Caffe2ImporterTest, convGroupQuantized) {
             llvm::makeArrayRef(expectedKernelsAndStrides));
   EXPECT_EQ(groupwiseConv->getPads(), llvm::makeArrayRef(expectedPads));
   EXPECT_EQ(groupwiseConv->getGroup(), 2);
-  EXPECT_EQ(groupwiseConv->getGroupwise(), true);
 
   // Check constant inputs.
   Constant *filterConstant =
