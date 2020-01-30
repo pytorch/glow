@@ -100,9 +100,10 @@ public:
 
 class InferencePoolEnv {
   unsigned numWorkers_;
-  std::atomic<unsigned> workerIndex_;
   std::unique_ptr<ThreadPool> workersPool_;
   std::vector<InferenceThreadEnv> threadEnvs_;
+  std::vector<InferenceThreadEnv *> threadEnvsFree_;
+  std::mutex threadEnvsFreeLock_;
   NNPIHostNetwork hostNetwork_;
   NNPIDeviceNetwork deviceNetwork_;
   std::shared_ptr<NNPIDeviceTracing> deviceTracing_;
