@@ -21,7 +21,7 @@ BB.newBackendSpecificNode("CPUMaxSplat")
     .addMember(MemberType::Float, "SplatValue")
     .setDocstring("A Max node with one splat input; CPU specific.");
 
-BB.newNode("CPUConvDKKC8")
+BB.newBackendSpecificNode("CPUConvDKKC8")
     .addInput("Input")
     .addInput("Filter")
     .addInput("Bias")
