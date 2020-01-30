@@ -40,16 +40,18 @@ void testLoadAndSaveONNXModel(const std::string &name, bool zipMode) {
   llvm::errs() << "loading model " << name << "\n";
 
   size_t irVer = 0, opsetVer = 0;
-  Error err = Error::empty();
+
+  // Load model from file.
   {
+    Error err = Error::empty();
     ONNXModelLoader onnxLD(name, {}, {}, *F, &err);
     irVer = onnxLD.getIrVersion();
     opsetVer = onnxLD.getOpSetVersion();
-  }
 
-  if (ERR_TO_BOOL(std::move(err))) {
-    llvm::errs() << "ONNXModelLoader failed to load model: " << name << ": ";
-    FAIL();
+    if (err) {
+      llvm::errs() << "ONNXModelLoader failed to load model: " << name << "\n";
+    }
+    FAIL_TEST_IF_ERR(std::move(err));
   }
 
   llvm::SmallString<64> path;
@@ -59,24 +61,34 @@ void testLoadAndSaveONNXModel(const std::string &name, bool zipMode) {
   EXPECT_EQ(tempFileRes.value(), 0);
 
   std::string outputFilename(path.c_str());
-  err = Error::empty();
+
+  // Write model to file.
   {
+    Error err = Error::empty();
     ONNXModelWriter onnxWR(outputFilename, *F, irVer, opsetVer, &err, !zipMode,
                            zipMode);
-  }
 
-  if (ERR_TO_BOOL(std::move(err))) {
-    llvm::errs() << "ONNXModelWriter failed to write model: " << name << ".\n";
-    llvm::sys::fs::remove(outputFilename);
-    FAIL();
+    if (err) {
+      llvm::errs() << "ONNXModelWriter failed to write model: " << name
+                   << ".\n";
+      llvm::sys::fs::remove(outputFilename);
+    }
+    FAIL_TEST_IF_ERR(std::move(err));
   }
 
   Function *R = mod.createFunction("reload");
-  err = Error::empty();
-  { ONNXModelLoader onnxLD(outputFilename, {}, {}, *R, &err, zipMode); }
-  // llvm::sys::fs::remove(outputFilename);
-  EXPECT_FALSE(ERR_TO_BOOL(std::move(err)))
-      << "ONNXModelLoader failed to reload model: " << outputFilename;
+
+  // Reload model from file.
+  {
+    Error err = Error::empty();
+    ONNXModelLoader onnxLD(outputFilename, {}, {}, *R, &err, zipMode);
+
+    if (err) {
+      llvm::errs() << "ONNXModelLoader failed to reload model: "
+                   << outputFilename << "\n";
+    }
+    FAIL_TEST_IF_ERR(std::move(err));
+  }
 }
 
 bool endsWith(const std::string &full, const std::string &ending) {
@@ -170,4 +182,122 @@ TEST(exporter, onnxModels) {
       setOnnxDefineSymbol({});
     }
   }
+}
+
+TEST(exporter, ChannelwiseQuantizedConvolution) {
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  auto *F = mod.createFunction("F");
+
+  unsigned_t inChannels = 8;
+  unsigned_t inSide = 8;
+  unsigned_t batchSize = 8;
+  unsigned_t outChannels = 8;
+  unsigned_t filterSide = 3;
+  unsigned_t groups = 4;
+
+  Placeholder *input = mod.createPlaceholder(
+      ElemKind::Int8QTy, {batchSize, inSide, inSide, inChannels}, 1.2, 3,
+      "input", /* isTrainable */ false);
+
+  Placeholder *weights = mod.createPlaceholder(
+      ElemKind::Int8QTy,
+      {outChannels, filterSide, filterSide, inChannels / groups}, 2.5, 1,
+      "weights",
+      /* isTrainable */ false);
+
+  Placeholder *bias =
+      mod.createPlaceholder(ElemKind::FloatTy, {outChannels}, "bias",
+                            /* isTrainable */ false);
+
+  Placeholder *scales =
+      mod.createPlaceholder(ElemKind::FloatTy, {outChannels}, "scales",
+                            /* isTrainable */ false);
+
+  Placeholder *offsets =
+      mod.createPlaceholder(ElemKind::Int32ITy, {outChannels}, "offsets",
+                            /* isTrainable */ false);
+
+  std::vector<unsigned_t> kernels = {filterSide, filterSide};
+  std::vector<unsigned_t> strides = {1, 1};
+  std::vector<unsigned_t> pads = {1, 1, 1, 1};
+
+  auto outSize =
+      calculateConvPoolOutputDims(inSide, inSide, kernels, strides, pads);
+  auto *outTy = mod.uniqueType(
+      ElemKind::Int8QTy,
+      {batchSize, outSize.first, outSize.second, outChannels}, 3.8, 4);
+
+  auto *cqConv = F->createChannelwiseQuantizedConv(
+      "cqconv", input, weights, bias, scales, offsets, outTy, kernels, strides,
+      pads, groups);
+
+  auto *save = F->createSave("save_out", cqConv);
+
+  Placeholder *output = save->getPlaceholder();
+
+  ASSERT_TRUE(F->verify());
+
+  PlaceholderBindings bindings;
+  bindings.allocate({weights, bias, scales, offsets, input, output});
+  convertPlaceholdersToConstants(F, bindings, {input, output});
+
+  llvm::SmallString<64> path;
+  auto tempFileRes = llvm::sys::fs::createTemporaryFile(
+      "exportChannelwiseQuantizedConvolution", "output.onnxtxt", path);
+
+  EXPECT_EQ(tempFileRes.value(), 0);
+
+  std::string outputFilename(path.c_str());
+
+  // Write model to file.
+  {
+    size_t irVer = 5, opsetVer = 10;
+    Error err = Error::empty();
+    ONNXModelWriter onnxWR(outputFilename, *F, irVer, opsetVer, &err,
+                           /*textMode*/ true,
+                           /*zipMode*/ false);
+
+    if (err) {
+      llvm::sys::fs::remove(outputFilename);
+    }
+    FAIL_TEST_IF_ERR(std::move(err));
+  }
+
+  // Load model from file.
+  Function *R = mod.createFunction("R");
+  {
+    Error err = Error::empty();
+    ONNXModelLoader onnxLD(outputFilename, {"input"}, {input->getType()}, *R,
+                           &err,
+                           /*zipMode*/ false);
+
+    if (err) {
+      llvm::errs() << "ONNXModelLoader failed to reload model: "
+                   << outputFilename << "\n";
+    }
+    FAIL_TEST_IF_ERR(std::move(err));
+  }
+
+  // Verify reloaded function matches the original.
+  ASSERT_TRUE(R->verify());
+
+  auto *cqConvReloaded = llvm::dyn_cast<ChannelwiseQuantizedConvolutionNode>(
+      R->getNodeByName("cqconv"));
+
+  ASSERT_TRUE(cqConvReloaded != nullptr);
+
+  ASSERT_EQ(cqConvReloaded->getInput().getType(), cqConv->getInput().getType());
+  ASSERT_EQ(cqConvReloaded->getFilter().getType(),
+            cqConv->getFilter().getType());
+  ASSERT_EQ(cqConvReloaded->getBias().getType(), cqConv->getBias().getType());
+  ASSERT_EQ(cqConvReloaded->getScales().getType(),
+            cqConv->getScales().getType());
+  ASSERT_EQ(cqConvReloaded->getOffsets().getType(),
+            cqConv->getOffsets().getType());
+
+  ASSERT_EQ(cqConvReloaded->getKernels(), cqConv->getKernels());
+  ASSERT_EQ(cqConvReloaded->getStrides(), cqConv->getStrides());
+  ASSERT_EQ(cqConvReloaded->getPads(), cqConv->getPads());
+  ASSERT_EQ(cqConvReloaded->getGroup(), cqConv->getGroup());
 }

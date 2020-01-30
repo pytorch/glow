@@ -908,94 +908,6 @@ static void lowerBucketizeNode(Function *F, CompilationContext &cctx,
   replaceAllUsesOfWith(cctx.loweredInfoMap, B.getResult(), convertToIndex);
 }
 
-static void lowerChannelwiseQuantizedConvolutionNode(
-    Function *F, CompilationContext &cctx,
-    const ChannelwiseQuantizedConvolutionNode &CQC) {
-  // ChannelwiseQuantizedConvolutionNode can be represented as a Concatenation
-  // of smaller dimension quantized Convolutions each with their own qparams.
-  // Input channels will be divided into equal groups of consecutive channels.
-  // These will be separately convolved each with its own filter and bias.
-  // This will result in 4 * Group + 1 nodes.
-
-  // Only lowering of groupwise, not channelwise is supported so far.
-  if (!CQC.getGroupwise()) {
-    return;
-  }
-
-  llvm::ArrayRef<unsigned_t> kernels = CQC.getKernels();
-  llvm::ArrayRef<unsigned_t> pads = CQC.getPads();
-  llvm::ArrayRef<unsigned_t> strides = CQC.getStrides();
-  unsigned_t group = CQC.getGroup();
-  auto in = CQC.getInput();
-
-  Constant *filter = llvm::cast<Constant>(CQC.getFilter());
-  Constant *bias = llvm::cast<Constant>(CQC.getBias());
-  Constant *scales = llvm::cast<Constant>(CQC.getScales());
-  Constant *offsets = llvm::cast<Constant>(CQC.getOffsets());
-
-  ShapeNHWC idim = ShapeNHWC(in.dims());
-  ShapeHW kdim(kernels);
-  unsigned inCperG = idim.c / group;
-  unsigned outCperG = filter->dims()[0] / group;
-
-  auto convOutDims = CQC.getResult().dims().vec();
-  convOutDims[3] = outCperG;
-
-  auto filterDims = filter->dims().vec();
-  filterDims[0] = outCperG;
-  filterDims[3] = inCperG;
-
-  // Final output type of each convolution after rescaling
-  auto finalConvOutTy = F->getParent()->uniqueTypeWithNewShape(
-      CQC.getResult().getType(), convOutDims);
-
-  auto scalesHandle = scales->getHandle<float>();
-  auto offsetsHandle = offsets->getHandle<int32_t>();
-
-  Module *M = F->getParent();
-
-  std::vector<NodeValue> branches;
-  for (unsigned_t groupId = 0; groupId < group; groupId++) {
-    float filterScale = scalesHandle.raw(groupId);
-    int32_t filterOffset = offsetsHandle.raw(groupId);
-
-    SliceNode *inSlice =
-        F->createSlice(CQC.getName(), in, {0, 0, 0, groupId * inCperG},
-                       {idim.n, idim.h, idim.w, (groupId + 1) * inCperG});
-
-    // Create quantized filter sliced Constant.
-    Tensor slicedFilterTensor = filter->getPayload().getOwnedSlice(
-        filterDims, {outCperG * groupId, 0, 0, 0});
-    auto quantizedFilterType = slicedFilterTensor.getType();
-    quantizedFilterType.scale_ = filterScale;
-    quantizedFilterType.offset_ = filterOffset;
-    slicedFilterTensor.setType(&quantizedFilterType);
-    Constant *slicedFilterConst =
-        M->createConstant(strFormat("%s_filter", CQC.getName().data()),
-                          std::move(slicedFilterTensor));
-
-    // Create bias sliced Constant. Bias's scale should always be inputScale *
-    // filterScale.
-    TensorQuantizationParams tqp;
-    tqp.offset = 0;
-    tqp.scale = inSlice->getInput().getType()->getScale() * filterScale;
-    Tensor slicedBiasTensor =
-        bias->getPayload().getOwnedSlice({outCperG}, {outCperG * groupId});
-    Tensor quantizedSlicedBiasTensor =
-        quantization::quantizeTensor(slicedBiasTensor, tqp, ElemKind::Int32QTy);
-    Constant *slicedBias =
-        M->createConstant(CQC.getName(), std::move(quantizedSlicedBiasTensor));
-
-    ConvolutionNode *convNode = F->createConv(
-        strFormat("%s_bias", CQC.getName().data()), inSlice, slicedFilterConst,
-        slicedBias, finalConvOutTy, kernels, strides, pads,
-        /* group */ 1);
-    branches.push_back(convNode);
-  }
-  auto *result = F->createConcat(CQC.getName(), branches, /* dimension */ 3);
-  replaceAllUsesOfWith(cctx.loweredInfoMap, CQC.getResult(), result);
-}
-
 static void lowerSigmoidCrossEntropyWithLogitsNode(
     Function *F, CompilationContext &cctx,
     const SigmoidCrossEntropyWithLogitsNode &SCEL) {
@@ -1339,7 +1251,6 @@ bool glow::lowerNode(Function *F, Node *node, CompilationContext &cctx) {
     CASE_LOWER(SigmoidCrossEntropyWithLogits);
     CASE_LOWER(BatchedReduceMean);
     CASE_LOWER(Bucketize);
-    CASE_LOWER(ChannelwiseQuantizedConvolution);
     CASE_LOWER(ChannelShuffle);
     CASE_LOWER(Tile);
     CASE_LOWER(ReplaceNaN);

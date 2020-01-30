@@ -106,13 +106,11 @@ int main(int argc, char **argv) {
       .addMember(MemberType::VectorUnsigned, "Strides")
       .addMember(MemberType::VectorUnsigned, "Pads")
       .addMember(MemberType::Unsigned, "Group")
-      .addMember(MemberType::Boolean, "Groupwise")
       .addResultFromCtorArg()
       .setDocstring("Performs 2D Convolution using a given Input, Filter, and "
                     "Bias tensors, as well as provided Kernels, Strides, Pads, "
                     "and Group. Quantization parameters are provided by Scales "
-                    "and Offsets. If Groupwise is true then the quantization "
-                    "is per-group otherwise it is per-channel.");
+                    "and Offsets.");
 
   BB.newNode("Convolution3D")
       .addInput("Input")

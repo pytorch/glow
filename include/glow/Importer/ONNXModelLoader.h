@@ -89,6 +89,10 @@ class ONNXModelLoader
   Error loadConv(const ONNX_NAMESPACE::NodeProto &op,
                  const ArgumentDictionaryTy &dict);
 
+  /// Load ChannelwiseQuantizedConvolution Glow operator.
+  Error loadChannelwiseQuantizedConvolution(const ONNX_NAMESPACE::NodeProto &op,
+                                            const ArgumentDictionaryTy &dict);
+
   /// Load MaxPool or AveragePool ONNX operator. \p typeName is the name of the
   /// ONNX operator being loaded, either MaxPool or AveragePool.
   Error loadPool(const ONNX_NAMESPACE::NodeProto &op,
