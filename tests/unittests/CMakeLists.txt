@@ -365,6 +365,7 @@ target_link_libraries(OnnxExporterTest
                       PRIVATE
                         Backend
                         Graph
+                        GraphOptimizer
                         Importer
                         Exporter
                         ExecutionEngine
