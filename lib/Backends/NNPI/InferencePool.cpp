@@ -807,6 +807,7 @@ Error InferencePoolEnv::init(
   deviceTracing_ = deviceTracing;
 
   threadEnvs_.resize(numWorkers_);
+  threadEnvsFree_.resize(numWorkers_);
   if (threadEnvs_.size() != numWorkers_) {
     return MAKE_ERR("InferencePool failed to initialize thread env");
   }
@@ -867,7 +868,9 @@ Error InferencePoolEnv::init(
     if (!success) {
       return MAKE_ERR("Failed to initialize thread env");
     }
+    threadEnvsFree_.push_back(&tEnv);
   }
+
   if (deviceOptions_->inferOnDevice &&
       hostNetwork_ != NNPI_INVALID_NNPIHANDLE) {
     DBG_MEM_USAGE("call nnpiHostNetworkDestroy");
@@ -884,11 +887,22 @@ void InferencePoolEnv::stop(bool block) { workersPool_->stop(block); }
 void InferencePoolEnv::execute(RunIdentifierTy runId,
                                std::unique_ptr<ExecutionContext> ctx,
                                runtime::ResultCBTy resultCB) {
-  unsigned id = (workerIndex_++) % numWorkers_;
-  workersPool_->submit([this, env = &(threadEnvs_.at(id)), runId,
-                        ctx = std::move(ctx),
+  workersPool_->submit([this, runId, ctx = std::move(ctx),
                         resultCB = std::move(resultCB)]() mutable {
+    InferenceThreadEnv *env = nullptr;
+    {
+      const std::lock_guard<std::mutex> lock(threadEnvsFreeLock_);
+      CHECK(!threadEnvsFree_.empty());
+      env = *threadEnvsFree_.rbegin();
+      threadEnvsFree_.pop_back();
+    }
+
     env->execute(runId, std::move(ctx), resultCB);
+
+    {
+      const std::lock_guard<std::mutex> lock(threadEnvsFreeLock_);
+      threadEnvsFree_.push_back(env);
+    }
   });
 }
 
