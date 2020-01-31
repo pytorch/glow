@@ -2932,3 +2932,48 @@ TEST_F(OnnxImporterTest, importFlipWithAxis) {
 TEST_F(OnnxImporterTest, importFlipNoAxis) {
   importFlip(GLOW_DATA_PATH "tests/models/onnxModels/flipNoAxis.onnxtxt");
 }
+
+/// Test loading FRWQSparseLengthsWeightedSum from an ONNX model.
+TEST_F(OnnxImporterTest, importFRWQSLWS) {
+  ExecutionEngine EE;
+  auto &mod = EE.getModule();
+  auto *F = mod.createFunction("main");
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/fusedSLWS.onnxtxt");
+  Placeholder *output;
+  {
+    Tensor weights(ElemKind::FloatTy, {8});
+    Tensor indices(IndexElemKind, {8});
+    Tensor lengths(ElemKind::Int32ITy, {5});
+    ONNXModelLoader onnxLD(
+        netFilename, {"weights", "indices", "lengths"},
+        {&weights.getType(), &indices.getType(), &lengths.getType()}, *F);
+    output = EXIT_ON_ERR(onnxLD.getSingleOutput());
+  }
+
+  // Verify structure: {Constant, PH, PH, PH} ->  FRWQSLWS -> Save -> PH.
+  EXPECT_EQ(mod.getPlaceholders().size(), 4);
+  // FRWQSLWS, Save nodes
+  EXPECT_EQ(F->getNodes().size(), 2);
+  auto *save = getSaveNodeFromDest(output);
+  auto *FRWQSLWS =
+      llvm::dyn_cast<FusedRowwiseQuantizedSparseLengthsWeightedSumNode>(
+          save->getInput().getNode());
+  ASSERT_TRUE(FRWQSLWS);
+  auto *data = llvm::dyn_cast<Constant>(FRWQSLWS->getData());
+  ASSERT_TRUE(data);
+  EXPECT_EQ(data->dims().vec(), std::vector<dim_t>({3, 10}));
+  EXPECT_EQ(data->getType()->getElementType(), ElemKind::UInt8FusedQTy);
+  auto *weights = llvm::dyn_cast<Placeholder>(FRWQSLWS->getWeights());
+  ASSERT_TRUE(weights);
+  EXPECT_EQ(weights->dims().vec(), std::vector<dim_t>({8}));
+  EXPECT_EQ(weights->getType()->getElementType(), ElemKind::FloatTy);
+  auto *indices = llvm::dyn_cast<Placeholder>(FRWQSLWS->getIndices());
+  ASSERT_TRUE(indices);
+  EXPECT_EQ(indices->dims().vec(), std::vector<dim_t>({8}));
+  EXPECT_EQ(indices->getType()->getElementType(), ElemKind::Int64ITy);
+  auto *lengths = llvm::dyn_cast<Placeholder>(FRWQSLWS->getLengths());
+  ASSERT_TRUE(lengths);
+  EXPECT_EQ(lengths->dims().vec(), std::vector<dim_t>({5}));
+  EXPECT_EQ(lengths->getType()->getElementType(), ElemKind::Int32ITy);
+}
