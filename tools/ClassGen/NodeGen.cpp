@@ -985,6 +985,7 @@ int main(int argc, char **argv) {
   BB.newNode("ConvertTo")
       .addInput("Input")
       .addResultFromCtorArg()
+      .dataParallel()
       .setDocstring(
           "Convert the input from its current type to the destination "
           "type. The input and output types must have the same shapes. "

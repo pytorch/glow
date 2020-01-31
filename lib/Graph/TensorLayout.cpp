@@ -602,11 +602,15 @@ bool TensorLayoutCommon::isSatisfiedBy(
   return true;
 }
 
-static std::string returnBaseReqOrNHWC(std::string baseReq) {
+static std::string returnBaseReqOrNHWC(std::string baseReq, const Node *node) {
   auto baseReqHelper = TensorLayoutDescription(baseReq);
   if (!baseReqHelper.isSameLayout(
           CanonicalTensorLayout::getInstance().getLayoutsForDims()[4])) {
     return baseReq;
+  }
+  if (CanonicalTensorLayout::getInstance().acceptsAnyLayout(node)) {
+    // These nodes accept any 4-D layout.
+    return baseReqHelper.getSerializedLayout();
   }
   // NHWC is the canonical default
   return CanonicalTensorLayout::getInstance().getDefaultNDLayout(4);
@@ -619,14 +623,14 @@ CanonicalTensorLayout::getNthInputLayoutRequirements(const Node *node,
   if (acceptsAnyLayout(node)) {
     return baseReq;
   }
-  return returnBaseReqOrNHWC(baseReq);
+  return returnBaseReqOrNHWC(baseReq, node);
 }
 
 std::string
 CanonicalTensorLayout::getNthResultLayoutRequirements(const Node *node,
                                                       size_t n) {
   auto baseReq = TensorLayoutCommon::getNthResultLayoutRequirements(node, n);
-  return returnBaseReqOrNHWC(baseReq);
+  return returnBaseReqOrNHWC(baseReq, node);
 }
 
 std::string CanonicalTensorLayout::getDefaultNDLayout(unsigned dims) const {
