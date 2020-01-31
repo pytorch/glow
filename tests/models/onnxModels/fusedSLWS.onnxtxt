@@ -1,0 +1,80 @@
+ir_version: 7
+producer_name: "ONNXModelWriter"
+graph {
+  node {
+    input: "data"
+    input: "weights"
+    input: "indices"
+    input: "lengths"
+    output: "save"
+    name: "RQSLWS"
+    op_type: "FusedRowwiseQuantizedSparseLengthsWeightedSum"
+  }
+  name: "glow"
+  initializer {
+    dims: 3
+    dims: 10
+    data_type: 2
+    name: "data"
+    raw_data: "\324\377\3163\232;\000\000\000\000\254\377\016tZ<\000\000\000\000\311\377\204\035\267<\000\000\000\000"
+    doc_string: "ui8fused"
+  }
+  input {
+    name: "weights"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 8
+          }
+        }
+      }
+    }
+  }
+  input {
+    name: "indices"
+    type {
+      tensor_type {
+        elem_type: 7
+        shape {
+          dim {
+            dim_value: 8
+          }
+        }
+      }
+    }
+  }
+  input {
+    name: "lengths"
+    type {
+      tensor_type {
+        elem_type: 6
+        shape {
+          dim {
+            dim_value: 5
+          }
+        }
+      }
+    }
+  }
+  output {
+    name: "save"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 5
+          }
+          dim {
+            dim_value: 2
+          }
+        }
+      }
+    }
+  }
+}
+opset_import {
+  version: 9
+}
