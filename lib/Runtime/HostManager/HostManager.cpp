@@ -275,17 +275,8 @@ Error HostManager::removeNetwork(llvm::StringRef networkName) {
   auto &nodes = networkIterator->second.dag.nodes;
   for (auto &node : nodes) {
     for (auto device : node->deviceIDs) {
-      std::promise<void> removeNetwork;
-      auto done = removeNetwork.get_future();
-      std::unique_ptr<Error> removeErr;
-      devices_[device]->evictNetwork(
-          node->name,
-          [&removeNetwork, &removeErr](std::string name, Error err) {
-            removeErr = glow::make_unique<Error>(std::move(err));
-            removeNetwork.set_value();
-          });
-      done.get();
-      err.set(std::move(*DCHECK_NOTNULL(removeErr.get())));
+      Error evictErr = provisioner_->evictFunction(node->name, device);
+      err.set(std::move(evictErr));
     }
     // Also remove compiledFunction from Provisioner.
     err.set(provisioner_->removeFunction(node->name));

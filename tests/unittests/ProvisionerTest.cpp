@@ -103,3 +103,24 @@ TEST_F(ProvisionerTest, provisionDagFail) {
   // Expect that there was an Error when provisioning
   EXPECT_TRUE(ERR_TO_BOOL(std::move(err)));
 }
+
+TEST_F(ProvisionerTest, provisionFailCleanup) {
+  // We want this provisioning to fail after adding the first partition
+  // successfully. This is to test that cleanup properly evicts networks.
+  DeviceConfig configBig("CPU");
+  DeviceConfig configSmall("CPU");
+  configSmall.setDeviceMemory(1);
+  std::unique_ptr<DeviceManager> deviceBig(new CPUDeviceManager(configBig));
+  std::unique_ptr<DeviceManager> deviceSmall(new CPUDeviceManager(configSmall));
+  DeviceManagerMapTy devices;
+  devices.emplace(0, std::move(deviceBig));
+  devices.emplace(1, std::move(deviceSmall));
+
+  auto mod = setupModule(2);
+  auto networks = setupDAG(2, 0);
+  CompilationContext cctx;
+  Provisioner provisioner(devices);
+  auto err = provisioner.provision(networks, *mod.get(), cctx);
+  // Expect that there was an Error when provisioning
+  EXPECT_TRUE(ERR_TO_BOOL(std::move(err)));
+}
