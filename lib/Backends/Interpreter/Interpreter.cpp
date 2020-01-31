@@ -210,7 +210,7 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
            (NI.getInElemTy(ChannelwiseQuantizedConvolutionNode::FilterIdx) ==
             ElemKind::Int8QTy) &&
            (NI.getInElemTy(ChannelwiseQuantizedConvolutionNode::BiasIdx) ==
-            ElemKind::Int32QTy) &&
+            ElemKind::FloatTy) &&
            (NI.getInElemTy(ChannelwiseQuantizedConvolutionNode::ScalesIdx) ==
             ElemKind::FloatTy) &&
            (NI.getInElemTy(ChannelwiseQuantizedConvolutionNode::OffsetsIdx) ==
@@ -631,6 +631,18 @@ bool Interpreter::verify(const Function &F, bool verbose) const {
     if (!checkNoFusionForNode(N)) {
       return false;
     }
+    switch (N.getKind()) {
+    case Kinded::Kind::ChannelwiseQuantizedConvolutionNodeKind: {
+      auto *CQCI = llvm::cast<ChannelwiseQuantizedConvolutionNode>(&N);
+      if (!CQCI->getGroupwise()) {
+        report("Glow Interpreter does not support Non-groupwise variant");
+        return false;
+      }
+      continue;
+    }
+    default:
+      continue;
+    }
   }
   return true;
 }
@@ -660,6 +672,18 @@ bool Interpreter::verify(const IRFunction &IR) const {
     if (!checkLayoutForInstr(I)) {
       return false;
     }
+    switch (I.getKind()) {
+    case Kinded::Kind::ChannelwiseQuantizedConvolutionInstKind: {
+      auto *CQCI = llvm::cast<ChannelwiseQuantizedConvolutionInst>(&I);
+      if (!CQCI->getGroupwise()) {
+        report("Glow Interpreter does not support Non-groupwise variant");
+        return false;
+      }
+      continue;
+    }
+    default:
+      continue;
+    }
   }
   return true;
 }
@@ -668,6 +692,7 @@ bool Interpreter::shouldLower(const Node *N) const {
   switch (N->getKind()) {
   case Kinded::Kind::ConvolutionNodeKind:
   case Kinded::Kind::SparseLengthsSumNodeKind:
+  case Kinded::Kind::ChannelwiseQuantizedConvolutionNodeKind:
   case Kinded::Kind::FullyConnectedNodeKind:
     return false;
   default:

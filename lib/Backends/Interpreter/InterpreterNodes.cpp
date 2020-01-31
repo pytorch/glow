@@ -638,7 +638,7 @@ void BoundInterpreterFunction::fwdChannelwiseQuantizedConvolutionInst(
   auto inW = getWeightHandle<int8_t>(I->getSrc());
   auto outW = getWeightHandle<int8_t>(I->getDest());
   auto filterW = getWeightHandle<int8_t>(I->getFilter());
-  auto biasW = getWeightHandle<int32_t>(I->getBias());
+  auto biasW = getWeightHandle<float>(I->getBias());
   auto scalesW = getWeightHandle<float>(I->getScales());
   auto offsetsW = getWeightHandle<int32_t>(I->getOffsets());
 
@@ -711,8 +711,7 @@ void BoundInterpreterFunction::fwdChannelwiseQuantizedConvolutionInst(
             }
 
             // Scale the bias to match the scale of the matrix multiplication.
-            AccumulatorTy B =
-                std::round(biasW.at({d}) * outScale / matMulScale);
+            AccumulatorTy B = std::round(biasW.at({d}) / matMulScale);
 
             // Add the bias:
             sum += B;
