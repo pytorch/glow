@@ -122,6 +122,14 @@ But in addition to those there are quantization specific optimizations:
       * Convolution
       * Splat
 
+  * Combine Arithemtic operations into Batch Normalization.
+
+    When a chain of Arithmetic nodes (each operating on a constant on one side) is right
+    below BatchNorm node, the chain is folded into the Batch Norm node.
+
+    When a chain of Arithmetic nodes (each operating on a constant on one side) is right
+    below Convolution node, the chain is folded into a BatchNorm.
+
   * Combine RescaleQuantized operator down into the operation
 
     This optimization allows eliminating redundant rescale operations when the next

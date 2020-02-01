@@ -1527,6 +1527,261 @@ bool OptimizeBatchNorm::run(Function *F, const CompilationContext &cctx) {
   return changed;
 }
 
+/// If \p node has uses, and all of them have one user node, return this user
+/// node. Otherwise, return nullptr.
+static Node *getOnlyUser(Node &node) {
+  if (!node.hasUsers()) {
+    // No users.
+    return nullptr;
+  }
+  Node *first = node.getUsers().front().getUser();
+  for (auto &U : node.getUsers()) {
+    if (U.getUser() != first) {
+      // Multiple users.
+      return nullptr;
+    }
+  }
+  // One user.
+  return first;
+}
+
+/// Checks that \p tile sub-tensors along \p chId axis repeat.
+/// It also extracts the repeated dimension values into \p result.
+static bool isConstBroadcasted(std::vector<float> &result, const Constant &tile,
+                               int32_t chId) {
+  // TODO: This limitation can be lifted, but that is for simplicity.
+  if (tile.getType()->dims().size() != 4) {
+    return false;
+  }
+  // TODO: We can also support quantized constants if there is a need in it.
+  if (tile.getType()->getElementType() != ElemKind::FloatTy) {
+    return false;
+  }
+  auto handle = tile.getPayload().getHandle<float>();
+  glow::dim_t n, h, w, c;
+  for (c = 0; c < tile.getType()->dims()[chId]; c++) {
+    std::vector<glow::dim_t> dims = {c, 0, 0, 0};
+    std::rotate(dims.begin(), dims.begin() + dims.size() - chId, dims.end());
+    const float expected = handle.at(llvm::ArrayRef<glow::dim_t>(dims));
+    for (n = 0; n < tile.getType()->dims()[(chId + 1) % 4]; n++) {
+      for (h = 0; h < tile.getType()->dims()[(chId + 2) % 4]; h++) {
+        for (w = 0; w < tile.getType()->dims()[(chId + 3) % 4]; w++) {
+          std::vector<glow::dim_t> dimsE = {c, n, h, w};
+          std::rotate(dimsE.begin(), dimsE.begin() + dimsE.size() - chId,
+                      dimsE.end());
+          if (handle.at(llvm::ArrayRef<glow::dim_t>(dims)) != expected) {
+            return false;
+          }
+        }
+      }
+    }
+    result[c] = expected;
+  }
+  return true;
+}
+
+/// Collects the longest chain of arithmetic operations with constants starting
+/// from \p start. Updates \p scale and \p bias as it collects the operands.
+/// \p returns the last node in the chain.
+static NodeValue collectArithmeticChain(Function *F, NodeValue start,
+                                        Constant &scale, Constant &bias,
+                                        int32_t chIdx) {
+
+  Node *user = getOnlyUser(*start.getNode());
+  NodeValue chainEnd = start;
+
+  auto isSupportedForMerge = [](const Node *n) {
+    return isa<MulNode>(n) || isa<AddNode>(n) || isa<SubNode>(n) ||
+           isa<DivNode>(n);
+  };
+
+  while (user && isSupportedForMerge(user)) {
+    // Paranoid
+    assert(user->isArithmetic() && "Not an arithmetic node!");
+
+    auto lhs = user->getNthInput(ArithmeticNode::LHSIdx);
+    auto rhs = user->getNthInput(ArithmeticNode::RHSIdx);
+
+    // Paranoid.
+    assert(((lhs == chainEnd) || (rhs == chainEnd)) && "Not a user?");
+
+    auto out = user->getNthResult(ArithmeticNode::ResultIdx);
+
+    // Quantized arithmetic operations may change scale of result, we don't want
+    // to deal with that. May be supported later if needed.
+    if (lhs.getType() != out.getType() || rhs.getType() != out.getType()) {
+      break;
+    }
+
+    // Only take this one if its other argument is a constant.
+    // TODO: We can also support Splat here if needed.
+    auto *c = dyn_cast<Constant>(lhs == chainEnd ? rhs : lhs);
+    if (!c) {
+      break;
+    }
+
+    const dim_t numChannels = c->dims()[chIdx];
+
+    std::vector<float> toMerge(c->dims()[chIdx]);
+    if (!isConstBroadcasted(toMerge, *c, chIdx)) {
+      break;
+    }
+
+    auto biasH = bias.getPayloadMutable().getHandle();
+    auto scaleH = scale.getPayloadMutable().getHandle();
+
+    for (dim_t i = 0; i < numChannels; i++) {
+      if (isa<DivNode>(user)) {
+        scaleH.raw(i) /= toMerge[i];
+        biasH.raw(i) /= toMerge[i];
+      } else if (isa<MulNode>(user)) {
+        scaleH.raw(i) *= toMerge[i];
+        biasH.raw(i) *= toMerge[i];
+      } else if (isa<SubNode>(user)) {
+        // TODO: Can we support Sub(Constant, Chain)?
+        if (chainEnd == rhs) {
+          break;
+        }
+        biasH.raw(i) -= toMerge[i];
+      } else if (isa<AddNode>(user)) {
+        biasH.raw(i) += toMerge[i];
+      } else {
+        llvm_unreachable("Unsupported type!");
+      }
+    }
+    chainEnd = user->getNthResult(ArithmeticNode::ResultIdx);
+    user = getOnlyUser(*user);
+  }
+  return chainEnd;
+}
+
+/// Find the longest chain of Mul/Sub/Add/Div under a Convolution node that
+/// operate on Constant and fold them into a new BatchNormalization node.
+bool FoldArithmeticChainUnderConvIntoBN::run(Function *F,
+                                             const CompilationContext &cctx) {
+  bool changed = false;
+
+  for (auto &node : F->getNodes()) {
+    auto *CN = dyn_cast<ConvolutionNode>(&node);
+    if (!CN) {
+      continue;
+    }
+    auto bias = CN->getBias();
+    // Conv is in NHWC format - channel is dim 3.
+    int32_t chIdx = 3;
+
+    // TODO: Support quantized constants if needed.
+    if (bias.getType()->getElementType() != ElemKind::FloatTy) {
+      continue;
+    }
+
+    // Provide collectArithmeticChain w/ bias/scale that have identity values
+    // as we are creating new BN consisted of the arithmetic nodes that the
+    // function will find.
+    auto *newScale = F->getParent()->createConstant(bias.getType(), "BN.scale");
+    auto *newBias = F->getParent()->createConstant(bias.getType(), "BN.bias");
+
+    newScale->getPayloadMutable().getHandle<float>().clear(1.f);
+    newBias->getPayloadMutable().getHandle<float>().clear(0.f);
+
+    // Collect the chain and compute the new scale and bias.
+    NodeValue chainEnd =
+        collectArithmeticChain(F, CN->getResult(), *newScale, *newBias, chIdx);
+    if (chainEnd == CN->getResult()) {
+      F->getParent()->eraseConstant(newScale);
+      F->getParent()->eraseConstant(newBias);
+      continue;
+    }
+
+    // Compute the shape of batch normalization constants (array of
+    // {depth} elements).
+    glow::dim_t size = newScale->getPayloadMutable().getHandle<float>().size();
+    auto depthTy =
+        F->getParent()->uniqueTypeWithNewShape(bias.getType(), {size});
+
+    Tensor varianceT(depthTy);
+    varianceT.init(glow::Tensor::InitKind::Broadcast, 1.0f, F->getPRNG());
+    auto variance = F->getParent()->createConstant("BN.var", varianceT);
+
+    Tensor meanT(depthTy);
+    meanT.zero();
+    auto mean = F->getParent()->createConstant("BN.mean", meanT);
+
+    // Create a BN with new parameters.
+    auto *nBN = F->createBatchNormalization("BatchNorm", &node, newBias,
+                                            newScale, mean, variance, 3, 0, 0);
+    chainEnd.replaceAllUsesOfWith(nBN);
+    changed = true;
+  }
+  return changed;
+}
+
+/// For each BatchNormalization node in \p F, find the longest chain of
+/// Mul/Sub/Add/Div operations with constants that use it and merge all those
+/// operations into the BatchNormalization.
+bool FoldBatchNormalizationWithArithmeticChain::run(
+    Function *F, const CompilationContext &cctx) {
+  bool changed = false;
+  for (auto &node : F->getNodes()) {
+    auto *BN = dyn_cast<BatchNormalizationNode>(&node);
+    if (!BN) {
+      continue;
+    }
+
+    // Expecting constant as const folding took place already.
+    auto *scaleC = dyn_cast<Constant>(BN->getScale());
+    auto *biasC = dyn_cast<Constant>(BN->getBias());
+    if (!scaleC || !biasC) {
+      continue;
+    }
+
+    // TODO: Support quantized constants if needed.
+    if (scaleC->getType()->getElementType() != ElemKind::FloatTy ||
+        biasC->getType()->getElementType() != ElemKind::FloatTy) {
+      continue;
+    }
+
+    auto *newScaleC =
+        F->getParent()->createConstant(scaleC->getType(), scaleC->getName());
+    Tensor scaleT = scaleC->getPayload().getUnowned(scaleC->dims());
+    newScaleC->assign(&scaleT);
+
+    auto *newBiasC =
+        F->getParent()->createConstant(biasC->getType(), biasC->getName());
+    Tensor biasT = biasC->getPayload().getUnowned(biasC->dims());
+    newBiasC->assign(&biasT);
+
+    // Collect the chain and compute the new scale and bias.
+    NodeValue chainEnd = collectArithmeticChain(F, BN->getResult(), *newScaleC,
+                                                *newBiasC, BN->getChannelIdx());
+    if (chainEnd == BN->getResult()) {
+      F->getParent()->eraseConstant(newScaleC);
+      F->getParent()->eraseConstant(newBiasC);
+      continue;
+    }
+
+    Node *newScaleN = newScaleC, *newBiasN = newBiasC;
+    if (isa<QuantizeNode>(BN->getScale())) {
+      newScaleN = F->createQuantize(newScaleN->getName(), newScaleN,
+                                    BN->getScale().getType());
+    }
+    if (isa<QuantizeNode>(BN->getBias())) {
+      newBiasN = F->createQuantize(newBiasN->getName(), newBiasN,
+                                   BN->getBias().getType());
+    }
+
+    // Create a BN with new parameters.
+    auto *newBN = F->createBatchNormalization(
+        BN->getName(), BN->getInput(), newBiasN, newScaleN, BN->getMean(),
+        BN->getVar(), BN->getChannelIdx(), BN->getEpsilon(), BN->getMomentum());
+
+    chainEnd.replaceAllUsesOfWith(newBN);
+    changed = true;
+  }
+
+  return changed;
+}
+
 /// \returns true if all dimensions of the \p input tensors are the same
 /// except for the provided \p dimension, otherwise return false.
 static bool checkConcatNodeUniformDims(llvm::ArrayRef<NodeValue> inputs,

@@ -386,6 +386,168 @@ TEST_F(GraphOptz, optimizeBatchNormAfterConvWithPred) {
   EXPECT_TRUE(llvm::isa<SaveNode>(save));
 }
 
+/// Testing merge of single-user arithmetic operation chain (Sub, Mul, Add)
+/// into a BatchNorm.
+TEST_F(GraphOptz, MergeBatchNormalizationWithArithmeticChainTest) {
+  // Inputs.
+  auto *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {3, 2, 2, 4}, "input", false);
+  auto *var = mod_.createConstant(ElemKind::FloatTy, {4}, "var");
+  auto *mean = mod_.createConstant(ElemKind::FloatTy, {4}, "mean");
+  auto *beta = mod_.createConstant(ElemKind::FloatTy, {4}, "beta");
+  auto *gamma = mod_.createConstant(ElemKind::FloatTy, {4}, "gamma");
+
+  Node *subC = mod_.createConstant(ElemKind::FloatTy, {3, 2, 2, 4}, "subC");
+  Node *mulC = mod_.createConstant(ElemKind::FloatTy, {3, 2, 2, 4}, "mulC");
+  Node *addC = mod_.createConstant(ElemKind::FloatTy, {3, 2, 2, 4}, "addC");
+  Node *divC = mod_.createConstant(ElemKind::FloatTy, {3, 2, 2, 4}, "divC");
+
+  // Fill tensors to check boundary values after the transformation.
+  std::vector<float> betaV = {1., 2., 3., 7.};
+  std::vector<float> gammaV = {4., 5., 6., 7.};
+
+  var->getPayloadMutable().getHandle<float>() = {1., 1., 1., 1.};
+  mean->getPayloadMutable().getHandle<float>() = {0., 0., 0., 0.};
+  beta->getPayloadMutable().getHandle<float>() = betaV;
+  gamma->getPayloadMutable().getHandle<float>() = gammaV;
+
+  // For at least one node (sub) make values within channel different, to test
+  // folding better.
+  const std::vector<float> subV = {1, 2., 3., 4.};
+  const float mulV = 4., addV = 3., divV = 2.;
+  auto subH = llvm::cast<Constant>(subC)->getHandle<float>();
+  subH = {1., 2., 3., 4., 1., 2., 3., 4., 1., 2., 3., 4., 1., 2., 3., 4.,
+          1., 2., 3., 4., 1., 2., 3., 4., 1., 2., 3., 4., 1., 2., 3., 4.,
+          1., 2., 3., 4., 1., 2., 3., 4., 1., 2., 3., 4., 1., 2., 3., 4.};
+
+  llvm::cast<Constant>(mulC)->getHandle<float>().clear(mulV);
+  llvm::cast<Constant>(addC)->getHandle<float>().clear(addV);
+  llvm::cast<Constant>(divC)->getHandle<float>().clear(divV);
+
+  BatchNormalizationNode *bn =
+      F_->createBatchNormalization("batch", input, beta, gamma, mean, var, 3);
+
+  auto *sub = F_->createSub("sub", bn, subC);
+  auto *mul = F_->createMul("mul", sub, mulC);
+  auto *add = F_->createAdd("add", addC, mul);
+  auto *div = F_->createDiv("div", add, divC);
+  auto *res = F_->createSave("save", div);
+
+  // Compile.
+  EXPECT_EQ(F_->getNodes().size(), 6);
+  ::glow::convertPlaceholdersToConstants(F_, bindings_, {input});
+  optimizedF_ = optimizeFunction(F_);
+  EXPECT_EQ(optimizedF_->getNodes().size(), 2);
+
+  Constant *cs, *cb;
+
+  auto *opt_res = findFunctionNodeByName<SaveNode>(optimizedF_, res->getName());
+
+  auto *newBn = llvm::dyn_cast<BatchNormalizationNode>(opt_res->getInput());
+  ASSERT_TRUE(newBn);
+
+  cs = llvm::dyn_cast<Constant>(newBn->getScale());
+  cb = llvm::dyn_cast<Constant>(newBn->getBias());
+  ASSERT_TRUE(cs);
+  ASSERT_TRUE(cb);
+  ASSERT_TRUE(cs->getType()->isFPType());
+  ASSERT_TRUE(cb->getType()->isFPType());
+
+  auto hs = cs->getHandle<float>();
+  auto hb = cb->getHandle<float>();
+
+  // Verify that scale and offset are computed correctly.
+  for (dim_t i = 0; i < 4; i++) {
+    const float expScale = gammaV[i] * mulV / divV;
+    const float expBias = ((betaV[i] - subV[i]) * mulV + addV) / divV;
+    EXPECT_EQ(expScale, hs.raw(i));
+    EXPECT_EQ(expBias, hb.raw(i));
+  }
+
+  bindings_.allocate(mod_.getPlaceholders());
+  bindings_.get(input)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
+  checkNumericalEquivalence();
+}
+
+/// Testing merge of single-user arithmetic operation chain (Sub, Mul, Add)
+/// into a BatchNorm.
+TEST_F(GraphOptz, FoldArithmeticChainAfterConvIntoBatchNorm) {
+  Node *subC = mod_.createConstant(ElemKind::FloatTy, {2, 3, 3, 3}, "subC");
+  Node *mulC = mod_.createConstant(ElemKind::FloatTy, {2, 3, 3, 3}, "mulC");
+  Node *addC = mod_.createConstant(ElemKind::FloatTy, {2, 3, 3, 3}, "addC");
+  Node *divC = mod_.createConstant(ElemKind::FloatTy, {2, 3, 3, 3}, "divC");
+
+  // Start with identity values.
+  std::vector<float> betaV = {0., 0., 0.};
+  std::vector<float> gammaV = {1., 1., 1.};
+
+  // For at least one node make values within channel different, to test
+  // the folding better (ideally all should have different values).
+  const std::vector<float> subV = {1, 2., 3.};
+  const float mulV = 4., addV = 3., divV = 2.;
+  llvm::cast<Constant>(mulC)->getHandle<float>().clear(mulV);
+  llvm::cast<Constant>(addC)->getHandle<float>().clear(addV);
+  llvm::cast<Constant>(divC)->getHandle<float>().clear(divV);
+  auto subH = llvm::cast<Constant>(subC)->getHandle<float>();
+  subH = {1, 2, 3, 1, 2, 3, 1, 2, 3, 1, 2, 3, 1, 2, 3, 1, 2, 3,
+          1, 2, 3, 1, 2, 3, 1, 2, 3, 1, 2, 3, 1, 2, 3, 1, 2, 3,
+          1, 2, 3, 1, 2, 3, 1, 2, 3, 1, 2, 3, 1, 2, 3, 1, 2, 3};
+
+  auto *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {2, 2, 2, 3}, "input", false);
+  auto filter =
+      mod_.createPlaceholder(ElemKind::FloatTy, {3, 2, 2, 3}, "filter", false);
+  auto *bias = mod_.createPlaceholder(ElemKind::FloatTy, {3}, "bias", false);
+  bindings_.allocate(bias)->zero();
+
+  ConvolutionNode *CV = F_->createConv(
+      "Conv", input, filter, bias,
+      mod_.uniqueType(ElemKind::FloatTy, {2, 3, 3, 3}), 2, 1, 1, 1);
+
+  auto *sub = F_->createSub("sub", CV, subC);
+  auto *mul = F_->createMul("mul", sub, mulC);
+  auto *add = F_->createAdd("add", addC, mul);
+  auto *div = F_->createDiv("div", add, divC);
+  auto *res = F_->createSave("save", div);
+
+  // Compile.
+  EXPECT_EQ(F_->getNodes().size(), 6);
+  ::glow::convertPlaceholdersToConstants(F_, bindings_, {});
+  optimizedF_ = optimizeFunction(F_);
+  EXPECT_EQ(optimizedF_->getNodes().size(), 3);
+
+  auto *opt_res = findFunctionNodeByName<SaveNode>(optimizedF_, res->getName());
+
+  Constant *cs, *cb;
+
+  auto *bn = llvm::dyn_cast<BatchNormalizationNode>(opt_res->getInput());
+  ASSERT_TRUE(bn);
+
+  cs = llvm::dyn_cast<Constant>(bn->getScale());
+  cb = llvm::dyn_cast<Constant>(bn->getBias());
+
+  ASSERT_TRUE(cs);
+  ASSERT_TRUE(cb);
+  ASSERT_TRUE(cs->getType()->isFPType());
+  ASSERT_TRUE(cb->getType()->isFPType());
+
+  auto hs = cs->getHandle<float>();
+  auto hb = cb->getHandle<float>();
+
+  // Verify that scale and offset are computed correctly.
+  for (dim_t i = 0; i < 3; i++) {
+    const float expectedScale = gammaV[i] * (mulV / divV);
+    const float expectedBias = ((betaV[i] - subV[i]) * mulV + addV) / divV;
+    EXPECT_EQ(expectedScale, hs.raw(i));
+    EXPECT_EQ(expectedBias, hb.raw(i));
+  }
+  bindings_.allocate(mod_.getPlaceholders());
+  bindings_.get(input)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
+  bindings_.get(filter)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
+  bindings_.get(bias)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
+  checkNumericalEquivalence();
+}
+
 /// Check CSE will not merge two nodes that have all the same inputs but
 /// different predicates.
 TEST_F(GraphOptz, cseRespectsPredicates) {
