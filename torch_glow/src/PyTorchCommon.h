@@ -58,6 +58,16 @@ struct PyTorchLoaderSettings {
   /// The minimum size of a glow fusion groups in terms of number of PyTorch
   /// nodes. 0 indicates no minimum size.
   size_t minFusionGroupSize = 0;
+
+  /// Index (inclusive) of the first node in the JIT graph to fuse. Ignored if
+  /// negative.
+  /// NOTE: this should only be used for debugging.
+  int64_t fusionStartIndex = -1;
+
+  /// Index (exclusive) of the last node in the JIT graph to fuse. Ignored if
+  /// negative.
+  /// NOTE: this should only be used for debugging.
+  int64_t fusionEndIndex = -1;
 };
 
 /// Given a PyTorch ScalarType \p ty, \returns a matching Glow ElemKind.

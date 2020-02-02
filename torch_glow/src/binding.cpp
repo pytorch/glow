@@ -81,6 +81,22 @@ PYBIND11_MODULE(_torch_glow, m) {
   m.def("clearFusionBlacklist",
         []() { getPyTorchLoaderSettings().opBlacklist.clear(); });
 
+  /// Set the index (inclusive) of the first node in the graph to fuse.
+  m.def("setFusionStartIndex", [](int64_t startIndex) {
+    getPyTorchLoaderSettings().fusionStartIndex = startIndex;
+  });
+
+  /// Set the index (exclusive) of the last node in the graph to fuse.
+  m.def("setFusionEndIndex", [](int64_t endIndex) {
+    getPyTorchLoaderSettings().fusionEndIndex = endIndex;
+  });
+
+  /// Clear the start and end fusion indices.
+  m.def("clearFusionIndices", []() {
+    getPyTorchLoaderSettings().fusionStartIndex = -1;
+    getPyTorchLoaderSettings().fusionEndIndex = -1;
+  });
+
   /// Set the active HostManager to one that owns 1 of type \p backendName.
   m.def("setGlowBackend", [](const std::string &glowBackendName) {
     setHostManager(glowBackendName);
