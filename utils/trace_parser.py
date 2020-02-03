@@ -16,6 +16,7 @@
 import argparse
 import json
 import numpy
+import re
 from collections import defaultdict
 from operator import attrgetter, itemgetter
 
@@ -74,7 +75,7 @@ class Event:
         return (self.end - self.start) - self.child_time
 
 
-def loadEvents(filename, runtimeEvents):
+def loadEvents(filename, runtimeEvents, fixedEvent, skip):
     """ Load the json trace file and create Events. """
     trace = None
     with open(filename) as f:
@@ -92,8 +93,20 @@ def loadEvents(filename, runtimeEvents):
                     optype = line["args"]["type"]
                 elif "kind" in line["args"]:
                     optype = line["args"]["kind"]
-            if not runtimeEvents and optype == "runtime":
+
+            # If we're looking for a single event, skip others.
+            if fixedEvent and not re.match(fixedEvent, name) and not re.match(fixedEvent, optype):
                 continue
+
+            # if we're not including runtime events, skip them.
+            if not fixedEvent and not runtimeEvents and optype == "runtime":
+                continue
+
+            # If we're skipping some number of events, skip them.
+            if skip > 0:
+                skip = skip - 1
+                continue
+
             end = 0
             if evtype == "X":
                 end = start + int(line["dur"])
@@ -169,12 +182,23 @@ def main():
     parser = argparse.ArgumentParser(description='process trace json')
     parser.add_argument('filename', type=str,
                         help='filename for trace file to load')
-    parser.add_argument("--layers", action='store_true')
-    parser.add_argument("--kinds", action='store_true')
-    parser.add_argument("--runtime", action='store_true')
+    parser.add_argument("--layers", action='store_true',
+                        help="aggregate and display by layer names")
+    parser.add_argument("--kinds", action='store_true',
+                        help="aggregate and display by op kind")
+    parser.add_argument("--runtime", action='store_true',
+                        help="include runtime events")
+    parser.add_argument("--summarize", action='store_true',
+                        help="print a summary of the trace")
+    parser.add_argument("--event", type=str, default="",
+                        help="restrict events matching this regex")
+    parser.add_argument("--skip", type=int, default=0,
+                        help="skip a number of events matching conditions")
 
     args = parser.parse_args()
-    events = loadEvents(args.filename, args.runtime)
+    events = loadEvents(args.filename, args.runtime, args.event, args.skip)
+    if not events:
+        return
 
     # Stack events so we can determine selfTime.
     stacked = stackEvents(events)
@@ -187,15 +211,20 @@ def main():
         coveredTime += ev.end - ev.start
 
     if args.layers:
-        dumpAccumulate(events, lambda ev: "%s (%s)" %
-                       (ev.name, ev.optype), coveredTime)
+        dumpAccumulate(events, lambda ev: f"{ev.name} ({ev.optype})",
+                       coveredTime)
 
     if args.kinds:
         dumpAccumulate(events, lambda ev: ev.optype, coveredTime)
 
-    print("Total time of trace:", formatUs(totalTime))
-    print("Time covered by events:", formatUs(coveredTime))
-    print("Unattributed time:", formatUs(totalTime - coveredTime))
+    if args.event:
+        dumpAccumulate(events, lambda ev: f"{ev.name} ({ev.optype})",
+                       coveredTime)
+
+    if args.summarize:
+        print("Total time of trace:", formatUs(totalTime))
+        print("Time covered by events:", formatUs(coveredTime))
+        print("Unattributed time:", formatUs(totalTime - coveredTime))
 
 
 if __name__ == "__main__":
