@@ -1614,6 +1614,7 @@ DEF_UNSUPPORTED_STORAGE(Storage)
     return writeUnexpectedKind(node);                                          \
   }
 
+DEF_UNSUPPORTED_NODE(BatchedPairwiseDotProduct)
 DEF_UNSUPPORTED_NODE(SGD)
 // Artificial node.
 DEF_UNSUPPORTED_NODE(Save)
@@ -1642,6 +1643,7 @@ DEF_UNSUPPORTED_NODE(SparseLengthsWeightedSumGrad)
 DEF_UNSUPPORTED_NODE(SigmoidCrossEntropyWithLogits)
 DEF_UNSUPPORTED_NODE(LocalResponseNormalizationGrad)
 DEF_UNSUPPORTED_NODE(AdaptiveAvgPoolGrad)
+DEF_UNSUPPORTED_NODE(BatchedPairwiseDotProductGrad)
 
 // Include backend-specific ONNX model writers.
 #include "glow/ONNXModelWriterIncludes.h"

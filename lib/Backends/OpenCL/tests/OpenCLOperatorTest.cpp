@@ -46,6 +46,7 @@ std::set<std::string> glow::backendTestBlacklist = {
     "CmpEQ/0",
     "FP16Add/0",
     "FP16Matmul/0",
+    "batchedPairwiseDotProduct/0",
     "batchedReduceAdd_Float16/0",
     "batchedReduceAdd_5Dinput/0",
     "batchedReduceMin_Float/0",

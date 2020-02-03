@@ -1148,6 +1148,33 @@ VERIFY_CMP(CmpLT)
 VERIFY_CMP(CmpEQ)
 #undef VERIFY_CMP
 
+bool BatchedPairwiseDotProductNode::verify() const {
+  auto inputs = getInputs();
+
+  bool isValid = inputs.size() > 1;
+
+  if (isValid) {
+    auto firstInput = inputs[0];
+
+    isValid &= firstInput.getElementType() == ElemKind::FloatTy;
+    isValid &= firstInput.getType()->dims().size() == 2;
+
+    for (auto &in : inputs) {
+      isValid &= checkSameType(in, firstInput, this);
+    }
+
+    isValid &= getResult().getElementType() == ElemKind::FloatTy;
+    isValid &=
+        getResult().getType()->dims()[0] == firstInput.getType()->dims()[0];
+    isValid &= getResult().getType()->dims()[1] ==
+               inputs.size() * (inputs.size() - 1) / 2;
+  }
+
+  return isValid;
+}
+
+bool BatchedPairwiseDotProductGradNode::verify() const { return true; }
+
 bool BatchedAddNode::verify() const {
   auto batchShape = getBatch().dims();
   auto rhsShape = getSlice().dims();

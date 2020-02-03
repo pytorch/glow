@@ -34,4 +34,5 @@ std::set<std::string> glow::backendTestBlacklist = {
     "gradientCheckFC/0",
     "gradientCheckTranspose/0",
     "gradientCheckCrossEntropyLoss/0",
+    "gradientCheckBatchedPairwiseDotProduct/0",
 };
