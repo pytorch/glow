@@ -233,7 +233,6 @@ std::set<std::string> glow::backendTestBlacklist = {
     "Flatten_Float16Ty/0",
     "DivSizeT/0",
     "SigmoidCrossEntropyWithLogits/0",
-    "insertTensorTest/0",
     "Bucketize/0",
     "FP16SoftMax/0",
     "LengthsToRanges/0",

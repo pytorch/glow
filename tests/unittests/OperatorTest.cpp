@@ -10251,12 +10251,12 @@ TEST_P(OperatorTest, insertTensorTest) {
   // 0 0 0 0 0 0
   // 0 0 0 0 0 0
   // 0 0 0 0 0 0
-  auto *SN0 = mod_.createPlaceholder(ElemKind::Int64ITy, {4, 6}, "SN0", false);
+  auto *SN0 = mod_.createPlaceholder(ElemKind::FloatTy, {4, 6}, "SN0", false);
   bindings_.allocate(SN0)->init(Tensor::InitKind::Broadcast, 0, mod_.getPRNG());
 
   // 1 1
   // 1 1
-  auto *SN1 = mod_.createPlaceholder(ElemKind::Int64ITy, {2, 2}, "SN1", false);
+  auto *SN1 = mod_.createPlaceholder(ElemKind::FloatTy, {2, 2}, "SN1", false);
   bindings_.allocate(SN1)->init(Tensor::InitKind::Broadcast, 1, mod_.getPRNG());
 
   // 0 0 0 0 0 0
@@ -10273,13 +10273,185 @@ TEST_P(OperatorTest, insertTensorTest) {
   EE_.run(bindings_);
 
   // Verify the output looks as expected (pictured above).
-  auto resultH = bindings_.get(result->getPlaceholder())->getHandle<int64_t>();
+  auto resultH = bindings_.get(result->getPlaceholder())->getHandle<float>();
   for (dim_t i = 0; i < 4; i++) {
     for (dim_t j = 0; j < 6; j++) {
       int64_t expected = 1;
       if (i == 0 || i == 3 || j == 0 || j == 5)
         expected = 0;
       EXPECT_EQ(resultH.at({i, j}), expected);
+    }
+  }
+}
+
+/// Test the InsertTensor node works correctly for 3 dimensions.
+TEST_P(OperatorTest, insertTensorTest3D) {
+  CHECK_IF_ENABLED();
+
+  // 0 0 0 0 0 0 | 0 0 0 0 0 0
+  // 0 0 0 0 0 0 | 0 0 0 0 0 0
+  // 0 0 0 0 0 0 | 0 0 0 0 0 0
+  // 0 0 0 0 0 0 | 0 0 0 0 0 0
+  auto *SN0 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {2, 4, 6}, "SN0", false);
+  bindings_.allocate(SN0)->init(Tensor::InitKind::Broadcast, 0, mod_.getPRNG());
+
+  // 1 1 | 1 1
+  // 1 1 | 1 1
+  auto *SN1 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {2, 2, 2}, "SN1", false);
+  bindings_.allocate(SN1)->init(Tensor::InitKind::Broadcast, 1, mod_.getPRNG());
+
+  // 0 0 0 0 0 0 | 0 0 0 0 0 0
+  // 0 1 1 1 1 0 | 0 1 1 1 1 0
+  // 0 1 1 1 1 0 | 0 1 1 1 1 0
+  // 0 0 0 0 0 0 | 0 0 0 0 0 0
+  Node *IN = F_->createInsertTensor("insert", SN0, SN1, /* start */ {0, 1, 1},
+                                    /* count */ 2, /* axis */ 2);
+  SaveNode *result = F_->createSave("result", IN);
+  bindings_.allocate(result->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+
+  EE_.run(bindings_);
+
+  // Verify the output looks as expected (pictured above).
+  auto resultH = bindings_.get(result->getPlaceholder())->getHandle<float>();
+  for (dim_t i = 0; i < 2; i++) {
+    for (dim_t j = 0; j < 4; j++) {
+      for (dim_t k = 0; k < 6; k++) {
+        int64_t expected = 1;
+        if (j == 0 || j == 3 || k == 0 || k == 5)
+          expected = 0;
+        EXPECT_EQ(resultH.at({i, j, k}), expected);
+      }
+    }
+  }
+}
+
+/// Test that the InsertTensor operator works correctly when crossing outer
+/// dimensions.
+TEST_P(OperatorTest, insertTensorCrossDimensions) {
+  CHECK_IF_ENABLED();
+
+  // 0 0 0 0 0
+  // 0 0 0 0 0
+  // 0 0 0 0 0
+  // 0 0 0 0 0
+  // 0 0 0 0 0
+  // 0 0 0 0 0
+  auto *SN0 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {3, 2, 5}, "SN0", false);
+  bindings_.allocate(SN0)->init(Tensor::InitKind::Broadcast, 0, mod_.getPRNG());
+
+  // 1 1 1 1 1 1 (T)
+  auto *SN1 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {3, 2, 1}, "SN1", false);
+  bindings_.allocate(SN1)->init(Tensor::InitKind::Broadcast, 1, mod_.getPRNG());
+
+  // 2 2 | 2 2
+  // 2 2 | 2 2
+  // 2 2 | 2 2
+  auto *SN2 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {3, 2, 2}, "SN2", false);
+  bindings_.allocate(SN2)->init(Tensor::InitKind::Broadcast, 2, mod_.getPRNG());
+
+  // 1 0 2 2 0
+  // 1 0 2 2 0
+  // 1 0 2 2 0
+  // 1 0 2 2 0
+  // 1 0 2 2 0
+  // 1 0 2 2 0
+  Node *IN = F_->createInsertTensor("insert", SN0, SN1, /* start */ {0, 0, 0},
+                                    /* count */ 1, /* axis */ 2);
+  Node *IN2 = F_->createInsertTensor("insert", IN, SN2, /* start */ {0, 0, 2},
+                                     /* count */ 1, /* axis */ 2);
+  SaveNode *result = F_->createSave("result", IN2);
+  bindings_.allocate(result->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+
+  EE_.run(bindings_);
+
+  // Verify the output looks as expected (pictured above).
+  auto resultH = bindings_.get(result->getPlaceholder())->getHandle<float>();
+  for (dim_t i = 0; i < 3; i++) {
+    for (dim_t j = 0; j < 2; j++) {
+      for (dim_t k = 0; k < 5; k++) {
+        int64_t expected = 0;
+        if (k == 0)
+          expected = 1;
+        if (k == 2 || k == 3)
+          expected = 2;
+        EXPECT_EQ(resultH.at({i, j, k}), expected);
+      }
+    }
+  }
+}
+
+/// Test the InsertTensor operator works correctly when inserting across an
+/// outer dimension where the inner dimensions have different sizes.
+TEST_P(OperatorTest, insertTensorPartialSliceInnerDim) {
+  CHECK_IF_ENABLED();
+
+  // 0 0 0 0 0
+  // 0 0 0 0 0
+  // 0 0 0 0 0
+  // 0 0 0 0 0
+  // 0 0 0 0 0
+  // 0 0 0 0 0
+  // 0 0 0 0 0
+  // 0 0 0 0 0
+  // 0 0 0 0 0
+  auto *SN0 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {3, 3, 5}, "SN0", false);
+  bindings_.allocate(SN0)->init(Tensor::InitKind::Broadcast, 0, mod_.getPRNG());
+
+  // 1 1
+  // 1 1
+  // 1 1
+  auto *SN1 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {3, 1, 2}, "SN1", false);
+  bindings_.allocate(SN1)->init(Tensor::InitKind::Broadcast, 1, mod_.getPRNG());
+
+  // 2 2 2
+  // 2 2 2
+  // 2 2 2
+  auto *SN2 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {3, 1, 3}, "SN2", false);
+  bindings_.allocate(SN2)->init(Tensor::InitKind::Broadcast, 2, mod_.getPRNG());
+
+  // 1 1 0 0 0
+  // 0 2 2 2 0
+  // 0 0 0 0 0
+  // 1 1 0 0 0
+  // 0 2 2 2 0
+  // 0 0 0 0 0
+  // 1 1 0 0 0
+  // 0 2 2 2 0
+  // 0 0 0 0 0
+  Node *IN = F_->createInsertTensor("insert", SN0, SN1, /* start */ {0, 0, 0},
+                                    /* count */ 1, /* axis */ 2);
+  Node *IN2 = F_->createInsertTensor("insert", IN, SN2, /* start */ {0, 1, 1},
+                                     /* count */ 1, /* axis */ 2);
+  SaveNode *result = F_->createSave("result", IN2);
+  bindings_.allocate(result->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+
+  EE_.run(bindings_);
+  // Verify the output looks as expected (pictured above).
+  auto resultH = bindings_.get(result->getPlaceholder())->getHandle<float>();
+  for (dim_t i = 0; i < 3; i++) {
+    for (dim_t j = 0; j < 3; j++) {
+      for (dim_t k = 0; k < 5; k++) {
+        int64_t expected = 0;
+        if (j == 0 && k <= 1)
+          expected = 1;
+        if (j == 1 && k >= 1 && k <= 3)
+          expected = 2;
+        EXPECT_EQ(resultH.at({i, j, k}), expected);
+      }
     }
   }
 }
