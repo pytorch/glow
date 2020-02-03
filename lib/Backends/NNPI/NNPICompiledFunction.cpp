@@ -102,7 +102,7 @@ Error NNPICompiledFunction::compile(Function *F, const BackendOptions &opts) {
   compilationOptions_ = NNPICompilationOptions(newOpts.backendSpecificOpts);
   NNPIImporter importer(compilationOptions_);
   network_ = importer.importFunction(F, newOpts);
-  LOG_INVALID_HANDLE_RETURN_LLVMERROR(network_, "Failed to import function");
+  LOG_IF_INVALID_HANDLE_RETURN_LLVMERROR(network_, "Failed to import function");
 
   // Apply optimizations.
   NNPIOptimizationConfig optConf;
@@ -110,11 +110,11 @@ Error NNPICompiledFunction::compile(Function *F, const BackendOptions &opts) {
   optConf.lstmReconstruction = 1;
   optConf.reorderTransposeConvert = 1;
   DBG_MEM_USAGE("NNPICompiledFunction call optimize <<");
-  LOG_NNPI_ERROR_RETURN_LLVMERROR(nnpiNetworkOptimize(network_, &optConf),
-                                  "Failed NNPI API Optimize");
+  LOG_NNPI_IF_ERROR_RETURN_LLVMERROR(nnpiNetworkOptimize(network_, &optConf),
+                                     "Failed NNPI API Optimize");
   DBG_MEM_USAGE("NNPICompiledFunction call get compilation config <<");
-  LOG_NNPI_ERROR_RETURN_LLVMERROR(nnpiGetDefaultCompilationConfig(&config_),
-                                  "Failed NNPI API Read Config");
+  LOG_NNPI_IF_ERROR_RETURN_LLVMERROR(nnpiGetDefaultCompilationConfig(&config_),
+                                     "Failed NNPI API Read Config");
 
   auto error = updateCompilationConfigFromOptions(compilationOptions_);
   if (error) {
@@ -149,14 +149,14 @@ Error NNPICompiledFunction::compile(Function *F, const BackendOptions &opts) {
         }
       };
       DBG_MEM_USAGE("NNPICompiledFunction call get compile <<");
-      LOG_NNPI_ERROR_RETURN_LLVMERROR(
+      LOG_NNPI_IF_ERROR_RETURN_LLVMERROR(
           nnpiNetworkCompileToStream(network_, &config_, &outFileStream, NULL),
           "Failed NNPI Compile");
 
       DBG_MEM_USAGE("NNPICompiledFunction done compile <<");
     } else // Compile to file.
     {
-      LOG_NNPI_ERROR_RETURN_LLVMERROR(
+      LOG_NNPI_IF_ERROR_RETURN_LLVMERROR(
           nnpiNetworkCompileToFile(network_, &config_,
                                    compilationFileName_.c_str(), NULL),
           "Failed NNPI Compile");
@@ -166,8 +166,8 @@ Error NNPICompiledFunction::compile(Function *F, const BackendOptions &opts) {
       // NNPINetwork is not needed anymore on the inferfence api path.
       // Once the complied stream is loaded, query on the network can be done
       // using the host network instead.
-      LOG_NNPI_ERROR(nnpiNetworkDestroy(network_),
-                     "Failed NNPI Network Destroy");
+      LOG_NNPI_IF_ERROR(nnpiNetworkDestroy(network_),
+                        "Failed NNPI Network Destroy");
       network_ = NNPI_INVALID_NNPIHANDLE;
       DBG_MEM_USAGE("NNPICompiledFunction destroy network done");
     }
@@ -191,7 +191,8 @@ Error NNPICompiledFunction::compile(Function *F, const BackendOptions &opts) {
 
 NNPICompiledFunction::~NNPICompiledFunction() {
   if (network_ != NNPI_INVALID_NNPIHANDLE) {
-    LOG_NNPI_ERROR(nnpiNetworkDestroy(network_), "Failed NNPI Network Destroy");
+    LOG_NNPI_IF_ERROR(nnpiNetworkDestroy(network_),
+                      "Failed NNPI Network Destroy");
   }
 }
 

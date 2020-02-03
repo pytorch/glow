@@ -105,6 +105,7 @@ if (UNIX)
     add_definitions(-DUSE_AVX)
   endif()
 endif()
+
 add_subdirectory(ClassGen)
 
 include_directories(

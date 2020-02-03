@@ -47,7 +47,6 @@ private:
                              // the DM ctor/dtor).
   NNPIInferCommand inferCmd_;
   NNPICommandList commandList_;
-  NNPICommandListError *commandErrors_;
   uint32_t numCommands_;
 
   std::vector<std::pair<std::string, NNPITensorDesc>> netInputs_;

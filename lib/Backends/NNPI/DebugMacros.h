@@ -132,13 +132,13 @@ GetNNPIInferenceErrorDesc(NNPIInferenceErrorCode err) {
 
 #endif //  NDEBUG
 
-#define LOG_NNPI_ERROR(exp_to_log, msg)                                        \
+#define LOG_NNPI_IF_ERROR(exp_to_log, msg)                                     \
   {                                                                            \
     NNPIErrorCode exp_res = (exp_to_log);                                      \
     LOG_IF(ERROR, exp_res != NNPI_NO_ERROR) << NNPI_ERROR_MSG(exp_res, msg);   \
   }
 
-#define LOG_NNPI_ERROR_RETURN_LLVMERROR(exp, msg)                              \
+#define LOG_NNPI_IF_ERROR_RETURN_LLVMERROR(exp, msg)                           \
   {                                                                            \
     NNPIErrorCode exp_res = (exp);                                             \
     LOG_IF(ERROR, exp_res != NNPI_NO_ERROR) << NNPI_ERROR_MSG(exp_res, msg);   \
@@ -146,14 +146,14 @@ GetNNPIInferenceErrorDesc(NNPIInferenceErrorCode err) {
       RETURN_ERR(msg);                                                         \
   }
 
-#define LOG_NNPI_INF_ERROR(exp_to_log, msg)                                    \
+#define LOG_NNPI_INF_IF_ERROR(exp_to_log, msg)                                 \
   {                                                                            \
     NNPIInferenceErrorCode exp_res = (exp_to_log);                             \
     LOG_IF(ERROR, exp_res != NNPI_INF_NO_ERROR)                                \
         << NNPI_INF_ERROR_MSG(exp_res, msg);                                   \
   }
 
-#define LOG_NNPI_INF_ERROR_RETURN_FALSE(exp, msg)                              \
+#define LOG_NNPI_INF_IF_ERROR_RETURN_FALSE(exp, msg)                           \
   {                                                                            \
     NNPIInferenceErrorCode exp_res = (exp);                                    \
     LOG_IF(ERROR, exp_res != NNPI_INF_NO_ERROR)                                \
@@ -162,7 +162,7 @@ GetNNPIInferenceErrorDesc(NNPIInferenceErrorCode err) {
       return false;                                                            \
   }
 
-#define LOG_NNPI_INF_ERROR_RETURN_LLVMERROR(exp, msg)                          \
+#define LOG_NNPI_INF_IF_ERROR_RETURN_LLVMERROR(exp, msg)                       \
   {                                                                            \
     NNPIInferenceErrorCode exp_res = (exp);                                    \
     LOG_IF(ERROR, exp_res != NNPI_INF_NO_ERROR)                                \
@@ -171,7 +171,7 @@ GetNNPIInferenceErrorDesc(NNPIInferenceErrorCode err) {
       RETURN_ERR(msg);                                                         \
   }
 
-#define LOG_NNPI_ERROR_RETURN_VALUE(exp, msg)                                  \
+#define LOG_NNPI_IF_ERROR_RETURN_VALUE(exp, msg)                               \
   {                                                                            \
     NNPIErrorCode exp_res = (exp);                                             \
     LOG_IF(ERROR, exp_res != NNPI_NO_ERROR) << NNPI_ERROR_MSG(exp_res, msg);   \
@@ -179,7 +179,7 @@ GetNNPIInferenceErrorDesc(NNPIInferenceErrorCode err) {
       return exp_res;                                                          \
   }
 
-#define LOG_NNPI_ERROR_RETURN_INVALID_HANDLE(exp, msg)                         \
+#define LOG_NNPI_IF_ERROR_RETURN_INVALID_HANDLE(exp, msg)                      \
   {                                                                            \
     NNPIErrorCode exp_res = (exp);                                             \
     LOG_IF(ERROR, exp_res != NNPI_NO_ERROR) << NNPI_ERROR_MSG(exp_res, msg);   \
@@ -187,7 +187,7 @@ GetNNPIInferenceErrorDesc(NNPIInferenceErrorCode err) {
       return NNPI_INVALID_NNPIHANDLE;                                          \
   }
 
-#define LOG_NNPI_ERROR_RETURN_FALSE(exp, msg)                                  \
+#define LOG_NNPI_IF_ERROR_RETURN_FALSE(exp, msg)                               \
   {                                                                            \
     NNPIErrorCode exp_res = (exp);                                             \
     LOG_IF(ERROR, exp_res != NNPI_NO_ERROR) << NNPI_ERROR_MSG(exp_res, msg);   \
@@ -195,7 +195,7 @@ GetNNPIInferenceErrorDesc(NNPIInferenceErrorCode err) {
       return false;                                                            \
   }
 
-#define LOG_INVALID_HANDLE_RETURN_LLVMERROR(exp, msg)                          \
+#define LOG_IF_INVALID_HANDLE_RETURN_LLVMERROR(exp, msg)                       \
   {                                                                            \
     NNPIHandle exp_res = (exp);                                                \
     LOG_IF(ERROR, exp_res == NNPI_INVALID_NNPIHANDLE) << msg;                  \
@@ -232,8 +232,8 @@ GetNNPIInferenceErrorDesc(NNPIInferenceErrorCode err) {
     }                                                                          \
   }
 
-#define LOG_AND_CALLBACK_EXECUTE_NNPI_INF_ERROR(exp, msg, runId, ctx,          \
-                                                callback)                      \
+#define LOG_AND_CALLBACK_EXECUTE_NNPI_INF_IF_ERROR(exp, msg, runId, ctx,       \
+                                                   callback)                   \
   {                                                                            \
     NNPIInferenceErrorCode exp_res = (exp);                                    \
     bool nnpiOK = (exp_res == NNPI_INF_NO_ERROR);                              \
@@ -241,7 +241,7 @@ GetNNPIInferenceErrorDesc(NNPIInferenceErrorCode err) {
                                          callback);                            \
   }
 
-#define LOG_AND_CALLBACK_EXECUTE_NNPI_ERROR(exp, msg, runId, ctx, callback)    \
+#define LOG_AND_CALLBACK_EXECUTE_NNPI_IF_ERROR(exp, msg, runId, ctx, callback) \
   {                                                                            \
     NNPIErrorCode exp_res = (exp);                                             \
     bool nnpiOK = (exp_res == NNPI_NO_ERROR);                                  \
@@ -249,7 +249,7 @@ GetNNPIInferenceErrorDesc(NNPIInferenceErrorCode err) {
                                          callback);                            \
   }
 
-#define LOG_AND_CALLBACK_NNPI_INF_ERROR(exp, msg, callback)                    \
+#define LOG_AND_CALLBACK_NNPI_INF_IF_ERROR(exp, msg, callback)                 \
   {                                                                            \
     NNPIInferenceErrorCode exp_res = (exp);                                    \
     LOG_IF(ERROR, exp_res != NNPI_INF_NO_ERROR)                                \
