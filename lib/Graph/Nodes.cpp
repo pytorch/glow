@@ -493,19 +493,12 @@ bool ConvolutionNode::verify() const {
 }
 
 bool ChannelwiseQuantizedConvolutionNode::verify() const {
-  bool isValid = expectCompareTrue("Only groupwise quantization is supported.",
-                                   getGroupwise(), true, this);
-
-  if (!isValid) {
-    return false;
-  }
-
-  isValid =
+  bool isValid =
       verifyConvolution<ShapeNHWC>(getInput(), getResult(), getFilter(),
                                    getBias(), Kernels_, Strides_, Pads_, Group_,
                                    /* dilation */ 1, /* checkBiasType */ false);
 
-  isValid &= checkType(getBias(), ElemKind::FloatTy, this);
+  isValid &= checkType(getBias(), ElemKind::Int32QTy, this);
   isValid &= checkType(getInput(), ElemKind::Int8QTy, this);
 
   // check qparam types

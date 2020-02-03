@@ -1351,7 +1351,6 @@ Error ONNXModelWriter::writeChannelwiseQuantizedConvolution(
   addValueAttribute(proto, "strides", node->getStrides());
   addValueAttribute(proto, "pads", node->getPads());
   addValueAttribute(proto, "group", node->getGroup());
-  addValueAttribute(proto, "group_wise", node->getGroupwise() ? 1 : 0);
 
   return writeAllWithNode("ChannelwiseQuantizedConvolution", node, graph,
                           proto);
