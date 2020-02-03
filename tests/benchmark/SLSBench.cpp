@@ -90,12 +90,14 @@ class SLSBench : public Benchmark {
   std::string backendStr_;
   std::vector<SLSParam> params_;
   std::string devId_;
+  float tableValue;
 
 public:
   SLSBench(dim_t batchSize_, dim_t asyncLaunchSize_, std::string backendStr_,
            std::vector<SLSParam> params_, std::string devId_ = std::string(""))
       : batchSize_(batchSize_), asyncLaunchSize_(asyncLaunchSize_),
-        backendStr_(backendStr_), params_(params_), devId_(devId_) {}
+        backendStr_(backendStr_), params_(params_), devId_(devId_),
+        tableValue(1.0f) {}
 
   double countSLSGbytes(SLSParam param) const {
 
@@ -154,7 +156,8 @@ public:
     // Create and initialize data tensor
     Tensor data(ElemKind::FloatTy,
                 {param.numTableEntries, param.numElementsPerRow});
-    data.getHandle().clear(1.0f);
+    data.getHandle().clear(tableValue);
+    tableValue += 1.0f;
 
     // Constant needed for Non-quantized case
     Constant *dataConstant = nullptr;
