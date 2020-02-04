@@ -834,6 +834,45 @@ Error ONNXModelLoader::loadConv(const ONNX_NAMESPACE::NodeProto &op,
 
   return Error::success();
 }
+
+Error ONNXModelLoader::loadTensorwiseQuantizedConvolution(
+    const ONNX_NAMESPACE::NodeProto &op, const ArgumentDictionaryTy &dict) {
+  const std::string &opName = loadOperatorName(op);
+
+  NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getNodeValueByName(op.input(0)));
+  NodeValue filterValue;
+  ASSIGN_VALUE_OR_RETURN_ERR(filterValue, getNodeValueByName(op.input(1)));
+  NodeValue biasValue;
+  ASSIGN_VALUE_OR_RETURN_ERR(biasValue, getNodeValueByName(op.input(2)));
+
+  auto kernels = getShape<unsigned_t>(dict.at("kernel_shape"));
+  auto strides = getShape<unsigned_t>(dict.at("strides"));
+  auto pads = getShape<unsigned_t>(dict.at("pads"));
+  unsigned_t groups;
+  ASSIGN_VALUE_OR_RETURN_ERR(groups, loadInt(dict.at("group")));
+  unsigned_t dilation;
+  ASSIGN_VALUE_OR_RETURN_ERR(dilation, loadInt(dict.at("group")));
+
+  float outScale;
+  ASSIGN_VALUE_OR_RETURN_ERR(outScale, loadFloat(dict.at("out_scale")));
+  int32_t outOffset;
+  ASSIGN_VALUE_OR_RETURN_ERR(outOffset, loadInt(dict.at("out_offset")));
+
+  ShapeNHWC idim(input.dims());
+  auto outSz =
+      calculateConvPoolOutputDims(idim.h, idim.w, kernels, strides, pads);
+  std::array<dim_t, 4> outDims = {
+      {idim.n, outSz.first, outSz.second, biasValue.dims()[0]}};
+  auto outTy = G_.getParent()->uniqueType(ElemKind::Int8QTy, outDims, outScale,
+                                          outOffset);
+
+  auto *node = G_.createConv(opName, input, filterValue, biasValue, outTy,
+                             kernels, strides, pads, groups);
+
+  return addNodeAsOutput(op, node);
+}
+
 Error ONNXModelLoader::loadChannelwiseQuantizedConvolution(
     const ONNX_NAMESPACE::NodeProto &op, const ArgumentDictionaryTy &dict) {
   const std::string &opName = loadOperatorName(op);
@@ -2428,7 +2467,13 @@ Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
     return loadSlice(op, dict);
   }
   if (typeName == "Conv") {
-    return loadConv(op, dict);
+    // If the Conv operator has quantized inputs, use
+    // loadTensorwiseQuantizedConvolution.
+    NodeValue in;
+    ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
+    return in.getType()->isQuantizedType()
+               ? loadTensorwiseQuantizedConvolution(op, dict)
+               : loadConv(op, dict);
   }
   if (typeName == "ChannelwiseQuantizedConvolution") {
     return loadChannelwiseQuantizedConvolution(op, dict);

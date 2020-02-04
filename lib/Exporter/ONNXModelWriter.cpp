@@ -762,6 +762,12 @@ Error ONNXModelWriter::writeConvolution(const ConvolutionNode *node,
   // node is found for Result user then remove it, otherwise create a "mirror"
   // Transpose, i.e. NCHW2NHWC.
   assert(node->getLayout() == NHWC && "can only write NHWC Convolutions");
+
+  // Delegate writing quantized Convs to writeTensorwiseQuantizedConvolution.
+  if (isQuantizedElemKind(node->getInput().getElementType())) {
+    return writeTensorwiseQuantizedConvolution(node, graph);
+  }
+
   auto *proto = graph.add_node();
 
   // Use the output of transpose node.
@@ -806,6 +812,25 @@ Error ONNXModelWriter::writeConvolution(const ConvolutionNode *node,
   proto->set_op_type("Conv");
 
   return Error::success();
+}
+
+Error ONNXModelWriter::writeTensorwiseQuantizedConvolution(
+    const ConvolutionNode *node, GraphType &graph) {
+  auto *proto = graph.add_node();
+
+  // Add dictionary entries.
+  addValueAttribute(proto, "kernel_shape", node->getKernels());
+  addValueAttribute(proto, "strides", node->getStrides());
+  addValueAttribute(proto, "pads", node->getPads());
+  addValueAttribute(proto, "group", node->getGroup());
+  addValueAttribute(proto, "dilation", node->getDilation());
+
+  addValueAttribute(proto, "out_scale",
+                    node->getType(ConvolutionNode::ResultIdx)->getScale());
+  addValueAttribute(proto, "out_offset",
+                    node->getType(ConvolutionNode::ResultIdx)->getOffset());
+
+  return writeAllWithNode("Conv", node, graph, proto);
 }
 
 Error ONNXModelWriter::writeChannelwiseQuantizedConvolution(

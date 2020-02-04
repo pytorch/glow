@@ -93,6 +93,12 @@ class ONNXModelLoader
   Error loadChannelwiseQuantizedConvolution(const ONNX_NAMESPACE::NodeProto &op,
                                             const ArgumentDictionaryTy &dict);
 
+  /// Load Glow conv operator with quantized inputs. Since this isn't a normal
+  /// part of the ops supported by Glow, the assumption is that this op was
+  /// produced by Glow's on ONNXModelWriter and thus has NHWC layout for inputs.
+  Error loadTensorwiseQuantizedConvolution(const ONNX_NAMESPACE::NodeProto &op,
+                                           const ArgumentDictionaryTy &dict);
+
   /// Load MaxPool or AveragePool ONNX operator. \p typeName is the name of the
   /// ONNX operator being loaded, either MaxPool or AveragePool.
   Error loadPool(const ONNX_NAMESPACE::NodeProto &op,

@@ -74,6 +74,11 @@ class ONNXModelWriter : public CommonOperatorWriter<ONNX_TRAITS> {
   /// the \p graph or to a separate list.
   TensorType *addInitializer(GraphType &graph);
 
+  /// Special case node writer for Glow convolutions with quantized inputs and
+  /// outputs.
+  Error writeTensorwiseQuantizedConvolution(const ConvolutionNode *node,
+                                            GraphType &graph);
+
 public:
   /// Converts \p glowType to \p protoType.
   static typename TensorType::DataType convertType(const Type &glowType);
