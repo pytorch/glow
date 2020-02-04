@@ -15,6 +15,8 @@
  */
 
 #include "glow/IR/IRGen.h"
+
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/Casting.h"
 
 #include <unordered_map>
@@ -29,6 +31,9 @@ using namespace glow;
 using llvm::cast;
 using llvm::dyn_cast;
 using llvm::isa;
+
+#define DECORATE_NODE_NAME(Node, ...)                                          \
+  llvm::join_items("_", Node->getName(), __VA_ARGS__)
 
 /// Helper function that \returns the number of times the same consecutive
 /// NodeValue in \p inputs is found, starting from index \p i.
@@ -111,11 +116,11 @@ void IRGenVisitor::post(Node *parent, Node *N) {
     auto *inVal = valueForNode(RN->getInput());
     std::vector<dim_t> offsets(inVal->getType()->dims().size(), 0);
     auto *TVI = builder_.createTensorViewInst(
-        "tensorview.reshape." + inVal->getName().str(), inVal,
-        RN->getResult().getType(), offsets);
-    auto *dest = builder_.createAllocActivationInst("copy.reshape.res",
-                                                    RN->getResult().getType());
-    builder_.createCopyInst("copy.reshape", dest, TVI);
+        DECORATE_NODE_NAME(N, "tensorview"), inVal, RN->getResult().getType(),
+        offsets);
+    auto *dest = builder_.createAllocActivationInst(
+        DECORATE_NODE_NAME(N, "res"), RN->getResult().getType());
+    builder_.createCopyInst(DECORATE_NODE_NAME(N, "copy"), dest, TVI);
     registerIR(N, dest);
     break;
   }
@@ -128,12 +133,12 @@ void IRGenVisitor::post(Node *parent, Node *N) {
 
     auto *outGrad = valueForNode(CG->getGradOfOriginalOutputNamedResult());
 
-    auto *inG =
-        builder_.createAllocActivationInst("conv.input.G", input->getType());
-    auto *biasG =
-        builder_.createAllocActivationInst("conv.bias.G", bias->getType());
-    auto *filterG =
-        builder_.createAllocActivationInst("conv.filter.G", filter->getType());
+    auto *inG = builder_.createAllocActivationInst(
+        DECORATE_NODE_NAME(N, "input", "grad"), input->getType());
+    auto *biasG = builder_.createAllocActivationInst(
+        DECORATE_NODE_NAME(N, "bias", "grad"), bias->getType());
+    auto *filterG = builder_.createAllocActivationInst(
+        DECORATE_NODE_NAME(N, "filter", "grad"), filter->getType());
 
     builder_.createConvolutionGradInst(
         N->getName(), input, filter, outGrad, inG, filterG, biasG,
@@ -175,8 +180,8 @@ void IRGenVisitor::post(Node *parent, Node *N) {
     auto *outW = valueForNode(poolOut);
     auto *outG = valueForNode(PG->getGradOfOriginalOutputNamedResult());
 
-    auto *inG = builder_.createAllocActivationInst("pool.outG",
-                                                   PG->getInput().getType());
+    auto *inG = builder_.createAllocActivationInst(
+        DECORATE_NODE_NAME(N, "outG"), PG->getInput().getType());
 
     // Find the original pool instruction.
     assert(nodeToInstr_.count(poolOut) && "Pool IRgen did not register itself");
@@ -197,8 +202,8 @@ void IRGenVisitor::post(Node *parent, Node *N) {
     auto *outW = valueForNode(poolOut);
     auto *outG = valueForNode(PG->getGradOfOriginalOutputNamedResult());
 
-    auto *inG = builder_.createAllocActivationInst("pool.outG",
-                                                   PG->getInput().getType());
+    auto *inG = builder_.createAllocActivationInst(
+        DECORATE_NODE_NAME(N, "outG"), PG->getInput().getType());
 
     builder_.createAvgPoolGradInst(N->getName(), outW, inW, outG, inG,
                                    PG->getKernels(), PG->getStrides(),
@@ -213,8 +218,8 @@ void IRGenVisitor::post(Node *parent, Node *N) {
     auto *outW = valueForNode(poolOut);
     auto *outG = valueForNode(PG->getGradOfOriginalOutputNamedResult());
 
-    auto *inG = builder_.createAllocActivationInst("pool.outG",
-                                                   PG->getInput().getType());
+    auto *inG = builder_.createAllocActivationInst(
+        DECORATE_NODE_NAME(N, "outG"), PG->getInput().getType());
 
     builder_.createAdaptiveAvgPoolGradInst(N->getName(), outW, outG, inG);
     registerIR(PG->getGradOfInputNamedInput(), inG);
@@ -231,8 +236,8 @@ void IRGenVisitor::post(Node *parent, Node *N) {
     assert(nodeToInstr_.count(originalNodeResult.getNode()) &&
            "Unknown original node");
     auto *origOut = valueForNode(originalNodeResult);
-    auto *srcGrad = builder_.createAllocActivationInst("softmax.res.grad",
-                                                       outGrad->getType());
+    auto *srcGrad = builder_.createAllocActivationInst(
+        DECORATE_NODE_NAME(N, "res"), outGrad->getType());
     auto *SMGI = builder_.createSoftMaxGradInst(N->getName(), origOut, origIn,
                                                 origSelect, srcGrad);
     registerIR(SMG->getGradOfInputNamedInput(), SMGI->getSrcGrad());
@@ -254,10 +259,10 @@ void IRGenVisitor::post(Node *parent, Node *N) {
     auto *Y = valueForNode(CELossG->getLabels());
     // Backward pass gradient dL/dY.
     auto *dY = valueForNode(CELossG->getGradOfOriginalOutputNamedCE());
-    auto *pGrad =
-        builder_.createAllocActivationInst("celoss.p.grad", P->getType());
-    auto *yGrad =
-        builder_.createAllocActivationInst("celoss.labels.grad", Y->getType());
+    auto *pGrad = builder_.createAllocActivationInst(
+        DECORATE_NODE_NAME(N, "p", "grad"), P->getType());
+    auto *yGrad = builder_.createAllocActivationInst(
+        DECORATE_NODE_NAME(N, "labels", "grad"), Y->getType());
     auto *CELossGI = builder_.createCrossEntropyLossGradInst(
         N->getName(), dY, P, Y, pGrad, yGrad);
     registerIR(CELossG->getGradOfInputNamedP(), CELossGI->getPgrad());
@@ -287,9 +292,9 @@ void IRGenVisitor::post(Node *parent, Node *N) {
       // Create the new InsertTensor instruction given the input node, along
       // with the number of times to insert the node and the axis (dim) we are
       // inserting in.
-      builder_.createInsertTensorInst(CC->getName(), dest,
-                                      valueForNode(inputs[i]), offsets,
-                                      consecutiveCount, dim);
+      builder_.createInsertTensorInst(
+          DECORATE_NODE_NAME(CC, inputs[i].getNode()->getName()), dest,
+          valueForNode(inputs[i]), offsets, consecutiveCount, dim);
 
       // We are stacking the tensors along a specific dimension. This means
       // that we increase the size of the tensor along this dimension, count
@@ -322,8 +327,9 @@ void IRGenVisitor::post(Node *parent, Node *N) {
     auto *small = valueForNode(IT->getSmall());
     auto *dest = builder_.createAllocActivationInst(IT->getName(),
                                                     IT->getResult().getType());
-    builder_.createCopyInst("copy.insert", dest, big);
-    builder_.createInsertTensorInst("insert", dest, small, start, count, axis);
+    builder_.createCopyInst(DECORATE_NODE_NAME(N, "copy"), dest, big);
+    builder_.createInsertTensorInst(IT->getName(), dest, small, start, count,
+                                    axis);
 
     registerIR(N, dest);
     break;
@@ -335,8 +341,8 @@ void IRGenVisitor::post(Node *parent, Node *N) {
     auto *slicesTensor = valueForNode(SDI->getSlices());
     auto *dest = builder_.createAllocActivationInst(SDI->getName(),
                                                     SDI->getResult().getType());
-    builder_.createCopyInst("copy.scatterdata", dest, dataTensor);
-    builder_.createScatterDataInst("scatterdata", dest, indicesTensor,
+    builder_.createCopyInst(DECORATE_NODE_NAME(N, "copy"), dest, dataTensor);
+    builder_.createScatterDataInst(SDI->getName(), dest, indicesTensor,
                                    slicesTensor, SDI->getCumulative());
     registerIR(N, dest);
     break;
@@ -362,8 +368,8 @@ void IRGenVisitor::post(Node *parent, Node *N) {
     auto *LRI =
         cast<LocalResponseNormalizationInst>(nodeToInstr_[originalNodeResult]);
 
-    auto *srcGrad =
-        builder_.createAllocActivationInst("lrn.res.grad", origIn->getType());
+    auto *srcGrad = builder_.createAllocActivationInst(
+        DECORATE_NODE_NAME(N, "res", "grad"), origIn->getType());
 
     builder_.createLocalResponseNormalizationGradInst(
         N->getName(), valueForNode(LRG->getOriginalOutputForResult()),
@@ -428,7 +434,8 @@ void IRGenVisitor::post(Node *parent, Node *N) {
 
     auto *destGrad = valueForNode(SLSG->getGradOfOriginalOutputNamedResult());
     auto *dataGrad = builder_.createAllocActivationInst(
-        "sls.data.G", SLSG->getGradOfInputNamedData().getType());
+        DECORATE_NODE_NAME(N, "dataG"),
+        SLSG->getGradOfInputNamedData().getType());
 
     builder_.createSparseLengthsSumGradInst(N->getName(), data, indices,
                                             lengths, destGrad, dataGrad);
@@ -446,9 +453,11 @@ void IRGenVisitor::post(Node *parent, Node *N) {
 
     auto *destGrad = valueForNode(SLWSG->getGradOfOriginalOutputNamedResult());
     auto *dataGrad = builder_.createAllocActivationInst(
-        "slws.data.G", SLWSG->getGradOfInputNamedData().getType());
+        DECORATE_NODE_NAME(N, "dataG"),
+        SLWSG->getGradOfInputNamedData().getType());
     auto *weightsGrad = builder_.createAllocActivationInst(
-        "slws.weights.G", SLWSG->getGradOfInputNamedWeights().getType());
+        DECORATE_NODE_NAME(N, "weightsG"),
+        SLWSG->getGradOfInputNamedWeights().getType());
 
     builder_.createSparseLengthsWeightedSumGradInst(N->getName(), data, weights,
                                                     indices, lengths, destGrad,
