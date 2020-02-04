@@ -2562,8 +2562,8 @@ BatchedPairwiseDotProductNode *
 Function::createBatchedPairwiseDotProduct(llvm::StringRef name,
                                           llvm::ArrayRef<NodeValue> inputs) {
   assert(!inputs.empty());
-  size_t batchCount = inputs[0].getType()->dims()[0];
-  size_t numPairs = inputs.size() * (inputs.size() - 1) / 2;
+  dim_t batchCount = inputs[0].getType()->dims()[0];
+  dim_t numPairs = inputs.size() * (inputs.size() - 1) / 2;
   auto *outTy = getParent()->uniqueTypeWithNewShape(inputs[0].getType(),
                                                     {batchCount, numPairs});
 
