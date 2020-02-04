@@ -55,6 +55,15 @@ template <> struct AttributeAssigner<false, std::string> {
   }
 };
 
+// Specialization for StringRef type
+template <> struct AttributeAssigner<false, llvm::StringRef> {
+  static void assign(ONNX_NAMESPACE::AttributeProto *attr,
+                     const llvm::StringRef container) {
+    attr->set_type(ONNX_NAMESPACE::AttributeProto::STRING);
+    attr->set_s(container.str());
+  }
+};
+
 // Specialization for float type
 template <> struct AttributeAssigner<false, float> {
   static void assign(ONNX_NAMESPACE::AttributeProto *attr,
@@ -636,7 +645,10 @@ void ONNXModelWriter::writeTensor(const Tensor &T, TensorType *out) {
   out->set_raw_data(T.getUnsafePtr(), type.getSizeInBytes());
 
   if (type.isQuantizedType()) {
-    out->set_doc_string(type.getElementName());
+    // Format is ElemKind:scale:offset
+    out->set_doc_string(strFormat("%s:%f:%d", type.getElementName().data(),
+                                  T.getType().getScale(),
+                                  T.getType().getOffset()));
   }
 }
 
@@ -794,6 +806,29 @@ Error ONNXModelWriter::writeConvolution(const ConvolutionNode *node,
   proto->set_op_type("Conv");
 
   return Error::success();
+}
+
+Error ONNXModelWriter::writeChannelwiseQuantizedConvolution(
+    const ChannelwiseQuantizedConvolutionNode *node, GraphType &graph) {
+  auto *proto = graph.add_node();
+
+  // Add dictionary entries.
+  addValueAttribute(proto, "kernel_shape", node->getKernels());
+  addValueAttribute(proto, "strides", node->getStrides());
+  addValueAttribute(proto, "pads", node->getPads());
+  addValueAttribute(proto, "group", node->getGroup());
+
+  addValueAttribute(
+      proto, "out_scale",
+      node->getType(ChannelwiseQuantizedConvolutionNode::ResultIdx)
+          ->getScale());
+  addValueAttribute(
+      proto, "out_offset",
+      node->getType(ChannelwiseQuantizedConvolutionNode::ResultIdx)
+          ->getOffset());
+
+  return writeAllWithNode("ChannelwiseQuantizedConvolution", node, graph,
+                          proto);
 }
 
 Error ONNXModelWriter::writeBatchedReduceMean(const BatchedReduceMeanNode *node,
@@ -1343,19 +1378,6 @@ Error ONNXModelWriter::writeInsertTensor(const InsertTensorNode *node,
   return writeAllWithNode("InsertTensor", node, graph, proto);
 }
 
-Error ONNXModelWriter::writeChannelwiseQuantizedConvolution(
-    const ChannelwiseQuantizedConvolutionNode *node, GraphType &graph) {
-  auto *proto = graph.add_node();
-  // Add dictionary entries.
-  addValueAttribute(proto, "kernel_shape", node->getKernels());
-  addValueAttribute(proto, "strides", node->getStrides());
-  addValueAttribute(proto, "pads", node->getPads());
-  addValueAttribute(proto, "group", node->getGroup());
-
-  return writeAllWithNode("ChannelwiseQuantizedConvolution", node, graph,
-                          proto);
-}
-
 Error ONNXModelWriter::writeSplat(const SplatNode *node, GraphType &graph) {
   // Conversion a scalar to a tensor is required.
   Tensor tensor(ElemKind::FloatTy, node->getResult().dims());
@@ -1466,9 +1488,11 @@ Error ONNXModelWriter::writeQuantize(const QuantizeNode *node,
                                      GraphType &graph) {
   auto *proto = graph.add_node();
   auto outTy = node->getResult().getType();
+
   // Add dictionary entries.
   addValueAttribute(proto, "scale", outTy->getScale());
   addValueAttribute(proto, "offset", outTy->getOffset());
+  addValueAttribute(proto, "elem_kind", outTy->getElementName());
 
   return writeAllWithNode("Quantize", node, graph, proto);
 }
