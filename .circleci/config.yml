@@ -101,10 +101,10 @@ jobs:
     environment:
       DOCKER_IMAGE: "308535385114.dkr.ecr.us-east-1.amazonaws.com/caffe2/py2-clang8-ubuntu16.04:283"
     <<: *linux_default
-  PYTORCH:
-    environment:
-      DOCKER_IMAGE: "308535385114.dkr.ecr.us-east-1.amazonaws.com/caffe2/py3.6-clang7-ubuntu16.04:287"
-    <<: *linux_default
+  # PYTORCH:
+  #   environment:
+  #     DOCKER_IMAGE: "308535385114.dkr.ecr.us-east-1.amazonaws.com/caffe2/py3.6-clang7-ubuntu16.04:287"
+  #   <<: *linux_default
   CHECK_CLANG_AND_PEP8_FORMAT:
     environment:
       DOCKER_IMAGE: "308535385114.dkr.ecr.us-east-1.amazonaws.com/caffe2/py2-clang6.0-ubuntu16.04:230"
@@ -121,5 +121,5 @@ workflows:
       - 32B_DIM_T
       - RELEASE_WITH_EXPENSIVE_TESTS
       - COVERAGE
-      - PYTORCH
+      # - PYTORCH
       - CHECK_CLANG_AND_PEP8_FORMAT

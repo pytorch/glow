@@ -62,15 +62,16 @@ NNPIDeviceManager::NNPIDeviceManager(const DeviceConfig &config,
   }
 
   if (!numWorkersPerFunction_) {
-    numWorkersPerFunction_ =
-        deviceOptions_.inferOnDevice
-            ? 2
-            : 1; // Ice-ref not re-entrant for the same nnpiNetwork.
+    numWorkersPerFunction_ = 2;
   }
 
   if (deviceOptions_.numWorkers > 0) {
     numWorkersPerFunction_ = deviceOptions_.numWorkers;
   }
+
+  // Ice-ref not re-entrant for the same nnpiNetwork.
+  numWorkersPerFunction_ =
+      deviceOptions_.inferOnDevice ? numWorkersPerFunction_ : 1;
 }
 
 NNPIDeviceManager::~NNPIDeviceManager() {

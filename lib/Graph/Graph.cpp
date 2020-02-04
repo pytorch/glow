@@ -2481,15 +2481,28 @@ Convolution3DNode *Function::createConv3D(PlaceholderBindings &bindings,
 }
 
 ChannelwiseQuantizedConvolutionNode *Function::createChannelwiseQuantizedConv(
-    llvm::StringRef name, NodeValue input, Constant *filter, Constant *bias,
-    Constant *scales, Constant *offsets, TypeRef outTy,
+    llvm::StringRef name, NodeValue input, NodeValue filter, NodeValue bias,
+    NodeValue scales, NodeValue offsets, TypeRef outTy,
     llvm::ArrayRef<unsigned_t> kernels, llvm::ArrayRef<unsigned_t> strides,
     llvm::ArrayRef<unsigned_t> pads, unsigned_t group) {
   assertConvDims(input, filter, bias, kernels, strides, pads, group);
   auto OT = getParent()->uniqueType(*outTy);
+  auto biasType = bias.getElementType();
+  if (biasType == ElemKind::Int32QTy) {
+    // Nothing to do
+  } else if (biasType == ElemKind::FloatTy) {
+    auto biasTy = getParent()->uniqueType(glow::ElemKind::Int32QTy, bias.dims(),
+                                          outTy->getScale(), 0);
+    bias = createQuantize("quantized_bias", bias, biasTy);
+  } else {
+    LOG(DFATAL)
+        << "Unsupported element type for ChannelwiseQuantizedConvolution bias: "
+        << Type::getElementName(biasType).str();
+  }
+
   return addNode(new ChannelwiseQuantizedConvolutionNode(
       name, OT, input, filter, bias, scales, offsets, kernels, strides, pads,
-      group, /*Groupwise*/ true));
+      group));
 }
 
 ConvertToNode *Function::createConvertTo(llvm::StringRef name, NodeValue input,
@@ -2543,6 +2556,18 @@ Node *Function::createDotProduct(llvm::StringRef name, NodeValue X,
 
   // Create and return BatchedReduceAdd node.
   return createBatchedReduceAdd(name.str() + ".bra", MN, 1);
+}
+
+BatchedPairwiseDotProductNode *
+Function::createBatchedPairwiseDotProduct(llvm::StringRef name,
+                                          llvm::ArrayRef<NodeValue> inputs) {
+  assert(!inputs.empty());
+  size_t batchCount = inputs[0].getType()->dims()[0];
+  size_t numPairs = inputs.size() * (inputs.size() - 1) / 2;
+  auto *outTy = getParent()->uniqueTypeWithNewShape(inputs[0].getType(),
+                                                    {batchCount, numPairs});
+
+  return addNode(new BatchedPairwiseDotProductNode(name, outTy, inputs));
 }
 
 Node *Function::createElementwiseLinear(llvm::StringRef name, NodeValue X,

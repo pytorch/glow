@@ -1226,8 +1226,9 @@ PyTorchModelLoader::loadQuantizedConvImpl(const torch::jit::Node *ptNode,
   const c10::optional<at::Tensor> ptBiasTensorTmp =
       unpackedParams[1].toOptional<at::Tensor>();
 
-  bool isGroupwiseQuantized = ptWeightTensor.is_quantized() &&
-                              ptWeightTensor.qscheme() == at::kPerChannelAffine;
+  bool isPerChannelQuantized =
+      ptWeightTensor.is_quantized() &&
+      ptWeightTensor.qscheme() == at::kPerChannelAffine;
 
   // unpacked weights
   auto weightTensor = ptTensorToGlowTensor(ptWeightTensor);
@@ -1241,7 +1242,6 @@ PyTorchModelLoader::loadQuantizedConvImpl(const torch::jit::Node *ptNode,
 
   // unpacked bias
   glow::Tensor biasTensor;
-  glow::NodeValue bias;
   glow::ShapeNHWC weightShape(weight.dims());
   if (ptBiasTensorTmp.has_value()) {
     auto ptBiasTensor = ptBiasTensorTmp.value().contiguous();
@@ -1253,13 +1253,7 @@ PyTorchModelLoader::loadQuantizedConvImpl(const torch::jit::Node *ptNode,
   glow::Constant *biasConstant = F_.getParent()->createConstant(
       "quantized_conv2d_bias", std::move(biasTensor));
   biasConstant->ensureIsOwned();
-  // bias is not used for groupwised quantization.
-  // Instead we use biasConstant
-  bias = biasConstant->getOutput();
-  auto biasType = F_.getParent()->uniqueType(
-      glow::ElemKind::Int32QTy, bias.dims(),
-      input.getType()->getScale() * weight.getType()->getScale(), 0);
-  bias = F_.createQuantize("quantize_bias", bias, biasType);
+  glow::NodeValue bias = biasConstant->getOutput();
 
   // strides
   std::vector<glow::unsigned_t> strides;
@@ -1305,7 +1299,7 @@ PyTorchModelLoader::loadQuantizedConvImpl(const torch::jit::Node *ptNode,
       glow::ElemKind::Int8QTy, outDims, outScale, outOffset);
 
   glow::NodeValue output_not_transposed;
-  if (isGroupwiseQuantized) {
+  if (isPerChannelQuantized) {
     RETURN_ERR_IF_NOT(dilation <= 1,
                       "Dilation not supported for group quantized convolution");
 

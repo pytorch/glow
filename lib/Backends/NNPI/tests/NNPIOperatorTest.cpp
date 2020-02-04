@@ -19,13 +19,13 @@
 using namespace glow;
 
 std::set<std::string> glow::backendTestBlacklist = {};
-
 struct BlacklistInitializer {
   BlacklistInitializer() {
     const std::vector<std::pair<std::string, uint32_t>> testBlacklistedSetups =
         {
             {"AdaptiveAvgPool/0", TestBlacklist::AnyDeviceAnyEngine},
             {"AdaptiveAvgPoolNonSquare/0", TestBlacklist::AnyDeviceAnyEngine},
+            {"batchedPairwiseDotProduct/0", TestBlacklist::AnyDeviceAnyEngine},
             {"batchedReduceMinMultiAxis_Float/0",
              TestBlacklist::AnyDeviceAnyEngine},
             {"batchedReduceMinMultiAxis_Int32/0",

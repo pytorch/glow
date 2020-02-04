@@ -455,20 +455,21 @@ public:
                                   unsigned_t group);
 
   /// Creates a ChannelwiseQuantizedConvolutionNode with the given \p name which
-  /// convolves the 4D \p input with \p filter and \bias. \p scales and \p
+  /// convolves the 4D \p input with \p filter and \p bias. \p scales and \p
   /// offsets provide individual quantization parameters for each filter group
   /// in \p filter. \p kernels defines the size of the height and width
   /// dimensions of the filters. \p strides defines the number of steps to take
   /// in the input for each output cell. \p pads defines how many zero padding
   /// cells should be added to the input during convolution. \p group defines
   /// the number of groups the input and output channels should be divided into
-  /// and convolved separately.
+  /// and convolved separately. If bias is FloatTy then it will be quantized
+  /// to Int32QTy automatically.
   /// NOTE: ChannelwiseQuantizedConvolutionNode does
   /// not yet have an implementation so attempting to run a graph containing
   /// this node fails.
   ChannelwiseQuantizedConvolutionNode *createChannelwiseQuantizedConv(
-      llvm::StringRef name, NodeValue input, Constant *filter, Constant *bias,
-      Constant *scales, Constant *offsets, TypeRef outTy,
+      llvm::StringRef name, NodeValue input, NodeValue filter, NodeValue bias,
+      NodeValue scales, NodeValue offsets, TypeRef outTy,
       llvm::ArrayRef<unsigned_t> kernels, llvm::ArrayRef<unsigned_t> strides,
       llvm::ArrayRef<unsigned_t> pads, unsigned_t group);
 
@@ -562,6 +563,13 @@ public:
   /// lowered to a Mul node, and is followed by a BatchedReduceAdd if \p X and
   /// \p Y are 2D. \returns either the Mul or BatchedReduceAdd node.
   Node *createDotProduct(llvm::StringRef name, NodeValue X, NodeValue Y);
+
+  /// Create a node that computes the pairwise dot product of \p inputs, which
+  /// must be a list of 2D tensors with identical shape. \returns the
+  /// BatchedPairwiseDotProductNode.
+  BatchedPairwiseDotProductNode *
+  createBatchedPairwiseDotProduct(llvm::StringRef name,
+                                  llvm::ArrayRef<NodeValue> inputs);
 
   /// Create a node that implements the elementwise linear operator. \p X is
   /// 2D and \p w and \p b are 1D. \p w and \p b are broadcasted to match the

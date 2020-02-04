@@ -609,6 +609,40 @@ struct Type final {
     return names[(int)Ty];
   }
 
+  /// Given a string \p str containing the name of an ElemKind from
+  /// Type::getElementName, returns the corresponding ElemKind or Error if a
+  /// mapping couldn't be found.
+  static ElemKind getElementKindFromName(llvm::StringRef str) {
+    if (str == Type::getElementName(ElemKind::FloatTy)) {
+      return ElemKind::FloatTy;
+    } else if (str == Type::getElementName(ElemKind::Float16Ty)) {
+      return ElemKind::Float16Ty;
+    } else if (str == Type::getElementName(ElemKind::Int8QTy)) {
+      return ElemKind::Int8QTy;
+    } else if (str == Type::getElementName(ElemKind::UInt8QTy)) {
+      return ElemKind::UInt8QTy;
+    } else if (str == Type::getElementName(ElemKind::Int16QTy)) {
+      return ElemKind::Int16QTy;
+    } else if (str == Type::getElementName(ElemKind::Int32QTy)) {
+      return ElemKind::Int32QTy;
+    } else if (str == Type::getElementName(ElemKind::Int32ITy)) {
+      return ElemKind::Int32ITy;
+    } else if (str == Type::getElementName(ElemKind::Int64ITy)) {
+      return ElemKind::Int64ITy;
+    } else if (str == Type::getElementName(ElemKind::UInt8FusedQTy)) {
+      return ElemKind::UInt8FusedQTy;
+    } else if (str == Type::getElementName(ElemKind::UInt8FusedFP16QTy)) {
+      return ElemKind::UInt8FusedFP16QTy;
+    } else if (str == Type::getElementName(ElemKind::UInt4FusedFP16QTy)) {
+      return ElemKind::UInt4FusedFP16QTy;
+    } else if (str == Type::getElementName(ElemKind::BoolTy)) {
+      return ElemKind::BoolTy;
+    } else {
+      LOG(DFATAL) << "Invalid ElemKind string: " << str.str();
+      return ElemKind::FloatTy;
+    }
+  }
+
   /// Dump a textual representation of the Type into provided output stream.
   void dump(llvm::raw_ostream &out) const;
 

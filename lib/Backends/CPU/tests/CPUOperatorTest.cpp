@@ -29,6 +29,7 @@ std::set<std::string> glow::backendTestBlacklist = {
     "Logit_Float16/0",
     "FP16Add/0",
     "FP16Matmul/0",
+    "batchedPairwiseDotProduct/0",
     "batchedReduceAdd_Float16/0",
     "batchedReduceZeroDimResult_Float16/0",
     "batchedReduceAddWithAxis_Float16/0",
@@ -187,4 +188,5 @@ std::set<std::string> glow::backendTestBlacklist = {
     "GatherWithInt32PartialTensors/0",
     "GatherWithInt64PartialTensors/0",
     "ParallelBatchMatMul_Float16/0",
+    "ChannelwiseQuantizedGroupConvolution/0",
 };

@@ -106,13 +106,11 @@ int main(int argc, char **argv) {
       .addMember(MemberType::VectorUnsigned, "Strides")
       .addMember(MemberType::VectorUnsigned, "Pads")
       .addMember(MemberType::Unsigned, "Group")
-      .addMember(MemberType::Boolean, "Groupwise")
       .addResultFromCtorArg()
       .setDocstring("Performs 2D Convolution using a given Input, Filter, and "
                     "Bias tensors, as well as provided Kernels, Strides, Pads, "
                     "and Group. Quantization parameters are provided by Scales "
-                    "and Offsets. If Groupwise is true then the quantization "
-                    "is per-group otherwise it is per-channel.");
+                    "and Offsets.");
 
   BB.newNode("Convolution3D")
       .addInput("Input")
@@ -677,6 +675,19 @@ int main(int argc, char **argv) {
       .setDocstring("Performs elementwise modulo operation on the input where "
                     "each element in the output is the corresponding element "
                     "in the input data modulo Divisor.");
+
+  BB.newNode("BatchedPairwiseDotProduct")
+      .addMember(MemberType::VectorNodeValue, "Inputs")
+      .addResultFromCtorArg()
+      .setDocstring(
+          "Performs batched pairwise dot products of the input vectors");
+
+  BB.newNode("BatchedPairwiseDotProductGrad")
+      .addInput("OutputGrad")
+      .hasExtraResults()
+      .addMember(MemberType::VectorNodeValue, "OriginalInputs")
+      .setDocstring(
+          "Performs the gradient operation for BatchedPairwiseDotProduct");
 
   //===--------------------------------------------------------------------===//
   //                Non-linearities
