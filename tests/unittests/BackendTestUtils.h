@@ -183,6 +183,9 @@ protected:
                                              &optimizedBindings, allowedError));
   }
 
+  /// Verify the module is still valid at the end of the test.
+  virtual void TearDown() override { EXPECT_TRUE(mod_.verify()); }
+
   /// ExecutionEngine instance for running functions to check numerical
   /// equivalence.
   ExecutionEngine EE_;
