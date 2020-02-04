@@ -1110,6 +1110,26 @@ libjit_nms_generic(T *indices, T *numDetected, const float *boxTensor,
     }
   }
 }
+
+template <typename T>
+static void libjit_resize_nearest_generic(const T *inW, T *outW,
+                                          const dim_t *inWdims,
+                                          const dim_t *outWdims, float scaleH,
+                                          float scaleW) {
+  for (dim_t ob = 0; ob < outWdims[0]; ++ob) {
+    for (dim_t oh = 0; oh < outWdims[1]; ++oh) {
+      auto ic = std::min(dim_t(oh / scaleH), inWdims[1] - 1);
+      for (dim_t ow = 0; ow < outWdims[2]; ++ow) {
+        auto iw = std::min(dim_t(ow / scaleW), inWdims[2] - 1);
+        for (dim_t oc = 0; oc < outWdims[3]; ++oc) {
+          outW[libjit_getXYZW(outWdims, ob, oh, ow, oc)] =
+              inW[libjit_getXYZW(inWdims, ob, ic, iw, oc)];
+        }
+      }
+    }
+  }
+}
+
 } // namespace
 
 extern "C" {
@@ -2509,4 +2529,29 @@ libjit_nms_i32(int32_t *indices, int32_t *numDetected, const float *boxTensor,
                      centerPointBox, maxOutputBoxesPerClass, iouThreshold,
                      scoreThreshold, isV4);
 }
+
+void libjit_resize_nearest_i8(const int8_t *inW, int8_t *outW,
+                              const dim_t *inWdims, const dim_t *outWdims,
+                              float scaleH, float scaleW) {
+  libjit_resize_nearest_generic(inW, outW, inWdims, outWdims, scaleH, scaleW);
+}
+
+void libjit_resize_nearest_i16(const int16_t *inW, int16_t *outW,
+                               const dim_t *inWdims, const dim_t *outWdims,
+                               float scaleH, float scaleW) {
+  libjit_resize_nearest_generic(inW, outW, inWdims, outWdims, scaleH, scaleW);
+}
+
+void libjit_resize_nearest_i32(const int32_t *inW, int32_t *outW,
+                               const dim_t *inWdims, const dim_t *outWdims,
+                               float scaleH, float scaleW) {
+  libjit_resize_nearest_generic(inW, outW, inWdims, outWdims, scaleH, scaleW);
+}
+
+void libjit_resize_nearest_f(const float *inW, float *outW,
+                             const dim_t *inWdims, const dim_t *outWdims,
+                             float scaleH, float scaleW) {
+  libjit_resize_nearest_generic(inW, outW, inWdims, outWdims, scaleH, scaleW);
+}
+
 } // extern "C"

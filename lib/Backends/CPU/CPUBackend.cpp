@@ -413,6 +413,10 @@ bool CPUBackend::isOpSupported(const NodeInfo &NI) const {
            ((NI.getInElemTy(ConvertToNode::InputIdx) == ElemKind::Int32ITy) &&
             (NI.getOutElemTy(ConvertToNode::ResultIdx) == ElemKind::Int64ITy));
 
+  case Kinded::Kind::ResizeNearestNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind(
+        {ElemKind::FloatTy, ElemKind::Int8QTy, ElemKind::Int32QTy});
+
   default:
     return false;
   }

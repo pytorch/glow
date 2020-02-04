@@ -1347,7 +1347,7 @@ static void testResizeNearest(glow::PlaceholderBindings &bindings,
 
 /// Verify that the ResizeNearest operator works correctly for Float.
 TEST_P(OperatorTest, ResizeNearest_Float) {
-  CHECK_IF_ENABLED();
+  ENABLED_BACKENDS("Interpreter", "CPU");
   testResizeNearest<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy);
 }
 
@@ -1359,7 +1359,7 @@ TEST_P(OperatorTest, ResizeNearest_Float16) {
 
 /// Verify that the ResizeNearest operator works correctly for Int8Q.
 TEST_P(OperatorTest, ResizeNearest_Int8) {
-  CHECK_IF_ENABLED();
+  ENABLED_BACKENDS("Interpreter", "CPU");
   testResizeNearest<int8_t>(bindings_, mod_, F_, EE_, ElemKind::Int8QTy);
 }
 
@@ -1371,7 +1371,7 @@ TEST_P(OperatorTest, ResizeNearest_Int16) {
 
 /// Verify that the ResizeNearest operator works correctly for Int32Q.
 TEST_P(OperatorTest, ResizeNearest_Int32) {
-  CHECK_IF_ENABLED();
+  ENABLED_BACKENDS("Interpreter", "CPU");
   testResizeNearest<int32_t>(bindings_, mod_, F_, EE_, ElemKind::Int32QTy);
 }
 

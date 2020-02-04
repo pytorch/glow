@@ -2775,6 +2775,25 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     break;
   }
 
+  case Kinded::Kind::ResizeNearestInstKind: {
+    auto *N = llvm::cast<ResizeNearestInst>(I);
+    auto *src = N->getSrc();
+    auto *dst = N->getDest();
+
+    auto *srcVal = emitValueAddress(builder, src);
+    auto *dstVal = emitValueAddress(builder, dst);
+    auto *srcDimsVal = emitValueDims(builder, src);
+    auto *dstDimsVal = emitValueDims(builder, dst);
+
+    auto *hScaleVal = emitConstF32(builder, N->getHeightScale());
+    auto *wScaleVal = emitConstF32(builder, N->getWidthScale());
+
+    auto *F = getFunction("resize_nearest", src->getElementType());
+    createCall(builder, F,
+               {srcVal, dstVal, srcDimsVal, dstDimsVal, hScaleVal, wScaleVal});
+    break;
+  }
+
   default:
     std::string sBuf;
     llvm::raw_string_ostream s(sBuf);

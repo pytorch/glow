@@ -2977,3 +2977,103 @@ TEST_F(OnnxImporterTest, importFRWQSLWS) {
   EXPECT_EQ(lengths->dims().vec(), std::vector<dim_t>({5}));
   EXPECT_EQ(lengths->getType()->getElementType(), ElemKind::Int32ITy);
 }
+
+/// Test Upsample operator.
+TEST(onnx, importUpsample) {
+  ExecutionEngine EE;
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/upsample.onnxtxt");
+
+  PlaceholderBindings bindings;
+  Placeholder *output;
+  Tensor in(ElemKind::FloatTy, {2, 2, 2, 2});
+  in.getHandle() = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16};
+  {
+    ONNXModelLoader onnxLD(netFilename, {"in"}, {&in.getType()}, *F);
+    output = EXIT_ON_ERR(onnxLD.getSingleOutput());
+
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod, {"in"}, {&in});
+  }
+
+  auto *res = bindings.get(output);
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+  ASSERT_EQ(4, F->getNodes().size());
+
+  auto *saveNode = getSaveNodeFromDest(output);
+  auto *TR = llvm::dyn_cast<TransposeNode>(saveNode->getInput().getNode());
+  ASSERT_TRUE(TR);
+  auto *RN = llvm::dyn_cast<ResizeNearestNode>(TR->getInput());
+  ASSERT_TRUE(RN);
+
+  auto result = res->getHandle();
+  std::vector<dim_t> expectedDims = {2, 2, 4, 4};
+  EXPECT_EQ(result.dims().vec(), expectedDims);
+
+  std::vector<float> expectedValues = {
+      1.0,  1.0,  2.0,  2.0,  1.0,  1.0,  2.0,  2.0,  3.0,  3.0,  4.0,
+      4.0,  3.0,  3.0,  4.0,  4.0,  5.0,  5.0,  6.0,  6.0,  5.0,  5.0,
+      6.0,  6.0,  7.0,  7.0,  8.0,  8.0,  7.0,  7.0,  8.0,  8.0,  9.0,
+      9.0,  10.0, 10.0, 9.0,  9.0,  10.0, 10.0, 11.0, 11.0, 12.0, 12.0,
+      11.0, 11.0, 12.0, 12.0, 13.0, 13.0, 14.0, 14.0, 13.0, 13.0, 14.0,
+      14.0, 15.0, 15.0, 16.0, 16.0, 15.0, 15.0, 16.0, 16.0};
+
+  for (dim_t i = 0; i < 64; i++) {
+    EXPECT_FLOAT_EQ(result.raw(i), expectedValues[i]);
+  }
+}
+
+/// Test Upsample operator.
+TEST(onnx, importResizeNearest) {
+  ExecutionEngine EE;
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/resizeNearest.onnxtxt");
+
+  PlaceholderBindings bindings;
+  Placeholder *output;
+  Tensor in(ElemKind::FloatTy, {2, 2, 2, 2});
+  in.getHandle() = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16};
+  {
+    ONNXModelLoader onnxLD(netFilename, {"in"}, {&in.getType()}, *F);
+    output = EXIT_ON_ERR(onnxLD.getSingleOutput());
+
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod, {"in"}, {&in});
+  }
+
+  auto *res = bindings.get(output);
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+  ASSERT_EQ(4, F->getNodes().size());
+
+  auto *saveNode = getSaveNodeFromDest(output);
+  auto *TR = llvm::dyn_cast<TransposeNode>(saveNode->getInput().getNode());
+  ASSERT_TRUE(TR);
+  auto *RN = llvm::dyn_cast<ResizeNearestNode>(TR->getInput());
+  ASSERT_TRUE(RN);
+
+  auto result = res->getHandle();
+  std::vector<dim_t> expectedDims = {2, 2, 4, 4};
+  EXPECT_EQ(result.dims().vec(), expectedDims);
+
+  std::vector<float> expectedValues = {
+      1.0,  1.0,  2.0,  2.0,  1.0,  1.0,  2.0,  2.0,  3.0,  3.0,  4.0,
+      4.0,  3.0,  3.0,  4.0,  4.0,  5.0,  5.0,  6.0,  6.0,  5.0,  5.0,
+      6.0,  6.0,  7.0,  7.0,  8.0,  8.0,  7.0,  7.0,  8.0,  8.0,  9.0,
+      9.0,  10.0, 10.0, 9.0,  9.0,  10.0, 10.0, 11.0, 11.0, 12.0, 12.0,
+      11.0, 11.0, 12.0, 12.0, 13.0, 13.0, 14.0, 14.0, 13.0, 13.0, 14.0,
+      14.0, 15.0, 15.0, 16.0, 16.0, 15.0, 15.0, 16.0, 16.0};
+
+  for (dim_t i = 0; i < 64; i++) {
+    EXPECT_FLOAT_EQ(result.raw(i), expectedValues[i]);
+  }
+
+  // Constant Folding Test.
+  FAIL_TEST_IF_ERR(checkConstFoldedOutput(netFilename, {"in"}, {&in},
+                                          {bindings.get(output)}));
+}

@@ -2448,6 +2448,93 @@ Error ONNXModelLoader::loadRowwiseQuantizedFullyConnected(
   RETURN_ERR("Not implemented.");
 }
 
+Error ONNXModelLoader::loadUpsample(const ONNX_NAMESPACE::NodeProto &op,
+                                    const ArgumentDictionaryTy &dict) {
+  const std::string &opName = loadOperatorName(op);
+
+  NodeValue in;
+  ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
+
+  if (this->opsetVersion_ < 9) {
+    RETURN_ERR("ONNX opset v9 and higher supported only.");
+  }
+
+  Constant *scalesC = getConstantByNameOrNull(op.input(1));
+  RETURN_ERR_IF_NOT(scalesC, "Starts Tensor is not Constant.");
+
+  if (scalesC->getElementType() != ElemKind::FloatTy) {
+    RETURN_ERR("Scales Tensor should have float type.");
+  }
+
+  std::vector<float> scales;
+  auto constH = scalesC->getPayload().getHandle();
+  for (dim_t i = 0; i < constH.size(); ++i) {
+    scales.push_back(constH.at({i}));
+  }
+
+  if (scales[0] != 1 || scales[1] != 1) {
+    RETURN_ERR("Scaling N,C dimensions not supported.");
+  }
+
+  std::string modeStr;
+  ASSIGN_VALUE_OR_RETURN_ERR(modeStr, loadStr(dict.at("mode")));
+  if (modeStr != "nearest") {
+    RETURN_ERR("Upsample: Invalid mode",
+               ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_ATTRIBUTE);
+  }
+
+  auto *inTR = G_.createTranspose(opName, in, NCHW2NHWC);
+  Node *RN = G_.createResizeNearest(opName, inTR, scales[2], scales[3]);
+  auto *outTR = G_.createTranspose(opName, RN, NHWC2NCHW);
+
+  RETURN_IF_ERR(addNodeAsOutput(op, outTR));
+  return Error::success();
+}
+
+Error ONNXModelLoader::loadResize(const ONNX_NAMESPACE::NodeProto &op,
+                                  const ArgumentDictionaryTy &dict) {
+  const std::string &opName = loadOperatorName(op);
+
+  NodeValue in;
+  ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
+
+  // Support only up to v10 Resize, nearest only.
+  if (this->opsetVersion_ > 10) {
+    RETURN_ERR("ONNX opset v10 and lower supported only.");
+  }
+
+  Constant *scalesC = getConstantByNameOrNull(op.input(1));
+  RETURN_ERR_IF_NOT(scalesC, "Starts Tensor is not Constant.");
+
+  if (scalesC->getElementType() != ElemKind::FloatTy) {
+    RETURN_ERR("Scales Tensor should have float type.");
+  }
+
+  std::vector<float> scales;
+  auto constH = scalesC->getPayload().getHandle();
+  for (dim_t i = 0; i < constH.size(); ++i) {
+    scales.push_back(constH.at({i}));
+  }
+
+  if (scales[0] != 1 || scales[1] != 1) {
+    RETURN_ERR("Scaling N,C dimensions not supported.");
+  }
+
+  std::string modeStr;
+  ASSIGN_VALUE_OR_RETURN_ERR(modeStr, loadStr(dict.at("mode")));
+  if (modeStr != "nearest") {
+    RETURN_ERR("Upsample: Invalid mode",
+               ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_ATTRIBUTE);
+  }
+
+  auto *inTR = G_.createTranspose(opName, in, NCHW2NHWC);
+  Node *RN = G_.createResizeNearest(opName, inTR, scales[2], scales[3]);
+  auto *outTR = G_.createTranspose(opName, RN, NHWC2NCHW);
+
+  RETURN_IF_ERR(addNodeAsOutput(op, outTR));
+  return Error::success();
+}
+
 Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
   ArgumentDictionaryTy dict = loadArgumentMap(op);
   const std::string &typeName = op.op_type();
@@ -2616,6 +2703,12 @@ Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
   }
   if (typeName == "Identity") {
     return loadIdentity(op, dict);
+  }
+  if (typeName == "Upsample") {
+    return loadUpsample(op, dict);
+  }
+  if (typeName == "Resize") {
+    return loadResize(op, dict);
   }
 
   RETURN_ERR("Failed to load operator " + typeName + " .",

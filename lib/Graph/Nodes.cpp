@@ -1679,7 +1679,7 @@ bool ResizeNearestNode::verify() const {
   isValid &= expectCompareTrue("Batch size must be the same", inputDims[0],
                                outputDims[0], this);
   isValid &= expectCompareTrue("Depth must be the same", inputDims[3],
-                               outputDims[0], this);
+                               outputDims[3], this);
   isValid &= expectCompareTrue(
       "Unexpected output height",
       dim_t(std::floor(inputDims[1] * getHeightScale())), outputDims[1], this);

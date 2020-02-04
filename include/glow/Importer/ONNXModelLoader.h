@@ -279,6 +279,14 @@ class ONNXModelLoader
   Error loadFlip(const ONNX_NAMESPACE::NodeProto &op,
                  const ArgumentDictionaryTy &dict);
 
+  /// Load Upsample Glow Operator.
+  Error loadUpsample(const ONNX_NAMESPACE::NodeProto &op,
+                     const ArgumentDictionaryTy &dict);
+
+  /// Load Resize Glow Operator.
+  Error loadResize(const ONNX_NAMESPACE::NodeProto &op,
+                   const ArgumentDictionaryTy &dict);
+
 protected:
   /// Load the network operators from the GraphProto.
   /// \returns Error if network cannot be loaded.
