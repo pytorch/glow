@@ -35,8 +35,16 @@ NodeValue::NodeValue(Node *N, unsigned resNo) {
 
 void NodeValue::replaceAllUsesOfWith(NodeValue v, const Function *F,
                                      Node *skipReplacement) const {
-  if (v.getNode()) {
-    assert(getType() == v.getType() && "Replacing value with the wrong type");
+  if (v.getNode() && getType() != v.getType()) {
+    // Fresh replacement nodes without users are usually created by the graph
+    // optimizer, where the type of the replacement value should always match
+    // the type of the original node value. Check if the only difference is
+    // related to strides and adjust accordingly.
+    assert(v.getNumUsers() == 0 && "Cannot update type if there are users");
+    assert(getType()->isEqual(*v.getType(), /* allowDifferentShape */ false,
+                              /* allowDifferentStrides */ true) &&
+           "Replacing value with the wrong type");
+    v.setType(getType());
   }
   typeUnsafeReplaceAllUsesOfWith(v, F, skipReplacement);
 }
