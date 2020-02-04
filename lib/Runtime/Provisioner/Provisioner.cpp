@@ -528,14 +528,16 @@ Error Provisioner::removeFunction(llvm::StringRef name) {
 }
 
 Error Provisioner::evictFunction(llvm::StringRef name, DeviceIDTy device) {
-  std::promise<Error> evictPromise;
+  std::promise<void> evictPromise;
+  Error evictErr = Error::empty();
   auto done = evictPromise.get_future();
-  std::unique_ptr<Error> evictErr;
-  devices_[device]->evictNetwork(name, [&evictPromise](std::string, Error err) {
-    evictPromise.set_value(std::move(err));
-  });
-  Error err = done.get();
-  return err;
+  devices_[device]->evictNetwork(
+      name, [&evictPromise, &evictErr](std::string, Error err) {
+        evictErr = std::move(err);
+        evictPromise.set_value();
+      });
+  done.get();
+  return evictErr;
 }
 
 void Provisioner::cleanupProvision(
