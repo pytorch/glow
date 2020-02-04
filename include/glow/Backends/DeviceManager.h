@@ -102,6 +102,13 @@ public:
   /// Initialize the device.
   virtual Error init() { return Error::success(); }
 
+  /// \returns a pointer to a buffer of size \p size allocated on the host, that
+  /// satistfies any requirements for pinning/alignment for transferring to/from
+  /// the device.
+  virtual void *allocateDeviceIOBuffer(dim_t size) {
+    return alignedAlloc(size, TensorAlignment);
+  };
+
   /// Load the provided module into the device, readyCB will be called when
   /// ready to use.
   /// \p functions contains the list of functions to load, keyed by their name
