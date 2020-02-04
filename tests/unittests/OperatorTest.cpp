@@ -5970,19 +5970,20 @@ TEST_P(OperatorTest, Split_Int8) {
 TEST_P(OperatorTest, IntRelu) {
   CHECK_IF_ENABLED();
 
-  const float splatValue = 10;
+  const float inVal = 10;
   const float scale = 1.0;
   const float rescaleScale = 2.0;
   const int32_t reluOffset = -128;
   const int32_t offset = 5;
   const size_t size = 5;
 
-  auto splatTy = mod_.uniqueType(ElemKind::Int8QTy, {size}, scale, offset);
+  auto inTy = mod_.uniqueType(ElemKind::Int8QTy, {size}, scale, offset);
   auto rescaleTy =
       mod_.uniqueType(ElemKind::Int8QTy, {size}, rescaleScale, offset);
-
-  auto *splat = F_->createSplat("splat", splatTy, splatValue);
-  auto *rescale = F_->createRescaleQuantized("rescale", splat, rescaleTy);
+  auto *in = mod_.createPlaceholder(inTy, "in", false);
+  bindings_.allocate(in)->getHandle<int8_t>().clear(
+      quantization::quantize(inVal, {scale, offset}));
+  auto *rescale = F_->createRescaleQuantized("rescale", in, rescaleTy);
   auto *reluOutTy =
       mod_.uniqueType(ElemKind::Int8QTy, {size}, rescaleScale, reluOffset);
   auto *relu = F_->createRELU("relu", rescale, reluOutTy);
@@ -5995,12 +5996,14 @@ TEST_P(OperatorTest, IntRelu) {
   EE_.run(bindings_);
 
   auto result = bindings_.get(save->getPlaceholder())->getHandle();
-  float expectedValue = std::max(0.0f, splatValue);
+  float expectedValue = std::max(0.0f, inVal);
   for (size_t i = 0; i < result.size(); i++) {
     EXPECT_EQ(expectedValue, result.raw(i));
   }
 }
 
+/// Verify quantized splats work correctly (add 0 to it to ensure constant
+/// folding doesn't make this test meaningless).
 TEST_P(OperatorTest, IntSplat) {
   CHECK_IF_ENABLED();
 
@@ -6009,38 +6012,48 @@ TEST_P(OperatorTest, IntSplat) {
   const int32_t offset = 5;
   const size_t size = 3;
 
+  auto *in = mod_.createPlaceholder(ElemKind::Int8QTy, {size}, scale, offset,
+                                    "in", false);
   auto splatTy = mod_.uniqueType(ElemKind::Int8QTy, {size}, scale, offset);
   auto *splat = F_->createSplat("splat", splatTy, splatValue);
-  auto *dequantize = F_->createDequantize("dequantize", splat);
-
+  auto *add = F_->createAdd("add", in, splat);
+  auto *dequantize = F_->createDequantize("dequantize", add);
   auto *save = F_->createSave("save", dequantize);
-  bindings_.allocate(mod_.getPlaceholders());
+
+  bindings_.allocate(in)->zero();
+  auto resultH = bindings_.allocate(save->getPlaceholder())->getHandle();
+
   EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
 
-  auto result = bindings_.get(save->getPlaceholder())->getHandle();
-  for (size_t i = 0; i < result.size(); i++) {
-    EXPECT_EQ(splatValue, result.raw(i));
+  for (size_t i = 0; i < resultH.size(); i++) {
+    EXPECT_EQ(splatValue, resultH.raw(i));
   }
 }
 
+/// Verify fp16 splats work correctly (add 0 to it to ensure constant
+/// folding doesn't make this test meaningless).
 TEST_P(OperatorTest, Fp16Splat) {
   CHECK_IF_ENABLED();
 
   const float splatValue = 10;
   const size_t size = 3;
 
+  auto *in = mod_.createPlaceholder(ElemKind::Float16Ty, {size}, "in", false);
   auto splatTy = mod_.uniqueType(ElemKind::Float16Ty, {size});
   auto *splat = F_->createSplat("splat", splatTy, splatValue);
+  auto *add = F_->createAdd("add", in, splat);
+  auto *save = F_->createSave("save", add);
 
-  auto *save = F_->createSave("save", splat);
-  bindings_.allocate(mod_.getPlaceholders());
+  bindings_.allocate(in)->zero();
+  auto resultH =
+      bindings_.allocate(save->getPlaceholder())->getHandle<float16_t>();
+
   EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
 
-  auto result = bindings_.get(save->getPlaceholder())->getHandle<float16_t>();
-  for (size_t i = 0; i < result.size(); i++) {
-    EXPECT_EQ(float16_t(splatValue), result.raw(i));
+  for (size_t i = 0; i < resultH.size(); i++) {
+    EXPECT_EQ(float16_t(splatValue), resultH.raw(i));
   }
 }
 
@@ -9520,7 +9533,8 @@ TEST_P(OperatorTest, ConstantSLS) {
   CHECK_IF_ENABLED();
 
   auto *data = mod_.createConstant(ElemKind::FloatTy, {1024, 32}, "data");
-  auto *indices = mod_.createConstant(IndexElemKind, {314}, "indices");
+  auto *indices =
+      mod_.createPlaceholder(IndexElemKind, {314}, "indices", false);
   auto *lengths = mod_.createConstant(ElemKind::Int32ITy, {20}, "lengths");
 
   // data
@@ -9532,7 +9546,7 @@ TEST_P(OperatorTest, ConstantSLS) {
   }
 
   // indices
-  auto IH = indices->getHandle<sdim_t>();
+  auto IH = bindings_.allocate(indices)->getHandle<sdim_t>();
   std::iota(IH.begin(), IH.end(), 0);
 
   // lengths
@@ -9930,10 +9944,10 @@ TEST_P(OperatorTest, Select) {
 TEST_P(OperatorTest, CmpLTE) {
   CHECK_IF_ENABLED();
 
-  Constant *A = mod_.createConstant(ElemKind::FloatTy, {5}, "A");
-  Constant *B = mod_.createConstant(ElemKind::FloatTy, {5}, "B");
-  A->getPayloadMutable().getHandle<float>() = {0.0, 1.0, 2.0, 3.0, 4.0};
-  B->getPayloadMutable().getHandle<float>() = {0.0, 1.1, 1.5, 10.1, -1.0};
+  Placeholder *A = mod_.createPlaceholder(ElemKind::FloatTy, {5}, "A", false);
+  Placeholder *B = mod_.createPlaceholder(ElemKind::FloatTy, {5}, "B", false);
+  bindings_.allocate(A)->getHandle<float>() = {0.0, 1.0, 2.0, 3.0, 4.0};
+  bindings_.allocate(B)->getHandle<float>() = {0.0, 1.1, 1.5, 10.1, -1.0};
 
   auto *CMPLTE = F_->createCmpLTE("select", A, B);
   auto *result = F_->createSave("saveCMPLTE", CMPLTE);

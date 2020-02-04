@@ -229,6 +229,7 @@ std::set<std::string> glow::backendTestBlacklist = {
     "IntBatchedArith/0",
     "IntLookupTable/0",
     "IntMatMul/0",
+    "IntSplat/0",
     "LengthsToRanges/0",
     "less_broadcast_float/0",
     "less_float/0",
