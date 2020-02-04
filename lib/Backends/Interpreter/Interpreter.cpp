@@ -575,6 +575,12 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
                 CrossEntropyLossGradNode::GradOfInputNamedLabelsIdx) ==
             IndexElemKind);
 
+  case Kinded::Kind::BatchedPairwiseDotProductNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind({ElemKind::FloatTy});
+
+  case Kinded::Kind::BatchedPairwiseDotProductGradNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind({ElemKind::FloatTy});
+
   default:
     return false;
   }

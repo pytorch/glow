@@ -4113,6 +4113,117 @@ void BoundInterpreterFunction::fwdConvertToInst(const glow::ConvertToInst *I) {
 }
 
 template <typename ElemTy>
+void BoundInterpreterFunction::fwdBatchedPairwiseDotProductInstImpl(
+    const BatchedPairwiseDotProductInst *I) {
+  auto destT = getTensor(I->getDest());
+  auto destH = destT->getHandle<ElemTy>();
+
+  dim_t batchCount = destT->getType().dims()[0];
+
+  // Gather all batched vector operands into an array so that they can be
+  // indexed easily.
+  std::vector<Value *> srcs;
+  for (unsigned i = 1, e = I->getNumOperands(); i < e; ++i) {
+    auto op = I->getOperand(i);
+    srcs.emplace_back(op.first);
+  }
+
+  // pairIdx is the total number of pairs (i, j) that have been processed.
+  unsigned pairIdx = 0;
+
+  // For each src operand:
+  for (unsigned i = 1, e = I->getNumInputs(); i < e; ++i) {
+    auto vAH = getTensor(srcs[i])->getHandle<ElemTy>();
+    dim_t vectorSize = getTensor(srcs[i])->getType().dims()[1];
+
+    // Compute the dot product of src[i] with every other vector with a smaller
+    // index.
+    for (unsigned j = 0; j < i; ++j) {
+      auto vBH = getTensor(srcs[j])->getHandle<ElemTy>();
+
+      // Process all batches for a given pair (i, j).
+      for (dim_t b = 0; b < batchCount; ++b) {
+        ElemTy accum = 0;
+
+        for (dim_t k = 0; k < vectorSize; ++k) {
+          accum += vAH.at({b, k}) * vBH.at({b, k});
+        }
+
+        destH.at({b, pairIdx}) = accum;
+      }
+
+      ++pairIdx;
+    }
+  }
+}
+
+void BoundInterpreterFunction::fwdBatchedPairwiseDotProductInst(
+    const BatchedPairwiseDotProductInst *I) {
+  dispatchImpl(fwdBatchedPairwiseDotProductInstImpl,
+               I->getDest()->getElementType(), I);
+}
+
+template <typename ElemTy>
+void BoundInterpreterFunction::fwdBatchedPairwiseDotProductGradInstImpl(
+    const BatchedPairwiseDotProductGradInst *I) {
+  auto destGradT = getTensor(I->getDestGrad());
+  auto destGradH = destGradT->getHandle<ElemTy>();
+
+  dim_t batchCount = destGradT->getType().dims()[0];
+
+  // Gather all batched vector operands into arrays so that they can be
+  // indexed easily. Operands 1 -> numInputs are gradients of inputs, and
+  // operands numInputs + 1 -> numOperands - 1 are the corresponding original
+  // inputs.
+  std::vector<Value *> srcs, srcGrads;
+  for (unsigned i = 0, e = I->getNumInputs(); i < e; ++i) {
+    auto gradOp = I->getOperand(i + 1);
+    auto inputOp = I->getOperand(i + 1 + e);
+
+    srcGrads.emplace_back(gradOp.first);
+    srcs.emplace_back(inputOp.first);
+  }
+
+  // Zero initialize all srcGrad tensors.
+  for (auto &s : srcGrads) {
+    getTensor(s)->zero();
+  }
+
+  // pairIdx is the total number of pairs (i, j) that have been processed.
+  unsigned pairIdx = 0;
+
+  // For each srcGrad operand:
+  for (unsigned i = 0, e = I->getNumInputs(); i < e; ++i) {
+    auto dvAH = getTensor(srcGrads[i])->getHandle<ElemTy>();
+    dim_t vectorSize = getTensor(srcs[i])->getType().dims()[1];
+
+    // Accmulate into it the product of the gradient of all dot products that
+    // src[i] contributed to and the corresponding vectors that src[i] was
+    // dotted with.
+    for (unsigned j = i + 1; j < e; ++j) {
+      auto vBH = getTensor(srcs[j])->getHandle<ElemTy>();
+
+      // Process all batches for a given pair (i, j).
+      for (dim_t b = 0; b < batchCount; ++b) {
+        ElemTy grad = destGradH.at({b, pairIdx});
+
+        for (dim_t k = 0; k < vectorSize; ++k) {
+          dvAH.at({b, k}) += grad * vBH.at({b, k});
+        }
+      }
+
+      ++pairIdx;
+    }
+  }
+}
+
+void BoundInterpreterFunction::fwdBatchedPairwiseDotProductGradInst(
+    const BatchedPairwiseDotProductGradInst *I) {
+  dispatchImpl(fwdBatchedPairwiseDotProductGradInstImpl,
+               I->getDestGrad()->getElementType(), I);
+}
+
+template <typename ElemTy>
 void BoundInterpreterFunction::fwdFlipInstImpl(const FlipInst *I) {
 
   static_assert(max_tensor_dimensions == 6,

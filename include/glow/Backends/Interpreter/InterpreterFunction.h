@@ -334,6 +334,13 @@ private:
 
   template <typename ElemTy> void fwdFlipInstImpl(const FlipInst *I);
 
+  template <typename ElemTy>
+  void fwdBatchedPairwiseDotProductInstImpl(
+      const glow::BatchedPairwiseDotProductInst *I);
+
+  template <typename ElemTy>
+  void fwdBatchedPairwiseDotProductGradInstImpl(
+      const glow::BatchedPairwiseDotProductGradInst *I);
   ///@}
 };
 

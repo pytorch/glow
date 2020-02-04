@@ -1031,4 +1031,43 @@ TEST_P(GradCheck, gradientCheckCrossEntropyLoss) {
   }
 }
 
+TEST_P(GradCheck, gradientCheckBatchedPairwiseDotProduct) {
+  CHECK_IF_ENABLED();
+  PlaceholderBindings bindings;
+  constexpr dim_t kBatchSize = 1;
+  constexpr dim_t kVectorSize = 3;
+  Constant *B, *C;
+  Placeholder *A, *Exp;
+  SaveNode *result;
+  for (auto *EE : engines_) {
+    auto &mod = EE->getModule();
+    Function *F = mod.createFunction("main");
+    A = mod.createPlaceholder(ElemKind::FloatTy, {kBatchSize, kVectorSize}, "A",
+                              false);
+    B = mod.createConstant(ElemKind::FloatTy, {kBatchSize, kVectorSize}, "B");
+    B->getPayloadMutable().getHandle().randomize(-1.0, 1.0, mod.getPRNG());
+    C = mod.createConstant(ElemKind::FloatTy, {kBatchSize, kVectorSize}, "C");
+    C->getPayloadMutable().getHandle().randomize(-1.0, 1.0, mod.getPRNG());
+
+    Exp =
+        mod.createPlaceholder(ElemKind::FloatTy, {kBatchSize, 3}, "Exp", false);
+
+    Node *N = F->createBatchedPairwiseDotProduct("dot", {A, B, C});
+    N = F->createRegression("reg", N, Exp);
+    result = F->createSave("ret", N);
+  }
+
+  Tensor inputs(ElemKind::FloatTy, {{kBatchSize, kVectorSize}});
+  Tensor outputs(ElemKind::FloatTy, {{kBatchSize, 3}});
+
+  auto inputsH = inputs.getHandle<>();
+  auto outputsH = outputs.getHandle<>();
+  auto &mod = EET_.getModule();
+  inputsH.initXavier(1, mod.getPRNG());
+  outputsH.initXavier(1, mod.getPRNG());
+
+  performGradCheck(EET_, EEI_, bindings, result->getPlaceholder(), A, Exp,
+                   &inputs, &outputs, 0.001, 0.01);
+}
+
 INSTANTIATE_BACKEND_TEST(GradCheck);

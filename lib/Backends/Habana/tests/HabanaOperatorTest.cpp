@@ -51,6 +51,7 @@ std::set<std::string> glow::backendTestBlacklist = {
     "BatchAdd/0",
     "BatchBoxCox_Float16/0",
     "BatchedGather/0",
+    "batchedPairwiseDotProduct/0",
     "batchedReduceAdd_5Dinput/0",
     "batchedReduceAdd_Float16/0",
     "batchedReduceAddQuantized/0",

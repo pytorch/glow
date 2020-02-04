@@ -11009,6 +11009,60 @@ TEST_P(OperatorTest, dotProduct1D_Int8) {
   testDotProduct1D<int8_t>(bindings_, mod_, F_, EE_, ElemKind::Int8QTy);
 }
 
+// Test a BatchedPairwiseDotProduct operator.
+TEST_P(OperatorTest, batchedPairwiseDotProduct) {
+  CHECK_IF_ENABLED();
+
+  // Input tensors.
+  constexpr std::size_t kBatchSize = 2;
+  constexpr std::size_t kVectorSize = 6;
+
+  auto *W = createPlaceholderConditionallyQuantized(
+      mod_, ElemKind::FloatTy, {kBatchSize, kVectorSize}, "X", false);
+  auto *X = createPlaceholderConditionallyQuantized(
+      mod_, ElemKind::FloatTy, {kBatchSize, kVectorSize}, "X", false);
+  auto *Y = createPlaceholderConditionallyQuantized(
+      mod_, ElemKind::FloatTy, {kBatchSize, kVectorSize}, "Y", false);
+  auto *Z = createPlaceholderConditionallyQuantized(
+      mod_, ElemKind::FloatTy, {kBatchSize, kVectorSize}, "Z", false);
+  auto WH = bindings_.allocate(W)->getHandle();
+  auto XH = bindings_.allocate(X)->getHandle();
+  auto YH = bindings_.allocate(Y)->getHandle();
+  auto ZH = bindings_.allocate(Z)->getHandle();
+
+  // Fill inputs with random values.
+
+  WH = {1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2};
+  XH = {2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3};
+  YH = {3, 3, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4};
+  ZH = {4, 4, 4, 4, 4, 4, 5, 5, 5, 5, 5, 5};
+
+  // Compute expected output.
+  auto expected =
+      createTensorConditionallyQuantized(ElemKind::FloatTy, {kBatchSize, 6});
+  auto expectedH = expected.getHandle();
+
+  expectedH = {12, 18, 36, 24, 48, 72, 36, 48, 72, 60, 90, 120};
+
+  // Compile and run the model.
+  auto *pairwiseDotProduct =
+      F_->createBatchedPairwiseDotProduct("prod", {W, X, Y, Z});
+  auto *result = F_->createSave("save", pairwiseDotProduct);
+  bindings_.allocate(result->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  auto actualH = bindings_.get(result->getPlaceholder())->getHandle();
+
+  // Check that the output tensor is the same as the expected output.
+  EXPECT_TRUE(actualH.size() == expectedH.size());
+  EXPECT_TRUE(actualH.getType().isEqual(expectedH.getType()));
+  for (std::size_t i = 0; i < actualH.size(); ++i) {
+    EXPECT_NEAR(actualH.raw(i), expectedH.raw(i), 0.00001);
+  }
+}
+
 // Test an ElementwiseLinear operator with both axis = 0 and axis = 1
 // arguments.
 TEST_P(OperatorTest, elementwiseLinear) {

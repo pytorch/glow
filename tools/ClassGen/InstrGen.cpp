@@ -576,6 +576,18 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::SameType, {"Dest", "Src"})
       .autoIRGen();
 
+  BB.newInstr("BatchedPairwiseDotProduct")
+      .addOperand("Dest", OperandKind::Out)
+      .addMember(MemberType::Unsigned, "NumInputs")
+      .addMember(MemberType::Unsigned, "VectorSize")
+      .autoVerify(VerifyKind::NoVerify);
+
+  BB.newInstr("BatchedPairwiseDotProductGrad")
+      .addOperand("DestGrad", OperandKind::In)
+      .addMember(MemberType::Unsigned, "NumInputs")
+      .addMember(MemberType::Unsigned, "VectorSize")
+      .autoVerify(VerifyKind::NoVerify);
+
   //===--------------------------------------------------------------------===//
   //                Non-linearities
   //===--------------------------------------------------------------------===//

@@ -564,6 +564,13 @@ public:
   /// \p Y are 2D. \returns either the Mul or BatchedReduceAdd node.
   Node *createDotProduct(llvm::StringRef name, NodeValue X, NodeValue Y);
 
+  /// Create a node that computes the pairwise dot product of \p inputs, which
+  /// must be a list of 2D tensors with identical shape. \returns the
+  /// BatchedPairwiseDotProductNode.
+  BatchedPairwiseDotProductNode *
+  createBatchedPairwiseDotProduct(llvm::StringRef name,
+                                  llvm::ArrayRef<NodeValue> inputs);
+
   /// Create a node that implements the elementwise linear operator. \p X is
   /// 2D and \p w and \p b are 1D. \p w and \p b are broadcasted to match the
   /// shape of \p X and then the output is computed by multiplying \p X and

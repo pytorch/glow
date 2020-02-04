@@ -467,6 +467,63 @@ void IRGenVisitor::post(Node *parent, Node *N) {
     registerIR(SLWSG->getGradOfInputNamedWeights(), weightsGrad);
     break;
   }
+  case glow::Kinded::Kind::BatchedPairwiseDotProductNodeKind: {
+    auto *BPDPN = llvm::cast<BatchedPairwiseDotProductNode>(N);
+    auto firstInput = BPDPN->getInputs()[0];
+
+    std::string allocName = std::string(BPDPN->getName()) + ".res";
+    auto *dest = builder_.createAllocActivationInst(
+        allocName, BPDPN->getResult().getType());
+
+    auto *inst = builder_.createBatchedPairwiseDotProductInst(
+        BPDPN->getName(), dest, BPDPN->getInputs().size(),
+        firstInput.getType()->dims()[1]);
+
+    // First instruction operand is the buffer to write the dot products, the
+    // rest are all inputs.
+    for (auto &in : BPDPN->getInputs()) {
+      inst->pushOperand({valueForNode(in), OperandKind::In});
+    }
+
+    registerIR(BPDPN->getResult(), dest);
+    break;
+  }
+
+  case glow::Kinded::Kind::BatchedPairwiseDotProductGradNodeKind: {
+    auto *BPDPGN = llvm::cast<BatchedPairwiseDotProductGradNode>(N);
+
+    auto *in0 = valueForNode(BPDPGN->getOriginalInputs()[0]);
+    auto *outputGrad = valueForNode(BPDPGN->getOutputGrad());
+
+    // First, create alloc instructions for all of the gradients. This needs to
+    // be done first so that these instructions precede the first use of the
+    // buffers they create.
+    std::vector<Value *> dests;
+    for (unsigned i = 0, e = BPDPGN->getNumResults(); i < e; ++i) {
+      NodeValue res = BPDPGN->getNthResult(i);
+      std::string allocName =
+          std::string(BPDPGN->getName()) + ".res." + std::to_string(i);
+      auto *dest = builder_.createAllocActivationInst(allocName, res.getType());
+      dests.emplace_back(dest);
+    }
+
+    auto *inst = builder_.createBatchedPairwiseDotProductGradInst(
+        BPDPGN->getName(), outputGrad, BPDPGN->getOriginalInputs().size(),
+        in0->dims()[1]);
+
+    // Operands 1 -> numInputs are gradients.
+    for (unsigned i = 0, e = BPDPGN->getNumResults(); i < e; ++i) {
+      NodeValue res = BPDPGN->getNthResult(i);
+      inst->pushOperand({dests[i], OperandKind::Out});
+      registerIR(res, dests[i]);
+    }
+
+    // Operands numInputs + 1 -> 2 * numInputs are original inputs.
+    for (auto &in : BPDPGN->getOriginalInputs()) {
+      inst->pushOperand({valueForNode(in), OperandKind::In});
+    }
+    break;
+  }
   }
 }
 
