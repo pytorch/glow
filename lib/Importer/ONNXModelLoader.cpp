@@ -1191,8 +1191,14 @@ Error ONNXModelLoader::loadMatMul(const ONNX_NAMESPACE::NodeProto &op,
   NodeValue RHS;
   ASSIGN_VALUE_OR_RETURN_ERR(RHS, getNodeValueByName(op.input(1)));
 
-  Node *node = G_.createMatMul(opName, LHS, RHS);
-  RETURN_IF_ERR(addNodeAsOutput(op, node));
+  /// For dimension size equal to 3 use batchedMatMul
+  if (LHS.dims().size() == 3) {
+    Node *node = G_.createBatchMatMul(opName, LHS, RHS);
+    RETURN_IF_ERR(addNodeAsOutput(op, node));
+  } else {
+    Node *node = G_.createMatMul(opName, LHS, RHS);
+    RETURN_IF_ERR(addNodeAsOutput(op, node));
+  }
   return Error::success();
 }
 

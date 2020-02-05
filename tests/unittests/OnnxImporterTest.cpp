@@ -1165,6 +1165,40 @@ TEST_F(OnnxImporterTest, importClip) {
       checkConstFoldedOutput(netFilename, {"x"}, {&x}, {bindings.get(output)}));
 }
 
+/// Test loading MatMul op from an ONNX model with dimension equal to 3
+TEST_F(OnnxImporterTest, importMatMul) {
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/matmul.onnxtxt");
+
+  PlaceholderBindings bindings;
+  Placeholder *output;
+  Tensor inputs_0(ElemKind::FloatTy, {20, 40, 7});
+  Tensor inputs_1(ElemKind::FloatTy, {20, 7, 40});
+  auto data_0 = inputs_0.getHandle();
+  auto data_1 = inputs_1.getHandle();
+  // Fill inputs with random positive values.
+  data_0.randomize(0.0, 5.0, mod.getPRNG());
+  data_1.randomize(1.0, 2.0, mod.getPRNG());
+  {
+    ONNXModelLoader onnxLD(netFilename, {"inputs_0", "inputs_1"},
+                           {&inputs_0.getType(), &inputs_1.getType()}, *F);
+    output = EXIT_ON_ERR(onnxLD.getSingleOutput());
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod, {"inputs_0", "inputs_1"},
+                                  {&inputs_0, &inputs_1});
+  }
+  auto *res = bindings.get(output);
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  auto result = res->getHandle();
+  std::vector<dim_t> expectedDims = {20, 40, 40};
+  EXPECT_EQ(result.dims().vec(), expectedDims);
+}
+
 /// Test loading BatchMatMul op from an ONNX model.
 TEST_F(OnnxImporterTest, importBatchMatMul) {
   ExecutionEngine EE{};
