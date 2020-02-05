@@ -154,13 +154,13 @@ static void bailOnNonCanonicalLayout(
 /// Evaluates a provided constant operation \p C using the provided \p backend
 /// and using the compilation context \p cctx.
 /// \returns constant results.
-std::vector<Constant *>
-evaluateConstantOperation(Backend &backend, CompilationContext &cctx, Node *C) {
+bool evaluateConstantOperation(Backend &backend, CompilationContext &cctx,
+                               Node *C, std::vector<Constant *> &constResults) {
   PlaceholderBindings bindings;
   assert(isConstantOperation(C, backend) && "Expected a constant expression");
   // Constants and splats do not need to be constant evaluated.
   if (isa<Constant>(C) || isa<SplatNode>(C)) {
-    return {};
+    return true;
   }
   Module &mod = *C->getParent()->getParent();
   // Create a temporary function to perform the constant operation.
@@ -176,7 +176,7 @@ evaluateConstantOperation(Backend &backend, CompilationContext &cctx, Node *C) {
     auto *SN = constEvaluationF->createSave(clonedC->getName(), RN);
     if (!isCanonicalLayout(RN, backend, clonedC, idx)) {
       bailOnNonCanonicalLayout(constEvaluationF, mod, savedResults);
-      return {};
+      return true;
     }
     savedResults.emplace_back(SN);
     bindings.allocate(SN->getPlaceholder());
@@ -185,12 +185,12 @@ evaluateConstantOperation(Backend &backend, CompilationContext &cctx, Node *C) {
   // evaluation.
   if (ERR_TO_BOOL(executeConstantFunction(backend, *constEvaluationF, bindings,
                                           cctx))) {
-    return {};
+    mod.eraseFunction(constEvaluationF);
+    return false;
   }
 
   // Get the results of the constant operation compile-time computation and
   // create new constants from it.
-  std::vector<Constant *> constResults;
   constResults.reserve(savedResults.size());
   for (auto *SN : savedResults) {
     Tensor *outputTensor = bindings.get(SN->getPlaceholder());
@@ -205,7 +205,7 @@ evaluateConstantOperation(Backend &backend, CompilationContext &cctx, Node *C) {
   }
   // Remove the temporary function.
   mod.eraseFunction(constEvaluationF);
-  return constResults;
+  return true;
 }
 
 /// Check if function \p F consists of constant operations only.
@@ -240,7 +240,8 @@ Error verifyConstantFunction(Backend &backend, Function &F) {
 /// \returns list of constants which are the result of the
 /// constant-folding. These constants correspond to results of the node. If no
 /// constant folding was possible an empty vector will be returned
-std::vector<Constant *> constantFoldNodeImpl(Backend &backend, Node *N) {
+bool constantFoldNodeImpl(Backend &backend, Node *N,
+                          std::vector<Constant *> &constResults) {
   CompilationContext cctx;
   // Do not recursively call constant folding.
   cctx.optimizationOpts.enableConstantFolding = false;
@@ -248,7 +249,7 @@ std::vector<Constant *> constantFoldNodeImpl(Backend &backend, Node *N) {
   // Do not print out compilation errors encountered, as constant folding is a
   // best effort; simply silently give up and continue with compilation.
   cctx.verboseCompile = false;
-  return evaluateConstantOperation(backend, cctx, N);
+  return evaluateConstantOperation(backend, cctx, N, constResults);
 }
 
 } // namespace
@@ -311,7 +312,10 @@ bool glow::ConstantFold::run(Function *F, const CompilationContext &cctx) {
     }
 
     // Compute the constant value of the node.
-    std::vector<Constant *> constResults = constantFoldNodeImpl(*backend, N);
+    std::vector<Constant *> constResults;
+    if (!constantFoldNodeImpl(*backend, N, constResults)) {
+      return false;
+    }
     // Replace all results of the original operation by the computed
     // compile-time results of this operation.
     for (size_t idx = 0, e = constResults.size(); idx < e; ++idx) {
@@ -330,5 +334,10 @@ std::vector<Constant *> glow::constantFold(Node *N) {
   if (!isConstantOperation(N, *backend)) {
     return {};
   }
-  return constantFoldNodeImpl(*backend, N);
+  std::vector<Constant *> constResults;
+  if (!constantFoldNodeImpl(*backend, N, constResults)) {
+    return {};
+  }
+
+  return constResults;
 }
