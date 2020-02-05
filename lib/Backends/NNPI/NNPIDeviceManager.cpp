@@ -88,14 +88,14 @@ NNPIDeviceManager::~NNPIDeviceManager() {
   }
 
   if (device_ != NNPI_INVALID_NNPIHANDLE) {
-    LOG_NNPI_INF_ERROR(nnpiDeviceContextDestroy(device_),
-                       "Failed to destroy NNPI device context");
+    LOG_NNPI_INF_IF_ERROR(nnpiDeviceContextDestroy(device_),
+                          "Failed to destroy NNPI device context");
     device_ = NNPI_INVALID_NNPIHANDLE;
   }
 
   if (adapter_ != NNPI_INVALID_NNPIHANDLE) {
-    LOG_NNPI_INF_ERROR(nnpiAdapterDestroy(adapter_),
-                       "Failed to destroy NNPI adapter");
+    LOG_NNPI_INF_IF_ERROR(nnpiAdapterDestroy(adapter_),
+                          "Failed to destroy NNPI adapter");
     adapter_ = NNPI_INVALID_NNPIHANDLE;
   }
 }
@@ -109,15 +109,16 @@ Error NNPIDeviceManager::init() {
   NNPITransformerInfo info;
   CHECK_EQ(nnpiTransformerGetInfo(&info), NNPI_NO_ERROR);
   LOG(INFO) << "NNPI Transformer Version " << info.majorVersion << "."
-            << info.minorVersion << "." << info.patchVersion;
+            << info.minorVersion << "." << info.patchVersion << "."
+            << info.minorPatchVersion;
 
   if (deviceOptions_.inferOnDevice) {
     // Create NNPI adapter.
-    LOG_NNPI_INF_ERROR_RETURN_LLVMERROR(nnpiAdapterCreate(nullptr, &adapter_),
-                                        "Failed to create NNPI Adapter");
+    LOG_NNPI_INF_IF_ERROR_RETURN_LLVMERROR(
+        nnpiAdapterCreate(nullptr, &adapter_), "Failed to create NNPI Adapter");
 
     // Create NNPI device.
-    LOG_NNPI_INF_ERROR_RETURN_LLVMERROR(
+    LOG_NNPI_INF_IF_ERROR_RETURN_LLVMERROR(
         nnpiDeviceContextCreate(adapter_, deviceId_, &device_),
         "Failed to create NNPI Device");
     LOG_IF_NOT_RETURN_LLVMERROR(
@@ -127,7 +128,7 @@ Error NNPIDeviceManager::init() {
       deviceTracing_ = NNPIDeviceTracing::getForDevice(deviceId_);
     }
     NNPIDeviceInfo deviceInfo;
-    LOG_NNPI_INF_ERROR_RETURN_LLVMERROR(
+    LOG_NNPI_INF_IF_ERROR_RETURN_LLVMERROR(
         nnpiDeviceGetInfo(deviceId_, &deviceInfo),
         "Failed to get NNPI Device Info");
     maxMemoryBytes_ =
@@ -267,7 +268,7 @@ uint64_t NNPIDeviceManager::getAvailableMemory() const {
     NNPIDeviceStatus devStatus;
     NNPIInferenceErrorCode res = nnpiDeviceGetStatus(deviceId_, &devStatus);
     if (res != NNPI_INF_NO_ERROR) {
-      LOG_NNPI_INF_ERROR(res, "Failed to read available memory from device.")
+      LOG_NNPI_INF_IF_ERROR(res, "Failed to read available memory from device.")
       return 0;
     }
     return static_cast<uint64_t>(devStatus.availableUnprotectedMemory) * KB;
@@ -295,12 +296,12 @@ void NNPIDeviceManager::transferStaticPlaceholderToDevice(
   LOG_AND_FAIL_CALLBACK_IF_NOT(nr.handle != NNPI_INVALID_NNPIHANDLE,
                                "Failed to acquire device resource", resultCB);
 
-  LOG_AND_CALLBACK_NNPI_INF_ERROR(
+  LOG_AND_CALLBACK_NNPI_INF_IF_ERROR(
       nnpiHostResourceCreate(adapter_, &nr.desc, &hInput),
       "Failed to create NNPI host resource", resultCB);
 
   void *pHostInput(nullptr);
-  LOG_AND_CALLBACK_NNPI_INF_ERROR(
+  LOG_AND_CALLBACK_NNPI_INF_IF_ERROR(
       nnpiHostResourceLock(hInput, NNPI_LOCK_FOR_WRITE, UINT32_MAX,
                            &pHostInput),
       "Failed to create NNPI host resource", resultCB);
@@ -326,11 +327,12 @@ void NNPIDeviceManager::transferStaticPlaceholderToDevice(
     std::memcpy(pHostInput, T->getUnsafePtr(), bufferSize);
   }
 
-  LOG_AND_CALLBACK_NNPI_INF_ERROR(nnpiHostResourceUnlock(hInput),
-                                  "Failed to unlock host resource", resultCB);
+  LOG_AND_CALLBACK_NNPI_INF_IF_ERROR(nnpiHostResourceUnlock(hInput),
+                                     "Failed to unlock host resource",
+                                     resultCB);
 
   NNPICopyCommand copyInputCmd(NNPI_INVALID_NNPIHANDLE);
-  LOG_AND_CALLBACK_NNPI_INF_ERROR(
+  LOG_AND_CALLBACK_NNPI_INF_IF_ERROR(
       nnpiCopyCommandCreateHostToDevice(device_, nr.handle, hInput,
                                         &copyInputCmd),
       "Failed to create NNPI copy command", resultCB);
@@ -341,13 +343,14 @@ void NNPIDeviceManager::transferStaticPlaceholderToDevice(
     NNPICommandHandle cmdHnd;
     cmdHnd.type = NNPI_COMMAND_TYPE_COPY;
     cmdHnd.copyCommand = copyInputCmd;
-    LOG_AND_CALLBACK_NNPI_INF_ERROR(
+    LOG_AND_CALLBACK_NNPI_INF_IF_ERROR(
         nnpiCommandListCreate(&cmdHnd, 1, nullptr, 0, &cmdList),
         "Failed to create NNPI command list", resultCB);
 
     // Queue command list.
-    LOG_AND_CALLBACK_NNPI_INF_ERROR(nnpiCommandListQueue(cmdList, nullptr, 0),
-                                    "Failed to queue command list.", resultCB);
+    LOG_AND_CALLBACK_NNPI_INF_IF_ERROR(
+        nnpiCommandListQueue(cmdList, nullptr, 0),
+        "Failed to queue command list.", resultCB);
 
     // Wait for completion.
     uint32_t numErrors(0);
@@ -356,41 +359,41 @@ void NNPIDeviceManager::transferStaticPlaceholderToDevice(
     NNPIInferenceErrorCode res =
         nnpiCommandListWait(cmdList, UINT32_MAX, &singleError, 1, &numErrors);
 
-    if (res != NNPI_INF_NO_ERROR) {
-      LOG_NNPI_INF_ERROR(res, "Failed to wait on command list");
-    } else {
+    LOG_NNPI_INF_IF_ERROR(res, "Failed to wait on command list");
+    if (res == NNPI_INF_NO_ERROR) {
       if (numErrors > 0) {
         LOG(ERROR) << NNPI_INF_ERROR_MSG(singleError.err, singleError.desc);
       }
     }
     if (res != NNPI_INF_NO_ERROR || numErrors > 0) {
-      LOG_AND_CALLBACK_NNPI_INF_ERROR(
+      LOG_AND_CALLBACK_NNPI_INF_IF_ERROR(
           res, "Errors detected during command list", resultCB);
     }
 
     // Destroy command list.
-    LOG_NNPI_INF_ERROR(nnpiCommandListDestroy(cmdList),
-                       "Failed to destroy NNPI command list");
+    LOG_NNPI_INF_IF_ERROR(nnpiCommandListDestroy(cmdList),
+                          "Failed to destroy NNPI command list");
   } else {
-    LOG_AND_CALLBACK_NNPI_INF_ERROR(nnpiCopyCommandQueue(copyInputCmd, nullptr),
-                                    "Failed to queue input copy command.",
-                                    resultCB);
-    LOG_AND_CALLBACK_NNPI_INF_ERROR(
+    LOG_AND_CALLBACK_NNPI_INF_IF_ERROR(
+        nnpiCopyCommandQueue(copyInputCmd, nullptr),
+        "Failed to queue input copy command.", resultCB);
+    LOG_AND_CALLBACK_NNPI_INF_IF_ERROR(
         nnpiHostResourceLock(hInput, NNPI_LOCK_FOR_WRITE, UINT32_MAX,
                              &pHostInput),
         "Failed to lock host resource during static Placeholder transfer",
         resultCB);
-    LOG_AND_CALLBACK_NNPI_INF_ERROR(nnpiHostResourceUnlock(hInput),
-                                    "Failed to unlock host resource", resultCB);
+    LOG_AND_CALLBACK_NNPI_INF_IF_ERROR(nnpiHostResourceUnlock(hInput),
+                                       "Failed to unlock host resource",
+                                       resultCB);
   }
 
-  LOG_AND_CALLBACK_NNPI_INF_ERROR(nnpiCopyCommandDestroy(copyInputCmd),
-                                  "Failed to destroy NNPI copy command",
-                                  resultCB);
+  LOG_AND_CALLBACK_NNPI_INF_IF_ERROR(nnpiCopyCommandDestroy(copyInputCmd),
+                                     "Failed to destroy NNPI copy command",
+                                     resultCB);
 
-  LOG_AND_CALLBACK_NNPI_INF_ERROR(nnpiHostResourceDestroy(hInput),
-                                  "Failed to destroy NNPI host resource",
-                                  resultCB);
+  LOG_AND_CALLBACK_NNPI_INF_IF_ERROR(nnpiHostResourceDestroy(hInput),
+                                     "Failed to destroy NNPI host resource",
+                                     resultCB);
 
   LOG_AND_FAIL_CALLBACK_IF_NOT(
       staticPlaceholderContainer_.releaseDeviceResource(PH),
@@ -410,7 +413,6 @@ NNPIStaticPlaceholderContainer::~NNPIStaticPlaceholderContainer() {
 }
 
 bool NNPIStaticPlaceholderContainer::setDevice(NNPIDeviceContext device) {
-  // Exception for internal testing (ICE-24091)
   LOG_AND_RETURN_IF(ERROR, device == NNPI_INVALID_NNPIHANDLE,
                     "NNPIStaticPlaceholderContainer received invalid device",
                     false);
@@ -423,7 +425,7 @@ NNPIStaticPlaceholderContainer::acquireDeviceResource(const Placeholder *PH,
                                                       const NamedResource &nr) {
   if (staticPlaceholdersDeviceResource_.count(PH) == 0) {
     NamedResourceWithRef nrf = nr;
-    LOG_NNPI_INF_ERROR(
+    LOG_NNPI_INF_IF_ERROR(
         nnpiDeviceResourceCreate(device_, &nrf.desc, &nrf.handle),
         "Failed to create NNPI device resource");
     staticPlaceholdersDeviceResource_[PH] = nrf;
@@ -442,8 +444,8 @@ bool NNPIStaticPlaceholderContainer::eraseAndDestroyDeviceResource_(
                             " wasn't initialized as static Placeholder",
                         false)
   auto &nrf = staticPlaceholdersDeviceResource_.at(PH);
-  LOG_NNPI_INF_ERROR_RETURN_FALSE(nnpiDeviceResourceDestroy(nrf.handle),
-                                  "Failed to destroy NNPI device resource");
+  LOG_NNPI_INF_IF_ERROR_RETURN_FALSE(nnpiDeviceResourceDestroy(nrf.handle),
+                                     "Failed to destroy NNPI device resource");
   nrf.handle = NNPI_INVALID_NNPIHANDLE;
   staticPlaceholdersDeviceResource_.erase(PH);
   return true;

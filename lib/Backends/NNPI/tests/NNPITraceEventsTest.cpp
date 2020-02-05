@@ -12,15 +12,29 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
+#include "TestBlacklist.h"
 #include "tests/unittests/BackendTestUtils.h"
 
 using namespace glow;
 
-std::set<std::string> glow::backendTestBlacklist = {
-    "multipleRunsAreDistinct/0", "manualEvents/0",
-    "multipleBackingTensors/0",  "internalGap/0",
-    "onlyTraceEvents/0",         "twoCompiles/0",
-    "manualAndAutomatic/0",      "incompleteCoverage/0",
-    "deviceManagerEvents/0",     "automaticInstrumentation/0",
-};
+std::set<std::string> glow::backendTestBlacklist = {};
+
+struct BlacklistInitializer {
+  BlacklistInitializer() {
+    const std::vector<std::pair<std::string, uint32_t>> testBlacklistedSetups =
+        {
+            {"multipleRunsAreDistinct/0", TestBlacklist::AnyDeviceAnyEngine},
+            {"manualEvents/0", TestBlacklist::AnyDeviceAnyEngine},
+            {"multipleBackingTensors/0", TestBlacklist::AnyDeviceAnyEngine},
+            {"internalGap/0", TestBlacklist::AnyDeviceAnyEngine},
+            {"onlyTraceEvents/0", TestBlacklist::AnyDeviceAnyEngine},
+            {"twoCompiles/0", TestBlacklist::AnyDeviceAnyEngine},
+            {"manualAndAutomatic/0", TestBlacklist::AnyDeviceAnyEngine},
+            {"incompleteCoverage/0", TestBlacklist::AnyDeviceAnyEngine},
+            {"deviceManagerEvents/0", TestBlacklist::AnyDeviceAnyEngine},
+            {"automaticInstrumentation/0", TestBlacklist::AnyDeviceAnyEngine},
+        };
+    TestBlacklist::prepareBlacklist(testBlacklistedSetups,
+                                    backendTestBlacklist);
+  }
+} blacklistInitializer;

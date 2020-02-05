@@ -12,11 +12,20 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
+#include "TestBlacklist.h"
 #include "tests/unittests/BackendTestUtils.h"
 
 using namespace glow;
 
-std::set<std::string> glow::backendTestBlacklist = {
-    "fc/0",
-};
+std::set<std::string> glow::backendTestBlacklist = {};
+
+struct BlacklistInitializer {
+  BlacklistInitializer() {
+    const std::vector<std::pair<std::string, uint32_t>> testBlacklistedSetups =
+        {
+            {"fc/0", TestBlacklist::AnyDeviceAnyEngine},
+        };
+    TestBlacklist::prepareBlacklist(testBlacklistedSetups,
+                                    backendTestBlacklist);
+  }
+} blacklistInitializer;

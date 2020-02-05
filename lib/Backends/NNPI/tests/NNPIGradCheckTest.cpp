@@ -12,27 +12,39 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
+#include "TestBlacklist.h"
 #include "tests/unittests/BackendTestUtils.h"
 
 using namespace glow;
 
-std::set<std::string> glow::backendTestBlacklist = {
-    "gradientCheckGatherVec/0",
-    "gradientCheckGatherDim/0",
-    "gradientCheckConv/0",
-    "gradientCheckDepthwiseConv/0",
-    "gradientCheckGroupConv/0",
-    "gradientCheckDilatedConv/0",
-    "gradientCheckAvgPool/0",
-    "gradientCheckMaxPool/0",
-    "gradientCheckAdaptiveAvgPool/0",
-    "gradientCheckBatchNorm/0",
-    "gradientCheckArithmeticDiv/0",
-    "gradientCheckArithmetic/0",
-    "gradientCheckFCConcatTanh/0",
-    "gradientCheckFC/0",
-    "gradientCheckTranspose/0",
-    "gradientCheckCrossEntropyLoss/0",
-    "gradientCheckBatchedPairwiseDotProduct/0",
-};
+std::set<std::string> glow::backendTestBlacklist = {};
+
+struct BlacklistInitializer {
+  BlacklistInitializer() {
+    const std::vector<std::pair<std::string, uint32_t>> testBlacklistedSetups =
+        {
+            {"gradientCheckGatherVec/0", TestBlacklist::AnyDeviceAnyEngine},
+            {"gradientCheckGatherDim/0", TestBlacklist::AnyDeviceAnyEngine},
+            {"gradientCheckConv/0", TestBlacklist::AnyDeviceAnyEngine},
+            {"gradientCheckDepthwiseConv/0", TestBlacklist::AnyDeviceAnyEngine},
+            {"gradientCheckGroupConv/0", TestBlacklist::AnyDeviceAnyEngine},
+            {"gradientCheckDilatedConv/0", TestBlacklist::AnyDeviceAnyEngine},
+            {"gradientCheckAvgPool/0", TestBlacklist::AnyDeviceAnyEngine},
+            {"gradientCheckMaxPool/0", TestBlacklist::AnyDeviceAnyEngine},
+            {"gradientCheckAdaptiveAvgPool/0",
+             TestBlacklist::AnyDeviceAnyEngine},
+            {"gradientCheckBatchNorm/0", TestBlacklist::AnyDeviceAnyEngine},
+            {"gradientCheckArithmeticDiv/0", TestBlacklist::AnyDeviceAnyEngine},
+            {"gradientCheckArithmetic/0", TestBlacklist::AnyDeviceAnyEngine},
+            {"gradientCheckFCConcatTanh/0", TestBlacklist::AnyDeviceAnyEngine},
+            {"gradientCheckFC/0", TestBlacklist::AnyDeviceAnyEngine},
+            {"gradientCheckTranspose/0", TestBlacklist::AnyDeviceAnyEngine},
+            {"gradientCheckCrossEntropyLoss/0",
+             TestBlacklist::AnyDeviceAnyEngine},
+            {"gradientCheckBatchedPairwiseDotProduct/0",
+             TestBlacklist::AnyDeviceAnyEngine},
+        };
+    TestBlacklist::prepareBlacklist(testBlacklistedSetups,
+                                    backendTestBlacklist);
+  }
+} blacklistInitializer;

@@ -261,7 +261,6 @@ public:
                       "1"
 #endif
   );
-  /// Enables internal testing.
   /// Setting this variable will override the target device ID used to run
   /// (0,1,...).
   DECLARE_NNPI_OPTION(deviceID, int, "DeviceID",
