@@ -42,6 +42,8 @@ class BERTProxyLayerBench : public Benchmark {
   ElemKind dtype_;
   ElemKind FCWeightType_;
   ElemKind FCBiasType_;
+  float FCWeightScale_;
+  int32_t FCWeightOffset_;
   bool quantize;
 
 public:
@@ -59,27 +61,33 @@ public:
       dtype_ = ElemKind::Float16Ty;
       FCWeightType_ = ElemKind::Float16Ty;
       FCBiasType_ = ElemKind::Float16Ty;
+      FCWeightScale_ = 1.0f;
+      FCWeightOffset_ = 0;
     } else if (std::string(dtypeStr_) == "Float32") {
       dtype_ = ElemKind::FloatTy;
       FCWeightType_ = ElemKind::FloatTy;
       FCBiasType_ = ElemKind::FloatTy;
+      FCWeightScale_ = 1.0f;
+      FCWeightOffset_ = 0;
     }
     // If quantization is requested then use Int8/Int32
     if (std::string(useInt8FCs) == "True") {
       FCWeightType_ = ElemKind::Int8QTy;
       FCBiasType_ = ElemKind::Int32QTy;
       quantize = true;
+      FCWeightScale_ = 1.0;
+      FCWeightOffset_ = 128;
     }
   }
 
   // Handle different tensor types
   void randomizeTensor(Tensor *tn, PseudoRNG rng) {
     if (tn->getElementType() == ElemKind::FloatTy) {
-      tn->getHandle<float>().randomize(0.0f, 1.0f, rng);
+      tn->getHandle<float_t>().randomize(0.0f, 1.0f, rng);
     } else if (tn->getElementType() == ElemKind::Float16Ty) {
       tn->getHandle<float16_t>().randomize(0.0f, 1.0f, rng);
     } else if (tn->getElementType() == ElemKind::Int8QTy) {
-      tn->getHandle<char>().randomize(-128, 128, rng);
+      tn->getHandle<int8_t>().randomize(-127, 127, rng);
     } else if (tn->getElementType() == ElemKind::Int32QTy) {
       tn->getHandle<int32_t>().randomize(-128, 128, rng);
     }
@@ -87,25 +95,25 @@ public:
 
   // Handle different tensor types
   void setTensor(Tensor *tn, float val) {
-    if (dtype_ == ElemKind::FloatTy) {
-      tn->getHandle<float>().clear(val);
-    } else if (dtype_ == ElemKind::Float16Ty) {
+    if (tn->getElementType() == ElemKind::FloatTy) {
+      tn->getHandle<float_t>().clear(val);
+    } else if (tn->getElementType() == ElemKind::Float16Ty) {
       tn->getHandle<float16_t>().clear(val);
-    } else if (dtype_ == ElemKind::Int8QTy) {
-      tn->getHandle<char>().clear(val);
-    } else if (dtype_ == ElemKind::Int32QTy) {
+    } else if (tn->getElementType() == ElemKind::Int8QTy) {
+      tn->getHandle<int8_t>().clear(val);
+    } else if (tn->getElementType() == ElemKind::Int32QTy) {
       tn->getHandle<int32_t>().clear(val);
     }
   }
 
-  // Optionally add nodes for quantization of FCs
   Node *createFC(Function *fn, std::unique_ptr<Module> &mod, std::string name,
                  Node *In, Constant *W, Constant *b) {
+    // Optionally add nodes for quantization of FCs
     if (quantize) {
       TypeRef InQTy = mod->uniqueType(FCWeightType_, In->dims(0), 2.0, -128.0);
       auto *InQ = fn->createQuantize(name, In, InQTy);
       auto *FCQ = fn->createFullyConnected(name, InQ, W, b);
-      TypeRef FCQTy = mod->uniqueType(dtype_, FCQ->dims(0), 0.5, -128.0);
+      TypeRef FCQTy = mod->uniqueType(dtype_, FCQ->dims(0));
       Node *FCO = fn->createDequantize(name, FCQ, FCQTy);
       return FCO;
     } else {
@@ -141,18 +149,28 @@ public:
     }
 
     // Weights/bias constants for QKV GEMM
-    Tensor W_QKV_Tensor(FCWeightType_, {hiddenSize_, 3 * hiddenSize_});
+    Tensor W_QKV_Tensor =
+        (quantize) ? Tensor(FCWeightType_, {hiddenSize_, 3 * hiddenSize_},
+                            FCWeightScale_, FCWeightOffset_)
+                   : Tensor(FCWeightType_, {hiddenSize_, 3 * hiddenSize_});
     randomizeTensor(&W_QKV_Tensor, mod->getPRNG());
     Constant *W_QKV = mod->createConstant("W_QKV", W_QKV_Tensor);
-    Tensor b_QKV_Tensor(FCBiasType_, {3 * hiddenSize_});
+    Tensor b_QKV_Tensor = (quantize) ? Tensor(FCBiasType_, {3 * hiddenSize_},
+                                              FCWeightScale_, FCWeightOffset_)
+                                     : Tensor(FCBiasType_, {3 * hiddenSize_});
     setTensor(&b_QKV_Tensor, 0.0f);
     Constant *b_QKV = mod->createConstant("b_QKV", b_QKV_Tensor);
 
     // Weights/bias constants for ZxWo FC
-    Tensor W_ZWO_Tensor(FCWeightType_, {hiddenSize_, hiddenSize_});
+    Tensor W_ZWO_Tensor =
+        (quantize) ? Tensor(FCWeightType_, {hiddenSize_, hiddenSize_},
+                            FCWeightScale_, FCWeightOffset_)
+                   : Tensor(FCWeightType_, {hiddenSize_, hiddenSize_});
     randomizeTensor(&W_ZWO_Tensor, mod->getPRNG());
     Constant *W_ZWO = mod->createConstant("W_ZWO", W_ZWO_Tensor);
-    Tensor b_ZWO_Tensor(FCBiasType_, {hiddenSize_});
+    Tensor b_ZWO_Tensor = (quantize) ? Tensor(FCBiasType_, {hiddenSize_},
+                                              FCWeightScale_, FCWeightOffset_)
+                                     : Tensor(FCBiasType_, {hiddenSize_});
     randomizeTensor(&b_ZWO_Tensor, mod->getPRNG());
     Constant *b_ZWO = mod->createConstant("b_ZWO", b_ZWO_Tensor);
 
@@ -165,24 +183,30 @@ public:
     Constant *expected = mod->createConstant("expected", expected_Tensor);
 
     // Weights/bias constants for FC1
-    Tensor W_FC1_Tensor(FCWeightType_, {hiddenSize_, 4 * hiddenSize_});
+    Tensor W_FC1_Tensor =
+        (quantize) ? Tensor(FCWeightType_, {hiddenSize_, 4 * hiddenSize_},
+                            FCWeightScale_, FCWeightOffset_)
+                   : Tensor(FCWeightType_, {hiddenSize_, 4 * hiddenSize_});
     randomizeTensor(&W_FC1_Tensor, mod->getPRNG());
     Constant *W_FC1 = mod->createConstant("W_FC1", W_FC1_Tensor);
-    Tensor b_FC1_Tensor(FCBiasType_, {4 * hiddenSize_});
+    Tensor b_FC1_Tensor = (quantize) ? Tensor(FCBiasType_, {4 * hiddenSize_},
+                                              FCWeightScale_, FCWeightOffset_)
+                                     : Tensor(FCBiasType_, {4 * hiddenSize_});
     randomizeTensor(&b_FC1_Tensor, mod->getPRNG());
     Constant *b_FC1 = mod->createConstant("b_FC1", b_FC1_Tensor);
 
     // Weights/bias constants for FC2
-    Tensor W_FC2_Tensor(FCWeightType_, {4 * hiddenSize_, hiddenSize_});
+    Tensor W_FC2_Tensor =
+        (quantize) ? Tensor(FCWeightType_, {4 * hiddenSize_, hiddenSize_},
+                            FCWeightScale_, FCWeightOffset_)
+                   : Tensor(FCWeightType_, {4 * hiddenSize_, hiddenSize_});
     randomizeTensor(&W_FC2_Tensor, mod->getPRNG());
     Constant *W_FC2 = mod->createConstant("W_FC2", W_FC2_Tensor);
-    Tensor b_FC2_Tensor(FCBiasType_, {hiddenSize_});
+    Tensor b_FC2_Tensor = (quantize) ? Tensor(FCBiasType_, {hiddenSize_},
+                                              FCWeightScale_, FCWeightOffset_)
+                                     : Tensor(FCBiasType_, {hiddenSize_});
     randomizeTensor(&b_FC2_Tensor, mod->getPRNG());
     Constant *b_FC2 = mod->createConstant("b_FC2", b_FC2_Tensor);
-
-    // Split the batch across cores in a data-parallel fashion
-    std::vector<SliceNode *> inputs(numCores_);
-    std::vector<SaveNode *> S(numCores_);
 
     // batchSizePerCore is the number of sentences assigned to each
     // core (each data-parallel chunk)
@@ -190,36 +214,39 @@ public:
 
     // rowSizePerCore is the number of tokens assigned to each
     // core (each data-parallel chunk)
-    auto rowSizePerCore = batchSizePerCore;
+    dim_t numNonzeroCores = 0;
+    std::vector<dim_t> rowSizePerCore;
     for (dim_t i = 0; i < batchSizePerCore.size(); i++) {
-      rowSizePerCore[i] = batchSizePerCore[i] * maxSequenceLength_;
+      if (batchSizePerCore[i] > 0) {
+        rowSizePerCore.push_back(batchSizePerCore[i] * maxSequenceLength_);
+        numNonzeroCores++;
+      }
     }
 
+    // Split the batch across cores in a data-parallel fashion
+    std::vector<SliceNode *> inputs(numNonzeroCores);
+    std::vector<SaveNode *> S(numNonzeroCores);
+
     // Split the input into cores of data-parallel fashion
-    fn->createSplit("DPsplit", input, numCores_, 0, rowSizePerCore, inputs);
+    fn->createSplit("DPsplit", input, numNonzeroCores, 0, rowSizePerCore,
+                    inputs);
 
     // For each core (sub-batch), create a network which does one layer
-    for (int core = 0; core < numCores_; core++) {
-      if (batchSizePerCore[core] == 0)
-        continue;
+    for (int core = 0; core < numNonzeroCores; core++) {
 
       // Layer Norm 1 bias and scale
-      Tensor LN1_scale_Tensor(dtype_,
-                              {maxSequenceLength_ * batchSizePerCore[core]});
+      Tensor LN1_scale_Tensor(dtype_, {hiddenSize_});
       randomizeTensor(&LN1_scale_Tensor, mod->getPRNG());
       Constant *LN1_scale = mod->createConstant("LN1_scale", LN1_scale_Tensor);
-      Tensor LN1_bias_Tensor(dtype_,
-                             {maxSequenceLength_ * batchSizePerCore[core]});
+      Tensor LN1_bias_Tensor(dtype_, {hiddenSize_});
       randomizeTensor(&LN1_bias_Tensor, mod->getPRNG());
       Constant *LN1_bias = mod->createConstant("LN1_bias", LN1_bias_Tensor);
 
       // Layer Norm 2 bias and scale
-      Tensor LN2_scale_Tensor(dtype_,
-                              {maxSequenceLength_ * batchSizePerCore[core]});
+      Tensor LN2_scale_Tensor(dtype_, {hiddenSize_});
       randomizeTensor(&LN2_scale_Tensor, mod->getPRNG());
       Constant *LN2_scale = mod->createConstant("LN2_scale", LN2_scale_Tensor);
-      Tensor LN2_bias_Tensor(dtype_,
-                             {maxSequenceLength_ * batchSizePerCore[core]});
+      Tensor LN2_bias_Tensor(dtype_, {hiddenSize_});
       randomizeTensor(&LN2_bias_Tensor, mod->getPRNG());
       Constant *LN2_bias = mod->createConstant("LN2_bias", LN2_bias_Tensor);
 
@@ -332,7 +359,7 @@ public:
     }
 
     CompilationContext ctx;
-    hostManager_->addNetwork(std::move(mod), ctx);
+    EXIT_ON_ERR(hostManager_->addNetwork(std::move(mod), ctx));
     fn->dumpDAG(std::string("BERT.dot"));
   }
 
