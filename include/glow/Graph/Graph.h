@@ -134,6 +134,11 @@ public:
   TypeRef uniqueTypeWithNewShape(TypeRef T, llvm::ArrayRef<dim_t> dims,
                                  llvm::ArrayRef<dim_t> alignments);
 
+  /// Return a pointer to a uniqued type \p T.
+  /// The new type is identical to \p T, with a new shape and strides taken from
+  /// the type \p shapeType.
+  TypeRef uniqueTypeWithNewShape(TypeRef T, TypeRef shapeType);
+
   /// Return the void type.
   TypeRef getVoidTy();
 

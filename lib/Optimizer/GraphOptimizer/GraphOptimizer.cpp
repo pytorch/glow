@@ -344,7 +344,7 @@ bool SinkCode::run(Function *F, const CompilationContext &cctx) {
       // Keep the same quantization parameters for ReLU output, but
       // change the shape to appropriate value.
       auto reluOutTy = F->getParent()->uniqueTypeWithNewShape(
-          RL->getResult().getType(), TR->getInput().dims());
+          RL->getResult().getType(), TR->getInput().getType());
       auto *NRL = F->createRELU(RL->getName(), TR->getInput(), reluOutTy);
       NRL->setPredicate(node->getPredicate());
       auto *newTR = F->createTranspose(TR->getName(), NRL, TR->getShuffle(),
@@ -366,7 +366,7 @@ bool SinkCode::run(Function *F, const CompilationContext &cctx) {
       // Keep the same quantization parameters for Clip output, but
       // change the shape to appropriate value.
       auto clipOutTy = F->getParent()->uniqueTypeWithNewShape(
-          CL->getResult().getType(), TR->getInput().dims());
+          CL->getResult().getType(), TR->getInput().getType());
       auto *NCL = F->createClip(CL->getName(), TR->getInput(), clipOutTy,
                                 CL->getMin(), CL->getMax());
       NCL->setPredicate(node->getPredicate());
@@ -557,7 +557,7 @@ bool SinkCode::run(Function *F, const CompilationContext &cctx) {
         F->create##NODE_NAME_(node->getName(),                                 \
                               F->getParent()->uniqueTypeWithNewShape(          \
                                   node->getType(ArithmeticNode::ResultIdx),    \
-                                  LTR->getInput().getType()->dims()),          \
+                                  LTR->getInput().getType()),                  \
                               LTR->getInput(), RTR->getInput());               \
     break;
 
@@ -632,7 +632,7 @@ bool SinkCode::run(Function *F, const CompilationContext &cctx) {
       }
 
       auto newRQType = F->getParent()->uniqueTypeWithNewShape(
-          RQ->getResult().getType(), TR->getInput().getType()->dims());
+          RQ->getResult().getType(), TR->getInput().getType());
       auto *newRQ =
           F->createRescaleQuantized(RQ->getName(), TR->getInput(), newRQType);
       auto *newTR = F->createTranspose(TR->getName(), newRQ, TR->getShuffle(),
@@ -2565,7 +2565,7 @@ static bool sinkDownRescaleToPoolingNode(Function &F, T *PN) {
     T *newPN = createNode<T>(F, PN->getName(), rescale->getInput(),
                              PN->getKernels(), PN->getStrides(), PN->getPads());
     auto rescaleOutTy = F.getParent()->uniqueTypeWithNewShape(
-        rescale->getResult().getType(), PN->getResult().dims());
+        rescale->getResult().getType(), PN->getResult().getType());
     auto *newRescale = F.createRescaleQuantized(
         rescale->getName(), newPN->getResult(), rescaleOutTy);
     PN->getResult().replaceAllUsesOfWith(newRescale);
@@ -2640,7 +2640,7 @@ static bool sinkRescaleQuantizedNode(Function *F) {
       }
 
       auto sliceOutTy = F->getParent()->uniqueTypeWithNewShape(
-          rescale->getInput().getType(), slice->getResult().dims());
+          rescale->getInput().getType(), slice->getResult().getType());
       auto *newSlice = F->createSlice(slice->getName(), rescale->getInput(),
                                       slice->getStart(), sliceOutTy);
       auto *newRescale = F->createRescaleQuantized(
@@ -2663,7 +2663,7 @@ static bool sinkRescaleQuantizedNode(Function *F) {
           F->createTranspose(transpose->getName(), rescale->getInput(),
                              transpose->getShuffle(), transpose->getLayout());
       auto rescaleOutTy = F->getParent()->uniqueTypeWithNewShape(
-          rescale->getResult().getType(), transpose->getResult().dims());
+          rescale->getResult().getType(), transpose->getResult().getType());
       auto *newRescale = F->createRescaleQuantized(rescale->getName(),
                                                    newTranspose, rescaleOutTy);
       transpose->getResult().replaceAllUsesOfWith(newRescale);

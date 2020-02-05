@@ -1319,6 +1319,40 @@ TEST_F(GraphOptz, sinkTransposeBelowPad) {
   EXPECT_EQ(F_->getNodes().size(), 3);
 }
 
+TEST_F(GraphOptz, sinkTransposeBelowRelu) {
+  // Define a type with custom alignments.
+  Type typeWithAlignments(ElemKind::FloatTy, {2, 3, 4, 5}, {1, 1, 32, 1});
+  Type transposedTypeWithAlignments(ElemKind::FloatTy, {2, 4, 5, 3},
+                                    {1, 1, 32, 1});
+  auto modTyWithAlignments = mod_.uniqueType(typeWithAlignments);
+  auto modTransposedTyWithAlignments =
+      mod_.uniqueType(transposedTypeWithAlignments);
+  auto *A1 = mod_.createPlaceholder(modTyWithAlignments, "input1", false);
+  auto *T1 = F_->createTranspose("transpose", A1, NCHW2NHWC);
+  T1->setType(0, modTransposedTyWithAlignments);
+  auto *RN = F_->createRELU("relu", T1);
+  SaveNode *O = F_->createSave("ret", RN);
+
+  EXPECT_EQ(F_->getNodes().size(), 3);
+
+  ::glow::optimize(F_, CompilationMode::Infer);
+
+  // Expecting Transpose->Output rather than Relu->Output, because Transpose was
+  // sinked.
+  auto *transpose = llvm::dyn_cast<TransposeNode>(O->getInput());
+  ASSERT_NE(transpose, nullptr);
+  auto *relu = llvm::dyn_cast<ReluNode>(transpose->getInput());
+  ASSERT_TRUE(relu);
+  // Check that alignments are preserved by optimizations.
+  ASSERT_TRUE(relu->getInput().getType()->isEqual(modTyWithAlignments));
+  ASSERT_TRUE(transpose->getInput().getType()->isEqual(modTyWithAlignments));
+  ASSERT_TRUE(
+      transpose->getResult().getType()->isEqual(modTransposedTyWithAlignments));
+
+  EXPECT_EQ(F_->getNodes().size(), 3);
+  ASSERT_TRUE(F_->verify());
+}
+
 TEST_F(GraphOptz, mergeConcatNodes) {
   Node *A1 = mod_.createPlaceholder(ElemKind::FloatTy, {1, 5, 10, 15}, "input1",
                                     false);

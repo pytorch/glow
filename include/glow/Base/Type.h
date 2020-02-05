@@ -367,6 +367,23 @@ struct Type final {
     }
   }
 
+  /// Reshape existing type by taking shapes and strides of \p shapeType.
+  static Type newShape(const Type &T, TypeRef shapeType) {
+    assert(T.getElementSize() == shapeType->getElementSize() &&
+           "Element size should be the same");
+    Type ty;
+    if (T.isQuantizedType()) {
+      ty = Type(T.getElementType(), shapeType->dims(), T.getScale(),
+                T.getOffset());
+    } else {
+      ty = Type(T.getElementType(), shapeType->dims());
+    }
+    // Copy the stride information.
+    std::copy(&shapeType->strides_[0], &shapeType->strides_[ty.numSizes_],
+              ty.strides_);
+    return ty;
+  }
+
   /// An empty type.
   Type() = default;
 
@@ -423,7 +440,8 @@ struct Type final {
 
   /// \returns true if \p other is the same type. If \p allowDifferentShape then
   /// shapes will not be considered as part of the equal comparison.
-  bool isEqual(const Type &other, bool allowDifferentShape = false) const {
+  bool isEqual(const Type &other, bool allowDifferentShape = false,
+               bool allowDifferentStrides = false) const {
     // Element type must be the same.
     if (elementType_ != other.elementType_) {
       return false;
@@ -439,11 +457,12 @@ struct Type final {
           return false;
         }
       }
-
-      // Strides must be the same.
-      for (size_t i = 0; i < numSizes_; i++) {
-        if (strides_[i] != other.strides_[i]) {
-          return false;
+      if (!allowDifferentStrides) {
+        // Strides must be the same.
+        for (size_t i = 0; i < numSizes_; i++) {
+          if (strides_[i] != other.strides_[i]) {
+            return false;
+          }
         }
       }
     }
