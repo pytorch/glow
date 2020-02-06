@@ -215,6 +215,17 @@ struct PartitionConfig {
   bool enabled() { return numOfPartitions > 0; }
 };
 
+/// A struct containing a mapping of ExecutionContext to a loaded network on a
+/// device.
+struct ContextBinding {
+  /// The context used for execution of the specified network.
+  ExecutionContext *context;
+  /// The device the network will be run on with this context.
+  DeviceManager *device;
+  /// The name of the network.
+  std::string networkName;
+};
+
 } // namespace runtime
 } // namespace glow
 #endif // GLOW_RUNTIME_RUNTIMETYPES_H

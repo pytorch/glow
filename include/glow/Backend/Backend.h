@@ -46,6 +46,9 @@ namespace runtime {
 class DeviceManager;
 struct DeviceInfo;
 struct DeviceConfig;
+struct ContextBinding;
+
+struct DAG;
 
 } // namespace runtime
 
@@ -182,6 +185,15 @@ public:
   /// deviceConfig.
   virtual runtime::DeviceManager *
   createDeviceManager(const runtime::DeviceConfig &deviceConfig);
+
+  /// Walks the provided /p bindings and does any setup needed for copying data
+  /// to/from host or peers. Also has access to /p network, which contains
+  /// partition dependency and symbol information. Any state information should
+  /// be stored in the ExecutionContext or DeviceManager.
+  virtual Error bindContexts(llvm::ArrayRef<runtime::ContextBinding> bindings,
+                             const std::vector<runtime::DAG> &network) {
+    return Error::success();
+  }
 
   /// \returns the supported options for compiled functions (name=>description).
   virtual llvm::StringMap<std::string>
