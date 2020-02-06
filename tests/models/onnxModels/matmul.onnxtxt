@@ -1,0 +1,73 @@
+ir_version: 3
+producer_name: "onnx-test"
+graph {
+  node {
+    input: "inputs_0"
+    input: "inputs_1"
+    output: "output"
+    name: ""
+    op_type: "MatMul"
+  }
+  input {
+    name: "inputs_0"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 20
+          }
+          dim {
+            dim_value: 40
+          }
+          dim {
+            dim_value: 7
+          }
+        }
+      }
+    }
+  }
+  input {
+    name: "inputs_1"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 20
+          }
+          dim {
+            dim_value: 7
+          }
+          dim {
+            dim_value: 40
+          }
+        }
+      }
+    }
+  }
+  output {
+    name: "output"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 20
+          }
+          dim {
+            dim_value: 7
+          }
+          dim {
+            dim_value: 7
+          }
+        }
+      }
+    }
+  }
+}
+opset_import {
+  domain: ""
+  version: 7
+}
+
