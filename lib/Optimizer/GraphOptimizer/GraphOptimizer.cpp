@@ -4019,6 +4019,14 @@ bool glow::parallelizeOps(
                                   AddNode::ResultIdx, splitDims, 0);
         break;
       }
+      case Kinded::Kind::BatchMatMulNodeKind: {
+        splitDims[BatchMatMulNode::LHSIdx] = 0;
+        splitDims[BatchMatMulNode::RHSIdx] = 0;
+        parallelizeAndReplaceNode(F, curNode, numOfChunks,
+                                  BatchMatMulNode::LHSIdx,
+                                  BatchMatMulNode::ResultIdx, splitDims, 0);
+        break;
+      }
       case Kinded::Kind::MulNodeKind: {
         splitDims[AddNode::LHSIdx] = 0;
         splitDims[AddNode::RHSIdx] = 0;
