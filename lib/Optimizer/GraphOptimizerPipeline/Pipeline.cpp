@@ -67,13 +67,6 @@ FunctionPassPipeline glow::createDefaultGraphOptimizationPassPipeline() {
       // Convert BatchMatMuls with a broadcasted RHS to a single MatMul.
       {FunctionPassID::ConvertBroadcastedBatchMatMul},
 
-      // Merge batch normalization operations.
-      // Do after transpose constant folding, as weight transposes can prevent
-      // the optimization from triggering.
-      {FunctionPassID::OptimizeBatchNorm,
-       ConvergenceMode::OnePass,
-       {CompilationMode::Infer}},
-
       // Perform Common Subexpression Elimination.
       {FunctionPassID::CSE},
 
@@ -103,6 +96,23 @@ FunctionPassPipeline glow::createDefaultGraphOptimizationPassPipeline() {
 
       // Run a round of constant folding.
       {FunctionPassID::ConstantFold},
+
+      // Fold Arithmetic chain w/ constants into Batch Norm, when Conv preceeds.
+      {FunctionPassID::FoldArithmeticChainUnderConvIntoBN,
+       ConvergenceMode::OnePass,
+       {CompilationMode::Infer}},
+
+      // Fold Arithmetic chain w/ constants into the preceeding Batch Norm.
+      {FunctionPassID::FoldBatchNormalizationWithArithmeticChain,
+       ConvergenceMode::OnePass,
+       {CompilationMode::Infer}},
+
+      // Merge batch normalization operations.
+      // Do after transpose constant folding, as weight transposes can prevent
+      // the optimization from triggering.
+      {FunctionPassID::OptimizeBatchNorm,
+       ConvergenceMode::UntilFixedPoint,
+       {CompilationMode::Infer}},
 
       // Perform a round of Dead Code Elimination to cleanup the final pass.
       getDCEPassConfig(),
