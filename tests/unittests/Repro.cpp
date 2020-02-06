@@ -201,18 +201,6 @@ void parseCommandLine(int argc, char **argv) {
       "Glow is a compiler for neural network accelerators.\n");
 }
 
-::ONNX_NAMESPACE::GraphProto parseIO(const std::string &filename) {
-  ::ONNX_NAMESPACE::GraphProto g;
-  std::ifstream ff(filename, std::ios::in | std::ios::binary);
-  CHECK(ff) << "Can't find the input file for " << filename.c_str();
-  google::protobuf::io::IstreamInputStream fileStream(&ff);
-  google::protobuf::io::CodedInputStream codedStream(&fileStream);
-  codedStream.SetTotalBytesLimit(MAX_PROTO_SIZE, MAX_PROTO_SIZE);
-  bool yes = g.ParseFromCodedStream(&codedStream);
-  CHECK(yes) << "Failed to parse GraphProto";
-  return g;
-}
-
 struct InferenceResult {
   Error error = Error::empty();
   std::unique_ptr<ExecutionContext> ctx;
@@ -388,10 +376,10 @@ int run() {
   if (inputGroupSize) {
     for (int i = 0; i < inputGroupSize; ++i) {
       llvm::outs() << "Loading input file: " << inputsOpt[i] << "\n";
-      auto inputGroup = parseIO(inputsOpt[i]);
+      auto inputGroup = parseOnnxFile(inputsOpt[i]);
       parsedInputs.push_back(std::move(inputGroup));
       llvm::outs() << "Loading output file: " << outputsOpt[i] << "\n";
-      auto outputGroup = parseIO(outputsOpt[i]);
+      auto outputGroup = parseOnnxFile(outputsOpt[i]);
       parsedOutputs.push_back(std::move(outputGroup));
     }
   } else if (!inputPatternOpt.empty() && !outputPatternOpt.empty() &&
@@ -407,12 +395,12 @@ int run() {
       std::string copy = inputPatternOpt;
       copy.replace(input_iter, 2, std::to_string(seqStartOpt + i));
       llvm::outs() << "Loading input file: " << copy << "\n";
-      auto inputGroup = parseIO(copy);
+      auto inputGroup = parseOnnxFile(copy);
       parsedInputs.push_back(std::move(inputGroup));
       copy = outputPatternOpt;
       copy.replace(output_iter, 2, std::to_string(seqStartOpt + i));
       llvm::outs() << "Loading output file: " << copy << "\n";
-      auto outputGroup = parseIO(copy);
+      auto outputGroup = parseOnnxFile(copy);
       parsedOutputs.push_back(std::move(outputGroup));
     }
   }
@@ -446,45 +434,9 @@ int run() {
     }
 
     const auto &inputGroup = parsedInputs[ioIndex];
-    for (const auto &tp : inputGroup.initializer()) {
-      auto *tensor = bindings.get(bindings.getPlaceholderByName(tp.name()));
-      CHECK(tensor) << "Unable to get tensor for " << tp.name();
-      size_t fullSize = tensor->getSizeInBytes();
-      const auto fullType = tensor->getType();
-
-      auto error = loadTensor(tp, tensor);
-      bool hasError = ERR_TO_BOOL(std::move(error));
-      CHECK(!hasError) << "Cannot load input tensor";
-      size_t loadedSize = tensor->getSizeInBytes();
-      if (loadedSize != fullSize) {
-        if (enablePartialTensor) {
-          VLOG(1) << "Loading " << tp.name()
-                  << " as a partial tensor: partial size="
-                  << tensor->getType().toString()
-                  << " full size=" << fullType.toString();
-          Tensor fullTensor(tensor->getUnsafePtr(), &fullType,
-                            tensor->getSizeInBytes());
-          // 'fullTensor' doesn't own the underlying data. 'tensor' does. So
-          // we want to keep the original tensor object around until inference
-          // is finished.
-          partialTensorPayloads.emplace_back(std::move(*tensor));
-          *tensor = std::move(fullTensor);
-        } else {
-          // pad with 0
-          VLOG(1) << "Loading and padding " << tp.name()
-                  << " as a partial tensor: partial size="
-                  << tensor->getType().toString()
-                  << " full size=" << fullType.toString();
-          Tensor fullTensor(&fullType);
-          std::memcpy(fullTensor.getUnsafePtr(), tensor->getUnsafePtr(),
-                      tensor->getSizeInBytes());
-          std::memset(fullTensor.getUnsafePtr() + tensor->getSizeInBytes(), 0,
-                      fullTensor.getSizeInBytes() - tensor->getSizeInBytes());
-
-          *tensor = std::move(fullTensor);
-        }
-      }
-    }
+    fillPlaceholders(inputGroup, &bindings,
+                     /*partialTensorPayloads */
+                     enablePartialTensor ? &partialTensorPayloads : nullptr);
     inputs.emplace_back(std::make_pair(std::move(ctx), ioIndex));
   }
 
