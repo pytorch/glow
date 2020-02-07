@@ -169,6 +169,10 @@ public:
     }
   }
 
+  /// Clone the current instruction.
+  /// \returns a cloned instruction.
+  Instruction *clone() const;
+
   /// \returns True if this instruction may reuse the memory buffer read by
   /// operand \p srcIdx for writing the result of the operand at \p dstIdx.
   bool isInplaceOp(unsigned dstIdx, unsigned srcIdx) const { return false; }

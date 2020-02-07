@@ -188,6 +188,22 @@ void InstrBuilder::emitPrettyPrinter(std::ostream &os) const {
   os << "}\n";
 }
 
+void InstrBuilder::emitCloner(std::ostream &os) const {
+  os << "\nInstruction* " << name_ << "Inst::clone() const {\n";
+
+  os << "  return new " << name_ << "Inst(getName()";
+
+  for (const auto &op : operands_) {
+    os << ", get" << op.first << "()";
+  }
+
+  for (const auto &mem : members_) {
+    os << ", get" << mem.second << "()";
+  }
+
+  os << ");\n}\n";
+}
+
 std::string getOpElementType(const std::string &name) {
   const std::string elemKindPrefix = "ElemKind::";
   if (name == "IndexElemKind" ||
@@ -213,6 +229,7 @@ void InstrBuilder::emitClass(std::ostream &os) const {
     os << "  " << m.first << "\n";
   }
 
+  os << "\n  Instruction* clone() const;\n";
   os << "\n  void dump(llvm::raw_ostream &os) const;\n";
 
   // If there is no auto-verification then we assume verification is manually
@@ -280,7 +297,7 @@ void InstrBuilder::emitClass(std::ostream &os) const {
 
 void InstrBuilder::emitCppMethods(std::ostream &os) const {
   emitPrettyPrinter(os);
-
+  emitCloner(os);
   // Emit the "extra" method bodies.
   for (const auto &m : extraMethods_) {
     os << "  " << m.second << "\n";
