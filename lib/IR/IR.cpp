@@ -609,6 +609,61 @@ std::string IRFunction::toString() const {
   return os.str();
 }
 
+IRFunction *
+IRFunction::clone(llvm::StringRef newName,
+                  llvm::DenseMap<const Value *, Value *> *map,
+                  llvm::DenseMap<const Value *, Value *> *currToNewMap) {
+  // Create a new function.
+  auto *newF = new IRFunction(getGraph());
+  newF->setName(newName);
+  return clone(newF, map, currToNewMap);
+}
+
+IRFunction *
+IRFunction::clone(IRFunction *newF, llvm::DenseMap<const Value *, Value *> *map,
+                  llvm::DenseMap<const Value *, Value *> *currToNewMap) const {
+
+  llvm::DenseMap<const Value *, Value *> currToNew;
+  // Initialize the map from a user-provided map.
+  if (currToNewMap) {
+    currToNew.insert(currToNewMap->begin(), currToNewMap->end());
+  }
+  // Clone weights.
+  for (auto &w : getWeights()) {
+    auto cloneWeight =
+        new WeightVar(w->getName(), w->getType(), w->getMutability());
+    newF->getWeights().emplace_back(cloneWeight);
+    currToNew[w] = cloneWeight;
+  }
+  // Clone the variable map.
+  for (auto &v : getVariableMap()) {
+    assert(v.second && "The value should have been cloned already");
+    newF->getVariableMap()[v.first] = currToNew[v.second];
+  }
+  // Clone instructions.
+  for (const auto &I : getInstrs()) {
+    auto *cloneI = I.clone();
+    currToNew[&I] = cloneI;
+    // Remap all operands.
+    for (unsigned idx = 0, e = cloneI->getNumOperands(); idx < e; ++idx) {
+      cloneI->setOperand(idx, currToNew[cloneI->getOperand(idx).first]);
+    }
+    newF->insertInstruction(cloneI);
+  }
+  // Record the node mapping into the external map.
+  if (map) {
+    assert(map->empty() && "The external map must be empty");
+    for (auto it : currToNew) {
+      map->insert(it);
+    }
+  }
+  assert(newF->getInstrs().size() == getInstrs().size() && "Invalid func size");
+  assert(newF->getWeights().size() == getWeights().size() &&
+         "Invalid func size");
+  newF->verify();
+  return newF;
+}
+
 //===----------------------------------------------------------------------===//
 // InstructionTraits<Instruction> Implementation
 //===----------------------------------------------------------------------===//

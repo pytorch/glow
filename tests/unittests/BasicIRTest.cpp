@@ -118,18 +118,17 @@ TEST(IR, basicUseList) {
   // ...
 }
 
-TEST(IR, allInstrs) {
+static IRFunction *createTestIRFunction(Module &mod) {
   using MK = WeightVar::MutabilityKind;
 
-  Module mod;
   Function *F = mod.createFunction("main");
-  IRFunction M(F);
+  IRFunction *M = new IRFunction(F);
   auto T1 = mod.uniqueType(ElemKind::FloatTy, {1, 24, 24, 3});
   auto T2 = mod.uniqueType(ElemKind::FloatTy, {64});
   auto T4 = mod.uniqueType(ElemKind::Int64ITy, {1, 1});
 
   {
-    IRBuilder builder(&M);
+    IRBuilder builder(M);
 
     auto *I0 = builder.createWeightVar(T1, "I0");
     auto *I1 = builder.createWeightVar(T1, "I1");
@@ -173,7 +172,23 @@ TEST(IR, allInstrs) {
     builder.createDebugPrintInst("", I0);
     builder.createQuantizationProfileInst("", I0, B0, ComputationInfo);
   }
-  M.verify();
+  return M;
+}
+
+TEST(IR, allInstrs) {
+  Module mod;
+  std::unique_ptr<IRFunction> M(createTestIRFunction(mod));
+  M->verify();
+}
+
+/// Check the IR Functions cloning functionality.
+TEST(IR, cloning) {
+  Module mod;
+  std::unique_ptr<IRFunction> M(createTestIRFunction(mod));
+  std::unique_ptr<IRFunction> clonedM(M->clone(M->getName()));
+  auto dumpedM = M->toString();
+  auto dumpedClonedM = clonedM->toString();
+  EXPECT_EQ(dumpedM, dumpedClonedM);
 }
 
 TEST(IR, casting) {
