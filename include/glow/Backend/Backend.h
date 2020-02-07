@@ -53,8 +53,9 @@ struct DAG;
 } // namespace runtime
 
 // This is the interface that glow backends need to implement.
-class Backend {
+class Backend : public Named {
 public:
+  Backend() : Named("") {}
   /// Dtor.
   virtual ~Backend() = default;
 
