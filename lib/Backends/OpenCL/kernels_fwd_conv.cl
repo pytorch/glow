@@ -40,6 +40,7 @@
 // v_imso_0, v_imso_1 - Spacial dimensions of output.
 // v_pad_A - Padding required for tiles of A.
 // v_pad_B - Padding required for tiles of A.
+// v_fuse_relu - Apply max(x, 0) to the output.
 // workgroup_size_0, workgroup_size_1 - workgroup sizes along each dimension.
 // VWN - vector width in dimension N.
 // VWM - vector width in dimension M.
@@ -329,6 +330,10 @@ __kernel
         if (globalRow < MM && globalCol < NN) {
           Cptr[globalRow * NN + globalCol] =
               ((Dtype *)(&(Creg[wm][wn / VWN])))[wn % VWN] + v_bmul * biasval;
+          if (v_fuse_relu) {
+            Cptr[globalRow * NN + globalCol] =
+                max(Cptr[globalRow * NN + globalCol], (Dtype)0);
+          }
         }
       }
     }
