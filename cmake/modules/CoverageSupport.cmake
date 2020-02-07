@@ -44,7 +44,7 @@ if(GLOW_USE_COVERAGE)
     COMMAND echo "Cleaning is done. Running tests"
 
     # Run all tests.
-    COMMAND ${CMAKE_CTEST_COMMAND} -V -j 4 -LE EXPENSIVE
+    COMMAND ${CMAKE_CTEST_COMMAND} -V -j 4 -LE EXPENSIVE\\|STRESS
 
     # Capture lcov counters based on the test run.
     COMMAND ${LCOV_PATH} --no-checksum --directory . --capture --output-file glow_coverage.info

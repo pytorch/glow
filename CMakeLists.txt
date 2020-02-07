@@ -221,12 +221,16 @@ if (GLOW_BUILD_TESTS)
   # Fetch the dependencies for all the tests.
   get_property(GLOW_TEST_DEPENDS GLOBAL PROPERTY GLOW_TEST_DEPENDS)
 
-  # All tests except expensive tests
-  add_custom_target(check COMMAND ${CMAKE_CTEST_COMMAND} -LE EXPENSIVE
+  # All tests except expensive tests and stress tests.
+  add_custom_target(check COMMAND ${CMAKE_CTEST_COMMAND} -LE EXPENSIVE\\|STRESS
                       DEPENDS ${GLOW_TEST_DEPENDS} USES_TERMINAL)
 
-  # All tests including expensive tests
-  add_custom_target(check_expensive COMMAND ${CMAKE_CTEST_COMMAND}
+  # All tests including expensive tests but not stress tests.
+  add_custom_target(check_expensive COMMAND ${CMAKE_CTEST_COMMAND} -LE STRESS
+                      DEPENDS ${GLOW_TEST_DEPENDS} USES_TERMINAL)
+
+  # All tests including expensive and stress tests.
+  add_custom_target(check_expensive_stress COMMAND ${CMAKE_CTEST_COMMAND}
                       DEPENDS ${GLOW_TEST_DEPENDS} USES_TERMINAL)
 endif()
 
