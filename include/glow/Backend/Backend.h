@@ -247,6 +247,27 @@ public:
   static RegisterFactory<std::string, FactoryName, Backend>                    \
       FactoryName##_REGISTERED;
 
+/// Perform dynamic Backend Factory registration. Register the backend factory
+/// under the provided \p Name and use \p CreateFn expression to create new
+/// instances of the backends.
+#define REGISTER_DYNAMIC_GLOW_BACKEND_FACTORY(FactoryName, BackendClass, Name, \
+                                              CreateFn)                        \
+  class FactoryName : public BaseFactory<std::string, Backend> {               \
+  public:                                                                      \
+    FactoryName() : registrationKey_(Name) {}                                  \
+    Backend *create() override { return CreateFn; }                            \
+    std::string getRegistrationKey() const override {                          \
+      return registrationKey_;                                                 \
+    }                                                                          \
+    unsigned numDevices() const override {                                     \
+      return BackendClass::numDevices();                                       \
+    }                                                                          \
+                                                                               \
+  private:                                                                     \
+    std::string registrationKey_;                                              \
+  };                                                                           \
+  RegisterFactory<std::string, FactoryName, Backend> FactoryName##_REGISTERED;
+
 /// \returns the set of names for all available, registered backends.
 std::vector<std::string> getAvailableBackends();
 
