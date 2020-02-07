@@ -422,15 +422,14 @@ int run() {
     return -1;
   }
 
-  llvm::outs() << "Starting inference\n";
+  llvm::outs() << "Preparing inference inputs\n";
 
-  std::list<std::promise<InferenceResult>> promises;
+  std::list<std::pair<std::unique_ptr<ExecutionContext>, int>> inputs;
   std::list<std::future<InferenceResult>> futures;
   // This holds the tensor that actually owns the data for all the partial
   // inputs.
   std::vector<Tensor> partialTensorPayloads;
 
-  auto timer = std::chrono::steady_clock::now();
   int numTotalInferences = inputGroupSize * itersOpt;
   for (int ioIndex = 0, numInferencesIssued = 0;
        numInferencesIssued < numTotalInferences;
@@ -438,168 +437,180 @@ int run() {
     // Setup the inputs.
     auto ctx = glow::make_unique<ExecutionContext>();
 
+    auto &bindings = *ctx->getPlaceholderBindings();
+    bindings.clear();
+    bindings.allocate(nonStaticPlaceholderList);
+    const auto &ps = bindings.pairs();
+    for (const auto &kv : ps) {
+      VLOG(1) << "Placeholder allocated: " << kv.first->getName().str();
+    }
+
+    const auto &inputGroup = parsedInputs[ioIndex];
+    for (const auto &tp : inputGroup.initializer()) {
+      auto *tensor = bindings.get(bindings.getPlaceholderByName(tp.name()));
+      CHECK(tensor) << "Unable to get tensor for " << tp.name();
+      size_t fullSize = tensor->getSizeInBytes();
+      const auto fullType = tensor->getType();
+
+      auto error = loadTensor(tp, tensor);
+      bool hasError = ERR_TO_BOOL(std::move(error));
+      CHECK(!hasError) << "Cannot load input tensor";
+      size_t loadedSize = tensor->getSizeInBytes();
+      if (loadedSize != fullSize) {
+        if (enablePartialTensor) {
+          VLOG(1) << "Loading " << tp.name()
+                  << " as a partial tensor: partial size="
+                  << tensor->getType().toString()
+                  << " full size=" << fullType.toString();
+          Tensor fullTensor(tensor->getUnsafePtr(), &fullType,
+                            tensor->getSizeInBytes());
+          // 'fullTensor' doesn't own the underlying data. 'tensor' does. So
+          // we want to keep the original tensor object around until inference
+          // is finished.
+          partialTensorPayloads.emplace_back(std::move(*tensor));
+          *tensor = std::move(fullTensor);
+        } else {
+          // pad with 0
+          VLOG(1) << "Loading and padding " << tp.name()
+                  << " as a partial tensor: partial size="
+                  << tensor->getType().toString()
+                  << " full size=" << fullType.toString();
+          Tensor fullTensor(&fullType);
+          std::memcpy(fullTensor.getUnsafePtr(), tensor->getUnsafePtr(),
+                      tensor->getSizeInBytes());
+          std::memset(fullTensor.getUnsafePtr() + tensor->getSizeInBytes(), 0,
+                      fullTensor.getSizeInBytes() - tensor->getSizeInBytes());
+
+          *tensor = std::move(fullTensor);
+        }
+      }
+    }
+    inputs.emplace_back(std::make_pair(std::move(ctx), ioIndex));
+  }
+
+  llvm::outs() << "Starting inference\n";
+  std::mutex mutex;
+  std::condition_variable cv;
+  int numOutstandingInferences = 0;
+  int numFinishedInferences = 0;
+  auto timer = std::chrono::steady_clock::now();
+  std::list<std::promise<InferenceResult>> promises;
+
+  while (!inputs.empty()) {
+    std::unique_lock<std::mutex> lock(mutex);
+    cv.wait(lock,
+            [&] { return numOutstandingInferences < concurrentRequestsOpt; });
+    ++numOutstandingInferences;
+
+    // dispatch inference
+    promises.emplace_back(std::promise<InferenceResult>());
+    auto &promise = promises.back();
+    futures.emplace_back(promise.get_future());
+    std::unique_ptr<ExecutionContext> ctx(std::move(inputs.front().first));
+    int ioIndex = inputs.front().second;
+    inputs.pop_front();
+
     TraceContext *traceContext = nullptr;
     if (glowDumpTrace) {
+      CHECK(ctx);
       ctx->setTraceContext(
           glow::make_unique<TraceContext>(TraceLevel::STANDARD));
       traceContext = ctx->getTraceContext();
       traceContext->setThreadName("main");
     }
-    {
-      TRACE_EVENT_SCOPE(traceContext, TraceLevel::RUNTIME,
-                        "Prepping input to Glow");
-      auto &bindings = *ctx->getPlaceholderBindings();
-      bindings.clear();
-      bindings.allocate(nonStaticPlaceholderList);
-      const auto &ps = bindings.pairs();
-      for (const auto &kv : ps) {
-        VLOG(1) << "Placeholder allocated: " << kv.first->getName().str();
-      }
+    TRACE_EVENT_SCOPE(traceContext, TraceLevel::RUNTIME,
+                      "Dispatch to host manager");
 
-      const auto &inputGroup = parsedInputs[ioIndex];
-      for (const auto &tp : inputGroup.initializer()) {
-        auto *tensor = bindings.get(bindings.getPlaceholderByName(tp.name()));
-        CHECK(tensor) << "Unable to get tensor for " << tp.name();
-        size_t fullSize = tensor->getSizeInBytes();
-        const auto fullType = tensor->getType();
+    hostManager->runNetwork(
+        "test", std::move(ctx),
+        [&promise, index = ioIndex, &numOutstandingInferences,
+         &numFinishedInferences, &numTotalInferences, &mutex, &cv,
+         &timer](runtime::RunIdentifierTy, Error err,
+                 std::unique_ptr<ExecutionContext> contextPtr) mutable {
+          InferenceResult result;
+          result.error = std::move(err);
+          result.ctx = std::move(contextPtr);
+          result.index = index;
+          promise.set_value(std::move(result));
 
-        auto error = loadTensor(tp, tensor);
-        bool hasError = ERR_TO_BOOL(std::move(error));
-        CHECK(!hasError) << "Cannot load input tensor";
-        size_t loadedSize = tensor->getSizeInBytes();
-        if (loadedSize != fullSize) {
-          if (enablePartialTensor) {
-            VLOG(1) << "Loading " << tp.name()
-                    << " as a partial tensor: partial size="
-                    << tensor->getType().toString()
-                    << " full size=" << fullType.toString();
-            Tensor fullTensor(tensor->getUnsafePtr(), &fullType,
-                              tensor->getSizeInBytes());
-            // 'fullTensor' doesn't own the underlying data. 'tensor' does. So
-            // we want to keep the original tensor object around until inference
-            // is finished.
-            partialTensorPayloads.emplace_back(std::move(*tensor));
-            *tensor = std::move(fullTensor);
-          } else {
-            // pad with 0
-            VLOG(1) << "Loading and padding " << tp.name()
-                    << " as a partial tensor: partial size="
-                    << tensor->getType().toString()
-                    << " full size=" << fullType.toString();
-            Tensor fullTensor(&fullType);
-            std::memcpy(fullTensor.getUnsafePtr(), tensor->getUnsafePtr(),
-                        tensor->getSizeInBytes());
-            std::memset(fullTensor.getUnsafePtr() + tensor->getSizeInBytes(), 0,
-                        fullTensor.getSizeInBytes() - tensor->getSizeInBytes());
-
-            *tensor = std::move(fullTensor);
-          }
-        }
-      }
-    }
-
-    {
-      TRACE_EVENT_SCOPE(traceContext, TraceLevel::RUNTIME,
-                        "Dispatch to host manager");
-
-      // dispatch inference
-      promises.emplace_back(std::promise<InferenceResult>());
-      std::promise<InferenceResult> &promise = promises.back();
-      futures.emplace_back(promise.get_future());
-
-      hostManager->runNetwork(
-          "test", std::move(ctx),
-          [&promise, index = ioIndex](
-              runtime::RunIdentifierTy, Error err,
-              std::unique_ptr<ExecutionContext> contextPtr) mutable {
-            InferenceResult result;
-            result.error = std::move(err);
-            result.ctx = std::move(contextPtr);
-            result.index = index;
-            promise.set_value(std::move(result));
-          });
-    }
-    // stop and wait for results when we reach the max concurrent request we
-    // want to send or we have no more requests to send.
-    if (futures.size() >= concurrentRequestsOpt ||
-        numInferencesIssued == numTotalInferences - 1) {
-      for (auto &future : futures) {
-        future.wait();
-      }
-      std::chrono::duration<double, std::milli> duration =
-          std::chrono::steady_clock::now() - timer;
-      LOG(INFO) << "Executed " << futures.size() << " inferences in "
-                << duration.count() << "ms";
-
-      for (auto &future : futures) {
-        auto result = future.get();
-
-        if (result.error) {
-          llvm::outs() << "Inference failed!";
-          ++numFailed;
-        } else {
-          const auto &bindings = *result.ctx->getPlaceholderBindings();
-
-          const auto &outputGroup = parsedOutputs[result.index];
-          ONNX_NAMESPACE::GraphProto outputG;
-          std::ofstream of;
-          if (dumpOutputsOpt) {
-            std::stringstream ss;
-            ss << "output_dump_" << result.index << ".onnx";
-            of.open(ss.str(), std::ios::binary);
-            CHECK(of) << "Cannot create output dump file: " << ss.str();
-          }
-          for (const auto &tp : outputGroup.initializer()) {
-            Tensor tensorRef;
-            auto error = loadTensor(tp, &tensorRef);
-            CHECK(!ERR_TO_BOOL(std::move(error)))
-                << "Cannot load output ref tensor";
-            const auto *tensor =
-                bindings.get(bindings.getPlaceholderByName(tp.name()));
-            CHECK(tensor) << "Missing " << tp.name()
-                          << " in output placeholder";
-            if (dumpOutputsOpt) {
-              auto *t = outputG.add_initializer();
-              ONNXModelWriter::writeTensor(*tensor, t);
-              t->set_name(tp.name());
-            }
-            bool equal = tensorRef.isEqual(*tensor, thresholdOpt, true);
-            if (!equal) {
-              llvm::outs() << "Verification failed at input/output pair "
-                           << result.index << " for output tensor " << tp.name()
-                           << "\n";
-              ++numFailed;
-              break;
+          {
+            std::unique_lock<std::mutex> lock(mutex);
+            --numOutstandingInferences;
+            if (++numFinishedInferences == numTotalInferences) {
+              std::chrono::duration<double, std::milli> duration =
+                  std::chrono::steady_clock::now() - timer;
+              LOG(INFO) << "Executed " << numTotalInferences
+                        << " inferences in " << duration.count() << "ms";
+              LOG(INFO) << "Avg inference latency: "
+                        << (duration / numTotalInferences).count() << "ms";
             }
           }
-          if (dumpOutputsOpt) {
-            std::string buffer;
-            outputG.SerializeToString(&buffer);
-            of << buffer;
-          }
-
-          if (glowDumpTrace) {
-            llvm::SmallString<64> path;
-            auto tempFileRes =
-                llvm::sys::fs::createTemporaryFile("glow-trace", "json", path);
-            if (tempFileRes.value() != 0) {
-              LOG(ERROR) << "Failed to create temp file for Glow trace events: "
-                         << tempFileRes;
-            } else {
-              traceContext->dump(path);
-            }
-          }
-        }
-      }
-      promises.clear();
-      futures.clear();
-      partialTensorPayloads.clear();
-      timer = std::chrono::steady_clock::now();
-    }
+          cv.notify_all();
+        });
   }
 
-  CHECK(promises.empty());
-  CHECK(futures.empty());
+  llvm::outs() << "Checking results\n";
+  for (auto &future : futures) {
+    future.wait();
+    auto result = future.get();
+
+    if (result.error) {
+      llvm::outs() << "Inference failed!";
+      ++numFailed;
+    } else {
+      const auto &bindings = *result.ctx->getPlaceholderBindings();
+
+      const auto &outputGroup = parsedOutputs[result.index];
+      ONNX_NAMESPACE::GraphProto outputG;
+      std::ofstream of;
+      if (dumpOutputsOpt) {
+        std::stringstream ss;
+        ss << "output_dump_" << result.index << ".onnx";
+        of.open(ss.str(), std::ios::binary);
+        CHECK(of) << "Cannot create output dump file: " << ss.str();
+      }
+      for (const auto &tp : outputGroup.initializer()) {
+        Tensor tensorRef;
+        auto error = loadTensor(tp, &tensorRef);
+        CHECK(!ERR_TO_BOOL(std::move(error)))
+            << "Cannot load output ref tensor";
+        const auto *tensor =
+            bindings.get(bindings.getPlaceholderByName(tp.name()));
+        CHECK(tensor) << "Missing " << tp.name() << " in output placeholder";
+        if (dumpOutputsOpt) {
+          auto *t = outputG.add_initializer();
+          ONNXModelWriter::writeTensor(*tensor, t);
+          t->set_name(tp.name());
+        }
+        bool equal = tensorRef.isEqual(*tensor, thresholdOpt, true);
+        if (!equal) {
+          llvm::outs() << "Verification failed at input/output pair "
+                       << result.index << " for output tensor " << tp.name()
+                       << "\n";
+          ++numFailed;
+          break;
+        }
+      }
+      if (dumpOutputsOpt) {
+        std::string buffer;
+        outputG.SerializeToString(&buffer);
+        of << buffer;
+      }
+
+      if (glowDumpTrace) {
+        llvm::SmallString<64> path;
+        auto tempFileRes =
+            llvm::sys::fs::createTemporaryFile("glow-trace", "json", path);
+        if (tempFileRes.value() != 0) {
+          LOG(ERROR) << "Failed to create temp file for Glow trace events: "
+                     << tempFileRes;
+        } else {
+          auto traceContext = result.ctx->getTraceContext();
+          traceContext->dump(path);
+        }
+      }
+    }
+  }
 
   if (numFailed == 0) {
     llvm::outs() << "All passed!\n";
