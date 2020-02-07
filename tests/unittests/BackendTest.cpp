@@ -16,6 +16,7 @@
 #include "BackendTestUtils.h"
 
 #include "glow/Backend/BackendUtils.h"
+#include "glow/Backends/Interpreter/Interpreter.h"
 #include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/PlaceholderBindings.h"
@@ -105,6 +106,41 @@ TEST(Interpreter, profileQuantizationForANetwork) {
   max = CI.raw(1);
   EXPECT_NEAR(0.2, min, 0.00001);
   EXPECT_NEAR(1.6, max, 0.00001);
+}
+
+/// Check that new backends and backend factories can be registered dynamically.
+TEST(Interpreter, DynamicBackendFactory) {
+  // Use a static variable here, because the macro invocation below creates a
+  // new class and C++ does not allow for capturing of local variables.
+  static std::string backendName;
+  for (unsigned i = 0; i < 16; ++i) {
+    {
+      backendName = "CustomInterpreter" + std::to_string(i);
+      // Dynamically create a new backend factory and register it.
+      REGISTER_DYNAMIC_GLOW_BACKEND_FACTORY(CustomInterpreterFactory,
+                                            Interpreter, backendName,
+                                            []() -> Backend * {
+                                              // Dynamically create a backend
+                                              // and give it a name.
+                                              auto *backend = new Interpreter;
+                                              backend->setName(backendName);
+                                              return backend;
+                                            }())
+      ExecutionEngine EE(backendName);
+      auto *backend = &EE.getBackend(backendName);
+      ASSERT_NE(backend, nullptr);
+      // Check that a new backend is registered.
+      auto backends = getAvailableBackends();
+      EXPECT_NE(std::find(backends.begin(), backends.end(), backendName),
+                backends.end());
+      // The new backend factory will be destroyed at the end of this scope.
+    }
+    // Check that a new backend is not registered anymore after its factory was
+    // destroyed.
+    auto backends = getAvailableBackends();
+    EXPECT_EQ(std::find(backends.begin(), backends.end(), backendName),
+              backends.end());
+  }
 }
 
 /// Test that the symbol category for a symbol is properly set.
