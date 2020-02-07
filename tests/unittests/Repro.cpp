@@ -550,6 +550,7 @@ int run() {
   }
 
   llvm::outs() << "Checking results\n";
+  TraceContext mergedTraceContext(TraceLevel::STANDARD);
   for (auto &future : futures) {
     future.wait();
     auto result = future.get();
@@ -597,18 +598,22 @@ int run() {
         of << buffer;
       }
 
-      if (glowDumpTrace) {
-        llvm::SmallString<64> path;
-        auto tempFileRes =
-            llvm::sys::fs::createTemporaryFile("glow-trace", "json", path);
-        if (tempFileRes.value() != 0) {
-          LOG(ERROR) << "Failed to create temp file for Glow trace events: "
-                     << tempFileRes;
-        } else {
-          auto traceContext = result.ctx->getTraceContext();
-          traceContext->dump(path);
-        }
+      auto *traceContext = result.ctx->getTraceContext();
+      if (traceContext) {
+        mergedTraceContext.merge(traceContext);
       }
+    }
+  }
+
+  if (glowDumpTrace) {
+    llvm::SmallString<64> path;
+    auto tempFileRes =
+        llvm::sys::fs::createTemporaryFile("glow-trace", "json", path);
+    if (tempFileRes.value() != 0) {
+      LOG(ERROR) << "Failed to create temp file for Glow trace events: "
+                 << tempFileRes;
+    } else {
+      mergedTraceContext.dump(path);
     }
   }
 
