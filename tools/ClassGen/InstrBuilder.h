@@ -256,6 +256,9 @@ private:
   /// Emit the class definition.
   void emitClass(std::ostream &os) const;
 
+  /// Emit the clone() method.
+  void emitCloner(std::ostream &os) const;
+
   /// Emit the methods that go into the CPP file and implement the methods that
   /// were declared in the header file.
   void emitCppMethods(std::ostream &os) const;
