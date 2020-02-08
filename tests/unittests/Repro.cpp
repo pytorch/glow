@@ -111,12 +111,12 @@ llvm::cl::opt<bool>
 llvm::cl::opt<bool> globalFp16ConstantsOpt(
     "glow_global_fp16_constants",
     llvm::cl::desc("Enable fp16 conversion for Constants"), llvm::cl::Optional,
-    llvm::cl::init(false), llvm::cl::cat(reproTestCat));
+    llvm::cl::init(true), llvm::cl::cat(reproTestCat));
 
 llvm::cl::opt<bool> globalFp16PlaceholdersOpt(
     "glow_global_fp16_placeholders",
     llvm::cl::desc("Enable fp16 conversion for Placeholders"),
-    llvm::cl::Optional, llvm::cl::init(false), llvm::cl::cat(reproTestCat));
+    llvm::cl::Optional, llvm::cl::init(true), llvm::cl::cat(reproTestCat));
 
 llvm::cl::opt<bool> sliceConcatFp32Opt(
     "glow_slice_concat_fp32",
@@ -144,7 +144,7 @@ llvm::cl::opt<bool>
 llvm::cl::opt<bool> ClipFp16SkipInputsOpt(
     "glow_clip_fp16_skip_inputs",
     llvm::cl::desc("Force glow to skip clipping fp16 Node inputs to min/max"),
-    llvm::cl::Optional, llvm::cl::init(false), llvm::cl::cat(reproTestCat));
+    llvm::cl::Optional, llvm::cl::init(true), llvm::cl::cat(reproTestCat));
 
 llvm::cl::opt<bool>
     forceFP16AccumSLSOpt("glow_global_force_sls_fp16_accum",
