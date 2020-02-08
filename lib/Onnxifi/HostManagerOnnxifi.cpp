@@ -35,12 +35,12 @@ bool GlowDumpDebugTraces = false;
 int32_t GlowNumDebugTracesPerDump = 100;
 bool GlowSaturateHost = false;
 bool GlowFP16 = false;
-bool GlowFP16Placeholders = false;
-bool GlowFP16Constants = false;
+bool GlowFP16Placeholders = true;
+bool GlowFP16Constants = true;
 bool GlowFusedScaleOffsetFP16 = false;
 bool GlowForceSLSAccumFP16 = false;
 bool GlowClipFP16 = false;
-bool GlowClipFP16SkipInputs = false;
+bool GlowClipFP16SkipInputs = true;
 bool GlowUseSparseNNPartitioningScheme = false;
 
 static llvm::cl::opt<int32_t, true>
