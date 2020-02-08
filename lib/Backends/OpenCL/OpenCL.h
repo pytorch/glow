@@ -219,7 +219,9 @@ public:
   ///@{
   ~OCLBackend() override = default;
 
-  std::string getBackendName() const override { return getName(); }
+  std::string getBackendName() const override {
+    return Named::getName().empty() ? getName() : Named::getName().str();
+  }
   static std::string getName() { return "OpenCL"; }
   static unsigned numDevices() { return 1; }
 
