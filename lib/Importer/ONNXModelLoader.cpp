@@ -223,6 +223,68 @@ void glow::setOnnxDefineSymbol(const std::vector<std::string> &strs) {
   onnxDefineSymbol = strs;
 }
 
+ONNX_NAMESPACE::GraphProto glow::parseOnnxFile(const std::string &fileName) {
+  ::ONNX_NAMESPACE::GraphProto graphProto;
+  std::ifstream inputFileStream(fileName, std::ios::in | std::ios::binary);
+  CHECK(inputFileStream) << "Can't find the input file for " << fileName;
+  google::protobuf::io::IstreamInputStream protobufFileStream(&inputFileStream);
+  google::protobuf::io::CodedInputStream codedStream(&protobufFileStream);
+  codedStream.SetTotalBytesLimit(MAX_PROTO_SIZE, MAX_PROTO_SIZE);
+  bool parsedSuccessfully = graphProto.ParseFromCodedStream(&codedStream);
+  CHECK(parsedSuccessfully) << "Failed to parse GraphProto";
+  return graphProto;
+}
+
+void glow::fillPlaceholders(const ONNX_NAMESPACE::GraphProto &inputGroup,
+                            PlaceholderBindings *bindings,
+                            std::vector<Tensor> *partialTensorPayloads) {
+  for (const auto &tensorProto : inputGroup.initializer()) {
+    auto *tensor =
+        bindings->get(bindings->getPlaceholderByName(tensorProto.name()));
+    CHECK(tensor);
+    size_t fullSize = tensor->getSizeInBytes();
+    const auto fullType = tensor->getType();
+    auto error = loadTensor(tensorProto, tensor);
+    bool hasError = ERR_TO_BOOL(std::move(error));
+    CHECK(!hasError) << "Cannot load input tensor";
+    size_t loadedSize = tensor->getSizeInBytes();
+    if (loadedSize != fullSize) {
+      if (partialTensorPayloads) {
+        LOG(INFO) << "Loading " << tensorProto.name()
+                  << " as a partial tensor: partial size="
+                  << tensor->getType().toString()
+                  << " full size=" << fullType.toString();
+        Tensor fullTensor(tensor->getUnsafePtr(), &fullType,
+                          tensor->getSizeInBytes());
+        // 'fullTensor' doesn't own the underlying data. 'tensor' does. So
+        // we want to keep the original tensor object around until inference
+        // is finished.
+        partialTensorPayloads->emplace_back(std::move(*tensor));
+        *tensor = std::move(fullTensor);
+      } else {
+        // pad with 0
+        LOG(INFO) << "Loading and padding " << tensorProto.name()
+                  << " as a partial tensor: partial size="
+                  << tensor->getType().toString()
+                  << " full size=" << fullType.toString();
+        Tensor fullTensor(&fullType);
+        std::memcpy(fullTensor.getUnsafePtr(), tensor->getUnsafePtr(),
+                    tensor->getSizeInBytes());
+        std::memset(fullTensor.getUnsafePtr() + tensor->getSizeInBytes(), 0,
+                    fullTensor.getSizeInBytes() - tensor->getSizeInBytes());
+        *tensor = std::move(fullTensor);
+      }
+    }
+  }
+}
+
+void glow::fillPlaceholders(const std::string &fileName,
+                            PlaceholderBindings *bindings,
+                            std::vector<Tensor> *partialTensorPayloads) {
+  const ONNX_NAMESPACE::GraphProto &inputGroup = parseOnnxFile(fileName);
+  fillPlaceholders(inputGroup, bindings, partialTensorPayloads);
+}
+
 /// Loads tensor \p T from the input \p in.
 Error glow::loadTensor(const ONNX_NAMESPACE::TensorProto &in, Tensor *T) {
   std::vector<dim_t> dim;
@@ -2666,8 +2728,8 @@ Error ONNXModelLoader::loadNetwork(ONNX_NAMESPACE::GraphProto &net) {
       if (!tryFold) {
         // Error during constant folding; load the op normally below.
         const std::string errStr = ERR_TO_STRING(tryFold.takeError());
-        VLOG(1) << "Error while trying to ConstantFold " << loadOperatorName(op)
-                << ": " << errStr;
+        LOG(INFO) << "Error while trying to ConstantFold "
+                  << loadOperatorName(op) << ": " << errStr;
       } else if (tryFold.get()) {
         // Folded successfully, so skip loading the op below.
         continue;
