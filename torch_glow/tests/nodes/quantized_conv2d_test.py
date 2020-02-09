@@ -110,8 +110,6 @@ class TestQuantizedConv2d(unittest.TestCase):
             jitVsGlow(
                 model,
                 x,
-                atol=1e-1,
-                rtol=1e-1,
                 expected_fused_ops={
                     "aten::quantize_per_tensor",
                     "quantized::conv2d",
