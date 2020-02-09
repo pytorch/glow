@@ -179,7 +179,7 @@ struct DeviceConfig {
 /// and Executor.
 struct HostConfig {
   /// Number of outstanding or concurrent networks before queueing.
-  size_t maxActiveRequests{24};
+  size_t maxActiveRequests{48};
   /// Number of requests to queue up before refusing further requests.
   size_t maxQueueSize{100};
   /// Number of threads to allocate to the Executor.
