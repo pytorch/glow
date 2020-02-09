@@ -362,4 +362,11 @@ std::set<std::string> glow::backendTestBlacklist = {
     "where_2d_wise_i8/0",
     "where_element_wise_float/0",
     "where_row_wise_float/0",
+    "sanityConvTranspose2OutCh/0",
+    "sanityConvTranspose1OutCh/0",
+    "sanityConvTransposeStrided/0",
+    "sanityConvTransposePads/0",
+    "convTransposeCompareSimpleK8S1P0I3/0",
+    "convTransposeCompareSimpleK6S1P1I4/0",
+    "convTransposeConvolutionCompareSimpleK5S1P2I3/0",
 };

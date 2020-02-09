@@ -305,6 +305,118 @@ TEST_F(Caffe2ImporterTest, convGroupQuantized) {
   EXPECT_EQ(mod.getConstants().size(), 4);
 }
 
+/// Helper method to run the ConvTranspose operator test cases.
+/// \p filename contains the model .onnxtxt.
+/// \p expectedDims: output Tensor dimensions.
+/// \p expectedValues : output Tensor values expected.
+/// The input is N*C*H*W (1*1*2*2), the kernels is {3, 3},
+/// strides is {1, 1}, group is 1. Pads can vary.
+static void convTransposeTestHelper(std::string &netname, std::string &initname,
+                                    llvm::ArrayRef<dim_t> expectedDims,
+                                    llvm::ArrayRef<float> expectedValues) {
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string NetDescFilename =
+      std::string(GLOW_DATA_PATH "tests/models/caffe2Models/") + netname;
+
+  std::string NetWeightFilename =
+      std::string(GLOW_DATA_PATH "tests/models/caffe2Models/") + initname;
+
+  Placeholder *output;
+  PlaceholderBindings bindings;
+
+  // Destroy the loader after the graph is loaded since the following execution
+  // will not depend on anything from the loader.
+  {
+    Tensor data;
+    getNCHWData(&data, 1, 1, 2, 2);
+    data.getHandle() = {2., 3., 4., 5.};
+
+    Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename,
+                               {"gpu_0/data_0"}, {&data.getType()}, *F);
+    output = EXIT_ON_ERR(caffe2LD.getSingleOutput());
+
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod, {"gpu_0/data_0"}, {&data});
+  }
+
+  auto res = bindings.get(output);
+  EE.compile(CompilationMode::Infer);
+
+  EE.run(bindings);
+  auto result = res->getHandle();
+
+  EXPECT_TRUE(result.dims() == expectedDims);
+  for (dim_t i = 0, e = expectedValues.size(); i < e; i++) {
+    EXPECT_FLOAT_EQ(result.raw(i), expectedValues[i]);
+  }
+}
+
+/// Test loading ConvTranspose op from a ONNX model.
+/// The input is N*C*H*W (1*1*2*2), the kernels is {3, 3},
+/// strides is {1, 1}, pads is {0, 0, 0, 0}, group is 1.
+TEST(caffe2, importConvTranspose) {
+  std::string netname("convtranspose.pbtxt");
+  std::string initname("convtranspose_init.pbtxt");
+  std::vector<dim_t> expectedDims = {1, 1, 4, 4};
+  std::vector<float> expectedValues = {5,  13, 18,  13, 19, 50, 64, 42,
+                                       37, 92, 106, 66, 33, 77, 86, 51};
+  convTransposeTestHelper(netname, initname, expectedDims, expectedValues);
+}
+
+/// Test loading ConvTranspose op from a ONNX model.
+/// The input is N*C*H*W (1*1*2*2), the kernels is {3, 3},
+/// strides is {1, 1}, pads is {1, 1, 1, 1}, group is 1.
+TEST(onnx, importConvTransposePads) {
+  std::string netname("convtranspose_pads.pbtxt");
+  std::string initname("convtranspose_init.pbtxt");
+  std::vector<dim_t> expectedDims = {1, 1, 2, 2};
+  std::vector<float> expectedValues = {50, 64, 92, 106};
+  convTransposeTestHelper(netname, initname, expectedDims, expectedValues);
+}
+
+/// Test loading conv op from a Caffe2 model.
+/// The input is N*H*W*C (1*3*3*1), the kernel is 2,
+/// stride is 1, pad is 1, group is 1.
+TEST(caffe2, convTransposeNHWC) {
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string NetDescFilename(
+      GLOW_DATA_PATH "tests/models/caffe2Models/convtranspose_nhwc.pbtxt");
+  std::string NetWeightFilename(
+      GLOW_DATA_PATH "tests/models/caffe2Models/convtranspose_nhwc_init.pbtxt");
+
+  Placeholder *output;
+  PlaceholderBindings bindings;
+
+  Tensor inputs(ElemKind::FloatTy, {1, 2, 2, 1});
+  inputs.getHandle() = {2., 3., 4., 5.};
+
+  // Destroy the loader after the graph is loaded since the following execution
+  // will not depend on anything from the loader.
+  {
+    Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"inputs"},
+                               {&inputs.getType()}, *F);
+    output = EXIT_ON_ERR(caffe2LD.getSingleOutput());
+  }
+
+  // High level check on the content of the graph. We have 1 conv and 1 save.
+  EXPECT_EQ(F->getNodes().size(), 2);
+  auto *saveNode = getSaveNodeFromDest(output);
+  auto *convTransposeNode =
+      llvm::dyn_cast<ConvTransposeNode>(saveNode->getInput().getNode());
+  ASSERT_TRUE(convTransposeNode);
+
+  // We have 2 placeholders:  1 input and 1 output.
+  EXPECT_EQ(mod.getPlaceholders().size(), 2);
+  // We have 2 constants: Weights and bias.
+  EXPECT_EQ(mod.getConstants().size(), 2);
+}
+
 /// Test loading MaxPool with NHWC order input.
 TEST_F(Caffe2ImporterTest, maxPoolNHWC) {
   ExecutionEngine EE{};

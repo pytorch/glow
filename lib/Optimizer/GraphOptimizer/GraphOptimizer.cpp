@@ -1782,6 +1782,77 @@ bool FoldBatchNormalizationWithArithmeticChain::run(
   return changed;
 }
 
+// Fold Add after ConvTranspose into ConvTranspose's bias, if such Add was a
+// broadcasted Add. Examine by looking into Tensor repetitions. Fold this:
+//
+//    CONST1   Input
+//         \     |
+// CONST2  ConvTranspose
+//      \   /
+//      Add
+//       |
+//     Output
+//
+// into this:
+//
+//      CONST1  (CONST2 SQUEEZED)
+//          |  /
+// Input   ADD
+//     \   /
+//   ConvTranspose
+//       |
+//     Output
+//
+// Optimizations are going to take care of folding CONST1/CONST2/ADD
+// into one const bias.
+bool ConvTransposeBiasAddFold::run(Function *F,
+                                   const CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), getName());
+  bool changed = false;
+  for (auto &node : F->getNodes()) {
+
+    auto *AN = dyn_cast<AddNode>(&node);
+    if (!AN) {
+      continue;
+    }
+
+    // Check for Transpose node being either RHS or LHS.
+    auto *DN_L = dyn_cast<ConvTransposeNode>(AN->getLHS());
+    auto *DN_R = dyn_cast<ConvTransposeNode>(AN->getRHS());
+    auto *DN = DN_L ? DN_L : DN_R;
+    if (!(!DN_R ^ !DN_L)) {
+      continue;
+    }
+    auto *biasTile = dyn_cast<Constant>(DN_L ? AN->getRHS() : AN->getLHS());
+    if (!biasTile || (biasTile->dims().size() != 4)) {
+      continue;
+    }
+    auto *bias = dyn_cast<Constant>(DN->getBias());
+    if (!bias) {
+      continue;
+    }
+
+    // Check if Add is a broadcasted Add.
+    std::vector<float> origConst(biasTile->dims()[3]);
+    if (!isConstBroadcasted(origConst, *biasTile, 3)) {
+      continue;
+    }
+
+    // Expect Bias Add so allocate a new bias to fill as do checking.
+    auto *newBias = F->getParent()->createConstant(
+        ElemKind::FloatTy, {biasTile->dims()[3]}, biasTile->getName());
+    newBias->getHandle() = origConst;
+
+    auto *add = F->createAdd(bias->getName(), bias, newBias);
+    DN->setNthInput(ConvTransposeNode::BiasIdx, add);
+    AN->getResult().replaceAllUsesOfWith(DN);
+
+    changed = true;
+  } // For all nodes in the graph.
+
+  return changed;
+}
+
 /// \returns true if all dimensions of the \p input tensors are the same
 /// except for the provided \p dimension, otherwise return false.
 static bool checkConcatNodeUniformDims(llvm::ArrayRef<NodeValue> inputs,

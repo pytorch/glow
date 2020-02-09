@@ -344,6 +344,12 @@ static std::string dimsHWNC[] = {
     {"N"},
     {"C"},
 };
+static std::string dimsCNHW[] = {
+    {"C"},
+    {"N"},
+    {"H"},
+    {"W"},
+};
 static std::string dims0D[]{
     {""},
 };
@@ -375,6 +381,7 @@ static std::string dims6D[] = {
 static TensorLayoutDescription layoutNHWC(dimsNHWC);
 static TensorLayoutDescription layoutNCHW(dimsNCHW);
 static TensorLayoutDescription layoutHWNC(dimsHWNC);
+static TensorLayoutDescription layoutCNHW(dimsCNHW);
 static TensorLayoutDescription layout0D(dims0D);
 static TensorLayoutDescription layout1D(dims1D);
 static TensorLayoutDescription layout2D(dims2D);
@@ -395,6 +402,8 @@ TensorLayoutCommon::TensorLayoutCommon() : enabled_(false) {
       std::make_pair("NHWC", new TensorLayoutDescription("NHWC")));
   layoutNameToLayoutDescription_.insert(
       std::make_pair("HWNC", new TensorLayoutDescription("HWNC")));
+  layoutNameToLayoutDescription_.insert(
+      std::make_pair("CNHW", new TensorLayoutDescription("CNHW")));
   layoutNameToLayoutDescription_.insert(
       std::make_pair("N", new TensorLayoutDescription("N")));
 }
@@ -656,7 +665,9 @@ static bool acceptsAnyInputLayout(const glow::Node *node) {
   case Kinded::Kind::SGDNodeKind: {
     return true;
   }
-  default: { return false; }
+  default: {
+    return false;
+  }
   }
 }
 

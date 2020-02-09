@@ -327,6 +327,102 @@ void BoundInterpreterFunction::fwdConvolutionInstQuantizedImpl(
   }         // N
 }
 
+/// This is the floating point implementation of ConvTranspose.
+template <typename ElemTy>
+void BoundInterpreterFunction::fwdConvTransposeInstFloatImpl(
+    Value *inV, Value *outV, Value *filterV, Value *biasV,
+    llvm::ArrayRef<unsigned_t> kernelSizes, llvm::ArrayRef<unsigned_t> strides,
+    llvm::ArrayRef<unsigned_t> pads, size_t group, size_t dilation) {
+  staticAssertFloatingPointType(ElemTy);
+
+  auto inW = getWeightHandle<ElemTy>(inV);
+  auto outW = getWeightHandle<ElemTy>(outV);
+  auto filterW = getWeightHandle<ElemTy>(filterV);
+  auto biasW = getWeightHandle<ElemTy>(biasV);
+
+  ShapeNHWC odim(outW.dims());
+  ShapeNHWC idim(inW.dims());
+  ShapeHW kdim(kernelSizes);
+  ShapeHW sdim(strides);
+
+  assert(idim.c % group == 0 && "Input channels must be divisible by group.");
+  assert(odim.c % group == 0 && "Output channels must be divisible by group.");
+  assert(dilation == 1 && "Dilation must be 1.");
+  assert(group == 1 && "Group must be 1.");
+
+  dim_t inCperG = idim.c / group;
+  dim_t outCperG = odim.c / group;
+
+  PaddingTLBR pdim(pads);
+
+  // For each input in the batch:
+  for (dim_t n = 0; n < idim.n; n++) {
+
+    // Initialize bias (TODO take out to a separate function when quant is in).
+    for (dim_t ax = 0; ax < odim.h; ax++) {
+      for (dim_t ay = 0; ay < odim.w; ay++) {
+        for (dim_t d = 0; d < odim.c; d++) {
+          outW.at({n, ax, ay, d}) = static_cast<ElemTy>(biasW.at({d}));
+        }
+      }
+    }
+
+    // For each group of input channels:
+    for (dim_t g = 0; g < group; g++) {
+
+      // For each input channel in the group:
+      for (dim_t d = g * inCperG; d < (g + 1) * inCperG; d++) {
+
+        // For each transposed convolution 'jump' in the input tensor:
+        ssize_t x = -ssize_t(pdim.top);
+        for (dim_t bx = 0; bx < idim.h; bx++, x += sdim.height) {
+          ssize_t y = -ssize_t(pdim.left);
+          for (dim_t by = 0; by < idim.w; by++, y += sdim.width) {
+
+            // For each element in the each transposed convolution filter:
+            ElemTy input = inW.at({n, bx, by, d});
+
+            for (dim_t kx = 0; kx < kdim.height; kx++) {
+              for (dim_t ky = 0; ky < kdim.width; ky++) {
+                ssize_t ax = x + kx * dilation;
+                ssize_t ay = y + ky * dilation;
+
+                // Ignore index access below zero (this is due to padding).
+                if (ax < 0 || ay < 0 || ax >= ssize_t(odim.h) ||
+                    ay >= ssize_t(odim.w)) {
+                  continue;
+                }
+                for (dim_t c = 0; c < outCperG; c++) {
+                  outW.at({n, (dim_t)ax, (dim_t)ay, g * outCperG + c}) +=
+                      filterW.at({c, kx, ky, d}) * input;
+                }
+              }
+            }
+          } // W
+        }   // H
+      }     // C
+    }       // G
+  }         // N
+}
+
+void BoundInterpreterFunction::fwdConvTransposeInst(
+    const ConvTransposeInst *I) {
+  auto kernelSizes = I->getKernels();
+  auto pads = I->getPads();
+  auto strides = I->getStrides();
+  size_t group = I->getGroup();
+
+  if (I->getSrc()->getType()->isQuantizedType()) {
+    llvm_unreachable("Quantized ConvTranspose not supported");
+    return;
+  }
+
+  dispatchFloatingPointImpl(
+      fwdConvTransposeInstFloatImpl, I->getSrc()->getElementType(), I->getSrc(),
+      I->getDest(), I->getFilter(), I->getBias(), kernelSizes, strides, pads,
+      group, I->getDilation());
+}
+
 void BoundInterpreterFunction::fwdConvolutionInst(const ConvolutionInst *I) {
   auto kernelSizes = I->getKernels();
   auto pads = I->getPads();

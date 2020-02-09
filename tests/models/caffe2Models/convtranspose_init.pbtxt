@@ -1,0 +1,37 @@
+name: "init"
+op {
+  output: "convTranspose_w"
+  type: "GivenTensorFill"
+  arg {
+    name: "shape"
+    ints: 1
+    ints: 1
+    ints: 3
+    ints: 3
+  }
+  arg {
+    name: "values"
+    floats: 2.0
+    floats: 3.0
+    floats: 4.0
+    floats: 5.0
+    floats: 6.0
+    floats: 7.0
+    floats: 8.0
+    floats: 9.0
+    floats: 10.0
+  }
+}
+op {
+  output: "convTranspose_b"
+  type: "GivenTensorFill"
+  arg {
+    name: "shape"
+    ints: 1
+  }
+  arg {
+    name: "values"
+    floats: 1.
+  }
+}
+

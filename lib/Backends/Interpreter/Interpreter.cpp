@@ -233,6 +233,10 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
             (NI.getInElemTy(Convolution3DNode::BiasIdx) == ElemKind::Int16QTy ||
              NI.getInElemTy(Convolution3DNode::BiasIdx) == ElemKind::Int32QTy));
 
+  case Kinded::Kind::ConvTransposeNodeKind:
+    // TODO - support other types.
+    return NI.allInputsAndOutputsHaveSameElemKind({ElemKind::FloatTy});
+
   case Kinded::Kind::BatchedAddNodeKind:
     if (!NI.getInTy(BatchedAddNode::BatchIdx)->isQuantizedType()) {
       return NI.allInputsAndOutputsHaveSameElemKind(

@@ -245,6 +245,16 @@ struct BlacklistInitializer {
             {"SoftMax/0", TestBlacklist::AnyDeviceHWEngine},
             {"TopK/0", TestBlacklist::AnyDeviceHWEngine},
             {"TopK1/0", TestBlacklist::AnyDeviceHWEngine},
+            {"sanityConvTranspose2OutCh/0", TestBlacklist::AnyDeviceAnyEngine},
+            {"sanityConvTranspose1OutCh/0", TestBlacklist::AnyDeviceAnyEngine},
+            {"sanityConvTransposeStrided/0", TestBlacklist::AnyDeviceAnyEngine},
+            {"sanityConvTransposePads/0", TestBlacklist::AnyDeviceAnyEngine},
+            {"convTransposeCompareSimpleK8S1P0I3/0",
+             TestBlacklist::AnyDeviceAnyEngine},
+            {"convTransposeCompareSimpleK6S1P1I4/0",
+             TestBlacklist::AnyDeviceAnyEngine},
+            {"convTransposeConvolutionCompareSimpleK5S1P2I3/0",
+             TestBlacklist::AnyDeviceAnyEngine},
         };
     TestBlacklist::prepareBlacklist(testBlacklistedSetups,
                                     backendTestBlacklist);

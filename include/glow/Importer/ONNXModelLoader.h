@@ -119,6 +119,9 @@ class ONNXModelLoader
   /// produced by Glow's on ONNXModelWriter and thus has NHWC layout for inputs.
   Error loadTensorwiseQuantizedConvolution(const ONNX_NAMESPACE::NodeProto &op,
                                            const ArgumentDictionaryTy &dict);
+  /// Load ConvTranspose ONNX operator.
+  Error loadConvTranspose(const ONNX_NAMESPACE::NodeProto &op,
+                          const ArgumentDictionaryTy &dict);
 
   /// Load MaxPool or AveragePool ONNX operator. \p typeName is the name of the
   /// ONNX operator being loaded, either MaxPool or AveragePool.

@@ -596,6 +596,48 @@ Expected<Pads> getPads(const ArgumentDictionaryTy &dict,
   return Pads({0, 0, 0, 0});
 }
 
+/// Get the Pads value based on setting for auto_pad.
+/// \p kdim : kernel sizes (HW)
+/// \p sdim: stride sizes (HW)
+/// \p idim: input sizes (HW)
+static Expected<Pads> getConvTransposePadsfromOutput(
+    const ArgumentDictionaryTy &dict, llvm::ArrayRef<unsigned_t> kdim,
+    llvm::ArrayRef<unsigned_t> sdim, llvm::ArrayRef<unsigned_t> idim,
+    llvm::ArrayRef<unsigned_t> odim) {
+
+  llvm::SmallVector<unsigned_t, 2> pdim(2); // Total Paddding, HW.
+  for (size_t i = 0, e = pdim.size(); i < e; i++) {
+    pdim[i] = sdim[i] * (idim[i] - 1) /* + output_padding[0]*/ +
+              ((kdim[i] - 1) /* * dilations[i]*/ + 1) - odim[i];
+  }
+
+  unsigned_t top, left, bottom, right;
+
+  if (dict.count("auto_pad")) {
+    std::string padStr;
+    ASSIGN_VALUE_OR_RETURN_ERR(padStr, loadStr(dict.at("auto_pad")));
+    if (padStr == "SAME_UPPER") {
+      // SAME_UPPER ONNX formula:
+      // if odd number for pdim[i], use extra padding at the end.
+      //   pads[start_i] = total_padding[i] - (total_padding[i]/2);
+      //   pads[end_i] = (total_padding[i]/2).
+      top = pdim[0] / 2;
+      bottom = top + (pdim[0] & 0x1);
+      left = pdim[1] / 2;
+      right = left + (pdim[1] & 0x1);
+      return Pads({top, left, bottom, right});
+    }
+  }
+  // !SAME_UPPER ONNX formula:
+  //   pads[start_i] = total_padding[i]/2;
+  //   pads[end_i] = total_padding[i] - (total_padding[i]/2)
+  top = pdim[0] / 2;
+  bottom = top + (pdim[0] & 0x1);
+  left = pdim[1] / 2;
+  right = left + (pdim[1] & 0x1);
+  return Pads({top, left, bottom, right});
+}
+
 Error ONNXModelLoader::loadConstant(const ONNX_NAMESPACE::NodeProto &op,
                                     const ArgumentDictionaryTy &dict) {
   /*
@@ -913,8 +955,6 @@ Error ONNXModelLoader::loadTensorwiseQuantizedConvolution(
   auto pads = getShape<unsigned_t>(dict.at("pads"));
   unsigned_t groups;
   ASSIGN_VALUE_OR_RETURN_ERR(groups, loadInt(dict.at("group")));
-  unsigned_t dilation;
-  ASSIGN_VALUE_OR_RETURN_ERR(dilation, loadInt(dict.at("group")));
 
   float outScale;
   ASSIGN_VALUE_OR_RETURN_ERR(outScale, loadFloat(dict.at("out_scale")));
@@ -974,6 +1014,131 @@ Error ONNXModelLoader::loadChannelwiseQuantizedConvolution(
       kernels, strides, pads, groups);
 
   return addNodeAsOutput(op, node);
+}
+
+Error ONNXModelLoader::loadConvTranspose(const ONNX_NAMESPACE::NodeProto &op,
+                                         const ArgumentDictionaryTy &dict) {
+  const std::string &opName = loadOperatorName(op);
+  // Load the attributes
+  std::vector<unsigned_t> strides(2, 1);
+  if (dict.count("strides")) {
+    strides = getShape<unsigned_t>(dict.at("strides"));
+  }
+  unsigned_t group = 1;
+  if (dict.count("group")) {
+    ASSIGN_VALUE_OR_RETURN_ERR(group, loadInt(dict.at("group")));
+  }
+
+  unsigned_t dilation = 1;
+  if (dict.count("dilation")) {
+    ASSIGN_VALUE_OR_RETURN_ERR(dilation, loadInt(dict.at("dilation")));
+  }
+
+  // Load the inputs
+  NodeValue in;
+  ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
+  NodeValue filterValue;
+  ASSIGN_VALUE_OR_RETURN_ERR(filterValue, getNodeValueByName(op.input(1)));
+
+  // Transpose the filter to the right format. Glow expects to read the
+  // weights in the format CRSK. ONNX stores the operators as KCRS.
+  // C - output_depth, R - filter_height, S - filter_width, K - input_depth.
+  TransposeNode *filterTransposeNode =
+      G_.createTranspose(opName, filterValue, CNHW2NHWC /* flip matrix */);
+
+  // The structure of the conv weigts is: NHWC. We take the C, which is the
+  // number of filters. We use this value to calculate the size of the bias
+  // if it is not specified.
+  const NodeValue filterTransposedValue = filterTransposeNode->getResult();
+  dim_t depth = filterTransposedValue.dims()[0];
+
+  // Get the kernel shape from the input.
+  llvm::SmallVector<unsigned_t, 2> kernels(2);
+  kernels[0] = filterTransposedValue.dims()[1];
+  kernels[1] = filterTransposedValue.dims()[2];
+
+  // Extra check when the 'kernel_shape' attribute exists.
+  // The 'kernel_shape' attribute is redundant not mandatory.
+  if (dict.count("kernel_shape")) {
+    std::vector<unsigned_t> kernelShapeAttribute =
+        getShape<unsigned_t>(dict.at("kernel_shape"));
+    RETURN_ERR_IF_NOT(
+        (kernels[0] == kernelShapeAttribute[0] &&
+         kernels[1] == kernelShapeAttribute[1]),
+        "The 'kernel_shape' attribute is not consistent with the actual "
+        "convolution kernel shape.");
+    (void)kernelShapeAttribute; // Avoids compilation warning in release mode.
+  }
+
+  // Construct the Bias field.
+  Constant *bias = nullptr;
+
+  // Check if we have a serialized bias vector.
+  if (op.input_size() > 2) {
+    auto &biasTensorName = op.input(2);
+    // Load the serialized bias vector.
+    bias = getConstantByNameOrNull(biasTensorName);
+  }
+
+  // If a serialized bias wasn't found then create a zero bias.
+  if (!bias) {
+    Tensor biasTensor(ElemKind::FloatTy, {depth});
+    biasTensor.zero();
+    bias = G_.getParent()->createConstant("conv.bias", std::move(biasTensor));
+  }
+
+  // ONNX passes the input as NCHW, and we expect the input to be NHWC.
+  auto *tr = G_.createTranspose(opName, in, NCHW2NHWC);
+
+  // Calculate the size and allocate the output buffer.
+  ShapeNHWC idim = ShapeNHWC(tr->getResult().dims());
+
+  llvm::SmallVector<unsigned_t, 2> idimHW(2);
+  idimHW[0] = in.dims()[2];
+  idimHW[1] = in.dims()[3];
+
+  // Pads : {pad_top, pad_left, pad_bottom, pad_right}
+  Pads pads;
+
+  // Conv transpose output size (HxW) is either specified or calculated.
+  std::pair<dim_t, dim_t> outSz;
+
+  // Per spec, if output_shape is specified, pads are ignored.
+  if (dict.count("output_shape")) {
+    std::vector<unsigned_t> outShape =
+        getShape<unsigned_t>(dict.at("output_shape"));
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        pads, getConvTransposePadsfromOutput(dict, kernels, strides, idimHW,
+                                             outShape));
+    outSz = {outShape[0], outShape[1]};
+
+    std::pair<dim_t, dim_t> outSzTest = calculateConvTransposeOutputDims(
+        idim.h, idim.w, kernels, strides, pads, dilation);
+    RETURN_ERR_IF_NOT((outShape[0] == outSzTest.first),
+                      "Expected/calculated pads don't match");
+    RETURN_ERR_IF_NOT((outShape[1] == outSzTest.second),
+                      "Expected/calculated pads don't match");
+  } else {
+    if (dict.count("output_padding")) {
+      RETURN_ERR("output_padding not supported!",
+                 ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_OPERATOR);
+    }
+    ASSIGN_VALUE_OR_RETURN_ERR(pads, getPads(dict, kernels, strides, idimHW));
+    outSz = calculateConvTransposeOutputDims(idim.h, idim.w, kernels, strides,
+                                             pads, dilation);
+  }
+  std::array<dim_t, 4> outDims = {{idim.n, outSz.first, outSz.second, depth}};
+  auto outTy = G_.getParent()->uniqueType(ElemKind::FloatTy, outDims);
+
+  auto *node =
+      G_.createConvTranspose(opName, tr, filterTransposeNode, bias, outTy,
+                             kernels, strides, pads, group, dilation);
+
+  // Transpose the output back.
+  auto *N = G_.createTranspose(opName, node, NHWC2NCHW);
+  RETURN_IF_ERR(addNodeAsOutput(op, N));
+
+  return Error::success();
 }
 
 Error ONNXModelLoader::loadPool(const ONNX_NAMESPACE::NodeProto &op,
@@ -2675,6 +2840,9 @@ Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
   }
   if (typeName == "NonMaxSuppression") {
     return loadNonMaxSuppression(op, dict, false);
+  }
+  if (typeName == "ConvTranspose") {
+    return loadConvTranspose(op, dict);
   }
   if (typeName == "AdaptiveAvgPool") {
     return loadAdaptiveAvgPool(op, dict);

@@ -543,6 +543,65 @@ void libjit_convolution_i8_i8(
       depthUnroll, dilation);
 }
 
+void libjit_conv_transpose_f(float *outW, const float *inW,
+                             const float *filterW, const float *biasW,
+                             const dim_t *outWdims, const dim_t *inWdims,
+                             const dim_t *filterWdims, const dim_t *biasWdims,
+                             const dim_t *kernels, const dim_t *strides,
+                             const dim_t *pads, dim_t group, dim_t dilation) {
+  // NHWC format is assumed
+  dim_t p = sizeof(float);
+  memset(outW, 0, outWdims[0] * outWdims[1] * outWdims[2] * outWdims[3] * p);
+
+  dim_t pad_t = pads[0];
+  dim_t pad_l = pads[1];
+  dim_t stride_h = strides[0];
+  dim_t stride_w = strides[1];
+  dim_t kernel_h = kernels[0];
+  dim_t kernel_w = kernels[1];
+  dim_t outCperG = outWdims[3] / group;
+  dim_t inCperG = inWdims[3] / group;
+
+  // For each input in the batch:
+  for (dim_t n = 0; n < inWdims[0]; n++) {
+
+    // Initialize the outputs with the bias.
+    libjit_conv_init_output_with_bias(n, outW, biasW, outWdims, biasWdims);
+
+    // For each group of input channels:
+    for (dim_t g = 0; g < group; g++) {
+      for (dim_t d = g * inCperG; d < (g + 1) * inCperG; d++) {
+        ssize_t x = -(ssize_t)pad_t;
+        for (dim_t bx = 0; bx < inWdims[1]; bx++, x += stride_h) {
+          ssize_t y = -(ssize_t)pad_l;
+          for (dim_t by = 0; by < inWdims[2]; by++, y += stride_w) {
+            float grad = inW[libjit_getXYZW(inWdims, n, bx, by, d)];
+
+            for (dim_t kx = 0; kx < kernel_h; kx++) {
+              for (dim_t ky = 0; ky < kernel_w; ky++) {
+                ssize_t ax = x + kx;
+                ssize_t ay = y + ky;
+
+                if (ax < 0 || ay < 0 || ax >= (ssize_t)outWdims[1] ||
+                    ay >= (ssize_t)outWdims[2]) {
+                  continue;
+                }
+
+                for (dim_t c = 0; c < outCperG; c++) {
+                  dim_t outIndex = libjit_getXYZW(
+                      outWdims, n, (dim_t)ax, (dim_t)ay, (g * outCperG + c));
+                  dim_t inIndex = libjit_getXYZW(filterWdims, c, kx, ky, d);
+                  outW[outIndex] += filterW[inIndex] * grad;
+                }
+              }
+            }
+          } // W
+        }   // H
+      }     // C
+    }       // G
+  }         // N
+}
+
 void libjit_convolution_grad_f(float *inG, const float *outG, const float *inW,
                                float *filterG, float *biasG,
                                const float *filterW, const dim_t *outGdims,

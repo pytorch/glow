@@ -107,6 +107,19 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::SameElementType,
                   {"Dest", "Src", "Filter", "ElemKind::Int8QTy"});
 
+  BB.newInstr("ConvTranspose")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .addOperand("Filter", OperandKind::In)
+      .addOperand("Bias", OperandKind::In)
+      .addMember(MemberType::VectorUnsigned, "Kernels")
+      .addMember(MemberType::VectorUnsigned, "Strides")
+      .addMember(MemberType::VectorUnsigned, "Pads")
+      .addMember(MemberType::Unsigned, "Group")
+      .addMember(MemberType::Unsigned, "Dilation")
+      .autoIRGen()
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "Src", "Filter"});
+
   BB.newInstr("Convolution3D")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Src", OperandKind::In)

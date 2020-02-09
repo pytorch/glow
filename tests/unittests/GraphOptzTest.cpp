@@ -3871,3 +3871,91 @@ TEST_F(GraphOptz, SinkClipBelowReshape) {
   bindings_.get(in)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
   checkNumericalEquivalence();
 }
+
+/// Test that Add after ConvTranspose is folded into Bias add when the actual
+/// Add is is a broadcast of the bias. Test \p RnL (right of left) side add.
+static void foldConvTransposeAddIntoBiasAdd(PlaceholderBindings &bindings,
+                                            Module &mod, Function *F,
+                                            Function *&optF, bool RnL) {
+  dim_t batch = 2;
+  dim_t inC = 2;
+  dim_t outC = 5;
+  dim_t inH = 3;
+  dim_t inW = 3;
+  unsigned_t kernel = 3;
+  std::vector<uint32_t> pads = {0, 0, 0, 0};
+  std::vector<uint32_t> stride = {1, 1};
+
+  auto *input = mod.createPlaceholder(ElemKind::FloatTy, {2, inH, inW, inC},
+                                      "input", false);
+  auto *filter = mod.createPlaceholder(
+      ElemKind::FloatTy, {outC, kernel, kernel, inC}, "filter", false);
+
+  auto *bias = mod.createConstant(ElemKind::FloatTy, {outC}, "bias");
+  bias->getPayloadMutable().getHandle<float>() = {1, 3, 5, 7, 9};
+
+  std::pair<dim_t, dim_t> outHW = calculateConvTransposeOutputDims(
+      inH, inW, {kernel, kernel}, stride, pads);
+  auto outTy = mod.uniqueType(ElemKind::FloatTy,
+                              {batch, outHW.first, outHW.second, outC});
+
+  ConvTransposeNode *CTN =
+      F->createConvTranspose("ConvTranspose", input, filter, bias, outTy,
+                             {kernel, kernel}, stride, {0, 0, 0, 0}, 1);
+
+  auto *CN = mod.createConstant(ElemKind::FloatTy,
+                                {batch, outHW.first, outHW.second, outC}, "c1");
+  auto *AN = RnL ? F->createAdd("add", CN, CTN) : F->createAdd("add", CTN, CN);
+
+  CN->getPayloadMutable().getHandle<float>() = {
+      1, 2, 3, 4, 5, 1, 2, 3, 4, 5, 1, 2, 3, 4, 5, 1, 2, 3, 4, 5, 1, 2, 3,
+      4, 5, 1, 2, 3, 4, 5, 1, 2, 3, 4, 5, 1, 2, 3, 4, 5, 1, 2, 3, 4, 5, 1,
+      2, 3, 4, 5, 1, 2, 3, 4, 5, 1, 2, 3, 4, 5, 1, 2, 3, 4, 5, 1, 2, 3, 4,
+      5, 1, 2, 3, 4, 5, 1, 2, 3, 4, 5, 1, 2, 3, 4, 5, 1, 2, 3, 4, 5, 1, 2,
+      3, 4, 5, 1, 2, 3, 4, 5, 1, 2, 3, 4, 5, 1, 2, 3, 4, 5, 1, 2, 3, 4, 5,
+      1, 2, 3, 4, 5, 1, 2, 3, 4, 5, 1, 2, 3, 4, 5, 1, 2, 3, 4, 5, 1, 2, 3,
+      4, 5, 1, 2, 3, 4, 5, 1, 2, 3, 4, 5, 1, 2, 3, 4, 5, 1, 2, 3, 4, 5, 1,
+      2, 3, 4, 5, 1, 2, 3, 4, 5, 1, 2, 3, 4, 5, 1, 2, 3, 4, 5, 1, 2, 3, 4,
+      5, 1, 2, 3, 4, 5, 1, 2, 3, 4, 5, 1, 2, 3, 4, 5, 1, 2, 3, 4, 5, 1, 2,
+      3, 4, 5, 1, 2, 3, 4, 5, 1, 2, 3, 4, 5, 1, 2, 3, 4, 5, 1, 2, 3, 4, 5,
+      1, 2, 3, 4, 5, 1, 2, 3, 4, 5, 1, 2, 3, 4, 5, 1, 2, 3, 4, 5};
+
+  SaveNode *save = F->createSave("save", AN);
+  bindings.allocate(save->getPlaceholder());
+
+  EXPECT_EQ(F->getNodes().size(), 3);
+  optF = optimizeFunction(F);
+  EXPECT_EQ(optF->getNodes().size(), 2);
+
+  const SaveNode *optSave =
+      findFunctionNodeByName<SaveNode>(optF, save->getName());
+
+  ConvTransposeNode *optCN =
+      llvm::dyn_cast<ConvTransposeNode>(optSave->getInput());
+  EXPECT_TRUE(optCN);
+
+  Constant *optBias = llvm::dyn_cast<Constant>(optCN->getBias());
+  EXPECT_TRUE(optBias);
+
+  auto BH = optBias->getPayload().getHandle();
+  EXPECT_EQ(BH.raw(0), 1 + 1);
+  EXPECT_EQ(BH.raw(1), 2 + 3);
+  EXPECT_EQ(BH.raw(2), 3 + 5);
+  EXPECT_EQ(BH.raw(3), 4 + 7);
+  EXPECT_EQ(BH.raw(4), 5 + 9);
+
+  bindings.allocate(mod.getPlaceholders());
+  bindings.get(input)->getHandle().randomize(-1.0, 1.0, mod.getPRNG());
+  bindings.get(filter)->getHandle().randomize(-1.0, 1.0, mod.getPRNG());
+}
+
+/// Test that Add after ConvTranspose is folded into Bias add when the actual
+/// Add is is a broadcast of the bias.
+TEST_F(GraphOptz, FoldConvTransposeAddIntoBiasAddRHS) {
+  foldConvTransposeAddIntoBiasAdd(bindings_, mod_, F_, optimizedF_, false);
+  checkNumericalEquivalence();
+}
+TEST_F(GraphOptz, FoldConvTransposeAddIntoBiasAddLHS) {
+  foldConvTransposeAddIntoBiasAdd(bindings_, mod_, F_, optimizedF_, true);
+  checkNumericalEquivalence();
+}

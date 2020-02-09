@@ -478,6 +478,33 @@ public:
       llvm::ArrayRef<unsigned_t> kernels, llvm::ArrayRef<unsigned_t> strides,
       llvm::ArrayRef<unsigned_t> pads, unsigned_t group);
 
+  /// Creates a ConvTransposeNode with the given \p name which does transposed
+  /// convolution of the 4D \p input with \p filter and \bias. \p kernels define
+  /// the size of the height and width dimensions of the filters. \p strides
+  /// define the number of steps to take in the input for each output cell.
+  /// \p pads define how many zero padding cells should be added to the input
+  /// during convolution. \p group defines the number of groups the input and
+  /// output channels should be divided into and convolved separately.
+  ConvTransposeNode *createConvTranspose(
+      llvm::StringRef name, NodeValue input, NodeValue filter, NodeValue bias,
+      TypeRef outTy, llvm::ArrayRef<unsigned_t> kernels,
+      llvm::ArrayRef<unsigned_t> strides, llvm::ArrayRef<unsigned_t> pads,
+      unsigned_t group, unsigned_t dilation = 1);
+
+  /// Creates a createConvTransposeNode with the given \p name which does
+  /// transposed convolution of the 4D \p input with \p filter and \bias. \p
+  /// kernel defines the size of the height and width dimensions of the filters.
+  /// \p stride defines the number of steps to take in the input for each output
+  /// cell. \p pad defines how many zero padding cells should be added to the
+  /// input during convolution. \p group defines the number of groups the input
+  /// and output channels should be divided into and convolved separately.
+  ConvTransposeNode *createConvTranspose(llvm::StringRef name, NodeValue input,
+                                         NodeValue filter, NodeValue bias,
+                                         TypeRef outTy, unsigned_t kernel,
+                                         unsigned_t stride, unsigned_t pad,
+                                         unsigned_t group,
+                                         unsigned_t dilation = 1);
+
   /// Creates and \returns a ConvertTo Node with name \p name of \p input to
   /// output type \p outTy.
   ConvertToNode *createConvertTo(llvm::StringRef name, NodeValue input,
@@ -1352,6 +1379,33 @@ public:
                                   unsigned_t stride, unsigned_t pad,
                                   unsigned_t group);
 
+  /// Creates a ConvTransposeNode with the given \p name which does transposed
+  /// convolution on the 4D \p input. \p kernels define the size of the height
+  /// and width dimensions of the convolution filters. \p strides define the
+  /// number of steps to take in the input for each output cell. \p pads define
+  /// how many zero padding cells should be added to the input during
+  /// convolution. \p group defines the number of groups the input and output
+  /// channels should be divided into and convolved separately.
+  ConvTransposeNode *createConvTranspose(
+      PlaceholderBindings &bindings, llvm::StringRef name, NodeValue input,
+      dim_t outChannels, llvm::ArrayRef<unsigned_t> kernels,
+      llvm::ArrayRef<unsigned_t> strides, llvm::ArrayRef<unsigned_t> pads,
+      unsigned_t group, unsigned_t dilation = 1);
+
+  /// Creates a ConvTransposeNode with the given \p name which does transposed
+  /// convolution on the 4D \p input. \p kernel defines the size of the height
+  /// and width dimensions of the convolution filters. \p stride defines the
+  /// number of steps to take in the input for each output cell. \p pad defines
+  /// how many zero padding cells should be added to the input during
+  /// convolution. \p group defines the number of groups the input and output
+  /// channels should be divided into and convolved separately.
+  ConvTransposeNode *createConvTranspose(PlaceholderBindings &bindings,
+                                         llvm::StringRef name, NodeValue input,
+                                         dim_t outChannels, unsigned_t kernel,
+                                         unsigned_t stride, unsigned_t pad,
+                                         unsigned_t group,
+                                         unsigned_t dilation = 1);
+
   /// Creates and \returns a FullyConnectedNode with \p name, \p input, weights
   /// \p W, bias \p B. If \p input is not 2 dimensional then it is flattened
   /// along \p axis. Note, output type is inferred based on the input
@@ -1700,6 +1754,8 @@ bool isInput(const Placeholder *PH, const Function &F);
   { 3u, 0u, 1u, 2u }
 #define NHWC2HWNC                                                              \
   { 1u, 2u, 0u, 3u }
+#define CNHW2NHWC                                                              \
+  { 1u, 2u, 3u, 0u }
 
 llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const Module &mod);
 
