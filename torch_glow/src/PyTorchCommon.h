@@ -80,6 +80,9 @@ struct PyTorchLoaderSettings {
 
   /// Number of traces per json trace file dump.
   size_t numTracesPerDump = 1;
+
+  /// Name of a YAML file containing backend specific options.
+  std::string backendOptionsFile;
 };
 
 /// Given a PyTorch ScalarType \p ty, \returns a matching Glow ElemKind.

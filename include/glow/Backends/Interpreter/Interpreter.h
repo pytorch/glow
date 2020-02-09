@@ -58,6 +58,8 @@ public:
 
   bool shouldLower(const Node *N) const override;
 
+  void parseBackendSpecificOptions(const BackendOptions &opts) const;
+
   /// @}
   //
   /// \returns the size of metrics collected for a single TraceEvent.
