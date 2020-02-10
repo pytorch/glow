@@ -188,6 +188,10 @@ class ONNXModelLoader
   Error loadTile(const ONNX_NAMESPACE::NodeProto &op,
                  const ArgumentDictionaryTy &dict);
 
+  /// Load Expand ONNX operator.
+  Error loadExpand(const ONNX_NAMESPACE::NodeProto &op,
+                   const ArgumentDictionaryTy &dict);
+
   /// Load Where ONNX operator.
   Error loadWhere(const ONNX_NAMESPACE::NodeProto &op,
                   const ArgumentDictionaryTy &dict);
