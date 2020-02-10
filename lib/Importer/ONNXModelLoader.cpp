@@ -692,6 +692,15 @@ static void helperSetter(Constant *constT, std::vector<ssize_t> &vec) {
   }
 }
 
+template <typename T, typename datatype>
+static void helperSetter(const glow::Constant *constT,
+                         std::vector<datatype> &vec) {
+  auto constH = constT->getPayload().getHandle<T>();
+  for (dim_t i = 0; i < constH.size(); ++i) {
+    vec.push_back(constH.at({i}));
+  }
+}
+
 Error ONNXModelLoader::loadSlice(const ONNX_NAMESPACE::NodeProto &op,
                                  const ArgumentDictionaryTy &dict) {
   const std::string &opName = loadOperatorName(op);
@@ -1663,6 +1672,41 @@ Error ONNXModelLoader::loadTile(const ONNX_NAMESPACE::NodeProto &op,
     if (tiles != 1) {
       std::string name = opName + "." + std::to_string(i);
       N = G_.createTile(name, N, tiles, /*axis*/ i);
+    }
+  }
+
+  RETURN_IF_ERR(addNodeAsOutput(op, N));
+  return Error::success();
+}
+
+Error ONNXModelLoader::loadExpand(const ONNX_NAMESPACE::NodeProto &op,
+                                  const ArgumentDictionaryTy &dict) {
+  const std::string &opName = loadOperatorName(op);
+  NodeValue in;
+  Constant *repeats;
+  ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
+  ASSIGN_VALUE_OR_RETURN_ERR(repeats, getConstantByName(op.input(1)));
+
+  std::vector<int64_t> tiles;
+  helperSetter<int64_t, int64_t>(repeats, tiles);
+  auto inputDimSize = (size_t)in.dims().size();
+  auto repeatSize = (size_t)tiles.size();
+  if (repeatSize > inputDimSize) {
+    for (size_t i = 0; i < repeatSize - inputDimSize; i++) {
+      in = G_.createExpandDims(opName + "_" + std::to_string(i), in, i);
+    }
+  }
+
+  Node *N = in;
+  for (size_t i = 0; i < tiles.size(); i++) {
+    // Two corresponding dimension must have the same value,
+    // or one of them is equal to 1.
+    if (in.dims()[i] != 1 && tiles[i] != in.dims()[i] && tiles[i] != 1) {
+      RETURN_ERR("Invalid repeat value");
+    }
+    if (tiles[i] != in.dims()[i] && tiles[i] != 1) {
+      std::string name = opName + "_" + std::to_string(i);
+      N = G_.createTile(name, N, tiles[i], /*axis*/ i);
     }
   }
 
@@ -2758,6 +2802,9 @@ Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
   }
   if (typeName == "Tile") {
     return loadTile(op, dict);
+  }
+  if (typeName == "Expand") {
+    return loadExpand(op, dict);
   }
   if (typeName == "Where") {
     return loadWhere(op, dict);
