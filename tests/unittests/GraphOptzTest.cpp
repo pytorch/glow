@@ -2239,12 +2239,12 @@ TEST_F(GraphOptz, FuseRescaleIntoArithmetic) {
 /// Check that the Rescale(MatMul) -> MatMul' optimization works correctly.
 TEST_F(GraphOptz, FuseRescaleUpIntoMatMul) {
   // This test ensures the fact that fusing of rescale is done.
-  auto opOutTy = mod_.uniqueType(ElemKind::Int8QTy, {10}, 1, 0);
-  auto rescaleOutTy = mod_.uniqueType(ElemKind::Int8QTy, {10}, 2, 1);
+  auto opOutTy = mod_.uniqueType(ElemKind::Int8QTy, {10, 10}, 1, 0);
+  auto rescaleOutTy = mod_.uniqueType(ElemKind::Int8QTy, {10, 10}, 2, 1);
 
-  Placeholder *LHS = mod_.createPlaceholder(ElemKind::Int8QTy, {10}, 0.4, 0,
+  Placeholder *LHS = mod_.createPlaceholder(ElemKind::Int8QTy, {10, 10}, 0.4, 0,
                                             "LHS", /* isTrainable */ false);
-  Placeholder *RHS = mod_.createPlaceholder(ElemKind::Int8QTy, {10}, 0.3, 0,
+  Placeholder *RHS = mod_.createPlaceholder(ElemKind::Int8QTy, {10, 10}, 0.3, 0,
                                             "RHS", /* isTrainable */ false);
 
   MatMulNode *MMN = F_->createMatMul("matmul", opOutTy, LHS, RHS);
@@ -2605,13 +2605,13 @@ TEST_F(GraphOptz, MultipleUsersRescaleCombineNoOpt) {
 
 /// This test ensures that fusing of rescale into MatMul is done.
 TEST_F(GraphOptz, FuseRescaleIntoMatMul) {
-  auto opOutTy = mod_.uniqueType(ElemKind::Int8QTy, {10}, 1, 0);
-  auto rescaleOutTy = mod_.uniqueType(ElemKind::Int8QTy, {10}, 2, 1);
+  auto opOutTy = mod_.uniqueType(ElemKind::Int8QTy, {10, 10}, 1, 0);
+  auto rescaleOutTy = mod_.uniqueType(ElemKind::Int8QTy, {10, 10}, 2, 1);
 
   Placeholder *LHS =
-      mod_.createPlaceholder(ElemKind::Int8QTy, {10}, 0.4, 0, "LHS", true);
+      mod_.createPlaceholder(ElemKind::Int8QTy, {10, 10}, 0.4, 0, "LHS", true);
   Placeholder *RHS =
-      mod_.createPlaceholder(ElemKind::Int8QTy, {10}, 0.3, 0, "RHS", true);
+      mod_.createPlaceholder(ElemKind::Int8QTy, {10, 10}, 0.3, 0, "RHS", true);
 
   RescaleQuantizedNode *LHSR =
       F_->createRescaleQuantized("rs1", LHS, rescaleOutTy);
@@ -3341,29 +3341,20 @@ TEST_F(GraphOptz, ConvertPlaceholdersToConstants) {
   EXPECT_TRUE(llvm::isa<Placeholder>(save3->getInput()));
 }
 
-TEST_F(GraphOptz, optimizeConversion_i8_i32_i16) {
-  auto qt = [&](ElemKind k) { return mod_.uniqueType(k, {1}, 1.0, 0); };
-  auto *i8 = qt(ElemKind::Int8QTy);
-  auto *i16 = qt(ElemKind::Int16QTy);
-  auto *i32 = qt(ElemKind::Int32QTy);
+TEST_F(GraphOptz, optimizeConversion_i32_i64_i32) {
+  auto *i32 = mod_.uniqueType(ElemKind::Int32ITy, {1});
+  auto *i64 = mod_.uniqueType(ElemKind::Int64ITy, {1});
 
-  auto *A = mod_.createPlaceholder(i8, "A", false);
-  auto *B = F_->createConvertTo("B", A, i32);
-  auto *C = F_->createConvertTo("C", B, i16);
+  auto *A = mod_.createPlaceholder(i32, "A", false);
+  auto *B = F_->createConvertTo("B", A, i64);
+  auto *C = F_->createConvertTo("C", B, i32);
   auto *S = F_->createSave("S", C);
 
   ::glow::optimize(F_, CompilationMode::Infer);
 
-  // The i32 cast is optimized away.
-  EXPECT_EQ(F_->getNodes().size(), 2);
-
-  // The save node is fed by an i16 cast.
-  auto *C2 = llvm::dyn_cast<ConvertToNode>(S->getInput());
-  ASSERT_TRUE(C2);
-  EXPECT_TRUE(C2->getResult().getElementType() == ElemKind::Int16QTy);
-
-  // The cast node input is a placeholder.
-  EXPECT_TRUE(llvm::isa<Placeholder>(C2->getInput()));
+  // All casting is optimized away, only left with Save of Placeholder.
+  EXPECT_EQ(F_->getNodes().size(), 1);
+  EXPECT_TRUE(llvm::isa<Placeholder>(S->getInput()));
 }
 
 TEST_F(GraphOptz, optimizeSameTypeConversions) {
@@ -3392,9 +3383,13 @@ TEST_F(GraphOptz, optimizeSameTypeConversions) {
 }
 
 TEST_F(GraphOptz, optimizeConvertingBetweenFused) {
-  Constant *C =
-      createRandomFusedRowwiseQuantizedConstant(mod_, {5, 2}, "fused");
-  auto newOT = mod_.uniqueType(ElemKind::UInt8FusedFP16QTy, {5, 2}, 1.0, 0);
+  // Call with dims {5, 2}, which will actually create a constant with {5, 10}
+  // for scale/offset per row.
+  Constant *C = createRandomFusedRowwiseQuantizedConstant(
+      mod_, {5, 2}, "fused", /* useFusedFP16 */ false);
+  // Converting to fused FP16 means we have 4 total less bytes for scale/offset,
+  // so we move to {5, 10} from {5, 6}.
+  auto newOT = mod_.uniqueType(ElemKind::UInt8FusedFP16QTy, {5, 6}, 1.0, 0);
   auto *CN = F_->createConvertTo("convert", C, newOT);
   auto *SN = F_->createSave("save", CN);
 
