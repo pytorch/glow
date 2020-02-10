@@ -2352,11 +2352,17 @@ void fusePadIntoConvTest(glow::Module &mod_, glow::Function *F_,
       mod_.createPlaceholder(ElemKind::FloatTy, inputDims, "input", true);
 
   // Pad
-  dim_t outPadDims[4];
+  dim_t inputWithPadDims[4];
   for (int i = 0; i < 4; i++) {
-    outPadDims[i] = dim_t(ssize_t(inputDims[i]) + pads[i] + pads[4 + i]);
+    inputWithPadDims[i] = dim_t(ssize_t(inputDims[i]) + pads[i] + pads[4 + i]);
   }
-  auto outTy = mod_.uniqueType(ElemKind::FloatTy, outPadDims);
+  dim_t outputConvDims[4] = {
+      inputWithPadDims[0],
+      inputWithPadDims[1] + convPads[0] + convPads[2] - (convKernelSize - 1),
+      inputWithPadDims[2] + convPads[1] + convPads[3] - (convKernelSize - 1),
+      convNumKernels};
+
+  auto outTy = mod_.uniqueType(ElemKind::FloatTy, inputWithPadDims);
   Node *P =
       F_->createPad("pad", input, outTy, PaddingMode::CONSTANT, pads, 0.f);
 
@@ -2368,9 +2374,7 @@ void fusePadIntoConvTest(glow::Module &mod_, glow::Function *F_,
   auto *B =
       mod_.createPlaceholder(ElemKind::FloatTy, {convNumKernels}, "bias", true);
   auto *CV = F_->createConv(
-      "conv", P, F, B,
-      mod_.uniqueType(ElemKind::FloatTy, {outPadDims[0], outPadDims[1],
-                                          outPadDims[2], convNumKernels}),
+      "conv", P, F, B, mod_.uniqueType(ElemKind::FloatTy, outputConvDims),
       {convKernelSize, convKernelSize}, {convStride, convStride}, convPads, 1);
 
   SaveNode *O = F_->createSave("save", CV);
@@ -2383,9 +2387,7 @@ void fusePadIntoConvTest(glow::Module &mod_, glow::Function *F_,
   // Check the graph structure and additional properties after optimization.
   auto *conv = llvm::dyn_cast<ConvolutionNode>(O->getInput());
   ASSERT_NE(conv, nullptr);
-  EXPECT_EQ(conv->getResult().dims(),
-            llvm::ArrayRef<dim_t>(
-                {outPadDims[0], outPadDims[1], outPadDims[2], filterDims[0]}));
+  EXPECT_EQ(conv->getResult().dims(), llvm::ArrayRef<dim_t>(outputConvDims));
   unsigned_t expectedPads[4];
   for (int i = 0; i < 2; i++) {
     for (int j = 0; j < 2; j++) {
