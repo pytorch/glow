@@ -63,6 +63,10 @@ protected:
   /// Keeps the stats exporter registry object alive till destructor.
   std::shared_ptr<StatsExporterRegistry> statsExporterRegistry_;
 
+  /// Set of all buffer allocations, these should all be freed when the device
+  /// manager is destroyed.
+  std::set<void *> allocations_;
+
   /// Helper method to export memory usage counters.
   void exportMemoryCounters() {
     statsExporterRegistry_->setCounter(availableMemoryKey_,
@@ -86,7 +90,12 @@ public:
         maxMemoryBytes_(config_.getDeviceMemory(2000000000)),
         statsExporterRegistry_(StatsExporterRegistry::Stats()) {}
 
-  virtual ~DeviceManager() = default;
+  virtual ~DeviceManager() {
+    // Free all allocated buffers.
+    for (auto &buffer : allocations_) {
+      alignedFree(buffer);
+    }
+  }
 
   /// Create a device manager based on the device config \p config.
   static DeviceManager *createDeviceManager(const DeviceConfig &config);
@@ -104,10 +113,21 @@ public:
 
   /// \returns a pointer to a buffer of size \p size allocated on the host, that
   /// satistfies any requirements for pinning/alignment for transferring to/from
-  /// the device.
+  /// the device. The lifetime of this buffer is managed by the device manager.
   virtual void *allocateDeviceIOBuffer(dim_t size) {
-    return alignedAlloc(size, TensorAlignment);
+    void *buffer = alignedAlloc(size, TensorAlignment);
+    allocations_.insert(buffer);
+    return buffer;
   };
+
+  /// Free all allocated buffers associated with /p PH.
+  virtual void freeAllocatedDeviceIOBuffer(void *buffer) {
+    auto it = allocations_.find(buffer);
+    if (it != allocations_.end()) {
+      alignedFree(buffer);
+      allocations_.erase(it);
+    }
+  }
 
   /// Load the provided module into the device, readyCB will be called when
   /// ready to use.
