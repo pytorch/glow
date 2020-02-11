@@ -144,24 +144,81 @@ void InferenceThreadEnv::execute(RunIdentifierTy runId,
 
   // Pre inference input preparation.
   PlaceholderBindings &bindings = *ctx->getPlaceholderBindings();
-  ioTensors_.clear();
   uint32_t usedConfigs = 0;
+
+  // Initialize placeholder lists in the same orders as netInputs_, netInputs_,
+  // hostInputs_ and hostOutputs_. This is a one time cost per
+  // InferenceThreadEnv.
+  if (netInputPlaceholders_.empty()) {
+    for (const auto &in : netInputs_) {
+      auto *placeholder = bindings.getPlaceholderByName(in.first);
+      if (!placeholder) {
+        netInputPlaceholders_.clear();
+      }
+
+      LOG_AND_FAIL_EXECUTE_CALLBACK_IF_NOT(ERROR, placeholder,
+                                           "Can't find tensor for input", runId,
+                                           ctx, resultCB);
+      netInputPlaceholders_.push_back(placeholder);
+    }
+  }
+
+  if (netOutputPlaceholders_.empty()) {
+    for (const auto &out : netOutputs_) {
+      auto *placeholder = bindings.getPlaceholderByName(out.first);
+      if (!placeholder) {
+        netOutputPlaceholders_.clear();
+      }
+      LOG_AND_FAIL_EXECUTE_CALLBACK_IF_NOT(ERROR, placeholder,
+                                           "Can't find tensor for input", runId,
+                                           ctx, resultCB);
+      netOutputPlaceholders_.push_back(placeholder);
+    }
+  }
+
+  if (hostInputPlaceholders_.empty()) {
+    for (const auto &in : hostInputs_) {
+      auto *placeholder = bindings.getPlaceholderByName(in.name);
+      if (!placeholder) {
+        hostInputPlaceholders_.clear();
+      }
+      LOG_AND_FAIL_EXECUTE_CALLBACK_IF_NOT(ERROR, placeholder,
+                                           "Can't find tensor for input", runId,
+                                           ctx, resultCB);
+      hostInputPlaceholders_.push_back(placeholder);
+    }
+  }
+
+  if (hostOutputPlaceholders_.empty()) {
+    for (const auto &in : hostOutputs_) {
+      auto *placeholder = bindings.getPlaceholderByName(in.name);
+      if (!placeholder) {
+        hostOutputPlaceholders_.clear();
+      }
+      LOG_AND_FAIL_EXECUTE_CALLBACK_IF_NOT(ERROR, placeholder,
+                                           "Can't find tensor for output",
+                                           runId, ctx, resultCB);
+      hostOutputPlaceholders_.push_back(placeholder);
+    }
+  }
 
   std::unordered_set<Tensor *> partialTensorInputs;
   for (auto &pht : bindings.pairs()) {
-    ioTensors_.emplace(pht.first->getName(), pht.second);
     if (partialInputs_->count(pht.first)) {
       partialTensorInputs.insert(pht.second);
     }
   }
+
   TRACE_EVENT_BEGIN(ctx->getTraceContext(), TraceLevel::COPY,
                     TRACING_PRE_PROCESS);
   // Handle inputs & outputs (+convert).
-  for (auto &in : netInputs_) {
-    LOG_AND_FAIL_EXECUTE_CALLBACK_IF_NOT(ERROR, ioTensors_.count(in.first),
-                                         "Can't find tensor for input", runId,
-                                         ctx, resultCB);
-    auto *t = ioTensors_.at(in.first);
+  LOG_AND_FAIL_EXECUTE_CALLBACK_IF_NOT(
+      ERROR, netInputs_.size() == netInputPlaceholders_.size(), "Bad inputs",
+      runId, ctx, resultCB);
+  for (int i = 0; i < netInputs_.size(); ++i) {
+    auto *t = bindings.get(netInputPlaceholders_[i]);
+    LOG_AND_FAIL_EXECUTE_CALLBACK_IF_NOT(
+        ERROR, t, "Can't find tensor for input", runId, ctx, resultCB);
     char *bufferPtr = t->getUnsafePtr();
 
     // Check if we need to allocate a new temporary buffer to handle this
@@ -204,14 +261,18 @@ void InferenceThreadEnv::execute(RunIdentifierTy runId,
     rawInputs_.push_back(bufferPtr);
 
     if (deviceOptions_->dumpIOtoFiles) {
-      dumpToFile("input_" + in.first + ".txt", rawInputs_.back(), unpaddedSize);
+      dumpToFile("input_" + netInputs_[i].first + ".txt", rawInputs_.back(),
+                 unpaddedSize);
     }
   }
-  for (auto &out : netOutputs_) {
-    LOG_AND_FAIL_EXECUTE_CALLBACK_IF_NOT(ERROR, ioTensors_.count(out.first),
-                                         "Can't find tensor for output", runId,
-                                         ctx, resultCB);
-    auto *t = ioTensors_.at(out.first);
+
+  LOG_AND_FAIL_EXECUTE_CALLBACK_IF_NOT(
+      ERROR, netOutputs_.size() == netOutputPlaceholders_.size(), "Bad inputs",
+      runId, ctx, resultCB);
+  for (int i = 0; i < netOutputs_.size(); ++i) {
+    auto *t = bindings.get(netOutputPlaceholders_[i]);
+    LOG_AND_FAIL_EXECUTE_CALLBACK_IF_NOT(
+        ERROR, t, "Can't find tensor for output", runId, ctx, resultCB);
 
     switch (t->getElementType()) {
     case glow::ElemKind::Int64ITy: {
@@ -224,6 +285,7 @@ void InferenceThreadEnv::execute(RunIdentifierTy runId,
       rawOutputs_.push_back(t->getUnsafePtr());
     }
   }
+
   // Prepare inputs.
   if (deviceOptions_->inferOnDevice) {
     if (deviceTracing_ != nullptr) {
@@ -236,15 +298,17 @@ void InferenceThreadEnv::execute(RunIdentifierTy runId,
     LOG_AND_FAIL_EXECUTE_CALLBACK_IF_NOT(
         ERROR, hostInputs_.size() == rawInputs_.size(), "Bad inputs", runId,
         ctx, resultCB);
+    LOG_AND_FAIL_EXECUTE_CALLBACK_IF_NOT(
+        ERROR, hostInputs_.size() == hostInputPlaceholders_.size(),
+        "Bad inputs", runId, ctx, resultCB);
     for (size_t i = 0, e = hostInputs_.size(); i < e; i++) {
       void *pHostInput(hostInputs_[i].hostPtr);
       LOG_AND_FAIL_EXECUTE_CALLBACK_IF_NOT(ERROR, pHostInput,
                                            "Invalid host input address", runId,
                                            ctx, resultCB);
-      LOG_AND_FAIL_EXECUTE_CALLBACK_IF_NOT(
-          ERROR, ioTensors_.count(hostInputs_[i].name), "Input not found",
-          runId, ctx, resultCB);
-      auto *t = ioTensors_.at(hostInputs_[i].name);
+      auto *t = bindings.get(hostInputPlaceholders_[i]);
+      LOG_AND_FAIL_EXECUTE_CALLBACK_IF_NOT(ERROR, t, "Input not found", runId,
+                                           ctx, resultCB);
 
       size_t bufferSize = t->getUnpaddedSizeInBytes();
       size_t fullBufferSize = t->getSizeInBytes();
@@ -300,9 +364,13 @@ void InferenceThreadEnv::execute(RunIdentifierTy runId,
           nnpiInferCommandQueue(inferCmd_, 0), "Failed to queue infer command.",
           runId, ctx, resultCB);
 
+      LOG_AND_FAIL_EXECUTE_CALLBACK_IF_NOT(
+          ERROR, hostOutputs_.size() == hostOutputPlaceholders_.size(),
+          "Bad inputs", runId, ctx, resultCB);
+
       // Check for partial copies and queue output copies
       for (size_t i = 0, e = hostOutputs_.size(); i < e; i++) {
-        auto *t = ioTensors_.at(hostOutputs_[i].name);
+        auto *t = bindings.get(hostOutputPlaceholders_[i]);
         size_t bufferSize = t->getUnpaddedSizeInBytes();
         size_t fullBufferSize = t->getSizeInBytes();
         NNPICopyCommandConfig copyConfig;
@@ -330,9 +398,13 @@ void InferenceThreadEnv::execute(RunIdentifierTy runId,
 
     } else {
       if (deviceOptions_->enabledCommandLists > 2) {
+        LOG_AND_FAIL_EXECUTE_CALLBACK_IF_NOT(
+            ERROR, hostOutputs_.size() == hostOutputPlaceholders_.size(),
+            "Bad inputs", runId, ctx, resultCB);
+
         // Collect updates for outputs and queue with all config updates.
         for (size_t i = 0, e = hostOutputs_.size(); i < e; i++) {
-          auto *t = ioTensors_.at(hostOutputs_[i].name);
+          auto *t = bindings.get(hostOutputPlaceholders_[i]);
           size_t bufferSize = t->getUnpaddedSizeInBytes();
           size_t fullBufferSize = t->getSizeInBytes();
           size_t actualBufferSize =
@@ -400,11 +472,11 @@ void InferenceThreadEnv::execute(RunIdentifierTy runId,
                       TRACING_POST_PROCESS);
     // Convert outputs.
     size_t currOut = 0;
-    for (auto &out : netOutputs_) {
-      LOG_AND_FAIL_EXECUTE_CALLBACK_IF_NOT(ERROR, ioTensors_.count(out.first),
-                                           "Output not found", runId, ctx,
-                                           resultCB);
-      auto *t = ioTensors_.at(out.first);
+    for (auto &out : netOutputPlaceholders_) {
+      auto *t = bindings.get(out);
+
+      LOG_AND_FAIL_EXECUTE_CALLBACK_IF_NOT(ERROR, t, "Output not found", runId,
+                                           ctx, resultCB);
 
       switch (t->getElementType()) {
       case glow::ElemKind::Int64ITy: {
@@ -426,11 +498,10 @@ void InferenceThreadEnv::execute(RunIdentifierTy runId,
     TRACE_EVENT_BEGIN(ctx->getTraceContext(), TraceLevel::COPY,
                       TRACING_POST_PROCESS);
     // Just zero the outputs (no inference).
-    for (auto &out : netOutputs_) {
-      LOG_AND_FAIL_EXECUTE_CALLBACK_IF_NOT(ERROR, ioTensors_.count(out.first),
-                                           "Output not found", runId, ctx,
-                                           resultCB);
-      auto *t = ioTensors_.at(out.first);
+    for (auto &out : netOutputPlaceholders_) {
+      auto *t = bindings.get(out);
+      LOG_AND_FAIL_EXECUTE_CALLBACK_IF_NOT(ERROR, t, "Output not found", runId,
+                                           ctx, resultCB);
       t->zero();
     }
   }
@@ -483,6 +554,9 @@ void InferenceThreadEnv::execute(RunIdentifierTy runId,
             runId, ctx, resultCB);
       }
     }
+    LOG_AND_FAIL_EXECUTE_CALLBACK_IF_NOT(
+        ERROR, hostOutputs_.size() == hostOutputPlaceholders_.size(),
+        "Bad inputs", runId, ctx, resultCB);
     for (size_t i = 0, e = hostOutputs_.size(); i < e; i++) {
       void *pHostOutput(hostOutputs_[i].hostPtr);
 
@@ -505,10 +579,9 @@ void InferenceThreadEnv::execute(RunIdentifierTy runId,
       }
 
       // Copy data to output tensor.
-      LOG_AND_FAIL_EXECUTE_CALLBACK_IF_NOT(
-          ERROR, ioTensors_.count(hostOutputs_[i].name), "Can't find output",
-          runId, ctx, resultCB);
-      auto *t = ioTensors_.at(hostOutputs_[i].name);
+      auto *t = bindings.get(hostOutputPlaceholders_[i]);
+      LOG_AND_FAIL_EXECUTE_CALLBACK_IF_NOT(ERROR, t, "Can't find output", runId,
+                                           ctx, resultCB);
       const bool downcastInt64 =
           t->getElementType() == glow::ElemKind::Int64ITy;
       const size_t bufferSize = t->getUnpaddedSizeInBytes();
@@ -547,7 +620,6 @@ void InferenceThreadEnv::execute(RunIdentifierTy runId,
   tmpBuffers_.clear();
   rawInputs_.clear();
   rawOutputs_.clear();
-  ioTensors_.clear();
   TRACE_EVENT_END(ctx->getTraceContext(), TraceLevel::COPY,
                   TRACING_POST_PROCESS);
 
