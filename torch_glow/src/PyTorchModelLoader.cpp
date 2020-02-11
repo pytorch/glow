@@ -1296,7 +1296,7 @@ PyTorchModelLoader::loadQuantizedConvImpl(const torch::jit::Node *ptNode,
   std::array<glow::dim_t, 4> outDims = {
       {input.dims()[0], outSz.first, outSz.second, weightShape.n}};
   glow::TypeRef outTy = F_.getParent()->uniqueType(
-      glow::ElemKind::Int8QTy, outDims, outScale, outOffset);
+      glow::ElemKind::Int8QTy, outDims, outScale, outOffset - OFFSETSHIFT);
 
   glow::NodeValue output_not_transposed;
   if (isPerChannelQuantized) {
@@ -2441,7 +2441,7 @@ Error PyTorchModelLoader::loadQuantizedConvUnpacked(
   std::array<glow::dim_t, 4> outDims = {
       {input.dims()[0], outSz.first, outSz.second, weightsShape.n}};
   glow::TypeRef outTy = F_.getParent()->uniqueType(
-      glow::ElemKind::Int8QTy, outDims, outScale, outOffset);
+      glow::ElemKind::Int8QTy, outDims, outScale, outOffset - OFFSETSHIFT);
 
   glow::ConvolutionNode *qconv =
       F_.createConv("qconv", input, weights, bias, outTy, kernels, strides,
