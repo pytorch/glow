@@ -171,6 +171,11 @@ protected:
 private:
   /// inference dump counter
   std::atomic<size_t> ioDumpCounter_{0};
+
+  /// Setup input mapping and adjust inputs if necessary
+  onnxStatus adjustInputs(uint32_t inputsCount,
+                          const onnxTensorDescriptorV1 *inputDescriptors,
+                          ExecutionContext *ctx);
 };
 
 typedef Graph *GraphPtr;

@@ -149,24 +149,9 @@ void Graph::setZeroLengthSequence(dim_t maxSeqLength) {
   zeroLengthSequence_.zero();
 }
 
-onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
-                              const onnxTensorDescriptorV1 *inputDescriptors,
-                              uint32_t outputsCount,
-                              const onnxTensorDescriptorV1 *outputDescriptors,
-                              EventPtr outputEvent,
-                              onnxTraceEventList *traceEvents) {
-  auto ctx = glow::make_unique<ExecutionContext>();
-
-  TraceContext *traceContext = nullptr;
-  if (traceEvents || GlowDumpDebugTraces) {
-    ctx->setTraceContext(glow::make_unique<TraceContext>(TraceLevel::STANDARD));
-    traceContext = ctx->getTraceContext();
-    traceContext->setThreadName("Onnxifi");
-  }
-  TRACE_EVENT_SCOPE(traceContext, TraceLevel::RUNTIME, "Onnxifi::setIOAndRun");
-  TRACE_EVENT_SCOPE_NAMED(traceContext, TraceLevel::RUNTIME, "adjustInputs",
-                          aiEvent);
-
+onnxStatus Graph::adjustInputs(uint32_t inputsCount,
+                               const onnxTensorDescriptorV1 *inputDescriptors,
+                               ExecutionContext *ctx) {
   // Create tensors for input placeholders
   for (unsigned i = 0; i < inputsCount; ++i) {
     const auto &inOnnxTensor = inputDescriptors[i];
@@ -241,6 +226,31 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
       }
       ctx->getPlaceholderBindings()->insert(inPhPtr, inputTensor);
     }
+  }
+  return ONNXIFI_STATUS_SUCCESS;
+}
+
+onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
+                              const onnxTensorDescriptorV1 *inputDescriptors,
+                              uint32_t outputsCount,
+                              const onnxTensorDescriptorV1 *outputDescriptors,
+                              EventPtr outputEvent,
+                              onnxTraceEventList *traceEvents) {
+  auto ctx = glow::make_unique<ExecutionContext>();
+
+  TraceContext *traceContext = nullptr;
+  if (traceEvents || GlowDumpDebugTraces) {
+    ctx->setTraceContext(glow::make_unique<TraceContext>(TraceLevel::STANDARD));
+    traceContext = ctx->getTraceContext();
+    traceContext->setThreadName("Onnxifi");
+  }
+  TRACE_EVENT_SCOPE(traceContext, TraceLevel::RUNTIME, "Onnxifi::setIOAndRun");
+  TRACE_EVENT_SCOPE_NAMED(traceContext, TraceLevel::RUNTIME, "adjustInputs",
+                          aiEvent);
+
+  auto r = adjustInputs(inputsCount, inputDescriptors, ctx.get());
+  if (r != ONNXIFI_STATUS_SUCCESS) {
+    return r;
   }
 
   size_t seq = 0;
