@@ -119,6 +119,13 @@ public:
   /// \returns whether the provided \p NI is supported by the backend.
   virtual bool isOpSupported(const NodeInfo &NI) const = 0;
 
+  /// \returns whether the backend would like to accept \p NI for execution. By
+  /// default falls back to just checking for support via \ref isOpSupported(),
+  /// however can also take into account things like performance considerations.
+  virtual bool acceptForExecution(const NodeInfo &NI) const {
+    return isOpSupported(NI);
+  }
+
   /// \returns whether all nodes inside \p F are supported. \p verbose
   /// represents whether to print Nodes that are unsupported.
   bool checkAllNodesSupported(const Function &F, bool verbose = true) const;
