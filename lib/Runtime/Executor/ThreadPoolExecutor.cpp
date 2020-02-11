@@ -103,34 +103,27 @@ void ThreadPoolExecutor::run(const DAGNode *root,
     return;
   }
 
-  std::shared_ptr<ExecutionState> executionState =
-      std::make_shared<ExecutionState>(runId, root, threadPool_.getExecutor(),
-                                       std::move(context), std::move(cb));
-  executionState->init();
-
-  // Execute all child nodes of root.
-
-  // Mark the child nodes as "inflight" (i.e. currently executing). This must be
-  // done here instead of inside executeDAGNode() so that a node can be
-  // executed while placeholders are being propagated for the next node without
-  // the callback for that node deleting the execution state.
   auto numChildren = (root->children).size();
-  executionState->incrementInflightNodes(numChildren);
+  // Mark the child nodes as "inflight" (i.e. currently executing). This must
+  // be done here instead of inside executeDAGNode() so that a node can be
+  // executed while placeholders are being propagated for the next node
+  // without the callback for that node deleting the execution state.
   inflightBarrier_.increment(numChildren);
+  // Get and bind state.
+  auto currentState = states_[root]->getNextNetworkExecutionState();
+  currentState->bind(std::move(context), std::move(cb), runId);
 
+  currentState->incrementInflightNodes(numChildren);
   for (auto const &node : root->children) {
-    // Execute the node.
-    executeDAGNode(executionState, node);
+    // Run with cached state
+    executeDAGNode(currentState, node);
   }
 }
 
-void ThreadPoolExecutor::executeDAGNode(
-    std::shared_ptr<ExecutionState> executionState, DAGNode *node) {
+void ThreadPoolExecutor::executeDAGNode(NetworkExecutionState *executionState,
+                                        DAGNode *node) {
   TRACE_EVENT_SCOPE(executionState->getRawResultContextPtr()->getTraceContext(),
                     TraceLevel::RUNTIME, "ThreadPoolExecutor::executeDAGNode");
-  DCHECK(executionState->initialized_) << "Run state must be initialized";
-  // If execution has already failed due to another node, don't bother running
-  // this one.
   if (executionState->getErrorContainer().containsErr()) {
     // Mark the node as no longer executing.
     executionState->decrementInflightNodes();
@@ -138,10 +131,10 @@ void ThreadPoolExecutor::executeDAGNode(
     return;
   }
 
-  auto currentDevice = node->getNextDevice();
-  // Get the DeviceManager that can run the node.
-  auto deviceManagerIt = deviceManagers_.find(currentDevice);
-
+  // Get the PlaceholderBindings containing all of the inputs for the node.
+  std::unique_ptr<ExecutionContext> nodeCtx =
+      executionState->getUniqueNodeContextPtr(node);
+  auto deviceManagerIt = deviceManagers_.find(node->getNextDevice());
   if (deviceManagerIt == deviceManagers_.end()) {
     // Mark the node as no longer executing.
     executionState->getErrorContainer().set(
@@ -151,13 +144,7 @@ void ThreadPoolExecutor::executeDAGNode(
     inflightBarrier_.decrement();
     return;
   }
-
-  auto &deviceManager = deviceManagerIt->second;
-
-  // Get the PlaceholderBindings containing all of the inputs for the node.
-  std::unique_ptr<ExecutionContext> nodeCtx =
-      executionState->getUniqueNodeContextPtr(node);
-
+  DeviceManager *deviceManager = deviceManagerIt->second.get();
   // Run the node using the DeviceManager.
   deviceManager->runFunction(
       node->name, std::move(nodeCtx),
@@ -166,7 +153,7 @@ void ThreadPoolExecutor::executeDAGNode(
              std::unique_ptr<ExecutionContext> resultCtx) {
         // Immediately move the handling of the result onto this run's executor
         // to avoid doing work on the DeviceManager thread.
-        executionState->getExecutor()->submit(
+        threadPool_.getExecutor()->submit(
             [this, executionState, node, err = std::move(err),
              ctx = std::move(resultCtx)]() mutable {
               this->handleDeviceManagerResult(executionState, std::move(err),
@@ -176,16 +163,14 @@ void ThreadPoolExecutor::executeDAGNode(
 }
 
 void ThreadPoolExecutor::handleDeviceManagerResult(
-    std::shared_ptr<ExecutionState> executionState, Error err,
+    NetworkExecutionState *executionState, Error err,
     std::unique_ptr<ExecutionContext> ctx, const DAGNode *node) {
 
-  // If executionState is null, that means that the object was deleted
-  // while a node was executing. That should never happen.
-  DCHECK_NOTNULL(executionState.get());
-
   TraceContext *traceContext = ctx->getTraceContext();
-  TRACE_EVENT_SCOPE_NAMED(traceContext, TraceLevel::RUNTIME,
-                          "ThreadPoolExecutor::handleResult", traceEvent);
+  if (traceContext) {
+    TRACE_EVENT_BEGIN(traceContext, TraceLevel::RUNTIME,
+                      "ThreadPoolExecutor::handleResult");
+  }
 
   auto runWasSuccess = !err;
 
@@ -207,6 +192,8 @@ void ThreadPoolExecutor::handleDeviceManagerResult(
       }
     }
   }
+  // Return intermediateContext to executionState.
+  executionState->returnUniqueNodeContextPtr(node, std::move(ctx));
 
   // Now, check if all nodes in the graph are done. If so, the callback can be
   // called and all state associated with the run can be erased.
@@ -220,11 +207,11 @@ void ThreadPoolExecutor::handleDeviceManagerResult(
   }
 
   if (noNodesInflight) {
-    // Remove the intermediate placeholders so we don't leak them to the caller.
-    executionState->removeIntermediatePlaceholders();
-
-    // If there are no nodes inflight, that means all nodes are done. Call
-    // the callback and erase the state information.
+    // If there are no nodes inflight, that means all nodes are done. Transfer
+    // the outpus. Call the callback and erase the state information.
+    // Because we are redirecting inputs and outputs to use the provided tensor
+    // we do not have to transfer outputs here. Once we have pinned memory we
+    // will transfer. //executionState->transferOutputs();
     ResultCBTy cb = executionState->getCallback();
     DCHECK(cb != nullptr);
     cb(executionState->getRunId(), executionState->getErrorContainer().get(),
@@ -239,6 +226,19 @@ void ThreadPoolExecutor::handleDeviceManagerResult(
   // run).
   inflightBarrier_.decrement();
 }
+
+void ThreadPoolExecutor::createPool(const DAGNode *root, unsigned poolSize) {
+  std::unique_ptr<NetworkExecutionStatePool> pool =
+      glow::make_unique<NetworkExecutionStatePool>();
+  for (unsigned i = 0; i < poolSize; i++) {
+    auto newState = glow::make_unique<NetworkExecutionState>(root);
+    newState->init(deviceManagers_);
+    pool->addNewState(std::move(newState));
+  }
+  states_[root] = std::move(pool);
+}
+
+void ThreadPoolExecutor::freePool(const DAGNode *root) { states_.erase(root); }
 
 } // namespace runtime
 } // namespace glow

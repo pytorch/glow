@@ -221,6 +221,8 @@ public:
         outputContext_(std::move(outputContext)), runId_(runId),
         expectSuccess_(expectSuccess), testRun_(false) {
     root_->module = module_.get();
+    // Create context pool.
+    executor_->createPool(root_.get(), 1000);
   }
 
   /// Run the test.
@@ -600,7 +602,7 @@ private:
 class ThreadPoolExecutorTest : public ::testing::Test {
 protected:
   ThreadPoolExecutorTest()
-      : executor_(std::make_shared<ThreadPoolExecutor>((deviceManagerMap_))),
+      : executor_(std::make_shared<ThreadPoolExecutor>(deviceManagerMap_)),
         testBuilder_(executor_, deviceManagerMap_) {}
   ~ThreadPoolExecutorTest() = default;
 
@@ -696,7 +698,7 @@ TEST_F(ThreadPoolExecutorTest, ConcurrentSingleNode) {
   constexpr RunIdentifierTy baseTestRunId = 10;
   constexpr DeviceIDTy testDeviceId = 111;
   constexpr unsigned deviceManagerThreads = 3;
-  unsigned numConcurrentRuns = 1000;
+  unsigned numConcurrentRuns = 100;
 
   // Make a TestDeviceManager and insert into the DeviceManagerMap map (which
   // the ThreadPoolExecutor has a reference to) and the TestDeviceManager map
@@ -993,7 +995,7 @@ TEST_F(ThreadPoolExecutorTest, ConcurrentMultiNode) {
   constexpr RunIdentifierTy baseTestRunId = 10;
   constexpr DeviceIDTy testDeviceId = 111;
   constexpr unsigned deviceManagerThreads = 3;
-  unsigned numConcurrentRuns = 1000;
+  unsigned numConcurrentRuns = 100;
 
   // Make a TestDeviceManager and insert it into the DeviceManagerMap map
   // (which the ThreadPoolExecutor has a reference to) and the TestDeviceManager
