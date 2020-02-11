@@ -199,9 +199,12 @@ else()
   # Remove Glow-specific CMAKE_CXX_FLAGS to build folly.
   set(SAVE_CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
   set(CMAKE_CXX_FLAGS "")
+  set(SAVE_CMAKE_CXX_STANDARD "${CMAKE_CXX_STANDARD}")
+  unset(CMAKE_CXX_STANDARD)
   add_subdirectory("${GLOW_THIRDPARTY_DIR}/folly" EXCLUDE_FROM_ALL)
   target_include_directories(folly PUBLIC "${OPENSSL_INCLUDE_DIR}")
   set(CMAKE_CXX_FLAGS "${SAVE_CMAKE_CXX_FLAGS}")
+  set(CMAKE_CXX_STANDARD "${SAVE_CMAKE_CXX_STANDARD}")
 
   add_library(folly_jemalloc INTERFACE)
   target_link_libraries(folly_jemalloc INTERFACE folly jemalloc)

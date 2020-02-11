@@ -38,6 +38,8 @@ install_pocl() {
    cd ../
 }
 
+GLOW_DEPS="libpng-dev libgoogle-glog-dev libboost-all-dev libdouble-conversion-dev libgflags-dev libjemalloc-dev libpthread-stubs0-dev"
+
 if [ "${CIRCLE_JOB}" == "CHECK_CLANG_AND_PEP8_FORMAT" ]; then
     sudo -E apt-add-repository -y "ppa:ubuntu-toolchain-r/test"
     curl -sSL "https://build.travis-ci.org/files/gpg/llvm-toolchain-trusty-7.asc" | sudo -E apt-key add -
@@ -53,7 +55,7 @@ elif [ "${CIRCLE_JOB}" == "PYTORCH" ]; then
     sudo ln -s /usr/bin/llvm-symbolizer-7 /usr/bin/llvm-symbolizer
     sudo ln -s /usr/bin/llvm-config-7 /usr/bin/llvm-config-7.0
 
-    sudo apt-get install -y libpng-dev libgoogle-glog-dev
+    sudo apt-get install -y ${GLOW_DEPS}
 else
     # Install Glow dependencies
     sudo apt-get update
@@ -64,7 +66,7 @@ else
     sudo ln -s /usr/bin/llvm-symbolizer-8 /usr/bin/llvm-symbolizer
     sudo ln -s /usr/bin/llvm-config-8 /usr/bin/llvm-config-8.0
 
-    sudo apt-get install -y libpng-dev libgoogle-glog-dev
+    sudo apt-get install -y ${GLOW_DEPS}
 fi
 
 # Since we are using llvm-7 in these two branches, we cannot use pip install cmake
