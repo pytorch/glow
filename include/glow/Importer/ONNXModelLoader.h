@@ -180,6 +180,10 @@ class ONNXModelLoader
   Error loadSpaceToDepth(const ONNX_NAMESPACE::NodeProto &op,
                          const ArgumentDictionaryTy &dict);
 
+  /// Load ReduceL2 ONNX operator
+  Error loadReduceL2(const ONNX_NAMESPACE::NodeProto &op,
+                     const ArgumentDictionaryTy &dict);
+
   /// Load ConstantOfShape ONNX operator.
   Error loadConstantOfShape(const ONNX_NAMESPACE::NodeProto &op,
                             const ArgumentDictionaryTy &dict, bool isSplat);
