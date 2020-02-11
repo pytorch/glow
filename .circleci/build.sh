@@ -38,6 +38,16 @@ install_pocl() {
    cd ../
 }
 
+install_fmt() {
+    git clone https://github.com/fmtlib/fmt
+    pushd fmt
+    mkdir build
+    cd build
+    cmake -G Ninja ..
+    sudo ninja install
+    popd
+}
+
 GLOW_DEPS="libpng-dev libgoogle-glog-dev libboost-all-dev libdouble-conversion-dev libgflags-dev libjemalloc-dev libpthread-stubs0-dev libevent-dev libssl-dev"
 
 if [ "${CIRCLE_JOB}" == "CHECK_CLANG_AND_PEP8_FORMAT" ]; then
@@ -56,6 +66,7 @@ elif [ "${CIRCLE_JOB}" == "PYTORCH" ]; then
     sudo ln -s /usr/bin/llvm-config-7 /usr/bin/llvm-config-7.0
 
     sudo apt-get install -y ${GLOW_DEPS}
+    install_fmt
 else
     # Install Glow dependencies
     sudo apt-get update
@@ -67,6 +78,7 @@ else
     sudo ln -s /usr/bin/llvm-config-8 /usr/bin/llvm-config-8.0
 
     sudo apt-get install -y ${GLOW_DEPS}
+    install_fmt
 fi
 
 # Since we are using llvm-7 in these two branches, we cannot use pip install cmake
