@@ -43,8 +43,9 @@ install_fmt() {
     pushd fmt
     mkdir build
     cd build
-    cmake -G Ninja ..
-    sudo ninja install
+    cmake ..
+    make -j`nproc`
+    sudo make install
     popd
 }
 
