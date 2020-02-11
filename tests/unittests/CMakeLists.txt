@@ -377,6 +377,21 @@ add_glow_test(NAME OnnxExporterTest
                   --gtest_output=xml:OnnxExporterTest.xml
               WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
+add_executable(TypeAToTypeBFunctionConverterTest
+               TypeAToTypeBFunctionConverterTest.cpp)
+target_link_libraries(TypeAToTypeBFunctionConverterTest
+                      PRIVATE
+                        Backend
+                        Converter
+                        Graph
+                        GraphOptimizer
+                        gtest
+                        TestMain)
+add_glow_test(NAME TypeAToTypeBFunctionConverterTest
+              COMMAND ${GLOW_BINARY_DIR}/tests/TypeAToTypeBFunctionConverterTest
+                  --gtest_output=xml:TypeAToTypeBFunctionConverterTest.xml
+              WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
 # Loop through all backends present in lib/Backends (see FindBackends.cmake)
 # and instantiate a backend-parameterized test for each of them.
 foreach(backend ${GLOW_BACKENDS})
@@ -406,13 +421,6 @@ foreach(backend ${GLOW_BACKENDS})
                    PRIVATE
                    HostManager
                    Runtime)
-
-  add_backend_test(TEST
-                   TypeAToTypeBFunctionConverterTest
-                   BACKEND
-                   "${backend}"
-                   Converter
-                   Graph)
 endforeach()
 
 add_executable(PartitionerTest
