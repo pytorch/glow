@@ -1272,8 +1272,33 @@ Error ONNXModelWriter::writeModulo(const ModuloNode *node, GraphType &graph) {
 
 namespace {
 template <typename T>
+void writeTensorwiseQuantizedPool(const T *node, const std::string &op,
+                                  ONNX_TRAITS::GraphProto &graph,
+                                  ReportedNodes &) {
+  assert(node->getLayout() == NHWC && "can only write NHWC Pools");
+
+  auto *proto = graph.add_node();
+
+  // Add dictionary entries.
+  addValueAttribute(proto, "kernel_shape", node->getKernels());
+  addValueAttribute(proto, "strides", node->getStrides());
+  addValueAttribute(proto, "pads", node->getPads());
+
+  proto->add_input(node->getInput().getNode()->getName());
+  outputsToProto(node, graph, proto);
+
+  proto->set_name(node->getName());
+  proto->set_op_type(op);
+}
+
+template <typename T>
 void writePool(const T *node, const std::string &op,
                ONNX_TRAITS::GraphProto &graph, ReportedNodes &reporter) {
+  // Delegate writing quantized pool ops to writeTensorwiseQuantizedPool.
+  if (isQuantizedElemKind(node->getInput().getElementType())) {
+    return writeTensorwiseQuantizedPool(node, op, graph, reporter);
+  }
+
   // Loading pools creates a sandwich with Transpose nodes for Input
   // and Result. The lowering algorithm can remove Transpose nodes and
   // replace one set of nodes with another ones. When saving a graph to ONNX
@@ -1286,6 +1311,7 @@ void writePool(const T *node, const std::string &op,
   // node is found for Result user then remove it, otherwise create a "mirror"
   // Transpose, i.e. NCHW2NHWC.
   assert(node->getLayout() == NHWC && "can only write NHWC Pools");
+
   auto *proto = graph.add_node();
 
   // Use the output of transpose node.

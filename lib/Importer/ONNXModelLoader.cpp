@@ -1205,6 +1205,54 @@ Error ONNXModelLoader::loadPool(const ONNX_NAMESPACE::NodeProto &op,
   return Error::success();
 }
 
+Error ONNXModelLoader::loadTensorwiseQuantizedPool(
+    const ONNX_NAMESPACE::NodeProto &op, const ArgumentDictionaryTy &dict,
+    llvm::StringRef typeName) {
+  const std::string &opName = loadOperatorName(op);
+
+  // Load the inputs:
+  NodeValue in;
+  ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
+
+  auto kernels = getShape<unsigned_t>(dict.at("kernel_shape"));
+  auto strides = getShape<unsigned_t>(dict.at("strides"));
+
+  if (in.dims().size() != 4 || kernels.size() != 2) {
+    // Glow only handles 2D pooling currently.
+    RETURN_ERR("Glow only handles 2D pooling currently.",
+               ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_SHAPE);
+  }
+
+  // NHWC
+  llvm::SmallVector<unsigned_t, 2> idimHW(2);
+  idimHW[0] = in.dims()[1];
+  idimHW[1] = in.dims()[2];
+
+  Pads pads;
+  ASSIGN_VALUE_OR_RETURN_ERR(pads, getPads(dict, kernels, strides, idimHW));
+
+  if (op.output_size() > 1) {
+    if (typeName != "MaxPool") {
+      RETURN_ERR("Argmax output is only supported for MaxPool!",
+                 ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_OPERATOR);
+    }
+
+    Node *maxpool = G_.createMaxPool(opName, in, kernels, strides, pads);
+    auto res = maxpool->getNthResult(MaxPoolNode::ResultIdx);
+    auto argmax = maxpool->getNthResult(MaxPoolNode::ArgmaxIdx);
+    RETURN_IF_ERR(assignNodeOutputs(op, {res, argmax}));
+  } else {
+    Node *poolNode;
+    if (typeName == "MaxPool") {
+      poolNode = G_.createMaxPool(opName, in, kernels, strides, pads);
+    } else {
+      poolNode = G_.createAvgPool(opName, in, kernels, strides, pads);
+    }
+    RETURN_IF_ERR(addNodeAsOutput(op, poolNode));
+  }
+  return Error::success();
+}
+
 Error ONNXModelLoader::loadArgMax(const ONNX_NAMESPACE::NodeProto &op,
                                   const ArgumentDictionaryTy &dict) {
   const std::string &opName = loadOperatorName(op);
@@ -2712,7 +2760,13 @@ Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
     return loadChannelwiseQuantizedConvolution(op, dict);
   }
   if (typeName == "MaxPool" || typeName == "AveragePool") {
-    return loadPool(op, dict, typeName);
+    // If the pool operator has quantized inputs, use
+    // loadTensorwiseQuantizedPool.
+    NodeValue in;
+    ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
+    return in.getType()->isQuantizedType()
+               ? loadTensorwiseQuantizedPool(op, dict, typeName)
+               : loadPool(op, dict, typeName);
   }
   if (typeName == "GlobalAveragePool") {
     return loadGlobalAveragePool(op, dict);

@@ -89,7 +89,9 @@
     if (rhsOrErrV) {                                                           \
       lhs = std::move(rhsOrErrV.get());                                        \
     } else {                                                                   \
-      FAIL() << errorToString(rhsOrErr.takeError());                           \
+      auto err = rhsOrErrV.takeError();                                        \
+      err.addToStack(__FILE__, __LINE__);                                      \
+      FAIL() << errorToString(std::move(err));                                 \
     }                                                                          \
   } while (0)
 
@@ -111,6 +113,7 @@
     if (auto errV = std::forward<glow::detail::GlowError>(err)) {              \
       static_assert(glow::detail::IsError<decltype(errV)>::value,              \
                     "Expected value to be a Error");                           \
+      errV.addToStack(__FILE__, __LINE__);                                     \
       FAIL() << errorToString(std::move(errV));                                \
     }                                                                          \
   } while (0)
