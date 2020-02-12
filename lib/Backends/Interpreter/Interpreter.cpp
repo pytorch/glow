@@ -64,8 +64,11 @@ Interpreter::compileIRWithoutConstants(std::unique_ptr<IRFunction> IR) const {
   runtime::RuntimeBundle bundle = runtime::RuntimeBundle::create(
       *IR, constantWeightsAllocator, placeholderWeightsAllocator,
       activationsAllocator);
-  return glow::make_unique<InterpreterFunction>(std::move(IR),
-                                                std::move(bundle));
+  auto compiledFunction =
+      glow::make_unique<InterpreterFunction>(std::move(IR), std::move(bundle));
+  compiledFunction->setIRInstructionProcessingHandler(
+      getIRInstructionProcessingHandler());
+  return compiledFunction;
 }
 
 bool Interpreter::isOpSupported(const NodeInfo &NI) const {

@@ -58,6 +58,8 @@ void InterpreterFunction::addConstant(std::string name, Tensor *T) {
 
 Error InterpreterFunction::execute(ExecutionContext *context) {
   BoundInterpreterFunction boundFunc(constants_);
+  boundFunc.setIRInstructionProcessingHandler(
+      getIRInstructionProcessingHandler());
   auto res = boundFunc.execute(F_.get(), context);
   {
     TRACE_EVENT_SCOPE(context, TraceLevel::RUNTIME, "processInstrumentation");
@@ -229,7 +231,16 @@ Error BoundInterpreterFunction::execute(IRFunction *F,
     }
   }
 
-// Do the forward pass.
+  // Do the forward pass.
+  auto &irInstructionProcessingHandler = getIRInstructionProcessingHandler();
+  // Dispatch the interpreter on each instruction in the program.
+  for (const auto &I : F->getInstrs()) {
+    // Perform custom processing if needed and proceed with standard processing
+    // if required.
+    if (!irInstructionProcessingHandler ||
+        !irInstructionProcessingHandler(
+            &I, IRInstructionProcessingStage::PROCESSING, this)) {
+      switch (I.getKind()) {
 #define DEF_VALUE(CLASS, NAME)
 #define DEF_INSTR(CLASS, NAME)                                                 \
   case Kinded::Kind::CLASS##Kind: {                                            \
@@ -237,13 +248,18 @@ Error BoundInterpreterFunction::execute(IRFunction *F,
     break;                                                                     \
   }
 #define DEF_BACKEND_SPECIFIC_INSTR(CLASS, NAME)
-  // Dispatch the interpreter on each instruction in the program:
-  for (const auto &I : F->getInstrs()) {
-    switch (I.getKind()) {
 #include "glow/AutoGenInstr.def"
 
-    default:
-      llvm_unreachable("Invalid instruction.");
+      default:
+        glow::errs() << "Invalid instruction: " << &I << "\n";
+        llvm_unreachable("Invalid instruction.");
+      }
+    }
+
+    // Perform post-processing of the instruction.
+    if (irInstructionProcessingHandler) {
+      irInstructionProcessingHandler(
+          &I, IRInstructionProcessingStage::POSTPROCESSING, this);
     }
   }
 

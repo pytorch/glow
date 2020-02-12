@@ -42,7 +42,8 @@ class Constant;
 #include "glow/AutoGenInstr.def"
 
 /// Function "compiled" for execution by the interpreter.
-class InterpreterFunction final : public CompiledFunction {
+class InterpreterFunction final : public CompiledFunction,
+                                  public IRInstructionProcessingHandler {
   /// The IR to be executed.
   std::unique_ptr<IRFunction> F_;
 
@@ -80,7 +81,7 @@ public:
 };
 
 /// An InterpreterFunction bound to a specific invocation.
-class BoundInterpreterFunction {
+class BoundInterpreterFunction : public IRInstructionProcessingHandler {
   /// Maps values to Tensors, that are owned by this class.
   std::unordered_map<const Value *, Tensor *> tensors_;
 

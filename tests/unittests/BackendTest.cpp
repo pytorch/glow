@@ -21,6 +21,8 @@
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/PlaceholderBindings.h"
 #include "glow/IR/IRBuilder.h"
+#include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
+#include "glow/Optimizer/IROptimizer/IROptimizer.h"
 
 #include "gtest/gtest.h"
 
@@ -107,6 +109,140 @@ TEST(Interpreter, profileQuantizationForANetwork) {
   EXPECT_NEAR(0.2, min, 0.00001);
   EXPECT_NEAR(1.6, max, 0.00001);
 }
+
+#ifdef GLOW_WITH_CPU
+
+/// A couple of counters to check that custom processing has happened.
+static unsigned numCustomProcessedSupportedInstructions;
+static unsigned numCustomProcessedUnsupportedInstructions;
+
+/// An interceptor to be invoked when executing the interpreter instructions.
+static IRInstructionProcessingFn customInterpreterHook =
+    [](const Instruction *I, IRInstructionProcessingStage executionStage,
+       void *ctx) -> bool {
+  // Only handle instructions in the processing stage.
+  if (executionStage != IRInstructionProcessingStage::PROCESSING) {
+    return false;
+  }
+  llvm::outs() << "Intercept instruction execution: " << I << "\n";
+  // This is an example of handling an instruction that is normally not
+  // supported by a vanilla interpreter. This way new backends or tests can
+  // extend the functionality of the interpreter and support custom
+  // instructions.
+  if (llvm::isa<CPUMaxSplatInst>(I)) {
+    llvm::outs() << "Apply special processing for an instruction not supported "
+                    "by the interpreter: "
+                 << I << "\n";
+    numCustomProcessedUnsupportedInstructions++;
+    // Tell the backend to skip standard processing of this instruction.
+    return true;
+  }
+  // This is an example of implementing a custom handling of an instruction that
+  // is supported by a vanilla interpreter. This way new backends or tests can
+  // change the behavior of the interpreter for specific instructions.
+  if (llvm::isa<ElementSubInst>(I)) {
+    llvm::outs() << "Apply special processing instruction: " << I << "\n";
+    numCustomProcessedSupportedInstructions++;
+    // Tell the backend to skip standard processing of this instruction.
+    return true;
+  }
+  return false;
+};
+
+/// Creates an interpreter with a given \p name and custom instruction handler
+/// \p hook. \retruns a newly created custom interpreter.
+static Backend *createCustomInterpreter(llvm::StringRef name,
+                                        IRInstructionProcessingFn hook) {
+  auto interpreter = new Interpreter();
+  interpreter->setIRInstructionProcessingHandler(hook);
+  interpreter->setName(name);
+  return interpreter;
+}
+
+/// Check support for intercepting and customizing the processing of
+/// instructions suppored by Interpreter.
+TEST(Interpreter, customPrePostAroundProcessing) {
+  // Register a custom backend.
+  REGISTER_DYNAMIC_GLOW_BACKEND_FACTORY(
+      CustomInterpreterFactory, Interpreter, "CustomInterpreter",
+      createCustomInterpreter("CustomInterpreter", customInterpreterHook))
+
+  ExecutionEngine EE("CustomInterpreter");
+  auto &mod = EE.getModule();
+  auto *F = mod.createFunction("test");
+  auto *input1 =
+      mod.createPlaceholder(ElemKind::FloatTy, {1, 10, 10, 3}, "in1", false);
+  auto *input2 =
+      mod.createPlaceholder(ElemKind::FloatTy, {1, 10, 10, 3}, "in2", false);
+  auto *add = F->createAdd("add", input1, input2);
+  auto *sub = F->createSub("sub", add, input1);
+  F->createSave("save", sub);
+  PlaceholderBindings bindings;
+  bindings.allocate({input1, input2});
+  EE.compile(CompilationMode::Infer);
+  numCustomProcessedSupportedInstructions = 0;
+  numCustomProcessedUnsupportedInstructions = 0;
+  // Process the function by means of the custom backend.
+  EE.run(bindings);
+  // Sub operation should have been processed in a custom way.
+  EXPECT_EQ(numCustomProcessedSupportedInstructions, 1);
+  EXPECT_EQ(numCustomProcessedUnsupportedInstructions, 0);
+}
+
+TEST(Interpreter, customHandleUnsupportedInstruction) {
+  // Register a custom Interpreter-based backend.
+  REGISTER_DYNAMIC_GLOW_BACKEND_FACTORY(
+      CustomInterpreterFactory, Interpreter, "CustomInterpreter",
+      createCustomInterpreter("CustomInterpreter", customInterpreterHook))
+  // Create CPU and custom interpreter backends.
+  ExecutionEngine cpuEE("CPU");
+  ExecutionEngine customInterpreterEE("CustomInterpreter");
+  auto *customInterpreterBackend =
+      &customInterpreterEE.getBackend("CustomInterpreter");
+  auto *cpuBackend = &cpuEE.getBackend("CPU");
+  auto &mod = cpuEE.getModule();
+  auto *F = mod.createFunction("test");
+  auto *input1 =
+      mod.createPlaceholder(ElemKind::FloatTy, {1, 10, 10, 3}, "in1", false);
+  auto *relu = F->createRELU("relu", input1);
+  auto *save = F->createSave("save", relu);
+  std::unique_ptr<PlaceholderBindings> cpuBindings(new PlaceholderBindings);
+  cpuBindings->allocate({input1, save->getPlaceholder()});
+  std::unique_ptr<PlaceholderBindings> customInterpreterBindings(
+      new PlaceholderBindings);
+  customInterpreterBindings->allocate({input1, save->getPlaceholder()});
+  CompilationContext cctx;
+  cctx.compMode = CompilationMode::Infer;
+  FAIL_TEST_IF_ERR(glow::optimizeFunction(F, *cpuBackend, cctx));
+  // Generate the low-level IR for the CPU backend.
+  std::unique_ptr<IRFunction> cpuIR =
+      glow::generateAndOptimizeIR(F, *cpuBackend, false);
+  // Clone the low-level IR.
+  auto clonedCpuIR = cpuIR->clone("newTest");
+  // Compile the cloned IR for the custom Interpreter backend.
+  std::unique_ptr<IRFunction> customInterpreterIR(clonedCpuIR);
+  auto customInterpreterCompiledF(
+      reinterpret_cast<BackendUsingGlowIR *>(customInterpreterBackend)
+          ->compileIR(std::move(customInterpreterIR)));
+  auto cpuCompiledF(reinterpret_cast<BackendUsingGlowIR *>(cpuBackend)
+                        ->compileIR(std::move(cpuIR)));
+  ExecutionContext cpuExecCtx(std::move(cpuBindings));
+  // Execute on the CPU backend.
+  FAIL_TEST_IF_ERR(cpuCompiledF->execute(&cpuExecCtx));
+  ExecutionContext customInterpreterExecCtx(
+      std::move(customInterpreterBindings));
+  numCustomProcessedUnsupportedInstructions = 0;
+  // Execute on the custom Interpreter backend. The usual Interpreter backend
+  // would not be able to handle some of the custom IR instructions defined by
+  // the CPU backend, but the custom interpreter backend can process them.
+  numCustomProcessedSupportedInstructions = 0;
+  numCustomProcessedUnsupportedInstructions = 0;
+  FAIL_TEST_IF_ERR(
+      customInterpreterCompiledF->execute(&customInterpreterExecCtx));
+  EXPECT_EQ(numCustomProcessedUnsupportedInstructions, 1);
+}
+
+#endif
 
 /// Check that new backends and backend factories can be registered dynamically.
 TEST(Interpreter, DynamicBackendFactory) {
@@ -338,13 +474,13 @@ TEST_P(BackendExecTest, debugPrint) {
   auto *save = F->createSave("save", IV);
   ctx->getPlaceholderBindings()->allocate(save->getPlaceholder());
 
-  std::unique_ptr<BackendUsingGlowIR> backend(
-      static_cast<BackendUsingGlowIR *>(createBackend(GetParam())));
+  std::unique_ptr<Backend> backend(createBackend(GetParam()));
   auto IR = glow::make_unique<IRFunction>(F);
   IR->generateIR(*backend.get());
   IRBuilder(IR.get()).createDebugPrintInst("print", *IR->getWeights().begin());
 
-  auto function = backend->compileIR(std::move(IR));
+  auto function = reinterpret_cast<BackendUsingGlowIR *>(backend.get())
+                      ->compileIR(std::move(IR));
 
   // Since we are compiling IR by hand we cannot go through the normal EE route.
   // Create and initialize the device.
