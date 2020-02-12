@@ -136,6 +136,9 @@ add_glow_test(NAME GlowOnnxifiManagerTest
                   --gtest_output=xml:GlowOnnxifiManagerTest.xml
               WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
+add_executable(FollyTest FollyTest.cpp)
+target_link_libraries(FollyTest PRIVATE folly_jemalloc gtest TestMain)
+
 add_executable(GraphGradTest
                GraphGradTest.cpp)
 target_link_libraries(GraphGradTest
