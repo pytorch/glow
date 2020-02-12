@@ -369,4 +369,8 @@ std::set<std::string> glow::backendTestBlacklist = {
     "convTransposeCompareSimpleK8S1P0I3/0",
     "convTransposeCompareSimpleK6S1P1I4/0",
     "convTransposeConvolutionCompareSimpleK5S1P2I3/0",
+    "FusedRowwiseQuantizedSLWSAllLengthsOne_Float16_AccumFloat/0",
+    "FusedRowwiseQuantizedSLWSAllLengthsOne_Float16_AccumFloat16/0",
+    "FusedRowwiseQuantizedSLWSAllLengthsOne_Fused4Bit_Float16_AccumFloat16/0",
+    "SLWSAllLengthsOne_Float16_AccumFloat/0",
 };

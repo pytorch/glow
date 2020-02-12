@@ -1755,58 +1755,58 @@ LengthsSumNode *Function::createLengthsSum(llvm::StringRef name, NodeValue data,
 SparseLengthsSumNode *Function::createSparseLengthsSum(llvm::StringRef name,
                                                        NodeValue data,
                                                        NodeValue indices,
-                                                       NodeValue lengths) {
+                                                       NodeValue lengths,
+                                                       bool allLengthsOne) {
   auto inDims = data.dims();
   ShapeVector outDims(inDims.begin(), inDims.end());
   outDims[0] = lengths.dims()[0];
   auto outTy = getParent()->uniqueTypeWithNewShape(data.getType(), outDims);
-  return addNode(new SparseLengthsSumNode(name, outTy, data, indices, lengths));
+  return addNode(new SparseLengthsSumNode(name, outTy, data, indices, lengths,
+                                          allLengthsOne));
 }
 
-SparseLengthsWeightedSumNode *
-Function::createSparseLengthsWeightedSum(llvm::StringRef name, NodeValue data,
-                                         NodeValue weights, NodeValue indices,
-                                         NodeValue lengths) {
+SparseLengthsWeightedSumNode *Function::createSparseLengthsWeightedSum(
+    llvm::StringRef name, NodeValue data, NodeValue weights, NodeValue indices,
+    NodeValue lengths, bool allLengthsOne) {
   auto inDims = data.dims();
   ShapeVector outDims(inDims.begin(), inDims.end());
   outDims[0] = lengths.dims()[0];
   auto outTy = getParent()->uniqueTypeWithNewShape(data.getType(), outDims);
-  return addNode(new SparseLengthsWeightedSumNode(name, outTy, data, weights,
-                                                  indices, lengths));
+  return addNode(new SparseLengthsWeightedSumNode(
+      name, outTy, data, weights, indices, lengths, allLengthsOne));
 }
 
-SparseLengthsWeightedSumNode *
-Function::createSparseLengthsWeightedSum(llvm::StringRef name, TypeRef outTy,
-                                         NodeValue data, NodeValue weights,
-                                         NodeValue indices, NodeValue lengths) {
-  return addNode(new SparseLengthsWeightedSumNode(name, outTy, data, weights,
-                                                  indices, lengths));
+SparseLengthsWeightedSumNode *Function::createSparseLengthsWeightedSum(
+    llvm::StringRef name, TypeRef outTy, NodeValue data, NodeValue weights,
+    NodeValue indices, NodeValue lengths, bool allLengthsOne) {
+  return addNode(new SparseLengthsWeightedSumNode(
+      name, outTy, data, weights, indices, lengths, allLengthsOne));
 }
 
 RowwiseQuantizedSparseLengthsWeightedSumNode *
 Function::createRowwiseQuantizedSparseLengthsWeightedSum(
     llvm::StringRef name, Storage *data, Constant *scales, Constant *offsets,
     NodeValue weights, NodeValue indices, NodeValue lengths, ElemKind precision,
-    bool useFP16Accumulation) {
+    bool useFP16Accumulation, bool allLengthsOne) {
   auto inDims = data->dims();
   ShapeVector outDims(inDims.begin(), inDims.end());
   outDims[0] = lengths.dims()[0];
   auto outTy = getParent()->uniqueType(precision, outDims);
   return addNode(new RowwiseQuantizedSparseLengthsWeightedSumNode(
       name, outTy, data, scales, offsets, weights, indices, lengths,
-      useFP16Accumulation));
+      useFP16Accumulation, allLengthsOne));
 }
 
 RowwiseQuantizedSparseLengthsWeightedSumNode *
 Function::createRowwiseQuantizedSparseLengthsSum(
     llvm::StringRef name, Storage *data, Constant *scales, Constant *offsets,
     NodeValue indices, NodeValue lengths, ElemKind precision,
-    bool useFP16Accumulation) {
+    bool useFP16Accumulation, bool allLengthsOne) {
   auto ty = getParent()->uniqueType(precision, {indices.dims()[0]});
   auto ones = createSplat(name.str() + ".ones", ty, 1.0);
   return createRowwiseQuantizedSparseLengthsWeightedSum(
       name, data, scales, offsets, ones, indices, lengths, precision,
-      useFP16Accumulation);
+      useFP16Accumulation, allLengthsOne);
 }
 
 /// Helper to create a RowwiseQuantizedSparseLengthsWeightedSumNode in the
@@ -1818,7 +1818,7 @@ static RowwiseQuantizedSparseLengthsWeightedSumNode *
 quantizeDataAndCreateRowwiseQuantizedSparseLengthsWeightedSum(
     Function *F, llvm::StringRef name, Tensor &data, NodeValue weights,
     NodeValue indices, NodeValue lengths, quantization::Schema schema,
-    ElemKind precision, bool useFP16Accumulation) {
+    ElemKind precision, bool useFP16Accumulation, bool allLengthsOne) {
   auto inDims = data.dims();
 
   // Note: In rwqData, we are using a quantized type, however the scale/offset
@@ -1848,28 +1848,29 @@ quantizeDataAndCreateRowwiseQuantizedSparseLengthsWeightedSum(
   }
   return F->createRowwiseQuantizedSparseLengthsWeightedSum(
       name, rwqData, dataScales, dataOffsets, weights, indices, lengths,
-      precision, useFP16Accumulation);
+      precision, useFP16Accumulation, allLengthsOne);
 }
 
 RowwiseQuantizedSparseLengthsWeightedSumNode *
 Function::createRowwiseQuantizedSparseLengthsWeightedSum(
     llvm::StringRef name, Tensor &data, NodeValue weights, NodeValue indices,
     NodeValue lengths, quantization::Schema schema, ElemKind precision,
-    bool useFP16Accumulation) {
+    bool useFP16Accumulation, bool allLengthsOne) {
   return quantizeDataAndCreateRowwiseQuantizedSparseLengthsWeightedSum(
       this, name, data, weights, indices, lengths, schema, precision,
-      useFP16Accumulation);
+      useFP16Accumulation, allLengthsOne);
 }
 
 RowwiseQuantizedSparseLengthsWeightedSumNode *
 Function::createRowwiseQuantizedSparseLengthsSum(
     llvm::StringRef name, Tensor &data, NodeValue indices, NodeValue lengths,
-    quantization::Schema schema, ElemKind precision, bool useFP16Accumulation) {
+    quantization::Schema schema, ElemKind precision, bool useFP16Accumulation,
+    bool allLengthsOne) {
   auto ty = getParent()->uniqueType(precision, {indices.dims()[0]});
   auto ones = createSplat(name.str() + ".ones", ty, 1.0);
   return quantizeDataAndCreateRowwiseQuantizedSparseLengthsWeightedSum(
       this, name, data, ones, indices, lengths, schema, precision,
-      useFP16Accumulation);
+      useFP16Accumulation, allLengthsOne);
 }
 
 /// Helper used to get specific output type required for
@@ -1904,21 +1905,22 @@ getOutputTypeOfFusedRowwiseQuantizedSLS(Function *F, NodeValue data,
 FusedRowwiseQuantizedSparseLengthsWeightedSumNode *
 Function::createFusedRowwiseQuantizedSparseLengthsWeightedSum(
     llvm::StringRef name, NodeValue data, NodeValue weights, NodeValue indices,
-    NodeValue lengths, bool useFP16Accumulation) {
+    NodeValue lengths, bool useFP16Accumulation, bool allLengthsOne) {
   auto outTy =
       getOutputTypeOfFusedRowwiseQuantizedSLS(this, data, lengths.dims());
   return addNode(new FusedRowwiseQuantizedSparseLengthsWeightedSumNode(
-      name, outTy, data, weights, indices, lengths, useFP16Accumulation));
+      name, outTy, data, weights, indices, lengths, useFP16Accumulation,
+      allLengthsOne));
 }
 
 FusedRowwiseQuantizedSparseLengthsSumNode *
 Function::createFusedRowwiseQuantizedSparseLengthsSum(
     llvm::StringRef name, Storage *data, NodeValue indices, NodeValue lengths,
-    bool useFP16Accumulation) {
+    bool useFP16Accumulation, bool allLengthsOne) {
   auto outTy =
       getOutputTypeOfFusedRowwiseQuantizedSLS(this, data, lengths.dims());
   return addNode(new FusedRowwiseQuantizedSparseLengthsSumNode(
-      name, outTy, data, indices, lengths, useFP16Accumulation));
+      name, outTy, data, indices, lengths, useFP16Accumulation, allLengthsOne));
 }
 
 /// Helper to get quantized data required for
@@ -1975,54 +1977,56 @@ static Constant *quantizeDataForFusedRowwiseQuantizedSparseLengthsWeightedSum(
 FusedRowwiseQuantizedSparseLengthsWeightedSumNode *
 Function::createFusedRowwiseQuantizedSparseLengthsWeightedSum(
     llvm::StringRef name, Tensor &data, NodeValue weights, NodeValue indices,
-    NodeValue lengths, ElemKind fusedElemKind, bool useFP16Accumulation) {
+    NodeValue lengths, ElemKind fusedElemKind, bool useFP16Accumulation,
+    bool allLengthsOne) {
   Constant *rwqData =
       quantizeDataForFusedRowwiseQuantizedSparseLengthsWeightedSum(
           this, data, fusedElemKind);
   return createFusedRowwiseQuantizedSparseLengthsWeightedSum(
-      name, rwqData, weights, indices, lengths, useFP16Accumulation);
+      name, rwqData, weights, indices, lengths, useFP16Accumulation,
+      allLengthsOne);
 }
 
 FusedRowwiseQuantizedSparseLengthsSumNode *
 Function::createFusedRowwiseQuantizedSparseLengthsSum(
     llvm::StringRef name, Tensor &data, NodeValue indices, NodeValue lengths,
-    ElemKind fusedElemKind, bool useFP16Accumulation) {
+    ElemKind fusedElemKind, bool useFP16Accumulation, bool allLengthsOne) {
   Constant *rwqData =
       quantizeDataForFusedRowwiseQuantizedSparseLengthsWeightedSum(
           this, data, fusedElemKind);
   return this->createFusedRowwiseQuantizedSparseLengthsSum(
-      name, rwqData, indices, lengths, useFP16Accumulation);
+      name, rwqData, indices, lengths, useFP16Accumulation, allLengthsOne);
 }
 
-EmbeddingBagNode *
-Function::createEmbeddingBag(llvm::StringRef name, NodeValue data,
-                             NodeValue weights, NodeValue indices,
-                             NodeValue offsets, bool hasEndOffset) {
+EmbeddingBagNode *Function::createEmbeddingBag(
+    llvm::StringRef name, NodeValue data, NodeValue weights, NodeValue indices,
+    NodeValue offsets, bool hasEndOffset, bool allLengthsOne) {
   auto inDims = data.dims();
   ShapeVector outDims(inDims.begin(), inDims.end());
   outDims[0] = hasEndOffset ? offsets.dims()[0] - 1 : offsets.dims()[0];
   auto outTy = getParent()->uniqueTypeWithNewShape(data.getType(), outDims);
   return addNode(new EmbeddingBagNode(name, outTy, data, weights, indices,
-                                      offsets, hasEndOffset));
+                                      offsets, hasEndOffset, allLengthsOne));
 }
 
 EmbeddingBagByteRowwiseOffsetsNode *
 Function::createEmbeddingBagByteRowwiseOffsets(
     llvm::StringRef name, Tensor &data, NodeValue weights, NodeValue indices,
     NodeValue offsets, ElemKind fusedElemKind, bool useFP16Accumulation,
-    bool hasEndOffset) {
+    bool hasEndOffset, bool allLengthsOne) {
   Constant *rwqData =
       quantizeDataForFusedRowwiseQuantizedSparseLengthsWeightedSum(
           this, data, fusedElemKind);
   return createEmbeddingBagByteRowwiseOffsets(name, rwqData, weights, indices,
                                               offsets, useFP16Accumulation,
-                                              hasEndOffset);
+                                              hasEndOffset, allLengthsOne);
 }
 
 EmbeddingBagByteRowwiseOffsetsNode *
 Function::createEmbeddingBagByteRowwiseOffsets(
     llvm::StringRef name, NodeValue data, NodeValue weights, NodeValue indices,
-    NodeValue offsets, bool useFP16Accumulation, bool hasEndOffset) {
+    NodeValue offsets, bool useFP16Accumulation, bool hasEndOffset,
+    bool allLengthsOne) {
   std::vector<dim_t> segmentDims(offsets.dims().begin(), offsets.dims().end());
   // If hasEndOffset the last offset is just for marking the end of the last
   // segment.
@@ -2032,7 +2036,7 @@ Function::createEmbeddingBagByteRowwiseOffsets(
   auto outTy = getOutputTypeOfFusedRowwiseQuantizedSLS(this, data, segmentDims);
   return addNode(new EmbeddingBagByteRowwiseOffsetsNode(
       name, outTy, data, weights, indices, offsets, useFP16Accumulation,
-      hasEndOffset));
+      hasEndOffset, allLengthsOne));
 }
 
 LengthsToRangesNode *Function::createLengthsToRanges(llvm::StringRef name,
