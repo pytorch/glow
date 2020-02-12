@@ -18,6 +18,7 @@
 #include "Importer.h"
 #include "NNPI.h"
 #include "NNPIDeviceManager.h"
+#include "folly/CpuId.h"
 #include "llvm/Support/raw_ostream.h"
 #include <fstream>
 #include <iomanip>
@@ -25,8 +26,9 @@
 
 #ifdef USE_AVX
 #include <immintrin.h>
-static inline void convertI64ToI32(int64_t const *i64InputOrg,
-                                   int32_t *i32OutputOrg, uint32_t elements) {
+static inline void convertI64ToI32Avx512(int64_t const *i64InputOrg,
+                                         int32_t *i32OutputOrg,
+                                         uint32_t elements) {
   const uint8_t *i64Input = reinterpret_cast<const uint8_t *>(i64InputOrg);
   uint8_t *i32Output = reinterpret_cast<uint8_t *>(i32OutputOrg);
   const __mmask8 masks[9] = {
@@ -47,14 +49,23 @@ static inline void convertI64ToI32(int64_t const *i64InputOrg,
     _mm512_mask_cvtepi64_storeu_epi32(i32Output, masks[tailElements], i64vec);
   }
 }
-#else
+#endif // USE_AVS
+
 static inline void convertI64ToI32(int64_t const *i64Input, int32_t *i32Output,
                                    uint32_t elements) {
+
+#ifdef USE_AVX
+  static folly::CpuId cpuId;
+  if (cpuId.avx512f()) {
+    convertI64ToI32Avx512(i64Input, i32Output, elements);
+    return;
+  }
+#endif
+
   for (size_t i = 0; i < elements; i++) {
     i32Output[i] = static_cast<int32_t>(i64Input[i]);
   }
 }
-#endif // USE_AVX
 
 static std::string convertHexTextFormat(void *data, size_t size) {
   std::stringstream ss;
