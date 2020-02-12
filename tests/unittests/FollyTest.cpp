@@ -7,4 +7,3 @@ TEST(Folly, Format) {
   s << folly::format("The answer is {}", 42);
   ASSERT_TRUE(s.str() == "The answer is 42");
 }
-
