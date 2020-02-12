@@ -9726,8 +9726,8 @@ TEST_P(OperatorTest,
       /* useFP16Accumulation */ true);
 }
 
-/// Helper to test SLWS with more columns in data input, with precision \p DTy,
-/// and precision for data \p dataDTy.
+/// Helper to test all variants of SLWS wiith all lengths as one, with precision
+/// \p DTy, and precision for data \p dataDTy.
 template <typename DataType>
 static void testSLWSTwoColumn(glow::PlaceholderBindings &bindings,
                               glow::Module &mod, glow::Function *F,
@@ -9853,6 +9853,136 @@ TEST_P(OperatorTest,
   testSLWSTwoColumn<float16_t>(bindings_, mod_, F_, EE_,
                                ElemKind::UInt4FusedFP16QTy, 0.1,
                                /* useFP16Accumulation */ true);
+}
+
+/// Helper to test SLWS with more columns in data input, with precision \p DTy,
+/// and precision for data \p dataDTy.
+template <typename DataType>
+static void testSLWSAllLengthsOne(glow::PlaceholderBindings &bindings,
+                                  glow::Module &mod, glow::Function *F,
+                                  glow::ExecutionEngine &EE, ElemKind dataDTy,
+                                  float allowedError,
+                                  bool useFP16Accumulation = false) {
+  /*
+    DATA  = [
+        [1.0, 1.2],
+        [2.3, 3.4],
+        [4.5, 5.7],
+    ]
+    INDICES = [2, 0, 1, 2, 0]
+    LENGTHS = [1, 1, 1, 1, 1]
+    WEIGHTS = [1, -1, 1.5, 0.5, -1.5]
+    OUTPUT = [
+        [4.5, 5.7],
+        [-1.0, -1.2],
+        [3.45, 5.1],
+        [2.25, 2.85],
+        [-1.5, -1.8],
+    ]
+  */
+  const bool fusedData = isFusedQuantizedElemKind(dataDTy);
+  const ElemKind DTy =
+      fusedData ? getScaleOffsetElemKindFromFused(dataDTy) : dataDTy;
+
+  Tensor data(fusedData ? ElemKind::FloatTy : DTy, {3, 2});
+#define floatData                                                              \
+  { 1.0f, 1.2f, 2.3f, 3.4f, 4.5f, 5.7f, }
+  if (fusedData) {
+    data.getHandle<float>() = floatData;
+  } else {
+    data.getHandle<DataType>() = floatData;
+  }
+
+  Placeholder *indices = mod.createPlaceholder(IndexElemKind, {5}, "indices",
+                                               /* isTrainable */ false);
+  Placeholder *lengths = mod.createPlaceholder(
+      ElemKind::Int32ITy, {5}, "lengths", /* isTrainable */ false);
+  Placeholder *weights =
+      mod.createPlaceholder(DTy, {5}, "weights", /* isTrainable */ false);
+
+  bindings.allocate(indices)->getHandle<sdim_t>() = {
+      2, 0, 1, 2, 0,
+  };
+  bindings.allocate(lengths)->getHandle<int32_t>() = {1, 1, 1, 1, 1};
+  bindings.allocate(weights)->getHandle<DataType>() = {
+      1, -1, 1.5, 0.5, -1.5,
+  };
+
+  Node *SLWS = nullptr;
+  if (fusedData) {
+    SLWS = F->createFusedRowwiseQuantizedSparseLengthsWeightedSum(
+        "RQSLWS", data, weights, indices, lengths, dataDTy,
+        useFP16Accumulation);
+  } else {
+    Placeholder *dataP =
+        mod.createPlaceholder(&data.getType(), "data", /* isTrainable */ false);
+    bindings.insert(dataP, std::move(data));
+    SLWS = F->createSparseLengthsWeightedSum("SLWS", dataP, weights, indices,
+                                             lengths);
+  }
+  SaveNode *S = F->createSave("save", SLWS);
+  bindings.allocate(S->getPlaceholder());
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  Tensor &result = *bindings.get(S->getPlaceholder());
+  Tensor expected(DTy, {5, 2});
+  expected.getHandle<DataType>() = {
+      4.5, 5.7, -1.0, -1.2, 3.45, 5.1, 2.25, 2.85, -1.5, -1.8,
+  };
+
+  EXPECT_TRUE(expected.isEqual(result, allowedError));
+}
+
+/// Test SLWS in Float.
+TEST_P(OperatorTest, SLWSAllLengthsOne_Float) {
+  CHECK_IF_ENABLED();
+  testSLWSAllLengthsOne<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy,
+                               0.0001);
+}
+
+/// Test SLWS in Float16.
+TEST_P(OperatorTest, SLWSAllLengthsOne_Float16_AccumFloat) {
+  CHECK_IF_ENABLED();
+  testSLWSAllLengthsOne<float16_t>(bindings_, mod_, F_, EE_,
+                                   ElemKind::Float16Ty, 0.005,
+                                   /* useFP16Accumulation */ false);
+}
+
+/// Test Fused-RWQ-SLWS in Float.
+TEST_P(OperatorTest, FusedRowwiseQuantizedSLWSAllLengthsOne_Float) {
+  CHECK_IF_ENABLED();
+  testSLWSAllLengthsOne<float>(bindings_, mod_, F_, EE_,
+                               ElemKind::UInt8FusedQTy, 0.015);
+}
+
+/// Test Fused-RWQ-SLWS in Float16. Uses Float accumulation.
+TEST_P(OperatorTest,
+       FusedRowwiseQuantizedSLWSAllLengthsOne_Float16_AccumFloat) {
+  CHECK_IF_ENABLED();
+  testSLWSAllLengthsOne<float16_t>(bindings_, mod_, F_, EE_,
+                                   ElemKind::UInt8FusedFP16QTy, 0.015,
+                                   /* useFP16Accumulation */ false);
+}
+
+/// Test Fused-RWQ-SLWS in Float16. Uses Float16 accumulation.
+TEST_P(OperatorTest,
+       FusedRowwiseQuantizedSLWSAllLengthsOne_Float16_AccumFloat16) {
+  CHECK_IF_ENABLED();
+  testSLWSAllLengthsOne<float16_t>(bindings_, mod_, F_, EE_,
+                                   ElemKind::UInt8FusedFP16QTy, 0.015,
+                                   /* useFP16Accumulation */ true);
+}
+
+/// Test Fused-RWQ-SLWS in Float16 wth 4-bit quantization for the embedding.
+/// Uses Float16 accumulation.
+TEST_P(OperatorTest,
+       FusedRowwiseQuantizedSLWSAllLengthsOne_Fused4Bit_Float16_AccumFloat16) {
+  CHECK_IF_ENABLED();
+  testSLWSAllLengthsOne<float16_t>(bindings_, mod_, F_, EE_,
+                                   ElemKind::UInt4FusedFP16QTy, 0.1,
+                                   /* useFP16Accumulation */ true);
 }
 
 /// Test SLS when some input tensors are constants.

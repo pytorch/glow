@@ -506,6 +506,7 @@ int main(int argc, char **argv) {
       .addInput("Data")
       .addInput("Indices")
       .addInput("Lengths")
+      .addMember(MemberType::Boolean, "AllLengthsOne")
       .addResultFromCtorArg()
       .addGradient()
       .setDocstring("Gathers slices of the outer-most dimension of Data "
@@ -520,6 +521,7 @@ int main(int argc, char **argv) {
       .addInput("Weights")
       .addInput("Indices")
       .addInput("Lengths")
+      .addMember(MemberType::Boolean, "AllLengthsOne")
       .addResultFromCtorArg()
       .addGradient()
       .setDocstring("Gathers slices of the outer-most dimension of Data "
@@ -538,6 +540,7 @@ int main(int argc, char **argv) {
       .addInput("Indices")
       .addInput("Offsets")
       .addMember(MemberType::Boolean, "HasEndOffset")
+      .addMember(MemberType::Boolean, "AllLengthsOne")
       .addResultFromCtorArg()
       .setDocstring(
           "Gathers slices of the outer-most dimension of Data "
@@ -558,6 +561,7 @@ int main(int argc, char **argv) {
       .addMember(MemberType::Boolean, "UseFP16Accumulation",
                  /* addSetter */ true)
       .addMember(MemberType::Boolean, "HasEndOffset")
+      .addMember(MemberType::Boolean, "AllLengthsOne")
       .addResultFromCtorArg()
       .setDocstring("Same as FusedRowwiseQuantizedSparseLengthsWeightedSum but "
                     "using offsets instead of lengths.");
@@ -571,6 +575,7 @@ int main(int argc, char **argv) {
       .addInput("Lengths")
       .addMember(MemberType::Boolean, "UseFP16Accumulation",
                  /* addSetter */ true)
+      .addMember(MemberType::Boolean, "AllLengthsOne")
       .addResultFromCtorArg()
       .setDocstring("Gathers slices of the outer-most dimension of Data "
                     "indexed by Indices vector, and then accumulates them into "
@@ -591,6 +596,7 @@ int main(int argc, char **argv) {
       .addInput("Lengths")
       .addMember(MemberType::Boolean, "UseFP16Accumulation",
                  /* addSetter */ true)
+      .addMember(MemberType::Boolean, "AllLengthsOne")
       .addResultFromCtorArg()
       .setDocstring("Gathers slices of the outer-most dimension of Data "
                     "indexed by Indices vector, and then accumulates them into "
@@ -611,6 +617,7 @@ int main(int argc, char **argv) {
       .addInput("Lengths")
       .addMember(MemberType::Boolean, "UseFP16Accumulation",
                  /* addSetter */ true)
+      .addMember(MemberType::Boolean, "AllLengthsOne")
       .addResultFromCtorArg()
       .setDocstring("Gathers slices of the outer-most dimension of Data "
                     "indexed by Indices vector, and then accumulates them into "

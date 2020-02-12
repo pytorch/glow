@@ -980,34 +980,41 @@ public:
   /// vector, and then accumulates them into len(Lengths) entries:
   /// first Lengths[0] slices are aggregated to Result[0], next Lengths[1]
   /// slices are aggregated to Result[1], etc. I.e. sum(Lengths) must be equal
-  /// to len(Indices).
+  /// to len(Indices). \p allLengthsOne represents if all lengths can be assumed
+  /// to be one, which can be used as a performance optimization by the backend.
   SparseLengthsSumNode *createSparseLengthsSum(llvm::StringRef name,
                                                NodeValue data,
                                                NodeValue indices,
-                                               NodeValue lengths);
+                                               NodeValue lengths,
+                                               bool allLengthsOne = false);
 
   /// Same as SparseLengthsSum, but i-th slice is multiplied by weights[i].
   /// len(weights) must be equal to len(indices).
   SparseLengthsWeightedSumNode *
   createSparseLengthsWeightedSum(llvm::StringRef name, NodeValue data,
                                  NodeValue weights, NodeValue indices,
-                                 NodeValue lengths);
+                                 NodeValue lengths, bool allLengthsOne = false);
 
   /// Create an EmbeddingBag node. If \p hasEndOffset is true then the node
   /// expects an extra offset to be appended to \p offsets which marks the end
-  /// of the last range.
+  /// of the last range. \p allLengthsOne represents if all lengths can be
+  /// assumed to be one, which can be used as a performance optimization by the
+  /// backend.
   EmbeddingBagNode *createEmbeddingBag(llvm::StringRef name, NodeValue data,
                                        NodeValue weights, NodeValue indices,
                                        NodeValue offsets,
-                                       bool hasEndOffset = false);
+                                       bool hasEndOffset = false,
+                                       bool allLengthsOne = false);
 
   /// Create an EmbeddingBagByteRowwiseOffsetsNode node. If \p hasEndOffset is
   /// true then the node expects an extra offset to be appended to \p offsets
-  /// which marks the end of the last range.
+  /// which marks the end of the last range. \p allLengthsOne represents if all
+  /// lengths can be assumed to be one, which can be used as a performance
+  /// optimization by the backend.
   EmbeddingBagByteRowwiseOffsetsNode *createEmbeddingBagByteRowwiseOffsets(
       llvm::StringRef name, NodeValue data, NodeValue weights,
       NodeValue indices, NodeValue offsets, bool useFP16Accumulation = false,
-      bool hasEndOffset = false);
+      bool hasEndOffset = false, bool allLengthsOne = false);
 
   /// Same as \ref createEmbeddingBagByteRowwiseOffsets(), but
   /// expects float input \p data, which is rowwise-quantized and fused
@@ -1018,14 +1025,14 @@ public:
   EmbeddingBagByteRowwiseOffsetsNode *createEmbeddingBagByteRowwiseOffsets(
       llvm::StringRef name, Tensor &data, NodeValue weights, NodeValue indices,
       NodeValue offsets, ElemKind fusedElemKind = ElemKind::UInt8FusedQTy,
-      bool useFP16Accumulation = false, bool hasEndOffset = false);
+      bool useFP16Accumulation = false, bool hasEndOffset = false,
+      bool allLengthsOne = false);
 
   /// Same as \ref createSparseLengthsWeightedSum(), but with \p outTy
   /// specified.
-  SparseLengthsWeightedSumNode *
-  createSparseLengthsWeightedSum(llvm::StringRef name, TypeRef outTy,
-                                 NodeValue data, NodeValue weights,
-                                 NodeValue indices, NodeValue lengths);
+  SparseLengthsWeightedSumNode *createSparseLengthsWeightedSum(
+      llvm::StringRef name, TypeRef outTy, NodeValue data, NodeValue weights,
+      NodeValue indices, NodeValue lengths, bool allLengthsOne = false);
 
   /// Creates and \returns a node of \p name, performing the SparseLengthsSum
   /// operation, using rowwise quantization for the input \p data with the \p
@@ -1036,13 +1043,16 @@ public:
   /// Result[1], etc. I.e. sum(Lengths) must be equal to len(Indices).
   /// \p precision represents what precision to use for Scale, Offset, and
   /// Result. If \p useFP16Accumulation, then internal arithmetic will use FP16
-  /// accumulation; otherwise defaults to FP32.
+  /// accumulation; otherwise defaults to FP32. \p allLengthsOne represents if
+  /// all lengths can be assumed to be one, which can be used as a performance
+  /// optimization by the backend.
   RowwiseQuantizedSparseLengthsWeightedSumNode *
   createRowwiseQuantizedSparseLengthsSum(llvm::StringRef name, Storage *data,
                                          Constant *scales, Constant *offsets,
                                          NodeValue indices, NodeValue lengths,
                                          ElemKind precision = ElemKind::FloatTy,
-                                         bool useFP16Accumulation = false);
+                                         bool useFP16Accumulation = false,
+                                         bool allLengthsOne = false);
 
   /// Same as \ref createRowwiseQuantizedSparseLengthsSum(), but expects
   /// float input \p data, which is rowwise-quantized internally.
@@ -1051,7 +1061,8 @@ public:
                                          NodeValue indices, NodeValue lengths,
                                          quantization::Schema schema,
                                          ElemKind precision = ElemKind::FloatTy,
-                                         bool useFP16Accumulation = false);
+                                         bool useFP16Accumulation = false,
+                                         bool allLengthsOne = false);
 
   /// Same as \ref createRowwiseQuantizedSparseLengthsSum(), but i-th slice is
   /// multiplied by weights[i]. len(weights) must be equal to len(indices).
@@ -1059,7 +1070,8 @@ public:
   createRowwiseQuantizedSparseLengthsWeightedSum(
       llvm::StringRef name, Storage *data, Constant *scales, Constant *offsets,
       NodeValue weights, NodeValue indices, NodeValue lengths,
-      ElemKind precision = ElemKind::FloatTy, bool useFP16Accumulation = false);
+      ElemKind precision = ElemKind::FloatTy, bool useFP16Accumulation = false,
+      bool allLengthsOne = false);
 
   /// Same as \ref createRowwiseQuantizedSparseLengthsWeightedSum(), but expects
   /// float input \p data, which is rowwise-quantized internally.
@@ -1067,7 +1079,8 @@ public:
   createRowwiseQuantizedSparseLengthsWeightedSum(
       llvm::StringRef name, Tensor &data, NodeValue weights, NodeValue indices,
       NodeValue lengths, quantization::Schema schema,
-      ElemKind precision = ElemKind::FloatTy, bool useFP16Accumulation = false);
+      ElemKind precision = ElemKind::FloatTy, bool useFP16Accumulation = false,
+      bool allLengthsOne = false);
 
   /// Creates and \returns a node of \p name, performing the SparseLengthsSum
   /// operation, using fused rowwise quantization for the input \p data wherein
@@ -1079,12 +1092,15 @@ public:
   /// sum(Lengths) must be equal to len(Indices).  The precision for the Result
   /// is determined by the \p data input's ElemKind used for Scale and
   /// Offset. If \p useFP16Accumulation, then internal arithmetic will use FP16
-  /// accumulation; otherwise defaults to FP32.
+  /// accumulation; otherwise defaults to FP32. \p allLengthsOne represents if
+  /// all lengths can be assumed to be one, which can be used as a performance
+  /// optimization by the backend.
   FusedRowwiseQuantizedSparseLengthsSumNode *
   createFusedRowwiseQuantizedSparseLengthsSum(llvm::StringRef name,
                                               Storage *data, NodeValue indices,
                                               NodeValue lengths,
-                                              bool useFP16Accumulation = false);
+                                              bool useFP16Accumulation = false,
+                                              bool allLengthsOne = false);
 
   /// Same as \ref createFusedRowwiseQuantizedSparseLengthsSum(), but expects
   /// float input \p data, which is rowwise-quantized and fused internally.
@@ -1094,14 +1110,15 @@ public:
   createFusedRowwiseQuantizedSparseLengthsSum(
       llvm::StringRef name, Tensor &data, NodeValue indices, NodeValue lengths,
       ElemKind fusedElemKind = ElemKind::UInt8FusedQTy,
-      bool useFP16Accumulation = false);
+      bool useFP16Accumulation = false, bool allLengthsOne = false);
 
   /// Same as \ref createFusedRowwiseQuantizedSparseLengthsSum(), but i-th slice
   /// is multiplied by weights[i]. len(weights) must be equal to len(indices).
   FusedRowwiseQuantizedSparseLengthsWeightedSumNode *
   createFusedRowwiseQuantizedSparseLengthsWeightedSum(
       llvm::StringRef name, NodeValue data, NodeValue weights,
-      NodeValue indices, NodeValue lengths, bool useFP16Accumulation = false);
+      NodeValue indices, NodeValue lengths, bool useFP16Accumulation = false,
+      bool allLengthsOne = false);
 
   /// Same as \ref createFusedRowwiseQuantizedSparseLengthsWeightedSum(), but
   /// expects float input \p data, which is rowwise-quantized and fused
@@ -1111,7 +1128,7 @@ public:
   createFusedRowwiseQuantizedSparseLengthsWeightedSum(
       llvm::StringRef name, Tensor &data, NodeValue weights, NodeValue indices,
       NodeValue lengths, ElemKind fusedElemKind = ElemKind::UInt8FusedQTy,
-      bool useFP16Accumulation = false);
+      bool useFP16Accumulation = false, bool allLengthsOne = false);
 
   /// Given a vector of segment lengths, calculates offsets of each segment and
   /// packs them next to the lengths. For the input vector of length N the
