@@ -310,8 +310,6 @@ TEST(exporter, ChannelwiseQuantizedConvolution) {
       getSingleNodeWithKind<ChannelwiseQuantizedConvolutionNode>(
           R, Kinded::Kind::ChannelwiseQuantizedConvolutionNodeKind));
 
-  ASSERT_TRUE(cqConvReloaded != nullptr);
-
   EXPECT_EQ(cqConvReloaded->getInput().getType(), cqConv->getInput().getType());
   EXPECT_EQ(cqConvReloaded->getResult().getType(),
             cqConv->getResult().getType());
@@ -390,8 +388,6 @@ TEST(exporter, QuantizedConvolution) {
   ASSIGN_VALUE_OR_FAIL_TEST(qConvReloaded,
                             getSingleNodeWithKind<ConvolutionNode>(
                                 R, Kinded::Kind::ConvolutionNodeKind));
-
-  ASSERT_TRUE(qConvReloaded != nullptr);
 
   EXPECT_EQ(qConvReloaded->getInput().getType(), qConv->getInput().getType());
   EXPECT_EQ(qConvReloaded->getResult().getType(), qConv->getResult().getType());
@@ -506,4 +502,50 @@ TEST(exporter, QuantizedAvgPool) {
   EXPECT_EQ(avgPoolReloaded->getKernels(), avgPool->getKernels());
   EXPECT_EQ(avgPoolReloaded->getStrides(), avgPool->getStrides());
   EXPECT_EQ(avgPoolReloaded->getPads(), avgPool->getPads());
+}
+
+TEST(exporter, QuantizedAdaptiveAvgPool) {
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  auto *F = mod.createFunction("F");
+
+  unsigned_t inChannels = 8;
+  unsigned_t inSide = 6;
+  unsigned_t batchSize = 8;
+
+  Placeholder *input = mod.createPlaceholder(
+      ElemKind::Int8QTy, {batchSize, inSide, inSide, inChannels}, 1.2, 3,
+      "input", /* isTrainable */ false);
+
+  auto *outTy = mod.uniqueTypeWithNewShape(input->getType(),
+                                           {batchSize, 3, 3, inChannels});
+
+  auto *adaptiveAvgPool =
+      F->createAdaptiveAvgPool("adaptive_avgpool", input, outTy);
+
+  auto *save = F->createSave("save_out", adaptiveAvgPool->getNthResult(0));
+
+  Placeholder *output = save->getPlaceholder();
+
+  ASSERT_TRUE(F->verify());
+
+  PlaceholderBindings bindings;
+  bindings.allocate({input, output});
+  convertPlaceholdersToConstants(F, bindings, {input, output});
+
+  // Save and reload F.
+  Function *R;
+  ASSIGN_VALUE_OR_FAIL_TEST(
+      R, saveAndReloadFunction(F, {"input"}, {input->getType()}));
+
+  // Verify reloaded function matches the original.
+  AdaptiveAvgPoolNode *adaptiveAvgPoolReloaded;
+  ASSIGN_VALUE_OR_FAIL_TEST(adaptiveAvgPoolReloaded,
+                            getSingleNodeWithKind<AdaptiveAvgPoolNode>(
+                                R, Kinded::Kind::AdaptiveAvgPoolNodeKind));
+
+  EXPECT_EQ(adaptiveAvgPoolReloaded->getInput().getType(),
+            adaptiveAvgPool->getInput().getType());
+  EXPECT_EQ(adaptiveAvgPoolReloaded->getResult().getType(),
+            adaptiveAvgPool->getResult().getType());
 }

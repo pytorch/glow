@@ -304,6 +304,8 @@ class ONNXModelLoader
                          const ArgumentDictionaryTy &dict);
 
   /// Load AdaptiveAvgPool Glow operator.
+  /// NOTE: since this operator is not a standard onnx op, assume this is from
+  /// OnnxModelWriter and is therefore in NHWC format.
   Error loadAdaptiveAvgPool(const ONNX_NAMESPACE::NodeProto &op,
                             const ArgumentDictionaryTy &dict);
 

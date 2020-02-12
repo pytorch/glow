@@ -1199,32 +1199,13 @@ Error ONNXModelWriter::writeAdaptiveAvgPool(const AdaptiveAvgPoolNode *node,
                                             GraphType &graph) {
   auto *proto = graph.add_node();
 
-  // Use the output of transpose node.
-  if (!outputKindToProto(Kinded::Kind::TransposeNodeKind, node, graph, proto)) {
-    // Apparently Result Transpose has been removed, add NCHW2NHWC Transpose.
-    writeTransposeResult(node, proto, graph);
-  }
-
   // Add dictionary entries.
   const auto outShape = ShapeNHWC(node->getResult().dims());
   std::vector<size_t> output_size{outShape.h, outShape.w};
   addValueAttribute(proto, "output_size", llvm::makeArrayRef(output_size));
 
-  const Node *input = node->getInput().getNode();
-  if (const TransposeNode *TN = llvm::dyn_cast<TransposeNode>(input)) {
-    proto->add_input(TN->getInput().getNode()->getName());
-    reportedNodes_.insert(TN);
-  } else if (const ReshapeNode *RSN = llvm::dyn_cast<ReshapeNode>(input)) {
-    proto->add_input(RSN->getInput().getNode()->getName());
-    reportedNodes_.insert(RSN);
-  } else {
-    writeTransposeInput(node, input, proto, graph);
-  }
-
-  proto->set_name(node->getName());
-  proto->set_op_type("AdaptiveAvgPool");
-
-  return Error::success();
+  auto err = writeAllWithNode("AdaptiveAvgPool", node, graph, proto);
+  return err;
 }
 
 Error ONNXModelWriter::writeLocalResponseNormalization(

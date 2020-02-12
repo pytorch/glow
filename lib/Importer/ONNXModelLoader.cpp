@@ -2680,31 +2680,21 @@ Error ONNXModelLoader::loadIdentity(const ONNX_NAMESPACE::NodeProto &op,
 
 Error ONNXModelLoader::loadAdaptiveAvgPool(const ONNX_NAMESPACE::NodeProto &op,
                                            const ArgumentDictionaryTy &dict) {
-  // Glow expects inputs to be in NHWC but ONNX keeps them in NCHW so we
-  // transpose them.
+  const std::string &opName = loadOperatorName(op);
+
   NodeValue input;
   ASSIGN_VALUE_OR_RETURN_ERR(input, getNodeValueByName(op.input(0)));
 
-  input = G_.createTranspose("adaptive_avg_pool2d_input_transposed", input,
-                             NCHW2NHWC);
+  auto outputShape = getShape<unsigned_t>(dict.at("output_size"));
 
-  // OutputSize defaults to size of input if not provided.
-  std::vector<dim_t> outputSize;
-  if (dict.count("output_size")) {
-    outputSize = getShape<dim_t>(dict.at("output_size"));
-  } else {
-    outputSize = {input.dims()[2], input.dims()[3]};
-  }
+  ShapeNHWC idim(input.dims());
 
-  auto idim = glow::ShapeNHWC(input.dims());
   auto outTy = G_.getParent()->uniqueTypeWithNewShape(
-      input.getType(), {idim.n, outputSize[0], outputSize[1], idim.c});
+      input.getType(), {idim.n, outputShape[0], outputShape[1], idim.c});
 
-  Node *N = G_.createAdaptiveAvgPool("adaptive_avg_pool2d", input, outTy);
-  N = G_.createTranspose("adaptive_avg_pool2d_output_transposed", N, NHWC2NCHW);
+  Node *N = G_.createAdaptiveAvgPool(opName, input, outTy);
 
-  RETURN_IF_ERR(addNodeAsOutput(op, N));
-  return Error::success();
+  return addNodeAsOutput(op, N);
 }
 
 Error ONNXModelLoader::loadFlip(const ONNX_NAMESPACE::NodeProto &op,
