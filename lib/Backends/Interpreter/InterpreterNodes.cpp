@@ -806,12 +806,11 @@ void BoundInterpreterFunction::fwdChannelwiseQuantizedConvolutionInst(
               }
             }
 
-            // Scale the bias to match the scale of the matrix multiplication.
-            AccumulatorTy B =
-                std::round(biasW.at({d}) * outScale / matMulScale);
-
-            // Add the bias:
-            sum += B;
+            // Add the channelwise quantized bias.
+            // NOTE: The bias of ChannelwiseQuantizedConvolution should be
+            // quantized such that each element is scaled to match the
+            // matMulScale (biasScale_i = scales_i * inScale).
+            sum += biasW.at({d});
 
             // Scale the result back to the expected destination scale.
             outW.at({n, ax, ay, d}) = quantization::clip<AccumulatorTy, int8_t>(
