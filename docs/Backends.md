@@ -65,6 +65,13 @@ Additionally, there are virtual functions that backends can override:
     [below](#backend-specific-nodes-and-instructions-transformations) for more
     information.
 
+- `virtual bool acceptForExecution(const NodeInfo &NI) const;`
+
+  - Returns whether the backend would like to accept NI for execution. By
+    default this falls back to checking for support via
+    `Backend::isOpSupported()`, however this allows the backend to override to
+    also take into account things like performance considerations.
+
 - `virtual bool verify(const Function &F) const;`
 
   - Verifies that `Function &F` conforms to the backend-dependent graph constraints.
@@ -181,7 +188,7 @@ into the IR. This is done via [ClassGen](ClassGen.md) and implicitly included in
 `tools/ClassGen/NodeGen.cpp` and `tools/ClassGen/InstrGen.cpp`.
 These new nodes and instructions should be defined
 inside the backend sub-directory, in files
-`lib/Backends/<BackendName>/ClassGen/<BackendName>SpecificNodes.h` and 
+`lib/Backends/<BackendName>/ClassGen/<BackendName>SpecificNodes.h` and
 `lib/Backends/<BackendName>/ClassGen/<BackendName>SpecificInstrs.h`:
 
 For example, the CPU Backend defines `CPUMaxSplat`

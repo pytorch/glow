@@ -39,6 +39,15 @@ static llvm::cl::opt<bool, /* ExternalStorage */ true>
         llvm::cl::location(GlowNNPILowerAllBatchMatMul), llvm::cl::Optional,
         llvm::cl::init(false), llvm::cl::cat(optionsForNNPI));
 
+bool GlowNNPIAcceptUnarySLS = false;
+static llvm::cl::opt<bool, /* ExternalStorage */ true>
+    GlowNNPIAcceptUnarySLSOpt(
+        "glow_nnpi_accept_unary_sls",
+        llvm::cl::desc(
+            "Whether to accept unary SLS ops during ONNXIFI loading."),
+        llvm::cl::location(GlowNNPIAcceptUnarySLS), llvm::cl::Optional,
+        llvm::cl::init(false), llvm::cl::cat(optionsForNNPI));
+
 namespace onnxifi {
 
 bool GlowDumpNNPICompilerData = false;
@@ -86,6 +95,35 @@ unsigned NNPIBackend::numDevices() {
   }
   // TODO: Fall back to emulator since GLOW_NNPI is set. This feels hacky.
   return 1;
+}
+
+/// \returns whether \p type is 2 dimensional and unary. Usually the data input
+/// of SparseLengths(Weighted)Sum is passed in here.
+static bool isUnaryLookup(TypeRef type) {
+  if (type->dims().size() != 2) {
+    return false;
+  }
+  return type->dims()[1] == 1;
+}
+
+bool NNPIBackend::acceptForExecution(const NodeInfo &NI) const {
+  if (!isOpSupported(NI)) {
+    return false;
+  }
+
+  // For performance reasons, only accept for execution SLS/SLWS with non-unary
+  // data inputs.
+  switch (NI.getKind()) {
+  case Kinded::Kind::SparseLengthsSumNodeKind:
+    return GlowNNPIAcceptUnarySLS ||
+           !isUnaryLookup(NI.getInTy(SparseLengthsSumNode::DataIdx));
+  case Kinded::Kind::SparseLengthsWeightedSumNodeKind:
+    return GlowNNPIAcceptUnarySLS ||
+           !isUnaryLookup(NI.getInTy(SparseLengthsWeightedSumNode::DataIdx));
+
+  default:
+    return true;
+  }
 }
 
 bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
