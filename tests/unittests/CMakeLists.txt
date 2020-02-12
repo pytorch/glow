@@ -82,6 +82,26 @@ add_glow_test(NAME Caffe2ImporterTest
                   --gtest_output=xml:Caffe2ImporterTest.xml
               WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
+add_executable(LoaderTest
+               LoaderTest.cpp ../../tools/loader/Loader.cpp)
+target_link_libraries(LoaderTest
+                                PRIVATE
+                                  Backends
+                                  Base
+                                  Graph
+                                  HostManager
+                                  Importer
+                                  GraphOptimizer
+                                  ExecutionEngine
+                                  Quantization
+                                  gtest
+                                  TestMain)
+add_glow_test(NAME LoaderTest
+                        COMMAND ${GLOW_BINARY_DIR}/tests/LoaderTest
+                           -m=model
+                           --gtest_output=xml:LoaderTest.xml
+                        WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
 add_executable(ThreadPoolExecutorTest
         ThreadPoolExecutorTest.cpp)
 target_link_libraries(ThreadPoolExecutorTest

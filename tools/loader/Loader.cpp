@@ -48,9 +48,9 @@ static llvm::cl::opt<bool, true>
                    llvm::cl::desc("Enable rowwise quantized fully connected."),
                    llvm::cl::location(enableRowwiseOpt), llvm::cl::init(false));
 
-namespace {
 llvm::cl::OptionCategory loaderCat("Loader Options");
 
+namespace {
 llvm::cl::list<std::string> modelPathOpt(
     "model",
     llvm::cl::desc(
@@ -679,6 +679,33 @@ void Loader::generateAndSerializeQuantizationInfos(
   }
   std::sort(QI.begin(), QI.end(), compareQI);
   serializeToYaml(dumpProfileFileOpt, QI);
+}
+
+Loader &Loader::registerExtension(std::unique_ptr<LoaderExtension> extension) {
+  loaderExtensionList_.push_back(std::move(extension));
+  return *this;
+}
+
+void Loader::postModelLoad(PlaceholderBindings &bindings,
+                           ProtobufLoader &protoLoader,
+                           size_t compilationBatchSize) {
+  for (auto &&ext : loaderExtensionList_) {
+    ext->postModelLoad(*this, bindings, protoLoader, compilationBatchSize);
+  }
+}
+
+void Loader::inferInitMiniBatch(PlaceholderBindings &bindings,
+                                size_t minibatchIndex, size_t minibatchSize) {
+  for (auto &&ext : loaderExtensionList_) {
+    ext->inferInitMiniBatch(*this, bindings, minibatchIndex, minibatchSize);
+  }
+}
+
+void Loader::inferEndMiniBatch(PlaceholderBindings &bindings,
+                               size_t minibatchIndex, size_t minibatchSize) {
+  for (auto &&ext : loaderExtensionList_) {
+    ext->inferEndMiniBatch(*this, bindings, minibatchIndex, minibatchSize);
+  }
 }
 
 Loader::Loader() {
