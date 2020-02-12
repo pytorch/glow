@@ -1477,7 +1477,6 @@ DEF_ALL_WRITER_NODE(CmpLT)
 DEF_ALL_WRITER_NODE(BatchedAdd)
 DEF_ALL_WRITER_NODE(Dequantize)
 DEF_ALL_WRITER_NODE(Regression)
-DEF_ALL_WRITER_NODE(RowwiseQuantizedFullyConnected)
 DEF_ALL_WRITER_NODE(RowwiseQuantizedSparseLengthsWeightedSum)
 DEF_ALL_WRITER_NODE(FusedRowwiseQuantizedSparseLengthsSum)
 DEF_ALL_WRITER_NODE(EmbeddingBagByteRowwiseOffsets)
@@ -1583,6 +1582,21 @@ Error ONNXModelWriter::writeFullyConnected(const FullyConnectedNode *node,
   proto->add_input(node->getBias().getNode()->getName());
   outputsToProto(node, graph, proto);
   return Error::success();
+}
+
+Error ONNXModelWriter::writeRowwiseQuantizedFullyConnected(
+    const RowwiseQuantizedFullyConnectedNode *node, GraphType &graph) {
+  auto *proto = graph.add_node();
+
+  // Add dictionary entries.
+  addValueAttribute(
+      proto, "out_scale",
+      node->getType(RowwiseQuantizedFullyConnectedNode::ResultIdx)->getScale());
+  addValueAttribute(proto, "out_offset",
+                    node->getType(RowwiseQuantizedFullyConnectedNode::ResultIdx)
+                        ->getOffset());
+
+  return writeAllWithNode("RowwiseQuantizedFullyConnected", node, graph, proto);
 }
 
 Error ONNXModelWriter::writeSparseToDense(const SparseToDenseNode *node,

@@ -549,3 +549,60 @@ TEST(exporter, QuantizedAdaptiveAvgPool) {
   EXPECT_EQ(adaptiveAvgPoolReloaded->getResult().getType(),
             adaptiveAvgPool->getResult().getType());
 }
+
+TEST(exporter, RowwiseQuantizedFullyConnected) {
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  auto *F = mod.createFunction("F");
+
+  Placeholder *input = mod.createPlaceholder(
+      ElemKind::Int8QTy, {2, 100}, 1.2, 3, "input", /* isTrainable */ false);
+
+  Constant *weightsConstant =
+      mod.createConstant(ElemKind::Int8QTy, {10, 100}, 1.0, 0, "weights");
+
+  Constant *biasConstant =
+      mod.createConstant(ElemKind::Int32QTy, {10}, 1.0, 0, "bias");
+
+  Constant *scalesConstant =
+      mod.createConstant(ElemKind::FloatTy, {10}, "scales");
+
+  Constant *offsetsConstant =
+      mod.createConstant(ElemKind::Int32ITy, {10}, "offsets");
+
+  auto *outTy = mod.uniqueType(ElemKind::Int8QTy, {2, 10}, 3.8, 4);
+
+  auto *rwqFC = F->createRowwiseQuantizedFullyConnected(
+      "rwqFC", input, weightsConstant, scalesConstant, offsetsConstant,
+      biasConstant, outTy);
+
+  auto *save = F->createSave("save_out", rwqFC);
+
+  Placeholder *output = save->getPlaceholder();
+
+  ASSERT_TRUE(F->verify());
+
+  PlaceholderBindings bindings;
+  bindings.allocate({input, output});
+
+  // Save and reload F.
+  Function *R;
+  ASSIGN_VALUE_OR_FAIL_TEST(
+      R, saveAndReloadFunction(F, {"input"}, {input->getType()}));
+
+  RowwiseQuantizedFullyConnectedNode *rwqFCReloaded;
+  ASSIGN_VALUE_OR_FAIL_TEST(
+      rwqFCReloaded,
+      getSingleNodeWithKind<RowwiseQuantizedFullyConnectedNode>(
+          R, Kinded::Kind::RowwiseQuantizedFullyConnectedNodeKind));
+
+  EXPECT_EQ(rwqFCReloaded->getInput().getType(), rwqFC->getInput().getType());
+  EXPECT_EQ(rwqFCReloaded->getResult().getType(), rwqFC->getResult().getType());
+
+  EXPECT_EQ(rwqFCReloaded->getWeights().getType(),
+            rwqFC->getWeights().getType());
+  EXPECT_EQ(rwqFCReloaded->getBias().getType(), rwqFC->getBias().getType());
+  EXPECT_EQ(rwqFCReloaded->getScales().getType(), rwqFC->getScales().getType());
+  EXPECT_EQ(rwqFCReloaded->getOffsets().getType(),
+            rwqFC->getOffsets().getType());
+}

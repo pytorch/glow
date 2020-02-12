@@ -2559,6 +2559,42 @@ Error ONNXModelLoader::loadFullyConnected(const ONNX_NAMESPACE::NodeProto &op,
   return Error::success();
 }
 
+Error ONNXModelLoader::loadRowwiseQuantizedFullyConnected(
+    const ONNX_NAMESPACE::NodeProto &op, const ArgumentDictionaryTy &dict) {
+  NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getNodeValueByName(op.input(0)));
+
+  NodeValue weights;
+  ASSIGN_VALUE_OR_RETURN_ERR(weights, getNodeValueByName(op.input(1)));
+  auto *weightsC = llvm::dyn_cast<Constant>(weights.getNode());
+
+  NodeValue scales;
+  ASSIGN_VALUE_OR_RETURN_ERR(scales, getNodeValueByName(op.input(2)));
+  auto *scalesC = llvm::dyn_cast<Constant>(scales.getNode());
+
+  NodeValue offsets;
+  ASSIGN_VALUE_OR_RETURN_ERR(offsets, getNodeValueByName(op.input(3)));
+  auto *offsetsC = llvm::dyn_cast<Constant>(offsets.getNode());
+
+  NodeValue bias;
+  ASSIGN_VALUE_OR_RETURN_ERR(bias, getNodeValueByName(op.input(4)));
+  auto *biasC = llvm::dyn_cast<Constant>(bias.getNode());
+
+  float outScale;
+  ASSIGN_VALUE_OR_RETURN_ERR(outScale, loadFloat(dict.at("out_scale")));
+  int32_t outOffset;
+  ASSIGN_VALUE_OR_RETURN_ERR(outOffset, loadInt(dict.at("out_offset")));
+
+  auto outTy = G_.getParent()->uniqueType(ElemKind::Int8QTy,
+                                          {input.dims()[0], weights.dims()[0]},
+                                          outScale, outOffset);
+
+  Node *N = G_.createRowwiseQuantizedFullyConnected(
+      "rowwise_quantized_fc", input, weightsC, scalesC, offsetsC, biasC, outTy);
+
+  return addNodeAsOutput(op, N);
+}
+
 Error ONNXModelLoader::loadNonMaxSuppression(
     const ONNX_NAMESPACE::NodeProto &op, const ArgumentDictionaryTy &dict,
     bool isV4) {
@@ -2711,12 +2747,6 @@ Error ONNXModelLoader::loadFlip(const ONNX_NAMESPACE::NodeProto &op,
 
   RETURN_IF_ERR(addNodeAsOutput(op, N));
   return Error::success();
-}
-
-Error ONNXModelLoader::loadRowwiseQuantizedFullyConnected(
-    const ONNX_NAMESPACE::NodeProto &op, const ArgumentDictionaryTy &dict) {
-  // TODO
-  RETURN_ERR("Not implemented.");
 }
 
 Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
