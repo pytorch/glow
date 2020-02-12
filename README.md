@@ -73,6 +73,18 @@ To get them, from the glow directory, run:
   git submodule update --init --recursive
   ```
 
+#### Source dependencies
+
+Glow depends on `fmt`, which must be built from source:
+```bash
+git clone https://github.com/fmtlib/fmt
+mkdir fmt/build
+cd fmt/build
+cmake ..
+make
+sudo make install
+```
+
 #### macOS
 
 Install the required dependencies using either [Homebrew](https://brew.sh/) or
