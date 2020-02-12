@@ -2591,7 +2591,7 @@ static Expected<Tensor> channelwiseQuantizeFloatBias(NodeValue bias,
                                /* scale */ 1.0, /* offset */ 0);
   auto biasQuantizedH = biasQuantizedT.getHandle<int32_t>();
 
-  for (auto i = 0; i < biasQuantizedH.size(); ++i) {
+  for (dim_t i = 0; i < biasQuantizedH.size(); ++i) {
     TensorQuantizationParams tqp;
     tqp.scale = inputScale * scalesH.raw(i);
     tqp.offset = 0;
@@ -2599,7 +2599,7 @@ static Expected<Tensor> channelwiseQuantizeFloatBias(NodeValue bias,
         quantization::quantize<int32_t>(biasUnquantizedH.raw(i), tqp);
   }
 
-  return biasQuantizedT;
+  return Expected<Tensor>(std::move(biasQuantizedT));
 }
 
 ChannelwiseQuantizedConvolutionNode *Function::createChannelwiseQuantizedConv(
