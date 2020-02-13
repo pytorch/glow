@@ -1378,6 +1378,13 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     RETURN_ERR_IF_NOT(lengths.dims().size() == 1, "lengths must be a vector.");
     RETURN_ERR_IF_NOT(indices.dims().size() == 1, "indices must be a vector.");
 
+    bool allLengthsOne = false;
+    if (dict.count("length1")) {
+      int allLengthsOneInt;
+      ASSIGN_VALUE_OR_RETURN_ERR(allLengthsOneInt, loadInt(dict["length1"]));
+      allLengthsOne = (bool)allLengthsOneInt;
+    }
+
     Node *node;
     if (isFused) {
       // There is no specific fused quantized type in Caffe2, so we will load
@@ -1403,10 +1410,12 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
       // create the new node with its inputs.
       if (isWeighted) {
         node = G_.createFusedRowwiseQuantizedSparseLengthsWeightedSum(
-            opName, dataS, weights, indices, lengths);
+            opName, dataS, weights, indices, lengths,
+            /* useFP16Accumulation */ false, allLengthsOne);
       } else {
-        node = G_.createFusedRowwiseQuantizedSparseLengthsSum(opName, dataS,
-                                                              indices, lengths);
+        node = G_.createFusedRowwiseQuantizedSparseLengthsSum(
+            opName, dataS, indices, lengths, /* useFP16Accumulation */ false,
+            allLengthsOne);
       }
 
       if (is4Bit) {
