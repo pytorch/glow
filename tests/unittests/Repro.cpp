@@ -262,7 +262,7 @@ public:
   ::glow::Tensor *getTensor() override { return currentTensor_.get(); }
 
   void setTypeInfo(std::map<std::string, ::glow::Type> info) override {
-    typeInfo_ = info;
+    typeInfo_ = std::move(info);
   }
 
 private:
