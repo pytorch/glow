@@ -76,7 +76,5 @@ private:
   static NNPIBackendOptions backendOptions_;
 };
 
-Backend *createNNPIBackend(const runtime::DeviceConfig &deviceConfig);
-
 } // namespace glow
 #endif // GLOW_NNPI_BACKEND_H
