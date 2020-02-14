@@ -144,8 +144,11 @@ following command should install the required dependencies:
   ```bash
   sudo apt-get install clang clang-8 cmake graphviz libpng-dev \
       libprotobuf-dev llvm-8 llvm-8-dev ninja-build protobuf-compiler wget \
-      opencl-headers libgoogle-glog-dev
+      opencl-headers libgoogle-glog-dev libboost-all-dev \
+      libdouble-conversion-dev libevent-dev libssl-dev libgflags-dev \
+      libjemalloc-dev libpthread-stubs0-dev
   ```
+
 [Note: Ubuntu 16.04 and 18.04 ship with llvm-6 and need to be upgraded before building Glow. Building Glow on Ubuntu 16.04 with llvm-7 fails because llvm-7 xenial distribution uses an older c++ ABI, however building Glow on Ubuntu 18.04 with llvm-7 has been tested and is successful]
 
 It may be desirable to use `update-alternatives` to manage the version of
