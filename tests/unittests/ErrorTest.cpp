@@ -153,3 +153,23 @@ TEST(Error, ExpectedConversion) {
 
   EXPECT_EQ(barRes, 42);
 }
+
+TEST(Error, PeekError) {
+  const char *msg = "some error";
+  auto err = MAKE_ERR(msg);
+  auto str = err.peekErrorValue()->logToString();
+  EXPECT_NE(str.find(msg), std::string::npos)
+      << "Error should preserve the given message";
+  EXPECT_FALSE(err.isChecked_());
+  ERR_TO_VOID(std::move(err));
+}
+
+TEST(Error, PeekExpected) {
+  const char *msg = "some error";
+  Expected<int> intOrErr = MAKE_ERR(msg);
+  auto str = intOrErr.peekErrorValue()->logToString();
+  EXPECT_NE(str.find(msg), std::string::npos)
+      << "Error should preserve the given message";
+  EXPECT_FALSE(intOrErr.isChecked_());
+  ERR_TO_VOID(intOrErr.takeError());
+}

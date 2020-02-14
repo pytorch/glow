@@ -189,6 +189,9 @@ public:
 
   /// Destructor that is used to ensure that base classes have been checked.
   ~CheckState() { ensureChecked(); }
+
+  /// NOTE: Only use for testing!
+  bool isChecked() const { return checked_; }
 };
 
 /// Specialization of CheckState with checking disabled.
@@ -213,7 +216,7 @@ public:
   T &get() { return *reinterpret_cast<T *>(payload_); }
 
   /// Gets the value within this Opaque container.
-  const T &get() const { return *reinterpret_cast<T *>(payload_); }
+  const T &get() const { return *reinterpret_cast<const T *>(payload_); }
 
   /// Call the destructor of the value in this container.
   void destroy() { get().~T(); }
@@ -451,6 +454,15 @@ public:
     }
     return hasError;
   }
+
+  /// \returns a pointer to the contained ErrorValue or nullptr if no
+  /// ErrorValue is contained in this Error.
+  inline const GlowErrorValue *peekErrorValue() const {
+    return errorValue_.get();
+  }
+
+  /// NOTE: Only use for testing!
+  bool isChecked_() const { return isChecked(); }
 };
 
 /// ErrorSuccess is a special Error that is used to mark the absents of an
@@ -701,6 +713,15 @@ public:
     return GlowError::success();
   }
 
+  /// \returns a pointer to the contained ErrorValue or nullptr if no
+  /// ErrorValue is contained in this Expected.
+  inline const GlowErrorValue *peekErrorValue() const {
+    if (getIsError()) {
+      return payload_.asErrorValue.get().get();
+    }
+    return nullptr;
+  }
+
   T *operator->() { return getValue(); }
 
   const T *operator->() const { return getValue(); }
@@ -708,6 +729,9 @@ public:
   T &operator*() { return *getValue(); }
 
   const T &operator*() const { return *getValue(); }
+
+  /// NOTE: Only use for testing!
+  bool isChecked_() const { return isChecked(); }
 };
 
 /// Given an Expected<T>, asserts that it contains a value T and \returns it. If
