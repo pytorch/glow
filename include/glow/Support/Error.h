@@ -151,10 +151,10 @@ namespace detail {
 /// enableCheckingErrors is used to enable assertions that every Error and
 /// Expected has its status checked before it is destroyed. This should be
 /// enabled in debug builds but turned off otherwise.
-#ifndef NDEBUG
-static constexpr bool enableCheckingErrors = true;
-#else
+#ifdef NDEBUG
 static constexpr bool enableCheckingErrors = false;
+#else
+static constexpr bool enableCheckingErrors = true;
 #endif
 
 /// Is true_type only if applied to Error or a descendant.
@@ -199,6 +199,8 @@ template <> class CheckState<false> {
 public:
   inline void setChecked(bool checked) {}
   inline void ensureChecked() const {}
+  /// NOTE: Only use for testing!
+  bool isChecked() const { return true; }
 };
 
 /// Opaque is an aligned opaque container for some type T. It holds a T in-situ
