@@ -33,7 +33,8 @@ namespace {
 /// Given a Function \p F and input names \p inpuTensorNames and input types \p
 /// inputTensorTypes, writes the function to file and reads it back using the
 /// ONNXModelWriter and ONNXModelReader respectively then \returns the
-/// reloaded function.
+/// reloaded function. \p useGlowCustomOps is used for determining the format
+/// for ONNXModelWriter to write with.
 Expected<Function *>
 saveAndReloadFunction(Function *F, llvm::ArrayRef<const char *> inpuTensorNames,
                       llvm::ArrayRef<TypeRef> inputTensorTypes,
