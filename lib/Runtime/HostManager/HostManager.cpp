@@ -409,7 +409,7 @@ void HostManager::dispatchNextRun() {
         TRACE_EVENT_LOG_ID(context->getTraceContext(), TraceLevel::REQUEST,
                            "network_execution_e2e", TraceEvent::AsyncEndType,
                            TraceEvent::now(), requestId);
-        updateExecutionStats(startTime, context);
+        updateExecutionStats(startTime, context, name, err);
         callback(runID, std::move(err), std::move(context));
         dispatchNextRun();
       });
@@ -485,14 +485,19 @@ HostManager::runNetwork(llvm::StringRef networkName,
 
 /// Helper to update execution stats
 void HostManager::updateExecutionStats(
-    uint64_t startTime, std::unique_ptr<ExecutionContext> &context) {
+    uint64_t startTime, std::unique_ptr<ExecutionContext> &context,
+    llvm::StringRef networkName, const Error &error) {
   auto duration = TraceEvent::now() - startTime;
-  statsExporterRegistry_->addTimeSeriesValue("network_execution_e2e", duration);
-  statsExporterRegistry_->incrementCounter("network_execution");
-  if (context && context->getPlaceholderBindings() && duration > 0) {
-    statsExporterRegistry_->addTimeSeriesValue(
-        "network_execution_throughput",
-        context->getPlaceholderBindings()->getDataSize() * 1000000 / duration);
+  statsExporterRegistry_->addTimeSeriesValue(
+      ("glow.execution_duration_e2e." + networkName).str(), duration);
+  statsExporterRegistry_->incrementCounter(
+      ("glow.requests_processed." + networkName).str());
+  if (error.peekErrorValue()) {
+    statsExporterRegistry_->incrementCounter(
+        ("glow.requests_failed." + networkName).str());
+  } else {
+    statsExporterRegistry_->incrementCounter(
+        ("glow.requests_succeeded." + networkName).str());
   }
 }
 
