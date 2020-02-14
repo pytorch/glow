@@ -238,14 +238,23 @@ std::string Module::toString() const {
   return os.str();
 }
 
+/// Creates a std::set copy of \p unsorted, sorted based on name of each
+/// element, and \returns it.
+template <class T>
+static std::set<T *, SortNamed> getNamedSorted(const std::list<T *> &unsorted) {
+  return std::set<T *, SortNamed>(unsorted.begin(), unsorted.end());
+}
+
 void Module::dump(llvm::raw_ostream &os) const {
   os << "Module structure:\n";
-  for (auto v : getConstants()) {
-    os << v->getDebugDesc() << "\n";
+  for (auto *C : getNamedSorted(constants_)) {
+    os << C->getDebugDesc() << "\n";
   }
-
-  for (auto f : functions_) {
-    os << "Function:" << f->getName() << "\n";
+  for (auto *P : getNamedSorted(placeholders_)) {
+    os << P->getDebugDesc() << "\n";
+  }
+  for (auto *F : getNamedSorted(functions_)) {
+    os << "Function : " << F->getName() << "\n";
   }
 }
 
@@ -4173,8 +4182,12 @@ std::string Function::toString() const {
 
 void Function::dump(llvm::raw_ostream &os) const {
   os << "Graph structure " << getName() << ":\n";
-  for (auto &n : nodes_) {
-    os << n.getDebugDesc();
+  std::set<const Node *, SortNamed> sorted;
+  for (const Node &n : nodes_) {
+    sorted.insert(&n);
+  }
+  for (auto *n : sorted) {
+    os << n->getDebugDesc();
   }
 }
 
