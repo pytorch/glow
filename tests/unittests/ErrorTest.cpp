@@ -160,7 +160,9 @@ TEST(Error, PeekError) {
   auto str = err.peekErrorValue()->logToString();
   EXPECT_NE(str.find(msg), std::string::npos)
       << "Error should preserve the given message";
+#ifndef NDEBUG
   EXPECT_FALSE(err.isChecked_());
+#endif
   ERR_TO_VOID(std::move(err));
 }
 
@@ -170,6 +172,8 @@ TEST(Error, PeekExpected) {
   auto str = intOrErr.peekErrorValue()->logToString();
   EXPECT_NE(str.find(msg), std::string::npos)
       << "Error should preserve the given message";
+#ifndef NDEBUG
   EXPECT_FALSE(intOrErr.isChecked_());
+#endif
   ERR_TO_VOID(intOrErr.takeError());
 }
