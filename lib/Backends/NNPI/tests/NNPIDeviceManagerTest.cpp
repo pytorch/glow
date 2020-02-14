@@ -25,6 +25,7 @@ struct BlacklistInitializer {
         {
             {"MultiFunction/0", TestBlacklist::AnyDeviceAnyEngine},
             {"DeviceResidentTensors/0", TestBlacklist::AnyDeviceAnyEngine},
+            {"AvailableMemory/0", TestBlacklist::AnyDeviceAnyEngine},
             {"TransferStaticPlaceholderTest/0",
              TestBlacklist::AnyDeviceSWEngine},
             {"CanHandleDeviceResidentTensors/0",
