@@ -857,6 +857,7 @@ public:
             function_.createFusedRowwiseQuantizedSparseLengthsWeightedSum(
                 SLWS->getName(), dataC->getPayloadMutable(), weightsF,
                 SLWS->getIndices(), SLWS->getLengths());
+        FRWQSLWS->setIAOffload(SLWS->getIAOffload());
 
         // Fused RWQSLWS stores the fused scales and offsets in trailing
         // columns. If the input was single dimensional then it adds extra

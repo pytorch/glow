@@ -1417,6 +1417,7 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
             opName, dataS, indices, lengths, /* useFP16Accumulation */ false,
             allLengthsOne);
       }
+      RETURN_IF_ERR(setIAOffload(node, dict));
 
       if (is4Bit) {
         node = G_.createConvertTo(opName, node, ElemKind::FloatTy);
@@ -1458,6 +1459,7 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
         node = G_.createRowwiseQuantizedSparseLengthsSum(
             opName, dataS, dataScales, dataOffsets, indices, lengths);
       }
+      RETURN_IF_ERR(setIAOffload(node, dict));
     }
 
     RETURN_IF_ERR(addNodeAsOutput(op, node));

@@ -2494,6 +2494,7 @@ Error ONNXModelLoader::loadRowwiseQuantizedSparseLengthsWeightedSum(
 
   Node *N = G_.createRowwiseQuantizedSparseLengthsWeightedSum(
       loadOperatorName(op), data, scales, offsets, weights, indices, lengths);
+  RETURN_IF_ERR(setIAOffload(N, dict));
 
   RETURN_IF_ERR(addNodeAsOutput(op, N));
   return Error::success();
@@ -2512,14 +2513,14 @@ Error ONNXModelLoader::loadFusedRowwiseQuantizedSparseLengthsWeightedSum(
 
   Node *N = G_.createFusedRowwiseQuantizedSparseLengthsWeightedSum(
       loadOperatorName(op), data, weights, indices, lengths);
+  RETURN_IF_ERR(setIAOffload(N, dict));
 
   RETURN_IF_ERR(addNodeAsOutput(op, N));
   return Error::success();
 }
 
 Error ONNXModelLoader::loadFusedRowwiseQuantizedSparseLengthsSum(
-    const ONNX_NAMESPACE::NodeProto &op,
-    const ArgumentDictionaryTy & /* unused */) {
+    const ONNX_NAMESPACE::NodeProto &op, const ArgumentDictionaryTy &dict) {
   NodeValue data;
   ASSIGN_VALUE_OR_RETURN_ERR(data, getNodeValueByName(op.input(0)));
   NodeValue indices;
@@ -2530,7 +2531,7 @@ Error ONNXModelLoader::loadFusedRowwiseQuantizedSparseLengthsSum(
   Storage *dataS = llvm::dyn_cast<Storage>(data);
   Node *N = G_.createFusedRowwiseQuantizedSparseLengthsSum(
       loadOperatorName(op), dataS, indices, lengths);
-
+  RETURN_IF_ERR(setIAOffload(N, dict));
   RETURN_IF_ERR(addNodeAsOutput(op, N));
   return Error::success();
 }

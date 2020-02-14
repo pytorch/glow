@@ -61,6 +61,7 @@ struct SLSParam {
   bool isSorted;
   bool addClip;
   bool useFP16Accumulation;
+  bool IAOffload;
   ElemKind fusedDtype;
   ElemKind dtype;
 };
@@ -254,6 +255,7 @@ public:
       R = fn->createSparseLengthsSum(getSLSDescription(param), dataConstant,
                                      indices, lengths);
     }
+    R->setIAOffload(param.IAOffload);
     SaveNode *S = nullptr;
     if (param.addClip) {
       auto *clp = fn->createClip("clip", R, -65504.0f, 65504.0f);
@@ -348,7 +350,8 @@ public:
 // Indices of arguments
 #define ROWWISE_QUANT 14
 #define ACCUM_TYPE 15
-#define DEVICE_ID 16
+#define IA_OFFLOAD 16
+#define DEVICE_ID 17
 
 SLSParam parseArgs(int argc, char *argv[]) {
   SLSParam param;
@@ -430,6 +433,18 @@ SLSParam parseArgs(int argc, char *argv[]) {
   } else {
     param.useFP16Accumulation = false;
   }
+  if (argc > IA_OFFLOAD) {
+    printf("IAOffload %s\n", argv[IA_OFFLOAD]);
+    if (std::string(argv[IA_OFFLOAD]) == "True") {
+      param.IAOffload = true;
+    } else if (std::string(argv[IA_OFFLOAD]) == "False") {
+      param.IAOffload = false;
+    } else {
+      llvm_unreachable("Invalid IAOffload");
+    }
+  } else {
+    param.IAOffload = false;
+  }
   if (argc > DEVICE_ID) {
     printf("devId %s\n", argv[DEVICE_ID]);
     param.devId = std::string(argv[DEVICE_ID]);
@@ -443,19 +458,19 @@ SLSParam parseArgs(int argc, char *argv[]) {
 int main(int argc, char *argv[]) {
 
   printf("SLS Microbenchmark\n");
-  printf(
-      "Usage: SLSBench batchSize(Int) numIndicesPerBatch(Int) "
-      "numIndicesPerBatchPad(Int) numTableEntries(Int) "
-      "numElementsPerRow(int) numReps(Int) "
-      "numAsyncLaunches(Int) numSLSNodes(Int) "
-      "slsKindStr(\"QuantizedWeighted\"|\"QuantizedUnweighted\"|"
-      "\"NonquantizedWeighted\"|"
-      "\"NonquantizedUnweighted\") "
-      "sortedStr(\"Sorted\"|\"Unsorted\") backendStr(String) "
-      "dtypeStr(\"Float16\"|\"Float32\") "
-      "addClipStr(\"True\"|\"False\")\nQuantized only options: "
-      "quantizationDtypeStr(\"Int8\"|\"Int4\") "
-      "useFP16AccumulationStr(\"True\"|\"False\") \nOptional: dev_id(Int)\n");
+  printf("Usage: SLSBench batchSize(Int) numIndicesPerBatch(Int) "
+         "numIndicesPerBatchPad(Int) numTableEntries(Int) "
+         "numElementsPerRow(int) numReps(Int) "
+         "numAsyncLaunches(Int) numSLSNodes(Int) "
+         "slsKindStr(\"QuantizedWeighted\"|\"QuantizedUnweighted\"|"
+         "\"NonquantizedWeighted\"|"
+         "\"NonquantizedUnweighted\") "
+         "sortedStr(\"Sorted\"|\"Unsorted\") backendStr(String) "
+         "dtypeStr(\"Float16\"|\"Float32\") "
+         "addClipStr(\"True\"|\"False\")\nQuantized only options: "
+         "quantizationDtypeStr(\"Int8\"|\"Int4\") "
+         "useFP16AccumulationStr(\"True\"|\"False\") \n"
+         "IAOffloadStr(\"True\"|\"False\") \nOptional: dev_id(Int)\n");
   printf("\n");
 
   std::vector<SLSParam> params;
@@ -488,7 +503,7 @@ int main(int argc, char *argv[]) {
     }
   }
   // Using command line
-  else if (argc == 14 || argc == 15 || argc == 16 || argc == 17) {
+  else if (argc == 14 || argc == 15 || argc == 16 || argc == 17 || argc == 18) {
     SLSParam param = parseArgs(argc, argv);
     params.push_back(param);
 
@@ -497,7 +512,7 @@ int main(int argc, char *argv[]) {
         "numTableEntries,"
         "numElementsPerRow,numReps,numAsyncLaunches,numSLSNodes,slsKindStr,"
         "backendStr,dtypeStr,addClipStr,quantizationDtypeStr,"
-        "useFP16AccumulationStr");
+        "useFP16AccumulationStr,IAOffloadStr");
     runPrefix = std::string(strFormat(
         "SLSBench,SW,%zu,%zu,%zu,%zu,%zu,%zu,%zu,%zu,%s,%s,%s,%"
         "s,%s,%"

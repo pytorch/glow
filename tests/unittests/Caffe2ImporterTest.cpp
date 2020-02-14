@@ -2674,6 +2674,85 @@ TEST_F(Caffe2ImporterTest, SparseLengthsSumFused8BitRowwiseAllLengthsOne) {
   EXPECT_TRUE(expected.isEqual(result, 0.02f));
 }
 
+/// Test loading SparseLengthsSumFused8BitRowwise with IAOffload set.
+TEST_F(Caffe2ImporterTest, SparseLengthsSumFused8BitRowwiseIAOffload) {
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string NetDescFilename(GLOW_DATA_PATH
+                              "tests/models/caffe2Models/"
+                              "fused_rowwise_quantized_sparse_lengths_sum_"
+                              "predict_net_ia_offload.pbtxt");
+  std::string NetWeightFilename(
+      GLOW_DATA_PATH
+      "tests/models/caffe2Models/"
+      "fused_rowwise_quantized_sparse_lengths_sum_init_net.pbtxt");
+
+  Placeholder *output, *indices, *lengths;
+  PlaceholderBindings bindings;
+
+  TypeRef indicesType = F->getParent()->uniqueType(IndexElemKind, {5});
+  TypeRef lengthsType = F->getParent()->uniqueType(ElemKind::Int32ITy, {5});
+
+  // Destroy the loader after the graph is loaded since the following execution
+  // will not depend on anything from the loader.
+  {
+    Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename,
+                               {"indices", "lengths"},
+                               {indicesType, lengthsType}, *F);
+
+    indices = llvm::dyn_cast<Placeholder>(
+        EXIT_ON_ERR(caffe2LD.getNodeValueByName("indices")));
+    lengths = llvm::dyn_cast<Placeholder>(
+        EXIT_ON_ERR(caffe2LD.getNodeValueByName("lengths")));
+    output = EXIT_ON_ERR(caffe2LD.getSingleOutput());
+  }
+
+  ASSERT_TRUE(indices);
+  ASSERT_TRUE(lengths);
+
+  bindings.allocate(indices)->getHandle<sdim_t>() = {
+      2, 0, 1, 2, 0,
+  };
+  bindings.allocate(lengths)->getHandle<int32_t>() = {
+      1, 1, 1, 1, 1,
+  };
+
+  // High level check on the content of the graph. We have 1 rowwise-quantized
+  // SLS and 1 save.
+  EXPECT_EQ(F->getNodes().size(), 2);
+  SaveNode *saveNode = getSaveNodeFromDest(output);
+  FusedRowwiseQuantizedSparseLengthsSumNode *FRWQSLS =
+      llvm::dyn_cast<FusedRowwiseQuantizedSparseLengthsSumNode>(
+          saveNode->getInput().getNode());
+  ASSERT_TRUE(FRWQSLS);
+  ASSERT_TRUE(FRWQSLS->getIAOffload());
+  // Check that the data input is a Constant node with expected ElemKind.
+  Constant *data = llvm::dyn_cast<Constant>(FRWQSLS->getData().getNode());
+  ASSERT_TRUE(data);
+  EXPECT_TRUE(data->getElementType() == ElemKind::UInt8FusedQTy);
+
+  // We have 3 placeholders: 1 for save, and then indices and lengths.
+  EXPECT_EQ(mod.getPlaceholders().size(), 3);
+
+  // We have 1 constant: data.
+  EXPECT_EQ(mod.getConstants().size(), 1);
+
+  EE.compile(CompilationMode::Infer);
+  bindings.allocate(mod.getPlaceholders());
+
+  EE.run(bindings);
+
+  Tensor &result = *bindings.get(output);
+  Tensor expected(ElemKind::FloatTy, {5, 2});
+  expected.getHandle() = {
+      4.5f, 5.7f, 1.0f, 1.2f, 2.3f, 3.4f, 4.5f, 5.7f, 1.0f, 1.2f,
+  };
+
+  EXPECT_TRUE(expected.isEqual(result, 0.02f));
+}
+
 /// Test loading SparseLengthsSumFused4BitRowwise.
 TEST_F(Caffe2ImporterTest, SparseLengthsSumFused4BitRowwise) {
   ExecutionEngine EE{};

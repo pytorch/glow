@@ -1125,6 +1125,7 @@ static void lowerSparseLengthsSumNode(Function *F, CompilationContext &cctx,
   auto *SLWSN = F->createSparseLengthsWeightedSum(
       SLSN.getName().str(), SLSN.getData(), ones, SLSN.getIndices(),
       SLSN.getLengths(), SLSN.getAllLengthsOne());
+  SLWSN->setIAOffload(SLSN.getIAOffload());
 
   replaceAllUsesOfWith(cctx.loweredInfoMap, SLSN.getResult(), SLWSN);
 }
@@ -1140,6 +1141,7 @@ static void lowerFusedRowwiseQuantizedSparseLengthsSumNode(
       FRQSLSN.getName().str(), FRQSLSN.getData(), ones, FRQSLSN.getIndices(),
       FRQSLSN.getLengths(), FRQSLSN.getUseFP16Accumulation(),
       FRQSLSN.getAllLengthsOne());
+  FRQSLWSN->setIAOffload(FRQSLSN.getIAOffload());
 
   replaceAllUsesOfWith(cctx.loweredInfoMap, FRQSLSN.getResult(), FRQSLWSN);
 }

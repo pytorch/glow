@@ -63,6 +63,9 @@ protected:
   /// Link to the function holding this node.
   Function *parent_;
 
+  /// Whether to force this node to IA core.
+  bool IAOffload_;
+
 public:
   Node(Kinded::Kind k, llvm::StringRef name)
       : Named(name), Kinded(k), predicate_(this, nullptr), parent_(nullptr) {}
@@ -103,6 +106,9 @@ public:
 
   /// \returns true if this input is being overwritten by the node.
   bool isOverwrittenNthInput(unsigned idx) const;
+
+  void setIAOffload(bool force = true) { IAOffload_ = force; };
+  bool getIAOffload() const { return IAOffload_; };
 
   /// \returns a textual description of the node.
   std::string getDebugDesc() const;

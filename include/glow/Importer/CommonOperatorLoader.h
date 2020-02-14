@@ -204,6 +204,15 @@ protected:
   /// for multidirectional broadcasting.
   virtual bool hasMultidirectionalBroadcast(const llvm::StringRef typeName) = 0;
 
+  inline Error setIAOffload(Node *N, const ArgumentDictionaryTy &dict) {
+    bool IAOffload = false;
+    if (dict.count("IAOffload")) {
+      ASSIGN_VALUE_OR_RETURN_ERR(IAOffload, loadInt(dict.at("IAOffload")));
+    }
+    N->setIAOffload(IAOffload);
+    return Error::success();
+  }
+
   /// Associate the name of operation outputs to a NodeValues corresponding to
   /// node \p node. If \p numOutputs is lower than 0, then all outputs are
   /// associated. Otherwise, the first \p numOutputs outputs are associated.
@@ -812,6 +821,7 @@ protected:
     }
     auto *node = G_.createSparseLengthsSum(loadOperatorName(op), in0, in1, in2,
                                            allLengthsOne);
+    RETURN_IF_ERR(setIAOffload(node, dict));
     RETURN_IF_ERR(addNodeAsOutput(op, node));
     return Error::success();
   }
@@ -834,11 +844,12 @@ protected:
     }
     auto *node = G_.createSparseLengthsWeightedSum(
         loadOperatorName(op), in0, in1, in2, in3, allLengthsOne);
+    RETURN_IF_ERR(setIAOffload(node, dict));
     RETURN_IF_ERR(addNodeAsOutput(op, node));
     return Error::success();
   }
 
-  Error loadEmbeddingBag(const OpType &op) {
+  Error loadEmbeddingBag(const OpType &op, const ArgumentDictionaryTy &dict) {
     NodeValue in0;
     ASSIGN_VALUE_OR_RETURN_ERR(in0, getNodeValueByName(op.input(0)));
     NodeValue in1;
@@ -849,6 +860,7 @@ protected:
     ASSIGN_VALUE_OR_RETURN_ERR(in3, getNodeValueByName(op.input(3)));
     auto *node =
         G_.createEmbeddingBag(loadOperatorName(op), in0, in1, in2, in3);
+    RETURN_IF_ERR(setIAOffload(node, dict));
     RETURN_IF_ERR(addNodeAsOutput(op, node));
     return Error::success();
   }
@@ -1183,7 +1195,7 @@ protected:
       return true;
     }
     if (typeName == "EmbeddingBag") {
-      RETURN_IF_ERR(loadEmbeddingBag(op));
+      RETURN_IF_ERR(loadEmbeddingBag(op, dict));
       return true;
     }
     if (typeName == "LengthsToRanges") {
