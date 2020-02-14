@@ -41,8 +41,10 @@ class TensorProto;
 
 namespace glow {
 
-/// Loads tensor \p T from the input \p in.
-Error loadTensor(const ONNX_NAMESPACE::TensorProto &in, Tensor *T);
+/// Loads tensor \p T from the input \p in. \p useGlowCustomOps changes the
+/// format for doc_string format for adding meta information.
+Error loadTensor(const ONNX_NAMESPACE::TensorProto &in, Tensor *T,
+                 bool useGlowCustomOps = false);
 
 /// Parses as input file name \p fileName which is an ONNX file
 /// and \returns a parsed GraphProto.
@@ -86,6 +88,21 @@ class ONNXModelLoader
   /// in the network. \returns Error if operator \p op cannot be loaded.
   Error loadOperator(const ONNX_NAMESPACE::NodeProto &op);
 
+  /// \returns a TypeRef found in \p dict which is loaded and uniqued into the
+  /// Module. The TypeRef is represented in the ONNX proto by concatenating the
+  /// name of the output \p name with the relevant members of a type,
+  /// i.e. ElemKind, Shape, and Scale and Offset if ElemKind is quantized.
+  Expected<TypeRef> loadTypeFromAttributes(llvm::StringRef name,
+                                           ArgumentDictionaryTy &dict);
+
+  /// If this is a custom Glow op that was exported via NodeGen automatic export
+  /// logic, try to load the op. \returns Expected<true> if the op is
+  /// successfully loaded. \returns Expected<false> if op type is not supported.
+  /// \returns an Error if an error occurred while trying to load.
+  Expected<bool> tryLoadGlowCustomOp(llvm::StringRef typeName,
+                                     const ONNX_NAMESPACE::NodeProto &op,
+                                     ArgumentDictionaryTy &dict);
+
   /// \returns True if the operator\ op is successfully folded.
   Expected<bool> foldOperator(const ONNX_NAMESPACE::NodeProto &op);
 
@@ -94,6 +111,9 @@ class ONNXModelLoader
 
   /// ONNX model op_version;
   size_t opsetVersion_;
+
+  /// Whether we're loading an ONNX file exported using Glow custom ops.
+  bool useGlowCustomOps_{false};
 
   /// A set of inputs which will be static placeholders.
   std::unordered_set<std::string> staticInputs_;
@@ -385,12 +405,20 @@ protected:
   friend Error constantFoldInLoader(Function *F, LoaderType &tmpLoader,
                                     LoaderType *loader, const OpType &op);
 
+  /// Creates tensor \p T from the input \p in. Note, there is no data
+  /// associated with the Tensor. This method makes sure that the tensor is
+  /// created with the proper shape and element type.
+  Error setTensorType(const ONNX_NAMESPACE::ValueInfoProto &in, Tensor *T);
+
 public:
   /// \returns ONNX model ir_version;
   size_t getIrVersion() const { return irVersion_; };
 
   /// \returns ONNX model op_version;
   size_t getOpSetVersion() const { return opsetVersion_; };
+
+  /// \returns if the loader is loading a proto using custom Glow ops.
+  bool usingGlowCustomOps() const { return useGlowCustomOps_; };
 
   /// Creates a ONNX model loader to build \p F.
   /// If \p errPtr is not null then if an error occurs it will get assigned
@@ -405,12 +433,14 @@ public:
   /// If \p errPtr is not null then if an error occurs it will get assigned
   /// there otherwise if an error occurs it will abort.
   /// If \p disableConstFoldInLoader then constant folding will be disabled
-  /// during loading.
+  /// during loading. \p B will be used during function verification after
+  /// loading.
   ONNXModelLoader(const std::string &modelDescFilename,
                   llvm::ArrayRef<const char *> tensorNames,
                   llvm::ArrayRef<TypeRef> types, Function &F,
                   Error *errPtr = nullptr, bool zipMode = false,
-                  bool disableConstFoldInLoader = false);
+                  bool disableConstFoldInLoader = false,
+                  const Backend *B = nullptr);
 };
 
 } // namespace glow
