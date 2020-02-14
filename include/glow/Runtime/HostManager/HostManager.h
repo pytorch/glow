@@ -152,7 +152,8 @@ class HostManager final {
 
   /// Execution stats update.
   void updateExecutionStats(uint64_t startTime,
-                            std::unique_ptr<ExecutionContext> &context);
+                            std::unique_ptr<ExecutionContext> &context,
+                            llvm::StringRef name, const Error &error);
 
   /// Keeps the stats exporter registry object alive till destructor.
   std::shared_ptr<StatsExporterRegistry> statsExporterRegistry_;
