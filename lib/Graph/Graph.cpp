@@ -2094,13 +2094,13 @@ SparseToDenseMaskNode *Function::createSparseToDenseMask(
 
 SaveNode *Function::createSave(llvm::StringRef name, NodeValue input) {
   auto *dest = getParent()->createPlaceholder(input.getType(), name, false);
-  std::string nodeName = (name + "_save").str();
-  return addNode(new SaveNode(nodeName, input, dest));
+  return createSave(name, input, dest);
 }
 
 SaveNode *Function::createSave(llvm::StringRef name, NodeValue input,
-                               Placeholder *output) {
-  return addNode(new SaveNode(name, input, output));
+                               Placeholder *output, bool skipSuffix) {
+  return addNode(new SaveNode(skipSuffix ? name.str() : (name + "_save").str(),
+                              input, output));
 }
 
 QuantizationProfileNode *

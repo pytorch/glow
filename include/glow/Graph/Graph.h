@@ -1174,8 +1174,11 @@ public:
                           NodeValue lengths, llvm::ArrayRef<dim_t> mask);
 
   SaveNode *createSave(llvm::StringRef name, NodeValue input);
+
+  /// Creates and \returns a SaveNode of \p input to \p output. If \p skipSuffix
+  /// then the name used is \p name, otherwise suffix "_save" is appended.
   SaveNode *createSave(llvm::StringRef name, NodeValue input,
-                       Placeholder *output);
+                       Placeholder *output, bool skipSuffix = false);
 
   /// Create quantization profile node named \p name for the output tensor from
   /// \p input in PlaceholderBindings \p bindings. Capture observed node name in
