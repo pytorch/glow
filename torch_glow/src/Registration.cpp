@@ -72,12 +72,13 @@ void registerGlowOp(const c10::Symbol &symbol) {
         // empty one.
         if (!graphRunner) {
           graphRunner = std::make_shared<CachingGraphRunner>(
-              node->g(at::attr::Subgraph), getHostManager());
+              node->g(at::attr::Subgraph), getHostManager(),
+              getPyTorchLoaderSettings());
         }
 
         return [graphRunner](torch::jit::Stack &stack) {
           Error err = Error::empty();
-          if (getPyTorchLoaderSettings().preCompilePyTorchModule) {
+          if (graphRunner->getSettings().preCompilePyTorchModule) {
             err = graphRunner->runOnly(stack);
           } else {
             err = graphRunner->run(stack);

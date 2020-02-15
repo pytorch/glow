@@ -69,9 +69,14 @@ class CachingGraphRunner {
   /// Given a \p stack of inputs, computes the hash for the inputs on the stack.
   size_t computeGraphHash(const c10::ArrayRef<c10::IValue> inputs) const;
 
+  /// Store the settings that were used to create the JIT subgraph that this
+  /// CachingGraphRunner owns.
+  PyTorchLoaderSettings settings_;
+
 public:
   CachingGraphRunner(std::shared_ptr<torch::jit::Graph> graph,
-                     std::shared_ptr<runtime::HostManager> hostManager);
+                     std::shared_ptr<runtime::HostManager> hostManager,
+                     PyTorchLoaderSettings settings);
 
   ~CachingGraphRunner();
 
@@ -86,6 +91,8 @@ public:
 
   // Warm up the cache by compiling a Glow function for the inputs in \p stack.
   Error warmCache(const std::vector<InputMeta> &inputMeta);
+
+  const PyTorchLoaderSettings &getSettings() const;
 };
 
 } // namespace glow

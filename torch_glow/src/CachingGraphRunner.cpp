@@ -68,6 +68,10 @@ CachingGraphRunner::loadImpl(torch::jit::Stack &stack) {
 
   glow::CompilationContext cctx;
 
+  if (settings_.convertToFP16) {
+    cctx.precisionConfig.convertToFP16 = true;
+  }
+
   RETURN_IF_ERR(hostManager_->addNetwork(std::move(module), cctx));
 
   perGlowGraphInfoMap_[hash] = std::move(info);
@@ -184,10 +188,15 @@ Error CachingGraphRunner::warmCache(const std::vector<InputMeta> &inputMeta) {
   return Error::success();
 }
 
+const PyTorchLoaderSettings &CachingGraphRunner::getSettings() const {
+  return settings_;
+}
+
 CachingGraphRunner::CachingGraphRunner(
     std::shared_ptr<torch::jit::Graph> graph,
-    std::shared_ptr<runtime::HostManager> hostManager)
-    : graph_(graph), hostManager_(hostManager) {}
+    std::shared_ptr<runtime::HostManager> hostManager,
+    PyTorchLoaderSettings settings)
+    : graph_(graph), hostManager_(hostManager), settings_(settings) {}
 
 CachingGraphRunner::~CachingGraphRunner() {
   // Remove Glow functions saved in HostManager when being destroyed.
