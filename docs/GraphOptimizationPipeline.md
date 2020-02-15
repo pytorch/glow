@@ -29,7 +29,7 @@ to take advantage of the optimizations.
 - `glow::fold()`: Fold low-level Nodes into higher-level Nodes. This is useful
   when compiling an input model where some high-level operators have been
   lowered (this can be for instance a side effect of model converters, like
-  converters from Tensorflow to ONNX). In this situation, such folding can then
+  converters from Tensorflow to ONNX). In this situation, deliberate folding can then
   enable more optimizations and also improve the performance of backends that
   support natively such high-level operators. Folding is done first, as we want
   to raise the graph to a higher level in order to take advantage of high-level
@@ -68,7 +68,7 @@ to take advantage of the optimizations.
 
 - `glow::optimize()`: Performs a series of graph optimizations, as listed
   [here](Optimizations.md#set-of-supported-graph-optimizations). Many of these
-  are common compiler optimizations, such as DCE and CSE. Others are more ML and
+  are common compiler optimizations, such as DCE and CSE. Others are more machine learning and
   linear algebra related, such as fusing BatchNormalization into Convolutions in
   inference mode, or combining a series of Transpose operations into a single
   Transpose.
