@@ -71,6 +71,9 @@ struct PyTorchLoaderSettings {
 
   /// Convert fp32 opts to fp16 ops during Glow compilation.
   bool convertToFP16 = false;
+
+  /// Dump Glow dot graph to file after Glow compilation is finished.
+  bool dumpFinalGlowGraph = false;
 };
 
 /// Given a PyTorch ScalarType \p ty, \returns a matching Glow ElemKind.

@@ -349,6 +349,14 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
                               deviceBackendName);
         }
 
+        if (cctx.dumpFinalGraph) {
+          auto fname =
+              strFormat("final_graph_%s_%s.dot", deviceBackendName.c_str(),
+                        function->getName().str().c_str());
+          LOG(INFO) << "Dumping final graph to " << fname;
+          function->dumpDAG(fname);
+        }
+
         auto compiledOrErr =
             backends_[deviceBackendName]->compile(function, options);
 

@@ -25,7 +25,7 @@ extern bool GlowDumpCompilationLog;
 namespace onnxifi {
 
 extern bool GlowSaveOnnxifiModel;
-;
+
 int32_t GlowNumDevices = 0;
 int32_t GlowSparseNNPartitioningSchemeNumCards = 1;
 int64_t GlowSparseNNPartitioningSchemeSLSTableKBytesPerCard = 0;
@@ -37,6 +37,7 @@ bool GlowSaturateHost = false;
 bool GlowFP16 = false;
 bool GlowFP16Placeholders = true;
 bool GlowFP16Constants = true;
+bool GlowDumpGraph = false;
 bool GlowFusedScaleOffsetFP16 = false;
 bool GlowForceSLSAccumFP16 = false;
 bool GlowClipFP16 = false;
@@ -190,6 +191,9 @@ onnxStatus HostManagerBackend::addNetwork(std::unique_ptr<Module> module,
         GlowSparseNNPartitioningSchemeNumCoresSLS;
     cctx.optimizationOpts.sparseNNPartitioningSchemeNumCoresOther =
         GlowSparseNNPartitioningSchemeNumCoresOther;
+  }
+  if (GlowDumpGraph) {
+    cctx.dumpFinalGraph = true;
   }
 
   auto err =
