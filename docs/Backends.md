@@ -47,10 +47,10 @@ are two pure virtual functions all backends must implement:
     may not support a specific bit-width quantization kind (e.g. `Int16QTy`) at
     all, or may only support it for certain operations
     (e.g. `ConvolutionNodeKind`). Any `(opKind, inputTypes, outputTypes)` passed
-    in that returns true must be supported by the backed during `compile()` and
+    in and returns true must be supported by the backend during `compile()` and
     `execute()`.
 
-Additionally, there are virtual functions that backends can override:
+Additionally, there are several virtual functions that backends can override:
 
 - `virtual bool transformPostLowering(Function *F, CompilationContext &cctx) const;`
 
@@ -67,7 +67,7 @@ Additionally, there are virtual functions that backends can override:
 
 - `virtual bool acceptForExecution(const NodeInfo &NI) const;`
 
-  - Returns whether the backend would like to accept NI for execution. By
+  - Returns whether the backend would like to accept NodeInfo for execution. By
     default this falls back to checking for support via
     `Backend::isOpSupported()`, however this allows the backend to override to
     also take into account things like performance considerations.
@@ -93,7 +93,7 @@ Additionally, there are virtual functions that backends can override:
     of `ConvNode` followed by `ReluNode` to swap out for `ConvReluNode`. Another
     example is if a backend supports executing a FullyConnected operator, it
     would want to prevent lowering for it and provide a backend-specific
-    Instruction for the FullyConnectedNode to be
+    instruction for the FullyConnectedNode to be
     [IRGen'd](https://github.com/pytorch/glow/blob/master/docs/IR.md#low-level-ir)
     into. Note that IRGen for a Node can be specified via the
     [ClassGen](https://github.com/pytorch/glow/blob/master/docs/ClassGen.md)
@@ -103,7 +103,7 @@ Additionally, there are virtual functions that backends can override:
 
 - `virtual bool shouldShareBuffers() const;`
 
-  - Allow the backend to disable the buffer sharing optimization. This may be
+  - Allow the backend to disable the buffer-sharing optimization. This may be
     preferred by backends which would like to do their own memory
     optimizations. Returns true by default.
 
@@ -117,7 +117,7 @@ Additionally, there are virtual functions that backends can override:
 
 - `virtual bool generateInst(Node *N, IRGenVisitor &irgen) const;`
 
-  - Allow the backend to custom lower from Node to Instruction IR.
+  - Allow the backend to perform custom lowering from Node to Instruction IR.
     Returns true if lowering is performed, false otherwise.
 
 - `virtual FunctionPassPipeline getOptimizationPipeline() const;`
@@ -269,8 +269,8 @@ done
 
 External backends can be added to Glow without changing the Glow build infrastructure.
 
-An external backend is provided as a single source directory. It can then be developped in a separate source management repository.
+An external backend is provided as a single source directory. It can then be developed in a separate source management repository.
 
-The external backend mechanism is for instance convenient for adding closed source backends to Glow.
+The external backend mechanism is for instance convenient for adding closed-source backends to Glow.
 
 The structure of external backends is defined [here](https://github.com/pytorch/glow/blob/master/docs/ExternalBackend.md).
