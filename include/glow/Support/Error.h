@@ -795,7 +795,7 @@ void errorToVoid(const char *fileName, size_t lineNumber, GlowError error,
 /// added when the class already holds an Error, it will discard the new Error
 /// in favor of the original one. All methods in OneErrOnly are thread-safe.
 class OneErrOnly {
-  Error err_ = Error::success();
+  Error err_ = Error::empty();
   std::mutex m_;
 
 public:
