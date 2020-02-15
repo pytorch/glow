@@ -51,7 +51,7 @@ TEST(ModelLoaderTest, Fusion) {
   EXPECT_FALSE(ERR_TO_BOOL(std::move(err)));
 }
 
-TEST(ModelLoaderTest, DISABLED_Direct) {
+TEST(ModelLoaderTest, Direct) {
   const std::string fileName{GLOW_DATA_PATH
                              "tests/models/pytorchModels/resnet18.pt"};
 

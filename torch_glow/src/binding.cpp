@@ -67,6 +67,14 @@ PYBIND11_MODULE(_torch_glow, m) {
   m.def("disableDumpGlowDag",
         []() { getPyTorchLoaderSettings().dumpGlowDag = false; });
 
+  /// Enable converting fp32 ops to fp16.
+  m.def("enable_convert_to_fp16",
+        []() { getPyTorchLoaderSettings().convertToFP16 = true; });
+
+  /// Disable converting fp32 ops to fp16.
+  m.def("disable_convert_to_fp16",
+        []() { getPyTorchLoaderSettings().convertToFP16 = false; });
+
   /// Add all of the symbols in \p blacklist to the fusion blacklist so that
   /// nodes with these symbols will not be fused to Glow.
   m.def("setFusionBlacklist", [](const std::vector<std::string> &blacklist) {

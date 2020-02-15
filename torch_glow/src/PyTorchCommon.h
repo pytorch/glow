@@ -68,6 +68,9 @@ struct PyTorchLoaderSettings {
   /// negative.
   /// NOTE: this should only be used for debugging.
   int64_t fusionEndIndex = -1;
+
+  /// Convert fp32 opts to fp16 ops during Glow compilation.
+  bool convertToFP16 = false;
 };
 
 /// Given a PyTorch ScalarType \p ty, \returns a matching Glow ElemKind.
