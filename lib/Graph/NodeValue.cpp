@@ -113,6 +113,10 @@ ElemKind NodeValue::getElementType() const {
 
 llvm::ArrayRef<dim_t> NodeValue::dims() const { return getType()->dims(); }
 
+std::string NodeValue::generateNodeOutputName() const {
+  return generateNodeOutputName(node_->getName(), resNo_);
+}
+
 NodeHandle::NodeHandle(Node *parent, Node *N) : NodeValue(N), parent_(parent) {
   setOperand(N, 0);
 }

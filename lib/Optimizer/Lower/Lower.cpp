@@ -48,9 +48,7 @@ static void replaceAllUsesOfWith(LoweredInfoMap *loweredMap, NodeValue oldNV,
     return;
   }
 
-  std::string newOutputName = NodeQuantizationInfo::generateNodeOutputName(
-      newNV.getNode()->getName(), newNV.getResNo());
-  (*loweredMap)[newOutputName].insert(
+  (*loweredMap)[newNV.generateNodeOutputName()].insert(
       NodeNameAndKind(oldNV.getNode()->getName(), oldNV.getResNo(),
                       oldNV.getNode()->getKind()));
 }

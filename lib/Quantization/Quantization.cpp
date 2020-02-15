@@ -146,8 +146,7 @@ static bool isBAFromLoweredFC(const BatchedAddNode *baN,
                               const LoweredInfoMap &loweredMap) {
   // Look for the set of NodeNameAndKinds corresponding to the
   // BatchedAdd. If one exists, this means it was lowered.
-  auto it = loweredMap.find(NodeQuantizationInfo::generateNodeOutputName(
-      baN->getName(), BatchedAddNode::ResultIdx));
+  auto it = loweredMap.find(baN->getResult().generateNodeOutputName());
   if (it == loweredMap.end()) {
     return false;
   }
@@ -175,10 +174,7 @@ protected:
   /// of \p out to match some IR constraints, but the final type still
   /// needs to be known to insert rescale nodes.
   TypeRef getTargetTypeForOutputImpl(const NodeValue &out) const {
-    const std::string nodeOutputName =
-        NodeQuantizationInfo::generateNodeOutputName(out.getNode()->getName(),
-                                                     out.getResNo());
-    auto outTQPIt = nodeToTQP_.find(nodeOutputName);
+    auto outTQPIt = nodeToTQP_.find(out.generateNodeOutputName());
     assert(outTQPIt != nodeToTQP_.end() &&
            "Missing quantization params for a node");
 
@@ -208,9 +204,7 @@ protected:
       return val.getType();
     }
 
-    std::string nodeOutputName = NodeQuantizationInfo::generateNodeOutputName(
-        val.getNode()->getName(), val.getResNo());
-    auto valTQPIt = nodeToTQP_.find(nodeOutputName);
+    auto valTQPIt = nodeToTQP_.find(val.generateNodeOutputName());
     assert(valTQPIt != nodeToTQP_.end() &&
            "Missing quantization params for a node");
 
@@ -414,9 +408,7 @@ protected:
   /// Helper that \returns whether quantization parameters exist
   /// in \ref nodeToTQP_ given the name and result number of \p val.
   bool quantizationParamsExist(const NodeValue &val) const {
-    std::string nodeOutputName = NodeQuantizationInfo::generateNodeOutputName(
-        val.getNode()->getName(), val.getResNo());
-    auto valTQPIt = nodeToTQP_.find(nodeOutputName);
+    auto valTQPIt = nodeToTQP_.find(val.generateNodeOutputName());
     return valTQPIt != nodeToTQP_.end();
   }
 
@@ -666,8 +658,8 @@ protected:
       auto *dequantize =
           llvm::dyn_cast<DequantizeNode>((*val.getUsers().begin()).getUser());
       TypeRef outTy = val.getType();
-      auto name = NodeQuantizationInfo::generateNodeOutputName(
-          dequantize->getName(), outNum);
+      auto name =
+          NodeValue::generateNodeOutputName(dequantize->getName(), outNum);
 
       nodeToTQP_[name] = {outTy->getScale(), outTy->getOffset()};
     }
@@ -929,7 +921,7 @@ generateNodeQuantizationInfos(PlaceholderBindings &bindings, const Function *F,
       float min = CI.raw(0);
       float max = CI.raw(1);
 
-      std::string fullOutputName = NodeQuantizationInfo::generateNodeOutputName(
+      std::string fullOutputName = NodeValue::generateNodeOutputName(
           QPN->getProfiledNodeName(), QPN->getProfiledOutputNumber());
 
       ElemKind qPrec = quantizationPrecision;
