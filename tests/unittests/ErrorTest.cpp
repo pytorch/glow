@@ -143,6 +143,9 @@ TEST(Error, EmptyErrors) {
   EXPECT_TRUE(ERR_TO_BOOL(std::move(err)));
 }
 
+// Creating an unused OneErrOnly should be safe.
+TEST(Error, UntouchedOneErrOnly) { OneErrOnly foo; }
+
 TEST(Error, ExpectedConversion) {
   auto foo = []() -> Expected<int32_t> { return 42; };
 
