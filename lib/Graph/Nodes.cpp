@@ -2042,4 +2042,19 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &os, ConvolutionLayout layout) {
   }
   return os;
 }
+
+llvm::raw_ostream &operator<<(llvm::raw_ostream &os, LengthsMode lengthsMode) {
+  switch (lengthsMode) {
+  case LengthsMode::AllOne:
+    os << "AllOne";
+    break;
+  case LengthsMode::High:
+    os << "High";
+    break;
+  case LengthsMode::Low:
+    os << "Low";
+    break;
+  }
+  return os;
+}
 } // namespace glow

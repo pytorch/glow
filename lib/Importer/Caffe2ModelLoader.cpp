@@ -1378,12 +1378,8 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     RETURN_ERR_IF_NOT(lengths.dims().size() == 1, "lengths must be a vector.");
     RETURN_ERR_IF_NOT(indices.dims().size() == 1, "indices must be a vector.");
 
-    bool allLengthsOne = false;
-    if (dict.count("length1")) {
-      int allLengthsOneInt;
-      ASSIGN_VALUE_OR_RETURN_ERR(allLengthsOneInt, loadInt(dict["length1"]));
-      allLengthsOne = (bool)allLengthsOneInt;
-    }
+    LengthsMode lengthsMode;
+    ASSIGN_VALUE_OR_RETURN_ERR(lengthsMode, getLengthsMode(dict));
 
     Node *node;
     if (isFused) {
@@ -1411,11 +1407,11 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
       if (isWeighted) {
         node = G_.createFusedRowwiseQuantizedSparseLengthsWeightedSum(
             opName, dataS, weights, indices, lengths,
-            /* useFP16Accumulation */ false, allLengthsOne);
+            /* useFP16Accumulation */ false, lengthsMode);
       } else {
         node = G_.createFusedRowwiseQuantizedSparseLengthsSum(
             opName, dataS, indices, lengths, /* useFP16Accumulation */ false,
-            allLengthsOne);
+            lengthsMode);
       }
 
       if (is4Bit) {
@@ -1453,10 +1449,14 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
       // Now create the actual node.
       if (isWeighted) {
         node = G_.createRowwiseQuantizedSparseLengthsWeightedSum(
-            opName, dataS, dataScales, dataOffsets, weights, indices, lengths);
+            opName, dataS, dataScales, dataOffsets, weights, indices, lengths,
+            /* precision */ ElemKind::FloatTy,
+            /* useFP16Accumulation */ false, lengthsMode);
       } else {
         node = G_.createRowwiseQuantizedSparseLengthsSum(
-            opName, dataS, dataScales, dataOffsets, indices, lengths);
+            opName, dataS, dataScales, dataOffsets, indices, lengths,
+            /* precision */ ElemKind::FloatTy,
+            /* useFP16Accumulation */ false, lengthsMode);
       }
     }
 

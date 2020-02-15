@@ -9855,14 +9855,14 @@ TEST_P(OperatorTest,
                                /* useFP16Accumulation */ true);
 }
 
-/// Helper to test SLWS with more columns in data input, with precision \p DTy,
+/// Helper to test SLWS with different lengths modes, with precision \p DTy,
 /// and precision for data \p dataDTy.
 template <typename DataType>
-static void testSLWSAllLengthsOne(glow::PlaceholderBindings &bindings,
-                                  glow::Module &mod, glow::Function *F,
-                                  glow::ExecutionEngine &EE, ElemKind dataDTy,
-                                  float allowedError,
-                                  bool useFP16Accumulation = false) {
+static void testSLWSLengthsMode(glow::PlaceholderBindings &bindings,
+                                glow::Module &mod, glow::Function *F,
+                                glow::ExecutionEngine &EE, ElemKind dataDTy,
+                                float allowedError, bool useFP16Accumulation,
+                                LengthsMode lengthsMode) {
   /*
     DATA  = [
         [1.0, 1.2],
@@ -9903,7 +9903,25 @@ static void testSLWSAllLengthsOne(glow::PlaceholderBindings &bindings,
   bindings.allocate(indices)->getHandle<sdim_t>() = {
       2, 0, 1, 2, 0,
   };
-  bindings.allocate(lengths)->getHandle<int32_t>() = {1, 1, 1, 1, 1};
+  auto LH = bindings.allocate(lengths)->getHandle<int32_t>();
+  Tensor expected(DTy, {5, 2});
+  switch (lengthsMode) {
+  case LengthsMode::AllOne:
+    LH = {1, 1, 1, 1, 1};
+    expected.getHandle<DataType>() = {
+        4.5, 5.7, -1.0, -1.2, 3.45, 5.1, 2.25, 2.85, -1.5, -1.8,
+    };
+    break;
+  case LengthsMode::Low:
+    LH = {2, 0, 0, 3, 0};
+    expected.getHandle<DataType>() = {
+        3.5, 4.5, 0.0, 0.0, 0.0, 0.0, 4.2, 6.15, 0.0, 0.0,
+    };
+    break;
+  case LengthsMode::High:
+    FAIL() << "Test does not support High lengths mode.";
+    break;
+  }
   bindings.allocate(weights)->getHandle<DataType>() = {
       1, -1, 1.5, 0.5, -1.5,
   };
@@ -9911,14 +9929,14 @@ static void testSLWSAllLengthsOne(glow::PlaceholderBindings &bindings,
   Node *SLWS = nullptr;
   if (fusedData) {
     SLWS = F->createFusedRowwiseQuantizedSparseLengthsWeightedSum(
-        "RQSLWS", data, weights, indices, lengths, dataDTy,
-        useFP16Accumulation);
+        "RQSLWS", data, weights, indices, lengths, dataDTy, useFP16Accumulation,
+        LengthsMode::AllOne);
   } else {
     Placeholder *dataP =
         mod.createPlaceholder(&data.getType(), "data", /* isTrainable */ false);
     bindings.insert(dataP, std::move(data));
     SLWS = F->createSparseLengthsWeightedSum("SLWS", dataP, weights, indices,
-                                             lengths);
+                                             lengths, LengthsMode::AllOne);
   }
   SaveNode *S = F->createSave("save", SLWS);
   bindings.allocate(S->getPlaceholder());
@@ -9927,10 +9945,6 @@ static void testSLWSAllLengthsOne(glow::PlaceholderBindings &bindings,
   EE.run(bindings);
 
   Tensor &result = *bindings.get(S->getPlaceholder());
-  Tensor expected(DTy, {5, 2});
-  expected.getHandle<DataType>() = {
-      4.5, 5.7, -1.0, -1.2, 3.45, 5.1, 2.25, 2.85, -1.5, -1.8,
-  };
 
   EXPECT_TRUE(expected.isEqual(result, allowedError));
 }
@@ -9938,41 +9952,43 @@ static void testSLWSAllLengthsOne(glow::PlaceholderBindings &bindings,
 /// Test SLWS in Float.
 TEST_P(OperatorTest, SLWSAllLengthsOne_Float) {
   CHECK_IF_ENABLED();
-  testSLWSAllLengthsOne<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy,
-                               0.0001);
+  testSLWSLengthsMode<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy,
+                             0.0001, /* useFP16Accumulation */ false,
+                             LengthsMode::AllOne);
 }
 
 /// Test SLWS in Float16.
 TEST_P(OperatorTest, SLWSAllLengthsOne_Float16_AccumFloat) {
   CHECK_IF_ENABLED();
-  testSLWSAllLengthsOne<float16_t>(bindings_, mod_, F_, EE_,
-                                   ElemKind::Float16Ty, 0.005,
-                                   /* useFP16Accumulation */ false);
+  testSLWSLengthsMode<float16_t>(
+      bindings_, mod_, F_, EE_, ElemKind::Float16Ty, 0.005,
+      /* useFP16Accumulation */ false, LengthsMode::AllOne);
 }
 
 /// Test Fused-RWQ-SLWS in Float.
 TEST_P(OperatorTest, FusedRowwiseQuantizedSLWSAllLengthsOne_Float) {
   CHECK_IF_ENABLED();
-  testSLWSAllLengthsOne<float>(bindings_, mod_, F_, EE_,
-                               ElemKind::UInt8FusedQTy, 0.015);
+  testSLWSLengthsMode<float>(bindings_, mod_, F_, EE_, ElemKind::UInt8FusedQTy,
+                             0.015, /* useFP16Accumulation */ false,
+                             LengthsMode::AllOne);
 }
 
 /// Test Fused-RWQ-SLWS in Float16. Uses Float accumulation.
 TEST_P(OperatorTest,
        FusedRowwiseQuantizedSLWSAllLengthsOne_Float16_AccumFloat) {
   CHECK_IF_ENABLED();
-  testSLWSAllLengthsOne<float16_t>(bindings_, mod_, F_, EE_,
-                                   ElemKind::UInt8FusedFP16QTy, 0.015,
-                                   /* useFP16Accumulation */ false);
+  testSLWSLengthsMode<float16_t>(
+      bindings_, mod_, F_, EE_, ElemKind::UInt8FusedFP16QTy, 0.015,
+      /* useFP16Accumulation */ false, LengthsMode::AllOne);
 }
 
 /// Test Fused-RWQ-SLWS in Float16. Uses Float16 accumulation.
 TEST_P(OperatorTest,
        FusedRowwiseQuantizedSLWSAllLengthsOne_Float16_AccumFloat16) {
   CHECK_IF_ENABLED();
-  testSLWSAllLengthsOne<float16_t>(bindings_, mod_, F_, EE_,
-                                   ElemKind::UInt8FusedFP16QTy, 0.015,
-                                   /* useFP16Accumulation */ true);
+  testSLWSLengthsMode<float16_t>(
+      bindings_, mod_, F_, EE_, ElemKind::UInt8FusedFP16QTy, 0.015,
+      /* useFP16Accumulation */ true, LengthsMode::AllOne);
 }
 
 /// Test Fused-RWQ-SLWS in Float16 wth 4-bit quantization for the embedding.
@@ -9980,9 +9996,59 @@ TEST_P(OperatorTest,
 TEST_P(OperatorTest,
        FusedRowwiseQuantizedSLWSAllLengthsOne_Fused4Bit_Float16_AccumFloat16) {
   CHECK_IF_ENABLED();
-  testSLWSAllLengthsOne<float16_t>(bindings_, mod_, F_, EE_,
-                                   ElemKind::UInt4FusedFP16QTy, 0.1,
-                                   /* useFP16Accumulation */ true);
+  testSLWSLengthsMode<float16_t>(
+      bindings_, mod_, F_, EE_, ElemKind::UInt4FusedFP16QTy, 0.1,
+      /* useFP16Accumulation */ true, LengthsMode::AllOne);
+}
+
+/// Test SLWS in Float.
+TEST_P(OperatorTest, SLWSLengthsLow_Float) {
+  CHECK_IF_ENABLED();
+  testSLWSLengthsMode<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy,
+                             0.0001, /* useFP16Accumulation */ false,
+                             LengthsMode::Low);
+}
+
+/// Test SLWS in Float16.
+TEST_P(OperatorTest, SLWSLengthsLow_Float16_AccumFloat) {
+  CHECK_IF_ENABLED();
+  testSLWSLengthsMode<float16_t>(
+      bindings_, mod_, F_, EE_, ElemKind::Float16Ty, 0.005,
+      /* useFP16Accumulation */ false, LengthsMode::Low);
+}
+
+/// Test Fused-RWQ-SLWS in Float.
+TEST_P(OperatorTest, FusedRowwiseQuantizedSLWSLengthsLow_Float) {
+  CHECK_IF_ENABLED();
+  testSLWSLengthsMode<float>(bindings_, mod_, F_, EE_, ElemKind::UInt8FusedQTy,
+                             0.015, /* useFP16Accumulation */ false,
+                             LengthsMode::Low);
+}
+
+/// Test Fused-RWQ-SLWS in Float16. Uses Float accumulation.
+TEST_P(OperatorTest, FusedRowwiseQuantizedSLWSLengthsLow_Float16_AccumFloat) {
+  CHECK_IF_ENABLED();
+  testSLWSLengthsMode<float16_t>(
+      bindings_, mod_, F_, EE_, ElemKind::UInt8FusedFP16QTy, 0.015,
+      /* useFP16Accumulation */ false, LengthsMode::Low);
+}
+
+/// Test Fused-RWQ-SLWS in Float16. Uses Float16 accumulation.
+TEST_P(OperatorTest, FusedRowwiseQuantizedSLWSLengthsLow_Float16_AccumFloat16) {
+  CHECK_IF_ENABLED();
+  testSLWSLengthsMode<float16_t>(
+      bindings_, mod_, F_, EE_, ElemKind::UInt8FusedFP16QTy, 0.015,
+      /* useFP16Accumulation */ true, LengthsMode::Low);
+}
+
+/// Test Fused-RWQ-SLWS in Float16 wth 4-bit quantization for the embedding.
+/// Uses Float16 accumulation.
+TEST_P(OperatorTest,
+       FusedRowwiseQuantizedSLWSLengthsLow_Fused4Bit_Float16_AccumFloat16) {
+  CHECK_IF_ENABLED();
+  testSLWSLengthsMode<float16_t>(
+      bindings_, mod_, F_, EE_, ElemKind::UInt4FusedFP16QTy, 0.1,
+      /* useFP16Accumulation */ true, LengthsMode::Low);
 }
 
 /// Test SLS when some input tensors are constants.
