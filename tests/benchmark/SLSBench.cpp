@@ -61,6 +61,7 @@ struct SLSParam {
   bool isSorted;
   bool addClip;
   bool useFP16Accumulation;
+  LengthsMode lengthsMode;
   ElemKind fusedDtype;
   ElemKind dtype;
 };
@@ -242,17 +243,18 @@ public:
     if (param.slsKind == QUANTIZED_UNWEIGHTED) {
       R = fn->createFusedRowwiseQuantizedSparseLengthsSum(
           getSLSDescription(param), data, indices, lengths, param.fusedDtype,
-          param.useFP16Accumulation);
+          param.useFP16Accumulation, param.lengthsMode);
     } else if (param.slsKind == QUANTIZED_WEIGHTED) {
       R = fn->createFusedRowwiseQuantizedSparseLengthsWeightedSum(
           getSLSDescription(param), data, weights, indices, lengths,
-          param.fusedDtype, param.useFP16Accumulation);
+          param.fusedDtype, param.useFP16Accumulation, param.lengthsMode);
     } else if (param.slsKind == NONQUANTIZED_WEIGHTED) {
-      R = fn->createSparseLengthsWeightedSum(
-          getSLSDescription(param), dataConstant, weights, indices, lengths);
+      R = fn->createSparseLengthsWeightedSum(getSLSDescription(param),
+                                             dataConstant, weights, indices,
+                                             lengths, param.lengthsMode);
     } else { // NonquantizedUnweighted
       R = fn->createSparseLengthsSum(getSLSDescription(param), dataConstant,
-                                     indices, lengths);
+                                     indices, lengths, param.lengthsMode);
     }
     SaveNode *S = nullptr;
     if (param.addClip) {
@@ -348,7 +350,8 @@ public:
 // Indices of arguments
 #define ROWWISE_QUANT 14
 #define ACCUM_TYPE 15
-#define DEVICE_ID 16
+#define LENGTHS_MODE 16
+#define DEVICE_ID 17
 
 SLSParam parseArgs(int argc, char *argv[]) {
   SLSParam param;
@@ -430,6 +433,24 @@ SLSParam parseArgs(int argc, char *argv[]) {
   } else {
     param.useFP16Accumulation = false;
   }
+  if (argc > LENGTHS_MODE) {
+    printf("LengthsMode %s\n", argv[LENGTHS_MODE]);
+    if (std::string(argv[LENGTHS_MODE]) == "AllOne") {
+      param.lengthsMode = LengthsMode::AllOne;
+      CHECK_EQ(param.numIndicesPerBatch, 1)
+          << "Lengths (numIndicesPerBatch) must == 1 for LengthsMode::AllOne";
+    } else if (std::string(argv[LENGTHS_MODE]) == "Low") {
+      param.lengthsMode = LengthsMode::Low;
+      CHECK_LE(param.numIndicesPerBatch, 5)
+          << "Lengths (numIndicesPerBatch) must be <= 5 for LengthsMode::Low";
+    } else if (std::string(argv[LENGTHS_MODE]) == "High") {
+      param.lengthsMode = LengthsMode::High;
+    } else {
+      llvm_unreachable("Invalid lengthsMode");
+    }
+  } else {
+    param.lengthsMode = LengthsMode::High;
+  }
   if (argc > DEVICE_ID) {
     printf("devId %s\n", argv[DEVICE_ID]);
     param.devId = std::string(argv[DEVICE_ID]);
@@ -455,7 +476,8 @@ int main(int argc, char *argv[]) {
       "dtypeStr(\"Float16\"|\"Float32\") "
       "addClipStr(\"True\"|\"False\")\nQuantized only options: "
       "quantizationDtypeStr(\"Int8\"|\"Int4\") "
-      "useFP16AccumulationStr(\"True\"|\"False\") \nOptional: dev_id(Int)\n");
+      "useFP16AccumulationStr(\"True\"|\"False\") \n"
+      "lengthsModeStr(\"AllOne\"|\"Low\"|\"High\") \nOptional: dev_id(Int)\n");
   printf("\n");
 
   std::vector<SLSParam> params;
@@ -488,7 +510,7 @@ int main(int argc, char *argv[]) {
     }
   }
   // Using command line
-  else if (argc == 14 || argc == 15 || argc == 16 || argc == 17) {
+  else if (argc == 14 || argc == 15 || argc == 16 || argc == 17 || argc == 18) {
     SLSParam param = parseArgs(argc, argv);
     params.push_back(param);
 
@@ -497,7 +519,7 @@ int main(int argc, char *argv[]) {
         "numTableEntries,"
         "numElementsPerRow,numReps,numAsyncLaunches,numSLSNodes,slsKindStr,"
         "backendStr,dtypeStr,addClipStr,quantizationDtypeStr,"
-        "useFP16AccumulationStr");
+        "useFP16AccumulationStr,lengthsModeStr");
     runPrefix = std::string(strFormat(
         "SLSBench,SW,%zu,%zu,%zu,%zu,%zu,%zu,%zu,%zu,%s,%s,%s,%"
         "s,%s,%"

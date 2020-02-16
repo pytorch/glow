@@ -255,6 +255,9 @@ inline std::pair<dim_t, dim_t> calculateConvTransposeOutputDims(
 /// Modes of the padding operation.
 enum PaddingMode { CONSTANT = 0, REFLECT, EDGE };
 
+/// Different lengths modes used for SLS variants.
+enum class LengthsMode { High, Low, AllOne };
+
 /// Convolution Layouts.
 enum ConvolutionLayout { NHWC = 0, NCHW };
 
@@ -265,6 +268,7 @@ enum FusedActivation { NONE = 0, RELU, TANH, SIGMOID };
 llvm::raw_ostream &operator<<(llvm::raw_ostream &os, ConvolutionLayout layout);
 llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
                               FusedActivation fusedActivation);
+llvm::raw_ostream &operator<<(llvm::raw_ostream &os, LengthsMode lengthsMode);
 
 /// Support for hashing the Nodes. This is required for using
 /// llvm::hash_combine.

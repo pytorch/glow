@@ -204,6 +204,25 @@ protected:
   /// for multidirectional broadcasting.
   virtual bool hasMultidirectionalBroadcast(const llvm::StringRef typeName) = 0;
 
+  inline Expected<LengthsMode>
+  getLengthsMode(const ArgumentDictionaryTy &dict) {
+    bool length1 = false;
+    if (dict.count("length1")) {
+      ASSIGN_VALUE_OR_RETURN_ERR(length1, loadInt(dict.at("length1")));
+    }
+    if (length1) {
+      return LengthsMode::AllOne;
+    }
+    bool lengthLow = false;
+    if (dict.count("lengthlow")) {
+      ASSIGN_VALUE_OR_RETURN_ERR(lengthLow, loadInt(dict.at("lengthlow")));
+    }
+    if (lengthLow) {
+      return LengthsMode::Low;
+    }
+    return LengthsMode::High;
+  }
+
   /// Associate the name of operation outputs to a NodeValues corresponding to
   /// node \p node. If \p numOutputs is lower than 0, then all outputs are
   /// associated. Otherwise, the first \p numOutputs outputs are associated.
@@ -804,14 +823,10 @@ protected:
     ASSIGN_VALUE_OR_RETURN_ERR(in1, getNodeValueByName(op.input(1)));
     NodeValue in2;
     ASSIGN_VALUE_OR_RETURN_ERR(in2, getNodeValueByName(op.input(2)));
-    bool allLengthsOne = false;
-    if (dict.count("length1")) {
-      int allLengthsOneInt;
-      ASSIGN_VALUE_OR_RETURN_ERR(allLengthsOneInt, loadInt(dict["length1"]));
-      allLengthsOne = (bool)allLengthsOneInt;
-    }
+    LengthsMode lengthsMode;
+    ASSIGN_VALUE_OR_RETURN_ERR(lengthsMode, getLengthsMode(dict));
     auto *node = G_.createSparseLengthsSum(loadOperatorName(op), in0, in1, in2,
-                                           allLengthsOne);
+                                           lengthsMode);
     RETURN_IF_ERR(addNodeAsOutput(op, node));
     return Error::success();
   }
@@ -826,19 +841,15 @@ protected:
     ASSIGN_VALUE_OR_RETURN_ERR(in2, getNodeValueByName(op.input(2)));
     NodeValue in3;
     ASSIGN_VALUE_OR_RETURN_ERR(in3, getNodeValueByName(op.input(3)));
-    bool allLengthsOne = false;
-    if (dict.count("length1")) {
-      int allLengthsOneInt;
-      ASSIGN_VALUE_OR_RETURN_ERR(allLengthsOneInt, loadInt(dict["length1"]));
-      allLengthsOne = (bool)allLengthsOneInt;
-    }
-    auto *node = G_.createSparseLengthsWeightedSum(
-        loadOperatorName(op), in0, in1, in2, in3, allLengthsOne);
+    LengthsMode lengthsMode;
+    ASSIGN_VALUE_OR_RETURN_ERR(lengthsMode, getLengthsMode(dict));
+    auto *node = G_.createSparseLengthsWeightedSum(loadOperatorName(op), in0,
+                                                   in1, in2, in3, lengthsMode);
     RETURN_IF_ERR(addNodeAsOutput(op, node));
     return Error::success();
   }
 
-  Error loadEmbeddingBag(const OpType &op) {
+  Error loadEmbeddingBag(const OpType &op, ArgumentDictionaryTy &dict) {
     NodeValue in0;
     ASSIGN_VALUE_OR_RETURN_ERR(in0, getNodeValueByName(op.input(0)));
     NodeValue in1;
@@ -847,8 +858,10 @@ protected:
     ASSIGN_VALUE_OR_RETURN_ERR(in2, getNodeValueByName(op.input(2)));
     NodeValue in3;
     ASSIGN_VALUE_OR_RETURN_ERR(in3, getNodeValueByName(op.input(3)));
-    auto *node =
-        G_.createEmbeddingBag(loadOperatorName(op), in0, in1, in2, in3);
+    LengthsMode lengthsMode;
+    ASSIGN_VALUE_OR_RETURN_ERR(lengthsMode, getLengthsMode(dict));
+    auto *node = G_.createEmbeddingBag(loadOperatorName(op), in0, in1, in2, in3,
+                                       /* hasEndOffset */ false, lengthsMode);
     RETURN_IF_ERR(addNodeAsOutput(op, node));
     return Error::success();
   }
@@ -1183,7 +1196,7 @@ protected:
       return true;
     }
     if (typeName == "EmbeddingBag") {
-      RETURN_IF_ERR(loadEmbeddingBag(op));
+      RETURN_IF_ERR(loadEmbeddingBag(op, dict));
       return true;
     }
     if (typeName == "LengthsToRanges") {

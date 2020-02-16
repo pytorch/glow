@@ -2491,9 +2491,13 @@ Error ONNXModelLoader::loadRowwiseQuantizedSparseLengthsWeightedSum(
   ASSIGN_VALUE_OR_RETURN_ERR(indices, getNodeValueByName(op.input(4)));
   NodeValue lengths;
   ASSIGN_VALUE_OR_RETURN_ERR(lengths, getNodeValueByName(op.input(5)));
+  LengthsMode lengthsMode;
+  ASSIGN_VALUE_OR_RETURN_ERR(lengthsMode, getLengthsMode(dict));
 
   Node *N = G_.createRowwiseQuantizedSparseLengthsWeightedSum(
-      loadOperatorName(op), data, scales, offsets, weights, indices, lengths);
+      loadOperatorName(op), data, scales, offsets, weights, indices, lengths,
+      /* precision */ ElemKind::FloatTy, /* useFP16Accumulation */ false,
+      lengthsMode);
 
   RETURN_IF_ERR(addNodeAsOutput(op, N));
   return Error::success();
@@ -2509,27 +2513,32 @@ Error ONNXModelLoader::loadFusedRowwiseQuantizedSparseLengthsWeightedSum(
   ASSIGN_VALUE_OR_RETURN_ERR(indices, getNodeValueByName(op.input(2)));
   NodeValue lengths;
   ASSIGN_VALUE_OR_RETURN_ERR(lengths, getNodeValueByName(op.input(3)));
+  LengthsMode lengthsMode;
+  ASSIGN_VALUE_OR_RETURN_ERR(lengthsMode, getLengthsMode(dict));
 
   Node *N = G_.createFusedRowwiseQuantizedSparseLengthsWeightedSum(
-      loadOperatorName(op), data, weights, indices, lengths);
+      loadOperatorName(op), data, weights, indices, lengths,
+      /* useFP16Accumulation */ false, lengthsMode);
 
   RETURN_IF_ERR(addNodeAsOutput(op, N));
   return Error::success();
 }
 
 Error ONNXModelLoader::loadFusedRowwiseQuantizedSparseLengthsSum(
-    const ONNX_NAMESPACE::NodeProto &op,
-    const ArgumentDictionaryTy & /* unused */) {
+    const ONNX_NAMESPACE::NodeProto &op, const ArgumentDictionaryTy &dict) {
   NodeValue data;
   ASSIGN_VALUE_OR_RETURN_ERR(data, getNodeValueByName(op.input(0)));
   NodeValue indices;
   ASSIGN_VALUE_OR_RETURN_ERR(indices, getNodeValueByName(op.input(1)));
   NodeValue lengths;
   ASSIGN_VALUE_OR_RETURN_ERR(lengths, getNodeValueByName(op.input(2)));
+  LengthsMode lengthsMode;
+  ASSIGN_VALUE_OR_RETURN_ERR(lengthsMode, getLengthsMode(dict));
 
   Storage *dataS = llvm::dyn_cast<Storage>(data);
   Node *N = G_.createFusedRowwiseQuantizedSparseLengthsSum(
-      loadOperatorName(op), dataS, indices, lengths);
+      loadOperatorName(op), dataS, indices, lengths,
+      /* useFP16Accumulation */ false, lengthsMode);
 
   RETURN_IF_ERR(addNodeAsOutput(op, N));
   return Error::success();

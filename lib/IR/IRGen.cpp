@@ -439,7 +439,7 @@ void IRGenVisitor::post(Node *parent, Node *N) {
 
     builder_.createSparseLengthsSumGradInst(N->getName(), data, indices,
                                             lengths, destGrad, dataGrad,
-                                            SLSG->getAllLengthsOne());
+                                            SLSG->getLengthsMode());
 
     registerIR(SLSG->getGradOfInputNamedData(), dataGrad);
     break;
@@ -462,7 +462,7 @@ void IRGenVisitor::post(Node *parent, Node *N) {
 
     builder_.createSparseLengthsWeightedSumGradInst(
         N->getName(), data, weights, indices, lengths, destGrad, dataGrad,
-        weightsGrad, SLWSG->getAllLengthsOne());
+        weightsGrad, SLWSG->getLengthsMode());
 
     registerIR(SLWSG->getGradOfInputNamedData(), dataGrad);
     registerIR(SLWSG->getGradOfInputNamedWeights(), weightsGrad);

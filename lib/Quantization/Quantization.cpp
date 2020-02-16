@@ -815,10 +815,10 @@ public:
         }
       }
 
-      // Convert SLWS from normal quantized version to fused rowwise-quantized
-      // version if applicable. Data must be Constant for this to occur. We also
-      // will not quantize the weights as we do for the default normal quantized
-      // SLWS, as the rowwise version uses float weights.
+      // Convert SLWS from normal version to fused rowwise-quantized version if
+      // applicable. Data must be Constant for this to occur. We also will not
+      // quantize the weights as we do for the default normal quantized SLWS, as
+      // the rowwise version uses float weights.
       if (auto *SLWS =
               llvm::dyn_cast<SparseLengthsWeightedSumNode>(Q->getInput())) {
         NodeValue data = SLWS->getData();
@@ -848,7 +848,9 @@ public:
         auto *FRWQSLWS =
             function_.createFusedRowwiseQuantizedSparseLengthsWeightedSum(
                 SLWS->getName(), dataC->getPayloadMutable(), weightsF,
-                SLWS->getIndices(), SLWS->getLengths());
+                SLWS->getIndices(), SLWS->getLengths(),
+                /* fusedElemKind */ ElemKind::UInt8FusedQTy,
+                /* useFP16Accumulation */ false, SLWS->getLengthsMode());
 
         // Fused RWQSLWS stores the fused scales and offsets in trailing
         // columns. If the input was single dimensional then it adds extra
