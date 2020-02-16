@@ -35,14 +35,6 @@
 
 using namespace glow;
 
-namespace glow {
-namespace onnxifi {
-#ifdef GLOW_WITH_NNPI
-extern bool GlowDumpGraph;
-#endif
-} // namespace onnxifi
-} // namespace glow
-
 namespace {
 llvm::cl::OptionCategory reproTestCat("Repro Category");
 llvm::cl::opt<std::string> modelPathOpt("model", llvm::cl::desc("Input models"),
@@ -287,7 +279,8 @@ int run() {
       << "ONNXModelLoader failed to load model: " << modelPathOpt;
 
   // Build host manager and compile the module.
-  PrecisionConfiguration precConfig;
+  CompilationContext cctx;
+  PrecisionConfiguration &precConfig = cctx.precisionConfig;
   if (globalFp16Opt) {
     precConfig.convertToFP16 = globalFp16Opt;
     if (sliceConcatFp32Opt) {
@@ -320,8 +313,10 @@ int run() {
     precConfig.forceFP16AccumSLS = true;
     llvm::outs() << "Forcing fp16 accumulation for SLS ops enabled\n";
   }
-  CompilationContext cctx;
-  cctx.precisionConfig = precConfig;
+  if (glowDumpGraphOpt) {
+    cctx.dumpFinalGraph = true;
+  }
+
   if (useSparseNNPartitioningScheme) {
     cctx.optimizationOpts.useSparseNNPartitioningScheme =
         useSparseNNPartitioningScheme;
@@ -581,10 +576,5 @@ int run() {
 
 int main(int argc, char **argv) {
   parseCommandLine(argc, argv);
-  if (glowDumpGraphOpt) {
-#ifdef GLOW_WITH_NNPI
-    glow::onnxifi::GlowDumpGraph = true;
-#endif
-  }
   return run();
 }

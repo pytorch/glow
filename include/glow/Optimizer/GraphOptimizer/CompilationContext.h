@@ -153,9 +153,12 @@ struct CompilationContext {
   /// support.
   runtime::DeferredWeightLoader *deferredWeightLoader{nullptr};
 
-  // Whether to print out issues/logging during compilation. Used for example to
-  // disable printing issues encountered during ConstantFolding.
+  /// Whether to print out issues/logging during compilation. Used for example
+  /// to disable printing issues encountered during ConstantFolding.
   bool verboseCompile{true};
+
+  /// Call dumpDag on each Function passed to the backend for compilation.
+  bool dumpFinalGraph = false;
 
   CompilationContext(PlaceholderBindings *bindings_ = nullptr,
                      LoweredInfoMap *loweredInfoMap_ = nullptr)

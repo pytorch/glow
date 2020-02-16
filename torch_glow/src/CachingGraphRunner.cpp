@@ -72,6 +72,10 @@ CachingGraphRunner::loadImpl(torch::jit::Stack &stack) {
     cctx.precisionConfig.convertToFP16 = true;
   }
 
+  if (settings_.dumpFinalGlowGraph) {
+    cctx.dumpFinalGraph = true;
+  }
+
   RETURN_IF_ERR(hostManager_->addNetwork(std::move(module), cctx));
 
   perGlowGraphInfoMap_[hash] = std::move(info);

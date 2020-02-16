@@ -69,7 +69,6 @@ static llvm::cl::opt<bool, /* ExternalStorage */ true>
         llvm::cl::location(GlowUsePerPartitionIcetConfig), llvm::cl::Optional,
         llvm::cl::init(false), llvm::cl::cat(optionsForNNPI));
 
-bool GlowDumpGraph = false;
 bool GlowDisableNNPITransforms = false;
 bool GlowDisableNNPIPrivateTransforms = false;
 int32_t GlowNNPINumParallelChunks = 1;
@@ -462,11 +461,6 @@ NNPIBackend::createDeviceManager(const runtime::DeviceConfig &deviceConfig) {
 
 Expected<std::unique_ptr<CompiledFunction>>
 NNPIBackend::compile(Function *F, const BackendOptions &opts) const {
-  if (glow::onnxifi::GlowDumpGraph) {
-    std::string fname = "Graph_" + F->getName().str() + ".dot";
-    LOG(INFO) << "Dumping net to " << fname;
-    F->dumpDAG(fname);
-  }
   std::unique_ptr<NNPICompiledFunction> compiledFunc =
       glow::make_unique<NNPICompiledFunction>(F);
   auto compileHasError = compiledFunc->compile(F, opts);
