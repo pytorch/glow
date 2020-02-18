@@ -17,9 +17,6 @@
 
 #include "glow/Backends/DeviceManager.h"
 #include "glow/Backends/DummyDeviceManager.h"
-
-#include "../../lib/Backends/CPU/CPUDeviceManager.h"
-#include "glow/Backends/Interpreter/InterpreterDeviceManager.h"
 #include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
 #include "glow/Runtime/RuntimeTypes.h"
@@ -679,15 +676,14 @@ TEST(DeviceManagerTest, SetDeviceMemory) {
   auto interpreterConfigFull = DeviceConfig("Interpreter");
   interpreterConfigFull.setDeviceMemory(32768);
   // Only deviceConfig setting.
-  InterpreterDeviceManager interpreterDeviceSetByDeviceConfig(
-      interpreterConfigFull);
-  EXPECT_EQ(interpreterDeviceSetByDeviceConfig.getMaximumMemory(), 32768);
+  auto interpreterDeviceSetByDeviceConfig = std::unique_ptr<DeviceManager>(
+      DeviceManager::createDeviceManager(interpreterConfigFull));
+  EXPECT_EQ(interpreterDeviceSetByDeviceConfig->getMaximumMemory(), 32768);
   // No setting at all, default memory size.
-  InterpreterDeviceManager interpreterDeviceDefault(interpreterConfigEmpty);
-  EXPECT_EQ(interpreterDeviceDefault.getMaximumMemory(), 2000000000);
+  auto interpreterDeviceDefault = std::unique_ptr<DeviceManager>(
+      DeviceManager::createDeviceManager(interpreterConfigEmpty));
+  EXPECT_EQ(interpreterDeviceDefault->getMaximumMemory(), 2000000000);
 }
-
-#ifdef GLOW_WITH_CPU
 
 TEST(DeviceManagerTest, AvailableMemory) {
   std::vector<std::unique_ptr<CompiledFunction>> backing;
@@ -704,36 +700,37 @@ TEST(DeviceManagerTest, AvailableMemory) {
 
   auto config = DeviceConfig("CPU");
   config.setDeviceMemory(expectedBytes);
-  CPUDeviceManager cpuCoreDevice(config);
-  ASSERT_FALSE(ERR_TO_BOOL(cpuCoreDevice.init()));
+  auto cpuCoreDevice = std::unique_ptr<DeviceManager>(
+      DeviceManager::createDeviceManager(config));
+  ASSERT_FALSE(ERR_TO_BOOL(cpuCoreDevice->init()));
 
-  EXPECT_EQ(cpuCoreDevice.getMaximumMemory(), expectedBytes);
-  EXPECT_EQ(cpuCoreDevice.getAvailableMemory(), expectedBytes);
-  EXPECT_TRUE(cpuCoreDevice.isMemoryAvailable(expectedBytes));
-  EXPECT_FALSE(cpuCoreDevice.isMemoryAvailable(expectedBytes + 1));
+  EXPECT_EQ(cpuCoreDevice->getMaximumMemory(), expectedBytes);
+  EXPECT_EQ(cpuCoreDevice->getAvailableMemory(), expectedBytes);
+  EXPECT_TRUE(cpuCoreDevice->isMemoryAvailable(expectedBytes));
+  EXPECT_FALSE(cpuCoreDevice->isMemoryAvailable(expectedBytes + 1));
 
   std::tie(promise, future) = getFutureHelper<const Module *>();
-  cpuCoreDevice.addNetwork(module.get(), compiledFunctions,
-                           [&promise](const Module *module, Error err) {
-                             callbackHelper(promise, module, std::move(err));
-                           });
+  cpuCoreDevice->addNetwork(module.get(), compiledFunctions,
+                            [&promise](const Module *module, Error err) {
+                              callbackHelper(promise, module, std::move(err));
+                            });
 
   future.wait_for(std::chrono::seconds(2));
   EXPECT_EQ(future.get(), module.get());
 
-  EXPECT_EQ(cpuCoreDevice.getMaximumMemory(), expectedBytes);
-  EXPECT_EQ(cpuCoreDevice.getAvailableMemory(), 0);
-  EXPECT_FALSE(cpuCoreDevice.isMemoryAvailable(expectedBytes));
-  EXPECT_FALSE(cpuCoreDevice.isMemoryAvailable(1));
+  EXPECT_EQ(cpuCoreDevice->getMaximumMemory(), expectedBytes);
+  EXPECT_EQ(cpuCoreDevice->getAvailableMemory(), 0);
+  EXPECT_FALSE(cpuCoreDevice->isMemoryAvailable(expectedBytes));
+  EXPECT_FALSE(cpuCoreDevice->isMemoryAvailable(1));
 
   // Let's try again.
   auto module2 = makeBasicModule();
   std::tie(promise, future) = getFutureHelper<const Module *>();
-  cpuCoreDevice.addNetwork(module2.get(),
-                           compileFunctions("CPU", module2.get(), backing),
-                           [&promise](const Module *module, Error err) {
-                             callbackHelper(promise, module, std::move(err));
-                           });
+  cpuCoreDevice->addNetwork(module2.get(),
+                            compileFunctions("CPU", module2.get(), backing),
+                            [&promise](const Module *module, Error err) {
+                              callbackHelper(promise, module, std::move(err));
+                            });
 
   future.wait_for(std::chrono::seconds(2));
   auto *resultModule = future.get();
@@ -741,14 +738,14 @@ TEST(DeviceManagerTest, AvailableMemory) {
   EXPECT_NE(resultModule, module.get());
   EXPECT_EQ(resultModule, nullptr);
 
-  EXPECT_EQ(cpuCoreDevice.getMaximumMemory(), expectedBytes);
-  EXPECT_EQ(cpuCoreDevice.getAvailableMemory(), 0);
+  EXPECT_EQ(cpuCoreDevice->getMaximumMemory(), expectedBytes);
+  EXPECT_EQ(cpuCoreDevice->getAvailableMemory(), 0);
 
   // Evict the first network.
   std::promise<std::string> evictPromise;
   std::future<std::string> evictFuture;
   std::tie(evictPromise, evictFuture) = getFutureHelper<std::string>();
-  cpuCoreDevice.evictNetwork(
+  cpuCoreDevice->evictNetwork(
       "main", [&evictPromise](std::string functionName, Error err) {
         callbackHelper(evictPromise, functionName, std::move(err));
       });
@@ -757,30 +754,32 @@ TEST(DeviceManagerTest, AvailableMemory) {
 
   // And try again, this time with available space.
   std::tie(promise, future) = getFutureHelper<const Module *>();
-  cpuCoreDevice.addNetwork(module2.get(),
-                           compileFunctions("CPU", module2.get(), backing),
-                           [&promise](const Module *module, Error err) {
-                             callbackHelper(promise, module, std::move(err));
-                           });
+  cpuCoreDevice->addNetwork(module2.get(),
+                            compileFunctions("CPU", module2.get(), backing),
+                            [&promise](const Module *module, Error err) {
+                              callbackHelper(promise, module, std::move(err));
+                            });
 
   future.wait_for(std::chrono::seconds(2));
   EXPECT_EQ(future.get(), module2.get());
 
-  EXPECT_EQ(cpuCoreDevice.getMaximumMemory(), expectedBytes);
-  EXPECT_EQ(cpuCoreDevice.getAvailableMemory(), 0);
+  EXPECT_EQ(cpuCoreDevice->getMaximumMemory(), expectedBytes);
+  EXPECT_EQ(cpuCoreDevice->getAvailableMemory(), 0);
 
-  EXPECT_FALSE(ERR_TO_BOOL(cpuCoreDevice.stop()));
+  EXPECT_FALSE(ERR_TO_BOOL(cpuCoreDevice->stop()));
 
   // Test CPU DeviceConfig.
   auto cpuConfigEmpty = DeviceConfig("CPU");
   auto cpuConfigFull = DeviceConfig("CPU");
   cpuConfigFull.setDeviceMemory(32768);
   // Only deviceConfig setting.
-  CPUDeviceManager cpuDeviceSetByDeviceConfig(cpuConfigFull);
-  EXPECT_EQ(cpuDeviceSetByDeviceConfig.getMaximumMemory(), 32768);
+  auto cpuDeviceSetByDeviceConfig = std::unique_ptr<DeviceManager>(
+      DeviceManager::createDeviceManager(cpuConfigFull));
+  EXPECT_EQ(cpuDeviceSetByDeviceConfig->getMaximumMemory(), 32768);
   // No setting at all, default memory size.
-  CPUDeviceManager cpuDeviceDefault(cpuConfigEmpty);
-  EXPECT_EQ(cpuDeviceDefault.getMaximumMemory(), 2000000000);
+  auto cpuDeviceDefault = std::unique_ptr<DeviceManager>(
+      DeviceManager::createDeviceManager(cpuConfigEmpty));
+  EXPECT_EQ(cpuDeviceDefault->getMaximumMemory(), 2000000000);
 }
 
 TEST(DeviceManagerTest, DummyDeviceManager) {
@@ -839,8 +838,6 @@ TEST(DeviceManagerTest, DummyDeviceManager) {
 
   EXPECT_FALSE(ERR_TO_BOOL(deviceManager.stop()));
 }
-
-#endif // GLOW_WITH_CPU
 
 /// Check that the device can move data to and from the host.
 /// Disable if your device does not support Device Resident Tensors.
