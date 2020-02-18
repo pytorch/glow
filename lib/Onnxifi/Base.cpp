@@ -53,10 +53,18 @@ onnxStatus Backend::checkGraphCompatibility(const void *onnxModel,
   auto function = module.createFunction(compatibilityFunctionName);
 
   std::unique_ptr<ONNXIFIModelLoader> loader;
-  auto loaderOrErr = ONNXIFIModelLoader::parse(
-      onnxModel, onnxModelSize, 0 /*weightCount*/,
-      nullptr /*weightDescriptors*/, *function,
-      false /*loadInputsAsPlaceholders*/, getUseOnnx());
+  // Note: Because we are not loading inputs as Placeholders, we need to
+  // explicitly not do constant folding in the loader. This is because the
+  // inputs will be loaded as uninitialized Constants. We do this for now
+  // because backends may have limitations on some ops to have inputs as
+  // Constants, such as a Convolution's weights. In the future we should clean
+  // this up so that we load Constants and Placeholders based on the actual
+  // eventual input graph.
+  auto loaderOrErr =
+      ONNXIFIModelLoader::parse(onnxModel, onnxModelSize, 0 /*weightCount*/,
+                                nullptr /*weightDescriptors*/, *function,
+                                false /*loadInputsAsPlaceholders*/,
+                                getUseOnnx(), /*constFoldInLoader*/ false);
   if (loaderOrErr) {
     loader = std::move(*loaderOrErr);
   } else {
@@ -88,8 +96,8 @@ onnxStatus Backend::checkGraphCompatibility(const void *onnxModel,
 
   const auto &nodes = function->getNodes();
   for (const auto &node : nodes) {
-    if (!glowBackend_->isOpSupported(node)) {
-      LOG(ERROR) << "ONNXIFI: Not supported op: " << node.getDebugDesc();
+    if (!glowBackend_->acceptForExecution(node)) {
+      LOG(ERROR) << "ONNXIFI: Op rejected by backend: " << node.getDebugDesc();
       // TODO: Use a more specific ONNXIFI error code here to denote what
       // about this operator is not supported (shape, type, etc).
       return ONNXIFI_STATUS_UNSUPPORTED_OPERATOR;
@@ -141,24 +149,9 @@ void Graph::setZeroLengthSequence(dim_t maxSeqLength) {
   zeroLengthSequence_.zero();
 }
 
-onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
-                              const onnxTensorDescriptorV1 *inputDescriptors,
-                              uint32_t outputsCount,
-                              const onnxTensorDescriptorV1 *outputDescriptors,
-                              EventPtr outputEvent,
-                              onnxTraceEventList *traceEvents) {
-  auto ctx = glow::make_unique<ExecutionContext>();
-
-  TraceContext *traceContext = nullptr;
-  if (traceEvents || GlowDumpDebugTraces) {
-    ctx->setTraceContext(glow::make_unique<TraceContext>(TraceLevel::STANDARD));
-    traceContext = ctx->getTraceContext();
-    traceContext->setThreadName("Onnxifi");
-  }
-  TRACE_EVENT_SCOPE(traceContext, TraceLevel::RUNTIME, "Onnxifi::setIOAndRun");
-  TRACE_EVENT_SCOPE_NAMED(traceContext, TraceLevel::RUNTIME, "adjustInputs",
-                          aiEvent);
-
+onnxStatus Graph::adjustInputs(uint32_t inputsCount,
+                               const onnxTensorDescriptorV1 *inputDescriptors,
+                               ExecutionContext *ctx) {
   // Create tensors for input placeholders
   for (unsigned i = 0; i < inputsCount; ++i) {
     const auto &inOnnxTensor = inputDescriptors[i];
@@ -233,6 +226,31 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
       }
       ctx->getPlaceholderBindings()->insert(inPhPtr, inputTensor);
     }
+  }
+  return ONNXIFI_STATUS_SUCCESS;
+}
+
+onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
+                              const onnxTensorDescriptorV1 *inputDescriptors,
+                              uint32_t outputsCount,
+                              const onnxTensorDescriptorV1 *outputDescriptors,
+                              EventPtr outputEvent,
+                              onnxTraceEventList *traceEvents) {
+  auto ctx = glow::make_unique<ExecutionContext>();
+
+  TraceContext *traceContext = nullptr;
+  if (traceEvents || GlowDumpDebugTraces) {
+    ctx->setTraceContext(glow::make_unique<TraceContext>(TraceLevel::STANDARD));
+    traceContext = ctx->getTraceContext();
+    traceContext->setThreadName("Onnxifi");
+  }
+  TRACE_EVENT_SCOPE(traceContext, TraceLevel::RUNTIME, "Onnxifi::setIOAndRun");
+  TRACE_EVENT_SCOPE_NAMED(traceContext, TraceLevel::RUNTIME, "adjustInputs",
+                          aiEvent);
+
+  auto r = adjustInputs(inputsCount, inputDescriptors, ctx.get());
+  if (r != ONNXIFI_STATUS_SUCCESS) {
+    return r;
   }
 
   size_t seq = 0;

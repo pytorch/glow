@@ -556,9 +556,95 @@ Expected<bool> Caffe2ModelLoader::foldOperator(const caffe2::OperatorDef &op) {
   Caffe2ModelLoader tmpLoader(*tmpF, nullptr);
   bool foldStatus =
       !ERR_TO_BOOL(constantFoldInLoader<Caffe2ModelLoader, caffe2::OperatorDef>(
-          tmpF, tmpLoader, this, op));
+                       tmpF, tmpLoader, this, op),
+                   /* log */ false);
   G_.getParent()->eraseFunction(tmpF);
   return foldStatus;
+}
+
+Error Caffe2ModelLoader::loadConvTranspose(const caffe2::OperatorDef &op,
+                                           ArgumentDictionaryTy &dict) {
+  const std::string &opName = loadOperatorName(op);
+
+  // Load the inputs:
+  std::vector<unsigned_t> strides;
+  ASSIGN_VALUE_OR_RETURN_ERR(strides, getSizeHW(dict, "stride", 1));
+  std::vector<unsigned_t> pads;
+  ASSIGN_VALUE_OR_RETURN_ERR(pads, getPads(dict));
+  std::vector<unsigned_t> kernels;
+  ASSIGN_VALUE_OR_RETURN_ERR(kernels, getSizeHW(dict, "kernel", 0));
+  unsigned_t group = 1;
+  if (dict.count("group")) {
+    ASSIGN_VALUE_OR_RETURN_ERR(group, loadInt(dict["group"]));
+  }
+  std::string order = "NCHW";
+  if (dict.count("order")) {
+    ASSIGN_VALUE_OR_RETURN_ERR(order, loadStr(dict["order"]));
+  }
+  unsigned_t dilation = 1;
+  if (dict.count("dilation")) {
+    ASSIGN_VALUE_OR_RETURN_ERR(dilation, loadInt(dict["dilation"]));
+  }
+
+  NodeValue in;
+  ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
+
+  Constant *weight;
+  ASSIGN_VALUE_OR_RETURN_ERR(weight, getConstantByName(op.input(1)));
+
+  // Transpose the weights to the right format. Glow expects to read the
+  // weights in the format CRSK.
+  // C - output_depth, R - filter_height, S - filter_width, K - input_depth.
+  // Caffe2 "ConvTranspose" op always stores the weight as KCRS.
+  Tensor wT;
+  weight->getPayload().transpose(&wT, CNHW2NHWC);
+  weight = G_.getParent()->createConstant(weight->getName(), std::move(wT));
+
+  // The structure of the conv weights is: CRSK. We take the C, which is the
+  // number of filters. We use this value to calculate the size of the bias
+  // if it is not specified.
+  dim_t depth = weight->dims()[0];
+
+  // We expect the input to be NHWC.
+  NodeValue finalIn;
+  if (order == "NCHW") {
+    finalIn = G_.createTranspose(opName, in, NCHW2NHWC)->getResult();
+  } else {
+    finalIn = in;
+  }
+
+  TypeRef finalInType = finalIn.getType();
+
+  // Calculate the size and allocate the output buffer.
+  ShapeNHWC idim = ShapeNHWC(finalInType->dims());
+  auto outSz = calculateConvTransposeOutputDims(idim.h, idim.w, kernels,
+                                                strides, pads, dilation);
+  std::array<dim_t, 4> outDims = {{idim.n, outSz.first, outSz.second, depth}};
+
+  // Try to find a loaded bias constant.
+  Constant *bias = nullptr;
+  if (op.input_size() > 2) {
+    const auto &biasName = op.input(2);
+    bias = getConstantByNameOrNull(biasName);
+  }
+  // Construct the bias constant if one wasn't found.
+  if (!bias) {
+    Tensor b(ElemKind::FloatTy, {depth});
+    b.zero();
+    bias = G_.getParent()->createConstant("conv.bias", std::move(b));
+  }
+
+  TypeRef outTy = G_.getParent()->uniqueType(ElemKind::FloatTy, outDims);
+
+  Node *node = G_.createConvTranspose(opName, finalIn, weight, bias, outTy,
+                                      kernels, strides, pads, group, dilation);
+
+  if (order == "NCHW") {
+    // Transpose the output back.
+    node = G_.createTranspose(opName, node, NHWC2NCHW);
+  }
+  RETURN_IF_ERR(addNodeAsOutput(op, node));
+  return Error::success();
 }
 
 Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
@@ -576,6 +662,10 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
 
   if (typeName == "Conv" || typeName == "ConvRelu") {
     return loadConv(op, dict);
+  }
+
+  if (typeName == "ConvTranspose") {
+    return loadConvTranspose(op, dict);
   }
 
   if (typeName == "Int8Conv" || typeName == "Int8ConvRelu") {
@@ -836,10 +926,17 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
       // When add axis is used, this means we have to add a new dimension
       // before the axis, instead of merging on the axis.
       std::vector<dim_t> outputDims = inputs[0].dims();
+      unsigned i = 0;
       for (const auto &input : inputs) {
         RETURN_ERR_IF_NOT(
             outputDims[channel] == input.dims()[channel],
-            "inputs need all to have the same dims for concat with add_axis");
+            strFormat("inputs need all to have the same dims for "
+                      "concat with add_axis: input 0 (%s) vs "
+                      "input %u (%s), %u vs %u, channel = %u",
+                      op.input(0).c_str(), i, op.input(i).c_str(),
+                      static_cast<unsigned>(outputDims[channel]),
+                      static_cast<unsigned>(input.dims()[channel]), channel));
+        ++i;
       }
       outputDims.insert(outputDims.begin() + channel, numInputs);
       node = G_.createReshape(opName, node, outputDims);
@@ -1235,13 +1332,21 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
   if (typeName == "SparseLengthsWeightedSum8BitsRowwise" ||
       typeName == "SparseLengthsSum8BitsRowwise" ||
       typeName == "SparseLengthsWeightedSumFused8BitRowwise" ||
-      typeName == "SparseLengthsSumFused8BitRowwise") {
+      typeName == "SparseLengthsSumFused8BitRowwise" ||
+      typeName == "SparseLengthsWeightedSumFused4BitRowwise" ||
+      typeName == "SparseLengthsSumFused4BitRowwise") {
     const bool isWeighted =
         typeName == "SparseLengthsWeightedSum8BitsRowwise" ||
-        typeName == "SparseLengthsWeightedSumFused8BitRowwise";
+        typeName == "SparseLengthsWeightedSumFused8BitRowwise" ||
+        typeName == "SparseLengthsWeightedSumFused4BitRowwise";
     const bool isFused =
         typeName == "SparseLengthsWeightedSumFused8BitRowwise" ||
-        typeName == "SparseLengthsSumFused8BitRowwise";
+        typeName == "SparseLengthsSumFused8BitRowwise" ||
+        typeName == "SparseLengthsWeightedSumFused4BitRowwise" ||
+        typeName == "SparseLengthsSumFused4BitRowwise";
+    const bool is4Bit =
+        typeName == "SparseLengthsWeightedSumFused4BitRowwise" ||
+        typeName == "SparseLengthsSumFused4BitRowwise";
     // If weighted, then the weights are the second input and so we need to
     // shift indices/lengths/scalesBiases.
     size_t indicesIdx = 1;
@@ -1273,18 +1378,23 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     RETURN_ERR_IF_NOT(lengths.dims().size() == 1, "lengths must be a vector.");
     RETURN_ERR_IF_NOT(indices.dims().size() == 1, "indices must be a vector.");
 
+    LengthsMode lengthsMode;
+    ASSIGN_VALUE_OR_RETURN_ERR(lengthsMode, getLengthsMode(dict));
+
     Node *node;
     if (isFused) {
       // There is no specific fused quantized type in Caffe2, so we will load
-      // UInt8QTy. We then change it from UInt8QTy to UInt8FusedQTy here if
-      // necessary -- another user could have already changed it.
+      // UInt8QTy. We then change it from UInt8QTy to UInt8FusedQTy or
+      // UInt4FusedFP16QTy here if necessary -- another user could have already
+      // changed it.
       if (dataS->getElementType() != ElemKind::UInt8FusedQTy) {
         RETURN_ERR_IF_NOT(dataS->getElementType() == ElemKind::UInt8QTy,
                           "Data must be UInt8QTy.");
         // Use dummy 0.0/0 as scale/offset, since the actual scales/offsets
         // are fused inline with the data.
-        TypeRef fusedTy = G_.getParent()->uniqueType(ElemKind::UInt8FusedQTy,
-                                                     dataS->dims(), 0.0, 0);
+        TypeRef fusedTy = G_.getParent()->uniqueType(
+            is4Bit ? ElemKind::UInt4FusedFP16QTy : ElemKind::UInt8FusedQTy,
+            dataS->dims(), 0.0, 0);
         dataS->setType(Storage::OutputIdx, fusedTy);
         // If the node is a Constant set the payload type as well.
         if (auto dataConstant = llvm::dyn_cast<Constant>(data)) {
@@ -1296,10 +1406,16 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
       // create the new node with its inputs.
       if (isWeighted) {
         node = G_.createFusedRowwiseQuantizedSparseLengthsWeightedSum(
-            opName, dataS, weights, indices, lengths);
+            opName, dataS, weights, indices, lengths,
+            /* useFP16Accumulation */ false, lengthsMode);
       } else {
-        node = G_.createFusedRowwiseQuantizedSparseLengthsSum(opName, dataS,
-                                                              indices, lengths);
+        node = G_.createFusedRowwiseQuantizedSparseLengthsSum(
+            opName, dataS, indices, lengths, /* useFP16Accumulation */ false,
+            lengthsMode);
+      }
+
+      if (is4Bit) {
+        node = G_.createConvertTo(opName, node, ElemKind::FloatTy);
       }
     } else {
       NodeValue scalesBiases;
@@ -1333,10 +1449,14 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
       // Now create the actual node.
       if (isWeighted) {
         node = G_.createRowwiseQuantizedSparseLengthsWeightedSum(
-            opName, dataS, dataScales, dataOffsets, weights, indices, lengths);
+            opName, dataS, dataScales, dataOffsets, weights, indices, lengths,
+            /* precision */ ElemKind::FloatTy,
+            /* useFP16Accumulation */ false, lengthsMode);
       } else {
         node = G_.createRowwiseQuantizedSparseLengthsSum(
-            opName, dataS, dataScales, dataOffsets, indices, lengths);
+            opName, dataS, dataScales, dataOffsets, indices, lengths,
+            /* precision */ ElemKind::FloatTy,
+            /* useFP16Accumulation */ false, lengthsMode);
       }
     }
 
@@ -1470,10 +1590,15 @@ Error Caffe2ModelLoader::loadNetwork(caffe2::NetDef &net) {
   /// Load the network operators:
   for (int i = 0; i < net.op_size(); i++) {
     auto &op = net.op(i);
-    if (getConstantFoldLoaderOpsFlag()) {
-      auto foldstatus = foldOperator(op);
-      if (foldstatus && foldstatus.get()) {
-        // Folded successfully.
+    if (constFoldInLoader_) {
+      auto tryFold = foldOperator(op);
+      if (!tryFold) {
+        // Error during constant folding; load the op normally below.
+        const std::string errStr = ERR_TO_STRING(tryFold.takeError());
+        VLOG(1) << "Error while trying to ConstantFold " << loadOperatorName(op)
+                << ": " << errStr;
+      } else if (tryFold.get()) {
+        // Folded successfully, so skip loading the op below.
         continue;
       }
     }
@@ -1860,12 +1985,15 @@ Caffe2ModelLoader::Caffe2ModelLoader(const std::string &netDescFilename,
 Caffe2ModelLoader::Caffe2ModelLoader(
     const void *model, uint32_t modelSize, uint32_t weightsCount,
     const onnxTensorDescriptorV1 *weightDescriptors, Function &F,
-    bool loadInputsAsPlaceholders, Error *errPtr)
+    bool loadInputsAsPlaceholders, Error *errPtr, bool constFoldInLoader)
     : CommonOperatorLoader({}, {}, F, errPtr) {
   // if errPtr already contains an error then don't continue with constructor
   if (errPtr && *errPtr) {
     return;
   }
+
+  // Always override the default for folding in this constructor.
+  constFoldInLoader_ = constFoldInLoader;
 
   // Lambda to setup the Caffe2ModelLoader and return any Errors that were
   // raised.

@@ -119,6 +119,8 @@ protected:
   llvm::StringMap<Placeholder *> outputVarsByName_;
   /// A map from names of the external inputs of the network to Variables.
   llvm::StringMap<Placeholder *> inputVarsByName_;
+  /// Whether to try constant folding as we load each op from a protobuf.
+  bool constFoldInLoader_{true};
 
   // Delete all Constants that have no users. This is useful because some
   // Constants may have been copied and modified during loading instead of used
@@ -222,12 +224,11 @@ Error constantFoldInLoader(Function *F, LoaderType &tmpLoader,
                            LoaderType *loader, const OpType &op) {
   PlaceholderBindings bindings;
   std::vector<Tensor *> outTensors;
-  Module *mod = F->getParent();
 
   // Register the constant inputs to the current op with the constant folding
   // loader.
   for (unsigned i = 0; i < (dim_t)op.input_size(); i++) {
-    Constant *tmpConst = mod->getConstantByName(op.input(i));
+    Constant *tmpConst = loader->getConstantByNameOrNull(op.input(i));
     RETURN_ERR_IF_NOT(tmpConst, "No constant found");
     tmpLoader.nodeValueByName_[op.input(i)] = tmpConst->getOutput();
   }
@@ -254,6 +255,9 @@ Error constantFoldInLoader(Function *F, LoaderType &tmpLoader,
   cctx.compMode = CompilationMode::Infer;
   cctx.optimizationOpts.enableConstantFolding = false;
   cctx.backendOpts.collectConstants = true;
+  // Do not print out compilation errors encountered, as constant folding is a
+  // best effort; simply silently give up and continue with compilation.
+  cctx.verboseCompile = false;
   RETURN_IF_ERR(executeConstantFunction(*backend, *F, bindings, cctx));
 
   // Using the graph output, place constant nodes in the original graph.

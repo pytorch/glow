@@ -449,13 +449,10 @@ static void quantizeSimpleConvGraph(ElemKind quantizationPrecision,
   bindings.allocate(S->getPlaceholder());
 
   quantization::QuantizationConfiguration quantConfig{{
-      {NodeQuantizationInfo::generateNodeOutputName(input->getName()),
-       {0.2f, 0}},
-      {NodeQuantizationInfo::generateNodeOutputName(filter->getName()),
-       {0.3f, 0}},
-      {NodeQuantizationInfo::generateNodeOutputName(bias->getName()),
-       {0.4f, 0}},
-      {NodeQuantizationInfo::generateNodeOutputName(CN->getName()), {0.6f, 0}},
+      {input->getOutput().generateNodeOutputName(), {0.2f, 0}},
+      {filter->getOutput().generateNodeOutputName(), {0.3f, 0}},
+      {bias->getOutput().generateNodeOutputName(), {0.4f, 0}},
+      {CN->getResult().generateNodeOutputName(), {0.6f, 0}},
   }};
 
   quantConfig.precision = quantizationPrecision;
@@ -517,16 +514,13 @@ TEST(Quantization, TestQuantizedInputBeforeQuantizedNode) {
   // We need to optimize here first so that the two reshapes are merged.
   optimize(F, CompilationMode::Infer);
 
-  Node *newReshape = SN->getInput().getNode();
+  ReshapeNode *newReshape = llvm::dyn_cast<ReshapeNode>(SN->getInput());
   ASSERT_TRUE(newReshape);
-  ASSERT_TRUE(llvm::isa<ReshapeNode>(newReshape));
 
   quantization::QuantizationConfiguration quantConfig{{
-      {NodeQuantizationInfo::generateNodeOutputName(input->getName()),
-       {0.2f, 0}},
-      {NodeQuantizationInfo::generateNodeOutputName(newReshape->getName()),
-       {0.2f, 0}},
-      {NodeQuantizationInfo::generateNodeOutputName(SN->getName()), {0.2f, 0}},
+      {input->getOutput().generateNodeOutputName(), {0.2f, 0}},
+      {newReshape->getResult().generateNodeOutputName(), {0.2f, 0}},
+      {NodeValue::generateNodeOutputName(SN->getName()), {0.2f, 0}},
   }};
 
   quantConfig.assertAllNodesQuantized = true;
@@ -580,27 +574,25 @@ enableRowwiseQuantizedFullyConnected(ElemKind quantizationPrecision,
   ::glow::lower(F, cctx);
 
   // Get the MatMul node and the Batched_Add node.
-  Node *matMul, *batchedAdd;
+  MatMulNode *matMul;
+  BatchedAddNode *batchedAdd;
   for (Node &N : F->getNodes()) {
     if (N.getKind() == Kinded::Kind::MatMulNodeKind) {
-      matMul = &N;
+      matMul = llvm::cast<MatMulNode>(&N);
     }
     if (N.getKind() == Kinded::Kind::BatchedAddNodeKind) {
-      batchedAdd = &N;
+      batchedAdd = llvm::cast<BatchedAddNode>(&N);
     }
   }
   ASSERT_TRUE(matMul);
   ASSERT_TRUE(batchedAdd);
 
   quantization::QuantizationConfiguration quantConfig{{
-      {NodeQuantizationInfo::generateNodeOutputName(input->getName()),
-       {0.2f, 0}},
-      {NodeQuantizationInfo::generateNodeOutputName(WC->getName()), {0.3f, 0}},
-      {NodeQuantizationInfo::generateNodeOutputName(B->getName()), {0.4f, 0}},
-      {NodeQuantizationInfo::generateNodeOutputName(matMul->getName()),
-       {0.6f, 0}},
-      {NodeQuantizationInfo::generateNodeOutputName(batchedAdd->getName()),
-       {0.6f, 0}},
+      {input->getOutput().generateNodeOutputName(), {0.2f, 0}},
+      {WC->getOutput().generateNodeOutputName(), {0.3f, 0}},
+      {B->getOutput().generateNodeOutputName(), {0.4f, 0}},
+      {matMul->getResult().generateNodeOutputName(), {0.6f, 0}},
+      {batchedAdd->getResult().generateNodeOutputName(), {0.6f, 0}},
   }};
 
   quantConfig.precision = quantizationPrecision;
@@ -685,13 +677,14 @@ TEST(Quantization, enableRowwiseQuantizedFullyConnectedSymmetric) {
   ::glow::lower(F, cctx);
 
   // Get the MatMul node and the Batched_Add node.
-  Node *matMul, *batchedAdd;
+  MatMulNode *matMul;
+  BatchedAddNode *batchedAdd;
   for (Node &N : F->getNodes()) {
     if (N.getKind() == Kinded::Kind::MatMulNodeKind) {
-      matMul = &N;
+      matMul = llvm::cast<MatMulNode>(&N);
     }
     if (N.getKind() == Kinded::Kind::BatchedAddNodeKind) {
-      batchedAdd = &N;
+      batchedAdd = llvm::cast<BatchedAddNode>(&N);
     }
   }
   ASSERT_TRUE(matMul);
@@ -700,14 +693,11 @@ TEST(Quantization, enableRowwiseQuantizedFullyConnectedSymmetric) {
   // Note: Using dummy offset for the weights, as it should be
   // rowwise-quantized.
   quantization::QuantizationConfiguration quantConfig{{
-      {NodeQuantizationInfo::generateNodeOutputName(input->getName()),
-       inputTQP},
-      {NodeQuantizationInfo::generateNodeOutputName(WC->getName()), {1.0f, 1}},
-      {NodeQuantizationInfo::generateNodeOutputName(BC->getName()), biasTQP},
-      {NodeQuantizationInfo::generateNodeOutputName(matMul->getName()),
-       matmulTQP},
-      {NodeQuantizationInfo::generateNodeOutputName(batchedAdd->getName()),
-       batchedaddTQP},
+      {input->getOutput().generateNodeOutputName(), inputTQP},
+      {WC->getOutput().generateNodeOutputName(), {1.0f, 1}},
+      {BC->getOutput().generateNodeOutputName(), biasTQP},
+      {matMul->getResult().generateNodeOutputName(), matmulTQP},
+      {batchedAdd->getResult().generateNodeOutputName(), batchedaddTQP},
   }};
 
   quantConfig.schema = quantization::Schema::Symmetric;
@@ -775,14 +765,9 @@ TEST(Quantization, enableRowwiseQuantizedSLWS) {
   bindings.allocate(res->getPlaceholder());
 
   quantization::QuantizationConfiguration quantConfig{{
-      {NodeQuantizationInfo::generateNodeOutputName(
-           SLWS->getData().getNode()->getName()),
-       {0.2f, 0}},
-      {NodeQuantizationInfo::generateNodeOutputName(
-           SLWS->getWeights().getNode()->getName()),
-       {0.3f, 0}},
-      {NodeQuantizationInfo::generateNodeOutputName(SLWS->getName()),
-       {0.4f, 0}},
+      {SLWS->getData().generateNodeOutputName(), {0.2f, 0}},
+      {SLWS->getWeights().generateNodeOutputName(), {0.3f, 0}},
+      {SLWS->getResult().generateNodeOutputName(), {0.4f, 0}},
   }};
 
   quantConfig.enableRowwise = true;
@@ -817,10 +802,8 @@ TEST(Quantization, quantizeReLU) {
   // Make sure that offset quantization parameter of ReLU is set
   // such that it produces non-negative floating point range.
   quantization::QuantizationConfiguration quantConfig{
-      {{NodeQuantizationInfo::generateNodeOutputName(input->getName()),
-        {0.2f, 0}},
-       {NodeQuantizationInfo::generateNodeOutputName(relu->getName()),
-        {0.2f, -128}}}};
+      {{input->getOutput().generateNodeOutputName(), {0.2f, 0}},
+       {relu->getResult().generateNodeOutputName(), {0.2f, -128}}}};
   quantConfig.assertAllNodesQuantized = true;
   quantization::quantizeFunction(F, quantConfig, *backend);
   EE.compile(CompilationMode::Infer);
@@ -850,14 +833,10 @@ TEST(Quantization, quantizeLookupTables) {
   auto *ret = F->createSave("ret", TN);
 
   quantization::QuantizationConfiguration quantConfig{
-      {{NodeQuantizationInfo::generateNodeOutputName(input->getName()),
-        {0.02f, -128}},
-       {NodeQuantizationInfo::generateNodeOutputName(LN->getName()),
-        {0.008f, 0}},
-       {NodeQuantizationInfo::generateNodeOutputName(SN->getName()),
-        {0.03f, 2}},
-       {NodeQuantizationInfo::generateNodeOutputName(TN->getName()),
-        {0.04f, 3}}}};
+      {{input->getOutput().generateNodeOutputName(), {0.02f, -128}},
+       {LN->getResult().generateNodeOutputName(LN->getName()), {0.008f, 0}},
+       {SN->getResult().generateNodeOutputName(), {0.03f, 2}},
+       {TN->getResult().generateNodeOutputName(), {0.04f, 3}}}};
   quantConfig.assertAllNodesQuantized = true;
   std::unique_ptr<Backend> backend(createBackend(EE.getBackendName()));
   quantization::quantizeFunction(F, quantConfig, *backend);
@@ -916,14 +895,10 @@ TEST(Quantization, quantizeWithoutLookupTables) {
   auto *ret = F->createSave("ret", TN);
 
   quantization::QuantizationConfiguration quantConfig{
-      {{NodeQuantizationInfo::generateNodeOutputName(input->getName()),
-        {0.02f, -128}},
-       {NodeQuantizationInfo::generateNodeOutputName(LN->getName()),
-        {0.008f, 0}},
-       {NodeQuantizationInfo::generateNodeOutputName(SN->getName()),
-        {0.03f, 2}},
-       {NodeQuantizationInfo::generateNodeOutputName(TN->getName()),
-        {0.04f, 3}}}};
+      {{input->getOutput().generateNodeOutputName(), {0.02f, -128}},
+       {LN->getResult().generateNodeOutputName(), {0.008f, 0}},
+       {SN->getResult().generateNodeOutputName(), {0.03f, 2}},
+       {TN->getResult().generateNodeOutputName(), {0.04f, 3}}}};
   quantConfig.assertAllNodesQuantized = true;
   quantization::quantizeFunction(F, quantConfig, *backend);
   optimize(F, CompilationMode::Infer);
@@ -1564,13 +1539,10 @@ TEST(Quantization, quantizeSoftmaxAndLRN) {
   auto *SN = F->createSave("ret", SM);
 
   quantization::QuantizationConfiguration quantConfig{
-      {{NodeQuantizationInfo::generateNodeOutputName(input->getName()),
-        {0.2f, 0}},
-       {NodeQuantizationInfo::generateNodeOutputName(LRN->getName()),
-        {0.3f, 0}},
-       {NodeQuantizationInfo::generateNodeOutputName(SM->getName()), {0.4f, 0}},
-       {NodeQuantizationInfo::generateNodeOutputName(SN->getName()),
-        {0.4f, 0}}}};
+      {{input->getOutput().generateNodeOutputName(), {0.2f, 0}},
+       {LRN->getResult().generateNodeOutputName(LRN->getName()), {0.3f, 0}},
+       {SM->getResult().generateNodeOutputName(SM->getName()), {0.4f, 0}},
+       {NodeValue::generateNodeOutputName(SN->getName()), {0.4f, 0}}}};
 
   quantConfig.assertAllNodesQuantized = true;
   quantization::quantizeFunction(F, quantConfig, *backend);
@@ -1621,10 +1593,9 @@ TEST(Quantization, quantizeSelect) {
   TensorQuantizationParams selectQP = {0.4f, 0};
 
   quantization::QuantizationConfiguration quantConfig{
-      {{NodeQuantizationInfo::generateNodeOutputName(LHS->getName()), LHSQP},
-       {NodeQuantizationInfo::generateNodeOutputName(RHS->getName()), RHSQP},
-       {NodeQuantizationInfo::generateNodeOutputName(select->getName()),
-        selectQP}}};
+      {{LHS->getOutput().generateNodeOutputName(), LHSQP},
+       {RHS->getOutput().generateNodeOutputName(), RHSQP},
+       {select->getResult().generateNodeOutputName(), selectQP}}};
 
   quantConfig.assertAllNodesQuantized = true;
   quantization::quantizeFunction(F, quantConfig, *backend);
@@ -1665,11 +1636,9 @@ TEST(Quantization, quantizeAvgPool) {
   auto *s = F->createSave("save", pool);
 
   quantization::QuantizationConfiguration quantConfig{{
-      {NodeQuantizationInfo::generateNodeOutputName(input->getName()),
-       {0.2f, 0}},
-      {NodeQuantizationInfo::generateNodeOutputName(pool->getName()),
-       {0.3f, 1}},
-      {NodeQuantizationInfo::generateNodeOutputName(s->getName()), {0.4f, 0}},
+      {input->getOutput().generateNodeOutputName(), {0.2f, 0}},
+      {pool->getResult().generateNodeOutputName(), {0.3f, 1}},
+      {NodeValue::generateNodeOutputName(s->getName()), {0.4f, 0}},
   }};
 
   quantConfig.assertAllNodesQuantized = true;
@@ -1712,10 +1681,10 @@ TEST(Quantization, quantizeGraphPartially) {
   // quantized. This is how we expect quantizeFunction() to behave, as
   // quantization profiling will still get a profile for these nodes.
   quantization::QuantizationConfiguration quantConfig{{
-      {NodeQuantizationInfo::generateNodeOutputName(LHS->getName()), {0.3f, 0}},
-      {NodeQuantizationInfo::generateNodeOutputName(RHS->getName()), {0.4f, 0}},
-      {NodeQuantizationInfo::generateNodeOutputName(MMN->getName()), {0.6f, 0}},
-      {NodeQuantizationInfo::generateNodeOutputName(TN->getName()), {0.5f, 0}},
+      {LHS->getOutput().generateNodeOutputName(), {0.3f, 0}},
+      {RHS->getOutput().generateNodeOutputName(), {0.4f, 0}},
+      {MMN->getResult().generateNodeOutputName(), {0.6f, 0}},
+      {TN->getResult().generateNodeOutputName(), {0.5f, 0}},
   }};
 
   // Do not quantize any tanh nodes.
@@ -1796,12 +1765,11 @@ TEST(Quantization, quantizeGraphPartiallyMultipleNodes) {
   // quantized. This is how we expect quantizeFunction() to behave, as
   // quantization profiling will still get a profile for these nodes.
   quantization::QuantizationConfiguration quantConfig{{
-      {NodeQuantizationInfo::generateNodeOutputName(LHS->getName()), {0.3f, 0}},
-      {NodeQuantizationInfo::generateNodeOutputName(TNLHS->getName()),
-       {0.4f, 0}},
-      {NodeQuantizationInfo::generateNodeOutputName(RHS->getName()), {0.4f, 0}},
-      {NodeQuantizationInfo::generateNodeOutputName(MMN->getName()), {0.6f, 0}},
-      {NodeQuantizationInfo::generateNodeOutputName(TN->getName()), {0.5f, 0}},
+      {LHS->getOutput().generateNodeOutputName(), {0.3f, 0}},
+      {TNLHS->getResult().generateNodeOutputName(), {0.4f, 0}},
+      {RHS->getOutput().generateNodeOutputName(), {0.4f, 0}},
+      {MMN->getResult().generateNodeOutputName(), {0.6f, 0}},
+      {TN->getResult().generateNodeOutputName(), {0.5f, 0}},
   }};
 
   // Do not quantize any tanh nodes.
@@ -1892,11 +1860,11 @@ TEST(Quantization, quantizeGraphPartiallyMultipleKinds) {
   // quantized. This is how we expect quantizeFunction() to behave, as
   // quantization profiling will still get a profile for these nodes.
   quantization::QuantizationConfiguration quantConfig{{
-      {NodeQuantizationInfo::generateNodeOutputName(LHS->getName()), {0.3f, 0}},
-      {NodeQuantizationInfo::generateNodeOutputName(RHS->getName()), {0.4f, 0}},
-      {NodeQuantizationInfo::generateNodeOutputName(MMN->getName()), {0.6f, 0}},
-      {NodeQuantizationInfo::generateNodeOutputName(CN->getName()), {0.6f, 0}},
-      {NodeQuantizationInfo::generateNodeOutputName(TN->getName()), {0.5f, 0}},
+      {LHS->getOutput().generateNodeOutputName(), {0.3f, 0}},
+      {RHS->getOutput().generateNodeOutputName(), {0.4f, 0}},
+      {MMN->getResult().generateNodeOutputName(), {0.6f, 0}},
+      {CN->getResult().generateNodeOutputName(), {0.6f, 0}},
+      {TN->getResult().generateNodeOutputName(), {0.5f, 0}},
   }};
 
   // Do not quantize any tanh or add nodes.
@@ -1986,9 +1954,9 @@ TEST(Quantization, quantizeFunctionConvertConstant) {
   // quantized. This is how we expect quantizeFunction() to behave, as
   // quantization profiling will still get a profile for these nodes.
   quantization::QuantizationConfiguration quantConfig{{
-      {NodeQuantizationInfo::generateNodeOutputName(LHS->getName()), {0.3f, 0}},
-      {NodeQuantizationInfo::generateNodeOutputName(RHS->getName()), {0.4f, 0}},
-      {NodeQuantizationInfo::generateNodeOutputName(MMN->getName()), {0.6f, 0}},
+      {LHS->getOutput().generateNodeOutputName(), {0.3f, 0}},
+      {RHS->getOutput().generateNodeOutputName(), {0.4f, 0}},
+      {MMN->getResult().generateNodeOutputName(), {0.6f, 0}},
   }};
 
   quantConfig.assertAllNodesQuantized = true;
@@ -2048,10 +2016,8 @@ TEST(Quantization, quantizeSlice) {
   bindings.allocate(result);
 
   quantization::QuantizationConfiguration quantConfig{{
-      {NodeQuantizationInfo::generateNodeOutputName(slice->getName()),
-       {0.2f, -128}},
-      {NodeQuantizationInfo::generateNodeOutputName(input->getName()),
-       {0.4f, 0}},
+      {slice->getResult().generateNodeOutputName(), {0.2f, -128}},
+      {input->getOutput().generateNodeOutputName(), {0.4f, 0}},
   }};
 
   quantConfig.assertAllNodesQuantized = true;
@@ -2117,10 +2083,8 @@ TEST(Quantization, quantizeReshape) {
   bindings.allocate(result);
 
   quantization::QuantizationConfiguration quantConfig{{
-      {NodeQuantizationInfo::generateNodeOutputName(reshape->getName()),
-       {0.2f, -128}},
-      {NodeQuantizationInfo::generateNodeOutputName(input->getName()),
-       {0.4f, 0}},
+      {reshape->getResult().generateNodeOutputName(), {0.2f, -128}},
+      {input->getOutput().generateNodeOutputName(), {0.4f, 0}},
   }};
 
   quantConfig.assertAllNodesQuantized = true;
@@ -2235,14 +2199,10 @@ static void testProfileQuantizationOfFC(bool expectLoweredFC,
   PlaceholderBindings profilebindings;
   FullyConnectedNode *FC =
       createSimpleFCNet(profilebindings, profileEE, *profileF);
-  auto outputNameFC = NodeQuantizationInfo::generateNodeOutputName(
-      FC->getName(), FullyConnectedNode::ResultIdx);
-  auto weightsNameFC = NodeQuantizationInfo::generateNodeOutputName(
-      FC->getWeights().getNode()->getName(), FC->getWeights().getResNo());
-  auto biasNameFC = NodeQuantizationInfo::generateNodeOutputName(
-      FC->getBias().getNode()->getName(), FC->getBias().getResNo());
-  auto inputNameFC = NodeQuantizationInfo::generateNodeOutputName(
-      FC->getInput().getNode()->getName(), FC->getInput().getResNo());
+  auto outputNameFC = FC->getResult().generateNodeOutputName();
+  auto weightsNameFC = FC->getWeights().generateNodeOutputName();
+  auto biasNameFC = FC->getBias().generateNodeOutputName();
+  auto inputNameFC = FC->getInput().generateNodeOutputName();
 
   // Lower everything and keep track of the lowered components source nodes via
   // the loweredMap.
@@ -2258,10 +2218,8 @@ static void testProfileQuantizationOfFC(bool expectLoweredFC,
   ASSERT_FALSE(loweredFC);
   ASSERT_TRUE(loweredMM);
   ASSERT_TRUE(loweredBA);
-  auto outputNameMM = NodeQuantizationInfo::generateNodeOutputName(
-      loweredMM->getName(), MatMulNode::ResultIdx);
-  auto outputNameBA = NodeQuantizationInfo::generateNodeOutputName(
-      loweredBA->getName(), BatchedAddNode::ResultIdx);
+  auto outputNameMM = loweredMM->getResult().generateNodeOutputName();
+  auto outputNameBA = loweredBA->getResult().generateNodeOutputName();
 
   glow::profileQuantization(profilebindings, profileF);
 
@@ -2460,10 +2418,8 @@ TEST(Quantization, CheckAssertQuantization) {
   bindings.allocate(save->getPlaceholder());
 
   quantization::QuantizationConfiguration quantConfig{
-      {{NodeQuantizationInfo::generateNodeOutputName(input->getName()),
-        {0.2f, 0}},
-       {NodeQuantizationInfo::generateNodeOutputName(relu->getName()),
-        {0.2f, -128}}}};
+      {{input->getOutput().generateNodeOutputName(), {0.2f, 0}},
+       {relu->getResult().generateNodeOutputName(), {0.2f, -128}}}};
   quantConfig.precision = ElemKind::Int16QTy;
   quantConfig.assertAllNodesQuantized = true;
 
@@ -2531,11 +2487,8 @@ TEST(Quantization, QuantizationZeroUsersResult) {
   bindings.allocate(SN->getPlaceholder());
 
   quantization::QuantizationConfiguration quantConfig{
-      {{NodeQuantizationInfo::generateNodeOutputName(input->getName()),
-        {0.2f, 0}},
-       {NodeQuantizationInfo::generateNodeOutputName(TK->getName(),
-                                                     TopKNode::ValuesIdx),
-        {0.2f, 0}}}};
+      {{input->getOutput().generateNodeOutputName(), {0.2f, 0}},
+       {TK->getValues().generateNodeOutputName(), {0.2f, 0}}}};
   quantConfig.assertAllNodesQuantized = true;
 
   std::unique_ptr<Backend> backend(createBackend(EE.getBackendName()));

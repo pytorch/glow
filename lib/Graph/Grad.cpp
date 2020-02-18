@@ -113,6 +113,25 @@ Function *glow::differentiate(Function *F, const TrainingConfig &conf,
     CONVERT_TO_GRAD_NODE(SparseLengthsWeightedSumNode)
     CONVERT_TO_GRAD_NODE(SparseLengthsSumNode)
 
+    if (N->getKind() == Kind::BatchedPairwiseDotProductNodeKind) {
+      BatchedPairwiseDotProductNode *BPDPN =
+          cast<BatchedPairwiseDotProductNode>(N);
+      auto outputGrad = map.getGradient(BPDPN->getResult());
+
+      auto *X = new BatchedPairwiseDotProductGradNode(
+          DECORATE_NODE_NAME(N, "grad"), outputGrad, BPDPN->getInputs());
+
+      size_t i = 0;
+      for (auto &in : BPDPN->getInputs()) {
+        X->addExtraResult(in.getType());
+        map.addGradient(in, X->getNthResult(i));
+        ++i;
+      }
+
+      toAppend.push_back(X);
+      continue;
+    }
+
     if (N->getKind() == Kind::SaveNodeKind) {
       // Swap the src and dest. Send the Zero value as gradient for both sides.
       auto *X = new SplatNode(DECORATE_NODE_NAME(N, "grad"),

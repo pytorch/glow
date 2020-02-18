@@ -9,6 +9,7 @@ graph {
     input: ""
     input: ""
     output: "Y"
+    output: "Y_h"
     name: "gru"
     op_type: "GRU"
     attribute {

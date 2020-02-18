@@ -16,6 +16,7 @@
 #ifndef GLOW_GRAPH_NODEVALUE_H
 #define GLOW_GRAPH_NODEVALUE_H
 
+#include "glow/Base/Traits.h"
 #include "glow/Base/Type.h"
 
 namespace glow {
@@ -114,7 +115,40 @@ public:
   /// Get the list of users of this NodeValue.
   llvm::iterator_range<NodeValueIterator> getUsers();
   llvm::iterator_range<NodeValueConstIterator> getUsers() const;
+
+  /// Get the full node output name based on the node name and output number.
+  /// The following format is used: nodename:outputNumber
+  static std::string generateNodeOutputName(const std::string &nodeName,
+                                            unsigned outputNumber = 0) {
+    return nodeName + ":" + std::to_string(outputNumber);
+  }
+
+  std::string generateNodeOutputName() const;
 };
+
+/// Struct containing the output name string and node kind for use in the
+/// LoweredInfoMap for keeping track of lowered node info.
+struct NodeNameAndKind : public Named, public Kinded {
+public:
+  NodeNameAndKind(llvm::StringRef name, size_t resNo, Kinded::Kind k)
+      : Named(NodeValue::generateNodeOutputName(name, resNo)), Kinded(k) {}
+};
+
+/// Overload < operator for NodeNameAndKind to allow for usage with std::set.
+inline bool operator<(const NodeNameAndKind &x, const NodeNameAndKind &y) {
+  return x.getName() < y.getName();
+}
+
+/// Overload == operator for NodeNameAndKind to allow for usage with std::set.
+inline bool operator==(const NodeNameAndKind &x, const NodeNameAndKind &y) {
+  return x.getName() == y.getName();
+}
+
+/// Used to keep track of the origin of lowered Nodes via output names as
+/// determined by NodeValue::generateNodeOutputName(). For example if some
+/// NodeValue X is lowered from some NodeValue Y, then the output name of X is a
+/// key which maps to a set of names which contains the output name of Y.
+using LoweredInfoMap = llvm::StringMap<std::set<NodeNameAndKind>>;
 
 /// A handle type for a NodeValue. This type should be used only by the
 /// class members of Node classes when they need to refer to other nodes!

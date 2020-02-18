@@ -12,45 +12,40 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
+#include "TestBlacklist.h"
 #include "tests/unittests/BackendTestUtils.h"
 
 using namespace glow;
 
-std::set<std::string> glow::backendTestBlacklist = {
-    "AvgPoolGradTest/0",
-    "basicFCNet/0",
-    "basicFCNetQuantized/0",
-    "complexNet1/0",
-    "convDKKC8Test/0",
-    "convGradTest/0",
-    "convTest/0",
-    "groupConvTest/0",
-    "intLookupTable/0",
-    "localResponseNormalizationGradTest/0",
-    "MaxPoolGradTest/0",
-    "nonSquareKernelConvTest/0",
-    "nonSquarePaddingConvTest/0",
-    "nonSquareStrideConvTest/0",
-    "quantizedConvTest/0",
-    "softmaxGradTest/0",
-};
+std::set<std::string> glow::backendTestBlacklist = {};
 
-struct EmulatorOnlyTests {
-  EmulatorOnlyTests() {
-    // If USE_INF_API is set, we are running on real hardware, and need
-    // to blacklist additional testcases.
-    auto useInfAPI = getenv("USE_INF_API");
-    if (useInfAPI && !strcmp(useInfAPI, "1")) {
-      // N.B.: This insertion is defined to come after the initialization of
-      // backendTestBlacklist because they are ordered within the same
-      // translation unit (this source file).  Otherwise this technique would
-      // be subject to the static initialization order fiasco.
-      backendTestBlacklist.insert({
-          "convOps/0",
-          "localResponseNormalizationTest/0",
-          "tinyResnet/0",
-      });
-    }
+struct BlacklistInitializer {
+  BlacklistInitializer() {
+    const std::vector<std::pair<std::string, uint32_t>> testBlacklistedSetups =
+        {
+            {"AvgPoolGradTest/0", TestBlacklist::AnyDeviceAnyEngine},
+            {"basicFCNet/0", TestBlacklist::AnyDeviceAnyEngine},
+            {"basicFCNetQuantized/0", TestBlacklist::AnyDeviceAnyEngine},
+            {"complexNet1/0", TestBlacklist::AnyDeviceAnyEngine},
+            {"convDKKC8Test/0", TestBlacklist::AnyDeviceAnyEngine},
+            {"convGradTest/0", TestBlacklist::AnyDeviceAnyEngine},
+            {"convTest/0", TestBlacklist::AnyDeviceAnyEngine},
+            {"groupConvTest/0", TestBlacklist::AnyDeviceAnyEngine},
+            {"intLookupTable/0", TestBlacklist::AnyDeviceAnyEngine},
+            {"localResponseNormalizationGradTest/0",
+             TestBlacklist::AnyDeviceAnyEngine},
+            {"MaxPoolGradTest/0", TestBlacklist::AnyDeviceAnyEngine},
+            {"nonSquareStrideConvTest/0", TestBlacklist::AnyDeviceAnyEngine},
+            {"nonSquareKernelConvTest/0", TestBlacklist::AnyDeviceAnyEngine},
+            {"nonSquarePaddingConvTest/0", TestBlacklist::AnyDeviceAnyEngine},
+            {"quantizedConvTest/0", TestBlacklist::AnyDeviceAnyEngine},
+            {"softmaxGradTest/0", TestBlacklist::AnyDeviceAnyEngine},
+            {"convOps/0", TestBlacklist::AnyDeviceHWEngine},
+            {"localResponseNormalizationTest/0",
+             TestBlacklist::AnyDeviceHWEngine},
+            {"tinyResnet/0", TestBlacklist::AnyDeviceHWEngine},
+        };
+    TestBlacklist::prepareBlacklist(testBlacklistedSetups,
+                                    backendTestBlacklist);
   }
-} emuTests;
+} blacklistInitializer;

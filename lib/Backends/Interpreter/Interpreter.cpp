@@ -64,8 +64,11 @@ Interpreter::compileIRWithoutConstants(std::unique_ptr<IRFunction> IR) const {
   runtime::RuntimeBundle bundle = runtime::RuntimeBundle::create(
       *IR, constantWeightsAllocator, placeholderWeightsAllocator,
       activationsAllocator);
-  return glow::make_unique<InterpreterFunction>(std::move(IR),
-                                                std::move(bundle));
+  auto compiledFunction =
+      glow::make_unique<InterpreterFunction>(std::move(IR), std::move(bundle));
+  compiledFunction->setIRInstructionProcessingHandler(
+      getIRInstructionProcessingHandler());
+  return compiledFunction;
 }
 
 bool Interpreter::isOpSupported(const NodeInfo &NI) const {
@@ -80,6 +83,7 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::MulNodeKind:
   case Kinded::Kind::MaxNodeKind:
   case Kinded::Kind::MinNodeKind:
+  case Kinded::Kind::ClipNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy,
          ElemKind::Int32ITy, ElemKind::Int64ITy});
@@ -209,7 +213,7 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
            (NI.getInElemTy(ChannelwiseQuantizedConvolutionNode::FilterIdx) ==
             ElemKind::Int8QTy) &&
            (NI.getInElemTy(ChannelwiseQuantizedConvolutionNode::BiasIdx) ==
-            ElemKind::FloatTy) &&
+            ElemKind::Int32QTy) &&
            (NI.getInElemTy(ChannelwiseQuantizedConvolutionNode::ScalesIdx) ==
             ElemKind::FloatTy) &&
            (NI.getInElemTy(ChannelwiseQuantizedConvolutionNode::OffsetsIdx) ==
@@ -231,6 +235,10 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
                 {ElemKind::Int16QTy}, {Convolution3DNode::BiasIdx}) &&
             (NI.getInElemTy(Convolution3DNode::BiasIdx) == ElemKind::Int16QTy ||
              NI.getInElemTy(Convolution3DNode::BiasIdx) == ElemKind::Int32QTy));
+
+  case Kinded::Kind::ConvTransposeNodeKind:
+    // TODO - support other types.
+    return NI.allInputsAndOutputsHaveSameElemKind({ElemKind::FloatTy});
 
   case Kinded::Kind::BatchedAddNodeKind:
     if (!NI.getInTy(BatchedAddNode::BatchIdx)->isQuantizedType()) {
@@ -360,7 +368,9 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
     case ElemKind::UInt4FusedFP16QTy:
     case ElemKind::UInt8FusedFP16QTy:
       return (NI.getInElemTy(FusedRowwiseQuantizedSparseLengthsWeightedSumNode::
-                                 WeightsIdx) == ElemKind::Float16Ty) &&
+                                 WeightsIdx) == ElemKind::Float16Ty ||
+              NI.getInElemTy(FusedRowwiseQuantizedSparseLengthsWeightedSumNode::
+                                 WeightsIdx) == ElemKind::FloatTy) &&
              (NI.getOutElemTy(
                   FusedRowwiseQuantizedSparseLengthsWeightedSumNode::
                       ResultIdx) == ElemKind::Float16Ty);
@@ -495,6 +505,11 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
                {CrossEntropyLossNode::LabelsIdx}) &&
            (NI.getInElemTy(CrossEntropyLossNode::LabelsIdx) == IndexElemKind);
 
+  case Kinded::Kind::CumSumNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind(
+        {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int32ITy,
+         ElemKind::Int64ITy});
+
   case Kinded::Kind::LengthsSumNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
                {ElemKind::FloatTy, ElemKind::Float16Ty},
@@ -527,6 +542,25 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
     // These work regardless of the underlying type.
     return true;
 
+  case Kinded::Kind::NonMaxSuppressionNodeKind:
+    return NI.getInElemTy(NonMaxSuppressionNode::BoxesIdx) ==
+               ElemKind::FloatTy &&
+           NI.getInElemTy(NonMaxSuppressionNode::ScoresIdx) ==
+               ElemKind::FloatTy &&
+           (NI.getOutElemTy(NonMaxSuppressionNode::IndicesIdx) ==
+                ElemKind::Int32ITy ||
+            NI.getOutElemTy(NonMaxSuppressionNode::IndicesIdx) ==
+                ElemKind::Int64ITy) &&
+           (NI.getOutElemTy(
+                NonMaxSuppressionNode::NumberOfSelectedIndicesIdx) ==
+                ElemKind::Int32ITy ||
+            NI.getOutElemTy(
+                NonMaxSuppressionNode::NumberOfSelectedIndicesIdx) ==
+                ElemKind::Int64ITy) &&
+           (NI.getOutElemTy(
+                NonMaxSuppressionNode::NumberOfSelectedIndicesIdx) ==
+            NI.getOutElemTy(NonMaxSuppressionNode::IndicesIdx));
+
   case Kinded::Kind::SoftMaxGradNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
                {ElemKind::FloatTy}, {SoftMaxGradNode::SelectedIdx},
@@ -547,6 +581,12 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
            (NI.getOutElemTy(
                 CrossEntropyLossGradNode::GradOfInputNamedLabelsIdx) ==
             IndexElemKind);
+
+  case Kinded::Kind::BatchedPairwiseDotProductNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind({ElemKind::FloatTy});
+
+  case Kinded::Kind::BatchedPairwiseDotProductGradNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind({ElemKind::FloatTy});
 
   default:
     return false;
@@ -590,11 +630,11 @@ static bool checkLayoutForNode(const Node &N) {
   return true;
 }
 
-bool Interpreter::verify(const Function &F) const {
+bool Interpreter::verify(const Function &F, bool verbose) const {
   if (!F.verify(this)) {
     return false;
   }
-  if (!checkAllNodesSupported(F)) {
+  if (!checkAllNodesSupported(F, verbose)) {
     return false;
   }
   for (const Node &N : F.getNodes()) {
@@ -603,18 +643,6 @@ bool Interpreter::verify(const Function &F) const {
     }
     if (!checkNoFusionForNode(N)) {
       return false;
-    }
-    switch (N.getKind()) {
-    case Kinded::Kind::ChannelwiseQuantizedConvolutionNodeKind: {
-      auto *CQCI = llvm::cast<ChannelwiseQuantizedConvolutionNode>(&N);
-      if (!CQCI->getGroupwise()) {
-        report("Glow Interpreter does not support Non-groupwise variant");
-        return false;
-      }
-      continue;
-    }
-    default:
-      continue;
     }
   }
   return true;
@@ -645,18 +673,6 @@ bool Interpreter::verify(const IRFunction &IR) const {
     if (!checkLayoutForInstr(I)) {
       return false;
     }
-    switch (I.getKind()) {
-    case Kinded::Kind::ChannelwiseQuantizedConvolutionInstKind: {
-      auto *CQCI = llvm::cast<ChannelwiseQuantizedConvolutionInst>(&I);
-      if (!CQCI->getGroupwise()) {
-        report("Glow Interpreter does not support Non-groupwise variant");
-        return false;
-      }
-      continue;
-    }
-    default:
-      continue;
-    }
   }
   return true;
 }
@@ -665,7 +681,6 @@ bool Interpreter::shouldLower(const Node *N) const {
   switch (N->getKind()) {
   case Kinded::Kind::ConvolutionNodeKind:
   case Kinded::Kind::SparseLengthsSumNodeKind:
-  case Kinded::Kind::ChannelwiseQuantizedConvolutionNodeKind:
   case Kinded::Kind::FullyConnectedNodeKind:
     return false;
   default:

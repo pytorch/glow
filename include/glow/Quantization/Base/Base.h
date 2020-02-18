@@ -72,39 +72,7 @@ struct NodeQuantizationInfo {
 
   float Scale() const { return tensorQuantizationParams_.scale; }
   int32_t Offset() const { return tensorQuantizationParams_.offset; }
-
-  /// Get the full node output name based on the node name and output number.
-  /// The following format is used: nodename:outputNumber
-  static std::string generateNodeOutputName(const std::string &nodeName,
-                                            unsigned outputNumber = 0) {
-    return nodeName + ":" + std::to_string(outputNumber);
-  }
 };
-
-/// Struct containing the output name string and node kind for use in the
-/// LoweredInfoMap for keeping track of lowered node info.
-struct NodeNameAndKind : public Named, public Kinded {
-public:
-  NodeNameAndKind(llvm::StringRef name, size_t resNo, Kinded::Kind k)
-      : Named(NodeQuantizationInfo::generateNodeOutputName(name, resNo)),
-        Kinded(k) {}
-};
-
-/// Overload < operator for NodeNameAndKind to allow for usage with std::set.
-inline bool operator<(const NodeNameAndKind &x, const NodeNameAndKind &y) {
-  return x.getName() < y.getName();
-}
-
-/// Overload == operator for NodeNameAndKind to allow for usage with std::set.
-inline bool operator==(const NodeNameAndKind &x, const NodeNameAndKind &y) {
-  return x.getName() == y.getName();
-}
-
-/// Used to keep track of the origin of lowered Nodes via output names as
-/// determined by NodeQuantizationInfo::generateNodeOutputName(). For example if
-/// some NodeValue X is lowered from some NodeValue Y, then the output name of X
-/// is a key which maps to a set of names which contains the output name of Y.
-using LoweredInfoMap = llvm::StringMap<std::set<NodeNameAndKind>>;
 
 namespace quantization {
 

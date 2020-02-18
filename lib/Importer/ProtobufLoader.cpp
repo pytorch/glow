@@ -26,7 +26,7 @@ static llvm::cl::opt<bool> isConstFoldLoaderOps(
     "const-fold-ops",
     llvm::cl::desc(
         "Performs constant folding on ONNX and Caffe Operators while loading."),
-    llvm::cl::init(false), llvm::cl::cat(loaderOptCat));
+    llvm::cl::init(true), llvm::cl::cat(loaderOptCat));
 
 bool isArrayConstant(llvm::ArrayRef<size_t> a) {
   for (size_t i = 1; i < a.size(); i++)
@@ -210,6 +210,10 @@ ProtobufLoader::ProtobufLoader(llvm::ArrayRef<const char *> tensorNames,
   if (errPtr && *errPtr) {
     return;
   }
+
+  // Use the global flag as default. This may be overridden by instantiations of
+  // the loader later on.
+  constFoldInLoader_ = getConstantFoldLoaderOpsFlag();
 
   // Lambda to setup the ProtobufLoader and return any Errors that were
   // raised.

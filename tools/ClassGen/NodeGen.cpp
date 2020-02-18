@@ -106,13 +106,25 @@ int main(int argc, char **argv) {
       .addMember(MemberType::VectorUnsigned, "Strides")
       .addMember(MemberType::VectorUnsigned, "Pads")
       .addMember(MemberType::Unsigned, "Group")
-      .addMember(MemberType::Boolean, "Groupwise")
       .addResultFromCtorArg()
       .setDocstring("Performs 2D Convolution using a given Input, Filter, and "
                     "Bias tensors, as well as provided Kernels, Strides, Pads, "
                     "and Group. Quantization parameters are provided by Scales "
-                    "and Offsets. If Groupwise is true then the quantization "
-                    "is per-group otherwise it is per-channel.");
+                    "and Offsets.");
+
+  BB.newNode("ConvTranspose")
+      .addInput("Input")
+      .addInput("Filter")
+      .addInput("Bias")
+      .addMember(MemberType::VectorUnsigned, "Kernels")
+      .addMember(MemberType::VectorUnsigned, "Strides")
+      .addMember(MemberType::VectorUnsigned, "Pads")
+      .addMember(MemberType::Unsigned, "Group")
+      .addMember(MemberType::Unsigned, "Dilation")
+      .addResultFromCtorArg()
+      .setDocstring("Performs 2D Transposed Convolution using a given Input,"
+                    "Filter, and Bias tensors, as well as provided Kernels,"
+                    "Strides, Pads, and Group.");
 
   BB.newNode("Convolution3D")
       .addInput("Input")
@@ -467,6 +479,19 @@ int main(int argc, char **argv) {
       .addResultFromCtorArg()
       .setDocstring("Performs Channel shuffle.");
 
+  BB.newNode("CumSum")
+      .addInput("Input")
+      .addMember(MemberType::Unsigned, "Exclusive")
+      .addMember(MemberType::Unsigned, "Reverse")
+      .addResultFromCtorArg()
+      .dataParallel()
+      .setDocstring("Performs a Cumulative Sum operation over a 1D vector with "
+                    "flags for working in exclusive mode and in reverse. In "
+                    "each case the output size is the same as in input size."
+                    "e.g (default) [1, 2, 3, 4] -> [1, 3, 6, 10]. "
+                    "(exclusive) [1, 2, 3, 4] -> [0, 1, 3, 6]. "
+                    "(reverse) [1, 2, 3, 4] -> [10, 9, 7, 4]. ");
+
   BB.newNode("LengthsSum")
       .addInput("Data")
       .addInput("Lengths")
@@ -481,6 +506,7 @@ int main(int argc, char **argv) {
       .addInput("Data")
       .addInput("Indices")
       .addInput("Lengths")
+      .addMember(MEMBER_TYPE_INFO(glow::LengthsMode), "LengthsMode")
       .addResultFromCtorArg()
       .addGradient()
       .setDocstring("Gathers slices of the outer-most dimension of Data "
@@ -495,6 +521,7 @@ int main(int argc, char **argv) {
       .addInput("Weights")
       .addInput("Indices")
       .addInput("Lengths")
+      .addMember(MEMBER_TYPE_INFO(glow::LengthsMode), "LengthsMode")
       .addResultFromCtorArg()
       .addGradient()
       .setDocstring("Gathers slices of the outer-most dimension of Data "
@@ -513,6 +540,7 @@ int main(int argc, char **argv) {
       .addInput("Indices")
       .addInput("Offsets")
       .addMember(MemberType::Boolean, "HasEndOffset")
+      .addMember(MEMBER_TYPE_INFO(glow::LengthsMode), "LengthsMode")
       .addResultFromCtorArg()
       .setDocstring(
           "Gathers slices of the outer-most dimension of Data "
@@ -533,6 +561,7 @@ int main(int argc, char **argv) {
       .addMember(MemberType::Boolean, "UseFP16Accumulation",
                  /* addSetter */ true)
       .addMember(MemberType::Boolean, "HasEndOffset")
+      .addMember(MEMBER_TYPE_INFO(glow::LengthsMode), "LengthsMode")
       .addResultFromCtorArg()
       .setDocstring("Same as FusedRowwiseQuantizedSparseLengthsWeightedSum but "
                     "using offsets instead of lengths.");
@@ -546,6 +575,7 @@ int main(int argc, char **argv) {
       .addInput("Lengths")
       .addMember(MemberType::Boolean, "UseFP16Accumulation",
                  /* addSetter */ true)
+      .addMember(MEMBER_TYPE_INFO(glow::LengthsMode), "LengthsMode")
       .addResultFromCtorArg()
       .setDocstring("Gathers slices of the outer-most dimension of Data "
                     "indexed by Indices vector, and then accumulates them into "
@@ -566,6 +596,7 @@ int main(int argc, char **argv) {
       .addInput("Lengths")
       .addMember(MemberType::Boolean, "UseFP16Accumulation",
                  /* addSetter */ true)
+      .addMember(MEMBER_TYPE_INFO(glow::LengthsMode), "LengthsMode")
       .addResultFromCtorArg()
       .setDocstring("Gathers slices of the outer-most dimension of Data "
                     "indexed by Indices vector, and then accumulates them into "
@@ -586,6 +617,7 @@ int main(int argc, char **argv) {
       .addInput("Lengths")
       .addMember(MemberType::Boolean, "UseFP16Accumulation",
                  /* addSetter */ true)
+      .addMember(MEMBER_TYPE_INFO(glow::LengthsMode), "LengthsMode")
       .addResultFromCtorArg()
       .setDocstring("Gathers slices of the outer-most dimension of Data "
                     "indexed by Indices vector, and then accumulates them into "
@@ -664,6 +696,19 @@ int main(int argc, char **argv) {
       .setDocstring("Performs elementwise modulo operation on the input where "
                     "each element in the output is the corresponding element "
                     "in the input data modulo Divisor.");
+
+  BB.newNode("BatchedPairwiseDotProduct")
+      .addMember(MemberType::VectorNodeValue, "Inputs")
+      .addResultFromCtorArg()
+      .setDocstring(
+          "Performs batched pairwise dot products of the input vectors");
+
+  BB.newNode("BatchedPairwiseDotProductGrad")
+      .addInput("OutputGrad")
+      .hasExtraResults()
+      .addMember(MemberType::VectorNodeValue, "OriginalInputs")
+      .setDocstring(
+          "Performs the gradient operation for BatchedPairwiseDotProduct");
 
   //===--------------------------------------------------------------------===//
   //                Non-linearities
@@ -972,12 +1017,32 @@ int main(int argc, char **argv) {
   BB.newNode("ConvertTo")
       .addInput("Input")
       .addResultFromCtorArg()
+      .dataParallel()
       .setDocstring(
           "Convert the input from its current type to the destination "
           "type. The input and output types must have the same shapes. "
           "Moreover the input and output types must not be quantized types. "
           "Quantized types should use the appropriate Quantize, Dequantize, "
           "and Rescale nodes.");
+
+  //===--------------------------------------------------------------------===//
+  //                Post Processing
+  //===--------------------------------------------------------------------===//
+
+  BB.newNode("NonMaxSuppression")
+      .addInput("Boxes")
+      .addInput("Scores")
+      .addMember(MemberType::Unsigned, "CenterPointBox")
+      .addMember(MemberType::Unsigned, "MaxOutputBoxesPerClass")
+      .addMember(MemberType::Float, "IouThreshold")
+      .addMember(MemberType::Float, "ScoreThreshold")
+      .addMember(MemberType::Boolean, "IsTFVersion4")
+      .addResultFromCtorArg("Indices")
+      .addResultFromCtorArg("NumberOfSelectedIndices")
+      .setDocstring("This is a mix of ONNX and TF NMSv4. It supports multiple "
+                    "classes and does per class NMS. It also supports TF NMS "
+                    "V4 by outputting indices and scalar tensor with number of "
+                    "valid indices. It pads the rest with global MIN box.");
 
   //===--------------------------------------------------------------------===//
   //                Backend-Specific Nodes

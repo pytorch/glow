@@ -159,21 +159,23 @@ void Backend::autoInstrument(TraceInfo &traceInfo, IRFunction *IR) const {
   IR->pushInstr(new TraceEventInst("end_trace", backingWeight, index));
 }
 
-bool Backend::checkAllNodesSupported(const Function &F) const {
+bool Backend::checkAllNodesSupported(const Function &F, bool verbose) const {
   bool allSupported = true;
   for (const Node &N : F.getNodes()) {
     if (!isOpSupported(N)) {
       allSupported = false;
-      report("Unsupported node found while compiling Function " +
-             F.getName().str() + " for backend " + getBackendName() + ": " +
-             N.getDebugDesc());
+      if (verbose) {
+        report("Unsupported node found while compiling Function " +
+               F.getName().str() + " for backend " + getBackendName() + ": " +
+               N.getDebugDesc());
+      }
     }
   }
   return allSupported;
 }
 
-bool Backend::verify(const Function &F) const {
-  return F.verify(this) && checkAllNodesSupported(F);
+bool Backend::verify(const Function &F, bool verbose) const {
+  return F.verify(this) && checkAllNodesSupported(F, verbose);
 }
 
 bool Backend::verify(const IRFunction &IR) const {

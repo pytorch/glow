@@ -27,8 +27,8 @@
 #include <immintrin.h>
 static inline void convertI64ToI32(int64_t const *i64InputOrg,
                                    int32_t *i32OutputOrg, uint32_t elements) {
-  uint8_t i64Input = reinterpret_cast<const uint8_t *>(i64InputOrg);
-  uint8_t i32OutputOrg = reinterpret_cast<uint8_t *>(i32OutputOrg);
+  const uint8_t *i64Input = reinterpret_cast<const uint8_t *>(i64InputOrg);
+  uint8_t *i32Output = reinterpret_cast<uint8_t *>(i32OutputOrg);
   const __mmask8 masks[9] = {
       0b0, 0b1, 0b11, 0b111, 0b1111, 0b11111, 0b111111, 0b1111111, 0b11111111,
   };
@@ -92,46 +92,43 @@ namespace runtime {
 InferenceThreadEnv::InferenceThreadEnv()
     : nnpiNetwork_(NNPI_INVALID_NNPIHANDLE), device_(NNPI_INVALID_NNPIHANDLE),
       inferCmd_(NNPI_INVALID_NNPIHANDLE), commandList_(NNPI_INVALID_NNPIHANDLE),
-      commandErrors_(nullptr), numCommands_(0), deviceOptions_(nullptr) {}
+      numCommands_(0), deviceOptions_(nullptr) {}
 
 InferenceThreadEnv::~InferenceThreadEnv() {
   if (deviceOptions_ && deviceOptions_->inferOnDevice) {
-    if (commandErrors_ != nullptr) {
-      delete[] commandErrors_;
-    }
     if (commandList_ != NNPI_INVALID_NNPIHANDLE) {
-      LOG_NNPI_INF_ERROR(nnpiCommandListDestroy(commandList_),
-                         "Failed to destroy NNPI command list");
+      LOG_NNPI_INF_IF_ERROR(nnpiCommandListDestroy(commandList_),
+                            "Failed to destroy NNPI command list");
     }
-    LOG_NNPI_INF_ERROR(nnpiInferCommandDestroy(inferCmd_),
-                       "Failed to destroy NNPI inference command");
+    LOG_NNPI_INF_IF_ERROR(nnpiInferCommandDestroy(inferCmd_),
+                          "Failed to destroy NNPI inference command");
     for (auto &cmd : inputCopyCmds_) {
-      LOG_NNPI_INF_ERROR(nnpiCopyCommandDestroy(cmd),
-                         "Failed to destroy NNPI copy command");
+      LOG_NNPI_INF_IF_ERROR(nnpiCopyCommandDestroy(cmd),
+                            "Failed to destroy NNPI copy command");
     }
     for (auto &cmd : outputCopyCmds_) {
-      LOG_NNPI_INF_ERROR(nnpiCopyCommandDestroy(cmd),
-                         "Failed to destroy NNPI copy command");
+      LOG_NNPI_INF_IF_ERROR(nnpiCopyCommandDestroy(cmd),
+                            "Failed to destroy NNPI copy command");
     }
     for (auto &nr : hostInputs_) {
-      LOG_NNPI_INF_ERROR(nnpiHostResourceDestroy(nr.handle),
-                         "Failed to destroy NNPI host resource");
+      LOG_NNPI_INF_IF_ERROR(nnpiHostResourceDestroy(nr.handle),
+                            "Failed to destroy NNPI host resource");
     }
     for (auto &nr : hostOutputs_) {
-      LOG_NNPI_INF_ERROR(nnpiHostResourceDestroy(nr.handle),
-                         "Failed to destroy NNPI host resource");
+      LOG_NNPI_INF_IF_ERROR(nnpiHostResourceDestroy(nr.handle),
+                            "Failed to destroy NNPI host resource");
     }
     for (auto &nr : allocatedDeviceInputs_) {
-      LOG_NNPI_INF_ERROR(nnpiDeviceResourceDestroy(nr.handle),
-                         "Failed to destroy NNPI device resource");
+      LOG_NNPI_INF_IF_ERROR(nnpiDeviceResourceDestroy(nr.handle),
+                            "Failed to destroy NNPI device resource");
     }
     for (auto &ph : staticInputs_) {
-      LOG_IF_NOT(ERROR, staticPlaceholderContainer_->ReleaseDeviceResource(ph))
+      LOG_IF_NOT(ERROR, staticPlaceholderContainer_->releaseDeviceResource(ph))
           << "Failed to release device resource for " << ph->getName().str();
     }
     for (auto &nr : deviceOutputs_) {
-      LOG_NNPI_INF_ERROR(nnpiDeviceResourceDestroy(nr.handle),
-                         "Failed to destroy NNPI device resource");
+      LOG_NNPI_INF_IF_ERROR(nnpiDeviceResourceDestroy(nr.handle),
+                            "Failed to destroy NNPI device resource");
     }
   }
 }
@@ -147,24 +144,81 @@ void InferenceThreadEnv::execute(RunIdentifierTy runId,
 
   // Pre inference input preparation.
   PlaceholderBindings &bindings = *ctx->getPlaceholderBindings();
-  ioTensors_.clear();
   uint32_t usedConfigs = 0;
+
+  // Initialize placeholder lists in the same orders as netInputs_, netInputs_,
+  // hostInputs_ and hostOutputs_. This is a one time cost per
+  // InferenceThreadEnv.
+  if (netInputPlaceholders_.empty()) {
+    for (const auto &in : netInputs_) {
+      auto *placeholder = bindings.getPlaceholderByName(in.first);
+      if (!placeholder) {
+        netInputPlaceholders_.clear();
+      }
+
+      LOG_AND_FAIL_EXECUTE_CALLBACK_IF_NOT(ERROR, placeholder,
+                                           "Can't find tensor for input", runId,
+                                           ctx, resultCB);
+      netInputPlaceholders_.push_back(placeholder);
+    }
+  }
+
+  if (netOutputPlaceholders_.empty()) {
+    for (const auto &out : netOutputs_) {
+      auto *placeholder = bindings.getPlaceholderByName(out.first);
+      if (!placeholder) {
+        netOutputPlaceholders_.clear();
+      }
+      LOG_AND_FAIL_EXECUTE_CALLBACK_IF_NOT(ERROR, placeholder,
+                                           "Can't find tensor for input", runId,
+                                           ctx, resultCB);
+      netOutputPlaceholders_.push_back(placeholder);
+    }
+  }
+
+  if (hostInputPlaceholders_.empty()) {
+    for (const auto &in : hostInputs_) {
+      auto *placeholder = bindings.getPlaceholderByName(in.name);
+      if (!placeholder) {
+        hostInputPlaceholders_.clear();
+      }
+      LOG_AND_FAIL_EXECUTE_CALLBACK_IF_NOT(ERROR, placeholder,
+                                           "Can't find tensor for input", runId,
+                                           ctx, resultCB);
+      hostInputPlaceholders_.push_back(placeholder);
+    }
+  }
+
+  if (hostOutputPlaceholders_.empty()) {
+    for (const auto &in : hostOutputs_) {
+      auto *placeholder = bindings.getPlaceholderByName(in.name);
+      if (!placeholder) {
+        hostOutputPlaceholders_.clear();
+      }
+      LOG_AND_FAIL_EXECUTE_CALLBACK_IF_NOT(ERROR, placeholder,
+                                           "Can't find tensor for output",
+                                           runId, ctx, resultCB);
+      hostOutputPlaceholders_.push_back(placeholder);
+    }
+  }
 
   std::unordered_set<Tensor *> partialTensorInputs;
   for (auto &pht : bindings.pairs()) {
-    ioTensors_.emplace(pht.first->getName(), pht.second);
     if (partialInputs_->count(pht.first)) {
       partialTensorInputs.insert(pht.second);
     }
   }
+
   TRACE_EVENT_BEGIN(ctx->getTraceContext(), TraceLevel::COPY,
                     TRACING_PRE_PROCESS);
   // Handle inputs & outputs (+convert).
-  for (auto &in : netInputs_) {
-    LOG_AND_FAIL_EXECUTE_CALLBACK_IF_NOT(ERROR, ioTensors_.count(in.first),
-                                         "Can't find tensor for input", runId,
-                                         ctx, resultCB);
-    auto *t = ioTensors_.at(in.first);
+  LOG_AND_FAIL_EXECUTE_CALLBACK_IF_NOT(
+      ERROR, netInputs_.size() == netInputPlaceholders_.size(), "Bad inputs",
+      runId, ctx, resultCB);
+  for (int i = 0; i < netInputs_.size(); ++i) {
+    auto *t = bindings.get(netInputPlaceholders_[i]);
+    LOG_AND_FAIL_EXECUTE_CALLBACK_IF_NOT(
+        ERROR, t, "Can't find tensor for input", runId, ctx, resultCB);
     char *bufferPtr = t->getUnsafePtr();
 
     // Check if we need to allocate a new temporary buffer to handle this
@@ -207,14 +261,18 @@ void InferenceThreadEnv::execute(RunIdentifierTy runId,
     rawInputs_.push_back(bufferPtr);
 
     if (deviceOptions_->dumpIOtoFiles) {
-      dumpToFile("input_" + in.first + ".txt", rawInputs_.back(), unpaddedSize);
+      dumpToFile("input_" + netInputs_[i].first + ".txt", rawInputs_.back(),
+                 unpaddedSize);
     }
   }
-  for (auto &out : netOutputs_) {
-    LOG_AND_FAIL_EXECUTE_CALLBACK_IF_NOT(ERROR, ioTensors_.count(out.first),
-                                         "Can't find tensor for output", runId,
-                                         ctx, resultCB);
-    auto *t = ioTensors_.at(out.first);
+
+  LOG_AND_FAIL_EXECUTE_CALLBACK_IF_NOT(
+      ERROR, netOutputs_.size() == netOutputPlaceholders_.size(), "Bad inputs",
+      runId, ctx, resultCB);
+  for (int i = 0; i < netOutputs_.size(); ++i) {
+    auto *t = bindings.get(netOutputPlaceholders_[i]);
+    LOG_AND_FAIL_EXECUTE_CALLBACK_IF_NOT(
+        ERROR, t, "Can't find tensor for output", runId, ctx, resultCB);
 
     switch (t->getElementType()) {
     case glow::ElemKind::Int64ITy: {
@@ -227,6 +285,7 @@ void InferenceThreadEnv::execute(RunIdentifierTy runId,
       rawOutputs_.push_back(t->getUnsafePtr());
     }
   }
+
   // Prepare inputs.
   if (deviceOptions_->inferOnDevice) {
     if (deviceTracing_ != nullptr) {
@@ -239,15 +298,17 @@ void InferenceThreadEnv::execute(RunIdentifierTy runId,
     LOG_AND_FAIL_EXECUTE_CALLBACK_IF_NOT(
         ERROR, hostInputs_.size() == rawInputs_.size(), "Bad inputs", runId,
         ctx, resultCB);
+    LOG_AND_FAIL_EXECUTE_CALLBACK_IF_NOT(
+        ERROR, hostInputs_.size() == hostInputPlaceholders_.size(),
+        "Bad inputs", runId, ctx, resultCB);
     for (size_t i = 0, e = hostInputs_.size(); i < e; i++) {
       void *pHostInput(hostInputs_[i].hostPtr);
       LOG_AND_FAIL_EXECUTE_CALLBACK_IF_NOT(ERROR, pHostInput,
                                            "Invalid host input address", runId,
                                            ctx, resultCB);
-      LOG_AND_FAIL_EXECUTE_CALLBACK_IF_NOT(
-          ERROR, ioTensors_.count(hostInputs_[i].name), "Input not found",
-          runId, ctx, resultCB);
-      auto *t = ioTensors_.at(hostInputs_[i].name);
+      auto *t = bindings.get(hostInputPlaceholders_[i]);
+      LOG_AND_FAIL_EXECUTE_CALLBACK_IF_NOT(ERROR, t, "Input not found", runId,
+                                           ctx, resultCB);
 
       size_t bufferSize = t->getUnpaddedSizeInBytes();
       size_t fullBufferSize = t->getSizeInBytes();
@@ -270,11 +331,11 @@ void InferenceThreadEnv::execute(RunIdentifierTy runId,
           NNPICopyCommandConfig cfg;
           memset(&cfg, 0, sizeof(NNPICopyCommandConfig));
           cfg.size = actualBufferSize;
-          LOG_AND_CALLBACK_EXECUTE_NNPI_INF_ERROR(
+          LOG_AND_CALLBACK_EXECUTE_NNPI_INF_IF_ERROR(
               nnpiCopyCommandQueue(inputCopyCmds_[i], &cfg),
               "Failed to queue input copy command.", runId, ctx, resultCB);
         } else {
-          LOG_AND_CALLBACK_EXECUTE_NNPI_INF_ERROR(
+          LOG_AND_CALLBACK_EXECUTE_NNPI_INF_IF_ERROR(
               nnpiCopyCommandQueue(inputCopyCmds_[i], nullptr),
               "Failed to queue input copy command.", runId, ctx, resultCB);
         }
@@ -299,13 +360,17 @@ void InferenceThreadEnv::execute(RunIdentifierTy runId,
       TRACE_EVENT_BEGIN(ctx->getTraceContext(), TraceLevel::OPERATOR,
                         TRACING_INFERENCE);
       // Queue inference.
-      LOG_AND_CALLBACK_EXECUTE_NNPI_INF_ERROR(
+      LOG_AND_CALLBACK_EXECUTE_NNPI_INF_IF_ERROR(
           nnpiInferCommandQueue(inferCmd_, 0), "Failed to queue infer command.",
           runId, ctx, resultCB);
 
+      LOG_AND_FAIL_EXECUTE_CALLBACK_IF_NOT(
+          ERROR, hostOutputs_.size() == hostOutputPlaceholders_.size(),
+          "Bad inputs", runId, ctx, resultCB);
+
       // Check for partial copies and queue output copies
       for (size_t i = 0, e = hostOutputs_.size(); i < e; i++) {
-        auto *t = ioTensors_.at(hostOutputs_[i].name);
+        auto *t = bindings.get(hostOutputPlaceholders_[i]);
         size_t bufferSize = t->getUnpaddedSizeInBytes();
         size_t fullBufferSize = t->getSizeInBytes();
         NNPICopyCommandConfig copyConfig;
@@ -316,11 +381,11 @@ void InferenceThreadEnv::execute(RunIdentifierTy runId,
             // Type int64 is converted to int32 (half number of bytes).
             copyConfig.size /= 2;
           }
-          LOG_AND_CALLBACK_EXECUTE_NNPI_INF_ERROR(
+          LOG_AND_CALLBACK_EXECUTE_NNPI_INF_IF_ERROR(
               nnpiCopyCommandQueue(outputCopyCmds_[i], &copyConfig),
               "Failed to queue output copy command.", runId, ctx, resultCB);
         } else {
-          LOG_AND_CALLBACK_EXECUTE_NNPI_INF_ERROR(
+          LOG_AND_CALLBACK_EXECUTE_NNPI_INF_IF_ERROR(
               nnpiCopyCommandQueue(outputCopyCmds_[i], nullptr),
               "Failed to queue output copy command.", runId, ctx, resultCB);
         }
@@ -333,9 +398,13 @@ void InferenceThreadEnv::execute(RunIdentifierTy runId,
 
     } else {
       if (deviceOptions_->enabledCommandLists > 2) {
+        LOG_AND_FAIL_EXECUTE_CALLBACK_IF_NOT(
+            ERROR, hostOutputs_.size() == hostOutputPlaceholders_.size(),
+            "Bad inputs", runId, ctx, resultCB);
+
         // Collect updates for outputs and queue with all config updates.
         for (size_t i = 0, e = hostOutputs_.size(); i < e; i++) {
-          auto *t = ioTensors_.at(hostOutputs_[i].name);
+          auto *t = bindings.get(hostOutputPlaceholders_[i]);
           size_t bufferSize = t->getUnpaddedSizeInBytes();
           size_t fullBufferSize = t->getSizeInBytes();
           size_t actualBufferSize =
@@ -365,7 +434,7 @@ void InferenceThreadEnv::execute(RunIdentifierTy runId,
         TRACE_EVENT_BEGIN(ctx->getTraceContext(), TraceLevel::OPERATOR,
                           TRACING_INFERENCE);
         // Then queue command list with config updates.
-        LOG_AND_CALLBACK_EXECUTE_NNPI_INF_ERROR(
+        LOG_AND_CALLBACK_EXECUTE_NNPI_INF_IF_ERROR(
             nnpiCommandListQueue(commandList_, &(cmdConfigs_.at(0)),
                                  usedConfigs),
             "Failed to queue command list.", runId, ctx, resultCB);
@@ -377,7 +446,7 @@ void InferenceThreadEnv::execute(RunIdentifierTy runId,
                         TRACING_PRE_PROCESS);
         TRACE_EVENT_BEGIN(ctx->getTraceContext(), TraceLevel::OPERATOR,
                           TRACING_INFERENCE);
-        LOG_AND_CALLBACK_EXECUTE_NNPI_INF_ERROR(
+        LOG_AND_CALLBACK_EXECUTE_NNPI_INF_IF_ERROR(
             nnpiCommandListQueue(commandList_, nullptr, 0),
             "Failed to queue command list.", runId, ctx, resultCB);
         if (deviceTracing_ != nullptr) {
@@ -391,7 +460,7 @@ void InferenceThreadEnv::execute(RunIdentifierTy runId,
                     TRACING_PRE_PROCESS);
     TRACE_EVENT_BEGIN(ctx->getTraceContext(), TraceLevel::OPERATOR,
                       TRACING_INFERENCE);
-    LOG_AND_CALLBACK_EXECUTE_NNPI_ERROR(
+    LOG_AND_CALLBACK_EXECUTE_NNPI_IF_ERROR(
         nnpiNetworkInferOnHost(nnpiNetwork_, &(rawInputs_[0]),
                                rawInputs_.size(), &(rawOutputs_[0]),
                                rawOutputs_.size(), &compilationConfig_,
@@ -403,11 +472,11 @@ void InferenceThreadEnv::execute(RunIdentifierTy runId,
                       TRACING_POST_PROCESS);
     // Convert outputs.
     size_t currOut = 0;
-    for (auto &out : netOutputs_) {
-      LOG_AND_FAIL_EXECUTE_CALLBACK_IF_NOT(ERROR, ioTensors_.count(out.first),
-                                           "Output not found", runId, ctx,
-                                           resultCB);
-      auto *t = ioTensors_.at(out.first);
+    for (auto &out : netOutputPlaceholders_) {
+      auto *t = bindings.get(out);
+
+      LOG_AND_FAIL_EXECUTE_CALLBACK_IF_NOT(ERROR, t, "Output not found", runId,
+                                           ctx, resultCB);
 
       switch (t->getElementType()) {
       case glow::ElemKind::Int64ITy: {
@@ -429,11 +498,10 @@ void InferenceThreadEnv::execute(RunIdentifierTy runId,
     TRACE_EVENT_BEGIN(ctx->getTraceContext(), TraceLevel::COPY,
                       TRACING_POST_PROCESS);
     // Just zero the outputs (no inference).
-    for (auto &out : netOutputs_) {
-      LOG_AND_FAIL_EXECUTE_CALLBACK_IF_NOT(ERROR, ioTensors_.count(out.first),
-                                           "Output not found", runId, ctx,
-                                           resultCB);
-      auto *t = ioTensors_.at(out.first);
+    for (auto &out : netOutputPlaceholders_) {
+      auto *t = bindings.get(out);
+      LOG_AND_FAIL_EXECUTE_CALLBACK_IF_NOT(ERROR, t, "Output not found", runId,
+                                           ctx, resultCB);
       t->zero();
     }
   }
@@ -446,22 +514,39 @@ void InferenceThreadEnv::execute(RunIdentifierTy runId,
         ctx, resultCB);
     if (deviceOptions_->enabledCommandLists > 1) {
       uint32_t numErrors(0);
-      NNPIInferenceErrorCode res = nnpiCommandListWait(
-          commandList_, UINT32_MAX, commandErrors_, numCommands_, &numErrors);
+      // First wait for the command list to complete.
+      NNPIInferenceErrorCode res =
+          nnpiCommandListWait(commandList_, UINT32_MAX, NULL, 0, &numErrors);
       TRACE_EVENT_END(ctx->getTraceContext(), TraceLevel::OPERATOR,
                       TRACING_INFERENCE);
       TRACE_EVENT_BEGIN(ctx->getTraceContext(), TraceLevel::COPY,
                         TRACING_POST_PROCESS);
-      if (res != NNPI_INF_NO_ERROR) {
-        LOG_NNPI_INF_ERROR(res, "Failed to wait on command list");
-      } else {
-        for (uint32_t i = 0; i < numErrors; i++) {
-          LOG(ERROR) << NNPI_INF_ERROR_MSG(commandErrors_[i].err,
-                                           commandErrors_[i].desc);
+      LOG_NNPI_INF_IF_ERROR(res, "Failed to wait on command list");
+      if (res == NNPI_INF_NO_ERROR && numErrors > 0) {
+        LOG(ERROR) << "Errors returned from command list";
+
+        // Errors were generated so we allocate error objects to hold the data.
+        NNPICommandListError commandErrors[numErrors];
+        LOG_AND_FAIL_EXECUTE_CALLBACK_IF_NOT(
+            ERROR, commandErrors, "Failed to allocate command error array",
+            runId, ctx, resultCB);
+        memset(commandErrors, 0, sizeof(NNPICommandListError) * numErrors);
+
+        // Then query all errors using another wait call (should return
+        // immediately).
+        NNPIInferenceErrorCode tmpRes = nnpiCommandListWait(
+            commandList_, UINT32_MAX, commandErrors, numErrors, &numErrors);
+        LOG_NNPI_INF_IF_ERROR(tmpRes,
+                              "Failed to wait on command list to get errors");
+        if (tmpRes == NNPI_INF_NO_ERROR) {
+          for (uint32_t i = 0; i < numErrors; i++) {
+            LOG(ERROR) << NNPI_INF_ERROR_MSG(commandErrors[i].err,
+                                             commandErrors[i].desc);
+          }
         }
       }
       if (res != NNPI_INF_NO_ERROR || numErrors > 0) {
-        LOG_AND_CALLBACK_EXECUTE_NNPI_INF_ERROR(
+        LOG_AND_CALLBACK_EXECUTE_NNPI_INF_IF_ERROR(
             nnpiCommandListClearErrors(commandList_),
             "Failed to clear command list errors", runId, ctx, resultCB);
         LOG_AND_FAIL_EXECUTE_CALLBACK_IF_NOT(
@@ -469,12 +554,15 @@ void InferenceThreadEnv::execute(RunIdentifierTy runId,
             runId, ctx, resultCB);
       }
     }
+    LOG_AND_FAIL_EXECUTE_CALLBACK_IF_NOT(
+        ERROR, hostOutputs_.size() == hostOutputPlaceholders_.size(),
+        "Bad inputs", runId, ctx, resultCB);
     for (size_t i = 0, e = hostOutputs_.size(); i < e; i++) {
       void *pHostOutput(hostOutputs_[i].hostPtr);
 
       // Lock output host resource.
       if (deviceOptions_->enabledCommandLists < 2) {
-        LOG_AND_CALLBACK_EXECUTE_NNPI_INF_ERROR(
+        LOG_AND_CALLBACK_EXECUTE_NNPI_INF_IF_ERROR(
             nnpiHostResourceLock(hostOutputs_[i].handle, NNPI_LOCK_FOR_READ,
                                  UINT32_MAX, &pHostOutput),
             "Failed to lock host resource", runId, ctx, resultCB);
@@ -491,10 +579,9 @@ void InferenceThreadEnv::execute(RunIdentifierTy runId,
       }
 
       // Copy data to output tensor.
-      LOG_AND_FAIL_EXECUTE_CALLBACK_IF_NOT(
-          ERROR, ioTensors_.count(hostOutputs_[i].name), "Can't find output",
-          runId, ctx, resultCB);
-      auto *t = ioTensors_.at(hostOutputs_[i].name);
+      auto *t = bindings.get(hostOutputPlaceholders_[i]);
+      LOG_AND_FAIL_EXECUTE_CALLBACK_IF_NOT(ERROR, t, "Can't find output", runId,
+                                           ctx, resultCB);
       const bool downcastInt64 =
           t->getElementType() == glow::ElemKind::Int64ITy;
       const size_t bufferSize = t->getUnpaddedSizeInBytes();
@@ -517,7 +604,7 @@ void InferenceThreadEnv::execute(RunIdentifierTy runId,
 
       if (deviceOptions_->enabledCommandLists < 2) {
         // Unlock host resource.
-        LOG_AND_CALLBACK_EXECUTE_NNPI_INF_ERROR(
+        LOG_AND_CALLBACK_EXECUTE_NNPI_INF_IF_ERROR(
             nnpiHostResourceUnlock(hostOutputs_[i].handle),
             "Failed to unlock host resource", runId, ctx, resultCB);
       }
@@ -533,7 +620,6 @@ void InferenceThreadEnv::execute(RunIdentifierTy runId,
   tmpBuffers_.clear();
   rawInputs_.clear();
   rawOutputs_.clear();
-  ioTensors_.clear();
   TRACE_EVENT_END(ctx->getTraceContext(), TraceLevel::COPY,
                   TRACING_POST_PROCESS);
 
@@ -579,11 +665,11 @@ bool InferenceThreadEnv::init(
     size_t numInputs, numOutputs;
     NNPIObjectName name;
     NNPITensorDesc desc;
-    LOG_NNPI_ERROR_RETURN_FALSE(
+    LOG_NNPI_IF_ERROR_RETURN_FALSE(
         nnpiNetworkGetInputNum(nnpiNetwork_, &numInputs),
         "Failed to query NNPI network inputs");
     for (size_t i = 0; i < numInputs; i++) {
-      LOG_NNPI_ERROR_RETURN_FALSE(
+      LOG_NNPI_IF_ERROR_RETURN_FALSE(
           nnpiNetworkGetInputDesc(nnpiNetwork_, i, name, &desc),
           "Failed to query NNPI network inputs");
       LOG_AND_RETURN_IF(
@@ -591,11 +677,11 @@ bool InferenceThreadEnv::init(
           "ICE-Ref doesn't support static inputs", false);
       netInputs_.push_back({name, desc});
     }
-    LOG_NNPI_ERROR_RETURN_FALSE(
+    LOG_NNPI_IF_ERROR_RETURN_FALSE(
         nnpiNetworkGetOutputNum(nnpiNetwork_, &numOutputs),
         "Failed to query NNPI network outputs");
     for (size_t i = 0; i < numOutputs; i++) {
-      LOG_NNPI_ERROR_RETURN_FALSE(
+      LOG_NNPI_IF_ERROR_RETURN_FALSE(
           nnpiNetworkGetOutputDesc(nnpiNetwork_, i, name, &desc),
           "Failed to query NNPI network outputs");
       LOG_AND_RETURN_IF(
@@ -609,17 +695,17 @@ bool InferenceThreadEnv::init(
 
   // Query input/output resources.
   uint32_t numInputs, numOutputs;
-  LOG_NNPI_INF_ERROR_RETURN_FALSE(
+  LOG_NNPI_INF_IF_ERROR_RETURN_FALSE(
       nnpiHostNetworkGetInputNum(hostNetwork, &numInputs),
       "Failed to query NNPI network inputs");
-  LOG_NNPI_INF_ERROR_RETURN_FALSE(
+  LOG_NNPI_INF_IF_ERROR_RETURN_FALSE(
       nnpiHostNetworkGetOutputNum(hostNetwork, &numOutputs),
       "Failed to query NNPI network outputs");
 
   // Create resources and copy commands.
   for (uint32_t i = 0; i < numInputs; i++) {
     NamedResource nr;
-    LOG_NNPI_INF_ERROR_RETURN_FALSE(
+    LOG_NNPI_INF_IF_ERROR_RETURN_FALSE(
         nnpiHostNetworkGetInputDesc(hostNetwork, i, nr.name, &nr.desc),
         "Failed to query NNPI host network input");
     // Host resource.
@@ -628,34 +714,32 @@ bool InferenceThreadEnv::init(
     const auto isStaticInput = staticPlaceholders.count(nr.name);
     if (!isStaticInput) {
       netInputs_.push_back({nr.name, NNPITensorDesc()});
-      LOG_NNPI_INF_ERROR_RETURN_FALSE(
+      LOG_NNPI_INF_IF_ERROR_RETURN_FALSE(
           nnpiHostResourceCreate(adapter, &nr.desc, &nr.handle),
           "Failed to create NNPI host resource");
 
       // Lock/Unlock host resource and keep host address.
-      LOG_NNPI_INF_ERROR_RETURN_FALSE(
+      LOG_NNPI_INF_IF_ERROR_RETURN_FALSE(
           nnpiHostResourceLock(nr.handle, NNPI_LOCK_FOR_WRITE, UINT32_MAX,
                                &nr.hostPtr),
           "Failed to lock host resource");
-      LOG_NNPI_INF_ERROR_RETURN_FALSE(nnpiHostResourceUnlock(nr.handle),
-                                      "Failed to unlock host resource");
+      LOG_NNPI_INF_IF_ERROR_RETURN_FALSE(nnpiHostResourceUnlock(nr.handle),
+                                         "Failed to unlock host resource");
 
       hostInputs_.push_back(nr);
       hInput = nr.handle; // Save before overwriting with device handle.
 
       // Device resource.
-      LOG_NNPI_INF_ERROR_RETURN_FALSE(
+      LOG_NNPI_INF_IF_ERROR_RETURN_FALSE(
           nnpiDeviceResourceCreate(device_, &nr.desc, &nr.handle),
           "Failed to create NNPI device resource");
       allocatedDeviceInputs_.push_back(nr);
     } else {
       const auto PH = staticPlaceholders.at(nr.name);
-      nr = staticPlaceholderContainer_->AcquireDeviceResource(PH, nr);
-      // Exception for internal testing (ICE-24091).
-      if (deviceOptions_->internalTesting.get().empty()) {
-        LOG_AND_RETURN_IF(ERROR, nr.handle == NNPI_INVALID_NNPIHANDLE,
-                          "Failed to acquire device resource", false);
-      }
+      nr = staticPlaceholderContainer_->acquireDeviceResource(PH, nr);
+
+      LOG_AND_RETURN_IF(ERROR, nr.handle == NNPI_INVALID_NNPIHANDLE,
+                        "Failed to acquire device resource", false);
     }
 
     deviceInputs_.push_back(nr);
@@ -663,7 +747,7 @@ bool InferenceThreadEnv::init(
     if (!isStaticInput) {
       // Copy command.
       NNPICopyCommand copyInputCmd(NNPI_INVALID_NNPIHANDLE);
-      LOG_NNPI_INF_ERROR_RETURN_FALSE(
+      LOG_NNPI_INF_IF_ERROR_RETURN_FALSE(
           nnpiCopyCommandCreateHostToDevice(device_, nr.handle, hInput,
                                             &copyInputCmd),
           "Failed to create NNPI copy command");
@@ -677,7 +761,7 @@ bool InferenceThreadEnv::init(
     // Host resource.
     NamedResource nr;
 
-    LOG_NNPI_INF_ERROR_RETURN_FALSE(
+    LOG_NNPI_INF_IF_ERROR_RETURN_FALSE(
         nnpiHostNetworkGetOutputDesc(hostNetwork, i, nr.name, &nr.desc),
         "Failed to query NNPI host network output");
     netOutputs_.push_back({nr.name, NNPITensorDesc()});
@@ -685,31 +769,31 @@ bool InferenceThreadEnv::init(
     const auto isStaticOutput = staticPlaceholders.count(nr.name);
     ASSERT_WITH_MSG(isStaticOutput == false, "Static outputs are illegal");
 
-    LOG_NNPI_INF_ERROR_RETURN_FALSE(
+    LOG_NNPI_INF_IF_ERROR_RETURN_FALSE(
         nnpiHostResourceCreate(adapter, &nr.desc, &nr.handle),
         "Failed to create NNPI host resource");
 
     // Lock/Unlock host resource and keep host address.
-    LOG_NNPI_INF_ERROR_RETURN_FALSE(
+    LOG_NNPI_INF_IF_ERROR_RETURN_FALSE(
         nnpiHostResourceLock(nr.handle, NNPI_LOCK_FOR_WRITE, UINT32_MAX,
                              &nr.hostPtr),
         "Failed to lock host resource");
-    LOG_NNPI_INF_ERROR_RETURN_FALSE(nnpiHostResourceUnlock(nr.handle),
-                                    "Failed to unlock host resource");
+    LOG_NNPI_INF_IF_ERROR_RETURN_FALSE(nnpiHostResourceUnlock(nr.handle),
+                                       "Failed to unlock host resource");
 
     hostOutputs_.push_back(nr);
     NNPIHostResource hOutput =
         nr.handle; // Save before overwriting with device handle.
 
     // Device resource.
-    LOG_NNPI_INF_ERROR_RETURN_FALSE(
+    LOG_NNPI_INF_IF_ERROR_RETURN_FALSE(
         nnpiDeviceResourceCreate(device_, &nr.desc, &nr.handle),
         "Failed to create NNPI device resource");
     deviceOutputs_.push_back(nr);
 
     // Copy command.
     NNPICopyCommand copyOutputCmd(NNPI_INVALID_NNPIHANDLE);
-    LOG_NNPI_INF_ERROR_RETURN_FALSE(
+    LOG_NNPI_INF_IF_ERROR_RETURN_FALSE(
         nnpiCopyCommandCreateDeviceToHost(device_, hOutput, nr.handle,
                                           &copyOutputCmd),
         "Failed to create NNPI copy command");
@@ -726,7 +810,7 @@ bool InferenceThreadEnv::init(
     outputHandles[i] = deviceOutputs_[i].handle;
   }
 
-  LOG_NNPI_INF_ERROR_RETURN_FALSE(
+  LOG_NNPI_INF_IF_ERROR_RETURN_FALSE(
       nnpiInferCommandCreate(deviceNetwork, inputHandles, numInputs,
                              outputHandles, numOutputs, &inferCmd_),
       "Failed to create NNPI inference command");
@@ -761,15 +845,10 @@ bool InferenceThreadEnv::init(
       cmdIdx++;
     }
 
-    LOG_NNPI_INF_ERROR_RETURN_FALSE(nnpiCommandListCreate(commands,
-                                                          numCommands_, nullptr,
-                                                          0, &commandList_),
-                                    "Failed to create NNPI command list");
-
-    commandErrors_ = new NNPICommandListError[numCommands_];
-    LOG_AND_RETURN_IF_NOT(ERROR, commandErrors_,
-                          "Failed to allocate command error array", false);
-    memset(commandErrors_, 0, sizeof(NNPICommandListError) * numCommands_);
+    LOG_NNPI_INF_IF_ERROR_RETURN_FALSE(
+        nnpiCommandListCreate(commands, numCommands_, nullptr, 0,
+                              &commandList_),
+        "Failed to create NNPI command list");
   }
 
   return true;
@@ -782,13 +861,13 @@ InferencePoolEnv::InferencePoolEnv()
 InferencePoolEnv::~InferencePoolEnv() {
   if (deviceOptions_ && deviceOptions_->inferOnDevice) {
     if (hostNetwork_ != NNPI_INVALID_NNPIHANDLE) {
-      LOG_NNPI_INF_ERROR(nnpiHostNetworkDestroy(hostNetwork_),
-                         "Failed to destroy NNPI host network");
+      LOG_NNPI_INF_IF_ERROR(nnpiHostNetworkDestroy(hostNetwork_),
+                            "Failed to destroy NNPI host network");
       hostNetwork_ = NNPI_INVALID_NNPIHANDLE;
     }
     if (deviceNetwork_ != NNPI_INVALID_NNPIHANDLE) {
-      LOG_NNPI_INF_ERROR(nnpiDeviceNetworkDestroy(deviceNetwork_),
-                         "Failed to destroy NNPI device network");
+      LOG_NNPI_INF_IF_ERROR(nnpiDeviceNetworkDestroy(deviceNetwork_),
+                            "Failed to destroy NNPI device network");
       deviceNetwork_ = NNPI_INVALID_NNPIHANDLE;
     }
   }
@@ -805,10 +884,11 @@ Error InferencePoolEnv::init(
     return MAKE_ERR("InferencePool already initialized!");
   }
   numWorkers_ = numWorkers;
-  workersPool_ = std::make_unique<ThreadPool>(numWorkers_);
+  workersPool_ = glow::make_unique<ThreadPool>(numWorkers_);
   deviceTracing_ = deviceTracing;
 
   threadEnvs_.resize(numWorkers_);
+  threadEnvsFree_.resize(numWorkers_);
   if (threadEnvs_.size() != numWorkers_) {
     return MAKE_ERR("InferencePool failed to initialize thread env");
   }
@@ -831,7 +911,7 @@ Error InferencePoolEnv::init(
       inputStream.writeCallback = NULL;
       inputStream.seekCallback = NULL;
       DBG_MEM_USAGE("call nnpiHostNetworkCreateFromStream");
-      LOG_NNPI_INF_ERROR_RETURN_LLVMERROR(
+      LOG_NNPI_INF_IF_ERROR_RETURN_LLVMERROR(
           nnpiHostNetworkCreateFromStream(adapter, &inputStream, &hostNetwork_),
           "Failed to create NNPI host network");
       DBG_MEM_USAGE("done nnpiHostNetworkCreateFromStream");
@@ -839,7 +919,7 @@ Error InferencePoolEnv::init(
     } else // Create network from file.
     {
       filename += ".zip";
-      LOG_NNPI_INF_ERROR_RETURN_LLVMERROR(
+      LOG_NNPI_INF_IF_ERROR_RETURN_LLVMERROR(
           nnpiHostNetworkCreateFromFile(adapter, filename.c_str(),
                                         &hostNetwork_),
           "Failed to create NNPI host network");
@@ -847,12 +927,12 @@ Error InferencePoolEnv::init(
 
     DBG_MEM_USAGE("call nnpiDeviceNetworkCreate");
     // Create NNPI device network (deploy to device).
-    LOG_NNPI_INF_ERROR_RETURN_LLVMERROR(
+    LOG_NNPI_INF_IF_ERROR_RETURN_LLVMERROR(
         nnpiDeviceNetworkCreate(device, hostNetwork_, nullptr, &deviceNetwork_),
         "Failed to create NNPI device network");
     DBG_MEM_USAGE("done nnpiDeviceNetworkCreate");
     if (nnpiFunction->getCompilationOptions().reserveResources) {
-      LOG_NNPI_INF_ERROR_RETURN_LLVMERROR(
+      LOG_NNPI_INF_IF_ERROR_RETURN_LLVMERROR(
           nnpiDeviceNetworkReserveExecResources(deviceNetwork_, UINT32_MAX),
           "Failed to reserve resources for device network");
     }
@@ -869,12 +949,14 @@ Error InferencePoolEnv::init(
     if (!success) {
       return MAKE_ERR("Failed to initialize thread env");
     }
+    threadEnvsFree_.push_back(&tEnv);
   }
+
   if (deviceOptions_->inferOnDevice &&
       hostNetwork_ != NNPI_INVALID_NNPIHANDLE) {
     DBG_MEM_USAGE("call nnpiHostNetworkDestroy");
-    LOG_NNPI_INF_ERROR(nnpiHostNetworkDestroy(hostNetwork_),
-                       "Failed to destroy NNPI host network");
+    LOG_NNPI_INF_IF_ERROR(nnpiHostNetworkDestroy(hostNetwork_),
+                          "Failed to destroy NNPI host network");
     hostNetwork_ = NNPI_INVALID_NNPIHANDLE;
     DBG_MEM_USAGE("done nnpiHostNetworkDestroy");
   }
@@ -886,11 +968,22 @@ void InferencePoolEnv::stop(bool block) { workersPool_->stop(block); }
 void InferencePoolEnv::execute(RunIdentifierTy runId,
                                std::unique_ptr<ExecutionContext> ctx,
                                runtime::ResultCBTy resultCB) {
-  unsigned id = (workerIndex_++) % numWorkers_;
-  workersPool_->submit([this, env = &(threadEnvs_.at(id)), runId,
-                        ctx = std::move(ctx),
+  workersPool_->submit([this, runId, ctx = std::move(ctx),
                         resultCB = std::move(resultCB)]() mutable {
+    InferenceThreadEnv *env = nullptr;
+    {
+      const std::lock_guard<std::mutex> lock(threadEnvsFreeLock_);
+      CHECK(!threadEnvsFree_.empty());
+      env = *threadEnvsFree_.rbegin();
+      threadEnvsFree_.pop_back();
+    }
+
     env->execute(runId, std::move(ctx), resultCB);
+
+    {
+      const std::lock_guard<std::mutex> lock(threadEnvsFreeLock_);
+      threadEnvsFree_.push_back(env);
+    }
   });
 }
 

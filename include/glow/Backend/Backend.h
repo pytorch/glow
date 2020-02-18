@@ -44,13 +44,18 @@ struct BundleEntry {
 namespace runtime {
 
 class DeviceManager;
+struct DeviceInfo;
 struct DeviceConfig;
+struct ContextBinding;
+
+struct DAG;
 
 } // namespace runtime
 
 // This is the interface that glow backends need to implement.
-class Backend {
+class Backend : public Named {
 public:
+  Backend() : Named("") {}
   /// Dtor.
   virtual ~Backend() = default;
 
@@ -102,19 +107,28 @@ public:
 
   /// Used by the compiler during graph optimization and before code generation,
   /// giving the backend an opportunity to transform the graph before IRGen. The
-  /// backend may insert backend-specific nodes. The backend is responsible for
-  /// cleaning up after itself.
+  /// backend may insert backend and device-specific nodes. The backend is
+  /// responsible for cleaning up after itself.
   /// \returns True if the graph was modified.
-  virtual bool transformPostLowering(Function *F,
-                                     CompilationContext &cctx) const {
+  virtual bool transformPostLowering(
+      Function *F, CompilationContext &cctx,
+      const glow::runtime::DeviceInfo *devInfo = nullptr) const {
     return false;
   }
 
   /// \returns whether the provided \p NI is supported by the backend.
   virtual bool isOpSupported(const NodeInfo &NI) const = 0;
 
-  /// \returns whether all nodes inside \p F are supported.
-  bool checkAllNodesSupported(const Function &F) const;
+  /// \returns whether the backend would like to accept \p NI for execution. By
+  /// default falls back to just checking for support via \ref isOpSupported(),
+  /// however can also take into account things like performance considerations.
+  virtual bool acceptForExecution(const NodeInfo &NI) const {
+    return isOpSupported(NI);
+  }
+
+  /// \returns whether all nodes inside \p F are supported. \p verbose
+  /// represents whether to print Nodes that are unsupported.
+  bool checkAllNodesSupported(const Function &F, bool verbose = true) const;
 
   /// \returns whether the provided \p F conforms to the backend-dependent graph
   /// constraints. Giving the backend an opportunity to check that everything
@@ -123,8 +137,9 @@ public:
   /// verifications a super-set of target independent Function::verify() by
   /// calling it in their overridden implementation. It is not a strict
   /// requirement, of course, in case they diverge / the backend has a good
-  /// reason not to call Function::verify().
-  virtual bool verify(const Function &F) const;
+  /// reason not to call Function::verify(). \p verbose represents whether to
+  /// print out nodes that are unsupported by the backend.
+  virtual bool verify(const Function &F, bool verbose = true) const;
 
   /// \returns whether the provided \p IR conforms to the backend-dependent
   /// graph constraints. Giving the backend an opportunity to check that
@@ -179,6 +194,15 @@ public:
   virtual runtime::DeviceManager *
   createDeviceManager(const runtime::DeviceConfig &deviceConfig);
 
+  /// Walks the provided /p bindings and does any setup needed for copying data
+  /// to/from host or peers. Also has access to /p network, which contains
+  /// partition dependency and symbol information. Any state information should
+  /// be stored in the ExecutionContext or DeviceManager.
+  virtual Error bindContexts(llvm::ArrayRef<runtime::ContextBinding> bindings,
+                             const std::vector<runtime::DAG> &network) {
+    return Error::success();
+  }
+
   /// \returns the supported options for compiled functions (name=>description).
   virtual llvm::StringMap<std::string>
   getSupportedCompiledFunctionOptions() const {
@@ -224,9 +248,36 @@ public:
     std::string getRegistrationKey() const override {                          \
       return BackendClass::getName();                                          \
     }                                                                          \
+    unsigned numDevices() const override {                                     \
+      return BackendClass::numDevices();                                       \
+    }                                                                          \
   };                                                                           \
   static RegisterFactory<std::string, FactoryName, Backend>                    \
       FactoryName##_REGISTERED;
+
+/// Perform dynamic Backend Factory registration. Register the backend factory
+/// under the provided \p Name and use \p CreateFn expression to create new
+/// instances of the backends.
+#define REGISTER_DYNAMIC_GLOW_BACKEND_FACTORY(FactoryName, BackendClass, Name, \
+                                              CreateFn)                        \
+  class FactoryName : public BaseFactory<std::string, Backend> {               \
+  public:                                                                      \
+    FactoryName() : registrationKey_(Name) {}                                  \
+    Backend *create() override { return CreateFn; }                            \
+    std::string getRegistrationKey() const override {                          \
+      return registrationKey_;                                                 \
+    }                                                                          \
+    unsigned numDevices() const override {                                     \
+      return BackendClass::numDevices();                                       \
+    }                                                                          \
+                                                                               \
+  private:                                                                     \
+    std::string registrationKey_;                                              \
+  };                                                                           \
+  RegisterFactory<std::string, FactoryName, Backend> FactoryName##_REGISTERED;
+
+/// \returns the set of names for all available, registered backends.
+std::vector<std::string> getAvailableBackends();
 
 /// The backend name used in Glow quantization profiling.
 #ifdef GLOW_WITH_CPU

@@ -34,10 +34,12 @@ public:
 
   std::string getBackendName() const override { return getName(); }
   static std::string getName() { return "NNPI"; }
+  static unsigned numDevices();
 
   Expected<std::unique_ptr<CompiledFunction>>
   compile(Function *F, const BackendOptions &opts) const override;
 
+  bool acceptForExecution(const NodeInfo &NI) const override;
   bool isOpSupported(const NodeInfo &NI) const override;
   bool shouldLower(const Node *N) const override;
   bool shouldShareBuffers() const override { return false; }
@@ -48,8 +50,9 @@ public:
   runtime::DeviceManager *
   createDeviceManager(const runtime::DeviceConfig &deviceConfig) override;
 
-  bool transformPostLowering(Function *F,
-                             CompilationContext &cctx) const override;
+  bool transformPostLowering(
+      Function *F, CompilationContext &cctx,
+      const glow::runtime::DeviceInfo *devInfo = nullptr) const override;
 
   virtual llvm::StringMap<std::string>
   getSupportedCompiledFunctionOptions() const override {

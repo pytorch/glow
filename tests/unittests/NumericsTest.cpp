@@ -13,8 +13,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "tests/unittests/BackendTestUtils.h"
+
+#include "BackendTestUtils.h"
 
 using namespace glow;
 
-std::set<std::string> glow::backendTestBlacklist = {};
+INSTANTIATE_BACKEND_TEST(NumericsTest);
+
+// NOTE: Specify generic numerics tests below that should be supported by all
+// backends (and blacklisted explicitly if not supported).

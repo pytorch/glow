@@ -42,7 +42,8 @@ class Constant;
 #include "glow/AutoGenInstr.def"
 
 /// Function "compiled" for execution by the interpreter.
-class InterpreterFunction final : public CompiledFunction {
+class InterpreterFunction final : public CompiledFunction,
+                                  public IRInstructionProcessingHandler {
   /// The IR to be executed.
   std::unique_ptr<IRFunction> F_;
 
@@ -80,7 +81,7 @@ public:
 };
 
 /// An InterpreterFunction bound to a specific invocation.
-class BoundInterpreterFunction {
+class BoundInterpreterFunction : public IRInstructionProcessingHandler {
   /// Maps values to Tensors, that are owned by this class.
   std::unordered_map<const Value *, Tensor *> tensors_;
 
@@ -166,6 +167,14 @@ private:
                                      llvm::ArrayRef<unsigned_t> strides,
                                      llvm::ArrayRef<unsigned_t> pads,
                                      size_t group);
+
+  template <typename ElemTy = float>
+  void fwdConvTransposeInstFloatImpl(Value *inV, Value *outV, Value *filterV,
+                                     Value *biasV,
+                                     llvm::ArrayRef<unsigned_t> kernelSizes,
+                                     llvm::ArrayRef<unsigned_t> strides,
+                                     llvm::ArrayRef<unsigned_t> pads,
+                                     size_t group, size_t dilation);
 
   void fwdAvgPoolInstI8Impl(const AvgPoolInst *I);
   template <typename ElemTy> void fwdAvgPoolInstFloatImpl(const AvgPoolInst *I);
@@ -278,6 +287,10 @@ private:
                                    const ShapeVector &eDestDims, ElemTy max);
 
   template <typename ElemTy>
+  void fwdCumSumInstImpl(Value *input, Value *dest, bool exclusive,
+                         bool reverse);
+
+  template <typename ElemTy>
   void fwdLengthsSumInstFloatImpl(const LengthsSumInst *I);
 
   template <typename ElemTy> void fwdGatherInstImpl(const GatherInst *I);
@@ -321,12 +334,22 @@ private:
   void fwdFusedRowwiseQuantizedSparseLengthsWeightedSumImpl(
       const FusedRowwiseQuantizedSparseLengthsWeightedSumInst *I);
 
+  template <typename T>
+  void fwdNonMaxSuppressionInstImpl(glow::NonMaxSuppressionInst const *I);
+
   template <typename T, typename AccumT>
   void fwdEmbeddingBagByteRowwiseOffsetsImpl(
       const EmbeddingBagByteRowwiseOffsetsInst *I);
 
   template <typename ElemTy> void fwdFlipInstImpl(const FlipInst *I);
 
+  template <typename ElemTy>
+  void fwdBatchedPairwiseDotProductInstImpl(
+      const glow::BatchedPairwiseDotProductInst *I);
+
+  template <typename ElemTy>
+  void fwdBatchedPairwiseDotProductGradInstImpl(
+      const glow::BatchedPairwiseDotProductGradInst *I);
   ///@}
 };
 

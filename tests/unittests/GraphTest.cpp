@@ -169,84 +169,6 @@ TEST(Graph, simpleTestConvCustomLower) {
   llvm::sys::fs::remove(filePath);
 }
 
-/// Test lowering groupwise quantized convolution expressed using
-/// ChannelwiseQuantizedConvNode to multiple regular quantized convolutions.
-TEST(Graph, ConvChannelwiseQuantizedLower) {
-  Module M;
-  Function *F = M.createFunction("F");
-
-  constexpr size_t groups = 2;
-  constexpr size_t depth = 4;
-  constexpr size_t inputChannels = 4;
-
-  // Expect NHWC.
-  Node *inputPH = M.createPlaceholder(
-      ElemKind::Int8QTy, {1, 10, 10, inputChannels}, /* scale */ 1.0,
-      /* offset */ 0, "input", true);
-
-  Tensor filterTensor(ElemKind::Int8QTy, {depth, 1, 1, inputChannels / groups},
-                      /* scale */ 1.0,
-                      /* offset */ 0);
-  filterTensor.init(Tensor::InitKind::Broadcast, 1, M.getPRNG());
-  Constant *filter = M.createConstant("filter", filterTensor);
-
-  Tensor biasTensor(ElemKind::FloatTy, {depth});
-  biasTensor.init(Tensor::InitKind::Broadcast, 2, M.getPRNG());
-  Constant *bias = M.createConstant("bias", biasTensor);
-
-  Tensor scalesTensor(ElemKind::FloatTy, {groups});
-  scalesTensor.getHandle<float>().raw(0) = 1.0;
-  scalesTensor.getHandle<float>().raw(1) = 3.0;
-  Constant *scales = M.createConstant("scales", scalesTensor);
-
-  Tensor offsetsTensor(ElemKind::Int32ITy, {groups});
-  offsetsTensor.getHandle<int32_t>().raw(0) = 2;
-  offsetsTensor.getHandle<int32_t>().raw(1) = 4;
-  Constant *offsets = M.createConstant("offsets", offsetsTensor);
-
-  auto *outQTy = M.uniqueType(glow::ElemKind::Int8QTy, {1, 10, 10, depth},
-                              /* scale */ 1.5, /* offset */ 6);
-
-  auto *channelwiseQuantizedConvNode = F->createChannelwiseQuantizedConv(
-      "channelwise_qconv", inputPH, filter, bias, scales, offsets, outQTy,
-      /* kernels */ {1, 1},
-      /* strides */ {1, 1},
-      /* pads */ {0, 0, 0, 0},
-      /* group */ groups);
-
-  SaveNode *saveNode = F->createSave("save", channelwiseQuantizedConvNode);
-
-  auto backend = MockBackend();
-  CompilationContext cctx;
-  lower(F, cctx, &backend);
-
-  // Now verify the lowered graph.
-
-  auto concatNode = llvm::dyn_cast<ConcatNode>(saveNode->getInput().getNode());
-  ASSERT_TRUE(concatNode != nullptr);
-
-  auto concatInputs = concatNode->getInputs();
-  EXPECT_EQ(concatInputs.size(), groups) << "Should have one conv per group";
-
-  for (size_t i = 0; i < concatInputs.size(); ++i) {
-    auto convNode = llvm::dyn_cast<ConvolutionNode>(concatInputs[i].getNode());
-    ASSERT_TRUE(concatNode != nullptr);
-    // Check that each conv has the expected filter qparams.
-    auto *filterTy = convNode->getFilter().getType();
-    ASSERT_TRUE(filterTy != nullptr);
-    EXPECT_TRUE(filterTy->isQuantizedType());
-    EXPECT_EQ(filterTy->getScale(), float(1 + 2 * i));
-    EXPECT_EQ(filterTy->getOffset(), 2 + 2 * i);
-
-    // Check that each conv has the expected output qparams.
-    auto *outTy = convNode->getType(ConvolutionNode::ResultIdx);
-    ASSERT_TRUE(outTy != nullptr);
-    EXPECT_TRUE(outTy->isQuantizedType());
-    EXPECT_EQ(outTy->getScale(), 1.5);
-    EXPECT_EQ(outTy->getOffset(), 6);
-  }
-}
-
 /// Check that we can create convolution with float16.
 TEST(Graph, float16Conv) {
   Module MD;
@@ -672,6 +594,88 @@ TEST(Graph, functionCloneTest) {
 
   EXPECT_EQ(newF->getNodes().size(), F->getNodes().size());
   EXPECT_EQ(newF->getParent(), F->getParent());
+}
+
+/// Compile the module \p M inside the execution engine \p EE and then run it
+/// using the provided \p bindings. Use the provided \p inputName and \p
+/// outputName.
+static void compileAndRun(ExecutionEngine &EE, PlaceholderBindings &bindings,
+                          Module &M, llvm::StringRef inputName,
+                          llvm::StringRef outputName) {
+  EE.compile(glow::CompilationMode::Infer);
+  // Allocate stprage for placeholders and initialize inputs.
+  bindings.allocate(M.getPlaceholderByName(inputName))->getHandle().clear(2.0);
+  bindings.allocate(M.getPlaceholderByName(outputName));
+  EE.run(bindings);
+}
+
+/// Check the module cloning functionality.
+TEST(Graph, moduleCloneTest) {
+  // State related to the cloned module and its execution.
+  ExecutionEngine clonedEE("Interpreter");
+  Module &clonedM = clonedEE.getModule();
+  PlaceholderBindings clonedBindings;
+  Tensor clonedResult;
+  // State related to the original module and its execution.
+  PlaceholderBindings originalBindings;
+  Tensor originalResult;
+  // Name of the placeholder holding the results of executions.
+  std::string resultName;
+  {
+    // Define the original execution engine and module.
+    ExecutionEngine originalEE("Interpreter");
+    Module &originalM = originalEE.getModule();
+
+    // Create a function.
+    auto *F = originalM.createFunction("main");
+    auto *input1 = originalM.createPlaceholder(ElemKind::FloatTy,
+                                               {4, 10, 10, 3}, "input", true);
+
+    auto *add = F->createAdd("add", input1, input1);
+    auto *relu = F->createRELU("Relu", add);
+    auto *concat = F->createConcat("concat", {relu, relu, relu}, 0);
+    auto *C = originalM.createConstant(concat->getResult().getType(), "C");
+    C->getPayloadMutable().getHandle().clear(1.0f);
+    auto *SM = F->createAdd("add", concat, C);
+    auto *SN = F->createSave("Save", SM);
+    resultName = SN->getPlaceholder()->getName();
+
+    // Clone the original module into the cloned module.
+    originalM.clone(&clonedM);
+    // The cloned module should have the same numer of types, functions,
+    // constants and placeholders.
+    EXPECT_EQ(originalM.getFunctions().size(), clonedM.getFunctions().size());
+    EXPECT_EQ(originalM.getPlaceholders().size(),
+              clonedM.getPlaceholders().size());
+    EXPECT_EQ(originalM.getConstants().size(), clonedM.getConstants().size());
+    EXPECT_EQ(originalM.getTypes().size(), clonedM.getTypes().size());
+    // String representations of the original and cloned modules should be the
+    // same.
+    EXPECT_EQ(originalM.toString(), clonedM.toString());
+    for (auto *originalF : originalM.getFunctions()) {
+      EXPECT_EQ(originalF->toString(),
+                clonedM.getFunction(originalF->getName())->toString());
+    }
+
+    // Compile and run the original module.
+    compileAndRun(originalEE, originalBindings, originalM, "input", resultName);
+    // Store the result of running the original module.
+    originalResult.assign(originalBindings.get(
+        originalBindings.getPlaceholderByName(resultName)));
+    // The old module should be removed when this scope ends. Thus, if the
+    // cloned module newM refers to any deleted nodes from the original module,
+    // it would result in a dangling reference and most likely in a crash.
+  }
+  // Check that the cloned module is still alive and valid after the original
+  // module was deleted.
+  EXPECT_TRUE(clonedM.verify());
+  // Compile and run the cloned model.
+  compileAndRun(clonedEE, clonedBindings, clonedM, "input", resultName);
+  // Store the result of running the cloned module.
+  clonedResult.assign(
+      clonedBindings.get(clonedBindings.getPlaceholderByName(resultName)));
+  // The results of execution should be exactly the same in both cases.
+  EXPECT_TRUE(originalResult.isEqual(clonedResult, 0));
 }
 
 TEST(Graph, cloneWithPredicates) {
@@ -1540,11 +1544,11 @@ TEST(Graph, hookTest) {
   EXPECT_EQ(mod.getPlaceholders().size(), 2);
 
   // Hook the first relu and verify that the hooked graph looks right.
-  auto hooked = glow::hookOutput(F, relu1);
+  auto hooked = glow::hookNode(F, relu1);
   auto const &nodes = hooked.function->getNodes();
   ASSERT_EQ(mod.getPlaceholders().size(), 3);
   ASSERT_EQ(nodes.size(), 2);
-  auto const *hookSave = *hooked.saves.begin();
+  auto const *hookSave = *hooked.outputSaves.begin();
   ASSERT_TRUE(hookSave);
   auto *inp = llvm::dyn_cast<ReluNode>(hookSave->getInput());
   ASSERT_TRUE(inp);

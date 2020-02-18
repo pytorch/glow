@@ -151,6 +151,9 @@ class OpenCLDeviceManager : public QueueBackedDeviceManager {
   /// Device name.
   std::string name_;
 
+  /// Size of static local memory in the device.
+  cl_ulong localMemSize_;
+
   /// Command queue pool.
   OpenCLCommandQueuePool commandQueuePool_;
 
@@ -173,6 +176,11 @@ public:
 
   ~OpenCLDeviceManager();
 
+  /// Enumerate OpenCL devices, if deviceId > 0 then choose that index,
+  /// otherwise guess the best available device.
+  Error findBestDevice(cl_platform_id platformId, int deviceId);
+
+  /// Initialize the DeviceManager, choosing a device and creating a CL context.
   Error init() override;
 
   /// Parse config object provided at initialization \returns Error
@@ -189,6 +197,8 @@ public:
   /// device. This is not a promise as memory cost could vary due to alignment,
   /// etc.
   bool isMemoryAvailable(uint64_t estimate) const override;
+
+  DeviceInfo getDeviceInfo() const override;
 
 protected:
   /// Adds functions to the device. Calls to this are serialized so concurrency
@@ -210,12 +220,14 @@ protected:
   /// Load inputs from \p context onto the device.
   void copyInputsToDevice(const RuntimeBundle &runtimeBundle,
                           ExecutionContext *context,
-                          runtime::OpenCLDeviceBindings *devBindings);
+                          runtime::OpenCLDeviceBindings *devBindings,
+                          bool traceEnabled);
 
   /// Copy back results from the device to the host.
   void copyOutputsFromDevice(const RuntimeBundle &runtimeBundle,
                              ExecutionContext *context,
-                             runtime::OpenCLDeviceBindings *devBindings);
+                             runtime::OpenCLDeviceBindings *devBindings,
+                             bool traceEnabled);
 
   /// Get profiling information for each kernelLaunch. This must happen after
   /// copyOutputsFromDevice.

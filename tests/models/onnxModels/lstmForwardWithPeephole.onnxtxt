@@ -11,6 +11,8 @@ graph {
     input: "initial_c"
     input: "P"
     output: "Y"
+    output: "Y_h"
+    output: "Y_c"
     name: "lstm"
     op_type: "LSTM"
     attribute {

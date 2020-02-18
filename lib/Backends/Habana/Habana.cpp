@@ -27,6 +27,7 @@
 #include "llvm/Support/FormatVariadic.h"
 
 #include <chrono>
+#include <fstream>
 #include <glog/logging.h>
 #include <unordered_map>
 
@@ -1419,8 +1420,9 @@ bool surroundTileWithReshapes(Function *F, TileNode &tile) {
 
 } // namespace
 
-bool HabanaBackend::transformPostLowering(Function *F,
-                                          CompilationContext &cctx) const {
+bool HabanaBackend::transformPostLowering(
+    Function *F, CompilationContext &cctx,
+    const glow::runtime::DeviceInfo *devInfo) const {
   LOG_SCOPE(F->getLogContext(), "HabanaBackend::transformPostLowering")
 
   bool changed = false;
@@ -1509,4 +1511,16 @@ bool HabanaBackend::isVersionBiggerEqualTo(std::string versionToCompare) {
     }
   }
   return false;
+}
+
+unsigned HabanaBackend::numDevices() {
+  std::ifstream devices("/proc/bus/pci/devices");
+  std::string device;
+  unsigned count = 0;
+  while (std::getline(devices, device)) {
+    if (device.find("habanalabs") != std::string::npos) {
+      count++;
+    }
+  }
+  return count;
 }

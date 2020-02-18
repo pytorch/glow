@@ -38,11 +38,15 @@ public:
   ///@{
   virtual ~CPUBackend() override = default;
 
-  std::string getBackendName() const override { return getName(); }
+  std::string getBackendName() const override {
+    return Named::getName().empty() ? getName() : Named::getName().str();
+  }
   static std::string getName() { return "CPU"; }
+  static unsigned numDevices();
 
-  bool transformPostLowering(Function *F,
-                             CompilationContext &cctx) const override;
+  bool transformPostLowering(
+      Function *F, CompilationContext &cctx,
+      const glow::runtime::DeviceInfo *devInfo = nullptr) const override;
 
   bool isOpSupported(const NodeInfo &NI) const override;
 

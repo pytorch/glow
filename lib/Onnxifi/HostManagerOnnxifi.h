@@ -80,6 +80,9 @@ public:
 
 private:
   std::string netName_;
+  std::mutex tracesMutex_;
+  std::unique_ptr<TraceContext> mergedTraceContext_;
+  int numTracesToDump_{0};
 };
 
 } // namespace onnxifi

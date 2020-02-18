@@ -67,6 +67,22 @@ PYBIND11_MODULE(_torch_glow, m) {
   m.def("disableDumpGlowDag",
         []() { getPyTorchLoaderSettings().dumpGlowDag = false; });
 
+  /// Enable converting fp32 ops to fp16.
+  m.def("enable_convert_to_fp16",
+        []() { getPyTorchLoaderSettings().convertToFP16 = true; });
+
+  /// Disable converting fp32 ops to fp16.
+  m.def("disable_convert_to_fp16",
+        []() { getPyTorchLoaderSettings().convertToFP16 = false; });
+
+  /// Enable dumping the final Glow dag after compilation.
+  m.def("enable_dump_final_glow_graph",
+        []() { getPyTorchLoaderSettings().dumpFinalGlowGraph = true; });
+
+  /// Disable dumping the final Glow dag after compilation.
+  m.def("disable_dump_final_glow_graph",
+        []() { getPyTorchLoaderSettings().dumpFinalGlowGraph = false; });
+
   /// Add all of the symbols in \p blacklist to the fusion blacklist so that
   /// nodes with these symbols will not be fused to Glow.
   m.def("setFusionBlacklist", [](const std::vector<std::string> &blacklist) {
@@ -80,6 +96,22 @@ PYBIND11_MODULE(_torch_glow, m) {
   /// Clear the fusion blacklist.
   m.def("clearFusionBlacklist",
         []() { getPyTorchLoaderSettings().opBlacklist.clear(); });
+
+  /// Set the index (inclusive) of the first node in the graph to fuse.
+  m.def("setFusionStartIndex", [](int64_t startIndex) {
+    getPyTorchLoaderSettings().fusionStartIndex = startIndex;
+  });
+
+  /// Set the index (exclusive) of the last node in the graph to fuse.
+  m.def("setFusionEndIndex", [](int64_t endIndex) {
+    getPyTorchLoaderSettings().fusionEndIndex = endIndex;
+  });
+
+  /// Clear the start and end fusion indices.
+  m.def("clearFusionIndices", []() {
+    getPyTorchLoaderSettings().fusionStartIndex = -1;
+    getPyTorchLoaderSettings().fusionEndIndex = -1;
+  });
 
   /// Set the active HostManager to one that owns 1 of type \p backendName.
   m.def("setGlowBackend", [](const std::string &glowBackendName) {

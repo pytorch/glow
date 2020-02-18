@@ -67,11 +67,6 @@ extern unsigned parCloneCountOpt;
     bool isEnabledBackend(const std::set<std::string> &enabledBackends) {      \
       return enabledBackends.find(getBackendName()) != enabledBackends.end();  \
     }                                                                          \
-    const std::string Interpreter = "Interpreter";                             \
-    const std::string CPU = "CPU";                                             \
-    const std::string OpenCL = "OpenCL";                                       \
-    const std::string Habana = "Habana";                                       \
-    const std::string NNPI = "NNPI";                                           \
                                                                                \
   public:                                                                      \
     std::string getBackendName() { return std::get<0>(GetParam()); }           \
@@ -97,30 +92,25 @@ protected:
   Function *F_;
 };
 
-static const auto all_backends = ::testing::Values(
-#ifdef GLOW_WITH_NNPI
-    "NNPI",
-#endif // GLOW_WITH_NNPI
-#ifdef GLOW_WITH_CPU
-    "CPU",
-#endif // GLOW_WITH_CPU
-#ifdef GLOW_WITH_OPENCL
-    "OpenCL",
-#endif // GLOW_WITH_OPENCL
-#ifdef GLOW_WITH_HABANA
-    "Habana",
-#endif // GLOW_WITH_HABANA
-    "Interpreter");
+/// Stringify a macro def.
+#define BACKEND_TO_STR(X) #X
+
+#ifdef GLOW_TEST_BACKEND
+#define STRINGIZE(X) BACKEND_TO_STR(X)
+#define ALL_BACKENDS ::testing::Values(STRINGIZE(GLOW_TEST_BACKEND))
+#else
+#define ALL_BACKENDS ::testing::ValuesIn(getAvailableBackends())
+#endif
 
 // Instantiate parameterized test suite with all available backends.
 #define GLOW_INSTANTIATE_TEST_SUITE_P_FOR_BACKEND_TEST(prefix, test_case_name) \
-  GLOW_INSTANTIATE_TEST_SUITE_P(prefix, test_case_name, all_backends)
+  GLOW_INSTANTIATE_TEST_SUITE_P(prefix, test_case_name, ALL_BACKENDS)
 
 // Instantiate parameterized test suite with all available backends.
 #define GLOW_INSTANTIATE_TEST_SUITE_P_FOR_BACKEND_COMBINED_TEST(               \
     prefix, test_case_name, combine)                                           \
   GLOW_INSTANTIATE_TEST_SUITE_P(prefix, test_case_name,                        \
-                                ::testing::Combine(all_backends, combine))
+                                ::testing::Combine(ALL_BACKENDS, combine))
 
 // TODO: Replace return for GTEST_SKIP() so that skipped tests are
 // correctly reported once the macro gets available.
@@ -133,9 +123,6 @@ extern std::set<std::string> backendTestBlacklist;
 
 /// Bool for whether to use symmetric quantization for rowwise-quantized FCs.
 extern bool useSymmetricRowwiseQuantFC;
-
-/// Stringify a macro def.
-#define BACKEND_TO_STR(X) #X
 
 /// Intermediate layer of macros to make expansion of defs work correctly.
 #define INSTANTIATE_TEST_INTERNAL(B, T)                                        \
@@ -153,6 +140,11 @@ extern bool useSymmetricRowwiseQuantFC;
       backendTestBlacklist.count(                                              \
           ::testing::UnitTest::GetInstance()->current_test_info()->name()))    \
     GTEST_SKIP();
+
+class NumericsTest : public BackendTest {
+protected:
+  PlaceholderBindings bindings_;
+};
 
 class GraphOptz : public ::testing::Test {
 public:
@@ -190,6 +182,9 @@ protected:
     EXPECT_TRUE(PlaceholderBindings::compare(&originalBindings,
                                              &optimizedBindings, allowedError));
   }
+
+  /// Verify the module is still valid at the end of the test.
+  virtual void TearDown() override { EXPECT_TRUE(mod_.verify()); }
 
   /// ExecutionEngine instance for running functions to check numerical
   /// equivalence.

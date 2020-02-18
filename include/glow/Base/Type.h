@@ -367,6 +367,23 @@ struct Type final {
     }
   }
 
+  /// Reshape existing type by taking shapes and strides of \p shapeType.
+  static Type newShape(const Type &T, TypeRef shapeType) {
+    assert(T.getElementSize() == shapeType->getElementSize() &&
+           "Element size should be the same");
+    Type ty;
+    if (T.isQuantizedType()) {
+      ty = Type(T.getElementType(), shapeType->dims(), T.getScale(),
+                T.getOffset());
+    } else {
+      ty = Type(T.getElementType(), shapeType->dims());
+    }
+    // Copy the stride information.
+    std::copy(&shapeType->strides_[0], &shapeType->strides_[ty.numSizes_],
+              ty.strides_);
+    return ty;
+  }
+
   /// An empty type.
   Type() = default;
 
@@ -423,7 +440,8 @@ struct Type final {
 
   /// \returns true if \p other is the same type. If \p allowDifferentShape then
   /// shapes will not be considered as part of the equal comparison.
-  bool isEqual(const Type &other, bool allowDifferentShape = false) const {
+  bool isEqual(const Type &other, bool allowDifferentShape = false,
+               bool allowDifferentStrides = false) const {
     // Element type must be the same.
     if (elementType_ != other.elementType_) {
       return false;
@@ -439,11 +457,12 @@ struct Type final {
           return false;
         }
       }
-
-      // Strides must be the same.
-      for (size_t i = 0; i < numSizes_; i++) {
-        if (strides_[i] != other.strides_[i]) {
-          return false;
+      if (!allowDifferentStrides) {
+        // Strides must be the same.
+        for (size_t i = 0; i < numSizes_; i++) {
+          if (strides_[i] != other.strides_[i]) {
+            return false;
+          }
         }
       }
     }
@@ -607,6 +626,40 @@ struct Type final {
         "ui8fused", "ui8fusedfp16", "ui4fusedfp16", "bool",
     };
     return names[(int)Ty];
+  }
+
+  /// Given a string \p str containing the name of an ElemKind from
+  /// Type::getElementName, returns the corresponding ElemKind or Error if a
+  /// mapping couldn't be found.
+  static ElemKind getElementKindFromName(llvm::StringRef str) {
+    if (str == Type::getElementName(ElemKind::FloatTy)) {
+      return ElemKind::FloatTy;
+    } else if (str == Type::getElementName(ElemKind::Float16Ty)) {
+      return ElemKind::Float16Ty;
+    } else if (str == Type::getElementName(ElemKind::Int8QTy)) {
+      return ElemKind::Int8QTy;
+    } else if (str == Type::getElementName(ElemKind::UInt8QTy)) {
+      return ElemKind::UInt8QTy;
+    } else if (str == Type::getElementName(ElemKind::Int16QTy)) {
+      return ElemKind::Int16QTy;
+    } else if (str == Type::getElementName(ElemKind::Int32QTy)) {
+      return ElemKind::Int32QTy;
+    } else if (str == Type::getElementName(ElemKind::Int32ITy)) {
+      return ElemKind::Int32ITy;
+    } else if (str == Type::getElementName(ElemKind::Int64ITy)) {
+      return ElemKind::Int64ITy;
+    } else if (str == Type::getElementName(ElemKind::UInt8FusedQTy)) {
+      return ElemKind::UInt8FusedQTy;
+    } else if (str == Type::getElementName(ElemKind::UInt8FusedFP16QTy)) {
+      return ElemKind::UInt8FusedFP16QTy;
+    } else if (str == Type::getElementName(ElemKind::UInt4FusedFP16QTy)) {
+      return ElemKind::UInt4FusedFP16QTy;
+    } else if (str == Type::getElementName(ElemKind::BoolTy)) {
+      return ElemKind::BoolTy;
+    } else {
+      LOG(DFATAL) << "Invalid ElemKind string: " << str.str();
+      return ElemKind::FloatTy;
+    }
   }
 
   /// Dump a textual representation of the Type into provided output stream.

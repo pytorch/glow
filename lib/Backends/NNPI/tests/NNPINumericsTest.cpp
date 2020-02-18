@@ -18,3 +18,5 @@
 using namespace glow;
 
 std::set<std::string> glow::backendTestBlacklist = {};
+
+// NOTE: Specify numerics tests specific to NNPI in this file.

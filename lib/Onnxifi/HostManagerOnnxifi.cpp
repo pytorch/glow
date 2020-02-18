@@ -25,18 +25,23 @@ extern bool GlowDumpCompilationLog;
 namespace onnxifi {
 
 extern bool GlowSaveOnnxifiModel;
-;
+
 int32_t GlowNumDevices = 0;
 int32_t GlowSparseNNPartitioningSchemeNumCards = 1;
 int64_t GlowSparseNNPartitioningSchemeSLSTableKBytesPerCard = 0;
 int32_t GlowSparseNNPartitioningSchemeNumCoresSLS = 1;
 int32_t GlowSparseNNPartitioningSchemeNumCoresOther = 1;
 bool GlowDumpDebugTraces = false;
+int32_t GlowNumDebugTracesPerDump = 100;
 bool GlowSaturateHost = false;
 bool GlowFP16 = false;
+bool GlowFP16Placeholders = true;
+bool GlowFP16Constants = true;
+bool GlowDumpGraph = false;
 bool GlowFusedScaleOffsetFP16 = false;
 bool GlowForceSLSAccumFP16 = false;
 bool GlowClipFP16 = false;
+bool GlowClipFP16SkipInputs = true;
 bool GlowUseSparseNNPartitioningScheme = false;
 
 static llvm::cl::opt<int32_t, true>
@@ -134,7 +139,11 @@ onnxStatus HostManagerBackend::addNetwork(std::unique_ptr<Module> module,
       }
     }
     loader->setTypeInfo(std::move(staticPlaceholderTypes));
-    loader->setSrc(deferredBlobReader);
+    auto err = loader->setSrc(deferredBlobReader);
+    if (ERR_TO_BOOL(std::move(err))) {
+      return ONNXIFI_STATUS_INTERNAL_ERROR;
+    }
+
     cctx.deferredWeightLoader = loader;
     // Signal that we want to fold convertTo and Quantize into static
     // Placeholders.
@@ -145,6 +154,14 @@ onnxStatus HostManagerBackend::addNetwork(std::unique_ptr<Module> module,
     precConfig.convertToFP16 = GlowFP16;
     LOG(INFO) << "Conversion to fp16 enabled";
   }
+  if (GlowFP16Placeholders) {
+    precConfig.convertPlaceholdersToFP16 = GlowFP16Placeholders;
+    LOG(INFO) << "Conversion of Placeholders to fp16 enabled";
+  }
+  if (GlowFP16Constants) {
+    precConfig.convertConstantsToFP16 = GlowFP16Constants;
+    LOG(INFO) << "Conversion of Constants to fp16 enabled";
+  }
   if (GlowFusedScaleOffsetFP16) {
     precConfig.convertFusedToFP16 = GlowFusedScaleOffsetFP16;
     LOG(INFO) << "Conversion of fused scales/offsets to fp16 enabled";
@@ -152,6 +169,10 @@ onnxStatus HostManagerBackend::addNetwork(std::unique_ptr<Module> module,
   if (GlowClipFP16) {
     precConfig.clipFP16 = GlowClipFP16;
     LOG(INFO) << "Clipping to fp16 enabled";
+  }
+  if (GlowClipFP16SkipInputs) {
+    precConfig.clipFP16SkipInputs = GlowClipFP16SkipInputs;
+    LOG(INFO) << "Skipping clipping for fp16 Node inputs fp16";
   }
   if (GlowForceSLSAccumFP16) {
     precConfig.forceFP16AccumSLS = GlowForceSLSAccumFP16;
@@ -170,6 +191,9 @@ onnxStatus HostManagerBackend::addNetwork(std::unique_ptr<Module> module,
         GlowSparseNNPartitioningSchemeNumCoresSLS;
     cctx.optimizationOpts.sparseNNPartitioningSchemeNumCoresOther =
         GlowSparseNNPartitioningSchemeNumCoresOther;
+  }
+  if (GlowDumpGraph) {
+    cctx.dumpFinalGraph = true;
   }
 
   auto err =
@@ -227,13 +251,30 @@ HostManagerGraph::initGraph(const void *onnxModel, size_t onnxModelSize,
       ->addNetwork(std::move(module), deferedBlobReader);
 }
 
+namespace {
+void dumpTraces(TraceContext *traceContext) {
+  CHECK(traceContext);
+  llvm::SmallString<64> path;
+  auto tempFileRes =
+      llvm::sys::fs::createTemporaryFile("glow-trace", "json", path);
+  if (tempFileRes.value() != 0) {
+    LOG(ERROR) << "Failed to create temp file for Glow trace events: "
+               << tempFileRes;
+  } else {
+    traceContext->dump(path);
+  }
+}
+
+} // namespace
+
 onnxStatus HostManagerGraph::run(std::unique_ptr<ExecutionContext> ctx,
                                  EventPtr outputEvent,
                                  onnxTraceEventList *traceEvents) {
   backendPtr_->runNetwork(
       this, std::move(ctx),
-      [outputEvent, traceEvents](runtime::RunIdentifierTy runId, Error err,
-                                 std::unique_ptr<ExecutionContext> ctx) {
+      [outputEvent, traceEvents,
+       this](runtime::RunIdentifierTy runId, Error err,
+             std::unique_ptr<ExecutionContext> ctx) mutable {
         TRACE_EVENT_SCOPE(ctx->getTraceContext(), TraceLevel::RUNTIME,
                           "Onnxifi::callback");
         // If an Error occurred then log it in ERR_TO_BOOL and signal the output
@@ -247,23 +288,27 @@ onnxStatus HostManagerGraph::run(std::unique_ptr<ExecutionContext> ctx,
         // format.
         TRACE_EVENT_SCOPE_END();
 
-        if (auto *traceContext = ctx->getTraceContext()) {
+        auto *traceContext = ctx->getTraceContext();
+        if (traceContext) {
           setTraceEvents(traceEvents, traceContext);
-
-          if (GlowDumpDebugTraces) {
-            llvm::SmallString<64> path;
-            auto tempFileRes =
-                llvm::sys::fs::createTemporaryFile("glow-trace", "json", path);
-            if (tempFileRes.value() != 0) {
-              LOG(ERROR) << "Failed to create temp file for Glow trace events: "
-                         << tempFileRes;
-            } else {
-              traceContext->dump(path);
-            }
-          }
         }
 
+        // Signal to caller that the inference is completed.
         outputEvent->signal(ONNXIFI_STATUS_SUCCESS);
+
+        if (traceContext && GlowDumpDebugTraces) {
+          std::unique_lock<std::mutex> lock(tracesMutex_);
+          if (!mergedTraceContext_) {
+            mergedTraceContext_ =
+                glow::make_unique<TraceContext>(TraceLevel::STANDARD);
+          }
+          mergedTraceContext_->merge(traceContext);
+
+          if (++numTracesToDump_ >= GlowNumDebugTracesPerDump) {
+            numTracesToDump_ = 0;
+            dumpTraces(mergedTraceContext_.release());
+          }
+        }
       });
 
   return ONNXIFI_STATUS_SUCCESS;
@@ -272,6 +317,13 @@ onnxStatus HostManagerGraph::run(std::unique_ptr<ExecutionContext> ctx,
 HostManagerGraph::~HostManagerGraph() {
   // Remove network from the Backend
   backendPtr_->removeNetwork(this);
+
+  if (GlowDumpDebugTraces) {
+    std::unique_lock<std::mutex> lock(tracesMutex_);
+    if (mergedTraceContext_ && numTracesToDump_ > 0) {
+      dumpTraces(mergedTraceContext_.release());
+    }
+  }
 }
 
 size_t HostManagerGraph::makeUniqueGraphId() {

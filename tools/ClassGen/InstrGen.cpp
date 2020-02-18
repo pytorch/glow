@@ -103,10 +103,22 @@ int main(int argc, char **argv) {
       .addMember(MemberType::VectorUnsigned, "Strides")
       .addMember(MemberType::VectorUnsigned, "Pads")
       .addMember(MemberType::Unsigned, "Group")
-      .addMember(MemberType::Boolean, "Groupwise")
       .autoIRGen()
       .autoVerify(VerifyKind::SameElementType,
                   {"Dest", "Src", "Filter", "ElemKind::Int8QTy"});
+
+  BB.newInstr("ConvTranspose")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .addOperand("Filter", OperandKind::In)
+      .addOperand("Bias", OperandKind::In)
+      .addMember(MemberType::VectorUnsigned, "Kernels")
+      .addMember(MemberType::VectorUnsigned, "Strides")
+      .addMember(MemberType::VectorUnsigned, "Pads")
+      .addMember(MemberType::Unsigned, "Group")
+      .addMember(MemberType::Unsigned, "Dilation")
+      .autoIRGen()
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "Src", "Filter"});
 
   BB.newInstr("Convolution3D")
       .addOperand("Dest", OperandKind::Out)
@@ -278,6 +290,17 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Batch"})
       .autoIRGen();
 
+  // Does a running accumulation of all values in input (inclusive).
+  // e.g [1, 2, 3, 4] -> [1, 3, 6, 10]
+  BB.newInstr("CumSum")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Input", OperandKind::In)
+      .addMember(MemberType::Unsigned, "Exclusive")
+      .addMember(MemberType::Unsigned, "Reverse")
+      .inplaceOperand({"Dest", "Input"})
+      .autoIRGen()
+      .autoVerify(VerifyKind::SameType, {"Dest", "Input"});
+
   /// Sums together groups of consecutive slices of Data as per the group sizes
   /// specified by Lengths.
   BB.newInstr("LengthsSum")
@@ -294,6 +317,7 @@ int main(int argc, char **argv) {
       .addOperand("Data", OperandKind::In)
       .addOperand("Indices", OperandKind::In)
       .addOperand("Lengths", OperandKind::In)
+      .addMember(MEMBER_TYPE_INFO(glow::LengthsMode), "LengthsMode")
       .autoIRGen()
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Data"})
       .autoVerify(VerifyKind::SameElementType, {"Indices", "IndexElemKind"})
@@ -307,6 +331,7 @@ int main(int argc, char **argv) {
       .addOperand("Weights", OperandKind::In)
       .addOperand("Indices", OperandKind::In)
       .addOperand("Lengths", OperandKind::In)
+      .addMember(MEMBER_TYPE_INFO(glow::LengthsMode), "LengthsMode")
       .autoIRGen()
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Data", "Weights"})
       .autoVerify(VerifyKind::SameElementType, {"Indices", "IndexElemKind"})
@@ -323,6 +348,7 @@ int main(int argc, char **argv) {
       .addOperand("Indices", OperandKind::In)
       .addOperand("Offsets", OperandKind::In)
       .addMember(MemberType::Boolean, "HasEndOffset")
+      .addMember(MEMBER_TYPE_INFO(glow::LengthsMode), "LengthsMode")
       .autoIRGen()
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Data", "Weights"})
       .autoVerify(VerifyKind::SameElementType, {"Indices", "IndexElemKind"})
@@ -338,6 +364,7 @@ int main(int argc, char **argv) {
       .addOperand("Indices", OperandKind::In)
       .addOperand("Lengths", OperandKind::In)
       .addMember(MemberType::Boolean, "UseFP16Accumulation")
+      .addMember(MEMBER_TYPE_INFO(glow::LengthsMode), "LengthsMode")
       .autoIRGen()
       .autoVerify(VerifyKind::SameElementType, {"Data", "ElemKind::UInt8QTy"})
       .autoVerify(VerifyKind::SameElementType, {"Indices", "IndexElemKind"})
@@ -352,6 +379,7 @@ int main(int argc, char **argv) {
       .addOperand("Indices", OperandKind::In)
       .addOperand("Lengths", OperandKind::In)
       .addMember(MemberType::Boolean, "UseFP16Accumulation")
+      .addMember(MEMBER_TYPE_INFO(glow::LengthsMode), "LengthsMode")
       .autoIRGen()
       .autoVerify(VerifyKind::SameElementType, {"Indices", "IndexElemKind"})
       .autoVerify(VerifyKind::SameElementType,
@@ -366,6 +394,7 @@ int main(int argc, char **argv) {
       .addOperand("Offsets", OperandKind::In)
       .addMember(MemberType::Boolean, "UseFP16Accumulation")
       .addMember(MemberType::Boolean, "HasEndOffset")
+      .addMember(MEMBER_TYPE_INFO(glow::LengthsMode), "LengthsMode")
       .autoIRGen()
       .autoVerify(VerifyKind::SameElementType, {"Indices", "IndexElemKind"})
       .autoVerify(VerifyKind::SameElementType, {"Offsets", "IndexElemKind"})
@@ -566,6 +595,18 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::SameType, {"Dest", "Src"})
       .autoIRGen();
 
+  BB.newInstr("BatchedPairwiseDotProduct")
+      .addOperand("Dest", OperandKind::Out)
+      .addMember(MemberType::Unsigned, "NumInputs")
+      .addMember(MemberType::Unsigned, "VectorSize")
+      .autoVerify(VerifyKind::NoVerify);
+
+  BB.newInstr("BatchedPairwiseDotProductGrad")
+      .addOperand("DestGrad", OperandKind::In)
+      .addMember(MemberType::Unsigned, "NumInputs")
+      .addMember(MemberType::Unsigned, "VectorSize")
+      .autoVerify(VerifyKind::NoVerify);
+
   //===--------------------------------------------------------------------===//
   //                Non-linearities
   //===--------------------------------------------------------------------===//
@@ -620,6 +661,11 @@ int main(int argc, char **argv) {
       .dataParallel()
       .autoVerify(VerifyKind::NoVerify)
       .autoIRGen();
+
+  BB.newInstr("Touch")
+      .addOperand("Dest", OperandKind::Out)
+      .dataParallel()
+      .autoVerify(VerifyKind::NoVerify);
 
   BB.newInstr("InsertTensor")
       .addOperand("Dest", OperandKind::InOut)
@@ -775,6 +821,25 @@ int main(int argc, char **argv) {
       .addOperand("Result", OperandKind::Out)
       .addOperand("Input", OperandKind::In)
       .autoVerify(VerifyKind::SameShape, {"Result", "Input"})
+      .autoIRGen();
+
+  //===--------------------------------------------------------------------===//
+  //                Post Processing
+  //===--------------------------------------------------------------------===//
+
+  BB.newInstr("NonMaxSuppression")
+      .addOperand("Indices", OperandKind::Out)
+      .addOperand("NumberOfSelectedIndices", OperandKind::Out)
+      .addOperand("Boxes", OperandKind::In)
+      .addOperand("Scores", OperandKind::In)
+      .addMember(MemberType::Int64, "CenterPointBox")
+      .addMember(MemberType::Int64, "MaxOutputBoxesPerClass")
+      .addMember(MemberType::Float, "IouThreshold")
+      .addMember(MemberType::Float, "ScoreThreshold")
+      .addMember(MemberType::Boolean, "IsTFVersion4")
+      .autoVerify(VerifyKind::SameElementType, {"Boxes", "Scores"})
+      .autoVerify(VerifyKind::SameElementType,
+                  {"Indices", "NumberOfSelectedIndices"})
       .autoIRGen();
 
   //===--------------------------------------------------------------------===//

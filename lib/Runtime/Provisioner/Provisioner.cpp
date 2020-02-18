@@ -277,7 +277,7 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
   if (!deviceAssignments) {
     // If and error occured, clean up provisioning state and return
     // the error.
-    cleanupProvision(localActiveNames);
+    cleanupProvision(localActiveNames, {});
     return deviceAssignments.takeError();
   }
   auto assignments = std::move(*deviceAssignments);
@@ -323,6 +323,7 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
   // device are compiled and then added to their assigned device. If a function
   // is in multiple logical devices it is stored so that it only needs to be
   // compiled once.
+  std::map<DeviceIDTy, std::vector<std::string>> addedNetworks;
   for (auto &assignment : assignments) {
     auto logicalDevice = assignment.first;
     auto physicalDevice = assignment.second;
@@ -346,6 +347,14 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
           return MAKE_ERR(ErrorValue::ErrorCode::RUNTIME_DEVICE_NOT_FOUND,
                           "Unable to find device of type: " +
                               deviceBackendName);
+        }
+
+        if (cctx.dumpFinalGraph) {
+          auto fname =
+              strFormat("final_graph_%s_%s.dot", deviceBackendName.c_str(),
+                        function->getName().str().c_str());
+          LOG(INFO) << "Dumping final graph to " << fname;
+          function->dumpDAG(fname);
         }
 
         auto compiledOrErr =
@@ -372,7 +381,7 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
         if (!compiledOrErr) {
           // If and error occured, clean up provisioning state and return
           // the error.
-          cleanupProvision(localActiveNames);
+          cleanupProvision(localActiveNames, {});
           return compiledOrErr.takeError();
         }
         auto compiled = std::move(*compiledOrErr);
@@ -404,9 +413,15 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
     ready.wait();
     DCHECK_NOTNULL(addErr.get());
     if (*addErr.get()) {
-      cleanupProvision(localActiveNames);
+      cleanupProvision(localActiveNames, addedNetworks);
       return std::move(*addErr.get());
     }
+    // Add networks successfully loaded on device to addedNetworks, this way if
+    // we fail later we can evict them.
+    for (auto &node : logicalDevices[logicalDevice]) {
+      addedNetworks[physicalDevice].push_back(node->name);
+    }
+
     // Free up memory no longer needed by the compiledFunction.
     for (auto &func : compiledFunctions) {
       func.second->freeCompilationResources();
@@ -437,6 +452,7 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
   // If a deferredWeightLoader is provided, create a deferredWeightLoader and
   // load deferred weights.
   if (cctx.deferredWeightLoader) {
+    LOG(INFO) << "Loading deferred weights";
 
     auto loader = cctx.deferredWeightLoader;
     // Load the first weight.
@@ -446,12 +462,11 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
     while (weightName != "") {
       auto PH = module.getPlaceholderByName(weightName);
       if (!PH) {
-        return MAKE_ERR(
-            ErrorValue::ErrorCode::RUNTIME_ERROR,
-            llvm::formatv(
-                "Error loading deferred weight. Name: {0} not found in module.",
-                weightName)
-                .str());
+        return MAKE_ERR(ErrorValue::ErrorCode::RUNTIME_ERROR,
+                        llvm::formatv("Error loading deferred weight. Name: "
+                                      "{0} not found in module.",
+                                      weightName)
+                            .str());
       }
       // Convert the weight if needed.
       auto newTy = PH->getType();
@@ -495,7 +510,7 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
     }
   }
 
-  cleanupProvision(localActiveNames, false);
+  cleanupProvision(localActiveNames, {}, false);
   return Error::success();
 };
 
@@ -520,14 +535,41 @@ Error Provisioner::removeFunction(llvm::StringRef name) {
   return Error::success();
 }
 
-void Provisioner::cleanupProvision(llvm::ArrayRef<std::string> names,
-                                   bool failure) {
+Error Provisioner::evictFunction(llvm::StringRef name, DeviceIDTy device) {
+  std::promise<void> evictPromise;
+  Error evictErr = Error::empty();
+  auto done = evictPromise.get_future();
+  devices_[device]->evictNetwork(
+      name, [&evictPromise, &evictErr](std::string, Error err) {
+        evictErr = std::move(err);
+        evictPromise.set_value();
+      });
+  done.get();
+  return evictErr;
+}
+
+void Provisioner::cleanupProvision(
+    llvm::ArrayRef<std::string> names,
+    std::map<DeviceIDTy, std::vector<std::string>> const
+        &currentNetworkResidency,
+    bool failure) {
   std::lock_guard<std::mutex> functionLock(functionsLock_);
   for (auto &name : names) {
     activeFunctions_.erase(name);
     if (failure) {
       // Remove any functions added before the failure.
       functions_.erase(name);
+    }
+  }
+  if (failure) {
+    // Remove any partitions added to devices.
+    for (auto &device : currentNetworkResidency) {
+      for (auto &network : device.second) {
+        Error evictErr = evictFunction(network, device.first);
+        if (evictErr) {
+          LOG(ERROR) << "Unable to evict network: " << network << "\n";
+        }
+      }
     }
   }
 }

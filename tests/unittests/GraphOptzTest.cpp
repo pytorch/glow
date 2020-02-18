@@ -386,6 +386,168 @@ TEST_F(GraphOptz, optimizeBatchNormAfterConvWithPred) {
   EXPECT_TRUE(llvm::isa<SaveNode>(save));
 }
 
+/// Testing merge of single-user arithmetic operation chain (Sub, Mul, Add)
+/// into a BatchNorm.
+TEST_F(GraphOptz, MergeBatchNormalizationWithArithmeticChainTest) {
+  // Inputs.
+  auto *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {3, 2, 2, 4}, "input", false);
+  auto *var = mod_.createConstant(ElemKind::FloatTy, {4}, "var");
+  auto *mean = mod_.createConstant(ElemKind::FloatTy, {4}, "mean");
+  auto *beta = mod_.createConstant(ElemKind::FloatTy, {4}, "beta");
+  auto *gamma = mod_.createConstant(ElemKind::FloatTy, {4}, "gamma");
+
+  Node *subC = mod_.createConstant(ElemKind::FloatTy, {3, 2, 2, 4}, "subC");
+  Node *mulC = mod_.createConstant(ElemKind::FloatTy, {3, 2, 2, 4}, "mulC");
+  Node *addC = mod_.createConstant(ElemKind::FloatTy, {3, 2, 2, 4}, "addC");
+  Node *divC = mod_.createConstant(ElemKind::FloatTy, {3, 2, 2, 4}, "divC");
+
+  // Fill tensors to check boundary values after the transformation.
+  std::vector<float> betaV = {1., 2., 3., 7.};
+  std::vector<float> gammaV = {4., 5., 6., 7.};
+
+  var->getPayloadMutable().getHandle<float>() = {1., 1., 1., 1.};
+  mean->getPayloadMutable().getHandle<float>() = {0., 0., 0., 0.};
+  beta->getPayloadMutable().getHandle<float>() = betaV;
+  gamma->getPayloadMutable().getHandle<float>() = gammaV;
+
+  // For at least one node (sub) make values within channel different, to test
+  // folding better.
+  const std::vector<float> subV = {1, 2., 3., 4.};
+  const float mulV = 4., addV = 3., divV = 2.;
+  auto subH = llvm::cast<Constant>(subC)->getHandle<float>();
+  subH = {1., 2., 3., 4., 1., 2., 3., 4., 1., 2., 3., 4., 1., 2., 3., 4.,
+          1., 2., 3., 4., 1., 2., 3., 4., 1., 2., 3., 4., 1., 2., 3., 4.,
+          1., 2., 3., 4., 1., 2., 3., 4., 1., 2., 3., 4., 1., 2., 3., 4.};
+
+  llvm::cast<Constant>(mulC)->getHandle<float>().clear(mulV);
+  llvm::cast<Constant>(addC)->getHandle<float>().clear(addV);
+  llvm::cast<Constant>(divC)->getHandle<float>().clear(divV);
+
+  BatchNormalizationNode *bn =
+      F_->createBatchNormalization("batch", input, beta, gamma, mean, var, 3);
+
+  auto *sub = F_->createSub("sub", bn, subC);
+  auto *mul = F_->createMul("mul", sub, mulC);
+  auto *add = F_->createAdd("add", addC, mul);
+  auto *div = F_->createDiv("div", add, divC);
+  auto *res = F_->createSave("save", div);
+
+  // Compile.
+  EXPECT_EQ(F_->getNodes().size(), 6);
+  ::glow::convertPlaceholdersToConstants(F_, bindings_, {input});
+  optimizedF_ = optimizeFunction(F_);
+  EXPECT_EQ(optimizedF_->getNodes().size(), 2);
+
+  Constant *cs, *cb;
+
+  auto *opt_res = findFunctionNodeByName<SaveNode>(optimizedF_, res->getName());
+
+  auto *newBn = llvm::dyn_cast<BatchNormalizationNode>(opt_res->getInput());
+  ASSERT_TRUE(newBn);
+
+  cs = llvm::dyn_cast<Constant>(newBn->getScale());
+  cb = llvm::dyn_cast<Constant>(newBn->getBias());
+  ASSERT_TRUE(cs);
+  ASSERT_TRUE(cb);
+  ASSERT_TRUE(cs->getType()->isFPType());
+  ASSERT_TRUE(cb->getType()->isFPType());
+
+  auto hs = cs->getHandle<float>();
+  auto hb = cb->getHandle<float>();
+
+  // Verify that scale and offset are computed correctly.
+  for (dim_t i = 0; i < 4; i++) {
+    const float expScale = gammaV[i] * mulV / divV;
+    const float expBias = ((betaV[i] - subV[i]) * mulV + addV) / divV;
+    EXPECT_EQ(expScale, hs.raw(i));
+    EXPECT_EQ(expBias, hb.raw(i));
+  }
+
+  bindings_.allocate(mod_.getPlaceholders());
+  bindings_.get(input)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
+  checkNumericalEquivalence();
+}
+
+/// Testing merge of single-user arithmetic operation chain (Sub, Mul, Add)
+/// into a BatchNorm.
+TEST_F(GraphOptz, FoldArithmeticChainAfterConvIntoBatchNorm) {
+  Node *subC = mod_.createConstant(ElemKind::FloatTy, {2, 3, 3, 3}, "subC");
+  Node *mulC = mod_.createConstant(ElemKind::FloatTy, {2, 3, 3, 3}, "mulC");
+  Node *addC = mod_.createConstant(ElemKind::FloatTy, {2, 3, 3, 3}, "addC");
+  Node *divC = mod_.createConstant(ElemKind::FloatTy, {2, 3, 3, 3}, "divC");
+
+  // Start with identity values.
+  std::vector<float> betaV = {0., 0., 0.};
+  std::vector<float> gammaV = {1., 1., 1.};
+
+  // For at least one node make values within channel different, to test
+  // the folding better (ideally all should have different values).
+  const std::vector<float> subV = {1, 2., 3.};
+  const float mulV = 4., addV = 3., divV = 2.;
+  llvm::cast<Constant>(mulC)->getHandle<float>().clear(mulV);
+  llvm::cast<Constant>(addC)->getHandle<float>().clear(addV);
+  llvm::cast<Constant>(divC)->getHandle<float>().clear(divV);
+  auto subH = llvm::cast<Constant>(subC)->getHandle<float>();
+  subH = {1, 2, 3, 1, 2, 3, 1, 2, 3, 1, 2, 3, 1, 2, 3, 1, 2, 3,
+          1, 2, 3, 1, 2, 3, 1, 2, 3, 1, 2, 3, 1, 2, 3, 1, 2, 3,
+          1, 2, 3, 1, 2, 3, 1, 2, 3, 1, 2, 3, 1, 2, 3, 1, 2, 3};
+
+  auto *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {2, 2, 2, 3}, "input", false);
+  auto filter =
+      mod_.createPlaceholder(ElemKind::FloatTy, {3, 2, 2, 3}, "filter", false);
+  auto *bias = mod_.createPlaceholder(ElemKind::FloatTy, {3}, "bias", false);
+  bindings_.allocate(bias)->zero();
+
+  ConvolutionNode *CV = F_->createConv(
+      "Conv", input, filter, bias,
+      mod_.uniqueType(ElemKind::FloatTy, {2, 3, 3, 3}), 2, 1, 1, 1);
+
+  auto *sub = F_->createSub("sub", CV, subC);
+  auto *mul = F_->createMul("mul", sub, mulC);
+  auto *add = F_->createAdd("add", addC, mul);
+  auto *div = F_->createDiv("div", add, divC);
+  auto *res = F_->createSave("save", div);
+
+  // Compile.
+  EXPECT_EQ(F_->getNodes().size(), 6);
+  ::glow::convertPlaceholdersToConstants(F_, bindings_, {});
+  optimizedF_ = optimizeFunction(F_);
+  EXPECT_EQ(optimizedF_->getNodes().size(), 3);
+
+  auto *opt_res = findFunctionNodeByName<SaveNode>(optimizedF_, res->getName());
+
+  Constant *cs, *cb;
+
+  auto *bn = llvm::dyn_cast<BatchNormalizationNode>(opt_res->getInput());
+  ASSERT_TRUE(bn);
+
+  cs = llvm::dyn_cast<Constant>(bn->getScale());
+  cb = llvm::dyn_cast<Constant>(bn->getBias());
+
+  ASSERT_TRUE(cs);
+  ASSERT_TRUE(cb);
+  ASSERT_TRUE(cs->getType()->isFPType());
+  ASSERT_TRUE(cb->getType()->isFPType());
+
+  auto hs = cs->getHandle<float>();
+  auto hb = cb->getHandle<float>();
+
+  // Verify that scale and offset are computed correctly.
+  for (dim_t i = 0; i < 3; i++) {
+    const float expectedScale = gammaV[i] * (mulV / divV);
+    const float expectedBias = ((betaV[i] - subV[i]) * mulV + addV) / divV;
+    EXPECT_EQ(expectedScale, hs.raw(i));
+    EXPECT_EQ(expectedBias, hb.raw(i));
+  }
+  bindings_.allocate(mod_.getPlaceholders());
+  bindings_.get(input)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
+  bindings_.get(filter)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
+  bindings_.get(bias)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
+  checkNumericalEquivalence();
+}
+
 /// Check CSE will not merge two nodes that have all the same inputs but
 /// different predicates.
 TEST_F(GraphOptz, cseRespectsPredicates) {
@@ -742,6 +904,29 @@ GLOW_INSTANTIATE_TEST_SUITE_P(
                       TestSinkTransposeNodesKind::Sigmoid,
                       TestSinkTransposeNodesKind::Tanh,
                       TestSinkTransposeNodesKind::Quantize));
+
+TEST_F(GraphOptz, SinkTransposeBelowDequantize) {
+  auto *in =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 5, 10, 15}, "input", false);
+  auto *quantize = F_->createQuantize(
+      "quantize", in, mod_.uniqueType(ElemKind::Int8QTy, in->dims(), 0.01, 2));
+  auto *tile = F_->createTile("tile", quantize, 3, 0);
+  auto *transpose = F_->createTranspose("transpose", tile, NHWC2NCHW);
+  auto *deq = F_->createDequantize("dequantize", transpose);
+  SaveNode *O = F_->createSave("out", deq);
+
+  optimizedF_ = optimizeFunction(F_);
+
+  EXPECT_EQ(F_->getNodes().size(), 5);
+  EXPECT_EQ(optimizedF_->getNodes().size(), 5);
+
+  auto *optOut = findFunctionNodeByName<SaveNode>(optimizedF_, O->getName());
+  EXPECT_TRUE(llvm::isa<TransposeNode>(optOut->getInput().getNode()));
+
+  bindings_.allocate(mod_.getPlaceholders());
+  bindings_.get(in)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
+  checkNumericalEquivalence();
+}
 
 /// For example folding Rescale in to Convolution.
 TEST_F(GraphOptz, sinkTransposeBelowRescale) {
@@ -1294,6 +1479,40 @@ TEST_F(GraphOptz, sinkTransposeBelowPad) {
   EXPECT_EQ(pad->getResult().dims(), llvm::makeArrayRef(outPadDimsAfterOptim));
 
   EXPECT_EQ(F_->getNodes().size(), 3);
+}
+
+TEST_F(GraphOptz, sinkTransposeBelowRelu) {
+  // Define a type with custom alignments.
+  Type typeWithAlignments(ElemKind::FloatTy, {2, 3, 4, 5}, {1, 1, 32, 1});
+  Type transposedTypeWithAlignments(ElemKind::FloatTy, {2, 4, 5, 3},
+                                    {1, 1, 32, 1});
+  auto modTyWithAlignments = mod_.uniqueType(typeWithAlignments);
+  auto modTransposedTyWithAlignments =
+      mod_.uniqueType(transposedTypeWithAlignments);
+  auto *A1 = mod_.createPlaceholder(modTyWithAlignments, "input1", false);
+  auto *T1 = F_->createTranspose("transpose", A1, NCHW2NHWC);
+  T1->setType(0, modTransposedTyWithAlignments);
+  auto *RN = F_->createRELU("relu", T1);
+  SaveNode *O = F_->createSave("ret", RN);
+
+  EXPECT_EQ(F_->getNodes().size(), 3);
+
+  ::glow::optimize(F_, CompilationMode::Infer);
+
+  // Expecting Transpose->Output rather than Relu->Output, because Transpose was
+  // sinked.
+  auto *transpose = llvm::dyn_cast<TransposeNode>(O->getInput());
+  ASSERT_NE(transpose, nullptr);
+  auto *relu = llvm::dyn_cast<ReluNode>(transpose->getInput());
+  ASSERT_TRUE(relu);
+  // Check that alignments are preserved by optimizations.
+  ASSERT_TRUE(relu->getInput().getType()->isEqual(modTyWithAlignments));
+  ASSERT_TRUE(transpose->getInput().getType()->isEqual(modTyWithAlignments));
+  ASSERT_TRUE(
+      transpose->getResult().getType()->isEqual(modTransposedTyWithAlignments));
+
+  EXPECT_EQ(F_->getNodes().size(), 3);
+  ASSERT_TRUE(F_->verify());
 }
 
 TEST_F(GraphOptz, mergeConcatNodes) {
@@ -2020,12 +2239,12 @@ TEST_F(GraphOptz, FuseRescaleIntoArithmetic) {
 /// Check that the Rescale(MatMul) -> MatMul' optimization works correctly.
 TEST_F(GraphOptz, FuseRescaleUpIntoMatMul) {
   // This test ensures the fact that fusing of rescale is done.
-  auto opOutTy = mod_.uniqueType(ElemKind::Int8QTy, {10}, 1, 0);
-  auto rescaleOutTy = mod_.uniqueType(ElemKind::Int8QTy, {10}, 2, 1);
+  auto opOutTy = mod_.uniqueType(ElemKind::Int8QTy, {10, 10}, 1, 0);
+  auto rescaleOutTy = mod_.uniqueType(ElemKind::Int8QTy, {10, 10}, 2, 1);
 
-  Placeholder *LHS = mod_.createPlaceholder(ElemKind::Int8QTy, {10}, 0.4, 0,
+  Placeholder *LHS = mod_.createPlaceholder(ElemKind::Int8QTy, {10, 10}, 0.4, 0,
                                             "LHS", /* isTrainable */ false);
-  Placeholder *RHS = mod_.createPlaceholder(ElemKind::Int8QTy, {10}, 0.3, 0,
+  Placeholder *RHS = mod_.createPlaceholder(ElemKind::Int8QTy, {10, 10}, 0.3, 0,
                                             "RHS", /* isTrainable */ false);
 
   MatMulNode *MMN = F_->createMatMul("matmul", opOutTy, LHS, RHS);
@@ -2133,11 +2352,17 @@ void fusePadIntoConvTest(glow::Module &mod_, glow::Function *F_,
       mod_.createPlaceholder(ElemKind::FloatTy, inputDims, "input", true);
 
   // Pad
-  dim_t outPadDims[4];
+  dim_t inputWithPadDims[4];
   for (int i = 0; i < 4; i++) {
-    outPadDims[i] = dim_t(ssize_t(inputDims[i]) + pads[i] + pads[4 + i]);
+    inputWithPadDims[i] = dim_t(ssize_t(inputDims[i]) + pads[i] + pads[4 + i]);
   }
-  auto outTy = mod_.uniqueType(ElemKind::FloatTy, outPadDims);
+  dim_t outputConvDims[4] = {
+      inputWithPadDims[0],
+      inputWithPadDims[1] + convPads[0] + convPads[2] - (convKernelSize - 1),
+      inputWithPadDims[2] + convPads[1] + convPads[3] - (convKernelSize - 1),
+      convNumKernels};
+
+  auto outTy = mod_.uniqueType(ElemKind::FloatTy, inputWithPadDims);
   Node *P =
       F_->createPad("pad", input, outTy, PaddingMode::CONSTANT, pads, 0.f);
 
@@ -2149,9 +2374,7 @@ void fusePadIntoConvTest(glow::Module &mod_, glow::Function *F_,
   auto *B =
       mod_.createPlaceholder(ElemKind::FloatTy, {convNumKernels}, "bias", true);
   auto *CV = F_->createConv(
-      "conv", P, F, B,
-      mod_.uniqueType(ElemKind::FloatTy, {outPadDims[0], outPadDims[1],
-                                          outPadDims[2], convNumKernels}),
+      "conv", P, F, B, mod_.uniqueType(ElemKind::FloatTy, outputConvDims),
       {convKernelSize, convKernelSize}, {convStride, convStride}, convPads, 1);
 
   SaveNode *O = F_->createSave("save", CV);
@@ -2164,9 +2387,7 @@ void fusePadIntoConvTest(glow::Module &mod_, glow::Function *F_,
   // Check the graph structure and additional properties after optimization.
   auto *conv = llvm::dyn_cast<ConvolutionNode>(O->getInput());
   ASSERT_NE(conv, nullptr);
-  EXPECT_EQ(conv->getResult().dims(),
-            llvm::ArrayRef<dim_t>(
-                {outPadDims[0], outPadDims[1], outPadDims[2], filterDims[0]}));
+  EXPECT_EQ(conv->getResult().dims(), llvm::ArrayRef<dim_t>(outputConvDims));
   unsigned_t expectedPads[4];
   for (int i = 0; i < 2; i++) {
     for (int j = 0; j < 2; j++) {
@@ -2384,13 +2605,13 @@ TEST_F(GraphOptz, MultipleUsersRescaleCombineNoOpt) {
 
 /// This test ensures that fusing of rescale into MatMul is done.
 TEST_F(GraphOptz, FuseRescaleIntoMatMul) {
-  auto opOutTy = mod_.uniqueType(ElemKind::Int8QTy, {10}, 1, 0);
-  auto rescaleOutTy = mod_.uniqueType(ElemKind::Int8QTy, {10}, 2, 1);
+  auto opOutTy = mod_.uniqueType(ElemKind::Int8QTy, {10, 10}, 1, 0);
+  auto rescaleOutTy = mod_.uniqueType(ElemKind::Int8QTy, {10, 10}, 2, 1);
 
   Placeholder *LHS =
-      mod_.createPlaceholder(ElemKind::Int8QTy, {10}, 0.4, 0, "LHS", true);
+      mod_.createPlaceholder(ElemKind::Int8QTy, {10, 10}, 0.4, 0, "LHS", true);
   Placeholder *RHS =
-      mod_.createPlaceholder(ElemKind::Int8QTy, {10}, 0.3, 0, "RHS", true);
+      mod_.createPlaceholder(ElemKind::Int8QTy, {10, 10}, 0.3, 0, "RHS", true);
 
   RescaleQuantizedNode *LHSR =
       F_->createRescaleQuantized("rs1", LHS, rescaleOutTy);
@@ -3120,29 +3341,20 @@ TEST_F(GraphOptz, ConvertPlaceholdersToConstants) {
   EXPECT_TRUE(llvm::isa<Placeholder>(save3->getInput()));
 }
 
-TEST_F(GraphOptz, optimizeConversion_i8_i32_i16) {
-  auto qt = [&](ElemKind k) { return mod_.uniqueType(k, {1}, 1.0, 0); };
-  auto *i8 = qt(ElemKind::Int8QTy);
-  auto *i16 = qt(ElemKind::Int16QTy);
-  auto *i32 = qt(ElemKind::Int32QTy);
+TEST_F(GraphOptz, optimizeConversion_i32_i64_i32) {
+  auto *i32 = mod_.uniqueType(ElemKind::Int32ITy, {1});
+  auto *i64 = mod_.uniqueType(ElemKind::Int64ITy, {1});
 
-  auto *A = mod_.createPlaceholder(i8, "A", false);
-  auto *B = F_->createConvertTo("B", A, i32);
-  auto *C = F_->createConvertTo("C", B, i16);
+  auto *A = mod_.createPlaceholder(i32, "A", false);
+  auto *B = F_->createConvertTo("B", A, i64);
+  auto *C = F_->createConvertTo("C", B, i32);
   auto *S = F_->createSave("S", C);
 
   ::glow::optimize(F_, CompilationMode::Infer);
 
-  // The i32 cast is optimized away.
-  EXPECT_EQ(F_->getNodes().size(), 2);
-
-  // The save node is fed by an i16 cast.
-  auto *C2 = llvm::dyn_cast<ConvertToNode>(S->getInput());
-  ASSERT_TRUE(C2);
-  EXPECT_TRUE(C2->getResult().getElementType() == ElemKind::Int16QTy);
-
-  // The cast node input is a placeholder.
-  EXPECT_TRUE(llvm::isa<Placeholder>(C2->getInput()));
+  // All casting is optimized away, only left with Save of Placeholder.
+  EXPECT_EQ(F_->getNodes().size(), 1);
+  EXPECT_TRUE(llvm::isa<Placeholder>(S->getInput()));
 }
 
 TEST_F(GraphOptz, optimizeSameTypeConversions) {
@@ -3171,9 +3383,13 @@ TEST_F(GraphOptz, optimizeSameTypeConversions) {
 }
 
 TEST_F(GraphOptz, optimizeConvertingBetweenFused) {
-  Constant *C =
-      createRandomFusedRowwiseQuantizedConstant(mod_, {5, 2}, "fused");
-  auto newOT = mod_.uniqueType(ElemKind::UInt8FusedFP16QTy, {5, 2}, 1.0, 0);
+  // Call with dims {5, 2}, which will actually create a constant with {5, 10}
+  // for scale/offset per row.
+  Constant *C = createRandomFusedRowwiseQuantizedConstant(
+      mod_, {5, 2}, "fused", /* useFusedFP16 */ false);
+  // Converting to fused FP16 means we have 4 total less bytes for scale/offset,
+  // so we move to {5, 10} from {5, 6}.
+  auto newOT = mod_.uniqueType(ElemKind::UInt8FusedFP16QTy, {5, 6}, 1.0, 0);
   auto *CN = F_->createConvertTo("convert", C, newOT);
   auto *SN = F_->createSave("save", CN);
 
@@ -3623,5 +3839,120 @@ TEST_F(GraphOptz, ParallelizeGraph_Transpose) {
 
   EXPECT_EQ(2, countNodeKind(F_, Kinded::Kind::TransposeNodeKind));
 
+  checkNumericalEquivalence();
+}
+
+TEST_F(GraphOptz, SinkClipBelowReshape) {
+  Placeholder *in =
+      mod_.createPlaceholder(ElemKind::FloatTy, {10}, "input", false);
+  ClipNode *clip = F_->createClip("clip", in, 0.2, 0.8);
+  ReshapeNode *reshape = F_->createReshape("reshape", clip, {2, 5});
+  SaveNode *save = F_->createSave("save", reshape);
+
+  optimizedF_ = optimizeFunction(F_);
+
+  // Same number of nodes, just swapped order.
+  EXPECT_EQ(F_->getNodes().size(), 3);
+  EXPECT_EQ(optimizedF_->getNodes().size(), 3);
+
+  const SaveNode *optSave =
+      findFunctionNodeByName<SaveNode>(optimizedF_, save->getName());
+  ASSERT_TRUE(optSave);
+  ClipNode *newClip = llvm::dyn_cast<ClipNode>(optSave->getInput());
+  ASSERT_TRUE(newClip);
+  ReshapeNode *newReshape = llvm::dyn_cast<ReshapeNode>(newClip->getInput());
+  ASSERT_TRUE(newReshape);
+  EXPECT_EQ(newReshape->getResult().dims(), reshape->getResult().dims());
+
+  bindings_.allocate(mod_.getPlaceholders());
+  bindings_.get(in)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
+  checkNumericalEquivalence();
+}
+
+/// Test that Add after ConvTranspose is folded into Bias add when the actual
+/// Add is is a broadcast of the bias. Test \p RnL (right of left) side add.
+static void foldConvTransposeAddIntoBiasAdd(PlaceholderBindings &bindings,
+                                            Module &mod, Function *F,
+                                            Function *&optF, bool RnL) {
+  dim_t batch = 2;
+  dim_t inC = 2;
+  dim_t outC = 5;
+  dim_t inH = 3;
+  dim_t inW = 3;
+  unsigned_t kernel = 3;
+  std::vector<uint32_t> pads = {0, 0, 0, 0};
+  std::vector<uint32_t> stride = {1, 1};
+
+  auto *input = mod.createPlaceholder(ElemKind::FloatTy, {2, inH, inW, inC},
+                                      "input", false);
+  auto *filter = mod.createPlaceholder(
+      ElemKind::FloatTy, {outC, kernel, kernel, inC}, "filter", false);
+
+  auto *bias = mod.createConstant(ElemKind::FloatTy, {outC}, "bias");
+  bias->getPayloadMutable().getHandle<float>() = {1, 3, 5, 7, 9};
+
+  std::pair<dim_t, dim_t> outHW = calculateConvTransposeOutputDims(
+      inH, inW, {kernel, kernel}, stride, pads);
+  auto outTy = mod.uniqueType(ElemKind::FloatTy,
+                              {batch, outHW.first, outHW.second, outC});
+
+  ConvTransposeNode *CTN =
+      F->createConvTranspose("ConvTranspose", input, filter, bias, outTy,
+                             {kernel, kernel}, stride, {0, 0, 0, 0}, 1);
+
+  auto *CN = mod.createConstant(ElemKind::FloatTy,
+                                {batch, outHW.first, outHW.second, outC}, "c1");
+  auto *AN = RnL ? F->createAdd("add", CN, CTN) : F->createAdd("add", CTN, CN);
+
+  CN->getPayloadMutable().getHandle<float>() = {
+      1, 2, 3, 4, 5, 1, 2, 3, 4, 5, 1, 2, 3, 4, 5, 1, 2, 3, 4, 5, 1, 2, 3,
+      4, 5, 1, 2, 3, 4, 5, 1, 2, 3, 4, 5, 1, 2, 3, 4, 5, 1, 2, 3, 4, 5, 1,
+      2, 3, 4, 5, 1, 2, 3, 4, 5, 1, 2, 3, 4, 5, 1, 2, 3, 4, 5, 1, 2, 3, 4,
+      5, 1, 2, 3, 4, 5, 1, 2, 3, 4, 5, 1, 2, 3, 4, 5, 1, 2, 3, 4, 5, 1, 2,
+      3, 4, 5, 1, 2, 3, 4, 5, 1, 2, 3, 4, 5, 1, 2, 3, 4, 5, 1, 2, 3, 4, 5,
+      1, 2, 3, 4, 5, 1, 2, 3, 4, 5, 1, 2, 3, 4, 5, 1, 2, 3, 4, 5, 1, 2, 3,
+      4, 5, 1, 2, 3, 4, 5, 1, 2, 3, 4, 5, 1, 2, 3, 4, 5, 1, 2, 3, 4, 5, 1,
+      2, 3, 4, 5, 1, 2, 3, 4, 5, 1, 2, 3, 4, 5, 1, 2, 3, 4, 5, 1, 2, 3, 4,
+      5, 1, 2, 3, 4, 5, 1, 2, 3, 4, 5, 1, 2, 3, 4, 5, 1, 2, 3, 4, 5, 1, 2,
+      3, 4, 5, 1, 2, 3, 4, 5, 1, 2, 3, 4, 5, 1, 2, 3, 4, 5, 1, 2, 3, 4, 5,
+      1, 2, 3, 4, 5, 1, 2, 3, 4, 5, 1, 2, 3, 4, 5, 1, 2, 3, 4, 5};
+
+  SaveNode *save = F->createSave("save", AN);
+  bindings.allocate(save->getPlaceholder());
+
+  EXPECT_EQ(F->getNodes().size(), 3);
+  optF = optimizeFunction(F);
+  EXPECT_EQ(optF->getNodes().size(), 2);
+
+  const SaveNode *optSave =
+      findFunctionNodeByName<SaveNode>(optF, save->getName());
+
+  ConvTransposeNode *optCN =
+      llvm::dyn_cast<ConvTransposeNode>(optSave->getInput());
+  EXPECT_TRUE(optCN);
+
+  Constant *optBias = llvm::dyn_cast<Constant>(optCN->getBias());
+  EXPECT_TRUE(optBias);
+
+  auto BH = optBias->getPayload().getHandle();
+  EXPECT_EQ(BH.raw(0), 1 + 1);
+  EXPECT_EQ(BH.raw(1), 2 + 3);
+  EXPECT_EQ(BH.raw(2), 3 + 5);
+  EXPECT_EQ(BH.raw(3), 4 + 7);
+  EXPECT_EQ(BH.raw(4), 5 + 9);
+
+  bindings.allocate(mod.getPlaceholders());
+  bindings.get(input)->getHandle().randomize(-1.0, 1.0, mod.getPRNG());
+  bindings.get(filter)->getHandle().randomize(-1.0, 1.0, mod.getPRNG());
+}
+
+/// Test that Add after ConvTranspose is folded into Bias add when the actual
+/// Add is is a broadcast of the bias.
+TEST_F(GraphOptz, FoldConvTransposeAddIntoBiasAddRHS) {
+  foldConvTransposeAddIntoBiasAdd(bindings_, mod_, F_, optimizedF_, false);
+  checkNumericalEquivalence();
+}
+TEST_F(GraphOptz, FoldConvTransposeAddIntoBiasAddLHS) {
+  foldConvTransposeAddIntoBiasAdd(bindings_, mod_, F_, optimizedF_, true);
   checkNumericalEquivalence();
 }

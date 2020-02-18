@@ -48,7 +48,7 @@ using ResultCBTy = std::function<void(runtime::RunIdentifierTy, Error,
 /// Data structure that contains device constraint information for each device.
 /// Used to communicate memory constraints and later costs to the Partitioner.
 struct DeviceInfo {
-  /// Available memory on device in bytes.
+  /// Available global memory on device in bytes.
   uint64_t availableMemory;
   /// Backend Type.
   std::string backendName;
@@ -62,6 +62,9 @@ struct DeviceInfo {
   std::string supportedNodes;
   /// Available SRAM capacity in bytes.
   uint64_t sramCapacity;
+  /// Available (software controlled) local/scratchpad/onchip memory on the
+  /// device in bytes.
+  uint64_t availableLocalMemory;
   /// Peak compute on device in ops/second. Assumes all ops are in int8.
   /// TODO: distinguish between data types with different peak flops.
   float peakCompute;
@@ -176,7 +179,7 @@ struct DeviceConfig {
 /// and Executor.
 struct HostConfig {
   /// Number of outstanding or concurrent networks before queueing.
-  size_t maxActiveRequests{10};
+  size_t maxActiveRequests{48};
   /// Number of requests to queue up before refusing further requests.
   size_t maxQueueSize{100};
   /// Number of threads to allocate to the Executor.
@@ -210,6 +213,17 @@ struct PartitionConfig {
 
   PartitionConfig() : numOfPartitions(0) {}
   bool enabled() { return numOfPartitions > 0; }
+};
+
+/// A struct containing a mapping of ExecutionContext to a loaded network on a
+/// device.
+struct ContextBinding {
+  /// The context used for execution of the specified network.
+  ExecutionContext *context;
+  /// The device the network will be run on with this context.
+  DeviceManager *device;
+  /// The name of the network.
+  std::string networkName;
 };
 
 } // namespace runtime

@@ -13,8 +13,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "tests/unittests/BackendTestUtils.h"
 
-using namespace glow;
+Error ONNXModelWriter::writeOCLBatchedReduceAdd(
+    const OCLBatchedReduceAddNode *node, GraphType &graph) {
+  auto *proto = graph.add_node();
+  // Add dictionary entries.
+  addValueAttribute(proto, "axis", node->getAxis());
+  addValueAttribute(proto, "source_axis", node->getAxisSrcSliceSize());
 
-std::set<std::string> glow::backendTestBlacklist = {};
+  return writeAllWithNode("OCLBatchedReduceAdd", node, graph, proto);
+}

@@ -327,6 +327,102 @@ void BoundInterpreterFunction::fwdConvolutionInstQuantizedImpl(
   }         // N
 }
 
+/// This is the floating point implementation of ConvTranspose.
+template <typename ElemTy>
+void BoundInterpreterFunction::fwdConvTransposeInstFloatImpl(
+    Value *inV, Value *outV, Value *filterV, Value *biasV,
+    llvm::ArrayRef<unsigned_t> kernelSizes, llvm::ArrayRef<unsigned_t> strides,
+    llvm::ArrayRef<unsigned_t> pads, size_t group, size_t dilation) {
+  staticAssertFloatingPointType(ElemTy);
+
+  auto inW = getWeightHandle<ElemTy>(inV);
+  auto outW = getWeightHandle<ElemTy>(outV);
+  auto filterW = getWeightHandle<ElemTy>(filterV);
+  auto biasW = getWeightHandle<ElemTy>(biasV);
+
+  ShapeNHWC odim(outW.dims());
+  ShapeNHWC idim(inW.dims());
+  ShapeHW kdim(kernelSizes);
+  ShapeHW sdim(strides);
+
+  assert(idim.c % group == 0 && "Input channels must be divisible by group.");
+  assert(odim.c % group == 0 && "Output channels must be divisible by group.");
+  assert(dilation == 1 && "Dilation must be 1.");
+  assert(group == 1 && "Group must be 1.");
+
+  dim_t inCperG = idim.c / group;
+  dim_t outCperG = odim.c / group;
+
+  PaddingTLBR pdim(pads);
+
+  // For each input in the batch:
+  for (dim_t n = 0; n < idim.n; n++) {
+
+    // Initialize bias (TODO take out to a separate function when quant is in).
+    for (dim_t ax = 0; ax < odim.h; ax++) {
+      for (dim_t ay = 0; ay < odim.w; ay++) {
+        for (dim_t d = 0; d < odim.c; d++) {
+          outW.at({n, ax, ay, d}) = static_cast<ElemTy>(biasW.at({d}));
+        }
+      }
+    }
+
+    // For each group of input channels:
+    for (dim_t g = 0; g < group; g++) {
+
+      // For each input channel in the group:
+      for (dim_t d = g * inCperG; d < (g + 1) * inCperG; d++) {
+
+        // For each transposed convolution 'jump' in the input tensor:
+        ssize_t x = -ssize_t(pdim.top);
+        for (dim_t bx = 0; bx < idim.h; bx++, x += sdim.height) {
+          ssize_t y = -ssize_t(pdim.left);
+          for (dim_t by = 0; by < idim.w; by++, y += sdim.width) {
+
+            // For each element in the each transposed convolution filter:
+            ElemTy input = inW.at({n, bx, by, d});
+
+            for (dim_t kx = 0; kx < kdim.height; kx++) {
+              for (dim_t ky = 0; ky < kdim.width; ky++) {
+                ssize_t ax = x + kx * dilation;
+                ssize_t ay = y + ky * dilation;
+
+                // Ignore index access below zero (this is due to padding).
+                if (ax < 0 || ay < 0 || ax >= ssize_t(odim.h) ||
+                    ay >= ssize_t(odim.w)) {
+                  continue;
+                }
+                for (dim_t c = 0; c < outCperG; c++) {
+                  outW.at({n, (dim_t)ax, (dim_t)ay, g * outCperG + c}) +=
+                      filterW.at({c, kx, ky, d}) * input;
+                }
+              }
+            }
+          } // W
+        }   // H
+      }     // C
+    }       // G
+  }         // N
+}
+
+void BoundInterpreterFunction::fwdConvTransposeInst(
+    const ConvTransposeInst *I) {
+  auto kernelSizes = I->getKernels();
+  auto pads = I->getPads();
+  auto strides = I->getStrides();
+  size_t group = I->getGroup();
+
+  if (I->getSrc()->getType()->isQuantizedType()) {
+    llvm_unreachable("Quantized ConvTranspose not supported");
+    return;
+  }
+
+  dispatchFloatingPointImpl(
+      fwdConvTransposeInstFloatImpl, I->getSrc()->getElementType(), I->getSrc(),
+      I->getDest(), I->getFilter(), I->getBias(), kernelSizes, strides, pads,
+      group, I->getDilation());
+}
+
 void BoundInterpreterFunction::fwdConvolutionInst(const ConvolutionInst *I) {
   auto kernelSizes = I->getKernels();
   auto pads = I->getPads();
@@ -638,7 +734,7 @@ void BoundInterpreterFunction::fwdChannelwiseQuantizedConvolutionInst(
   auto inW = getWeightHandle<int8_t>(I->getSrc());
   auto outW = getWeightHandle<int8_t>(I->getDest());
   auto filterW = getWeightHandle<int8_t>(I->getFilter());
-  auto biasW = getWeightHandle<float>(I->getBias());
+  auto biasW = getWeightHandle<int32_t>(I->getBias());
   auto scalesW = getWeightHandle<float>(I->getScales());
   auto offsetsW = getWeightHandle<int32_t>(I->getOffsets());
 
@@ -710,11 +806,11 @@ void BoundInterpreterFunction::fwdChannelwiseQuantizedConvolutionInst(
               }
             }
 
-            // Scale the bias to match the scale of the matrix multiplication.
-            AccumulatorTy B = std::round(biasW.at({d}) / matMulScale);
-
-            // Add the bias:
-            sum += B;
+            // Add the channelwise quantized bias.
+            // NOTE: The bias of ChannelwiseQuantizedConvolution should be
+            // quantized such that each element is scaled to match the
+            // matMulScale (biasScale_i = scales_i * inScale).
+            sum += biasW.at({d});
 
             // Scale the result back to the expected destination scale.
             outW.at({n, ax, ay, d}) = quantization::clip<AccumulatorTy, int8_t>(
@@ -1390,6 +1486,10 @@ void BoundInterpreterFunction::fwdSplatInst(const glow::SplatInst *I) {
   }
 
   llvm_unreachable("Unsupported tensor type");
+}
+
+void BoundInterpreterFunction::fwdTouchInst(const glow::TouchInst *) {
+  // Do nothing for a TouchInst
 }
 
 void BoundInterpreterFunction::fwdInsertTensorInst(
@@ -3051,6 +3151,44 @@ void BoundInterpreterFunction::fwdBatchedReduceMinInst(
 }
 
 template <typename ElemTy>
+void BoundInterpreterFunction::fwdCumSumInstImpl(Value *input, Value *dest,
+                                                 bool exclusive, bool reverse) {
+  auto *eInput = getTensor(input);
+  auto *eDest = getTensor(dest);
+  auto eInputH = eInput->getHandle<ElemTy>();
+  auto eDestH = eDest->getHandle<ElemTy>();
+  eDestH.clear();
+
+  ElemTy accum = 0;
+
+  sdim_t s = 0;
+  sdim_t n = eDestH.size();
+  sdim_t dir = 1;
+
+  if (reverse) {
+    s = n - 1;
+    n = -1;
+    dir = -1;
+  }
+
+  for (sdim_t i = s; i != n; i += dir) {
+    if (!exclusive) {
+      accum += eInputH.at(i);
+    }
+    eDestH.at(i) = accum;
+    if (exclusive) {
+      accum += eInputH.at(i);
+    }
+  }
+}
+
+void BoundInterpreterFunction::fwdCumSumInst(glow::CumSumInst const *I) {
+  dispatchArithmeticImpl(fwdCumSumInstImpl, I->getInput()->getElementType(),
+                         I->getInput(), I->getDest(), I->getExclusive(),
+                         I->getReverse());
+}
+
+template <typename ElemTy>
 void BoundInterpreterFunction::fwdLengthsSumInstFloatImpl(
     const LengthsSumInst *I) {
   staticAssertFloatingPointType(ElemTy);
@@ -4070,6 +4208,117 @@ void BoundInterpreterFunction::fwdConvertToInst(const glow::ConvertToInst *I) {
 }
 
 template <typename ElemTy>
+void BoundInterpreterFunction::fwdBatchedPairwiseDotProductInstImpl(
+    const BatchedPairwiseDotProductInst *I) {
+  auto destT = getTensor(I->getDest());
+  auto destH = destT->getHandle<ElemTy>();
+
+  dim_t batchCount = destT->getType().dims()[0];
+
+  // Gather all batched vector operands into an array so that they can be
+  // indexed easily.
+  std::vector<Value *> srcs;
+  for (unsigned i = 1, e = I->getNumOperands(); i < e; ++i) {
+    auto op = I->getOperand(i);
+    srcs.emplace_back(op.first);
+  }
+
+  // pairIdx is the total number of pairs (i, j) that have been processed.
+  unsigned pairIdx = 0;
+
+  // For each src operand:
+  for (unsigned i = 1, e = I->getNumInputs(); i < e; ++i) {
+    auto vAH = getTensor(srcs[i])->getHandle<ElemTy>();
+    dim_t vectorSize = getTensor(srcs[i])->getType().dims()[1];
+
+    // Compute the dot product of src[i] with every other vector with a smaller
+    // index.
+    for (unsigned j = 0; j < i; ++j) {
+      auto vBH = getTensor(srcs[j])->getHandle<ElemTy>();
+
+      // Process all batches for a given pair (i, j).
+      for (dim_t b = 0; b < batchCount; ++b) {
+        ElemTy accum = 0;
+
+        for (dim_t k = 0; k < vectorSize; ++k) {
+          accum += vAH.at({b, k}) * vBH.at({b, k});
+        }
+
+        destH.at({b, pairIdx}) = accum;
+      }
+
+      ++pairIdx;
+    }
+  }
+}
+
+void BoundInterpreterFunction::fwdBatchedPairwiseDotProductInst(
+    const BatchedPairwiseDotProductInst *I) {
+  dispatchImpl(fwdBatchedPairwiseDotProductInstImpl,
+               I->getDest()->getElementType(), I);
+}
+
+template <typename ElemTy>
+void BoundInterpreterFunction::fwdBatchedPairwiseDotProductGradInstImpl(
+    const BatchedPairwiseDotProductGradInst *I) {
+  auto destGradT = getTensor(I->getDestGrad());
+  auto destGradH = destGradT->getHandle<ElemTy>();
+
+  dim_t batchCount = destGradT->getType().dims()[0];
+
+  // Gather all batched vector operands into arrays so that they can be
+  // indexed easily. Operands 1 -> numInputs are gradients of inputs, and
+  // operands numInputs + 1 -> numOperands - 1 are the corresponding original
+  // inputs.
+  std::vector<Value *> srcs, srcGrads;
+  for (unsigned i = 0, e = I->getNumInputs(); i < e; ++i) {
+    auto gradOp = I->getOperand(i + 1);
+    auto inputOp = I->getOperand(i + 1 + e);
+
+    srcGrads.emplace_back(gradOp.first);
+    srcs.emplace_back(inputOp.first);
+  }
+
+  // Zero initialize all srcGrad tensors.
+  for (auto &s : srcGrads) {
+    getTensor(s)->zero();
+  }
+
+  // pairIdx is the total number of pairs (i, j) that have been processed.
+  unsigned pairIdx = 0;
+
+  // For each srcGrad operand:
+  for (unsigned i = 0, e = I->getNumInputs(); i < e; ++i) {
+    auto dvAH = getTensor(srcGrads[i])->getHandle<ElemTy>();
+    dim_t vectorSize = getTensor(srcs[i])->getType().dims()[1];
+
+    // Accmulate into it the product of the gradient of all dot products that
+    // src[i] contributed to and the corresponding vectors that src[i] was
+    // dotted with.
+    for (unsigned j = i + 1; j < e; ++j) {
+      auto vBH = getTensor(srcs[j])->getHandle<ElemTy>();
+
+      // Process all batches for a given pair (i, j).
+      for (dim_t b = 0; b < batchCount; ++b) {
+        ElemTy grad = destGradH.at({b, pairIdx});
+
+        for (dim_t k = 0; k < vectorSize; ++k) {
+          dvAH.at({b, k}) += grad * vBH.at({b, k});
+        }
+      }
+
+      ++pairIdx;
+    }
+  }
+}
+
+void BoundInterpreterFunction::fwdBatchedPairwiseDotProductGradInst(
+    const BatchedPairwiseDotProductGradInst *I) {
+  dispatchImpl(fwdBatchedPairwiseDotProductGradInstImpl,
+               I->getDestGrad()->getElementType(), I);
+}
+
+template <typename ElemTy>
 void BoundInterpreterFunction::fwdFlipInstImpl(const FlipInst *I) {
 
   static_assert(max_tensor_dimensions == 6,
@@ -4117,4 +4366,258 @@ void BoundInterpreterFunction::fwdFlipInstImpl(const FlipInst *I) {
 
 void BoundInterpreterFunction::fwdFlipInst(const FlipInst *I) {
   dispatchImpl(fwdFlipInstImpl, I->getSrc()->getElementType(), I);
+}
+
+//===----------------------------------------------------------------------===//
+//                Instructions used by ObjectDetection
+//===----------------------------------------------------------------------===//
+static void maxMin(float lhs, float rhs, float &min, float &max) {
+  if (lhs >= rhs) {
+    min = rhs;
+    max = lhs;
+  } else {
+    min = lhs;
+    max = rhs;
+  }
+}
+
+using ClassBox = std::pair<float, dim_t>;
+
+struct Box {
+  float classValue{0.0f};
+  dim_t batchIndex{0};
+  dim_t classIndex{0};
+  dim_t boxIndex{0};
+};
+
+template <typename ElemTy>
+static bool doIOU(Handle<ElemTy> &boxes, dim_t batchIndex,
+                  dim_t selectedBoxIndex, dim_t candidateBoxIndex,
+                  int centerPointBox, float iouThreshold, bool isV4) {
+  float sx[] = {0.0f, 0.0f, 0.0f, 0.0f};
+  float cx[] = {0.0f, 0.0f, 0.0f, 0.0f};
+
+  if (isV4) {
+    for (dim_t i = 0; i < 4; ++i) {
+      sx[i] = boxes.at({selectedBoxIndex, i});
+      cx[i] = boxes.at({candidateBoxIndex, i});
+    }
+  } else {
+    for (dim_t i = 0; i < 4; ++i) {
+      sx[i] = boxes.at({batchIndex, selectedBoxIndex, i});
+      cx[i] = boxes.at({batchIndex, candidateBoxIndex, i});
+    }
+  }
+
+  float xSMin = 0.0f;
+  float ySMin = 0.0f;
+  float xSMax = 0.0f;
+  float ySMax = 0.0f;
+
+  float xCMin = 0.0f;
+  float yCMin = 0.0f;
+  float xCMax = 0.0f;
+  float yCMax = 0.0f;
+
+  // Standardizing coordinates so that (xmin, ymin) is upper left corner of a
+  // box and (xmax, ymax) is lower right corner of the box.
+  if (!centerPointBox) {
+    // 0 means coordinates for diagonal ends of a box.
+    // Coordinates can either be absolute or normalized.
+    maxMin(sx[0], sx[2], xSMin, xSMax);
+    maxMin(sx[1], sx[3], ySMin, ySMax);
+
+    maxMin(cx[0], cx[2], xCMin, xCMax);
+    maxMin(cx[1], cx[3], yCMin, yCMax);
+  } else {
+    float halfWidthS = sx[2] / 2.0f;
+    float halfHeightS = sx[3] / 2.0f;
+    float halfWidthC = cx[2] / 2.0f;
+    float halfHeightC = cx[3] / 2.0f;
+
+    xSMin = sx[0] - halfWidthS;
+    ySMin = sx[1] - halfHeightS;
+    xSMax = sx[0] + halfWidthS;
+    ySMax = sx[1] + halfHeightS;
+
+    xCMin = cx[0] - halfWidthC;
+    yCMin = cx[1] - halfHeightC;
+    xCMax = cx[0] + halfWidthC;
+    yCMax = cx[1] + halfHeightC;
+  }
+
+  // finding upper left and lower right corner of a box formed by intersection.
+  float xMin = std::max(xSMin, xCMin);
+  float yMin = std::max(ySMin, yCMin);
+  float xMax = std::min(xSMax, xCMax);
+  float yMax = std::min(ySMax, yCMax);
+
+  float intersectionArea =
+      std::max(0.0f, xMax - xMin) * std::max(0.0f, yMax - yMin);
+
+  if (intersectionArea == 0.0f) {
+    return false;
+  }
+
+  float sArea = (xSMax - xSMin) * (ySMax - ySMin);
+  float cArea = (xCMax - xCMin) * (yCMax - yCMin);
+  float unionArea = sArea + cArea - intersectionArea;
+
+  return intersectionArea > iouThreshold * unionArea;
+}
+
+template <typename T>
+void BoundInterpreterFunction::fwdNonMaxSuppressionInstImpl(
+    glow::NonMaxSuppressionInst const *I) {
+
+  auto boxes = I->getBoxes();
+  auto scores = I->getScores();
+  auto indices = I->getIndices();
+  auto numDetected = I->getNumberOfSelectedIndices();
+  float iouThreshold = I->getIouThreshold();
+  dim_t maxBoxesPerClass = I->getMaxOutputBoxesPerClass();
+  float scoreThreshold = I->getScoreThreshold();
+  unsigned centerPointBox = I->getCenterPointBox();
+  bool isV4 = I->getIsTFVersion4();
+
+  auto boxesH = getTensor(boxes)->getHandle<float>();
+  auto scoresH = getTensor(scores)->getHandle<float>();
+  auto indicesH = getTensor(indices)->getHandle<T>();
+  auto numDetectedH = getTensor(numDetected)->getHandle<T>();
+
+  int boxesBoxDim = boxes->dims().size() - 2;
+
+  dim_t numBatches = 1;
+  dim_t numClasses = 1;
+  dim_t numBoxes = boxes->dims()[boxesBoxDim];
+
+  size_t maxOutputPerBatch = 0;
+
+  if (!isV4) {
+    int boxesBatchDim = boxes->dims().size() - 3;
+
+    int scoresBatchDim = scores->dims().size() - 3;
+    int scoresBoxDim = scores->dims().size() - 1;
+    int scoresClassDim = scores->dims().size() - 2;
+    assert(scores->dims()[scoresBoxDim] == boxes->dims()[boxesBoxDim] &&
+           "Mismatch between number of scores and number of boxes.");
+    assert(scores->dims()[scoresBatchDim] == boxes->dims()[boxesBatchDim] &&
+           "Mismatch in batch dimension.");
+    (void)boxesBatchDim;
+    (void)scoresBoxDim;
+    numBatches = scores->dims()[scoresBatchDim];
+    numClasses = scores->dims()[scoresClassDim];
+    numBoxes = boxes->dims()[boxesBoxDim];
+    maxOutputPerBatch =
+        indices->dims()[indices->dims().size() - 2] / numBatches;
+  } else {
+    maxOutputPerBatch =
+        indices->dims()[indices->dims().size() - 1] / numBatches;
+  }
+
+  auto cmpFunc = [](const ClassBox &a, const ClassBox &b) {
+    return a.first < b.first;
+  };
+
+  std::vector<ClassBox> selectedIndices(numBoxes);
+  dim_t outPutBoxIndex = 0;
+
+  for (dim_t batchIndex = 0; batchIndex < numBatches; ++batchIndex) {
+    Box minBox{scoresH.raw(batchIndex * numClasses * numBoxes), batchIndex, 0,
+               0};
+    int32_t detectedPerBatch = 0;
+    for (dim_t classIndex = 0; classIndex < numClasses; ++classIndex) {
+      selectedIndices.clear();
+      size_t detectedPerClass = 0;
+      std::priority_queue<ClassBox, std::vector<ClassBox>, decltype(cmpFunc)>
+          queue(cmpFunc);
+
+      for (size_t boxIndex = 0; boxIndex < numBoxes; ++boxIndex) {
+        float classValue = scoresH.raw(
+            (batchIndex * numClasses + classIndex) * numBoxes + boxIndex);
+        if (classValue > scoreThreshold) {
+          queue.emplace(classValue, boxIndex);
+        }
+      }
+
+      float tScore = minBox.classValue;
+      while (!queue.empty()) {
+        auto priorBox = queue.top();
+        queue.pop();
+
+        bool selected = true;
+        for (auto &sBox : selectedIndices) {
+          if (doIOU(boxesH, batchIndex, sBox.second, priorBox.second,
+                    centerPointBox, iouThreshold, isV4)) {
+            selected = false;
+            break;
+          }
+        }
+
+        if (selected) {
+          selectedIndices.emplace_back(priorBox);
+          if (isV4) {
+            indicesH.at({outPutBoxIndex}) = priorBox.second;
+            tScore = scoresH.at({priorBox.second});
+          } else {
+            indicesH.at({outPutBoxIndex, 0}) = batchIndex;
+            indicesH.at({outPutBoxIndex, 1}) = classIndex;
+            indicesH.at({outPutBoxIndex, 2}) = priorBox.second;
+            tScore = scoresH.at({batchIndex, classIndex, priorBox.second});
+          }
+
+          ++outPutBoxIndex;
+          ++detectedPerClass;
+          ++detectedPerBatch;
+        }
+        if (maxBoxesPerClass == detectedPerClass) {
+          break;
+        }
+      }
+
+      if (tScore < minBox.classValue) {
+        minBox.classValue = tScore;
+        minBox.classIndex = classIndex;
+        if (isV4) {
+          minBox.boxIndex = indicesH.at({outPutBoxIndex - 1});
+        } else {
+          minBox.boxIndex = indicesH.at({outPutBoxIndex - 1, 2});
+        }
+      }
+    }
+
+    for (size_t i = detectedPerBatch; i < maxOutputPerBatch; ++i) {
+      if (isV4) {
+        indicesH.at({outPutBoxIndex}) = minBox.boxIndex;
+      } else {
+        indicesH.at({outPutBoxIndex, 0}) = minBox.batchIndex;
+        indicesH.at({outPutBoxIndex, 1}) = minBox.classIndex;
+        indicesH.at({outPutBoxIndex, 2}) = minBox.boxIndex;
+      }
+
+      ++outPutBoxIndex;
+    }
+    // For ONNX NMS it's not used, for TF Batch Dimension is 1.
+    for (dim_t i = 0; i < maxBoxesPerClass; ++i) {
+      numDetectedH.at({batchIndex * maxBoxesPerClass + i}) = detectedPerBatch;
+    }
+  }
+}
+
+void BoundInterpreterFunction::fwdNonMaxSuppressionInst(
+    glow::NonMaxSuppressionInst const *I) {
+  switch (I->getBoxes()->getElementType()) {
+  case ElemKind::FloatTy:
+    if (I->getIndices()->getElementType() == ElemKind::Int32ITy) {
+      fwdNonMaxSuppressionInstImpl<int32_t>(I);
+    } else if (I->getIndices()->getElementType() == ElemKind::Int64ITy) {
+      fwdNonMaxSuppressionInstImpl<int64_t>(I);
+    } else {
+      llvm_unreachable("Output type is not supported.");
+    }
+    break;
+  default:
+    llvm_unreachable("Type is not supported.");
+    break;
+  }
 }

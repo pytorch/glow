@@ -24,7 +24,6 @@
 #include "glow/Support/Support.h"
 
 namespace glow {
-
 // static
 const char *GlowIValue::tagToStr(GlowIValue::Tag tag) {
   switch (tag) {
@@ -48,6 +47,10 @@ const char *GlowIValue::tagToStr(GlowIValue::Tag tag) {
     return "Tuple";
   case GlowIValue::Tag::PTTensor:
     return "PyTorch Tensor";
+  case GlowIValue::Tag::GenericMap:
+    return "GenericMap";
+  case GlowIValue::Tag::String:
+    return "String";
   }
   LOG(DFATAL) << "Cannot reach here.";
 }
@@ -71,6 +74,12 @@ void GlowIValue::reset() {
     break;
   case Tag::PTTensor:
     delete payload_.asPTTensor;
+    break;
+  case Tag::GenericMap:
+    delete payload_.asGenericMap;
+    break;
+  case Tag::String:
+    delete payload_.asString;
     break;
   case Tag::None:
   case Tag::Double:
@@ -100,6 +109,84 @@ GlowIValue::Tag GlowIValue::getTag() const { return tag_; }
 
 const char *GlowIValue::getTagString() const { return tagToStr(tag_); }
 
+Expected<size_t> GlowIValue::hash(const GlowIValue &ival) {
+  switch (ival.getTag()) {
+  case GlowIValue::Tag::Int:
+    return std::hash<int64_t>()(EXIT_ON_ERR(ival.toInt()));
+  case GlowIValue::Tag::String:
+    return std::hash<std::string>()(*EXIT_ON_ERR(ival.toString()));
+  case GlowIValue::Tag::None:
+  case GlowIValue::Tag::Double:
+  case GlowIValue::Tag::Bool:
+  case GlowIValue::Tag::Tensor:
+  case GlowIValue::Tag::IntList:
+  case GlowIValue::Tag::DoubleList:
+  case GlowIValue::Tag::BoolList:
+  case GlowIValue::Tag::Tuple:
+  case GlowIValue::Tag::PTTensor:
+  case GlowIValue::Tag::GenericMap:
+    return MAKE_ERR(
+        strFormat("No hash function defined for IValues with tag %s",
+                  ival.getTagString()));
+  }
+
+  LOG(DFATAL) << "Cannot reach here.";
+}
+
+bool GlowIValue::equal(const GlowIValue &ivalA, const GlowIValue &ivalB) {
+  if (ivalA.getTag() != ivalB.getTag()) {
+    return false;
+  }
+
+  switch (ivalA.getTag()) {
+  case GlowIValue::Tag::Int:
+    return EXIT_ON_ERR(ivalA.toInt()) == EXIT_ON_ERR(ivalB.toInt());
+  case GlowIValue::Tag::None:
+    return true;
+  case GlowIValue::Tag::Double:
+    return EXIT_ON_ERR(ivalA.toDouble()) == EXIT_ON_ERR(ivalB.toDouble());
+  case GlowIValue::Tag::Bool:
+    return EXIT_ON_ERR(ivalA.toBool()) == EXIT_ON_ERR(ivalB.toBool());
+  case GlowIValue::Tag::Tensor:
+    // Equal if they are the same tensor.
+    return EXIT_ON_ERR(ivalA.toTensor()) == EXIT_ON_ERR(ivalB.toTensor());
+  case GlowIValue::Tag::IntList: {
+    const std::vector<int64_t> &vecA = *EXIT_ON_ERR(ivalA.toIntList());
+    const std::vector<int64_t> &vecB = *EXIT_ON_ERR(ivalB.toIntList());
+    return vecA == vecB;
+  }
+  case GlowIValue::Tag::DoubleList: {
+    const std::vector<double> &vecA = *EXIT_ON_ERR(ivalA.toDoubleList());
+    const std::vector<double> &vecB = *EXIT_ON_ERR(ivalB.toDoubleList());
+    return vecA == vecB;
+  }
+  case GlowIValue::Tag::BoolList: {
+    const std::vector<bool> &vecA = *EXIT_ON_ERR(ivalA.toBoolList());
+    const std::vector<bool> &vecB = *EXIT_ON_ERR(ivalB.toBoolList());
+    return vecA == vecB;
+  }
+  case GlowIValue::Tag::Tuple: {
+    const std::vector<GlowIValue> &vecA = *EXIT_ON_ERR(ivalA.toTuple());
+    const std::vector<GlowIValue> &vecB = *EXIT_ON_ERR(ivalB.toTuple());
+    return vecA == vecB;
+  }
+  case GlowIValue::Tag::PTTensor:
+    // Equal if they are the same PyTorch tensor.
+    return EXIT_ON_ERR(ivalA.toPTTensor()) == EXIT_ON_ERR(ivalB.toPTTensor());
+  case GlowIValue::Tag::GenericMap:
+    return *EXIT_ON_ERR(ivalA.toGenericMap()) ==
+           *EXIT_ON_ERR(ivalB.toGenericMap());
+  case GlowIValue::Tag::String:
+    return *EXIT_ON_ERR(ivalA.toString()) == *EXIT_ON_ERR(ivalB.toString());
+  }
+
+  LOG(DFATAL) << "Cannot reach here.";
+}
+
+bool GlowIValue::operator==(const GlowIValue &other) const {
+  return GlowIValue::equal(*this, other);
+}
+
 bool GlowIValue::isNone() const { return Tag::None == tag_; }
 bool GlowIValue::isTensor() const { return Tag::Tensor == tag_; }
 bool GlowIValue::isDouble() const { return Tag::Double == tag_; }
@@ -110,6 +197,8 @@ bool GlowIValue::isDoubleList() const { return Tag::DoubleList == tag_; }
 bool GlowIValue::isBoolList() const { return Tag::BoolList == tag_; }
 bool GlowIValue::isTuple() const { return Tag::Tuple == tag_; }
 bool GlowIValue::isPTTensor() const { return Tag::PTTensor == tag_; }
+bool GlowIValue::isGenericMap() const { return Tag::GenericMap == tag_; }
+bool GlowIValue::isString() const { return Tag::String == tag_; }
 
 #define ExpectTag(EXPECTED_TAG)                                                \
   RETURN_ERR_IF_NOT(tag_ == (EXPECTED_TAG),                                    \
@@ -191,6 +280,26 @@ Expected<const at::Tensor *> GlowIValue::toPTTensor() const {
   return payload_.asPTTensor;
 }
 
+Expected<GlowIValueMap *> GlowIValue::toGenericMap() {
+  ExpectTag(Tag::GenericMap);
+  return payload_.asGenericMap;
+}
+
+Expected<const GlowIValueMap *> GlowIValue::toGenericMap() const {
+  ExpectTag(Tag::GenericMap);
+  return payload_.asGenericMap;
+}
+
+Expected<std::string *> GlowIValue::toString() {
+  ExpectTag(Tag::String);
+  return payload_.asString;
+}
+
+Expected<const std::string *> GlowIValue::toString() const {
+  ExpectTag(Tag::String);
+  return payload_.asString;
+}
+
 #undef ExpectTag
 
 void GlowIValue::fromNone() {
@@ -257,6 +366,19 @@ void GlowIValue::fromPTTensor(at::Tensor tensor) {
   payload_.asPTTensor = new at::Tensor(tensor);
 }
 
+void GlowIValue::fromString(std::string str) {
+  reset();
+  tag_ = Tag::String;
+  payload_.asString = new std::string(std::move(str));
+}
+
+void GlowIValue::fromGenericMap(GlowIValueMap ivalMap) {
+  reset();
+  tag_ = Tag::GenericMap;
+  payload_.asGenericMap = new GlowIValueMap;
+  std::swap(ivalMap, *payload_.asGenericMap);
+}
+
 Error GlowIValue::fromIValue(const at::IValue &ival) {
   reset();
   if (ival.isNone()) {
@@ -289,6 +411,20 @@ Error GlowIValue::fromIValue(const at::IValue &ival) {
     const auto ivalBools = ival.toBoolList();
     std::vector<bool> bools(ivalBools.begin(), ivalBools.end());
     fromBoolList(std::move(bools));
+  } else if (ival.isString()) {
+    std::string str = ival.toStringRef();
+    fromString(std::move(str));
+  } else if (ival.isGenericDict()) {
+    const auto &genericDict = ival.toGenericDict();
+    GlowIValueMap ivalMap;
+    for (const auto &kv : genericDict) {
+      GlowIValue glowKey;
+      GlowIValue glowValue;
+      RETURN_IF_ERR(glowKey.fromIValue(kv.key()));
+      RETURN_IF_ERR(glowValue.fromIValue(kv.value()));
+      ivalMap.emplace(std::move(glowKey), std::move(glowValue));
+    }
+    fromGenericMap(std::move(ivalMap));
   } else if (ival.isTuple()) {
     const auto ivalTuple = ival.toTuple();
     const auto &elems = ivalTuple->elements();
@@ -304,6 +440,16 @@ Error GlowIValue::fromIValue(const at::IValue &ival) {
                          ival.tagKind().data()));
   }
   return Error::success();
+}
+
+size_t GlowIValueMapHash::operator()(const GlowIValue &ival) const {
+  auto hashOrErr = GlowIValue::hash(ival);
+  if (hashOrErr) {
+    return *hashOrErr;
+  } else {
+    LOG(DFATAL) << ERR_TO_STRING(hashOrErr.takeError());
+  }
+  return 0;
 }
 
 } // namespace glow

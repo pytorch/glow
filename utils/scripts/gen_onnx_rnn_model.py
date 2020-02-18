@@ -228,7 +228,7 @@ def gen_rnn_onnx_test_model(model_path, seq_length, batch_size, hidden_size, inp
                    'initial_h' if has_initial_h else '']
 
     # Node outputs
-    node_outputs = ['Y']
+    node_outputs = ['Y', 'Y_h']
 
     # RNN node definition
     rnn_node_def = onnx.helper.make_node(

@@ -92,32 +92,25 @@ bool hasNonConstantOperationUser(const Node *N, const Backend &backend) {
 /// Compile the function \p F for the provided \p backend using the compilation
 /// context \p cctx.
 /// \returns compiled function.
-std::unique_ptr<CompiledFunction> compile(Backend &backend, Function &F,
-                                          CompilationContext &cctx) {
-  EXIT_ON_ERR(::glow::optimizeFunction(&F, backend, cctx));
-  for (const Node &N : F.getNodes()) {
-    CHECK(backend.isOpSupported(N))
-        << "Backend must support all nodes after high-level optimizations but "
-           "encountered unsupported operator: "
-        << N.getDebugDesc();
-  }
-  auto funcOrErr = backend.compile(&F, cctx.backendOpts);
-  EXIT_ON_ERR(funcOrErr.takeError());
-  return std::move(*funcOrErr);
+Expected<std::unique_ptr<CompiledFunction>>
+compile(Backend &backend, Function &F, CompilationContext &cctx) {
+  RETURN_IF_ERR(::glow::optimizeFunction(&F, backend, cctx));
+  return backend.compile(&F, cctx.backendOpts);
 }
 
 /// Runs the compiled function \p compiledF on the \p backend using provided \p
 /// bindings.
-void run(Backend &backend, CompiledFunction &compiledF,
-         PlaceholderBindings &bindings) {
+Error run(Backend &backend, CompiledFunction &compiledF,
+          PlaceholderBindings &bindings) {
   std::unique_ptr<PlaceholderBindings> bindingsPtr(&bindings);
   ExecutionContext context(std::move(bindingsPtr));
   // TODO: Add only constants used by F to the compiled function. This should
   // reduce the amount of data that needs to be copied.
   auto executeErr = compiledF.execute(&context);
-  EXIT_ON_ERR(std::move(executeErr));
+  RETURN_IF_ERR(std::move(executeErr));
   // Don't delete bindings.
   context.movePlaceholderBindings().release();
+  return Error::success();
 }
 
 static bool isCanonicalLayout(const NodeValue &RN, Backend &backend,
@@ -161,13 +154,13 @@ static void bailOnNonCanonicalLayout(
 /// Evaluates a provided constant operation \p C using the provided \p backend
 /// and using the compilation context \p cctx.
 /// \returns constant results.
-std::vector<Constant *>
-evaluateConstantOperation(Backend &backend, CompilationContext &cctx, Node *C) {
+bool evaluateConstantOperation(Backend &backend, CompilationContext &cctx,
+                               Node *C, std::vector<Constant *> &constResults) {
   PlaceholderBindings bindings;
   assert(isConstantOperation(C, backend) && "Expected a constant expression");
   // Constants and splats do not need to be constant evaluated.
   if (isa<Constant>(C) || isa<SplatNode>(C)) {
-    return {};
+    return true;
   }
   Module &mod = *C->getParent()->getParent();
   // Create a temporary function to perform the constant operation.
@@ -183,18 +176,21 @@ evaluateConstantOperation(Backend &backend, CompilationContext &cctx, Node *C) {
     auto *SN = constEvaluationF->createSave(clonedC->getName(), RN);
     if (!isCanonicalLayout(RN, backend, clonedC, idx)) {
       bailOnNonCanonicalLayout(constEvaluationF, mod, savedResults);
-      return {};
+      return true;
     }
     savedResults.emplace_back(SN);
     bindings.allocate(SN->getPlaceholder());
   }
   // Run the temporary backend to perform this constant operation
   // evaluation.
-  EXIT_ON_ERR(
-      executeConstantFunction(backend, *constEvaluationF, bindings, cctx));
+  if (ERR_TO_BOOL(executeConstantFunction(backend, *constEvaluationF, bindings,
+                                          cctx))) {
+    mod.eraseFunction(constEvaluationF);
+    return false;
+  }
+
   // Get the results of the constant operation compile-time computation and
   // create new constants from it.
-  std::vector<Constant *> constResults;
   constResults.reserve(savedResults.size());
   for (auto *SN : savedResults) {
     Tensor *outputTensor = bindings.get(SN->getPlaceholder());
@@ -209,7 +205,7 @@ evaluateConstantOperation(Backend &backend, CompilationContext &cctx, Node *C) {
   }
   // Remove the temporary function.
   mod.eraseFunction(constEvaluationF);
-  return constResults;
+  return true;
 }
 
 /// Check if function \p F consists of constant operations only.
@@ -244,12 +240,16 @@ Error verifyConstantFunction(Backend &backend, Function &F) {
 /// \returns list of constants which are the result of the
 /// constant-folding. These constants correspond to results of the node. If no
 /// constant folding was possible an empty vector will be returned
-std::vector<Constant *> constantFoldNodeImpl(Backend &backend, Node *N) {
+bool constantFoldNodeImpl(Backend &backend, Node *N,
+                          std::vector<Constant *> &constResults) {
   CompilationContext cctx;
   // Do not recursively call constant folding.
   cctx.optimizationOpts.enableConstantFolding = false;
   cctx.backendOpts.collectConstants = true;
-  return evaluateConstantOperation(backend, cctx, N);
+  // Do not print out compilation errors encountered, as constant folding is a
+  // best effort; simply silently give up and continue with compilation.
+  cctx.verboseCompile = false;
+  return evaluateConstantOperation(backend, cctx, N, constResults);
 }
 
 } // namespace
@@ -261,9 +261,9 @@ Error glow::executeConstantFunction(Backend &backend, Function &F,
 #ifndef NDEBUG
   RETURN_IF_ERR(verifyConstantFunction(backend, F));
 #endif
-  auto compiledF = compile(backend, F, cctx);
-  run(backend, *compiledF, bindings);
-  return Error::success();
+  std::unique_ptr<CompiledFunction> compiledF;
+  ASSIGN_VALUE_OR_RETURN_ERR(compiledF, compile(backend, F, cctx));
+  return run(backend, *compiledF, bindings);
 }
 
 /// Perform constant folding in the function \p F . Any non-trivial node (i.e.
@@ -289,10 +289,18 @@ bool glow::ConstantFold::run(Function *F, const CompilationContext &cctx) {
     if (isa<Storage>(N) || isa<Constant>(N) || isa<SplatNode>(N)) {
       continue;
     }
+
+    // Don't try to constant fold Nodes that are not supported by the
+    // Interpreter. These are usually backend-specific.
+    if (!backend->isOpSupported(*N)) {
+      continue;
+    }
+
     // Skip nodes that are not constant operations.
     if (!isConstantOperation(N, *backend)) {
       continue;
     }
+
     // Add only a constant operation node whose value is used by at least
     // one non constant-operation node, because no other bigger constant
     // operation containing the current node can completely replace the result
@@ -302,8 +310,12 @@ bool glow::ConstantFold::run(Function *F, const CompilationContext &cctx) {
     if (!hasNonConstantOperationUser(N, *backend)) {
       continue;
     }
+
     // Compute the constant value of the node.
-    std::vector<Constant *> constResults = constantFoldNodeImpl(*backend, N);
+    std::vector<Constant *> constResults;
+    if (!constantFoldNodeImpl(*backend, N, constResults)) {
+      return false;
+    }
     // Replace all results of the original operation by the computed
     // compile-time results of this operation.
     for (size_t idx = 0, e = constResults.size(); idx < e; ++idx) {
@@ -322,5 +334,10 @@ std::vector<Constant *> glow::constantFold(Node *N) {
   if (!isConstantOperation(N, *backend)) {
     return {};
   }
-  return constantFoldNodeImpl(*backend, N);
+  std::vector<Constant *> constResults;
+  if (!constantFoldNodeImpl(*backend, N, constResults)) {
+    return {};
+  }
+
+  return constResults;
 }

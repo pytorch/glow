@@ -175,12 +175,19 @@ loadStandardLibrary(llvm::LLVMContext *ctx, llvm::StringRef filename,
   llvm::SMDiagnostic error;
 
   // Parse the compiled-in image of libjit and return the resulting Module.
-  return llvm::parseIR(
+  // checking for and reporting errors from parseIR.
+
+  auto mod = llvm::parseIR(
       llvm::MemoryBufferRef(
           llvm::StringRef(reinterpret_cast<const char *>(libjitBC.data()),
                           libjitBC.size()),
           "libjit.bc"),
       error, *ctx);
+
+  if (!mod) {
+    error.print("LLVMIRGen", llvm::errs());
+  }
+  return mod;
 }
 
 /// Register a diagnostics handler that prevents the compiler from printing to
@@ -971,6 +978,10 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
   }
     ARITHMETIC_UNARY_OP_WITH_IMM_CASE(Splat, "splat", Value);
 #undef ARITHMETIC_UNARY_OP_WITH_IMM_CASE
+
+  case Kinded::Kind::TouchInstKind:
+    // do nothing;
+    break;
 
   case Kinded::Kind::ElementSelectInstKind: {
     auto *ES = cast<ElementSelectInst>(I);
@@ -1929,6 +1940,72 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     break;
   }
 
+  case Kinded::Kind::ConvTransposeInstKind: {
+    auto *CI = cast<ConvTransposeInst>(I);
+    auto *dest = CI->getDest();
+    auto *src = CI->getSrc();
+    auto *filter = CI->getFilter();
+    auto *bias = CI->getBias();
+    auto *destPtr = emitValueAddress(builder, dest);
+    auto *srcPtr = emitValueAddress(builder, src);
+    auto *filterPtr = emitValueAddress(builder, filter);
+    auto *biasPtr = emitValueAddress(builder, bias);
+
+    assert(CI->getDilation() == 1 && "Dilation != 1 is not supported.");
+    assert(CI->getGroup() == 1 && "Group != 1 is not supported.");
+
+    auto *destDims = emitValueDims(builder, dest);
+    auto *srcDims = emitValueDims(builder, src);
+    auto *filterDims = emitValueDims(builder, filter);
+    auto *biasDims = emitValueDims(builder, bias);
+
+    auto *kernels = emitConstDimTArray(builder, CI->getKernels());
+    auto *strides = emitConstDimTArray(builder, CI->getStrides());
+    auto *pads = emitConstDimTArray(builder, CI->getPads());
+    auto *group = emitConstDimT(builder, CI->getGroup());
+    auto *dilation = emitConstDimT(builder, CI->getDilation());
+
+    const char *kernelName = "conv_transpose";
+
+    auto *F = getFunction(kernelName, dest->getElementType());
+
+    if (src->getType()->isQuantizedType()) {
+      auto *destTy = dest->getType();
+      auto *srcTy = src->getType();
+      auto *filterTy = filter->getType();
+
+      auto *destOffset = emitConstI32(builder, destTy->getOffset());
+      auto *srcOffset = emitConstI32(builder, srcTy->getOffset());
+      auto *filterOffset = emitConstI32(builder, filterTy->getOffset());
+
+      // Calculate the scale of the values that come out of the matrix
+      // multiplication part of the calculation.
+      float matMulScale = srcTy->getScale() * filterTy->getScale();
+
+      // Calculate the scaling parameters for the bias and output.
+      auto outScaleParam = quantization::quantizeScaleOffset32To8(
+          matMulScale / destTy->getScale(), 0);
+
+      // Pass the pre-shift, post-shift and integer scale parameters for the
+      // output calculation.
+      auto *outPre = emitConstI32(builder, outScaleParam.pre);
+      auto *outPost = emitConstI32(builder, outScaleParam.post);
+      auto *outScale = emitConstI32(builder, outScaleParam.scale);
+
+      createCall(builder, F,
+                 {destPtr, srcPtr, filterPtr, biasPtr, destDims, srcDims,
+                  filterDims, biasDims, kernels, strides, pads, group,
+                  destOffset, srcOffset, filterOffset, outPre, outPost,
+                  outScale, dilation});
+    } else {
+      createCall(builder, F,
+                 {destPtr, srcPtr, filterPtr, biasPtr, destDims, srcDims,
+                  filterDims, biasDims, kernels, strides, pads, group,
+                  dilation});
+    }
+    break;
+  }
+
   case Kinded::Kind::CrossEntropyLossInstKind: {
     auto *CI = cast<CrossEntropyLossInst>(I);
     auto *P = CI->getP();
@@ -2704,6 +2781,46 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *dataPtr = emitValueAddress(builder, data);
     auto *F = getFunction("write_timestamp");
     createCall(builder, F, {dataPtr, offset});
+    break;
+  }
+
+  case Kinded::Kind::NonMaxSuppressionInstKind: {
+    auto *NMSI = llvm::cast<NonMaxSuppressionInst>(I);
+    auto boxes = NMSI->getBoxes();
+    auto scores = NMSI->getScores();
+    auto indices = NMSI->getIndices();
+    auto numDetected = NMSI->getNumberOfSelectedIndices();
+    float iouThreshold = NMSI->getIouThreshold();
+    int64_t maxBoxesPerClass = NMSI->getMaxOutputBoxesPerClass();
+    float scoreThreshold = NMSI->getScoreThreshold();
+    int centerPointBox = NMSI->getCenterPointBox();
+    bool isV4 = NMSI->getIsTFVersion4();
+
+    auto *boxesPtr = emitValueAddress(builder, boxes);
+    auto *scoresPtr = emitValueAddress(builder, scores);
+    auto *indicesPtr = emitValueAddress(builder, indices);
+    auto *numDetectedPtr = emitValueAddress(builder, numDetected);
+
+    auto *maxBoxesPerClassVal = emitConstI32(builder, maxBoxesPerClass);
+    auto *centerPointBoxVal = emitConstI32(builder, centerPointBox);
+    auto *iouThresholdVal = emitConstF32(builder, iouThreshold);
+    auto *scoreThresholdVal = emitConstF32(builder, scoreThreshold);
+
+    auto *boxesDimVal = emitValueDims(builder, boxes);
+    auto *scoreDimVal = emitValueDims(builder, scores);
+    auto *indicesDimVal = emitValueDims(builder, indices);
+    auto *boxesDimSizeVal = emitConstSizeT(builder, boxes->dims().size());
+    auto *scoresDimSizeVal = emitConstSizeT(builder, scores->dims().size());
+    auto *indicesDimSizeVal = emitConstSizeT(builder, indices->dims().size());
+    auto *isV4Val = emitConstI1(builder, isV4);
+
+    auto *F = getFunction("nms", indices->getElementType());
+    createCall(builder, F,
+               {indicesPtr, numDetectedPtr, boxesPtr, boxesDimVal,
+                boxesDimSizeVal, scoresPtr, scoreDimVal, scoresDimSizeVal,
+                indicesDimVal, indicesDimSizeVal, centerPointBoxVal,
+                maxBoxesPerClassVal, iouThresholdVal, scoreThresholdVal,
+                isV4Val});
     break;
   }
 

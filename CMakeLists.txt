@@ -186,6 +186,30 @@ else()
   include_directories(${GLOW_THIRDPARTY_DIR}/fp16/include)
 endif()
 
+if(NOT EXISTS "${GLOW_THIRDPARTY_DIR}/folly/folly")
+  message(FATAL_ERROR "No folly git submodule. Run: git submodule update --init --recursive")
+else()
+  # Apple-specific definitions for folly.
+  if(APPLE)
+    set(FOLLY_HAVE_WEAK_SYMBOLS ON CACHE BOOL "Compiler supports weak symbols")
+    set(OPENSSL_ROOT_DIR /usr/local/opt/openssl)
+    find_package(OpenSSL REQUIRED)
+  endif()
+
+  # Remove Glow-specific CMAKE_CXX_FLAGS to build folly.
+  set(SAVE_CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
+  set(CMAKE_CXX_FLAGS "")
+  set(SAVE_CMAKE_CXX_STANDARD "${CMAKE_CXX_STANDARD}")
+  unset(CMAKE_CXX_STANDARD)
+  add_subdirectory("${GLOW_THIRDPARTY_DIR}/folly" EXCLUDE_FROM_ALL)
+  target_include_directories(folly PUBLIC "${OPENSSL_INCLUDE_DIR}")
+  set(CMAKE_CXX_FLAGS "${SAVE_CMAKE_CXX_FLAGS}")
+  set(CMAKE_CXX_STANDARD "${SAVE_CMAKE_CXX_STANDARD}")
+
+  add_library(folly_jemalloc INTERFACE)
+  target_link_libraries(folly_jemalloc INTERFACE folly jemalloc)
+endif()
+
 add_library(Miniz
   ${GLOW_THIRDPARTY_DIR}/miniz-2.0.8/miniz.c)
 target_include_directories(Miniz PUBLIC ${GLOW_THIRDPARTY_DIR}/miniz-2.0.8)
@@ -221,12 +245,16 @@ if (GLOW_BUILD_TESTS)
   # Fetch the dependencies for all the tests.
   get_property(GLOW_TEST_DEPENDS GLOBAL PROPERTY GLOW_TEST_DEPENDS)
 
-  # All tests except expensive tests
-  add_custom_target(check COMMAND ${CMAKE_CTEST_COMMAND} -LE EXPENSIVE
+  # All tests except expensive tests and stress tests.
+  add_custom_target(check COMMAND ${CMAKE_CTEST_COMMAND} -LE EXPENSIVE\\|STRESS
                       DEPENDS ${GLOW_TEST_DEPENDS} USES_TERMINAL)
 
-  # All tests including expensive tests
-  add_custom_target(check_expensive COMMAND ${CMAKE_CTEST_COMMAND}
+  # All tests including expensive tests but not stress tests.
+  add_custom_target(check_expensive COMMAND ${CMAKE_CTEST_COMMAND} -LE STRESS
+                      DEPENDS ${GLOW_TEST_DEPENDS} USES_TERMINAL)
+
+  # All tests including expensive and stress tests.
+  add_custom_target(check_expensive_stress COMMAND ${CMAKE_CTEST_COMMAND}
                       DEPENDS ${GLOW_TEST_DEPENDS} USES_TERMINAL)
 endif()
 

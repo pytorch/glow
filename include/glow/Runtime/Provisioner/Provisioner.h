@@ -44,6 +44,9 @@ public:
   /// Remove stored compiledFunction.
   Error removeFunction(llvm::StringRef name);
 
+  /// Evict function from device.
+  Error evictFunction(llvm::StringRef name, DeviceIDTy device);
+
   /// \returns a reference to the backend with name \p backendName.
   Backend &getBackend(llvm::StringRef backendName) const;
 
@@ -66,9 +69,13 @@ private:
   /// List of available DeviceManagers added during initialization.
   std::vector<DeviceManager *> devices_;
 
-  /// Helper function to cleanup a provision call. On failure free the
-  /// compiledFunctions that were created.
-  void cleanupProvision(llvm::ArrayRef<std::string> names, bool failure = true);
+  /// Helper function to cleanup a provision call. On \p failure free the
+  /// compiledFunctions that were created, \p names , and remove networks
+  /// already added to devices, \p currentNetworkResidency .
+  void cleanupProvision(llvm::ArrayRef<std::string> names,
+                        std::map<DeviceIDTy, std::vector<std::string>> const
+                            &currentNetworkResidency,
+                        bool failure = true);
 
   /// Helper function to parse the DAG and generate logicalDevices.
   std::map<DeviceIDTy, std::vector<DAGNode *>>

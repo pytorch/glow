@@ -68,6 +68,8 @@ class NodeBuilder {
   bool isBackendSpecific_{false};
   /// Specifies if this Node is data parallel.
   bool isDataParallel_{false};
+  /// Specifies if this Node can have extra results.
+  bool hasExtraResults_{false};
 
 public:
   NodeBuilder(std::ofstream &H, std::ofstream &C, std::ofstream &D,
@@ -169,6 +171,11 @@ public:
 
   NodeBuilder &dataParallel() {
     isDataParallel_ = true;
+    return *this;
+  }
+
+  NodeBuilder &hasExtraResults() {
+    hasExtraResults_ = true;
     return *this;
   }
 

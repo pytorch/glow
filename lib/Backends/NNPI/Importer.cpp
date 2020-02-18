@@ -53,8 +53,8 @@ glow::NNPIImporter::NNPIImporter(const NNPICompilationOptions &compileOptions)
 /// Destructor.
 glow::NNPIImporter::~NNPIImporter() {
   if (network_ != NNPI_INVALID_NNPIHANDLE) {
-    LOG_NNPI_ERROR(nnpiNetworkDestroy(network_),
-                   "Failed to destroy NNPI network");
+    LOG_NNPI_IF_ERROR(nnpiNetworkDestroy(network_),
+                      "Failed to destroy NNPI network");
   }
 }
 
@@ -63,9 +63,10 @@ NNPIErrorCode glow::NNPIImporter::addTensor(std::string name,
                                             const std::string &scaleTensor,
                                             const std::string &offsetTensor,
                                             bool forceSymlowp) {
-  LOG_AND_RETURN_IF_NOT(ERROR, constants_.count(name),
-                        "Could not find Constants for tensor",
-                        NNPI_INVALID_PARAM);
+  LOG_AND_RETURN_IF_NOT(
+      ERROR, constants_.count(name),
+      strFormat("Could not find Constants for tensor %s", name.c_str()),
+      NNPI_INVALID_PARAM);
   const Tensor *t = constants_.at(name);
 
   NNPITensorDesc desc;
@@ -419,7 +420,7 @@ NNPINetwork glow::NNPIImporter::importFunction(Function *F,
     std::string name = nodeValueName(c->getOutput());
     constants_.emplace(name, &c->getPayload());
     DBG_MEM_USAGE("ImportFunction: Add Constant Tensor: " << name);
-    LOG_NNPI_ERROR_RETURN_INVALID_HANDLE(
+    LOG_NNPI_IF_ERROR_RETURN_INVALID_HANDLE(
         addTensor(nodeValueName(c->getOutput())), "Failed to add constant");
   }
 
@@ -443,14 +444,14 @@ NNPINetwork glow::NNPIImporter::importFunction(Function *F,
     }
     for (unsigned r = 0, e = N.getNumResults(); r < e; r++) {
       auto resVal = N.getNthResult(r);
-      LOG_NNPI_ERROR_RETURN_INVALID_HANDLE(
+      LOG_NNPI_IF_ERROR_RETURN_INVALID_HANDLE(
           addValue(nodeValueName(resVal), resVal.getType()),
           "Failed to add intermediate");
       DBG("  Output: " << nodeValueName(resVal));
     }
     DBG_MEM_USAGE("ImportFunction import node: " << N.getKindName());
     // Import node.
-    LOG_NNPI_ERROR_RETURN_INVALID_HANDLE(
+    LOG_NNPI_IF_ERROR_RETURN_INVALID_HANDLE(
         nodeImporters_.at(N.getKindName())->importNode(&N, *this),
         "Failed to import node");
   }
@@ -462,7 +463,7 @@ NNPINetwork glow::NNPIImporter::importFunction(Function *F,
     bool outputVar(!readTensors_.count(v->getName()) &&
                    writeTensors_.count(v->getName()));
     if (inputVar || outputVar) {
-      LOG_NNPI_ERROR_RETURN_INVALID_HANDLE(
+      LOG_NNPI_IF_ERROR_RETURN_INVALID_HANDLE(
           addValue(v->getName(), v->getType(),
                    isVariableUsingAlternativeLayout(v), inputVar, outputVar),
           "Failed to add placeholder");
@@ -480,8 +481,8 @@ NNPINetwork glow::NNPIImporter::importFunction(Function *F,
   NNPIErrorCode res = nnpiNetworkBuild(network_);
   if (res != NNPI_NO_ERROR) {
     LOG(INFO) << "Failed to build network";
-    LOG_NNPI_ERROR(nnpiNetworkDestroy(network_),
-                   "Failed to destroy NNPI network");
+    LOG_NNPI_IF_ERROR(nnpiNetworkDestroy(network_),
+                      "Failed to destroy NNPI network");
     net = NNPI_INVALID_NNPIHANDLE;
   } else {
     net = network_;
@@ -523,21 +524,21 @@ public:
     uint32_t dilation[SPATIAL_DIMS2] = {glowConv->getDilation(),
                                         glowConv->getDilation()};
 
-    LOG_NNPI_ERROR_RETURN_VALUE(
+    LOG_NNPI_IF_ERROR_RETURN_VALUE(
         importer.addTensor(nodeValueName(glowConv->getFilter()),
                            /* alternativeLayout */ true),
         "Failed to add tensor to NNPI");
-    LOG_NNPI_ERROR_RETURN_VALUE(
+    LOG_NNPI_IF_ERROR_RETURN_VALUE(
         importer.addTensor(nodeValueName(glowConv->getBias())),
         "Failed to add tensor to NNPI");
 
     // Overwrite input/output values for layout.
-    LOG_NNPI_ERROR_RETURN_VALUE(
+    LOG_NNPI_IF_ERROR_RETURN_VALUE(
         importer.addValue(nodeValueName(glowConv->getInput()),
                           glowConv->getInput().getType(),
                           /* alternativeLayout */ true),
         "Failed to add tensor to NNPI");
-    LOG_NNPI_ERROR_RETURN_VALUE(
+    LOG_NNPI_IF_ERROR_RETURN_VALUE(
         importer.addValue(nodeValueName(glowConv->getResult()),
                           glowConv->getResult().getType(),
                           /* alternativeLayout */ true),
@@ -614,12 +615,12 @@ public:
                                       glowPool->getStrides()[1]};
 
     // Overwrite input/output values for layout.
-    LOG_NNPI_ERROR_RETURN_VALUE(
+    LOG_NNPI_IF_ERROR_RETURN_VALUE(
         importer.addValue(nodeValueName(glowPool->getInput()),
                           glowPool->getInput().getType(),
                           /* alternativeLayout */ true),
         "Failed to add tensor to NNPI");
-    LOG_NNPI_ERROR_RETURN_VALUE(
+    LOG_NNPI_IF_ERROR_RETURN_VALUE(
         importer.addValue(nodeValueName(glowPool->getResult()),
                           glowPool->getResult().getType(),
                           /* alternativeLayout */ true),
@@ -642,19 +643,19 @@ public:
     auto *glowFC = llvm::dyn_cast<FullyConnectedNode>(n);
     LOG_AND_RETURN_IF_NOT(ERROR, glowFC, "Bad node type", NNPI_INVALID_PARAM);
 
-    LOG_NNPI_ERROR_RETURN_VALUE(
+    LOG_NNPI_IF_ERROR_RETURN_VALUE(
         importer.addTensor(nodeValueName(glowFC->getWeights()),
                            /* alternativeLayout */ true),
         "Failed to add tensor to NNPI");
 
     // Overwrite input/output values for layout.
     const auto *input = glowFC->getInput().getNode();
-    LOG_NNPI_ERROR_RETURN_VALUE(
+    LOG_NNPI_IF_ERROR_RETURN_VALUE(
         importer.addValue(input->getName(), input->getType(0),
                           input->getType(0)->dims().size() == 4),
         "Failed to add tensor to NNPI");
     const auto *result = glowFC->getResult().getNode();
-    LOG_NNPI_ERROR_RETURN_VALUE(
+    LOG_NNPI_IF_ERROR_RETURN_VALUE(
         importer.addValue(result->getName(), result->getType(0),
                           result->getType(0)->dims().size() == 4),
         "Failed to add tensor to NNPI");
@@ -1242,12 +1243,12 @@ public:
     LOG_AND_RETURN_IF_NOT(ERROR, glowLRN, "Bad node type", NNPI_INVALID_PARAM);
 
     // Overwrite input/output values for layout.
-    LOG_NNPI_ERROR_RETURN_VALUE(
+    LOG_NNPI_IF_ERROR_RETURN_VALUE(
         importer.addValue(nodeValueName(glowLRN->getInput()),
                           glowLRN->getInput().getType(),
                           /* alternativeLayout */ true),
         "Failed to add tensor to NNPI");
-    LOG_NNPI_ERROR_RETURN_VALUE(
+    LOG_NNPI_IF_ERROR_RETURN_VALUE(
         importer.addValue(nodeValueName(glowLRN->getResult()),
                           glowLRN->getResult().getType(),
                           /* alternativeLayout */ true),
@@ -1293,7 +1294,7 @@ public:
         NNPIImporter::internalName_ +
         nodeValueName(glowRowwiseFC->getInput()).c_str() + "_symlowp";
     auto *inType = glowRowwiseFC->getInput().getType();
-    LOG_NNPI_ERROR_RETURN_VALUE(
+    LOG_NNPI_IF_ERROR_RETURN_VALUE(
         importer.addValue(symlowpInputName, inType,
                           /* alternativeLayout */ inType->dims().size() == 4,
                           /* input */ false, /* output */ false, {}, {},
@@ -1305,7 +1306,7 @@ public:
         NNPIImporter::internalName_ +
         nodeValueName(glowRowwiseFC->getResult()).c_str() + "_symlowp";
     auto *outType = glowRowwiseFC->getResult().getType();
-    LOG_NNPI_ERROR_RETURN_VALUE(
+    LOG_NNPI_IF_ERROR_RETURN_VALUE(
         importer.addValue(symlowpOutputName, outType,
                           /* alternativeLayout */ outType->dims().size() == 4,
                           /* input */ false, /* output */ false, {}, {},
@@ -1316,7 +1317,7 @@ public:
     std::string convertInputName = NNPIImporter::internalName_ +
                                    glowRowwiseFC->getName().begin() +
                                    "_convert_input";
-    LOG_NNPI_ERROR_RETURN_VALUE(
+    LOG_NNPI_IF_ERROR_RETURN_VALUE(
         nnpiNetworkAddConvertOp(
             importer.getNetwork(), convertInputName.c_str(),
             nodeValueName(glowRowwiseFC->getInput()).c_str(),
@@ -1327,7 +1328,7 @@ public:
     std::string convertOutputName = NNPIImporter::internalName_ +
                                     glowRowwiseFC->getName().begin() +
                                     "_convert_output";
-    LOG_NNPI_ERROR_RETURN_VALUE(
+    LOG_NNPI_IF_ERROR_RETURN_VALUE(
         nnpiNetworkAddConvertOp(
             importer.getNetwork(), convertOutputName.c_str(),
             symlowpOutputName.c_str(),
@@ -1337,7 +1338,7 @@ public:
     // Create the weights with no offset tensor.
     // Assert weights & biases have no offset or all zeroes.
 
-    LOG_NNPI_ERROR_RETURN_VALUE(
+    LOG_NNPI_IF_ERROR_RETURN_VALUE(
         importer.addTensor(nodeValueName(glowRowwiseFC->getWeights()),
                            /* alternativeLayout */ false,
                            nodeValueName(glowRowwiseFC->getScales()),
@@ -1345,20 +1346,20 @@ public:
                            /* forceSymlowp */ true),
         "Failed to add tensor to NNPI");
 
-    LOG_NNPI_ERROR_RETURN_VALUE(
+    LOG_NNPI_IF_ERROR_RETURN_VALUE(
         importer.addTensor(nodeValueName(glowRowwiseFC->getBias()),
                            /* alternativeLayout */ false, {}, {},
                            /* forceSymlowp */ true),
         "Failed to add tensor to NNPI");
 
     // Overwrite input/output values for layout.
-    LOG_NNPI_ERROR_RETURN_VALUE(
+    LOG_NNPI_IF_ERROR_RETURN_VALUE(
         importer.addValue(nodeValueName(glowRowwiseFC->getInput()),
                           glowRowwiseFC->getInput().getType(),
                           glowRowwiseFC->getInput().getType()->dims().size() ==
                               4),
         "Failed to add tensor to NNPI");
-    LOG_NNPI_ERROR_RETURN_VALUE(
+    LOG_NNPI_IF_ERROR_RETURN_VALUE(
         importer.addValue(nodeValueName(glowRowwiseFC->getResult()),
                           glowRowwiseFC->getResult().getType(),
                           glowRowwiseFC->getResult().getType()->dims().size() ==
@@ -1453,7 +1454,7 @@ public:
         llvm::dyn_cast<RowwiseQuantizedSparseLengthsWeightedSumNode>(n);
     LOG_AND_RETURN_IF_NOT(ERROR, glowSLWS, "Bad node type", NNPI_INVALID_PARAM);
 
-    LOG_NNPI_ERROR_RETURN_VALUE(
+    LOG_NNPI_IF_ERROR_RETURN_VALUE(
         importer.addTensor(nodeValueName(glowSLWS->getData()),
                            /* alternativeLayout */ false,
                            nodeValueName(glowSLWS->getScales()),
@@ -1679,86 +1680,86 @@ std::unordered_map<
     std::string,
     std::unique_ptr<INNPINodeImporter>>::value_type importerInit[] = {
     {"", nullptr},
-    {"Convolution", std::make_unique<ConvolutionNodeImporter>()},
-    {"Transpose", std::make_unique<TransposeNodeImporter>()},
+    {"Convolution", glow::make_unique<ConvolutionNodeImporter>()},
+    {"Transpose", glow::make_unique<TransposeNodeImporter>()},
     {"MaxPool",
-     std::make_unique<PoolNodeImporter<glow::MaxPoolNode, NNPI_POOL_MAX>>()},
+     glow::make_unique<PoolNodeImporter<glow::MaxPoolNode, NNPI_POOL_MAX>>()},
     {"AvgPool",
-     std::make_unique<PoolNodeImporter<glow::AvgPoolNode, NNPI_POOL_AVG>>()},
-    {"FullyConnected", std::make_unique<FullyConnectedNodeImporter>()},
-    {"SoftMax", std::make_unique<SoftMaxNodeImporter>()},
-    {"Save", std::make_unique<SaveNodeImporter>()},
-    {"Relu", std::make_unique<ReluNodeImporter>()},
-    {"PRelu", std::make_unique<PReluNodeImporter>()},
-    {"Exp", std::make_unique<
+     glow::make_unique<PoolNodeImporter<glow::AvgPoolNode, NNPI_POOL_AVG>>()},
+    {"FullyConnected", glow::make_unique<FullyConnectedNodeImporter>()},
+    {"SoftMax", glow::make_unique<SoftMaxNodeImporter>()},
+    {"Save", glow::make_unique<SaveNodeImporter>()},
+    {"Relu", glow::make_unique<ReluNodeImporter>()},
+    {"PRelu", glow::make_unique<PReluNodeImporter>()},
+    {"Exp", glow::make_unique<
                 UnaryEltwiseNodeImporter<glow::ExpNode, NNPI_ELTWISE_EXP>>()},
-    {"Max", std::make_unique<
+    {"Max", glow::make_unique<
                 BinaryEltwiseNodeImporter<glow::MaxNode, NNPI_ELTWISE_MAX>>()},
-    {"Min", std::make_unique<
+    {"Min", glow::make_unique<
                 BinaryEltwiseNodeImporter<glow::MinNode, NNPI_ELTWISE_MIN>>()},
-    {"Add", std::make_unique<
+    {"Add", glow::make_unique<
                 BinaryEltwiseNodeImporter<glow::AddNode, NNPI_ELTWISE_ADD>>()},
-    {"Mul", std::make_unique<
+    {"Mul", glow::make_unique<
                 BinaryEltwiseNodeImporter<glow::MulNode, NNPI_ELTWISE_MUL>>()},
-    {"Div", std::make_unique<
+    {"Div", glow::make_unique<
                 BinaryEltwiseNodeImporter<glow::DivNode, NNPI_ELTWISE_DIV>>()},
-    {"Sub", std::make_unique<
+    {"Sub", glow::make_unique<
                 BinaryEltwiseNodeImporter<glow::SubNode, NNPI_ELTWISE_SUB>>()},
-    {"Pow", std::make_unique<
+    {"Pow", glow::make_unique<
                 BinaryEltwiseNodeImporter<glow::PowNode, NNPI_ELTWISE_POW>>()},
     {"CmpEQ",
-     std::make_unique<
+     glow::make_unique<
          BinaryEltwiseNodeImporter<glow::CmpEQNode, NNPI_ELTWISE_EQ>>()},
     {"CmpLTE",
-     std::make_unique<
+     glow::make_unique<
          BinaryEltwiseNodeImporter<glow::CmpLTENode, NNPI_ELTWISE_LTE>>()},
     {"CmpLT",
-     std::make_unique<
+     glow::make_unique<
          BinaryEltwiseNodeImporter<glow::CmpLTNode, NNPI_ELTWISE_LESS>>()},
-    {"ArgMax", std::make_unique<ArgMaxNodeImporter>()},
-    {"Reshape", std::make_unique<ReshapeNodeImporter>()},
-    {"Quantize", std::make_unique<ConvertNodeImporter<QuantizeNode>>()},
-    {"Dequantize", std::make_unique<ConvertNodeImporter<DequantizeNode>>()},
+    {"ArgMax", glow::make_unique<ArgMaxNodeImporter>()},
+    {"Reshape", glow::make_unique<ReshapeNodeImporter>()},
+    {"Quantize", glow::make_unique<ConvertNodeImporter<QuantizeNode>>()},
+    {"Dequantize", glow::make_unique<ConvertNodeImporter<DequantizeNode>>()},
     {"RescaleQuantized",
-     std::make_unique<ConvertNodeImporter<RescaleQuantizedNode>>()},
-    {"ConvertTo", std::make_unique<ConvertNodeImporter<ConvertToNode>>()},
-    {"MatMul", std::make_unique<MatMulNodeImporter<MatMulNode>>()},
-    {"BatchMatMul", std::make_unique<MatMulNodeImporter<BatchMatMulNode>>()},
-    {"Slice", std::make_unique<SliceNodeImporter>()},
-    {"Sigmoid", std::make_unique<SigmoidNodeImporter>()},
-    {"Tanh", std::make_unique<TanhNodeImporter>()},
-    {"Concat", std::make_unique<ConcatNodeImporter>()},
-    {"Tile", std::make_unique<TileNodeImporter>()},
-    {"Gather", std::make_unique<GatherNodeImporter>()},
-    {"BatchedReduceAdd", std::make_unique<ReduceAddNodeImporter>()},
-    {"Log", std::make_unique<LogNodeImporter>()},
-    {"TopK", std::make_unique<TopkNodeImporter>()},
+     glow::make_unique<ConvertNodeImporter<RescaleQuantizedNode>>()},
+    {"ConvertTo", glow::make_unique<ConvertNodeImporter<ConvertToNode>>()},
+    {"MatMul", glow::make_unique<MatMulNodeImporter<MatMulNode>>()},
+    {"BatchMatMul", glow::make_unique<MatMulNodeImporter<BatchMatMulNode>>()},
+    {"Slice", glow::make_unique<SliceNodeImporter>()},
+    {"Sigmoid", glow::make_unique<SigmoidNodeImporter>()},
+    {"Tanh", glow::make_unique<TanhNodeImporter>()},
+    {"Concat", glow::make_unique<ConcatNodeImporter>()},
+    {"Tile", glow::make_unique<TileNodeImporter>()},
+    {"Gather", glow::make_unique<GatherNodeImporter>()},
+    {"BatchedReduceAdd", glow::make_unique<ReduceAddNodeImporter>()},
+    {"Log", glow::make_unique<LogNodeImporter>()},
+    {"TopK", glow::make_unique<TopkNodeImporter>()},
     {"BatchedReduceMean",
-     std::make_unique<ReduceMultAxesNodeImporter<glow::BatchedReduceMeanNode,
-                                                 NNPI_REDUCE_MEAN>>()},
+     glow::make_unique<ReduceMultAxesNodeImporter<glow::BatchedReduceMeanNode,
+                                                  NNPI_REDUCE_MEAN>>()},
     {"BatchedReduceMin",
-     std::make_unique<ReduceMultAxesNodeImporter<glow::BatchedReduceMinNode,
-                                                 NNPI_REDUCE_MIN>>()},
-    {"Splat", std::make_unique<SplatNodeImporter>()},
-    {"SparseLengthsWeightedSum", std::make_unique<SLWSNodeImporter>()},
-    {"SparseLengthsSum", std::make_unique<SLSNodeImporter>()},
+     glow::make_unique<ReduceMultAxesNodeImporter<glow::BatchedReduceMinNode,
+                                                  NNPI_REDUCE_MIN>>()},
+    {"Splat", glow::make_unique<SplatNodeImporter>()},
+    {"SparseLengthsWeightedSum", glow::make_unique<SLWSNodeImporter>()},
+    {"SparseLengthsSum", glow::make_unique<SLSNodeImporter>()},
     {"FusedRowwiseQuantizedSparseLengthsSum",
-     std::make_unique<FRQSLSNodeImporter>()},
-    {"Select", std::make_unique<SelectNodeImporter>()},
-    {"LocalResponseNormalization", std::make_unique<LRNNodeImporter>()},
-    {"RowwiseQuantizedFullyConnected", std::make_unique<RQFCNodeImporter>()},
-    {"ReplaceNaN", std::make_unique<ReplaceNaNNodeImporter>()},
-    {"GatherRanges", std::make_unique<GatherRangesNodeImporter>()},
-    {"BatchedAdd", std::make_unique<BatchAddNodeImporter>()},
+     glow::make_unique<FRQSLSNodeImporter>()},
+    {"Select", glow::make_unique<SelectNodeImporter>()},
+    {"LocalResponseNormalization", glow::make_unique<LRNNodeImporter>()},
+    {"RowwiseQuantizedFullyConnected", glow::make_unique<RQFCNodeImporter>()},
+    {"ReplaceNaN", glow::make_unique<ReplaceNaNNodeImporter>()},
+    {"GatherRanges", glow::make_unique<GatherRangesNodeImporter>()},
+    {"BatchedAdd", glow::make_unique<BatchAddNodeImporter>()},
     {"RowwiseQuantizedSparseLengthsWeightedSum",
-     std::make_unique<RQSLWSNodeImporter>()},
+     glow::make_unique<RQSLWSNodeImporter>()},
     {"FusedRowwiseQuantizedSparseLengthsWeightedSum",
-     std::make_unique<FRQSLWSNodeImporter>()},
-    {"LengthsRangeFill", std::make_unique<LengthsRangeFillNodeImporter>()},
-    {"BatchOneHot", std::make_unique<BatchOneHotNodeImporter>()},
-    {"NNPICustomDSP", std::make_unique<NNPICustomDSPNodeImporter>()},
-    {"SpaceToDepth", std::make_unique<SpaceToDepthNodeImporter>()},
-    {"Clip", std::make_unique<ClipNodeImporter>()},
+     glow::make_unique<FRQSLWSNodeImporter>()},
+    {"LengthsRangeFill", glow::make_unique<LengthsRangeFillNodeImporter>()},
+    {"BatchOneHot", glow::make_unique<BatchOneHotNodeImporter>()},
+    {"NNPICustomDSP", glow::make_unique<NNPICustomDSPNodeImporter>()},
+    {"SpaceToDepth", glow::make_unique<SpaceToDepthNodeImporter>()},
+    {"Clip", glow::make_unique<ClipNodeImporter>()},
 };
 }
 

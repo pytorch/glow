@@ -35,6 +35,7 @@
 #include "llvm/Support/Timer.h"
 #include "llvm/Support/raw_ostream.h"
 
+#include <algorithm>
 #include <future>
 #include <sstream>
 
@@ -48,9 +49,9 @@ static llvm::cl::opt<bool, true>
                    llvm::cl::desc("Enable rowwise quantized fully connected."),
                    llvm::cl::location(enableRowwiseOpt), llvm::cl::init(false));
 
-namespace {
 llvm::cl::OptionCategory loaderCat("Loader Options");
 
+namespace {
 llvm::cl::list<std::string> modelPathOpt(
     "model",
     llvm::cl::desc(
@@ -276,8 +277,7 @@ std::string Loader::getModelOptPath() {
 
   // Model path must be to one or more files. Use the path of the first file.
   size_t found = modelPathOpt[0].find_last_of("/");
-  assert(found != std::string::npos && "Expected path to proto with directory");
-  return modelPathOpt[0].substr(0, found);
+  return found == std::string::npos ? "." : modelPathOpt[0].substr(0, found);
 }
 
 llvm::StringRef Loader::getModelOptDir() {
@@ -939,6 +939,11 @@ void Loader::runInference(ExecutionContext *context, size_t batchSize) {
   }
 }
 
+static bool compareQI(const NodeQuantizationInfo &a,
+                      const NodeQuantizationInfo &b) {
+  return (a.nodeOutputName_.compare(b.nodeOutputName_) < 0);
+}
+
 void Loader::generateAndSerializeQuantizationInfos(
     PlaceholderBindings &bindings) {
   assert(!dumpProfileFileOpt.empty() &&
@@ -951,7 +956,35 @@ void Loader::generateAndSerializeQuantizationInfos(
             quantizationPrecisionBias);
     QI.insert(QI.end(), tmp.begin(), tmp.end());
   }
+  std::sort(QI.begin(), QI.end(), compareQI);
   serializeToYaml(dumpProfileFileOpt, QI);
+}
+
+Loader &Loader::registerExtension(std::unique_ptr<LoaderExtension> extension) {
+  loaderExtensionList_.push_back(std::move(extension));
+  return *this;
+}
+
+void Loader::postModelLoad(PlaceholderBindings &bindings,
+                           ProtobufLoader &protoLoader,
+                           size_t compilationBatchSize) {
+  for (auto &&ext : loaderExtensionList_) {
+    ext->postModelLoad(*this, bindings, protoLoader, compilationBatchSize);
+  }
+}
+
+void Loader::inferInitMiniBatch(PlaceholderBindings &bindings,
+                                size_t minibatchIndex, size_t minibatchSize) {
+  for (auto &&ext : loaderExtensionList_) {
+    ext->inferInitMiniBatch(*this, bindings, minibatchIndex, minibatchSize);
+  }
+}
+
+void Loader::inferEndMiniBatch(PlaceholderBindings &bindings,
+                               size_t minibatchIndex, size_t minibatchSize) {
+  for (auto &&ext : loaderExtensionList_) {
+    ext->inferEndMiniBatch(*this, bindings, minibatchIndex, minibatchSize);
+  }
 }
 
 Loader::Loader() {

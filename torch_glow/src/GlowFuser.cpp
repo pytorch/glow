@@ -254,15 +254,47 @@ void verifyFusions(const std::shared_ptr<torch::jit::Graph> graph,
 void glowCustomFuseImpl(std::shared_ptr<torch::jit::Graph> graph,
                         at::Symbol kind, const PyTorchLoaderSettings &settings,
                         IsSupportFunc fn) {
-  const auto blacklist = settings.opBlacklist;
+  // Reason for node being blacklisted.
+  enum class NodeBlacklistReason {
+    Kind,
+    Index,
+  };
+
+  std::unordered_map<const torch::jit::Node *, NodeBlacklistReason>
+      blacklistedNodes;
+
+  size_t i = 0;
+  for (const torch::jit::Node *node : graph->nodes()) {
+    if (settings.fusionStartIndex >= 0 && i < settings.fusionStartIndex) {
+      blacklistedNodes[node] = NodeBlacklistReason::Index;
+    }
+
+    if (settings.fusionEndIndex >= 0 && i >= settings.fusionEndIndex) {
+      blacklistedNodes[node] = NodeBlacklistReason::Index;
+    }
+
+    if (settings.opBlacklist.count(node->kind())) {
+      blacklistedNodes[node] = NodeBlacklistReason::Kind;
+    }
+    i++;
+  }
+
   const auto minFusionGroupSize = settings.minFusionGroupSize;
 
   // Wrap fn in function that first checks the blacklist.
-  IsSupportFunc nodeSupportedFn = [bl = std::move(blacklist),
+  IsSupportFunc nodeSupportedFn = [blacklist = std::move(blacklistedNodes),
                                    fn](const torch::jit::Node *ptNode) {
-    if (bl.count(ptNode->kind())) {
-      LOG(INFO) << "Skipping black list op kind: "
-                << ptNode->kind().toQualString();
+    if (blacklist.count(ptNode)) {
+      switch (blacklist.at(ptNode)) {
+      case NodeBlacklistReason::Kind:
+        LOG(INFO) << "Skipping " << ptNode->kind().toQualString()
+                  << " op because its kind is blacklisted";
+        break;
+      case NodeBlacklistReason::Index:
+        LOG(INFO) << "Skipping " << ptNode->kind().toQualString()
+                  << " op because it's outside of the fusion range";
+        break;
+      }
       return false;
     }
 

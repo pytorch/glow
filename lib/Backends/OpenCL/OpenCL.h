@@ -219,8 +219,11 @@ public:
   ///@{
   ~OCLBackend() override = default;
 
-  std::string getBackendName() const override { return getName(); }
+  std::string getBackendName() const override {
+    return Named::getName().empty() ? getName() : Named::getName().str();
+  }
   static std::string getName() { return "OpenCL"; }
+  static unsigned numDevices() { return 1; }
 
   std::unique_ptr<CompiledFunction>
   compileIR(std::unique_ptr<IRFunction> IR) const override;
@@ -228,12 +231,13 @@ public:
   Expected<std::unique_ptr<CompiledFunction>>
   compile(Function *F, const BackendOptions &opts) const override;
 
-  bool transformPostLowering(Function *F,
-                             CompilationContext &cctx) const override;
+  bool transformPostLowering(
+      Function *F, CompilationContext &cctx,
+      const glow::runtime::DeviceInfo *devInfo) const override;
 
   bool isOpSupported(const NodeInfo &NI) const override;
 
-  bool verify(const Function &F) const override;
+  bool verify(const Function &F, bool verbose = true) const override;
   bool verify(const IRFunction &IR) const override;
 
   TensorLayoutCommon &getTensorLayoutRequirements() const override;

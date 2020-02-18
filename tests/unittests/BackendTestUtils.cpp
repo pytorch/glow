@@ -249,7 +249,7 @@ static void convertBindingsToCorrectType(PlaceholderBindings &bindings,
 static Tensor convertToFloatIfNecessary(Tensor &T) {
   const ElemKind srcK = T.getType().getElementType();
   if (srcK == ElemKind::FloatTy) {
-    return std::move(T);
+    return T.clone();
   }
   if (isQuantizedElemKind(srcK)) {
     return quantization::dequantizeTensor(T, ElemKind::FloatTy);
@@ -274,7 +274,9 @@ void compareAgainstInterpreter(llvm::StringRef backendName,
   LOG(INFO) << "Comparing Interpreter with precision "
             << Type::getElementName(interpElemKind).str() << " against "
             << backendName.str() << " with precision "
-            << Type::getElementName(backendElemKind).str();
+            << Type::getElementName(backendElemKind).str() << " with Bias "
+            << Type::getElementName(biasElemKind).str()
+            << " with FP16 AccumulationSLS " << forceFP16AccumSLS;
 
   // Create the same network on the interpreter and the backend being tested.
   FunctionTensorPair IFT = createAndInitFunction(iBindings, IEE);

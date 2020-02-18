@@ -84,17 +84,61 @@ ENDMACRO()
 
 # Macro to register backend specific nodes and instructions.
 MACRO(ExternalBackendsClassGen)
+set(ClassGen_Include_DIR ${GLOW_BINARY_DIR}/glow)
 getSubDirList(SUBDIRS ${GLOW_SOURCE_DIR}/externalbackends)
 FOREACH(child ${SUBDIRS})
   getBackendEnableVariable(backend_enable_variable ${child})
   # Handle the backend only when activated
   if (${backend_enable_variable})
     # If the backend has a 'ClassGen' sub-directory, add it.
+    set(backend_classgen_DIR "${EXTERNAL_BACKENDS_DIR}/${child}/ClassGen")
     if(EXISTS ${EXTERNAL_BACKENDS_DIR}/${child}/ClassGen)
        add_subdirectory(${EXTERNAL_BACKENDS_DIR}/${child}/ClassGen EXT_${child})
+
+       # Check for header files with custom node definitions in this subdirectory.
+       file(GLOB backend_specific_nodes
+            RELATIVE "${backend_classgen_DIR}"
+            "${backend_classgen_DIR}/*SpecificNodes.h")
+       # Include these header files into NodeGenIncludes.h.
+       foreach(include_file ${backend_specific_nodes})
+           file(APPEND "${ClassGen_Include_DIR}/NodeGenIncludes.h"
+                       "#include \"${EXTERNAL_BACKENDS_DIR}/${child}/ClassGen/${include_file}\"\n")
+       endforeach()
+       # Check for header files with custom instruction definitions in this subdirectory.
+       file(GLOB backend_specific_instrs
+            RELATIVE "${backend_classgen_DIR}"
+            "${backend_classgen_DIR}/*SpecificInstrs.h")
+       # Include these header files into InstrGenIncludes.h.
+       foreach(include_file ${backend_specific_instrs})
+           file(APPEND "${ClassGen_Include_DIR}/InstrGenIncludes.h"
+                       "#include \"${EXTERNAL_BACKENDS_DIR}/${child}/ClassGen/${include_file}\"\n")
+       endforeach()
     else()
       message(STATUS "External backend '${child}' has no 'ClassGen' sub-directory")
     endif()
+  endif()
+ENDFOREACH()
+ENDMACRO()
+
+# Macro to add backend specific ONNX model writers.
+MACRO(ExternalBackendsCollectONNXModelWriters)
+set(Exporter_Include_DIR ${GLOW_BINARY_DIR}/glow)
+getSubDirList(SUBDIRS ${GLOW_SOURCE_DIR}/externalbackends)
+FOREACH(backend ${SUBDIRS})
+  getBackendEnableVariable(backend_enable_variable ${backend})
+  # Handle the backend only when activated
+  if (${backend_enable_variable})
+    message(STATUS "Check backend ${backend} for ONNXModelWriters")
+    set(backend_ONNX_DIR "${EXTERNAL_BACKENDS_DIR}/${backend}")
+    # Check for ONNXModelWriters in the current backend subdirectory.
+    file(GLOB backend_specific_onnx_model_writers
+            RELATIVE "${backend_ONNX_DIR}"
+            "${backend_ONNX_DIR}/*ONNXModelWriter.cpp")
+    # Include these files into ONNXModelWriterIncludes.h.
+    foreach(onnx_model_writer ${backend_specific_onnx_model_writers})
+           file(APPEND "${Exporter_Include_DIR}/ONNXModelWriterIncludes.h"
+                       "#include \"${EXTERNAL_BACKENDS_DIR}/${backend}/ONNX/${onnx_model_writer}\"\n")
+    endforeach()
   endif()
 ENDFOREACH()
 ENDMACRO()
@@ -115,4 +159,3 @@ FOREACH(child ${SUBDIRS})
   endif()
 ENDFOREACH()
 ENDMACRO()
-

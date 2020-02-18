@@ -231,8 +231,32 @@ inline ShapeHWD calculate3DConvPoolOutputDims(
   return ShapeHWD(llvm::makeArrayRef(outDims));
 }
 
+/// Calculate the size of the output tensor based on the ConvTranspose
+/// parameters.
+inline std::pair<dim_t, dim_t> calculateConvTransposeOutputDims(
+    size_t sx, size_t sy, llvm::ArrayRef<unsigned_t> kernels,
+    llvm::ArrayRef<unsigned_t> strides, llvm::ArrayRef<unsigned_t> pads,
+    unsigned_t dilation = 1) {
+  PaddingTLBR pdim(pads);
+  ShapeHW kdim(kernels);
+  ShapeHW sdim(strides);
+
+  assert((dilation == 1) &&
+         "ConvTranspose output calculation doesn't support dilation");
+
+  size_t outsx = (sx - 1) * sdim.height + (kdim.height - 1) * (dilation - 1) -
+                 pdim.top - pdim.bottom + kdim.height;
+  size_t outsy = (sy - 1) * sdim.width + (kdim.width - 1) * (dilation - 1) -
+                 pdim.left - pdim.right + kdim.width;
+
+  return {outsx, outsy};
+}
+
 /// Modes of the padding operation.
 enum PaddingMode { CONSTANT = 0, REFLECT, EDGE };
+
+/// Different lengths modes used for SLS variants.
+enum class LengthsMode { High, Low, AllOne };
 
 /// Convolution Layouts.
 enum ConvolutionLayout { NHWC = 0, NCHW };
@@ -244,6 +268,7 @@ enum FusedActivation { NONE = 0, RELU, TANH, SIGMOID };
 llvm::raw_ostream &operator<<(llvm::raw_ostream &os, ConvolutionLayout layout);
 llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
                               FusedActivation fusedActivation);
+llvm::raw_ostream &operator<<(llvm::raw_ostream &os, LengthsMode lengthsMode);
 
 /// Support for hashing the Nodes. This is required for using
 /// llvm::hash_combine.

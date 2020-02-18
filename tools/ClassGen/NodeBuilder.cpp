@@ -559,6 +559,10 @@ void NodeBuilder::emitNodeClass(std::ostream &os) const {
      << "  Node* clone() const;\n"
      << "  bool verify() const;\n";
 
+  if (hasExtraResults_) {
+    os << "  void addExtraResult(TypeRef T) { addResult(T); }\n";
+  }
+
   if (!enum_.empty()) {
     os << "  const char *getModeStr() const { return getModeStr(mode_); }\n"
        << "  static const char *getModeStr(Mode m);\n";

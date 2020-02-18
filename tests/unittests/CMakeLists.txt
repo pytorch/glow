@@ -16,6 +16,7 @@ target_link_libraries(BackendTestUtils
                         ExecutionEngine
                         Graph
                         GraphOptimizer
+                        HostManager
                         Quantization
                         QuantizationBase
                         LLVMSupport
@@ -81,6 +82,26 @@ add_glow_test(NAME Caffe2ImporterTest
                   --gtest_output=xml:Caffe2ImporterTest.xml
               WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
+add_executable(LoaderTest
+               LoaderTest.cpp ../../tools/loader/Loader.cpp)
+target_link_libraries(LoaderTest
+                                PRIVATE
+                                  Backends
+                                  Base
+                                  Graph
+                                  HostManager
+                                  Importer
+                                  GraphOptimizer
+                                  ExecutionEngine
+                                  Quantization
+                                  gtest
+                                  TestMain)
+add_glow_test(NAME LoaderTest
+                        COMMAND ${GLOW_BINARY_DIR}/tests/LoaderTest
+                           -m=model
+                           --gtest_output=xml:LoaderTest.xml
+                        WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
 add_executable(ThreadPoolExecutorTest
         ThreadPoolExecutorTest.cpp)
 target_link_libraries(ThreadPoolExecutorTest
@@ -134,6 +155,9 @@ add_glow_test(NAME GlowOnnxifiManagerTest
               COMMAND ${GLOW_BINARY_DIR}/tests/GlowOnnxifiManagerTest
                   --gtest_output=xml:GlowOnnxifiManagerTest.xml
               WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+add_executable(FollyTest FollyTest.cpp)
+target_link_libraries(FollyTest PRIVATE folly_jemalloc gtest TestMain)
 
 add_executable(GraphGradTest
                GraphGradTest.cpp)
@@ -363,7 +387,9 @@ add_executable(OnnxExporterTest
 target_link_libraries(OnnxExporterTest
                       PRIVATE
                         Backend
+                        Backends
                         Graph
+                        GraphOptimizer
                         Importer
                         Exporter
                         ExecutionEngine
@@ -372,6 +398,21 @@ target_link_libraries(OnnxExporterTest
 add_glow_test(NAME OnnxExporterTest
               COMMAND ${GLOW_BINARY_DIR}/tests/OnnxExporterTest
                   --gtest_output=xml:OnnxExporterTest.xml
+              WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+add_executable(TypeAToTypeBFunctionConverterTest
+               TypeAToTypeBFunctionConverterTest.cpp)
+target_link_libraries(TypeAToTypeBFunctionConverterTest
+                      PRIVATE
+                        Backend
+                        Converter
+                        Graph
+                        GraphOptimizer
+                        gtest
+                        TestMain)
+add_glow_test(NAME TypeAToTypeBFunctionConverterTest
+              COMMAND ${GLOW_BINARY_DIR}/tests/TypeAToTypeBFunctionConverterTest
+                  --gtest_output=xml:TypeAToTypeBFunctionConverterTest.xml
               WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 # Loop through all backends present in lib/Backends (see FindBackends.cmake)
@@ -384,6 +425,7 @@ foreach(backend ${GLOW_BACKENDS})
   add_backend_test(TEST MLTest BACKEND "${backend}" UNOPT)
   add_backend_test(TEST OperatorGradTest BACKEND "${backend}" UNOPT)
   add_backend_test(TEST OperatorTest BACKEND "${backend}" UNOPT)
+  add_backend_test(TEST NumericsTest BACKEND "${backend}" UNOPT)
   add_backend_test(TEST TensorLayoutTest BACKEND "${backend}" UNOPT)
   add_backend_test(TEST
                    RecommendationSystemTest
@@ -402,13 +444,6 @@ foreach(backend ${GLOW_BACKENDS})
                    PRIVATE
                    HostManager
                    Runtime)
-
-  add_backend_test(TEST
-                   TypeAToTypeBFunctionConverterTest
-                   BACKEND
-                   "${backend}"
-                   Converter
-                   Graph)
 endforeach()
 
 add_executable(PartitionerTest
@@ -548,3 +583,37 @@ add_glow_test(ErrorTest ${GLOW_BINARY_DIR}/tests/ErrorTest --gtest_output=xml:Er
 LIST(APPEND UNOPT_TESTS true)
 add_custom_target(test_unopt ${UNOPT_TESTS}
                   WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# JIT tests
+if("${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang")
+    set(CLANG_BIN ${CMAKE_CXX_COMPILER})
+else()
+    find_program(CLANG_BIN clang++)
+endif()
+if(NOT CLANG_BIN)
+    message(SEND_ERROR "unable to find clang, cannot build the CPU runtime")
+endif()
+set (TEST_LIBJIT "test_libjit")
+add_custom_command(
+    OUTPUT ${GLOW_BINARY_DIR}/tests/${TEST_LIBJIT}.bc
+    COMMAND ${CLANG_BIN} -emit-llvm -c -o ${GLOW_BINARY_DIR}/tests/${TEST_LIBJIT}.bc ${TEST_LIBJIT}.cpp
+    DEPENDS ${TEST_LIBJIT}.cpp
+    WORKING_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}")
+file(MAKE_DIRECTORY ${GLOW_BINARY_DIR}/glow/CPU)
+add_custom_command(
+    OUTPUT ${GLOW_BINARY_DIR}/glow/CPU/${TEST_LIBJIT}_bc.inc
+    COMMAND include-bin "${GLOW_BINARY_DIR}/tests/${TEST_LIBJIT}.bc" "${GLOW_BINARY_DIR}/glow/CPU/${TEST_LIBJIT}_bc.inc"
+    DEPENDS ${GLOW_BINARY_DIR}/tests/${TEST_LIBJIT}.bc
+    WORKING_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}")
+add_executable(CPUJITTest
+    CPUJITTest.cpp ${GLOW_BINARY_DIR}/glow/CPU/${TEST_LIBJIT}_bc.inc)
+target_link_libraries(CPUJITTest
+    PRIVATE
+    Backends
+    ExecutionEngine
+    Graph
+    Support
+    gtest
+    TestMain)
+add_custom_target(CPUJITTest_libjit SOURCES ${TEST_LIBJIT}.cpp)
+add_glow_test(CPUJITTest ${GLOW_BINARY_DIR}/tests/CPUJITTest --gtest_output=xml:CPUJITTest.xml)

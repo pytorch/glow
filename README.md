@@ -52,7 +52,7 @@ The design philosophy is described in an [arXiv paper](https://arxiv.org/abs/180
 ### System Requirements
 
 Glow builds and runs on macOS and Linux. The software depends on a modern C++
-compiler that supports C++11, on CMake, LLVM, glog, protocol buffers, and
+compiler that supports C++11, on CMake, LLVM (>=7.0), glog, protocol buffers, and
 libpng.
 
 #### Get Glow!
@@ -73,25 +73,43 @@ To get them, from the glow directory, run:
   git submodule update --init --recursive
   ```
 
+#### Source dependencies
+
+Glow depends on `fmt`, which must be built from source:
+```bash
+git clone https://github.com/fmtlib/fmt
+mkdir fmt/build
+cd fmt/build
+cmake ..
+make
+sudo make install
+```
+
 #### macOS
 
 Install the required dependencies using either [Homebrew](https://brew.sh/) or
 [MacPorts](https://www.macports.org/). If using Homebrew, run:
 
   ```bash
-  brew install cmake graphviz libpng ninja protobuf wget glog autopep8
-  brew install llvm@7
+  brew install cmake graphviz libpng ninja protobuf wget glog autopep8 llvm   \
+      boost double-conversion gflags jemalloc libevent lz4 openssl pkg-config \
+      snappy xz
   ```
 
 If using MacPorts, run:
 
   ```bash
-  port install cmake graphviz libpng ninja protobuf-cpp wget llvm-7.0 google-glog
+  port install cmake graphviz libpng ninja protobuf-cpp wget google-glog \
+      boost double-conversion gflags jemalloc libevent lz4 openssl snappy xz
+  # Choose version >= 7
+  export LLVM_VERSION=7
+  port install llvm-$LLVM_VERSION.0 
   ```
+
 
 Note that LLVM is installed in a non-default location to avoid conflicts with
 the system's LLVM --Homebrew usually installs LLVM in `/usr/local/opt/llvm/`,
-whereas MacPorts installs it in `/opt/local/libexec/llvm-7.0/`. This means that
+whereas MacPorts installs it in `/opt/local/libexec/llvm-$LLVM_VERSION.0/`. This means that
 CMake will need to be told where to find LLVM when building; instructions on
 that can be found [here](#building-with-dependencies-llvm).
 
@@ -104,15 +122,17 @@ on. For a Homebrew-managed installation, run:
   ```
 For MacPorts, run:
   ```
-  ln -s "/opt/local/libexec/llvm-7.0/bin/clang-format" "/usr/local/bin/clang-format"
-  ln -s "/opt/local/libexec/llvm-7.0/bin/clang-tidy" "/usr/local/bin/clang-tidy"
+  ln -s "/opt/local/libexec/llvm-$LLVM_VERSION.0/bin/clang-format" "/usr/local/bin/clang-format"
+  ln -s "/opt/local/libexec/llvm-$LLVM_VERSION.0/bin/clang-tidy" "/usr/local/bin/clang-tidy"
 ```
 
-> **Note:** On newer versions of macOS, Xcode's command line tools come with a
-> non-traditional header layout. In order for Glow to build on newer macOS
-> versions, you might need to install `macOS_SDK_headers_for_macOS_10.14.pkg`
-> manually. For example, on Mojave this package is located in
+> **Note:** Starting with macOS Mojave, Xcode's command line tools changed header layout. 
+> In order for Glow to build on Mojave, you might need to install
+> `macOS_SDK_headers_for_macOS_10.14.pkg`, located in 
 > `/Library/Developer/CommandLineTools/Packages/`.
+> For macOS Catalina you might need to explicitly specify SDKROOT: 
+> `export SDKROOT="/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk"`
+
 
 #### Ubuntu
 
@@ -124,8 +144,11 @@ following command should install the required dependencies:
   ```bash
   sudo apt-get install clang clang-8 cmake graphviz libpng-dev \
       libprotobuf-dev llvm-8 llvm-8-dev ninja-build protobuf-compiler wget \
-      opencl-headers libgoogle-glog-dev
+      opencl-headers libgoogle-glog-dev libboost-all-dev \
+      libdouble-conversion-dev libevent-dev libssl-dev libgflags-dev \
+      libjemalloc-dev libpthread-stubs0-dev
   ```
+
 [Note: Ubuntu 16.04 and 18.04 ship with llvm-6 and need to be upgraded before building Glow. Building Glow on Ubuntu 16.04 with llvm-7 fails because llvm-7 xenial distribution uses an older c++ ABI, however building Glow on Ubuntu 18.04 with llvm-7 has been tested and is successful]
 
 It may be desirable to use `update-alternatives` to manage the version of
@@ -180,14 +203,21 @@ For platform-specific build instructions and advanced options, such as
 building with Address-Sanitizers refer to this guide:
 [Building the Compiler](docs/Building.md).
 
-If you're running Mac OS v10.14 (Mojave) and `ninja all` fails because it can't
+If you're running macOS v10.14 (Mojave) and `ninja all` fails because it can't
 find headers (e.g. `string.h`), run this command to fix it, and try again.
 More information is available [here](https://developer.apple.com/documentation/xcode_release_notes/xcode_10_release_notes)
 under "Command Line Tools".
 
-  ```
+  ```bash
   open /Library/Developer/CommandLineTools/Packages/macOS_SDK_headers_for_macOS_10.14.pkg
   ```
+
+For macOS v10.15 (Catalina) you might need to explicitly specify SDKROOT:
+
+   ```bash
+   export SDKROOT="/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk"
+   ```
+
 
 #### Building with dependencies (LLVM)
 
@@ -200,7 +230,7 @@ installed in `/usr/local/opt`:
   ```bash
   cmake -G Ninja ../glow \
       -DCMAKE_BUILD_TYPE=Debug \
-      -DLLVM_DIR=/usr/local/opt/llvm@7/lib/cmake/llvm
+      -DLLVM_DIR=/usr/local/opt/llvm/lib/cmake/llvm
   ```
 
 If LLVM is not available on your system you'll need to build it manually.  Run

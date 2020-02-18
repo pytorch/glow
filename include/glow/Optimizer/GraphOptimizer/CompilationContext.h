@@ -59,7 +59,7 @@ struct PrecisionConfiguration {
   bool clipFP16SkipInputs{false};
 
   /// Whether to force FP16 accumulation for the SLS family of ops.
-  bool forceFP16AccumSLS{false};
+  bool forceFP16AccumSLS{true};
 
   /// Used during Quantization and convertToFP16 to keep the original precision
   /// of specific node kinds (i.e. quantization/FP16 conversion would be skipped
@@ -152,6 +152,13 @@ struct CompilationContext {
   /// Pointer to deferredWeightLoader object, this is used for large model
   /// support.
   runtime::DeferredWeightLoader *deferredWeightLoader{nullptr};
+
+  /// Whether to print out issues/logging during compilation. Used for example
+  /// to disable printing issues encountered during ConstantFolding.
+  bool verboseCompile{true};
+
+  /// Call dumpDag on each Function passed to the backend for compilation.
+  bool dumpFinalGraph = false;
 
   CompilationContext(PlaceholderBindings *bindings_ = nullptr,
                      LoweredInfoMap *loweredInfoMap_ = nullptr)

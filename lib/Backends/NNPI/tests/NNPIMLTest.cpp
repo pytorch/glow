@@ -12,26 +12,40 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
+#include "TestBlacklist.h"
 #include "tests/unittests/BackendTestUtils.h"
 
 using namespace glow;
 
-std::set<std::string> glow::backendTestBlacklist = {
-    "learnSqrt2Placeholder/0",
-    "trainASimpleNetwork/0",
-    "simpleRegression/0",
-    "learnXor/0",
-    "learnLog/0",
-    "circle/0",
-    "learnSingleValueConcat/0",
-    "trainSimpleLinearRegression/0",
-    "classifyPlayerSport/0",
-    "learnSinus/0",
-    "learnSparseLengthsSumEmbeddings/0",
-    "nonLinearClassifier/0",
-    "convNetForImageRecognition/0",
-    "testFindPixelRegression/0",
-    "matrixRotationRecognition/0",
-    "learnSparseLengthsWeightedSumEmbeddings/0",
-    "learnSparseLengthsWeightedSumWeights/0"};
+std::set<std::string> glow::backendTestBlacklist = {};
+
+struct BlacklistInitializer {
+  BlacklistInitializer() {
+    const std::vector<std::pair<std::string, uint32_t>> testBlacklistedSetups =
+        {
+            {"learnSqrt2Placeholder/0", TestBlacklist::AnyDeviceAnyEngine},
+            {"trainASimpleNetwork/0", TestBlacklist::AnyDeviceAnyEngine},
+            {"simpleRegression/0", TestBlacklist::AnyDeviceAnyEngine},
+            {"learnXor/0", TestBlacklist::AnyDeviceAnyEngine},
+            {"learnLog/0", TestBlacklist::AnyDeviceAnyEngine},
+            {"circle/0", TestBlacklist::AnyDeviceAnyEngine},
+            {"learnSingleValueConcat/0", TestBlacklist::AnyDeviceAnyEngine},
+            {"trainSimpleLinearRegression/0",
+             TestBlacklist::AnyDeviceAnyEngine},
+            {"classifyPlayerSport/0", TestBlacklist::AnyDeviceAnyEngine},
+            {"learnSinus/0", TestBlacklist::AnyDeviceAnyEngine},
+            {"learnSparseLengthsSumEmbeddings/0",
+             TestBlacklist::AnyDeviceAnyEngine},
+            {"nonLinearClassifier/0", TestBlacklist::AnyDeviceAnyEngine},
+            {"convNetForImageRecognition/0", TestBlacklist::AnyDeviceAnyEngine},
+            {"testFindPixelRegression/0", TestBlacklist::AnyDeviceAnyEngine},
+            {"matrixRotationRecognition/0", TestBlacklist::AnyDeviceAnyEngine},
+            {"learnSparseLengthsWeightedSumEmbeddings/0",
+             TestBlacklist::AnyDeviceAnyEngine},
+            {"learnSparseLengthsWeightedSumWeights/0",
+             TestBlacklist::AnyDeviceAnyEngine},
+        };
+    TestBlacklist::prepareBlacklist(testBlacklistedSetups,
+                                    backendTestBlacklist);
+  }
+} blacklistInitializer;

@@ -21,6 +21,8 @@
 #include "glow/Optimizer/Lower/Lower.h"
 #include "llvm/Support/CommandLine.h"
 
+#include <fstream>
+
 using namespace glow;
 
 namespace glow {
@@ -37,9 +39,36 @@ static llvm::cl::opt<bool, /* ExternalStorage */ true>
         llvm::cl::location(GlowNNPILowerAllBatchMatMul), llvm::cl::Optional,
         llvm::cl::init(false), llvm::cl::cat(optionsForNNPI));
 
+bool GlowNNPIAcceptUnarySLS = false;
+static llvm::cl::opt<bool, /* ExternalStorage */ true>
+    GlowNNPIAcceptUnarySLSOpt(
+        "glow_nnpi_accept_unary_sls",
+        llvm::cl::desc(
+            "Whether to accept unary SLS ops during ONNXIFI loading."),
+        llvm::cl::location(GlowNNPIAcceptUnarySLS), llvm::cl::Optional,
+        llvm::cl::init(false), llvm::cl::cat(optionsForNNPI));
+
 namespace onnxifi {
 
-bool GlowDumpGraph = false;
+bool GlowDumpNNPICompilerData = false;
+static llvm::cl::opt<bool, /* ExternalStorage */ true>
+    GlowDumpNNPICompilerDataOpt("glow_dump_nnpi_compiler_data",
+                                llvm::cl::desc("Whether to dump NNPI compiler"
+                                               "data to a file"),
+                                llvm::cl::location(GlowDumpNNPICompilerData),
+                                llvm::cl::Optional, llvm::cl::init(false),
+                                llvm::cl::cat(optionsForNNPI));
+
+bool GlowUsePerPartitionIcetConfig = true;
+static llvm::cl::opt<bool, /* ExternalStorage */ true>
+    GlowUsePerPartitionIcetConfigOpt(
+        "glow_use_per_partition_icet_config",
+        llvm::cl::desc("Whether to load an"
+                       "icet_config.json file"
+                       "for each partition"),
+        llvm::cl::location(GlowUsePerPartitionIcetConfig), llvm::cl::Optional,
+        llvm::cl::init(false), llvm::cl::cat(optionsForNNPI));
+
 bool GlowDisableNNPITransforms = false;
 bool GlowDisableNNPIPrivateTransforms = false;
 int32_t GlowNNPINumParallelChunks = 1;
@@ -48,6 +77,53 @@ int32_t GlowNNPINumParallelChunks = 1;
 } // namespace glow
 
 NNPIBackendOptions NNPIBackend::backendOptions_;
+
+unsigned NNPIBackend::numDevices() {
+  // TODO: unify with numHabanaDevices. copy-paste with a different device
+  // name.
+  std::ifstream devices("/proc/bus/pci/devices");
+  std::string device;
+  unsigned count = 0;
+  while (std::getline(devices, device)) {
+    if (device.find("sph_pcie") != std::string::npos) {
+      count++;
+    }
+  }
+  if (count > 0) {
+    return count;
+  }
+  // TODO: Fall back to emulator since GLOW_NNPI is set. This feels hacky.
+  return 1;
+}
+
+/// \returns whether \p type is 2 dimensional and unary. Usually the data input
+/// of SparseLengths(Weighted)Sum is passed in here.
+static bool isUnaryLookup(TypeRef type) {
+  if (type->dims().size() != 2) {
+    return false;
+  }
+  return type->dims()[1] == 1;
+}
+
+bool NNPIBackend::acceptForExecution(const NodeInfo &NI) const {
+  if (!isOpSupported(NI)) {
+    return false;
+  }
+
+  // For performance reasons, only accept for execution SLS/SLWS with non-unary
+  // data inputs.
+  switch (NI.getKind()) {
+  case Kinded::Kind::SparseLengthsSumNodeKind:
+    return GlowNNPIAcceptUnarySLS ||
+           !isUnaryLookup(NI.getInTy(SparseLengthsSumNode::DataIdx));
+  case Kinded::Kind::SparseLengthsWeightedSumNodeKind:
+    return GlowNNPIAcceptUnarySLS ||
+           !isUnaryLookup(NI.getInTy(SparseLengthsWeightedSumNode::DataIdx));
+
+  default:
+    return true;
+  }
+}
 
 bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
   switch (NI.getKind()) {
@@ -243,7 +319,8 @@ bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
     auto resultK =
         NI.getOutElemTy(FusedRowwiseQuantizedSparseLengthsSumNode::ResultIdx);
     return (dataK == ElemKind::UInt8FusedQTy ||
-            dataK == ElemKind::UInt8FusedFP16QTy) &&
+            dataK == ElemKind::UInt8FusedFP16QTy ||
+            dataK == ElemKind::UInt4FusedFP16QTy) &&
            (resultK == ElemKind::FloatTy || resultK == ElemKind::Float16Ty) &&
            (indicesK == ElemKind::Int64ITy) && (lengthsK == ElemKind::Int32ITy);
   }
@@ -262,7 +339,7 @@ bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
     return (dataK == ElemKind::UInt8FusedQTy ||
             dataK == ElemKind::UInt8FusedFP16QTy ||
             dataK == ElemKind::UInt4FusedFP16QTy) &&
-           (weightsK == resultK) &&
+           (weightsK == ElemKind::FloatTy || weightsK == ElemKind::Float16Ty) &&
            (resultK == ElemKind::FloatTy || resultK == ElemKind::Float16Ty) &&
            (indicesK == ElemKind::Int64ITy) && (lengthsK == ElemKind::Int32ITy);
   }
@@ -352,6 +429,7 @@ bool NNPIBackend::shouldLower(const Node *N) const {
     const FusedRowwiseQuantizedSparseLengthsSumNode *SLSN =
         llvm::cast<FusedRowwiseQuantizedSparseLengthsSumNode>(N);
     if ((backendOptions_.useIceT || backendOptions_.inferOnDevice) &&
+        (SLSN->getData().getElementType() != ElemKind::UInt4FusedFP16QTy) &&
         (SLSN->getResult().getElementType() == ElemKind::Float16Ty)) {
       return false; // Don't lower == keep without weights
     } else {
@@ -383,11 +461,6 @@ NNPIBackend::createDeviceManager(const runtime::DeviceConfig &deviceConfig) {
 
 Expected<std::unique_ptr<CompiledFunction>>
 NNPIBackend::compile(Function *F, const BackendOptions &opts) const {
-  if (glow::onnxifi::GlowDumpGraph) {
-    std::string fname = "Graph_" + F->getName().str() + ".dot";
-    LOG(INFO) << "Dumping net to " << fname;
-    F->dumpDAG(fname);
-  }
   std::unique_ptr<NNPICompiledFunction> compiledFunc =
       glow::make_unique<NNPICompiledFunction>(F);
   auto compileHasError = compiledFunc->compile(F, opts);
@@ -483,8 +556,9 @@ static bool removeClipsBlockingFusion(Function *F) {
   return changed;
 }
 
-bool NNPIBackend::transformPostLowering(Function *F,
-                                        CompilationContext &cctx) const {
+bool NNPIBackend::transformPostLowering(
+    Function *F, CompilationContext &cctx,
+    const glow::runtime::DeviceInfo *devInfo) const {
   LOG_SCOPE(F->getLogContext(), "NNPIBackend::transformPostLowering");
 
   if (glow::onnxifi::GlowDisableNNPITransforms) {

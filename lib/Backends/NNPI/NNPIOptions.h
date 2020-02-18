@@ -261,9 +261,6 @@ public:
                       "1"
 #endif
   );
-  /// Enables internal testing.
-  DECLARE_NNPI_OPTION(internalTesting, std::string, "InternalTesting",
-                      "Enable internal testing.", "INVOKE_RUNTIME", "");
   /// Setting this variable will override the target device ID used to run
   /// (0,1,...).
   DECLARE_NNPI_OPTION(deviceID, int, "DeviceID",
@@ -303,7 +300,6 @@ public:
     INIT_NNPI_OPTIONS(useIceT, parameters);
     INIT_NNPI_OPTIONS(inferOnDevice, parameters);
     INIT_NNPI_OPTIONS(showVars, parameters);
-    INIT_NNPI_OPTIONS(internalTesting, parameters);
     INIT_NNPI_OPTIONS(deviceID, parameters);
     INIT_NNPI_OPTIONS(numWorkers, parameters);
     INIT_NNPI_OPTIONS(enabledDeviceTracing, parameters);

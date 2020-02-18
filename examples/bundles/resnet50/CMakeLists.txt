@@ -35,11 +35,12 @@ add_custom_command(
   OUTPUT
     ${BUNDLE_OUTPUT_DIRECTORY}/resnet50.o
   COMMAND
-    image-classifier ${IMAGES}/dog_207.png -g -image-mode=0to1
-    -m=${RESNET50_BUNDLE_DIR}/resnet50 -model-input-name=${MODEL_INPUT_NAME}
-    -backend=CPU -emit-bundle ${BUNDLE_OUTPUT_DIRECTORY} -bundle-api=dynamic
+    model-compiler -g -model=${RESNET50_BUNDLE_DIR}/resnet50
+    -model-input=${MODEL_INPUT_NAME},float,[1,3,224,224]
+    -backend=CPU -emit-bundle=${BUNDLE_OUTPUT_DIRECTORY}
+    -bundle-api=dynamic
   DEPENDS
-    image-classifier ResNet50BundleDir
+    model-compiler ResNet50BundleDir
 )
 add_custom_target(ResNet50BundleNet DEPENDS ${BUNDLE_OUTPUT_DIRECTORY}/resnet50.o ResNet50BundleNetFiles)
 
@@ -61,11 +62,13 @@ add_custom_command(
   OUTPUT
     ${QUANTIZED_BUNDLE_OUTPUT_DIRECTORY}/resnet50.o
   COMMAND
-    image-classifier ${IMAGES}/dog_207.png -g -i=0to1 -load-profile=profile.yml -assert-all-nodes-quantized -keep-original-precision-for-nodes=SoftMax
-    -m=${RESNET50_BUNDLE_DIR}/resnet50 -model-input-name=${MODEL_INPUT_NAME}
-    -backend=CPU -emit-bundle ${QUANTIZED_BUNDLE_OUTPUT_DIRECTORY} -bundle-api=dynamic
+    model-compiler -g -load-profile=profile.yml -assert-all-nodes-quantized -keep-original-precision-for-nodes=SoftMax
+    -model=${RESNET50_BUNDLE_DIR}/resnet50
+    -model-input=${MODEL_INPUT_NAME},float,[1,3,224,224]
+    -backend=CPU -emit-bundle=${QUANTIZED_BUNDLE_OUTPUT_DIRECTORY}
+    -bundle-api=dynamic
   DEPENDS
-  image-classifier ResNet50BundleDir
+    model-compiler ResNet50BundleDir
 )
 add_custom_target(QuantizedResNet50BundleNet DEPENDS ${QUANTIZED_BUNDLE_OUTPUT_DIRECTORY}/resnet50.o ResNet50BundleQuantizationProfile)
 

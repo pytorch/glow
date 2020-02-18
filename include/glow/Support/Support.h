@@ -162,6 +162,39 @@ template <class T> inline constexpr unsigned convertEnumToUnsigned(T e) {
   return static_cast<unsigned>(e);
 }
 
+/// Add helpers for custom location logging. Heavily based on glog/logging.h.
+#if GOOGLE_STRIP_LOG == 0
+#define COMPACT_GOOGLE_LOG_CUSTOM_LOC_INFO(FILE_, LINE_)                       \
+  google::LogMessage(FILE_, LINE_)
+#else
+#define COMPACT_GOOGLE_LOG_CUSTOM_LOC_INFO(FILE_, LINE_) google::NullStream()
+#endif
+
+#if GOOGLE_STRIP_LOG <= 1
+#define COMPACT_GOOGLE_LOG_CUSTOM_LOC_WARNING(FILE_, LINE_)                    \
+  google::LogMessage(FILE_, LINE_, google::GLOG_WARNING)
+#else
+#define COMPACT_GOOGLE_LOG_CUSTOM_LOC_WARNING(FILE_, LINE_) google::NullStream()
+#endif
+
+#if GOOGLE_STRIP_LOG <= 2
+#define COMPACT_GOOGLE_LOG_CUSTOM_LOC_ERROR(FILE_, LINE_)                      \
+  google::LogMessage(FILE_, LINE_, google::GLOG_ERROR)
+#else
+#define COMPACT_GOOGLE_LOG_CUSTOM_LOC_ERROR(FILE_, LINE_) google::NullStream()
+#endif
+
+#if GOOGLE_STRIP_LOG <= 3
+#define COMPACT_GOOGLE_LOG_CUSTOM_LOC_FATAL(FILE_, LINE_)                      \
+  google::LogMessageFatal(FILE_, LINE_)
+#else
+#define COMPACT_GOOGLE_LOG_CUSTOM_LOC_FATAL(FILE_, LINE_)                      \
+  google::NullStreamFatal()
+#endif
+
+#define LOG_CUSTOM_LOC(severity, FILE_, LINE_)                                 \
+  COMPACT_GOOGLE_LOG_CUSTOM_LOC_##severity(FILE_, LINE_).stream()
+
 } // namespace glow
 
 #endif // GLOW_SUPPORT_SUPPORT_H

@@ -28,11 +28,6 @@
 
 using namespace glow;
 
-struct AllBackends : public ::testing::TestWithParam<std::string> {
-protected:
-  ExecutionEngine EE_{GetParam()};
-};
-
 /// Check that a simple graph is converted properly.
 /// Namely, check that:
 /// \verbatim
@@ -66,7 +61,7 @@ protected:
 /// \endverbatim
 ///
 /// In particular, the input and output of the network shouldn't be modified.
-TEST_P(AllBackends, SimpleOneUseConversionFloatToFloat16) {
+TEST(TypeAToTypeBFunctionConverter, SimpleOneUseConversionFloatToFloat16) {
   Module mod;
   Function *F = mod.createFunction("test");
   PlaceholderBindings bindings;
@@ -171,7 +166,8 @@ TEST_P(AllBackends, SimpleOneUseConversionFloatToFloat16) {
 /// \endverbatim
 ///
 /// In particular, the input and output of the network shouldn't be modified.
-TEST_P(AllBackends, SimpleChainOfComputationConversionFloatToFloat16) {
+TEST(TypeAToTypeBFunctionConverter,
+     SimpleChainOfComputationConversionFloatToFloat16) {
   Module mod;
   Function *F = mod.createFunction("test");
   PlaceholderBindings bindings;
@@ -295,7 +291,7 @@ TEST_P(AllBackends, SimpleChainOfComputationConversionFloatToFloat16) {
 /// \endverbatim
 ///
 /// In particular, the input and output of the network shouldn't be modified.
-TEST_P(AllBackends, DoNotConvertReLUConversionFloatToFloat16) {
+TEST(TypeAToTypeBFunctionConverter, DoNotConvertReLUConversionFloatToFloat16) {
   Module mod;
   Function *F = mod.createFunction("test");
   PlaceholderBindings bindings;
@@ -406,7 +402,7 @@ TEST_P(AllBackends, DoNotConvertReLUConversionFloatToFloat16) {
 /// \endverbatim
 ///
 /// In particular, the input and output of the network shouldn't be modified.
-TEST_P(AllBackends, OnlyReluConversionFloatToFloat16) {
+TEST(TypeAToTypeBFunctionConverter, OnlyReluConversionFloatToFloat16) {
   Module mod;
   Function *F = mod.createFunction("test");
   PlaceholderBindings bindings;
@@ -513,7 +509,7 @@ TEST_P(AllBackends, OnlyReluConversionFloatToFloat16) {
 ///
 /// In particular, the input and outputs of the network shouldn't be modified
 /// as well as the Int64I result.
-TEST_P(AllBackends, int64IConversionFloatToFloat16) {
+TEST(TypeAToTypeBFunctionConverter, int64IConversionFloatToFloat16) {
   Module mod;
   Function *F = mod.createFunction("test");
   PlaceholderBindings bindings;
@@ -630,7 +626,7 @@ TEST_P(AllBackends, int64IConversionFloatToFloat16) {
 /// \endverbatim
 ///
 /// In particular, the input and output of the network shouldn't be modified.
-TEST_P(AllBackends, OptimizeMiddleConversionsFloatToFloat16) {
+TEST(TypeAToTypeBFunctionConverter, OptimizeMiddleConversionsFloatToFloat16) {
   Module mod;
   Function *F = mod.createFunction("test");
   PlaceholderBindings bindings;
@@ -813,7 +809,7 @@ TEST_P(AllBackends, OptimizeMiddleConversionsFloatToFloat16) {
 /// In particular, the input and output of the network should be modified
 /// and the input of the last save node should be converted to the expected
 /// output type.
-TEST_P(AllBackends, convertPlaceholderFloatToFloat16) {
+TEST(TypeAToTypeBFunctionConverter, convertPlaceholderFloatToFloat16) {
   Module mod;
   Function *F = mod.createFunction("test");
   Function *F2 = mod.createFunction("test2");
@@ -982,7 +978,7 @@ TEST_P(AllBackends, convertPlaceholderFloatToFloat16) {
 /// |
 /// V
 /// Save
-TEST_P(AllBackends, convertExistingConversionToNoop) {
+TEST(TypeAToTypeBFunctionConverter, convertExistingConversionToNoop) {
   Module mod;
   Function *F = mod.createFunction("test");
   auto *placeholder =
@@ -1074,20 +1070,20 @@ static void testConvertFRWQSLWS(bool forceFP16AccumSLS) {
 
 /// Test conversion of a FusedRowwiseQuantizedSparseLengthsWeightedSumNode to
 /// FP16, instead of creating it directly. Use FP16 accumulation.
-TEST_P(AllBackends, convertFRWQSLWS_FP16Accum) {
+TEST(TypeAToTypeBFunctionConverter, convertFRWQSLWS_FP16Accum) {
   testConvertFRWQSLWS(/* forceFP16AccumSLS */ true);
 }
 
 /// Test conversion of a FusedRowwiseQuantizedSparseLengthsWeightedSumNode to
 /// FP16, instead of creating it directly. Do not use FP16 accumulation; note
 /// that conversion by default uses FP32 accumulation.
-TEST_P(AllBackends, convertFRWQSLWS_FP32Accum) {
+TEST(TypeAToTypeBFunctionConverter, convertFRWQSLWS_FP32Accum) {
   testConvertFRWQSLWS(/* forceFP16AccumSLS */ false);
 }
 
 /// Test skipping conversion of a
 /// FusedRowwiseQuantizedSparseLengthsWeightedSumNode to FP16.
-TEST_P(AllBackends, skipConvertingFRWQSLWS) {
+TEST(TypeAToTypeBFunctionConverter, skipConvertingFRWQSLWS) {
   Module mod;
   Function *F = mod.createFunction("test");
   Tensor data(ElemKind::FloatTy, {3, 1});
@@ -1138,7 +1134,7 @@ TEST_P(AllBackends, skipConvertingFRWQSLWS) {
 }
 
 /// Test conversion of only Float16Ty inputs of Node and not UInt8FusedQTy.
-TEST_P(AllBackends, convertOnlyFloat16Ty) {
+TEST(TypeAToTypeBFunctionConverter, convertOnlyFloat16Ty) {
   Module mod;
   Function *F = mod.createFunction("test");
   Tensor data(ElemKind::FloatTy, {3, 1});
@@ -1196,7 +1192,7 @@ TEST_P(AllBackends, convertOnlyFloat16Ty) {
 }
 
 /// Test conversion of only UInt8FusedQTy inputs of Node and not Float16Ty.
-TEST_P(AllBackends, convertOnlyUInt8FusedQTy) {
+TEST(TypeAToTypeBFunctionConverter, convertOnlyUInt8FusedQTy) {
   Module mod;
   Function *F = mod.createFunction("test");
   Tensor data(ElemKind::FloatTy, {3, 1});
@@ -1249,7 +1245,7 @@ TEST_P(AllBackends, convertOnlyUInt8FusedQTy) {
 }
 
 // Test that we don't insert Clips around non-numeric nodes.
-TEST_P(AllBackends, convertWithoutClipAroundNonNumericNodes) {
+TEST(TypeAToTypeBFunctionConverter, convertWithoutClipAroundNonNumericNodes) {
   Module mod;
   Function *F = mod.createFunction("test");
   const dim_t dims[] = {1, 5, 10, 15};
@@ -1285,7 +1281,7 @@ TEST_P(AllBackends, convertWithoutClipAroundNonNumericNodes) {
 }
 
 // Test that we don't insert Clips at the output of Tanh or Sigmoid
-TEST_P(AllBackends, convertWithoutClipAfterTanhOrSigmoid) {
+TEST(TypeAToTypeBFunctionConverter, convertWithoutClipAfterTanhOrSigmoid) {
   Module mod;
   Function *F = mod.createFunction("test");
   const dim_t dims[] = {10, 20};
@@ -1320,7 +1316,7 @@ TEST_P(AllBackends, convertWithoutClipAfterTanhOrSigmoid) {
 
 // Test that we don't insert Clips at the output of ConvertTo if its input is
 // fp16
-TEST_P(AllBackends, convertWithoutClipAfterFp16ConvertTo) {
+TEST(TypeAToTypeBFunctionConverter, convertWithoutClipAfterFp16ConvertTo) {
   Module mod;
   Function *F = mod.createFunction("test");
   const dim_t dims[] = {10, 20};
@@ -1353,7 +1349,7 @@ TEST_P(AllBackends, convertWithoutClipAfterFp16ConvertTo) {
 }
 
 // Test that we only insert clips for outputs.
-TEST_P(AllBackends, checkConvertOnlyOutputs) {
+TEST(TypeAToTypeBFunctionConverter, checkConvertOnlyOutputs) {
   Module mod;
   Function *F = mod.createFunction("test");
   Node *I = mod.createPlaceholder(ElemKind::FloatTy, {10}, "i", false);
@@ -1398,7 +1394,7 @@ TEST_P(AllBackends, checkConvertOnlyOutputs) {
 }
 
 // Test that we only insert clips for outputs.
-TEST_P(AllBackends, checkConvertClipStorage) {
+TEST(TypeAToTypeBFunctionConverter, checkConvertClipStorage) {
   Module mod;
   Function *F = mod.createFunction("test");
   Node *PH = mod.createPlaceholder(ElemKind::FloatTy, {10}, "ph", false);
@@ -1432,5 +1428,3 @@ TEST_P(AllBackends, checkConvertClipStorage) {
 
   EXPECT_TRUE(F->verify());
 }
-
-INSTANTIATE_BACKEND_TEST(AllBackends);

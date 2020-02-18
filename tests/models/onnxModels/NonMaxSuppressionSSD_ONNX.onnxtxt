@@ -1,0 +1,142 @@
+ir_version: 4
+producer_name: "pytorch"
+producer_version: "1.1"
+# ONNX TensorProto.DataType:
+#    UNDEFINED = 0;
+#    FLOAT = 1;
+#    UINT8 = 2;
+#    INT8 = 3;
+#    UINT16 = 4;
+#    INT16 = 5;
+#    INT32 = 6;
+#    INT64 = 7;
+#    STRING = 8;
+#    BOOL = 9;
+#    FLOAT16 = 10;
+#    DOUBLE = 11;
+#    UINT32 = 12;
+#    UINT64 = 13;
+#    COMPLEX64 = 14;
+#    COMPLEX128 = 15;
+graph {
+   # max_output_boxes_per_class
+node {
+    output: "Constant_677"
+    name: "Constant_677"
+    op_type: "Constant"
+    attribute {
+      name: "value"
+      t {
+        dims: 1
+        data_type: 7
+        raw_data: "\003\000\000\000\000\000\000\000"
+      }
+      type: TENSOR
+    }
+  }
+
+  # iou_threshold
+  node {
+    output: "Constant_680"
+    name: "Constant_680"
+    op_type: "Constant"
+    attribute {
+      name: "value"
+      t {
+        dims: 1
+        data_type: 1
+        raw_data: "\001\000\000?"
+      }
+      type: TENSOR
+    }
+  }
+
+  # score_threshold
+  node {
+    output: "Constant_682"
+    name: "Constant_682"
+    op_type: "Constant"
+    attribute {
+      name: "value"
+      t {
+        dims: 1
+        data_type: 1
+        raw_data: "\315\314L="
+      }
+      type: TENSOR
+    }
+  }
+
+   input {
+    name: "boxes"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 1
+          }
+          dim {
+            dim_value: 8
+          }
+          dim {
+            dim_value: 4
+          }
+        }
+      }
+    }
+  }
+  input {
+    name: "scores"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 1
+          }
+          dim {
+            dim_value: 1
+          }
+          dim {
+            dim_value: 8
+          }
+        }
+      }
+    }
+  }
+node {
+    input: "boxes"
+    input: "scores"
+    input: "Constant_677" # max_output_boxes_per_class
+    input: "Constant_680" # iou_threshold
+    input: "Constant_682" # score_threshold
+    output: "indices"
+    name: "NonMaxSuppression_683"
+    op_type: "NonMaxSuppression"
+    attribute {
+        name: "center_point_box"
+        i: 1
+        type: INT
+    }
+}
+ output {
+    name: "indices"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 1
+          }
+          dim {
+            dim_value: 8
+          }
+        }
+      }
+    }
+  }
+}
+opset_import {
+  version: 10
+}

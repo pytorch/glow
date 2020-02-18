@@ -25,7 +25,11 @@
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
 
+#include "google/protobuf/io/coded_stream.h"
+#include "google/protobuf/io/zero_copy_stream_impl.h"
+#include <fstream>
 #include <string>
+#include <unordered_set>
 
 namespace ONNX_NAMESPACE {
 class AttributeProto;
@@ -39,6 +43,24 @@ namespace glow {
 
 /// Loads tensor \p T from the input \p in.
 Error loadTensor(const ONNX_NAMESPACE::TensorProto &in, Tensor *T);
+
+/// Parses as input file name \p fileName which is an ONNX file
+/// and \returns a parsed GraphProto.
+ONNX_NAMESPACE::GraphProto parseOnnxFile(const std::string &fileName);
+
+/// Takes an ONNX file in \p fileName reads it and loads the tensors
+/// in \p bindings. If the tensors loaded from the underlying file
+/// Are smaller than what the placeholder for that tensor expects it gets
+/// Padded with 0 if \p partialTensorPayloads is nullptr other wise
+/// \p partialTensorPayloads holds the data for full tensors.
+void fillPlaceholders(const std::string &fileName,
+                      PlaceholderBindings *bindings,
+                      std::vector<Tensor> *partialTensorPayloads = nullptr);
+
+/// Override that takes \p parsedFile as a parsed file instead of file name.
+void fillPlaceholders(const ONNX_NAMESPACE::GraphProto &parsedFile,
+                      PlaceholderBindings *bindings,
+                      std::vector<Tensor> *partialTensorPayloads = nullptr);
 
 /// Define undefined symbols to \p str loaded from an ONNX proto. See
 /// onnxDefineSymbolOpt in ONNXModelLoader.cpp.
@@ -73,6 +95,9 @@ class ONNXModelLoader
   /// ONNX model op_version;
   size_t opsetVersion_;
 
+  /// A set of inputs which will be static placeholders.
+  std::unordered_set<std::string> staticInputs_;
+
   /// Load Constant ONNX operator.
   Error loadConstant(const ONNX_NAMESPACE::NodeProto &op,
                      const ArgumentDictionaryTy &dict);
@@ -85,10 +110,31 @@ class ONNXModelLoader
   Error loadConv(const ONNX_NAMESPACE::NodeProto &op,
                  const ArgumentDictionaryTy &dict);
 
+  /// Load ChannelwiseQuantizedConvolution Glow operator.
+  Error loadChannelwiseQuantizedConvolution(const ONNX_NAMESPACE::NodeProto &op,
+                                            const ArgumentDictionaryTy &dict);
+
+  /// Load Glow conv operator with quantized inputs. Since this isn't a normal
+  /// part of the ops supported by onnx, the assumption is that this op was
+  /// produced by Glow's on ONNXModelWriter and thus has NHWC layout for inputs.
+  Error loadTensorwiseQuantizedConvolution(const ONNX_NAMESPACE::NodeProto &op,
+                                           const ArgumentDictionaryTy &dict);
+  /// Load ConvTranspose ONNX operator.
+  Error loadConvTranspose(const ONNX_NAMESPACE::NodeProto &op,
+                          const ArgumentDictionaryTy &dict);
+
   /// Load MaxPool or AveragePool ONNX operator. \p typeName is the name of the
   /// ONNX operator being loaded, either MaxPool or AveragePool.
   Error loadPool(const ONNX_NAMESPACE::NodeProto &op,
                  const ArgumentDictionaryTy &dict, llvm::StringRef typeName);
+
+  /// Load Glow pooling operator with quantized inputs. Since this isn't a
+  /// normal part of the ops supported by onnx, the assumption is that this op
+  /// was produced by Glow's on ONNXModelWriter and thus has NHWC layout for
+  /// inputs.
+  Error loadTensorwiseQuantizedPool(const ONNX_NAMESPACE::NodeProto &op,
+                                    const ArgumentDictionaryTy &dict,
+                                    llvm::StringRef typeName);
 
   /// Load GlobalAveragePool ONNX operator.
   Error loadGlobalAveragePool(const ONNX_NAMESPACE::NodeProto &op,
@@ -199,6 +245,10 @@ class ONNXModelLoader
   Error loadBatchedAdd(const ONNX_NAMESPACE::NodeProto &op,
                        const ArgumentDictionaryTy &dict);
 
+  /// Load Glow CumSum operator.
+  Error loadCumSum(const ONNX_NAMESPACE::NodeProto &op,
+                   const ArgumentDictionaryTy &dict);
+
   /// Load Glow ScatterAssign operator.
   Error loadScatterAssign(const ONNX_NAMESPACE::NodeProto &op,
                           const ArgumentDictionaryTy &dict);
@@ -244,11 +294,18 @@ class ONNXModelLoader
   Error loadSplat(const ONNX_NAMESPACE::NodeProto &op,
                   const ArgumentDictionaryTy &dict);
 
+  /// Load NonMaxSuppression ONNX and TF NMSv4 operator.
+  /// The \p isV4 indicates whether this is ONNX or custom NMSv4 operator.
+  Error loadNonMaxSuppression(const ONNX_NAMESPACE::NodeProto &op,
+                              const ArgumentDictionaryTy &dict, bool isV4);
+
   /// Load Glow InsertTensor operator.
   Error loadInsertTensor(const ONNX_NAMESPACE::NodeProto &op,
                          const ArgumentDictionaryTy &dict);
 
   /// Load AdaptiveAvgPool Glow operator.
+  /// NOTE: since this operator is not a standard onnx op, assume this is from
+  /// OnnxModelWriter and is therefore in NHWC format.
   Error loadAdaptiveAvgPool(const ONNX_NAMESPACE::NodeProto &op,
                             const ArgumentDictionaryTy &dict);
 
@@ -303,15 +360,21 @@ protected:
                     llvm::ArrayRef<const char *> tensorNames,
                     llvm::ArrayRef<TypeRef> types);
 
+  /// Go through the ValueInfoProto of the inputs of the \p net and collect
+  /// static placeholders if it's marked in the ValueInfoProto.
+  Error collectStaticInputs(ONNX_NAMESPACE::GraphProto &net);
+
   /// Creates a ONNX model loader to build \p F.
   /// Loads the ONNIXFI \p model from memory of \p modelSize size,
   /// and \p weightsCount, and \p onnxTensorDescriptorV1 correspondent
   /// descriptors. Converts inputs into placeholder if requested \p
   /// loadInputsAsPlaceholders. Reports success/failure through optional
-  /// parameter \p errPtr.
+  /// parameter \p errPtr. This constructor always overrides the default
+  /// constant folding in loader flag with \p constFoldInLoader.
   ONNXModelLoader(const void *model, uint32_t modelSize, uint32_t weightsCount,
                   const onnxTensorDescriptorV1 *weightDescriptors, Function &F,
-                  bool loadInputsAsPlaceholders, Error *errPtr = nullptr);
+                  bool loadInputsAsPlaceholders, Error *errPtr = nullptr,
+                  bool constFoldInLoader = true);
 
   friend class ONNXIFIModelLoader;
 

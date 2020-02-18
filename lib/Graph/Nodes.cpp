@@ -248,6 +248,57 @@ static bool verifyConvolution3D(NodeValue src, NodeValue dest, NodeValue filter,
   return isValid;
 }
 
+static bool verifyConvTranspose(NodeValue src, NodeValue dest, NodeValue filter,
+                                llvm::ArrayRef<unsigned_t> kernels,
+                                llvm::ArrayRef<unsigned_t> strides,
+                                llvm::ArrayRef<unsigned_t> pads,
+                                unsigned_t group, unsigned_t dilation) {
+  const Node *parent = dest.getNode();
+  bool isValid = checkType(src, dest.getElementType(), parent);
+  isValid &= checkType(src, filter.getElementType(), parent);
+  ShapeNHWC idim(src.getType()->dims());
+  ShapeNHWC odim(dest.getType()->dims());
+  PaddingTLBR pdim(pads);
+  ShapeHW kdim(kernels);
+  // TODO: any kernel size check in respect to input ? In contrast to Conv,
+  // seems kernel can be any size.
+
+  isValid &= expectCompareTrue("channels number must be divisible by groups",
+                               idim.c % group, dim_t(0), parent);
+
+  isValid &= expectCompareTrue("Stride should be less than kernel.",
+                               strides[0] <= kernels[0], true, parent);
+
+  isValid &= expectCompareTrue("Stride should be less than kernel.",
+                               strides[1] <= kernels[1], true, parent);
+
+  isValid &= expectCompareTrue("channels number must be divisible by groups",
+                               idim.c % group, dim_t(0), parent);
+
+  auto outSz = calculateConvTransposeOutputDims(idim.h, idim.w, kernels,
+                                                strides, pads, dilation);
+  (void)outSz;
+  isValid &=
+      expectCompareTrue("Invalid output dimension N", odim.n, idim.n, parent);
+
+  isValid &=
+      expectCompareTrue("Invalid output dimension HT", odim.h, outSz.first,
+                        parent, CompareOperatorGreaterEqual<dim_t>());
+  isValid &=
+      expectCompareTrue("Invalid output dimension WT", odim.w, outSz.second,
+                        parent, CompareOperatorGreaterEqual<dim_t>());
+
+  isValid &= expectCompareTrue("Invalid output dimension CT", odim.c % group,
+                               dim_t(0), parent);
+
+  const dim_t filterDims[] = {odim.c, kdim.height, kdim.width,
+                              idim.c / (dim_t)group};
+  isValid &=
+      expectCompareTrue("Invalid filter dimensions", filter.getType()->dims(),
+                        llvm::makeArrayRef(filterDims), parent);
+  return isValid;
+}
+
 static bool verifyFullyConnected(NodeValue src, NodeValue weights,
                                  NodeValue bias, NodeValue dest) {
   const Node *parent = dest.getNode();
@@ -493,19 +544,12 @@ bool ConvolutionNode::verify() const {
 }
 
 bool ChannelwiseQuantizedConvolutionNode::verify() const {
-  bool isValid = expectCompareTrue("Only groupwise quantization is supported.",
-                                   getGroupwise(), true, this);
-
-  if (!isValid) {
-    return false;
-  }
-
-  isValid =
+  bool isValid =
       verifyConvolution<ShapeNHWC>(getInput(), getResult(), getFilter(),
                                    getBias(), Kernels_, Strides_, Pads_, Group_,
                                    /* dilation */ 1, /* checkBiasType */ false);
 
-  isValid &= checkType(getBias(), ElemKind::FloatTy, this);
+  isValid &= checkType(getBias(), ElemKind::Int32QTy, this);
   isValid &= checkType(getInput(), ElemKind::Int8QTy, this);
 
   // check qparam types
@@ -531,6 +575,11 @@ bool ChannelwiseQuantizedConvolutionNode::verify() const {
 bool Convolution3DNode::verify() const {
   return verifyConvolution3D(getInput(), getResult(), getFilter(), getBias(),
                              Kernels_, Strides_, Pads_, Group_);
+}
+
+bool ConvTransposeNode::verify() const {
+  return verifyConvTranspose(getInput(), getResult(), getFilter(), Kernels_,
+                             Strides_, Pads_, Group_, Dilation_);
 }
 
 /// Verify that types of an input and its gradient are the same.
@@ -1155,6 +1204,33 @@ VERIFY_CMP(CmpLT)
 VERIFY_CMP(CmpEQ)
 #undef VERIFY_CMP
 
+bool BatchedPairwiseDotProductNode::verify() const {
+  auto inputs = getInputs();
+
+  bool isValid = inputs.size() > 1;
+
+  if (isValid) {
+    auto firstInput = inputs[0];
+
+    isValid &= firstInput.getElementType() == ElemKind::FloatTy;
+    isValid &= firstInput.getType()->dims().size() == 2;
+
+    for (auto &in : inputs) {
+      isValid &= checkSameType(in, firstInput, this);
+    }
+
+    isValid &= getResult().getElementType() == ElemKind::FloatTy;
+    isValid &=
+        getResult().getType()->dims()[0] == firstInput.getType()->dims()[0];
+    isValid &= getResult().getType()->dims()[1] ==
+               inputs.size() * (inputs.size() - 1) / 2;
+  }
+
+  return isValid;
+}
+
+bool BatchedPairwiseDotProductGradNode::verify() const { return true; }
+
 bool BatchedAddNode::verify() const {
   auto batchShape = getBatch().dims();
   auto rhsShape = getSlice().dims();
@@ -1179,6 +1255,10 @@ bool BatchedReduceAddNode::verify() const {
       expectCompareTrue("Invalid shape", getBatch().dims().size(), size_t(0),
                         this, CompareOperatorGreaterThan<size_t>());
   return isValid;
+}
+
+bool CumSumNode::verify() const {
+  return checkSameType(getResult(), getInput(), this);
 }
 
 bool LengthsSumNode::verify() const {
@@ -1699,6 +1779,44 @@ bool ResizeNearestNode::verify() const {
   return isValid;
 }
 
+bool NonMaxSuppressionNode::verify() const {
+  NodeValue boxes = getBoxes();
+  NodeValue scores = getScores();
+  auto boxesDims = boxes.dims();
+  auto scoresDims = scores.dims();
+  bool isV4 = getIsTFVersion4();
+
+  size_t scoresBoxDim = scores.dims().size() - 1;
+  size_t scoresBatchDim = scores.dims().size() - 3;
+
+  size_t boxesBoxDim = boxes.dims().size() - 2;
+  size_t boxesBatchDim = boxes.dims().size() - 3;
+
+  bool isValid = true;
+  if (isV4) {
+    isValid &= expectCompareTrue(
+        "Number of boxes doesn't match number of confidence scores.",
+        boxesDims[boxesBoxDim], scoresDims[scoresBoxDim], this,
+        CompareOperatorEqual<dim_t>());
+  }
+
+  // checking layout matching. See ONNX spec for details.
+  if (!isV4) {
+    isValid &= expectCompareTrue(
+        "Batch dimension doesn't match.", boxesDims[boxesBatchDim],
+        scoresDims[scoresBatchDim], this, CompareOperatorEqual<dim_t>());
+
+    isValid &= expectCompareTrue(
+        "Number of boxes doesn't match number of confidence scores.",
+        boxesDims[boxesBoxDim], scoresDims[scoresBoxDim], this,
+        CompareOperatorEqual<dim_t>());
+  }
+
+  isValid &= checkType(boxes, scores.getElementType(), this);
+
+  return isValid;
+}
+
 bool SaveNode::verify() const {
   return checkSameType(getInput(), getOutput(), this);
 }
@@ -1920,6 +2038,21 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &os, ConvolutionLayout layout) {
     break;
   case ConvolutionLayout::NHWC:
     os << "NHWC";
+    break;
+  }
+  return os;
+}
+
+llvm::raw_ostream &operator<<(llvm::raw_ostream &os, LengthsMode lengthsMode) {
+  switch (lengthsMode) {
+  case LengthsMode::AllOne:
+    os << "AllOne";
+    break;
+  case LengthsMode::High:
+    os << "High";
+    break;
+  case LengthsMode::Low:
+    os << "Low";
     break;
   }
   return os;

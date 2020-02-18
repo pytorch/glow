@@ -198,6 +198,25 @@ bool Module::verify() const {
   for (auto *F : functions_) {
     isValid &= F->verify();
   }
+  // Check that all types used by constants or placeholders belong to the
+  // module.
+  auto &types = getTypes();
+  for (const auto *PH : getPlaceholders()) {
+    bool foundType =
+        std::find(types.begin(), types.end(), *PH->getType()) != types.end();
+    isValid &=
+        expectCompareTrue("Every type used by placeholders should be part of "
+                          "the graph",
+                          foundType, true, PH);
+  }
+  for (const auto *C : getConstants()) {
+    bool foundType =
+        std::find(types.begin(), types.end(), *C->getType()) != types.end();
+    isValid &=
+        expectCompareTrue("Every type used by constants should be part of "
+                          "the graph",
+                          foundType, true, C);
+  }
   return isValid;
 }
 
@@ -466,6 +485,10 @@ TypeRef Module::uniqueTypeWithNewShape(TypeRef T, llvm::ArrayRef<dim_t> dims,
   return uniqueType(Type::newShape(*T, dims, alignments));
 }
 
+TypeRef Module::uniqueTypeWithNewShape(TypeRef T, TypeRef shapeType) {
+  return uniqueType(Type::newShape(*T, shapeType));
+}
+
 TypeRef Module::uniqueType(const Type &T) {
   for (auto &tp : types_) {
     if (T.isEqual(tp)) {
@@ -650,6 +673,34 @@ static void check3DKernelSize(ShapeNHWDC idim,
          "Kernel size is too large");
 }
 
+/// Check that the dimensions that are passed in when the ConvTranspose is
+/// constructed are correct.
+static void assertConvTransposeDims(NodeValue input, NodeValue filter,
+                                    NodeValue bias,
+                                    llvm::ArrayRef<unsigned_t> kernels,
+                                    llvm::ArrayRef<unsigned_t> strides,
+                                    llvm::ArrayRef<unsigned_t> pads,
+                                    unsigned_t group) {
+  ShapeNHWC idim = ShapeNHWC(input.dims());
+  (void)idim;
+  ShapeHW kdim(kernels);
+  (void)kdim;
+  assert(idim.c % group == 0 && "channels number must be divisible by groups");
+
+  // NOTE: here the N in NHWC is abnormal because it is the number of filters
+  // (and therefore the number of output channels of the conv) and not the
+  // batch size. The rest of the dimensions are representative of the input
+  // dimensions to the convolution.
+  ShapeNHWC filterDims(filter.dims());
+  (void)filterDims;
+
+  assert(filterDims.n % group == 0 && filterDims.h == kdim.height &&
+         filterDims.w == kdim.width && filterDims.c == idim.c / group &&
+         "Invalid filter dims");
+
+  assert(bias.getType()->size() == filterDims.n && "Invalid bias size");
+}
+
 /// Check that the dimensions that are passed in when the convolution is
 /// constructed are correct.
 static void assertConvDims(NodeValue input, NodeValue filter, NodeValue bias,
@@ -710,6 +761,26 @@ ConvolutionNode *Function::createConv(
     unsigned_t group, unsigned_t dilation, ConvolutionLayout layout) {
   assertConvDims(input, filter, bias, kernels, strides, pads, group);
   auto OT = getParent()->uniqueType(*outTy);
+
+  // If the input is quantized but the bias is not then auto-quantize the
+  // bias.
+  if (input.getType()->isQuantizedType()) {
+    auto biasType = bias.getElementType();
+    if (biasType == ElemKind::Int32QTy || biasType == ElemKind::Int8QTy) {
+      // Nothing to do
+    } else if (biasType == ElemKind::FloatTy) {
+      auto biasTy = getParent()->uniqueType(
+          glow::ElemKind::Int32QTy, bias.dims(),
+          input.getType()->getScale() * filter.getType()->getScale(),
+          /* offset */ 0);
+      bias = createQuantize("quantized_bias", bias, biasTy);
+    } else {
+      LOG(DFATAL)
+          << "Unsupported element type for bias of quantized convolution: "
+          << Type::getElementName(biasType).str();
+    }
+  }
+
   return addNode(new ConvolutionNode(name, OT, input, filter, bias, kernels,
                                      strides, pads, group, dilation, layout,
                                      FusedActivation::NONE));
@@ -751,6 +822,28 @@ Convolution3DNode *Function::createConv3D(llvm::StringRef name, NodeValue input,
   llvm::SmallVector<unsigned_t, 3> kernels = {kernel, kernel, kernel};
   return createConv3D(name, input, filter, bias, outTy, kernels, strides, pads,
                       group);
+}
+
+ConvTransposeNode *Function::createConvTranspose(
+    llvm::StringRef name, NodeValue input, NodeValue filter, NodeValue bias,
+    TypeRef outTy, llvm::ArrayRef<unsigned_t> kernels,
+    llvm::ArrayRef<unsigned_t> strides, llvm::ArrayRef<unsigned_t> pads,
+    unsigned_t group, unsigned_t dilation) {
+  assertConvTransposeDims(input, filter, bias, kernels, strides, pads, group);
+  auto OT = getParent()->uniqueType(*outTy);
+  return addNode(new ConvTransposeNode(name, OT, input, filter, bias, kernels,
+                                       strides, pads, group, dilation));
+}
+
+ConvTransposeNode *Function::createConvTranspose(
+    llvm::StringRef name, NodeValue input, NodeValue filter, NodeValue bias,
+    TypeRef outTy, unsigned_t kernel, unsigned_t stride, unsigned_t pad,
+    unsigned_t group, unsigned_t dilation) {
+  llvm::SmallVector<unsigned_t, 4> pads = {pad, pad, pad, pad};
+  llvm::SmallVector<unsigned_t, 2> strides = {stride, stride};
+  llvm::SmallVector<unsigned_t, 2> kernels = {kernel, kernel};
+  return createConvTranspose(name, input, filter, bias, outTy, kernels, strides,
+                             pads, group, dilation);
 }
 
 MaxPoolNode *Function::createMaxPool(llvm::StringRef name, NodeValue input,
@@ -1063,6 +1156,8 @@ TransposeNode *Function::createTranspose(llvm::StringRef name, NodeValue input,
       currLayout = "NCHW";
     } else if (compareShuffle(NHWC2HWNC)) {
       currLayout = "HWNC";
+    } else if (compareShuffle(CNHW2NHWC)) {
+      currLayout = "NHWC";
     }
   }
 
@@ -1643,6 +1738,12 @@ BatchedAddNode *Function::createBatchedAdd(llvm::StringRef name, TypeRef outTy,
       new BatchedAddNode(name, getParent()->uniqueType(*outTy), batch, sample));
 }
 
+CumSumNode *Function::createCumSum(llvm::StringRef name, NodeValue input,
+                                   bool exclusive, bool reverse) {
+  return addNode(
+      new CumSumNode(name, input.getType(), input, exclusive, reverse));
+}
+
 LengthsSumNode *Function::createLengthsSum(llvm::StringRef name, NodeValue data,
                                            NodeValue lengths) {
   ShapeVector outDims(data.dims().begin(), data.dims().end());
@@ -1651,61 +1752,60 @@ LengthsSumNode *Function::createLengthsSum(llvm::StringRef name, NodeValue data,
   return addNode(new LengthsSumNode(name, outTy, data, lengths));
 }
 
-SparseLengthsSumNode *Function::createSparseLengthsSum(llvm::StringRef name,
-                                                       NodeValue data,
-                                                       NodeValue indices,
-                                                       NodeValue lengths) {
+SparseLengthsSumNode *
+Function::createSparseLengthsSum(llvm::StringRef name, NodeValue data,
+                                 NodeValue indices, NodeValue lengths,
+                                 LengthsMode lengthsMode) {
   auto inDims = data.dims();
   ShapeVector outDims(inDims.begin(), inDims.end());
   outDims[0] = lengths.dims()[0];
   auto outTy = getParent()->uniqueTypeWithNewShape(data.getType(), outDims);
-  return addNode(new SparseLengthsSumNode(name, outTy, data, indices, lengths));
+  return addNode(new SparseLengthsSumNode(name, outTy, data, indices, lengths,
+                                          lengthsMode));
 }
 
-SparseLengthsWeightedSumNode *
-Function::createSparseLengthsWeightedSum(llvm::StringRef name, NodeValue data,
-                                         NodeValue weights, NodeValue indices,
-                                         NodeValue lengths) {
+SparseLengthsWeightedSumNode *Function::createSparseLengthsWeightedSum(
+    llvm::StringRef name, NodeValue data, NodeValue weights, NodeValue indices,
+    NodeValue lengths, LengthsMode lengthsMode) {
   auto inDims = data.dims();
   ShapeVector outDims(inDims.begin(), inDims.end());
   outDims[0] = lengths.dims()[0];
   auto outTy = getParent()->uniqueTypeWithNewShape(data.getType(), outDims);
-  return addNode(new SparseLengthsWeightedSumNode(name, outTy, data, weights,
-                                                  indices, lengths));
+  return addNode(new SparseLengthsWeightedSumNode(
+      name, outTy, data, weights, indices, lengths, lengthsMode));
 }
 
-SparseLengthsWeightedSumNode *
-Function::createSparseLengthsWeightedSum(llvm::StringRef name, TypeRef outTy,
-                                         NodeValue data, NodeValue weights,
-                                         NodeValue indices, NodeValue lengths) {
-  return addNode(new SparseLengthsWeightedSumNode(name, outTy, data, weights,
-                                                  indices, lengths));
+SparseLengthsWeightedSumNode *Function::createSparseLengthsWeightedSum(
+    llvm::StringRef name, TypeRef outTy, NodeValue data, NodeValue weights,
+    NodeValue indices, NodeValue lengths, LengthsMode lengthsMode) {
+  return addNode(new SparseLengthsWeightedSumNode(
+      name, outTy, data, weights, indices, lengths, lengthsMode));
 }
 
 RowwiseQuantizedSparseLengthsWeightedSumNode *
 Function::createRowwiseQuantizedSparseLengthsWeightedSum(
     llvm::StringRef name, Storage *data, Constant *scales, Constant *offsets,
     NodeValue weights, NodeValue indices, NodeValue lengths, ElemKind precision,
-    bool useFP16Accumulation) {
+    bool useFP16Accumulation, LengthsMode lengthsMode) {
   auto inDims = data->dims();
   ShapeVector outDims(inDims.begin(), inDims.end());
   outDims[0] = lengths.dims()[0];
   auto outTy = getParent()->uniqueType(precision, outDims);
   return addNode(new RowwiseQuantizedSparseLengthsWeightedSumNode(
       name, outTy, data, scales, offsets, weights, indices, lengths,
-      useFP16Accumulation));
+      useFP16Accumulation, lengthsMode));
 }
 
 RowwiseQuantizedSparseLengthsWeightedSumNode *
 Function::createRowwiseQuantizedSparseLengthsSum(
     llvm::StringRef name, Storage *data, Constant *scales, Constant *offsets,
     NodeValue indices, NodeValue lengths, ElemKind precision,
-    bool useFP16Accumulation) {
+    bool useFP16Accumulation, LengthsMode lengthsMode) {
   auto ty = getParent()->uniqueType(precision, {indices.dims()[0]});
   auto ones = createSplat(name.str() + ".ones", ty, 1.0);
   return createRowwiseQuantizedSparseLengthsWeightedSum(
       name, data, scales, offsets, ones, indices, lengths, precision,
-      useFP16Accumulation);
+      useFP16Accumulation, lengthsMode);
 }
 
 /// Helper to create a RowwiseQuantizedSparseLengthsWeightedSumNode in the
@@ -1717,7 +1817,7 @@ static RowwiseQuantizedSparseLengthsWeightedSumNode *
 quantizeDataAndCreateRowwiseQuantizedSparseLengthsWeightedSum(
     Function *F, llvm::StringRef name, Tensor &data, NodeValue weights,
     NodeValue indices, NodeValue lengths, quantization::Schema schema,
-    ElemKind precision, bool useFP16Accumulation) {
+    ElemKind precision, bool useFP16Accumulation, LengthsMode lengthsMode) {
   auto inDims = data.dims();
 
   // Note: In rwqData, we are using a quantized type, however the scale/offset
@@ -1747,28 +1847,29 @@ quantizeDataAndCreateRowwiseQuantizedSparseLengthsWeightedSum(
   }
   return F->createRowwiseQuantizedSparseLengthsWeightedSum(
       name, rwqData, dataScales, dataOffsets, weights, indices, lengths,
-      precision, useFP16Accumulation);
+      precision, useFP16Accumulation, lengthsMode);
 }
 
 RowwiseQuantizedSparseLengthsWeightedSumNode *
 Function::createRowwiseQuantizedSparseLengthsWeightedSum(
     llvm::StringRef name, Tensor &data, NodeValue weights, NodeValue indices,
     NodeValue lengths, quantization::Schema schema, ElemKind precision,
-    bool useFP16Accumulation) {
+    bool useFP16Accumulation, LengthsMode lengthsMode) {
   return quantizeDataAndCreateRowwiseQuantizedSparseLengthsWeightedSum(
       this, name, data, weights, indices, lengths, schema, precision,
-      useFP16Accumulation);
+      useFP16Accumulation, lengthsMode);
 }
 
 RowwiseQuantizedSparseLengthsWeightedSumNode *
 Function::createRowwiseQuantizedSparseLengthsSum(
     llvm::StringRef name, Tensor &data, NodeValue indices, NodeValue lengths,
-    quantization::Schema schema, ElemKind precision, bool useFP16Accumulation) {
+    quantization::Schema schema, ElemKind precision, bool useFP16Accumulation,
+    LengthsMode lengthsMode) {
   auto ty = getParent()->uniqueType(precision, {indices.dims()[0]});
   auto ones = createSplat(name.str() + ".ones", ty, 1.0);
   return quantizeDataAndCreateRowwiseQuantizedSparseLengthsWeightedSum(
       this, name, data, ones, indices, lengths, schema, precision,
-      useFP16Accumulation);
+      useFP16Accumulation, lengthsMode);
 }
 
 /// Helper used to get specific output type required for
@@ -1803,21 +1904,22 @@ getOutputTypeOfFusedRowwiseQuantizedSLS(Function *F, NodeValue data,
 FusedRowwiseQuantizedSparseLengthsWeightedSumNode *
 Function::createFusedRowwiseQuantizedSparseLengthsWeightedSum(
     llvm::StringRef name, NodeValue data, NodeValue weights, NodeValue indices,
-    NodeValue lengths, bool useFP16Accumulation) {
+    NodeValue lengths, bool useFP16Accumulation, LengthsMode lengthsMode) {
   auto outTy =
       getOutputTypeOfFusedRowwiseQuantizedSLS(this, data, lengths.dims());
   return addNode(new FusedRowwiseQuantizedSparseLengthsWeightedSumNode(
-      name, outTy, data, weights, indices, lengths, useFP16Accumulation));
+      name, outTy, data, weights, indices, lengths, useFP16Accumulation,
+      lengthsMode));
 }
 
 FusedRowwiseQuantizedSparseLengthsSumNode *
 Function::createFusedRowwiseQuantizedSparseLengthsSum(
     llvm::StringRef name, Storage *data, NodeValue indices, NodeValue lengths,
-    bool useFP16Accumulation) {
+    bool useFP16Accumulation, LengthsMode lengthsMode) {
   auto outTy =
       getOutputTypeOfFusedRowwiseQuantizedSLS(this, data, lengths.dims());
   return addNode(new FusedRowwiseQuantizedSparseLengthsSumNode(
-      name, outTy, data, indices, lengths, useFP16Accumulation));
+      name, outTy, data, indices, lengths, useFP16Accumulation, lengthsMode));
 }
 
 /// Helper to get quantized data required for
@@ -1867,61 +1969,63 @@ static Constant *quantizeDataForFusedRowwiseQuantizedSparseLengthsWeightedSum(
     return rwqData;
   }
   default:
-    LOG(FATAL) << "Invalid type for FusedRowwiswQuantization.";
+    llvm_unreachable("Invalid type for FusedRowwiswQuantization.");
   }
 }
 
 FusedRowwiseQuantizedSparseLengthsWeightedSumNode *
 Function::createFusedRowwiseQuantizedSparseLengthsWeightedSum(
     llvm::StringRef name, Tensor &data, NodeValue weights, NodeValue indices,
-    NodeValue lengths, ElemKind fusedElemKind, bool useFP16Accumulation) {
+    NodeValue lengths, ElemKind fusedElemKind, bool useFP16Accumulation,
+    LengthsMode lengthsMode) {
   Constant *rwqData =
       quantizeDataForFusedRowwiseQuantizedSparseLengthsWeightedSum(
           this, data, fusedElemKind);
   return createFusedRowwiseQuantizedSparseLengthsWeightedSum(
-      name, rwqData, weights, indices, lengths, useFP16Accumulation);
+      name, rwqData, weights, indices, lengths, useFP16Accumulation,
+      lengthsMode);
 }
 
 FusedRowwiseQuantizedSparseLengthsSumNode *
 Function::createFusedRowwiseQuantizedSparseLengthsSum(
     llvm::StringRef name, Tensor &data, NodeValue indices, NodeValue lengths,
-    ElemKind fusedElemKind, bool useFP16Accumulation) {
+    ElemKind fusedElemKind, bool useFP16Accumulation, LengthsMode lengthsMode) {
   Constant *rwqData =
       quantizeDataForFusedRowwiseQuantizedSparseLengthsWeightedSum(
           this, data, fusedElemKind);
   return this->createFusedRowwiseQuantizedSparseLengthsSum(
-      name, rwqData, indices, lengths, useFP16Accumulation);
+      name, rwqData, indices, lengths, useFP16Accumulation, lengthsMode);
 }
 
-EmbeddingBagNode *
-Function::createEmbeddingBag(llvm::StringRef name, NodeValue data,
-                             NodeValue weights, NodeValue indices,
-                             NodeValue offsets, bool hasEndOffset) {
+EmbeddingBagNode *Function::createEmbeddingBag(
+    llvm::StringRef name, NodeValue data, NodeValue weights, NodeValue indices,
+    NodeValue offsets, bool hasEndOffset, LengthsMode lengthsMode) {
   auto inDims = data.dims();
   ShapeVector outDims(inDims.begin(), inDims.end());
   outDims[0] = hasEndOffset ? offsets.dims()[0] - 1 : offsets.dims()[0];
   auto outTy = getParent()->uniqueTypeWithNewShape(data.getType(), outDims);
   return addNode(new EmbeddingBagNode(name, outTy, data, weights, indices,
-                                      offsets, hasEndOffset));
+                                      offsets, hasEndOffset, lengthsMode));
 }
 
 EmbeddingBagByteRowwiseOffsetsNode *
 Function::createEmbeddingBagByteRowwiseOffsets(
     llvm::StringRef name, Tensor &data, NodeValue weights, NodeValue indices,
     NodeValue offsets, ElemKind fusedElemKind, bool useFP16Accumulation,
-    bool hasEndOffset) {
+    bool hasEndOffset, LengthsMode lengthsMode) {
   Constant *rwqData =
       quantizeDataForFusedRowwiseQuantizedSparseLengthsWeightedSum(
           this, data, fusedElemKind);
   return createEmbeddingBagByteRowwiseOffsets(name, rwqData, weights, indices,
                                               offsets, useFP16Accumulation,
-                                              hasEndOffset);
+                                              hasEndOffset, lengthsMode);
 }
 
 EmbeddingBagByteRowwiseOffsetsNode *
 Function::createEmbeddingBagByteRowwiseOffsets(
     llvm::StringRef name, NodeValue data, NodeValue weights, NodeValue indices,
-    NodeValue offsets, bool useFP16Accumulation, bool hasEndOffset) {
+    NodeValue offsets, bool useFP16Accumulation, bool hasEndOffset,
+    LengthsMode lengthsMode) {
   std::vector<dim_t> segmentDims(offsets.dims().begin(), offsets.dims().end());
   // If hasEndOffset the last offset is just for marking the end of the last
   // segment.
@@ -1931,7 +2035,7 @@ Function::createEmbeddingBagByteRowwiseOffsets(
   auto outTy = getOutputTypeOfFusedRowwiseQuantizedSLS(this, data, segmentDims);
   return addNode(new EmbeddingBagByteRowwiseOffsetsNode(
       name, outTy, data, weights, indices, offsets, useFP16Accumulation,
-      hasEndOffset));
+      hasEndOffset, lengthsMode));
 }
 
 LengthsToRangesNode *Function::createLengthsToRanges(llvm::StringRef name,
@@ -2455,16 +2559,135 @@ Convolution3DNode *Function::createConv3D(PlaceholderBindings &bindings,
                       pads, group);
 }
 
+/// Channelwise quantize the given float \p bias as int32 using \p inputScale,
+/// per-channel \p scales and \p offsets. \returns the channelwise quantized
+/// bias tensor or Error if one occurred.
+static Expected<Tensor> channelwiseQuantizeFloatBias(NodeValue bias,
+                                                     NodeValue scales,
+                                                     NodeValue offsets,
+                                                     float inputScale) {
+  Constant *biasC = dyn_cast<Constant>(bias.getNode());
+  RETURN_ERR_IF_NOT(biasC, "bias input to ChannelwiseQuantizedConvolutionNode "
+                           "must be a Constant in order to quantize the bias");
+
+  Constant *scalesC = dyn_cast<Constant>(scales.getNode());
+  RETURN_ERR_IF_NOT(scalesC,
+                    "scales input to ChannelwiseQuantizedConvolutionNode must "
+                    "be a Constant in order to quantize the bias");
+
+  Constant *offsetsC = dyn_cast<Constant>(offsets.getNode());
+  RETURN_ERR_IF_NOT(offsetsC,
+                    "offsets input to ChannelwiseQuantizedConvolutionNode must "
+                    "be a Constant in order to quantize the bias");
+
+  const auto &biasUnquantizedH = biasC->getPayload().getHandle<float>();
+  const auto &scalesH = scalesC->getPayload().getHandle<float>();
+
+  // biasQuantizedT is Int32QTy but the quantization parameters on the tensor
+  // are not real, instead quantization parameters are from scales and offsets
+  // inputs.
+  auto biasQuantizedT = Tensor(ElemKind::Int32QTy, biasUnquantizedH.dims(),
+                               /* scale */ 1.0, /* offset */ 0);
+  auto biasQuantizedH = biasQuantizedT.getHandle<int32_t>();
+
+  for (dim_t i = 0; i < biasQuantizedH.size(); ++i) {
+    TensorQuantizationParams tqp;
+    tqp.scale = inputScale * scalesH.raw(i);
+    tqp.offset = 0;
+    biasQuantizedH.raw(i) =
+        quantization::quantize<int32_t>(biasUnquantizedH.raw(i), tqp);
+  }
+
+  return Expected<Tensor>(std::move(biasQuantizedT));
+}
+
 ChannelwiseQuantizedConvolutionNode *Function::createChannelwiseQuantizedConv(
-    llvm::StringRef name, NodeValue input, Constant *filter, Constant *bias,
-    Constant *scales, Constant *offsets, TypeRef outTy,
+    llvm::StringRef name, NodeValue input, NodeValue filter, NodeValue bias,
+    NodeValue scales, NodeValue offsets, TypeRef outTy,
     llvm::ArrayRef<unsigned_t> kernels, llvm::ArrayRef<unsigned_t> strides,
     llvm::ArrayRef<unsigned_t> pads, unsigned_t group) {
   assertConvDims(input, filter, bias, kernels, strides, pads, group);
   auto OT = getParent()->uniqueType(*outTy);
+  auto biasType = bias.getElementType();
+  if (biasType == ElemKind::Int32QTy) {
+    // Nothing to do
+  } else if (biasType == ElemKind::FloatTy) {
+    if (auto qBiasTensorOrErr = channelwiseQuantizeFloatBias(
+            bias, scales, offsets, input.getType()->getScale())) {
+      bias = getParent()->createConstant("quantized_bias", *qBiasTensorOrErr);
+    } else {
+      LOG(DFATAL) << "Error while quantizing bias for "
+                     "ChannelwiseQuantizedConvolutionNode: "
+                  << ERR_TO_STRING(qBiasTensorOrErr.takeError());
+    }
+  } else {
+    LOG(DFATAL)
+        << "Unsupported element type for ChannelwiseQuantizedConvolution bias: "
+        << Type::getElementName(biasType).str();
+  }
+
   return addNode(new ChannelwiseQuantizedConvolutionNode(
       name, OT, input, filter, bias, scales, offsets, kernels, strides, pads,
-      group, /*Groupwise*/ true));
+      group));
+}
+
+ConvTransposeNode *Function::createConvTranspose(
+    PlaceholderBindings &bindings, llvm::StringRef name, NodeValue input,
+    dim_t outChannels, llvm::ArrayRef<unsigned_t> kernels,
+    llvm::ArrayRef<unsigned_t> strides, llvm::ArrayRef<unsigned_t> pads,
+    unsigned_t group, unsigned_t dilation) {
+  ShapeNHWC idim = ShapeNHWC(input.dims());
+  ShapeHW kdim(kernels);
+  PaddingTLBR pdim(pads);
+  (void)pdim;
+  assert((idim.w + pdim.left + pdim.right) >= kdim.width &&
+         (idim.h + pdim.top + pdim.bottom) >= kdim.height &&
+         "buffer too small for selected stride");
+
+  assert(group > 0 && "group should be larger than 0");
+  assert(idim.c % group == 0 && "channels number must be divisible by groups");
+  assert(outChannels % group == 0 && "outChannels must be divisible by groups");
+
+  // Calculate the size and allocate the output buffer.
+  auto outSz = calculateConvTransposeOutputDims(idim.h, idim.w, kernels,
+                                                strides, pads, dilation);
+
+  std::array<dim_t, 4> outDims = {
+      {idim.n, outSz.first, outSz.second, outChannels}};
+
+  // Allocate the Filter and Bias tensors.
+  std::array<dim_t, 4> filterDim = {
+      {outChannels, kdim.height, kdim.width, idim.c / group}};
+  size_t fanIn = kdim.height * kdim.width * idim.c;
+  ElemKind inputTy = input.getType()->getElementType();
+  assert((inputTy == ElemKind::FloatTy || inputTy == ElemKind::Float16Ty) &&
+         "Convolution on non-floating point type?");
+  auto *filter =
+      getParent()->createPlaceholder(inputTy, filterDim, "filter", true);
+
+  auto *bias =
+      getParent()->createPlaceholder(inputTy, {outChannels}, "bias", true);
+  bindings.allocate(bias)->init(glow::Tensor::InitKind::Broadcast, 0.1,
+                                getPRNG());
+
+  bindings.allocate(filter)->init(glow::Tensor::InitKind::Xavier, fanIn,
+                                  getPRNG());
+
+  auto OT = getParent()->uniqueType(inputTy, outDims);
+
+  return addNode(new ConvTransposeNode(name, OT, input, filter, bias, kernels,
+                                       strides, pads, group, dilation));
+}
+
+ConvTransposeNode *Function::createConvTranspose(
+    PlaceholderBindings &bindings, llvm::StringRef name, NodeValue input,
+    dim_t outChannels, unsigned_t kernel, unsigned_t stride, unsigned_t pad,
+    unsigned_t group, unsigned_t dilation) {
+  llvm::SmallVector<unsigned_t, 4> pads = {pad, pad, pad, pad};
+  llvm::SmallVector<unsigned_t, 2> strides = {stride, stride};
+  llvm::SmallVector<unsigned_t, 2> kernels = {kernel, kernel};
+  return createConvTranspose(bindings, name, input, outChannels, kernels,
+                             strides, pads, group, dilation);
 }
 
 ConvertToNode *Function::createConvertTo(llvm::StringRef name, NodeValue input,
@@ -2518,6 +2741,18 @@ Node *Function::createDotProduct(llvm::StringRef name, NodeValue X,
 
   // Create and return BatchedReduceAdd node.
   return createBatchedReduceAdd(name.str() + ".bra", MN, 1);
+}
+
+BatchedPairwiseDotProductNode *
+Function::createBatchedPairwiseDotProduct(llvm::StringRef name,
+                                          llvm::ArrayRef<NodeValue> inputs) {
+  assert(!inputs.empty());
+  dim_t batchCount = inputs[0].getType()->dims()[0];
+  dim_t numPairs = inputs.size() * (inputs.size() - 1) / 2;
+  auto *outTy = getParent()->uniqueTypeWithNewShape(inputs[0].getType(),
+                                                    {batchCount, numPairs});
+
+  return addNode(new BatchedPairwiseDotProductNode(name, outTy, inputs));
 }
 
 Node *Function::createElementwiseLinear(llvm::StringRef name, NodeValue X,
@@ -3794,6 +4029,114 @@ TraceEventNode *Function::createTraceEvent(llvm::StringRef eventName,
   return addNode(new TraceEventNode(name, data, eventName, eventType, index));
 }
 
+NonMaxSuppressionNode *Function::createNonMaxSuppressionV4(
+    llvm::StringRef name, NodeValue boxes, NodeValue scores,
+    int64_t centerPointBox, int64_t maxOutputBoxesPerClass, float iouThreshold,
+    float scoreThreshold, ElemKind elTy) {
+  // V4
+  // Class/Score [BatchNum][BoxNum]
+  // Boxes [BatdhNum][BoxNum][4]
+  // Result [BatchNum*MaxOutputPerBatch]
+  // NumberOfIndicesDetected [BatchNum*MaxOutputPerBatch]
+  auto scoresDim = scores.dims();
+  int scoresBoxDim = scoresDim.size() - 1;
+  if (maxOutputBoxesPerClass == 0) {
+    maxOutputBoxesPerClass = scoresDim[scoresBoxDim];
+  }
+
+  // Allocating maximum because we don't know how many boxes will actually be
+  // detected.
+  std::vector<dim_t> newDim = {static_cast<dim_t>(maxOutputBoxesPerClass)};
+  auto indicesTy = getParent()->uniqueType(elTy, newDim);
+  auto numberOfSelectedIndicesTy = getParent()->uniqueType(
+      elTy, {static_cast<dim_t>(maxOutputBoxesPerClass)});
+  return addNode(new NonMaxSuppressionNode(
+      name, indicesTy, numberOfSelectedIndicesTy, boxes, scores, centerPointBox,
+      maxOutputBoxesPerClass, iouThreshold, scoreThreshold, true));
+}
+
+NonMaxSuppressionNode *
+Function::createNonMaxSuppressionV4(llvm::StringRef name, NodeValue boxes,
+                                    NodeValue scores, int64_t centerPointBox,
+                                    int64_t maxOutputBoxesPerClass,
+                                    float iouThreshold, float scoreThreshold) {
+  return createNonMaxSuppressionV4(name, boxes, scores, centerPointBox,
+                                   maxOutputBoxesPerClass, iouThreshold,
+                                   scoreThreshold, ElemKind::Int64ITy);
+}
+
+NonMaxSuppressionNode *Function::createNonMaxSuppressionV4(
+    llvm::StringRef name, NodeValue boxes, NodeValue scores,
+    int64_t centerPointBox, int64_t maxOutputBoxesPerClass, float iouThreshold,
+    float scoreThreshold, TypeRef indicesTy,
+    TypeRef numberOfSelectedIndicesTy) {
+  assert(maxOutputBoxesPerClass > 0 && "Invalid maxOutputBoxesPerClass.");
+
+  return addNode(new NonMaxSuppressionNode(
+      name, indicesTy, numberOfSelectedIndicesTy, boxes, scores, centerPointBox,
+      maxOutputBoxesPerClass, iouThreshold, scoreThreshold, true));
+}
+
+NonMaxSuppressionNode *Function::createNonMaxSuppressionONNX(
+    llvm::StringRef name, NodeValue boxes, NodeValue scores,
+    int64_t centerPointBox, int64_t maxOutputBoxesPerClass, float iouThreshold,
+    float scoreThreshold, ElemKind elTy) {
+  // ONNX
+  // Class/Score [BatchNum][ClassNum][BoxNum]
+  // Box [BatchNum][BoxNum][4]
+  // Result [BatchNum*MaxOutputPerBatch][3]
+  auto boxesDim = boxes.dims();
+  auto scoresDim = scores.dims();
+  int scoresBoxDim = scoresDim.size() - 1;
+  int scoresClassDim = scoresDim.size() - 2;
+  int scoresBatchDim = scoresDim.size() - 3;
+  int boxesBatchDim = boxesDim.size() - 3;
+  if (maxOutputBoxesPerClass == 0) {
+    maxOutputBoxesPerClass = scoresDim[scoresBoxDim];
+  }
+
+  // allocating maximum because we don't know how many boxes will actually be
+  // detected.
+  std::vector<dim_t> newDim = {scoresDim[scoresBatchDim] *
+                                   scoresDim[scoresClassDim] *
+                                   static_cast<dim_t>(maxOutputBoxesPerClass),
+                               3};
+  auto indicesTy = getParent()->uniqueType(elTy, newDim);
+  auto numberOfSelectedIndicesTy = getParent()->uniqueType(
+      elTy,
+      {boxesDim[boxesBatchDim] * static_cast<dim_t>(maxOutputBoxesPerClass)});
+  return addNode(new NonMaxSuppressionNode(
+      name, indicesTy, numberOfSelectedIndicesTy, boxes, scores, centerPointBox,
+      maxOutputBoxesPerClass, iouThreshold, scoreThreshold, false));
+}
+
+NonMaxSuppressionNode *Function::createNonMaxSuppressionONNX(
+    llvm::StringRef name, NodeValue boxes, NodeValue scores,
+    int64_t centerPointBox, int64_t maxOutputBoxesPerClass, float iouThreshold,
+    float scoreThreshold) {
+  return createNonMaxSuppressionONNX(name, boxes, scores, centerPointBox,
+                                     maxOutputBoxesPerClass, iouThreshold,
+                                     scoreThreshold, ElemKind::Int64ITy);
+}
+
+NonMaxSuppressionNode *Function::createNonMaxSuppressionONNX(
+    llvm::StringRef name, NodeValue boxes, NodeValue scores,
+    int64_t centerPointBox, int64_t maxOutputBoxesPerClass, float iouThreshold,
+    float scoreThreshold, TypeRef indicesTy) {
+  auto boxesDim = boxes.dims();
+  assert(maxOutputBoxesPerClass > 0 && "Invalid maxOutputBoxesPerClass.");
+
+  // allocating maximum because we don't know how many boxes will actually be
+  // detected.
+  auto numberOfSelectedIndicesTy = getParent()->uniqueType(
+      ElemKind::Int32ITy, {1, 1, 1,
+                           boxesDim[boxesDim.size() - 2] *
+                               static_cast<dim_t>(maxOutputBoxesPerClass)});
+  return addNode(new NonMaxSuppressionNode(
+      name, indicesTy, numberOfSelectedIndicesTy, boxes, scores, centerPointBox,
+      maxOutputBoxesPerClass, iouThreshold, scoreThreshold, false));
+}
+
 //===----------------------------------------------------------------------===//
 //                   Graph dumping and printing
 //===----------------------------------------------------------------------===//
@@ -4018,12 +4361,23 @@ ConstList Function::findConstants() const {
 }
 
 Function *Function::clone(llvm::StringRef newName,
-                          llvm::DenseMap<Node *, Node *> *map) {
+                          llvm::DenseMap<const Node *, Node *> *map,
+                          llvm::DenseMap<const Node *, Node *> *currToNewMap) {
   Module *M = getParent();
   auto *newF = M->createFunction(newName);
+  return clone(newF, map, currToNewMap);
+}
 
+Function *
+Function::clone(Function *newF, llvm::DenseMap<const Node *, Node *> *map,
+                llvm::DenseMap<const Node *, Node *> *currToNewMap) const {
   // Maps current nodes to new nodes.
-  llvm::DenseMap<Node *, Node *> currToNew;
+  llvm::DenseMap<const Node *, Node *> currToNew;
+
+  // Initialize the map from a user-provided map.
+  if (currToNewMap) {
+    currToNew.insert(currToNewMap->begin(), currToNewMap->end());
+  }
 
   // Clone all of the nodes in the function.
   for (auto &N : getNodes()) {
@@ -4091,6 +4445,49 @@ static bool verifyNodeInput(const Node &N, size_t idx) {
   report("Any node referencing another node N must be in the use-list of the "
          "node N");
   return false;
+}
+
+Module *Module::clone() const {
+  auto *M = new Module;
+  return clone(M);
+}
+
+Module *Module::clone(Module *M) const {
+  // Maps current nodes to new nodes.
+  llvm::DenseMap<const Node *, Node *> currToNew;
+  // Clone placeholders.
+  for (auto &PH : getPlaceholders()) {
+    auto *copyPH = M->createPlaceholder(PH->getType(), PH->getName(),
+                                        PH->isTraining(), PH->getLayout());
+    currToNew[PH] = copyPH;
+  }
+  // Clone constants.
+  for (auto &C : getConstants()) {
+    // Cloner cannot decide on its own what to do with constants having unowned
+    // payloads. Some kind of policy/hook maybe needed in the future for
+    // deciding what needs to be done in such cases.
+    DCHECK(!C->getPayload().isUnowned())
+        << "Cannot copy constant " << C->getName().str()
+        << ": Unowned payloads are not supported";
+    auto *copyC = M->createConstant(C->getType(), C->getName(), C->getLayout());
+    copyC->assign(&C->getPayload());
+    currToNew[C] = copyC;
+  }
+  // Clone all functions.
+  for (auto *F : getFunctions()) {
+    // Create an empty clone function in the new module.
+    auto *copyF = M->createFunction(F->getName());
+    // Clone function's body into the newly created cloned function. Use the
+    // currToNew to properly map constants and placeholders.
+    F->clone(copyF, nullptr, &currToNew);
+    // Update all types by cloned types.
+    for (auto &N : copyF->getNodes()) {
+      for (unsigned idx = 0, e = N.getNumResults(); idx < e; ++idx) {
+        N.setType(idx, M->uniqueType(*N.getType(idx)));
+      }
+    }
+  }
+  return M;
 }
 
 /// \returns True if \p n is a storage node (constant or placeholder) of the
@@ -4187,6 +4584,20 @@ bool Function::verify(const Backend *backend) const {
           "All uses of a node should refer to this node", U.get()->getNode(),
           &N, &N);
       ;
+    }
+  }
+
+  // Check that all types used by nodes belong to the parent module.
+  auto &types = getParent()->getTypes();
+  for (const auto &N : nodes_) {
+    for (size_t idx = 0, e = N.getNumResults(); idx < e; ++idx) {
+      auto ty = N.getType(idx);
+      bool foundType =
+          std::find(types.begin(), types.end(), *ty) != types.end();
+      isValid &= expectCompareTrue(
+          "Every type used by one of the graph nodes should be part of "
+          "the graph",
+          foundType, true, &N);
     }
   }
 

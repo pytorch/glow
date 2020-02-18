@@ -130,6 +130,13 @@ void LLVMIRGen::optimizeLLVMModule(llvm::Module *M, llvm::TargetMachine &TM) {
     }
 
     FF.removeFnAttr(llvm::Attribute::AttrKind::NoInline);
+
+    // LinkOnce linkage seems to cause problems to OrcJIT on some OS platforms.
+    // In particular, ORCJit doesn't like linkonce_odr linkage which is used for
+    // almost all templatized C++ functions in the LLVM module.
+    if (!FF.isDeclaration() && FF.isLinkOnceLinkage(FF.getLinkage())) {
+      FF.setLinkage(llvm::GlobalValue::LinkageTypes::InternalLinkage);
+    }
   }
 
   // Perform specialization of functions for constant arguments before anything

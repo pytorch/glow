@@ -134,6 +134,11 @@ public:
   TypeRef uniqueTypeWithNewShape(TypeRef T, llvm::ArrayRef<dim_t> dims,
                                  llvm::ArrayRef<dim_t> alignments);
 
+  /// Return a pointer to a uniqued type \p T.
+  /// The new type is identical to \p T, with a new shape and strides taken from
+  /// the type \p shapeType.
+  TypeRef uniqueTypeWithNewShape(TypeRef T, TypeRef shapeType);
+
   /// Return the void type.
   TypeRef getVoidTy();
 
@@ -148,6 +153,9 @@ public:
   FunctionList &getFunctions() { return functions_; }
 
   const FunctionList &getFunctions() const { return functions_; }
+
+  /// \returns the list of types that the Module owns.
+  const TypesList &getTypes() const { return types_; }
 
   /// Erase the constant \p N from the Module.
   void eraseConstant(Constant *N);
@@ -243,6 +251,15 @@ public:
 
   /// Erase all the functions, Placeholders, Constants, etc.
   void clear();
+
+  /// Clone a module.
+  /// \returns a new module that is a copy of the current module.
+  Module *clone() const;
+
+  /// Clone the current module into a user-provided module \p M.
+  /// \returns the user-provided module \p M that now contains a clone of the
+  /// current module.
+  Module *clone(Module *M) const;
 
   /// Strips payloads from constants. This is useful when
   /// the Module will be kept around for metadata but we want to reduce memory
@@ -443,22 +460,50 @@ public:
                                   unsigned_t group);
 
   /// Creates a ChannelwiseQuantizedConvolutionNode with the given \p name which
-  /// convolves the 4D \p input with \p filter and \bias. \p scales and \p
+  /// convolves the 4D \p input with \p filter and \p bias. \p scales and \p
   /// offsets provide individual quantization parameters for each filter group
   /// in \p filter. \p kernels defines the size of the height and width
   /// dimensions of the filters. \p strides defines the number of steps to take
   /// in the input for each output cell. \p pads defines how many zero padding
   /// cells should be added to the input during convolution. \p group defines
   /// the number of groups the input and output channels should be divided into
-  /// and convolved separately.
+  /// and convolved separately. If bias is FloatTy then it will be quantized
+  /// to Int32QTy automatically.
   /// NOTE: ChannelwiseQuantizedConvolutionNode does
   /// not yet have an implementation so attempting to run a graph containing
   /// this node fails.
   ChannelwiseQuantizedConvolutionNode *createChannelwiseQuantizedConv(
-      llvm::StringRef name, NodeValue input, Constant *filter, Constant *bias,
-      Constant *scales, Constant *offsets, TypeRef outTy,
+      llvm::StringRef name, NodeValue input, NodeValue filter, NodeValue bias,
+      NodeValue scales, NodeValue offsets, TypeRef outTy,
       llvm::ArrayRef<unsigned_t> kernels, llvm::ArrayRef<unsigned_t> strides,
       llvm::ArrayRef<unsigned_t> pads, unsigned_t group);
+
+  /// Creates a ConvTransposeNode with the given \p name which does transposed
+  /// convolution of the 4D \p input with \p filter and \bias. \p kernels define
+  /// the size of the height and width dimensions of the filters. \p strides
+  /// define the number of steps to take in the input for each output cell.
+  /// \p pads define how many zero padding cells should be added to the input
+  /// during convolution. \p group defines the number of groups the input and
+  /// output channels should be divided into and convolved separately.
+  ConvTransposeNode *createConvTranspose(
+      llvm::StringRef name, NodeValue input, NodeValue filter, NodeValue bias,
+      TypeRef outTy, llvm::ArrayRef<unsigned_t> kernels,
+      llvm::ArrayRef<unsigned_t> strides, llvm::ArrayRef<unsigned_t> pads,
+      unsigned_t group, unsigned_t dilation = 1);
+
+  /// Creates a createConvTransposeNode with the given \p name which does
+  /// transposed convolution of the 4D \p input with \p filter and \bias. \p
+  /// kernel defines the size of the height and width dimensions of the filters.
+  /// \p stride defines the number of steps to take in the input for each output
+  /// cell. \p pad defines how many zero padding cells should be added to the
+  /// input during convolution. \p group defines the number of groups the input
+  /// and output channels should be divided into and convolved separately.
+  ConvTransposeNode *createConvTranspose(llvm::StringRef name, NodeValue input,
+                                         NodeValue filter, NodeValue bias,
+                                         TypeRef outTy, unsigned_t kernel,
+                                         unsigned_t stride, unsigned_t pad,
+                                         unsigned_t group,
+                                         unsigned_t dilation = 1);
 
   /// Creates and \returns a ConvertTo Node with name \p name of \p input to
   /// output type \p outTy.
@@ -550,6 +595,13 @@ public:
   /// lowered to a Mul node, and is followed by a BatchedReduceAdd if \p X and
   /// \p Y are 2D. \returns either the Mul or BatchedReduceAdd node.
   Node *createDotProduct(llvm::StringRef name, NodeValue X, NodeValue Y);
+
+  /// Create a node that computes the pairwise dot product of \p inputs, which
+  /// must be a list of 2D tensors with identical shape. \returns the
+  /// BatchedPairwiseDotProductNode.
+  BatchedPairwiseDotProductNode *
+  createBatchedPairwiseDotProduct(llvm::StringRef name,
+                                  llvm::ArrayRef<NodeValue> inputs);
 
   /// Create a node that implements the elementwise linear operator. \p X is
   /// 2D and \p w and \p b are 1D. \p w and \p b are broadcasted to match the
@@ -909,6 +961,11 @@ public:
   BatchedAddNode *createBatchedAdd(llvm::StringRef name, TypeRef outTy,
                                    NodeValue batch, NodeValue sample);
 
+  /// Create a node performing a Cumulative Sum operation, output type matches
+  /// \p input type.
+  CumSumNode *createCumSum(llvm::StringRef name, NodeValue input,
+                           bool exclusive = false, bool reverse = false);
+
   /// Implements an operation that accumulates the values in \p data along the
   /// first dimension into len(\p lengths) entries by summing together the first
   /// lengths[0] values, then the subsequent lengths[1] values, etc.
@@ -923,34 +980,40 @@ public:
   /// vector, and then accumulates them into len(Lengths) entries:
   /// first Lengths[0] slices are aggregated to Result[0], next Lengths[1]
   /// slices are aggregated to Result[1], etc. I.e. sum(Lengths) must be equal
-  /// to len(Indices).
-  SparseLengthsSumNode *createSparseLengthsSum(llvm::StringRef name,
-                                               NodeValue data,
-                                               NodeValue indices,
-                                               NodeValue lengths);
+  /// to len(Indices). \p lengthsMode represents meta information about the \p
+  /// lengths, allowing the backend to use a specialized implementation.
+  SparseLengthsSumNode *
+  createSparseLengthsSum(llvm::StringRef name, NodeValue data,
+                         NodeValue indices, NodeValue lengths,
+                         LengthsMode lengthsMode = LengthsMode::High);
 
   /// Same as SparseLengthsSum, but i-th slice is multiplied by weights[i].
   /// len(weights) must be equal to len(indices).
   SparseLengthsWeightedSumNode *
   createSparseLengthsWeightedSum(llvm::StringRef name, NodeValue data,
                                  NodeValue weights, NodeValue indices,
-                                 NodeValue lengths);
+                                 NodeValue lengths,
+                                 LengthsMode lengthsMode = LengthsMode::High);
 
   /// Create an EmbeddingBag node. If \p hasEndOffset is true then the node
   /// expects an extra offset to be appended to \p offsets which marks the end
-  /// of the last range.
-  EmbeddingBagNode *createEmbeddingBag(llvm::StringRef name, NodeValue data,
-                                       NodeValue weights, NodeValue indices,
-                                       NodeValue offsets,
-                                       bool hasEndOffset = false);
+  /// of the last range. \p lengthsMode represents meta information about the
+  /// \p lengths, allowing the backend to use a specialized implementation.
+  EmbeddingBagNode *
+  createEmbeddingBag(llvm::StringRef name, NodeValue data, NodeValue weights,
+                     NodeValue indices, NodeValue offsets,
+                     bool hasEndOffset = false,
+                     LengthsMode lengthsMode = LengthsMode::High);
 
   /// Create an EmbeddingBagByteRowwiseOffsetsNode node. If \p hasEndOffset is
   /// true then the node expects an extra offset to be appended to \p offsets
-  /// which marks the end of the last range.
+  /// which marks the end of the last range. \p lengthsMode represents meta
+  /// information about the \p lengths, allowing the backend to use a
+  /// specialized implementation.
   EmbeddingBagByteRowwiseOffsetsNode *createEmbeddingBagByteRowwiseOffsets(
       llvm::StringRef name, NodeValue data, NodeValue weights,
       NodeValue indices, NodeValue offsets, bool useFP16Accumulation = false,
-      bool hasEndOffset = false);
+      bool hasEndOffset = false, LengthsMode lengthsMode = LengthsMode::High);
 
   /// Same as \ref createEmbeddingBagByteRowwiseOffsets(), but
   /// expects float input \p data, which is rowwise-quantized and fused
@@ -961,14 +1024,16 @@ public:
   EmbeddingBagByteRowwiseOffsetsNode *createEmbeddingBagByteRowwiseOffsets(
       llvm::StringRef name, Tensor &data, NodeValue weights, NodeValue indices,
       NodeValue offsets, ElemKind fusedElemKind = ElemKind::UInt8FusedQTy,
-      bool useFP16Accumulation = false, bool hasEndOffset = false);
+      bool useFP16Accumulation = false, bool hasEndOffset = false,
+      LengthsMode lengthsMode = LengthsMode::High);
 
   /// Same as \ref createSparseLengthsWeightedSum(), but with \p outTy
   /// specified.
   SparseLengthsWeightedSumNode *
   createSparseLengthsWeightedSum(llvm::StringRef name, TypeRef outTy,
                                  NodeValue data, NodeValue weights,
-                                 NodeValue indices, NodeValue lengths);
+                                 NodeValue indices, NodeValue lengths,
+                                 LengthsMode lengthsMode = LengthsMode::High);
 
   /// Creates and \returns a node of \p name, performing the SparseLengthsSum
   /// operation, using rowwise quantization for the input \p data with the \p
@@ -979,22 +1044,24 @@ public:
   /// Result[1], etc. I.e. sum(Lengths) must be equal to len(Indices).
   /// \p precision represents what precision to use for Scale, Offset, and
   /// Result. If \p useFP16Accumulation, then internal arithmetic will use FP16
-  /// accumulation; otherwise defaults to FP32.
+  /// accumulation; otherwise defaults to FP32. \p lengthsMode represents meta
+  /// information about the \p lengths, allowing the backend to use a
+  /// specialized implementation.
   RowwiseQuantizedSparseLengthsWeightedSumNode *
-  createRowwiseQuantizedSparseLengthsSum(llvm::StringRef name, Storage *data,
-                                         Constant *scales, Constant *offsets,
-                                         NodeValue indices, NodeValue lengths,
-                                         ElemKind precision = ElemKind::FloatTy,
-                                         bool useFP16Accumulation = false);
+  createRowwiseQuantizedSparseLengthsSum(
+      llvm::StringRef name, Storage *data, Constant *scales, Constant *offsets,
+      NodeValue indices, NodeValue lengths,
+      ElemKind precision = ElemKind::FloatTy, bool useFP16Accumulation = false,
+      LengthsMode lengthsMode = LengthsMode::High);
 
   /// Same as \ref createRowwiseQuantizedSparseLengthsSum(), but expects
   /// float input \p data, which is rowwise-quantized internally.
   RowwiseQuantizedSparseLengthsWeightedSumNode *
-  createRowwiseQuantizedSparseLengthsSum(llvm::StringRef name, Tensor &data,
-                                         NodeValue indices, NodeValue lengths,
-                                         quantization::Schema schema,
-                                         ElemKind precision = ElemKind::FloatTy,
-                                         bool useFP16Accumulation = false);
+  createRowwiseQuantizedSparseLengthsSum(
+      llvm::StringRef name, Tensor &data, NodeValue indices, NodeValue lengths,
+      quantization::Schema schema, ElemKind precision = ElemKind::FloatTy,
+      bool useFP16Accumulation = false,
+      LengthsMode lengthsMode = LengthsMode::High);
 
   /// Same as \ref createRowwiseQuantizedSparseLengthsSum(), but i-th slice is
   /// multiplied by weights[i]. len(weights) must be equal to len(indices).
@@ -1002,7 +1069,8 @@ public:
   createRowwiseQuantizedSparseLengthsWeightedSum(
       llvm::StringRef name, Storage *data, Constant *scales, Constant *offsets,
       NodeValue weights, NodeValue indices, NodeValue lengths,
-      ElemKind precision = ElemKind::FloatTy, bool useFP16Accumulation = false);
+      ElemKind precision = ElemKind::FloatTy, bool useFP16Accumulation = false,
+      LengthsMode lengthsMode = LengthsMode::High);
 
   /// Same as \ref createRowwiseQuantizedSparseLengthsWeightedSum(), but expects
   /// float input \p data, which is rowwise-quantized internally.
@@ -1010,7 +1078,8 @@ public:
   createRowwiseQuantizedSparseLengthsWeightedSum(
       llvm::StringRef name, Tensor &data, NodeValue weights, NodeValue indices,
       NodeValue lengths, quantization::Schema schema,
-      ElemKind precision = ElemKind::FloatTy, bool useFP16Accumulation = false);
+      ElemKind precision = ElemKind::FloatTy, bool useFP16Accumulation = false,
+      LengthsMode lengthsMode = LengthsMode::High);
 
   /// Creates and \returns a node of \p name, performing the SparseLengthsSum
   /// operation, using fused rowwise quantization for the input \p data wherein
@@ -1022,12 +1091,14 @@ public:
   /// sum(Lengths) must be equal to len(Indices).  The precision for the Result
   /// is determined by the \p data input's ElemKind used for Scale and
   /// Offset. If \p useFP16Accumulation, then internal arithmetic will use FP16
-  /// accumulation; otherwise defaults to FP32.
+  /// accumulation; otherwise defaults to FP32. \p lengthsMode represents meta
+  /// information about the \p lengths, allowing the backend to use a
+  /// specialized implementation.
   FusedRowwiseQuantizedSparseLengthsSumNode *
-  createFusedRowwiseQuantizedSparseLengthsSum(llvm::StringRef name,
-                                              Storage *data, NodeValue indices,
-                                              NodeValue lengths,
-                                              bool useFP16Accumulation = false);
+  createFusedRowwiseQuantizedSparseLengthsSum(
+      llvm::StringRef name, Storage *data, NodeValue indices, NodeValue lengths,
+      bool useFP16Accumulation = false,
+      LengthsMode lengthsMode = LengthsMode::High);
 
   /// Same as \ref createFusedRowwiseQuantizedSparseLengthsSum(), but expects
   /// float input \p data, which is rowwise-quantized and fused internally.
@@ -1037,14 +1108,16 @@ public:
   createFusedRowwiseQuantizedSparseLengthsSum(
       llvm::StringRef name, Tensor &data, NodeValue indices, NodeValue lengths,
       ElemKind fusedElemKind = ElemKind::UInt8FusedQTy,
-      bool useFP16Accumulation = false);
+      bool useFP16Accumulation = false,
+      LengthsMode lengthsMode = LengthsMode::High);
 
   /// Same as \ref createFusedRowwiseQuantizedSparseLengthsSum(), but i-th slice
   /// is multiplied by weights[i]. len(weights) must be equal to len(indices).
   FusedRowwiseQuantizedSparseLengthsWeightedSumNode *
   createFusedRowwiseQuantizedSparseLengthsWeightedSum(
       llvm::StringRef name, NodeValue data, NodeValue weights,
-      NodeValue indices, NodeValue lengths, bool useFP16Accumulation = false);
+      NodeValue indices, NodeValue lengths, bool useFP16Accumulation = false,
+      LengthsMode lengthsMode = LengthsMode::High);
 
   /// Same as \ref createFusedRowwiseQuantizedSparseLengthsWeightedSum(), but
   /// expects float input \p data, which is rowwise-quantized and fused
@@ -1054,7 +1127,8 @@ public:
   createFusedRowwiseQuantizedSparseLengthsWeightedSum(
       llvm::StringRef name, Tensor &data, NodeValue weights, NodeValue indices,
       NodeValue lengths, ElemKind fusedElemKind = ElemKind::UInt8FusedQTy,
-      bool useFP16Accumulation = false);
+      bool useFP16Accumulation = false,
+      LengthsMode lengthsMode = LengthsMode::High);
 
   /// Given a vector of segment lengths, calculates offsets of each segment and
   /// packs them next to the lengths. For the input vector of length N the
@@ -1322,6 +1396,33 @@ public:
                                   unsigned_t stride, unsigned_t pad,
                                   unsigned_t group);
 
+  /// Creates a ConvTransposeNode with the given \p name which does transposed
+  /// convolution on the 4D \p input. \p kernels define the size of the height
+  /// and width dimensions of the convolution filters. \p strides define the
+  /// number of steps to take in the input for each output cell. \p pads define
+  /// how many zero padding cells should be added to the input during
+  /// convolution. \p group defines the number of groups the input and output
+  /// channels should be divided into and convolved separately.
+  ConvTransposeNode *createConvTranspose(
+      PlaceholderBindings &bindings, llvm::StringRef name, NodeValue input,
+      dim_t outChannels, llvm::ArrayRef<unsigned_t> kernels,
+      llvm::ArrayRef<unsigned_t> strides, llvm::ArrayRef<unsigned_t> pads,
+      unsigned_t group, unsigned_t dilation = 1);
+
+  /// Creates a ConvTransposeNode with the given \p name which does transposed
+  /// convolution on the 4D \p input. \p kernel defines the size of the height
+  /// and width dimensions of the convolution filters. \p stride defines the
+  /// number of steps to take in the input for each output cell. \p pad defines
+  /// how many zero padding cells should be added to the input during
+  /// convolution. \p group defines the number of groups the input and output
+  /// channels should be divided into and convolved separately.
+  ConvTransposeNode *createConvTranspose(PlaceholderBindings &bindings,
+                                         llvm::StringRef name, NodeValue input,
+                                         dim_t outChannels, unsigned_t kernel,
+                                         unsigned_t stride, unsigned_t pad,
+                                         unsigned_t group,
+                                         unsigned_t dilation = 1);
+
   /// Creates and \returns a FullyConnectedNode with \p name, \p input, weights
   /// \p W, bias \p B. If \p input is not 2 dimensional then it is flattened
   /// along \p axis. Note, output type is inferred based on the input
@@ -1476,18 +1577,116 @@ public:
                                    llvm::StringRef eventType, Node *data,
                                    unsigned index);
 
+  /// Creates NMSv4 node that does NMS for one class.
+  /// Inputs
+  /// - \p boxes Tensor with box coordinates.
+  /// - \p scores Tensor with scores per box.
+  /// - \p centerPointBox Indicates format of the box per ONNX spec.
+  /// - \p iouThreshold Threshold for box overlap.
+  /// - \p scoreThreshold Threshold for box scores.
+  NonMaxSuppressionNode *
+  createNonMaxSuppressionV4(llvm::StringRef name, NodeValue boxes,
+                            NodeValue scores, int64_t centerPointBox,
+                            int64_t maxOutputBoxesPerClass, float iouThreshold,
+                            float scoreThreshold);
+
+  /// Creates NMSv4 node that does NMS for one class.
+  /// Inputs
+  /// - \p boxes Tensor with box coordinates.
+  /// - \p scores Tensor with scores per box.
+  /// - \p centerPointBox Indicates format of the box per ONNX spec.
+  /// - \p iouThreshold Threshold for box overlap.
+  /// - \p scoreThreshold Threshold for box scores.
+  /// - \p ElemKind Output ElemKind.
+  NonMaxSuppressionNode *
+  createNonMaxSuppressionV4(llvm::StringRef name, NodeValue boxes,
+                            NodeValue scores, int64_t centerPointBox,
+                            int64_t maxOutputBoxesPerClass, float iouThreshold,
+                            float scoreThreshold, ElemKind elTy);
+
+  /// Creates NMSv4 node that does NMS for one class.
+  /// Inputs
+  /// - \p boxes Tensor with box coordinates.
+  /// - \p scores Tensor with scores per box.
+  /// - \p centerPointBox Indicates format of the box per ONNX spec.
+  /// - \p iouThreshold Threshold for box overlap.
+  /// - \p scoreThreshold Threshold for box scores.
+  /// - \p indicesTy Type of indices output.
+  /// - \p numberOfSelectedIndicesTy \p Type of second output for number of
+  /// boxes detected.
+  NonMaxSuppressionNode *
+  createNonMaxSuppressionV4(llvm::StringRef name, NodeValue boxes,
+                            NodeValue scores, int64_t centerPointBox,
+                            int64_t maxOutputBoxesPerClass, float iouThreshold,
+                            float scoreThreshold, TypeRef indicesTy,
+                            TypeRef numberOfSelectedIndicesTy);
+
+  /// Performs class wise NMS based on ONNX specification, with padding and ONNX
+  /// layout output.
+  /// Inputs
+  /// - \p boxes Tensor with box coordinates.
+  /// - \p scores Tensor with scores per box.
+  /// - \p centerPointBox Indicates format of the box per ONNX spec.
+  /// - \p iouThreshold Threshold for box overlap.
+  /// - \p scoreThreshold Threshold for box scores.
+  NonMaxSuppressionNode *
+  createNonMaxSuppressionONNX(llvm::StringRef name, NodeValue boxes,
+                              NodeValue scores, int64_t centerPointBox,
+                              int64_t maxOutputBoxesPerClass,
+                              float iouThreshold, float scoreThreshold);
+
+  /// Performs class wise NMS based on ONNX specification, with padding and ONNX
+  /// layout output.
+  /// Inputs
+  /// - \p boxes Tensor with box coordinates.
+  /// - \p scores Tensor with scores per box.
+  /// - \p centerPointBox Indicates format of the box per ONNX spec.
+  /// - \p iouThreshold Threshold for box overlap.
+  /// - \p scoreThreshold Threshold for box scores.
+  NonMaxSuppressionNode *createNonMaxSuppressionONNX(
+      llvm::StringRef name, NodeValue boxes, NodeValue scores,
+      int64_t centerPointBox, int64_t maxOutputBoxesPerClass,
+      float iouThreshold, float scoreThreshold, ElemKind elTy);
+
+  /// Performs class wise NMS based on ONNX specification, with padding and ONNX
+  /// layout output.
+  /// Inputs
+  /// - \p boxes Tensor with box coordinates.
+  /// - \p scores Tensor with scores per box.
+  /// - \p centerPointBox Indicates format of the box per ONNX spec.
+  /// - \p iouThreshold Threshold for box overlap.
+  /// - \p scoreThreshold Threshold for box scores.
+  NonMaxSuppressionNode *createNonMaxSuppressionONNX(
+      llvm::StringRef name, NodeValue boxes, NodeValue scores,
+      int64_t centerPointBox, int64_t maxOutputBoxesPerClass,
+      float iouThreshold, float scoreThreshold, TypeRef indicesTy);
+
   /// Erase the node \p N from the Function.
   void eraseNode(Node *N);
 
   /// Erase the node \p I from the Function.
   void eraseNode(NodesList::iterator I);
 
-  /// Clone the current function into a new function with the name \p newName.
-  /// If \p map is non-null then the procedure records the mapping between the
-  /// old node to the new node in \p map.
+  /// Clone the current function into a new function with the name \p newName in
+  /// the same module. If \p map is non-null then the procedure records the
+  /// mapping between the old node to the new node in \p map. If \p currToNewMap
+  /// is non-null it is used as the initial state of the currToNew map inside
+  /// the cloner.
   /// \returns a new function that is a copy of the current function.
   Function *clone(llvm::StringRef newName,
-                  llvm::DenseMap<Node *, Node *> *map = nullptr);
+                  llvm::DenseMap<const Node *, Node *> *map = nullptr,
+                  llvm::DenseMap<const Node *, Node *> *currToNewMap = nullptr);
+
+  /// Clone the current function into a user-provided function \p newF. The
+  /// function \p newF is not automatically added to a module by the clone call.
+  /// If \p map is non-null then the procedure records the mapping between the
+  /// old node to the new node in \p map. If \p currToNewMap is non-null it is
+  /// used as the initial state of the currToNew map inside the cloner. \returns
+  /// a user-provided function \p newF that now contains a clone of the current
+  /// function.
+  Function *
+  clone(Function *newF, llvm::DenseMap<const Node *, Node *> *map = nullptr,
+        llvm::DenseMap<const Node *, Node *> *currToNewMap = nullptr) const;
 
   /// Verify the correctness of the Function. If \p backend is provided, checks
   /// backend-specific layout requirements. Else checks the requirements based
@@ -1572,6 +1771,8 @@ bool isInput(const Placeholder *PH, const Function &F);
   { 3u, 0u, 1u, 2u }
 #define NHWC2HWNC                                                              \
   { 1u, 2u, 0u, 3u }
+#define CNHW2NHWC                                                              \
+  { 1u, 2u, 3u, 0u }
 
 llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const Module &mod);
 

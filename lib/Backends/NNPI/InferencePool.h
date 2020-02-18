@@ -47,14 +47,20 @@ private:
                              // the DM ctor/dtor).
   NNPIInferCommand inferCmd_;
   NNPICommandList commandList_;
-  NNPICommandListError *commandErrors_;
   uint32_t numCommands_;
 
   std::vector<std::pair<std::string, NNPITensorDesc>> netInputs_;
   std::vector<std::pair<std::string, NNPITensorDesc>> netOutputs_;
 
-  /// Map from Placeholders to their backing Tensor inputs.
-  std::unordered_map<std::string, Tensor *> ioTensors_;
+  /// Vector of placeholders. The order of the placeholders match with the
+  /// netInputs_ and netOutputs_.
+  std::vector<Placeholder *> netInputPlaceholders_;
+  std::vector<Placeholder *> netOutputPlaceholders_;
+
+  /// Vector of placeholders. The order of the placeholders match with the
+  /// hostInputs_ and hostOutputs_.
+  std::vector<Placeholder *> hostInputPlaceholders_;
+  std::vector<Placeholder *> hostOutputPlaceholders_;
 
   /// Set of inputs that can be partial tensors.
   const std::unordered_set<const Placeholder *> *partialInputs_;
@@ -100,9 +106,10 @@ public:
 
 class InferencePoolEnv {
   unsigned numWorkers_;
-  std::atomic<unsigned> workerIndex_;
   std::unique_ptr<ThreadPool> workersPool_;
   std::vector<InferenceThreadEnv> threadEnvs_;
+  std::vector<InferenceThreadEnv *> threadEnvsFree_;
+  std::mutex threadEnvsFreeLock_;
   NNPIHostNetwork hostNetwork_;
   NNPIDeviceNetwork deviceNetwork_;
   std::shared_ptr<NNPIDeviceTracing> deviceTracing_;

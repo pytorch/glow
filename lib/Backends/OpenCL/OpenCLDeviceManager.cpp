@@ -45,7 +45,7 @@ static const unsigned char kernels_cl_src[] = {
 static const size_t kernels_cl_src_size = sizeof(kernels_cl_src);
 
 extern llvm::cl::opt<unsigned> clPlatformId;
-extern llvm::cl::opt<unsigned> clDeviceId;
+extern llvm::cl::opt<int> clDeviceId;
 extern llvm::cl::opt<bool> clDoProfile;
 
 namespace glow {
@@ -181,6 +181,61 @@ Error OpenCLDeviceManager::parseConfig() {
   return Error::success();
 }
 
+Error OpenCLDeviceManager::findBestDevice(cl_platform_id platformId,
+                                          int deviceId) {
+  cl_uint num{0};
+  cl_int err = clGetDeviceIDs(platformId, CL_DEVICE_TYPE_ALL, 0, nullptr, &num);
+  if (err != CL_SUCCESS) {
+    RETURN_ERR("clGetDeviceIDs Failed");
+  }
+  if ((deviceId > 0 && num < deviceId) || num == 0) {
+    RETURN_ERR("Should have at least one GPU/CPU/FPGA for running OpenCL");
+  }
+
+  // Enumerate all available devices.
+  std::vector<cl_device_id> devices(num);
+  err = clGetDeviceIDs(platformId, CL_DEVICE_TYPE_ALL, num, devices.data(),
+                       nullptr);
+  if (err != CL_SUCCESS) {
+    RETURN_ERR("clGetDeviceIDs Failed");
+  }
+
+  // If the deviceId was set on the command line, use that.
+  if (deviceId >= 0) {
+    deviceId_ = devices[deviceId];
+  } else {
+    cl_device_id chosen = devices[0];
+    cl_device_type chosen_type = 0;
+
+    // Otherwise loop through all devices.
+    for (auto id : devices) {
+      cl_bitfield type;
+      // Get the device type (bitmask of 1 for cpu, 2 for gpu, 4 for
+      // accelerator).
+      err = clGetDeviceInfo(id, CL_DEVICE_TYPE, sizeof(cl_bitfield), &type,
+                            nullptr);
+      if (err != CL_SUCCESS) {
+        RETURN_ERR("clGetDeviceInfo Failed");
+      }
+
+      // prefer the highest device type, and tiebreak on the the highest device
+      // id.
+      if (type >= chosen_type) {
+        chosen = id;
+        chosen_type = type;
+      }
+    }
+
+    deviceId_ = chosen;
+  }
+
+  char name[100];
+  err = clGetDeviceInfo(deviceId_, CL_DEVICE_NAME, 100, &name, nullptr);
+  DEBUG_GLOW(llvm::dbgs() << "Using OpenCL device " << name << "\n");
+
+  return Error::success();
+}
+
 Error OpenCLDeviceManager::init() {
   // The OpenCL Backend defines three command line options: doProfile, deviceId,
   // and platformId. If the parameter is not provided we use the CL
@@ -203,22 +258,11 @@ Error OpenCLDeviceManager::init() {
   err = clGetPlatformIDs(numPlatforms, platform_ids.data(), NULL);
 
   cl_platform_id platform_id_used = platform_ids[clPlatformId];
-  cl_uint num{0};
-  err = clGetDeviceIDs(platform_id_used, CL_DEVICE_TYPE_ALL, 0, nullptr, &num);
-  if (err != CL_SUCCESS) {
-    RETURN_ERR("clGetDeviceIDs Failed");
-  }
-  if (num < clDeviceId) {
-    RETURN_ERR("Should have at least one GPU/CPU/FPGA for running OpenCL");
-  }
-  std::vector<cl_device_id> devices(num);
-  err = clGetDeviceIDs(platform_id_used, CL_DEVICE_TYPE_ALL, num,
-                       devices.data(), nullptr);
-  if (err != CL_SUCCESS) {
-    RETURN_ERR("clGetDeviceIDs Failed");
-  }
 
-  deviceId_ = devices[clDeviceId];
+  Error deviceErr = findBestDevice(platform_id_used, clDeviceId);
+  if (deviceErr) {
+    return deviceErr;
+  }
   context_ = clCreateContext(nullptr, 1, &deviceId_, nullptr, nullptr, nullptr);
   if (!context_) {
     RETURN_ERR("clCreateContext Failed");
@@ -236,6 +280,23 @@ Error OpenCLDeviceManager::init() {
     maxMemoryBytes_ = config_.getDeviceMemory();
   } else {
     maxMemoryBytes_ = mem_size;
+  }
+
+  localMemSize_ = 0;
+  cl_device_local_mem_type localMemType;
+  err = clGetDeviceInfo(deviceId_, CL_DEVICE_LOCAL_MEM_TYPE,
+                        sizeof(localMemType), &localMemType, NULL);
+  if (err != CL_SUCCESS) {
+    RETURN_ERR("Error getting device local memory type.");
+  }
+  if (localMemType == CL_LOCAL) {
+    cl_ulong localMemSize;
+    err = clGetDeviceInfo(deviceId_, CL_DEVICE_LOCAL_MEM_SIZE,
+                          sizeof(localMemSize), &localMemSize, NULL);
+    if (err != CL_SUCCESS) {
+      RETURN_ERR("Error getting device local memory type.");
+    }
+    localMemSize_ = localMemSize;
   }
 
   commandQueuePool_.setContext(context_);
@@ -497,12 +558,12 @@ void OpenCLDeviceManager::transferStaticPlaceholderToDevice(
 
 void OpenCLDeviceManager::copyInputsToDevice(
     const RuntimeBundle &runtimeBundle, ExecutionContext *context,
-    runtime::OpenCLDeviceBindings *devBindings) {
+    runtime::OpenCLDeviceBindings *devBindings, bool traceEnabled) {
   TRACE_EVENT_SCOPE(context->getTraceContext(), TraceLevel::RUNTIME,
                     "copyInputsToDevice");
 
   bool profilingEnabled =
-      context->getTraceContext() &&
+      traceEnabled && context->getTraceContext() &&
       (context->getTraceContext()->getTraceLevel() & TraceLevel::COPY);
 
   auto &symbolTable = runtimeBundle.getSymbolTable();
@@ -541,12 +602,12 @@ void OpenCLDeviceManager::copyInputsToDevice(
 
 void OpenCLDeviceManager::copyOutputsFromDevice(
     const RuntimeBundle &runtimeBundle, ExecutionContext *context,
-    runtime::OpenCLDeviceBindings *devBindings) {
+    runtime::OpenCLDeviceBindings *devBindings, bool traceEnabled) {
   TRACE_EVENT_SCOPE(context->getTraceContext(), TraceLevel::RUNTIME,
                     "copyOutputsFromDevice");
 
   bool profilingEnabled =
-      context->getTraceContext() &&
+      traceEnabled && context->getTraceContext() &&
       (context->getTraceContext()->getTraceLevel() & TraceLevel::COPY);
 
   auto &symbolTable = runtimeBundle.getSymbolTable();
@@ -631,10 +692,16 @@ void OpenCLDeviceManager::translateTraceEvents(
     cl_ulong timeStart;
     cl_ulong timeEnd;
 
-    clGetEventProfilingInfo(event, CL_PROFILING_COMMAND_START,
-                            sizeof(timeStart), &timeStart, NULL);
-    clGetEventProfilingInfo(event, CL_PROFILING_COMMAND_END, sizeof(timeEnd),
-                            &timeEnd, NULL);
+    if (clGetEventProfilingInfo(event, CL_PROFILING_COMMAND_START,
+                                sizeof(timeStart), &timeStart,
+                                NULL) != CL_SUCCESS) {
+      continue;
+    }
+    if (clGetEventProfilingInfo(event, CL_PROFILING_COMMAND_END,
+                                sizeof(timeEnd), &timeEnd,
+                                NULL) != CL_SUCCESS) {
+      continue;
+    }
 
     if (type == "checkpoint") {
       const auto &it = manualTraceEvents.find(name);
@@ -726,6 +793,7 @@ void OpenCLDeviceManager::runFunctionImpl(
   }
 
   OpenCLFunction *func = static_cast<OpenCLFunction *>(funcIt->second);
+  bool traceEnabled = func->getTraceInfo().enabled || clDoProfile;
 
   // Get a command queue for this run.
   OpenCLCommandQueue queue;
@@ -750,7 +818,8 @@ void OpenCLDeviceManager::runFunctionImpl(
       program);
 
   // Copy inputs to the device.
-  copyInputsToDevice(func->getRuntimeBundle(), context.get(), clBindings.get());
+  copyInputsToDevice(func->getRuntimeBundle(), context.get(), clBindings.get(),
+                     traceEnabled);
 
   // Run that function.
   context->setDeviceBindings(std::move(clBindings));
@@ -758,7 +827,8 @@ void OpenCLDeviceManager::runFunctionImpl(
 
   auto devBindings = static_cast<runtime::OpenCLDeviceBindings *>(
       context->getDeviceBindings());
-  copyOutputsFromDevice(func->getRuntimeBundle(), context.get(), devBindings);
+  copyOutputsFromDevice(func->getRuntimeBundle(), context.get(), devBindings,
+                        traceEnabled);
 
   // Output profiling information.
   translateTraceEvents(func->getManualTraceEvents(), context.get(),
@@ -781,4 +851,10 @@ void OpenCLDeviceManager::runFunctionImpl(
 
   // Fire the resultCB.
   resultCB(id, std::move(executeErr), std::move(context));
+}
+
+DeviceInfo OpenCLDeviceManager::getDeviceInfo() const {
+  DeviceInfo info;
+  info.availableLocalMemory = localMemSize_;
+  return info;
 }

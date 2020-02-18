@@ -27,6 +27,7 @@
 #include <fstream>
 namespace glow {
 bool GlowEnableLoadBalancedPartitioning = false;
+bool GlowLogPartition = false;
 static llvm::cl::opt<bool, /* ExternalStorage */ true>
     GlowEnableLoadBalancedPartitioningOpt(
         "glow_partitioner_enable_load_balance",
@@ -38,10 +39,9 @@ static llvm::cl::opt<bool, /* ExternalStorage */ true>
 
 /// -log-partition - Command line option to dump Partitioner logs.
 static llvm::cl::OptionCategory PartitionerCat("Glow Partitioner Options");
-static llvm::cl::opt<bool>
-    logPartition("log-partition",
-                 llvm::cl::desc("Enable logging partition info"),
-                 llvm::cl::init(false), llvm::cl::cat(PartitionerCat));
+static llvm::cl::opt<bool, /* ExternalStorage */ true> logPartition(
+    "log-partition", llvm::cl::desc("Enable logging partition info"),
+    llvm::cl::location(glow::GlowLogPartition), llvm::cl::cat(PartitionerCat));
 
 /// -dump-partition - Command line option to dump the graph of each partitions
 /// by calling F->dumpDAG().
@@ -79,10 +79,11 @@ Error Partitioner::finalize(const DAGListTy &partitions,
   // needs the backend specific verifier. Tensor layouts, for example, might
   // have gone from canonical form to backend specific form.
 
+  LOG(INFO) << "The number of partitions is : "
+            << module_->getFunctions().size() << "\n";
+
   if (logPartition) {
-    LOG(INFO) << "The number of partitions is : "
-              << module_->getFunctions().size()
-              << ", and the DAG is dumped into DAG.dot file.\n";
+    LOG(INFO) << "Dumping partitioning DAG to DAG.dot file.\n";
     dumpDAG("DAG.dot", partitions);
     logPartitionInfo(mapping);
   }
@@ -390,8 +391,20 @@ void Partitioner::genBackendMap(
       backends.push_back(backendMap[backendName].backend);
     } else {
       backendMap[backendName].num += 1;
+      // Since we are currently assuming one value it should be the max.
+      backendMap[backendName].memSize = std::max(
+          backendMap[backendName].memSize, deviceInfo_[i].availableMemory);
     }
   }
+}
+
+const DeviceInfo &
+Partitioner::getDeviceInfoForBackend(llvm::StringRef backendName) {
+  for (DeviceInfo &devInfo : deviceInfo_) {
+    if (devInfo.backendName == backendName)
+      return devInfo;
+  }
+  llvm_unreachable("Each backend should have at least one device");
 }
 
 Expected<DAGListTy> Partitioner::createDAGWithoutPartition(
@@ -402,7 +415,8 @@ Expected<DAGListTy> Partitioner::createDAGWithoutPartition(
   for (auto F : module_->getFunctions()) {
     if (!optimized_) {
       auto backend = backendMap[backendName].backend;
-      RETURN_IF_ERR(::glow::optimizeFunction(F, *backend, cctx));
+      RETURN_IF_ERR(::glow::optimizeFunction(
+          F, *backend, cctx, &getDeviceInfoForBackend(backendName)));
     }
     std::unique_ptr<DAGNode> DAG0 = glow::make_unique<DAGNode>();
     DAG0->logicalDevices = {logDevice};
@@ -722,7 +736,9 @@ Partitioner::heterogeneousPartition(CompilationContext &cctx) {
     DCHECK(func->verify()) << "Conversion led to invalid function";
     // Step 2.1 : optimize a function if it has not been optimized yet.
     if (!optimized_) {
-      RETURN_IF_ERR(::glow::optimizeFunction(func, *backend, cctx));
+      RETURN_IF_ERR(::glow::optimizeFunction(
+          func, *backend, cctx,
+          &getDeviceInfoForBackend(backend->getBackendName())));
     }
 
     // Step 2.2 : apply graph partitioning algrithm to find out the partition.
@@ -901,9 +917,23 @@ void Partitioner::appendSLSTable(
   }
 }
 
+// Check if the weights input for \p SLWS is a SplatNode with more than one
+// user, and if so clone the splat node into \p F and set it to be the new
+// weights of \p SLWS.
+template <class T>
+static void cloneSplatWeightsIfNecessary(T *SLWS, Function *F) {
+  SplatNode *splatWeights = llvm::dyn_cast<SplatNode>(SLWS->getWeights());
+  if (!splatWeights || splatWeights->getNumUsers() <= 1) {
+    return;
+  }
+  SplatNode *splatWeightsClone =
+      F->addNode(llvm::cast<SplatNode>(splatWeights->clone()));
+  SLWS->setNthInput(T::WeightsIdx, splatWeightsClone->getResult());
+}
+
 Expected<DAGListTy> Partitioner::partitionSparseNN(CompilationContext &cctx) {
 
-  LOG(INFO) << "Doing partitioning" << std::endl;
+  VLOG(1) << "Doing SparseNN partitioning" << std::endl;
   PartitionConfig partitionConfig;
   partitionConfig.numOfPartitions = 0;
 
@@ -956,10 +986,29 @@ Expected<DAGListTy> Partitioner::partitionSparseNN(CompilationContext &cctx) {
     RETURN_IF_ERR(::glow::optimizeFunction(F, *(backends[0]), cctx));
   }
 
+  // Now we may want to duplicate Splat weights in case they have been CSE'd
+  // into a single SplatNode. This is because if two SLWS that share weights are
+  // separated to two partitions, then partitioning will force a dependence from
+  // whichever partition the weights are placed to the other partition. After
+  // partitioning when we optimize each partition individually, they may be
+  // merged again inside the partition.
+  for (auto &node : F->getNodes()) {
+    if (auto *SLWS = llvm::dyn_cast<SparseLengthsWeightedSumNode>(&node)) {
+      cloneSplatWeightsIfNecessary(SLWS, F);
+    } else if (auto *SLWS = llvm::dyn_cast<
+                   FusedRowwiseQuantizedSparseLengthsWeightedSumNode>(&node)) {
+      cloneSplatWeightsIfNecessary(SLWS, F);
+    } else if (auto *SLWS =
+                   llvm::dyn_cast<RowwiseQuantizedSparseLengthsWeightedSumNode>(
+                       &node)) {
+      cloneSplatWeightsIfNecessary(SLWS, F);
+    }
+  }
+
   // Create list of SLS Tables
   std::vector<SLSTableInfo> slsTables;
   partitionConfig.funcName = std::string(F->getName());
-  LOG(INFO) << "Function: " << std::string(F->getName()) << std::endl;
+  VLOG(1) << "Function: " << std::string(F->getName()) << std::endl;
   for (auto &node : F->getNodes()) {
     appendSLSTable<FusedRowwiseQuantizedSparseLengthsWeightedSumNode>(
         node, slsTables);
@@ -971,7 +1020,7 @@ Expected<DAGListTy> Partitioner::partitionSparseNN(CompilationContext &cctx) {
   }
 
   // Now sort SLS tables by size decreasing
-  LOG(INFO) << "SLS tables sorted by size decreasing" << std::endl;
+  VLOG(1) << "SLS tables sorted by size decreasing" << std::endl;
   std::sort(slsTables.begin(), slsTables.end(),
             [](const SLSTableInfo &l, const SLSTableInfo &r) {
               return l.numBytesInTable > r.numBytesInTable;
@@ -979,11 +1028,11 @@ Expected<DAGListTy> Partitioner::partitionSparseNN(CompilationContext &cctx) {
 
   // Print SLS tables
   for (auto &table : slsTables) {
-    LOG(INFO) << "(numBytesInTable, numElementsPerRowUpperBound, numIndices, "
-                 "deviceId)"
-              << "\t" << table.numBytesInTable << "\t"
-              << table.numElementsPerRowUpperBound << "\t" << table.numIndices
-              << "\t" << table.deviceId << std::endl;
+    VLOG(1) << "(numBytesInTable, numElementsPerRowUpperBound, numIndices, "
+               "deviceId)"
+            << "\t" << table.numBytesInTable << "\t"
+            << table.numElementsPerRowUpperBound << "\t" << table.numIndices
+            << "\t" << table.deviceId << std::endl;
   }
 
   // Create table of devices
@@ -1009,11 +1058,11 @@ Expected<DAGListTy> Partitioner::partitionSparseNN(CompilationContext &cctx) {
                 return l.currentCost < r.currentCost;
               });
 
-    LOG(INFO) << "Devices sorted by cost increasing" << std::endl;
+    VLOG(1) << "Devices sorted by cost increasing" << std::endl;
     for (auto &device : slsDevices) {
-      LOG(INFO) << "(deviceId, memAvailableInBytes, currentCost): "
-                << device.deviceId << "\t" << device.memAvailableInBytes << "\t"
-                << device.currentCost << std::endl;
+      VLOG(1) << "(deviceId, memAvailableInBytes, currentCost): "
+              << device.deviceId << "\t" << device.memAvailableInBytes << "\t"
+              << device.currentCost << std::endl;
     }
 
     // Pick the first that fits
@@ -1034,19 +1083,19 @@ Expected<DAGListTy> Partitioner::partitionSparseNN(CompilationContext &cctx) {
   }
 
   // Print final device info
-  LOG(INFO) << "Devices sorted by cost increasing" << std::endl;
+  VLOG(1) << "Devices sorted by cost increasing" << std::endl;
   for (auto &device : slsDevices) {
-    LOG(INFO) << "(deviceId, memAvailableInBytes, currentCost): "
-              << device.deviceId << "\t" << device.memAvailableInBytes << "\t"
-              << device.currentCost << std::endl;
+    VLOG(1) << "(deviceId, memAvailableInBytes, currentCost): "
+            << device.deviceId << "\t" << device.memAvailableInBytes << "\t"
+            << device.currentCost << std::endl;
   }
 
   // Print assignments
   for (auto &table : slsTables) {
-    LOG(INFO) << "(numBytesInTable, numElementsPerRow, numIndices, deviceId)"
-              << "\t" << table.numBytesInTable << "\t"
-              << table.numElementsPerRowUpperBound << "\t" << table.numIndices
-              << "\t" << table.deviceId << std::endl;
+    VLOG(1) << "(numBytesInTable, numElementsPerRow, numIndices, deviceId)"
+            << "\t" << table.numBytesInTable << "\t"
+            << table.numElementsPerRowUpperBound << "\t" << table.numIndices
+            << "\t" << table.deviceId << std::endl;
   }
 
   // Create manual partition
@@ -1125,23 +1174,23 @@ Expected<DAGListTy> Partitioner::partitionSparseNN(CompilationContext &cctx) {
       partitionConfig.nodeToPartition[node.getName()] = slsDevices.size();
     }
   }
-  LOG(INFO) << " Done partitioning" << std::endl;
 
-  LOG(INFO) << " PartitionConfig ::: funcName = " << partitionConfig.funcName
-            << "\n";
-  LOG(INFO) << " PartitionConfig ::: numOfPartitions = "
-            << partitionConfig.numOfPartitions << "\n";
-  LOG(INFO) << " PartitionConfig ::: partitionNames = ";
+  VLOG(1) << " Finished SparseNN partitioning" << std::endl;
+  VLOG(1) << " PartitionConfig ::: funcName = " << partitionConfig.funcName
+          << "\n";
+  VLOG(1) << " PartitionConfig ::: numOfPartitions = "
+          << partitionConfig.numOfPartitions << "\n";
+  VLOG(1) << " PartitionConfig ::: partitionNames = ";
   for (unsigned i = 0; i < partitionConfig.numOfPartitions; i++) {
-    LOG(INFO) << partitionConfig.partitionNames[i] << " ";
+    VLOG(1) << partitionConfig.partitionNames[i] << " ";
   }
-  LOG(INFO) << "\n";
-  LOG(INFO) << " PartitionConfig ::: logicalIDs = ";
+  VLOG(1) << "\n";
+  VLOG(1) << " PartitionConfig ::: logicalIDs = ";
   for (unsigned i = 0; i < partitionConfig.numOfPartitions; i++) {
     for (auto &id : partitionConfig.logicalIDs[i]) {
-      LOG(INFO) << id << " ";
+      VLOG(1) << id << " ";
     }
-    LOG(INFO) << "\n";
+    VLOG(1) << "\n";
   }
 
   auto partitions = partitionFromConfig(partitionConfig, cctx);
