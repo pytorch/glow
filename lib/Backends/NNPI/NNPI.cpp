@@ -17,6 +17,7 @@
 #include "NNPICompiledFunction.h"
 #include "NNPIDeviceManager.h"
 #include "glow/Graph/Nodes.h"
+#include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
 #include "glow/Optimizer/GraphOptimizerPipeline/Pipeline.h"
 #include "glow/Optimizer/Lower/Lower.h"
 #include "llvm/Support/CommandLine.h"
@@ -556,6 +557,125 @@ static bool removeClipsBlockingFusion(Function *F) {
   return changed;
 }
 
+/// Parallelize \p F according to NNPINumParallelChunks found in
+/// backendOpts.backendSpecificOpts from \p cctx. \returns whether \p F was
+/// modified.
+static bool parallelizeFunction(Function *F, CompilationContext &cctx) {
+  // Split FC layers in model/data parallel fashion
+  llvm::DenseMap<Node *, size_t> numChunks;
+  llvm::DenseMap<Node *, ParallelTransformKind> parOpts;
+  int32_t numParallelChunks = 1;
+
+  // If GlowNNPINumParallelChunks is set via flags then override what's passed
+  // in via backend options in cctx.
+  if (glow::onnxifi::GlowNNPINumParallelChunks > 1) {
+    cctx.backendOpts.backendSpecificOpts["NNPINumParallelChunks"] =
+        std::to_string(glow::onnxifi::GlowNNPINumParallelChunks);
+  }
+
+  if (cctx.backendOpts.backendSpecificOpts.find(
+          std::string("NNPINumParallelChunks")) !=
+      cctx.backendOpts.backendSpecificOpts.end()) {
+    numParallelChunks = std::stoi(std::string(
+        cctx.backendOpts.backendSpecificOpts["NNPINumParallelChunks"]));
+  }
+
+  if (numParallelChunks <= 1) {
+    return false;
+  }
+
+  bool changed = false;
+
+  // Find all FC layers to split
+  for (auto &node : F->getNodes()) {
+    auto *FC = llvm::dyn_cast<FullyConnectedNode>(&node);
+    if (!FC) {
+      continue;
+    }
+    size_t K = FC->getWeights().dims()[1];
+    if (K >= 512) {
+      changed = true;
+      parOpts[FC] = ParallelTransformKind::Model;
+      numChunks[FC] = numParallelChunks;
+      continue;
+    }
+    size_t M = FC->getInput().dims()[0];
+    if (M >= 256) {
+      changed = true;
+      parOpts[FC] = ParallelTransformKind::Data;
+      numChunks[FC] = numParallelChunks;
+      continue;
+    }
+  }
+
+  // Relu parallelization.
+  // If a Relu follows FC, mirror FC split so that they fuse.
+  // Otherwise, use data parallelism.
+  for (auto &node : F->getNodes()) {
+    auto *R = llvm::dyn_cast<ReluNode>(&node);
+    if (!R) {
+      continue;
+    }
+
+    // For Relus that arent preceded by FC, do data parallelism
+    Node *inputNode = R->getInput().getNode();
+    auto FC = llvm::dyn_cast<FullyConnectedNode>(inputNode);
+    if (!FC) {
+      changed = true;
+      parOpts[R] = ParallelTransformKind::Data;
+      numChunks[R] = numParallelChunks;
+      continue;
+    }
+
+    // Otherwise, mirror FC split.
+    if (R->getInput().dims().size() < 2) {
+      continue;
+    }
+    size_t K = R->getInput().dims()[1];
+    if (K >= 512) {
+      changed = true;
+      parOpts[R] = ParallelTransformKind::Model;
+      numChunks[R] = numParallelChunks;
+      continue;
+    }
+    size_t M = R->getInput().dims()[0];
+    if (M >= 256) {
+      changed = true;
+      parOpts[R] = ParallelTransformKind::Data;
+      numChunks[R] = numParallelChunks;
+      continue;
+    }
+  }
+
+  // Split transpose layers in data parallel fashion
+  for (auto &node : F->getNodes()) {
+    auto *TP = llvm::dyn_cast<TransposeNode>(&node);
+    if (!TP) {
+      continue;
+    }
+    changed = true;
+    parOpts[TP] = ParallelTransformKind::Data;
+    numChunks[TP] = numParallelChunks;
+  }
+
+  // Split BMM layers in data parallel fashion
+  for (auto &node : F->getNodes()) {
+    auto *BMM = llvm::dyn_cast<BatchMatMulNode>(&node);
+    if (!BMM) {
+      continue;
+    }
+    changed = true;
+    parOpts[BMM] = ParallelTransformKind::Data;
+    numChunks[BMM] = numParallelChunks;
+  }
+
+  // Now actually do the parallelization.
+  bool verify = parallelizeOps(F, numChunks, parOpts, numParallelChunks);
+  DCHECK(verify) << "Error during parallelization occurred.";
+
+  return changed;
+}
+
 bool NNPIBackend::transformPostLowering(
     Function *F, CompilationContext &cctx,
     const glow::runtime::DeviceInfo *devInfo) const {
@@ -567,15 +687,11 @@ bool NNPIBackend::transformPostLowering(
 
   bool changed = removeClipsBlockingFusion(F);
   changed |= lowerRequiredNodes(F, cctx);
+  changed |= parallelizeFunction(F, cctx);
 
 #if FACEBOOK_INTERNAL
   if (glow::onnxifi::GlowDisableNNPIPrivateTransforms) {
     return changed;
-  }
-
-  if (glow::onnxifi::GlowNNPINumParallelChunks > 1) {
-    cctx.backendOpts.backendSpecificOpts["NNPINumParallelChunks"] =
-        std::to_string(glow::onnxifi::GlowNNPINumParallelChunks);
   }
   changed |= transformPrivate(F, cctx);
 #endif /* FACEBOOK_INTERNAL */
