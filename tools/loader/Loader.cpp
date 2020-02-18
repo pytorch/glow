@@ -449,7 +449,8 @@ static NodeValue createSimpleGraphFromString(Function *F, NodeValue input,
       std::string type = func.getArg(0);
       float scale = func.getArgFloat(1);
       int offset = func.getArgInt(2);
-      Type outTy = Type(Type::getElementKindFromName(type), inpDims, scale, offset);
+      Type outTy =
+          Type(Type::getElementKindFromName(type), inpDims, scale, offset);
       value = F->createQuantize("QUANT", value, &outTy);
       continue;
     }
@@ -466,7 +467,8 @@ static NodeValue createSimpleGraphFromString(Function *F, NodeValue input,
     // than using a quantized type + dequantize).
     if (funcName == "CAST") {
       std::string type = func.getArg();
-      value = F->createConvertTo("CAST", value, Type::getElementKindFromName(type));
+      value =
+          F->createConvertTo("CAST", value, Type::getElementKindFromName(type));
       continue;
     }
 
@@ -575,8 +577,8 @@ static void addModelPostProcessing(ProtobufLoader *protoLoader, Function *F) {
     // Save all the subgraph outputs as placeholders. For example, for the TopK
     // operator we will save both the values and the indices.
     Node *outputNode = outputValue.getNode();
-    for (size_t valIdx = 0, valNum = outputNode->getNumResults(); valIdx < valNum;
-         valIdx++) {
+    for (size_t valIdx = 0, valNum = outputNode->getNumResults();
+         valIdx < valNum; valIdx++) {
       F->createSave(outputNode->getName().str() + "_" +
                         outputNode->getOutputName(valIdx).str(),
                     outputNode->getNthResult(valIdx));
