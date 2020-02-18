@@ -83,15 +83,15 @@ llvm::cl::list<std::string> modelInputsOpt(
         "    -model-input=<name>,<type>,<scale>,<offset>,<shape>    \n"
         " For example we can can provide one or more inputs:        \n"
         "    -model-input=input_03_data,float,[1]                   \n"
-        "    -model-input=data_bias,int32,[1,32,32]                 \n"
-        "    -model-input=data,int8q,0.123,-13,[1,10]               \n"
+        "    -model-input=data_bias,index32,[1,32,32]               \n"
+        "    -model-input=data,i8,0.123,-13,[1,10]                  \n"
         " If only the name is provided, the default type is 'float' \n"
         " and the default shape is '[1]':                           \n"
         "    -model-input=<inputName1>                              \n"
         " The supported types are:                                  \n"
         "    - float, float16 (floating point types)                \n"
-        "    - int32, int64 (integer types)                         \n"
-        "    - int8q, uint8q, int16q, int32q (quantized types)      \n"
+        "    - index32, index64 (integer types)                     \n"
+        "    - i8, ui8, i16, i32 (quantized types)                  \n"
         "    - bool (logic type)                                    \n"
         " After the shape argument, extra options can be specified  \n"
         " for each input."),
@@ -291,31 +291,6 @@ bool glow::emittingBundle() { return !emitBundle.empty(); }
 
 bool glow::profilingGraph() { return !dumpProfileFileOpt.empty(); }
 
-/// Helper function to get the element kind from the kind name.
-static ElemKind getElemKindByName(std::string name) {
-  if ((name == "float") || (name == "float32")) {
-    return ElemKind::FloatTy;
-  } else if (name == "float16") {
-    return ElemKind::Float16Ty;
-  } else if (name == "int8q") {
-    return ElemKind::Int8QTy;
-  } else if (name == "uint8q") {
-    return ElemKind::UInt8QTy;
-  } else if (name == "int16q") {
-    return ElemKind::Int16QTy;
-  } else if (name == "int32q") {
-    return ElemKind::Int32QTy;
-  } else if (name == "int32") {
-    return ElemKind::Int32ITy;
-  } else if (name == "int64") {
-    return ElemKind::Int64ITy;
-  } else if (name == "bool") {
-    return ElemKind::BoolTy;
-  } else {
-    LOG(FATAL) << strFormat("Type '%s' is not supported!", name.c_str());
-  }
-}
-
 /// Parse the 'modelInputsOpt' option and get the model input names, types and
 /// options. The 'options' string captures all the remaining part of the string:
 /// The expected format is one of the following:
@@ -356,7 +331,7 @@ static void getModelInputs(std::vector<std::string> &inputNames,
     strPair = strPair.second.split(',');
     llvm::StringRef type = strPair.first;
     CHECK(type.size()) << "Model input type is empty!";
-    ElemKind kind = getElemKindByName(type);
+    ElemKind kind = Type::getElementKindFromName(type);
 
     // For quantized type get scale and offset.
     double scale;
@@ -443,45 +418,45 @@ static void getModelOutputs(std::vector<std::string> &outputNames,
 }
 
 /// Helper function to create a simple linear graph within the given function
-/// \p F using the starting node \p input and the graph string description \p
-/// graphString. For example we can create a simple graph to pre-process an
+/// \p F using the starting node value \p input and the graph string description
+/// \p graphString. For example we can create a simple graph to pre-process an
 /// image with the following string description "NHWC2NCHW,RGB2BGR" which
 /// creates a node to transform the layout from NHWC to NCHW followed by RGB to
 /// BGR channel reordering. The node descriptions can also have any number of
 /// arguments with several supported types: integer, float, char, string, array
 /// of integers, array of floats. For example we can have the following node
 /// description: "NODE(1,1.0,'c','string',[1,2,3],[1.0,2.0,3.0])".
-Node *createSimpleGraphFromString(Function *F, Node *input,
-                                  std::string graphString) {
+static NodeValue createSimpleGraphFromString(Function *F, NodeValue input,
+                                             std::string graphString) {
 
   // Split node descriptions from comma separated sequence.
   auto funcStrArray = splitString(graphString, ',', "([", ")]", " ");
 
   // Parse each node description.
   std::vector<FunctionString> funcArray;
-  for (auto funcStr : funcStrArray) {
+  for (const auto &funcStr : funcStrArray) {
     funcArray.push_back(FunctionString(funcStr));
   }
 
   // Create simple linear graph.
-  Node *node = input;
+  NodeValue value = input;
   for (const auto &func : funcArray) {
     std::string funcName = func.getName();
 
     // Quantize. Parameters are type, scale and offset.
     if (funcName == "QUANT") {
-      auto inpDims = node->getNthResult(0).dims();
+      auto inpDims = value.dims();
       std::string type = func.getArg(0);
       float scale = func.getArgFloat(1);
       int offset = func.getArgInt(2);
-      Type outTy = Type(getElemKindByName(type), inpDims, scale, offset);
-      node = F->createQuantize("QUANT", node, &outTy);
+      Type outTy = Type(Type::getElementKindFromName(type), inpDims, scale, offset);
+      value = F->createQuantize("QUANT", value, &outTy);
       continue;
     }
 
     // Dequantize.
     if (funcName == "DEQUANT") {
-      node = F->createDequantize("DEQUANT", node);
+      value = F->createDequantize("DEQUANT", value);
       continue;
     }
 
@@ -491,37 +466,37 @@ Node *createSimpleGraphFromString(Function *F, Node *input,
     // than using a quantized type + dequantize).
     if (funcName == "CAST") {
       std::string type = func.getArg();
-      node = F->createConvertTo("CAST", node, getElemKindByName(type));
+      value = F->createConvertTo("CAST", value, Type::getElementKindFromName(type));
       continue;
     }
 
     // Image NCHW to NHWC conversion.
     if (funcName == "NCHW2NHWC") {
-      node = F->createTranspose("NCHW2NHWC", node, NCHW2NHWC);
+      value = F->createTranspose("NCHW2NHWC", value, NCHW2NHWC);
       continue;
     }
 
     // Image NHWC to NCHW conversion.
     if (funcName == "NHWC2NCHW") {
-      node = F->createTranspose("NHWC2NCHW", node, NHWC2NCHW);
+      value = F->createTranspose("NHWC2NCHW", value, NHWC2NCHW);
       continue;
     }
 
     // Image channel order inversion.
     if ((funcName == "RGB2BGR") || (funcName == "BGR2RGB")) {
-      int numDim = (int)node->getType(0)->dims().size();
-      int lastDim = (int)node->getType(0)->dims().back();
+      int numDim = (int)value.dims().size();
+      int lastDim = (int)value.dims().back();
       CHECK(lastDim == 3) << strFormat(
           "Graph string processor: for '%s' the tensor last dimension "
           "must be 3 (encountered value is %d)!",
           funcName.c_str(), lastDim);
-      node = F->createFlip(funcName, node, numDim - 1);
+      value = F->createFlip(funcName, value, numDim - 1);
       continue;
     }
 
     // Image RGB to YUV conversion.
     if (funcName == "RGB2YUV") {
-      int lastDim = (int)node->getType(0)->dims().back();
+      int lastDim = (int)value.dims().back();
       CHECK(lastDim == 3) << strFormat(
           "Graph string processor: for '%s' the tensor last dimension "
           "must be 3 (encountered value is %d)!",
@@ -533,7 +508,7 @@ Node *createSimpleGraphFromString(Function *F, Node *input,
 
     // Image YUV to RGB conversion.
     if (funcName == "YUV2RGB") {
-      int lastDim = (int)node->getType(0)->dims().back();
+      int lastDim = (int)value.dims().back();
       CHECK(lastDim == 3) << strFormat(
           "Graph string processor: for '%s' the tensor last dimension "
           "must be 3 (encountered value is %d)!",
@@ -546,7 +521,7 @@ Node *createSimpleGraphFromString(Function *F, Node *input,
     // TopK operator.
     if (funcName == "TOPK") {
       int k = func.getArgInt(0);
-      node = F->createTopK(funcName, node, k);
+      value = F->createTopK(funcName, value, k)->getValues();
       continue;
     }
 
@@ -555,7 +530,58 @@ Node *createSimpleGraphFromString(Function *F, Node *input,
         "Graph string processor: operator '%s' is not supported!",
         funcName.c_str());
   }
-  return node;
+  return value;
+}
+
+/// Helper function to add output post processing nodes (subgraphs) to an
+/// existing model already loaded using \p protoLoader in the function \p F.
+/// During this procedure new output placeholders are created with new names.
+static void addModelPostProcessing(ProtobufLoader *protoLoader, Function *F) {
+
+  // Get model output names and options.
+  std::vector<std::string> outputNames;
+  std::vector<std::string> outputOpts;
+  getModelOutputs(outputNames, outputOpts);
+
+  // Create and link output subgraphs.
+  for (size_t idx = 0, e = outputNames.size(); idx < e; idx++) {
+
+    // Skip output graph creation if empty graph description.
+    if (outputOpts[idx].empty()) {
+      continue;
+    }
+
+    // Find old output placeholder.
+    Placeholder *oldOutputPlaceholder =
+        EXIT_ON_ERR(protoLoader->getOutputByName(outputNames[idx]));
+
+    // Get node value which is saved in this placeholder.
+    auto *oldSaveNode = llvm::dyn_cast<SaveNode>(
+        oldOutputPlaceholder->getUsers().begin()->getUser());
+    CHECK(oldSaveNode) << strFormat(
+        "Model output placeholder '%s' is not attached to a SaveNode!",
+        outputNames[idx].c_str());
+    NodeValue outputValue = oldSaveNode->getInput();
+
+    // Remove old SaveNode and old output placeholder.
+    F->eraseNode(oldSaveNode);
+    auto &vars = F->getParent()->getPlaceholders();
+    F->getParent()->erasePlaceholder(
+        std::find(vars.begin(), vars.end(), oldOutputPlaceholder));
+
+    // Create model output subgraph.
+    outputValue = createSimpleGraphFromString(F, outputValue, outputOpts[idx]);
+
+    // Save all the subgraph outputs as placeholders. For example, for the TopK
+    // operator we will save both the values and the indices.
+    Node *outputNode = outputValue.getNode();
+    for (size_t valIdx = 0, valNum = outputNode->getNumResults(); valIdx < valNum;
+         valIdx++) {
+      F->createSave(outputNode->getName().str() + "_" +
+                        outputNode->getOutputName(valIdx).str(),
+                    outputNode->getNthResult(valIdx));
+    }
+  }
 }
 
 std::unique_ptr<ProtobufLoader> Loader::loadModel() {
@@ -577,13 +603,8 @@ std::unique_ptr<ProtobufLoader> Loader::loadModel() {
     inputTypeRefs.push_back(&inputTypes[idx]);
   }
 
-  // Get model output names and options.
-  std::vector<std::string> outputNames;
-  std::vector<std::string> outputOpts;
-  getModelOutputs(outputNames, outputOpts);
-
   // Create the input subgraphs.
-  std::vector<Node *> inputGraphs(inputOpts.size(), nullptr);
+  std::vector<NodeValue> inputGraphs(inputOpts.size(), nullptr);
   for (size_t idx = 0, e = inputOpts.size(); idx < e; idx++) {
 
     // Skip input graph creation if empty graph description.
@@ -600,9 +621,9 @@ std::unique_ptr<ProtobufLoader> Loader::loadModel() {
     inputGraphs[idx] =
         createSimpleGraphFromString(F, newInputPlaceholder, inputOpts[idx]);
 
-    // Update the type used to instatiate the model for this input using the
+    // Update the type used to instantiate the model for this input using the
     // type of this subgraph output.
-    inputTypeRefs[idx] = inputGraphs[idx]->getType(0);
+    inputTypeRefs[idx] = inputGraphs[idx].getType();
   }
 
   // Load the model based on the model format.
@@ -627,7 +648,7 @@ std::unique_ptr<ProtobufLoader> Loader::loadModel() {
   for (size_t idx = 0, e = inputNames.size(); idx < e; idx++) {
 
     // Skip this section if no subgraph was created for this input.
-    if (!inputGraphs[idx]) {
+    if (inputOpts[idx].empty()) {
       continue;
     }
 
@@ -636,8 +657,7 @@ std::unique_ptr<ProtobufLoader> Loader::loadModel() {
         EXIT_ON_ERR(protoLoader->getInputByName(inputNames[idx]));
 
     // Replace old input placeholder with the input graph.
-    oldInputPlaceholder->getOutput().replaceAllUsesOfWith(
-        inputGraphs[idx]->getNthResult(0));
+    oldInputPlaceholder->getOutput().replaceAllUsesOfWith(inputGraphs[idx]);
 
     // Delete old input placeholder.
     auto &vars = F->getParent()->getPlaceholders();
@@ -645,44 +665,8 @@ std::unique_ptr<ProtobufLoader> Loader::loadModel() {
         std::find(vars.begin(), vars.end(), oldInputPlaceholder));
   }
 
-  // Create and link output subgraphs.
-  for (size_t idx = 0, e = outputNames.size(); idx < e; idx++) {
-
-    // Skip output graph creation if empty graph description.
-    if (outputOpts[idx].empty()) {
-      continue;
-    }
-
-    // Find old output placeholder.
-    Placeholder *oldOutputPlaceholder =
-        EXIT_ON_ERR(protoLoader->getOutputByName(outputNames[idx]));
-
-    // Get node which is saved in this placeholder.
-    auto *oldSN = llvm::dyn_cast<SaveNode>(
-        oldOutputPlaceholder->getUsers().begin()->getUser());
-    CHECK(oldSN) << strFormat(
-        "Model output placeholder '%s' is not attached to a SaveNode!",
-        outputNames[idx].c_str());
-    Node *node = oldSN->getInput();
-
-    // Remove old SaveNode and old output placeholder.
-    F->eraseNode(oldSN);
-    auto &vars = F->getParent()->getPlaceholders();
-    F->getParent()->erasePlaceholder(
-        std::find(vars.begin(), vars.end(), oldOutputPlaceholder));
-
-    // Create model output subgraph.
-    node = createSimpleGraphFromString(F, node, outputOpts[idx]);
-
-    // Save all the subgraph outputs as placeholders. For example, for the TopK
-    // operator we will save both the values and the indices.
-    for (size_t valIdx = 0, valNum = node->getNumResults(); valIdx < valNum;
-         valIdx++) {
-      F->createSave(node->getName().str() + "_" +
-                        node->getOutputName(valIdx).str(),
-                    node->getNthResult(valIdx));
-    }
-  }
+  // Add model post processing.
+  addModelPostProcessing(protoLoader.get(), F);
 
   return protoLoader;
 }

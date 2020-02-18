@@ -83,7 +83,9 @@ add_glow_test(NAME Caffe2ImporterTest
               WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 add_executable(LoaderTest
-               LoaderTest.cpp ../../tools/loader/Loader.cpp)
+               LoaderTest.cpp
+               ../../tools/loader/Loader.cpp
+               ../../tools/loader/LoaderUtils.cpp)
 target_link_libraries(LoaderTest
                                 PRIVATE
                                   Backends

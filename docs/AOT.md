@@ -98,8 +98,8 @@ The option can be used multiple times to describe each model input separately:
   For example we can can provide one or more inputs with:
   ```
   -model-input=input_03_data,float,[1]
-  -model-input=data_bias,int32,[1,32,32]
-  -model-input=data,int8q,0.123,-13,[1,10]
+  -model-input=data_bias,index32,[1,32,32]
+  -model-input=data,i8,0.123,-13,[1,10]
   ```
 
 After running the **model-compiler** tool, the following bundle artifacts will be generated
