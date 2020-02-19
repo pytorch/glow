@@ -180,6 +180,11 @@ llvm::cl::opt<int32_t> sparseNNPartitioningSchemeNumCoresOther(
         "Num cores used for non-SLS in SparseNN partitioning scheme"),
     llvm::cl::Optional, llvm::cl::init(6), llvm::cl::cat(reproTestCat));
 
+llvm::cl::opt<int32_t> glowNNPINumParallelChunks(
+    "glow_nnpi_num_parallel_chunks",
+    llvm::cl::desc("Number of parallel splits to apply to certain ops"),
+    llvm::cl::Optional, llvm::cl::init(1), llvm::cl::cat(reproTestCat));
+
 llvm::cl::opt<bool> glowDumpTrace("glow_dump_debug_traces",
                                   llvm::cl::desc("Dump glow trace"),
                                   llvm::cl::Optional, llvm::cl::init(false),
@@ -328,6 +333,11 @@ int run() {
         sparseNNPartitioningSchemeNumCoresSLS;
     cctx.optimizationOpts.sparseNNPartitioningSchemeNumCoresOther =
         sparseNNPartitioningSchemeNumCoresOther;
+  }
+
+  if (glowNNPINumParallelChunks > 1) {
+    cctx.backendOpts.backendSpecificOpts["NNPINumParallelChunks"] =
+        std::to_string(glowNNPINumParallelChunks);
   }
 
   // Load deferred weights if applicable
