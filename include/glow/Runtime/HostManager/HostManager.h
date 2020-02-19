@@ -18,7 +18,6 @@
 
 #include "glow/Backend/Backend.h"
 #include "glow/Backends/DeviceManager.h"
-#include "glow/Base/SharedMutex.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Runtime/Executor/Executor.h"
 #include "glow/Runtime/Provisioner/Provisioner.h"
