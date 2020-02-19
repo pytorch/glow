@@ -87,6 +87,12 @@ NNPIDeviceManager::~NNPIDeviceManager() {
     });
   }
 
+  // Verify all static placeholders have no external refs.
+  for (auto &res : staticPlaceholders_) {
+    LOG_ERROR_IF_NOT(res.second.use_count() == 0)
+        << "Static placeholder has pending refs";
+  }
+
   if (device_ != NNPI_INVALID_NNPIHANDLE) {
     LOG_NNPI_INF_IF_ERROR(nnpiDeviceContextDestroy(device_),
                           "Failed to destroy NNPI device context");
@@ -121,9 +127,6 @@ Error NNPIDeviceManager::init() {
     LOG_NNPI_INF_IF_ERROR_RETURN_LLVMERROR(
         nnpiDeviceContextCreate(adapter_, deviceId_, &device_),
         "Failed to create NNPI Device");
-    LOG_IF_NOT_RETURN_LLVMERROR(
-        staticPlaceholderContainer_.setDevice(device_),
-        "setting device for StaticPlaceholderContainer failed");
     if (deviceOptions_.enabledDeviceTracing) {
       deviceTracing_ = NNPIDeviceTracing::getForDevice(deviceId_);
     }
@@ -193,7 +196,7 @@ void NNPIDeviceManager::addNetwork(const Module *module,
     usedMemoryBytes_ += functionCost_; // TODO:: static moduleSize.
     auto err = inferenceEnvs_[func.first].init(
         numWorkersPerFunction_, adapter_, device_, deviceTracing_, func.second,
-        &staticPlaceholderContainer_, deviceOptions_);
+        &staticPlaceholders_, &deviceOptions_);
     if (err) {
       functions_.erase(func.first);
       lock.unlock();
@@ -226,6 +229,18 @@ void NNPIDeviceManager::evictNetwork(std::string functionName,
                                functionName)
                      .str());
   }
+
+  // Remove unused static placeholders
+  std::unordered_set<const Placeholder *> unusedPlaceholders;
+  for (auto &sph : staticPlaceholders_) {
+    if (sph.second.use_count() == 0) {
+      unusedPlaceholders.insert(sph.first);
+    }
+  }
+  for (auto *ph : unusedPlaceholders) {
+    staticPlaceholders_.erase(ph);
+  }
+
   lock.unlock();
 
   if (evictCB) {
@@ -289,188 +304,17 @@ bool NNPIDeviceManager::isMemoryAvailable(uint64_t estimate) const {
 
 void NNPIDeviceManager::transferStaticPlaceholderToDevice(
     Placeholder *PH, Tensor *T, std::function<void(Error)> resultCB) {
-
-  NNPIHostResource hInput;
-  NamedResource nr;
-  nr = staticPlaceholderContainer_.acquireDeviceResource(PH, nr);
-  LOG_AND_FAIL_CALLBACK_IF_NOT(nr.handle != NNPI_INVALID_NNPIHANDLE,
-                               "Failed to acquire device resource", resultCB);
-
-  LOG_AND_CALLBACK_NNPI_INF_IF_ERROR(
-      nnpiHostResourceCreate(adapter_, &nr.desc, &hInput),
-      "Failed to create NNPI host resource", resultCB);
-
-  void *pHostInput(nullptr);
-  LOG_AND_CALLBACK_NNPI_INF_IF_ERROR(
-      nnpiHostResourceLock(hInput, NNPI_LOCK_FOR_WRITE, UINT32_MAX,
-                           &pHostInput),
-      "Failed to create NNPI host resource", resultCB);
-
-  size_t bufferSize = T->getUnpaddedSizeInBytes();
-  size_t fullBufferSize = T->getSizeInBytes();
-
-  switch (T->getElementType()) {
-  case glow::ElemKind::Int64ITy: {
-    // Convert int64_t tensors to int32.
-    int64_t *pInput = reinterpret_cast<int64_t *>(T->getUnsafePtr());
-    const size_t unpaddedSize = bufferSize / sizeof(int64_t);
-    int32_t *tmp = new int32_t[unpaddedSize];
-    for (size_t i = 0; i < unpaddedSize; i++) {
-      tmp[i] = static_cast<int32_t>(pInput[i]);
-    }
-    bufferSize /= 2;
-    fullBufferSize /= 2;
-    std::memcpy(pHostInput, tmp, bufferSize);
-    delete[](tmp);
-  } break;
-  default:
-    std::memcpy(pHostInput, T->getUnsafePtr(), bufferSize);
-  }
-
-  LOG_AND_CALLBACK_NNPI_INF_IF_ERROR(nnpiHostResourceUnlock(hInput),
-                                     "Failed to unlock host resource",
-                                     resultCB);
-
-  NNPICopyCommand copyInputCmd(NNPI_INVALID_NNPIHANDLE);
-  LOG_AND_CALLBACK_NNPI_INF_IF_ERROR(
-      nnpiCopyCommandCreateHostToDevice(device_, nr.handle, hInput,
-                                        &copyInputCmd),
-      "Failed to create NNPI copy command", resultCB);
-
-  if (deviceOptions_.enabledCommandLists > 1) {
-    // Create command list.
-    NNPICommandList cmdList = NNPI_INVALID_NNPIHANDLE;
-    NNPICommandHandle cmdHnd;
-    cmdHnd.type = NNPI_COMMAND_TYPE_COPY;
-    cmdHnd.copyCommand = copyInputCmd;
-    LOG_AND_CALLBACK_NNPI_INF_IF_ERROR(
-        nnpiCommandListCreate(&cmdHnd, 1, nullptr, 0, &cmdList),
-        "Failed to create NNPI command list", resultCB);
-
-    // Queue command list.
-    LOG_AND_CALLBACK_NNPI_INF_IF_ERROR(
-        nnpiCommandListQueue(cmdList, nullptr, 0),
-        "Failed to queue command list.", resultCB);
-
-    // Wait for completion.
-    uint32_t numErrors(0);
-    NNPICommandListError singleError;
-    memset(&singleError, 0, sizeof(NNPICommandListError));
-    NNPIInferenceErrorCode res =
-        nnpiCommandListWait(cmdList, UINT32_MAX, &singleError, 1, &numErrors);
-
-    LOG_NNPI_INF_IF_ERROR(res, "Failed to wait on command list");
-    if (res == NNPI_INF_NO_ERROR) {
-      if (numErrors > 0) {
-        LOG(ERROR) << NNPI_INF_ERROR_MSG(singleError.err, singleError.desc);
-      }
-    }
-    if (res != NNPI_INF_NO_ERROR || numErrors > 0) {
-      LOG_AND_CALLBACK_NNPI_INF_IF_ERROR(
-          res, "Errors detected during command list", resultCB);
-    }
-
-    // Destroy command list.
-    LOG_NNPI_INF_IF_ERROR(nnpiCommandListDestroy(cmdList),
-                          "Failed to destroy NNPI command list");
-  } else {
-    LOG_AND_CALLBACK_NNPI_INF_IF_ERROR(
-        nnpiCopyCommandQueue(copyInputCmd, nullptr),
-        "Failed to queue input copy command.", resultCB);
-    LOG_AND_CALLBACK_NNPI_INF_IF_ERROR(
-        nnpiHostResourceLock(hInput, NNPI_LOCK_FOR_WRITE, UINT32_MAX,
-                             &pHostInput),
-        "Failed to lock host resource during static Placeholder transfer",
-        resultCB);
-    LOG_AND_CALLBACK_NNPI_INF_IF_ERROR(nnpiHostResourceUnlock(hInput),
-                                       "Failed to unlock host resource",
-                                       resultCB);
-  }
-
-  LOG_AND_CALLBACK_NNPI_INF_IF_ERROR(nnpiCopyCommandDestroy(copyInputCmd),
-                                     "Failed to destroy NNPI copy command",
-                                     resultCB);
-
-  LOG_AND_CALLBACK_NNPI_INF_IF_ERROR(nnpiHostResourceDestroy(hInput),
-                                     "Failed to destroy NNPI host resource",
-                                     resultCB);
-
   LOG_AND_FAIL_CALLBACK_IF_NOT(
-      staticPlaceholderContainer_.releaseDeviceResource(PH),
-      "Failed to release device resource", resultCB);
+      staticPlaceholders_.count(PH) != 0,
+      "Static placeholder does not exist on the device", resultCB);
 
-  resultCB(Error::success());
+  auto nnpiResource = staticPlaceholders_.at(PH).lock();
+  LOG_AND_FAIL_CALLBACK_IF_NOT(
+      nnpiResource != nullptr,
+      "Static placeholder no longer exists on the device", resultCB);
+
+  nnpiResource->UpdateDeviceResourceFromTensor(T, resultCB);
 };
-
-NNPIStaticPlaceholderContainer::~NNPIStaticPlaceholderContainer() {
-  LOG_IF_NOT(ERROR, staticPlaceholdersDeviceResource_.size() == 0)
-      << "NNPIStaticPlaceholderContainer contains allocated refs for device "
-         "resource";
-  for (auto item : staticPlaceholdersDeviceResource_) {
-    auto PH = item.first;
-    eraseAndDestroyDeviceResource_(PH);
-  }
-}
-
-bool NNPIStaticPlaceholderContainer::setDevice(NNPIDeviceContext device) {
-  LOG_AND_RETURN_IF(ERROR, device == NNPI_INVALID_NNPIHANDLE,
-                    "NNPIStaticPlaceholderContainer received invalid device",
-                    false);
-  device_ = device;
-  return true;
-}
-
-NamedResource
-NNPIStaticPlaceholderContainer::acquireDeviceResource(const Placeholder *PH,
-                                                      const NamedResource &nr) {
-  if (staticPlaceholdersDeviceResource_.count(PH) == 0) {
-    NamedResourceWithRef nrf = nr;
-    LOG_NNPI_INF_IF_ERROR(
-        nnpiDeviceResourceCreate(device_, &nrf.desc, &nrf.handle),
-        "Failed to create NNPI device resource");
-    staticPlaceholdersDeviceResource_[PH] = nrf;
-  }
-  auto nrf = staticPlaceholdersDeviceResource_.at(PH);
-
-  nrf.refCount += 1;
-  staticPlaceholdersDeviceResource_[PH] = nrf;
-  return nrf;
-}
-
-bool NNPIStaticPlaceholderContainer::eraseAndDestroyDeviceResource_(
-    const Placeholder *PH) {
-  LOG_AND_RETURN_IF_NOT(ERROR, staticPlaceholdersDeviceResource_.count(PH),
-                        "Resource with name:" + PH->getName().str() +
-                            " wasn't initialized as static Placeholder",
-                        false)
-  auto &nrf = staticPlaceholdersDeviceResource_.at(PH);
-  LOG_NNPI_INF_IF_ERROR_RETURN_FALSE(nnpiDeviceResourceDestroy(nrf.handle),
-                                     "Failed to destroy NNPI device resource");
-  nrf.handle = NNPI_INVALID_NNPIHANDLE;
-  staticPlaceholdersDeviceResource_.erase(PH);
-  return true;
-}
-
-bool NNPIStaticPlaceholderContainer::releaseDeviceResource(
-    const Placeholder *PH) {
-  LOG_AND_RETURN_IF_NOT(ERROR, staticPlaceholdersDeviceResource_.count(PH),
-                        "Resource with name:" + PH->getName().str() +
-                            " wasn't initialized as static Placeholder",
-                        false)
-
-  auto &nrf = staticPlaceholdersDeviceResource_.at(PH);
-  LOG_IF_NOT(ERROR, nrf.refCount > 0)
-      << "ref count for resource with name:" << PH->getName().str()
-      << " is already 0";
-  if (nrf.refCount > 0) {
-    nrf.refCount -= 1;
-  }
-
-  if (nrf.refCount == 0) {
-    return eraseAndDestroyDeviceResource_(PH);
-  }
-  return true;
-}
 
 } // namespace runtime
 } // namespace glow

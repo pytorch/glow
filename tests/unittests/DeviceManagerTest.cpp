@@ -317,6 +317,7 @@ TEST_P(DeviceManagerTest, TransferStaticPlaceholderTest) {
 }
 
 TEST_P(DeviceManagerTest, MultiRun) {
+  CHECK_IF_ENABLED();
   auto module = makeBasicModule();
   std::vector<std::unique_ptr<CompiledFunction>> backing;
   FunctionMapTy functions =

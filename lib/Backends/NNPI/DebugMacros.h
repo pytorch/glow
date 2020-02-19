@@ -268,7 +268,7 @@ GetNNPIInferenceErrorDesc(NNPIInferenceErrorCode err) {
         << std::string(msg_prefix_) +                                          \
                std::to_string(                                                 \
                    std::chrono::duration_cast<std::chrono::microseconds>(      \
-                       timer_end - timer_name)                                 \
+                       timer_end_ - timer_name)                                \
                        .count()) +                                             \
                "\n";                                                           \
   }

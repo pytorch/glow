@@ -16,6 +16,7 @@
 #ifndef GLOW_BACKENDS_NNPI_INFERENCEPOOL_H
 #define GLOW_BACKENDS_NNPI_INFERENCEPOOL_H
 
+#include "InferenceContext.h"
 #include "NNPICompiledFunction.h"
 #include "NNPITracing.h"
 #include "glow/Runtime/RuntimeTypes.h"
@@ -30,90 +31,16 @@
 namespace glow {
 namespace runtime {
 
-struct NamedResource {
-  NNPIObjectName name;
-  NNPIResourceDesc desc;
-  NNPIHandle handle;
-  void *hostPtr;
-  NamedResource() { memset(this, 0, sizeof(NamedResource)); }
-};
-class NNPIStaticPlaceholderContainer;
-class InferenceThreadEnv {
-private:
-  NNPINetwork nnpiNetwork_;                 // For ice-ref path only.
-  NNPICompilationConfig compilationConfig_; // For ice-ref path only.
-
-  NNPIDeviceContext device_; // For queuing purposes (is created/destroyed in
-                             // the DM ctor/dtor).
-  NNPIInferCommand inferCmd_;
-  NNPICommandList commandList_;
-  uint32_t numCommands_;
-
-  std::vector<std::pair<std::string, NNPITensorDesc>> netInputs_;
-  std::vector<std::pair<std::string, NNPITensorDesc>> netOutputs_;
-
-  /// Vector of placeholders. The order of the placeholders match with the
-  /// netInputs_ and netOutputs_.
-  std::vector<Placeholder *> netInputPlaceholders_;
-  std::vector<Placeholder *> netOutputPlaceholders_;
-
-  /// Vector of placeholders. The order of the placeholders match with the
-  /// hostInputs_ and hostOutputs_.
-  std::vector<Placeholder *> hostInputPlaceholders_;
-  std::vector<Placeholder *> hostOutputPlaceholders_;
-
-  /// Set of inputs that can be partial tensors.
-  const std::unordered_set<const Placeholder *> *partialInputs_;
-
-  /// Set of inputs that are static tensors.
-  std::unordered_set<const Placeholder *> staticInputs_;
-
-  /// Device tracing handler.
-  std::shared_ptr<NNPIDeviceTracing> deviceTracing_;
-
-  /// NNPI Device configuration.
-  std::shared_ptr<NNPIDeviceOptions> deviceOptions_;
-
-  std::vector<NamedResource> hostInputs_, hostOutputs_, deviceInputs_,
-      allocatedDeviceInputs_, deviceOutputs_;
-  std::vector<NNPICopyCommand> inputCopyCmds_, outputCopyCmds_;
-  std::vector<NNPICommandConfig> cmdConfigs_;
-  std::vector<void *> rawInputs_, rawOutputs_;
-
-  /// Used for int64 tensors and for zero-padded copies of unsupported partial
-  /// tensors.
-  std::unordered_set<char *> tmpBuffers_;
-
-  NNPIStaticPlaceholderContainer *staticPlaceholderContainer_;
-
-public:
-  InferenceThreadEnv();
-  ~InferenceThreadEnv();
-  void execute(RunIdentifierTy runId, std::unique_ptr<ExecutionContext> ctx,
-               runtime::ResultCBTy resultCB);
-  bool init(
-      // For ICE-Ref path.
-      NNPINetwork network, NNPICompilationConfig config,
-      // For ICE-T path.
-      NNPIHostNetwork hostNetwork, NNPIDeviceNetwork deviceNetwork,
-      NNPIAdapter adapter, NNPIDeviceContext device,
-      const std::unordered_set<const Placeholder *> &partialInputs,
-      const std::unordered_set<const Placeholder *> &staticInputs,
-      std::shared_ptr<NNPIDeviceTracing> deviceTracing,
-      NNPIStaticPlaceholderContainer *staticPlaceholderContainer,
-      const NNPIDeviceOptions &deviceOptions);
-};
-
 class InferencePoolEnv {
   unsigned numWorkers_;
   std::unique_ptr<ThreadPool> workersPool_;
-  std::vector<InferenceThreadEnv> threadEnvs_;
-  std::vector<InferenceThreadEnv *> threadEnvsFree_;
-  std::mutex threadEnvsFreeLock_;
+  std::vector<InferenceContext> inferenceContexts_;
+  std::vector<InferenceContext *> freeContexts_;
+  std::mutex freeContextsLock_;
   NNPIHostNetwork hostNetwork_;
   NNPIDeviceNetwork deviceNetwork_;
   std::shared_ptr<NNPIDeviceTracing> deviceTracing_;
-  std::shared_ptr<NNPIDeviceOptions> deviceOptions_;
+  const NNPIDeviceOptions *deviceOptions_; // why not shared ptr?
 
 public:
   InferencePoolEnv();
@@ -121,8 +48,8 @@ public:
   Error init(unsigned numWorkers, NNPIAdapter adapter, NNPIDeviceContext device,
              std::shared_ptr<NNPIDeviceTracing> deviceTracing,
              CompiledFunction *compiledFunction,
-             NNPIStaticPlaceholderContainer *staticPlaceholderContainer,
-             const NNPIDeviceOptions &deviceOptions);
+             StaticPlaceholderMap *staticPlaceholderMap,
+             const NNPIDeviceOptions *deviceOptions);
   void stop(bool block);
   void execute(RunIdentifierTy runId, std::unique_ptr<ExecutionContext> ctx,
                runtime::ResultCBTy resultCB);
