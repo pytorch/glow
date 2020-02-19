@@ -176,57 +176,6 @@ contractIntIValIfNeeded(Expected<GlowIValue *> expectedGlowIVal) {
   }
 }
 
-/// Unwrap a Expected<GlowIValue *> \p expectedIVal and call toDouble,
-/// propogate any Errors.
-Expected<double> iValToDouble(Expected<GlowIValue *> expectedIVal) {
-  if (expectedIVal) {
-    return (*expectedIVal)->toDouble();
-  } else {
-    return expectedIVal.takeError();
-  }
-}
-
-/// Unwrap a Expected<GlowIValue *> \p expectedIVal and call toInt,
-/// propogate any Errors.
-Expected<int64_t> iValToInt(Expected<GlowIValue *> expectedIVal) {
-  if (expectedIVal) {
-    return (*expectedIVal)->toInt();
-  } else {
-    return expectedIVal.takeError();
-  }
-}
-
-/// Unwrap a Expected<GlowIValue *> \p expectedIVal and call toBool,
-/// propogate any Errors.
-Expected<bool> iValToBool(Expected<GlowIValue *> expectedIVal) {
-  if (expectedIVal) {
-    return (*expectedIVal)->toBool();
-  } else {
-    return expectedIVal.takeError();
-  }
-}
-
-/// Unwrap a Expected<GlowIValue *> \p expectedIVal and call toIntList,
-/// propogate any Errors.
-Expected<std::vector<int64_t> *>
-iValToIntList(Expected<GlowIValue *> expectedIVal) {
-  if (expectedIVal) {
-    return (*expectedIVal)->toIntList();
-  } else {
-    return expectedIVal.takeError();
-  }
-}
-
-/// Unwrap a Expected<GlowIValue *> \p expectedIVal and call toPTTensor,
-/// propogate any Errors.
-Expected<at::Tensor *> iValToPTTensor(Expected<GlowIValue *> expectedIVal) {
-  if (expectedIVal) {
-    return (*expectedIVal)->toPTTensor();
-  } else {
-    return expectedIVal.takeError();
-  }
-}
-
 /// Given a vector \p original containing elements of some type, \returns a
 /// vector of each element cast to another type T.
 template <typename T, typename OriginalT>
@@ -968,6 +917,7 @@ bool PyTorchModelLoader::isNodeSupported(const torch::jit::Node *ptNode) {
   }
 
   const auto &mapping = getSymbolsMapping();
+
   return mapping.count(kind) != 0;
 }
 
