@@ -198,7 +198,11 @@ else()
 
   # Remove Glow-specific CMAKE_CXX_FLAGS to build folly.
   set(SAVE_CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
-  set(CMAKE_CXX_FLAGS "")
+  if (CONFIG_HAVE_KERNEL_TIMESPEC)
+    set(CMAKE_CXX_FLAGS "-DCONFIG_HAVE_KERNEL_TIMESPEC")
+  else()
+    set(CMAKE_CXX_FLAGS "")
+  endif()
   set(SAVE_CMAKE_CXX_STANDARD "${CMAKE_CXX_STANDARD}")
   unset(CMAKE_CXX_STANDARD)
   add_subdirectory("${GLOW_THIRDPARTY_DIR}/folly" EXCLUDE_FROM_ALL)
