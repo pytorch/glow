@@ -745,12 +745,8 @@ Error ONNXModelLoader::loadSlice(const ONNX_NAMESPACE::NodeProto &op,
     }
   } else {
     // Attributes 'starts' and 'ends' are mandatory and must be consistent.
-    RETURN_ERR_IF_NOT(dict.count("starts"),
-                      "Slice: attribute 'starts' is mandatory.");
-    RETURN_ERR_IF_NOT(dict.count("ends"),
-                      "Slice: attribute 'ends' is mandatory.");
-    starts = getShape<ssize_t>(dict.at("starts"));
-    ends = getShape<ssize_t>(dict.at("ends"));
+    ASSIGN_VALUE_OR_RETURN_ERR(starts, getShape<ssize_t>(dict.at("starts")));
+    ASSIGN_VALUE_OR_RETURN_ERR(ends, getShape<ssize_t>(dict.at("ends")));
 
     if (dict.count("axes")) {
       // The ONNX spec is unclear so we consider that the 'axes' array may have
@@ -759,7 +755,7 @@ Error ONNXModelLoader::loadSlice(const ONNX_NAMESPACE::NodeProto &op,
       // - 'starts' & 'ends' arrays must have the same size as the 'axes' array.
       // In case an axis is specified multiple times in 'axes', the later
       // parameters will simply overwrite the previous ones.
-      axes = getShape<ssize_t>(dict.at("axes"));
+      ASSIGN_VALUE_OR_RETURN_ERR(axes, getShape<ssize_t>(dict.at("axes")));
     }
   }
   RETURN_ERR_IF_NOT(
@@ -839,7 +835,8 @@ Error ONNXModelLoader::loadConv(const ONNX_NAMESPACE::NodeProto &op,
   // Load the attributes
   std::vector<unsigned_t> strides(2, 1);
   if (dict.count("strides")) {
-    strides = getShape<unsigned_t>(dict.at("strides"));
+    ASSIGN_VALUE_OR_RETURN_ERR(strides,
+                               getShape<unsigned_t>(dict.at("strides")));
   }
   unsigned_t group = 1;
   if (dict.count("group")) {
@@ -849,7 +846,8 @@ Error ONNXModelLoader::loadConv(const ONNX_NAMESPACE::NodeProto &op,
   unsigned_t dilation = 1;
   if (dict.count("dilations")) {
     std::vector<unsigned_t> dilations(2, 1);
-    dilations = getShape<unsigned_t>(dict.at("dilations"));
+    ASSIGN_VALUE_OR_RETURN_ERR(dilations,
+                               getShape<unsigned_t>(dict.at("dilations")));
     RETURN_ERR_IF_NOT(dilations.size() == 2,
                       "Conv: dilations must be specified for 2 axes.");
     RETURN_ERR_IF_NOT(dilations[1] == dilations[0],
@@ -884,7 +882,9 @@ Error ONNXModelLoader::loadConv(const ONNX_NAMESPACE::NodeProto &op,
   // Extra check when the 'kernel_shape' attribute exists.
   // The 'kernel_shape' attribute is redundant not mandatory.
   if (dict.count("kernel_shape")) {
-    auto kernelShapeAttribute = getShape<unsigned_t>(dict.at("kernel_shape"));
+    std::vector<unsigned_t> kernelShapeAttribute;
+    ASSIGN_VALUE_OR_RETURN_ERR(kernelShapeAttribute,
+                               getShape<unsigned_t>(dict.at("kernel_shape")));
     RETURN_ERR_IF_NOT(
         (kernelShape[0] == kernelShapeAttribute[0] &&
          kernelShape[1] == kernelShapeAttribute[1]),
@@ -950,9 +950,14 @@ Error ONNXModelLoader::loadTensorwiseQuantizedConvolution(
   NodeValue biasValue;
   ASSIGN_VALUE_OR_RETURN_ERR(biasValue, getNodeValueByName(op.input(2)));
 
-  auto kernels = getShape<unsigned_t>(dict.at("kernel_shape"));
-  auto strides = getShape<unsigned_t>(dict.at("strides"));
-  auto pads = getShape<unsigned_t>(dict.at("pads"));
+  std::vector<unsigned_t> kernels;
+  ASSIGN_VALUE_OR_RETURN_ERR(kernels,
+                             getShape<unsigned_t>(dict.at("kernel_shape")));
+  std::vector<unsigned_t> strides;
+  ASSIGN_VALUE_OR_RETURN_ERR(strides, getShape<unsigned_t>(dict.at("strides")));
+  std::vector<unsigned_t> pads;
+  ASSIGN_VALUE_OR_RETURN_ERR(pads, getShape<unsigned_t>(dict.at("pads")));
+
   unsigned_t groups;
   ASSIGN_VALUE_OR_RETURN_ERR(groups, loadInt(dict.at("group")));
 
@@ -990,9 +995,14 @@ Error ONNXModelLoader::loadChannelwiseQuantizedConvolution(
   NodeValue offsetsValue;
   ASSIGN_VALUE_OR_RETURN_ERR(offsetsValue, getNodeValueByName(op.input(4)));
 
-  auto kernels = getShape<unsigned_t>(dict.at("kernel_shape"));
-  auto strides = getShape<unsigned_t>(dict.at("strides"));
-  auto pads = getShape<unsigned_t>(dict.at("pads"));
+  std::vector<unsigned_t> kernels;
+  ASSIGN_VALUE_OR_RETURN_ERR(kernels,
+                             getShape<unsigned_t>(dict.at("kernel_shape")));
+  std::vector<unsigned_t> strides;
+  ASSIGN_VALUE_OR_RETURN_ERR(strides, getShape<unsigned_t>(dict.at("strides")));
+  std::vector<unsigned_t> pads;
+  ASSIGN_VALUE_OR_RETURN_ERR(pads, getShape<unsigned_t>(dict.at("pads")));
+
   unsigned_t groups;
   ASSIGN_VALUE_OR_RETURN_ERR(groups, loadInt(dict.at("group")));
 
@@ -1022,7 +1032,8 @@ Error ONNXModelLoader::loadConvTranspose(const ONNX_NAMESPACE::NodeProto &op,
   // Load the attributes
   std::vector<unsigned_t> strides(2, 1);
   if (dict.count("strides")) {
-    strides = getShape<unsigned_t>(dict.at("strides"));
+    ASSIGN_VALUE_OR_RETURN_ERR(strides,
+                               getShape<unsigned_t>(dict.at("strides")));
   }
   unsigned_t group = 1;
   if (dict.count("group")) {
@@ -1060,8 +1071,9 @@ Error ONNXModelLoader::loadConvTranspose(const ONNX_NAMESPACE::NodeProto &op,
   // Extra check when the 'kernel_shape' attribute exists.
   // The 'kernel_shape' attribute is redundant not mandatory.
   if (dict.count("kernel_shape")) {
-    std::vector<unsigned_t> kernelShapeAttribute =
-        getShape<unsigned_t>(dict.at("kernel_shape"));
+    std::vector<unsigned_t> kernelShapeAttribute;
+    ASSIGN_VALUE_OR_RETURN_ERR(kernelShapeAttribute,
+                               getShape<unsigned_t>(dict.at("kernel_shape")));
     RETURN_ERR_IF_NOT(
         (kernels[0] == kernelShapeAttribute[0] &&
          kernels[1] == kernelShapeAttribute[1]),
@@ -1105,8 +1117,9 @@ Error ONNXModelLoader::loadConvTranspose(const ONNX_NAMESPACE::NodeProto &op,
 
   // Per spec, if output_shape is specified, pads are ignored.
   if (dict.count("output_shape")) {
-    std::vector<unsigned_t> outShape =
-        getShape<unsigned_t>(dict.at("output_shape"));
+    std::vector<unsigned_t> outShape;
+    ASSIGN_VALUE_OR_RETURN_ERR(outShape,
+                               getShape<unsigned_t>(dict.at("output_shape")));
     ASSIGN_VALUE_OR_RETURN_ERR(
         pads, getConvTransposePadsfromOutput(dict, kernels, strides, idimHW,
                                              outShape));
@@ -1151,9 +1164,12 @@ Error ONNXModelLoader::loadPool(const ONNX_NAMESPACE::NodeProto &op,
   ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
   std::vector<unsigned_t> strides(2, 1);
   if (dict.count("strides")) {
-    strides = getShape<unsigned_t>(dict.at("strides"));
+    ASSIGN_VALUE_OR_RETURN_ERR(strides,
+                               getShape<unsigned_t>(dict.at("strides")));
   }
-  auto kernels = getShape<unsigned_t>(dict.at("kernel_shape"));
+  std::vector<unsigned_t> kernels;
+  ASSIGN_VALUE_OR_RETURN_ERR(kernels,
+                             getShape<unsigned_t>(dict.at("kernel_shape")));
 
   if (in.dims().size() != 4 || kernels.size() != 2) {
     // Glow only handles 2D pooling currently.
@@ -1214,8 +1230,11 @@ Error ONNXModelLoader::loadTensorwiseQuantizedPool(
   NodeValue in;
   ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
 
-  auto kernels = getShape<unsigned_t>(dict.at("kernel_shape"));
-  auto strides = getShape<unsigned_t>(dict.at("strides"));
+  std::vector<unsigned_t> kernels;
+  ASSIGN_VALUE_OR_RETURN_ERR(kernels,
+                             getShape<unsigned_t>(dict.at("kernel_shape")));
+  std::vector<unsigned_t> strides;
+  ASSIGN_VALUE_OR_RETURN_ERR(strides, getShape<unsigned_t>(dict.at("strides")));
 
   if (in.dims().size() != 4 || kernels.size() != 2) {
     // Glow only handles 2D pooling currently.
@@ -1281,7 +1300,8 @@ Error ONNXModelLoader::loadGlobalAveragePool(
   ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
   std::vector<unsigned_t> strides(2, 1);
   if (dict.count("strides")) {
-    strides = getShape<unsigned_t>(dict.at("strides"));
+    ASSIGN_VALUE_OR_RETURN_ERR(strides,
+                               getShape<unsigned_t>(dict.at("strides")));
   }
 
   llvm::SmallVector<unsigned_t, 2> kernels(2);
@@ -1305,7 +1325,8 @@ Error ONNXModelLoader::loadSqueeze(const ONNX_NAMESPACE::NodeProto &op,
 
   NodeValue in;
   ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
-  auto axes = getShape(dict.at("axes"));
+  std::vector<dim_t> axes;
+  ASSIGN_VALUE_OR_RETURN_ERR(axes, getShape<dim_t>(dict.at("axes")));
   Node *node = G_.createSqueeze(opName, in, axes);
   RETURN_IF_ERR(addNodeAsOutput(op, node));
   return Error::success();
@@ -1317,7 +1338,8 @@ Error ONNXModelLoader::loadUnsqueeze(const ONNX_NAMESPACE::NodeProto &op,
 
   NodeValue in;
   ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
-  auto axes = getShape(dict.at("axes"));
+  std::vector<dim_t> axes;
+  ASSIGN_VALUE_OR_RETURN_ERR(axes, getShape<dim_t>(dict.at("axes")));
   Node *node = G_.createExpandDims(opName, in, axes);
   RETURN_IF_ERR(addNodeAsOutput(op, node));
   return Error::success();
@@ -1539,9 +1561,8 @@ Error ONNXModelLoader::loadPad(const ONNX_NAMESPACE::NodeProto &op,
   }
 
   // Pads are mandatory.
-  RETURN_ERR_IF_NOT(dict.count("pads"),
-                    "Pad: The 'pads' property is mandatory");
-  auto pads = getShape<int>(dict.at("pads"));
+  std::vector<int> pads;
+  ASSIGN_VALUE_OR_RETURN_ERR(pads, getShape<int>(dict.at("pads")));
   RETURN_ERR_IF_NOT(
       (pads.size() == 2 * numDims),
       "Pad: the 'pads' array must contain 2 values per dimensions");
@@ -2287,7 +2308,8 @@ Error ONNXModelLoader::loadSelect(const ONNX_NAMESPACE::NodeProto &op,
   NodeValue RHS;
   ASSIGN_VALUE_OR_RETURN_ERR(RHS, getNodeValueByName(op.input(2)));
 
-  auto shape = getShape<dim_t>(dict.at("shape"));
+  std::vector<dim_t> shape;
+  ASSIGN_VALUE_OR_RETURN_ERR(shape, getShape<dim_t>(dict.at("shape")));
 
   auto outTy = G_.getParent()->uniqueType(LHS.getElementType(), shape);
   Node *N = G_.createSelect(loadOperatorName(op), outTy, Cond, LHS, RHS);
@@ -2435,8 +2457,10 @@ Error ONNXModelLoader::loadIntLookupTable(const ONNX_NAMESPACE::NodeProto &op,
   NodeValue in;
   ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
 
-  auto values = getShape<int8_t>(dict.at("values"));
-  auto shape = getShape<dim_t>(dict.at("shape"));
+  std::vector<int8_t> values;
+  ASSIGN_VALUE_OR_RETURN_ERR(values, getShape<int8_t>(dict.at("values")));
+  std::vector<dim_t> shape;
+  ASSIGN_VALUE_OR_RETURN_ERR(shape, getShape<dim_t>(dict.at("shape")));
 
   auto outTy = G_.getParent()->uniqueType(in.getElementType(), shape);
   Node *N = G_.createIntLookupTable(loadOperatorName(op), in, values, outTy);
@@ -2696,7 +2720,8 @@ Error ONNXModelLoader::loadInsertTensor(const ONNX_NAMESPACE::NodeProto &op,
   NodeValue small;
   ASSIGN_VALUE_OR_RETURN_ERR(small, getNodeValueByName(op.input(1)));
 
-  auto start = getShape<dim_t>(dict.at("start"));
+  std::vector<dim_t> start;
+  ASSIGN_VALUE_OR_RETURN_ERR(start, getShape<dim_t>(dict.at("start")));
 
   unsigned_t count = 1;
   if (dict.count("count")) {
@@ -2730,7 +2755,9 @@ Error ONNXModelLoader::loadAdaptiveAvgPool(const ONNX_NAMESPACE::NodeProto &op,
   NodeValue input;
   ASSIGN_VALUE_OR_RETURN_ERR(input, getNodeValueByName(op.input(0)));
 
-  auto outputShape = getShape<unsigned_t>(dict.at("output_size"));
+  std::vector<unsigned_t> outputShape;
+  ASSIGN_VALUE_OR_RETURN_ERR(outputShape,
+                             getShape<unsigned_t>(dict.at("output_size")));
 
   ShapeNHWC idim(input.dims());
 

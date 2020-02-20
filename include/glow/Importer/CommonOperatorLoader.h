@@ -583,8 +583,9 @@ protected:
     }
 
     std::vector<dim_t> split;
-    if (dict.count("split"))
-      split = getShape(dict["split"]);
+    if (dict.count("split")) {
+      ASSIGN_VALUE_OR_RETURN_ERR(split, getShape<dim_t>(dict.at("split")));
+    }
 
     std::vector<SliceNode *> outputs;
     G_.createSplit(opName, in, op.output_size(), axis, split, outputs);
@@ -619,7 +620,10 @@ protected:
     } else if (dict.count("shape")) {
       RETURN_ERR_IF_NOT(op.input_size() == 1,
                         "Cannot specify new shape by both argument and input.");
-      std::vector<int64_t> protoDims = getShape<int64_t>(dict["shape"]);
+      std::vector<int64_t> protoDims;
+      ASSIGN_VALUE_OR_RETURN_ERR(protoDims,
+                                 getShape<int64_t>(dict.at("shape")));
+
       for (auto dim : protoDims) {
         requestedDims.push_back(dim);
       }
@@ -673,7 +677,9 @@ protected:
     // There is a difference between ONNX and Caffe2 specs for Transpose:
     // one contains permutation under name "perm", the other contains it under
     // argument name "axes". That's why the name is passed as a parameter.
-    std::vector<unsigned_t> perm = getShape<unsigned_t>(dict[permArgName]);
+    std::vector<unsigned_t> perm;
+    ASSIGN_VALUE_OR_RETURN_ERR(perm,
+                               getShape<unsigned_t>(dict.at(permArgName)));
     if (perm.empty()) {
       // Empty permutation argument means reversing axes order.
       size_t N = in.dims().size();
@@ -749,7 +755,8 @@ protected:
 
     std::vector<unsigned_t> shapeAxes = {};
     if (dict.count("axes")) {
-      shapeAxes = getShape<unsigned_t>(dict["axes"]);
+      ASSIGN_VALUE_OR_RETURN_ERR(shapeAxes,
+                                 getShape<unsigned_t>(dict.at("axes")));
     } else {
       shapeAxes.resize(in.dims().size());
       std::iota(shapeAxes.begin(), shapeAxes.end(), 0);
@@ -929,12 +936,10 @@ protected:
   Error loadExpandDims(const OpType &op, const ArgumentDictionaryTy &dict) {
     NodeValue in;
     ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
-    auto dims = dict.find("dims");
-    if (dims == dict.end()) {
-      RETURN_ERR("Missing dims argument for ExpandDims operator.");
-    }
-    Node *node =
-        G_.createExpandDims(loadOperatorName(op), in, getShape(dims->second));
+    std::vector<dim_t> shape;
+    ASSIGN_VALUE_OR_RETURN_ERR(shape, getShape<dim_t>(dict.at("dims")));
+
+    Node *node = G_.createExpandDims(loadOperatorName(op), in, shape);
     RETURN_IF_ERR(addNodeAsOutput(op, node));
 
     return Error::success();
@@ -1003,10 +1008,8 @@ protected:
       lengths = lengthsConstant->getOutput();
     }
 
-    auto maskIt = dict.find("mask");
-    RETURN_ERR_IF_NOT(maskIt != dict.end(),
-                      "Require mask when loading SparseToDenseMask.");
-    auto mask = getShape(maskIt->second);
+    std::vector<dim_t> mask;
+    ASSIGN_VALUE_OR_RETURN_ERR(mask, getShape<dim_t>(dict.at("mask")));
 
     auto *node = G_.createSparseToDenseMask(
         loadOperatorName(op), indices, values, defaultValue, lengths, mask);
