@@ -82,6 +82,7 @@ template <typename T> static Expected<std::string> loadStr(const T *arg) {
 template <typename ElemTy, typename AttrType>
 Expected<std::vector<ElemTy>> getShape(const AttrType *arg,
                                        bool allowEmptyShape = false) {
+  RETURN_ERR_IF_NOT(arg, "Node has no ints attribute with this name");
   if (!allowEmptyShape) {
     RETURN_ERR_IF_NOT(arg->ints_size() > 0, "Node has no ints values");
   }
@@ -96,6 +97,7 @@ Expected<std::vector<ElemTy>> getShape(const AttrType *arg,
 /// if there is no error, or an error otherwise.
 template <typename AttrType>
 Expected<std::vector<float>> getFloats(const AttrType *arg) {
+  RETURN_ERR_IF_NOT(arg, "Node has no floats attribute with this name");
   RETURN_ERR_IF_NOT(arg->floats_size() > 0, "Node has no floats values");
   std::vector<float> dim;
   for (auto i : arg->floats()) {

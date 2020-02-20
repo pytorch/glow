@@ -428,7 +428,7 @@ Error ONNXModelLoader::loadInputs(ONNX_NAMESPACE::GraphProto &net,
   return Error::success();
 }
 
-Expected<bool> ONNXModelLoader::getBroadcast(const ArgumentDictionaryTy &dict) {
+Expected<bool> ONNXModelLoader::getBroadcast(ArgumentDictionaryTy &dict) {
   // Starting with opset 7, broadcasting is implicit and doesn't require any
   // attribute.
   if (opsetVersion_ > 6) {
@@ -546,12 +546,12 @@ using Pads = std::vector<unsigned_t>;
 /// \p kdim : kernel sizes (HW)
 /// \p sdim: stride sizes (HW)
 /// \p idim: input sizes (HW)
-Expected<Pads> getPads(const ArgumentDictionaryTy &dict,
+Expected<Pads> getPads(ArgumentDictionaryTy &dict,
                        llvm::ArrayRef<unsigned_t> kdim,
                        llvm::ArrayRef<unsigned_t> sdim,
                        llvm::ArrayRef<unsigned_t> idim) {
   if (dict.count("pads")) {
-    return getShape<unsigned_t>(dict.at("pads"));
+    return getShape<unsigned_t>(dict["pads"]);
   }
   if (dict.count("auto_pad")) {
     std::string padStr;
@@ -601,7 +601,7 @@ Expected<Pads> getPads(const ArgumentDictionaryTy &dict,
 /// \p sdim: stride sizes (HW)
 /// \p idim: input sizes (HW)
 static Expected<Pads> getConvTransposePadsfromOutput(
-    const ArgumentDictionaryTy &dict, llvm::ArrayRef<unsigned_t> kdim,
+    ArgumentDictionaryTy &dict, llvm::ArrayRef<unsigned_t> kdim,
     llvm::ArrayRef<unsigned_t> sdim, llvm::ArrayRef<unsigned_t> idim,
     llvm::ArrayRef<unsigned_t> odim) {
 
@@ -639,7 +639,7 @@ static Expected<Pads> getConvTransposePadsfromOutput(
 }
 
 Error ONNXModelLoader::loadConstant(const ONNX_NAMESPACE::NodeProto &op,
-                                    const ArgumentDictionaryTy &dict) {
+                                    ArgumentDictionaryTy &dict) {
   /*
     output: "Parameter6"
     name: "Parameter6"
@@ -693,7 +693,7 @@ static void helperSetter(Constant *constT, std::vector<ssize_t> &vec) {
 }
 
 Error ONNXModelLoader::loadSlice(const ONNX_NAMESPACE::NodeProto &op,
-                                 const ArgumentDictionaryTy &dict) {
+                                 ArgumentDictionaryTy &dict) {
   const std::string &opName = loadOperatorName(op);
   NodeValue data;
   ASSIGN_VALUE_OR_RETURN_ERR(data, getNodeValueByName(op.input(0)));
@@ -745,8 +745,8 @@ Error ONNXModelLoader::loadSlice(const ONNX_NAMESPACE::NodeProto &op,
     }
   } else {
     // Attributes 'starts' and 'ends' are mandatory and must be consistent.
-    ASSIGN_VALUE_OR_RETURN_ERR(starts, getShape<ssize_t>(dict.at("starts")));
-    ASSIGN_VALUE_OR_RETURN_ERR(ends, getShape<ssize_t>(dict.at("ends")));
+    ASSIGN_VALUE_OR_RETURN_ERR(starts, getShape<ssize_t>(dict["starts"]));
+    ASSIGN_VALUE_OR_RETURN_ERR(ends, getShape<ssize_t>(dict["ends"]));
 
     if (dict.count("axes")) {
       // The ONNX spec is unclear so we consider that the 'axes' array may have
@@ -755,7 +755,7 @@ Error ONNXModelLoader::loadSlice(const ONNX_NAMESPACE::NodeProto &op,
       // - 'starts' & 'ends' arrays must have the same size as the 'axes' array.
       // In case an axis is specified multiple times in 'axes', the later
       // parameters will simply overwrite the previous ones.
-      ASSIGN_VALUE_OR_RETURN_ERR(axes, getShape<ssize_t>(dict.at("axes")));
+      ASSIGN_VALUE_OR_RETURN_ERR(axes, getShape<ssize_t>(dict["axes"]));
     }
   }
   RETURN_ERR_IF_NOT(
@@ -830,13 +830,12 @@ Error ONNXModelLoader::loadSlice(const ONNX_NAMESPACE::NodeProto &op,
 }
 
 Error ONNXModelLoader::loadConv(const ONNX_NAMESPACE::NodeProto &op,
-                                const ArgumentDictionaryTy &dict) {
+                                ArgumentDictionaryTy &dict) {
   const std::string &opName = loadOperatorName(op);
   // Load the attributes
   std::vector<unsigned_t> strides(2, 1);
   if (dict.count("strides")) {
-    ASSIGN_VALUE_OR_RETURN_ERR(strides,
-                               getShape<unsigned_t>(dict.at("strides")));
+    ASSIGN_VALUE_OR_RETURN_ERR(strides, getShape<unsigned_t>(dict["strides"]));
   }
   unsigned_t group = 1;
   if (dict.count("group")) {
@@ -847,7 +846,7 @@ Error ONNXModelLoader::loadConv(const ONNX_NAMESPACE::NodeProto &op,
   if (dict.count("dilations")) {
     std::vector<unsigned_t> dilations(2, 1);
     ASSIGN_VALUE_OR_RETURN_ERR(dilations,
-                               getShape<unsigned_t>(dict.at("dilations")));
+                               getShape<unsigned_t>(dict["dilations"]));
     RETURN_ERR_IF_NOT(dilations.size() == 2,
                       "Conv: dilations must be specified for 2 axes.");
     RETURN_ERR_IF_NOT(dilations[1] == dilations[0],
@@ -884,7 +883,7 @@ Error ONNXModelLoader::loadConv(const ONNX_NAMESPACE::NodeProto &op,
   if (dict.count("kernel_shape")) {
     std::vector<unsigned_t> kernelShapeAttribute;
     ASSIGN_VALUE_OR_RETURN_ERR(kernelShapeAttribute,
-                               getShape<unsigned_t>(dict.at("kernel_shape")));
+                               getShape<unsigned_t>(dict["kernel_shape"]));
     RETURN_ERR_IF_NOT(
         (kernelShape[0] == kernelShapeAttribute[0] &&
          kernelShape[1] == kernelShapeAttribute[1]),
@@ -940,7 +939,7 @@ Error ONNXModelLoader::loadConv(const ONNX_NAMESPACE::NodeProto &op,
 }
 
 Error ONNXModelLoader::loadTensorwiseQuantizedConvolution(
-    const ONNX_NAMESPACE::NodeProto &op, const ArgumentDictionaryTy &dict) {
+    const ONNX_NAMESPACE::NodeProto &op, ArgumentDictionaryTy &dict) {
   const std::string &opName = loadOperatorName(op);
 
   NodeValue input;
@@ -952,11 +951,11 @@ Error ONNXModelLoader::loadTensorwiseQuantizedConvolution(
 
   std::vector<unsigned_t> kernels;
   ASSIGN_VALUE_OR_RETURN_ERR(kernels,
-                             getShape<unsigned_t>(dict.at("kernel_shape")));
+                             getShape<unsigned_t>(dict["kernel_shape"]));
   std::vector<unsigned_t> strides;
-  ASSIGN_VALUE_OR_RETURN_ERR(strides, getShape<unsigned_t>(dict.at("strides")));
+  ASSIGN_VALUE_OR_RETURN_ERR(strides, getShape<unsigned_t>(dict["strides"]));
   std::vector<unsigned_t> pads;
-  ASSIGN_VALUE_OR_RETURN_ERR(pads, getShape<unsigned_t>(dict.at("pads")));
+  ASSIGN_VALUE_OR_RETURN_ERR(pads, getShape<unsigned_t>(dict["pads"]));
 
   unsigned_t groups;
   ASSIGN_VALUE_OR_RETURN_ERR(groups, loadInt(dict.at("group")));
@@ -981,7 +980,7 @@ Error ONNXModelLoader::loadTensorwiseQuantizedConvolution(
 }
 
 Error ONNXModelLoader::loadChannelwiseQuantizedConvolution(
-    const ONNX_NAMESPACE::NodeProto &op, const ArgumentDictionaryTy &dict) {
+    const ONNX_NAMESPACE::NodeProto &op, ArgumentDictionaryTy &dict) {
   const std::string &opName = loadOperatorName(op);
 
   NodeValue input;
@@ -997,11 +996,11 @@ Error ONNXModelLoader::loadChannelwiseQuantizedConvolution(
 
   std::vector<unsigned_t> kernels;
   ASSIGN_VALUE_OR_RETURN_ERR(kernels,
-                             getShape<unsigned_t>(dict.at("kernel_shape")));
+                             getShape<unsigned_t>(dict["kernel_shape"]));
   std::vector<unsigned_t> strides;
-  ASSIGN_VALUE_OR_RETURN_ERR(strides, getShape<unsigned_t>(dict.at("strides")));
+  ASSIGN_VALUE_OR_RETURN_ERR(strides, getShape<unsigned_t>(dict["strides"]));
   std::vector<unsigned_t> pads;
-  ASSIGN_VALUE_OR_RETURN_ERR(pads, getShape<unsigned_t>(dict.at("pads")));
+  ASSIGN_VALUE_OR_RETURN_ERR(pads, getShape<unsigned_t>(dict["pads"]));
 
   unsigned_t groups;
   ASSIGN_VALUE_OR_RETURN_ERR(groups, loadInt(dict.at("group")));
@@ -1027,13 +1026,12 @@ Error ONNXModelLoader::loadChannelwiseQuantizedConvolution(
 }
 
 Error ONNXModelLoader::loadConvTranspose(const ONNX_NAMESPACE::NodeProto &op,
-                                         const ArgumentDictionaryTy &dict) {
+                                         ArgumentDictionaryTy &dict) {
   const std::string &opName = loadOperatorName(op);
   // Load the attributes
   std::vector<unsigned_t> strides(2, 1);
   if (dict.count("strides")) {
-    ASSIGN_VALUE_OR_RETURN_ERR(strides,
-                               getShape<unsigned_t>(dict.at("strides")));
+    ASSIGN_VALUE_OR_RETURN_ERR(strides, getShape<unsigned_t>(dict["strides"]));
   }
   unsigned_t group = 1;
   if (dict.count("group")) {
@@ -1073,7 +1071,7 @@ Error ONNXModelLoader::loadConvTranspose(const ONNX_NAMESPACE::NodeProto &op,
   if (dict.count("kernel_shape")) {
     std::vector<unsigned_t> kernelShapeAttribute;
     ASSIGN_VALUE_OR_RETURN_ERR(kernelShapeAttribute,
-                               getShape<unsigned_t>(dict.at("kernel_shape")));
+                               getShape<unsigned_t>(dict["kernel_shape"]));
     RETURN_ERR_IF_NOT(
         (kernels[0] == kernelShapeAttribute[0] &&
          kernels[1] == kernelShapeAttribute[1]),
@@ -1119,7 +1117,7 @@ Error ONNXModelLoader::loadConvTranspose(const ONNX_NAMESPACE::NodeProto &op,
   if (dict.count("output_shape")) {
     std::vector<unsigned_t> outShape;
     ASSIGN_VALUE_OR_RETURN_ERR(outShape,
-                               getShape<unsigned_t>(dict.at("output_shape")));
+                               getShape<unsigned_t>(dict["output_shape"]));
     ASSIGN_VALUE_OR_RETURN_ERR(
         pads, getConvTransposePadsfromOutput(dict, kernels, strides, idimHW,
                                              outShape));
@@ -1155,7 +1153,7 @@ Error ONNXModelLoader::loadConvTranspose(const ONNX_NAMESPACE::NodeProto &op,
 }
 
 Error ONNXModelLoader::loadPool(const ONNX_NAMESPACE::NodeProto &op,
-                                const ArgumentDictionaryTy &dict,
+                                ArgumentDictionaryTy &dict,
                                 llvm::StringRef typeName) {
   const std::string &opName = loadOperatorName(op);
 
@@ -1164,12 +1162,11 @@ Error ONNXModelLoader::loadPool(const ONNX_NAMESPACE::NodeProto &op,
   ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
   std::vector<unsigned_t> strides(2, 1);
   if (dict.count("strides")) {
-    ASSIGN_VALUE_OR_RETURN_ERR(strides,
-                               getShape<unsigned_t>(dict.at("strides")));
+    ASSIGN_VALUE_OR_RETURN_ERR(strides, getShape<unsigned_t>(dict["strides"]));
   }
   std::vector<unsigned_t> kernels;
   ASSIGN_VALUE_OR_RETURN_ERR(kernels,
-                             getShape<unsigned_t>(dict.at("kernel_shape")));
+                             getShape<unsigned_t>(dict["kernel_shape"]));
 
   if (in.dims().size() != 4 || kernels.size() != 2) {
     // Glow only handles 2D pooling currently.
@@ -1222,7 +1219,7 @@ Error ONNXModelLoader::loadPool(const ONNX_NAMESPACE::NodeProto &op,
 }
 
 Error ONNXModelLoader::loadTensorwiseQuantizedPool(
-    const ONNX_NAMESPACE::NodeProto &op, const ArgumentDictionaryTy &dict,
+    const ONNX_NAMESPACE::NodeProto &op, ArgumentDictionaryTy &dict,
     llvm::StringRef typeName) {
   const std::string &opName = loadOperatorName(op);
 
@@ -1232,9 +1229,9 @@ Error ONNXModelLoader::loadTensorwiseQuantizedPool(
 
   std::vector<unsigned_t> kernels;
   ASSIGN_VALUE_OR_RETURN_ERR(kernels,
-                             getShape<unsigned_t>(dict.at("kernel_shape")));
+                             getShape<unsigned_t>(dict["kernel_shape"]));
   std::vector<unsigned_t> strides;
-  ASSIGN_VALUE_OR_RETURN_ERR(strides, getShape<unsigned_t>(dict.at("strides")));
+  ASSIGN_VALUE_OR_RETURN_ERR(strides, getShape<unsigned_t>(dict["strides"]));
 
   if (in.dims().size() != 4 || kernels.size() != 2) {
     // Glow only handles 2D pooling currently.
@@ -1273,7 +1270,7 @@ Error ONNXModelLoader::loadTensorwiseQuantizedPool(
 }
 
 Error ONNXModelLoader::loadArgMax(const ONNX_NAMESPACE::NodeProto &op,
-                                  const ArgumentDictionaryTy &dict) {
+                                  ArgumentDictionaryTy &dict) {
   const std::string &opName = loadOperatorName(op);
 
   NodeValue in;
@@ -1292,7 +1289,7 @@ Error ONNXModelLoader::loadArgMax(const ONNX_NAMESPACE::NodeProto &op,
 }
 
 Error ONNXModelLoader::loadGlobalAveragePool(
-    const ONNX_NAMESPACE::NodeProto &op, const ArgumentDictionaryTy &dict) {
+    const ONNX_NAMESPACE::NodeProto &op, ArgumentDictionaryTy &dict) {
   const std::string &opName = loadOperatorName(op);
 
   // Load the inputs:
@@ -1300,8 +1297,7 @@ Error ONNXModelLoader::loadGlobalAveragePool(
   ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
   std::vector<unsigned_t> strides(2, 1);
   if (dict.count("strides")) {
-    ASSIGN_VALUE_OR_RETURN_ERR(strides,
-                               getShape<unsigned_t>(dict.at("strides")));
+    ASSIGN_VALUE_OR_RETURN_ERR(strides, getShape<unsigned_t>(dict["strides"]));
   }
 
   llvm::SmallVector<unsigned_t, 2> kernels(2);
@@ -1320,33 +1316,33 @@ Error ONNXModelLoader::loadGlobalAveragePool(
 }
 
 Error ONNXModelLoader::loadSqueeze(const ONNX_NAMESPACE::NodeProto &op,
-                                   const ArgumentDictionaryTy &dict) {
+                                   ArgumentDictionaryTy &dict) {
   const std::string &opName = loadOperatorName(op);
 
   NodeValue in;
   ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
   std::vector<dim_t> axes;
-  ASSIGN_VALUE_OR_RETURN_ERR(axes, getShape<dim_t>(dict.at("axes")));
+  ASSIGN_VALUE_OR_RETURN_ERR(axes, getShape<dim_t>(dict["axes"]));
   Node *node = G_.createSqueeze(opName, in, axes);
   RETURN_IF_ERR(addNodeAsOutput(op, node));
   return Error::success();
 }
 
 Error ONNXModelLoader::loadUnsqueeze(const ONNX_NAMESPACE::NodeProto &op,
-                                     const ArgumentDictionaryTy &dict) {
+                                     ArgumentDictionaryTy &dict) {
   const std::string &opName = loadOperatorName(op);
 
   NodeValue in;
   ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
   std::vector<dim_t> axes;
-  ASSIGN_VALUE_OR_RETURN_ERR(axes, getShape<dim_t>(dict.at("axes")));
+  ASSIGN_VALUE_OR_RETURN_ERR(axes, getShape<dim_t>(dict["axes"]));
   Node *node = G_.createExpandDims(opName, in, axes);
   RETURN_IF_ERR(addNodeAsOutput(op, node));
   return Error::success();
 }
 
 Error ONNXModelLoader::loadBatchNormalization(
-    const ONNX_NAMESPACE::NodeProto &op, const ArgumentDictionaryTy &dict) {
+    const ONNX_NAMESPACE::NodeProto &op, ArgumentDictionaryTy &dict) {
   const std::string &opName = loadOperatorName(op);
 
   NodeValue in;
@@ -1380,7 +1376,7 @@ Error ONNXModelLoader::loadBatchNormalization(
 }
 
 Error ONNXModelLoader::loadConcat(const ONNX_NAMESPACE::NodeProto &op,
-                                  const ArgumentDictionaryTy &dict) {
+                                  ArgumentDictionaryTy &dict) {
   const std::string &opName = loadOperatorName(op);
 
   const unsigned numInputs = op.input_size();
@@ -1401,7 +1397,7 @@ Error ONNXModelLoader::loadConcat(const ONNX_NAMESPACE::NodeProto &op,
 }
 
 Error ONNXModelLoader::loadFCTransposed(const ONNX_NAMESPACE::NodeProto &op,
-                                        const ArgumentDictionaryTy &dict) {
+                                        ArgumentDictionaryTy &dict) {
   const std::string &opName = loadOperatorName(op);
 
   NodeValue in;
@@ -1441,7 +1437,7 @@ Error ONNXModelLoader::loadFCTransposed(const ONNX_NAMESPACE::NodeProto &op,
 }
 
 Error ONNXModelLoader::loadGemm(const ONNX_NAMESPACE::NodeProto &op,
-                                const ArgumentDictionaryTy &dict) {
+                                ArgumentDictionaryTy &dict) {
   const std::string &opName = loadOperatorName(op);
 
   NodeValue A;
@@ -1480,7 +1476,7 @@ Error ONNXModelLoader::loadGemm(const ONNX_NAMESPACE::NodeProto &op,
 }
 
 Error ONNXModelLoader::loadMatMul(const ONNX_NAMESPACE::NodeProto &op,
-                                  const ArgumentDictionaryTy &dict) {
+                                  ArgumentDictionaryTy &dict) {
   const std::string &opName = loadOperatorName(op);
 
   NodeValue LHS;
@@ -1500,7 +1496,7 @@ Error ONNXModelLoader::loadMatMul(const ONNX_NAMESPACE::NodeProto &op,
 }
 
 Error ONNXModelLoader::loadLeakyRelu(const ONNX_NAMESPACE::NodeProto &op,
-                                     const ArgumentDictionaryTy &dict) {
+                                     ArgumentDictionaryTy &dict) {
   // Input Type.
   NodeValue input;
   ASSIGN_VALUE_OR_RETURN_ERR(input, getNodeValueByName(op.input(0)));
@@ -1530,7 +1526,7 @@ Error ONNXModelLoader::loadLeakyRelu(const ONNX_NAMESPACE::NodeProto &op,
 }
 
 Error ONNXModelLoader::loadPad(const ONNX_NAMESPACE::NodeProto &op,
-                               const ArgumentDictionaryTy &dict) {
+                               ArgumentDictionaryTy &dict) {
   const std::string &opName = loadOperatorName(op);
 
   // Input
@@ -1562,7 +1558,7 @@ Error ONNXModelLoader::loadPad(const ONNX_NAMESPACE::NodeProto &op,
 
   // Pads are mandatory.
   std::vector<int> pads;
-  ASSIGN_VALUE_OR_RETURN_ERR(pads, getShape<int>(dict.at("pads")));
+  ASSIGN_VALUE_OR_RETURN_ERR(pads, getShape<int>(dict["pads"]));
   RETURN_ERR_IF_NOT(
       (pads.size() == 2 * numDims),
       "Pad: the 'pads' array must contain 2 values per dimensions");
@@ -1585,7 +1581,7 @@ Error ONNXModelLoader::loadPad(const ONNX_NAMESPACE::NodeProto &op,
 }
 
 Error ONNXModelLoader::loadCast(const ONNX_NAMESPACE::NodeProto &op,
-                                const ArgumentDictionaryTy &dict) {
+                                ArgumentDictionaryTy &dict) {
   const std::string &opName = loadOperatorName(op);
 
   // Input type
@@ -1619,7 +1615,7 @@ Error ONNXModelLoader::loadCast(const ONNX_NAMESPACE::NodeProto &op,
 }
 
 Error ONNXModelLoader::loadSpaceToDepth(const ONNX_NAMESPACE::NodeProto &op,
-                                        const ArgumentDictionaryTy &dict) {
+                                        ArgumentDictionaryTy &dict) {
 
   // Input Type
   NodeValue input;
@@ -1644,7 +1640,7 @@ Error ONNXModelLoader::loadSpaceToDepth(const ONNX_NAMESPACE::NodeProto &op,
 }
 
 Error ONNXModelLoader::loadConstantOfShape(const ONNX_NAMESPACE::NodeProto &op,
-                                           const ArgumentDictionaryTy &dict,
+                                           ArgumentDictionaryTy &dict,
                                            bool isSplat) {
   Tensor T(ElemKind::FloatTy, {1});
   T.getHandle().raw(0) = 0.0;
@@ -1709,7 +1705,7 @@ Error ONNXModelLoader::loadConstantOfShape(const ONNX_NAMESPACE::NodeProto &op,
 }
 
 Error ONNXModelLoader::loadTile(const ONNX_NAMESPACE::NodeProto &op,
-                                const ArgumentDictionaryTy &dict) {
+                                ArgumentDictionaryTy &dict) {
   const std::string &opName = loadOperatorName(op);
   NodeValue in, repeats;
   ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
@@ -1769,7 +1765,7 @@ ONNXModelLoader::foldOperator(const ONNX_NAMESPACE::NodeProto &op) {
 }
 
 Error ONNXModelLoader::loadWhere(const ONNX_NAMESPACE::NodeProto &op,
-                                 const ArgumentDictionaryTy &dict) {
+                                 ArgumentDictionaryTy &dict) {
   NodeValue cNV;
   ASSIGN_VALUE_OR_RETURN_ERR(cNV, getNodeValueByName(op.input(0)));
   NodeValue xNV;
@@ -1791,7 +1787,7 @@ Error ONNXModelLoader::loadWhere(const ONNX_NAMESPACE::NodeProto &op,
 /// description. If not provided, the default direction is 'forward'.
 static Expected<Function::RnnDirection>
 getRnnDirection(const ONNX_NAMESPACE::NodeProto &op,
-                const ArgumentDictionaryTy &dict) {
+                ArgumentDictionaryTy &dict) {
   Function::RnnDirection direction = Function::RnnDirection::Forward;
   if (dict.count("direction")) {
     std::string directionStr;
@@ -1838,7 +1834,7 @@ static Function::RnnActivation RnnActivationSigmoid(Function &F) {
 /// Currenlty only Sigmoid, Tahn and ReLU activations are supported.
 static Error
 getRnnActivations(const ONNX_NAMESPACE::NodeProto &op,
-                  const ArgumentDictionaryTy &dict, Function &F,
+                  ArgumentDictionaryTy &dict, Function &F,
                   std::vector<Function::RnnActivation> &activations) {
 
   // Activation alpha not supported (Optional)(Default:activation dependent).
@@ -1881,7 +1877,7 @@ getRnnActivations(const ONNX_NAMESPACE::NodeProto &op,
 // - Activation clipping not supported.
 // - Variable sequence length not supported.
 Error ONNXModelLoader::loadRNN(const ONNX_NAMESPACE::NodeProto &op,
-                               const ArgumentDictionaryTy &dict) {
+                               ArgumentDictionaryTy &dict) {
 
   const std::string &opName = loadOperatorName(op);
 
@@ -1999,7 +1995,7 @@ Error ONNXModelLoader::loadRNN(const ONNX_NAMESPACE::NodeProto &op,
 // - Activation clipping not supported.
 // - Variable sequence length not supported.
 Error ONNXModelLoader::loadGRU(const ONNX_NAMESPACE::NodeProto &op,
-                               const ArgumentDictionaryTy &dict) {
+                               ArgumentDictionaryTy &dict) {
 
   const std::string &opName = loadOperatorName(op);
 
@@ -2125,7 +2121,7 @@ Error ONNXModelLoader::loadGRU(const ONNX_NAMESPACE::NodeProto &op,
 // - Activation clipping not supported.
 // - Variable sequence length not supported.
 Error ONNXModelLoader::loadLSTM(const ONNX_NAMESPACE::NodeProto &op,
-                                const ArgumentDictionaryTy &dict) {
+                                ArgumentDictionaryTy &dict) {
 
   const std::string &opName = loadOperatorName(op);
 
@@ -2274,7 +2270,7 @@ Error ONNXModelLoader::loadLSTM(const ONNX_NAMESPACE::NodeProto &op,
 }
 
 Error ONNXModelLoader::loadCmpEQ(const ONNX_NAMESPACE::NodeProto &op,
-                                 const ArgumentDictionaryTy &dict) {
+                                 ArgumentDictionaryTy &dict) {
   NodeValue LHS;
   ASSIGN_VALUE_OR_RETURN_ERR(LHS, getNodeValueByName(op.input(0)));
   NodeValue RHS;
@@ -2287,7 +2283,7 @@ Error ONNXModelLoader::loadCmpEQ(const ONNX_NAMESPACE::NodeProto &op,
 }
 
 Error ONNXModelLoader::loadCmpLTE(const ONNX_NAMESPACE::NodeProto &op,
-                                  const ArgumentDictionaryTy &dict) {
+                                  ArgumentDictionaryTy &dict) {
   NodeValue LHS;
   ASSIGN_VALUE_OR_RETURN_ERR(LHS, getNodeValueByName(op.input(0)));
   NodeValue RHS;
@@ -2300,7 +2296,7 @@ Error ONNXModelLoader::loadCmpLTE(const ONNX_NAMESPACE::NodeProto &op,
 }
 
 Error ONNXModelLoader::loadSelect(const ONNX_NAMESPACE::NodeProto &op,
-                                  const ArgumentDictionaryTy &dict) {
+                                  ArgumentDictionaryTy &dict) {
   NodeValue Cond;
   ASSIGN_VALUE_OR_RETURN_ERR(Cond, getNodeValueByName(op.input(0)));
   NodeValue LHS;
@@ -2309,7 +2305,7 @@ Error ONNXModelLoader::loadSelect(const ONNX_NAMESPACE::NodeProto &op,
   ASSIGN_VALUE_OR_RETURN_ERR(RHS, getNodeValueByName(op.input(2)));
 
   std::vector<dim_t> shape;
-  ASSIGN_VALUE_OR_RETURN_ERR(shape, getShape<dim_t>(dict.at("shape")));
+  ASSIGN_VALUE_OR_RETURN_ERR(shape, getShape<dim_t>(dict["shape"]));
 
   auto outTy = G_.getParent()->uniqueType(LHS.getElementType(), shape);
   Node *N = G_.createSelect(loadOperatorName(op), outTy, Cond, LHS, RHS);
@@ -2319,7 +2315,7 @@ Error ONNXModelLoader::loadSelect(const ONNX_NAMESPACE::NodeProto &op,
 }
 
 Error ONNXModelLoader::loadQuantize(const ONNX_NAMESPACE::NodeProto &op,
-                                    const ArgumentDictionaryTy &dict) {
+                                    ArgumentDictionaryTy &dict) {
   NodeValue in;
   ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
 
@@ -2341,7 +2337,7 @@ Error ONNXModelLoader::loadQuantize(const ONNX_NAMESPACE::NodeProto &op,
 }
 
 Error ONNXModelLoader::loadConvertTo(const ONNX_NAMESPACE::NodeProto &op,
-                                     const ArgumentDictionaryTy &dict) {
+                                     ArgumentDictionaryTy &dict) {
   NodeValue in;
   ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
 
@@ -2364,7 +2360,7 @@ Error ONNXModelLoader::loadConvertTo(const ONNX_NAMESPACE::NodeProto &op,
 }
 
 Error ONNXModelLoader::loadDequantize(const ONNX_NAMESPACE::NodeProto &op,
-                                      const ArgumentDictionaryTy &dict) {
+                                      ArgumentDictionaryTy &dict) {
   NodeValue in;
   ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
 
@@ -2375,7 +2371,7 @@ Error ONNXModelLoader::loadDequantize(const ONNX_NAMESPACE::NodeProto &op,
 }
 
 Error ONNXModelLoader::loadRegression(const ONNX_NAMESPACE::NodeProto &op,
-                                      const ArgumentDictionaryTy &dict) {
+                                      ArgumentDictionaryTy &dict) {
   NodeValue in;
   ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
   NodeValue expected;
@@ -2388,7 +2384,7 @@ Error ONNXModelLoader::loadRegression(const ONNX_NAMESPACE::NodeProto &op,
 }
 
 Error ONNXModelLoader::loadBatchedAdd(const ONNX_NAMESPACE::NodeProto &op,
-                                      const ArgumentDictionaryTy &dict) {
+                                      ArgumentDictionaryTy &dict) {
   NodeValue batch;
   ASSIGN_VALUE_OR_RETURN_ERR(batch, getNodeValueByName(op.input(0)));
   NodeValue sample;
@@ -2401,7 +2397,7 @@ Error ONNXModelLoader::loadBatchedAdd(const ONNX_NAMESPACE::NodeProto &op,
 }
 
 Error ONNXModelLoader::loadCumSum(const ONNX_NAMESPACE::NodeProto &op,
-                                  const ArgumentDictionaryTy &dict) {
+                                  ArgumentDictionaryTy &dict) {
   if (op.input_size() > 1) {
     Expected<NodeValue> axis = getNodeValueByName(op.input(1));
     if (axis) {
@@ -2438,7 +2434,7 @@ Error ONNXModelLoader::loadCumSum(const ONNX_NAMESPACE::NodeProto &op,
 }
 
 Error ONNXModelLoader::loadScatterAssign(const ONNX_NAMESPACE::NodeProto &op,
-                                         const ArgumentDictionaryTy &dict) {
+                                         ArgumentDictionaryTy &dict) {
   NodeValue data;
   ASSIGN_VALUE_OR_RETURN_ERR(data, getNodeValueByName(op.input(0)));
   NodeValue indices;
@@ -2453,14 +2449,14 @@ Error ONNXModelLoader::loadScatterAssign(const ONNX_NAMESPACE::NodeProto &op,
 }
 
 Error ONNXModelLoader::loadIntLookupTable(const ONNX_NAMESPACE::NodeProto &op,
-                                          const ArgumentDictionaryTy &dict) {
+                                          ArgumentDictionaryTy &dict) {
   NodeValue in;
   ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
 
   std::vector<int8_t> values;
-  ASSIGN_VALUE_OR_RETURN_ERR(values, getShape<int8_t>(dict.at("values")));
+  ASSIGN_VALUE_OR_RETURN_ERR(values, getShape<int8_t>(dict["values"]));
   std::vector<dim_t> shape;
-  ASSIGN_VALUE_OR_RETURN_ERR(shape, getShape<dim_t>(dict.at("shape")));
+  ASSIGN_VALUE_OR_RETURN_ERR(shape, getShape<dim_t>(dict["shape"]));
 
   auto outTy = G_.getParent()->uniqueType(in.getElementType(), shape);
   Node *N = G_.createIntLookupTable(loadOperatorName(op), in, values, outTy);
@@ -2470,7 +2466,7 @@ Error ONNXModelLoader::loadIntLookupTable(const ONNX_NAMESPACE::NodeProto &op,
 }
 
 Error ONNXModelLoader::loadLengthsRangeFill(const ONNX_NAMESPACE::NodeProto &op,
-                                            const ArgumentDictionaryTy &dict) {
+                                            ArgumentDictionaryTy &dict) {
   NodeValue lengths;
   ASSIGN_VALUE_OR_RETURN_ERR(lengths, getNodeValueByName(op.input(0)));
   unsigned_t size;
@@ -2483,7 +2479,7 @@ Error ONNXModelLoader::loadLengthsRangeFill(const ONNX_NAMESPACE::NodeProto &op,
 }
 
 Error ONNXModelLoader::loadRescaleQuantized(const ONNX_NAMESPACE::NodeProto &op,
-                                            const ArgumentDictionaryTy &dict) {
+                                            ArgumentDictionaryTy &dict) {
   NodeValue in;
   ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
   float scale;
@@ -2502,7 +2498,7 @@ Error ONNXModelLoader::loadRescaleQuantized(const ONNX_NAMESPACE::NodeProto &op,
 }
 
 Error ONNXModelLoader::loadRowwiseQuantizedSparseLengthsWeightedSum(
-    const ONNX_NAMESPACE::NodeProto &op, const ArgumentDictionaryTy &dict) {
+    const ONNX_NAMESPACE::NodeProto &op, ArgumentDictionaryTy &dict) {
   Constant *data;
   ASSIGN_VALUE_OR_RETURN_ERR(data, getConstantByName(op.input(0)));
   Constant *scales;
@@ -2528,7 +2524,7 @@ Error ONNXModelLoader::loadRowwiseQuantizedSparseLengthsWeightedSum(
 }
 
 Error ONNXModelLoader::loadFusedRowwiseQuantizedSparseLengthsWeightedSum(
-    const ONNX_NAMESPACE::NodeProto &op, const ArgumentDictionaryTy &dict) {
+    const ONNX_NAMESPACE::NodeProto &op, ArgumentDictionaryTy &dict) {
   NodeValue data;
   ASSIGN_VALUE_OR_RETURN_ERR(data, getNodeValueByName(op.input(0)));
   NodeValue weights;
@@ -2549,7 +2545,7 @@ Error ONNXModelLoader::loadFusedRowwiseQuantizedSparseLengthsWeightedSum(
 }
 
 Error ONNXModelLoader::loadFusedRowwiseQuantizedSparseLengthsSum(
-    const ONNX_NAMESPACE::NodeProto &op, const ArgumentDictionaryTy &dict) {
+    const ONNX_NAMESPACE::NodeProto &op, ArgumentDictionaryTy &dict) {
   NodeValue data;
   ASSIGN_VALUE_OR_RETURN_ERR(data, getNodeValueByName(op.input(0)));
   NodeValue indices;
@@ -2569,7 +2565,7 @@ Error ONNXModelLoader::loadFusedRowwiseQuantizedSparseLengthsSum(
 }
 
 Error ONNXModelLoader::loadFullyConnected(const ONNX_NAMESPACE::NodeProto &op,
-                                          const ArgumentDictionaryTy &dict) {
+                                          ArgumentDictionaryTy &dict) {
   NodeValue in;
   ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
   Constant *W;
@@ -2593,7 +2589,7 @@ Error ONNXModelLoader::loadFullyConnected(const ONNX_NAMESPACE::NodeProto &op,
 }
 
 Error ONNXModelLoader::loadRowwiseQuantizedFullyConnected(
-    const ONNX_NAMESPACE::NodeProto &op, const ArgumentDictionaryTy &dict) {
+    const ONNX_NAMESPACE::NodeProto &op, ArgumentDictionaryTy &dict) {
   NodeValue input;
   ASSIGN_VALUE_OR_RETURN_ERR(input, getNodeValueByName(op.input(0)));
 
@@ -2629,7 +2625,7 @@ Error ONNXModelLoader::loadRowwiseQuantizedFullyConnected(
 }
 
 Error ONNXModelLoader::loadNonMaxSuppression(
-    const ONNX_NAMESPACE::NodeProto &op, const ArgumentDictionaryTy &dict,
+    const ONNX_NAMESPACE::NodeProto &op, ArgumentDictionaryTy &dict,
     bool isV4) {
   NodeValue boxesNV;
   ASSIGN_VALUE_OR_RETURN_ERR(boxesNV, getNodeValueByName(op.input(0)));
@@ -2709,19 +2705,19 @@ Error ONNXModelLoader::loadNonMaxSuppression(
 }
 
 Error ONNXModelLoader::loadSplat(const ONNX_NAMESPACE::NodeProto &op,
-                                 const ArgumentDictionaryTy &dict) {
+                                 ArgumentDictionaryTy &dict) {
   return loadConstantOfShape(op, dict, true /* isSplat */);
 }
 
 Error ONNXModelLoader::loadInsertTensor(const ONNX_NAMESPACE::NodeProto &op,
-                                        const ArgumentDictionaryTy &dict) {
+                                        ArgumentDictionaryTy &dict) {
   NodeValue big;
   ASSIGN_VALUE_OR_RETURN_ERR(big, getNodeValueByName(op.input(0)));
   NodeValue small;
   ASSIGN_VALUE_OR_RETURN_ERR(small, getNodeValueByName(op.input(1)));
 
   std::vector<dim_t> start;
-  ASSIGN_VALUE_OR_RETURN_ERR(start, getShape<dim_t>(dict.at("start")));
+  ASSIGN_VALUE_OR_RETURN_ERR(start, getShape<dim_t>(dict["start"]));
 
   unsigned_t count = 1;
   if (dict.count("count")) {
@@ -2741,7 +2737,7 @@ Error ONNXModelLoader::loadInsertTensor(const ONNX_NAMESPACE::NodeProto &op,
 }
 
 Error ONNXModelLoader::loadIdentity(const ONNX_NAMESPACE::NodeProto &op,
-                                    const ArgumentDictionaryTy &dict) {
+                                    ArgumentDictionaryTy &dict) {
   NodeValue in;
   ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
   RETURN_IF_ERR(addNodeAsOutput(op, in));
@@ -2749,7 +2745,7 @@ Error ONNXModelLoader::loadIdentity(const ONNX_NAMESPACE::NodeProto &op,
 }
 
 Error ONNXModelLoader::loadAdaptiveAvgPool(const ONNX_NAMESPACE::NodeProto &op,
-                                           const ArgumentDictionaryTy &dict) {
+                                           ArgumentDictionaryTy &dict) {
   const std::string &opName = loadOperatorName(op);
 
   NodeValue input;
@@ -2757,7 +2753,7 @@ Error ONNXModelLoader::loadAdaptiveAvgPool(const ONNX_NAMESPACE::NodeProto &op,
 
   std::vector<unsigned_t> outputShape;
   ASSIGN_VALUE_OR_RETURN_ERR(outputShape,
-                             getShape<unsigned_t>(dict.at("output_size")));
+                             getShape<unsigned_t>(dict["output_size"]));
 
   ShapeNHWC idim(input.dims());
 
@@ -2770,7 +2766,7 @@ Error ONNXModelLoader::loadAdaptiveAvgPool(const ONNX_NAMESPACE::NodeProto &op,
 }
 
 Error ONNXModelLoader::loadFlip(const ONNX_NAMESPACE::NodeProto &op,
-                                const ArgumentDictionaryTy &dict) {
+                                ArgumentDictionaryTy &dict) {
   NodeValue input;
   ASSIGN_VALUE_OR_RETURN_ERR(input, getNodeValueByName(op.input(0)));
 
