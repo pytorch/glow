@@ -196,6 +196,11 @@ llvm::cl::opt<std::string>
                       llvm::cl::Optional, llvm::cl::init(std::string("")),
                       llvm::cl::cat(reproTestCat));
 
+llvm::cl::opt<bool> skipCorrectnessCheck(
+    "skip_correctness_check", llvm::cl::desc("Skip correctness check"),
+    llvm::cl::Optional, llvm::cl::init(false), llvm::cl::cat(reproTestCat));
+
+
 void parseCommandLine(int argc, char **argv) {
   llvm::sys::PrintStackTraceOnErrorSignal(argv[0]);
   llvm::cl::ParseCommandLineOptions(
@@ -302,11 +307,11 @@ int run() {
   }
   if (globalFp16PlaceholdersOpt) {
     precConfig.convertPlaceholdersToFP16 = globalFp16PlaceholdersOpt;
-    llvm::outs() << "Conversion of Placeholders to fp16 enabled";
+    llvm::outs() << "Conversion of Placeholders to fp16 enabled\n";
   }
   if (globalFp16ConstantsOpt) {
     precConfig.convertConstantsToFP16 = globalFp16ConstantsOpt;
-    llvm::outs() << "Conversion of Constants to fp16 enabled";
+    llvm::outs() << "Conversion of Constants to fp16 enabled\n";
   }
   if (fuseScaleOffsetFp16Opt) {
     precConfig.convertFusedToFP16 = fuseScaleOffsetFp16Opt;
@@ -318,7 +323,7 @@ int run() {
   }
   if (ClipFp16SkipInputsOpt) {
     precConfig.clipFP16SkipInputs = ClipFp16SkipInputsOpt;
-    llvm::outs() << "Skipping clipping for fp16 Node inputs fp16";
+    llvm::outs() << "Skipping clipping for fp16 Node inputs fp16\n";
   }
   if (forceFP16AccumSLSOpt) {
     precConfig.forceFP16AccumSLS = true;
@@ -519,7 +524,7 @@ int run() {
     auto result = future.get();
 
     if (result.error) {
-      llvm::outs() << "Inference failed!";
+      llvm::outs() << "Inference failed!\n";
       ++numFailed;
     } else {
       const auto &bindings = *result.ctx->getPlaceholderBindings();
@@ -533,26 +538,29 @@ int run() {
         of.open(ss.str(), std::ios::binary);
         CHECK(of) << "Cannot create output dump file: " << ss.str();
       }
-      for (const auto &tp : outputGroup.initializer()) {
-        Tensor tensorRef;
-        auto error = loadTensor(tp, &tensorRef);
-        CHECK(!ERR_TO_BOOL(std::move(error)))
-            << "Cannot load output ref tensor";
-        const auto *tensor =
-            bindings.get(bindings.getPlaceholderByName(tp.name()));
-        CHECK(tensor) << "Missing " << tp.name() << " in output placeholder";
-        if (dumpOutputsOpt) {
-          auto *t = outputG.add_initializer();
-          ONNXModelWriter::writeTensor(*tensor, t);
-          t->set_name(tp.name());
-        }
-        bool equal = tensorRef.isEqual(*tensor, thresholdOpt, true);
-        if (!equal) {
-          llvm::outs() << "Verification failed at input/output pair "
-                       << result.index << " for output tensor " << tp.name()
-                       << "\n";
-          ++numFailed;
-          break;
+
+      if (!skipCorrectnessCheck) {
+        for (const auto &tp : outputGroup.initializer()) {
+          Tensor tensorRef;
+          auto error = loadTensor(tp, &tensorRef);
+          CHECK(!ERR_TO_BOOL(std::move(error)))
+              << "Cannot load output ref tensor";
+          const auto *tensor =
+              bindings.get(bindings.getPlaceholderByName(tp.name()));
+          CHECK(tensor) << "Missing " << tp.name() << " in output placeholder";
+          if (dumpOutputsOpt) {
+            auto *t = outputG.add_initializer();
+            ONNXModelWriter::writeTensor(*tensor, t);
+            t->set_name(tp.name());
+          }
+          bool equal = tensorRef.isEqual(*tensor, thresholdOpt, true);
+          if (!equal) {
+            llvm::outs() << "Verification failed at input/output pair "
+                         << result.index << " for output tensor " << tp.name()
+                         << "\n";
+            ++numFailed;
+            break;
+          }
         }
       }
       if (dumpOutputsOpt) {

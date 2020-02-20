@@ -250,10 +250,10 @@ void glow::fillPlaceholders(const ONNX_NAMESPACE::GraphProto &inputGroup,
     size_t loadedSize = tensor->getSizeInBytes();
     if (loadedSize != fullSize) {
       if (partialTensorPayloads) {
-        LOG(INFO) << "Loading " << tensorProto.name()
-                  << " as a partial tensor: partial size="
-                  << tensor->getType().toString()
-                  << " full size=" << fullType.toString();
+        VLOG(1) << "Loading " << tensorProto.name()
+                << " as a partial tensor: partial size="
+                << tensor->getType().toString()
+                << " full size=" << fullType.toString();
         Tensor fullTensor(tensor->getUnsafePtr(), &fullType,
                           tensor->getSizeInBytes());
         // 'fullTensor' doesn't own the underlying data. 'tensor' does. So
@@ -263,10 +263,10 @@ void glow::fillPlaceholders(const ONNX_NAMESPACE::GraphProto &inputGroup,
         *tensor = std::move(fullTensor);
       } else {
         // pad with 0
-        LOG(INFO) << "Loading and padding " << tensorProto.name()
-                  << " as a partial tensor: partial size="
-                  << tensor->getType().toString()
-                  << " full size=" << fullType.toString();
+        VLOG(1) << "Loading and padding " << tensorProto.name()
+                << " as a partial tensor: partial size="
+                << tensor->getType().toString()
+                << " full size=" << fullType.toString();
         Tensor fullTensor(&fullType);
         std::memcpy(fullTensor.getUnsafePtr(), tensor->getUnsafePtr(),
                     tensor->getSizeInBytes());
