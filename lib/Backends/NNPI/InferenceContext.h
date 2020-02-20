@@ -59,6 +59,11 @@ private:
   std::vector<std::shared_ptr<NNPIResource>> inputResources_;
   std::vector<std::shared_ptr<NNPIResource>> outputResources_;
 
+  /// Vector of placeholders. The order of the placeholders match with the
+  /// netInputs_ and netOutputs_.
+  std::vector<Placeholder *> netInputPlaceholders_;
+  std::vector<Placeholder *> netOutputPlaceholders_;
+
 public:
   InferenceContext();
   ~InferenceContext();
