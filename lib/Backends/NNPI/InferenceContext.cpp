@@ -264,6 +264,37 @@ void InferenceContext::execute(RunIdentifierTy runId,
   // Pre inference input preparation.
   PlaceholderBindings &bindings = *ctx->getPlaceholderBindings();
 
+  // Initialize placeholder lists in the same orders as inputResources_ and
+  // outputResources_.
+  if (netInputPlaceholders_.empty()) {
+    for (const auto &in : inputResources_) {
+      if (in->GetUsage() == NNPIResource::ResourceUsage::StaticInputResource) {
+        continue;
+      }
+      auto *placeholder = bindings.getPlaceholderByName(in->GetName());
+      if (!placeholder) {
+        netInputPlaceholders_.clear();
+        LOG_AND_FAIL_EXECUTE_CALLBACK_IF_NOT(ERROR, placeholder,
+                                             "Can't find tensor for input",
+                                             runId, ctx, resultCB);
+      }
+
+      netInputPlaceholders_.push_back(placeholder);
+    }
+  }
+  if (netOutputPlaceholders_.empty()) {
+    for (const auto &out : outputResources_) {
+      auto *placeholder = bindings.getPlaceholderByName(out->GetName());
+      if (!placeholder) {
+        netOutputPlaceholders_.clear();
+        LOG_AND_FAIL_EXECUTE_CALLBACK_IF_NOT(ERROR, placeholder,
+                                             "Can't find tensor for input",
+                                             runId, ctx, resultCB);
+      }
+      netOutputPlaceholders_.push_back(placeholder);
+    }
+  }
+
   std::unordered_set<Tensor *> partialTensorInputs;
   for (auto &pht : bindings.pairs()) {
     if (partialInputs_->count(pht.first)) {
@@ -274,17 +305,13 @@ void InferenceContext::execute(RunIdentifierTy runId,
                     TRACING_PRE_PROCESS);
 
   // Pre-inference
-  auto &phTensorMap = bindings.pairs();
   std::vector<void *> rawInputs, rawOutputs;
-  for (auto &in : inputResources_) {
+  unsigned idx = 0;
+  for (const auto &in : inputResources_) {
     if (in->GetUsage() != NNPIResource::ResourceUsage::StaticInputResource) {
-      Placeholder *ph = bindings.getPlaceholderByName(in->GetName());
+      auto *t = bindings.get(netInputPlaceholders_[idx++]);
       LOG_AND_FAIL_EXECUTE_CALLBACK_IF_NOT(
-          ERROR, ph, "Can't find input placeholder", runId, ctx, resultCB);
-      LOG_AND_FAIL_EXECUTE_CALLBACK_IF_NOT(ERROR, phTensorMap.count(ph),
-                                           "Can't find input placeholder",
-                                           runId, ctx, resultCB);
-      auto *t = phTensorMap.at(ph);
+          ERROR, t, "Can't find tensor for input", runId, ctx, resultCB);
       LOG_AND_FAIL_EXECUTE_CALLBACK_IF_NOT(
           ERROR,
           in->PreInference(t, partialTensorInputs.count(t)) ==
@@ -408,16 +435,12 @@ void InferenceContext::execute(RunIdentifierTy runId,
                     TRACING_POST_PROCESS);
 
   // Post inference output handling.
-  for (auto &out : outputResources_) {
-    Placeholder *ph = bindings.getPlaceholderByName(out->GetName());
+  for (unsigned i = 0, e = outputResources_.size(); i < e; ++i) {
+    auto *t = bindings.get(netOutputPlaceholders_[i]);
     LOG_AND_FAIL_EXECUTE_CALLBACK_IF_NOT(
-        ERROR, ph, "Can't find output placeholder", runId, ctx, resultCB);
-    LOG_AND_FAIL_EXECUTE_CALLBACK_IF_NOT(ERROR, phTensorMap.count(ph),
-                                         "Can't find output tensor", runId, ctx,
-                                         resultCB);
-    auto *t = phTensorMap.at(ph);
+        ERROR, t, "Can't find tensor for output", runId, ctx, resultCB);
     LOG_AND_FAIL_EXECUTE_CALLBACK_IF_NOT(
-        ERROR, out->PostInference(t) == NNPI_INF_NO_ERROR,
+        ERROR, outputResources_[i]->PostInference(t) == NNPI_INF_NO_ERROR,
         "Failed in output PostInference", runId, ctx, resultCB);
   }
   TRACE_EVENT_END(ctx->getTraceContext(), TraceLevel::COPY,
