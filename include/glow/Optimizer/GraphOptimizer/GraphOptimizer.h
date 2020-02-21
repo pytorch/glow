@@ -42,6 +42,9 @@ void optimize(Function *F, CompilationContext &cctx, const Backend &B);
 /// Fold nodes that were expressed lowered in the input model.
 void fold(Function *F, CompilationContext &cctx, const Backend *B = nullptr);
 
+/// Performs the actual constant quantization in function \p F.
+void convertQuantizedConstants(Function *F, CompilationContext &cctx);
+
 /// Lower the high-level neural network nodes found in \p F into low-level
 /// linear algebra operators. If \p B is not a nullptr then it can prevent
 /// lowering of a node via \ref Backend::shouldLower(); otherwise everything
