@@ -618,7 +618,6 @@ int main(int argc, char **argv) {
           "Src",
       })
       .dataParallel()
-      .autoVerify(VerifyKind::SameType, {"Dest", "Src"})
       .autoIRGen()
       .addGradientInstr({"Dest"}, {"Dest", "Src"});
 
