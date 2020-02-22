@@ -185,8 +185,11 @@ if(NOT EXISTS "${GLOW_THIRDPARTY_DIR}/fp16")
 else()
   include_directories(${GLOW_THIRDPARTY_DIR}/fp16/include)
 endif()
-
-if(NOT EXISTS "${GLOW_THIRDPARTY_DIR}/folly/folly")
+if (MSVC)
+    find_package(folly CONFIG REQUIRED)
+    add_library(folly_jemalloc INTERFACE)
+    target_link_libraries(folly_jemalloc INTERFACE Folly::folly Folly::folly_deps Folly::follybenchmark Folly::folly_test_util jemalloc)
+elseif(NOT EXISTS "${GLOW_THIRDPARTY_DIR}/folly/folly")
   message(FATAL_ERROR "No folly git submodule. Run: git submodule update --init --recursive")
 else()
   # Apple-specific definitions for folly.

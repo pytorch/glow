@@ -1,5 +1,7 @@
-#include <folly/Format.h>
 #include <gtest/gtest.h>
+// Format.h needs to be after gtest.h It brings in a folly Windows.h header
+// which then breaks the build on VS.
+#include <folly/Format.h>
 #include <sstream>
 
 TEST(Folly, Format) {
