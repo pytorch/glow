@@ -32,6 +32,14 @@ target_link_libraries(Repro
                         Importer
                         Exporter)
 
+# Repro binary
+add_executable(Scrambler
+               NameScrambler.cpp)
+target_link_libraries(Scrambler
+                      PRIVATE
+                        Importer
+                        Support)
+
 # Test executables, sorted alphabetically.
 
 add_executable(BasicIRTest
