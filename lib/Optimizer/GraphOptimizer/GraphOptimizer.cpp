@@ -3137,21 +3137,6 @@ bool OptimizeQuantization::run(Function *F, const CompilationContext &cctx) {
         continue;
       }
 
-      if (auto *C = dyn_cast<Constant>(Q->getInput())) {
-        // Quantize(Constant) -> Constant
-        // Note, it does not really matter how many usages this Constant has.
-        // Quantized graph will use optimized Constant and other functions will
-        // refer to the floating point original Constant.
-        NodeValue NC =
-            convertConstant(*F->getParent(), *C, Q->getResult().getType());
-        if (NC == NodeValue()) {
-          continue;
-        }
-        changed = true;
-        Q->getResult().replaceAllUsesOfWith(NC);
-        continue;
-      }
-
       if (auto *SN = dyn_cast<SplatNode>(Q->getInput())) {
         // Quantize(Splat) -> Splat'
         changed = true;
@@ -3264,6 +3249,33 @@ bool OptimizeQuantization::run(Function *F, const CompilationContext &cctx) {
     changed = sinkRescaleQuantizedNode(F);
   }
   return changed;
+}
+
+void glow::convertQuantizedConstants(Function *F, CompilationContext &cctx) {
+  for (auto &node : F->getNodes()) {
+    auto *Q = dyn_cast<QuantizeNode>(&node);
+    if (!Q) {
+      continue;
+    }
+    auto *C = dyn_cast<Constant>(Q->getInput());
+    if (!C) {
+      continue;
+    }
+
+    // Quantize(Constant) -> Constant
+    // Note, it does not really matter how many usages this Constant has.
+    // Quantized graph will use optimized Constant and other functions will
+    // refer to the floating point original Constant.
+    NodeValue NC =
+        convertConstant(*F->getParent(), *C, Q->getResult().getType());
+    if (NC == NodeValue()) {
+      continue;
+    }
+    Q->getResult().replaceAllUsesOfWith(NC);
+  }
+
+  // Perform Dead Code Elimination.
+  runDCEPass(F, cctx);
 }
 
 void glow::convertPlaceholdersToConstants(Function *F,
@@ -3873,13 +3885,24 @@ Error glow::optimizeFunction(Function *F, const Backend &B,
     }
   }
 
-  // Allow the backend to transform the graph after lowering.
-  if (B.transformPostLowering(F, cctx, devInfo)) {
-    // If the backend made changes, optimize the graph again. Perform only
-    // passes that the Backend has requested so we do not interfere with the
-    // backend's transformations.
-    ::glow::optimize(F, cctx, B);
+  if (B.shouldPreQuantizeConstants()) {
+    // Do the actual float ->fix-point conversion of constant tensors before
+    // Post-lowering.
+    ::glow::convertQuantizedConstants(F, cctx);
   }
+
+  // Allow the backend to transform the graph after lowering.
+  B.transformPostLowering(F, cctx, devInfo);
+
+  if (!B.shouldPreQuantizeConstants()) {
+    // Do the actual float ->fix-point conversion of constant tensors after
+    // Post-lowering.
+    ::glow::convertQuantizedConstants(F, cctx);
+  }
+
+  // Optimize the graph again after the backend transformation.
+  // In particular, DCE is very likely to be useful.
+  ::glow::optimize(F, cctx, B);
 
   // We already started using backend specific verification when the function
   // state became lowered. Do one more verification pass to make sure everything

@@ -1964,6 +1964,8 @@ TEST(Quantization, quantizeFunctionConvertConstant) {
   quantization::quantizeFunction(F, quantConfig, *backend);
 
   optimize(F, CompilationMode::Infer);
+  CompilationContext cctx;
+  convertQuantizedConstants(F, cctx);
 
   {
     // Verify that the output variable is not quantized, and that it has a

@@ -47,6 +47,11 @@ bool isConstantOperation(const Node *N, const Backend &backend) {
   if (N->hasSideEffects()) {
     return false;
   }
+  // Quantize nodes are not handled by ConstantFolding but by a specific
+  // quantization specific optimization.
+  if (isa<QuantizeNode>(N)) {
+    return false;
+  }
   // Constant and splat nodes are trivially constant operations.
   if (isa<Constant>(N) || isa<SplatNode>(N)) {
     return true;

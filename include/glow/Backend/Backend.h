@@ -116,6 +116,10 @@ public:
     return false;
   }
 
+  /// \returns true if Constants must be actually quantized before
+  /// Post-Lowering, false if it must be done after post-lowering.
+  virtual bool shouldPreQuantizeConstants() const { return true; }
+
   /// \returns whether the provided \p NI is supported by the backend.
   virtual bool isOpSupported(const NodeInfo &NI) const = 0;
 
