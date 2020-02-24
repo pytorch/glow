@@ -76,9 +76,16 @@ template <typename T> static Expected<std::string> loadStr(const T *arg) {
   return arg->s();
 }
 
-/// Load the 'shape' record into a vector of sizes.
-template <typename ElemTy = dim_t, typename AttrType>
-std::vector<ElemTy> getShape(const AttrType *arg) {
+/// Load the 'shape' record from \p arg into a vector of sizes. \returns the
+/// vector if there is no error, or an error otherwise. If \p allowEmptyShape
+/// then no error will be returned if the vector is empty.
+template <typename ElemTy, typename AttrType>
+Expected<std::vector<ElemTy>> getShape(const AttrType *arg,
+                                       bool allowEmptyShape = false) {
+  RETURN_ERR_IF_NOT(arg, "Node has no ints attribute with this name");
+  if (!allowEmptyShape) {
+    RETURN_ERR_IF_NOT(arg->ints_size() > 0, "Node has no ints values");
+  }
   std::vector<ElemTy> dim;
   for (auto i : arg->ints()) {
     dim.push_back(i);
@@ -86,9 +93,12 @@ std::vector<ElemTy> getShape(const AttrType *arg) {
   return dim;
 }
 
-/// Load a floating record vector from \p arg. \returns a standard vector of
-/// floats.
-template <typename AttrType> std::vector<float> getFloats(const AttrType *arg) {
+/// Load a floating record vector from \p arg into a vector. \returns the vector
+/// if there is no error, or an error otherwise.
+template <typename AttrType>
+Expected<std::vector<float>> getFloats(const AttrType *arg) {
+  RETURN_ERR_IF_NOT(arg, "Node has no floats attribute with this name");
+  RETURN_ERR_IF_NOT(arg->floats_size() > 0, "Node has no floats values");
   std::vector<float> dim;
   for (auto i : arg->floats()) {
     dim.push_back(i);

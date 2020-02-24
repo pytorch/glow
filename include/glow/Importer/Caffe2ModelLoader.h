@@ -40,7 +40,7 @@ class Value;
 class Caffe2ModelLoader
     : public CommonOperatorLoader<caffe2::OperatorDef, caffe2::Argument> {
   /// \returns True if the operator has broadcasting activated.
-  Expected<bool> getBroadcast(const ArgumentDictionaryTy &dict) override;
+  Expected<bool> getBroadcast(ArgumentDictionaryTy &dict) override;
 
   /// \returns True if the operator with the name \p typeName has support for
   /// multidirectional broadcasting.

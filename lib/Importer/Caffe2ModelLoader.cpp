@@ -179,8 +179,7 @@ static ArgumentDictionaryTy loadArgumentMap(const caffe2::OperatorDef &op) {
   return dict;
 }
 
-static Expected<std::vector<unsigned_t>>
-getPads(const ArgumentDictionaryTy &dict) {
+static Expected<std::vector<unsigned_t>> getPads(ArgumentDictionaryTy &dict) {
   if (dict.count("pad")) {
     int pad;
     ASSIGN_VALUE_OR_RETURN_ERR(pad, loadInt(dict.at("pad")));
@@ -199,14 +198,16 @@ getPads(const ArgumentDictionaryTy &dict) {
     return pads;
   }
   if (dict.count("pads")) {
-    return getShape<unsigned_t>(dict.at("pads"));
+    std::vector<unsigned_t> shape;
+    ASSIGN_VALUE_OR_RETURN_ERR(shape, getShape<unsigned_t>(dict["pads"]));
+    return shape;
   }
   // Return default value 0 for pads.
   return std::vector<unsigned_t>{0, 0, 0, 0};
 }
 
 /// Translates the "order" field of dictionary \p dict into a channel number.
-static Expected<unsigned_t> getChannel(const ArgumentDictionaryTy &dict) {
+static Expected<unsigned_t> getChannel(ArgumentDictionaryTy &dict) {
   std::string order = "NCHW"; // default
   auto orderIt = dict.find("order");
   if (orderIt != dict.end()) {
@@ -236,7 +237,7 @@ static Expected<std::vector<unsigned_t>> getSizeHW(ArgumentDictionaryTy &dict,
     return result;
   }
   if (dict.count(name + "s")) {
-    return getShape<unsigned_t>(dict.at(name + "s"));
+    return getShape<unsigned_t>(dict[name + "s"]);
   }
   return std::vector<unsigned_t>{defaultValue, defaultValue};
 }
@@ -281,8 +282,7 @@ Expected<caffe2::NetDef> Caffe2ModelLoader::loadProto(const void *c2Model,
   return MP;
 }
 
-Expected<bool>
-Caffe2ModelLoader::getBroadcast(const ArgumentDictionaryTy &dict) {
+Expected<bool> Caffe2ModelLoader::getBroadcast(ArgumentDictionaryTy &dict) {
   if (!dict.count("broadcast")) {
     return false;
   }
@@ -864,7 +864,8 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
     RETURN_ERR_IF_NOT(dict.count("boundaries"),
                       "Bucketize: Expected a boundaries member vector");
-    std::vector<float> boundaries = getFloats(dict["boundaries"]);
+    std::vector<float> boundaries;
+    ASSIGN_VALUE_OR_RETURN_ERR(boundaries, getFloats(dict["boundaries"]));
     auto *node = G_.createBucketizeNode(opName, in, boundaries);
     RETURN_IF_ERR(addNodeAsOutput(op, node));
     return Error::success();
@@ -1084,7 +1085,8 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
   if (typeName == "Squeeze") {
     NodeValue in;
     ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
-    auto dims = getShape(dict["dims"]);
+    std::vector<dim_t> dims;
+    ASSIGN_VALUE_OR_RETURN_ERR(dims, getShape<dim_t>(dict["dims"]));
     Node *node = G_.createSqueeze(opName, in, dims);
     RETURN_IF_ERR(addNodeAsOutput(op, node));
     return Error::success();
@@ -1180,8 +1182,10 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     NodeValue data;
     ASSIGN_VALUE_OR_RETURN_ERR(data, getNodeValueByName(op.input(0)));
 
-    auto starts = getShape<ssize_t>(dict["starts"]);
-    auto ends = getShape<ssize_t>(dict["ends"]);
+    std::vector<ssize_t> starts;
+    ASSIGN_VALUE_OR_RETURN_ERR(starts, getShape<ssize_t>(dict["starts"]));
+    std::vector<ssize_t> ends;
+    ASSIGN_VALUE_OR_RETURN_ERR(ends, getShape<ssize_t>(dict["ends"]));
 
     std::vector<dim_t> newStarts, newEnds;
     RETURN_ERR_IF_NOT(starts.size() == ends.size(),
@@ -1669,7 +1673,12 @@ Error Caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
      *   }
      * }
      */
-    auto dim = getShape(dict["shape"]);
+
+    // Note: Explicitly allow for an empty dim here, representing a scalar value
+    // will be loaded below.
+    std::vector<dim_t> dim;
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        dim, getShape<dim_t>(dict["shape"], /* allowEmptyShape */ true));
     auto const &values = dict["values"];
     RETURN_ERR_IF_NOT(op.output_size() == 1,
                       "GivenTensorFill must have exactly 1 output");
@@ -1711,7 +1720,8 @@ Error Caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
       if (getConstantByNameOrNull(o)) {
         continue;
       }
-      auto dim = getShape(dict["shape"]);
+      std::vector<dim_t> dim;
+      ASSIGN_VALUE_OR_RETURN_ERR(dim, getShape<dim_t>(dict["shape"]));
       T.reset(ElemKind::UInt8QTy, dim, 0.0, 0);
       auto TH = T.getHandle<uint8_t>();
       RETURN_ERR_IF_NOT(
@@ -1767,7 +1777,8 @@ Error Caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
         continue;
       }
 
-      auto dim = getShape(dict["shape"]);
+      std::vector<dim_t> dim;
+      ASSIGN_VALUE_OR_RETURN_ERR(dim, getShape<dim_t>(dict["shape"]));
 
       RETURN_ERR_IF_NOT(dict.count("Y_zero_point"),
                         "missing zero point for quantized output type");
@@ -1834,7 +1845,7 @@ Error Caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
     // tensor. Shape takes priority over input.
     std::vector<dim_t> dims;
     if (dict.count("shape")) {
-      dims = getShape(dict["shape"]);
+      ASSIGN_VALUE_OR_RETURN_ERR(dims, getShape<dim_t>(dict["shape"]));
     } else {
       RETURN_ERR_IF_NOT(op.input_size() > 0,
                         "If no shape provided, must have input shape.");
@@ -1903,7 +1914,8 @@ Error Caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
     */
     const auto &name = op.output(0);
     Tensor T;
-    auto dim = getShape(dict["shape"]);
+    std::vector<dim_t> dim;
+    ASSIGN_VALUE_OR_RETURN_ERR(dim, getShape<dim_t>(dict["shape"]));
     T.reset(ElemKind::FloatTy, dim);
     auto TH = T.getHandle<>();
     float tensorMin;

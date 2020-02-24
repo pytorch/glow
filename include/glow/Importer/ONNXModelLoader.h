@@ -71,7 +71,7 @@ class ONNXModelLoader
     : public CommonOperatorLoader<ONNX_NAMESPACE::NodeProto,
                                   ONNX_NAMESPACE::AttributeProto> {
   /// \returns True if the operator has broadcasting activated.
-  Expected<bool> getBroadcast(const ArgumentDictionaryTy &dict) override;
+  Expected<bool> getBroadcast(ArgumentDictionaryTy &dict) override;
 
   /// \returns True if the operator with the name \p typeName has support for
   /// multidirectional broadcasting.
@@ -100,218 +100,218 @@ class ONNXModelLoader
 
   /// Load Constant ONNX operator.
   Error loadConstant(const ONNX_NAMESPACE::NodeProto &op,
-                     const ArgumentDictionaryTy &dict);
+                     ArgumentDictionaryTy &dict);
 
   /// Load Slice ONNX operator.
   Error loadSlice(const ONNX_NAMESPACE::NodeProto &op,
-                  const ArgumentDictionaryTy &dict);
+                  ArgumentDictionaryTy &dict);
 
   /// Load Conv ONNX operator.
   Error loadConv(const ONNX_NAMESPACE::NodeProto &op,
-                 const ArgumentDictionaryTy &dict);
+                 ArgumentDictionaryTy &dict);
 
   /// Load ChannelwiseQuantizedConvolution Glow operator.
   Error loadChannelwiseQuantizedConvolution(const ONNX_NAMESPACE::NodeProto &op,
-                                            const ArgumentDictionaryTy &dict);
+                                            ArgumentDictionaryTy &dict);
 
   /// Load Glow conv operator with quantized inputs. Since this isn't a normal
   /// part of the ops supported by onnx, the assumption is that this op was
   /// produced by Glow's on ONNXModelWriter and thus has NHWC layout for inputs.
   Error loadTensorwiseQuantizedConvolution(const ONNX_NAMESPACE::NodeProto &op,
-                                           const ArgumentDictionaryTy &dict);
+                                           ArgumentDictionaryTy &dict);
   /// Load ConvTranspose ONNX operator.
   Error loadConvTranspose(const ONNX_NAMESPACE::NodeProto &op,
-                          const ArgumentDictionaryTy &dict);
+                          ArgumentDictionaryTy &dict);
 
   /// Load MaxPool or AveragePool ONNX operator. \p typeName is the name of the
   /// ONNX operator being loaded, either MaxPool or AveragePool.
   Error loadPool(const ONNX_NAMESPACE::NodeProto &op,
-                 const ArgumentDictionaryTy &dict, llvm::StringRef typeName);
+                 ArgumentDictionaryTy &dict, llvm::StringRef typeName);
 
   /// Load Glow pooling operator with quantized inputs. Since this isn't a
   /// normal part of the ops supported by onnx, the assumption is that this op
   /// was produced by Glow's on ONNXModelWriter and thus has NHWC layout for
   /// inputs.
   Error loadTensorwiseQuantizedPool(const ONNX_NAMESPACE::NodeProto &op,
-                                    const ArgumentDictionaryTy &dict,
+                                    ArgumentDictionaryTy &dict,
                                     llvm::StringRef typeName);
 
   /// Load GlobalAveragePool ONNX operator.
   Error loadGlobalAveragePool(const ONNX_NAMESPACE::NodeProto &op,
-                              const ArgumentDictionaryTy &dict);
+                              ArgumentDictionaryTy &dict);
 
   /// Load Squeeze ONNX operator.
   Error loadSqueeze(const ONNX_NAMESPACE::NodeProto &op,
-                    const ArgumentDictionaryTy &dict);
+                    ArgumentDictionaryTy &dict);
 
   /// Load Unsqueeze ONNX operator.
   Error loadUnsqueeze(const ONNX_NAMESPACE::NodeProto &op,
-                      const ArgumentDictionaryTy &dict);
+                      ArgumentDictionaryTy &dict);
 
   /// Load ArgMax ONNX operator.
   Error loadArgMax(const ONNX_NAMESPACE::NodeProto &op,
-                   const ArgumentDictionaryTy &dict);
+                   ArgumentDictionaryTy &dict);
 
   /// Load BatchNormalization ONNX operator.
   Error loadBatchNormalization(const ONNX_NAMESPACE::NodeProto &op,
-                               const ArgumentDictionaryTy &dict);
+                               ArgumentDictionaryTy &dict);
 
   /// Load Concat ONNX operator.
   Error loadConcat(const ONNX_NAMESPACE::NodeProto &op,
-                   const ArgumentDictionaryTy &dict);
+                   ArgumentDictionaryTy &dict);
 
   /// Load FCTransposed ONNX operator.
   Error loadFCTransposed(const ONNX_NAMESPACE::NodeProto &op,
-                         const ArgumentDictionaryTy &dict);
+                         ArgumentDictionaryTy &dict);
 
   /// Load Gemm ONNX operator.
   Error loadGemm(const ONNX_NAMESPACE::NodeProto &op,
-                 const ArgumentDictionaryTy &dict);
+                 ArgumentDictionaryTy &dict);
 
   /// Load MatMul ONNX operator.
   Error loadMatMul(const ONNX_NAMESPACE::NodeProto &op,
-                   const ArgumentDictionaryTy &dict);
+                   ArgumentDictionaryTy &dict);
 
   /// Load Pad ONNX operator.
   Error loadPad(const ONNX_NAMESPACE::NodeProto &op,
-                const ArgumentDictionaryTy &dict);
+                ArgumentDictionaryTy &dict);
 
   /// Load Cast ONNX operator.
   Error loadCast(const ONNX_NAMESPACE::NodeProto &op,
-                 const ArgumentDictionaryTy &dict);
+                 ArgumentDictionaryTy &dict);
 
   /// Load LeakyRelu ONNX operator.
   Error loadLeakyRelu(const ONNX_NAMESPACE::NodeProto &op,
-                      const ArgumentDictionaryTy &dict);
+                      ArgumentDictionaryTy &dict);
 
   /// Load SpaceToDepth ONNX operator.
   Error loadSpaceToDepth(const ONNX_NAMESPACE::NodeProto &op,
-                         const ArgumentDictionaryTy &dict);
+                         ArgumentDictionaryTy &dict);
 
   /// Load ConstantOfShape ONNX operator.
   Error loadConstantOfShape(const ONNX_NAMESPACE::NodeProto &op,
-                            const ArgumentDictionaryTy &dict, bool isSplat);
+                            ArgumentDictionaryTy &dict, bool isSplat);
 
   /// Load Tile ONNX operator.
   Error loadTile(const ONNX_NAMESPACE::NodeProto &op,
-                 const ArgumentDictionaryTy &dict);
+                 ArgumentDictionaryTy &dict);
 
   /// Load Where ONNX operator.
   Error loadWhere(const ONNX_NAMESPACE::NodeProto &op,
-                  const ArgumentDictionaryTy &dict);
+                  ArgumentDictionaryTy &dict);
 
   /// Load RNN ONNX operator.
   Error loadRNN(const ONNX_NAMESPACE::NodeProto &op,
-                const ArgumentDictionaryTy &dict);
+                ArgumentDictionaryTy &dict);
 
   /// Load GRU ONNX operator.
   Error loadGRU(const ONNX_NAMESPACE::NodeProto &op,
-                const ArgumentDictionaryTy &dict);
+                ArgumentDictionaryTy &dict);
 
   /// Load LSTM ONNX operator.
   Error loadLSTM(const ONNX_NAMESPACE::NodeProto &op,
-                 const ArgumentDictionaryTy &dict);
+                 ArgumentDictionaryTy &dict);
 
   /// Load Glow specific operators, not defined in ONNX format
   /// Load Glow CmpEQ operator.
   Error loadCmpEQ(const ONNX_NAMESPACE::NodeProto &op,
-                  const ArgumentDictionaryTy &dict);
+                  ArgumentDictionaryTy &dict);
 
   /// Load Glow CmpLTE operator.
   Error loadCmpLTE(const ONNX_NAMESPACE::NodeProto &op,
-                   const ArgumentDictionaryTy &dict);
+                   ArgumentDictionaryTy &dict);
 
   /// Load Glow Select operator.
   Error loadSelect(const ONNX_NAMESPACE::NodeProto &op,
-                   const ArgumentDictionaryTy &dict);
+                   ArgumentDictionaryTy &dict);
 
   /// Load Glow Quantize operator.
   Error loadQuantize(const ONNX_NAMESPACE::NodeProto &op,
-                     const ArgumentDictionaryTy &dict);
+                     ArgumentDictionaryTy &dict);
 
   /// Load Glow ConvertTo operator.
   Error loadConvertTo(const ONNX_NAMESPACE::NodeProto &op,
-                      const ArgumentDictionaryTy &dict);
+                      ArgumentDictionaryTy &dict);
 
   /// Load Glow Dequantize operator.
   Error loadDequantize(const ONNX_NAMESPACE::NodeProto &op,
-                       const ArgumentDictionaryTy &dict);
+                       ArgumentDictionaryTy &dict);
 
   /// Load Glow Regression operator.
   Error loadRegression(const ONNX_NAMESPACE::NodeProto &op,
-                       const ArgumentDictionaryTy &dict);
+                       ArgumentDictionaryTy &dict);
 
   /// Load Glow BatchedAdd operator.
   Error loadBatchedAdd(const ONNX_NAMESPACE::NodeProto &op,
-                       const ArgumentDictionaryTy &dict);
+                       ArgumentDictionaryTy &dict);
 
   /// Load Glow CumSum operator.
   Error loadCumSum(const ONNX_NAMESPACE::NodeProto &op,
-                   const ArgumentDictionaryTy &dict);
+                   ArgumentDictionaryTy &dict);
 
   /// Load Glow ScatterAssign operator.
   Error loadScatterAssign(const ONNX_NAMESPACE::NodeProto &op,
-                          const ArgumentDictionaryTy &dict);
+                          ArgumentDictionaryTy &dict);
 
   /// Load Glow IntLookupTable operator.
   Error loadIntLookupTable(const ONNX_NAMESPACE::NodeProto &op,
-                           const ArgumentDictionaryTy &dict);
+                           ArgumentDictionaryTy &dict);
 
   /// Load Glow LengthsRangeFill operator.
   Error loadLengthsRangeFill(const ONNX_NAMESPACE::NodeProto &op,
-                             const ArgumentDictionaryTy &dict);
+                             ArgumentDictionaryTy &dict);
 
   /// Load Glow RescaleQuantized operator.
   Error loadRescaleQuantized(const ONNX_NAMESPACE::NodeProto &op,
-                             const ArgumentDictionaryTy &dict);
+                             ArgumentDictionaryTy &dict);
 
   /// Load Glow RowwiseQuantizedSparseLengthsWeightedSum operator.
   Error loadRowwiseQuantizedSparseLengthsWeightedSum(
-      const ONNX_NAMESPACE::NodeProto &op, const ArgumentDictionaryTy &dict);
+      const ONNX_NAMESPACE::NodeProto &op, ArgumentDictionaryTy &dict);
 
   /// Load Glow FusedRowwiseQuantizedSparseLengthsWeightedSum operator.
   Error loadFusedRowwiseQuantizedSparseLengthsWeightedSum(
-      const ONNX_NAMESPACE::NodeProto &op, const ArgumentDictionaryTy &dict);
+      const ONNX_NAMESPACE::NodeProto &op, ArgumentDictionaryTy &dict);
 
   /// Load Glow FusedRowwiseQuantizedSparseLengthsSum operator.
   Error
   loadFusedRowwiseQuantizedSparseLengthsSum(const ONNX_NAMESPACE::NodeProto &op,
-                                            const ArgumentDictionaryTy &dict);
+                                            ArgumentDictionaryTy &dict);
 
   /// Load Glow RowwiseQuantizedFullyConnected operator.
   Error loadRowwiseQuantizedFullyConnected(const ONNX_NAMESPACE::NodeProto &op,
-                                           const ArgumentDictionaryTy &dict);
+                                           ArgumentDictionaryTy &dict);
 
   /// Load Glow FullyConnected operator.
   Error loadFullyConnected(const ONNX_NAMESPACE::NodeProto &op,
-                           const ArgumentDictionaryTy &dict);
+                           ArgumentDictionaryTy &dict);
 
   /// Load ONNX Identity operator.
   Error loadIdentity(const ONNX_NAMESPACE::NodeProto &op,
-                     const ArgumentDictionaryTy &dict);
+                     ArgumentDictionaryTy &dict);
 
   /// Load Glow Splat operator.
   Error loadSplat(const ONNX_NAMESPACE::NodeProto &op,
-                  const ArgumentDictionaryTy &dict);
+                  ArgumentDictionaryTy &dict);
 
   /// Load NonMaxSuppression ONNX and TF NMSv4 operator.
   /// The \p isV4 indicates whether this is ONNX or custom NMSv4 operator.
   Error loadNonMaxSuppression(const ONNX_NAMESPACE::NodeProto &op,
-                              const ArgumentDictionaryTy &dict, bool isV4);
+                              ArgumentDictionaryTy &dict, bool isV4);
 
   /// Load Glow InsertTensor operator.
   Error loadInsertTensor(const ONNX_NAMESPACE::NodeProto &op,
-                         const ArgumentDictionaryTy &dict);
+                         ArgumentDictionaryTy &dict);
 
   /// Load AdaptiveAvgPool Glow operator.
   /// NOTE: since this operator is not a standard onnx op, assume this is from
   /// OnnxModelWriter and is therefore in NHWC format.
   Error loadAdaptiveAvgPool(const ONNX_NAMESPACE::NodeProto &op,
-                            const ArgumentDictionaryTy &dict);
+                            ArgumentDictionaryTy &dict);
 
   /// Load Flip Glow operator.
   Error loadFlip(const ONNX_NAMESPACE::NodeProto &op,
-                 const ArgumentDictionaryTy &dict);
+                 ArgumentDictionaryTy &dict);
 
 protected:
   /// Load the network operators from the GraphProto.
