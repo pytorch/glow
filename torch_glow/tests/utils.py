@@ -88,7 +88,13 @@ def jitVsGlow_(f_torch, f_glow, check_trace, atol, rtol, *inputs, expected_fused
             if not is_all_close:
                 print("torch_res\n", torch_res)
                 print("glow_res\n", glow_res)
-                print("diff\n", torch.abs(glow_res - torch_res))
+                diff = torch.abs(glow_res - torch_res)
+                print("diff\n", diff)
+                max_diff = torch.max(diff)
+                max_diff_i = torch.argmax(diff)
+                print("diff top 10\n", diff.flatten().topk(10))
+                print("diff histogram 100 bins from 0.0 to 1.0\n", diff.flatten().histc(bins=100, min=0.0, max=1.0))
+                print("max diff {} at position {} pt: {} glow: {}".format(max_diff, max_diff_i, torch_res.flatten()[max_diff_i], glow_res.flatten()[max_diff_i]))
             assert is_all_close
 
 
