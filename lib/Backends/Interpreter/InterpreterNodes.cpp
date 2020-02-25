@@ -736,7 +736,6 @@ void BoundInterpreterFunction::fwdChannelwiseQuantizedConvolutionInst(
   auto filterW = getWeightHandle<int8_t>(I->getFilter());
   auto biasW = getWeightHandle<int32_t>(I->getBias());
   auto scalesW = getWeightHandle<float>(I->getScales());
-  auto offsetsW = getWeightHandle<int32_t>(I->getOffsets());
 
   llvm::ArrayRef<unsigned_t> kernelSizes = I->getKernels();
   llvm::ArrayRef<unsigned_t> pads = I->getPads();
@@ -758,11 +757,8 @@ void BoundInterpreterFunction::fwdChannelwiseQuantizedConvolutionInst(
   auto &inTy = inW.getType();
   auto &outTy = outW.getType();
 
-  float inScale = inTy.getScale();
-  float outScale = outTy.getScale();
-
-  int32_t inOffset = inTy.getOffset();
-  int32_t outOffset = outTy.getOffset();
+  double inScale = inTy.getScale();
+  double outScale = outTy.getScale();
 
   // For each input in the batch:
   for (dim_t n = 0; n < idim.n; n++) {
@@ -773,9 +769,9 @@ void BoundInterpreterFunction::fwdChannelwiseQuantizedConvolutionInst(
       for (dim_t d = g * outCperG; d < (g + 1) * outCperG; d++) {
 
         // get channelwise qparams params
-        int32_t filterOffset = offsetsW.at(d);
         float filterScale = scalesW.at(d);
         float matMulScale = inScale * filterScale;
+
         // For each convolution 'jump' in the input tensor:
         sdim_t x = -sdim_t(pdim.top);
         for (dim_t ax = 0; ax < odim.h; x += sdim.height, ax++) {
@@ -783,7 +779,8 @@ void BoundInterpreterFunction::fwdChannelwiseQuantizedConvolutionInst(
           for (dim_t ay = 0; ay < odim.w; y += sdim.width, ay++) {
 
             // For each element in the convolution-filter:
-            AccumulatorTy sum = 0;
+            AccumulatorTy sum = biasW.at({d});
+
             for (dim_t fx = 0; fx < kdim.height; fx++) {
               for (dim_t fy = 0; fy < kdim.width; fy++) {
                 sdim_t ox = x + fx;
@@ -799,22 +796,14 @@ void BoundInterpreterFunction::fwdChannelwiseQuantizedConvolutionInst(
                   AccumulatorTy F = filterW.at({d, fx, fy, fd});
                   AccumulatorTy I =
                       inW.at({n, (dim_t)ox, (dim_t)oy, g * inCperG + fd});
-                  // We represent the element multiplication with offset as
-                  // (value - offset).
-                  sum += (F - filterOffset) * (I - inOffset);
+                  sum += F * I;
                 }
               }
             }
 
-            // Add the channelwise quantized bias.
-            // NOTE: The bias of ChannelwiseQuantizedConvolution should be
-            // quantized such that each element is scaled to match the
-            // matMulScale (biasScale_i = scales_i * inScale).
-            sum += biasW.at({d});
-
             // Scale the result back to the expected destination scale.
             outW.at({n, ax, ay, d}) = quantization::clip<AccumulatorTy, int8_t>(
-                std::round(float(sum) * (matMulScale / outScale) + outOffset));
+                std::round(float(sum) * (matMulScale / outScale)));
           } // W
         }   // H
       }     // C

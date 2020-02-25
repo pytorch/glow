@@ -2562,40 +2562,76 @@ Convolution3DNode *Function::createConv3D(PlaceholderBindings &bindings,
 /// Channelwise quantize the given float \p bias as int32 using \p inputScale,
 /// per-channel \p scales and \p offsets. \returns the channelwise quantized
 /// bias tensor or Error if one occurred.
-static Expected<Tensor> channelwiseQuantizeFloatBias(NodeValue bias,
-                                                     NodeValue scales,
-                                                     NodeValue offsets,
-                                                     float inputScale) {
+static Expected<Tensor>
+channelwiseQuantizeFloatBias(NodeValue bias, NodeValue filter, NodeValue scales,
+                             NodeValue offsets, float inputScale,
+                             int32_t inputOffset, float outputScale,
+                             int32_t outputOffset) {
   Constant *biasC = dyn_cast<Constant>(bias.getNode());
   RETURN_ERR_IF_NOT(biasC, "bias input to ChannelwiseQuantizedConvolutionNode "
                            "must be a Constant in order to quantize the bias");
+  const auto &biasUnquantizedH = biasC->getPayload().getHandle<float>();
 
   Constant *scalesC = dyn_cast<Constant>(scales.getNode());
   RETURN_ERR_IF_NOT(scalesC,
                     "scales input to ChannelwiseQuantizedConvolutionNode must "
                     "be a Constant in order to quantize the bias");
 
+  const auto &scalesW = scalesC->getPayload().getHandle<float>();
+
   Constant *offsetsC = dyn_cast<Constant>(offsets.getNode());
   RETURN_ERR_IF_NOT(offsetsC,
                     "offsets input to ChannelwiseQuantizedConvolutionNode must "
                     "be a Constant in order to quantize the bias");
 
-  const auto &biasUnquantizedH = biasC->getPayload().getHandle<float>();
-  const auto &scalesH = scalesC->getPayload().getHandle<float>();
+  const auto &offsetsW = offsetsC->getPayload().getHandle<int32_t>();
+
+  Constant *filterC = dyn_cast<Constant>(filter.getNode());
+  RETURN_ERR_IF_NOT(filterC,
+                    "filter input to ChannelwiseQuantizedConvolutionNode must "
+                    "be a Constant in order to quantize the bias");
+
+  const auto &filterW = filterC->getPayload().getHandle<int8_t>();
 
   // biasQuantizedT is Int32QTy but the quantization parameters on the tensor
   // are not real, instead quantization parameters are from scales and offsets
   // inputs.
   auto biasQuantizedT = Tensor(ElemKind::Int32QTy, biasUnquantizedH.dims(),
-                               /* scale */ 1.0, /* offset */ 0);
+                               /* dummy scale */ 1.0, /* dummy offset */ 0);
   auto biasQuantizedH = biasQuantizedT.getHandle<int32_t>();
 
-  for (dim_t i = 0; i < biasQuantizedH.size(); ++i) {
-    TensorQuantizationParams tqp;
-    tqp.scale = inputScale * scalesH.raw(i);
-    tqp.offset = 0;
-    biasQuantizedH.raw(i) =
-        quantization::quantize<int32_t>(biasUnquantizedH.raw(i), tqp);
+  using AccumulatorTy = int32_t;
+
+  dim_t outChannels = biasQuantizedH.size();
+  ShapeNHWC kdim(filterW.dims());
+  for (dim_t d = 0; d < kdim.n; d++) {
+
+    // get channelwise qparams params
+    int32_t filterOffset = offsetsW.at(d);
+    double filterScale = scalesW.at(d);
+    double matMulScale = inputScale * filterScale;
+
+    // Accumulate bias value
+    double biasVal = 0;
+    // add the input offset in
+    for (dim_t fx = 0; fx < kdim.h; fx++) {
+      for (dim_t fy = 0; fy < kdim.w; fy++) {
+        for (dim_t fd = 0; fd < kdim.c; fd++) {
+          AccumulatorTy F = filterW.at({d, fx, fy, fd});
+          biasVal -= (F * inputOffset);
+        }
+      }
+    }
+
+    // Add the bias in
+    biasVal += biasUnquantizedH.at({d}) / matMulScale;
+
+    // Add the output offset sin
+    // seems to cause some rounding errors
+    biasVal += outputOffset * outputScale / matMulScale;
+
+    biasQuantizedH.raw(d) =
+        quantization::clip<int64_t, int32_t>((int64_t)nearbyintf(biasVal));
   }
 
   return Expected<Tensor>(std::move(biasQuantizedT));
@@ -2607,13 +2643,18 @@ ChannelwiseQuantizedConvolutionNode *Function::createChannelwiseQuantizedConv(
     llvm::ArrayRef<unsigned_t> kernels, llvm::ArrayRef<unsigned_t> strides,
     llvm::ArrayRef<unsigned_t> pads, unsigned_t group) {
   assertConvDims(input, filter, bias, kernels, strides, pads, group);
-  auto OT = getParent()->uniqueType(*outTy);
+  auto *IT = input.getType();
+  auto *OT = getParent()->uniqueType(*outTy);
   auto biasType = bias.getElementType();
-  if (biasType == ElemKind::Int32QTy) {
-    // Nothing to do
-  } else if (biasType == ElemKind::FloatTy) {
+  if (filter.getType()->getOffset() != 0) {
+    LOG(DFATAL) << "ChannelwiseQuantizedConvolution is only supported for "
+                   "weights that are symmetrically quantized but weights were "
+                   "provided with a non-zero offset";
+  }
+  if (biasType == ElemKind::FloatTy) {
     if (auto qBiasTensorOrErr = channelwiseQuantizeFloatBias(
-            bias, scales, offsets, input.getType()->getScale())) {
+            bias, filter, scales, offsets, IT->getScale(), IT->getOffset(),
+            OT->getScale(), OT->getOffset())) {
       bias = getParent()->createConstant("quantized_bias", *qBiasTensorOrErr);
     } else {
       LOG(DFATAL) << "Error while quantizing bias for "
