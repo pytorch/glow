@@ -81,7 +81,9 @@ case ${CIRCLE_JOB} in
         # No tests with shared libs; it's similar to DEBUG.
         ;;
     32B_DIM_T)
-        # No tests with 32b dim_t; it's similar to DEBUG.
+        # A lot of 32b dim_t issues are not revealed at build time, thus
+        # run the unit test suite also.
+        run_unit_tests check
         ;;
     RELEASE_WITH_EXPENSIVE_TESTS)
         run_unit_tests check_expensive
