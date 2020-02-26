@@ -212,14 +212,7 @@ protected:
     if (length1) {
       return LengthsMode::AllOne;
     }
-    bool lengthLow = false;
-    if (dict.count("lengthlow")) {
-      ASSIGN_VALUE_OR_RETURN_ERR(lengthLow, loadInt(dict["lengthlow"]));
-    }
-    if (lengthLow) {
-      return LengthsMode::Low;
-    }
-    return LengthsMode::High;
+    return LengthsMode::Variable;
   }
 
   /// Associate the name of operation outputs to a NodeValues corresponding to
