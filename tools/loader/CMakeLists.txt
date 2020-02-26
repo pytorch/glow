@@ -1,6 +1,8 @@
 add_executable(image-classifier
   Loader.cpp
-  ImageClassifier.cpp)
+  ImageClassifier.cpp
+  ExecutorCore.cpp
+  ExecutorCoreHelperFunctions.cpp)
 
 target_link_libraries(image-classifier
                       PRIVATE
