@@ -37,6 +37,11 @@ class OperatorStatelessTest : public BackendStatelessTest {};
 class OperatorTest : public BackendTest {
 protected:
   PlaceholderBindings bindings_;
+  virtual void SetUp() override {
+    // Skip stripping the module so that we can inspect Constants after
+    // compilation.
+    EE_.setSkipModuleStrip(true);
+  }
 };
 
 /// Helper to create a Placeholder; if \p T is quantized, then it will include a

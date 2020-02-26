@@ -262,11 +262,18 @@ void glow::evalBatch(
 void ExecutionEngine::compile(CompilationMode mode) {
   CompilationContext cctx;
   cctx.compMode = mode;
+  if (skipModuleStrip_) {
+    cctx.skipModuleStrip = true;
+  }
   compile(cctx);
 }
 
 void ExecutionEngine::compile(CompilationContext &cctx) {
   assert(module_.get() && "Compile has already been called.");
+
+  if (skipModuleStrip_) {
+    cctx.skipModuleStrip = true;
+  }
 
   for (auto &function : module_->getFunctions()) {
     compiledFunctions_.insert(function->getName());
