@@ -439,17 +439,13 @@ SLSParam parseArgs(int argc, char *argv[]) {
       param.lengthsMode = LengthsMode::AllOne;
       CHECK_EQ(param.numIndicesPerBatch, 1)
           << "Lengths (numIndicesPerBatch) must == 1 for LengthsMode::AllOne";
-    } else if (std::string(argv[LENGTHS_MODE]) == "Low") {
-      param.lengthsMode = LengthsMode::Low;
-      CHECK_LE(param.numIndicesPerBatch, 5)
-          << "Lengths (numIndicesPerBatch) must be <= 5 for LengthsMode::Low";
-    } else if (std::string(argv[LENGTHS_MODE]) == "High") {
-      param.lengthsMode = LengthsMode::High;
+    } else if (std::string(argv[LENGTHS_MODE]) == "Variable") {
+      param.lengthsMode = LengthsMode::Variable;
     } else {
       llvm_unreachable("Invalid lengthsMode");
     }
   } else {
-    param.lengthsMode = LengthsMode::High;
+    param.lengthsMode = LengthsMode::Variable;
   }
   if (argc > DEVICE_ID) {
     printf("devId %s\n", argv[DEVICE_ID]);
@@ -464,20 +460,20 @@ SLSParam parseArgs(int argc, char *argv[]) {
 int main(int argc, char *argv[]) {
 
   printf("SLS Microbenchmark\n");
-  printf(
-      "Usage: SLSBench batchSize(Int) numIndicesPerBatch(Int) "
-      "numIndicesPerBatchPad(Int) numTableEntries(Int) "
-      "numElementsPerRow(int) numReps(Int) "
-      "numAsyncLaunches(Int) numSLSNodes(Int) "
-      "slsKindStr(\"QuantizedWeighted\"|\"QuantizedUnweighted\"|"
-      "\"NonquantizedWeighted\"|"
-      "\"NonquantizedUnweighted\") "
-      "sortedStr(\"Sorted\"|\"Unsorted\") backendStr(String) "
-      "dtypeStr(\"Float16\"|\"Float32\") "
-      "addClipStr(\"True\"|\"False\")\nQuantized only options: "
-      "quantizationDtypeStr(\"Int8\"|\"Int4\") "
-      "useFP16AccumulationStr(\"True\"|\"False\") \n"
-      "lengthsModeStr(\"AllOne\"|\"Low\"|\"High\") \nOptional: dev_id(Int)\n");
+  printf("Usage: SLSBench batchSize(Int) numIndicesPerBatch(Int) "
+         "numIndicesPerBatchPad(Int) numTableEntries(Int) "
+         "numElementsPerRow(int) numReps(Int) "
+         "numAsyncLaunches(Int) numSLSNodes(Int) "
+         "slsKindStr(\"QuantizedWeighted\"|\"QuantizedUnweighted\"|"
+         "\"NonquantizedWeighted\"|"
+         "\"NonquantizedUnweighted\") "
+         "sortedStr(\"Sorted\"|\"Unsorted\") backendStr(String) "
+         "dtypeStr(\"Float16\"|\"Float32\") "
+         "addClipStr(\"True\"|\"False\")\nQuantized only options: "
+         "quantizationDtypeStr(\"Int8\"|\"Int4\") "
+         "useFP16AccumulationStr(\"True\"|\"False\") \n"
+         "lengthsModeStr(\"AllOne\"|\"Low\"|\"Variable\") \nOptional: "
+         "dev_id(Int)\n");
   printf("\n");
 
   std::vector<SLSParam> params;
