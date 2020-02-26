@@ -228,6 +228,15 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
     return err;
   }
 
+  {
+    std::unique_lock<std::shared_timed_mutex> networkLock(networkLock_);
+    // Create pool of cachedExecutionStates.
+    for (auto &node : nodeList) {
+      // Note: currently getNextNetworkExecutionState assumes that pool size is
+      // >= currentInFlight requests, so we set pool size to maxActiveRequests.
+      executor_->createPool(node.root.get(), config_.maxActiveRequests);
+    }
+  }
   // Clear constants contents from the module then put it in a
   // shared_ptr to be shared between all of the networks created from each
   // function in the module.
@@ -273,6 +282,8 @@ Error HostManager::removeNetwork(llvm::StringRef networkName) {
 
   OneErrOnly err;
   auto &nodes = networkIterator->second.dag.nodes;
+  // Free the pool of executionStates.
+  executor_->freePool(networkIterator->second.dag.root.get());
   for (auto &node : nodes) {
     for (auto device : node->deviceIDs) {
       Error evictErr = provisioner_->evictFunction(node->name, device);

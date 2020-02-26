@@ -20,6 +20,7 @@
 #include <mutex>
 #include <unordered_map>
 
+#include "NetworkExecutionState.h"
 #include "glow/Runtime/Executor/Executor.h"
 #include "glow/Support/ThreadPool.h"
 
@@ -62,6 +63,12 @@ public:
   explicit ThreadPoolExecutor(const DeviceManagerMapTy &deviceManagers,
                               unsigned numWorkers = kNumWorkers);
 
+  /// Setup context pool for new network.
+  void createPool(const DAGNode *root, unsigned poolSize) override;
+
+  /// Free the context pool for specified network.
+  void freePool(const DAGNode *root) override;
+
   /// See Executor::run. A particular invocation is specified completely by
   /// the triple (roots, bindings, runId).
   void run(const DAGNode *root, std::unique_ptr<ExecutionContext> context,
@@ -73,9 +80,8 @@ public:
 
 private:
   /// Execute the DAG node specified by \p node within the run corresponding to
-  /// \p executionState.
-  void executeDAGNode(std::shared_ptr<ExecutionState> executionState,
-                      DAGNode *node);
+  /// \p state.
+  void executeDAGNode(NetworkExecutionState *executionState, DAGNode *node);
 
   /// Handle the result returned asynchronously by the DeviceManager.
   /// \p executionState is tracks the state of the run that the node that
@@ -85,7 +91,7 @@ private:
   ///
   /// The main purpose of this function is to help move computation off of the
   /// DeviceManager thread pool on onto the one owned by this class.
-  void handleDeviceManagerResult(std::shared_ptr<ExecutionState> executionState,
+  void handleDeviceManagerResult(NetworkExecutionState *executionState,
                                  Error err,
                                  std::unique_ptr<ExecutionContext> ctx,
                                  const DAGNode *node);
@@ -94,13 +100,20 @@ private:
   constexpr static unsigned kNumWorkers = 3;
   /// The thread pool used to drive execution.
   ThreadPool threadPool_;
-  /// Map of available DeviceManagers.
-  const DeviceManagerMapTy &deviceManagers_;
+
+  /// Map of networkExecutionState pools for each network.
+  std::unordered_map<const DAGNode *,
+                     std::unique_ptr<NetworkExecutionStatePool>>
+      states_;
+
   /// Barrier for making sure all asynchronous requests made to the
   /// DeviceManager return before allowing destruction of the executor.
   InflightBarrier inflightBarrier_;
   /// Whether the executor is currently shutting down or not.
   std::atomic<bool> shuttingDown_{false};
+
+  /// Map of available DeviceManagers.
+  const DeviceManagerMapTy &deviceManagers_;
 };
 
 } // namespace runtime
