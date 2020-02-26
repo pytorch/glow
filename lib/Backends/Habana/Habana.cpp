@@ -184,7 +184,7 @@ public:
 
     // Create tensor descriptor, with quantization params if needed.
     synTensorDescriptor desc(elemType, rdims.size(), rdims.data(), buffer_,
-                             synMemoryHost, false, name_.data());
+                             false, name_.data());
     if (V->isQuantizedType()) {
       if (V->getElementType() == ElemKind::UInt8FusedQTy) {
         desc.m_quantizationParams[0].m_zp = 0;
@@ -1062,7 +1062,7 @@ HabanaBackend::compile(Function *F, const BackendOptions &opts) const {
   ASSIGN_VALUE_OR_RETURN_ERR(recipeName, getRecipeFile());
   CompilationAttribute compileParams[1];
   compileParams[0].type = VISUALIZATION;
-  compileParams[0].u32 = 1;
+  compileParams[0].u64 = 1;
   LOG(INFO) << "Compiling " << F->getName().str() << " to " << recipeName;
   auto start = TraceEvent::now();
 
