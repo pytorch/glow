@@ -404,10 +404,13 @@ public:
   /// If \p names and \p types are empty loader fills inputs automatically.
   /// If \p errPtr is not null then if an error occurs it will get assigned
   /// there otherwise if an error occurs it will abort.
+  /// If \p disableConstFoldInLoader then constant folding will be disabled
+  /// during loading.
   ONNXModelLoader(const std::string &modelDescFilename,
                   llvm::ArrayRef<const char *> tensorNames,
                   llvm::ArrayRef<TypeRef> types, Function &F,
-                  Error *errPtr = nullptr, bool zipMode = false);
+                  Error *errPtr = nullptr, bool zipMode = false,
+                  bool disableConstFoldInLoader = false);
 };
 
 } // namespace glow

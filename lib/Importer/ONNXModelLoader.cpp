@@ -3073,11 +3073,16 @@ Error ONNXModelLoader::checkInputs(ONNX_NAMESPACE::GraphProto &net,
 ONNXModelLoader::ONNXModelLoader(const std::string &modelDescFilename,
                                  llvm::ArrayRef<const char *> tensorNames,
                                  llvm::ArrayRef<TypeRef> types, Function &F,
-                                 Error *errPtr, bool zipMode)
+                                 Error *errPtr, bool zipMode,
+                                 bool disableConstFoldInLoader)
     : CommonOperatorLoader(tensorNames, types, F, errPtr) {
   // if errPtr already contains an error then don't continue with constructor
   if (errPtr && *errPtr) {
     return;
+  }
+
+  if (disableConstFoldInLoader) {
+    constFoldInLoader_ = false;
   }
 
   // Lambda to setup the ONNXModelLoader and return any Errors that were
