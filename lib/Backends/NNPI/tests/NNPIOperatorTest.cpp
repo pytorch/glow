@@ -63,7 +63,6 @@ struct BlacklistInitializer {
             {"convTest/0", TestBlacklist::AnyDeviceAnyEngine},
             {"convTest_Float16/0", TestBlacklist::AnyDeviceAnyEngine},
             {"EntropyLossTest/0", TestBlacklist::AnyDeviceAnyEngine},
-            {"FCGradientCheck/0", TestBlacklist::AnyDeviceAnyEngine},
             {"FloatMaxPoolWithArgmax/0", TestBlacklist::AnyDeviceAnyEngine},
             {"FloatMaxPoolWithArgmaxTransposed/0",
              TestBlacklist::AnyDeviceAnyEngine},

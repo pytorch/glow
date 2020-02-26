@@ -145,7 +145,6 @@ std::set<std::string> glow::backendTestBlacklist = {
     "ExpandDims_Int8/0",
     "Exp_Float16/0",
     "FC_Float16/0",
-    "FCGradientCheck/0",
     "Flatten_Float16Ty/0",
     "FloatArgMaxKeepDim/0",
     "FloatArgMaxNoKeepDim/0",
