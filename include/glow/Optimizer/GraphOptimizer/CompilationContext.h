@@ -160,6 +160,9 @@ struct CompilationContext {
   /// Call dumpDag on each Function passed to the backend for compilation.
   bool dumpFinalGraph = false;
 
+  /// Whether to skip stripping the module.
+  bool skipModuleStrip{false};
+
   CompilationContext(PlaceholderBindings *bindings_ = nullptr,
                      LoweredInfoMap *loweredInfoMap_ = nullptr)
       : bindings(bindings_), loweredInfoMap(loweredInfoMap_) {}

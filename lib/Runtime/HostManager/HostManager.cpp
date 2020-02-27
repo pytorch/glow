@@ -240,7 +240,9 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
   // Clear constants contents from the module then put it in a
   // shared_ptr to be shared between all of the networks created from each
   // function in the module.
-  module->strip();
+  if (!cctx.skipModuleStrip) {
+    module->strip();
+  }
   auto sharedModule = std::shared_ptr<Module>(std::move(module));
   {
     std::unique_lock<std::shared_timed_mutex> networkLock(networkLock_);

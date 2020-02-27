@@ -63,6 +63,10 @@ class ExecutionEngine final {
   /// the run.
   bool ensureOutputsOnHost_{true};
 
+  /// Whether to override the cctx's skipModuleStrip setting and skip stripping
+  /// the module. Used for testing purposes.
+  bool skipModuleStrip_{false};
+
   /// Single execution of the given function, \p name with the given context
   /// \bindings.
   void runInternal(ExecutionContext &context, llvm::StringRef name);
@@ -142,6 +146,9 @@ public:
   /// \returns the single Function contained in this Module.
   /// \pre Must be a single Function in the Module.
   Function *getSingleFunctionFromModule() const;
+
+  /// Setter for \ref skipModuleStrip_ to \p b.
+  void setSkipModuleStrip(bool b) { skipModuleStrip_ = b; }
 };
 
 //===----------------------------------------------------------------------===//
