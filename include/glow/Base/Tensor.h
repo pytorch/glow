@@ -574,9 +574,9 @@ public:
 
   /// \returns true if the content of the other tensor \p other is bitwise
   /// identical to this one.
-  bool isBitwiseEqual(const Tensor &other) const {
+  bool isBitwiseEqual(const Tensor &other, bool verbose = false) const {
     return isEqualImpl(other, /*isBitwise=*/true, /*allowedError=*/0.0,
-                       /*verbose=*/false);
+                       verbose);
   }
 
   bool isEqualImpl(const Tensor &other, bool isBitwise, float allowedError,
@@ -618,8 +618,9 @@ public:
     }
 
     // Bitwise compare.
-    if (isBitwise)
-      return isBitwiseEqualImpl(other);
+    if (isBitwise) {
+      return isBitwiseEqualImpl(other, verbose);
+    }
 
     switch (getElementType()) {
     case ElemKind::FloatTy:
@@ -896,15 +897,24 @@ private:
     return numExceedingError == 0;
   }
 
-  bool isBitwiseEqualImpl(const Tensor &other) const {
+  bool isBitwiseEqualImpl(const Tensor &other, bool verbose) const {
     assert(!isDeviceResident() && "Tensor must reside on host to access data.");
     auto const *myData = getUnsafePtr();
     auto const *otherData = other.getUnsafePtr();
+    dim_t mismatchCount = 0;
     for (size_t i = 0, e = getSizeInBytes(); i < e; i++) {
-      if (myData[i] != otherData[i])
-        return false;
+      if (myData[i] != otherData[i]) {
+        if (!verbose) {
+          return false;
+        }
+        ++mismatchCount;
+      }
     }
-    return true;
+    if (mismatchCount != 0) {
+      LOG(INFO) << "Tensors not bitwise equal: " << mismatchCount
+                << " bytes out of " << getSizeInBytes() << " mismatched.";
+    }
+    return mismatchCount == 0;
   }
 };
 
