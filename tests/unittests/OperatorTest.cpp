@@ -5141,48 +5141,6 @@ TEST_P(OperatorTest, TestQuantizedRescaleSequence) {
   }
 }
 
-TEST_P(OperatorTest, FCGradientCheck) {
-  CHECK_IF_ENABLED();
-
-  // Create net representing A*X+Y=B, where X and Y are trainable, while
-  // A and B are fixed. Record gradients for X and Y after 3 steps and compare
-  // with reference values.
-  TrainingConfig TC;
-
-  // This variable records the number of the next sample to be used for
-  // training.
-  size_t sampleCounter = 0;
-
-  auto *A = mod_.createPlaceholder(ElemKind::FloatTy, {2, 1}, "A", false);
-  auto *B = mod_.createPlaceholder(ElemKind::FloatTy, {2, 1}, "B", false);
-  auto *X = mod_.createPlaceholder(ElemKind::FloatTy, {1, 1}, "X", true);
-  auto *Y = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "Y", true);
-
-  bindings_.allocate(A);
-  bindings_.allocate(B);
-  bindings_.allocate(X)->init(Tensor::InitKind::Broadcast, -1.26274,
-                              mod_.getPRNG());
-  bindings_.allocate(Y)->init(Tensor::InitKind::Broadcast, 0.1, mod_.getPRNG());
-
-  auto *FC = F_->createFullyConnected("fc", A, X, Y);
-  auto *S = F_->createRegression("reg", FC, B);
-  auto *save = F_->createSave("ret", S);
-  bindings_.allocate(save->getPlaceholder());
-
-  Tensor initA(ElemKind::FloatTy, {2, 1});
-  Tensor initB(ElemKind::FloatTy, {2, 1});
-  initA.getHandle() = {4.2f, 9.875f};
-  initB.getHandle() = {-13.1f, 3.14f};
-
-  Function *DF = glow::differentiate(F_, TC, "d_main");
-  auto dfName = DF->getName();
-  EE_.compile(CompilationMode::Train);
-  runBatch(EE_, bindings_, 3, sampleCounter, {A, B}, {&initA, &initB}, dfName);
-
-  EXPECT_NEAR(bindings_.get(X)->getHandle().raw(0), -0.21294, 1E-5);
-  EXPECT_NEAR(bindings_.get(Y)->getHandle().raw(0), 0.01656, 1E-5);
-}
-
 /// Helper to test concatVectors using \p DTy.
 template <typename DataType>
 static void testConcatVectors(glow::PlaceholderBindings &bindings,

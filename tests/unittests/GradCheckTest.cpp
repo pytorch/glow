@@ -1070,4 +1070,50 @@ TEST_P(GradCheck, gradientCheckBatchedPairwiseDotProduct) {
                    &inputs, &outputs, 0.001, 0.01);
 }
 
+TEST_P(GradCheck, gradientCheckFC2) {
+  CHECK_IF_ENABLED();
+
+  PlaceholderBindings bindings;
+  Module &mod = EET_.getModule();
+  Function *F = mod.createFunction("main");
+
+  // Create net representing A*X+Y=B, where X and Y are trainable, while
+  // A and B are fixed. Record gradients for X and Y after 3 steps and compare
+  // with reference values.
+  TrainingConfig TC;
+
+  // This variable records the number of the next sample to be used for
+  // training.
+  size_t sampleCounter = 0;
+
+  auto *A = mod.createPlaceholder(ElemKind::FloatTy, {2, 1}, "A", false);
+  auto *B = mod.createPlaceholder(ElemKind::FloatTy, {2, 1}, "B", false);
+  auto *X = mod.createPlaceholder(ElemKind::FloatTy, {1, 1}, "X", true);
+  auto *Y = mod.createPlaceholder(ElemKind::FloatTy, {1}, "Y", true);
+
+  bindings.allocate(A);
+  bindings.allocate(B);
+  bindings.allocate(X)->init(Tensor::InitKind::Broadcast, -1.26274,
+                             mod.getPRNG());
+  bindings.allocate(Y)->init(Tensor::InitKind::Broadcast, 0.1, mod.getPRNG());
+
+  auto *FC = F->createFullyConnected("fc", A, X, Y);
+  auto *S = F->createRegression("reg", FC, B);
+  auto *save = F->createSave("ret", S);
+  bindings.allocate(save->getPlaceholder());
+
+  Tensor initA(ElemKind::FloatTy, {2, 1});
+  Tensor initB(ElemKind::FloatTy, {2, 1});
+  initA.getHandle() = {4.2f, 9.875f};
+  initB.getHandle() = {-13.1f, 3.14f};
+
+  Function *DF = glow::differentiate(F, TC, "d_main");
+  auto dfName = DF->getName();
+  EET_.compile(CompilationMode::Train);
+  runBatch(EET_, bindings, 3, sampleCounter, {A, B}, {&initA, &initB}, dfName);
+
+  EXPECT_NEAR(bindings.get(X)->getHandle().raw(0), -0.21294, 1E-5);
+  EXPECT_NEAR(bindings.get(Y)->getHandle().raw(0), 0.01656, 1E-5);
+}
+
 INSTANTIATE_BACKEND_TEST(GradCheck);
