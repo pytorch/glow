@@ -507,6 +507,7 @@ int main(int argc, char **argv) {
       .addInput("Indices")
       .addInput("Lengths")
       .addMember(MEMBER_TYPE_INFO(glow::LengthsMode), "LengthsMode")
+      .addMember(MemberType::Float, "AvgLength")
       .addResultFromCtorArg()
       .addGradient()
       .setDocstring("Gathers slices of the outer-most dimension of Data "
@@ -522,6 +523,7 @@ int main(int argc, char **argv) {
       .addInput("Indices")
       .addInput("Lengths")
       .addMember(MEMBER_TYPE_INFO(glow::LengthsMode), "LengthsMode")
+      .addMember(MemberType::Float, "AvgLength")
       .addResultFromCtorArg()
       .addGradient()
       .setDocstring("Gathers slices of the outer-most dimension of Data "
@@ -541,6 +543,7 @@ int main(int argc, char **argv) {
       .addInput("Offsets")
       .addMember(MemberType::Boolean, "HasEndOffset")
       .addMember(MEMBER_TYPE_INFO(glow::LengthsMode), "LengthsMode")
+      .addMember(MemberType::Float, "AvgLength")
       .addResultFromCtorArg()
       .setDocstring(
           "Gathers slices of the outer-most dimension of Data "
@@ -562,6 +565,7 @@ int main(int argc, char **argv) {
                  /* addSetter */ true)
       .addMember(MemberType::Boolean, "HasEndOffset")
       .addMember(MEMBER_TYPE_INFO(glow::LengthsMode), "LengthsMode")
+      .addMember(MemberType::Float, "AvgLength")
       .addResultFromCtorArg()
       .setDocstring("Same as FusedRowwiseQuantizedSparseLengthsWeightedSum but "
                     "using offsets instead of lengths.");
@@ -576,6 +580,7 @@ int main(int argc, char **argv) {
       .addMember(MemberType::Boolean, "UseFP16Accumulation",
                  /* addSetter */ true)
       .addMember(MEMBER_TYPE_INFO(glow::LengthsMode), "LengthsMode")
+      .addMember(MemberType::Float, "AvgLength")
       .addResultFromCtorArg()
       .setDocstring("Gathers slices of the outer-most dimension of Data "
                     "indexed by Indices vector, and then accumulates them into "
@@ -597,6 +602,7 @@ int main(int argc, char **argv) {
       .addMember(MemberType::Boolean, "UseFP16Accumulation",
                  /* addSetter */ true)
       .addMember(MEMBER_TYPE_INFO(glow::LengthsMode), "LengthsMode")
+      .addMember(MemberType::Float, "AvgLength")
       .addResultFromCtorArg()
       .setDocstring("Gathers slices of the outer-most dimension of Data "
                     "indexed by Indices vector, and then accumulates them into "
@@ -618,6 +624,7 @@ int main(int argc, char **argv) {
       .addMember(MemberType::Boolean, "UseFP16Accumulation",
                  /* addSetter */ true)
       .addMember(MEMBER_TYPE_INFO(glow::LengthsMode), "LengthsMode")
+      .addMember(MemberType::Float, "AvgLength")
       .addResultFromCtorArg()
       .setDocstring("Gathers slices of the outer-most dimension of Data "
                     "indexed by Indices vector, and then accumulates them into "

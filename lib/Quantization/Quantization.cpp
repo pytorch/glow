@@ -850,7 +850,8 @@ public:
                 SLWS->getName(), dataC->getPayloadMutable(), weightsF,
                 SLWS->getIndices(), SLWS->getLengths(),
                 /* fusedElemKind */ ElemKind::UInt8FusedQTy,
-                /* useFP16Accumulation */ false, SLWS->getLengthsMode());
+                /* useFP16Accumulation */ false, SLWS->getLengthsMode(),
+                SLWS->getAvgLength());
 
         // Fused RWQSLWS stores the fused scales and offsets in trailing
         // columns. If the input was single dimensional then it adds extra
