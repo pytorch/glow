@@ -1327,7 +1327,7 @@ TEST_F(Caffe2ImporterTest, dotProduct1D) {
   Placeholder *output;
 
   // Input tensors.
-  constexpr std::size_t kDataSize = 10;
+  constexpr dim_t kDataSize = 10;
   auto type = mod.uniqueType(ElemKind::FloatTy, {kDataSize});
 
   // Destroy the loader after the graph is loaded to ensure the function F
@@ -1369,8 +1369,8 @@ TEST_F(Caffe2ImporterTest, dotProduct2D) {
   Placeholder *output;
 
   // Input tensors.
-  constexpr std::size_t kRows = 10;
-  constexpr std::size_t kCols = 20;
+  constexpr dim_t kRows = 10;
+  constexpr dim_t kCols = 20;
   auto type = mod.uniqueType(ElemKind::FloatTy, {kRows, kCols});
 
   // Destroy the loader after the graph is loaded to ensure the function F
@@ -1418,8 +1418,8 @@ TEST_F(Caffe2ImporterTest, batchBoxCox) {
   Placeholder *output;
 
   // Input tensors.
-  const size_t kRows = 10;
-  const size_t kCols = 5;
+  const dim_t kRows = 10;
+  const dim_t kCols = 5;
   Tensor data(ElemKind::FloatTy, {kRows, kCols});
   Tensor lambda1(ElemKind::FloatTy, {kCols});
   Tensor lambda2(ElemKind::FloatTy, {kCols});
@@ -1466,7 +1466,7 @@ TEST_F(Caffe2ImporterTest, EQ1D) {
   PlaceholderBindings bindings;
 
   // Input tensors.
-  const size_t kDataSize = 10;
+  const dim_t kDataSize = 10;
   Tensor X(ElemKind::FloatTy, {kDataSize});
   Tensor Y(ElemKind::FloatTy, {kDataSize});
 
@@ -1539,7 +1539,7 @@ TEST_F(Caffe2ImporterTest, Logit) {
   Placeholder *output;
 
   // Input tensors.
-  const std::size_t kDataSize = 10;
+  const dim_t kDataSize = 10;
   Tensor X(ElemKind::FloatTy, {kDataSize});
 
   // Destroy the loader after the graph is loaded
@@ -1577,11 +1577,11 @@ TEST_F(Caffe2ImporterTest, sparseToDense) {
   PlaceholderBindings bindings;
 
   // Create inputs.
-  constexpr size_t kNumIndices = 5;
-  constexpr size_t kMaxIndex = 20;
-  constexpr size_t kRows = 10;
-  constexpr size_t kCols = 5;
-  Tensor indices(IndexElemKind, {kNumIndices});
+  constexpr dim_t kNumIndices = 5;
+  constexpr dim_t kMaxIndex = 20;
+  constexpr dim_t kRows = 10;
+  constexpr dim_t kCols = 5;
+  Tensor indices(ElemKind::Int64ITy, {kNumIndices});
   Tensor values(ElemKind::FloatTy, {kNumIndices, kRows, kCols});
   Tensor dataToInferDim(ElemKind::FloatTy, {kMaxIndex, kRows, kCols});
 
@@ -1629,7 +1629,7 @@ TEST_F(Caffe2ImporterTest, SparseToDenseMask) {
   Placeholder *output;
   PlaceholderBindings bindings;
 
-  Tensor indices(IndexElemKind, {4});
+  Tensor indices(ElemKind::Int64ITy, {4});
   Tensor values(ElemKind::FloatTy, {4, 10, 20, 30});
   Tensor defaultValue(ElemKind::FloatTy, {10, 20, 30});
 
@@ -2216,7 +2216,7 @@ TEST_F(Caffe2ImporterTest, SparseLengthsWeightedSum8BitsRowwise) {
   Placeholder *output, *indices, *lengths;
   PlaceholderBindings bindings;
 
-  TypeRef indicesType = F->getParent()->uniqueType(IndexElemKind, {8});
+  TypeRef indicesType = F->getParent()->uniqueType(ElemKind::Int64ITy, {8});
   TypeRef lengthsType = F->getParent()->uniqueType(ElemKind::Int32ITy, {4});
 
   // Destroy the loader after the graph is loaded since the following execution
@@ -2236,7 +2236,7 @@ TEST_F(Caffe2ImporterTest, SparseLengthsWeightedSum8BitsRowwise) {
   ASSERT_TRUE(indices);
   ASSERT_TRUE(lengths);
 
-  bindings.allocate(indices)->getHandle<sdim_t>() = {
+  bindings.allocate(indices)->getHandle<int64_t>() = {
       1, 0, 2, 0, 1, 2, 2, 0,
   };
   bindings.allocate(lengths)->getHandle<int32_t>() = {
@@ -2321,7 +2321,7 @@ TEST_F(Caffe2ImporterTest, SparseLengthsSum8BitsRowwise) {
   Placeholder *output, *indices, *lengths;
   PlaceholderBindings bindings;
 
-  TypeRef indicesType = F->getParent()->uniqueType(IndexElemKind, {8});
+  TypeRef indicesType = F->getParent()->uniqueType(ElemKind::Int64ITy, {8});
   TypeRef lengthsType = F->getParent()->uniqueType(ElemKind::Int32ITy, {5});
 
   // Destroy the loader after the graph is loaded since the following execution
@@ -2341,7 +2341,7 @@ TEST_F(Caffe2ImporterTest, SparseLengthsSum8BitsRowwise) {
   ASSERT_TRUE(indices);
   ASSERT_TRUE(lengths);
 
-  bindings.allocate(indices)->getHandle<sdim_t>() = {
+  bindings.allocate(indices)->getHandle<int64_t>() = {
       2, 0, 1, 2, 0, 0, 0, 0,
   };
   bindings.allocate(lengths)->getHandle<int32_t>() = {
@@ -2412,7 +2412,7 @@ TEST_F(Caffe2ImporterTest, SparseLengthsWeightedSumFused8BitRowwise) {
   Placeholder *output, *indices, *lengths;
   PlaceholderBindings bindings;
 
-  TypeRef indicesType = F->getParent()->uniqueType(IndexElemKind, {8});
+  TypeRef indicesType = F->getParent()->uniqueType(ElemKind::Int64ITy, {8});
   TypeRef lengthsType = F->getParent()->uniqueType(ElemKind::Int32ITy, {4});
 
   // Destroy the loader after the graph is loaded since the following execution
@@ -2432,7 +2432,7 @@ TEST_F(Caffe2ImporterTest, SparseLengthsWeightedSumFused8BitRowwise) {
   ASSERT_TRUE(indices);
   ASSERT_TRUE(lengths);
 
-  bindings.allocate(indices)->getHandle<sdim_t>() = {
+  bindings.allocate(indices)->getHandle<int64_t>() = {
       1, 0, 2, 0, 1, 2, 2, 0,
   };
   bindings.allocate(lengths)->getHandle<int32_t>() = {
@@ -2517,7 +2517,7 @@ TEST_F(Caffe2ImporterTest, SparseLengthsSumFused8BitRowwise) {
   Placeholder *output, *indices, *lengths;
   PlaceholderBindings bindings;
 
-  TypeRef indicesType = F->getParent()->uniqueType(IndexElemKind, {8});
+  TypeRef indicesType = F->getParent()->uniqueType(ElemKind::Int64ITy, {8});
   TypeRef lengthsType = F->getParent()->uniqueType(ElemKind::Int32ITy, {5});
 
   // Destroy the loader after the graph is loaded since the following execution
@@ -2537,7 +2537,7 @@ TEST_F(Caffe2ImporterTest, SparseLengthsSumFused8BitRowwise) {
   ASSERT_TRUE(indices);
   ASSERT_TRUE(lengths);
 
-  bindings.allocate(indices)->getHandle<sdim_t>() = {
+  bindings.allocate(indices)->getHandle<int64_t>() = {
       2, 0, 1, 2, 0, 0, 0, 0,
   };
   bindings.allocate(lengths)->getHandle<int32_t>() = {
@@ -2613,7 +2613,7 @@ TEST_F(Caffe2ImporterTest, SparseLengthsSumFused8BitRowwiseAllLengthsOne) {
   Placeholder *output, *indices, *lengths;
   PlaceholderBindings bindings;
 
-  TypeRef indicesType = F->getParent()->uniqueType(IndexElemKind, {5});
+  TypeRef indicesType = F->getParent()->uniqueType(ElemKind::Int64ITy, {5});
   TypeRef lengthsType = F->getParent()->uniqueType(ElemKind::Int32ITy, {5});
 
   // Destroy the loader after the graph is loaded since the following execution
@@ -2633,7 +2633,7 @@ TEST_F(Caffe2ImporterTest, SparseLengthsSumFused8BitRowwiseAllLengthsOne) {
   ASSERT_TRUE(indices);
   ASSERT_TRUE(lengths);
 
-  bindings.allocate(indices)->getHandle<sdim_t>() = {
+  bindings.allocate(indices)->getHandle<int64_t>() = {
       2, 0, 1, 2, 0,
   };
   bindings.allocate(lengths)->getHandle<int32_t>() = {
@@ -2692,7 +2692,7 @@ TEST_F(Caffe2ImporterTest, SparseLengthsSumFused4BitRowwise) {
   Placeholder *output, *indices, *lengths;
   PlaceholderBindings bindings;
 
-  TypeRef indicesType = F->getParent()->uniqueType(IndexElemKind, {8});
+  TypeRef indicesType = F->getParent()->uniqueType(ElemKind::Int64ITy, {8});
   TypeRef lengthsType = F->getParent()->uniqueType(ElemKind::Int32ITy, {5});
 
   // Destroy the loader after the graph is loaded since the following execution
@@ -2757,8 +2757,8 @@ TEST_F(Caffe2ImporterTest, validateNodeOrder) {
   PlaceholderBindings bindings;
 
   // Input tensors.
-  const size_t kRows = 10;
-  const size_t kCols = 5;
+  const dim_t kRows = 10;
+  const dim_t kCols = 5;
   Tensor data(ElemKind::FloatTy, {kRows, kCols});
   Tensor lambda1(ElemKind::FloatTy, {kCols});
   Tensor lambda2(ElemKind::FloatTy, {kCols});

@@ -18,6 +18,7 @@
 
 #include "glow/Backend/Backend.h"
 #include "glow/Converter/Float16Converter.h"
+#include "glow/Converter/TypeAToTypeBFunctionConverter.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/Log.h"
 #include "glow/Graph/Node.h"
@@ -2680,6 +2681,13 @@ static NodeValue convertConstant(Module &mod, Constant &constant,
           tensorToBeModified, params, dstTy->getElementType());
       return constantToBeModified.getOutput();
     }
+    case ElemKind::Int32ITy: {
+      // Plain conversion: {FloatTy} -> {Int32ITy}.
+      Constant &constantToBeModified = modifyConstantTyAndGet();
+      constantToBeModified.getPayloadMutable().convertToType(
+          dstTy->getElementType());
+      return constantToBeModified.getOutput();
+    }
     default:
       // Quantization: {FloatTy, Float16Ty} -> Int[16|32]QTy.
       // Plain conversion: {FloatTy, Float16Ty} -> Int64ITy.
@@ -2695,7 +2703,27 @@ static NodeValue convertConstant(Module &mod, Constant &constant,
         tensor.getCopyConvertedToType(dstTy->getElementType());
     return NC->getOutput();
   }
+  case ElemKind::Int64ITy:
+  case ElemKind::Int32ITy:
+    switch (dstTy->getElementType()) {
+    case ElemKind::Int32ITy:
+    case ElemKind::Int64ITy: {
+      // Plain conversion: {Int64ITy, Int32ITy} -> {Int64ITy, Int32ITy}.
+      Constant &constantToBeModified = modifyConstantTyAndGet();
+      constantToBeModified.getPayloadMutable().convertToType(
+          dstTy->getElementType());
+      return constantToBeModified.getOutput();
+    }
+    case ElemKind::FloatTy: {
+      Constant &constantToBeModified = modifyConstantTyAndGet();
+      constantToBeModified.getPayloadMutable().convertToType(
+          dstTy->getElementType());
+      return constantToBeModified.getOutput();
+    }
 
+    default:
+      return NodeValue();
+    }
   default:
     // For now we don't see other quantize, dequantize, or rescale nodes
     // directly attached to constants.
@@ -2810,6 +2838,7 @@ bool OptimizeConversions::run(Function *F, const CompilationContext &cctx) {
       if (auto *BN = llvm::dyn_cast<Constant>(CN->getInput())) {
         auto newConst =
             convertConstant(*F->getParent(), *BN, CN->getResult().getType());
+        LOG_ASSERT(newConst) << "Constant conversion failed.";
         CN->getResult().replaceAllUsesOfWith(newConst, F);
         changed = true;
         continue;
@@ -2878,6 +2907,18 @@ FUNCTION_ENABLE_IF_TEMPLATE(Max)
 FUNCTION_ENABLE_IF_TEMPLATE(MatMul)
 *createNode(Function &F, Args... args) { return F.createMatMul(args...); }
 
+FUNCTION_ENABLE_IF_TEMPLATE(AvgPool) *
+    createNewPool(Function &F, T *PN, RescaleQuantizedNode *rescale) {
+  return createNode<T>(F, PN->getName(), rescale->getInput(), PN->getKernels(),
+                       PN->getStrides(), PN->getPads());
+}
+FUNCTION_ENABLE_IF_TEMPLATE(MaxPool) *
+    createNewPool(Function &F, T *PN, RescaleQuantizedNode *rescale) {
+  return createNode<T>(F, PN->getName(), rescale->getInput(), PN->getKernels(),
+                       PN->getStrides(), PN->getPads(),
+                       PN->getArgmax().getElementType());
+}
+
 /// Sink Rescale down with Pooling node.
 /// PoolingNode(Rescale(X)) -> Rescale(PoolingNode(X)).
 /// Apply this transformation for AvgPool and MaxPool.
@@ -2888,8 +2929,7 @@ static bool sinkDownRescaleToPoolingNode(Function &F, T *PN) {
   bool changed = false;
 
   if (auto *rescale = dyn_cast<RescaleQuantizedNode>(PN->getInput())) {
-    T *newPN = createNode<T>(F, PN->getName(), rescale->getInput(),
-                             PN->getKernels(), PN->getStrides(), PN->getPads());
+    T *newPN = createNewPool(F, PN, rescale);
     auto rescaleOutTy = F.getParent()->uniqueTypeWithNewShape(
         rescale->getResult().getType(), PN->getResult().getType());
     auto *newRescale = F.createRescaleQuantized(
@@ -3749,6 +3789,34 @@ static void setFP16AccumSLS(Function *F,
   } while (nodeIt != stopIt);
 }
 
+/// This funciton uses TypeAToTypeBFunctionConverter to do a whole graph
+/// demotion of Index type from INT64 to INT32.
+static void transformIndexTypeDemotion(const Backend &B, Function *F,
+                                       CompilationContext &cctx) {
+
+  // Does a coarse  check to make sure none of the indices potentially can
+  // overflow 32 bit. For now we just give up on the whole optimization, since
+  // this is probably a corner case.
+  for (auto &n : F->getNodes()) {
+    for (int i = 0, nOutputs = n.getNumResults(); i < nOutputs; ++i) {
+      if (n.getNthResult(i).getType()->actualSize() >=
+          std::numeric_limits<int32_t>::max()) {
+        return;
+      }
+    }
+  }
+
+  PrecisionConfiguration precConfig;
+  if (B.canDoIndexTypeDemotion(ElemKind::Int64ITy, ElemKind::Int32ITy,
+                               precConfig) &&
+      cctx.optimizationOpts.enableTypeDemotion) {
+    precConfig.precisionModeKindSet.insert(Kinded::Kind::TraceEventNodeKind);
+    TypeAToTypeBFunctionConverter converter(*F, ElemKind::Int64ITy,
+                                            ElemKind::Int32ITy, precConfig);
+    converter.convert();
+  }
+}
+
 void glow::transformForPrecisionMode(const Backend &B, Function *F,
                                      CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), "transformForPrecisionMode")
@@ -3858,6 +3926,9 @@ Error glow::optimizeFunction(Function *F, const Backend &B,
     // Lower based on the backend's preferences.
     ::glow::lower(F, cctx, &B);
   }
+
+  // Transforms the graph by demoting i64 to i32.
+  transformIndexTypeDemotion(B, F, cctx);
 
   // Transform given precision mode; may quantize, convert to fp16, or
   // instrument with profiling nodes. This must be done after lowering.

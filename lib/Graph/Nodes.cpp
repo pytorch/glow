@@ -467,7 +467,8 @@ static bool verifyRegression(NodeValue src, NodeValue dest,
 static bool verifySparseLengthsSum(NodeValue dest, NodeValue data,
                                    NodeValue indices, NodeValue lengths) {
   bool isValid = checkType(dest, data.getElementType(), dest.getNode());
-  isValid &= checkType(indices, IndexElemKind, dest.getNode());
+  isValid &= checkType(indices, {ElemKind::Int64ITy, ElemKind::Int32ITy},
+                       dest.getNode());
   isValid &= checkType(lengths, ElemKind::Int32ITy, dest.getNode());
   isValid &=
       expectCompareTrue("Indices must be a 1D vector", indices.dims().size(),
@@ -483,7 +484,8 @@ static bool verifySparseLengthsWeightedSum(NodeValue dest, NodeValue data,
                                            NodeValue lengths) {
   bool isValid = checkType(dest, data.getElementType(), dest.getNode());
   isValid &= checkType(weights, data.getElementType(), dest.getNode());
-  isValid &= checkType(indices, IndexElemKind, dest.getNode());
+  isValid &= checkType(indices, {ElemKind::Int64ITy, ElemKind::Int32ITy},
+                       dest.getNode());
   isValid &= checkType(lengths, ElemKind::Int32ITy, dest.getNode());
   isValid &=
       expectCompareTrue("Indices must be a 1D vector", indices.dims().size(),
@@ -506,8 +508,8 @@ static bool verifyEmbeddingBag(NodeValue dest, NodeValue data,
                                NodeValue offsets) {
   bool isValid = checkType(dest, data.getElementType(), dest.getNode());
   isValid &= checkType(weights, data.getElementType(), dest.getNode());
-  isValid &= checkType(indices, IndexElemKind, dest.getNode());
-  isValid &= checkType(offsets, IndexElemKind, dest.getNode());
+  isValid &= checkType(indices, ElemKind::Int64ITy, dest.getNode());
+  isValid &= checkType(offsets, ElemKind::Int64ITy, dest.getNode());
   isValid &=
       expectCompareTrue("Indices must be a 1D vector", indices.dims().size(),
                         size_t(1), dest.getNode());
@@ -1377,11 +1379,11 @@ static bool verifyFusedRowwiseQuantizedSparseLengthsSum(
         "Only use FP16 accumulation with FP16 version of RWQ-SLWS.",
         result.getType()->getElementType(), ElemKind::Float16Ty, parent);
   }
-  isValid &= checkType(indices, IndexElemKind, parent);
+  isValid &= checkType(indices, ElemKind::Int64ITy, parent);
   // For EmbeddingBagByteRowwiseOffsets lengths are really offsets and should be
   // Int64ITy.
   if (isEmbeddingBagByteRowwiseOffsets) {
-    isValid &= checkType(lengths, IndexElemKind, parent);
+    isValid &= checkType(lengths, ElemKind::Int64ITy, parent);
   } else {
     isValid &= checkType(lengths, ElemKind::Int32ITy, parent);
   }
@@ -1467,7 +1469,8 @@ bool LengthsRangeFillNode::verify() const {
 
 bool SparseToDenseNode::verify() const {
   bool isValid = checkType(getResult(), getValues().getElementType(), this);
-  isValid &= checkType(getIndices(), IndexElemKind, this);
+  isValid &=
+      checkType(getIndices(), {ElemKind::Int64ITy, ElemKind::Int32ITy}, this);
   isValid &= expectCompareTrue("Indices must be a 1D vector",
                                getIndices().dims().size(), size_t(1), this);
   isValid &=
@@ -1479,7 +1482,7 @@ bool SparseToDenseNode::verify() const {
 bool SparseToDenseMaskNode::verify() const {
   bool isValid = checkType(getResult(), getValues().getElementType(), this);
   isValid &= checkType(getResult(), getDefaultValue().getElementType(), this);
-  isValid &= checkType(getIndices(), IndexElemKind, this);
+  isValid &= checkType(getIndices(), ElemKind::Int64ITy, this);
   isValid &= checkType(getLengths(), ElemKind::Int32ITy, this);
   isValid &= expectCompareTrue("Indices must be a 1D vector",
                                getIndices().dims().size(), size_t(1), this);
@@ -1568,8 +1571,9 @@ bool ArgMaxNode::verify() const {
   bool isValid = true;
 
   // Check input type.
-  isValid &=
-      checkType(getArgmax(), llvm::ArrayRef<ElemKind>({IndexElemKind}), this);
+  isValid &= checkType(
+      getArgmax(),
+      llvm::ArrayRef<ElemKind>({ElemKind::Int64ITy, ElemKind::Int32ITy}), this);
 
   isValid &= expectCompareTrue("Input must be a 4D tensor",
                                getInput().dims().size(), size_t(4), this);

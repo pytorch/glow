@@ -519,7 +519,7 @@ TEST(TypeAToTypeBFunctionConverter, int64IConversionFloatToFloat16) {
   auto *output =
       mod.createPlaceholder(ElemKind::FloatTy, {20, 3}, "Output", false);
   auto *outputIdx =
-      mod.createPlaceholder(IndexElemKind, {20, 3}, "Output", false);
+      mod.createPlaceholder(ElemKind::Int64ITy, {20, 3}, "Output", false);
 
   auto *topK = F->createTopK("topK", input, 3);
   auto *result = F->createSave("save", topK->getValues(), output);
@@ -551,7 +551,8 @@ TEST(TypeAToTypeBFunctionConverter, int64IConversionFloatToFloat16) {
   ASSERT_NE(convertedTopK, nullptr);
   EXPECT_EQ(convertedTopK->getElementType(TopKNode::ValuesIdx),
             ElemKind::Float16Ty);
-  EXPECT_EQ(convertedTopK->getElementType(TopKNode::IndicesIdx), IndexElemKind);
+  EXPECT_EQ(convertedTopK->getElementType(TopKNode::IndicesIdx),
+            ElemKind::Int64ITy);
   // Check that the input of TopK is a convertTo node from float to
   // Float16Ty.
   auto *convertedTopKInput =
@@ -577,7 +578,7 @@ TEST(TypeAToTypeBFunctionConverter, int64IConversionFloatToFloat16) {
   EXPECT_EQ(resultIndices->getOutput(), outputIdx->getOutput());
   EXPECT_EQ(resultIndices->getInput(),
             convertedTopK->getNthResult(TopKNode::IndicesIdx));
-  EXPECT_EQ(resultIndices->getInput().getElementType(), IndexElemKind);
+  EXPECT_EQ(resultIndices->getInput().getElementType(), ElemKind::Int64ITy);
 }
 
 /// Check that the conversion optimization can get rid of conversion of
@@ -1028,8 +1029,9 @@ static void testConvertFRWQSLWS(bool forceFP16AccumSLS) {
 
   Constant *weights = mod.createConstant(ElemKind::FloatTy, {8}, "weights");
 
-  Placeholder *indices = mod.createPlaceholder(IndexElemKind, {8}, "indices",
-                                               /* isTrainable */ false);
+  Placeholder *indices =
+      mod.createPlaceholder(ElemKind::Int64ITy, {8}, "indices",
+                            /* isTrainable */ false);
   Placeholder *lengths =
       mod.createPlaceholder(ElemKind::Int32ITy, {4}, "lengths",
                             /* isTrainable */ false);
@@ -1095,8 +1097,9 @@ TEST(TypeAToTypeBFunctionConverter, skipConvertingFRWQSLWS) {
 
   Constant *weights = mod.createConstant(ElemKind::FloatTy, {8}, "weights");
 
-  Placeholder *indices = mod.createPlaceholder(IndexElemKind, {8}, "indices",
-                                               /* isTrainable */ false);
+  Placeholder *indices =
+      mod.createPlaceholder(ElemKind::Int64ITy, {8}, "indices",
+                            /* isTrainable */ false);
   Placeholder *lengths =
       mod.createPlaceholder(ElemKind::Int32ITy, {4}, "lengths",
                             /* isTrainable */ false);
@@ -1146,8 +1149,9 @@ TEST(TypeAToTypeBFunctionConverter, convertOnlyFloat16Ty) {
 
   Constant *weights = mod.createConstant(ElemKind::FloatTy, {8}, "weights");
 
-  Placeholder *indices = mod.createPlaceholder(IndexElemKind, {8}, "indices",
-                                               /* isTrainable */ false);
+  Placeholder *indices =
+      mod.createPlaceholder(ElemKind::Int64ITy, {8}, "indices",
+                            /* isTrainable */ false);
   Placeholder *lengths =
       mod.createPlaceholder(ElemKind::Int32ITy, {4}, "lengths",
                             /* isTrainable */ false);
@@ -1204,8 +1208,9 @@ TEST(TypeAToTypeBFunctionConverter, convertOnlyUInt8FusedQTy) {
 
   Constant *weights = mod.createConstant(ElemKind::FloatTy, {8}, "weights");
 
-  Placeholder *indices = mod.createPlaceholder(IndexElemKind, {8}, "indices",
-                                               /* isTrainable */ false);
+  Placeholder *indices =
+      mod.createPlaceholder(ElemKind::Int64ITy, {8}, "indices",
+                            /* isTrainable */ false);
   Placeholder *lengths =
       mod.createPlaceholder(ElemKind::Int32ITy, {4}, "lengths",
                             /* isTrainable */ false);

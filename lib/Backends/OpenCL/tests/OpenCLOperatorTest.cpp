@@ -325,4 +325,9 @@ std::set<std::string> glow::backendTestBlacklist = {
     "FusedRowwiseQuantizedSLWSAllLengthsOne_Float16_AccumFloat16/0",
     "FusedRowwiseQuantizedSLWSAllLengthsOne_Fused4Bit_Float16_AccumFloat16/0",
     "SLWSAllLengthsOne_Float16_AccumFloat/0",
+    "TopK1int32/0",
+    "mul_int32/0",
+    "mul_int64/0",
+    "add_int32/0",
+    "add_int64/0",
 };

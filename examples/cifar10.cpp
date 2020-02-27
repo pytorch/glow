@@ -55,7 +55,7 @@ llvm::cl::opt<ModelKind>
 /// The database contains 10000 images.
 /// Size: (1 + (32 * 32 * 3)) * 10000 = 30730000.
 const size_t cifarImageSize = 1 + (32 * 32 * 3);
-const size_t cifarNumImages = 10000;
+const dim_t cifarNumImages = 10000;
 const unsigned numLabels = 10;
 
 static Placeholder *createDefaultModel(PlaceholderBindings &bindings,

@@ -295,7 +295,7 @@ TEST(RuntimeBundle, BundleSymbolInfo) {
   auto *input =
       mod.createPlaceholder(ElemKind::FloatTy, {1, 10, 10, 3}, "in", false);
 
-  auto *ex = mod.createConstant(IndexElemKind, {1, 1}, "exp");
+  auto *ex = mod.createConstant(ElemKind::Int64ITy, {1, 1}, "exp");
 
   auto *FC = F->createFullyConnected(bindings, "FC", input, 30);
   auto *RL = F->createRELU("RL2", FC);
@@ -429,7 +429,7 @@ TEST_P(BackendExecTest, simpleInference) {
   auto *input =
       mod.createPlaceholder(ElemKind::FloatTy, {1, 32, 32, 3}, "input", false);
 
-  auto *ex = mod.createPlaceholder(IndexElemKind, {1, 1}, "exp", false);
+  auto *ex = mod.createPlaceholder(ElemKind::Int64ITy, {1, 1}, "exp", false);
 
   auto *CV0 = F->createConv(bindings, "conv1", input, 16, 5, 1, 2, 1);
   auto *RL0 = F->createRELU("relu1", CV0);
@@ -675,7 +675,7 @@ TEST_P(BackendExecTest, compileThenAddNetwork) {
   auto *input =
       mod.createPlaceholder(ElemKind::FloatTy, {1, 10, 10, 3}, "in", false);
 
-  auto *ex = mod.createPlaceholder(IndexElemKind, {1, 1}, "exp", false);
+  auto *ex = mod.createPlaceholder(ElemKind::Int64ITy, {1, 1}, "exp", false);
 
   auto *FC = F->createFullyConnected(bindings1, "FC", input, 30);
   auto *RL = F->createRELU("RL2", FC);
@@ -690,7 +690,7 @@ TEST_P(BackendExecTest, compileThenAddNetwork) {
   auto *input2 =
       mod.createPlaceholder(ElemKind::FloatTy, {1, 10, 10, 3}, "in", false);
 
-  auto *ex2 = mod.createPlaceholder(IndexElemKind, {1, 1}, "exp", false);
+  auto *ex2 = mod.createPlaceholder(ElemKind::Int64ITy, {1, 1}, "exp", false);
   auto *FC2 = F2->createFullyConnected(bindings2, "FC", input2, 30);
 
   // FC2 now has random weights we replace with FC1's weights so the output is

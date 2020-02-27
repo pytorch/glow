@@ -153,9 +153,10 @@ void IRGenVisitor::post(Node *parent, Node *N) {
   case glow::Kinded::Kind::MaxPoolNodeKind: {
     auto *P = cast<MaxPoolNode>(N);
     auto *in = valueForNode(P->getInput());
+    auto argMax = P->getArgmax();
     auto *V = builder_.createMaxPoolWithArgmaxOp(
         N->getName(), in, P->getKernels(), P->getStrides(), P->getPads(),
-        P->getLayout());
+        P->getLayout(), argMax.getElementType());
     Value *dest = V->getDest();
     Value *argmax = V->getArgmax();
     nodeToInstr_[N] = V;
@@ -167,7 +168,8 @@ void IRGenVisitor::post(Node *parent, Node *N) {
     auto *P = cast<ArgMaxNode>(N);
     auto *in = valueForNode(P->getInput());
     auto *V = builder_.createArgMaxOp(N->getName(), in, P->getAxis(),
-                                      P->getKeepDims());
+                                      P->getKeepDims(),
+                                      P->getArgmax().getElementType());
     registerIR(P->getArgmax(), V->getArgmax());
     break;
   }
@@ -414,7 +416,8 @@ void IRGenVisitor::post(Node *parent, Node *N) {
     auto *TKN = cast<TopKNode>(N);
     auto *inputTensor = valueForNode(TKN->getInput());
     auto k = TKN->getK();
-    auto *V = builder_.createTopKOp(N->getName(), inputTensor, k);
+    auto *V = builder_.createTopKOp(N->getName(), inputTensor, k,
+                                    TKN->getIndices().getElementType());
     registerIR(TKN->getValues(), V->getValues());
     registerIR(TKN->getIndices(), V->getIndices());
     break;

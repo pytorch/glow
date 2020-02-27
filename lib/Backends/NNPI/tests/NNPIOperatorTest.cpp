@@ -243,6 +243,7 @@ struct BlacklistInitializer {
             {"SoftMax/0", TestBlacklist::AnyDeviceHWEngine},
             {"TopK/0", TestBlacklist::AnyDeviceHWEngine},
             {"TopK1/0", TestBlacklist::AnyDeviceHWEngine},
+            {"TopK1int32/0", TestBlacklist::AnyDeviceAnyEngine},
             {"sanityConvTranspose2OutCh/0", TestBlacklist::AnyDeviceAnyEngine},
             {"sanityConvTranspose1OutCh/0", TestBlacklist::AnyDeviceAnyEngine},
             {"sanityConvTransposeStrided/0", TestBlacklist::AnyDeviceAnyEngine},

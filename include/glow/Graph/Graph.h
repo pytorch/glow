@@ -519,11 +519,14 @@ public:
                              llvm::ArrayRef<unsigned_t> kernels,
                              llvm::ArrayRef<unsigned_t> strides,
                              llvm::ArrayRef<unsigned_t> pads,
+                             ElemKind elemTyAMT = ElemKind::Int64ITy,
                              ConvolutionLayout layout = NHWC);
 
   MaxPoolNode *createMaxPool(llvm::StringRef name, NodeValue input,
                              unsigned_t kernel, unsigned_t stride,
-                             unsigned_t pad, ConvolutionLayout layout = NHWC);
+                             unsigned_t pad,
+                             ElemKind elemTyAMT = ElemKind::Int64ITy,
+                             ConvolutionLayout layout = NHWC);
 
   AvgPoolNode *createAvgPool(llvm::StringRef name, NodeValue input,
                              llvm::ArrayRef<unsigned_t> kernels,
@@ -1201,6 +1204,9 @@ public:
                                        TypeRef outTy);
 
   TopKNode *createTopK(llvm::StringRef name, NodeValue input, unsigned_t k);
+
+  TopKNode *createTopK(llvm::StringRef name, NodeValue input, unsigned_t k,
+                       ElemKind outIndicesTyKind);
 
   /// Gathers entries of the outer-most dimension of \p data indexed by
   /// \p indices, and concatenates them. A non-zero \p batchDims specifies the

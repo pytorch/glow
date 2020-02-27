@@ -76,8 +76,8 @@ public:
   }
 
   Node *part_four(Function *F, ExecutionContext &context, NodeValue last) {
-    auto *ex =
-        F->getParent()->createPlaceholder(IndexElemKind, {1, 1}, "exp", false);
+    auto *ex = F->getParent()->createPlaceholder(ElemKind::Int64ITy, {1, 1},
+                                                 "exp", false);
     auto *FCL1 = F->createFullyConnected(*context.getPlaceholderBindings(),
                                          "fc", last, 10);
     auto *RL3 = F->createRELU("relu4", FCL1);

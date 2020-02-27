@@ -1244,8 +1244,8 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
     } else {                                                                   \
       auto *stackedOpCall =                                                    \
           createCall(builder, F, {loopCount, lhsPtr, rhsPtr, pointerNull});    \
-      auto *destAddr = builder.CreateGEP(builder.getFloatTy(), destPtr,        \
-                                         loopCount, "buffer.element.addr");    \
+      auto *destAddr = builder.CreateGEP(elementTy, destPtr, loopCount,        \
+                                         "buffer.element.addr");               \
       builder.CreateStore(stackedOpCall, destAddr);                            \
     }                                                                          \
     break;                                                                     \
@@ -1383,12 +1383,16 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
       auto *destAddr = builder.CreateGEP(builder.getInt8Ty(), destPtr,
                                          loopCount, "buffer.element.addr");
       builder.CreateStore(stackedOpCall, destAddr);
-    } else {
+    } else if (lhs->getType()->getElementType() == ElemKind::Int64ITy ||
+               lhs->getType()->getElementType() == ElemKind::Int32ITy ||
+               lhs->getType()->getElementType() == ElemKind::FloatTy) {
       auto *stackedOpCall =
           createCall(builder, F, {loopCount, lhsPtr, rhsPtr, pointerNull});
-      auto *destAddr = builder.CreateGEP(builder.getFloatTy(), destPtr,
-                                         loopCount, "buffer.element.addr");
+      auto *destAddr = builder.CreateGEP(elementTy, destPtr, loopCount,
+                                         "buffer.element.addr");
       builder.CreateStore(stackedOpCall, destAddr);
+    } else {
+      LOG_ASSERT(false) << "Unsupported element type for Mul.";
     }
     break;
   }
@@ -2017,7 +2021,8 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *labelsPtr = emitValueAddress(builder, labels);
     auto *dims = emitValueDims(builder, P);
 
-    auto *F = getFunction("cross_entropy_loss", CE->getElementType());
+    auto *F = getFunction("cross_entropy_loss",
+                          {CE->getElementType(), labels->getElementType()});
     createCall(builder, F, {CEPtr, PPtr, labelsPtr, dims});
     break;
   }
@@ -2134,7 +2139,8 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *src = PMXY->getSrc();
     auto *destPtr = emitValueAddress(builder, dest);
     auto *srcPtr = emitValueAddress(builder, src);
-    auto *argmaxPtr = emitValueAddress(builder, PMXY->getArgmax());
+    auto *argMax = PMXY->getArgmax();
+    auto *argmaxPtr = emitValueAddress(builder, argMax);
 
     auto *destDims = emitValueDims(builder, dest);
     auto *srcDims = emitValueDims(builder, src);
@@ -2143,7 +2149,8 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *strides = emitConstDimTArray(builder, PMXY->getStrides());
     auto *pads = emitConstDimTArray(builder, PMXY->getPads());
 
-    auto *F = getFunction("max_pool_argmax", dest->getElementType());
+    auto *F = getFunction("max_pool_argmax",
+                          {dest->getElementType(), argMax->getElementType()});
     createCall(builder, F,
                {srcPtr, destPtr, argmaxPtr, srcDims, destDims, kernels, strides,
                 pads});
@@ -2155,12 +2162,14 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *srcGrad = PMG->getSrcGrad();
     auto *srcGradPtr = emitValueAddress(builder, srcGrad);
     auto *destGradPtr = emitValueAddress(builder, PMG->getDestGrad());
-    auto *argmaxPtr = emitValueAddress(builder, PMG->getArgmax());
+    auto *argMax = PMG->getArgmax();
+    auto *argmaxPtr = emitValueAddress(builder, argMax);
 
     auto *srcGradDims = emitValueDims(builder, srcGrad);
     auto *destDims = emitValueDims(builder, PMG->getDest());
 
-    auto *F = getFunction("max_pool_argmax_grad", srcGrad->getElementType());
+    auto *F = getFunction("max_pool_argmax_grad", {srcGrad->getElementType(),
+                                                   argMax->getElementType()});
     createCall(builder, F,
                {srcGradPtr, destGradPtr, argmaxPtr, srcGradDims, destDims});
     break;
@@ -2177,7 +2186,8 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
 
     auto *axis = emitConstSizeT(builder, AM->getAxis());
 
-    auto *F = getFunction("arg_max", input->getElementType());
+    auto *F = getFunction("arg_max",
+                          {input->getElementType(), argmax->getElementType()});
     createCall(builder, F, {inputPtr, argmaxPtr, srcDims, axis});
     break;
   }
@@ -2289,7 +2299,8 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *srcGradDims = emitValueDims(builder, srcGrad);
     auto *selectedDims = emitValueDims(builder, selected);
 
-    auto *F = getFunction("softmax_grad", srcGrad->getElementType());
+    auto *F = getFunction("softmax_grad", {srcGrad->getElementType(),
+                                           selected->getElementType()});
     createCall(builder, F,
                {srcGradPtr, destPtr, selectedPtr, srcGradDims, selectedDims});
     break;
@@ -2307,7 +2318,9 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *n = emitConstDimT(builder, input->dims().back());
     auto *size = emitConstDimT(builder, input->size());
 
-    auto *F = getFunction("topk", input->getElementType());
+    auto indicesTy = TI->getIndices()->getElementType();
+    auto *F = getFunction("topk", {input->getElementType(), indicesTy});
+
     createCall(builder, F,
                {valuesPtr, indicesPtr, inputPtr, scratchPtr, k, n, size});
     break;
@@ -2550,7 +2563,8 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *sliceSize =
         emitConstDimT(builder, slicesType->size() / slicesType->dims()[0]);
     auto *isCumulative = emitConstI1(builder, SDI->getCumulative());
-    auto *F = getFunction("scatterdata", data->getElementType());
+    auto *F = getFunction("scatterdata",
+                          {data->getElementType(), indices->getElementType()});
     if (data->getType()->isQuantizedType()) {
       auto *dataScale = emitConstF32(builder, data->getType()->getScale());
       auto *dataOffset = emitConstI32(builder, data->getType()->getOffset());
@@ -2580,7 +2594,8 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *lengthsPtr = emitValueAddress(builder, lengths);
     auto *segments = emitConstDimT(builder, lengths->dims()[0]);
     auto *lineSize = emitConstDimT(builder, data->size() / data->dims()[0]);
-    auto *F = getFunction("sparse_lengths_sum", dest->getElementType());
+    auto *F = getFunction("sparse_lengths_sum",
+                          {dest->getElementType(), indices->getElementType()});
     createCall(builder, F,
                {destPtr, dataPtr, indicesPtr, lengthsPtr, segments, lineSize});
     break;
@@ -2600,8 +2615,8 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *lengthsPtr = emitValueAddress(builder, lengths);
     auto *segments = emitConstDimT(builder, lengths->dims()[0]);
     auto *lineSize = emitConstDimT(builder, data->size() / data->dims()[0]);
-    auto *F =
-        getFunction("sparse_lengths_weighted_sum", dest->getElementType());
+    auto *F = getFunction("sparse_lengths_weighted_sum",
+                          {dest->getElementType(), indices->getElementType()});
     createCall(builder, F,
                {destPtr, dataPtr, weightsPtr, indicesPtr, lengthsPtr, segments,
                 lineSize});
@@ -2652,8 +2667,9 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
         emitConstDimT(builder, dataGrad->size() * sizeof(float));
     auto *lineSize =
         emitConstDimT(builder, dataGrad->size() / dataGrad->dims()[0]);
-    auto *F = getFunction("sparse_lengths_weighted_sum_grad",
-                          destGrad->getElementType());
+    auto *F =
+        getFunction("sparse_lengths_weighted_sum_grad",
+                    {destGrad->getElementType(), indices->getElementType()});
     createCall(builder, F,
                {destGradPtr, dataGradPtr, weightsGradPtr, dataPtr, weightsPtr,
                 indicesPtr, lengthsPtr, segments, lineSize, dataGradRawSize});
@@ -2679,7 +2695,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *segments = emitConstDimT(builder, lengths->dims()[0]);
     auto *lineSize = emitConstDimT(builder, data->size() / data->dims()[0]);
     auto *F = getFunction("rowwise_quantized_sparse_lengths_weighted_sum",
-                          dest->getElementType());
+                          {dest->getElementType(), indices->getElementType()});
     createCall(builder, F,
                {destPtr, dataPtr, scalesPtr, offsetsPtr, weightsPtr, indicesPtr,
                 lengthsPtr, segments, lineSize});
@@ -2702,7 +2718,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *inLineSize = emitConstDimT(builder, data->size() / data->dims()[0]);
     auto *outLineSize = emitConstDimT(builder, dest->size() / dest->dims()[0]);
     auto *F = getFunction("fused_rowwise_quantized_sparse_lengths_weighted_sum",
-                          dest->getElementType());
+                          {dest->getElementType(), indices->getElementType()});
     createCall(builder, F,
                {destPtr, dataPtr, weightsPtr, indicesPtr, lengthsPtr, segments,
                 inLineSize, outLineSize});
@@ -2751,7 +2767,8 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *valueSize =
         emitConstDimT(builder, valuesType->size() / valuesType->dims()[0]);
 
-    auto *F = getFunction("sparse_to_dense", dest->getElementType());
+    auto *F = getFunction("sparse_to_dense",
+                          {dest->getElementType(), indices->getElementType()});
     createCall(
         builder, F,
         {destPtr, indicesPtr, valuesPtr, indicesSize, destSize, valueSize});

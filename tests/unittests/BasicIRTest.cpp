@@ -309,7 +309,7 @@ TEST(IR, InstUniqueNames) {
     EXPECT_TRUE(it.second);
 
     MaxPoolWithArgmaxInst *MP1 = builder.createMaxPoolWithArgmaxOp(
-        name, V1, {2, 2}, {1, 1}, {0, 2, 1, 3}, NHWC);
+        name, V1, {2, 2}, {1, 1}, {0, 2, 1, 3}, NHWC, ElemKind::Int64ITy);
     it = nameSet.insert(MP1->getName());
     EXPECT_TRUE(it.second);
 
@@ -328,7 +328,7 @@ TEST(IR, InstUniqueNames) {
 
     // IRBuilder::createTopKOp() creates alloc activation insts internally, so
     // we dealloc them here to keep the instruction list well-formed.
-    TopKInst *TK = builder.createTopKOp(name, V2, 2);
+    TopKInst *TK = builder.createTopKOp(name, V2, 2, ElemKind::Int64ITy);
     it = nameSet.insert(TK->getName());
     EXPECT_TRUE(it.second);
 

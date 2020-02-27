@@ -850,6 +850,7 @@ MaxPoolNode *Function::createMaxPool(llvm::StringRef name, NodeValue input,
                                      llvm::ArrayRef<unsigned_t> kernels,
                                      llvm::ArrayRef<unsigned_t> strides,
                                      llvm::ArrayRef<unsigned_t> pads,
+                                     ElemKind elemTyAMT,
                                      ConvolutionLayout layout) {
   ShapeNHWC idim = ShapeNHWC(input.dims());
   checkKernelSize(idim, kernels, pads);
@@ -859,7 +860,7 @@ MaxPoolNode *Function::createMaxPool(llvm::StringRef name, NodeValue input,
   auto OT = getParent()->uniqueTypeWithNewShape(
       input.getType(), {idim.n, outSz.first, outSz.second, idim.c});
   auto AMT = getParent()->uniqueType(
-      IndexElemKind, {idim.n, outSz.first, outSz.second, idim.c});
+      elemTyAMT, {idim.n, outSz.first, outSz.second, idim.c});
 
   return addNode(
       new MaxPoolNode(name, OT, AMT, input, kernels, strides, pads, layout));
@@ -867,11 +868,12 @@ MaxPoolNode *Function::createMaxPool(llvm::StringRef name, NodeValue input,
 
 MaxPoolNode *Function::createMaxPool(llvm::StringRef name, NodeValue input,
                                      unsigned_t kernel, unsigned_t stride,
-                                     unsigned_t pad, ConvolutionLayout layout) {
+                                     unsigned_t pad, ElemKind elemTyAMT,
+                                     ConvolutionLayout layout) {
   llvm::SmallVector<unsigned_t, 4> pads = {pad, pad, pad, pad};
   llvm::SmallVector<unsigned_t, 2> strides = {stride, stride};
   llvm::SmallVector<unsigned_t, 2> kernels = {kernel, kernel};
-  return createMaxPool(name, input, kernels, strides, pads, layout);
+  return createMaxPool(name, input, kernels, strides, pads, elemTyAMT, layout);
 }
 
 AvgPoolNode *Function::createAvgPool(llvm::StringRef name, NodeValue input,
@@ -2105,7 +2107,7 @@ QuantizationProfileNode *
 Function::createQuantizationProfile(PlaceholderBindings &bindings,
                                     llvm::StringRef name, NodeValue input) {
   // TODO: this size is going to be refined. Just a placeholder now.
-  const size_t numberOfBuckets = 2000U;
+  const dim_t numberOfBuckets = 2000U;
   auto *histogram = getParent()->createPlaceholder(
       ElemKind::FloatTy, {numberOfBuckets}, "histogram_" + name.str(), false);
   bindings.allocate(histogram)->zero();
@@ -2196,7 +2198,7 @@ IntLookupTableNode *Function::createIntSigmoid(llvm::StringRef name,
 }
 
 TopKNode *Function::createTopK(llvm::StringRef name, NodeValue input,
-                               unsigned_t k) {
+                               unsigned_t k, ElemKind outIndicesTyKind) {
   auto inDims = input.dims();
   assert(inDims.size() > 0);
   assert(k <= inDims.back());
@@ -2204,7 +2206,12 @@ TopKNode *Function::createTopK(llvm::StringRef name, NodeValue input,
   outDims.back() = k;
   auto OT = getParent()->uniqueTypeWithNewShape(input.getType(), outDims);
   return addNode(new TopKNode(
-      name, OT, getParent()->uniqueType(IndexElemKind, outDims), input, k));
+      name, OT, getParent()->uniqueType(outIndicesTyKind, outDims), input, k));
+}
+
+TopKNode *Function::createTopK(llvm::StringRef name, NodeValue input,
+                               unsigned_t k) {
+  return createTopK(name, input, k, ElemKind::Int64ITy);
 }
 
 ArgMaxNode *Function::createArgMax(llvm::StringRef name, NodeValue input,
@@ -2218,7 +2225,7 @@ ArgMaxNode *Function::createArgMax(llvm::StringRef name, NodeValue input,
       newDims.push_back(i == axis ? 1 : inDims[i]);
     }
   }
-  auto TR = getParent()->uniqueType(IndexElemKind, newDims);
+  auto TR = getParent()->uniqueType(ElemKind::Int64ITy, newDims);
   return addNode(new ArgMaxNode(name, TR, input, axis, keepDims));
 }
 
