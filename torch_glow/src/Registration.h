@@ -19,7 +19,7 @@
 
 #include "CachingGraphRunner.h"
 
-#include <torch/csrc/jit/ir.h>
+#include <torch/csrc/jit/ir/ir.h>
 
 namespace glow {
 /// Register the glow::FusionGroup operator.

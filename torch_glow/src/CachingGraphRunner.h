@@ -20,9 +20,9 @@
 #include "PyTorchModelLoader.h"
 #include "glow/Runtime/HostManager/HostManager.h"
 
-#include <torch/csrc/jit/ir.h>
+#include <torch/csrc/jit/ir/ir.h>
 
-#include <torch/csrc/jit/import.h>
+#include <torch/csrc/jit/serialization/import.h>
 
 namespace glow {
 

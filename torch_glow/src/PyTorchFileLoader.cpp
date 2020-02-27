@@ -24,9 +24,9 @@
 #include "glow/Support/Support.h"
 
 #include <ATen/core/grad_mode.h>
-#include <torch/csrc/jit/custom_operator.h>
-#include <torch/csrc/jit/operator_options.h>
-#include <torch/csrc/jit/pass_manager.h>
+#include <torch/csrc/jit/runtime/custom_operator.h>
+#include <torch/csrc/jit/runtime/operator_options.h>
+#include <torch/csrc/jit/passes/pass_manager.h>
 #include <torch/csrc/jit/passes/lower_graph.h>
 
 namespace glow {

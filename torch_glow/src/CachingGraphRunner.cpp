@@ -19,7 +19,7 @@
 #include "glow/Support/Support.h"
 
 #include <mutex>
-#include <torch/csrc/jit/argument_spec.h>
+#include <torch/csrc/jit/runtime/argument_spec.h>
 #include <torch/csrc/utils/hash.h>
 
 namespace glow {
