@@ -24,7 +24,6 @@
 #include <pybind11/pybind11.h>
 /// Required include files for a proper binding TorchGlowTrainingWrapper class.
 #include <pybind11/stl.h>
-#include <torch/csrc/utils/pybind.h>
 
 #include "glow/Graph/Graph.h"
 
