@@ -194,6 +194,12 @@ llvm::cl::opt<bool> skipCorrectnessCheck(
     "skip_correctness_check", llvm::cl::desc("Skip correctness check"),
     llvm::cl::Optional, llvm::cl::init(false), llvm::cl::cat(reproTestCat));
 
+llvm::cl::opt<std::string>
+    glowDumpTraceFile("glow_dump_debug_traces_file",
+                      llvm::cl::desc("Dump glow trace file"),
+                      llvm::cl::Optional, llvm::cl::init(std::string("")),
+                      llvm::cl::cat(reproTestCat));
+
 void parseCommandLine(int argc, char **argv) {
   llvm::sys::PrintStackTraceOnErrorSignal(argv[0]);
   llvm::cl::ParseCommandLineOptions(
@@ -571,13 +577,19 @@ int run() {
 
   if (glowDumpTrace) {
     llvm::SmallString<64> path;
-    auto tempFileRes =
-        llvm::sys::fs::createTemporaryFile("glow-trace", "json", path);
-    if (tempFileRes.value() != 0) {
-      LOG(ERROR) << "Failed to create temp file for Glow trace events: "
-                 << tempFileRes;
+    if (glowDumpTraceFile.empty()) {
+      auto tempFileRes =
+          llvm::sys::fs::createTemporaryFile("glow-trace", "json", path);
+      if (tempFileRes.value() != 0) {
+        LOG(ERROR) << "Failed to create temp file for Glow trace events: "
+                   << tempFileRes;
+      } else {
+        LOG(INFO) << "Trace path=" << path.c_str();
+        mergedTraceContext.dump(path);
+      }
     } else {
-      mergedTraceContext.dump(path);
+      LOG(INFO) << "Trace path=" << path.c_str();
+      mergedTraceContext.dump(glowDumpTraceFile);
     }
   }
 
