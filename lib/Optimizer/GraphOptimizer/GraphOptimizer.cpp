@@ -3844,6 +3844,7 @@ Error glow::optimizeFunction(Function *F, const Backend &B,
   }
 
   RETURN_IF_ERR(optimizeFunctionBeforeLowering(F, cctx));
+
   // Lower the graph into a sequence of low-level linear algebra operations.
   const PrecisionConfiguration &precConfig = cctx.precisionConfig;
   if (precConfig.quantMode == QuantizationMode::Profile) {
@@ -3861,6 +3862,11 @@ Error glow::optimizeFunction(Function *F, const Backend &B,
   // Transform given precision mode; may quantize, convert to fp16, or
   // instrument with profiling nodes. This must be done after lowering.
   transformForPrecisionMode(B, F, cctx);
+
+  // Fold activations before lowering to enable cases which would not fuse after
+  // lowering. This concerns particularly convolution&relu since relu will be
+  // lowered to max(0, x).
+  foldActivations(F, cctx, &B);
 
   // Lower once more, in case precision transform has introduced operators that
   // need to be lowered, e.g., Clip.

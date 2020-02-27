@@ -36,7 +36,8 @@ inline size_t getNHWC(dim_t sw, dim_t sh, dim_t sc, unsigned sn, unsigned h,
 kernel void convolutionK(global float *restrict dest,
                          const global float *restrict src,
                          const global float *restrict filter,
-                         const global float *restrict bias) {
+                         const global float *restrict bias,
+                         const int fuseReLU) {
   size_t ax = get_global_id(0);
   size_t ay = get_global_id(1);
   size_t d = get_global_id(2);
@@ -78,11 +79,19 @@ kernel void convolutionK(global float *restrict dest,
     }
 
     sum += bias[d];
+    if (fuseReLU) {
+      sum = max(sum, 0.0f);
+    }
     dest[getNHWC(CONVK_ODIM_W, CONVK_ODIM_H, CONVK_ODIM_C, n, ax, ay, d)] = sum;
   } // N
 }
 
 kernel void convolutionW(global void *mem, unsigned dest, unsigned src,
                          unsigned filter, unsigned bias) {
-  convolutionK(&mem[dest], &mem[src], &mem[filter], &mem[bias]);
+  convolutionK(&mem[dest], &mem[src], &mem[filter], &mem[bias], 0);
+}
+
+kernel void convolutionW_ReLU(global void *mem, unsigned dest, unsigned src,
+                              unsigned filter, unsigned bias) {
+  convolutionK(&mem[dest], &mem[src], &mem[filter], &mem[bias], 1);
 }

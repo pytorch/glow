@@ -586,6 +586,12 @@ void OpenCLFunction::executeNCHWConvolution(
   addStringOption(options, "v_pad_A", "0");
   addStringOption(options, "v_pad_B", "0");
 
+  if (CC->getFusedActivation() == FusedActivation::RELU) {
+    addIntOption(options, "v_fuse_relu", 1);
+  } else {
+    addIntOption(options, "v_fuse_relu", 0);
+  }
+
   // Determine the work groups sizes along h and w.
   size_t WIS[3];
   cl_int err =
@@ -854,6 +860,16 @@ Error OpenCLFunction::execute(ExecutionContext *context) {
                 quantization::quantizeScaleOffset32To8(resultScale, 0);
             setKernelArg(kernel, ++numArgs, resultScaleParams);
           }
+        } else if (auto *RI = dyn_cast<ReluInst>(&I)) {
+          int32_t destOffset = RI->getDest()->getType()->getOffset();
+          float destScale = RI->getDest()->getType()->getScale();
+
+          auto srcTy = RI->getSrc()->getType();
+
+          auto srcScaleParams = quantization::quantizeScaleOffset32To8(
+              srcTy->getScale() / destScale, srcTy->getOffset());
+          setKernelArg(kernel, ++numArgs, destOffset);
+          setKernelArg(kernel, ++numArgs, srcScaleParams);
         }
         // Quantize floating point tensor. Scale and Offset are based on return
         // type of the instruction \p I.
@@ -1151,6 +1167,10 @@ Error OpenCLFunction::execute(ExecutionContext *context) {
       if (CC->getLayout() == NCHW) {
         executeNCHWConvolution(CC, context, clBindings);
         continue;
+      }
+
+      if (CC->getFusedActivation() == FusedActivation::RELU) {
+        kernelName += "_ReLU";
       }
 
       // This is a naive implementation that parallelizes using three dims:
@@ -1778,6 +1798,7 @@ bool OCLBackend::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::SliceNodeKind:
   case Kinded::Kind::InsertTensorNodeKind:
   case Kinded::Kind::AvgPoolNodeKind:
+  case Kinded::Kind::ReluNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Int8QTy});
 
@@ -1932,7 +1953,10 @@ bool OCLBackend::verify(const Function &F, bool verbose) const {
     return false;
   }
   for (const Node &N : F.getNodes()) {
-    if (!checkNoFusionForNode(N)) {
+    if (!(N.getKind() == Kinded::Kind::ConvolutionNodeKind &&
+          llvm::cast<ConvolutionNode>(&N)->getFusedActivation() ==
+              FusedActivation::RELU) &&
+        !checkNoFusionForNode(N)) {
       return false;
     }
     switch (N.getKind()) {
@@ -1987,7 +2011,11 @@ bool OCLBackend::verify(const Function &F, bool verbose) const {
 
 bool OCLBackend::verify(const IRFunction &IR) const {
   for (const auto &I : IR.getInstrs()) {
-    if (!checkNoFusionForInstr(I)) {
+    // Only support convolution+relu fusions for now.
+    if (!(I.getKind() == Kinded::Kind::ConvolutionInstKind &&
+          llvm::cast<ConvolutionInst>(&I)->getFusedActivation() ==
+              FusedActivation::RELU) &&
+        !checkNoFusionForInstr(I)) {
       return false;
     }
     switch (I.getKind()) {
