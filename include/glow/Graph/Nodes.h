@@ -256,7 +256,7 @@ inline std::pair<dim_t, dim_t> calculateConvTransposeOutputDims(
 enum PaddingMode { CONSTANT = 0, REFLECT, EDGE };
 
 /// Different lengths modes used for SLS variants.
-enum class LengthsMode { High, Low, AllOne };
+enum class LengthsMode { Variable, AllOne };
 
 /// Convolution Layouts.
 enum ConvolutionLayout { NHWC = 0, NCHW };
