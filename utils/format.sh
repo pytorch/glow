@@ -28,7 +28,7 @@ print_usage() {
 }
 
 fix_format() {
-  find lib tests/unittests/ tools/ include examples torch_glow inference_engines \
+  find lib tests/unittests/ tools/ include examples torch_glow inference_engines externalbackends \
     -name \*.h -print0 \
     -o -name \*.hpp -print0 \
     -o -name \*.c -print0 \
