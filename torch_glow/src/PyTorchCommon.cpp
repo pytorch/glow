@@ -19,10 +19,10 @@
 #include "GlowFuser.h"
 #include "PyTorchModelLoader.h"
 
-#include <torch/csrc/jit/runtime/graph_executor.h>
-#include <torch/csrc/jit/runtime/operator_options.h>
 #include <torch/csrc/jit/passes/pass_manager.h>
 #include <torch/csrc/jit/passes/subgraph_rewrite.h>
+#include <torch/csrc/jit/runtime/graph_executor.h>
+#include <torch/csrc/jit/runtime/operator_options.h>
 
 namespace glow {
 

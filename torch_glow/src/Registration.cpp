@@ -20,13 +20,13 @@
 #include "glow/Support/Error.h"
 
 #include <glog/logging.h>
-#include <torch/csrc/jit/runtime/custom_operator.h>
-#include <torch/csrc/jit/passes/pass_manager.h>
 #include <torch/csrc/jit/ir/alias_analysis.h>
 #include <torch/csrc/jit/passes/common_subexpression_elimination.h>
 #include <torch/csrc/jit/passes/dead_code_elimination.h>
+#include <torch/csrc/jit/passes/pass_manager.h>
 #include <torch/csrc/jit/passes/subgraph_rewrite.h>
 #include <torch/csrc/jit/passes/utils/subgraph_utils.h>
+#include <torch/csrc/jit/runtime/custom_operator.h>
 
 namespace glow {
 std::unordered_map<std::string, std::unique_ptr<CachingGraphRunner>> &
