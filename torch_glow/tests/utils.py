@@ -7,24 +7,28 @@ GLOW_NODE_NAME = "glow::FusionGroup"
 SUBGRAPH_ATTR = "Subgraph"
 
 
-def jitVsGlow(f, *inputs, expected_fused_ops, accept_all_ops=False, check_trace=True, atol=5e-4, rtol=1e-3):
+def jitVsGlow(f, *inputs, expected_fused_ops, accept_all_ops=False,
+              check_trace=True, atol=5e-4, rtol=1e-3, black_list=None):
     """
     Runs the given inputs *inputs on f both with and without lowering f to Glow,
     compares the results, and checks that ops in expected_fused_ops were indeed
     lowered to Glow.
     """
     jitVsGlow_(f, f, check_trace, atol, rtol, *inputs, expected_fused_ops=expected_fused_ops,
-               accept_all_ops=accept_all_ops)
+               accept_all_ops=accept_all_ops, black_list=black_list)
 
 
 def jitVsGlow_(f_torch, f_glow, check_trace, atol, rtol, *inputs, expected_fused_ops=None,
-               accept_all_ops=False):
+               accept_all_ops=False, black_list=None):
+    if (black_list is None):
+        black_list = []
     with torch.no_grad():
         torch_glow.disableFusionPass()
         torch_trace = torch.jit.trace(f_torch, inputs, check_trace=check_trace)
         torch_res = torch_trace(*inputs)
 
         torch_glow.enableFusionPass()
+        torch_glow.setFusionBlacklist(black_list)
         glow_trace = torch.jit.trace(f_glow, inputs, check_trace=check_trace)
         glow_res = glow_trace(*inputs)
 
