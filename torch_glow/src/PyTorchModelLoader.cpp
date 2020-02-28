@@ -1330,9 +1330,6 @@ Error PyTorchModelLoader::loadQuantizedAdd(const torch::jit::Node *ptNode) {
   ASSIGN_VALUE_OR_RETURN_ERR(
       rhs, getGlowNodeValueForValue(inputs[QuantizedAddInputs::rhs]));
 
-  lhs = rescaleUIntToInt(lhs);
-  rhs = rescaleUIntToInt(rhs);
-
   // scale
   float outScale;
   ASSIGN_VALUE_OR_RETURN_ERR(outScale, iValToDouble(getGlowIValueForValue(
@@ -1350,7 +1347,7 @@ Error PyTorchModelLoader::loadQuantizedAdd(const torch::jit::Node *ptNode) {
                                           outOffset - OFFSETSHIFT);
 
   glow::AddNode *qadd = F_.createAdd("quantized_add", outTy, lhs, rhs);
-  auto output = rescaleIntToUint(qadd->getResult());
+  auto output = qadd->getResult();
   return addValueMapping(outputs[0], output);
 }
 
@@ -2272,8 +2269,8 @@ Error PyTorchModelLoader::loadQuantize(const torch::jit::Node *ptNode) {
 
   glow::TypeRef outTy;
   if (outDtype == (int32_t)at::ScalarType::QUInt8) {
-    outTy = F_.getParent()->uniqueType(ElemKind::UInt8QTy, outDims, outScale,
-                                       outOffset);
+    outTy = F_.getParent()->uniqueType(ElemKind::Int8QTy, outDims, outScale,
+                                       outOffset - OFFSETSHIFT);
   } else if (outDtype == (int32_t)at::ScalarType::QInt8) {
     outTy = F_.getParent()->uniqueType(ElemKind::Int8QTy, outDims, outScale,
                                        outOffset);
@@ -3471,17 +3468,22 @@ PyTorchModelLoader::PyTorchModelLoader(
         glow::strFormat("Number of Graph inputs %lu must match the "
                         "number of provided inputs %lu.",
                         graphInputValues.size(), inputs.size()));
-
     // Create Glow Placeholders for inputs.
     for (size_t i = 0; i < graphInputValues.size(); ++i) {
       const torch::jit::Value *inputValue = graphInputValues[i];
       glow::Placeholder *ph;
       if (!inputMeta.empty()) {
         if (inputValue->type()->kind() == c10::TypeKind::TensorType) {
-          glow::Type t(scalarTypeToElemKind(inputMeta[i].type),
-                       inputMeta[i].dims);
+          glow::ElemKind elemKind;
+          if (inputMeta[i].type != at::kQUInt8) {
+            elemKind = scalarTypeToElemKind(inputMeta[i].type);
+          } else {
+            elemKind = ElemKind::Int8QTy;
+          }
+          glow::Type t(elemKind, inputMeta[i].dims);
           ph = F_.getParent()->createPlaceholder(&t, "input",
                                                  /*isTrainable*/ false);
+
         } else {
           // Here we assume it's scalar type
           glow::Type t(typeKindToElemKind(inputValue->type()->kind()), {});
@@ -3501,12 +3503,22 @@ PyTorchModelLoader::PyTorchModelLoader(
         if (glowIVal.isTensor()) {
           glow::Tensor *t;
           ASSIGN_VALUE_OR_RETURN_ERR(t, glowIVal.toTensor());
-          ph = F_.getParent()->createPlaceholder(&t->getType(), "input",
-                                                 /*isTrainable*/ false);
+          auto oldType = t->getType();
+          if (oldType.getElementType() == ElemKind::UInt8QTy) {
+            auto newType = glow::Type(ElemKind::Int8QTy, oldType.dims(),
+                                      oldType.getScale(),
+                                      oldType.getOffset() - OFFSETSHIFT);
+            ph = F_.getParent()->createPlaceholder(&newType, "input",
+                                                   /*isTrainable*/ false);
+          } else {
+            ph = F_.getParent()->createPlaceholder(&t->getType(), "input",
+                                                   /*isTrainable*/ false);
+          }
           RETURN_IF_ERR(addValueMapping(inputValue, ph->getOutput()));
           inputPlaceholders.push_back(ph);
           inputPlaceholdersReverseIndex_[ph] = i;
         } else {
+
           RETURN_IF_ERR(addValueMapping(inputValue, std::move(glowIVal)));
         }
       }
@@ -3531,7 +3543,6 @@ PyTorchModelLoader::PyTorchModelLoader(
 
     return Error::success();
   };
-
   error = loadFn();
 
   if (error) {

@@ -104,10 +104,11 @@ c10::ScalarType elemKindToScalarType(glow::ElemKind ty) {
     return at::kLong;
   case ElemKind::BoolTy:
     return at::kBool;
+  case ElemKind::Int8QTy:
+    return at::kQInt8;
   case ElemKind::UInt8FusedQTy:
   case ElemKind::UInt8FusedFP16QTy:
   case ElemKind::UInt4FusedFP16QTy:
-  case ElemKind::Int8QTy:
   case ElemKind::UInt8QTy:
   case ElemKind::Int16QTy:
   case ElemKind::Int32QTy:
@@ -196,14 +197,65 @@ glow::Type ptTypeToGlowType(const c10::TensorType &ptType, float scale,
   return glow::Type(scalarTypeToElemKind(scalarType), dims, scale, zero_point);
 }
 
+at::Tensor convertQuantizedToDtype(at::Tensor ptTensor, c10::ScalarType dtype) {
+  if (dtype != at::kQInt8 && dtype != at::kQUInt8) {
+    LOG(DFATAL) << "Can only convert to int8 or uint8";
+  }
+
+  if (!ptTensor.is_quantized()) {
+    LOG(DFATAL) << "Only support perform convert in quantized tensor.";
+  }
+
+  if (ptTensor.qscheme() != at::kPerTensorAffine) {
+    LOG(DFATAL)
+        << "Only support perform convert for per tensor quantized tensor.";
+  }
+
+  // dtype is ptTensor type, do nothing
+  if (ptTensor.scalar_type() == dtype) {
+    return ptTensor;
+  }
+
+  int offsetShift = 0;
+  c10::ScalarType targetDQType;
+
+  // We need to manually cast ptTensor to targetDQType, then make it quantized
+  // tensor. In PyTorch, int8 is char and uint8 is byte.
+  if (dtype == at::kQUInt8 && ptTensor.scalar_type() == at::kQInt8) {
+    offsetShift = OFFSETSHIFT;
+    targetDQType = at::kByte;
+  } else if (dtype == at::kQInt8 && ptTensor.scalar_type() == at::kQUInt8) {
+    offsetShift = -OFFSETSHIFT;
+    targetDQType = at::kChar;
+  } else {
+    LOG(FATAL) << "Can not reach here.";
+  }
+
+  float scale = static_cast<float>(ptTensor.q_scale());
+  int32_t offset = static_cast<int32_t>(ptTensor.q_zero_point());
+  auto ptNewTensor = ptTensor.int_repr().to(targetDQType).add(offsetShift);
+  auto ptNewQTensor = at::_make_per_tensor_quantized_tensor(
+      ptNewTensor, scale, offset + offsetShift);
+  return ptNewQTensor;
+}
+
 at::Tensor glowTypeToEmptyPTTensor(const glow::Type &glowType) {
   std::vector<int64_t> sizes;
   for (const auto dim : glowType.dims()) {
     sizes.push_back(dim);
   }
-
-  return at::empty(sizes, at::TensorOptions().dtype(
-                              elemKindToScalarType(glowType.getElementType())));
+  if (glowType.isQuantizedType()) {
+    auto scale = glowType.getScale();
+    auto offset = glowType.getOffset();
+    return at::_empty_affine_quantized(
+        sizes,
+        at::TensorOptions().dtype(
+            elemKindToScalarType(glowType.getElementType())),
+        scale, offset);
+  } else {
+    return at::empty(sizes, at::TensorOptions().dtype(elemKindToScalarType(
+                                glowType.getElementType())));
+  }
 }
 
 glow::Tensor ptTensorToGlowTensor(const at::Tensor &ptTensor) {
@@ -233,16 +285,6 @@ glow::Tensor ptTensorToGlowTensor(const at::Tensor &ptTensor) {
     auto glowType = ptTypeToGlowType(*c10::TensorType::create(ptTensor));
     return glow::Tensor(ptTensor.data_ptr(), &glowType);
   }
-}
-
-at::Tensor glowTensorToPTTensor(const glow::Tensor &glowTensor,
-                                const at::ScalarType &torch_type) {
-  std::vector<int64_t> sizes;
-  for (const auto dim : glowTensor.dims()) {
-    sizes.push_back(dim);
-  }
-  return at::from_blob(glowTensor.getUnsafePtr(), sizes,
-                       at::device(at::kCPU).dtype(torch_type));
 }
 
 } // namespace glow

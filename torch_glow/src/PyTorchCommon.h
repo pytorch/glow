@@ -106,6 +106,11 @@ const c10::Symbol &getGlowSymbol();
 /// Given a PyTorch TensorType \p ptType, \returns a matching Glow Type.
 glow::Type ptTypeToGlowType(const c10::TensorType &ptType);
 
+/// Given a PyTorch Tensor \p ptTensor and a PyTorch scalar type \p dtype,
+/// returns a new tensor which is \p ptTensor converted to \p dtype.
+at::Tensor convertQuantizedToDtype(const at::Tensor ptTensor,
+                                   c10::ScalarType dtype);
+
 /// Given a PyTorch Tensor \p ptTensor, \returns an unowned Glow Tensor with a
 /// matching type backed by the same memory as ptTensor.
 glow::Tensor ptTensorToGlowTensor(const at::Tensor &ptTensor);
@@ -113,11 +118,6 @@ glow::Tensor ptTensorToGlowTensor(const at::Tensor &ptTensor);
 /// Given a Glow Type \p glowType, \returns an empty PyTorch Tensor with a
 /// matching type.
 at::Tensor glowTypeToEmptyPTTensor(const glow::Type &glowType);
-
-/// Given a Glow Tensor \p glowTensor, \returns a PyTorch Tensor with the same
-/// type, shape and content.
-at::Tensor glowTensorToPTTensor(const glow::Tensor &glowTensor,
-                                const at::ScalarType &torch_type);
 
 } // namespace glow
 
