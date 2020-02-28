@@ -53,6 +53,13 @@ class CachingGraphRunner {
   std::unordered_map<size_t, std::shared_ptr<PerGlowGraphInfo>>
       perGlowGraphInfoMap_;
 
+  /// Indicate which type will propagate to output.
+  /// It is supposely to be the correct PyTorch ScalarType
+  /// in the corresponding JIT node for each output
+  /// placeholder from Glow graph.
+  /// Use for quantization int8/uint8 rescale.
+  std::vector<c10::ScalarType> outputCorrectType_;
+
   /// Given a PyTorch input stack \p stack, this generates a hash from the
   /// values on the stack and checks to see if a matching function was loaded
   /// previously. If a matching function was loaded previously then its cached

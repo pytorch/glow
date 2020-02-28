@@ -79,6 +79,9 @@ struct PyTorchLoaderSettings {
 /// Given a PyTorch ScalarType \p ty, \returns a matching Glow ElemKind.
 ElemKind scalarTypeToElemKind(c10::ScalarType ty);
 
+// Given a Glow ElemKind \p ty, \returns a matching PyTorch ScalarType.
+c10::ScalarType elemKindToScalarType(glow::ElemKind ty);
+
 /// Given a c10 typekind \p ty, \returns a matching Glow ElemKind.
 ElemKind typeKindToElemKind(c10::TypeKind ty);
 

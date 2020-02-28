@@ -73,9 +73,14 @@ Error loadJitGraphToGlowFunction(
   const auto numInputs = graphInputs.size();
   auto inputs = torch::jit::last(stack, numInputs);
 
+  // FileLoader not yet support quantized inputs/outputs.
+  // These is just dummy type vectors for API.
+  std::vector<c10::ScalarType> dummyOutputType;
+
   // Load JIT Graph into Glow Function.
   RETURN_IF_ERR(PyTorchModelLoader::loadJITGraph(
-      f, graph, inputPlaceholders, outputPlaceholders, settings, inputs, {}));
+      f, graph, inputPlaceholders, outputPlaceholders, dummyOutputType,
+      settings, inputs, {}));
 
   // Remove from stack input parameters.
   torch::jit::drop(stack, numInputs);
