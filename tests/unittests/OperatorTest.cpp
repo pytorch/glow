@@ -5758,7 +5758,7 @@ TEST_P(OperatorTest, ChannelShuffle) {
     EXPECT_FLOAT_EQ(results.at({0, i, 0, 0}), expected[i]);
 }
 
-TEST_P(OperatorTest, Squeeze) {
+TEST_P(OperatorTest, SqueezeOneAxis) {
   CHECK_IF_ENABLED();
 
   auto *inputs =
@@ -5767,77 +5767,77 @@ TEST_P(OperatorTest, Squeeze) {
 
   std::vector<float> expectedValues = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
 
-  // Test 1:
-  {
-    std::vector<dim_t> axes = {0};
-    Node *SQZ = F_->createSqueeze("SQZ", inputs, axes);
-    SaveNode *S = F_->createSave("save", SQZ);
-    bindings_.allocate(S->getPlaceholder());
+  std::vector<dim_t> axes = {0};
+  Node *SQZ = F_->createSqueeze("SQZ", inputs, axes);
+  SaveNode *S = F_->createSave("save", SQZ);
+  bindings_.allocate(S->getPlaceholder());
 
-    EE_.compile(CompilationMode::Infer);
-    EE_.run(bindings_);
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
 
-    auto results = bindings_.get(S->getPlaceholder())->getHandle();
-    std::vector<dim_t> expectedDims = {2, 1, 5};
-    EXPECT_TRUE(results.dims().vec() == expectedDims);
-    for (size_t i = 0; i < 10; i++)
-      EXPECT_FLOAT_EQ(results.raw(i), expectedValues[i]);
-  }
-  bindings_.clear();
-  EE_.setBackendName(getBackendName());
-  // Test 2:
-  {
-    auto mod = &EE_.getModule();
-    F_ = mod->createFunction("main");
-    inputs = mod->createPlaceholder(ElemKind::FloatTy, {1, 2, 1, 5}, "inputs",
-                                    false);
-    bindings_.allocate(inputs)->getHandle() = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
-    std::vector<dim_t> axes = {0, 2, 2};
-    Node *SQZ = F_->createSqueeze("SQZ", inputs, axes);
-    SaveNode *S = F_->createSave("save", SQZ);
-    bindings_.allocate(S->getPlaceholder());
+  auto results = bindings_.get(S->getPlaceholder())->getHandle();
+  std::vector<dim_t> expectedDims = {2, 1, 5};
+  EXPECT_TRUE(results.dims().vec() == expectedDims);
+  for (size_t i = 0; i < 10; i++)
+    EXPECT_FLOAT_EQ(results.raw(i), expectedValues[i]);
+}
 
-    EE_.compile(CompilationMode::Infer);
-    EE_.run(bindings_);
+TEST_P(OperatorTest, SqueezeTwoAxes) {
+  CHECK_IF_ENABLED();
 
-    auto results = bindings_.get(S->getPlaceholder())->getHandle();
-    std::vector<dim_t> expectedDims = {2, 5};
-    EXPECT_TRUE(results.dims().vec() == expectedDims);
-    for (size_t i = 0; i < 10; i++)
-      EXPECT_FLOAT_EQ(results.raw(i), expectedValues[i]);
-  }
-  bindings_.clear();
-  EE_.setBackendName(getBackendName());
-  // Test 3: 0-dimensional Tensor
-  {
-    auto mod = &EE_.getModule();
-    F_ = mod->createFunction("main");
-    inputs = mod->createPlaceholder(ElemKind::FloatTy, {1, 2, 1, 5}, "inputs",
-                                    false);
-    bindings_.allocate(inputs)->getHandle() = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
-    auto *emptyInput =
-        mod->createPlaceholder(ElemKind::FloatTy, {1}, "emptyInput", false);
-    bindings_.allocate(emptyInput)->getHandle() = {42.0};
+  auto mod = &EE_.getModule();
+  auto *inputs =
+      mod->createPlaceholder(ElemKind::FloatTy, {1, 2, 1, 5}, "inputs", false);
+  bindings_.allocate(inputs)->getHandle() = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
 
-    std::vector<dim_t> axes = {0};
-    Node *SQZ = F_->createSqueeze("SQZ", emptyInput, axes);
-    SaveNode *S1 = F_->createSave("save", SQZ);
-    Node *UnSQZ = F_->createExpandDims("UnSQZ", SQZ, axes);
-    SaveNode *S2 = F_->createSave("save", UnSQZ);
+  std::vector<float> expectedValues = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
 
-    bindings_.allocate(S1->getPlaceholder());
-    bindings_.allocate(S2->getPlaceholder());
+  std::vector<dim_t> axes = {0, 2, 2};
+  Node *SQZ = F_->createSqueeze("SQZ", inputs, axes);
+  SaveNode *S = F_->createSave("save", SQZ);
+  bindings_.allocate(S->getPlaceholder());
 
-    EE_.compile(CompilationMode::Infer);
-    EE_.run(bindings_);
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
 
-    auto res1 = bindings_.get(S1->getPlaceholder())->getHandle();
-    EXPECT_TRUE(res1.dims().vec() == std::vector<dim_t>());
-    EXPECT_FLOAT_EQ(res1.raw(0), 42.0);
-    auto res2 = bindings_.get(S2->getPlaceholder())->getHandle();
-    EXPECT_TRUE(res2.dims().vec() == std::vector<dim_t>(1, 1));
-    EXPECT_FLOAT_EQ(res2.raw(0), 42.0);
-  }
+  auto results = bindings_.get(S->getPlaceholder())->getHandle();
+  std::vector<dim_t> expectedDims = {2, 5};
+  EXPECT_TRUE(results.dims().vec() == expectedDims);
+  for (size_t i = 0; i < 10; i++)
+    EXPECT_FLOAT_EQ(results.raw(i), expectedValues[i]);
+}
+
+TEST_P(OperatorTest, SqueezeExpand) {
+  CHECK_IF_ENABLED();
+
+  auto mod = &EE_.getModule();
+  auto *inputs =
+      mod->createPlaceholder(ElemKind::FloatTy, {1, 2, 1, 5}, "inputs", false);
+  bindings_.allocate(inputs)->getHandle() = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
+  auto *emptyInput =
+      mod->createPlaceholder(ElemKind::FloatTy, {1}, "emptyInput", false);
+  bindings_.allocate(emptyInput)->getHandle() = {42.0};
+
+  std::vector<float> expectedValues = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
+
+  std::vector<dim_t> axes = {0};
+  Node *SQZ = F_->createSqueeze("SQZ", emptyInput, axes);
+  SaveNode *S1 = F_->createSave("save", SQZ);
+  Node *UnSQZ = F_->createExpandDims("UnSQZ", SQZ, axes);
+  SaveNode *S2 = F_->createSave("save", UnSQZ);
+
+  bindings_.allocate(S1->getPlaceholder());
+  bindings_.allocate(S2->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  auto res1 = bindings_.get(S1->getPlaceholder())->getHandle();
+  EXPECT_TRUE(res1.dims().vec() == std::vector<dim_t>());
+  EXPECT_FLOAT_EQ(res1.raw(0), 42.0);
+  auto res2 = bindings_.get(S2->getPlaceholder())->getHandle();
+  EXPECT_TRUE(res2.dims().vec() == std::vector<dim_t>(1, 1));
+  EXPECT_FLOAT_EQ(res2.raw(0), 42.0);
 }
 
 /// Helper to test ExpandDims using \p DTy.
