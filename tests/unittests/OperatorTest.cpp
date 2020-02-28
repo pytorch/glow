@@ -42,6 +42,18 @@ protected:
     // compilation.
     EE_.setSkipModuleStrip(true);
   }
+
+  virtual void TearDown() override {
+    if (::testing::Test::IsSkipped()) {
+      return;
+    }
+
+    EXPECT_TRUE(F_->getNodes().size() != 0)
+        << "Functions should have nodes at the end of the test.";
+
+    ASSERT_TRUE(F_->verify(&EE_.getBackend()))
+        << "Function must pass verification.";
+  }
 };
 
 /// Helper to create a Placeholder; if \p T is quantized, then it will include a
@@ -1678,7 +1690,7 @@ TEST_P(OperatorTest, matmul_ParCloneTest10) {
 
 /// Test that compareAgainstInterpreter works correctly along with quantization
 /// and parallel cloning.
-TEST_P(OperatorTest, matmulQuantized_InterpCompareParClone) {
+TEST_P(OperatorStatelessTest, matmulQuantized_InterpCompareParClone) {
   CHECK_IF_ENABLED();
 
   constexpr unsigned parallelCount = 10;
@@ -8120,12 +8132,9 @@ TEST_P(OperatorTest, testBatchAdd_Float16) {
   testBatchAdd<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty);
 }
 
-static void quantizedBatchAdd(ExecutionEngine &EE,
+static void quantizedBatchAdd(ExecutionEngine &EE, Function *F,
                               PlaceholderBindings &bindings, ElemKind Ty) {
-  EE.setBackendName(EE.getBackendName());
   auto &mod = EE.getModule();
-  auto *F = mod.createFunction("main");
-  bindings.clear();
   unsigned numSlices = 10;
   auto *input = mod.createPlaceholder(ElemKind::FloatTy, {numSlices, 10, 10},
                                       "input", false);
@@ -8175,13 +8184,18 @@ static void quantizedBatchAdd(ExecutionEngine &EE,
   }
 }
 
-/// Tests quantized batched-add arithmetic.
-TEST_P(OperatorTest, testQuantizedBatchAdd) {
+/// Tests quantized batched-add arithmetic on Int8QTy.
+TEST_P(OperatorTest, testQuantizedBatchAdd_Int8) {
   CHECK_IF_ENABLED();
-  // Test Int8QTy Slice.
-  quantizedBatchAdd(EE_, bindings_, ElemKind::Int8QTy);
-  // Test Int32QTy Slice.
-  quantizedBatchAdd(EE_, bindings_, ElemKind::Int32QTy);
+
+  quantizedBatchAdd(EE_, F_, bindings_, ElemKind::Int8QTy);
+}
+
+/// Tests quantized batched-add arithmetic on Int32QTy.
+TEST_P(OperatorTest, testQuantizedBatchAdd_Int32) {
+  CHECK_IF_ENABLED();
+
+  quantizedBatchAdd(EE_, F_, bindings_, ElemKind::Int32QTy);
 }
 
 template <typename DataType>
@@ -9060,7 +9074,7 @@ createAndInitRWQSLWSAllSame(glow::PlaceholderBindings &bindings,
   return std::make_pair(F, resultT);
 }
 
-TEST_P(OperatorTest, RWQSLWSAllSame_Float16_AccumFP16) {
+TEST_P(OperatorStatelessTest, RWQSLWSAllSame_Float16_AccumFP16) {
   CHECK_IF_ENABLED();
   compareAgainstInterpreter(
       getBackendName(), createAndInitRWQSLWSAllSame, ElemKind::Float16Ty,
@@ -9070,7 +9084,7 @@ TEST_P(OperatorTest, RWQSLWSAllSame_Float16_AccumFP16) {
       /* biasElemKind */ ElemKind::Int32QTy, /* forceFP16AccumSLS */ true);
 }
 
-TEST_P(OperatorTest, RWQSLWSAllSame_Float16_AccumFP32) {
+TEST_P(OperatorStatelessTest, RWQSLWSAllSame_Float16_AccumFP32) {
   CHECK_IF_ENABLED();
   compareAgainstInterpreter(
       getBackendName(), createAndInitRWQSLWSAllSame, ElemKind::Float16Ty,
@@ -10025,7 +10039,7 @@ TEST_P(OperatorTest, ConstantSLS) {
 }
 
 /// Test SLS when some "lengths" inputs are zero.
-TEST_P(OperatorTest, SLSWithZeroLengths) {
+TEST_P(OperatorStatelessTest, SLSWithZeroLengths) {
   CHECK_IF_ENABLED();
 
   compareAgainstInterpreter(
@@ -10101,7 +10115,7 @@ createAndInitZeroLengthsSLSTest(glow::PlaceholderBindings &bindings,
 }
 
 /// Test Fused RWQ-SLS when all "lengths" inputs are zero in FloatTy.
-TEST_P(OperatorTest, FusedRWQSLSAllZeroLengths_Float) {
+TEST_P(OperatorStatelessTest, FusedRWQSLSAllZeroLengths_Float) {
   CHECK_IF_ENABLED();
 
   compareAgainstInterpreter(
@@ -10112,7 +10126,7 @@ TEST_P(OperatorTest, FusedRWQSLSAllZeroLengths_Float) {
 }
 
 /// Test Fused RWQ-SLS when all "lengths" inputs are zero in Float16Ty.
-TEST_P(OperatorTest, FusedRWQSLSAllZeroLengths_Float16) {
+TEST_P(OperatorStatelessTest, FusedRWQSLSAllZeroLengths_Float16) {
   CHECK_IF_ENABLED();
 
   compareAgainstInterpreter(
@@ -10124,7 +10138,7 @@ TEST_P(OperatorTest, FusedRWQSLSAllZeroLengths_Float16) {
 }
 
 /// Test SLS when all "lengths" inputs are zero in FloatTy.
-TEST_P(OperatorTest, SLSAllZeroLengths_Float) {
+TEST_P(OperatorStatelessTest, SLSAllZeroLengths_Float) {
   CHECK_IF_ENABLED();
 
   compareAgainstInterpreter(getBackendName(),
@@ -10136,7 +10150,7 @@ TEST_P(OperatorTest, SLSAllZeroLengths_Float) {
 }
 
 /// Test SLS when all "lengths" inputs are zero in Float16Ty.
-TEST_P(OperatorTest, SLSAllZeroLengths_Float16) {
+TEST_P(OperatorStatelessTest, SLSAllZeroLengths_Float16) {
   CHECK_IF_ENABLED();
 
   compareAgainstInterpreter(getBackendName(),

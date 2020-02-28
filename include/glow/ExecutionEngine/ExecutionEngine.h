@@ -143,6 +143,10 @@ public:
   /// Provisioner inside of \ref hostManager_.
   Backend &getBackend(llvm::StringRef backendName) const;
 
+  /// \returns a reference to the backend with name of the current backend in
+  /// use by the EE.
+  Backend &getBackend() const;
+
   /// \returns the single Function contained in this Module.
   /// \pre Must be a single Function in the Module.
   Function *getSingleFunctionFromModule() const;

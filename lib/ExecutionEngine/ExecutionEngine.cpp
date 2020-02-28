@@ -285,3 +285,7 @@ void ExecutionEngine::compile(CompilationContext &cctx) {
 Backend &ExecutionEngine::getBackend(llvm::StringRef backendName) const {
   return hostManager_->getBackend(backendName);
 }
+
+Backend &ExecutionEngine::getBackend() const {
+  return hostManager_->getBackend(backendName_);
+}
