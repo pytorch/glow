@@ -48,7 +48,6 @@ CachingGraphRunner::loadImpl(torch::jit::Stack &stack) {
   const auto inputs = torch::jit::last(stack, graph_->inputs().size());
 
   size_t hash = computeGraphHash(stack);
-
   // If we already have a Glow function compiled for this graph with and the
   // given inputs then use that.
   auto it = perGlowGraphInfoMap_.find(hash);
@@ -64,7 +63,7 @@ CachingGraphRunner::loadImpl(torch::jit::Stack &stack) {
 
   RETURN_IF_ERR(PyTorchModelLoader::loadJITGraph(
       *f, *graph_, info->inputPlaceholders, info->outputPlaceholders,
-      getPyTorchLoaderSettings(), inputs, {}));
+      outputCorrectType_, getPyTorchLoaderSettings(), inputs, {}));
 
   glow::CompilationContext cctx;
 
@@ -145,10 +144,17 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
 
   torch::jit::drop(stack, numInputs);
 
-  for (auto &output : outputs) {
+  for (int i = 0; i < outputs.size(); i++) {
+    auto &output = outputs[i];
     auto ptTensor = output.toTensor();
     if (ptTensor.is_quantized()) {
-      ptTensor = convertQuantizedToDtype(ptTensor, at::kQUInt8);
+      c10::ScalarType dtype = outputCorrectType_[i];
+      if (dtype == c10::ScalarType::QUInt8 || dtype == c10::ScalarType::QInt8) {
+        ptTensor = convertQuantizedToDtype(ptTensor, dtype);
+      } else {
+        return MAKE_ERR(
+            strFormat("Fail to propagate quantized dtype to output"));
+      }
     }
     auto var = torch::autograd::make_variable(ptTensor);
     stack.push_back(at::IValue(var));
@@ -193,7 +199,7 @@ Error CachingGraphRunner::warmCache(const std::vector<InputMeta> &inputMeta) {
 
   RETURN_IF_ERR(PyTorchModelLoader::loadJITGraph(
       *f, *graph_, info->inputPlaceholders, info->outputPlaceholders,
-      getPyTorchLoaderSettings(), {}, inputMeta));
+      outputCorrectType_, getPyTorchLoaderSettings(), {}, inputMeta));
 
   glow::CompilationContext cctx;
 
