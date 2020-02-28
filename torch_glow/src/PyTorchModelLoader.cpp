@@ -1149,7 +1149,6 @@ PyTorchModelLoader::loadQuantizedConvImpl(const torch::jit::Node *ptNode,
   glow::NodeValue input;
   ASSIGN_VALUE_OR_RETURN_ERR(
       input, getGlowNodeValueForValue(inputs[QuantizedConv2dInputs::input]));
-  input = rescaleUIntToInt(input);
 
   input = F_.createTranspose("qconv_input_transposed", input, NCHW2NHWC);
   glow::ShapeNHWC inputShape(input.dims());
@@ -1363,9 +1362,6 @@ Error PyTorchModelLoader::loadQuantizedAddRelu(const torch::jit::Node *ptNode) {
   ASSIGN_VALUE_OR_RETURN_ERR(
       rhs, getGlowNodeValueForValue(inputs[QuantizedAddReluInputs::rhs]));
 
-  lhs = rescaleUIntToInt(lhs);
-  rhs = rescaleUIntToInt(rhs);
-
   // scale
   float outScale;
   ASSIGN_VALUE_OR_RETURN_ERR(outScale,
@@ -1385,7 +1381,7 @@ Error PyTorchModelLoader::loadQuantizedAddRelu(const torch::jit::Node *ptNode) {
 
   glow::AddNode *qadd = F_.createAdd("quantized_add", outTy, lhs, rhs);
   glow::ReluNode *qrelu = F_.createRELU("quantized_relu", qadd);
-  auto output = rescaleIntToUint(qrelu->getResult());
+  auto output = qrelu->getResult();
   return addValueMapping(outputs[0], output);
 }
 
@@ -1397,7 +1393,6 @@ Error PyTorchModelLoader::loadQuantizedLinear(const torch::jit::Node *ptNode) {
   glow::NodeValue input;
   ASSIGN_VALUE_OR_RETURN_ERR(
       input, getGlowNodeValueForValue(inputs[QuantizedLinearInputs::input]));
-  input = rescaleUIntToInt(input);
 
   at::Tensor *ptTensor;
   ASSIGN_VALUE_OR_RETURN_ERR(
@@ -1502,13 +1497,12 @@ Error PyTorchModelLoader::loadQuantizedLinear(const torch::jit::Node *ptNode) {
     auto rowwise_fc = F_.createRowwiseQuantizedFullyConnected(
         "rowwise_quantized_fc", input, weightConstant, wScales, wOffsets, bias,
         outTy);
-    return addValueMapping(outputs[0],
-                           rescaleIntToUint(rowwise_fc->getResult()));
+    return addValueMapping(outputs[0], rowwise_fc->getResult());
   } else {
     weight = F_.createTranspose("weight_transpose", weight, {1, 0});
     auto fc =
         F_.createFullyConnected("quantized_fc", input, weight, bias, outTy);
-    return addValueMapping(outputs[0], rescaleIntToUint(fc->getResult()));
+    return addValueMapping(outputs[0], fc->getResult());
   }
 }
 
@@ -1522,7 +1516,6 @@ Error PyTorchModelLoader::loadQuantizedLinearUnpacked(
   ASSIGN_VALUE_OR_RETURN_ERR(
       input,
       getGlowNodeValueForValue(inputs[QuantizedUnpackedLinearInputs::input]));
-  input = rescaleUIntToInt(input);
 
   glow::NodeValue weight;
   ASSIGN_VALUE_OR_RETURN_ERR(
@@ -1571,7 +1564,7 @@ Error PyTorchModelLoader::loadQuantizedLinearUnpacked(
 
   auto fc = F_.createFullyConnected("quantized_fc", input, weight, bias, outTy);
 
-  return addValueMapping(outputs[0], rescaleIntToUint(fc->getResult()));
+  return addValueMapping(outputs[0], fc->getResult());
 }
 
 Error PyTorchModelLoader::loadGlowFusedLinear(const torch::jit::Node *ptNode) {
@@ -1958,10 +1951,9 @@ Error PyTorchModelLoader::loadRelu(const torch::jit::Node *ptNode) {
 
   glow::NodeValue input;
   ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
-  input = rescaleUIntToInt(input);
 
   glow::ReluNode *glowNode = F_.createRELU("relu", input);
-  return addValueMapping(outputs[0], rescaleIntToUint(glowNode->getResult()));
+  return addValueMapping(outputs[0], glowNode->getResult());
 }
 
 Error PyTorchModelLoader::loadGelu(const torch::jit::Node *ptNode) {
@@ -2300,7 +2292,7 @@ Error PyTorchModelLoader::loadQuantizedConvRelu(
   glow::NodeValue output;
   ASSIGN_VALUE_OR_RETURN_ERR(output,
                              loadQuantizedConvImpl(ptNode, true /* isRelu */));
-  return addValueMapping(outputs[0], rescaleIntToUint(output));
+  return addValueMapping(outputs[0], output);
 }
 
 Error PyTorchModelLoader::loadQuantizedConv(const torch::jit::Node *ptNode) {
@@ -2308,7 +2300,7 @@ Error PyTorchModelLoader::loadQuantizedConv(const torch::jit::Node *ptNode) {
   glow::NodeValue output;
   ASSIGN_VALUE_OR_RETURN_ERR(output,
                              loadQuantizedConvImpl(ptNode, false /* isRelu */));
-  return addValueMapping(outputs[0], rescaleIntToUint(output));
+  return addValueMapping(outputs[0], output);
 }
 
 Error PyTorchModelLoader::loadQuantizedConvUnpacked(
@@ -2321,7 +2313,6 @@ Error PyTorchModelLoader::loadQuantizedConvUnpacked(
   ASSIGN_VALUE_OR_RETURN_ERR(
       input,
       getGlowNodeValueForValue(inputs[QuantizedUnpackedConv2dInputs::input]));
-  input = rescaleUIntToInt(input);
 
   input = F_.createTranspose("qconv_input_transposed", input, NCHW2NHWC);
   glow::ShapeNHWC inputShape(input.dims());
@@ -2395,7 +2386,7 @@ Error PyTorchModelLoader::loadQuantizedConvUnpacked(
   glow::TransposeNode *output = F_.createTranspose(
       "qconv_output_transposed", qconv->getResult(), NHWC2NCHW);
 
-  return addValueMapping(outputs[0], rescaleIntToUint(output->getResult()));
+  return addValueMapping(outputs[0], output->getResult());
 }
 
 Error PyTorchModelLoader::loadMaxPool2d(const torch::jit::Node *ptNode) {
@@ -2406,7 +2397,6 @@ Error PyTorchModelLoader::loadMaxPool2d(const torch::jit::Node *ptNode) {
   glow::NodeValue input;
   ASSIGN_VALUE_OR_RETURN_ERR(
       input, getGlowNodeValueForValue(inputs[MaxPoolInputs::input]));
-  input = rescaleUIntToInt(input);
 
   input = F_.createTranspose("maxpool2d_input_transposed", input, NCHW2NHWC);
 
@@ -2452,7 +2442,7 @@ Error PyTorchModelLoader::loadMaxPool2d(const torch::jit::Node *ptNode) {
       F_.createMaxPool("maxpool2d", input, kernels, strides, pads);
   glow::NodeValue output = mp->getResult();
   output = F_.createTranspose("maxpool2d_output_transposed", output, NHWC2NCHW);
-  return addValueMapping(outputs[0], rescaleIntToUint(output));
+  return addValueMapping(outputs[0], output);
 }
 
 Error PyTorchModelLoader::loadAvgPool2d(const torch::jit::Node *ptNode) {
@@ -2463,7 +2453,6 @@ Error PyTorchModelLoader::loadAvgPool2d(const torch::jit::Node *ptNode) {
   glow::NodeValue input;
   ASSIGN_VALUE_OR_RETURN_ERR(
       input, getGlowNodeValueForValue(inputs[AvgPoolInputs::input]));
-  input = rescaleUIntToInt(input);
   input = F_.createTranspose("avgpool2d_input_transposed", input, NCHW2NHWC);
 
   std::vector<glow::unsigned_t> kernels;
@@ -2507,7 +2496,7 @@ Error PyTorchModelLoader::loadAvgPool2d(const torch::jit::Node *ptNode) {
       F_.createAvgPool("avgpool2d", input, kernels, strides, pads);
   glow::NodeValue output = ap->getResult();
   output = F_.createTranspose("avgpool2d_output_transposed", output, NHWC2NCHW);
-  return addValueMapping(outputs[0], rescaleIntToUint(output));
+  return addValueMapping(outputs[0], output);
 }
 
 Error PyTorchModelLoader::loadClamp(const torch::jit::Node *ptNode) {
@@ -2549,7 +2538,6 @@ Error PyTorchModelLoader::loadAdaptiveAvgPool2d(
 
   size_t inputH = input.dims()[1];
   size_t inputW = input.dims()[2];
-  input = rescaleUIntToInt(input);
   input = F_.createTranspose("adaptive_avg_pool2d_input_transposed", input,
                              NCHW2NHWC);
 
@@ -2573,7 +2561,7 @@ Error PyTorchModelLoader::loadAdaptiveAvgPool2d(
       F_.createAdaptiveAvgPool("adaptive_avg_pool2d", input, outTy);
   output = F_.createTranspose("adaptive_avg_pool2d_output_transposed", output,
                               NHWC2NCHW);
-  return addValueMapping(outputs[0], rescaleIntToUint(output));
+  return addValueMapping(outputs[0], output);
 }
 
 Error PyTorchModelLoader::loadT(const torch::jit::Node *ptNode) {
@@ -3053,7 +3041,6 @@ Error PyTorchModelLoader::loadFlatten(const torch::jit::Node *ptNode) {
   glow::NodeValue in;
   ASSIGN_VALUE_OR_RETURN_ERR(
       in, getGlowNodeValueForValue(inputs[FlattenInputs::input]));
-  in = rescaleUIntToInt(in);
 
   int64_t startDimRaw;
   ASSIGN_VALUE_OR_RETURN_ERR(
@@ -3073,7 +3060,7 @@ Error PyTorchModelLoader::loadFlatten(const torch::jit::Node *ptNode) {
 
   auto xDim = glow::flattenCdr(in.dims(), startDim);
   auto *glowNode = F_.createReshape("flatten", in, {xDim.first, xDim.second});
-  return addValueMapping(outputs[0], rescaleIntToUint(glowNode->getResult()));
+  return addValueMapping(outputs[0], glowNode->getResult());
 }
 
 Error PyTorchModelLoader::loadTopK(const torch::jit::Node *ptNode) {
