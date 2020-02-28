@@ -70,6 +70,10 @@ CachingGraphRunner::loadImpl(torch::jit::Stack &stack) {
 
   if (settings_.convertToFP16) {
     cctx.precisionConfig.convertToFP16 = true;
+    cctx.precisionConfig.precisionModeKindSet.insert(
+        Kinded::Kind::ChannelwiseQuantizedConvolutionNodeKind);
+    cctx.precisionConfig.precisionModeKindSet.insert(
+        Kinded::Kind::RowwiseQuantizedFullyConnectedNodeKind);
   }
 
   if (settings_.dumpFinalGlowGraph) {
