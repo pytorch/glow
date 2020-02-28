@@ -96,17 +96,21 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
   size_t placeholderI = 0;
   for (const auto &input : inputs) {
     if (input.isTensor()) {
+
       glow::Placeholder *ph = info.inputPlaceholders[placeholderI++];
       glow::TypeRef ty = ph->getType();
 
-      auto pttensor = input.toTensor();
-      glow::Tensor t;
-      if (!pttensor.is_contiguous()) {
-        pttensor = pttensor.contiguous();
-        t = glow::Tensor(pttensor.data_ptr(), ty).clone();
-      } else {
-        t = glow::Tensor(pttensor.data_ptr(), ty);
+      auto ptTensor = input.toTensor();
+
+      if (ptTensor.is_quantized()) {
+        ptTensor = convertQuantizedToDtype(ptTensor, at::kQInt8);
       }
+
+      glow::Tensor t;
+      if (!ptTensor.is_contiguous()) {
+        ptTensor = ptTensor.contiguous();
+      }
+      t = glow::Tensor(ptTensor.data_ptr(), ty).clone();
 
       bindings->insert(ph, std::move(t));
     } else if (input.isObject()) {
@@ -138,7 +142,11 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
   torch::jit::drop(stack, numInputs);
 
   for (auto &output : outputs) {
-    auto var = torch::autograd::make_variable(output.toTensor());
+    auto ptTensor = output.toTensor();
+    if (ptTensor.is_quantized()) {
+      ptTensor = convertQuantizedToDtype(ptTensor, at::kQUInt8);
+    }
+    auto var = torch::autograd::make_variable(ptTensor);
     stack.push_back(at::IValue(var));
   }
 
