@@ -46,6 +46,13 @@ public:
   }
 };
 
+/// Use to sort named classes by their name.
+struct SortNamed {
+  inline bool operator()(const Named *named1, const Named *named2) const {
+    return named1->compareByName(*named2);
+  }
+};
+
 /// Subclasses of this class have a type associated with them.
 class Typed {
 private:

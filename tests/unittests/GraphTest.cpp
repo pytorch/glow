@@ -1913,8 +1913,22 @@ layout : *
 output : float<1 x 1>
 users : 0
 
-Function:F
-Function:F2
+Placeholder
+name : "input__1"
+layout : *
+output : float<10 x 10>
+users : 1
+trainable : 1
+
+Placeholder
+name : "input"
+layout : *
+output : float<4 x 320 x 200 x 100 x 3>
+users : 0
+trainable : 1
+
+Function : F2
+Function : F
 )";
   EXPECT_EQ(mesM, expectMesM);
   EXPECT_EQ(mesM, osM1.str());
