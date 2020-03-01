@@ -1867,8 +1867,8 @@ TEST(Graph, testDumpStructure) {
 name : "input"
 layout : *
 output : float<4 x 320 x 200 x 100 x 3>
-users : 0
 trainable : 1
+users : 0
 )";
   EXPECT_EQ(mesN, expectMes);
   EXPECT_EQ(mesN, osN1.str());
@@ -1893,6 +1893,12 @@ K : 3
 users : 0
 Values : float<10 x 3>
 Indices : index64<10 x 3>
+Placeholder
+name : "input__1"
+layout : *
+output : float<10 x 10>
+trainable : 1
+users : 1
 )";
   EXPECT_EQ(mesF, expectMesF);
   EXPECT_EQ(mesF, osF1.str());
@@ -1900,6 +1906,25 @@ Indices : index64<10 x 3>
   llvm::raw_string_ostream osF2(storageF2);
   osF2 << F2;
   EXPECT_EQ(mesF, osF2.str());
+  storageF1.clear();
+  F2->dump(osF1, /* skipUsersForStorage */ true);
+  mesF = F2->toString(/* skipUsersForStorage */ true);
+  expectMesF = R"(Graph structure F2:
+TopK
+name : topk
+Input : float<10 x 10>
+K : 3
+users : 0
+Values : float<10 x 3>
+Indices : index64<10 x 3>
+Placeholder
+name : "input__1"
+layout : *
+output : float<10 x 10>
+trainable : 1
+)";
+  EXPECT_EQ(mesF, expectMesF);
+  EXPECT_EQ(mesF, osF1.str());
   // Test Module
   MD.createConstant(ElemKind::FloatTy, {1, 1}, "dummy");
   std::string storageM1;
@@ -1917,15 +1942,15 @@ Placeholder
 name : "input__1"
 layout : *
 output : float<10 x 10>
-users : 1
 trainable : 1
+users : 1
 
 Placeholder
 name : "input"
 layout : *
 output : float<4 x 320 x 200 x 100 x 3>
-users : 0
 trainable : 1
+users : 0
 
 Function : F2
 Function : F
