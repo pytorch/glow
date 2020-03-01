@@ -82,6 +82,19 @@ PYBIND11_MODULE(_torch_glow, m) {
   m.def("disable_dump_final_glow_graph",
         []() { getPyTorchLoaderSettings().dumpFinalGlowGraph = false; });
 
+  /// Enable tracing in Glow runtime.
+  m.def("enable_glow_tracing",
+        []() { getPyTorchLoaderSettings().enableGlowTracing = true; });
+
+  /// Set the number of traces to dump per trace file.
+  m.def("set_num_traces_per_dump", [](size_t numTracesPerDump) {
+    getPyTorchLoaderSettings().numTracesPerDump = numTracesPerDump;
+  });
+
+  /// Disable tracing in Glow runtime.
+  m.def("disable_glow_tracing",
+        []() { getPyTorchLoaderSettings().enableGlowTracing = false; });
+
   /// Add all of the symbols in \p blacklist to the fusion blacklist so that
   /// nodes with these symbols will not be fused to Glow.
   m.def("setFusionBlacklist", [](const std::vector<std::string> &blacklist) {

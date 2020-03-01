@@ -43,11 +43,56 @@ size_t CachingGraphRunner::computeGraphHash(
   return hash;
 }
 
+void CachingGraphRunner::aggregateAndDumpTraces(TraceContext *traceContext,
+                                                bool flush) {
+  if (!traceContext && !flush) {
+    return;
+  }
+
+  size_t numTracesPerDump = settings_.numTracesPerDump;
+
+  std::unique_lock<std::mutex> lock(tracesMutex_);
+
+  auto numTraces = ++numTraces_;
+
+  if (flush) {
+    if (mergedTraceContext_) {
+      size_t dumpNum = numTraces / numTracesPerDump;
+      std::string filename = strFormat("glow-trace-%zu.json", dumpNum);
+      if (traceContext) {
+        mergedTraceContext_->merge(traceContext);
+      }
+      mergedTraceContext_->dump(filename);
+      mergedTraceContext_ = nullptr;
+    }
+    return;
+  }
+
+  if (!mergedTraceContext_) {
+    mergedTraceContext_ = glow::make_unique<TraceContext>(TraceLevel::STANDARD);
+  }
+
+  mergedTraceContext_->merge(traceContext);
+
+  if (numTraces % numTracesPerDump == 0) {
+    size_t dumpNum = (numTraces / numTracesPerDump) - 1;
+    std::string filename = strFormat("glow-trace-%zu.json", dumpNum);
+    mergedTraceContext_->dump(filename);
+    mergedTraceContext_ = nullptr;
+  }
+}
+
 Expected<CachingGraphRunner::PerGlowGraphInfo *>
-CachingGraphRunner::loadImpl(torch::jit::Stack &stack) {
+CachingGraphRunner::loadImpl(torch::jit::Stack &stack,
+                             TraceContext *traceContext) {
+  TRACE_EVENT_SCOPE(traceContext, TraceLevel::RUNTIME, "torch_glow::loadImpl");
+
   const auto inputs = torch::jit::last(stack, graph_->inputs().size());
 
+  TRACE_EVENT_BEGIN(traceContext, TraceLevel::RUNTIME, "computeGraphHash");
   size_t hash = computeGraphHash(stack);
+  TRACE_EVENT_END(traceContext, TraceLevel::RUNTIME, "computeGraphHash");
+
   // If we already have a Glow function compiled for this graph with and the
   // given inputs then use that.
   auto it = perGlowGraphInfoMap_.find(hash);
@@ -61,9 +106,11 @@ CachingGraphRunner::loadImpl(torch::jit::Stack &stack) {
   std::unique_ptr<Module> module = glow::make_unique<Module>();
   Function *f = module->createFunction(info->functionName);
 
+  TRACE_EVENT_BEGIN(traceContext, TraceLevel::RUNTIME, "loadJITGraph");
   RETURN_IF_ERR(PyTorchModelLoader::loadJITGraph(
       *f, *graph_, info->inputPlaceholders, info->outputPlaceholders,
       outputCorrectType_, getPyTorchLoaderSettings(), inputs, {}));
+  TRACE_EVENT_END(traceContext, TraceLevel::RUNTIME, "loadJITGraph");
 
   glow::CompilationContext cctx;
 
@@ -79,20 +126,29 @@ CachingGraphRunner::loadImpl(torch::jit::Stack &stack) {
     cctx.dumpFinalGraph = true;
   }
 
+  TRACE_EVENT_BEGIN(traceContext, TraceLevel::RUNTIME, "addNetwork");
   RETURN_IF_ERR(hostManager_->addNetwork(std::move(module), cctx));
+  TRACE_EVENT_END(traceContext, TraceLevel::RUNTIME, "addNetwork");
 
   perGlowGraphInfoMap_[hash] = std::move(info);
 
   return perGlowGraphInfoMap_[hash].get();
 }
 
-Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
-                                  torch::jit::Stack &stack) const {
+Error CachingGraphRunner::runImpl(
+    const PerGlowGraphInfo &info, torch::jit::Stack &stack,
+    std::unique_ptr<ExecutionContext> &ctx) const {
+
+  TraceContext *traceContext = ctx->getTraceContext();
+
+  TRACE_EVENT_BEGIN(traceContext, TraceLevel::RUNTIME, "torch_glow::runImpl");
+
+  auto *bindings = ctx->getPlaceholderBindings();
+
+  TRACE_EVENT_BEGIN(traceContext, TraceLevel::RUNTIME, "adjustInputs");
+
   size_t numInputs = graph_->inputs().size();
   const auto inputs = torch::jit::last(stack, numInputs);
-
-  std::unique_ptr<ExecutionContext> ctx = glow::make_unique<ExecutionContext>();
-  auto *bindings = ctx->getPlaceholderBindings();
 
   // We only hold placeholders for tensor inputs so indexing them is different
   // than indexing all inputs.
@@ -124,6 +180,9 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
     }
   }
 
+  TRACE_EVENT_END(traceContext, TraceLevel::RUNTIME, "adjustInputs");
+  TRACE_EVENT_BEGIN(traceContext, TraceLevel::RUNTIME, "setupOutput");
+
   std::vector<at::IValue> outputs;
   for (auto *ph : info.outputPlaceholders) {
     std::vector<int64_t> sizes;
@@ -139,8 +198,16 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
     bindings->insert(ph, std::move(t));
   }
 
-  auto err =
-      hostManager_->runNetworkBlocking(info.functionName, std::move(ctx));
+  TRACE_EVENT_END(traceContext, TraceLevel::RUNTIME, "setupOutput");
+  TRACE_EVENT_BEGIN(traceContext, TraceLevel::RUNTIME, "runNetwork");
+
+  auto err = hostManager_->runNetworkBlocking(info.functionName, ctx);
+
+  // Reset the traceContext again in case it was changed during run.
+  traceContext = ctx->getTraceContext();
+
+  TRACE_EVENT_END(traceContext, TraceLevel::RUNTIME, "runNetwork");
+  TRACE_EVENT_BEGIN(traceContext, TraceLevel::RUNTIME, "setOutputs");
 
   torch::jit::drop(stack, numInputs);
 
@@ -160,13 +227,37 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
     stack.push_back(at::IValue(var));
   }
 
+  TRACE_EVENT_END(traceContext, TraceLevel::RUNTIME, "setOutputs");
+
+  TRACE_EVENT_END(traceContext, TraceLevel::RUNTIME, "torch_glow::runImpl");
   return err;
 }
 
 Error CachingGraphRunner::run(torch::jit::Stack &stack) {
   PerGlowGraphInfo *info;
-  ASSIGN_VALUE_OR_RETURN_ERR(info, loadImpl(stack));
-  return runImpl(*DCHECK_NOTNULL(info), stack);
+  std::unique_ptr<ExecutionContext> ctx = glow::make_unique<ExecutionContext>();
+
+  TraceContext *traceContext = nullptr;
+  if (getSettings().enableGlowTracing) {
+    ctx->setTraceContext(glow::make_unique<TraceContext>(TraceLevel::STANDARD));
+    traceContext = ctx->getTraceContext();
+    traceContext->setThreadName("torch_glow");
+  }
+
+  TRACE_EVENT_BEGIN(traceContext, TraceLevel::RUNTIME, "torch_glow::run");
+
+  ASSIGN_VALUE_OR_RETURN_ERR(info, loadImpl(stack, traceContext));
+
+  auto err = runImpl(*DCHECK_NOTNULL(info), stack, ctx);
+
+  // Reset the traceContext again in case it was changed during run.
+  traceContext = ctx->getTraceContext();
+
+  TRACE_EVENT_END(traceContext, TraceLevel::RUNTIME, "torch_glow::run");
+
+  aggregateAndDumpTraces(traceContext);
+
+  return err;
 }
 
 Error CachingGraphRunner::runOnly(torch::jit::Stack &stack) {
@@ -175,7 +266,10 @@ Error CachingGraphRunner::runOnly(torch::jit::Stack &stack) {
         "There should be one and only one compiled graph, but got %lu",
         perGlowGraphInfoMap_.size()));
   }
-  return runImpl(*DCHECK_NOTNULL(perGlowGraphInfoMap_[0].get()), stack);
+
+  std::unique_ptr<ExecutionContext> ctx = glow::make_unique<ExecutionContext>();
+
+  return runImpl(*DCHECK_NOTNULL(perGlowGraphInfoMap_[0].get()), stack, ctx);
 }
 
 Error CachingGraphRunner::warmCache(const std::vector<InputMeta> &inputMeta) {
@@ -221,6 +315,8 @@ CachingGraphRunner::CachingGraphRunner(
     : graph_(graph), hostManager_(hostManager), settings_(settings) {}
 
 CachingGraphRunner::~CachingGraphRunner() {
+  aggregateAndDumpTraces(nullptr, /* flush */ true);
+
   // Remove Glow functions saved in HostManager when being destroyed.
   for (auto &kv : perGlowGraphInfoMap_) {
     ERR_TO_BOOL(hostManager_->removeNetwork(kv.second->functionName));

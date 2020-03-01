@@ -358,20 +358,24 @@ Error HostManager::runNetworkBlocking(llvm::StringRef networkName,
 }
 
 Error HostManager::runNetworkBlocking(
-    llvm::StringRef networkName, std::unique_ptr<ExecutionContext> context) {
+    llvm::StringRef networkName, std::unique_ptr<ExecutionContext> &context) {
   std::promise<void> runPromise;
   auto fut = runPromise.get_future();
-  std::unique_ptr<Error> runErr;
-  runNetwork(
-      networkName, std::move(context),
-      [&runPromise, &runErr](runtime::RunIdentifierTy, Error err,
-                             std::unique_ptr<ExecutionContext> contextPtr) {
-        runErr = glow::make_unique<Error>(std::move(err));
-        runPromise.set_value();
-      });
+  Error runErr = Error::empty();
+  std::unique_ptr<ExecutionContext> tempContext;
+
+  runNetwork(networkName, std::move(context),
+             [&runPromise, &runErr,
+              &tempContext](runtime::RunIdentifierTy, Error err,
+                            std::unique_ptr<ExecutionContext> resultCtxt) {
+               runErr = std::move(err);
+               tempContext = std::move(resultCtxt);
+               runPromise.set_value();
+             });
 
   fut.wait();
-  return std::move(*DCHECK_NOTNULL(runErr.get()));
+  context = std::move(tempContext);
+  return runErr;
 }
 
 void HostManager::dispatchNextRun() {

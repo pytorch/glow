@@ -60,18 +60,31 @@ class CachingGraphRunner {
   /// Use for quantization int8/uint8 rescale.
   std::vector<c10::ScalarType> outputCorrectType_;
 
+  /// Mutex that protects numTraces_ and mergedTraceContext_.
+  std::mutex tracesMutex_;
+
+  /// The number of runs traced
+  size_t numTraces_{0};
+
+  /// TraceContext used to aggregate traces from runs before dumping them
+  /// in groups to file.
+  std::unique_ptr<TraceContext> mergedTraceContext_;
+
   /// Given a PyTorch input stack \p stack, this generates a hash from the
   /// values on the stack and checks to see if a matching function was loaded
   /// previously. If a matching function was loaded previously then its cached
   /// info is returned immediately. Otherwise this loads the
   /// subgraph into the owned HostManager, creates a PerGlowGraphInfo which is
   /// cached for the given inputs, and then \returns this PerGlowGraphInfo.
-  Expected<PerGlowGraphInfo *> loadImpl(torch::jit::Stack &stack);
+  Expected<PerGlowGraphInfo *> loadImpl(torch::jit::Stack &stack,
+                                        TraceContext *traceContext);
 
   /// Given a PerGlowGraphInfo \p info for a subgraph that was previously
   /// loaded, this runs the Glow function that corresponds to that
-  /// PerGlowGraphInfo in the shape of the inputs with the given \p stack.
-  Error runImpl(const PerGlowGraphInfo &info, torch::jit::Stack &stack) const;
+  /// PerGlowGraphInfo in the shape of the inputs with the given \p stack with
+  /// the given ExecutionContext \p ctx.
+  Error runImpl(const PerGlowGraphInfo &info, torch::jit::Stack &stack,
+                std::unique_ptr<ExecutionContext> &ctx) const;
 
   /// Given a \p stack of inputs, computes the hash for the inputs on the stack.
   size_t computeGraphHash(const c10::ArrayRef<c10::IValue> inputs) const;
@@ -79,6 +92,12 @@ class CachingGraphRunner {
   /// Store the settings that were used to create the JIT subgraph that this
   /// CachingGraphRunner owns.
   PyTorchLoaderSettings settings_;
+
+  /// Given a TraceContext \p traceContext, aggregate it with prvious
+  /// TraceContexts and if enough have been aggregated according to settings_
+  /// then dump them to file. If flush is true then dump aggregated traces to
+  /// file no matter what.
+  void aggregateAndDumpTraces(TraceContext *traceContext, bool flush = false);
 
 public:
   CachingGraphRunner(std::shared_ptr<torch::jit::Graph> graph,
