@@ -289,7 +289,11 @@ int run() {
   auto mod = glow::make_unique<Module>();
   Function *F = mod->createFunction("test");
   Error err = Error::empty();
-  { ONNXModelLoader onnxLD(modelPathOpt, {}, {}, *F, &err, /*zipMode*/ true); }
+  bool usingGlowCustomOps = false;
+  {
+    ONNXModelLoader onnxLD(modelPathOpt, {}, {}, *F, &err, /*zipMode*/ true);
+    usingGlowCustomOps = onnxLD.usingGlowCustomOps();
+  }
   CHECK(!ERR_TO_BOOL(std::move(err)))
       << "ONNXModelLoader failed to load model: " << modelPathOpt;
 
@@ -549,7 +553,7 @@ int run() {
           CHECK(tensor) << "Missing " << tp.name() << " in output placeholder";
           if (dumpOutputsOpt) {
             auto *t = outputG.add_initializer();
-            ONNXModelWriter::writeTensor(*tensor, t);
+            ONNXModelWriter::writeTensor(*tensor, t, usingGlowCustomOps);
             t->set_name(tp.name());
           }
           bool equal = tensorRef.isEqual(*tensor, thresholdOpt, true);
