@@ -60,8 +60,9 @@ void InflightBarrier::wait() {
 }
 
 ThreadPoolExecutor::ThreadPoolExecutor(const DeviceManagerMapTy &deviceManagers,
-                                       unsigned numWorkers)
-    : threadPool_(numWorkers), deviceManagers_(deviceManagers) {}
+                                       unsigned numWorkers,
+                                       const std::string &name)
+    : threadPool_(numWorkers, name), deviceManagers_(deviceManagers) {}
 
 void ThreadPoolExecutor::shutdown() {
   // Prevent more requests from being processed.

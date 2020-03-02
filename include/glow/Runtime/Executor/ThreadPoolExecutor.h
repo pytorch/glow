@@ -61,7 +61,8 @@ class ThreadPoolExecutor final : public Executor {
 public:
   /// Constructor.
   explicit ThreadPoolExecutor(const DeviceManagerMapTy &deviceManagers,
-                              unsigned numWorkers = kNumWorkers);
+                              unsigned numWorkers = kNumWorkers,
+                              const std::string &name = "");
 
   /// Setup context pool for new network.
   void createPool(const DAGNode *root, unsigned poolSize) override;

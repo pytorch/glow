@@ -56,7 +56,7 @@ Error InferencePoolEnv::init(unsigned numWorkers, NNPIAdapter adapter,
     return MAKE_ERR("InferencePool already initialized!");
   }
   numWorkers_ = numWorkers;
-  workersPool_ = glow::make_unique<ThreadPool>(numWorkers_);
+  workersPool_ = glow::make_unique<ThreadPool>(numWorkers_, "NNPI-worker");
   deviceTracing_ = deviceTracing;
 
   inferenceContexts_.resize(numWorkers_);

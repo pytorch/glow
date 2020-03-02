@@ -101,7 +101,8 @@ Error HostManager::init(std::vector<std::unique_ptr<DeviceConfig>> configs) {
     deviceCount++;
   }
   provisioner_.reset(new Provisioner(devices_));
-  executor_.reset(new ThreadPoolExecutor(devices_, config_.executorThreads));
+  executor_.reset(
+      new ThreadPoolExecutor(devices_, config_.executorThreads, "HostManager"));
   exportMemoryCounters();
   return Error::success();
 }
