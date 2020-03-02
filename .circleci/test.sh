@@ -13,7 +13,7 @@ export IMAGES_DIR=${GLOW_SRC}/tests/images/
 
 # Pass in which tests to run (one of {test, test_unopt}).
 run_unit_tests() {
-    CTEST_PARALLEL_LEVEL=4 ninja "${1}" || ( cat Testing/Temporary/LastTest.log && exit 1 )
+    CTEST_PARALLEL_LEVEL=4 GLOG_minloglevel=3 ninja "${1}" || ( cat Testing/Temporary/LastTest.log && exit 1 )
 }
 
 run_and_check_lenet_mnist_bundle() {
