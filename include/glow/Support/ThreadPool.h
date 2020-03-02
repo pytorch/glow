@@ -64,7 +64,7 @@ shared_function<std::decay_t<F>> make_shared_function(F &&f) {
 class ThreadExecutor final {
 public:
   /// Constructor. Initializes one thread backed by the workQueue_.
-  ThreadExecutor();
+  explicit ThreadExecutor(const std::string &name = "");
 
   /// Destructor. Signals the thread to stop and waits for exit.
   ~ThreadExecutor();
@@ -120,7 +120,7 @@ class ThreadPool final {
 public:
   /// Constructor. Initializes a thread pool with \p numWorkers
   /// threads and has them all run ThreadPool::threadPoolWorkerMain.
-  ThreadPool(unsigned numWorkers = kNumWorkers);
+  ThreadPool(unsigned numWorkers = kNumWorkers, const std::string &name = "");
 
   /// Destructor. Signals to all threads to stop and waits for all of them
   /// to exit.
