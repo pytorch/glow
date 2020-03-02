@@ -129,7 +129,8 @@ TEST_F(Habana, CreateTensor) {
 
   // Create tensor.
   unsigned sizes[SYN_MAX_TENSOR_DIM] = {4, 1024};
-  synTensorDescriptor desc(syn_type_fixed, 2u, sizes, data, false, nullptr, 1);
+  synTensorDescriptor desc(syn_type_fixed, 2u, sizes, data, synMemoryHost,
+                           false, nullptr, 1);
   synTensor tensor;
   chk(synCreateTensor(&desc, &tensor, false));
 
@@ -152,7 +153,8 @@ static void compileFC(const char *recipe, unsigned batchSize, unsigned inputF,
   chk(synMalloc(deviceId, batchSize * inputF, synMemFlags::synMemHost, &data,
                 0));
   unsigned sizes[SYN_MAX_TENSOR_DIM] = {inputF, batchSize};
-  synTensorDescriptor desc(syn_type_fixed, 2u, sizes, data, false, nullptr, 1);
+  synTensorDescriptor desc(syn_type_fixed, 2u, sizes, data, synMemoryHost,
+                           false, nullptr, 1);
   synTensor tensor;
   chk(synCreateTensor(&desc, &tensor, false));
 
@@ -167,7 +169,7 @@ static void compileFC(const char *recipe, unsigned batchSize, unsigned inputF,
   unsigned weightSize[SYN_MAX_TENSOR_DIM] = {inputF, outputF};
 #endif
   synTensorDescriptor weightDesc(syn_type_fixed, 2u, weightSize, weightData,
-                                 false, nullptr, 1);
+                                 synMemoryHost, false, nullptr, 1);
   synTensor weightTensor;
   chk(synCreateTensor(&weightDesc, &weightTensor, false));
 
@@ -177,8 +179,8 @@ static void compileFC(const char *recipe, unsigned batchSize, unsigned inputF,
                 &biasData, 0));
   memset(biasData, 0, sizeof(int32_t) * outputF);
   unsigned biasSize[SYN_MAX_TENSOR_DIM] = {outputF};
-  synTensorDescriptor biasDesc(syn_type_int32, 1u, biasSize, biasData, false,
-                               nullptr, 0);
+  synTensorDescriptor biasDesc(syn_type_int32, 1u, biasSize, biasData,
+                               synMemoryHost, false, nullptr, 0);
   synTensor biasTensor;
   chk(synCreateTensor(&biasDesc, &biasTensor, false));
 
@@ -188,7 +190,7 @@ static void compileFC(const char *recipe, unsigned batchSize, unsigned inputF,
                 &outputData, 0));
   unsigned outputSize[SYN_MAX_TENSOR_DIM] = {outputF, batchSize};
   synTensorDescriptor outputDesc(syn_type_fixed, 2u, outputSize, outputData,
-                                 false, nullptr, 1);
+                                 synMemoryHost, false, nullptr, 1);
   synTensor outputTensor;
   chk(synCreateTensor(&outputDesc, &outputTensor, false));
 
@@ -201,7 +203,7 @@ static void compileFC(const char *recipe, unsigned batchSize, unsigned inputF,
   // Compile graph.
   CompilationAttribute compileParams[1];
   compileParams[0].type = VISUALIZATION;
-  compileParams[0].u64 = 1;
+  compileParams[0].u32 = 1;
   chk(synCompileGraph(compileParams, 1, recipe));
 
   // Destroy tensors.
@@ -239,7 +241,8 @@ TEST_F(Habana, RunFC) {
   chk(synMalloc(deviceId, dataSize, synMemFlags::synMemHost, &data, 0));
   memset(data, 1, dataSize);
   unsigned sizes[SYN_MAX_TENSOR_DIM] = {inputF, batchSize};
-  synTensorDescriptor desc(syn_type_fixed, 2u, sizes, data, false, nullptr, 1);
+  synTensorDescriptor desc(syn_type_fixed, 2u, sizes, data, synMemoryHost,
+                           false, nullptr, 1);
   synTensor tensor;
   chk(synCreateTensor(&desc, &tensor, false));
 
@@ -249,7 +252,7 @@ TEST_F(Habana, RunFC) {
   chk(synMalloc(deviceId, outputSize, synMemFlags::synMemHost, &outputData, 0));
   unsigned outputSizes[SYN_MAX_TENSOR_DIM] = {outputF, batchSize};
   synTensorDescriptor outputDesc(syn_type_fixed, 2u, outputSizes, outputData,
-                                 false, nullptr, 1);
+                                 synMemoryHost, false, nullptr, 1);
   synTensor outputTensor;
   chk(synCreateTensor(&outputDesc, &outputTensor, false));
 
@@ -289,7 +292,8 @@ TEST_F(Habana, Relu) {
   uint64_t inputSize = sizeof(int8_t) * size;
   chk(synMalloc(deviceId, inputSize, synMemFlags::synMemHost, &inputData));
   unsigned inputDims[SYN_MAX_TENSOR_DIM] = {size};
-  synTensorDescriptor inputDesc(syn_type_fixed, 1u, inputDims, inputData);
+  synTensorDescriptor inputDesc(syn_type_fixed, 1u, inputDims, inputData,
+                                synMemoryHost);
   synTensor inputTensor;
   chk(synCreateTensor(&inputDesc, &inputTensor));
 
@@ -297,7 +301,8 @@ TEST_F(Habana, Relu) {
   uint64_t outputSize = sizeof(int8_t) * size;
   chk(synMalloc(deviceId, outputSize, synMemFlags::synMemHost, &outputData));
   unsigned outputDims[SYN_MAX_TENSOR_DIM] = {size};
-  synTensorDescriptor outputDesc(syn_type_fixed, 1u, outputDims, outputData);
+  synTensorDescriptor outputDesc(syn_type_fixed, 1u, outputDims, outputData,
+                                 synMemoryHost);
   synTensor outputTensor;
   chk(synCreateTensor(&outputDesc, &outputTensor));
 
@@ -307,7 +312,7 @@ TEST_F(Habana, Relu) {
   // Compile graph.
   CompilationAttribute compileParams[1];
   compileParams[0].type = VISUALIZATION;
-  compileParams[0].u64 = 1;
+  compileParams[0].u32 = 1;
   chk(synCompileGraph(compileParams, 1, recipe()));
 
   // Load the recipe.
@@ -352,7 +357,8 @@ TEST_F(Habana, MatmulFp32) {
   uint64_t lhsSize = sizeof(float) * N * N;
   chk(synMalloc(deviceId, lhsSize, synMemFlags::synMemHost, &lhs));
   unsigned lhsDims[SYN_MAX_TENSOR_DIM] = {N, N};
-  synTensorDescriptor lhsDesc(syn_type_single, 2u, lhsDims, lhs, false, "lhs");
+  synTensorDescriptor lhsDesc(syn_type_single, 2u, lhsDims, lhs, synMemoryHost,
+                              false, "lhs");
   synTensor lhsTensor;
   chk(synCreateTensor(&lhsDesc, &lhsTensor));
 
@@ -361,7 +367,8 @@ TEST_F(Habana, MatmulFp32) {
   uint64_t rhsSize = sizeof(float) * N * N;
   chk(synMalloc(deviceId, rhsSize, synMemFlags::synMemHost, &rhs));
   unsigned rhsDims[SYN_MAX_TENSOR_DIM] = {N, N};
-  synTensorDescriptor rhsDesc(syn_type_single, 2u, rhsDims, rhs, false, "rhs");
+  synTensorDescriptor rhsDesc(syn_type_single, 2u, rhsDims, rhs, synMemoryHost,
+                              false, "rhs");
   synTensor rhsTensor;
   chk(synCreateTensor(&rhsDesc, &rhsTensor, false, false, true));
 
@@ -371,7 +378,7 @@ TEST_F(Habana, MatmulFp32) {
   chk(synMalloc(deviceId, outputSize, synMemFlags::synMemHost, &outputData));
   unsigned outputDims[SYN_MAX_TENSOR_DIM] = {N, N};
   synTensorDescriptor outputDesc(syn_type_single, 2u, outputDims, outputData,
-                                 false, "output");
+                                 synMemoryHost, false, "output");
   synTensor outputTensor;
   chk(synCreateTensor(&outputDesc, &outputTensor));
 
@@ -388,7 +395,7 @@ TEST_F(Habana, MatmulFp32) {
   // Compile graph.
   CompilationAttribute compileParams[1];
   compileParams[0].type = VISUALIZATION;
-  compileParams[0].u64 = 1;
+  compileParams[0].u32 = 1;
   chk(synCompileGraph(compileParams, 1, recipe()));
 
   // Load the recipe.
@@ -469,7 +476,8 @@ TEST_F(Habana, MaxPoolRelu) {
   uint64_t inputSize = sizeof(int8_t) * 112 * 112 * 64;
   chk(synMalloc(deviceId, inputSize, synMemFlags::synMemHost, &inputData));
   unsigned inputDims[4] = {64, 112, 112, 1};
-  synTensorDescriptor inputDesc(syn_type_fixed, 4u, inputDims, inputData);
+  synTensorDescriptor inputDesc(syn_type_fixed, 4u, inputDims, inputData,
+                                synMemoryHost);
   synTensor inputTensor;
   chk(synCreateTensor(&inputDesc, &inputTensor));
 
@@ -478,14 +486,16 @@ TEST_F(Habana, MaxPoolRelu) {
   uint64_t poolSize = sizeof(int8_t) * 56 * 56 * 64;
   chk(synMalloc(deviceId, poolSize, synMemFlags::synMemHost, &poolData));
   unsigned outputDims[4] = {64, 56, 56, 1};
-  synTensorDescriptor poolDesc(syn_type_fixed, 4u, outputDims, poolData);
+  synTensorDescriptor poolDesc(syn_type_fixed, 4u, outputDims, poolData,
+                               synMemoryHost);
   synTensor poolTensor;
   chk(synCreateTensor(&poolDesc, &poolTensor));
 
   // Allocate relu tensor.
   void *reluData = nullptr;
   chk(synMalloc(deviceId, poolSize, synMemFlags::synMemHost, &reluData));
-  synTensorDescriptor reluDesc(syn_type_fixed, 4u, outputDims, reluData);
+  synTensorDescriptor reluDesc(syn_type_fixed, 4u, outputDims, reluData,
+                               synMemoryHost);
   synTensor reluTensor;
   chk(synCreateTensor(&reluDesc, &reluTensor));
 
@@ -505,7 +515,7 @@ TEST_F(Habana, MaxPoolRelu) {
   // Compile graph.
   CompilationAttribute compileParams[1];
   compileParams[0].type = VISUALIZATION;
-  compileParams[0].u64 = 1;
+  compileParams[0].u32 = 1;
   chk(synCompileGraph(compileParams, 1, recipe()));
 
   // Load the recipe.
@@ -537,8 +547,8 @@ TEST_F(Habana, Concat) {
   uint64_t i1Size = sizeof(int8_t) * size;
   chk(synMalloc(deviceId, i1Size, synMemFlags::synMemHost, &i1Data));
   unsigned i1Dims[SYN_MAX_TENSOR_DIM] = {size};
-  synTensorDescriptor i1Desc(syn_type_fixed, 1u, i1Dims, i1Data, false,
-                             "input1");
+  synTensorDescriptor i1Desc(syn_type_fixed, 1u, i1Dims, i1Data, synMemoryHost,
+                             false, "input1");
   synTensor i1Tensor;
   chk(synCreateTensor(&i1Desc, &i1Tensor));
 
@@ -546,8 +556,8 @@ TEST_F(Habana, Concat) {
   uint64_t i2Size = sizeof(int8_t) * size;
   chk(synMalloc(deviceId, i2Size, synMemFlags::synMemHost, &i2Data));
   unsigned i2Dims[SYN_MAX_TENSOR_DIM] = {size};
-  synTensorDescriptor i2Desc(syn_type_fixed, 1u, i2Dims, i2Data, false,
-                             "input2");
+  synTensorDescriptor i2Desc(syn_type_fixed, 1u, i2Dims, i2Data, synMemoryHost,
+                             false, "input2");
   synTensor i2Tensor;
   chk(synCreateTensor(&i2Desc, &i2Tensor));
 
@@ -555,8 +565,8 @@ TEST_F(Habana, Concat) {
   uint64_t i3Size = sizeof(int8_t) * size;
   chk(synMalloc(deviceId, i3Size, synMemFlags::synMemHost, &i3Data));
   unsigned i3Dims[SYN_MAX_TENSOR_DIM] = {size};
-  synTensorDescriptor i3Desc(syn_type_fixed, 1u, i3Dims, i3Data, false,
-                             "input3");
+  synTensorDescriptor i3Desc(syn_type_fixed, 1u, i3Dims, i3Data, synMemoryHost,
+                             false, "input3");
   synTensor i3Tensor;
   chk(synCreateTensor(&i3Desc, &i3Tensor));
 
@@ -565,7 +575,7 @@ TEST_F(Habana, Concat) {
   chk(synMalloc(deviceId, outputSize, synMemFlags::synMemHost, &outputData));
   unsigned outputDims[SYN_MAX_TENSOR_DIM] = {size * 3};
   synTensorDescriptor outputDesc(syn_type_fixed, 1u, outputDims, outputData,
-                                 false, "output");
+                                 synMemoryHost, false, "output");
   synTensor outputTensor;
   chk(synCreateTensor(&outputDesc, &outputTensor));
 
@@ -576,7 +586,7 @@ TEST_F(Habana, Concat) {
   // Compile graph.
   CompilationAttribute compileParams[1];
   compileParams[0].type = VISUALIZATION;
-  compileParams[0].u64 = 1;
+  compileParams[0].u32 = 1;
   chk(synCompileGraph(compileParams, 1, recipe()));
 
   // Load the recipe.
@@ -645,8 +655,8 @@ TEST_F(Habana, NoInputs) {
     std::array<float, size> c1;
     std::fill(c1.begin(), c1.end(), 1.0f);
     unsigned c1Dims[SYN_MAX_TENSOR_DIM] = {size};
-    synTensorDescriptor c1Desc(syn_type_fixed, 1u, c1Dims, c1.data(), false,
-                               "c1");
+    synTensorDescriptor c1Desc(syn_type_fixed, 1u, c1Dims, c1.data(),
+                               synMemoryHost, false, "c1");
     synTensor c1Tensor;
     chk(synCreateTensor(&c1Desc, &c1Tensor, /*isOutput*/ false,
                         /*isInput*/ false, /*isStaticParam*/ true));
@@ -655,8 +665,8 @@ TEST_F(Habana, NoInputs) {
     std::array<float, size> c2;
     std::fill(c2.begin(), c2.end(), 2.0f);
     unsigned c2Dims[SYN_MAX_TENSOR_DIM] = {size};
-    synTensorDescriptor c2Desc(syn_type_fixed, 1u, c2Dims, c2.data(), false,
-                               "c2");
+    synTensorDescriptor c2Desc(syn_type_fixed, 1u, c2Dims, c2.data(),
+                               synMemoryHost, false, "c2");
     synTensor c2Tensor;
     chk(synCreateTensor(&c2Desc, &c2Tensor, /*isOutput*/ false,
                         /*isInput*/ false, /*isStaticParam*/ true));
@@ -666,7 +676,8 @@ TEST_F(Habana, NoInputs) {
     uint64_t p1Size = sizeof(uint8_t) * size;
     chk(synMalloc(deviceId, p1Size, synMemFlags::synMemHost, &p1Data));
     unsigned p1Dims[SYN_MAX_TENSOR_DIM] = {size};
-    synTensorDescriptor p1Desc(syn_type_fixed, 1u, p1Dims, p1Data, false, "p1");
+    synTensorDescriptor p1Desc(syn_type_fixed, 1u, p1Dims, p1Data,
+                               synMemoryHost, false, "p1");
     synTensor p1Tensor;
     chk(synCreateTensor(&p1Desc, &p1Tensor));
 
@@ -675,7 +686,8 @@ TEST_F(Habana, NoInputs) {
     uint64_t p2Size = sizeof(uint8_t) * size;
     chk(synMalloc(deviceId, p2Size, synMemFlags::synMemHost, &p2Data));
     unsigned p2Dims[SYN_MAX_TENSOR_DIM] = {size};
-    synTensorDescriptor p2Desc(syn_type_fixed, 1u, p2Dims, p2Data, false, "p2");
+    synTensorDescriptor p2Desc(syn_type_fixed, 1u, p2Dims, p2Data,
+                               synMemoryHost, false, "p2");
     synTensor p2Tensor;
     chk(synCreateTensor(&p2Desc, &p2Tensor));
 
@@ -687,7 +699,7 @@ TEST_F(Habana, NoInputs) {
     // Compile graph.
     CompilationAttribute compileParams[1];
     compileParams[0].type = VISUALIZATION;
-    compileParams[0].u64 = 1;
+    compileParams[0].u32 = 1;
     chk(synCompileGraph(compileParams, 1, recipe()));
 
     chk(synDestroyTensor(p2Tensor));
@@ -708,7 +720,8 @@ TEST_F(Habana, NoInputs) {
     uint64_t p1Size = sizeof(uint8_t) * size;
     chk(synMalloc(deviceId, p1Size, synMemFlags::synMemHost, &p1Data));
     unsigned p1Dims[SYN_MAX_TENSOR_DIM] = {size};
-    synTensorDescriptor p1Desc(syn_type_fixed, 1u, p1Dims, p1Data, false, "p1");
+    synTensorDescriptor p1Desc(syn_type_fixed, 1u, p1Dims, p1Data,
+                               synMemoryHost, false, "p1");
     synTensor p1Tensor;
     chk(synCreateTensor(&p1Desc, &p1Tensor));
 
@@ -716,7 +729,8 @@ TEST_F(Habana, NoInputs) {
     uint64_t p2Size = sizeof(uint8_t) * size;
     chk(synMalloc(deviceId, p2Size, synMemFlags::synMemHost, &p2Data));
     unsigned p2Dims[SYN_MAX_TENSOR_DIM] = {size};
-    synTensorDescriptor p2Desc(syn_type_fixed, 1u, p2Dims, p2Data, false, "p2");
+    synTensorDescriptor p2Desc(syn_type_fixed, 1u, p2Dims, p2Data,
+                               synMemoryHost, false, "p2");
     synTensor p2Tensor;
     chk(synCreateTensor(&p2Desc, &p2Tensor));
 
@@ -774,7 +788,7 @@ TEST_F(Habana, CompileInferenceInterleave) {
     std::fill(input.begin(), input.end(), 1);
     unsigned inputDims[SYN_MAX_TENSOR_DIM] = {inputF, batchSize};
     synTensorDescriptor inputDesc(syn_type_fixed, 2u, inputDims, input.data(),
-                                  false);
+                                  synMemoryHost, false);
     synTensor inputT;
     chk(synCreateTensor(&inputDesc, &inputT, false, true, false));
 
@@ -782,14 +796,15 @@ TEST_F(Habana, CompileInferenceInterleave) {
     std::fill(weights.begin(), weights.end(), 1);
     unsigned weightsDims[SYN_MAX_TENSOR_DIM] = {inputF, outputF};
     synTensorDescriptor weightsDesc(syn_type_fixed, 2u, weightsDims,
-                                    weights.data());
+                                    weights.data(), synMemoryHost);
     synTensor weightsT;
     chk(synCreateTensor(&weightsDesc, &weightsT));
 
     std::vector<int32_t> bias(outputF);
     std::fill(bias.begin(), bias.end(), 1);
     unsigned biasDims[SYN_MAX_TENSOR_DIM] = {outputF};
-    synTensorDescriptor biasDesc(syn_type_int32, 1u, biasDims, bias.data());
+    synTensorDescriptor biasDesc(syn_type_int32, 1u, biasDims, bias.data(),
+                                 synMemoryHost);
     synTensor biasT;
     chk(synCreateTensor(&biasDesc, &biasT));
 
@@ -797,7 +812,7 @@ TEST_F(Habana, CompileInferenceInterleave) {
     std::fill(output.begin(), output.end(), 1);
     unsigned outputDims[SYN_MAX_TENSOR_DIM] = {outputF, batchSize};
     synTensorDescriptor outputDesc(syn_type_fixed, 2u, outputDims,
-                                   output.data());
+                                   output.data(), synMemoryHost);
     synTensor outputT;
     chk(synCreateTensor(&outputDesc, &outputT));
 
@@ -808,7 +823,7 @@ TEST_F(Habana, CompileInferenceInterleave) {
     // Compile graph.
     CompilationAttribute compileParams[1];
     compileParams[0].type = VISUALIZATION;
-    compileParams[0].u64 = 1;
+    compileParams[0].u32 = 1;
     chk(synCompileGraph(compileParams, 1, recipe()));
 
     chk(synDestroyTensor(outputT));
@@ -885,7 +900,8 @@ TEST_F(Habana, MultithreadedInference) {
   uint64_t inputSize = sizeof(int8_t) * size;
   chk(synMalloc(deviceId, inputSize, synMemFlags::synMemHost, &inputData));
   unsigned inputDims[SYN_MAX_TENSOR_DIM] = {size};
-  synTensorDescriptor inputDesc(syn_type_fixed, 1u, inputDims, inputData);
+  synTensorDescriptor inputDesc(syn_type_fixed, 1u, inputDims, inputData,
+                                synMemoryHost);
   synTensor inputTensor;
   chk(synCreateTensor(&inputDesc, &inputTensor));
 
@@ -893,7 +909,8 @@ TEST_F(Habana, MultithreadedInference) {
   uint64_t outputSize = sizeof(int8_t) * size;
   chk(synMalloc(deviceId, outputSize, synMemFlags::synMemHost, &outputData));
   unsigned outputDims[SYN_MAX_TENSOR_DIM] = {size};
-  synTensorDescriptor outputDesc(syn_type_fixed, 1u, outputDims, outputData);
+  synTensorDescriptor outputDesc(syn_type_fixed, 1u, outputDims, outputData,
+                                 synMemoryHost);
   synTensor outputTensor;
   chk(synCreateTensor(&outputDesc, &outputTensor));
 
@@ -902,7 +919,7 @@ TEST_F(Habana, MultithreadedInference) {
 
   CompilationAttribute compileParams[1];
   compileParams[0].type = VISUALIZATION;
-  compileParams[0].u64 = 1;
+  compileParams[0].u32 = 1;
   chk(synCompileGraph(compileParams, 1, recipe()));
 
   chk(synDestroyGraph());
@@ -992,41 +1009,43 @@ TEST_F(Habana, IntermediateReshapeMLP) {
   std::vector<float> dense(1000 * 128);
   unsigned denseDims[SYN_MAX_TENSOR_DIM] = {128, 1000};
   synTensorDescriptor denseDesc(syn_type_single, 2u, denseDims, dense.data(),
-                                false, "dense");
+                                synMemoryHost, false, "dense");
   synTensor denseT;
   chk(synCreateTensor(&denseDesc, &denseT, false, true, false));
 
   std::vector<float> weights1(128 * 584);
   unsigned weights1Dims[SYN_MAX_TENSOR_DIM] = {584, 128};
   synTensorDescriptor weights1Desc(syn_type_single, 2u, weights1Dims,
-                                   weights1.data(), false);
+                                   weights1.data(), synMemoryHost, false);
   synTensor weights1T;
   chk(synCreateTensor(&weights1Desc, &weights1T, false, false, true));
 
   std::vector<float> fc2(1000 * 584);
   unsigned fc2Dims[SYN_MAX_TENSOR_DIM] = {584, 1000};
-  synTensorDescriptor fc2Desc(syn_type_single, 2u, fc2Dims, fc2.data(), false);
+  synTensorDescriptor fc2Desc(syn_type_single, 2u, fc2Dims, fc2.data(),
+                              synMemoryHost, false);
   synTensor fc2T;
   chk(synCreateTensor(&fc2Desc, &fc2T, false, false, false));
 
   std::vector<float> reshape(1000 * 73 * 8);
   unsigned reshapeDims[SYN_MAX_TENSOR_DIM] = {8, 73, 1000};
   synTensorDescriptor reshapeDesc(syn_type_single, 3u, reshapeDims,
-                                  reshape.data(), false, "reshape");
+                                  reshape.data(), synMemoryHost, false,
+                                  "reshape");
   synTensor reshapeT;
   chk(synCreateTensor(&reshapeDesc, &reshapeT, true, false, false));
 
   std::vector<float> weights2(584 * 128);
   unsigned weights2Dims[SYN_MAX_TENSOR_DIM] = {128, 584};
   synTensorDescriptor weights2Desc(syn_type_single, 2u, weights2Dims,
-                                   weights2.data(), false);
+                                   weights2.data(), synMemoryHost, false);
   synTensor weights2T;
   chk(synCreateTensor(&weights2Desc, &weights2T, false, false, true));
 
   std::vector<float> fc3(1000 * 128);
   unsigned fc3Dims[SYN_MAX_TENSOR_DIM] = {128, 1000};
-  synTensorDescriptor fc3Desc(syn_type_single, 2u, fc3Dims, fc3.data(), false,
-                              "fc3");
+  synTensorDescriptor fc3Desc(syn_type_single, 2u, fc3Dims, fc3.data(),
+                              synMemoryHost, false, "fc3");
   synTensor fc3T;
   chk(synCreateTensor(&fc3Desc, &fc3T, true, false, false));
 
@@ -1042,7 +1061,7 @@ TEST_F(Habana, IntermediateReshapeMLP) {
   // Compile graph.
   CompilationAttribute compileParams[1];
   compileParams[0].type = VISUALIZATION;
-  compileParams[0].u64 = 1;
+  compileParams[0].u32 = 1;
   chk(synCompileGraph(compileParams, 1, recipe()));
 
   chk(synDestroyTensor(fc3T));
@@ -1095,7 +1114,8 @@ TEST_F(Habana, SparseLengthsSum) {
       281,
       1000,
   };
-  synTensorDescriptor xDesc((synDataType)4, 2, xDims, x.data(), false, "x");
+  synTensorDescriptor xDesc((synDataType)4, 2, xDims, x.data(), synMemoryHost,
+                            false, "x");
   synTensor xT;
   synCreateTensor(&xDesc, &xT, false, true, false);
 
@@ -1105,7 +1125,8 @@ TEST_F(Habana, SparseLengthsSum) {
       160,
       281,
   };
-  synTensorDescriptor wDesc((synDataType)4, 2, wDims, w.data(), false, "w");
+  synTensorDescriptor wDesc((synDataType)4, 2, wDims, w.data(), synMemoryHost,
+                            false, "w");
   synTensor wT;
   synCreateTensor(&wDesc, &wT, false, false, true);
 
@@ -1114,7 +1135,8 @@ TEST_F(Habana, SparseLengthsSum) {
   unsigned bDims[SYN_MAX_TENSOR_DIM] = {
       160,
   };
-  synTensorDescriptor bDesc((synDataType)4, 1, bDims, b.data(), false, "b");
+  synTensorDescriptor bDesc((synDataType)4, 1, bDims, b.data(), synMemoryHost,
+                            false, "b");
   synTensor bT;
   synCreateTensor(&bDesc, &bT, false, false, true);
 
@@ -1124,7 +1146,7 @@ TEST_F(Habana, SparseLengthsSum) {
       1000,
   };
   synTensorDescriptor fc_dotDesc((synDataType)4, 2, fc_dotDims, fc_dot.data(),
-                                 false, "fc_dot");
+                                 synMemoryHost, false, "fc_dot");
   synTensor fc_dotT;
   synCreateTensor(&fc_dotDesc, &fc_dotT, false, false, false);
 
@@ -1134,8 +1156,8 @@ TEST_F(Habana, SparseLengthsSum) {
       1000,
   };
   synTensorDescriptor fc_add_bias_bcastDesc(
-      (synDataType)4, 2, fc_add_bias_bcastDims, fc_add_bias_bcast.data(), false,
-      "fc_add_bias_bcast");
+      (synDataType)4, 2, fc_add_bias_bcastDims, fc_add_bias_bcast.data(),
+      synMemoryHost, false, "fc_add_bias_bcast");
   synTensor fc_add_bias_bcastT;
   synCreateTensor(&fc_add_bias_bcastDesc, &fc_add_bias_bcastT, false, false,
                   false);
@@ -1146,7 +1168,7 @@ TEST_F(Habana, SparseLengthsSum) {
       1000,
   };
   synTensorDescriptor save2Desc((synDataType)4, 2, save2Dims, save2.data(),
-                                false, "save2");
+                                synMemoryHost, false, "save2");
   synTensor save2T;
   synCreateTensor(&save2Desc, &save2T, true, false, false);
 
@@ -1167,8 +1189,8 @@ TEST_F(Habana, SparseLengthsSum) {
   unsigned i1Dims[SYN_MAX_TENSOR_DIM] = {
       4000,
   };
-  synTensorDescriptor i1Desc((synDataType)16, 1, i1Dims, i1.data(), false,
-                             "i1");
+  synTensorDescriptor i1Desc((synDataType)16, 1, i1Dims, i1.data(),
+                             synMemoryHost, false, "i1");
   synTensor i1T;
   synCreateTensor(&i1Desc, &i1T, false, true, false);
 
@@ -1176,8 +1198,8 @@ TEST_F(Habana, SparseLengthsSum) {
   unsigned i11Dims[SYN_MAX_TENSOR_DIM] = {
       1000,
   };
-  synTensorDescriptor i11Desc((synDataType)16, 1, i11Dims, i11.data(), false,
-                              "i11");
+  synTensorDescriptor i11Desc((synDataType)16, 1, i11Dims, i11.data(),
+                              synMemoryHost, false, "i11");
   synTensor i11T;
   synCreateTensor(&i11Desc, &i11T, false, true, false);
 
@@ -1187,7 +1209,7 @@ TEST_F(Habana, SparseLengthsSum) {
       1000,
   };
   synTensorDescriptor save1Desc((synDataType)4, 2, save1Dims, save1.data(),
-                                false, "save1");
+                                synMemoryHost, false, "save1");
   synTensor save1T;
   synCreateTensor(&save1Desc, &save1T, true, false, false);
 
@@ -1197,8 +1219,8 @@ TEST_F(Habana, SparseLengthsSum) {
       40,
       2000000,
   };
-  synTensorDescriptor dataDesc(syn_type_fixed, 2, dataDims, data.data(), false,
-                               "data");
+  synTensorDescriptor dataDesc(syn_type_fixed, 2, dataDims, data.data(),
+                               synMemoryHost, false, "data");
   synTensor dataT;
   synCreateTensor(&dataDesc, &dataT, false, false, true);
 
@@ -1207,8 +1229,8 @@ TEST_F(Habana, SparseLengthsSum) {
       2,
       2000000,
   };
-  synTensorDescriptor sbDesc(syn_type_single, 2, sbDims, sb.data(), false,
-                             "sb");
+  synTensorDescriptor sbDesc(syn_type_single, 2, sbDims, sb.data(),
+                             synMemoryHost, false, "sb");
   synTensor sbT;
   synCreateTensor(&sbDesc, &sbT, false, false, true);
 
@@ -1221,6 +1243,6 @@ TEST_F(Habana, SparseLengthsSum) {
   // Compile graph.
   CompilationAttribute compileParams[1];
   compileParams[0].type = VISUALIZATION;
-  compileParams[0].u64 = 1;
+  compileParams[0].u32 = 1;
   chk(synCompileGraph(compileParams, 1, recipe()));
 }

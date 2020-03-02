@@ -41,8 +41,6 @@ const char *statusStr(synStatus status) {
       "Unsupported",
       "Wrong params file",
       "Device already acquired",
-      "Name is already used",
-      "Busy",
       "Failed",
   };
   static_assert(sizeof(strs) / sizeof(strs[0]) == synFail + 1);
