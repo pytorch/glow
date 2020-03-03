@@ -698,6 +698,10 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
 
   if (typeName == "Int8Relu") {
     RETURN_ERR_IF_NOT(op.input_size() == 1, "Only one input is supported.");
+    RETURN_ERR_IF_NOT(dict.count("Y_zero_point"),
+                      "missing zero point for quantized outout type");
+    RETURN_ERR_IF_NOT(dict.count("Y_scale"),
+                      "missing Y_scale for quantized output type");
     NodeValue in;
     ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
     auto outDims = in.getType()->dims();
