@@ -51,7 +51,7 @@ the test `OCLTest`.
 
 ### Supporting multiple targets
 
-The JIT is able to target all environments supported by LLVM.  If the
+The JIT is able to target any/all environments supported by LLVM.  If the
 `build_llvm.sh` script is used to build LLVM for Glow, all the currently stable
 architectures will be enabled.  If you wish to control which architectures are
 built, you can use the `LLVM_TARGETS_TO_BUILD` cmake parameter when building
@@ -60,7 +60,7 @@ LLVM.
 ## Building with the Sanitizers
 
 The clang-sanitizer project provides a number of libraries which can be used with
-compiler inserted instrumentation to find a variety of bugs at runtime.  These
+compiler-inserted instrumentation to find a variety of bugs at runtime.  These
 include memory issues due such as use-after-free or double-free.  They can also
 detect other types of problems like memory leaks.  Glow can be built with the
 sanitizers enabled using an additional parameter to cmake.
