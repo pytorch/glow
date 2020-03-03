@@ -96,15 +96,15 @@ public:
   }
 
   // Compares generated TraceEvents with their expected names and types.
-  void checkEventMetadata(const std::vector<TraceEvent> &traceEvents,
+  void checkEventMetadata(const std::list<TraceEvent> &traceEvents,
                           std::vector<std::pair<std::string, char>> expected) {
 
     ASSERT_EQ(traceEvents.size(), expected.size());
     unsigned index = 0;
-    for (auto &pair : expected) {
-      ASSERT_EQ(pair.first, traceEvents[index].name);
-      ASSERT_EQ(pair.second, traceEvents[index].type);
-      index++;
+    for (const auto &event : traceEvents) {
+      const auto &pair = expected[index++];
+      ASSERT_EQ(pair.first, event.name);
+      ASSERT_EQ(pair.second, event.type);
     }
   }
 
@@ -137,7 +137,7 @@ public:
   }
 
   void checkEventMetadata(
-      const std::vector<TraceEvent> &traceEvents,
+      const std::list<TraceEvent> &traceEvents,
       const std::vector<std::pair<std::string, std::string>> &expected) {
 
     const auto &backend = GetParam();
@@ -165,7 +165,7 @@ public:
   }
 
   // Check timestamps are non-zero and monotonically increasing.
-  void checkEventTimestamps(const std::vector<TraceEvent> &traceEvents) {
+  void checkEventTimestamps(const std::list<TraceEvent> &traceEvents) {
     uint64_t last = 0;
     for (const auto &event : traceEvents) {
       ASSERT_NE(event.timestamp, 0);
@@ -463,10 +463,14 @@ TEST_P(TraceEventsTest, twoCompiles) {
 
   ASSERT_EQ(traceEvents.size(), traceEvents2.size());
 
-  for (unsigned i = 0; i < traceEvents.size(); ++i) {
-    ASSERT_EQ(traceEvents2[i].name, traceEvents[i].name);
-    ASSERT_EQ(traceEvents2[i].type, traceEvents[i].type);
-    ASSERT_GT(traceEvents2[i].timestamp, traceEvents[i].timestamp);
+  auto iter = traceEvents.begin();
+  auto iter2 = traceEvents2.begin();
+  while (iter != traceEvents.end()) {
+    ASSERT_EQ(iter2->name, iter->name);
+    ASSERT_EQ(iter2->type, iter->type);
+    ASSERT_NE(iter2->timestamp, iter->timestamp);
+    ++iter;
+    ++iter2;
   }
 }
 
@@ -615,11 +619,15 @@ TEST_P(TraceEventsTest, multipleRunsAreDistinct) {
   ASSERT_GE(traceEvents.size(), numEvents);
   ASSERT_GE(traceEvents2.size(), numEvents);
 
-  for (unsigned i = 0; i < numEvents; ++i) {
-    ASSERT_EQ(traceEvents[i].name, traceEvents[i].name);
-    ASSERT_EQ(traceEvents[i].type, traceEvents[i].type);
+  auto iter = traceEvents.begin();
+  auto iter2 = traceEvents2.begin();
+  while (iter != traceEvents.end()) {
+    ASSERT_EQ(iter2->name, iter->name);
+    ASSERT_EQ(iter2->type, iter->type);
     // timestamps are not equal
-    ASSERT_EQ(traceEvents[i].timestamp, traceEvents[i].timestamp);
+    ASSERT_NE(iter2->timestamp, iter->timestamp);
+    ++iter;
+    ++iter2;
   }
 }
 
@@ -798,7 +806,7 @@ TEST(TraceEventsTest, TraceLevels) {
       EXPECT_EQ(context.getTraceEvents().size(), 0);
     } else {
       ASSERT_EQ(context.getTraceEvents().size(), 1);
-      ASSERT_EQ(context.getTraceEvents()[0].name, "event");
+      ASSERT_EQ(context.getTraceEvents().front().name, "event");
     }
   }
 

@@ -35,25 +35,13 @@ void writeMetadataHelper(llvm::raw_fd_ostream &file, llvm::StringRef type,
 }
 
 void TraceEvent::dumpTraceEvents(
-    std::vector<TraceEvent> &events, llvm::StringRef filename,
+    std::list<TraceEvent> &events, llvm::StringRef filename,
     const std::string &processName,
     const std::map<int, std::string> &threadNames) {
   llvm::errs() << "dumping " << events.size() << " trace events to "
                << filename.str() << ".\n";
 
-  // Chrome trace UI has a bug with complete events which are ordered later in
-  // the json than an event they completely enclose, so sort the list of events
-  // by start time and duration.
-  std::stable_sort(events.begin(), events.end(),
-                   [](const TraceEvent &a, const TraceEvent &b) {
-                     if (a.timestamp == b.timestamp) {
-                       return a.duration > b.duration;
-                     }
-                     return a.timestamp < b.timestamp;
-                   });
-
   auto process = processName.empty() ? "glow" : processName;
-
   std::error_code EC;
   llvm::raw_fd_ostream file(filename, EC);
 

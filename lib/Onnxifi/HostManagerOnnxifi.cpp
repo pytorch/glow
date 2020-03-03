@@ -297,16 +297,25 @@ onnxStatus HostManagerGraph::run(std::unique_ptr<ExecutionContext> ctx,
         outputEvent->signal(ONNXIFI_STATUS_SUCCESS);
 
         if (traceContext && GlowDumpDebugTraces) {
-          std::unique_lock<std::mutex> lock(tracesMutex_);
-          if (!mergedTraceContext_) {
-            mergedTraceContext_ =
-                glow::make_unique<TraceContext>(TraceLevel::STANDARD);
-          }
-          mergedTraceContext_->merge(traceContext);
+          // Dumping traces to a file can take a while. So avoid tracesMutex_
+          // while we call dumpTraces.
+          std::unique_ptr<TraceContext> toDump;
+          {
+            std::unique_lock<std::mutex> lock(tracesMutex_);
+            if (!mergedTraceContext_) {
+              mergedTraceContext_ =
+                  glow::make_unique<TraceContext>(TraceLevel::STANDARD);
+            }
+            mergedTraceContext_->merge(traceContext);
 
-          if (++numTracesToDump_ >= GlowNumDebugTracesPerDump) {
-            numTracesToDump_ = 0;
-            dumpTraces(mergedTraceContext_.release());
+            if (++numTracesToDump_ >= GlowNumDebugTracesPerDump) {
+              numTracesToDump_ = 0;
+              toDump.reset(mergedTraceContext_.release());
+            }
+          }
+
+          if (toDump) {
+            dumpTraces(toDump.get());
           }
         }
       });
@@ -321,7 +330,7 @@ HostManagerGraph::~HostManagerGraph() {
   if (GlowDumpDebugTraces) {
     std::unique_lock<std::mutex> lock(tracesMutex_);
     if (mergedTraceContext_ && numTracesToDump_ > 0) {
-      dumpTraces(mergedTraceContext_.release());
+      dumpTraces(mergedTraceContext_.get());
     }
   }
 }
