@@ -4173,14 +4173,14 @@ void Function::dump() const {
   }
 }
 
-std::string Function::toString() const {
+std::string Function::toString(bool skipUsersForStorage) const {
   std::string storage;
   llvm::raw_string_ostream os(storage);
-  dump(os);
+  dump(os, skipUsersForStorage);
   return os.str();
 }
 
-void Function::dump(llvm::raw_ostream &os) const {
+void Function::dump(llvm::raw_ostream &os, bool skipUsersForStorage) const {
   os << "Graph structure " << getName() << ":\n";
   std::set<const Node *, SortNamed> sorted;
   for (const Node &n : nodes_) {
@@ -4188,6 +4188,12 @@ void Function::dump(llvm::raw_ostream &os) const {
   }
   for (auto *n : sorted) {
     os << n->getDebugDesc();
+  }
+  for (auto *C : getNamedSorted(findConstants())) {
+    os << C->getDebugDesc(skipUsersForStorage);
+  }
+  for (auto *P : getNamedSorted(findPlaceholders())) {
+    os << P->getDebugDesc(skipUsersForStorage);
   }
 }
 

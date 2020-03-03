@@ -133,7 +133,7 @@ public:
 
   bool isDataParallel() const { return false; }
 
-  std::string getDebugDesc() const;
+  std::string getDebugDesc(bool skipUsers = false) const;
 
   llvm::hash_code getHash() const;
 
@@ -187,7 +187,7 @@ public:
 
   bool isDataParallel() const { return false; }
 
-  std::string getDebugDesc() const;
+  std::string getDebugDesc(bool skipUsers = false) const;
 
   llvm::hash_code getHash() const;
 };
