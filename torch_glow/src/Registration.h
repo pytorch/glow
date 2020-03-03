@@ -35,16 +35,22 @@ void registerGlowFusionPass(std::function<bool()> enablePassFn);
 /// registered.
 void registerGlowFusionOpAndPass(std::function<bool()> enablePassFn);
 
-/// Store a CachingGraphRunner \p graphRunner under a given \p key for later
-/// later use. This is so that a CachingGraphRunner can be preloaded for a given
-/// graph and then stored until the corresponding pt node is created for that
-/// graph.
-void setGraphRunnerForKey(const std::string &key,
-                          std::unique_ptr<CachingGraphRunner> graphRunner);
+/// Get the size of the global CachingGraphRunner map. For testing and debugging
+/// purpose only.
+size_t getGraphRunnerMapSize();
+
+/// Store a CachingGraphRunner with a constucting functor \p graphRunnerBuilder
+/// under a given \p key for later later use. This is so that a
+/// CachingGraphRunner can be preloaded for a given graph and then stored until
+/// the corresponding pt node is created for that graph.
+std::shared_ptr<CachingGraphRunner>
+setGraphRunnerForKey(const std::string &key,
+                     std::function<std::shared_ptr<CachingGraphRunner>(void)>
+                         graphRunnerBuilder);
 
 /// Get a precreated CachingGraphRunner for a given \p key. \returns nullptr if
 /// no CachingGraphRunner was registered for the given key.
-std::unique_ptr<CachingGraphRunner>
+std::shared_ptr<CachingGraphRunner>
 getGraphRunnerForKey(const std::string &key);
 } // namespace glow
 

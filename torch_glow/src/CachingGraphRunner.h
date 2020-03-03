@@ -21,8 +21,9 @@
 #include "glow/Runtime/HostManager/HostManager.h"
 
 #include <torch/csrc/jit/ir/ir.h>
-
 #include <torch/csrc/jit/serialization/import.h>
+
+#include <shared_mutex>
 
 namespace glow {
 
@@ -70,14 +71,17 @@ class CachingGraphRunner {
   /// in groups to file.
   std::unique_ptr<TraceContext> mergedTraceContext_;
 
+  /// Lock for concurrent accessing to perGlowGraphInfoMap_.
+  std::shared_timed_mutex graphInfoMapMutex;
+
   /// Given a PyTorch input stack \p stack, this generates a hash from the
   /// values on the stack and checks to see if a matching function was loaded
   /// previously. If a matching function was loaded previously then its cached
   /// info is returned immediately. Otherwise this loads the
   /// subgraph into the owned HostManager, creates a PerGlowGraphInfo which is
   /// cached for the given inputs, and then \returns this PerGlowGraphInfo.
-  Expected<PerGlowGraphInfo *> loadImpl(torch::jit::Stack &stack,
-                                        TraceContext *traceContext);
+  Expected<std::shared_ptr<PerGlowGraphInfo>>
+  loadImpl(torch::jit::Stack &stack, TraceContext *traceContext);
 
   /// Given a PerGlowGraphInfo \p info for a subgraph that was previously
   /// loaded, this runs the Glow function that corresponds to that

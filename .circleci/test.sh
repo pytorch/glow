@@ -52,6 +52,7 @@ run_pytorch_tests() {
       export PATH="/tmp/sccache:$PATH"
     fi
     source /tmp/venv/bin/activate
+    pip install pytest-xdist
     python "${GLOW_SRC}/torch_glow/setup.py" test --run_cmake
     cd -
     if hash sccache 2>/dev/null; then

@@ -3,6 +3,8 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 import torch
 import torch_glow
 
+import sys
+
 GLOW_NODE_NAME = "glow::FusionGroup"
 SUBGRAPH_ATTR = "Subgraph"
 
@@ -84,9 +86,13 @@ def jitVsGlow_(f_torch, f_glow, check_trace, atol, rtol, *inputs, expected_fused
             assert isinstance(torch_res, tuple) and isinstance(glow_res, tuple)
             assert len(torch_res) == len(glow_res)
             for i in range(len(torch_res)):
+                print("torch shape: {}".format(torch_res[i].shape), file=sys.stderr)
+                print("glow shape: {}".format(glow_res[i].shape), file=sys.stderr)
                 assert torch.allclose(
                     torch_res[i], glow_res[i], atol=atol, rtol=rtol)
         else:
+            print("torch shape: {}".format(torch_res.shape), file=sys.stderr)
+            print("glow shape: {}".format(glow_res.shape), file=sys.stderr)
             is_all_close = torch.allclose(
                 torch_res, glow_res, atol=atol, rtol=rtol)
             if not is_all_close:
