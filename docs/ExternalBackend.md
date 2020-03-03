@@ -1,6 +1,6 @@
 ## External backends
 
-An external backend can be added to Glow without changing the Glow build infrastructure. An external backend must be provided as a single source directory, and then can be developped in a separate source management repository.
+An external backend can be added to Glow without changing the Glow build infrastructure. An external backend must be provided as a single source directory, and then can be developed in a separate source management repository.
 
 ### External backend structure
 
@@ -26,19 +26,19 @@ To be integrated into Glow and compiled, the backend directory must be placed in
 
 #### Defined cmake variables
 
-When an external backend is detected and activated, the following CMake variable is defined:
+When an external backend is detected and activated, the following cmake variable is defined:
 
-- `EXTERNAL_BACKEND_NAME` : name derived from the external backend directory name. Can be used by the backend to name libraries for instance.
+- `EXTERNAL_BACKEND_NAME` : name derived from the external backend directory name. This can be used by the backend to name libraries, for instance.
 
 
-There is the possibility to disable an detected external backend by setting the following CMake define to `OFF`:
+There is the possibility to disable an detected external backend by setting the following cmake define to `OFF`:
 
 - `GLOW_WITH_<BACKEND DIR NAME>`
 
 
 #### C++ define
 
-When an external backend is activated, Glow adds a global C++ compiler define that can be used to enclose backend specific code in the generic Glow source code, based on the activation of this external backend:
+When an external backend is activated, Glow adds a global C++ compiler define that can be used to enclose backend-specific code in the generic Glow source code, based on the activation of this external backend:
 
 - `GLOW_WITH_<BACKEND DIR NAME>`
 
@@ -67,7 +67,7 @@ This file is optional.
 #### Backend specific nodes and instructions
 
 An external backend can optionally declare specific Glow nodes and instructions.
-In this case, the `<Name>/ClassGen/CMakeLists.txt` must be provided and backend specific nodes and instructions declaration headers declared.
+In this case, the `<Name>/ClassGen/CMakeLists.txt` must be provided and backend-specific Nodes and Instructions declaration headers declared.
 
 CMake example:
 ```
@@ -80,7 +80,7 @@ configure_file(${VERIF_FILENAME}
                ${GLOW_BINARY_DIR}/glow/${VERIF_FILENAME} COPYONLY)
 ```
 
-These header files must be included in the generic glow code, respectivelly in `tools/ClassGen/NodeGen.cpp` and `tools/ClassGen/InstrGen.cpp`, at the end of the `main` function like standard backends.It is advised to enclose the backend specific include into `#ifdef GLOW_WITH_<BACKEND DIR NAME>`.
+These header files must be included in the generic Glow code, respectivelly in `tools/ClassGen/NodeGen.cpp` and `tools/ClassGen/InstrGen.cpp`, at the end of the `main` function like standard backends.It is advised to enclose the backend specific include into `#ifdef GLOW_WITH_<BACKEND DIR NAME>`.
 
 Example for specific nodes:
 ```
@@ -100,9 +100,9 @@ int main(int argc, char **argv) {
 ```
 
 
-#### Backend specific tests
+#### Backend-specific tests
 
-Backend specific tests can be added. In this case, the `<Name>/Tests/CMakeLists.txt` must be provided. The Backend tests must be compiled as a library and registered to glow with the `add_glow_test` cmake function.
+Backend-specific tests can be added. In this case, the `<Name>/Tests/CMakeLists.txt` must be provided. The backend tests must be compiled as a library and registered to Glow with the `add_glow_test` cmake function.
 
 CMake example:
 ```
