@@ -13,13 +13,8 @@ target_compile_options(TorchGlowTraining
                       PRIVATE
                         -frtti -fexceptions -DC10_USE_GLOG)
 target_link_libraries(TorchGlowTraining
-                      PRIVATE
-                        Backends
-                        PyTorchFileLoader
-                        ExecutionEngine
-                        Exporter
-                        GraphOptimizer
-                        Importer)
+                      PUBLIC
+                        PyTorchFileLoader)
 
 target_include_directories(TorchGlowTraining PUBLIC
                             ${TORCH_GLOW}/src
