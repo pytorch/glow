@@ -21,39 +21,83 @@
 
 #include <glog/logging.h>
 #include <torch/csrc/jit/ir/alias_analysis.h>
+#include <torch/csrc/jit/ir/node_hashing.h>
 #include <torch/csrc/jit/passes/common_subexpression_elimination.h>
 #include <torch/csrc/jit/passes/dead_code_elimination.h>
 #include <torch/csrc/jit/passes/pass_manager.h>
 #include <torch/csrc/jit/passes/subgraph_rewrite.h>
 #include <torch/csrc/jit/passes/utils/subgraph_utils.h>
 #include <torch/csrc/jit/runtime/custom_operator.h>
+#include <torch/csrc/utils/hash.h>
+
+#include <mutex>
+#include <shared_mutex>
 
 namespace glow {
-std::unordered_map<std::string, std::unique_ptr<CachingGraphRunner>> &
+
+namespace {
+/// Lock to protect the global graph runner map.
+std::shared_timed_mutex runnerMapMutex;
+
+size_t hashBlock(torch::jit::Block *block, size_t seed) {
+  size_t s = seed;
+  for (auto it = block->nodes().begin(); it != block->nodes().end(); ++it) {
+    auto *node = *it;
+    s = torch::hash_combine(s, torch::jit::HashNode{}(node));
+    if (!node->blocks().empty()) {
+      for (auto b : node->blocks()) {
+        s = hashBlock(b, s);
+      }
+    }
+  }
+  return s;
+}
+
+size_t hashGraph(std::shared_ptr<torch::jit::Graph> g) {
+  return hashBlock(g->block(), 0xcaffe2);
+}
+
+std::unordered_map<std::string, std::shared_ptr<CachingGraphRunner>> &
 getPreloadedRunnerMap() {
-  static std::unordered_map<std::string, std::unique_ptr<CachingGraphRunner>>
+  static std::unordered_map<std::string, std::shared_ptr<CachingGraphRunner>>
       preloadedGraphRunners_;
   return preloadedGraphRunners_;
 }
+} // namespace
 
-std::unique_ptr<CachingGraphRunner>
+size_t getGraphRunnerMapSize() {
+  const auto &m = getPreloadedRunnerMap();
+  std::shared_lock<std::shared_timed_mutex> rlock(runnerMapMutex);
+  return m.size();
+}
+
+std::shared_ptr<CachingGraphRunner>
 getGraphRunnerForKey(const std::string &key) {
   auto &preloadedRunners = getPreloadedRunnerMap();
+  std::shared_lock<std::shared_timed_mutex> rlock(runnerMapMutex);
   auto it = preloadedRunners.find(key);
   if (it == preloadedRunners.end()) {
     return nullptr;
   } else {
-    auto graphRunner = std::move(it->second);
-    preloadedRunners.erase(it);
-    return graphRunner;
+    return it->second;
   }
 }
 
-void setGraphRunnerForKey(const std::string &key,
-                          std::unique_ptr<CachingGraphRunner> graphRunner) {
+std::shared_ptr<CachingGraphRunner>
+setGraphRunnerForKey(const std::string &key,
+                     std::function<std::shared_ptr<CachingGraphRunner>(void)>
+                         graphRunnerBuilder) {
   auto &preloadedRunners = getPreloadedRunnerMap();
-  DCHECK_EQ(preloadedRunners.count(key), 0);
-  preloadedRunners[key] = std::move(graphRunner);
+  std::unique_lock<std::shared_timed_mutex> wlock(runnerMapMutex);
+  const auto it = preloadedRunners.find(key);
+  if (it != preloadedRunners.end()) {
+    return it->second;
+  }
+
+  auto runner = graphRunnerBuilder();
+  auto ret = preloadedRunners.emplace(key, runner);
+  CHECK(ret.second);
+  return runner;
 }
 
 void registerGlowOp(const c10::Symbol &symbol) {
@@ -63,17 +107,29 @@ void registerGlowOp(const c10::Symbol &symbol) {
   torch::jit::RegisterOperators op({torch::jit::Operator(
       symbol,
       [](const torch::jit::Node *node) -> torch::jit::Operation {
-        std::string key = node->kind().toQualString();
-
+        // How to find a graphRunner:
+        // 1. See if a key based on graph hash has been registered
+        // 2. If not, see if a key based on fusion node symbol string has been
+        // registered, which is usually done in AOT fashion
+        // 3. If not, create a graphRunner with graph hash as a key
+        size_t key = hashGraph(node->g(at::attr::Subgraph));
+        std::string keyStr(sizeof(size_t), '\0');
+        std::memcpy(&keyStr[0], &key, sizeof(key));
         std::shared_ptr<CachingGraphRunner> graphRunner =
-            getGraphRunnerForKey(key);
+            getGraphRunnerForKey(keyStr);
+
+        if (!graphRunner) {
+          graphRunner = getGraphRunnerForKey(node->kind().toQualString());
+        }
 
         // If no preloaded graph runner was created for this node, create a new
         // empty one.
         if (!graphRunner) {
-          graphRunner = std::make_shared<CachingGraphRunner>(
-              node->g(at::attr::Subgraph), getHostManager(),
-              getPyTorchLoaderSettings());
+          graphRunner = setGraphRunnerForKey(keyStr, [node]() {
+            return std::make_shared<CachingGraphRunner>(
+                node->g(at::attr::Subgraph), getHostManager(),
+                getPyTorchLoaderSettings());
+          });
         }
 
         return [graphRunner](torch::jit::Stack &stack) {

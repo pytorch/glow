@@ -82,11 +82,10 @@ void CachingGraphRunner::aggregateAndDumpTraces(TraceContext *traceContext,
   }
 }
 
-Expected<CachingGraphRunner::PerGlowGraphInfo *>
+Expected<std::shared_ptr<CachingGraphRunner::PerGlowGraphInfo>>
 CachingGraphRunner::loadImpl(torch::jit::Stack &stack,
                              TraceContext *traceContext) {
   TRACE_EVENT_SCOPE(traceContext, TraceLevel::RUNTIME, "torch_glow::loadImpl");
-
   const auto inputs = torch::jit::last(stack, graph_->inputs().size());
 
   TRACE_EVENT_BEGIN(traceContext, TraceLevel::RUNTIME, "computeGraphHash");
@@ -95,11 +94,19 @@ CachingGraphRunner::loadImpl(torch::jit::Stack &stack,
 
   // If we already have a Glow function compiled for this graph with and the
   // given inputs then use that.
-  auto it = perGlowGraphInfoMap_.find(hash);
-  if (it != perGlowGraphInfoMap_.end()) {
-    return it->second.get();
+  {
+    std::shared_lock<std::shared_timed_mutex> rlock(graphInfoMapMutex);
+    auto it = perGlowGraphInfoMap_.find(hash);
+    if (it != perGlowGraphInfoMap_.end()) {
+      return it->second;
+    }
   }
 
+  std::unique_lock<std::shared_timed_mutex> wlock(graphInfoMapMutex);
+  auto it = perGlowGraphInfoMap_.find(hash);
+  if (it != perGlowGraphInfoMap_.end()) {
+    return it->second;
+  }
   auto info = std::make_shared<PerGlowGraphInfo>();
   info->functionName = strFormat("pt_function_%lu", hash);
 
@@ -130,9 +137,10 @@ CachingGraphRunner::loadImpl(torch::jit::Stack &stack,
   RETURN_IF_ERR(hostManager_->addNetwork(std::move(module), cctx));
   TRACE_EVENT_END(traceContext, TraceLevel::RUNTIME, "addNetwork");
 
-  perGlowGraphInfoMap_[hash] = std::move(info);
+  auto ret = perGlowGraphInfoMap_.emplace(hash, info);
+  CHECK(ret.second);
 
-  return perGlowGraphInfoMap_[hash].get();
+  return ret.first->second;
 }
 
 Error CachingGraphRunner::runImpl(
@@ -234,7 +242,6 @@ Error CachingGraphRunner::runImpl(
 }
 
 Error CachingGraphRunner::run(torch::jit::Stack &stack) {
-  PerGlowGraphInfo *info;
   std::unique_ptr<ExecutionContext> ctx = glow::make_unique<ExecutionContext>();
 
   TraceContext *traceContext = nullptr;
@@ -246,9 +253,9 @@ Error CachingGraphRunner::run(torch::jit::Stack &stack) {
 
   TRACE_EVENT_BEGIN(traceContext, TraceLevel::RUNTIME, "torch_glow::run");
 
+  std::shared_ptr<PerGlowGraphInfo> info;
   ASSIGN_VALUE_OR_RETURN_ERR(info, loadImpl(stack, traceContext));
-
-  auto err = runImpl(*DCHECK_NOTNULL(info), stack, ctx);
+  auto err = runImpl(*DCHECK_NOTNULL(info.get()), stack, ctx);
 
   // Reset the traceContext again in case it was changed during run.
   traceContext = ctx->getTraceContext();
@@ -261,15 +268,19 @@ Error CachingGraphRunner::run(torch::jit::Stack &stack) {
 }
 
 Error CachingGraphRunner::runOnly(torch::jit::Stack &stack) {
-  if (perGlowGraphInfoMap_.size() != 1) {
-    return MAKE_ERR(strFormat(
-        "There should be one and only one compiled graph, but got %lu",
-        perGlowGraphInfoMap_.size()));
+  std::shared_ptr<PerGlowGraphInfo> info;
+  {
+    std::shared_lock<std::shared_timed_mutex> rlock(graphInfoMapMutex);
+    if (perGlowGraphInfoMap_.size() != 1) {
+      return MAKE_ERR(strFormat(
+          "There should be one and only one compiled graph, but got %lu",
+          perGlowGraphInfoMap_.size()));
+    }
+    info = perGlowGraphInfoMap_.at(0);
   }
 
   std::unique_ptr<ExecutionContext> ctx = glow::make_unique<ExecutionContext>();
-
-  return runImpl(*DCHECK_NOTNULL(perGlowGraphInfoMap_[0].get()), stack, ctx);
+  return runImpl(*DCHECK_NOTNULL(info.get()), stack, ctx);
 }
 
 Error CachingGraphRunner::warmCache(const std::vector<InputMeta> &inputMeta) {
@@ -281,6 +292,7 @@ Error CachingGraphRunner::warmCache(const std::vector<InputMeta> &inputMeta) {
     return MAKE_ERR("No graph found!");
   }
 
+  std::unique_lock<std::shared_timed_mutex> wlock(graphInfoMapMutex);
   if (perGlowGraphInfoMap_.size() != 0) {
     return MAKE_ERR(strFormat("There is already a compiled graph!"));
   }
@@ -300,7 +312,7 @@ Error CachingGraphRunner::warmCache(const std::vector<InputMeta> &inputMeta) {
   RETURN_IF_ERR(hostManager_->addNetwork(std::move(glowModule), cctx));
   // Randomly picked one key. There should be only one element in the map
   // when model is precompiled.
-  perGlowGraphInfoMap_[0] = std::move(info);
+  perGlowGraphInfoMap_[0] = info;
   return Error::success();
 }
 
@@ -318,6 +330,7 @@ CachingGraphRunner::~CachingGraphRunner() {
   aggregateAndDumpTraces(nullptr, /* flush */ true);
 
   // Remove Glow functions saved in HostManager when being destroyed.
+  std::unique_lock<std::shared_timed_mutex> wlock(graphInfoMapMutex);
   for (auto &kv : perGlowGraphInfoMap_) {
     ERR_TO_BOOL(hostManager_->removeNetwork(kv.second->functionName));
   }
