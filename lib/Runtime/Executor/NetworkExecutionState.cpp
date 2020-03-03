@@ -19,6 +19,14 @@
 using namespace glow;
 using namespace glow::runtime;
 
+void NetworkExecutionStatePool::addNewState(
+    std::unique_ptr<NetworkExecutionState> state) {
+
+  std::lock_guard<std::mutex> lock(stateLock_);
+  availableStates_.push_back(state.get());
+  states_.push_back(std::move(state));
+}
+
 NetworkExecutionState::NetworkExecutionState(const DAGNode *root)
     : inflightNodes_(0), module_(root->module), root_(root) {}
 

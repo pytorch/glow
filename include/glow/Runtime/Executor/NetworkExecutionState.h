@@ -32,6 +32,8 @@ public:
   /// Constructor.
   explicit NetworkExecutionState(const DAGNode *root);
 
+  const DAGNode *getRoot() { return root_; }
+
   /// Destructor.
   ~NetworkExecutionState();
 
@@ -138,18 +140,23 @@ private:
 class NetworkExecutionStatePool {
 public:
   NetworkExecutionState *getNextNetworkExecutionState() {
-    // Note: this assumes pool size is maxActiveRequests, otherwise it's
-    // possible to wrap around on a state currently in use.
-    unsigned current = currentState_.fetch_add(1);
-    return states_[current % states_.size()].get();
+    std::lock_guard<std::mutex> lock(stateLock_);
+    auto nextState = availableStates_.front();
+    availableStates_.pop_front();
+    return nextState;
   }
-  void addNewState(std::unique_ptr<NetworkExecutionState> state) {
-    states_.push_back(std::move(state));
+
+  void addNewState(std::unique_ptr<NetworkExecutionState> state);
+
+  void returnNetworkExecutionState(NetworkExecutionState *state) {
+    std::lock_guard<std::mutex> lock(stateLock_);
+    availableStates_.push_back(state);
   }
 
 private:
   std::vector<std::unique_ptr<NetworkExecutionState>> states_;
-  std::atomic<unsigned> currentState_;
+  std::deque<NetworkExecutionState *> availableStates_;
+  std::mutex stateLock_;
 };
 
 } // namespace runtime

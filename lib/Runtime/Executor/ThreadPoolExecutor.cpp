@@ -215,8 +215,15 @@ void ThreadPoolExecutor::handleDeviceManagerResult(
     // will transfer. //executionState->transferOutputs();
     ResultCBTy cb = executionState->getCallback();
     DCHECK(cb != nullptr);
-    cb(executionState->getRunId(), executionState->getErrorContainer().get(),
-       executionState->getUniqueResultContextPtr());
+
+    // Get what we need from the executionState and return it to the pool.
+    auto runId = executionState->getRunId();
+    auto err = executionState->getErrorContainer().get();
+    auto resultCtx = executionState->getUniqueResultContextPtr();
+    states_[executionState->getRoot()]->returnNetworkExecutionState(
+        executionState);
+
+    cb(runId, std::move(err), std::move(resultCtx));
   }
 
   // Decrement the inflight barrier for the executor keeping track of all
