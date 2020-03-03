@@ -49,7 +49,8 @@ public:
              std::shared_ptr<NNPIDeviceTracing> deviceTracing,
              CompiledFunction *compiledFunction,
              StaticPlaceholderMap *staticPlaceholderMap,
-             const NNPIDeviceOptions *deviceOptions);
+             const NNPIDeviceOptions *deviceOptions,
+             const std::string &functionName, unsigned deviceId);
   void stop(bool block);
   void execute(RunIdentifierTy runId, std::unique_ptr<ExecutionContext> ctx,
                runtime::ResultCBTy resultCB);

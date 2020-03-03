@@ -196,7 +196,7 @@ void NNPIDeviceManager::addNetwork(const Module *module,
     usedMemoryBytes_ += functionCost_; // TODO:: static moduleSize.
     auto err = inferenceEnvs_[func.first].init(
         numWorkersPerFunction_, adapter_, device_, deviceTracing_, func.second,
-        &staticPlaceholders_, &deviceOptions_);
+        &staticPlaceholders_, &deviceOptions_, func.first, deviceId_);
     if (err) {
       functions_.erase(func.first);
       lock.unlock();
