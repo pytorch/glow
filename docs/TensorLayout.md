@@ -1,53 +1,52 @@
 ## Tensor Layout
 
-This document describes the design of the tensor Layout requirements in Glow.
+This document describes the design of the tensor layout in Glow.
 
 Certain operations (e.g. convolutions, gemms, etc) need to know the semantic
 layout of their tensors, i.e. the logical ordering ordering of their dimensions
 (e.g. `NHWC`). Some backends enforce additional backend-specific requirements
-on said operations (e.g. tensor alignment).
+on particular operations (e.g. tensor alignment).
 
-A theoretical clever backend, might even go a step further and have said
+A theoretically clever backend might even go a step further and infer or enforce
 layout requirements depend on the properties of the operation: a convolution
 with a small filter may need the input operands in a format different from a
 convolution with a big filter.
 
-Tensor layout is a property of the operation, some operations, such as
-element-wise operations, may not care about their input layout, we avoid adding
-a layout field for said operations to reduce the dynamic memory consumption of
+Tensor layout is a property of the operation. Some operations, such as
+element-wise operations, may not care about their input layout, and here we avoid adding
+a layout field for these operations to reduce the dynamic memory consumption of
 the compiler.
 
 For operations that do have layout requirements, Glow has an easily extendable
 string-based layout field. This allows backends to override Glow's default
-requirements without the hassle of creating a custom, backend-specific, node.
+requirements without the hassle of creating a custom, backend-specific node.
 
 Glow's string-based layout format is encoded as follows:
 
-1. A mandatory one character representing the current dimension. Either an  alphabetic letter or `*` (any layout).
+1. A mandatory single character representing the current dimension. This can be either an  alphabetic letter or `*` (any layout).
 2. An optional token for the start of the current dimension's information: `[`.
-3. An optional namespace identifier for non-standard information, such as tiling, followed by `:`. Must have `[` from 2. in place. Following said identifier, all subsequent data is considered as a "black box" until `]` is encountered.
+3. An optional namespace identifier for non-standard information, such as tiling, followed by `:`. Must have `[` from 2. in place. Following the said identifier, all subsequent data is considered as a "black box" until `]` is encountered.
 4. Given that we have `[` from 2. in place, the closing bracket `]` for it.
 5. Optionally go back to 2.
 
 As an example for this encoding, here's how we add alignment information,
-which is an officially supported extension, thus not requiring a namespace,
+(which is an officially supported extension, thus not requiring a namespace)
 followed by a backend-specific extension:
-`N[a=32][namespace_for_unsupported:<bla>]HWC` would represent 4-D tensor wherein
+`N[a=32][namespace_for_unsupported:<bla>]HWC` would represent 4-D tensor where
 `N` needs an alignment of 32 + some private backends' requirements we don't know about.
 `HWC` have no layout restrictions.
 We can, of course, combine "any" dimensions in there, for example: `N[a=32]*H*[a=64]`
-would represent "any" for the second dimension with no restrictions whatsoever while
-we have an alignment restriction of 64 on the 4th.
+would represent "any" for the 2nd dimension with no restrictions whatsoever while
+we have an alignment restriction of 64 on the 4th dimension.
 
 Notes:
 
-1. For each dimension, the identifier can be either a single english alphabet letter,
+1. For each dimension, the identifier can be either a single English alphabet letter,
 either upper or lower case, or the star symbol.
 2. We assume that a single letter is enough for each dimension,
 it makes parsing easier and avoids adding delimiters in the serialized format,
 however, we do have a constructor that (theoretically) accepts multi-letter dimensions.
-If we decide to expand the current support,
-we will need to add delimiters to the serialized form.
+If we decide to expand the current support, we will need to add delimiters to the serialized form.
 
 ## Layout Requirements Interface
 
@@ -88,8 +87,9 @@ The `OpenCL` verifier should expect `NCHW` for the input/output of the convoluti
 
 ## Canonical Tensor Layout
 
-Before lowering a Glow graph into a specific, we introduce a "Canonical"
+Before lowering a Glow graph into a specific backend grapg, we introduce a "Canonical"
 representation that we expect for certain operations.
+
 This allows us to verify the graph after every transformation and may expose `GraphOptimizer` bugs [^tl0].
 [class `CanonicalTensorLayout`](https://github.com/pytorch/glow/blob/master/include/glow/Graph/TensorLayout.h)
 derives from `TensorLayoutCommon` and overrides the following functions:
@@ -106,7 +106,7 @@ derives from `TensorLayoutCommon` and overrides the following functions:
 - `std::string getNthResultLayoutRequirements(const Node *node, size_t n)`
 
   - This function takes an operator `Node *node` and returns the layout requirements of the Nth result `n`.
-  - It returns Common layout constraints, for example, `ConvolutionNode` should be in `NHWC` format.
+  - It returns common layout constraints, for example, `ConvolutionNode` should be in `NHWC` format.
 
 Notes:
 
@@ -135,13 +135,13 @@ operator, and they can propagate that information to Glow.
 ## Related Work
 
 Other machine learning frameworks introduced similar concepts, this is not a
-proposal unique to Glow, here are some notable mentions:
+proposal unique to Glow. Here are some notable implementations which may demonstrate key differences:
 
 ### PlaidML
 
 Provides layout requirement information as a parameter to operations that need
 to know tensor layouts instead of setting a global layout that would apply to
-every operation. Allowing users to mix layouts throughout their network.
+every operation. This approach allows users to mix layouts throughout their network.
 
 PlaidML made the conscious decision to make the layout a property the operation
 instead of the tensor, making the implementation of certain operations more
@@ -159,10 +159,9 @@ include their layout requirements as a string. Here's layout section of
 > For example, NCHW16c can describe a 5-D tensor of [batch_size, channel, height,
 > width, channel_block], in which channel_block=16 is a split of dimension channel.
 
-
 ### XLA
 
-XLA adds backend specific layout constraints. Their CPU backend requires
+XLA adds backend-specific layout constraints. Their CPU backend requires
 constant arrays to be column major when all of their users are dot operations [^tl3]. While
 Their GPU backend adds layout constraints on the cudnn custom-call instruction [^tl4].
 
@@ -192,21 +191,21 @@ extendable enum that can be used in the backends without touching the generic co
 Some operations, such as `TransposeNode`, have a shuffle that tells them what to do.
 This can be deprecated and automatically deduced by specifying layout constraints.
 
-There is some discrepancy is the fact that with currently use both typed tensor, 
+There is some discrepancy in the fact that with currently use both typed tensor, 
 with named dimensions, and explicitly indexed dimensions like we currently do
-everywhere in the code base, shuffle arrays being an example of that, This
+everywhere in the code base (shuffle arrays being an example of this). This
 may lead to potential inconsistency in certain cases.
 We should gradually migrate towards typed tensors in the long run.
 
 ### Introduce a "Solver" that automatically legalizes layouts
 
-Said solver will drastically reduce the complexity of loading models from other frameworks:
-We no longer need to insert transposes based on if we are importing `NHWC` or `NCHW`.
-We just need to annotate the `Placeholder` with the layout information we've get at load-time,
+An automated solver will drastically reduce the complexity of loading models from other frameworks:
+we no longer need to insert transposes based on if we are importing `NHWC` or `NCHW` but rather we 
+just need to annotate the `Placeholder` with the layout information we have at load-time,
 and which we "forget" afterwards, and let the solver transpose said `Placeholder` to our
 canonical layout.
 
-First we will start with a "raw" state of non compliance, Then we have a loop to sink and
+First we will start with a "raw" state of non-compliance, and then we could have a loop to sink and
 clamp layout transformations together.
 
 ### Remove backend specific nodes
