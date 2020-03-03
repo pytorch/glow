@@ -8,7 +8,7 @@ human develop and maintain records of domain-specific information.
 
 ### Introduction
 
-The purpose of the automatic code generation tools in glow is identical to the
+The purpose of the automatic code generation tools in Glow is similar to the
 motivation behind TableGen:
 
 " ... to help a human develop and maintain records of domain-specific
