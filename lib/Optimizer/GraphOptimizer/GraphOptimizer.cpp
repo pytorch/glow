@@ -4232,6 +4232,12 @@ bool glow::parallelizeOps(
                                   ReluNode::ResultIdx, splitDims, 0);
         break;
       }
+      case Kinded::Kind::ClipNodeKind: {
+        splitDims[ClipNode::InputIdx] = 0;
+        parallelizeAndReplaceNode(F, curNode, numOfChunks, ClipNode::InputIdx,
+                                  ClipNode::ResultIdx, splitDims, 0);
+        break;
+      }
       case Kinded::Kind::ConvertToNodeKind: {
         splitDims[ConvertToNode::InputIdx] = 0;
         parallelizeAndReplaceNode(F, curNode, numOfChunks,
@@ -4265,6 +4271,15 @@ bool glow::parallelizeOps(
         splitDims[ReluNode::InputIdx] = 1;
         parallelizeAndReplaceNode(F, curNode, numOfChunks, ReluNode::InputIdx,
                                   ReluNode::ResultIdx, splitDims, 1);
+        break;
+      }
+      case Kinded::Kind::ClipNodeKind: {
+        if (curNode->getNthInput(ClipNode::InputIdx).dims().size() < 2) {
+          break;
+        }
+        splitDims[ClipNode::InputIdx] = 1;
+        parallelizeAndReplaceNode(F, curNode, numOfChunks, ClipNode::InputIdx,
+                                  ClipNode::ResultIdx, splitDims, 1);
         break;
       }
       default:
