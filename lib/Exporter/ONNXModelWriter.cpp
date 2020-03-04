@@ -18,16 +18,19 @@
 #include "glow/Graph/Utils.h"
 #include "glow/Support/ZipUtils.h"
 
+#include <float.h>
+
 #include "miniz.h"
 
 namespace glow {
 namespace {
-template <bool IsInteger, typename T> struct AttributeAssigner {
+template <bool IsInteger, bool IsEnum, typename T> struct AttributeAssigner {
   static void assign(ONNX_NAMESPACE::AttributeProto *attr, const T &container);
 };
 
 // Specialization for llvm::ArrayRef<T> container types
-template <typename T> struct AttributeAssigner<false, llvm::ArrayRef<T>> {
+template <typename T>
+struct AttributeAssigner<false, false, llvm::ArrayRef<T>> {
   static void assign(ONNX_NAMESPACE::AttributeProto *attr,
                      const llvm::ArrayRef<T> &container) {
     attr->set_type(ONNX_NAMESPACE::AttributeProto::INTS);
@@ -37,17 +40,8 @@ template <typename T> struct AttributeAssigner<false, llvm::ArrayRef<T>> {
   }
 };
 
-// Specialization for 1D, 1 element Tensor container types
-template <> struct AttributeAssigner<false, Tensor> {
-  static void assign(ONNX_NAMESPACE::AttributeProto *attr, const Tensor &T) {
-    auto *proto = attr->mutable_t();
-    ONNXModelWriter::writeTensor(T, proto);
-    attr->set_type(ONNX_NAMESPACE::AttributeProto::TENSOR);
-  }
-};
-
 // Specialization for string type
-template <> struct AttributeAssigner<false, std::string> {
+template <> struct AttributeAssigner<false, false, std::string> {
   static void assign(ONNX_NAMESPACE::AttributeProto *attr,
                      const std::string &container) {
     attr->set_type(ONNX_NAMESPACE::AttributeProto::STRING);
@@ -56,7 +50,7 @@ template <> struct AttributeAssigner<false, std::string> {
 };
 
 // Specialization for StringRef type
-template <> struct AttributeAssigner<false, llvm::StringRef> {
+template <> struct AttributeAssigner<false, false, llvm::StringRef> {
   static void assign(ONNX_NAMESPACE::AttributeProto *attr,
                      const llvm::StringRef container) {
     attr->set_type(ONNX_NAMESPACE::AttributeProto::STRING);
@@ -65,7 +59,7 @@ template <> struct AttributeAssigner<false, llvm::StringRef> {
 };
 
 // Specialization for float type
-template <> struct AttributeAssigner<false, float> {
+template <> struct AttributeAssigner<false, false, float> {
   static void assign(ONNX_NAMESPACE::AttributeProto *attr,
                      const float &container) {
     attr->set_type(ONNX_NAMESPACE::AttributeProto::FLOAT);
@@ -73,11 +67,45 @@ template <> struct AttributeAssigner<false, float> {
   }
 };
 
+// Specialization for NodeValueArrayRef.
+template <> struct AttributeAssigner<false, false, NodeValueArrayRef> {
+  static void assign(ONNX_NAMESPACE::AttributeProto *attr,
+                     const NodeValueArrayRef &container) {
+    attr->set_type(ONNX_NAMESPACE::AttributeProto::STRINGS);
+    for (size_t i = 0, e = container.size(); i < e; i++) {
+      attr->add_strings(container[i].generateNodeOutputName(
+          /* stripResNoFor0thInput */ true));
+    }
+  }
+};
+
+// Specialization for llvm::ArrayRef<float>.
+template <> struct AttributeAssigner<false, false, llvm::ArrayRef<float>> {
+  static void assign(ONNX_NAMESPACE::AttributeProto *attr,
+                     const llvm::ArrayRef<float> &container) {
+    attr->set_type(ONNX_NAMESPACE::AttributeProto::FLOATS);
+    for (auto value : container) {
+      attr->add_floats(value);
+    }
+  }
+};
+
 // Specialization for int type
-template <typename T> struct AttributeAssigner<true, T> {
+template <typename T> struct AttributeAssigner<true, false, T> {
   static void assign(ONNX_NAMESPACE::AttributeProto *attr, const T &container) {
     attr->set_type(ONNX_NAMESPACE::AttributeProto::INT);
     attr->set_i(container);
+  }
+};
+
+// Specialization for enums.
+template <typename T> struct AttributeAssigner<false, true, T> {
+  static void assign(ONNX_NAMESPACE::AttributeProto *attr, const T &container) {
+    attr->set_type(ONNX_NAMESPACE::AttributeProto::STRING);
+    std::string storage;
+    llvm::raw_string_ostream stream(storage);
+    stream << container;
+    attr->set_s(stream.str());
   }
 };
 
@@ -86,8 +114,34 @@ void addValueAttribute(ONNX_NAMESPACE::NodeProto *proto,
                        const std::string &name, const T &container) {
   auto *attr = proto->add_attribute();
   attr->set_name(name);
-  AttributeAssigner<std::numeric_limits<T>::is_integer, T>::assign(attr,
-                                                                   container);
+  AttributeAssigner<std::numeric_limits<T>::is_integer, std::is_enum<T>::value,
+                    T>::assign(attr, container);
+}
+
+/// Add the type attributes from \p NV to \p proto. This includes the ElemKind,
+/// the Shape, and scale/offset if ElemKind is quantized. Note that the result
+/// name is prefixed onto the specific attribute being appended, as some ops
+/// have multiple outputs and so this allows differentiating between them.
+void addTypeAttributes(ONNX_NAMESPACE::NodeProto *proto, NodeValue NV) {
+  const TypeRef ty = NV.getType();
+
+  // Add ElemKind.
+  auto *elemKindAttr = proto->add_attribute();
+  elemKindAttr->set_name(getTypeAttrID(NV.getResNo(), elemKindSignifier));
+  AttributeAssigner<false, false, llvm::StringRef>::assign(
+      elemKindAttr, ty->getElementName());
+
+  // Add Shape.
+  addValueAttribute(proto, getTypeAttrID(NV.getResNo(), shapeSignifier),
+                    NV.dims());
+
+  // Write out scale/offset if quantized ElemKind.
+  if (isQuantizedElemKind(ty->getElementType())) {
+    addValueAttribute(proto, getTypeAttrID(NV.getResNo(), qScaleSignifier),
+                      ty->getScale());
+    addValueAttribute(proto, getTypeAttrID(NV.getResNo(), qOffsetSignifier),
+                      ty->getOffset());
+  }
 }
 
 /// Helper function to recursively rewind Tile \p node.
@@ -462,6 +516,11 @@ class ReverseGraphWalker {
     for (unsigned b = 0, e = N->getNumInputs(); b < e; ++b) {
       visitRecursively(N->getNthInput(b).getNode());
     }
+
+    // Additionally visit the predicate input if it exists.
+    if (N->hasPredicate()) {
+      visitRecursively(N->getPredicate().getNode());
+    }
   }
 
 public:
@@ -469,13 +528,23 @@ public:
 
   llvm::ArrayRef<const Node *> getNodes() const { return reverseOrder_; }
 };
+
+template <typename T>
+static void addAttrToDocString(T *proto, const std::string &attrName,
+                               llvm::StringRef attrVal) {
+  *(proto->mutable_doc_string()) += std::string(1, startChar) + attrName +
+                                    std::string(1, sepChar) + attrVal.str();
+}
+
 } // namespace
 
 ONNXModelWriter::ONNXModelWriter(const std::string &modelFilename, Function &F,
                                  size_t irVersion, size_t opsetVersion,
-                                 Error *errPtr, bool textMode, bool zipMode)
+                                 Error *errPtr, bool textMode, bool zipMode,
+                                 bool useGlowCustomOps)
     : CommonOperatorWriter(modelFilename, F, errPtr),
-      opsetVersion_(opsetVersion), zipMode_(zipMode) {
+      opsetVersion_(opsetVersion), zipMode_(zipMode),
+      useGlowCustomOps_(useGlowCustomOps) {
   // If errPtr already contains an error then don't continue with constructor.
   if (errPtr && *errPtr) {
     return;
@@ -487,7 +556,8 @@ ONNXModelWriter::ONNXModelWriter(const std::string &modelFilename, Function &F,
     // Loop through all nodes, output Graph to Model protobuf.
     ONNX_NAMESPACE::ModelProto modelProto;
     modelProto.set_ir_version(irVersion);
-    modelProto.set_producer_name("ONNXModelWriter");
+    modelProto.set_producer_name(useGlowCustomOps_ ? "GlowONNXModelWriter"
+                                                   : "ONNXModelWriter");
     auto *opsetImportProto = modelProto.add_opset_import();
     opsetImportProto->set_version(opsetVersion);
     auto *graphProto = modelProto.mutable_graph();
@@ -508,11 +578,11 @@ ONNXModelWriter::ONNXModelWriter(const std::string &modelFilename, Function &F,
       const auto kind = N->getKind();
       // Handle placeholders cases.
       if (kind == Kinded::Kind::PlaceholderKind) {
-        if (hasUsesOfKind(N, Kinded::Kind::SaveNodeKind)) {
+        const auto *PH = llvm::cast<Placeholder>(N);
+        if (!isInput(PH, F)) {
           // Storage as an input to SaveNode - ignore it.
           continue;
         }
-        const auto *PH = llvm::cast<Placeholder>(N);
         // Write global input, output only tensor shape.
         auto *inputProto = graphProto->add_input();
         tensorShapeFromPlaceholder(PH, inputProto);
@@ -520,8 +590,17 @@ ONNXModelWriter::ONNXModelWriter(const std::string &modelFilename, Function &F,
         // Write global initializer, output tensor bytes.
         const auto *C = llvm::cast<Constant>(N);
         auto *tensorProto = addInitializer(*graphProto);
-        tensorProto->set_name(C->getName());
-        writeTensor(C->getPayload(), tensorProto);
+        // When using useGlowCustomOps we always use generateNodeOutputName for
+        // all inputs and outputs.
+        tensorProto->set_name(useGlowCustomOps_
+                                  ? C->getOutput().generateNodeOutputName(
+                                        /* stripResNoFor0thInput */ true)
+                                  : C->getName().str());
+        writeTensor(C->getPayload(), tensorProto, useGlowCustomOps_);
+        if (useGlowCustomOps_) {
+          // Also include the layout in the initializer to be loaded later.
+          addAttrToDocString(tensorProto, layoutSignifier, C->getLayout());
+        }
       } else if (kind == Kinded::Kind::SaveNodeKind) {
         // Save node case, find input and use its name as a global output,
         // output only shape.
@@ -529,6 +608,23 @@ ONNXModelWriter::ONNXModelWriter(const std::string &modelFilename, Function &F,
         const auto *PH = SN->getPlaceholder();
         auto *out = graphProto->add_output();
         tensorShapeFromPlaceholder(PH, out);
+
+        // Use the doc string to specify the name that should be used for the
+        // SaveNode to ensure it's kept the same between export and import.
+        addAttrToDocString(out, saveNameSignifier, SN->getName());
+
+        // If useGlowCustomOps then we need to add an Identity to map the name
+        // from generateNodeOutputName() to the name of the Placeholder.
+        if (useGlowCustomOps_) {
+          auto *proto = graphProto->add_node();
+          proto->set_op_type("Identity");
+          proto->set_name(SN->getName().data());
+          proto->add_input(SN->getInput().generateNodeOutputName(
+              /* stripResNoFor0thInput */ true));
+          proto->add_output(PH->getName().data());
+        }
+      } else if (useGlowCustomOps_) {
+        RETURN_IF_ERR(writeGlowCustomOperator(N, *graphProto));
       } else {
         RETURN_IF_ERR(writeOperator(N, *graphProto));
       }
@@ -541,19 +637,24 @@ ONNXModelWriter::ONNXModelWriter(const std::string &modelFilename, Function &F,
     for (size_t i = 0, n = nodes->size(); i < n / 2; ++i) {
       nodes->SwapElements(i, n - i - 1);
     }
-    // We need to swap back Identity node with the next non-Identity node since
-    // we append Identity node to tap out the intermediate results
-    for (int i = 0, n = nodes->size(); i < n - 1; ++i) {
-      if (nodes->Get(i).op_type() == "Identity") {
-        int k = 1;
-        while (i + k < n) {
-          if (nodes->Get(i + k).op_type() != "Identity") {
-            break;
+
+    // useGlowCustomOps uses Identities differently than the normal writer, so
+    // we do not want to do this if so.
+    if (!useGlowCustomOps_) {
+      // We need to swap back Identity node with the next non-Identity node
+      // since we append Identity node to tap out the intermediate results
+      for (int i = 0, n = nodes->size(); i < n - 1; ++i) {
+        if (nodes->Get(i).op_type() == "Identity") {
+          int k = 1;
+          while (i + k < n) {
+            if (nodes->Get(i + k).op_type() != "Identity") {
+              break;
+            }
+            ++k;
           }
-          ++k;
+          nodes->SwapElements(i, i + k);
+          i += k;
         }
-        nodes->SwapElements(i, i + k);
-        i += k;
       }
     }
 
@@ -634,7 +735,16 @@ ONNXModelWriter::convertType(const Type &glowType) {
   LOG(DFATAL) << "Cannot reach here.";
 }
 
-void ONNXModelWriter::writeTensor(const Tensor &T, TensorType *out) {
+/// Add quantization parameters to the doc_string in \p out based on \p type.
+template <typename T>
+static void addQuantParamsToDocString(T *out, const Type &type) {
+  addAttrToDocString(out, qScaleSignifier,
+                     strFormat("%.*f", DBL_DIG - 1, type.getScale()));
+  addAttrToDocString(out, qOffsetSignifier, std::to_string(type.getOffset()));
+}
+
+void ONNXModelWriter::writeTensor(const Tensor &T, TensorType *out,
+                                  bool useGlowCustomOps) {
   const auto &type = T.getType();
   out->set_data_type(convertType(type));
   const auto &dims = type.dims();
@@ -644,19 +754,41 @@ void ONNXModelWriter::writeTensor(const Tensor &T, TensorType *out) {
 
   out->set_raw_data(T.getUnsafePtr(), type.getSizeInBytes());
 
+  if (useGlowCustomOps) {
+    addAttrToDocString(out, elemKindSignifier, type.getElementName());
+  }
+
   if (type.isQuantizedType()) {
-    // Format is ElemKind:scale:offset
-    out->set_doc_string(strFormat("%s:%f:%d", type.getElementName().data(),
-                                  T.getType().getScale(),
-                                  T.getType().getOffset()));
+    // Note the use of DBL_DIG is to ensure all digits of the scale are printed.
+    if (useGlowCustomOps) {
+      addQuantParamsToDocString(out, type);
+    } else {
+      // Format is ElemKind:scale:offset.
+      out->set_doc_string(strFormat("%s:%.*f:%d", type.getElementName().data(),
+                                    DBL_DIG - 1, T.getType().getScale(),
+                                    T.getType().getOffset()));
+    }
   }
 }
 
 void ONNXModelWriter::tensorShapeFromPlaceholder(const Placeholder *PH,
                                                  ValueInfoType *valueProto) {
   tensorShapeFromInput(PH->getName(), PH->getType(), valueProto);
-  if (PH->isStatic()) {
-    valueProto->set_doc_string("offline");
+
+  if (useGlowCustomOps_) {
+    // Write out any meta information we need to for the Placeholder.
+    addAttrToDocString(valueProto, staticSignifier,
+                       std::to_string(PH->isStatic()));
+    addAttrToDocString(valueProto, trainableSignifier,
+                       std::to_string(PH->isTraining()));
+    addAttrToDocString(valueProto, layoutSignifier, PH->getLayout());
+    addAttrToDocString(valueProto, elemKindSignifier,
+                       PH->getType()->getElementName());
+
+    // Also include quantization params if necessary.
+    if (PH->getType()->isQuantizedType()) {
+      addQuantParamsToDocString(valueProto, *PH->getType());
+    }
   }
 }
 
@@ -673,15 +805,6 @@ Error ONNXModelWriter::writeAllWithNode(const std::string &opName,
 Error ONNXModelWriter::writeAll(const std::string &opName, const Node *node,
                                 GraphType &graph) {
   return writeAllWithNode(opName, node, graph, graph.add_node());
-}
-
-bool ONNXModelWriter::hasUsesOfKind(const Node *node, Kinded::Kind kind) {
-  for (const auto &use : node->getUsers()) {
-    if (use.getUser()->getKind() == kind) {
-      return true;
-    }
-  }
-  return false;
 }
 
 //===-----------------------------------------------------------------===//
@@ -974,12 +1097,12 @@ Error ONNXModelWriter::writeSlice(const SliceNode *node, GraphType &graph) {
 
     auto *tensorProto = addInitializer(graph);
     tensorProto->set_name(node->getName().str() + "_starts");
-    writeTensor(oneDimTensorStarts, tensorProto);
+    writeTensor(oneDimTensorStarts, tensorProto, useGlowCustomOps_);
     proto->add_input(node->getName().str() + "_starts");
 
     tensorProto = addInitializer(graph);
     tensorProto->set_name(node->getName().str() + "_ends");
-    writeTensor(oneDimTensorEnds, tensorProto);
+    writeTensor(oneDimTensorEnds, tensorProto, useGlowCustomOps_);
     proto->add_input(node->getName().str() + "_ends");
   } else {
     auto *attrStarts = proto->add_attribute();
@@ -1038,7 +1161,7 @@ Error ONNXModelWriter::writeTopK(const TopKNode *node, GraphType &graph) {
 
   auto *tensorProto = addInitializer(graph);
   tensorProto->set_name("k");
-  writeTensor(scalar, tensorProto);
+  writeTensor(scalar, tensorProto, useGlowCustomOps_);
 
   RETURN_IF_ERR(writeAllWithNode("TopK", node, graph, proto));
 
@@ -1058,11 +1181,11 @@ Error ONNXModelWriter::writeArgMax(const ArgMaxNode *node, GraphType &graph) {
 
   auto *tensorProto = addInitializer(graph);
   tensorProto->set_name("axis");
-  writeTensor(axis, tensorProto);
+  writeTensor(axis, tensorProto, useGlowCustomOps_);
 
   tensorProto = addInitializer(graph);
   tensorProto->set_name("keepDims");
-  writeTensor(keepDims, tensorProto);
+  writeTensor(keepDims, tensorProto, useGlowCustomOps_);
   RETURN_IF_ERR(writeAllWithNode("ArgMax", node, graph, proto));
 
   return Error::success();
@@ -1084,7 +1207,7 @@ Error ONNXModelWriter::writePRelu(const PReluNode *node, GraphType &graph) {
     Tensor scalar = {SN->getValue()};
     auto *tensorProto = addInitializer(graph);
     tensorProto->set_name(SN->getName());
-    writeTensor(scalar, tensorProto);
+    writeTensor(scalar, tensorProto, useGlowCustomOps_);
     proto->add_input(SN->getName());
     reportedNodes_.insert(SN);
   } else if (const ReshapeNode *RN = llvm::dyn_cast<ReshapeNode>(slope)) {
@@ -1425,7 +1548,7 @@ Error ONNXModelWriter::writeSplat(const SplatNode *node, GraphType &graph) {
     tensorProto->set_name(name);
   });
 
-  writeTensor(tensor, tensorProto);
+  writeTensor(tensor, tensorProto, useGlowCustomOps_);
   reportedNodes_.insert(node);
 
   return Error::success();
@@ -1642,16 +1765,9 @@ Error ONNXModelWriter::writeTile(const TileNode *node, GraphType &graph) {
   unsigned_t numDims = tile->getInput().dims().size();
 
   DCHECK(repeats.size() == numDims);
-  // Create and populate Tensor.
-  Tensor oneDimTensor(ElemKind::Int64ITy, {numDims});
-  auto handle = oneDimTensor.getHandle<int64_t>();
-
-  for (size_t b = 0, e = repeats.size(); b < e; ++b) {
-    handle.raw(b) = repeats[b];
-  }
 
   // Add Tensor type attribute.
-  addValueAttribute(indices, "value", oneDimTensor);
+  addValueAttribute(indices, "value", llvm::makeArrayRef(repeats));
   // Add indices as input to the Tile node
   proto->add_input(tile->getName().str() + "_indices");
 
@@ -1718,4 +1834,16 @@ DEF_UNSUPPORTED_NODE(BatchedPairwiseDotProductGrad)
 
 // Include backend-specific ONNX model writers.
 #include "glow/ONNXModelWriterIncludes.h"
+
+Error ONNXModelWriter::writeGlowCustomOperator(const Node *node,
+                                               GraphType &graph) {
+  switch (node->getKind()) {
+#include "glow/AutoGenNodesExport.h"
+  default:
+    return MAKE_ERR(
+        strFormat("Unhandled Node for export: %s", node->getName().data()));
+  }
+  return Error::success();
+}
+
 } // namespace glow

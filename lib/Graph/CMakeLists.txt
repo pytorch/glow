@@ -2,19 +2,25 @@
 set(NODES_HDR ${GLOW_BINARY_DIR}/glow/AutoGenNodes.h)
 set(NODES_SRC ${GLOW_BINARY_DIR}/glow/AutoGenNodes.cpp)
 set(NODES_DEF ${GLOW_BINARY_DIR}/glow/AutoGenNodes.def)
+set(NODES_IMPORT ${GLOW_BINARY_DIR}/glow/AutoGenNodesImport.h)
+set(NODES_EXPORT ${GLOW_BINARY_DIR}/glow/AutoGenNodesExport.h)
 
 add_custom_command(OUTPUT
                    "${NODES_HDR}"
                    "${NODES_SRC}"
                    "${NODES_DEF}"
-                   COMMAND NodeGen ${NODES_HDR} ${NODES_SRC} ${NODES_DEF}
+                   "${NODES_IMPORT}"
+                   "${NODES_EXPORT}"
+                   COMMAND NodeGen ${NODES_HDR} ${NODES_SRC} ${NODES_DEF} ${NODES_IMPORT} ${NODES_EXPORT}
                    DEPENDS NodeGen
                    COMMENT "NodeGen: Generating nodes." VERBATIM)
 add_custom_target(AutoGenNode
                    DEPENDS
                      "${NODES_HDR}"
                      "${NODES_SRC}"
-                     "${NODES_DEF}")
+                     "${NODES_DEF}"
+                     "${NODES_IMPORT}"
+                     "${NODES_EXPORT}")
 add_dependencies(AutoGen AutoGenNode)
 
 add_library(Graph

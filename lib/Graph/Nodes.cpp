@@ -2025,6 +2025,7 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
                               FusedActivation fusedActivation) {
   switch (fusedActivation) {
   case FusedActivation::NONE:
+    os << "NONE";
     break;
   case FusedActivation::RELU:
     os << "RELU";

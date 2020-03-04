@@ -129,9 +129,18 @@ void convertNetwork(Function *F) {
   // Optimize network after conversion to remove unneeded converts.
   glow::optimize(F, CompilationMode::Infer);
 }
+
+/// Whether the ONNX loader loaded a model that was exporting with custom Glow
+/// ops. This should be in sync with exporting of inputs and so is saved for use
+/// with fillPlaceholders().
+bool usingGlowCustomOps = false;
+
 void loadModelIntoFunc(Function *F) {
   Error err = Error::empty();
-  { ONNXModelLoader onnxLD(modelPathOpt, {}, {}, *F, &err, /*zipMode*/ true); }
+  {
+    ONNXModelLoader onnxLD(modelPathOpt, {}, {}, *F, &err, /*zipMode*/ true);
+    usingGlowCustomOps = onnxLD.usingGlowCustomOps();
+  }
   CHECK(!ERR_TO_BOOL(std::move(err)))
       << "ONNXModelLoader failed to load model: " << modelPathOpt;
   convertNetwork(F);
@@ -157,7 +166,8 @@ bool run() {
   PlaceholderBindings inputBindings;
   inputBindings.allocate(mod.getPlaceholders());
   for (size_t idx = 0; idx != inputsOpt.size(); idx++) {
-    fillPlaceholders(inputsOpt[idx], &inputBindings);
+    fillPlaceholders(inputsOpt[idx], &inputBindings,
+                     /* partialTensorPayloads */ nullptr, usingGlowCustomOps);
     // Test the network with these inputs
     allPass &= netCompare->verify(&inputBindings);
     inputBindings.clear();
