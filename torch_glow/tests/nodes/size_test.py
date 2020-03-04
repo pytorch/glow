@@ -19,3 +19,25 @@ class TestSize(unittest.TestCase):
         x = torch.zeros([4], dtype=torch.int32)
 
         jitVsGlow(test_f, x, expected_fused_ops={"aten::size"})
+
+    @unittest.skip(reason="not ready")
+    def test_size_neg_dim(self):
+        """Test negative dimension index for the PyTorch aten::size Node on Glow."""
+
+        def test_f(a):
+            return a.size(-1)
+
+        x = torch.randn(2, 3, 4, dtype=torch.float32)
+
+        jitVsGlow(test_f, x, expected_fused_ops={"aten::size"})
+
+    def test_size_oob_neg_dim(self):
+        """Test out of bounds negative dimension index for the PyTorch aten::size Node on Glow."""
+
+        def test_f(a):
+            return a.size(-4)
+
+        x = torch.randn(2, 3, 4, dtype=torch.float32)
+
+        with self.assertRaises(IndexError):
+            jitVsGlow(test_f, x, expected_fused_ops={"aten::size"})
