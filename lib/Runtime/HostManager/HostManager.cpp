@@ -463,9 +463,6 @@ HostManager::runNetwork(llvm::StringRef networkName,
           std::move(context));
       return currentRun;
     }
-    // Setup the request
-    InferRequest queuedRequest(networkName, std::move(context), callback,
-                               priority, currentRun);
     // Put the request in the queue.
     {
       std::shared_lock<std::shared_timed_mutex> lock(inferQueueLock_);
@@ -485,6 +482,9 @@ HostManager::runNetwork(llvm::StringRef networkName,
         return currentRun;
       }
     }
+    // Setup the request
+    InferRequest queuedRequest(networkName, std::move(context), callback,
+                               priority, currentRun);
     {
       std::unique_lock<std::shared_timed_mutex> lock(inferQueueLock_);
       inferQueue_.push(std::move(queuedRequest));
