@@ -152,11 +152,20 @@ void ThreadPoolExecutor::executeDAGNode(NetworkExecutionState *executionState,
       [this, executionState,
        node](RunIdentifierTy id, Error err,
              std::unique_ptr<ExecutionContext> resultCtx) {
+        TRACE_EVENT_LOG_ID(resultCtx->getTraceContext(), TraceLevel::REQUEST,
+                           "handle result queuing", TraceEvent::AsyncBeginType,
+                           TraceEvent::now(), id);
+
         // Immediately move the handling of the result onto this run's executor
         // to avoid doing work on the DeviceManager thread.
         threadPool_.getExecutor()->submit(
-            [this, executionState, node, err = std::move(err),
+            [this, executionState, node, err = std::move(err), id,
              ctx = std::move(resultCtx)]() mutable {
+              TRACE_EVENT_LOG_ID(ctx->getTraceContext(), TraceLevel::REQUEST,
+                                 "handle result queuing",
+                                 TraceEvent::AsyncEndType, TraceEvent::now(),
+                                 id);
+
               this->handleDeviceManagerResult(executionState, std::move(err),
                                               std::move(ctx), node);
             });
