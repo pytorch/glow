@@ -58,9 +58,11 @@ void TraceEvent::dumpTraceEvents(
 
   /// And thread name metadata.
   for (const auto &nameMap : threadNames) {
+    // Put thread name ahead of thread ID so chrome will group thread with the
+    // same prefix together.
     writeMetadataHelper(
         file, "thread_name", nameMap.first,
-        llvm::formatv("{0}: {1}", nameMap.first, nameMap.second).str());
+        llvm::formatv("{1}: {0}", nameMap.first, nameMap.second).str());
   }
 
   bool first{true};

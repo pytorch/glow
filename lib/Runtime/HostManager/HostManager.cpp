@@ -404,17 +404,13 @@ void HostManager::dispatchNextRun() {
 
   assert(pRequest.hasValue());
   InferRequest request = std::move(pRequest.getValue());
-  TRACE_EVENT_CREATE(beginTraceEvent, TraceLevel::REQUEST,
-                     "network_execution_e2e", TraceEvent::AsyncBeginType,
-                     requestId);
   auto startTime = TraceEvent::now();
   executor_->run(
       networks_[request.networkName].dag.root.get(), std::move(request.context),
       request.requestID,
-      [this, callback = request.callback, name = request.networkName, startTime,
-       requestId, beginTraceEvent = std::move(beginTraceEvent)](
-          RunIdentifierTy runID, Error err,
-          std::unique_ptr<ExecutionContext> context) mutable {
+      [this, callback = request.callback, name = request.networkName,
+       startTime](RunIdentifierTy runID, Error err,
+                  std::unique_ptr<ExecutionContext> context) mutable {
         {
           std::shared_lock<std::shared_timed_mutex> netLock(networkLock_);
           auto it = networks_.find(name);
@@ -422,11 +418,7 @@ void HostManager::dispatchNextRun() {
             it->second.refcount--;
           }
         }
-        TRACE_EVENT_LOG_PRE_CREATED(context->getTraceContext(),
-                                    beginTraceEvent);
-        TRACE_EVENT_LOG_ID(context->getTraceContext(), TraceLevel::REQUEST,
-                           "network_execution_e2e", TraceEvent::AsyncEndType,
-                           TraceEvent::now(), requestId);
+
         updateExecutionStats(startTime, context, name, err);
         callback(runID, std::move(err), std::move(context));
         dispatchNextRun();
