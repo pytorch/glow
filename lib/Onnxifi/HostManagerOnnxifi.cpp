@@ -43,6 +43,9 @@ bool GlowForceSLSAccumFP16 = false;
 bool GlowClipFP16 = false;
 bool GlowClipFP16SkipInputs = true;
 bool GlowUseSparseNNPartitioningScheme = false;
+size_t GlowMaxActiveRequests = 48;
+size_t GlowMaxQueueSize = 100;
+size_t GlowExecutorThreads = 10;
 
 static llvm::cl::opt<int32_t, true>
     GlowNumDevicesOpt("glow-num-devices",
@@ -104,7 +107,14 @@ HostManagerBackend::createHostManager(llvm::StringRef backendName) {
   } else {
     configs = runtime::DeviceManager::generateDeviceConfigs(backendName);
   }
-  return glow::make_unique<runtime::HostManager>(std::move(configs));
+
+  runtime::HostConfig hostConfig;
+  hostConfig.maxActiveRequests = GlowMaxActiveRequests;
+  hostConfig.maxQueueSize = GlowMaxQueueSize;
+  hostConfig.executorThreads = GlowExecutorThreads;
+
+  return glow::make_unique<runtime::HostManager>(std::move(configs),
+                                                 hostConfig);
 }
 
 void HostManagerBackend::runNetwork(const Graph *graph,
