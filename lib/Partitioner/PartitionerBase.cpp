@@ -36,7 +36,6 @@ DAGListTy PartitionerBase::doPartitioning(llvm::StringRef funcName,
   DAGRoot->logicalDevices = {0};
   DAGRoot->name = funcName;
   DAGRoot->module = module;
-  DAGRoot->deviceIDs = {0};
   DAGNode *root = DAGRoot.get();
 
   llvm::DenseMap<Node *, Node *> currToNew;

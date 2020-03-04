@@ -76,6 +76,15 @@ struct DeviceInfo {
   float peakPCIeBw;
 };
 
+/// Data structure that tracks how many outstanding work items remain for a
+/// device and when we last used it.
+struct DeviceRuntimeInfo {
+  DeviceRuntimeInfo() : lastUsedTimestamp(std::chrono::steady_clock::now()) {}
+
+  unsigned outstandingInferences{0};
+  std::chrono::time_point<std::chrono::steady_clock> lastUsedTimestamp;
+};
+
 /// Individual Node in the DAG for a given network. This contains all the
 /// information needed to run the sub-network at inference time.
 struct DAGNode {
@@ -85,8 +94,12 @@ struct DAGNode {
   /// Pointers to the parents of this node. This is used by the executor for
   /// determining if a given node has all dependencies met.
   std::vector<DAGNode *> parents;
+
+  /// Protects deviceRuntimeInfos;
+  std::mutex lock;
   /// IDs of the deviceManagers that this network is assigned to.
-  std::vector<DeviceIDTy> deviceIDs;
+  std::map<DeviceIDTy, DeviceRuntimeInfo> deviceRuntimeInfos;
+
   /// Backend name for this network.
   std::string backendName;
   /// The logicalDevice is an output of the Partitioner to indicate that two
@@ -95,7 +108,7 @@ struct DAGNode {
   std::vector<DeviceIDTy> logicalDevices;
   /// Index of the current deviceID in deviceIDs. This is used by the Executor
   /// when picking a device to request a network run.
-  unsigned currentDeviceIdx{0};
+  std::atomic<unsigned> currentDeviceIdx{0};
   /// Name assigned to the sub-network, this is the id that will be passed to
   /// the DeviceManager when requesting a run of the network.
   std::string name;
@@ -114,9 +127,38 @@ struct DAGNode {
   /// access the associated PHs for the function that are stored in the Module.
   Module *module{nullptr};
 
+  /// Return the deviceId for the device that should execute the next request.
+  /// We select the device with the least amount of outstanding work on it. For
+  /// devices with the same amount of work remaining, we pick the one that's
+  /// least recently used as expect the work there will finish first.
   DeviceIDTy getNextDevice() {
-    currentDeviceIdx++;
-    return deviceIDs[currentDeviceIdx % deviceIDs.size()];
+    const std::lock_guard<std::mutex> g(lock);
+
+    auto selected = deviceRuntimeInfos.begin();
+    auto iter = deviceRuntimeInfos.begin();
+
+    for (++iter; iter != deviceRuntimeInfos.end(); ++iter) {
+      if (selected->second.outstandingInferences >
+              iter->second.outstandingInferences ||
+          (selected->second.outstandingInferences ==
+               iter->second.outstandingInferences &&
+           selected->second.lastUsedTimestamp <
+               iter->second.lastUsedTimestamp)) {
+        selected = iter;
+      }
+    }
+
+    selected->second.outstandingInferences++;
+    selected->second.lastUsedTimestamp = std::chrono::steady_clock::now();
+
+    return selected->first;
+  }
+
+  void markFinished(DeviceIDTy deviceID) {
+    const auto iter = deviceRuntimeInfos.find(deviceID);
+    DCHECK(iter != deviceRuntimeInfos.end());
+    const std::lock_guard<std::mutex> g(lock);
+    iter->second.outstandingInferences--;
   }
 };
 
