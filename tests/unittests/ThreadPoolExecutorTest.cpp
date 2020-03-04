@@ -413,7 +413,7 @@ public:
 
     // Set the name, device ID, and RuntimeBundle of the new node.
     newNode->name = name;
-    newNode->deviceIDs = {deviceId};
+    newNode->deviceRuntimeInfos[deviceId] = DeviceRuntimeInfo();
 
     newNode->runtimeBundle = glow::make_unique<RuntimeBundle>(
         symbolTable, /*constWeight=*/0, /*mutableWeight=*/0,

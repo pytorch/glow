@@ -212,7 +212,7 @@ Provisioner::generateDeviceAssignments(
   // Update nodes in logicalDevices with their assignments.
   for (auto &assignment : deviceAssignment) {
     for (auto &node : logicalDevices[assignment.first]) {
-      node->deviceIDs.push_back(assignment.second);
+      node->deviceRuntimeInfos[assignment.second] = DeviceRuntimeInfo();
     }
   }
   return deviceAssignment;

@@ -135,7 +135,11 @@ void ThreadPoolExecutor::executeDAGNode(NetworkExecutionState *executionState,
   // Get the PlaceholderBindings containing all of the inputs for the node.
   std::unique_ptr<ExecutionContext> nodeCtx =
       executionState->getUniqueNodeContextPtr(node);
-  auto deviceManagerIt = deviceManagers_.find(node->getNextDevice());
+
+  // Get the DeviceManager that can run the node.
+  auto currentDevice = node->getNextDevice();
+  auto deviceManagerIt = deviceManagers_.find(currentDevice);
+
   if (deviceManagerIt == deviceManagers_.end()) {
     // Mark the node as no longer executing.
     executionState->getErrorContainer().set(
@@ -149,7 +153,7 @@ void ThreadPoolExecutor::executeDAGNode(NetworkExecutionState *executionState,
   // Run the node using the DeviceManager.
   deviceManager->runFunction(
       node->name, std::move(nodeCtx),
-      [this, executionState,
+      [this, executionState, currentDevice,
        node](RunIdentifierTy id, Error err,
              std::unique_ptr<ExecutionContext> resultCtx) {
         TRACE_EVENT_LOG_ID(resultCtx->getTraceContext(), TraceLevel::REQUEST,
@@ -159,13 +163,14 @@ void ThreadPoolExecutor::executeDAGNode(NetworkExecutionState *executionState,
         // Immediately move the handling of the result onto this run's executor
         // to avoid doing work on the DeviceManager thread.
         threadPool_.getExecutor()->submit(
-            [this, executionState, node, err = std::move(err), id,
-             ctx = std::move(resultCtx)]() mutable {
+            [this, executionState, node, err = std::move(err), currentDevice,
+             id, ctx = std::move(resultCtx)]() mutable {
               TRACE_EVENT_LOG_ID(ctx->getTraceContext(), TraceLevel::REQUEST,
                                  "handle result queuing",
                                  TraceEvent::AsyncEndType, TraceEvent::now(),
                                  id);
 
+              node->markFinished(currentDevice);
               this->handleDeviceManagerResult(executionState, std::move(err),
                                               std::move(ctx), node);
             });
@@ -175,7 +180,6 @@ void ThreadPoolExecutor::executeDAGNode(NetworkExecutionState *executionState,
 void ThreadPoolExecutor::handleDeviceManagerResult(
     NetworkExecutionState *executionState, Error err,
     std::unique_ptr<ExecutionContext> ctx, const DAGNode *node) {
-
   TraceContext *traceContext = ctx->getTraceContext();
   if (traceContext) {
     TRACE_EVENT_BEGIN(traceContext, TraceLevel::RUNTIME,

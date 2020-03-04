@@ -288,8 +288,8 @@ Error HostManager::removeNetwork(llvm::StringRef networkName) {
   // Free the pool of executionStates.
   executor_->freePool(networkIterator->second.dag.root.get());
   for (auto &node : nodes) {
-    for (auto device : node->deviceIDs) {
-      Error evictErr = provisioner_->evictFunction(node->name, device);
+    for (auto device : node->deviceRuntimeInfos) {
+      Error evictErr = provisioner_->evictFunction(node->name, device.first);
       err.set(std::move(evictErr));
     }
     // Also remove compiledFunction from Provisioner.
