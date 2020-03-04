@@ -110,9 +110,16 @@ void ThreadPoolExecutor::run(const DAGNode *root,
   // executed while placeholders are being propagated for the next node
   // without the callback for that node deleting the execution state.
   inflightBarrier_.increment(numChildren);
+
+  auto *traceContext = context->getTraceContext();
+
   // Get and bind state.
   auto currentState = states_[root]->getNextNetworkExecutionState();
+  TRACE_EVENT_BEGIN(traceContext, TraceLevel::RUNTIME,
+                    "bind network execution state");
   currentState->bind(std::move(context), std::move(cb), runId);
+  TRACE_EVENT_END(traceContext, TraceLevel::RUNTIME,
+                  "bind network execution state");
 
   currentState->incrementInflightNodes(numChildren);
   for (auto const &node : root->children) {
