@@ -200,6 +200,29 @@ llvm::cl::opt<std::string>
                       llvm::cl::Optional, llvm::cl::init(std::string("")),
                       llvm::cl::cat(reproTestCat));
 
+llvm::cl::opt<unsigned> glowMaxActiveRequests(
+    "glow_max_active_requests",
+    llvm::cl::desc(
+        "Number of active requests before host manager start queuing"),
+    llvm::cl::Optional, llvm::cl::init(48), llvm::cl::cat(reproTestCat));
+
+llvm::cl::opt<unsigned> glowMaxQueueSize(
+    "glow_max_queue_size",
+    llvm::cl::desc(
+        "Max number of pending requeusts in glow's host manager queue before "
+        "rejecting new request"),
+    llvm::cl::Optional, llvm::cl::init(100), llvm::cl::cat(reproTestCat));
+
+llvm::cl::opt<unsigned> glowExecutorThreads(
+    "glow_executor_threads",
+    llvm::cl::desc("Number of executor threads for host manager"),
+    llvm::cl::Optional, llvm::cl::init(10), llvm::cl::cat(reproTestCat));
+
+llvm::cl::opt<bool> glowSaturateHost(
+    "glow_saturate_host",
+    llvm::cl::desc("Duplicate netowrk on all available devices"),
+    llvm::cl::Optional, llvm::cl::init(false), llvm::cl::cat(reproTestCat));
+
 void parseCommandLine(int argc, char **argv) {
   llvm::sys::PrintStackTraceOnErrorSignal(argv[0]);
   llvm::cl::ParseCommandLineOptions(
@@ -380,9 +403,14 @@ int run() {
 
   auto configs = runtime::generateDeviceConfigs(numDevicesOpt, ExecutionBackend,
                                                 deviceMemoryOpt);
+  runtime::HostConfig hostConfig;
+  hostConfig.maxActiveRequests = glowMaxActiveRequests;
+  hostConfig.maxQueueSize = glowMaxQueueSize;
+  hostConfig.executorThreads = glowExecutorThreads;
+
   auto hostManager =
-      glow::make_unique<runtime::HostManager>(std::move(configs));
-  EXIT_ON_ERR(hostManager->addNetwork(std::move(mod), cctx));
+      glow::make_unique<runtime::HostManager>(std::move(configs), hostConfig);
+  EXIT_ON_ERR(hostManager->addNetwork(std::move(mod), cctx, glowSaturateHost));
 
   // Parse all input and output files ahead of inference.
   std::vector<::ONNX_NAMESPACE::GraphProto> parsedInputs;
