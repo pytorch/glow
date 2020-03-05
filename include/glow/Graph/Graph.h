@@ -1711,8 +1711,11 @@ public:
   ///   number of windows extracted from the input.
   /// - fftLength is the FFT length used to compute the spectrogram which is the
   ///   next power of 2 (e.g. for a window size of 640 the fftLength is 1024).
-  /// The node name will be \p name. This node is inspired from TensorFlow
-  /// (tensorflow.python.ops.gen_audio_ops.audio_spectrogram).
+  /// The input audio data values are commonly float values scaled in the range
+  /// [-1.0, 1.0]. If the audio data is decoded from a WAV file into int8/int16
+  /// values then those values are commonly scaled down with 2^7/2^15 before
+  /// using this node. The node name will be \p name. This node is inspired from
+  /// TensorFlow (tensorflow.python.ops.gen_audio_ops.audio_spectrogram).
   AudioSpectrogramNode *createAudioSpectrogram(llvm::StringRef name,
                                                NodeValue input,
                                                int64_t windowSize,
