@@ -1151,8 +1151,6 @@ createAndInitBasicAudioSpectrogramTest(glow::PlaceholderBindings &bindings,
   auto *audioSpec = F->createAudioSpectrogram(
       "audio_spectrogram", input, windowSize, windowStride, magnitudeSquared);
   auto *res = F->createSave("save", audioSpec);
-  ::glow::convertPlaceholdersToConstants(F, bindings,
-                                         {input, res->getPlaceholder()});
   auto *resultTensor = bindings.allocate(res->getPlaceholder());
   return std::make_pair(F, resultTensor);
 }
@@ -1214,8 +1212,6 @@ createAndInitBasicMFCCTest(glow::PlaceholderBindings &bindings,
   auto *mfcc = F->createMFCC("mfcc", spectrogram, sampleRate, lowerFrequency,
                              upperFrequency, filterBankCount, numCoefficients);
   auto *res = F->createSave("save", mfcc);
-  ::glow::convertPlaceholdersToConstants(F, bindings,
-                                         {spectrogram, res->getPlaceholder()});
   auto *resultTensor = bindings.allocate(res->getPlaceholder());
   return std::make_pair(F, resultTensor);
 }
