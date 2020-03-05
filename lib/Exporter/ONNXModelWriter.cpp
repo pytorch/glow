@@ -748,6 +748,29 @@ Error ONNXModelWriter::writeFlip(const FlipNode *node, GraphType &graph) {
   return writeAllWithNode("Flip", node, graph, proto);
 }
 
+Error ONNXModelWriter::writeAudioSpectrogram(const AudioSpectrogramNode *node,
+                                             GraphType &graph) {
+  auto *proto = graph.add_node();
+
+  addValueAttribute(proto, "window_size", node->getWindowSize());
+  addValueAttribute(proto, "window_stride", node->getWindowStride());
+  addValueAttribute(proto, "magnitude_squared", node->getMagnitudeSquared());
+
+  return writeAllWithNode("AudioSpectrogram", node, graph, proto);
+}
+
+Error ONNXModelWriter::writeMFCC(const MFCCNode *node, GraphType &graph) {
+  auto *proto = graph.add_node();
+
+  addValueAttribute(proto, "sample_rate", node->getSampleRate());
+  addValueAttribute(proto, "lower_frequency", node->getLowerFrequency());
+  addValueAttribute(proto, "upper_frequency", node->getUpperFrequency());
+  addValueAttribute(proto, "filter_bank_count", node->getFilterBankCount());
+  addValueAttribute(proto, "num_coefficients", node->getNumCoefficients());
+
+  return writeAllWithNode("MFCC", node, graph, proto);
+}
+
 Error ONNXModelWriter::writeConvolution(const ConvolutionNode *node,
                                         GraphType &graph) {
   // Loading convolution creates a sandwich with Transpose nodes for Input,
